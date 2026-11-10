@@ -170,6 +170,27 @@ describe('AC-510.1 SDK에 넣는 값', () => {
   })
 })
 
+// 서식 탭 AI 정리(specs/forms TASK-8): 짧은 글 뽑기라 effort low로 부른다. 칸이 없으면 지금처럼 medium
+describe('AC-3509.3 effort 칸', () => {
+  it("AC-3509.3 effort 'low'를 주면 output_config.effort가 low이고, 나머지 칸은 그대로다", async () => {
+    const { client, calls } = fakeClient(message())
+    await callClaude({ ...REQ, effort: 'low' }, { client, apiKey: FAKE_KEY })
+    const p = calls[0]
+    expect(p.output_config?.effort).toBe('low')
+    expect(p.model).toBe('claude-opus-5-5')
+    expect(p.fallbacks).toBe('default')
+    expect(p.output_config?.format?.schema).toEqual(REQ.schema)
+    expect(p).not.toHaveProperty('thinking')
+  })
+
+  it("AC-3509.3 effort 'medium'을 주거나 칸이 없으면 medium", async () => {
+    const { client, calls } = fakeClient(message())
+    await callClaude({ ...REQ, effort: 'medium' }, { client, apiKey: FAKE_KEY })
+    await callClaude(REQ, { client, apiKey: FAKE_KEY })
+    expect(calls.map((p) => p.output_config?.effort)).toEqual(['medium', 'medium'])
+  })
+})
+
 describe('AC-510.2 정상 답', () => {
   it('AC-510.2 text 블록 둘을 이어 붙인 글자와 사용량(입력·출력 토큰, 답한 모델)을 돌려준다', async () => {
     const { client } = fakeClient(message({ content: [text('{"summary":'), text('"요약","cards":[]}')], input: 1234, output: 567 }))

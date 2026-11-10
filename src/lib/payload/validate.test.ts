@@ -6,7 +6,7 @@ import type { ConsumptionRow } from '@/types/consumption'
 import { AGAIN_WINDOWS, type AgainWindow, type DayAgainPayload, type DayPayload, type MonthPayload, type MonthSections, type RevisitPayload } from '@/types/payload'
 import { toDayPayloads } from './toDayPayloads'
 import { toMonthPayload } from './toMonthPayload'
-import { validateDayPayload, validateMonthPayload, validateMonthSections, validateRxPick } from './validate'
+import { hasPrivateShape, validateDayPayload, validateMonthPayload, validateMonthSections, validateRxPick } from './validate'
 
 // 주민번호 모양은 소스에 통째로 쓰지 않는다(검문소가 막는다) — 조각을 이어 만든다
 const idLike = () => ['900101', '1234567'].join('-')
@@ -1126,4 +1126,32 @@ describe('AC-2902.2·AC-2903.2 validateMonthSections: 하나라도 어긋나면 
       expect(validateMonthSections(editedSections(path, long(100)))).not.toBeNull()
     })
   }
+})
+
+// 서식 탭 휴진 안내(specs/forms TASK-1): 지금 있는 개인정보 모양 검사를 하나로 내보낸다(새 모양 없음)
+describe('AC-3503.4 hasPrivateShape: 전화·붙임표 주민번호·붙여 쓴 13자리·메일 모양', () => {
+  it.each([
+    ['붙임표 전화', '010-1234-5678'],
+    ['점 전화', '02.123.4567'],
+    ['빈칸 전화', '031 123 4567'],
+    ['붙여 쓴 휴대폰', '01012345678'],
+    ['붙임표 주민번호', '900101-1234567'],
+    ['붙여 쓴 13자리', '9001011234567'],
+    ['메일', 'clinic@example.kr'],
+    ['글 사이', '5/5 휴진 문의 010-1234-5678'],
+  ])('AC-3503.4 %s: 개인정보 모양이다', (_, text) => {
+    expect(hasPrivateShape(text)).toBe(true)
+  })
+
+  it.each([
+    ['빗금 날짜', '5/5 어린이날 휴진'],
+    ['점 범위', '10.3~10.5 추석 연휴'],
+    ['붙임표 날짜', '2027-05-05 휴진'],
+    ['점 날짜', '2026.10.03'],
+    ['시각', '13시까지 진료, 14:00부터 휴진'],
+    ['9자리 처방코드', '641900120'],
+    ['빈 글', ''],
+  ])('AC-3503.4 %s: 개인정보 모양이 아니다', (_, text) => {
+    expect(hasPrivateShape(text)).toBe(false)
+  })
 })

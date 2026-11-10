@@ -71,7 +71,6 @@ const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ meta
   ...(
     [
       ['/notices', () => import('./(app)/notices/page')],
-      ['/forms', () => import('./(app)/forms/page')],
       ['/staff', () => import('./(app)/staff/page')],
       ['/inventory', () => import('./(app)/inventory/page')],
       ['/contacts', () => import('./(app)/contacts/page')],
@@ -79,6 +78,7 @@ const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ meta
   ).map(([path, load]) => ({ path, title: notReadyFeature(path as NotReadyPath).name, load })),
   // 진짜 화면이 생겨 준비 중 목록에 없다(AC-714.3)
   { path: '/ai-report', title: 'AI 리포트', load: () => import('./(app)/ai-report/page') },
+  { path: '/forms', title: '서식', load: () => import('./(app)/forms/page') }, // 화면이 있는 탭(forms AC-3501.3)
   { path: '/worklog', title: '업무일지', load: () => import('./(app)/worklog/page') },
   { path: '/claim', title: '청구', load: () => import('./(app)/claim/page') },
   { path: '/patients', title: '환자', load: () => import('./(app)/patients/page') }, // 화면이 있는 탭(patients AC-610.1)
@@ -105,5 +105,11 @@ describe('AC-402.4: 앱 페이지의 탭 이름', () => {
     const { metadata } = await import('./(app)/revenue/page')
     expect(metadata.title).toBe('매출')
     expect(notReadyFeature('/revenue' as NotReadyPath)).toBeUndefined()
+  })
+
+  it('AC-3501.3: /forms 페이지의 metadata.title은 준비 중 자료가 아니라 페이지가 직접 적은 "서식"이다', async () => {
+    const { metadata } = await import('./(app)/forms/page')
+    expect(metadata.title).toBe('서식')
+    expect(notReadyFeature('/forms' as NotReadyPath)).toBeUndefined()
   })
 })

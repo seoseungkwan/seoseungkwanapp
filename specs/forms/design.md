@@ -235,5 +235,7 @@ E-AI-BUSY·E-AI-LIMIT·E-AI-FAILED는 지금 문구를 그대로 쓴다.
 - `src/components/common/notReadyFeatures.test.ts`·`src/app/(app)/notReadyPages.test.tsx`: `/forms` 항목 빠짐
 - `src/app/titles.test.tsx`: `/forms`는 준비 중 목록이 아니라 페이지가 적은 '서식'
 - `src/components/dashboard/briefing/features.test.ts`: 서식 `status: 'ready'`, 설명 AC-3501.2
+- `src/app/(app)/tabFrame.test.tsx`: 쓰는 화면이 있는 칸 목록에 `/forms`('/ai-report' 다음), `SCREEN_DIR`에 `'/forms': 'forms'` 한 줄(2026-11-10 승인 뒤 더함)
+- `src/app/theme.test.ts`(AC-202.3 색 글자 자리): 16진수 색을 둘 수 있는 파일(로고·구글 마크)에 `src/components/forms/Poster.tsx`(안내문 그림 글자색·흰색)와 `src/lib/forms/themes.ts`(강조색 23개)를, `rgb(`를 둘 수 있는 곳에 `Poster.tsx`(카드 그림자 한 곳)를 더한다 — ADR-028 안내문 그림 예외(2026-11-10 승인 뒤 더함)
 - `src/app/api/ai/claude.test.ts`: effort 칸 시험 더함(기존 기대 그대로)
 고치지 않은 채 통과해야 하는 것: `src/app/notFound.test.tsx`, `src/app/fonts.test.ts`, `src/components/ui/classes.test.ts`, `src/guardrails.test.ts`, `src/app/api/ai/report/route.test.ts`, `src/lib/payload/validate.test.ts`(기존 칸)

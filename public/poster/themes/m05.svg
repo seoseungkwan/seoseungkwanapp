@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="794" height="1123">
+  <!-- 5월 가정의 달: 카네이션 꽃다발(리본)·꽃밭·작은 하트 -->
+  <defs>
+    <linearGradient id="m05-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fde9e6"/>
+      <stop offset="0.38" stop-color="#fff4f2"/>
+      <stop offset="0.68" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#fdf0ee"/>
+    </linearGradient>
+    <!-- 카네이션 꽃잎 세 겹 (색은 color로) -->
+    <g id="m05-head">
+      <path d="M-20.9 2 L-41.8 -23.6 L-36.1 -27.1 L-39.1 -32.3 L-29.6 -33.2 L-33.7 -40.2 L-25.2 -39.9 L-26 -46.7 L-18.7 -45.7 L-16.3 -51.3 L-8.9 -46.4 L-5.6 -53.7 L0 -49 L5.6 -53.7 L9.3 -47.5 L16.3 -51.3 L18.1 -44.9 L26 -46.7 L25.5 -40.1 L33.7 -40.2 L30.1 -33.5 L39.1 -32.3 L35.5 -27 L41.8 -23.6 L20.9 2 Q0 8 -20.9 2 Z" fill="currentColor"/>
+      <path d="M-20.9 2 L-41.8 -23.6 L-36.1 -27.1 L-39.1 -32.3 L-29.6 -33.2 L-33.7 -40.2 L-25.2 -39.9 L-26 -46.7 L-18.7 -45.7 L-16.3 -51.3 L-8.9 -46.4 L-5.6 -53.7 L0 -49 L5.6 -53.7 L9.3 -47.5 L16.3 -51.3 L18.1 -44.9 L26 -46.7 L25.5 -40.1 L33.7 -40.2 L30.1 -33.5 L39.1 -32.3 L35.5 -27 L41.8 -23.6 L20.9 2 Q0 8 -20.9 2 Z" fill="#5a0a14" opacity=".2"/>
+      <path d="M-16.3 2 L-32.7 -22.7 L-25.7 -24.5 L-28.7 -30 L-20.7 -29.6 L-22.4 -36.1 L-14.5 -33.4 L-14.2 -40.4 L-8.3 -38.1 L-4.9 -42.7 L0 -39.1 L4.9 -42.7 L7.9 -37 L14.2 -40.4 L16.2 -35.6 L22.4 -36.1 L20.4 -29.4 L28.7 -30 L26.7 -24.9 L32.7 -22.7 L16.3 2 Q0 8 -16.3 2 Z" fill="currentColor"/>
+      <path d="M-10.8 2 L-21.6 -17.3 L-16.8 -18.3 L-17.2 -22.3 L-11.3 -21.1 L-11.1 -25.9 L-6.3 -24.1 L-3.8 -27.8 L0 -24.8 L3.8 -27.8 L6.2 -23.8 L11.1 -25.9 L11.6 -21.4 L17.2 -22.3 L16.5 -18.2 L21.6 -17.3 L10.8 2 Q0 8 -10.8 2 Z" fill="currentColor"/>
+      <path d="M-10.8 2 L-21.6 -17.3 L-16.8 -18.3 L-17.2 -22.3 L-11.3 -21.1 L-11.1 -25.9 L-6.3 -24.1 L-3.8 -27.8 L0 -24.8 L3.8 -27.8 L6.2 -23.8 L11.1 -25.9 L11.6 -21.4 L17.2 -22.3 L16.5 -18.2 L21.6 -17.3 L10.8 2 Q0 8 -10.8 2 Z" fill="#fff" opacity=".22"/>
+      <path d="M-4 -2 Q-12 -20 -22 -34 M4 -2 Q12 -20 22 -34 M0 -4 Q-2 -22 0 -40 M-8 -2 Q-22 -14 -30 -18 M8 -2 Q22 -14 30 -18" stroke="#5a0a14" stroke-opacity=".16" stroke-width="2" fill="none" stroke-linecap="round"/>
+    </g>
+    <g id="m05-calyx">
+      <path d="M-13 3 L-11 -7 L-6 1 L-2 -9 L2 1 L6 -7 L10 1 L13 -6 L14 4 C 12 18, 7 30, 5 38 L-5 38 C -7 30, -12 18, -14 4 Z" fill="#6fae55"/>
+      <path d="M4 3 L14 4 C 12 18, 7 30, 5 38 L1 38 C 4 28, 5 16, 4 3 Z" fill="#579944"/>
+    </g>
+    <path id="m05-leaf" d="M0 0 C 10 -6, 24 -18, 40 -36 C 30 -14, 16 -2, 0 2 Z" fill="#7cb562"/>
+    <path id="m05-heart" d="M0 7 C -11 -1, -13 -10, -7 -13 C -3.5 -14.5, -1 -12.5, 0 -10 C 1 -12.5, 3.5 -14.5, 7 -13 C 13 -10, 11 -1, 0 7 Z" fill="currentColor"/>
+    <!-- 리본 -->
+    <g id="m05-bow">
+      <path d="M-3 4 L-20 34 L-12 32 L-7 40 L4 6 Z" fill="#d93c4f"/>
+      <path d="M3 4 L18 32 L10 31 L6 38 L-3 6 Z" fill="#c42f42"/>
+      <path d="M0 0 C -10 -18, -36 -24, -38 -8 C -40 6, -16 8, 0 0 Z" fill="#ef5a6c"/>
+      <path d="M0 0 C 10 -18, 36 -24, 38 -8 C 40 6, 16 8, 0 0 Z" fill="#ef5a6c"/>
+      <path d="M0 0 C -14 -4, -30 -6, -38 -8 C -40 6, -16 8, 0 0 Z M0 0 C 14 -4, 30 -6, 38 -8 C 40 6, 16 8, 0 0 Z" fill="#d43f52"/>
+      <rect x="-7" y="-7" width="14" height="13" rx="5" fill="#e04a5d"/>
+    </g>
+  </defs>
+
+  <rect width="794" height="1123" fill="url(#m05-bg)"/>
+
+  <!-- 작은 하트: 글자 자리 안은 옅게 -->
+  <g>
+    <use href="#m05-heart" transform="translate(40 340) rotate(-14) scale(1.1)" color="#f27690"/><use href="#m05-heart" transform="translate(26 560) rotate(10) scale(0.9)" color="#f8a5b6"/><use href="#m05-heart" transform="translate(46 740) rotate(-8) scale(0.8)" color="#e3404e"/>
+    <use href="#m05-heart" transform="translate(756 360) rotate(12) scale(1.1)" color="#e3404e"/><use href="#m05-heart" transform="translate(772 560) rotate(-10) scale(0.9)" color="#f27690"/><use href="#m05-heart" transform="translate(752 740) rotate(8) scale(0.8)" color="#f8a5b6"/>
+    <use href="#m05-heart" transform="translate(300 40) rotate(-10) scale(0.8)" color="#f8a5b6"/><use href="#m05-heart" transform="translate(500 30) rotate(12) scale(0.9)" color="#f27690"/><use href="#m05-heart" transform="translate(410 52) rotate(0) scale(0.6)" color="#e3404e"/>
+    <g opacity=".3"><use href="#m05-heart" transform="translate(210 250) rotate(-12) scale(0.9)" color="#f27690"/><use href="#m05-heart" transform="translate(590 250) rotate(12) scale(0.9)" color="#f27690"/><use href="#m05-heart" transform="translate(160 420) rotate(8) scale(0.8)" color="#e3404e"/><use href="#m05-heart" transform="translate(640 410) rotate(-8) scale(0.8)" color="#e3404e"/><use href="#m05-heart" transform="translate(130 650) rotate(0) scale(0.8)" color="#f8a5b6"/><use href="#m05-heart" transform="translate(670 660) rotate(0) scale(0.8)" color="#f8a5b6"/></g>
+  </g>
+
+  <!-- 위 모서리 꽃다발 -->
+  <g transform="translate(178 40) rotate(108.6) scale(0.86)"><path d="M0 36 Q0 145.6 0 255.2" stroke="#5f9f48" stroke-width="5" fill="none" stroke-linecap="round"/><use href="#m05-leaf" transform="translate(0 134.6) scale(1 1)"/><use href="#m05-leaf" transform="translate(0 167.5) scale(-1 1)"/><use href="#m05-calyx"/><use href="#m05-head" color="#f27690"/></g><g transform="translate(54 176) rotate(157.8) scale(0.9)"><path d="M0 36 Q0 141.6 0 247.2" stroke="#5f9f48" stroke-width="5" fill="none" stroke-linecap="round"/><use href="#m05-leaf" transform="translate(0 131) scale(1 1)"/><use href="#m05-leaf" transform="translate(0 162.7) scale(-1 1)"/><use href="#m05-calyx"/><use href="#m05-head" color="#f8a5b6"/></g><g transform="translate(120 98) rotate(130.5) scale(1.05)"><path d="M0 36 Q0 111.9 0 187.8" stroke="#5f9f48" stroke-width="5" fill="none" stroke-linecap="round"/><use href="#m05-leaf" transform="translate(0 104.3) scale(1 1)"/><use href="#m05-leaf" transform="translate(0 127.1) scale(-1 1)"/><use href="#m05-calyx"/><use href="#m05-head" color="#e3404e"/></g>
+  <use href="#m05-bow" transform="translate(26 26) rotate(-45) scale(1.1)"/>
+  <g transform="translate(612 40) rotate(-108.3) scale(0.86)"><path d="M0 36 Q0 147.8 0 259.6" stroke="#5f9f48" stroke-width="5" fill="none" stroke-linecap="round"/><use href="#m05-leaf" transform="translate(0 136.6) scale(1 1)"/><use href="#m05-leaf" transform="translate(0 170.2) scale(-1 1)"/><use href="#m05-calyx"/><use href="#m05-head" color="#f8a5b6"/></g><g transform="translate(740 176) rotate(-157.8) scale(0.9)"><path d="M0 36 Q0 141.6 0 247.2" stroke="#5f9f48" stroke-width="5" fill="none" stroke-linecap="round"/><use href="#m05-leaf" transform="translate(0 131) scale(1 1)"/><use href="#m05-leaf" transform="translate(0 162.7) scale(-1 1)"/><use href="#m05-calyx"/><use href="#m05-head" color="#f27690"/></g><g transform="translate(672 98) rotate(-130.1) scale(1.05)"><path d="M0 36 Q0 112.6 0 189.3" stroke="#5f9f48" stroke-width="5" fill="none" stroke-linecap="round"/><use href="#m05-leaf" transform="translate(0 105) scale(1 1)"/><use href="#m05-leaf" transform="translate(0 128) scale(-1 1)"/><use href="#m05-calyx"/><use href="#m05-head" color="#e3404e"/></g>
+  <use href="#m05-bow" transform="translate(768 26) rotate(45) scale(1.1)"/>
+
+  <!-- 아래: 언덕과 카네이션 꽃밭 -->
+  <path d="M0 990 C 150 962, 300 974, 430 998 C 560 1022, 690 984, 794 972 L794 1123 L0 1123 Z" fill="#dcefcb"/>
+  <g transform="translate(34 880) rotate(-6) scale(0.9)"><path d="M0 36 Q-8 166 -3.2 296" stroke="#5f9f48" stroke-width="5" fill="none" stroke-linecap="round"/><use href="#m05-leaf" transform="translate(-4.3 127) scale(1 1)"/><use href="#m05-leaf" transform="translate(-4.7 179) scale(-1 1)"/><use href="#m05-calyx"/><use href="#m05-head" color="#f27690"/></g>
+  <g transform="translate(150 1004) rotate(8) scale(0.88)"><path d="M0 36 Q6 116 2.4 196" stroke="#5f9f48" stroke-width="5" fill="none" stroke-linecap="round"/><use href="#m05-leaf" transform="translate(3.2 92) scale(1 1)"/><use href="#m05-leaf" transform="translate(3.6 124) scale(-1 1)"/><use href="#m05-calyx"/><use href="#m05-head" color="#f8a5b6"/></g>
+  <g transform="translate(92 950) rotate(-2) scale(1.05)"><path d="M0 36 Q10 136 4 236" stroke="#5f9f48" stroke-width="5" fill="none" stroke-linecap="round"/><use href="#m05-leaf" transform="translate(5.3 106) scale(1 1)"/><use href="#m05-leaf" transform="translate(5.9 146) scale(-1 1)"/><use href="#m05-calyx"/><use href="#m05-head" color="#e3404e"/></g>
+  <g transform="translate(212 1030) rotate(14) scale(0.78)"><path d="M0 36 Q-6 96 -2.4 156" stroke="#5f9f48" stroke-width="5" fill="none" stroke-linecap="round"/><use href="#m05-leaf" transform="translate(-3.2 78) scale(1 1)"/><use href="#m05-leaf" transform="translate(-3.6 102) scale(-1 1)"/><use href="#m05-calyx"/><use href="#m05-head" color="#e3404e"/></g>
+  <g transform="translate(28 1010) rotate(-14) scale(0.95)"><path d="M0 36 Q6 116 2.4 196" stroke="#5f9f48" stroke-width="5" fill="none" stroke-linecap="round"/><use href="#m05-leaf" transform="translate(3.2 92) scale(1 1)"/><use href="#m05-leaf" transform="translate(3.6 124) scale(-1 1)"/><use href="#m05-calyx"/><use href="#m05-head" color="#f8a5b6"/></g>
+  <g transform="translate(762 876) rotate(6) scale(0.9)"><path d="M0 36 Q8 166 3.2 296" stroke="#5f9f48" stroke-width="5" fill="none" stroke-linecap="round"/><use href="#m05-leaf" transform="translate(4.3 127) scale(-1 1)"/><use href="#m05-leaf" transform="translate(4.7 179) scale(1 1)"/><use href="#m05-calyx"/><use href="#m05-head" color="#e3404e"/></g>
+  <g transform="translate(644 1004) rotate(-8) scale(0.88)"><path d="M0 36 Q-6 116 -2.4 196" stroke="#5f9f48" stroke-width="5" fill="none" stroke-linecap="round"/><use href="#m05-leaf" transform="translate(-3.2 92) scale(-1 1)"/><use href="#m05-leaf" transform="translate(-3.6 124) scale(1 1)"/><use href="#m05-calyx"/><use href="#m05-head" color="#f27690"/></g>
+  <g transform="translate(702 948) rotate(2) scale(1.05)"><path d="M0 36 Q-10 136 -4 236" stroke="#5f9f48" stroke-width="5" fill="none" stroke-linecap="round"/><use href="#m05-leaf" transform="translate(-5.3 106) scale(-1 1)"/><use href="#m05-leaf" transform="translate(-5.9 146) scale(1 1)"/><use href="#m05-calyx"/><use href="#m05-head" color="#f27690"/></g>
+  <g transform="translate(582 1030) rotate(-14) scale(0.78)"><path d="M0 36 Q6 96 2.4 156" stroke="#5f9f48" stroke-width="5" fill="none" stroke-linecap="round"/><use href="#m05-leaf" transform="translate(3.2 78) scale(-1 1)"/><use href="#m05-leaf" transform="translate(3.6 102) scale(1 1)"/><use href="#m05-calyx"/><use href="#m05-head" color="#f8a5b6"/></g>
+  <g transform="translate(768 1010) rotate(14) scale(0.95)"><path d="M0 36 Q-6 116 -2.4 196" stroke="#5f9f48" stroke-width="5" fill="none" stroke-linecap="round"/><use href="#m05-leaf" transform="translate(-3.2 92) scale(-1 1)"/><use href="#m05-leaf" transform="translate(-3.6 124) scale(1 1)"/><use href="#m05-calyx"/><use href="#m05-head" color="#e3404e"/></g>
+  <path d="M0 1060 C 180 1030, 360 1054, 500 1062 C 620 1070, 720 1046, 794 1038 L794 1123 L0 1123 Z" fill="#bfe2a5"/>
+  <path d="M0 1104 C 250 1086, 520 1114, 794 1094 L794 1123 L0 1123 Z" fill="#a8d68b"/>
+  <g>
+    <use href="#m05-heart" transform="translate(300 1080) rotate(-10) scale(0.9)" color="#f27690"/><use href="#m05-heart" transform="translate(400 1096) rotate(8) scale(0.7)" color="#e3404e"/><use href="#m05-heart" transform="translate(486 1078) rotate(-4) scale(0.8)" color="#f8a5b6"/>
+  </g>
+</svg>

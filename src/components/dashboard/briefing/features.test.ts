@@ -6,7 +6,7 @@ import { DASHBOARD_FEATURES } from './features'
 // 여기서는 메모 §6 표 그대로인지만 본다. 상태는 ui-90 AC-414.5(design.md '대시보드 (TASK-11)')의 셋이고 칸마다 아래 표가 못 박는다. 칸 수·상태별 수는 표에서 센다(고정 숫자 없음, 칸의 상태는 다른 탭 명세도 바꾼다).
 // 설정 설명은 시안(docs/mockups/ui-90/app/gen.py FEATS) 글자 그대로 "의원 문구"다
 
-// 메모 §6 = requirements AC-316.3 표 (탭 순서), 상태는 AC-414.5. 매출은 spec revenue AC-010.1
+// 메모 §6 = requirements AC-316.3 표 (탭 순서), 상태는 AC-414.5. 매출은 spec revenue AC-010.1, 서식은 spec forms AC-3501.2
 const TABLE = [
   { name: '통계', desc: '환자 수 추이·신환 재방문율·처방별 추세·요일별 환자 수', href: '/stats', status: 'connect-first' }, // 설명은 treatment-trend AC-1201.7이 대신한다
   { name: '청구', desc: '삭감 예방 사전점검·청구메모·상병 확인·월말 마감', href: '/claim', status: 'connect-first' },
@@ -14,7 +14,7 @@ const TABLE = [
   { name: '환자', desc: '다시 오실 환자 명단·정기 주사 문자 명단·문자 문구', href: '/patients', status: 'connect-first' },
   { name: '매출', desc: '매출 추이·급여와 비급여·치료별 매출·건당 진료비', href: '/revenue', status: 'connect-first' },
   { name: 'AI 리포트', desc: '지난달·작년 같은 달과 견준 월간 AI 보고', href: '/ai-report', status: 'ready' },
-  { name: '서식', desc: '진료일정·휴진 안내·환자 안내문·근무표·보고서 양식', href: '/forms', status: 'soon' },
+  { name: '서식', desc: '휴진 안내를 테마 그림으로 만들어 인쇄·그림 파일로', href: '/forms', status: 'ready' },
   { name: '직원', desc: '직원 명단·급여 계산과 명세서·연차와 휴가', href: '/staff', status: 'soon' },
   { name: '업무일지', desc: '엑셀 양식과 똑같은 업무일지', href: '/worklog', status: 'ready' },
   { name: '재고', desc: '물품 목록·남은 수량·부족 표시', href: '/inventory', status: 'soon' },
@@ -23,7 +23,7 @@ const TABLE = [
 ]
 
 describe('DASHBOARD_FEATURES: 기능 목차 (AC-316.3·AC-414.5)', () => {
-  it('AC-316.3·AC-414.5·AC-010.1: 탭 순서대로 이름·설명·주소·상태가 표와 같다', () => {
+  it('AC-316.3·AC-414.5·AC-010.1·AC-3501.2: 탭 순서대로 이름·설명·주소·상태가 표와 같다', () => {
     expect(DASHBOARD_FEATURES).toHaveLength(TABLE.length)
     expect(DASHBOARD_FEATURES.map((f) => ({ name: f.name, desc: f.desc, href: f.href, status: f.status }))).toEqual(TABLE)
   })
@@ -78,6 +78,15 @@ describe('DASHBOARD_FEATURES: 기능 목차 (AC-316.3·AC-414.5)', () => {
       name: '업무일지',
       desc: '엑셀 양식과 똑같은 업무일지',
       href: '/worklog',
+      status: 'ready',
+    })
+  })
+
+  it('AC-3501.2: 서식 칸은 ready("사용 가능")이고 주소는 /forms, 설명은 "휴진 안내를 테마 그림으로 만들어 인쇄·그림 파일로"다', () => {
+    expect(DASHBOARD_FEATURES.find((f) => f.name === '서식')).toEqual({
+      name: '서식',
+      desc: '휴진 안내를 테마 그림으로 만들어 인쇄·그림 파일로',
+      href: '/forms',
       status: 'ready',
     })
   })

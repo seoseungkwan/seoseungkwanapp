@@ -39,8 +39,9 @@ const ENDED_EARLY: ReadonlySet<string> = new Set([
   'request ended without sending any chunks',
 ])
 
+// effort: 생각 깊이. 없으면 medium(AI 리포트). 서식 정리처럼 짧은 글 뽑기는 low(spec forms)
 export async function callClaude(
-  req: { system: string; user: string; schema: object },
+  req: { system: string; user: string; schema: object; effort?: 'low' | 'medium' },
   deps?: { client?: AnthropicLike; apiKey?: string; timeoutMs?: number },
 ): Promise<ClaudeResult> {
   const apiKey = deps?.apiKey ?? process.env.ANTHROPIC_API_KEY
@@ -61,7 +62,7 @@ export async function callClaude(
           max_tokens: MAX_TOKENS,
           betas: ['server-side-fallback-2026-07-01'],
           fallbacks: 'default',
-          output_config: { effort: 'medium', format: { type: 'json_schema', schema: req.schema as Record<string, unknown> } },
+          output_config: { effort: req.effort ?? 'medium', format: { type: 'json_schema', schema: req.schema as Record<string, unknown> } },
           system: req.system,
           messages: [{ role: 'user', content: req.user }],
         },

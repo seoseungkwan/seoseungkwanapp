@@ -18,13 +18,6 @@ const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: str
     items: ['심평원 공지·심사기준 변경', '보건복지부 고시·공지', '건강보험공단 공지', '글마다 AI 세 줄 요약'],
   },
   {
-    path: '/forms',
-    name: '서식',
-    title: '서식은 준비 중이에요',
-    intro: `대충 적은 글을 양식에 맞게 정리할 자리예요. ${SOON}`,
-    items: ['진료일정·휴진 안내', '환자 안내문', '직원 공지·회의록', '근무표·보고서'],
-  },
-  {
     path: '/staff',
     name: '직원',
     title: '직원은 준비 중이에요',
@@ -48,7 +41,7 @@ const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: str
 ]
 
 describe('AC-305.4: NOT_READY_FEATURES — 준비 중 기능(탭 순서)', () => {
-  it('AC-305.4·AC-010.1: 탭 순서대로 주소·이름이 표와 같다', () => {
+  it('AC-305.4·AC-010.1·AC-3501.2: 탭 순서대로 주소·이름이 표와 같다', () => {
     expect(NOT_READY_FEATURES.map(({ path, name }) => [path, name])).toEqual(TABLE.map(({ path, name }) => [path, name]))
   })
 
@@ -74,6 +67,15 @@ describe('AC-305.4: NOT_READY_FEATURES — 준비 중 기능(탭 순서)', () =>
   it('AC-012.4: 업무일지(/worklog)는 준비 중 목록에 없다', () => {
     expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/worklog')
     expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('업무일지')
+  })
+
+  it('AC-3501.2: 서식(/forms)은 준비 중 목록에 없다 — 주소·이름·옛 만들 것 글자 모두', () => {
+    // @ts-expect-error '/forms'는 이제 NotReadyPath가 아니다(타입 점검이 본다)
+    const forms: NotReadyPath = '/forms'
+    expect(NOT_READY_FEATURES.map((f) => f.path)).not.toContain(forms)
+    expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('서식')
+    expect(JSON.stringify(NOT_READY_FEATURES)).not.toContain('대충 적은 글을 양식에 맞게 정리할 자리예요')
+    expect(MENU.find((m) => m.label === '서식')?.ready).toBe(true)
   })
 
   it('AC-305.4: 주소가 겹치지 않는다', () => {
@@ -124,7 +126,6 @@ describe('AC-610.1: 환자는 준비 중 목록에서 빠진다', () => {
 describe('AC-415.1: NOT_READY_FEATURES — 항목마다 title(h1, 조사까지 통째로)', () => {
   const TITLES = [
     '고시·공지는 준비 중이에요',
-    '서식은 준비 중이에요',
     '직원은 준비 중이에요',
     '재고는 준비 중이에요',
     '주소록은 준비 중이에요',

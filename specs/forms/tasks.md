@@ -66,9 +66,9 @@
 - Phase: 1
 - AC: AC-3502.3, AC-3502.5, AC-3506.3, AC-3507.5
 - REQ: REQ-3502, REQ-3506, REQ-3507
-- Files: src/lib/errors.ts, src/lib/errors.test.ts
+- Files: src/types/errors.ts, src/lib/errors.ts, src/lib/errors.test.ts
 - Tests: src/lib/errors.test.ts
-- TDD: required — design.md 11절 다섯 번호의 '무엇이·어떻게 고치나·번호'. 기존 번호는 그대로
+- TDD: required — design.md 11절 다섯 번호의 '무엇이·어떻게 고치나·번호'. 기존 번호는 그대로. 번호 타입 `ErrorCode`(`src/types/errors.ts`)에 다섯 번호를 한 줄로 더한다(2026-11-10 승인 뒤 빠진 파일을 더함 — 타입이 없으면 `tsc`·`npm run build`가 실패)
 
 ## TASK-6: 글꼴·테마 그림 파일
 - Phase: 1
@@ -134,9 +134,9 @@
 - Phase: 3
 - AC: AC-3501.1, AC-3501.2, AC-3501.3
 - REQ: REQ-3501
-- Files: src/app/(app)/forms/page.tsx, src/app/(app)/forms/page.test.tsx, src/components/shell/menu.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/components/common/notReadyFeatures.ts, src/components/common/notReadyFeatures.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/titles.test.tsx
-- Tests: src/app/(app)/forms/page.test.tsx, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.test.ts, src/components/common/notReadyFeatures.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/titles.test.tsx
-- TDD: required — design.md 14절 "바꾸는 기존 기대"대로. 페이지는 metadata title '서식'과 `<FormsScreen />`
+- Files: src/app/(app)/forms/page.tsx, src/app/(app)/forms/page.test.tsx, src/components/shell/menu.ts, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/components/common/notReadyFeatures.ts, src/components/common/notReadyFeatures.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/titles.test.tsx, src/app/(app)/tabFrame.test.tsx
+- Tests: src/app/(app)/forms/page.test.tsx, src/components/shell/shell.test.tsx, src/components/dashboard/briefing/features.test.ts, src/components/common/notReadyFeatures.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/titles.test.tsx, src/app/(app)/tabFrame.test.tsx
+- TDD: required — design.md 14절 "바꾸는 기존 기대"대로. 페이지는 metadata title '서식'과 `<FormsScreen />`. `tabFrame.test.tsx`는 2026-11-10 승인 뒤 빠진 파일을 더함(서식이 쓰는 화면이 있는 칸이 되어 그 시험의 칸 목록이 바뀐다)
 
 ## Phase 4 — 마무리
 
@@ -144,8 +144,8 @@
 - Phase: 4
 - AC: AC-3510.2, AC-3510.3, AC-3511.1, AC-3511.2
 - REQ: REQ-3510, REQ-3511
-- Files: src/lib/forms/rules.test.ts, docs/ADR.md, CLAUDE.md, docs/UI_GUIDE.md, docs/ARCHITECTURE.md, docs/tab-frame/plan.md
-- Tests: src/lib/forms/rules.test.ts
+- Files: src/lib/forms/rules.test.ts, docs/ADR.md, CLAUDE.md, docs/UI_GUIDE.md, docs/ARCHITECTURE.md, docs/tab-frame/plan.md, src/app/theme.test.ts
+- Tests: src/lib/forms/rules.test.ts, src/app/theme.test.ts
 - TDD: required — 시험(서식 폴더가 환자 자료 구역·브라우저 저장소를 불러오지 않음, `PosterPretendard`가 `src/components/forms` 밖에 없음, ADR-028·CLAUDE.md 예외 줄·UI_GUIDE 준비된 탭 목록·ARCHITECTURE 자리)을 먼저 쓰고 문서를 고친다
 
 ## TASK-15: 화면 확인·E2E·전체 검사

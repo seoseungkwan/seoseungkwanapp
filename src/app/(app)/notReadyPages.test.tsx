@@ -9,7 +9,6 @@ import { MENU } from '@/components/shell/menu'
 import { decideRoute, type HospitalState } from '@/lib/auth/gate'
 import AiReportPage from './ai-report/page'
 import ContactsPage from './contacts/page'
-import FormsPage from './forms/page'
 import InventoryPage from './inventory/page'
 import NoticesPage from './notices/page'
 import StaffPage from './staff/page'
@@ -28,7 +27,6 @@ const APP_GROUP = 'src/app/(app)'
 // 주소 · 표의 이름 · h1(title) · 페이지 (탭 순서)
 const PAGES: Array<{ path: NotReadyPath; name: string; title: string; Page: ComponentType }> = [
   { path: '/notices', name: '고시·공지', title: '고시·공지는 준비 중이에요', Page: NoticesPage },
-  { path: '/forms', name: '서식', title: '서식은 준비 중이에요', Page: FormsPage },
   { path: '/staff', name: '직원', title: '직원은 준비 중이에요', Page: StaffPage },
   { path: '/inventory', name: '재고', title: '재고는 준비 중이에요', Page: InventoryPage },
   { path: '/contacts', name: '주소록', title: '주소록은 준비 중이에요', Page: ContactsPage },
@@ -120,6 +118,14 @@ describe('AC-305.5: 준비 중 주소의 페이지 = notReadyFeature(주소)를 
   it('AC-305.5·AC-012.4: 이 표의 주소는 준비 중 목록(NOT_READY_FEATURES)과 같고(화면이 생긴 탭은 양쪽에서 빠진다) /worklog는 없다', () => {
     expect(PAGES.map((p) => p.path)).toEqual(NOT_READY_FEATURES.map((f) => f.path))
     expect(PAGES.map((p) => p.path as string)).not.toContain('/worklog')
+  })
+
+  it('AC-3501.1·AC-3501.2: /forms는 준비 중 주소가 아니다 — 페이지 표와 준비 중 목록에 없고, 그 페이지 소스는 준비 중 화면이 아니라 서식 화면(FormsScreen)을 쓴다', () => {
+    expect(PAGES.map((p) => p.path as string)).not.toContain('/forms')
+    expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/forms')
+    const source = readFileSync(join(ROOT, pageFile('/forms')), 'utf8')
+    expect(source).not.toMatch(/NotReadyScreen|notReadyFeature/)
+    expect(source).toMatch(/from '@\/components\/forms\/FormsScreen'/)
   })
 
   it('AC-610.1: /patients 페이지는 준비 중 화면을 쓰지 않는 환자 탭이다', () => {

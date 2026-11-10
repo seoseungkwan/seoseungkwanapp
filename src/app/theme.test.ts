@@ -510,8 +510,16 @@ describe('AC-007.1: 업무일지 양식 색 넷은 :root에만 있고 Tailwind �
 // 16진수 색(# + 3·4·6·8자리)과 함수 색. '#top'·'#features' 같은 링크 조각은 잡지 않는다
 const HEX = /#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})(?![\w-])/gi
 const COLOR_FN = /\b(?:rgba?|hsla?|color-mix)\(/gi
-// 16진수 색을 둘 수 있는 파일: 로고 두 색, 구글 상표 네 색
-const HEX_FILES = ['src/components/common/LogoMark.tsx', 'src/components/common/GoogleMark.tsx']
+// 16진수 색을 둘 수 있는 파일: 로고 두 색, 구글 상표 네 색,
+// 휴진 안내문 그림(인쇄물이라 테마 색을 직접 쓴다 — ADR-028): 그림 글자색·흰색, 테마 강조색 23개
+const HEX_FILES = [
+  'src/components/common/LogoMark.tsx',
+  'src/components/common/GoogleMark.tsx',
+  'src/components/forms/Poster.tsx',
+  'src/lib/forms/themes.ts',
+]
+// rgb(를 둘 수 있는 곳: 안내문 그림 카드 그림자 한 곳 (ADR-028)
+const COLOR_FN_ALLOWED: Record<string, number> = { 'src/components/forms/Poster.tsx': 1 }
 
 // 시험 파일 밖 src/의 *.css·*.ts·*.tsx(상대 경로)
 function colorSources(dir = 'src'): string[] {
@@ -539,7 +547,7 @@ describe('AC-202.3: 색 글자는 토큰 블록(과 로고·구글 마크)에만
     expect(read('src/app/globals.css').match(HEX)?.length ?? 0, '토큰 블록에 16진수 색이 있다').toBeGreaterThan(20)
   })
 
-  it('AC-202.3: 시험 파일 밖 src/의 16진수 색은 globals.css :root 토큰 블록·LogoMark·GoogleMark에만 있다', () => {
+  it('AC-202.3: 시험 파일 밖 src/의 16진수 색은 globals.css :root 토큰 블록·LogoMark·GoogleMark·안내문 그림(Poster·themes)에만 있다', () => {
     const files = colorSources()
     expect(files).toEqual(expect.arrayContaining(['src/app/globals.css', 'src/components/common/LogoMark.tsx', 'src/components/landing/base.module.css']))
     const allowed = new Set(HEX_FILES)
@@ -547,8 +555,11 @@ describe('AC-202.3: 색 글자는 토큰 블록(과 로고·구글 마크)에만
     expect(found).toEqual([])
   })
 
-  it('AC-202.3: rgb(·hsl(·color-mix(는 globals.css :root 토큰 블록 밖 어디에도 없다', () => {
-    const found = colorSources().flatMap((rel) => (colorText(rel).match(COLOR_FN) ?? []).map((fn) => `${rel}: ${fn}`))
+  it('AC-202.3: rgb(·hsl(·color-mix(는 globals.css :root 토큰 블록 밖에는 안내문 그림 그림자 한 곳(Poster의 rgb( 하나)뿐이다', () => {
+    const found = colorSources().flatMap((rel) => {
+      const hits = (colorText(rel).match(COLOR_FN) ?? []).map((fn) => `${rel}: ${fn}`)
+      return hits.length === COLOR_FN_ALLOWED[rel] ? [] : hits
+    })
     expect(found).toEqual([])
   })
 })

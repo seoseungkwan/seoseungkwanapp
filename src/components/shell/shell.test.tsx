@@ -36,7 +36,7 @@ const hasNone = (el: Element, classes: string) => {
   for (const t of tokens(classes)) expect(classesOf(el), t).not.toContain(t)
 }
 
-// 탭과 탭 주소(tab-frame REQ-302, design.md '탭 목록'). 기능 자신의 화면이 있는 것은 READY의 탭이다(매출은 spec revenue AC-010.1, 통계는 stats AC-515.1, 환자는 patients AC-610.1, 업무일지는 worklog AC-012.2)
+// 탭과 탭 주소(tab-frame REQ-302, design.md '탭 목록'). 기능 자신의 화면이 있는 것은 READY의 탭이다(매출은 spec revenue AC-010.1, 통계는 stats AC-515.1, 환자는 patients AC-610.1, 업무일지는 worklog AC-012.2, 서식은 forms AC-3501.1)
 const PATHS: readonly (readonly [string, string])[] = [
   ['대시보드', '/dashboard'],
   ['통계', '/stats'],
@@ -53,7 +53,7 @@ const PATHS: readonly (readonly [string, string])[] = [
   ['설정', '/settings'],
 ]
 const LABELS = PATHS.map(([label]) => label)
-const READY = ['대시보드', '통계', '청구', '환자', '매출', 'AI 리포트', '업무일지']
+const READY = ['대시보드', '통계', '청구', '환자', '매출', 'AI 리포트', '서식', '업무일지']
 // 준비 중 화면 주소(설정 빼고 화면이 없는 탭)
 const NOT_READY_PATHS = PATHS.filter(([label]) => !READY.includes(label) && label !== '설정')
 const EMAIL = 'manager@example.com'
@@ -98,8 +98,8 @@ const panel = () => {
   const id = moreButton().getAttribute('aria-controls')
   return id ? document.getElementById(id) : null
 }
-// 화면이 있는 탭(MENU ready: true) — 대시보드·통계·청구·환자·매출·AI 리포트·업무일지·설정
-const READY_TABS = ['대시보드', '통계', '청구', '환자', '매출', 'AI 리포트', '업무일지', '설정']
+// 화면이 있는 탭(MENU ready: true) — 대시보드·통계·청구·환자·매출·AI 리포트·서식·업무일지·설정
+const READY_TABS = ['대시보드', '통계', '청구', '환자', '매출', 'AI 리포트', '서식', '업무일지', '설정']
 // 준비 중 탭(MENU ready: false). 수는 NOT_READY_FEATURES에서 센다
 const NOT_READY_TABS = LABELS.filter((l) => !READY_TABS.includes(l))
 // 지금 탭 모양(ink 600 + 아래 2px accent 밑줄)과 기본 모양(ink-2 500)
@@ -126,7 +126,7 @@ describe('menu', () => {
     for (const { label, path } of MENU) expect(path, label).toMatch(/^\/[a-z0-9-]+(?:\/[a-z0-9-]+)*$/)
   })
 
-  it('AC-302.3·AC-010.1·AC-515.1·AC-714.1·AC-610.1·AC-012.2·AC-012.6: 기능 자신의 화면(href)은 대시보드 /dashboard · 통계 /stats · 청구 /claim · 환자 /patients · 매출 /revenue · AI 리포트 /ai-report · 업무일지 /worklog · 설정 /settings이고 나머지는 null. href가 있으면 path와 같다', () => {
+  it('AC-302.3·AC-010.1·AC-515.1·AC-714.1·AC-610.1·AC-012.2·AC-012.6·AC-3501.1: 기능 자신의 화면(href)은 대시보드 /dashboard · 통계 /stats · 청구 /claim · 환자 /patients · 매출 /revenue · AI 리포트 /ai-report · 서식 /forms · 업무일지 /worklog · 설정 /settings이고 나머지는 null. href가 있으면 path와 같다', () => {
     expect(MENU.filter((m) => m.href !== null).map(({ label, href }) => ({ label, href }))).toEqual([
       { label: '대시보드', href: '/dashboard' },
       { label: '통계', href: '/stats' },
@@ -134,6 +134,7 @@ describe('menu', () => {
       { label: '환자', href: '/patients' },
       { label: '매출', href: '/revenue' },
       { label: 'AI 리포트', href: '/ai-report' },
+      { label: '서식', href: '/forms' },
       { label: '업무일지', href: '/worklog' },
       { label: '설정', href: '/settings' },
     ])
@@ -180,7 +181,7 @@ describe('menu', () => {
     expect('ADMIN_ITEM' in menuModule).toBe(false)
   })
 
-  it('AC-416.4·AC-010.1·AC-515.1·AC-714.1·AC-610.1·AC-012.2: 항목마다 ready가 있고 화면이 있는 탭(대시보드·통계·청구·환자·매출·AI 리포트·업무일지·설정)만 true다. ready: false인 주소들은 NOT_READY_FEATURES의 주소와 같다(순서도)', () => {
+  it('AC-416.4·AC-010.1·AC-515.1·AC-714.1·AC-610.1·AC-012.2·AC-3501.1: 항목마다 ready가 있고 화면이 있는 탭(대시보드·통계·청구·환자·매출·AI 리포트·서식·업무일지·설정)만 true다. ready: false인 주소들은 NOT_READY_FEATURES의 주소와 같다(순서도)', () => {
     for (const item of MENU) expect(typeof item.ready, item.label).toBe('boolean')
     expect(MENU.filter((m) => m.ready).map((m) => m.label)).toEqual(READY_TABS)
     expect(MENU.filter((m) => !m.ready).map((m) => m.label)).toEqual(NOT_READY_TABS)
@@ -588,6 +589,19 @@ describe('MoreMenu', () => {
       expect(link.children, label).toHaveLength(1)
       expect(link.textContent, label).toBe(label)
     }
+  })
+
+  it('AC-3501.1: 서식(/forms)은 href·path가 /forms인 ready 탭이고 [더보기] 판에 있으며 그 칸에 "준비 중" 칩이 없다', async () => {
+    expect(MENU.find((m) => m.label === '서식')).toEqual({ label: '서식', path: '/forms', href: '/forms', ready: true, primary: false })
+    expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/forms')
+    const user = userEvent.setup()
+    render(<TabBar />)
+    expect(within(strip()).queryByRole('link', { name: /서식/ })).toBeNull()
+    await user.click(moreButton())
+    const link = within(panel() as HTMLElement).getByRole('link', { name: '서식' })
+    expect(link.getAttribute('href')).toBe('/forms')
+    expect(link.children).toHaveLength(1)
+    expect(link.textContent).toBe('서식')
   })
 
   it('AC-2702.4: 누르면 aria-expanded가 true가 되고 aria-controls가 판의 id를 가리키며 초점은 단추에 남는다. 판은 나타날 때만 150ms 흐림 → 보임, 꺾쇠는 열린 동안 180° 돈다. 다시 누르면 닫힌다', async () => {

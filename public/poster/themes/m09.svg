@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="794" height="1123">
+  <!-- 9월: 코스모스(모서리·꽃밭)와 고추잠자리, 맑은 가을 하늘 -->
+  <defs>
+    <linearGradient id="m09-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e2edfa"/>
+      <stop offset="0.38" stop-color="#f2f5fc"/>
+      <stop offset="0.68" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#fbf1f6"/>
+    </linearGradient>
+    <!-- 코스모스 꽃잎: 끝이 톱니 -->
+    <g id="m09-pt">
+      <path d="M0 -6 C -4 -14, -11.5 -22, -12 -30 Q -10.5 -38.5, -4 -34.5 Q 0 -41.5, 4 -34.5 Q 10.5 -38.5, 12 -30 C 11.5 -22, 4 -14, 0 -6 Z" fill="currentColor" stroke="#7a1d4a" stroke-opacity=".13" stroke-width="1.1" stroke-linejoin="round"/>
+      <path d="M0 -12 V-33 M-4 -15 L-6.5 -30 M4 -15 L6.5 -30" stroke="#7a1d4a" stroke-opacity=".1" stroke-width="1.1" stroke-linecap="round"/>
+    </g>
+    <g id="m09-fl">
+      <use href="#m09-pt" transform="rotate(0)"/><use href="#m09-pt" transform="rotate(45)"/><use href="#m09-pt" transform="rotate(90)"/><use href="#m09-pt" transform="rotate(135)"/><use href="#m09-pt" transform="rotate(180)"/><use href="#m09-pt" transform="rotate(225)"/><use href="#m09-pt" transform="rotate(270)"/><use href="#m09-pt" transform="rotate(315)"/>
+      <circle r="9.5" fill="#f2b81c"/>
+      <circle r="5" fill="#e39a10"/>
+      <g fill="#fbd55a"><circle cx="0" cy="-7" r="1.6"/><circle cx="6" cy="-3.5" r="1.6"/><circle cx="6" cy="3.5" r="1.6"/><circle cx="0" cy="7" r="1.6"/><circle cx="-6" cy="3.5" r="1.6"/><circle cx="-6" cy="-3.5" r="1.6"/></g>
+    </g>
+    <!-- 가는 잎 -->
+    <path id="m09-sprig" d="M0 0 L22 -6 M8 -2 L14 -12 M14 -4 L24 -14 M10 -3 L18 4" stroke="#76b25a" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <!-- 고추잠자리 (머리가 -x 쪽) -->
+    <g id="m09-fly">
+      <g fill="#ffffff" fill-opacity=".72" stroke="#a9bfd9" stroke-width="1.4">
+        <path d="M-14 -3 C -16 -26, -6 -50, 4 -50 C 10 -48, 4 -22, -8 -3 Z"/>
+        <path d="M-4 -3 C 4 -24, 22 -44, 32 -42 C 36 -38, 22 -18, 2 -2 Z"/>
+        <path d="M-14 3 C -16 26, -6 50, 4 50 C 10 48, 4 22, -8 3 Z"/>
+        <path d="M-4 3 C 4 24, 22 44, 32 42 C 36 38, 22 18, 2 2 Z"/>
+      </g>
+      <path d="M-8 -6 C -6 -24, 0 -38, 4 -44 M2 -4 C 10 -20, 20 -32, 28 -38 M-8 6 C -6 24, 0 38, 4 44 M2 4 C 10 20, 20 32, 28 38" stroke="#a9bfd9" stroke-width="1" fill="none"/>
+      <rect x="-2" y="-3.5" width="62" height="7" rx="3.5" fill="#e2552d"/>
+      <path d="M12 -3.5 V3.5 M22 -3.5 V3.5 M32 -3.5 V3.5 M42 -3.5 V3.5 M52 -3.5 V3.5" stroke="#b83a1a" stroke-width="1.4"/>
+      <ellipse cx="-10" rx="11" ry="7" fill="#d9472a"/>
+      <circle cx="-24" cy="-5" r="6.5" fill="#b8361d"/>
+      <circle cx="-24" cy="5" r="6.5" fill="#b8361d"/>
+      <circle cx="-26" cy="-7" r="2" fill="#fff" opacity=".6"/>
+    </g>
+  </defs>
+
+  <rect width="794" height="1123" fill="url(#m09-bg)"/>
+
+  <!-- 흩날리는 꽃잎: 글자 자리 안은 옅게 -->
+  <g fill="#f39ac3">
+    <ellipse cx="44" cy="520" rx="4" ry="7" transform="rotate(40 44 520)"/>
+    <ellipse cx="760" cy="560" rx="4" ry="7" transform="rotate(-30 760 560)"/>
+    <ellipse cx="300" cy="40" rx="4" ry="7" transform="rotate(60 300 40)"/>
+    <ellipse cx="22" cy="760" rx="3.5" ry="6" transform="rotate(-20 22 760)"/>
+    <g opacity=".3">
+      <ellipse cx="220" cy="246" rx="4" ry="7" transform="rotate(30 220 246)"/>
+      <ellipse cx="600" cy="380" rx="4" ry="7" transform="rotate(-40 600 380)"/>
+      <ellipse cx="150" cy="640" rx="3.5" ry="6" transform="rotate(70 150 640)"/>
+      <ellipse cx="660" cy="780" rx="3.5" ry="6" transform="rotate(-10 660 780)"/>
+    </g>
+  </g>
+
+  <!-- 위 모서리 코스모스 -->
+  <path d="M-20 170 Q84.8 107 150 44" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(48.5 125.9) rotate(208) scale(1.0959999999999999)"/><use href="#m09-sprig" transform="translate(91.5 94.4) rotate(21) scale(0.858)"/><use href="#m09-fl" color="#f39ac3" transform="translate(150 44) rotate(0) scale(0.92 0.92) rotate(34)"/>
+  <path d="M-20 236 Q28.1 160 64 84" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(12.2 182.8) rotate(157) scale(1.0659999999999998)"/><use href="#m09-sprig" transform="translate(33.3 144.8) rotate(-22) scale(0.9420000000000001)"/><use href="#m09-fl" color="#d9468f" transform="translate(64 84) rotate(0) scale(1.12 1.12) rotate(10)"/>
+  <path d="M-20 300 Q58.8 225 134 150" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(34.7 247.5) rotate(157) scale(0.7020000000000001)"/><use href="#m09-sprig" transform="translate(73.2 210) rotate(-24) scale(0.8059999999999999)"/><use href="#m09-fl" color="#ffffff" transform="translate(134 150) rotate(0) scale(0.82 0.82) rotate(22)"/>
+  <path d="M-20 330 Q25.8 267 36 204" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(7.7 285.9) rotate(-3) scale(0.852)"/><use href="#m09-sprig" transform="translate(22.1 254.4) rotate(25) scale(1.119)"/><use href="#m09-fl" color="#fbc6de" transform="translate(36 204) rotate(0) scale(0.96 0.96) rotate(42)"/>
+  <path d="M-20 150 Q-14.8 95 -4 40" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-fl" color="#ffffff" transform="translate(-4 40) rotate(0) scale(0.9 0.9) rotate(11)"/>
+  <path d="M814 200 Q774.7 135 780 70" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(791.9 154.5) rotate(25) scale(1.093)"/><use href="#m09-sprig" transform="translate(782.9 122) rotate(200) scale(1.251)"/><use href="#m09-fl" color="#ffffff" transform="translate(780 70) rotate(0) scale(1.05 1.05) rotate(31)"/>
+  <path d="M814 300 Q793.5 240 736 180" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(795.1 258) rotate(5) scale(1.026)"/><use href="#m09-sprig" transform="translate(776.1 228) rotate(-8) scale(0.9590000000000001)"/><use href="#m09-fl" color="#d9468f" transform="translate(736 180) rotate(0) scale(0.9 0.9) rotate(3)"/>
+  <path d="M814 370 Q781.6 310 790 250" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(796.3 328) rotate(176) scale(0.866)"/><use href="#m09-sprig" transform="translate(789.8 298) rotate(0) scale(0.8190000000000001)"/><use href="#m09-fl" color="#f39ac3" transform="translate(790 250) rotate(0) scale(0.8 0.8) rotate(14)"/>
+
+  <!-- 고추잠자리 -->
+  <use href="#m09-fly" transform="translate(640 60) rotate(-14) scale(1.15)"/>
+  <use href="#m09-fly" transform="translate(40 640) rotate(22) scale(0.85)"/>
+  <use href="#m09-fly" transform="translate(752 700) rotate(-150) scale(0.7)" opacity="0.85"/>
+
+  <!-- 아래: 언덕과 코스모스 꽃밭 -->
+  <path d="M0 990 C 150 962, 300 974, 430 998 C 560 1022, 690 984, 794 972 L794 1123 L0 1123 Z" fill="#d9edc7"/>
+  <path d="M300 1140 Q286.9 1100 306 1060" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(294.8 1112) rotate(24) scale(0.7659999999999999)"/><use href="#m09-sprig" transform="translate(295.9 1092) rotate(159) scale(0.617)"/><use href="#m09-fl" color="#d9468f" transform="translate(306 1060) rotate(0) scale(0.66 0.66) rotate(35)"/>
+  <path d="M372 1140 Q386.8 1109 376 1078" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(379.2 1118.3) rotate(179) scale(0.5529999999999999)"/><use href="#m09-sprig" transform="translate(380.5 1102.8) rotate(180) scale(0.527)"/><use href="#m09-fl" color="#f39ac3" transform="translate(376 1078) rotate(0) scale(0.6 0.6) rotate(29)"/>
+  <path d="M446 1140 Q429.6 1101 440 1062" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(437.8 1112.7) rotate(156) scale(0.721)"/><use href="#m09-sprig" transform="translate(436 1093.2) rotate(157) scale(0.5429999999999999)"/><use href="#m09-fl" color="#ffffff" transform="translate(440 1062) rotate(0) scale(0.64 0.64) rotate(20)"/>
+  <path d="M500 1140 Q478.9 1110 506 1080" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(491.1 1119) rotate(-16) scale(0.5870000000000001)"/><use href="#m09-sprig" transform="translate(492 1104) rotate(23) scale(0.584)"/><use href="#m09-fl" color="#fbc6de" transform="translate(506 1080) rotate(0) scale(0.58 0.58) rotate(10)"/>
+  <path d="M10 1140 Q21.3 1001 28 862" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(17.4 1042.7) rotate(-29) scale(1.0759999999999998)"/><use href="#m09-sprig" transform="translate(21.9 973.2) rotate(169) scale(0.812)"/><use href="#m09-fl" color="#d9468f" transform="translate(28 862) rotate(0) scale(0.95 0.95) rotate(42)"/>
+  <path d="M70 1140 Q81.7 1041 96 942" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(78.5 1070.7) rotate(-17) scale(0.875)"/><use href="#m09-sprig" transform="translate(85 1021.2) rotate(-25) scale(0.89)"/><use href="#m09-fl" color="#f39ac3" transform="translate(96 942) rotate(18) scale(1 0.72) rotate(9)"/>
+  <path d="M30 1140 Q23.7 1070 36 1000" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(27.9 1091) rotate(155) scale(0.8640000000000001)"/><use href="#m09-sprig" transform="translate(29.1 1056) rotate(24) scale(1.1420000000000001)"/><use href="#m09-fl" color="#ffffff" transform="translate(36 1000) rotate(0) scale(1.05 1.05) rotate(25)"/>
+  <path d="M150 1140 Q138.6 1072 166 1004" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(146.8 1092.4) rotate(-20) scale(1.034)"/><use href="#m09-sprig" transform="translate(150.3 1058.4) rotate(161) scale(0.9540000000000001)"/><use href="#m09-fl" color="#d9468f" transform="translate(166 1004) rotate(0) scale(0.92 0.92) rotate(2)"/>
+  <path d="M220 1140 Q248.3 1092 232 1044" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(234.4 1106.4) rotate(11) scale(0.8270000000000001)"/><use href="#m09-sprig" transform="translate(237.9 1082.4) rotate(13) scale(0.655)"/><use href="#m09-fl" color="#fbc6de" transform="translate(232 1044) rotate(-14) scale(0.8 0.5760000000000001) rotate(16)"/>
+  <path d="M110 1140 Q136.4 1100 116 1060" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(122.7 1112) rotate(11) scale(0.841)"/><use href="#m09-sprig" transform="translate(124.8 1092) rotate(159) scale(0.981)"/><use href="#m09-fl" color="#f39ac3" transform="translate(116 1060) rotate(0) scale(0.85 0.85) rotate(41)"/>
+  <path d="M790 1140 Q800.3 998 770 856" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(792.2 1040.6) rotate(182) scale(1.043)"/><use href="#m09-sprig" transform="translate(787.7 969.6) rotate(13) scale(0.883)"/><use href="#m09-fl" color="#f39ac3" transform="translate(770 856) rotate(0) scale(0.95 0.95) rotate(3)"/>
+  <path d="M730 1140 Q732.4 1040 700 940" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(727.4 1070) rotate(189) scale(1.179)"/><use href="#m09-sprig" transform="translate(720.3 1020) rotate(29) scale(0.9640000000000001)"/><use href="#m09-fl" color="#d9468f" transform="translate(700 940) rotate(-18) scale(1 0.72) rotate(19)"/>
+  <path d="M770 1140 Q784.4 1069 760 998" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(775.3 1090.3) rotate(170) scale(1.155)"/><use href="#m09-sprig" transform="translate(773.3 1054.8) rotate(152) scale(1.228)"/><use href="#m09-fl" color="#fbc6de" transform="translate(760 998) rotate(0) scale(1.05 1.05) rotate(38)"/>
+  <path d="M640 1140 Q609.8 1072 628 1004" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(624.8 1092.4) rotate(189) scale(0.8959999999999999)"/><use href="#m09-sprig" transform="translate(621.2 1058.4) rotate(165) scale(0.826)"/><use href="#m09-fl" color="#ffffff" transform="translate(628 1004) rotate(0) scale(0.92 0.92) rotate(3)"/>
+  <path d="M574 1140 Q566.8 1093 564 1046" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(569.5 1107.1) rotate(168) scale(0.8690000000000001)"/><use href="#m09-sprig" transform="translate(567 1083.6) rotate(-13) scale(0.736)"/><use href="#m09-fl" color="#d9468f" transform="translate(564 1046) rotate(14) scale(0.8 0.5760000000000001) rotate(11)"/>
+  <path d="M690 1140 Q689 1100 680 1060" stroke="#6aa84f" stroke-width="3.2" fill="none" stroke-linecap="round"/><use href="#m09-sprig" transform="translate(688.3 1112) rotate(209) scale(0.998)"/><use href="#m09-sprig" transform="translate(685.9 1092) rotate(200) scale(0.7809999999999999)"/><use href="#m09-fl" color="#ffffff" transform="translate(680 1060) rotate(0) scale(0.85 0.85) rotate(28)"/>
+  <path d="M0 1086 C 180 1066, 360 1090, 500 1096 C 620 1102, 720 1080, 794 1074 L794 1123 L0 1123 Z" fill="#b7dc9d"/>
+  <path d="M0 1110 C 250 1098, 520 1120, 794 1104 L794 1123 L0 1123 Z" fill="#a2d086"/>
+</svg>

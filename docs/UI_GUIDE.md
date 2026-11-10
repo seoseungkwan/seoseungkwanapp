@@ -42,6 +42,7 @@
 - 값은 layer 밖 `:root` 한 곳에 CSS 변수로 둔다(ADR-019). 16진수·`rgb(`·`color-mix(`는 이 블록 밖에 없다(로고·구글 마크 빼고)
 - 앱(Tailwind v4)은 `@theme inline`이 이 변수를 `var()`로만 가리킨다. Tailwind 기본 색·모서리·그림자·글자 크기는 `initial`로 지워서 토큰 이름만 클래스가 된다(`text-ink`·`bg-canvas`·`rounded-control`·`shadow-float`·`text-small`). 흰 글자는 `text-surface`
 - 랜딩(CSS Modules)은 같은 변수를 `var(--ink)`처럼 바로 쓴다
+- 예외(ADR-028): 서식 안내문 그림(`components/forms/Poster.tsx`의 SVG, 테마 색 목록 `lib/forms/themes.ts`, 그림·글꼴 `public/poster/`)은 붙이고 보내는 인쇄물이라 그림 안에서만 테마 강조색·글자색·흰색·그림자와 글꼴 `PosterPretendard` 700·900을 쓴다. 서식 화면의 칸·단추·목록은 이 문서 규칙(토큰·`ds`·400·500·600) 그대로다
 
 ### 바탕·선·글자
 | 토큰 | 값 | 쓰는 곳 |
@@ -295,7 +296,7 @@
 
 ## 앱 틀 (붙는 띠 + 탭)
 - **건너뛰기 링크**: 문서 순서로 첫 조작 요소가 `<a href="#main">본문으로 건너뛰기</a>`다. 평소에는 `sr-only`, 키보드 초점이면 왼쪽 위 띠 위에 보인다(높이 44px, `surface`, 1px `line`, `rounded-float`, `shadow-float`, body 600, 2px `accent` 초점 고리). 본문 `main`은 `id="main"`·`tabIndex={-1}`이다
-- **탭 이름**(브라우저 탭): 앱 화면은 "화면 이름 · 의원 이름"(`(app)/layout.tsx`의 `generateMetadata`, 레이아웃과 같은 요청 안 캐시 읽기 `currentMe`). 화면 이름은 대시보드·통계·청구·환자·매출·AI 리포트·비트 PC 연결·가입 승인·업무일지와 준비 중 기능의 이름이고 모두 다르다. 앱 밖은 "화면 이름 · 병원 업무 도구"(뿌리 `title.template`): 처음 화면 "숫자로 보는 우리 의원" · 로그인 · 가입 신청 · 승인 대기 / 가입 승인 안 됨 · 없는 주소 "찾는 화면이 없어요" · 오류 화면 "오류 · 병원 업무 도구"
+- **탭 이름**(브라우저 탭): 앱 화면은 "화면 이름 · 의원 이름"(`(app)/layout.tsx`의 `generateMetadata`, 레이아웃과 같은 요청 안 캐시 읽기 `currentMe`). 화면 이름은 대시보드·통계·청구·환자·매출·AI 리포트·서식·비트 PC 연결·가입 승인·업무일지와 준비 중 기능의 이름이고 모두 다르다. 앱 밖은 "화면 이름 · 병원 업무 도구"(뿌리 `title.template`): 처음 화면 "숫자로 보는 우리 의원" · 로그인 · 가입 신청 · 승인 대기 / 가입 승인 안 됨 · 없는 주소 "찾는 화면이 없어요" · 오류 화면 "오류 · 병원 업무 도구"
 - 위쪽 띠와 탭 줄이 한 묶음으로 화면 위에 붙어 따라온다(`sticky top-0 z-10`). 위쪽 가로 탭을 그대로 쓴다 **(사용자, 2026-10-30)**
 - **위쪽 띠**(`<header>`): `surface`, 아래 1px line, 56px(768px 미만 48px)
   - 왼쪽: `LogoMark` 24 + 의원 이름(subtitle 600, 넘치면 말줄임. 768px 미만 body 600)
@@ -306,7 +307,7 @@
   - 열면 첫 항목에 초점, ↓↑로 항목 사이를 돈다(끝에서 처음으로). Esc·Tab·바깥 누름은 닫는다. 메뉴 층은 나타날 때만 움직인다('움직임')
 - **탭 줄**: 44px(모든 폭), `surface`, 아래 1px line. 1024px 이상에서 위쪽 띠와 같은 폭·여백이다. 첫 탭은 줄 한 곳의 `[&>:first-child]:-ml-3`으로 모든 폭에서 왼쪽으로 12px 당겨, 첫 탭 글자가 로고 왼쪽 끝과 맞는다
   - 순서와 주소(13개, `components/shell/menu.ts`의 `MENU`): 대시보드 `/dashboard` · 통계 `/stats` · 청구 `/claim` · 고시·공지 `/notices` · 환자 `/patients` · 매출 `/revenue` · AI 리포트 `/ai-report` · 서식 `/forms` · 직원 `/staff` · 업무일지 `/worklog` · 재고 `/inventory` · 주소록 `/contacts` · 설정 `/claim/setup`(비트 PC 연결 화면). 관리자 탭과 세로 구분선이 없다(관리자 화면은 계정 메뉴 [가입 승인])
-  - 화면이 아직 없는 탭(고시·공지, 서식, 직원, 재고, 주소록)은 그 주소의 준비 중 화면으로 간다(아래 '빈 상태'). `MENU` 항목마다 `ready`가 있고 대시보드·통계·청구·환자·매출·AI 리포트·업무일지·설정만 `true`다. 기능에 화면이 생기면 `menu.ts`·`components/dashboard/briefing/features.ts`·`components/common/notReadyFeatures.ts`와 그 주소의 페이지를 같이 바꾼다
+  - 화면이 아직 없는 탭(고시·공지, 직원, 재고, 주소록)은 그 주소의 준비 중 화면으로 간다(아래 '빈 상태'). `MENU` 항목마다 `ready`가 있고 대시보드·통계·청구·환자·매출·AI 리포트·서식·업무일지·설정만 `true`다. 기능에 화면이 생기면 `menu.ts`·`components/dashboard/briefing/features.ts`·`components/common/notReadyFeatures.ts`와 그 주소의 페이지를 같이 바꾼다
   - 지금 탭은 `menu.ts`의 `currentMenuLabel`이 정한다: 탭 주소 가운데 가장 길게 맞는 것이 이긴다. `/claim`·`/claim/…`은 [청구], 비트 PC 연결 `/claim/setup`은 [설정](`/claim`보다 길게 맞는다). `/admin`에서는 지금 탭이 없다
   - 1024px 미만에서는 탭 띠가 옆으로 밀린다(얇은 스크롤바). 지금 탭과 키보드 초점이 간 탭이 보이게 띠만 민다
 - **[전체 메뉴]**(1024px 미만, tab-frame AC-303.5 "메뉴 단추 없음"을 대체, 768px 폭도 같다): 탭 띠 오른쪽 끝, 띠 밖에 단추(44px, 왼쪽 1px `line`, `accent` 600, 꾸밈 `chev`, `aria-expanded`·`aria-controls`). 1024px 이상에서는 보이지 않는다(`lg:hidden`)

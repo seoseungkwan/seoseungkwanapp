@@ -1,0 +1,181 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="794" height="1123">
+  <!-- 2월: 매화 가지·꽃·봉오리, 가지 위 휘파람새, 남은 눈 -->
+  <defs>
+    <linearGradient id="m02-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fae6ee"/>
+      <stop offset="0.38" stop-color="#fdf3f7"/>
+      <stop offset="0.68" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#fbf0f4"/>
+    </linearGradient>
+    <!-- 매화 한 송이: 둥근 꽃잎 다섯 장 -->
+    <symbol id="m02-bloom" viewBox="-30 -30 60 60" overflow="visible">
+      <g fill="currentColor" stroke="#e39ab2" stroke-width="1">
+        <circle cx="0" cy="-11" r="11"/>
+        <circle cx="10.5" cy="-3.4" r="11"/>
+        <circle cx="6.5" cy="8.9" r="11"/>
+        <circle cx="-6.5" cy="8.9" r="11"/>
+        <circle cx="-10.5" cy="-3.4" r="11"/>
+      </g>
+      <circle r="7.5" fill="#e46f96" opacity=".45"/>
+      <path d="M0 0 L0 -11 M0 0 L7 -9 M0 0 L11 -1 M0 0 L8 8 M0 0 L1 11 M0 0 L-7 9 M0 0 L-11 1 M0 0 L-8 -8" stroke="#b8406a" stroke-width="1" stroke-linecap="round"/>
+      <g fill="#f3bf3f">
+        <circle cy="-11" r="1.7"/><circle cx="7" cy="-9" r="1.7"/><circle cx="11" cy="-1" r="1.7"/><circle cx="8" cy="8" r="1.7"/>
+        <circle cx="1" cy="11" r="1.7"/><circle cx="-7" cy="9" r="1.7"/><circle cx="-11" cy="1" r="1.7"/><circle cx="-8" cy="-8" r="1.7"/>
+      </g>
+      <circle r="2.4" fill="#c84b74"/>
+    </symbol>
+    <!-- 봉오리 -->
+    <symbol id="m02-bud" viewBox="-10 -12 20 22" overflow="visible">
+      <path d="M-5 4 Q0 9 5 4 L3 8 L-3 8 Z" fill="#5a3a33"/>
+      <circle r="6.5" fill="#e45f8b"/>
+      <circle cx="-2" cy="-2.4" r="2" fill="#fff" opacity=".45"/>
+    </symbol>
+    <!-- 휘파람새 (왼쪽을 봄) -->
+    <symbol id="m02-bird" viewBox="-40 -30 80 50" overflow="visible">
+      <path d="M16 2 L42 -8 L44 0 L20 10 Z" fill="#7b963c"/>
+      <ellipse rx="23" ry="17" fill="#a9c35a"/>
+      <path d="M-20 4 Q-14 17 2 17 Q14 16 18 8 Q2 14 -20 4 Z" fill="#e9ecb4"/>
+      <path d="M-2 -6 Q14 -12 26 2 Q12 11 -2 4 Z" fill="#87a644"/>
+      <circle cx="-12" cy="-6" r="5.4" fill="#fff"/>
+      <circle cx="-12.6" cy="-6" r="2.8" fill="#2b2622"/>
+      <path d="M-21 -5 L-31 -2 L-21 0 Z" fill="#4a3a2c"/>
+      <path d="M-3 15 L-5 21 M5 15 L5 21" stroke="#6b4a3a" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+    <!-- 꽃잎 하나 -->
+    <symbol id="m02-petal" viewBox="-8 -5 16 10" overflow="visible">
+      <ellipse rx="7" ry="4.6" fill="currentColor"/>
+    </symbol>
+  </defs>
+
+  <rect width="794" height="1123" fill="url(#m02-bg)"/>
+
+  <!-- 흩날리는 눈: 글자 자리 안은 옅게 -->
+  <g fill="#fff" stroke="#eccfdb" stroke-width="1">
+    <g opacity=".35">
+      <circle cx="330" cy="86" r="4"/><circle cx="470" cy="76" r="3.5"/><circle cx="230" cy="250" r="4"/>
+      <circle cx="600" cy="380" r="4.5"/><circle cx="170" cy="400" r="3.5"/><circle cx="560" cy="250" r="3.5"/>
+      <circle cx="130" cy="640" r="4"/><circle cx="670" cy="690" r="4"/><circle cx="170" cy="900" r="3.5"/>
+      <circle cx="630" cy="900" r="3.5"/>
+    </g>
+    <circle cx="70" cy="330" r="4.5"/><circle cx="30" cy="440" r="3.5"/><circle cx="24" cy="640" r="4"/>
+    <circle cx="738" cy="380" r="4.5"/><circle cx="770" cy="470" r="3.5"/><circle cx="766" cy="640" r="4"/>
+    <circle cx="756" cy="780" r="3.5"/><circle cx="420" cy="30" r="4"/><circle cx="440" cy="56" r="3"/>
+  </g>
+
+  <!-- 왼쪽 위 가지 -->
+  <g stroke="#5b3f37" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M-20 96 L52 70 L118 82" stroke-width="18"/>
+    <path d="M118 82 L186 46" stroke-width="12"/>
+    <path d="M186 46 L262 56 L330 30" stroke-width="7"/>
+    <path d="M52 70 L66 146 L44 208" stroke-width="11"/>
+    <path d="M44 208 L62 272" stroke-width="6"/>
+    <path d="M66 146 L118 172" stroke-width="5"/>
+    <path d="M186 46 L206 8" stroke-width="5"/>
+    <path d="M262 56 L280 70" stroke-width="4"/>
+  </g>
+  <!-- 가지 위에 남은 눈 -->
+  <g stroke="#fff" stroke-linecap="round" fill="none">
+    <path d="M-8 82 L40 64" stroke-width="7"/>
+    <path d="M128 70 L170 48" stroke-width="5"/>
+    <path d="M210 42 L246 46" stroke-width="4"/>
+  </g>
+  <use href="#m02-bloom" x="-12" y="14" width="52" height="52" color="#f6b0c5"/>
+  <use href="#m02-bloom" x="84" y="2" width="34" height="34" color="#ffffff"/>
+  <use href="#m02-bloom" x="19" y="37" width="66" height="66" color="#ffffff"/>
+  <use href="#m02-bloom" x="89" y="53" width="58" height="58" color="#f6b0c5"/>
+  <use href="#m02-bud" x="146" y="54" width="22" height="24"/>
+  <use href="#m02-bloom" x="163" y="23" width="46" height="46" color="#ee8fae"/>
+  <use href="#m02-bloom" x="242" y="36" width="40" height="40" color="#ffffff"/>
+  <use href="#m02-bud" x="320" y="18" width="20" height="22"/>
+  <use href="#m02-bud" x="196" y="-4" width="20" height="22"/>
+  <use href="#m02-bloom" x="38" y="118" width="56" height="56" color="#ee8fae"/>
+  <use href="#m02-bloom" x="21" y="185" width="46" height="46" color="#ffffff"/>
+  <use href="#m02-bloom" x="99" y="153" width="38" height="38" color="#f6b0c5"/>
+  <use href="#m02-bud" x="52" y="260" width="20" height="22"/>
+
+  <!-- 오른쪽 위 가지 -->
+  <g stroke="#5b3f37" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M816 120 L748 100 L694 128" stroke-width="18"/>
+    <path d="M694 128 L640 100 L594 58" stroke-width="11"/>
+    <path d="M594 58 L548 40 L500 50" stroke-width="6"/>
+    <path d="M748 100 L766 172 L742 236" stroke-width="10"/>
+    <path d="M742 236 L760 300" stroke-width="6"/>
+    <path d="M640 100 L652 160" stroke-width="5"/>
+    <path d="M748 100 L776 36" stroke-width="6"/>
+  </g>
+  <g stroke="#fff" stroke-linecap="round" fill="none">
+    <path d="M800 106 L760 94" stroke-width="7"/>
+    <path d="M632 86 L602 58" stroke-width="5"/>
+  </g>
+  <use href="#m02-bloom" x="757" y="24" width="52" height="52" color="#ee8fae"/>
+  <use href="#m02-bloom" x="715" y="67" width="66" height="66" color="#ffffff"/>
+  <use href="#m02-bloom" x="737" y="143" width="58" height="58" color="#f6b0c5"/>
+  <use href="#m02-bloom" x="698" y="117" width="40" height="40" color="#f6b0c5"/>
+  <use href="#m02-bloom" x="718" y="212" width="48" height="48" color="#ffffff"/>
+  <use href="#m02-bud" x="750" y="288" width="20" height="22"/>
+  <use href="#m02-bloom" x="572" y="36" width="44" height="44" color="#f6b0c5"/>
+  <use href="#m02-bud" x="538" y="28" width="20" height="22"/>
+  <use href="#m02-bud" x="491" y="39" width="17" height="19"/>
+  <use href="#m02-bloom" x="633" y="141" width="38" height="38" color="#ee8fae"/>
+  <use href="#m02-bird" x="610" y="37" width="112" height="70"/>
+
+  <!-- 흩날리는 꽃잎 -->
+  <g color="#f3a5bd">
+    <use href="#m02-petal" x="32" y="340" width="16" height="10" transform="rotate(30 40 345)"/>
+    <use href="#m02-petal" x="14" y="560" width="14" height="9" transform="rotate(-20 21 564)"/>
+    <use href="#m02-petal" x="752" y="410" width="16" height="10" transform="rotate(-35 760 415)"/>
+    <use href="#m02-petal" x="762" y="720" width="14" height="9" transform="rotate(20 769 724)"/>
+    <use href="#m02-petal" x="380" y="44" width="14" height="9" transform="rotate(15 387 48)"/>
+    <g opacity=".3">
+      <use href="#m02-petal" x="192" y="330" width="16" height="10" transform="rotate(-25 200 335)"/>
+      <use href="#m02-petal" x="632" y="320" width="14" height="9" transform="rotate(40 639 324)"/>
+      <use href="#m02-petal" x="102" y="760" width="14" height="9" transform="rotate(10 109 764)"/>
+      <use href="#m02-petal" x="682" y="820" width="14" height="9" transform="rotate(-30 689 824)"/>
+    </g>
+  </g>
+
+  <!-- 아래: 남은 눈 언덕 -->
+  <path d="M0 988 C 150 958, 300 972, 430 998 C 560 1022, 690 980, 794 966 L794 1123 L0 1123 Z" fill="#f4dce6"/>
+  <!-- 아래 왼쪽 가지 -->
+  <g stroke="#5b3f37" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M-14 1070 L34 994 L22 926" stroke-width="16"/>
+    <path d="M22 926 L46 862 L28 800" stroke-width="9"/>
+    <path d="M34 994 L104 968 L160 986" stroke-width="9"/>
+    <path d="M160 986 L216 956" stroke-width="5"/>
+    <path d="M104 968 L118 940" stroke-width="4"/>
+  </g>
+  <use href="#m02-bloom" x="0" y="960" width="68" height="68" color="#ffffff"/>
+  <use href="#m02-bloom" x="-5" y="899" width="54" height="54" color="#f6b0c5"/>
+  <use href="#m02-bloom" x="22" y="838" width="48" height="48" color="#ee8fae"/>
+  <use href="#m02-bud" x="18" y="788" width="20" height="22"/>
+  <use href="#m02-bloom" x="75" y="939" width="58" height="58" color="#f6b0c5"/>
+  <use href="#m02-bloom" x="138" y="964" width="44" height="44" color="#ffffff"/>
+  <use href="#m02-bud" x="206" y="944" width="20" height="22"/>
+  <use href="#m02-bud" x="108" y="928" width="20" height="22"/>
+  <!-- 아래 오른쪽 가지 -->
+  <g stroke="#5b3f37" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M808 1080 L760 1008 L772 948" stroke-width="16"/>
+    <path d="M772 948 L750 890 L768 830" stroke-width="9"/>
+    <path d="M760 1008 L692 984 L636 1002" stroke-width="9"/>
+    <path d="M636 1002 L584 974" stroke-width="5"/>
+  </g>
+  <use href="#m02-bloom" x="726" y="974" width="68" height="68" color="#f6b0c5"/>
+  <use href="#m02-bloom" x="745" y="921" width="54" height="54" color="#ffffff"/>
+  <use href="#m02-bloom" x="727" y="867" width="46" height="46" color="#ee8fae"/>
+  <use href="#m02-bud" x="758" y="818" width="20" height="22"/>
+  <use href="#m02-bloom" x="663" y="955" width="58" height="58" color="#ffffff"/>
+  <use href="#m02-bloom" x="614" y="980" width="44" height="44" color="#f6b0c5"/>
+  <use href="#m02-bud" x="574" y="962" width="20" height="22"/>
+
+  <path d="M0 1048 C 160 1020, 330 1044, 480 1058 C 610 1070, 720 1040, 794 1032 L794 1123 L0 1123 Z" fill="#ffffff"/>
+  <path d="M0 1100 C 220 1082, 480 1112, 794 1090 L794 1123 L0 1123 Z" fill="#f9ebf1"/>
+  <!-- 눈 위 떨어진 꽃잎 -->
+  <g color="#f3a5bd">
+    <use href="#m02-petal" x="242" y="1071" width="14" height="9" transform="rotate(20 249 1075)"/>
+    <use href="#m02-petal" x="322" y="1091" width="12" height="8" transform="rotate(-30 328 1095)"/>
+    <use href="#m02-petal" x="442" y="1076" width="14" height="9" transform="rotate(50 449 1080)"/>
+    <use href="#m02-petal" x="552" y="1094" width="12" height="8" transform="rotate(-10 558 1098)"/>
+    <use href="#m02-petal" x="112" y="1086" width="12" height="8" transform="rotate(35 118 1090)"/>
+    <use href="#m02-petal" x="672" y="1076" width="14" height="9" transform="rotate(-40 679 1080)"/>
+  </g>
+</svg>

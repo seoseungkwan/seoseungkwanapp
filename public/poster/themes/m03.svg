@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="794" height="1123">
+  <!-- 3월: 개나리 가지(위 모서리·아래 덤불), 언덕 위 새싹, 노랑나비 -->
+  <defs>
+    <linearGradient id="m03-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ecf6db"/>
+      <stop offset="0.38" stop-color="#f6fbec"/>
+      <stop offset="0.68" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f2f9e8"/>
+    </linearGradient>
+    <!-- 개나리 꽃: 길쭉한 꽃잎 네 장 -->
+    <g id="m03-fl">
+      <g id="m03-pt">
+        <path d="M0 -1.5 C -5 -4, -6.5 -12, -2.5 -15.5 C 1 -17, 5.5 -13, 4.5 -8 C 4 -5, 2 -3, 0 -1.5 Z" fill="#ffd431"/>
+        <path d="M0 -1.5 C 2 -3, 4 -5, 4.5 -8 C 5.5 -13, 1 -17, -2.5 -15.5 C 0.5 -12, 1.5 -6, 0 -1.5 Z" fill="#f6b90b"/>
+      </g>
+      <use href="#m03-pt" transform="rotate(90)"/>
+      <use href="#m03-pt" transform="rotate(180)"/>
+      <use href="#m03-pt" transform="rotate(270)"/>
+      <circle r="3" fill="#e9a000"/>
+    </g>
+    <g id="m03-bud">
+      <path d="M0 -2 L-2.5 2 L2.5 2 Z" fill="#7cb342"/>
+      <ellipse cy="-6" rx="3.4" ry="5.6" fill="#ffcf2a"/>
+    </g>
+    <path id="m03-leaf" d="M0 0 C 4 -5, 13 -5, 18 0 C 13 5, 4 5, 0 0 Z" fill="#8fcf5c"/>
+    <!-- 새싹 (밑동이 0,0) -->
+    <g id="m03-sprout">
+      <path d="M-20 5 Q0 -9 20 5 Z" fill="#b5875a"/>
+      <path d="M0 2 C 1 -14, -2 -26, 0 -38" stroke="#5aa63c" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+      <path d="M0 -36 C -6 -52, -30 -56, -38 -44 C -30 -30, -10 -28, 0 -36 Z" fill="#94d466"/>
+      <path d="M0 -36 C -14 -40, -26 -44, -38 -44 C -30 -30, -10 -28, 0 -36 Z" fill="#76bd4b"/>
+      <path d="M0 -38 C 8 -58, 36 -62, 44 -48 C 36 -32, 12 -30, 0 -38 Z" fill="#82cf55"/>
+      <path d="M0 -38 C 14 -44, 30 -48, 44 -48 C 36 -32, 12 -30, 0 -38 Z" fill="#62b33f"/>
+    </g>
+    <path id="m03-grass" d="M-8 0 Q-8 -10 -14 -16 Q-4 -10 -2 0 Z M-3 0 Q0 -14 2 -22 Q4 -12 3 0 Z M2 0 Q6 -10 14 -14 Q8 -6 8 0 Z" fill="#6fb94c"/>
+    <!-- 나비 -->
+    <g id="m03-bfly">
+      <path id="m03-wing" d="M0 -2 C -6 -22, -28 -26, -25 -9 C -24 0, -10 2, 0 0 Z M0 1 C -8 3, -21 9, -17 17 C -11 23, -2 13, 0 3 Z" fill="#ffd84a"/>
+      <use href="#m03-wing" transform="scale(-1 1)"/>
+      <circle cx="-15" cy="-12" r="3" fill="#f5a623"/><circle cx="15" cy="-12" r="3" fill="#f5a623"/>
+      <rect x="-1.8" y="-11" width="3.6" height="24" rx="1.8" fill="#5b4a3a"/>
+      <path d="M0 -10 Q-4 -19 -9 -21 M0 -10 Q4 -19 9 -21" stroke="#5b4a3a" stroke-width="1.4" stroke-linecap="round" fill="none"/>
+    </g>
+  </defs>
+
+  <rect width="794" height="1123" fill="url(#m03-bg)"/>
+
+  <!-- 흩날리는 꽃잎: 글자 자리 안은 옅게 -->
+  <g fill="#ffd431">
+    <g opacity=".3">
+      <ellipse cx="220" cy="250" rx="3.5" ry="7" transform="rotate(30 220 250)"/>
+      <ellipse cx="590" cy="372" rx="3.5" ry="7" transform="rotate(-40 590 372)"/>
+      <ellipse cx="160" cy="420" rx="3" ry="6" transform="rotate(70 160 420)"/>
+      <ellipse cx="140" cy="660" rx="3.5" ry="7" transform="rotate(-20 140 660)"/>
+      <ellipse cx="660" cy="760" rx="3" ry="6" transform="rotate(50 660 760)"/>
+    </g>
+    <ellipse cx="40" cy="420" rx="3.5" ry="7" transform="rotate(30 40 420)"/>
+    <ellipse cx="24" cy="610" rx="3" ry="6" transform="rotate(-30 24 610)"/>
+    <ellipse cx="764" cy="420" rx="3.5" ry="7" transform="rotate(-30 764 420)"/>
+    <ellipse cx="320" cy="44" rx="3" ry="6" transform="rotate(60 320 44)"/>
+    <ellipse cx="470" cy="30" rx="3.5" ry="7" transform="rotate(-50 470 30)"/>
+  </g>
+
+  <!-- 위 모서리 개나리 -->
+  <g stroke="#9a7c4c" stroke-width="4" stroke-linecap="round" fill="none">
+    <path d="M-10 30 C 70 0, 170 10, 250 58"/>
+    <path d="M-10 58 C 70 50, 140 100, 160 206"/>
+    <path d="M-10 92 C 40 120, 68 196, 50 300"/>
+    <path d="M-10 14 C 30 -6, 90 -12, 150 2"/>
+    <path d="M804 30 C 724 0, 624 10, 544 58"/>
+    <path d="M804 58 C 724 50, 654 100, 634 206"/>
+    <path d="M804 92 C 754 120, 726 196, 744 300"/>
+    <path d="M804 14 C 764 -6, 704 -12, 644 2"/>
+  </g>
+  <g>
+    <use href="#m03-fl" transform="translate(12.1 12.9) rotate(85.9) scale(1.19)"/><use href="#m03-fl" transform="translate(38.8 24.6) rotate(44.5) scale(1.262)"/><use href="#m03-leaf" transform="translate(37.5 17.2) rotate(-49.8)"/><use href="#m03-fl" transform="translate(58.7 8.1) rotate(64.1) scale(1.1520000000000001)"/><use href="#m03-fl" transform="translate(83.3 24) rotate(36.3) scale(1.148)"/><use href="#m03-fl" transform="translate(106.1 5.1) rotate(80.3) scale(1.212)"/><use href="#m03-leaf" transform="translate(105.6 13.6) rotate(43.4)"/><use href="#m03-fl" transform="translate(124.6 21.6) rotate(79) scale(0.9390000000000001)"/><use href="#m03-fl" transform="translate(153.1 11.5) rotate(73) scale(1.133)"/><use href="#m03-fl" transform="translate(167.6 30.1) rotate(33.6) scale(0.983)"/><use href="#m03-fl" transform="translate(194.4 21.6) rotate(57.3) scale(0.9690000000000001)"/><use href="#m03-fl" transform="translate(209.3 47.2) rotate(89) scale(1.023)"/><use href="#m03-leaf" transform="translate(212.8 39) rotate(-16.8)"/><use href="#m03-bud" transform="translate(237.1 40.3) rotate(-62.7)"/>
+    <use href="#m03-fl" transform="translate(13.4 63.8) rotate(16.6) scale(1.149)"/><use href="#m03-fl" transform="translate(37.7 54.2) rotate(85.4) scale(1.262)"/><use href="#m03-fl" transform="translate(53.4 73.2) rotate(24) scale(1.218)"/><use href="#m03-fl" transform="translate(83.9 67.1) rotate(40.8) scale(1.246)"/><use href="#m03-leaf" transform="translate(78.6 76.1) rotate(70.1)"/><use href="#m03-fl" transform="translate(91.2 93.4) rotate(46.4) scale(1.208)"/><use href="#m03-fl" transform="translate(119.8 98.9) rotate(62.3) scale(0.865)"/><use href="#m03-fl" transform="translate(122.8 127.2) rotate(22.8) scale(0.909)"/><use href="#m03-fl" transform="translate(149.6 141.6) rotate(31) scale(0.965)"/><use href="#m03-fl" transform="translate(141.3 165.6) rotate(30.9) scale(0.871)"/><use href="#m03-bud" transform="translate(163.6 186.6) rotate(-14.4)"/>
+    <use href="#m03-fl" transform="translate(-2.4 110) rotate(48.9) scale(1.3090000000000002)"/><use href="#m03-fl" transform="translate(28.4 114.4) rotate(35) scale(1.133)"/><use href="#m03-fl" transform="translate(25.5 144.6) rotate(14.5) scale(1.195)"/><use href="#m03-fl" transform="translate(52.5 157.2) rotate(71.3) scale(1.125)"/><use href="#m03-fl" transform="translate(41.7 180.1) rotate(14.3) scale(1.002)"/><use href="#m03-leaf" transform="translate(48.5 178.4) rotate(36.1)"/><use href="#m03-fl" transform="translate(62 203.3) rotate(56.4) scale(0.883)"/><use href="#m03-fl" transform="translate(48.2 223.5) rotate(50.6) scale(1.0659999999999998)"/><use href="#m03-fl" transform="translate(65.1 248.8) rotate(76.2) scale(0.784)"/><use href="#m03-fl" transform="translate(47 267.1) rotate(61.5) scale(0.9940000000000001)"/><use href="#m03-bud" transform="translate(59.1 292.9) rotate(8.6)"/>
+    <use href="#m03-fl" transform="translate(5.4 15.7) rotate(35.1) scale(1.2819999999999998)"/><use href="#m03-fl" transform="translate(19.1 -6.6) rotate(77.5) scale(1.3230000000000002)"/><use href="#m03-fl" transform="translate(48.4 7.7) rotate(16.8) scale(1.185)"/><use href="#m03-fl" transform="translate(69.8 -14.1) rotate(89.1) scale(1.1059999999999999)"/><use href="#m03-leaf" transform="translate(70.3 -5.3) rotate(37)"/><use href="#m03-fl" transform="translate(96.8 1.7) rotate(65.4) scale(0.882)"/><use href="#m03-fl" transform="translate(124.5 -13.5) rotate(48) scale(1.013)"/><use href="#m03-bud" transform="translate(146 8.6) rotate(102.7)"/>
+    <use href="#m03-fl" transform="translate(776.8 32.4) rotate(40) scale(1.163)"/><use href="#m03-fl" transform="translate(757.8 9.6) rotate(46) scale(1.151)"/><use href="#m03-leaf" transform="translate(756.5 17.2) rotate(-210.2)"/><use href="#m03-fl" transform="translate(732.9 24.2) rotate(7.4) scale(1.285)"/><use href="#m03-fl" transform="translate(714.6 4) rotate(51.5) scale(0.958)"/><use href="#m03-leaf" transform="translate(714.4 13.1) rotate(-218.6)"/><use href="#m03-fl" transform="translate(689 24.2) rotate(61.2) scale(1.202)"/><use href="#m03-leaf" transform="translate(688.4 13.6) rotate(216.6)"/><use href="#m03-fl" transform="translate(666 9.1) rotate(52.9) scale(0.976)"/><use href="#m03-fl" transform="translate(645.4 28.8) rotate(14) scale(1.053)"/><use href="#m03-fl" transform="translate(615.9 19.8) rotate(47.1) scale(0.925)"/><use href="#m03-leaf" transform="translate(617.7 25.9) rotate(123.7)"/><use href="#m03-fl" transform="translate(596 41.4) rotate(59.2) scale(0.93)"/><use href="#m03-leaf" transform="translate(593.2 34.1) rotate(199.1)"/><use href="#m03-fl" transform="translate(566.2 37.6) rotate(28.9) scale(1.021)"/><use href="#m03-bud" transform="translate(552.7 65.6) rotate(59.7)"/>
+    <use href="#m03-fl" transform="translate(779.9 48.7) rotate(51.3) scale(1.232)"/><use href="#m03-fl" transform="translate(760.2 69.9) rotate(15.3) scale(1.285)"/><use href="#m03-fl" transform="translate(732.5 57.8) rotate(57.3) scale(1.179)"/><use href="#m03-leaf" transform="translate(735.8 66.4) rotate(119.3)"/><use href="#m03-fl" transform="translate(721.2 80.4) rotate(83.2) scale(1.008)"/><use href="#m03-fl" transform="translate(695.1 77.1) rotate(42.5) scale(1.131)"/><use href="#m03-fl" transform="translate(692.7 102.3) rotate(51.8) scale(0.998)"/><use href="#m03-leaf" transform="translate(687.7 97.1) rotate(175.9)"/><use href="#m03-fl" transform="translate(666.1 111.2) rotate(43.4) scale(0.9109999999999999)"/><use href="#m03-leaf" transform="translate(671.7 115.4) rotate(87)"/><use href="#m03-fl" transform="translate(666.8 140.1) rotate(86.5) scale(0.972)"/><use href="#m03-fl" transform="translate(640 151.3) rotate(15.8) scale(0.8290000000000001)"/><use href="#m03-fl" transform="translate(648.2 178) rotate(35.6) scale(0.792)"/><use href="#m03-bud" transform="translate(627.6 199.2) rotate(191.7)"/>
+    <use href="#m03-fl" transform="translate(793.3 107.1) rotate(6.7) scale(1.364)"/><use href="#m03-leaf" transform="translate(789.2 102.2) rotate(180.2)"/><use href="#m03-fl" transform="translate(770.5 111.5) rotate(6) scale(1.29)"/><use href="#m03-fl" transform="translate(773.2 136.5) rotate(79.4) scale(1.2890000000000001)"/><use href="#m03-leaf" transform="translate(764.6 131.3) rotate(161.4)"/><use href="#m03-fl" transform="translate(747.7 147.6) rotate(73.3) scale(1.11)"/><use href="#m03-leaf" transform="translate(754.7 150.6) rotate(73.1)"/><use href="#m03-fl" transform="translate(754.9 174) rotate(21.2) scale(0.887)"/><use href="#m03-leaf" transform="translate(747.2 171.8) rotate(145.9)"/><use href="#m03-fl" transform="translate(735.9 191.1) rotate(4.7) scale(0.875)"/><use href="#m03-fl" transform="translate(747.3 219.4) rotate(0.6) scale(0.927)"/><use href="#m03-fl" transform="translate(731 240.2) rotate(16.8) scale(0.941)"/><use href="#m03-fl" transform="translate(747.5 262.2) rotate(21.1) scale(0.7759999999999999)"/><use href="#m03-bud" transform="translate(733.9 282.5) rotate(172.9)"/>
+    <use href="#m03-fl" transform="translate(781.4 15.6) rotate(63.7) scale(1.291)"/><use href="#m03-fl" transform="translate(761.7 -11.2) rotate(35.9) scale(1.061)"/><use href="#m03-fl" transform="translate(732.6 1.8) rotate(27) scale(1.079)"/><use href="#m03-fl" transform="translate(710.8 -15.2) rotate(76.7) scale(0.897)"/><use href="#m03-leaf" transform="translate(710.7 -5.6) rotate(-219.8)"/><use href="#m03-fl" transform="translate(688.3 5.9) rotate(62) scale(1.052)"/><use href="#m03-fl" transform="translate(662.3 -10.8) rotate(10) scale(0.826)"/>
+    
+  </g>
+
+  <!-- 나비 -->
+  <use href="#m03-bfly" transform="translate(762 600) rotate(-14) scale(1.15)"/>
+  <use href="#m03-bfly" transform="translate(36 720) rotate(16) scale(.8)" opacity=".75"/>
+
+  <!-- 아래: 언덕·개나리 덤불·새싹 -->
+  <path d="M0 975 C 150 945, 300 960, 430 990 C 560 1018, 690 970, 794 958 L794 1123 L0 1123 Z" fill="#d3eebd"/>
+  <use href="#m03-sprout" transform="translate(270 967.5) scale(-0.5 0.5)"/><use href="#m03-sprout" transform="translate(410 989.5) scale(0.55 0.55)"/><use href="#m03-sprout" transform="translate(560 1000.7) scale(0.5 0.5)"/><use href="#m03-sprout" transform="translate(640 989.9) scale(-0.45 0.45)"/>
+  <g stroke="#9a7c4c" stroke-width="4" stroke-linecap="round" fill="none">
+    <path d="M-10 1080 C 10 990, 40 920, 30 836"/>
+    <path d="M-10 1070 C 30 990, 100 960, 180 972"/>
+    <path d="M10 1090 C 70 1010, 160 1000, 250 1030"/>
+    <path d="M-10 1066 C 10 990, 50 950, 96 958"/>
+    <path d="M804 1080 C 784 990, 754 920, 764 836"/>
+    <path d="M804 1070 C 764 990, 694 960, 614 972"/>
+    <path d="M784 1090 C 724 1010, 634 1000, 544 1030"/>
+    <path d="M804 1066 C 784 990, 744 950, 698 958"/>
+  </g>
+  <g>
+    <use href="#m03-fl" transform="translate(-9.7 1052.1) rotate(39.9) scale(1.268)"/><use href="#m03-leaf" transform="translate(-3.8 1053.6) rotate(-36)"/><use href="#m03-fl" transform="translate(10.6 1036.4) rotate(20.1) scale(1.1740000000000002)"/><use href="#m03-fl" transform="translate(-1 1007.7) rotate(74.8) scale(1.284)"/><use href="#m03-fl" transform="translate(22.3 993.9) rotate(4.8) scale(1.075)"/><use href="#m03-fl" transform="translate(9.8 970.4) rotate(16.2) scale(1.034)"/><use href="#m03-fl" transform="translate(32.8 952.5) rotate(64) scale(1.015)"/><use href="#m03-fl" transform="translate(19.7 924) rotate(53.2) scale(0.888)"/><use href="#m03-leaf" transform="translate(27.2 925.2) rotate(-40.7)"/><use href="#m03-fl" transform="translate(38 906.5) rotate(86.5) scale(1.028)"/><use href="#m03-fl" transform="translate(20.9 879.8) rotate(88.1) scale(0.975)"/><use href="#m03-bud" transform="translate(42.5 857.9) rotate(-2.2)"/>
+    <use href="#m03-fl" transform="translate(-2.2 1044.2) rotate(42.8) scale(1.217)"/><use href="#m03-fl" transform="translate(22 1037.7) rotate(85.4) scale(1.296)"/><use href="#m03-fl" transform="translate(21.8 1007.9) rotate(37.4) scale(1.1840000000000002)"/><use href="#m03-fl" transform="translate(47.9 1007.9) rotate(36.4) scale(1.19)"/><use href="#m03-fl" transform="translate(61.3 981) rotate(1.8) scale(0.9990000000000001)"/><use href="#m03-fl" transform="translate(90.8 984.8) rotate(14.1) scale(1.148)"/><use href="#m03-leaf" transform="translate(88.7 978.7) rotate(-58.9)"/><use href="#m03-fl" transform="translate(107.6 962.4) rotate(68.6) scale(0.867)"/><use href="#m03-fl" transform="translate(130.2 977.3) rotate(70.8) scale(1.013)"/><use href="#m03-fl" transform="translate(153.4 963.4) rotate(25) scale(1.035)"/><use href="#m03-bud" transform="translate(176.9 982) rotate(98.2)"/>
+    <use href="#m03-fl" transform="translate(23 1062.3) rotate(53.1) scale(1.2209999999999999)"/><use href="#m03-leaf" transform="translate(28.9 1068.1) rotate(-5.3)"/><use href="#m03-fl" transform="translate(50.8 1061.9) rotate(73.3) scale(1.317)"/><use href="#m03-leaf" transform="translate(44.4 1054) rotate(-78.9)"/><use href="#m03-fl" transform="translate(53.5 1034) rotate(45.9) scale(1.067)"/><use href="#m03-fl" transform="translate(79.7 1039.6) rotate(1.1) scale(1.0090000000000001)"/><use href="#m03-fl" transform="translate(93.8 1016.1) rotate(17.9) scale(1.062)"/><use href="#m03-fl" transform="translate(117.8 1026.1) rotate(24.8) scale(0.941)"/><use href="#m03-fl" transform="translate(137 1006.5) rotate(4) scale(1.1159999999999999)"/><use href="#m03-fl" transform="translate(163.6 1024.7) rotate(68.6) scale(1.061)"/><use href="#m03-fl" transform="translate(187.4 1007.1) rotate(47.2) scale(1.026)"/><use href="#m03-fl" transform="translate(206.5 1026.1) rotate(58.2) scale(0.9179999999999999)"/><use href="#m03-bud" transform="translate(231.4 1016) rotate(-75.2)"/><use href="#m03-bud" transform="translate(247.6 1037.2) rotate(108.4)"/>
+    <use href="#m03-fl" transform="translate(-10.7 1041.8) rotate(49.4) scale(1.16)"/><use href="#m03-fl" transform="translate(12.2 1022.7) rotate(83.1) scale(1.2009999999999998)"/><use href="#m03-fl" transform="translate(10.9 991.7) rotate(22.9) scale(1.235)"/><use href="#m03-fl" transform="translate(42.7 984.6) rotate(68.8) scale(0.9990000000000001)"/><use href="#m03-fl" transform="translate(50.6 957.9) rotate(54.6) scale(0.8490000000000001)"/><use href="#m03-fl" transform="translate(76.6 966.3) rotate(68.6) scale(1.036)"/>
+    <use href="#m03-fl" transform="translate(790.1 1055.5) rotate(25.6) scale(1.204)"/><use href="#m03-fl" transform="translate(799.2 1026) rotate(51.6) scale(1.0959999999999999)"/><use href="#m03-leaf" transform="translate(791.2 1028.1) rotate(-144.8)"/><use href="#m03-fl" transform="translate(777.5 1010.6) rotate(17.6) scale(1.218)"/><use href="#m03-fl" transform="translate(790.4 982.3) rotate(17.7) scale(1.167)"/><use href="#m03-fl" transform="translate(764.5 966.8) rotate(26.2) scale(1.0190000000000001)"/><use href="#m03-fl" transform="translate(778.6 943.1) rotate(14.5) scale(0.982)"/><use href="#m03-fl" transform="translate(760.7 926.2) rotate(1.3) scale(1.077)"/><use href="#m03-fl" transform="translate(771.9 902.4) rotate(86.6) scale(0.968)"/><use href="#m03-fl" transform="translate(752.3 884.7) rotate(34.2) scale(0.971)"/><use href="#m03-fl" transform="translate(770.9 865) rotate(72.3) scale(0.797)"/><use href="#m03-bud" transform="translate(756.2 843.7) rotate(-174.9)"/>
+    <use href="#m03-fl" transform="translate(800.3 1041.5) rotate(54.2) scale(1.077)"/><use href="#m03-fl" transform="translate(772.9 1035) rotate(72) scale(1.2670000000000001)"/><use href="#m03-fl" transform="translate(770.5 1011.9) rotate(59.3) scale(1.262)"/><use href="#m03-fl" transform="translate(742.6 1009) rotate(12.9) scale(1.036)"/><use href="#m03-fl" transform="translate(735.8 983.2) rotate(21.2) scale(1.035)"/><use href="#m03-fl" transform="translate(704.4 987.7) rotate(82.9) scale(1.171)"/><use href="#m03-fl" transform="translate(685.4 966.9) rotate(77.4) scale(0.8640000000000001)"/><use href="#m03-fl" transform="translate(658.5 980.5) rotate(12.7) scale(0.91)"/><use href="#m03-bud" transform="translate(632.3 959.8) rotate(266.2)"/><use href="#m03-bud" transform="translate(616.2 981.4) rotate(81.7)"/>
+    <use href="#m03-fl" transform="translate(769.4 1063.8) rotate(34.9) scale(1.1520000000000001)"/><use href="#m03-fl" transform="translate(742.6 1061.3) rotate(3) scale(1.093)"/><use href="#m03-fl" transform="translate(731 1033.8) rotate(83.3) scale(1.2109999999999999)"/><use href="#m03-leaf" transform="translate(727.9 1039) rotate(-189.6)"/><use href="#m03-fl" transform="translate(704.1 1034.6) rotate(7.5) scale(0.955)"/><use href="#m03-fl" transform="translate(686.8 1014.6) rotate(85) scale(1.099)"/><use href="#m03-fl" transform="translate(661.4 1026.1) rotate(35.1) scale(1.109)"/><use href="#m03-fl" transform="translate(636.5 1006.4) rotate(7) scale(1.1)"/><use href="#m03-fl" transform="translate(612 1025.6) rotate(72.5) scale(0.9259999999999999)"/><use href="#m03-leaf" transform="translate(611 1015.5) rotate(214.7)"/><use href="#m03-fl" transform="translate(589.8 1007.9) rotate(55.8) scale(0.831)"/><use href="#m03-leaf" transform="translate(591.5 1018) rotate(130.5)"/><use href="#m03-bud" transform="translate(569 1029.4) rotate(75.7)"/><use href="#m03-bud" transform="translate(542.4 1022.1) rotate(251.7)"/>
+    <use href="#m03-fl" transform="translate(791.1 1046.5) rotate(8.5) scale(1.097)"/><use href="#m03-fl" transform="translate(796.5 1021) rotate(70) scale(1.2309999999999999)"/><use href="#m03-leaf" transform="translate(789.4 1024.2) rotate(-154.4)"/><use href="#m03-fl" transform="translate(770.7 1007.6) rotate(68.8) scale(0.993)"/><use href="#m03-fl" transform="translate(772.7 979.2) rotate(13.8) scale(1.197)"/><use href="#m03-fl" transform="translate(744.7 974.9) rotate(35.9) scale(1.131)"/><use href="#m03-fl" transform="translate(727.6 951.4) rotate(55.6) scale(0.9059999999999999)"/><use href="#m03-leaf" transform="translate(725.6 959.1) rotate(-205.2)"/><use href="#m03-bud" transform="translate(703.6 967.4) rotate(84)"/>
+    
+  </g>
+  <path d="M0 1046 C 180 1010, 360 1040, 500 1050 C 620 1058, 720 1030, 794 1020 L794 1123 L0 1123 Z" fill="#a3d77e"/>
+  <path d="M0 1100 C 250 1080, 520 1110, 794 1090 L794 1123 L0 1123 Z" fill="#8cc96a"/>
+  <use href="#m03-grass" transform="translate(190 1066.7)"/><use href="#m03-grass" transform="translate(266 1064.9)"/><use href="#m03-grass" transform="translate(336 1055.9)"/><use href="#m03-grass" transform="translate(410 1067.5)"/><use href="#m03-grass" transform="translate(484 1069.5)"/><use href="#m03-grass" transform="translate(556 1081)"/><use href="#m03-grass" transform="translate(630 1065.8)"/><use href="#m03-grass" transform="translate(160 1049.9)"/><use href="#m03-grass" transform="translate(690 1052.9)"/>
+  <use href="#m03-sprout" transform="translate(232 1035.4) scale(0.9 0.9)"/><use href="#m03-sprout" transform="translate(300 1038.8) scale(-0.7 0.7)"/><use href="#m03-sprout" transform="translate(372 1044.6) scale(1.15 1.15)"/><use href="#m03-sprout" transform="translate(446 1051.5) scale(-0.8 0.8)"/><use href="#m03-sprout" transform="translate(520 1057) scale(1.05 1.05)"/><use href="#m03-sprout" transform="translate(592 1055.7) scale(-0.72 0.72)"/>
+</svg>

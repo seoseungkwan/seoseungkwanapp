@@ -57,6 +57,9 @@ function isShortText(value: unknown, required: boolean): value is string {
 
 const hasContact = (value: string) => PHONE.test(value) || NATIONAL_ID.test(value) || MAIL.test(value)
 
+// 전화·붙임표 주민번호·붙여 쓴 13자리·메일 모양(서식 탭이 적은 글과 카드 글에 쓴다, specs/forms)
+export const hasPrivateShape = (value: string) => hasContact(value) || JOINED_NATIONAL_ID.test(value)
+
 // 처방코드: 전화·붙임표 주민번호·메일 모양이면 거부(붙여 쓴 13자리는 의약품 표준코드와 가를 수 없어 보지 않는다)
 function isCode(value: unknown): value is string {
   return isShortText(value, true) && !hasContact(value)
@@ -64,7 +67,7 @@ function isCode(value: unknown): value is string {
 
 // 처방명·유형·동네 이름: 붙여 쓴 주민번호도 거부. 처방명·유형은 빈 글자일 수 있다(집계 필수값이 아니다)
 export function isText(value: unknown, required = false): value is string {
-  return isShortText(value, required) && !hasContact(value) && !JOINED_NATIONAL_ID.test(value)
+  return isShortText(value, required) && !hasPrivateShape(value)
 }
 
 function listOf<T>(value: unknown, max: number, itemOf: (item: unknown) => T | null): T[] | null {

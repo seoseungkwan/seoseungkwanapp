@@ -294,6 +294,27 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '비트에서 읽은 명단 자료에 맞지 않는 줄이 있어요',
     fix: '비트 통계 화면의 칸 설정을 확인하고 [다시 불러오기]를 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
   },
+  // 서식 탭 휴진 안내(specs/forms design.md 11절). E-AI-BUSY·E-AI-LIMIT·E-AI-FAILED는 위 문구를 그대로 쓴다
+  'E-FORMS-PRIVATE': {
+    what: '적은 글에 전화번호·주민번호·메일 주소 모양이 있어 보내지 않았어요',
+    fix: '그 부분을 지우고 다시 [정리하기]를 눌러 주세요',
+  },
+  'E-FORMS-NO-DATE': {
+    what: '적은 글에서 날짜를 찾지 못했어요',
+    fix: "'5월 5일 어린이날 휴진'처럼 날짜를 넣어 다시 적어 주세요",
+  },
+  'E-FORMS-SAVE-FAILED': {
+    what: '안내문을 저장하지 못했어요',
+    fix: '적은 내용은 그대로예요. 인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요',
+  },
+  'E-FORMS-READ-FAILED': {
+    what: '저장한 안내문 목록을 읽지 못했어요',
+    fix: '인터넷 연결을 확인하고 [다시 읽기]를 눌러 주세요',
+  },
+  'E-FORMS-IMAGE-FAILED': {
+    what: '그림 파일을 만들지 못했어요',
+    fix: '다시 눌러 보고, 계속 안 되면 [인쇄·PDF]로 PDF를 저장해 주세요',
+  },
 }
 
 /**

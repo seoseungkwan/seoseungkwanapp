@@ -6,7 +6,6 @@
 
 export type NotReadyPath =
   | '/notices'
-  | '/forms'
   | '/staff'
   | '/inventory'
   | '/contacts'
@@ -31,13 +30,6 @@ export const NOT_READY_FEATURES: readonly NotReadyFeature[] = [
     title: '고시·공지는 준비 중이에요',
     intro: `심사·고시 새 글을 한곳에서 볼 자리예요. ${SOON}`,
     items: ['심평원 공지·심사기준 변경', '보건복지부 고시·공지', '건강보험공단 공지', '글마다 AI 세 줄 요약'],
-  },
-  {
-    path: '/forms',
-    name: '서식',
-    title: '서식은 준비 중이에요',
-    intro: `대충 적은 글을 양식에 맞게 정리할 자리예요. ${SOON}`,
-    items: ['진료일정·휴진 안내', '환자 안내문', '직원 공지·회의록', '근무표·보고서'],
   },
   {
     path: '/staff',

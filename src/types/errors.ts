@@ -44,5 +44,7 @@ export type ErrorCode =
   | 'E-PATIENTS-TEMPLATES-READ' | 'E-PATIENTS-TEMPLATES-SAVE' | 'E-PATIENTS-COUNTS-READ' | 'E-PATIENTS-COUNTS-SAVE' | 'E-PATIENTS-SOURCE'
   // 비트 대시보드(spec bit-dashboard)
   | 'E-BIT-DATA-UNSURE' | 'E-BIT-IN-USE'
+  // 서식 탭 휴진 안내(spec forms design.md 11절)
+  | 'E-FORMS-PRIVATE' | 'E-FORMS-NO-DATE' | 'E-FORMS-SAVE-FAILED' | 'E-FORMS-READ-FAILED' | 'E-FORMS-IMAGE-FAILED'
 
 export type ErrorInfo = { what: string; fix: string }

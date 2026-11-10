@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import type { ErrorCode } from '@/types/errors'
 import { ERRORS, errorInfo, isErrorCode } from './errors'
@@ -71,6 +73,11 @@ const ALL_CODES = [
   'E-PATIENTS-COUNTS-READ',
   'E-PATIENTS-COUNTS-SAVE',
   'E-PATIENTS-SOURCE',
+  'E-FORMS-PRIVATE',
+  'E-FORMS-NO-DATE',
+  'E-FORMS-SAVE-FAILED',
+  'E-FORMS-READ-FAILED',
+  'E-FORMS-IMAGE-FAILED',
 ] as const satisfies readonly ErrorCode[]
 
 // 청구 사전점검 연결 번호(design.md 4-5 중 확장·도우미·통로 것). 비트 접속 번호는 TASK-6이 더한다
@@ -756,5 +763,115 @@ describe('AC-2801.5 완료 표시 저장·되돌리기 실패 문구(spec claim-
       what: '완료 표시를 저장하지 못했어요',
       fix: '고른 날짜는 그대로 있어요. 인터넷 연결을 확인하고 다시 눌러 주세요. 처음 쓰는 거라면 서버 준비(마이그레이션)가 끝났는지 확인해 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
     })
+  })
+})
+
+// 서식 탭 휴진 안내(specs/forms design.md 11절 표). 문구는 표의 글자 그대로(끝 마침표 없음)
+const FORMS = {
+  'E-FORMS-PRIVATE': {
+    what: '적은 글에 전화번호·주민번호·메일 주소 모양이 있어 보내지 않았어요',
+    fix: '그 부분을 지우고 다시 [정리하기]를 눌러 주세요',
+  },
+  'E-FORMS-NO-DATE': {
+    what: '적은 글에서 날짜를 찾지 못했어요',
+    fix: "'5월 5일 어린이날 휴진'처럼 날짜를 넣어 다시 적어 주세요",
+  },
+  'E-FORMS-SAVE-FAILED': {
+    what: '안내문을 저장하지 못했어요',
+    fix: '적은 내용은 그대로예요. 인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요',
+  },
+  'E-FORMS-READ-FAILED': {
+    what: '저장한 안내문 목록을 읽지 못했어요',
+    fix: '인터넷 연결을 확인하고 [다시 읽기]를 눌러 주세요',
+  },
+  'E-FORMS-IMAGE-FAILED': {
+    what: '그림 파일을 만들지 못했어요',
+    fix: '다시 눌러 보고, 계속 안 되면 [인쇄·PDF]로 PDF를 저장해 주세요',
+  },
+} as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
+
+// 같은 모양 검사(무엇이·어떻게 고치나가 있고 "병원"·"설치·연결 확인"·"니다."가 없다)
+function expectFormsShape(code: keyof typeof FORMS) {
+  expect(isErrorCode(code), code).toBe(true)
+  expect(ALL_CODES, code).toContain(code)
+  const info = errorInfo(code)
+  expect(info.what.trim(), `${code}.what`).not.toBe('')
+  expect(info.fix.trim(), `${code}.fix`).not.toBe('')
+  for (const text of [info.what, info.fix]) {
+    expect(text, code).not.toContain('병원')
+    expect(text, code).not.toContain('설치·연결 확인')
+    expect(text, code).not.toMatch(/니다\./)
+  }
+}
+
+describe('AC-3502.3 서식 메모 개인정보 모양 오류 문구', () => {
+  it('AC-3502.3: E-FORMS-PRIVATE는 번호가 있고 무엇이·어떻게 고치나가 표 글자 그대로다', () => {
+    expectFormsShape('E-FORMS-PRIVATE')
+    expect(errorInfo('E-FORMS-PRIVATE')).toEqual(FORMS['E-FORMS-PRIVATE'])
+  })
+
+  it('AC-3502.3: E-FORMS-PRIVATE는 보내지 않았다고 알리고 [정리하기]를 다시 누르라고 한다', () => {
+    const info = errorInfo('E-FORMS-PRIVATE')
+    expect(info.what).toContain('보내지 않았어요')
+    expect(info.fix).toContain('[정리하기]')
+  })
+})
+
+describe('AC-3502.5 서식 날짜 없음 오류 문구', () => {
+  it('AC-3502.5: E-FORMS-NO-DATE는 번호가 있고 무엇이·어떻게 고치나가 표 글자 그대로다', () => {
+    expectFormsShape('E-FORMS-NO-DATE')
+    expect(errorInfo('E-FORMS-NO-DATE')).toEqual(FORMS['E-FORMS-NO-DATE'])
+  })
+
+  it('AC-3502.5: 함께 뜨는 AI 오류 셋(E-AI-BUSY·E-AI-LIMIT·E-AI-FAILED)의 지금 문구는 그대로다', () => {
+    expect(errorInfo('E-AI-BUSY')).toEqual({ what: 'AI가 지금 바빠서 답하지 못했어요', fix: '1~2분 뒤 [다시 분석]을 눌러 주세요.' })
+    expect(errorInfo('E-AI-LIMIT')).toEqual({
+      what: '이번 달 AI 사용 한도에 닿았어요',
+      fix: 'Anthropic 콘솔에서 한 달 한도를 늘리거나 다음 달에 다시 해 주세요.',
+    })
+    expect(errorInfo('E-AI-FAILED')).toEqual({
+      what: 'AI 리포트를 만들지 못했어요',
+      fix: '[다시 분석]을 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+    })
+  })
+})
+
+describe('AC-3507.5 서식 저장·목록 읽기 오류 문구', () => {
+  it.each(['E-FORMS-SAVE-FAILED', 'E-FORMS-READ-FAILED'] as const)(
+    'AC-3507.5: %s는 번호가 있고 무엇이·어떻게 고치나가 표 글자 그대로다',
+    (code) => {
+      expectFormsShape(code)
+      expect(errorInfo(code)).toEqual(FORMS[code])
+    },
+  )
+
+  it('AC-3507.5: 저장 실패는 적은 내용이 그대로라고 알리고 [다시 저장]을, 목록 실패는 [다시 읽기]를 안내한다', () => {
+    expect(errorInfo('E-FORMS-SAVE-FAILED').fix).toContain('적은 내용은 그대로예요')
+    expect(errorInfo('E-FORMS-SAVE-FAILED').fix).toContain('[다시 저장]')
+    expect(errorInfo('E-FORMS-READ-FAILED').fix).toContain('[다시 읽기]')
+  })
+})
+
+describe('AC-3506.3 서식 그림 파일 오류 문구', () => {
+  it('AC-3506.3: E-FORMS-IMAGE-FAILED는 번호가 있고 무엇이·어떻게 고치나가 표 글자 그대로다', () => {
+    expectFormsShape('E-FORMS-IMAGE-FAILED')
+    expect(errorInfo('E-FORMS-IMAGE-FAILED')).toEqual(FORMS['E-FORMS-IMAGE-FAILED'])
+  })
+
+  it('AC-3506.3: 계속 안 되면 [인쇄·PDF]로 PDF를 저장하라고 한다', () => {
+    expect(errorInfo('E-FORMS-IMAGE-FAILED').fix).toContain('[인쇄·PDF]')
+  })
+})
+
+describe('AC-3502.3·AC-3502.5·AC-3506.3·AC-3507.5 서식 명세가 더하는 번호', () => {
+  it('AC-3507.5: 이 명세가 더하는 E-FORMS- 번호는 표의 다섯뿐이다', () => {
+    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-FORMS-')).sort()).toEqual(Object.keys(FORMS).sort())
+  })
+
+  // vitest는 타입을 보지 않는다. 번호 타입(ErrorCode)에 없으면 tsc·npm run build가 실패하므로 타입 파일 글자로 본다
+  it('AC-3507.5: 다섯 번호가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    for (const code of Object.keys(FORMS)) expect(union).toContain(`'${code}'`)
   })
 })

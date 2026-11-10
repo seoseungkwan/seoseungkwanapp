@@ -31,7 +31,7 @@ export type MenuPath =
   | '/contacts'
   | '/settings'
 /** 기능 자신의 화면이 있는 주소. 다음 명세가 화면을 만들면 여기에 더한다 */
-export type MenuHref = '/dashboard' | '/stats' | '/claim' | '/patients' | '/revenue' | '/ai-report' | '/worklog' | '/settings'
+export type MenuHref = '/dashboard' | '/stats' | '/claim' | '/patients' | '/revenue' | '/ai-report' | '/forms' | '/worklog' | '/settings'
 
 export type MenuItem = {
   label: MenuLabel
@@ -57,7 +57,7 @@ export const MENU: readonly MenuItem[] = [
   { label: '환자', path: '/patients', href: '/patients', ready: true, primary: true },
   { label: '매출', path: '/revenue', href: '/revenue', ready: true, primary: true },
   { label: 'AI 리포트', path: '/ai-report', href: '/ai-report', ready: true, primary: false },
-  { label: '서식', path: '/forms', href: null, ready: false, primary: false },
+  { label: '서식', path: '/forms', href: '/forms', ready: true, primary: false }, // 휴진 안내 서식 화면(forms AC-3501.1)
   { label: '직원', path: '/staff', href: null, ready: false, primary: false },
   { label: '업무일지', path: '/worklog', href: '/worklog', ready: true, primary: false },
   { label: '재고', path: '/inventory', href: null, ready: false, primary: false },
