@@ -1,0 +1,157 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using Precheck.Core.Bit;
+
+namespace Precheck.Core.Closing;
+
+/// <summary>
+/// ERP 마감일지 두 명령(closing.codes·closing.day, spec erp-closing-fill design.md 3-2)이 비트 DB에 돌리는 새 SELECT 여덟. 원본에 없는 문장이다.
+/// 진료 조건은 모두 Sql.TrendCte의 V와 같다: 외래(OcmPatTyp='O')·접수취소 아님(OcmRsuYon≠'O')·끝난 상태 7개·병원 범위(DepMst, RevenueSql과 같음).
+/// 처방 조건은 OdrDelFlg='N'·OdrCanYon='N'·OdrOutCod≠'99'.
+/// 환자 표(PbsInf)에서는 차트번호·생년월일만 쓰고, 이름·전화·주민번호·주소·메모 칸은 읽지 않는다. 차트번호·생년월일은 결과 칸으로 내지 않고
+/// 그날 안에서만 쓰는 번호(DENSE_RANK)·만 나이·센 수로 바꿔 낸다(AC-3606.2).
+/// 모두 매개변수를 받는 SELECT 하나다. Bit/Sql.cs의 IsAllowed·ParametersOf가 이 표도 보므로 ReadOnlyGuard를 지난다(청구 Sql.All에는 없다, AC-3606.1).
+/// closing.codes의 코드 목록은 새 문장 없이 Sql.TrendTotalsSql·StatsSql.CodeNamesSql을 쓴다.
+/// </summary>
+public static class ClosingSql
+{
+    /// <summary>마감일지 문장 시간 제한: RevenueDays와 같다(원본 OperationalReportData.Command CommandTimeout=90).</summary>
+    public static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(90);
+
+    /// <summary>주사 처음 문장의 코드 자리 수(@c0~@c19 = 묶음 코드 최대 20개). 빈 자리는 첫 코드로 채운다(관문은 NULL 값을 받지 않는다).</summary>
+    public const int CodeSlots = 20;
+
+    private const string CodeList = "@c0,@c1,@c2,@c3,@c4,@c5,@c6,@c7,@c8,@c9,@c10,@c11,@c12,@c13,@c14,@c15,@c16,@c17,@c18,@c19";
+
+    // 그날(@from ≤ 접수 시각 < @to) 진료: Sql.TrendCte의 V와 같은 조건
+    private const string DayVisitCte = @"WITH V AS (
+ SELECT c.OcmNum,c.OcmChtNum,c.OcmAcpDtm,c.OcmDgsNfs FROM dbo.OcmInf c
+ WHERE c.OcmAcpDtm>=@from AND c.OcmAcpDtm<@to AND c.OcmPatTyp='O' AND c.OcmRsuYon<>'O'
+   AND c.OcmComStt IN ('HN','PN','TN','VN','OE','WN','OB')
+   AND EXISTS(SELECT 1 FROM dbo.DepMst d WHERE d.DepCod=c.OcmDepCod AND d.DepHspNum=@hospital
+               AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte)
+)";
+
+    /// <summary>
+    /// 그날 진료마다 [진료번호, 그날 번호(차트번호 차례 DENSE_RANK), 진찰구분, 만 나이, 마지막 수납 줄 총진료비]. 접수 시각 차례.
+    /// 만 나이 = PbsBirDte가 8자리 날짜이고 그날 이전이면 (그날 − 생년월일) / 10000, 아니면 NULL.
+    /// 마지막 수납 줄 = 그 진료의 OrpInf 가운데 OrpRcpSeq가 가장 큰 줄(design.md 3-2 MAX(OrpRcpSeq)), 없으면 NULL.
+    /// </summary>
+    public const string DayVisitsSql = DayVisitCte + @"
+SELECT V.OcmNum,DENSE_RANK() OVER (ORDER BY RTRIM(V.OcmChtNum)) Person,RTRIM(V.OcmDgsNfs) DgsNfs,
+ (SELECT MAX(CASE WHEN b.PbsBirDte LIKE '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]' AND ISDATE(b.PbsBirDte)=1 AND b.PbsBirDte<=@day
+   THEN (CONVERT(int,@day)-CONVERT(int,b.PbsBirDte))/10000 END) FROM dbo.PbsInf b WHERE b.PbsChtNum=V.OcmChtNum) Age,
+ (SELECT TOP 1 p.OrpTotAmt FROM dbo.OrpInf p WHERE p.OrpOcmNum=V.OcmNum ORDER BY p.OrpRcpSeq DESC) Total
+FROM V
+ORDER BY V.OcmAcpDtm,V.OcmNum";
+
+    /// <summary>그날 진료의 처방 [진료번호, 코드(UPPER·RTRIM), 줄 수].</summary>
+    public const string DayCodesSql = DayVisitCte + @"
+SELECT o.OdrOcmNum,UPPER(RTRIM(o.OdrCod)) Code,COUNT_BIG(*) Lines
+FROM dbo.OdrInf o JOIN V ON V.OcmNum=o.OdrOcmNum
+WHERE o.OdrDelFlg='N' AND o.OdrCanYon='N' AND o.OdrOutCod<>'99' AND RTRIM(ISNULL(o.OdrCod,''))<>''
+GROUP BY o.OdrOcmNum,UPPER(RTRIM(o.OdrCod))";
+
+    /// <summary>
+    /// 주사1회환자 수 하나: 그날 고른 주사 코드(@c0~@c19)를 받은 환자 가운데 @from 전 진료(같은 진료·처방 조건)에 그 코드가 하나도 없는 환자.
+    /// 차트번호가 빈 진료는 그 전 기록과 견줄 수 없어 세지 않는다.
+    /// </summary>
+    public const string InjectionFirstSql = DayVisitCte + @", T AS (
+ SELECT DISTINCT V.OcmChtNum FROM V JOIN dbo.OdrInf o ON o.OdrOcmNum=V.OcmNum
+ WHERE RTRIM(ISNULL(V.OcmChtNum,''))<>''
+   AND o.OdrDelFlg='N' AND o.OdrCanYon='N' AND o.OdrOutCod<>'99'
+   AND UPPER(RTRIM(o.OdrCod)) IN (" + CodeList + @")
+)
+SELECT COUNT_BIG(*) FROM T
+WHERE NOT EXISTS(SELECT 1 FROM dbo.OcmInf c JOIN dbo.OdrInf o ON o.OdrOcmNum=c.OcmNum
+  WHERE c.OcmChtNum=T.OcmChtNum AND c.OcmAcpDtm<@from AND c.OcmPatTyp='O' AND c.OcmRsuYon<>'O'
+    AND c.OcmComStt IN ('HN','PN','TN','VN','OE','WN','OB')
+    AND EXISTS(SELECT 1 FROM dbo.DepMst d WHERE d.DepCod=c.OcmDepCod AND d.DepHspNum=@hospital
+                AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte)
+    AND o.OdrDelFlg='N' AND o.OdrCanYon='N' AND o.OdrOutCod<>'99'
+    AND UPPER(RTRIM(o.OdrCod)) IN (" + CodeList + @"))";
+
+    /// <summary>
+    /// 수납일(@day ≤ 수납일 &lt; @nextDay) 기준 네 합(notes/bit-codes.md B절, 비트 수납집계 화면과 같은 칸):
+    /// [미수발생 COO 현금, 할인 줄(DOD·DOE·DET·DNI·DN1·DN3·DN5) 현금, 장애인기금 OrpRcvBil, 환불 TPR 현금+카드+계좌].
+    /// 돈 줄(OrcInf)은 FinanceNormal처럼 예치금(OrcPatTyp='R')을 빼고 UnsupportedFinance처럼 그 진료가 이 병원 범위인 것만,
+    /// 장애인기금은 FinanceNormal의 Seq처럼 진료마다 그날 마지막 정상수납 줄(OrpRcpStt≠'C')만 더한다. 줄이 없으면 NULL(0으로 본다).
+    /// </summary>
+    public const string MoneyExtraSql = @"SELECT (SELECT SUM(r.OrcNewAmt) FROM dbo.OrcInf r WHERE r.OrcAccDte>=@day AND r.OrcAccDte<@nextDay AND r.OrcCod='COO' AND r.OrcPatTyp<>'R'
+   AND EXISTS(SELECT 1 FROM dbo.OcmInf c JOIN dbo.DepMst d ON d.DepCod=c.OcmDepCod
+               WHERE c.OcmNum=r.OrcOcmNum AND d.DepHspNum=@hospital AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte)) UnpaidNew,
+ (SELECT SUM(r.OrcNewAmt) FROM dbo.OrcInf r WHERE r.OrcAccDte>=@day AND r.OrcAccDte<@nextDay AND r.OrcCod IN ('DOD','DOE','DET','DNI','DN1','DN3','DN5') AND r.OrcPatTyp<>'R'
+   AND EXISTS(SELECT 1 FROM dbo.OcmInf c JOIN dbo.DepMst d ON d.DepCod=c.OcmDepCod
+               WHERE c.OcmNum=r.OrcOcmNum AND d.DepHspNum=@hospital AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte)) Discount,
+ (SELECT SUM(p.OrpRcvBil) FROM dbo.OrpInf p WHERE p.OrpRcpStt<>'C' AND p.OrpAccDte>=@day AND p.OrpAccDte<@nextDay
+   AND p.OrpRcpSeq=(SELECT MAX(s.OrpRcpSeq) FROM dbo.OrpInf s
+                    WHERE s.OrpOcmNum=p.OrpOcmNum AND s.OrpRcpStt<>'C' AND s.OrpAccDte>=@day AND s.OrpAccDte<@nextDay)
+   AND EXISTS(SELECT 1 FROM dbo.DepMst d WHERE d.DepCod=p.OrpDepCod AND d.DepHspNum=@hospital
+               AND LEFT(p.OrpAccDte,8) BETWEEN d.DepAdpDte AND d.DepExpDte)) DisabledFund,
+ (SELECT SUM(r.OrcNewAmt+r.OrcCrdAmt+r.OrcChkAmt) FROM dbo.OrcInf r WHERE r.OrcAccDte>=@day AND r.OrcAccDte<@nextDay AND r.OrcCod='TPR' AND r.OrcPatTyp<>'R'
+   AND EXISTS(SELECT 1 FROM dbo.OcmInf c JOIN dbo.DepMst d ON d.DepCod=c.OcmDepCod
+               WHERE c.OcmNum=r.OrcOcmNum AND d.DepHspNum=@hospital AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte)) Refund";
+
+    /// <summary>
+    /// 그날 외래가 아닌 접수 수(이 의원은 늘 0, notes/bit-codes.md E절). 접수취소(OcmRsuYon='O')와 RevenueSql.Patients 첫 내원의 입원 쪽 조건처럼
+    /// 취소 상태(VC·CN·CR)는 세지 않는다.
+    /// </summary>
+    public const string InpatientSql = @"SELECT COUNT_BIG(*) FROM dbo.OcmInf c
+WHERE c.OcmAcpDtm>=@from AND c.OcmAcpDtm<@to AND c.OcmPatTyp<>'O' AND c.OcmRsuYon<>'O'
+  AND c.OcmComStt NOT IN ('VC','CN','CR')
+  AND EXISTS(SELECT 1 FROM dbo.DepMst d WHERE d.DepCod=c.OcmDepCod AND d.DepHspNum=@hospital
+              AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte)";
+
+    // 그날(@from ≤ 예약 일시 RsvDtm < @to) 예약 가운데 이어진 접수(RsvOcmNum)가 이 병원 범위인 것
+    private const string ReservationScope = @"FROM dbo.RsvInf r JOIN dbo.OcmInf c ON c.OcmNum=r.RsvOcmNum
+ WHERE r.RsvDtm>=@from AND r.RsvDtm<@to
+   AND EXISTS(SELECT 1 FROM dbo.DepMst d WHERE d.DepCod=c.OcmDepCod AND d.DepHspNum=@hospital
+               AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte)";
+
+    /// <summary>
+    /// 예약 메모 번호(RTRIM(RsvRefMem), 없으면 빈 글자)마다 [번호, 모두, 내원, 바꿈, 취소]. 메모 번호 차례.
+    /// 내원 = 살아 있는 예약(RsvSts='OS')이고 이어진 접수가 진료 조건(외래·접수취소 아님·끝난 상태 7개)에 맞음. 취소 = RsvSts='OC'.
+    /// 바꿈 = RsvLog에 그 예약의 기록(같은 차트번호, 바꾼 뒤 일시 = 이 예약 일시)이 있음. 예약 메모 글(RsvRefCmt)은 읽지 않는다.
+    /// </summary>
+    public const string ReservationKindsSql = @"WITH R AS (
+ SELECT RTRIM(ISNULL(r.RsvRefMem,'')) Kind,
+  CASE WHEN r.RsvSts='OS' AND c.OcmPatTyp='O' AND c.OcmRsuYon<>'O' AND c.OcmComStt IN ('HN','PN','TN','VN','OE','WN','OB') THEN 1 ELSE 0 END Visited,
+  CASE WHEN EXISTS(SELECT 1 FROM dbo.RsvLog l WHERE l.RsvLogChtNum=r.RsvChtNum AND l.RsvLogARsvDtm=r.RsvDtm) THEN 1 ELSE 0 END Changed,
+  CASE WHEN r.RsvSts='OC' THEN 1 ELSE 0 END Canceled
+ " + ReservationScope + @"
+)
+SELECT Kind,COUNT_BIG(*) Total,SUM(Visited) Visited,SUM(Changed) Changed,SUM(Canceled) Canceled
+FROM R GROUP BY Kind ORDER BY Kind";
+
+    /// <summary>그날 예약이 있는 서로 다른 환자 수 하나(차트번호가 빈 예약은 세지 않는다).</summary>
+    public const string ReservationPatientsSql = @"SELECT COUNT(DISTINCT NULLIF(RTRIM(r.RsvChtNum),''))
+ " + ReservationScope;
+
+    /// <summary>비트 예약 메모 목록 DtlMst RESERVMEMO [코드('Memo'+번호), 이름], 보이는 차례. 번호만 남기기는 ClosingCodes가 한다.</summary>
+    public const string MemoKindsSql = "SELECT RTRIM(DtlCod),RTRIM(DtlCodNam) FROM dbo.DtlMst WHERE DtlTblCod='RESERVMEMO' ORDER BY DtlDspSeq,DtlCod";
+
+    private static readonly SqlParam Day = new SqlParam("@day", SqlParamKind.Char, 8);
+    private static readonly SqlParam NextDay = new SqlParam("@nextDay", SqlParamKind.Char, 8);
+    private static readonly SqlParam From = new SqlParam("@from", SqlParamKind.Char, 12);
+    private static readonly SqlParam To = new SqlParam("@to", SqlParamKind.Char, 12);
+    private static readonly SqlParam Hospital = new SqlParam("@hospital", SqlParamKind.VarChar, 32);
+
+    // 주사 코드 자리: commands.json closing.day codes의 한 코드 최대 20자
+    private static readonly SqlParam[] Codes =
+        Enumerable.Range(0, CodeSlots).Select(i => new SqlParam("@c" + i.ToString(CultureInfo.InvariantCulture), SqlParamKind.VarChar, 20)).ToArray();
+
+    /// <summary>문장 → 그 문장에 실제로 있는 매개변수(design.md 3-2).</summary>
+    public static IReadOnlyDictionary<string, SqlParam[]> Parameters { get; } = new Dictionary<string, SqlParam[]>(StringComparer.Ordinal)
+    {
+        [DayVisitsSql] = new[] { Day, From, To, Hospital },
+        [DayCodesSql] = new[] { From, To, Hospital },
+        [InjectionFirstSql] = new[] { From, To, Hospital }.Concat(Codes).ToArray(),
+        [MoneyExtraSql] = new[] { Day, NextDay, Hospital },
+        [InpatientSql] = new[] { From, To, Hospital },
+        [ReservationKindsSql] = new[] { From, To, Hospital },
+        [ReservationPatientsSql] = new[] { From, To, Hospital },
+        [MemoKindsSql] = new SqlParam[0],
+    };
+}
