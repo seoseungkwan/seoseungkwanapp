@@ -64,8 +64,8 @@ type ClosingDay = {
 
 ### 3-2 새 문장 (TASK-3 → TASK-11이 `Erp.Core/Closing/ClosingSql.cs`로 옮김, `Parameters` 표. 허용은 `ErpReadGuard`가 이 표를 본다)
 - 진료 조건(모든 문장 같음): 외래(`OcmPatTyp='O'`)·접수취소 아님(`OcmRsuYon<>'O'`)·`OcmComStt IN ('HN','PN','TN','VN','OE','WN','OB')`·병원 범위(DepMst, `RevenueSql`과 같음). 처방 조건: `OdrDelFlg='N' AND OdrCanYon='N' AND OdrOutCod<>'99'`
-- `DayVisitsSql`(@day·@from·@to·@hospital): 진료마다 [진료번호, 그날 번호 `DENSE_RANK() OVER (ORDER BY RTRIM(OcmChtNum))`, `RTRIM(OcmDgsNfs)`, 만 나이(`PbsBirDte`가 8자리 날짜면 `(CONVERT(int,@day) − CONVERT(int,PbsBirDte)) / 10000`, 아니면 NULL), 마지막 정상 수납 줄(`OrpRcpStt<>'C'`인 줄 가운데 `MAX(OrpRcpSeq)`, 미수입금 줄 'C'는 진료비 칸이 늘 0이라 뺀다) `OrpTotAmt` 또는 NULL]
-- `DayCodesSql`(@from·@to·@hospital): [진료번호, `UPPER(RTRIM(OdrCod))`, 줄 수]
+- `DayVisitsSql`(@day·@from·@to·@hospital): 진료마다 [진료번호, 그날 번호 `DENSE_RANK() OVER (ORDER BY RTRIM(OcmChtNum))`, `RTRIM(OcmDgsNfs)`, 만 나이(`PbsBirDte`가 8자리 날짜면 `(CONVERT(int,@day) − CONVERT(int,PbsBirDte)) / 10000`, 아니면 NULL), 마지막 정상 수납 줄(`OrpRcpStt<>'C'`인 줄 가운데 `MAX(OrpRcpSeq)`, 미수입금 줄 'C'는 진료비 칸이 늘 0이라 뺀다) `OrpTotAmt` 또는 NULL — 수납 끝남(unpaidVisits)에만 쓴다]
+- `DayCodesSql`(@from·@to·@hospital): [진료번호, `UPPER(RTRIM(OdrCod))`, 줄 수, 금액]. 금액 = 원내(`OdrOspTyp='I'`) 줄의 `OdrDay × (OdrOutLab='S'면 OdrQty, 아니면 OdrDtrQty) × OdrPrc` 합(`RevenueSql.CodeAmounts`와 같은 식, 값이 빠진 줄은 0, TASK-14)
 - `InjectionFirstSql`(@from·@to·@hospital·@c0~@c19, 빈 자리는 첫 코드로 채움): 그날 그 코드를 받은 환자 가운데 @from 전 진료에 그 코드가 없는 환자 수 하나
 - `MoneyExtraSql`(@day·@nextDay·@hospital, 수납일 기준): [COO 현금 합, 할인 줄(DOD·DOE·DET·DNI·DN1·DN3·DN5) 현금 합, `OrpRcvBil` 합, TPR 현금+카드+계좌 합] (`notes/bit-codes.md` B절, 비트 수납집계 화면과 같은 칸)
 - `InpatientSql`(@from·@to·@hospital): 외래가 아닌 접수 수
@@ -76,7 +76,7 @@ type ClosingDay = {
 ### 3-3 계산 (TASK-3, `ClosingDay.Read(db, scope, date, groups)` · `ClosingCodes.Read(db, scope, today)`)
 - 금액: `RevenueDays.Read(db, scope, d, d).Days[0]`을 그대로 쓰고(unconfirmed·splitUnconfirmed인 날은 빠진 칸을 `RevenueSql.FinanceNormal`·`FinanceReceivable` 줄을 확정 검사 없이 그대로 더해 채우고 경고 표시), 그 위에 `RevenueSql.FinanceReceivable`의 미수입금 현금·카드·계좌(4~6번째 칸)를 더 읽어 cash·card·transfer에 더한다. 원 미만은 칸마다 버린다. received = cash + card + transfer
 - 사람(그날 번호): 진찰구분은 1 → 3 → 그 밖(0 아님) → 0 차례로 앞선 하나, 만 나이는 첫 진료 값, 코드 집합, 진료 목록. 환자현황·3분류·연령은 requirements 이미 정한 것 3·4 그대로
-- 묶음: 코드 집합이 묶음 코드와 겹치는 사람 → patients·3분류, total = 그 사람들 진료 총진료비 합(NULL은 0으로, 그 수를 unpaidVisits에). `warnings.unpaidVisits` = 그날 모든 진료 가운데 NULL 수
+- 묶음: 코드 집합이 묶음 코드와 겹치는 사람 → patients·3분류, total = 그날 진료의 묶음 코드 줄 금액(`DayCodesSql` 금액) 합, 묶음마다 원 미만 버림(TASK-14. 전에는 그 사람들 진료 총진료비 합), unpaidVisits = 그 사람들 진료 가운데 총진료비 NULL 수. `warnings.unpaidVisits` = 그날 모든 진료 가운데 NULL 수
 - 주사: newPatients = 신환 가운데 injection 묶음 사람, newLines = 그들의 injection 코드 줄 수 합, firstTime = `InjectionFirstSql`(`RevenueSql.HistoryGuard` ≠ 0이면 부르지 않고 null)
 - 시간 제한은 `RevenueDays`와 같고, 1년 코드 목록은 `Sql.TrendTimeout`
 
@@ -101,12 +101,13 @@ type ClosingDay = {
 | `src/settings.ts` | `DEFAULTS`, `load()`/`save()`, `toGroups(settings)`(코드 있는 항목만 GROUP_KEYS 차례), `search(codes, text)` | 5 |
 | `options.html`·`src/options.ts` | 설정 화면(목업대로) | 5 |
 | `src/cells.ts` | `planCells(answer, settings) → Planned[]`(아래 표) | 4 |
-| `src/fill.ts` | `findInput(doc, where)`, `putValue(input, text)`, `fillAll(doc, plan) → { filled, missing: string[], unpicked, unknown }` | 4 |
+| `src/fill.ts` | `findInput(doc, where)`, `putValue(input, text)`, `fillAll(doc, plan) → { filled, missing: string[], unpicked, unknown, held }` | 4 · 14 |
 | `src/background.ts` | 통로(요청마다 연결 하나, 120초) | 7 |
 | `src/content.ts`(일반 스크립트, `import(chrome.runtime.getURL('main.js'))`만) · `src/main.ts` · `src/panel.ts` | 단추·날짜 읽기·부르기·채우기·안내 | 7 |
 
 - 설정 모양: `{ v: 1, picks: Partial<Record<GroupKey, string[]>>, etcNames: Record<'etc1'|'etc2'|'etc3'|'etc4', string>, reservations: Partial<Record<RsvRow, string[]>> }`. `RsvRow` = injection 주사 · followup 경과 · manual 도수 · eswt 충격파 · clinic 진료예약 · etc 기타(수액,드레싱등). 설정 화면 차례 = GROUP_KEYS 차례 → 예약 6줄
-- `Planned = { where: { j: 1, box, row } | { j: 2, card, row, col } | { j: 2, field }, value: string | null, why?: 'unpicked' | 'unknown' }`. 기타 줄의 row는 그 기타 이름(이름이 비면 unpicked)
+- `Planned = { where: { j: 1, box, row } | { j: 2, card, row, col } | { j: 2, field }, value: string | null, why?: 'unpicked' | 'unknown' | 'held' }`. 기타 줄의 row는 그 기타 이름(이름이 비면 unpicked)
+- 보류(TASK-14, 기본값 (아)): `cells.ts`의 `HELD_SALES: GroupKey[] = ['carm', 'sono']` 한 곳. 이 묶음의 치료별 매출 칸은 코드를 골랐으면 `why: 'held'`(값 없음), 안 골랐으면 지금처럼 unpicked. `fillAll`은 held를 넣지도 못 찾은 칸에 적지도 않고 `held`에 센다
 - 칸 표 (구역 > 줄 ← 값, 고르지 않은 묶음은 unpicked, null은 unknown):
   - 1 환자현황 > 신환·90일초진·재진·물리치료내원·진찰료 산정안함·합계 ← patients.new·first90·return·ptVisit·noExamFee·total
   - 1 진료 · 치료현황 > 씨암·SONO·도수상담·도수치료·충격파(체충)·관절조영술·리푸스·손발톱케어·CT·수술 ← groups[carm·sono·manualConsult·manual·eswt·arthro·lipus·nail·ct·surgery].patients
@@ -116,7 +117,7 @@ type ClosingDay = {
   - 2 치료별 신환/90일초진/재진 건수 > 씨암(주사)·SONO(주사)·관절조영·도수·충격파·{기타 이름} × 신환·90일초진·재진 ← groups[carm·sono·arthro·manual·eswt·etc1~4]
   - 2 연령별 신환/90일초진/재진 > 10대미만·10대·…·90대 × 신환·90일초진·재진 ← ages['0'…'90']
   - 2 운영 지표 낱칸 > 도수 총금액·충격파 총금액 ← groups[manual·eswt].total · ESWT Standard·ESWT Radial ← groups[eswtStd·eswtRadial].patients · 주사1회환자·신환주사환자·신환주사건수 ← injection.firstTime·newPatients·newLines
-  - 2 치료별 매출 > 씨암·SONO·관절조영·도수·충격파·물리치료·{기타 이름} × 금액(원) ← groups[carm·sono·arthro·manual·eswt·pt·etc1~4].total
+  - 2 치료별 매출 > 씨암·SONO·관절조영·도수·충격파·물리치료·{기타 이름} × 금액(원) ← groups[carm·sono·arthro·manual·eswt·pt·etc1~4].total(`HELD_SALES` 묶음은 held)
 - 넣는 법: 내용 스크립트 세계에서도 DOM 값은 같다. `Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el, text)` → `new Event('input', { bubbles: true })`. 금액칸은 '' → input → 숫자 → input → `blur()`(조사 6절). 이 방법이 React 값으로 남는지는 TASK-10에서 실측하고, 안 되면 `fill.ts`만 `execCommand('insertText')`로 바꾼다
 - 날짜 읽기: 글자 '마감 일자' label과 같은 줄의 `input.datepicker-input`(aria-label '연도 선택' 아닌 것) 값, 없으면 'YYYY-MM-DD (오늘)' 글자. 화면 안 이동은 0.5초마다 주소를 보거나 `MutationObserver`로 안다
 - 서비스 워커는 `sender.id === chrome.runtime.id`이고 cmd가 둘 중 하나일 때만 받는다. 연결이 '없음'·'거절'(ERP 도우미가 안 깔림)로 끊기면 E-HELPER-MISSING로 답한다
@@ -124,8 +125,9 @@ type ClosingDay = {
 - 빌드: `npm run ext-erp:build` → `extension-erp/dist/`(tsc + manifest·options.html 복사). 설치는 기존처럼 압축 파일을 풀어 '압축해제된 확장 프로그램 로드'. 개인키는 두지 않는다(공개키 `key`만으로 ID가 정해진다)
 
 ## 5. 결과 안내 경고 줄 (`panel.ts`, 해당할 때만)
+- held > 0(TASK-14): '{보류 묶음 이름을 ·로 이음} 치료별 매출은 채우지 않았어요. 직접 넣어 주세요.' — 지금 '씨암·SONO 치료별 매출은 채우지 않았어요. 직접 넣어 주세요.'(이름은 `GROUP_NAMES`, 고르지 않은 칸 줄 바로 아래)
 - moneyUnconfirmed: '환불·변경수납 등이 있는 날이에요. 외래 수입 8칸(총매출·청구액·비급여·미수입금·진료수납액·카드·현금·계좌)은 비트 수납 줄을 그대로 더한 값이라 다를 수 있어요. 확인해 주세요.' · splitUnconfirmed: '청구액·비급여는 비트에서 딱 나눠지지 않아 그대로 더한 값이에요. 확인해 주세요.'
-- unpaidVisits N: '수납이 끝나지 않은 진료 N건이 있어요. 치료별 매출이 적게 나왔을 수 있어요.' · refund > 0: '환불 {금액}원이 있어요. 금액을 확인해 주세요.'
+- unpaidVisits N: '수납이 끝나지 않은 진료 N건이 있어요.'(TASK-14) · refund > 0: '환불 {금액}원이 있어요. 금액을 확인해 주세요.'
 - unknownAge N: '생년월일이 없는 환자 N명은 연령별 표에 넣지 않았어요.' · noHistory: '예전 자료가 따로 있어 주사1회환자는 채우지 않았어요.' · inpatientVisits > 0: '입원 접수가 있어 입원수입 칸은 채우지 않았어요.'
 - 늘 끝에: '확인한 뒤 업무일지 1 [전체 저장]과 업무일지 2 [일일 상세 저장]을 눌러 주세요.'
 

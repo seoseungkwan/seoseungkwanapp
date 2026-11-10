@@ -1,7 +1,7 @@
 # 작업 분할: ERP 마감일지 비트 값 채우기
 
 > 형식: `## TASK-n: 제목` 아래 `- REQ:`, `- AC:`, `- Files:`(수정 범위), `- Tests:`, `- TDD:`, `- 차례:`. 승인되면 Files/Tests 경로만 고칠 수 있다.
-> **할 순서**: Phase 0(TASK-1) → Phase 1(TASK-2 ‖ TASK-3 ‖ TASK-4 ‖ TASK-5) → Phase 2(TASK-6 ‖ TASK-7 ‖ TASK-9) — **여기까지 끝남**(2026-11-10). 방향이 바뀌어(ERP 전용 도우미) → Phase 4(TASK-11 ‖ TASK-13) → Phase 5(TASK-12 ‖ TASK-8) → Phase 6(TASK-10). 같은 Phase 안 TASK는 파일이 겹치지 않아 일꾼들이 각자 worktree에서 동시에 한다. 경계는 design.md 2·3·4절(명령 답 모양·ERP 도우미 틀·설정 모양·칸 표)로 고정한다.
+> **할 순서**: Phase 0(TASK-1) → Phase 1(TASK-2 ‖ TASK-3 ‖ TASK-4 ‖ TASK-5) → Phase 2(TASK-6 ‖ TASK-7 ‖ TASK-9) — **여기까지 끝남**(2026-11-10). 방향이 바뀌어(ERP 전용 도우미) → Phase 4(TASK-11 ‖ TASK-13) → Phase 5(TASK-12 ‖ TASK-8) → Phase 6(TASK-10) → Phase 7(TASK-14, 2026-11-10 밤 묶음 금액 바꿈). 같은 Phase 안 TASK는 파일이 겹치지 않아 일꾼들이 각자 worktree에서 동시에 한다. 경계는 design.md 2·3·4절(명령 답 모양·ERP 도우미 틀·설정 모양·칸 표)로 고정한다.
 > 각 TASK는 시험을 먼저 써서 RED를 본다. 검토는 끝에 한 번(전체 시험·lint·build·`ext-erp:build`·ERP 도우미 만들기·`git diff 1a721ef -- helper src`). 기존 `extension/`·`helper/`·웹 `src/`는 고치지 않는다. 깃허브 올리기·도우미 판 만들기는 사용자가 말할 때만.
 
 ## 먼저 할 일 (코드 작업 아님)
@@ -109,3 +109,11 @@
 - Tests: extension-erp/src/panel.test.ts, extension-erp/src/main.test.ts
 - TDD: required — E-HELPER-MISSING → 'ERP 도우미를 설치해 주세요.', E-BIT-NOT-REGISTERED → '이 PC가 아직 등록되지 않았어요. ERP 도우미 설치 파일을 다시 실행해 주세요.', 그 밖 번호는 지금처럼. 칸은 그대로
 - 차례: Phase 4 (TASK-11과 같이, 파일 안 겹침)
+
+## TASK-14: 묶음 금액을 처방 코드 금액으로 · 씨암·SONO 매출 보류 · 처음 코드 더함 (2026-11-10 밤 사용자 결정)
+- REQ: REQ-3604, REQ-3607, REQ-3608, REQ-3609
+- AC: AC-3604.3, AC-3604.5, AC-3607.3, AC-3608.4, AC-3609.4
+- Files: helper-erp/src/Erp.Core/Closing/ClosingSql.cs, helper-erp/src/Erp.Core/Closing/ClosingDay.cs, helper-erp/tests/Erp.Core.Tests/Closing/ClosingSql.test.cs, helper-erp/tests/Erp.Core.Tests/Closing/ClosingDay.test.cs, helper-erp/tests/Erp.Core.Tests/Closing/ClosingFakes.test.cs, helper-erp/tests/erp-closing.dotnet.test.ts, extension-erp/src/settings.ts, extension-erp/src/settings.test.ts, extension-erp/src/options.test.ts, extension-erp/src/cells.ts, extension-erp/src/cells.test.ts, extension-erp/src/fill.ts, extension-erp/src/fill.test.ts, extension-erp/src/panel.ts, extension-erp/src/panel.test.ts, extension-erp/src/main.test.ts, specs/erp-closing-fill/notes/check-2026-11-09.md
+- Tests: helper-erp/tests/erp-closing.dotnet.test.ts, extension-erp/src/settings.test.ts, extension-erp/src/options.test.ts, extension-erp/src/cells.test.ts, extension-erp/src/fill.test.ts, extension-erp/src/panel.test.ts, extension-erp/src/main.test.ts
+- TDD: required — design.md 3-2·3-3·4·5절대로. 시험(RED 먼저). 도우미(가짜 IBitDb): `DayCodesSql` 금액 칸(식이 `RevenueSql.CodeAmounts`와 같음·원내 줄만·매개변수 표 그대로), 묶음 total = 묶음 코드 줄 금액 합(진찰료·묶음 밖 코드 줄·진료 총진료비는 안 더함), 한 묶음의 코드 둘·두 묶음에 든 코드 하나, 묶음마다 원 미만 버림, 단가 0원 코드 → 0, 수납 줄 없는 진료도 금액 그대로·unpaidVisits는 지금처럼. 확장: 처음 값 물리치료 6개·크라이오 CRYO·CRYO3(이미 정한 것 7), `HELD_SALES`(carm·sono)의 치료별 매출 칸이 골랐으면 held·안 골랐으면 unpicked, held 칸은 안 바뀌고 못 찾은 칸·고르지 않은 칸에 안 셈, 같은 묶음의 건수 칸은 그대로 채움, `HELD_SALES`를 비우면 지금처럼 채움, 안내의 보류 줄과 미수납 경고 줄 새 글. 끝나면 AC-3604.5를 이 PC 비트 DB(읽기 전용, 집계만)로 확인해 notes 6절과 같은지 적는다. 답 모양(design.md 2절)은 그대로
+- 차례: Phase 7 (TASK-10 뒤)
