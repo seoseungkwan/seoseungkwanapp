@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using Precheck.Core.Bit;
+using Precheck.Core.Closing;
 using Precheck.Core.Contact;
 using Precheck.Core.Input;
 using Precheck.Core.Protocol;
@@ -12,7 +13,7 @@ namespace Precheck.Helper;
 /// <summary>
 /// 크롬이 켜는 네이티브 메시징 도우미 입구. 크롬이 넘긴 첫 인자(호출 origin)를 보고, 표준 입력·출력으로
 /// 메시지 틀을 주고받는다(MessageLoop). 표준 출력에는 메시지 틀만 나간다 (AC-001.1·AC-001.3·AC-001.6).
-/// 명령 처리기: hello, 비트 명령, stats.rows, revenue.days, contact.targets(patients TASK-9), store.*, bit.input(TASK-35). 다른 명령은 뒤 TASK가 붙인다
+/// 명령 처리기: hello, 비트 명령, stats.rows, revenue.days, closing.codes·closing.day(새 확장만, erp-closing-fill TASK-6), contact.targets(patients TASK-9), store.*, bit.input(TASK-35). 다른 명령은 뒤 TASK가 붙인다
 /// (비트를 읽는 명령은 처음에 Commands/RequireHospital로 등록 병원을 다시 확인한다).
 /// </summary>
 internal static class Program
@@ -34,6 +35,7 @@ internal static class Program
             BitCommands.Register(dispatcher, HelperServices.Create());
             Precheck.Core.Stats.StatsCommands.Register(dispatcher, HelperServices.Create());
             RevenueCommands.Register(dispatcher, HelperServices.Create());
+            ClosingCommands.Register(dispatcher, HelperServices.Create());
             ContactCommands.RegisterTargets(dispatcher, HelperServices.Create());
             HelperStore.Register(dispatcher);
 

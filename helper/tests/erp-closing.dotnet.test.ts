@@ -1,8 +1,15 @@
-// 도우미 마감일지 숫자 읽기(spec erp-closing-fill TASK-3, REQ-3602~3606)의 C# 시험(helper/tests/Precheck.Core.Tests/Closing/*.test.cs)을 감싼다.
+// 도우미 마감일지 숫자 읽기(spec erp-closing-fill TASK-3, REQ-3602~3606)와 두 명령 잇기(TASK-6)의 C# 시험
+// (helper/tests/Precheck.Core.Tests/Closing/*.test.cs)을 감싼다.
 // dotnet test를 한 번 돌리고, AC마다 그 AC ID가 붙은 C# 시험이 실제로 돌았고 하나도 실패하지 않았는지 본다.
+// 도우미 입구(Program.cs)에 closing.* 처리기를 붙인 한 줄은 글자로 본다(Precheck.Helper는 net48이라 C# 시험이 부르지 않는다).
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { runDotnet } from './runDotnet'
 
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+const PROGRAM = path.join(ROOT, 'helper', 'src', 'Precheck.Helper', 'Program.cs')
 const FILTER = 'Precheck.Core.Tests.Closing'
 let run: { code: number; output: string } = { code: -1, output: '' }
 
@@ -88,5 +95,31 @@ describe('REQ-3606 도우미가 지키는 것 (C# Precheck.Core.Tests.Closing)',
 
   it('AC-3606.2 이름·전화·주민·주소·메모 칸을 읽지 않고 차트번호·생년월일을 결과 칸으로 내지 않음, 답 JSON 칸이 design.md 2절과 같음', () => {
     expectAc('AC-3606.2')
+  })
+})
+
+describe('TASK-6 두 명령 잇기 (C# Precheck.Core.Tests.Closing.ClosingCommandsTests)', () => {
+  it('AC-3601.3 새 확장이 부르면 closing.codes·closing.day는 result 하나, 기존 확장이 부르면 closing.*는 E-HELPER-UNKNOWN-COMMAND, 새 확장의 revenue.days·hello도 E-HELPER-UNKNOWN-COMMAND', () => {
+    expectAc('AC-3601.3')
+  })
+
+  it('AC-3606.3 등록 안 된 PC·다른 병원은 revenue.days와 같은 번호, 진단 기록은 시각·명령 이름·오류 번호만', () => {
+    expectAc('AC-3606.3')
+  })
+
+  // 합치다 등록 줄이 빠지면 C# 시험은 모두 통과하는데 진짜 도우미는 E-HELPER-UNKNOWN-COMMAND로 답한다. 그래서 줄을 글자로 묶는다.
+  // 컴파일되는지는 input-wiring.dotnet.test.ts(AC-035.7)의 Precheck.Helper x86 net48 빌드가 본다
+  it('AC-3601.3 Program.cs는 메시지 고리 전에 closing.* 처리기를 한 번 붙인다', () => {
+    const program = readFileSync(PROGRAM, 'utf8')
+    // 주석으로 막은 줄은 붙인 것이 아니다: 앞뒤 공백만 지운 줄 전체가 같아야 센다
+    const lines = program.split(/\r?\n/).map((text) => text.trim())
+    const line = 'ClosingCommands.Register(dispatcher, HelperServices.Create());'
+    expect(program.match(/ClosingCommands\.Register\(/g)).toHaveLength(1)
+    expect(lines.filter((text) => text === line)).toHaveLength(1)
+    expect(lines).toContain('using Precheck.Core.Closing;')
+    const closing = lines.indexOf(line)
+    const loop = lines.findIndex((text) => !text.startsWith('//') && text.includes('MessageLoop.Run('))
+    expect(closing).toBeGreaterThan(-1)
+    expect(closing).toBeLessThan(loop)
   })
 })
