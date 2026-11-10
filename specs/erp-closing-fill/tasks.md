@@ -1,8 +1,8 @@
 # 작업 분할: ERP 마감일지 비트 값 채우기
 
 > 형식: `## TASK-n: 제목` 아래 `- REQ:`, `- AC:`, `- Files:`(수정 범위), `- Tests:`, `- TDD:`, `- 차례:`. 승인되면 Files/Tests 경로만 고칠 수 있다.
-> **할 순서**: Phase 0(TASK-1) → Phase 1(TASK-2 ‖ TASK-3 ‖ TASK-4 ‖ TASK-5) → Phase 2(TASK-6 ‖ TASK-7 ‖ TASK-9) → Phase 3(TASK-8 → TASK-10). 같은 Phase 안 TASK는 파일이 겹치지 않아 일꾼들이 각자 worktree에서 동시에 한다. 경계는 design.md 2·3·4절(명령 답 모양·설정 모양·칸 표)로 고정한다.
-> 각 TASK는 시험을 먼저 써서 RED를 본다. 검토는 끝에 한 번(전체 시험·lint·build·`ext-erp:build`). 기존 `extension/`·웹 화면은 고치지 않는다. 깃허브 올리기·도우미 판 만들기는 사용자가 말할 때만.
+> **할 순서**: Phase 0(TASK-1) → Phase 1(TASK-2 ‖ TASK-3 ‖ TASK-4 ‖ TASK-5) → Phase 2(TASK-6 ‖ TASK-7 ‖ TASK-9) — **여기까지 끝남**(2026-11-10). 방향이 바뀌어(ERP 전용 도우미) → Phase 4(TASK-11 ‖ TASK-13) → Phase 5(TASK-12 ‖ TASK-8) → Phase 6(TASK-10). 같은 Phase 안 TASK는 파일이 겹치지 않아 일꾼들이 각자 worktree에서 동시에 한다. 경계는 design.md 2·3·4절(명령 답 모양·ERP 도우미 틀·설정 모양·칸 표)로 고정한다.
+> 각 TASK는 시험을 먼저 써서 RED를 본다. 검토는 끝에 한 번(전체 시험·lint·build·`ext-erp:build`·ERP 도우미 만들기·`git diff 1a721ef -- helper src`). 기존 `extension/`·`helper/`·웹 `src/`는 고치지 않는다. 깃허브 올리기·도우미 판 만들기는 사용자가 말할 때만.
 
 ## 먼저 할 일 (코드 작업 아님)
 1. 설정 화면·[비트 값 채우기] 단추·결과 안내 클릭 목업을 `docs/mockups/erp-closing-fill/`에 만들어 사용자 승인을 받는다(화면 규칙. TASK-5·TASK-7은 그 뒤에)
@@ -16,9 +16,9 @@
 - TDD: required — RSA 2048 열쇠를 새로 만들어 공개키(DER base64)만 manifest `key`에 넣는다(개인키는 저장소에 넣지 않음). 시험: MV3·이름·permissions가 정확히 [nativeMessaging, storage]·content_scripts와 web_accessible_resources의 matches가 `https://erp.minesolution.com/*` 하나·host_permissions·externally_connectable 없음·key로 계산한 ID가 32자 a~p·`HOST_NAME`이 commands.json hostName과 같음·`GROUP_KEYS`가 design.md 2절 차례·`extension-erp/src/*.ts`(시험 제외)에 fetch·XMLHttpRequest·WebSocket·console·localStorage·sessionStorage 없음. vitest include에 `extension-erp/**/*.test.ts`, 루트 tsconfig exclude와 eslint(dist 무시, extension-erp/src에 네트워크·console·웹 저장소 금지)에 extension-erp, package.json에 `ext-erp:build`(tsc + manifest·options.html 복사)
 - 차례: Phase 0
 
-## TASK-2: 도우미 — 새 확장 허용과 부른 쪽마다 명령 나눔
+## TASK-2: 도우미 — 새 확장 허용과 부른 쪽마다 명령 나눔 (끝남 → TASK-11이 되돌림)
 - REQ: REQ-3601
-- AC: AC-3601.1, AC-3601.2, AC-3601.3, AC-3601.4
+- AC: (그때의 AC-3601.1~3601.4. 지금 AC는 TASK-11이 맡는다)
 - Files: src/lib/bridge/commands.json, helper/src/Precheck.Core/Protocol/CommandTable.cs, helper/src/Precheck.Core/Protocol/OriginGuard.cs, helper/src/Precheck.Core/Protocol/MessageLoop.cs, helper/src/Precheck.Core/Protocol/Dispatcher.cs, helper/install/host-manifest.json, helper/tests/build.test.ts, helper/tests/Precheck.Core.Tests/Protocol/CommandTable.test.cs, helper/tests/Precheck.Core.Tests/Protocol/OriginGuard.test.cs, helper/tests/Precheck.Core.Tests/Protocol/MessageLoop.test.cs, helper/tests/Precheck.Core.Tests/Protocol/Dispatcher.test.cs, helper/tests/protocol.dotnet.test.ts
 - Tests: helper/tests/protocol.dotnet.test.ts, helper/tests/build.test.ts
 - TDD: required — commands.json에 design.md 2절 `erp` 구역(ID·key는 TASK-1 manifest에서). 시험: erp 구역 읽기(모르는 열쇠·겹친 이름·틀린 ID는 표 틀림), `CallerOf` 세 경우, 새 확장 → closing.* 통과·hello·claim.month는 E-HELPER-UNKNOWN-COMMAND, 기존 확장 → closing.* 막힘·지금 명령 그대로, 모르는 origin은 지금처럼 끝남, allowed_origins 정확히 둘, `erp.extensionKey`가 extension-erp/manifest.json key와 같고 ID가 맞음. 웹 `protocol.test.ts`·기존 확장·지금 C# 시험은 기대값을 바꾸지 않는다(`Names`는 지금 목록 그대로)
@@ -64,13 +64,12 @@
 - TDD: required — 가짜 chrome(runtime·storage·connectNative)과 `__tests__/erpPage.ts`로: 단추가 `/h/closing`+마감 일자일 때만, 주소만 바뀌는 이동에 사라지고 다시 생김, 날짜 두 꼴 읽기, 날짜 없음·설정 없음(설정 화면 열기)·읽는 중 막힘, 답 온 뒤 날짜 바뀜 → 안 채움, 안내 글과 경고 줄(design.md 5절), 오류 셋(없음·거절 → 새 판 안내, 오류 번호, 120초) 때 칸 그대로, 서비스 워커는 같은 확장·두 명령만 받고 요청마다 연결 하나·끝나면 닫음. 글은 승인된 목업 그대로
 - 차례: Phase 2 (TASK-4·5 뒤, 목업 승인 뒤)
 
-## TASK-8: 도우미 판 올림
-- REQ: REQ-3610
+## TASK-8: 설치 안내 (바뀜: 기존 도우미 판은 올리지 않음)
+- REQ: REQ-3610, REQ-3611
 - AC: AC-3610.1
-- Files: helper/Directory.Build.props, src/lib/bridge/versions.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts, helper/tests/input-wiring.dotnet.test.ts, helper/install/README.md, extension-erp/README.md
-- Tests: src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts, helper/tests/input-wiring.dotnet.test.ts
-- TDD: required — 번호는 사용자가 판을 만들 때 정한다(제안 0.6.0). Version = LATEST_HELPER, MIN_HELPER 그대로. 설치 안내(새 확장 압축 풀어 로드하기, 새 도우미 먼저 깔기)
-- 차례: Phase 3
+- Files: helper-erp/install/README.md, extension-erp/README.md
+- TDD: exempt — 글만. ERP 도우미 깔기(압축 풀기 → install.cmd → 비트 로그인 창·PC 확인 창으로 등록, 취소하면 다시 실행) → 새 확장 압축 풀어 '압축해제된 확장 프로그램 로드' → 처음 설정 화면 [저장]. 기존 도우미·청구 화면은 그대로라는 것, 지우기(uninstall.ps1). 초안: `~/.claude/state/handoff/erp-ext-readme-draft.md`(옛 방향이라 도우미 부분은 고쳐 씀)
+- 차례: Phase 5 (TASK-11 뒤, TASK-12와 같이)
 
 ## TASK-9: 확인 — 2026-11-09 숫자 대조 (이 PC, 의원 비트 DB 읽기 전용)
 - REQ: REQ-3610
@@ -84,5 +83,29 @@
 - AC: AC-3610.3, AC-3608.2
 - Files: specs/erp-closing-fill/notes/erp-screen-check.md, extension-erp/src/fill.ts, extension-erp/src/fill.test.ts
 - Tests: extension-erp/src/fill.test.ts
-- TDD: required — 크롬 도구가 없을 수 있어 사용자와 함께 한다: 새 도우미 설치(사용자) → `ext-erp:build` 압축 → 압축해제 로드 → 2026-11-09 마감일지에서 단추 → 칸·금액칸·다른 칸으로 옮겨도 남는지 확인 → notes에 적음. 금액칸이 안 들어가면 그때만 fill.ts를 `execCommand('insertText')` 방식으로 고친다(시험 먼저). 저장은 사용자가 정한다
-- 차례: Phase 3 (TASK-8 뒤, 사용자와 시간 맞춰)
+- TDD: required — 크롬 도구가 없을 수 있어 사용자와 함께 한다: 이 PC에서 ERP 도우미 Release 만들기 → `install.ps1`(등록 창은 사용자) → `ext-erp:build` → 압축해제 로드 → 2026-11-09 마감일지에서 단추 → 칸·금액칸·다른 칸으로 옮겨도 남는지, 기존 청구 화면이 그대로 되는지 확인 → notes에 적음. 금액칸이 안 들어가면 그때만 fill.ts를 `execCommand('insertText')` 방식으로 고친다(시험 먼저). 저장은 사용자가 정한다
+- 차례: Phase 6 (TASK-12·8 뒤, 사용자와 시간 맞춰)
+
+## TASK-11: ERP 도우미 틀 — 옮기기와 되돌리기
+- REQ: REQ-3601, REQ-3602, REQ-3603, REQ-3604, REQ-3605, REQ-3606, REQ-3611
+- AC: AC-3601.1, AC-3601.2, AC-3601.3, AC-3601.4, AC-3601.6, AC-3606.1, AC-3606.3, AC-3611.1, (옮긴 시험의 AC-3602.*·3603.*·3604.*·3605.*·3606.2 그대로)
+- Files: helper/**(1a721ef로 되돌림·이 기능이 더한 파일 지움), src/lib/bridge/commands.json(1a721ef로), helper-erp/commands.json, helper-erp/Directory.Build.props, helper-erp/ErpHelper.sln, helper-erp/src/Erp.Core/**, helper-erp/tests/Erp.Core.Tests/**, helper-erp/tests/runDotnet.ts, helper-erp/tests/erp-closing.dotnet.test.ts, helper-erp/tests/erp-core.dotnet.test.ts, extension-erp/src/types.ts, extension-erp/src/manifest.test.ts, extension-erp/src/background.ts, extension-erp/src/background.test.ts, vitest.config.ts, src/b2b-merge.test.ts, eslint.config.mjs, .gitignore
+- Tests: helper-erp/tests/erp-core.dotnet.test.ts, helper-erp/tests/erp-closing.dotnet.test.ts, extension-erp/src/manifest.test.ts, extension-erp/src/background.test.ts
+- TDD: required — 먼저 `Closing/*`와 그 시험을 `helper-erp`로 옮기고(namespace만 바꿈, 내용 그대로) helper/·commands.json을 1a721ef로 되돌린다. 새 시험(RED 먼저): ERP 명령 표 읽기(design.md 2절, 명령 둘뿐·`CommandTable.Parse` 통과·extensionKey가 manifest key와 같고 ID가 맞음·hostName `com.seoseungkwan.erp_helper`), `ErpReadGuard`(ClosingSql 문장·기존 허용 문장 통과, 표 밖·틀린 매개변수 E-BIT-READ-FAILED, Closing 읽기가 모두 ErpReadGuard), 기존 `OriginGuard`·`Dispatcher`에 ERP 표를 넣으면 새 확장만·두 명령만(hello·claim.month는 E-HELPER-UNKNOWN-COMMAND, 기존 확장 origin은 끝남), `HOST_NAME`·확장 시험이 `helper-erp/commands.json`을 봄, `git diff 1a721ef -- helper src`가 b2b-merge 시험 말고는 비어 있음. vitest include에 `helper-erp/tests/*.test.ts`, .gitignore에 `helper-erp/**/bin/`·`obj/`. 기존 C# 시험(helper/)은 1a721ef 그대로 통과
+- 차례: Phase 4
+
+## TASK-12: ERP 도우미 실행 프로그램·등록·설치·만들기
+- REQ: REQ-3611, REQ-3601, REQ-3606
+- AC: AC-3611.2, AC-3611.3, AC-3611.4, AC-3611.5, AC-3611.6, AC-3601.2, AC-3606.3
+- Files: helper-erp/src/Erp.Helper/**, helper-erp/ErpHelper.sln, helper-erp/install/host-manifest.json, helper-erp/install/install.cmd, helper-erp/install/install.ps1, helper-erp/install/uninstall.ps1, .github/workflows/helper-erp.yml, helper-erp/tests/erp-helper.test.ts, helper-erp/tests/erp-helper-build.dotnet.test.ts
+- Tests: helper-erp/tests/erp-helper.test.ts, helper-erp/tests/erp-helper-build.dotnet.test.ts
+- TDD: required — design.md 3-4·3-5대로. 시험: Erp.Helper가 net48로 만들어짐(경고 없음), Program이 `--register`일 때만 RegisterFlow·종료 번호 0/1/2, 아니면 ERP 표·ClosingCommands·MessageLoop만(hello 없음), 저장 자리 `ErpHelper\data`·`logs`(PrecheckHelper 글자 없음), ErpBitDb가 ErpReadGuard 먼저·Rollback·Commit 없음·`ReadOnlyConnection.Create`, host-manifest(name·allowed_origins 하나), install.ps1(ERP 열쇠·app 폴더·`--register`·안내 셋, 기존 열쇠·폴더 글자 없음), uninstall은 ERP 것만, workflow가 `erp-helper-v*` 태그에서만 판·압축 이름. 기존 helper.yml 그대로
+- 차례: Phase 5 (TASK-11 뒤)
+
+## TASK-13: 새 확장 — 결과 안내 글 두 줄
+- REQ: REQ-3609
+- AC: AC-3609.5
+- Files: extension-erp/src/panel.ts, extension-erp/src/panel.test.ts, extension-erp/src/main.ts, extension-erp/src/main.test.ts
+- Tests: extension-erp/src/panel.test.ts, extension-erp/src/main.test.ts
+- TDD: required — E-HELPER-MISSING → 'ERP 도우미를 설치해 주세요.', E-BIT-NOT-REGISTERED → '이 PC가 아직 등록되지 않았어요. ERP 도우미 설치 파일을 다시 실행해 주세요.', 그 밖 번호는 지금처럼. 칸은 그대로
+- 차례: Phase 4 (TASK-11과 같이, 파일 안 겹침)

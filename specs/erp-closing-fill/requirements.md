@@ -1,13 +1,14 @@
-# 요구사항: ERP 마감일지 비트 값 채우기 (새 크롬 확장 + 도우미 명령 2개)
+# 요구사항: ERP 마감일지 비트 값 채우기 (새 크롬 확장 + 새 ERP 도우미)
 
 > 기능 ID: `erp-closing-fill` · 형식: `### REQ-3601: 제목`, 수용 기준 `- AC-3601.1: Given/When/Then`. 시험 이름에 AC ID를 넣는다.
 > 결정은 모두 사용자가 정했다(2026-11-10, 결정 기록 `~/.claude/state/handoff/erp-closing-extension.md`). 조사: ERP 칸 `notes/erp-closing-fields.md`(ERP 공개 화면 파일 기준, 로그인 화면은 못 봄) · 비트 코드·수납 `notes/bit-codes.md`(비트 DB 읽기 전용).
+> 2026-11-10 저녁 사용자 결정(네 번째 승인 대상): 기존 도우미에 명령을 더하지 않고 **ERP 전용 도우미를 새로** 만든다(같은 저장소 `helper-erp/`). 기존 도우미(`helper/`)와 웹(`src/`)은 운영(1a721ef) 그대로 되돌린다. 이 PC 등록은 ERP 도우미가 **자기 따로** 한다.
 > 예시 날짜는 2026-11-09. 화면 글(설정 화면·단추·결과 안내)은 승인된 클릭 목업 `docs/mockups/erp-closing-fill/`이 이긴다.
 
 ## 배경 / 목표
 - 마감일지(업무일지 1·2)를 매일 손으로 채운다. ERP의 파일 올리기는 빈 칸만, 일부 칸만 채운다
-- 새 크롬 확장이 ERP 마감일지 화면(`https://erp.minesolution.com/h/closing`)에 [비트 값 채우기] 단추를 둔다. 누르면 화면의 '마감 일자'로 도우미에게 비트 숫자를 받아 비트로 셀 수 있는 칸을 모두 덮어쓴다. 저장은 사용자가 한다
-- 기존 확장 '청구 사전점검 연결'(`extension/`)과 ERP는 고치지 않는다
+- 새 크롬 확장이 ERP 마감일지 화면(`https://erp.minesolution.com/h/closing`)에 [비트 값 채우기] 단추를 둔다. 누르면 화면의 '마감 일자'로 새 ERP 도우미에게 비트 숫자를 받아 비트로 셀 수 있는 칸을 모두 덮어쓴다. 저장은 사용자가 한다
+- 기존 확장 '청구 사전점검 연결'(`extension/`)·기존 도우미(`helper/`)·웹(`src/`)과 ERP는 고치지 않는다. 의원 PC에는 도우미가 둘(기존·ERP) 깔린다
 
 ## 이미 정한 것 (다시 묻지 않는다)
 1. 단추를 눌렀을 때만 채운다. 날짜 = 화면 '마감 일자'. 적힌 칸도 덮어쓴다. 상태 선택·저장·기본단가·삭제·초기화는 건드리지 않는다
@@ -24,13 +25,17 @@
 - (가) 코드를 고르지 않은 항목·비트에서 셀 수 없는 칸은 **건드리지 않는다**(지우지 않는다). 결과 안내에 그 칸 수가 나온다
 - (나) 환불·변경수납·예치금이 있어 `revenue.days`가 금액을 확정하지 못하는 날(unconfirmed·splitUnconfirmed)도 사용자 결정 '채우고 경고'대로 외래 총매출·청구액·비급여·미수입금·진료수납액·카드·현금·계좌 여덟 칸을 비트 수납 줄을 확정 검사 없이 그대로 더한 값으로 채우고, 그 칸 이름을 적은 경고를 띄운다. 미수발생·감액·장애인기금·환불·치료별 매출은 늘 채운다
 - (다) 처음 쓸 때 설정을 한 번도 저장하지 않았으면 채우지 않고 설정 화면을 연다. 예약 표 6줄의 메모 번호도 처음엔 비어 있다(충격파 = 1, 도수 = 14·20·22는 사용자가 고른다)
+- (라) ERP 도우미 등록은 **설치할 때 한 번**: 설치 파일이 끝에 비트 로그인 창 → PC 확인 창을 띄운다(기존 도우미 등록과 같은 순서). 취소했거나 다시 하려면 설치 파일을 다시 실행한다. 확장 화면에는 등록 단추를 두지 않는다
+- (마) ERP 도우미는 기존 도우미의 부품(비트 찾기·등록·메시지 틀)을 **고치지 않고 참조로 같이 쓴다**. 비트 읽기 관문(허락한 문장만 통과)만 ERP 도우미가 따로 가진다(기존 관문은 기존 문장만 알아서)
+- (바) 결과 안내 글 두 줄은 승인된 목업과 다르다: 도우미가 없을 때 '도우미를 새 판으로 설치해 주세요.' → 'ERP 도우미를 설치해 주세요.', 등록이 안 됐을 때 새 줄 '이 PC가 아직 등록되지 않았어요. ERP 도우미 설치 파일을 다시 실행해 주세요.'
 
-### REQ-3601: 새 확장과 도우미 연결
-- AC-3601.1: Given `extension-erp/manifest.json`, Then MV3이고 이름 'ERP 마감일지 채우기', 권한은 `nativeMessaging`·`storage` 둘뿐, 내용 스크립트와 그것이 불러오는 모듈 파일(`web_accessible_resources`)은 `https://erp.minesolution.com/*` 하나에만, `host_permissions`·`externally_connectable`이 없고, `key`로 계산한 확장 ID가 `commands.json`의 `erp.extensionId`와 같다
-- AC-3601.2: Given 도우미 등록 틀 `helper/install/host-manifest.json`, Then `allowed_origins`는 기존 확장과 새 확장 두 개뿐이다(`*` 없음)
-- AC-3601.3: Given 도우미를 켠 origin이 새 확장일 때, Then `closing.codes`·`closing.day`만 처리하고 다른 명령(hello 포함)은 E-HELPER-UNKNOWN-COMMAND다. 기존 확장 origin이면 지금 명령은 그대로이고 `closing.*`는 E-HELPER-UNKNOWN-COMMAND다. 두 origin이 아니면 지금처럼 켜지자마자 끝난다
-- AC-3601.4: Given `commands.json`, Then 새 명령 둘은 `erp.commands` 구역에만 있고 `patient: false`이며 args 모양은 design.md 2절 그대로다. 웹·기존 확장이 읽는 `commands` 구역은 바뀌지 않는다
+### REQ-3601: 새 확장과 ERP 도우미 연결
+- AC-3601.1: Given `extension-erp/manifest.json`, Then MV3이고 이름 'ERP 마감일지 채우기', 권한은 `nativeMessaging`·`storage` 둘뿐, 내용 스크립트와 그것이 불러오는 모듈 파일(`web_accessible_resources`)은 `https://erp.minesolution.com/*` 하나에만, `host_permissions`·`externally_connectable`이 없고, `key`로 계산한 확장 ID가 ERP 명령 표 `helper-erp/commands.json`의 `extensionId`와 같으며, 확장이 부르는 도우미 이름(`HOST_NAME`)이 그 표의 `hostName`(`com.seoseungkwan.erp_helper`)과 같다
+- AC-3601.2: Given ERP 도우미 등록 틀 `helper-erp/install/host-manifest.json`, Then `name`은 `com.seoseungkwan.erp_helper`이고 `allowed_origins`는 새 확장 하나뿐이다(`*` 없음). 기존 `helper/install/host-manifest.json`은 운영(1a721ef) 그대로 기존 확장 하나뿐이다
+- AC-3601.3: Given ERP 도우미를 켠 origin이 새 확장일 때, Then `closing.codes`·`closing.day`만 처리하고 다른 명령(hello 포함)은 E-HELPER-UNKNOWN-COMMAND다. 다른 origin(기존 확장 포함)이면 켜지자마자 끝난다
+- AC-3601.4: Given `helper-erp/commands.json`(ERP 도우미에 실림), Then 명령은 둘뿐이고 `patient: false`이며 args 모양은 design.md 2절 그대로다. 웹·기존 확장·기존 도우미가 읽는 `src/lib/bridge/commands.json`은 운영(1a721ef) 그대로다
 - AC-3601.5: Given 새 확장 코드(`extension-erp/src/*.ts`, 시험 파일 제외), Then `fetch`·`XMLHttpRequest`·`WebSocket`·`console`·`localStorage`·`sessionStorage`가 없다. 저장하는 것은 설정(`chrome.storage.local`)뿐이고 도우미 답은 저장하지 않는다
+- AC-3601.6: Given 이 기능의 갈래, Then `git diff 1a721ef -- helper src`가 비어 있다(기존 도우미·웹 코드와 시험이 운영 그대로. 저장소 공용 설정 `package.json`·`tsconfig.json`·`vitest.config.ts`·`eslint.config.mjs`와 그 목록을 보는 `src/b2b-merge.test.ts`에 새 폴더 이름을 더한 것만 예외)
 
 ### REQ-3602: 코드 목록 `closing.codes`
 - AC-3602.1: Given 등록된 병원 PC, When `closing.codes {}`, Then 답은 `{ codes: [{ code, name, visits }], kinds: [{ kind, name }] }`다. codes = 어제까지 365일 동안 이 병원 외래 진료에 나온 처방 코드(앞뒤 공백 없이 대문자)·비트 코드표 이름(없으면 null)·나온 진료 수, 진료 수가 많은 차례로 2,000개까지. kinds = 비트 예약 메모 목록(번호·이름)
@@ -52,10 +57,10 @@
 - AC-3605.1: Given 그날 비트 예약, Then `reservations.kinds`는 예약 메모 번호마다 `total`(모두)·`visited`(살아 있고 이어진 접수가 진료 끝남)·`changed`(바꾼 기록 있음)·`canceled`(취소)이고 `reservations.patients`는 그날 예약이 있는 서로 다른 환자 수다
 - AC-3605.2: Given `injection` 묶음이 있을 때, Then `injection`은 `{ firstTime, newPatients, newLines }`(이미 정한 것 6)다. 없으면 null. 옛 자료가 따로 있는 DB(`revenue.days`의 HistoryGuard ≠ 0)면 firstTime은 null이고 `warnings.noHistory`가 true다
 
-### REQ-3606: 도우미가 지키는 것
-- AC-3606.1: Given 새 문장, Then 모두 SELECT 하나이고 `ReadOnlyGuard`가 받는 표에 매개변수와 함께 있다. 표 밖 문장·틀린 매개변수는 DB에 닿기 전에 E-BIT-READ-FAILED다
+### REQ-3606: ERP 도우미가 지키는 것
+- AC-3606.1: Given 새 문장, Then 모두 SELECT 하나이고 ERP 읽기 관문(`ErpReadGuard`)이 받는 표(`ClosingSql.Parameters`)에 매개변수와 함께 있다. ERP 관문은 이 표와 기존 관문이 받는 문장(`Sql.IsAllowed`, 매출·코드 목록·등록 확인에 씀)만 통과시키고, 표 밖 문장·틀린 매개변수는 DB에 닿기 전에 E-BIT-READ-FAILED다
 - AC-3606.2: Given 새 문장, Then 이름·전화·주민번호·주소·메모 칸을 읽지 않고, 차트번호·생년월일을 결과 칸으로 내지 않는다(그날 안에서만 쓰는 번호·만 나이로 바꿔 낸다). 두 명령의 답에는 design.md 2절의 칸만 있다
-- AC-3606.3: Given 두 명령이 성공·실패할 때, Then 진단 기록에는 시각·명령 이름·오류 번호만 남는다. 등록되지 않은 PC는 `revenue.days`와 같은 번호로 막힌다
+- AC-3606.3: Given 두 명령이 성공·실패할 때, Then ERP 도우미 진단 기록에는 시각·명령 이름·오류 번호만 남는다. 등록되지 않은 PC는 E-BIT-NOT-REGISTERED, 등록과 다른 병원이면 E-BIT-HOSPITAL-MISMATCH로 막힌다(기존 `HospitalGate` 그대로)
 
 ### REQ-3607: 설정 화면
 - AC-3607.1: Given 확장 설정 화면, Then design.md 3절 차례로 항목 줄(이름 · 고른 코드 조각과 [×] · 찾기 칸)이 있다. 찾기에 글자를 넣으면 코드나 이름에 그 글자가 든 코드(대소문자 무시)가 visits 차례로 30개까지 나오고, 누르면 더해진다(항목마다 20개까지, 같은 코드 두 번 없음)
@@ -76,14 +81,22 @@
 - AC-3609.2: When 단추를 누르면, Then 마감 일자(날짜 칸 yyyy-MM-dd 또는 'YYYY-MM-DD (오늘)' 글자)를 읽는다. 없으면 '마감 일자를 먼저 골라 주세요.', 설정을 저장한 적이 없으면 설정 화면을 열고 '처음 한 번 설정 화면에서 코드를 확인하고 [저장]을 눌러 주세요.', 아니면 '비트에서 읽는 중…'(단추 막힘)으로 `closing.day`를 부른다
 - AC-3609.3: Given 답이 왔을 때 마감 일자가 누를 때와 다르면, Then 채우지 않고 '읽는 동안 마감 일자가 바뀌어 채우지 않았어요. 다시 눌러 주세요.'다
 - AC-3609.4: Given 채운 뒤, Then 안내에 '{날짜} 비트 값으로 {N}칸을 채웠어요. 저장은 하지 않았어요.', 못 찾은 칸 목록, 고르지 않아 건너뛴 칸 수, design.md 5절 경고 줄, [설정 열기]가 있다
-- AC-3609.5: Given 도우미가 없거나 옛 판이라 연결이 거절되면 '도우미를 새 판으로 설치해 주세요.', 도우미 오류 번호면 '비트에서 읽지 못했어요 ({번호})', 120초 안에 답이 없으면 '도우미가 답하지 않아요. 잠시 뒤 다시 눌러 주세요.'이고 어느 칸도 바꾸지 않는다
+- AC-3609.5: Given ERP 도우미가 없어 연결이 끊기면 'ERP 도우미를 설치해 주세요.', E-BIT-NOT-REGISTERED면 '이 PC가 아직 등록되지 않았어요. ERP 도우미 설치 파일을 다시 실행해 주세요.', 그 밖의 도우미 오류 번호면 '비트에서 읽지 못했어요 ({번호})', 120초 안에 답이 없으면 '도우미가 답하지 않아요. 잠시 뒤 다시 눌러 주세요.'이고 어느 칸도 바꾸지 않는다
 - AC-3609.6: Given 확장 서비스 워커, Then 같은 확장(내용 스크립트·설정 화면)이 보낸 `closing.codes`·`closing.day`만 받고, 요청마다 도우미 연결을 하나 열어 `{ v: 1, id, cmd, args }`를 보내고 result·error 하나를 받으면 닫는다
 
-### REQ-3610: 도우미 판과 확인
-- AC-3610.1: Given 도우미를 새로 내보낼 때, Then `helper/Directory.Build.props` Version과 `LATEST_HELPER`를 같은 커밋에서 사용자가 정한 번호로 올린다(지금 0.5.1, `MIN_HELPER`는 그대로)
+### REQ-3610: 판과 확인
+- AC-3610.1: Given ERP 도우미, Then 판 번호는 `helper-erp/Directory.Build.props` 한 곳에서 0.1.0으로 시작한다. 기존 도우미 판(0.5.1)·`LATEST_HELPER`·`MIN_HELPER`는 바꾸지 않는다
 - AC-3610.2: (확인, 시험 아님) Given 이 PC에서 의원 비트 DB를 읽기 전용으로, When 2026-11-09 `closing.day`(처음 값 설정)를 돌리면, Then money.total = 그날 `revenue.days` total(11,668,530원 근처), 신환 7, 90일초진 10, 씨암 25 · SONO 28 · 도수 6 · 충격파 2 · 관절조영 1 · 크라이오 7 · 물리치료 35명이고 묶음 total은 그날 total보다 크지 않다. 재진은 이번에 산정안함·물리치료내원을 빼므로 67보다 작을 수 있고 재진 + 물리치료내원 + 산정안함이 67 근처다. 다르면 까닭을 `notes/check-2026-11-09.md`에 숫자만 적고 사용자에게 알린다
-- AC-3610.3: (사용자와 함께, 시험 아님) Given 새 도우미·새 확장을 깐 크롬, When ERP 2026-11-09 마감일지에서 단추를 누르면, Then 칸이 채워지고 금액칸이 쉼표와 함께 맞게 보이며 다른 칸으로 옮겨도 값이 남는다(React 값). 저장 여부는 사용자가 정한다
+- AC-3610.3: (사용자와 함께, 시험 아님) Given 이 PC에서 직접 만든 ERP 도우미를 설치·등록하고 새 확장을 깐 크롬, When ERP 2026-11-09 마감일지에서 단추를 누르면, Then 칸이 채워지고 금액칸이 쉼표와 함께 맞게 보이며 다른 칸으로 옮겨도 값이 남는다(React 값). 기존 도우미와 청구 화면은 그대로 쓸 수 있다. 저장 여부는 사용자가 정한다
+
+### REQ-3611: ERP 도우미 프로그램·등록·설치
+- AC-3611.1: Given `helper-erp/`, Then 계산 부품 `Erp.Core`(netstandard2.0)와 실행 프로그램 `Erp.Helper`(net48, `SeoseungkwanErpHelper.exe`)이고, 기존 `Precheck.Core`·`Precheck.Windows`는 프로젝트 참조로만 쓴다(복사·수정 없음). 마감일지 문장·계산(`Closing/*`)은 `Erp.Core`에 있다
+- AC-3611.2: Given ERP 도우미 저장 자리, Then `%LOCALAPPDATA%\Seoseungkwan\ErpHelper\`의 `app`(프로그램)·`data`(등록 파일)·`logs`(진단 기록)다. 기존 도우미 폴더(`PrecheckHelper`)는 읽지도 쓰지도 않는다
+- AC-3611.3: Given ERP 도우미를 `--register` 하나로 켜면, Then 기존 등록 흐름(`RegisterFlow`: 비트 로그인 창 → 병원 확인 → PC 확인 창 5분)으로 ERP 자기 등록 파일을 쓰고 끝난다(종료 번호 0 = 저장, 1 = 취소, 2 = 오류). 크롬이 켤 때(첫 인자가 origin)는 등록 창을 띄우지 않는다
+- AC-3611.4: Given ERP 비트 읽기(`ErpBitDb`), Then 기존 `SqlBitDb`와 같은 규칙이다: 기존 `ReadOnlyConnection`의 접속 정보(서버 검사·접속 10초)로 열고, 스냅숏을 쓸 수 있으면 스냅숏 트랜잭션, 끝나면 되돌리고 Commit하지 않으며, 문장마다 `ErpReadGuard`를 지난 뒤 정해 둔 종류·길이의 매개변수로만 읽는다
+- AC-3611.5: Given `helper-erp/install/`, Then `install.cmd`(→ `install.ps1`)는 프로그램을 `app`에 복사하고 등록 틀의 `path`를 그 exe로 바꿔 쓰고 `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.seoseungkwan.erp_helper`에 적은 뒤 `--register`를 부른다. `uninstall.ps1`은 ERP 도우미 열쇠·폴더만 지운다. 둘 다 기존 도우미 열쇠·폴더를 건드리지 않는다
+- AC-3611.6: Given `.github/workflows/helper-erp.yml`, Then `erp-helper-v*` 태그를 올릴 때만 윈도우에서 만들어 압축 파일 하나(exe·dll·install 파일)를 판으로 낸다. 기존 `helper.yml`은 그대로다. 태그·판 만들기는 사용자가 말할 때만 한다
 
 ## 범위 밖
-- 기존 확장 `extension/`, 웹 화면·`commands.json` `commands` 구역, ERP 서버, 비트 설정(신환경로 목록 등)은 바꾸지 않는다
-- 확장 웹스토어 등록, 자동으로 매일 채우기, 저장 단추 누르기, 의사랑 자료가 있는 병원
+- 기존 확장 `extension/`, 기존 도우미 `helper/`, 웹 `src/`(화면·`lib/bridge`), ERP 서버, 비트 설정(신환경로 목록 등)은 바꾸지 않는다
+- 확장 웹스토어 등록, 자동으로 매일 채우기, 저장 단추 누르기, 의사랑 자료가 있는 병원, 확장 화면의 등록 단추·ERP 도우미 판 확인(hello)

@@ -3,14 +3,17 @@
 > 일꾼끼리의 경계는 2절(명령 모양)과 3절(설정 모양)·4절(칸 표)이다. 이 세 절은 승인 뒤 고치지 않는다.
 
 ## 1. 흐름
-- 채우기: ERP `/h/closing` 화면 [비트 값 채우기](`content.ts`) → `chrome.runtime.sendMessage` → 서비스 워커(`background.ts`) → `chrome.runtime.connectNative('com.seoseungkwan.precheck')` → 도우미(호출 origin = 새 확장) `closing.day` → 숫자 답 → `cells.ts`가 4절 표로 칸 계획 → `fill.ts`가 넣음 → `panel.ts` 안내
+- 채우기: ERP `/h/closing` 화면 [비트 값 채우기](`content.ts`) → `chrome.runtime.sendMessage` → 서비스 워커(`background.ts`) → `chrome.runtime.connectNative('com.seoseungkwan.erp_helper')` → ERP 도우미(`SeoseungkwanErpHelper.exe`, 호출 origin = 새 확장) `closing.day` → 숫자 답 → `cells.ts`가 4절 표로 칸 계획 → `fill.ts`가 넣음 → `panel.ts` 안내
 - 설정: 확장 설정 화면(`options.html`·`options.ts`) → 서비스 워커 → `closing.codes` → 찾기·고르기 → `chrome.storage.local` `erpClosing`
+- 등록: 설치 파일 → `SeoseungkwanErpHelper.exe --register` → 비트 로그인 창 → PC 확인 창 → ERP 등록 파일(3-4)
+- 기존 도우미(`com.seoseungkwan.precheck`, `helper/`)와 웹(`src/`)은 이 기능과 상관없이 운영(1a721ef) 그대로 돈다
 - 환자 줄·차트번호는 도우미 밖으로 나가지 않는다. ERP 화면에는 숫자만 들어가고 저장은 사용자가 누른다
 
-## 2. 명령 모양 (`src/lib/bridge/commands.json`의 새 `erp` 구역)
+## 2. 명령 모양 (ERP 명령 표 `helper-erp/commands.json`, ERP 도우미에 실림. 확장 시험도 읽는다)
 ```json
-"erp": {
-  "extensionId": "<TASK-1 공개키의 ID>", "extensionKey": "<TASK-1 공개키 DER base64>",
+{
+  "protocol": 1, "hostName": "com.seoseungkwan.erp_helper", "origin": "https://erp.minesolution.com",
+  "extensionId": "lkancaiekmoieooheifdimahhkejfmjc", "extensionKey": "<extension-erp/manifest.json key 그대로>",
   "commands": {
     "closing.codes": { "patient": false, "args": {} },
     "closing.day": { "patient": false, "args": {
@@ -23,6 +26,7 @@
   }
 }
 ```
+- 맨 위 열쇠 여섯 개는 기존 `src/lib/bridge/commands.json`과 같은 모양이라 기존 `CommandTable.Parse`가 그대로 읽는다(기존 표를 고치지 않음). `commands` 안 두 명령은 지금 `erp` 구역에 있는 것을 그대로 옮긴다
 - 묶음 key(차례 그대로, 설정 이름 · 쓰는 칸): carm 씨암 · sono SONO · arthro 관절조영 · manual 도수 · eswt 충격파 · pt 물리치료 · etc1~etc4 기타1~4(치료별 건수·치료별 매출) / manualConsult 도수상담 · lipus 리푸스 · nail 손발톱케어 · ct CT · surgery 수술(진료·치료현황만) / eswtStd ESWT Standard · eswtRadial ESWT Radial · injection 주사(운영 지표) / ptVisit 물리치료내원(환자현황)
 - 답(`{ v, id, type: 'result', data }`의 data, TS 모양. C# 모델 칸 이름도 같다):
 ```ts
@@ -42,13 +46,23 @@ type ClosingDay = {
 }
 ```
 
-## 3. 도우미
-### 3-1 새 확장 허용 (TASK-2)
-- `CommandTable`: 맨 위 열쇠에 `erp`를 더한다(`erp` 안은 extensionId·extensionKey·commands 셋뿐, 이름이 `commands`와 겹치면 표가 틀림). `Has`는 두 구역을 다 보고(Dispatcher.Register용) `Names`는 지금처럼 `commands`만, `ErpNames`를 더한다
-- `OriginGuard.CallerOf(args, table)` → `Caller.Web | Caller.Erp | null`. `MessageLoop`이 null이면 지금처럼 끝내고, 아니면 `Dispatcher.Handle(message, sink, caller)` → `table.Validate(request, caller)`: 부른 쪽 구역에 없는 이름은 E-HELPER-UNKNOWN-COMMAND. 지금의 두 인자 `Handle(message, sink)`·`Validate(request)`는 Web으로 보고 남긴다(지금 시험 그대로)
-- `helper/install/host-manifest.json` `allowed_origins` = [기존 ID, 새 ID]. `install.ps1`은 그대로(틀을 복사한다)
+## 3. ERP 도우미 (`helper-erp/`)
+> TASK-2(기존 도우미에 새 확장 허용)·TASK-3·6(기존 도우미 안의 Closing)으로 만든 것은 TASK-11이 옮기고 되돌린다. 문장·계산 내용(3-2·3-3)은 그대로다.
 
-### 3-2 새 문장 (TASK-3, `Closing/ClosingSql.cs`, `Parameters` 표. `Bit/Sql.cs`의 `IsAllowed`·`ParametersOf`에 한 줄씩)
+### 3-1 틀 (TASK-11)
+| 자리 | 내용 |
+|---|---|
+| `helper-erp/Directory.Build.props` | Version **0.1.0**(ERP 도우미 판은 여기 한 곳), Product 'Seoseungkwan ERP Helper', 나머지 설정은 `helper/Directory.Build.props`와 같게 |
+| `helper-erp/ErpHelper.sln` | 아래 세 프로젝트 + 참조하는 `../helper/src/Precheck.Core`·`Precheck.Windows` |
+| `helper-erp/src/Erp.Core/` | netstandard2.0. 참조 Precheck.Core. `../../commands.json`을 `erp-commands.json`으로 싣고 `ErpCommandTable.Load()` = `CommandTable.Parse(실린 바이트)`. `ErpReadGuard`, `Closing/*`(namespace `Erp.Core.Closing`) |
+| `helper-erp/src/Erp.Helper/` | net48 Exe, AssemblyName `SeoseungkwanErpHelper`. 참조 Erp.Core·Precheck.Core·Precheck.Windows. `Program.cs`·`ErpServices.cs`·`ErpBitDb.cs`·`ErpLog.cs` (TASK-12) |
+| `helper-erp/tests/Erp.Core.Tests/` | net10.0;net48. 지금 `helper/tests/Precheck.Core.Tests/Closing/*`를 옮긴 것 + `ErpReadGuard`·명령 표 시험 |
+| `helper-erp/tests/*.dotnet.test.ts`·`runDotnet.ts` | 기존 감싸개와 같은 방식(같은 잠금 파일 `precheck-dotnet.lock`으로 하나씩), 부르는 프로젝트만 ERP 시험 |
+
+- `ErpReadGuard`(Erp.Core): `IsAllowed(sql)` = `ClosingSql.Parameters`에 있거나 `Sql.IsAllowed(sql)`. `ParametersOf(sql)` = ClosingSql 표 → 아니면 `Sql.ParametersOf`. `Require(sql, args)`·`Query(db, sql, args, timeout)`는 기존 `ReadOnlyGuard`와 같은 검사(이름 모두·그 밖 없음·글자 길이·int). Closing 읽기는 모두 `ErpReadGuard.Query`. 기존 계산(`RevenueDays.Read`·`HospitalCheck`)은 기존 `ReadOnlyGuard`로 읽고, `ErpBitDb`에서 `ErpReadGuard`를 한 번 더 지난다
+- 기존 `CommandTable`·`OriginGuard`·`Dispatcher`·`MessageLoop`는 1a721ef 그대로 쓴다: ERP 표의 `extensionId`가 새 확장이므로 `OriginGuard`는 새 확장만 받고, 표에 없는 명령은 기존 `Validate`가 E-HELPER-UNKNOWN-COMMAND로 막는다
+
+### 3-2 새 문장 (TASK-3 → TASK-11이 `Erp.Core/Closing/ClosingSql.cs`로 옮김, `Parameters` 표. 허용은 `ErpReadGuard`가 이 표를 본다)
 - 진료 조건(모든 문장 같음): 외래(`OcmPatTyp='O'`)·접수취소 아님(`OcmRsuYon<>'O'`)·`OcmComStt IN ('HN','PN','TN','VN','OE','WN','OB')`·병원 범위(DepMst, `RevenueSql`과 같음). 처방 조건: `OdrDelFlg='N' AND OdrCanYon='N' AND OdrOutCod<>'99'`
 - `DayVisitsSql`(@day·@from·@to·@hospital): 진료마다 [진료번호, 그날 번호 `DENSE_RANK() OVER (ORDER BY RTRIM(OcmChtNum))`, `RTRIM(OcmDgsNfs)`, 만 나이(`PbsBirDte`가 8자리 날짜면 `(CONVERT(int,@day) − CONVERT(int,PbsBirDte)) / 10000`, 아니면 NULL), 마지막 정상 수납 줄(`OrpRcpStt<>'C'`인 줄 가운데 `MAX(OrpRcpSeq)`, 미수입금 줄 'C'는 진료비 칸이 늘 0이라 뺀다) `OrpTotAmt` 또는 NULL]
 - `DayCodesSql`(@from·@to·@hospital): [진료번호, `UPPER(RTRIM(OdrCod))`, 줄 수]
@@ -66,14 +80,24 @@ type ClosingDay = {
 - 주사: newPatients = 신환 가운데 injection 묶음 사람, newLines = 그들의 injection 코드 줄 수 합, firstTime = `InjectionFirstSql`(`RevenueSql.HistoryGuard` ≠ 0이면 부르지 않고 null)
 - 시간 제한은 `RevenueDays`와 같고, 1년 코드 목록은 `Sql.TrendTimeout`
 
-### 3-4 잇기 (TASK-6)
-- `Closing/ClosingCommands.Register(dispatcher, services)`: 두 처리기. 처음에 `HospitalGate.Open(services)`(revenue.days와 같음), groups를 풀어(같은 key 두 번 → E-HELPER-BAD-MESSAGE) 읽고 `Envelope.Result` 하나. `Precheck.Helper/Program.cs`에 한 줄
+### 3-4 잇기·실행 프로그램 (TASK-6 → TASK-11이 옮김, 실행 프로그램은 TASK-12)
+- `Erp.Core/Closing/ClosingCommands.Register(dispatcher, services)`: 두 처리기. 처음에 `HospitalGate.Open(services)`(revenue.days와 같음), groups를 풀어(같은 key 두 번 → E-HELPER-BAD-MESSAGE) 읽고 `Envelope.Result` 하나
+- `Erp.Helper/Program.cs`: 인자가 정확히 [`--register`]면 등록 모드 — `RegisterFlow.Run(ErpServices.Create())` → 저장 0 · 취소 1 · 예외 2를 돌려주고 끝(기록엔 'register'와 오류 번호만). 그 밖에는 기존 `Precheck.Helper/Program.cs`와 같은 차례(표준 출력·오류 버림 → `ErpCommandTable.Load()` → `new Dispatcher(table, log.Write)` → `ClosingCommands.Register` → 표준 입력 펌프 → `MessageLoop.Run(args, …)`), hello·다른 명령은 붙이지 않는다
+- `ErpServices.Create()`: `new BitServices(new InstallationLocator(BaseDirectory, 등록한 설치 위치), new ErpBitConnector(), new VendorLogin(), new ConfirmWindow(), new RegistrationStore(DataDirectory(), new DpapiProtector()))`. `DataDirectory()` = `%LOCALAPPDATA%\Seoseungkwan\ErpHelper\data`
+- `ErpBitConnector : IBitConnector` → `ErpBitDb.Open(ReadOnlyConnection.Create(installPath))`. `ErpBitDb : IBitSession`은 기존 `SqlBitDb`와 몸통이 같고(스냅숏 확인 → 트랜잭션 → 되돌림, 매개변수 종류·길이) 관문·매개변수 표만 `ErpReadGuard`다
+- `ErpLog`: `%LOCALAPPDATA%\Seoseungkwan\ErpHelper\logs`에 기존 `DiagnosticLog`와 같은 한 줄 모양(시각·명령 이름·오류 번호)
+
+### 3-5 설치·만들기 (TASK-12)
+- `helper-erp/install/host-manifest.json`: `{ name: 'com.seoseungkwan.erp_helper', description: 'ERP 마감일지 도우미', path: '__HELPER_EXE__', type: 'stdio', allowed_origins: ['chrome-extension://lkancaiekmoieooheifdimahhkejfmjc/'] }`
+- `install.cmd`·`install.ps1`: 기존 `helper/install`과 같은 차례, 이름·폴더·열쇠만 ERP(`ErpHelper\app`, HKCU `…\NativeMessagingHosts\com.seoseungkwan.erp_helper`). 끝에 `SeoseungkwanErpHelper.exe --register`를 기다리고 종료 번호로 안내: 0 '이 PC를 등록했어요.' · 1 '등록을 취소했어요. 다시 하려면 install.cmd를 다시 실행하세요.' · 2 '등록하지 못했어요. 비트가 깔린 PC인지 확인하고 다시 실행하세요.'
+- `uninstall.ps1`: ERP 열쇠와 `ErpHelper` 폴더만 지운다
+- `.github/workflows/helper-erp.yml`: 기존 `helper.yml`과 같은 차례(windows, Release 만들기, 압축 `seoseungkwan-erp-helper-<판>.zip` = exe·dll·install 파일), `erp-helper-v*` 태그에서만 판을 낸다. 이 PC 확인(TASK-10)은 판 없이 이 PC에서 만든 Release 폴더로 `install.ps1`을 돌린다
 
 ## 4. 새 확장 `extension-erp/`
 | 파일 | 하는 일 | TASK |
 |---|---|---|
 | `manifest.json` | MV3, 'ERP 마감일지 채우기' 0.1.0, permissions [nativeMessaging, storage], background `background.js`(module), content_scripts [{ matches [`https://erp.minesolution.com/*`], js [`content.js`] }], web_accessible_resources [{ resources [`main.js`·`cells.js`·`fill.js`·`panel.js`·`settings.js`·`types.js`], matches 같은 하나 }], options_page `options.html`, key | 1 |
-| `src/types.ts` | 2절 답 모양·`GROUP_KEYS`(2절 차례)·`RSV_ROWS`·`HOST_NAME`·`Settings`·설정 이름 | 1 |
+| `src/types.ts` | 2절 답 모양·`GROUP_KEYS`(2절 차례)·`RSV_ROWS`·`HOST_NAME`(= `com.seoseungkwan.erp_helper`, TASK-13)·`Settings`·설정 이름 | 1 |
 | `src/settings.ts` | `DEFAULTS`, `load()`/`save()`, `toGroups(settings)`(코드 있는 항목만 GROUP_KEYS 차례), `search(codes, text)` | 5 |
 | `options.html`·`src/options.ts` | 설정 화면(목업대로) | 5 |
 | `src/cells.ts` | `planCells(answer, settings) → Planned[]`(아래 표) | 4 |
@@ -95,7 +119,8 @@ type ClosingDay = {
   - 2 치료별 매출 > 씨암·SONO·관절조영·도수·충격파·물리치료·{기타 이름} × 금액(원) ← groups[carm·sono·arthro·manual·eswt·pt·etc1~4].total
 - 넣는 법: 내용 스크립트 세계에서도 DOM 값은 같다. `Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el, text)` → `new Event('input', { bubbles: true })`. 금액칸은 '' → input → 숫자 → input → `blur()`(조사 6절). 이 방법이 React 값으로 남는지는 TASK-10에서 실측하고, 안 되면 `fill.ts`만 `execCommand('insertText')`로 바꾼다
 - 날짜 읽기: 글자 '마감 일자' label과 같은 줄의 `input.datepicker-input`(aria-label '연도 선택' 아닌 것) 값, 없으면 'YYYY-MM-DD (오늘)' 글자. 화면 안 이동은 0.5초마다 주소를 보거나 `MutationObserver`로 안다
-- 서비스 워커는 `sender.id === chrome.runtime.id`이고 cmd가 둘 중 하나일 때만 받는다. 연결이 '없음'·'거절'(옛 도우미는 새 ID를 모른다)로 끊기면 E-HELPER-MISSING로 답한다
+- 서비스 워커는 `sender.id === chrome.runtime.id`이고 cmd가 둘 중 하나일 때만 받는다. 연결이 '없음'·'거절'(ERP 도우미가 안 깔림)로 끊기면 E-HELPER-MISSING로 답한다
+- 확장 시험(`manifest.test.ts` 등)이 보던 `src/lib/bridge/commands.json`의 `erp` 구역 대신 `helper-erp/commands.json`을 본다(TASK-13)
 - 빌드: `npm run ext-erp:build` → `extension-erp/dist/`(tsc + manifest·options.html 복사). 설치는 기존처럼 압축 파일을 풀어 '압축해제된 확장 프로그램 로드'. 개인키는 두지 않는다(공개키 `key`만으로 ID가 정해진다)
 
 ## 5. 결과 안내 경고 줄 (`panel.ts`, 해당할 때만)
@@ -107,4 +132,6 @@ type ClosingDay = {
 ## 위험
 - ERP 화면은 공개 화면 파일로만 조사했다. 판이 바뀌면 칸을 못 찾는다 → 그 칸만 '못 찾은 칸'으로 보이고 멈추지 않는다. 금액칸 넣기·날짜 읽기는 TASK-10 실측 전까지 추정이다
 - 환불(TPR)은 비트에 한 번도 없어 부호를 모른다 → 양수로 넣는다(음수면 부호를 뗀다). 장애인기금·감액의 줄 고르기는 TASK-9 실측으로 비트 수납집계 화면과 맞춘다
-- 새 확장은 새 도우미가 있어야 한다(옛 도우미는 새 ID를 거절). 도우미 새 판은 GitHub에서 만들어 의원 PC에 깔아야 하므로 사용자가 말할 때 한다
+- 새 확장은 ERP 도우미가 있어야 한다. 의원 PC용 판은 GitHub에서 만들어 깔아야 하므로 사용자가 말할 때 한다
+- `ErpBitDb`는 기존 `SqlBitDb`와 몸통이 같은 약 100줄이다(기존 부품을 고치지 않으려고). 기존 것의 읽기 규칙이 바뀌면 같이 고쳐야 한다 → `ErpBitDb` 시험이 같은 규칙(되돌림·Commit 없음·관문 먼저)을 글자로 본다
+- ERP 도우미는 기존 `Precheck.Core`를 참조하므로 기존 부품이 바뀌면 ERP 도우미도 다시 만들어야 같아진다(판 번호는 따로)
