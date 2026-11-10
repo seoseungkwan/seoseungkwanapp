@@ -811,3 +811,23 @@ describe('AC-3609.4·3609.5 글은 승인된 목업·명세 그대로', () => {
     expect(DESIGN).toContain(`'${FLOW_TEXT.errUntouched('{번호}')}'`)
   })
 })
+
+describe('안내서 [되돌리기] 절 (TASK-21)', () => {
+  it('AC-3617.3·AC-3618.2: extension-erp/README.md [되돌리기] 절의 글은 FLOW_TEXT 되돌리기 글 그대로다({} 자리 채움)', () => {
+    const readme = readFileSync(path.join(ROOT, 'extension-erp', 'README.md'), 'utf8')
+    const start = readme.indexOf('### [되돌리기]')
+    const end = readme.indexOf('### [지난 결과]')
+    expect(start).toBeGreaterThan(-1)
+    expect(end).toBeGreaterThan(start)
+    const section = readme.slice(start, end)
+    for (const line of [
+      FLOW_TEXT.undone(7).replace('7', '{N}'),
+      FLOW_TEXT.undoneEdited(7).replace('7', '{K}'),
+      FLOW_TEXT.undoneGone(7).replace('7', '{K}'),
+      FLOW_TEXT.undoDateChanged,
+      FLOW_TEXT.untouched,
+    ]) {
+      expect(section, line).toContain(`'${line}'`)
+    }
+  })
+})
