@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>시안 — ERP 마감일지 비트 값 채우기</title>
+<!-- 2026-11-10 erp-closing-fill 클릭 시안. 명세 specs/erp-closing-fill/. ERP 화면은 가짜(회색, 간단히). 숫자·코드 이름은 예시(환자 정보 없음) -->
+<style>
+@font-face{font-family:'Pretendard';src:url('../../../src/app/fonts/Pretendard-Regular.subset.woff2') format('woff2');font-weight:400}
+@font-face{font-family:'Pretendard';src:url('../../../src/app/fonts/Pretendard-Medium.subset.woff2') format('woff2');font-weight:500}
+@font-face{font-family:'Pretendard';src:url('../../../src/app/fonts/Pretendard-SemiBold.subset.woff2') format('woff2');font-weight:600}
+:root{--canvas:#F7F8FA;--surface:#FFFFFF;--line:#E5E7EB;--line-strong:#D1D5DB;--muted:#6B7280;--ink-2:#374151;--ink:#111827;
+--accent:#2563EB;--accent-strong:#1D4ED8;--accent-soft:#EAF1FE;--positive:#15803D;--positive-soft:#ECF7EF;
+--negative:#C2410C;--negative-soft:#FDF0EA;--warning:#B45309;--warning-soft:#FDF4E3;--r-control:4px;--r-float:8px;
+--shadow-float:0 8px 24px rgba(17,24,39,.14),0 1px 3px rgba(17,24,39,.08);
+/* 가짜 ERP 화면 회색(ERP 그대로라는 뜻, 앱 토큰 아님) */
+--erp-bg:#ECEEF1;--erp-box:#FBFBFC;--erp-line:#D9DCE1;--erp-text:#6B7280;--erp-title:#4B5563;--erp-input:#F3F4F6}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none !important}
+.nw{white-space:nowrap}
+body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--canvas);color:var(--ink);font-size:14px;line-height:22px;font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+ul{list-style:none}
+
+/* 시안 상태 단추 줄 (앱에 없음) */
+.mock-bar{font-size:13px;line-height:18px;background:#fff8d6;border-bottom:1px solid #e5d58a;padding:8px 16px;display:flex;flex-direction:column;gap:6px}
+.mock-bar .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.mock-bar .row b{min-width:118px;font-weight:600}
+.mock-bar button{border:1px solid #c9b860;background:#fff;border-radius:4px;padding:3px 9px}
+.mock-bar button[aria-pressed="true"]{background:#e9d877;font-weight:600}
+.mock-bar .note{color:#7a6a10}
+
+.addr{font-size:12px;color:var(--muted);background:#E3E6EA;border-bottom:1px solid var(--erp-line);padding:5px 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.addr code{font-family:inherit;background:#fff;border:1px solid var(--erp-line);border-radius:4px;padding:0 8px;color:var(--ink-2)}
+
+/* ── 가짜 ERP 마감일지 화면 (회색 = ERP 그대로) ── */
+.erp{display:flex;min-height:calc(100vh - 120px);background:var(--erp-bg);color:var(--erp-text)}
+.erp-side{width:168px;flex:none;background:#E2E5E9;border-right:1px solid var(--erp-line);padding:16px 10px;display:flex;flex-direction:column;gap:2px;font-size:13px}
+.erp-side .logo{font-weight:600;color:var(--erp-title);padding:0 8px 12px}
+.erp-side span{padding:6px 8px;border-radius:4px}
+.erp-side span.on{background:#D3D7DD;color:var(--erp-title);font-weight:500}
+.erp-main{flex:1;min-width:0;padding:16px 20px 120px}
+.erp-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.erp-head h1{font-size:18px;font-weight:600;color:var(--erp-title)}
+.erp-chip{display:inline-flex;align-items:center;height:28px;padding:0 10px;border:1px solid var(--erp-line);border-radius:4px;background:var(--erp-box);font-size:12px;color:var(--erp-text);white-space:nowrap}
+.erp-date{margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--erp-box);border:1px solid var(--erp-line);border-radius:6px;padding:10px 14px}
+.erp-date label{font-weight:500;color:var(--erp-title)}
+.erp-date .ei{width:130px}
+.erp-date .ei.date-on{color:var(--ink);font-weight:500}
+.erp-tabs{margin-top:12px;display:flex;border-bottom:1px solid var(--erp-line)}
+.erp-tabs button{padding:8px 14px;color:var(--erp-text)}
+.erp-tabs button.on{color:var(--erp-title);font-weight:600;box-shadow:inset 0 -2px #9CA3AF}
+.erp-sec{margin-top:12px}
+.erp-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;align-items:start}
+.erp-col{display:flex;flex-direction:column;gap:10px;min-width:0}
+.erp-box{background:var(--erp-box);border:1px solid var(--erp-line);border-radius:6px;padding:10px 12px}
+.erp-box h4,.erp-box h3{font-size:13px;font-weight:600;color:var(--erp-title);margin-bottom:6px}
+.erp-box table{width:100%;border-collapse:collapse;font-size:12px}
+.erp-box td,.erp-box th{padding:3px 4px;border-top:1px solid #E7E9EC;text-align:left;vertical-align:middle;font-weight:400}
+.erp-box thead th{border-top:0;color:var(--erp-text);font-size:11px}
+.erp-box td.lab{white-space:nowrap}
+.erp-box td.lab small{display:block;font-size:10px;line-height:12px;color:#9CA3AF}
+.erp-box td.u{width:18px;font-size:11px;color:#9CA3AF}
+.ei{display:inline-block;width:100%;min-width:44px;height:24px;line-height:22px;border:1px solid var(--erp-line);border-radius:3px;background:var(--erp-input);padding:0 6px;text-align:right;color:#B4B9C1;font-size:12px;white-space:nowrap;overflow:hidden}
+.ei.on{color:var(--ink);background:#fff}
+.ei.keep{color:var(--erp-title);background:var(--erp-input)}
+.ei.text{text-align:left}
+.ei.area{height:44px;text-align:left}
+.therapist{font-size:12px;color:var(--erp-title);text-align:right;display:block}
+.therapist small{display:block;font-size:10px;line-height:12px;color:#9CA3AF}
+.erp-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 10px;margin-top:8px;font-size:12px}
+.erp-fields div{display:flex;flex-direction:column;gap:2px}
+.erp-save{margin-top:12px;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.cdf-cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}
+.cdf-col{display:flex;flex-direction:column;gap:10px;min-width:0}
+.erp-notice{font-size:12px;background:var(--erp-box);border:1px solid var(--erp-line);border-radius:6px;padding:8px 12px;margin-bottom:10px}
+
+/* ── 확장이 ERP 화면에 붙이는 것 (새로 생김) ── */
+.new{outline:2px dashed #e0a100;outline-offset:4px}
+.dock{position:fixed;right:24px;bottom:24px;z-index:20;display:flex;flex-direction:column;align-items:flex-end;gap:12px;max-width:calc(100vw - 48px)}
+.fill-btn{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 18px;border-radius:var(--r-control);background:var(--accent);color:var(--surface);font-size:15px;font-weight:600;box-shadow:var(--shadow-float);white-space:nowrap}
+.fill-btn:hover{background:var(--accent-strong)}
+.fill-btn:disabled{background:#93A6C9;cursor:default}
+.panel{width:440px;max-width:100%;max-height:calc(100vh - 210px);overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-float);box-shadow:var(--shadow-float);color:var(--ink-2);font-size:14px;line-height:22px}
+.panel .ph{display:flex;justify-content:space-between;align-items:center;padding:10px 12px 0 18px}
+.panel .pt{font-size:12px;font-weight:500;color:var(--muted)}
+.panel .x{width:32px;height:32px;border-radius:var(--r-control);color:var(--muted);font-size:18px}
+.panel .x:hover{background:var(--canvas)}
+.panel .pb{padding:4px 18px 16px;display:flex;flex-direction:column;gap:12px}
+.panel .lead{font-size:15px;line-height:23px;font-weight:600;color:var(--ink)}
+.panel .lead.err{color:var(--negative)}
+.panel .lead.err::before{content:'!';display:inline-flex;justify-content:center;align-items:center;width:18px;height:18px;margin-right:6px;border-radius:50%;background:var(--negative);color:#fff;font-size:12px;vertical-align:1px}
+.panel .small{font-size:13px;line-height:20px;color:var(--muted)}
+.panel .blk{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:4px}
+.panel .blk .h{font-weight:600;color:var(--ink)}
+.panel .blk li{padding-left:12px;position:relative}
+.panel .blk li::before{content:'·';position:absolute;left:2px;color:var(--muted)}
+.panel .warns{display:flex;flex-direction:column;gap:8px;background:var(--warning-soft);border-radius:var(--r-control);padding:10px 12px}
+.panel .warns li{display:flex;gap:8px;align-items:flex-start;color:var(--ink-2)}
+.panel .warns li::before{content:'!';flex:none;display:inline-flex;justify-content:center;align-items:center;width:18px;height:18px;margin-top:2px;border-radius:50%;background:var(--warning);color:#fff;font-size:12px;font-weight:600}
+.panel .end{border-top:1px solid var(--line);padding-top:10px;color:var(--ink)}
+.panel .acts{display:flex;justify-content:flex-end;gap:8px}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 14px;border-radius:var(--r-control);font-weight:500;white-space:nowrap}
+.btn-2{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink)}
+.btn-2:hover{background:var(--canvas)}
+.btn-1{background:var(--accent);color:var(--surface)}
+.btn-1:hover{background:var(--accent-strong)}
+
+/* ── 확장 설정 화면 (새로 만듦) ── */
+.opt{background:var(--surface);min-height:calc(100vh - 120px)}
+.opt-top{border-bottom:1px solid var(--line)}
+.opt-top .in{max-width:1000px;margin:0 auto;padding:16px 24px;display:flex;align-items:center;gap:10px}
+.opt-top i{width:20px;height:20px;border-radius:5px;background:var(--accent);flex:none}
+.opt-top h1{font-size:18px;font-weight:600}
+.opt main{max-width:1000px;margin:0 auto;padding:20px 24px 120px;display:flex;flex-direction:column;gap:16px}
+.lead-p{color:var(--ink-2)}
+.notice{border-radius:var(--r-control);padding:10px 14px;color:var(--ink-2)}
+.notice.first{background:var(--accent-soft)}
+.notice.first b{color:var(--accent-strong);font-weight:600}
+.notice.err{background:var(--negative-soft)}
+.notice.err b{color:var(--negative);font-weight:600}
+.notice.ok{color:var(--muted);padding:0;font-size:13px}
+.osec{border-top:1px solid var(--line-strong);padding-top:14px}
+.osec>h2{font-size:16px;font-weight:600}
+.osec>p{margin-top:2px;font-size:13px;color:var(--ink-2)}
+.orow{display:grid;grid-template-columns:210px minmax(0,1fr);gap:8px 20px;padding:12px 0;border-bottom:1px solid var(--line)}
+.orow:last-child{border-bottom:0}
+.oname b{font-weight:600;color:var(--ink)}
+.oname small{display:block;font-size:12px;line-height:17px;color:var(--muted);margin-top:2px}
+.opick{display:flex;flex-direction:column;gap:8px;min-width:0}
+
+.chip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 2px 0 9px;border:1px solid var(--line-strong);border-radius:var(--r-control);background:var(--surface);max-width:100%}
+.chip b{font-weight:600;color:var(--ink);white-space:nowrap}
+.chip .cn{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.chip .cn.gone{color:var(--warning)}
+.chip button{width:26px;height:26px;border-radius:3px;color:var(--muted);font-size:16px;flex:none}
+.chip button:hover{background:var(--canvas);color:var(--ink)}
+.none{font-size:13px;color:var(--muted)}
+.pickline{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;min-height:34px}
+.find{position:relative;flex:0 1 280px;min-width:200px}
+.find input,.etc input,.opick select{width:100%;height:34px;border:1px solid var(--line-strong);border-radius:var(--r-control);padding:0 10px;background:var(--surface)}
+.find input:focus,.etc input:focus,.opick select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.find input:disabled,.opick select:disabled{background:var(--canvas);color:var(--muted)}
+.dd{position:absolute;left:0;width:max(100%,400px);max-width:calc(100vw - 32px);top:calc(100% + 4px);z-index:5;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-float);box-shadow:var(--shadow-float);max-height:300px;overflow:auto;padding:4px}
+.dd button{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;text-align:left;padding:7px 10px;border-radius:var(--r-control)}
+.dd button:hover:not(:disabled){background:var(--accent-soft)}
+.dd button b{font-weight:600;color:var(--ink)}
+.dd button span{color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dd button em{font-style:normal;font-size:12px;color:var(--muted);white-space:nowrap}
+.dd button:disabled{cursor:default}
+.dd button:disabled b,.dd button:disabled span{color:var(--muted)}
+.dd .empty{padding:8px 10px;color:var(--muted);font-size:13px}
+.dd .cnt{padding:4px 10px 6px;color:var(--muted);font-size:12px;border-bottom:1px solid var(--line);margin-bottom:4px}
+.etc{display:flex;align-items:center;gap:8px;max-width:420px}
+.etc span{font-size:13px;color:var(--ink-2);white-space:nowrap}
+.etc input{max-width:240px}
+.opick select{flex:0 1 240px;min-width:200px}
+.savebar{position:sticky;bottom:0;z-index:10;background:var(--surface);border-top:1px solid var(--line)}
+.savebar .in{max-width:1000px;margin:0 auto;padding:12px 24px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.status{font-size:14px;color:var(--ink-2)}
+.status.saved{color:var(--positive);font-weight:500}
+.status.saved::before{content:'✓ '}
+.status.dirty{color:var(--warning)}
+.savebar .acts{display:flex;gap:8px;margin-left:auto}
+.foot{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
+
+/* 좁은 창 */
+@media (max-width:1180px){.erp-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:960px){.erp-side{display:none}.cdf-cols{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:720px){
+  .orow{grid-template-columns:minmax(0,1fr)}
+  .etc{max-width:none}
+  .find,.opick select{flex:1 1 100%}
+}
+@media (max-width:600px){
+  .erp-grid{grid-template-columns:minmax(0,1fr)}
+  .erp-main{padding:12px 12px 120px}
+  .dock{right:12px;bottom:12px;max-width:calc(100vw - 24px)}
+  .panel{max-height:calc(100vh - 190px)}
+  .mock-bar .row b{min-width:0;width:100%}
+  .opt main,.opt-top .in,.savebar .in{padding-left:16px;padding-right:16px}
+  .savebar .acts{width:100%}
+  .savebar .acts .btn{flex:1}
+}
+</style>
+</head>
+<body>
+<div class="mock-bar" id="mockBar">
+  <div class="row"><b>ERP 마감일지 화면</b>
+    <button data-erp="idle">① 단추</button>
+    <button data-erp="reading">② 읽는 중</button>
+    <button data-erp="done">③ 채움 성공</button>
+    <button data-erp="warn">④ 경고 있음</button>
+    <button data-erp="rare">⑤ 드문 경고</button>
+    <button data-erp="first">⑥ 설정 저장 전</button>
+    <button data-erp="errHelper">⑦ 도우미 없음·옛 판</button>
+    <button data-erp="errBit">⑧ 비트 읽기 실패</button>
+    <button data-erp="errDate">⑨ 날짜 없음</button>
+    <button data-erp="errTimeout">⑩ 시간 초과</button>
+    <button data-erp="dateChanged">⑪ 읽는 동안 날짜 바뀜</button>
+  </div>
+  <div class="row"><b>확장 설정 화면</b>
+    <button data-opt="optFirst">⑫ 처음 열었을 때</button>
+    <button data-opt="optSearch">⑬ 코드 찾기</button>
+    <button data-opt="optSaved">⑭ 저장한 뒤</button>
+    <button data-opt="optNoHelper">⑮ 코드 목록 못 받음</button>
+  </div>
+  <p class="note">노란 띠는 시안 단추라 앱에 없어요 · 점선 = 확장이 ERP 화면에 새로 붙이는 것 · 회색 = ERP 화면 그대로(가짜, 간단히) · 마감 일자 2026-11-09 예시 · 숫자·코드 이름은 모두 예시(환자 정보 없음) · 단추·[설정 열기]·찾기·[×]·[저장]도 눌러 볼 수 있어요</p>
+</div>
+
+<!-- ════════ ERP 마감일지 화면 (가짜) ════════ -->
+<div id="viewErp">
+  <div class="addr">주소 <code>erp.minesolution.com/h/closing</code> ERP 마감일지 화면</div>
+  <div class="erp">
+    <aside class="erp-side" aria-hidden="true">
+      <div class="logo">ERP</div>
+      <span>대시보드</span><span class="on">마감 · 입력</span><span>파일 업로드</span><span>운영관리</span><span>청구 · 처방</span>
+    </aside>
+    <div class="erp-main">
+      <div class="erp-head"><h1>마감일지</h1><span class="erp-chip">마감일지 삭제</span></div>
+      <div class="erp-date">
+        <label>마감 일자</label><span class="ei text" id="erpDate"></span>
+        <span class="erp-chip">PDF 출력</span>
+      </div>
+      <div class="erp-tabs" role="tablist" aria-label="업무일지">
+        <button type="button" data-tab="w1">업무일지 1</button>
+        <button type="button" data-tab="w2">업무일지 2</button>
+      </div>
+      <div class="erp-sec" id="w1"></div>
+      <div class="erp-sec" id="w2" hidden></div>
+    </div>
+  </div>
+  <!-- 확장이 붙이는 것: 오른쪽 아래 단추 + 결과 안내 -->
+  <div class="dock">
+    <div class="panel new" id="panel" role="status" hidden></div>
+    <button type="button" class="fill-btn new" id="fillBtn">비트 값 채우기</button>
+  </div>
+</div>
+
+<!-- ════════ 확장 설정 화면 (새 탭) ════════ -->
+<div id="viewOpt" hidden>
+  <div class="addr">확장 설정 화면 · 크롬 새 탭으로 열려요 (확장 아이콘 › 옵션, 또는 안내의 [설정 열기])</div>
+  <div class="opt">
+    <div class="opt-top"><div class="in"><i></i><h1>ERP 마감일지 채우기 · 설정</h1></div></div>
+    <main id="optMain"></main>
+    <div class="savebar"><div class="in">
+      <p class="status" id="optStatus" role="status"></p>
+      <div class="acts">
+        <button type="button" class="btn btn-2" id="optReset">처음 값으로</button>
+        <button type="button" class="btn btn-1" id="optSave">저장</button>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id)
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+
+/* ───────────── 시안 상태 ───────────── */
+const S = { view: 'erp', erp: 'idle', tab: 'w1', panelOpen: true, opt: 'optFirst' }
+const FILLED = ['done', 'warn', 'rare']
+const DAY = '2026-11-09'
+
+/* ───────────── ERP 화면 값 (예시) ───────────── */
+const W1 = [
+  [{ t: '진료 · 치료현황', u: '건', rows: ['씨암', 'SONO', '도수상담', '도수치료', '충격파(체충)', '관절조영술', '리푸스', '손발톱케어', 'CT', '수술'] }],
+  [{ t: '외래 수입', u: '원', rows: ['외래 총매출', '청구액(-)', '미수입금(+)', '미수발생(-)', '비급여', '감액', 'MOU 감액', '장애인기금(-)', '진료수납액', '카드수납액(-)', '현금수납액(-)', '계좌이체액(-)', '현불/환불(-)'] }],
+  [{ t: '입원수입', u: '원', rows: ['청구', '비급여', '본인부담금', '수납액'] }, { t: '지출', u: '원', rows: ['현금', '카드', 'FREE'] }],
+  [{ t: '환자현황', u: '명', rows: ['신환', '90일초진', '재진', '물리치료내원', '진찰료 산정안함', '합계'], notes: { '재진': '물리치료내원 · 진찰료 산정안함 제외' } }, { t: '신환경로', u: '명', rows: ['지인소개', '간판', '인터넷', '홍보물', '기타'] }],
+]
+const V1 = {
+  '진료 · 치료현황': { '씨암': '22', 'SONO': '26', '도수치료': '5', '충격파(체충)': '3', '관절조영술': '1' },
+  '외래 수입': { '외래 총매출': '10,482,300', '청구액(-)': '6,912,400', '미수입금(+)': '85,000', '미수발생(-)': '120,500', '비급여': '2,315,000', '감액': '0', '장애인기금(-)': '1,500', '진료수납액': '3,532,900', '카드수납액(-)': '2,905,200', '현금수납액(-)': '312,700', '계좌이체액(-)': '315,000', '현불/환불(-)': '0' },
+  '입원수입': { '청구': '0', '비급여': '0', '본인부담금': '0', '수납액': '0' },
+  '환자현황': { '신환': '6', '90일초진': '11', '재진': '48', '물리치료내원': '8', '진찰료 산정안함': '3', '합계': '76' },
+}
+const AGES = ['10대미만', '10대', '20대', '30대', '40대', '50대', '60대', '70대', '80대', '90대']
+const AGE_V = [[0, 0, 1], [1, 1, 2], [1, 2, 3], [1, 1, 4], [1, 2, 7], [1, 2, 11], [1, 2, 14], [0, 1, 11], [0, 0, 5], [0, 0, 1]]
+const V2 = {
+  '예약': { '도수': ['9', '7', '1', '2'], '충격파': ['5', '3', '0', '2'] },
+  '치료별 신환/90일초진/재진 건수': { '씨암(주사)': ['2', '5', '15'], 'SONO(주사)': ['3', '4', '19'], '관절조영': ['0', '0', '1'], '도수': ['1', '1', '3'], '충격파': ['0', '1', '2'], '크라이오': ['1', '1', '5'] },
+  '연령별 신환/90일초진/재진': Object.fromEntries(AGES.map((a, i) => [a, AGE_V[i].map(String)])),
+  '치료별 매출': { '씨암': ['2,914,600'], 'SONO': ['3,102,400'], '관절조영': ['158,300'], '도수': ['486,200'], '충격파': ['412,900'], '물리치료': ['3,688,100'], '크라이오': ['512,700'] },
+}
+const F2 = { '도수 총금액': '486,200', '충격파 총금액': '412,900' }
+
+function v1(box, row) {
+  if (!FILLED.includes(S.erp)) return null
+  if (S.erp === 'rare' && box === '입원수입') return null
+  if (S.erp === 'warn' && box === '외래 수입' && row === '현불/환불(-)') return '33,000'
+  return (V1[box] || {})[row] ?? null
+}
+function v2(card, row, col) {
+  if (!FILLED.includes(S.erp)) return null
+  if (card === '예약' && row === '실예약환자수') return '13'
+  const r = (V2[card] || {})[row]
+  return r ? r[col] : null
+}
+function f2(name) {
+  if (!FILLED.includes(S.erp)) return null
+  if (S.erp === 'rare' && name === '신환주사환자') return '2'
+  if (S.erp === 'rare' && name === '신환주사건수') return '4'
+  return F2[name] ?? null
+}
+const cell = (val, cls = '') => `<span class="ei ${cls} ${val != null ? 'on' : ''}">${val != null ? esc(val) : '-'}</span>`
+
+function drawW1() {
+  const therapistRows = S.erp === 'warn' ? { '도수치료': '6', '충격파(체충)': '2' } : {}
+  const keep = `<div class="erp-box" style="margin-bottom:10px"><h4>담당자 · 휴무자</h4>
+    <div class="erp-fields" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-top:0">
+      ${['휴무자', '담당', '팀장', '원장'].map((n) => `<div><span>${n}</span>${cell(null, 'text')}</div>`).join('')}
+    </div></div>`
+  const cols = W1.map((boxes) => `<div class="erp-col">${boxes.map((b) => `
+    <div class="erp-box"><h4>${b.t}</h4><table><tbody>${b.rows.map((r) => {
+      const note = b.notes && b.notes[r] ? `<small>${b.notes[r]}</small>` : ''
+      if (b.t === '진료 · 치료현황' && therapistRows[r]) {
+        return `<tr><td class="lab">${r}<small>치료사별 입력</small></td><td><span class="therapist">${therapistRows[r]}</span></td><td class="u">${b.u}</td></tr>`
+      }
+      return `<tr><td class="lab">${r}${note}</td><td>${cell(v1(b.t, r))}</td><td class="u">${b.u}</td></tr>`
+    }).join('')}</tbody></table></div>`).join('')}</div>`).join('')
+  const bottom = `<div class="erp-box" style="margin-top:10px"><div class="erp-fields" style="margin-top:0">
+      <div><span>특이사항 <small style="color:#9CA3AF">업무일지 2 와 같은 칸</small></span>${cell(null, 'area')}</div>
+      <div><span>상태</span><span class="ei text keep">작성중 ▾</span></div></div></div>
+    <div class="erp-save"><span class="erp-chip">중간저장</span><span class="erp-chip" style="font-weight:600">전체 저장</span></div>`
+  $('w1').innerHTML = keep + `<div class="erp-grid">${cols}</div>` + bottom
+}
+
+function table(card, firstHead, cols, rows, opts = {}) {
+  return `<div class="erp-box"><h3>${card}</h3><table>
+    <thead><tr><th>${firstHead}</th>${cols.map((c) => `<th>${c}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map((r) => `<tr><td class="lab">${r}${opts.tag && opts.tag.includes(r) ? '<small>업로드 시 생략 가능</small>' : ''}</td>${cols.map((c, i) => `<td>${opts.keep ? cell(null) : cell(v2(card, r, i))}</td>`).join('')}</tr>`).join('')}
+    ${opts.extra || ''}</tbody></table></div>`
+}
+function drawW2() {
+  const rsvRows = ['주사', '경과', '도수', '충격파', '진료예약', '기타(수액,드레싱등)']
+  const rsvExtra = `<tr><td class="lab" style="font-weight:600">총갯수</td><td colspan="4" style="font-size:11px;color:#9CA3AF">ERP가 더함</td></tr>
+    <tr><td class="lab">실예약환자수</td><td>${cell(v2('예약', '실예약환자수', 0))}</td><td colspan="3"></td></tr>`
+  const left = [
+    table('예약', '구분', ['총갯수', '내원', '변경', '취소'], rsvRows, { extra: rsvExtra }),
+    table('치료별 신환/90일초진/재진 건수', '치료', ['신환', '90일초진', '재진'], ['씨암(주사)', 'SONO(주사)', '관절조영', '도수', '충격파', '크라이오', '기타2', '기타3', '기타4']),
+    table('상담-전환률', '구분', ['상담건수', '예약건수', '실행건수'], ['도수치료', '체외충격파', '기타'], { keep: true }),
+    table('연령별 신환/90일초진/재진', '연령대', ['신환', '90일초진', '재진'], AGES),
+  ].join('')
+  const fields = ['도수 총금액', '충격파 총금액', 'ESWT Standard', 'ESWT Radial', '주사1회환자', '신환주사환자', '신환주사건수']
+  const ops = `<div class="erp-box"><h3>운영 지표(치료사별·금액)</h3><table>
+      <thead><tr><th>치료사</th><th>도수</th><th>충격파</th><th>상담</th></tr></thead>
+      <tbody>${['치료사 가', '치료사 나'].map((n) => `<tr><td class="lab">${n}</td><td>${cell(null)}</td><td>${cell(null)}</td><td>${cell(null)}</td></tr>`).join('')}</tbody></table>
+    <div class="erp-fields">${fields.map((n) => `<div><span>${n}${n.endsWith('총금액') ? ' <small style="color:#9CA3AF">업로드 시 생략 가능</small>' : ''}</span>${cell(f2(n))}</div>`).join('')}
+      <div><span>도수 기본단가</span><span class="ei keep">43,850</span></div><div><span>충격파 기본단가</span><span class="ei keep">90,000</span></div></div>
+    <div class="erp-save" style="justify-content:flex-start;margin-top:8px"><span class="erp-chip">기본단가 저장</span><span class="erp-chip">총금액 재계산(건수×단가)</span></div></div>`
+  const right = [
+    ops,
+    table('치료별 매출', '치료', ['금액(원)'], ['씨암', 'SONO', '관절조영', '도수', '충격파', '물리치료', '크라이오', '기타2', '기타3', '기타4'], { tag: ['씨암', 'SONO', '도수', '충격파'] }),
+    `<div class="erp-box"><h3>이벤트 진행</h3><span class="erp-chip">+ 이벤트 추가</span></div>`,
+    `<div class="erp-box"><h3>특이사항 <small style="font-weight:400;color:#9CA3AF">업무일지 1 과 같은 칸</small></h3>${cell(null, 'area')}</div>`,
+  ].join('')
+  $('w2').innerHTML = `<div class="erp-notice">일일 상세 (연령 · 치료별 매출 · 건수 · 상담 · 예약 · 이벤트)</div>
+    <div class="cdf-cols"><section class="cdf-col">${left}</section><section class="cdf-col">${right}</section></div>
+    <div class="erp-save"><span class="erp-chip">중간저장</span><span class="erp-chip" style="font-weight:600">일일 상세 저장</span><span class="erp-chip">초기화</span></div>`
+}
+
+/* ───────────── 결과 안내 (design.md 5절 글 그대로) ───────────── */
+const END = '확인한 뒤 업무일지 1 [전체 저장]과 업무일지 2 [일일 상세 저장]을 눌러 주세요.'
+const W = {
+  moneyUnconfirmed: '환불·변경수납 등이 있는 날이에요. 외래 수입 8칸(총매출·청구액·비급여·미수입금·진료수납액·카드·현금·계좌)은 비트 수납 줄을 그대로 더한 값이라 다를 수 있어요. 확인해 주세요.',
+  splitUnconfirmed: '청구액·비급여는 비트에서 딱 나눠지지 않아 그대로 더한 값이에요. 확인해 주세요.',
+  unpaidVisits: (n) => `수납이 끝나지 않은 진료 ${n}건이 있어요. 치료별 매출이 적게 나왔을 수 있어요.`,
+  refund: (won) => `환불 ${won}원이 있어요. 금액을 확인해 주세요.`,
+  unknownAge: (n) => `생년월일이 없는 환자 ${n}명은 연령별 표에 넣지 않았어요.`,
+  noHistory: '예전 자료가 따로 있어 주사1회환자는 채우지 않았어요.',
+  inpatient: '입원 접수가 있어 입원수입 칸은 채우지 않았어요.',
+}
+const head = '<div class="ph"><span class="pt">비트 값 채우기</span><button type="button" class="x" data-close aria-label="안내 닫기">×</button></div>'
+const openSettings = '<div class="acts"><button type="button" class="btn btn-2" data-open-settings>설정 열기</button></div>'
+const filledLead = (n) => `<p class="lead">${DAY} 비트 값으로 ${n}칸을 채웠어요. 저장은 하지 않았어요.</p>`
+const unpicked = (n) => `<div class="blk"><p>고르지 않아 건너뛴 칸 <b style="color:var(--ink);font-weight:600">${n}칸</b></p><p class="small">설정에서 코드를 고르지 않은 항목이라 그대로 두었어요.</p></div>`
+const warns = (list) => `<ul class="warns">${list.map((t) => `<li>${t}</li>`).join('')}</ul>`
+const untouched = '<p class="small">아무 칸도 바꾸지 않았어요.</p>'
+
+function panelHtml() {
+  switch (S.erp) {
+    case 'done':
+      return filledLead(94) + unpicked(37) + `<p class="end">${END}</p>` + openSettings
+    case 'warn':
+      return filledLead(92) + `<div class="blk"><p class="h">못 찾은 칸 2칸</p><ul>
+          <li>업무일지 1 › 진료 · 치료현황 › 도수치료</li><li>업무일지 1 › 진료 · 치료현황 › 충격파(체충)</li></ul>
+          <p class="small">ERP 화면에서 찾지 못해 그대로 둔 칸이에요. 직접 넣어 주세요.</p></div>`
+        + unpicked(37) + warns([W.moneyUnconfirmed, W.unpaidVisits(2), W.refund('33,000')]) + `<p class="end">${END}</p>` + openSettings
+    case 'rare':
+      return filledLead(92) + unpicked(34) + warns([W.splitUnconfirmed, W.unknownAge(1), W.noHistory, W.inpatient]) + `<p class="end">${END}</p>` + openSettings
+    case 'first':
+      return '<p class="lead">처음 한 번 설정 화면에서 코드를 확인하고 [저장]을 눌러 주세요.</p><p class="small">설정 화면을 새 탭으로 열었어요. 아무 칸도 바꾸지 않았어요.</p>' + openSettings
+    case 'errHelper':
+      return '<p class="lead err">도우미를 새 판으로 설치해 주세요.</p>' + untouched
+    case 'errBit':
+      return '<p class="lead err">비트에서 읽지 못했어요 <span class="nw">(E-BIT-READ-FAILED)</span></p>' + untouched
+    case 'errTimeout':
+      return '<p class="lead err">도우미가 답하지 않아요. 잠시 뒤 다시 눌러 주세요.</p>' + untouched
+    case 'errDate':
+      return '<p class="lead">마감 일자를 먼저 골라 주세요.</p>'
+    case 'dateChanged':
+      return '<p class="lead">읽는 동안 마감 일자가 바뀌어 채우지 않았어요. 다시 눌러 주세요.</p>'
+  }
+  return ''
+}
+
+function renderErp() {
+  const date = S.erp === 'errDate' ? '' : S.erp === 'dateChanged' ? '2026-11-08' : DAY
+  $('erpDate').textContent = date || '-'
+  $('erpDate').classList.toggle('date-on', !!date)
+  document.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === S.tab))
+  $('w1').hidden = S.tab !== 'w1'
+  $('w2').hidden = S.tab !== 'w2'
+  drawW1(); drawW2()
+  const reading = S.erp === 'reading'
+  $('fillBtn').disabled = reading
+  $('fillBtn').textContent = reading ? '비트에서 읽는 중…' : '비트 값 채우기'
+  const html = panelHtml()
+  $('panel').hidden = !html || !S.panelOpen
+  $('panel').innerHTML = html ? head + `<div class="pb">${html}</div>` : ''
+}
+
+/* ───────────── 설정 화면 ───────────── */
+// 도우미가 주는 코드 목록(closing.codes) 예시: [코드, 이름, 최근 1년 나온 진료 수]. 이름은 bit-codes.md에서 빌리거나 지은 예시
+const CODES = [
+  ['SONO1', '비급여초음파', 6820], ['CARM1', '씨암 영상 유도', 6410], ['MM010', '표층열치료', 5960], ['MM015', '심층열치료', 5720], ['MM011', '한냉치료', 4310],
+  ['AA254', '재진진찰료', 4120], ['LA358', '신경근차단술', 3860], ['A15', '리도카인 주사', 3790], ['A30', '리포라제 주사', 3410], ['LA272', '말초신경차단술', 2950],
+  ['ESWT7', '체외충격파(2000타)', 2180], ['MM085', '재활저출력레이저치료 [1일당]', 1980], ['KK090', '관절강내주사', 1210], ['CRYO', '크라이오(냉동치료)', 940], ['A49', '아라간플러스 주사', 760],
+  ['PROLO', '증식치료', 610], ['AA222', '물리치료 내원 진찰', 540], ['도수', '도수치료 [1일당] - 의원 (관리급여)', 326], ['MS11', 'MS11', 324], ['MA12', '도수치료(50분) 비급여', 286],
+  ['A21', '트리암시놀론 주사', 262], ['ESWT12', '체외충격파(4000타)', 214], ['N0645', '사지골절 도수정복술', 191], ['MA8', '도수치료(30분) 비급여', 178], ['ESWT10', '체외충격파(3000타)', 176],
+  ['.', '도수상담', 128], ['HA280', '관절조영', 84], ['51040', '도수치료', 75], ['KK062', '건초내주사', 66], ['SB021', '창상봉합술', 27],
+  ['ESWT17', '체외충격파(6000타)', 25], ['JA', '자기장치료', 21], ['MA4', '도수치료(30분) 비급여', 11], ['M0031', '이물제거술', 9], ['N0215', '조갑거터술', 8],
+  ['KK010', '피하근육주사', 8], ['MA20', '도수치료(90분) 비급여', 6], ['N0210', '내향성모조증근치수술', 5], ['KR006', '도수치료 [1일당] - 의원 (관리급여)', 1],
+]
+const CODE_MAP = Object.fromEntries(CODES.map(([c, n, v]) => [c, { n, v }]))
+const CODE_TOTAL = '1,284'   // 예시: 도우미가 준 코드 수
+// 비트 예약 메모 목록(kinds) 예시
+const KINDS = [['1', '체외충격파'], ['2', '주사'], ['3', '경과'], ['14', '도수30분(호)'], ['20', '도수30분(원)'], ['22', '도수30분(현)']]
+const KIND_MAP = Object.fromEntries(KINDS)
+
+// design.md 2절 GROUP_KEYS 차례, 묶음은 같은 절의 '/' 나눔
+const SECTIONS = [
+  { t: '치료별 건수 · 매출', p: '그날 고른 코드 가운데 하나라도 받은 환자 수를 건수로, 그 환자들의 그날 총진료비 합을 매출로 채워요.', items: [
+    ['carm', '씨암', '업무일지 1 씨암 · 업무일지 2 씨암(주사) 건수 · 매출'],
+    ['sono', 'SONO', '업무일지 1 SONO · 업무일지 2 SONO(주사) 건수 · 매출'],
+    ['arthro', '관절조영', '업무일지 1 관절조영술 · 업무일지 2 관절조영 건수 · 매출'],
+    ['manual', '도수', '업무일지 1 도수치료 · 업무일지 2 도수 건수 · 매출 · 도수 총금액'],
+    ['eswt', '충격파', '업무일지 1 충격파(체충) · 업무일지 2 충격파 건수 · 매출 · 충격파 총금액'],
+    ['pt', '물리치료', '업무일지 2 물리치료 매출'],
+    ['etc1', '기타1', '업무일지 2 이 이름 줄의 건수 · 매출'],
+    ['etc2', '기타2', '업무일지 2 이 이름 줄의 건수 · 매출'],
+    ['etc3', '기타3', '업무일지 2 이 이름 줄의 건수 · 매출'],
+    ['etc4', '기타4', '업무일지 2 이 이름 줄의 건수 · 매출'],
+  ] },
+  { t: '진료 · 치료현황만', p: '고른 코드를 받은 환자 수를 업무일지 1 진료 · 치료현황에 채워요.', items: [
+    ['manualConsult', '도수상담', '업무일지 1 도수상담'],
+    ['lipus', '리푸스', '업무일지 1 리푸스'],
+    ['nail', '손발톱케어', '업무일지 1 손발톱케어'],
+    ['ct', 'CT', '업무일지 1 CT'],
+    ['surgery', '수술', '업무일지 1 수술'],
+  ] },
+  { t: '운영 지표', p: '주사1회환자는 그날 고른 주사를 맞았고 그 전 비트 기록에 고른 주사가 없는 환자예요.', items: [
+    ['eswtStd', 'ESWT Standard', '업무일지 2 ESWT Standard'],
+    ['eswtRadial', 'ESWT Radial', '업무일지 2 ESWT Radial'],
+    ['injection', '주사', '업무일지 2 주사1회환자 · 신환주사환자 · 신환주사건수'],
+  ] },
+  { t: '환자현황', p: '고른 코드를 받은 환자(신환 · 90일초진 아님)를 물리치료내원으로 세고, 재진 · 진찰료 산정안함에서 빼요.', items: [
+    ['ptVisit', '물리치료내원', '업무일지 1 환자현황 물리치료내원'],
+  ] },
+]
+const RSV = [['injection', '주사'], ['followup', '경과'], ['manual', '도수'], ['eswt', '충격파'], ['clinic', '진료예약'], ['etc', '기타(수액,드레싱등)']]
+
+// 처음 값 (requirements 이미 정한 것 7)
+const DEFAULTS = () => ({
+  picks: { carm: ['CARM1'], sono: ['SONO1'], arthro: ['HA280'], manual: ['도수'], eswt: ['ESWT7', 'ESWT10', 'ESWT12', 'ESWT17'], pt: ['MM010', 'MM015', 'MM011'], etc1: ['CRYO'], ptVisit: ['AA222'] },
+  etcNames: { etc1: '크라이오', etc2: '', etc3: '', etc4: '' },
+  reservations: {},
+})
+let O = DEFAULTS()
+let everSaved = false, dirty = false, noHelper = false
+let search = null   // { key, text }
+
+function optPreset(name) {
+  S.opt = name
+  O = DEFAULTS(); search = null; dirty = false; noHelper = false
+  everSaved = name !== 'optFirst'
+  if (name === 'optSearch') { everSaved = false; O.picks.eswt = ['ESWT7', 'ESWT10']; dirty = true; search = { key: 'eswt', text: '체외' } }
+  if (name === 'optSaved') {
+    O.picks.manual = ['도수', 'MA4']
+    O.picks.eswt = ['ESWT7', 'ESWT10', 'ESWT12', 'ESWT17', 'ESWT22']
+    O.picks.manualConsult = ['.']
+    O.reservations = { manual: ['14', '20', '22'], eswt: ['1'] }
+  }
+  if (name === 'optNoHelper') {
+    noHelper = true
+    O.reservations = { manual: ['14', '20', '22'], eswt: ['1'] }
+  }
+}
+
+function results(text, key) {
+  const q = text.trim().toLowerCase()
+  if (!q) return []
+  return CODES.filter(([c, n]) => c.toLowerCase().includes(q) || n.toLowerCase().includes(q)).sort((a, b) => b[2] - a[2]).slice(0, 30)
+}
+function ddHtml(key, text) {
+  const list = results(text, key)
+  const mine = O.picks[key] || []
+  if (!list.length) return '<p class="empty">맞는 코드가 없어요.</p>'
+  return list.map(([c, n, v]) => {
+    const has = mine.includes(c)
+    return `<button type="button" data-add="${esc(c)}" data-key="${key}" ${has ? 'disabled' : ''}><b>${esc(c)}</b><span>${esc(n)}</span><em>${has ? '골랐어요' : `최근 1년 ${v.toLocaleString('ko-KR')}번`}</em></button>`
+  }).join('')
+}
+
+function chip(code, key) {
+  const info = CODE_MAP[code]
+  const name = noHelper ? '' : info ? `<span class="cn">${esc(info.n)}</span>` : '<span class="cn gone">(최근 1년 처방 없음)</span>'
+  return `<span class="chip"><b>${esc(code)}</b>${name}<button type="button" data-del="${esc(code)}" data-key="${key}" aria-label="${esc(code)} 빼기">×</button></span>`
+}
+function codeRow([key, name, use]) {
+  const mine = O.picks[key] || []
+  const full = mine.length >= 20
+  const etc = key.startsWith('etc') ? `<label class="etc"><span>ERP 줄 이름</span><input type="text" maxlength="20" data-etc="${key}" value="${esc(O.etcNames[key])}" placeholder="업무일지 2 줄 이름과 똑같이"></label>` : ''
+  const ph = noHelper ? '코드 목록을 받지 못해 찾을 수 없어요' : full ? '20개까지 고를 수 있어요' : '코드나 이름으로 찾기'
+  const open = search && search.key === key
+  return `<div class="orow" data-row="${key}">
+    <div class="oname"><b>${name}</b><small>${use}</small></div>
+    <div class="opick">${etc}
+      <div class="pickline">${mine.length ? mine.map((c) => chip(c, key)).join('') : '<span class="none">고른 코드 없음 · 이 칸은 채우지 않아요</span>'}
+      <div class="find"><input type="search" data-find="${key}" placeholder="${ph}" value="${open ? esc(search.text) : ''}" ${noHelper || full ? 'disabled' : ''} aria-label="${name} 코드 찾기" autocomplete="off">
+        <div class="dd" data-dd="${key}" ${open && search.text.trim() ? '' : 'hidden'}>${open ? ddHtml(key, search.text) : ''}</div></div></div>
+    </div></div>`
+}
+function rsvRow([row, name]) {
+  const mine = O.reservations[row] || []
+  const chips = mine.length ? mine.map((k) => `<span class="chip"><b>${k}번</b>${noHelper ? '' : `<span class="cn">${esc(KIND_MAP[k] || '')}</span>`}<button type="button" data-rdel="${k}" data-row="${row}" aria-label="${k}번 빼기">×</button></span>`).join('')
+    : '<span class="none">고른 메모 없음 · 이 줄은 채우지 않아요</span>'
+  const opts = KINDS.filter(([k]) => !mine.includes(k)).map(([k, n]) => `<option value="${k}">${k}번 · ${esc(n)}</option>`).join('')
+  return `<div class="orow"><div class="oname"><b>${name}</b><small>업무일지 2 예약 표 ${name} 줄</small></div>
+    <div class="opick"><div class="pickline">${chips}
+      <select data-radd="${row}" aria-label="${name} 줄에 예약 메모 더하기" ${noHelper ? 'disabled' : ''}><option value="">${noHelper ? '메모 목록을 받지 못했어요' : '예약 메모 더하기'}</option>${opts}</select></div></div></div>`
+}
+
+function renderOpt() {
+  const first = !everSaved ? `<p class="notice first"><b>처음 한 번 설정 화면에서 코드를 확인하고 [저장]을 눌러 주세요.</b> 지금 들어 있는 코드는 처음 값이에요.</p>` : ''
+  const helper = noHelper
+    ? '<p class="notice err"><b>도우미에서 코드 목록을 받지 못했어요 <span class="nw">(E-HELPER-MISSING)</span></b><br>고른 코드는 그대로 두고 저장할 수 있어요. 코드를 새로 찾으려면 도우미를 켠 뒤 이 화면을 다시 열어 주세요.</p>'
+    : `<p class="notice ok">비트에서 최근 1년 처방 코드 ${CODE_TOTAL}개와 예약 메모 ${KINDS.length}개를 받았어요.</p>`
+  $('optMain').innerHTML = first + `<p class="lead-p">ERP 칸마다 셀 비트 처방 코드를 고르세요. 여러 개를 고를 수 있어요. 코드를 고르지 않은 항목의 칸은 건드리지 않아요.</p>` + helper
+    + SECTIONS.map((s) => `<section class="osec"><h2>${s.t}</h2><p>${s.p}</p>${s.items.map(codeRow).join('')}</section>`).join('')
+    + `<section class="osec"><h2>예약</h2><p>ERP 예약 표 줄마다 비트 예약 메모 번호를 고르세요. 고른 번호들의 예약을 더해 총갯수 · 내원 · 변경 · 취소를 채워요. 실예약환자수는 늘 채워요.</p>${RSV.map(rsvRow).join('')}</section>`
+    + '<p class="foot">환자 이름 · 차트번호는 이 PC의 도우미 밖으로 나가지 않아요. ERP 화면에는 숫자만 넣고, 저장은 ERP에서 직접 눌러요.</p>'
+  const st = $('optStatus')
+  st.className = 'status ' + (dirty ? 'dirty' : everSaved ? 'saved' : '')
+  st.textContent = dirty ? '바꾼 것을 아직 저장하지 않았어요.' : everSaved ? '저장했어요.' : '아직 한 번도 저장하지 않았어요.'
+}
+
+/* ───────────── 그리기·누르기 ───────────── */
+function render() {
+  document.querySelectorAll('[data-erp]').forEach((b) => b.setAttribute('aria-pressed', String(S.view === 'erp' && b.dataset.erp === S.erp)))
+  document.querySelectorAll('[data-opt]').forEach((b) => b.setAttribute('aria-pressed', String(S.view === 'opt' && b.dataset.opt === S.opt)))
+  $('viewErp').hidden = S.view !== 'erp'
+  $('viewOpt').hidden = S.view !== 'opt'
+  if (S.view === 'erp') renderErp(); else renderOpt()
+}
+let timer = null
+document.querySelectorAll('[data-erp]').forEach((b) => b.addEventListener('click', () => { clearTimeout(timer); S.view = 'erp'; S.erp = b.dataset.erp; S.panelOpen = true; render() }))
+document.querySelectorAll('[data-opt]').forEach((b) => b.addEventListener('click', () => { S.view = 'opt'; optPreset(b.dataset.opt); render(); window.scrollTo(0, 0) }))
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { S.tab = b.dataset.tab; render() }))
+$('fillBtn').addEventListener('click', () => {
+  if (S.erp === 'errDate') { S.panelOpen = true; render(); return }
+  S.erp = 'reading'; S.panelOpen = true; render()
+  timer = setTimeout(() => { S.erp = 'done'; render() }, 1500)
+})
+$('panel').addEventListener('click', (e) => {
+  if (e.target.closest('[data-close]')) { S.panelOpen = false; render() }
+  if (e.target.closest('[data-open-settings]')) { S.view = 'opt'; optPreset(S.erp === 'first' ? 'optFirst' : 'optSaved'); render(); window.scrollTo(0, 0) }
+})
+const optMain = $('optMain')
+optMain.addEventListener('input', (e) => {
+  const f = e.target.dataset.find
+  if (f) {
+    search = { key: f, text: e.target.value }
+    const dd = optMain.querySelector(`[data-dd="${f}"]`)
+    dd.hidden = !e.target.value.trim()
+    dd.innerHTML = ddHtml(f, e.target.value)
+    return
+  }
+  const etc = e.target.dataset.etc
+  if (etc) { O.etcNames[etc] = e.target.value; dirty = true; const st = $('optStatus'); st.className = 'status dirty'; st.textContent = '바꾼 것을 아직 저장하지 않았어요.' }
+})
+optMain.addEventListener('change', (e) => {
+  const row = e.target.dataset.radd
+  if (row && e.target.value) { O.reservations[row] = [...(O.reservations[row] || []), e.target.value]; dirty = true; renderOpt() }
+})
+optMain.addEventListener('click', (e) => {
+  const add = e.target.closest('[data-add]')
+  if (add) {
+    const key = add.dataset.key, list = O.picks[key] || []
+    if (!list.includes(add.dataset.add) && list.length < 20) O.picks[key] = [...list, add.dataset.add]
+    search = null; dirty = true; renderOpt()
+    const inp = optMain.querySelector(`[data-find="${key}"]`); if (inp && !inp.disabled) inp.focus()
+    return
+  }
+  const del = e.target.closest('[data-del]')
+  if (del) { O.picks[del.dataset.key] = (O.picks[del.dataset.key] || []).filter((c) => c !== del.dataset.del); dirty = true; renderOpt(); return }
+  const rdel = e.target.closest('[data-rdel]')
+  if (rdel) { O.reservations[rdel.dataset.row] = (O.reservations[rdel.dataset.row] || []).filter((k) => k !== rdel.dataset.rdel); dirty = true; renderOpt() }
+})
+document.addEventListener('click', (e) => {
+  if (search && !e.target.closest('.find')) { search = null; optMain.querySelectorAll('.dd').forEach((d) => (d.hidden = true)) }
+})
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && search) { search = null; optMain.querySelectorAll('.dd').forEach((d) => (d.hidden = true)) } })
+$('optSave').addEventListener('click', () => { everSaved = true; dirty = false; search = null; renderOpt() })
+$('optReset').addEventListener('click', () => { O = DEFAULTS(); search = null; dirty = true; renderOpt() })
+
+render()
+</script>
+</body>
+</html>
