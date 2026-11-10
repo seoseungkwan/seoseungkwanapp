@@ -64,10 +64,11 @@ export function TitleRow({ header, onRefresh }: { header: HeaderView; onRefresh?
 
 const STEP = `grid size-9 cursor-pointer place-items-center text-ink-2 transition not-disabled:hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40 max-md:size-11 ${ds.focusRing}`
 
-type PeriodProps = { period: PeriodView; canPrevious: boolean; canNext: boolean; onPrevious(): void; onNext(): void }
+// bound: 넘겨 볼 끝 달 글(revenue-load-range AC-3503.1). 없으면 지금 그대로
+type PeriodProps = { period: PeriodView; bound?: string; canPrevious: boolean; canNext: boolean; onPrevious(): void; onNext(): void }
 
 /** 달 고르기(‹ 달 ›): 폰은 44px 높이에 전체 폭 */
-export function PeriodRow({ period, canPrevious, canNext, onPrevious, onNext }: PeriodProps) {
+export function PeriodRow({ period, bound, canPrevious, canNext, onPrevious, onNext }: PeriodProps) {
   return (
     <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
       <div className="inline-flex items-stretch rounded-control border border-line-strong max-md:w-full">
@@ -80,6 +81,7 @@ export function PeriodRow({ period, canPrevious, canNext, onPrevious, onNext }: 
         </button>
       </div>
       <span className="text-small text-muted">{period.note}</span>
+      {bound && <span className="text-small text-muted">{bound}</span>}
     </div>
   )
 }
