@@ -15,7 +15,10 @@ export const ETC_KEYS: readonly EtcKey[] = ['etc1', 'etc2', 'etc3', 'etc4']
 /** 도우미가 받는 코드 모양(closing.day args pattern). 예약 메모 번호도 같은 꼴로 둔다 */
 const CODE = /^\S{1,20}$/
 
-/** 처음 값(requirements 이미 정한 것 7). 예약 6줄은 비어 있다(기본값 다). 새 값은 defaults()로 받는다 */
+/**
+ * 처음 값(requirements 이미 정한 것 7). 예약 6줄은 비어 있다(기본값 다). 새 값은 defaults()로 받는다.
+ * 물리치료 MM085·MM080·MM020·크라이오 CRYO3은 2026-11-10 밤에 더했다. 이미 저장한 설정에는 저절로 들어가지 않는다
+ */
 export function defaults(): Settings {
   return {
     v: 1,
@@ -25,8 +28,8 @@ export function defaults(): Settings {
       arthro: ['HA280'],
       manual: ['도수'],
       eswt: ['ESWT7', 'ESWT10', 'ESWT12', 'ESWT17'],
-      pt: ['MM010', 'MM015', 'MM011'],
-      etc1: ['CRYO'],
+      pt: ['MM010', 'MM015', 'MM011', 'MM085', 'MM080', 'MM020'],
+      etc1: ['CRYO', 'CRYO3'],
       ptVisit: ['AA222'],
     },
     etcNames: { etc1: '크라이오', etc2: '', etc3: '', etc4: '' },

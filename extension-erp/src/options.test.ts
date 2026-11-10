@@ -188,8 +188,8 @@ describe('AC-3607.3 처음 열었을 때(저장한 적 없음)', () => {
     expect(chipCodes('arthro')).toEqual(['HA280'])
     expect(chipCodes('manual')).toEqual(['도수'])
     expect(chipCodes('eswt')).toEqual(['ESWT7', 'ESWT10', 'ESWT12', 'ESWT17'])
-    expect(chipCodes('pt')).toEqual(['MM010', 'MM015', 'MM011'])
-    expect(chipCodes('etc1')).toEqual(['CRYO'])
+    expect(chipCodes('pt')).toEqual(['MM010', 'MM015', 'MM011', 'MM085', 'MM080', 'MM020'])
+    expect(chipCodes('etc1')).toEqual(['CRYO', 'CRYO3'])
     expect(chipCodes('ptVisit')).toEqual(['AA222'])
     for (const k of ['etc2', 'etc3', 'etc4', 'manualConsult', 'lipus', 'nail', 'ct', 'surgery', 'eswtStd', 'eswtRadial', 'injection']) {
       expect(chipCodes(k), k).toEqual([])
@@ -396,8 +396,8 @@ describe('AC-3607.3 저장·처음 값으로', () => {
         arthro: ['HA280'],
         manual: ['도수'],
         eswt: ['ESWT7', 'ESWT10', 'ESWT12', 'ESWT17'],
-        pt: ['MM010', 'MM015', 'MM011'],
-        etc1: ['CRYO'],
+        pt: ['MM010', 'MM015', 'MM011', 'MM085', 'MM080', 'MM020'],
+        etc1: ['CRYO', 'CRYO3'],
         manualConsult: ['.'],
         ptVisit: ['AA222'],
       },
@@ -413,6 +413,9 @@ describe('AC-3607.3 저장·처음 값으로', () => {
     const { sendMessage } = await open({ stored: SAVED })
     expect(sendMessage).toHaveBeenCalledTimes(1)
     expect(chipCodes('manual')).toEqual(['도수', 'MA4'])
+    // 이미 저장한 설정에는 새 처음 코드가 저절로 들어가지 않는다
+    expect(chipCodes('pt')).toEqual(['MM010', 'MM015', 'MM011'])
+    expect(chipCodes('etc1')).toEqual(['CRYO'])
     expect(chipCodes('manualConsult')).toEqual(['.'])
     expect([...$('[data-rsv="eswt"]').querySelectorAll('.chip b')].map(text)).toEqual(['1번'])
     expect($$('.notice.first')).toHaveLength(0)
@@ -425,6 +428,9 @@ describe('AC-3607.3 저장·처음 값으로', () => {
     await flush()
     expect(chipCodes('manual')).toEqual(['도수'])
     expect(chipCodes('eswt')).toEqual(['ESWT7', 'ESWT10', 'ESWT12', 'ESWT17'])
+    // 예전 처음 값으로 저장한 물리치료 3개·크라이오 1개도 새 처음 값(6개·CRYO·CRYO3)으로 바뀐다(저장은 사용자가)
+    expect(chipCodes('pt')).toEqual(['MM010', 'MM015', 'MM011', 'MM085', 'MM080', 'MM020'])
+    expect(chipCodes('etc1')).toEqual(['CRYO', 'CRYO3'])
     expect(chipCodes('manualConsult')).toEqual([])
     expect($('[data-rsv="manual"]').querySelectorAll('.chip')).toHaveLength(0)
     expect(status()).toBe('바꾼 것을 아직 저장하지 않았어요.')

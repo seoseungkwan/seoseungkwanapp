@@ -461,26 +461,100 @@ public class ClosingDayTests
 
     // ---- AC-3604.3 치료별 매출 ------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-3604.3 groups[].total = 묶음 사람들의 그날 모든 진료 총진료비 합(진료마다 원 미만 버림), 수납 줄 없는 진료는 0으로 더하고 unpaidVisits에 센다")]
-    public void GroupTotals()
+    [Fact(DisplayName = "AC-3604.3 groups[].total = 그날 진료의 묶음 코드 처방 줄 금액 합 — 진찰료·묶음 밖 코드 줄·진료 총진료비는 더하지 않는다")]
+    public void GroupTotalIsCodeLineAmounts()
     {
         var result = new DayRig()
-            .Visit("V001", 1, "1", 30, 10000.9m, "CARM1")
-            .Visit("V002", 1, "1", 30, 5000.9m, "MM010")
-            .Visit("V003", 2, "4", 30, null, "CARM1")
-            .Visit("V004", 3, "4", 30, 7000m, "SONO1")
-            .Visit("V005", 3, "4", 30, null, "SONO1")
-            .Read(G("carm", "CARM1"), G("sono", "SONO1"), G("pt", "MM010"));
+            .Visit("V001", 1, "1", 30, 987654m)
+            .Line("V001", "AA154", 18000m)      // 진찰료
+            .Line("V001", "ESWT7", 70000m)
+            .Line("V001", "KK090", 20000m)      // 묶음 밖 코드
+            .Visit("V002", 2, "4", 30, 54321m)
+            .Line("V002", "ESWT7", 70000m)
+            .Line("V002", "MM010", 1010m)
+            .Line("V002", "MM010", 1010m)
+            .Read(G("eswt", "ESWT7", "ESWT10"), G("pt", "MM010"));
 
-        var carm = GroupOf(result, "carm");
-        Assert.Equal(15000L, carm.Total);
-        Assert.Equal(1L, carm.UnpaidVisits);
-        var sono = GroupOf(result, "sono");
-        Assert.Equal(7000L, sono.Total);
-        Assert.Equal(1L, sono.UnpaidVisits);
+        var eswt = GroupOf(result, "eswt");
+        Assert.Equal(2L, eswt.Patients);
+        Assert.Equal(140000L, eswt.Total);
         var pt = GroupOf(result, "pt");
-        Assert.Equal(15000L, pt.Total);
-        Assert.Equal(0L, pt.UnpaidVisits);
+        Assert.Equal(1L, pt.Patients);
+        Assert.Equal(2020L, pt.Total);
+    }
+
+    [Fact(DisplayName = "AC-3604.3 한 묶음의 코드 둘은 함께 더하고, 두 묶음에 든 코드 하나는 묶음마다 더한다")]
+    public void GroupTotalSharedCodes()
+    {
+        var result = new DayRig()
+            .Visit("V001", 1, "4", 30, 1000m)
+            .Line("V001", "CRYO", 25000m)
+            .Line("V001", "CRYO3", 30000m)
+            .Line("V001", "CRYO3", 30000m)
+            .Visit("V002", 2, "4", 30, 1000m)
+            .Line("V002", "MM085", 6710m)
+            .Read(G("etc1", "CRYO", "CRYO3"), G("pt", "MM085", "CRYO3"), G("etc2", "MM085"));
+
+        Assert.Equal(85000L, GroupOf(result, "etc1").Total);
+        Assert.Equal(66710L, GroupOf(result, "pt").Total);
+        Assert.Equal(6710L, GroupOf(result, "etc2").Total);
+    }
+
+    [Fact(DisplayName = "AC-3604.3 원 미만은 묶음마다 버린다(진료·줄마다가 아니다)")]
+    public void GroupTotalTruncatesPerGroup()
+    {
+        var result = new DayRig()
+            .Visit("V001", 1, "4", 30, 1000m)
+            .Line("V001", "MM010", 1010.6m)
+            .Line("V001", "MM015", 510.9m)
+            .Visit("V002", 2, "4", 30, 1000m)
+            .Line("V002", "MM010", 1010.6m)
+            .Read(G("pt", "MM010", "MM015"), G("etc1", "MM015"));
+
+        // 1,010.6 + 510.9 + 1,010.6 = 2,532.1 → 2,532 (줄마다 버리면 2,530, 진료마다 버리면 2,531)
+        Assert.Equal(2532L, GroupOf(result, "pt").Total);
+        Assert.Equal(510L, GroupOf(result, "etc1").Total);
+    }
+
+    [Fact(DisplayName = "AC-3604.3 단가 0원 코드(씨암 CARM1·SONO SONO1 처음 코드)와 금액 칸이 비어 있는(NULL) 코드는 0이고 사람 수는 그대로 센다")]
+    public void GroupTotalZeroPrice()
+    {
+        var result = new DayRig()
+            .Visit("V001", 1, "4", 30, 50000m)
+            .Line("V001", "CARM1", 0m)
+            .Visit("V002", 2, "4", 30, 40000m)
+            .Line("V002", "SONO1", null)
+            .Read(G("carm", "CARM1"), G("sono", "SONO1"));
+
+        Assert.Equal(1L, GroupOf(result, "carm").Patients);
+        Assert.Equal(0L, GroupOf(result, "carm").Total);
+        Assert.Equal(1L, GroupOf(result, "sono").Patients);
+        Assert.Equal(0L, GroupOf(result, "sono").Total);
+    }
+
+    [Fact(DisplayName = "AC-3604.3 수납 줄이 없는 진료도 처방 금액은 그대로 더하고, 그 진료 수는 groups[].unpaidVisits(묶음 사람 진료)에 지금처럼 센다")]
+    public void GroupTotalCountsUnpaidVisits()
+    {
+        var result = new DayRig()
+            .Visit("V001", 1, "4", 30, null)
+            .Line("V001", "ESWT7", 70000m)
+            .Visit("V002", 1, "4", 30, 5000m)
+            .Line("V002", "MM010", 1010m)
+            .Visit("V003", 2, "4", 30, null)
+            .Line("V003", "XRAY", 9000m)
+            .Visit("V004", 3, "4", 30, null, "CARM1")
+            .Read(G("eswt", "ESWT7"), G("pt", "MM010"), G("carm", "CARM1"), G("sono", "SONO1"));
+
+        var eswt = GroupOf(result, "eswt");
+        Assert.Equal(70000L, eswt.Total);
+        Assert.Equal(1L, eswt.UnpaidVisits);
+        // 같은 사람(1)의 수납 없는 진료 V001이 물리치료 묶음에도 센다(묶음 사람 진료)
+        var pt = GroupOf(result, "pt");
+        Assert.Equal(1010L, pt.Total);
+        Assert.Equal(1L, pt.UnpaidVisits);
+        Assert.Equal(1L, GroupOf(result, "carm").UnpaidVisits);
+        Assert.Equal(0L, GroupOf(result, "sono").UnpaidVisits);
+        Assert.Equal(3L, result.Warnings.UnpaidVisits);
     }
 
     [Fact(DisplayName = "AC-3604.3 warnings.unpaidVisits는 그날 모든 진료 가운데 수납 줄이 없는 진료 수다(묶음 밖 진료 포함)")]
@@ -495,7 +569,8 @@ public class ClosingDayTests
 
         Assert.Equal(3L, result.Warnings.UnpaidVisits);
         Assert.Equal(1L, GroupOf(result, "carm").UnpaidVisits);
-        Assert.Equal(1000L, GroupOf(result, "carm").Total);
+        // 진료 총진료비(1,000)는 묶음 금액에 더하지 않는다(CARM1 줄 금액 0)
+        Assert.Equal(0L, GroupOf(result, "carm").Total);
     }
 
     // ---- AC-3604.4 입원 -----------------------------------------------------------------------------
@@ -639,6 +714,18 @@ public class ClosingDayTests
         var twoRows = new DayRig();
         twoRows.Db.Answer(ClosingSql.InpatientSql, _ => new[] { new object?[] { 0L }, new object?[] { 0L } });
         Assert.Equal(BitErrors.ReadFailed, Assert.Throws<BitException>(() => twoRows.Read()).Code);
+    }
+
+    [Fact(DisplayName = "AC-3604.3 AC-3606.1 처방 줄에 금액 칸이 없거나 숫자가 아니면 지어내지 않고 E-BIT-READ-FAILED")]
+    public void BadCodeAmountFails()
+    {
+        var noAmount = new DayRig().Visit("V001", 1, "4", 30, 1000m);
+        noAmount.Db.Answer(ClosingSql.DayCodesSql, _ => new[] { new object?[] { "V001", "MM010", 1L } });
+        Assert.Equal(BitErrors.ReadFailed, Assert.Throws<BitException>(() => noAmount.Read(G("pt", "MM010"))).Code);
+
+        var notNumber = new DayRig().Visit("V001", 1, "4", 30, 1000m);
+        notNumber.Db.Answer(ClosingSql.DayCodesSql, _ => new[] { new object?[] { "V001", "MM010", 1L, "많음" } });
+        Assert.Equal(BitErrors.ReadFailed, Assert.Throws<BitException>(() => notNumber.Read(G("pt", "MM010"))).Code);
     }
 
     // ---- AC-3606.2 답 모양 ------------------------------------------------------------------------

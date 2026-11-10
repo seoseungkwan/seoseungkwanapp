@@ -73,8 +73,8 @@ public class ClosingCommandsTests
     private static object?[] CodeName(string code, string? name) => new object?[] { code, name, "", "20200101", "99991231", "1", "", false };
 
     /// <summary>
-    /// 등록된 PC. 그날 진료 둘: 신환 V001(씨암, 총진료비 30,000) · 재진 V002(물리치료내원 AA222·물리치료 MM010 두 줄, 20,000).
-    /// 줄 뒤쪽 칸에 가짜 차트번호·이름·생년월일이 섞여 와도 처리기는 읽는 칸만 본다.
+    /// 등록된 PC. 그날 진료 둘: 신환 V001(씨암 줄 30,000) · 재진 V002(물리치료내원 AA222 줄 0 · 물리치료 MM010 두 줄 20,000).
+    /// 처방 줄 뒤 칸은 금액(TASK-14). 줄 뒤쪽 칸에 가짜 차트번호·이름·생년월일이 섞여 와도 처리기는 읽는 칸만 본다.
     /// </summary>
     private static Rig Ready()
     {
@@ -88,9 +88,9 @@ public class ClosingCommandsTests
         });
         db.Answer(ClosingSql.DayCodesSql, _ => new[]
         {
-            new object?[] { "V001", "CARM1", 1L },
-            new object?[] { "V002", "AA222", 1L },
-            new object?[] { "V002", "MM010", 2L },
+            new object?[] { "V001", "CARM1", 1L, 30000m },
+            new object?[] { "V002", "AA222", 1L, 0m },
+            new object?[] { "V002", "MM010", 2L, 20000m },
         });
         db.Answer(Sql.TrendTotalsSql, _ => new[]
         {

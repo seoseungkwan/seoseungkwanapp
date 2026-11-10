@@ -69,12 +69,13 @@ internal static class ClosingFake
 
 /// <summary>
 /// 하루 진료 줄을 쌓아 ClosingDay.Read를 부르는 틀. Visit 한 번 = DayVisitsSql 한 줄(진료번호·그날 번호·진찰구분·만 나이·마지막 수납 총진료비),
-/// 코드 하나 = 그 진료의 처방 한 줄(같은 코드를 여러 번 주면 DayCodesSql의 줄 수가 늘어난다).
+/// 코드 하나 = 그 진료의 처방 한 줄(같은 코드를 여러 번 주면 DayCodesSql의 줄 수가 늘어난다). Visit로 준 코드 줄은 금액 0(단가 0원)이고,
+/// 금액이 있는 처방 줄은 Line으로 더한다. DayCodesSql 답은 진료·코드마다 [진료번호, 코드, 줄 수, 금액 합(모두 NULL이면 NULL)]이다(TASK-14).
 /// </summary>
 internal sealed class DayRig
 {
     private readonly List<object?[]> visits = new List<object?[]>();
-    private readonly List<(string Visit, string Code)> lines = new List<(string Visit, string Code)>();
+    private readonly List<(string Visit, string Code, decimal? Amount)> lines = new List<(string Visit, string Code, decimal? Amount)>();
 
     /// <summary>진료·처방 답은 여기서 한 번만 정한다(답은 부를 때 쌓인 줄을 읽는다). 시험이 뒤에 Fail·Answer로 바꾸면 그것이 이긴다.</summary>
     public DayRig()
@@ -82,8 +83,8 @@ internal sealed class DayRig
         Db = ClosingFake.Quiet();
         Db.Answer(ClosingSql.DayVisitsSql, _ => visits.ToArray());
         Db.Answer(ClosingSql.DayCodesSql, _ => lines
-            .GroupBy(line => line)
-            .Select(group => new object?[] { group.Key.Visit, group.Key.Code, (long)group.Count() })
+            .GroupBy(line => (line.Visit, line.Code))
+            .Select(group => new object?[] { group.Key.Visit, group.Key.Code, (long)group.Count(), Sum(group.Select(line => line.Amount)) })
             .ToArray());
     }
 
@@ -92,8 +93,22 @@ internal sealed class DayRig
     public DayRig Visit(string visit, long person, string? dgs, int? age, decimal? total, params string[] codes)
     {
         visits.Add(new object?[] { visit, person, dgs, age, total });
-        foreach (var code in codes) lines.Add((visit, code));
+        foreach (var code in codes) lines.Add((visit, code, 0m));
         return this;
+    }
+
+    /// <summary>처방 한 줄을 금액과 함께 더한다(금액 = 원내 줄의 일수 × 수량 × 단가. 원외 줄·값이 빠진 줄은 null).</summary>
+    public DayRig Line(string visit, string code, decimal? amount)
+    {
+        lines.Add((visit, code, amount));
+        return this;
+    }
+
+    /// <summary>SQL SUM과 같다: NULL은 빼고 더하고, 모두 NULL이면 NULL.</summary>
+    private static object? Sum(IEnumerable<decimal?> amounts)
+    {
+        var known = amounts.Where(amount => amount != null).Select(amount => amount!.Value).ToList();
+        return known.Count == 0 ? null : (object)known.Sum();
     }
 
     public ClosingDayResult Read(params ClosingGroup[] groups) => ClosingDay.Read(Db, Synthetic.Scope, ClosingFake.Day, groups);

@@ -78,7 +78,7 @@ public sealed class ClosingPatients
     public long Total { get; set; }
 }
 
-/// <summary>묶음 하나: 서로 다른 환자 수·그 사람들 그날 진료 총진료비 합·수납 없는 진료 수·3분류.</summary>
+/// <summary>묶음 하나: 서로 다른 환자 수·그날 묶음 코드 처방 줄 금액 합·그 사람들의 수납 없는 진료 수·3분류.</summary>
 public sealed class ClosingGroupCount
 {
     [JsonPropertyName("key")]
@@ -392,29 +392,30 @@ public static class ClosingDay
         return visits;
     }
 
-    /// <summary>진료번호 → 코드 → 줄 수. 그날 진료 줄에 없는 진료의 처방은 버린다.</summary>
-    private static Dictionary<string, Dictionary<string, long>> ReadCodes(IBitDb db, IReadOnlyDictionary<string, object?> values, List<Visit> visits)
+    /// <summary>진료번호 → 코드 → 줄 수·금액(DayCodesSql 금액 칸, NULL은 0). 그날 진료 줄에 없는 진료의 처방은 버린다.</summary>
+    private static Dictionary<string, Dictionary<string, CodeLines>> ReadCodes(IBitDb db, IReadOnlyDictionary<string, object?> values, List<Visit> visits)
     {
         var known = new HashSet<string>(visits.Select(visit => visit.Id), StringComparer.Ordinal);
-        var codes = new Dictionary<string, Dictionary<string, long>>(StringComparer.Ordinal);
+        var codes = new Dictionary<string, Dictionary<string, CodeLines>>(StringComparer.Ordinal);
         foreach (var row in ClosingRead.Query(db, ClosingSql.DayCodesSql, values))
         {
-            if (row == null || row.Count < 3) throw ClosingRead.ReadFailed();
+            if (row == null || row.Count < 4) throw ClosingRead.ReadFailed();
             var id = ClosingRead.Text(row[0]) ?? "";
             var code = NormalCode(ClosingRead.Text(row[1]));
             var lines = ClosingRead.Number(row[2]);
+            var amount = ClosingRead.Amount(row[3]);
             if (!known.Contains(id) || code.Length == 0) continue;
-            if (!codes.TryGetValue(id, out var lineCounts)) codes[id] = lineCounts = new Dictionary<string, long>(StringComparer.Ordinal);
-            lineCounts[code] = lineCounts.TryGetValue(code, out var before) ? before + lines : lines;
+            if (!codes.TryGetValue(id, out var byCode)) codes[id] = byCode = new Dictionary<string, CodeLines>(StringComparer.Ordinal);
+            byCode[code] = byCode.TryGetValue(code, out var before) ? before.Plus(lines, amount) : new CodeLines(lines, amount);
         }
         return codes;
     }
 
     /// <summary>
     /// 그날 번호마다 한 사람: 진찰구분은 그 사람 진료 가운데 1 → 3 → 그 밖(0 아님) → 0 차례로 앞선 하나, 만 나이는 첫 진료 값,
-    /// 코드는 모든 진료 코드의 줄 수 합(design.md 3-3).
+    /// 코드는 모든 진료 코드의 줄 수 합과 금액 합(design.md 3-3).
     /// </summary>
-    private static List<Person> People(List<Visit> visits, Dictionary<string, Dictionary<string, long>> codes)
+    private static List<Person> People(List<Visit> visits, Dictionary<string, Dictionary<string, CodeLines>> codes)
     {
         var people = new List<Person>();
         var byNumber = new Dictionary<long, Person>();
@@ -428,10 +429,11 @@ public static class ClosingDay
             }
             person.Kind = Math.Min(person.Kind, KindOf(visit.ExamKind));
             person.Visits.Add(visit);
-            if (!codes.TryGetValue(visit.Id, out var lineCounts)) continue;
-            foreach (var pair in lineCounts)
+            if (!codes.TryGetValue(visit.Id, out var byCode)) continue;
+            foreach (var pair in byCode)
             {
-                person.Lines[pair.Key] = person.Lines.TryGetValue(pair.Key, out var before) ? before + pair.Value : pair.Value;
+                person.Lines[pair.Key] = person.Lines.TryGetValue(pair.Key, out var before) ? before + pair.Value.Lines : pair.Value.Lines;
+                person.Amounts[pair.Key] = person.Amounts.TryGetValue(pair.Key, out var sum) ? ClosingRead.Add(sum, pair.Value.Amount) : pair.Value.Amount;
             }
         }
         return people;
@@ -474,21 +476,22 @@ public static class ClosingDay
 
     /// <summary>
     /// 묶음 코드를 하나라도 받은 사람: 서로 다른 사람 수·3분류(재진 = 신환·90일초진이 아닌 모두),
-    /// total = 그 사람들의 그날 모든 진료의 마지막 수납 줄 총진료비 합(진료마다 원 미만 버림, 수납 줄이 없는 진료는 0으로 더하고 unpaidVisits에 센다).
+    /// total = 그날 진료의 묶음 코드 처방 줄 금액(DayCodesSql 금액 = 원내 줄 일수 × 수량 × 단가) 합, 묶음마다 원 미만 버림
+    /// (TASK-14, 기본값 (사). 진찰료·묶음 밖 코드 줄·진료 총진료비는 더하지 않고, 한 코드가 두 묶음에 들면 묶음마다 더한다).
+    /// 수납 줄이 없는 진료도 처방 금액은 그대로이고, 그 사람들의 그런 진료 수를 unpaidVisits에 센다.
     /// </summary>
     private static ClosingGroupCount CountGroup(List<Person> people, Wanted group)
     {
         var count = new ClosingGroupCount { Key = group.Key };
+        var amount = 0m;
         foreach (var person in people.Where(person => person.Has(group)))
         {
             count.Patients++;
             AddThree(person, () => count.New++, () => count.First90++, () => count.Return++);
-            foreach (var visit in person.Visits)
-            {
-                if (visit.Total == null) count.UnpaidVisits++;
-                else count.Total += ClosingRead.Won(visit.Total.Value);
-            }
+            foreach (var pair in person.Amounts.Where(pair => group.Codes.Contains(pair.Key))) amount = ClosingRead.Add(amount, pair.Value);
+            count.UnpaidVisits += person.Visits.Count(visit => visit.Total == null);
         }
+        count.Total = ClosingRead.Won(amount);
         return count;
     }
 
@@ -598,7 +601,23 @@ public static class ClosingDay
         public HashSet<string> Codes { get; }
     }
 
-    /// <summary>그날 진료 한 줄(도우미 안에서만 쓴다).</summary>
+    /// <summary>진료 하나의 코드 하나: 처방 줄 수·금액 합(도우미 안에서만 쓴다).</summary>
+    private readonly struct CodeLines
+    {
+        public CodeLines(long lines, decimal amount)
+        {
+            Lines = lines;
+            Amount = amount;
+        }
+
+        public long Lines { get; }
+
+        public decimal Amount { get; }
+
+        public CodeLines Plus(long lines, decimal amount) => new CodeLines(Lines + lines, ClosingRead.Add(Amount, amount));
+    }
+
+    /// <summary>그날 진료 한 줄(도우미 안에서만 쓴다). Total(마지막 정상 수납 줄 총진료비)은 수납 끝남(unpaidVisits)에만 쓴다.</summary>
     private sealed class Visit
     {
         public Visit(string id, long person, string examKind, long? age, decimal? total)
@@ -636,6 +655,9 @@ public static class ClosingDay
         public List<Visit> Visits { get; } = new List<Visit>();
 
         public Dictionary<string, long> Lines { get; } = new Dictionary<string, long>(StringComparer.Ordinal);
+
+        /// <summary>코드 → 그날 처방 줄 금액 합(원 미만 그대로, 묶음에서 버린다).</summary>
+        public Dictionary<string, decimal> Amounts { get; } = new Dictionary<string, decimal>(StringComparer.Ordinal);
 
         public bool Has(Wanted group) => Lines.Keys.Any(group.Codes.Contains);
     }

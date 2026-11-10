@@ -2,7 +2,7 @@
 // TASK-4 REQ-3608: 시험용 ERP 화면(__tests__/erpPage.ts, React 18 통제 칸 흉내)에서 칸 찾기·값 넣기·채우기
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { allKeys, ETC_NAMES, mountErpPage, sampleDay, settingsAll, settingsFirst, type ErpPageOptions } from './__tests__/erpPage'
-import { planCells } from './cells'
+import { HELD_SALES, planCells } from './cells'
 import { fillAll, findInput, putValue, W1_WAIT_MS } from './fill'
 
 afterEach(() => {
@@ -86,8 +86,7 @@ const EXPECTED: Record<string, string> = {
   INJECTION_ONCE_PATIENT: '9',
   NEW_INJECTION_PATIENT: '3',
   NEW_INJECTION_CNT: '4',
-  CARM_AMT: tot(0),
-  SONO_AMT: tot(1),
+  // 씨암·SONO 치료별 매출(CARM_AMT·SONO_AMT)은 보류(HELD_SALES)라 채우지 않는다
   ARTHRO_AMT: tot(2),
   PT_AMT: tot(5),
   ETC1_AMT: tot(6),
@@ -218,10 +217,10 @@ describe('AC-3608.2 putValue: 기본 value 설정 함수 + bubbles input 이벤�
 })
 
 describe('AC-3608.3 fillAll: 칸 표 그대로 채운다', () => {
-  it('AC-3608.3: 1 탭 화면에서 131칸(1: 32, 2: 99)을 덮어쓰고 React 기억이 칸 표 그대로다', async () => {
+  it('AC-3608.3: 1 탭 화면에서 129칸(1: 32, 2: 99 − 보류 2)을 덮어쓰고 React 기억이 칸 표 그대로다', async () => {
     const page = open({ values: PRE })
     const result = await fillAll(document, fullPlan())
-    expect(result).toEqual({ filled: 131, missing: [], unpicked: 0, unknown: 0 })
+    expect(result).toEqual({ filled: 129, missing: [], unpicked: 0, unknown: 0, held: 2 })
     for (const [code, value] of Object.entries(EXPECTED)) expect(page.state[code], code).toBe(value)
     // 금액칸은 쉼표와 함께 보인다. 도수·충격파 총금액은 치료별 매출 도수·충격파와 같은 값 하나에 칸이 둘
     expect(page.dom('TOTAL_FEE')).toEqual([money('11668530')])
@@ -243,7 +242,7 @@ describe('AC-3608.3 fillAll: 칸 표 그대로 채운다', () => {
     expect(result.missing).toContain('업무일지 2 › 치료별 매출 › 테이핑 › 금액(원)')
     expect(result.missing).toContain('업무일지 2 › 운영 지표(치료사별·금액) › ESWT Radial')
     expect(result.missing).toHaveLength(2 + 9 + 3 + 1)
-    expect(result.filled).toBe(131 - result.missing.length)
+    expect(result.filled).toBe(131 - 2 - result.missing.length)
     // 나머지는 멈추지 않고 채운다
     expect(page.state.CARM_CNT).toBe('400')
     expect(page.state.ETC1_AMT).toBe(tot(6))
@@ -280,7 +279,7 @@ describe('AC-3608.4 fillAll: 고르지 않은 칸·직접 입력 칸·select·te
     const day = sampleDay()
     day.money.refund = null
     const result = await fillAll(document, planCells(day, settingsFirst()))
-    expect(result).toEqual({ filled: 92, missing: [], unpicked: 38, unknown: 1 })
+    expect(result).toEqual({ filled: 90, missing: [], unpicked: 38, unknown: 1, held: 2 })
     for (const k of ['REFUND', 'LIPUS_CNT', 'RSV:injection:reserved', 'ETC2_AMT', 'ETC4_RET', 'ESWT_STD_CNT', 'INJECTION_ONCE_PATIENT']) {
       expect(page.state[k], k).toBe('9999')
       expect(page.log.some((x) => x.key === k), k).toBe(false)
@@ -288,6 +287,48 @@ describe('AC-3608.4 fillAll: 고르지 않은 칸·직접 입력 칸·select·te
     expect(page.state.CARM_CNT).toBe('400')
     expect(page.state.ETC1_AMT).toBe(tot(6))
     expect(page.state['RSV:manual:reserved']).toBe('93')
+  })
+
+  it('AC-3608.4: 보류 칸(씨암·SONO 치료별 매출)은 이미 적힌 값 그대로이고 이벤트도 없으며 held에 센다. 같은 묶음 건수 칸은 채운다', async () => {
+    const page = open({ values: PRE })
+    const result = await fillAll(document, planCells(sampleDay(), settingsFirst()))
+    expect(result.held).toBe(2)
+    for (const k of ['CARM_AMT', 'SONO_AMT']) {
+      expect(page.state[k], k).toBe('9999')
+      expect(page.log.some((x) => x.key === k), k).toBe(false)
+    }
+    expect(result.missing.filter((m) => m.includes('씨암') || m.includes('SONO'))).toEqual([])
+    expect(page.state.CARM_CNT).toBe('400')
+    expect(page.state.CLOSING_SONO_CNT).toBe('401')
+    expect(page.state.INJ_CARM_NEW).toBe('100')
+    expect(page.state.INJ_SONO_RET).toBe('301')
+    expect(page.state.ARTHRO_AMT).toBe(tot(2))
+  })
+
+  it('AC-3608.4: 보류 칸은 화면에 없어도 못 찾은 칸·고르지 않은 칸에 세지 않는다', async () => {
+    open()
+    const where = { j: 2, card: '치료별 매출', row: '씨암', col: '금액(원)' } as const
+    findInput(document, where)?.closest('tr')?.remove()
+    expect(findInput(document, where)).toBeNull()
+    const result = await fillAll(document, planCells(sampleDay(), settingsFirst()))
+    expect(result.missing).toEqual([])
+    expect(result.unpicked).toBe(38)
+    expect(result.held).toBe(2)
+  })
+
+  it('AC-3608.4: HELD_SALES를 비우면 씨암·SONO 치료별 매출도 지금처럼 채운다(131칸, held 0)', async () => {
+    const page = open({ values: PRE })
+    const saved = HELD_SALES.splice(0)
+    let plan: ReturnType<typeof fullPlan>
+    try {
+      plan = fullPlan()
+    } finally {
+      HELD_SALES.push(...saved)
+    }
+    const result = await fillAll(document, plan)
+    expect(result).toEqual({ filled: 131, missing: [], unpicked: 0, unknown: 0, held: 0 })
+    expect(page.state.CARM_AMT).toBe(tot(0))
+    expect(page.state.SONO_AMT).toBe(tot(1))
   })
 })
 
@@ -299,7 +340,7 @@ describe('AC-3608.5 fillAll: 탭·숨은 칸·읽기 전용', () => {
   it('AC-3608.5: 2 탭이면 #closing-tab-w1을 눌러 칸이 생기면 채우고 처음 탭(2)으로 돌아온다', async () => {
     const page = open({ tab: 'w2', values: PRE })
     const result = await fillAll(document, fullPlan())
-    expect(result).toEqual({ filled: 131, missing: [], unpicked: 0, unknown: 0 })
+    expect(result).toEqual({ filled: 129, missing: [], unpicked: 0, unknown: 0, held: 2 })
     expect(page.clicks).toEqual(['closing-tab-w1', 'closing-tab-w2'])
     expect(page.tab()).toBe('w2')
     for (const [code, value] of Object.entries(EXPECTED)) expect(page.state[code], code).toBe(value)
@@ -311,7 +352,7 @@ describe('AC-3608.5 fillAll: 탭·숨은 칸·읽기 전용', () => {
     const pending = fillAll(document, fullPlan())
     await vi.advanceTimersByTimeAsync(1600)
     const result = await pending
-    expect(result.filled).toBe(131)
+    expect(result.filled).toBe(129)
     expect(page.state.NEW_PATIENT).toBe('7')
     expect(page.tab()).toBe('w2')
   })
@@ -330,7 +371,7 @@ describe('AC-3608.5 fillAll: 탭·숨은 칸·읽기 전용', () => {
     const result = await pending
     expect(result.missing).toHaveLength(32)
     expect(result.missing[0]).toBe('업무일지 1 › 환자현황 › 신환')
-    expect(result.filled).toBe(99)
+    expect(result.filled).toBe(97)
     expect(page.tab()).toBe('w2')
     expect(page.clicks).toEqual(['closing-tab-w1', 'closing-tab-w2'])
     expect(page.state.RSV_PATIENTS).toBe('77')
@@ -342,9 +383,9 @@ describe('AC-3608.5 fillAll: 탭·숨은 칸·읽기 전용', () => {
     const panel = document.querySelector('#closing-panel-w2') as HTMLElement
     expect(panel.hidden).toBe(true)
     const result = await fillAll(document, fullPlan())
-    expect(result.filled).toBe(131)
+    expect(result.filled).toBe(129)
     expect(page.state.RSV_PATIENTS).toBe('77')
-    expect(page.state.CARM_AMT).toBe(tot(0))
+    expect(page.state.ARTHRO_AMT).toBe(tot(2))
     expect(page.w2Dirty).toBe(true)
     expect(panel.hidden).toBe(true)
     expect(page.clicks).toEqual([])
@@ -356,7 +397,7 @@ describe('AC-3608.5 fillAll: 탭·숨은 칸·읽기 전용', () => {
       document,
       fullPlan().filter((p) => p.where.j === 2),
     )
-    expect(result.filled).toBe(99)
+    expect(result.filled).toBe(97)
     expect(page.clicks).toEqual([])
   })
 

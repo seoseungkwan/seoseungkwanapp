@@ -48,9 +48,13 @@ SELECT V.OcmNum,DENSE_RANK() OVER (ORDER BY RTRIM(V.OcmChtNum)) Person,RTRIM(V.O
 FROM V
 ORDER BY V.OcmAcpDtm,V.OcmNum";
 
-    /// <summary>그날 진료의 처방 [진료번호, 코드(UPPER·RTRIM), 줄 수].</summary>
+    /// <summary>
+    /// 그날 진료의 처방 [진료번호, 코드(UPPER·RTRIM), 줄 수, 금액]. 줄 수는 원내·원외 모든 줄(묶음 사람·주사 줄 수).
+    /// 금액 = 원내(OdrOspTyp='I') 줄의 전체 수가 OdrDay × (OdrOutLab='S'면 OdrQty, 아니면 OdrDtrQty) × OdrPrc 합(TASK-14, requirements 기본값 (사)).
+    /// 식은 RevenueSql.CodeAmounts와 글자까지 같다. 원외 줄·값이 빠진 줄은 NULL이라 SUM에서 빠지고(0), 모두 그러면 NULL(0으로 본다).
+    /// </summary>
     public const string DayCodesSql = DayVisitCte + @"
-SELECT o.OdrOcmNum,UPPER(RTRIM(o.OdrCod)) Code,COUNT_BIG(*) Lines
+SELECT o.OdrOcmNum,UPPER(RTRIM(o.OdrCod)) Code,COUNT_BIG(*) Lines,CAST(SUM(CASE WHEN o.OdrOspTyp='I' THEN CAST(o.OdrDay AS decimal(10,0)) * CASE WHEN o.OdrOutLab = 'S' THEN o.OdrQty ELSE o.OdrDtrQty END * o.OdrPrc END) AS decimal(28,5)) Amount
 FROM dbo.OdrInf o JOIN V ON V.OcmNum=o.OdrOcmNum
 WHERE o.OdrDelFlg='N' AND o.OdrCanYon='N' AND o.OdrOutCod<>'99' AND RTRIM(ISNULL(o.OdrCod,''))<>''
 GROUP BY o.OdrOcmNum,UPPER(RTRIM(o.OdrCod))";

@@ -269,14 +269,21 @@ describe('AC-3609.4 채운 뒤 안내', () => {
     const t = start({ reply: ok(day) })
     button().click()
     await flush()
-    // 처음 값 + 예약 도수·충격파: 131칸 가운데 고르지 않은 38칸을 빼고 93칸
-    expect(lead()).toBe('2026-11-09 비트 값으로 93칸을 채웠어요. 저장은 하지 않았어요.')
+    // 처음 값 + 예약 도수·충격파: 131칸 가운데 고르지 않은 38칸과 보류 2칸(씨암·SONO 치료별 매출)을 빼고 91칸
+    expect(lead()).toBe('2026-11-09 비트 값으로 91칸을 채웠어요. 저장은 하지 않았어요.')
     const skipped = shadow().querySelector('.blk')
     expect(text(skipped?.querySelector('p'))).toBe('고르지 않아 건너뛴 칸 38칸')
     expect(text(skipped?.querySelector('.small'))).toBe('설정에서 코드를 고르지 않은 항목이라 그대로 두었어요.')
+    // 보류 줄은 고르지 않은 칸 줄 바로 아래
+    expect(text(skipped?.nextElementSibling)).toBe('씨암·SONO 치료별 매출은 채우지 않았어요. 직접 넣어 주세요.')
     expect(lines()).toContain('확인한 뒤 업무일지 1 [전체 저장]과 업무일지 2 [일일 상세 저장]을 눌러 주세요.')
     expect(shadow().querySelector('.warns')).toBeNull()
     expect(t.page.state).toMatchObject({ NEW_PATIENT: '7', TOTAL_PATIENT: '84', TOTAL_FEE: '11668530', CARM_CNT: '400' })
+    // 씨암·SONO 치료별 매출 칸은 건드리지 않는다(같은 묶음 건수 칸은 채움)
+    expect(t.page.state.CARM_AMT).toBe('')
+    expect(t.page.state.SONO_AMT).toBe('')
+    expect(t.page.log.some((x) => x.key === 'CARM_AMT' || x.key === 'SONO_AMT')).toBe(false)
+    expect(t.page.state.INJ_CARM_NEW).toBe('100')
     expect(t.page.clicks).toEqual([])
     expect(text(button())).toBe('비트 값 채우기')
     expect(button().disabled).toBe(false)
@@ -289,7 +296,7 @@ describe('AC-3609.4 채운 뒤 안내', () => {
     start({ page: { therapistRows: true }, reply: ok(day) })
     button().click()
     await flush()
-    expect(lead()).toBe('2026-11-09 비트 값으로 91칸을 채웠어요. 저장은 하지 않았어요.')
+    expect(lead()).toBe('2026-11-09 비트 값으로 89칸을 채웠어요. 저장은 하지 않았어요.')
     const miss = shadow().querySelector('.blk')
     expect(text(miss?.querySelector('.h'))).toBe('못 찾은 칸 2칸')
     expect([...(miss?.querySelectorAll('li') ?? [])].map(text)).toEqual([
@@ -298,7 +305,7 @@ describe('AC-3609.4 채운 뒤 안내', () => {
     ])
     expect([...shadow().querySelectorAll('.warns li')].map(text)).toEqual([
       '환불·변경수납 등이 있는 날이에요. 외래 수입 8칸(총매출·청구액·비급여·미수입금·진료수납액·카드·현금·계좌)은 비트 수납 줄을 그대로 더한 값이라 다를 수 있어요. 확인해 주세요.',
-      '수납이 끝나지 않은 진료 2건이 있어요. 치료별 매출이 적게 나왔을 수 있어요.',
+      '수납이 끝나지 않은 진료 2건이 있어요.',
       '환불 33,000원이 있어요. 금액을 확인해 주세요.',
     ])
   })

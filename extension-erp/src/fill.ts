@@ -5,7 +5,8 @@
 // - 탭 단추(#closing-tab-w1·처음 탭) 말고는 어떤 단추도 누르지 않고, select·textarea·fieldset[disabled] 안 칸은 바꾸지 않는다
 import { FIELD_CARD, type Planned, type Where } from './cells.js'
 
-export type FillResult = { filled: number; missing: string[]; unpicked: number; unknown: number }
+/** held = 보류 묶음(HELD_SALES) 칸 수. 넣지도 못 찾은 칸에 적지도 않는다 */
+export type FillResult = { filled: number; missing: string[]; unpicked: number; unknown: number; held: number }
 
 /** 2 탭에서 1 탭을 누른 뒤 업무일지 1 칸이 생기길 기다리는 시간 */
 export const W1_WAIT_MS = 2000
@@ -155,6 +156,7 @@ export async function fillAll(doc: Document, plan: Planned[]): Promise<FillResul
     missing: [],
     unpicked: plan.filter((p) => p.why === 'unpicked').length,
     unknown: plan.filter((p) => p.why === 'unknown').length,
+    held: plan.filter((p) => p.why === 'held').length,
   }
   const todo = plan.filter((p) => !p.why && p.value !== null)
   const w1 = todo.filter((p) => p.where.j === 1)

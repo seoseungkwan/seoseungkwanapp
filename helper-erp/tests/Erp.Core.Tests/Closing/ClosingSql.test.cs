@@ -207,6 +207,29 @@ public class ClosingSqlTests
         Assert.Equal(2, Regex.Matches(injection, Regex.Escape("UPPER(RTRIM(o.OdrCod)) IN (" + string.Join(",", CodeSlots) + ")")).Count);
     }
 
+    // ---- AC-3604.3 처방 줄 금액(TASK-14, 기본값 (사)) ------------------------------------------------
+
+    /// <summary>RevenueSql.CodeAmounts의 줄 금액 식(전체 수가 = 일수 × 수량 × 단가). 마감일지 묶음 금액도 이 식 그대로다.</summary>
+    private const string LineAmount = "CAST(o.OdrDay AS decimal(10,0)) * CASE WHEN o.OdrOutLab = 'S' THEN o.OdrQty ELSE o.OdrDtrQty END * o.OdrPrc";
+
+    [Fact(DisplayName = "AC-3604.3 DayCodesSql 금액 칸 = 원내(OdrOspTyp='I') 줄의 일수 × 수량 × 단가 합 — 식이 RevenueSql.CodeAmounts와 같고, 줄 수는 그대로, 매개변수 표도 그대로(@from·@to·@hospital)")]
+    public void DayCodesAmountIsCodeAmountsFormula()
+    {
+        Assert.Contains(LineAmount, Squash(RevenueSql.CodeAmounts), StringComparison.Ordinal);
+        Assert.Contains("o.OdrOspTyp = 'I'", Squash(RevenueSql.CodeAmounts), StringComparison.Ordinal);
+
+        var text = Squash(ClosingSql.DayCodesSql);
+        Assert.Contains(
+            "SELECT o.OdrOcmNum,UPPER(RTRIM(o.OdrCod)) Code,COUNT_BIG(*) Lines,CAST(SUM(CASE WHEN o.OdrOspTyp='I' THEN " + LineAmount + " END) AS decimal(28,5)) Amount FROM dbo.OdrInf o JOIN V ON V.OcmNum=o.OdrOcmNum ",
+            text,
+            StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(text, Regex.Escape(LineAmount)).Cast<Match>());
+        // 원외 줄도 지금처럼 묶음 사람·줄 수(주사 줄 수)에는 든다: 처방 조건에 OdrOspTyp가 없다
+        Assert.DoesNotContain("WHERE o.OdrOspTyp", text, StringComparison.Ordinal);
+        Assert.Contains("GROUP BY o.OdrOcmNum,UPPER(RTRIM(o.OdrCod))", text, StringComparison.Ordinal);
+        Assert.Equal("@from:Char(12) @to:Char(12) @hospital:VarChar(32)", Shape(ClosingSql.DayCodesSql));
+    }
+
     // ---- AC-3606.2 읽지 않는 칸·내지 않는 칸 ----------------------------------------------------------
 
     [Fact(DisplayName = "AC-3606.2 새 문장은 이름·전화·주민번호·주소·메모 칸을 읽지 않는다(환자 표에서는 차트번호·생년월일만)")]
@@ -236,7 +259,12 @@ public class ClosingSqlTests
             + "THEN (CONVERT(int,@day)-CONVERT(int,b.PbsBirDte))/10000 END) FROM dbo.PbsInf b WHERE b.PbsChtNum=V.OcmChtNum) Age, "
             + "(SELECT TOP 1 p.OrpTotAmt FROM dbo.OrpInf p WHERE p.OrpOcmNum=V.OcmNum AND p.OrpRcpStt<>'C' ORDER BY p.OrpRcpSeq DESC) Total FROM V ORDER BY V.OcmAcpDtm,V.OcmNum",
         };
-        yield return new object?[] { ClosingSql.DayCodesSql, "SELECT o.OdrOcmNum,UPPER(RTRIM(o.OdrCod)) Code,COUNT_BIG(*) Lines FROM dbo.OdrInf o JOIN V ON V.OcmNum=o.OdrOcmNum " };
+        yield return new object?[]
+        {
+            ClosingSql.DayCodesSql,
+            "SELECT o.OdrOcmNum,UPPER(RTRIM(o.OdrCod)) Code,COUNT_BIG(*) Lines,CAST(SUM(CASE WHEN o.OdrOspTyp='I' THEN " + LineAmount + " END) AS decimal(28,5)) Amount "
+            + "FROM dbo.OdrInf o JOIN V ON V.OcmNum=o.OdrOcmNum ",
+        };
         yield return new object?[] { ClosingSql.InjectionFirstSql, "SELECT COUNT_BIG(*) FROM T WHERE NOT EXISTS(" };
         yield return new object?[] { ClosingSql.InpatientSql, "SELECT COUNT_BIG(*) FROM dbo.OcmInf c WHERE " };
         yield return new object?[] { ClosingSql.ReservationKindsSql, "SELECT Kind,COUNT_BIG(*) Total,SUM(Visited) Visited,SUM(Changed) Changed,SUM(Canceled) Canceled FROM R GROUP BY Kind ORDER BY Kind" };

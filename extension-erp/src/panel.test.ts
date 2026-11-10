@@ -20,12 +20,15 @@ const W = {
   moneyUnconfirmed:
     '환불·변경수납 등이 있는 날이에요. 외래 수입 8칸(총매출·청구액·비급여·미수입금·진료수납액·카드·현금·계좌)은 비트 수납 줄을 그대로 더한 값이라 다를 수 있어요. 확인해 주세요.',
   splitUnconfirmed: '청구액·비급여는 비트에서 딱 나눠지지 않아 그대로 더한 값이에요. 확인해 주세요.',
-  unpaidVisits: (n: number) => `수납이 끝나지 않은 진료 ${n}건이 있어요. 치료별 매출이 적게 나왔을 수 있어요.`,
+  unpaidVisits: (n: number) => `수납이 끝나지 않은 진료 ${n}건이 있어요.`,
   refund: (won: string) => `환불 ${won}원이 있어요. 금액을 확인해 주세요.`,
   unknownAge: (n: number) => `생년월일이 없는 환자 ${n}명은 연령별 표에 넣지 않았어요.`,
   noHistory: '예전 자료가 따로 있어 주사1회환자는 채우지 않았어요.',
   inpatient: '입원 접수가 있어 입원수입 칸은 채우지 않았어요.',
 }
+
+/** 보류 줄(requirements 기본값 (아), design.md 5절) */
+const HELD = '씨암·SONO 치료별 매출은 채우지 않았어요. 직접 넣어 주세요.'
 
 const text = (el: Element | null | undefined) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim()
 
@@ -35,7 +38,7 @@ function quietDay(): ClosingDay {
   day.money.refund = 0
   return day
 }
-const result = (o: Partial<FillResult> = {}): FillResult => ({ filled: 93, missing: [], unpicked: 38, unknown: 0, ...o })
+const result = (o: Partial<FillResult> = {}): FillResult => ({ filled: 93, missing: [], unpicked: 38, unknown: 0, held: 0, ...o })
 const done = (o: { day?: ClosingDay; result?: Partial<FillResult> } = {}): View => ({
   kind: 'done',
   date: '2026-11-09',
@@ -141,6 +144,33 @@ describe('AC-3609.4 채운 뒤 안내', () => {
     p.dock.show(done({ result: { unpicked: 0, filled: 131 } }))
     expect(p.$$('.blk')).toHaveLength(0)
     expect(text(p.$('.lead'))).toBe('2026-11-09 비트 값으로 131칸을 채웠어요. 저장은 하지 않았어요.')
+  })
+
+  it("AC-3609.4: 보류 칸이 있으면(held > 0) 고르지 않은 칸 줄 바로 아래에 '씨암·SONO 치료별 매출은 채우지 않았어요. 직접 넣어 주세요.' 한 줄", () => {
+    const p = open()
+    const missing = ['업무일지 1 › 진료 · 치료현황 › 도수치료']
+    const day = quietDay()
+    day.warnings.unpaidVisits = 1
+    p.dock.show(done({ day, result: { filled: 90, missing, held: 2 } }))
+    const blocks = p.$$('.blk')
+    expect(blocks).toHaveLength(3)
+    expect(text(blocks[1].querySelector('p'))).toBe('고르지 않아 건너뛴 칸 38칸')
+    expect(text(blocks[2])).toBe(HELD)
+    expect(blocks[2].classList.contains('held')).toBe(true)
+    expect([...p.body().children].map((c) => c.className)).toEqual(['lead', 'blk', 'blk', 'blk held', 'warns', 'end', 'acts'])
+    // 보류 칸은 채운 칸·못 찾은 칸·고르지 않은 칸 수에 들지 않는다
+    expect(text(p.$('.lead'))).toBe('2026-11-09 비트 값으로 90칸을 채웠어요. 저장은 하지 않았어요.')
+    expect(text(blocks[0].querySelector('.h'))).toBe('못 찾은 칸 1칸')
+  })
+
+  it('AC-3609.4: 고르지 않은 칸이 없어도 보류 줄은 보이고, 보류 칸이 없으면(held 0) 보류 줄이 없다', () => {
+    const p = open()
+    p.dock.show(done({ result: { unpicked: 0, filled: 129, held: 2 } }))
+    expect(p.$$('.blk').map(text)).toEqual([HELD])
+    expect([...p.body().children].map((c) => c.className)).toEqual(['lead', 'blk held', 'end', 'acts'])
+    p.dock.show(done({ result: { held: 0 } }))
+    expect(p.$$('.held')).toHaveLength(0)
+    expect(p.body().textContent).not.toContain('치료별 매출은 채우지 않았어요')
   })
 
   it('AC-3609.4: [설정 열기]는 onOpenSettings를 부르고, [×]는 안내를 닫는다', () => {
@@ -286,6 +316,18 @@ describe('AC-3609.4·3609.5 글은 승인된 목업·명세 그대로', () => {
       expect(ac, name).toContain(`'${String(value)}'`)
     }
     expect(Object.values(TEXT)).not.toContain('도우미를 새 판으로 설치해 주세요.')
+  })
+
+  it("AC-3609.4: 보류 줄은 requirements 기본값 (아)·design.md 5절 글 그대로이고, 미수납 경고는 '치료별 매출이 적게 나왔을 수 있어요.'를 뗀 새 글이다", () => {
+    const defaultAh = REQUIREMENTS.split('\n').find((line) => line.startsWith('- (아)')) ?? ''
+    expect(defaultAh).toContain(`'${HELD}'`)
+    expect(DESIGN).toContain(`'${HELD}'`)
+    expect(TEXT.held(['씨암', 'SONO'])).toBe(HELD)
+    expect(DESIGN).toContain("'수납이 끝나지 않은 진료 N건이 있어요.'(TASK-14)")
+    const day = quietDay()
+    day.warnings.unpaidVisits = 3
+    expect(warningLines(day)).toEqual(['수납이 끝나지 않은 진료 3건이 있어요.'])
+    expect(warningLines(day).join('')).not.toContain('치료별 매출이 적게 나왔을 수 있어요')
   })
 
   it('AC-3609.4: 경고 고정 글은 design.md 5절에, 오류·처음 안내 글은 requirements AC-3609.2·3609.3·3609.5에 그대로 있다', () => {

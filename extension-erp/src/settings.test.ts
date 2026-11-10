@@ -44,8 +44,8 @@ const FIRST: Settings = {
     arthro: ['HA280'],
     manual: ['도수'],
     eswt: ['ESWT7', 'ESWT10', 'ESWT12', 'ESWT17'],
-    pt: ['MM010', 'MM015', 'MM011'],
-    etc1: ['CRYO'],
+    pt: ['MM010', 'MM015', 'MM011', 'MM085', 'MM080', 'MM020'],
+    etc1: ['CRYO', 'CRYO3'],
     ptVisit: ['AA222'],
   },
   etcNames: { etc1: '크라이오', etc2: '', etc3: '', etc4: '' },
@@ -56,6 +56,20 @@ describe('AC-3607.3 처음 값', () => {
   it('AC-3607.3: 처음 값은 이미 정한 것 7 그대로이고 예약 6줄은 비어 있다', () => {
     expect(DEFAULTS).toEqual(FIRST)
     expect(defaults()).toEqual(FIRST)
+  })
+
+  it('AC-3607.3: 물리치료 처음 코드는 6개(MM085·MM080·MM020 더함), 크라이오(기타1)는 CRYO·CRYO3 차례다(2026-11-10 밤 사용자 결정)', () => {
+    expect(defaults().picks.pt).toEqual(['MM010', 'MM015', 'MM011', 'MM085', 'MM080', 'MM020'])
+    expect(defaults().picks.etc1).toEqual(['CRYO', 'CRYO3'])
+    expect(defaults().etcNames.etc1).toBe('크라이오')
+  })
+
+  it('AC-3607.3: 이미 저장한 설정에는 새 처음 코드가 저절로 들어가지 않는다(불러온 값 그대로)', async () => {
+    const saved = { ...FIRST, picks: { ...FIRST.picks, pt: ['MM010', 'MM015', 'MM011'], etc1: ['CRYO'] } }
+    fakeStorage({ [SETTINGS_KEY]: saved })
+    const got = await load()
+    expect(got?.picks.pt).toEqual(['MM010', 'MM015', 'MM011'])
+    expect(got?.picks.etc1).toEqual(['CRYO'])
   })
 
   it('AC-3607.3: defaults()는 새 복사본이라 고쳐도 처음 값이 바뀌지 않는다', () => {
@@ -134,8 +148,8 @@ describe('AC-3607.5 도우미에 보낼 묶음 toGroups', () => {
       { key: 'arthro', codes: ['HA280'] },
       { key: 'manual', codes: ['도수'] },
       { key: 'eswt', codes: ['ESWT7', 'ESWT10', 'ESWT12', 'ESWT17'] },
-      { key: 'pt', codes: ['MM010', 'MM015', 'MM011'] },
-      { key: 'etc1', codes: ['CRYO'] },
+      { key: 'pt', codes: ['MM010', 'MM015', 'MM011', 'MM085', 'MM080', 'MM020'] },
+      { key: 'etc1', codes: ['CRYO', 'CRYO3'] },
       { key: 'ptVisit', codes: ['AA222'] },
     ])
   })

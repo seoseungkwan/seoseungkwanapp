@@ -1,10 +1,12 @@
 // ERP 마감일지 화면 오른쪽 아래의 [비트 값 채우기] 단추와 결과 안내(REQ-3609, design.md 5절).
 // 글·모양은 승인된 목업 docs/mockups/erp-closing-fill/ ①~⑪ 그대로다(목업의 노란 띠·점선 표시는 앱에 없다).
-// 다만 requirements 기본값 (바)대로 'ERP 도우미 없음'(helperMissing)·'이 PC 등록 안 됨'(notRegistered) 두 줄은 명세 글을 쓴다.
+// 다만 requirements 기본값 (바)대로 'ERP 도우미 없음'(helperMissing)·'이 PC 등록 안 됨'(notRegistered) 두 줄은 명세 글을 쓰고,
+// 기본값 (아)·(사)대로 보류 줄(held)을 더하고 미수납 경고 줄의 뒤 문장을 뗐다(design.md 5절, TASK-14).
 // - ERP 화면 글꼴·색이 스며들거나 우리 모양이 ERP를 건드리지 않게 그림자 뿌리 안에 그린다. ERP 뿌리(div#root) 밖 body 끝에 붙는다
 // - 글은 모두 textContent로만 넣는다(도우미 오류 번호도 HTML로 읽지 않는다). 숫자·칸 이름만 보이고 환자 정보는 없다
+import { HELD_SALES } from './cells.js'
 import type { FillResult } from './fill.js'
-import type { ClosingDay } from './types.js'
+import { GROUP_NAMES, type ClosingDay } from './types.js'
 
 /** ERP 화면에 붙이는 요소의 id */
 export const HOST_ID = 'erp-closing-fill'
@@ -31,6 +33,8 @@ export const TEXT = {
   dateChanged: '읽는 동안 마감 일자가 바뀌어 채우지 않았어요. 다시 눌러 주세요.',
   filled: (date: string, n: number) => `${date} 비트 값으로 ${count(n)}칸을 채웠어요. 저장은 하지 않았어요.`,
   missing: (n: number) => `못 찾은 칸 ${count(n)}칸`,
+  /** 보류 줄(기본값 (아)): 보류 묶음 이름을 ·로 잇는다. 지금 '씨암·SONO 치료별 매출은 채우지 않았어요. 직접 넣어 주세요.' */
+  held: (names: readonly string[]) => `${names.join('·')} 치료별 매출은 채우지 않았어요. 직접 넣어 주세요.`,
 } as const
 
 /** design.md 5절 경고 글 */
@@ -38,7 +42,7 @@ const WARN = {
   moneyUnconfirmed:
     '환불·변경수납 등이 있는 날이에요. 외래 수입 8칸(총매출·청구액·비급여·미수입금·진료수납액·카드·현금·계좌)은 비트 수납 줄을 그대로 더한 값이라 다를 수 있어요. 확인해 주세요.',
   splitUnconfirmed: '청구액·비급여는 비트에서 딱 나눠지지 않아 그대로 더한 값이에요. 확인해 주세요.',
-  unpaidVisits: (n: number) => `수납이 끝나지 않은 진료 ${count(n)}건이 있어요. 치료별 매출이 적게 나왔을 수 있어요.`,
+  unpaidVisits: (n: number) => `수납이 끝나지 않은 진료 ${count(n)}건이 있어요.`,
   refund: (won: number) => `환불 ${count(won)}원이 있어요. 금액을 확인해 주세요.`,
   unknownAge: (n: number) => `생년월일이 없는 환자 ${count(n)}명은 연령별 표에 넣지 않았어요.`,
   noHistory: '예전 자료가 따로 있어 주사1회환자는 채우지 않았어요.',
@@ -185,6 +189,7 @@ export function createDock(doc: Document, handlers: { onFill(): void; onOpenSett
             ),
           result.unpicked > 0 &&
             h('div', { class: 'blk' }, h('p', {}, `${TEXT.unpicked} `, h('b', {}, `${count(result.unpicked)}칸`)), small(TEXT.unpickedHelp)),
+          result.held > 0 && h('div', { class: 'blk held' }, h('p', {}, TEXT.held(HELD_SALES.map((key) => GROUP_NAMES[key])))),
           warnings.length > 0 && h('ul', { class: 'warns' }, ...warnings.map((line) => h('li', {}, line))),
           h('p', { class: 'end' }, TEXT.end),
           settingsButton(),

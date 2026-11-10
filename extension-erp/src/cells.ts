@@ -1,6 +1,7 @@
 // 도우미 답 + 설정 → ERP 마감일지 칸 계획(design.md 4절 칸 표 그대로, REQ-3608). 화면은 보지 않는다
 // 칸 이름은 ERP 화면 글자 그대로(notes/erp-closing-fields.md 3·4절). 값은 쉼표 없는 정수 글자이고,
-// 코드를 고르지 않은 묶음은 'unpicked', 비트에서 셀 수 없는 값(null)은 'unknown'으로 값 없이 둔다(그 칸은 건드리지 않는다)
+// 코드를 고르지 않은 묶음은 'unpicked', 비트에서 셀 수 없는 값(null)은 'unknown', 보류 묶음(HELD_SALES)의 치료별 매출은 'held'로
+// 값 없이 둔다(그 칸은 건드리지 않는다)
 import {
   GROUP_NAMES,
   RSV_NAMES,
@@ -20,7 +21,13 @@ export type Where =
   | { j: 2; card: string; row: string; col: string }
   | { j: 2; field: string }
 
-export type Planned = { where: Where; value: string | null; why?: 'unpicked' | 'unknown' }
+export type Planned = { where: Where; value: string | null; why?: 'unpicked' | 'unknown' | 'held' }
+
+/**
+ * 치료별 매출을 채우지 않고 보류하는 묶음(requirements 기본값 (아), 사용자 '일단 보류' 2026-11-10 밤). 정하면 이 한 곳만 바꾼다.
+ * 이 묶음의 치료별 매출 칸은 코드를 골랐으면 held(ERP 칸 그대로, 직원이 넣음), 안 골랐으면 지금처럼 unpicked. 건수 칸은 그대로 채운다
+ */
+export const HELD_SALES: GroupKey[] = ['carm', 'sono']
 
 /** 업무일지 2 낱칸이 있는 묶음 제목(못 찾은 칸 글에 쓴다) */
 export const FIELD_CARD = '운영 지표(치료사별·금액)'
@@ -172,12 +179,16 @@ export function planCells(answer: ClosingDay, settings: Settings): Planned[] {
   put({ j: 2, field: '신환주사환자' }, answer.injection?.newPatients, injection)
   put({ j: 2, field: '신환주사건수' }, answer.injection?.newLines, injection)
 
-  // 업무일지 2 치료별 매출
+  // 업무일지 2 치료별 매출(보류 묶음은 골랐어도 held)
   const sales: { row: string; key: GroupKey; ok: boolean }[] = [
     ...SALES_ROWS.map(([row, key]) => ({ row, key, ok: picked(key) })),
     ...ETC_KEYS.map((key) => ({ key, ...etcRow(key) })),
   ]
-  for (const { row, key, ok } of sales) put({ j: 2, card: '치료별 매출', row, col: '금액(원)' }, group(key)?.total, ok)
+  for (const { row, key, ok } of sales) {
+    const where: Where = { j: 2, card: '치료별 매출', row, col: '금액(원)' }
+    if (ok && HELD_SALES.includes(key)) plan.push({ where, value: null, why: 'held' })
+    else put(where, group(key)?.total, ok)
+  }
 
   return plan
 }

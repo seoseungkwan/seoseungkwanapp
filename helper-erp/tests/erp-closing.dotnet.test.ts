@@ -64,7 +64,7 @@ describe('REQ-3604 closing.day 금액과 경고 (C# Erp.Core.Tests.Closing)', ()
     expectAc('AC-3604.2')
   })
 
-  it('AC-3604.3 치료별 매출 = 묶음 사람들의 그날 진료 총진료비 합, 수납 없는 진료는 0으로 더하고 unpaidVisits', () => {
+  it('AC-3604.3 치료별 매출 = 묶음 코드 처방 줄 금액(일수 × 수량 × 단가, 원내 줄, RevenueSql.CodeAmounts와 같은 식) 합, 묶음마다 원 미만 버림, 진찰료·묶음 밖 코드·총진료비는 안 더함, 수납 없는 진료도 금액 그대로 + unpaidVisits', () => {
     expectAc('AC-3604.3')
   })
 
