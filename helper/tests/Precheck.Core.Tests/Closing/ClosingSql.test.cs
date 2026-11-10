@@ -229,7 +229,7 @@ public class ClosingSqlTests
             "SELECT V.OcmNum,DENSE_RANK() OVER (ORDER BY RTRIM(V.OcmChtNum)) Person,RTRIM(V.OcmDgsNfs) DgsNfs, "
             + "(SELECT MAX(CASE WHEN b.PbsBirDte LIKE '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]' AND ISDATE(b.PbsBirDte)=1 AND b.PbsBirDte<=@day "
             + "THEN (CONVERT(int,@day)-CONVERT(int,b.PbsBirDte))/10000 END) FROM dbo.PbsInf b WHERE b.PbsChtNum=V.OcmChtNum) Age, "
-            + "(SELECT TOP 1 p.OrpTotAmt FROM dbo.OrpInf p WHERE p.OrpOcmNum=V.OcmNum ORDER BY p.OrpRcpSeq DESC) Total FROM V ORDER BY V.OcmAcpDtm,V.OcmNum",
+            + "(SELECT TOP 1 p.OrpTotAmt FROM dbo.OrpInf p WHERE p.OrpOcmNum=V.OcmNum AND p.OrpRcpStt<>'C' ORDER BY p.OrpRcpSeq DESC) Total FROM V ORDER BY V.OcmAcpDtm,V.OcmNum",
         };
         yield return new object?[] { ClosingSql.DayCodesSql, "SELECT o.OdrOcmNum,UPPER(RTRIM(o.OdrCod)) Code,COUNT_BIG(*) Lines FROM dbo.OdrInf o JOIN V ON V.OcmNum=o.OdrOcmNum " };
         yield return new object?[] { ClosingSql.InjectionFirstSql, "SELECT COUNT_BIG(*) FROM T WHERE NOT EXISTS(" };

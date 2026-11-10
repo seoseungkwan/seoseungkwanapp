@@ -35,15 +35,15 @@ public static class ClosingSql
 )";
 
     /// <summary>
-    /// 그날 진료마다 [진료번호, 그날 번호(차트번호 차례 DENSE_RANK), 진찰구분, 만 나이, 마지막 수납 줄 총진료비]. 접수 시각 차례.
+    /// 그날 진료마다 [진료번호, 그날 번호(차트번호 차례 DENSE_RANK), 진찰구분, 만 나이, 마지막 정상 수납 줄 총진료비]. 접수 시각 차례.
     /// 만 나이 = PbsBirDte가 8자리 날짜이고 그날 이전이면 (그날 − 생년월일) / 10000, 아니면 NULL.
-    /// 마지막 수납 줄 = 그 진료의 OrpInf 가운데 OrpRcpSeq가 가장 큰 줄(design.md 3-2 MAX(OrpRcpSeq)), 없으면 NULL.
+    /// 마지막 정상 수납 줄 = 그 진료의 OrpInf 가운데 OrpRcpStt≠'C'(미수입금 줄은 진료비 칸이 늘 0)이고 OrpRcpSeq가 가장 큰 줄(design.md 3-2), 없으면 NULL.
     /// </summary>
     public const string DayVisitsSql = DayVisitCte + @"
 SELECT V.OcmNum,DENSE_RANK() OVER (ORDER BY RTRIM(V.OcmChtNum)) Person,RTRIM(V.OcmDgsNfs) DgsNfs,
  (SELECT MAX(CASE WHEN b.PbsBirDte LIKE '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]' AND ISDATE(b.PbsBirDte)=1 AND b.PbsBirDte<=@day
    THEN (CONVERT(int,@day)-CONVERT(int,b.PbsBirDte))/10000 END) FROM dbo.PbsInf b WHERE b.PbsChtNum=V.OcmChtNum) Age,
- (SELECT TOP 1 p.OrpTotAmt FROM dbo.OrpInf p WHERE p.OrpOcmNum=V.OcmNum ORDER BY p.OrpRcpSeq DESC) Total
+ (SELECT TOP 1 p.OrpTotAmt FROM dbo.OrpInf p WHERE p.OrpOcmNum=V.OcmNum AND p.OrpRcpStt<>'C' ORDER BY p.OrpRcpSeq DESC) Total
 FROM V
 ORDER BY V.OcmAcpDtm,V.OcmNum";
 
