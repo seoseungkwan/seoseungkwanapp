@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>서식 시안 — 휴진 안내 테마 23개</title>
+<style>
+  /* 안내문 글꼴: pretendard@1.3.9 subset Bold·Black (TASK-6이 public/poster/fonts로 옮기는 것과 같은 파일) */
+  @font-face { font-family: 'PosterPretendard'; font-weight: 700; src: url('fonts/Pretendard-Bold.subset.woff2') format('woff2'); }
+  @font-face { font-family: 'PosterPretendard'; font-weight: 900; src: url('fonts/Pretendard-Black.subset.woff2') format('woff2'); }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: #e9ecf0; font-family: 'PosterPretendard', 'Noto Sans KR', 'Malgun Gothic', sans-serif; color: #222; padding: 28px 32px 64px; }
+  h1 { font-size: 22px; font-weight: 700; }
+  .intro { margin: 6px 0 22px; font-size: 14px; color: #555; line-height: 1.6; }
+  h2 { font-size: 17px; font-weight: 700; margin: 26px 0 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 22px; }
+  figure { background: #fff; border-radius: 10px; padding: 10px; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+  figure svg { display: block; width: 100%; height: auto; border-radius: 4px; }
+  figcaption { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; font-weight: 600; }
+  figcaption i { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+  figcaption small { color: #777; font-weight: 400; margin-left: auto; font-size: 12px; }
+  body.only { padding: 0; background: #fff; }
+  body.only #page svg { display: block; width: 794px; height: 1123px; }
+</style>
+</head>
+<body>
+<div id="gallery">
+  <h1>휴진 안내 테마 23개 (시안)</h1>
+  <p class="intro">공휴일 11개 + 달 12개. 카드 이름에 공휴일 이름이 있으면 그 공휴일 테마, 없으면 안내 달의 달 테마가 저절로 골라지고, 직접 바꿀 수도 있어요.<br>
+  카드 날짜·이름은 보기용 예시예요. 색 네모는 그 테마의 강조색(‘N월’·날짜 띠·‘휴진’ 글자)이에요.</p>
+  <h2>공휴일</h2><div class="grid" id="holidays"></div>
+  <h2>달마다</h2><div class="grid" id="months"></div>
+</div>
+<div id="page"></div>
+
+<script>
+// 테마 목록 — 강조색은 이 표가 기준이다(TASK-2가 src/lib/forms/themes.ts로 옮긴다)
+const THEMES = [
+  { id: 'newyear',    name: '신정',         accent: '#d9432f', sample: [['2027-01-01', null, '신정']] },
+  { id: 'seollal',    name: '설날',         accent: '#d6336c', sample: [['2026-02-16', '2026-02-18', '설 연휴']] },
+  { id: 'samiljeol',  name: '삼일절',       accent: '#2b5bb5', sample: [['2027-03-01', null, '삼일절']] },
+  { id: 'children',   name: '어린이날',     accent: '#f0522d', sample: [['2027-05-05', null, '어린이날']] },
+  { id: 'buddha',     name: '부처님오신날', accent: '#d9601a', sample: [['2026-05-24', null, '부처님오신날'], ['2026-05-25', null, '대체공휴일']] },
+  { id: 'memorial',   name: '현충일',       accent: '#2f4a7a', sample: [['2027-06-06', null, '현충일']] },
+  { id: 'liberation', name: '광복절',       accent: '#e8312f', sample: [['2026-08-15', null, '광복절'], ['2026-08-17', null, '대체공휴일']] },
+  { id: 'chuseok',    name: '추석',         accent: '#c8662a', sample: [['2026-09-24', '2026-09-26', '추석 연휴']] },
+  { id: 'foundation', name: '개천절',       accent: '#2f7fc1', sample: [['2026-10-03', null, '개천절'], ['2026-10-05', null, '대체공휴일']] },
+  { id: 'hangul',     name: '한글날',       accent: '#1f6e8c', sample: [['2026-10-09', null, '한글날']] },
+  { id: 'christmas',  name: '성탄절',       accent: '#c62f2f', sample: [['2026-12-25', null, '성탄절']] },
+  { id: 'm01', name: '1월',  accent: '#3c6fb4', sample: [['2027-01-15', null, '학회']] },
+  { id: 'm02', name: '2월',  accent: '#c2416b', sample: [['2027-02-26', null, '학회']] },
+  { id: 'm03', name: '3월',  accent: '#3f9142', sample: [['2027-03-20', null, '원장님 학회', '오전진료']] },
+  { id: 'm04', name: '4월',  accent: '#d9487a', sample: [['2027-04-17', null, '학회']] },
+  { id: 'm05', name: '5월',  accent: '#d8434e', sample: [['2027-05-15', null, '직원 연수']] },
+  { id: 'm06', name: '6월',  accent: '#5b63c7', sample: [['2027-06-19', null, '학회']] },
+  { id: 'm07', name: '7월',  accent: '#1d8fc7', sample: [['2027-07-29', '2027-07-31', '여름휴가']] },
+  { id: 'm08', name: '8월',  accent: '#d46f00', sample: [['2026-08-03', '2026-08-05', '여름휴가']] },
+  { id: 'm09', name: '9월',  accent: '#c2458a', sample: [['2026-09-12', null, '학회']] },
+  { id: 'm10', name: '10월', accent: '#c8501e', sample: [['2026-10-24', null, '학회']] },
+  { id: 'm11', name: '11월', accent: '#8a5a2b', sample: [['2026-11-21', null, '학회']] },
+  { id: 'm12', name: '12월', accent: '#2e5e9e', sample: [['2026-12-31', null, '연말', '13시까지']] },
+]
+
+const W = 794, H = 1123, CX = 397
+const DAYS = '일월화수목금토'
+const ymd = (s) => { const [y, m, d] = s.split('-').map(Number); return { y, m, d, wd: new Date(Date.UTC(y, m - 1, d)).getUTCDay() } }
+function dateLabel(start, end) {
+  const a = ymd(start)
+  const head = `${a.m}월 ${a.d}일(${DAYS[a.wd]})`
+  if (!end) return head
+  const b = ymd(end)
+  return b.m === a.m ? `${head}~${b.d}일(${DAYS[b.wd]})` : `${head}~${b.m}월 ${b.d}일(${DAYS[b.wd]})`
+}
+// 글자 폭 어림(design.md 5절)
+function textWidth(t, size) {
+  let em = 0
+  for (const ch of t) {
+    if (/[ㄱ-힣一-鿿]/.test(ch)) em += 1.0
+    else if (/[0-9]/.test(ch)) em += 0.62
+    else if (/[()]/.test(ch)) em += 0.38
+    else if (ch === '~') em += 0.6
+    else if (ch === ' ') em += 0.3
+    else em += 0.6
+  }
+  return em * size
+}
+const fit = (t, size, inner) => { while (size > 18 && textWidth(t, size) > inner) size -= 1; return size }
+
+const SHAPES = {
+  1: { w: 318, gap: 0,  head: 79, body: 224, rows: [534], cols: 1, f: [33, 46, 50] },
+  2: { w: 318, gap: 36, head: 79, body: 224, rows: [534], cols: 2, f: [33, 46, 50] },
+  3: { w: 226, gap: 24, head: 70, body: 196, rows: [534], cols: 3, f: [28, 38, 44] },
+  4: { w: 318, gap: 36, head: 60, body: 140, rows: [510, 734], cols: 2, f: [30, 38, 42] },
+}
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+
+function poster(theme) {
+  const cards = theme.sample.map(([start, end, name, status]) => ({ start, end, name, status: status ?? '휴진' }))
+  const month = ymd(cards[0].start).m
+  const s = SHAPES[cards.length]
+  const rowW = s.cols * s.w + (s.cols - 1) * s.gap
+  const x0 = (W - rowW) / 2
+  const T = (x, y, size, weight, fill, text, ls = 0) =>
+    `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-family="PosterPretendard" font-size="${size}" font-weight="${weight}" fill="${fill}" letter-spacing="${ls}em">${esc(text)}</text>`
+  let body = ''
+  cards.forEach((c, i) => {
+    const col = i % s.cols, row = Math.floor(i / s.cols)
+    const x = x0 + col * (s.w + s.gap), y = s.rows[row], inner = s.w - 32
+    const date = dateLabel(c.start, c.end)
+    const h = s.head + s.body, r = 22
+    body += `<g filter="url(#sh)"><rect x="${x}" y="${y}" width="${s.w}" height="${h}" rx="${r}" fill="#fff"/></g>`
+    body += `<path d="M${x} ${y + s.head} V${y + r} A${r} ${r} 0 0 1 ${x + r} ${y} H${x + s.w - r} A${r} ${r} 0 0 1 ${x + s.w} ${y + r} V${y + s.head} Z" fill="${theme.accent}"/>`
+    body += T(x + s.w / 2, y + s.head / 2, fit(date, s.f[0], inner), 700, '#fff', date, -0.02)
+    body += T(x + s.w / 2, y + s.head + s.body * 0.30, fit(c.name, s.f[1], inner), 900, '#262626', c.name, -0.03)
+    body += T(x + s.w / 2, y + s.head + s.body * 0.67, fit(c.status, s.f[2], inner), 900, theme.accent, c.status, 0.02)
+  })
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${theme.name} 테마">
+    <defs><filter id="sh" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="14" stdDeviation="17" flood-color="rgb(25,45,80)" flood-opacity=".16"/></filter></defs>
+    <image href="themes/${theme.id}.svg" x="0" y="0" width="${W}" height="${H}"/>
+    ${T(CX, 162, 132, 900, theme.accent, `${month}월`, -0.02)}
+    ${T(CX, 296, 120, 900, '#262626', '진료일정안내', -0.045)}
+    ${T(CX, 417, 27, 700, '#3a3a3a', `${month}월 진료일정을 안내드리오니`, -0.02)}
+    ${T(CX, 459, 27, 700, '#3a3a3a', '진료 및 내원에 참고해주시길 바랍니다', -0.02)}
+    ${body}
+  </svg>`
+}
+
+const only = new URLSearchParams(location.search).get('only')
+if (only) {
+  document.body.classList.add('only')
+  document.getElementById('gallery').remove()
+  document.getElementById('page').innerHTML = poster(THEMES.find((t) => t.id === only))
+} else {
+  for (const t of THEMES) {
+    const fig = document.createElement('figure')
+    fig.innerHTML = `${poster(t)}<figcaption><i style="background:${t.accent}"></i>${t.name}<small>${t.id}</small></figcaption>`
+    document.getElementById(/^m\d\d$/.test(t.id) ? 'months' : 'holidays').append(fig)
+  }
+}
+</script>
+</body>
+</html>

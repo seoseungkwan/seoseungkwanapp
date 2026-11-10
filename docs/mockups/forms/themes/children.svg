@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="794" height="1123">
+  <!-- 어린이날: 바람개비·풍선·색종이·종이비행기·언덕 (2026-11-10 승인 시안 index.html) -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e6f3ff"/>
+      <stop offset="0.4" stop-color="#f4f9ff"/>
+      <stop offset="0.68" stop-color="#ffffff"/>
+    </linearGradient>
+    <symbol id="pinwheel" viewBox="-100 -100 200 200" overflow="visible">
+      <g><path d="M0 0 L0 -90 Q50 -82 64 -36 Z" fill="#ff5a5f"/><path d="M0 0 L0 -90 L24 -38 Z" fill="#d93c45"/></g>
+      <g transform="rotate(90)"><path d="M0 0 L0 -90 Q50 -82 64 -36 Z" fill="#ffc83d"/><path d="M0 0 L0 -90 L24 -38 Z" fill="#e8a91c"/></g>
+      <g transform="rotate(180)"><path d="M0 0 L0 -90 Q50 -82 64 -36 Z" fill="#3d8bfd"/><path d="M0 0 L0 -90 L24 -38 Z" fill="#2a6fd6"/></g>
+      <g transform="rotate(270)"><path d="M0 0 L0 -90 Q50 -82 64 -36 Z" fill="#35c08b"/><path d="M0 0 L0 -90 L24 -38 Z" fill="#23a072"/></g>
+      <circle r="11" fill="#fff" stroke="#e3e6ea" stroke-width="2"/>
+      <circle r="4.5" fill="#f0522d"/>
+    </symbol>
+    <symbol id="balloon" viewBox="-50 -70 100 210" overflow="visible">
+      <path d="M0 50 C-10 78 12 100 -2 136" stroke="#9aa6b2" stroke-width="1.6" fill="none"/>
+      <path d="M0 -64 C36 -64 48 -32 44 -4 C40 24 16 44 0 46 C-16 44 -40 24 -44 -4 C-48 -32 -36 -64 0 -64 Z" fill="currentColor"/>
+      <path d="M0 -64 C36 -64 48 -32 44 -4 C40 24 16 44 0 46 C10 30 20 6 18 -20 C16 -46 8 -60 0 -64 Z" fill="#000" opacity=".08"/>
+      <path d="M-6 52 L6 52 L0 45 Z" fill="currentColor"/>
+      <ellipse cx="-17" cy="-32" rx="8" ry="15" fill="#fff" opacity=".5" transform="rotate(22 -17 -32)"/>
+    </symbol>
+    <symbol id="cloud" viewBox="0 0 160 70" overflow="visible">
+      <g fill="#fff">
+        <circle cx="40" cy="44" r="24"/><circle cx="72" cy="30" r="30"/><circle cx="106" cy="40" r="26"/>
+        <rect x="30" y="40" width="96" height="28" rx="14"/>
+      </g>
+    </symbol>
+  </defs>
+
+  <rect width="794" height="1123" fill="url(#bg)"/>
+
+  <use href="#cloud" x="-60" y="392" width="190" height="84" opacity=".85"/>
+  <use href="#cloud" x="610" y="430" width="170" height="74" opacity=".8"/>
+  <use href="#cloud" x="250" y="40" width="120" height="52" opacity=".7"/>
+
+  <rect x="34" y="70" width="9" height="300" rx="4.5" fill="#d2a679" transform="rotate(28 38 70)"/>
+  <use href="#pinwheel" x="-62" y="-30" width="200" height="200" transform="rotate(-12 38 70)"/>
+
+  <use href="#balloon" x="640" y="-6" width="80" height="168" style="color:#ff5a5f" transform="rotate(-10 680 60)"/>
+  <use href="#balloon" x="700" y="30" width="86" height="180" style="color:#3d8bfd" transform="rotate(8 743 100)"/>
+  <use href="#balloon" x="600" y="70" width="70" height="147" style="color:#ffc83d" transform="rotate(-18 635 120)"/>
+  <use href="#balloon" x="748" y="-40" width="76" height="160" style="color:#35c08b" transform="rotate(14 786 20)"/>
+
+  <rect x="770" y="640" width="7" height="200" rx="3.5" fill="#d2a679"/>
+  <use href="#pinwheel" x="718" y="584" width="112" height="112" transform="rotate(20 774 640)"/>
+
+  <path d="M-10 760 C 40 700, 70 690, 96 640" stroke="#9fb3c8" stroke-width="3" stroke-dasharray="2 10" stroke-linecap="round" fill="none"/>
+  <g transform="translate(92 626) rotate(-38)">
+    <polygon points="0,0 76,-24 22,8" fill="#ffffff" stroke="#c9d5e2" stroke-width="2" stroke-linejoin="round"/>
+    <polygon points="22,8 76,-24 30,20" fill="#dbe7f4" stroke="#c9d5e2" stroke-width="2" stroke-linejoin="round"/>
+  </g>
+
+  <g opacity=".9">
+    <rect x="180" y="180" width="12" height="7" rx="1.5" fill="#ffc83d" transform="rotate(30 186 183)"/>
+    <rect x="560" y="210" width="12" height="7" rx="1.5" fill="#3d8bfd" transform="rotate(-25 566 213)"/>
+    <circle cx="120" cy="250" r="5" fill="#ff5a5f"/>
+    <rect x="690" y="330" width="12" height="7" rx="1.5" fill="#35c08b" transform="rotate(55 696 333)"/>
+    <circle cx="58" cy="470" r="5" fill="#3d8bfd"/>
+    <rect x="120" y="545" width="12" height="7" rx="1.5" fill="#ff5a5f" transform="rotate(-40 126 548)"/>
+    <circle cx="690" cy="560" r="5" fill="#ffc83d"/>
+    <rect x="610" y="800" width="12" height="7" rx="1.5" fill="#9b7bff" transform="rotate(20 616 803)"/>
+    <rect x="170" y="840" width="12" height="7" rx="1.5" fill="#ffc83d" transform="rotate(65 176 843)"/>
+    <circle cx="720" cy="880" r="5" fill="#ff5a5f"/>
+    <circle cx="96" cy="900" r="4.5" fill="#35c08b"/>
+  </g>
+
+  <path d="M0 985 C 170 925, 340 950, 470 995 C 590 1036, 700 985, 794 960 L794 1123 L0 1123 Z" fill="#a6dc8f"/>
+  <rect x="140" y="930" width="8" height="140" rx="4" fill="#d2a679"/>
+  <use href="#pinwheel" x="94" y="884" width="100" height="100" transform="rotate(40 144 934)"/>
+  <rect x="662" y="905" width="8" height="150" rx="4" fill="#d2a679"/>
+  <use href="#pinwheel" x="606" y="849" width="120" height="120" transform="rotate(-8 666 909)"/>
+  <path d="M0 1040 C 160 1000, 330 1060, 500 1040 C 640 1024, 720 1012, 794 1020 L794 1123 L0 1123 Z" fill="#6cc46c"/>
+  <g>
+    <circle cx="260" cy="1050" r="6" fill="#fff"/><circle cx="260" cy="1050" r="2.6" fill="#ffc83d"/>
+    <circle cx="300" cy="1066" r="5" fill="#ffd1dc"/><circle cx="300" cy="1066" r="2.2" fill="#ff5a5f"/>
+    <circle cx="470" cy="1060" r="6" fill="#fff"/><circle cx="470" cy="1060" r="2.6" fill="#ffc83d"/>
+    <circle cx="530" cy="1078" r="5" fill="#ffd1dc"/><circle cx="530" cy="1078" r="2.2" fill="#ff5a5f"/>
+    <circle cx="60" cy="1072" r="5" fill="#fff"/><circle cx="60" cy="1072" r="2.2" fill="#ffc83d"/>
+  </g>
+</svg>

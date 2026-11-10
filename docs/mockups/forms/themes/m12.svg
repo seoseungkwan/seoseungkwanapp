@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="794" height="1123">
+  <!-- 12월: 눈 내리는 저녁 — 초승달·별, 눈 결정, 눈 얹힌 겨울나무, 불 켜진 작은 집 -->
+  <defs>
+    <linearGradient id="m12-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c9d3ec"/>
+      <stop offset="0.3" stop-color="#e2e7f5"/>
+      <stop offset="0.62" stop-color="#f6f7fc"/>
+      <stop offset="1" stop-color="#eaeef8"/>
+    </linearGradient>
+    <radialGradient id="m12-glow">
+      <stop offset="0" stop-color="#fff6d6" stop-opacity=".9"/>
+      <stop offset="1" stop-color="#fff6d6" stop-opacity="0"/>
+    </radialGradient>
+    <!-- 눈 결정: 가지 끝에 잎 모양 -->
+    <g id="m12-crystal">
+      <g id="m12-arm">
+        <path d="M0 0 V-44" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+        <path d="M0 -14 L-10 -24 M0 -14 L10 -24 M0 -26 L-8 -34 M0 -26 L8 -34" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <path d="M0 -40 L-5 -46 L0 -54 L5 -46 Z" fill="currentColor"/>
+      </g>
+      <use href="#m12-arm" transform="rotate(60)"/>
+      <use href="#m12-arm" transform="rotate(120)"/>
+      <use href="#m12-arm" transform="rotate(180)"/>
+      <use href="#m12-arm" transform="rotate(240)"/>
+      <use href="#m12-arm" transform="rotate(300)"/>
+      <path d="M0 -11 L9.5 -5.5 L9.5 5.5 L0 11 L-9.5 5.5 L-9.5 -5.5 Z" fill="none" stroke="currentColor" stroke-width="3"/>
+      <circle r="3.5" fill="currentColor"/>
+    </g>
+    <path id="m12-star" d="M0 -9 Q1 -1 9 0 Q1 1 0 9 Q-1 1 -9 0 Q-1 -1 0 -9 Z" fill="#fffbe8"/>
+    <!-- 먼 앙상한 나무 -->
+    <path id="m12-twig" d="M0 0 V-24 M0 -14 L-12 -30 M0 -18 L10 -34 M0 -24 L-3 -40 M-6 -22 L-14 -24 M5 -26 L14 -28" stroke="#a7b3cf" stroke-width="3" stroke-linecap="round" fill="none"/>
+  </defs>
+
+  <rect width="794" height="1123" fill="url(#m12-bg)"/>
+
+  <!-- 별 -->
+  <use href="#m12-star" transform="translate(560 40) scale(1)"/><use href="#m12-star" transform="translate(620 150) scale(0.7)"/><use href="#m12-star" transform="translate(210 50) scale(0.8)"/><use href="#m12-star" transform="translate(170 210) scale(0.6)"/><use href="#m12-star" transform="translate(360 30) scale(0.6)"/><use href="#m12-star" transform="translate(40 270) scale(0.7)"/><use href="#m12-star" transform="translate(760 290) scale(0.8)"/>
+  <g opacity=".35"><use href="#m12-star" transform="translate(250 250) scale(0.7)"/><use href="#m12-star" transform="translate(560 240) scale(0.7)"/></g>
+
+  <!-- 위 오른쪽: 초승달 -->
+  <circle cx="712" cy="86" r="110" fill="url(#m12-glow)"/>
+  <path d="M712 38 A48 48 0 1 0 752 112 A40 40 0 1 1 712 38 Z" fill="#fbe7a6"/>
+  <path d="M712 38 A48 48 0 0 0 672 118 A44 44 0 0 1 712 38 Z" fill="#f3d683"/>
+
+  <!-- 위 왼쪽: 눈 결정 -->
+  <use href="#m12-crystal" color="#ffffff" transform="translate(38 52) rotate(10) scale(2.1)" opacity=".95"/>
+  <use href="#m12-crystal" color="#ffffff" transform="translate(148 150) rotate(-6) scale(.8)" opacity=".9"/>
+  <use href="#m12-crystal" color="#ffffff" transform="translate(56 196) rotate(20) scale(.55)" opacity=".85"/>
+  <use href="#m12-crystal" color="#ffffff" transform="translate(774 214) rotate(14) scale(.6)" opacity=".9"/>
+
+  <!-- 눈 내림: 글자 자리 안은 옅게 -->
+  <g fill="#ffffff"><circle cx="60" cy="300" r="4"/><circle cx="30" cy="430" r="3"/><circle cx="70" cy="560" r="3.5"/><circle cx="24" cy="700" r="3"/><circle cx="40" cy="820" r="4"/><circle cx="740" cy="300" r="3.5"/><circle cx="770" cy="420" r="4"/><circle cx="730" cy="560" r="3"/><circle cx="764" cy="700" r="3.5"/><circle cx="744" cy="840" r="3"/><circle cx="250" cy="40" r="3.5"/><circle cx="330" cy="60" r="2.5"/><circle cx="450" cy="30" r="3"/><circle cx="560" cy="56" r="3.5"/><circle cx="200" cy="210" r="3"/><circle cx="600" cy="200" r="3"/></g>
+  <g fill="#ffffff" opacity=".35"><circle cx="180" cy="300" r="4"/><circle cx="620" cy="330" r="4"/><circle cx="140" cy="440" r="3.5"/><circle cx="660" cy="450" r="3.5"/><circle cx="250" cy="390" r="3"/><circle cx="540" cy="390" r="3"/><circle cx="120" cy="600" r="3.5"/><circle cx="680" cy="620" r="3.5"/><circle cx="160" cy="760" r="3"/><circle cx="640" cy="760" r="3"/><circle cx="130" cy="900" r="3.5"/><circle cx="670" cy="900" r="3.5"/><circle cx="400" cy="230" r="3"/></g>
+  <use href="#m12-crystal" color="#ffffff" transform="translate(30 640) rotate(5) scale(.38)"/>
+  <use href="#m12-crystal" color="#ffffff" transform="translate(764 620) rotate(-12) scale(.42)"/>
+
+  <!-- 아래: 눈 언덕 -->
+  <path d="M0 996 C 150 972, 300 982, 430 1004 C 560 1024, 690 990, 794 980 L794 1123 L0 1123 Z" fill="#dfe6f4"/>
+  <use href="#m12-twig" transform="translate(290 990.5) scale(0.85)"/><use href="#m12-twig" transform="translate(326 993.8) scale(0.65)"/><use href="#m12-twig" transform="translate(380 1000.3) scale(1)"/><use href="#m12-twig" transform="translate(560 1012.8) scale(0.7)"/><use href="#m12-twig" transform="translate(596 1010) scale(0.9)"/><use href="#m12-twig" transform="translate(640 1005) scale(0.65)"/>
+  <!-- 불 켜진 작은 집 -->
+  <g transform="translate(470 1030) scale(1.4)">
+    <circle cx="-14" cy="-18" r="34" fill="url(#m12-glow)"/>
+    <path d="M18 -62 q-8 -10 0 -18 q8 -8 0 -18" stroke="#ffffff" stroke-width="5" fill="none" stroke-linecap="round" opacity=".8"/>
+    <rect x="12" y="-62" width="12" height="22" fill="#7d6c78"/>
+    <rect x="-30" y="-36" width="60" height="38" fill="#9a8a95"/>
+    <rect x="6" y="-36" width="24" height="38" fill="#8a7a86"/>
+    <rect x="-22" y="-26" width="16" height="15" rx="2" fill="#ffd36b"/>
+    <path d="M-14 -26 V-11 M-22 -18.5 H-6" stroke="#c9a04a" stroke-width="2"/>
+    <rect x="9" y="-22" width="13" height="24" rx="2" fill="#6f5f6b"/>
+    <path d="M-40 -32 L0 -64 L40 -32 Q32 -28 26 -32 Q18 -27 10 -32 Q2 -27 -6 -32 Q-14 -27 -22 -32 Q-30 -27 -40 -32 Z" fill="#ffffff"/>
+    <path d="M0 -64 L40 -32 Q32 -28 26 -32 Q18 -27 10 -32 Q4 -28 0 -31 Z" fill="#dfe6f4"/>
+    <rect x="10" y="-66" width="16" height="6" rx="3" fill="#ffffff"/>
+  </g>
+  <!-- 가로등 -->
+  <g transform="translate(578 1050)">
+    <circle cx="0" cy="-76" r="34" fill="url(#m12-glow)"/>
+    <rect x="-2.5" y="-70" width="5" height="70" fill="#6d7a99"/>
+    <path d="M-9 -70 H9 L6 -86 H-6 Z" fill="#6d7a99"/>
+    <rect x="-5" y="-84" width="10" height="12" fill="#ffe08a"/>
+    <path d="M-10 -86 L0 -94 L10 -86 Z" fill="#ffffff"/>
+  </g>
+  <!-- 모서리 겨울나무 -->
+  <path d="M9 1130.5 Q6 893.1 5.6 660.3 Q21.6 892.6 35 1129.5 Z M16.2 1043.8 Q92.4 985.1 169.3 969.7 Q96.1 992 22.3 1055.2 Z M84 1002.1 Q94.5 976.7 105.5 956.8 Q97.8 978.1 89.5 1004.3 Z M131.3 979.3 Q159.8 966.3 188.5 969.7 Q160.5 969.3 132.3 984.2 Z M14.1 984.8 Q36.1 961.6 58.7 950.7 Q39.7 965.6 20.1 991.5 Z M44.3 958.8 Q49.1 945.6 54.2 934.7 Q51.4 946.3 48.1 960.1 Z M15.2 1029.7 Q-10.3 998.2 -35.2 980.9 Q-6.5 993.6 21.6 1022 Z M11.8 915.4 Q24.7 896.8 38.1 885.1 Q28.1 899.3 17.5 919.5 Z M9.7 859.3 Q-10.8 831.3 -30.7 814.8 Q-7.4 827.8 15.3 853.6 Z M8 798.6 Q18.5 781.3 29.6 769.7 Q21.6 783.3 13.1 801.8 Z M6.3 746.1 Q-7.6 723.6 -21 708.9 Q-4.9 721.2 10.8 742.2 Z M5.1 696.6 Q12 682.7 19.2 672.4 Q14.1 683.7 8.7 698.4 Z " fill="#7d8db0"/><path d="M109.3 991.5 L160.2 996.9 M98 974.1 L112.7 963.8 M102.9 962.7 L114.4 952.6 M165.8 970.7 L177.1 960.3 M180.6 969.5 L195.8 977.4 M42 962.8 L60.9 960.9 M52.9 954.5 L72.4 953.7 M-13.8 995.3 L-35.8 993.1 M-27.7 985.4 L-49.1 982.4 M28.7 896.5 L40.9 892 M34.8 888.9 L44.6 883.9 M-13.4 828.5 L-32.4 823.2 M-24.6 819.1 L-26.8 800.3 M-9.2 721 L-20.9 717 M-16.9 712.9 L-19.2 699.3 " stroke="#7d8db0" stroke-width="2.6" stroke-linecap="round" fill="none"/><g stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M31.5 1031.6 L62.1 1011.7 L92.7 995.2 L123.4 982.1 L146.3 974.4" stroke-width="5.9"/><path d="M137 975.9 L148.4 972.1 L159.9 969.5 L171.3 968.3 L179.9 968.1" stroke-width="2.6"/><path d="M18.5 979.3 L27.5 971.1 L36.4 963.8 L45.3 957.4 L52 953.3" stroke-width="4.1"/><path d="M15.9 1015.6 L4.6 1005.5 L-6.8 996.7 L-18.2 989.1 L-26.7 984.1" stroke-width="4.5"/><path d="M14.4 910.8 L19.7 904 L25 897.6 L30.2 891.8 L34.2 887.8" stroke-width="3.2"/><path d="M10.7 847.6 L1.5 838.4 L-7.7 830.1 L-16.9 822.9 L-23.8 818" stroke-width="3.6"/><path d="M10.1 794.3 L14.5 787.8 L18.8 781.8 L23.1 776.3 L26.4 772.4" stroke-width="2.7"/><path d="M7.7 737.2 L1.3 729.5 L-5.1 722.5 L-11.5 716.2 L-16.2 711.9" stroke-width="2.7"/><path d="M6.5 692.9 L9.3 687.6 L12.1 682.6 L15 677.9 L17.1 674.6" stroke-width="2.6"/></g>
+  <path d="M786.5 1130.7 Q793.3 901.4 797.7 678.6 Q778.3 900.6 761.5 1129.3 Z M781.1 1046.6 Q704.8 988 627.9 972.5 Q701.1 994.9 775 1058.1 Z M713.3 1004.9 Q702.8 979.5 691.7 959.7 Q699.4 980.9 707.7 1007.1 Z M666 982.1 Q637.4 969.2 608.7 972.5 Q636.8 972.1 664.9 987 Z M784.1 989.9 Q762.1 966.6 739.5 955.7 Q758.5 970.6 778.1 996.5 Z M753.9 963.9 Q749.1 950.7 743.9 939.8 Q746.8 951.4 750.1 965.1 Z M782.4 1033.4 Q807.9 1001.9 832.8 984.6 Q804.1 997.3 776 1025.7 Z M787.5 923.2 Q774.6 904.5 761.1 892.9 Q771.2 907 781.8 927.3 Z M790.5 869.5 Q811 841.4 830.9 824.9 Q807.6 838 784.9 863.7 Z M793.1 811.1 Q782.5 793.8 771.5 782.1 Q779.5 795.7 788 814.2 Z M795.7 760.8 Q809.6 738.3 823 723.7 Q806.8 736 791.1 757 Z M797.6 713.4 Q790.7 699.4 783.5 689.1 Q788.5 700.5 794 715.1 Z " fill="#7d8db0"/><path d="M794.3 741 L880.7 627.4 M688 994.4 L660 948.7 M699.2 976.9 L703.5 962 M694.4 965.5 L696.8 950.1 M631.4 973.5 L616.9 978.7 M616.7 972.3 L603.1 957.6 M756.1 967.9 L737.1 966.2 M745.3 959.6 L726.1 958.6 M811.4 999 L834.4 998.8 M825.3 989.1 L833.3 969.3 M770.5 904.2 L768.8 893.6 M764.4 896.6 L753.6 891.6 M813.6 838.7 L818.8 820.8 M824.8 829.3 L843.9 824.8 M811.1 735.8 L826.4 732.9 M818.8 727.6 L830.9 725 " stroke="#7d8db0" stroke-width="2.6" stroke-linecap="round" fill="none"/><g stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M765.8 1034.4 L735.1 1014.5 L704.5 998 L673.9 984.9 L650.9 977.3" stroke-width="5.9"/><path d="M660.2 978.8 L648.8 974.9 L637.3 972.4 L625.9 971.1 L617.3 971" stroke-width="2.6"/><path d="M779.6 984.4 L770.7 976.2 L761.8 968.9 L752.9 962.5 L746.2 958.4" stroke-width="4.1"/><path d="M781.7 1019.3 L793 1009.2 L804.4 1000.4 L815.8 992.8 L824.3 987.8" stroke-width="4.5"/><path d="M784.8 918.6 L779.6 911.7 L774.3 905.4 L769 899.6 L765.1 895.6" stroke-width="3.2"/><path d="M789.5 857.7 L798.7 848.5 L807.9 840.3 L817.1 833 L824 828.2" stroke-width="3.6"/><path d="M790.9 806.7 L786.6 800.2 L782.3 794.2 L778 788.7 L774.7 784.8" stroke-width="2.7"/><path d="M794.3 751.9 L800.7 744.2 L807 737.2 L813.4 730.9 L818.2 726.6" stroke-width="2.7"/><path d="M796.2 709.6 L793.3 704.4 L790.5 699.4 L787.7 694.6 L785.6 691.3" stroke-width="2.6"/></g>
+  <path d="M0 1050 C 170 1020, 340 1046, 480 1058 C 610 1068, 720 1036, 794 1028 L794 1123 L0 1123 Z" fill="#ffffff"/>
+  <path d="M0 1100 C 220 1082, 480 1112, 794 1090 L794 1123 L0 1123 Z" fill="#edf1f9"/>
+  <g fill="#c9d4ea">
+    <circle cx="300" cy="1078" r="3"/><circle cx="420" cy="1092" r="2.5"/><circle cx="380" cy="1070" r="2"/><circle cx="640" cy="1086" r="3"/><circle cx="180" cy="1096" r="2.5"/>
+  </g>
+</svg>

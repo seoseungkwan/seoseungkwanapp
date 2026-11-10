@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>시안 — 서식 탭 (휴진 안내 만들기)</title>
+<style>
+  @font-face { font-family: 'AppPretendard'; font-weight: 400; src: url('../../../src/app/fonts/Pretendard-Regular.subset.woff2') format('woff2'); }
+  @font-face { font-family: 'AppPretendard'; font-weight: 500; src: url('../../../src/app/fonts/Pretendard-Medium.subset.woff2') format('woff2'); }
+  @font-face { font-family: 'AppPretendard'; font-weight: 600; src: url('../../../src/app/fonts/Pretendard-SemiBold.subset.woff2') format('woff2'); }
+  @font-face { font-family: 'PosterPretendard'; font-weight: 700; src: url('fonts/Pretendard-Bold.subset.woff2') format('woff2'); }
+  @font-face { font-family: 'PosterPretendard'; font-weight: 900; src: url('fonts/Pretendard-Black.subset.woff2') format('woff2'); }
+  /* 앱 토큰(src/app/globals.css :root) */
+  :root { --canvas:#F7F8FA; --surface:#FFFFFF; --line:#E5E7EB; --line-strong:#D1D5DB; --faint:#9CA3AF; --muted:#6B7280; --ink-2:#374151; --ink:#111827;
+          --accent:#2563EB; --accent-strong:#1D4ED8; --accent-soft:#EAF1FE; --negative:#C2410C; --negative-soft:#FDF0EA; --positive:#15803D; --warning:#B45309; }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--canvas); color: var(--ink); font: 400 14px/22px 'AppPretendard', 'Malgun Gothic', sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+  .mock-bar { font: 13px/1.4 sans-serif; background: #fff8d6; border-bottom: 1px solid #e5d58a; padding: 8px 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .mock-bar button { border: 1px solid #c9b860; background: #fff; border-radius: 4px; padding: 3px 10px; cursor: pointer; }
+  .mock-bar span { color: #7a6a10; margin-left: 8px; }
+
+  /* 앱 틀(간단히) */
+  .top { background: var(--surface); border-bottom: 1px solid var(--line); }
+  .top-in { max-width: 1280px; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; gap: 20px; height: 52px; }
+  .brand { font-weight: 600; }
+  .tabs { display: flex; gap: 4px; overflow: hidden; }
+  .tabs a { padding: 6px 10px; border-radius: 4px; color: var(--ink-2); text-decoration: none; font-size: 13px; white-space: nowrap; }
+  .tabs a.on { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 20px; line-height: 28px; font-weight: 600; }
+  .tools { margin-top: 12px; display: inline-flex; border: 1px solid var(--line-strong); border-radius: 4px; overflow: hidden; background: var(--surface); }
+  .tools button { height: 32px; padding: 0 14px; border: 0; background: none; cursor: pointer; font-size: 13px; }
+  .tools button.on { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+
+  .cols { margin-top: 16px; display: grid; grid-template-columns: 232px minmax(360px, 1fr) 440px; gap: 16px; align-items: start; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+  .panel h2 { font-size: 14px; line-height: 22px; font-weight: 600; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; line-height: 20px; }
+  .caption { font-size: 12px; line-height: 16px; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 16px; border-radius: 4px; border: 1px solid var(--line-strong); background: var(--surface); cursor: pointer; font-weight: 500; white-space: nowrap; }
+  .btn:hover { background: var(--canvas); }
+  .btn.primary { background: var(--accent); border-color: transparent; color: #fff; }
+  .btn.primary:hover { background: var(--accent-strong); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.sm { height: 30px; padding: 0 10px; font-size: 13px; }
+  .btn.ghost { border-color: transparent; color: var(--ink-2); }
+  .btn.danger { color: var(--negative); }
+
+  /* 목록 */
+  .list { margin-top: 12px; display: flex; flex-direction: column; gap: 4px; }
+  .item { text-align: left; border: 1px solid transparent; background: none; border-radius: 4px; padding: 8px 10px; cursor: pointer; }
+  .item:hover { background: var(--canvas); }
+  .item.on { border-color: var(--accent); background: var(--accent-soft); }
+  .item b { display: block; font-weight: 600; font-size: 13px; line-height: 20px; }
+  .item span { font-size: 12px; color: var(--muted); }
+
+  /* 만들기 */
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .label { font-size: 13px; font-weight: 600; }
+  textarea { width: 100%; min-height: 96px; resize: vertical; border: 1px solid var(--line-strong); border-radius: 4px; padding: 10px 12px; background: var(--surface); line-height: 22px; }
+  textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+  input, select { height: 36px; border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 10px; background: var(--surface); min-width: 0; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .between { justify-content: space-between; }
+  .sep { border-top: 1px solid var(--line); margin: 16px 0; }
+  .notice { font-size: 12px; line-height: 18px; color: var(--muted); }
+  .err { margin-top: 8px; border: 1px solid var(--negative); background: var(--negative-soft); border-radius: 4px; padding: 10px 12px; font-size: 13px; line-height: 20px; }
+  .err b { color: var(--negative); }
+  .err code { font-size: 12px; color: var(--muted); }
+  .info { margin-top: 8px; font-size: 13px; color: var(--ink-2); }
+  .card-edit { border: 1px solid var(--line); border-radius: 8px; padding: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; position: relative; }
+  .card-edit .num { position: absolute; top: -9px; left: 10px; background: var(--surface); padding: 0 4px; font-size: 12px; color: var(--muted); }
+  .card-edit label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-2); }
+  .card-edit .wide { grid-column: span 2; }
+  .card-edit .foot { grid-column: span 2; display: flex; justify-content: space-between; align-items: center; }
+  .cards-edit { display: flex; flex-direction: column; gap: 14px; margin-top: 12px; }
+  .bad { border-color: var(--negative) !important; }
+  .fielderr { color: var(--negative); font-size: 12px; }
+
+  /* 미리보기 */
+  .preview svg { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; }
+  .empty-card { fill: none; stroke: #9aa3ad; stroke-width: 2; stroke-dasharray: 8 8; }
+  .actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .state { margin-top: 8px; font-size: 12px; }
+  .saved { color: var(--positive); }
+  .dirty { color: var(--warning); }
+  @media (max-width: 1100px) { .cols { grid-template-columns: 1fr; } .tabs { display: none; } }
+</style>
+</head>
+<body>
+<div class="mock-bar">
+  <b>시안 상태</b>
+  <button data-go="new">새로 만들기(빈 화면)</button>
+  <button data-go="typed">글을 적음</button>
+  <button data-go="busy">정리하는 중</button>
+  <button data-go="done">정리 끝</button>
+  <button data-go="private">개인정보 막힘</button>
+  <button data-go="saved">저장됨</button>
+  <button data-go="aug">저장한 8월 열기</button>
+  <span>오늘은 2026년 11월 10일이라고 친 예시 · 진짜처럼 눌러 봐도 돼요(AI 답은 지어낸 것)</span>
+</div>
+
+<header class="top"><div class="top-in">
+  <span class="brand">병원 업무</span>
+  <nav class="tabs">
+    <a>대시보드</a><a>통계</a><a>청구</a><a>고시·공지</a><a>환자</a><a>매출</a><a>AI 리포트</a><a class="on">서식</a><a>직원</a><a>업무일지</a><a>재고</a><a>주소록</a><a>설정</a>
+  </nav>
+</div></header>
+
+<main class="wrap">
+  <h1>서식</h1>
+  <div class="tools" role="group" aria-label="서식 도구"><button class="on" aria-pressed="true">휴진 안내</button></div>
+
+  <div class="cols">
+    <!-- 왼쪽: 저장한 안내문 -->
+    <section class="panel" aria-label="저장한 안내문">
+      <div class="row between"><h2>저장한 안내문</h2></div>
+      <button class="btn sm" id="newBtn" style="margin-top:10px;width:100%">+ 새로 만들기</button>
+      <div class="list" id="list"></div>
+      <p class="small muted" id="listEmpty" style="margin-top:12px">아직 저장한 안내문이 없어요</p>
+    </section>
+
+    <!-- 가운데: 만들기 -->
+    <section class="panel" aria-label="만들기">
+      <div class="field">
+        <label class="label" for="memo">대충 적기</label>
+        <textarea id="memo" maxlength="500" placeholder="예) 5월 5일 어린이날 휴진&#10;예) 추석 연휴 9월 24일부터 26일까지 쉬어요"></textarea>
+        <div class="row between">
+          <p class="notice">전화번호·주민번호·메일 주소는 적지 마세요. 적은 글은 정리할 때만 AI로 보내고 저장하지 않아요</p>
+          <span class="caption muted" id="count">0/500</span>
+        </div>
+        <div class="row"><button class="btn primary" id="tidy" disabled>정리하기</button></div>
+        <div class="err" id="err" hidden></div>
+        <p class="info" id="info" hidden></p>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="row between">
+        <h2>안내 내용</h2>
+        <label class="row small">안내 달 <input type="month" id="month" style="width:160px"></label>
+      </div>
+      <div class="cards-edit" id="cards"></div>
+      <div class="row" style="margin-top:10px"><button class="btn sm" id="add">+ 카드 더하기</button><span class="caption muted">카드는 4장까지 · 이어서 쉬는 날은 끝 날짜를 적어 한 장으로</span></div>
+
+      <div class="sep"></div>
+
+      <label class="field"><span class="label">테마</span>
+        <select id="theme"></select>
+        <span class="caption muted">카드 이름에 공휴일 이름이 있으면 그 공휴일, 없으면 안내 달의 그림이 저절로 골라져요</span>
+      </label>
+    </section>
+
+    <!-- 오른쪽: 미리보기 -->
+    <section class="panel preview" aria-label="미리보기">
+      <h2 style="margin-bottom:10px">미리보기 <span class="caption muted">A4 세로</span></h2>
+      <div id="poster"></div>
+      <div class="actions">
+        <button class="btn primary" id="save">저장</button>
+        <button class="btn" id="print">인쇄·PDF</button>
+        <button class="btn" id="png">그림 파일</button>
+        <button class="btn ghost danger" id="del" hidden>지우기</button>
+      </div>
+      <p class="state" id="state"></p>
+    </section>
+  </div>
+</main>
+
+<script>
+const THEMES = [
+  ['newyear','신정','#d9432f',['신정','새해','양력설']], ['seollal','설날','#d6336c',['설날','설연휴','설명절','구정']], ['samiljeol','삼일절','#2b5bb5',['삼일절','3·1절','3.1절','31절']],
+  ['children','어린이날','#f0522d',['어린이날']], ['buddha','부처님오신날','#d9601a',['부처님오신날','석가탄신일','석탄일','초파일']], ['memorial','현충일','#2f4a7a',['현충일']],
+  ['liberation','광복절','#e8312f',['광복절']], ['chuseok','추석','#c8662a',['추석','한가위']], ['foundation','개천절','#2f7fc1',['개천절']],
+  ['hangul','한글날','#1f6e8c',['한글날']], ['christmas','성탄절','#c62f2f',['성탄절','크리스마스','성탄']],
+  ['m01','1월','#3c6fb4',[]],['m02','2월','#c2416b',[]],['m03','3월','#3f9142',[]],['m04','4월','#d9487a',[]],['m05','5월','#d8434e',[]],['m06','6월','#5b63c7',[]],
+  ['m07','7월','#1d8fc7',[]],['m08','8월','#d46f00',[]],['m09','9월','#c2458a',[]],['m10','10월','#c8501e',[]],['m11','11월','#8a5a2b',[]],['m12','12월','#2e5e9e',[]],
+].map(([id, name, accent, words]) => ({ id, name, accent, words }))
+const byId = Object.fromEntries(THEMES.map((t) => [t.id, t]))
+const DAYS = '일월화수목금토'
+const ymd = (s) => { const [y, m, d] = s.split('-').map(Number); return { y, m, d, wd: new Date(Date.UTC(y, m - 1, d)).getUTCDay() } }
+function dateLabel(c) {
+  const a = ymd(c.start), head = `${a.m}월 ${a.d}일(${DAYS[a.wd]})`
+  if (!c.end) return head
+  const b = ymd(c.end)
+  return b.m === a.m ? `${head}~${b.d}일(${DAYS[b.wd]})` : `${head}~${b.m}월 ${b.d}일(${DAYS[b.wd]})`
+}
+function textWidth(t, size) { let em = 0; for (const ch of t) em += /[ㄱ-힣]/.test(ch) ? 1 : /[0-9]/.test(ch) ? .62 : /[()]/.test(ch) ? .38 : ch === ' ' ? .3 : .6; return em * size }
+const fit = (t, size, inner) => { while (size > 18 && textWidth(t, size) > inner) size--; return size }
+const SHAPES = { 1: { w: 318, gap: 0, head: 79, body: 224, rows: [534], cols: 1, f: [33, 46, 50] }, 2: { w: 318, gap: 36, head: 79, body: 224, rows: [534], cols: 2, f: [33, 46, 50] },
+  3: { w: 226, gap: 24, head: 70, body: 196, rows: [534], cols: 3, f: [28, 38, 44] }, 4: { w: 318, gap: 36, head: 60, body: 140, rows: [510, 734], cols: 2, f: [30, 38, 42] } }
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const PRIVATE = /(?<!\d)(?:0\d{1,2}[-. ]\d{3,4}[-. ]\d{4}|01[016789]\d{7,8})(?!\d)|(?<!\d)\d{6}-\d{7}(?!\d)|[^\s@]+@[^\s@]+\.[^\s@]+/
+
+// 상태
+let S
+const blank = () => ({ id: null, memo: '', month: '2026-11', monthTouched: false, theme: 'auto', cards: [{ start: '', end: '', name: '', status: '휴진' }], busy: false, err: null, info: null, savedSnap: null })
+let saved = [] // 저장한 안내문
+const snap = () => JSON.stringify([S.month, S.theme, S.cards])
+
+function completeCards() { return S.cards.filter((c) => c.start).map((c) => ({ ...c, end: c.end || null })).sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0)) }
+function cardErrors(c) {
+  const e = {}
+  if (!c.start) e.start = '날짜를 골라 주세요'
+  if (c.end && c.start && c.end <= c.start) e.end = '시작 날짜보다 뒤여야 해요'
+  if (!c.name.trim()) e.name = '이름을 적어 주세요'
+  if (!c.status.trim()) e.status = '글을 적어 주세요'
+  return e
+}
+const valid = () => S.cards.every((c) => Object.keys(cardErrors(c)).length === 0)
+function autoTheme() {
+  for (const c of completeCards()) {
+    const n = c.name.replace(/\s/g, '')
+    if (n === '설') return 'seollal'
+    const t = THEMES.find((t) => t.words.some((w) => n.includes(w)))
+    if (t) return t.id
+  }
+  const m = S.month ? Number(S.month.split('-')[1]) : 11
+  return 'm' + String(m).padStart(2, '0')
+}
+const themeNow = () => (S.theme === 'auto' ? autoTheme() : S.theme)
+
+function posterSvg() {
+  const theme = byId[themeNow()]
+  const cards = completeCards()
+  const month = S.month ? Number(S.month.split('-')[1]) : '?'
+  const T = (x, y, size, weight, fill, text, ls = 0) => `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-family="PosterPretendard" font-size="${size}" font-weight="${weight}" fill="${fill}" letter-spacing="${ls}em">${esc(String(text))}</text>`
+  let body = ''
+  if (cards.length === 0) {
+    body = `<rect class="empty-card" x="160" y="560" width="474" height="250" rx="22"/>` + T(397, 685, 26, 700, '#7b8590', '날짜를 적으면 여기에 카드가 생겨요')
+  } else {
+    const s = SHAPES[cards.length], rowW = s.cols * s.w + (s.cols - 1) * s.gap, x0 = (794 - rowW) / 2
+    cards.forEach((c, i) => {
+      const x = x0 + (i % s.cols) * (s.w + s.gap), y = s.rows[Math.floor(i / s.cols)], r = 22, inner = s.w - 32, date = dateLabel(c)
+      body += `<g filter="url(#sh)"><rect x="${x}" y="${y}" width="${s.w}" height="${s.head + s.body}" rx="${r}" fill="#fff"/></g>`
+      body += `<path d="M${x} ${y + s.head} V${y + r} A${r} ${r} 0 0 1 ${x + r} ${y} H${x + s.w - r} A${r} ${r} 0 0 1 ${x + s.w} ${y + r} V${y + s.head} Z" fill="${theme.accent}"/>`
+      body += T(x + s.w / 2, y + s.head / 2, fit(date, s.f[0], inner), 700, '#fff', date, -.02)
+      body += T(x + s.w / 2, y + s.head + s.body * .30, fit(c.name || ' ', s.f[1], inner), 900, '#262626', c.name, -.03)
+      body += T(x + s.w / 2, y + s.head + s.body * .67, fit(c.status || ' ', s.f[2], inner), 900, theme.accent, c.status, .02)
+    })
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" role="img" aria-label="${month}월 진료일정안내">
+    <defs><filter id="sh" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="14" stdDeviation="17" flood-color="rgb(25,45,80)" flood-opacity=".16"/></filter></defs>
+    <image href="themes/${theme.id}.svg" width="794" height="1123"/>
+    ${T(397, 162, 132, 900, theme.accent, `${month}월`, -.02)}
+    ${T(397, 296, 120, 900, '#262626', '진료일정안내', -.045)}
+    ${T(397, 417, 27, 700, '#3a3a3a', `${month}월 진료일정을 안내드리오니`, -.02)}
+    ${T(397, 459, 27, 700, '#3a3a3a', '진료 및 내원에 참고해주시길 바랍니다', -.02)}
+    ${body}</svg>`
+}
+
+const $ = (id) => document.getElementById(id)
+function titleOf(n) { const names = [...n.cards].sort((a, b) => (a.start < b.start ? -1 : 1)).slice(0, 2).map((c) => c.name).join('·'); const [y, m] = n.month.split('-'); return `${y}년 ${Number(m)}월 · ${names}` }
+
+function render() {
+  $('memo').value = S.memo
+  $('count').textContent = `${S.memo.length}/500`
+  $('tidy').disabled = S.busy || S.memo.trim() === ''
+  $('tidy').textContent = S.busy ? '정리하는 중…' : '정리하기'
+  $('err').hidden = !S.err; $('err').innerHTML = S.err ?? ''
+  $('info').hidden = !S.info; $('info').textContent = S.info ?? ''
+  $('month').value = S.month
+
+  $('cards').innerHTML = S.cards.map((c, i) => {
+    const e = cardErrors(c), show = (k) => (c.start || c.name || c.end) && e[k]
+    return `<div class="card-edit"><span class="num">카드 ${i + 1}</span>
+      <label><span>시작 날짜</span><input type="date" data-i="${i}" data-k="start" value="${c.start}" class="${show('start') ? 'bad' : ''}">${show('start') ? `<span class="fielderr">${e.start}</span>` : ''}</label>
+      <label><span>끝 날짜 <span class="muted">(이어서 쉴 때)</span></span><input type="date" data-i="${i}" data-k="end" value="${c.end}" class="${show('end') ? 'bad' : ''}">${show('end') ? `<span class="fielderr">${e.end}</span>` : ''}</label>
+      <label><span>이름 <span class="muted">(10자까지)</span></span><input data-i="${i}" data-k="name" maxlength="10" placeholder="예) 어린이날" value="${esc(c.name)}" class="${show('name') ? 'bad' : ''}">${show('name') ? `<span class="fielderr">${e.name}</span>` : ''}</label>
+      <label><span>아래 글 <span class="muted">(6자까지)</span></span><input data-i="${i}" data-k="status" maxlength="6" value="${esc(c.status)}" class="${show('status') ? 'bad' : ''}">${show('status') ? `<span class="fielderr">${e.status}</span>` : ''}</label>
+      <div class="foot"><span class="caption muted">${c.start ? dateLabel({ start: c.start, end: c.end || null }) : '&nbsp;'}</span><button class="btn sm ghost" data-del="${i}" ${S.cards.length === 1 ? 'disabled' : ''}>빼기</button></div>
+    </div>`
+  }).join('')
+  $('add').disabled = S.cards.length >= 4
+
+  const auto = byId[autoTheme()].name
+  $('theme').innerHTML = `<option value="auto">저절로 (지금: ${auto})</option><optgroup label="공휴일">${THEMES.filter((t) => !/^m\d\d$/.test(t.id)).map((t) => `<option value="${t.id}">${t.name}</option>`).join('')}</optgroup><optgroup label="달마다">${THEMES.filter((t) => /^m\d\d$/.test(t.id)).map((t) => `<option value="${t.id}">${t.name}</option>`).join('')}</optgroup>`
+  $('theme').value = S.theme
+
+  $('poster').innerHTML = posterSvg()
+  const ok = valid() && completeCards().length > 0
+  for (const b of ['save', 'print', 'png']) $(b).disabled = !ok
+  $('del').hidden = !S.id
+  const dirty = S.savedSnap !== snap()
+  $('state').innerHTML = S.id && !dirty ? '<span class="saved">저장됨 · 11월 10일 14:32</span>' : (ok || completeCards().length) && dirty ? '<span class="dirty">저장하지 않은 내용이 있어요</span>' : ''
+
+  $('listEmpty').hidden = saved.length > 0
+  $('list').innerHTML = saved.map((n) => `<button class="item ${n.id === S.id ? 'on' : ''}" data-open="${n.id}"><b>${esc(titleOf(n))}</b><span>${n.when} 고침</span></button>`).join('')
+}
+
+function syncMonth() {
+  if (S.monthTouched) return
+  const c = completeCards()[0]
+  if (c) S.month = c.start.slice(0, 7)
+}
+
+function tidy() {
+  if (PRIVATE.test(S.memo)) {
+    S.err = '<b>적은 글에 전화번호·주민번호·메일 주소 모양이 있어 보내지 않았어요.</b><br>그 부분을 지우고 다시 [정리하기]를 눌러 주세요. <code>E-FORMS-PRIVATE</code>'
+    render(); return
+  }
+  S.err = null; S.info = null; S.busy = true; render()
+  setTimeout(() => {
+    S.busy = false
+    // 지어낸 AI 답: 글에 따라 둘 중 하나
+    if (/추석/.test(S.memo)) S.cards = [{ start: '2026-09-24', end: '2026-09-26', name: '추석 연휴', status: '휴진' }]
+    else S.cards = [{ start: '2027-05-05', end: '', name: '어린이날', status: '휴진' }]
+    S.monthTouched = false; syncMonth(); render()
+  }, 1200)
+}
+
+function confirmLeave() { return S.savedSnap === snap() || !completeCards().length || confirm('저장하지 않은 내용이 있어요. 버릴까요?') }
+
+document.addEventListener('input', (e) => {
+  const t = e.target
+  if (t.id === 'memo') { S.memo = t.value; S.err = null; render(); t.focus(); t.setSelectionRange(t.value.length, t.value.length); return }
+  if (t.dataset.k) { S.cards[Number(t.dataset.i)][t.dataset.k] = t.value; syncMonth(); const k = t.dataset.k, i = t.dataset.i; render(); const el = document.querySelector(`[data-i="${i}"][data-k="${k}"]`); el.focus(); if (el.type !== 'date') el.setSelectionRange(el.value.length, el.value.length) }
+})
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'month') { S.month = e.target.value; S.monthTouched = true; render() }
+  if (e.target.id === 'theme') { S.theme = e.target.value; render() }
+})
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('button'); if (!t) return
+  if (t.dataset.go) { go(t.dataset.go); return }
+  if (t.id === 'tidy') tidy()
+  if (t.id === 'add') { S.cards.push({ start: '', end: '', name: '', status: '휴진' }); render() }
+  if (t.dataset.del) { S.cards.splice(Number(t.dataset.del), 1); syncMonth(); render() }
+  if (t.id === 'newBtn') { if (confirmLeave()) { S = blank(); render() } }
+  if (t.dataset.open) { if (confirmLeave()) { const n = saved.find((x) => x.id === t.dataset.open); S = { ...blank(), id: n.id, month: n.month, monthTouched: true, theme: n.theme, cards: JSON.parse(JSON.stringify(n.cards)) }; S.savedSnap = snap(); render() } }
+  if (t.id === 'save') {
+    const n = { id: S.id ?? 'n' + Date.now(), month: S.month, theme: S.theme, cards: JSON.parse(JSON.stringify(S.cards)), when: '11월 10일' }
+    saved = [n, ...saved.filter((x) => x.id !== n.id)]; S.id = n.id; S.savedSnap = snap(); render()
+  }
+  if (t.id === 'del') { if (confirm('이 안내문을 지울까요?')) { saved = saved.filter((x) => x.id !== S.id); S = blank(); render() } }
+  if (t.id === 'print') alert('(시안) 브라우저 인쇄 창이 열려요. A4 세로 한 장에 안내문만 나와요. PDF는 인쇄 창에서 "PDF로 저장"을 고르면 돼요')
+  if (t.id === 'png') alert('(시안) 휴진안내_' + S.month + '.png 그림 파일(1588×2246)이 내려받아져요')
+})
+
+const AUG = { id: 'aug', month: '2026-08', theme: 'auto', cards: [{ start: '2026-08-15', end: '', name: '광복절', status: '휴진' }, { start: '2026-08-17', end: '', name: '대체공휴일', status: '휴진' }], when: '8월 3일' }
+function go(state) {
+  saved = [AUG]
+  S = blank()
+  if (state === 'typed' || state === 'busy' || state === 'done' || state === 'saved') S.memo = '5/5 어린이날 휴진'
+  if (state === 'busy') S.busy = true
+  if (state === 'done' || state === 'saved') { S.cards = [{ start: '2027-05-05', end: '', name: '어린이날', status: '휴진' }]; syncMonth() }
+  if (state === 'saved') { const n = { id: 'may', month: S.month, theme: 'auto', cards: JSON.parse(JSON.stringify(S.cards)), when: '11월 10일' }; saved = [n, AUG]; S.id = 'may'; S.savedSnap = snap() }
+  if (state === 'private') { S.memo = '5/5 어린이날 휴진, 문의 010-1234-5678'; render(); tidy(); return }
+  if (state === 'aug') { S = { ...blank(), id: 'aug', month: AUG.month, monthTouched: true, theme: 'auto', cards: JSON.parse(JSON.stringify(AUG.cards)) }; S.savedSnap = snap() }
+  render()
+}
+go(new URLSearchParams(location.search).get('s') || 'new')
+</script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="794" height="1123">
+  <!-- 신정: 겹겹 산 위로 떠오르는 해, 구름, 새 -->
+  <defs>
+    <linearGradient id="newyear-sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fde6d8"/>
+      <stop offset="0.3" stop-color="#fff5ee"/>
+      <stop offset="0.58" stop-color="#ffffff"/>
+      <stop offset="0.78" stop-color="#fff3e8"/>
+      <stop offset="0.9" stop-color="#ffd9bd"/>
+    </linearGradient>
+    <radialGradient id="newyear-ray" gradientUnits="userSpaceOnUse" cx="397" cy="1000" r="600">
+      <stop offset="0.15" stop-color="#ffb47c" stop-opacity=".5"/>
+      <stop offset="1" stop-color="#ffb47c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="newyear-glow">
+      <stop offset="0.3" stop-color="#ffa45e" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#ffa45e" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="newyear-sun" cx=".42" cy=".38" r=".7">
+      <stop offset="0" stop-color="#ff9450"/>
+      <stop offset="1" stop-color="#e2412b"/>
+    </radialGradient>
+    <path id="newyear-cloudpath" d="M24 78 C 4 78 0 52 22 48 C 20 28 44 18 60 30 C 66 8 104 0 118 22 C 130 10 156 14 160 36 C 184 32 200 56 186 72 C 182 76 178 78 172 78 Z"/>
+    <symbol id="newyear-cloud" viewBox="0 0 200 84" overflow="visible">
+      <use href="#newyear-cloudpath" fill="#f7cdb9" y="6"/>
+      <use href="#newyear-cloudpath" fill="#fff"/>
+    </symbol>
+    <symbol id="newyear-bird" viewBox="-20 -10 40 20" overflow="visible">
+      <path d="M-19 -1 C -13 -8 -5 -8 0 1 C 5 -8 13 -8 19 -1 C 12 -4 5 -2 0 6 C -5 -2 -12 -4 -19 -1 Z" fill="#8a4f5c"/>
+    </symbol>
+    <symbol id="newyear-spark" viewBox="-10 -10 20 20" overflow="visible">
+      <path d="M0 -10 C 1 -2 2 -1 10 0 C 2 1 1 2 0 10 C -1 2 -2 1 -10 0 C -2 -1 -1 -2 0 -10 Z" fill="#f2a95c"/>
+    </symbol>
+  </defs>
+
+  <rect width="794" height="1123" fill="url(#newyear-sky)"/>
+
+  <!-- 햇살(희미하게) -->
+  <g fill="url(#newyear-ray)">
+    <polygon points="397,1000 380,430 414,430" transform="rotate(-64 397 1000)"/>
+    <polygon points="397,1000 386,430 408,430" transform="rotate(-48 397 1000)"/>
+    <polygon points="397,1000 380,430 414,430" transform="rotate(-32 397 1000)"/>
+    <polygon points="397,1000 386,430 408,430" transform="rotate(-16 397 1000)"/>
+    <polygon points="397,1000 380,430 414,430"/>
+    <polygon points="397,1000 386,430 408,430" transform="rotate(16 397 1000)"/>
+    <polygon points="397,1000 380,430 414,430" transform="rotate(32 397 1000)"/>
+    <polygon points="397,1000 386,430 408,430" transform="rotate(48 397 1000)"/>
+    <polygon points="397,1000 380,430 414,430" transform="rotate(64 397 1000)"/>
+  </g>
+
+  <!-- 위 구름·새 -->
+  <use href="#newyear-cloud" x="-56" y="96" width="236" height="99"/>
+  <use href="#newyear-cloud" x="22" y="30" width="120" height="50" opacity=".8"/>
+  <use href="#newyear-cloud" x="626" y="150" width="210" height="88"/>
+  <use href="#newyear-cloud" x="250" y="34" width="110" height="46" opacity=".55"/>
+  <use href="#newyear-bird" x="650" y="58" width="44" height="22"/>
+  <use href="#newyear-bird" x="706" y="88" width="34" height="17"/>
+  <use href="#newyear-bird" x="690" y="30" width="26" height="13"/>
+  <use href="#newyear-spark" x="186" y="64" width="16" height="16"/>
+  <use href="#newyear-spark" x="596" y="98" width="12" height="12"/>
+  <use href="#newyear-spark" x="118" y="226" width="12" height="12"/>
+  <use href="#newyear-spark" x="742" y="262" width="16" height="16"/>
+
+  <!-- 가장자리 구름 -->
+  <use href="#newyear-cloud" x="-80" y="560" width="160" height="67" opacity=".9"/>
+  <use href="#newyear-cloud" x="732" y="700" width="150" height="63" opacity=".9"/>
+
+  <!-- 해 -->
+  <circle cx="397" cy="1000" r="230" fill="url(#newyear-glow)"/>
+  <circle cx="397" cy="1002" r="90" fill="url(#newyear-sun)"/>
+
+  <!-- 겹겹 산 -->
+  <path d="M0 800 C 30 790, 60 820, 100 860 C 140 900, 190 925, 250 945 C 300 962, 350 997, 397 1001 C 445 1005, 490 975, 540 955 C 600 932, 650 905, 700 870 C 740 842, 770 815, 794 818 V1123 H0 Z" fill="#f6c1aa"/>
+  <path d="M0 880 C 40 872, 80 905, 130 935 C 190 970, 260 985, 320 1008 C 360 1024, 390 1036, 420 1034 C 470 1030, 520 1005, 580 990 C 640 975, 700 925, 750 905 C 770 898, 785 900, 794 902 V1123 H0 Z" fill="#e89a8c"/>
+  <!-- 운해 -->
+  <g fill="#fff" opacity=".55">
+    <rect x="40" y="1002" width="230" height="7" rx="3.5"/>
+    <rect x="120" y="1016" width="150" height="5" rx="2.5"/>
+    <rect x="520" y="1010" width="250" height="7" rx="3.5"/>
+    <rect x="560" y="1024" width="130" height="5" rx="2.5"/>
+  </g>
+  <path d="M0 965 C 70 958, 140 1000, 210 1025 C 270 1046, 330 1060, 400 1062 C 470 1064, 530 1040, 600 1025 C 670 1010, 730 985, 794 980 V1123 H0 Z" fill="#b27c98"/>
+  <path d="M0 1030 C 80 1020, 160 1060, 250 1080 C 330 1097, 420 1100, 500 1088 C 590 1075, 660 1048, 794 1042 V1123 H0 Z" fill="#6d5f90"/>
+  <path d="M0 1092 C 120 1084, 230 1112, 360 1114 C 500 1116, 640 1092, 794 1098 V1123 H0 Z" fill="#474a76"/>
+</svg>
