@@ -308,11 +308,14 @@ const RECEPTION_NETWORK = ['XMLHttpRequest', 'WebSocket', 'EventSource', 'import
 const SAME_PC_LITERAL = '/^\\/([A-Za-z0-9_.~?#%=&+-]|$)/'
 const SAME_PC_TEMPLATE = '/^\\/[A-Za-z0-9_.~?#%=&+-]/'
 const RELATIVE_SOURCE = '/^\\.\\.?\\//'
-function receptionScreenRules() {
+// allowLocalStorage: 어레인지 메모(reception/www/memo.js, reception-memo-papers AC-3405.1)만 이 기기 메모 한 칸을 localStorage에 둔다.
+// 다른 저장소(sessionStorage·indexedDB·caches·cookie·storage)·console·바깥 fetch 등은 그대로 막는다
+function receptionScreenRules({ allowLocalStorage = false } = {}) {
+  const storage = allowLocalStorage ? RECEPTION_STORAGE.filter((name) => name !== 'localStorage') : RECEPTION_STORAGE
   return {
     'no-restricted-globals': [
       'error',
-      ...RECEPTION_STORAGE.map((name) => ({ name, message: RECEPTION_STORAGE_MESSAGE })),
+      ...storage.map((name) => ({ name, message: RECEPTION_STORAGE_MESSAGE })),
       { name: 'console', message: RECEPTION_CONSOLE_MESSAGE },
       ...['eval', 'Function'].map((name) => ({ name, message: RECEPTION_EVAL_MESSAGE })),
       { name: 'DOMParser', message: RECEPTION_HTML_MESSAGE },
@@ -321,7 +324,7 @@ function receptionScreenRules() {
     // window·self·globalThis·navigator·document 등 어느 객체를 거쳐도, 꺼내 써도 막는다
     'no-restricted-properties': [
       'error',
-      ...[...RECEPTION_STORAGE, 'cookie', 'storage'].map((property) => ({ property, message: RECEPTION_STORAGE_MESSAGE })),
+      ...[...storage, 'cookie', 'storage'].map((property) => ({ property, message: RECEPTION_STORAGE_MESSAGE })),
       { property: 'serviceWorker', message: RECEPTION_SERVICE_WORKER_MESSAGE },
       { property: 'console', message: RECEPTION_CONSOLE_MESSAGE },
       ...RECEPTION_HTML.map((property) => ({ property, message: RECEPTION_HTML_MESSAGE })),
@@ -512,6 +515,12 @@ const eslintConfig = [
     // reception/www/는 TASK-16부터 생긴다. 규칙은 src/guardrails.test.ts가 경로만 빌려 증명한다
     files: ['reception/www/**'],
     rules: receptionScreenRules(),
+  },
+  {
+    // 어레인지 메모(reception-memo-papers AC-3405.1): 위 블록 다음에 두어 이 파일만 localStorage를 쓴다(이 기기 메모 한 칸).
+    // 다른 금지는 위와 같다. src/guardrails.test.ts가 증명한다
+    files: ['reception/www/memo.js'],
+    rules: receptionScreenRules({ allowLocalStorage: true }),
   },
 ]
 

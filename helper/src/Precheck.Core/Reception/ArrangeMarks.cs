@@ -131,7 +131,16 @@ public static class ArrangeChoices
 
     private static readonly IReadOnlyList<string> Pt = Array.AsReadOnly(new[] { "ICE", "HP" });
     private static readonly IReadOnlyList<string> Ds = Array.AsReadOnly(new[] { "30분", "50분" });
-    private static readonly IReadOnlyList<string> Eswt = Array.AsReadOnly(new[] { "1부위", "2부위", "3부위", "4부위" });
+    /// <summary>충격파: 부위 수 넷 + 타수(2000·3000·4000·6000타)마다 부위 수 넷(spec reception-memo-papers AC-3402.1). 화면 시험이 글을 그 차례로 견주려고 모두 적는다.</summary>
+    private static readonly IReadOnlyList<string> Eswt = Array.AsReadOnly(new[]
+    {
+        "1부위", "2부위", "3부위", "4부위",
+        "2000타 1부위", "2000타 2부위", "2000타 3부위", "2000타 4부위",
+        "3000타 1부위", "3000타 2부위", "3000타 3부위", "3000타 4부위",
+        "4000타 1부위", "4000타 2부위", "4000타 3부위", "4000타 4부위",
+        "6000타 1부위", "6000타 2부위", "6000타 3부위", "6000타 4부위",
+    });
+
     private static readonly IReadOnlyList<string> Trac = Array.AsReadOnly(new[] { "목", "허리" });
     private static readonly IReadOnlyList<string> None = Array.AsReadOnly(new string[0]);
     private static readonly IReadOnlyList<string> Xray = Array.AsReadOnly(new[] { XrayShot });

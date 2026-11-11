@@ -42,6 +42,7 @@ beforeAll(async () => {
 afterEach(() => {
   vi.useRealTimers()
   document.body.replaceChildren()
+  localStorage.clear()
 })
 
 /** index.html의 #app 자리 */
@@ -556,6 +557,16 @@ describe('board.js 목록 그리기', () => {
     expect(textOf(app, 'nav.tabs .tab-n')).toBe('0명')
     // 탭은 문서 제목을 건드리지 않는다(AC-1407.5)
     expect(document.title).toBe('')
+  })
+
+  it('AC-3403.1: 접수 현황 탭 머리에는 이 기기에 메모가 있어도 메모 칸이 없다(어레인지 탭에만 있다)', () => {
+    localStorage.setItem('reception-memo', JSON.stringify({ v: 1, text: '오후 3시 원장님 외출', ink: null }))
+    const app = appHost()
+    const page = view.renderBoard(app, fx.arrangeMockupBoard())
+    expect(shapeOf(page.querySelector('header.top'))).toEqual(['div.top-row', 'nav.tabs', 'div.title-block'])
+    expect(shapeOf(page.querySelector('header.top > .top-row'))).toEqual(['img.logo', 'div.top-status'])
+    expect(document.querySelector('.memo-box')).toBeNull()
+    expect(document.body.textContent).not.toContain('오후 3시 원장님 외출')
   })
 
   it('AC-1407.10: "HH:MM:SS 기준"은 받은 답의 at으로 그리고 휴대폰 시계를 쓰지 않는다(같은 at이면 그대로)', () => {

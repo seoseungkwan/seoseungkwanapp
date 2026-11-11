@@ -22,6 +22,7 @@
 //   refreshText(every)         "N초마다 저절로 바뀌어요"(every가 양의 정수가 아니면 숫자 없이)
 
 import { clear, el, svg } from './dom.js'
+import { memoBox } from './memo.js'
 
 /** 고르는 칸: 진료 순서 + 칸 넷 */
 export const LANES = ['queue', 'wait', 'hold', 'pay', 'done']
@@ -120,7 +121,8 @@ export function renderBoard(host, board, view = {}) {
 /**
  * 머리(header.top) 안 요소들: 상표 줄(로고 · 연결됨 + [새로 고침]), 그 아래 탭 단추 [접수 현황]·[어레인지 N명](AC-3308.1),
  * 접수 현황 탭이면 그 아래 제목 "접수 현황"·기준 글. 어레인지 탭은 기준 글을 표 위 줄에 따로 그린다(시안 Arrange.html).
- * N은 판의 arrange.rows 수(옛 도우미 답처럼 없으면 0)다. 고른 탭은 aria-pressed="true"이고 누르면 view.onTab(탭)만 부른다
+ * N은 판의 arrange.rows 수(옛 도우미 답처럼 없으면 0)다. 고른 탭은 aria-pressed="true"이고 누르면 view.onTab(탭)만 부른다.
+ * 어레인지 탭이면 로고 뒤에 이 기기 메모 칸(memo.js memoBox, reception-memo-papers AC-3403.1)을 넣고 상표 줄에 with-memo를 단다
  * @param {{ at: string, every?: number, arrange?: { rows?: object[] } }} board
  * @param {{ tab?: string, reading?: boolean, onRefresh?: Function, onTab?: Function }} [view]
  * @returns {HTMLElement[]}
@@ -128,8 +130,9 @@ export function renderBoard(host, board, view = {}) {
 export function topOf(board, view = {}) {
   const tab = view.tab === 'arrange' ? 'arrange' : 'board'
   return [
-    el('div', { class: 'top-row' }, [
+    el('div', { class: tab === 'arrange' ? 'top-row with-memo' : 'top-row' }, [
       el('img', { class: 'logo', src: '/logo-wordmark.png', alt: '양지바른정형외과' }),
+      tab === 'arrange' ? memoBox() : null,
       el('div', { class: 'top-status' }, [el('span', { class: 'conn' }, '연결됨'), refreshButton(view)]),
     ]),
     tabsOf(board, tab, view),

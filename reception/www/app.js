@@ -33,6 +33,7 @@ import { fillPane, renderBoard, setReading } from './board.js'
 import { renderCharts } from './charts.js'
 import { detailPane, fillPast, fitSpecial, renderDetail, updateDetail, updatePaper } from './detail.js'
 import { createLayout, findRow } from './layout.js'
+import { closeMemo } from './memo.js'
 import { createPoll } from './poll.js'
 import { xrayBand } from './xray.js'
 
@@ -136,12 +137,13 @@ export function startApp() {
     keepTitle()
   }
 
-  /** 끊김·숨김 (poll.js가 화면을 지운 뒤): 앞 열쇠 모음·고른 환자·상세·어레인지 상태를 버린다 */
+  /** 끊김·숨김 (poll.js가 화면을 지운 뒤): 앞 열쇠 모음·고른 환자·상세·어레인지 상태를 버린다. 열린 메모 창은 저장하고 닫는다(AC-3403.3) */
   function wipe() {
     notice.forget()
     layout.wipe()
     dropDetail()
     wipeArrange()
+    closeMemo()
     /* 끊김에서 돌아오면 목록·어레인지 표다(AC-1407.4·3312.2). 숨김 뒤에는 상세·기록부 주소를 남겨 다시 읽는다(AC-1407.11·3312.2) */
     if (!hiding && routeKey() !== null) replaceRoute(LIST_ROUTE)
     if (!hiding && chartKey() !== null) replaceRoute(ARRANGE_ROUTE)
