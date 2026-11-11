@@ -236,6 +236,7 @@ afterEach(() => {
   document.head.replaceChildren()
   document.body.replaceChildren()
   window.history.replaceState(null, '', '#')
+  localStorage.clear()
 })
 
 // ---- 탭 · 해시 길 (AC-3308.1) ------------------------------------------------------------------------
@@ -642,5 +643,126 @@ describe('app.js 어레인지 지우기', () => {
     await wait(5000)
     expect(arrangePage()).not.toBeNull()
     expect(chartsPage()).toBeNull()
+  })
+})
+
+// ---- 어레인지 메모 (reception-memo-papers REQ-3403) ----------------------------------------------------------
+
+describe('app.js 어레인지 메모', () => {
+  const KEY = 'reception-memo'
+  const INK = 'data:image/png;base64,ZHJhd24='
+
+  beforeEach(() => {
+    // jsdom에는 그림 판이 없다: 가짜 getContext·toDataURL
+    const ctx = { scale() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, clearRect() {}, drawImage() {}, save() {}, restore() {} }
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((() => ctx) as never)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockImplementation(() => INK)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  function memoBox(): HTMLElement | null {
+    return appEl().querySelector<HTMLElement>('header.top .memo-box')
+  }
+
+  function memoSheet(): HTMLElement | null {
+    return document.querySelector<HTMLElement>('body > .sheet-back.memo-back > .sheet.memo-sheet')
+  }
+
+  function writeMemo(text: string) {
+    memoBox()!.click()
+    const area = memoSheet()!.querySelector<HTMLTextAreaElement>('textarea.memo-text')!
+    area.value = text
+    area.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+
+  function stored(): unknown {
+    const raw = localStorage.getItem(KEY)
+    return raw === null ? null : JSON.parse(raw)
+  }
+
+  it('AC-3403.3: 쓴 메모는 이 기기에 저장되어 저절로 다시 읽기(5초)·숨김 뒤 다시 보임·새로 고침(다시 열기)에도 머리 칸에 남고, 도우미로는 보내지 않는다', async () => {
+    await open({ hash: '#/a' })
+    expect(memoBox()?.className).toBe('memo-box')
+    writeMemo('오후 3시 원장님 외출')
+    memoSheet()!.querySelector<HTMLButtonElement>('.memo-foot > button.sheet-x')!.click()
+    expect(stored()).toEqual({ v: 1, text: '오후 3시 원장님 외출', ink: null })
+    expect(textOf(memoBox(), '.memo-prev')).toBe('오후 3시 원장님 외출')
+    await wait(5000)
+    expect(boardReads()).toBe(2)
+    expect(textOf(memoBox(), '.memo-prev')).toBe('오후 3시 원장님 외출')
+    hide()
+    expect(memoBox()).toBeNull()
+    show()
+    await settle()
+    expect(textOf(memoBox(), '.memo-prev')).toBe('오후 3시 원장님 외출')
+    running?.stop()
+    await open({ hash: '#/a' })
+    expect(textOf(memoBox(), '.memo-prev')).toBe('오후 3시 원장님 외출')
+    for (const call of calls) {
+      expect(call.url).toMatch(SAME_PC_API)
+      expect(call.body ?? '').not.toContain('원장님')
+    }
+  })
+
+  it('AC-3403.2 · AC-3312.2: 메모 창이 열린 채 숨기면 창의 글을 저장하고 닫아 화면에 아무것도 남지 않고, 다시 보이면 머리 칸에 그 메모가 있다', async () => {
+    await open({ hash: '#/a' })
+    writeMemo('택배 4시')
+    expect(memoSheet()).not.toBeNull()
+    hide()
+    expect(memoSheet()).toBeNull()
+    expectNoPatient()
+    expect(stored()).toEqual({ v: 1, text: '택배 4시', ink: null })
+    show()
+    await settle()
+    expect(textOf(memoBox(), '.memo-prev')).toBe('택배 4시')
+  })
+
+  it('AC-3403.2 · AC-3312.2: 연결이 끊기면 열린 메모 창을 저장하고 닫고, 돌아오면 어레인지 머리 칸에 그 메모가 있다', async () => {
+    await open({ hash: '#/a' })
+    writeMemo('ICE팩 7층')
+    failNext('/api/board')
+    await wait(5000)
+    expect(appEl().querySelector('.page.off-page')).not.toBeNull()
+    expect(memoSheet()).toBeNull()
+    expect(document.querySelector('.sheet-back, .toast')).toBeNull()
+    expect(stored()).toEqual({ v: 1, text: 'ICE팩 7층', ink: null })
+    await wait(5000)
+    expect(arrangePage()).not.toBeNull()
+    expect(textOf(memoBox(), '.memo-prev')).toBe('ICE팩 7층')
+  })
+
+  it('AC-3403.4: [✕]로 지우면 띠 "메모를 지웠어요"가 판을 다시 그려도 남고, [되돌리기]는 앞 메모를 다시 저장해 머리 칸에 그린다', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ v: 1, text: '택배 4시', ink: null }))
+    await open({ hash: '#/a' })
+    memoBox()!.querySelector<HTMLButtonElement>('button.memo-x')!.click()
+    expect(stored()).toBeNull()
+    expect(memoBox()?.className).toBe('memo-box')
+    const band = () => document.querySelector<HTMLElement>('body > .toast.memo-toast')
+    expect(textOf(band(), '.toast-text')).toBe('메모를 지웠어요')
+    appEl().querySelector<HTMLButtonElement>('header.top button.refresh')!.click()
+    await settle()
+    expect(boardReads()).toBe(2)
+    expect(band()).not.toBeNull()
+    band()!.querySelector<HTMLButtonElement>('button.toast-undo')!.click()
+    expect(band()).toBeNull()
+    expect(stored()).toEqual({ v: 1, text: '택배 4시', ink: null })
+    expect(textOf(memoBox(), '.memo-prev')).toBe('택배 4시')
+  })
+
+  it('AC-3403.1: 메모 칸은 어레인지 표 머리에만 있다. 접수 현황 탭·기록부(#/a/v/{열쇠}) 화면에는 없다', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ v: 1, text: '택배 4시', ink: null }))
+    await open()
+    expect(appEl().querySelector('.page.board')).not.toBeNull()
+    expect(document.querySelector('.memo-box')).toBeNull()
+    tab('어레인지').click()
+    await settle()
+    expect(memoBox()).not.toBeNull()
+    trOf('가상환자21').querySelector<HTMLButtonElement>('button.nm-btn')!.click()
+    await settle()
+    expect(chartsPage()).not.toBeNull()
+    expect(document.querySelector('.memo-box')).toBeNull()
   })
 })

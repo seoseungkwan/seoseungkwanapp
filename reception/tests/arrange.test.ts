@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest'
 import * as fx from './fixtures'
 import type { FakeBoard } from './fixtures'
 
@@ -14,9 +14,9 @@ const WWW = path.join(ROOT, 'reception', 'www')
 /** C# 고르기 목록 ArrangeChoices가 사는 파일 (design.md 4절, TASK-4) */
 const ARRANGE_MARKS_CS = path.join(ROOT, 'helper', 'src', 'Precheck.Core', 'Reception', 'ArrangeMarks.cs')
 const MOCKUP = path.join(ROOT, 'docs', 'mockups', 'reception-arrange', 'Arrange.html')
-/** 수정 묶음 승인 시안(reception-memo-papers, 2026-11-11)과 그 시안이 theme.css에 더한 색(진료보류 진한 노랑 AC-3401.1) */
+/** 수정 묶음 승인 시안(reception-memo-papers, 2026-11-11)과 그 시안이 theme.css에 더한 색(진료보류 진한 노랑 AC-3401.1, 메모 빨강·펜 검정 AC-3403.6) */
 const MEMO_PAPERS_MOCKUP = path.join(ROOT, 'docs', 'mockups', 'reception-memo-papers', 'Mock.html')
-const MEMO_PAPERS_ADDED = ['#FFD43B', '#C9A100']
+const MEMO_PAPERS_ADDED = ['#FFD43B', '#C9A100', '#E03131', '#FFF1F1', '#222222']
 const PHONE_MOCKUPS = path.join(ROOT, 'docs', 'mockups', 'reception-phone')
 
 type Col = 'xray' | 'sono' | 'carm' | 'pt' | 'ds' | 'eswt' | 'trac'
@@ -92,6 +92,7 @@ beforeAll(async () => {
 
 afterEach(() => {
   document.body.replaceChildren()
+  localStorage.clear()
 })
 
 // ---- 시험 도구 --------------------------------------------------------------------------------------
@@ -277,12 +278,13 @@ const ACTIVE_NAMES = ['가상환자21', '가상환자22', '가상환자23', '가
 // ---- 머리 · 탭 (AC-3308.1) ---------------------------------------------------------------------------
 
 describe('REQ-3308 어레인지 탭 머리', () => {
-  it('AC-3308.1: 어레인지 화면 머리는 상표 줄(로고·연결됨·새로 고침) 아래 탭 단추 둘 [접수 현황]·[어레인지 N명]이고 [어레인지]가 aria-pressed="true"다. 문서 제목은 건드리지 않는다', () => {
+  it('AC-3308.1 · AC-3403.1: 어레인지 화면 머리는 상표 줄(로고·메모 칸·연결됨·새로 고침) 아래 탭 단추 둘 [접수 현황]·[어레인지 N명]이고 [어레인지]가 aria-pressed="true"다. 문서 제목은 건드리지 않는다', () => {
     const { page } = draw()
     expect(page.className).toBe('page arrange')
     const top = page.querySelector(':scope > header.top')
-    expect(shapeOf(top)).toEqual(['div.top-row', 'nav.tabs'])
-    expect(shapeOf(top?.querySelector('.top-row'))).toEqual(['img.logo', 'div.top-status'])
+    expect(shapeOf(top)).toEqual(['div.top-row.with-memo', 'nav.tabs'])
+    expect(shapeOf(top?.querySelector('.top-row'))).toEqual(['img.logo', 'div.memo-box', 'div.top-status'])
+    expect(textOf(top, '.top-row > .memo-box')).toBe('메모 쓰기 · 펜이나 글자로')
     expect(textOf(top, '.top-status > span.conn')).toBe('연결됨')
     expect(top?.querySelector('.top-status > button.refresh')).not.toBeNull()
     const tabs = [...(top?.querySelectorAll<HTMLButtonElement>('nav.tabs > button.tab') ?? [])]
@@ -310,6 +312,31 @@ describe('REQ-3308 어레인지 탭 머리', () => {
     expect(onRefresh).toHaveBeenCalledTimes(1)
     expect(refresh.disabled).toBe(true)
     expect(refresh.textContent).toBe('읽는 중…')
+  })
+
+  it('AC-3403.1: 이 기기에 메모가 있으면 머리 메모 칸에 보이고, 판을 다시 그려도(5초) 그대로다. 메모 칸을 누르면 큰 창이 document.body에 열려 판 다시 그리기에도 남는다', () => {
+    localStorage.setItem('reception-memo', JSON.stringify({ v: 1, text: '오후 3시 원장님 외출', ink: null }))
+    // jsdom에는 그림 판이 없다(판이 없어도 창은 열린다)
+    const canvas = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+    onTestFinished(() => canvas.mockRestore())
+    const { app } = draw()
+    expect(textOf(app, 'header.top .memo-box .memo-prev')).toBe('오후 3시 원장님 외출')
+    app.querySelector<HTMLElement>('header.top .memo-box')!.click()
+    expect(document.querySelector('body > .sheet-back.memo-back > .sheet.memo-sheet')).not.toBeNull()
+    view.renderArrange(app, fx.arrangeMockupBoard('11:04:20'), {})
+    expect(textOf(app, 'header.top .memo-box .memo-prev')).toBe('오후 3시 원장님 외출')
+    expect(document.querySelectorAll('body > .sheet-back.memo-back').length).toBe(1)
+    document.querySelector<HTMLButtonElement>('.memo-sheet .memo-foot > button.sheet-x')!.click()
+    expect(document.querySelector('.memo-back')).toBeNull()
+  })
+
+  it('AC-3403.1: 태블릿 모양이 아니면 메모 칸은 로고 줄 아래 한 줄이고, 태블릿 모양이면 로고 옆이다', () => {
+    expect(cssValue('.top-row.with-memo', 'flex-wrap')).toBe('wrap')
+    expect(cssValue('.top-row.with-memo .memo-box', 'order')).toBe('3')
+    expect(cssValue('.top-row.with-memo .memo-box', 'flex')).toBe('1 1 100%')
+    expect(cssValue('.top-row.with-memo', 'flex-wrap', 'tablet')).toBe('nowrap')
+    expect(cssValue('.top-row.with-memo .memo-box', 'order', 'tablet')).toBe('0')
+    expect(cssValue('.top-row.with-memo .memo-box', 'flex', 'tablet')).toBe('0 1 440px')
   })
 })
 

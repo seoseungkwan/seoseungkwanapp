@@ -238,12 +238,15 @@ const ARRANGE_PAGE = path.join(ROOT, 'docs', 'mockups', 'reception-arrange', 'Ar
 const ARRANGE_TOKENS = ['--sono-head', '--sono-col', '--carm-head', '--carm-col', '--ptup-bg', '--ptup-fg']
 /**
  * 접수 현황 수정 묶음 승인 시안(docs/mockups/reception-memo-papers/Mock.html, 2026-11-11)이 더한 색의 토큰과 값
- * (reception-memo-papers AC-3401.1 진료보류 진한 노랑)
+ * (reception-memo-papers AC-3401.1 진료보류 진한 노랑, AC-3403.6 어레인지 메모 빨강·펜 검정)
  */
 const MEMO_PAPERS_PAGE = path.join(ROOT, 'docs', 'mockups', 'reception-memo-papers', 'Mock.html')
 const MEMO_PAPERS_COLORS: Record<string, string> = {
   '--status-hold-bg': '#FFD43B',
   '--status-hold-line': '#C9A100',
+  '--memo-red': '#E03131',
+  '--memo-red-soft': '#FFF1F1',
+  '--memo-ink': '#222222',
 }
 const STATUSES = ['wait', 'hold', 'pay', 'done', 'long', 'xray']
 const TABLET = '(min-width: 1000px) and (orientation: landscape)'
