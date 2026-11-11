@@ -21,7 +21,7 @@
  *            header.top.is-detail > .top-row > a.back + img.logo-mark
  *                                 > .patient > .name-line > span.chart + h1.detail-name + span.info + span.new-badge
  *                                            > .status-line > span.status… + span   > .memo > span.memo-label + 글
- *            main.detail > h2.detail-heading + article.paper + h2.detail-heading + (section.visit.is-last | p.no-visits) + p.end-note
+ *            main.detail > h2.detail-heading + article.paper + h2.detail-heading + .past-list + p.end-note
  *              article.paper (종이 진료기록부, reception-paper 승인 목업 Paper.html)
  *                > .paper-head > span.paper-title + span.paper-date
  *                > dl.kv > (dt + dd[data-field] (> span.empty))…  > hr.rule
@@ -29,7 +29,9 @@
  *                > .sec > .sec-h + .visit-line > span…   (내원내역)
  *                > .paper-body > .sec > .sec-h + (.none | .paper-sym > span.paper-sym-day + pre | ul.dx > li > code(.main) + span
  *                                                 | table.rx > thead th(.n)… + tbody tr > td.c > code + td + td.n…)
- *              section.visit.is-last > .visit-head > h3.visit-date > span.last-badge … + span.visit-ago ; p.sym | p.sym-empty
+ *              .past-list (지난 진료기록부, reception-memo-papers) > (.past-h > span.last-badge + strong + span.visit-ago
+ *                          + article.paper.past (> .paper-head + .sec + .paper-body, 위와 같은 칸))… + p.past-note + button.more-papers > small
+ *                          | p.no-visits | p.past-note
  *            footer.foot
  *   끊김·불러오는 중  .page.off-page
  *            header.top.is-offline > h1.off-title + span.conn.is-off
@@ -874,7 +876,7 @@ button.row-main {
   white-space: nowrap;
 }
 
-/* 종이 아래 "지난번 증상" 제목 */
+/* 종이 아래 "지난 진료기록부" 제목 */
 .paper + .detail-heading {
   margin-top: 6px;
 }
@@ -886,6 +888,67 @@ button.row-main {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
+}
+
+/*
+ * 지난 진료기록부 여러 장 (reception-memo-papers AC-3404.3·3404.4, 승인 시안 Mock.html .past-list·.past-h·.more-papers):
+ * 장마다 머리(첫 장만 [지난번] · 날짜 · N일 전) + 회색 종이(.paper.past, 기록부 화면의 직전 종이와 같은 카드)
+ */
+.past-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.past-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 2px 0;
+  font-size: 15px;
+}
+
+.past-h strong {
+  font-size: 17px;
+}
+
+.past-h .visit-ago {
+  margin-left: auto;
+}
+
+/* 읽는 중·읽지 못함 한 줄: 첫 방문 글과 같은 상자(색 글자 없음) */
+.past-note {
+  padding: 16px;
+  font-size: 14px;
+  color: var(--ink-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+}
+
+/* [이전 진료기록부 더 보기 ▾]: 폭 가득, 누르는 곳 52px. 읽는 동안(disabled)은 흐린 글 */
+.more-papers {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 52px;
+  margin-top: 8px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.more-papers small {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.more-papers:disabled {
+  color: var(--ink-3);
 }
 
 .visits {
@@ -922,7 +985,7 @@ button.row-main {
   color: var(--ink-4);
 }
 
-/* 지난번 카드 (AC-1404.7): [지난번] 이름표, 증상이 없을 때 글 */
+/* 지난번 카드 (AC-1404.7): [지난번] 이름표(지난 진료기록부 첫 장 머리 .past-h도 쓴다, AC-3404.3), 증상이 없을 때 글 */
 .visit.is-last .visit-date {
   display: flex;
   align-items: center;

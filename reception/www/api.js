@@ -15,6 +15,7 @@
 //   setXray(k, on, { signal })       → POST /api/xray { k, on } → 204
 //   setArrange(k, op, col, v, { signal }) → POST /api/arrange { k, op, col?, v? } → 204 (reception-arrange design.md 8절. col·v는 없으면 뺀다)
 //   getPrev(k, { signal })           → GET /api/visit/{k}/prev 답의 prev(지난 내원이 없으면 null) (reception-arrange design.md 9절)
+//   getPapers(k, from, { signal })   → GET /api/visit/{k}/papers?from=N 답 { papers: [prev 모양…], total, next } (reception-memo-papers design.md 4절)
 //   실패는 모두 ApiError이고 reason은 'network'·'timeout'·'status'·'shape'·'aborted'·'input'(묻지 않음) 중 하나다
 
 /** 답(몸까지)을 기다리는 가장 긴 시간 (AC-1407.4) */
@@ -168,6 +169,22 @@ export function getPrev(k, { signal } = {}) {
 }
 
 /**
+ * 오늘 접수한 환자의 지난 진료기록부 한 쪽을 읽는다(reception-memo-papers design.md 4절). from=0이면 최근 두 장, 그 뒤는 세 장씩이다.
+ * @param {string} k 화면용 열쇠 @param {number} from 시작 위치(0, 그 뒤는 앞 답의 next)
+ * @returns {Promise<{ papers: object[], total: number, next: number | null }>}
+ */
+export function getPapers(k, from, { signal } = {}) {
+  if (!isKey(k) || !isCount(from)) return Promise.reject(new ApiError('input'))
+  return within(signal, async (inner) => {
+    const res = await fetch(`/api/visit/${encodeURIComponent(k)}/papers?from=${from}`, request(inner))
+    if (res.status !== 200) throw new ApiError('status')
+    const body = await bodyOf(res)
+    if (!isPapers(body, from)) throw new ApiError('shape')
+    return body
+  })
+}
+
+/**
  * run(안쪽 signal)을 5초 안에, 밖 signal이 끊기기 전에 끝낸다. 늦게 온 답·실패는 버린다.
  * 실패는 ApiError로 바꾼다(그 밖의 떨어짐은 연결 안 됨).
  */
@@ -285,6 +302,20 @@ function isPrev(p) {
     p.rx.every(isOrder) &&
     Array.isArray(p.out) &&
     p.out.every(isOrder)
+  )
+}
+
+/**
+ * 지난 진료기록부 한 쪽 { papers, total, next } (reception-memo-papers design.md 4절, PastPapers.ToJson). 종이 칸은 직전 종이와 같다.
+ * next는 더 있으면 이번 시작 위치보다 크고 total 이하인 다음 시작 위치, 없으면 null이다(같은 쪽을 다시 묻지 않게)
+ */
+function isPapers(p, from) {
+  return (
+    isObject(p) &&
+    Array.isArray(p.papers) &&
+    p.papers.every(isPrev) &&
+    isCount(p.total) &&
+    (p.next === null || (isCount(p.next) && p.next > from && p.next <= p.total))
   )
 }
 

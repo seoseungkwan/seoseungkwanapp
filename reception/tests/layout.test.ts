@@ -64,6 +64,8 @@ interface BoardJs {
 interface DetailJs {
   detailPane: (row: FakeRow, history: FakeHistory, options?: { today?: Date }) => Node[]
   updateDetail: (host: ParentNode, row: FakeRow, options?: { today?: Date }) => boolean
+  /** 지난 진료기록부 채우기 (reception-memo-papers AC-3404.3). 아직 없으면(RED) undefined */
+  fillPast?: (host: ParentNode, k: string, papers: fx.FakePapers | null, options?: { onMore?: (from: number) => Promise<unknown> }) => boolean
 }
 
 interface OfflineJs {
@@ -290,7 +292,7 @@ describe('REQ-1409 폰/태블릿 판정', () => {
     expect(make({ matchMedia: throwing }).tablet()).toBe(false)
   })
 
-  it('AC-1409.1 · AC-1502.1: 태블릿 모양이면 왼쪽은 목록(머리·칸·줄), 오른쪽은 고른 환자의 상세(종이 진료기록부 카드·지난번 증상, [더 보기] 없음)다', () => {
+  it('AC-1409.1 · AC-1502.1 · AC-3404.3: 태블릿 모양이면 왼쪽은 목록(머리·칸·줄), 오른쪽은 고른 환자의 상세(종이 진료기록부 카드·지난 진료기록부, 옛 [더 보기] 없음)다', () => {
     const { layout } = tabletLayout()
     const board = fx.mockupBoard()
     const host = appHost()
@@ -310,9 +312,13 @@ describe('REQ-1409 폰/태블릿 판정', () => {
     expect(pane?.querySelector('section.today')).toBeNull()
     expect(pane?.querySelectorAll('article.paper')).toHaveLength(1)
     expect(pane?.querySelector('article.paper dl.kv dd')?.textContent).toBe(first(board.lists.queue).chart)
-    expect(pane?.querySelectorAll('section.visit')).toHaveLength(1)
-    expect(pane?.querySelector('section.visit.is-last p.sym')).not.toBeNull()
+    expect(pane?.querySelector('section.visit')).toBeNull()
     expect(pane?.querySelector('button.more')).toBeNull()
+    // 지난 진료기록부 자리는 오른쪽 칸 안이고, 채우면 종이 카드(.paper.past)가 그 아래에 붙는다
+    expect(pane?.querySelector(':scope > .past-list')).not.toBeNull()
+    expect(detailJs.fillPast?.(host, first(board.lists.queue).k, fx.fakePapers(36, 0))).toBe(true)
+    expect(pane?.querySelectorAll(':scope > .past-list > article.paper.past')).toHaveLength(2)
+    expect(pane?.querySelectorAll('article.paper:not(.past)')).toHaveLength(1)
   })
 
   it('AC-1409.1: 폰 모양이면 한 줄 흐름: 오른쪽 칸이 없고 줄은 상세 링크이며 저절로 고르지 않는다', () => {
@@ -418,7 +424,7 @@ describe('REQ-1409 태블릿에서 고르기', () => {
 })
 
 describe('REQ-1409 다시 읽기·끊김', () => {
-  it('AC-1409.3 · AC-1502.3: 10초마다 다시 읽어도 고른 환자는 그대로이고(칸을 옮겨도) 머리와 종이 카드의 칸 규칙만 새 줄을 따른다(지난 진료는 그대로)', () => {
+  it('AC-1409.3 · AC-1502.3 · AC-3404.5: 10초마다 다시 읽어도 고른 환자는 그대로이고(칸을 옮겨도) 머리와 종이 카드의 칸 규칙만 새 줄을 따른다(지난 종이는 그대로)', () => {
     const { layout } = tabletLayout()
     const before = fx.mockupBoard()
     const host = appHost()
@@ -428,9 +434,10 @@ describe('REQ-1409 다시 읽기·끊김', () => {
     expect(pick).toEqual({ picked: target.k, row: target, changed: true })
     boardJs.renderBoard(host, before, layout.view())
     boardJs.fillPane(host, detailJs.detailPane(target, history(), { today: TODAY }))
-    const visitsBefore = [...host.querySelectorAll('.page.board > aside.pane section.visit')]
+    expect(detailJs.fillPast?.(host, target.k, fx.fakePapers(36, 0))).toBe(true)
+    const visitsBefore = [...host.querySelectorAll('.page.board > aside.pane .past-list > *')]
     const paper = host.querySelector('.page.board > aside.pane article.paper')
-    expect(visitsBefore).toHaveLength(1)
+    expect(visitsBefore).toHaveLength(5)
     // 진료보류이고 아직 아무것도 적히지 않았다: <증상 · 상병 · 처방> 한 줄
     expect([...(paper?.querySelectorAll('.paper-body .sec-h') ?? [])].map((n) => n.textContent)).toEqual(['증상 · 상병 · 처방'])
 
@@ -451,7 +458,7 @@ describe('REQ-1409 다시 읽기·끊김', () => {
     expect(host.querySelector('.page.board > aside.pane .status-line > .status')?.textContent).toBe('수납대기')
     expect(host.querySelector('.page.board > aside.pane article.paper')).toBe(paper)
     expect([...(paper?.querySelectorAll('.paper-body .sec-h') ?? [])].map((n) => n.textContent)).toEqual(['증상', '상병', '처방', '원외처방'])
-    const visitsAfter = [...host.querySelectorAll('.page.board > aside.pane section.visit')]
+    const visitsAfter = [...host.querySelectorAll('.page.board > aside.pane .past-list > *')]
     expect(visitsAfter).toHaveLength(visitsBefore.length)
     expect(visitsAfter.every((visit, i) => visit === visitsBefore[i])).toBe(true)
     expect(paneKey(host)).toBe(target.k)
@@ -635,8 +642,32 @@ describe('REQ-1502 종이 카드 모양 (style.css)', () => {
     expect(valueOf(css, '.dx .main::after', 'background')).toBe('var(--accent)')
     expect(valueOf(css, '.paper-sym pre', 'white-space')).toBe('pre-wrap')
     expect(valueOf(css, '.paper .rx .n', 'text-align')).toBe('right')
-    // 지난번 증상 제목은 종이 아래 조금 띄운다(목업)
+    // 지난 진료기록부 제목은 종이 아래 조금 띄운다(목업)
     expect(valueOf(css, '.paper + .detail-heading', 'margin-top')).toBe('6px')
+  })
+
+  it('AC-3404.3 · AC-3404.4: 지난 진료기록부가 쓰는 class(자리·머리·회색 종이·[더 보기]·한 줄 글)는 모두 style.css에 모양이 있고, [더 보기]는 누르는 곳 44px 이상·폭 가득이며 theme.css 토큰만 쓴다(승인 시안 .past-list·.past-h·.more-papers)', () => {
+    const css = readFileSync(STYLE_CSS, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    const row = fx.fakeRow({ lane: 'pay' })
+    const host = appHost()
+    host.append(...detailJs.detailPane(row, history(), { today: TODAY }))
+    const reading = [...(host.querySelector('.past-list')?.querySelectorAll('*') ?? [])].flatMap((n) => [...n.classList])
+    expect(detailJs.fillPast?.(host, row.k, fx.fakePapers(36, 0))).toBe(true)
+    const list = host.querySelector('.past-list')
+    const filled = [list, ...(list?.querySelectorAll('*') ?? [])].flatMap((n) => (n ? [...n.classList] : []))
+    const classes = new Set([...reading, ...filled])
+    for (const cls of ['past-list', 'past-note', 'past-h', 'last-badge', 'visit-ago', 'paper', 'past', 'more-papers']) expect(classes, cls).toContain(cls)
+    for (const cls of classes) expect(css, `.${cls}`).toMatch(new RegExp(`\.${cls}(?![\w-])`))
+
+    expect(valueOf(css, '.past-list', 'display')).toBe('flex')
+    expect(valueOf(css, '.past-list', 'flex-direction')).toBe('column')
+    expect(valueOf(css, '.paper.past', 'border-color')).toBe('var(--line-2)')
+    expect(Number.parseFloat(valueOf(css, '.more-papers', 'min-height') ?? '0')).toBeGreaterThanOrEqual(44)
+    expect(valueOf(css, '.more-papers', 'width')).toBe('100%')
+    for (const selector of ['.past-list', '.past-h', '.past-h strong', '.past-h .visit-ago', '.more-papers', '.more-papers small', '.past-note']) {
+      for (const [, value] of declsOf(css, selector)) expect(value, `${selector}`).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i)
+    }
+    expect(declsOf(css, '.past-note').length).toBeGreaterThan(0)
   })
 
   it('AC-1502.2: 특이사항 상자는 빨간 테두리(빈 것은 점선)이고, 글은 줄 바꿈 그대로이며 접히면(.clamp) 5줄만 보인다. [전부 보기] 단추는 누르는 곳 44px 이상이다', () => {

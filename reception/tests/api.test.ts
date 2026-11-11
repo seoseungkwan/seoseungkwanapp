@@ -665,3 +665,65 @@ describe('api.js getPrev', () => {
     expect(calls).toEqual([])
   })
 })
+
+// ---- 지난 진료기록부 여러 장 (reception-memo-papers design.md 4절, TASK-7) ------------------------------------------
+
+type GetPapers = (k: string, from: number, options?: { signal?: AbortSignal }) => Promise<unknown>
+
+/** 아직 없으면(RED) 늘 실패하는 대역 */
+function papersApi(): GetPapers {
+  const more = api as unknown as { getPapers?: GetPapers }
+  return more.getPapers ?? (() => Promise.reject(new Error('없음')))
+}
+
+describe('api.js getPapers', () => {
+  it('AC-3404.3: getPapers(k, 0)는 GET /api/visit/{열쇠}/papers?from=0 하나를 묻고 답 { papers, total, next }를 그대로 돌려준다(지난 내원이 없으면 빈 papers)', async () => {
+    const page = fx.fakePapers(36, 0)
+    fakeFetch(() => json(page))
+    await expect(papersApi()(fx.fakeKey(21), 0)).resolves.toEqual(page)
+    fakeFetch(() => json({ papers: [], total: 0, next: null }))
+    await expect(papersApi()(fx.fakeKey(23), 0)).resolves.toEqual({ papers: [], total: 0, next: null })
+    expect(calls.map((c) => c.url)).toEqual([`/api/visit/${fx.fakeKey(21)}/papers?from=0`, `/api/visit/${fx.fakeKey(23)}/papers?from=0`])
+    expect(calls.every((c) => (c.init.method ?? 'GET') === 'GET' && c.init.credentials === 'omit' && c.init.redirect === 'error')).toBe(true)
+  })
+
+  it('AC-3404.4: getPapers(k, next)는 그 from으로 묻고, 끝 쪽(next null)도 받는다', async () => {
+    const page = fx.fakePapers(36, 2)
+    expect(page.papers).toHaveLength(3)
+    fakeFetch(() => json(page))
+    await expect(papersApi()(fx.fakeKey(21), 2)).resolves.toEqual(page)
+    const last = fx.fakePapers(7, 5)
+    expect(last.next).toBeNull()
+    fakeFetch(() => json(last))
+    await expect(papersApi()(fx.fakeKey(21), 5)).resolves.toEqual(last)
+    expect(calls.map((c) => c.url)).toEqual([`/api/visit/${fx.fakeKey(21)}/papers?from=2`, `/api/visit/${fx.fakeKey(21)}/papers?from=5`])
+  })
+
+  it('AC-3404.4 · AC-3404.5: 200이 아니거나 모양이 틀린 답(papers·total·next·종이 칸)은 실패다. 열쇠·from 모양이 틀리면 묻지 않는다', async () => {
+    const k = fx.fakeKey(21)
+    fakeFetch(() => json(fx.fakePapers(36, 0), 503))
+    expect(await reasonOf(papersApi()(k, 0))).toBe('status')
+    const good = fx.fakePapers(36, 0)
+    for (const body of [
+      {},
+      { ...good, papers: 'x' },
+      { ...good, papers: [{ ...good.papers[0], date: 20261029 }] },
+      { ...good, papers: [{ ...good.papers[0], sym: null }] },
+      { ...good, papers: [{ ...good.papers[0], dx: [{ code: 'M1', name: '가상' }] }] },
+      { ...good, papers: [{ ...good.papers[0], rx: [{ code: 'G1', name: '가상' }] }] },
+      { ...good, total: -1 },
+      { ...good, total: '36' },
+      { ...good, next: '2' },
+      { ...good, next: 0 },
+      { ...good, next: 37 },
+    ]) {
+      fakeFetch(() => json(body))
+      expect(await reasonOf(papersApi()(k, 0)), JSON.stringify(body)).toBe('shape')
+    }
+    calls = []
+    expect(await reasonOf(papersApi()('V1234', 0))).toBe('input')
+    expect(await reasonOf(papersApi()(k, -1))).toBe('input')
+    expect(await reasonOf(papersApi()(k, 1.5))).toBe('input')
+    expect(calls).toEqual([])
+  })
+})

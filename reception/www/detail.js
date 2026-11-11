@@ -1,8 +1,12 @@
-// 상세 그리기 (reception-phone design.md 5절·10절, reception-paper design.md 2·3절). 승인 목업 Paper.html의 상세 화면 그대로다.
+// 상세 그리기 (reception-phone design.md 5절·10절, reception-paper design.md 2·3절, reception-memo-papers design.md 4절).
+// 승인 목업 Paper.html의 상세 화면과 승인 시안 reception-memo-papers Mock.html(?s=detail)의 지난 진료기록부 그대로다.
 // class 이름은 style.css 머리 글의 화면 틀 그대로다.
 // - 머리(.patient)는 목록 줄로 그린다. 그 아래 제목 "오늘 진료기록부"와 종이 카드(비트가 인쇄하는 외래진료기록부 모양, AC-1502.1),
-//   제목 "지난번 증상"과 '지난번' 카드 하나(AC-1404.7 그대로), 끝 줄. 지난번 카드는 답의 첫 내원(visits[0])의 날짜·N일 전·증상이고
-//   글은 도우미(C# HistoryBuilder)가 만든 그대로다. 지난 처방·둘째 이후 내원·더 보기는 그리지 않는다
+//   제목 "지난 진료기록부"와 지난 종이 자리(.past-list, AC-3404.3), 끝 줄. 상세 답의 지난 내원(visits)은 그리지 않는다
+// - 지난 종이 자리는 처음에 "기록부를 읽는 중이에요"이고, app.js가 GET /api/visit/{k}/papers?from=0 답을 fillPast로 넘기면 장마다
+//   머리(첫 장만 [지난번] · "M월 D일" · "N일 전")와 직전 기록부와 같은 종이 카드(pastCard), 더 있으면 [이전 진료기록부 더 보기 ▾]를 그린다.
+//   [더 보기]는 onMore(next)로 읽어 아래에 붙인다(읽는 중에는 다시 부르지 않음, 실패하면 한 줄 + 다시 누름, AC-3404.4).
+//   updateDetail·updatePaper는 이 자리를 건드리지 않아 펼친 장·세로 위치가 그대로다(AC-3404.5)
 // - 종이 카드의 차트번호·수진자명(이름·성별·나이)·신환/재진·칸(lane)은 목록 줄(GET /api/board, every초마다 바뀜), 나머지는 상세 답의
 //   paper(from=0 답에만 있음)다. 상세 답에 오늘 날짜가 없어 날짜는 기기 날짜(options.today)를 쓴다
 // - 증상·상병·처방·원외처방이 모두 비고 줄이 진료대기·진료보류면 그 자리는 "아직 없어요" 한 줄이다(AC-1502.3)
@@ -23,6 +27,10 @@
 //                                                                    options.open이면 특이사항을 펼친 채 그린다
 //   recordOf(paper, { kind, day, lane }) → 요소 배열                   종이 카드의 <내원내역> 칸과 진료 칸(<증상>~<원외처방>).
 //                                                                    직전 진료기록부(charts.js, 사람 칸·특이사항 없음)가 같은 모양으로 쓴다
+//   fillPast(host, k, papers, { onMore }) → true|false               그린 상세가 k 환자면 지난 종이 자리를 papers(?from=0 답, 실패면 null)로
+//                                                                    채운다. onMore(from) → Promise<다음 쪽 답>
+//   pastCard(paper) → article.paper.past                             지난 종이 카드 하나(사람 칸·특이사항 없음). 기록부 화면(charts.js)의
+//                                                                    직전 종이도 이것이다
 //     row                  지금 목록 줄(board.lists 안의 그 열쇠 줄)
 //     history              getHistory(k, 0) 답 { visits, next, more, first, total, todaySym, paper }
 //     options.today        오늘(Date). 없으면 지금 기기 날짜
@@ -31,10 +39,24 @@ import { clear, el } from './dom.js'
 
 const FOOT = '보기만 할 수 있어요 · 비트 자료는 바뀌지 않아요'
 const PAPER_HEADING = '오늘 진료기록부'
-const LAST_HEADING = '지난번 증상'
 const NO_VISITS = '첫 방문이라 지난 진료가 없어요.'
 
-/** 지난번 카드 표시와 증상이 없을 때 글 (AC-1404.7). 빈 종이 증상 글도 같다(AC-1502.3) */
+/** 지난 진료기록부 (reception-memo-papers AC-3404.3~3404.5, 승인 시안 Mock.html) */
+const PAST_HEADING = '지난 진료기록부'
+const PAST_READING = '기록부를 읽는 중이에요'
+const PAST_FAILED = '지금 기록부를 읽지 못했어요'
+const MORE_PAPERS = '이전 진료기록부 더 보기 ▾'
+
+/** [더 보기] 한 번에 붙는 장 수 (도우미 PaperChunk.Next) */
+const MORE_STEP = 3
+
+/** 오늘 종이 카드(지난 종이 카드 .paper.past가 아닌 것). updateDetail·updatePaper는 이 카드만 바꾼다 */
+const TODAY_CARD = 'article.paper:not(.past)'
+
+/** 지난 종이 날짜 "yyyy-MM-dd" */
+const DASHED_DAY = /^(\d{4})-(\d\d)-(\d\d)$/
+
+/** 지난 종이 첫 장 표시. 빈 종이 증상 글 (AC-1502.3) */
 const LAST_BADGE = '지난번'
 const NO_SYM = '적힌 증상이 없어요'
 
@@ -113,7 +135,7 @@ export function renderDetail(host, row, history, options = {}) {
 }
 
 /**
- * 태블릿 오른쪽 칸 내용: 환자 칸·제목·종이 카드·제목·지난번 카드·끝 줄. 돌아가기·아래 글은 없다.
+ * 태블릿 오른쪽 칸 내용: 환자 칸·제목·종이 카드·제목·지난 종이 자리·끝 줄. 돌아가기·아래 글은 없다.
  * 목록 화면의 제목이 h1·h2라 한 단계 아래 제목을 쓴다. 칸에 넣은 뒤 fitSpecial(host)로 특이사항 높이를 잰다.
  * @returns {HTMLElement[]}
  */
@@ -123,7 +145,7 @@ export function detailPane(row, history, options = {}) {
 
 /**
  * 그린 상세(폰 화면 또는 태블릿 오른쪽 칸)가 row.k 환자면 머리와 종이 카드의 줄 몫을 새 줄로 바꾼다(AC-1404.4·1502.3).
- * paper 몫(사람 칸 나머지·특이사항·내원내역·적힌 진료 칸)과 지난번 카드는 그대로다.
+ * paper 몫(사람 칸 나머지·특이사항·내원내역·적힌 진료 칸)과 지난 종이 자리는 그대로다.
  * @param {ParentNode} host 화면 자리(#app)
  * @returns {boolean} 바꿨으면 true
  */
@@ -132,14 +154,14 @@ export function updateDetail(host, row) {
   if (!patient || !row || patient.getAttribute('data-k') !== row.k) return false
   const level = patient.closest('.page.detail-page') ? 1 : 2
   patient.replaceWith(patientOf(row, level))
-  const card = host.querySelector('article.paper')
+  const card = host.querySelector(TODAY_CARD)
   if (card) followRow(card, row)
   return true
 }
 
 /**
  * 그린 상세(폰 화면 또는 태블릿 오른쪽 칸)가 k 환자면 종이 카드의 paper 몫을 새 paper로 바꾼다(AC-1502.4, AC-1404.8 다시 읽기).
- * 특이사항을 펼쳐 두었으면 새 글도 펼친 채다. 머리·지난번 카드·줄 몫(차트번호·수진자명·신환/재진·칸)·날짜는 그대로다.
+ * 특이사항을 펼쳐 두었으면 새 글도 펼친 채다. 머리·지난 종이 자리·줄 몫(차트번호·수진자명·신환/재진·칸)·날짜는 그대로다.
  * @param {ParentNode} host 화면 자리(#app)
  * @param {string} k 화면용 열쇠
  * @param {object} paper 상세 답의 paper
@@ -147,7 +169,7 @@ export function updateDetail(host, row) {
  */
 export function updatePaper(host, k, paper) {
   const patient = host.querySelector('.patient')
-  const card = host.querySelector('article.paper')
+  const card = host.querySelector(TODAY_CARD)
   if (!patient || !card || patient.getAttribute('data-k') !== k) return false
   const day = card.getAttribute('data-day') ?? ''
   for (const key of PAPER_PERSON) card.querySelector(`:scope > dl.kv > dd[data-field="${key}"]`)?.replaceWith(valueOf(key, paper[key]))
@@ -201,14 +223,13 @@ function infoOf(info) {
   return [textEl('span', 'info', parts.slice(0, -1).join(INFO_JOINER)), el('span', { class: 'new-badge' }, NEW_KIND)]
 }
 
-/** 상세 몸(AC-1502.1): 제목·종이 카드·제목·지난번 카드(없으면 첫 방문 글)·끝 줄 */
+/** 상세 몸(AC-1502.1·3404.3): 제목·종이 카드·제목·지난 종이 자리(읽는 중, fillPast가 채운다)·끝 줄 */
 function historyOf(row, history, options, level) {
-  const last = history.visits[0]
   return [
     el(`h${level}`, { class: 'detail-heading' }, PAPER_HEADING),
     paperOf(row, history.paper, dayOf(options)),
-    el(`h${level}`, { class: 'detail-heading' }, LAST_HEADING),
-    last ? lastOf(last, level + 1) : el('p', { class: 'no-visits' }, NO_VISITS),
+    el(`h${level}`, { class: 'detail-heading' }, PAST_HEADING),
+    el('div', { class: 'past-list' }, pastNote(PAST_READING)),
     el('p', { class: 'end-note' }, endNote(history)),
   ]
 }
@@ -370,17 +391,108 @@ function dayOf(options) {
   return { dashed: `${y}-${m}-${d}`, compact: `${y}${m}${d}` }
 }
 
-// ---- 지난번 카드 (AC-1404.7) ------------------------------------------------------------------------------
+// ---- 지난 진료기록부 여러 장 (reception-memo-papers AC-3404.3~3404.5) ------------------------------------------
+// 지난 종이 글은 그린 요소에만 있다. 다음 쪽 시작 위치(next)·남은 수는 [더 보기] 처리기만 안다
 
-/** 지난번 카드: [지난번] + 날짜, N일 전, 증상 줄(없으면 "적힌 증상이 없어요"). 처방은 그리지 않는다 */
-function lastOf(visit, level) {
-  return el('section', { class: 'visit is-last' }, [
-    el('div', { class: 'visit-head' }, [
-      el(`h${level}`, { class: 'visit-date' }, [el('span', { class: 'last-badge' }, LAST_BADGE), visit.date]),
-      textEl('span', 'visit-ago', visit.ago),
-    ]),
-    isText(visit.sym) ? el('p', { class: 'sym' }, `증상 · ${visit.sym}`) : el('p', { class: 'sym-empty' }, NO_SYM),
+/**
+ * 그린 상세(폰 화면 또는 태블릿 오른쪽 칸)가 k 환자면 지난 종이 자리를 papers?from=0 답으로 채운다(AC-3404.3·3404.5).
+ * 지난 내원이 없으면 첫 방문 글, papers가 답 모양이 아니면(첫 읽기 실패, null) "지금 기록부를 읽지 못했어요" 한 줄이다.
+ * @param {ParentNode} host 화면 자리(#app)
+ * @param {string} k 화면용 열쇠
+ * @param {{ papers: object[], total: number, next: number | null } | null} papers
+ * @param {{ onMore?: (from: number) => Promise<object> }} [options] [더 보기]가 다음 쪽(from=next)을 읽는 곳(app.js)
+ * @returns {boolean} 채웠으면 true
+ */
+export function fillPast(host, k, papers, options = {}) {
+  const patient = host.querySelector('.patient')
+  const list = host.querySelector('.past-list')
+  if (!patient || !list || patient.getAttribute('data-k') !== k) return false
+  clear(list)
+  if (!isPage(papers)) list.append(pastNote(PAST_FAILED))
+  else if (papers.papers.length === 0) list.append(el('p', { class: 'no-visits' }, NO_VISITS))
+  else appendPage(list, papers, true, options.onMore)
+  return true
+}
+
+/**
+ * 지난 종이 카드 하나(AC-3404.3): 머리글(외래진료기록부·yyyy-MM-dd) + <내원내역> + 진료 칸(recordOf). 사람 칸·특이사항은 없고 테두리는 회색이다.
+ * 어레인지 기록부 화면(charts.js)의 직전 종이도 이 카드다(AC-3309.1)
+ * @param {{ date: string, room: string, ins: string, sym: string, dx: object[], rx: object[], out: object[] }} paper
+ * @returns {HTMLElement} article.paper.past
+ */
+export function pastCard(paper) {
+  return el('article', { class: 'paper past' }, [
+    el('div', { class: 'paper-head' }, [el('span', { class: 'paper-title' }, PAPER_TITLE), el('span', { class: 'paper-date' }, paper.date)]),
+    ...recordOf(paper, { day: paper.date.replaceAll('-', '') }),
   ])
+}
+
+/** 한 쪽을 [더 보기] 앞(없으면 끝)에 장마다 머리 + 카드로 붙이고, [더 보기]를 그 쪽의 next로 바꾼다(없으면 뺀다). first면 첫 장에 [지난번] */
+function appendPage(list, page, first, onMore) {
+  const old = list.querySelector(':scope > button.more-papers')
+  page.papers.forEach((paper, i) => {
+    list.insertBefore(pastHead(paper, first && i === 0), old)
+    list.insertBefore(pastCard(paper), old)
+  })
+  old?.remove()
+  if (page.next !== null) list.append(moreOf(list, page, onMore))
+}
+
+/**
+ * [이전 진료기록부 더 보기 ▾] + "N번 더 있어요 · 누를 때마다 3장씩"(AC-3404.4). 누르면 onMore(next)를 한 번 부르고 읽는 동안 꺼 둔다.
+ * 답이 오면 아래에 붙이고, 실패하면 "지금 기록부를 읽지 못했어요"를 단추 앞에 두고 다시 누를 수 있게 한다
+ */
+function moreOf(list, page, onMore) {
+  const next = page.next
+  const press = () => {
+    if (button.disabled || typeof onMore !== 'function') return
+    button.disabled = true
+    button.setAttribute('aria-busy', 'true')
+    Promise.resolve()
+      .then(() => onMore(next))
+      .then((more) => {
+        if (!isPage(more)) throw new TypeError('지난 종이 답 모양이 틀렸다')
+        list.querySelector(':scope > p.past-note')?.remove()
+        appendPage(list, more, false, onMore)
+      })
+      .catch(() => {
+        button.disabled = false
+        button.removeAttribute('aria-busy')
+        if (!list.querySelector(':scope > p.past-note')) list.insertBefore(pastNote(PAST_FAILED), button)
+      })
+  }
+  const button = el('button', { type: 'button', class: 'more-papers', on: { click: press } }, [
+    MORE_PAPERS,
+    el('small', null, `${page.total - next}번 더 있어요 · 누를 때마다 ${MORE_STEP}장씩`),
+  ])
+  return button
+}
+
+/** 장 머리: (첫 장만 [지난번]) · "M월 D일" · "N일 전" */
+function pastHead(paper, last) {
+  return el('div', { class: 'past-h' }, [last ? el('span', { class: 'last-badge' }, LAST_BADGE) : null, el('strong', null, monthDay(paper.date)), textEl('span', 'visit-ago', paper.ago)])
+}
+
+/** "yyyy-MM-dd" → "M월 D일". 모양이 틀리면 "" */
+function monthDay(date) {
+  const found = DASHED_DAY.exec(typeof date === 'string' ? date : '')
+  return found ? `${Number(found[2])}월 ${Number(found[3])}일` : ''
+}
+
+/** 지난 종이 자리의 한 줄(읽는 중·읽지 못함) */
+function pastNote(text) {
+  return el('p', { class: 'past-note' }, text)
+}
+
+/** 지난 종이 한 쪽 답 모양 { papers: [], total, next } (모양 검사는 api.js가 한다. 여기서는 그릴 수 있는지만) */
+function isPage(page) {
+  return (
+    page !== null &&
+    typeof page === 'object' &&
+    Array.isArray(page.papers) &&
+    Number.isSafeInteger(page.total) &&
+    (page.next === null || Number.isSafeInteger(page.next))
+  )
 }
 
 /** 끝 줄: "처음 온 날 YYYY년 M월 D일 · 모두 N번 왔어요"(처음 온 날을 못 읽었으면 그 앞부분 없이) */

@@ -5,6 +5,8 @@
 // - 숨김(visibilitychange hidden·pagehide)은 poll.pause(): 환자 글을 그 자리에서 지우고 늦은 답을 버린다. 다시 보임(visible·pageshow)은 poll.resume()
 //   폰 상세 주소면 다시 보인 뒤 그 상세를 다시 읽는다(AC-1407.11). 끊김 뒤 돌아오면 목록이다(AC-1407.4)
 // - 상세 읽기는 차례 번호(ticket)로 늦은 답을 버린다: 숨김·끊김·다른 환자·돌림 때마다 번호가 바뀐다
+// - 상세를 그린 뒤 지난 진료기록부 첫 쪽(papers?from=0)을 한 번 읽어 채운다(detail.js fillPast, reception-memo-papers AC-3404.3).
+//   [더 보기]는 detail.js가 onMore(next)로 묻고 여기서 읽는다(같은 차례 번호). 저절로 다시 읽기에는 다시 읽지 않는다(AC-3404.5)
 // - 상세가 열린 동안 읽기마다 그 환자 줄의 칸·오늘 처방이 마지막 상세 읽기 때와 다르거나 30초가 지났으면 상세를 한 번 더 읽어
 //   종이 카드를 새 paper로 바꾼다(AC-1404.8·1502.4, 특이사항 펼침은 그대로). 한 번에 하나만 읽고, 실패하면 그대로 두었다가 다음 읽기에 다시 본다
 // - 태블릿 오른쪽 칸은 상세를 넣은 뒤 특이사항 높이를 잰다(detail.js fitSpecial, AC-1502.2). 폰 상세는 renderDetail이 스스로 잰다.
@@ -25,11 +27,11 @@
 //   index.html이 이 파일을 module로 부르면 바로 연다(맨 아래 app). 시험은 app.stop()으로 듣기를 그만둔다
 
 import { createAlert } from './alert.js'
-import { getHistory, getPrev, setArrange, setXray } from './api.js'
+import { getHistory, getPapers, getPrev, setArrange, setXray } from './api.js'
 import { planOf, renderArrange } from './arrange.js'
 import { fillPane, renderBoard, setReading } from './board.js'
 import { renderCharts } from './charts.js'
-import { detailPane, fitSpecial, renderDetail, updateDetail, updatePaper } from './detail.js'
+import { detailPane, fillPast, fitSpecial, renderDetail, updateDetail, updatePaper } from './detail.js'
 import { createLayout, findRow } from './layout.js'
 import { createPoll } from './poll.js'
 import { xrayBand } from './xray.js'
@@ -179,6 +181,27 @@ export function startApp() {
     )
   }
 
+  /**
+   * 그린 상세 k의 지난 진료기록부 첫 쪽을 한 번 읽어 채운다(AC-3404.3). 실패하면 그 자리에 한 줄이고 다시 읽지 않는다(AC-3404.5).
+   * 차례 번호(mine)가 바뀌면(숨김·끊김·다른 환자·돌림) 답을 버린다. [더 보기]의 다음 쪽도 같은 차례 번호로만 받는다(AC-3404.4)
+   */
+  function readPast(k, mine) {
+    const live = () => mine === ticket && detailK === k
+    const onMore = (from) =>
+      getPapers(k, from, { signal: poll.signal() }).then((papers) => {
+        if (!live()) throw new Error('늦은 답')
+        return papers
+      })
+    getPapers(k, 0, { signal: poll.signal() }).then(
+      (papers) => {
+        if (live()) fillPast(host, k, papers, { onMore })
+      },
+      () => {
+        if (live()) fillPast(host, k, null)
+      },
+    )
+  }
+
   // ---- 폰 ------------------------------------------------------------------------------------------
 
   function drawPhone(board, reading) {
@@ -218,6 +241,7 @@ export function startApp() {
         if (now) {
           renderDetail(host, now, history)
           markPaper(now)
+          readPast(k, mine)
         }
         keepTitle()
       },
@@ -523,6 +547,7 @@ export function startApp() {
           fillPane(host, detailPane(now, history))
           fitSpecial(host)
           markPaper(now)
+          readPast(picked, mine)
         }
       },
       () => {

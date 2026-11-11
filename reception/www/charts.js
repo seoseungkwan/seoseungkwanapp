@@ -2,7 +2,8 @@
 // 해시 길 #/a/v/{열쇠}로 열린다. class 이름은 style.css 머리 글의 화면 틀 그대로다.
 // - 머리: [‹ 어레인지](#/a)·연결됨, 차트번호·이름·정보 글("54세 · 여 · 재진" 그대로)·신환 표시, 상태 이름표·접수 시각, 메모 상자(AC-3309.1)
 // - 몸: "오늘 진료기록부 YYYY-MM-DD" + 오늘 종이(detail.js paperCard 그대로), "직전 진료기록부 {yyyy-MM-dd} · {N일 전}" + 직전 종이
-//   (GET /api/visit/{k}/prev, 사람 칸·특이사항 없이 detail.js recordOf의 같은 부분, 회색 테두리). 지난 내원이 없으면 첫 방문 카드.
+//   (GET /api/visit/{k}/prev, detail.js pastCard 그대로: 사람 칸·특이사항 없이 recordOf의 같은 부분, 회색 테두리. 상세의 지난 진료기록부
+//   여러 장도 같은 카드다, reception-memo-papers AC-3404.3). 지난 내원이 없으면 첫 방문 카드.
 //   태블릿은 두 칸(왼쪽 오늘 | 오른쪽 직전), 폰은 위아래다(style.css, AC-3309.2)
 // - 읽는 중·읽기 실패는 그 칸에 한 줄만 보인다(AC-3309.5). 다시 읽기·실패 뒤 다시 보기는 app.js가 정한다
 // - 같은 환자를 다시 그리면 화면 뼈대는 두고 머리·두 칸만 바꾼다. 펼쳐 둔 특이사항은 펼친 채다(AC-1502.4와 같다)
@@ -16,14 +17,13 @@
 //     view.today  오늘(Date). 없으면 지금 기기 날짜(오늘 종이 머리글·제목 날짜)
 
 import { clear, el } from './dom.js'
-import { fitSpecial, paperCard, recordOf } from './detail.js'
+import { fitSpecial, paperCard, pastCard } from './detail.js'
 
 const TODAY_HEADING = '오늘 진료기록부'
 const PREV_HEADING = '직전 진료기록부'
 const READING = '기록부를 읽는 중이에요'
 const FAILED = '지금 기록부를 읽지 못했어요'
 const NO_PREV = '첫 방문이라 직전 기록부가 없어요.'
-const PAPER_TITLE = '외래진료기록부'
 const BACK = '어레인지'
 const FOOT = '보기만 할 수 있어요 · 비트 자료는 바뀌지 않아요'
 
@@ -113,10 +113,7 @@ function prevOf(prev) {
   if (prev === 'reading') return noteOf(READING, false)
   if (prev === null) return el('div', { class: 'paper none-card' }, NO_PREV)
   if (!isPrev(prev)) return noteOf(FAILED, true)
-  return el('article', { class: 'paper past' }, [
-    el('div', { class: 'paper-head' }, [el('span', { class: 'paper-title' }, PAPER_TITLE), el('span', { class: 'paper-date' }, prev.date)]),
-    ...recordOf(prev, { day: prev.date.replaceAll('-', '') }),
-  ])
+  return pastCard(prev)
 }
 
 function noteOf(text, failed) {

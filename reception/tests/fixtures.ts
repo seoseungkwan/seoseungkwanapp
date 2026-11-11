@@ -462,6 +462,35 @@ export function fakeHistory(past: number, from = 0, todaySym = '', paper?: FakeP
   return { ...page, paper: paper ?? (todaySym === '' ? fakePaper() : fakeTreatedPaper(todaySym)) }
 }
 
+/**
+ * 지난 진료기록부 `GET /api/visit/{k}/papers?from=N` 답 (reception-memo-papers design.md 4절): 종이 칸은 직전 기록부(prev)와 같고,
+ * total은 지난 내원 수, next는 더 있으면 다음 from(없으면 null)이다
+ */
+export interface FakePapers {
+  papers: FakePrev[]
+  total: number
+  next: number | null
+}
+
+/** 지난 진료기록부 첫 쪽은 2장, [더 보기]마다 3장 (AC-3404.1) */
+const PAPERS_FIRST = 2
+const PAPERS_MORE = 3
+
+/** i번째 지난 종이(0이 가장 최근): 지난 진료(fakeVisit)와 같은 날·증상, 진료실은 'N진료실'(i+1) */
+export function fakePastPaper(i: number): FakePrev {
+  const days = 7 * (i + 1)
+  const d = daysBefore(days)
+  const date = `${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`
+  return fakePrev({ date, ago: `${days}일 전`, room: `${i + 1}진료실`, sym: VISIT_SYMS[i % VISIT_SYMS.length]! })
+}
+
+/** 지난 내원이 past번인 환자의 지난 진료기록부 한 쪽(from이 0이면 2장, 그 뒤 3장) */
+export function fakePapers(past: number, from = 0): FakePapers {
+  const end = Math.min(past, from + (from === 0 ? PAPERS_FIRST : PAPERS_MORE))
+  const papers = Array.from({ length: Math.max(0, end - from) }, (_, j) => fakePastPaper(from + j))
+  return { papers, total: past, next: papers.length > 0 && end < past ? end : null }
+}
+
 /** 가짜 도우미의 답: 상태 번호와 JSON 몸(없으면 몸 없음) */
 export interface FakeReply {
   status: number
@@ -481,6 +510,8 @@ export interface FakeServer {
   papers: Map<string, FakePaper>
   /** 직전 진료기록부를 정해 둔 환자: 열쇠 → prev(없으면 신환은 null, 재진은 fakePrev()) (reception-arrange) */
   prevs: Map<string, FakePrev | null>
+  /** 지난 내원 수를 정해 둔 환자: 열쇠 → 수(없으면 신환 0, 재진 36). 지난 진료기록부 쪽(fakePapers)이 따른다 (reception-memo-papers) */
+  pasts: Map<string, number>
   /** 요청 하나에 답한다. url은 같은 곳 길('/api/board?fresh=1' 모양) */
   answer: (method: string, url: string, body?: string | null) => FakeReply
 }
@@ -591,7 +622,8 @@ function rowsOfBoard(board: FakeBoard): FakeRow[] {
 
 /**
  * 가짜 도우미(design.md 7절의 길만): GET /api/board(?fresh=1) · GET /api/visit/{k}/history?from=N · POST /api/xray,
- * 그리고 어레인지(reception-arrange design.md 8·9절): POST /api/arrange(판의 arrange를 바꾸고 204) · GET /api/visit/{k}/prev.
+ * 그리고 어레인지(reception-arrange design.md 8·9절): POST /api/arrange(판의 arrange를 바꾸고 204) · GET /api/visit/{k}/prev,
+ * 지난 진료기록부(reception-memo-papers design.md 4절): GET /api/visit/{k}/papers?from=N.
  * 다른 길·그날 판에 없는 열쇠·모양이 틀린 값은 404, 진료보류가 아닌 줄의 표시는 400이다
  */
 export function fakeServer(board: FakeBoard = mockupBoard(), now = '13:43'): FakeServer {
@@ -606,6 +638,7 @@ export function fakeServer(board: FakeBoard = mockupBoard(), now = '13:43'): Fak
     syms: new Map<string, string>(),
     papers: new Map<string, FakePaper>(),
     prevs: new Map<string, FakePrev | null>(),
+    pasts: new Map<string, number>(),
     answer(method, url, body) {
       const [path = '', query = ''] = url.split('?')
       const params = new URLSearchParams(query)
@@ -617,6 +650,12 @@ export function fakeServer(board: FakeBoard = mockupBoard(), now = '13:43'): Fak
         const row = rowsOfBoard(server.board).find((r) => r.k === prev[1])
         if (!row) return { status: 404 }
         return { status: 200, body: { prev: server.prevs.has(row.k) ? server.prevs.get(row.k) : pastOf(row) === 0 ? null : fakePrev() } }
+      }
+      const papers = /^\/api\/visit\/([0-9a-f]{16})\/papers$/.exec(path)
+      if (method === 'GET' && papers) {
+        const row = rowsOfBoard(server.board).find((r) => r.k === papers[1])
+        if (!row || !/^from=\d+$/.test(query)) return { status: 404 }
+        return { status: 200, body: fakePapers(server.pasts.get(row.k) ?? pastOf(row), Number(params.get('from'))) }
       }
       if (method === 'POST' && path === '/api/arrange') {
         let ask: FakeArrangeAsk
