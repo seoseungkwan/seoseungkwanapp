@@ -35,6 +35,9 @@ interface Sheet {
   k: string
   col: string
   kind: 'add' | 'done' | 'part'
+  /** 충격파 넣기 창에서 고른 타수·부위 수 (AC-3402.2) */
+  hit?: string | null
+  count?: string | null
 }
 
 interface ArrangeView {
@@ -247,13 +250,16 @@ function hasRun(strings: string[], list: string[]): boolean {
 
 const PARTS = ['목', '등', '허리', '오른 어깨', '왼 어깨', '양 어깨', '팔꿈치', '손목', '고관절', '오른 무릎', '왼 무릎', '양 무릎', '발목', '발바닥', '기타']
 const LATER = '부위는 나중에'
+/** 충격파 부위 수·타수 (reception-memo-papers AC-3402.1, 시안 Mock.html eswtSheet) */
+const ESWT_COUNTS = ['1부위', '2부위', '3부위', '4부위']
+const ESWT_HITS = ['2000타', '3000타', '4000타', '6000타']
 const CHOICES: Record<Col, string[]> = {
   xray: ['X-ray 찍기'],
   sono: [...PARTS, LATER],
   carm: [...PARTS, LATER],
   pt: ['ICE', 'HP'],
   ds: ['30분', '50분'],
-  eswt: ['1부위', '2부위', '3부위', '4부위'],
+  eswt: [...ESWT_COUNTS, ...ESWT_HITS.flatMap((hit) => ESWT_COUNTS.map((count) => `${hit} ${count}`))],
   trac: ['목', '허리'],
 }
 const COL_NAMES: Record<Col, string> = { xray: 'X-RAY', sono: 'SONO', carm: 'C-ARM', pt: 'PT', ds: '도수', eswt: '충격파', trac: '견인' }
@@ -324,7 +330,7 @@ describe('REQ-3308 어레인지 표', () => {
     expect(textOf(page, 'footer.foot')).toBe(FOOT)
   })
 
-  it('AC-3308.2: 표 머리는 접수(누르면 자리비움)·성함·X-RAY·SONO·C-ARM(부위·준비·순서)·PT(ICE·HP)·도수(30·50분)·충격파(부위 수)·견인(목·허리)·비고(접수 메모 · 지난번 증상)·빈 머리다', () => {
+  it('AC-3308.2 · AC-3402.3: 표 머리는 접수(누르면 자리비움)·성함·X-RAY·SONO·C-ARM(부위·준비·순서)·PT(ICE·HP)·도수(30·50분)·충격파(타수·부위 수)·견인(목·허리)·비고(접수 메모 · 지난번 증상)·빈 머리다', () => {
     const { page } = draw()
     const ths = [...page.querySelectorAll('table.arr > thead > tr > th')]
     expect(ths.map((th) => th.className)).toEqual(['c-t', 'c-nm', 'c-xray', 'c-sono', 'c-carm', 'c-pt', 'c-ds', 'c-eswt', 'c-trac', 'c-memo', 'c-end'])
@@ -336,7 +342,7 @@ describe('REQ-3308 어레인지 표', () => {
       ['C-ARM', '부위·준비·순서'],
       ['PT', 'ICE·HP'],
       ['도수', '30·50분'],
-      ['충격파', '부위 수'],
+      ['충격파', '타수·부위 수'],
       ['견인', '목·허리'],
       ['비고', '접수 메모 · 지난번 증상'],
       ['', null],
@@ -700,8 +706,8 @@ describe('REQ-3308 칸 누르기', () => {
     expect(removed.undo).toBeNull()
   })
 
-  it('AC-3308.7: 빈 칸을 누르면 고르기 창 "{칸} 직접 넣기"에 그 칸의 목록이 나오고 고르면 onAdd(열쇠, 칸, 글)를 부른다', () => {
-    for (const col of COLS) {
+  it('AC-3308.7: 빈 칸을 누르면 고르기 창 "{칸} 직접 넣기"에 그 칸의 목록이 나오고 고르면 onAdd(열쇠, 칸, 글)를 부른다(충격파는 두 줄 창, AC-3402.2)', () => {
+    for (const col of COLS.filter((c) => c !== 'eswt')) {
       const onAdd = vi.fn()
       const onSheet = vi.fn()
       const { page } = draw(fx.arrangeMockupBoard(), { onAdd, onSheet })
@@ -970,6 +976,193 @@ describe('REQ-3308 어레인지 모양 (style.css·theme.css)', () => {
     expect(cssValue('.ptf-btn.up', 'background')).toBe('var(--ptup-bg)')
     expect(cssValue('.ptf-btn.up', 'color')).toBe('var(--ptup-fg)')
     expect(cssValue('.lg.ptup', 'background')).toBe('var(--ptup-bg)')
+  })
+})
+
+// ---- 충격파 타수·부위 수 (reception-memo-papers REQ-3402) ----------------------------------------------------
+
+/** 충격파 넣기 창의 고르기 줄 하나(타수 0 · 부위 수 1)의 단추 */
+function eswtButtons(root: ParentNode, row: 0 | 1): HTMLButtonElement[] {
+  const group = root.querySelectorAll('.sheet > .opts.four')[row]
+  return [...(group?.querySelectorAll<HTMLButtonElement>(':scope > button.opt') ?? [])]
+}
+
+function eswtPick(root: ParentNode, label: string) {
+  const button = [...eswtButtons(root, 0), ...eswtButtons(root, 1)].find((b) => b.textContent === label)
+  if (!button) throw new Error(`충격파 고르기 ${label} 없음`)
+  button.click()
+}
+
+function picked(root: ParentNode, row: 0 | 1): string[] {
+  return eswtButtons(root, row)
+    .filter((b) => b.classList.contains('on') && b.getAttribute('aria-pressed') === 'true')
+    .map((b) => b.textContent ?? '')
+}
+
+function goButton(root: ParentNode): HTMLButtonElement {
+  const button = root.querySelector<HTMLButtonElement>('.sheet > .sheet-go > button.go')
+  if (!button) throw new Error('[넣기] 없음')
+  return button
+}
+
+describe('REQ-3402 충격파 타수·부위 수', () => {
+  it('AC-3402.1: 화면 CHOICES.eswt는 "1부위"~"4부위" 넷 뒤에 타수(2000·3000·4000·6000타)마다 "{타수} {N부위}" 넷, 모두 스물이다(C# ArrangeChoices와 같은 차례)', () => {
+    expect(view.CHOICES.eswt).toEqual([
+      '1부위', '2부위', '3부위', '4부위',
+      '2000타 1부위', '2000타 2부위', '2000타 3부위', '2000타 4부위',
+      '3000타 1부위', '3000타 2부위', '3000타 3부위', '3000타 4부위',
+      '4000타 1부위', '4000타 2부위', '4000타 3부위', '4000타 4부위',
+      '6000타 1부위', '6000타 2부위', '6000타 3부위', '6000타 4부위',
+    ])
+    expect(hasRun(csStrings(readFileSync(ARRANGE_MARKS_CS, 'utf8')), view.CHOICES.eswt!)).toBe(true)
+  })
+
+  it('AC-3402.2: 빈 충격파 칸을 누르면 창 "충격파 직접 넣기"에 [타수] 넷·[부위 수] 넷 두 줄과 [닫기]·[넣기]가 있고, 처음에는 아무것도 안 골라 [넣기]가 꺼져 있다', () => {
+    const onSheet = vi.fn()
+    const onAdd = vi.fn()
+    const { page } = draw(fx.arrangeMockupBoard(), { onSheet, onAdd })
+    cellOf(page, '가상환자28', 'eswt').click()
+    expect(onSheet).toHaveBeenLastCalledWith({ k: K.h, col: 'eswt', kind: 'add', hit: null, count: null })
+    const sheet = sheetOf(page)!
+    expect(sheet.getAttribute('role')).toBe('dialog')
+    expect(sheet.getAttribute('aria-modal')).toBe('true')
+    expect(sheet.getAttribute('aria-label')).toBe('충격파 직접 넣기')
+    expect(shapeOf(sheet)).toEqual(['div.sheet-h', 'div.opt-label', 'div.opts.four', 'div.opt-label', 'div.opts.four', 'div.sheet-go'])
+    expect(textsOf(sheet, '.sheet-h > span')).toEqual(['충격파 직접 넣기', '가상환자28 · 타수와 부위 수를 골라요'])
+    expect(textsOf(sheet, ':scope > .opt-label')).toEqual(['타수', '부위 수'])
+    expect(eswtButtons(page, 0).map((b) => b.textContent)).toEqual(ESWT_HITS)
+    expect(eswtButtons(page, 1).map((b) => b.textContent)).toEqual(ESWT_COUNTS)
+    for (const b of [...eswtButtons(page, 0), ...eswtButtons(page, 1)]) {
+      expect(b.getAttribute('type')).toBe('button')
+      expect(b.getAttribute('aria-pressed')).toBe('false')
+    }
+    expect(shapeOf(sheet.querySelector('.sheet-go'))).toEqual(['button.sheet-close', 'button.go'])
+    expect(textOf(sheet, '.sheet-go > button.sheet-close')).toBe('닫기')
+    expect(goButton(page).textContent).toBe('넣기')
+    expect(goButton(page).disabled).toBe(true)
+    goButton(page).click()
+    expect(onAdd).not.toHaveBeenCalled()
+  })
+
+  it('AC-3402.2: 타수만 골라도 [넣기]는 꺼져 있고, 부위 수를 고르면 [넣기 · 3000타 2부위]가 켜져 누르면 add v="3000타 2부위"를 부르고 창을 닫는다. 고를 때마다 창 값을 onSheet로 넘긴다', () => {
+    const onSheet = vi.fn()
+    const onAdd = vi.fn()
+    const { page } = draw(fx.arrangeMockupBoard(), { onSheet, onAdd })
+    cellOf(page, '가상환자28', 'eswt').click()
+    eswtPick(page, '3000타')
+    expect(onSheet).toHaveBeenLastCalledWith({ k: K.h, col: 'eswt', kind: 'add', hit: '3000타', count: null })
+    expect(picked(page, 0)).toEqual(['3000타'])
+    expect(picked(page, 1)).toEqual([])
+    expect(goButton(page).disabled).toBe(true)
+    expect(goButton(page).textContent).toBe('넣기')
+    eswtPick(page, '2부위')
+    expect(onSheet).toHaveBeenLastCalledWith({ k: K.h, col: 'eswt', kind: 'add', hit: '3000타', count: '2부위' })
+    expect(picked(page, 1)).toEqual(['2부위'])
+    expect(goButton(page).disabled).toBe(false)
+    expect(goButton(page).textContent).toBe('넣기 · 3000타 2부위')
+    // 다른 타수를 고르면 바뀐다(한 줄에 하나)
+    eswtPick(page, '6000타')
+    expect(picked(page, 0)).toEqual(['6000타'])
+    eswtPick(page, '3000타')
+    goButton(page).click()
+    expect(onAdd).toHaveBeenCalledTimes(1)
+    expect(onAdd).toHaveBeenLastCalledWith(K.h, 'eswt', '3000타 2부위')
+    expect(sheetOf(page)).toBeNull()
+    expect(onSheet).toHaveBeenLastCalledWith(null)
+  })
+
+  it('AC-3402.2: 고른 단추를 다시 누르면 풀린다. 타수 없이 부위 수만 고르면 [넣기 · 2부위]이고 add v="2부위"다. 부위 수를 풀면 [넣기]가 다시 꺼진다', () => {
+    const onAdd = vi.fn()
+    const { page } = draw(fx.arrangeMockupBoard(), { onAdd })
+    cellOf(page, '가상환자28', 'eswt').click()
+    eswtPick(page, '4000타')
+    eswtPick(page, '2부위')
+    eswtPick(page, '2부위')
+    expect(picked(page, 1)).toEqual([])
+    expect(goButton(page).disabled).toBe(true)
+    eswtPick(page, '2부위')
+    eswtPick(page, '4000타')
+    expect(picked(page, 0)).toEqual([])
+    expect(goButton(page).textContent).toBe('넣기 · 2부위')
+    goButton(page).click()
+    expect(onAdd).toHaveBeenLastCalledWith(K.h, 'eswt', '2부위')
+  })
+
+  it('AC-3402.2: [닫기]·바깥 누름·Esc는 넣지 않고 닫는다', () => {
+    const onAdd = vi.fn()
+    const onSheet = vi.fn()
+    const { page } = draw(fx.arrangeMockupBoard(), { onAdd, onSheet })
+    cellOf(page, '가상환자28', 'eswt').click()
+    eswtPick(page, '1부위')
+    page.querySelector<HTMLButtonElement>('.sheet-go > button.sheet-close')!.click()
+    expect(sheetOf(page)).toBeNull()
+    expect(onSheet).toHaveBeenLastCalledWith(null)
+    cellOf(page, '가상환자28', 'eswt').click()
+    page.querySelector<HTMLElement>('.sheet-back')!.click()
+    expect(sheetOf(page)).toBeNull()
+    cellOf(page, '가상환자28', 'eswt').click()
+    sheetOf(page)!.click()
+    expect(sheetOf(page)).not.toBeNull()
+    sheetOf(page)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(sheetOf(page)).toBeNull()
+    expect(onAdd).not.toHaveBeenCalled()
+  })
+
+  it('AC-3402.2: view.sheet의 타수·부위 수로 다시 그리면 고른 단추와 [넣기 · …]가 그대로이고, 목록 밖 값은 안 고른 것으로 본다', () => {
+    const kept = draw(fx.arrangeMockupBoard(), { sheet: { k: K.h, col: 'eswt', kind: 'add', hit: '4000타', count: '3부위' } }).page
+    expect(picked(kept, 0)).toEqual(['4000타'])
+    expect(picked(kept, 1)).toEqual(['3부위'])
+    expect(goButton(kept).textContent).toBe('넣기 · 4000타 3부위')
+    document.body.replaceChildren()
+    const odd = draw(fx.arrangeMockupBoard(), { sheet: { k: K.h, col: 'eswt', kind: 'add', hit: '5000타', count: '<b>9부위</b>' } }).page
+    expect(picked(odd, 0)).toEqual([])
+    expect(picked(odd, 1)).toEqual([])
+    expect(goButton(odd).disabled).toBe(true)
+    document.body.replaceChildren()
+    // 값이 없는 창(앞 판의 모양)도 빈 고르기로 그린다
+    const bare = draw(fx.arrangeMockupBoard(), { sheet: { k: K.h, col: 'eswt', kind: 'add' } }).page
+    expect(eswtButtons(bare, 1).length).toBe(4)
+    expect(goButton(bare).disabled).toBe(true)
+    // 이미 칸이 있으면 그리지 않는다
+    expect(sheetOf(draw(fx.arrangeMockupBoard(), { sheet: { k: K.c, col: 'eswt', kind: 'add', hit: '3000타', count: '2부위' } }).page)).toBeNull()
+  })
+
+  it('AC-3402.3: 충격파 칸은 타수가 있으면 타수가 위·부위 수가 아래다(준비 "준비 / 3000타 / 2부위", 완료 "✓ HH:MM / 4000타 / 3부위"). 타수 없는 칸은 그대로다', () => {
+    const board = fx.arrangeMockupBoard()
+    arrRow(board, K.c)!.cells.eswt!.det = '3000타 2부위'
+    arrRow(board, K.a)!.cells.eswt = fx.fakeCell({ st: 'done', det: '4000타 3부위', at: '10:40', manual: true })
+    arrRow(board, K.d)!.cells.eswt = fx.fakeCell({ st: 'todo', det: '1부위', at: '10:41', manual: true })
+    const { page } = draw(board)
+    expect(cellParts(cellOf(page, '가상환자23', 'eswt'))).toEqual(['span.st:준비', 'span.hit:3000타', 'span.det:2부위'])
+    expect(cellParts(cellOf(page, '가상환자21', 'eswt'))).toEqual(['span.st:✓ 10:40', 'span.hit:4000타', 'span.det.sm:3부위'])
+    expect(cellParts(cellOf(page, '가상환자24', 'eswt'))).toEqual(['span.st:준비', 'span.det:1부위'])
+    // 미리 그리기(planOf add)도 같은 글을 칸 글로 둔다
+    const plan = view.planOf(fx.arrangeMockupBoard(), { k: K.h, op: 'add', col: 'eswt', v: '6000타 4부위' })
+    expect(arrRow(plan.board, K.h)!.cells.eswt).toEqual({ st: 'todo', det: '6000타 4부위', part: null, at: '11:04', ord: null, manual: true })
+    expect(plan.toast).toBe('가상환자28 · 충격파 직접 넣었어요')
+    document.body.replaceChildren()
+    expect(cellParts(cellOf(draw(plan.board).page, '가상환자28', 'eswt'))).toEqual(['span.st:준비', 'span.hit:6000타', 'span.det:4부위'])
+  })
+
+  it('AC-3402.2 · AC-3402.3: 충격파 창·칸이 그리는 class는 모두 style.css에 모양이 있고, [닫기]·[넣기]·고르기 단추는 44px 이상이다. 타수 글은 환자 글처럼 글자로만 들어간다', () => {
+    const css = readWww('style.css').replace(/\/\*[\s\S]*?\*\//g, '')
+    const board = fx.arrangeMockupBoard()
+    arrRow(board, K.c)!.cells.eswt!.det = '3000타 2부위'
+    const { page } = draw(board, { sheet: { k: K.h, col: 'eswt', kind: 'add', hit: '3000타', count: '2부위' } })
+    const classes = new Set([page, ...page.querySelectorAll('*')].flatMap((n) => [...n.classList]))
+    for (const cls of ['hit', 'opt-label', 'four', 'sheet-go', 'sheet-close', 'go', 'on']) expect(classes.has(cls), cls).toBe(true)
+    for (const cls of classes) expect(css, `.${cls}`).toMatch(new RegExp(`\\.${cls}(?![\\w-])`))
+    for (const selector of ['.sheet-close', '.sheet-go > .go', '.opt']) {
+      const value = cssValue(selector, 'min-height')
+      expect(value, selector).toBeDefined()
+      expect(Number.parseFloat(value!), selector).toBeGreaterThanOrEqual(44)
+    }
+    document.body.replaceChildren()
+    const odd = fx.arrangeMockupBoard()
+    arrRow(odd, K.c)!.cells.eswt!.det = '<b>3000타 2부위</b>'
+    const drawn = draw(odd).page
+    expect(cellParts(cellOf(drawn, '가상환자23', 'eswt'))).toEqual(['span.st:준비', 'span.hit:<b>3000타', 'span.det:2부위</b>'])
+    expect(drawn.querySelector('td.c-eswt b')).toBeNull()
   })
 })
 

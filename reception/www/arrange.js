@@ -12,7 +12,8 @@
 // 쓰는 법 (app.js)
 //   renderArrange(host, board, view) → .page.arrange    host는 #app. 안에 다른 화면이 있으면 지우고 그린다
 //     view.reading · view.onRefresh · view.onTab   머리(board.js topOf)
-//     view.sheet         열린 고르기 창 { k, col, kind: 'add'|'done'|'part' } | null. 그 줄·칸이 판에 맞지 않으면 그리지 않는다
+//     view.sheet         열린 고르기 창 { k, col, kind: 'add'|'done'|'part' } | null. 그 줄·칸이 판에 맞지 않으면 그리지 않는다.
+//                        충격파 넣기 창은 고른 타수·부위 수 { …, hit, count }도 담는다(AC-3402.2, 목록 밖 값은 안 고른 것)
 //     view.endedOpen     [오늘 치료 종료 N명] 펼침
 //     view.toast         되돌리기 띠 { text, undo } | null. undo면 [되돌리기](view.onUndo())
 //     view.rxNew         '처방 나옴' 이름표를 붙일 열쇠들 (AC-3310.2)
@@ -42,6 +43,10 @@ export const PARTS = Object.freeze(['목', '등', '허리', '오른 어깨', '�
 const LATER = '부위는 나중에'
 const XRAY_TAKE = 'X-ray 찍기'
 
+/** 충격파 부위 수·타수 (reception-memo-papers AC-3402.1, 시안 Mock.html). 칸 글은 "N부위" 또는 "{타수} N부위" */
+const ESWT_COUNTS = Object.freeze(['1부위', '2부위', '3부위', '4부위'])
+const ESWT_HITS = Object.freeze(['2000타', '3000타', '4000타', '6000타'])
+
 /** 칸마다 직접 넣기(add)의 고르기 목록 (design.md 4절) */
 export const CHOICES = Object.freeze({
   xray: Object.freeze([XRAY_TAKE]),
@@ -49,7 +54,7 @@ export const CHOICES = Object.freeze({
   carm: Object.freeze([...PARTS, LATER]),
   pt: Object.freeze(['ICE', 'HP']),
   ds: Object.freeze(['30분', '50분']),
-  eswt: Object.freeze(['1부위', '2부위', '3부위', '4부위']),
+  eswt: Object.freeze([...ESWT_COUNTS, ...ESWT_HITS.flatMap((hit) => ESWT_COUNTS.map((count) => `${hit} ${count}`))]),
   trac: Object.freeze(['목', '허리']),
 })
 
@@ -63,7 +68,7 @@ const COLS = [
   { key: 'carm', head: 'C-ARM', sub: '부위·준비·순서', name: 'C-ARM', rx: true, three: true },
   { key: 'pt', head: 'PT', sub: 'ICE·HP', name: 'PT', rx: false, three: false },
   { key: 'ds', head: '도수', sub: '30·50분', name: '도수', rx: false, three: false },
-  { key: 'eswt', head: '충격파', sub: '부위 수', name: '충격파', rx: false, three: false },
+  { key: 'eswt', head: '충격파', sub: '타수·부위 수', name: '충격파', rx: false, three: false },
   { key: 'trac', head: '견인', sub: '목·허리', name: '견인', rx: false, three: false },
 ]
 const COL = new Map(COLS.map((col) => [col.key, col]))
@@ -324,11 +329,22 @@ function actionsOf(host, view, redraw) {
     call,
     close,
     cell(k, col, cell) {
-      if (!cell) open({ k, col: col.key, kind: 'add' })
+      if (!cell) open(col.key === 'eswt' ? { k, col: col.key, kind: 'add', hit: null, count: null } : { k, col: col.key, kind: 'add' })
       else if (cell.st === 'done') open({ k, col: col.key, kind: 'done' })
       else call('onCell', k, col.key)
     },
     part: (k, col) => open({ k, col: col.key, kind: 'part' }),
+    /** 충격파 창의 타수(hit)·부위 수(count) 단추: 고르거나 고른 것을 다시 누르면 풀고, 창 값을 onSheet로 넘긴다(AC-3402.2) */
+    eswt(sheet, group, label) {
+      const next = { ...sheet, hit: eswtHit(sheet), count: eswtCount(sheet) }
+      next[group] = next[group] === label ? null : label
+      redraw({ sheet: next })
+      call('onSheet', next)
+      // 다시 그린 창에서 누른 단추에 초점을 돌려 둔다(타수 줄이 위, 부위 수 줄이 아래)
+      const row = host.querySelectorAll('.sheet-back > .sheet > .opts.four')[group === 'hit' ? 0 : 1]
+      const again = [...(row?.querySelectorAll(':scope > button.opt') ?? [])].find((b) => b.textContent === label)
+      again?.focus({ preventScroll: true })
+    },
     pick(sheet, label) {
       close()
       if (sheet.kind === 'add') call('onAdd', sheet.k, sheet.col, label)
@@ -427,8 +443,19 @@ function cellOf(k, col, cell, act) {
     ord ? el('span', { class: 'ord' }, `${ord}번`) : null,
     manual ? el('span', { class: 'mn' }, '직접') : null,
     el('span', { class: 'st' }, st === 'todo' ? '준비' : withTime(st === 'ready' ? '준비완료' : '✓', cell.at)),
-    st === 'done' ? doneText(cell) : detOf(k, col, cell, act),
+    col.key === 'eswt' ? eswtText(cell, st === 'done') : st === 'done' ? doneText(cell) : detOf(k, col, cell, act),
   ])
+}
+
+/** 충격파 칸 글 "{타수} N부위"를 타수와 나머지로 나눈다(타수가 없으면 hit null) */
+const ESWT_SPLIT = /^(\S+타) (.+)$/
+
+/** 충격파 칸의 글: 타수가 있으면 타수(위)·부위 수(아래), 없으면 칸 글 하나. 완료 칸의 부위 수는 작은 글(AC-3402.3) */
+function eswtText(cell, done) {
+  if (!isText(cell.det)) return null
+  const split = ESWT_SPLIT.exec(cell.det)
+  const rest = el('span', { class: done ? 'det sm' : 'det' }, split ? split[2] : cell.det)
+  return split ? [el('span', { class: 'hit' }, split[1]), rest] : rest
 }
 
 /** 단계 글 뒤에 시각(모르면 단계 글만) */
@@ -529,6 +556,7 @@ function sheetOf(sheet, rows, lists, act) {
   let title
   let sub
   let options
+  if (sheet.kind === 'add' && !cell && col.key === 'eswt') return eswtSheetOf(sheet, col, name, act)
   if (sheet.kind === 'add' && !cell) {
     title = `${col.name} 직접 넣기`
     sub = `${name} · 처방에 없어도 넣을 수 있어요`
@@ -542,6 +570,66 @@ function sheetOf(sheet, rows, lists, act) {
     sub = `${name} · 비트에 부위가 없어서 골라요`
     options = PARTS
   } else return null
+  return sheetBack(title, act, [
+    el('div', { class: 'sheet-h' }, [el('span', { class: 'sheet-title' }, title), el('span', { class: 'sheet-sub' }, sub)]),
+    el(
+      'div',
+      { class: options.length > MANY ? 'opts many' : 'opts' },
+      options.map((label) => el('button', { type: 'button', class: 'opt', on: { click: () => act.pick(sheet, label) } }, label)),
+    ),
+    el('button', { type: 'button', class: 'sheet-x', on: { click: () => act.close() } }, '닫기'),
+  ])
+}
+
+/**
+ * 충격파 넣기 창 (AC-3402.2, 시안 eswtSheet): [타수] 넷 · [부위 수] 넷 두 줄과 [닫기]·[넣기 · …].
+ * 부위 수를 고르기 전에는 [넣기]가 꺼져 있고 타수는 안 골라도 된다. 고른 값은 sheet.hit·sheet.count(목록 밖 값은 안 고른 것)
+ */
+function eswtSheetOf(sheet, col, name, act) {
+  const title = `${col.name} 직접 넣기`
+  const hit = eswtHit(sheet)
+  const count = eswtCount(sheet)
+  const value = count === null ? null : hit === null ? count : `${hit} ${count}`
+  const row = (label, group, options, chosen) => [
+    el('div', { class: 'opt-label' }, label),
+    el(
+      'div',
+      { class: 'opts four', role: 'group', 'aria-label': label },
+      options.map((option) =>
+        el(
+          'button',
+          { type: 'button', class: option === chosen ? 'opt on' : 'opt', 'aria-pressed': option === chosen ? 'true' : 'false', on: { click: () => act.eswt(sheet, group, option) } },
+          option,
+        ),
+      ),
+    ),
+  ]
+  return sheetBack(title, act, [
+    el('div', { class: 'sheet-h' }, [el('span', { class: 'sheet-title' }, title), el('span', { class: 'sheet-sub' }, `${name} · 타수와 부위 수를 골라요`)]),
+    row('타수', 'hit', ESWT_HITS, hit),
+    row('부위 수', 'count', ESWT_COUNTS, count),
+    el('div', { class: 'sheet-go' }, [
+      el('button', { type: 'button', class: 'sheet-close', on: { click: () => act.close() } }, '닫기'),
+      el(
+        'button',
+        { type: 'button', class: 'go', disabled: value === null, on: { click: () => value !== null && act.pick(sheet, value) } },
+        value === null ? '넣기' : `넣기 · ${value}`,
+      ),
+    ]),
+  ])
+}
+
+/** 창 값의 타수·부위 수: 목록 글이 아니면 null */
+function eswtHit(sheet) {
+  return ESWT_HITS.includes(sheet?.hit) ? sheet.hit : null
+}
+
+function eswtCount(sheet) {
+  return ESWT_COUNTS.includes(sheet?.count) ? sheet.count : null
+}
+
+/** 고르기 창의 어두운 바탕 + 창. 바깥 누름·Esc는 닫기 */
+function sheetBack(title, act, children) {
   const close = (event) => {
     if (event.target === event.currentTarget) act.close()
   }
@@ -556,15 +644,7 @@ function sheetOf(sheet, rows, lists, act) {
         },
       },
     },
-    el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': title, tabindex: '-1' }, [
-      el('div', { class: 'sheet-h' }, [el('span', { class: 'sheet-title' }, title), el('span', { class: 'sheet-sub' }, sub)]),
-      el(
-        'div',
-        { class: options.length > MANY ? 'opts many' : 'opts' },
-        options.map((label) => el('button', { type: 'button', class: 'opt', on: { click: () => act.pick(sheet, label) } }, label)),
-      ),
-      el('button', { type: 'button', class: 'sheet-x', on: { click: () => act.close() } }, '닫기'),
-    ]),
+    el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': title, tabindex: '-1' }, children),
   )
 }
 

@@ -429,6 +429,27 @@ describe('app.js 어레인지 쓰기', () => {
     expect(hasRow('가상환자21')).toBe(true)
     expect(appEl().querySelector('.sheet-back')).toBeNull()
   })
+
+  it('AC-3402.2: 충격파 두 줄 창에서 고른 타수·부위 수는 저절로 다시 읽기(5초)에도 남고, [넣기 · 3000타 2부위]는 add v="3000타 2부위"를 보내 칸에 타수·부위 수를 그린다', async () => {
+    await open({ hash: '#/a' })
+    const choose = (label: string) => [...appEl().querySelectorAll<HTMLButtonElement>('.sheet .opts.four > button.opt')].find((b) => b.textContent === label)!.click()
+    const pressed = () => [...appEl().querySelectorAll('.sheet .opts.four > button.opt[aria-pressed="true"]')].map((b) => b.textContent)
+    cellOf('가상환자28', 'eswt').click()
+    choose('3000타')
+    choose('2부위')
+    await wait(5000)
+    expect(boardReads()).toBe(2)
+    expect(textOf(appEl(), '.sheet .sheet-title')).toBe('충격파 직접 넣기')
+    expect(pressed()).toEqual(['3000타', '2부위'])
+    const go = appEl().querySelector<HTMLButtonElement>('.sheet .sheet-go > button.go')!
+    expect(go.textContent).toBe('넣기 · 3000타 2부위')
+    go.click()
+    expect(appEl().querySelector('.sheet-back')).toBeNull()
+    expect(toastText()).toBe('가상환자28 · 충격파 직접 넣었어요')
+    await settle()
+    expect(writes()).toEqual([{ k: K.h, op: 'add', col: 'eswt', v: '3000타 2부위' }])
+    expect([textOf(cellOf('가상환자28', 'eswt'), '.hit'), textOf(cellOf('가상환자28', 'eswt'), '.det')]).toEqual(['3000타', '2부위'])
+  })
 })
 
 // ---- 기록부 (AC-3309.1 · 3309.3 · 3309.4 · 3309.5) ---------------------------------------------------------
