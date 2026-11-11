@@ -1,7 +1,7 @@
 # 작업 분할: 접수 현황 수정 묶음 — 보류 노랑·어레인지 메모·지난 진료기록부·충격파 타수
 
 > 형식: `## TASK-n: 제목` 아래에 `- REQ:`, `- Files:`(수정 범위, glob 허용), `- Tests:`, `- TDD: required|exempt`.
-> Phase 1은 일꾼 둘이 나란히: **A** = TASK-2 → 3 → 7(지난 진료기록부, C# → 화면), **B** = TASK-1 → 5 → 4 → 6 → 8(충격파·보류·메모·울타리).
+> Phase 1은 일꾼 둘이 나란히: **A** = TASK-2 → 3 → 7(지난 진료기록부, C# → 화면), **B** = TASK-1 → 5 → 4 → 8 → 6(충격파·보류·울타리·메모).
 > style.css는 A가 상세 칸 근처, B가 어레인지·머리 칸 근처에 더한다. Phase 2: 합치기 → 전체 시험·lint·build → 전체 검토 한 번 → 접수 현황 새 판.
 
 ## TASK-1: 충격파 고르기 목록 (C#)
@@ -50,8 +50,9 @@
 - Step: Phase 1 (B)
 - AC: AC-3403.1, AC-3403.2, AC-3403.3, AC-3403.4, AC-3403.5, AC-3403.6, AC-3405.2
 - REQ: REQ-3403, REQ-3405
-- Files: reception/www/memo.js, reception/www/board.js, reception/www/app.js, reception/www/style.css, reception/www/theme.css, reception/tests/memo.test.ts, reception/tests/board.test.ts, reception/tests/shell.test.ts, reception/tests/app.test.ts
-- Tests: reception/tests/memo.test.ts, reception/tests/board.test.ts, reception/tests/shell.test.ts
+- Files: reception/www/memo.js, reception/www/board.js, reception/www/app.js, reception/www/style.css, reception/www/theme.css, reception/tests/memo.test.ts, reception/tests/board.test.ts, reception/tests/shell.test.ts, reception/tests/arrange.test.ts, reception/tests/arrange-app.test.ts
+- Tests: reception/tests/memo.test.ts, reception/tests/board.test.ts, reception/tests/shell.test.ts, reception/tests/arrange.test.ts, reception/tests/arrange-app.test.ts
+- app.js는 화면을 지우는 곳(`wipe`류) 한 곳과 import 한 줄만 고친다(TASK-7과 겹침을 줄임). 숨김·끊김·다시 그리기 뒤 메모가 남는 것은 arrange-app.test.ts에서 증명한다. 손글씨 판(canvas)은 시험에서 가짜 `getContext`·`toDataURL`을 끼운다
 - TDD: required
 
 ## TASK-7: 상세의 지난 진료기록부 여러 장 (화면)
@@ -63,7 +64,7 @@
 - TDD: required
 
 ## TASK-8: 울타리 — memo.js의 localStorage만 예외
-- Step: Phase 1 (B, TASK-6 뒤)
+- Step: Phase 1 (B, TASK-6 앞 — memo.js가 생기기 전에 울타리를 먼저 연다)
 - AC: AC-3405.1
 - REQ: REQ-3405
 - Files: eslint.config.mjs, src/guardrails.test.ts
