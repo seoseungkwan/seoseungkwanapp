@@ -478,6 +478,26 @@ describe('api.js 같은 PC에만 묻는다', () => {
       expect(init.redirect).toBe('error')
     }
   })
+
+  it("AC-1406.3: 쓰기(setXray·setArrange)는 referrerPolicy 'same-origin'으로 보낸다(아이패드·아이폰 WebKit은 'no-referrer'면 Origin: null을 붙여 도우미 쓰기 검사에 403으로 막힌다). 읽기는 'no-referrer' 그대로", async () => {
+    fakeFetch((call) =>
+      call.url.startsWith('/api/xray') || call.url.startsWith('/api/arrange')
+        ? Promise.resolve(new Response(null, { status: 204 }))
+        : call.url.startsWith('/api/visit/')
+          ? json(fakeHistory())
+          : json(fx.mockupBoard()),
+    )
+    await api.setXray(fx.fakeKey(4), true)
+    await arrangeApi().setArrange(fx.fakeKey(23), 'step', 'sono')
+    await api.getBoard()
+    await api.getHistory(fx.fakeKey(1), 0)
+    expect(calls.map((c) => [c.init.method ?? 'GET', c.init.referrerPolicy])).toEqual([
+      ['POST', 'same-origin'],
+      ['POST', 'same-origin'],
+      ['GET', 'no-referrer'],
+      ['GET', 'no-referrer'],
+    ])
+  })
 })
 
 // ---- 어레인지 (reception-arrange design.md 7·8·9절, TASK-11) --------------------------------------------------

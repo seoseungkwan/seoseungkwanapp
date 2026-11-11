@@ -4,6 +4,8 @@
 // - 밖에서 준 signal(숨김·끊김 때 poll.js가 끊는다)이 끊기면 그 자리에서 실패하고, 그 뒤 온 답은 돌려주지 않는다(AC-1407.11)
 // - 쓰기는 도우미 문 지키기(ClientGuard.WriteOk)가 받는 모양: POST · X-Reception: 1 · Content-Type: application/json · 몸 256바이트 이하.
 //   Origin 머리는 브라우저가 붙인다(같은 곳 방식). 쿠키는 보내지 않고 되돌림(redirect)은 따라가지 않는다
+//   쓰기만 referrerPolicy 'same-origin'이다: 'no-referrer'(문서 기본값 포함)면 아이패드·아이폰 WebKit이 Origin: null을 붙여
+//   도우미가 403으로 막는다(크롬은 진짜 Origin을 붙인다). mode가 same-origin이라 리퍼러는 이 PC에만 간다
 //
 // 쓰는 법
 //   getBoard({ fresh, signal })      → GET /api/board(?fresh=1) 답 { state: 'ok', at, every, counts, lists, arrange }
@@ -79,6 +81,16 @@ function request(signal, extra) {
   return { cache: 'no-store', credentials: 'omit', mode: 'same-origin', redirect: 'error', referrerPolicy: 'no-referrer', signal, ...extra }
 }
 
+/** 쓰기 요청: POST · JSON · X-Reception: 1. WebKit이 진짜 Origin을 붙이게 리퍼러 정책은 same-origin(맨 위 설명) */
+function writeRequest(signal, body) {
+  return request(signal, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Reception': '1' },
+    referrerPolicy: 'same-origin',
+    body,
+  })
+}
+
 /**
  * 접수 현황 판을 읽는다.
  * @param {{ fresh?: boolean, signal?: AbortSignal }} [options] fresh가 true면 도우미의 묶음 시간을 건너뛴다(AC-1407.10)
@@ -115,14 +127,7 @@ export function getHistory(k, from, { signal } = {}) {
 export function setXray(k, on, { signal } = {}) {
   if (!isKey(k) || typeof on !== 'boolean') return Promise.reject(new ApiError('input'))
   return within(signal, async (inner) => {
-    const res = await fetch(
-      '/api/xray',
-      request(inner, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Reception': '1' },
-        body: JSON.stringify({ k, on }),
-      }),
-    )
+    const res = await fetch('/api/xray', writeRequest(inner, JSON.stringify({ k, on })))
     if (res.status !== 204) throw new ApiError('status')
   })
 }
@@ -141,14 +146,7 @@ export function setArrange(k, op, col, v, { signal } = {}) {
   const body = JSON.stringify(ask)
   if (new TextEncoder().encode(body).length > BODY_MAX) return Promise.reject(new ApiError('input'))
   return within(signal, async (inner) => {
-    const res = await fetch(
-      '/api/arrange',
-      request(inner, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Reception': '1' },
-        body,
-      }),
-    )
+    const res = await fetch('/api/arrange', writeRequest(inner, body))
     if (res.status !== 204) throw new ApiError('status')
   })
 }
