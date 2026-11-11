@@ -222,6 +222,40 @@ SELECT RTRIM(o.OdrCod) Code,RTRIM(o.OdrCodNam) Name,o.OdrQty Qty,o.OdrTms Tms,o.
 WHERE " + RxRow + @"
 ORDER BY o.OdrSeq";
 
+    // ---- 지난 진료기록부 여러 장(spec reception-memo-papers design.md 4절, AC-3404.2, TASK-2) ------------------------------------
+    // 상세(HistoryCount·HistoryPage)와 같은 H 창의 최근 순 @first~@last번째 지난 내원마다 직전 종이(PrevPaper*)와 같은 칸·줄 조건·차례를 준다.
+    // 첫 칸은 내원번호(H.OcmNum 원값)라 도우미(PastPaperReader)가 내원마다 묶는다. 사람 칸은 읽지 않는다
+
+    /// <summary>
+    /// 지난 종이 내원내역: H의 그 내원(같은 차트번호로 다시 이음)의 날(yyyyMMdd)·진료실·보험. 진료실 JOIN(이 병원 DepMst = 병원 범위)·보험 OUTER APPLY는
+    /// PaperVisit·PrevPaperVisit과 같은 글. 겹친 DepMst 줄이면 한 내원이 여러 줄일 수 있다(도우미가 첫 줄만 쓴다).
+    /// </summary>
+    public const string PastPaperVisits = HistoryCte + @"
+SELECT H.OcmNum VisitId,LEFT(H.OcmAcpDtm,8) Day,RTRIM(d.DepKorNam) Room,RTRIM(i.InsCodNam) Ins FROM H
+JOIN dbo.OcmInf c ON c.OcmNum=H.OcmNum AND c.OcmChtNum=@chart
+JOIN dbo.DepMst d ON d.DepCod=c.OcmDepCod AND d.DepHspNum=@hospital AND LEFT(c.OcmAcpDtm,8) BETWEEN d.DepAdpDte AND d.DepExpDte
+OUTER APPLY (SELECT TOP 1 m.InsCodNam FROM dbo.InsMst m WHERE m.InsCod=c.OcmInsCod AND m.InsAdpDte<=LEFT(c.OcmAcpDtm,8) ORDER BY m.InsAdpDte DESC,m.InsCodNam) i
+WHERE H.Seq BETWEEN @first AND @last
+ORDER BY H.Seq";
+
+    /// <summary>지난 종이 증상: 그 쪽 지난 내원마다 EmrInf 'S' 줄 전부(빈 줄 포함), 내원(H.Seq)·EmrShtSeq 순(PrevPaperSymptoms와 같은 줄).</summary>
+    public const string PastPaperSymptoms = HistoryCte + @"
+SELECT H.OcmNum VisitId,CAST(e.EmrShtVal AS nvarchar(max)) Line FROM dbo.EmrInf e JOIN H ON H.OcmNum=e.EmrOcmNum
+WHERE H.Seq BETWEEN @first AND @last AND e.EmrShtTyp='S'
+ORDER BY H.Seq,e.EmrShtSeq";
+
+    /// <summary>지난 종이 상병: PrevPaperDx와 같은 줄, 그 쪽 지난 내원마다(H.Seq·OicSeq 순).</summary>
+    public const string PastPaperDx = HistoryCte + @"
+SELECT H.OcmNum VisitId,RTRIM(x.OicElcCod) Code,RTRIM(x.OicIcdNam) Name,RTRIM(ISNULL(x.OicIcdPri,'')) Pri FROM dbo.OicInf x JOIN H ON H.OcmNum=x.OicOcmNum
+WHERE H.Seq BETWEEN @first AND @last
+ORDER BY H.Seq,x.OicSeq";
+
+    /// <summary>지난 종이 처방·원외처방: PrevPaperOrders와 같은 줄(RxRow), 그 쪽 지난 내원마다(H.Seq·OdrSeq 순).</summary>
+    public const string PastPaperOrders = HistoryCte + @"
+SELECT H.OcmNum VisitId,RTRIM(o.OdrCod) Code,RTRIM(o.OdrCodNam) Name,o.OdrQty Qty,o.OdrTms Tms,o.OdrDay Day,RTRIM(ISNULL(o.OdrOutCod,'')) OutCod FROM dbo.OdrInf o JOIN H ON H.OcmNum=o.OdrOcmNum
+WHERE H.Seq BETWEEN @first AND @last AND " + RxRow + @"
+ORDER BY H.Seq,o.OdrSeq";
+
     private static readonly SqlParam From = new SqlParam("@from", SqlParamKind.Char, 12);
     private static readonly SqlParam To = new SqlParam("@to", SqlParamKind.Char, 12);
     private static readonly SqlParam Hospital = new SqlParam("@hospital", SqlParamKind.VarChar, 32);
@@ -236,6 +270,7 @@ ORDER BY o.OdrSeq";
     private static readonly SqlParam[] Today = { From, To, Hospital };
     private static readonly SqlParam[] Visit = { Chart, Before, Hospital };
     private static readonly SqlParam[] Prev = { Chart, VisitNumber, Hospital };
+    private static readonly SqlParam[] Past = { Chart, Before, Hospital, First, Last };
 
     /// <summary>문장 → 그 문장에 실제로 있는 매개변수(design.md 3절 표). ReadOnlyGuard는 이 표의 문장을 표의 매개변수와 함께만 통과시킨다.</summary>
     public static IReadOnlyDictionary<string, SqlParam[]> Parameters { get; } = new Dictionary<string, SqlParam[]>(StringComparer.Ordinal)
@@ -261,5 +296,9 @@ ORDER BY o.OdrSeq";
         [PrevPaperSymptoms] = Prev,
         [PrevPaperDx] = Prev,
         [PrevPaperOrders] = Prev,
+        [PastPaperVisits] = Past,
+        [PastPaperSymptoms] = Past,
+        [PastPaperDx] = Past,
+        [PastPaperOrders] = Past,
     };
 }
