@@ -17,6 +17,8 @@ namespace Precheck.Core.Reception.Http;
 /// - GET /api/board → BoardCache.Get() → BoardBuilder 판 JSON(200). GET /api/board?fresh=1만 fresh로 넘긴다(AC-1403.8). 다른 질의 글은 404.
 /// - GET /api/visit/{k}/history?from=N → HistoryReader.Get(200·404·503). 틀린 열쇠·시작 위치는 비트를 읽지 않고 404(AC-1404.5).
 /// - GET /api/visit/{k}/prev(질의 글 없음) → PrevPaperReader.Get(200 {"prev"}·404·503, spec reception-arrange AC-3307.1·3307.3).
+/// - GET /api/visit/{k}/papers?from=N → PastPaperReader.Get(200 {"papers","total","next"}·404·503, spec reception-memo-papers AC-3404.1).
+///   틀린 열쇠·시작 위치는 상세 길과 같이 비트를 읽지 않고 404.
 /// - POST /api/xray {k, on} → 쓰기 검사(아니면 403) → 몸 모양(아니면 400) → 그날 열쇠·오늘 진료보류 줄(아니면 404) → XrayMarks.Set → 204(AC-1405.5).
 /// - POST /api/arrange {k, op, col?, v?}(어레인지 표시를 넘겼을 때만) → 쓰기 검사·몸 모양·그날 네 칸 줄 → ArrangeWrite → 204(spec reception-arrange AC-3306.1).
 ///   이때 GET /api/board 답에는 arrange 칸이 더 있다(AC-3305.1).
@@ -34,6 +36,7 @@ public sealed class ReceptionRouter
     private const string VisitPrefix = "/api/visit/";
     private const string HistorySuffix = "/history";
     private const string PrevSuffix = "/prev";
+    private const string PapersSuffix = "/papers";
     private const string FromPrefix = "from=";
     private const string Get = "GET";
     private const string Post = "POST";
@@ -155,6 +158,11 @@ public sealed class ReceptionRouter
             if (r.Method != Get) return HttpResponse.NotAllowed(Get);
             return r.Query == null ? Prev(prevKey) : NotFound();
         }
+        if (TryVisitKey(r.Path, PapersSuffix, out var papersKey))
+        {
+            if (r.Method != Get) return HttpResponse.NotAllowed(Get);
+            return Papers(papersKey, r.Query);
+        }
 
         var file = files.Get(r.Path);
         if (file == null) return NotFound();
@@ -231,8 +239,7 @@ public sealed class ReceptionRouter
 
     private HttpResponse History(string key, string? query)
     {
-        var from = query != null && query.StartsWith(FromPrefix, StringComparison.Ordinal) ? query.Substring(FromPrefix.Length) : null;
-        var result = HistoryReader.Get(services, keys, () => board.Get(), key, from, clock);
+        var result = HistoryReader.Get(services, keys, () => board.Get(), key, FromOf(query), clock);
         switch (result.State)
         {
             case HistoryState.Ok:
@@ -243,6 +250,25 @@ public sealed class ReceptionRouter
                 return Unavailable(result.Error);
         }
     }
+
+    /// <summary>GET /api/visit/{k}/papers?from=N(AC-3404.1): 지난 진료기록부 한 쪽 JSON(200), 틀린 열쇠·시작 위치 404, 볼 수 없으면 503.</summary>
+    private HttpResponse Papers(string key, string? query)
+    {
+        var result = PastPaperReader.Get(services, keys, () => board.Get(), key, FromOf(query), clock);
+        switch (result.State)
+        {
+            case HistoryState.Ok:
+                return HttpResponse.Json(result.Papers!.ToJson());
+            case HistoryState.NotFound:
+                return NotFound();
+            default:
+                return Unavailable(result.Error);
+        }
+    }
+
+    /// <summary>질의 글 "from=N"의 N(뒤에 다른 글이 붙으면 그대로 넘겨 TryFrom이 거른다). from 칸이 아니면 null.</summary>
+    private static string? FromOf(string? query) =>
+        query != null && query.StartsWith(FromPrefix, StringComparison.Ordinal) ? query.Substring(FromPrefix.Length) : null;
 
     /// <summary>GET /api/visit/{k}/prev(AC-3307.1·3307.3): 직전 기록부 JSON(200), 틀린 열쇠 404, 볼 수 없으면 503.</summary>
     private HttpResponse Prev(string key)
@@ -325,7 +351,7 @@ public sealed class ReceptionRouter
         }
     }
 
-    /// <summary>/api/visit/{k}{suffix}(/history·/prev) 모양이면 그 사이 글(빈 글 포함, '/' 없음)</summary>
+    /// <summary>/api/visit/{k}{suffix}(/history·/prev·/papers) 모양이면 그 사이 글(빈 글 포함, '/' 없음)</summary>
     private static bool TryVisitKey(string path, string suffix, out string key)
     {
         key = "";

@@ -67,30 +67,42 @@ public sealed class PrevPaper
     /// 태블릿에 보내는 JSON: <c>{"prev": {date, ago, room, ins, sym, dx:[{code, name, main}], rx:[{code, name, qty, tms, day}], out:[…]}}</c>,
     /// 지난 내원이 없으면 <c>{"prev": null}</c>.
     /// </summary>
-    public static string ToJson(PrevPaper? prev)
+    public static string ToJson(PrevPaper? prev) => Write(writer =>
+    {
+        writer.WriteStartObject();
+        if (prev == null)
+        {
+            writer.WriteNull("prev");
+        }
+        else
+        {
+            writer.WriteStartObject("prev");
+            prev.WriteFields(writer);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndObject();
+    });
+
+    /// <summary>열린 JSON 묶음 안에 종이 칸(date, ago, room, ins, sym, dx, rx, out)을 쓴다. 지난 진료기록부 여러 장(PastPapers)도 같은 칸으로 쓴다.</summary>
+    internal void WriteFields(Utf8JsonWriter writer)
+    {
+        writer.WriteString("date", Date);
+        writer.WriteString("ago", Ago);
+        writer.WriteString("room", Room);
+        writer.WriteString("ins", Ins);
+        writer.WriteString("sym", Sym);
+        PaperRecord.WriteDx(writer, Dx);
+        PaperRecord.WriteOrders(writer, "rx", Rx);
+        PaperRecord.WriteOrders(writer, "out", Out);
+    }
+
+    /// <summary>상세 답과 같은 글자 설정(한국어 그대로, HTML 뜻 글자는 \u)으로 JSON 글 하나를 쓴다. PastPapers도 쓴다.</summary>
+    internal static string Write(Action<Utf8JsonWriter> write)
     {
         using var buffer = new MemoryStream();
         using (var writer = new Utf8JsonWriter(buffer, WriterOptions))
         {
-            writer.WriteStartObject();
-            if (prev == null)
-            {
-                writer.WriteNull("prev");
-            }
-            else
-            {
-                writer.WriteStartObject("prev");
-                writer.WriteString("date", prev.Date);
-                writer.WriteString("ago", prev.Ago);
-                writer.WriteString("room", prev.Room);
-                writer.WriteString("ins", prev.Ins);
-                writer.WriteString("sym", prev.Sym);
-                PaperRecord.WriteDx(writer, prev.Dx);
-                PaperRecord.WriteOrders(writer, "rx", prev.Rx);
-                PaperRecord.WriteOrders(writer, "out", prev.Out);
-                writer.WriteEndObject();
-            }
-            writer.WriteEndObject();
+            write(writer);
         }
         return Encoding.UTF8.GetString(buffer.ToArray());
     }
@@ -200,14 +212,26 @@ public static class PrevPaperReader
         var diagnoses = PaperReader.Cells(HistoryReader.Query(db, ReceptionSql.PrevPaperDx, args, clock, deadline), 3);
         var orders = PaperReader.Cells(HistoryReader.Query(db, ReceptionSql.PrevPaperOrders, args, clock, deadline), 6);
 
+        return Paper(at, symptoms.Select(row => row[0]), diagnoses, orders, board.RxNames, today);
+    }
+
+    /// <summary>
+    /// 지난 내원 하나의 종이: 내원 줄(Day, Room, Ins)·증상 줄 글·상병 줄(Code, Name, Pri)·처방 줄(Code, Name, Qty, Tms, Day, OutCod) → PrevPaper.
+    /// 날은 "yyyy-MM-dd"(못 읽으면 ""), "N일 전"은 today의 날로 센다. 글 정리·처방 나누기는 reception-paper와 같은 도우미(PaperReader)다.
+    /// 지난 진료기록부 여러 장(PastPaperReader)도 내원마다 이것으로 만든다(AC-3404.2).
+    /// </summary>
+    internal static PrevPaper Paper(
+        IReadOnlyList<object?> at, IEnumerable<object?> symptomLines, IEnumerable<IReadOnlyList<object?>> diagnoses,
+        IEnumerable<IReadOnlyList<object?>> orders, IReadOnlyDictionary<string, string> names, DateTime today)
+    {
         var day = HistoryBuilder.DayOf(HistoryReader.Text(at[0]));
-        var (rx, outside) = PaperReader.Orders(orders, board.RxNames);
+        var (rx, outside) = PaperReader.Orders(orders, names);
         return new PrevPaper(
             day?.ToString(DateFormat, CultureInfo.InvariantCulture) ?? "",
             HistoryBuilder.AgoText(day, today.Date),
             PaperReader.Trimmed(at[1]),
             PaperReader.Trimmed(at[2]),
-            PaperReader.Symptom(symptoms.Select(row => row[0])),
+            PaperReader.Symptom(symptomLines),
             PaperReader.Diagnoses(diagnoses),
             rx,
             outside);
