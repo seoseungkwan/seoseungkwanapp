@@ -236,6 +236,15 @@ const TITLE_CLASSES = ['.top-title', '.off-title', '.off-heading', '.detail-name
 /** 어레인지 승인 시안(docs/mockups/reception-arrange/Arrange.html, 2026-11-09)이 더한 색 여섯 (reception-arrange AC-3308.12) */
 const ARRANGE_PAGE = path.join(ROOT, 'docs', 'mockups', 'reception-arrange', 'Arrange.html')
 const ARRANGE_TOKENS = ['--sono-head', '--sono-col', '--carm-head', '--carm-col', '--ptup-bg', '--ptup-fg']
+/**
+ * 접수 현황 수정 묶음 승인 시안(docs/mockups/reception-memo-papers/Mock.html, 2026-11-11)이 더한 색의 토큰과 값
+ * (reception-memo-papers AC-3401.1 진료보류 진한 노랑)
+ */
+const MEMO_PAPERS_PAGE = path.join(ROOT, 'docs', 'mockups', 'reception-memo-papers', 'Mock.html')
+const MEMO_PAPERS_COLORS: Record<string, string> = {
+  '--status-hold-bg': '#FFD43B',
+  '--status-hold-line': '#C9A100',
+}
 const STATUSES = ['wait', 'hold', 'pay', 'done', 'long', 'xray']
 const TABLET = '(min-width: 1000px) and (orientation: landscape)'
 
@@ -275,7 +284,7 @@ describe('REQ-1407 접수 현황 화면 뼈대 (reception/www)', () => {
         for (const word of value.split(/[\s,()/]+/)) expect(named.test(word), `${rule.selector} { ${prop}: ${value} }`).toBe(false)
   })
 
-  it('AC-1407.7 · AC-1503.2 · AC-3308.12: theme.css의 색은 승인된 의원 상표 시안(v12 Main·Detail·Offline·Tablet)의 색을 모두 담고(빠진 색 없음), 그 밖의 색은 승인 목업 Paper.html의 색과 어레인지 시안 Arrange.html의 새 칸 색 여섯뿐이다(지어낸 색 없음)', () => {
+  it('AC-1407.7 · AC-1503.2 · AC-3308.12 · AC-3401.1: theme.css의 색은 승인된 의원 상표 시안(v12 Main·Detail·Offline·Tablet)의 색을 모두 담고(빠진 색 없음), 그 밖의 색은 승인 목업 Paper.html의 색과 어레인지 시안 Arrange.html의 새 칸 색 여섯, 수정 묶음 시안 Mock.html의 새 색뿐이다(지어낸 색 없음)', () => {
     const theme = new Set(hexColors(parseRules(read('theme.css')).filter((r) => r.selector === ':root').flatMap((r) => r.decls.map((d) => d[1])).join(' ')))
     const brand = mockupColors()
     const paper = mockupColors([PAPER_PAGE])
@@ -287,8 +296,15 @@ describe('REQ-1407 접수 현황 화면 뼈대 (reception/www)', () => {
     const arrange = new Set(ARRANGE_TOKENS.map((name) => normalHex(t.get(name) ?? '#000')))
     for (const name of ARRANGE_TOKENS) expect(t.has(name), `${name}가 theme.css에 없다`).toBe(true)
     for (const c of arrange) expect(arrangeSheet.has(c), `${c}는 어레인지 시안에 없는 색이다`).toBe(true)
+    // 수정 묶음 새 색: theme.css의 그 토큰 값이고 모두 Mock.html에 있다
+    const memoSheet = new Set(hexColors(readFileSync(MEMO_PAPERS_PAGE, 'utf8')))
+    for (const [name, value] of Object.entries(MEMO_PAPERS_COLORS)) {
+      expect(resolve(t, t.get(name) ?? '#000').toUpperCase(), name).toBe(value)
+      expect(memoSheet.has(value), `${value}는 수정 묶음 시안에 없는 색이다`).toBe(true)
+    }
+    const memo = new Set(Object.values(MEMO_PAPERS_COLORS))
     for (const c of brand) expect(theme, `상표 시안 색 ${c}가 theme.css에 없다`).toContain(c)
-    for (const c of theme) expect(brand.has(c) || paper.has(c) || arrange.has(c), `${c}는 승인 시안·목업에 없는 색이다`).toBe(true)
+    for (const c of theme) expect(brand.has(c) || paper.has(c) || arrange.has(c) || memo.has(c), `${c}는 승인 시안·목업에 없는 색이다`).toBe(true)
     // 신환 표시 파랑은 Paper.html에서 왔다(상표 시안 v12에는 없다)
     expect(paper.has('#1D4ED8')).toBe(true)
     expect(brand.has('#1D4ED8')).toBe(false)
@@ -317,6 +333,25 @@ describe('REQ-1407 접수 현황 화면 뼈대 (reception/www)', () => {
     // style.css가 상태 토큰을 실제로 쓴다
     const style = read('style.css')
     for (const s of STATUSES) expect(style, `var(--status-${s}-bg)`).toContain(`var(--status-${s}-bg)`)
+  })
+
+  it('AC-3401.1: 진료보류 이름표는 진한 노랑(--status-hold-bg #FFD43B · --status-hold-fg var(--ink) · --status-hold-line #C9A100)이고, 로고 노랑·SONO 노랑·다른 상태 색과 다르다', () => {
+    const t = rootTokens()
+    expect(t.get('--status-hold-bg')?.toUpperCase()).toBe('#FFD43B')
+    expect(t.get('--status-hold-fg')).toBe('var(--ink)')
+    expect(t.get('--status-hold-line')?.toUpperCase()).toBe('#C9A100')
+    const hold = [resolve(t, 'var(--status-hold-bg)').toUpperCase(), resolve(t, 'var(--status-hold-line)').toUpperCase()]
+    const yellows = ['--accent', '--sono-head', '--sono-col'].map((name) => [name, resolve(t, `var(${name})`).toUpperCase()] as const)
+    const others = STATUSES.filter((s) => s !== 'hold').flatMap((s) =>
+      (['bg', 'line'] as const).filter((part) => t.has(`--status-${s}-${part}`)).map((part) => [`--status-${s}-${part}`, resolve(t, `var(--status-${s}-${part})`).toUpperCase()] as const),
+    )
+    for (const c of hold) for (const [name, value] of [...yellows, ...others]) expect(c, name).not.toBe(value)
+    // 진료보류 이름표(목록·태블릿·어레인지·기록부가 같은 .status-hold를 쓴다)는 이 세 토큰을 쓴다
+    const rule = parseRules(read('style.css')).filter((r) => r.selector.split(',').map((s) => s.trim()).includes('.status-hold') && r.media === '').flatMap((r) => r.decls)
+    expect(rule.find(([p]) => p === 'background')?.[1]).toBe('var(--status-hold-bg)')
+    expect(rule.find(([p]) => p === 'color')?.[1]).toBe('var(--status-hold-fg)')
+    expect(rule.find(([p]) => p === 'border-color')?.[1]).toBe('var(--status-hold-line)')
+    for (const file of ['board.js', 'arrange.js', 'charts.js', 'detail.js']) expect(read(file), file).toContain("hold: 'status-hold'")
   })
 
   it('AC-1503.2: 신환 표시 색 --new(#1D4ED8, 목업 Paper.html)·--on-new(#FFFFFF)는 theme.css에 있고, 상태 색(채움·글·테두리)·강조색(--accent)과 다르다', () => {

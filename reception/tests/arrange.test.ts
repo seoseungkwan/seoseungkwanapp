@@ -14,6 +14,9 @@ const WWW = path.join(ROOT, 'reception', 'www')
 /** C# 고르기 목록 ArrangeChoices가 사는 파일 (design.md 4절, TASK-4) */
 const ARRANGE_MARKS_CS = path.join(ROOT, 'helper', 'src', 'Precheck.Core', 'Reception', 'ArrangeMarks.cs')
 const MOCKUP = path.join(ROOT, 'docs', 'mockups', 'reception-arrange', 'Arrange.html')
+/** 수정 묶음 승인 시안(reception-memo-papers, 2026-11-11)과 그 시안이 theme.css에 더한 색(진료보류 진한 노랑 AC-3401.1) */
+const MEMO_PAPERS_MOCKUP = path.join(ROOT, 'docs', 'mockups', 'reception-memo-papers', 'Mock.html')
+const MEMO_PAPERS_ADDED = ['#FFD43B', '#C9A100']
 const PHONE_MOCKUPS = path.join(ROOT, 'docs', 'mockups', 'reception-phone')
 
 type Col = 'xray' | 'sono' | 'carm' | 'pt' | 'ds' | 'eswt' | 'trac'
@@ -950,7 +953,7 @@ describe('REQ-3308 어레인지 모양 (style.css·theme.css)', () => {
     }
   })
 
-  it('AC-3308.12: 새 색은 theme.css :root의 --sono-head·--sono-col·--carm-head·--carm-col·--ptup-bg·--ptup-fg 여섯뿐이고 시안 값이며, SONO·C-ARM 칸과 [PT 먼저] 올라감이 그 색을 쓴다', () => {
+  it('AC-3308.12 · AC-3401.1: 새 색은 theme.css :root의 --sono-head·--sono-col·--carm-head·--carm-col·--ptup-bg·--ptup-fg 여섯(어레인지 시안)과 수정 묶음 시안 Mock.html의 색뿐이고 시안 값이며, SONO·C-ARM 칸과 [PT 먼저] 올라감이 그 색을 쓴다', () => {
     const want: Record<string, string> = {
       '--sono-head': '#F3DC8A',
       '--sono-col': '#FBF4D6',
@@ -961,14 +964,16 @@ describe('REQ-3308 어레인지 모양 (style.css·theme.css)', () => {
     }
     const root = parseRules(readWww('theme.css')).filter((r) => r.selector === ':root' && r.media === '').flatMap((r) => r.decls)
     for (const [name, value] of Object.entries(want)) expect(root.find(([p]) => p === name)?.[1].toUpperCase(), name).toBe(value)
-    // 승인 시안(상표 v12·Paper.html)에 없던 색은 이 여섯뿐이고, 모두 어레인지 시안에 있다
+    // 승인 시안(상표 v12·Paper.html)에 없던 색은 이 여섯(모두 어레인지 시안에 있음)과 수정 묶음 시안의 색(모두 Mock.html에 있음)뿐이다
     const old = new Set<string>()
     for (const page of ['Main.dc.html', 'Detail.dc.html', 'Offline.dc.html', 'Tablet.dc.html', 'Paper.html'])
       for (const c of hexColors(readFileSync(path.join(PHONE_MOCKUPS, page), 'utf8'))) old.add(c)
     const added = [...new Set(hexColors(root.map(([, v]) => v).join(' ')))].filter((c) => !old.has(c)).sort()
-    expect(added).toEqual(Object.values(want).sort())
+    expect(added).toEqual([...Object.values(want), ...MEMO_PAPERS_ADDED].sort())
     const mockup = new Set(hexColors(readFileSync(MOCKUP, 'utf8')))
-    for (const c of added) expect(mockup.has(c), c).toBe(true)
+    for (const c of Object.values(want)) expect(mockup.has(c), c).toBe(true)
+    const memoMockup = new Set(hexColors(readFileSync(MEMO_PAPERS_MOCKUP, 'utf8')))
+    for (const c of MEMO_PAPERS_ADDED) expect(memoMockup.has(c), c).toBe(true)
     expect(cssValue('.arr th.c-sono', 'background')).toBe('var(--sono-head)')
     expect(cssValue('.arr td.c-sono', 'background')).toBe('var(--sono-col)')
     expect(cssValue('.arr th.c-carm', 'background')).toBe('var(--carm-head)')
