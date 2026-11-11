@@ -301,7 +301,7 @@ public class ArrangeMarksTests : IDisposable
 
     // ---- AC-3304.4 고르기 목록 --------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-3304.4 고르기 목록(ArrangeChoices)은 design.md 4절 표 그대로다(부위 15개 + 부위는 나중에, X-ray 찍기, ICE·HP, 30분·50분, 1~4부위, 목·허리)")]
+    [Fact(DisplayName = "AC-3304.4 고르기 목록(ArrangeChoices)은 design.md 4절 표 그대로다(부위 15개 + 부위는 나중에, X-ray 찍기, ICE·HP, 30분·50분, 1~4부위 + 타수×부위 수 16개(AC-3402.1), 목·허리)")]
     public void ChoicesTable()
     {
         var parts = new[] { "목", "등", "허리", "오른 어깨", "왼 어깨", "양 어깨", "팔꿈치", "손목", "고관절", "오른 무릎", "왼 무릎", "양 무릎", "발목", "발바닥", "기타" };
@@ -312,7 +312,8 @@ public class ArrangeMarksTests : IDisposable
         Assert.Equal(parts.Concat(new[] { "부위는 나중에" }), ArrangeChoices.AddOf(ArrangeCol.Carm));
         Assert.Equal(new[] { "ICE", "HP" }, ArrangeChoices.AddOf(ArrangeCol.Pt));
         Assert.Equal(new[] { "30분", "50분" }, ArrangeChoices.AddOf(ArrangeCol.Ds));
-        Assert.Equal(new[] { "1부위", "2부위", "3부위", "4부위" }, ArrangeChoices.AddOf(ArrangeCol.Eswt));
+        var counts = new[] { "1부위", "2부위", "3부위", "4부위" };
+        Assert.Equal(counts.Concat(new[] { "2000타", "3000타", "4000타", "6000타" }.SelectMany(hit => counts.Select(count => hit + " " + count))), ArrangeChoices.AddOf(ArrangeCol.Eswt));
         Assert.Equal(new[] { "목", "허리" }, ArrangeChoices.AddOf(ArrangeCol.Trac));
         foreach (var col in new[] { ArrangeCol.Xray, ArrangeCol.Sono, ArrangeCol.Carm }) Assert.Empty(ArrangeChoices.DetailsOf(col));
         foreach (var col in ArrangeMap.ManualOnly) Assert.Equal(ArrangeChoices.AddOf(col), ArrangeChoices.DetailsOf(col));
