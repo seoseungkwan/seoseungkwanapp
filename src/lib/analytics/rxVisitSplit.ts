@@ -18,16 +18,22 @@ export const ANY_CODE = '' // 처방코드는 한 글자 이상이라 겹치지 
 
 const WEEKDAYS = '월화수목금토일'
 
-type Tally = { new: Set<number>; returning: Set<number> }
-const newTally = (): Tally => ({ new: new Set(), returning: new Set() })
+// seen = 그 줄의 처방을 받은 환자, new = 그중 신환 줄이 하나라도 있는 환자. 한 환자는 한 줄에서 신환이나 재진 한쪽에만 든다
+type Tally = { new: Set<number>; seen: Set<number> }
+const newTally = (): Tally => ({ new: new Set(), seen: new Set() })
 
 const toLine = (code: string, label: string, tally: Tally): RxSplitLine => ({
   code,
   label,
   newPatients: tally.new.size,
-  returning: tally.returning.size,
-  total: tally.new.size + tally.returning.size,
+  returning: tally.seen.size - tally.new.size,
+  total: tally.seen.size,
 })
+
+const count = (tally: Tally, row: VisitRow, isNew: boolean) => {
+  tally.seen.add(row.p)
+  if (isNew) tally.new.add(row.p)
+}
 
 // 코드 차례대로 줄을 낸다. 코드가 둘 이상이면 마지막에 '하나라도' 줄. 그 줄에는 목록에 없는 코드의 줄도 든다(원본 그대로)
 function splitLines(
@@ -39,16 +45,21 @@ function splitLines(
   const tallies = new Map<string, Tally>(codes.map((code) => [code, newTally()]))
   const any = newTally()
   for (const row of rows) {
-    const side = isNew(row) ? 'new' : 'returning'
-    tallies.get(row.c)?.[side].add(row.p)
-    any[side].add(row.p)
+    const rowIsNew = isNew(row)
+    const tally = tallies.get(row.c)
+    if (tally) count(tally, row, rowIsNew)
+    count(any, row, rowIsNew)
   }
   const lines = [...tallies].map(([code, tally]) => toLine(code, names.get(code) || code, tally))
   if (lines.length > 1) lines.push(toLine(ANY_CODE, ANY_LABEL, any))
   return lines
 }
 
-// 원본 summarize. 신환 = 첫 내원일이 기간 첫날 이후
+// 그 진료 줄이 우리 병원 최초 내원일(f)의 방문인지. 기간 셈과 날짜별 셈이 같은 기준을 쓴다
+const isFirstVisitRow = (row: VisitRow) => row.f === row.d
+
+// 원본 summarize. 신환 = 그 진료 줄의 진료일이 우리 병원 최초 내원일(f)인 줄(rx-split-new, 사용자 결정 2026-11-12).
+// 원본은 f가 기간 첫날 이후면 기간 내내 신환이다(골든 knownDiffs). f를 못 찾은 줄('')은 어느 날과도 같지 않아 재진
 export function rxVisitSplit(
   rows: readonly VisitRow[],
   totals: RxSplitTotals,
@@ -65,7 +76,7 @@ export function rxVisitSplit(
     patients: totals.patients,
     newPatients: totals.newPatients,
     returning: totals.patients - totals.newPatients,
-    lines: splitLines(within, codes, names, (row) => compareYmd(row.f, from) >= 0),
+    lines: splitLines(within, codes, names, isFirstVisitRow),
     invalidCodes: totals.invalidCodes ?? 0,
   }
 }
@@ -91,7 +102,7 @@ export function rxVisitSplitDays(
       patients,
       newPatients,
       returning: patients - newPatients,
-      lines: splitLines(rowsByDay.get(date) ?? [], codes, names, (row) => row.f === row.d),
+      lines: splitLines(rowsByDay.get(date) ?? [], codes, names, isFirstVisitRow),
     }))
 }
 

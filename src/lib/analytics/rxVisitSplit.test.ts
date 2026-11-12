@@ -12,9 +12,11 @@ import {
   type VisitRow,
 } from './rxVisitSplit'
 
-// 골든 = 원본(양지바른 2a1069b)을 python3 -I로 가짜 줄에 돌린 결과(scripts/stats/golden/rx_visit_split.py). 시험은 원본 없이 돈다
+// 골든 = 원본(양지바른 2a1069b)을 python3 -I로 가짜 줄에 돌린 결과(scripts/stats/golden/rx_visit_split.py). 시험은 원본 없이 돈다.
+// 머리 knownDiffs의 cases = 사례 이름 → 칸 → 그 사례에서 우리가 내야 할 값(손으로 적음). 적은 칸만 그 값과, 나머지는 원본 결과와 견준다
 
-type Head = { source: string; file: string; entry: string; knownDiffs: { what: string; why: string }[] }
+type KnownDiff = { what: string; why: string; cases?: Record<string, Record<string, unknown>> }
+type Head = { source: string; file: string; entry: string; knownDiffs: KnownDiff[] }
 type OriginalRow = { p: string; d: string; c: string; f: string }
 type OriginalDay = { d: string; visits: number; patients: number; new_patients: number }
 type OriginalResponse = {
@@ -36,7 +38,7 @@ const GOLDEN_DIR = new URL('../../../fixtures/stats/golden/', import.meta.url)
 const read = <T,>(name: string): T => JSON.parse(readFileSync(new URL(`rx-visit-split-${name}.json`, GOLDEN_DIR), 'utf8')) as T
 
 const INPUT = read<InputFile>('input')
-const SUMMARY = read<GoldenFile<{ result: unknown }>>('summary')
+const SUMMARY = read<GoldenFile<{ result: Record<string, unknown> }>>('summary')
 const DAYS = read<GoldenFile<{ result: unknown }>>('days')
 const TEXT = read<GoldenFile<{ headline: string; text: string; daysText: string }>>('text')
 const NAMES = INPUT.cases.map((c) => c.name)
@@ -72,9 +74,14 @@ const daysOf = (name: string) => {
   return rxVisitSplitDays(rows, days, codes, NO_NAMES)
 }
 const goldenOf = <T extends { name: string }>(file: { cases: T[] }, name: string) => file.cases.find((c) => c.name === name)!
+// 그 사례에서 knownDiffs가 원본과 다르게 적은 칸(없으면 빈 객체)
+const oursOf = (file: Head, name: string): Record<string, unknown> => Object.assign({}, ...file.knownDiffs.map((diff) => diff.cases?.[name] ?? {}))
 
 // 원본 줄에는 code 칸이 없다(골든 knownDiffs)
 const withoutCode = (lines: readonly RxSplitLine[]) => lines.map(({ label, newPatients, returning, total }) => ({ label, newPatients, returning, total }))
+
+const ROW = (p: number, d: string, c: string, f: string): VisitRow => ({ p, d, c, f })
+const TOTALS = { visits: 9, patients: 8, newPatients: 3 }
 
 describe('골든 파일', () => {
   it.each([
@@ -108,13 +115,11 @@ describe('골든 파일', () => {
 })
 
 describe('AC-509.1 rxVisitSplit — 원본 summarize', () => {
-  it.each(NAMES)('%s: 골든과 순서까지 같다', (name) => {
+  it.each(NAMES)('%s: 골든과 순서까지 같다(knownDiffs cases에 적은 칸은 그 값, AC-3802.1)', (name) => {
     const { lines, ...rest } = splitOf(name)
-    expect({ ...rest, lines: withoutCode(lines) }).toEqual(goldenOf(SUMMARY, name).result)
+    expect({ ...rest, lines: withoutCode(lines) }).toEqual({ ...goldenOf(SUMMARY, name).result, ...oursOf(SUMMARY, name) })
   })
 
-  const ROW = (p: number, d: string, c: string, f: string): VisitRow => ({ p, d, c, f })
-  const TOTALS = { visits: 9, patients: 8, newPatients: 3 }
   const RANGE = { from: '2026-10-01', to: '2026-10-31' }
 
   it('처방 줄의 code는 처방코드, 하나라도 줄의 code는 ANY_CODE다', () => {
@@ -176,6 +181,101 @@ describe('AC-509.1 rxVisitSplit — 원본 summarize', () => {
   })
 })
 
+// rx-split-new: 신환 = 우리 병원 최초 내원일(f)에 받은 처방. 차트번호·처방코드는 가짜(X·Y)
+describe('REQ-3801 rxVisitSplit — 기간 처방 줄은 최초 내원일(f)에 받은 처방만 신환', () => {
+  const RANGE_30 = { from: '2026-10-01', to: '2026-10-30' }
+  const A = 1
+  const B = 2
+  const C = 3
+  const D = 4
+  const split = (rows: VisitRow[], codes: string[]) => rxVisitSplit(rows, TOTALS, codes, RANGE_30, NO_NAMES).lines
+
+  it('AC-3801.1: f(10-15)에 받은 X는 신환 1·재진 0, 다시 온 날(10-20) 받은 Y는 신환 0·재진 1', () => {
+    const rows = [ROW(A, '2026-10-15', 'X', '2026-10-15'), ROW(A, '2026-10-20', 'Y', '2026-10-15')]
+    expect(split(rows, ['X', 'Y']).slice(0, 2)).toEqual([
+      { code: 'X', label: 'X', newPatients: 1, returning: 0, total: 1 },
+      { code: 'Y', label: 'Y', newPatients: 0, returning: 1, total: 1 },
+    ])
+  })
+
+  it('AC-3801.2: 같은 X를 f 날과 그 뒤 날 모두 받으면 X 줄은 신환 1·재진 0·합계 1(줄 차례와 상관없다)', () => {
+    const later = ROW(A, '2026-10-22', 'X', '2026-10-15')
+    const first = ROW(A, '2026-10-15', 'X', '2026-10-15')
+    for (const rows of [[first, later], [later, first]]) {
+      expect(split(rows, ['X'])).toEqual([{ code: 'X', label: 'X', newPatients: 1, returning: 0, total: 1 }])
+    }
+  })
+
+  it('AC-3801.2: 하나라도 줄 — f 날 진료 줄이 하나라도 있으면 신환, f가 기간 안이어도 f 날 줄 없이 다른 날만 있으면 재진', () => {
+    const rows = [
+      ROW(A, '2026-10-20', 'Y', '2026-10-15'),
+      ROW(A, '2026-10-15', 'X', '2026-10-15'), // A: f 날 줄이 있다 → 신환
+      ROW(B, '2026-10-12', 'Y', '2026-10-10'), // B: f(10-10)가 기간 안이지만 그날 줄이 없다 → 재진
+      ROW(B, '2026-10-18', 'X', '2026-10-10'),
+    ]
+    const lines = split(rows, ['X', 'Y'])
+    expect(lines.at(-1)).toEqual({ code: ANY_CODE, label: ANY_LABEL, newPatients: 1, returning: 1, total: 2 })
+    expect(lines.slice(0, 2).map(({ newPatients, returning, total }) => [newPatients, returning, total])).toEqual([
+      [1, 1, 2],
+      [0, 2, 2],
+    ])
+  })
+
+  it('AC-3801.3: f가 빈 글자인 줄, f가 기간 첫날 전인 환자의 줄은 모두 재진이다(지금 규칙 그대로)', () => {
+    const rows = [
+      ROW(C, '2026-10-05', 'X', ''),
+      ROW(C, '2026-10-06', 'Y', ''),
+      ROW(D, '2026-10-01', 'X', '2026-09-30'),
+      ROW(D, '2026-10-29', 'Y', '2026-09-30'),
+    ]
+    expect(split(rows, ['X', 'Y'])).toEqual([
+      { code: 'X', label: 'X', newPatients: 0, returning: 2, total: 2 },
+      { code: 'Y', label: 'Y', newPatients: 0, returning: 2, total: 2 },
+      { code: ANY_CODE, label: ANY_LABEL, newPatients: 0, returning: 2, total: 2 },
+    ])
+  })
+})
+
+describe('REQ-3802 골든 머리 knownDiffs — 원본과 일부러 다른 곳', () => {
+  const RULE = '신환은 진료일이 우리 병원 최초 내원일(f)인 줄'
+  type Line = { label: string; newPatients: number; returning: number; total: number }
+  const ruleOf = (file: Head) => {
+    const diffs = file.knownDiffs.filter((diff) => diff.cases !== undefined)
+    expect(diffs.map((diff) => diff.what)).toEqual([RULE])
+    return diffs[0] as Required<KnownDiff>
+  }
+
+  it('AC-3802.1: 요약·글 머리에 이 차이 한 줄(what·why·cases)이 있고 cases에는 five-codes만 있다. 날짜별 머리에는 없다', () => {
+    for (const file of [SUMMARY, TEXT]) {
+      const diff = ruleOf(file)
+      expect(diff.why).not.toBe('')
+      expect(Object.keys(diff.cases)).toEqual(['five-codes'])
+    }
+    expect(DAYS.knownDiffs.some((diff) => diff.cases !== undefined)).toBe(false)
+  })
+
+  it('AC-3802.1: 요약 five-codes는 lines 칸만 — 도수 줄 신환 0·재진 2·합계 2, 하나라도 줄 3·4·7, 나머지 줄은 원본 그대로', () => {
+    const ours = ruleOf(SUMMARY).cases['five-codes']
+    expect(Object.keys(ours)).toEqual(['lines'])
+    const original = goldenOf(SUMMARY, 'five-codes').result.lines as Line[]
+    const lines = ours.lines as Line[]
+    expect(lines.map((line) => line.label)).toEqual(original.map((line) => line.label))
+    expect(lines.filter((line, i) => JSON.stringify(line) !== JSON.stringify(original[i]))).toEqual([
+      { label: '도수', newPatients: 0, returning: 2, total: 2 },
+      { label: ANY_LABEL, newPatients: 3, returning: 4, total: 7 },
+    ])
+  })
+
+  it('AC-3802.1: 글 five-codes는 text 칸만 — 원본 글에서 도수·하나라도 두 줄만 바뀐다', () => {
+    const ours = ruleOf(TEXT).cases['five-codes']
+    expect(Object.keys(ours)).toEqual(['text'])
+    const original = goldenOf(TEXT, 'five-codes').text.split('\n')
+    const lines = (ours.text as string).split('\n')
+    expect(lines).toHaveLength(original.length)
+    expect(lines.filter((line, i) => line !== original[i])).toEqual(['도수               0명    2명    2명', '고른 처방 중 하나라도     3명    4명    7명'])
+  })
+})
+
 describe('AC-509.2 rxVisitSplitDays — 원본 summarize_days', () => {
   it.each(NAMES)('%s: 골든과 순서까지 같다', (name) => {
     const days = daysOf(name).map(({ lines, ...rest }) => ({ ...rest, lines: withoutCode(lines) }))
@@ -194,16 +294,19 @@ describe('AC-509.2 rxVisitSplitDays — 원본 summarize_days', () => {
 })
 
 describe('AC-509.3 글 — 원본 headline·format_text·format_days_text', () => {
+  // knownDiffs cases에 적은 칸은 그 값, 나머지는 원본 글(AC-3802.1)
+  const textOf = (name: string) => ({ ...goldenOf(TEXT, name), ...oursOf(TEXT, name) }) as { headline: string; text: string; daysText: string }
+
   it.each(NAMES)('%s: rxVisitHeadline이 골든과 같다', (name) => {
-    expect(rxVisitHeadline(splitOf(name))).toBe(goldenOf(TEXT, name).headline)
+    expect(rxVisitHeadline(splitOf(name))).toBe(textOf(name).headline)
   })
 
   it.each(NAMES)('%s: formatRxVisitSplit이 골든과 같다', (name) => {
-    expect(formatRxVisitSplit(INPUT.hospital, splitOf(name))).toBe(goldenOf(TEXT, name).text)
+    expect(formatRxVisitSplit(INPUT.hospital, splitOf(name))).toBe(textOf(name).text)
   })
 
   it.each(NAMES)('%s: formatRxVisitSplitDays가 골든과 같다', (name) => {
-    expect(formatRxVisitSplitDays(INPUT.hospital, splitOf(name), daysOf(name))).toBe(goldenOf(TEXT, name).daysText)
+    expect(formatRxVisitSplitDays(INPUT.hospital, splitOf(name), daysOf(name))).toBe(textOf(name).daysText)
   })
 
   it('글에 차트번호가 없다', () => {

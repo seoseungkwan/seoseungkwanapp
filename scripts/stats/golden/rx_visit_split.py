@@ -26,10 +26,36 @@ SHARED_DIFFS = [
     NAME_DIFF,
     {"what": "eswt 인자 없음", "why": "ESWT 묶음은 범위 밖이다(design.md TASK-9). 원본도 끔으로 돌렸다"},
 ]
+# 일부러 다르게 한 사례(rx-split-new): cases = 사례 이름 → 칸 → 그 사례에서 우리 함수가 내야 할 값. 우리 코드를 돌리지 않고 손으로 적는다.
+# 시험은 적은 사례·칸만 이 값과, 나머지는 원본 결과와 견준다. 숫자가 바뀌는 사례는 five-codes뿐이고 summarize_days는 원본과 같다
+NEW_RULE = {
+    "what": "신환은 진료일이 우리 병원 최초 내원일(f)인 줄",
+    "why": "사용자 결정(2026-11-12): 우리 병원 방문 자체가 처음인 날 받은 처방만 신환이다. 원본은 f가 기간 첫날 이후면 그 환자의 기간 안 줄이 모두 신환이라, 기간 안에 처음 오고 다시 온 환자가 다시 온 날 받은 처방도 신환이었다. 한 줄에서 한 환자는 한 번만 센다(그 줄의 진료 줄 중 하나라도 f 날이면 신환)",
+}
 SUMMARY_DIFFS = SHARED_DIFFS + [
     {"what": "기간 밖 진료 줄을 뺀다", "why": "원본은 validate_split이 기간 안 줄만 들여보낸다. Worker 메모리에는 불러온 범위 전체가 있어 함수가 거른다. 입력이 같으면 결과가 같다"},
+    {**NEW_RULE, "cases": {"five-codes": {"lines": [
+        {"label": "LA358", "newPatients": 2, "returning": 2, "total": 4},
+        {"label": "MM042", "newPatients": 1, "returning": 1, "total": 2},
+        {"label": "도수", "newPatients": 0, "returning": 2, "total": 2},
+        {"label": "B4001", "newPatients": 1, "returning": 0, "total": 1},
+        {"label": "ZZ999", "newPatients": 0, "returning": 0, "total": 0},
+        {"label": "고른 처방 중 하나라도", "newPatients": 3, "returning": 4, "total": 7},
+    ]}}},
 ]
-TEXT_DIFFS = [NAME_DIFF]
+TEXT_DIFFS = [NAME_DIFF, {**NEW_RULE, "cases": {"five-codes": {"text": "\n".join([
+    "가상의원",
+    "처방별 신환·재진",
+    "2026-10-01 ~ 2026-10-19 (19일) · 외래 환자 50명 (신환 7명 · 재진 43명) · 내원 75건",
+    "",
+    "처방             신환   재진   합계",
+    "LA358            2명    2명    4명",
+    "MM042            1명    1명    2명",
+    "도수               0명    2명    2명",
+    "B4001            1명    0명    1명",
+    "ZZ999            0명    0명    0명",
+    "고른 처방 중 하나라도     3명    4명    7명",
+])}}}]
 
 
 def load_original():
