@@ -1,5 +1,5 @@
-// 처방별 추세 개인정보 E2E(treatment-trend REQ-1213, AC-1213.4): 실제 Supabase 시험 계정 + 가짜 비트 파일.
-// 본 시험은 사용자가 20261105000100_stats_rx_groups.sql을 운영 Supabase에 붙이고 시험 계정(.env.local)이 있어야 돈다.
+// 처방별 추세 개인정보 E2E(treatment-trend REQ-1213, AC-1213.4 · rx-group-exclude AC-2709.2): 실제 Supabase 시험 계정 + 가짜 비트 파일.
+// 본 시험은 사용자가 20261105000100_stats_rx_groups.sql과 20261112000100_stats_rx_groups_exclude.sql을 운영 Supabase에 붙이고 시험 계정(.env.local)이 있어야 돈다.
 // 돌리는 법: `npm run e2e -- e2e/treatment-trend-privacy.spec.ts` (next build가 먼저 돈다: 다른 일이 없을 때).
 // 시험 계정 값이 없으면 `npm run e2e`의 시작 전 검사(e2e/preflight.ts)가 빌드·시험 전에 멈춘다. `npm test`(Vitest)는 *.spec.ts를 잡지 않는다.
 // 처음 돌릴 때는 기대값 하나를 일부러 틀려 실패를 본 뒤 되돌린다(시험이 헛돌지 않는지, tasks.md TASK-16)
@@ -27,7 +27,8 @@ const FILE_NAME = 'fake-treatment-trend-privacy.csv'
 const TEST_GROUP = '시험 묶음'
 // AC-1213.4 글자 그대로: 저장된 일 줄 groups의 id 모양. 앱 상수(GROUP_KEY)를 쓰지 않고 따로 적는다
 const STORED_KEY = /^t[0-9a-f]{16}$/
-const GROUP_BODY_KEYS = ['codes', 'id', 'name', 'sort_order']
+// AC-2709.2: 제외할 처방 칸(exclude_codes)이 더해져 다섯이다(treatment-trend AC-1213.4의 넷을 대신한다)
+const GROUP_BODY_KEYS = ['codes', 'exclude_codes', 'id', 'name', 'sort_order']
 const DAY_GROUP_KEYS = ['id', 'newPatients', 'patients', 'returning']
 // 머리 검사에서 뺀다(AC-1213.4): 세션 값이라 읽지도 찍지도 않는다
 const SKIPPED_HEADERS = new Set(['authorization', 'apikey', 'cookie'])
@@ -135,12 +136,12 @@ const SAFE_CODE = /^[A-Za-z0-9_]{1,16}$/
 function failIf(error: { code?: unknown } | null, doing: string): void {
   if (error === null) return
   const code = typeof error.code === 'string' && SAFE_CODE.test(error.code) ? error.code : '오류 코드 없음'
-  throw new Error(`${doing} 못했어요(${code}) — 운영 SQL(stats_rx_groups)을 붙였는지 확인해 주세요`)
+  throw new Error(`${doing} 못했어요(${code}) — 운영 SQL(stats_rx_groups, stats_rx_groups_exclude)을 붙였는지 확인해 주세요`)
 }
 
-type GroupRow = { name: string; codes: string[]; sort_order: number }
+type GroupRow = { name: string; codes: string[]; exclude_codes: string[]; sort_order: number }
 async function readGroupRows(sb: SupabaseClient): Promise<GroupRow[]> {
-  const { data, error } = await sb.from(TABLE).select('name, codes, sort_order').order('sort_order')
+  const { data, error } = await sb.from(TABLE).select('name, codes, exclude_codes, sort_order').order('sort_order')
   failIf(error, '통계 묶음을 읽지')
   return (data ?? []) as GroupRow[]
 }
@@ -185,7 +186,7 @@ test.describe('처방별 추세 개인정보(실제 Supabase)', () => {
     expect(await readGroupRows(sb), '시험 계정의 통계 묶음을 모두 지웠다').toEqual([])
   })
 
-  test('AC-1213.4: 묶음을 고쳐 저장하고 파일을 넣어 저장해도 개인 값이 나가지 않고, 묶음 저장 본문은 열쇠 넷, 저장된 일 줄의 묶음 줄은 열쇠와 세 숫자뿐이다', async ({
+  test('AC-1213.4·AC-2709.2: 묶음을 고쳐(제외할 처방 하나 포함) 저장하고 파일을 넣어 저장해도 개인 값이 나가지 않고, 묶음 저장 본문은 열쇠 다섯, 저장된 일 줄의 묶음 줄은 열쇠와 세 숫자뿐이다', async ({
     page,
     context,
     accounts,
@@ -200,6 +201,8 @@ test.describe('처방별 추세 개인정보(실제 Supabase)', () => {
     const A = listed[0]?.[col('처방코드')]
     const B = listed.find((row) => row[col('처방코드')] !== A)?.[col('처방코드')]
     if (A === undefined || B === undefined) throw new Error('가짜 표에 찾기 목록에 나올 처방이 둘 없어요')
+    // AC-2709.2: 새 묶음(처방 B)에 넣을 제외할 처방. A·B와 다른 셋째 처방, 없으면 다른 묶음에 든 A(다른 묶음의 처방도 제외할 처방이 될 수 있다)
+    const C = listed.find((row) => row[col('처방코드')] !== A && row[col('처방코드')] !== B)?.[col('처방코드')] ?? A
 
     await accounts.signIn(context, 'approved')
     const watch = watchOutgoing(context, values)
@@ -245,6 +248,15 @@ test.describe('처방별 추세 개인정보(실제 Supabase)', () => {
     await page.getByRole('button', { name: '+ 묶음 더하기', exact: true }).click()
     await page.getByRole('textbox', { name: '묶음 이름', exact: true }).last().fill(TEST_GROUP)
     await addCode(adders.last(), B)
+    // AC-2709.2: 새 묶음에 제외할 처방 C 하나. 고르면 그 줄은 '제외에 있음'으로 막힌다
+    await page.getByRole('button', { name: '+ 제외할 처방 넣기', exact: true }).last().click()
+    const excludeSearch = page.getByRole('textbox', { name: '제외할 처방 찾기' })
+    await excludeSearch.fill(C)
+    const excludeOption = page.getByRole('list', { name: '찾은 처방' }).getByRole('button').filter({ hasText: C }).first()
+    await expect(excludeOption).toBeVisible(SLOW)
+    await excludeOption.click()
+    await expect(excludeOption).toBeDisabled(SLOW)
+    await excludeSearch.press('Escape')
 
     const [savedGroups] = await Promise.all([posted(page, SAVE_PATH), page.getByRole('button', { name: '저장', exact: true }).click()])
     expect(savedGroups.ok(), '통계 묶음 저장').toBe(true)
@@ -254,9 +266,13 @@ test.describe('처방별 추세 개인정보(실제 Supabase)', () => {
     // 저장된 묶음: 고친 그대로이고 개인 값이 없다. 이 묶음의 열쇠가 다음 불러오기에서 세어져야 한다
     const storedGroups = await readGroupRows(sb)
     expect(storedGroups.find((group) => group.name === TEST_GROUP)?.codes, '새 묶음에 처방 B만 있다').toEqual([B])
+    expect(storedGroups.find((group) => group.name === TEST_GROUP)?.exclude_codes, '새 묶음의 제외할 처방은 C 하나다').toEqual([C])
     expect(storedGroups.some((group) => group.codes.includes(A)), '처방 A가 든 묶음이 있다').toBe(true)
-    for (const group of storedGroups) expect(scan('', `${group.name}\n${group.codes.join('\n')}`, values)).toEqual([])
-    const expectedKeys = [...new Set(storedGroups.filter((group) => group.codes.length > 0).map((group) => groupKey(group.codes)))].sort()
+    for (const group of storedGroups) expect(scan('', `${group.name}\n${[...group.codes, ...group.exclude_codes].join('\n')}`, values)).toEqual([])
+    // AC-2709.2: 저장된 일 줄의 묶음 열쇠는 넣은 처방과 제외할 처방으로 만든 지문이다
+    const expectedKeys = [
+      ...new Set(storedGroups.filter((group) => group.codes.length > 0).map((group) => groupKey(group.codes, group.exclude_codes))),
+    ].sort()
 
     // 3) 다시 넣기: 저장한 묶음으로 세어 일 숫자에 묶음 줄이 함께 저장된다
     const daysBefore = watch.days.length
@@ -270,7 +286,7 @@ test.describe('처방별 추세 개인정보(실제 Supabase)', () => {
     expect(count(watch, 'GET', GROUPS_PATH)).toBeGreaterThan(0)
     expect(count(watch, 'POST', SAVE_PATH)).toBeGreaterThanOrEqual(1)
     expect(watch.groups.length).toBe(count(watch, 'POST', SAVE_PATH))
-    // AC-1213.4: save_stats_rx_groups 본문의 묶음 열쇠는 id·name·codes·sort_order뿐(hospital_id 등 없음)
+    // AC-1213.4·AC-2709.2: save_stats_rx_groups 본문의 묶음 열쇠는 id·name·codes·exclude_codes·sort_order뿐(hospital_id 등 없음)
     for (const body of watch.groups) {
       const { top, items } = saveBodyKeys(body)
       expect(top).toEqual(['groups'])
