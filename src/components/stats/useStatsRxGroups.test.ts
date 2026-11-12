@@ -6,12 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { listStatsRxGroups, saveStatsRxGroups } from '@/lib/storage/statsRxGroups'
 import type { RxGroupDef } from '@/types/analysis'
 import type { DayPayload } from '@/types/payload'
-import type { RxGroup } from '@/types/rxGroups'
-import { groupDefs, groupKey } from './treatmentView'
+import type { StatsRxGroup } from '@/types/rxGroups'
+import { groupCond, groupDefs, groupKey, groupOut } from './treatmentView'
 import { FOR_LOAD_LIMIT_MS, useStatsRxGroups } from './useStatsRxGroups'
 
-// 처방별 추세 묶음 훅 (treatment-trend REQ-1204·1205·1211·1213, design.md '묶음 훅'). 저장 코드는 가짜다. 처방·묶음은 모두 지어낸 값이다.
-// 가짜 서버는 메모리의 줄을 실제처럼 바꾼다: 저장은 목록 통째 바꾸기이고 id 없는 줄에 새 id를 준다.
+// 처방별 추세 묶음 훅 (treatment-trend REQ-1204·1205·1211·1213, group-exclude REQ-3712, design.md '묶음 훅'). 저장 코드는 가짜다. 처방·묶음은 모두 지어낸 값이다.
+// 가짜 서버는 메모리의 줄을 실제처럼 바꾼다: 저장은 목록 통째 바꾸기이고 id 없는 줄에 새 id를 준다. 빼는 처방(out)·조건(cond)은 받은 그대로 둔다.
 // 요청은 sent에 차례대로 적히고, holdNext로 답을 잡아 두거나(열지 않으면 끝나지 않음) failNext로 실패시킨다
 
 vi.mock('@/lib/storage/statsRxGroups', () => ({
@@ -32,9 +32,9 @@ function makeGate(): Gate {
   return { open, fail, wait }
 }
 
-let stored: RxGroup[]
+let stored: StatsRxGroup[]
 let sent: Label[]
-let saves: RxGroup[][]
+let saves: StatsRxGroup[][]
 let gates: Map<Label, Gate[]>
 let failing: Map<Label, number>
 let nextId: number
@@ -57,7 +57,14 @@ const holdNext = (label: Label) => {
   return gate
 }
 const failNext = (label: Label, times = 1) => failing.set(label, times)
-const copy = (rows: readonly RxGroup[]) => rows.map((row) => ({ ...row, codes: [...row.codes] }))
+// 깊은 복사. 없던 out·cond 칸은 만들지 않는다
+const copyRow = ({ out, cond, ...row }: StatsRxGroup): StatsRxGroup => ({
+  ...row,
+  codes: [...row.codes],
+  ...(out ? { out: [...out] } : {}),
+  ...(cond ? { cond: cond.map((item) => ({ code: item.code, unless: [...item.unless] })) } : {}),
+})
+const copy = (rows: readonly StatsRxGroup[]) => rows.map(copyRow)
 
 // ── 가짜 일 줄 ──────────────────────────────────────────
 type Rx = DayPayload['rx'][number]
@@ -80,16 +87,21 @@ const NO_DAYS: readonly DayPayload[] = []
 const DAYS: readonly DayPayload[] = [day('2026-10-20', ['도수', 'ESWT1', 'AA254']), day('2026-11-02', ['eswt7', 'CARM1', 'SONO1', 'CRYO'])]
 const OTHER_DAYS: readonly DayPayload[] = [day('2026-11-03', ['ESWT9', 'CRYO2'])]
 
-const group = (name: string, codes: string[], sortOrder: number, id: string | null = `s${sortOrder}`): RxGroup => ({ id, name, codes, sortOrder })
+const group = (name: string, codes: string[], sortOrder: number, id: string | null = `s${sortOrder}`): StatsRxGroup => ({ id, name, codes, sortOrder })
 const SUGGESTED_NAMES = ['도수치료', '체외충격파', 'C-arm 주사', '초음파', '냉동치료']
-const SUGGESTED_FROM_DAYS: RxGroup[] = [
+const SUGGESTED_FROM_DAYS: StatsRxGroup[] = [
   group('도수치료', ['도수'], 0, null),
   group('체외충격파', ['ESWT1', 'eswt7'], 1, null),
   group('C-arm 주사', ['CARM1'], 2, null),
   group('초음파', ['SONO1'], 3, null),
   group('냉동치료', ['CRYO'], 4, null),
 ]
-const SAVED: RxGroup[] = [group('물리치료 묶음', ['PT1', 'PT2'], 0, 'g-a'), group('주사 묶음', ['INJ1'], 1, 'g-b')]
+const SAVED: StatsRxGroup[] = [group('물리치료 묶음', ['PT1', 'PT2'], 0, 'g-a'), group('주사 묶음', ['INJ1'], 1, 'g-b')]
+// 빼는 처방·조건이 든 저장된 묶음(group-exclude). 조건 글자는 소문자·겹침 그대로 저장돼 있다(정의에서만 keptCond로 고른다)
+const EXCLUDING: StatsRxGroup[] = [
+  { ...group('기본 PT', ['PT1', 'PT2', 'HOT1'], 0, 'g-pt'), out: ['MANU1', 'ESWT1'], cond: [{ code: 'hot1', unless: ['ict1', 'ICT1'] }] },
+  group('주사 묶음', ['INJ1'], 1, 'g-b'),
+]
 
 beforeEach(() => {
   stored = []
@@ -106,7 +118,7 @@ beforeEach(() => {
     .mockImplementation((after) => {
       saves.push(copy(after))
       return request('save', () => {
-        stored = after.map((row) => ({ ...row, id: row.id ?? `n${nextId++}`, codes: [...row.codes] }))
+        stored = copy(after).map((row) => ({ ...row, id: row.id ?? `n${nextId++}` }))
         return copy(stored)
       })
     })
@@ -545,6 +557,122 @@ describe('AC-1205.9 기다림 한도 5초', () => {
     await advance(0)
     expect(outcome.defs).toEqual(groupDefs(SAVED))
     expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
+describe('AC-3712.1 빼는 처방·조건이 든 묶음', () => {
+  const hasExtra = (row: object) => 'out' in row || 'cond' in row
+
+  it('AC-3712.1 훅의 묶음 타입은 StatsRxGroup이다(매출 RxGroup 타입을 쓰지 않는다)', () => {
+    const text = readFileSync(join(process.cwd(), 'src/components/stats/useStatsRxGroups.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|\s)\/\/.*$/gm, '$1')
+    expect(text).toContain('StatsRxGroup')
+    expect(text).not.toMatch(/\bRxGroup\b/)
+  })
+
+  it('AC-3712.1 저장된 묶음에 빼는 처방·조건이 있으면 groups에 받은 그대로 있다(sortOrder 차례)', async () => {
+    stored = copy([EXCLUDING[1], EXCLUDING[0]])
+    const view = await ready(draw(DAYS))
+    expect(view.result.current.groups).toStrictEqual(EXCLUDING)
+    expect(groupOut(view.result.current.groups[0])).toEqual(['MANU1', 'ESWT1'])
+    expect(groupCond(view.result.current.groups[0])).toEqual([{ code: 'hot1', unless: ['ict1', 'ICT1'] }])
+    expect(view.result.current.suggested).toBe(false)
+  })
+
+  it('AC-3712.1 forLoad 정의는 groupDefs(그 묶음)이고 out·cond(keptCond)가 실린다. 빼는 처방이 없는 묶음은 지금 모양 그대로다', async () => {
+    stored = copy(EXCLUDING)
+    const view = await ready(draw(DAYS))
+    const defs = await forLoadNow(view)
+    expect(defs).toStrictEqual(groupDefs(EXCLUDING))
+    expect(defs[0]).toStrictEqual({
+      id: groupKey(['PT1', 'PT2', 'HOT1'], { out: ['MANU1', 'ESWT1'], cond: [{ code: 'hot1', unless: ['ict1', 'ICT1'] }] }),
+      codes: ['PT1', 'PT2', 'HOT1'],
+      out: ['MANU1', 'ESWT1'],
+      cond: [{ code: 'HOT1', unless: ['ICT1'] }],
+    })
+    expect(defs[0].id).not.toBe(groupKey(['PT1', 'PT2', 'HOT1']))
+    expect(defs[1]).toStrictEqual({ id: groupKey(['INJ1']), codes: ['INJ1'] })
+    expect(sent).toEqual(['list'])
+    expect(saveStatsRxGroups).not.toHaveBeenCalled()
+  })
+
+  it('AC-3712.1 다른 기기에서 빼는 처방·조건을 더한 줄은 forLoad가 다시 읽어 groups가 되고 그 정의를 낸다', async () => {
+    stored = copy(SAVED)
+    const view = await ready(draw(DAYS))
+    stored = copy(EXCLUDING)
+    const defs = await forLoadNow(view)
+    expect(defs).toStrictEqual(groupDefs(EXCLUDING))
+    expect(view.result.current.groups).toStrictEqual(EXCLUDING)
+    expect(saveStatsRxGroups).not.toHaveBeenCalled()
+  })
+
+  it('AC-3712.1 다시 읽기가 실패하면 화면에 있는 빼는 처방 묶음의 정의(out·cond 실림)로 풀린다', async () => {
+    stored = copy(EXCLUDING)
+    const view = await ready(draw(DAYS))
+    failNext('list')
+    const defs = await forLoadNow(view)
+    expect(defs).toStrictEqual(groupDefs(EXCLUDING))
+    expect(defs[0].out).toEqual(['MANU1', 'ESWT1'])
+  })
+
+  it('AC-3712.1 제안 다섯은 빼는 처방·조건이 없다(groups·forLoad의 제안 저장·정의 모두)', async () => {
+    const view = await ready(draw(DAYS))
+    expect(view.result.current.groups.some(hasExtra)).toBe(false)
+    const defs = await forLoadNow(view)
+    expect(saves).toHaveLength(1)
+    expect(saves[0].some(hasExtra)).toBe(false)
+    expect(defs.some(hasExtra)).toBe(false)
+    expect(view.result.current.groups.some(hasExtra)).toBe(false)
+  })
+
+  it('AC-3712.1 save는 받은 out·cond를 그대로 저장 코드에 넘기고, 돌려받은 줄이 groups가 되며 다음 forLoad 정의에 실린다', async () => {
+    stored = copy(SAVED)
+    const view = await ready(draw(DAYS))
+    const edited: StatsRxGroup[] = [
+      { ...SAVED[0], out: ['MANU1'], cond: [{ code: 'PT2', unless: ['ICT1', 'TENS1'] }] },
+      SAVED[1],
+    ]
+    let ok: boolean | null = null
+    await act(async () => {
+      ok = await view.result.current.save(edited)
+    })
+    expect(ok).toBe(true)
+    expect(saves).toStrictEqual([edited])
+    expect(view.result.current.groups).toStrictEqual(edited)
+
+    sent.length = 0
+    const defs = await forLoadNow(view)
+    expect(sent).toEqual(['list'])
+    expect(defs).toStrictEqual(groupDefs(edited))
+    expect(defs[0]).toMatchObject({ out: ['MANU1'], cond: [{ code: 'PT2', unless: ['ICT1', 'TENS1'] }] })
+  })
+
+  it('AC-3712.1 save로 빼는 처방·조건을 모두 지운 묶음은 빈 칸을 만들지 않고 넘긴다(지금 모양 그대로)', async () => {
+    stored = copy(EXCLUDING)
+    const view = await ready(draw(DAYS))
+    const plain = group('기본 PT', ['PT1', 'PT2', 'HOT1'], 0, 'g-pt')
+    await act(async () => {
+      await view.result.current.save([plain, EXCLUDING[1]])
+    })
+    expect(saves).toStrictEqual([[plain, EXCLUDING[1]]])
+    expect(view.result.current.groups.some(hasExtra)).toBe(false)
+  })
+})
+
+describe('AC-3712.3 묶음은 React 상태와 서버 표에만', () => {
+  it('AC-3712.3 빼는 처방·조건이 든 묶음을 읽고 저장하고 불러와도 브라우저 저장소에 아무것도 넣지 않는다', async () => {
+    window.localStorage.clear()
+    window.sessionStorage.clear()
+    stored = copy(EXCLUDING)
+    const view = await ready(draw(DAYS))
+    await act(async () => {
+      await view.result.current.save([{ ...EXCLUDING[0], out: ['MANU1'] }, EXCLUDING[1]])
+    })
+    await forLoadNow(view)
+    expect(window.localStorage.length).toBe(0)
+    expect(window.sessionStorage.length).toBe(0)
+    expect(document.cookie).toBe('')
   })
 })
 
