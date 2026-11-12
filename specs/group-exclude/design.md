@@ -65,7 +65,7 @@ export const groupOut = (group: StatsRxGroup): string[] => group.out ?? []
 export const groupCond = (group: StatsRxGroup): RxCond[] => group.cond ?? []
 ```
 - 매출 `RxGroup`은 그대로다. 통계 묶음 코드(`statsRxGroups.ts`·`useStatsRxGroups`·`treatmentEdit`·`treatmentView`·화면)는 `StatsRxGroup`을 쓰고, 칸은 늘 `groupOut`·`groupCond`로 읽는다
-- 두 칸을 **선택 칸**으로 두는 까닭: 지금 `RxGroup` 값(제안 다섯·시험 자료·여러 화면)이 그대로 `StatsRxGroup`이라, TASK를 Phase로 나눠 고쳐도 Phase 끝마다 타입 검사(`next build`)가 지난다. 읽기 코드는 DB 값을 늘 채우고(null → 빈 배열), 고치기 함수·`forSave`는 늘 두 칸을 채운 묶음을 돌려준다
+- 두 칸을 **선택 칸**으로 두는 까닭: 지금 `RxGroup` 값(제안 다섯·시험 자료·여러 화면)이 그대로 `StatsRxGroup`이라, TASK를 Phase로 나눠 고쳐도 Phase 끝마다 타입 검사(`next build`)가 지난다. 읽기 코드는 DB 값을 늘 채우고(null → 빈 배열), 고치기 함수·`forSave`·`copyGroupDef`는 빈 `out`·`cond`를 새로 만들지 않는다(있던 칸만 새 배열로 돌려준다. tasks.md '타입 검사'와 같음)
 - `RxGroupDef`는 `analysis.ts`에 같은 모양을 따로 적는다(환자 자료 구역 타입이 화면 타입 파일을 부르지 않게)
 
 ## DB: `supabase/migrations/20261112000000_stats_rx_groups_exclude.sql` (전체)

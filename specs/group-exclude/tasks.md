@@ -3,7 +3,7 @@
 > 형식: `## TASK-n: 제목` 아래에 `- REQ:`, `- Files:`(수정 범위, glob 허용), `- Tests:`, `- TDD: required|exempt`.
 > 승인되면 Files/Tests 에 적힌 경로만 수정할 수 있다. 작업 하나는 한 모듈·한 레이어만 다룬다.
 >
-> **할 순서**: Phase 0 → 1 → 2 → 3 → 4 → 5. 같은 Phase의 TASK는 **병렬**이다(수정 파일이 겹치지 않고 앞 Phase의 결과만 쓴다). TASK마다 일꾼(subagent) 하나다(Phase 0은 메인 세션).
+> **할 순서**: Phase 0 → 1 → 2 → 3 → 4. 같은 Phase의 TASK는 **병렬**이다(수정 파일이 겹치지 않고 앞 Phase의 결과만 쓴다). TASK마다 일꾼(subagent) 하나다(Phase 0은 메인 세션).
 >
 > | Phase | TASK | 하는 일 |
 > |---|---|---|
@@ -19,14 +19,14 @@
 > | | TASK-10 | 대시보드 '처방 상위' 열쇠·비트 바로 읽기 |
 > | | TASK-11 | AI 리포트 묶음 이름 읽기 |
 > | | TASK-12 | 묶음 훅 |
-> | 3 보기 화면 | TASK-13 | 줄 표·열린 칸·칸 잇기 |
-> | 4 고치기 화면 | TASK-14 | 묶음 고치기 화면 |
-> | 5 마무리 | TASK-15 | 개인정보 E2E |
-> | | TASK-16 | 화면 확인(390·1440)과 전체 검사 |
+> | | TASK-15 | 개인정보 E2E |
+> | 3 화면 | TASK-13 | 보기 화면: 줄 표·열린 칸·칸 잇기 |
+> | | TASK-14 | 고치기 화면 |
+> | 4 마무리 | TASK-16 | 화면 확인(390·1440)과 전체 검사 |
 >
 > - 타입 검사: `StatsRxGroup`의 `out`·`cond`와 `RxGroupDef`의 `out`·`cond`는 선택 칸이고(Phase 0에서 먼저 넣음), 고치기 함수·`forSave`·`copyGroupDef`는 빈 칸을 새로 만들지 않는다. 그래서 빼는 처방·조건이 없는 묶음은 모든 곳에서 지금 모양 그대로이고, Phase 끝마다 고치지 않은 화면·시험이 그대로 지난다. 화면 prop은 더하지 않거나(표) 선택 prop으로 더한다(열린 칸)
-> - 시험 파일 몫: 보기 화면이 바꾸는 글을 못 박은 `TreatmentTrendSection.test.tsx`·`PeriodSummary.test.tsx`·`StatsScreen.test.tsx`는 TASK-13, 고치기 화면이 바꾸는 글(안내·[빼기])을 못 박은 `TreatmentTrendSection.test.tsx` 줄은 TASK-14가 고친다(다른 Phase)
-> - 각 Phase 끝(TASK가 아님, 메인 세션): `python3 ~/.claude/harness/bin/verify`. 이 PC에서 다른 일이 없을 때 돌린다. 화면 TASK(13·14)는 끝나면 390·1440 사진을 쉬운 말로 보인다(찍는 법은 TASK-16과 같다)
+> - 시험 파일 몫: 보기 화면이 바꾸는 글을 못 박은 `TreatmentTrendSection.test.tsx`·`PeriodSummary.test.tsx`·`StatsScreen.test.tsx`는 TASK-13, 고치기 화면이 바꾸는 글(안내·[빼기])을 못 박은 `TreatmentTrendSection.test.tsx` 줄은 TASK-14가 고친다. 둘은 같은 Phase 병렬이라 `TreatmentTrendSection.tsx`·`.test.tsx`의 서로 다른 줄을 고치고, 합칠 때 겹친 곳은 메인 세션이 맞춘다
+> - 각 Phase 끝(TASK가 아님, 메인 세션): `python3 ~/.claude/harness/bin/verify`. 이 PC에서 다른 일이 없을 때 돌린다. 화면 사진은 TASK-16에서 한 번만 보인다. 독립 검토(harness-reviewer)는 사용자 결정(2026-11-12 "검토는 마지막 한번만")대로 모두 합친 뒤 한 번만 한다
 > - 사용자 단계(사이트에 올리기 전): TASK-2의 SQL을 운영 Supabase에 붙여 넣기. 올린 뒤 기본 PT 묶음 만들기 → 보고 싶은 기간 다시 불러오기. TASK-15를 실제로 돌리는 일은 SQL·시험 계정을 기다린다
 > - 승인 시안: `docs/mockups/group-exclude/index.html`. 시안과 다른 곳은 `design.md` '시안과 다른 곳'을 따른다. 시험 자료는 모두 지어낸 값이고 실제 환자 파일·`.claude/uploads`를 열지 않는다
 > - 모든 화면 TASK: 클래스는 `classes.test.ts` 규칙(간격 단계, 토큰 색, 폭 접두사 md·lg·max-md·max-lg)을 지킨다. 반복 모양은 `ds`에서 가져온다. 상자 안 상자 금지(`nestedBoxes`)
@@ -83,7 +83,7 @@
 - Tests: src/components/stats/treatmentChart.test.ts, src/components/charts/format.test.ts
 - TDD: required — 순수 함수(`periodPatients`·`chartCells`·`trendFit`·`trendText`·`sumLabel`·`perDayText`)를 가짜 일 줄로 시험한다. `format.ts`는 `truncatedOne`을 내보내기만 한다(동작 그대로). 추세선 시험: 총환자 0 칸·일부 기간 칸을 뺌, 칸 둘 미만이면 null, 기울기 글의 정수(버림·쉼표)·소수·`0.0`·평균 0.5% 경계, 하루에·한 주에·한 달에. `chartCells`는 지금 `treatmentDetail` 점에 칸 총환자·비교(`comparisonAt`)를 붙이므로 `treatmentView`·`trendLabels`의 지금 함수만 부른다
 
-## Phase 2 — 조각 (여섯 병렬, 한 번에 셋까지)
+## Phase 2 — 조각 (일곱 병렬)
 
 ## TASK-7: 묶음 읽기·저장 코드
 - Phase: 2 · 병렬
@@ -133,38 +133,36 @@
 - Tests: src/components/stats/useStatsRxGroups.test.ts
 - TDD: required — 묶음 타입을 `StatsRxGroup`으로 바꾼다. 먼저 저장된 묶음에 빼는 처방·조건이 있을 때 `groups`·`forLoad` 정의·`save`로 넘기는 값에 그대로 있는지 시험을 더해 RED를 본다(가짜 저장 코드). 기대 정의는 `groupDefs(그 묶음)`(TASK-5)과 견준다. 브라우저 저장소를 쓰지 않음은 지금 시험 그대로다
 
-## Phase 3 — 보기 화면 (혼자, Phase 2 뒤)
+## TASK-15: 개인정보 E2E
+- Phase: 2 · 병렬
+- AC: AC-3713.1, AC-3713.2
+- REQ: REQ-3713
+- Files: e2e/treatment-trend-privacy.spec.ts
+- Tests: e2e/treatment-trend-privacy.spec.ts
+- TDD: exempt — 시험만 고친다. 대상 코드는 TASK-2·7·9·13·14의 단위 시험이 맡으므로 이 TASK에는 구현할 것이 없어 RED 단계가 없다. `GROUP_BODY_KEYS`를 `['codes', 'cond', 'id', 'name', 'out_codes', 'sort_order']`로, `cond` 항목 열쇠 검사를 더하고, 시험 묶음 하나에 빼는 처방을 넣어 그날 줄에 그 열쇠가 있는지 본다(기대 열쇠는 `groupKey(codes, { out, cond })`). 시험이 헛돌지 않는지는 기대값 하나를 일부러 틀려 실패를 본 뒤 되돌려 확인한다. 기다림: 사용자가 TASK-2 SQL을 실제 Supabase에 붙임 + 시험 계정(`.env.local`). 그 전에는 파일만 쓰고 타입 검사까지 한다
+
+## Phase 3 — 화면 (둘 병렬, Phase 2 뒤)
 
 ## TASK-13: 줄 표·열린 칸·칸 잇기
-- Phase: 3 · 혼자
+- Phase: 3 · 병렬
 - AC: AC-3708.1~AC-3708.7, AC-3709.1~AC-3709.8, AC-3712.2(그래프 모양 넘기기), AC-3712.3
 - REQ: REQ-3708, REQ-3709, REQ-3712
 - Files: src/components/stats/sections/TreatmentTable.tsx, src/components/stats/sections/TreatmentTable.test.tsx, src/components/stats/sections/TreatmentDetail.tsx, src/components/stats/sections/TreatmentDetail.test.tsx, src/components/stats/sections/TreatmentTrendSection.tsx, src/components/stats/sections/TreatmentTrendSection.test.tsx, src/components/stats/sections/PeriodSummary.test.tsx, src/components/stats/StatsScreen.test.tsx
 - Tests: src/components/stats/sections/TreatmentTable.test.tsx, src/components/stats/sections/TreatmentDetail.test.tsx, src/components/stats/sections/TreatmentTrendSection.test.tsx, src/components/stats/sections/PeriodSummary.test.tsx, src/components/stats/StatsScreen.test.tsx
 - TDD: required — 숫자는 TASK-6 함수, 그림은 TASK-3 부품을 쓴다. 표는 prop을 더하지 않고 `input`으로 총환자를 센다. 열린 칸의 `mode`·`onMode`는 선택 prop이고 칸(`TreatmentTrendSection`)이 줄 열쇠마다 든다. 먼저 총환자 줄·머리 칸·줄 칸·좁은 화면 이름표·조건 `*`·조건 줄·`빼는 처방` 줄(표), 제목·단추(`aria-pressed`)·요약·범례·추세 글·안내·표 칸 일곱(열린 칸), 설명·아래 안내 네 글·모양 기억·저장소 없음(칸) 시험을 더하고, 지금 기대(treatment-trend AC-1201.1 설명, AC-1207.8 안내, AC-1209 표 칸)를 고쳐 RED를 본다. `PeriodSummary.test.tsx`(:121 설명 글자 등)·`StatsScreen.test.tsx`는 이 TASK가 바꾸는 글·칸을 못 박은 줄만 고친다. 그 밖에 바뀌는 기대값이 나오면 멈추고 보고한다
 
-## Phase 4 — 고치기 화면 (혼자, Phase 3 뒤)
-
 ## TASK-14: 묶음 고치기 화면
-- Phase: 4 · 혼자
+- Phase: 3 · 병렬
 - AC: AC-3711.1~AC-3711.14, AC-3712.2(찾기 목록 줄)
 - REQ: REQ-3711, REQ-3712
 - Files: src/components/stats/sections/TreatmentGroupEditor.tsx, src/components/stats/sections/TreatmentGroupEditor.test.tsx, src/components/stats/sections/TreatmentTrendSection.tsx, src/components/stats/sections/TreatmentTrendSection.test.tsx
 - Tests: src/components/stats/sections/TreatmentGroupEditor.test.tsx, src/components/stats/sections/TreatmentTrendSection.test.tsx
 - TDD: required — 고치기 규칙은 TASK-8 함수만 쓴다. 먼저 안내 글·두 칸 제목·[지우기]·[조건 더하기]·조건 칸·조건 찾기(이 처방·조건에 있음)·빼는 처방 찾기(묶음째 고르기·네 가지 표시)·넣는 처방 찾기의 `빼는 처방에 있음`·아래 안내·초점(AC-3711.11·12)·휴대폰 단추 높이 시험을 더하고, 지금 `빼기` 글자와 안내 글 기대(`TreatmentGroupEditor.test.tsx`, `TreatmentTrendSection.test.tsx`의 INTRO·[빼기] 줄)를 고쳐 RED를 본다(treatment-trend AC-1210의 그 글자를 AC-3711.1·3·10이 대신한다). `TreatmentTrendSection.tsx`는 고치기 찾기 목록 줄(지금 묶음 넣는 처방만 더함)에 빼는 처방·조건 처방을 더하는 곳만 고친다. 찾기 칸은 하나만 열린다. 고치기 화면 props 이름은 그대로다
 
-## Phase 5 — 마무리 (둘 병렬, Phase 4 뒤)
-
-## TASK-15: 개인정보 E2E
-- Phase: 5 · 병렬
-- AC: AC-3713.1, AC-3713.2
-- REQ: REQ-3713
-- Files: e2e/treatment-trend-privacy.spec.ts
-- Tests: e2e/treatment-trend-privacy.spec.ts
-- TDD: exempt — 시험만 고친다. 대상 코드는 TASK-2·7·9·13·14에서 단위 시험을 통과했으므로 구현할 것이 없어 RED 단계가 없다. `GROUP_BODY_KEYS`를 `['codes', 'cond', 'id', 'name', 'out_codes', 'sort_order']`로, `cond` 항목 열쇠 검사를 더하고, 시험 묶음 하나에 빼는 처방을 넣어 그날 줄에 그 열쇠가 있는지 본다(기대 열쇠는 `groupKey(codes, { out, cond })`). 시험이 헛돌지 않는지는 기대값 하나를 일부러 틀려 실패를 본 뒤 되돌려 확인한다. 기다림: 사용자가 TASK-2 SQL을 실제 Supabase에 붙임 + 시험 계정(`.env.local`). 그 전에는 파일만 쓰고 타입 검사까지 한다
+## Phase 4 — 마무리 (혼자, Phase 3 뒤)
 
 ## TASK-16: 화면 확인(390·1440)과 전체 검사
-- Phase: 5 · 병렬
+- Phase: 4 · 혼자
 - AC: AC-3714.1, AC-3714.2
 - REQ: REQ-3714
 - Files: src/components/stats/sections/TreatmentTrendSection.tsx, src/components/stats/sections/TreatmentTrendSection.test.tsx, src/components/stats/sections/TreatmentTable.tsx, src/components/stats/sections/TreatmentTable.test.tsx, src/components/stats/sections/TreatmentDetail.tsx, src/components/stats/sections/TreatmentDetail.test.tsx, src/components/stats/sections/TreatmentGroupEditor.tsx, src/components/stats/sections/TreatmentGroupEditor.test.tsx, src/components/charts/RateLineChart.tsx, src/components/charts/RateLineChart.test.tsx
