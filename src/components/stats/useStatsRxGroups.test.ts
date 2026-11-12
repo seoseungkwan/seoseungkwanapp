@@ -6,11 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { listStatsRxGroups, saveStatsRxGroups } from '@/lib/storage/statsRxGroups'
 import type { RxGroupDef } from '@/types/analysis'
 import type { DayPayload } from '@/types/payload'
-import type { RxGroup } from '@/types/rxGroups'
+import type { RxGroup, StatsRxGroup } from '@/types/rxGroups'
 import { groupDefs, groupKey } from './treatmentView'
 import { FOR_LOAD_LIMIT_MS, useStatsRxGroups } from './useStatsRxGroups'
 
-// 처방별 추세 묶음 훅 (treatment-trend REQ-1204·1205·1211·1213, design.md '묶음 훅'). 저장 코드는 가짜다. 처방·묶음은 모두 지어낸 값이다.
+// 처방별 추세 묶음 훅 (treatment-trend REQ-1204·1205·1211·1213, design.md '묶음 훅' · 제외할 처방은 rx-group-exclude AC-2706.4·2706.6). 저장 코드는 가짜다. 처방·묶음은 모두 지어낸 값이다.
 // 가짜 서버는 메모리의 줄을 실제처럼 바꾼다: 저장은 목록 통째 바꾸기이고 id 없는 줄에 새 id를 준다.
 // 요청은 sent에 차례대로 적히고, holdNext로 답을 잡아 두거나(열지 않으면 끝나지 않음) failNext로 실패시킨다
 
@@ -32,9 +32,9 @@ function makeGate(): Gate {
   return { open, fail, wait }
 }
 
-let stored: RxGroup[]
+let stored: StatsRxGroup[]
 let sent: Label[]
-let saves: RxGroup[][]
+let saves: StatsRxGroup[][]
 let gates: Map<Label, Gate[]>
 let failing: Map<Label, number>
 let nextId: number
@@ -57,7 +57,7 @@ const holdNext = (label: Label) => {
   return gate
 }
 const failNext = (label: Label, times = 1) => failing.set(label, times)
-const copy = (rows: readonly RxGroup[]) => rows.map((row) => ({ ...row, codes: [...row.codes] }))
+const copy = (rows: readonly StatsRxGroup[]) => rows.map((row) => ({ ...row, codes: [...row.codes] }))
 
 // ── 가짜 일 줄 ──────────────────────────────────────────
 type Rx = DayPayload['rx'][number]
@@ -81,14 +81,16 @@ const DAYS: readonly DayPayload[] = [day('2026-10-20', ['도수', 'ESWT1', 'AA25
 const OTHER_DAYS: readonly DayPayload[] = [day('2026-11-03', ['ESWT9', 'CRYO2'])]
 
 const group = (name: string, codes: string[], sortOrder: number, id: string | null = `s${sortOrder}`): RxGroup => ({ id, name, codes, sortOrder })
+// 제안 묶음과 forSave 값은 제외할 처방이 빈 배열이다(AC-2706.4·AC-2706.6)
+const noExclude = (row: RxGroup): StatsRxGroup => ({ ...row, exclude: [] })
 const SUGGESTED_NAMES = ['도수치료', '체외충격파', 'C-arm 주사', '초음파', '냉동치료']
-const SUGGESTED_FROM_DAYS: RxGroup[] = [
+const SUGGESTED_FROM_DAYS: StatsRxGroup[] = [
   group('도수치료', ['도수'], 0, null),
   group('체외충격파', ['ESWT1', 'eswt7'], 1, null),
   group('C-arm 주사', ['CARM1'], 2, null),
   group('초음파', ['SONO1'], 3, null),
   group('냉동치료', ['CRYO'], 4, null),
-]
+].map(noExclude)
 const SAVED: RxGroup[] = [group('물리치료 묶음', ['PT1', 'PT2'], 0, 'g-a'), group('주사 묶음', ['INJ1'], 1, 'g-b')]
 
 beforeEach(() => {
@@ -222,7 +224,7 @@ describe('AC-1204.1 처음 다섯 묶음', () => {
   it('AC-1204.1 대소문자만 다른 코드는 한 번만 든다(가장 최근 날의 글자)', async () => {
     const days = [day('2026-10-20', ['eswt7']), day('2026-11-02', ['ESWT7']), day('2026-11-01', ['Eswt7'])]
     const view = await ready(draw(days))
-    expect(view.result.current.groups[1]).toEqual(group('체외충격파', ['ESWT7'], 1, null))
+    expect(view.result.current.groups[1]).toEqual(noExclude(group('체외충격파', ['ESWT7'], 1, null)))
   })
 
   it('AC-1204.1 맞는 코드가 없어도 다섯이 처방 없이 나온다', async () => {
@@ -257,14 +259,14 @@ describe('AC-1204.3 제안 저장', () => {
       })
     })
     expect(view.result.current.saving).toBe(true)
-    expect(saves).toEqual([[group('충격파', ['ESWT1', 'eswt7'], 0, null), group('도수치료', ['도수'], 1, null)]])
+    expect(saves).toEqual([[noExclude(group('충격파', ['ESWT1', 'eswt7'], 0, null)), noExclude(group('도수치료', ['도수'], 1, null))]])
 
     await release(gate)
     expect(saved).toBe(true)
     expect(view.result.current.saving).toBe(false)
     expect(view.result.current.saveFailed).toBe(false)
     expect(view.result.current.suggested).toBe(false)
-    expect(view.result.current.groups).toEqual([group('충격파', ['ESWT1', 'eswt7'], 0, 'n1'), group('도수치료', ['도수'], 1, 'n2')])
+    expect(view.result.current.groups).toEqual([noExclude(group('충격파', ['ESWT1', 'eswt7'], 0, 'n1')), noExclude(group('도수치료', ['도수'], 1, 'n2'))])
     expect(sent).toEqual(['save'])
   })
 
@@ -545,6 +547,56 @@ describe('AC-1205.9 기다림 한도 5초', () => {
     await advance(0)
     expect(outcome.defs).toEqual(groupDefs(SAVED))
     expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
+describe('AC-2706.6 제안 묶음의 제외할 처방', () => {
+  it('AC-2706.6 저장된 줄이 없어 나오는 제안 다섯은 묶음마다 exclude: []다(맞는 코드가 있든 없든)', async () => {
+    for (const days of [DAYS, [day('2026-11-02', ['AA254'])]]) {
+      const view = await ready(draw(days))
+      expect(view.result.current.suggested).toBe(true)
+      expect(view.result.current.groups).toHaveLength(5)
+      expect(view.result.current.groups.map((g) => g.exclude)).toEqual([[], [], [], [], []])
+      view.unmount()
+    }
+  })
+
+  it('AC-2706.6 days가 바뀌어 다시 고른 제안도 묶음마다 exclude: []다', async () => {
+    const view = await ready(draw(NO_DAYS))
+    view.rerender({ days: OTHER_DAYS })
+    expect(view.result.current.suggested).toBe(true)
+    expect(view.result.current.groups.map((g) => g.exclude)).toEqual([[], [], [], [], []])
+  })
+
+  it('AC-2706.6 forLoad가 저장하는 제안 다섯도 묶음마다 exclude: []로 보낸다', async () => {
+    const view = await ready(draw(DAYS))
+    await forLoadNow(view)
+    expect(saves).toHaveLength(1)
+    expect(saves[0].map((g) => g.exclude)).toEqual([[], [], [], [], []])
+  })
+})
+
+describe('AC-2706.4 저장에 제외할 처방', () => {
+  it('AC-2706.4 [저장]은 묶음의 제외할 처방을 forSave 값(늘 배열)으로 보내고, 돌려받은 줄의 제외할 처방이 묶음에 남는다', async () => {
+    stored = copy(SAVED)
+    const view = await ready(draw(DAYS))
+    const edited: StatsRxGroup[] = [{ ...SAVED[0], exclude: ['ESWT7'] }, SAVED[1]]
+    let ok: boolean | null = null
+    await act(async () => {
+      ok = await view.result.current.save(edited)
+    })
+    expect(ok).toBe(true)
+    expect(saves).toEqual([[{ ...SAVED[0], exclude: ['ESWT7'] }, noExclude(SAVED[1])]])
+    expect(view.result.current.groups.map((g) => g.exclude)).toEqual([['ESWT7'], []])
+  })
+
+  it('AC-2706.4 서버에서 읽은 줄의 제외할 처방은 묶음에 그대로 남고, forLoad는 그 줄로 만든 groupDefs를 넘긴다', async () => {
+    stored = [{ ...SAVED[0], exclude: ['ESWT7'] }, { ...SAVED[1], exclude: [] }]
+    const view = await ready(draw(DAYS))
+    const defs = await forLoadNow(view)
+    expect(defs).toEqual(groupDefs(stored))
+    expect(view.result.current.groups).toEqual(stored)
+    expect(saveStatsRxGroups).not.toHaveBeenCalled()
   })
 })
 

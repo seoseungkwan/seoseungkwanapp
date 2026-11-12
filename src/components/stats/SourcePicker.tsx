@@ -6,6 +6,7 @@ import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { mergeRanges } from '@/lib/analytics/coverage'
 import { addDays, compareYmd } from '@/lib/analytics/dates'
+import { copyGroupDef } from '@/lib/analytics/groupDef'
 import { errorInfo, isErrorCode } from '@/lib/errors'
 import { fillGroupCounts } from '@/lib/payload/groupCounts'
 import { toDayPayloads } from '@/lib/payload/toDayPayloads'
@@ -44,10 +45,10 @@ export function fileCovered(reports: readonly FileReport[], today: string): Date
 }
 
 // 지금 runAnalysis 길 그대로다. 품질이 incomplete면 저장 모양이 null이라 저장하지 않는다(AC-514.6).
-// 묶음(treatment-trend AC-1205.5)을 주면 Worker로 열쇠·처방 코드만 새로 만들어 넘기고, 저장할 일 줄마다 묶음 id 줄을 채운다(그날 없으면 0줄).
+// 묶음(treatment-trend AC-1205.5)을 주면 Worker로 열쇠·처방 코드(제외할 처방이 있으면 그것도, rx-group-exclude AC-2704.1)만 새로 만들어 넘기고, 저장할 일 줄마다 묶음 id 줄을 채운다(그날 없으면 0줄).
 // 묶음이 없으면 지금과 똑같다(groups 칸도, 일 줄 손질도 없다)
 export async function readFiles(files: File[], today: string, groups: readonly RxGroupDef[] = []): Promise<FileOutcome> {
-  const defs = groups.map(({ id, codes }) => ({ id, codes: [...codes] }))
+  const defs = groups.map(copyGroupDef)
   const { files: reports, result } = await runAnalysis(files, defs.length > 0 ? { today, groups: defs } : { today })
   const failures = reports.flatMap((report) => (report.ok ? [] : [{ name: files[report.index]?.name ?? '', code: report.code }]))
   if (result === null) return { failures, save: null, incomplete: null }

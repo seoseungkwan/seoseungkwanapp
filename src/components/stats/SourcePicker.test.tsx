@@ -396,6 +396,33 @@ describe('AC-1205.5 파일 길에 묶음 넘기기', () => {
     expect(JSON.stringify(outcome.save)).not.toContain('충격파')
   })
 
+  it('AC-2704.1 제외할 처방이 있는 묶음은 runAnalysis에 exclude가 그대로(새 배열로) 가고, 빈 배열·없음이면 { id, codes }만, 이름은 안 간다', async () => {
+    const file = fileNamed('가짜환자.xlsx')
+    vi.mocked(runAnalysis).mockResolvedValue({ files: [report], result: VALID })
+    vi.mocked(toMonthPayload).mockReturnValue([MONTH])
+    vi.mocked(toDayPayloads).mockReturnValue([DAY])
+    // 열쇠는 rx-group-exclude AC-2705.2의 고정 값(t7bdb… = MM010 중 ESWT7 날 뺌)
+    const EXCLUDING = 't7bdb9b20a17a64d3'
+    const exclude = ['ESWT7']
+    const groups = [
+      { id: EXCLUDING, codes: ['MM010'], exclude, name: '가짜 물리치료' },
+      { id: ESWT, codes: ['ESWT1', 'ESWT7'], exclude: [], name: '충격파' },
+      { id: MANUAL, codes: ['도수'], name: '도수치료' },
+    ]
+
+    await readFiles([file], TODAY, groups)
+
+    const [, opts] = vi.mocked(runAnalysis).mock.calls[0]
+    expect(opts?.groups).toStrictEqual([
+      { id: EXCLUDING, codes: ['MM010'], exclude: ['ESWT7'] },
+      { id: ESWT, codes: ['ESWT1', 'ESWT7'] },
+      { id: MANUAL, codes: ['도수'] },
+    ])
+    expect(opts?.groups?.[0].exclude).not.toBe(exclude)
+    expect(JSON.stringify(opts)).not.toContain('가짜 물리치료')
+    expect(JSON.stringify(opts)).not.toContain('충격파')
+  })
+
   it('AC-1205.5 묶음을 주지 않거나 빈 목록이면 지금과 같다(runAnalysis에 groups 칸이 없고 일 줄을 그대로 저장한다)', async () => {
     const file = fileNamed('가짜환자.xlsx')
     const plain = { day: '2026-10-05' } as DayPayload

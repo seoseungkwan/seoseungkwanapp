@@ -1,3 +1,4 @@
+import { copyGroupDef } from '@/lib/analytics/groupDef'
 import { isErrorCode } from '@/lib/errors'
 import type { RxGroupDef } from '@/types/analysis'
 import type { ErrorCode } from '@/types/errors'
@@ -78,8 +79,8 @@ function ask<T>(
   })
 }
 
-// 칸을 골라 새로 만든다(화면이 다른 칸을 넘겨도 Worker로 가지 않는다). 묶음도 { id, codes }만 골라 새로 만들고,
-// 주지 않으면 []를 싣는다: 메시지에는 늘 groups 배열이 있다(treatment-trend AC-1205.4·AC-1213.3)
+// 칸을 골라 새로 만든다(화면이 다른 칸을 넘겨도 Worker로 가지 않는다). 묶음도 { id, codes }(제외할 처방이 있으면 exclude도, rx-group-exclude AC-2704.1)만
+// 골라 새로 만들고, 주지 않으면 []를 싣는다: 메시지에는 늘 groups 배열이 있다(treatment-trend AC-1205.4·AC-1213.3)
 export function requestLoad(
   worker: WorkerLike,
   req: { streamId: string; from: string; to: string; today: string; closeToday: boolean; groups?: readonly RxGroupDef[] },
@@ -93,7 +94,7 @@ export function requestLoad(
     to,
     today,
     closeToday,
-    groups: groups.map(({ id, codes }) => ({ id, codes: [...codes] })),
+    groups: groups.map(copyGroupDef),
   }
   return ask(worker, request, (message) => (message.type === 'loaded' ? message.view : undefined), opts.timeoutMs)
 }

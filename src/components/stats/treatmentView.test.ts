@@ -6,7 +6,7 @@ import { addDays, addMonths, eachDay, weekdayOf } from '@/lib/analytics/dates'
 import { validateDayPayload } from '@/lib/payload/validate'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
-import type { RxGroup } from '@/types/rxGroups'
+import type { RxGroup, StatsRxGroup } from '@/types/rxGroups'
 import { rateText } from './rxPickView'
 import {
   GROUP_KEY,
@@ -622,5 +622,190 @@ describe('AC-1705.2 처방별 추세 — 두 비교 기간이 겹치는 직접 �
       { from: '2026-01-01', to: '2026-11-05' },
     ])
     expect(groupInput(input, ESWT_KEY, '체외충격파', false, false).covered).toEqual([{ from: '2026-01-01', to: '2026-11-05' }])
+  })
+})
+
+// ── 제외할 처방 (rx-group-exclude TASK-5, REQ-2705, design.md '묶음 열쇠'). 묶음 열쇠 = 넣은 처방 글(+ U+001F + 제외할 처방 글)의 지문.
+// 제외할 처방이 없으면 열쇠가 지금과 같아 이미 저장된 숫자가 그대로 보인다. 처방 이름·숫자는 지어낸 값이다
+const xgroup = (name: string, codes: string[], exclude: string[], sortOrder: number, id: string | null = `g${sortOrder}`): StatsRxGroup => ({
+  id,
+  name,
+  codes,
+  exclude,
+  sortOrder,
+})
+const MM_KEY = 'tf5a35bf567c9d2cc' // groupKey(['MM010']) — 제외할 처방 없음
+const MM_NO_ESWT7_KEY = 't7bdb9b20a17a64d3' // groupKey(['MM010'], ['ESWT7'])
+const MM_NO_ESWT_KEY = 't0058156be546398f' // groupKey(['MM010'], ['ESWT7', 'ESWT1'])
+
+describe('AC-2705.1 groupKey — 제외할 처방이 없으면 지금 값', () => {
+  it.each([
+    [['ESWT1', 'ESWT7'], 't2538e307d10103cb'],
+    [['도수'], 't0c99afbb8431612f'],
+    [['MM010'], MM_KEY],
+  ])('AC-2705.1 %j는 제외를 안 주거나 빈 배열을 줘도 %s다(treatment-trend AC-1206.1 고정 값 그대로)', (codes, key) => {
+    expect(groupKey(codes)).toBe(key)
+    expect(groupKey(codes, [])).toBe(key)
+    expect(groupKey(codes, undefined)).toBe(key)
+  })
+})
+
+describe('AC-2705.2 groupKey — 제외할 처방이 있음', () => {
+  it.each([
+    [['MM010'], ['ESWT7'], MM_NO_ESWT7_KEY],
+    [['mm010'], ['eswt7', 'ESWT7'], MM_NO_ESWT7_KEY],
+    [['MM010'], ['ESWT7', 'ESWT1'], MM_NO_ESWT_KEY],
+  ])('AC-2705.2 고정 값 (%j, 제외 %j) → %s (넣은 글 + U+001F + 제외 글의 FNV-1a 64비트)', (codes, exclude, key) => {
+    expect(groupKey(codes, exclude)).toBe(key)
+  })
+
+  it('AC-2705.2 글자는 t + 소문자 16진수 16자리이고 validate.ts의 GROUP_ID를 지난다', () => {
+    for (const key of [MM_NO_ESWT7_KEY, MM_NO_ESWT_KEY, groupKey(['도수', 'MA4'], ['ESWT7'])]) expect(key).toMatch(GROUP_KEY)
+    const saved = validateDayPayload(day('2026-11-10', { groups: [line(groupKey(['MM010'], ['ESWT7']), 3, 1)] }))
+    expect(saved?.groups.map((item) => item.id)).toEqual([MM_NO_ESWT7_KEY])
+  })
+
+  it('AC-2705.2 제외할 처방의 차례·겹침·대소문자에 상관없이 같다', () => {
+    expect(groupKey(['MM010'], ['ESWT1', 'eswt7'])).toBe(groupKey(['mm010'], ['ESWT7', 'ESWT1', 'ESWT7']))
+    expect(groupKey(['MM010'], ['ESWT1', 'eswt7'])).toBe(MM_NO_ESWT_KEY)
+  })
+
+  it('AC-2705.2 제외할 처방을 하나 더하거나 빼거나 바꾸면 다른 글자다(모두 빼면 지금 열쇠)', () => {
+    const keys = [
+      groupKey(['MM010']),
+      groupKey(['MM010'], ['ESWT7']),
+      groupKey(['MM010'], ['ESWT7', 'ESWT1']),
+      groupKey(['MM010'], ['ESWT1']),
+      groupKey(['MM010'], ['ESWT8']),
+    ]
+    expect(new Set(keys).size).toBe(5)
+    expect(keys[0]).toBe(MM_KEY)
+  })
+
+  it('AC-2705.2 넣은 처방과 제외할 처방은 섞이지 않는다(같은 코드를 넣은 쪽에 두거나 자리를 바꾼 열쇠와 다르다)', () => {
+    const keys = [groupKey(['MM010'], ['ESWT7']), groupKey(['MM010', 'ESWT7']), groupKey(['ESWT7'], ['MM010']), groupKey(['ESWT7'])]
+    expect(new Set(keys).size).toBe(4)
+  })
+
+  it('AC-2705.2 받은 목록을 바꾸지 않는다', () => {
+    const codes = ['mm010', 'MM010']
+    const exclude = ['eswt7', 'ESWT1', 'ESWT7']
+    groupKey(codes, exclude)
+    expect(codes).toEqual(['mm010', 'MM010'])
+    expect(exclude).toEqual(['eswt7', 'ESWT1', 'ESWT7'])
+  })
+})
+
+describe('AC-2705.3 groupDefs — 제외할 처방', () => {
+  it('AC-2705.3 제외할 처방이 있는 묶음은 { id: groupKey(codes, exclude), codes, exclude }이고, 없으면(열쇠 없음·빈 배열) 지금처럼 { id, codes }뿐이다', () => {
+    const groups: StatsRxGroup[] = [group('체외충격파', ESWT, 2), xgroup('빈 제외', ['SONO1'], [], 1), xgroup('표층열만', ['MM010'], ['ESWT7'], 0)]
+    const defs = groupDefs(groups)
+    expect(defs).toEqual([
+      { id: MM_NO_ESWT7_KEY, codes: ['MM010'], exclude: ['ESWT7'] },
+      { id: groupKey(['SONO1']), codes: ['SONO1'] },
+      { id: ESWT_KEY, codes: ['ESWT1', 'ESWT7'] },
+    ])
+    expect(defs.map((def) => Object.keys(def).sort())).toEqual([['codes', 'exclude', 'id'], ['codes', 'id'], ['codes', 'id']])
+  })
+
+  it('AC-2705.3 넣은 처방이 없는 묶음은 제외할 처방이 있어도 넘기지 않는다', () => {
+    expect(groupDefs([xgroup('제외만', [], ['ESWT7'], 0)])).toEqual([])
+    expect(groupDefs([xgroup('제외만', [], ['ESWT7'], 0), xgroup('표층열만', ['MM010'], ['ESWT7'], 1)])).toEqual([
+      { id: MM_NO_ESWT7_KEY, codes: ['MM010'], exclude: ['ESWT7'] },
+    ])
+  })
+
+  it('AC-2705.3 같은 열쇠는 한 번만이고(제외할 처방의 차례·대소문자만 다름), 제외할 처방이 다르면 다른 정의다', () => {
+    const groups = [
+      xgroup('가', ['MM010'], ['ESWT7', 'ESWT1'], 0),
+      xgroup('나', ['mm010'], ['eswt1', 'ESWT7'], 1),
+      xgroup('다', ['MM010'], ['ESWT7'], 2),
+      group('라', ['MM010'], 3),
+    ]
+    expect(groupDefs(groups).map((def) => def.id)).toEqual([MM_NO_ESWT_KEY, MM_NO_ESWT7_KEY, MM_KEY])
+  })
+
+  it('AC-2705.3 codes·exclude는 새 배열이고 이름·차례·묶음 id는 싣지 않으며 받은 목록은 바꾸지 않는다', () => {
+    const groups = [xgroup('표층열만', ['MM010'], ['ESWT7'], 0, 'g-heat')]
+    const before = structuredClone(groups)
+    const [def] = groupDefs(groups)
+    expect(def.codes).not.toBe(groups[0].codes)
+    expect(def.exclude).not.toBe(groups[0].exclude)
+    expect(JSON.stringify(def)).not.toMatch(/표층열만|g-heat|sortOrder/)
+    expect(groups).toEqual(before)
+  })
+})
+
+describe('AC-2705.4 제외할 처방을 넣고 뺌 — 다시 불러오기 판단', () => {
+  const heat = (exclude?: string[], name = '표층열만', sortOrder = 0): StatsRxGroup => ({
+    id: 'g-heat',
+    name,
+    codes: ['MM010'],
+    ...(exclude === undefined ? {} : { exclude }),
+    sortOrder,
+  })
+
+  it('AC-2705.4 숫자가 보이던 묶음에 제외할 처방을 넣으면 다시 불러올 때까지 다시 불러오면 보여요(stale)이고 일부 묶음 안내에 그 이름이 든다', () => {
+    const days = daysFrom(LAST_WEEK.from, THIS_WEEK.to, { groups: [line(MM_KEY, 3), line(ESWT_KEY, 2)] })
+    const stats = input(today, '7d', days, bothWeeks)
+    expect(treatmentRows(stats, [heat(), eswtGroup(1)]).map((row) => row.kind)).toEqual(['ready', 'ready'])
+
+    const rows = treatmentRows(stats, [heat(['ESWT7']), eswtGroup(1)])
+    expect(rows[0]).toEqual({ kind: 'stale', group: heat(['ESWT7']), key: MM_NO_ESWT7_KEY })
+    expect(rows[1]).toMatchObject({ kind: 'ready', key: ESWT_KEY })
+    expect(staleNames(rows)).toEqual({ all: false, names: ['표층열만'] })
+  })
+
+  it('AC-2705.4 제외할 처방을 하나 더하거나 바꾸거나 모두 빼도 그 기간을 다시 불러올 때까지 숨긴다', () => {
+    const days = daysFrom(LAST_WEEK.from, THIS_WEEK.to, { groups: [line(MM_NO_ESWT7_KEY, 2), line(ESWT_KEY, 2)] })
+    const stats = input(today, '7d', days, bothWeeks)
+    expect(treatmentRows(stats, [heat(['ESWT7'])])[0]).toMatchObject({ kind: 'ready', key: MM_NO_ESWT7_KEY })
+    for (const [exclude, key] of [
+      [['ESWT7', 'ESWT1'], MM_NO_ESWT_KEY],
+      [['ESWT1'], groupKey(['MM010'], ['ESWT1'])],
+      [[], MM_KEY],
+      [undefined, MM_KEY],
+    ] as const) {
+      const rows = treatmentRows(stats, [heat(exclude === undefined ? undefined : [...exclude]), eswtGroup(1)])
+      expect(rows[0]).toMatchObject({ kind: 'stale', key })
+      expect(staleNames(rows)).toEqual({ all: false, names: ['표층열만'] })
+    }
+  })
+
+  it('AC-2705.4 다시 불러오면(새 열쇠로 센 줄이 저장되면) 새 열쇠의 숫자가 나오고, 옛 열쇠 줄의 숫자는 쓰지 않는다', () => {
+    const reloaded = daysFrom(LAST_WEEK.from, THIS_WEEK.to, { groups: [line(MM_KEY, 9), line(MM_NO_ESWT7_KEY, 2, 1)] })
+    const item = ready(treatmentRows(input(today, '7d', reloaded, bothWeeks), [heat(['ESWT7'])])[0])
+    expect(item).toMatchObject({ key: MM_NO_ESWT7_KEY, compared: true, row: { count: 14, newCount: 7, returningCount: 7 } })
+  })
+
+  it('AC-2705.4 예전 제외 모음으로 되돌리면(차례·대소문자가 달라도) 그 모음으로 센 줄이 남은 기간은 바로 숫자가 나온다', () => {
+    const days = daysFrom(LAST_WEEK.from, THIS_WEEK.to, { groups: [line(MM_KEY, 3), line(MM_NO_ESWT7_KEY, 2), line(MM_NO_ESWT_KEY, 1)] })
+    const stats = input(today, '7d', days, bothWeeks)
+    expect(ready(treatmentRows(stats, [heat(['ESWT1', 'ESWT7'])])[0]).row.count).toBe(7)
+    expect(ready(treatmentRows(stats, [heat(['eswt7'])])[0]).row.count).toBe(14)
+    expect(ready(treatmentRows(stats, [heat([])])[0]).row.count).toBe(21)
+    expect(ready(treatmentRows(stats, [heat()])[0]).row.count).toBe(21)
+  })
+
+  it('AC-2705.4 이름·차례만 바꾸면(제외할 처방 그대로) 열쇠가 그대로라 바로 보인다', () => {
+    const days = daysFrom(LAST_WEEK.from, THIS_WEEK.to, { groups: [line(MM_NO_ESWT7_KEY, 2)] })
+    const stats = input(today, '7d', days, bothWeeks)
+    const renamed = ready(treatmentRows(stats, [eswtGroup(0), heat(['ESWT7'], '표층열', 5)])[1])
+    expect(renamed).toMatchObject({ kind: 'ready', key: MM_NO_ESWT7_KEY, row: { name: '표층열', count: 14 } })
+  })
+
+  it('AC-2705.4 넣은 처방이 없는 묶음은 제외할 처방이 있어도 empty 줄이고 다시 불러오기 안내에 들지 않는다', () => {
+    const rows = treatmentRows(input(today, '7d', [day('2026-11-08')], bothWeeks), [xgroup('제외만', [], ['ESWT7'], 0), eswtGroup(1)])
+    expect(rows[0]).toEqual({ kind: 'empty', group: xgroup('제외만', [], ['ESWT7'], 0) })
+    expect(staleNames(rows)).toEqual({ all: true, names: ['체외충격파'] })
+  })
+
+  it('AC-2705.4 열린 그래프(treatmentDetail)도 제외할 처방이 든 열쇠 줄 숫자만 쓴다', () => {
+    const days = daysFrom(LAST_WEEK.from, THIS_WEEK.to, (ymd) => ({ groups: [line(MM_KEY, 9), line(MM_NO_ESWT7_KEY, ymd < THIS_WEEK.from ? 1 : 2)] }))
+    const stats = input(today, '7d', days, bothWeeks)
+    const item = ready(treatmentRows(stats, [heat(['ESWT7'])])[0])
+    const detail = treatmentDetail(stats, item)
+    expect(detail.current.map((point) => point.count)).toEqual([2, 2, 2, 2, 2, 2, 2])
+    expect(detail.previous.map((point) => point.count)).toEqual([1, 1, 1, 1, 1, 1, 1])
   })
 })

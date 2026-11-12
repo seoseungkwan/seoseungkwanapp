@@ -563,6 +563,48 @@ describe('AC-1205.4 Worker 입구(createStatsHost.load)가 묶음을 세어 일 
   })
 })
 
+describe('AC-2704.2 Worker 입구(createStatsHost.load)가 같은 날 제외할 처방을 받은 환자를 빼고 센다', () => {
+  // 가짜 묶음 열쇠(rx-group-exclude AC-2705.2의 고정 값: MM010 중 ESWT7 날 뺌)
+  const EXCLUDING = 't7bdb9b20a17a64d3'
+  // 9월 1일: 1번 환자는 MM010과 ESWT7을 같이(제외할 처방 줄이 뒤에 온다), 2번 환자는 MM010만 받았다
+  const EXCLUDE_ROWS = [
+    ...ROWS,
+    [CHARTS[0], '20260901', 'MM010', '20260901'],
+    [CHARTS[0], '20260901', 'ESWT7', '20260901'],
+    [CHARTS[1], '20260901', 'MM010', '20260901'],
+  ]
+  const none = (id: string) => ({ id, patients: 0, newPatients: 0, returning: 0 })
+
+  async function loadedWith(over: Partial<StatsLoadRequest>) {
+    const { host, sent } = hostUnderTest()
+    bridgeMessages('s1', helperJson({ rows: EXCLUDE_ROWS })).forEach((m) => host.fromBridge(m))
+    await host.load(loadRequest('s1', over))
+    expect(sent.map((m) => m.type)).toEqual(['loaded'])
+    const [reply] = sent
+    if (reply.type !== 'loaded') throw new Error('loaded가 아니다')
+    return { view: reply.view, sent }
+  }
+  const rowsOf = (view: StatsLoaded) => view.days?.map((day) => [day.day, day.groups.filter((group) => group.id === EXCLUDING)])
+
+  it('AC-2704.2: host.load({ …, groups: [{ id, codes, exclude }] })의 loaded 답 일 줄에 그 열쇠 줄이 있고 같은 날 ESWT7을 받은 환자는 빠진다', async () => {
+    const { view, sent } = await loadedWith({ groups: [{ id: EXCLUDING, codes: ['MM010'], exclude: ['ESWT7'] }] })
+    expect(rowsOf(view)).toEqual([
+      ['2026-09-01', [{ id: EXCLUDING, patients: 1, newPatients: 1, returning: 0 }]],
+      ['2026-09-02', [none(EXCLUDING)]],
+      ['2026-09-03', [none(EXCLUDING)]],
+      ['2026-10-05', [none(EXCLUDING)]],
+      ['2026-11-01', [none(EXCLUDING)]],
+    ])
+    for (const day of view.days ?? []) expect(validateDayPayload(day)).toEqual(day)
+    expectNoPatientData(sent)
+  })
+
+  it('AC-2704.2: 같은 자료를 제외할 처방 없이 불러오면 그날 두 환자 모두 센다(빠진 것은 제외할 처방 때문이다)', async () => {
+    const { view } = await loadedWith({ groups: [{ id: EXCLUDING, codes: ['MM010'] }] })
+    expect(rowsOf(view)?.[0]).toEqual(['2026-09-01', [{ id: EXCLUDING, patients: 2, newPatients: 2, returning: 0 }]])
+  })
+})
+
 describe('AC-505.5 stats.worker.ts: 실제 포트(MessageChannel)로 이어 본다', () => {
   afterEach(() => {
     vi.unstubAllGlobals()

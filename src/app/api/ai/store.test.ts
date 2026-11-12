@@ -577,10 +577,11 @@ describe('loadReportMonths — 통계 세 달 (REQ-2001)', () => {
 describe('loadReportMonths — 묶음 이름 (REQ-2002)', () => {
   const namesOf = async (rows: unknown) => (await loadReportMonths(fakeStatsClient({ groups: answer(rows) }).client, '2026-10')).groupNames
 
-  it("AC-2002.1 stats_rx_groups를 select('name, codes, sort_order')로 읽어 처방이 든 묶음마다 groupKey(codes) → 이름", async () => {
+  // 읽는 칸 글자는 rx-group-exclude AC-2705.6이 AC-2002.1을 대신한다(exclude_codes를 더함)
+  it("AC-2002.1·AC-2705.6 stats_rx_groups를 select('name, codes, exclude_codes, sort_order')로 읽어 처방이 든 묶음마다 groupKey(codes) → 이름", async () => {
     const fake = fakeStatsClient({ groups: answer(GROUP_ROWS) })
     const { groupNames } = await loadReportMonths(fake.client, '2026-10')
-    expect(fake.select.filter((s) => s[0] === 'stats_rx_groups')).toEqual([['stats_rx_groups', 'name, codes, sort_order']])
+    expect(fake.select.filter((s) => s[0] === 'stats_rx_groups')).toEqual([['stats_rx_groups', 'name, codes, exclude_codes, sort_order']])
     expect(groupNames).toEqual({ [MANUAL_KEY]: '도수치료', [PT_KEY]: '물리치료' })
     for (const key of Object.keys(groupNames)) expect(key).toMatch(GROUP_KEY)
   })
@@ -657,6 +658,76 @@ describe('loadReportMonths — 묶음 이름 (REQ-2002)', () => {
       { name: '물리치료', codes: ['FAKE-G3'], sort_order: 1 },
     ])
     expect(names).toEqual({ [PT_KEY]: '물리치료' })
+  })
+})
+
+// 제외할 처방이 있는 묶음의 이름 짝 (rx-group-exclude AC-2705.6). 열쇠 = groupKey(codes, exclude_codes). 코드는 이름 짝을 만든 뒤 버린다.
+// MM010·ESWT7은 spec 고정 값의 코드이고 나머지는 지어낸 값이다
+describe('loadReportMonths — 제외할 처방이 있는 묶음 이름 (AC-2705.6)', () => {
+  const namesOf = async (rows: unknown) => (await loadReportMonths(fakeStatsClient({ groups: answer(rows) }).client, '2026-10')).groupNames
+  const MM_NO_ESWT7_KEY = 't7bdb9b20a17a64d3' // groupKey(['MM010'], ['ESWT7']) 고정 값(AC-2705.2)
+  const HEAT_ROW = { name: '표층열만', codes: ['MM010'], exclude_codes: ['ESWT7'], sort_order: 2 }
+
+  it('AC-2705.6 exclude_codes가 있는 묶음은 groupKey(codes, exclude_codes) 열쇠로 이름이 붙는다', async () => {
+    const names = await namesOf([HEAT_ROW, ...GROUP_ROWS])
+    expect(names).toEqual({ [MANUAL_KEY]: '도수치료', [PT_KEY]: '물리치료', [MM_NO_ESWT7_KEY]: '표층열만' })
+    expect(groupKey(['MM010'], ['ESWT7'])).toBe(MM_NO_ESWT7_KEY)
+    expect(Object.keys(names)).not.toContain(groupKey(['MM010']))
+  })
+
+  it('AC-2705.6 제외할 처방의 대소문자·차례·겹침이 달라도 통계 탭과 같은 열쇠다', async () => {
+    const names = await namesOf([{ name: '표층열만', codes: ['mm010'], exclude_codes: ['eswt7', 'ESWT7'], sort_order: 0 }])
+    expect(names).toEqual({ [MM_NO_ESWT7_KEY]: '표층열만' })
+  })
+
+  it('AC-2705.6 exclude_codes가 없거나(예전 줄 모양) 빈 배열이면 지금 열쇠 groupKey(codes)다', async () => {
+    const names = await namesOf([
+      { name: '도수치료', codes: ['fake-g2', 'FAKE-G1'], exclude_codes: [], sort_order: 0 },
+      { name: '물리치료', codes: PT_CODES, sort_order: 1 },
+      { name: '표층열', codes: ['MM010'], exclude_codes: undefined, sort_order: 2 },
+    ])
+    expect(names).toEqual({ [MANUAL_KEY]: '도수치료', [PT_KEY]: '물리치료', [groupKey(['MM010'])]: '표층열' })
+  })
+
+  it('AC-2705.6 넣은 처방이 같아도 제외할 처방이 다르면 다른 열쇠·이름이다', async () => {
+    const names = await namesOf([HEAT_ROW, { name: '표층열 전체', codes: ['MM010'], exclude_codes: [], sort_order: 3 }])
+    expect(names).toEqual({ [MM_NO_ESWT7_KEY]: '표층열만', [groupKey(['MM010'])]: '표층열 전체' })
+  })
+
+  it('AC-2705.6 처방이 빈 묶음은 제외할 처방이 있어도 빠진다', async () => {
+    const names = await namesOf([{ name: '제외만', codes: [], exclude_codes: ['ESWT7'], sort_order: 0 }, ...GROUP_ROWS])
+    expect(names).toEqual({ [MANUAL_KEY]: '도수치료', [PT_KEY]: '물리치료' })
+  })
+
+  it.each<[string, unknown]>([
+    ['글자', SECRET],
+    ['null', null],
+    ['숫자', 7],
+    ['객체', { 0: 'ESWT7' }],
+    ['글자가 아닌 값이 든 배열', ['ESWT7', 3]],
+    ['null이 든 배열', [null]],
+  ])('AC-2705.6 exclude_codes가 %s이면(글자 배열이 아님) 모양 오류로 던지고 오류 글에 받은 내용이 없다', async (_name, exclude) => {
+    const groups = answer([{ name: '표층열만', codes: ['MM010'], exclude_codes: exclude, sort_order: 0 }])
+    await expectThrowsWithoutSecret(loadReportMonths(fakeStatsClient({ months: answer([monthRow('2026-10', 120)]), groups }).client, '2026-10'))
+  })
+
+  it('AC-2705.6 모양 오류는 묶음 모양 오류와 같은 고정 글이다', async () => {
+    const shape = async (row: unknown) =>
+      loadReportMonths(fakeStatsClient({ groups: answer([row]) }).client, '2026-10').then(
+        () => null,
+        (e: unknown) => (e instanceof Error ? e.message : null),
+      )
+    const codesWrong = await shape({ name: '표층열만', codes: 'MM010', sort_order: 0 })
+    expect(codesWrong).not.toBeNull()
+    await expect(shape({ name: '표층열만', codes: ['MM010'], exclude_codes: 'ESWT7', sort_order: 0 })).resolves.toBe(codesWrong)
+  })
+
+  it('AC-2705.6 돌려주는 값에는 열쇠와 이름만 있고 제외할 처방 코드는 없다(이름 짝을 만든 뒤 버린다)', async () => {
+    const months = await loadReportMonths(fakeStatsClient({ months: answer([monthRow('2026-10', 120)]), groups: answer([HEAT_ROW, ...GROUP_ROWS]) }).client, '2026-10')
+    expect(Object.keys(months)).toEqual(['selected', 'prev', 'lastYear', 'groupNames'])
+    const text = JSON.stringify(months.groupNames)
+    for (const banned of ['MM010', 'ESWT7', 'exclude', 'codes']) expect(text).not.toContain(banned)
+    expect(JSON.stringify(months)).not.toMatch(/"exclude|"codes"/)
   })
 })
 

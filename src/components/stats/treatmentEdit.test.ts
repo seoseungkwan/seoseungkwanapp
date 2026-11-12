@@ -1,40 +1,47 @@
-// 처방별 추세 묶음 고치기 규칙(treatment-trend TASK-5, REQ-1210). 묶음 이름·처방 코드는 모두 이 파일에서 지어낸 값이다
+// 처방별 추세 묶음 고치기 규칙(treatment-trend TASK-5, REQ-1210 · 제외할 처방은 rx-group-exclude TASK-6, REQ-2706). 묶음 이름·처방 코드는 모두 이 파일에서 지어낸 값이다
 import { describe, expect, it } from 'vitest'
-import { RX_GROUPS_MAX, type RxGroup } from '@/types/rxGroups'
+import { RX_GROUPS_MAX, type RxGroup, type StatsRxGroup } from '@/types/rxGroups'
 import {
   addBlankGroup,
   draftProblem,
   forSave,
   groupLabel,
+  inExclude,
   movedNote,
   moveGroup,
   ownerOf,
   pickCode,
+  pickExclude,
   removeCode,
+  removeExclude,
   removeGroup,
   savedNote,
   setName,
   TOO_MANY_GROUPS,
 } from './treatmentEdit'
 
-const group = (name: string, codes: string[], sortOrder: number, id: string | null = null): RxGroup => ({
+// exclude를 주지 않으면 그 칸이 없는 묶음이다(예전 모양 그대로)
+const group = (name: string, codes: string[], sortOrder: number, id: string | null = null, exclude?: string[]): StatsRxGroup => ({
   id,
   name,
   codes,
   sortOrder,
+  ...(exclude ? { exclude } : {}),
 })
 
 // 받은 목록을 건드리면 던지게 얼린다(ESM은 strict라 얼린 값을 바꾸면 TypeError). 끝에 처음 모습과 견준다
-function frozen(groups: RxGroup[]): readonly RxGroup[] {
+function frozen(groups: StatsRxGroup[]): readonly StatsRxGroup[] {
   for (const g of groups) {
     Object.freeze(g.codes)
+    if (g.exclude) Object.freeze(g.exclude)
     Object.freeze(g)
   }
   return Object.freeze(groups)
 }
-const copyOf = (groups: readonly RxGroup[]) => JSON.parse(JSON.stringify(groups)) as RxGroup[]
+const copyOf = (groups: readonly StatsRxGroup[]) => JSON.parse(JSON.stringify(groups)) as StatsRxGroup[]
 const names = (groups: readonly RxGroup[]) => groups.map((g) => g.name)
 const orders = (groups: readonly RxGroup[]) => groups.map((g) => g.sortOrder)
+const excludes = (groups: readonly StatsRxGroup[]) => groups.map((g) => g.exclude)
 
 const three = () =>
   frozen([
@@ -185,12 +192,12 @@ describe('AC-1210.6 다른 묶음에서 옮기기·옮긴 글', () => {
 })
 
 describe('AC-1210.9 묶음 더하기(50개까지)', () => {
-  it('AC-1210.9: [+ 묶음 더하기]는 이름이 빈 새 묶음(id null, 처방 없음)을 끝에 더한다', () => {
+  it('AC-1210.9: [+ 묶음 더하기]는 이름이 빈 새 묶음(id null, 처방 없음, 제외할 처방 없음 = 빈 배열)을 끝에 더한다', () => {
     const after = addBlankGroup(three())
     expect(after).not.toBe('tooMany')
     if (after === 'tooMany') return
     expect(after).toHaveLength(4)
-    expect(after[3]).toEqual({ id: null, name: '', codes: [], sortOrder: 3 })
+    expect(after[3]).toEqual({ id: null, name: '', codes: [], exclude: [], sortOrder: 3 })
     expect(names(after).slice(0, 3)).toEqual(['도수치료', '체외충격파', '초음파'])
   })
 
@@ -283,16 +290,16 @@ describe('AC-1210.12 저장 값·저장 글', () => {
     const before = frozen([group(' 초음파 ', ['SONO1'], 7, 'g3'), group('도수치료', ['도수'], 2, 'g1'), group('새 묶음  ', [], 9)])
     const after = forSave(before)
     expect(after).toEqual([
-      { id: 'g3', name: '초음파', codes: ['SONO1'], sortOrder: 0 },
-      { id: 'g1', name: '도수치료', codes: ['도수'], sortOrder: 1 },
-      { id: null, name: '새 묶음', codes: [], sortOrder: 2 },
+      { id: 'g3', name: '초음파', codes: ['SONO1'], exclude: [], sortOrder: 0 },
+      { id: 'g1', name: '도수치료', codes: ['도수'], exclude: [], sortOrder: 1 },
+      { id: null, name: '새 묶음', codes: [], exclude: [], sortOrder: 2 },
     ])
     expect(after[0].codes).not.toBe(before[0].codes)
   })
 
-  it('AC-1210.12: forSave는 묶음 칸 넷(id·name·codes·sortOrder) 밖의 값(제안 표시 등)을 싣지 않는다', () => {
+  it('AC-1210.12·AC-2706.4: forSave는 묶음 칸(id·name·codes·exclude·sortOrder) 밖의 값(제안 표시 등)을 싣지 않는다', () => {
     const suggested = { ...group('도수치료', ['도수'], 0), suggested: true as const }
-    expect(Object.keys(forSave([suggested])[0]).sort()).toEqual(['codes', 'id', 'name', 'sortOrder'])
+    expect(Object.keys(forSave([suggested])[0]).sort()).toEqual(['codes', 'exclude', 'id', 'name', 'sortOrder'])
   })
 
   it('AC-1210.12: 이름·차례만 바꾸고 지우기만 했으면 `저장했어요. 이름과 순서만 바뀌어서 바로 반영했어요.`', () => {
@@ -343,6 +350,265 @@ describe('AC-1210.12 저장 값·저장 글', () => {
     const after = frozen(forSave(removeCode(before, 0, '도수')))
     const snapshots = [copyOf(before), copyOf(after)]
     forSave(before)
+    savedNote(before, after)
+    expect([before, after]).toEqual(snapshots)
+  })
+})
+
+// ── 제외할 처방(rx-group-exclude REQ-2706) ──────────────────────────
+// 표층열만 = MM010 중 같은 날 ESWT1을 받은 환자는 빼고, 체외충격파 = ESWT7·ESWT2, 초음파는 제외할 처방 칸이 없다(예전 모양)
+const withExclude = () =>
+  frozen([
+    group('표층열만', ['MM010'], 0, 'g1', ['ESWT1']),
+    group('체외충격파', ['ESWT7', 'ESWT2'], 1, 'g2', []),
+    group('초음파', ['SONO1'], 2, 'g3'),
+  ])
+
+describe('AC-2706.1 제외할 처방 넣기(pickExclude)·inExclude', () => {
+  it('AC-2706.1: 그 묶음의 제외할 처방 끝에 더하고 넣은 처방은 그대로다', () => {
+    const after = pickExclude(withExclude(), 0, 'CRYO')
+    expect(after[0]).toEqual({ id: 'g1', name: '표층열만', codes: ['MM010'], exclude: ['ESWT1', 'CRYO'], sortOrder: 0 })
+    expect(orders(after)).toEqual([0, 1, 2])
+  })
+
+  it('AC-2706.1: 제외할 처방 칸이 없는 묶음(예전 모양)에는 그 코드 하나짜리 목록이 생긴다', () => {
+    const after = pickExclude(withExclude(), 2, 'ESWT7')
+    expect(after[2]).toEqual({ id: 'g3', name: '초음파', codes: ['SONO1'], exclude: ['ESWT7'], sortOrder: 2 })
+  })
+
+  it('AC-2706.1: 다른 묶음에 든 처방도 고를 수 있고 그 묶음은 그대로다(옮기지 않는다)', () => {
+    const before = withExclude()
+    const after = pickExclude(before, 0, 'ESWT7')
+    expect(after[0].exclude).toEqual(['ESWT1', 'ESWT7'])
+    expect(after[0].codes).toEqual(['MM010'])
+    expect(after[1]).toEqual(copyOf(before)[1])
+    expect(after[2]).toEqual(copyOf(before)[2])
+    expect(ownerOf(after, 'ESWT7')).toBe(1)
+  })
+
+  it('AC-2706.1: 다른 묶음의 제외할 처방은 바꾸지 않는다(같은 코드를 두 묶음이 제외할 수 있다)', () => {
+    const after = pickExclude(pickExclude(withExclude(), 1, 'ESWT1'), 2, 'ESWT1')
+    expect(excludes(after)).toEqual([['ESWT1'], ['ESWT1'], ['ESWT1']])
+  })
+
+  it('AC-2706.1: 이 묶음의 넣은 처방에 있는 코드(대소문자 무시)는 그대로다(같은 내용의 새 목록)', () => {
+    const before = withExclude()
+    for (const code of ['MM010', 'mm010']) {
+      const after = pickExclude(before, 0, code)
+      expect(after).not.toBe(before)
+      expect(after).toEqual(copyOf(before))
+    }
+    expect(pickExclude(before, 1, 'eswt2')).toEqual(copyOf(before))
+  })
+
+  it('AC-2706.1: 이미 제외할 처방에 있는 코드(대소문자 무시)는 다시 넣지 않는다', () => {
+    const before = withExclude()
+    for (const code of ['ESWT1', 'eswt1', 'Eswt1']) {
+      const after = pickExclude(before, 0, code)
+      expect(after).not.toBe(before)
+      expect(after).toEqual(copyOf(before))
+    }
+  })
+
+  it('AC-2706.1: 없는 자리는 같은 내용의 새 목록이다', () => {
+    const before = withExclude()
+    for (const index of [3, -1, 9]) {
+      const after = pickExclude(before, index, 'CRYO')
+      expect(after).not.toBe(before)
+      expect(after).toEqual(copyOf(before))
+    }
+  })
+
+  it('AC-2706.1: 제외할 처방 넣기는 받은 목록을 바꾸지 않는다', () => {
+    const before = withExclude()
+    const snapshot = copyOf(before)
+    pickExclude(before, 0, 'CRYO')
+    pickExclude(before, 1, 'MM010')
+    pickExclude(before, 2, 'ESWT7')
+    pickExclude(before, 0, 'mm010')
+    expect(before).toEqual(snapshot)
+  })
+
+  it('AC-2706.1: inExclude는 그 묶음의 제외할 처방에 있는지를 대소문자 무시로 본다(넣은 처방·칸 없음은 거짓)', () => {
+    const [shallow, shock, sono] = withExclude()
+    expect(inExclude(shallow, 'ESWT1')).toBe(true)
+    expect(inExclude(shallow, 'eswt1')).toBe(true)
+    expect(inExclude(shallow, 'MM010')).toBe(false)
+    expect(inExclude(shallow, 'ESWT7')).toBe(false)
+    expect(inExclude(shock, 'ESWT7')).toBe(false)
+    expect(inExclude(sono, 'SONO1')).toBe(false)
+    expect(inExclude(sono, 'ESWT1')).toBe(false)
+  })
+})
+
+describe('AC-2706.2 제외할 처방 빼기(removeExclude)', () => {
+  it('AC-2706.2: 그 묶음의 제외할 처방에서 그 코드만 빼고 넣은 처방·다른 묶음은 그대로다', () => {
+    const before = frozen([
+      group('표층열만', ['MM010'], 0, 'g1', ['ESWT1', 'CRYO', 'ESWT7']),
+      group('초음파', ['SONO1'], 1, 'g3', ['CRYO']),
+    ])
+    const after = removeExclude(before, 0, 'CRYO')
+    expect(after[0]).toEqual({ id: 'g1', name: '표층열만', codes: ['MM010'], exclude: ['ESWT1', 'ESWT7'], sortOrder: 0 })
+    expect(after[1]).toEqual(copyOf(before)[1])
+  })
+
+  it('AC-2706.2: 마지막 하나를 빼면 빈 목록이 남는다(묶음은 그대로)', () => {
+    const after = removeExclude(withExclude(), 0, 'ESWT1')
+    expect(after).toHaveLength(3)
+    expect(after[0]).toEqual({ id: 'g1', name: '표층열만', codes: ['MM010'], exclude: [], sortOrder: 0 })
+  })
+
+  it('AC-2706.2: 제외할 처방에 없는 코드·넣은 처방의 코드·칸 없는 묶음·없는 자리는 같은 내용의 새 목록이다', () => {
+    const before = withExclude()
+    const snapshot = copyOf(before)
+    for (const [index, code] of [
+      [0, 'CRYO'],
+      [0, 'MM010'],
+      [1, 'ESWT7'],
+      [2, 'ESWT1'],
+      [7, 'ESWT1'],
+    ] as const) {
+      const after = removeExclude(before, index, code)
+      expect(after).not.toBe(before)
+      expect(after).toEqual(snapshot)
+    }
+  })
+
+  it('AC-2706.2: 제외할 처방 빼기는 받은 목록을 바꾸지 않는다', () => {
+    const before = withExclude()
+    const snapshot = copyOf(before)
+    removeExclude(before, 0, 'ESWT1')
+    removeExclude(before, 2, 'ESWT1')
+    expect(before).toEqual(snapshot)
+  })
+})
+
+describe('AC-2706.3 처방 넣기(pickCode)와 제외할 처방', () => {
+  it('AC-2706.3: 이 묶음의 제외할 처방에 있는 코드(대소문자 무시)는 넣지 않는다(같은 내용의 새 목록, from null)', () => {
+    const before = withExclude()
+    for (const code of ['ESWT1', 'eswt1']) {
+      const { groups, from } = pickCode(before, 0, code)
+      expect(groups).not.toBe(before)
+      expect(groups).toEqual(copyOf(before))
+      expect(from).toBeNull()
+    }
+  })
+
+  it('AC-2706.3: 이 묶음이 제외한 코드가 다른 묶음에 들어 있어도 옮기지 않는다', () => {
+    const before = frozen([group('표층열만', ['MM010'], 0, 'g1', ['ESWT7']), group('체외충격파', ['ESWT7', 'ESWT2'], 1, 'g2')])
+    const { groups, from } = pickCode(before, 0, 'ESWT7')
+    expect(groups).toEqual(copyOf(before))
+    expect(ownerOf(groups, 'ESWT7')).toBe(1)
+    expect(from).toBeNull()
+  })
+
+  it('AC-2706.3: 다른 묶음의 제외할 처방에 있는 코드는 지금처럼 넣고, 그 묶음의 제외할 처방은 그대로다', () => {
+    const { groups, from } = pickCode(withExclude(), 2, 'ESWT1')
+    expect(groups.map((g) => g.codes)).toEqual([['MM010'], ['ESWT7', 'ESWT2'], ['SONO1', 'ESWT1']])
+    expect(excludes(groups)).toEqual([['ESWT1'], [], undefined])
+    expect(from).toBeNull()
+  })
+
+  it('AC-2706.3: 다른 묶음에서 옮겨 올 때도 제외할 처방은 어느 묶음에서도 바뀌지 않는다', () => {
+    const before = frozen([
+      group('표층열만', ['MM010'], 0, 'g1', ['ESWT7']),
+      group('체외충격파', ['ESWT7', 'ESWT2'], 1, 'g2', ['CRYO']),
+      group('새 묶음', [], 2, null, []),
+    ])
+    const { groups, from } = pickCode(before, 2, 'eswt7')
+    expect(groups.map((g) => g.codes)).toEqual([['MM010'], ['ESWT2'], ['eswt7']])
+    expect(excludes(groups)).toEqual([['ESWT7'], ['CRYO'], []])
+    expect(from).toBe('체외충격파')
+  })
+
+  it('AC-2706.3: pickCode는 제외할 처방이 있는 받은 목록을 바꾸지 않는다', () => {
+    const before = withExclude()
+    const snapshot = copyOf(before)
+    pickCode(before, 0, 'ESWT1')
+    pickCode(before, 2, 'ESWT1')
+    pickCode(before, 0, 'ESWT7')
+    expect(before).toEqual(snapshot)
+  })
+})
+
+describe('AC-2706.4 저장 값에 제외할 처방', () => {
+  it('AC-2706.4: forSave는 묶음마다 exclude를 늘 배열로 싣는다(없으면 [], 있으면 새 배열로 옮겨 적음)', () => {
+    const before = withExclude()
+    const after = forSave(before)
+    expect(after).toEqual([
+      { id: 'g1', name: '표층열만', codes: ['MM010'], exclude: ['ESWT1'], sortOrder: 0 },
+      { id: 'g2', name: '체외충격파', codes: ['ESWT7', 'ESWT2'], exclude: [], sortOrder: 1 },
+      { id: 'g3', name: '초음파', codes: ['SONO1'], exclude: [], sortOrder: 2 },
+    ])
+    expect(after.every((g) => Array.isArray(g.exclude))).toBe(true)
+    expect(after[0].exclude).not.toBe(before[0].exclude)
+    expect(after[1].exclude).not.toBe(before[1].exclude)
+  })
+
+  it('AC-2706.4: 차례 바꾸기·지우기·이름·처방 넣고 빼기를 거쳐도 제외할 처방이 남아 저장 값에 실린다', () => {
+    let draft: readonly StatsRxGroup[] = withExclude()
+    draft = moveGroup(draft, 0, 1)
+    draft = setName(draft, 1, ' 표층열 ')
+    draft = removeCode(draft, 0, 'ESWT2')
+    draft = pickCode(draft, 1, 'MM011').groups
+    draft = removeGroup(draft, 2)
+    draft = pickExclude(draft, 0, 'CRYO')
+    expect(forSave(draft)).toEqual([
+      { id: 'g2', name: '체외충격파', codes: ['ESWT7'], exclude: ['CRYO'], sortOrder: 0 },
+      { id: 'g1', name: '표층열', codes: ['MM010', 'MM011'], exclude: ['ESWT1'], sortOrder: 1 },
+    ])
+  })
+
+  it('AC-2706.4: forSave는 제외할 처방이 있는 받은 목록을 바꾸지 않는다', () => {
+    const before = withExclude()
+    const snapshot = copyOf(before)
+    forSave(before)
+    expect(before).toEqual(snapshot)
+  })
+})
+
+describe('AC-2706.5 저장 글과 제외할 처방', () => {
+  const SAVED = '저장했어요.'
+  const AT_ONCE = '저장했어요. 이름과 순서만 바뀌어서 바로 반영했어요.'
+
+  it('AC-2706.5: 처방이 든 묶음에 제외할 처방을 넣으면 `저장했어요.`(다시 불러와야 숫자가 나온다)', () => {
+    const before = withExclude()
+    expect(savedNote(before, forSave(pickExclude(before, 0, 'CRYO')))).toBe(SAVED)
+    expect(savedNote(before, forSave(pickExclude(before, 1, 'CRYO')))).toBe(SAVED)
+    expect(savedNote(before, forSave(pickExclude(before, 2, 'CRYO')))).toBe(SAVED) // 칸 없던 묶음
+  })
+
+  it('AC-2706.5: 제외할 처방을 빼거나 바꾸면 `저장했어요.`', () => {
+    const before = withExclude()
+    expect(savedNote(before, forSave(removeExclude(before, 0, 'ESWT1')))).toBe(SAVED)
+    expect(savedNote(before, forSave(pickExclude(removeExclude(before, 0, 'ESWT1'), 0, 'CRYO')))).toBe(SAVED)
+  })
+
+  it('AC-2706.5: 제외할 처방 모음이 같으면(차례·대소문자만 다름, 칸 없음 = 빈 배열) 바뀐 것으로 세지 않는다', () => {
+    const before = frozen([group('표층열만', ['MM010'], 0, 'g1', ['ESWT1', 'CRYO']), group('초음파', ['SONO1'], 1, 'g3')])
+    const after = [group('표층열만', ['MM010'], 0, 'g1', ['cryo', 'Eswt1']), group('초음파', ['SONO1'], 1, 'g3', [])]
+    expect(savedNote(before, after)).toBe(AT_ONCE)
+    expect(savedNote(before, forSave(before))).toBe(AT_ONCE)
+    expect(savedNote(after, [group('표층열만', ['MM010'], 0, 'g1', ['ESWT1', 'CRYO']), group('초음파', ['SONO1'], 1, 'g3')])).toBe(AT_ONCE)
+  })
+
+  it('AC-2706.5: 넣은 처방이 없는 묶음의 제외할 처방만 바뀌었으면 바로 반영했다고 말한다', () => {
+    const before = frozen([group('도수치료', ['도수'], 0, 'g1'), group('빈 묶음', [], 1, 'g2', ['ESWT1'])])
+    expect(savedNote(before, forSave(pickExclude(before, 1, 'CRYO')))).toBe(AT_ONCE)
+    expect(savedNote(before, forSave(removeExclude(before, 1, 'ESWT1')))).toBe(AT_ONCE)
+    const added = addBlankGroup(before) as StatsRxGroup[]
+    expect(savedNote(before, forSave(pickExclude(setName(added, 2, '새 묶음'), 2, 'CRYO')))).toBe(AT_ONCE)
+  })
+
+  it('AC-2706.5: 이름·차례만 바꾸면 제외할 처방이 있어도 바로 반영했다고 말한다', () => {
+    const before = withExclude()
+    expect(savedNote(before, forSave(setName(moveGroup(before, 0, 1), 1, '표층열')))).toBe(AT_ONCE)
+  })
+
+  it('AC-2706.5: 저장 글은 제외할 처방이 있는 받은 목록을 바꾸지 않는다', () => {
+    const before = withExclude()
+    const after = frozen(forSave(pickExclude(before, 0, 'CRYO')))
+    const snapshots = [copyOf(before), copyOf(after)]
     savedNote(before, after)
     expect([before, after]).toEqual(snapshots)
   })

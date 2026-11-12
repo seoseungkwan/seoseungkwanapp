@@ -29,7 +29,7 @@ const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
 // 통계 탭이 저장한 숫자(spec ai-report-stats REQ-2001·2002). 읽기 둘을 함께 보낸다:
 // ① stats_months의 고른 달·지난달·작년 같은 달 줄(payload는 검사하지 않고 그대로 넘긴다 — generate.ts가 validateMonthPayload로 검사한다)
-// ② stats_rx_groups의 처방별 추세 묶음 → groupKey(codes) → 이름(처방 코드는 여기서 버린다)
+// ② stats_rx_groups의 처방별 추세 묶음 → groupKey(codes, exclude_codes) → 이름(처방 코드·제외할 처방 코드는 여기서 버린다, rx-group-exclude AC-2705.6)
 // 읽기가 error를 돌려주거나 던지거나 답 모양이 다르면 고정 글로 던진다(generateReport는 E-AI-FAILED, isReportStale은 false로 바꾼다).
 // 달 계산은 addMonths만 쓴다(오늘 날짜를 구하지 않는다). 부를 때마다 새 값을 돌려준다(groupNames를 고쳐도 다음 부름에 번지지 않게)
 export async function loadReportMonths(supabase: SupabaseClient, month: string): Promise<ReportMonths> {
@@ -39,7 +39,7 @@ export async function loadReportMonths(supabase: SupabaseClient, month: string):
   try {
     const [months, groups] = await Promise.all([
       supabase.from('stats_months').select('month, payload').in('month', wanted),
-      supabase.from('stats_rx_groups').select('name, codes, sort_order'),
+      supabase.from('stats_rx_groups').select('name, codes, exclude_codes, sort_order'),
     ])
     if (months.error || groups.error) throw new Error(STATS_READ_FAILED)
     monthRows = months.data
@@ -63,14 +63,16 @@ function monthsIn(rows: unknown, wanted: readonly string[]): unknown[] {
   return wanted.map((m) => (found.has(m) ? found.get(m) : null))
 }
 
-type GroupRow = { name: string; codes: string[]; sortOrder: number }
+type GroupRow = { name: string; codes: string[]; exclude: string[]; sortOrder: number }
 
+const isCodeList = (value: unknown): value is string[] => Array.isArray(value) && value.every((code) => typeof code === 'string')
+
+// exclude_codes가 없으면(undefined) 빈 배열로 본다. 있는데 글자 배열이 아니면(null 포함) codes와 같은 모양 오류다
 function groupRowOf(row: unknown): GroupRow {
   if (typeof row !== 'object' || row === null) throw new Error(GROUPS_SHAPE_FAILED)
-  const { name, codes, sort_order: sortOrder } = row as Record<string, unknown>
-  const codesOk = Array.isArray(codes) && codes.every((code) => typeof code === 'string')
-  if (typeof name !== 'string' || !codesOk || !Number.isInteger(sortOrder)) throw new Error(GROUPS_SHAPE_FAILED)
-  return { name, codes: codes as string[], sortOrder: sortOrder as number }
+  const { name, codes, exclude_codes: exclude = [], sort_order: sortOrder } = row as Record<string, unknown>
+  if (typeof name !== 'string' || !isCodeList(codes) || !isCodeList(exclude) || !Number.isInteger(sortOrder)) throw new Error(GROUPS_SHAPE_FAILED)
+  return { name, codes, exclude, sortOrder: sortOrder as number }
 }
 
 // 묶음 줄 → 열쇠 → 이름. sort_order 작은 차례, 같으면 이름 글자 코드 차례(localeCompare를 쓰지 않는다)로 보고 열쇠마다 처음 이름을 쓴다.
@@ -81,7 +83,7 @@ function groupNamesOf(rows: unknown): Record<string, string> {
   const names: Record<string, string> = {}
   for (const group of groups) {
     if (group.codes.length === 0 || !isText(group.name, true)) continue
-    const key = groupKey(group.codes)
+    const key = groupKey(group.codes, group.exclude)
     if (!Object.hasOwn(names, key)) names[key] = group.name
   }
   return names

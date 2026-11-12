@@ -1,48 +1,59 @@
 import { addDays, compareYmd } from '@/lib/analytics/dates'
+import { copyGroupDef } from '@/lib/analytics/groupDef'
 import type { RxGroupDef } from '@/types/analysis'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
-import type { RxGroup } from '@/types/rxGroups'
+import type { StatsRxGroup } from '@/types/rxGroups'
 import { codeKey, rxDetail, rxPickRows, type RxDetailPoint, type RxPickRow, type StatsInput } from './view'
 
 // 처방별 추세의 숫자 (treatment-trend REQ-1205~1209, design.md '다시 불러오기 판단'·'화면 숫자'). view.ts와 같은 규칙의 순수 함수다.
-// 묶음 열쇠 = 처방 코드 모음의 지문(groupKey). 불러올 때 묶음마다 이 열쇠로 세어 일 줄 groups에 넣고, 화면은 지금 묶음의 열쇠 줄 숫자만 쓴다.
+// 묶음 열쇠 = 처방 코드 모음(+ 제외할 처방 모음)의 지문(groupKey). 불러올 때 묶음마다 이 열쇠로 세어 일 줄 groups에 넣고, 화면은 지금 묶음의 열쇠 줄 숫자만 쓴다.
+// 제외할 처방을 넣거나 빼면 열쇠가 바뀌어 다시 불러올 때까지 숨긴다. 제외할 처방이 없으면 열쇠가 예전과 같다 (rx-group-exclude REQ-2705)
 // 숫자는 묶음 줄을 "열쇠가 코드인 처방 줄"로 바꾼 가상 입력(groupInput)을 rxPickRows·rxDetail에 넘겨 낸다. 그래서 증감·짝 빼기·일부 기간이 처방 추세와 같다.
 // 이름·sortOrder·제안 여부는 숫자에 쓰지 않는다. 숫자는 열쇠만 본다
 
 export const GROUP_KEY = /^t[0-9a-f]{16}$/
 
 export type TreatmentRow =
-  | { kind: 'empty'; group: RxGroup } // 처방이 없는 묶음. 다시 불러오기 판단에 들지 않는다
-  | { kind: 'stale'; group: RxGroup; key: string } // 고른 기간에 이 열쇠로 세지 않은 날이 있다: 다시 불러오면 보여요
+  | { kind: 'empty'; group: StatsRxGroup } // 처방이 없는 묶음(제외할 처방만 있어도). 다시 불러오기 판단에 들지 않는다
+  | { kind: 'stale'; group: StatsRxGroup; key: string } // 고른 기간에 이 열쇠로 세지 않은 날이 있다: 다시 불러오면 보여요
   // compared 거짓 = 비교 기간에 세지 않은 날이 있어 견주지 않음. lastYearCompared는 작년 비교가 있는 고른 기간에만 있고, 거짓 = 작년 기간에 세지 않은 날이 있어 작년만 견주지 않음
-  | { kind: 'ready'; group: RxGroup; key: string; compared: boolean; lastYearCompared?: boolean; row: RxPickRow }
+  | { kind: 'ready'; group: StatsRxGroup; key: string; compared: boolean; lastYearCompared?: boolean; row: RxPickRow }
 
 // FNV-1a 64비트. 목표가 ES2017이라 BigInt 글자(…n) 대신 BigInt()로 만든다
 const FNV_OFFSET = BigInt('0xcbf29ce484222325')
 const FNV_PRIME = BigInt('0x100000001b3')
 const KEY_DIGITS = 16
+// 넣은 처방 글과 제외할 처방 글 사이 나눔 글자. 묶음 코드에는 제어 문자가 없어(stats_rx_group_codes_ok) 코드와 섞이지 않는다
+const EXCLUDE_SEPARATOR = '\u001f'
 
 const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
-const bySortOrder = (groups: readonly RxGroup[]) => [...groups].sort((a, b) => a.sortOrder - b.sortOrder)
+const bySortOrder = (groups: readonly StatsRxGroup[]) => [...groups].sort((a, b) => a.sortOrder - b.sortOrder)
+// 코드를 codeKey(대문자)로 바꾸고 겹침을 빼 글자 차례로 '\n'으로 이은 글
+const codesText = (codes: readonly string[]) => [...new Set(codes.map(codeKey))].sort(compareText).join('\n')
 
-// 코드를 codeKey(대문자)로 바꾸고 겹침을 빼 글자 차례로 '\n'으로 이은 UTF-8 바이트의 FNV-1a 64비트. 't' + 소문자 16진수 16자리(validate.ts GROUP_ID를 지남)
-export function groupKey(codes: readonly string[]): string {
-  const text = [...new Set(codes.map(codeKey))].sort(compareText).join('\n')
+// 열쇠 글의 UTF-8 바이트의 FNV-1a 64비트. 't' + 소문자 16진수 16자리(validate.ts GROUP_ID를 지남).
+// 열쇠 글 = 넣은 처방 글. 제외할 처방 글(같은 규칙)이 비지 않으면 그 뒤에 U+001F + 제외할 처방 글을 붙인다 —
+// 제외할 처방이 없으면(안 줌·빈 배열) 예전 열쇠와 한 글자도 같아 이미 저장된 숫자가 그대로 보인다(AC-2705.1·2705.2)
+export function groupKey(codes: readonly string[], exclude: readonly string[] = []): string {
+  const included = codesText(codes)
+  const excluded = codesText(exclude)
+  const text = excluded === '' ? included : `${included}${EXCLUDE_SEPARATOR}${excluded}`
   let hash = FNV_OFFSET
   for (const byte of new TextEncoder().encode(text)) hash = BigInt.asUintN(64, (hash ^ BigInt(byte)) * FNV_PRIME)
   return `t${hash.toString(16).padStart(KEY_DIGITS, '0')}`
 }
 
-// 불러오기에 넘길 묶음 정의. 처방 든 묶음만, sortOrder 차례, 같은 열쇠는 한 번만
-export function groupDefs(groups: readonly RxGroup[]): RxGroupDef[] {
+// 불러오기에 넘길 묶음 정의. 처방 든 묶음만(제외할 처방만 있는 묶음은 넘기지 않는다), sortOrder 차례, 같은 열쇠는 한 번만.
+// 모양은 copyGroupDef 그대로: 제외할 처방이 있을 때만 exclude를 싣는다(없으면 { id, codes }). 이름·차례·묶음 id는 싣지 않는다
+export function groupDefs(groups: readonly StatsRxGroup[]): RxGroupDef[] {
   const seen = new Set<string>()
   return bySortOrder(groups).flatMap((group) => {
     if (group.codes.length === 0) return []
-    const id = groupKey(group.codes)
+    const id = groupKey(group.codes, group.exclude)
     if (seen.has(id)) return []
     seen.add(id)
-    return [{ id, codes: [...group.codes] }]
+    return [copyGroupDef({ id, codes: group.codes, exclude: group.exclude })]
   })
 }
 
@@ -96,10 +107,10 @@ export function groupInput(input: StatsInput, key: string, name: string, compare
 }
 
 // 묶음마다 한 줄, sortOrder 차례(건수로 다시 줄 세우지 않는다). 어느 묶음에도 없는 처방은 줄이 아니다
-export function treatmentRows(input: StatsInput, groups: readonly RxGroup[]): TreatmentRow[] {
+export function treatmentRows(input: StatsInput, groups: readonly StatsRxGroup[]): TreatmentRow[] {
   return bySortOrder(groups).map((group): TreatmentRow => {
     if (group.codes.length === 0) return { kind: 'empty', group }
-    const key = groupKey(group.codes)
+    const key = groupKey(group.codes, group.exclude)
     if (!keyedIn(input.days, input.range.current, key)) return { kind: 'stale', group, key }
     const compared = keyedIn(input.days, input.range.previous, key)
     const { lastYear } = input.range
@@ -116,7 +127,8 @@ export function treatmentDetail(input: StatsInput, item: Extract<TreatmentRow, {
   return rxDetail({ days: keyedDays(input.days, item.key, item.group.name), covered, range: input.range }, item.key)
 }
 
-// 처방 든 묶음 가운데 숨긴 것(줄 차례). all = 처방 든 묶음이 모두 숨김(처음 쓸 때 포함)
+// 처방 든 묶음 가운데 숨긴 것(줄 차례). all = 처방 든 묶음이 모두 숨김(처음 쓸 때 포함).
+// 숨김은 treatmentRows가 groupKey(codes, exclude)로 가린다: 제외할 처방을 바꾼 묶음도 여기 든다(AC-2705.4)
 export function staleNames(rows: readonly TreatmentRow[]): { all: boolean; names: string[] } {
   const filled = rows.filter((row) => row.kind !== 'empty')
   const names = filled.flatMap((row) => (row.kind === 'stale' ? [row.group.name] : []))
@@ -129,4 +141,4 @@ export function uncomparedNames(rows: readonly TreatmentRow[]): string[] {
 }
 
 // 열린 줄 열쇠: 저장된 id, 없으면(제안) 'new:' + 이름
-export const rowKey = (group: RxGroup): string => group.id ?? `new:${group.name}`
+export const rowKey = (group: StatsRxGroup): string => group.id ?? `new:${group.name}`

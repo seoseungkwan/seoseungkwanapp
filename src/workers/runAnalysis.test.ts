@@ -368,6 +368,35 @@ describe('AC-010.3 그룹 정의를 Worker로 넘긴다', () => {
     await running
   })
 
+  it('AC-2704.1: 제외할 처방이 있는 정의는 요청에 exclude가 그대로(새 배열로) 실리고 이름은 가지 않는다', async () => {
+    const fake = fakeWorker()
+    const rowLike = { id: 't7bdb9b20a17a64d3', codes: ['MM010'], exclude: ['ESWT7'], name: '가짜 물리치료' }
+    const running = runAnalysis([], { createWorker: fake.create, today: TODAY, groups: [rowLike] })
+    await fake.posted
+    expect(fake.sent[0].message.groups).toStrictEqual([{ id: 't7bdb9b20a17a64d3', codes: ['MM010'], exclude: ['ESWT7'] }])
+    expect(fake.sent[0].message.groups[0].exclude).not.toBe(rowLike.exclude)
+    expect(textsIn(fake.sent[0].message)).not.toContain('가짜 물리치료')
+    fake.reply({ type: 'done', output: { files: [], result: null } })
+    await running
+  })
+
+  it('AC-2704.1: 제외할 처방이 빈 배열이거나 없는 정의는 지금처럼 { id, codes }만(exclude 열쇠 없음)', async () => {
+    const fake = fakeWorker()
+    const groups: RxGroupDef[] = [
+      { id: 't00000000000000a1', codes: ['MM101'], exclude: [] },
+      { id: 'tf5a35bf567c9d2cc', codes: ['MM010'] },
+    ]
+    const running = runAnalysis([], { createWorker: fake.create, today: TODAY, groups })
+    await fake.posted
+    expect(fake.sent[0].message.groups).toStrictEqual([
+      { id: 't00000000000000a1', codes: ['MM101'] },
+      { id: 'tf5a35bf567c9d2cc', codes: ['MM010'] },
+    ])
+    for (const group of fake.sent[0].message.groups) expect(Object.keys(group).sort()).toEqual(['codes', 'id'])
+    fake.reply({ type: 'done', output: { files: [], result: null } })
+    await running
+  })
+
   it('그룹 정의가 깨져 있으면 E-ANALYZE-FAILED(예외 내용 없이), Worker는 바로 끝낸다', async () => {
     const fake = fakeWorker()
     const broken = [{ id: 'g-broken', codes: null }] as unknown as RxGroupDef[]

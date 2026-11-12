@@ -226,6 +226,43 @@ describe('readBitDays', () => {
     })
   })
 
+  describe('AC-2704.1 제외할 처방도 싣는다', () => {
+    // 지어낸 열쇠·코드. 열쇠 만들기는 groupDefs가 맡고, 여기서는 받은 것을 그대로 싣는지만 본다
+    it('AC-2704.1: 제외할 처방이 있는 정의는 Worker load 요청에 exclude가 그대로 있고 이름은 없다', async () => {
+      const t = setup()
+      const groups = [{ id: 't7bdb9b20a17a64d3', codes: ['FAKE-RX-01'], exclude: ['FAKE-RX-02'], name: '가짜 묶음 이름' }]
+      await expect(t.readWithGroups(groups)).resolves.toEqual({ kind: 'days', days: [DAY] })
+      expect(t.loads).toHaveLength(1)
+      expect(t.loads[0].groups).toStrictEqual([{ id: 't7bdb9b20a17a64d3', codes: ['FAKE-RX-01'], exclude: ['FAKE-RX-02'] }])
+      expect(JSON.stringify(t.loads)).not.toContain('가짜 묶음 이름')
+      t.expectClosed()
+    })
+
+    it('AC-2704.1: 제외할 처방이 빈 배열이거나 없는 정의는 지금처럼 { id, codes }만 간다(exclude 열쇠 없음)', async () => {
+      const t = setup()
+      await t.readWithGroups([
+        { id: 't00000000000000a1', codes: ['FAKE-RX-01'], exclude: [] },
+        { id: 't00000000000000b2', codes: ['FAKE-RX-03'] },
+      ])
+      expect(t.loads[0].groups).toStrictEqual([
+        { id: 't00000000000000a1', codes: ['FAKE-RX-01'] },
+        { id: 't00000000000000b2', codes: ['FAKE-RX-03'] },
+      ])
+      for (const group of t.loads[0].groups ?? []) expect(Object.keys(group).sort()).toEqual(['codes', 'id'])
+    })
+
+    it('AC-2704.1: 읽기를 시작한 뒤 넘긴 제외할 처방을 바꿔도 load 요청은 시작할 때의 정의 그대로다', async () => {
+      const t = setup()
+      const groups: RxGroupDef[] = [{ id: 't7bdb9b20a17a64d3', codes: ['FAKE-RX-01'], exclude: ['FAKE-RX-02'] }]
+      const reading = t.readWithGroups(groups)
+      // load는 hello·bit.check·stats.rows 답을 기다린 뒤에 간다. 그 사이에 부른 쪽이 목록을 바꾼다
+      groups[0].exclude?.push('FAKE-RX-99')
+      await reading
+      expect(t.loads).toHaveLength(1)
+      expect(t.loads[0].groups).toStrictEqual([{ id: 't7bdb9b20a17a64d3', codes: ['FAKE-RX-01'], exclude: ['FAKE-RX-02'] }])
+    })
+  })
+
   describe('AC-601.6 준비가 안 된 곳은 읽지 않는다', () => {
     it('AC-601.6: runtime이 없으면(휴대폰·확장 없는 PC) not-ready이고 Worker도 만들지 않는다', async () => {
       const createWorker = vi.fn(() => fakeWorker(loaded(VIEW)).like)

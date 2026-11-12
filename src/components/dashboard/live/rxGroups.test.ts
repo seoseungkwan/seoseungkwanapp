@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { groupDefs, groupKey } from '@/components/stats/treatmentView'
 import { listStatsRxGroups, saveStatsRxGroups, StatsRxGroupStoreError } from '@/lib/storage/statsRxGroups'
-import type { RxGroup } from '@/types/rxGroups'
+import type { RxGroup, StatsRxGroup } from '@/types/rxGroups'
 import { readDashboardGroups, toDashboardGroups } from './rxGroups'
 
 // 대시보드 '처방 상위'의 묶음 읽기 (spec bit-dashboard REQ-606, design.md '처방 상위 = 통계 탭 묶음').
@@ -75,6 +75,57 @@ describe('toDashboardGroups', () => {
     const before = structuredClone(rows)
     toDashboardGroups(rows)
     expect(rows).toEqual(before)
+  })
+})
+
+// 제외할 처방이 있는 묶음(rx-group-exclude AC-2705.5). 표층열만 = 넣은 처방 MM010, 제외할 처방 ESWT7(spec 고정 값의 코드). 나머지 코드는 지어낸 값이다
+const EXCLUDE_ROWS: readonly StatsRxGroup[] = [
+  { id: 'fake-5', name: '가짜 표층열만 묶음', codes: ['MM010'], exclude: ['ESWT7'], sortOrder: 1 },
+  { id: 'fake-1', name: '가짜 주사 묶음', codes: ['ZX100'], sortOrder: 0 },
+  { id: 'fake-6', name: '가짜 빈 제외 묶음', codes: ['ZX600'], exclude: [], sortOrder: 2 },
+  { id: 'fake-7', name: '가짜 제외만 묶음', codes: [], exclude: ['ZX601'], sortOrder: 3 },
+]
+const MM_NO_ESWT7_KEY = 't7bdb9b20a17a64d3' // groupKey(['MM010'], ['ESWT7']) 고정 값(AC-2705.2)
+
+describe('toDashboardGroups — 제외할 처방 (AC-2705.5)', () => {
+  it('AC-2705.5 줄 열쇠는 groupKey(codes, exclude)이고, 제외할 처방이 없는 묶음(열쇠 없음·빈 배열)은 지금 열쇠 그대로다', () => {
+    const { lines } = toDashboardGroups(EXCLUDE_ROWS)
+    expect(lines).toEqual([
+      { name: '가짜 주사 묶음', key: groupKey(['ZX100']) },
+      { name: '가짜 표층열만 묶음', key: MM_NO_ESWT7_KEY },
+      { name: '가짜 빈 제외 묶음', key: groupKey(['ZX600']) },
+    ])
+    expect(lines[1].key).toBe(groupKey(['MM010'], ['ESWT7']))
+    expect(lines[1].key).not.toBe(groupKey(['MM010']))
+  })
+
+  it('AC-2705.5 정의는 groupDefs(rows)와 같고 제외할 처방이 있는 정의에만 exclude가 있으며, 줄 열쇠와 정의 id가 같은 차례로 맞는다', () => {
+    const { lines, defs } = toDashboardGroups(EXCLUDE_ROWS)
+    expect(defs).toEqual(groupDefs(EXCLUDE_ROWS))
+    expect(defs).toEqual([
+      { id: groupKey(['ZX100']), codes: ['ZX100'] },
+      { id: MM_NO_ESWT7_KEY, codes: ['MM010'], exclude: ['ESWT7'] },
+      { id: groupKey(['ZX600']), codes: ['ZX600'] },
+    ])
+    expect(defs.map((def) => Object.hasOwn(def, 'exclude'))).toEqual([false, true, false])
+    expect(lines.map((line) => line.key)).toEqual(defs.map((def) => def.id))
+  })
+
+  it('AC-2705.5 넣은 처방이 없는 묶음은 제외할 처방이 있어도 줄·정의에 없고, 받은 목록은 바꾸지 않는다', () => {
+    const rows = EXCLUDE_ROWS.map((row) => ({ ...row, codes: [...row.codes], ...(row.exclude === undefined ? {} : { exclude: [...row.exclude] }) }))
+    const before = structuredClone(rows)
+    const { lines, defs } = toDashboardGroups(rows)
+    expect(lines.map((line) => line.name)).not.toContain('가짜 제외만 묶음')
+    expect(JSON.stringify(defs)).not.toContain('ZX601')
+    expect(rows).toEqual(before)
+  })
+
+  it('AC-2705.5 readDashboardGroups는 읽은 묶음의 제외할 처방을 열쇠·정의에 그대로 쓴다', async () => {
+    list.mockResolvedValueOnce(EXCLUDE_ROWS.map((row) => ({ ...row, codes: [...row.codes] })))
+    const read = await readDashboardGroups()
+    expect(read).toEqual(toDashboardGroups(EXCLUDE_ROWS))
+    expect(read?.lines[1]).toEqual({ name: '가짜 표층열만 묶음', key: MM_NO_ESWT7_KEY })
+    expect(read?.defs[1]).toEqual({ id: MM_NO_ESWT7_KEY, codes: ['MM010'], exclude: ['ESWT7'] })
   })
 })
 

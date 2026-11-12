@@ -220,6 +220,46 @@ describe('AC-1205.4·AC-1213.3 requestLoad — 묶음은 열쇠와 코드만 간
   })
 })
 
+describe('AC-2704.1 requestLoad — 제외할 처방도 싣는다', () => {
+  // 가짜 묶음 열쇠·코드. 이름은 화면에만 있는 칸이다
+  const loadIn = (fake: ReturnType<typeof fakeWorker>) => fake.sent.find((message) => (message as { type?: string }).type === 'load') as Record<string, unknown>
+
+  it('AC-2704.1: 제외할 처방이 있는 묶음은 load 메시지에 exclude가 그대로 있고 이름은 없다', () => {
+    const fake = fakeWorker()
+    const groups = [{ id: 't7bdb9b20a17a64d3', codes: ['MM010'], exclude: ['ESWT7'], name: '가짜 물리치료' }]
+    void requestLoad(fake.like, { ...REQ, groups })
+    expect(loadIn(fake).groups).toStrictEqual([{ id: 't7bdb9b20a17a64d3', codes: ['MM010'], exclude: ['ESWT7'] }])
+    expect(JSON.stringify(fake.sent)).not.toContain('가짜 물리치료')
+    fake.reply({ type: 'loaded', streamId: REQ.streamId, view: VIEW })
+  })
+
+  it('AC-2704.1: 제외할 처방 목록도 새로 만든다(넘긴 배열을 그대로 보내지 않는다)', () => {
+    const fake = fakeWorker()
+    const groups = [{ id: 't7bdb9b20a17a64d3', codes: ['MM010'], exclude: ['ESWT7'] }]
+    void requestLoad(fake.like, { ...REQ, groups })
+    const sent = loadIn(fake).groups as { id: string; codes: string[]; exclude?: string[] }[]
+    expect(sent[0].exclude).toEqual(['ESWT7'])
+    expect(sent[0].exclude).not.toBe(groups[0].exclude)
+    fake.reply({ type: 'loaded', streamId: REQ.streamId, view: VIEW })
+  })
+
+  it('AC-2704.1: 제외할 처방이 빈 배열이거나 없으면 지금처럼 { id, codes }만 간다(exclude 열쇠 없음)', () => {
+    const fake = fakeWorker()
+    const groups = [
+      { id: 't00000000000000a1', codes: ['MM042'], exclude: [] },
+      { id: 'tf5a35bf567c9d2cc', codes: ['MM010'] },
+    ]
+    void requestLoad(fake.like, { ...REQ, groups })
+    const sent = loadIn(fake).groups as Record<string, unknown>[]
+    expect(sent).toStrictEqual([
+      { id: 't00000000000000a1', codes: ['MM042'] },
+      { id: 'tf5a35bf567c9d2cc', codes: ['MM010'] },
+    ])
+    for (const group of sent) expect(Object.keys(group).sort()).toEqual(['codes', 'id'])
+    fake.reply({ type: 'loaded', streamId: REQ.streamId, view: VIEW })
+  })
+})
+
 const RANGE = { from: '2026-10-01', to: '2026-10-31' }
 const SPLIT_VIEW: RxSplitView = {
   kind: 'split',

@@ -5,13 +5,13 @@ import { suggestGroups } from '@/lib/revenue/treatments'
 import { listStatsRxGroups, saveStatsRxGroups } from '@/lib/storage/statsRxGroups'
 import type { RxGroupDef } from '@/types/analysis'
 import type { DayPayload } from '@/types/payload'
-import type { RxGroup } from '@/types/rxGroups'
+import type { StatsRxGroup } from '@/types/rxGroups'
 import { rxCatalog } from './rxPickView'
 import { forSave } from './treatmentEdit'
 import { groupDefs } from './treatmentView'
 import { isSavableLine } from './useRxCatalog'
 
-// 처방별 추세 묶음 읽기·저장·불러오기 준비 (treatment-trend REQ-1204·1205·1211, design.md '묶음 훅').
+// 처방별 추세 묶음 읽기·저장·불러오기 준비 (treatment-trend REQ-1204·1205·1211, design.md '묶음 훅' · 제외할 처방은 rx-group-exclude AC-2706.6).
 // 상태는 셋이다: (가) 읽는 중·읽기 실패 (나) 저장된 줄 없음 = 화면 일 숫자로 그릴 때마다 다시 고른 제안 다섯 (다) 저장된 줄 = 받은 그대로.
 // 서버 답이 상태가 되는 규칙: 더 나중 읽기가 이미 들어갔거나 읽는 사이 저장이 들어갔으면 그 읽기는 넣지 않는다(옛 모습으로 되돌리지 않는다).
 // 묶음은 React 상태와 서버 표에만 있다(AC-1211.3·AC-1213.1)
@@ -21,30 +21,30 @@ export const FOR_LOAD_LIMIT_MS = 5_000
 
 export type StatsRxGroupsView = {
   state: 'reading' | 'ready' | 'read-failed'
-  groups: readonly RxGroup[] // sortOrder 차례. 저장된 줄이 없으면 제안 다섯(id null)
+  groups: readonly StatsRxGroup[] // sortOrder 차례. 저장된 줄이 없으면 제안 다섯(id null, 제외할 처방 없음)
   suggested: boolean
   saving: boolean
   saveFailed: boolean
   reread(): void
-  save(after: readonly RxGroup[]): Promise<boolean> // forSave 값을 저장. 성공하면 groups가 돌려받은 줄이 된다
+  save(after: readonly StatsRxGroup[]): Promise<boolean> // forSave 값을 저장. 성공하면 groups가 돌려받은 줄이 된다
   forLoad(): Promise<RxGroupDef[]> // 거절하지 않고 부른 뒤 5초 안에 늘 풀린다(AC-1205.7·AC-1205.9·AC-1204.3)
 }
 
-type Held = { kind: 'reading' } | { kind: 'read-failed' } | { kind: 'ready'; rows: readonly RxGroup[] } // rows 0개 = (나)
+type Held = { kind: 'reading' } | { kind: 'read-failed' } | { kind: 'ready'; rows: readonly StatsRxGroup[] } // rows 0개 = (나)
 
 const READING: Held = { kind: 'reading' }
-const NO_GROUPS: readonly RxGroup[] = []
+const NO_GROUPS: readonly StatsRxGroup[] = []
 
-const bySortOrder = (rows: readonly RxGroup[]) => [...rows].sort((a, b) => a.sortOrder - b.sortOrder)
+const bySortOrder = (rows: readonly StatsRxGroup[]) => [...rows].sort((a, b) => a.sortOrder - b.sortOrder)
 
-/** 제안 다섯. 처방은 화면 일 숫자의 코드(대소문자 합침, 가장 최근 날 글자)에서 규칙에 맞는 것. 제안 표시 칸은 떼고 RxGroup 네 칸만 */
-function suggestFrom(days: readonly DayPayload[]): RxGroup[] {
+/** 제안 다섯. 처방은 화면 일 숫자의 코드(대소문자 합침, 가장 최근 날 글자)에서 규칙에 맞는 것. 제안 표시 칸은 떼고 RxGroup 네 칸에 빈 제외할 처방(AC-2706.6) */
+function suggestFrom(days: readonly DayPayload[]): StatsRxGroup[] {
   const codes = rxCatalog(days, [], isSavableLine).map(({ code }) => code)
-  return suggestGroups(codes).map(({ id, name, codes: picked, sortOrder }) => ({ id, name, codes: picked, sortOrder }))
+  return suggestGroups(codes).map(({ id, name, codes: picked, sortOrder }) => ({ id, name, codes: picked, exclude: [], sortOrder }))
 }
 
 /** 화면의 묶음. (가)이면 없음 */
-function shownGroups(held: Held, days: readonly DayPayload[]): readonly RxGroup[] {
+function shownGroups(held: Held, days: readonly DayPayload[]): readonly StatsRxGroup[] {
   if (held.kind !== 'ready') return NO_GROUPS
   return held.rows.length > 0 ? held.rows : suggestFrom(days)
 }
@@ -73,7 +73,7 @@ export function useStatsRxGroups(days: readonly DayPayload[]): StatsRxGroupsView
   }, [])
 
   /** 서버에서 읽는다. 실패는 null(빈 목록으로 보지 않는다, AC-1203.3) */
-  const read = useCallback(async (): Promise<readonly RxGroup[] | null> => {
+  const read = useCallback(async (): Promise<readonly StatsRxGroup[] | null> => {
     const mine = ++readsStarted.current
     const savedBefore = saveShown.current
     try {
@@ -90,7 +90,7 @@ export function useStatsRxGroups(days: readonly DayPayload[]): StatsRxGroupsView
 
   /** forSave 값을 저장하고 돌려받은 줄을 상태에 넣는다(더 나중 저장이 이미 들어갔으면 넣지 않는다). 실패는 null */
   const write = useCallback(
-    async (after: readonly RxGroup[]): Promise<readonly RxGroup[] | null> => {
+    async (after: readonly StatsRxGroup[]): Promise<readonly StatsRxGroup[] | null> => {
       const mine = ++savesStarted.current
       try {
         const rows = bySortOrder(await saveStatsRxGroups(forSave(after)))
@@ -124,7 +124,7 @@ export function useStatsRxGroups(days: readonly DayPayload[]): StatsRxGroupsView
   }, [put, screenRead])
 
   const save = useCallback(
-    async (after: readonly RxGroup[]) => {
+    async (after: readonly StatsRxGroup[]) => {
       savesWaiting.current += 1
       setSaving(true)
       const rows = await write(after)
