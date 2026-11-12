@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Delta } from '@/types/analysis'
-import { formatCount, formatDelta, formatRate, percentOf } from './format'
+import { formatCount, formatDelta, formatRate, percentOf, truncatedOne } from './format'
 
 // 차트 부품의 보이는 숫자 글자 (b2b-redesign REQ-205 AC-205.1, design.md '차트 부품'·'비율 표시', UI_GUIDE '차트').
 // 보이는 숫자는 버림이다(반올림 안 함, plan.md §5). 부동소수 오차를 막으려고 아주 작은 값을 더한 뒤 자른다.
@@ -34,6 +34,27 @@ describe('AC-205.1: formatRate — 0~1 비율을 %로, 소수 첫째 자리까�
     [131 / 714, '18.3'],
   ])('AC-205.1: formatRate(%s) = %s', (r, text) => {
     expect(formatRate(r)).toBe(text)
+  })
+})
+
+describe('AC-3707.2: truncatedOne — 소수 첫째 자리까지 버린 글자(부호 없음)를 내보낸다', () => {
+  it.each<[number, string]>([
+    [18.347, '18.3'],
+    [0.29 * 100, '29.0'], // 28.999… → 오차 보정
+    [9.99, '9.9'], // 반올림이면 10.0
+    [3.47, '3.4'],
+    [-3.47, '3.4'], // 부호 없음
+    [12.39, '12.3'],
+    [0.09, '0.0'],
+    [0, '0.0'],
+    [1234.56, '1234.5'], // 쉼표 없음
+  ])('AC-3707.2: truncatedOne(%s) = %s', (x, text) => {
+    expect(truncatedOne(x)).toBe(text)
+  })
+
+  it('AC-3707.2: formatRate·formatDelta가 쓰는 글자와 같다(동작 그대로)', () => {
+    expect(formatRate(0.18347)).toBe(truncatedOne(18.347))
+    expect(formatDelta(change(-0.0027, null), '%p').text).toBe(`${truncatedOne(-0.27)}%p`)
   })
 })
 

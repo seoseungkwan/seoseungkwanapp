@@ -10,8 +10,8 @@ export type DeltaView = { dir: 'up' | 'down' | 'flat' | 'none'; text: string; sr
 const EPSILON = 1e-9
 const MINUS = '−' // 빼기 기호 −
 
-// 소수 첫째 자리까지 버린 글자(부호 없음): 18.347 → '18.3', 28.999… → '29.0'
-const truncatedOne = (x: number) => (Math.trunc(Math.abs(x) * 10 + EPSILON) / 10).toFixed(1)
+// 소수 첫째 자리까지 버린 글자(부호 없음): 18.347 → '18.3', 28.999… → '29.0'. 처방별 추세 추세 글·하루 평균도 쓴다(group-exclude AC-3707.2)
+export const truncatedOne =(x: number) => (Math.trunc(Math.abs(x) * 10 + EPSILON) / 10).toFixed(1)
 
 // 세 자리마다 쉼표: 12000000 → '12,000,000'. 정수가 아니면 버린다
 export function formatCount(n: number): string {
