@@ -46,8 +46,9 @@ const DESC = '만들어 둔 묶음마다 건수와 신환·재진 · 같은 날 
 const NOT_SAVED = '자료 없음 · 불러오면 묶음마다 건수와 신환·재진이 보여요.'
 const NO_RANGE = '자료 없음 · 불러온 숫자에 이 기간 자료가 없어요.'
 const READING = '묶음을 읽는 중이에요'
+// 고치기 화면 안내 글(group-exclude AC-3711.1이 treatment-trend AC-1210.2의 글자를 대신한다)
 const INTRO =
-  '묶음 이름을 짓고, 넣을 처방을 고르세요. 처방 하나는 한 묶음에만 들어가요. 어느 묶음에도 없는 처방은 이 칸에 나오지 않아요. 여기서 바꿔도 매출 탭 묶음은 그대로예요.'
+  '묶음 이름을 짓고, 넣을 처방을 고르세요. 처방 하나는 한 묶음에만 들어가요. 넣는 처방마다 [조건 더하기]로 같이 받으면 안 세는 처방을 정할 수 있어요. 빼는 처방을 고르면, 그날 그 처방을 하나라도 받은 환자는 이 묶음에서 빠져요. 여기서 바꿔도 매출 탭 묶음은 그대로예요.'
 const ALL_STALE_HEAD = '한 번 다시 불러오면 숫자가 나와요'
 const ALL_STALE_TEXT = '묶음별 숫자는 다시 불러온 기간부터 세요. 비트 PC에서 다시 불러오거나, 파일을 다시 넣어 주세요.'
 const SOME_STALE_HEAD = '다시 불러와야 맞는 묶음이 있어요'
@@ -477,7 +478,7 @@ describe('AC-1210.2: 묶음 고치기 열기', () => {
     drawView(view)
     await user.click(editButton())
     fireEvent.change(nameFields()[0]!, { target: { value: '바꾼 이름' } })
-    await user.click(within(groupAt(1)).getByRole('button', { name: '빼기' }))
+    await user.click(within(groupAt(1)).getByRole('button', { name: '지우기' })) // AC-3711.3: [빼기] → [지우기]
     expect(view.groups).toEqual(GROUPS)
     expect(GROUPS[0]!.name).toBe('충격파')
     expect(GROUPS[1]!.codes).toEqual(['도수'])
@@ -583,7 +584,7 @@ describe('AC-1210.12: 저장하고 돌아오기', () => {
     render(<Live input={inputOf()} />)
     await user.click(editButton())
     const eswt7 = within(groupAt(0)).getByText('체외충격파 7단계').closest('li')!
-    await user.click(within(eswt7).getByRole('button', { name: '빼기' }))
+    await user.click(within(eswt7).getByRole('button', { name: '지우기' })) // AC-3711.3: [빼기] → [지우기]
     await user.click(screen.getByRole('button', { name: '저장' }))
     const note = await screen.findByText(SAVED)
     expect(note.textContent).toBe(SAVED)
@@ -679,6 +680,45 @@ describe('AC-1210.15: 매출 묶음 저장을 부르지 않는다', () => {
     await waitFor(() => expect(heading().textContent).toBe(TITLE))
     expect(view.save).toHaveBeenCalledTimes(1)
     expect(createRxGroupStore).not.toHaveBeenCalled()
+  })
+})
+
+// ── 고치기 찾기 목록 줄·저장 (group-exclude TASK-14, AC-3712.2·AC-3711.13) ─────────────────
+describe('AC-3712.2·AC-3711.13: 고치기 화면의 빼는 처방·조건', () => {
+  // XRAY9·TENS3은 어느 날 처방 줄에도 없다
+  const PT = { ...group('기본 PT', ['도수'], 1, 'g9'), out: ['XRAY9'], cond: [{ code: '도수', unless: ['TENS3'] }] }
+  const foundList = () => screen.getByRole('list', { name: '찾은 처방' })
+
+  it('AC-3712.2: 그 기간 일 숫자에 없는 빼는 처방·조건 처방도 찾기 목록에 줄이 있다', async () => {
+    const user = userEvent.setup()
+    drawView(viewOf({ groups: [SHOCK, PT] }))
+    await user.click(editButton())
+    await user.click(within(groupAt(1)).getByRole('button', { name: '+ 빼는 처방 고르기' }))
+    const outRow = within(foundList()).getByRole('button', { name: /^XRAY9/ }) as HTMLButtonElement
+    expect(outRow.textContent).toContain('빼는 처방에 있음')
+    expect(outRow.disabled).toBe(true)
+    expect(within(foundList()).getByRole('button', { name: /^TENS3/ }).textContent).toContain('0건')
+    // 조건 처방 찾기 칸에서도 같다
+    const box = screen.getByText(/^조건 · 도수은\(는\)/).parentElement!
+    await user.click(within(box).getByRole('button', { name: '+ 처방 고르기' }))
+    expect(within(foundList()).getByRole('button', { name: /^TENS3/ }).textContent).toContain('조건에 있음')
+    expect(within(foundList()).getByRole('button', { name: /^XRAY9/ })).toBeTruthy()
+  })
+
+  it('AC-3711.13: 빼는 처방을 더해 저장하면 out이 든 forSave 값으로 한 번 저장하고 글은 `저장했어요.`다', async () => {
+    const user = userEvent.setup()
+    render(<Live input={inputOf()} />)
+    await user.click(editButton())
+    await user.click(within(groupAt(0)).getByRole('button', { name: '+ 빼는 처방 고르기' }))
+    await user.click(within(foundList()).getByRole('button', { name: /^재진 진찰료/ }))
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    expect((await screen.findByText(SAVED)).textContent).toBe(SAVED)
+    expect(saves).toHaveLength(1)
+    expect(saves[0]![0]).toEqual({ id: 'g0', name: '충격파', codes: ['ESWT1', 'ESWT7'], sortOrder: 0, out: ['AA154'] })
+    expect(saves[0]![1]).toEqual({ id: 'g1', name: '도수치료', codes: ['도수'], sortOrder: 1 })
+    // 열쇠가 바뀌어 다시 불러올 때까지 숫자가 없다
+    expect(queryRow('충격파')).toBeNull()
+    expect(screen.getByText('충격파').closest('li')!.textContent).toContain(STALE)
   })
 })
 
