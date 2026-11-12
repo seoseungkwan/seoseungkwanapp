@@ -1,16 +1,21 @@
 {
   "status": "approved",
   "feature": "rx-split-new",
-  "approved_at": "2026-11-12T07:52:32Z",
+  "approved_at": "2026-11-12T08:49:46Z",
   "approved_via": "user-prompt",
   "session_id": "f5f91f7c-1293-4bf8-9657-d57f2fdc6747",
-  "spec_sha256": "a96b6d7618454ddfe46d39b600364efad269d550625c507d0f9164293fff08f4",
+  "spec_sha256": "e19732370477d43ae74b225988d8f11b74934b83da008eb588b1a9e788e64be6",
   "scope": [
     "fixtures/stats/golden/rx-visit-split-summary.json",
     "fixtures/stats/golden/rx-visit-split-text.json",
     "scripts/stats/golden/rx_visit_split.py",
+    "src/lib/analytics/aggregate.test.ts",
+    "src/lib/analytics/aggregate.ts",
+    "src/lib/analytics/patientMix.test.ts",
+    "src/lib/analytics/patientMix.ts",
     "src/lib/analytics/rxVisitSplit.test.ts",
     "src/lib/analytics/rxVisitSplit.ts",
+    "src/lib/payload/toMonthPayload.test.ts",
     "src/workers/stats/jobs.test.ts"
   ]
 }
