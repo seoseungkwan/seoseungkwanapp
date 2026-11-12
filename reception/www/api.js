@@ -2,18 +2,22 @@
 // - 5초 안에 답(몸까지)이 다 오지 않으면 그 요청을 끊는다(AbortController). 끊어도 떨어지지 않는 fetch라도 5초에 실패다(AC-1407.4)
 // - 읽기는 200, 쓰기는 204만 성공이다. 읽기 답은 모양을 검사해 틀리면 실패다(AC-1407.4). 화면은 받은 글을 그대로 그린다
 // - 밖에서 준 signal(숨김·끊김 때 poll.js가 끊는다)이 끊기면 그 자리에서 실패하고, 그 뒤 온 답은 돌려주지 않는다(AC-1407.11)
-// - 쓰기는 도우미 문 지키기(ClientGuard.WriteOk)가 받는 모양: POST · X-Reception: 1 · Content-Type: application/json · 몸 256바이트 이하.
+// - 쓰기는 도우미 문 지키기(ClientGuard.WriteOk)가 받는 모양: POST · X-Reception: 1 · Content-Type: application/json · 몸은 길마다 한도 이하
+//   (/api/xray 256 · /api/arrange 1024 · /api/lists 4096바이트, reception-pick-lists AC-3502.4).
 //   Origin 머리는 브라우저가 붙인다(같은 곳 방식). 쿠키는 보내지 않고 되돌림(redirect)은 따라가지 않는다
 //   쓰기만 referrerPolicy 'same-origin'이다: 'no-referrer'(문서 기본값 포함)면 아이패드·아이폰 WebKit이 Origin: null을 붙여
 //   도우미가 403으로 막는다(크롬은 진짜 Origin을 붙인다). mode가 same-origin이라 리퍼러는 이 PC에만 간다
 //
 // 쓰는 법
-//   getBoard({ fresh, signal })      → GET /api/board(?fresh=1) 답 { state: 'ok', at, every, counts, lists, arrange }
+//   getBoard({ fresh, signal })      → GET /api/board(?fresh=1) 답 { state: 'ok', at, every, counts, lists, arrange, picks }
 //                                      arrange(reception-arrange design.md 7절)는 있으면 모양을 보고, 없으면(옛 도우미) 그대로 받는다
 //                                      (그리는 쪽 arrange.js·alert.js·board.js가 빈 표로 본다)
+//                                      picks(고르기 목록, reception-pick-lists AC-3501.4)도 있으면 모양을 보고, 없으면 그대로 받는다
 //   getHistory(k, from, { signal })  → GET /api/visit/{k}/history?from=N 답 { visits, next, more, first, total, todaySym, paper(from=0만) }
 //   setXray(k, on, { signal })       → POST /api/xray { k, on } → 204
-//   setArrange(k, op, col, v, { signal }) → POST /api/arrange { k, op, col?, v? } → 204 (reception-arrange design.md 8절. col·v는 없으면 뺀다)
+//   setArrange(k, op, col, v, t, { signal }) → POST /api/arrange { k, op, col?, v?, t? } → 204 (reception-arrange design.md 8절.
+//                                      col·v는 없으면, t(이름표를 "|"로 이은 글, reception-pick-lists AC-3502.3)는 없거나 빈 글이면 뺀다)
+//   setLists(picks, { signal })      → POST /api/lists picks → 204 (reception-pick-lists AC-3501.3. 몸은 picks 모양 칸만 담는다)
 //   getPrev(k, { signal })           → GET /api/visit/{k}/prev 답의 prev(지난 내원이 없으면 null) (reception-arrange design.md 9절)
 //   getPapers(k, from, { signal })   → GET /api/visit/{k}/papers?from=N 답 { papers: [prev 모양…], total, next } (reception-memo-papers design.md 4절)
 //   실패는 모두 ApiError이고 reason은 'network'·'timeout'·'status'·'shape'·'aborted'·'input'(묻지 않음) 중 하나다
@@ -50,8 +54,8 @@ const ARRANGE_STEPS = ['todo', 'ready', 'done']
 const ARRANGE_OPS = ['step', 'set', 'add', 'remove', 'part', 'away', 'ptf', 'end']
 const PTF_STEPS = ['up', 'down']
 
-/** 쓰기 몸 한도(도우미 HttpRequestReader와 같다) */
-const BODY_MAX = 256
+/** 쓰기 몸 한도: 길마다(도우미 라우터와 같다, reception-pick-lists AC-3502.4) */
+const BODY_MAX = { arrange: 1024, lists: 4096 }
 
 /** 직전 진료기록부 날짜 "yyyy-MM-dd" */
 const DAY = /^\d{4}-\d\d-\d\d$/
@@ -134,20 +138,42 @@ export function setXray(k, on, { signal } = {}) {
 }
 
 /**
- * 어레인지 표시 하나를 쓴다(reception-arrange design.md 8절). 204면 끝난다. 글(v)이 고르기 목록에 있는지는 도우미가 본다(400).
+ * 어레인지 표시 하나를 쓴다(reception-arrange design.md 8절). 204면 끝난다. 글(v)·이름표(t)가 고르기 목록에 있는지는 도우미가 본다(400).
  * @param {string} k 화면용 열쇠 @param {string} op step·set·add·remove·part·away·ptf·end
  * @param {string} [col] 칸(xray·sono·carm·pt·ds·eswt·trac) @param {string} [v] 글
+ * @param {string} [t] SONO 같이 하는 것·C-ARM 약재를 "|"로 이은 글(reception-pick-lists AC-3502.3). 빈 글이면 보내지 않는다
  */
-export function setArrange(k, op, col, v, { signal } = {}) {
+export function setArrange(k, op, col, v, t, { signal } = {}) {
   if (!isKey(k) || !ARRANGE_OPS.includes(op)) return Promise.reject(new ApiError('input'))
   if ((col !== undefined && !ARRANGE_COLS.includes(col)) || (v !== undefined && typeof v !== 'string')) return Promise.reject(new ApiError('input'))
+  if (t !== undefined && typeof t !== 'string') return Promise.reject(new ApiError('input'))
   const ask = { k, op }
   if (col !== undefined) ask.col = col
   if (v !== undefined) ask.v = v
-  const body = JSON.stringify(ask)
-  if (new TextEncoder().encode(body).length > BODY_MAX) return Promise.reject(new ApiError('input'))
+  if (t !== undefined && t !== '') ask.t = t
+  return write(JSON.stringify(ask), BODY_MAX.arrange, signal, (init) => fetch('/api/arrange', init))
+}
+
+/**
+ * SONO·C-ARM 고르기 목록 전체를 쓴다(reception-pick-lists AC-3501.3). 204면 끝난다. 이름·개수 규칙은 도우미가 본다(400).
+ * 몸은 판 picks 모양 칸만 담는다(더 붙은 칸은 뺀다)
+ * @param {{ carm: { procs: { n: string, noDrug: boolean }[], drugs: string[] }, sono: { parts: string[], plains: string[], withs: string[] } }} picks
+ */
+export function setLists(picks, { signal } = {}) {
+  if (!isPicks(picks)) return Promise.reject(new ApiError('input'))
+  const { carm, sono } = picks
+  const body = JSON.stringify({
+    carm: { procs: carm.procs.map(({ n, noDrug }) => ({ n, noDrug })), drugs: carm.drugs },
+    sono: { parts: sono.parts, plains: sono.plains, withs: sono.withs },
+  })
+  return write(body, BODY_MAX.lists, signal, (init) => fetch('/api/lists', init))
+}
+
+/** 쓰기 하나: 몸이 그 길 한도를 넘으면 보내지 않는다(input). post가 쓰기 요청을 그 길에 보낸다. 204만 성공이다 */
+function write(body, max, signal, post) {
+  if (new TextEncoder().encode(body).length > max) return Promise.reject(new ApiError('input'))
   return within(signal, async (inner) => {
-    const res = await fetch('/api/arrange', writeRequest(inner, body))
+    const res = await post(writeRequest(inner, body))
     if (res.status !== 204) throw new ApiError('status')
   })
 }
@@ -241,6 +267,7 @@ function isBoard(b) {
   if (!isEvery(b.every)) return false
   if (!isObject(b.counts) || !isObject(b.lists)) return false
   if (b.arrange !== undefined && !isArrange(b.arrange)) return false
+  if (b.picks !== undefined && !isPicks(b.picks)) return false
   return LISTS.every((name) => isCount(b.counts[name]) && Array.isArray(b.lists[name]) && b.lists[name].every(isRow))
 }
 
@@ -276,13 +303,37 @@ function isArrangeRow(r) {
   )
 }
 
-/** 칸 { st, det, part, at, ord, manual } */
+/**
+ * 고르기 목록 { carm: { procs: [{ n, noDrug }], drugs }, sono: { parts, plains, withs } } (reception-pick-lists AC-3501.4).
+ * 모양만 본다(이름·개수 규칙은 도우미 PickLists가 본다)
+ */
+function isPicks(p) {
+  return (
+    isObject(p) &&
+    isObject(p.carm) &&
+    Array.isArray(p.carm.procs) &&
+    p.carm.procs.every((proc) => isObject(proc) && typeof proc.n === 'string' && typeof proc.noDrug === 'boolean') &&
+    isTexts(p.carm.drugs) &&
+    isObject(p.sono) &&
+    isTexts(p.sono.parts) &&
+    isTexts(p.sono.plains) &&
+    isTexts(p.sono.withs)
+  )
+}
+
+/** 글 목록 */
+function isTexts(list) {
+  return Array.isArray(list) && list.every((text) => typeof text === 'string')
+}
+
+/** 칸 { st, det, part, at, ord, manual, tags }: part는 여러 줄이면 "|"로 이은 글, tags는 늘 글 목록이다(reception-pick-lists AC-3502.2) */
 function isCell(c) {
   return (
     isObject(c) &&
     ARRANGE_STEPS.includes(c.st) &&
     typeof c.det === 'string' &&
     (c.part === null || typeof c.part === 'string') &&
+    isTexts(c.tags) &&
     // 비트 처방 시각이 빈 줄이면 시각을 모른다(null). 그 한 칸 때문에 판 전체를 버리지 않는다
     (c.at === null || typeof c.at === 'string') &&
     (c.ord === null || (isCount(c.ord) && c.ord > 0)) &&

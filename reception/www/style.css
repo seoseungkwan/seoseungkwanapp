@@ -52,14 +52,22 @@
  *                                      > span.l2 > span.arr-name + span.meta + span.new-badge + span.open
  *                      + button.ptf-btn.none|up|down
  *              td.c-xray|sono|carm|pt|ds|eswt|trac > .cell.empty|todo|ready|done(.manual)
- *                 > span.plus | span.ord + span.mn + span.st + (span.hit 충격파 타수) + (span.det(.sm) | button.part-btn)
+ *                 > span.plus | span.ord + span.mn + span.st + (span.hit 충격파 타수) + (span.det(.sm) 줄마다 | button.part-btn) + span.tags > span.drug
  *              td.c-memo > .arr-memo + .lastsym > span.lastsym-label + 글
  *              td.c-end > button.end-btn(.is-go)
  *            p.empty-note · section.ended > button.ended-h + (ul.ended-list > li > span.e-t + span.e-n + span.e-c + button.restore | p.empty-note)
  *            footer.foot
  *            .sheet-back > .sheet[role=dialog] > .sheet-h > span.sheet-title + span.sheet-sub ; .opts(.many) > button.opt ; button.sheet-x
  *              충격파 넣기: .sheet > .sheet-h ; (.opt-label + .opts.four > button.opt(.on)) ×2 ; .sheet-go > button.sheet-close + button.go
+ *              C-ARM 넣기: .sheet > .sheet-h ; .opt-label + .opts.four[data-g=proc] ; .opt-label + .opts.trio(.no-drug)[data-g=drug] ; p.opt-note ; .sheet-go
+ *              SONO 넣기: .sheet.sono-sheet > .sheet-h ; .opt-label + .picked > button.picked-chip(> span) | span.picked-empty
+ *                         ; (.opt-label > span.opt-hint) + .opts.trio[data-g=side] ; .opt-label + .opts.four.parts[data-g=part]
+ *                         ; .opt-label + .opts.trio[data-g=plain] ; .opt-label + .opts.duo[data-g=with] > button.opt.check(.on) > span.box ; .sheet-go
  *            .toast[role=status] > span.toast-text + button.toast-undo
+ *            목록 고치기 (reception-pick-lists): .top-status > button.list-open > svg.list-icon + 글 (어레인지 머리 맨 앞)
+ *              .sheet-back.list-back > .sheet.list-sheet > .sheet-h ; .lt-tabs > button.lt-tab(.on) ; p.lt-fixed(SONO)
+ *                ; .lt-groups > section.lt-group > h3(> span.sm) + (ul.lt-list > li.lt-row > span.lt-name + button.lt-flag(.on) + button.lt-btn ×2 + button.lt-btn.del | div.lt-empty)
+ *                                                + form.lt-add > input + button ; p.lt-foot-note ; .sheet-go > button.sheet-close + button.go
  */
 
 /* ---- 바탕 ---------------------------------------------------------------------------------------- */
@@ -1729,6 +1737,29 @@ button.row-main {
   font-weight: 600;
 }
 
+/* SONO·C-ARM 칸의 줄(부위·시술)과 이름표(같이 하는 것·약재) (reception-pick-lists AC-3503.4·3504.4, 시안 tableCells) */
+.cell .det + .det {
+  margin-top: 0;
+}
+
+.cell .tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+}
+
+.cell .drug {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 10px;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
 /* 충격파 칸의 타수 (reception-memo-papers AC-3402.3): 타수가 위, 부위 수가 아래 */
 .cell .hit {
   font-size: 15px;
@@ -2039,6 +2070,340 @@ button.row-main {
 .sheet-go > .go:disabled {
   background: var(--line-2);
   color: var(--ink-3);
+}
+
+/* C-ARM 넣기 창 (reception-pick-lists AC-3503.1·3503.2, 시안 carmSheet): 시술 넷 줄 · 약재 셋 줄. 약재 없음 시술이면 약재 줄이 흐려 눌리지 않는다 */
+.opts.trio {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.opts.no-drug .opt {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.opt-note {
+  margin: -6px 0 6px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+/* SONO 넣기 창 (reception-pick-lists AC-3504.1·3504.2, 시안 sonoSheet): 고른 것 이름표 · 쪽 · 부위 · 부위 없이 · 같이 하는 것(체크) */
+.sheet.sono-sheet {
+  width: min(600px, 100%);
+}
+
+.opt-hint {
+  margin-left: 6px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.picked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 48px;
+  margin: 14px 0 0;
+  padding: 6px;
+  border: 1.5px dashed var(--line-2);
+  border-radius: var(--radius-m);
+}
+
+.picked-empty {
+  padding: 0 6px;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+.picked-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.picked-chip span {
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.opts.parts .opt {
+  min-height: 46px;
+  font-size: 15px;
+}
+
+.opts.duo {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.opt.check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.opt.check .box {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--line-2);
+  border-radius: 5px;
+  background: var(--surface);
+  font-size: 14px;
+}
+
+.opt.check.on .box {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+/* 어레인지 머리의 [☰ 목록 고치기] (reception-pick-lists AC-3505.1, 시안 .list-open) */
+.list-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.list-open:disabled {
+  color: var(--ink-3);
+}
+
+.list-icon {
+  display: block;
+  flex-shrink: 0;
+}
+
+/* 목록 고치기 창 (reception-pick-lists AC-3505.1·3505.2, 시안 listSheet): 가운데에 크게, 탭 C-ARM·SONO, 무리마다 줄 · 글 칸 + [더하기] */
+.sheet-back.list-back {
+  align-items: center;
+}
+
+.sheet.list-sheet {
+  width: min(720px, 100%);
+  max-height: 92vh;
+  padding: 20px;
+}
+
+.lt-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 14px 0 4px;
+  border-bottom: 2px solid var(--line-2);
+}
+
+.lt-tab {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  background: none;
+  color: var(--ink-3);
+  font-size: 17px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.lt-tab.on {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
+.lt-fixed {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.lt-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 14px;
+}
+
+.lt-group {
+  align-self: start;
+}
+
+/* SONO 탭(무리 셋): 부위 무리가 왼쪽 두 줄을 차지한다 */
+.lt-groups > .lt-group:first-child:nth-last-child(3) {
+  grid-row: span 2;
+}
+
+.lt-groups:has(> .lt-group:nth-child(3)) {
+  grid-template-rows: auto 1fr;
+}
+
+.lt-group h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.lt-group h3 .sm {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+
+.lt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lt-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 48px;
+  padding: 0 4px 0 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--ground);
+}
+
+.lt-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.lt-flag {
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1.5px dashed var(--line-2);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-3);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lt-flag.on {
+  border: 1.5px solid var(--ink);
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.lt-btn {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink-2);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lt-btn:disabled {
+  opacity: 0.25;
+}
+
+.lt-btn.del {
+  color: var(--memo-red);
+}
+
+.lt-empty {
+  padding: 12px;
+  border: 1.5px dashed var(--line-2);
+  border-radius: var(--radius-m);
+  color: var(--ink-3);
+  font-size: 14px;
+}
+
+.lt-add {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.lt-add input {
+  flex: 1;
+  min-width: 0;
+  min-height: 46px;
+  padding: 0 12px;
+  border: 1.5px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 16px;
+}
+
+.lt-add button {
+  min-height: 46px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--radius-m);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lt-foot-note {
+  margin: 16px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-m);
+  background: var(--surface-picked);
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .lt-groups {
+    grid-template-columns: 1fr;
+  }
+
+  .lt-groups:has(> .lt-group:nth-child(3)) {
+    grid-template-rows: none;
+  }
+
+  .lt-groups > .lt-group:first-child:nth-last-child(3) {
+    grid-row: auto;
+  }
+
+  .sheet.list-sheet {
+    padding: 16px;
+  }
 }
 
 /* 어레인지 메모 큰 창 (reception-memo-papers AC-3403.2, 시안 Mock.html): 가운데에 크게, 글자 칸 · 펜 도구 · 그리기 판 · 아래 단추 */

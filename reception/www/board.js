@@ -18,7 +18,8 @@
 //     view.onTab(tab)    탭 단추를 누름('board'|'arrange'). 해시 길은 app.js가 바꾼다
 //   setReading(host, reading)  [새로 고침] 단추만 바꾼다(목록·어레인지 어느 머리든)
 //   fillPane(host, nodes)      태블릿 오른쪽 칸의 내용을 바꾼다(아래 글은 그대로). null이면 비운다
-//   topOf(board, view)         머리(header.top) 안 요소들: 상표 줄 · 탭 단추 · (접수 현황 탭만) 제목·기준 글. 어레인지 화면(arrange.js)이 함께 쓴다
+//   topOf(board, view)         머리(header.top) 안 요소들: 상표 줄 · 탭 단추 · (접수 현황 탭만) 제목·기준 글. 어레인지 화면(arrange.js)이 함께 쓴다.
+//                              어레인지 탭이면 .top-status 맨 앞에 [목록 고치기](누르면 view.onPicks(), 없으면 꺼짐, reception-pick-lists AC-3505.1)
 //   refreshText(every)         "N초마다 저절로 바뀌어요"(every가 양의 정수가 아니면 숫자 없이)
 
 import { clear, el, svg } from './dom.js'
@@ -133,7 +134,7 @@ export function topOf(board, view = {}) {
     el('div', { class: tab === 'arrange' ? 'top-row with-memo' : 'top-row' }, [
       el('img', { class: 'logo', src: '/logo-wordmark.png', alt: '양지바른정형외과' }),
       tab === 'arrange' ? memoBox() : null,
-      el('div', { class: 'top-status' }, [el('span', { class: 'conn' }, '연결됨'), refreshButton(view)]),
+      el('div', { class: 'top-status' }, [tab === 'arrange' ? listButton(view) : null, el('span', { class: 'conn' }, '연결됨'), refreshButton(view)]),
     ]),
     tabsOf(board, tab, view),
     tab === 'board'
@@ -164,6 +165,32 @@ function tabsOf(board, tab, view) {
         [label, key === 'arrange' ? el('span', { class: 'tab-n' }, `${count}명`) : null],
       ),
     ),
+  )
+}
+
+/** 어레인지 머리의 [☰ 목록 고치기] (reception-pick-lists AC-3505.1, 시안 listButton): 누르면 view.onPicks(). 없으면(판에 picks가 없음) 꺼져 있다 */
+function listButton(view) {
+  const open = typeof view.onPicks === 'function' ? view.onPicks : null
+  return el('button', { type: 'button', class: 'list-open', disabled: open === null, on: { click: () => open?.() } }, [listIcon(), '목록 고치기'])
+}
+
+/** [목록 고치기] 그림 ☰: 가로 선 셋. 글자(☰)는 기기 글꼴에 따라 작은 네모로 보일 수 있어 선 그림으로 그린다(색은 단추 글 색) */
+function listIcon() {
+  return svg(
+    'svg',
+    {
+      class: 'list-icon',
+      viewBox: '0 0 24 24',
+      width: '16',
+      height: '16',
+      fill: 'none',
+      stroke: 'currentColor',
+      'stroke-width': '2.5',
+      'stroke-linecap': 'round',
+      'aria-hidden': 'true',
+      focusable: 'false',
+    },
+    svg('path', { d: 'M4 6h16M4 12h16M4 18h16' }),
   )
 }
 
