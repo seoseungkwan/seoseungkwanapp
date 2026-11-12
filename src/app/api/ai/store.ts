@@ -5,6 +5,7 @@ import { parseSavedReport } from '@/lib/ai/savedReport'
 import { addMonths } from '@/lib/analytics/dates'
 import { isText } from '@/lib/payload/validate'
 import type { AiUsage, AiUsageView, SavedReport } from '@/types/aiReport'
+import type { RxCond } from '@/types/rxGroups'
 
 // AI 리포트의 DB 쪽(spec ai-report design.md '저장', spec ai-report-screen design.md '서버', spec ai-report-stats). 숫자 읽는 자리·리포트 저장·사용량 기록·저장된 값 읽기.
 // 사용자 세션 클라이언트(경로 route.ts가 만든다)를 인자로 받기만 한다 — 새 클라이언트·service role 키를 만들지 않는다.
@@ -32,7 +33,7 @@ const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
 // 통계 탭이 저장한 숫자(spec ai-report-stats REQ-2001·2002). 읽기 둘을 함께 보낸다:
 // ① stats_months의 고른 달·지난달·작년 같은 달 줄(payload·sections는 검사하지 않고 그대로 넘긴다 — generate.ts가 검사한다)
-// ② stats_rx_groups의 처방별 추세 묶음 → groupKey(codes) → 이름(처방 코드는 여기서 버린다)
+// ② stats_rx_groups의 처방별 추세 묶음 → groupKey(codes, { out, cond }) → 이름(넣는·빼는·조건 처방 코드는 여기서 버린다, spec group-exclude AC-3702.4)
 // 읽기가 error를 돌려주거나 던지거나 답 모양이 다르면 고정 글로 던진다(generateReport는 E-AI-FAILED, isReportStale은 false로 바꾼다).
 // 달 계산은 addMonths만 쓴다(오늘 날짜를 구하지 않는다). 부를 때마다 새 값을 돌려준다(groupNames를 고쳐도 다음 부름에 번지지 않게)
 export async function loadReportMonths(supabase: SupabaseClient, month: string): Promise<ReportMonths> {
@@ -42,7 +43,7 @@ export async function loadReportMonths(supabase: SupabaseClient, month: string):
   try {
     const [months, groups] = await Promise.all([
       supabase.from('stats_months').select('month, payload, sections').in('month', wanted),
-      supabase.from('stats_rx_groups').select('name, codes, sort_order'),
+      supabase.from('stats_rx_groups').select('name, codes, out_codes, cond, sort_order'),
     ])
     if (months.error || groups.error) throw new Error(STATS_READ_FAILED)
     monthRows = months.data
@@ -76,14 +77,25 @@ function monthsIn(rows: unknown, wanted: readonly string[]): MonthCells[] {
   return wanted.map((m) => found.get(m) ?? NO_MONTH)
 }
 
-type GroupRow = { name: string; codes: string[]; sortOrder: number }
+type GroupRow = { name: string; codes: string[]; out: string[]; cond: RxCond[]; sortOrder: number }
 
+const isTextList = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === 'string')
+const isCond = (value: unknown): value is RxCond => {
+  if (typeof value !== 'object' || value === null) return false
+  const { code, unless } = value as Record<string, unknown>
+  return typeof code === 'string' && isTextList(unless)
+}
+
+// out_codes는 글자 배열, cond는 { code: 글자, unless: 글자 배열 } 배열이어야 한다. 두 칸이 null(또는 없음)이면 빈 것으로 본다
 function groupRowOf(row: unknown): GroupRow {
   if (typeof row !== 'object' || row === null) throw new Error(GROUPS_SHAPE_FAILED)
-  const { name, codes, sort_order: sortOrder } = row as Record<string, unknown>
-  const codesOk = Array.isArray(codes) && codes.every((code) => typeof code === 'string')
-  if (typeof name !== 'string' || !codesOk || !Number.isInteger(sortOrder)) throw new Error(GROUPS_SHAPE_FAILED)
-  return { name, codes: codes as string[], sortOrder: sortOrder as number }
+  const { name, codes, out_codes: outCodes, cond: condItems, sort_order: sortOrder } = row as Record<string, unknown>
+  const out = outCodes ?? []
+  const cond = condItems ?? []
+  if (typeof name !== 'string' || !isTextList(codes) || !isTextList(out) || !Array.isArray(cond) || !cond.every(isCond) || !Number.isInteger(sortOrder)) {
+    throw new Error(GROUPS_SHAPE_FAILED)
+  }
+  return { name, codes, out, cond, sortOrder: sortOrder as number }
 }
 
 // 묶음 줄 → 열쇠 → 이름. sort_order 작은 차례, 같으면 이름 글자 코드 차례(localeCompare를 쓰지 않는다)로 보고 열쇠마다 처음 이름을 쓴다.
@@ -94,7 +106,7 @@ function groupNamesOf(rows: unknown): Record<string, string> {
   const names: Record<string, string> = {}
   for (const group of groups) {
     if (group.codes.length === 0 || !isText(group.name, true)) continue
-    const key = groupKey(group.codes)
+    const key = groupKey(group.codes, { out: group.out, cond: group.cond })
     if (!Object.hasOwn(names, key)) names[key] = group.name
   }
   return names

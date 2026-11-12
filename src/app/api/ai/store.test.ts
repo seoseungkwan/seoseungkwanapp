@@ -580,10 +580,11 @@ describe('loadReportMonths — 통계 세 달 (REQ-2001)', () => {
 describe('loadReportMonths — 묶음 이름 (REQ-2002)', () => {
   const namesOf = async (rows: unknown) => (await loadReportMonths(fakeStatsClient({ groups: answer(rows) }).client, '2026-10')).groupNames
 
-  it("AC-2002.1 stats_rx_groups를 select('name, codes, sort_order')로 읽어 처방이 든 묶음마다 groupKey(codes) → 이름", async () => {
+  // ai-report-stats AC-2002.1의 select 글자('name, codes, sort_order')를 group-exclude AC-3702.4가 대신한다
+  it("AC-2002.1 · AC-3702.4 stats_rx_groups를 select('name, codes, out_codes, cond, sort_order')로 읽어 처방이 든 묶음마다 groupKey(codes) → 이름", async () => {
     const fake = fakeStatsClient({ groups: answer(GROUP_ROWS) })
     const { groupNames } = await loadReportMonths(fake.client, '2026-10')
-    expect(fake.select.filter((s) => s[0] === 'stats_rx_groups')).toEqual([['stats_rx_groups', 'name, codes, sort_order']])
+    expect(fake.select.filter((s) => s[0] === 'stats_rx_groups')).toEqual([['stats_rx_groups', 'name, codes, out_codes, cond, sort_order']])
     expect(groupNames).toEqual({ [MANUAL_KEY]: '도수치료', [PT_KEY]: '물리치료' })
     for (const key of Object.keys(groupNames)) expect(key).toMatch(GROUP_KEY)
   })
@@ -660,6 +661,83 @@ describe('loadReportMonths — 묶음 이름 (REQ-2002)', () => {
       { name: '물리치료', codes: ['FAKE-G3'], sort_order: 1 },
     ])
     expect(names).toEqual({ [PT_KEY]: '물리치료' })
+  })
+})
+
+// ---------- 빼는 처방(out_codes)·조건(cond) 든 묶음의 이름 (spec group-exclude REQ-3702 · AC-3702.4) ----------
+describe('loadReportMonths — 빼는 처방·조건 든 묶음 이름 (AC-3702.4)', () => {
+  const namesOf = async (rows: unknown) => (await loadReportMonths(fakeStatsClient({ groups: answer(rows) }).client, '2026-10')).groupNames
+
+  // 지어낸 기본 PT 묶음: 넣는 처방 둘, 빼는 처방 하나, 넣는 처방 하나에 조건 하나
+  const BASIC_CODES = ['FAKE-P1', 'FAKE-P2']
+  const BASIC_OUT = ['FAKE-X1']
+  const BASIC_COND = [{ code: 'FAKE-P1', unless: ['FAKE-Y1'] }]
+  const BASIC_KEY = groupKey(BASIC_CODES, { out: BASIC_OUT, cond: BASIC_COND })
+
+  it('AC-3702.4 빼는 처방·조건 든 줄의 이름은 groupKey(codes, { out: out_codes, cond })에 붙는다(넣는 처방만의 열쇠가 아님)', async () => {
+    const names = await namesOf([{ name: '기본 PT', codes: BASIC_CODES, out_codes: BASIC_OUT, cond: BASIC_COND, sort_order: 0 }])
+    expect(BASIC_KEY).not.toBe(groupKey(BASIC_CODES))
+    expect(names).toEqual({ [BASIC_KEY]: '기본 PT' })
+    expect(BASIC_KEY).toMatch(GROUP_KEY)
+  })
+
+  it('AC-3702.4 빼는 처방만·조건만 든 줄도 각자 groupKey(codes, { out, cond }) 열쇠에 이름이 붙는다', async () => {
+    const names = await namesOf([
+      { name: '빼는 처방만', codes: ['FAKE-Q1'], out_codes: ['FAKE-X2'], cond: [], sort_order: 0 },
+      { name: '조건만', codes: ['FAKE-Q2', 'FAKE-Q3'], out_codes: [], cond: [{ code: 'fake-q3', unless: ['FAKE-Y2', 'FAKE-Y3'] }], sort_order: 1 },
+    ])
+    expect(names).toEqual({
+      [groupKey(['FAKE-Q1'], { out: ['FAKE-X2'], cond: [] })]: '빼는 처방만',
+      [groupKey(['FAKE-Q2', 'FAKE-Q3'], { out: [], cond: [{ code: 'fake-q3', unless: ['FAKE-Y2', 'FAKE-Y3'] }] })]: '조건만',
+    })
+    expect(Object.keys(names)).not.toContain(groupKey(['FAKE-Q1']))
+    expect(Object.keys(names)).not.toContain(groupKey(['FAKE-Q2', 'FAKE-Q3']))
+  })
+
+  it('AC-3702.4 out_codes·cond가 null이거나 빈 배열인 줄은 빈 것으로 보아 지금 열쇠 groupKey(codes) 그대로다', async () => {
+    const names = await namesOf([
+      { name: '도수치료', codes: ['fake-g2', 'FAKE-G1'], out_codes: null, cond: null, sort_order: 0 },
+      { name: '물리치료', codes: PT_CODES, out_codes: [], cond: [], sort_order: 1 },
+    ])
+    expect(names).toEqual({ [MANUAL_KEY]: '도수치료', [PT_KEY]: '물리치료' })
+  })
+
+  it('AC-3702.4 넣는 처방이 같아도 빼는 처방이 다르면 열쇠가 달라 두 이름이 따로 붙는다', async () => {
+    const names = await namesOf([
+      { name: '물리치료', codes: PT_CODES, out_codes: null, cond: null, sort_order: 0 },
+      { name: '물리치료(도수 뺌)', codes: PT_CODES, out_codes: ['FAKE-G1'], cond: null, sort_order: 1 },
+    ])
+    expect(names).toEqual({ [PT_KEY]: '물리치료', [groupKey(PT_CODES, { out: ['FAKE-G1'] })]: '물리치료(도수 뺌)' })
+  })
+
+  it.each<[string, Record<string, unknown>]>([
+    ['out_codes가 배열이 아님', { out_codes: SECRET }],
+    ['out_codes에 글자가 아닌 값', { out_codes: ['FAKE-X1', 3] }],
+    ['out_codes에 null', { out_codes: [null] }],
+    ['cond가 배열이 아님', { cond: { code: 'FAKE-P1', unless: [SECRET] } }],
+    ['cond가 글자', { cond: SECRET }],
+    ['cond 항목이 null', { cond: [null] }],
+    ['cond 항목이 글자', { cond: ['FAKE-P1'] }],
+    ['cond 항목 code가 글자가 아님', { cond: [{ code: 7, unless: ['FAKE-Y1'] }] }],
+    ['cond 항목 code가 없음', { cond: [{ unless: ['FAKE-Y1'] }] }],
+    ['cond 항목 unless가 배열이 아님', { cond: [{ code: 'FAKE-P1', unless: SECRET }] }],
+    ['cond 항목 unless에 글자가 아닌 값', { cond: [{ code: 'FAKE-P1', unless: ['FAKE-Y1', 3] }] }],
+    ['cond 항목 unless가 없음', { cond: [{ code: 'FAKE-P1' }] }],
+    ['cond 항목 unless가 null', { cond: [{ code: 'FAKE-P1', unless: null }] }],
+  ])('AC-3702.4 stats_rx_groups 줄의 %s이면 지금처럼 모양 오류로 던지고(이름 없이 만들지 않는다) 오류 글에 받은 내용이 없다', async (_name, parts) => {
+    const row = { name: '기본 PT', codes: BASIC_CODES, out_codes: BASIC_OUT, cond: BASIC_COND, sort_order: 0, ...parts }
+    await expectThrowsWithoutSecret(
+      loadReportMonths(fakeStatsClient({ months: answer([monthRow('2026-10', 120)]), groups: answer([row, ...GROUP_ROWS]) }).client, '2026-10'),
+    )
+  })
+
+  it('AC-3702.4 돌려주는 값에는 열쇠와 이름만 있고 넣는·빼는·조건 처방 코드는 없다', async () => {
+    const rows = [{ name: '기본 PT', codes: BASIC_CODES, out_codes: BASIC_OUT, cond: BASIC_COND, sort_order: 0 }, ...GROUP_ROWS]
+    const months = await loadReportMonths(fakeStatsClient({ months: answer([monthRow('2026-10', 120)]), groups: answer(rows) }).client, '2026-10')
+    expect(months.groupNames).toEqual({ [BASIC_KEY]: '기본 PT', [MANUAL_KEY]: '도수치료', [PT_KEY]: '물리치료' })
+    const text = JSON.stringify(months.groupNames)
+    for (const word of ['codes', 'out_codes', 'cond', 'unless', 'FAKE-P1', 'FAKE-P2', 'FAKE-X1', 'FAKE-Y1']) expect(text).not.toContain(word)
+    for (const word of ['"out_codes"', '"cond"', '"unless"', 'FAKE-X1', 'FAKE-Y1']) expect(JSON.stringify(months)).not.toContain(word)
   })
 })
 
