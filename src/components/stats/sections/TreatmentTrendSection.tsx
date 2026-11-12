@@ -4,8 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { rxCatalog, rxPeriodCounts } from '@/components/stats/rxPickView'
+import type { ChartMode } from '@/components/stats/treatmentChart'
 import { savedNote } from '@/components/stats/treatmentEdit'
-import { groupCond, groupOut, staleNames, treatmentRows, uncomparedNames, type TreatmentRow } from '@/components/stats/treatmentView'
+import { groupCond, groupOut, rowKey, staleNames, treatmentRows, uncomparedNames, type TreatmentRow } from '@/components/stats/treatmentView'
 import { isSavableLine, useRxCatalog } from '@/components/stats/useRxCatalog'
 import type { StatsRxGroupsView } from '@/components/stats/useStatsRxGroups'
 import { periodDesc, rxComparedCells, type RxLine, type StatsInput } from '@/components/stats/view'
@@ -25,17 +26,19 @@ import { comparedNote } from './trendLabels'
 
 const TITLE = '처방별 추세'
 const EDIT_TITLE = '처방별 추세 · 묶음 고치기'
-const DESC = '만들어 둔 묶음마다 건수와 신환·재진 · 같은 날 같은 환자는 1건'
+const DESC = '만들어 둔 묶음마다 건수와 총환자 대비 · 같은 날 같은 환자는 1건' // group-exclude AC-3708.7
 const EMPTY = '불러오면 묶음마다 건수와 신환·재진이 보여요.'
 const READING = '묶음을 읽는 중이에요'
 const RELOAD = '비트 PC에서 다시 불러오거나, 파일을 다시 넣어 주세요.'
 const ALL_STALE_HEAD = '한 번 다시 불러오면 숫자가 나와요'
 const ALL_STALE_TEXT = `묶음별 숫자는 다시 불러온 기간부터 세요. ${RELOAD}`
 const SOME_STALE_HEAD = '다시 불러와야 맞는 묶음이 있어요'
+// 칸 아래 네 글(group-exclude AC-3708.6)
 const NOTES = [
   '건 = 날마다 그 묶음 처방을 받은 환자 수를 더한 값이에요. 같은 날 같은 환자는 묶음 안 처방을 여러 개 받아도 1건이에요.',
-  '신환율 = 신환 ÷ 건수 · 재진율 = 재진 ÷ 건수. 막대 안 회색 눈금은 비교 기간 건수예요.',
-  '어느 묶음에도 넣지 않은 처방(진찰료, 먹는 약 등)은 여기 나오지 않아요. 줄을 누르면 날짜별 건수와 신환·재진이 열려요.',
+  '빼는 처방이 있는 묶음은, 그날 빼는 처방을 하나라도 받은 환자를 그날 건수에서 빼요. * 표시 처방은 조건이 있어서, 조건 처방과 같은 날 받으면 그 처방으로는 세지 않아요.',
+  '총환자 대비 = 묶음 건수 ÷ 총환자 · 신환율 = 신환 ÷ 건수 · 재진율 = 재진 ÷ 건수. 막대 안 회색 눈금은 비교 기간 건수예요.',
+  '어느 묶음에도 넣지 않은 처방(진찰료, 먹는 약 등)은 여기 나오지 않아요. 줄을 누르면 날짜별 그래프와 추세선이 열려요.',
 ]
 // Section의 머리 줄 오른쪽 칸(action을 감싸는 ml-auto 칸)을 휴대폰에서 폭 전체로 편다. 단추 자신의 폭 전체(max-md:w-full)와 짝이다(AC-1210.1, 시안 .head > .btn)
 const PHONE_FULL_ACTION = 'max-md:[&>div>.ml-auto]:w-full'
@@ -60,7 +63,7 @@ function ReloadNotice({ rows }: { rows: readonly TreatmentRow[] }) {
   )
 }
 
-// 줄 아래 안내: 뺀 짝 글(처방 추세 AC-513.12와 같은 조건, 견주는 준비된 줄이 있을 때만) · 비교하지 않는 묶음(AC-1208.4) · 세 글(AC-1207.8)
+// 줄 아래 안내: 뺀 짝 글(처방 추세 AC-513.12와 같은 조건, 견주는 준비된 줄이 있을 때만) · 비교하지 않는 묶음(AC-1208.4) · 네 글(AC-3708.6)
 function BottomNotes({ input, rows }: { input: StatsInput; rows: readonly TreatmentRow[] }) {
   const uncompared = uncomparedNames(rows)
   const anyCompared = rows.some((row) => row.kind === 'ready' && row.compared)
@@ -98,6 +101,8 @@ export function TreatmentTrendSection({
   const [triedSave, setTriedSave] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set()) // 열린 줄 열쇠(rowKey, 표가 같은 열쇠로 묻는다)
+  // 줄 열쇠(rowKey)마다 고른 그래프 모양(group-exclude AC-3709.7·AC-3712.2). 없으면 [건수]. 화면을 연 동안 React 상태에만 있다(AC-3712.3)
+  const [modes, setModes] = useState<Readonly<Record<string, ChartMode>>>({})
   const headingRef = useRef<HTMLHeadingElement>(null)
   const editRef = useRef<HTMLButtonElement>(null)
   const focusNext = useRef<'heading' | 'edit' | null>(null) // 다음 그림 뒤 초점을 줄 곳
@@ -173,7 +178,10 @@ export function TreatmentTrendSection({
       if (!next.delete(key)) next.add(key)
       return next
     })
-  const renderPanel = (item: ReadyTreatmentRow) => <TreatmentDetail input={input} item={item} />
+  const renderPanel = (item: ReadyTreatmentRow) => {
+    const key = rowKey(item.group)
+    return <TreatmentDetail input={input} item={item} mode={modes[key] ?? 'count'} onMode={(mode) => setModes((now) => ({ ...now, [key]: mode }))} />
+  }
 
   const editButton = (
     <button type="button" ref={editRef} aria-disabled={!ready || undefined} onClick={openEditor} className={`${ds.button.secondarySmall} max-md:w-full`}>

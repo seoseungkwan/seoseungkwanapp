@@ -42,7 +42,7 @@ const SPRING = '2026-03-10' // 최근 12개월에만 든다
 
 const TITLE = '처방별 추세'
 const EDIT_TITLE = '처방별 추세 · 묶음 고치기'
-const DESC = '만들어 둔 묶음마다 건수와 신환·재진 · 같은 날 같은 환자는 1건'
+const DESC = '만들어 둔 묶음마다 건수와 총환자 대비 · 같은 날 같은 환자는 1건' // group-exclude AC-3708.7(treatment-trend AC-1201.1 설명 글자를 대신한다)
 const NOT_SAVED = '자료 없음 · 불러오면 묶음마다 건수와 신환·재진이 보여요.'
 const NO_RANGE = '자료 없음 · 불러온 숫자에 이 기간 자료가 없어요.'
 const READING = '묶음을 읽는 중이에요'
@@ -52,10 +52,12 @@ const INTRO =
 const ALL_STALE_HEAD = '한 번 다시 불러오면 숫자가 나와요'
 const ALL_STALE_TEXT = '묶음별 숫자는 다시 불러온 기간부터 세요. 비트 PC에서 다시 불러오거나, 파일을 다시 넣어 주세요.'
 const SOME_STALE_HEAD = '다시 불러와야 맞는 묶음이 있어요'
+// group-exclude AC-3708.6의 네 글(treatment-trend AC-1207.8의 세 글을 대신한다)
 const NOTES = [
   '건 = 날마다 그 묶음 처방을 받은 환자 수를 더한 값이에요. 같은 날 같은 환자는 묶음 안 처방을 여러 개 받아도 1건이에요.',
-  '신환율 = 신환 ÷ 건수 · 재진율 = 재진 ÷ 건수. 막대 안 회색 눈금은 비교 기간 건수예요.',
-  '어느 묶음에도 넣지 않은 처방(진찰료, 먹는 약 등)은 여기 나오지 않아요. 줄을 누르면 날짜별 건수와 신환·재진이 열려요.',
+  '빼는 처방이 있는 묶음은, 그날 빼는 처방을 하나라도 받은 환자를 그날 건수에서 빼요. * 표시 처방은 조건이 있어서, 조건 처방과 같은 날 받으면 그 처방으로는 세지 않아요.',
+  '총환자 대비 = 묶음 건수 ÷ 총환자 · 신환율 = 신환 ÷ 건수 · 재진율 = 재진 ÷ 건수. 막대 안 회색 눈금은 비교 기간 건수예요.',
+  '어느 묶음에도 넣지 않은 처방(진찰료, 먹는 약 등)은 여기 나오지 않아요. 줄을 누르면 날짜별 그래프와 추세선이 열려요.',
 ]
 const SAVED = '저장했어요.'
 const SAVED_AT_ONCE = '저장했어요. 이름과 순서만 바뀌어서 바로 반영했어요.'
@@ -435,6 +437,87 @@ describe('AC-1209.1·AC-1209.5: 줄 열기', () => {
     rerender(<TreatmentTrendSection input={inputOf(days, '30d')} saved groups={view} revision={0} />)
     expect(rowOf('충격파').getAttribute('aria-expanded')).toBe('true')
     expect(screen.getByText('충격파 · 일별 건수')).toBeTruthy()
+  })
+})
+
+// ── group-exclude 보기 화면 (REQ-3708 AC-3708.6·3708.7, REQ-3709 AC-3709.7, REQ-3712 AC-3712.2·3712.3) ─────────────────
+describe('AC-3708.7: 칸 머리 설명', () => {
+  it('AC-3708.7: h2 옆 설명이 `만들어 둔 묶음마다 건수와 총환자 대비 · 같은 날 같은 환자는 1건`이다', () => {
+    drawView()
+    expect(within(heading().parentElement!).getByText('만들어 둔 묶음마다 건수와 총환자 대비 · 같은 날 같은 환자는 1건')).toBeTruthy()
+    expect(screen.queryByText('만들어 둔 묶음마다 건수와 신환·재진 · 같은 날 같은 환자는 1건')).toBeNull()
+  })
+})
+
+describe('AC-3708.6: 칸 아래 안내 네 글', () => {
+  it('AC-3708.6: 줄 목록 아래에 네 글이 이 차례로 있고(small muted), 비교하지 않는 묶음 글은 그 위에 있다', () => {
+    drawView(viewOf(), inputOf(UNCOMPARED))
+    const shown = NOTES.map((text) => screen.getByText(text))
+    expect(follows(list()!, shown[0]!)).toBe(true)
+    for (let i = 1; i < shown.length; i++) expect(follows(shown[i - 1]!, shown[i]!), NOTES[i]).toBe(true)
+    for (const note of shown) hasAll(note, 'text-small text-muted')
+    expect(follows(screen.getByText('충격파 묶음은 비교 기간을 다시 불러오면 지난 기간과 견줘요.'), shown[0]!)).toBe(true)
+  })
+
+  it('AC-3708.6: 뺀 짝 글도 네 글 위에 있다', () => {
+    drawView(viewOf(), inputOf(ALL_READY, '30d', [{ from: '2026-10-06', to: '2026-11-12' }]))
+    expect(follows(screen.getByText('증감과 막대는 두 기간 모두 자료가 있는 8일만 견줘요. 건수는 기간 전체예요.'), screen.getByText(NOTES[0]!))).toBe(true)
+  })
+})
+
+describe('AC-3709.7·AC-3712.2·AC-3712.3: 줄마다 그래프 모양', () => {
+  const panelOf = (name: string) => document.getElementById(rowOf(name).getAttribute('aria-controls')!)!
+  const modeOf = (name: string, button: '건수' | '총환자 대비 %') => within(panelOf(name)).getByRole('button', { name: button })
+
+  it('AC-3709.7·AC-3712.2: 한 줄에서 [총환자 대비 %]를 고르면 그 줄을 닫았다 열어도, 기간을 바꿔도 그대로이고 다른 줄은 [건수]다', async () => {
+    const user = userEvent.setup()
+    const view = viewOf()
+    const { rerender } = drawView(view)
+    await user.click(rowOf('충격파'))
+    expect(modeOf('충격파', '건수').getAttribute('aria-pressed')).toBe('true')
+    await user.click(modeOf('충격파', '총환자 대비 %'))
+    expect(screen.getByText('충격파 · 일별 총환자 대비')).toBeTruthy()
+
+    await user.click(rowOf('충격파'))
+    expect(screen.queryByText('충격파 · 일별 총환자 대비')).toBeNull()
+    await user.click(rowOf('충격파'))
+    expect(modeOf('충격파', '총환자 대비 %').getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByText('충격파 · 일별 총환자 대비')).toBeTruthy()
+
+    await user.click(rowOf('도수치료'))
+    expect(modeOf('도수치료', '건수').getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByText('도수치료 · 일별 건수')).toBeTruthy()
+
+    rerender(<TreatmentTrendSection input={inputOf(ALL_READY, '90d')} saved groups={view} revision={0} />)
+    expect(screen.getByText('충격파 · 주별 총환자 대비')).toBeTruthy()
+    expect(screen.getByText('도수치료 · 주별 건수')).toBeTruthy()
+
+    await user.click(modeOf('충격파', '건수'))
+    expect(screen.getByText('충격파 · 주별 건수')).toBeTruthy()
+  })
+
+  it('AC-3709.7: 화면을 새로 열면 모두 [건수]다', async () => {
+    const user = userEvent.setup()
+    drawView()
+    await user.click(rowOf('충격파'))
+    await user.click(modeOf('충격파', '총환자 대비 %'))
+    cleanup()
+    drawView()
+    await user.click(rowOf('충격파'))
+    expect(modeOf('충격파', '건수').getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByText('충격파 · 일별 건수')).toBeTruthy()
+  })
+
+  it('AC-3712.3: 줄을 열고 모양을 바꿔도 브라우저 저장소·쿠키에 아무것도 넣지 않는다', async () => {
+    const user = userEvent.setup()
+    drawView()
+    await user.click(rowOf('충격파'))
+    await user.click(modeOf('충격파', '총환자 대비 %'))
+    await user.click(rowOf('도수치료'))
+    await user.click(modeOf('도수치료', '총환자 대비 %'))
+    expect(window.localStorage.length).toBe(0)
+    expect(window.sessionStorage.length).toBe(0)
+    expect(document.cookie).toBe('')
   })
 })
 

@@ -115,10 +115,10 @@ describe('AC-513.1·AC-801.1·AC-1201.1: 섹션 차례', () => {
     }
   })
 
-  it('AC-1201.1: 처방별 추세 칸은 h2 옆에 승인본 설명이 있다', () => {
+  it('AC-1201.1·AC-3708.7: 처방별 추세 칸은 h2 옆에 승인본 설명이 있다(group-exclude AC-3708.7 글자)', () => {
     draw(true)
     const section = screen.getByRole('heading', { level: 2, name: '처방별 추세' }).closest('section')!
-    expect(within(section).getByText('만들어 둔 묶음마다 건수와 신환·재진 · 같은 날 같은 환자는 1건')).toBeTruthy()
+    expect(within(section).getByText('만들어 둔 묶음마다 건수와 총환자 대비 · 같은 날 같은 환자는 1건')).toBeTruthy()
   })
 
   it('AC-513.1: 섹션 위는 1px line-strong이고 도구 단추 줄이 없다', () => {
