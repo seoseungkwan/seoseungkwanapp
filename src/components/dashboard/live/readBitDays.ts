@@ -1,4 +1,5 @@
 import { addDays } from '@/lib/analytics/dates'
+import { copyGroupDef } from '@/lib/analytics/groupDef'
 import { BridgeError } from '@/lib/bridge/protocol'
 import { connectScreenBridge, type ScreenBridge } from '@/lib/bridge/workerSink'
 import { isErrorCode } from '@/lib/errors'
@@ -55,12 +56,13 @@ export async function readBitDays(deps: {
   today: string
   timeoutMs?: number
   signal?: AbortSignal
-  /** 통계 탭 묶음 정의(AC-606.7, groupDefs 결과). 주지 않으면 []. 열쇠·코드만 시작할 때 떠 두어 읽는 동안 바뀌어도 그대로 싣는다 */
+  /** 통계 탭 묶음 정의(AC-606.7, groupDefs 결과). 주지 않으면 []. 열쇠·코드와 빼는 처방·조건(있을 때만, group-exclude AC-3705.5)을
+   * copyGroupDef로 시작할 때 떠 두어 읽는 동안 바뀌어도 그대로 싣는다 */
   groups?: readonly RxGroupDef[]
 }): Promise<ReadResult> {
   const { runtime, createWorker, today, timeoutMs = READ_TIMEOUT_MS, signal } = deps
   if (!runtime || signal?.aborted) return NOT_READY
-  const groups = (deps.groups ?? []).map(({ id, codes }) => ({ id, codes: [...codes] }))
+  const groups = (deps.groups ?? []).map(copyGroupDef)
 
   let worker: StatsWorkerLike | undefined
   let bridge: ScreenBridge | undefined

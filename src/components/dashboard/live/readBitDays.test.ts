@@ -1,12 +1,21 @@
-import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import type { RxGroupDef } from '@/types/analysis'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
 import type { DayPayload } from '@/types/payload'
 import type { StatsLoaded, StatsLoadRequest, StatsWorkerMessage } from '@/types/stats'
+import { requestLoad } from '@/workers/statsClient'
 import { LOOKBACK_DAYS, READ_TIMEOUT_MS, readBitDays, type StatsWorkerLike } from './readBitDays'
 
 // 비트 읽기 한 번 (design.md "### 읽기"). 진짜 connectScreenBridge·connectBridge·requestLoad에 가짜 확장(chrome.runtime)과 가짜 Worker만 넣는다.
 // 자료는 모두 지어낸 값이다. 도우미 답 모양은 가짜 Worker가 받아 삼키므로 이 시험은 stats.rows 글자의 모양에 기대지 않는다
+// requestLoad는 진짜를 그대로 부르는 vi.fn으로만 감싼다: 무엇을 넘겼는지 보려고(AC-3705.5). 하는 일은 바뀌지 않는다
+
+vi.mock('@/workers/statsClient', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/workers/statsClient')>()
+  return { ...real, requestLoad: vi.fn(real.requestLoad) }
+})
+
+const load = vi.mocked(requestLoad)
 
 const TODAY = '2026-11-01'
 const FROM = '2026-07-24' // 오늘 100일 전
@@ -223,6 +232,66 @@ describe('readBitDays', () => {
       await t.readWithGroups(withName)
       expect(t.loads[0].groups).toStrictEqual([{ id: 't00000000000000a1', codes: ['FAKE-RX-01'] }])
       expect(JSON.stringify(t.loads)).not.toContain('가짜 묶음 이름')
+    })
+  })
+
+  describe('AC-3705.5 빼는 처방·조건을 싣는다 (spec group-exclude, copyGroupDef)', () => {
+    // 지어낸 열쇠·코드. 열쇠 만들기는 groupDefs가 맡고, 여기서는 readBitDays가 받은 정의를 copyGroupDef 사본으로 넘기는지만 본다.
+    // 보는 곳은 진짜 requestLoad에 넘긴 묶음 정의다(requestLoad는 그대로 돈다). requestLoad가 그 정의를 Worker 메시지에 out·cond째
+    // 옮기는 일은 TASK-9(statsClient.ts copyGroupDef)가 맡고 statsClient.test.ts가 시험한다
+    const WITH_EXCLUDE: RxGroupDef[] = [
+      { id: 't00000000000000d4', codes: ['FAKE-RX-01', 'FAKE-RX-02'], out: ['FAKE-RX-90'] },
+      { id: 't00000000000000e5', codes: ['FAKE-RX-03'], cond: [{ code: 'FAKE-RX-03', unless: ['FAKE-RX-91', 'FAKE-RX-92'] }] },
+      { id: 't00000000000000a1', codes: ['FAKE-RX-04'] },
+    ]
+    /** 진짜 requestLoad에 넘긴 묶음 정의(한 번만 불렸는지도 본다) */
+    const loadedGroups = () => {
+      expect(load).toHaveBeenCalledTimes(1)
+      return load.mock.calls[0][1].groups
+    }
+
+    beforeEach(() => {
+      load.mockClear()
+    })
+
+    it('AC-3705.5: 빼는 처방·조건 든 묶음은 비트 읽기 요청(requestLoad) 묶음 항목에 id·codes와 함께 out·cond가 실린다', async () => {
+      const t = setup()
+      await expect(t.readWithGroups(WITH_EXCLUDE)).resolves.toEqual({ kind: 'days', days: [DAY] })
+      expect(loadedGroups()).toStrictEqual([
+        { id: 't00000000000000d4', codes: ['FAKE-RX-01', 'FAKE-RX-02'], out: ['FAKE-RX-90'] },
+        { id: 't00000000000000e5', codes: ['FAKE-RX-03'], cond: [{ code: 'FAKE-RX-03', unless: ['FAKE-RX-91', 'FAKE-RX-92'] }] },
+        { id: 't00000000000000a1', codes: ['FAKE-RX-04'] },
+      ])
+      expect(t.commands()).toEqual(['hello', 'bit.check', 'stats.rows'])
+      t.expectClosed()
+    })
+
+    it('AC-3705.5: 빼는 처방·조건이 빈 배열인 묶음 항목은 지금처럼 { id, codes }뿐이다(요청과 Worker 메시지 모두)', async () => {
+      const t = setup()
+      await t.readWithGroups([{ id: 't00000000000000a1', codes: ['FAKE-RX-01'], out: [], cond: [] }])
+      expect(loadedGroups()).toStrictEqual([{ id: 't00000000000000a1', codes: ['FAKE-RX-01'] }])
+      expect(t.loads[0].groups).toStrictEqual([{ id: 't00000000000000a1', codes: ['FAKE-RX-01'] }])
+    })
+
+    it('AC-3705.5: 조건 항목은 { code, unless }만 가고 이름 같은 다른 칸은 실리지 않는다', async () => {
+      const t = setup()
+      const cond = [{ code: 'FAKE-RX-03', unless: ['FAKE-RX-91'], name: '가짜 조건 이름' }]
+      await t.readWithGroups([{ id: 't00000000000000e5', codes: ['FAKE-RX-03'], cond, name: '가짜 묶음 이름' } as RxGroupDef])
+      expect(loadedGroups()).toStrictEqual([{ id: 't00000000000000e5', codes: ['FAKE-RX-03'], cond: [{ code: 'FAKE-RX-03', unless: ['FAKE-RX-91'] }] }])
+      expect(JSON.stringify(loadedGroups())).not.toContain('가짜')
+      expect(JSON.stringify(t.loads)).not.toContain('가짜')
+    })
+
+    it('AC-3705.5: 읽기를 시작한 뒤 넘긴 빼는 처방·조건을 바꿔도 요청은 시작할 때의 정의 그대로다', async () => {
+      const t = setup()
+      const groups = structuredClone(WITH_EXCLUDE)
+      const reading = t.readWithGroups(groups)
+      // requestLoad는 hello·bit.check·stats.rows 답을 기다린 뒤에 불린다. 그 사이에 부른 쪽이 목록을 바꾼다
+      groups[0].out!.push('FAKE-RX-99')
+      groups[1].cond![0].unless.push('FAKE-RX-99')
+      groups[1].cond!.push({ code: 'FAKE-RX-03', unless: ['FAKE-RX-98'] })
+      await reading
+      expect(loadedGroups()).toEqual(WITH_EXCLUDE)
     })
   })
 
