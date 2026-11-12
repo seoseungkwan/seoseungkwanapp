@@ -2,47 +2,82 @@ import { addDays, compareYmd } from '@/lib/analytics/dates'
 import type { RxGroupDef } from '@/types/analysis'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
-import type { RxGroup } from '@/types/rxGroups'
+import type { RxCond, RxGroup, StatsRxGroup } from '@/types/rxGroups'
 import { codeKey, rxDetail, rxPickRows, type RxDetailPoint, type RxPickRow, type StatsInput } from './view'
 
 // 처방별 추세의 숫자 (treatment-trend REQ-1205~1209, design.md '다시 불러오기 판단'·'화면 숫자'). view.ts와 같은 규칙의 순수 함수다.
-// 묶음 열쇠 = 처방 코드 모음의 지문(groupKey). 불러올 때 묶음마다 이 열쇠로 세어 일 줄 groups에 넣고, 화면은 지금 묶음의 열쇠 줄 숫자만 쓴다.
+// 묶음 열쇠 = 넣는 처방·빼는 처방·조건의 지문(groupKey, group-exclude REQ-3704). 불러올 때 묶음마다 이 열쇠로 세어 일 줄 groups에 넣고, 화면은 지금 묶음의 열쇠 줄 숫자만 쓴다.
 // 숫자는 묶음 줄을 "열쇠가 코드인 처방 줄"로 바꾼 가상 입력(groupInput)을 rxPickRows·rxDetail에 넘겨 낸다. 그래서 증감·짝 빼기·일부 기간이 처방 추세와 같다.
 // 이름·sortOrder·제안 여부는 숫자에 쓰지 않는다. 숫자는 열쇠만 본다
 
 export const GROUP_KEY = /^t[0-9a-f]{16}$/
 
 export type TreatmentRow =
-  | { kind: 'empty'; group: RxGroup } // 처방이 없는 묶음. 다시 불러오기 판단에 들지 않는다
-  | { kind: 'stale'; group: RxGroup; key: string } // 고른 기간에 이 열쇠로 세지 않은 날이 있다: 다시 불러오면 보여요
+  | { kind: 'empty'; group: StatsRxGroup } // 처방이 없는 묶음. 다시 불러오기 판단에 들지 않는다
+  | { kind: 'stale'; group: StatsRxGroup; key: string } // 고른 기간에 이 열쇠로 세지 않은 날이 있다: 다시 불러오면 보여요
   // compared 거짓 = 비교 기간에 세지 않은 날이 있어 견주지 않음. lastYearCompared는 작년 비교가 있는 고른 기간에만 있고, 거짓 = 작년 기간에 세지 않은 날이 있어 작년만 견주지 않음
-  | { kind: 'ready'; group: RxGroup; key: string; compared: boolean; lastYearCompared?: boolean; row: RxPickRow }
+  | { kind: 'ready'; group: StatsRxGroup; key: string; compared: boolean; lastYearCompared?: boolean; row: RxPickRow }
+
+// 통계 묶음의 빼는 처방·조건 칸(group-exclude design.md '묶음 모양'). 칸이 없으면 빈 것이다
+export const groupOut = (group: StatsRxGroup): string[] => group.out ?? []
+export const groupCond = (group: StatsRxGroup): RxCond[] => group.cond ?? []
 
 // FNV-1a 64비트. 목표가 ES2017이라 BigInt 글자(…n) 대신 BigInt()로 만든다
 const FNV_OFFSET = BigInt('0xcbf29ce484222325')
 const FNV_PRIME = BigInt('0x100000001b3')
 const KEY_DIGITS = 16
+// 열쇠 글자의 나눔 글자. 코드에는 제어 문자가 없어(DB CHECK) 코드와 섞이지 않는다
+const PART = '\u0001'
+const UNLESS = '\u0002'
 
 const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
-const bySortOrder = (groups: readonly RxGroup[]) => [...groups].sort((a, b) => a.sortOrder - b.sortOrder)
+const bySortOrder = <T extends RxGroup>(groups: readonly T[]) => [...groups].sort((a, b) => a.sortOrder - b.sortOrder)
+// codeKey(대문자)로 바꾸고 겹침을 빼 글자 차례
+const codeList = (codes: Iterable<string>) => [...new Set([...codes].map(codeKey))].sort(compareText)
 
-// 코드를 codeKey(대문자)로 바꾸고 겹침을 빼 글자 차례로 '\n'으로 이은 UTF-8 바이트의 FNV-1a 64비트. 't' + 소문자 16진수 16자리(validate.ts GROUP_ID를 지남)
-export function groupKey(codes: readonly string[]): string {
-  const text = [...new Set(codes.map(codeKey))].sort(compareText).join('\n')
+// 열쇠·셈에 쓰는 조건(design.md '열쇠'). 넣는 처방에 없는 항목은 버리고, 같은 코드(codeKey) 항목은 unless를 합친다.
+// unless는 codeKey·겹침 뺌·자기 자신 뺌·글자 차례이고, 남은 unless가 비면 그 항목도 버린다. 항목은 code 글자 차례, 돌려주는 글자는 모두 codeKey다
+export function keptCond(codes: readonly string[], cond: readonly RxCond[]): RxCond[] {
+  const include = new Set(codes.map(codeKey))
+  const merged = new Map<string, string[]>()
+  for (const item of cond) {
+    const code = codeKey(item.code)
+    if (include.has(code)) merged.set(code, [...(merged.get(code) ?? []), ...item.unless])
+  }
+  return [...merged]
+    .map(([code, unless]) => ({ code, unless: codeList(unless).filter((other) => other !== code) }))
+    .filter((item) => item.unless.length > 0)
+    .sort((a, b) => compareText(a.code, b.code))
+}
+
+// 글자 A = 넣는 처방(codeList)을 '\n'으로 이음. 빼는 처방이 없고 keptCond가 비면 A 그대로(지금 열쇠).
+// 아니면 A + PART + B(빼는 처방, A와 같은 규칙) + PART + C(keptCond 항목마다 code + UNLESS + unless를 UNLESS로 이음, '\n'으로 이음).
+// 그 글자 UTF-8 바이트의 FNV-1a 64비트. 't' + 소문자 16진수 16자리(validate.ts GROUP_ID를 지남)
+export function groupKey(codes: readonly string[], extra?: { out?: readonly string[]; cond?: readonly RxCond[] }): string {
+  const include = codeList(codes).join('\n')
+  const out = codeList(extra?.out ?? [])
+  const cond = keptCond(codes, extra?.cond ?? [])
+  const text =
+    out.length === 0 && cond.length === 0
+      ? include
+      : [include, out.join('\n'), cond.map((item) => [item.code, ...item.unless].join(UNLESS)).join('\n')].join(PART)
   let hash = FNV_OFFSET
   for (const byte of new TextEncoder().encode(text)) hash = BigInt.asUintN(64, (hash ^ BigInt(byte)) * FNV_PRIME)
   return `t${hash.toString(16).padStart(KEY_DIGITS, '0')}`
 }
 
-// 불러오기에 넘길 묶음 정의. 처방 든 묶음만, sortOrder 차례, 같은 열쇠는 한 번만
-export function groupDefs(groups: readonly RxGroup[]): RxGroupDef[] {
+// 불러오기에 넘길 묶음 정의. 처방 든 묶음만, sortOrder 차례, 같은 열쇠는 한 번만.
+// 빼는 처방이 있으면 out, 조건이 남으면 cond(keptCond)를 더 싣는다. 둘 다 없으면 지금 모양 { id, codes } 그대로다
+export function groupDefs(groups: readonly StatsRxGroup[]): RxGroupDef[] {
   const seen = new Set<string>()
   return bySortOrder(groups).flatMap((group) => {
     if (group.codes.length === 0) return []
-    const id = groupKey(group.codes)
+    const id = groupKey(group.codes, group)
     if (seen.has(id)) return []
     seen.add(id)
-    return [{ id, codes: [...group.codes] }]
+    const out = groupOut(group)
+    const cond = keptCond(group.codes, groupCond(group))
+    return [{ id, codes: [...group.codes], ...(out.length > 0 ? { out: [...out] } : {}), ...(cond.length > 0 ? { cond } : {}) }]
   })
 }
 
@@ -95,11 +130,12 @@ export function groupInput(input: StatsInput, key: string, name: string, compare
   return { days: keyedDays(input.days, key, name), covered, range: input.range }
 }
 
-// 묶음마다 한 줄, sortOrder 차례(건수로 다시 줄 세우지 않는다). 어느 묶음에도 없는 처방은 줄이 아니다
-export function treatmentRows(input: StatsInput, groups: readonly RxGroup[]): TreatmentRow[] {
+// 묶음마다 한 줄, sortOrder 차례(건수로 다시 줄 세우지 않는다). 어느 묶음에도 없는 처방은 줄이 아니다.
+// 열쇠에 빼는 처방·조건이 들어 그것을 바꾸면 다시 불러올 때까지 stale이다(이름·차례만 바꾸면 그대로)
+export function treatmentRows(input: StatsInput, groups: readonly StatsRxGroup[]): TreatmentRow[] {
   return bySortOrder(groups).map((group): TreatmentRow => {
     if (group.codes.length === 0) return { kind: 'empty', group }
-    const key = groupKey(group.codes)
+    const key = groupKey(group.codes, group)
     if (!keyedIn(input.days, input.range.current, key)) return { kind: 'stale', group, key }
     const compared = keyedIn(input.days, input.range.previous, key)
     const { lastYear } = input.range

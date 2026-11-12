@@ -6,13 +6,16 @@ import { addDays, addMonths, eachDay, weekdayOf } from '@/lib/analytics/dates'
 import { validateDayPayload } from '@/lib/payload/validate'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
-import type { RxGroup } from '@/types/rxGroups'
+import type { RxCond, RxGroup, StatsRxGroup } from '@/types/rxGroups'
 import { rateText } from './rxPickView'
 import {
   GROUP_KEY,
+  groupCond,
   groupDefs,
   groupInput,
   groupKey,
+  groupOut,
+  keptCond,
   keyedIn,
   rowKey,
   staleNames,
@@ -622,5 +625,252 @@ describe('AC-1705.2 처방별 추세 — 두 비교 기간이 겹치는 직접 �
       { from: '2026-01-01', to: '2026-11-05' },
     ])
     expect(groupInput(input, ESWT_KEY, '체외충격파', false, false).covered).toEqual([{ from: '2026-01-01', to: '2026-11-05' }])
+  })
+})
+
+// ── 빼는 처방·조건 (group-exclude REQ-3702·REQ-3704, design.md '열쇠'·'묶음 모양'). 처방 코드·숫자는 모두 지어낸 값이다
+const statsGroup = (name: string, codes: string[], sortOrder: number, extra: { out?: string[]; cond?: RxCond[] } = {}, id: string | null = `g${sortOrder}`): StatsRxGroup => ({
+  id,
+  name,
+  codes,
+  sortOrder,
+  ...extra,
+})
+
+const BASIC = ['MM010', 'MM015']
+const BASIC_KEY = 't897a44ea10ee6752' // 'MM010\nMM015' (빼는 처방·조건 없음 = 지금 열쇠)
+// 손으로 만든 글자 'MM010\nMM015' + '\u0001' + 'ESWT7' + '\u0001' + '' 의 UTF-8 FNV-1a 64비트
+const BASIC_OUT_KEY = 'tf1bcefa1fc955a56'
+// 손으로 만든 글자 'MM010\nMM080' + '\u0001' + '' + '\u0001' + 'MM080\u0002MM020\u0002MM030\u0002TENS' 의 UTF-8 FNV-1a 64비트
+const COND_KEY = 't86895c229ba5c809'
+const COND_CODES = ['MM010', 'MM080']
+const MM080_COND: RxCond = { code: 'MM080', unless: ['MM020', 'MM030', 'TENS'] }
+
+describe('AC-3702.1 groupOut·groupCond', () => {
+  it('AC-3702.1 칸이 없으면 빈 배열이고, 있으면 그 칸 그대로다', () => {
+    const plain = group('기본 PT', BASIC, 0)
+    expect(groupOut(plain)).toEqual([])
+    expect(groupCond(plain)).toEqual([])
+    const filled = statsGroup('기본 PT', COND_CODES, 0, { out: ['ESWT7'], cond: [MM080_COND] })
+    expect(groupOut(filled)).toEqual(['ESWT7'])
+    expect(groupCond(filled)).toEqual([MM080_COND])
+    expect(groupOut(statsGroup('빈 칸', BASIC, 0, { out: [], cond: [] }))).toEqual([])
+    expect(groupCond(statsGroup('빈 칸', BASIC, 0, { out: [], cond: [] }))).toEqual([])
+  })
+})
+
+describe('AC-3704.1 빼는 처방·조건이 없으면 지금 열쇠', () => {
+  it.each([
+    [['ESWT1', 'ESWT7'], 't2538e307d10103cb'],
+    [['eswt7', 'ESWT1', 'ESWT1'], 't2538e307d10103cb'],
+    [['도수'], 't0c99afbb8431612f'],
+    [['CARM1'], 't2f4ba094dcd40dcf'],
+    [BASIC, BASIC_KEY],
+  ])('AC-3704.1 %j — groupKey(codes)와 groupKey(codes, { out: [], cond: [] })가 같고 고정 값 %s 그대로다', (codes, key) => {
+    expect(groupKey(codes)).toBe(key)
+    expect(groupKey(codes, { out: [], cond: [] })).toBe(key)
+    expect(groupKey(codes, {})).toBe(key)
+    expect(groupKey(codes, undefined)).toBe(key)
+  })
+
+  it('AC-3704.1 묶음 통째(빼는 처방·조건 칸 없음·빈 칸)를 넘겨도 지금 열쇠다', () => {
+    const plain: StatsRxGroup = eswtGroup()
+    expect(groupKey(ESWT, plain)).toBe(ESWT_KEY)
+    expect(groupKey(BASIC, statsGroup('기본 PT', BASIC, 0, { out: [], cond: [] }))).toBe(BASIC_KEY)
+  })
+})
+
+describe('AC-3704.2 빼는 처방·조건이 있으면 열쇠가 달라진다', () => {
+  it('AC-3704.2 같은 넣는 처방이라도 빼는 처방이 있거나 조건이 있으면 다른 열쇠이고, 빼는 처방과 조건 처방은 서로 섞이지 않는다', () => {
+    const keys = [
+      groupKey(COND_CODES),
+      groupKey(COND_CODES, { out: ['MM020'] }),
+      groupKey(COND_CODES, { cond: [{ code: 'MM080', unless: ['MM020'] }] }),
+      groupKey(COND_CODES, { out: ['MM020'], cond: [{ code: 'MM080', unless: ['MM020'] }] }),
+      groupKey(COND_CODES, { cond: [{ code: 'MM010', unless: ['MM020'] }] }),
+      groupKey(COND_CODES, { out: ['MM030'] }),
+      groupKey(COND_CODES, { out: ['MM020', 'MM030'] }),
+      groupKey(COND_CODES, { cond: [{ code: 'MM080', unless: ['MM020', 'MM030'] }] }),
+      groupKey(['MM010', 'MM080', 'MM020']),
+    ]
+    expect(new Set(keys).size).toBe(keys.length)
+    for (const key of keys) expect(key).toMatch(GROUP_KEY)
+  })
+
+  it('AC-3704.2 빼는 처방의 차례·대소문자·겹침은 열쇠를 바꾸지 않는다', () => {
+    const key = groupKey(BASIC, { out: ['ESWT7', 'DOSU'] })
+    expect(groupKey(BASIC, { out: ['dosu', 'eswt7'] })).toBe(key)
+    expect(groupKey(BASIC, { out: ['ESWT7', 'Dosu', 'DOSU', 'eswt7'] })).toBe(key)
+    expect(groupKey(['mm015', 'MM010'], { out: ['DOSU', 'ESWT7'] })).toBe(key)
+  })
+
+  it('AC-3704.2 조건 항목 차례·unless 차례·대소문자는 열쇠를 바꾸지 않는다', () => {
+    const cond = [MM080_COND, { code: 'MM010', unless: ['ESWT7'] }]
+    const key = groupKey(COND_CODES, { cond })
+    expect(groupKey(COND_CODES, { cond: [{ code: 'mm010', unless: ['eswt7'] }, { code: 'mm080', unless: ['tens', 'mm030', 'MM020'] }] })).toBe(key)
+    expect(groupKey(['mm080', 'MM010'], { cond: [{ code: 'MM080', unless: ['TENS', 'MM020', 'MM030', 'mm020'] }, { code: 'MM010', unless: ['ESWT7'] }] })).toBe(key)
+    // 같은 넣는 처방 항목 둘(대소문자 무시)은 하나로 합친다(unless 합집합)
+    expect(groupKey(COND_CODES, { cond: [{ code: 'MM080', unless: ['MM020'] }, { code: 'mm080', unless: ['TENS', 'MM030'] }, { code: 'MM010', unless: ['ESWT7'] }] })).toBe(key)
+  })
+
+  it('AC-3704.2 받은 목록을 바꾸지 않는다', () => {
+    const out = ['eswt7', 'DOSU', 'DOSU']
+    const cond = [{ code: 'mm080', unless: ['TENS', 'mm020'] }]
+    const before = structuredClone({ out, cond })
+    groupKey(['mm080', 'MM010'], { out, cond })
+    expect({ out, cond }).toEqual(before)
+  })
+})
+
+describe('AC-3704.3 없는 것으로 보는 조건 항목', () => {
+  it('AC-3704.3 넣는 처방에 없는 코드의 조건·빈 unless·unless가 자기 자신뿐인 조건은 열쇠에 들지 않는다', () => {
+    expect(groupKey(BASIC, { cond: [{ code: 'MM080', unless: ['MM020'] }] })).toBe(BASIC_KEY)
+    expect(groupKey(BASIC, { cond: [{ code: 'MM010', unless: [] }] })).toBe(BASIC_KEY)
+    expect(groupKey(BASIC, { cond: [{ code: 'MM010', unless: ['mm010'] }] })).toBe(BASIC_KEY)
+    expect(groupKey(BASIC, { out: ['ESWT7'], cond: [{ code: 'MS1', unless: ['MM020'] }, { code: 'MM015', unless: [] }] })).toBe(BASIC_OUT_KEY)
+    expect(groupKey(COND_CODES, { cond: [MM080_COND, { code: 'MS1', unless: ['MM020'] }, { code: 'MM010', unless: [] }] })).toBe(COND_KEY)
+  })
+
+  it('AC-3704.3 keptCond — 넣는 처방에 없는 항목·빈 항목을 버리고, 같은 코드는 합치며, 코드는 대문자·겹침과 자기 자신 뺌·글자 차례다', () => {
+    expect(
+      keptCond(
+        ['mm080', 'MM010'],
+        [
+          { code: 'mm080', unless: ['tens', 'MM020', 'MM080', 'mm020'] },
+          { code: 'MS1', unless: ['MM020'] },
+          { code: 'MM010', unless: [] },
+          { code: 'MM080', unless: ['MM030'] },
+        ],
+      ),
+    ).toEqual([{ code: 'MM080', unless: ['MM020', 'MM030', 'TENS'] }])
+    // 항목은 code 글자 차례. unless에는 다른 넣는 처방·빼는 처방이어도 된다
+    expect(keptCond(['B2', 'A1'], [{ code: 'b2', unless: ['X9', 'a1'] }, { code: 'A1', unless: ['Y'] }])).toEqual([
+      { code: 'A1', unless: ['Y'] },
+      { code: 'B2', unless: ['A1', 'X9'] },
+    ])
+    expect(keptCond(BASIC, [])).toEqual([])
+    expect(keptCond([], [{ code: 'MM010', unless: ['MM020'] }])).toEqual([])
+  })
+
+  it('AC-3704.3 keptCond는 받은 목록을 바꾸지 않고 새 배열을 돌려준다', () => {
+    const cond = [{ code: 'MM080', unless: ['MM020', 'MM030', 'TENS'] }]
+    const before = structuredClone(cond)
+    const kept = keptCond(COND_CODES, cond)
+    expect(kept).toEqual(cond)
+    expect(kept).not.toBe(cond)
+    expect(kept[0]).not.toBe(cond[0])
+    expect(kept[0].unless).not.toBe(cond[0].unless)
+    expect(cond).toEqual(before)
+  })
+})
+
+describe('AC-3704.4 열쇠 모양·고정 값', () => {
+  it('AC-3704.4 고정 값 — 빼는 처방 하나 든 묶음(MM010·MM015, 빼는 ESWT7)', () => {
+    expect(groupKey(BASIC, { out: ['ESWT7'] })).toBe(BASIC_OUT_KEY)
+    expect(groupKey(['mm015', 'MM010', 'MM010'], { out: ['eswt7', 'ESWT7'], cond: [] })).toBe(BASIC_OUT_KEY)
+  })
+
+  it('AC-3704.4 고정 값 — 조건 하나 든 묶음(MM010·MM080, MM080 ← MM020·MM030·TENS)', () => {
+    expect(groupKey(COND_CODES, { cond: [MM080_COND] })).toBe(COND_KEY)
+    expect(groupKey(COND_CODES, { out: [], cond: [{ code: 'mm080', unless: ['tens', 'MM030', 'MM020'] }] })).toBe(COND_KEY)
+  })
+
+  it('AC-3704.4 빼는 처방·조건 든 열쇠도 t + 소문자 16진수 16자리이고 validate.ts의 GROUP_ID를 지난다', () => {
+    const keys = Array.from({ length: 300 }, (_, i) =>
+      groupKey([`C${i}`, `도수${i}`], i % 2 === 0 ? { out: [`X${i}`] } : { cond: [{ code: `C${i}`, unless: [`Y${i}`] }] }),
+    )
+    for (const key of keys) expect(key).toMatch(GROUP_KEY)
+    expect(new Set(keys).size).toBe(300)
+    const saved = validateDayPayload(day('2026-11-10', { groups: [line(BASIC_OUT_KEY, 3, 1), line(COND_KEY, 2)] }))
+    expect(saved?.groups.map((item) => item.id)).toEqual([COND_KEY, BASIC_OUT_KEY])
+  })
+})
+
+describe('AC-3704.5 groupDefs 빼는 처방·조건', () => {
+  it('AC-3704.5 빼는 처방이 있으면 out, 조건이 있으면 걸러 낸 cond를 더 싣고, id는 그 열쇠다', () => {
+    const groups = [
+      statsGroup('조건 묶음', ['MM080', 'MM010'], 1, { cond: [{ code: 'mm080', unless: ['TENS', 'MM020', 'MM030'] }, { code: 'MS1', unless: ['MM020'] }] }),
+      statsGroup('기본 PT', BASIC, 0, { out: ['ESWT7'] }),
+      statsGroup('둘 다', ['SONO1'], 2, { out: ['ESWT7'], cond: [{ code: 'SONO1', unless: ['MM010'] }] }),
+    ]
+    expect(groupDefs(groups)).toEqual([
+      { id: BASIC_OUT_KEY, codes: BASIC, out: ['ESWT7'] },
+      { id: COND_KEY, codes: ['MM080', 'MM010'], cond: [MM080_COND] },
+      { id: groupKey(['SONO1'], { out: ['ESWT7'], cond: [{ code: 'SONO1', unless: ['MM010'] }] }), codes: ['SONO1'], out: ['ESWT7'], cond: [{ code: 'SONO1', unless: ['MM010'] }] },
+    ])
+  })
+
+  it('AC-3704.5 빼는 처방·조건이 없거나(빈 칸·모두 걸러짐) 하면 지금 모양 { id, codes } 그대로다', () => {
+    const defs = groupDefs([
+      statsGroup('빈 칸', BASIC, 0, { out: [], cond: [] }),
+      statsGroup('걸러진 조건', ['MM020'], 1, { cond: [{ code: 'MS1', unless: ['MM030'] }, { code: 'MM020', unless: [] }] }),
+      eswtGroup(2),
+    ])
+    expect(defs).toEqual([
+      { id: BASIC_KEY, codes: BASIC },
+      { id: groupKey(['MM020']), codes: ['MM020'] },
+      { id: ESWT_KEY, codes: ESWT },
+    ])
+    for (const def of defs) expect(Object.keys(def).sort()).toEqual(['codes', 'id'])
+  })
+
+  it('AC-3704.5 같은 넣는 처방이라도 빼는 처방이 다르면 따로 넘기고, 같은 열쇠(대소문자만 다름)는 한 번만이다', () => {
+    const defs = groupDefs([
+      statsGroup('기본 PT', BASIC, 0, { out: ['ESWT7'] }),
+      statsGroup('넣는 처방만', BASIC, 1),
+      statsGroup('같은 열쇠', ['mm015', 'MM010'], 2, { out: ['eswt7'] }),
+      statsGroup('빈 묶음', [], 3, { out: ['ESWT7'] }),
+    ])
+    expect(defs.map((def) => def.id)).toEqual([BASIC_OUT_KEY, BASIC_KEY])
+  })
+
+  it('AC-3704.5 받은 묶음을 바꾸지 않고 codes·out·cond는 새 배열이다', () => {
+    const groups = [statsGroup('기본 PT', COND_CODES, 0, { out: ['ESWT7'], cond: [{ code: 'MM080', unless: ['MM020', 'MM030', 'TENS'] }] })]
+    const before = structuredClone(groups)
+    const [def] = groupDefs(groups)
+    expect(def).toEqual({ id: groupKey(COND_CODES, groups[0]), codes: COND_CODES, out: ['ESWT7'], cond: [MM080_COND] })
+    expect(def.codes).not.toBe(groups[0].codes)
+    expect(def.out).not.toBe(groups[0].out)
+    expect(def.cond).not.toBe(groups[0].cond)
+    expect(def.cond?.[0].unless).not.toBe(groups[0].cond?.[0].unless)
+    expect(groups).toEqual(before)
+  })
+})
+
+describe('AC-3704.6 treatmentRows 빼는 처방·조건을 바꿈', () => {
+  const plainDays = daysFrom(LAST_WEEK.from, THIS_WEEK.to, { groups: [line(BASIC_KEY, 3, 1)] })
+  const withOut = statsGroup('기본 PT', BASIC, 0, { out: ['ESWT7'] })
+
+  it('AC-3704.6 빼는 처방을 더하면 그 열쇠로 다시 불러올 때까지 다시 불러오면 보여요(stale)다', () => {
+    const stats = input(today, '7d', plainDays, bothWeeks)
+    expect(ready(treatmentRows(stats, [statsGroup('기본 PT', BASIC, 0)])[0]).key).toBe(BASIC_KEY)
+    expect(treatmentRows(stats, [withOut])).toEqual([{ kind: 'stale', group: withOut, key: BASIC_OUT_KEY }])
+  })
+
+  it('AC-3704.6 조건을 더하거나 바꾸면 stale이고 열쇠는 groupKey(codes, { out, cond })다', () => {
+    const days = daysFrom(LAST_WEEK.from, THIS_WEEK.to, { groups: [line(groupKey(COND_CODES), 3), line(COND_KEY, 2)] })
+    const stats = input(today, '7d', days, bothWeeks)
+    expect(ready(treatmentRows(stats, [statsGroup('조건 묶음', COND_CODES, 0, { cond: [MM080_COND] })])[0]).row.count).toBe(14)
+    const changed = statsGroup('조건 묶음', COND_CODES, 0, { cond: [{ code: 'MM080', unless: ['MM020'] }] })
+    expect(treatmentRows(stats, [changed])).toEqual([{ kind: 'stale', group: changed, key: groupKey(COND_CODES, { cond: [{ code: 'MM080', unless: ['MM020'] }] }) }])
+  })
+
+  it('AC-3704.6 다시 불러오면 새 열쇠의 숫자가 나오고, 빼는 처방을 지우면 지금 열쇠로 센 기간은 바로 그 숫자가 나온다', () => {
+    const reloaded = daysFrom(LAST_WEEK.from, THIS_WEEK.to, { groups: [line(BASIC_KEY, 3, 1), line(BASIC_OUT_KEY, 2, 1)] })
+    const stats = input(today, '7d', reloaded, bothWeeks)
+    expect(ready(treatmentRows(stats, [withOut])[0])).toMatchObject({ key: BASIC_OUT_KEY, row: { count: 14, newCount: 7 } })
+    expect(ready(treatmentRows(stats, [statsGroup('기본 PT', BASIC, 0, { out: [] })])[0])).toMatchObject({ key: BASIC_KEY, row: { count: 21, newCount: 7 } })
+  })
+
+  it('AC-3704.6 이름·차례·빼는 처방의 차례·대소문자만 바꾸면 열쇠가 그대로라 바로 보인다', () => {
+    const reloaded = daysFrom(LAST_WEEK.from, THIS_WEEK.to, { groups: [line(BASIC_OUT_KEY, 2, 1)] })
+    const stats = input(today, '7d', reloaded, bothWeeks)
+    const before = ready(treatmentRows(stats, [withOut, group('도수치료', ['도수'], 1)])[0])
+    const renamed = statsGroup('PT만', ['MM015', 'MM010'], 1, { out: ['eswt7'] }, withOut.id)
+    const after = ready(treatmentRows(stats, [group('도수치료', ['도수'], 0), renamed])[1])
+    expect(after.key).toBe(before.key)
+    expect(after.group).toBe(renamed)
+    expect(after.row.name).toBe('PT만')
+    expect(counted(after.row)).toEqual(counted(before.row))
   })
 })
