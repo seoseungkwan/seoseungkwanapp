@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { groupDefs, groupKey } from '@/components/stats/treatmentView'
 import { listStatsRxGroups, saveStatsRxGroups, StatsRxGroupStoreError } from '@/lib/storage/statsRxGroups'
-import type { RxGroup } from '@/types/rxGroups'
+import type { RxCond, RxGroup, StatsRxGroup } from '@/types/rxGroups'
 import { readDashboardGroups, toDashboardGroups } from './rxGroups'
 
 // 대시보드 '처방 상위'의 묶음 읽기 (spec bit-dashboard REQ-606, design.md '처방 상위 = 통계 탭 묶음').
@@ -75,6 +75,68 @@ describe('toDashboardGroups', () => {
     const before = structuredClone(rows)
     toDashboardGroups(rows)
     expect(rows).toEqual(before)
+  })
+})
+
+describe('AC-3705.5 빼는 처방·조건 든 묶음 (spec group-exclude)', () => {
+  // 지어낸 묶음. '빼기' 묶음은 '도수' 묶음과 넣는 처방이 같고 빼는 처방만 더 있다. '조건' 묶음은 넣는 처방 ZX310에 조건이 있다.
+  // '빈 칸' 묶음은 빼는 처방·조건이 빈 배열(읽기 코드가 null을 채운 모양)이라 지금 열쇠 그대로여야 한다
+  const OUT = ['ZX900']
+  const COND: RxCond[] = [{ code: 'ZX310', unless: ['ZX320'] }]
+  const EXCLUDE_ROWS: readonly StatsRxGroup[] = [
+    { id: 'fake-2', name: '가짜 빼기 묶음', codes: ['ZX300', 'ZX301'], out: OUT, cond: [], sortOrder: 2 },
+    { id: 'fake-0', name: '가짜 도수 묶음', codes: ['ZX300', 'ZX301'], out: [], cond: [], sortOrder: 0 },
+    { id: 'fake-1', name: '가짜 조건 묶음', codes: ['ZX310', 'ZX311'], out: OUT, cond: COND, sortOrder: 1 },
+    { id: 'fake-3', name: '가짜 빈 칸 묶음', codes: ['ZX330'], out: [], cond: [], sortOrder: 3 },
+  ]
+
+  it('AC-3705.5: 빼는 처방·조건 든 묶음의 줄 열쇠는 groupKey(codes, { out, cond })이고 넣는 처방만의 열쇠와 다르다', () => {
+    const { lines } = toDashboardGroups(EXCLUDE_ROWS)
+    expect(lines).toEqual([
+      { name: '가짜 도수 묶음', key: groupKey(['ZX300', 'ZX301']) },
+      { name: '가짜 조건 묶음', key: groupKey(['ZX310', 'ZX311'], { out: OUT, cond: COND }) },
+      { name: '가짜 빼기 묶음', key: groupKey(['ZX300', 'ZX301'], { out: OUT }) },
+      { name: '가짜 빈 칸 묶음', key: groupKey(['ZX330']) },
+    ])
+    expect(lines[1].key).not.toBe(groupKey(['ZX310', 'ZX311']))
+    expect(lines[2].key).not.toBe(lines[0].key)
+  })
+
+  it('AC-3705.5: 줄마다 열쇠가 defs의 같은 묶음 항목 id와 같다(그래서 그날 줄 숫자를 그 열쇠로 찾는다)', () => {
+    const { lines, defs } = toDashboardGroups(EXCLUDE_ROWS)
+    expect(defs).toEqual(groupDefs(EXCLUDE_ROWS))
+    expect(defs.map((def) => def.id)).toEqual(lines.map((line) => line.key))
+    expect(defs[1]).toEqual({ id: lines[1].key, codes: ['ZX310', 'ZX311'], out: OUT, cond: COND })
+    expect(defs[2]).toEqual({ id: lines[2].key, codes: ['ZX300', 'ZX301'], out: OUT })
+  })
+
+  it('AC-3705.5: 빼는 처방·조건이 빈 묶음은 지금 열쇠·정의 { id, codes } 그대로다', () => {
+    const rows: StatsRxGroup[] = [{ id: 'fake-1', name: '가짜 빈 칸 묶음', codes: ['ZX300', 'ZX301'], out: [], cond: [], sortOrder: 0 }]
+    const plain = toDashboardGroups([{ id: 'fake-1', name: '가짜 빈 칸 묶음', codes: ['ZX300', 'ZX301'], sortOrder: 0 }])
+    expect(toDashboardGroups(rows)).toEqual(plain)
+    expect(toDashboardGroups(rows).defs).toStrictEqual([{ id: groupKey(['ZX300', 'ZX301']), codes: ['ZX300', 'ZX301'] }])
+  })
+
+  it('AC-3705.5: 넣는 처방에 없는 조건만 있으면 지금 열쇠 그대로다(groupKey 규칙)', () => {
+    const rows: StatsRxGroup[] = [
+      { id: 'fake-1', name: '가짜 남는 조건 묶음', codes: ['ZX300'], cond: [{ code: 'ZX999', unless: ['ZX320'] }], sortOrder: 0 },
+    ]
+    expect(toDashboardGroups(rows).lines).toEqual([{ name: '가짜 남는 조건 묶음', key: groupKey(['ZX300']) }])
+  })
+
+  it('AC-3705.5: 받은 묶음의 빼는 처방·조건을 바꾸지 않는다', () => {
+    const rows = EXCLUDE_ROWS.map((row) => structuredClone(row))
+    const before = structuredClone(rows)
+    toDashboardGroups(rows)
+    expect(rows).toEqual(before)
+  })
+
+  it('AC-3705.5: 읽은 통계 묶음(빼는 처방·조건 칸이 채워짐)에서 줄 열쇠와 defs id가 같다', async () => {
+    list.mockResolvedValueOnce(EXCLUDE_ROWS.map((row) => structuredClone(row)))
+    const groups = await readDashboardGroups()
+    expect(groups).toEqual(toDashboardGroups(EXCLUDE_ROWS))
+    expect(groups?.lines.map((line) => line.key)).toEqual(groups?.defs.map((def) => def.id))
+    expect(groups?.lines[2]).toEqual({ name: '가짜 빼기 묶음', key: groupKey(['ZX300', 'ZX301'], { out: OUT }) })
   })
 })
 
