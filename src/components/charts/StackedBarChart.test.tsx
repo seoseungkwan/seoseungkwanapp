@@ -985,3 +985,125 @@ describe('AC-2706.1: StackedBarChart srTable — 기본은 지금 그대로, fal
     expect(off.root.querySelector('.sr-only')).toBeNull()
   })
 })
+
+// ── 막대 위 추세선 trend (group-exclude REQ-3709 AC-3709.3, design.md '그래프 부품'). 시안 docs/mockups/group-exclude/index.html의 svg.over 점선이다.
+// 그림 칸 안 absolute inset-0 svg 하나(viewBox 0 0 {칸 수} 100, preserveAspectRatio none)에 점선 line 하나: x = at + 0.5, y = 100 − 값 ÷ 눈금 최대 × 100.
+// 점선 6 4 · 2px · vector-effect non-scaling-stroke · stroke-ink. 눈금은 막대로만 잡는다. 주지 않거나 null이면 지금 그림과 한 글자도 다르지 않다. 값은 지어낸 것이다
+describe('AC-3709.3: StackedBarChart trend — 그림 칸 안 점선 추세선 하나, 주지 않으면 지금 그림 그대로', () => {
+  // BUCKETS 8칸, 눈금 최대 800: 600 → y 25, 700 → y 12.5
+  const TREND = { from: { at: 0, value: 600 }, to: { at: 7, value: 700 } }
+  const plotOf = (root: Element) => gridlines(figureOf(root))[0]!.parentElement!
+  // 그림 칸 바로 안의 svg(막대 안 빗금 svg는 들지 않는다)
+  const trendSvgs = (root: Element) => Array.from(plotOf(root).children).filter((el) => el.tagName.toLowerCase() === 'svg')
+  const trendSvg = (root: Element) => {
+    const found = trendSvgs(root)
+    expect(found).toHaveLength(1)
+    return found[0]!
+  }
+  const numAttr = (el: Element, name: string) => Number(el.getAttribute(name))
+
+  it('AC-3709.3: trend를 주지 않거나 null·undefined면 마크업이 지금과 한 글자도 같다(sha256)', async () => {
+    for (const compact of [false, true]) {
+      const now = chart({ compact }).html
+      expect(chart({ compact, trend: null }).html, `compact=${compact}`).toBe(now)
+      expect(chart({ compact, trend: undefined }).html, `compact=${compact}`).toBe(now)
+      expect(trendSvgs(chart({ compact }).root)).toHaveLength(0)
+    }
+    expect(await sha256(withoutTableBox(chart({ trend: null }).html))).toBe(BEFORE_REQ_314.md)
+    expect(await sha256(withoutTableBox(chart({ compact: true, trend: null }).html))).toBe(BEFORE_REQ_314.sm)
+  })
+
+  it('AC-3709.3: trend를 주면 그림 칸 바로 안에 aria-hidden svg 하나가 칸을 채운다(absolute inset-0, viewBox 0 0 8 100, preserveAspectRatio none)', () => {
+    for (const compact of [false, true]) {
+      const { root } = chart({ compact, trend: TREND })
+      const svg = trendSvg(root)
+      expect(svg.getAttribute('aria-hidden')).toBe('true')
+      expectClasses(svg, 'absolute', 'inset-0', 'size-full')
+      expect(svg.getAttribute('viewBox')).toBe('0 0 8 100')
+      expect(svg.getAttribute('preserveAspectRatio')).toBe('none')
+      expect(svg.hasAttribute('style')).toBe(false)
+      expect(svg.hasAttribute('width')).toBe(false)
+      expect(svg.hasAttribute('height')).toBe(false)
+      // 막대 뒤에 있어 막대 위에 그려진다
+      expect(plotOf(root).lastElementChild).toBe(svg)
+    }
+  })
+
+  it('AC-3709.3: 선은 line 하나 — x = at + 0.5, y = 100 − 값 ÷ 눈금 최대(800) × 100', () => {
+    const svg = trendSvg(chart({ trend: TREND }).root)
+    expect(svg.children).toHaveLength(1)
+    const line = svg.firstElementChild!
+    expect(line.tagName.toLowerCase()).toBe('line')
+    expect([numAttr(line, 'x1'), numAttr(line, 'y1'), numAttr(line, 'x2'), numAttr(line, 'y2')]).toEqual([0.5, 25, 7.5, 12.5])
+  })
+
+  it('AC-3709.3: 선은 점선(6 4) · 2px · vector-effect non-scaling-stroke · stroke-ink(토큰 클래스)이고 색 속성이 없다', () => {
+    const line = trendSvg(chart({ trend: TREND }).root).firstElementChild!
+    expect(line.getAttribute('stroke-dasharray')).toBe('6 4')
+    expect(line.getAttribute('stroke-width')).toBe('2')
+    expect(line.getAttribute('vector-effect')).toBe('non-scaling-stroke')
+    expectClasses(line, 'stroke-ink')
+    expect(line.hasAttribute('stroke')).toBe(false)
+    expect(['none', null]).toContain(line.getAttribute('fill'))
+  })
+
+  it('AC-3709.3: 가운데 칸에서 시작·끝나는 선도 같은 식이다(compact도 눈금 최대는 같다)', () => {
+    for (const compact of [false, true]) {
+      const line = trendSvg(chart({ compact, trend: { from: { at: 2, value: 200 }, to: { at: 5, value: 524 } } }).root).firstElementChild!
+      expect([numAttr(line, 'x1'), numAttr(line, 'y1'), numAttr(line, 'x2'), numAttr(line, 'y2')], `compact=${compact}`).toEqual([2.5, 75, 5.5, 34.5])
+    }
+  })
+
+  it('AC-3709.3: 눈금은 막대로만 잡는다 — 선 값이 눈금 최대를 넘거나 음수여도 눈금은 그대로이고 선이 그림 칸 밖으로 나간다(잘림)', () => {
+    const big = { from: { at: 0, value: -100 }, to: { at: 7, value: 1000 } }
+    const { root } = chart({ trend: big })
+    expect(gridlines(figureOf(root)).map(styleOf)).toEqual(['bottom:0%', 'bottom:25%', 'bottom:50%', 'bottom:75%', 'bottom:100%'])
+    expect(leafByText(figureOf(root), '1,000')).toHaveLength(0)
+    const line = trendSvg(root).firstElementChild!
+    expect([numAttr(line, 'y1'), numAttr(line, 'y2')]).toEqual([112.5, -25])
+    // 잘리게 둔다: svg 넘침을 보이게 하는 클래스가 없다
+    expect(classesOf(trendSvg(root)).some((c) => c.startsWith('overflow'))).toBe(false)
+  })
+
+  it('AC-3709.3: trend는 svg 하나만 더한다 — 그 svg를 빼면 그림이 지금 그림과 한 글자도 같고, 화면 읽기 표도 그대로다', () => {
+    const cases: Array<Partial<Parameters<typeof StackedBarChart>[0]>> = [
+      {},
+      { compact: true },
+      { compact: true, dense: true, thinLabels: true, hideZeroTotals: true },
+      { buckets: BUCKETS.map((b, i) => ({ ...b, comparison: i === 2 ? null : 500 })) },
+    ]
+    for (const props of cases) {
+      const base = chart(props)
+      const withTrend = chart({ ...props, trend: TREND })
+      trendSvg(withTrend.root).remove()
+      expect(figureOf(withTrend.root).outerHTML).toBe(figureOf(base.root).outerHTML)
+      expect(tableOf(withTrend.root).outerHTML).toBe(tableOf(base.root).outerHTML)
+    }
+  })
+
+  it('AC-3709.3: 합계가 모두 0이면(눈금 최대 0) 선은 맨 아래(y 100)이고 NaN·Infinity가 없다', () => {
+    const zero: BarBucket[] = [
+      { key: '1', label: '1', rangeLabel: '첫 주', state: 'complete', values: [0, 0] },
+      { key: '2', label: '2', rangeLabel: '둘째 주', state: 'complete', values: [0, 0] },
+    ]
+    const { root, html } = chart({ buckets: zero, trend: { from: { at: 0, value: 0 }, to: { at: 1, value: 0 } } })
+    const line = trendSvg(root).firstElementChild!
+    expect(trendSvg(root).getAttribute('viewBox')).toBe('0 0 2 100')
+    expect([numAttr(line, 'x1'), numAttr(line, 'y1'), numAttr(line, 'x2'), numAttr(line, 'y2')]).toEqual([0.5, 100, 1.5, 100])
+    expect(html).not.toMatch(/NaN|Infinity/)
+  })
+
+  it('AC-3709.3: 좌표는 소수 둘째 자리까지다', () => {
+    // 눈금 최대 800: 100 ÷ 3 → y 95.83(100 − 4.1666…)
+    const line = trendSvg(chart({ trend: { from: { at: 0, value: 100 / 3 }, to: { at: 7, value: 2000 / 3 } } }).root).firstElementChild!
+    expect([numAttr(line, 'y1'), numAttr(line, 'y2')]).toEqual([95.83, 16.67])
+  })
+
+  it('AC-3709.3: 추세선이 있어도 pattern·id·url(#…)·그라데이션이 없다(한 쪽에 그림이 둘이어도 겹치지 않는다)', () => {
+    const { root, html } = chart({ trend: TREND })
+    expect(html).not.toMatch(/<pattern|gradient/i)
+    expect(html).not.toContain('url(#')
+    expect(root.querySelectorAll('[id]')).toHaveLength(0)
+    expect(nestedBoxes(root)).toEqual([])
+  })
+})

@@ -30,6 +30,7 @@ export type BarBucket = {
 // thinLabels: 768px 미만에서 날짜 글자를 하나 걸러 보인다(0부터 홀수 번째 칸 글자만 max-md:invisible, 자리는 그대로. ui-90 AC-421.2).
 // hideZeroTotals: 합계 0인 칸은 막대 위 글자(합계·상태)를 그리지 않는다. 화면 읽기 표는 그대로다(rx-picker AC-806.7).
 // srTable: false면 화면 읽기 표(와 감싼 칸)를 그리지 않는다 — 부르는 쪽이 같은 숫자의 보이는 표(ChartTable)를 펼친 동안(dashboard-ux AC-2706.1, 두 번 읽히지 않게).
+// trend: 막대 위 점선 추세선(group-exclude AC-3709.3). 그림 칸 안 svg 하나(TrendLine)만 더한다. 눈금은 막대로만 잡는다.
 // 주지 않으면 지금 그림과 한 글자도 다르지 않다
 type Props = {
   title: string
@@ -41,6 +42,7 @@ type Props = {
   thinLabels?: boolean
   hideZeroTotals?: boolean
   srTable?: boolean
+  trend?: ChartTrend | null
 }
 
 const TONE: Record<BarSeries['tone'], string> = { accent: 'bg-accent', 'chart-3': 'bg-chart-3', 'hatch-warning': 'relative border border-warning bg-warning-soft' }
@@ -49,7 +51,7 @@ export const STATE_TEXT: Record<BucketState, string> = { complete: '완료', 'in
 
 // 그림 칸 높이(400px 이하 — 빗금 마지막 선 k = 440이 폭 40px까지 덮는다)·눈금 글자 칸 폭(기간 글자 줄도 같은 폭만큼 띄운다)·막대 최대 폭·단위 줄과 그림 칸 사이.
 // 띄우는 값은 간격 단계 안에서 고른다(UI_GUIDE '간격')
-const SIZE = {
+export const SIZE = {
   md: { plot: 'h-55', axis: 'w-12', labels: 'pl-12', bar: 'max-w-10', gap: 'mt-4' },
   sm: { plot: 'h-40', axis: 'w-8', labels: 'pl-8', bar: 'max-w-5', gap: 'mt-1.5' },
 } as const
@@ -62,8 +64,32 @@ const HATCH = Array.from({ length: HATCH_REACH / HATCH_GAP }, (_, i) => HATCH_GA
   .join(' ')
 
 // 눈금 글자: 정수는 세 자리 쉼표, 간격 2.5(최대 10)의 2.5·7.5는 그대로
-const tickText = (t: number) => (Number.isInteger(t) ? formatCount(t) : String(t))
+export const tickText = (t: number) => (Number.isInteger(t) ? formatCount(t) : String(t))
 const at = (v: number, max: number) => `${percentOf(v, max)}%`
+
+// 추세선 (group-exclude REQ-3709 AC-3709.3·AC-3709.4, design.md '그래프 부품'). 막대 그림과 꺾은선 그림(RateLineChart)이 같이 쓴다.
+// 그림 칸(relative)을 채우는 svg 하나: viewBox 0 0 {칸 수} 100을 늘려 맞추고(preserveAspectRatio none) 선 굵기는 늘리지 않는다(vector-effect).
+// x = 칸 자리 + 0.5(칸 가운데), y = 100 − 값 ÷ 눈금 최대 × 100(소수 둘째 자리). 눈금 밖 값은 자르지 않고 그대로 둔다 → svg 밖으로 나간 선은 잘린다.
+// 눈금 최대가 0이면(값이 모두 0) 맨 아래다. 점선 6 4 · 2px · ink. 색은 토큰 클래스로만 준다
+export type ChartTrend = { from: { at: number; value: number }; to: { at: number; value: number } }
+// 그림 칸 svg의 y(꺾은선 RateLineChart도 쓴다)
+export const plotY = (value: number, max: number) => (max > 0 ? Number((100 - (value / max) * 100).toFixed(2)) : 100)
+export function TrendLine({ trend, cells, max }: { trend: ChartTrend; cells: number; max: number }) {
+  return (
+    <svg aria-hidden="true" viewBox={`0 0 ${cells} 100`} preserveAspectRatio="none" className="absolute inset-0 size-full">
+      <line
+        x1={trend.from.at + 0.5}
+        y1={plotY(trend.from.value, max)}
+        x2={trend.to.at + 0.5}
+        y2={plotY(trend.to.value, max)}
+        strokeWidth="2"
+        strokeDasharray="6 4"
+        vectorEffect="non-scaling-stroke"
+        className="stroke-ink"
+      />
+    </svg>
+  )
+}
 
 // 빗금 svg 하나. 부모(relative)를 채우고 색은 color의 text-* 클래스가 준다
 function HatchLines({ color }: { color: string }) {
@@ -84,6 +110,7 @@ export function StackedBarChart({
   thinLabels = false,
   hideZeroTotals = false,
   srTable = true,
+  trend = null,
 }: Props) {
   const size = SIZE[compact ? 'sm' : 'md']
   const totals = buckets.map((b) => series.reduce((sum, _, i) => sum + (b.values[i] ?? 0), 0))
@@ -144,6 +171,7 @@ export function StackedBarChart({
                 </div>
               ))}
             </div>
+            {trend && <TrendLine trend={trend} cells={buckets.length} max={scale.max} />}
           </div>
         </div>
         <div className={`flex ${size.labels}`}>
