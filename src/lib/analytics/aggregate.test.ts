@@ -1641,3 +1641,276 @@ describe('AC-1301.8 자료 끝 무렵·자료 첫 30일', () => {
     expect(againAt(agg, 10)).toEqual([startOnly(ESWT)])
   })
 })
+
+// ── 빼는 처방·조건(group-exclude) ─────────────────────────
+
+const THU = '2026-10-22'
+// 기본 PT: 넣는 MM010·MM015, 빼는 ESWT7(충격파)
+const BASIC_PT: RxGroupDef = { id: 'g-basic', codes: ['MM010', 'MM015'], out: ['ESWT7'] }
+// 넣는 MM010·MM080. MM080은 MM020·MM030·TENS와 같은 날 받으면 MM080으로는 안 센다
+const PT_COND: RxGroupDef = { id: 'g-cond', codes: ['MM010', 'MM080'], cond: [{ code: 'MM080', unless: ['MM020', 'MM030', 'TENS'] }] }
+// 한 환자·한 날에 받은 코드들(줄마다 한 코드)
+const visitOf = (codes: readonly string[], over: Partial<ConsumptionRow> = {}): ConsumptionRow[] => codes.map((rxCode) => row({ ...over, rxCode }))
+const casesIn = (agg: Aggregates, grain: Grain, key: string, id: string) => groupOf(bucketOf(agg, grain, key), id)?.patients ?? 0
+
+// 셈 규칙의 느리지만 뻔한 기준: 칸마다 환자·날의 코드 모음(대문자, 외래 줄만)을 다시 만들어
+// (가) 조건 처방을 그날 하나도 안 받은 넣는 처방이 있고 (나) 빼는 처방을 하나도 안 받았으면 그날 1건
+function naiveGroupBuckets(rows: ConsumptionRow[], groups: RxGroupDef[], grain: Grain): { key: string; groups: GroupStats[] }[] {
+  const up = (code: string) => code.toUpperCase()
+  const outpatient = rows.filter((r) => r.outpatient !== false)
+  const keyOf = KEY_OF[grain]
+  const keys = [...new Set(outpatient.map((r) => keyOf(r.date)))].sort()
+  return keys.map((key) => {
+    const inBucket = outpatient.filter((r) => keyOf(r.date) === key)
+    const statusOf = (p: number) => {
+      const mine = inBucket.filter((r) => r.patient === p)
+      return mine.some((r) => r.firstVisit === true) ? 'new' : mine.some((r) => r.firstVisit === false) ? 'returning' : 'unknown'
+    }
+    const codesOfVisit = new Map<string, Set<string>>() // '환자|날' → 그날 받은 코드
+    for (const r of inBucket) {
+      const visit = `${r.patient}|${r.date}`
+      codesOfVisit.set(visit, (codesOfVisit.get(visit) ?? new Set<string>()).add(up(r.rxCode)))
+    }
+    const stats = [...groups]
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .map((group): GroupStats => {
+        const passes = (codes: Set<string>, code: string) =>
+          codes.has(code) &&
+          !(group.cond ?? []).some((item) => up(item.code) === code && item.unless.some((other) => up(other) !== code && codes.has(up(other))))
+        const counted = [...codesOfVisit]
+          .filter(([, codes]) => group.codes.map(up).some((code) => passes(codes, code)) && !(group.out ?? []).some((code) => codes.has(up(code))))
+          .map(([visit]) => Number(visit.split('|')[0]))
+        const patients = [...new Set(counted)]
+        const followup: FollowUp = [0, 0, 0, 0]
+        for (const p of patients) {
+          const days = counted.filter((x) => x === p).length
+          followup[days === 1 ? 0 : days === 2 ? 1 : days <= 5 ? 2 : 3]++
+        }
+        return {
+          id: group.id,
+          patients: patients.length,
+          newPatients: patients.filter((p) => statusOf(p) === 'new').length,
+          returning: patients.filter((p) => statusOf(p) === 'returning').length,
+          followup,
+        }
+      })
+      .filter((group) => group.patients > 0)
+    return { key, groups: stats }
+  })
+}
+
+describe('AC-3703.1 빼는 처방 — 그날 하나라도 받은 환자는 그날 그 묶음에서 뺀다', () => {
+  it('AC-3703.1: 같은 날 MM010과 ESWT7 → 그날 그 묶음 줄이 없다. MM010만 받은 다른 날은 1건(월요일 기본 PT만, 목요일 충격파까지 → 월요일만)', () => {
+    const agg = aggregate([...visitOf(['MM010'], { date: MON }), ...visitOf(['MM010', 'ESWT7'], { date: THU })], [BASIC_PT])
+    const once = { id: 'g-basic', patients: 1, newPatients: 0, returning: 1, followup: [1, 0, 0, 0] }
+    expect(bucketOf(agg, 'day', MON).groups).toEqual([once])
+    expect(bucketOf(agg, 'day', THU).groups).toEqual([])
+    expect(bucketOf(agg, 'week', MON).groups).toEqual([once])
+    expect(bucketOf(agg, 'month', '2026-10').groups).toEqual([once])
+  })
+
+  it('AC-3703.1: 빼는 처방 줄이 넣는 처방 줄보다 앞이든 뒤든, 넣는 처방을 여럿 받았어도 그날은 0건이다', () => {
+    for (const codes of [
+      ['MM010', 'ESWT7'],
+      ['ESWT7', 'MM010'],
+      ['MM010', 'MM015', 'ESWT7'],
+      ['MM015', 'ESWT7', 'MM010'],
+    ]) {
+      expect(bucketOf(aggregate(visitOf(codes), [BASIC_PT]), 'day', MON).groups).toEqual([])
+    }
+  })
+
+  it('AC-3703.1: 같은 날 다른 환자는 따로 판단한다(1번이 ESWT7을 받아도 2번의 MM010은 1건)', () => {
+    const agg = aggregate([...visitOf(['MM010', 'ESWT7'], { patient: 1 }), ...visitOf(['MM010'], { patient: 2 })], [BASIC_PT])
+    expect(casesIn(agg, 'day', MON, 'g-basic')).toBe(1)
+  })
+
+  it('AC-3703.1: 빼는 처방이 다른 묶음의 넣는 처방이어도 묶음마다 따로 판단한다(그 묶음에서는 센다)', () => {
+    const agg = aggregate(visitOf(['MM010', 'ESWT7']), [BASIC_PT, { id: 'g-eswt', codes: ['ESWT7'] }])
+    expect(bucketOf(agg, 'day', MON).groups.map((g) => g.id)).toEqual(['g-eswt'])
+  })
+})
+
+describe('AC-3703.2 넣는 처방 여럿 — 같은 날 같은 환자는 1건', () => {
+  it('AC-3703.2: 같은 날 MM010과 MM015 → 1건(F/U 하루)', () => {
+    const agg = aggregate(visitOf(['MM010', 'MM015']), [BASIC_PT])
+    expect(bucketOf(agg, 'day', MON).groups).toEqual([{ id: 'g-basic', patients: 1, newPatients: 0, returning: 1, followup: [1, 0, 0, 0] }])
+  })
+})
+
+describe('AC-3703.3 조건 — 넣는 처방은 그 조건 처방과 같은 날 받으면 그 처방으로는 세지 않는다', () => {
+  it.each([
+    ['(가) MM080 + MM020', 0, ['MM080', 'MM020']],
+    ['(가) MM080 + MM030', 0, ['MM030', 'MM080']],
+    ['(가) MM080 + TENS', 0, ['MM080', 'TENS']],
+    ['(나) MM080 + MM020 + MM010', 1, ['MM080', 'MM020', 'MM010']],
+    ['(다) MM080 + MS1(조건 밖)', 1, ['MM080', 'MS1']],
+    ['(라) MM080만', 1, ['MM080']],
+    ['MM010 + MM020(조건은 MM080에만 붙음)', 1, ['MM010', 'MM020']],
+  ])('AC-3703.3: %s → %i건', (_, cases, codes) => {
+    expect(casesIn(aggregate(visitOf(codes), [PT_COND]), 'day', MON, 'g-cond')).toBe(cases)
+  })
+
+  it('AC-3703.3: 네 환자가 같은 날 (가)~(라)를 받으면 그날 3건', () => {
+    const agg = aggregate(
+      [
+        ...visitOf(['MM080', 'MM020'], { patient: 1 }),
+        ...visitOf(['MM080', 'MM020', 'MM010'], { patient: 2 }),
+        ...visitOf(['MM080', 'MS1'], { patient: 3 }),
+        ...visitOf(['MM080'], { patient: 4 }),
+      ],
+      [PT_COND],
+    )
+    expect(bucketOf(agg, 'day', MON).groups).toEqual([{ id: 'g-cond', patients: 3, newPatients: 0, returning: 3, followup: [3, 0, 0, 0] }])
+  })
+})
+
+describe('AC-3703.4 조건과 빼는 처방이 같이 있는 묶음', () => {
+  const BOTH: RxGroupDef = { id: 'g-both', codes: ['MM010', 'MM080'], out: ['ESWT7'], cond: [{ code: 'MM080', unless: ['MM020'] }] }
+
+  it.each([
+    ['MM080 + ESWT7(조건은 지남)', 0, ['MM080', 'ESWT7']],
+    ['MM010 + ESWT7', 0, ['MM010', 'ESWT7']],
+    ['MM010 + MM080 + MM020 + ESWT7', 0, ['MM010', 'MM080', 'MM020', 'ESWT7']],
+    ['MM080만(대조)', 1, ['MM080']],
+    ['MM080 + MM020(조건에 걸림, 대조)', 0, ['MM080', 'MM020']],
+  ])('AC-3703.4: %s → %i건', (_, cases, codes) => {
+    expect(casesIn(aggregate(visitOf(codes), [BOTH]), 'day', MON, 'g-both')).toBe(cases)
+  })
+})
+
+describe('AC-3703.5 빼는 처방·조건 코드도 대소문자를 가리지 않는다', () => {
+  const CASES: [string, RxGroupDef, string[]][] = [
+    ['빼는 처방 eswt7 · 줄 ESWT7', { id: 'g-case', codes: ['MM010'], out: ['eswt7'] }, ['MM010', 'ESWT7']],
+    ['빼는 처방 ESWT7 · 줄 Eswt7', { id: 'g-case', codes: ['MM010'], out: ['ESWT7'] }, ['MM010', 'Eswt7']],
+    ['조건 mm080 ← mm020 · 줄 MM080·MM020', { id: 'g-case', codes: ['MM080'], cond: [{ code: 'mm080', unless: ['mm020'] }] }, ['MM080', 'MM020']],
+    ['조건 MM080 ← MM020 · 넣는 mm080 · 줄 mm080·Mm020', { id: 'g-case', codes: ['mm080'], cond: [{ code: 'MM080', unless: ['MM020'] }] }, ['mm080', 'Mm020']],
+  ]
+
+  it.each(CASES)('AC-3703.5: %s → 0건(넣는 처방만 받은 날은 1건)', (_, group, codes) => {
+    expect(casesIn(aggregate(visitOf(codes), [group]), 'day', MON, 'g-case')).toBe(0)
+    expect(casesIn(aggregate(visitOf([codes[0]]), [group]), 'day', MON, 'g-case')).toBe(1)
+  })
+})
+
+describe('AC-3703.6 입원 줄은 넣는 처방·빼는 처방·조건 모두 보지 않는다', () => {
+  it('AC-3703.6: 입원 줄의 빼는 처방으로는 빼지 않는다', () => {
+    const agg = aggregate([row({ rxCode: 'MM010' }), row({ rxCode: 'ESWT7', outpatient: false })], [BASIC_PT])
+    expect(casesIn(agg, 'day', MON, 'g-basic')).toBe(1)
+  })
+
+  it('AC-3703.6: 입원 줄의 조건 처방으로는 조건에 걸리지 않는다', () => {
+    const agg = aggregate([row({ rxCode: 'MM080' }), row({ rxCode: 'MM020', outpatient: false })], [PT_COND])
+    expect(casesIn(agg, 'day', MON, 'g-cond')).toBe(1)
+  })
+
+  it('AC-3703.6: 입원 줄의 넣는 처방은 세지 않는다', () => {
+    const agg = aggregate([row({ rxCode: 'MM010', outpatient: false }), row({ rxCode: 'D1001' })], [BASIC_PT, PT_COND])
+    expect(bucketOf(agg, 'day', MON).groups).toEqual([])
+  })
+})
+
+describe('AC-3703.7 빼는 처방·조건이 없는 묶음은 이 기능 전과 같다', () => {
+  it('AC-3703.7: 가짜 파일 — 빈 out·cond, 버려지는 조건(넣는 처방에 없는 코드·빈 unless·코드 자신)은 칸이 없는 정의와 모든 칸이 같다', SLOW, () => {
+    const rows = fakeRows()
+    const codes = [...new Set(rows.map((r) => r.rxCode))].sort()
+    const plain: RxGroupDef[] = [
+      { id: 'g-a', codes: codes.slice(0, 3) },
+      { id: 'g-b', codes: [codes[1], codes[4]] },
+    ]
+    const empty = plain.map((g) => ({ ...g, out: [], cond: [] }))
+    const ignored = plain.map((g) => ({
+      ...g,
+      cond: [
+        { code: 'NOPE0', unless: [g.codes[1]] }, // 넣는 처방에 없는 코드
+        { code: g.codes[0], unless: [] }, // 빈 unless
+        { code: g.codes[1], unless: [g.codes[1].toLowerCase()] }, // 코드 자신(열쇠 keptCond가 버리므로 셈도 버린다)
+      ],
+    }))
+    const before = aggregate(rows, plain)
+    expect(before).toEqual(naiveAggregate(rows, plain))
+    expect(aggregate(rows, empty)).toEqual(before)
+    expect(aggregate(rows, ignored)).toEqual(before)
+  })
+})
+
+describe('AC-3703.8 주·달 칸 — 센 날만 날 수에 든다', () => {
+  it('AC-3703.8: 한 환자가 그 주에 센 날이 이틀(뺀 날 하루 따로)이면 주·달 칸 1명·F/U 2회, 그날만 뺀 환자는 칸에 없다', () => {
+    const agg = aggregate(
+      [
+        ...visitOf(['MM010'], { patient: 1, date: MON }),
+        ...visitOf(['MM010', 'ESWT7'], { patient: 1, date: TUE }),
+        ...visitOf(['MM015'], { patient: 1, date: WED }),
+        ...visitOf(['ESWT7', 'MM015'], { patient: 2, date: TUE }),
+      ],
+      [BASIC_PT],
+    )
+    const twice = { id: 'g-basic', patients: 1, newPatients: 0, returning: 1, followup: [0, 1, 0, 0] }
+    expect(bucketOf(agg, 'week', MON).groups).toEqual([twice])
+    expect(bucketOf(agg, 'month', '2026-10').groups).toEqual([twice])
+    expect(bucketOf(agg, 'day', TUE).groups).toEqual([])
+  })
+})
+
+describe('AC-3703.9 신환·재진 — 센 날의 환자를 그 칸의 환자 표시로 나눈다', () => {
+  it('AC-3703.9: 일 칸은 그날 표시, 주 칸은 그 주 표시(빼는 처방만 받은 날의 신환 표시도 그 칸의 표시다)', () => {
+    const agg = aggregate(
+      [
+        ...visitOf(['MM010'], { patient: 1, firstVisit: true }),
+        ...visitOf(['MM015'], { patient: 2, firstVisit: false }),
+        ...visitOf(['MM010', 'ESWT7'], { patient: 3, firstVisit: true }), // 뺀 신환
+        ...visitOf(['MM010'], { patient: 4, firstVisit: null }),
+        ...visitOf(['ESWT7'], { patient: 5, firstVisit: true }), // 월요일 신환(빼는 처방만)
+        ...visitOf(['MM010'], { patient: 5, date: WED, firstVisit: false }),
+      ],
+      [BASIC_PT],
+    )
+    expect(bucketOf(agg, 'day', MON).groups).toEqual([{ id: 'g-basic', patients: 3, newPatients: 1, returning: 1, followup: [3, 0, 0, 0] }])
+    expect(bucketOf(agg, 'day', WED).groups).toEqual([{ id: 'g-basic', patients: 1, newPatients: 0, returning: 1, followup: [1, 0, 0, 0] }])
+    expect(bucketOf(agg, 'week', MON).groups).toEqual([{ id: 'g-basic', patients: 4, newPatients: 2, returning: 1, followup: [4, 0, 0, 0] }])
+  })
+})
+
+describe('AC-3703.1·AC-3703.3·AC-3703.4·AC-3703.8·AC-3703.9 가짜 파일 — 셈 규칙 기준 계산', () => {
+  it('AC-3703.8·AC-3703.9: 빼는 처방·조건 묶음의 일·주·달 칸 groups가 느리지만 뻔한 기준과 같고, 실제로 빼거나 조건에 걸린 날이 있다', SLOW, () => {
+    const rows = fakeRows()
+    const groups: RxGroupDef[] = [
+      { id: 'g-x1', codes: ['MM042', 'MM301'], out: ['MM302'] },
+      { id: 'g-x2', codes: ['D1001', 'D1002', 'J2001'], out: ['b4002'], cond: [{ code: 'D1001', unless: ['J2001', 'M3001'] }] },
+      { id: 'g-x3', codes: ['mm042'], cond: [{ code: 'MM042', unless: ['MM301', 'AA154'] }] },
+      { id: 'g-x4', codes: ['MM301'], out: ['MM042'] }, // 빼는 처방이 다른 묶음의 넣는 처방
+      { id: 'g-plain', codes: ['MM042', 'MM301'] },
+    ]
+    const agg = aggregate(rows, groups)
+    for (const grain of GRAINS) {
+      expect(agg[grain].map(({ key, groups }) => ({ key, groups }))).toEqual(naiveGroupBuckets(rows, groups, grain))
+    }
+    const plain = aggregate(rows, [
+      { id: 'g-x1', codes: ['MM042', 'MM301'] },
+      { id: 'g-x2', codes: ['D1001', 'D1002', 'J2001'] },
+      { id: 'g-x3', codes: ['MM042'] },
+    ])
+    const monthCases = (a: Aggregates, id: string) => sum(a.month.map((b) => groupOf(b, id)?.patients ?? 0))
+    for (const id of ['g-x1', 'g-x2', 'g-x3']) expect(monthCases(agg, id)).toBeLessThan(monthCases(plain, id))
+  })
+})
+
+describe('AC-3703.10 10만 줄·묶음 50개', () => {
+  it('AC-3703.10: 10만 줄, 묶음 50개(그중 10개는 빼는 처방·조건)를 1초 안에 센다', SLOW, () => {
+    const bytes = toCsvBytes(buildFakeBitTable({ rows: 100_000 }), 'utf8-bom')
+    const { rows } = parsedOf(parseBitFile(bytes, createPatientIds()))
+    expect(rows.length).toBe(100_000)
+    const codes = [...new Set(rows.map((r) => r.rxCode))].sort()
+    const n = codes.length
+    expect(n).toBeGreaterThanOrEqual(6)
+    const groups: RxGroupDef[] = Array.from({ length: 50 }, (_, i) => ({
+      id: `g-${String(i).padStart(2, '0')}`,
+      codes: [codes[i % n], codes[(i + 1) % n], ...(i % 3 === 0 ? [codes[(i + 2) % n]] : [])],
+      ...(i < 10 ? { out: [codes[(i + 4) % n]], cond: [{ code: codes[i % n], unless: [codes[(i + 5) % n]] }] } : {}),
+    }))
+    const start = performance.now()
+    const agg = aggregate(rows, groups)
+    expect(performance.now() - start).toBeLessThan(1000)
+    expect(agg.month.every((b) => b.groups.length >= 40)).toBe(true)
+  })
+})
