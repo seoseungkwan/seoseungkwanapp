@@ -1,3 +1,4 @@
+import { copyGroupDef } from '@/lib/analytics/groupDef'
 import { isErrorCode } from '@/lib/errors'
 import type { RxGroupDef } from '@/types/analysis'
 import type { ErrorCode } from '@/types/errors'
@@ -87,8 +88,8 @@ function ask<T>(
   })
 }
 
-// 칸을 골라 새로 만든다(화면이 다른 칸을 넘겨도 Worker로 가지 않는다). 묶음도 { id, codes }만 골라 새로 만들고,
-// 주지 않으면 []를 싣는다: 메시지에는 늘 groups 배열이 있다(treatment-trend AC-1205.4·AC-1213.3).
+// 칸을 골라 새로 만든다(화면이 다른 칸을 넘겨도 Worker로 가지 않는다). 묶음도 copyGroupDef로 { id, codes }와 빼는 처방·조건(있을 때만)을
+// 골라 새로 만들고(group-exclude AC-3705.1), 주지 않으면 []를 싣는다: 메시지에는 늘 groups 배열이 있다(treatment-trend AC-1205.4·AC-1213.3).
 // keep은 false일 때만 싣는다(Worker 메모리를 바꾸지 않는 조각, stats-load-range AC-3304.2). true·없음이면 지금 메시지 모양 그대로다
 export function requestLoad(
   worker: WorkerLike,
@@ -103,7 +104,7 @@ export function requestLoad(
     to,
     today,
     closeToday,
-    groups: groups.map(({ id, codes }) => ({ id, codes: [...codes] })),
+    groups: groups.map(copyGroupDef),
     ...(keep === false ? { keep: false } : {}),
   }
   return ask(worker, request, (message) => (message.type === 'loaded' ? message.view : undefined), opts.timeoutMs)

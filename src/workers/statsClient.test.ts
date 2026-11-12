@@ -4,6 +4,7 @@ import type {
   PatientMix,
   RxSplitView,
   StatsLoaded,
+  StatsLoadRequest,
   StatsSectionsRequest,
   StatsSplitRequest,
   StatsWorkerMessage,
@@ -224,6 +225,50 @@ describe('AC-1205.4·AC-1213.3 requestLoad — 묶음은 열쇠와 코드만 간
     const fake = fakeWorker()
     void requestLoad(fake.like, REQ)
     expect(loadIn(fake).groups).toEqual([])
+    fake.reply({ type: 'loaded', streamId: REQ.streamId, view: VIEW })
+  })
+})
+
+describe('AC-3705.1 requestLoad — 빼는 처방·조건도 묶음 항목에 실려 간다', () => {
+  // 가짜 묶음 열쇠·코드(spec group-exclude). 이름·차례·조건 메모는 화면에만 있는 칸이다
+  const PT = 't00000000000000c3'
+  const COND = 't00000000000000d4'
+  const PLAIN = 't00000000000000e5'
+  const GROUPS = [
+    { id: PT, codes: ['MM010', 'MM015'], out: ['ESWT7', 'eswt1'], name: '가짜 기본 PT', sortOrder: 0 },
+    { id: COND, codes: ['MM010', 'MM080'], cond: [{ code: 'MM080', unless: ['MM020', 'TENS'], note: '가짜 메모' }], name: '가짜 조건 묶음', sortOrder: 1 },
+    { id: PLAIN, codes: ['B4001'], out: [], cond: [], name: '가짜 검사', sortOrder: 2 },
+  ]
+  const groupsIn = (fake: ReturnType<typeof fakeWorker>) => (fake.sent[0] as StatsLoadRequest).groups ?? []
+
+  it('AC-3705.1: 빼는 처방·조건이 있는 묶음은 { id, codes }와 함께 out·cond({ code, unless }만)가 가고, 빈 out·cond 묶음은 { id, codes }뿐이다', () => {
+    const fake = fakeWorker()
+    void requestLoad(fake.like, { ...REQ, groups: GROUPS })
+    expect(groupsIn(fake)).toStrictEqual([
+      { id: PT, codes: ['MM010', 'MM015'], out: ['ESWT7', 'eswt1'] },
+      { id: COND, codes: ['MM010', 'MM080'], cond: [{ code: 'MM080', unless: ['MM020', 'TENS'] }] },
+      { id: PLAIN, codes: ['B4001'] },
+    ])
+    expect(groupsIn(fake).map((group) => Object.keys(group))).toEqual([['id', 'codes', 'out'], ['id', 'codes', 'cond'], ['id', 'codes']])
+    expect(JSON.stringify(fake.sent)).not.toMatch(/가짜 기본 PT|가짜 조건 묶음|가짜 검사|가짜 메모|sortOrder|name|note/)
+    fake.reply({ type: 'loaded', streamId: REQ.streamId, view: VIEW })
+  })
+
+  it('AC-3705.1: out·cond와 조건의 unless도 새로 만든다(넘긴 배열을 그대로 보내지 않는다)', () => {
+    const fake = fakeWorker()
+    void requestLoad(fake.like, { ...REQ, groups: GROUPS })
+    const [pt, cond] = groupsIn(fake)
+    expect(pt.out).not.toBe(GROUPS[0].out)
+    expect(cond.cond).not.toBe(GROUPS[1].cond)
+    expect(cond.cond?.[0]).not.toBe(GROUPS[1].cond?.[0])
+    expect(cond.cond?.[0].unless).not.toBe(GROUPS[1].cond?.[0].unless)
+    fake.reply({ type: 'loaded', streamId: REQ.streamId, view: VIEW })
+  })
+
+  it('AC-3705.1: 빼는 처방·조건이 없는 묶음만 주면 메시지는 지금 모양과 글자까지 같다', () => {
+    const fake = fakeWorker()
+    void requestLoad(fake.like, { ...REQ, groups: [{ id: PLAIN, codes: ['B4001'] }] })
+    expect(JSON.stringify(groupsIn(fake))).toBe(`[{"id":"${PLAIN}","codes":["B4001"]}]`)
     fake.reply({ type: 'loaded', streamId: REQ.streamId, view: VIEW })
   })
 })

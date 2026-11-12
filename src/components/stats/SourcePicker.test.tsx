@@ -444,6 +444,69 @@ describe('AC-1205.5 파일 길에 묶음 넘기기', () => {
   })
 })
 
+describe('AC-3705.2 파일 길(readFiles → runAnalysis)에 빼는 처방·조건 싣기', () => {
+  const MONTH = { month: '2026-10' } as MonthPayload
+  const VALID = { quality: 'valid', skippedInvalidRows: 0 } as AnalysisResult
+  // 가짜 묶음 열쇠(t + 16자리). PT = 넣는 MM010·MM015, 빼는 ESWT7 · COND = 조건 MM080 ← MM020 · PLAIN = 빈 out·cond
+  const PT = 't00000000000000c3'
+  const COND = 't00000000000000d4'
+  const PLAIN = 't00000000000000e5'
+  const report = okReport(0, { from: '2026-10-01', to: '2026-10-31' })
+  const counted = { id: COND, patients: 1, newPatients: 0, returning: 1 }
+
+  it('AC-3705.2: runAnalysis에 { id, codes }와 함께 새로 만든 out·cond({ code, unless }만)가 가고, 빈 out·cond 묶음은 { id, codes }뿐이다. 일 줄은 묶음마다 채운다', async () => {
+    const file = fileNamed('가짜환자.xlsx')
+    vi.mocked(runAnalysis).mockResolvedValue({ files: [report], result: VALID })
+    vi.mocked(toMonthPayload).mockReturnValue([MONTH])
+    vi.mocked(toDayPayloads).mockReturnValue([{ day: '2026-10-05', groups: [counted] } as DayPayload])
+    // 이름·차례·조건 메모가 붙어 와도 Worker로는 열쇠와 코드만 간다
+    const groups = [
+      { id: PT, codes: ['MM010', 'MM015'], out: ['ESWT7'], name: '가짜 기본 PT', sortOrder: 0 },
+      { id: COND, codes: ['MM010', 'MM080'], cond: [{ code: 'MM080', unless: ['MM020', 'TENS'], note: '가짜 메모' }], name: '가짜 조건 묶음' },
+      { id: PLAIN, codes: ['B4001'], out: [], cond: [] },
+    ]
+
+    const outcome = await readFiles([file], TODAY, groups)
+
+    const [[, opts]] = vi.mocked(runAnalysis).mock.calls
+    expect(opts).toStrictEqual({
+      today: TODAY,
+      groups: [
+        { id: PT, codes: ['MM010', 'MM015'], out: ['ESWT7'] },
+        { id: COND, codes: ['MM010', 'MM080'], cond: [{ code: 'MM080', unless: ['MM020', 'TENS'] }] },
+        { id: PLAIN, codes: ['B4001'] },
+      ],
+    })
+    const [pt, cond] = opts?.groups ?? []
+    expect(pt.out).not.toBe(groups[0].out)
+    expect(cond.cond?.[0]).not.toBe(groups[1].cond?.[0])
+    expect(cond.cond?.[0].unless).not.toBe(groups[1].cond?.[0].unless)
+    expect(JSON.stringify(opts)).not.toMatch(/가짜 기본 PT|가짜 조건 묶음|가짜 메모|sortOrder|name|note/)
+    // 그날 아무도 안 받은 묶음은 0줄(fillGroupCounts 그대로), 줄은 id 글자 차례
+    expect(outcome.save?.days).toEqual([
+      {
+        day: '2026-10-05',
+        groups: [
+          { id: PT, patients: 0, newPatients: 0, returning: 0 },
+          counted,
+          { id: PLAIN, patients: 0, newPatients: 0, returning: 0 },
+        ],
+      },
+    ])
+  })
+
+  it('AC-3705.2: 빼는 처방·조건이 없는 묶음만 주면 runAnalysis에 가는 묶음은 지금 모양과 글자까지 같다', async () => {
+    vi.mocked(runAnalysis).mockResolvedValue({ files: [report], result: VALID })
+    vi.mocked(toMonthPayload).mockReturnValue([MONTH])
+    vi.mocked(toDayPayloads).mockReturnValue([{ day: '2026-10-05', groups: [counted] } as DayPayload])
+
+    await readFiles([fileNamed('가짜환자.xlsx')], TODAY, [{ id: PLAIN, codes: ['B4001'] }])
+
+    const [[, opts]] = vi.mocked(runAnalysis).mock.calls
+    expect(JSON.stringify(opts?.groups)).toBe(`[{"id":"${PLAIN}","codes":["B4001"]}]`)
+  })
+})
+
 // ── 불러올 기간 (stats-load-range REQ-3301·AC-3303.4, 시안 docs/mockups/stats-load-range) ──
 
 const SPAN_NAMES = ['지금 보는 기간', '최근 1년', '최근 2년', '전체 기간']

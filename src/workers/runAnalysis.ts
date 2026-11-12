@@ -1,4 +1,5 @@
 import { todayInKorea } from '@/lib/analytics/dates'
+import { copyGroupDef } from '@/lib/analytics/groupDef'
 import { MAX_BYTES } from '@/lib/parsers/common'
 import type { RxGroupDef } from '@/types/analysis'
 import type { AnalyzeOutput, ReadFailure, WorkerMessage, WorkerRequest } from '@/types/analyze'
@@ -87,9 +88,9 @@ export async function runAnalysis(
     worker.onmessageerror = () => fail('E-ANALYZE-FAILED')
 
     try {
-      // 그룹은 id·코드 목록만 골라 새로 만든다(화면이 그룹 줄을 통째로 넘겨도 이름 등은 Worker로 가지 않는다).
-      // 깨진 정의도 여기서 잡혀 번호만 남는다
-      const groups = (opts.groups ?? []).map(({ id, codes }) => ({ id, codes: [...codes] }))
+      // 그룹은 id·코드 목록과 빼는 처방·조건(있을 때만)을 골라 새로 만든다(group-exclude AC-3705.2. 화면이 그룹 줄을 통째로 넘겨도
+      // 이름 등은 Worker로 가지 않는다). 깨진 정의도 여기서 잡혀 번호만 남는다
+      const groups = (opts.groups ?? []).map(copyGroupDef)
       const request: WorkerRequest = { files: slots, today, groups }
       worker.postMessage(request, buffers) // 복사하지 않고 넘긴다(보낸 쪽 바이트는 비워진다)
     } catch {

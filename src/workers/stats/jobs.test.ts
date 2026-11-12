@@ -11,6 +11,7 @@ import type {
   StatsSplitRequest,
   StatsWorkerMessage,
 } from '@/types/stats'
+import { requestLoad, type WorkerLike } from '../statsClient'
 import { createStatsHost, loadJob, sectionsJob, splitJob } from './jobs'
 
 const TODAY = '2026-11-01'
@@ -568,6 +569,72 @@ describe('AC-1205.4 Worker 입구(createStatsHost.load)가 묶음을 세어 일 
     expect(view.days?.length).toBeGreaterThan(0)
     for (const day of view.days ?? []) expect(day.groups).toEqual([])
     for (const month of view.months ?? []) expect(month.groups).toEqual([])
+  })
+})
+
+describe('AC-3705.4 비트 불러오기 끝까지: 빼는 처방·조건 묶음의 일 줄 숫자와 0줄', () => {
+  // 가짜 묶음 열쇠(t + 16자리, 글자 차례 PLAIN < PT < COND). PLAIN은 PT와 넣는 처방이 같고 빼는 처방이 없다(견줌)
+  const PLAIN = 't00000000000000b2'
+  const PT = 't00000000000000c3'
+  const COND = 't00000000000000d4'
+  const GROUPS = [
+    { id: PLAIN, codes: ['MM010', 'MM015'] },
+    { id: PT, codes: ['MM010', 'MM015'], out: ['eswt7'] }, // 빼는 처방 코드는 대소문자를 가리지 않는다
+    { id: COND, codes: ['MM010', 'MM080'], cond: [{ code: 'MM080', unless: ['MM020'] }] },
+  ]
+  // 9월 1일: 1번 MM010 + (뒤 줄의) ESWT7 → PT에서 빠짐. 2번 MM080 + MM020 → COND 조건에 걸리고 MM010이 없어 0
+  // 9월 2일: 1번 MM010(재진), 3번 MM015 + MM010(신환), 2번 MM080만(재진)
+  // 9월 3일: 4번 MM042만 → 세 묶음 모두 0건
+  const EXCLUDE_ROWS = [
+    [CHARTS[0], '20260901', 'MM010', '20260901'],
+    [CHARTS[1], '20260901', 'MM080', '20260901'],
+    [CHARTS[1], '20260901', 'MM020', '20260901'],
+    [CHARTS[0], '20260901', 'ESWT7', '20260901'],
+    [CHARTS[0], '20260902', 'MM010', '20260901'],
+    [CHARTS[2], '20260902', 'MM015', '20260902'],
+    [CHARTS[2], '20260902', 'MM010', '20260902'],
+    [CHARTS[1], '20260902', 'MM080', '20260901'],
+    [CHARTS[3], '20260903', 'MM042', '20260903'],
+  ]
+  const count = (id: string, patients: number, newPatients: number, returning: number) => ({ id, patients, newPatients, returning })
+  const EXPECTED = [
+    ['2026-09-01', [count(PLAIN, 1, 1, 0), count(PT, 0, 0, 0), count(COND, 1, 1, 0)]],
+    ['2026-09-02', [count(PLAIN, 2, 1, 1), count(PT, 2, 1, 1), count(COND, 3, 1, 2)]],
+    ['2026-09-03', [count(PLAIN, 0, 0, 0), count(PT, 0, 0, 0), count(COND, 0, 0, 0)]],
+  ]
+  const daysIn = (view: StatsLoaded) => view.days?.map((day) => [day.day, day.groups])
+
+  it('AC-3705.4: host.load({ …, groups })의 loaded 답 days[].groups — 빼는 처방·조건 묶음은 셈 규칙대로이고 그날 0건이면 0줄이다', async () => {
+    const { host, sent } = hostUnderTest()
+    bridgeMessages('s1', helperJson({ rows: EXCLUDE_ROWS })).forEach((m) => host.fromBridge(m))
+    await host.load(loadRequest('s1', { groups: GROUPS }))
+    expect(sent.map((m) => m.type)).toEqual(['loaded'])
+    const [reply] = sent
+    if (reply.type !== 'loaded') throw new Error('loaded가 아니다')
+    expect(daysIn(reply.view)).toEqual(EXPECTED)
+    for (const day of reply.view.days ?? []) expect(validateDayPayload(day)).toEqual(day)
+    expectNoPatientData(sent)
+  })
+
+  it('AC-3705.4: 화면 입구 requestLoad → (구조화 복제) → Worker 입구 → loaded로 이어도 같은 숫자다(빼는 처방·조건이 메시지에서 빠지지 않는다)', async () => {
+    const sent: StatsWorkerMessage[] = []
+    const worker = {
+      onmessage: null as ((event: MessageEvent<StatsWorkerMessage>) => void) | null,
+      onerror: null,
+      onmessageerror: null,
+      postMessage: (request: StatsLoadRequest) => void host.load(structuredClone(request)),
+    }
+    const host = createStatsHost((message) => {
+      sent.push(message)
+      worker.onmessage?.({ data: structuredClone(message) } as MessageEvent<StatsWorkerMessage>)
+    })
+    bridgeMessages('s1', helperJson({ rows: EXCLUDE_ROWS })).forEach((m) => host.fromBridge(m))
+    // 화면 묶음 값처럼 이름·차례가 붙어 와도 된다
+    const screenGroups = GROUPS.map((group, sortOrder) => ({ ...group, name: `가짜 묶음 ${sortOrder}`, sortOrder }))
+    const view = await requestLoad(worker as unknown as WorkerLike, { streamId: 's1', ...OPTS, groups: screenGroups })
+    expect(daysIn(view)).toEqual(EXPECTED)
+    expectNoPatientData(sent)
+    expect(JSON.stringify(sent)).not.toContain('가짜 묶음')
   })
 })
 
