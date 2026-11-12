@@ -6,15 +6,16 @@ using System.Text.Json;
 
 namespace Precheck.Core.Reception;
 
-/// <summary>POST /api/arrange 몸 하나(AC-3306.1): 열쇠, op, 칸(있으면), 글(있으면).</summary>
+/// <summary>POST /api/arrange 몸 하나(AC-3306.1): 열쇠, op, 칸(있으면), 글(있으면), 이름표(있으면, spec reception-pick-lists AC-3502.3).</summary>
 public sealed class ArrangeOp
 {
-    public ArrangeOp(string key, string op, ArrangeCol? col, string? v)
+    public ArrangeOp(string key, string op, ArrangeCol? col, string? v, string? t = null)
     {
         Key = key ?? throw new ArgumentNullException(nameof(key));
         Op = op ?? throw new ArgumentNullException(nameof(op));
         Col = col;
         V = v;
+        T = t;
     }
 
     public string Key { get; }
@@ -24,6 +25,9 @@ public sealed class ArrangeOp
     public ArrangeCol? Col { get; }
 
     public string? V { get; }
+
+    /// <summary>SONO 같이 하는 것·C-ARM 약재를 "|"로 이은 글. sono·carm의 add·part에만 온다.</summary>
+    public string? T { get; }
 }
 
 /// <summary>
@@ -61,6 +65,7 @@ public sealed class ArrangeWriteResult
 /// 새 표시(또는 X-ray 완료 표시)를 정한다. 시각은 서버 시계의 "HH:MM"(hhmm)이다(AC-3306.3).
 /// op: step(다음 단계) · set(v = todo·ready·done) · add(빈 칸에 목록 글) · remove(직접 넣은 칸 빼기) · part(SONO·C-ARM 부위) ·
 /// away(on·off) · ptf(up·down·off) · end(on·off).
+/// SONO·C-ARM의 add·part는 지금 고르기 목록(PickLists)으로 v·t를 본다(spec reception-pick-lists AC-3502.3): part = v, tags = t를 "|"로 나눈 것.
 /// </summary>
 public static class ArrangeWrite
 {
@@ -76,7 +81,7 @@ public static class ArrangeWrite
     private static readonly string[] CellOps = { Step, Set, Add, Remove, Part };
     private static readonly string[] ValueOps = { Set, Add, Part, Away, PtFirstOp, End };
     private static readonly string[] Ops = { Step, Set, Add, Remove, Part, Away, PtFirstOp, End };
-    private static readonly string[] Fields = { "k", "op", "col", "v" };
+    private static readonly string[] Fields = { "k", "op", "col", "v", "t" };
 
     private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
     private static readonly JsonDocumentOptions BodyJson = new JsonDocumentOptions { MaxDepth = 2 };
@@ -85,8 +90,8 @@ public static class ArrangeWrite
         Enum.GetValues(typeof(ArrangeCol)).Cast<ArrangeCol>().ToDictionary(ArrangeMap.KeyOf, col => col, StringComparer.Ordinal);
 
     /// <summary>
-    /// 몸이 {k, op, col?, v?} 글 칸뿐인 바른 UTF-8 JSON이고(차례 무관, 같은 칸 두 번·다른 칸은 틀림) op·칸 이름이 정해 둔 것인가(AC-3306.1).
-    /// 몸 크기(256바이트)는 HttpRequestReader가 먼저 막는다.
+    /// 몸이 {k, op, col?, v?, t?} 글 칸뿐인 바른 UTF-8 JSON이고(차례 무관, 같은 칸 두 번·다른 칸은 틀림) op·칸 이름이 정해 둔 것인가(AC-3306.1·AC-3502.3).
+    /// 몸 크기는 HttpRequestReader·라우터가 먼저 막는다.
     /// </summary>
     public static bool TryParse(byte[] body, out ArrangeOp op)
     {
@@ -111,7 +116,8 @@ public static class ArrangeWrite
                 col = found;
             }
             values.TryGetValue("v", out var v);
-            op = new ArrangeOp(key, name, col, v);
+            values.TryGetValue("t", out var t);
+            op = new ArrangeOp(key, name, col, v, t);
             return true;
         }
         catch (JsonException)
@@ -128,13 +134,17 @@ public static class ArrangeWrite
     /// 쓰기 하나를 계산한다. current는 그 내원의 지금 어레인지 표시(없으면 null), cells는 지금 판으로 만든 그 줄의 칸(없는 칸은 빠짐).
     /// 칸·글이 op에 맞지 않으면 400, 처방도 표시도 없는 칸의 step·set·part·remove는 404(AC-3306.5).
     /// paid는 그 접수가 지금 수납완료(끝남 칸)인지: end off면 kept를 남겨 그날 다시 저절로 빠지지 않게 한다(AC-3306.7).
+    /// picks는 지금 고르기 목록(없으면 기본값): SONO·C-ARM의 add·part는 이 목록으로 v·t를 보고, t가 다른 op·칸에 오면 400이다(AC-3502.3).
     /// </summary>
-    public static ArrangeWriteResult Apply(ArrangeOp op, VisitMark? current, IReadOnlyDictionary<ArrangeCol, ArrangeCell> cells, string hhmm, bool paid = false)
+    public static ArrangeWriteResult Apply(
+        ArrangeOp op, VisitMark? current, IReadOnlyDictionary<ArrangeCol, ArrangeCell> cells, string hhmm, bool paid = false, PickLists? picks = null)
     {
         if (op == null) throw new ArgumentNullException(nameof(op));
         if (cells == null) throw new ArgumentNullException(nameof(cells));
         if (hhmm == null) throw new ArgumentNullException(nameof(hhmm));
         if (CellOps.Contains(op.Op) != op.Col.HasValue || ValueOps.Contains(op.Op) != (op.V != null)) return ArrangeWriteResult.Refused(400);
+        if (op.T != null && !(op.Col is ArrangeCol tagged && IsQueue(tagged) && (op.Op == Add || op.Op == Part))) return ArrangeWriteResult.Refused(400);
+        var lists = picks ?? PickLists.Defaults;
 
         var mark = current ?? new VisitMark();
         switch (op.Op)
@@ -153,14 +163,15 @@ public static class ArrangeWrite
         switch (op.Op)
         {
             case Add:
-                return AddCell(mark, col, cell, op.V!, hhmm);
+                return AddCell(mark, col, cell, op.V!, op.T, hhmm, lists);
             case Remove:
                 return RemoveCell(mark, col, cell);
             case Part:
-                if (!IsQueue(col) || !ArrangeChoices.Parts.Contains(op.V!)) return ArrangeWriteResult.Refused(400);
+                if (!IsQueue(col) || !IsPick(lists, col, op.V!, op.T)) return ArrangeWriteResult.Refused(400);
                 if (cell == null) return ArrangeWriteResult.Refused(404);
                 var based = BaseOf(mark, col, cell);
-                return ArrangeWriteResult.Marks(mark.WithCell(col, new CellMark(based.St, based.Manual, based.Det, op.V, based.ReadyAt, based.DoneAt, based.AddedAt)));
+                return ArrangeWriteResult.Marks(mark.WithCell(col,
+                    new CellMark(based.St, based.Manual, based.Det, op.V, based.ReadyAt, based.DoneAt, based.AddedAt, PickLists.TagsOf(op.T))));
             case Set:
                 var target = StepOf(op.V!);
                 if (target == null || (target == ArrangeStep.Ready && !IsQueue(col))) return ArrangeWriteResult.Refused(400);
@@ -193,17 +204,29 @@ public static class ArrangeWrite
             readyAt = based.ReadyAt;
             doneAt = hhmm;
         }
-        return ArrangeWriteResult.Marks(mark.WithCell(col, new CellMark(target, based.Manual, based.Det, based.Part, readyAt, doneAt, based.AddedAt)));
+        return ArrangeWriteResult.Marks(mark.WithCell(col, new CellMark(target, based.Manual, based.Det, based.Part, readyAt, doneAt, based.AddedAt, based.Tags)));
     }
 
-    /// <summary>빈 칸에만, 그 칸 목록의 글로 직접 넣는다: 직접 칸은 그 글이 칸 글, SONO·C-ARM은 부위(부위는 나중에면 없음), X-RAY는 칸 글 없음.</summary>
-    private static ArrangeWriteResult AddCell(VisitMark mark, ArrangeCol col, ArrangeCell? cell, string v, string hhmm)
+    /// <summary>
+    /// 빈 칸에만 직접 넣는다: 직접 칸은 그 칸 목록의 글이 칸 글, X-RAY는 칸 글 없음,
+    /// SONO·C-ARM은 지금 고르기 목록으로 본 v가 part, t를 나눈 것이 tags(AC-3502.3).
+    /// </summary>
+    private static ArrangeWriteResult AddCell(VisitMark mark, ArrangeCol col, ArrangeCell? cell, string v, string? t, string hhmm, PickLists lists)
     {
-        if (cell != null || !ArrangeChoices.AddOf(col).Contains(v)) return ArrangeWriteResult.Refused(400);
+        if (cell != null) return ArrangeWriteResult.Refused(400);
+        if (IsQueue(col))
+        {
+            if (!IsPick(lists, col, v, t)) return ArrangeWriteResult.Refused(400);
+            return ArrangeWriteResult.Marks(mark.WithCell(col, new CellMark(ArrangeStep.Todo, true, "", v, null, null, hhmm, PickLists.TagsOf(t))));
+        }
+        if (!ArrangeChoices.AddOf(col).Contains(v)) return ArrangeWriteResult.Refused(400);
         var det = ArrangeMap.ManualOnly.Contains(col) ? v : "";
-        var part = IsQueue(col) && v != ArrangeChoices.PartLater ? v : null;
-        return ArrangeWriteResult.Marks(mark.WithCell(col, new CellMark(ArrangeStep.Todo, true, det, part, null, null, hhmm)));
+        return ArrangeWriteResult.Marks(mark.WithCell(col, new CellMark(ArrangeStep.Todo, true, det, null, null, null, hhmm)));
     }
+
+    /// <summary>SONO는 IsSono, C-ARM은 IsCarm으로 지금 목록에 맞는지 본다.</summary>
+    private static bool IsPick(PickLists lists, ArrangeCol col, string v, string? t) =>
+        col == ArrangeCol.Sono ? lists.IsSono(v, t) : lists.IsCarm(v, t);
 
     /// <summary>직접 넣은 칸만 뺀다(처방에서 온 칸은 400). X-RAY가 완료였으면 X-ray 완료 표시도 끈다.</summary>
     private static ArrangeWriteResult RemoveCell(VisitMark mark, ArrangeCol col, ArrangeCell? cell)

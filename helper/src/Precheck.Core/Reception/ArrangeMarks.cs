@@ -16,10 +16,15 @@ namespace Precheck.Core.Reception;
 /// <summary>어레인지 칸의 단계: 준비(todo) → 준비완료(ready, SONO·C-ARM만) → 완료(done). gone은 처방에서 온 칸을 표에서 뺀 것.</summary>
 public enum ArrangeStep { Todo, Ready, Done, Gone }
 
-/// <summary>칸 하나의 표시(AC-3304.2). det·part는 고르기 목록(ArrangeChoices)의 글, 시각은 "HH:MM".</summary>
+/// <summary>
+/// 칸 하나의 표시(AC-3304.2). det는 고르기 목록(ArrangeChoices)의 글, SONO·C-ARM part는 줄을 "|"로 이은 글이고 tags는 이름표(같이 하는 것·약재) 목록이다
+/// (spec reception-pick-lists AC-3502.1). 시각은 "HH:MM".
+/// </summary>
 public sealed class CellMark
 {
-    public CellMark(ArrangeStep st, bool manual, string det, string? part, string? readyAt, string? doneAt, string? addedAt)
+    private static readonly IReadOnlyList<string> NoTags = Array.AsReadOnly(new string[0]);
+
+    public CellMark(ArrangeStep st, bool manual, string det, string? part, string? readyAt, string? doneAt, string? addedAt, IReadOnlyList<string>? tags = null)
     {
         St = st;
         Manual = manual;
@@ -28,6 +33,7 @@ public sealed class CellMark
         ReadyAt = readyAt;
         DoneAt = doneAt;
         AddedAt = addedAt;
+        Tags = tags == null || tags.Count == 0 ? NoTags : Array.AsReadOnly(tags.ToArray());
     }
 
     public ArrangeStep St { get; }
@@ -38,7 +44,7 @@ public sealed class CellMark
     /// <summary>칸 글(PT의 ICE·HP 등). 처방 칸(X-RAY·SONO·C-ARM)은 "".</summary>
     public string Det { get; }
 
-    /// <summary>SONO·C-ARM 부위. 다른 칸은 null.</summary>
+    /// <summary>SONO·C-ARM 부위·시술(SONO는 줄을 "|"로 이음). 다른 칸은 null.</summary>
     public string? Part { get; }
 
     public string? ReadyAt { get; }
@@ -46,6 +52,9 @@ public sealed class CellMark
     public string? DoneAt { get; }
 
     public string? AddedAt { get; }
+
+    /// <summary>SONO 같이 하는 것·C-ARM 약재 이름표. 없으면(다른 칸 포함) 빈 목록.</summary>
+    public IReadOnlyList<string> Tags { get; }
 }
 
 /// <summary>PT 먼저(물리치료를 진료 전에): up(올라감)·down(내려옴)과 그 시각.</summary>
@@ -113,18 +122,13 @@ public sealed class VisitMark
 
 /// <summary>
 /// 고르기 목록(spec reception-arrange design.md 4절, AC-3304.4). 화면(reception/www/arrange.js의 CHOICES)과 쓰기 검사가 같은 글을 쓴다
-/// (화면 시험이 이 파일의 글을 읽어 견준다). 부위 목록은 시안 그대로.
+/// (화면 시험이 이 파일의 글을 읽어 견준다). SONO·C-ARM은 고칠 수 있는 고르기 목록(PickLists, spec reception-pick-lists)이라 여기 없고,
+/// 표시의 part·tags는 모양만 본다(AC-3502.1).
 /// </summary>
 public static class ArrangeChoices
 {
-    /// <summary>SONO·C-ARM 부위.</summary>
-    public static IReadOnlyList<string> Parts { get; } = Array.AsReadOnly(new[]
-    {
-        "목", "등", "허리", "오른 어깨", "왼 어깨", "양 어깨", "팔꿈치", "손목", "고관절", "오른 무릎", "왼 무릎", "양 무릎", "발목", "발바닥", "기타",
-    });
-
-    /// <summary>SONO·C-ARM 직접 넣기에서 부위를 나중에 고른다(부위 null).</summary>
-    public const string PartLater = "부위는 나중에";
+    /// <summary>SONO part 한 줄의 글자 한도: 쪽 글(오른·왼·양) + 빈칸 + 이름 10글자.</summary>
+    private const int MaxPartLine = 13;
 
     /// <summary>X-RAY 직접 넣기 글(칸 글은 "").</summary>
     public const string XrayShot = "X-ray 찍기";
@@ -144,14 +148,13 @@ public static class ArrangeChoices
     private static readonly IReadOnlyList<string> Trac = Array.AsReadOnly(new[] { "목", "허리" });
     private static readonly IReadOnlyList<string> None = Array.AsReadOnly(new string[0]);
     private static readonly IReadOnlyList<string> Xray = Array.AsReadOnly(new[] { XrayShot });
-    private static readonly IReadOnlyList<string> PartsOrLater = Array.AsReadOnly(Parts.Concat(new[] { PartLater }).ToArray());
 
-    /// <summary>빈 칸에 직접 넣을 때(add) 고르는 글.</summary>
+    /// <summary>빈 칸에 직접 넣을 때(add) 고르는 글. SONO·C-ARM은 고르기 목록(PickLists)으로 보므로 빈 목록.</summary>
     public static IReadOnlyList<string> AddOf(ArrangeCol col) => col switch
     {
         ArrangeCol.Xray => Xray,
-        ArrangeCol.Sono => PartsOrLater,
-        ArrangeCol.Carm => PartsOrLater,
+        ArrangeCol.Sono => None,
+        ArrangeCol.Carm => None,
         _ => DetailsOf(col),
     };
 
@@ -172,17 +175,54 @@ public static class ArrangeChoices
         return det != null && (list.Count == 0 ? det.Length == 0 : list.Contains(det));
     }
 
-    /// <summary>그 칸의 part로 받는 글인가(SONO·C-ARM만 부위 목록 또는 null, 다른 칸은 null).</summary>
-    public static bool IsPart(ArrangeCol col, string? part) =>
-        part == null || ((col == ArrangeCol.Sono || col == ArrangeCol.Carm) && Parts.Contains(part));
+    /// <summary>
+    /// 그 칸의 part로 받는 글인가(AC-3502.1): SONO·C-ARM만 null 또는 모양이 맞는 글(줄을 "|"로 이은 1~6줄, 줄마다 1~13글자, 제어 글자 없음),
+    /// 다른 칸은 null. 목록에 있는지는 보지 않는다(목록을 고친 뒤에도 이미 넣은 칸은 그대로 보이게).
+    /// </summary>
+    public static bool IsPart(ArrangeCol col, string? part)
+    {
+        if (part == null) return true;
+        if (!IsQueue(col)) return false;
+        var lines = part.Split(PickLists.Joiner);
+        return lines.Length <= PickLists.MaxLines && lines.All(line => IsText(line, MaxPartLine));
+    }
+
+    /// <summary>그 칸의 tags로 받는 목록인가(AC-3502.1): SONO·C-ARM만 이름표 0~12개(이름표마다 1~10글자, "|"·제어 글자 없음), 다른 칸은 빈 목록.</summary>
+    public static bool IsTags(ArrangeCol col, IReadOnlyList<string>? tags)
+    {
+        if (tags == null || tags.Count == 0) return true;
+        return IsQueue(col) && tags.Count <= PickLists.MaxWiths && tags.All(tag => tag != null && IsText(tag, PickLists.MaxName));
+    }
+
+    private static bool IsQueue(ArrangeCol col) => col == ArrangeCol.Sono || col == ArrangeCol.Carm;
+
+    /// <summary>1~max글자이고 "|"·제어 글자(C0·DEL·C1·U+2028·U+2029)·짝 없는 대리쌍이 없다.</summary>
+    private static bool IsText(string text, int max)
+    {
+        if (text.Length == 0 || text.Length > max) return false;
+        for (var i = 0; i < text.Length; i++)
+        {
+            var c = text[i];
+            if (c == PickLists.Joiner || char.IsControl(c) || c == '\u2028' || c == '\u2029') return false;
+            if (char.IsHighSurrogate(c) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
+            {
+                i++;
+                continue;
+            }
+            if (char.IsSurrogate(c)) return false;
+        }
+        return true;
+    }
 }
 
 /// <summary>
 /// 어레인지 표시 저장(spec reception-arrange design.md 6절, REQ-3304). 비트에는 쓰지 않고 총괄 PC의 저장 폴더 파일 하나에만 둔다.
 /// 파일 `reception-arrange.dat` = 머리 `PRECHECK-STORE-1\n` + IProtector(윈도우 DPAPI CurrentUser)로 감싼
 /// JSON `{ "day": "yyyyMMdd", "visits": { "<내원번호>": { "cells": {…}, "away", "ptf", "endedAt"[, "kept": true] } } }`(kept는 참일 때만, AC-3304.5).
+/// 칸은 { st, manual, det, part, readyAt, doneAt, addedAt[, tags: [글…]] }(tags는 비지 않을 때만, spec reception-pick-lists AC-3502.1).
 /// 규칙은 XrayMarks와 같다(두 파일은 서로 깨뜨리지 않게 따로 둔다): 잠금 하나로 한 번에 하나, 임시 파일 → 바꾸기, 처음 한 번 읽어 메모리에,
-/// 날이 다르면 비움, 1MB를 넘거나 모양이 틀리면 빈 표시 + 기록에 E-STORE-BROKEN 한 번. 글 칸은 고르기 목록의 글과 "HH:MM"만 받는다(AC-3304.4).
+/// 날이 다르면 비움, 1MB를 넘거나 모양이 틀리면 빈 표시 + 기록에 E-STORE-BROKEN 한 번. det는 고르기 목록의 글, 시각은 "HH:MM"만 받고(AC-3304.4)
+/// SONO·C-ARM part·tags는 모양만 본다(AC-3502.1).
 /// 기록(report)에는 오류 번호만 간다.
 /// </summary>
 public sealed class ArrangeMarks
@@ -206,10 +246,12 @@ public sealed class ArrangeMarks
     private const string ReadyField = "readyAt";
     private const string DoneField = "doneAt";
     private const string AddedField = "addedAt";
+    private const string TagsField = "tags";
 
     private static readonly string[] VisitFields = { CellsField, AwayField, PtfField, EndedField };
     private static readonly string[] KeptVisitFields = { CellsField, AwayField, PtfField, EndedField, KeptField };
     private static readonly string[] CellFields = { StField, ManualField, DetField, PartField, ReadyField, DoneField, AddedField };
+    private static readonly string[] TaggedCellFields = { StField, ManualField, DetField, PartField, ReadyField, DoneField, AddedField, TagsField };
     private static readonly string[] PtfFields = { StField, AtField };
     private static readonly string[] PtfSteps = { "up", "down" };
 
@@ -308,7 +350,7 @@ public sealed class ArrangeMarks
         {
             var cell = pair.Value;
             if (!Enum.IsDefined(typeof(ArrangeCol), pair.Key) || !Enum.IsDefined(typeof(ArrangeStep), cell.St)) return false;
-            if (!ArrangeChoices.IsDetail(pair.Key, cell.Det) || !ArrangeChoices.IsPart(pair.Key, cell.Part)) return false;
+            if (!ArrangeChoices.IsDetail(pair.Key, cell.Det) || !ArrangeChoices.IsPart(pair.Key, cell.Part) || !ArrangeChoices.IsTags(pair.Key, cell.Tags)) return false;
             if (!IsTimeOrNull(cell.ReadyAt) || !IsTimeOrNull(cell.DoneAt) || !IsTimeOrNull(cell.AddedAt)) return false;
         }
         return true;
@@ -467,7 +509,20 @@ public sealed class ArrangeMarks
 
     private static CellMark? ParseCell(JsonElement value)
     {
-        if (!HasExactly(value, CellFields)) return null;
+        // tags는 비지 않을 때만 쓴다: 없으면 빈 목록(이 고침 전 파일도 그대로), 있으면 글 하나 이상의 배열이어야 한다(AC-3502.1)
+        var tagged = HasExactly(value, TaggedCellFields);
+        if (!tagged && !HasExactly(value, CellFields)) return null;
+        var tags = new List<string>();
+        if (tagged)
+        {
+            var tagsValue = value.GetProperty(TagsField);
+            if (tagsValue.ValueKind != JsonValueKind.Array || tagsValue.GetArrayLength() == 0) return null;
+            foreach (var tag in tagsValue.EnumerateArray())
+            {
+                if (tag.ValueKind != JsonValueKind.String) return null;
+                tags.Add(tag.GetString()!);
+            }
+        }
         if (!TextOrNull(value.GetProperty(StField), out var stName) || !(StepOf(stName) is ArrangeStep st)) return null;
         var manual = value.GetProperty(ManualField);
         if (manual.ValueKind != JsonValueKind.True && manual.ValueKind != JsonValueKind.False) return null;
@@ -476,7 +531,7 @@ public sealed class ArrangeMarks
             || !TextOrNull(value.GetProperty(ReadyField), out var readyAt)
             || !TextOrNull(value.GetProperty(DoneField), out var doneAt)
             || !TextOrNull(value.GetProperty(AddedField), out var addedAt)) return null;
-        return new CellMark(st, manual.ValueKind == JsonValueKind.True, det, part, readyAt, doneAt, addedAt);
+        return new CellMark(st, manual.ValueKind == JsonValueKind.True, det, part, readyAt, doneAt, addedAt, tags);
     }
 
     /// <summary>객체이고 칸 이름이 정확히 그것들뿐(차례 무관, 겹침 없음)인가.</summary>
@@ -574,6 +629,12 @@ public sealed class ArrangeMarks
                         WriteTextOrNull(writer, ReadyField, cell.Value.ReadyAt);
                         WriteTextOrNull(writer, DoneField, cell.Value.DoneAt);
                         WriteTextOrNull(writer, AddedField, cell.Value.AddedAt);
+                        if (cell.Value.Tags.Count > 0)
+                        {
+                            writer.WriteStartArray(TagsField);
+                            foreach (var tag in cell.Value.Tags) writer.WriteStringValue(tag);
+                            writer.WriteEndArray();
+                        }
                         writer.WriteEndObject();
                     }
                     writer.WriteEndObject();

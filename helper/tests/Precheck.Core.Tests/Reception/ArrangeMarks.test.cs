@@ -301,15 +301,12 @@ public class ArrangeMarksTests : IDisposable
 
     // ---- AC-3304.4 고르기 목록 --------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-3304.4 고르기 목록(ArrangeChoices)은 design.md 4절 표 그대로다(부위 15개 + 부위는 나중에, X-ray 찍기, ICE·HP, 30분·50분, 1~4부위 + 타수×부위 수 16개(AC-3402.1), 목·허리)")]
+    [Fact(DisplayName = "AC-3304.4 고르기 목록(ArrangeChoices)은 design.md 4절 표 그대로다(X-ray 찍기, ICE·HP, 30분·50분, 1~4부위 + 타수×부위 수 16개(AC-3402.1), 목·허리). SONO·C-ARM은 고르기 목록(picks, spec reception-pick-lists)이라 여기 없다")]
     public void ChoicesTable()
     {
-        var parts = new[] { "목", "등", "허리", "오른 어깨", "왼 어깨", "양 어깨", "팔꿈치", "손목", "고관절", "오른 무릎", "왼 무릎", "양 무릎", "발목", "발바닥", "기타" };
-        Assert.Equal(parts, ArrangeChoices.Parts);
-        Assert.Equal("부위는 나중에", ArrangeChoices.PartLater);
         Assert.Equal(new[] { "X-ray 찍기" }, ArrangeChoices.AddOf(ArrangeCol.Xray));
-        Assert.Equal(parts.Concat(new[] { "부위는 나중에" }), ArrangeChoices.AddOf(ArrangeCol.Sono));
-        Assert.Equal(parts.Concat(new[] { "부위는 나중에" }), ArrangeChoices.AddOf(ArrangeCol.Carm));
+        Assert.Empty(ArrangeChoices.AddOf(ArrangeCol.Sono));
+        Assert.Empty(ArrangeChoices.AddOf(ArrangeCol.Carm));
         Assert.Equal(new[] { "ICE", "HP" }, ArrangeChoices.AddOf(ArrangeCol.Pt));
         Assert.Equal(new[] { "30분", "50분" }, ArrangeChoices.AddOf(ArrangeCol.Ds));
         var counts = new[] { "1부위", "2부위", "3부위", "4부위" };
@@ -319,7 +316,7 @@ public class ArrangeMarksTests : IDisposable
         foreach (var col in ArrangeMap.ManualOnly) Assert.Equal(ArrangeChoices.AddOf(col), ArrangeChoices.DetailsOf(col));
     }
 
-    [Fact(DisplayName = "AC-3304.4 칸마다 목록의 글(직접 칸 det, SONO·C-ARM part)과 빈 det(처방 칸)는 받는다")]
+    [Fact(DisplayName = "AC-3304.4 칸마다 목록의 글(직접 칸 det)·모양이 맞는 SONO·C-ARM part(spec reception-pick-lists AC-3502.1)와 빈 det(처방 칸)는 받는다")]
     public void ChoicesAccepted()
     {
         var marks = Open();
@@ -328,7 +325,7 @@ public class ArrangeMarksTests : IDisposable
             foreach (var det in ArrangeChoices.DetailsOf(col))
                 marks.Update("V" + (3000 + i++), _ => new VisitMark().WithCell(col, Cell(ArrangeStep.Todo, manual: true, det: det, addedAt: "10:00")));
         foreach (var col in new[] { ArrangeCol.Sono, ArrangeCol.Carm })
-            foreach (var part in ArrangeChoices.Parts)
+            foreach (var part in new[] { "목", "오른 어깨", "오른 어깨|왼 무릎", "소독|양 무릎", "리덕션", "1|2|3|4|5|6" })
                 marks.Update("V" + (3000 + i++), _ => new VisitMark().WithCell(col, Cell(ArrangeStep.Todo, part: part)));
         marks.Update("V" + (3000 + i++), _ => new VisitMark().WithCell(ArrangeCol.Xray, Cell(ArrangeStep.Done, manual: true, doneAt: "10:01", addedAt: "10:00")));
 
@@ -340,8 +337,8 @@ public class ArrangeMarksTests : IDisposable
         new object[] { "pt 목록 밖 글", new VisitMark().WithCell(ArrangeCol.Pt, new CellMark(ArrangeStep.Todo, true, "가상환자07", null, null, null, "10:00")) },
         new object[] { "ds에 pt 글", new VisitMark().WithCell(ArrangeCol.Ds, new CellMark(ArrangeStep.Todo, true, "ICE", null, null, null, "10:00")) },
         new object[] { "xray에 글", new VisitMark().WithCell(ArrangeCol.Xray, new CellMark(ArrangeStep.Todo, true, "HP", null, null, null, "10:00")) },
-        new object[] { "sono 목록 밖 부위", new VisitMark().WithCell(ArrangeCol.Sono, new CellMark(ArrangeStep.Todo, false, "", "어깨", null, null, null)) },
-        new object[] { "sono 부위에 나중에", new VisitMark().WithCell(ArrangeCol.Sono, new CellMark(ArrangeStep.Todo, false, "", "부위는 나중에", null, null, null)) },
+        new object[] { "sono 부위 7줄", new VisitMark().WithCell(ArrangeCol.Sono, new CellMark(ArrangeStep.Todo, false, "", "1|2|3|4|5|6|7", null, null, null)) },
+        new object[] { "carm 빈 부위", new VisitMark().WithCell(ArrangeCol.Carm, new CellMark(ArrangeStep.Todo, false, "", "", null, null, null)) },
         new object[] { "pt에 부위", new VisitMark().WithCell(ArrangeCol.Pt, new CellMark(ArrangeStep.Todo, true, "HP", "목", null, null, "10:00")) },
         new object[] { "틀린 시각", new VisitMark().WithCell(ArrangeCol.Sono, new CellMark(ArrangeStep.Ready, false, "", null, "9:5", null, null)) },
         new object[] { "25시", new VisitMark(away: "25:00") },
@@ -381,7 +378,7 @@ public class ArrangeMarksTests : IDisposable
         Open().Update("V1002", _ => new VisitMark(ptf: new PtFirst("down", "10:41")));
 
         var allowed = new HashSet<string>(StringComparer.Ordinal) { "20261109", "todo", "ready", "done", "gone", "up", "down", "" };
-        allowed.UnionWith(ArrangeChoices.Parts);
+        allowed.Add("오른 어깨");
         foreach (var col in Enum.GetValues(typeof(ArrangeCol)).Cast<ArrangeCol>()) allowed.UnionWith(ArrangeChoices.DetailsOf(col));
         var time = new System.Text.RegularExpressions.Regex(@"^\d{2}:\d{2}$");
 

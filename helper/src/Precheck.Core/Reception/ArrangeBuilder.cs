@@ -6,10 +6,15 @@ using System.Text.RegularExpressions;
 
 namespace Precheck.Core.Reception;
 
-/// <summary>어레인지 칸 하나(AC-3305.4): 단계(todo·ready·done), 칸 글, 부위, 보일 시각, SONO·C-ARM 순서, 직접 넣음.</summary>
+/// <summary>
+/// 어레인지 칸 하나(AC-3305.4): 단계(todo·ready·done), 칸 글, 부위(SONO는 줄을 "|"로 이음), 이름표(같이 하는 것·약재, spec reception-pick-lists AC-3502.2),
+/// 보일 시각, SONO·C-ARM 순서, 직접 넣음.
+/// </summary>
 public sealed class ArrangeCell
 {
-    public ArrangeCell(ArrangeStep st, string det, string? part, string? at, int? ord, bool manual)
+    private static readonly IReadOnlyList<string> NoTags = Array.AsReadOnly(new string[0]);
+
+    public ArrangeCell(ArrangeStep st, string det, string? part, string? at, int? ord, bool manual, IReadOnlyList<string>? tags = null)
     {
         St = st;
         Det = det ?? "";
@@ -17,6 +22,7 @@ public sealed class ArrangeCell
         At = at;
         Ord = ord;
         Manual = manual;
+        Tags = tags == null || tags.Count == 0 ? NoTags : Array.AsReadOnly(tags.ToArray());
     }
 
     public ArrangeStep St { get; }
@@ -33,7 +39,10 @@ public sealed class ArrangeCell
 
     public bool Manual { get; }
 
-    internal ArrangeCell WithOrd(int? ord) => new ArrangeCell(St, Det, Part, At, ord, Manual);
+    /// <summary>표시의 이름표(처방에서만 온 칸·다른 칸은 빈 목록).</summary>
+    public IReadOnlyList<string> Tags { get; }
+
+    internal ArrangeCell WithOrd(int? ord) => new ArrangeCell(St, Det, Part, At, ord, Manual, Tags);
 }
 
 /// <summary>어레인지 줄 하나(AC-3305.3). 이름·차트번호·메모·상태·접수 시각은 화면이 같은 열쇠의 목록 줄에서 가져온다.</summary>
@@ -103,7 +112,7 @@ public sealed class Arrange
 /// <summary>
 /// 비트 날 줄 + 지도 + 어레인지 표시 + X-ray 완료 표시 → 어레인지 자료(spec reception-arrange design.md 7절, REQ-3305).
 /// 칸 하나: ① 오늘 처방을 지도로 처방 칸(xray·sono·carm)마다 모은다(가장 이른 시각, 첫 부위, AC-3301.3) ② 표시가 gone이면 칸 없음
-/// ③ 표시가 있으면 단계·시각·부위·글을 덮는다(직접 넣은 칸은 표시만으로 생김, 직접 칸 pt·ds·eswt·trac은 표시로만, 늘 manual)
+/// ③ 표시가 있으면 단계·시각·부위·이름표·글을 덮는다(직접 넣은 칸은 표시만으로 생김, 직접 칸 pt·ds·eswt·trac은 표시로만, 늘 manual)
 /// ④ X-RAY는 X-ray 완료 표시가 있으면 완료·그 시각(처방·표시가 없어도 직접 칸으로 생김, AC-3305.6).
 /// 처방이 사라진 처방 칸(직접 넣지 않음)의 표시는 칸을 만들지 않는다.
 /// 줄 고르기: [치료 종료] 시각이 있거나, 수납완료(끝남 칸)인데 다시 넣지(kept) 않았으면 rows가 아니라 ended다(AC-3305.2·AC-3305.10).
@@ -240,7 +249,7 @@ public static class ArrangeBuilder
                 var manual = manualOnly || marked.Manual;
                 var since = manual ? Time(marked.AddedAt) ?? order.At : order.At;
                 var part = IsQueue(col) ? Clean(marked.Part) ?? order.Part : null;
-                built = new Built(new ArrangeCell(marked.St, marked.Det, part, AtOf(marked, since), null, manual), since);
+                built = new Built(new ArrangeCell(marked.St, marked.Det, part, AtOf(marked, since), null, manual, IsQueue(col) ? marked.Tags : null), since);
             }
             else if (hasOrder && !manualOnly)
             {

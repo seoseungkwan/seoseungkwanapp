@@ -118,7 +118,7 @@ public class ArrangeWriteTests
         Assert.Equal((ArrangeStep.Done, "10:30"), (CellOf(forward, ArrangeCol.Carm)!.St, CellOf(forward, ArrangeCol.Carm)!.DoneAt));
     }
 
-    [Fact(DisplayName = "AC-3306.2 add: 빈 칸에만 그 칸 목록의 글로 넣고(직접 넣음·넣은 시각), SONO·C-ARM은 부위 또는 부위는 나중에, X-RAY는 X-ray 찍기")]
+    [Fact(DisplayName = "AC-3306.2 add: 빈 칸에만 그 칸 목록의 글로 넣고(직접 넣음·넣은 시각), SONO·C-ARM은 고르기 목록(부위는 나중에 없음, spec reception-pick-lists AC-3502.3), X-RAY는 X-ray 찍기")]
     public void Adds()
     {
         var pt = ArrangeWrite.Apply(Op("add", ArrangeCol.Pt, "HP"), null, NoCells, Now);
@@ -126,8 +126,8 @@ public class ArrangeWriteTests
 
         var sono = ArrangeWrite.Apply(Op("add", ArrangeCol.Sono, "왼 어깨"), null, NoCells, Now);
         Assert.Equal(("", "왼 어깨"), (CellOf(sono, ArrangeCol.Sono)!.Det, CellOf(sono, ArrangeCol.Sono)!.Part));
-        var later = ArrangeWrite.Apply(Op("add", ArrangeCol.Carm, ArrangeChoices.PartLater), null, NoCells, Now);
-        Assert.Null(CellOf(later, ArrangeCol.Carm)!.Part);
+        Assert.Equal("허리", CellOf(ArrangeWrite.Apply(Op("add", ArrangeCol.Carm, "허리"), null, NoCells, Now), ArrangeCol.Carm)!.Part);
+        Assert.Equal(400, ArrangeWrite.Apply(Op("add", ArrangeCol.Carm, "부위는 나중에"), null, NoCells, Now).Status);
         var xray = ArrangeWrite.Apply(Op("add", ArrangeCol.Xray, "X-ray 찍기"), null, NoCells, Now);
         Assert.Equal(("", true), (CellOf(xray, ArrangeCol.Xray)!.Det, CellOf(xray, ArrangeCol.Xray)!.Manual));
 
@@ -149,15 +149,15 @@ public class ArrangeWriteTests
         Assert.Equal(400, ArrangeWrite.Apply(Op("remove", ArrangeCol.Sono), null, Cells((ArrangeCol.Sono, Cell(ArrangeStep.Todo))), Now).Status);
     }
 
-    [Fact(DisplayName = "AC-3306.2 part: SONO·C-ARM에만 부위 목록 글을 넣고(다른 칸·목록 밖·부위는 나중에는 400)")]
+    [Fact(DisplayName = "AC-3306.2 part: SONO·C-ARM에만 고르기 목록 글을 넣고(다른 칸·목록 밖·부위는 나중에는 400, spec reception-pick-lists AC-3502.3)")]
     public void Parts()
     {
         var part = ArrangeWrite.Apply(Op("part", ArrangeCol.Sono, "발목"), null, Cells((ArrangeCol.Sono, Cell(ArrangeStep.Todo, at: "09:31"))), Now);
         Assert.Equal(("발목", ArrangeStep.Todo), (CellOf(part, ArrangeCol.Sono)!.Part, CellOf(part, ArrangeCol.Sono)!.St));
 
         Assert.Equal(400, ArrangeWrite.Apply(Op("part", ArrangeCol.Pt, "목"), null, Cells((ArrangeCol.Pt, Cell(ArrangeStep.Todo, true, "HP"))), Now).Status);
-        Assert.Equal(400, ArrangeWrite.Apply(Op("part", ArrangeCol.Sono, "어깨"), null, Cells((ArrangeCol.Sono, Cell(ArrangeStep.Todo))), Now).Status);
-        Assert.Equal(400, ArrangeWrite.Apply(Op("part", ArrangeCol.Sono, ArrangeChoices.PartLater), null, Cells((ArrangeCol.Sono, Cell(ArrangeStep.Todo))), Now).Status);
+        Assert.Equal(400, ArrangeWrite.Apply(Op("part", ArrangeCol.Sono, "꼬리뼈"), null, Cells((ArrangeCol.Sono, Cell(ArrangeStep.Todo))), Now).Status);
+        Assert.Equal(400, ArrangeWrite.Apply(Op("part", ArrangeCol.Sono, "부위는 나중에"), null, Cells((ArrangeCol.Sono, Cell(ArrangeStep.Todo))), Now).Status);
     }
 
     [Fact(DisplayName = "AC-3306.2 away·ptf·end: on·up·down은 서버 시각을 남기고 off는 지운다")]

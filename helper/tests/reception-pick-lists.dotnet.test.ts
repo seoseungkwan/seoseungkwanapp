@@ -1,5 +1,6 @@
-// SONO·C-ARM 고르기 목록(PickLists·ReceptionLists, reception-pick-lists TASK-1, REQ-3501)의 C# 시험
-// (helper/tests/Precheck.Core.Tests/Reception/PickLists.test.cs)을 감싼다.
+// SONO·C-ARM 고르기 목록(PickLists·ReceptionLists, reception-pick-lists TASK-1, REQ-3501)과
+// 칸 표시·쓰기 검사·판 칸(ArrangeMarks·ArrangeWrite·ArrangeBuilder·Board, TASK-2, REQ-3502·AC-3501.4)의 C# 시험
+// (helper/tests/Precheck.Core.Tests/Reception/PickLists.test.cs·PickWrite.test.cs)을 감싼다.
 import { beforeAll, describe, expect, it } from 'vitest'
 import { runDotnet } from './runDotnet'
 
@@ -33,5 +34,23 @@ describe('REQ-3501 고르기 목록 저장·나눠 주기 (C# Precheck.Core.Test
 
   it('AC-3501.2 이름 1~10글자·"|"·제어 글자 없음·무리 안 겹침 없음, 부위·부위 없이 안 겹침, 개수 한도, 약재 없음은 시술에만', () => {
     expectAc('AC-3501.2')
+  })
+
+  it('AC-3501.4 어레인지 칸을 보내는 판에는 맨 위 picks(지금 목록)가 있고, 어레인지를 보내지 않는 판에는 없다', () => {
+    expectAc('AC-3501.4')
+  })
+})
+
+describe('REQ-3502 칸 표시·쓰기 (C# Precheck.Core.Tests.Reception.PickChoices)', () => {
+  it('AC-3502.1 표시 파일의 SONO·C-ARM part는 "|"로 이은 글, tags는 비지 않을 때만 쓰고 옛 파일도 읽히며 읽을 때는 모양만 본다', () => {
+    expectAc('AC-3502.1')
+  })
+
+  it('AC-3502.2 판의 어레인지 칸마다 tags(늘 배열)가 있고 part는 null 또는 "|"로 이은 글이다', () => {
+    expectAc('AC-3502.2')
+  })
+
+  it('AC-3502.3 sono·carm add·part는 새 칸 t와 함께 지금 목록으로 보고, 어긋나거나 다른 op·칸에 t가 있거나 "부위는 나중에"면 400', () => {
+    expectAc('AC-3502.3')
   })
 })

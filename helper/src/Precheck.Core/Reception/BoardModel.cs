@@ -182,10 +182,11 @@ public sealed class Board
     public string ToJson() => ToJson(null);
 
     /// <summary>
-    /// ToJson()에 어레인지 자료를 끝에 더한 것(spec reception-arrange AC-3305.1): <c>"arrange": { "rows": [...], "ended": [...] }</c>.
-    /// arrange가 null이면 ToJson()과 한 글자도 같다.
+    /// ToJson()에 어레인지 자료를 끝에 더한 것(spec reception-arrange AC-3305.1): <c>"arrange": { "rows": [...], "ended": [...] }</c>,
+    /// 그 뒤 맨 위 <c>"picks"</c> = 지금 고르기 목록(PickLists.Write, 없으면 기본값, spec reception-pick-lists AC-3501.4).
+    /// arrange가 null이면 picks도 쓰지 않고 ToJson()과 한 글자도 같다.
     /// </summary>
-    public string ToJson(Arrange? arrange)
+    public string ToJson(Arrange? arrange, PickLists? picks = null)
     {
         var lists = new (string Name, IReadOnlyList<BoardRow> Rows)[]
         {
@@ -209,14 +210,20 @@ public sealed class Board
                 writer.WriteEndArray();
             }
             writer.WriteEndObject();
-            if (arrange != null) WriteArrange(writer, arrange);
+            if (arrange != null)
+            {
+                WriteArrange(writer, arrange);
+                writer.WritePropertyName("picks");
+                (picks ?? PickLists.Defaults).Write(writer);
+            }
             writer.WriteEndObject();
         }
         return Encoding.UTF8.GetString(buffer.ToArray());
     }
 
     /// <summary>
-    /// arrange 칸(design.md 7절): 줄 { k, away, ptf{st,at}|null, last, cells{xray…trac: {st,det,part,at,ord,manual}|null}, allDone },
+    /// arrange 칸(design.md 7절): 줄 { k, away, ptf{st,at}|null, last, cells{xray…trac: {st,det,part,tags,at,ord,manual}|null}, allDone }
+    /// (tags는 늘 배열, spec reception-pick-lists AC-3502.2),
     /// 종료 줄 { k, endedAt("HH:MM", 수납완료로 빠졌고 시각을 모르면 null), paid }(AC-3305.9·AC-3305.10).
     /// </summary>
     private static void WriteArrange(Utf8JsonWriter writer, Arrange arrange)
@@ -252,6 +259,9 @@ public sealed class Board
                 writer.WriteString("st", StepWire(cell.St));
                 writer.WriteString("det", cell.Det);
                 WriteTextOrNull(writer, "part", cell.Part);
+                writer.WriteStartArray("tags");
+                foreach (var tag in cell.Tags) writer.WriteStringValue(tag);
+                writer.WriteEndArray();
                 WriteTextOrNull(writer, "at", cell.At);
                 if (cell.Ord is int ord) writer.WriteNumber("ord", ord);
                 else writer.WriteNull("ord");

@@ -153,7 +153,7 @@ public class ArrangeBuilderTests
         Assert.Equal("허리 통증", row.GetProperty("last").GetString());
         Assert.Equal(new[] { "xray", "sono", "carm", "pt", "ds", "eswt", "trac" }, row.GetProperty("cells").EnumerateObject().Select(p => p.Name));
         Assert.Equal(JsonValueKind.Null, row.GetProperty("cells").GetProperty("xray").ValueKind);
-        Assert.Equal(new[] { "st", "det", "part", "at", "ord", "manual" }, row.GetProperty("cells").GetProperty("sono").EnumerateObject().Select(p => p.Name));
+        Assert.Equal(new[] { "st", "det", "part", "tags", "at", "ord", "manual" }, row.GetProperty("cells").GetProperty("sono").EnumerateObject().Select(p => p.Name));
         Assert.False(row.GetProperty("allDone").GetBoolean());
         // 열쇠(무작위 16진수)는 빼고 본다
         var text = row.GetRawText().Replace(scene.Key("V1"), "");
