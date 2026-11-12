@@ -1,0 +1,12 @@
+{
+  "status": "approved",
+  "feature": "mix-city-label",
+  "approved_at": "2026-11-12T21:34:35Z",
+  "approved_via": "user-prompt",
+  "session_id": "ee5f8211-1d94-48a5-a449-8876f3648d05",
+  "spec_sha256": "90f77cb5fcdba4656ceb3ce93c72b44165708b0bb1756e234b180b4c9acb2707",
+  "scope": [
+    "src/lib/analytics/patientMix.test.ts",
+    "src/lib/analytics/patientMix.ts"
+  ]
+}

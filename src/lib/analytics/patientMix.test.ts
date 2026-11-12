@@ -624,3 +624,58 @@ describe('AC-2707.1 환자 구성 표 복사 글', () => {
     expect(lines.slice(-3)).toEqual(['동네(동)', '매탄동\t1,200명\t1,200건\t100%', '봉담읍\t1명\t1건\t1% 미만'])
   })
 })
+
+describe('mix-city-label 동네 이름 겹침 구별', () => {
+  // 1위 시 = 성남시(3명). 4번은 주소를 시 없이 '수정구'부터 적었다
+  const SPLIT_PEOPLE: [number, Person][] = [
+    [1, person(null, '경기 성남시 수정구 신흥동')],
+    [2, person(null, '경기 성남시 수정구 신흥동')],
+    [3, person(null, '경기 성남시 중원구 금광동')],
+    [4, person(null, '수정구 신흥동')],
+  ]
+
+  it('AC-3901.1: 1위 시 안의 구와 이름이 같은 시 없는 구는 (시 없음)을 붙이고, 숫자는 합치지 않는다', () => {
+    const mix = patientMix(onePerPerson(SPLIT_PEOPLE), 'all')
+    expect(counts(mix.city)).toEqual([
+      ['수정구', 2, 2],
+      ['수정구(시 없음)', 1, 1],
+      ['중원구', 1, 1],
+    ])
+    expect(kinds(mix.city)).toEqual(['row', 'row', 'row'])
+  })
+
+  it('AC-3901.1: 지난 기간 명도 두 줄이 따로다', () => {
+    const visits = [...SPLIT_PEOPLE.map(([p]) => visit(p, DAY)), visit(1, '2026-10-10'), visit(2, '2026-10-10'), visit(4, '2026-10-10')]
+    const mix = patientMix(input(visits, SPLIT_PEOPLE, [], { previous: { from: '2026-10-01', to: '2026-10-31' } }), 'all')
+    expect(mix.city.map((row) => [row.label, row.previous])).toEqual([
+      ['수정구', 2],
+      ['수정구(시 없음)', 1],
+      ['중원구', 0],
+    ])
+  })
+
+  it('AC-3901.2: 겹치지 않는 시 없는 구·다른 시의 구·구 없는 시는 지금 이름 그대로', () => {
+    const people: [number, Person][] = [
+      [1, person(null, '경기 성남시 수정구 신흥동')],
+      [2, person(null, '경기 성남시 수정구 신흥동')],
+      [3, person(null, '서울 강남구 역삼동')],
+      [4, person(null, '서구 둔산동')],
+      [5, person(null, '경기 용인시 기흥구 구갈동')],
+      [6, person(null, '경기 화성시 봉담읍')],
+    ]
+    expect(labels(patientMix(onePerPerson(people), 'all').city)).toEqual(['수정구', '강남구', '서구', '용인시 기흥구', '화성시'])
+  })
+
+  it('AC-3901.3: [동] 괄호도 바뀐 [구·시] 이름을 쓴다', () => {
+    expect(counts(patientMix(onePerPerson(SPLIT_PEOPLE), 'all').town)).toEqual([
+      ['신흥동 (수정구)', 2, 2],
+      ['금광동', 1, 1],
+      ['신흥동 (수정구(시 없음))', 1, 1],
+    ])
+  })
+
+  it('AC-3901.4: [구·시]와 [동] 줄 이름이 겹치지 않는다', () => {
+    const mix = patientMix(onePerPerson(SPLIT_PEOPLE), 'all')
+    for (const rows of [mix.city, mix.town]) expect(new Set(labels(rows)).size).toBe(rows.length)
+  })
+})

@@ -217,11 +217,17 @@ function topCityOf(city: Tally): string | null {
   return top?.name ?? null
 }
 
-// [구·시] 화면 이름: 1위 시 안의 구는 구 이름만, 다른 시의 구는 '시 구', 구 없는 시·군은 그 이름(AC-2703.5)
-function cityLabeler(topCity: string | null) {
+// [구·시] 화면 이름: 1위 시 안의 구는 구 이름만, 다른 시의 구는 '시 구', 구 없는 시·군은 그 이름(AC-2703.5).
+// 시 없이 적은 구가 1위 시 안의 구 이름과 같으면 '구(시 없음)'으로 구별한다(mix-city-label AC-3901.1)
+function cityLabeler(topCity: string | null, keys: Iterable<string>) {
+  const topDistricts = new Set<string>()
+  for (const key of keys) {
+    const [city, district] = key.split(' ')
+    if (district !== undefined && city === topCity) topDistricts.add(district)
+  }
   return (key: string) => {
     const [city, district] = key.split(' ')
-    if (district === undefined) return city
+    if (district === undefined) return topDistricts.has(city) ? `${city}(시 없음)` : city
     return city === topCity ? district : key
   }
 }
@@ -254,7 +260,7 @@ export function patientMix(input: MixInput, who: MixWho): PatientMix {
   }
   const now = countPeriod(input, { from: input.from, to: input.to }, who, places)
   const before = input.previous ? countPeriod(input, input.previous, who, places) : null
-  const cityLabel = cityLabeler(topCityOf(now.city))
+  const cityLabel = cityLabeler(topCityOf(now.city), now.city.keys())
   const total = now.total.people
   return {
     total: { ...now.total },
