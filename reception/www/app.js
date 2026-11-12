@@ -18,6 +18,8 @@
 //     버려 판의 값으로 되그리고 띠 "저장하지 못했어요…"(AC-3308.9). 같은 칸(줄 표시는 그 표시)에 나가 있는 쓰기가 있으면 누름을 버린다.
 //     답을 기다리는 동안 다시 읽은 판에도 미리 얹은 것을 그대로 얹는다. 204 뒤 다음 판이 오면 내린다
 //   · 되돌리기 띠는 5초. [되돌리기]는 planOf가 준 반대 쓰기를 보낸다(앞 쓰기가 아직 나가 있으면 그 쓰기가 끝난 뒤)
+//   · 목록 고치기 [저장](reception-pick-lists AC-3505.3): POST /api/lists. 204면 띠 "목록을 저장했어요" 뒤 판을 다시 읽고 창을 닫는다.
+//     아니면 띠 "목록을 저장하지 못했어요"이고 창은 그대로다(picks.js). 숨김·끊김 뒤 온 답은 버린다
 //   · '처방 나옴' 열쇠와 끝 시각(60초), 고른 창, [오늘 치료 종료] 펼침, 기록부 자료, 표의 세로 위치는 메모리에만 둔다(AC-3308.11·3310.2)
 //   · 기록부: 오늘 종이(history?from=0)는 상세와 같은 조건(칸·오늘 처방이 바뀌거나 30초)으로만 다시 읽고 직전 종이(prev)는 한 번만 읽는다.
 //     실패한 칸은 다음 저절로 읽기에 다시 본다(AC-3309.3·3309.5). 그 환자가 판에서 사라지면 표(#/a)로 돌아간다
@@ -27,7 +29,7 @@
 //   index.html이 이 파일을 module로 부르면 바로 연다(맨 아래 app). 시험은 app.stop()으로 듣기를 그만둔다
 
 import { createAlert } from './alert.js'
-import { getHistory, getPapers, getPrev, setArrange, setXray } from './api.js'
+import { getHistory, getPapers, getPrev, setArrange, setLists, setXray } from './api.js'
 import { planOf, renderArrange } from './arrange.js'
 import { fillPane, renderBoard, setReading } from './board.js'
 import { renderCharts } from './charts.js'
@@ -49,6 +51,10 @@ const RX_NEW_MS = 60_000
 
 /** 쓰기 실패 띠 (AC-3308.9) */
 const SAVE_FAILED = '저장하지 못했어요. 다시 눌러 주세요'
+
+/** 목록 고치기 저장 띠 (reception-pick-lists AC-3505.3, requirements 기본값) */
+const LISTS_SAVED = '목록을 저장했어요'
+const LISTS_FAILED = '목록을 저장하지 못했어요'
 
 /** 칸 하나를 쓰는 op(같은 칸 쓰기가 나가 있으면 누름을 버린다). 나머지(away·ptf·end)는 줄의 그 표시 하나다 */
 const CELL_OPS = new Set(['step', 'set', 'add', 'remove', 'part'])
@@ -355,7 +361,27 @@ export function startApp() {
       onEnded: (open) => {
         endedOpen = open
       },
+      onLists: saveLists,
     }
+  }
+
+  /**
+   * 목록 고치기 [저장] (reception-pick-lists AC-3505.3): 초안 전체를 보내 204면 띠 "목록을 저장했어요" 뒤 판을 다시 읽고 참,
+   * 아니면 띠 "목록을 저장하지 못했어요"이고 거짓(창은 그대로). 숨김·끊김 뒤 온 답은 버린다(거짓)
+   */
+  function saveLists(picks) {
+    const gen = writeGen
+    const settle = (ok) => {
+      if (gen !== writeGen) return false
+      setToast({ text: ok ? LISTS_SAVED : LISTS_FAILED, undo: null })
+      redrawTable()
+      if (ok) poll.readNow()
+      return ok
+    }
+    return setLists(picks, { signal: poll.signal() }).then(
+      () => settle(true),
+      () => settle(false),
+    )
   }
 
   /** 그 줄의 칸을 누름: '처방 나옴'을 내리고 보낸다(AC-3310.2) */

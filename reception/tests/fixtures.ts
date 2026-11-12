@@ -546,6 +546,8 @@ export interface FakeServer {
   prevs: Map<string, FakePrev | null>
   /** 지난 내원 수를 정해 둔 환자: 열쇠 → 수(없으면 신환 0, 재진 36). 지난 진료기록부 쪽(fakePapers)이 따른다 (reception-memo-papers) */
   pasts: Map<string, number>
+  /** 받은 목록 쓰기 몸들(POST /api/lists, reception-pick-lists AC-3501.3). 맞는 모양이면 판의 picks가 그것으로 바뀐다 */
+  lists: unknown[]
   /** 요청 하나에 답한다. url은 같은 곳 길('/api/board?fresh=1' 모양) */
   answer: (method: string, url: string, body?: string | null) => FakeReply
 }
@@ -663,7 +665,8 @@ function rowsOfBoard(board: FakeBoard): FakeRow[] {
 /**
  * 가짜 도우미(design.md 7절의 길만): GET /api/board(?fresh=1) · GET /api/visit/{k}/history?from=N · POST /api/xray,
  * 그리고 어레인지(reception-arrange design.md 8·9절): POST /api/arrange(판의 arrange를 바꾸고 204) · GET /api/visit/{k}/prev,
- * 지난 진료기록부(reception-memo-papers design.md 4절): GET /api/visit/{k}/papers?from=N.
+ * 지난 진료기록부(reception-memo-papers design.md 4절): GET /api/visit/{k}/papers?from=N,
+ * 고르기 목록(reception-pick-lists AC-3501.3): POST /api/lists(판 picks 모양이면 판의 picks를 바꾸고 204, 아니면 400).
  * 다른 길·그날 판에 없는 열쇠·모양이 틀린 값은 404, 진료보류가 아닌 줄의 표시는 400이다
  */
 export function fakeServer(board: FakeBoard = mockupBoard(), now = '13:43'): FakeServer {
@@ -679,6 +682,7 @@ export function fakeServer(board: FakeBoard = mockupBoard(), now = '13:43'): Fak
     papers: new Map<string, FakePaper>(),
     prevs: new Map<string, FakePrev | null>(),
     pasts: new Map<string, number>(),
+    lists: [],
     answer(method, url, body) {
       const [path = '', query = ''] = url.split('?')
       const params = new URLSearchParams(query)
@@ -696,6 +700,18 @@ export function fakeServer(board: FakeBoard = mockupBoard(), now = '13:43'): Fak
         const row = rowsOfBoard(server.board).find((r) => r.k === papers[1])
         if (!row || !/^from=\d+$/.test(query)) return { status: 404 }
         return { status: 200, body: fakePapers(server.pasts.get(row.k) ?? pastOf(row), Number(params.get('from'))) }
+      }
+      if (method === 'POST' && path === '/api/lists') {
+        let picks: unknown
+        try {
+          picks = JSON.parse(body ?? '')
+        } catch {
+          return { status: 400 }
+        }
+        server.lists.push(picks)
+        if (!isFakePicks(picks)) return { status: 400 }
+        server.board.picks = picks
+        return { status: 204 }
       }
       if (method === 'POST' && path === '/api/arrange') {
         let ask: FakeArrangeAsk
@@ -730,6 +746,22 @@ export function fakeServer(board: FakeBoard = mockupBoard(), now = '13:43'): Fak
     },
   }
   return server
+}
+
+/** 판 picks 모양(이름·개수 규칙은 보지 않는다) */
+function isFakePicks(v: unknown): v is FakePicks {
+  const texts = (list: unknown) => Array.isArray(list) && list.every((item) => typeof item === 'string')
+  const p = v as FakePicks | null
+  return (
+    typeof p === 'object' &&
+    p !== null &&
+    Array.isArray(p.carm?.procs) &&
+    p.carm.procs.every((item) => typeof item?.n === 'string' && typeof item?.noDrug === 'boolean') &&
+    texts(p.carm.drugs) &&
+    texts(p.sono?.parts) &&
+    texts(p.sono?.plains) &&
+    texts(p.sono?.withs)
+  )
 }
 
 /** 판의 엑스레이 칸 줄(진료보류)에 찍음 표시를 얹은 사본 */

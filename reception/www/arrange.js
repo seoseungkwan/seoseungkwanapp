@@ -32,6 +32,8 @@
 //     view.onChart(k)              성함 누름(기록부 열기)
 //     view.onUndo()                띠의 [되돌리기]
 //     view.onSheet(sheet|null) · view.onEnded(open)   창 열고 닫음 · 펼침 바뀜
+//     view.onLists(picks) → Promise<boolean>   목록 고치기 창(picks.js, 머리 [목록 고치기])의 [저장]. 참이면 창을 닫는다(reception-pick-lists AC-3505.3).
+//                        목록 고치기 창은 다시 그려도 지우지 않는다(초안·적던 글·초점이 남게, AC-3505.2). 판에 picks가 없으면 열리지 않는다
 //   planOf(board, { k, op, col?, v?, t? }) → { board, toast, undo }   맞지 않는 쓰기면 받은 판 그대로·toast null·undo null.
 //                      SONO·C-ARM add·part는 판 picks로 본다(도우미 PickLists.IsSono·IsCarm과 같은 규칙, reception-pick-lists AC-3502.3)
 //   CHOICES            X-RAY·PT·도수·충격파·견인 고르기 목록(design.md 4절). C# ArrangeChoices(ArrangeMarks.cs)와 같은 글이다(시험이 견준다).
@@ -40,6 +42,7 @@
 import { clear, el } from './dom.js'
 import { refreshText, topOf } from './board.js'
 import { waitedSpan } from './charts.js'
+import { openLists } from './picks.js'
 
 /** X-RAY 넣기 글 (design.md 4절) */
 const XRAY_TAKE = 'X-ray 찍기'
@@ -159,7 +162,8 @@ export function renderArrange(host, board, view = {}) {
   const redraw = (next) => renderArrange(host, board, { ...view, reading: readingNow(host), ...next })
   const act = actionsOf(host, view, redraw, picks)
 
-  replace(parts.top, topOf(board, { ...view, tab: 'arrange' }))
+  const onPicks = picks ? () => openLists(parts.page, picks, view.onLists) : null
+  replace(parts.top, topOf(board, { ...view, tab: 'arrange', onPicks }))
   replace(parts.asof, `${board.at} 기준 · ${refreshText(board.every)}`)
   const rxNew = new Set(Array.isArray(view.rxNew) ? view.rxNew : [])
   const flash = new Set(Array.isArray(view.flash) ? view.flash : [])
@@ -171,7 +175,7 @@ export function renderArrange(host, board, view = {}) {
   replace(parts.ended, endedOf(arrange.ended, lists, view.endedOpen === true, act))
 
   // 같은 창을 다시 그리면 창 안 세로 위치를 그대로 둔다(긴 SONO 창을 누를 때마다·저절로 다시 그릴 때마다 맨 위로 가지 않게)
-  const before = parts.page.querySelector(':scope > .sheet-back')
+  const before = parts.page.querySelector(':scope > .sheet-back:not(.list-back)')
   const top = before?.querySelector(':scope > .sheet')?.scrollTop ?? 0
   const same = before !== null && drawnSheet.get(parts.page) === sheetKey(view.sheet)
   before?.remove()
@@ -354,7 +358,7 @@ function actionsOf(host, view, redraw, picks) {
   const open = (sheet) => {
     redraw({ sheet })
     call('onSheet', sheet)
-    host.querySelector('.sheet-back > .sheet')?.focus({ preventScroll: true })
+    host.querySelector('.sheet-back:not(.list-back) > .sheet')?.focus({ preventScroll: true })
   }
   const close = () => {
     redraw({ sheet: null })

@@ -24,7 +24,7 @@ const K = fx.ARRANGE_KEYS
 const NAMES = Array.from({ length: 10 }, (_, i) => `가상환자${21 + i}`)
 
 /** 같은 곳 길만: 판·상세·직전·찍음·어레인지 표시 (AC-1413.2) */
-const SAME_PC_API = /^\/api\/(?:board(?:\?fresh=1)?|visit\/[0-9a-f]{16}\/(?:history\?from=\d+|prev)|xray|arrange)$/
+const SAME_PC_API = /^\/api\/(?:board(?:\?fresh=1)?|visit\/[0-9a-f]{16}\/(?:history\?from=\d+|prev)|xray|arrange|lists)$/
 
 // ---- 가짜 도우미 ------------------------------------------------------------------------------------
 
@@ -82,6 +82,11 @@ function boardReads(): number {
 
 function reads(k: string, what: 'history' | 'prev'): number {
   return urls().filter((u) => u === (what === 'history' ? `/api/visit/${k}/history?from=0` : `/api/visit/${k}/prev`)).length
+}
+
+/** 보낸 목록 쓰기 몸들 (reception-pick-lists AC-3501.3) */
+function listWrites(): unknown[] {
+  return calls.filter((c) => c.url === '/api/lists').map((c) => JSON.parse(c.body ?? 'null'))
 }
 
 /** 보낸 어레인지 쓰기 몸들 */
@@ -534,6 +539,101 @@ describe('app.js C-ARM·SONO 넣기', () => {
     const cell = cellOf('가상환자23', 'sono')
     expect([...cell.querySelectorAll(':scope > .det')].map((n) => n.textContent)).toEqual(['오른 어깨', '왼 무릎'])
     expect(textOf(cell, '.tags > .drug')).toBe('DNA')
+  })
+})
+
+// ---- 목록 고치기 (reception-pick-lists AC-3505) -------------------------------------------------------------
+
+/** 목록 고치기 창 */
+function listSheet(): HTMLElement | null {
+  return appEl().querySelector('.sheet-back.list-back > .sheet.list-sheet')
+}
+
+/** 목록 고치기 창의 무리(머리 이름)에 적고 [더하기] */
+function addToList(label: string, text: string) {
+  const group = [...appEl().querySelectorAll('.list-sheet > .lt-groups > section.lt-group')].find((g) => g.querySelector('h3')?.firstChild?.textContent === label)!
+  const input = group.querySelector('input')!
+  input.value = text
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  group.querySelector<HTMLButtonElement>('form.lt-add > button[type="submit"]')!.click()
+}
+
+function listNames(label: string): string[] {
+  const group = [...appEl().querySelectorAll('.list-sheet > .lt-groups > section.lt-group')].find((g) => g.querySelector('h3')?.firstChild?.textContent === label)!
+  return [...group.querySelectorAll('li.lt-row > .lt-name')].map((n) => n.textContent ?? '')
+}
+
+describe('app.js 목록 고치기', () => {
+  it('AC-3505.3: [저장]은 초안 전체를 POST /api/lists(X-Reception: 1)로 보내 204면 창을 닫고 띠 "목록을 저장했어요" 뒤 판을 다시 읽는다. 넣기 창은 새 목록을 쓴다', async () => {
+    await open({ hash: '#/a' })
+    appEl().querySelector<HTMLButtonElement>('header.top button.list-open')!.click()
+    expect(listSheet()).not.toBeNull()
+    addToList('시술', '꼬리뼈')
+    const before = boardReads()
+    listSheet()!.querySelector<HTMLButtonElement>('.sheet-go > button.go')!.click()
+    await settle()
+    const want = fx.defaultPicks()
+    want.carm.procs.push({ n: '꼬리뼈', noDrug: false })
+    expect(listWrites()).toEqual([want])
+    const call = calls.find((c) => c.url === '/api/lists')!
+    expect(call.method).toBe('POST')
+    expect(new Headers(call.init.headers).get('X-Reception')).toBe('1')
+    expect(listSheet()).toBeNull()
+    expect(toastText()).toBe('목록을 저장했어요')
+    expect(undoButton()).toBeNull()
+    expect(boardReads()).toBe(before + 1)
+    expect(server.board.picks).toEqual(want)
+    cellOf('가상환자28', 'carm').click()
+    expect([...appEl().querySelectorAll('.sheet > .opts[data-g="proc"] > button.opt')].map((b) => b.textContent)).toEqual(['목', '등', '허리', '리덕션', '꼬리뼈'])
+    await wait(5000)
+    expect(toastText()).toBeNull()
+    for (const u of urls()) expect(u).toMatch(SAME_PC_API)
+  })
+
+  it('AC-3505.3 · AC-3505.2: 저장이 실패하면(403·연결 안 됨) 창과 초안을 그대로 두고 띠 "목록을 저장하지 못했어요"다. 저절로 다시 읽어도 창·초안·적던 글이 남는다', async () => {
+    await open({ hash: '#/a' })
+    appEl().querySelector<HTMLButtonElement>('header.top button.list-open')!.click()
+    addToList('시술', '꼬리뼈')
+    statusNext('/api/lists', 403)
+    listSheet()!.querySelector<HTMLButtonElement>('.sheet-go > button.go')!.click()
+    await settle()
+    expect(listSheet()).not.toBeNull()
+    expect(listNames('시술')).toEqual(['목', '등', '허리', '리덕션', '꼬리뼈'])
+    expect(toastText()).toBe('목록을 저장하지 못했어요')
+    const sheet = listSheet()
+    const input = sheet!.querySelector('input')!
+    input.value = '적던'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await wait(5000)
+    expect(boardReads()).toBe(2)
+    expect(listSheet()).toBe(sheet)
+    expect(input.value).toBe('적던')
+    expect(listNames('시술')).toEqual(['목', '등', '허리', '리덕션', '꼬리뼈'])
+    failNext('/api/lists')
+    listSheet()!.querySelector<HTMLButtonElement>('.sheet-go > button.go')!.click()
+    await settle()
+    expect(listSheet()).not.toBeNull()
+    expect(toastText()).toBe('목록을 저장하지 못했어요')
+    expect(server.board.picks).toEqual(fx.defaultPicks())
+  })
+
+  it('AC-3505.3 · AC-3312.2: [취소]는 보내지 않고 닫는다. 목록 창이 열린 채 숨기면 창을 지우고(보내지 않음) 다시 보이면 창 없이 어레인지 표다', async () => {
+    await open({ hash: '#/a' })
+    appEl().querySelector<HTMLButtonElement>('header.top button.list-open')!.click()
+    addToList('시술', '꼬리뼈')
+    listSheet()!.querySelector<HTMLButtonElement>('.sheet-go > button.sheet-close')!.click()
+    expect(listSheet()).toBeNull()
+    appEl().querySelector<HTMLButtonElement>('header.top button.list-open')!.click()
+    expect(listNames('시술')).toEqual(['목', '등', '허리', '리덕션'])
+    hide()
+    await settle()
+    expect(document.querySelector('.list-sheet')).toBeNull()
+    expectNoPatient()
+    show()
+    await settle()
+    expect(arrangePage()).not.toBeNull()
+    expect(listSheet()).toBeNull()
+    expect(listWrites()).toEqual([])
   })
 })
 

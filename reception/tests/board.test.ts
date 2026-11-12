@@ -17,12 +17,16 @@ interface View {
   /** 고른 탭 'board'|'arrange' (reception-arrange AC-3308.1) */
   tab?: string
   onTab?: (tab: string) => void
+  /** 어레인지 머리의 [목록 고치기]를 누름 (reception-pick-lists AC-3505.1) */
+  onPicks?: () => void
 }
 
 interface BoardJs {
   renderBoard: (host: HTMLElement, board: FakeBoard, view?: View) => HTMLElement
   setReading: (host: HTMLElement, reading: boolean) => void
   fillPane: (host: HTMLElement, nodes: Node | Node[] | null) => void
+  /** 머리(header.top) 안 요소들 (어레인지 화면도 쓴다) */
+  topOf?: (board: FakeBoard, view?: View) => Node[]
 }
 
 // 화면 파일은 빌드 없는 JS라 형 선언이 없다(design.md 결정 '화면은 빌드 없는 JS'). 경로를 값으로 두어 형 검사가 묻지 않게 한다
@@ -557,6 +561,43 @@ describe('board.js 목록 그리기', () => {
     expect(textOf(app, 'nav.tabs .tab-n')).toBe('0명')
     // 탭은 문서 제목을 건드리지 않는다(AC-1407.5)
     expect(document.title).toBe('')
+  })
+
+  it('AC-3505.1: 어레인지 탭 머리(.top-status) 맨 앞에 [목록 고치기](☰ 그림은 aria-hidden 선 그림 svg.list-icon)가 있고 누르면 onPicks를 한 번 부른다. onPicks가 없으면 꺼져 있다. 접수 현황 탭 머리에는 없다', () => {
+    expect(typeof view.topOf).toBe('function')
+    const onPicks = vi.fn()
+    const header = document.createElement('header')
+    header.className = 'top'
+    header.append(...(view.topOf?.(fx.arrangeMockupBoard(), { tab: 'arrange', onPicks }) ?? []))
+    document.body.appendChild(header)
+    const status = header.querySelector('.top-status')
+    expect(shapeOf(status)).toEqual(['button.list-open', 'span.conn', 'button.refresh'])
+    const button = status!.querySelector<HTMLButtonElement>('button.list-open')!
+    expect(button.getAttribute('type')).toBe('button')
+    expect(button.disabled).toBe(false)
+    expect(button.textContent).toBe('목록 고치기')
+    expect(labelOf(button)).toBe('목록 고치기')
+    const icon = button.firstElementChild!
+    expect([icon.namespaceURI, icon.tagName, icon.getAttribute('class'), icon.getAttribute('aria-hidden'), icon.getAttribute('focusable')]).toEqual([
+      'http://www.w3.org/2000/svg',
+      'svg',
+      'list-icon',
+      'true',
+      'false',
+    ])
+    expect([icon.getAttribute('fill'), icon.getAttribute('stroke')]).toEqual(['none', 'currentColor'])
+    expect(icon.querySelectorAll('path').length).toBeGreaterThan(0)
+    button.click()
+    expect(onPicks).toHaveBeenCalledTimes(1)
+
+    const off = document.createElement('header')
+    off.append(...(view.topOf?.(fx.arrangeMockupBoard(), { tab: 'arrange' }) ?? []))
+    expect(off.querySelector<HTMLButtonElement>('.top-status > button.list-open')?.disabled).toBe(true)
+
+    const app = appHost()
+    view.renderBoard(app, fx.arrangeMockupBoard(), { onPicks })
+    expect(app.querySelector('.list-open')).toBeNull()
+    expect(shapeOf(app.querySelector('header.top .top-status'))).toEqual(['span.conn', 'button.refresh'])
   })
 
   it('AC-3403.1: 접수 현황 탭 머리에는 이 기기에 메모가 있어도 메모 칸이 없다(어레인지 탭에만 있다)', () => {
