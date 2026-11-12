@@ -865,6 +865,65 @@ describe('AC-509.4 splitJob: 메모리의 진료 줄 → 처방별 결과', () =
     )
   })
 
+  it('AC-3801.4: 30일 기간 — 최초 내원일(10-15)에 X, 다시 온 날(10-20)에 Y를 받은 환자는 Y 줄에서 재진. 머리 줄·날짜별은 지금 규칙 값 그대로', () => {
+    // 가짜 코드: XX001(초진진찰료 자리), YY001(재진진찰료 자리). 1 = 10-15 첫 방문 뒤 10-20 다시 옴, 2 = 옛 환자, 3 = 10-20 첫 방문
+    const rows = [
+      [chart(1), '20261015', 'XX001', '20261015'],
+      [chart(2), '20261015', 'XX001', '20240101'],
+      [chart(1), '20261020', 'YY001', '20261015'],
+      [chart(3), '20261020', 'XX001', '20261020'],
+    ]
+    const codes = [
+      ['XX001', '가짜초진'],
+      ['YY001', '가짜재진'],
+    ]
+    const days = [
+      ['20261015', 2, 2, 1],
+      ['20261020', 2, 2, 1],
+    ]
+    const summary = { visits: 4, patients: 3, newPatients: 2, noChart: 0, duplicate: 0, noFirst: 0 }
+    const view = splitIn(splitJob(memoryOf({ rows, codes, days, summary }), { from: '2026-10-01', to: '2026-10-30' }))
+    expect(view.split).toEqual({
+      from: '2026-10-01',
+      to: '2026-10-30',
+      visits: 4,
+      patients: 4,
+      newPatients: 2,
+      returning: 2,
+      invalidCodes: 0,
+      lines: [
+        { code: 'XX001', label: '가짜초진', newPatients: 2, returning: 1, total: 3 },
+        { code: 'YY001', label: '가짜재진', newPatients: 0, returning: 1, total: 1 },
+      ],
+    })
+    expect(view.headline).toBe('2026-10-01 ~ 2026-10-30 (30일) · 외래 환자 4명 (신환 2명 · 재진 2명) · 내원 4건')
+    expect(view.days).toEqual([
+      {
+        date: '2026-10-15',
+        visits: 2,
+        patients: 2,
+        newPatients: 1,
+        returning: 1,
+        lines: [
+          { code: 'XX001', label: '가짜초진', newPatients: 1, returning: 1, total: 2 },
+          { code: 'YY001', label: '가짜재진', newPatients: 0, returning: 0, total: 0 },
+        ],
+      },
+      {
+        date: '2026-10-20',
+        visits: 2,
+        patients: 2,
+        newPatients: 1,
+        returning: 1,
+        lines: [
+          { code: 'XX001', label: '가짜초진', newPatients: 1, returning: 0, total: 1 },
+          { code: 'YY001', label: '가짜재진', newPatients: 0, returning: 1, total: 1 },
+        ],
+      },
+    ])
+    expectNoPatientInSplit(view)
+  })
+
   it('결과에 환자 번호·진료 줄이 없다: 처방마다 수와 이름뿐이다', () => {
     const view = splitIn(splitJob(memoryOf(), WHOLE))
     expect(Object.keys(view).sort()).toEqual(['days', 'headline', 'kind', 'split', 'text'])
