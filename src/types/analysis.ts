@@ -15,7 +15,9 @@ export type PatientDay = { patient: number; date: string; receptions: number; fi
 export type FollowUp = [number, number, number, number]
 
 // 처방코드 그룹(예: 도수치료 10·20·30분). id는 영문·숫자·붙임표 1~64자(나중 rx_groups.id). 즐겨찾기는 코드 하나짜리 그룹
-export type RxGroupDef = { id: string; codes: string[] }
+// out = 그날 하나라도 받으면 세지 않는 처방, cond = 넣는 처방 code는 unless 중 하나라도 같은 날 받으면 그 처방으로는 세지 않음(spec group-exclude). 없으면 빈 것
+// 같은 모양을 types/rxGroups.ts(RxCond)에도 두는 까닭: 환자 자료 구역 타입이 화면 타입 파일을 부르지 않게
+export type RxGroupDef = { id: string; codes: string[]; out?: string[]; cond?: Array<{ code: string; unless: string[] }> }
 
 export type RxStats = {
   code: string
