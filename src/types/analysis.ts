@@ -14,8 +14,10 @@ export type PatientDay = { patient: number; date: string; receptions: number; fi
 // 1회 · 2회 · 3~5회 · 6회+ (환자 수). 네 칸의 합 = 그 처방의 patients
 export type FollowUp = [number, number, number, number]
 
-// 처방코드 그룹(예: 도수치료 10·20·30분). id는 영문·숫자·붙임표 1~64자(나중 rx_groups.id). 즐겨찾기는 코드 하나짜리 그룹
-export type RxGroupDef = { id: string; codes: string[] }
+// 처방코드 그룹(예: 도수치료 10·20·30분). id는 영문·숫자·붙임표 1~64자(나중 rx_groups.id). 즐겨찾기는 코드 하나짜리 그룹.
+// exclude = 제외할 처방: 그날 codes 중 하나를 받았어도 같은 날 이 중 하나를 받은 환자는 그 그룹에서 세지 않는다.
+// 없음·빈 배열 = 제외 없음 (specs/rx-group-exclude)
+export type RxGroupDef = { id: string; codes: string[]; exclude?: string[] }
 
 export type RxStats = {
   code: string
@@ -28,7 +30,8 @@ export type RxStats = {
   regions: { name: string; patients: number }[] // 이 칸에서 이 처방을 받은 환자의 동네별 수. 이름 순, null 주소는 NO_ADDRESS('주소 없음')
 }
 
-// 그룹 코드 중 하나라도 받은 환자. followup은 그룹 코드 중 하나라도 받은 서로 다른 날 수
+// 그룹 코드 중 하나라도 받은 환자. followup은 그룹 코드 중 하나라도 받은 서로 다른 날 수.
+// 같은 날 그 그룹의 제외할 처방(RxGroupDef.exclude)을 받은 환자·날은 어디에도 넣지 않는다
 export type GroupStats = { id: string; patients: number; newPatients: number; returning: number; followup: FollowUp }
 
 // 첫 신환일(묶음 전체에서 가장 이른 신환 외래 줄의 날)이 이 칸에 있는 환자(cohort) 중

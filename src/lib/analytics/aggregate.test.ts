@@ -133,6 +133,13 @@ function naiveAggregate(rows: ConsumptionRow[], groups: RxGroupDef[] = []): Aggr
   }
   const daysIn = (p: number, code: string, day: string, from: number, to: number) =>
     [...(rxDays.get(`${p}|${code}`) ?? [])].filter((date) => diffDays(day, date) >= from && diffDays(day, date) <= to).length
+  // 제외할 처방(rx-group-exclude): 묶음마다 그날 외래 줄에 제외할 처방(대소문자 무시)이 있는 '환자|날'. exclude 없음·빈 배열이면 빈 모음
+  const excludedOf = new Map(
+    groups.map((group) => {
+      const exclude = new Set((group.exclude ?? []).map((code) => code.toUpperCase()))
+      return [group, new Set(outpatient.filter((r) => exclude.has(r.rxCode.toUpperCase())).map((r) => `${r.patient}|${r.date}`))] as const
+    }),
+  )
   const againOf = (day: string, inDay: ConsumptionRow[]): RxAgain[] =>
     [...new Set(inDay.map((r) => r.rxCode))].sort().flatMap((code) => {
       const starters = [...new Set(inDay.filter((r) => r.rxCode === code).map((r) => r.patient))].filter((p) => daysIn(p, code, day, -30, -1) === 0)
@@ -179,7 +186,8 @@ function naiveAggregate(rows: ConsumptionRow[], groups: RxGroupDef[] = []): Aggr
       const groupStats = [...groups]
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
         .map((group): GroupStats => {
-          const cases = onePerDay(inBucket.filter((r) => group.codes.includes(r.rxCode)))
+          const excluded = excludedOf.get(group) ?? new Set<string>()
+          const cases = onePerDay(inBucket.filter((r) => group.codes.includes(r.rxCode) && !excluded.has(`${r.patient}|${r.date}`)))
           const groupPatients = [...new Set(cases.map((r) => r.patient))]
           return {
             id: group.id,
@@ -774,6 +782,72 @@ describe('AC-006.1·AC-006.2·AC-006.3·AC-006.4 가짜 파일', () => {
     expect(performance.now() - start).toBeLessThan(1000)
     expect(agg.month.every((b) => b.groups.length === 3)).toBe(true)
   })
+
+  // ── 제외할 처방(rx-group-exclude) ──
+  // 넣은 처방은 앞 코드, 제외할 처방은 같은 묶음에 없는 코드. 다른 묶음의 넣은 처방을 제외할 처방으로 쓴 것·소문자로 쓴 것·줄에 없는 것을 섞는다
+  const excludingGroups = (codes: readonly string[]): RxGroupDef[] => [
+    { id: 'g-b', codes: [codes[1], codes[4]], exclude: [codes[0]] },
+    { id: 'g-a', codes: codes.slice(0, 3), exclude: [codes[5], codes[6].toLowerCase()] },
+    { id: 'g-c', codes: [codes[5]] },
+    { id: 'g-none', codes: ['NOPE0'], exclude: [codes[1]] },
+    { id: 'g-nope', codes: [codes[3]], exclude: ['NOPE9'] },
+  ]
+  const withoutExclude = (groups: readonly RxGroupDef[]): RxGroupDef[] => groups.map(({ id, codes }) => ({ id, codes }))
+  const groupPatients = (agg: Aggregates, grain: Grain, id: string) => agg[grain].map((b) => b.groups.find((g) => g.id === id)?.patients ?? 0)
+
+  it('AC-2703.1·AC-2703.3·AC-2703.4: 가짜 파일 — 제외할 처방이 있는 묶음도 느리지만 뻔한 기준과 모든 칸이 같다', SLOW, () => {
+    const { rows } = parsed()
+    const codes = [...new Set(rows.map((r) => r.rxCode))].sort()
+    const groups = excludingGroups(codes)
+    const agg = aggregate(rows, groups)
+    expect(agg).toEqual(naiveAggregate(rows, groups))
+    // 빈 비교로 통과하지 않게: 제외할 처방이 실제로 환자를 뺐다(제외 없는 같은 묶음보다 적은 날이 있다)
+    const plain = aggregate(rows, withoutExclude(groups))
+    for (const id of ['g-a', 'g-b']) {
+      const fewer = groupPatients(agg, 'day', id).map((n, i) => n - groupPatients(plain, 'day', id)[i])
+      expect(fewer.every((d) => d <= 0)).toBe(true)
+      expect(fewer.some((d) => d < 0)).toBe(true)
+    }
+    expect(groupPatients(agg, 'month', 'g-c')).toEqual(groupPatients(plain, 'month', 'g-c')) // 제외할 처방이 없는 묶음은 그대로
+    expect(groupPatients(agg, 'month', 'g-nope')).toEqual(groupPatients(plain, 'month', 'g-nope')) // 줄에 없는 코드만 제외하면 그대로
+  })
+
+  it('AC-2703.2: 가짜 파일 — 제외할 처방이 있는 묶음도 줄 순서를 뒤집어도 같은 결과', () => {
+    const { rows } = parsed()
+    const groups = excludingGroups([...new Set(rows.map((r) => r.rxCode))].sort())
+    expect(aggregate([...rows].reverse(), groups)).toEqual(aggregate(rows, groups))
+  })
+
+  it('AC-2703.6: 가짜 파일 — exclude가 빈 배열인 묶음은 exclude 열쇠가 없는 묶음과 모든 칸이 같다', () => {
+    const { rows } = parsed()
+    const plain = withoutExclude(excludingGroups([...new Set(rows.map((r) => r.rxCode))].sort()))
+    const empty = plain.map((group) => ({ ...group, exclude: [] }))
+    expect(aggregate(rows, empty)).toEqual(aggregate(rows, plain))
+  })
+
+  it('AC-2703.6: 제외할 처방이 있는 묶음을 넣어도 10만 줄을 1초 안에 센다', SLOW, () => {
+    const bytes = toCsvBytes(buildFakeBitTable({ rows: 100_000 }), 'utf8-bom')
+    const { rows } = parsedOf(parseBitFile(bytes, createPatientIds()))
+    expect(rows.length).toBe(100_000)
+    const codes = [...new Set(rows.map((r) => r.rxCode))].sort()
+    const groups: RxGroupDef[] = [
+      { id: 'g-a', codes: codes.slice(0, 3), exclude: [codes[5], codes[7]] },
+      { id: 'g-b', codes: codes.slice(3, 6), exclude: [codes[0]] },
+      { id: 'g-c', codes: [codes[8]] },
+    ]
+    const start = performance.now()
+    const agg = aggregate(rows, groups)
+    expect(performance.now() - start).toBeLessThan(1000)
+    expect(agg.month.every((b) => b.groups.length === 3)).toBe(true)
+    // 제외가 실제로 일했다: 제외할 처방이 있는 묶음은 제외 없는 같은 묶음보다 환자가 적은 날이 있고 많은 날은 없다
+    const plain = aggregate(rows, withoutExclude(groups))
+    for (const id of ['g-a', 'g-b']) {
+      const fewer = groupPatients(agg, 'day', id).map((n, i) => n - groupPatients(plain, 'day', id)[i])
+      expect(fewer.every((d) => d <= 0)).toBe(true)
+      expect(fewer.some((d) => d < 0)).toBe(true)
+    }
+    expect(groupPatients(agg, 'day', 'g-c')).toEqual(groupPatients(plain, 'day', 'g-c'))
+  })
 })
 
 // ── 처방별 재진 ───────────────────────────────────────────
@@ -961,6 +1035,178 @@ describe('AC-1205.2 묶음 코드 맞추기는 대소문자를 가리지 않는�
       ['ESWT1', 1],
       ['eswt1', 1],
     ])
+  })
+})
+
+// ── 처방별 추세 묶음의 제외할 처방(rx-group-exclude) ──────
+
+// 묶음 '표층열만' = 넣은 처방 MM010, 제외할 처방 ESWT7. 코드·이름은 지어낸 값이다
+const HEAT_ONLY: RxGroupDef = { id: 'g-heat', codes: ['MM010'], exclude: ['ESWT7'] }
+const heat = (over: Partial<ConsumptionRow> = {}) => row({ rxCode: 'MM010', rxName: '가짜 표층열', rxType: '물리치료', ...over })
+const eswt = (over: Partial<ConsumptionRow> = {}) => row({ rxCode: 'ESWT7', rxName: '가짜 충격파', rxType: '물리치료', ...over })
+const withoutGroups = (agg: Aggregates) => GRAINS.map((grain) => agg[grain].map((bucket) => ({ ...bucket, groups: [] })))
+
+describe('AC-2703.1 그날 묶음 처방을 받고 같은 날 제외할 처방은 받지 않은 환자만 센다', () => {
+  // 1번: 월 MM010+ESWT7(신환), 화 MM010 · 2번: 월 MM010(재진) · 3번: 월 ESWT7만
+  const rows = [
+    heat({ patient: 1, date: MON, firstVisit: true }),
+    eswt({ patient: 1, date: MON, firstVisit: true }),
+    heat({ patient: 2, date: MON, firstVisit: false }),
+    heat({ patient: 1, date: TUE, firstVisit: false }),
+    eswt({ patient: 3, date: MON, firstVisit: false }),
+  ]
+
+  it('AC-2703.1: 1일 1건(2번 환자, 신환·재진도 2번 것만)·2일 1건(1번 환자)', () => {
+    const agg = aggregate(rows, [HEAT_ONLY])
+    expect(bucketOf(agg, 'day', MON).groups).toEqual([{ id: 'g-heat', patients: 1, newPatients: 0, returning: 1, followup: [1, 0, 0, 0] }])
+    expect(bucketOf(agg, 'day', TUE).groups).toEqual([{ id: 'g-heat', patients: 1, newPatients: 0, returning: 1, followup: [1, 0, 0, 0] }])
+  })
+
+  it('AC-2703.1: 다른 날 받은 제외할 처방은 상관없다 — 주 칸은 1번(화)·2번(월) 두 명, 각 하루', () => {
+    const week = groupOf(bucketOf(aggregate(rows, [HEAT_ONLY]), 'week', MON), 'g-heat')
+    expect(week).toEqual({ id: 'g-heat', patients: 2, newPatients: 1, returning: 1, followup: [2, 0, 0, 0] })
+  })
+
+  it('AC-2703.1: 처방 줄·환자 수·지역·재방문은 그대로다(묶음 숫자만 뺀다)', () => {
+    const agg = aggregate(rows, [HEAT_ONLY])
+    expect(withoutGroups(agg)).toEqual(withoutGroups(aggregate(rows)))
+    const mon = bucketOf(agg, 'day', MON)
+    expect(rxOf(mon, 'MM010').patients).toBe(2)
+    expect(rxOf(mon, 'ESWT7').patients).toBe(2)
+    expect(mon.totals.patients).toBe(3)
+  })
+})
+
+describe('AC-2703.2 줄 차례와 상관없다', () => {
+  it('AC-2703.2: 같은 환자·같은 날 제외할 처방 줄이 묶음 처방 줄보다 앞이든 뒤든 결과가 같다', () => {
+    const before = aggregate([eswt({ patient: 1 }), heat({ patient: 1 }), heat({ patient: 2 })], [HEAT_ONLY])
+    const after = aggregate([heat({ patient: 1 }), eswt({ patient: 1 }), heat({ patient: 2 })], [HEAT_ONLY])
+    expect(groupOf(bucketOf(after, 'day', MON), 'g-heat')?.patients).toBe(1)
+    expect(after).toEqual(before)
+  })
+
+  it('AC-2703.2: 제외할 처방 줄이 묶음 처방 줄 사이·여러 날 뒤에 와도 결과가 같다', () => {
+    const rows = [
+      heat({ patient: 1, date: MON }),
+      heat({ patient: 1, date: TUE }),
+      heat({ patient: 2, date: MON }),
+      heat({ patient: 1, date: MON }), // 같은 날 같은 처방 줄 하나 더
+      eswt({ patient: 1, date: MON }),
+    ]
+    const agg = aggregate(rows, [HEAT_ONLY])
+    expect(groupOf(bucketOf(agg, 'day', MON), 'g-heat')?.patients).toBe(1)
+    expect(groupOf(bucketOf(agg, 'week', MON), 'g-heat')).toMatchObject({ patients: 2, followup: [2, 0, 0, 0] })
+    expect(aggregate([...rows].reverse(), [HEAT_ONLY])).toEqual(agg)
+  })
+})
+
+describe('AC-2703.3 제외할 처방 맞추기는 대소문자를 가리지 않고 외래 줄만 본다', () => {
+  it('AC-2703.3: 제외할 처방 eswt7 · 줄 코드 ESWT7 → 같은 코드로 보고 뺀다', () => {
+    const agg = aggregate([heat({ patient: 1 }), eswt({ patient: 1 }), heat({ patient: 2 })], [{ id: 'g-heat', codes: ['MM010'], exclude: ['eswt7'] }])
+    expect(groupOf(bucketOf(agg, 'day', MON), 'g-heat')?.patients).toBe(1)
+  })
+
+  it('AC-2703.3: 제외할 처방 ESWT7 · 줄 코드 eswt7·Eswt7 → 같은 코드로 보고 뺀다', () => {
+    const agg = aggregate(
+      [heat({ patient: 1 }), eswt({ patient: 1, rxCode: 'eswt7' }), heat({ patient: 2 }), eswt({ patient: 2, rxCode: 'Eswt7' }), heat({ patient: 3 })],
+      [HEAT_ONLY],
+    )
+    expect(groupOf(bucketOf(agg, 'day', MON), 'g-heat')?.patients).toBe(1)
+  })
+
+  it('AC-2703.3: 입원 줄(outpatient: false)의 제외할 처방은 보지 않고, outpatient null 줄은 외래로 본다', () => {
+    const agg = aggregate(
+      [
+        heat({ patient: 1, firstVisit: true }),
+        eswt({ patient: 1, firstVisit: true, outpatient: false }), // 입원 줄 → 1번은 그대로 든다
+        heat({ patient: 2, firstVisit: false }),
+        eswt({ patient: 2, firstVisit: false, outpatient: null }), // 외래로 봄 → 2번은 빠진다
+      ],
+      [HEAT_ONLY],
+    )
+    expect(bucketOf(agg, 'day', MON).groups).toEqual([{ id: 'g-heat', patients: 1, newPatients: 1, returning: 0, followup: [1, 0, 0, 0] }])
+  })
+})
+
+describe('AC-2703.4 제외는 그 묶음에만 든다', () => {
+  it('AC-2703.4: 가(MM010 제외 ESWT7)·나(ESWT7) — 같은 날 두 코드를 받은 1번 환자는 나에만 든다', () => {
+    const agg = aggregate(
+      [heat({ patient: 1, firstVisit: true }), eswt({ patient: 1, firstVisit: true }), heat({ patient: 2, firstVisit: false })],
+      [
+        { id: 'g-ga', codes: ['MM010'], exclude: ['ESWT7'] },
+        { id: 'g-na', codes: ['ESWT7'] },
+      ],
+    )
+    expect(bucketOf(agg, 'day', MON).groups).toEqual([
+      { id: 'g-ga', patients: 1, newPatients: 0, returning: 1, followup: [1, 0, 0, 0] }, // 2번
+      { id: 'g-na', patients: 1, newPatients: 1, returning: 0, followup: [1, 0, 0, 0] }, // 1번
+    ])
+  })
+
+  it('AC-2703.4: 묶음마다 자기 제외할 처방으로만 뺀다(묶음 차례와 id 차례가 달라도)', () => {
+    const agg = aggregate(
+      [
+        heat({ patient: 1 }),
+        eswt({ patient: 1 }),
+        heat({ patient: 2 }),
+        row({ patient: 2, rxCode: 'D1001' }),
+        heat({ patient: 3 }),
+      ],
+      [
+        { id: 'g-z', codes: ['MM010'], exclude: ['ESWT7'] }, // 1번 뺌 → 2·3번
+        { id: 'g-a', codes: ['MM010'] }, // 제외 없음 → 1·2·3번
+        { id: 'g-m', codes: ['MM010'], exclude: ['D1001'] }, // 2번 뺌 → 1·3번
+      ],
+    )
+    expect(bucketOf(agg, 'day', MON).groups.map((g) => [g.id, g.patients])).toEqual([
+      ['g-a', 3],
+      ['g-m', 2],
+      ['g-z', 2],
+    ])
+  })
+})
+
+describe('AC-2703.5 다 빠진 날은 묶음 줄이 없고, F/U는 빼지 않은 날만 센다', () => {
+  // 1번 환자: 월 MM010 · 화 MM010+ESWT7 · 수 MM010
+  const rows = [heat({ date: MON }), heat({ date: TUE }), eswt({ date: TUE }), heat({ date: WED })]
+
+  it('AC-2703.5: 화요일 칸은 있지만 그 칸의 groups에 묶음 줄이 없다(0줄도 만들지 않는다)', () => {
+    const agg = aggregate(rows, [HEAT_ONLY])
+    const tue = bucketOf(agg, 'day', TUE)
+    expect(tue.rx.map((r) => r.code)).toEqual(['ESWT7', 'MM010'])
+    expect(tue.groups).toEqual([])
+    expect(groupOf(bucketOf(agg, 'day', MON), 'g-heat')?.patients).toBe(1)
+    expect(groupOf(bucketOf(agg, 'day', WED), 'g-heat')?.patients).toBe(1)
+  })
+
+  it('AC-2703.5: 주·달 칸 F/U는 뺀 날을 세지 않는다(3일 중 2일 → 2회)', () => {
+    const agg = aggregate(rows, [HEAT_ONLY])
+    for (const [grain, key] of [
+      ['week', MON],
+      ['month', monthOf(MON)],
+    ] as const) {
+      expect(groupOf(bucketOf(agg, grain, key), 'g-heat')).toEqual({ id: 'g-heat', patients: 1, newPatients: 0, returning: 1, followup: [0, 1, 0, 0] })
+    }
+  })
+
+  it('AC-2703.5: 받은 날마다 제외할 처방도 받은 환자뿐이면 일·주·달 어느 칸에도 묶음 줄이 없다', () => {
+    const agg = aggregate([heat({ date: MON }), eswt({ date: MON }), eswt({ date: TUE }), heat({ date: TUE })], [HEAT_ONLY])
+    expect(keysOf(agg, 'day')).toEqual([MON, TUE])
+    for (const grain of GRAINS) for (const bucket of agg[grain]) expect(bucket.groups).toEqual([])
+  })
+})
+
+describe('AC-2703.6 제외할 처방이 없으면 지금과 같다', () => {
+  const rows = [heat({ patient: 1 }), eswt({ patient: 1 }), heat({ patient: 2, date: TUE })]
+
+  it('AC-2703.6: exclude 없음·빈 배열 → 같은 결과(같은 날 ESWT7을 받아도 든다)', () => {
+    const plain = aggregate(rows, [{ id: 'g-heat', codes: ['MM010'] }])
+    expect(aggregate(rows, [{ id: 'g-heat', codes: ['MM010'], exclude: [] }])).toEqual(plain)
+    expect(groupOf(bucketOf(plain, 'day', MON), 'g-heat')?.patients).toBe(1)
+  })
+
+  it('AC-2703.6: 줄에 없는 코드만 제외하면 제외할 처방이 없을 때와 같다', () => {
+    expect(aggregate(rows, [{ id: 'g-heat', codes: ['MM010'], exclude: ['NOPE9'] }])).toEqual(aggregate(rows, [{ id: 'g-heat', codes: ['MM010'] }]))
   })
 })
 

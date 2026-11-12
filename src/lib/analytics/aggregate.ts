@@ -18,7 +18,7 @@ import { diffDays, monthOf, monthRange, weekRange, weekStartOf } from './dates'
 // ConsumptionRow[] → 일·주·월 칸(버킷)마다 센 숫자. 세기만 한다(완전/부분·증감·재방문 '집계 중'은 다음 단계).
 // 처방·그룹·동네는 칸마다 따로 센다(칸 안 서로 다른 환자 수) — 일을 더해 주를 만들면 이틀 온 환자를 두 번 센다.
 // 환자 수(totals)는 접수 기준이라 주·달 칸은 일 칸의 합이다 — 한 달에 다섯 번 온 사람은 5다(AC-501.6).
-// 줄은 한 번만 훑으며 그 날의 세 칸에 같이 넣는다. rxCode·region은 숫자 번호로 바꿔 Map 열쇠로 쓴다
+// 줄은 한 번만 훑으며 그 날의 세 칸에 같이 넣는다(그룹에 제외할 처방이 있을 때만 그 앞에 한 번 더 훑는다). rxCode·region은 숫자 번호로 바꿔 Map 열쇠로 쓴다
 // 같은 처방 재방문(again)은 일 칸에만 있다: 처방·환자마다 받은 날을 모아 두었다가 다 훑은 뒤 센다. 칸에는 처방별 몇 명·몇 번뿐이다
 
 export const NO_ADDRESS = '주소 없음'
@@ -143,17 +143,51 @@ function bucketIn(buckets: Map<string, BucketAcc>, key: string, rangeOf: (key: s
 // 처방 줄(rx)은 코드 글자 그대로 따로 센다
 const groupCodeKey = (code: string) => code.toUpperCase()
 
-// 처방코드 열쇠 → 그 코드가 든 그룹 자리들(한 그룹에 같은 코드가 두 번, 대소문자만 달리 있어도 한 번)
-function groupsByCode(groups: readonly RxGroupDef[]): Map<string, number[]> {
+// 처방코드 열쇠 → 그 코드가 든 그룹 자리들(한 그룹에 같은 코드가 두 번, 대소문자만 달리 있어도 한 번).
+// codesOf = 그룹에서 읽을 코드 목록(넣은 처방 codes, 또는 제외할 처방 exclude)
+function groupsByCode(groups: readonly RxGroupDef[], codesOf: (group: RxGroupDef) => readonly string[]): Map<string, number[]> {
   const byCode = new Map<string, number[]>()
   groups.forEach((group, at) => {
-    for (const code of new Set(group.codes.map(groupCodeKey))) {
+    for (const code of new Set(codesOf(group).map(groupCodeKey))) {
       const list = byCode.get(code)
       if (list === undefined) byCode.set(code, [at])
       else list.push(at)
     }
   })
   return byCode
+}
+
+type ExcludedDays = Map<string, Map<number, Set<number>>> // 날 → (환자 → 그날 그 환자를 세지 않는 그룹 자리들)
+
+// 같은 날 제외할 처방(rx-group-exclude): 제외할 처방 줄은 묶음 처방 줄 뒤에 올 수 있어, 본 훑기 전에 줄을 한 번 훑어
+// (그룹 자리, 환자, 날)을 모은다. 외래 줄만 본다(입원 줄은 묶음 처방과 같이 보지 않는다). 코드는 대소문자를 가리지 않는다.
+// 제외할 처방이 있는 그룹이 없으면 훑지 않고 null(지금 길 그대로)
+function excludedDays(rows: readonly ConsumptionRow[], groups: readonly RxGroupDef[]): ExcludedDays | null {
+  const excludersOf = groupsByCode(groups, (group) => group.exclude ?? [])
+  if (excludersOf.size === 0) return null
+  const excluders = new Map<string, readonly number[]>() // 줄 코드 글자 그대로 → 그 코드를 제외하는 그룹 자리들. 코드마다 한 번만 찾는다
+  const out: ExcludedDays = new Map()
+  for (const row of rows) {
+    if (row.outpatient === false) continue
+    let ats = excluders.get(row.rxCode)
+    if (ats === undefined) {
+      ats = excludersOf.get(groupCodeKey(row.rxCode)) ?? NO_GROUPS
+      excluders.set(row.rxCode, ats)
+    }
+    if (ats === NO_GROUPS) continue
+    let byPatient = out.get(row.date)
+    if (byPatient === undefined) {
+      byPatient = new Map()
+      out.set(row.date, byPatient)
+    }
+    let skip = byPatient.get(row.patient)
+    if (skip === undefined) {
+      skip = new Set()
+      byPatient.set(row.patient, skip)
+    }
+    for (const at of ats) skip.add(at)
+  }
+  return out
 }
 
 function againIn(day: BucketAcc, rx: number): AgainAcc {
@@ -189,8 +223,9 @@ export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] 
   const bucketsOfDate = new Map<string, readonly [BucketAcc, BucketAcc, BucketAcc]>() // 날짜 → 그 날의 일·주·월 칸
   const rxCodes = numbering()
   const regionNames = numbering()
-  const groupsOf = groupsByCode(groups)
+  const groupsOf = groupsByCode(groups, (group) => group.codes)
   const groupsOfRx: (readonly number[])[] = [] // 처방 번호 → 그 코드가 든 그룹 자리들. 번호마다 한 번만 찾는다
+  const excluded = excludedDays(rows, groups) // 제외할 처방이 있는 그룹이 없으면 null
   const firstNew = new Map<number, string>() // 환자 → 첫 신환일(묶음 전체에서 가장 이른 신환 외래 줄·첫 내원 접수 줄의 날)
   const visitDays = new Map<number, Set<string>>() // 환자 → 외래로 온 날(외래 줄·접수 줄)
   const rxDays = new Map<number, Map<number, BucketAcc[]>>() // 처방 번호 → (환자 → 그 처방을 외래로 받은 서로 다른 날의 일 칸). 진료 줄만
@@ -233,7 +268,12 @@ export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] 
       inGroups = groupsOf.get(groupCodeKey(row.rxCode)) ?? NO_GROUPS
       groupsOfRx[rx] = inGroups
     }
-    const newGroupDays = inGroups === NO_GROUPS ? NO_GROUPS : inGroups.filter((at) => trio[0].groups.get(at)?.has(patient) !== true)
+    let newGroupDays = inGroups === NO_GROUPS ? NO_GROUPS : inGroups.filter((at) => trio[0].groups.get(at)?.has(patient) !== true)
+    // 같은 날 그 그룹의 제외할 처방을 받은 환자는 그 그룹에서 세지 않는다(그날 칸에 넣지 않으니 주·달 칸 F/U에도 그날이 없다)
+    if (excluded !== null && newGroupDays.length > 0) {
+      const skip = excluded.get(row.date)?.get(patient)
+      if (skip !== undefined) newGroupDays = newGroupDays.filter((at) => !skip.has(at))
+    }
 
     noteVisit(patient, row.date, visit === NEW)
     if (newCase) {
