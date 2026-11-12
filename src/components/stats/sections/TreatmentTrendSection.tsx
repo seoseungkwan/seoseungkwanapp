@@ -10,7 +10,7 @@ import { isSavableLine, useRxCatalog } from '@/components/stats/useRxCatalog'
 import type { StatsRxGroupsView } from '@/components/stats/useStatsRxGroups'
 import { periodDesc, rxComparedCells, type RxLine, type StatsInput } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
-import type { RxGroup } from '@/types/rxGroups'
+import type { StatsRxGroup } from '@/types/rxGroups'
 import { EmptyNote, hasRows, NO_RANGE_DATA, Section, todayOf } from './parts'
 import { TreatmentDetail } from './TreatmentDetail'
 import { TreatmentGroupEditor } from './TreatmentGroupEditor'
@@ -22,6 +22,7 @@ import { comparedNote } from './trendLabels'
 // 상태 차례: 저장된 숫자 없음 → 고치는 중 → 묶음 읽는 중·실패 → 이 기간 자료 없음 → 안내 상자 + 표 + 아래 안내.
 // 열린 줄은 기간마다 key를 주지 않고 이 칸의 React 상태에 둔다: 기간을 바꿔도 열린 채이고, 다시 불러와야 하는 기간에는 단추가 아니라 닫힌 것으로 보인다(AC-1209.5).
 // 묶음·열린 줄·고치는 내용은 React 상태와 서버 표에만 있다(AC-1211.3)
+// 제외할 처방(rx-group-exclude REQ-2708): 코드 줄은 표가 그리고, 이 칸은 줄 아래 안내에 제외 글 한 줄을 더한다(AC-2708.2)
 
 const TITLE = '처방별 추세'
 const EDIT_TITLE = '처방별 추세 · 묶음 고치기'
@@ -32,6 +33,7 @@ const RELOAD = '비트 PC에서 다시 불러오거나, 파일을 다시 넣어 
 const ALL_STALE_HEAD = '한 번 다시 불러오면 숫자가 나와요'
 const ALL_STALE_TEXT = `묶음별 숫자는 다시 불러온 기간부터 세요. ${RELOAD}`
 const SOME_STALE_HEAD = '다시 불러와야 맞는 묶음이 있어요'
+const EXCLUDE_NOTE = '제외할 처방이 있는 묶음은, 같은 날 그 처방을 받은 환자를 세지 않아요.'
 const NOTES = [
   '건 = 날마다 그 묶음 처방을 받은 환자 수를 더한 값이에요. 같은 날 같은 환자는 묶음 안 처방을 여러 개 받아도 1건이에요.',
   '신환율 = 신환 ÷ 건수 · 재진율 = 재진 ÷ 건수. 막대 안 회색 눈금은 비교 기간 건수예요.',
@@ -57,7 +59,10 @@ function ReloadNotice({ rows }: { rows: readonly TreatmentRow[] }) {
   )
 }
 
-// 줄 아래 안내: 뺀 짝 글(처방 추세 AC-513.12와 같은 조건, 견주는 준비된 줄이 있을 때만) · 비교하지 않는 묶음(AC-1208.4) · 세 글(AC-1207.8)
+// 처방 든 묶음 가운데 제외할 처방이 있는 것이 하나라도 있음(줄 종류와 상관없이, 시안 anyExclude)
+const anyExcluding = (rows: readonly TreatmentRow[]) => rows.some(({ group }) => group.codes.length > 0 && (group.exclude ?? []).length > 0)
+
+// 줄 아래 안내: 뺀 짝 글(처방 추세 AC-513.12와 같은 조건, 견주는 준비된 줄이 있을 때만) · 비교하지 않는 묶음(AC-1208.4) · 제외 글(AC-2708.2) · 세 글(AC-1207.8)
 function BottomNotes({ input, rows }: { input: StatsInput; rows: readonly TreatmentRow[] }) {
   const uncompared = uncomparedNames(rows)
   const anyCompared = rows.some((row) => row.kind === 'ready' && row.compared)
@@ -66,6 +71,7 @@ function BottomNotes({ input, rows }: { input: StatsInput; rows: readonly Treatm
     <div className="mt-3 grid max-w-182 gap-1">
       {dropped && kept >= 1 && <p className="text-small text-muted">{comparedNote(input.range.grain, kept)}</p>}
       {uncompared.length > 0 && <p className="text-small text-muted">{`${joinNames(uncompared)} 묶음은 비교 기간을 다시 불러오면 지난 기간과 견줘요.`}</p>}
+      {anyExcluding(rows) && <p className="text-small text-muted">{EXCLUDE_NOTE}</p>}
       {NOTES.map((note) => (
         <p key={note} className="text-small text-muted">
           {note}
@@ -90,7 +96,7 @@ export function TreatmentTrendSection({
 }) {
   const catalog = useRxCatalog(todayOf(input.range), revision)
   // 고치기를 연 때의 묶음(null = 보는 화면). 저장 글을 견줄 '전'이고 고치기 화면의 처음 초안이다
-  const [editing, setEditing] = useState<readonly RxGroup[] | null>(null)
+  const [editing, setEditing] = useState<readonly StatsRxGroup[] | null>(null)
   // 이번 고치기에서 [저장]을 눌렀다: 그 뒤의 저장 실패만 오류 카드로 보인다(지난 고치기의 실패를 다시 보이지 않는다)
   const [triedSave, setTriedSave] = useState(false)
   const [note, setNote] = useState<string | null>(null)
@@ -128,7 +134,7 @@ export function TreatmentTrendSection({
       focusNext.current = 'edit'
       setEditing(null)
     }
-    const save = async (after: RxGroup[]) => {
+    const save = async (after: StatsRxGroup[]) => {
       setTriedSave(true)
       const ok = await groups.save(after)
       if (ok) {

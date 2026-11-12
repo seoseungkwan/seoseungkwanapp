@@ -9,7 +9,7 @@ import { ds } from '@/components/ui/classes'
 import { nestedBoxes } from '@/testing/boxes'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
-import type { RxGroup } from '@/types/rxGroups'
+import type { StatsRxGroup } from '@/types/rxGroups'
 import { TreatmentTable } from './TreatmentTable'
 
 // 처방별 추세 묶음 줄 표 (treatment-trend REQ-1207·1209·1212, design.md '화면', 시안 docs/mockups/treatment-trend/index.html).
@@ -27,7 +27,7 @@ const NO_CODES = '넣은 처방이 없어요. [묶음 고치기]에서 넣어 �
 type Line = DayPayload['groups'][number]
 type Ready = Extract<TreatmentRow, { kind: 'ready' }>
 
-const group = (name: string, codes: string[], sortOrder: number, id: string | null = `g${sortOrder}`): RxGroup => ({ id, name, codes, sortOrder })
+const group = (name: string, codes: string[], sortOrder: number, id: string | null = `g${sortOrder}`): StatsRxGroup => ({ id, name, codes, sortOrder })
 const SHOCK = group('충격파', ['ESWT1', 'ESWT7'], 0)
 const MANUAL = group('도수치료', ['도수'], 1)
 const CARM = group('C-arm', ['CARM1'], 2)
@@ -54,7 +54,7 @@ function day(ymd: string, groups: Line[]): DayPayload {
 const PLAIN = [day(BEFORE, [line(SHOCK_KEY, 50, 5), line(MANUAL_KEY, 10, 1)]), day(NOW, [line(SHOCK_KEY, 120, 30), line(MANUAL_KEY, 40, 8)])]
 
 type Options = { period?: StatsPeriod; covered?: DateRange[]; opened?: ReadonlySet<string>; onToggle?: (key: string) => void; renderPanel?: (item: Ready) => ReactNode }
-function draw(days: DayPayload[], groups: RxGroup[], { period = '30d', covered = WHOLE, opened = new Set(), onToggle = () => {}, renderPanel = (item) => <p>{`${item.group.name} 그래프`}</p> }: Options = {}) {
+function draw(days: DayPayload[], groups: StatsRxGroup[], { period = '30d', covered = WHOLE, opened = new Set(), onToggle = () => {}, renderPanel = (item) => <p>{`${item.group.name} 그래프`}</p> }: Options = {}) {
   const input: StatsInput = { days, covered, range: statsRange(TODAY, period) }
   const rows = treatmentRows(input, groups)
   const view = render(<TreatmentTable input={input} rows={rows} opened={opened} onToggle={onToggle} renderPanel={renderPanel} />)
@@ -447,5 +447,82 @@ describe('AC-1705.5: 빠른 단추의 처방별 추세 표는 지금과 같다',
     expect(Array.from(headOf(container).children).map((cell) => cell.textContent)).toEqual(['묶음', '건수', '지난 30일보다', '신환', '재진', ''])
     expect(headOf(container).classList.contains(COLUMNS)).toBe(true)
     expect(screen.queryByText(/자료가 없어요\. 비트 PC에서 그 기간을 불러오면 보여요\./)).toBeNull()
+  })
+})
+
+// ── 제외할 처방 (rx-group-exclude REQ-2708, 시안 docs/mockups/rx-group-exclude codesLine). 묶음·코드는 지어낸 값이다 ─────────────────
+const excluding = (base: StatsRxGroup, exclude: string[]): StatsRxGroup => ({ ...base, exclude })
+const INJECT = group('주사', ['MM010'], 0)
+
+describe('AC-2708.1: 이름 옆 코드 줄의 제외할 처방', () => {
+  it('AC-2708.1: 준비된 줄은 넣은 처방 뒤에 ` · 제외 ` + 제외할 처방이 붙고, 한 코드 줄(caption muted, 이름 옆)이다', () => {
+    const shown = excluding(INJECT, ['ESWT7'])
+    draw([day(NOW, [line(groupKey(shown.codes, shown.exclude), 12, 2)])], [shown])
+    const row = rowOf('주사')
+    const codes = cellOf(row, 'MM010 · 제외 ESWT7')
+    expect(hasClasses(codes, 'text-caption text-muted')).toBe(true)
+    expect(codes.parentElement).toBe(cellOf(row, '주사').parentElement)
+  })
+
+  it.each([
+    [['MM010'], ['ESWT1', 'ESWT7'], 'MM010 · 제외 ESWT1, ESWT7'],
+    [['MM010', 'MM020'], ['ESWT1', 'ESWT7'], 'MM010 · MM020 · 제외 ESWT1, ESWT7'],
+  ])('AC-2708.1: 넣은 처방 %j은 ` · `, 제외할 처방 %j은 `, `로 잇는다 → %s', (codes, exclude, text) => {
+    const shown = excluding(group('주사', codes, 0), exclude)
+    draw([day(NOW, [line(groupKey(shown.codes, shown.exclude), 12, 2)])], [shown])
+    expect(cellOf(rowOf('주사'), text)).toBeTruthy()
+  })
+
+  it('AC-2708.1: 다시 불러와야 하는 줄(제외할 처방을 넣고 아직 다시 불러오지 않음)도 같은 코드 줄이다', () => {
+    // PLAIN은 제외할 처방이 없는 충격파 열쇠로 셌다 → 제외할 처방을 넣은 충격파는 다시 불러와야 한다
+    draw(PLAIN, [excluding(SHOCK, ['MM010'])])
+    const item = lineOf('충격파')
+    expect(item.textContent).toBe(`충격파ESWT1 · ESWT7 · 제외 MM010${STALE}`)
+    expect(hasClasses(within(item).getByText('ESWT1 · ESWT7 · 제외 MM010'), 'text-caption text-muted')).toBe(true)
+  })
+
+  it('AC-2708.1: 처방 없는 줄에 제외할 처방만 있으면 코드 줄은 `제외 ESWT7`이다', () => {
+    draw(PLAIN, [SHOCK, excluding(FROZEN, ['ESWT7'])])
+    const item = lineOf('냉동치료')
+    expect(item.textContent).toBe(`냉동치료제외 ESWT7${NO_CODES}`)
+    const codes = within(item).getByText('제외 ESWT7')
+    expect(hasClasses(codes, 'text-caption text-muted')).toBe(true)
+    expect(codes.parentElement).toBe(within(item).getByText('냉동치료').parentElement)
+  })
+
+  it('AC-2708.1: 제외할 처방이 빈 배열이면 코드 줄은 지금 글 그대로다(처방 없는 줄은 코드 줄이 없다)', () => {
+    draw(PLAIN, [excluding(SHOCK, []), excluding(FROZEN, [])])
+    expect(cellOf(rowOf('충격파'), 'ESWT1 · ESWT7')).toBeTruthy()
+    expect(lineOf('냉동치료').textContent).toBe(`냉동치료${NO_CODES}`)
+    expect(screen.queryByText(/제외/)).toBeNull()
+  })
+})
+
+describe('AC-2708.3: 제외할 처방이 있는 묶음도 숫자·열린 칸·쌓임이 같다', () => {
+  const SHOCK_EX = excluding(SHOCK, ['MM010'])
+  const EX_KEY = groupKey(SHOCK_EX.codes, SHOCK_EX.exclude)
+  const PLAIN_CODES = '>ESWT1 · ESWT7<'
+  const EX_CODES = '>ESWT1 · ESWT7 · 제외 MM010<'
+  // 같은 숫자를 열쇠만 바꿔 넣는다: 견준 짝·구분 없음이 있는 줄(지난 5 → 이번 7, 신환 1·재진 5)
+  const daysFor = (key: string) => [day(BEFORE, [line(key, 5, 1)]), day(NOW, [line(key, 7, 1, 5)])]
+  // useId 값(그리기마다 다르다)을 지운 마크업. 칸 자리·넓은 칸·휴대폰 쌓임 클래스가 모두 든다
+  const markup = (el: Element) => el.outerHTML.replace(/«[^»]*»|:r[0-9a-z]+:|_r_[0-9a-z]+_/g, 'ID')
+
+  it.each(['7d', '30d', '90d', '12m'] as const)('AC-2708.3: %s 준비된 줄(열린 칸 포함)의 마크업은 코드 줄 글만 다르다', (period) => {
+    draw(daysFor(SHOCK_KEY), [SHOCK], { period, opened: new Set(['g0']) })
+    const plain = markup(lineOf('충격파'))
+    cleanup()
+    draw(daysFor(EX_KEY), [SHOCK_EX], { period, opened: new Set(['g0']) })
+    const item = lineOf('충격파')
+    expect(within(item).getByText('ESWT1 · ESWT7 · 제외 MM010')).toBeTruthy()
+    expect(markup(item)).toBe(plain.replace(PLAIN_CODES, EX_CODES))
+  })
+
+  it('AC-2708.3: 다시 불러와야 하는 줄의 마크업도 코드 줄 글만 다르다', () => {
+    draw([day(NOW, [])], [SHOCK])
+    const plain = markup(lineOf('충격파'))
+    cleanup()
+    draw([day(NOW, [])], [SHOCK_EX])
+    expect(markup(lineOf('충격파'))).toBe(plain.replace(PLAIN_CODES, EX_CODES))
   })
 })

@@ -14,7 +14,7 @@ import { readDays } from '@/lib/storage/stats'
 import { nestedBoxes } from '@/testing/boxes'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
-import type { RxGroup } from '@/types/rxGroups'
+import type { StatsRxGroup } from '@/types/rxGroups'
 import { Section } from './parts'
 import { TreatmentTrendSection } from './TreatmentTrendSection'
 
@@ -62,7 +62,7 @@ const MORE = '처방 목록을 더 읽는 중이에요'
 const WIDE_FAILED = '전체 처방 목록을 읽지 못해 지금 보는 기간의 처방만 보여요.'
 const STALE = '다시 불러오면 보여요'
 
-const group = (name: string, codes: string[], sortOrder: number, id: string | null = `g${sortOrder}`): RxGroup => ({ id, name, codes, sortOrder })
+const group = (name: string, codes: string[], sortOrder: number, id: string | null = `g${sortOrder}`): StatsRxGroup => ({ id, name, codes, sortOrder })
 const SHOCK = group('충격파', ['ESWT1', 'ESWT7'], 0)
 const MANUAL = group('도수치료', ['도수'], 1)
 const CARM = group('C-arm', ['CARM1'], 2) // CARM1은 어느 날 처방 줄에도 없다
@@ -117,11 +117,11 @@ function viewOf(over: Partial<StatsRxGroupsView> = {}): StatsRxGroupsView {
 }
 
 // 묶음 훅처럼 저장을 흉내 낸다: 성공하면 돌려받은 줄(새 묶음은 id가 생김)이 묶음이 된다. 실패하면 saveFailed
-let saves: RxGroup[][]
-function Live({ input, start = GROUPS, ok = true }: { input: StatsInput; start?: RxGroup[]; ok?: boolean }) {
-  const [groups, setGroups] = useState<readonly RxGroup[]>(start)
+let saves: StatsRxGroup[][]
+function Live({ input, start = GROUPS, ok = true }: { input: StatsInput; start?: StatsRxGroup[]; ok?: boolean }) {
+  const [groups, setGroups] = useState<readonly StatsRxGroup[]>(start)
   const [saveFailed, setSaveFailed] = useState(false)
-  const save = async (after: readonly RxGroup[]) => {
+  const save = async (after: readonly StatsRxGroup[]) => {
     saves.push(after.map((g) => ({ ...g, codes: [...g.codes] })))
     setSaveFailed(!ok)
     if (ok) setGroups(after.map((g, i) => ({ ...g, id: g.id ?? `saved${i}` })))
@@ -553,10 +553,10 @@ describe('AC-1210.12: 저장하고 돌아오기', () => {
     await screen.findByText(SAVED_AT_ONCE)
     expect(saves).toEqual([
       [
-        { id: 'g1', name: '도수치료', codes: ['도수'], sortOrder: 0 },
-        { id: 'g0', name: '체외충격파', codes: ['ESWT1', 'ESWT7'], sortOrder: 1 },
-        { id: 'g2', name: 'C-arm', codes: ['CARM1'], sortOrder: 2 },
-        { id: 'g3', name: '냉동치료', codes: [], sortOrder: 3 },
+        { id: 'g1', name: '도수치료', codes: ['도수'], exclude: [], sortOrder: 0 },
+        { id: 'g0', name: '체외충격파', codes: ['ESWT1', 'ESWT7'], exclude: [], sortOrder: 1 },
+        { id: 'g2', name: 'C-arm', codes: ['CARM1'], exclude: [], sortOrder: 2 },
+        { id: 'g3', name: '냉동치료', codes: [], exclude: [], sortOrder: 3 },
       ],
     ])
     expect(heading().textContent).toBe(TITLE)
@@ -603,7 +603,7 @@ describe('AC-1210.12: 저장하고 돌아오기', () => {
     await user.click(await screen.findByRole('button', { name: /^재진 진찰료/ }))
     await user.click(screen.getByRole('button', { name: '저장' }))
     expect((await screen.findByText(SAVED)).textContent).toBe(SAVED)
-    expect(saves[0]![4]).toEqual({ id: null, name: '진찰', codes: ['AA154'], sortOrder: 4 })
+    expect(saves[0]![4]).toEqual({ id: null, name: '진찰', codes: ['AA154'], exclude: [], sortOrder: 4 })
   })
 
   it('AC-1210.12: 저장 글은 기간을 바꿔도 있고, 다음에 [묶음 고치기]를 누르면 없어진다(그만두어도 다시 나오지 않는다)', async () => {
@@ -743,5 +743,89 @@ describe('AC-1704.4: 고른 기간의 처방별 추세', () => {
   it('AC-1704.4: 빠른 단추일 때 설명은 지금과 같다', () => {
     drawView(viewOf(), inputOf())
     expect(screen.getByText(DESC)).toBeTruthy()
+  })
+})
+
+// ── 제외할 처방 (rx-group-exclude REQ-2708, 시안 docs/mockups/rx-group-exclude viewHTML .notes). 묶음·코드·숫자는 지어낸 값이다 ─────────────────
+const EXCLUDE_NOTE = '제외할 처방이 있는 묶음은, 같은 날 그 처방을 받은 환자를 세지 않아요.'
+const excluding = (base: StatsRxGroup, exclude: string[]): StatsRxGroup => ({ ...base, exclude })
+const SHOCK_EX = excluding(SHOCK, ['MM010'])
+const EX_KEY = groupKey(SHOCK_EX.codes, SHOCK_EX.exclude)
+const EX_GROUPS = [SHOCK_EX, MANUAL, CARM, FROZEN]
+// ALL_READY와 같은 숫자를 제외할 처방을 넣은 충격파 열쇠로 셌다
+const EX_READY = [
+  day(BEFORE, [line(EX_KEY, 50, 5), line(KEY.manual, 10, 1), line(KEY.carm, 4, 1)], [rx('ESWT1', '체외충격파 1단계', 50), rx('도수', '도수치료 20분', 10)]),
+  day(NOW, [line(EX_KEY, 120, 30), line(KEY.manual, 40, 8), line(KEY.carm, 6, 2)], RX_NOW),
+]
+
+describe('AC-2708.2: 제외할 처방 안내 글', () => {
+  it('AC-2708.2: 처방 든 묶음에 제외할 처방이 있으면 줄 목록 아래, 세 안내 글 바로 위에 그 글(small muted)이 있다', () => {
+    drawView(viewOf({ groups: EX_GROUPS }), inputOf(EX_READY))
+    const note = screen.getByText(EXCLUDE_NOTE)
+    expect(note.tagName).toBe('P')
+    hasAll(note, 'text-small text-muted')
+    expect(follows(list()!, note)).toBe(true)
+    expect(note.nextElementSibling).toBe(screen.getByText(NOTES[0]!))
+  })
+
+  it('AC-2708.2: 뺀 짝 글·비교하지 않는 묶음 글 다음이고 세 안내 글 앞이다', () => {
+    // 충격파(제외할 처방 있음)는 비교 기간을 그 열쇠로 세지 않았고, 도수치료는 견준다. 비교 기간의 마지막 8일만 덮였다
+    const days = [day(BEFORE, [line(KEY.manual, 10, 1)]), day(NOW, [line(EX_KEY, 120, 30), line(KEY.manual, 40, 8)], RX_NOW)]
+    drawView(viewOf({ groups: [SHOCK_EX, MANUAL] }), inputOf(days, '30d', [{ from: '2026-10-06', to: '2026-11-12' }]))
+    const shown = Array.from(screen.getByText(EXCLUDE_NOTE).parentElement!.children).map((p) => p.textContent)
+    expect(shown).toEqual([expect.stringMatching(/^증감과 막대는/), '충격파 묶음은 비교 기간을 다시 불러오면 지난 기간과 견줘요.', EXCLUDE_NOTE, ...NOTES])
+  })
+
+  it('AC-2708.2: 처방 든 묶음이 모두 다시 불러와야 해도(처음 쓸 때) 그 글이 있다', () => {
+    drawView(viewOf({ groups: EX_GROUPS }), inputOf(FIRST_USE))
+    expect(screen.getByText(EXCLUDE_NOTE).nextElementSibling).toBe(screen.getByText(NOTES[0]!))
+  })
+
+  it.each([
+    ['제외할 처방이 있는 묶음이 없음', GROUPS],
+    ['제외할 처방이 모두 빈 배열', GROUPS.map((g) => excluding(g, []))],
+    ['처방 없는 묶음에만 제외할 처방이 있음', [SHOCK, MANUAL, CARM, excluding(FROZEN, ['MM010'])]],
+  ])('AC-2708.2: %s이면 그 글이 없고 세 안내 글은 그대로다', (_, groups) => {
+    drawView(viewOf({ groups }), inputOf())
+    expect(screen.queryByText(EXCLUDE_NOTE)).toBeNull()
+    expect(document.body.textContent).not.toContain('같은 날 그 처방을 받은 환자를 세지 않아요')
+    const first = screen.getByText(NOTES[0]!)
+    expect(first.previousElementSibling).toBeNull()
+    expect(Array.from(first.parentElement!.children).map((p) => p.textContent)).toEqual(NOTES)
+  })
+})
+
+describe('AC-2708.3: 제외할 처방이 있는 묶음도 글·숫자 규칙이 같다', () => {
+  // useId 값(그리기마다 다르다)을 지운 마크업. 칸 자리·넓은 칸·휴대폰 쌓임 클래스가 모두 든다
+  const markup = (el: Element) => el.outerHTML.replace(/«[^»]*»|:r[0-9a-z]+:|_r_[0-9a-z]+_/g, 'ID')
+  // 충격파 줄과 그 열린 칸(그래프 + [숫자로 보기] 표)을 연 칸의 마크업. 제외할 처방 안내 글은 뗀다
+  async function openedMarkup(groups: StatsRxGroup[], days: DayPayload[]) {
+    const user = userEvent.setup()
+    drawView(viewOf({ groups }), inputOf(days))
+    await user.click(rowOf('충격파'))
+    await user.click(screen.getByRole('button', { name: '숫자로 보기' }))
+    const panel = document.getElementById(rowOf('충격파').getAttribute('aria-controls')!)!
+    const copy = sectionEl().cloneNode(true) as Element
+    for (const p of Array.from(copy.querySelectorAll('p'))) if (p.textContent === EXCLUDE_NOTE) p.remove()
+    return { panel, section: markup(copy) }
+  }
+
+  it('AC-2708.3: 열린 그래프 제목은 묶음 이름이고, 칸 전체(줄·열린 그래프·숫자 표·휴대폰 쌓임)가 코드 줄 글과 안내 글만 다르다', async () => {
+    const plain = await openedMarkup(GROUPS, ALL_READY)
+    cleanup()
+    const { panel, section } = await openedMarkup(EX_GROUPS, EX_READY)
+    expect(within(panel).getByText('충격파 · 일별 건수')).toBeTruthy()
+    expect(within(panel).getByRole('table', { name: '충격파 일별 건수' })).toBeTruthy()
+    expect(within(rowOf('충격파')).getByText('ESWT1 · ESWT7 · 제외 MM010')).toBeTruthy()
+    expect(screen.getByText(EXCLUDE_NOTE)).toBeTruthy()
+    expect(section).toBe(plain.section.replace('>ESWT1 · ESWT7<', '>ESWT1 · ESWT7 · 제외 MM010<'))
+  })
+
+  it('AC-2708.3: 제외할 처방을 넣고 아직 다시 불러오지 않은 묶음은 다시 불러오기 안내에 이름만 나온다', () => {
+    // ALL_READY는 제외할 처방이 없는 충격파 열쇠로 셌다
+    drawView(viewOf({ groups: EX_GROUPS }), inputOf(ALL_READY))
+    expect(notice()!.textContent).toBe(`${SOME_STALE_HEAD}충격파 묶음은 이 기간을 다시 불러와야 숫자가 나와요. 비트 PC에서 다시 불러오거나, 파일을 다시 넣어 주세요.`)
+    expect(screen.getByText('충격파').closest('li')!.textContent).toBe(`충격파ESWT1 · ESWT7 · 제외 MM010${STALE}`)
+    expect(queryRow('충격파')).toBeNull()
   })
 })

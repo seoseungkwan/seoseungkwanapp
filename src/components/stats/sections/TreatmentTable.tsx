@@ -15,6 +15,7 @@ import { DeltaText, PartialChip } from './parts'
 // 머리 줄·묶음 줄(준비·다시 불러와야 함·처방 없음)·열린 칸 자리. 숫자는 treatmentRows가 낸 값이고 열린 칸 그림은 renderPanel로 받는다.
 // 넓으면(1024px 이상) 한 줄 칸, 좁으면 한 묶음이 다섯 줄로 쌓인다(시안은 900px이지만 폭 접두사 규칙 때문에 max-lg:, design.md '시안과 다른 곳').
 // 고른 기간(stats-period AC-1705.2)은 비교마다 '{name}보다' 칸이고(작년 비교가 있으면 칸이 하나 는다) 견줄 수 없는 칸은 '–'다. 빠른 단추는 지금 칸 그대로다
+// 제외할 처방이 있는 묶음(rx-group-exclude AC-2708.1·2708.3)은 이름 옆 코드 줄 글만 다르고 숫자·칸·열린 칸은 같다
 
 export type ReadyTreatmentRow = Extract<TreatmentRow, { kind: 'ready' }>
 
@@ -69,12 +70,19 @@ function comparesOf(row: RxPickRow, range: StatsRange): Compare[] {
 
 const pickedRange = (range: StatsRange): StatsRange | null => (range.period === null ? range : null)
 
-// 이름(굵게) + 그 옆 코드 줄(` · `로 이음). 처방 없는 묶음은 코드 줄이 없다
-function Name({ name, codes }: { name: string; codes: readonly string[] }) {
+// 코드 줄 글: 넣은 처방을 ` · `로 잇고, 제외할 처방이 있으면 그 뒤에 ` · 제외 A, B`(넣은 처방이 없으면 `제외 A, B`, AC-2708.1).
+// 둘 다 없으면 빈 글이다. 제외할 처방이 없으면 지금 글 그대로다
+function codesLine(codes: readonly string[], exclude: readonly string[]): string {
+  return [...codes, ...(exclude.length > 0 ? [`제외 ${exclude.join(', ')}`] : [])].join(' · ')
+}
+
+// 이름(굵게) + 그 옆 코드 줄. 넣은 처방도 제외할 처방도 없는 묶음은 코드 줄이 없다
+function Name({ name, codes, exclude = [] }: { name: string; codes: readonly string[]; exclude?: readonly string[] }) {
+  const line = codesLine(codes, exclude)
   return (
     <span className={NAME_CELL}>
       <span className="font-semibold">{name}</span>
-      {codes.length > 0 && <span className="ml-2 text-caption text-muted">{codes.join(' · ')}</span>}
+      {line !== '' && <span className="ml-2 text-caption text-muted">{line}</span>}
     </span>
   )
 }
@@ -141,7 +149,7 @@ function ReadyLine({ item, max, picked, layout, open, onToggle, renderPanel }: L
   return (
     <li>
       <button type="button" aria-expanded={open} aria-controls={panelId} onClick={onToggle} className={`${layout.columns} ${LINE} cursor-pointer transition hover:bg-canvas ${ds.focusRing}`}>
-        <Name name={item.group.name} codes={item.group.codes} />
+        <Name name={item.group.name} codes={item.group.codes} exclude={item.group.exclude} />
         <Numbers row={item.row} max={max} picked={picked} layout={layout} />
         <Icon name="chev" size={16} className={`${layout.chev} ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -157,7 +165,7 @@ function WaitingLine({ item, layout }: { item: Exclude<TreatmentRow, { kind: 're
   return (
     <li>
       <div className={`${layout.columns} ${LINE}`}>
-        <Name name={item.group.name} codes={item.group.codes} />
+        <Name name={item.group.name} codes={item.group.codes} exclude={item.group.exclude} />
         <span className={layout.wait}>{item.kind === 'stale' ? STALE : NO_CODES}</span>
       </div>
     </li>

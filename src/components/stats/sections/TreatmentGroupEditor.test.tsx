@@ -5,18 +5,22 @@ import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ds } from '@/components/ui/classes'
 import { nestedBoxes } from '@/testing/boxes'
-import type { RxGroup } from '@/types/rxGroups'
+import type { RxGroup, StatsRxGroup } from '@/types/rxGroups'
 import type { RxLine } from '../view'
 import { TreatmentGroupEditor } from './TreatmentGroupEditor'
 
 // 묶음 고치기 화면 (spec treatment-trend TASK-10, REQ-1210·REQ-1212, 시안 docs/mockups/treatment-trend 고치기 화면). props만 받는다(훅·저장 코드 없음).
+// 제외할 처방 자리는 spec rx-group-exclude TASK-7(REQ-2707, 시안 docs/mockups/rx-group-exclude editHTML·pickerHTML·codeRows). 경고 글은 AC-2707.6이 AC-1210.10의 글을 바꿨다
 // 처방 이름·코드·건수·묶음 이름은 모두 이 파일에서 지어낸 값이다
 
 type Props = ComponentProps<typeof TreatmentGroupEditor>
 
 const INTRO =
   '묶음 이름을 짓고, 넣을 처방을 고르세요. 처방 하나는 한 묶음에만 들어가요. 어느 묶음에도 없는 처방은 이 칸에 나오지 않아요. 여기서 바꿔도 매출 탭 묶음은 그대로예요.'
-const WARN = '처방을 넣거나 뺀 묶음과 새로 만든 묶음은, 다시 불러온 뒤부터 숫자가 나와요. 이름과 순서만 바꾸면 바로 바뀌어요.'
+const WARN = '처방이나 제외할 처방을 바꾼 묶음과 새로 만든 묶음은, 다시 불러온 뒤부터 숫자가 나와요. 이름과 순서만 바꾸면 바로 바뀌어요.'
+// treatment-trend AC-1210.10의 예전 글(AC-2707.6이 바꿨다)
+const OLD_WARN = '처방을 넣거나 뺀 묶음과 새로 만든 묶음은, 다시 불러온 뒤부터 숫자가 나와요. 이름과 순서만 바꾸면 바로 바뀌어요.'
+const EX_HEAD = '제외할 처방 · 같은 날 이 처방을 받은 환자는 이 묶음에서 세지 않아요'
 const NO_CODES = '넣은 처방이 없어요'
 const NO_MATCH = '맞는 처방이 없어요. 불러온 숫자에 있는 처방만 찾아요.'
 const READING = '처방 목록을 더 읽는 중이에요'
@@ -84,6 +88,21 @@ const classOf = (element: Element) => (element.getAttribute('class') ?? '').spli
 const hasAll = (element: Element, classes: string) => expect(classOf(element)).toEqual(expect.arrayContaining(classes.split(/\s+/).filter(Boolean)))
 const openAdder = async (user: ReturnType<typeof userEvent.setup>, index: number) => user.click(within(groupAt(index)).getByRole('button', { name: '+ 처방 넣기' }))
 const codesIn = (index: number) => within(groupAt(index)).queryAllByRole('button', { name: '빼기' }).map((rm) => rm.closest('li')!.textContent)
+
+// 제외할 처방(rx-group-exclude): 도수치료는 다른 묶음(온열)의 처방 TH02, 대소문자만 다른 ms04, 찾기 목록에 없는 ZZ98을 제외한다.
+// 온열은 빈 제외 목록, 빈 묶음은 exclude 칸이 없는 예전 모양이다
+const EX_GROUPS: StatsRxGroup[] = [
+  { id: 'a1', name: '도수치료', codes: ['TH01'], exclude: ['TH02', 'ms04', 'ZZ98'], sortOrder: 0 },
+  { id: 'b2', name: '온열', codes: ['TH02'], exclude: [], sortOrder: 1 },
+  { id: 'c3', name: '빈 묶음', codes: [], sortOrder: 2 },
+]
+const exSearch = () => screen.getByRole('textbox', { name: '제외할 처방 찾기' }) as HTMLInputElement
+const openExcluder = async (user: ReturnType<typeof userEvent.setup>, index: number) =>
+  user.click(within(groupAt(index)).getByRole('button', { name: '+ 제외할 처방 넣기' }))
+const excludesIn = (index: number) => within(groupAt(index)).queryAllByRole('button', { name: /제외에서 빼기$/ }).map((rm) => rm.closest('li')!.textContent)
+// 머리 글의 굵은 앞 낱말
+const exHead = (index: number) => within(groupAt(index)).queryByText('제외할 처방', { selector: 'b' })
+const foundRow = (name: RegExp) => within(found()!).getByRole('button', { name }) as HTMLButtonElement
 
 describe('AC-1210.2: 안내 글과 묶음 목록', () => {
   it('AC-1210.2: 안내 글이 글자 그대로 있고 받은 묶음이 차례대로 이름 칸으로 나온다', () => {
@@ -495,9 +514,9 @@ describe('AC-1210.12: 저장 부름·기다림', () => {
     await user.click(button('저장'))
     expect(props.onSave).toHaveBeenCalledTimes(1)
     expect(props.onSave).toHaveBeenCalledWith([
-      { id: 'b2', name: '온열', codes: ['TH02', 'IN03'], sortOrder: 0 },
-      { id: 'a1', name: '도수 치료', codes: ['TH01'], sortOrder: 1 },
-      { id: 'c3', name: '빈 묶음', codes: [], sortOrder: 2 },
+      { id: 'b2', name: '온열', codes: ['TH02', 'IN03'], exclude: [], sortOrder: 0 },
+      { id: 'a1', name: '도수 치료', codes: ['TH01'], exclude: [], sortOrder: 1 },
+      { id: 'c3', name: '빈 묶음', codes: [], exclude: [], sortOrder: 2 },
     ])
   })
 
@@ -625,5 +644,300 @@ describe('AC-1212.2: 휴대폰 모양(768px 미만)', () => {
     draw({ saveFailed: true, catalogState: 'failed' })
     await openAdder(user, 0)
     expect(nestedBoxes(document.body)).toEqual([])
+  })
+})
+
+describe('AC-2707.1: 제외할 처방 자리', () => {
+  it('AC-2707.1: 제외할 처방이 있으면 [+ 처방 넣기] 아래에 머리 글(앞 낱말 굵게)과 줄마다 이름·코드(caption muted)·`<기간 이름> n건`·[빼기]가 있고 그 아래에 [+ 제외할 처방 넣기]가 있다', () => {
+    draw({ groups: EX_GROUPS })
+    const group = groupAt(0)
+    const head = exHead(0)!
+    expect(head.parentElement!.textContent).toBe(EX_HEAD)
+    hasAll(head, 'font-semibold text-ink')
+    expect(within(group).getByRole('button', { name: '+ 처방 넣기' }).compareDocumentPosition(head) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // 이름은 대소문자만 다른 코드의 찾기 목록 줄에서 오고, 찾기 목록에 없는 코드는 코드만 보인다
+    expect(excludesIn(0)).toEqual(['나무 온열치료TH02최근 30일 1,234건빼기', '라온 근막치료ms04최근 30일 0건빼기', 'ZZ98최근 30일 0건빼기'])
+    const remove = within(group).getByRole('button', { name: '나무 온열치료 제외에서 빼기' })
+    expect(remove.textContent).toBe('빼기')
+    const row = remove.closest('li')!
+    hasAll(within(row).getByText('TH02'), 'text-caption text-muted')
+    expect(within(row).getByText('최근 30일 1,234건')).toBeTruthy()
+    expect(within(within(group).getByRole('button', { name: 'ZZ98 제외에서 빼기' }).closest('li')!).getAllByText('ZZ98')).toHaveLength(1)
+    // 넣은 처방 줄은 그대로다
+    expect(codesIn(0)).toEqual(['가상 도수치료TH01최근 30일 214건빼기'])
+    const add = within(group).getByRole('button', { name: '+ 제외할 처방 넣기' })
+    expect(within(group).getByRole('button', { name: 'ZZ98 제외에서 빼기' }).compareDocumentPosition(add) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('AC-2707.1: 제외 쪽 [빼기]·[+ 제외할 처방 넣기]는 넣은 처방 쪽 [빼기]·[+ 처방 넣기]와 같은 모양이고, 제외할 처방 자리는 위에 가는 선이 있으며 넣은 처방 목록과 같이 들여 쓴다', () => {
+    draw({ groups: EX_GROUPS })
+    const group = groupAt(0)
+    const exRemove = within(group).getByRole('button', { name: '나무 온열치료 제외에서 빼기' })
+    const remove = within(group).getByRole('button', { name: '빼기' })
+    expect(classOf(exRemove)).toEqual(classOf(remove))
+    const exAdd = within(group).getByRole('button', { name: '+ 제외할 처방 넣기' })
+    expect(classOf(exAdd)).toEqual(classOf(within(group).getByRole('button', { name: '+ 처방 넣기' })))
+    const block = exAdd.parentElement!
+    expect(block.contains(exHead(0))).toBe(true)
+    expect(block.contains(exRemove)).toBe(true)
+    hasAll(block, 'border-t border-line')
+    const indent = (element: Element) => classOf(element).filter((name) => /^ml-/.test(name))
+    expect(indent(block).length).toBeGreaterThan(0)
+    expect(indent(block)).toEqual(indent(remove.closest('ul')!))
+    hasAll(exRemove.closest('ul')!, 'list-none')
+  })
+
+  it('AC-2707.1: 제외할 처방이 없으면(빈 목록·칸 없음) 머리 글·줄이 없고 [+ 제외할 처방 넣기]만 있다', () => {
+    draw({ groups: EX_GROUPS })
+    for (const index of [1, 2]) {
+      expect(exHead(index)).toBeNull()
+      expect(excludesIn(index)).toEqual([])
+      expect(within(groupAt(index)).getAllByRole('button', { name: '+ 제외할 처방 넣기' })).toHaveLength(1)
+    }
+    expect(screen.getAllByText(/같은 날 이 처방을 받은 환자는/)).toHaveLength(1)
+  })
+
+  it('AC-2707.1: 넣은 처방이 없는 묶음도 제외할 처방 줄이 따로 있다', () => {
+    draw({ groups: [{ id: 'a1', name: '주사 빼고', codes: [], exclude: ['IN03'], sortOrder: 0 }] })
+    expect(within(groupAt(0)).getByText(NO_CODES)).toBeTruthy()
+    expect(codesIn(0)).toEqual([])
+    expect(excludesIn(0)).toEqual(['다람 주사IN03최근 30일 5건빼기'])
+  })
+})
+
+describe('AC-2707.2: [+ 제외할 처방 넣기]와 찾기 목록', () => {
+  it('AC-2707.2: 누르면 그 자리에 찾기 칸(이름표·안내 글)과 목록이 열리고 초점이 찾기 칸에 간다', async () => {
+    const user = userEvent.setup()
+    const { props } = draw({ groups: EX_GROUPS })
+    await openExcluder(user, 0)
+    expect(exSearch().getAttribute('placeholder')).toBe('처방 이름이나 코드로 찾기')
+    expect(document.activeElement).toBe(exSearch())
+    expect(found()).not.toBeNull()
+    expect(props.onOpenCatalog).toHaveBeenCalledTimes(1)
+    // 그 묶음의 [+ 제외할 처방 넣기] 자리(제외할 처방 줄 아래)에 열리고 [+ 처방 넣기]는 그대로다
+    expect(groupAt(0).contains(exSearch())).toBe(true)
+    expect(within(groupAt(0)).queryByRole('button', { name: '+ 제외할 처방 넣기' })).toBeNull()
+    expect(within(groupAt(0)).getByRole('button', { name: 'ZZ98 제외에서 빼기' }).compareDocumentPosition(exSearch()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(groupAt(0)).getByRole('button', { name: '+ 처방 넣기' })).toBeTruthy()
+    expect(screen.queryByRole('textbox', { name: '넣을 처방 찾기' })).toBeNull()
+  })
+
+  it('AC-2707.2: 찾기 목록은 [+ 처방 넣기] 목록과 함께 모든 묶음에서 한 번에 하나만 열린다', async () => {
+    const user = userEvent.setup()
+    draw()
+    const lists = () => screen.getAllByRole('list', { name: '찾은 처방' })
+    await openAdder(user, 0)
+    await openExcluder(user, 0)
+    expect(lists()).toHaveLength(1)
+    expect(screen.queryByRole('textbox', { name: '넣을 처방 찾기' })).toBeNull()
+    expect(within(groupAt(0)).getByRole('button', { name: '+ 처방 넣기' })).toBeTruthy()
+    await openExcluder(user, 1)
+    expect(lists()).toHaveLength(1)
+    expect(groupAt(1).contains(exSearch())).toBe(true)
+    expect(within(groupAt(0)).getByRole('button', { name: '+ 제외할 처방 넣기' })).toBeTruthy()
+    await openAdder(user, 2)
+    expect(lists()).toHaveLength(1)
+    expect(screen.queryByRole('textbox', { name: '제외할 처방 찾기' })).toBeNull()
+    expect(groupAt(2).contains(search())).toBe(true)
+    expect(within(groupAt(1)).getByRole('button', { name: '+ 제외할 처방 넣기' })).toBeTruthy()
+  })
+
+  it('AC-2707.2: 줄은 [+ 처방 넣기] 목록과 같은 차례(처방 이름 가나다)·같은 찾기 규칙이다', async () => {
+    const user = userEvent.setup()
+    draw({ groups: [{ id: 'a1', name: '새 묶음', codes: [], exclude: [], sortOrder: 0 }] })
+    await openExcluder(user, 0)
+    expect(foundNames()).toEqual(['가상 도수치료TH01214건', '나무 온열치료TH021,234건', '다람 주사IN035건', '라온 근막치료MS040건'])
+    fireEvent.change(exSearch(), { target: { value: '  th0 ' } })
+    expect(foundNames().map((row) => row!.slice(0, 6))).toEqual(['가상 도수치', '나무 온열치'])
+    fireEvent.change(exSearch(), { target: { value: '없는처방' } })
+    expect(within(found()!).queryAllByRole('button')).toHaveLength(0)
+    expect(screen.getByText(NO_MATCH)).toBeTruthy()
+  })
+
+  it('AC-2707.2: 읽기 실패 글·[다시 읽기]·다시 알림은 [+ 처방 넣기] 목록과 같고, [다시 읽기] 뒤 초점은 제외할 처방 찾기 칸이다', async () => {
+    const user = userEvent.setup()
+    const { props, view } = draw({ catalogState: 'failed' })
+    await openExcluder(user, 1)
+    expect(props.onOpenCatalog).toHaveBeenCalledTimes(1)
+    expect(screen.getByText(READ_FAILED)).toBeTruthy()
+    await user.click(button('다시 읽기'))
+    expect(props.onRetryCatalog).toHaveBeenCalledTimes(1)
+    expect(document.activeElement).toBe(exSearch())
+    view.rerender(<TreatmentGroupEditor {...props} catalogState="idle" />)
+    expect(props.onOpenCatalog).toHaveBeenCalledTimes(2)
+  })
+
+  it('AC-2707.2·AC-1212.2: 열린 제외할 처방 목록도 상자 안 상자가 아니다', async () => {
+    const user = userEvent.setup()
+    draw({ groups: EX_GROUPS, catalogState: 'failed' })
+    await openExcluder(user, 0)
+    expect(nestedBoxes(document.body)).toEqual([])
+  })
+})
+
+describe('AC-2707.3: 제외할 처방 찾기 목록의 줄', () => {
+  it('AC-2707.3: 이 묶음의 넣은 처방은 `이 묶음에 넣은 처방`, 이미 제외한 처방(대소문자 무시)은 `제외에 있음`이고 둘 다 누를 수 없다', async () => {
+    const user = userEvent.setup()
+    draw({ groups: EX_GROUPS })
+    await openExcluder(user, 0)
+    expect(foundRow(/가상 도수치료/).textContent).toBe('가상 도수치료TH01이 묶음에 넣은 처방')
+    expect(foundRow(/나무 온열치료/).textContent).toBe('나무 온열치료TH02제외에 있음')
+    expect(foundRow(/라온 근막치료/).textContent).toBe('라온 근막치료MS04제외에 있음')
+    for (const name of [/가상 도수치료/, /나무 온열치료/, /라온 근막치료/]) expect(foundRow(name).disabled).toBe(true)
+    hasAll(within(foundRow(/가상 도수치료/)).getByText('이 묶음에 넣은 처방'), 'text-caption font-medium text-accent-strong')
+    hasAll(within(foundRow(/나무 온열치료/)).getByText('제외에 있음'), 'text-caption font-medium text-accent-strong')
+    await user.click(foundRow(/가상 도수치료/))
+    await user.click(foundRow(/나무 온열치료/))
+    expect(excludesIn(0)).toHaveLength(3)
+    expect(codesIn(0)).toHaveLength(1)
+  })
+
+  it('AC-2707.3: 다른 묶음에 든 처방도 누를 수 있고 옮긴다는 글이 없다. 누르면 제외할 처방 끝에 들고 목록은 열린 채이며 초점은 찾기 칸이다. 그 묶음은 그대로다', async () => {
+    const user = userEvent.setup()
+    draw()
+    await openExcluder(user, 0)
+    expect(foundRow(/나무 온열치료/).disabled).toBe(false)
+    expect(foundRow(/나무 온열치료/).textContent).toBe('나무 온열치료TH021,234건')
+    expect(within(found()!).queryByText(/있어요/)).toBeNull()
+    await user.click(foundRow(/나무 온열치료/))
+    await user.click(foundRow(/라온 근막치료/))
+    expect(excludesIn(0)).toEqual(['나무 온열치료TH02최근 30일 1,234건빼기', '라온 근막치료MS04최근 30일 0건빼기'])
+    expect(codesIn(0)).toEqual(['가상 도수치료TH01최근 30일 214건빼기'])
+    expect(codesIn(1)).toEqual(['나무 온열치료TH02최근 30일 1,234건빼기', '다람 주사IN03최근 30일 5건빼기'])
+    expect(screen.queryByText(/옮겨 왔어요/)).toBeNull()
+    expect(found()).not.toBeNull()
+    expect(document.activeElement).toBe(exSearch())
+    expect(foundRow(/나무 온열치료/).textContent).toBe('나무 온열치료TH02제외에 있음')
+  })
+
+  it('AC-2707.3: 고른 제외할 처방은 [저장] 때 그 묶음의 exclude로 실린다', async () => {
+    const user = userEvent.setup()
+    const { props } = draw()
+    await openExcluder(user, 0)
+    await user.click(foundRow(/나무 온열치료/))
+    await user.click(button('저장'))
+    expect(props.onSave).toHaveBeenCalledWith([
+      { id: 'a1', name: '도수치료', codes: ['TH01'], exclude: ['TH02'], sortOrder: 0 },
+      { id: 'b2', name: '온열', codes: ['TH02', 'IN03'], exclude: [], sortOrder: 1 },
+      { id: 'c3', name: '빈 묶음', codes: [], exclude: [], sortOrder: 2 },
+    ])
+  })
+})
+
+describe('AC-2707.4: [+ 처방 넣기] 찾기 목록의 제외할 처방 줄', () => {
+  it('AC-2707.4: 이 묶음의 제외할 처방(대소문자 무시)은 `제외에 있음`이고 누를 수 없으며 다른 묶음에 있다는 글도 없다', async () => {
+    const user = userEvent.setup()
+    draw({ groups: EX_GROUPS })
+    await openAdder(user, 0)
+    expect(foundRow(/나무 온열치료/).textContent).toBe('나무 온열치료TH02제외에 있음')
+    expect(foundRow(/라온 근막치료/).textContent).toBe('라온 근막치료MS04제외에 있음')
+    expect(foundRow(/나무 온열치료/).disabled).toBe(true)
+    expect(foundRow(/라온 근막치료/).disabled).toBe(true)
+    hasAll(within(foundRow(/나무 온열치료/)).getByText('제외에 있음'), 'text-caption font-medium text-accent-strong')
+    // 나머지 줄은 그대로다
+    expect(foundRow(/가상 도수치료/).textContent).toBe('가상 도수치료TH01이 묶음에 있음')
+    expect(foundRow(/다람 주사/).textContent).toBe('다람 주사IN035건')
+    await user.click(foundRow(/나무 온열치료/))
+    expect(codesIn(0)).toHaveLength(1)
+    expect(codesIn(1)).toHaveLength(1)
+    expect(screen.queryByText(/옮겨 왔어요/)).toBeNull()
+  })
+
+  it('AC-2707.4: 다른 묶음의 제외할 처방은 지금처럼 넣을 수 있고 그 묶음의 제외할 처방은 그대로다', async () => {
+    const user = userEvent.setup()
+    draw({ groups: EX_GROUPS })
+    await openAdder(user, 1)
+    expect(foundRow(/라온 근막치료/).disabled).toBe(false)
+    expect(foundRow(/라온 근막치료/).textContent).toBe('라온 근막치료MS040건')
+    await user.click(foundRow(/라온 근막치료/))
+    expect(codesIn(1)).toEqual(['나무 온열치료TH02최근 30일 1,234건빼기', '라온 근막치료MS04최근 30일 0건빼기'])
+    expect(excludesIn(0)).toHaveLength(3)
+  })
+})
+
+describe('AC-2707.5: 제외할 처방 목록 닫기와 [빼기] 뒤 초점', () => {
+  it('AC-2707.5: [닫기]를 누르면 닫히고 초점은 그 묶음의 [+ 제외할 처방 넣기]로 간다', async () => {
+    const user = userEvent.setup()
+    draw()
+    await openExcluder(user, 1)
+    await user.click(button('닫기'))
+    expect(found()).toBeNull()
+    expect(document.activeElement).toBe(within(groupAt(1)).getByRole('button', { name: '+ 제외할 처방 넣기' }))
+  })
+
+  it('AC-2707.5: Esc를 누르면 닫히고 초점은 그 묶음의 [+ 제외할 처방 넣기]로 간다', async () => {
+    const user = userEvent.setup()
+    draw()
+    await openExcluder(user, 1)
+    await user.keyboard('{Escape}')
+    expect(found()).toBeNull()
+    expect(document.activeElement).toBe(within(groupAt(1)).getByRole('button', { name: '+ 제외할 처방 넣기' }))
+  })
+
+  it('AC-2707.5: [빼기]는 그 줄만 빼고 초점은 다음 줄의 [빼기], 없으면 앞 줄의 [빼기], 없으면 [+ 제외할 처방 넣기]로 간다', async () => {
+    const user = userEvent.setup()
+    draw({ groups: EX_GROUPS })
+    const remove = (name: string) => within(groupAt(0)).getByRole('button', { name: `${name} 제외에서 빼기` })
+    await user.click(remove('라온 근막치료'))
+    expect(excludesIn(0)).toEqual(['나무 온열치료TH02최근 30일 1,234건빼기', 'ZZ98최근 30일 0건빼기'])
+    expect(document.activeElement).toBe(remove('ZZ98'))
+    await user.click(remove('ZZ98'))
+    expect(excludesIn(0)).toEqual(['나무 온열치료TH02최근 30일 1,234건빼기'])
+    expect(document.activeElement).toBe(remove('나무 온열치료'))
+    await user.click(remove('나무 온열치료'))
+    expect(excludesIn(0)).toEqual([])
+    expect(exHead(0)).toBeNull()
+    expect(document.activeElement).toBe(within(groupAt(0)).getByRole('button', { name: '+ 제외할 처방 넣기' }))
+    // 넣은 처방은 그대로다(다른 묶음의 TH02도)
+    expect(codesIn(0)).toHaveLength(1)
+    expect(codesIn(1)).toHaveLength(1)
+  })
+
+  it('AC-2707.5: 제외할 처방 목록이 열린 채 마지막 줄을 빼면 초점은 [+ 제외할 처방 넣기] 자리의 찾기 칸에 간다(넣은 처방 쪽과 같다)', async () => {
+    const user = userEvent.setup()
+    draw({ groups: [{ id: 'a1', name: '주사 빼고', codes: [], exclude: ['IN03'], sortOrder: 0 }] })
+    await openExcluder(user, 0)
+    await user.click(within(groupAt(0)).getByRole('button', { name: '다람 주사 제외에서 빼기' }))
+    expect(excludesIn(0)).toEqual([])
+    expect(document.activeElement).toBe(exSearch())
+  })
+})
+
+describe('AC-2707.6: 아래 경고 글', () => {
+  it('AC-2707.6: 경고 색 글이 제외할 처방까지 말하는 글자 그대로이고 예전 글(AC-1210.10)은 없다', () => {
+    draw()
+    hasAll(screen.getByText(WARN), 'text-warning')
+    expect(screen.queryByText(OLD_WARN)).toBeNull()
+  })
+})
+
+describe('AC-2707.7: 휴대폰 모양(768px 미만)', () => {
+  it('AC-2707.7: 제외할 처방의 [빼기]·[+ 제외할 처방 넣기]·[닫기]는 44px 이상이다', async () => {
+    const user = userEvent.setup()
+    draw({ groups: EX_GROUPS })
+    hasAll(within(groupAt(0)).getByRole('button', { name: '나무 온열치료 제외에서 빼기' }), 'max-md:min-h-11')
+    hasAll(within(groupAt(0)).getByRole('button', { name: '+ 제외할 처방 넣기' }), 'max-md:min-h-11')
+    await openExcluder(user, 1)
+    hasAll(button('닫기'), 'min-h-11')
+  })
+
+  it('AC-2707.7: 제외할 처방 찾기 칸은 폭 전체·44px·16px 글자이고 넓은 화면의 폭 제한은 md: 접두사뿐이다', async () => {
+    const user = userEvent.setup()
+    draw()
+    await openExcluder(user, 0)
+    hasAll(exSearch(), 'h-11 w-full max-md:text-lead')
+    expect(classOf(exSearch()).filter((name) => /max-w-/.test(name) && !/^md:/.test(name))).toEqual([])
+    hasAll(exSearch().parentElement!, 'max-md:max-w-none')
+  })
+
+  it('AC-2707.7: 제외할 처방 자리(머리 글·줄·찾기 칸)는 휴대폰에서 들여쓰지 않는다', async () => {
+    const user = userEvent.setup()
+    draw({ groups: EX_GROUPS })
+    await openExcluder(user, 0)
+    const block = exSearch().parentElement!.parentElement!
+    expect(block.contains(exHead(0))).toBe(true)
+    expect(block.contains(within(groupAt(0)).getByRole('button', { name: 'ZZ98 제외에서 빼기' }))).toBe(true)
+    expect(classOf(block).some((name) => /^ml-/.test(name))).toBe(true)
+    hasAll(block, 'max-md:ml-0')
   })
 })
