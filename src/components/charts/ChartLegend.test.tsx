@@ -185,3 +185,79 @@ describe('AC-805.3: ChartLegend hatch-warning — 구분 없음 표시(10×10, t
     )
   })
 })
+
+// 추세선·꺾은선 표시 (group-exclude REQ-3709 AC-3709.3·AC-3709.4, design.md '그래프 부품'). 시안 docs/mockups/group-exclude/index.html의 .sw i.ln(점선)·.sw i.pl(선).
+// trend = 가로 12px 점선(ink, 패턴 없이 svg 선 하나), line = 가로 12px · 2px accent 선. 지금 시험은 고치지 않고 여기에 더한다. 예시 이름은 시안 범례 글이다
+describe('AC-3709.3·AC-3709.4: ChartLegend trend·line — 추세선(12px 점선 ink)·총환자 대비(12px 2px accent 선)', () => {
+  const COUNT: LegendItem[] = [
+    { label: '신환', mark: 'accent' },
+    { label: '재진', mark: 'chart-3' },
+    { label: '비교 기간', mark: 'prev' },
+    { label: '추세선', mark: 'trend' },
+  ]
+  const PCT: LegendItem[] = [
+    { label: '총환자 대비 %', mark: 'line' },
+    { label: '추세선', mark: 'trend' },
+  ]
+
+  it('AC-3709.3: [건수] 범례는 신환·재진·비교 기간 뒤 끝에 추세선이 있고 이름은 small ink-2다', () => {
+    const items = itemsOf(render(COUNT).root)
+    expect(items.map(textOf)).toEqual(['신환', '재진', '비교 기간', '추세선'])
+    expectClasses(nameOf(items[3]!), 'text-small', 'text-ink-2')
+  })
+
+  it('AC-3709.3: 추세선 표시는 가로 12px aria-hidden svg 점선 하나다(ink, currentColor, 2px, stroke-dasharray)', () => {
+    const mark = markOf(itemsOf(render(COUNT).root)[3]!)
+    expect(mark.tagName.toLowerCase()).toBe('svg')
+    expect(mark.getAttribute('aria-hidden')).toBe('true')
+    expect(mark.getAttribute('width')).toBe('12')
+    expect(mark.getAttribute('height')).toBe('2')
+    expect(mark.getAttribute('viewBox')).toBe('0 0 12 2')
+    expectClasses(mark, 'shrink-0', 'text-ink')
+    expect(mark.children).toHaveLength(1)
+    const line = mark.firstElementChild!
+    expect(line.tagName.toLowerCase()).toBe('line')
+    // 가운데 높이(y 1)에서 왼쪽 끝부터 오른쪽 끝까지
+    expect(['x1', 'y1', 'x2', 'y2'].map((a) => Number(line.getAttribute(a)))).toEqual([0, 1, 12, 1])
+    expect(line.getAttribute('stroke')).toBe('currentColor')
+    expect(line.getAttribute('stroke-width')).toBe('2')
+    const dash = (line.getAttribute('stroke-dasharray') ?? '').split(/[\s,]+/).filter(Boolean).map(Number)
+    expect(dash.length).toBeGreaterThanOrEqual(2)
+    for (const n of dash) expect(n).toBeGreaterThan(0)
+  })
+
+  it('AC-3709.4: [총환자 대비 %] 범례는 총환자 대비 %·추세선 차례이고, 꺾은선 표시는 가로 12px · 2px accent 선(h-0.5 w-3)이다', () => {
+    const items = itemsOf(render(PCT).root)
+    expect(items.map(textOf)).toEqual(['총환자 대비 %', '추세선'])
+    const line = markOf(items[0]!)
+    expect(line.tagName).toBe('SPAN')
+    expect(line.getAttribute('aria-hidden')).toBe('true')
+    expect(textOf(line)).toBe('')
+    expectClasses(line, 'shrink-0', 'h-0.5', 'w-3', 'bg-accent')
+    expect(markOf(items[1]!).tagName.toLowerCase()).toBe('svg')
+  })
+
+  it('AC-3709.3·AC-3709.4: 새 표시도 색은 토큰 클래스·currentColor뿐이고 pattern·id·inline style이 없다', () => {
+    const { root, html } = render([...COUNT, ...PCT])
+    for (const el of Array.from(root.querySelectorAll('svg *'))) {
+      for (const attr of ['fill', 'stroke']) {
+        const value = el.getAttribute(attr)
+        if (value !== null) expect(['currentColor', 'none'], `${el.tagName} ${attr}`).toContain(value)
+      }
+    }
+    expect(html).not.toMatch(/<pattern|gradient/i)
+    expect(html).not.toContain('url(#')
+    expect(root.querySelectorAll('[id]')).toHaveLength(0)
+    expect(root.querySelectorAll('[style]')).toHaveLength(0)
+    expect(nestedBoxes(root)).toEqual([])
+  })
+
+  it('AC-3709.3: 새 표시도 항목 짜임은 같다 — 표시(aria-hidden) 먼저, 이름 뒤, 같은 줄 가운데', () => {
+    for (const li of itemsOf(render([...COUNT, ...PCT]).root)) {
+      expect(li.children).toHaveLength(2)
+      expect(markOf(li).getAttribute('aria-hidden')).toBe('true')
+      expectClasses(li, 'flex', 'items-center')
+      expectClasses(markOf(li), 'shrink-0')
+    }
+  })
+})
