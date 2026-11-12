@@ -5,12 +5,12 @@ import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { rxCatalog, rxPeriodCounts } from '@/components/stats/rxPickView'
 import { savedNote } from '@/components/stats/treatmentEdit'
-import { staleNames, treatmentRows, uncomparedNames, type TreatmentRow } from '@/components/stats/treatmentView'
+import { groupCond, groupOut, staleNames, treatmentRows, uncomparedNames, type TreatmentRow } from '@/components/stats/treatmentView'
 import { isSavableLine, useRxCatalog } from '@/components/stats/useRxCatalog'
 import type { StatsRxGroupsView } from '@/components/stats/useStatsRxGroups'
 import { periodDesc, rxComparedCells, type RxLine, type StatsInput } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
-import type { RxGroup } from '@/types/rxGroups'
+import type { RxGroup, StatsRxGroup } from '@/types/rxGroups'
 import { EmptyNote, hasRows, NO_RANGE_DATA, Section, todayOf } from './parts'
 import { TreatmentDetail } from './TreatmentDetail'
 import { TreatmentGroupEditor } from './TreatmentGroupEditor'
@@ -42,6 +42,9 @@ const PHONE_FULL_ACTION = 'max-md:[&>div>.ml-auto]:w-full'
 
 const NO_LINES: readonly RxLine[] = []
 const NO_COUNTS: ReadonlyMap<string, number> = new Map()
+// 고치기 찾기 목록에 더하는 묶음 처방 줄(이름은 찾기 목록 줄이 채운다): 넣는 처방·빼는 처방·조건 처방. 그 기간 일 숫자에 없어도 이름·줄이 보인다(AC-3712.2)
+const groupCodeLines = (group: StatsRxGroup): RxLine[] =>
+  [...group.codes, ...groupOut(group), ...groupCond(group).flatMap((item) => item.unless)].map((code) => ({ code, name: '' }))
 
 const joinNames = (names: readonly string[]) => names.join(', ')
 
@@ -107,10 +110,10 @@ export function TreatmentTrendSection({
   })
 
   const rows = useMemo(() => treatmentRows(input, groups.groups), [input, groups.groups])
-  // 찾기 목록(AC-1210.8): 넓은 범위 + 화면의 일 숫자 + 이미 묶음에 든 처방. 고치는 동안만 센다(넓은 범위는 최대 731일)
+  // 찾기 목록(AC-1210.8): 넓은 범위 + 화면의 일 숫자 + 이미 묶음에 든 처방(넣는 처방·빼는 처방·조건 처방, AC-3712.2). 고치는 동안만 센다(넓은 범위는 최대 731일)
   const dayLines = useMemo(() => (editing ? rxCatalog([...catalog.days, ...input.days], [], isSavableLine) : NO_LINES), [editing, catalog.days, input.days])
   const lines = useMemo(
-    () => (editing ? rxCatalog([], [...dayLines, ...editing.flatMap((group) => group.codes.map((code) => ({ code, name: '' })))], isSavableLine) : NO_LINES),
+    () => (editing ? rxCatalog([], [...dayLines, ...editing.flatMap(groupCodeLines)], isSavableLine) : NO_LINES),
     [editing, dayLines],
   )
   const counts = useMemo(() => (editing ? rxPeriodCounts(input) : NO_COUNTS), [editing, input])
