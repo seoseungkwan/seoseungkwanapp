@@ -388,3 +388,43 @@ describe('AC-010.3 그룹 정의를 Worker로 넘긴다', () => {
     expect(posted.at(-1)).toEqual({ type: 'done', output: analyzeFiles([fakeBytes('fake-utf8-bom.csv')], TODAY) })
   })
 })
+
+describe('AC-3705.2 파일 길: 빼는 처방·조건도 Worker 요청에 실려 간다', () => {
+  // 가짜 정의(spec group-exclude). 가짜 파일에서 AA154(초진 진찰료)를 받은 몇몇 환자는 같은 날 D1002(가짜캡슐)도 받았다
+  const EXCLUDE = [
+    { id: 'g-out', codes: ['AA154'], out: ['D1002'] },
+    { id: 'g-cond', codes: ['AA154', 'M3002'], cond: [{ code: 'AA154', unless: ['d1002'] }] },
+    { id: 'g-plain', codes: ['AA154'], out: [], cond: [] },
+  ]
+
+  it('AC-3705.2: 요청 groups에 id·codes와 함께 새로 만든 out·cond({ code, unless }만)가 가고, 빈 out·cond 묶음은 { id, codes }뿐이다', async () => {
+    const fake = fakeWorker()
+    const rowLike = [
+      { ...EXCLUDE[0], name: '가짜 묶음', sortOrder: 0 },
+      { ...EXCLUDE[1], cond: [{ code: 'AA154', unless: ['d1002'], note: '가짜 메모' }] },
+      EXCLUDE[2],
+    ]
+    const running = runAnalysis([], { createWorker: fake.create, today: TODAY, groups: rowLike })
+    await fake.posted
+    const { groups } = fake.sent[0].message
+    expect(groups).toStrictEqual([
+      { id: 'g-out', codes: ['AA154'], out: ['D1002'] },
+      { id: 'g-cond', codes: ['AA154', 'M3002'], cond: [{ code: 'AA154', unless: ['d1002'] }] },
+      { id: 'g-plain', codes: ['AA154'] },
+    ])
+    expect(groups[0].out).not.toBe(rowLike[0].out)
+    expect(groups[1].cond).not.toBe(rowLike[1].cond)
+    expect(groups[1].cond?.[0].unless).not.toBe(rowLike[1].cond?.[0].unless)
+    for (const text of ['가짜 묶음', 'sortOrder', 'name', 'note', '가짜 메모']) expect(textsIn(fake.sent[0].message)).not.toContain(text)
+    fake.reply({ type: 'done', output: { files: [], result: null } })
+    await running
+  })
+
+  it('AC-3705.2: 가짜 Worker 안에서 진짜로: 결과가 analyzeFiles(…, 같은 정의)와 같고, 빼는 처방·조건을 지운 정의의 결과와는 다르다', SLOW, async () => {
+    const { createWorker } = await realWorker()
+    const output = await runAnalysis([fileOf(fakeBytes('fake-utf8-bom.csv'))], { createWorker, today: TODAY, groups: EXCLUDE })
+    expect(output).toEqual(analyzeFiles([fakeBytes('fake-utf8-bom.csv')], TODAY, EXCLUDE))
+    const bare = EXCLUDE.map(({ id, codes }) => ({ id, codes }))
+    expect(output).not.toEqual(analyzeFiles([fakeBytes('fake-utf8-bom.csv')], TODAY, bare))
+  })
+})
