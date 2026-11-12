@@ -938,6 +938,16 @@ describe('AC-3711.8: 빼는 처방 찾기 목록', () => {
     expect(plain.textContent).not.toContain('묶음 처방이에요')
   })
 
+  // 화면 확인(TASK-16)에서 찾음: 시안(.opt:disabled { color: muted })은 막힌 찾기 줄의 이름이 흐린 글인데 앱은 ink 그대로였다
+  it('AC-3714.1: 막힌 찾기 줄은 이름 글이 muted(시안 .opt:disabled)이고 고를 수 있는 줄은 ink 그대로다', async () => {
+    const user = userEvent.setup()
+    drawPt()
+    await openOut(user, 0)
+    for (const name of [/^다솜 충격파/, /^가나 물리치료/, /^바다 도수치료/, /^마루 전기자극/]) hasAll(option(name), 'text-ink disabled:text-muted')
+    expect(option(/^다솜 충격파/).disabled).toBe(true)
+    expect(option(/^마루 전기자극/).disabled).toBe(false)
+  })
+
   it('AC-3711.8: 다른 묶음 넣는 처방을 골라도 그 묶음에서 옮기지 않는다(빼는 처방 끝에 들어가고 찾기 칸은 열린 채)', async () => {
     const user = userEvent.setup()
     drawPt()
