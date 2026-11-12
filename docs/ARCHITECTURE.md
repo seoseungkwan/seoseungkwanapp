@@ -93,7 +93,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 | `stats_months` · `stats_days` · `stats_coverage` | 통계 월 숫자 · 일 숫자(폰에서 '어제' 보기용. 칸: `month` 또는 `day`·`partial`·`source`·`payload`·`updated_at`, 완전한 줄은 덜 덮인 줄로 안 바뀌는 트리거) · 불러온 기간 한 줄씩(칸: `from_day`·`to_day`·`source`·`created_at`, 넣기만) |
 | `rx_groups` | 치료 묶음. 칸: 이름·코드 목록·순서. 즐겨찾기는 아직 없음. 매출 탭 묶음. 통계 처방별 추세는 따로 `stats_rx_groups`를 쓴다 (specs/revenue) |
 | `stats_rx_picks` | 통계 처방 골라 보기에서 고른 처방 한 줄씩. 칸: `hospital_id`·`code`·`name`·`pick_order`. 낱개 처방이라 묶음 표(`rx_groups`)와 따로 둔다. 넣기·읽기·지우기만, 고치기 없음 (specs/rx-picker) |
-| `stats_rx_groups` | 통계 처방별 추세의 묶음. 칸: `id`·`hospital_id`·`name`·`codes`·`sort_order`·`updated_at`. 저장은 `save_stats_rx_groups`로 목록 통째(새 묶음 넣기·고치기·빠진 묶음 지우기). 처방 하나는 한 묶음에만 든다(대소문자 무시, 저장이 끝날 때 DB가 검사). 매출 탭 묶음(`rx_groups`)과 따로 둔다 (specs/treatment-trend) |
+| `stats_rx_groups` | 통계 처방별 추세의 묶음. 칸: `id`·`hospital_id`·`name`·`codes`·`sort_order`·`updated_at`. 저장은 `save_stats_rx_groups`로 목록 통째(새 묶음 넣기·고치기·빠진 묶음 지우기). 처방 하나는 한 묶음에만 든다(대소문자 무시, 저장이 끝날 때 DB가 검사). 매출 탭 묶음(`rx_groups`)과 따로 둔다. 더한 칸: 빼는 처방 `out_codes`(코드 목록, 그날 하나라도 받은 환자는 그 묶음에서 뺀다)·넣는 처방마다 조건 `cond`(`[{ code, unless }]`, 그날 `unless` 가운데 하나라도 받으면 그 넣는 처방으로는 세지 않는다). 두 칸은 칸 검사(`stats_rx_group_parts_ok`)를 지나야 하고, '한 묶음에만'은 넣는 처방에만 써서 빼는 처방·조건 처방은 다른 묶음의 넣는 처방이어도 된다. 두 칸 없이 저장하는 옛 탭은 고친 줄의 두 칸을 그대로 둔다(specs/group-exclude) (specs/treatment-trend) |
 | `sales_days` | 일 매출 집계. 칸은 specs/revenue design.md 6절 |
 | `sales_codes` | 달별 처방 코드 집계(코드·이름·건수·금액). 칸은 specs/revenue design.md 6절 |
 | `inventory_items` · `inventory_moves` | 품목(단위·최소 수량) · 입고·사용·실사 |
