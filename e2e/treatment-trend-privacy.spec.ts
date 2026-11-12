@@ -1,8 +1,8 @@
-// 처방별 추세 개인정보 E2E(treatment-trend REQ-1213, AC-1213.4): 실제 Supabase 시험 계정 + 가짜 비트 파일.
-// 본 시험은 사용자가 20261105000100_stats_rx_groups.sql을 운영 Supabase에 붙이고 시험 계정(.env.local)이 있어야 돈다.
+// 처방별 추세 개인정보 E2E(treatment-trend REQ-1213, AC-1213.4 · group-exclude REQ-3713, AC-3713.1·AC-3713.2): 실제 Supabase 시험 계정 + 가짜 비트 파일.
+// 본 시험은 사용자가 20261105000100_stats_rx_groups.sql과 20261112000000_stats_rx_groups_exclude.sql을 운영 Supabase에 붙이고 시험 계정(.env.local)이 있어야 돈다.
 // 돌리는 법: `npm run e2e -- e2e/treatment-trend-privacy.spec.ts` (next build가 먼저 돈다: 다른 일이 없을 때).
 // 시험 계정 값이 없으면 `npm run e2e`의 시작 전 검사(e2e/preflight.ts)가 빌드·시험 전에 멈춘다. `npm test`(Vitest)는 *.spec.ts를 잡지 않는다.
-// 처음 돌릴 때는 기대값 하나를 일부러 틀려 실패를 본 뒤 되돌린다(시험이 헛돌지 않는지, tasks.md TASK-16)
+// 처음 돌릴 때는 기대값 하나를 일부러 틀려 실패를 본 뒤 되돌린다(시험이 헛돌지 않는지, treatment-trend tasks.md TASK-16 · group-exclude tasks.md TASK-15)
 // CRITICAL: 요청 머리(authorization·apikey·cookie)와 응답 내용은 읽지도 찍지도 않는다. 실패 글에는 걸린 종류와 가린 경로만 싣는다. 값은 모으지 않는다
 import type { BrowserContext, Locator, Page } from '@playwright/test'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -27,7 +27,9 @@ const FILE_NAME = 'fake-treatment-trend-privacy.csv'
 const TEST_GROUP = '시험 묶음'
 // AC-1213.4 글자 그대로: 저장된 일 줄 groups의 id 모양. 앱 상수(GROUP_KEY)를 쓰지 않고 따로 적는다
 const STORED_KEY = /^t[0-9a-f]{16}$/
-const GROUP_BODY_KEYS = ['codes', 'id', 'name', 'sort_order']
+// AC-3713.1: 묶음 저장 본문 항목 열쇠 여섯(AC-1213.4의 넷을 대신한다), 조건(cond) 항목 열쇠 둘
+const GROUP_BODY_KEYS = ['codes', 'cond', 'id', 'name', 'out_codes', 'sort_order']
+const COND_KEYS = ['code', 'unless']
 const DAY_GROUP_KEYS = ['id', 'newPatients', 'patients', 'returning']
 // 머리 검사에서 뺀다(AC-1213.4): 세션 값이라 읽지도 찍지도 않는다
 const SKIPPED_HEADERS = new Set(['authorization', 'apikey', 'cookie'])
@@ -113,11 +115,16 @@ const count = (watch: Watch, method: string, path: string) => watch.seen.filter(
 
 const keysOf = (value: unknown): string[] => Object.keys(value as Record<string, unknown>).sort()
 
-// 묶음 저장 본문: 맨 위 열쇠는 groups 하나, 묶음마다 열쇠 넷(AC-1213.4)
-function saveBodyKeys(body: string): { top: string[]; items: string[][] } {
+// 묶음 저장 본문: 맨 위 열쇠는 groups 하나, 묶음마다 열쇠 여섯, 조건 항목마다 열쇠 둘(AC-3713.1)
+function saveBodyKeys(body: string): { top: string[]; items: string[][]; cond: string[][] } {
   const parsed: unknown = JSON.parse(body)
   const groups = (parsed as { groups?: unknown }).groups
-  return { top: keysOf(parsed), items: Array.isArray(groups) ? groups.map(keysOf) : [] }
+  const list: unknown[] = Array.isArray(groups) ? groups : []
+  const cond = list.flatMap((group) => {
+    const items = (group as { cond?: unknown }).cond
+    return Array.isArray(items) ? items.map(keysOf) : []
+  })
+  return { top: keysOf(parsed), items: list.map(keysOf), cond }
 }
 
 // 일 숫자 저장 본문(줄 목록)에서 보낸 날만 꺼낸다
@@ -135,12 +142,13 @@ const SAFE_CODE = /^[A-Za-z0-9_]{1,16}$/
 function failIf(error: { code?: unknown } | null, doing: string): void {
   if (error === null) return
   const code = typeof error.code === 'string' && SAFE_CODE.test(error.code) ? error.code : '오류 코드 없음'
-  throw new Error(`${doing} 못했어요(${code}) — 운영 SQL(stats_rx_groups)을 붙였는지 확인해 주세요`)
+  throw new Error(`${doing} 못했어요(${code}) — 운영 SQL(stats_rx_groups·stats_rx_groups_exclude)을 붙였는지 확인해 주세요`)
 }
 
-type GroupRow = { name: string; codes: string[]; sort_order: number }
+// out_codes·cond는 DB가 not null 기본값으로 채운다(group-exclude AC-3701.1)
+type GroupRow = { name: string; codes: string[]; out_codes: string[]; cond: Array<{ code: string; unless: string[] }>; sort_order: number }
 async function readGroupRows(sb: SupabaseClient): Promise<GroupRow[]> {
-  const { data, error } = await sb.from(TABLE).select('name, codes, sort_order').order('sort_order')
+  const { data, error } = await sb.from(TABLE).select('name, codes, out_codes, cond, sort_order').order('sort_order')
   failIf(error, '통계 묶음을 읽지')
   return (data ?? []) as GroupRow[]
 }
@@ -185,7 +193,7 @@ test.describe('처방별 추세 개인정보(실제 Supabase)', () => {
     expect(await readGroupRows(sb), '시험 계정의 통계 묶음을 모두 지웠다').toEqual([])
   })
 
-  test('AC-1213.4: 묶음을 고쳐 저장하고 파일을 넣어 저장해도 개인 값이 나가지 않고, 묶음 저장 본문은 열쇠 넷, 저장된 일 줄의 묶음 줄은 열쇠와 세 숫자뿐이다', async ({
+  test('AC-1213.4·AC-3713.1·AC-3713.2: 묶음을 고쳐(빼는 처방·조건 포함) 저장하고 파일을 넣어 저장해도 개인 값이 나가지 않고, 묶음 저장 본문은 열쇠 여섯(조건 항목은 code·unless), 저장된 일 줄의 묶음 줄은 열쇠와 세 숫자뿐이고 빼는 처방 묶음 열쇠도 있다', async ({
     page,
     context,
     accounts,
@@ -195,11 +203,10 @@ test.describe('처방별 추세 개인정보(실제 Supabase)', () => {
     const rows = bodyRows(table)
     const values = personalValues(rows)
     expect(values.length, '개인 값을 하나도 못 모으면 이 시험은 아무것도 보지 못한다').toBeGreaterThan(0)
-    // 찾기 목록에 나오는(validateRxPick을 지나는) 서로 다른 처방 둘
+    // 찾기 목록에 나오는(validateRxPick을 지나는) 서로 다른 처방 넷: A·B는 넣는 처방, C는 빼는 처방, D는 B의 조건 처방
     const listed = rows.filter((row) => validateRxPick({ code: row[col('처방코드')], name: row[col('처방명칭')] }) !== null)
-    const A = listed[0]?.[col('처방코드')]
-    const B = listed.find((row) => row[col('처방코드')] !== A)?.[col('처방코드')]
-    if (A === undefined || B === undefined) throw new Error('가짜 표에 찾기 목록에 나올 처방이 둘 없어요')
+    const [A, B, C, D] = [...new Set(listed.map((row) => row[col('처방코드')]))]
+    if (A === undefined || B === undefined || C === undefined || D === undefined) throw new Error('가짜 표에 찾기 목록에 나올 처방이 넷 없어요')
 
     await accounts.signIn(context, 'approved')
     const watch = watchOutgoing(context, values)
@@ -221,7 +228,8 @@ test.describe('처방별 추세 개인정보(실제 Supabase)', () => {
     // 1) 처음 넣기: 저장된 숫자가 생겨 [묶음 고치기]가 나오고, 찾기 목록에 파일의 처방이 든다
     await upload()
 
-    // 2) 묶음 고치기: 첫 묶음에 처방 A를 넣고, 새 묶음(TEST_GROUP)을 만들어 처방 B를 넣고 저장한다
+    // 2) 묶음 고치기: 첫 묶음에 처방 A를 넣고, 새 묶음(TEST_GROUP)을 만들어 처방 B를 넣고,
+    //    그 묶음에 빼는 처방 C와 B의 조건(D와 같이 받으면 안 셈)을 더해 저장한다(group-exclude AC-3711.4~6)
     const edit = page.getByRole('button', { name: '묶음 고치기', exact: true })
     await expect(edit).toBeVisible(SLOW)
     await expect(edit).not.toHaveAttribute('aria-disabled', 'true', SLOW)
@@ -229,22 +237,36 @@ test.describe('처방별 추세 개인정보(실제 Supabase)', () => {
     const editHeading = page.getByRole('heading', { name: '처방별 추세 · 묶음 고치기' })
     await expect(editHeading).toBeVisible(SLOW)
 
-    const addCode = async (adder: Locator, code: string) => {
-      await adder.click()
-      const search = page.getByRole('textbox', { name: '넣을 처방 찾기' })
+    // 찾기 칸(넣는 처방·빼는 처방·조건 처방, 화면에 하나만 열림)에서 코드를 고른다
+    const pickIn = async (searchName: string, code: string) => {
+      const search = page.getByRole('textbox', { name: searchName })
       await search.fill(code)
       const option = page.getByRole('list', { name: '찾은 처방' }).getByRole('button').filter({ hasText: code }).first()
       await expect(option).toBeVisible(SLOW)
       await option.click()
-      // 이 묶음에 들어가면 그 줄은 '이 묶음에 있음'으로 막힌다
+      // 고르면 그 줄은 막힌다('이 묶음에 있음'·'빼는 처방에 있음'·'조건에 있음')
       await expect(option).toBeDisabled(SLOW)
       await search.press('Escape')
+    }
+    const addCode = async (adder: Locator, code: string) => {
+      await adder.click()
+      await pickIn('넣을 처방 찾기', code)
     }
     const adders = page.getByRole('button', { name: '+ 처방 넣기', exact: true })
     await addCode(adders.first(), A)
     await page.getByRole('button', { name: '+ 묶음 더하기', exact: true }).click()
     await page.getByRole('textbox', { name: '묶음 이름', exact: true }).last().fill(TEST_GROUP)
     await addCode(adders.last(), B)
+    // 빼는 처방: TEST_GROUP이 맨 끝 묶음이라 마지막 단추가 그 묶음 것이다
+    await page.getByRole('button', { name: '+ 빼는 처방 고르기' }).last().click()
+    await pickIn('뺄 처방 찾기', C)
+    // 조건: [조건 더하기]가 찾기 칸을 바로 열거나, 조건 칸의 [+ 처방 고르기]로 연다(AC-3711.4). 마지막 [조건 더하기]가 TEST_GROUP의 B 줄 것이다
+    const condSearch = page.getByRole('textbox', { name: `${B}와 같이 받으면 안 셀 처방 찾기` })
+    const condPicker = page.getByRole('button', { name: '+ 처방 고르기', exact: true })
+    await page.getByRole('button', { name: '조건 더하기' }).last().click()
+    await expect(condSearch.or(condPicker)).toBeVisible(SLOW)
+    if (!(await condSearch.isVisible())) await condPicker.click()
+    await pickIn(`${B}와 같이 받으면 안 셀 처방 찾기`, D)
 
     const [savedGroups] = await Promise.all([posted(page, SAVE_PATH), page.getByRole('button', { name: '저장', exact: true }).click()])
     expect(savedGroups.ok(), '통계 묶음 저장').toBe(true)
@@ -253,10 +275,21 @@ test.describe('처방별 추세 개인정보(실제 Supabase)', () => {
 
     // 저장된 묶음: 고친 그대로이고 개인 값이 없다. 이 묶음의 열쇠가 다음 불러오기에서 세어져야 한다
     const storedGroups = await readGroupRows(sb)
-    expect(storedGroups.find((group) => group.name === TEST_GROUP)?.codes, '새 묶음에 처방 B만 있다').toEqual([B])
+    const testGroup = storedGroups.find((group) => group.name === TEST_GROUP)
+    if (testGroup === undefined) throw new Error('저장된 묶음에 시험 묶음이 없어요')
+    expect(testGroup.codes, '새 묶음에 처방 B만 있다').toEqual([B])
+    expect(testGroup.out_codes, '새 묶음의 빼는 처방은 C 하나').toEqual([C])
+    expect(testGroup.cond, '새 묶음의 조건은 B ← D 하나').toEqual([{ code: B, unless: [D] }])
     expect(storedGroups.some((group) => group.codes.includes(A)), '처방 A가 든 묶음이 있다').toBe(true)
-    for (const group of storedGroups) expect(scan('', `${group.name}\n${group.codes.join('\n')}`, values)).toEqual([])
-    const expectedKeys = [...new Set(storedGroups.filter((group) => group.codes.length > 0).map((group) => groupKey(group.codes)))].sort()
+    for (const group of storedGroups) {
+      const condCodes = group.cond.flatMap(({ code, unless }) => [code, ...unless])
+      expect(scan('', [group.name, ...group.codes, ...group.out_codes, ...condCodes].join('\n'), values)).toEqual([])
+    }
+    // 기대 열쇠는 빼는 처방·조건까지 넣어 만든다(group-exclude REQ-3704). 시험 묶음 열쇠는 넣는 처방만의 열쇠와 달라야 한다
+    const keyOf = (group: GroupRow) => groupKey(group.codes, { out: group.out_codes, cond: group.cond })
+    const testKey = keyOf(testGroup)
+    expect(testKey, '빼는 처방·조건이 시험 묶음 열쇠에 들어간다').not.toBe(groupKey(testGroup.codes))
+    const expectedKeys = [...new Set(storedGroups.filter((group) => group.codes.length > 0).map(keyOf))].sort()
 
     // 3) 다시 넣기: 저장한 묶음으로 세어 일 숫자에 묶음 줄이 함께 저장된다
     const daysBefore = watch.days.length
@@ -270,15 +303,20 @@ test.describe('처방별 추세 개인정보(실제 Supabase)', () => {
     expect(count(watch, 'GET', GROUPS_PATH)).toBeGreaterThan(0)
     expect(count(watch, 'POST', SAVE_PATH)).toBeGreaterThanOrEqual(1)
     expect(watch.groups.length).toBe(count(watch, 'POST', SAVE_PATH))
-    // AC-1213.4: save_stats_rx_groups 본문의 묶음 열쇠는 id·name·codes·sort_order뿐(hospital_id 등 없음)
+    // AC-3713.1: save_stats_rx_groups 본문의 묶음 열쇠는 id·name·codes·out_codes·cond·sort_order뿐(hospital_id 등 없음), 조건 항목은 code·unless뿐
+    let condItems = 0
     for (const body of watch.groups) {
-      const { top, items } = saveBodyKeys(body)
+      const { top, items, cond } = saveBodyKeys(body)
       expect(top).toEqual(['groups'])
       expect(items.length).toBeGreaterThan(0)
       for (const keys of items) expect(keys).toEqual(GROUP_BODY_KEYS)
+      for (const keys of cond) expect(keys).toEqual(COND_KEYS)
+      condItems += cond.length
     }
+    expect(condItems, '저장 본문에서 조건 항목을 하나도 못 보면 조건 열쇠 검사가 헛돈다').toBeGreaterThan(0)
 
-    // AC-1213.4·AC-1213.3: 두 번째 넣기로 저장된 일 줄의 groups 줄은 열쇠(t + 16진수 16자리)와 세 숫자뿐이고, 지금 묶음의 열쇠가 날마다 있다
+    // AC-1213.4·AC-1213.3·AC-3713.2: 두 번째 넣기로 저장된 일 줄의 groups 줄은 열쇠(t + 16진수 16자리)와 세 숫자뿐이고,
+    // 지금 묶음(빼는 처방 묶음 포함)의 열쇠가 날마다 있다
     const { data, error } = await sb.from('stats_days').select('day, payload').in('day', days).order('day')
     failIf(error, '저장된 일 숫자를 읽지')
     const stored = (data ?? []) as Array<{ day: string; payload: unknown }>
@@ -293,6 +331,7 @@ test.describe('처방별 추세 개인정보(실제 Supabase)', () => {
         expect(STORED_KEY.test(group.id), '묶음 줄 id 모양').toBe(true)
         counted += group.patients
       }
+      expect(groups.map((group) => group.id), '그날 줄에 빼는 처방 묶음의 열쇠가 있다').toContain(testKey)
       expect(groups.map((group) => group.id).sort(), '그날 줄에 지금 묶음의 열쇠가 모두 있다(빠진 날 = 옛 줄이 남음)').toEqual(expectedKeys)
       expect(scan('', JSON.stringify(groups), values)).toEqual([])
     }
