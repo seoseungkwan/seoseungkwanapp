@@ -621,15 +621,204 @@ describe('api.js setArrange', () => {
     expect((seen.error as ApiErrorLike)?.reason).toBe('timeout')
   })
 
-  it('AC-3308.9: 열쇠·op·칸 모양이 틀리거나 v가 글이 아니거나 몸이 256바이트를 넘으면 보내지 않고 input 실패다', async () => {
+  it('AC-3308.9 · AC-3502.5: 열쇠·op·칸 모양이 틀리거나 v가 글이 아니거나 몸이 1024바이트를 넘으면 보내지 않고 input 실패다', async () => {
     fakeFetch(() => Promise.resolve(new Response(null, { status: 204 })))
     const k = fx.fakeKey(23)
     expect(await reasonOf(arrangeApi().setArrange('V1234', 'step', 'sono'))).toBe('input')
     expect(await reasonOf(arrangeApi().setArrange(k, 'jump', 'sono'))).toBe('input')
     expect(await reasonOf(arrangeApi().setArrange(k, 'step', 'mri'))).toBe('input')
     expect(await reasonOf(arrangeApi().setArrange(k, 'part', 'sono', 3 as unknown as string))).toBe('input')
-    expect(await reasonOf(arrangeApi().setArrange(k, 'part', 'sono', '가'.repeat(80)))).toBe('input')
+    expect(await reasonOf(arrangeApi().setArrange(k, 'part', 'sono', '가'.repeat(340)))).toBe('input')
     expect(calls).toEqual([])
+  })
+})
+
+// ---- 고르기 목록 (reception-pick-lists design.md 3절, TASK-4) ----------------------------------------------------
+
+interface PickApi {
+  setArrange?: (k: string, op: string, col?: string, v?: string, t?: string, options?: { signal?: AbortSignal }) => Promise<void>
+  setLists?: (picks: unknown, options?: { signal?: AbortSignal }) => Promise<void>
+}
+
+/** 아직 없으면(RED) 늘 실패하는 대역 */
+function pickApi(): Required<PickApi> {
+  const more = api as unknown as PickApi
+  const fail = () => Promise.reject(new Error('없음'))
+  return { setArrange: more.setArrange ?? fail, setLists: more.setLists ?? fail }
+}
+
+/** JSON 한 번 거친 사본(시험이 마음대로 고친다) */
+function copyOf<T>(v: T): T {
+  return JSON.parse(JSON.stringify(v)) as T
+}
+
+/** 고르기 목록 규칙(AC-3501.2)이 받는 가장 긴 목록: 이름은 모두 10글자(한글 9 + 숫자 1), 개수는 모두 한도까지 */
+function longestPicks(): fx.FakePicks {
+  const names = (n: number, head: string) => Array.from({ length: n }, (_, i) => `${head}${'가'.repeat(7)}${String(i).padStart(2, '0')}`)
+  return {
+    carm: { procs: names(12, '시').map((n, i) => ({ n, noDrug: i === 0 })), drugs: names(12, '약') },
+    sono: { parts: names(40, '부'), plains: names(12, '없'), withs: names(12, '같') },
+  }
+}
+
+describe('api.js 판의 고르기 목록(picks)과 칸 이름표(tags)', () => {
+  it('AC-3502.5: 칸 tags(글 목록)와 맨 위 picks가 맞으면 판을 그대로 돌려주고, picks가 없는 판(어레인지를 보내지 않음·옛 판)도 받는다', async () => {
+    const board = fx.arrangeMockupBoard()
+    expect(board.picks).toEqual(fx.defaultPicks())
+    board.arrange!.rows[0]!.cells.sono!.tags = ['채혈']
+    board.arrange!.rows[1]!.cells.carm!.tags = ['TP']
+    board.arrange!.rows[6]!.cells.sono!.part = '오른 어깨|왼 무릎'
+    board.arrange!.rows[6]!.cells.sono!.tags = ['DNA', '채혈']
+    fakeFetch(() => json(board))
+    await expect(api.getBoard()).resolves.toEqual(board)
+    // 비어 있는 무리도 맞는 모양이다(개수 규칙은 도우미가 본다)
+    const few = copyOf(board)
+    few.picks = { carm: { procs: [{ n: '허리', noDrug: false }], drugs: [] }, sono: { parts: [], plains: ['소독'], withs: [] } }
+    fakeFetch(() => json(few))
+    await expect(api.getBoard()).resolves.toEqual(few)
+    const none = copyOf(board)
+    delete none.picks
+    fakeFetch(() => json(none))
+    await expect(api.getBoard()).resolves.toEqual(none)
+    fakeFetch(() => json(fx.mockupBoard()))
+    await expect(api.getBoard()).resolves.toEqual(fx.mockupBoard())
+  })
+
+  it('AC-3502.5: 칸 tags가 없거나 글 목록이 아니면, picks 모양(C-ARM 시술 { n, noDrug }·약재, SONO 부위·부위 없이·같이 하는 것)이 틀리면 shape 실패다', async () => {
+    type Loose = Record<string, unknown>
+    const bad: Array<(b: fx.FakeBoard) => void> = [
+      (b) => delete (b.arrange!.rows[0]!.cells.xray as unknown as Loose).tags,
+      (b) => ((b.arrange!.rows[0]!.cells.sono as unknown as Loose).tags = '채혈'),
+      (b) => ((b.arrange!.rows[1]!.cells.carm as unknown as Loose).tags = [3]),
+      (b) => ((b.arrange!.rows[1]!.cells.carm as unknown as Loose).tags = null),
+      (b) => ((b as unknown as Loose).picks = null),
+      (b) => ((b as unknown as Loose).picks = []),
+      (b) => delete (b.picks as unknown as Loose).carm,
+      (b) => delete (b.picks as unknown as Loose).sono,
+      (b) => ((b.picks!.carm as unknown as Loose).procs = '목'),
+      (b) => ((b.picks!.carm.procs as unknown[])[0] = '목'),
+      (b) => ((b.picks!.carm.procs[0] as unknown as Loose).n = 3),
+      (b) => ((b.picks!.carm.procs[3] as unknown as Loose).noDrug = 'yes'),
+      (b) => delete (b.picks!.carm.procs[0] as unknown as Loose).noDrug,
+      (b) => ((b.picks!.carm.drugs as unknown[])[0] = 1),
+      (b) => delete (b.picks!.carm as unknown as Loose).drugs,
+      (b) => ((b.picks!.sono as unknown as Loose).parts = '어깨'),
+      (b) => ((b.picks!.sono.plains as unknown[])[1] = null),
+      (b) => delete (b.picks!.sono as unknown as Loose).withs,
+    ]
+    for (const [i, change] of bad.entries()) {
+      const board = copyOf(fx.arrangeMockupBoard())
+      change(board)
+      fakeFetch(() => json(board))
+      expect(await reasonOf(api.getBoard()), String(i)).toBe('shape')
+    }
+  })
+})
+
+describe('api.js setArrange의 이름표(t)', () => {
+  it('AC-3502.5: setArrange(k, op, col, v, t)는 t(이름표를 "|"로 이은 글)가 있으면 몸에 더하고 빈 글이면 뺀다. 6번째 인자가 signal이다', async () => {
+    fakeFetch(() => Promise.resolve(new Response(null, { status: 204 })))
+    const k = fx.fakeKey(23)
+    await expect(pickApi().setArrange(k, 'add', 'carm', '허리', 'TP')).resolves.toBeUndefined()
+    await pickApi().setArrange(k, 'part', 'sono', '오른 어깨|왼 무릎', 'DNA|채혈')
+    await pickApi().setArrange(k, 'add', 'sono', '소독', '')
+    await pickApi().setArrange(k, 'add', 'carm', '리덕션', undefined)
+    await pickApi().setArrange(k, 'step', 'sono')
+    expect(calls.map((c) => [c.url, JSON.parse(String(c.init.body))])).toEqual([
+      ['/api/arrange', { k, op: 'add', col: 'carm', v: '허리', t: 'TP' }],
+      ['/api/arrange', { k, op: 'part', col: 'sono', v: '오른 어깨|왼 무릎', t: 'DNA|채혈' }],
+      ['/api/arrange', { k, op: 'add', col: 'sono', v: '소독' }],
+      ['/api/arrange', { k, op: 'add', col: 'carm', v: '리덕션' }],
+      ['/api/arrange', { k, op: 'step', col: 'sono' }],
+    ])
+    fakeFetch(never)
+    const controller = new AbortController()
+    const seen = watch(pickApi().setArrange(k, 'add', 'carm', '허리', 'TP', { signal: controller.signal }))
+    await settle()
+    controller.abort()
+    await settle()
+    expect((seen.error as ApiErrorLike)?.reason).toBe('aborted')
+  })
+
+  it('AC-3502.5: /api/arrange 몸은 1024바이트까지 보낸다(가장 긴 SONO 6줄 + 같이 하는 것 12개). 넘거나 t가 글이 아니면 보내지 않고 input 실패다', async () => {
+    fakeFetch(() => Promise.resolve(new Response(null, { status: 204 })))
+    const k = fx.fakeKey(23)
+    const v = Array.from({ length: 6 }, () => `양 ${'가'.repeat(10)}`).join('|')
+    const t = longestPicks().sono.withs.join('|')
+    await expect(pickApi().setArrange(k, 'part', 'sono', v, t)).resolves.toBeUndefined()
+    expect(calls.length).toBe(1)
+    // 1024바이트를 갓 넘는 몸(1025~1027바이트)
+    const room = 1024 - new TextEncoder().encode(String(calls[0]!.init.body)).length
+    const over = '가'.repeat(Math.floor(room / 3) + 1)
+    expect(await reasonOf(pickApi().setArrange(k, 'part', 'sono', v, t + over))).toBe('input')
+    expect(await reasonOf(pickApi().setArrange(k, 'add', 'carm', '허리', 3 as unknown as string))).toBe('input')
+    expect(await reasonOf(pickApi().setArrange(k, 'add', 'carm', '허리', ['TP'] as unknown as string))).toBe('input')
+    expect(calls.length).toBe(1)
+  })
+})
+
+describe('api.js setLists', () => {
+  it('AC-3502.5: setLists(picks)는 POST /api/lists 하나를 쓰기 모양(X-Reception: 1·JSON·같은 곳·리퍼러 same-origin)으로, 몸은 picks 모양 칸만 담아 보내고 204면 끝난다', async () => {
+    fakeFetch(() => Promise.resolve(new Response(null, { status: 204 })))
+    const picks = fx.defaultPicks()
+    await expect(pickApi().setLists(picks)).resolves.toBeUndefined()
+    const extra = { ...copyOf(picks), x: '더 붙은 칸', carm: { ...picks.carm, y: 1, procs: picks.carm.procs.map((p) => ({ ...p, z: true })) } }
+    await pickApi().setLists(extra)
+    expect(calls.map((c) => c.url)).toEqual(['/api/lists', '/api/lists'])
+    for (const { init } of calls) {
+      expect(JSON.parse(String(init.body))).toEqual(picks)
+      expect(init.method).toBe('POST')
+      expect(new Headers(init.headers).get('X-Reception')).toBe('1')
+      expect(new Headers(init.headers).get('Content-Type')).toBe('application/json')
+      expect(init.referrerPolicy).toBe('same-origin')
+      expect(init.credentials).toBe('omit')
+      expect(init.mode).toBe('same-origin')
+      expect(init.redirect).toBe('error')
+    }
+  })
+
+  it('AC-3502.5: 204가 아니면(200·400·403·404·503) status, 연결 안 됨은 network, 5초 넘으면 timeout, 밖 signal이 끊기면 aborted 실패다', async () => {
+    const picks = fx.defaultPicks()
+    for (const status of [200, 400, 403, 404, 503]) {
+      fakeFetch(() => Promise.resolve(new Response(status === 200 ? '{}' : null, { status })))
+      expect(await reasonOf(pickApi().setLists(picks)), String(status)).toBe('status')
+    }
+    fakeFetch(() => Promise.reject(new TypeError('Failed to fetch')))
+    expect(await reasonOf(pickApi().setLists(picks))).toBe('network')
+    fakeFetch(never)
+    const late = watch(pickApi().setLists(picks))
+    await vi.advanceTimersByTimeAsync(5000)
+    expect((late.error as ApiErrorLike)?.reason).toBe('timeout')
+    const controller = new AbortController()
+    const cut = watch(pickApi().setLists(picks, { signal: controller.signal }))
+    await settle()
+    controller.abort()
+    await settle()
+    expect((cut.error as ApiErrorLike)?.reason).toBe('aborted')
+  })
+
+  it('AC-3502.5: 몸은 4096바이트까지 보낸다(규칙이 받는 가장 긴 목록). picks 모양이 틀리거나 몸이 4096바이트를 넘으면 보내지 않고 input 실패다', async () => {
+    fakeFetch(() => Promise.resolve(new Response(null, { status: 204 })))
+    await expect(pickApi().setLists(longestPicks())).resolves.toBeUndefined()
+    expect(calls.length).toBe(1)
+    const big = longestPicks()
+    big.sono.parts = Array.from({ length: 130 }, () => '가'.repeat(10))
+    expect(new TextEncoder().encode(JSON.stringify(big)).length).toBeGreaterThan(4096)
+    expect(await reasonOf(pickApi().setLists(big))).toBe('input')
+    const wrong: unknown[] = [
+      null,
+      [],
+      '목',
+      { carm: fx.defaultPicks().carm },
+      { sono: fx.defaultPicks().sono },
+      { ...fx.defaultPicks(), carm: { procs: ['목'], drugs: [] } },
+      { ...fx.defaultPicks(), carm: { procs: [{ n: '목', noDrug: 'no' }], drugs: [] } },
+      { ...fx.defaultPicks(), carm: { procs: [{ n: '목', noDrug: false }], drugs: [1] } },
+      { ...fx.defaultPicks(), sono: { parts: '어깨', plains: [], withs: [] } },
+      { ...fx.defaultPicks(), sono: { parts: [], plains: [], withs: [null] } },
+    ]
+    for (const [i, picks] of wrong.entries()) expect(await reasonOf(pickApi().setLists(picks)), String(i)).toBe('input')
+    expect(calls.length).toBe(1)
   })
 })
 

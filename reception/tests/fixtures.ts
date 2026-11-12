@@ -36,6 +36,36 @@ export interface FakeBoard {
   lists: Record<FakeList, FakeRow[]>
   /** 어레인지 표 (reception-arrange design.md 7절). 옛 도우미 답에는 없다 */
   arrange?: FakeArrange
+  /** SONO·C-ARM 고르기 목록 (reception-pick-lists AC-3501.4). 어레인지를 보내는 판에만 있다 */
+  picks?: FakePicks
+}
+
+// ---- 고르기 목록 (reception-pick-lists design.md 1절, PickLists.cs Write 모양) ----------------------------------
+
+/** 판 맨 위 picks: C-ARM 시술(약재 없음 표시)·약재, SONO 부위·부위 없이·같이 하는 것 */
+export interface FakePicks {
+  carm: { procs: { n: string; noDrug: boolean }[]; drugs: string[] }
+  sono: { parts: string[]; plains: string[]; withs: string[] }
+}
+
+/** 목록 파일이 없을 때의 기본 목록(AC-3501.1, 승인 시안 차례). 부를 때마다 새 사본이다 */
+export function defaultPicks(): FakePicks {
+  return {
+    carm: {
+      procs: [
+        { n: '목', noDrug: false },
+        { n: '등', noDrug: false },
+        { n: '허리', noDrug: false },
+        { n: '리덕션', noDrug: true },
+      ],
+      drugs: ['TP', '하프', '기본'],
+    },
+    sono: {
+      parts: ['목', '등', '허리', '어깨', '위팔', '팔꿈치', '아래팔', '손목', '손가락', '늑골', '골반', '고관절', '허벅지', '무릎', '종아리', '발목', '발바닥', '발가락', '아킬레스', '기타'],
+      plains: ['소독', 'S/O', '봉합'],
+      withs: ['DNA', '채혈'],
+    },
+  }
 }
 
 // ---- 어레인지 표 (reception-arrange, design.md 7절 ArrangeBuilder 답 모양) ----------------------------------
@@ -46,7 +76,10 @@ export type FakeCol = 'xray' | 'sono' | 'carm' | 'pt' | 'ds' | 'eswt' | 'trac'
 /** 칸 일곱 (표 차례) */
 export const ARRANGE_COLS: FakeCol[] = ['xray', 'sono', 'carm', 'pt', 'ds', 'eswt', 'trac']
 
-/** 칸 하나: st 준비(todo)·준비완료(ready)·완료(done), at 처방(넣은) 시각·준비완료 시각·완료 시각(비트 처방 시각을 모르면 null), ord SONO·C-ARM 순서 */
+/**
+ * 칸 하나: st 준비(todo)·준비완료(ready)·완료(done), at 처방(넣은) 시각·준비완료 시각·완료 시각(비트 처방 시각을 모르면 null), ord SONO·C-ARM 순서,
+ * part SONO·C-ARM 부위·시술(여러 줄은 "|"로 이음), tags SONO 같이 하는 것·C-ARM 약재(늘 배열, reception-pick-lists AC-3502.2)
+ */
 export interface FakeCell {
   st: 'todo' | 'ready' | 'done'
   det: string
@@ -54,6 +87,7 @@ export interface FakeCell {
   at: string | null
   ord: number | null
   manual: boolean
+  tags: string[]
 }
 
 /** 어레인지 줄 하나. 이름·차트번호·정보·메모·상태·접수 시각은 같은 k의 목록 줄에 있다 */
@@ -73,7 +107,7 @@ export interface FakeArrange {
 
 /** 칸 하나. 주지 않은 값은 처방에서 온 준비 칸이다 */
 export function fakeCell(over: Partial<FakeCell> = {}): FakeCell {
-  return { st: 'todo', det: '', part: null, at: '10:30', ord: null, manual: false, ...over }
+  return { st: 'todo', det: '', part: null, at: '10:30', ord: null, manual: false, tags: [], ...over }
 }
 
 /** 어레인지 줄 하나: 주지 않은 칸은 없음(null), allDone은 칸이 하나 이상이고 모두 완료일 때 true (AC-3305.8) */
@@ -87,9 +121,9 @@ export function arrangeRow(
   return { k, away: null, ptf: null, last: '', ...over, cells: all, allDone: present.length > 0 && present.every((cell) => cell.st === 'done') }
 }
 
-/** 판에 어레인지 표를 얹은 사본 */
+/** 판에 어레인지 표를 얹은 사본. 어레인지를 보내는 판이라 고르기 목록 picks도 있다(없으면 기본 목록, AC-3501.4) */
 export function withArrange(board: FakeBoard, arrange: FakeArrange): FakeBoard {
-  return { ...board, arrange }
+  return { ...board, arrange, picks: board.picks ?? defaultPicks() }
 }
 
 /** 어레인지 시안(Arrange.html)의 환자 a~j 자리의 화면 열쇠. 이름은 가상환자21~30 */
