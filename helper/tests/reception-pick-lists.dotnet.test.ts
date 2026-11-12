@@ -1,6 +1,7 @@
 // SONO·C-ARM 고르기 목록(PickLists·ReceptionLists, reception-pick-lists TASK-1, REQ-3501)과
-// 칸 표시·쓰기 검사·판 칸(ArrangeMarks·ArrangeWrite·ArrangeBuilder·Board, TASK-2, REQ-3502·AC-3501.4)의 C# 시험
-// (helper/tests/Precheck.Core.Tests/Reception/PickLists.test.cs·PickWrite.test.cs)을 감싼다.
+// 칸 표시·쓰기 검사·판 칸(ArrangeMarks·ArrangeWrite·ArrangeBuilder·Board, TASK-2, REQ-3502·AC-3501.4),
+// 길·몸 한도·연결(POST /api/lists·ReceptionRouter·HttpRequestReader·ReceptionServices, TASK-3, AC-3501.3·AC-3501.4·AC-3502.4)의 C# 시험
+// (helper/tests/Precheck.Core.Tests/Reception/PickLists.test.cs·PickWrite.test.cs·Http/ListsRoute.test.cs)을 감싼다.
 import { beforeAll, describe, expect, it } from 'vitest'
 import { runDotnet } from './runDotnet'
 
@@ -36,6 +37,10 @@ describe('REQ-3501 고르기 목록 저장·나눠 주기 (C# Precheck.Core.Test
     expectAc('AC-3501.2')
   })
 
+  it('AC-3501.3 POST /api/lists는 쓰기 검사가 틀리면 403, 모양이 틀리면 400, 맞으면 data\\reception-lists.dat(머리 + DPAPI, 날짜 무관)에 쓰고 204', () => {
+    expectAc('AC-3501.3')
+  })
+
   it('AC-3501.4 어레인지 칸을 보내는 판에는 맨 위 picks(지금 목록)가 있고, 어레인지를 보내지 않는 판에는 없다', () => {
     expectAc('AC-3501.4')
   })
@@ -52,5 +57,9 @@ describe('REQ-3502 칸 표시·쓰기 (C# Precheck.Core.Tests.Reception.PickChoi
 
   it('AC-3502.3 sono·carm add·part는 새 칸 t와 함께 지금 목록으로 보고, 어긋나거나 다른 op·칸에 t가 있거나 "부위는 나중에"면 400', () => {
     expectAc('AC-3502.3')
+  })
+
+  it('AC-3502.4 읽기 한도 4096바이트(넘으면 413), 쓰기 검사 전에 /api/xray 256·/api/arrange 1024·/api/lists 4096바이트를 넘으면 413', () => {
+    expectAc('AC-3502.4')
   })
 })

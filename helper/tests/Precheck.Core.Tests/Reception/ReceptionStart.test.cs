@@ -284,6 +284,7 @@ public class ReceptionStartTests
             "new DpapiProtector()",
             "new BoardCache(bit, Now)",
             "new XrayMarks(new StoreFolder(DataDirectory()), protector, Now, log.Note)",
+            "new ReceptionLists(new StoreFolder(DataDirectory()), protector, log.Note)",
             "new VisitKeys()",
             "new StaticFiles(EmbeddedStaticSource.Core())",
             "new LanAddressWatch(LanAddresses.ReadSystem, () => DateTime.UtcNow)",

@@ -14,7 +14,7 @@ namespace Precheck.Core.Tests.Reception.HttpGate;
 /// 작은 웹 서버의 문 지키기(ClientGuard, design.md 7절, REQ-1406).
 /// AC-1406.1 사설 IPv4(10/8·172.16/12·192.168/16)와 이 PC 자신(127/8·::1)만 받는다. IPv4가 섞인 IPv6(::ffff:a.b.c.d)는 풀어서 본다.
 /// AC-1406.2 Host는 이 PC의 지금 사설 IPv4 하나 + :47200(이 PC 자신이면 127.0.0.1:47200·localhost:47200)만 받는다.
-/// AC-1406.3 쓰기는 Origin = http://{Host}, X-Reception: 1, Content-Type: application/json, 몸 256바이트 이하일 때만.
+/// AC-1406.3 쓰기는 Origin = http://{Host}, X-Reception: 1, Content-Type: application/json, 몸이 읽기 한도(4096바이트, spec reception-pick-lists AC-3502.4) 이하일 때만.
 /// 주소는 모두 가짜(사설·문서용) 주소다.
 /// </summary>
 public class ClientGuardTests
@@ -223,12 +223,12 @@ public class ClientGuardTests
         return Parse(text.ToString());
     }
 
-    [Fact(DisplayName = "AC-1406.3 Origin = http://{Host}, X-Reception: 1, Content-Type: application/json, 몸 256바이트 이하면 쓰기를 받는다")]
+    [Fact(DisplayName = "AC-1406.3 Origin = http://{Host}, X-Reception: 1, Content-Type: application/json, 몸 4096바이트 이하면 쓰기를 받는다")]
     public void WriteAccepted()
     {
         Assert.True(ClientGuard.WriteOk(Write()));
         Assert.True(ClientGuard.WriteOk(Write(origin: "http://localhost:47200", host: "localhost:47200")));
-        Assert.True(ClientGuard.WriteOk(Write(body: new string('x', 256))));
+        Assert.True(ClientGuard.WriteOk(Write(body: new string('x', 4096))));
         Assert.True(ClientGuard.WriteOk(Write(body: "")));
     }
 
@@ -309,7 +309,7 @@ public class ClientGuardTests
         Assert.False(ClientGuard.WriteOk(Write(method: method)), method);
     }
 
-    [Fact(DisplayName = "AC-1406.3 몸이 256바이트를 넘으면(직접 만든 요청) 쓰기를 받지 않는다")]
+    [Fact(DisplayName = "AC-1406.3 몸이 4096바이트를 넘으면(직접 만든 요청) 쓰기를 받지 않는다")]
     public void WriteBodyTooLarge()
     {
         var headers = new Dictionary<string, string>
@@ -319,8 +319,8 @@ public class ClientGuardTests
             ["X-Reception"] = "1",
             ["Content-Type"] = "application/json",
         };
-        Assert.True(ClientGuard.WriteOk(new HttpRequest("POST", "/api/xray", headers, new byte[256])));
-        Assert.False(ClientGuard.WriteOk(new HttpRequest("POST", "/api/xray", headers, new byte[257])));
+        Assert.True(ClientGuard.WriteOk(new HttpRequest("POST", "/api/lists", headers, new byte[4096])));
+        Assert.False(ClientGuard.WriteOk(new HttpRequest("POST", "/api/lists", headers, new byte[4097])));
         Assert.False(ClientGuard.WriteOk(null!));
     }
 }

@@ -192,7 +192,10 @@ public class ArrangeRouteTests
     }
 }
 
-/// <summary>ServeRig와 같은 한 벌에 ArrangeMarks·가짜 지도·오늘 처방 시각(V1001 SONO1 09:20·G1234 09:25, V1002 G1234 09:40)을 더한 것.</summary>
+/// <summary>
+/// ServeRig와 같은 한 벌에 ArrangeMarks·가짜 지도·오늘 처방 시각(V1001 SONO1 09:20·G1234 09:25, V1002 G1234 09:40)을 더한 것.
+/// lists가 참이면 같은 저장 폴더의 고르기 목록(ReceptionLists, spec reception-pick-lists)도 라우터에 넘긴다.
+/// </summary>
 internal sealed class ArrangeRig : IDisposable
 {
     public static readonly KeyValuePair<string, string>[] WriteHeaders =
@@ -212,7 +215,7 @@ internal sealed class ArrangeRig : IDisposable
     private readonly TempFolder data = new TempFolder();
     private readonly TempFolder logs = new TempFolder();
 
-    public ArrangeRig(bool registered = true, IReadOnlyDictionary<string, Lane>? statuses = null)
+    public ArrangeRig(bool registered = true, IReadOnlyDictionary<string, Lane>? statuses = null, bool lists = false)
     {
         Bit = new Rig();
         if (registered) Bit.Registered();
@@ -231,10 +234,16 @@ internal sealed class ArrangeRig : IDisposable
         Log = new ReceptionLog(logs.Path, Clock.Now);
         XrayMarks = new XrayMarks(new StoreFolder(data.Path), Bit.Protector, Clock.Now, Log.Note);
         ArrangeMarks = new ArrangeMarks(new StoreFolder(data.Path), Bit.Protector, Clock.Now, Log.Note);
+        Lists = lists ? new ReceptionLists(new StoreFolder(data.Path), Bit.Protector, Log.Note) : null;
         Router = new ReceptionRouter(
             Bit.Services, Cache, XrayMarks, Keys, new StaticFiles(new FakeStatic()), () => new[] { ServeRig.ThisPc }, Log, Clock.Now,
-            statuses ?? ServeRig.Statuses, new string[0], null, ArrangeMarks, FakeMap);
+            statuses ?? ServeRig.Statuses, new string[0], null, ArrangeMarks, FakeMap, Lists);
     }
+
+    /// <summary>저장 폴더(data\).</summary>
+    public string DataPath => data.Path;
+
+    public ReceptionLists? Lists { get; }
 
     public Rig Bit { get; }
     public CacheClock Clock { get; }

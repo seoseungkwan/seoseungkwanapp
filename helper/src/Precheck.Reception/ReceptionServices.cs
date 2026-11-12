@@ -56,6 +56,8 @@ internal static class ReceptionServices
         var marks = new XrayMarks(new StoreFolder(DataDirectory()), protector, Now, log.Note);
         // 어레인지 표시(spec reception-arrange design.md 6절): 같은 data\ 폴더의 reception-arrange.dat, 같은 DPAPI
         var arrange = new ArrangeMarks(new StoreFolder(DataDirectory()), protector, Now, log.Note);
+        // SONO·C-ARM 고르기 목록(spec reception-pick-lists design.md 1절): 같은 data\ 폴더의 reception-lists.dat, 같은 DPAPI
+        var lists = new ReceptionLists(new StoreFolder(DataDirectory()), protector, log.Note);
         return new ReceptionRouter(
             bit,
             new BoardCache(bit, Now),
@@ -67,7 +69,8 @@ internal static class ReceptionServices
             Now,
             linkPage: LinkPage.For(() => lan.Current()),
             arrangeMarks: arrange,
-            arrangeMap: ArrangeMap.Rules);
+            arrangeMap: ArrangeMap.Rules,
+            lists: lists);
     }
 
     /// <summary>도우미 HelperServices.Create와 같은 비트 부품(화면 내보내기는 접수 현황이 쓰지 않아 뺀다).</summary>

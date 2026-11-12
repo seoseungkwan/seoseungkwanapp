@@ -20,8 +20,10 @@ namespace Precheck.Core.Reception.Http;
 /// - GET /api/visit/{k}/papers?from=N → PastPaperReader.Get(200 {"papers","total","next"}·404·503, spec reception-memo-papers AC-3404.1).
 ///   틀린 열쇠·시작 위치는 상세 길과 같이 비트를 읽지 않고 404.
 /// - POST /api/xray {k, on} → 쓰기 검사(아니면 403) → 몸 모양(아니면 400) → 그날 열쇠·오늘 진료보류 줄(아니면 404) → XrayMarks.Set → 204(AC-1405.5).
-/// - POST /api/arrange {k, op, col?, v?}(어레인지 표시를 넘겼을 때만) → 쓰기 검사·몸 모양·그날 네 칸 줄 → ArrangeWrite → 204(spec reception-arrange AC-3306.1).
-///   이때 GET /api/board 답에는 arrange 칸이 더 있다(AC-3305.1).
+/// - POST /api/arrange {k, op, col?, v?, t?}(어레인지 표시를 넘겼을 때만) → 쓰기 검사·몸 모양·그날 네 칸 줄 → ArrangeWrite → 204(spec reception-arrange AC-3306.1).
+///   이때 GET /api/board 답에는 arrange 칸과 맨 위 picks(지금 고르기 목록, spec reception-pick-lists AC-3501.4)가 더 있다(AC-3305.1).
+/// - POST /api/lists(고르기 목록 저장소를 넘겼을 때만) → 쓰기 검사(403) → 목록 모양(400) → ReceptionLists.Save → 204(spec reception-pick-lists AC-3501.3).
+/// - 쓰기 길은 쓰기 검사 전에 몸 크기를 본다: /api/xray 256·/api/arrange 1024·/api/lists 4096바이트를 넘으면 413(AC-3502.4).
 /// - GET /link(주소 보내기 화면, LinkPage)는 이 PC 자신(루프백)만. 다른 곳에는 없는 길이다(404, AC-1406.8). /qr 길은 없다(QR 없음).
 /// - 그 밖은 화면 파일(StaticFiles, 질의 글 없이 GET만). 어디에도 없으면 404, 있는 길에 다른 방법이면 405(Allow).
 /// 비트를 볼 수 없으면 503 {"state":"unavailable"}(환자 자료 없음). 기록에는 오류 번호만 남긴다(AC-1406.7).
@@ -32,6 +34,12 @@ public sealed class ReceptionRouter
     private const string FreshQuery = "fresh=1";
     private const string XrayPath = "/api/xray";
     private const string ArrangePath = "/api/arrange";
+    private const string ListsPath = "/api/lists";
+
+    /// <summary>길마다 몸 한도(AC-3502.4). 가장 긴 어레인지 쓰기(SONO 6줄 + 같이 12개, 한글 3바이트)가 약 650바이트다.</summary>
+    private const int XrayMaxBody = 256;
+    private const int ArrangeMaxBody = 1024;
+    private const int ListsMaxBody = HttpRequestReader.MaxBody;
     private const string LinkPath = "/link";
     private const string VisitPrefix = "/api/visit/";
     private const string HistorySuffix = "/history";
@@ -58,6 +66,7 @@ public sealed class ReceptionRouter
     private readonly Func<HttpResponse>? linkPage;
     private readonly ArrangeMarks? arrangeMarks;
     private readonly IReadOnlyList<ArrangeRule> arrangeMap;
+    private readonly ReceptionLists? lists;
 
     /// <param name="services">상세 읽기의 등록 확인·비트 연결(HistoryReader).</param>
     /// <param name="board">접수 현황 캐시(같은 시계로 만든 것).</param>
@@ -72,6 +81,7 @@ public sealed class ReceptionRouter
     /// <param name="linkPage">이 PC 자신의 GET /link 답(LinkPage.For). 없으면 /link는 404.</param>
     /// <param name="arrangeMarks">어레인지 표시(spec reception-arrange). 없으면 /api/arrange는 404이고 판에 arrange 칸이 없다.</param>
     /// <param name="arrangeMap">처방 → 어레인지 칸 지도. 없으면 ArrangeMap.Rules.</param>
+    /// <param name="lists">SONO·C-ARM 고르기 목록 저장소(spec reception-pick-lists). 없으면 /api/lists는 404이고 목록은 기본값이다.</param>
     public ReceptionRouter(
         BitServices services,
         BoardCache board,
@@ -85,7 +95,8 @@ public sealed class ReceptionRouter
         IEnumerable<string>? hiddenRsu = null,
         Func<HttpResponse>? linkPage = null,
         ArrangeMarks? arrangeMarks = null,
-        IReadOnlyList<ArrangeRule>? arrangeMap = null)
+        IReadOnlyList<ArrangeRule>? arrangeMap = null,
+        ReceptionLists? lists = null)
     {
         this.services = services ?? throw new ArgumentNullException(nameof(services));
         this.board = board ?? throw new ArgumentNullException(nameof(board));
@@ -100,6 +111,7 @@ public sealed class ReceptionRouter
         this.linkPage = linkPage;
         this.arrangeMarks = arrangeMarks;
         this.arrangeMap = arrangeMap ?? ArrangeMap.Rules;
+        this.lists = lists;
     }
 
     /// <summary>요청 하나의 답. client는 보낸 쪽 주소, port는 서버가 듣는 문(Host 검사, 보통 47200). 던지지 않는다.</summary>
@@ -141,6 +153,11 @@ public sealed class ReceptionRouter
             if (r.Method != Post) return HttpResponse.NotAllowed(Post);
             return r.Query == null ? Arrange(r, arrangeMarks) : NotFound();
         }
+        if (r.Path == ListsPath && lists != null)
+        {
+            if (r.Method != Post) return HttpResponse.NotAllowed(Post);
+            return r.Query == null ? Lists(r, lists) : NotFound();
+        }
         if (r.Path == LinkPath)
         {
             // 이 PC 자신이 아니면 /link는 없는 길이다(AC-1406.8)
@@ -178,16 +195,17 @@ public sealed class ReceptionRouter
         var built = BoardBuilder.Build(result.Input!, statuses, hiddenRsu, xray, keys, clock());
         if (arrangeMarks == null) return HttpResponse.Json(built.ToJson());
         var arrange = ArrangeBuilder.Build(result.Input!, statuses, hiddenRsu, arrangeMap, arrangeMarks.Today(), xray, keys);
-        return HttpResponse.Json(built.ToJson(arrange));
+        return HttpResponse.Json(built.ToJson(arrange, lists?.Current()));
     }
 
     /// <summary>
-    /// POST /api/arrange(spec reception-arrange AC-3306.1): 쓰기 검사(403) → 몸 모양(400) → 그날 열쇠·오늘 판의 네 칸 줄(404) →
+    /// POST /api/arrange(spec reception-arrange AC-3306.1): 몸 크기(413, AC-3502.4) → 쓰기 검사(403) → 몸 모양(400) → 그날 열쇠·오늘 판의 네 칸 줄(404) →
     /// 지금 판으로 그 줄의 칸 상태(치료 종료한 줄도 칸을 본다) → ArrangeWrite → X-RAY 완료는 XrayMarks, 나머지는 ArrangeMarks → 204.
     /// 비트를 볼 수 없거나 표시를 쓰지 못하면 503. 기록에는 오류 번호만 간다(AC-3306.6).
     /// </summary>
     private HttpResponse Arrange(HttpRequest r, ArrangeMarks store)
     {
+        if (r.Body.Length > ArrangeMaxBody) return HttpResponse.Empty(413);
         if (!ClientGuard.WriteOk(r))
         {
             log?.Note(ReceptionErrors.BadWrite);
@@ -209,6 +227,7 @@ public sealed class ReceptionRouter
 
         var single = new BoardInput(input.Day, input.ReadAt, new[] { visit }, input.RxNames);
         var xray = marks.Today();
+        var picks = lists?.Current();
         var hhmm = now.ToString("HH:mm", CultureInfo.InvariantCulture);
         ArrangeWriteResult? result = null;
         try
@@ -224,11 +243,35 @@ public sealed class ReceptionRouter
                     [visit.VisitId] = (mark ?? new VisitMark()).WithEnded(null).WithKept(true),
                 };
                 var row = ArrangeBuilder.Build(single, statuses, hiddenRsu, arrangeMap, open, xray, keys).Rows.FirstOrDefault();
-                result = ArrangeWrite.Apply(op, mark, row?.Cells ?? new Dictionary<ArrangeCol, ArrangeCell>(), hhmm, paid);
+                result = ArrangeWrite.Apply(op, mark, row?.Cells ?? new Dictionary<ArrangeCol, ArrangeCell>(), hhmm, paid, picks);
                 return result.Status == 204 && result.ChangesMarks ? result.Next : mark;
             });
             if (result == null || result.Status != 204) return HttpResponse.Empty(result?.Status ?? 500);
             if (result.Xray.HasValue) marks.Set(visit.VisitId, result.Xray.Value);
+        }
+        catch (HelperException e)
+        {
+            return Unavailable(e.Code);
+        }
+        return HttpResponse.Empty(204);
+    }
+
+    /// <summary>
+    /// POST /api/lists(spec reception-pick-lists AC-3501.3): 몸 크기(413) → 쓰기 검사(403) → 목록 모양(PickLists.TryParse, 400) → ReceptionLists.Save → 204.
+    /// 저장하지 못하면 503. 기록에는 오류 번호만 간다.
+    /// </summary>
+    private HttpResponse Lists(HttpRequest r, ReceptionLists store)
+    {
+        if (r.Body.Length > ListsMaxBody) return HttpResponse.Empty(413);
+        if (!ClientGuard.WriteOk(r))
+        {
+            log?.Note(ReceptionErrors.BadWrite);
+            return HttpResponse.Empty(403);
+        }
+        if (!PickLists.TryParse(r.Body, out var picks)) return HttpResponse.Empty(400);
+        try
+        {
+            store.Save(picks);
         }
         catch (HelperException e)
         {
@@ -287,6 +330,7 @@ public sealed class ReceptionRouter
 
     private HttpResponse Xray(HttpRequest r)
     {
+        if (r.Body.Length > XrayMaxBody) return HttpResponse.Empty(413);
         if (!ClientGuard.WriteOk(r))
         {
             log?.Note(ReceptionErrors.BadWrite);
