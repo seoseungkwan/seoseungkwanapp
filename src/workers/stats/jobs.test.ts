@@ -1134,11 +1134,12 @@ describe('AC-2702.1·AC-2702.3 sectionsJob: 메모리의 접수 줄 → 세 칸 
     }
   })
 
-  it('AC-2702.3: 불러온 기간 전체 — 명은 서로 다른 환자, 건은 접수, 신환은 첫 내원이 기간 안인 환자만', () => {
+  it('AC-2702.3·AC-3803.4: 불러온 기간 전체 — 명은 서로 다른 환자, 건은 접수, 신환은 그 환자의 첫 내원일(f) 날 접수만', () => {
     const view = readyIn(sectionsJob(loadJob(v3Json(), OPTS).bit, WHOLE))
     const { mix, hours, doctors } = view
     expect(mix.all.total).toEqual({ people: 6, visits: 8 })
-    expect(mix.new.total).toEqual({ people: 5, visits: 6 }) // 옛 환자(첫 내원 2025년)와 차트번호 없는 접수는 빠진다
+    // 9월 신환 5명의 f 날 접수 5건. 10-05에 다시 온 접수, 옛 환자(첫 내원 2025년), 차트번호 없는 접수는 빠진다
+    expect(mix.new.total).toEqual({ people: 5, visits: 5 })
     expect(mix.all.compared).toBe(false)
     expect(rowOf(mix.all.insurance, '차상위')?.people).toBe(1)
     expect(rowOf(mix.all.city, '영통구')?.people).toBe(1)
@@ -1147,6 +1148,7 @@ describe('AC-2702.1·AC-2702.3 sectionsJob: 메모리의 접수 줄 → 세 칸 
     expect(cellSum(view)).toBe(7)
     if (doctors.kind !== 'table') throw new Error('원장님 표가 없다')
     expect(doctors.total).toMatchObject({ patients: 6, newPatients: 5, visits: 8, amount: 230_000 })
+    expect(mix.new.total.people).toBe(doctors.total.newPatients) // 원장님별 신환(이미 f 날 기준)과 같다(AC-3803.4)
     expect(doctors.rows.map((row) => row.label)).toEqual(['김가상', '이가상', '진료의 미지정'])
     expect(rowOf(doctors.rows, '김가상')).toMatchObject({ patients: 3, visits: 4, amount: 150_000 })
   })

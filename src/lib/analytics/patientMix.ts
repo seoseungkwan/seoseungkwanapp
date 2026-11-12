@@ -12,7 +12,8 @@ export type { MixDelta, MixRow, PatientMix } from '@/types/stats'
 export type VisitLine = { p: number; d: string; h: number | null; ins: string | null; doc: string | null }
 // 환자 한 명. birth = YYYY-MM-DD, area = 주소 앞부분(도우미가 보낸 앞 낱말 다섯 개까지)
 export type Person = { birth: string | null; area: string | null }
-// first = 환자 → 첫 내원일(YYYY-MM-DD, 모르면 없음). previous = 견줄 기간(없으면 견주지 않는다, AC-2703.9)
+// first = 환자 → 우리 병원 최초 내원일 f(YYYY-MM-DD, 모르면 없음). [신환]은 접수일이 f인 접수만 센다(AC-3803.1).
+// previous = 견줄 기간(없으면 견주지 않는다, AC-2703.9)
 export type MixInput = {
   from: string
   to: string
@@ -108,7 +109,9 @@ function add(tally: Tally, key: string, field: keyof Count): void {
 const isLater = (line: VisitLine, seen: VisitLine) =>
   line.d > seen.d || (line.d === seen.d && (line.h ?? -1) >= (seen.h ?? -1))
 
-// 한 기간을 센다. 명은 환자마다 기간 안 마지막 접수로 한 번, 건은 접수마다(AC-2703.2·AC-2703.3)
+// 한 기간을 센다. 명은 환자마다 센 접수 중 마지막 접수로 한 번, 건은 센 접수마다(AC-2703.2).
+// [신환]은 접수일이 그 환자의 우리 병원 최초 내원일(f)인 접수만 센다(rx-split-new AC-3803.1~3803.3). 줄은 기간 안만 세므로
+// f가 기간 안인 것은 저절로 된다. 그래서 [신환] 명의 보험 = f 날 접수 중 마지막 접수의 보험
 function countPeriod(input: MixInput, { from, to }: DateRange, who: MixWho, places: (p: number) => Place | null): Counts {
   const counts: Counts = { total: { people: 0, visits: 0 }, age: new Map(), insurance: new Map(), city: new Map(), town: new Map() }
   const ages = new Map<number, string>()
@@ -121,10 +124,7 @@ function countPeriod(input: MixInput, { from, to }: DateRange, who: MixWho, plac
     }
     return band
   }
-  const isNew = (p: number) => {
-    const first = input.first.get(p)
-    return first !== undefined && first >= from && first <= to
-  }
+  const isFirstDayLine = (line: VisitLine) => line.p >= 0 && input.first.get(line.p) === line.d
   const tallyOne = (line: VisitLine, field: keyof Count) => {
     const place = line.p < 0 ? null : places(line.p)
     add(counts.age, ageOf(line.p), field)
@@ -137,7 +137,7 @@ function countPeriod(input: MixInput, { from, to }: DateRange, who: MixWho, plac
   const last = new Map<number, VisitLine>()
   for (const line of input.visits) {
     if (line.d < from || line.d > to) continue
-    if (who === 'new' && (line.p < 0 || !isNew(line.p))) continue
+    if (who === 'new' && !isFirstDayLine(line)) continue
     tallyOne(line, 'visits')
     if (line.p < 0) continue
     const seen = last.get(line.p)
