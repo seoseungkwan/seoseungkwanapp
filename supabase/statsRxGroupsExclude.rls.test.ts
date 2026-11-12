@@ -17,7 +17,7 @@ const EXCLUDE_PATH = fileOf('./migrations/20261112000000_stats_rx_groups_exclude
 // 파일이 아직 없으면 빈 글자로 돌아, 시험마다 '칸이 없다'로 실패한다(무엇이 빠졌는지 시험별로 보인다)
 const EXCLUDE_MIGRATION = existsSync(EXCLUDE_PATH) ? readFileSync(EXCLUDE_PATH, 'utf-8') : ''
 // 주석을 뺀 SQL 글자(머리 주석이 다른 갈래 표·함수 이름을 설명으로 말한다)
-const EXCLUDE_SQL = EXCLUDE_MIGRATION.split('\n')
+const EXCLUDE_SQL = EXCLUDE_MIGRATION.split(/\r?\n/)
   .map((line) => line.replace(/--.*$/, ''))
   .join('\n')
 
