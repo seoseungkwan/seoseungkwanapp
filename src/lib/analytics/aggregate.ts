@@ -24,7 +24,8 @@ import { diffDays, monthOf, monthRange, weekRange, weekStartOf } from './dates'
 
 export const NO_ADDRESS = '주소 없음'
 
-// 칸 안에서 큰 값이 이긴다: 신환 줄이 하나라도 있으면 신환, 없고 재진 줄이 있으면 재진, 둘 다 없으면 알 수 없음
+// 그날 안에서 큰 값이 그날 표시다: 그날 그 환자의 외래 줄(다른 처방 줄 포함) 중 신환 줄이 하나라도 있으면 신환, 없고 재진 줄이 있으면 재진,
+// 둘 다 없으면 알 수 없음. 주·달 칸의 처방·묶음 신환·재진은 그 처방을 받은(묶음을 센) 날들의 그날 표시 중 큰 값이다(spec rx-split-new REQ-3804)
 const UNKNOWN = 0
 const RETURNING = 1
 const NEW = 2
@@ -41,9 +42,16 @@ type Regions = Map<number, Set<number>> // 지역 번호 → 환자
 
 type RxAcc = {
   days: Map<number, number> // 환자 → 이 칸에서 이 처방을 받은 서로 다른 날 수
+  visit: Map<number, number> // 환자 → 이 칸에서 이 처방을 받은 날들의 그날 표시 중 큰 값. 줄을 다 훑은 뒤 채운다
   names: Map<string, number> // 이름 → 건수. Map은 처음 나온 순서를 지킨다
   types: Map<string, number>
   regions: Regions // 이 처방을 받은 환자만
+}
+
+// 한 환자가 한 칸에서 센 묶음: ats[i]를 센 날의 그날 표시가 seen[i]
+type GroupDays = {
+  ats: number[] // 센 그룹 자리(센 날마다 한 번씩: 이틀 센 그룹은 두 번)
+  seen: number[]
 }
 
 type AgainAcc = Omit<RxAgain, 'code'>
@@ -52,9 +60,9 @@ type BucketAcc = {
   key: string
   range: DateRange
   at: number // 칸 첫날의 일 번호(DAY_ZERO부터 며칠째). 같은 처방 재방문이 일 칸끼리 날 수를 잰다
-  visit: Map<number, number> // 환자 → UNKNOWN·RETURNING·NEW
+  visit: Map<number, number> // 환자 → 그날 표시(UNKNOWN·RETURNING·NEW). 일 칸만 채운다
   rx: Map<number, RxAcc> // 처방 번호 →
-  groups: Map<number, number[]> // 환자 → 그 칸에서 센 그룹 자리(센 날마다 한 번씩: 이틀 센 그룹은 두 번)
+  groups: Map<number, GroupDays> // 환자 → 그 칸에서 센 그룹 자리와 그날 표시
   regions: Regions
   revisit: RevisitCounts
   totals: Totals // 일 칸은 그날 값, 주·달 칸은 일 칸의 합. 줄을 다 훑은 뒤 채운다
@@ -190,11 +198,17 @@ function countsAs(rule: GroupRule, codes: readonly number[]): boolean {
   return false
 }
 
-// 그 칸에 환자의 하루를 더한다: 그날 센 묶음 자리를 이어 붙인다(묶음마다 Map을 찾지 않게 환자 하나에 한 번만 찾는다)
-function addGroupDay(bucket: BucketAcc, patient: number, counted: readonly number[]): void {
-  const ats = bucket.groups.get(patient)
-  if (ats === undefined) bucket.groups.set(patient, [...counted])
-  else for (const at of counted) ats.push(at)
+// 그 칸에 환자의 하루를 더한다: 그날 센 묶음 자리와 그날 표시(seen)를 이어 붙인다(묶음마다 Map을 찾지 않게 환자 하나에 한 번만 찾는다)
+function addGroupDay(bucket: BucketAcc, patient: number, counted: readonly number[], seen: number): void {
+  let days = bucket.groups.get(patient)
+  if (days === undefined) {
+    days = { ats: [], seen: [] }
+    bucket.groups.set(patient, days)
+  }
+  for (const at of counted) {
+    days.ats.push(at)
+    days.seen.push(seen)
+  }
 }
 
 function againIn(day: BucketAcc, rx: number): AgainAcc {
@@ -298,14 +312,17 @@ export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] 
       else days.push(trio[0])
     }
 
+    // 그날 표시는 일 칸에만 모은다. 주·달 칸은 다 훑은 뒤 받은(센) 날의 그날 표시를 올린다
+    const [day] = trio
+    const seen = day.visit.get(patient)
+    if (seen === undefined || seen < visit) day.visit.set(patient, visit)
+
     for (const bucket of trio) {
-      const seen = bucket.visit.get(patient)
-      if (seen === undefined || seen < visit) bucket.visit.set(patient, visit)
       addToRegion(bucket.regions, region, patient)
 
       let acc = bucket.rx.get(rx)
       if (acc === undefined) {
-        acc = { days: new Map(), names: new Map(), types: new Map(), regions: new Map() }
+        acc = { days: new Map(), visit: new Map(), names: new Map(), types: new Map(), regions: new Map() }
         bucket.rx.set(rx, acc)
       }
       addToRegion(acc.regions, region, patient) // 중복 줄도 넣는다 — 칸 지역과 같은 규칙
@@ -317,7 +334,24 @@ export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] 
     }
   }
 
-  // 묶음: 환자·날마다 셈 규칙(countsAs)으로 판단해, 센 묶음을 그날의 일·주·달 칸에 더한다. 같은 환자·같은 날·같은 묶음 = 1건.
+  // 처방 신환·재진: 그날 표시는 그날 줄을 다 훑어야 정해진다. 날마다 그날 받은 처방·환자의 그날 표시를
+  // 그날의 일·주·달 칸 같은 처방에 큰 값으로 올린다(일 칸은 그날 표시 그대로가 된다)
+  for (const trio of bucketsOfDate.values()) {
+    const [day] = trio
+    for (const [rx, dayAcc] of day.rx) {
+      for (const patient of dayAcc.days.keys()) {
+        const seen = day.visit.get(patient) ?? UNKNOWN // 진료 줄에서 온 환자라 늘 있다
+        for (const bucket of trio) {
+          const acc = bucket.rx.get(rx)
+          if (acc === undefined) continue // 그날 줄이 세 칸에 같이 넣었으므로 늘 있다
+          const best = acc.visit.get(patient)
+          if (best === undefined || best < seen) acc.visit.set(patient, seen)
+        }
+      }
+    }
+  }
+
+  // 묶음: 환자·날마다 셈 규칙(countsAs)으로 판단해, 센 묶음을 그날 표시와 함께 그날의 일·주·달 칸에 더한다. 같은 환자·같은 날·같은 묶음 = 1건.
   // 판단할 묶음은 그날 받은 코드를 넣는 처방으로 둔 묶음뿐이고, seenAt(묶음 자리 → 마지막으로 판단한 환자·날 차례)으로 한 번씩만 판단한다
   const seenAt = rules.map(() => 0)
   const counted: number[] = [] // 지금 환자·날에 센 묶음 자리
@@ -333,7 +367,9 @@ export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] 
           if (countsAs(rules[at], codes)) counted.push(at)
         }
       }
-      if (counted.length > 0) for (const bucket of trio) addGroupDay(bucket, patient, counted)
+      if (counted.length === 0) continue
+      const seen = trio[0].visit.get(patient) ?? UNKNOWN // 진료 줄에서 온 환자·날이라 늘 있다
+      for (const bucket of trio) addGroupDay(bucket, patient, counted, seen)
     }
   }
 
@@ -394,7 +430,7 @@ export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] 
   return { day: finish('day'), week: finish('week'), month: finish('month') }
 }
 
-// 환자 → 날 수 묶음에서 그 칸의 신환·재진 수와 F/U
+// 환자 → 날 수 묶음에서 그 칸의 신환·재진 수와 F/U. visit = 환자 → 그 처방을 받은 날들의 그날 표시 중 큰 값
 function countPatients(days: Map<number, number>, visit: Map<number, number>) {
   const followup: FollowUp = [0, 0, 0, 0]
   let newPatients = 0
@@ -418,7 +454,7 @@ function toStats(
 ): BucketStats {
   const rx: RxStats[] = []
   for (const [id, acc] of bucket.rx) {
-    const { patients, newPatients, returning, followup } = countPatients(acc.days, bucket.visit)
+    const { patients, newPatients, returning, followup } = countPatients(acc.days, acc.visit)
     rx.push({
       code: rxCodes[id],
       name: mostCommon(acc.names),
@@ -443,18 +479,24 @@ function toStats(
   }
 }
 
-// 칸의 그룹 숫자: 그룹마다 센 서로 다른 환자 수·그중 신환·재진·F/U(센 날 수). 환자 번호는 여기서 버린다.
+// 칸의 그룹 숫자: 그룹마다 센 서로 다른 환자 수·그중 신환·재진(센 날들의 그날 표시 중 큰 값)·F/U(센 날 수). 환자 번호는 여기서 버린다.
 // 그 칸에 환자가 없는 그룹은 빠지고 id 순
 function groupStats(bucket: BucketAcc, groups: readonly RxGroupDef[]): GroupStats[] {
   const statOf: (GroupStats | undefined)[] = [] // 그룹 자리 →
   const days = groups.map(() => 0) // 그룹 자리 → 지금 환자를 그 그룹으로 센 날 수. 환자마다 비운다
-  for (const [patient, ats] of bucket.groups) {
-    for (const at of ats) days[at]++
-    const seen = bucket.visit.get(patient)
+  const best = groups.map(() => UNKNOWN) // 그룹 자리 → 지금 환자를 그 그룹으로 센 날들의 그날 표시 중 큰 값. 환자마다 비운다
+  for (const { ats, seen: seenOf } of bucket.groups.values()) {
+    for (let i = 0; i < ats.length; i++) {
+      const at = ats[i]
+      days[at]++
+      if (best[at] < seenOf[i]) best[at] = seenOf[i]
+    }
     for (const at of ats) {
       const count = days[at]
       if (count === 0) continue // 같은 그룹 둘째 날부터는 이미 셌다
+      const seen = best[at]
       days[at] = 0
+      best[at] = UNKNOWN
       let stat = statOf[at]
       if (stat === undefined) {
         stat = { id: groups[at].id, patients: 0, newPatients: 0, returning: 0, followup: [0, 0, 0, 0] }

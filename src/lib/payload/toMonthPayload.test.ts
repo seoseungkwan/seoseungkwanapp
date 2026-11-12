@@ -8,6 +8,7 @@ import type { ConsumptionRow } from '@/types/consumption'
 import type { DateRange } from '@/types/dates'
 import type { MonthPayload } from '@/types/payload'
 import { toMonthPayload } from './toMonthPayload'
+import { validateMonthPayload } from './validate'
 
 const BASE: ConsumptionRow = {
   rxCode: 'D1001',
@@ -240,7 +241,8 @@ describe('AC-008.1 같은 결과 → 같은 JSON(정렬 고정)', () => {
 })
 
 describe('AC-008.1 v2: 처방 재진 · 그룹 · 재방문', () => {
-  it('그룹은 id 순으로 환자·신환·재진·F/U만 담는다(이름·코드 목록은 담지 않는다)', () => {
+  it('AC-3804.5: 그룹은 id 순으로 환자·신환·재진·F/U만 담는다(이름·코드 목록은 담지 않는다). 신환·재진은 받은(센) 날의 그날 표시로 나눈다', () => {
+    // 1번 환자: 9/2 신환 날 MM101, 9/9 재진 날 MM102 / 2번 환자: 9/3 재진 날 MM101
     const rows = [
       row({ patient: 1, date: '2026-09-02', rxCode: 'MM101', firstVisit: true }),
       row({ patient: 1, date: '2026-09-09', rxCode: 'MM102' }),
@@ -252,13 +254,14 @@ describe('AC-008.1 v2: 처방 재진 · 그룹 · 재방문', () => {
     ]
     const [september] = toMonthPayload(analyze(rows, [SEPTEMBER], TODAY, 'valid', groups))!
     expect(september.groups).toEqual([
-      { id: 'g-a', patients: 1, newPatients: 1, returning: 0, followup: [1, 0, 0, 0] },
+      { id: 'g-a', patients: 1, newPatients: 0, returning: 1, followup: [1, 0, 0, 0] },
       { id: 'g-manual', patients: 2, newPatients: 1, returning: 1, followup: [1, 1, 0, 0] },
     ])
     expect(september.rx.map((x) => [x.code, x.newPatients, x.returning])).toEqual([
       ['MM101', 1, 1],
-      ['MM102', 1, 0],
+      ['MM102', 0, 1],
     ])
+    expect(validateMonthPayload(JSON.parse(JSON.stringify(september)))).toEqual(september)
   })
 
   it('그룹의 열쇠는 정해진 것뿐이고, 결과의 그룹에 다른 칸이 붙어 있어도 따라가지 않는다', () => {
