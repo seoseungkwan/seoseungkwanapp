@@ -106,9 +106,9 @@ const COND_BOX = 'mb-2 ml-4 min-w-0 basis-full border-l-2 border-warning bg-warn
 const COND_ROW = 'flex min-h-8 flex-wrap items-center gap-x-1.5 text-small'
 // 묶음째 고르기: 찾기 층 안 맨 위 줄, 아래 1px line(design.md '화면')
 const WHOLE_ROW = 'flex flex-wrap items-center gap-1.5 border-b border-line bg-canvas px-3 py-2'
-// 목록 줄은 층(overflow-clip) 안에 꽉 차서 초점 고리를 안쪽에 그린다(RxPickSearch와 같다)
+// 목록 줄은 층(overflow-clip) 안에 꽉 차서 초점 고리를 안쪽에 그린다(RxPickSearch와 같다). 막힌 줄은 이름 글이 muted다(시안 .opt:disabled, TASK-16 화면 확인)
 const OPTION =
-  'flex min-h-11 w-full cursor-pointer flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-1 text-left text-small text-ink not-disabled:hover:bg-canvas disabled:cursor-default focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent'
+  'flex min-h-11 w-full cursor-pointer flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-1 text-left text-small text-ink not-disabled:hover:bg-canvas disabled:cursor-default disabled:text-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent'
 // 막힌 찾기 줄의 표시: 그 칸에 이미 있으면 accent-strong, 다른 칸에 있거나 자기 자신이면 muted
 const TAG_HERE = 'shrink-0 text-caption font-medium text-accent-strong'
 const TAG_ELSEWHERE = 'shrink-0 text-caption font-medium text-muted'
