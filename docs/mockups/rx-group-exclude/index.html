@@ -1,0 +1,431 @@
+<title>제외할 처방 시안</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* 앱 globals.css 토큰 그대로. 앱이 밝은 화면만 쓰므로(UI_GUIDE 원칙 1) 이 시안도 밝은 한 모습으로 고정한다.
+   짜임: specs/treatment-trend 시안(docs/mockups/treatment-trend)의 처방별 추세 칸에 '제외할 처방'만 더했다. 1024px 아래는 줄이 쌓인다 */
+:root {
+  color-scheme: light;
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB;
+  --faint: #9CA3AF; --muted: #6B7280; --ink-2: #374151; --ink: #111827;
+  --accent: #2563EB; --accent-strong: #1D4ED8; --accent-soft: #EAF1FE;
+  --positive: #15803D; --negative: #C2410C; --warning: #B45309; --warning-soft: #FDF4E3;
+  --danger: #B91C1C; --chart-3: #8DB0F4;
+  --r-control: 4px; --r-float: 8px;
+  --elev-float: 0 1px 2px rgb(17 24 39 / .06), 0 6px 16px rgb(17 24 39 / .1);
+  --font-ui: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', system-ui, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--surface); }
+body { color: var(--ink); font: 14px/22px var(--font-ui); font-variant-numeric: tabular-nums; word-break: keep-all; overflow-x: clip; }
+button, input { font: inherit; color: inherit; letter-spacing: inherit; }
+button { background: none; border: 0; cursor: pointer; }
+button:disabled { cursor: default; }
+ul, ol { list-style: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.page { max-width: 1280px; margin: 0 auto; padding-block: 24px 48px; padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-right: max(24px, env(safe-area-inset-right, 0px)); }
+h1 { font-size: 20px; line-height: 28px; font-weight: 600; }
+h2 { font-size: 16px; line-height: 24px; font-weight: 600; text-wrap: balance; }
+.chip { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; font-size: 12px; line-height: 16px; font-weight: 500; border-radius: var(--r-control); white-space: nowrap; }
+.chip.accent { background: var(--accent-soft); color: var(--accent-strong); }
+.mock-note { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 4px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.range { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line-strong); font-size: 13px; line-height: 20px; color: var(--muted); }
+.range b { color: var(--ink); font-weight: 600; }
+
+.mock-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; padding: 8px 12px; background: var(--canvas); font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.mock-bar .lead { flex-basis: 100%; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-control); font-size: 13px; font-weight: 500; color: var(--ink); white-space: nowrap; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #FFFFFF; }
+.btn.primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+.btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }
+.textbtn { display: inline-flex; align-items: center; min-height: 32px; font-size: 13px; font-weight: 500; color: var(--accent-strong); white-space: nowrap; }
+.textbtn:hover { text-decoration: underline; }
+.textbtn.danger { color: var(--danger); }
+.textbtn.plain { color: var(--ink-2); }
+
+/* 처방별 추세 */
+.trend { margin-top: 16px; padding-top: 24px; border-top: 1px solid var(--line-strong); }
+.head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 16px; }
+.desc { font-size: 13px; line-height: 20px; color: var(--muted); }
+.saved { margin-top: 8px; font-size: 13px; line-height: 20px; color: var(--positive); }
+.notice { margin-top: 12px; padding: 12px 16px; background: var(--warning-soft); font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.notice b { display: block; font-weight: 600; color: var(--warning); }
+.cols, .row { display: grid; grid-template-columns: minmax(200px, 1fr) 84px 184px 128px 128px 16px; column-gap: 12px; }
+.cols { align-items: center; height: 36px; margin-top: 12px; border-bottom: 1px solid var(--line); font-size: 13px; font-weight: 500; color: var(--muted); }
+.cols span { text-align: right; }
+.cols span:first-child, .cols .left { text-align: left; }
+.row { width: 100%; padding: 12px 0; border-bottom: 1px solid var(--line); text-align: left; align-items: center; color: var(--ink); }
+button.row:hover { background: var(--canvas); }
+.c-name { grid-column: 1; grid-row: 1; min-width: 0; }
+.nm { font-weight: 600; }
+.codes-line { margin-left: 8px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.new-mark { background: var(--warning-soft); color: var(--warning); padding: 0 2px; }
+.c-bar { grid-column: 1; grid-row: 2; margin-top: 6px; }
+.ibar { position: relative; display: block; height: 6px; background: var(--line); border-radius: 1px; }
+.ibar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 1px; }
+.ibar em { position: absolute; top: -3px; width: 2px; height: 12px; margin-left: -1px; background: var(--muted); }
+.c-count, .c-delta, .c-new, .c-ret, .chev, .c-wait { grid-row: 1 / span 2; align-self: center; }
+.c-count { grid-column: 2; text-align: right; font-weight: 600; }
+.c-delta { grid-column: 3; font-size: 13px; font-weight: 600; }
+.c-new { grid-column: 4; text-align: right; font-size: 13px; color: var(--ink-2); }
+.c-ret { grid-column: 5; text-align: right; font-size: 13px; color: var(--ink-2); }
+.c-new b, .c-ret b { margin-left: 4px; font-weight: 600; color: var(--ink); }
+.c-new .lb, .c-ret .lb { display: none; }
+.c-wait { grid-column: 2 / 6; font-size: 13px; color: var(--muted); }
+.chev { grid-column: 6; color: var(--muted); display: flex; }
+button.row[aria-expanded="true"] .chev { transform: rotate(180deg); }
+.up { color: var(--positive); } .down { color: var(--negative); }
+.panel { padding: 16px; background: var(--canvas); border-bottom: 1px solid var(--line); font-size: 13px; line-height: 20px; color: var(--muted); }
+.notes { margin-top: 12px; display: grid; gap: 4px; max-width: 76ch; font-size: 13px; line-height: 20px; color: var(--muted); }
+.notes .new-mark { color: var(--ink-2); }
+
+/* 묶음 고치기 */
+.intro { margin-top: 8px; max-width: 76ch; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.groups { margin-top: 16px; border-top: 1px solid var(--line); }
+.g { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.g-head { display: flex; align-items: center; gap: 8px; }
+.order { display: flex; flex-shrink: 0; }
+.order button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; color: var(--ink-2); border-radius: var(--r-control); }
+.order button:disabled { color: var(--line-strong); }
+.field { flex: 1 1 auto; min-width: 0; max-width: 320px; height: 36px; padding: 0 10px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-control); font-weight: 600; }
+.field:focus, .search:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.g-head .textbtn { margin-left: auto; }
+.indent { margin-left: 64px; }
+.code-list { margin-top: 4px; }
+.code-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; min-height: 36px; border-top: 1px dashed var(--line); font-size: 13px; line-height: 20px; }
+.code-list li:first-child { border-top: 0; }
+.code-list .n2 { font-weight: 500; color: var(--ink); }
+.code-list .cd { font-size: 12px; color: var(--muted); }
+.code-list .ct { margin-left: auto; font-size: 12px; color: var(--muted); }
+.code-list .none { color: var(--muted); }
+.ex { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.ex-head { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.ex-head b { font-weight: 600; color: var(--ink); }
+.picker { max-width: 420px; margin-top: 4px; }
+.search { display: block; width: 100%; height: 40px; padding: 0 12px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-control); }
+.drop { margin-top: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-float); box-shadow: var(--elev-float); overflow: hidden; }
+.drop ul { max-height: 248px; overflow-y: auto; }
+.opt { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 8px; width: 100%; min-height: 44px; padding: 4px 12px; text-align: left; font-size: 13px; line-height: 18px; }
+.opt:hover:not(:disabled) { background: var(--canvas); }
+.opt .cd { margin-left: 6px; font-size: 12px; color: var(--muted); }
+.opt .on { font-size: 12px; color: var(--muted); }
+.opt .here { font-size: 12px; font-weight: 500; color: var(--accent-strong); }
+.opt .where { grid-column: 1 / -1; font-size: 12px; color: var(--warning); }
+.drop .empty { padding: 12px; font-size: 13px; color: var(--ink-2); }
+.drop-foot { display: flex; justify-content: flex-end; padding: 0 12px; border-top: 1px solid var(--line); }
+.warnline { margin-top: 12px; font-size: 13px; line-height: 20px; color: var(--warning); max-width: 76ch; }
+.edit-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 16px; }
+.edit-foot .push { margin-left: auto; display: flex; gap: 8px; }
+
+.mine { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--line-strong); max-width: 76ch; }
+.mine h2 + p { margin-top: 2px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.mine ul { margin-top: 12px; display: grid; gap: 8px; font-size: 14px; line-height: 22px; }
+.mine li { padding-left: 12px; border-left: 2px solid var(--line-strong); }
+.mine li b { font-weight: 600; }
+.mine + .mine { margin-top: 24px; }
+
+@media (max-width: 1023px) {
+  .cols { display: none; }
+  .row { grid-template-columns: 1fr 1fr 16px; column-gap: 8px; row-gap: 2px; }
+  .c-name { grid-column: 1 / 3; grid-row: 1; }
+  .codes-line { display: block; margin-left: 0; }
+  .chev { grid-column: 3; grid-row: 1; align-self: center; }
+  .c-count { grid-column: 1; grid-row: 2; align-self: center; text-align: left; font-size: 20px; line-height: 28px; }
+  .c-delta { grid-column: 2 / 4; grid-row: 2; align-self: center; text-align: right; }
+  .c-bar { grid-column: 1 / 4; grid-row: 3; margin-top: 6px; }
+  .c-new { grid-column: 1; grid-row: 4; text-align: left; margin-top: 6px; }
+  .c-ret { grid-column: 2 / 4; grid-row: 4; margin-top: 6px; }
+  .c-new .lb, .c-ret .lb { display: inline; color: var(--muted); margin-right: 4px; }
+  .c-wait { grid-column: 1 / 4; grid-row: 2; }
+}
+@media (max-width: 767px) {
+  .page { padding-block: 16px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .btn { height: 44px; }
+  .head > .btn { width: 100%; }
+  .mock-bar .btn { flex: 1 1 40%; }
+  .textbtn { min-height: 44px; }
+  .order button { width: 40px; height: 44px; }
+  .field { height: 44px; font-size: 16px; max-width: none; }
+  .search { height: 44px; font-size: 16px; }
+  .picker { max-width: none; }
+  .indent { margin-left: 0; }
+  .g-head { flex-wrap: wrap; }
+  .g-head .field { flex-basis: calc(100% - 96px); }
+  .g-head .textbtn { margin-left: 80px; }
+  .edit-foot .push { margin-left: 0; width: 100%; }
+  .edit-foot .push .btn { flex: 1 1 0; }
+}
+@media (prefers-reduced-motion: no-preference) { .chev { transition: transform 120ms ease-out; } }
+</style>
+
+<main class="page">
+  <h1>통계</h1>
+  <p class="mock-note"><span class="chip accent">예시</span>시안이에요. 숫자와 처방 이름은 모두 지어낸 예시예요. 노란 바탕 글이 이번에 새로 생기는 곳이에요.</p>
+  <p class="range"><b>최근 30일</b> · 10월 14일 ~ 11월 12일 · 견주는 기간: 지난 30일</p>
+
+  <div class="mock-bar">
+    <span class="lead">시안에서만 보이는 줄이에요. 아래 [묶음 고치기] → '표층열' 묶음의 [+ 제외할 처방 넣기] → ESWT7 → [저장]을 눌러 보세요. 저장한 뒤 [다시 불러온 뒤]를 누르면 숫자가 나와요.</span>
+    <button type="button" class="btn" id="mock-reload" aria-pressed="false" disabled>다시 불러온 뒤</button>
+    <button type="button" class="btn" id="mock-reset">처음으로</button>
+  </div>
+
+  <section class="trend" id="trend" aria-labelledby="trend-title"></section>
+
+  <section class="mine" aria-labelledby="decided-title">
+    <h2 id="decided-title">정하신 내용</h2>
+    <p>2026년 11월 12일 질문에 답하신 것이에요.</p>
+    <ul>
+      <li><b>같은 날 기준으로 빼요.</b> 그날 MM010을 받았어도 같은 날 ESWT7을 받았으면 그날은 세지 않아요. 다른 날 ESWT7을 받은 것은 상관없어요.</li>
+      <li><b>넣은 처방이 여럿이면 하나라도 받은 환자를 넣어요.</b> 지금 묶음 규칙 그대로예요.</li>
+      <li><b>숫자만 봐요.</b> 환자 명단은 없어요. 서버에는 지금처럼 숫자와 묶음 설정만 가요.</li>
+    </ul>
+  </section>
+  <section class="mine" aria-labelledby="mine-title">
+    <h2 id="mine-title">제가 정한 부분</h2>
+    <p>이 시안을 승인하시면 같이 정해져요. 바꾸고 싶으면 말씀해 주세요.</p>
+    <ul>
+      <li><b>새 칸을 만들지 않고 처방별 추세 묶음에 '제외할 처방'을 더해요.</b> 그래프·증감·신환·재진은 지금 그대로예요.</li>
+      <li><b>제외할 처방을 넣거나 빼면 그 묶음은 다시 불러와야 숫자가 나와요.</b> 처방을 바꿀 때와 같아요. 제외할 처방이 없는 묶음은 지금 숫자가 그대로 보여요.</li>
+      <li><b>다른 묶음에 든 처방도 제외할 처방으로 고를 수 있어요.</b> 그 묶음(예: 체외충격파)은 그대로예요. 한 묶음 안에서 넣은 처방과 제외할 처방이 같을 수는 없어요.</li>
+      <li><b>넣은 처방 하나는 지금처럼 한 묶음에만 들어요.</b> 그래서 MM010 전체 건수는 '처방 골라 보기'에서 보고, 묶음에서는 MM010 중 제외한 건수를 봐요.</li>
+      <li><b>대시보드 '처방 상위'와 AI 리포트도 같은 묶음 규칙을 써요.</b> 묶음 이름이 그대로 붙어요.</li>
+      <li><b>사이트에 올리기 전에 SQL 파일 하나를 Supabase에 붙여 주셔야 해요.</b> 묶음 표에 칸이 하나 늘어나요.</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+// 지어낸 자료. 처방 하나 줄의 건수는 '최근 30일 n건'에 쓰인다
+const CATALOG = [
+  { code: 'AA254', name: '재진진찰료', n: 2310 },
+  { code: 'ESWT1', name: '체외충격파 1', n: 102 },
+  { code: 'ESWT7', name: '체외충격파 7', n: 171 },
+  { code: 'MM010', name: '표층열', n: 1016 },
+  { code: 'MM020', name: '심층열', n: 344 },
+  { code: 'MM042', name: '간섭파', n: 287 },
+  { code: '도수', name: '도수', n: 412 },
+]
+const nameOf = (code) => CATALOG.find((c) => c.code === code)?.name ?? code
+const countOf = (code) => CATALOG.find((c) => c.code === code)?.n ?? 0
+const fmt = (n) => n.toLocaleString('ko-KR')
+const rate = (part, whole) => (whole === 0 ? '–' : `${(Math.floor((part / whole) * 1000) / 10).toFixed(1)}%`)
+const pct = (d, prev) => `${d >= 0 ? '+' : '−'}${(Math.floor((Math.abs(d) / prev) * 1000) / 10).toFixed(1)}%`
+
+// 숫자: 열쇠(넣은 처방 + 제외할 처방)마다 센 값. 표층열은 제외 없이 센 값과 ESWT7 날을 뺀 값이 있다
+const COUNTS = {
+  '도수|': { n: 412, prev: 388, nw: 61, rt: 351 },
+  'ESWT1,ESWT7|': { n: 268, prev: 281, nw: 32, rt: 236 },
+  'MM010|': { n: 1016, prev: 977, nw: 121, rt: 895 },
+  'MM010|ESWT7': { n: 731, prev: 702, nw: 88, rt: 643 },
+}
+const keyOf = (g) => `${[...g.codes].sort().join(',')}|${[...g.exclude].sort().join(',')}`
+
+const START = () => [
+  { name: '도수치료', codes: ['도수'], exclude: [] },
+  { name: '체외충격파', codes: ['ESWT1', 'ESWT7'], exclude: [] },
+  { name: '표층열', codes: ['MM010'], exclude: [] },
+]
+let saved = START()
+let reloadedKeys = new Set(['도수|', 'ESWT1,ESWT7|', 'MM010|'])
+let mode = 'view'
+let draft = null
+let picker = null // { g, kind: 'codes' | 'exclude', q }
+let savedNote = ''
+const opened = new Set()
+
+const el = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content }
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+const trend = document.getElementById('trend')
+const reloadBtn = document.getElementById('mock-reload')
+
+function codesLine(g) {
+  const inc = g.codes.join(' · ')
+  if (g.exclude.length === 0) return esc(inc)
+  const ex = `제외 ${g.exclude.join(', ')}`
+  return `${esc(inc)}${inc ? ' · ' : ''}<span class="new-mark">${esc(ex)}</span>`
+}
+
+function viewHTML() {
+  const rows = saved.map((g) => ({ g, key: keyOf(g), ready: reloadedKeys.has(keyOf(g)) && COUNTS[keyOf(g)] }))
+  const stale = rows.filter((r) => r.g.codes.length > 0 && !r.ready)
+  const max = Math.max(1, ...rows.filter((r) => r.ready).map((r) => Math.max(r.ready.n, r.ready.prev)))
+  const anyExclude = saved.some((g) => g.codes.length > 0 && g.exclude.length > 0)
+  let html = `
+    <div class="head">
+      <div><h2 id="trend-title">처방별 추세</h2><p class="desc">만들어 둔 묶음마다 건수와 신환·재진 · 같은 날 같은 환자는 1건</p></div>
+      <button type="button" class="btn" id="open-edit">묶음 고치기</button>
+    </div>
+    ${savedNote ? `<p class="saved" role="status">${esc(savedNote)}</p>` : ''}
+    ${stale.length > 0 ? `<div class="notice" role="note"><b>다시 불러와야 맞는 묶음이 있어요</b>${esc(stale.map((r) => r.g.name).join(', '))} 묶음은 이 기간을 다시 불러와야 숫자가 나와요. 비트 PC에서 다시 불러오거나, 파일을 다시 넣어 주세요.</div>` : ''}
+    <div class="cols" aria-hidden="true"><span>묶음</span><span>건수</span><span class="left">지난 30일보다</span><span>신환</span><span>재진</span><span></span></div>`
+  rows.forEach(({ g, ready }, i) => {
+    const name = `<div class="c-name"><span class="nm">${esc(g.name)}</span><span class="codes-line">${codesLine(g)}</span></div>`
+    if (!ready) {
+      html += `<div class="row">${name}<p class="c-wait">${g.codes.length === 0 ? '넣은 처방이 없어요. [묶음 고치기]에서 넣어 주세요.' : '다시 불러오면 보여요'}</p></div>`
+      return
+    }
+    const d = ready.n - ready.prev
+    const cls = d >= 0 ? 'up' : 'down'
+    const open = opened.has(i)
+    html += `<button type="button" class="row" data-row="${i}" aria-expanded="${open}">
+      ${name}
+      <span class="c-bar"><span class="ibar"><i style="width:${(ready.n / max) * 100}%"></i><em style="left:${(ready.prev / max) * 100}%"></em></span></span>
+      <span class="c-count">${fmt(ready.n)}건</span>
+      <span class="c-delta ${cls}">${d >= 0 ? '▲' : '▼'} ${fmt(Math.abs(d))}건 (${pct(d, ready.prev)}) ${d >= 0 ? '늘어남' : '줄어듦'}</span>
+      <span class="c-new"><span class="lb">신환</span>${fmt(ready.nw)}건<b>${rate(ready.nw, ready.n)}</b></span>
+      <span class="c-ret"><span class="lb">재진</span>${fmt(ready.rt)}건<b>${rate(ready.rt, ready.n)}</b></span>
+      <span class="chev" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5"/></svg></span>
+    </button>`
+    if (open) html += `<div class="panel">열린 그래프·숫자 표는 지금 처방별 추세와 같아요(시안에서는 생략).</div>`
+  })
+  html += `<div class="notes">
+    ${anyExclude ? '<p><span class="new-mark">제외할 처방이 있는 묶음은, 같은 날 그 처방을 받은 환자를 세지 않아요.</span></p>' : ''}
+    <p>건 = 날마다 그 묶음 처방을 받은 환자 수를 더한 값이에요. 같은 날 같은 환자는 묶음 안 처방을 여러 개 받아도 1건이에요.</p>
+    <p>신환율 = 신환 ÷ 건수 · 재진율 = 재진 ÷ 건수. 막대 안 회색 눈금은 비교 기간 건수예요.</p>
+    <p>어느 묶음에도 넣지 않은 처방(진찰료, 먹는 약 등)은 여기 나오지 않아요. 줄을 누르면 날짜별 건수와 신환·재진이 열려요.</p>
+  </div>`
+  return html
+}
+
+function pickerHTML(gi, kind) {
+  const g = draft[gi]
+  const q = picker.q.trim().toLowerCase()
+  const found = [...CATALOG].sort((a, b) => a.name.localeCompare(b.name, 'ko')).filter((c) => !q || c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q))
+  const label = kind === 'codes' ? '넣을 처방 찾기' : '제외할 처방 찾기'
+  const opts = found.map((c) => {
+    let right = `<span class="on">${fmt(c.n)}건</span>`
+    let disabled = false
+    let where = ''
+    if (kind === 'codes') {
+      if (g.codes.includes(c.code)) { right = '<span class="here">이 묶음에 있음</span>'; disabled = true }
+      else if (g.exclude.includes(c.code)) { right = '<span class="here">제외에 있음</span>'; disabled = true }
+      else {
+        const owner = draft.findIndex((o, oi) => oi !== gi && o.codes.includes(c.code))
+        if (owner >= 0) where = `<span class="where">${esc(draft[owner].name || '이름 없는 묶음')}에 있어요. 고르면 이 묶음으로 옮겨요</span>`
+      }
+    } else {
+      if (g.codes.includes(c.code)) { right = '<span class="here">이 묶음에 넣은 처방</span>'; disabled = true }
+      else if (g.exclude.includes(c.code)) { right = '<span class="here">제외에 있음</span>'; disabled = true }
+    }
+    const nm = c.name === c.code ? esc(c.code) : `${esc(c.name)}<span class="cd">${esc(c.code)}</span>`
+    return `<li><button type="button" class="opt" data-pick="${esc(c.code)}" ${disabled ? 'disabled' : ''}><span>${nm}</span>${right}${where}</button></li>`
+  }).join('')
+  return `<div class="picker">
+    <input class="search" id="search" type="text" aria-label="${label}" placeholder="처방 이름이나 코드로 찾기" autocomplete="off" value="${esc(picker.q)}">
+    <div class="drop">
+      <ul aria-label="찾은 처방">${opts}</ul>
+      ${found.length === 0 ? '<p class="empty" role="status">맞는 처방이 없어요. 불러온 숫자에 있는 처방만 찾아요.</p>' : ''}
+      <div class="drop-foot"><button type="button" class="textbtn plain" id="close-picker">닫기</button></div>
+    </div>
+  </div>`
+}
+
+function codeRows(g, gi, kind) {
+  const list = kind === 'codes' ? g.codes : g.exclude
+  return list.map((code) => {
+    const name = nameOf(code)
+    const aria = kind === 'exclude' ? ` aria-label="${esc(name)} 제외에서 빼기"` : ''
+    return `<li><span class="n2">${esc(name)}</span>${name !== code ? `<span class="cd">${esc(code)}</span>` : ''}<span class="ct">최근 30일 ${fmt(countOf(code))}건</span><button type="button" class="textbtn plain" data-drop="${gi}|${kind}|${esc(code)}"${aria}>빼기</button></li>`
+  }).join('')
+}
+
+function editHTML() {
+  let html = `<div class="head"><div><h2 id="trend-title" tabindex="-1">처방별 추세 · 묶음 고치기</h2></div></div>
+    <p class="intro">묶음 이름을 짓고, 넣을 처방을 고르세요. 처방 하나는 한 묶음에만 들어가요. 어느 묶음에도 없는 처방은 이 칸에 나오지 않아요. 여기서 바꿔도 매출 탭 묶음은 그대로예요.</p>
+    <ol class="groups">`
+  draft.forEach((g, gi) => {
+    const openCodes = picker && picker.g === gi && picker.kind === 'codes'
+    const openEx = picker && picker.g === gi && picker.kind === 'exclude'
+    html += `<li class="g">
+      <div class="g-head">
+        <span class="order"><button type="button" aria-label="${esc(g.name)} 위로" ${gi === 0 ? 'disabled' : ''}>▲</button><button type="button" aria-label="${esc(g.name)} 아래로" ${gi === draft.length - 1 ? 'disabled' : ''}>▼</button></span>
+        <input class="field" type="text" aria-label="묶음 이름" value="${esc(g.name)}" data-name="${gi}">
+        <button type="button" class="textbtn danger">묶음 지우기</button>
+      </div>
+      <div class="indent">
+        ${g.codes.length === 0 ? '<p class="code-list none">넣은 처방이 없어요</p>' : `<ul class="code-list">${codeRows(g, gi, 'codes')}</ul>`}
+        ${openCodes ? pickerHTML(gi, 'codes') : `<button type="button" class="textbtn" data-open="${gi}|codes">+ 처방 넣기</button>`}
+        <div class="ex">
+          ${g.exclude.length > 0 ? `<p class="ex-head"><b>제외할 처방</b> · 같은 날 이 처방을 받은 환자는 이 묶음에서 세지 않아요</p><ul class="code-list">${codeRows(g, gi, 'exclude')}</ul>` : ''}
+          ${openEx ? pickerHTML(gi, 'exclude') : `<button type="button" class="textbtn" data-open="${gi}|exclude"><span class="new-mark">+ 제외할 처방 넣기</span></button>`}
+        </div>
+      </div>
+    </li>`
+  })
+  html += `</ol>
+    <div style="margin-top:12px"><button type="button" class="btn">+ 묶음 더하기</button></div>
+    <p class="warnline">처방이나 <span class="new-mark">제외할 처방</span>을 바꾼 묶음과 새로 만든 묶음은, 다시 불러온 뒤부터 숫자가 나와요. 이름과 순서만 바꾸면 바로 바뀌어요.</p>
+    <div class="edit-foot"><div class="push"><button type="button" class="btn" id="cancel">그만두기</button><button type="button" class="btn primary" id="save">저장</button></div></div>`
+  return html
+}
+
+function render(focusId) {
+  trend.replaceChildren(el(mode === 'view' ? viewHTML() : editHTML()))
+  reloadBtn.disabled = !saved.some((g) => g.codes.length > 0 && !reloadedKeys.has(keyOf(g)))
+  if (focusId) document.getElementById(focusId)?.focus()
+  if (picker && mode === 'edit') {
+    const s = document.getElementById('search')
+    if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length) }
+  }
+}
+
+trend.addEventListener('click', (e) => {
+  const t = e.target.closest('button')
+  if (!t || t.disabled) return
+  if (t.id === 'open-edit') {
+    draft = saved.map((g) => ({ ...g, codes: [...g.codes], exclude: [...g.exclude] }))
+    mode = 'edit'; picker = null; savedNote = ''
+    render('trend-title'); return
+  }
+  if (t.dataset.row !== undefined) {
+    const i = Number(t.dataset.row)
+    opened.has(i) ? opened.delete(i) : opened.add(i)
+    render(); return
+  }
+  if (t.dataset.open) {
+    const [g, kind] = t.dataset.open.split('|')
+    picker = { g: Number(g), kind, q: '' }
+    render(); return
+  }
+  if (t.id === 'close-picker') { picker = null; render(); return }
+  if (t.dataset.pick) {
+    const code = t.dataset.pick
+    const g = draft[picker.g]
+    if (picker.kind === 'codes') {
+      draft.forEach((o, oi) => { if (oi !== picker.g) o.codes = o.codes.filter((c) => c !== code) })
+      g.codes.push(code)
+    } else g.exclude.push(code)
+    render(); return
+  }
+  if (t.dataset.drop) {
+    const [g, kind, code] = t.dataset.drop.split('|')
+    draft[Number(g)][kind] = draft[Number(g)][kind].filter((c) => c !== code)
+    render(); return
+  }
+  if (t.id === 'cancel') { mode = 'view'; picker = null; render('open-edit'); return }
+  if (t.id === 'save') {
+    const changed = draft.some((g, i) => g.codes.length > 0 && saved[i] && keyOf(g) !== keyOf(saved[i]))
+    saved = draft.map((g) => ({ ...g, name: g.name.trim() }))
+    mode = 'view'; picker = null
+    savedNote = changed ? '저장했어요.' : '저장했어요. 이름과 순서만 바뀌어서 바로 반영했어요.'
+    render('open-edit')
+  }
+})
+trend.addEventListener('input', (e) => {
+  if (e.target.id === 'search') { picker.q = e.target.value; render() }
+  if (e.target.dataset.name !== undefined) draft[Number(e.target.dataset.name)].name = e.target.value
+})
+trend.addEventListener('keydown', (e) => { if (e.key === 'Escape' && picker) { picker = null; render() } })
+
+reloadBtn.addEventListener('click', () => {
+  saved.forEach((g) => reloadedKeys.add(keyOf(g)))
+  savedNote = ''
+  render()
+})
+document.getElementById('mock-reset').addEventListener('click', () => {
+  saved = START(); reloadedKeys = new Set(['도수|', 'ESWT1,ESWT7|', 'MM010|'])
+  mode = 'view'; draft = null; picker = null; savedNote = ''; opened.clear()
+  render()
+})
+render()
+</script>
