@@ -158,14 +158,14 @@ describe('AC-2703.2 [전체]: 명은 환자마다 한 번, 건은 접수마다',
   })
 })
 
-describe('AC-2703.3 [신환]: 첫 내원일이 고른 기간 안인 환자와 그 환자들의 기간 안 접수만', () => {
-  it('AC-2703.3: 첫 내원일이 기간 안(첫날·끝날 포함)인 환자만, 차트번호 없는 접수·첫 내원일 모르는 환자는 빼고 센다', () => {
+describe('AC-2703.3·AC-3803.3 [신환]: 접수일이 그 환자의 첫 내원일(f)인 접수만', () => {
+  it('AC-2703.3·AC-3803.3: f가 기간 안(첫날·끝날 포함)인 환자의 f 날 접수만, f 뒤 다시 온 접수·차트번호 없는 접수·첫 내원일 모르는 환자는 빼고 센다', () => {
     const people: [number, Person][] = [1, 2, 3, 4, 5].map((p) => [p, person('1980-05-05')])
     const mix = patientMix(
       input(
         [
           visit(1, '2026-11-02'),
-          visit(1, '2026-11-09'),
+          visit(1, '2026-11-09'), // f 뒤 다시 온 날이라 신환 건이 아니다
           visit(2, '2026-11-03'), // 옛 환자
           visit(3, '2026-11-04'), // 첫 내원일 모름
           visit(-1, '2026-11-05'),
@@ -182,9 +182,132 @@ describe('AC-2703.3 [신환]: 첫 내원일이 고른 기간 안인 환자와 �
       ),
       'new',
     )
-    expect(mix.total).toEqual({ people: 3, visits: 4 })
-    expect(rowOf(mix.age, '40대')).toMatchObject({ people: 3, visits: 4 })
+    expect(mix.total).toEqual({ people: 3, visits: 3 })
+    expect(rowOf(mix.age, '40대')).toMatchObject({ people: 3, visits: 3 })
     expect(rowOf(mix.age, '생년월일 없음')).toMatchObject({ people: 0, visits: 0 })
+  })
+})
+
+describe('AC-3803.1·AC-3803.2·AC-3803.3 [신환]: 우리 병원 최초 내원일(f) 날의 접수만', () => {
+  const OCTOBER = { from: '2026-10-01', to: '2026-10-30' }
+
+  it('AC-3803.1: f(10-15) 날 접수만 신환 건이고, 다시 온 날(10-20) 접수의 보험은 [신환]에 없다. [전체]는 그대로 1명·2건', () => {
+    const visits = [visit(1, '2026-10-15', '건강보험'), visit(1, '2026-10-20', '자동차보험')]
+    const mixInput = input(visits, [[1, person('1990-01-01')]], [[1, '2026-10-15']], OCTOBER)
+    const fresh = patientMix(mixInput, 'new')
+    expect(fresh.total).toEqual({ people: 1, visits: 1 })
+    expect(counts(fresh.insurance)).toEqual([['건강보험', 1, 1]])
+    expect(rowOf(fresh.age, '30대')).toMatchObject({ people: 1, visits: 1 })
+    const all = patientMix(mixInput, 'all')
+    expect(all.total).toEqual({ people: 1, visits: 2 })
+    expect(counts(all.insurance)).toEqual([
+      ['자동차보험', 1, 1],
+      ['건강보험', 0, 1],
+    ])
+  })
+
+  it('AC-3803.2: f 날 접수가 둘이면 1명·2건이고 명의 보험은 f 날 접수 중 마지막(시각이 가장 늦은 것)의 보험이다', () => {
+    const visits = [
+      visit(1, '2026-10-15', '의료급여 1종', 9),
+      visit(1, '2026-10-15', '건강보험', 15),
+      visit(1, '2026-10-22', '자동차보험', 11), // 기간 안 그 뒤 날 접수는 빠진다
+    ]
+    const mix = patientMix(input(visits, [[1, person('1990-01-01', '경기 수원시 영통구 매탄동')]], [[1, '2026-10-15']], OCTOBER), 'new')
+    expect(mix.total).toEqual({ people: 1, visits: 2 })
+    expect(counts(mix.insurance)).toEqual([
+      ['건강보험', 1, 1],
+      ['의료급여 1종', 0, 1],
+    ])
+    expect(rowOf(mix.age, '30대')).toMatchObject({ people: 1, visits: 2 }) // 나이는 기간 마지막 날(10-30) 기준
+    expect(counts(mix.city)).toEqual([['영통구', 1, 2]]) // 동네는 사람 표 주소
+    expect(counts(mix.town)).toEqual([['매탄동', 1, 2]])
+  })
+
+  it('AC-3803.2: f 날 접수의 시각을 모르면 가장 이른 것으로 본다(지금 규칙)', () => {
+    const visits = [visit(1, '2026-10-15', '건강보험', null), visit(1, '2026-10-15', '산재보험', 9), visit(1, '2026-10-16', '자동차보험', 8)]
+    const mix = patientMix(input(visits, [[1, person('1990-01-01')]], [[1, '2026-10-15']], OCTOBER), 'new')
+    expect(counts(mix.insurance)).toEqual([
+      ['산재보험', 1, 1],
+      ['건강보험', 0, 1],
+    ])
+  })
+
+  it('AC-3803.2: 묶음마다 명 합 = 기간 안에 f 날 접수가 있는 환자 수, 건 합 = 그 f 날 접수 건수다', () => {
+    const people: [number, Person][] = [
+      [1, person('1990-01-01', '경기 수원시 영통구 매탄동')],
+      [2, person('1960-03-03', '경기 수원시 팔달구 인계동')],
+      [3, person(null, null)],
+      [4, person('2001-01-01', '경기 화성시 봉담읍')],
+    ]
+    const visits = [
+      visit(1, '2026-10-02', '건강보험', 9),
+      visit(1, '2026-10-02', '자동차보험', 14),
+      visit(1, '2026-10-09', '건강보험'), // 다시 온 날
+      visit(2, '2026-10-05', '차상위 1종'),
+      visit(3, '2026-10-30', null),
+      visit(4, '2026-10-12', '건강보험'), // f를 모른다
+      visit(-1, '2026-10-02', '건강보험'),
+    ]
+    const first: [number, string][] = [
+      [1, '2026-10-02'],
+      [2, '2026-10-05'],
+      [3, '2026-10-30'],
+    ]
+    const mix = patientMix(input(visits, people, first, OCTOBER), 'new')
+    expect(mix.total).toEqual({ people: 3, visits: 4 })
+    for (const rows of [mix.age, mix.insurance, mix.city, mix.town]) {
+      expect(total(rows, 'people')).toBe(3)
+      expect(total(rows, 'visits')).toBe(4)
+    }
+  })
+
+  it('AC-3803.3: f가 기간 안이지만 f 날 접수가 없는 환자, f를 모르는 환자, f가 기간 첫날 전인 환자, 차트번호 없는 접수는 모두 0명·0건이다', () => {
+    const people: [number, Person][] = [1, 2, 3].map((p) => [p, person('1990-01-01')])
+    const visits = [
+      visit(1, '2026-10-16'), // f(10-15)는 입원 첫날이라 그날 외래 접수가 없다
+      visit(1, '2026-10-20'),
+      visit(2, '2026-10-15'), // f를 모른다
+      visit(3, '2026-10-15'), // f가 기간 첫날 전
+      visit(-1, '2026-10-15'),
+    ]
+    const first: [number, string][] = [
+      [1, '2026-10-15'],
+      [3, '2026-09-30'],
+    ]
+    const mix = patientMix(input(visits, people, first, OCTOBER), 'new')
+    expect(mix.total).toEqual({ people: 0, visits: 0 })
+    for (const rows of [mix.age, mix.insurance, mix.city, mix.town]) {
+      expect(total(rows, 'people')).toBe(0)
+      expect(total(rows, 'visits')).toBe(0)
+    }
+  })
+
+  it('AC-3803.3: 견줄 기간의 지난 명도 지난 기간 안의 f 날 접수만으로 센다', () => {
+    const people: [number, Person][] = [
+      [1, person('1950-01-01')], // 지난 기간에 f가 있지만 f 날 접수가 없다
+      [2, person('1990-01-01')], // 지난 기간 f 날 건강보험, 그 뒤 자동차보험
+      [3, person('1990-01-01')],
+      [4, person('1990-01-01')],
+    ]
+    const visits = [
+      visit(1, '2026-10-12', '건강보험'),
+      visit(2, '2026-10-06', '건강보험'),
+      visit(2, '2026-10-20', '자동차보험'),
+      visit(3, DAY, '건강보험'),
+      visit(4, DAY, '자동차보험'),
+    ]
+    const first: [number, string][] = [
+      [1, '2026-10-05'],
+      [2, '2026-10-06'],
+      [3, DAY],
+      [4, DAY],
+    ]
+    const mix = patientMix(input(visits, people, first, { previous: { from: '2026-10-01', to: '2026-10-31' } }), 'new')
+    expect(mix.total).toEqual({ people: 2, visits: 2 })
+    expect(rowOf(mix.age, '70대').previous).toBe(0)
+    expect(rowOf(mix.age, '30대').previous).toBe(1)
+    expect(rowOf(mix.insurance, '건강보험').previous).toBe(1)
+    expect(rowOf(mix.insurance, '자동차보험').previous).toBe(0)
   })
 })
 
