@@ -550,12 +550,13 @@ export interface FakeServer {
   answer: (method: string, url: string, body?: string | null) => FakeReply
 }
 
-/** 어레인지 쓰기 몸 (reception-arrange design.md 8절) */
+/** 어레인지 쓰기 몸 (reception-arrange design.md 8절). t는 SONO·C-ARM add·part의 이름표를 "|"로 이은 글 (reception-pick-lists AC-3502.3) */
 interface FakeArrangeAsk {
   k?: unknown
   op?: unknown
   col?: unknown
   v?: unknown
+  t?: unknown
 }
 
 /** 세 단계 칸(준비 → 준비완료 → 완료)과 직접 칸 */
@@ -575,6 +576,9 @@ function applyArrange(board: FakeBoard, stash: Map<string, FakeArrangeRow>, ask:
   if (!row && !ended) return 404
   const col = ARRANGE_COLS.find((c) => c === ask.col)
   const v = typeof ask.v === 'string' ? ask.v : undefined
+  // 이름표(t)는 SONO·C-ARM의 add·part에만 온다(목록에 있는지는 보지 않는다)
+  if (ask.t !== undefined && (typeof ask.t !== 'string' || !(ask.op === 'add' || ask.op === 'part') || !col || !THREE_STEP.has(col))) return 400
+  const tags = typeof ask.t === 'string' && ask.t !== '' ? ask.t.split('|') : []
   const cell = row && col ? row.cells[col] : null
   const settle = () => {
     if (!row) return
@@ -597,12 +601,13 @@ function applyArrange(board: FakeBoard, stash: Map<string, FakeArrangeRow>, ask:
       if (v === 'done') cell.ord = null
       break
     case 'add':
-      if (!row || !col || cell || v === undefined) return 400
+      if (!row || !col || cell || v === undefined || (THREE_STEP.has(col) && v === '부위는 나중에')) return 400
       row.cells[col] = fakeCell({
         det: DIRECT.has(col) ? v : '',
-        part: THREE_STEP.has(col) && v !== '부위는 나중에' ? v : null,
+        part: THREE_STEP.has(col) ? v : null,
         at: now,
         manual: true,
+        tags,
       })
       break
     case 'remove':
@@ -611,8 +616,9 @@ function applyArrange(board: FakeBoard, stash: Map<string, FakeArrangeRow>, ask:
       break
     case 'part':
       if (!cell) return 404
-      if (!THREE_STEP.has(col!) || v === undefined) return 400
+      if (!THREE_STEP.has(col!) || v === undefined || v === '부위는 나중에') return 400
       cell.part = v
+      cell.tags = tags
       break
     case 'away':
       if (!row || (v !== 'on' && v !== 'off')) return 400

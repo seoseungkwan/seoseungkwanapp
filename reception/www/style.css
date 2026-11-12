@@ -52,13 +52,17 @@
  *                                      > span.l2 > span.arr-name + span.meta + span.new-badge + span.open
  *                      + button.ptf-btn.none|up|down
  *              td.c-xray|sono|carm|pt|ds|eswt|trac > .cell.empty|todo|ready|done(.manual)
- *                 > span.plus | span.ord + span.mn + span.st + (span.hit 충격파 타수) + (span.det(.sm) | button.part-btn)
+ *                 > span.plus | span.ord + span.mn + span.st + (span.hit 충격파 타수) + (span.det(.sm) 줄마다 | button.part-btn) + span.tags > span.drug
  *              td.c-memo > .arr-memo + .lastsym > span.lastsym-label + 글
  *              td.c-end > button.end-btn(.is-go)
  *            p.empty-note · section.ended > button.ended-h + (ul.ended-list > li > span.e-t + span.e-n + span.e-c + button.restore | p.empty-note)
  *            footer.foot
  *            .sheet-back > .sheet[role=dialog] > .sheet-h > span.sheet-title + span.sheet-sub ; .opts(.many) > button.opt ; button.sheet-x
  *              충격파 넣기: .sheet > .sheet-h ; (.opt-label + .opts.four > button.opt(.on)) ×2 ; .sheet-go > button.sheet-close + button.go
+ *              C-ARM 넣기: .sheet > .sheet-h ; .opt-label + .opts.four[data-g=proc] ; .opt-label + .opts.trio(.no-drug)[data-g=drug] ; p.opt-note ; .sheet-go
+ *              SONO 넣기: .sheet.sono-sheet > .sheet-h ; .opt-label + .picked > button.picked-chip(> span) | span.picked-empty
+ *                         ; (.opt-label > span.opt-hint) + .opts.trio[data-g=side] ; .opt-label + .opts.four.parts[data-g=part]
+ *                         ; .opt-label + .opts.trio[data-g=plain] ; .opt-label + .opts.duo[data-g=with] > button.opt.check(.on) > span.box ; .sheet-go
  *            .toast[role=status] > span.toast-text + button.toast-undo
  */
 
@@ -1729,6 +1733,29 @@ button.row-main {
   font-weight: 600;
 }
 
+/* SONO·C-ARM 칸의 줄(부위·시술)과 이름표(같이 하는 것·약재) (reception-pick-lists AC-3503.4·3504.4, 시안 tableCells) */
+.cell .det + .det {
+  margin-top: 0;
+}
+
+.cell .tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+}
+
+.cell .drug {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 10px;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
 /* 충격파 칸의 타수 (reception-memo-papers AC-3402.3): 타수가 위, 부위 수가 아래 */
 .cell .hit {
   font-size: 15px;
@@ -2039,6 +2066,104 @@ button.row-main {
 .sheet-go > .go:disabled {
   background: var(--line-2);
   color: var(--ink-3);
+}
+
+/* C-ARM 넣기 창 (reception-pick-lists AC-3503.1·3503.2, 시안 carmSheet): 시술 넷 줄 · 약재 셋 줄. 약재 없음 시술이면 약재 줄이 흐려 눌리지 않는다 */
+.opts.trio {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.opts.no-drug .opt {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.opt-note {
+  margin: -6px 0 6px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+/* SONO 넣기 창 (reception-pick-lists AC-3504.1·3504.2, 시안 sonoSheet): 고른 것 이름표 · 쪽 · 부위 · 부위 없이 · 같이 하는 것(체크) */
+.sheet.sono-sheet {
+  width: min(600px, 100%);
+}
+
+.opt-hint {
+  margin-left: 6px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.picked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 48px;
+  margin: 14px 0 0;
+  padding: 6px;
+  border: 1.5px dashed var(--line-2);
+  border-radius: var(--radius-m);
+}
+
+.picked-empty {
+  padding: 0 6px;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+.picked-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.picked-chip span {
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.opts.parts .opt {
+  min-height: 46px;
+  font-size: 15px;
+}
+
+.opts.duo {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.opt.check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.opt.check .box {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--line-2);
+  border-radius: 5px;
+  background: var(--surface);
+  font-size: 14px;
+}
+
+.opt.check.on .box {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--on-ink);
 }
 
 /* 어레인지 메모 큰 창 (reception-memo-papers AC-3403.2, 시안 Mock.html): 가운데에 크게, 글자 칸 · 펜 도구 · 그리기 판 · 아래 단추 */

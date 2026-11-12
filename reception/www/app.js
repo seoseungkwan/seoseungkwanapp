@@ -84,7 +84,7 @@ export function startApp() {
   let paperBusy = false
 
   // ---- 어레인지 상태 (메모리에만, 숨김·끊김에 지운다) ----
-  /** 열린 고르기 창 { k, col, kind } | null */
+  /** 열린 고르기 창 { k, col, kind, …창 값 } | null (창 값은 arrange.js가 정한다: 충격파 hit·count, C-ARM proc·drug, SONO side·picked·withs) */
   let sheet = null
   /** [오늘 치료 종료] 펼침 */
   let endedOpen = false
@@ -337,8 +337,9 @@ export function startApp() {
       rxNew: [...rxNew.keys()],
       flash,
       onCell: (k, col) => press(k, { k, op: 'step', col }),
-      onAdd: (k, col, v) => press(k, { k, op: 'add', col, v }),
-      onPart: (k, col, v) => press(k, { k, op: 'part', col, v }),
+      // t: SONO·C-ARM 이름표를 "|"로 이은 글(빈 글이면 api.js가 보내지 않는다, reception-pick-lists AC-3503.3·3504.3)
+      onAdd: (k, col, v, t) => press(k, { k, op: 'add', col, v, t }),
+      onPart: (k, col, v, t) => press(k, { k, op: 'part', col, v, t }),
       onSet: (k, col, v) => press(k, { k, op: 'set', col, v }),
       onRemove: (k, col) => press(k, { k, op: 'remove', col }),
       onAway: (k, v) => send({ k, op: 'away', v }),
@@ -388,7 +389,7 @@ export function startApp() {
     if (!quiet) setToast({ text: plan.toast, undo: plan.undo })
     redrawTable()
     const gen = writeGen
-    setArrange(ask.k, ask.op, ask.col, ask.v, { signal: poll.signal() }).then(
+    setArrange(ask.k, ask.op, ask.col, ask.v, ask.t, { signal: poll.signal() }).then(
       () => {
         if (gen !== writeGen || !writes.includes(write)) return
         write.saved = true
