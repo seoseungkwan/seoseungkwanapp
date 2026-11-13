@@ -5,14 +5,11 @@ import {
   DEFAULTS_VERSION,
   MAX_CODES,
   MAX_ETC_NAME,
-  MAX_PREFIXES,
   MAX_RESULTS,
   addCode,
   addKind,
-  addPrefix,
   cleanCode,
   cleanEtcName,
-  cleanPrefix,
   conflicts,
   defaults,
   load,
@@ -26,6 +23,7 @@ import {
   unusedCodes,
   without,
 } from './settings'
+import * as settingsModule from './settings'
 import { ETC_CLASH_ROWS } from './cells'
 import { GROUP_KEYS, SETTINGS_KEY } from './types'
 import type { ClosingCodes, Settings } from './types'
@@ -62,17 +60,17 @@ const FIRST: Settings = {
   },
   etcNames: { etc1: '크라이오', etc2: '', etc3: '', etc4: '' },
   reservations: {},
-  // 기본값 (자): 씨암·SONO 매출 규칙 처음 값은 앞글자 LA · 더 셀 코드 없음(TASK-15)
-  amounts: { carm: { prefixes: ['LA'], codes: [] }, sono: { prefixes: ['LA'], codes: [] } },
+  // AC-3707.2: 씨암·SONO 매출 규칙 처음 값은 셀 코드 없음(앞글자는 읽지 않아 늘 빈 목록, 전 판 처음 값 LA 없음)
+  amounts: { carm: { prefixes: [], codes: [] }, sono: { prefixes: [], codes: [] } },
   // 처음 값 판(TASK-18, 기본값 (타)): 물리치료 MM085·MM080·MM020 · 크라이오 CRYO3을 더한 판 2
   defaultsSeen: 2,
 }
 
-/** 매출 규칙 처음 값(기본값 (자)) */
-const FIRST_AMOUNTS = () => ({ carm: { prefixes: ['LA'], codes: [] as string[] }, sono: { prefixes: ['LA'], codes: [] as string[] } })
+/** 매출 규칙 처음 값(AC-3707.2: 셀 코드 없음) */
+const FIRST_AMOUNTS = () => ({ carm: { prefixes: [] as string[], codes: [] as string[] }, sono: { prefixes: [] as string[], codes: [] as string[] } })
 
 describe('AC-3607.3 처음 값', () => {
-  it('AC-3607.3 AC-3607.6: 처음 값은 이미 정한 것 7 그대로이고 예약 6줄은 비어 있으며, 씨암·SONO 매출 규칙은 앞글자 LA · 더 셀 코드 없음이고 overlap은 없다', () => {
+  it('AC-3607.3 AC-3707.2: 처음 값은 이미 정한 것 7 그대로이고 예약 6줄은 비어 있으며, 씨암·SONO 매출 규칙은 셀 코드 없음(앞글자 없음)이고 overlap은 없다', () => {
     expect(DEFAULTS).toEqual(FIRST)
     expect(defaults()).toEqual(FIRST)
     expect(defaults()).not.toHaveProperty('overlap')
@@ -167,10 +165,10 @@ describe('AC-3607.3 저장·불러오기 (chrome.storage.local erpClosing 한 �
 })
 
 describe('AC-3607.5 도우미에 보낼 묶음 toGroups', () => {
-  it('AC-3607.5 AC-3607.6: 처음 값이면 코드가 있는 8묶음을 design.md 2절 차례로 담고, 씨암·SONO에는 매출 규칙 두 칸(LA · 없음)을 붙인다', () => {
+  it('AC-3607.5 AC-3707.2: 처음 값이면 코드가 있는 8묶음을 design.md 2절 차례로 담고, 셀 코드가 없으니 씨암·SONO에도 매출 규칙 칸을 붙이지 않는다', () => {
     expect(toGroups(defaults())).toEqual([
-      { key: 'carm', codes: ['CARM1'], amountPrefixes: ['LA'], amountCodes: [] },
-      { key: 'sono', codes: ['SONO1'], amountPrefixes: ['LA'], amountCodes: [] },
+      { key: 'carm', codes: ['CARM1'] },
+      { key: 'sono', codes: ['SONO1'] },
       { key: 'arthro', codes: ['HA280'] },
       { key: 'manual', codes: ['도수'] },
       { key: 'eswt', codes: ['ESWT7', 'ESWT10', 'ESWT12', 'ESWT17'] },
@@ -307,25 +305,31 @@ describe('AC-3607.7 가운데 빈칸 코드', () => {
   })
 })
 
-describe('AC-3607.6 씨암·SONO 매출 규칙 amounts', () => {
-  it('AC-3607.6: 저장값에 amounts가 없으면(이미 저장한 설정) 두 묶음 모두 처음 값(LA · 없음)으로 채운다', async () => {
+describe('AC-3707.2 씨암·SONO 매출 규칙 amounts — 셀 코드만 읽는다', () => {
+  it('AC-3707.2: 저장값에 amounts가 없으면(이미 저장한 설정) 두 묶음 모두 처음 값(셀 코드 없음)으로 채운다', async () => {
     const old = { v: 1, picks: { carm: ['CARM1'] }, etcNames: { etc1: '크라이오' }, reservations: {} }
     fakeStorage({ [SETTINGS_KEY]: old })
     expect((await load())?.amounts).toEqual(FIRST_AMOUNTS())
-    // 한 묶음만 빠졌거나 모양이 틀리면 그 묶음만 처음 값
-    expect(normalize({ ...old, amounts: { carm: { prefixes: ['KK'], codes: [] } } })?.amounts).toEqual({
-      carm: { prefixes: ['KK'], codes: [] },
-      sono: { prefixes: ['LA'], codes: [] },
+    // 한 묶음만 빠졌거나 모양이 틀리면 그 묶음만 처음 값. 있는 묶음의 앞글자(KK)는 버린다
+    expect(normalize({ ...old, amounts: { carm: { prefixes: ['KK'], codes: ['KK090'] } } })?.amounts).toEqual({
+      carm: { prefixes: [], codes: ['KK090'] },
+      sono: { prefixes: [], codes: [] },
     })
     expect(normalize({ ...old, amounts: 'x' })?.amounts).toEqual(FIRST_AMOUNTS())
   })
 
-  it('AC-3607.6: 직원이 둘 다 비운 규칙은 비운 그대로 둔다(처음 값으로 다시 채우지 않음)', () => {
+  it('AC-3707.2: 저장값의 앞글자(전 판 처음 값 LA 등)는 읽지 않고 버리며 셀 코드만 남는다', () => {
     const amounts = { carm: { prefixes: [], codes: [] }, sono: { prefixes: ['LA'], codes: ['KK090'] } }
-    expect(normalize({ v: 1, picks: {}, etcNames: {}, reservations: {}, amounts })?.amounts).toEqual(amounts)
+    expect(normalize({ v: 1, picks: {}, etcNames: {}, reservations: {}, amounts })?.amounts).toEqual({
+      carm: { prefixes: [], codes: [] },
+      sono: { prefixes: [], codes: ['KK090'] },
+    })
+    // 전 판 처음 값 그대로 저장한 설정(LA · 없음)은 셀 코드 없음이 된다
+    const before = { carm: { prefixes: ['LA'], codes: [] }, sono: { prefixes: ['LA'], codes: [] } }
+    expect(normalize({ v: 1, picks: {}, etcNames: {}, reservations: {}, amounts: before })?.amounts).toEqual(FIRST_AMOUNTS())
   })
 
-  it('AC-3607.6: 앞글자는 앞뒤 공백을 떼고 대문자로, 겹침 없이 5개까지(1~10자·빈칸 없음), 더 셀 코드는 코드 꼴로 20개까지', () => {
+  it('AC-3707.2: 앞글자는 어떤 값이 와도 늘 빈 목록이고, 셀 코드는 코드 꼴로 겹침 없이 20개까지', () => {
     const many = Array.from({ length: 25 }, (_, i) => `K${i}`)
     const got = normalize({
       v: 1,
@@ -337,8 +341,7 @@ describe('AC-3607.6 씨암·SONO 매출 규칙 amounts', () => {
         sono: { prefixes: 'LA', codes: many },
       },
     })
-    expect(MAX_PREFIXES).toBe(5)
-    expect(got?.amounts.carm).toEqual({ prefixes: ['LA', 'KK', 'A', 'B', 'C'], codes: ['KK090', 'PROLO C'] })
+    expect(got?.amounts.carm).toEqual({ prefixes: [], codes: ['KK090', 'PROLO C'] })
     expect(got?.amounts.sono).toEqual({ prefixes: [], codes: many.slice(0, 20) })
   })
 
@@ -348,17 +351,11 @@ describe('AC-3607.6 씨암·SONO 매출 규칙 amounts', () => {
     for (const bad of ['x', 1, null, undefined]) expect(normalize({ ...base, overlap: bad })).not.toHaveProperty('overlap')
   })
 
-  it("AC-3607.6: cleanPrefix·addPrefix — 대문자로, 1~10자·빈칸 없음, 겹침 없이 5개까지", () => {
-    expect(cleanPrefix(' la ')).toBe('LA')
-    expect(cleanPrefix('Kk0')).toBe('KK0')
-    for (const bad of ['', '  ', 'L A', 'X'.repeat(11), 'L\tA']) expect(cleanPrefix(bad), JSON.stringify(bad)).toBeNull()
-    expect(addPrefix(['LA'], 'kk')).toEqual(['LA', 'KK'])
-    expect(addPrefix(['LA'], ' la')).toEqual(['LA'])
-    expect(addPrefix(['LA'], 'L A')).toEqual(['LA'])
-    expect(addPrefix(['A', 'B', 'C', 'D', 'E'], 'F')).toEqual(['A', 'B', 'C', 'D', 'E'])
+  it('AC-3707.1: 앞글자 더하기(addPrefix·cleanPrefix·MAX_PREFIXES)는 없어졌다', () => {
+    for (const name of ['addPrefix', 'cleanPrefix', 'MAX_PREFIXES']) expect(settingsModule, name).not.toHaveProperty(name)
   })
 
-  it('AC-3607.6: toGroups는 씨암·SONO에 앞글자·더 셀 코드 둘 중 하나라도 있으면 두 칸을 붙이고, 둘 다 비면 붙이지 않는다(다른 묶음에는 붙이지 않음)', () => {
+  it('AC-3707.2: toGroups는 씨암·SONO에 셀 코드가 있을 때만 amountPrefixes: []·amountCodes를 붙인다(다른 묶음에는 붙이지 않음)', () => {
     const s = defaults()
     s.amounts = { carm: { prefixes: [], codes: [] }, sono: { prefixes: [], codes: ['KK090'] } }
     s.picks.manual = ['도수']
@@ -378,9 +375,18 @@ describe('AC-3607.6 씨암·SONO 매출 규칙 amounts', () => {
     expect(s.amounts.sono.codes).toEqual(['KK090'])
   })
 
-  it('AC-3607.6: amounts가 빠진 설정을 받아도 toGroups는 처음 값 규칙(LA)으로 본다(normalize와 같음)', () => {
+  it('AC-3707.2: 화면 값에 앞글자가 남아 있어도 toGroups가 도우미에 보내는 앞글자는 늘 빈 목록이고, 앞글자만 있던 규칙은 칸을 붙이지 않는다', () => {
+    const s = defaults()
+    s.amounts = { carm: { prefixes: ['LA'], codes: [] }, sono: { prefixes: ['LA', 'KK'], codes: ['LA358'] } }
+    expect(toGroups(s).slice(0, 2)).toEqual([
+      { key: 'carm', codes: ['CARM1'] },
+      { key: 'sono', codes: ['SONO1'], amountPrefixes: [], amountCodes: ['LA358'] },
+    ])
+  })
+
+  it('AC-3707.2: amounts가 빠진 설정을 받아도 toGroups는 처음 값(셀 코드 없음)으로 보아 규칙 칸을 붙이지 않는다(normalize와 같음)', () => {
     const raw = { v: 1, picks: { carm: ['CARM1'] }, etcNames: { etc1: '', etc2: '', etc3: '', etc4: '' }, reservations: {} } as unknown as Settings
-    expect(toGroups(raw)).toEqual([{ key: 'carm', codes: ['CARM1'], amountPrefixes: ['LA'], amountCodes: [] }])
+    expect(toGroups(raw)).toEqual([{ key: 'carm', codes: ['CARM1'] }])
   })
 
   it('AC-3607.6: [저장](save)은 저장된 overlap을 지우지 않고 그대로 둔다(화면이 가진 값이 아니라 저장된 값)', async () => {

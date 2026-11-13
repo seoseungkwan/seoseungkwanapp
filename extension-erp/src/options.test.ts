@@ -403,7 +403,7 @@ describe('AC-3607.2 기타 이름·예약 메모', () => {
 })
 
 describe('AC-3607.3 저장·처음 값으로', () => {
-  it("AC-3607.3: [저장]은 erpClosing 한 열쇠에 design.md 4절 모양으로 쓰고 '저장했어요.'가 된다", async () => {
+  it("AC-3607.3 AC-3707.2: [저장]은 erpClosing 한 열쇠에 design.md 4절 모양으로 쓰고 '저장했어요.'가 된다", async () => {
     const { data, local } = await open()
     choose($<HTMLSelectElement>('[data-radd="eswt"]'), '1')
     type($<HTMLInputElement>('[data-find="manualConsult"]'), '도수상담')
@@ -427,7 +427,8 @@ describe('AC-3607.3 저장·처음 값으로', () => {
       },
       etcNames: { etc1: '크라이오', etc2: '', etc3: '', etc4: '' },
       reservations: { eswt: ['1'] },
-      amounts: { carm: { prefixes: ['LA'], codes: [] }, sono: { prefixes: ['LA'], codes: [] } },
+      // AC-3707.2: 씨암·SONO 매출 규칙 처음 값은 셀 코드 없음(앞글자 LA 없음)
+      amounts: { carm: { prefixes: [], codes: [] }, sono: { prefixes: [], codes: [] } },
       defaultsSeen: 2,
     })
     expect(status()).toBe('저장했어요.')
@@ -527,131 +528,127 @@ describe('AC-3607.4 도우미에서 코드 목록을 받지 못했을 때·목�
   })
 })
 
-describe("AC-3607.6 씨암·SONO '매출로 셀 코드' 줄(design.md 4절)", () => {
+describe("AC-3707 씨암·SONO '매출로 셀 코드' 줄은 셀 코드만 더한다(design.md 9절)", () => {
   const amt = (key: string) => $(`[data-amount="${key}"]`)
-  const prefixChips = (key: string) => [...amt(key).querySelectorAll('[data-prefixes] .chip b')].map(text)
-  const extraChips = (key: string) => [...amt(key).querySelectorAll('[data-extras] .chip b')].map(text)
-  const prefixInput = (key: string) => amt(key).querySelector<HTMLInputElement>('[data-prefix]') as HTMLInputElement
-  const addButton = (key: string) => amt(key).querySelector<HTMLButtonElement>('[data-padd]') as HTMLButtonElement
-  const ABOUT = (name: string) =>
-    `${name} 코드가 있는 진료에서 아래 코드의 금액만 치료별 매출 ${name}에 넣어요. 앞글자는 바로 뒤가 숫자인 코드만 세요(예: LA → LA358·LA272는 세고 LAYLA는 안 세요).`
+  const cellChips = (key: string) => [...amt(key).querySelectorAll('[data-extras] .chip b')].map(text)
+  const cellFind = (key: string) => amt(key).querySelector<HTMLInputElement>('[data-afind]') as HTMLInputElement
+  const ABOUT = (name: string) => `${name} 코드가 있는 진료에서 아래 코드의 금액만 치료별 매출 ${name}에 넣어요.`
+  /** 앞글자 줄(전 판 '이 글자 뒤에 숫자')의 흔적: 줄·글자 칸·[더하기]·조각 [×] */
+  const prefixBits = () => $$('[data-prefixes], [data-prefix], [data-padd], [data-pdel]')
+  const WITH_PREFIXES = {
+    ...SAVED,
+    amounts: { carm: { prefixes: ['LA', 'KK'], codes: ['LA358'] }, sono: { prefixes: ['LA'], codes: [] } },
+    overlap: 'sono',
+  }
 
-  it('AC-3607.6: 씨암·SONO 두 줄에만 고른 코드 줄 바로 아래 같은 모양으로 있다(제목·안내 글)', async () => {
+  it("AC-3707.1: 씨암·SONO 두 줄에만 고른 코드 줄 바로 아래 같은 모양으로 있고, 안내 글은 한 문장·코드 줄 이름은 '셀 코드'다", async () => {
     await open()
     expect($$('[data-amount]').map((r) => r.dataset.amount)).toEqual(['carm', 'sono'])
     for (const [key, name] of [['carm', '씨암'], ['sono', 'SONO']]) {
       expect(row(key).nextElementSibling, key).toBe(amt(key))
       expect(text(amt(key).querySelector('.oname b')), key).toBe('매출로 셀 코드')
       expect(text(amt(key).querySelector('.about')), key).toBe(ABOUT(name))
-      expect(text(amt(key).querySelector('[data-prefixes] .sub')), key).toBe('이 글자 뒤에 숫자')
-      expect(text(amt(key).querySelector('[data-extras] .sub')), key).toBe('더 셀 코드')
+      expect(amt(key).querySelectorAll('.pickline'), key).toHaveLength(1)
+      expect(text(amt(key).querySelector('[data-extras] .sub')), key).toBe('셀 코드')
     }
     // 다른 묶음 줄·고른 코드 조각에는 섞이지 않는다
     expect(chipCodes('carm')).toEqual(['CARM1'])
   })
 
-  it("AC-3607.6: 처음 값(저장값에 amounts가 없어도)은 앞글자 조각 'LA+숫자' 하나이고 더 셀 코드는 없다", async () => {
-    await open({ stored: SAVED })
-    for (const key of ['carm', 'sono']) {
-      expect(prefixChips(key), key).toEqual(['LA+숫자'])
-      expect(extraChips(key), key).toEqual([])
-      expect(amt(key).querySelector('[data-pdel="LA"]')?.getAttribute('aria-label'), key).toBe('LA 빼기')
-      expect(amt(key).querySelector('.none'), key).toBeNull()
+  it("AC-3707.1: '이 글자 뒤에 숫자' 줄(글자 칸·[더하기])은 어디에도 없다", async () => {
+    await open()
+    expect(prefixBits()).toHaveLength(0)
+    const body = document.body.textContent ?? ''
+    for (const gone of ['이 글자 뒤에 숫자', '+숫자', '예: LA', '앞글자', '더 셀 코드']) expect(body, gone).not.toContain(gone)
+    expect($$('[data-amount] input').map((i) => i.getAttribute('data-afind'))).toEqual(['carm', 'sono'])
+    expect($$('[data-amount] button').filter((b) => text(b) === '더하기')).toHaveLength(0)
+  })
+
+  it("AC-3707.2 AC-3707.3: 처음 값(저장값에 amounts가 없어도)은 셀 코드 없음이고 '비어 있으면 위 코드 줄 금액만 넣어요.'가 보인다", async () => {
+    for (const stored of [undefined, SAVED]) {
+      await open({ stored })
+      for (const key of ['carm', 'sono']) {
+        expect(cellChips(key), key).toEqual([])
+        expect(text(amt(key).querySelector('.none')), key).toBe('비어 있으면 위 코드 줄 금액만 넣어요.')
+      }
+      expect(prefixBits()).toHaveLength(0)
     }
   })
 
-  it("AC-3607.6: 앞글자 칸(placeholder '예: LA', aria '{이름} 앞글자 더하기')에 넣고 [더하기]하면 대문자로 더해지고, 겹침·빈칸 든 글자는 더해지지 않는다", async () => {
-    await open()
-    expect(prefixInput('carm').placeholder).toBe('예: LA')
-    expect(prefixInput('carm').getAttribute('aria-label')).toBe('씨암 앞글자 더하기')
-    expect(prefixInput('sono').getAttribute('aria-label')).toBe('SONO 앞글자 더하기')
-    expect(prefixInput('carm').maxLength).toBe(10)
-    expect(text(addButton('carm'))).toBe('더하기')
-    type(prefixInput('carm'), ' kk ')
-    addButton('carm').click()
-    expect(prefixChips('carm')).toEqual(['LA+숫자', 'KK+숫자'])
-    expect(prefixInput('carm').value).toBe('')
-    expect(status()).toBe('바꾼 것을 아직 저장하지 않았어요.')
-    type(prefixInput('carm'), 'la')
-    addButton('carm').click()
-    type(prefixInput('carm'), 'L A')
-    addButton('carm').click()
-    expect(prefixChips('carm')).toEqual(['LA+숫자', 'KK+숫자'])
-    // Enter로도 더한다
-    type(prefixInput('carm'), 'hy')
-    prefixInput('carm').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-    expect(prefixChips('carm')).toEqual(['LA+숫자', 'KK+숫자', 'HY+숫자'])
-    // SONO 줄은 그대로
-    expect(prefixChips('sono')).toEqual(['LA+숫자'])
+  it('AC-3707.2: 저장값에 앞글자(LA·KK)가 있어도 조각이 어디에도 없고 셀 코드만 보인다', async () => {
+    await open({ stored: WITH_PREFIXES })
+    expect(prefixBits()).toHaveLength(0)
+    expect(document.body.textContent).not.toContain('+숫자')
+    expect(cellChips('carm')).toEqual(['LA358'])
+    expect(amt('carm').querySelectorAll('.chip')).toHaveLength(1)
+    expect(amt('carm').querySelector('.none')).toBeNull()
+    expect(cellChips('sono')).toEqual([])
+    expect(text(amt('sono').querySelector('.none'))).toBe('비어 있으면 위 코드 줄 금액만 넣어요.')
   })
 
-  it('AC-3607.6: 앞글자는 5개까지이고, 5개면 칸·[더하기]가 막힌다. [×]로 빼면 다시 된다', async () => {
+  it("AC-3707.1: '셀 코드' 찾기(aria '{이름} 셀 코드 찾기')로 코드를 하나씩 더하고(가운데 빈칸 코드 포함) [×]로 뺀다", async () => {
     await open()
-    for (const p of ['A', 'B', 'C', 'D']) {
-      type(prefixInput('sono'), p)
-      addButton('sono').click()
-    }
-    expect(prefixChips('sono')).toEqual(['LA+숫자', 'A+숫자', 'B+숫자', 'C+숫자', 'D+숫자'])
-    expect(prefixInput('sono').disabled).toBe(true)
-    expect(addButton('sono').disabled).toBe(true)
-    amt('sono').querySelector<HTMLButtonElement>('[data-pdel="B"]')?.click()
-    expect(prefixChips('sono')).toEqual(['LA+숫자', 'A+숫자', 'C+숫자', 'D+숫자'])
-    expect(prefixInput('sono').disabled).toBe(false)
-  })
-
-  it("AC-3607.6: '더 셀 코드' 찾기(aria '{이름} 더 셀 코드 찾기')로 코드를 더하고(가운데 빈칸 코드 포함) [×]로 뺀다", async () => {
-    await open()
-    const find = amt('sono').querySelector<HTMLInputElement>('[data-afind]') as HTMLInputElement
-    expect(find.getAttribute('aria-label')).toBe('SONO 더 셀 코드 찾기')
+    const find = cellFind('sono')
+    expect(find.getAttribute('aria-label')).toBe('SONO 셀 코드 찾기')
+    expect(cellFind('carm').getAttribute('aria-label')).toBe('씨암 셀 코드 찾기')
     expect(find.placeholder).toBe('코드나 이름으로 찾기')
     type(find, 'prolo')
     const dd = amt('sono').querySelector<HTMLElement>('[data-add-dd]') as HTMLElement
     expect(dd.hidden).toBe(false)
     dd.querySelector<HTMLButtonElement>('[data-aadd="PROLO C"]')?.click()
-    expect(extraChips('sono')).toEqual(['PROLO C'])
+    expect(cellChips('sono')).toEqual(['PROLO C'])
     expect(parts(amt('sono').querySelector('[data-extras] .chip'))).toBe('PROLO C 증식치료(C) ×')
+    expect(amt('sono').querySelector('.none')).toBeNull()
+    expect(status()).toBe('바꾼 것을 아직 저장하지 않았어요.')
     // 고른 코드 줄(SONO 묶음 코드)은 그대로
     expect(chipCodes('sono')).toEqual(['SONO1'])
     // 같은 코드는 골랐어요로 막힌다
-    type(amt('sono').querySelector<HTMLInputElement>('[data-afind]') as HTMLInputElement, 'PROLO')
+    type(cellFind('sono'), 'PROLO')
     const again = amt('sono').querySelector<HTMLButtonElement>('[data-aadd="PROLO C"]') as HTMLButtonElement
     expect(again.disabled).toBe(true)
     expect(text(again.querySelector('em'))).toBe('골랐어요')
     amt('sono').querySelector<HTMLButtonElement>('[data-adel="PROLO C"]')?.click()
-    expect(extraChips('sono')).toEqual([])
+    expect(cellChips('sono')).toEqual([])
+    expect(text(amt('sono').querySelector('.none'))).toBe('비어 있으면 위 코드 줄 금액만 넣어요.')
   })
 
-  it("AC-3607.6: 앞글자·더 셀 코드가 둘 다 비면 '비어 있으면 위 코드 줄 금액만 넣어요.'가 보인다", async () => {
-    await open()
-    amt('carm').querySelector<HTMLButtonElement>('[data-pdel="LA"]')?.click()
-    expect(prefixChips('carm')).toEqual([])
-    expect(text(amt('carm').querySelector('.none'))).toBe('비어 있으면 위 코드 줄 금액만 넣어요.')
-    expect(amt('sono').querySelector('.none')).toBeNull()
+  it('AC-3707.1: 셀 코드는 20개까지이고, 20개면 찾기 칸이 막히고 20개까지라고 말한다', async () => {
+    const twenty = Array.from({ length: 20 }, (_, i) => `Z${String(i).padStart(4, '0')}`)
+    await open({ stored: { ...SAVED, amounts: { carm: { prefixes: [], codes: twenty }, sono: { prefixes: [], codes: [] } } } })
+    expect(cellChips('carm')).toEqual(twenty)
+    expect(cellFind('carm').disabled).toBe(true)
+    expect(cellFind('carm').placeholder).toBe('20개까지 고를 수 있어요')
+    expect(cellFind('sono').disabled).toBe(false)
+    amt('carm').querySelector<HTMLButtonElement>('[data-adel="Z0003"]')?.click()
+    expect(cellFind('carm').disabled).toBe(false)
   })
 
-  it('AC-3607.6: [저장]은 amounts를 design.md 4절 모양으로 쓰고 저장된 overlap을 지우지 않는다', async () => {
-    const { data } = await open({ stored: { ...SAVED, overlap: 'sono' } })
-    type(prefixInput('carm'), 'kk')
-    addButton('carm').click()
-    type(amt('carm').querySelector<HTMLInputElement>('[data-afind]') as HTMLInputElement, 'LA358')
-    amt('carm').querySelector<HTMLButtonElement>('[data-aadd="LA358"]')?.click()
-    amt('sono').querySelector<HTMLButtonElement>('[data-pdel="LA"]')?.click()
+  it('AC-3707.1 AC-3707.2: [저장]은 앞글자 없이(늘 빈 목록) 셀 코드만 쓰고 저장된 overlap을 지우지 않는다', async () => {
+    const { data } = await open({ stored: WITH_PREFIXES })
+    type(cellFind('sono'), 'LA358')
+    amt('sono').querySelector<HTMLButtonElement>('[data-aadd="LA358"]')?.click()
     $('#optSave').click()
     await flush()
     const saved = data[SETTINGS_KEY] as Settings
-    expect(saved.amounts).toEqual({ carm: { prefixes: ['LA', 'KK'], codes: ['LA358'] }, sono: { prefixes: [], codes: [] } })
+    expect(saved.amounts).toEqual({ carm: { prefixes: [], codes: ['LA358'] }, sono: { prefixes: [], codes: ['LA358'] } })
     expect(saved.overlap).toBe('sono')
     expect(status()).toBe('저장했어요.')
+    expect(prefixBits()).toHaveLength(0)
   })
 
-  it('AC-3607.6: 도우미 목록을 받지 못하면 더 셀 코드 찾기는 막히지만 앞글자는 더할 수 있다', async () => {
-    await open({ reply: { type: 'error', code: 'E-HELPER-MISSING' } })
-    const find = amt('carm').querySelector<HTMLInputElement>('[data-afind]') as HTMLInputElement
-    expect(find.disabled).toBe(true)
-    expect(find.placeholder).toBe('코드 목록을 받지 못해 찾을 수 없어요')
-    type(prefixInput('carm'), 'kk')
-    addButton('carm').click()
-    expect(prefixChips('carm')).toEqual(['LA+숫자', 'KK+숫자'])
+  it('AC-3707.1: 도우미 목록을 받지 못하면 셀 코드 찾기만 막히고, 이미 더한 셀 코드는 [×]로 뺄 수 있다', async () => {
+    const { data } = await open({ stored: WITH_PREFIXES, reply: { type: 'error', code: 'E-HELPER-MISSING' } })
+    for (const key of ['carm', 'sono']) {
+      expect(cellFind(key).disabled, key).toBe(true)
+      expect(cellFind(key).placeholder, key).toBe('코드 목록을 받지 못해 찾을 수 없어요')
+    }
+    expect(prefixBits()).toHaveLength(0)
+    expect(parts(amt('carm').querySelector('[data-extras] .chip'))).toBe('LA358 ×')
+    amt('carm').querySelector<HTMLButtonElement>('[data-adel="LA358"]')?.click()
+    expect(cellChips('carm')).toEqual([])
+    $('#optSave').click()
+    await flush()
+    expect((data[SETTINGS_KEY] as Settings).amounts).toEqual({ carm: { prefixes: [], codes: [] }, sono: { prefixes: [], codes: [] } })
   })
 })
 
@@ -861,7 +858,6 @@ describe('AC-3615.5 [처음 값으로]는 먼저 묻는다', () => {
     amounts: { carm: { prefixes: ['KK'], codes: ['LA358'] }, sono: { prefixes: [], codes: [] } },
     overlap: 'sono',
   }
-  const prefixChips = (key: string) => [...$(`[data-amount="${key}"]`).querySelectorAll('[data-prefixes] .chip b')].map(text)
   const extraChips = (key: string) => [...$(`[data-amount="${key}"]`).querySelectorAll('[data-extras] .chip b')].map(text)
 
   it('AC-3615.5: 묻는 글과 [바꾸기]·[그만두기]가 나오고, 아직 아무것도 바꾸지 않는다. [그만두기]면 그대로다', async () => {
@@ -878,20 +874,20 @@ describe('AC-3615.5 [처음 값으로]는 먼저 묻는다', () => {
     askButton('cancel').click()
     expect(askHidden()).toBe(true)
     expect(chipCodes('manual')).toEqual(['도수', 'MA4'])
-    expect(prefixChips('carm')).toEqual(['KK+숫자'])
+    expect(extraChips('carm')).toEqual(['LA358'])
     expect(status()).toBe('저장했어요.')
     expect(local.set).not.toHaveBeenCalled()
   })
 
-  it('AC-3615.5: [바꾸기]면 고른 코드·매출 규칙만 처음 값이고 기타 줄 이름·예약 메모·저장된 overlap은 그대로, 저장은 [저장]으로', async () => {
+  it('AC-3615.5 AC-3707.2: [바꾸기]면 고른 코드·매출 규칙만 처음 값(셀 코드 없음)이고 기타 줄 이름·예약 메모·저장된 overlap은 그대로, 저장은 [저장]으로', async () => {
     const { data, local } = await open({ stored: STORED })
     $('#optReset').click()
     askButton('reset').click()
     expect(askHidden()).toBe(true)
     expect(chipCodes('pt')).toEqual(['MM010', 'MM015', 'MM011', 'MM085', 'MM080', 'MM020'])
-    expect(prefixChips('carm')).toEqual(['LA+숫자'])
     expect(extraChips('carm')).toEqual([])
-    expect(prefixChips('sono')).toEqual(['LA+숫자'])
+    expect(extraChips('sono')).toEqual([])
+    expect($$('[data-prefixes], [data-pdel]')).toHaveLength(0)
     expect($<HTMLInputElement>('[data-etc="etc2"]').value).toBe('핫팩')
     expect([...$('[data-rsv="eswt"]').querySelectorAll('.chip b')].map(text)).toEqual(['1번'])
     expect(status()).toBe('바꾼 것을 아직 저장하지 않았어요.')
@@ -912,7 +908,7 @@ describe('AC-3615.5 [처음 값으로]는 먼저 묻는다', () => {
       },
       etcNames: { etc1: '크라이오', etc2: '핫팩', etc3: '', etc4: '' },
       reservations: { manual: ['14', '20', '22'], eswt: ['1'] },
-      amounts: { carm: { prefixes: ['LA'], codes: [] }, sono: { prefixes: ['LA'], codes: [] } },
+      amounts: { carm: { prefixes: [], codes: [] }, sono: { prefixes: [], codes: [] } },
       overlap: 'sono',
       defaultsSeen: 2,
     })

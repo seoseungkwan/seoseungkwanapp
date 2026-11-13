@@ -2,7 +2,8 @@
 // 코드 목록은 서비스 워커를 거쳐 도우미 closing.codes로 받고({ cmd, args } → { type: 'result', data } | { type: 'error', code }),
 // 고른 것은 chrome.storage.local erpClosing 한 칸에만 둔다. 도우미 답은 저장하지 않는다
 // 도우미가 준 코드 이름은 글자(textContent)로만 그린다
-// 씨암·SONO 줄 아래 '매출로 셀 코드' 줄(TASK-15)은 design.md 4절 글 그대로다(목업 없이 명세 글로 만듦)
+// 씨암·SONO 줄 아래 '매출로 셀 코드' 줄(TASK-15)은 design.md 4절 글 그대로다(목업 없이 명세 글로 만듦).
+// REQ-3707(TASK-9, design.md 9절): 그 줄은 '셀 코드'만 찾아 더한다. '이 글자 뒤에 숫자'(앞글자) 줄은 없고 저장값의 앞글자는 보이지 않는다
 // TASK-18(design.md 5-3 글 그대로, 사용자가 목업 승인을 기다리지 말라고 함): 받는 중 줄 · 닫을 때 묻기(beforeunload) · 저장 실패 글 ·
 // [저장] 차례(겹침 막기 → 처방 없는 코드 묻기 → 쓰기) · [처음 값으로] 묻기 · 새 처음 코드 줄. 묻는 글은 저장 바 바로 위 알림 상자(#optAsk)
 // 코드 목록 오류 줄은 errors.ts 한 곳의 글만 쓴다(AC-3614.1)
@@ -13,13 +14,11 @@ import { josa } from './josa.js'
 import {
   addCode,
   addKind,
-  addPrefix,
   conflicts,
   defaults,
   ETC_KEYS,
   load,
   MAX_CODES,
-  MAX_PREFIXES,
   newDefaultCodes,
   resetCodes,
   save,
@@ -83,16 +82,11 @@ const LEAD = 'ERP 칸마다 셀 비트 처방 코드를 고르세요. 여러 개
 const FIRST = '처음 한 번 설정 화면에서 코드를 확인하고 [저장]을 눌러 주세요.'
 const FOOT = '환자 이름 · 차트번호는 이 PC의 도우미 밖으로 나가지 않아요. ERP 화면에는 숫자만 넣고, 저장은 ERP에서 직접 눌러요.'
 
-/** 씨암·SONO 매출 규칙 줄 글(design.md 4절) */
-const AMOUNT = {
+/** 씨암·SONO 매출 규칙 줄 글(design.md 4절·9절). 안내서(README '4-2')도 이 글 그대로다 */
+export const AMOUNT = {
   title: '매출로 셀 코드',
-  about: (name: string) =>
-    `${name} 코드가 있는 진료에서 아래 코드의 금액만 치료별 매출 ${name}에 넣어요. 앞글자는 바로 뒤가 숫자인 코드만 세요(예: LA → LA358·LA272는 세고 LAYLA는 안 세요).`,
-  prefixes: '이 글자 뒤에 숫자',
-  prefixChip: (prefix: string) => `${prefix}+숫자`,
-  prefixPlaceholder: '예: LA',
-  add: '더하기',
-  codes: '더 셀 코드',
+  about: (name: string) => `${name} 코드가 있는 진료에서 아래 코드의 금액만 치료별 매출 ${name}에 넣어요.`,
+  codes: '셀 코드',
   empty: '비어 있으면 위 코드 줄 금액만 넣어요.',
 }
 const isAmountKey = (key: string | undefined): key is AmountKey => (AMOUNT_KEYS as readonly string[]).includes(key ?? '')
@@ -153,10 +147,8 @@ type Page = {
   /** 바꿀 때마다 1씩: 저장하는 동안 또 바꿨는지 본다 */
   rev: number
   codes: Codes
-  /** 열린 찾기 칸: 고른 코드 찾기, amount면 씨암·SONO 더 셀 코드 찾기 */
+  /** 열린 찾기 칸: 고른 코드 찾기, amount면 씨암·SONO 셀 코드 찾기 */
   open: { key: GroupKey; text: string; amount?: boolean } | null
-  /** 씨암·SONO 앞글자 칸에 쓰는 중인 글자(다시 그려도 남게) */
-  drafts: Partial<Record<AmountKey, string>>
 }
 
 let page: Page
@@ -277,7 +269,7 @@ function freshNotice(): HTMLElement | null {
   )
 }
 
-/** 코드 조각. del = [×] 단추의 칸 이름(고른 코드 data-del · 더 셀 코드 data-adel) */
+/** 코드 조각. del = [×] 단추의 칸 이름(고른 코드 data-del · 셀 코드 data-adel) */
 function codeChip(code: string, del = 'data-del'): HTMLElement {
   let name: HTMLElement | null = null
   // 목록을 모르면(받는 중·못 받음) 코드만 보인다
@@ -295,7 +287,7 @@ function codeChip(code: string, del = 'data-del'): HTMLElement {
   )
 }
 
-/** 찾기 결과. amount면 씨암·SONO 더 셀 코드 찾기(data-aadd, 골랐는지는 그 규칙의 더 셀 코드로 본다) */
+/** 찾기 결과. amount면 씨암·SONO 셀 코드 찾기(data-aadd, 골랐는지는 그 규칙의 셀 코드로 본다) */
 function results(key: GroupKey, text: string, amount = false): HTMLElement[] {
   if (page.codes.status !== 'ok') return []
   const found = search(page.codes.list, text)
@@ -371,23 +363,14 @@ function codeRow(key: GroupKey, use: string): HTMLElement {
 }
 
 /**
- * 씨암·SONO 줄 바로 아래 '매출로 셀 코드' 줄(design.md 4절, TASK-15): 안내 글 · '이 글자 뒤에 숫자' 앞글자 조각과 [×] + 글자 칸 + [더하기]
- * · '더 셀 코드' 조각 + 찾기 · 둘 다 비면 그 뜻 한 줄. 두 줄 모양은 같다
+ * 씨암·SONO 줄 바로 아래 '매출로 셀 코드' 줄(design.md 4절·9절, TASK-15·TASK-9): 안내 글 한 문장 · '셀 코드' 조각 + 찾기(20개까지)
+ * · 셀 코드가 비면 그 뜻 한 줄. 앞글자는 읽지 않아(AC-3707.2) 그리지 않는다. 두 줄 모양은 같다
  */
 function amountRow(key: AmountKey): HTMLElement {
   const name = GROUP_NAMES[key]
   const rule = page.settings.amounts[key]
-  const prefixFull = rule.prefixes.length >= MAX_PREFIXES
   const codesFull = rule.codes.length >= MAX_CODES
   const open = page.open?.key === key && page.open.amount ? page.open.text : ''
-  const prefixChips = rule.prefixes.map((prefix) =>
-    h(
-      'span',
-      { class: 'chip' },
-      h('b', {}, AMOUNT.prefixChip(prefix)),
-      h('button', { type: 'button', 'data-pdel': prefix, 'aria-label': `${prefix} 빼기` }, '×'),
-    ),
-  )
   return h(
     'div',
     { class: 'orow amt', 'data-amount': key },
@@ -396,27 +379,6 @@ function amountRow(key: AmountKey): HTMLElement {
       'div',
       { class: 'opick' },
       h('p', { class: 'about' }, AMOUNT.about(name)),
-      h(
-        'div',
-        { class: 'pickline', 'data-prefixes': key },
-        h('span', { class: 'sub' }, AMOUNT.prefixes),
-        ...prefixChips,
-        h(
-          'span',
-          { class: 'padd' },
-          h('input', {
-            type: 'text',
-            maxlength: '10',
-            'data-prefix': key,
-            value: page.drafts[key] ?? '',
-            placeholder: AMOUNT.prefixPlaceholder,
-            'aria-label': `${name} 앞글자 더하기`,
-            disabled: prefixFull,
-            autocomplete: 'off',
-          }),
-          h('button', { type: 'button', class: 'btn btn-2', 'data-padd': key, disabled: prefixFull }, AMOUNT.add),
-        ),
-      ),
       h(
         'div',
         { class: 'pickline', 'data-extras': key },
@@ -431,13 +393,13 @@ function amountRow(key: AmountKey): HTMLElement {
             placeholder: findPlaceholder(codesFull),
             value: open,
             disabled: page.codes.status !== 'ok' || codesFull,
-            'aria-label': `${name} 더 셀 코드 찾기`,
+            'aria-label': `${name} ${AMOUNT.codes} 찾기`,
             autocomplete: 'off',
           }),
           h('div', { class: 'dd', 'data-add-dd': key, hidden: !open.trim() }, ...(open.trim() ? results(key, open, true) : [])),
         ),
       ),
-      rule.prefixes.length === 0 && rule.codes.length === 0 && h('p', { class: 'none' }, AMOUNT.empty),
+      rule.codes.length === 0 && h('p', { class: 'none' }, AMOUNT.empty),
     ),
   )
 }
@@ -487,7 +449,7 @@ function rsvRow(row: RsvRow): HTMLElement {
 function focusTarget(): { selector: string; start: number | null; end: number | null } | null {
   const active = document.activeElement
   if (!(active instanceof HTMLElement) || !main.contains(active)) return null
-  for (const attr of ['data-etc', 'data-find', 'data-radd', 'data-prefix', 'data-afind']) {
+  for (const attr of ['data-etc', 'data-find', 'data-radd', 'data-afind']) {
     const value = active.getAttribute(attr)
     if (value !== null) {
       const field = active instanceof HTMLInputElement ? active : null
@@ -616,18 +578,6 @@ function openFind(key: GroupKey, text: string, amount: boolean) {
   }
 }
 
-/** 앞글자 칸 글자를 대문자로 더한다(꼴이 틀렸거나 겹치거나 5개면 그대로 두고 글자도 남긴다) */
-function addPrefixFrom(key: AmountKey) {
-  const rule = page.settings.amounts[key]
-  const input = main.querySelector<HTMLInputElement>(`[data-prefix="${key}"]`)
-  const next = addPrefix(rule.prefixes, input?.value ?? page.drafts[key] ?? '')
-  if (next.length === rule.prefixes.length) return
-  page.settings.amounts[key] = { ...rule, prefixes: next }
-  page.drafts[key] = ''
-  changed()
-  renderMain({ selector: `[data-prefix="${key}"]`, start: null, end: null })
-}
-
 function onInput(event: Event) {
   const target = event.target
   if (!(target instanceof HTMLInputElement)) return
@@ -639,11 +589,6 @@ function onInput(event: Event) {
   const afind = target.dataset.afind
   if (isAmountKey(afind)) {
     openFind(afind, target.value, true)
-    return
-  }
-  const prefix = target.dataset.prefix
-  if (isAmountKey(prefix)) {
-    page.drafts[prefix] = target.value
     return
   }
   const etc = target.dataset.etc as EtcKey | undefined
@@ -664,16 +609,7 @@ function onChange(event: Event) {
   renderMain({ selector: `[data-radd="${row}"]`, start: null, end: null })
 }
 
-function onKeydown(event: KeyboardEvent) {
-  const target = event.target
-  if (event.key !== 'Enter' || !(target instanceof HTMLInputElement)) return
-  const prefix = target.dataset.prefix
-  if (!isAmountKey(prefix)) return
-  event.preventDefault()
-  addPrefixFrom(prefix)
-}
-
-/** 씨암·SONO '매출로 셀 코드' 줄 단추. 그 줄 단추였으면 true */
+/** 씨암·SONO '매출로 셀 코드' 줄 단추(셀 코드 더하기·빼기). 그 줄 단추였으면 true */
 function onAmountClick(target: Element): boolean {
   const key = target.closest<HTMLElement>('[data-amount]')?.dataset.amount
   if (!isAmountKey(key)) return false
@@ -691,17 +627,6 @@ function onAmountClick(target: Element): boolean {
     page.settings.amounts[key] = { ...rule, codes: without(rule.codes, del.dataset.adel ?? '') }
     changed()
     renderMain()
-    return true
-  }
-  const pdel = target.closest<HTMLElement>('[data-pdel]')
-  if (pdel) {
-    page.settings.amounts[key] = { ...rule, prefixes: without(rule.prefixes, pdel.dataset.pdel ?? '') }
-    changed()
-    renderMain()
-    return true
-  }
-  if (target.closest('[data-padd]')) {
-    addPrefixFrom(key)
     return true
   }
   return false
@@ -809,7 +734,6 @@ function onAskClick(event: Event) {
     closeAsk()
     page.settings = resetCodes(page.settings)
     page.open = null
-    page.drafts = {}
     changed()
     renderMain()
   } else if (name === 'cancel') {
@@ -845,13 +769,11 @@ export async function startOptions(): Promise<void> {
     rev: 0,
     codes: { status: 'loading' },
     open: null,
-    drafts: {},
   }
 
   main.addEventListener('input', onInput, { signal })
   main.addEventListener('change', onChange, { signal })
   main.addEventListener('click', onClick, { signal })
-  main.addEventListener('keydown', onKeydown, { signal })
   byId('optSave').addEventListener('click', onSave, { signal })
   byId('optReset').addEventListener('click', onReset, { signal })
   byId('optAsk').addEventListener('click', onAskClick, { signal })

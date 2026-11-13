@@ -1,10 +1,12 @@
 // TASK-5 REQ-3706(spec erp-closing-range): 안내서 extension-erp/README.md의 '기간 채우기' 절과 '확장이 건드리지 않는 것'·판 번호 글.
 // 안내서의 화면 글은 기간 안내 글(rangeView.ts RANGE_TEXT = design.md 4절, 승인된 시안 ①~⑤) 그대로여야 한다.
 // 숫자·날짜 자리는 안내서에서 {이름}으로 쓴다: 화면 글 함수에 표시 숫자(901…)를 넣어 부른 뒤 그 숫자를 {이름}으로 바꿔 견준다
+// TASK-9 REQ-3707: 설정 '매출로 셀 코드' 설명은 설정 화면 글(options.ts AMOUNT) 그대로이고 '이 글자 뒤에 숫자' 설명은 없다
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { AMOUNT } from './options'
 import { OVERLAP_TEXT } from './panel'
 import { RANGE_TEXT } from './rangeView'
 
@@ -223,5 +225,52 @@ describe("AC-3706.1 안내서 '확장이 건드리지 않는 것'과 판 번호"
     for (const old of ['지금 둘 다 0.2.0', '확장 0.2.0', '(지금 0.2.0)', '같은 판끼리', '판 번호가 같은 것끼리']) {
       expect(README, old).not.toContain(old)
     }
+  })
+})
+
+/** '## {title}…' 절(제목 줄 빼고, 다음 '## ' 앞까지) */
+function chapter(title: string): string {
+  const lines = README.split('\n')
+  const head = lines.findIndex((line) => line.startsWith(`## ${title}`))
+  expect(head, `'## ${title}' 절이 없다`).toBeGreaterThan(-1)
+  const rest = lines.slice(head + 1)
+  const end = rest.findIndex((line) => line.startsWith('## '))
+  return (end === -1 ? rest : rest.slice(0, end)).join('\n')
+}
+
+describe("AC-3707.3 안내서 '매출로 셀 코드' — 화면 글(options.ts AMOUNT) 그대로, 셀 코드만 더함", () => {
+  it("AC-3707.1 AC-3707.3: 4-2 소절의 '매출로 셀 코드' 설명은 화면 글 그대로이고 '셀 코드'는 찾아 하나씩 더한다(20개까지)", () => {
+    const cell = part(README, '4-2.')
+    expect(cell).toContain(`**'${AMOUNT.title}'**`)
+    expectQuoted(cell, AMOUNT.about('{이름}'))
+    expect(cell).toContain(`**'${AMOUNT.codes}'**`)
+    expect(cell).toContain('하나씩 더합니다(20개까지)')
+    expect(cell).toContain('**[×]**')
+    expectQuoted(cell, AMOUNT.empty)
+  })
+
+  it("AC-3707.3: '이 글자 뒤에 숫자'·앞글자 더하기 설명이 어디에도 없다", () => {
+    for (const old of ['이 글자 뒤에 숫자', '앞글자는 바로 뒤가 숫자인 코드만', 'LAYLA', '더 셀 코드', '바로 뒤가 숫자인 코드', '5개까지, 대문자로']) {
+      expect(README, old).not.toContain(old)
+    }
+  })
+
+  it('AC-3707.2 AC-3707.3: 처음 값 표의 씨암·SONO 줄은 셀 코드 없음이고 앞글자 LA가 없다', () => {
+    for (const name of ['씨암', 'SONO']) {
+      const line = README.split('\n').find((l) => l.startsWith(`| ${name} |`))
+      expect(line, name).toBeDefined()
+      expect(line, name).toContain('셀 코드 없음')
+      expect(line, name).not.toContain('LA')
+      expect(line, name).not.toContain('앞글자')
+    }
+  })
+
+  it("AC-3707.3: '새 판으로 바꾸기'에 새 판으로 바꾼 뒤 씨암·SONO 셀 코드를 확인하라는 문장이 있고, 확장 판 번호는 0.3.0 그대로다", () => {
+    const update = chapter('7. 새 판으로 바꾸기')
+    expect(update).toContain("씨암·SONO **'셀 코드'**를 꼭 확인합니다")
+    expect(update).toContain('직접 더한 셀 코드만 셉니다')
+    expect(update).toContain('줄어듭니다')
+    expect(part(README, '4-2.')).toContain("'7. 새 판으로 바꾸기'")
+    expect(MANIFEST.version).toBe('0.3.0')
   })
 })

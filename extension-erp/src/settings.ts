@@ -2,7 +2,7 @@
 // [저장] 전 검사(겹침·처방 없는 코드)와 처음 값 판(TASK-18)
 // 설정 화면(options.ts)과 ERP 화면 쪽(main.ts)이 같이 쓴다. 그래서 types.js와 고정 줄 이름(cells.js, types.js만 부름) 말고는 불러오지 않는다
 import { ETC_CLASH_ROWS } from './cells.js'
-import { AMOUNT_KEYS, CODE_PATTERN, GROUP_KEYS, MAX_CODE_LENGTH, PREFIX_PATTERN, RSV_ROWS, SETTINGS_KEY } from './types.js'
+import { AMOUNT_KEYS, CODE_PATTERN, GROUP_KEYS, MAX_CODE_LENGTH, RSV_ROWS, SETTINGS_KEY } from './types.js'
 import type { AmountKey, AmountRule, ClosingCodes, ClosingDayArgs, EtcKey, GroupKey, OverlapChoice, RsvRow, Settings } from './types.js'
 
 /**
@@ -17,8 +17,6 @@ export const MAX_CODES = 20
 export const MAX_RESULTS = 30
 /** 기타1~4 ERP 줄 이름 글자 수 */
 export const MAX_ETC_NAME = 20
-/** 씨암·SONO 매출 규칙 앞글자 수(closing.day args amountPrefixes max). 더 셀 코드는 MAX_CODES(20)개까지 */
-export const MAX_PREFIXES = 5
 
 export const ETC_KEYS: readonly EtcKey[] = ['etc1', 'etc2', 'etc3', 'etc4']
 
@@ -27,7 +25,7 @@ const OVERLAP_CHOICES: readonly OverlapChoice[] = ['carm', 'sono', 'both']
 /**
  * 처음 값(requirements 이미 정한 것 7). 예약 6줄은 비어 있다(기본값 다). 새 값은 defaults()로 받는다.
  * 물리치료 MM085·MM080·MM020·크라이오 CRYO3은 2026-11-10 밤에 더했다. 이미 저장한 설정에는 저절로 들어가지 않는다.
- * 씨암·SONO 매출 규칙(기본값 (자), TASK-15)은 앞글자 LA · 더 셀 코드 없음이고, 저장값에 규칙이 없으면 normalize가 이 값으로 채운다.
+ * 씨암·SONO 매출 규칙(REQ-3707)은 셀 코드 없음이고(앞글자는 읽지 않아 늘 빈 목록), 저장값에 규칙이 없으면 normalize가 이 값으로 채운다.
  * 함께 있는 진료 선택(overlap)은 처음엔 없다. defaultsSeen은 지금 처음 값 판(DEFAULTS_VERSION)이다
  */
 export function defaults(): Settings {
@@ -50,9 +48,9 @@ export function defaults(): Settings {
   }
 }
 
-/** 매출 규칙 처음 값 한 묶음(기본값 (자)) */
+/** 매출 규칙 처음 값 한 묶음(AC-3707.2): 셀 코드 없음. prefixes는 도우미 모양 때문에 남긴 칸이라 늘 빈 목록 */
 function defaultRule(): AmountRule {
-  return { prefixes: ['LA'], codes: [] }
+  return { prefixes: [], codes: [] }
 }
 
 function deepFreeze<T>(value: T): T {
@@ -71,7 +69,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * 코드 꼴(고른 코드·더 셀 코드·예약 메모 번호, AC-3607.7): 앞뒤 공백을 떼고 가운데 이어진 빈칸을 하나로 줄인 뒤
+ * 코드 꼴(고른 코드·셀 코드·예약 메모 번호, AC-3607.7): 앞뒤 공백을 떼고 가운데 이어진 빈칸을 하나로 줄인 뒤
  * `^\S(?: ?\S)*$` 1~20자면 그 글자, 아니면 null. 탭·다른 빈칸 글자가 든 코드는 받지 않는다(도우미 명령 표와 같은 꼴)
  */
 export function cleanCode(text: string): string | null {
@@ -79,19 +77,13 @@ export function cleanCode(text: string): string | null {
   return code.length <= MAX_CODE_LENGTH && CODE_PATTERN.test(code) ? code : null
 }
 
-/** 매출 규칙 앞글자: 앞뒤 공백을 떼고 대문자로, 빈칸 없는 1~10자면 그 글자, 아니면 null */
-export function cleanPrefix(text: string): string | null {
-  const prefix = text.trim().toUpperCase()
-  return PREFIX_PATTERN.test(prefix) ? prefix : null
-}
-
-/** 글자 목록에서 틀린 것·겹친 것을 떼고(clean으로 정리) max개까지 */
-function cleanList(value: unknown, max: number, clean: (text: string) => string | null = cleanCode): string[] {
+/** 글자 목록에서 틀린 것·겹친 것을 떼고(cleanCode로 정리) max개까지 */
+function cleanList(value: unknown, max: number): string[] {
   if (!Array.isArray(value)) return []
   const out: string[] = []
   for (const item of value) {
     if (out.length >= max) break
-    const text = typeof item === 'string' ? clean(item) : null
+    const text = typeof item === 'string' ? cleanCode(item) : null
     if (text !== null && !out.includes(text)) out.push(text)
   }
   return out
@@ -103,15 +95,15 @@ export function cleanEtcName(text: string): string {
 }
 
 /**
- * 매출 규칙 두 묶음. 저장값에 amounts가 없으면(직원이 이미 저장한 설정) 처음 값으로 채우고(한 묶음만 빠졌으면 그 묶음만),
- * 있으면 앞글자는 대문자로 5개까지·더 셀 코드는 코드 꼴로 20개까지 둔다(둘 다 비운 규칙은 빈 그대로)
+ * 매출 규칙 두 묶음. 저장값에 amounts가 없으면(직원이 이미 저장한 설정) 처음 값(셀 코드 없음)으로 채우고(한 묶음만 빠졌으면 그 묶음만),
+ * 있으면 셀 코드만 코드 꼴로 20개까지 둔다. 저장값의 앞글자(전 판 처음 값 LA 등)는 읽지 않고 버려 늘 빈 목록이다(AC-3707.2)
  */
 function cleanAmounts(raw: unknown): Settings['amounts'] {
   const rules = isRecord(raw) ? raw : {}
   const one = (key: AmountKey): AmountRule => {
     const rule = rules[key]
     if (!isRecord(rule)) return defaultRule()
-    return { prefixes: cleanList(rule.prefixes, MAX_PREFIXES, cleanPrefix), codes: cleanList(rule.codes, MAX_CODES) }
+    return { prefixes: [], codes: cleanList(rule.codes, MAX_CODES) }
   }
   return { carm: one('carm'), sono: one('sono') }
 }
@@ -182,8 +174,9 @@ export async function saveOverlap(choice: OverlapChoice): Promise<void> {
 }
 
 /**
- * closing.day args groups: 코드가 있는 항목만 GROUP_KEYS 차례로. 씨암·SONO에는 매출 규칙의 앞글자·더 셀 코드 둘 중 하나라도 있으면
- * amountPrefixes·amountCodes 두 칸을 붙인다(둘 다 비면 붙이지 않아 TASK-14 규칙). 규칙이 빠진 설정은 normalize처럼 처음 값으로 본다
+ * closing.day args groups: 코드가 있는 항목만 GROUP_KEYS 차례로. 씨암·SONO에는 셀 코드가 있을 때만
+ * amountPrefixes(늘 빈 목록, 도우미 0.2.0 모양)·amountCodes 두 칸을 붙인다(셀 코드가 비면 붙이지 않아 TASK-14 규칙, AC-3707.2).
+ * 규칙이 빠진 설정은 normalize처럼 처음 값(셀 코드 없음)으로 본다
  */
 export function toGroups(settings: Settings): ClosingDayArgs['groups'] {
   const amounts = cleanAmounts(settings.amounts)
@@ -192,8 +185,8 @@ export function toGroups(settings: Settings): ClosingDayArgs['groups'] {
     if (codes.length === 0) return []
     const group: ClosingDayArgs['groups'][number] = { key, codes: [...codes] }
     const rule = (AMOUNT_KEYS as readonly string[]).includes(key) ? amounts[key as AmountKey] : null
-    if (rule && (rule.prefixes.length > 0 || rule.codes.length > 0)) {
-      group.amountPrefixes = [...rule.prefixes]
+    if (rule && rule.codes.length > 0) {
+      group.amountPrefixes = []
       group.amountCodes = [...rule.codes]
     }
     return [group]
@@ -213,12 +206,6 @@ export function search(codes: ClosingCodes['codes'], text: string): ClosingCodes
 /** 코드 더하기: 끝에 붙인다. 이미 있거나 20개면 그대로 */
 export function addCode(list: readonly string[], code: string): string[] {
   return list.includes(code) || list.length >= MAX_CODES ? [...list] : [...list, code]
-}
-
-/** 매출 규칙 앞글자 더하기: 대문자로 끝에 붙인다. 꼴이 틀렸거나 이미 있거나 5개면 그대로 */
-export function addPrefix(list: readonly string[], text: string): string[] {
-  const prefix = cleanPrefix(text)
-  return prefix === null || list.includes(prefix) || list.length >= MAX_PREFIXES ? [...list] : [...list, prefix]
 }
 
 /** 예약 메모 번호 더하기: 이미 있으면 그대로 */
@@ -259,7 +246,7 @@ const codeKey = (code: string) => code.toUpperCase()
 
 /**
  * 최근 1년에 처방이 없는 코드(AC-3615.4, 기본값 (타)): 이번에 새로 고른 코드(저장값 그 항목에 없던 것, 저장값이 없으면 모두,
- * 씨암·SONO 매출 규칙 더 셀 코드 포함) 가운데 도우미 목록(list)에 없는 것. GROUP_KEYS 차례이고 씨암·SONO는 고른 코드 다음에 더 셀 코드
+ * 씨암·SONO 매출 규칙 셀 코드 포함) 가운데 도우미 목록(list)에 없는 것. GROUP_KEYS 차례이고 씨암·SONO는 고른 코드 다음에 셀 코드
  */
 export function unusedCodes(settings: Settings, saved: Settings | null, list: ClosingCodes['codes']): { key: GroupKey; code: string }[] {
   const known = new Set(list.map((c) => codeKey(c.code)))
