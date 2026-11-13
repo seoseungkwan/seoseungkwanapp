@@ -62,10 +62,10 @@ describe("AC-3706.1 안내서 '기간 채우기' 절 — 쓰는 법 ①~⑤는 �
     expectQuoted(five, slots(RANGE_TEXT.end.lead(901), { 901: '{n}' }))
   })
 
-  it('AC-3706.1: ② 기간 고르기 — 칸 이름·안내·막는 줄 셋·[살펴보기]와 살펴보는 중 글', () => {
+  it('AC-3706.1: ② 기간 고르기 — 칸 이름·안내·막는 줄 넷(92일까지 포함)·[살펴보기]와 살펴보는 중 글', () => {
     const two = steps()[1]
     for (const name of [RANGE_TEXT.pick.from, RANGE_TEXT.pick.to]) expect(two).toContain(name)
-    for (const line of [RANGE_TEXT.pick.help, RANGE_TEXT.pick.empty, RANGE_TEXT.pick.reversed, RANGE_TEXT.pick.future]) {
+    for (const line of [RANGE_TEXT.pick.help, RANGE_TEXT.pick.empty, RANGE_TEXT.pick.reversed, RANGE_TEXT.pick.future, RANGE_TEXT.pick.tooLong]) {
       expectQuoted(two, line)
     }
     expect(two).toContain(`[${RANGE_TEXT.pick.scan}]`)
@@ -151,14 +151,16 @@ describe("AC-3706.1 안내서 '기간 채우기' 절 — 누르는 단추·멈�
     expect(press).toContain('직접 요청을 보내지 않습니다')
   })
 
-  it('AC-3706.1: 멈추는 경우 다섯 가지의 화면 글이 그대로이고, [이어서 하기]는 안내 창·저장 줄·도우미 오류 셋에만 있다', () => {
+  it('AC-3706.1 AC-3705.2: 멈추는 경우 열 가지의 화면 글이 그대로이고, [이어서 하기]는 안내 창·저장 줄·도우미 오류·마감 일자 바뀜 넷에만 있다', () => {
     const stops = part(rangeSection(), '멈추는 경우')
     const b = RANGE_TEXT.blocked
     expectQuoted(stops, slots(b.done(901, 902), { 901: '{k}', 902: '{r}' }))
     expectQuoted(stops, b.code('{번호}').trim())
     const rows = stops.split('\n').filter((line) => line.startsWith('|'))
+    /** 글 안에 '가 있으면 "…"로 쓴다 */
+    const quotedIn = (line: string, t: string) => line.includes(`'${t}'`) || line.includes(`"${t}"`)
     const row = (what: string) => {
-      const found = rows.filter((line) => line.includes(`'${what}'`))
+      const found = rows.filter((line) => quotedIn(line, what))
       expect(found, what).toHaveLength(1)
       return found[0]
     }
@@ -167,10 +169,15 @@ describe("AC-3706.1 안내서 '기간 채우기' 절 — 누르는 단추·멈�
       [RANGE_TEXT.todayOnly, false],
       [b.noSaveBar, true],
       [b.readOnly, false],
+      [b.dateChanged, true],
+      [{ what: slots(b.cellsMissing.what(901), { 901: '{n}' }), how: b.cellsMissing.how }, false],
+      [b.noSaveButton, false],
+      [b.overlapUnpicked, false],
+      [b.unexpected, false],
     ]
     for (const [{ what, how }, resume] of cases) {
       const line = row(what)
-      expect(line).toContain(`'${how}'`)
+      expect(quotedIn(line, how), how).toBe(true)
       expect(line.includes(`[${RANGE_TEXT.resume}]`), what).toBe(resume)
     }
     // 다섯째: 도우미 오류는 오류 표의 무엇이·어떻게 글 그대로 + (번호 …), 할 일 끝에 [이어서 하기]
@@ -178,8 +185,8 @@ describe("AC-3706.1 안내서 '기간 채우기' 절 — 누르는 단추·멈�
     expect(helper).toHaveLength(1)
     expect(helper[0]).toContain('오류 표')
     expect(helper[0]).toContain(`[${RANGE_TEXT.resume}]`)
-    // 표의 까닭 줄은 다섯(머리·구분 줄 빼고)
-    expect(rows.filter((line) => !/^\|\s*(?:멈춘 까닭|-)/.test(line))).toHaveLength(5)
+    // 표의 까닭 줄은 열(머리·구분 줄 빼고, 2026-11-13 다섯 더함)
+    expect(rows.filter((line) => !/^\|\s*(?:멈춘 까닭|-)/.test(line))).toHaveLength(10)
   })
 
   it('AC-3706.1: 원무(오늘만) 계정은 기간 채우기를 쓸 수 없다는 글이 화면 글 그대로 있다', () => {

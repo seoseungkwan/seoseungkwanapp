@@ -5,9 +5,9 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { OVERLAP_TEXT } from './panel'
-import type { Block, FailWhy, RangeAction, RangeView, RunSummary, ScanSummary } from './rangeTypes'
+import { MAX_DAYS, type Block, type FailWhy, type RangeAction, type RangeView, type RunSummary, type ScanSummary } from './rangeTypes'
 import { dayList, periodLabel, RANGE_TEXT, renderRange } from './rangeView'
 import type { OverlapChoice } from './types'
 
@@ -73,7 +73,16 @@ function draw(view: RangeView) {
   return { el, act, $, $$, kids, classes, acts, button, check, warns }
 }
 
+/** 시험의 오늘(시안과 같은 2026-11-13, 한국 시간). confirm처럼 today가 없는 안내는 이 PC 시계로 올해를 안다 */
+const TODAY = new Date('2026-11-13T09:00:00+09:00')
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(TODAY)
+})
+
 afterEach(() => {
+  vi.useRealTimers()
   document.body.innerHTML = ''
 })
 
@@ -85,6 +94,24 @@ describe('periodLabel·dayList 날짜 모양(design.md 4절)', () => {
     ['2025-12-29', '2026-01-02', '2025년 12월 29일~2026년 1월 2일'],
   ])('AC-3702.2: periodLabel(%s, %s)는 %s', (from, to, want) => {
     expect(periodLabel(from, to)).toBe(want)
+  })
+
+  it.each<[string, string, string, string]>([
+    ['2025-10-14', '2025-10-14', '2026-11-13', '2025년 10월 14일'],
+    ['2025-10-01', '2025-10-31', '2026-11-13', '2025년 10월 1일~31일'],
+    ['2025-09-28', '2025-10-03', '2026-11-13', '2025년 9월 28일~10월 3일'],
+    ['2026-10-14', '2026-10-14', '2026-11-13', '10월 14일'],
+    ['2026-10-01', '2026-10-31', '2026-11-13', '10월 1일~31일'],
+    ['2026-09-28', '2026-10-03', '2026-11-13', '9월 28일~10월 3일'],
+    ['2025-12-29', '2026-01-02', '2026-11-13', '2025년 12월 29일~2026년 1월 2일'],
+    ['2026-01-02', '2026-01-02', '2027-01-05', '2026년 1월 2일'],
+  ])("AC-3701.2: periodLabel(%s, %s, 오늘 %s) — 같은 날·같은 달·같은 해 모양은 그 해가 오늘의 해가 아니면 앞에 '{Y}년 '", (from, to, today, want) => {
+    expect(periodLabel(from, to, today)).toBe(want)
+  })
+
+  it('AC-3701.2: today를 주지 않으면 해를 붙이지 않는다(지금 모양 그대로)', () => {
+    expect(periodLabel('2025-10-01', '2025-10-31')).toBe('10월 1일~31일')
+    expect(periodLabel('2025-10-14', '2025-10-14')).toBe('10월 14일')
   })
 
   it("AC-3702.2: dayList는 'M/D'를 ' · '로 잇고 확정한 날은 뒤에 ' 확정', 옛날부터다", () => {
@@ -160,6 +187,8 @@ describe('AC-3701.1·3701.2 기간 고르기(pick, 시안 ②)', () => {
     ['시작일 > 끝일', '2026-10-31', '2026-10-01', '시작일이 끝일보다 뒤예요.'],
     ['끝일 > 오늘', '2026-11-01', '2026-11-14', '오늘 뒤 날짜는 고를 수 없어요.'],
     ['둘 다 오늘 뒤', '2026-11-20', '2026-11-21', '오늘 뒤 날짜는 고를 수 없어요.'],
+    ['93일(8/13~11/13)', '2026-08-13', '2026-11-13', '한 번에 92일까지 고를 수 있어요.'],
+    ['한 해(해 넘김)', '2025-11-13', '2026-11-13', '한 번에 92일까지 고를 수 있어요.'],
   ])('AC-3701.2: %s이면 [살펴보기]가 disabled이고 까닭 한 줄이 보이며, 눌러도 scan이 없다', (_name, fromValue, toValue, line) => {
     const p = draw(pick())
     const [from, to] = inputs(p)
@@ -174,6 +203,54 @@ describe('AC-3701.1·3701.2 기간 고르기(pick, 시안 ②)', () => {
     type(to, '2026-11-13')
     expect(why(p)).toBeNull()
     expect(p.button('살펴보기').disabled).toBe(false)
+  })
+
+  it("AC-3701.2: 양 끝 포함 92일(MAX_DAYS)까지는 되고 93일이면 '한 번에 92일까지 고를 수 있어요.'로 막힌다(달·해 넘김도)", () => {
+    expect(MAX_DAYS).toBe(92)
+    expect(RANGE_TEXT.pick.tooLong).toBe('한 번에 92일까지 고를 수 있어요.')
+    const p = draw(pick())
+    const [from, to] = inputs(p)
+    for (const [a, b, blocked] of [
+      ['2026-08-14', '2026-11-13', false],
+      ['2026-08-13', '2026-11-13', true],
+      ['2025-12-01', '2026-03-02', false],
+      ['2025-12-01', '2026-03-03', true],
+      ['2024-01-01', '2024-04-01', false],
+      ['2024-01-01', '2024-04-02', true],
+    ] as const) {
+      type(from, a)
+      type(to, b)
+      expect(why(p), `${a}~${b}`).toBe(blocked ? '한 번에 92일까지 고를 수 있어요.' : null)
+      expect(p.button('살펴보기').disabled, `${a}~${b}`).toBe(blocked)
+      p.button('살펴보기').click()
+    }
+    expect(p.act.mock.calls).toEqual([
+      [{ kind: 'scan', from: '2026-08-14', to: '2026-11-13' }],
+      [{ kind: 'scan', from: '2025-12-01', to: '2026-03-02' }],
+      [{ kind: 'scan', from: '2024-01-01', to: '2024-04-01' }],
+    ])
+  })
+
+  it('AC-3701.2: 막는 줄은 차례대로 첫 하나 — 빈 칸 → 시작일 > 끝일 → 오늘 뒤 → 92일', () => {
+    const p = draw(pick())
+    const [from, to] = inputs(p)
+    type(from, '')
+    type(to, '2027-12-31')
+    expect(why(p)).toBe('시작일과 끝일을 골라 주세요.')
+    type(from, '2027-12-31')
+    type(to, '2025-01-01')
+    expect(why(p)).toBe('시작일이 끝일보다 뒤예요.')
+    type(from, '2025-01-01')
+    type(to, '2026-11-14')
+    expect(why(p)).toBe('오늘 뒤 날짜는 고를 수 없어요.')
+    type(to, '2026-11-13')
+    expect(why(p)).toBe('한 번에 92일까지 고를 수 있어요.')
+  })
+
+  it('AC-3701.2: 처음 값이 93일이면 처음부터 막혀 있다', () => {
+    const p = draw(pick('2026-08-13', '2026-11-13'))
+    expect(why(p)).toBe('한 번에 92일까지 고를 수 있어요.')
+    expect(p.button('살펴보기').disabled).toBe(true)
   })
 
   it('AC-3701.2: change 이벤트로도 다시 본다', () => {
@@ -332,6 +409,25 @@ describe('AC-3702.2·3702.3·3702.4 한 번 승인(confirm, 시안 ③)', () => 
     const p = draw({ kind: 'confirm', scan: one })
     expect(text(p.$('.lead'))).toBe('10월 14일을 비트 값으로 덮어쓰고 저장해요.')
     expect(p.check()).toEqual(['이미 적어 둔 날 1일 — 작성중 1일 · 확정 0일 (10/14)'])
+  })
+
+  it("AC-3701.2: 기간의 해가 올해(이 PC 시계)가 아니면 굵은 줄 기간 앞에 '{Y}년 '이 붙는다(세 모양 모두)", () => {
+    const LAST = (d: number) => `2025-10-${String(d).padStart(2, '0')}`
+    const old = scan({ from: LAST(1), to: LAST(31), overlapVisits: 0 })
+    expect(text(draw({ kind: 'confirm', scan: old }).$('.lead'))).toBe('2025년 10월 1일~31일 중 26일을 비트 값으로 덮어쓰고 저장해요.')
+    document.body.innerHTML = ''
+    const one = scan({ from: LAST(14), to: LAST(14), fill: [LAST(14)], fresh: [LAST(14)], written: [], zero: [], overlapVisits: 0 })
+    expect(text(draw({ kind: 'confirm', scan: one }).$('.lead'))).toBe('2025년 10월 14일을 비트 값으로 덮어쓰고 저장해요.')
+    document.body.innerHTML = ''
+    const none = scan({ from: '2025-09-28', to: '2025-10-03', fill: [], fresh: [], written: [], zero: [], overlapVisits: 0 })
+    expect(text(draw({ kind: 'confirm', scan: none }).$('.lead'))).toBe('2025년 9월 28일~10월 3일에는 채울 날이 없어요.')
+  })
+
+  it('AC-3701.2: 올해는 이 PC 시계로 정한다 — 시계가 2027년이면 2026년 기간에 해가 붙는다', () => {
+    vi.setSystemTime(new Date('2027-01-05T09:00:00+09:00'))
+    expect(text(draw({ kind: 'confirm', scan: scan({ overlapVisits: 0 }) }).$('.lead'))).toBe(
+      '2026년 10월 1일~31일 중 26일을 비트 값으로 덮어쓰고 저장해요.',
+    )
   })
 
   it("AC-3702.4: S = 0이면 '{기간}에는 채울 날이 없어요.' · 건너뛸 날 묶음 · [닫기]만 있고, [닫기]는 close", () => {
@@ -528,7 +624,42 @@ describe('AC-3705.2 멈추는 경우(blocked)', () => {
       '잠시 뒤 다시 해 주세요. (번호 E-HELPER-TIMEOUT)',
       ['닫기', '이어서 하기'],
     ],
-  ])('AC-3705.2: %s — 굵은 줄 · 작은 줄 · k/r 줄 · 결과 줄 · 단추(이어서 하기는 dialog·noSaveBar·helper만)', (_name, block, what, how, acts) => {
+    [
+      'dateChanged',
+      { kind: 'dateChanged' },
+      '채우는 동안 ERP 마감 일자가 바뀌어 멈췄어요.',
+      '그날은 저장하지 않았어요. 도는 동안에는 마감 일자를 바꾸지 말고 [이어서 하기]를 눌러 주세요.',
+      ['닫기', '이어서 하기'],
+    ],
+    [
+      'cellsMissing',
+      { kind: 'cellsMissing', count: 3 },
+      'ERP 화면에서 찾지 못한 칸이 3개 있어 멈췄어요.',
+      'ERP 화면이 바뀌었을 수 있어요. 그날은 아무 칸도 바꾸지 않았어요. [비트 값 채우기]를 누르면 어느 칸인지 보여요.',
+      ['닫기'],
+    ],
+    [
+      'noSaveButton',
+      { kind: 'noSaveButton' },
+      'ERP 저장 단추를 찾지 못해 멈췄어요.',
+      "'전체 저장'과 '일일 상세 저장'이 하나씩 있어야 해요. ERP 화면이 바뀌었을 수 있어요. 그날은 아무 칸도 바꾸지 않았어요.",
+      ['닫기'],
+    ],
+    [
+      'overlapUnpicked',
+      { kind: 'overlapUnpicked' },
+      '씨암·SONO를 같이 받은 진료를 어디에 넣을지 정하지 않아 멈췄어요.',
+      '그날은 아무 칸도 바꾸지 않았어요. [닫기] 뒤 [기간 채우기]를 다시 하면 살펴본 뒤 어디에 넣을지 물어요.',
+      ['닫기'],
+    ],
+    [
+      'unexpected',
+      { kind: 'unexpected' },
+      '확장에 뜻밖의 문제가 생겨 멈췄어요.',
+      "이 화면을 새로고침(F5)한 뒤 [기간 채우기]를 다시 해 주세요. 저장한 날은 '이미 적어 둔 날'로 보여요.",
+      ['닫기'],
+    ],
+  ])('AC-3705.2: %s — 굵은 줄 · 작은 줄 · k/r 줄 · 결과 줄 · 단추(이어서 하기는 dialog·noSaveBar·helper·dateChanged만)', (_name, block, what, how, acts) => {
     const p = draw({ kind: 'blocked', block, run: blockedRun() })
     expect(text(p.$('.lead'))).toBe(what)
     expect(text(p.$('.small'))).toBe(how)
@@ -540,6 +671,13 @@ describe('AC-3705.2 멈추는 경우(blocked)', () => {
     p.button('닫기').click()
     if (acts.includes('이어서 하기')) p.button('이어서 하기').click()
     expect(p.act.mock.calls).toEqual(acts.includes('이어서 하기') ? [[{ kind: 'close' }], [{ kind: 'resume' }]] : [[{ kind: 'close' }]])
+  })
+
+  it("AC-3705.2: cellsMissing의 칸 수는 쉼표를 붙이고, 새 까닭의 굵은 줄은 'lead'다(오류 빨강은 도우미만)", () => {
+    const p = draw({ kind: 'blocked', block: { kind: 'cellsMissing', count: 1234 }, run: run({ remaining: FILL }) })
+    expect(text(p.$('.lead'))).toBe('ERP 화면에서 찾지 못한 칸이 1,234개 있어 멈췄어요.')
+    expect(text(p.kids()[2])).toBe('0일 저장했어요. 남은 26일은 하지 않았어요.')
+    expect(p.$('.lead')?.className).toBe('lead')
   })
 
   it('AC-3705.2: 도우미 오류는 errors.ts explain 글 그대로이고, 번호 모양이 아니면 E-BRIDGE-BAD-REPLY(HTML로 읽지 않음)', () => {
@@ -612,6 +750,16 @@ describe('글은 승인된 시안·design.md 4절 그대로', () => {
       RANGE_TEXT.blocked.noSaveBar.how,
       RANGE_TEXT.blocked.readOnly.what,
       RANGE_TEXT.blocked.readOnly.how,
+      RANGE_TEXT.pick.tooLong,
+      RANGE_TEXT.blocked.dateChanged.what,
+      RANGE_TEXT.blocked.dateChanged.how,
+      RANGE_TEXT.blocked.cellsMissing.how,
+      RANGE_TEXT.blocked.noSaveButton.what,
+      RANGE_TEXT.blocked.noSaveButton.how,
+      RANGE_TEXT.blocked.overlapUnpicked.what,
+      RANGE_TEXT.blocked.overlapUnpicked.how,
+      RANGE_TEXT.blocked.unexpected.what,
+      RANGE_TEXT.blocked.unexpected.how,
       RANGE_TEXT.end.none,
       RANGE_TEXT.end.untouched,
       RANGE_TEXT.result.again,
@@ -650,6 +798,7 @@ describe('글은 승인된 시안·design.md 4절 그대로', () => {
     quoted(RANGE_TEXT.stopped.lead(7).replace('7', '{k}'))
     quoted(RANGE_TEXT.stopped.rest(7, '{dayList}').replace('7', '{r}'))
     quoted(RANGE_TEXT.blocked.done(71, 72).replace('71', '{k}').replace('72', '{r}'))
+    quoted(RANGE_TEXT.blocked.cellsMissing.what(7).replace('7', '{n}'))
     quoted(RANGE_TEXT.end.lead(7).replace('7', '{n}'))
     quoted(RANGE_TEXT.result.zero(7, '{dayList}').replace('7', '{z}'))
     quoted(RANGE_TEXT.result.draft(7, '{dayList}').replace('7', '{d}'))

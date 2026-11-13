@@ -72,10 +72,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/** 마감일지 화면 주소(둘째 길은 이 화면에서만) */
+const CLOSING_PATH = '/h/closing'
+
 /**
  * 마감 일자를 그날로 바꾼다(조사 1절): 날짜 칸에 기본 value 설정 함수 + bubbles input 이벤트(React가 받는 길, focus는 주지 않음).
- * FALLBACK_MS 뒤에도 그날이 아니면 둘째 길: history.state.usr.selectDate를 바꾸고(replaceState, 뒤로 가기 기록 안 쌓임) popstate.
- * 다 불러오기는 기다리지 않는다(waitLoaded)
+ * FALLBACK_MS 뒤에도 그날이 아니고 아직 마감일지 화면(/h/closing)이면 둘째 길: history.state.usr.selectDate를 바꾸고
+ * (replaceState, 뒤로 가기 기록 안 쌓임) popstate. 화면을 떠났으면 하지 않는다. 다 불러오기는 기다리지 않는다(waitLoaded)
  */
 export async function setDate(doc: Document, date: string): Promise<void> {
   const view = doc.defaultView
@@ -86,7 +89,7 @@ export async function setDate(doc: Document, date: string): Promise<void> {
     found.input.dispatchEvent(new (view?.Event ?? Event)('input', { bubbles: true }))
   }
   await sleep(FALLBACK_MS)
-  if (readDate(doc) === date || !view) return
+  if (readDate(doc) === date || !view || view.location.pathname !== CLOSING_PATH) return
   const { history } = view
   const state = isRecord(history.state) ? history.state : {}
   const usr = isRecord(state.usr) ? state.usr : {}
@@ -157,16 +160,30 @@ function hasSize(el: Element): boolean {
   return rect.width > 0 && rect.height > 0
 }
 
+/** 원무 권한 화면인가: 날짜 칸 없이 'YYYY-MM-DD (오늘)' 글자(AC-3701.3). ERP 안내 창이 떠 있어도 같다 */
+export function todayOnly(doc: Document): boolean {
+  const found = dateSource(doc)
+  return found !== null && 'today' in found
+}
+
+/** 그 저장 단추(글자가 앞뒤 공백 정리 뒤 똑같음)가 있는 곳에 정확히 하나인가 */
+function oneSaveButton(doc: Document, which: 'w1' | 'w2'): boolean {
+  const want = which === 'w1' ? SAVE_W1 : SAVE_W2
+  return scopeButtons(doc, which).filter((b) => tidy(b.textContent) === want).length === 1
+}
+
 /**
- * 멈출 일(AC-3705.2), 차례대로: ERP 안내 창(.dialog-overlay, 새 판 안내 등) · 원무 권한(날짜 칸 없이 '(오늘)' 글자) ·
- * 본사 열람(칸 묶음·표를 품은 fieldset[disabled]) · 업무일지 2 저장 줄 없음. 없으면 null. 다 불러온 뒤에만 부른다
+ * 멈출 일(AC-3705.2), 차례대로: ERP 안내 창(.dialog-overlay, 새 판 안내 등) · 원무 권한(todayOnly) ·
+ * 본사 열람(칸 묶음·표를 품은 fieldset[disabled]) · 업무일지 2 저장 줄 없음 ·
+ * 저장 단추가 하나씩이 아님(업무일지 2 영역 밖 '전체 저장', 저장 줄 안 '일일 상세 저장'이 정확히 1개씩이 아니면). 없으면 null.
+ * 다 불러온 뒤(1 탭)에만 부른다
  */
 export function blocker(doc: Document): Block | null {
   if ([...doc.querySelectorAll('.dialog-overlay')].some(hasSize)) return { kind: 'dialog' }
-  const found = dateSource(doc)
-  if (found && 'today' in found) return { kind: 'todayOnly' }
+  if (todayOnly(doc)) return { kind: 'todayOnly' }
   if ([...doc.querySelectorAll('fieldset[disabled]')].some((f) => f.querySelector('.closing-w1-box, .cdf-table'))) return { kind: 'readOnly' }
   if (!doc.querySelector('.cdf-save-bar')) return { kind: 'noSaveBar' }
+  if (!oneSaveButton(doc, 'w1') || !oneSaveButton(doc, 'w2')) return { kind: 'noSaveButton' }
   return null
 }
 

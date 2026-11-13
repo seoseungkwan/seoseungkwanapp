@@ -40,6 +40,11 @@ export type ErpPageOptions = {
   saveMs?: number
   /** 업무일지 2 저장 줄(.cdf-save-bar)이 없다(진료실 0개 등) */
   noSaveBar?: boolean
+  /**
+   * 저장 단추 수(기본 1개씩, ERP 화면이 바뀐 경우 시험용): w1 = 업무일지 1 저장 카드의 '전체 저장' · w2 = 저장 줄 안 '일일 상세 저장'.
+   * 0이면 그 단추가 없고(저장 줄·카드는 있음), 2 이상이면 같은 글자 단추가 더 붙는다(더 붙은 것은 눌러도 저장하지 않음)
+   */
+  saveButtons?: Partial<Record<Tab, number>>
   /** 날짜 칸 input 이벤트로는 날이 안 바뀐다(React가 칸 글자를 되돌림). popstate의 history.state.usr.selectDate로만 바뀐다 */
   dateInputOff?: boolean
   /** 처음 탭(기본 w1) */
@@ -511,7 +516,15 @@ export function mountErpPage(doc: Document, options: ErpPageOptions = {}): ErpPa
     const middle = button('중간저장')
     const all = h('button', { class: 'btn btn-primary' }, '전체 저장')
     saver('w1', all, [middle, all])
-    return h('div', { class: 'card' }, middle, all)
+    return h('div', { class: 'card' }, middle, ...savers('w1', all))
+  }
+
+  /** saveButtons 수만큼: 0이면 없음 · 1이면 그 단추 · 더 많으면 같은 글자 단추를 뒤에 더 붙인다 */
+  function savers(which: Tab, main: HTMLButtonElement): HTMLButtonElement[] {
+    const n = opts.saveButtons?.[which] ?? 1
+    if (n <= 0) return []
+    const label = main.textContent ?? ''
+    return [main, ...Array.from({ length: n - 1 }, () => h('button', { class: 'btn btn-primary' }, label))]
   }
 
   /** 업무일지 2 저장 줄(진료실 1개 이상·불러오는 중 아님·오류 없음·본사 열람 아님일 때만, 조사 6절) */
@@ -520,7 +533,7 @@ export function mountErpPage(doc: Document, options: ErpPageOptions = {}): ErpPa
     const daily = h('button', { class: 'btn btn-primary' }, '일일 상세 저장')
     const reset = button('초기화')
     saver('w2', daily, [middle, daily, reset])
-    return h('div', { class: 'cdf-save-bar cdf-no-print' }, middle, daily, reset)
+    return h('div', { class: 'cdf-save-bar cdf-no-print' }, middle, ...savers('w2', daily), reset)
   }
 
   /**

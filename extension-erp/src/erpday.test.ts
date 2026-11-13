@@ -4,7 +4,7 @@
 // 시계는 가짜(vi.useFakeTimers)라 30초 기다림도 바로 끝난다. 숫자는 가짜(환자 정보 없음)
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mountErpPage, type ErpPageOptions } from './__tests__/erpPage'
-import { blocker, draftNotice, readDate, readJournal, save, setDate, waitLoaded } from './erpday'
+import { blocker, draftNotice, readDate, readJournal, save, setDate, todayOnly, waitLoaded } from './erpday'
 import { readDate as mainReadDate } from './main'
 import { FALLBACK_MS, LOAD_TIMEOUT_MS, SAVE_TIMEOUT_MS, STABLE_MS } from './rangeTypes'
 
@@ -115,6 +115,27 @@ describe('AC-3702.1 AC-3703.1 setDate: 마감 일자 바꾸기', () => {
       expect(pops).toHaveBeenCalledTimes(1)
       expect(page.date()).toBe(D1)
       expect(readDate(document)).toBe(D1)
+    } finally {
+      window.removeEventListener('popstate', pops)
+    }
+  })
+
+  it('AC-3705.2: 화면을 떠났으면(주소가 /h/closing이 아님) 1초 뒤에도 둘째 길을 쓰지 않는다(state·popstate·날 그대로)', async () => {
+    const page = open({ dateInputOff: true })
+    history.replaceState({ key: 'k2', usr: { from: 'menu' } }, '', '/h/closing-calendar')
+    const replace = vi.spyOn(history, 'replaceState')
+    const pops = vi.fn()
+    window.addEventListener('popstate', pops)
+    try {
+      const done = track(setDate(document, D1))
+      await tick(FALLBACK_MS)
+      await tick(FALLBACK_MS)
+      expect(done.done).toBe(true)
+      expect(replace).not.toHaveBeenCalled()
+      expect(pops).not.toHaveBeenCalled()
+      expect(history.state).toEqual({ key: 'k2', usr: { from: 'menu' } })
+      expect(location.pathname).toBe('/h/closing-calendar')
+      expect(page.date()).toBe(D0)
     } finally {
       window.removeEventListener('popstate', pops)
     }
@@ -273,6 +294,87 @@ describe('AC-3705.2 blocker: 멈출 일과 차례', () => {
     document.body.innerHTML = ''
     open({ readOnly: true, noSaveBar: true })
     expect(blocker(document)).toEqual({ kind: 'readOnly' })
+  })
+
+  const saveCount = (label: string, inside: (b: HTMLButtonElement) => boolean) =>
+    [...document.querySelectorAll('button')].filter((b) => tidy(b.textContent) === label && inside(b)).length
+  const w1Count = () => saveCount('전체 저장', (b) => !b.closest('#closing-panel-w2'))
+  const w2Count = () => saveCount('일일 상세 저장', (b) => Boolean(b.closest('.cdf-save-bar')))
+
+  it.each<[string, ErpPageOptions['saveButtons'], number, number]>([
+    ["'전체 저장' 0개", { w1: 0 }, 0, 1],
+    ["'전체 저장' 2개", { w1: 2 }, 2, 1],
+    ["'일일 상세 저장' 0개(저장 줄은 있음)", { w2: 0 }, 1, 0],
+    ["'일일 상세 저장' 2개", { w2: 2 }, 1, 2],
+  ])('AC-3705.2: %s이면 noSaveButton(저장 단추가 하나씩이 아님), 그래도 다 불러옴은 ok다', async (_name, saveButtons, w1, w2) => {
+    const page = open({ saveButtons })
+    expect([w1Count(), w2Count()]).toEqual([w1, w2])
+    expect(document.querySelector('.cdf-save-bar')).not.toBeNull()
+    expect(await runWait(D0)).toBe('ok')
+    expect(blocker(document)).toEqual({ kind: 'noSaveButton' })
+    expect(page.clicks).toEqual([])
+  })
+
+  it("AC-3705.2: 업무일지 2 영역 안 '전체 저장'·저장 줄 밖 '일일 상세 저장'은 세지 않고, 글자는 앞뒤 공백을 정리해 똑같을 때만 센다", () => {
+    open()
+    const w2Panel = document.querySelector('#closing-panel-w2') as HTMLElement
+    const extra = (label: string, into: Element) => {
+      const b = document.createElement('button')
+      b.textContent = label
+      into.append(b)
+    }
+    extra('전체 저장', w2Panel)
+    extra('일일 상세 저장', document.body)
+    extra('  전체 저장 다시  ', document.body)
+    expect(blocker(document)).toBeNull()
+    document.body.innerHTML = ''
+    open({ saveButtons: { w1: 0 } })
+    extra('전체 저장', document.querySelector('#closing-panel-w2') as HTMLElement)
+    expect(blocker(document)).toEqual({ kind: 'noSaveButton' })
+    document.body.innerHTML = ''
+    open({ saveButtons: { w1: 0 } })
+    extra('\n  전체 저장  ', document.body)
+    expect(blocker(document)).toBeNull()
+  })
+
+  it('AC-3705.2: noSaveButton은 차례 맨 끝이다(dialog·todayOnly·readOnly·noSaveBar가 먼저)', () => {
+    const page = open({ saveButtons: { w1: 2, w2: 0 } })
+    const dialog = page.showDialog()
+    expect(blocker(document)).toEqual({ kind: 'dialog' })
+    dialog.remove()
+    expect(blocker(document)).toEqual({ kind: 'noSaveButton' })
+    document.body.innerHTML = ''
+    open({ todayOnly: true, saveButtons: { w1: 0 } })
+    expect(blocker(document)).toEqual({ kind: 'todayOnly' })
+    document.body.innerHTML = ''
+    open({ readOnly: true, saveButtons: { w1: 2 } })
+    expect(blocker(document)).toEqual({ kind: 'readOnly' })
+    document.body.innerHTML = ''
+    open({ noSaveBar: true, saveButtons: { w1: 0 } })
+    expect(blocker(document)).toEqual({ kind: 'noSaveBar' })
+  })
+})
+
+describe('AC-3705.2 todayOnly: 원무 권한 화면', () => {
+  it("AC-3705.2: 날짜 칸 없이 '(오늘)' 글자면 true, 날짜 칸 화면·날짜를 아직 안 고른 화면이면 false", () => {
+    open({ todayOnly: true, date: '2026-11-10' })
+    expect(todayOnly(document)).toBe(true)
+    document.body.innerHTML = ''
+    open()
+    expect(todayOnly(document)).toBe(false)
+    document.body.innerHTML = ''
+    open({ date: null })
+    expect(readDate(document)).toBeNull()
+    expect(todayOnly(document)).toBe(false)
+    document.body.innerHTML = ''
+    expect(todayOnly(document)).toBe(false)
+  })
+
+  it('AC-3705.2: ERP 안내 창이 떠 있어도 true다(blocker는 dialog가 먼저)', () => {
+    const page = open({ todayOnly: true, date: '2026-11-10' })
+    page.showDialog()
+    expect(todayOnly(document)).toBe(true)
+    expect(blocker(document)).toEqual({ kind: 'dialog' })
   })
 })
 

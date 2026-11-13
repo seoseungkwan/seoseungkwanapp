@@ -4,11 +4,11 @@
 // - 글은 모두 textContent로만 넣는다(도우미 오류 번호도 HTML로 읽지 않는다). 숫자·날짜·칸 이름만 보이고 환자 정보는 없다
 // - 모양(class)은 panel.ts 안내 스타일 블록 하나에 있다
 import { explain } from './errors.js'
-import type { Block, FailWhy, RangeAction, RangeView, RunSummary, ScanSummary } from './rangeTypes.js'
+import { MAX_DAYS, type Block, type FailWhy, type RangeAction, type RangeView, type RunSummary, type ScanSummary } from './rangeTypes.js'
 import type { OverlapChoice } from './types.js'
 
-/** 날짜 목록에 보이는 가장 많은 날 수 */
-export const MAX_DAYS = 10
+/** 날짜 목록에 보이는 가장 많은 날 수(한 번에 고를 수 있는 날 수 MAX_DAYS와 다름) */
+export const LIST_MAX = 10
 
 /** 씨암·SONO 글(panel.ts OVERLAP_TEXT의 into·choice) */
 export type OverlapWords = { into: Record<OverlapChoice, string>; choice: Record<OverlapChoice, string> }
@@ -43,6 +43,8 @@ export const RANGE_TEXT = {
     empty: '시작일과 끝일을 골라 주세요.',
     reversed: '시작일이 끝일보다 뒤예요.',
     future: '오늘 뒤 날짜는 고를 수 없어요.',
+    /** 양 끝 포함 MAX_DAYS(92)일보다 긺 */
+    tooLong: `한 번에 ${MAX_DAYS}일까지 고를 수 있어요.`,
     scan: '살펴보기',
   },
   todayOnly: {
@@ -94,6 +96,26 @@ export const RANGE_TEXT = {
       how: 'ERP에 진료실이 하나 이상 있어야 업무일지 2를 저장할 수 있어요. 확인한 뒤 [이어서 하기]를 눌러 주세요.',
     },
     readOnly: { what: '이 화면은 읽기 전용이라 저장할 수 없어요(본사 열람 등).', how: '저장할 수 있는 계정으로 열어 주세요.' },
+    dateChanged: {
+      what: '채우는 동안 ERP 마감 일자가 바뀌어 멈췄어요.',
+      how: '그날은 저장하지 않았어요. 도는 동안에는 마감 일자를 바꾸지 말고 [이어서 하기]를 눌러 주세요.',
+    },
+    cellsMissing: {
+      what: (n: number) => `ERP 화면에서 찾지 못한 칸이 ${count(n)}개 있어 멈췄어요.`,
+      how: 'ERP 화면이 바뀌었을 수 있어요. 그날은 아무 칸도 바꾸지 않았어요. [비트 값 채우기]를 누르면 어느 칸인지 보여요.',
+    },
+    noSaveButton: {
+      what: 'ERP 저장 단추를 찾지 못해 멈췄어요.',
+      how: "'전체 저장'과 '일일 상세 저장'이 하나씩 있어야 해요. ERP 화면이 바뀌었을 수 있어요. 그날은 아무 칸도 바꾸지 않았어요.",
+    },
+    overlapUnpicked: {
+      what: '씨암·SONO를 같이 받은 진료를 어디에 넣을지 정하지 않아 멈췄어요.',
+      how: '그날은 아무 칸도 바꾸지 않았어요. [닫기] 뒤 [기간 채우기]를 다시 하면 살펴본 뒤 어디에 넣을지 물어요.',
+    },
+    unexpected: {
+      what: '확장에 뜻밖의 문제가 생겨 멈췄어요.',
+      how: "이 화면을 새로고침(F5)한 뒤 [기간 채우기]를 다시 해 주세요. 저장한 날은 '이미 적어 둔 날'로 보여요.",
+    },
     /** 도우미 오류 '어떻게' 끝에 붙는 번호('이 번호를 알려 주세요'가 가리킬 번호) */
     code: (code: string) => ` (번호 ${code})`,
   },
@@ -140,14 +162,27 @@ function shortDay(date: string): string {
   return `${m}/${d}`
 }
 
-/** 기간 글: 같은 날 · 같은 달 · 같은 해 · 다른 해(design.md 4절) */
-export function periodLabel(from: string, to: string): string {
+/**
+ * 기간 글: 같은 날 · 같은 달 · 같은 해 · 다른 해(design.md 4절). 앞 셋은 그 해가 today('YYYY-MM-DD')의 해가 아니면
+ * 앞에 '{Y}년 '을 붙인다(연도를 잘못 친 것이 보이게). today가 없으면 붙이지 않는다
+ */
+export function periodLabel(from: string, to: string, today?: string): string {
   const a = ymd(from)
   const b = ymd(to)
-  if (from === to) return `${a.m}월 ${a.d}일`
-  if (a.y === b.y && a.m === b.m) return `${a.m}월 ${a.d}일~${b.d}일`
-  if (a.y === b.y) return `${a.m}월 ${a.d}일~${b.m}월 ${b.d}일`
-  return `${a.y}년 ${a.m}월 ${a.d}일~${b.y}년 ${b.m}월 ${b.d}일`
+  if (a.y !== b.y) return `${a.y}년 ${a.m}월 ${a.d}일~${b.y}년 ${b.m}월 ${b.d}일`
+  const year = today !== undefined && ymd(today).y !== a.y ? `${a.y}년 ` : ''
+  if (from === to) return `${year}${a.m}월 ${a.d}일`
+  if (a.m === b.m) return `${year}${a.m}월 ${a.d}일~${b.d}일`
+  return `${year}${a.m}월 ${a.d}일~${b.m}월 ${b.d}일`
+}
+
+/**
+ * 이 PC 오늘(브라우저 지역 날짜 'YYYY-MM-DD', main.ts today와 같은 셈). today가 없는 안내(confirm)가 올해를 알 때 쓴다.
+ * 시험은 가짜 시계(vi.setSystemTime)로 정한다
+ */
+export function localToday(now: Date = new Date()): string {
+  const two = (n: number) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}`
 }
 
 /** 'M/D'를 ' · '로 옛날부터 잇고, 확정한 날은 뒤에 ' 확정', 10개를 넘으면 앞 10개 + ' 외 {k}일' */
@@ -155,17 +190,30 @@ export function dayList(days: readonly string[], confirmed: readonly string[] = 
   const sorted = [...days].sort()
   const marked = new Set(confirmed)
   const shown = sorted
-    .slice(0, MAX_DAYS)
+    .slice(0, LIST_MAX)
     .map((day) => shortDay(day) + (marked.has(day) ? RANGE_TEXT.confirmed : ''))
     .join(' · ')
-  return sorted.length > MAX_DAYS ? shown + RANGE_TEXT.more(sorted.length - MAX_DAYS) : shown
+  return sorted.length > LIST_MAX ? shown + RANGE_TEXT.more(sorted.length - LIST_MAX) : shown
 }
 
-/** 기간 고르기를 막는 까닭(없으면 null) */
-function pickProblem(from: string, to: string, today: string): string | null {
+/** 양 끝 포함 날 수('YYYY-MM-DD' 둘, from ≤ to) */
+function spanDays(from: string, to: string): number {
+  const at = (date: string) => {
+    const { y, m, d } = ymd(date)
+    return Date.UTC(y, m - 1, d)
+  }
+  return Math.round((at(to) - at(from)) / 86_400_000) + 1
+}
+
+/**
+ * 기간 고르기를 막는 까닭(없으면 null), 차례대로 첫 하나: 빈 칸 → 시작일 > 끝일 → 끝일 > 오늘 → 양 끝 포함 MAX_DAYS(92)일보다 긺.
+ * main.ts가 [살펴보기]를 받을 때도 같은 규칙으로 한 번 더 볼 수 있게 내보낸다
+ */
+export function pickProblem(from: string, to: string, today: string): string | null {
   if (!from || !to) return RANGE_TEXT.pick.empty
   if (from > to) return RANGE_TEXT.pick.reversed
   if (to > today) return RANGE_TEXT.pick.future
+  if (spanDays(from, to) > MAX_DAYS) return RANGE_TEXT.pick.tooLong
   return null
 }
 
@@ -246,6 +294,16 @@ export function renderRange(doc: Document, view: RangeView, act: (action: RangeA
         const e = explain(block.code)
         return { what: e.what, how: e.how + RANGE_TEXT.blocked.code(e.code) }
       }
+      case 'dateChanged':
+        return RANGE_TEXT.blocked.dateChanged
+      case 'cellsMissing':
+        return { what: RANGE_TEXT.blocked.cellsMissing.what(block.count), how: RANGE_TEXT.blocked.cellsMissing.how }
+      case 'noSaveButton':
+        return RANGE_TEXT.blocked.noSaveButton
+      case 'overlapUnpicked':
+        return RANGE_TEXT.blocked.overlapUnpicked
+      case 'unexpected':
+        return RANGE_TEXT.blocked.unexpected
     }
   }
 
@@ -288,7 +346,8 @@ export function renderRange(doc: Document, view: RangeView, act: (action: RangeA
   }
 
   function confirm(scan: ScanSummary, last: OverlapChoice | undefined): Child[] {
-    const period = periodLabel(scan.from, scan.to)
+    // confirm 안내에는 today가 없어(RangeView 모양 그대로) 이 PC 시계로 올해를 안다
+    const period = periodLabel(scan.from, scan.to, localToday())
     const s = scan.fill.length
     const zero = scan.zero.length > 0 && line(RANGE_TEXT.confirm.zero(scan.zero.length, dayList(scan.zero)))
     if (s === 0) return [lead(RANGE_TEXT.confirm.none(period)), zero && h('div', { class: 'check' }, zero), acts(closeButton())]
@@ -401,7 +460,8 @@ export function renderRange(doc: Document, view: RangeView, act: (action: RangeA
         ]
       case 'blocked': {
         const { what, how } = blockText(v.block)
-        const canResume = v.block.kind === 'dialog' || v.block.kind === 'noSaveBar' || v.block.kind === 'helper'
+        // [이어서 하기]는 고친 뒤 그 자리에서 다시 할 수 있는 까닭만(안내 창·저장 줄·도우미 오류·마감 일자 바뀜)
+        const canResume = (['dialog', 'noSaveBar', 'helper', 'dateChanged'] as const).some((kind) => kind === v.block.kind)
         return [
           lead(what, v.block.kind === 'helper'),
           small(how),
