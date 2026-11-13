@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ERP 마감일지 채우기",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "ERP 마감일지 화면에 이 PC의 도우미가 비트에서 센 숫자를 채웁니다. 저장은 직접 누릅니다. 도우미 답은 저장하지 않습니다.",
   "permissions": [
     "nativeMessaging",
@@ -30,7 +30,11 @@
         "panel.js",
         "settings.js",
         "types.js",
-        "errors.js"
+        "errors.js",
+        "erpday.js",
+        "range.js",
+        "rangeTypes.js",
+        "rangeView.js"
       ],
       "matches": [
         "https://erp.minesolution.com/*"

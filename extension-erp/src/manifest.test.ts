@@ -42,11 +42,13 @@ function codeFiles(): string[] {
 }
 
 describe('AC-3601.1 extension-erp/manifest.json', () => {
-  it("AC-3601.1 AC-3610.4: MV3이고 이름은 'ERP 마감일지 채우기', 판은 0.2.0이다(ERP 도우미 0.2.0과 같이 올림, 기본값 (파))", () => {
+  it("AC-3601.1 AC-3706.1: MV3이고 이름은 'ERP 마감일지 채우기', 판은 0.3.0이다(기간 채우기. ERP 도우미는 0.2.0 그대로)", () => {
     const m = readJson(MANIFEST)
     expect(m.manifest_version).toBe(3)
     expect(m.name).toBe('ERP 마감일지 채우기')
-    expect(m.version).toBe('0.2.0')
+    // spec erp-closing-range AC-3706.1: 0.2.0(AC-3610.4)에서 0.3.0으로. ERP 도우미는 바꾸지 않아 0.2.0 그대로 쓴다
+    expect(m.version).toBe('0.3.0')
+    expect(readFileSync(path.join(ROOT, 'helper-erp', 'Directory.Build.props'), 'utf8')).toContain('<Version>0.2.0</Version>')
     expect(String(m.description ?? '').trim()).not.toBe('')
   })
 
@@ -93,10 +95,23 @@ describe('AC-3601.1 extension-erp/manifest.json', () => {
     expect(readJson(MANIFEST).content_scripts).toEqual([{ matches: [ERP_MATCH], js: ['content.js'] }])
   })
 
-  it('AC-3601.1: 내용 스크립트가 불러오는 모듈 파일(web_accessible_resources, 오류 글 errors.js 포함)도 같은 주소 하나에만 연다', () => {
+  it('AC-3601.1 AC-3706.1: 내용 스크립트가 불러오는 모듈 파일(web_accessible_resources, 오류 글 errors.js·기간 채우기 새 모듈 넷 포함)도 같은 주소 하나에만 연다', () => {
     expect(readJson(MANIFEST).web_accessible_resources).toEqual([
       {
-        resources: ['main.js', 'cells.js', 'fill.js', 'panel.js', 'settings.js', 'types.js', 'errors.js'],
+        resources: [
+          'main.js',
+          'cells.js',
+          'fill.js',
+          'panel.js',
+          'settings.js',
+          'types.js',
+          'errors.js',
+          // spec erp-closing-range: ERP 화면 다루기·기간 흐름·공용 타입·기간 안내
+          'erpday.js',
+          'range.js',
+          'rangeTypes.js',
+          'rangeView.js',
+        ],
         matches: [ERP_MATCH],
       },
     ])
