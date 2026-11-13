@@ -10,7 +10,7 @@ using Precheck.Core.Registration;
 namespace Erp.Core.Closing;
 
 /// <summary>
-/// closing.codes·closing.day 처리기를 Dispatcher에 붙인다(spec erp-closing-fill design.md 3-4). 둘 다 숫자 명령(patient: false)이라
+/// closing.codes·closing.day·closing.findCodes(erp-closing-range REQ-3708) 처리기를 Dispatcher에 붙인다(spec erp-closing-fill design.md 3-4). 모두 숫자 명령(patient: false)이라
 /// 답은 result 하나다. 맨 처음에 등록 확인 관문을 지난다(revenue.days와 같음, AC-3606.3). closing.day는 그 전에 날짜가 도우미 PC 오늘보다 뒤면
 /// E-CLOSING-FUTURE-DATE로 막는다(TASK-16, AC-3616.2: 등록 저장소·비트에 닿지 않음). 막히거나 읽기가 실패하면
 /// HelperException 번호로 error 하나만 답하고, 진단 기록에는 Dispatcher가 명령 이름·오류 번호만 남긴다.
@@ -20,6 +20,9 @@ public static class ClosingCommands
 {
     public const string CodesName = "closing.codes";
     public const string DayName = "closing.day";
+
+    /// <summary>등록된 코드 전부에서 글자로 찾기(erp-closing-range REQ-3708, design.md 10절).</summary>
+    public const string FindCodesName = "closing.findCodes";
 
     /// <summary>closing.day date가 도우미 PC 오늘(services.Today())보다 뒤(design.md 2절, AC-3616.2). 확장은 '오늘보다 뒤' 글을 보인다(AC-3612.1).</summary>
     public const string FutureDate = "E-CLOSING-FUTURE-DATE";
@@ -56,6 +59,19 @@ public static class ClosingCommands
             }
             sink.Send(Envelope.Result(request.Id, result));
         });
+
+        dispatcher.Register(FindCodesName, (request, sink) =>
+        {
+            // text 꼴(앞뒤 공백 없는 2~20자)은 명령 표가 먼저 본다. 글자 길이는 ClosingCodes.Find가 DB에 닿기 전에 한 번 더 본다
+            if (!Field(request, "text", out var value) || !TryGetString(value, out var text)) throw Bad(request);
+
+            ClosingFindCodesResult result;
+            using (var hospital = HospitalGate.Open(services))
+            {
+                result = ClosingCodes.Find(hospital.Db, text, services.Today());
+            }
+            sink.Send(Envelope.Result(request.Id, result));
+        });
     }
 
     /// <summary>date 칸. 명령 표가 이미 검사했지만(CommandTable.Validate) 처리기만 불려도 틀린 글자로 읽지 않게 한 번 더 본다.</summary>
@@ -71,8 +87,8 @@ public static class ClosingCommands
     }
 
     /// <summary>
-    /// groups 칸을 [{key, codes, amountPrefixes?, amountCodes?}] 목록으로 푼다. 모양이 틀리면 E-HELPER-BAD-MESSAGE.
-    /// 매출 규칙 두 칸(TASK-15)은 없으면 null로 두고, 대문자로 바꾸기·개수·꼴 검사는 ClosingDay.Read가 DB 전에 한다.
+    /// groups 칸을 [{key, codes, amountPrefixes?, amountCodes?, exclude?}] 목록으로 푼다. 모양이 틀리면 E-HELPER-BAD-MESSAGE.
+    /// 매출 규칙 두 칸(TASK-15)·읽지 않을 처방 exclude(erp-closing-range REQ-3709)는 없으면 null로 두고, 대문자로 바꾸기·개수·꼴 검사는 ClosingDay.Read가 DB 전에 한다.
     /// </summary>
     private static IReadOnlyList<ClosingGroup> Groups(Request request)
     {
@@ -89,7 +105,8 @@ public static class ClosingCommands
             var codes = Strings(request, codesValue);
             var prefixes = item.TryGetProperty("amountPrefixes", out var prefixesValue) ? Strings(request, prefixesValue) : null;
             var amountCodes = item.TryGetProperty("amountCodes", out var amountValue) ? Strings(request, amountValue) : null;
-            groups.Add(new ClosingGroup(key, codes, prefixes, amountCodes));
+            var exclude = item.TryGetProperty("exclude", out var excludeValue) ? Strings(request, excludeValue) : null;
+            groups.Add(new ClosingGroup(key, codes, prefixes, amountCodes, exclude));
         }
         return groups;
     }

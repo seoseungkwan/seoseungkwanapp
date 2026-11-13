@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using Precheck.Core.Bit;
 using Erp.Core.Closing;
+using Precheck.Core.Protocol;
 using Precheck.Core.Stats;
 using Precheck.Core.Tests.Bit;
 using Xunit;
@@ -201,6 +204,262 @@ public class ClosingCodesTests
 
         Assert.Equal(expected, Assert.Single(result.Codes).Name);
         Assert.Equal(expected, Assert.Single(result.Kinds).Name);
+    }
+
+    // ---- AC-3708.1 closing.findCodes: 등록된 코드 전부에서 찾기(erp-closing-range design.md 10절) ------------------
+
+    /// <summary>가짜 비트 코드표 한 줄(SeeMst): 코드·이름·적용일·만료일. 모두 지어낸 것이다.</summary>
+    private sealed class SeeRow
+    {
+        public SeeRow(string code, string? name, string from = "20200101", string to = "99991231")
+        {
+            Code = code;
+            Name = name;
+            From = from;
+            To = to;
+        }
+
+        public string Code { get; }
+        public string? Name { get; }
+        public string From { get; }
+        public string To { get; }
+    }
+
+    /// <summary>SQL Server LIKE(대소문자 무시)를 흉내 낸다: % = 아무 글자들, _ = 한 글자, [x] = 글자 x 하나. 그 밖의 [ 꼴은 시험이 모르는 것이라 던진다.</summary>
+    private static Regex Like(string pattern)
+    {
+        var regex = new StringBuilder("^");
+        for (var i = 0; i < pattern.Length; i++)
+        {
+            var c = pattern[i];
+            if (c == '%') regex.Append(".*");
+            else if (c == '_') regex.Append('.');
+            else if (c == '[')
+            {
+                if (i + 2 >= pattern.Length || pattern[i + 2] != ']') throw new InvalidOperationException("가짜 LIKE가 모르는 [ 꼴: " + pattern);
+                regex.Append(Regex.Escape(pattern[i + 1].ToString()));
+                i += 2;
+            }
+            else regex.Append(Regex.Escape(c.ToString()));
+        }
+        return new Regex(regex.Append("\\z").ToString(), RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+    }
+
+    /// <summary>
+    /// FindCodesSql을 가짜 코드표로 흉내 낸다: SeeOdrCod&lt;&gt;'' · @day BETWEEN 적용일 AND 만료일 · (코드 LIKE @starts OR 이름 LIKE @contains)
+    /// · UPPER(LTRIM(RTRIM(코드)))마다 한 줄 MAX(이름) · 코드 차례 TOP 30.
+    /// </summary>
+    private static FakeDb See(params SeeRow[] rows)
+    {
+        var db = new FakeDb();
+        db.Answer(ClosingSql.FindCodesSql, args =>
+        {
+            var day = (string)args["@day"]!;
+            var starts = Like((string)args["@starts"]!);
+            var contains = Like((string)args["@contains"]!);
+            return rows
+                .Where(row => row.Code.Trim().Length > 0)
+                .Where(row => string.CompareOrdinal(row.From, day) <= 0 && string.CompareOrdinal(day, row.To) <= 0)
+                .Where(row => starts.IsMatch(row.Code) || (row.Name != null && contains.IsMatch(row.Name)))
+                .GroupBy(row => row.Code.Trim().ToUpperInvariant())
+                .Select(group => new object?[] { group.Key, group.Select(row => row.Name).Where(name => name != null).OrderBy(name => name, StringComparer.Ordinal).LastOrDefault() })
+                .OrderBy(row => (string)row[0]!, StringComparer.Ordinal)
+                .Take(30)
+                .ToArray();
+        });
+        return db;
+    }
+
+    private static ClosingFindCodesResult Find(FakeDb db, string? text) => ClosingCodes.Find(db, text, Today);
+
+    private static string[] CodesOf(ClosingFindCodesResult result) => result.Codes.Select(code => code.Code).ToArray();
+
+    [Fact(DisplayName = "AC-3708.1 Find는 FindCodesSql 하나만 부르고 @day = 도우미 PC 오늘, @starts = 글자 + '%', @contains = '%' + 글자 + '%', 시간 제한 15초(환자 표 문장은 부르지 않음)")]
+    public void FindAsksOnce()
+    {
+        var db = See();
+        Find(db, "ca");
+
+        var call = Assert.Single(db.Calls);
+        Assert.Equal(ClosingSql.FindCodesSql, call.Sql);
+        Assert.Equal(
+            new Dictionary<string, object?> { ["@day"] = "20261110", ["@starts"] = "ca%", ["@contains"] = "%ca%" },
+            call.Args);
+        Assert.Equal(TimeSpan.FromSeconds(15), call.Timeout);
+        Assert.Equal(TimeSpan.FromSeconds(15), ClosingSql.FindTimeout);
+    }
+
+    [Fact(DisplayName = "AC-3708.1 코드가 그 글자로 시작하거나 이름에 그 글자가 든 코드만(대소문자 무시), 오늘 쓸 수 없는 줄(적용일 뒤·만료일 앞)은 빠지고 적용일·만료일 당일은 든다, 코드마다 한 줄·대문자·코드 차례")]
+    public void FindMatchesCodeStartOrName()
+    {
+        var db = See(
+            new SeeRow("MM010", "물리치료 CA 묶음"),
+            new SeeRow("CARM1", "C-arm 유도"),
+            new SeeRow("carm1 ", "C-arm 옛 이름"),
+            new SeeRow("CAST2", null),
+            new SeeRow("XCA9", "엑스"),
+            new SeeRow("OLD01", "옛 ca 코드", "20100101", "20261109"),
+            new SeeRow("NEW01", "새 ca 코드", "20261111"),
+            new SeeRow("EDGE1", "ca 오늘 시작", "20261110"),
+            new SeeRow("EDGE2", "ca 오늘 끝", "20200101", "20261110"),
+            new SeeRow("   ", "빈 코드 ca"));
+
+        var result = Find(db, "ca");
+
+        Assert.Equal(new[] { "CARM1", "CAST2", "EDGE1", "EDGE2", "MM010" }, CodesOf(result));
+        Assert.Equal(new[] { "C-arm 유도", null, "ca 오늘 시작", "ca 오늘 끝", "물리치료 CA 묶음" }, result.Codes.Select(code => code.Name));
+
+        // 한글 이름 가운데
+        var korean = See(new SeeRow("MT01", "도수치료30분"), new SeeRow("MT02", "체외충격파"), new SeeRow("MT03", "특수 도수치료"));
+        Assert.Equal(new[] { "MT01", "MT03" }, CodesOf(Find(korean, "도수")));
+    }
+
+    [Fact(DisplayName = "AC-3708.1 글자 안의 %·_·[는 [%]·[_]·[[]로 바꿔 글자 그대로 찾는다(LA_1이 LAX1을, 50%가 5000을, A[1]이 A1을 찾지 않음)")]
+    public void FindEscapesLikeCharacters()
+    {
+        var db = See(
+            new SeeRow("LA_10", "밑줄 코드"),
+            new SeeRow("LAX10", "엑스 코드"),
+            new SeeRow("5000", "오천"),
+            new SeeRow("PCT1", "본인 50% 할인"),
+            new SeeRow("A[1]B", "괄호 코드"),
+            new SeeRow("A1B", "괄호 없는 코드"));
+
+        Assert.Equal(new[] { "LA_10" }, CodesOf(Find(db, "LA_1")));
+        Assert.Equal(new[] { "PCT1" }, CodesOf(Find(db, "50%")));
+        Assert.Equal(new[] { "A[1]B" }, CodesOf(Find(db, "A[1]")));
+
+        Assert.Equal("LA[_]1%", db.Calls[0].Args["@starts"]);
+        Assert.Equal("%LA[_]1%", db.Calls[0].Args["@contains"]);
+        Assert.Equal("50[%]%", db.Calls[1].Args["@starts"]);
+        Assert.Equal("A[[]1]%", db.Calls[2].Args["@starts"]);
+
+        var mixed = See();
+        Find(mixed, "%_[");
+        Assert.Equal("[%][_][[]%", mixed.Calls[0].Args["@starts"]);
+        Assert.Equal("%[%][_][[]%", mixed.Calls[0].Args["@contains"]);
+        Find(mixed, "[%]");
+        Assert.Equal("[[][%]]%", mixed.Calls[1].Args["@starts"]);
+    }
+
+    [Fact(DisplayName = "AC-3708.1 30개까지 코드 차례로 돌려준다")]
+    public void FindTakesThirty()
+    {
+        var rows = Enumerable.Range(0, 40).Reverse().Select(i => new SeeRow("CA" + i.ToString("00", System.Globalization.CultureInfo.InvariantCulture), "코드" + i)).ToArray();
+        var result = Find(See(rows), "CA");
+
+        Assert.Equal(30, result.Codes.Count);
+        Assert.Equal(Enumerable.Range(0, 30).Select(i => "CA" + i.ToString("00", System.Globalization.CultureInfo.InvariantCulture)), CodesOf(result));
+        Assert.Equal(30, ClosingCodes.MaxFound);
+    }
+
+    [Fact(DisplayName = "AC-3708.1 도우미 쪽에서도 코드는 앞뒤 공백 뗀 대문자로 겹침 없이(먼저 온 이름) 코드 글자 차례 30개까지, 빈 코드는 빼고 이름은 revenue.days 규칙으로 지운다")]
+    public void FindNormalizesRows()
+    {
+        var db = new FakeDb();
+        db.Answer(ClosingSql.FindCodesSql, _ => Enumerable.Range(0, 35).Select(i => new object?[] { " d" + (70 - i) + " ", "이름" + i })
+            .Concat(new[]
+            {
+                new object?[] { "CA1", "도수\r\n치료" },
+                new object?[] { "ca1", "다른 이름" },
+                new object?[] { "  ", "빈 코드" },
+                new object?[] { null, "없는 코드" },
+                new object?[] { "CA2", "   " },
+                new object?[] { "CA3", null },
+            })
+            .ToArray());
+
+        var result = Find(db, "ca");
+
+        Assert.Equal(30, result.Codes.Count);
+        var expected = new[] { "CA1", "CA2", "CA3" }.Concat(Enumerable.Range(0, 35).Select(i => "D" + (70 - i))).OrderBy(code => code, StringComparer.Ordinal).Take(30);
+        Assert.Equal(expected, CodesOf(result));
+        Assert.Equal("도수 치료", result.Codes.Single(code => code.Code == "CA1").Name);
+        Assert.Null(result.Codes.Single(code => code.Code == "CA2").Name);
+        Assert.Null(result.Codes.Single(code => code.Code == "CA3").Name);
+    }
+
+    public static IEnumerable<object?[]> BadFindTexts()
+    {
+        yield return new object?[] { null };
+        yield return new object?[] { "" };
+        yield return new object?[] { "C" };
+        yield return new object?[] { "가" };
+        yield return new object?[] { "   " };
+        yield return new object?[] { " C " };
+        yield return new object?[] { new string('C', 21) };
+    }
+
+    [Theory(DisplayName = "AC-3708.1 글자가 없거나 앞뒤 공백을 뗀 뒤 1자·21자 넘음이면 DB에 닿기 전에 E-HELPER-BAD-MESSAGE")]
+    [MemberData(nameof(BadFindTexts))]
+    public void FindRefusesBadText(string? text)
+    {
+        var db = See();
+        var error = Assert.ThrowsAny<HelperException>(() => Find(db, text));
+        Assert.Equal(ErrorCodes.BadMessage, error.Code);
+        Assert.Empty(db.Calls);
+    }
+
+    [Fact(DisplayName = "AC-3708.1 2자·20자 글자는 받고, 앞뒤 공백은 떼고 찾는다")]
+    public void FindAcceptsTwoToTwenty()
+    {
+        var db = See(new SeeRow("CARM1", "C-arm 유도"));
+        Assert.Equal(new[] { "CARM1" }, CodesOf(Find(db, "CA")));
+        Assert.Empty(Find(db, new string('C', 20)).Codes);
+        Assert.Equal(new[] { "CARM1" }, CodesOf(Find(db, "  ca  ")));
+        Assert.Equal("ca%", db.Calls[2].Args["@starts"]);
+        Assert.Equal(2, ClosingCodes.MinFindText);
+        Assert.Equal(20, ClosingCodes.MaxFindText);
+    }
+
+    [Fact(DisplayName = "AC-3708.1 답 JSON은 { codes: [{ code, name }] }이고 이름이 없으면 null, 맞는 코드가 없으면 빈 목록")]
+    public void FindAnswerShape()
+    {
+        var data = ClosingFake.DataOf(Find(See(new SeeRow("CAST2", null)), "ca"));
+        Assert.Equal(ClosingFake.Sorted("codes"), ClosingFake.Keys(data));
+        var code = Assert.Single(data.GetProperty("codes").EnumerateArray());
+        Assert.Equal(ClosingFake.Sorted("code", "name"), ClosingFake.Keys(code));
+        Assert.Equal("CAST2", code.GetProperty("code").GetString());
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, code.GetProperty("name").ValueKind);
+
+        var none = ClosingFake.DataOf(Find(See(), "없는코드"));
+        Assert.Equal(0, none.GetProperty("codes").GetArrayLength());
+    }
+
+    [Fact(DisplayName = "AC-3708.1 읽기가 실패하거나 줄 칸이 모자라면 지어내지 않고 E-BIT-READ-FAILED")]
+    public void FindReadFailure()
+    {
+        var failing = See();
+        failing.Fail(ClosingSql.FindCodesSql, BitErrors.ReadFailed);
+        Assert.Equal(BitErrors.ReadFailed, Assert.Throws<BitException>(() => Find(failing, "ca")).Code);
+
+        var shortRow = new FakeDb();
+        shortRow.Answer(ClosingSql.FindCodesSql, _ => new[] { new object?[] { "CARM1" } });
+        Assert.Equal(BitErrors.ReadFailed, Assert.Throws<BitException>(() => Find(shortRow, "ca")).Code);
+    }
+
+    private static readonly Regex Writes = new Regex(
+        @"\b(INSERT|UPDATE|DELETE|MERGE|EXEC|EXECUTE|DROP|ALTER|CREATE|TRUNCATE|INTO|GRANT|REVOKE|DENY|OPENROWSET|OPENQUERY|BULK|SHUTDOWN|DBCC|BACKUP|RESTORE|WAITFOR)\b|xp_|sp_",
+        RegexOptions.IgnoreCase);
+
+    [Fact(DisplayName = "AC-3708.1 FindCodesSql은 SELECT 한 문장(;·주석·쓰기 낱말 없음)이고 dbo.SeeMst만 읽으며 환자 표(PbsInf·OcmInf·OdrInf·OrpInf·OrcInf·RsvInf)·차트번호를 읽지 않는다, 오늘 쓸 수 있는 줄·TOP 30·코드 차례")]
+    public void FindSqlReadsOnlyCodeTable()
+    {
+        var sql = ClosingSql.FindCodesSql;
+        Assert.StartsWith("SELECT TOP 30 ", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain(";", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("--", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("/*", sql, StringComparison.Ordinal);
+        Assert.DoesNotMatch(Writes, sql);
+        Assert.Single(Regex.Matches(sql, @"\bSELECT\b").Cast<Match>());
+        Assert.Equal(new[] { "SeeMst" }, Regex.Matches(sql, @"\bdbo\.(\w+)").Cast<Match>().Select(m => m.Groups[1].Value));
+        foreach (var patient in new[] { "Pbs", "OcmInf", "OdrInf", "OrpInf", "OrcInf", "RsvInf", "RsvLog", "DepMst", "ChtNum", "BirDte", "PatNam" }) Assert.DoesNotContain(patient, sql, StringComparison.Ordinal);
+        Assert.Contains("@day BETWEEN s.SeeAdpDte AND s.SeeExpDte", sql, StringComparison.Ordinal);
+        Assert.Contains("(s.SeeOdrCod LIKE @starts OR s.SeeKorNam LIKE @contains)", sql, StringComparison.Ordinal);
+        Assert.EndsWith("GROUP BY UPPER(LTRIM(RTRIM(s.SeeOdrCod))) ORDER BY Code", sql, StringComparison.Ordinal);
+        Assert.Equal(
+            new[] { "@contains", "@day", "@starts" },
+            Regex.Matches(sql, @"@[A-Za-z][A-Za-z0-9]*").Cast<Match>().Select(m => m.Value).Distinct().OrderBy(n => n, StringComparer.Ordinal));
     }
 
     // 짝 없는 대리쌍은 시험 자료 직렬화에서 깨질 수 있어 Theory 자료가 아니라 여기서 직접 만든다

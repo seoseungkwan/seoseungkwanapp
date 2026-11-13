@@ -4,6 +4,8 @@
 //   ERP 기록 줄(AC-3606.3: 기존 LogLine은 웹 표로 이름을 보므로 closing.*를 unknown으로 쓴다)
 // - 글자: 명령 표 모양이 design.md 2절 그대로(AC-3601.4), Erp.Core 틀(AC-3611.1)·판(AC-3610.1), Closing 읽기는 ErpReadGuard로만(AC-3606.1),
 //   기존 도우미·웹에 ERP 흔적 없음(AC-3601.6. git diff 자체는 끝 검토가 본다)
+// - spec erp-closing-range TASK-10(REQ-3708·3709): 새 명령 closing.findCodes(AC-3708.1)·묶음 exclude(AC-3709.2)의 명령 표·문장 글자,
+//   C# 시험(Erp* 시험 + Closing 시험. Closing 시험 감싸개 erp-closing.dotnet.test.ts는 TASK-10 범위 밖이라 여기서 Closing 시험을 한 번 더 돌린다)
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -16,27 +18,29 @@ const CORE = path.join(ERP, 'src', 'Erp.Core')
 const CLOSING = path.join(CORE, 'Closing')
 const HELPER = path.join(ROOT, 'helper')
 const FILTER = 'Erp.Core.Tests.Erp'
+const CLOSING_FILTER = 'Erp.Core.Tests.Closing'
 const NEW_ID = 'lkancaiekmoieooheifdimahhkejfmjc'
 const ROOT_KEYS = ['protocol', 'hostName', 'origin', 'extensionId', 'extensionKey', 'commands']
-let run: { code: number; output: string } = { code: -1, output: '' }
+type Run = { code: number; output: string }
+let run: Run = { code: -1, output: '' }
 
 beforeAll(() => {
   run = runDotnet(FILTER, { timeoutMs: 280_000 })
 }, 300_000)
 
-function lines(prefix: 'Passed' | 'Failed', ac: string): number {
+function lines(prefix: 'Passed' | 'Failed', ac: string, from: Run = run): number {
   const escaped = ac.replace(/\./g, '\\.')
-  return (run.output.match(new RegExp(`^\\s*${prefix} ${escaped}\\b`, 'gm')) ?? []).length
+  return (from.output.match(new RegExp(`^\\s*${prefix} ${escaped}\\b`, 'gm')) ?? []).length
 }
 
 function tail(text: string): string {
   return text.split('\n').slice(-40).join('\n')
 }
 
-function expectAc(ac: string) {
-  expect(run.code, tail(run.output)).toBe(0)
-  expect(lines('Failed', ac), tail(run.output)).toBe(0)
-  expect(lines('Passed', ac), `${ac} 시험이 돌지 않았다\n${tail(run.output)}`).toBeGreaterThan(0)
+function expectAc(ac: string, from: Run = run) {
+  expect(from.code, tail(from.output)).toBe(0)
+  expect(lines('Failed', ac, from), tail(from.output)).toBe(0)
+  expect(lines('Passed', ac, from), `${ac} 시험이 돌지 않았다\n${tail(from.output)}`).toBeGreaterThan(0)
 }
 
 function read(file: string): string {
@@ -114,6 +118,14 @@ describe('C# Erp.Core.Tests (ErpCommandTable·ErpProtocol·ErpReadGuard·ErpLogL
   it('AC-3604.6 ERP 명령 표의 매출 규칙 두 칸(amountPrefixes 0~5개·1~10자, amountCodes 0~20개, 둘 다 선택)', () => {
     expectAc('AC-3604.6')
   })
+
+  it('AC-3708.1 ERP 명령 표 closing.findCodes { text }(patient false, 앞뒤 공백 없는 2~20자, 글자만)·ErpReadGuard가 FindCodesSql을 @day·@starts·@contains와 함께만 받음', () => {
+    expectAc('AC-3708.1')
+  })
+
+  it('AC-3709.2 ERP 명령 표 closing.day 묶음 exclude(선택, 코드 꼴 0~20개): 21개·코드 꼴 아님은 E-HELPER-BAD-MESSAGE', () => {
+    expectAc('AC-3709.2')
+  })
 })
 
 describe('AC-3603.5·AC-3604.6 helper-erp/commands.json 코드 꼴·매출 규칙 칸', () => {
@@ -123,9 +135,10 @@ describe('AC-3603.5·AC-3604.6 helper-erp/commands.json 코드 꼴·매출 규�
     return table.commands['closing.day'].args.groups.items?.fields as Record<string, Spec>
   }
 
-  it('AC-3603.5: codes·amountCodes 항목은 ^\\S(?: ?\\S)*$ 1~20자, amountPrefixes 항목은 ^\\S{1,10}$ 1~10자다', () => {
+  it('AC-3603.5 AC-3709.2: codes·amountCodes·exclude 항목은 ^\\S(?: ?\\S)*$ 1~20자, amountPrefixes 항목은 ^\\S{1,10}$ 1~10자다', () => {
     const fields = groupFields()
-    expect(Object.keys(fields)).toEqual(['key', 'codes', 'amountPrefixes', 'amountCodes'])
+    expect(Object.keys(fields)).toEqual(['key', 'codes', 'amountPrefixes', 'amountCodes', 'exclude'])
+    expect(fields.exclude.items, 'exclude').toEqual(fields.codes.items)
     for (const name of ['codes', 'amountCodes']) {
       expect(fields[name].items, name).toEqual({ type: 'string', min: 1, max: 20, pattern: '^\\S(?: ?\\S)*$' })
     }
@@ -144,8 +157,30 @@ describe('AC-3603.5·AC-3604.6 helper-erp/commands.json 코드 꼴·매출 규�
   })
 })
 
+/** erp-closing-range design.md 10절·11절이 더한 것: closing.findCodes { text } 명령 · closing.day 묶음 exclude 칸 */
+const FIND_CODES = {
+  patient: false,
+  args: { text: { type: 'string', min: 2, max: 20, pattern: '^\\S(?:.*\\S)?$' } },
+}
+const EXCLUDE = {
+  type: 'array',
+  optional: true,
+  min: 0,
+  max: 20,
+  items: { type: 'string', min: 1, max: 20, pattern: '^\\S(?: ?\\S)*$' },
+}
+
+/** erp-closing-fill design.md 2절 표 + erp-closing-range 10절·11절 */
+function expectedTable(): Record<string, unknown> {
+  type Fields = Record<string, unknown>
+  const table = designTable() as { commands: Record<string, { args: { groups?: { items: { fields: Fields } } } }> }
+  table.commands['closing.day'].args.groups!.items.fields.exclude = EXCLUDE
+  ;(table.commands as Record<string, unknown>)['closing.findCodes'] = FIND_CODES
+  return table as unknown as Record<string, unknown>
+}
+
 describe('AC-3601.4 helper-erp/commands.json', () => {
-  it('AC-3601.4: 맨 위 열쇠는 기존 표와 같은 여섯 개, 명령은 closing.codes·closing.day 둘뿐이고 patient: false다', () => {
+  it('AC-3601.4 AC-3708.1: 맨 위 열쇠는 기존 표와 같은 여섯 개, 명령은 closing.codes·closing.day·closing.findCodes 셋뿐이고 patient: false다', () => {
     const table = readJson(path.join(ERP, 'commands.json'))
     expect(Object.keys(table)).toEqual(ROOT_KEYS)
     expect(table.protocol).toBe(1)
@@ -153,14 +188,79 @@ describe('AC-3601.4 helper-erp/commands.json', () => {
     expect(table.origin).toBe('https://erp.minesolution.com')
     expect(table.extensionId).toBe(NEW_ID)
     const commands = table.commands as Record<string, { patient: unknown }>
-    expect(Object.keys(commands)).toEqual(['closing.codes', 'closing.day'])
+    expect(Object.keys(commands)).toEqual(['closing.codes', 'closing.day', 'closing.findCodes'])
     for (const spec of Object.values(commands)) expect(spec.patient).toBe(false)
   })
 
-  it('AC-3601.4: 표 전체가 design.md 2절 그대로다(extensionKey = extension-erp/manifest.json key)', () => {
+  it('AC-3601.4 AC-3708.1 AC-3709.2: 표 전체가 erp-closing-fill design.md 2절 + erp-closing-range design.md 10절(closing.findCodes)·11절(exclude) 그대로다(extensionKey = extension-erp/manifest.json key)', () => {
     const table = readJson(path.join(ERP, 'commands.json'))
     const key = readJson(path.join(ROOT, 'extension-erp', 'manifest.json')).key
-    expect(table).toEqual({ ...designTable(), extensionKey: key })
+    expect(table).toEqual({ ...expectedTable(), extensionKey: key })
+  })
+})
+
+describe('TASK-10 closing.findCodes·묶음 exclude (erp-closing-range design.md 10절·11절)', () => {
+  let closingRun: Run = { code: -1, output: '' }
+
+  beforeAll(() => {
+    closingRun = runDotnet(CLOSING_FILTER, { timeoutMs: 280_000 })
+  }, 300_000)
+
+  /** design.md 10절 `ClosingSql.FindCodesSql` = `…` 글 */
+  function designFindSql(): string {
+    const design = read(path.join(ROOT, 'specs', 'erp-closing-range', 'design.md')).replace(/\r\n/g, '\n')
+    const section = design.slice(design.indexOf('## 10. '), design.indexOf('## 11. '))
+    const sql = /`ClosingSql\.FindCodesSql` = `([^`]+)`/.exec(section)?.[1]
+    expect(sql, 'design.md 10절 FindCodesSql 글을 찾지 못했다').toBeDefined()
+    return sql as string
+  }
+
+  it('AC-3708.1 (C# Closing 시험) closing.findCodes: 코드 앞부분·이름 가운데, 오늘 쓸 수 있는 줄만, 코드마다 한 줄·대문자·코드 차례 30개, %·_·[ 바꿈, 1자·21자·빈 글자 거절, 등록 확인 관문, 답 { codes: [{ code, name }] }', () => {
+    expectAc('AC-3708.1', closingRun)
+  })
+
+  it('AC-3709.2 (C# Closing 시험) exclude 코드가 있는 진료는 그 묶음 사람 수·total·규칙 금액·overlap에서 빠지고 다른 묶음은 그대로, 빈 exclude는 지금 답과 같음, 21개·코드 꼴 아님 거절', () => {
+    expectAc('AC-3709.2', closingRun)
+  })
+
+  it('AC-3708.1: commands.json closing.findCodes = { patient: false, args: { text: 글자 2~20자, 앞뒤 공백 없음 } }(표가 아는 string 꼴)', () => {
+    const table = readJson(path.join(ERP, 'commands.json')) as { commands: Record<string, unknown> }
+    expect(table.commands['closing.findCodes']).toEqual(FIND_CODES)
+    const text = new RegExp(FIND_CODES.args.text.pattern)
+    for (const ok of ['CA', '도수', '도수 치료', 'LA_1', '50%', 'A[1]', 'x  y']) expect(text.test(ok), ok).toBe(true)
+    for (const bad of [' CA', 'CA ', '\tCA', 'CA\n', '  ']) expect(text.test(bad), JSON.stringify(bad)).toBe(false)
+  })
+
+  it('AC-3709.2: commands.json closing.day 묶음 exclude = 선택 칸, 코드(codes 항목과 같은 꼴) 0~20개', () => {
+    const table = readJson(path.join(ERP, 'commands.json')) as {
+      commands: Record<string, { args: Record<string, { items?: { fields?: Record<string, unknown> } }> }>
+    }
+    expect(table.commands['closing.day'].args.groups.items?.fields?.exclude).toEqual(EXCLUDE)
+  })
+
+  it('AC-3708.1: ClosingSql.FindCodesSql 글은 design.md 10절 그대로이고 시간 제한은 15초, 매개변수 표는 @day Char 8·@starts·@contains VarChar', () => {
+    const sql = read(path.join(CLOSING, 'ClosingSql.cs')).replace(/\r\n/g, '\n')
+    const constant = /public const string FindCodesSql = @?"([^"]*)";/.exec(sql)?.[1]
+    expect(constant, 'ClosingSql.FindCodesSql을 찾지 못했다').toBeDefined()
+    expect(constant).toBe(designFindSql())
+    expect(code(sql)).toMatch(/public static readonly TimeSpan FindTimeout = TimeSpan\.FromSeconds\(15\);/)
+    expect(code(sql)).toMatch(/\[FindCodesSql\] = new\[\] \{ Day, Starts, Contains \}/)
+  })
+
+  it('AC-3708.1: FindCodesSql은 비트 코드표(dbo.SeeMst)만 읽고 환자 표·차트번호를 읽지 않는다', () => {
+    const sql = designFindSql()
+    expect([...sql.matchAll(/\bdbo\.(\w+)/g)].map((m) => m[1])).toEqual(['SeeMst'])
+    for (const table of ['Pbs', 'OcmInf', 'OdrInf', 'OrpInf', 'OrcInf', 'RsvInf', 'RsvLog', 'DepMst', 'ChtNum', 'BirDte']) expect(sql, table).not.toContain(table)
+  })
+
+  it('AC-3708.1: ErpReadGuard는 ClosingSql.FindParameters도 보고(문장 표), closing.findCodes 처리기는 HospitalGate를 지나 ClosingCodes.Find를 부른다', () => {
+    const guard = code(read(path.join(CORE, 'ErpReadGuard.cs')))
+    expect(guard).toContain('ClosingSql.FindParameters')
+    const commands = code(read(path.join(CLOSING, 'ClosingCommands.cs')))
+    expect(commands).toMatch(/public const string FindCodesName = "closing\.findCodes";/)
+    const handler = commands.slice(commands.indexOf('dispatcher.Register(FindCodesName'))
+    expect(handler.indexOf('HospitalGate.Open(')).toBeGreaterThan(-1)
+    expect(handler.indexOf('HospitalGate.Open(')).toBeLessThan(handler.indexOf('ClosingCodes.Find('))
   })
 })
 
