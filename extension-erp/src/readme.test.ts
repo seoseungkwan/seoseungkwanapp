@@ -221,15 +221,30 @@ describe("AC-3706.1 안내서 '확장이 건드리지 않는 것'과 판 번호"
     expect(README).not.toContain('확장은 저장 단추를 누르지 않습니다')
   })
 
-  it('AC-3706.1: 판 번호 글은 확장 0.3.0 ↔ ERP 도우미 0.2.0(그대로)이고, 둘이 같은 판이라는 옛 글은 없다', () => {
+  // spec erp-closing-range AC-3708.4(TASK-12): ERP 도우미가 0.2.0에서 0.3.0으로 바뀌어(closing.findCodes·읽지 않을 처방 규칙) 짝 문장도 바뀐다
+  it('AC-3706.1 AC-3708.4: 판 번호 글은 확장 0.3.0 ↔ ERP 도우미 0.3.0이고, 둘이 같은 판이라는 옛 글·도우미는 0.2.0 그대로라는 옛 글은 없다', () => {
     const helper = /<Version>([^<]+)<\/Version>/.exec(HELPER_PROPS)?.[1]
     expect(MANIFEST.version).toBe('0.3.0')
-    expect(helper).toBe('0.2.0')
+    expect(helper).toBe('0.3.0')
     expect(README).toContain(`확장 ${MANIFEST.version} ↔ ERP 도우미 ${helper}`)
     expect(README).toContain(`\`version\`(지금 ${MANIFEST.version})`)
-    for (const old of ['지금 둘 다 0.2.0', '확장 0.2.0', '(지금 0.2.0)', '같은 판끼리', '판 번호가 같은 것끼리']) {
+    for (const old of [
+      '지금 둘 다 0.2.0', '확장 0.2.0', '(지금 0.2.0)', '같은 판끼리', '판 번호가 같은 것끼리',
+      '↔ ERP 도우미 0.2.0', 'ERP 도우미는 바뀌지 않았습니다', 'ERP 도우미 0.2.0은 그대로', '확장만 바뀌어', '0.2.0 그대로',
+    ]) {
       expect(README, old).not.toContain(old)
     }
+  })
+
+  it("AC-3708.4: '7. 새 판으로 바꾸기'의 0.2.0 → 0.3.0 글은 ERP 도우미도 다시 설치해야 '등록된 코드 전부' 찾기·읽지 않을 처방 규칙이 된다고 하고, 도우미 0.2.0이어도 나머지는 그대로라고 적는다", () => {
+    const update = chapter('7. 새 판으로 바꾸기')
+    expect(update).toContain('**이 확장을 판 0.2.0에서 0.3.0으로 바꿀 때**')
+    expect(update).toContain('ERP 도우미도 0.3.0으로 바뀌었습니다')
+    expect(update).toContain('아래 1·2·3을 모두 합니다')
+    expect(update).toContain("ERP 도우미를 다시 설치해야 설정 화면 '셀 코드' 찾기가 **비트에 등록된 코드 전부**에서 찾고, **'읽지 않을 처방'** 규칙이 셈에 들어갑니다")
+    expect(update).toContain('ERP 도우미 0.2.0이어도 나머지는 그대로 됩니다')
+    expect(update).toContain("**'ERP 도우미가 예전 판이에요.'**")
+    expect(update).not.toContain('아래 2·3만 합니다')
   })
 })
 

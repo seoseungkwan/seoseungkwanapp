@@ -42,13 +42,13 @@ function codeFiles(): string[] {
 }
 
 describe('AC-3601.1 extension-erp/manifest.json', () => {
-  it("AC-3601.1 AC-3706.1: MV3이고 이름은 'ERP 마감일지 채우기', 판은 0.3.0이다(기간 채우기. ERP 도우미는 0.2.0 그대로)", () => {
+  it("AC-3601.1 AC-3706.1 AC-3708.4: MV3이고 이름은 'ERP 마감일지 채우기', 판은 0.3.0이다(기간 채우기. 짝인 ERP 도우미는 0.3.0)", () => {
     const m = readJson(MANIFEST)
     expect(m.manifest_version).toBe(3)
     expect(m.name).toBe('ERP 마감일지 채우기')
-    // spec erp-closing-range AC-3706.1: 0.2.0(AC-3610.4)에서 0.3.0으로. ERP 도우미는 바꾸지 않아 0.2.0 그대로 쓴다
+    // spec erp-closing-range AC-3706.1: 0.2.0(AC-3610.4)에서 0.3.0으로. AC-3708.4: 확장은 0.3.0 그대로, ERP 도우미가 0.2.0에서 0.3.0으로
     expect(m.version).toBe('0.3.0')
-    expect(readFileSync(path.join(ROOT, 'helper-erp', 'Directory.Build.props'), 'utf8')).toContain('<Version>0.2.0</Version>')
+    expect(readFileSync(path.join(ROOT, 'helper-erp', 'Directory.Build.props'), 'utf8')).toContain('<Version>0.3.0</Version>')
     expect(String(m.description ?? '').trim()).not.toBe('')
   })
 
