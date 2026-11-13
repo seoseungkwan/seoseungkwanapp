@@ -74,10 +74,11 @@ public class ErpCommandTableTests
         Assert.Equal(parsed.ExtensionId, Table.ExtensionId);
     }
 
-    [Fact(DisplayName = "AC-3601.4 명령은 closing.codes·closing.day 둘뿐이고 둘 다 patient:false(보내기·확인 창 없음), 기존 명령(hello·claim.month·revenue.days)은 없다")]
-    public void OnlyTwoCommands()
+    [Fact(DisplayName = "AC-3601.4 AC-3708.1 명령은 closing.codes·closing.day·closing.findCodes 셋뿐이고 모두 patient:false(보내기·확인 창 없음), 기존 명령(hello·claim.month·revenue.days)은 없다")]
+    public void OnlyClosingCommands()
     {
-        Assert.Equal(new[] { ClosingCommands.CodesName, ClosingCommands.DayName }, Table.Names);
+        Assert.Equal(new[] { ClosingCommands.CodesName, ClosingCommands.DayName, ClosingCommands.FindCodesName }, Table.Names);
+        Assert.Equal("closing.findCodes", ClosingCommands.FindCodesName);
         foreach (var name in Table.Names)
         {
             Assert.False(Table.IsPatient(name), name);
@@ -89,7 +90,77 @@ public class ErpCommandTableTests
         // 웹 표(기존 도우미)에는 closing.*가 없다
         Assert.False(WebTable.Has(ClosingCommands.CodesName));
         Assert.False(WebTable.Has(ClosingCommands.DayName));
+        Assert.False(WebTable.Has(ClosingCommands.FindCodesName));
     }
+
+    // ---- AC-3708.1 closing.findCodes { text }(erp-closing-range design.md 10절) ------------------------------
+
+    private static string Find(string text) => "{\"text\":" + JsonSerializer.Serialize(text) + "}";
+
+    [Fact(DisplayName = "AC-3708.1 closing.findCodes { text }: 앞뒤 공백 없는 2~20자 글자를 받는다(가운데 빈칸·한글·%·_·[ 포함)")]
+    public void FindCodesAccepts()
+    {
+        foreach (var text in new[] { "CA", "ca", "도수", "도수 치료", "LA_1", "50%", "A[1]", "x  y", new string('C', 20), "C-arm 유도 (편측)" })
+        {
+            Accepts("closing.findCodes", Find(text));
+        }
+    }
+
+    public static TheoryData<string> BadFindArgs => new TheoryData<string>
+    {
+        Find(""),
+        Find("C"),
+        Find("가"),
+        Find(new string('C', 21)),
+        Find("  "),
+        Find(" CA"),
+        Find("CA "),
+        Find("\tCA"),
+        Find("CA\n"),
+        "{}",
+        "{\"text\":12}",
+        "{\"text\":null}",
+        "{\"text\":[\"CA\"]}",
+        "{\"text\":\"CA\",\"day\":\"2026-11-09\"}",
+    };
+
+    [Theory(DisplayName = "AC-3708.1 closing.findCodes text가 빈 글자·1자·21자·빈칸뿐·앞뒤 공백·글자 아님·없음이거나 모르는 칸이 있으면 E-HELPER-BAD-MESSAGE")]
+    [MemberData(nameof(BadFindArgs))]
+    public void FindCodesRefuses(string args) => Refuses("closing.findCodes", args);
+
+    // ---- AC-3709.2 closing.day 묶음 exclude(erp-closing-range design.md 11절) --------------------------------
+
+    private static string ExcludeGroup(string key, string[] codes, string[] exclude) =>
+        "{\"key\":\"" + key + "\",\"codes\":" + Arr(codes) + ",\"exclude\":" + Arr(exclude) + "}";
+
+    [Fact(DisplayName = "AC-3709.2 묶음 exclude는 선택 칸이고 코드 꼴(codes와 같음) 0~20개를 받는다(매출 규칙 칸과 함께여도)")]
+    public void ExcludeAccepted()
+    {
+        Accepts("closing.day", Day("2026-11-09", ExcludeGroup("carm", new[] { "CARM1" }, new string[0])));
+        Accepts("closing.day", Day("2026-11-09", ExcludeGroup("carm", new[] { "CARM1" }, new[] { "KK090", "PROLO C", new string('X', 20) })));
+        Accepts("closing.day", Day("2026-11-09", ExcludeGroup("pt", new[] { "MM010" }, Enumerable.Range(0, 20).Select(i => "X" + i).ToArray())));
+        Accepts("closing.day", Day("2026-11-09",
+            "{\"key\":\"sono\",\"codes\":[\"SONO1\"],\"amountPrefixes\":[\"LA\"],\"amountCodes\":[\"KK090\"],\"exclude\":[\"MM010\"]}",
+            Group("carm", "CARM1")));
+    }
+
+    public static TheoryData<string> BadExcludeArgs => new TheoryData<string>
+    {
+        Day("2026-11-09", ExcludeGroup("carm", new[] { "CARM1" }, Enumerable.Range(0, 21).Select(i => "X" + i).ToArray())),
+        Day("2026-11-09", ExcludeGroup("carm", new[] { "CARM1" }, new[] { "" })),
+        Day("2026-11-09", ExcludeGroup("carm", new[] { "CARM1" }, new[] { "PROLO  C" })),
+        Day("2026-11-09", ExcludeGroup("carm", new[] { "CARM1" }, new[] { "PROLO\tC" })),
+        Day("2026-11-09", ExcludeGroup("carm", new[] { "CARM1" }, new[] { " KK090" })),
+        Day("2026-11-09", ExcludeGroup("carm", new[] { "CARM1" }, new[] { "KK090 " })),
+        Day("2026-11-09", ExcludeGroup("carm", new[] { "CARM1" }, new[] { new string('X', 21) })),
+        Day("2026-11-09", "{\"key\":\"carm\",\"codes\":[\"CARM1\"],\"exclude\":\"KK090\"}"),
+        Day("2026-11-09", "{\"key\":\"carm\",\"codes\":[\"CARM1\"],\"exclude\":[1]}"),
+        Day("2026-11-09", "{\"key\":\"carm\",\"codes\":[\"CARM1\"],\"exclude\":null}"),
+    };
+
+    [Theory(DisplayName = "AC-3709.2 exclude 21개·빈 글자·빈칸 두 칸·탭·앞뒤 공백·21자·배열 아님·글자 아님·null은 E-HELPER-BAD-MESSAGE")]
+    [MemberData(nameof(BadExcludeArgs))]
+    public void BadExcludeRefused(string args) => Refuses("closing.day", args);
 
     [Fact(DisplayName = "AC-3601.4 맨 위 칸: protocol 1, hostName com.seoseungkwan.erp_helper, origin https://erp.minesolution.com, extensionId = 새 확장(기존 확장과 다름)")]
     public void RootFields()

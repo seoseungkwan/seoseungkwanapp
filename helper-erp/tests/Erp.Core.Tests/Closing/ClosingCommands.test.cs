@@ -417,6 +417,166 @@ public class ClosingCommandsTests
         One(Handle(rig, "closing.codes", "{}"), "result");
     }
 
+    // ---- closing.findCodes(AC-3708.1, erp-closing-range design.md 10절) ------------------------------------------
+
+    private static string FindArgs(string text) => "{\"text\":" + J(text) + "}";
+
+    /// <summary>등록된 PC + 가짜 코드표 답(FindCodesSql 결과 칸 [코드, 이름]). 줄 뒤 칸에 가짜 차트번호·이름이 섞여 와도 읽는 칸만 본다.</summary>
+    private static Rig FindReady()
+    {
+        var rig = Ready();
+        rig.Session.Answer(ClosingSql.FindCodesSql, _ => new[]
+        {
+            new object?[] { "CAST2", null, Fake.Chart },
+            new object?[] { "carm1 ", "C-arm 유도", Fake.Name },
+        });
+        return rig;
+    }
+
+    [Fact(DisplayName = "AC-3708.1 closing.findCodes는 등록 확인 관문 → FindCodesSql(@day = 도우미 PC 오늘, 15초) → result 하나 { codes: [{ code, name }] }, 세션 닫음, 기록은 (closing.findCodes, -)")]
+    public void FindCodesIsOneResult()
+    {
+        using var rig = FindReady();
+        var outcome = Handle(rig, "closing.findCodes", FindArgs("ca"));
+
+        var data = One(outcome, "result").GetProperty("data");
+        Assert.Equal(ClosingFake.Sorted("codes"), ClosingFake.Keys(data));
+        var codes = data.GetProperty("codes").EnumerateArray().ToArray();
+        Assert.Equal(new[] { "CARM1", "CAST2" }, codes.Select(code => code.GetProperty("code").GetString()));
+        Assert.Equal("C-arm 유도", codes[0].GetProperty("name").GetString());
+        Assert.Equal(JsonValueKind.Null, codes[1].GetProperty("name").ValueKind);
+        Assert.All(codes, code => Assert.Equal(ClosingFake.Sorted("code", "name"), ClosingFake.Keys(code)));
+
+        Assert.Equal(new[] { Sql.ScopesSql, Sql.InstitutionSql, ClosingSql.FindCodesSql }, rig.Session.Sqls);
+        var find = rig.Session.Calls[2];
+        Assert.Equal(new Dictionary<string, object?> { ["@day"] = "20261110", ["@starts"] = "ca%", ["@contains"] = "%ca%" }, find.Args);
+        Assert.Equal(TimeSpan.FromSeconds(15), find.Timeout);
+        Assert.Equal(1, rig.Session.Disposed);
+        Assert.Equal(("closing.findCodes", (string?)null), Assert.Single(outcome.Log));
+        Assert.DoesNotContain(Fake.Chart, outcome.Text);
+        Assert.DoesNotContain(Fake.Name, outcome.Text);
+    }
+
+    public static IEnumerable<object[]> FindTableRefuses()
+    {
+        yield return new object[] { "빈 글자", FindArgs("") };
+        yield return new object[] { "1자", FindArgs("C") };
+        yield return new object[] { "21자", FindArgs(new string('C', 21)) };
+        yield return new object[] { "앞 공백", FindArgs(" CA") };
+        yield return new object[] { "글자 아님", "{\"text\":12}" };
+        yield return new object[] { "text 없음", "{}" };
+        yield return new object[] { "모르는 칸", "{\"text\":\"CA\",\"chart\":\"" + Fake.Chart + "\"}" };
+    }
+
+    [Theory(DisplayName = "AC-3708.1 closing.findCodes text가 빈 글자·1자·21자·앞 공백·글자 아님·없음이거나 모르는 칸이면 명령 표가 E-HELPER-BAD-MESSAGE 하나, 비트를 열지 않음")]
+    [MemberData(nameof(FindTableRefuses))]
+    public void FindCodesTableRefuses(string why, string args)
+    {
+        using var rig = FindReady();
+        var outcome = Handle(rig, "closing.findCodes", args);
+
+        Assert.True(ErrorOf(outcome) == ErrorCodes.BadMessage, why);
+        Assert.Empty(rig.Connector.Opened);
+        Assert.Equal(("closing.findCodes", (string?)ErrorCodes.BadMessage), Assert.Single(outcome.Log));
+    }
+
+    [Fact(DisplayName = "AC-3708.1 closing.findCodes도 등록 안 된 PC는 E-BIT-NOT-REGISTERED(비트를 열지 않음), 다른 병원은 E-BIT-HOSPITAL-MISMATCH(FindCodesSql을 돌리지 않고 세션 닫음)")]
+    public void FindCodesNeedsRegistration()
+    {
+        using (var rig = new Rig { Today = Today })
+        {
+            Assert.Equal("E-BIT-NOT-REGISTERED", ErrorOf(Handle(rig, "closing.findCodes", FindArgs("ca"))));
+            Assert.Empty(rig.Connector.Opened);
+        }
+
+        using (var other = new Rig { Today = Today }.Registered(Synthetic.Registration(institution: Synthetic.OtherInstitution)))
+        {
+            other.Session.Answer(ClosingSql.FindCodesSql, _ => new[] { new object?[] { "CARM1", "C-arm" } });
+            Assert.Equal("E-BIT-HOSPITAL-MISMATCH", ErrorOf(Handle(other, "closing.findCodes", FindArgs("ca"))));
+            Assert.DoesNotContain(ClosingSql.FindCodesSql, other.Session.Sqls);
+            Assert.Equal(1, other.Session.Disposed);
+        }
+    }
+
+    [Fact(DisplayName = "AC-3708.1 FindCodesSql 읽기가 실패하면 일부 없이 E-BIT-READ-FAILED 하나, 세션 닫음, 기록은 (closing.findCodes, 번호)")]
+    public void FindCodesReadFailure()
+    {
+        using var rig = FindReady();
+        rig.Session.Fail(ClosingSql.FindCodesSql, BitErrors.ReadFailed);
+        var outcome = Handle(rig, "closing.findCodes", FindArgs("ca"));
+
+        Assert.Equal(BitErrors.ReadFailed, ErrorOf(outcome));
+        Assert.Equal(1, rig.Session.Disposed);
+        Assert.Equal(("closing.findCodes", (string?)BitErrors.ReadFailed), Assert.Single(outcome.Log));
+    }
+
+    // ---- closing.day 묶음 exclude(AC-3709.2, erp-closing-range design.md 11절) -----------------------------------
+
+    /// <summary>매출 규칙·exclude 칸이 있는 묶음 JSON. null이면 그 칸을 넣지 않는다.</summary>
+    private static string ExcludeG(string key, string[] codes, string[]? exclude, string[]? prefixes = null, string[]? amountCodes = null) =>
+        "{\"key\":" + J(key) + ",\"codes\":" + Arr(codes)
+        + (prefixes == null ? "" : ",\"amountPrefixes\":" + Arr(prefixes))
+        + (amountCodes == null ? "" : ",\"amountCodes\":" + Arr(amountCodes))
+        + (exclude == null ? "" : ",\"exclude\":" + Arr(exclude)) + "}";
+
+    [Fact(DisplayName = "AC-3709.2 closing.day 묶음 exclude(소문자 → 대문자)를 읽어 그 진료를 그 묶음 사람 수·total·overlap에서 빼고, 다른 묶음은 그대로")]
+    public void ExcludeIsReadAndApplied()
+    {
+        using var rig = RuleDay();
+        var args = DayArgs(ClosingFake.DayText,
+            ExcludeG("carm", new[] { "CARM1" }, new[] { "kk090" }, new[] { "LA" }),
+            ExcludeG("sono", new[] { "SONO1" }, null, new[] { "LA" }, new[] { "KK090" }));
+        var data = One(Handle(rig, "closing.day", args), "result").GetProperty("data");
+
+        var groups = data.GetProperty("groups").EnumerateArray().ToArray();
+        Assert.Equal(0, groups[0].GetProperty("patients").GetInt64());
+        Assert.Equal(0, groups[0].GetProperty("total").GetInt64());
+        Assert.Equal(2, groups[1].GetProperty("patients").GetInt64());
+        Assert.Equal(213800 + 32610 + 31670, groups[1].GetProperty("total").GetInt64());
+        var overlap = data.GetProperty("overlap");
+        Assert.Equal(0, overlap.GetProperty("visits").GetInt64());
+        Assert.Equal(0, overlap.GetProperty("carm").GetInt64());
+        Assert.Equal(0, overlap.GetProperty("sono").GetInt64());
+    }
+
+    [Fact(DisplayName = "AC-3709.2 exclude가 빈 목록이면 그 칸이 없는 것과 같은 답이다")]
+    public void EmptyExcludeSameAsNone()
+    {
+        string Answer(string[]? exclude)
+        {
+            using var rig = RuleDay();
+            var args = DayArgs(ClosingFake.DayText,
+                ExcludeG("carm", new[] { "CARM1" }, exclude, new[] { "LA" }),
+                ExcludeG("sono", new[] { "SONO1" }, exclude, new[] { "LA" }, new[] { "KK090" }),
+                ExcludeG("pt", new[] { "MM010" }, exclude));
+            return One(Handle(rig, "closing.day", args), "result").GetProperty("data").GetRawText();
+        }
+
+        Assert.Equal(Answer(null), Answer(new string[0]));
+    }
+
+    public static IEnumerable<object[]> TableRefusesExclude()
+    {
+        var carm = new[] { "CARM1" };
+        yield return new object[] { "exclude 21개", DayArgs(ClosingFake.DayText, ExcludeG("carm", carm, Enumerable.Range(0, 21).Select(i => "X" + i).ToArray())) };
+        yield return new object[] { "빈 exclude 코드", DayArgs(ClosingFake.DayText, ExcludeG("carm", carm, new[] { "" })) };
+        yield return new object[] { "exclude 빈칸 두 칸", DayArgs(ClosingFake.DayText, ExcludeG("carm", carm, new[] { "KK  090" })) };
+        yield return new object[] { "exclude 탭", DayArgs(ClosingFake.DayText, ExcludeG("carm", carm, new[] { "KK\t090" })) };
+        yield return new object[] { "exclude 21자", DayArgs(ClosingFake.DayText, ExcludeG("carm", carm, new[] { new string('K', 21) })) };
+        yield return new object[] { "exclude가 배열 아님", DayArgs(ClosingFake.DayText, "{\"key\":\"carm\",\"codes\":[\"CARM1\"],\"exclude\":\"KK090\"}") };
+    }
+
+    [Theory(DisplayName = "AC-3709.2 exclude가 틀리면(21개·빈 글자·빈칸 두 칸·탭·21자·배열 아님) 명령 표가 E-HELPER-BAD-MESSAGE 하나, 비트를 열지 않음")]
+    [MemberData(nameof(TableRefusesExclude))]
+    public void TableRefusesBadExclude(string why, string args)
+    {
+        using var rig = Ready();
+        var outcome = Handle(rig, "closing.day", args);
+
+        Assert.True(ErrorOf(outcome) == ErrorCodes.BadMessage, why);
+        Assert.Empty(rig.Connector.Opened);
+    }
+
     // ---- 부른 쪽(AC-3601.3) ------------------------------------------------------------------------
 
     [Fact(DisplayName = "AC-3601.3 기존 도우미(웹 명령 표)는 closing.*를 모른다: 처리기를 붙일 수 없고 부르면 E-HELPER-UNKNOWN-COMMAND, 비트를 열지 않음")]

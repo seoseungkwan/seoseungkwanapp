@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Precheck.Core.Bit;
+using Precheck.Core.Protocol;
 
 namespace Erp.Core.Closing;
 
@@ -47,14 +49,44 @@ public sealed class ClosingCodesResult
     public IReadOnlyList<ClosingMemoKind> Kinds { get; }
 }
 
+/// <summary>closing.findCodes 코드 한 줄: 앞뒤 공백 없는 대문자 코드·비트 코드표 이름(없으면 null).</summary>
+public sealed class ClosingFoundCode
+{
+    [JsonPropertyName("code")]
+    public string Code { get; set; } = "";
+
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+}
+
+/// <summary>closing.findCodes 답 { codes }(erp-closing-range design.md 10절).</summary>
+public sealed class ClosingFindCodesResult
+{
+    public ClosingFindCodesResult(IReadOnlyList<ClosingFoundCode> codes)
+    {
+        Codes = codes;
+    }
+
+    [JsonPropertyName("codes")]
+    public IReadOnlyList<ClosingFoundCode> Codes { get; }
+}
+
 /// <summary>
 /// closing.codes(REQ-3602, design.md 3-2·3-3): 어제까지 365일 동안 이 병원 외래 진료에 나온 처방 코드를 진료 수 차례로 2,000개까지,
 /// 이름은 비트 코드표 첫 줄. 코드·진료 수·이름은 문장 하나 ClosingSql.CodeListSql(50초, TASK-16 AC-3616.3)로 읽고, 예약 메모 목록은 ClosingSql.MemoKindsSql(15초).
 /// 환자 줄은 읽지 않는다(코드·이름·수만). 예약 메모 번호 규칙 MemoKind는 closing.day 예약 표(ClosingDay)도 같이 쓴다(AC-3616.1).
+/// closing.findCodes(erp-closing-range REQ-3708)도 여기 있다(Find): 비트 코드표에 등록된 코드 전부에서 글자로 30개까지 찾는다.
 /// </summary>
 public static class ClosingCodes
 {
     public const int MaxCodes = 2000;
+
+    /// <summary>closing.findCodes 답 코드 수(FindCodesSql TOP 30).</summary>
+    public const int MaxFound = 30;
+
+    /// <summary>closing.findCodes 글자 길이(앞뒤 공백 뗀 뒤, commands.json text min·max와 같다).</summary>
+    public const int MinFindText = 2;
+    public const int MaxFindText = 20;
 
     /// <summary>어제까지 며칠(오늘은 넣지 않는다).</summary>
     public const int Days = 365;
@@ -92,6 +124,55 @@ public static class ClosingCodes
         var list = ClosingRead.Query(db, ClosingSql.CodeListSql, listArgs, ClosingSql.CodesTimeout);
         var memos = ClosingRead.Query(db, ClosingSql.MemoKindsSql, NoValues, Sql.MetaTimeout);
         return new ClosingCodesResult(Codes(list), Kinds(memos));
+    }
+
+    /// <summary>
+    /// closing.findCodes(REQ-3708 AC-3708.1, design.md 10절): 앞뒤 공백 뗀 2~20자 글자로 FindCodesSql(15초) 한 번. @day = 도우미 PC 오늘,
+    /// @starts = 글자 + '%', @contains = '%' + 글자 + '%'(글자 안의 %·_·[는 [%]·[_]·[[]). 글자가 틀리면 DB에 닿기 전에 E-HELPER-BAD-MESSAGE
+    /// (명령 표가 먼저 막는다). 답 줄은 도우미에서도 앞뒤 공백 뗀 대문자 코드로 겹침 없이(먼저 온 이름) 코드 글자 차례 30개까지, 빈 코드는 빼고
+    /// 이름은 revenue.days 규칙(CleanName)으로 지운다. 환자 표는 읽지 않는다(코드표만).
+    /// </summary>
+    public static ClosingFindCodesResult Find(IBitDb db, string? text, DateTime today)
+    {
+        if (db == null) throw new ArgumentNullException(nameof(db));
+        var wanted = (text ?? "").Trim();
+        if (wanted.Length < MinFindText || wanted.Length > MaxFindText) throw new HelperException(ErrorCodes.BadMessage);
+
+        var like = LikeText(wanted);
+        var args = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["@day"] = Key(today.Date),
+            ["@starts"] = like + "%",
+            ["@contains"] = "%" + like + "%",
+        };
+
+        var found = new Dictionary<string, ClosingFoundCode>(StringComparer.Ordinal);
+        foreach (var row in ClosingRead.Query(db, ClosingSql.FindCodesSql, args, ClosingSql.FindTimeout))
+        {
+            if (row == null || row.Count < 2) throw ClosingRead.ReadFailed();
+            var code = ClosingDay.NormalCode(ClosingRead.Text(row[0]));
+            var name = CleanName(ClosingRead.Text(row[1]));
+            if (code.Length == 0) continue;
+            if (found.TryGetValue(code, out var same))
+            {
+                same.Name ??= name;
+                continue;
+            }
+            found[code] = new ClosingFoundCode { Code = code, Name = name };
+        }
+        return new ClosingFindCodesResult(found.Values.OrderBy(code => code.Code, StringComparer.Ordinal).Take(MaxFound).ToList());
+    }
+
+    /// <summary>LIKE 글자 그대로 찾기: %·_·[를 [%]·[_]·[[]로 바꾼다(그 밖의 글자는 그대로, ]는 [ 없이 글자 그대로다).</summary>
+    private static string LikeText(string text)
+    {
+        var like = new StringBuilder(text.Length);
+        foreach (var c in text)
+        {
+            if (c == '%' || c == '_' || c == '[') like.Append('[').Append(c).Append(']');
+            else like.Append(c);
+        }
+        return like.ToString();
     }
 
     /// <summary>

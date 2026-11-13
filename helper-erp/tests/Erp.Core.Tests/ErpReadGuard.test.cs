@@ -53,6 +53,85 @@ public class ErpReadGuardTests
         }
     }
 
+    // ---- AC-3708.1 closing.findCodes 문장(erp-closing-range design.md 10절) ---------------------------------
+
+    private static string Shape(IEnumerable<SqlParam> parameters) =>
+        string.Join(" ", parameters.Select(p => p.Name + ":" + p.Kind + "(" + p.Size + ")"));
+
+    private static Dictionary<string, object?> FindArgs() => new Dictionary<string, object?>
+    {
+        ["@day"] = ClosingFake.DayKey,
+        ["@starts"] = "CA%",
+        ["@contains"] = "%CA%",
+    };
+
+    [Fact(DisplayName = "AC-3708.1 FindCodesSql은 ErpReadGuard의 문장 표(ClosingSql.FindParameters)에 있고 매개변수는 @day Char(8)·@starts·@contains VarChar(62) 셋뿐이다(기존 Sql.IsAllowed는 모름)")]
+    public void FindCodesStatementPasses()
+    {
+        var sql = ClosingSql.FindCodesSql;
+        Assert.True(ClosingSql.FindParameters.ContainsKey(sql));
+        Assert.Single(ClosingSql.FindParameters);
+        Assert.True(ErpReadGuard.IsAllowed(sql));
+        Assert.False(Sql.IsAllowed(sql));
+        Assert.Same(ClosingSql.FindParameters[sql], ErpReadGuard.ParametersOf(sql));
+        Assert.Equal("@day:Char(8) @starts:VarChar(62) @contains:VarChar(62)", Shape(ErpReadGuard.ParametersOf(sql)));
+
+        // 문장 속 @이름 = 매개변수 표
+        var named = System.Text.RegularExpressions.Regex.Matches(sql, @"@[A-Za-z][A-Za-z0-9]*").Cast<System.Text.RegularExpressions.Match>()
+            .Select(m => m.Value).Distinct().OrderBy(n => n, StringComparer.Ordinal);
+        Assert.Equal(named, ErpReadGuard.ParametersOf(sql).Select(p => p.Name).OrderBy(n => n, StringComparer.Ordinal));
+
+        ErpReadGuard.Require(sql);
+        ErpReadGuard.Require(sql, FindArgs());
+        // 글자 20자의 %·_·[가 모두 세 글자로 바뀌고 앞뒤 %를 더한 62자까지 받는다
+        var longest = FindArgs();
+        longest["@starts"] = string.Concat(Enumerable.Repeat("[%]", 20)) + "%";
+        longest["@contains"] = "%" + string.Concat(Enumerable.Repeat("[[]", 20)) + "%";
+        ErpReadGuard.Require(sql, longest);
+    }
+
+    [Fact(DisplayName = "AC-3708.1 FindCodesSql도 고친 글자·빠진·더한·글자 아닌·긴(63자) 매개변수는 DB에 닿기 전에 E-BIT-READ-FAILED")]
+    public void FindCodesStatementGuarded()
+    {
+        var sql = ClosingSql.FindCodesSql;
+        foreach (var changed in new[] { sql + " ", sql.Replace("TOP 30", "TOP 3000"), sql + " UNION SELECT PbsPatNam,PbsPatNam FROM dbo.PbsInf" })
+        {
+            var db = new FakeDb();
+            Assert.False(ErpReadGuard.IsAllowed(changed));
+            Assert.Equal(BitErrors.ReadFailed, Fails(() => ErpReadGuard.Query(db, changed, FindArgs(), Second)).Code);
+            Assert.Empty(db.Calls);
+        }
+
+        var missing = FindArgs();
+        missing.Remove("@contains");
+        var extra = FindArgs();
+        extra["@hospital"] = Synthetic.Scope;
+        var notText = FindArgs();
+        notText["@day"] = 20261109;
+        var tooLong = FindArgs();
+        tooLong["@starts"] = new string('C', 63);
+        var nullValue = FindArgs();
+        nullValue["@contains"] = null;
+        foreach (var args in new[] { missing, extra, notText, tooLong, nullValue })
+        {
+            var db = new FakeDb();
+            Assert.Equal(BitErrors.ReadFailed, Fails(() => ErpReadGuard.Query(db, sql, args, Second)).Code);
+            Assert.Empty(db.Calls);
+        }
+    }
+
+    [Fact(DisplayName = "AC-3708.1 ClosingCodes.Find가 DB에 보낸 문장은 FindCodesSql 하나이고 ErpReadGuard가 받는 매개변수다")]
+    public void FindCodesReadPassesTheGuard()
+    {
+        var inner = new FakeDb();
+        inner.Answer(ClosingSql.FindCodesSql, _ => new[] { new object?[] { "CARM1", "C-arm 유도" } });
+        var db = new GuardCheckingDb(inner);
+        ClosingCodes.Find(db, "ca", ClosingFake.Day);
+
+        Assert.Empty(db.Refused);
+        Assert.Equal(new[] { ClosingSql.FindCodesSql }, inner.Sqls);
+    }
+
     [Fact(DisplayName = "AC-3606.1 기존 관문이 받는 문장(매출·코드 목록·등록 확인)은 ErpReadGuard도 받고 매개변수 표는 Sql.ParametersOf 그대로다")]
     public void ExistingStatementsPass()
     {

@@ -169,6 +169,19 @@ N AS (
 )
 SELECT T.RxCode,T.Visits,N.Name FROM T LEFT JOIN N ON N.Code=T.RxCode AND N.Pick=1";
 
+    /// <summary>closing.findCodes 시간 제한 15초(erp-closing-range design.md 10절).</summary>
+    public static readonly TimeSpan FindTimeout = TimeSpan.FromSeconds(15);
+
+    /// <summary>
+    /// closing.findCodes(REQ-3708, erp-closing-range design.md 10절 글 그대로): 비트 코드표(SeeMst)에서 @day(도우미 PC 오늘)에 쓸 수 있는 줄 가운데
+    /// 코드가 @starts(글자 + '%')에 맞거나 이름이 @contains('%' + 글자 + '%')에 맞는 코드를 [코드(앞뒤 공백 뗀 대문자), 이름]으로 코드 차례 30개.
+    /// 환자 표는 읽지 않는다. 글자 안의 LIKE 글자(%·_·[)는 ClosingCodes.Find가 [%]·[_]·[[]로 바꿔 넣는다(문장 글은 그대로).
+    /// </summary>
+    public const string FindCodesSql = "SELECT TOP 30 UPPER(LTRIM(RTRIM(s.SeeOdrCod))) Code, MAX(s.SeeKorNam) Name FROM dbo.SeeMst s WHERE s.SeeOdrCod<>'' AND @day BETWEEN s.SeeAdpDte AND s.SeeExpDte AND (s.SeeOdrCod LIKE @starts OR s.SeeKorNam LIKE @contains) GROUP BY UPPER(LTRIM(RTRIM(s.SeeOdrCod))) ORDER BY Code";
+
+    /// <summary>closing.findCodes LIKE 글 길이: 글자 20자의 %·_·[가 모두 세 글자([%])로 바뀌고 앞뒤 '%'를 더한 62자(20 × 3 + 2).</summary>
+    public const int FindPatternSize = 62;
+
     private static readonly SqlParam Day = new SqlParam("@day", SqlParamKind.Char, 8);
     private static readonly SqlParam NextDay = new SqlParam("@nextDay", SqlParamKind.Char, 8);
     private static readonly SqlParam From = new SqlParam("@from", SqlParamKind.Char, 12);
@@ -195,5 +208,18 @@ SELECT T.RxCode,T.Visits,N.Name FROM T LEFT JOIN N ON N.Code=T.RxCode AND N.Pick
         [ReservationPatientsSql] = new[] { From, To, Hospital },
         [MemoKindsSql] = new SqlParam[0],
         [CodeListSql] = new[] { From, To, First, Last, Hospital },
+    };
+
+    // closing.findCodes LIKE 글(앞부분·가운데)
+    private static readonly SqlParam Starts = new SqlParam("@starts", SqlParamKind.VarChar, FindPatternSize);
+    private static readonly SqlParam Contains = new SqlParam("@contains", SqlParamKind.VarChar, FindPatternSize);
+
+    /// <summary>
+    /// closing.findCodes 문장 → 매개변수(@day·@starts·@contains 셋). ERP 읽기 관문(ErpReadGuard)이 Parameters와 함께 보는 문장 표다.
+    /// Parameters(closing.codes·closing.day 문장 아홉)와 따로 둔다: 그 아홉은 기존 시험(ClosingSql.test.cs·ClosingFakes.test.cs, TASK-10 범위 밖)이 센다.
+    /// </summary>
+    public static IReadOnlyDictionary<string, SqlParam[]> FindParameters { get; } = new Dictionary<string, SqlParam[]>(StringComparer.Ordinal)
+    {
+        [FindCodesSql] = new[] { Day, Starts, Contains },
     };
 }
