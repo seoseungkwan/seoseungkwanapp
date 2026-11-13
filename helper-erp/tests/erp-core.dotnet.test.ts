@@ -236,6 +236,10 @@ describe('TASK-10 closing.findCodes·묶음 exclude (erp-closing-range design.md
     expectAc('AC-3709.2', closingRun)
   })
 
+  it('AC-3711.1 (C# Closing 시험) overlap.shared = 함께 있는 진료마다 씨암·SONO 두 묶음 모두에서 쓸 처방이면서 두 매출 규칙에 다 맞는 코드 줄 금액(코드마다 한 번)의 합, 다 더한 뒤 원 미만 버림: 겹친 코드 없으면 0, 함께 있지 않은 진료·한쪽 묶음에서 빠진 코드는 안 듦, 앞글자끼리 겹침도 듦, null 조건 그대로, 칸은 visits·carm·sono·shared 넷', () => {
+    expectAc('AC-3711.1', closingRun)
+  })
+
   it('AC-3708.1: commands.json closing.findCodes = { patient: false, args: { text: 글자 2~20자, 앞뒤 공백 없음 } }(표가 아는 string 꼴)', () => {
     const table = readJson(path.join(ERP, 'commands.json')) as { commands: Record<string, unknown> }
     expect(table.commands['closing.findCodes']).toEqual(FIND_CODES)

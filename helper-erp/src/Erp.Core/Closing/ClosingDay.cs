@@ -242,6 +242,7 @@ public sealed class ClosingInjection
 
 /// <summary>
 /// 씨암·SONO 표시 코드가 함께 있는 진료(TASK-15, AC-3604.7): 진료 수와 그 진료들만의 각 매출 규칙 금액(원 미만 버림).
+/// shared(erp-closing-range AC-3711.1) = 그 진료들에서 두 묶음 금액에 다 든(두 번 센) 코드 줄 금액의 합(원 미만 버림).
 /// 진료·환자를 가리키는 값은 없다. groups total에는 이 진료가 들어 있다(= 둘 다 넣은 값).
 /// </summary>
 public sealed class ClosingOverlap
@@ -254,6 +255,9 @@ public sealed class ClosingOverlap
 
     [JsonPropertyName("sono")]
     public long Sono { get; set; }
+
+    [JsonPropertyName("shared")]
+    public long Shared { get; set; }
 }
 
 public sealed class ClosingWarnings
@@ -631,6 +635,7 @@ public static class ClosingDay
     /// <summary>
     /// 씨암·SONO가 함께 있는 진료(TASK-15, AC-3604.7): carm·sono 둘 다 매출 규칙이 있을 때만 두 묶음에 함께 드는(Visit.Has, 묶음마다 자기 쓸 처방으로, AC-3709.2)
     /// 진료 수와 그 진료들만의 각 규칙 금액(묶음마다 자기 쓸 처방으로, 원 미만 버림). 아니면 null. 진료번호 같은 줄 값은 싣지 않는다.
+    /// shared(erp-closing-range AC-3711.1, design.md 14절) = 그 진료들의 SharedAmount 합, 다 더한 뒤 원 미만 버림. 새 SQL·매개변수는 없다.
     /// </summary>
     private static ClosingOverlap? Overlap(List<Visit> visits, List<Wanted> wanted)
     {
@@ -639,16 +644,33 @@ public static class ClosingDay
         if (carm == null || sono == null || !carm.HasRule || !sono.HasRule) return null;
 
         var overlap = new ClosingOverlap();
-        decimal carmAmount = 0m, sonoAmount = 0m;
+        decimal carmAmount = 0m, sonoAmount = 0m, sharedAmount = 0m;
         foreach (var visit in visits.Where(visit => visit.Has(carm) && visit.Has(sono)))
         {
             overlap.Visits++;
             carmAmount = ClosingRead.Add(carmAmount, RuleAmount(visit, carm));
             sonoAmount = ClosingRead.Add(sonoAmount, RuleAmount(visit, sono));
+            sharedAmount = ClosingRead.Add(sharedAmount, SharedAmount(visit, carm, sono));
         }
         overlap.Carm = ClosingRead.Won(carmAmount);
         overlap.Sono = ClosingRead.Won(sonoAmount);
+        overlap.Shared = ClosingRead.Won(sharedAmount);
         return overlap;
+    }
+
+    /// <summary>
+    /// 함께 있는 진료 하나에서 두 번 센 돈(AC-3711.1): 씨암 묶음에서 쓸 처방이면서 씨암 매출 규칙에 맞고, 그 코드가 SONO 묶음에서도 쓸 처방이면서
+    /// SONO 매출 규칙에 맞는 줄의 금액 합(코드마다 한 번). 읽지 않을 처방 규칙으로 한쪽 묶음에서 빠진 코드는 들지 않는다.
+    /// </summary>
+    private static decimal SharedAmount(Visit visit, Wanted carm, Wanted sono)
+    {
+        var sonoCodes = new HashSet<string>(visit.CodesFor(sono).Where(pair => sono.Counts(pair.Key)).Select(pair => pair.Key), StringComparer.Ordinal);
+        var amount = 0m;
+        foreach (var pair in visit.CodesFor(carm).Where(pair => carm.Counts(pair.Key) && sonoCodes.Contains(pair.Key)))
+        {
+            amount = ClosingRead.Add(amount, pair.Value.Amount);
+        }
+        return amount;
     }
 
     private static void AddThree(Person person, Action addNew, Action addFirst90, Action addReturn)

@@ -356,12 +356,12 @@ public class ClosingDayTests
         Assert.Equal(new long[] { 0, 0, 0 }, new[] { overlap.Visits, overlap.Carm, overlap.Sono });
     }
 
-    [Fact(DisplayName = "AC-3604.7 overlap JSON은 visits·carm·sono 세 숫자 칸뿐이고 진료·환자를 가리키는 값이 없다")]
+    [Fact(DisplayName = "AC-3604.7 AC-3711.1 overlap JSON은 visits·carm·sono·shared 네 숫자 칸뿐이고 진료·환자를 가리키는 값이 없다")]
     public void OverlapShape()
     {
         var data = ClosingFake.DataOf(OverlapDay().Read(R("carm", new[] { "CARM1" }, La), R("sono", new[] { "SONO1" }, La)));
         var overlap = data.GetProperty("overlap");
-        Assert.Equal(ClosingFake.Sorted("visits", "carm", "sono"), ClosingFake.Keys(overlap));
+        Assert.Equal(ClosingFake.Sorted("visits", "carm", "sono", "shared"), ClosingFake.Keys(overlap));   // shared는 REQ-3711이 더함
         foreach (var property in overlap.EnumerateObject()) Assert.Equal(JsonValueKind.Number, property.Value.ValueKind);
         Assert.DoesNotContain("V003", data.GetRawText(), StringComparison.Ordinal);
     }
@@ -707,6 +707,97 @@ public class ClosingDayTests
     }
 
     private static string JsonOf(object? value) => JsonSerializer.Serialize(value);
+
+    // ---- AC-3711.1 그날 두 번 센 돈(overlap.shared, erp-closing-range design.md 14절) -----------------------------
+
+    /// <summary>씨암 셀 코드 LA358·LA272(앞글자 없음, 사용자 설정 모양). exclude가 null이면 그 칸을 보내지 않은 것이다.</summary>
+    private static ClosingGroup CarmCells(ClosingExcludeRule[]? exclude = null) =>
+        X("carm", new[] { "CARM1" }, exclude, NoPrefix, new[] { "LA358", "LA272" });
+
+    /// <summary>SONO 셀 코드 LA247·LA272(앞글자 없음, 사용자 설정 모양).</summary>
+    private static ClosingGroup SonoCells(ClosingExcludeRule[]? exclude = null) =>
+        X("sono", new[] { "SONO1" }, exclude, NoPrefix, new[] { "LA247", "LA272" });
+
+    /// <summary>함께 있는 진료 V001(CARM1 · SONO1 · LA358 213,800 · LA247 31,650) · 씨암만 V002(LA272 15,825).</summary>
+    private static DayRig SharedDay() => new DayRig()
+        .Visit("V001", 1, "4", 40, 1000m).Line("V001", "CARM1", 0m).Line("V001", "SONO1", 0m)
+            .Line("V001", "LA358", 213800m).Line("V001", "LA247", 31650m)
+        .Visit("V002", 2, "4", 40, 1000m).Line("V002", "CARM1", 0m).Line("V002", "LA272", 15825m);
+
+    /// <summary>확장이 받는 JSON의 overlap 네 칸(visits·carm·sono·shared). 칸이 없으면 -1.</summary>
+    private static long[] Four(ClosingDayResult result)
+    {
+        var overlap = ClosingFake.DataOf(result).GetProperty("overlap");
+        return new[] { "visits", "carm", "sono", "shared" }
+            .Select(name => overlap.TryGetProperty(name, out var cell) ? cell.GetInt64() : -1L).ToArray();
+    }
+
+    [Fact(DisplayName = "AC-3711.1 시안 예: 씨암 셀 코드 LA358·LA272 / SONO 셀 코드 LA247·LA272, 함께 있는 진료 CARM1·SONO1·LA358·LA247 → shared 0, visits·carm·sono·groups는 지금 셈 그대로, 씨암만 있는 진료의 LA272는 안 듦")]
+    public void SharedZeroWithoutCommonCode()
+    {
+        var result = SharedDay().Read(CarmCells(), SonoCells());
+
+        Assert.Equal(new long[] { 1, 213800, 31650, 0 }, Four(result));
+        Assert.Equal(213800L + 15825L, GroupOf(result, "carm").Total);
+        Assert.Equal(31650L, GroupOf(result, "sono").Total);
+        Assert.Equal(2L, GroupOf(result, "carm").Patients);
+        Assert.Equal(1L, GroupOf(result, "sono").Patients);
+    }
+
+    [Fact(DisplayName = "AC-3711.1 함께 있는 진료에 LA272가 있으면 shared = 그 LA272 금액, 함께 있는 진료 둘의 겹친 금액은 더하고 원 미만은 다 더한 뒤 버림(JSON shared 칸)")]
+    public void SharedIsCommonCodeAmount()
+    {
+        var one = SharedDay().Line("V001", "LA272", 15825.5m).Read(CarmCells(), SonoCells());
+        Assert.Equal(new long[] { 1, 229625, 47475, 15825 }, Four(one));   // 씨암 213,800 + 15,825.5 · SONO 31,650 + 15,825.5 → 버림
+        Assert.Equal(15825L, ClosingFake.DataOf(one).GetProperty("overlap").GetProperty("shared").GetInt64());
+        Assert.Equal(213800L + 15825L + 15825L, GroupOf(one, "carm").Total);
+        Assert.Equal(47475L, GroupOf(one, "sono").Total);
+
+        var two = SharedDay().Line("V001", "LA272", 15825.5m)
+            .Visit("V003", 3, "1", 40, 1000m).Line("V003", "CARM1", 0m).Line("V003", "SONO1", 0m)
+                .Line("V003", "LA272", 15825.5m).Line("V003", "LA247", 31650m)
+            .Read(CarmCells(), SonoCells());
+        Assert.Equal(new long[] { 2, 245451, 94951, 31651 }, Four(two));   // shared 15,825.5 × 2 = 31,651(진료마다 버리면 31,650)
+    }
+
+    [Fact(DisplayName = "AC-3711.1 읽지 않을 처방 규칙으로 SONO 쪽에서 LA272가 빠지면(LA272 ← LA358) shared에 안 듦, 씨암 쪽에서 빠져도 같다")]
+    public void SharedSkipsExcludedCode()
+    {
+        DayRig Rig() => SharedDay().Line("V001", "LA272", 15825m);
+
+        var sonoOut = Rig().Read(CarmCells(), SonoCells(new[] { Drop("LA272", "LA358") }));
+        Assert.Equal(new long[] { 1, 229625, 31650, 0 }, Four(sonoOut));
+
+        var carmOut = Rig().Read(CarmCells(new[] { Drop("LA272", "LA247") }), SonoCells());
+        Assert.Equal(new long[] { 1, 213800, 47475, 0 }, Four(carmOut));
+        Assert.Equal(213800L + 15825L, GroupOf(carmOut, "carm").Total);   // 씨암만 V002에는 LA247이 없어 LA272가 그대로 든다
+    }
+
+    [Fact(DisplayName = "AC-3711.1 앞글자 규칙끼리 겹치면(씨암·SONO 둘 다 LA) 그 코드 금액이 shared에 들고, 한쪽 규칙에만 맞는 줄(SONO 더 셀 코드 KK090)은 안 들며, 두 규칙에 맞는 줄도 코드마다 한 번")]
+    public void SharedWithPrefixRules()
+    {
+        var result = OverlapDay().Read(R("carm", new[] { "CARM1" }, La), R("sono", new[] { "SONO1" }, La, new[] { "KK090" }));
+        Assert.Equal(new long[] { 1, 245450, 278060, 245450 }, Four(result));   // 213,800 + 31,650.5 → 버림
+
+        var twice = OverlapDay().Read(
+            R("carm", new[] { "CARM1" }, La, new[] { "LA358" }), R("sono", new[] { "SONO1" }, La, new[] { "KK090", "LA247" }));
+        Assert.Equal(new long[] { 1, 245450, 278060, 245450 }, Four(twice));
+    }
+
+    [Fact(DisplayName = "AC-3711.1 overlap이 null인 조건은 그대로(한쪽만 규칙·한 묶음 없음), 둘 다 규칙인데 함께 있는 진료가 없으면 네 칸 모두 0")]
+    public void SharedKeepsNullRules()
+    {
+        Assert.Null(SharedDay().Line("V001", "LA272", 15825m).Read(G("carm", "CARM1"), SonoCells()).Overlap);
+        Assert.Null(SharedDay().Line("V001", "LA272", 15825m).Read(CarmCells(), G("sono", "SONO1")).Overlap);
+        Assert.Null(SharedDay().Line("V001", "LA272", 15825m).Read(CarmCells()).Overlap);
+        Assert.Null(SharedDay().Line("V001", "LA272", 15825m).Read(SonoCells()).Overlap);
+
+        var none = new DayRig()
+            .Visit("V001", 1, "4", 40, 1000m).Line("V001", "CARM1", 0m).Line("V001", "LA272", 15825m)
+            .Visit("V002", 1, "4", 40, 1000m).Line("V002", "SONO1", 0m).Line("V002", "LA272", 15825m)
+            .Read(CarmCells(), SonoCells());
+        Assert.Equal(new long[] { 0, 0, 0, 0 }, Four(none));
+    }
 
     // ---- AC-3603.2 환자현황 -----------------------------------------------------------------------
 
