@@ -6,12 +6,17 @@
 //   적힌 칸이 있으면 묻기([바꾸기]·[빈 칸만]) → 누를 때마다 날짜 다시 확인 → 채움 → 안내. 오류·날짜 바뀜·묻기 닫음이면 어느 칸도 바꾸지 않는다
 // - [되돌리기]·[지난 결과]의 기억(넣은 칸과 넣기 전 글자, 마지막 안내)은 이 화면 기억(startPage 안 변수)에만 두고
 //   되돌린 뒤·다음 채우기·화면 떠남 때 지운다. 도우미 답과 이 기억은 어디에도 저장하지 않는다(chrome.storage에 쓰는 것은 overlap 선택뿐)
-// - 저장은 사용자가 누른다
+// - [비트 값 채우기](하루)는 저장을 누르지 않는다(사용자가 누름, AC-3703.6). 저장 단추는 [기간 채우기]에서만 누른다
+// - [기간 채우기](spec erp-closing-range design.md 6절): 원무 화면이면 안내만 → 설정 → 기간 고르기 → 살펴보기(scanRange) →
+//   승인 안내 → 하루씩 채우고 두 저장(runRange) → 끝·멈춤 안내. 살펴보기부터 안내를 닫을 때까지 두 단추·[지난 결과]를 막는다.
+//   살펴본 결과·남은 날은 이 화면 기억(ranging)에만 두고 닫기·화면 떠남 때 지운다(AC-3703.5·3704.3)
 import { planCells } from './cells.js'
-import { dateLabels, readDate } from './erpday.js'
+import { blocker, dateLabels, draftNotice, readDate, readJournal, save as pressSave, setDate, waitLoaded } from './erpday.js'
 import { E_BRIDGE_BAD_REPLY, E_BRIDGE_DISCONNECTED, E_CLOSING_FUTURE_DATE, E_HELPER_TIMEOUT } from './errors.js'
 import { fillAll, survey, undoAll, type FillMode, type UndoEntry } from './fill.js'
 import { createDock, HOST_ID, type Dock, type View } from './panel.js'
+import { rangeDays, runRange, scanRange, type RangeDeps } from './range.js'
+import type { RangeAction, RunSummary, ScanSummary } from './rangeTypes.js'
 import { load, saveOverlap, toGroups } from './settings.js'
 import type { ClosingDay, MoneyKey, OverlapChoice, Settings } from './types.js'
 
@@ -115,6 +120,22 @@ function openSettings(): void {
 /** 마지막 채우기의 화면 기억: 채운 날짜·넣은 칸과 넣기 전 글자·그 안내 */
 type Memory = { date: string; undo: UndoEntry[]; view: Extract<View, { kind: 'done' }> }
 
+/**
+ * 기간 채우기 화면 기억(이 화면 변수에만): 설정 · 지금 단계 · 기간 · 살펴본 결과 · 쓸 함께 있는 진료 선택 · 앞 채우기 결과 ·
+ * [그만두기]·[멈추기] 눌림. phase: pick 기간 고르기 · scanning 살펴보는 중 · confirm 승인 안내 · running 채우는 중 ·
+ * paused 멈춤(이어서 하기를 기다림) · done 끝
+ */
+type Ranging = {
+  settings: Settings
+  phase: 'pick' | 'scanning' | 'confirm' | 'running' | 'paused' | 'done'
+  from: string
+  to: string
+  scan?: ScanSummary
+  choice?: OverlapChoice
+  run?: RunSummary
+  halt: boolean
+}
+
 /** ERP 화면에서 단추를 붙이고 지킨다. stop()은 단추를 떼고 보기를 멈춘다 */
 export function startPage(doc: Document = document): { stop(): void } {
   doc.getElementById(HOST_ID)?.remove() // 앞서 붙은 것(확장을 다시 읽은 뒤 등)
@@ -123,7 +144,15 @@ export function startPage(doc: Document = document): { stop(): void } {
   let busy = false
   /** [되돌리기]·[지난 결과] 기억(이 화면에만) */
   let memory: Memory | null = null
-  const dock: Dock = createDock(doc, { onFill: () => void run(), onOpenSettings: openSettings, onUndo: () => void undo() })
+  /** 기간 채우기 기억(이 화면에만) */
+  let ranging: Ranging | null = null
+  const dock: Dock = createDock(doc, {
+    onFill: () => void run(),
+    onOpenSettings: openSettings,
+    onUndo: () => void undo(),
+    onRange: () => void openRange(),
+    onRangeAction: (action) => void rangeAct(action),
+  })
 
   const remember = (next: Memory | null) => {
     memory = next
@@ -252,11 +281,203 @@ export function startPage(doc: Document = document): { stop(): void } {
     }
   }
 
+  // --- 기간 채우기(spec erp-closing-range design.md 6절) ---
+
+  /**
+   * [기간 채우기]: 원무 화면이면 안내만 → 설정(없으면 설정 화면 열기) → 기간 고르기.
+   * 처음 값(AC-3701.1): 끝일 = 마감 일자(오늘 뒤면 오늘) · 시작일 = 끝일 달 1일. 마감 일자를 못 읽으면 둘 다 오늘
+   */
+  async function openRange() {
+    if (busy) return
+    const mine = visit
+    ranging = null
+    if (blocker(doc)?.kind === 'todayOnly') {
+      dock.showRange({ kind: 'todayOnly' })
+      return
+    }
+    let settings: Settings | null
+    try {
+      settings = await load()
+    } catch {
+      if (mine === visit && !busy) dock.show({ kind: 'err', code: E_BRIDGE_DISCONNECTED })
+      return
+    }
+    if (mine !== visit || busy) return
+    if (!settings) {
+      openSettings()
+      dock.show({ kind: 'first' })
+      return
+    }
+    const now = today()
+    const date = readDate(doc)
+    const end = date && date < now ? date : now
+    ranging = { settings, phase: 'pick', from: date ? `${end.slice(0, 8)}01` : now, to: end, halt: false }
+    dock.showRange({ kind: 'pick', from: ranging.from, to: end, today: now })
+  }
+
+  /** 기간 흐름이 쓰는 부품: erpday.ts 함수에 doc을 묶는다. 화면을 떠났거나 안내를 닫았으면 gone */
+  function rangeDeps(r: Ranging, mine: number): RangeDeps {
+    return {
+      setDate: (date) => setDate(doc, date),
+      waitLoaded: (date) => waitLoaded(doc, date),
+      blocker: () => blocker(doc),
+      draftNotice: () => draftNotice(doc),
+      readJournal: () => readJournal(doc),
+      async askDay(date) {
+        const outcome = await askDay(date, r.settings)
+        if (outcome.kind === 'day') return { day: outcome.day }
+        const code = outcome.view.kind === 'err' ? outcome.view.code : E_CLOSING_FUTURE_DATE
+        return { block: { kind: 'helper', code } }
+      },
+      async fill(day, choice) {
+        await fillAll(doc, planCells(day, r.settings, choice), 'all')
+      },
+      save: (which) => pressSave(doc, which),
+      gone: () => mine !== visit || ranging !== r,
+    }
+  }
+
+  /** 기간 채우기를 끝낸다: 기억을 지우고 단추를 푼다 */
+  function endRange() {
+    ranging = null
+    busy = false
+    dock.setRangeBusy(false)
+  }
+
+  /** 살펴보기 → 승인 안내 / 멈춤 안내(저장 0일) / 그만두면 닫기 */
+  async function scanFlow(r: Ranging) {
+    const mine = visit
+    const live = () => mine === visit && ranging === r
+    r.phase = 'scanning'
+    r.halt = false
+    const days = rangeDays(r.from, r.to)
+    dock.showRange({ kind: 'scanning', total: days.length, done: 0 })
+    const out = await scanRange(
+      days,
+      rangeDeps(r, mine),
+      (done) => {
+        if (live()) dock.showRange({ kind: 'scanning', total: days.length, done })
+      },
+      () => r.halt,
+    )
+    if ('gone' in out || !live()) return
+    if ('cancelled' in out) {
+      dock.hide()
+      endRange()
+      return
+    }
+    if ('block' in out) {
+      r.phase = 'paused'
+      const run: RunSummary = { from: r.from, to: r.to, total: days.length, saved: [], skipped: [], failed: [], remaining: days }
+      dock.showRange({ kind: 'blocked', block: out.block, run })
+      return
+    }
+    r.scan = out.scan
+    r.phase = 'confirm'
+    dock.showRange({ kind: 'confirm', scan: out.scan, ...(r.settings.overlap ? { last: r.settings.overlap } : {}) })
+  }
+
+  /** 하루씩 채우고 저장 → 끝·멈춤 안내. prior = 앞 결과(처음이면 진료 0건 날을 건너뛴 날로 넣은 것) */
+  async function fillFlow(r: Ranging, days: string[], prior: RunSummary) {
+    const mine = visit
+    const live = () => mine === visit && ranging === r
+    r.phase = 'running'
+    r.halt = false
+    // 진행 안내는 runRange가 날마다 시작할 때 그린다(첫날은 곧바로)
+    const out = await runRange(
+      days,
+      rangeDeps(r, mine),
+      r.choice,
+      (saved, current) => {
+        if (live()) dock.showRange({ kind: 'running', total: prior.total, saved, current, ...(r.halt ? { stopping: true } : {}) })
+      },
+      () => r.halt,
+      prior,
+    )
+    if ('gone' in out || !live()) return
+    r.run = out.run
+    if (out.outcome === 'blocked' && out.block) {
+      r.phase = 'paused'
+      dock.showRange({ kind: 'blocked', block: out.block, run: out.run })
+    } else if (out.outcome === 'stopped') {
+      r.phase = 'paused'
+      dock.showRange({ kind: 'stopped', run: out.run })
+    } else {
+      r.phase = 'done'
+      dock.showRange({ kind: 'end', run: out.run })
+    }
+  }
+
+  /** 기간 안내 단추(design.md 6절). 단계에 맞지 않는 동작(떨어진 단추·두 번 누름)은 무시한다 */
+  async function rangeAct(action: RangeAction) {
+    const r = ranging
+    if (!r) return
+    switch (action.kind) {
+      case 'scan':
+        if (busy || r.phase !== 'pick' || action.from > action.to || action.to > today()) return
+        busy = true
+        dock.setRangeBusy(true)
+        remember(null)
+        r.from = action.from
+        r.to = action.to
+        await scanFlow(r)
+        return
+      case 'cancelScan':
+        if (r.phase === 'scanning') r.halt = true
+        return
+      case 'stop':
+        // 멈춤 표시만: [멈추기]는 이미 '멈추는 중…'으로 막혔고, runRange가 날짜를 바꾸기 전에 본다
+        if (r.phase === 'running') r.halt = true
+        return
+      case 'start': {
+        const scan = r.scan
+        if (r.phase !== 'confirm' || !scan) return
+        r.phase = 'running'
+        const mine = visit
+        r.choice = action.choice ?? r.settings.overlap
+        // 묻기에서 새로 고른 것만 기억한다(지금 saveOverlap). 기억하지 못해도 고른 대로 채운다
+        if (action.choice && action.choice !== r.settings.overlap) {
+          try {
+            await saveOverlap(action.choice)
+          } catch {
+            // 확장과 끊김 등: 다음엔 지난번 것이 예전 것으로 보일 뿐이다
+          }
+          if (mine !== visit || ranging !== r) return
+        }
+        const prior: RunSummary = {
+          from: scan.from,
+          to: scan.to,
+          total: scan.fill.length,
+          saved: [],
+          skipped: scan.zero.map((date) => ({ date, why: 'zero' as const })),
+          failed: [],
+          remaining: [...scan.fill],
+        }
+        await fillFlow(r, scan.fill, prior)
+        return
+      }
+      case 'resume':
+        if (r.phase !== 'paused') return
+        // 채우다 멈췄으면 남은 날부터(같은 승인), 살펴보다 멈췄으면 다시 살펴본다(아무 칸도 바꾸지 않으므로)
+        if (r.run) await fillFlow(r, r.run.remaining, r.run)
+        else await scanFlow(r)
+        return
+      case 'close':
+        // 안내는 dock이 이미 닫았다. 도는 중에는 닫기가 없다
+        if (r.phase === 'scanning' || r.phase === 'running') return
+        if (r.phase === 'pick') ranging = null
+        else endRange()
+        return
+    }
+  }
+
   function leave() {
     visit += 1
     busy = false
+    ranging = null
     remember(null)
     dock.setReading(false)
+    dock.setRangeBusy(false)
     dock.hide()
     dock.host.remove()
   }

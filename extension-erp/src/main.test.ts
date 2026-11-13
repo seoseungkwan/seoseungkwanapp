@@ -1239,12 +1239,24 @@ describe('AC-3609.1 내용 스크립트와 모듈 파일', () => {
       expect(open, file).toContain(file)
       const code = readFileSync(path.join(SRC, file.replace(/\.js$/, '.ts')), 'utf8')
       for (const [, spec] of code.matchAll(IMPORT)) {
-        expect(spec, `${file}: ${spec}`).toMatch(/^\.\/[a-z]+\.js$/)
+        expect(spec, `${file}: ${spec}`).toMatch(/^\.\/[a-zA-Z]+\.js$/)
         walk(spec.slice(2))
       }
     }
     walk('main.js')
-    expect([...seen].sort()).toEqual(['cells.js', 'errors.js', 'fill.js', 'main.js', 'panel.js', 'settings.js', 'types.js'])
+    expect([...seen].sort()).toEqual([
+      'cells.js',
+      'erpday.js',
+      'errors.js',
+      'fill.js',
+      'main.js',
+      'panel.js',
+      'range.js',
+      'rangeTypes.js',
+      'rangeView.js',
+      'settings.js',
+      'types.js',
+    ])
   })
 })
 
