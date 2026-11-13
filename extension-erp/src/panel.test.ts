@@ -11,6 +11,7 @@ import { sampleDay, settingsFirst } from './__tests__/erpPage'
 import { HELD_SALES, planCells, type Where } from './cells'
 import type { FillResult } from './fill'
 import { createDock, FLOW_TEXT, HOST_ID, OVERLAP_TEXT, placeLine, SKIP_TEXT, TEXT, warningLines, type Dock, type View } from './panel'
+import type { RangeAction, RangeView, RunSummary, ScanSummary } from './rangeTypes'
 import type { ClosingDay, OverlapChoice } from './types'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -829,5 +830,299 @@ describe('안내서 [되돌리기] 절 (TASK-21)', () => {
     ]) {
       expect(section, line).toContain(`'${line}'`)
     }
+  })
+})
+
+// TASK-3 REQ-3701·3704·3705: [기간 채우기] 단추와 같은 그림자 뿌리 안의 기간 안내(design.md 4절, 시안 docs/mockups/erp-closing-range/ ①~⑤).
+// 안내 몸통 글은 rangeView.test.ts가 본다. 여기서는 단추 자리·머리 글·×·Esc·막기·다른 안내와의 바꿔 끼우기만
+describe('TASK-3 [기간 채우기] 단추와 기간 안내(design.md 4절)', () => {
+  const css = () => (dock?.host.shadowRoot?.querySelector('style')?.textContent ?? '').replace(/\s+/g, '')
+  const rule = (all: string, selector: string) => {
+    const at = all.indexOf(`${selector}{`)
+    return at < 0 ? '' : all.slice(at + selector.length + 1, all.indexOf('}', at))
+  }
+
+  function openRange() {
+    const onFill = vi.fn()
+    const onOpenSettings = vi.fn()
+    const onUndo = vi.fn()
+    const onRange = vi.fn()
+    const onRangeAction = vi.fn<(a: RangeAction) => void>()
+    dock = createDock(document, { onFill, onOpenSettings, onUndo, onRange, onRangeAction })
+    document.body.append(dock.host)
+    const shadow = dock.host.shadowRoot
+    if (!shadow) throw new Error('shadowRoot 없음')
+    const $ = <T extends Element = HTMLElement>(sel: string) => shadow.querySelector<T>(sel) as T
+    const $$ = (sel: string) => [...shadow.querySelectorAll(sel)]
+    const act = (label: string) => {
+      const found = $$('.acts button').find((b) => text(b) === label) as HTMLButtonElement | undefined
+      if (!found) throw new Error(`[${label}] 단추가 없다: ${$$('.acts button').map(text).join(', ')}`)
+      return found
+    }
+    return {
+      dock,
+      shadow,
+      $,
+      $$,
+      act,
+      fill: () => $<HTMLButtonElement>('.fill-btn'),
+      range: () => $<HTMLButtonElement>('.fill-btn2'),
+      last: () => $<HTMLButtonElement>('.last'),
+      panel: () => $<HTMLElement>('.panel'),
+      body: () => $<HTMLElement>('.panel .pb'),
+      x: () => $<HTMLButtonElement>('.x'),
+      onFill,
+      onRange,
+      onRangeAction,
+    }
+  }
+  const esc = () => {
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    document.body.dispatchEvent(event)
+    return event
+  }
+
+  const scan = (o: Partial<ScanSummary> = {}): ScanSummary => ({
+    from: '2026-10-01',
+    to: '2026-10-02',
+    fill: ['2026-10-01', '2026-10-02'],
+    fresh: ['2026-10-01', '2026-10-02'],
+    written: [],
+    zero: [],
+    unloaded: [],
+    overlapVisits: 0,
+    ...o,
+  })
+  const run = (o: Partial<RunSummary> = {}): RunSummary => ({
+    from: '2026-10-01',
+    to: '2026-10-02',
+    total: 2,
+    saved: ['2026-10-01'],
+    skipped: [],
+    failed: [],
+    remaining: ['2026-10-02'],
+    ...o,
+  })
+  const VIEWS = {
+    pick: { kind: 'pick', from: '2026-10-01', to: '2026-10-31', today: '2026-11-13' },
+    todayOnly: { kind: 'todayOnly' },
+    scanning: { kind: 'scanning', total: 2, done: 1 },
+    confirm: { kind: 'confirm', scan: scan() },
+    running: { kind: 'running', total: 2, saved: 1, current: '2026-10-02' },
+    stopped: { kind: 'stopped', run: run() },
+    blocked: { kind: 'blocked', block: { kind: 'dialog' }, run: run() },
+    end: { kind: 'end', run: run({ remaining: [] }) },
+  } satisfies Record<RangeView['kind'], RangeView>
+  const CLOSABLE = (['pick', 'todayOnly', 'confirm', 'stopped', 'blocked', 'end'] as const).map((k) => [k, VIEWS[k]] as const)
+  const OPEN = (['scanning', 'running'] as const).map((k) => [k, VIEWS[k]] as const)
+
+  it('AC-3701.1: [기간 채우기]는 [비트 값 채우기] 바로 왼쪽의 흰 바탕 보조 단추(같은 높이)이고, 누르면 onRange만 부른다', () => {
+    const p = openRange()
+    expect(p.$$('.row > *').map((c) => c.className)).toEqual(['btn btn-2 last', 'fill-btn2', 'fill-btn'])
+    expect(p.$$('.fill-btn2')).toHaveLength(1)
+    expect(text(p.range())).toBe('기간 채우기')
+    expect(p.range().type).toBe('button')
+    expect(p.range().disabled).toBe(false)
+    const all = css()
+    const two = rule(all, '.fill-btn2')
+    expect(two).toContain('background:var(--surface)')
+    // css()는 빈칸을 지운다
+    expect(two).toContain('border:1pxsolidvar(--line-strong)')
+    expect(two).toContain('height:44px')
+    expect(rule(all, '.fill-btn')).toContain('height:44px')
+    p.range().click()
+    expect(p.onRange).toHaveBeenCalledTimes(1)
+    expect(p.onFill).not.toHaveBeenCalled()
+    expect(p.panel().hidden).toBe(true)
+  })
+
+  it('AC-3701.1: onRange·onRangeAction을 주지 않아도(지금 main.ts) 단추·기간 안내가 오류 없이 돈다', () => {
+    const p = open()
+    const range = p.$<HTMLButtonElement>('.fill-btn2') as HTMLButtonElement
+    expect(() => range.click()).not.toThrow()
+    p.dock.showRange(VIEWS.pick)
+    expect(() => p.act('살펴보기').click()).not.toThrow()
+    expect(p.panel().hidden).toBe(false)
+    p.act('닫기').click()
+    expect(p.panel().hidden).toBe(true)
+    expect(p.onFill).not.toHaveBeenCalled()
+  })
+
+  it('AC-3701.1 AC-3705.3: showRange(pick)이면 같은 안내 틀(.panel) 안에 기간 고르기가 열리고, 단추 줄은 맨 끝이며 [지난 결과]는 숨는다', () => {
+    const p = openRange()
+    p.dock.setLast(done())
+    expect(p.last().hidden).toBe(false)
+    p.dock.showRange(VIEWS.pick)
+    expect(p.panel().hidden).toBe(false)
+    expect(p.$$('.panel')).toHaveLength(1)
+    expect(text(p.$('.pt'))).toBe('기간 채우기')
+    expect(p.x().hidden).toBe(false)
+    expect(p.x().getAttribute('aria-label')).toBe('안내 닫기')
+    expect([...p.body().children].map((c) => c.className)).toEqual(['lead', 'dates', 'why', 'small', 'acts'])
+    expect(text(p.$('.lead'))).toBe('채울 기간을 골라 주세요.')
+    expect(p.body().lastElementChild?.className).toBe('acts')
+    expect(p.last().hidden).toBe(true)
+  })
+
+  it.each<[RangeView['kind'], string]>([
+    ['pick', '기간 채우기'],
+    ['todayOnly', '기간 채우기'],
+    ['scanning', '기간 채우기 · 살펴보는 중'],
+    ['confirm', '기간 채우기 · 확인'],
+    ['running', '기간 채우기 · 저장 중'],
+    ['stopped', '기간 채우기 · 멈춤'],
+    ['blocked', '기간 채우기 · 멈춤'],
+    ['end', '기간 채우기 · 끝'],
+  ])("AC-3704.1 AC-3705.1: %s 안내의 머리 작은 글은 '%s'이고 단추 줄은 맨 끝이다", (kind, head) => {
+    const p = openRange()
+    p.dock.showRange(VIEWS[kind])
+    expect(text(p.$('.pt'))).toBe(head)
+    expect(p.body().lastElementChild?.className).toBe('acts')
+  })
+
+  it.each(CLOSABLE)('AC-3701.2 AC-3702.4: %s 안내는 ×·Esc·[닫기]로 닫히고 그때마다 close를 한 번 부른다(Esc는 막지 않음)', (_kind, view) => {
+    const p = openRange()
+    p.dock.showRange(view)
+    expect(p.x().hidden).toBe(false)
+    p.x().click()
+    expect(p.panel().hidden).toBe(true)
+    expect(p.onRangeAction.mock.calls).toEqual([[{ kind: 'close' }]])
+    p.dock.showRange(view)
+    const event = esc()
+    expect(event.defaultPrevented).toBe(false)
+    expect(p.panel().hidden).toBe(true)
+    expect(p.onRangeAction).toHaveBeenCalledTimes(2)
+    p.dock.showRange(view)
+    p.act('닫기').click()
+    expect(p.panel().hidden).toBe(true)
+    expect(p.onRangeAction.mock.calls).toEqual([[{ kind: 'close' }], [{ kind: 'close' }], [{ kind: 'close' }]])
+    // 닫힌 뒤 Esc는 아무 일도 없다
+    esc()
+    expect(p.onRangeAction).toHaveBeenCalledTimes(3)
+  })
+
+  it.each(OPEN)('AC-3704.1: %s 안내는 ×가 없고 Esc로 닫히지 않는다', (_kind, view) => {
+    const p = openRange()
+    p.dock.showRange(view)
+    expect(p.x().hidden).toBe(true)
+    esc()
+    expect(p.panel().hidden).toBe(false)
+    expect(p.onRangeAction).not.toHaveBeenCalled()
+  })
+
+  it('AC-3702.1 AC-3704.2: 안내 단추는 그 동작으로 onRangeAction을 부르고, close 말고는 안내가 열린 채다', () => {
+    const p = openRange()
+    p.dock.showRange(VIEWS.pick)
+    p.act('살펴보기').click()
+    p.dock.showRange(VIEWS.scanning)
+    p.act('그만두기').click()
+    expect(p.panel().hidden).toBe(false)
+    p.dock.showRange(VIEWS.confirm)
+    p.act('덮어쓰고 저장 시작').click()
+    p.dock.showRange(VIEWS.running)
+    const stop = p.act('멈추기')
+    stop.click()
+    expect(text(stop)).toBe('멈추는 중…')
+    expect(stop.disabled).toBe(true)
+    p.dock.showRange(VIEWS.stopped)
+    p.act('이어서 하기').click()
+    p.dock.showRange(VIEWS.blocked)
+    p.act('이어서 하기').click()
+    expect(p.panel().hidden).toBe(false)
+    expect(p.onRangeAction.mock.calls).toEqual([
+      [{ kind: 'scan', from: '2026-10-01', to: '2026-10-31' }],
+      [{ kind: 'cancelScan' }],
+      [{ kind: 'start' }],
+      [{ kind: 'stop' }],
+      [{ kind: 'resume' }],
+      [{ kind: 'resume' }],
+    ])
+  })
+
+  it('AC-3701.4: setRangeBusy(true)면 [기간 채우기]·[비트 값 채우기]·[지난 결과]가 막히고 기간 안내는 그대로 열려 있다', () => {
+    const p = openRange()
+    p.dock.setLast(done())
+    p.dock.showRange(VIEWS.scanning)
+    p.dock.setRangeBusy(true)
+    expect([p.range().disabled, p.fill().disabled, p.last().disabled]).toEqual([true, true, true])
+    expect(text(p.fill())).toBe('비트 값 채우기')
+    expect(p.panel().hidden).toBe(false)
+    expect(text(p.$('.lead'))).toBe('기간 안 날을 살펴보는 중이에요.')
+    p.range().click()
+    p.fill().click()
+    p.last().click()
+    expect(p.onRange).not.toHaveBeenCalled()
+    expect(p.onFill).not.toHaveBeenCalled()
+    expect(text(p.$('.lead'))).toBe('기간 안 날을 살펴보는 중이에요.')
+    p.dock.setRangeBusy(false)
+    expect([p.range().disabled, p.fill().disabled, p.last().disabled]).toEqual([false, false, false])
+    p.range().click()
+    expect(p.onRange).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-3701.4: [비트 값 채우기]가 읽는 중이면 [기간 채우기]도 막히고, 읽기·기간 중 하나라도 켜져 있으면 막힌 채다', () => {
+    const p = openRange()
+    p.dock.setReading(true)
+    expect([p.range().disabled, p.fill().disabled, p.last().disabled]).toEqual([true, true, true])
+    p.range().click()
+    expect(p.onRange).not.toHaveBeenCalled()
+    p.dock.setRangeBusy(true)
+    p.dock.setReading(false)
+    expect([p.range().disabled, p.fill().disabled, p.last().disabled]).toEqual([true, true, true])
+    expect(text(p.fill())).toBe('비트 값 채우기')
+    p.dock.setReading(true)
+    p.dock.setRangeBusy(false)
+    expect([p.range().disabled, p.fill().disabled, p.last().disabled]).toEqual([true, true, true])
+    expect(text(p.fill())).toBe('비트에서 읽는 중…')
+    p.dock.setReading(false)
+    expect([p.range().disabled, p.fill().disabled, p.last().disabled]).toEqual([false, false, false])
+  })
+
+  it('AC-3704.1: 다른 안내를 보이면 기간 안내는 사라지고 머리 글·×·Esc는 지금 안내대로 돌아온다', () => {
+    const p = openRange()
+    p.dock.showRange(VIEWS.running)
+    p.dock.show({ kind: 'errDate' })
+    expect(text(p.$('.pt'))).toBe('비트 값 채우기')
+    expect(p.x().hidden).toBe(false)
+    expect([...p.body().children].map(text)).toEqual(['마감 일자를 먼저 골라 주세요.'])
+    esc()
+    expect(p.panel().hidden).toBe(true)
+    expect(p.onRangeAction).not.toHaveBeenCalled()
+    p.dock.showRange(VIEWS.scanning)
+    void p.dock.askZero('2026-11-09')
+    expect(text(p.$('.pt'))).toBe('비트 값 채우기')
+    expect(p.x().hidden).toBe(false)
+    expect(p.$$('.prog')).toHaveLength(0)
+  })
+
+  it('AC-3701.1: showRange는 열려 있던 묻기를 null로 끝내고, 앞 기간 안내를 갈아 끼운다', async () => {
+    const p = openRange()
+    const answer = p.dock.askOverlap({ visits: 1, carm: 1, sono: 1 })
+    p.dock.showRange({ kind: 'scanning', total: 2, done: 1 })
+    await expect(answer).resolves.toBeNull()
+    p.dock.showRange({ kind: 'scanning', total: 2, done: 2 })
+    expect(p.$$('.lead')).toHaveLength(1)
+    expect(p.$$('.pb .small').map(text)).toEqual(['2일 중 2일', '아직 아무 칸도 바꾸지 않아요.'])
+  })
+
+  it('AC-3701.2: dock.hide()로 숨기면 close를 부르지 않고, 그 뒤 Esc도 아무 일 없다', () => {
+    const p = openRange()
+    p.dock.showRange(VIEWS.confirm)
+    p.dock.hide()
+    expect(p.panel().hidden).toBe(true)
+    esc()
+    expect(p.onRangeAction).not.toHaveBeenCalled()
+  })
+
+  it('AC-3701.1: 새 CSS는 지금 안내 스타일 블록 하나 안에 있다(주 단추·고른 단추·날짜 칸·진행 막대)', () => {
+    openRange()
+    expect(dock?.host.shadowRoot?.querySelectorAll('style')).toHaveLength(1)
+    const all = css()
+    expect(rule(all, '.btn-1')).toContain('background:var(--accent)')
+    expect(all).toContain('[aria-pressed=true]')
+    expect(rule(all, '.prog')).toContain('overflow:hidden')
+    // css()는 빈칸을 지운다('.prog i' → '.progi')
+    expect(rule(all, '.progi')).toContain('background:var(--accent)')
+    expect(all).toMatch(/\.datesinput\{[^}]*border:1pxsolidvar\(--line-strong\)/)
   })
 })

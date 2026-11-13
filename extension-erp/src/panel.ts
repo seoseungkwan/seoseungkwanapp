@@ -8,9 +8,13 @@
 // - 글은 모두 textContent로만 넣는다(도우미 오류 번호도 HTML로 읽지 않는다). 숫자·칸 이름만 보이고 환자 정보는 없다
 // - 안내가 열려 있을 때 Esc는 안내를 닫는다(ERP 화면의 키 처리는 막지 않는다)
 // - 안내가 창보다 길면 안에서 스크롤하고(늘 보이는 스크롤 막대), 단추 줄은 안내 아래에 붙어 늘 보인다. 한글 낱말은 가운데서 끊지 않는다(TASK-21)
+// 기간 채우기(spec erp-closing-range TASK-3): [비트 값 채우기] 왼쪽 [기간 채우기] 단추와, 같은 안내 틀에 그리는 기간 안내(몸통은 rangeView.ts).
+// 글·모양은 승인된 시안 docs/mockups/erp-closing-range/ ①~⑤와 design.md 4절 그대로다
 import { HELD_SALES, type Where } from './cells.js'
 import { explain } from './errors.js'
 import { shortPlace, type FillResult } from './fill.js'
+import type { RangeAction, RangeView } from './rangeTypes.js'
+import { RANGE_TEXT, renderRange } from './rangeView.js'
 import { GROUP_NAMES, type ClosingDay, type OverlapChoice } from './types.js'
 
 /** ERP 화면에 붙이는 요소의 id */
@@ -171,7 +175,7 @@ const CSS = `
 ul{list-style:none}
 .nw{white-space:nowrap}
 .dock{--surface:#FFFFFF;--canvas:#F7F8FA;--line:#E5E7EB;--line-strong:#D1D5DB;--muted:#6B7280;--ink-2:#374151;--ink:#111827;
---accent:#2563EB;--accent-strong:#1D4ED8;--negative:#C2410C;--warning:#B45309;--warning-soft:#FDF4E3;--r-control:4px;--r-float:8px;
+--accent:#2563EB;--accent-strong:#1D4ED8;--negative:#C2410C;--warning:#B45309;--warning-soft:#FDF4E3;--ok:#15803D;--r-control:4px;--r-float:8px;
 --shadow-float:0 8px 24px rgba(17,24,39,.14),0 1px 3px rgba(17,24,39,.08);
 position:fixed;right:24px;bottom:24px;z-index:2147483000;display:flex;flex-direction:column;align-items:flex-end;gap:12px;max-width:calc(100vw - 48px);
 font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;color:var(--ink);font-size:14px;line-height:22px;font-variant-numeric:tabular-nums;text-align:left}
@@ -213,6 +217,26 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .btn-2:hover{background:var(--canvas)}
 .btn-2:disabled{color:var(--muted);cursor:default}
 .last{height:44px;box-shadow:var(--shadow-float)}
+.fill-btn2{display:inline-flex;align-items:center;height:44px;padding:0 16px;border-radius:var(--r-control);background:var(--surface);color:var(--ink);border:1px solid var(--line-strong);font-size:15px;font-weight:600;box-shadow:var(--shadow-float);white-space:nowrap}
+.fill-btn2:hover{background:var(--canvas)}
+.fill-btn2:disabled{background:var(--surface);color:var(--muted);cursor:default}
+.btn-1{background:var(--accent);color:var(--surface);font-weight:600}
+.btn-1:hover{background:var(--accent-strong)}
+.btn-1:disabled{background:#93A6C9;cursor:default}
+.btn-2[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);color:var(--accent-strong);font-weight:600}
+.dates{display:flex;align-items:flex-end;gap:8px}
+.dates label{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;font-size:12px;line-height:18px;color:var(--muted)}
+.dates input{height:36px;width:100%;border:1px solid var(--line-strong);border-radius:var(--r-control);padding:0 10px;font:inherit;font-size:14px;color:var(--ink);background:var(--surface)}
+.dates .tilde{padding-bottom:7px;color:var(--muted)}
+.why{font-size:13px;line-height:20px;font-weight:500;color:var(--negative)}
+.prog{height:10px;background:var(--line);border-radius:5px;overflow:hidden}
+.prog i{display:block;height:100%;background:var(--accent)}
+.check b{color:var(--ink);font-weight:600}
+.ok{color:var(--ok);font-weight:600}
+.bad{color:var(--negative);font-weight:600}
+.fails{display:flex;flex-direction:column;gap:2px;padding-left:12px}
+.ask{display:flex;flex-direction:column;gap:6px}
+.picks{display:flex;flex-wrap:wrap;gap:6px}
 @media (max-width:600px){.dock{right:12px;bottom:12px;max-width:calc(100vw - 24px)}.panel{max-height:calc(100vh - 190px)}}
 `
 
@@ -251,11 +275,32 @@ export type Dock = {
   /** 단추 옆 [지난 결과]가 다시 열 안내. null이면 [지난 결과]가 없다 */
   setLast(view: View | null): void
   hide(): void
+  /**
+   * 기간 안내(design.md 4절)를 같은 안내 틀에 보인다. 열린 묻기는 null로 끝나고, 다른 안내(show·묻기)를 보이면 사라진다.
+   * ×·Esc는 pick·todayOnly·confirm·stopped·blocked·end에서만 안내를 닫고 onRangeAction({ kind: 'close' })를 부른다(scanning·running엔 ×가 없다)
+   */
+  showRange(view: RangeView): void
+  /** 기간 살펴보기·채우기가 도는 중: [기간 채우기]·[비트 값 채우기]·[지난 결과]를 막는다(안내는 그대로 둔다) */
+  setRangeBusy(on: boolean): void
 }
 
 type Pending = { resolve(value: unknown): void; cancel: unknown }
 
-export function createDock(doc: Document, handlers: { onFill(): void; onOpenSettings(): void; onUndo(): void }): Dock {
+/** ×·Esc가 없는 기간 안내(도는 중) */
+const RANGE_OPEN: ReadonlySet<RangeView['kind']> = new Set(['scanning', 'running'])
+
+export function createDock(
+  doc: Document,
+  handlers: {
+    onFill(): void
+    onOpenSettings(): void
+    onUndo(): void
+    /** [기간 채우기]. 주지 않으면 아무 일 없다(spec erp-closing-range TASK-4가 main에서 잇는다) */
+    onRange?(): void
+    /** 기간 안내 단추·×·Esc. 'close'는 안내를 닫은 뒤 부른다. 주지 않으면 닫기만 한다 */
+    onRangeAction?(action: RangeAction): void
+  },
+): Dock {
   const h = <K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, ...children: Child[]) =>
     element(doc, tag, attrs, ...children)
 
@@ -263,16 +308,23 @@ export function createDock(doc: Document, handlers: { onFill(): void; onOpenSett
   const root = host.attachShadow({ mode: 'open' })
   const body = h('div', { class: 'pb' })
   const close = h('button', { type: 'button', class: 'x', 'aria-label': TEXT.close }, '×')
-  const panel = h('div', { class: 'panel', role: 'status' }, h('div', { class: 'ph' }, h('span', { class: 'pt' }, TEXT.title), close), body)
+  const title = h('span', { class: 'pt' }, TEXT.title)
+  const panel = h('div', { class: 'panel', role: 'status' }, h('div', { class: 'ph' }, title, close), body)
   panel.hidden = true
   const button = h('button', { type: 'button', class: 'fill-btn' }, TEXT.button)
+  const rangeButton = h('button', { type: 'button', class: 'fill-btn2' }, RANGE_TEXT.button)
   const lastButton = h('button', { type: 'button', class: 'btn btn-2 last' }, FLOW_TEXT.last)
-  root.append(h('style', {}, CSS), h('div', { class: 'dock' }, panel, h('div', { class: 'row' }, lastButton, button)))
+  root.append(h('style', {}, CSS), h('div', { class: 'dock' }, panel, h('div', { class: 'row' }, lastButton, rangeButton, button)))
 
   /** [지난 결과]가 다시 열 안내 */
   let last: View | null = null
   /** 아직 답하지 않은 묻기. 끝내면 비운다 */
   let pending: Pending | null = null
+  /** 지금 보이는 기간 안내(없으면 null) */
+  let range: RangeView['kind'] | null = null
+  /** [비트 값 채우기] 읽는 중 · 기간 살펴보기·채우기 도는 중 */
+  let reading = false
+  let rangeBusy = false
   const cancel = () => {
     const open = pending
     pending = null
@@ -283,26 +335,58 @@ export function createDock(doc: Document, handlers: { onFill(): void; onOpenSett
   const refreshLast = () => {
     lastButton.hidden = last === null || !panel.hidden
   }
+  /** 읽는 중이거나 기간이 도는 중이면 두 단추와 [지난 결과]를 막는다(AC-3701.4) */
+  const refreshButtons = () => {
+    const off = reading || rangeBusy
+    button.disabled = off
+    rangeButton.disabled = off
+    lastButton.disabled = off
+    button.textContent = reading ? TEXT.reading : TEXT.button
+  }
   const setPanel = (open: boolean) => {
     panel.hidden = !open
     refreshLast()
   }
+  /** 머리 작은 글과 × (기간 안내가 아니면 range = null, 지금 안내 그대로) */
+  const setHead = (kind: RangeView['kind'] | null) => {
+    range = kind
+    title.textContent = kind === null ? TEXT.title : RANGE_TEXT.head[kind]
+    close.hidden = kind !== null && RANGE_OPEN.has(kind)
+  }
   const hide = () => {
     setPanel(false)
     cancel()
+    range = null
+  }
+  /** 기간 안내를 닫고 알린다([닫기]·×·Esc) */
+  const closeRange = () => {
+    hide()
+    handlers.onRangeAction?.({ kind: 'close' })
+  }
+  /** ×·Esc: 기간 안내면 닫을 수 있을 때만 closeRange, 아니면 지금처럼 hide */
+  const dismiss = () => {
+    if (range === null) hide()
+    else if (!RANGE_OPEN.has(range)) closeRange()
+  }
+  const rangeAct = (action: RangeAction) => {
+    if (action.kind === 'close') closeRange()
+    else handlers.onRangeAction?.(action)
   }
   refreshLast()
 
   button.addEventListener('click', () => {
     if (!button.disabled) handlers.onFill()
   })
-  close.addEventListener('click', hide)
+  rangeButton.addEventListener('click', () => {
+    if (!rangeButton.disabled) handlers.onRange?.()
+  })
+  close.addEventListener('click', dismiss)
   lastButton.addEventListener('click', () => {
     if (!lastButton.disabled && last) show(last)
   })
   // 안내가 열려 있을 때 Esc로 닫는다. ERP 쪽 키 처리는 그대로 받게 preventDefault·stopPropagation 하지 않는다
   doc.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && host.isConnected && !panel.hidden) hide()
+    if (event.key === 'Escape' && host.isConnected && !panel.hidden) dismiss()
   })
 
   const lead = (text: Child, err = false) => h('p', { class: err ? 'lead err' : 'lead' }, text)
@@ -386,6 +470,7 @@ export function createDock(doc: Document, handlers: { onFill(): void; onOpenSett
 
   function show(view: View) {
     cancel()
+    setHead(null)
     body.replaceChildren(...parts(view).filter((p): p is Node | string => Boolean(p)))
     setPanel(true)
   }
@@ -401,6 +486,7 @@ export function createDock(doc: Document, handlers: { onFill(): void; onOpenSett
     options: { focus?: number; closeButton?: boolean } = {},
   ): Promise<T> {
     cancel()
+    setHead(null)
     return new Promise<T>((resolve) => {
       const mine: Pending = { resolve: resolve as (value: unknown) => void, cancel: cancelValue }
       pending = mine
@@ -429,9 +515,8 @@ export function createDock(doc: Document, handlers: { onFill(): void; onOpenSett
   return {
     host,
     setReading(on) {
-      button.disabled = on
-      button.textContent = on ? TEXT.reading : TEXT.button
-      lastButton.disabled = on
+      reading = on
+      refreshButtons()
       if (on) hide()
     },
     show,
@@ -471,5 +556,17 @@ export function createDock(doc: Document, handlers: { onFill(): void; onOpenSett
       refreshLast()
     },
     hide,
+    showRange(view) {
+      cancel()
+      setHead(view.kind)
+      // 몸통 자식(굵은 줄 … 단추 줄)을 지금 안내 틀(.pb)로 옮긴다: 간격·스크롤·늘 보이는 단추 줄 규칙이 그대로 선다
+      const drawn = renderRange(doc, view, rangeAct, OVERLAP_TEXT)
+      body.replaceChildren(...drawn.childNodes)
+      setPanel(true)
+    },
+    setRangeBusy(on) {
+      rangeBusy = on
+      refreshButtons()
+    },
   }
 }
