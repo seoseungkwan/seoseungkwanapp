@@ -1,4 +1,5 @@
-import { useId, type ReactNode, type Ref } from 'react'
+import { createContext, useContext, useId, type ReactNode, type Ref } from 'react'
+import { createPortal } from 'react-dom'
 import { formatDelta, type DeltaUnit } from '@/components/charts/format'
 import type { BarSeries } from '@/components/charts/StackedBarChart'
 import { patientTrend, type StatsInput, type StatsRange } from '@/components/stats/view'
@@ -33,13 +34,46 @@ export function onlyThisMonthPartial(partialMonths: readonly string[], today: st
   return partialMonths.length === 1 && partialMonths[0] === monthOf(today)
 }
 
-const SECTION = 'mt-12 min-w-0 border-t border-line-strong pt-5 max-md:mt-8 max-md:pt-4'
-const HEADING = 'text-title font-semibold text-ink'
-// 코드로 초점을 옮기는 제목(headingRef): Tab 차례에는 들지 않고, 붙어 있는 띠에 가리지 않게 scroll-margin(AppShell main과 같은 값), 코드로 옮긴 초점이라 고리는 그리지 않는다
-const FOCUS_HEADING = `${HEADING} scroll-mt-25.5 focus:outline-none max-md:scroll-mt-23.5`
+// 칸 틀 모양. 처방 탭 칸(RxSection)도 같은 위 줄·여백·머리 줄을 쓴다(stats-pc-ux design.md 'RxSection')
+export const SECTION = 'mt-12 min-w-0 border-t border-line-strong pt-5 max-md:mt-8 max-md:pt-4'
+export const SECTION_HEAD = 'flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1'
+export const HEADING = 'text-title font-semibold text-ink'
+// 목차 띠에 가리지 않는 scroll-margin(stats-pc-ux AC-4002.6, design.md '배치'): 머리줄 + 목차 띠 − 1px. 칸 위 줄은 띠 뒤로 숨고 제목이 띠 바로 아래에 온다
+export const TOC_SCROLL = 'scroll-mt-36.25 max-md:scroll-mt-34.75'
+// 코드로 초점을 옮기는 제목(headingRef): Tab 차례에는 들지 않고, 붙는 머리줄·목차 띠에 가리지 않게 TOC_SCROLL, 코드로 옮긴 초점이라 고리는 그리지 않는다
+const FOCUS_HEADING = `${HEADING} ${TOC_SCROLL} focus:outline-none`
+// 탭 안 고치기 제목(h3): 탭 칸 h2 `처방` 아래라 한 단계 작다(AC-4003.6)
+const PANEL_HEADING = `mt-4 text-subtitle font-semibold text-ink ${TOC_SCROLL} focus:outline-none`
+
+// 목차 자리(stats-pc-ux AC-4002.6): StatsSections가 칸마다 감싼다. Section(·RxSection)이 이 id를 section에 붙이고 안쪽에는 넘기지 않는다(겹친 id 없음).
+// 칸 파일마다 id prop을 여러 return에 더하지 않으려고 context로 붙인다(design.md '결정과 트레이드오프')
+const AnchorContext = createContext<string | null>(null)
+export function SectionAnchor({ id, children }: { id: string; children: ReactNode }) {
+  return <AnchorContext.Provider value={id}>{children}</AnchorContext.Provider>
+}
+// 감싼 목차 id를 읽는다(RxSection). 쓴 쪽은 안쪽을 NoAnchor로 감싼다
+export const useSectionAnchor = () => useContext(AnchorContext)
+export const NoAnchor = ({ children }: { children: ReactNode }) => <AnchorContext.Provider value={null}>{children}</AnchorContext.Provider>
+
+// 탭 패널(stats-pc-ux AC-4003.2·AC-4003.4): RxSection이 패널마다 준다. active = 고른 탭, slot = 탭 칸 머리 줄 안 설명·단추 자리(붙기 전 첫 그림에는 null)
+export type SectionPanel = { active: boolean; slot: HTMLElement | null }
+export const SectionPanelContext = createContext<SectionPanel | null>(null)
+
+// 머리 줄 안 설명·오른쪽 단추(보통 칸과 탭 칸 머리 줄이 같은 모양)
+function HeadExtras({ desc, action }: { desc?: string; action?: ReactNode }) {
+  return (
+    <>
+      {desc && <span className="text-small text-muted">{desc}</span>}
+      {action && <span className="ml-auto">{action}</span>}
+    </>
+  )
+}
 
 // 섹션 틀: 위 1px line-strong + h2 + 옆 설명(small muted) + 오른쪽 단추. 차트 칸(col-span)은 놓는 쪽이 className으로 준다.
-// headingRef(선택, treatment-trend AC-1210.2): 칸 모습이 바뀔 때 제목에 초점을 주려고 h2를 넘긴다. 주지 않으면 마크업이 그대로다
+// headingRef(선택, treatment-trend AC-1210.2): 칸 모습이 바뀔 때 제목에 초점을 주려고 h2를 넘긴다. 주지 않으면 마크업이 그대로다.
+// 두 모드(stats-pc-ux design.md 'Section 두 모드'): 목차 자리(SectionAnchor) 안이면 section에 id + TOC_SCROLL.
+// 탭 패널(SectionPanelContext) 안이면 section·h2 없이 내용만 그리고, 고른 탭일 때만 설명·단추를 탭 칸 머리 줄 자리에 portal로 그린다(className은 쓰지 않는다).
+// 탭 패널에서 headingRef를 주면(고치기) 패널 맨 위 h3로 제목을 그리고 ref를 붙인다
 export function Section({
   title,
   desc,
@@ -56,19 +90,39 @@ export function Section({
   children: ReactNode
 }) {
   const id = useId()
+  const anchor = useSectionAnchor()
+  const panel = useContext(SectionPanelContext)
+
+  if (panel) {
+    const extras = panel.active && panel.slot && (desc || action) ? createPortal(<HeadExtras desc={desc} action={action} />, panel.slot) : null
+    return (
+      <>
+        {extras}
+        {headingRef && (
+          <h3 ref={headingRef} tabIndex={-1} className={PANEL_HEADING}>
+            {title}
+          </h3>
+        )}
+        <NoPanel>{children}</NoPanel>
+      </>
+    )
+  }
+
   return (
-    <section aria-labelledby={id} className={`${SECTION} ${className}`}>
-      <div className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1">
+    <section id={anchor ?? undefined} aria-labelledby={id} className={anchor ? `${SECTION} ${className} ${TOC_SCROLL}` : `${SECTION} ${className}`}>
+      <div className={SECTION_HEAD}>
         <h2 id={id} ref={headingRef} tabIndex={headingRef ? -1 : undefined} className={headingRef ? FOCUS_HEADING : HEADING}>
           {title}
         </h2>
-        {desc && <span className="text-small text-muted">{desc}</span>}
-        {action && <span className="ml-auto">{action}</span>}
+        <HeadExtras desc={desc} action={action} />
       </div>
-      {children}
+      {anchor ? <NoAnchor>{children}</NoAnchor> : children}
     </section>
   )
 }
+
+// 탭 패널 칸의 안쪽(칸 안에 또 Section이 있으면 보통 칸으로 그린다 — 설명이 머리 줄에 두 번 가지 않게)
+const NoPanel = ({ children }: { children: ReactNode }) => <SectionPanelContext.Provider value={null}>{children}</SectionPanelContext.Provider>
 
 // 빈 상태 한 줄: **자료 없음** · 안내(그래프·빈 틀 없음, AC-513.4)
 export function EmptyNote({ title = '자료 없음', children }: { title?: string; children: string }) {
