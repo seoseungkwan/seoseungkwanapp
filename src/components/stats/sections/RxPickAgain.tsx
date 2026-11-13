@@ -8,11 +8,14 @@ import { againAverageText, againBaseText, againRateText, againView, isFewStarts,
 import type { RxLine, StatsInput } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
 import { AGAIN_WINDOWS, type AgainWindow } from '@/types/payload'
+import { HowCounted } from './HowCounted'
 import { EmptyNote, longDate, NO_RANGE_DATA, todayOf } from './parts'
 
 // 같은 처방 재방문 묶음 (fu-rate REQ-1307, 시안 docs/mockups/fu-rate/index.html의 .again). props만 받는다: 고른 날 수는 부모의 React 상태,
 // 넓은 날 줄 읽기는 부모의 useAgainDays가 하고(daysState) 이 파일은 저장 코드를 부르지 않는다. 숫자는 againView가 낸 값이다.
-// 시안과 다른 곳은 specs/fu-rate/design.md '시안과 다른 곳'(1024px에서 쌓임, 빗금은 svg path, 8일째 글자 muted, 글 폭 max-w-160, 예시 칸 role="img")
+// 시안과 다른 곳은 specs/fu-rate/design.md '시안과 다른 곳'(1024px에서 쌓임, 빗금은 svg path, 8일째 글자 muted, 글 폭 max-w-160, 예시 칸 role="img").
+// 설명 글 · 한 환자 예시 · 표 아래 안내는 칸 맨 아래 "어떻게 세나요?" 한 곳에 접는다(stats-pc-ux AC-4004.2 ③·AC-4004.4): 날 수 단추 바로 아래가 센 범위 글·기간 막대·표다.
+// 접는 칸은 처방을 하나 이상 고르면 늘 같은 자리에 있고(상태가 바뀌어도 펼친 채), 표 아래 안내는 표가 있을 때만 든다(기본값 10)
 
 export type AgainDaysState = 'ready' | 'reading' | 'failed'
 
@@ -31,7 +34,7 @@ const EXAMPLE_LATE = 8
 const EXAMPLE_TEXT =
   'ESWT7을 시작하고 3일째와 6일째에 또 받았어요. 7일 안에 2번 더 받았으니 다시 받은 환자 1명, 더 받은 횟수 2번으로 들어가요. 8일째에 받은 것은 7일이 지난 뒤라 7일 안에는 넣지 않아요.'
 
-// 표 아래 안내(차례대로). few는 10명 미만 줄이 하나라도 있을 때만
+// 표 아래 안내(차례대로, "어떻게 세나요?" 안). few는 10명 미만 줄이 하나라도 있을 때만
 const NOTES = (win: AgainWindow, few: boolean): [string, string][] => [
   ['아직 셀 수 없는 날', `시작하고 ${win}일이 다 지나야 셀 수 있어요. 날이 지나고 새 자료를 넣으면 채워져요.`],
   ['파일을 따로 넣을 때', '앞 파일 끝 무렵에 시작한 환자가 뒤 파일에서 다시 받은 것은 이어서 세지 못해요. 두 파일을 한 번에 같이 넣으면 이어서 세요. 비트 PC에서 불러오면 불러온 기간 안에서 이어서 세요.'],
@@ -216,6 +219,9 @@ export function RxPickAgain({
   const view = useMemo(() => againView(input, win, picks), [input, win, picks])
   const { range } = input
   const today = todayOf(range)
+  // 표가 그려지는 때(아래 body의 마지막 길). 표 아래 안내는 이때만 접는 칸에 든다
+  const tableShown = daysState === 'ready' && view.hasRows && view.hasAgain
+  const anyFew = tableShown && view.rows.some(isFewStarts)
 
   const head = (
     <div className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1">
@@ -268,7 +274,6 @@ export function RxPickAgain({
       { kind: 'no', label: `아직 셀 수 없는 날 ${strip.no}일` },
       ...(strip.out > 0 ? [{ kind: 'out' as const, label: `기간 밖 ${strip.out}일` }] : []),
     ]
-    const anyFew = view.rows.some(isFewStarts)
     return (
       <>
         <p className="mt-4 max-w-160 text-small text-ink-2">
@@ -307,15 +312,6 @@ export function RxPickAgain({
             <AgainLine key={row.code} row={row} win={win} />
           ))}
         </ul>
-        <div className="mt-3 grid max-w-160 gap-1 text-small text-muted">
-          {NOTES(win, anyFew).map(([name, text]) => (
-            <p key={name}>
-              <Named name={name} tone="text-ink-2">
-                {text}
-              </Named>
-            </p>
-          ))}
-        </div>
       </>
     )
   }
@@ -335,13 +331,22 @@ export function RxPickAgain({
           ))}
         </div>
       </div>
-      <p className="mt-3 max-w-160 text-small text-ink-2">
-        <Named name="어떻게 세나요" tone="text-ink">
-          {HOW(win)}
-        </Named>
-      </p>
-      <Example open={exampleOpen} onOpen={setExampleOpen} />
       {body()}
+      <HowCounted>
+        <p className="max-w-160 text-small text-ink-2">{HOW(win)}</p>
+        <Example open={exampleOpen} onOpen={setExampleOpen} />
+        {tableShown && (
+          <div className="mt-3 grid max-w-160 gap-1 text-small text-muted">
+            {NOTES(win, anyFew).map(([name, text]) => (
+              <p key={name}>
+                <Named name={name} tone="text-ink-2">
+                  {text}
+                </Named>
+              </p>
+            ))}
+          </div>
+        )}
+      </HowCounted>
     </section>
   )
 }

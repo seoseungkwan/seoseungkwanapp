@@ -12,6 +12,7 @@ import type { StatsRxGroupsView } from '@/components/stats/useStatsRxGroups'
 import { periodDesc, rxComparedCells, type RxLine, type StatsInput } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
 import type { RxGroup, StatsRxGroup } from '@/types/rxGroups'
+import { HowCounted } from './HowCounted'
 import { EmptyNote, hasRows, NO_RANGE_DATA, Section, todayOf } from './parts'
 import { TreatmentDetail } from './TreatmentDetail'
 import { TreatmentGroupEditor } from './TreatmentGroupEditor'
@@ -22,10 +23,12 @@ import { comparedNote } from './trendLabels'
 // 묶음 훅 값(StatsRxGroupsView, 통계 화면이 한 번 부름)·찾기 목록 훅·표·열린 칸·고치기 화면을 잇는다. 칸이 드는 것: 고치기 열고 닫기, 열린 줄, 저장 글, 초점 옮기기.
 // 상태 차례: 저장된 숫자 없음 → 고치는 중 → 묶음 읽는 중·실패 → 이 기간 자료 없음 → 안내 상자 + 표 + 아래 안내.
 // 열린 줄은 기간마다 key를 주지 않고 이 칸의 React 상태에 둔다: 기간을 바꿔도 열린 채이고, 다시 불러와야 하는 기간에는 단추가 아니라 닫힌 것으로 보인다(AC-1209.5).
-// 묶음·열린 줄·고치는 내용은 React 상태와 서버 표에만 있다(AC-1211.3)
+// 묶음·열린 줄·고치는 내용은 React 상태와 서버 표에만 있다(AC-1211.3).
+// 통계 화면에서는 처방 칸 첫 탭 `묶음별 추세` 안이다(stats-pc-ux): 고치기 제목은 탭 이름을 쓰고(AC-4003.6), 늘 같은 네 글은 "어떻게 세나요?" 안에 접는다(AC-4004.2 ①).
+// 따로 그릴 때의 h2 TITLE은 그대로다(앱에서는 탭 이름이 대신한다, design.md 표)
 
 const TITLE = '처방별 추세'
-const EDIT_TITLE = '처방별 추세 · 묶음 고치기'
+const EDIT_TITLE = '묶음별 추세 · 묶음 고치기'
 const DESC = '만들어 둔 묶음마다 건수와 총환자 대비 · 같은 날 같은 환자는 1건' // group-exclude AC-3708.7
 const EMPTY = '불러오면 묶음마다 건수와 신환·재진이 보여요.'
 const READING = '묶음을 읽는 중이에요'
@@ -33,7 +36,7 @@ const RELOAD = '비트 PC에서 다시 불러오거나, 파일을 다시 넣어 
 const ALL_STALE_HEAD = '한 번 다시 불러오면 숫자가 나와요'
 const ALL_STALE_TEXT = `묶음별 숫자는 다시 불러온 기간부터 세요. ${RELOAD}`
 const SOME_STALE_HEAD = '다시 불러와야 맞는 묶음이 있어요'
-// 칸 아래 네 글(group-exclude AC-3708.6)
+// 칸 아래 네 글(group-exclude AC-3708.6). "어떻게 세나요?" 안에 접는다(stats-pc-ux AC-4004.2 ①)
 const NOTES = [
   '건 = 날마다 그 묶음 처방을 받은 환자 수를 더한 값이에요. 같은 날 같은 환자는 묶음 안 처방을 여러 개 받아도 1건이에요.',
   '빼는 처방이 있는 묶음은, 그날 빼는 처방을 하나라도 받은 환자를 그날 건수에서 빼요. * 표시 처방은 조건이 있어서, 조건 처방과 같은 날 받으면 그 처방으로는 세지 않아요.',
@@ -63,21 +66,32 @@ function ReloadNotice({ rows }: { rows: readonly TreatmentRow[] }) {
   )
 }
 
-// 줄 아래 안내: 뺀 짝 글(처방 추세 AC-513.12와 같은 조건, 견주는 준비된 줄이 있을 때만) · 비교하지 않는 묶음(AC-1208.4) · 네 글(AC-3708.6)
+// 줄 아래 안내: 그대로 보이는 상황 안내 — 뺀 짝 글(처방 추세 AC-513.12와 같은 조건, 견주는 준비된 줄이 있을 때만) · 비교하지 않는 묶음(AC-1208.4) — 다음에
+// 늘 같은 네 글(AC-3708.6)을 "어떻게 세나요?" 안에 접는다(stats-pc-ux AC-4004.2 ①·AC-4004.3). 상황 안내가 없으면 그 묶음도 없다
+const NOTES_BOX = 'mt-3 grid max-w-182 gap-1'
 function BottomNotes({ input, rows }: { input: StatsInput; rows: readonly TreatmentRow[] }) {
   const uncompared = uncomparedNames(rows)
   const anyCompared = rows.some((row) => row.kind === 'ready' && row.compared)
   const { kept, dropped } = anyCompared ? rxComparedCells(input) : { kept: 0, dropped: false }
+  const comparedShown = dropped && kept >= 1
   return (
-    <div className="mt-3 grid max-w-182 gap-1">
-      {dropped && kept >= 1 && <p className="text-small text-muted">{comparedNote(input.range.grain, kept)}</p>}
-      {uncompared.length > 0 && <p className="text-small text-muted">{`${joinNames(uncompared)} 묶음은 비교 기간을 다시 불러오면 지난 기간과 견줘요.`}</p>}
-      {NOTES.map((note) => (
-        <p key={note} className="text-small text-muted">
-          {note}
-        </p>
-      ))}
-    </div>
+    <>
+      {(comparedShown || uncompared.length > 0) && (
+        <div className={NOTES_BOX}>
+          {comparedShown && <p className="text-small text-muted">{comparedNote(input.range.grain, kept)}</p>}
+          {uncompared.length > 0 && <p className="text-small text-muted">{`${joinNames(uncompared)} 묶음은 비교 기간을 다시 불러오면 지난 기간과 견줘요.`}</p>}
+        </div>
+      )}
+      <HowCounted>
+        <div className={NOTES_BOX}>
+          {NOTES.map((note) => (
+            <p key={note} className="text-small text-muted">
+              {note}
+            </p>
+          ))}
+        </div>
+      </HowCounted>
+    </>
   )
 }
 

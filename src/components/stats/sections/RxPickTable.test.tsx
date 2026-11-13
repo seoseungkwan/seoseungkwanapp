@@ -72,7 +72,13 @@ function draw(days: DayPayload[], picks: RxLine[], { period = '30d', covered = W
 const rowOf = (name: string) => screen.getByRole('button', { name: new RegExp(name) })
 const headOf = (container: HTMLElement) => container.querySelector('[aria-hidden="true"].grid') as HTMLElement
 const bandOf = (row: Element) => row.querySelector('[aria-hidden="true"].h-1\\.5') as HTMLElement
-const notesOf = (container: HTMLElement) => Array.from(container.querySelector('.max-w-160')!.children).map((p) => p.textContent)
+// 표 아래 안내(stats-pc-ux AC-4004.2 ②·AC-4004.3): 그대로 보이는 안내(주의 줄·견준 짝) 묶음과 "어떻게 세나요?" 칸 안 네 글. notesOf는 둘을 지금 차례(보이는 것 → 접힌 것)로 잇는다
+const howButton = () => screen.getByRole('button', { name: '어떻게 세나요?' })
+const howBody = () => document.getElementById(howButton().getAttribute('aria-controls')!)!
+const shownNotesBox = (container: HTMLElement) => Array.from(container.querySelectorAll('.max-w-160')).find((box) => box.closest('[hidden]') === null) ?? null
+const textsOf = (box: Element | null) => (box === null ? [] : Array.from(box.children).map((p) => p.textContent))
+const howNotes = () => textsOf(howBody().querySelector('.max-w-160'))
+const notesOf = (container: HTMLElement) => [...textsOf(shownNotesBox(container)), ...howNotes()]
 const hasClasses = (el: Element, classes: string) => classes.split(/\s+/).every((name) => el.classList.contains(name))
 
 const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
@@ -256,9 +262,9 @@ describe('AC-805.3·AC-805.4·AC-805.5: 뜻 줄·범례·얇은 띠·구분 없�
 })
 
 describe('AC-805.6·AC-805.7: 표 아래 안내', () => {
-  it('AC-805.6: 구분 없음이 하나라도 있으면 안내 맨 위에 주의 줄(ink-2)이 있다', () => {
+  it('AC-805.6·AC-4004.3: 구분 없음이 하나라도 있으면 그대로 보이는 안내 맨 위에 주의 줄(ink-2)이 있다', () => {
     const { container } = draw(WITH_GAP, [PICK_B, PICK_A])
-    const first = container.querySelector('.max-w-160')!.firstElementChild as HTMLElement
+    const first = shownNotesBox(container)!.firstElementChild as HTMLElement
     expect(first.textContent).toContain(GAP_SENTENCE)
     expect(first.classList.contains('text-ink-2')).toBe(true)
   })
@@ -268,9 +274,9 @@ describe('AC-805.6·AC-805.7: 표 아래 안내', () => {
     expect(within(rowOf(A)).getByText('구분 없음 1건')).toBeTruthy()
   })
 
-  it('AC-813.5: 주의 글은 30 초진을 재진으로 센다는 정해진 문장 그대로다', () => {
+  it('AC-813.5·AC-4004.3: 주의 글은 30 초진을 재진으로 센다는 정해진 문장 그대로다', () => {
     const { container } = draw(WITH_GAP, [PICK_B, PICK_A])
-    const first = container.querySelector('.max-w-160')!.firstElementChild as HTMLElement
+    const first = shownNotesBox(container)!.firstElementChild as HTMLElement
     expect(first.textContent).toBe(
       '구분 없음은 파일에 신환·재진이 아닌 다른 값(진찰료산정안함 같은 값)이 적힌 건이에요. 어느 쪽에도 넣지 않아서 두 비율을 더해도 100%가 안 돼요. 30 초진은 재진으로 세요. 이렇게 정하기 전에 저장한 날은 그 파일을 다시 넣어야 숫자가 바뀌어요.',
     )
@@ -287,7 +293,7 @@ describe('AC-805.6·AC-805.7: 표 아래 안내', () => {
     expect(source.split(GAP_SENTENCE)).toHaveLength(2)
   })
 
-  it('AC-805.7: 묶음 폭은 max-w-160이고 차례는 주의 줄 · 견준 짝 · 줄 누르기 · 건 · 신환 · 합계다(12개월, 달별)', () => {
+  it('AC-805.7·AC-4004.2: 묶음 폭은 max-w-160이고 차례는 주의 줄 · 견준 짝(보임) · 줄 누르기 · 건 · 신환 · 합계(접힘)다(12개월, 달별)', () => {
     const { container } = draw(WITH_GAP, [PICK_A, PICK_B], { period: '12m' })
     const notes = notesOf(container)
     expect(notes[0]).toContain(GAP_SENTENCE)
@@ -480,13 +486,15 @@ describe('AC-808.1·AC-808.3·AC-808.4·AC-808.5: 표 복사', () => {
     expect(box.value).not.toBe(rxPickCopyText({ hospitalName: '가짜 의원', periodName: '최근 30일', range: input.range, rows, total }))
   })
 
-  it('AC-808.5: [표 복사]는 ds.button.secondarySmall + copy 아이콘이고 표 오른쪽 아래에 있다', () => {
+  it('AC-808.5·AC-4005.1: [표 복사]는 ds.button.secondarySmall + copy 아이콘이고 표 오른쪽 아래(표 다음 줄의 오른쪽 끝)에 있다', () => {
     const { container } = draw(PLAIN, [PICK_A])
     const button = screen.getByRole('button', { name: '표 복사' })
     expect(hasClasses(button, ds.button.secondarySmall)).toBe(true)
     const drawn = render(<Icon name="copy" size={14} />)
     expect(button.querySelector('svg')!.innerHTML).toBe(drawn.container.querySelector('svg')!.innerHTML)
-    expect(button.parentElement!.classList.contains('justify-end')).toBe(true)
+    const line = howButton().parentElement!
+    expect(hasClasses(line, 'flex flex-wrap justify-between')).toBe(true)
+    expect(line.lastElementChild!.contains(button)).toBe(true)
     const list = container.querySelector('ul.list-none') as HTMLElement
     expect(list.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
@@ -612,5 +620,87 @@ describe('AC-1705.5: 빠른 단추의 처방 골라 보기 표는 지금과 같�
     expect(Array.from(headOf(container).children).map((cell) => cell.textContent)).toEqual(['처방', '건수', '지난 30일', '증감', '신환', '신환율', '재진', '재진율', ''])
     expect(within(rowOf(A)).queryByText(/보다$/)).toBeNull()
     expect(notesOf(container)).toContain('줄을 누르면 그 처방의 일별 건수가 열려요.')
+  })
+})
+
+// ── stats-pc-ux: 표 아래 줄과 접는 설명 (REQ-4004 AC-4004.2 ②·AC-4004.3, REQ-4005 AC-4005.1) ─────────────────
+describe('AC-4004.2 ②·AC-4004.3·AC-4005.1: 표 아래 [어떻게 세나요?] · [표 복사] 줄과 접는 설명', () => {
+  const NOTE_COUNT = '건 = 날마다 그 처방을 받은 환자 수를 더한 값이에요. 같은 환자가 3일 오면 3건이에요.'
+  const NOTE_NEW = '신환은 의원에 처음 온 환자예요. 그 처방을 처음 받은 환자라는 뜻은 아니에요.'
+  const NOTE_TOTAL = '합계는 고른 처방의 건수를 더한 값이에요. 한 환자가 같은 날 두 처방을 받으면 2건이에요.'
+  const listOf = (container: HTMLElement) => container.querySelector('ul.list-none') as HTMLElement
+  const copyButton = () => screen.getByRole('button', { name: '표 복사' })
+
+  it('AC-4005.1: 표 바로 다음 줄이 왼쪽 [어떻게 세나요?] · 오른쪽 끝 [표 복사] 한 줄(flex-wrap justify-between)이다', () => {
+    const { container } = draw(PLAIN, [PICK_A, PICK_B])
+    const line = howButton().parentElement!
+    expect(listOf(container).nextElementSibling).toBe(line.parentElement)
+    expect(line.parentElement!.firstElementChild).toBe(line)
+    expect(hasClasses(line, 'flex flex-wrap items-center justify-between')).toBe(true)
+    expect(line.firstElementChild).toBe(howButton())
+    expect(line.lastElementChild!.contains(copyButton())).toBe(true)
+    expect(line.lastElementChild!.contains(screen.getByRole('status'))).toBe(true)
+  })
+
+  it('AC-4005.1: 768px 미만은 [표 복사]가 줄 전체 폭이고 [어떻게 세나요?]가 그 아래다(order)', () => {
+    draw(PLAIN, [PICK_A])
+    const line = howButton().parentElement!
+    expect(howButton().classList.contains('max-md:order-2')).toBe(true)
+    expect(line.lastElementChild!.classList.contains('max-md:w-full')).toBe(true)
+    expect(copyButton().classList.contains('max-md:w-full')).toBe(true)
+  })
+
+  it('AC-4004.2: 네 글(줄 누르기 · 건 · 신환 · 합계)은 "어떻게 세나요?" 칸 안에 이 차례로 있고 처음에는 접혀(hidden) 있다', () => {
+    draw(PLAIN, [PICK_A, PICK_B])
+    expect(howButton().getAttribute('aria-expanded')).toBe('false')
+    const body = howBody()
+    expect(body.hidden).toBe(true)
+    expect(howNotes()).toEqual(['줄을 누르면 그 처방의 일별 건수가 열려요.', NOTE_COUNT, NOTE_NEW, NOTE_TOTAL])
+    for (const note of [NOTE_COUNT, NOTE_NEW, NOTE_TOTAL]) expect(screen.getByText(note).closest('[hidden]')).toBe(body)
+    const box = body.querySelector('.max-w-160')!
+    expect(hasClasses(box, 'grid max-w-160 gap-1 text-small text-muted')).toBe(true)
+  })
+
+  it('AC-4004.2: 한 개만 고르면 칸 안에 합계 글이 없다(세 글)', () => {
+    draw(PLAIN, [PICK_A])
+    expect(howNotes()).toEqual(['줄을 누르면 그 처방의 일별 건수가 열려요.', NOTE_COUNT, NOTE_NEW])
+  })
+
+  it('AC-4004.2: 펼친 설명은 그 줄 아래이고, 누르면 보인다', () => {
+    draw(PLAIN, [PICK_A, PICK_B])
+    const line = howButton().parentElement!
+    expect(line.nextElementSibling).toBe(howBody())
+    fireEvent.click(howButton())
+    expect(howButton().getAttribute('aria-expanded')).toBe('true')
+    expect(howBody().hidden).toBe(false)
+  })
+
+  it('AC-4004.3: 구분 없음 주의 줄과 견준 짝 안내는 접는 칸 밖, 그 줄 아래에 그대로 보인다', () => {
+    const { container } = draw(WITH_GAP, [PICK_A, PICK_B], { period: '12m' })
+    const shown = shownNotesBox(container)!
+    expect(textsOf(shown)[0]).toContain(GAP_SENTENCE)
+    expect(textsOf(shown)[1]).toBe('증감과 지난 기간 건수는 끝난 11달만 견줘요. 건수는 기간 전체예요.')
+    expect(shown.children).toHaveLength(2)
+    expect(howBody().contains(shown)).toBe(false)
+    expect(hasClasses(shown, 'grid max-w-160 gap-1 text-small text-muted')).toBe(true)
+    expect(howButton().compareDocumentPosition(shown) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(howBody().textContent).not.toContain(GAP_SENTENCE)
+  })
+
+  it('AC-4004.3: 주의 줄·견준 짝 안내가 없으면 그대로 보이는 안내 묶음도 없다(빈 칸 없음)', () => {
+    const { container } = draw(PLAIN, [PICK_A])
+    expect(shownNotesBox(container)).toBeNull()
+  })
+
+  it('AC-4005.1: 복사가 막혀 열리는 직접 복사 칸은 그 줄 아래이고(줄 밖), 접는 설명 칸 밖이다', async () => {
+    fakeClipboard(null)
+    draw(PLAIN, [PICK_A])
+    await pressCopy()
+    const box = screen.getByRole('textbox', { name: '복사할 표' })
+    const line = howButton().parentElement!
+    expect(line.contains(box)).toBe(false)
+    expect(howBody().contains(box)).toBe(false)
+    expect(line.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByRole('status').textContent).toBe(BLOCKED)
   })
 })

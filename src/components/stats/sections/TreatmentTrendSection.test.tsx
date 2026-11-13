@@ -16,6 +16,7 @@ import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
 import type { RxGroup } from '@/types/rxGroups'
 import { Section } from './parts'
+import { RxSection } from './RxSection'
 import { TreatmentTrendSection } from './TreatmentTrendSection'
 
 // 처방별 추세 칸 잇기 (spec treatment-trend TASK-13, REQ-1201·1207·1208·1209·1210·1211·1213, 시안 docs/mockups/treatment-trend renderView()·startEdit()·save()).
@@ -41,7 +42,8 @@ const BEFORE = '2026-09-21' // 지난 30일 안, 최근 90일·12개월 안
 const SPRING = '2026-03-10' // 최근 12개월에만 든다
 
 const TITLE = '처방별 추세'
-const EDIT_TITLE = '처방별 추세 · 묶음 고치기'
+// 고치기 제목은 칸 이름 대신 탭 이름을 쓴다(stats-pc-ux AC-4003.6). 따로 그릴 때의 h2 TITLE은 그대로다(design.md 표)
+const EDIT_TITLE = '묶음별 추세 · 묶음 고치기'
 const DESC = '만들어 둔 묶음마다 건수와 총환자 대비 · 같은 날 같은 환자는 1건' // group-exclude AC-3708.7(treatment-trend AC-1201.1 설명 글자를 대신한다)
 const NOT_SAVED = '자료 없음 · 불러오면 묶음마다 건수와 신환·재진이 보여요.'
 const NO_RANGE = '자료 없음 · 불러온 숫자에 이 기간 자료가 없어요.'
@@ -189,7 +191,7 @@ describe('AC-1201.4: 고른 기간에 일 줄이 없음', () => {
     for (const note of NOTES) expect(screen.queryByText(note)).toBeNull()
   })
 
-  it('AC-1201.4: [묶음 고치기]는 누를 수 있다', async () => {
+  it('AC-1201.4·AC-4003.6: [묶음 고치기]는 누를 수 있다', async () => {
     const user = userEvent.setup()
     drawView(viewOf(), inputOf([day(BEFORE, [])]))
     expect(editButton().hasAttribute('aria-disabled')).toBe(false)
@@ -522,7 +524,7 @@ describe('AC-3709.7·AC-3712.2·AC-3712.3: 줄마다 그래프 모양', () => {
 })
 
 describe('AC-1210.2: 묶음 고치기 열기', () => {
-  it('AC-1210.2: 제목이 `처방별 추세 · 묶음 고치기`가 되고(옆 설명·단추 없음) 초점이 그 제목으로 간다', async () => {
+  it('AC-1210.2·AC-4003.6: 제목이 `묶음별 추세 · 묶음 고치기`가 되고(옆 설명·단추 없음) 초점이 그 제목으로 간다', async () => {
     const user = userEvent.setup()
     drawView()
     await user.click(editButton())
@@ -708,7 +710,7 @@ describe('AC-1210.12: 저장하고 돌아오기', () => {
 })
 
 describe('AC-1210.13: 저장 실패', () => {
-  it('AC-1210.13: 고치는 화면이 그대로이고 오류 카드가 있으며 고치던 내용이 남는다', async () => {
+  it('AC-1210.13·AC-4003.6: 고치는 화면이 그대로이고 오류 카드가 있으며 고치던 내용이 남는다', async () => {
     const user = userEvent.setup()
     render(<Live input={inputOf()} ok={false} />)
     await user.click(editButton())
@@ -866,5 +868,136 @@ describe('AC-1704.4: 고른 기간의 처방별 추세', () => {
   it('AC-1704.4: 빠른 단추일 때 설명은 지금과 같다', () => {
     drawView(viewOf(), inputOf())
     expect(screen.getByText(DESC)).toBeTruthy()
+  })
+})
+
+// ── stats-pc-ux: 처방 탭 안의 묶음별 추세 (REQ-4003 AC-4003.6, REQ-4004 AC-4004.2 ①·AC-4004.3) ─────────────────
+describe('AC-4004.2 ①·AC-4004.3: 묶음별 추세 아래 네 글 접기', () => {
+  const HOW = '어떻게 세나요?'
+  const howButton = () => screen.getByRole('button', { name: HOW })
+  const howBody = () => document.getElementById(howButton().getAttribute('aria-controls')!)!
+  const COMPARED = '증감과 막대는 두 기간 모두 자료가 있는 8일만 견줘요. 건수는 기간 전체예요.'
+  const UNCOMPARED_NOTE = '충격파 묶음은 비교 기간을 다시 불러오면 지난 기간과 견줘요.'
+
+  it('AC-4004.2: 네 글은 "어떻게 세나요?" 칸 안에 이 차례로 있고 처음에는 접혀(hidden) 있어 그 자리에 보이지 않는다', () => {
+    drawView()
+    expect(howButton().getAttribute('aria-expanded')).toBe('false')
+    const body = howBody()
+    expect(body.hidden).toBe(true)
+    expect(Array.from(body.querySelectorAll('p')).map((p) => p.textContent)).toEqual(NOTES)
+    for (const note of NOTES) {
+      const shown = screen.getByText(note)
+      expect(shown.closest('[hidden]')).toBe(body)
+      hasAll(shown, 'text-small text-muted')
+    }
+  })
+
+  it('AC-4004.2: 누르면 네 글이 보이고(aria-expanded="true") 다시 누르면 접힌다', async () => {
+    const user = userEvent.setup()
+    drawView()
+    await user.click(howButton())
+    expect(howButton().getAttribute('aria-expanded')).toBe('true')
+    expect(howBody().hidden).toBe(false)
+    await user.click(howButton())
+    expect(howBody().hidden).toBe(true)
+  })
+
+  it('AC-4004.2: 접는 칸은 줄 목록 아래이고, 보이는 안내(비교하지 않는 묶음 글) 다음이다', () => {
+    drawView(viewOf(), inputOf(UNCOMPARED))
+    expect(follows(list()!, howButton())).toBe(true)
+    expect(follows(screen.getByText(UNCOMPARED_NOTE), howButton())).toBe(true)
+  })
+
+  it('AC-4004.3: 비교하지 않는 묶음 글은 접는 칸 밖에 그대로 보인다', () => {
+    drawView(viewOf(), inputOf(UNCOMPARED))
+    const note = screen.getByText(UNCOMPARED_NOTE)
+    expect(note.closest('[hidden]')).toBeNull()
+    expect(howBody().contains(note)).toBe(false)
+  })
+
+  it('AC-4004.3: 견준 짝이 빠졌다는 글은 접는 칸 밖에 그대로 보이고 접는 칸 앞이다', () => {
+    drawView(viewOf(), inputOf(ALL_READY, '30d', [{ from: '2026-10-06', to: '2026-11-12' }]))
+    const note = screen.getByText(COMPARED)
+    expect(note.closest('[hidden]')).toBeNull()
+    expect(howBody().contains(note)).toBe(false)
+    expect(follows(note, howButton())).toBe(true)
+  })
+
+  it('AC-4004.3: 다시 불러오기 안내 상자는 접지 않고 줄 위 그대로다', () => {
+    drawView(viewOf(), inputOf(PARTLY))
+    expect(notice()!.closest('[hidden]')).toBeNull()
+    expect(follows(notice()!, list()!)).toBe(true)
+  })
+
+  it('AC-4004.2: 저장된 숫자 없음·묶음 읽는 중·읽기 실패·기간 자료 없음·고치기 화면에는 "어떻게 세나요?"가 없다', async () => {
+    const none = () => expect(screen.queryByRole('button', { name: HOW })).toBeNull()
+    drawView(viewOf(), inputOf(), false)
+    none()
+    cleanup()
+    drawView(viewOf({ state: 'reading', groups: [] }))
+    none()
+    cleanup()
+    drawView(viewOf({ state: 'read-failed', groups: [] }))
+    none()
+    cleanup()
+    drawView(viewOf(), inputOf([day(BEFORE, [])]))
+    none()
+    cleanup()
+    const user = userEvent.setup()
+    drawView()
+    await user.click(editButton())
+    none()
+  })
+
+  it('AC-4004.2: 접는 칸 단추는 열린 줄 단추와 섞이지 않는다(줄 단추만 li 안이다)', () => {
+    drawView()
+    expect(howButton().closest('li')).toBeNull()
+    expect(howButton().closest('ul')).toBeNull()
+  })
+})
+
+describe('AC-4003.6: 묶음별 추세 · 묶음 고치기 제목', () => {
+  it('AC-4003.6: 고치기 제목 상수는 `묶음별 추세 · 묶음 고치기`이고 따로 그릴 때의 h2 TITLE은 `처방별 추세` 그대로다', () => {
+    const source = readFileSync(join(process.cwd(), 'src/components/stats/sections/TreatmentTrendSection.tsx'), 'utf8')
+    expect(source).toMatch(/const EDIT_TITLE = '묶음별 추세 · 묶음 고치기'/)
+    expect(source).toMatch(/const TITLE = '처방별 추세'/)
+    expect(source).not.toContain('처방별 추세 · 묶음 고치기')
+  })
+
+  it('AC-4003.6: 처방 탭 칸 첫 탭에서 [묶음 고치기]를 누르면 패널 맨 위 h3 `묶음별 추세 · 묶음 고치기`에 초점이 가고 머리 줄 설명·단추가 없다. [그만두기]로 닫으면 초점이 [묶음 고치기]로 온다', async () => {
+    const user = userEvent.setup()
+    render(
+      <RxSection
+        tabs={[
+          { name: '묶음별 추세', panel: <Live input={inputOf()} /> },
+          { name: '처방별 신환·재진', panel: <p>둘째 탭</p> },
+        ]}
+      />,
+    )
+    const head = screen.getByRole('heading', { level: 2, name: '처방' }).parentElement!
+    const edit = await within(head).findByRole('button', { name: '묶음 고치기' })
+    expect(within(head).getByText(DESC)).toBeTruthy()
+    await user.click(edit)
+    const panel = screen.getByRole('tabpanel')
+    const h3 = within(panel).getByRole('heading', { level: 3, name: EDIT_TITLE })
+    expect(panel.firstElementChild).toBe(h3)
+    expect(document.activeElement).toBe(h3)
+    expect(within(head).queryByText(DESC)).toBeNull()
+    expect(screen.queryByRole('button', { name: '묶음 고치기' })).toBeNull()
+    expect(screen.queryByRole('heading', { level: 2, name: EDIT_TITLE })).toBeNull()
+    await user.click(within(panel).getByRole('button', { name: '그만두기' }))
+    await waitFor(() => expect(document.activeElement).toBe(within(head).getByRole('button', { name: '묶음 고치기' })))
+    expect(within(panel).queryByRole('heading', { level: 3 })).toBeNull()
+  })
+
+  it('AC-4003.6·AC-4004.2: 처방 탭 칸 안에서도 네 글은 "어떻게 세나요?" 칸 안(처음 접힘)이고 머리 줄로 가지 않는다', async () => {
+    render(<RxSection tabs={[{ name: '묶음별 추세', panel: <Live input={inputOf()} /> }]} />)
+    const head = screen.getByRole('heading', { level: 2, name: '처방' }).parentElement!
+    await within(head).findByRole('button', { name: '묶음 고치기' })
+    const how = within(screen.getByRole('tabpanel')).getByRole('button', { name: '어떻게 세나요?' })
+    const body = document.getElementById(how.getAttribute('aria-controls')!)!
+    expect(body.hidden).toBe(true)
+    for (const note of NOTES) expect(body.contains(screen.getByText(note))).toBe(true)
+    expect(head.contains(how)).toBe(false)
   })
 })

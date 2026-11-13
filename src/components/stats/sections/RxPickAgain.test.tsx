@@ -87,6 +87,11 @@ const notesOf = (container: HTMLElement) => container.querySelector('div.max-w-1
 const hasClasses = (el: Element, classes: string) => classes.split(/\s+/).every((name) => el.classList.contains(name))
 const detailsOf = (container: HTMLElement) => container.querySelector('details') as HTMLDetailsElement
 const rateOf = (row: HTMLElement) => row.querySelector('.text-lead.font-semibold') as HTMLElement
+// "어떻게 세나요?" 접는 칸(stats-pc-ux AC-4004.2 ③): 설명 글·한 환자 예시·표 아래 안내가 이 칸 안이다. 처음 접혀 있어 role로 찾으려면 먼저 편다
+const howButton = () => screen.getByRole('button', { name: '어떻게 세나요?' })
+const queryHow = () => screen.queryByRole('button', { name: '어떻게 세나요?' })
+const howBody = () => document.getElementById(howButton().getAttribute('aria-controls')!)!
+const openHow = () => fireEvent.click(howButton())
 
 afterEach(cleanup)
 
@@ -159,13 +164,14 @@ describe('AC-1307.3: 날 수 단추', () => {
 })
 
 describe('AC-1307.4: 어떻게 세나요', () => {
-  it.each([7, 14, 30] as const)('AC-1307.4: %i일이면 굵은 `어떻게 세나요` 뒤에 그 날 수의 설명이 있다', (w) => {
+  it.each([7, 14, 30] as const)('AC-1307.4·AC-4004.4: %i일이면 굵은 머리 `어떻게 세나요` 없이 그 날 수의 설명 글이 접는 칸 안에 그대로 있다', (w) => {
     draw({ win: w })
-    const name = screen.getByText('어떻게 세나요')
-    expect(name.classList.contains('font-semibold')).toBe(true)
-    expect(name.parentElement?.textContent).toBe(
-      `어떻게 세나요기간 안에 그 처방을 새로 시작한 환자를 모아, 다음 날부터 ${w}일 안에 같은 처방을 또 받았는지 봐요. 새로 시작한 날은 앞 30일 동안 그 처방을 받지 않은 날이에요.`,
-    )
+    expect(screen.queryByText('어떻게 세나요')).toBeNull()
+    const how = screen.getByText(`기간 안에 그 처방을 새로 시작한 환자를 모아, 다음 날부터 ${w}일 안에 같은 처방을 또 받았는지 봐요. 새로 시작한 날은 앞 30일 동안 그 처방을 받지 않은 날이에요.`)
+    expect(how.tagName).toBe('P')
+    expect(how.querySelector('.font-semibold')).toBeNull()
+    expect(howBody().contains(how)).toBe(true)
+    expect(hasClasses(how, 'max-w-160 text-small text-ink-2')).toBe(true)
   })
 })
 
@@ -177,8 +183,9 @@ describe('AC-1307.5: 한 환자 예시', () => {
     expect(details.querySelector('summary')?.textContent).toBe('한 환자로 예를 들면 (7일 안)')
   })
 
-  it('AC-1307.5: 9칸 목록(시작·1일째 ~ 8일째), 받은 칸은 시작·3일째·6일째·8일째이고 칸마다 role="img" 이름이 있다', () => {
+  it('AC-1307.5·AC-4004.2: 9칸 목록(시작·1일째 ~ 8일째), 받은 칸은 시작·3일째·6일째·8일째이고 칸마다 role="img" 이름이 있다', () => {
     draw()
+    openHow()
     const list = screen.getByRole('list', { name: '한 환자의 9일' })
     const items = within(list).getAllByRole('listitem')
     expect(items.map((li) => li.firstElementChild?.textContent)).toEqual(['시작', '1일째', '2일째', '3일째', '4일째', '5일째', '6일째', '7일째', '8일째'])
@@ -190,8 +197,9 @@ describe('AC-1307.5: 한 환자 예시', () => {
     expect(hasClasses(items[0]!.firstElementChild!, 'font-semibold text-ink')).toBe(true)
   })
 
-  it('AC-1307.5: 8일째 칸은 흐리고(muted) 받은 표시가 점선 네모다', () => {
+  it('AC-1307.5·AC-4004.2: 8일째 칸은 흐리고(muted) 받은 표시가 점선 네모다', () => {
     draw()
+    openHow()
     const items = within(screen.getByRole('list', { name: '한 환자의 9일' })).getAllByRole('listitem')
     const late = items[8]!
     expect(late.classList.contains('text-muted')).toBe(true)
@@ -591,5 +599,86 @@ describe('AC-1705.4: 고른 기간의 같은 처방 재방문', () => {
     drawPick(pickInput('2026-11', nov))
     const line = screen.getByText('2026년 11월에 시작한 환자는 아직 7일이 다 지나지 않아 셀 수 없어요.')
     expect(line.querySelector('.font-semibold')).toBeNull()
+  })
+})
+
+// ── stats-pc-ux: 같은 처방 재방문 설명 접기 (REQ-4004 AC-4004.2 ③·AC-4004.4, 기본값 10) ─────────────────
+describe('AC-4004.2 ③·AC-4004.4: 같은 처방 재방문 설명 접기', () => {
+  const HOW_TEXT = (w: number) => `기간 안에 그 처방을 새로 시작한 환자를 모아, 다음 날부터 ${w}일 안에 같은 처방을 또 받았는지 봐요. 새로 시작한 날은 앞 30일 동안 그 처방을 받지 않은 날이에요.`
+  const follows = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+  const winRow = () => winGroup().parentElement!
+
+  it('AC-4004.4: 날 수 단추 바로 아래가 센 범위 글 · 기간 막대이고 그 뒤가 표다(설명 글·예시가 위에 없다)', () => {
+    const { container } = draw()
+    const base = winRow().nextElementSibling!
+    expect(base.textContent).toBe('10월 6일 – 10월 28일에 시작한 환자로 셌어요. 시작하고 7일이 안 지난 10월 29일 – 11월 4일은 아직 셀 수 없어요.')
+    expect(base.nextElementSibling).toBe(stripOf(container))
+    expect(follows(stripOf(container)!, colsOf(container)!)).toBe(true)
+    expect(follows(rowOf(B), detailsOf(container))).toBe(true)
+  })
+
+  it('AC-4004.2: 접는 칸은 칸 맨 아래이고 처음 접혀 있다. 안은 설명 글 · 한 환자 예시 · 표 아래 안내 차례다', () => {
+    const { container } = draw({ win: 14 })
+    expect(sectionOf(container).lastElementChild!.contains(howButton())).toBe(true)
+    expect(howButton().getAttribute('aria-expanded')).toBe('false')
+    const body = howBody()
+    expect(body.hidden).toBe(true)
+    const kids = Array.from(body.children)
+    expect(kids).toHaveLength(3)
+    expect(kids[0]!.textContent).toBe(HOW_TEXT(14))
+    expect(kids[1]).toBe(detailsOf(container))
+    expect(kids[2]).toBe(notesOf(container))
+    expect(follows(rowOf(B), howButton())).toBe(true)
+  })
+
+  it('AC-4004.2: 펼친 안의 한 환자 예시는 처음 열려 있다', () => {
+    const { container } = draw()
+    openHow()
+    expect(howButton().getAttribute('aria-expanded')).toBe('true')
+    expect(howBody().hidden).toBe(false)
+    expect(howBody().contains(detailsOf(container))).toBe(true)
+    expect(detailsOf(container).open).toBe(true)
+    expect(screen.getByRole('list', { name: '한 환자의 9일' })).toBeTruthy()
+  })
+
+  it('AC-4004.2: 표 아래 안내는 10명 미만 줄이 있으면 여섯, 없으면 다섯이고 둘 다 접는 칸 안이다', () => {
+    const { container } = draw()
+    expect(notesOf(container)!.children).toHaveLength(6)
+    expect(howBody().contains(notesOf(container))).toBe(true)
+    cleanup()
+    const fewless = draw({ picks: [PICK_B, PICK_C] })
+    expect(notesOf(fewless.container)!.children).toHaveLength(5)
+    expect(howBody().contains(notesOf(fewless.container))).toBe(true)
+  })
+
+  it.each([
+    ['읽는 중', { daysState: 'reading' }],
+    ['읽기 실패', { daysState: 'failed' }],
+    ['이 기간 자료 없음', { days: [day('2026-09-01', { ready: READY_ALL })] }],
+    ['세기 전에 저장', { days: [day('2026-10-10'), day('2026-10-20')] }],
+  ] as [string, Options][])('AC-4004.4: %s — 표가 없으면 칸 맨 아래 접는 칸에 설명 글과 한 환자 예시만 있다', (_, options) => {
+    const { container } = draw(options)
+    expect(sectionOf(container).lastElementChild!.contains(howButton())).toBe(true)
+    const kids = Array.from(howBody().children)
+    expect(kids.map((kid) => kid.tagName)).toEqual(['P', 'DETAILS'])
+    expect(kids[0]!.textContent).toBe(HOW_TEXT(7))
+    expect(notesOf(container)).toBeNull()
+    expect(howBody().textContent).not.toContain('파일을 따로 넣을 때')
+  })
+
+  it('AC-4004.4: 고른 처방이 없으면 접는 칸이 없다', () => {
+    draw({ picks: [] })
+    expect(queryHow()).toBeNull()
+  })
+
+  it('AC-4004.1: 접는 칸을 편 채 날 수를 바꾸거나 숫자를 더 읽는 중이 되어도 펼친 채다(같은 자리의 같은 부품)', () => {
+    const props = { picks: [PICK_A, PICK_B], input: inputOf(), onWin: () => {}, onRetryDays: () => {} }
+    const { rerender } = render(<RxPickAgain {...props} win={7} daysState="ready" />)
+    openHow()
+    rerender(<RxPickAgain {...props} win={14} daysState="reading" />)
+    expect(howButton().getAttribute('aria-expanded')).toBe('true')
+    rerender(<RxPickAgain {...props} win={14} daysState="ready" />)
+    expect(howButton().getAttribute('aria-expanded')).toBe('true')
+    expect(howBody().hidden).toBe(false)
   })
 })

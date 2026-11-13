@@ -8,13 +8,15 @@ import { addedRateText, COLUMN_NAME, pickComparedNote, rateText, rxPickCopyText 
 import { codeKey, type RxPickRow, type StatsInput, type StatsRange } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
 import type { Delta } from '@/types/analysis'
+import { HowCounted } from './HowCounted'
 import { DeltaText } from './parts'
 import { BUCKET_NAME } from './trendLabels'
 
 // 처방 골라 보기 표 (rx-picker REQ-805·808·809, AC-804.5·804.8, 시안 docs/mockups/rx-picker/index.html). props만 받는다.
 // 뜻 줄·칸 머리·줄·얇은 띠·합계·[표 복사]·안내. 숫자는 rxPickRows·rxPickTotal이 낸 값이고 줄을 눌러 여는 그래프는 renderPanel로 받는다.
 // 넓으면(1024px 이상) 칸, 좁으면 줄 하나가 여러 줄로 쌓인다. 합계 줄은 단추가 아니라서 줄 안 칸을 Cells 하나로 같이 쓴다.
-// 고른 기간(stats-period AC-1705.3)은 지난 기간 건수·증감 두 칸 대신 비교마다 '{name}보다' 칸이고 견줄 수 없으면 '–'다. 빠른 단추는 지금 칸 그대로다
+// 고른 기간(stats-period AC-1705.3)은 지난 기간 건수·증감 두 칸 대신 비교마다 '{name}보다' 칸이고 견줄 수 없으면 '–'다. 빠른 단추는 지금 칸 그대로다.
+// 표 바로 다음 줄은 [어떻게 세나요?] · [표 복사]이고(stats-pc-ux AC-4005.1), 늘 같은 네 글은 그 안에 접는다(AC-4004.2 ②). 상황 안내(주의 줄·견준 짝)는 그 아래 그대로 보인다(AC-4004.3)
 
 const MEANING = '신환율 = 신환 ÷ 건수 · 재진율 = 재진 ÷ 건수'
 const GAP_NOTE = '구분 없음은 파일에 신환·재진이 아닌 다른 값(진찰료산정안함 같은 값)이 적힌 건이에요. 어느 쪽에도 넣지 않아서 두 비율을 더해도 100%가 안 돼요. 30 초진은 재진으로 세요. 이렇게 정하기 전에 저장한 날은 그 파일을 다시 넣어야 숫자가 바뀌어요.'
@@ -23,6 +25,8 @@ const NEW_NOTE = '신환은 의원에 처음 온 환자예요. 그 처방을 처
 const TOTAL_NOTE = '합계는 고른 처방의 건수를 더한 값이에요. 한 환자가 같은 날 두 처방을 받으면 2건이에요.'
 const COPIED = '복사했어요. 엑셀이나 메모에 붙여 넣을 수 있어요.'
 const BLOCKED = '이 화면에서는 복사가 막혔어요. 아래 글을 직접 복사해 주세요.'
+// 표 아래 안내 묶음(그대로 보이는 것 · 접는 칸 안 같은 모양)
+const NOTES_BOX = 'mt-3 grid max-w-160 gap-1 text-small text-muted'
 
 // 얇은 띠의 구분 없음 빗금: 45° 선을 4px 간격으로 M0 k L k 0. 막대 조각의 빗금(닿는 길이 440)으로는 1024px 미만 전체 폭 띠(최대 약 975px)가 끊겨 따로 둔다(design.md '차트 부품')
 const BAND_HATCH_GAP = 4
@@ -168,8 +172,9 @@ function PickRow({ row, columnName, picked, columns, open, onToggle, renderPanel
   )
 }
 
-// CopyButton을 쓰지 않는 까닭은 design.md '[표 복사]는 CopyButton을 쓰지 않는다'. 복사한 뒤 표가 바뀌면 "복사했어요"를 지우고, 막힌 칸의 글은 지금 표를 따른다
-function CopyTable({ text }: { text: string }) {
+// CopyButton을 쓰지 않는 까닭은 design.md '[표 복사]는 CopyButton을 쓰지 않는다'. 복사한 뒤 표가 바뀌면 "복사했어요"를 지우고, 막힌 칸의 글은 지금 표를 따른다.
+// 표 다음 줄(stats-pc-ux AC-4005.1): 왼쪽 [어떻게 세나요?] · 오른쪽 끝 복사 안내 + [표 복사], 펼친 설명(children)은 그 줄 아래. 막히면 직접 복사 칸은 그 아래다
+function CopyTable({ text, children }: { text: string; children: ReactNode }) {
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
   async function copy() {
     try {
@@ -183,15 +188,21 @@ function CopyTable({ text }: { text: string }) {
   const copied = result !== null && result.ok && result.text === text
   return (
     <>
-      <div className="mt-3 flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
-        <span role="status" className="text-small text-ink-2">
-          {blocked ? BLOCKED : copied ? COPIED : ''}
-        </span>
-        <button type="button" onClick={() => void copy()} className={`${ds.button.secondarySmall} max-md:w-full`}>
-          <Icon name="copy" size={14} className="text-ink-2" />
-          <span>표 복사</span>
-        </button>
-      </div>
+      <HowCounted
+        side={
+          <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+            <span role="status" className="text-small text-ink-2">
+              {blocked ? BLOCKED : copied ? COPIED : ''}
+            </span>
+            <button type="button" onClick={() => void copy()} className={`${ds.button.secondarySmall} max-md:w-full`}>
+              <Icon name="copy" size={14} className="text-ink-2" />
+              <span>표 복사</span>
+            </button>
+          </span>
+        }
+      >
+        {children}
+      </HowCounted>
       {blocked && <textarea readOnly aria-label="복사할 표" value={text} className={`mt-2 block h-30 w-full rounded-control border border-line-strong bg-surface p-2 text-caption whitespace-pre text-ink max-md:text-lead ${ds.focusRing}`} />}
     </>
   )
@@ -272,15 +283,20 @@ export function RxPickTable({
           </li>
         )}
       </ul>
-      <CopyTable text={rxPickCopyText({ hospitalName, periodName: range.name, range, rows, total })} />
-      <div className="mt-3 grid max-w-160 gap-1 text-small text-muted">
-        {anyGap && <p className="text-ink-2">{GAP_NOTE}</p>}
-        {compared !== null && <p>{compared}</p>}
-        <p>{`줄을 누르면 그 처방의 ${BUCKET_NAME[range.bucket]}별 건수가 열려요.`}</p>
-        <p>{COUNT_NOTE}</p>
-        <p>{NEW_NOTE}</p>
-        {total !== null && <p>{TOTAL_NOTE}</p>}
-      </div>
+      <CopyTable text={rxPickCopyText({ hospitalName, periodName: range.name, range, rows, total })}>
+        <div className={NOTES_BOX}>
+          <p>{`줄을 누르면 그 처방의 ${BUCKET_NAME[range.bucket]}별 건수가 열려요.`}</p>
+          <p>{COUNT_NOTE}</p>
+          <p>{NEW_NOTE}</p>
+          {total !== null && <p>{TOTAL_NOTE}</p>}
+        </div>
+      </CopyTable>
+      {(anyGap || compared !== null) && (
+        <div className={NOTES_BOX}>
+          {anyGap && <p className="text-ink-2">{GAP_NOTE}</p>}
+          {compared !== null && <p>{compared}</p>}
+        </div>
+      )}
     </>
   )
 }

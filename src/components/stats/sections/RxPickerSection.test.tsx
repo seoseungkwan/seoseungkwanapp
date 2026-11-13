@@ -779,7 +779,7 @@ describe('fu-rate AC-1308: 같은 처방 재방문 묶음을 잇기', () => {
     expect(head.closest('section')!.className).toMatch(/(^| )col-span-12( |$)/)
   })
 
-  it('AC-1308.2: 다 읽으면 건수 표 바로 아래에 묶음이 있고 줄은 건수 표와 같은 차례·이름이다', async () => {
+  it('AC-1308.2·AC-4005.1: 다 읽으면 건수 표 바로 아래([어떻게 세나요?] · [표 복사] 줄과 접힌 설명 다음)에 묶음이 있고 줄은 건수 표와 같은 차례·이름이다', async () => {
     stored = [
       { code: B.code, name: '가짜처방 저장한 나' },
       { code: A.code, name: '가짜처방 저장한 가' },
@@ -788,7 +788,10 @@ describe('fu-rate AC-1308: 같은 처방 재방문 묶음을 잇기', () => {
     expect(rowNames()).toEqual([B.name, A.name])
     const section = againSection()!
     expect(section.parentElement).toBe(screen.getByRole('heading', { level: 2, name: TITLE }).closest('section'))
-    expect(section.previousElementSibling!.textContent).toContain(COUNT_TAIL)
+    const foot = section.previousElementSibling as HTMLElement
+    expect(within(foot).getByRole('button', { name: '표 복사' })).toBeTruthy()
+    expect(within(foot).getByRole('button', { name: '어떻게 세나요?' })).toBeTruthy()
+    expect(foot.textContent).toContain(COUNT_TAIL)
     expect(againRowNames()).toEqual([B.name, A.name])
   })
 
@@ -957,5 +960,48 @@ describe('AC-1704.4: 고른 기간의 처방 골라 보기', () => {
   it('AC-1704.4: 설명 끝에 " · {name}"이 붙는다', async () => {
     await drawReady({ input: pickInputOf() })
     expect(screen.getByText(`${DESC} · 2026년 11월`)).toBeTruthy()
+  })
+})
+
+// ── stats-pc-ux: 처방 골라 보기 칸 안의 설명 접기 (REQ-4004 AC-4004.2 ②③, REQ-4005 AC-4005.1) ─────────────────
+describe('AC-4004.2 ②③·AC-4005.1: 처방 골라 보기 칸 안의 접는 설명', () => {
+  const NOW = '2026-11-05'
+  const AGAIN = '같은 처방 재방문'
+  const WIN_READY: DayAgainPayload['ready'] = [true, true, true]
+  const D1010: DayPayload = { ...day('2026-10-10', [[A, 12, 12, 0]]), again: { ready: WIN_READY, rx: [{ code: A.code, starts: 12, back: [3, 5, 6], more: [4, 7, 9] }] } }
+  const D1103 = day('2026-11-03', [[A, 6, 1, 5]])
+  const nowInput = (): StatsInput => ({ days: [D1010, D1103], covered: [{ from: '2024-12-01', to: '2026-11-04' }], range: statsRange(NOW, '30d') })
+  const hows = () => screen.getAllByRole('button', { name: '어떻게 세나요?' })
+  const bodyOf = (button: HTMLElement) => document.getElementById(button.getAttribute('aria-controls')!)!
+
+  beforeEach(() => {
+    vi.mocked(readCoverage).mockReset().mockResolvedValue([])
+  })
+
+  it('AC-4004.2: 고른 처방이 있으면 접는 설명은 건수 표 아래 하나, 같은 처방 재방문 맨 아래 하나이고 처음 둘 다 접혀 따로 움직인다', async () => {
+    stored = [A]
+    await drawReady({ input: nowInput() })
+    const [table, again] = hows()
+    expect(hows()).toHaveLength(2)
+    const againSection = screen.getByRole('heading', { level: 3, name: AGAIN }).closest('section')!
+    expect(againSection.contains(table!)).toBe(false)
+    expect(againSection.lastElementChild!.contains(again!)).toBe(true)
+    expect(bodyOf(table!).hidden).toBe(true)
+    expect(bodyOf(again!).hidden).toBe(true)
+    expect(bodyOf(table!).textContent).toContain('줄을 누르면 그 처방의')
+    expect(bodyOf(again!).textContent).toContain('기간 안에 그 처방을 새로 시작한 환자를 모아')
+    fireEvent.click(table!)
+    expect(bodyOf(table!).hidden).toBe(false)
+    expect(bodyOf(again!).hidden).toBe(true)
+  })
+
+  it('AC-4005.1: 건수 표 다음 줄이 [어떻게 세나요?] · [표 복사]이고 복사 단추는 같은 처방 재방문 묶음 앞이다', async () => {
+    stored = [A]
+    await drawReady({ input: nowInput() })
+    const copy = screen.getByRole('button', { name: '표 복사' })
+    const [table] = hows()
+    expect(table!.parentElement!.contains(copy)).toBe(true)
+    const againSection = screen.getByRole('heading', { level: 3, name: AGAIN }).closest('section')!
+    expect(copy.compareDocumentPosition(againSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })
