@@ -17,6 +17,10 @@ type Fake = {
   helper?: string
   w1?: SaveResult
   w2?: SaveResult
+  /** 마감 일자 칸이 그날인가(부를 때마다 차례대로, 끝나면 마지막 값. 기본 늘 true, TASK-8) */
+  dateIs?: boolean[]
+  /** 화면에서 찾지 못한 칸 수(기본 0, TASK-8) */
+  missing?: number
 }
 
 function bitDay(date: string, total: number, overlap?: number): ClosingDay {
@@ -24,10 +28,12 @@ function bitDay(date: string, total: number, overlap?: number): ClosingDay {
   return { ...day, date, patients: { ...day.patients, total }, overlap: overlap ? { visits: overlap, carm: 10, sono: 20 } : null }
 }
 
-function fakeDeps(days: Record<string, Fake> = {}) {
+/** all = TASK-8에 더한 부품(dateIs·missingCells)을 부른 것도 calls에 적는다(기본은 적지 않아 앞 시험의 차례가 그대로다) */
+function fakeDeps(days: Record<string, Fake> = {}, o: { all?: boolean } = {}) {
   const calls: string[] = []
   let current = ''
   const loads = new Map<string, number>()
+  const checks = new Map<string, number>()
   const flags = { gone: false }
   /** 부품을 부를 때마다 끼어들 일(멈추기 누름·화면 떠남 흉내) */
   const hooks: Record<string, () => void> = {}
@@ -64,6 +70,17 @@ function fakeDeps(days: Record<string, Fake> = {}) {
       const fake = days[date]
       if (fake?.helper) return { block: { kind: 'helper', code: fake.helper } }
       return { day: bitDay(date, fake?.total ?? 30, fake?.overlap) }
+    },
+    dateIs(date) {
+      if (o.all) note(`dateIs ${date}`)
+      const list = days[date]?.dateIs ?? [true]
+      const n = checks.get(date) ?? 0
+      checks.set(date, n + 1)
+      return list[Math.min(n, list.length - 1)]
+    },
+    async missingCells(day, choice) {
+      if (o.all) note(`missingCells ${day.date} ${choice ?? '-'}`)
+      return days[day.date]?.missing ?? 0
     },
     async fill(day, choice) {
       note(`fill ${day.date} ${choice ?? '-'}`)
@@ -358,5 +375,137 @@ describe('AC-3703.1 runRange: 하루씩 채우고 저장', () => {
     const out = await runRange(D.slice(0, 2), f.deps, undefined, () => {}, never)
     expect(out).toEqual({ gone: true })
     expect(f.calls).toEqual([])
+  })
+})
+
+// --- TASK-8: 멈추는 경우 더하기(design.md 3절 새 차례, AC-3705.2 ⑥~⑩) ---
+
+/** 새 차례로 하루를 다 채우고 저장한 차례(dateIs·missingCells까지 적을 때) */
+const checkedDay = (date: string, choice = '-') => [
+  `setDate ${date}`,
+  `waitLoaded ${date}`,
+  'blocker',
+  'draftNotice',
+  `askDay ${date}`,
+  `dateIs ${date}`,
+  `missingCells ${date} ${choice}`,
+  `fill ${date} ${choice}`,
+  `dateIs ${date}`,
+  'save w1',
+  `dateIs ${date}`,
+  'save w2',
+  `waitLoaded ${date}`,
+]
+/** 그날 차례(그날 setDate부터 다음 날 setDate 앞까지) */
+const dayCalls = (calls: string[], date: string) => {
+  const from = calls.indexOf(`setDate ${date}`)
+  const next = calls.findIndex((c, i) => i > from && c.startsWith('setDate'))
+  return calls.slice(from, next === -1 ? undefined : next)
+}
+/** 칸을 바꾸거나 저장을 누른 부름 */
+const touched = (calls: string[]) => calls.filter((c) => c.startsWith('fill') || c.startsWith('save'))
+/** D[0]을 저장한 뒤 D[1]에서 멈춘 결과(그날은 남은 날 맨 앞) */
+const stoppedAt1 = (block: Block) => ({
+  run: { from: D[0], to: D[2], total: 3, saved: [D[0]], skipped: [], failed: [], remaining: [D[1], D[2]] },
+  outcome: 'blocked',
+  block,
+})
+
+describe('AC-3705.2 runRange: 새 멈춤(날짜 바뀜·못 찾은 칸·저장 단추·함께 있는 진료·뜻밖의 오류)', () => {
+  it('AC-3703.1 AC-3705.2: 새 차례 — askDay → dateIs → missingCells → fill → dateIs → w1 → dateIs → w2 → waitLoaded', async () => {
+    const f = fakeDeps({}, { all: true })
+    const out = await runRange(D.slice(0, 2), f.deps, 'sono', () => {}, never)
+    expect(f.calls).toEqual([...checkedDay(D[0], 'sono'), ...checkedDay(D[1], 'sono')])
+    expect(out).toMatchObject({ run: { saved: [D[0], D[1]], remaining: [] }, outcome: 'end' })
+  })
+
+  it.each<[string, boolean[], string[]]>([
+    ['채우기 전', [false], []],
+    ['업무일지 1 저장 전', [true, false], [`fill ${D[1]} -`]],
+    ['업무일지 2 저장 전', [true, true, false], [`fill ${D[1]} -`, 'save w1']],
+  ])('AC-3705.2: %s 마감 일자가 그날이 아니면 dateChanged로 멈추고 그날은 남은 날 맨 앞, 그 뒤 차례는 부르지 않는다', async (_at, dateIs, did) => {
+    const f = fakeDeps({ [D[1]]: { dateIs } }, { all: true })
+    const out = await runRange(D.slice(0, 3), f.deps, undefined, () => {}, never)
+    expect(out).toEqual(stoppedAt1({ kind: 'dateChanged' }))
+    const day = dayCalls(f.calls, D[1])
+    expect(touched(day)).toEqual(did)
+    expect(day.at(-1)).toBe(`dateIs ${D[1]}`)
+    expect(f.calls).not.toContain(`setDate ${D[2]}`)
+  })
+
+  it('AC-3705.2 AC-3704.2: dateChanged 뒤 이어서 하기는 그날부터 다시 채우고 두 저장을 한다', async () => {
+    const f = fakeDeps({ [D[1]]: { dateIs: [true, true, false, true] } }, { all: true })
+    const first = await runRange(D.slice(0, 3), f.deps, undefined, () => {}, never)
+    expect(first).toEqual(stoppedAt1({ kind: 'dateChanged' }))
+    if (!('run' in first)) throw new Error('멈춤 결과가 아니다')
+    const before = f.calls.length
+    const again = await runRange(first.run.remaining, f.deps, undefined, () => {}, never, first.run)
+    expect(f.calls.slice(before)).toEqual([...checkedDay(D[1]), ...checkedDay(D[2])])
+    expect(again).toEqual({
+      run: { from: D[0], to: D[2], total: 3, saved: [D[0], D[1], D[2]], skipped: [], failed: [], remaining: [] },
+      outcome: 'end',
+    })
+  })
+
+  it('AC-3705.2: 화면에서 찾지 못한 칸이 있으면 cellsMissing{count}로 멈추고 칸을 바꾸지 않으며(fill 없음) 저장도 누르지 않는다', async () => {
+    const f = fakeDeps({ [D[1]]: { missing: 2 } }, { all: true })
+    const out = await runRange(D.slice(0, 3), f.deps, 'carm', () => {}, never)
+    expect(out).toEqual(stoppedAt1({ kind: 'cellsMissing', count: 2 }))
+    const day = dayCalls(f.calls, D[1])
+    expect(touched(day)).toEqual([])
+    expect(day.at(-1)).toBe(`missingCells ${D[1]} carm`)
+  })
+
+  it('AC-3705.2: 저장 단추가 하나씩 있지 않으면(blocker noSaveButton) 멈추고 그날 칸을 바꾸지 않는다', async () => {
+    const f = fakeDeps({ [D[1]]: { block: { kind: 'noSaveButton' } } }, { all: true })
+    const out = await runRange(D.slice(0, 3), f.deps, undefined, () => {}, never)
+    expect(out).toEqual(stoppedAt1({ kind: 'noSaveButton' }))
+    expect(dayCalls(f.calls, D[1])).toEqual([`setDate ${D[1]}`, `waitLoaded ${D[1]}`, 'blocker'])
+  })
+
+  it('AC-3705.2: 그날 함께 있는 진료가 있는데 고른 것이 없으면 overlapUnpicked로 멈추고 날짜 확인·칸 세기·채우기·저장을 부르지 않는다', async () => {
+    const f = fakeDeps({ [D[1]]: { overlap: 2, dateIs: [false], missing: 1 } }, { all: true })
+    const out = await runRange(D.slice(0, 3), f.deps, undefined, () => {}, never)
+    expect(out).toEqual(stoppedAt1({ kind: 'overlapUnpicked' }))
+    expect(dayCalls(f.calls, D[1]).at(-1)).toBe(`askDay ${D[1]}`)
+  })
+
+  it('AC-3705.2: 고른 것이 있으면 함께 있는 진료가 있는 날도 그대로 채우고 저장한다', async () => {
+    const f = fakeDeps({ [D[1]]: { overlap: 2 } }, { all: true })
+    const out = await runRange(D.slice(0, 2), f.deps, 'both', () => {}, never)
+    expect(f.calls).toEqual([...checkedDay(D[0], 'both'), ...checkedDay(D[1], 'both')])
+    expect(out).toMatchObject({ run: { saved: [D[0], D[1]] }, outcome: 'end' })
+  })
+
+  it('AC-3705.2: 채우기 중 부품이 던지면(뜻밖의 오류) 그때까지의 결과로 unexpected 멈춤이고 그날은 남은 날 맨 앞이다', async () => {
+    const f = fakeDeps()
+    f.hooks[`askDay ${D[1]}`] = () => {
+      throw new Error('뜻밖')
+    }
+    const out = await runRange(D.slice(0, 3), f.deps, undefined, () => {}, never)
+    expect(out).toEqual(stoppedAt1({ kind: 'unexpected' }))
+    expect(f.calls).not.toContain(`setDate ${D[2]}`)
+  })
+
+  it('AC-3705.2: 살펴보기 중 부품이 던지면 { kind: unexpected }로 끝나고 다음 날로 가지 않는다', async () => {
+    const f = fakeDeps()
+    f.hooks['readJournal'] = () => {
+      throw new Error('뜻밖')
+    }
+    const out = await scanRange(D.slice(0, 2), f.deps, () => {}, never)
+    expect(out).toEqual({ block: { kind: 'unexpected' } })
+    expect(f.calls).not.toContain(`setDate ${D[1]}`)
+  })
+
+  it('AC-3704.3 AC-3705.2: 던질 때 화면을 떠났으면(gone) 아무 안내 없이 조용히 끝난다', async () => {
+    for (const flow of ['run', 'scan'] as const) {
+      const f = fakeDeps()
+      f.hooks[`askDay ${D[0]}`] = () => {
+        f.flags.gone = true
+        throw new Error('뜻밖')
+      }
+      const out = flow === 'run' ? await runRange(D.slice(0, 2), f.deps, undefined, () => {}, never) : await scanRange(D.slice(0, 2), f.deps, () => {}, never)
+      expect(out).toEqual({ gone: true })
+    }
   })
 })
