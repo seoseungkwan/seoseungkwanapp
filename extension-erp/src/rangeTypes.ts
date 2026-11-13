@@ -1,5 +1,5 @@
 // 기간 채우기(spec erp-closing-range) 공용 타입과 시간 상수 — design.md 5절
-import type { OverlapChoice } from './types'
+import type { OverlapChoice } from './types.js'
 
 /** 날짜를 바꾼 뒤 그날이 다 그려지기까지 기다리는 한도 */
 export const LOAD_TIMEOUT_MS = 30_000
