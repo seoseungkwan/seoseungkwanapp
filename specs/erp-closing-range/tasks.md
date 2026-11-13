@@ -8,6 +8,7 @@
 > - Phase 2b(마지막 검토·오류/드문 경우 점검에서 나온 것, 사용자 "4가지 모두 고치기"·"92일까지"·"고친 부분 시험만 확인") — Step 1: 리드가 `rangeTypes.ts` 새 Block·`MAX_DAYS` → Step 2: TASK-7 ‖ TASK-8(일꾼 둘) → 합친 뒤 확장 시험 전체 → 설치 파일
 > - Phase 2c(2026-11-13 사용자 "그냥 저거 없애고 코드 추가만 할 수 있게 해줘"·"비트에 등록된 코드 전부") — Step 1: TASK-9 ‖ TASK-10(파일 안 겹침, 일꾼 둘) → Step 2: TASK-11 ‖ TASK-14(읽지 않을 처방이 규칙으로 바뀜, 사용자 "LA357만 빼기", 일꾼 둘) → TASK-13 → TASK-12 → 확장 시험 전체·도우미 시험(net48 포함)·빌드 → 설치 파일 다시(확장 + 도우미)
 > - Phase 2d(2026-11-13 사용자 "이거 헷갈리게되어있는거같은데" → "평소엔 안 묻기") — TASK-15 하나(일꾼 또는 리드) → 확장 시험 전체·빌드 → 확장 설치 파일만 다시(도우미 그대로) → 고친 부분 검토
+> - Phase 2e(2026-11-13 사용자가 다른 PC에서 새 판을 깔고도 질문이 나옴 → 질문 답 "2번으로하자" = 그날 실제로 두 번 센 돈이 있을 때만 묻기, 사용자 "phase별로 step으로 병렬로 할수 있는건 병렬로하고 검토는 마지막 한번만해") — Step 1: 리드가 명세(REQ-3711) → 사용자 `/sdd approve` → Step 2: TASK-16 ‖ TASK-17(파일 안 겹침, 일꾼 둘) → 합친 뒤 확장 시험 전체·도우미 시험(net48 포함)·빌드 → 설치 파일 다시(확장 + 도우미) → 마지막 검토 한 번
 > - Phase 3 — TASK-6(사용자와 실제 ERP 화면)
 > 각 TASK는 시험을 먼저 써서 RED를 본다. 지금 확장 시험은 기대값을 바꾸지 않는다(바꿔야 하면 그 TASK 보고에 까닭).
 
@@ -137,3 +138,19 @@
 - Tests: extension-erp/src/settings.test.ts, extension-erp/src/main.test.ts, extension-erp/src/main.range.test.ts, extension-erp/src/readme.test.ts
 - TDD: required — design.md 13절. `overlapNeedsAsk`: 셀 코드 다름(LA358 / LA247) → false, 같은 코드 하나(LA247 양쪽) → true, 셀 코드 없으면 고른 코드로 봄(CARM1 / SONO1 → false), 대문자·공백. main(하루): false면 askOverlap 안 부르고 씨암 = carm.total · SONO = sono.total, 끝 안내에 함께 있는 진료 줄 없음, 지난번 고른 것이 'carm'이어도 무시, saveOverlap 안 부름 / true면 지금 시험 그대로. main(기간): false면 승인 안내에 함께 있는 진료 줄·단추 없고 [덮어쓰고 저장 시작]이 열리며 채우기가 'overlapUnpicked'로 멈추지 않음 / true면 지금 그대로. README 문장(AC-3710.3). 지금 함께 있는 진료 시험은 설정을 같은 코드가 있게 바꿔 그대로 살린다(기대값 바꾸면 보고에 까닭). Files 가운데 손댈 필요 없는 파일은 안 고친다
 - 차례: Phase 2d
+
+## TASK-16: 도우미 overlap에 그날 두 번 센 돈(shared) 더하기
+- REQ: REQ-3711
+- AC: AC-3711.1
+- Files: helper-erp/src/Erp.Core/Closing/ClosingDay.cs, helper-erp/tests/Erp.Core.Tests/Closing/ClosingDay.test.cs, helper-erp/tests/erp-core.dotnet.test.ts
+- Tests: helper-erp/tests/Erp.Core.Tests/Closing/ClosingDay.test.cs, helper-erp/tests/erp-core.dotnet.test.ts
+- TDD: required — design.md 14절. 가짜 DB로(시험 이름 'AC-3711.1 …'): 씨암 셀 코드 LA358·LA272 / SONO 셀 코드 LA247·LA272, 함께 있는 진료 CARM1·SONO1·LA358·LA247 → shared 0(visits·carm·sono는 지금 셈과 같음), 같은 진료에 LA272 있으면 shared = LA272 금액(원 미만은 다 더한 뒤 버림), 함께 있는 진료 둘의 겹친 금액은 더함, 함께 있지 않은 진료(씨암만)의 LA272는 안 듦, 읽지 않을 처방 규칙으로 SONO 쪽에서 LA272가 빠지면(예: LA272 ← LA358) 안 듦, 앞글자 규칙끼리 겹쳐도(La 양쪽) 그 코드 금액이 듦, overlap이 null인 조건은 그대로. 지금 AC-3604.7 `OverlapShape` 시험의 칸 목록은 visits·carm·sono·shared 넷으로 바꾼다(기대값 바뀜 까닭: REQ-3711). `erp-core.dotnet.test.ts`에 `AC-3711.1 (C# Closing 시험)` 감싸개 하나(`expectAc('AC-3711.1', closingRun)`). dotnet 시험은 `PATH="$HOME/.dotnet:$PATH"`, net48 빌드도 확인
+- 차례: Phase 2e Step 2 (TASK-17과 함께, 파일 안 겹침)
+
+## TASK-17: 확장은 그날 두 번 센 돈이 있을 때만 묻기
+- REQ: REQ-3711
+- AC: AC-3711.2, AC-3711.3, AC-3711.4
+- Files: extension-erp/src/types.ts, extension-erp/src/settings.ts, extension-erp/src/settings.test.ts, extension-erp/src/main.ts, extension-erp/src/main.test.ts, extension-erp/src/main.range.test.ts, extension-erp/src/range.ts, extension-erp/src/range.test.ts, extension-erp/src/rangeView.ts, extension-erp/src/rangeView.test.ts, extension-erp/README.md, extension-erp/src/readme.test.ts
+- Tests: extension-erp/src/settings.test.ts, extension-erp/src/main.test.ts, extension-erp/src/main.range.test.ts, extension-erp/src/readme.test.ts
+- TDD: required — design.md 14절. `overlapAsks`: shared 0 → false(돈 코드가 같아도), shared > 0 → true(돈 코드가 달라도), shared 없음 → `overlapNeedsAsk` 그대로, visits 0·overlap null → false. readDay: shared 없는 답·숫자 shared 답은 받고, 음수·소수·글자 shared는 null. main(하루): LA272 양쪽 설정 + shared 0 → askOverlap 안 부르고 둘 다 넣은 값·끝 안내 overlap 줄 없음·saveOverlap 안 부름, shared > 0 → 지금처럼 물음, shared 없는 옛 답 → TASK-15 시험 그대로. main(기간): 날마다 shared 0이면 승인 안내에 함께 있는 진료 줄 없고 시작이 열리고 멈추지 않음, 어떤 날만 shared > 0이면 그날 visits만 건수에 들고 고른 것은 그날만 씀(shared 0인 날은 둘 다 넣은 값), 살펴볼 때 없었는데 채울 때 생기면 'overlapUnpicked'로 멈춤. README 문장 둘(AC-3711.4), AC-3710.3 문장 시험은 바꾼다. range.ts·rangeView.ts는 손댈 필요 없으면 안 고친다
+- 차례: Phase 2e Step 2 (TASK-16과 함께, 파일 안 겹침)
