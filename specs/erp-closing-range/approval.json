@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "erp-closing-range",
-  "approved_at": "2026-11-13T03:00:37Z",
+  "approved_at": "2026-11-13T03:27:42Z",
   "approved_via": "user-prompt",
-  "session_id": "87d3df97-d8bc-46bc-9747-0cbf2ce2d877",
-  "spec_sha256": "80246180f59c377048745b566b5e9998bddcd9cc73a81499de4abdb8da43e9ca",
+  "session_id": "068a9184-27db-4b64-931d-9c417982137c",
+  "spec_sha256": "f5bcf96ff735d4787ef07bd28fde45a0cce52dd039ef35a05071c96bdfe91c23",
   "scope": [
     "(없음",
     "extension-erp/README.md",
@@ -13,6 +13,7 @@
     "extension-erp/src/erpday.test.ts",
     "extension-erp/src/erpday.ts",
     "extension-erp/src/main.range.test.ts",
+    "extension-erp/src/main.test.ts",
     "extension-erp/src/main.ts",
     "extension-erp/src/manifest.test.ts",
     "extension-erp/src/panel.test.ts",

@@ -39,8 +39,9 @@
 ## TASK-4: 기간 흐름과 화면 잇기
 - REQ: REQ-3701, REQ-3702, REQ-3703, REQ-3704, REQ-3705
 - AC: AC-3701.3, AC-3701.4, AC-3702.1, AC-3702.3, AC-3702.5, AC-3703.1, AC-3703.2, AC-3703.3, AC-3703.4, AC-3703.5, AC-3703.6, AC-3704.2, AC-3704.3, AC-3705.1, AC-3705.2
-- Files: extension-erp/src/range.ts, extension-erp/src/range.test.ts, extension-erp/src/main.ts, extension-erp/src/main.range.test.ts
-- Tests: extension-erp/src/range.test.ts, extension-erp/src/main.range.test.ts
+- Files: extension-erp/src/range.ts, extension-erp/src/range.test.ts, extension-erp/src/main.ts, extension-erp/src/main.range.test.ts, extension-erp/src/main.test.ts
+- Tests: extension-erp/src/range.test.ts, extension-erp/src/main.range.test.ts, extension-erp/src/main.test.ts
+- 덧붙임(Phase 1 합친 뒤): `main.test.ts`는 AC-3609.1 모듈 목록 시험 하나만 고친다 — 이름 규칙을 `/^\.\/[a-zA-Z]+\.js$/`로, 기대 목록에 `erpday.js`·`range.js`·`rangeTypes.js`·`rangeView.js`를 더함(새 파일 이름에 대문자가 있고 main이 새 모듈을 부르게 되어서). TASK-5의 manifest와 합쳐야 통과한다
 - TDD: required — design.md 3절·6절. `range.test.ts`(가짜 deps): `rangeDays`(양 끝·달 넘김·하루), 살펴보기 분류(새로·작성중·확정·진료 0건·못 불러온 날·함께 있는 진료 합)·멈춤·그만두기, 채우기 차례(setDate → waitLoaded → blocker → draft → askDay → 0건 → fill → w1 → w2 → waitLoaded)·w1 실패면 w2 안 부름·다섯 실패 까닭·되살린 입력 건너뜀·멈춤(그날 남김)·[멈추기]는 날짜 바꾸기 전에 봄·이어서 하기 합침·`gone`이면 조용히 끝. `main.range.test.ts`(가짜 화면 + 가짜 chrome.runtime): 원무 화면·설정 없음, 사흘(새로·작성중·진료 0건) 살펴보기 → 승인 → 두 날만 저장(`saves`에 w1 → w2 차례, 그때 state가 비트 값, 상태 select 안 바뀜), 함께 있는 진료 묻기 → `saveOverlap`, [멈추기]·[이어서 하기], 새 판 창이 뜨면 멈춤, 화면을 떠나면 끝, [비트 값 채우기]는 여전히 저장 단추를 누르지 않음(AC-3703.6). chrome.storage에 새로 쓰는 것이 없음(AC-3703.5)
 - 차례: Phase 2 (TASK-2·3 뒤, TASK-5와 함께)
 
