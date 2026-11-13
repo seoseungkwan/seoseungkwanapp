@@ -7,6 +7,7 @@ import type {
   AmountKey,
   AmountRule,
   ClosingCodes,
+  ClosingDay,
   ClosingDayArgs,
   EtcKey,
   ExcludeRule,
@@ -269,6 +270,16 @@ export function overlapNeedsAsk(settings: Settings): boolean {
   }
   const sono = new Set(money('sono'))
   return money('carm').some((code) => sono.has(code))
+}
+
+/**
+ * 그날 함께 있는 진료를 어디에 넣을지 물을까(REQ-3711 AC-3711.2, design.md 14절 — 하루·기간 같은 조건 한 곳).
+ * 함께 있는 진료가 있고(visits > 0), 도우미가 그날 두 번 센 돈(shared)을 주면 shared > 0일 때만 true.
+ * shared 칸이 없는 옛 도우미 답이면 설정만 보고(overlapNeedsAsk, AC-3710.1·AC-3710.2) 정한다
+ */
+export function overlapAsks(overlap: ClosingDay['overlap'], settings: Settings): boolean {
+  if (!overlap || overlap.visits <= 0) return false
+  return typeof overlap.shared === 'number' ? overlap.shared > 0 : overlapNeedsAsk(settings)
 }
 
 /** ERP 화면에서 고른 함께 있는 진료 선택만 바꿔 쓴다(설정의 다른 칸은 그대로). 저장한 설정이 없으면 아무것도 쓰지 않는다 */

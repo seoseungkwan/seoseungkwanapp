@@ -18,6 +18,7 @@ import {
   load,
   newDefaultCodes,
   normalize,
+  overlapAsks,
   overlapNeedsAsk,
   resetCodes,
   ruleCodes,
@@ -33,7 +34,7 @@ import * as settingsModule from './settings'
 import { ETC_CLASH_ROWS } from './cells'
 import { ERRORS, explain } from './errors'
 import { EXCLUDE_KEYS, GROUP_KEYS, SETTINGS_KEY } from './types'
-import type { ClosingCodes, ExcludeRule, Settings } from './types'
+import type { ClosingCodes, ClosingDay, ExcludeRule, Settings } from './types'
 
 /** chrome.storage.local 흉내. 넣은 값은 복사해 둔다(크롬처럼 JSON으로 오간다) */
 function fakeStorage(initial: Record<string, unknown> = {}) {
@@ -917,5 +918,52 @@ describe('AC-3710.1 AC-3710.2 함께 있는 진료를 물을까 overlapNeedsAsk(
   it('AC-3710.2: 대문자·앞뒤 공백을 맞춰 견준다', () => {
     expect(overlapNeedsAsk(money({ cells: [' la247 '] }, { cells: ['LA247'] }))).toBe(true)
     expect(overlapNeedsAsk(money({ picks: ['carm1'] }, { picks: ['SONO1', ' CARM1'] }))).toBe(true)
+  })
+})
+
+describe('AC-3711.2 함께 있는 진료를 물을까 overlapAsks(그날 두 번 센 돈 shared가 있으면 그것으로, 없으면 overlapNeedsAsk)', () => {
+  /** 씨암·SONO 셀 코드만 바꾼 처음 값 */
+  const cells = (carm: string[], sono: string[]): Settings => {
+    const s = defaults()
+    s.picks.carm = ['CARM1']
+    s.picks.sono = ['SONO1']
+    s.amounts = { carm: { prefixes: [], codes: carm }, sono: { prefixes: [], codes: sono } }
+    return s
+  }
+  /** 사용자 설정처럼 LA272가 씨암·SONO 셀 코드 양쪽에 있음(overlapNeedsAsk true) */
+  const both = () => cells(['LA358', 'LA272'], ['LA247', 'LA272'])
+  /** 셀 코드가 서로 다름(overlapNeedsAsk false) */
+  const apart = () => cells(['LA358'], ['LA247', 'KK090'])
+  const overlap = (visits: number, shared?: number): ClosingDay['overlap'] => ({
+    visits,
+    carm: 400_000,
+    sono: 300_000,
+    ...(shared === undefined ? {} : { shared }),
+  })
+
+  it('AC-3711.2: shared가 0이면 돈 코드가 양쪽에 같아도(LA272) false', () => {
+    expect(overlapNeedsAsk(both())).toBe(true)
+    expect(overlapAsks(overlap(10, 0), both())).toBe(false)
+  })
+
+  it('AC-3711.2: shared > 0이면 돈 코드가 서로 달라도 true', () => {
+    expect(overlapNeedsAsk(apart())).toBe(false)
+    expect(overlapAsks(overlap(10, 1), apart())).toBe(true)
+    expect(overlapAsks(overlap(2, 55_000), both())).toBe(true)
+  })
+
+  it('AC-3711.2: shared 칸이 없으면(옛 도우미) overlapNeedsAsk 그대로(AC-3710.1·AC-3710.2)', () => {
+    expect(overlapAsks(overlap(10), both())).toBe(true)
+    expect(overlapAsks(overlap(10), apart())).toBe(false)
+    expect(overlapAsks(overlap(10), defaults())).toBe(false)
+  })
+
+  it('AC-3711.2: 함께 있는 진료가 0건이거나 overlap이 null·없으면 늘 false', () => {
+    for (const s of [both(), apart()]) {
+      expect(overlapAsks(overlap(0, 5_000), s)).toBe(false)
+      expect(overlapAsks(overlap(0), s)).toBe(false)
+      expect(overlapAsks(null, s)).toBe(false)
+      expect(overlapAsks(undefined, s)).toBe(false)
+    }
   })
 })

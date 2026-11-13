@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ETC_NAMES, mountErpPage, sampleDay, settingsFirst, type ErpPage, type ErpPageOptions } from './__tests__/erpPage'
 import { putValue } from './fill'
-import { READ_TIMEOUT_MS, readDate, startPage, WATCH_MS } from './main'
+import { READ_TIMEOUT_MS, readDate, readDay, startPage, WATCH_MS } from './main'
 import { HOST_ID } from './panel'
 import { toGroups } from './settings'
 import { SETTINGS_KEY, type Settings } from './types'
@@ -552,6 +552,94 @@ describe('AC-3710.1 AC-3710.2 [비트 값 채우기] 함께 있는 진료는 돈
     expect(t.page.state.CARM_AMT).toBe(String(1_001_234 - 400_000))
     expect(text(shadow().querySelector('.ovl'))).toBe('함께 있는 진료 9건은 SONO에 넣었어요.')
     expect(t.local.set).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('AC-3711.2 readDay — overlap.shared(그날 두 번 센 돈) 칸', () => {
+  const day = (overlap: unknown) => ({ ...sampleDay(), overlap })
+  const BASE = { visits: 9, carm: 400_000, sono: 300_000 }
+
+  it('AC-3711.2: shared 칸이 없는 옛 도우미 답과 0 이상 정수 shared 답은 그대로 받는다', () => {
+    expect(readDay(day(BASE), '2026-11-09')?.overlap).toEqual(BASE)
+    expect(readDay(day({ ...BASE, shared: 0 }), '2026-11-09')?.overlap).toEqual({ ...BASE, shared: 0 })
+    expect(readDay(day({ ...BASE, shared: 55_000 }), '2026-11-09')?.overlap).toEqual({ ...BASE, shared: 55_000 })
+  })
+
+  it.each<[string, unknown]>([
+    ['음수', -1],
+    ['소수', 1.5],
+    ['글자', '55000'],
+    ['null', null],
+    ['무한', Number.POSITIVE_INFINITY],
+  ])('AC-3711.2: shared가 %s 이면 틀린 답(null)이다', (_name, shared) => {
+    expect(readDay(day({ ...BASE, shared }), '2026-11-09')).toBeNull()
+  })
+
+  it('AC-3711.2: 화면에서도 shared가 틀린 답이면 E-BRIDGE-BAD-REPLY 글이고 칸은 그대로다', async () => {
+    const t = start({ reply: ok(day({ ...BASE, shared: -5 })) })
+    const before = { ...t.page.state }
+    button().click()
+    await flush()
+    expect(t.page.state).toEqual(before)
+    expect(lead()).toBe('도우미 답의 모양이 맞지 않아 쓰지 않았어요.')
+  })
+})
+
+describe('AC-3711.2 [비트 값 채우기] 함께 있는 진료는 그날 두 번 센 돈(shared)이 있을 때만 묻는다', () => {
+  // sampleDay 씨암 total 1,001,234 · SONO total 2,001,234. 함께 있는 진료 9건: 씨암 쪽 400,000 · SONO 쪽 300,000
+  const OVERLAP = { visits: 9, carm: 400_000, sono: 300_000 }
+  const ASK = '씨암·SONO 코드가 함께 있는 진료가 9건 있어요(씨암 쪽 400,000원 · SONO 쪽 300,000원). 어디에 넣을까요?'
+  const FILLED = '2026-11-09 비트 값으로 93칸을 채웠어요. 저장은 하지 않았어요.'
+  /** 씨암·SONO 셀 코드만 바꾼 settingsFirst */
+  const cells = (carm: string[], sono: string[]): Settings => ({
+    ...settingsFirst(),
+    amounts: { carm: { prefixes: [], codes: carm }, sono: { prefixes: [], codes: sono } },
+  })
+  /** 사용자 설정처럼 LA272가 씨암·SONO 셀 코드 양쪽에 있음 */
+  const both = () => cells(['LA358', 'LA272'], ['LA247', 'LA272'])
+
+  it("AC-3711.2: LA272가 양쪽에 있어도 그날 shared가 0이면 묻지 않고 두 칸 모두 묶음 total로 채우며, 끝 안내에 함께 있는 진료 줄이 없고 지난번 고른 것('carm')은 쓰지도 바꾸지도 않는다", async () => {
+    const t = start({ stored: { ...both(), overlap: 'carm' }, reply: ok({ ...sampleDay(), overlap: { ...OVERLAP, shared: 0 } }) })
+    button().click()
+    await flush()
+    expect(lead()).toBe(FILLED)
+    expect(shadow().querySelector('[data-choice]')).toBeNull()
+    // 'carm'을 썼다면 SONO에서 SONO 쪽 금액을 뺐을 것이다
+    expect([t.page.state.CARM_AMT, t.page.state.SONO_AMT]).toEqual(['1001234', '2001234'])
+    expect(shadow().querySelector('.ovl')).toBeNull()
+    expect(lines().join(' ')).not.toContain('함께 있는 진료')
+    expect(t.local.set).not.toHaveBeenCalled()
+  })
+
+  it('AC-3711.2: shared > 0이면 셀 코드가 서로 달라도(LA358 / LA247) 지금처럼 채우기 전에 묻고, 고른 대로 채우고 기억한다', async () => {
+    const t = start({ stored: cells(['LA358'], ['LA247']), reply: ok({ ...sampleDay(), overlap: { ...OVERLAP, shared: 55_000 } }) })
+    const before = { ...t.page.state }
+    button().click()
+    await flush()
+    expect(lead()).toBe(ASK)
+    expect(t.page.state).toEqual(before)
+    act('SONO에 넣기').click()
+    await flush()
+    expect(t.page.state.CARM_AMT).toBe(String(1_001_234 - 400_000))
+    expect(t.page.state.SONO_AMT).toBe('2001234')
+    expect(text(shadow().querySelector('.ovl'))).toBe('함께 있는 진료 9건은 SONO에 넣었어요.')
+    expect(t.local.set).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-3711.2: shared 칸이 없는 옛 도우미 답이면 AC-3710 그대로 — 같은 코드(LA272)가 양쪽에 있으면 묻고, 다르면 묻지 않는다', async () => {
+    let t = start({ stored: both(), reply: ok({ ...sampleDay(), overlap: OVERLAP }) })
+    button().click()
+    await flush()
+    expect(lead()).toBe(ASK)
+    handle?.stop()
+    document.body.innerHTML = ''
+
+    t = start({ stored: cells(['LA358'], ['LA247']), reply: ok({ ...sampleDay(), overlap: OVERLAP }) })
+    button().click()
+    await flush()
+    expect(lead()).toBe(FILLED)
+    expect([t.page.state.CARM_AMT, t.page.state.SONO_AMT]).toEqual(['1001234', '2001234'])
+    expect(t.local.set).not.toHaveBeenCalled()
   })
 })
 

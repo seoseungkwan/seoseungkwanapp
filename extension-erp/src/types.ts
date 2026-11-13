@@ -163,7 +163,10 @@ export type ClosingDay = {
     patients: number
   }
   injection: { firstTime: number | null; newPatients: number; newLines: number } | null
-  /** carm·sono 둘 다 매출 규칙이 있을 때만(TASK-15): 함께 있는 진료 수와 그 진료들만의 각 규칙 금액. 아니면 null(예전 도우미는 칸이 없다) */
-  overlap?: { visits: number; carm: number; sono: number } | null
+  /**
+   * carm·sono 둘 다 매출 규칙이 있을 때만(TASK-15): 함께 있는 진료 수와 그 진료들만의 각 규칙 금액. 아니면 null(예전 도우미는 칸이 없다).
+   * shared = 그날 함께 있는 진료에서 씨암·SONO 매출 규칙에 둘 다 맞아 두 번 센 금액(원, REQ-3711 AC-3711.1). 0.3.0 c 묶음 전 도우미는 칸이 없다
+   */
+  overlap?: { visits: number; carm: number; sono: number; shared?: number } | null
   warnings: { moneyUnconfirmed: boolean; splitUnconfirmed: boolean; unpaidVisits: number; unknownAge: number; noHistory: boolean }
 }

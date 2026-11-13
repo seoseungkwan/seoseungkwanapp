@@ -408,6 +408,93 @@ describe('AC-3710.1 AC-3710.2 [기간 채우기] 함께 있는 진료는 돈이 
   })
 })
 
+describe('AC-3711.3 [기간 채우기] 날마다 그날 두 번 센 돈(shared)이 있을 때만 묻는다', () => {
+  /** 사용자 설정처럼 LA272가 씨암·SONO 셀 코드 양쪽에 있음(shared 없는 옛 답이면 늘 묻는 설정) */
+  const both = (): Settings => ({
+    ...settingsFirst(),
+    amounts: { carm: { prefixes: [], codes: ['LA358', 'LA272'] }, sono: { prefixes: [], codes: ['LA247', 'LA272'] } },
+  })
+  /** 함께 있는 진료 visits건, 씨암 쪽 400,000 · SONO 쪽 300,000, 그날 두 번 센 돈 shared */
+  const ovl = (visits: number, shared: number) => ({ visits, carm: 400_000, sono: 300_000, shared })
+  const overlapLines = () => lines().filter((line) => line.includes('씨암·SONO를 같이 받은 진료'))
+  const pick = (c: string) => shadow().querySelector<HTMLButtonElement>(`.pb button[data-choice="${c}"]`) as HTMLButtonElement
+  const writes = (local: { set: { mock: { calls: unknown[][] } } }) =>
+    local.set.mock.calls.map(([items]) => (items as Record<string, Settings>)[SETTINGS_KEY])
+  const w1 = (page: ErpPage, date: string) => {
+    const s = page.saves.find((x) => x.which === 'w1' && x.date === date)
+    return [s?.state.CARM_AMT, s?.state.SONO_AMT]
+  }
+
+  it("AC-3711.3: 날마다 shared가 0이면 LA272가 양쪽에 있어도 승인 안내에 함께 있는 진료 줄·단추가 없고 시작이 열리며, 멈추지 않고 두 칸 모두 묶음 total로 저장하고 지난번 고른 것('sono')은 쓰지도 바꾸지도 않는다", async () => {
+    const t = start({ stored: { ...both(), overlap: 'sono' }, answer: (date) => ok(bitDay(date, 84, ovl(date === N3 ? 3 : 2, 0))) })
+    await scan(N3, N4)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(lead()).toBe('11월 3일~4일 중 2일을 비트 값으로 덮어쓰고 저장해요.')
+    expect(overlapLines()).toEqual([])
+    expect(shadow().querySelector('.pb [data-choice]')).toBeNull()
+    expect(act('덮어쓰고 저장 시작').disabled).toBe(false)
+    act('덮어쓰고 저장 시작').click()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(saved(t.page)).toEqual([`w1 ${N3}`, `w2 ${N3}`, `w1 ${N4}`, `w2 ${N4}`])
+    // 'sono'를 썼다면 씨암에서 씨암 쪽 금액을 뺐을 것이다
+    expect(w1(t.page, N3)).toEqual(['1001234', '2001234'])
+    expect(w1(t.page, N4)).toEqual(['1001234', '2001234'])
+    expect(seen.views.some((v) => (v as RangeView).kind === 'blocked')).toBe(false)
+    expect(lead()).toBe('2일을 비트 값으로 저장했어요.')
+    expect(t.local.set).not.toHaveBeenCalled()
+  })
+
+  it('AC-3711.3: 어떤 날만 shared > 0이면 그날 함께 있는 진료 수만 건수에 들고, 고른 것(SONO)은 그날만 쓰며 shared 0인 날은 둘 다 넣은 값이다', async () => {
+    const t = start({ stored: both(), answer: (date) => ok(bitDay(date, 84, date === N3 ? ovl(3, 0) : ovl(2, 55_000))) })
+    await scan(N3, N4)
+    await vi.advanceTimersByTimeAsync(10_000)
+    // 묻는 날(11/4)의 2건만 센다(11/3의 3건은 두 번 센 돈이 없어 묻지 않음)
+    expect(overlapLines()).toContain('씨암·SONO를 같이 받은 진료가 2건 있어요. 어디에 넣을까요?')
+    expect(overlapLines().join(' ')).not.toContain('5건')
+    expect(act('덮어쓰고 저장 시작').disabled).toBe(true)
+    pick('sono').click()
+    act('덮어쓰고 저장 시작').click()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(saved(t.page)).toEqual([`w1 ${N3}`, `w2 ${N3}`, `w1 ${N4}`, `w2 ${N4}`])
+    expect(w1(t.page, N3)).toEqual(['1001234', '2001234'])
+    expect(w1(t.page, N4)).toEqual([String(1_001_234 - 400_000), '2001234'])
+    expect(writes(t.local)).toHaveLength(1)
+    expect(writes(t.local)[0]).toMatchObject({ overlap: 'sono' })
+    expect(lead()).toBe('2일을 비트 값으로 저장했어요.')
+  })
+
+  it("AC-3711.3: 살펴볼 때 묻는 날이 없었는데 채울 때 다시 부른 답에 shared > 0이 생기면 지난번 고른 것('carm')이 있어도 그날 칸을 바꾸지 않고 'overlapUnpicked'로 멈춘다", async () => {
+    let page: ErpPage | null = null
+    let n4 = 0
+    let logAt = -1
+    const t = start({
+      stored: { ...both(), overlap: 'carm' },
+      answer: (date) => {
+        if (date !== N4) return ok(bitDay(date))
+        // 살펴볼 때는 두 번 센 돈이 없다가 채울 때 생김(그 사이 비트 자료가 바뀜)
+        n4 += 1
+        if (n4 === 2 && page) logAt = page.log.length
+        return ok(bitDay(date, 84, ovl(2, n4 === 1 ? 0 : 55_000)))
+      },
+    })
+    page = t.page
+    await scan(N3, N4)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(overlapLines()).toEqual([])
+    act('덮어쓰고 저장 시작').click()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(saved(t.page)).toEqual([`w1 ${N3}`, `w2 ${N3}`])
+    expect(lastView()).toEqual({
+      kind: 'blocked',
+      block: { kind: 'overlapUnpicked' },
+      run: { from: N3, to: N4, total: 2, saved: [N3], skipped: [], failed: [], remaining: [N4] },
+    })
+    expect(t.page.log).toHaveLength(logAt)
+    expect(t.local.set).not.toHaveBeenCalled()
+    expect(actLabels()).toEqual(['닫기'])
+  })
+})
+
 describe('AC-3704.2 [멈추기]·[이어서 하기]', () => {
   it('AC-3704.2: [멈추기]면 지금 날을 저장까지 끝내고 멈추며, [이어서 하기]는 다시 묻지 않고 남은 날부터 간다(확정은 확정 그대로)', async () => {
     const t = start({ page: { days: { [N3]: { status: 'confirmed', values: { TOTAL_FEE: '9' } } } } })
