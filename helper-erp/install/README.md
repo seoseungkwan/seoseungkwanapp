@@ -86,7 +86,7 @@ ERP 도우미만 지웁니다. 청구 사전점검 도우미를 쓰고 있다면
 
 - 설치 창에 빨간 글로 설치하지 못했다고 뜨면, 크롬의 ERP 화면을 닫고 다시 `install.cmd`를 누르세요.
 - ERP 화면에 **'ERP 도우미가 읽는 도중 멈췄어요.'** · '잠시 뒤 다시 해 주세요. 계속되면 ERP 도우미 설치 파일(install.cmd)을 다시 실행해 주세요.'(`E-HELPER-STOPPED`)가 뜨면, 잠시 뒤 단추를 다시 누릅니다. 또 뜨면 `install.cmd`를 다시 누르고 등록까지 합니다.
-- ERP 화면에 **'ERP 도우미가 이 PC에 없어요.'**(`E-HELPER-MISSING`)가 뜨면, 위 '설치하기'를 합니다. 깔았는데도 뜨면 확장과 같은 판인지 보고 `install.cmd`를 다시 누릅니다.
+- ERP 화면에 **'ERP 도우미가 이 PC에 없어요.'**(`E-HELPER-MISSING`)가 뜨면, 위 '설치하기'를 합니다. 깔았는데도 뜨면 확장과 짝인 판인지 보고 `install.cmd`를 다시 누릅니다.
 - ERP 화면에 **'이 PC의 ERP 도우미 등록 파일을 읽지 못했어요.'**(`E-STORE-FAILED`)가 뜨면, 크롬 창을 모두 닫았다가 다시 연 뒤 다시 해 봅니다. 계속되면 `install.cmd`를 다시 누릅니다.
 - 다른 번호는 `extension-erp/README.md`의 '6-1. 오류 표'에서 할 일을 찾습니다.
 - 그래도 안 되면 그 창을 사진으로 찍어 보내 주세요. ERP 화면에 나온 오류 번호(예: `E-BIT-READ-FAILED`)도 함께 알려 주세요.
@@ -94,6 +94,6 @@ ERP 도우미만 지웁니다. 청구 사전점검 도우미를 쓰고 있다면
 
 ## 만드는 사람에게 (참고)
 
-- ERP 도우미 판 번호는 `helper-erp/Directory.Build.props` 한 곳에 있습니다(0.1.0부터 시작해 지금 0.2.0). 청구 사전점검 도우미 판(`helper/`)과 따로 세고, 확장 판(`extension-erp/manifest.json`)과 같이 올립니다.
+- ERP 도우미 판 번호는 `helper-erp/Directory.Build.props` 한 곳에 있습니다(0.1.0부터 시작해 지금 0.2.0). 청구 사전점검 도우미 판(`helper/`)과 따로 셉니다. ERP 도우미가 바뀌는 판이면 확장 판(`extension-erp/manifest.json`)과 같이 올리고, 확장만 바뀌면 확장 판만 올립니다(확장 0.3.0 ↔ ERP 도우미 0.2.0).
 - 판 zip은 `erp-helper-v<판>` 꼬리표를 올릴 때만 GitHub에서 만들어집니다(`.github/workflows/helper-erp.yml`). 꼬리표·판 만들기는 사용자가 말할 때만 합니다.
 - 판 없이 이 PC에서 직접 만든 Release 폴더로 깔 때도, zip과 같은 모양으로 모은 폴더에서 `install.cmd`(→ `install.ps1`)를 누릅니다.

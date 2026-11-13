@@ -4,7 +4,8 @@
 > **할 순서** (사용자 "Phase별로 step으로하고 병렬로 할수있는건 병렬로해 검토는 마지막에 한번만"):
 > - Phase 1 — Step 1: TASK-1(공용 타입, 작음, 리드가 바로) → Step 2: TASK-2 ‖ TASK-3(파일이 겹치지 않아 일꾼 둘이 각자 worktree에서 동시에)
 > - Phase 2 — TASK-4 ‖ TASK-5(일꾼 둘)
-> - 마지막 검토 한 번(확장 시험 전체·lint·`npm run ext-erp:build`·`git diff c745fdc -- helper helper-erp src`가 비어 있음·화면 사진) → 설치 파일
+> - 마지막 검토 한 번(확장 시험 전체·lint·`npm run ext-erp:build`·`git diff c745fdc -- helper helper-erp src`에 코드 변경 없음(문서 `helper-erp/install/README.md`의 판 문장만)·화면 사진)
+> - Phase 2b(마지막 검토·오류/드문 경우 점검에서 나온 것, 사용자 "4가지 모두 고치기"·"92일까지"·"고친 부분 시험만 확인") — Step 1: 리드가 `rangeTypes.ts` 새 Block·`MAX_DAYS` → Step 2: TASK-7 ‖ TASK-8(일꾼 둘) → 합친 뒤 확장 시험 전체 → 설치 파일
 > - Phase 3 — TASK-6(사용자와 실제 ERP 화면)
 > 각 TASK는 시험을 먼저 써서 RED를 본다. 지금 확장 시험은 기대값을 바꾸지 않는다(바꿔야 하면 그 TASK 보고에 까닭).
 
@@ -48,10 +49,26 @@
 ## TASK-5: 새 판 번호·모듈 목록·안내서
 - REQ: REQ-3706
 - AC: AC-3706.1
-- Files: extension-erp/manifest.json, extension-erp/src/manifest.test.ts, extension-erp/README.md, extension-erp/src/readme.test.ts
+- Files: extension-erp/manifest.json, extension-erp/src/manifest.test.ts, extension-erp/README.md, extension-erp/src/readme.test.ts, helper-erp/install/README.md
 - Tests: extension-erp/src/manifest.test.ts, extension-erp/src/readme.test.ts
 - TDD: required — `version` 0.3.0, `web_accessible_resources`에 `erpday.js`·`range.js`·`rangeView.js`·`rangeTypes.js`가 더해짐(다른 칸 그대로). README '기간 채우기' 절(쓰는 법 ①~⑤ 글이 design.md 4절과 같음·누르는 단추 둘·멈추는 경우 다섯·원무 계정 안 됨·도는 동안 창 닫지 않기)과 '확장이 건드리지 않는 것' 새 문장, 옛 문장 없음. 지금 README 시험(panel.test.ts 안 것)은 그대로 통과해야 하며, 바뀌는 절 글이 그 시험과 부딪히면 보고
 - 차례: Phase 2 (TASK-4와 함께)
+
+## TASK-7: 멈추는 경우 더하기 — 화면 다루기·안내 글·안내서
+- REQ: REQ-3701, REQ-3705, REQ-3706
+- AC: AC-3701.2, AC-3705.2, AC-3706.1
+- Files: extension-erp/src/erpday.ts, extension-erp/src/erpday.test.ts, extension-erp/src/__tests__/erpPage.ts, extension-erp/src/rangeView.ts, extension-erp/src/rangeView.test.ts, extension-erp/README.md, extension-erp/src/readme.test.ts
+- Tests: extension-erp/src/erpday.test.ts, extension-erp/src/rangeView.test.ts, extension-erp/src/readme.test.ts
+- TDD: required — design.md 2절·4절. `erpday`: `todayOnly(doc)` export(안내 창이 떠 있어도 true), `blocker` 차례 끝에 `noSaveButton`(전체 저장 0개·2개, 일일 상세 저장 0개·2개), 둘째 길은 `/h/closing`일 때만. `rangeView`: pick 넷째 막는 줄(92일 = 통과·93일 = 막힘), `periodLabel` 올해 아닌 해 '{Y}년 ' 세 모양, blocked 새 다섯 까닭 글과 [이어서 하기](dateChanged만 더함), helper 줄 끝 ' (번호 {code})'. README '멈추는 경우' 표·기간 고르기에 92일, readme 시험이 화면 글과 같은지. 가짜 화면은 저장 단추 0개·2개를 만들 옵션이 필요하면 넓힌다(지금 시험 그대로 통과)
+- 차례: Phase 2b Step 2 (TASK-8과 함께)
+
+## TASK-8: 멈추는 경우 더하기 — 기간 흐름·잇기
+- REQ: REQ-3701, REQ-3703, REQ-3705
+- AC: AC-3701.1, AC-3701.3, AC-3703.1, AC-3705.2
+- Files: extension-erp/src/range.ts, extension-erp/src/range.test.ts, extension-erp/src/main.ts, extension-erp/src/main.range.test.ts
+- Tests: extension-erp/src/range.test.ts, extension-erp/src/main.range.test.ts
+- TDD: required — design.md 3절·6절. `range.test.ts`(가짜 deps): 새 차례(overlapUnpicked → dateIs → missingCells → fill → dateIs → w1 → dateIs → w2), 멈춤마다 그날이 `remaining` 맨 앞·`fill`/`save`를 부르지 않음(⑦⑧⑨는 칸을 안 바꿈), dateChanged 뒤 이어서 하기는 그날부터. `main.range.test.ts`(가짜 화면): 원무 + 안내 창이면 바로 todayOnly 안내, 마감 일자가 오늘 뒤 달이면 처음 값 오늘 달 1일~오늘, 92일 넘는 scan은 막힘, 채우는 중 마감 일자를 바꾸면 멈추고 다른 날에 저장하지 않음, 칸 하나를 화면에서 지우면 cellsMissing으로 멈추고 칸·저장 없음, 설정·승인 모두 고른 것이 없는데 그날 함께 있는 진료가 있으면 멈춤, 부품이 throw하면 unexpected 안내가 보이고 [닫기]로 단추가 풀림. 가짜 화면(`erpPage.ts`)은 TASK-7 몫이라 고치지 않고, 필요한 모양은 시험 안에서 DOM을 직접 바꿔 만든다
+- 차례: Phase 2b Step 2 (TASK-7과 함께)
 
 ## TASK-6: 실제 ERP 화면 확인 (사용자와 함께, 코드 작업 없음)
 - REQ: REQ-3706

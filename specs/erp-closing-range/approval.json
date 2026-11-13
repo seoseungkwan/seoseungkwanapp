@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "erp-closing-range",
-  "approved_at": "2026-11-13T03:27:42Z",
+  "approved_at": "2026-11-13T04:23:35Z",
   "approved_via": "user-prompt",
   "session_id": "068a9184-27db-4b64-931d-9c417982137c",
-  "spec_sha256": "f5bcf96ff735d4787ef07bd28fde45a0cce52dd039ef35a05071c96bdfe91c23",
+  "spec_sha256": "7679e75aaaf209aec9384a664a13ce90b74f963f51cceb0efeb7bffeb8eff0cc",
   "scope": [
     "(없음",
     "extension-erp/README.md",
@@ -25,6 +25,7 @@
     "extension-erp/src/rangeView.test.ts",
     "extension-erp/src/rangeView.ts",
     "extension-erp/src/readme.test.ts",
+    "helper-erp/install/README.md",
     "specs/erp-closing-range/notes/erp-range-check.md",
     "—",
     "보는",
