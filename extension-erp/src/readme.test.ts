@@ -64,12 +64,17 @@ describe("AC-3706.1 안내서 '기간 채우기' 절 — 쓰는 법 ①~⑤는 �
     expectQuoted(five, slots(RANGE_TEXT.end.lead(901), { 901: '{n}' }))
   })
 
-  it('AC-3706.1: ② 기간 고르기 — 칸 이름·안내·막는 줄 넷(92일까지 포함)·[살펴보기]와 살펴보는 중 글', () => {
+  it('AC-3706.1 AC-3701.2: ② 기간 고르기 — 칸 이름·안내·막는 줄 셋·길이 제한 없음([멈추기]·[이어서 하기])·[살펴보기]와 살펴보는 중 글', () => {
     const two = steps()[1]
     for (const name of [RANGE_TEXT.pick.from, RANGE_TEXT.pick.to]) expect(two).toContain(name)
-    for (const line of [RANGE_TEXT.pick.help, RANGE_TEXT.pick.empty, RANGE_TEXT.pick.reversed, RANGE_TEXT.pick.future, RANGE_TEXT.pick.tooLong]) {
+    for (const line of [RANGE_TEXT.pick.help, RANGE_TEXT.pick.empty, RANGE_TEXT.pick.reversed, RANGE_TEXT.pick.future]) {
       expectQuoted(two, line)
     }
+    // TASK-13: 기간 길이는 막지 않는다 — 92일 글은 없고, 길면 [멈추기]·[이어서 하기]를 쓰라고 알린다
+    expect(rangeSection()).not.toMatch(/92일/)
+    expect(two).toContain('기간 길이는 제한이 없')
+    expect(two).toContain(`[${RANGE_TEXT.running.stop}]`)
+    expect(two).toContain(`[${RANGE_TEXT.resume}]`)
     expect(two).toContain(`[${RANGE_TEXT.pick.scan}]`)
     expect(two).toContain(`[${RANGE_TEXT.close}]`)
     expectQuoted(two, RANGE_TEXT.scanning.lead)

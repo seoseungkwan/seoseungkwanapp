@@ -16,7 +16,7 @@ import { E_BRIDGE_BAD_REPLY, E_BRIDGE_DISCONNECTED, E_CLOSING_FUTURE_DATE, E_HEL
 import { fillAll, locate, survey, undoAll, type FillMode, type UndoEntry } from './fill.js'
 import { createDock, HOST_ID, type Dock, type View } from './panel.js'
 import { rangeDays, runRange, scanRange, type RangeDeps } from './range.js'
-import { MAX_DAYS, type RangeAction, type RunSummary, type ScanSummary } from './rangeTypes.js'
+import type { RangeAction, RunSummary, ScanSummary } from './rangeTypes.js'
 import { load, saveOverlap, toGroups } from './settings.js'
 import type { ClosingDay, MoneyKey, OverlapChoice, Settings } from './types.js'
 
@@ -424,9 +424,8 @@ export function startPage(doc: Document = document): { stop(): void } {
     if (!r) return
     switch (action.kind) {
       case 'scan': {
-        // 기간 고르기와 같은 막는 규칙을 한 번 더(빈 칸·시작일 > 끝일·오늘 뒤·92일보다 긺, AC-3701.2)
-        const span = rangeDays(action.from, action.to).length
-        if (busy || r.phase !== 'pick' || span === 0 || span > MAX_DAYS || action.to > today()) return
+        // 기간 고르기와 같은 막는 규칙을 한 번 더(빈 칸·시작일 > 끝일·오늘 뒤, 기간 길이는 막지 않음 — AC-3701.2)
+        if (busy || r.phase !== 'pick' || rangeDays(action.from, action.to).length === 0 || action.to > today()) return
         busy = true
         dock.setRangeBusy(true)
         remember(null)

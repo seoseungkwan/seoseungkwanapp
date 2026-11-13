@@ -4,10 +4,10 @@
 // - 글은 모두 textContent로만 넣는다(도우미 오류 번호도 HTML로 읽지 않는다). 숫자·날짜·칸 이름만 보이고 환자 정보는 없다
 // - 모양(class)은 panel.ts 안내 스타일 블록 하나에 있다
 import { explain } from './errors.js'
-import { MAX_DAYS, type Block, type FailWhy, type RangeAction, type RangeView, type RunSummary, type ScanSummary } from './rangeTypes.js'
+import type { Block, FailWhy, RangeAction, RangeView, RunSummary, ScanSummary } from './rangeTypes.js'
 import type { OverlapChoice } from './types.js'
 
-/** 날짜 목록에 보이는 가장 많은 날 수(한 번에 고를 수 있는 날 수 MAX_DAYS와 다름) */
+/** 날짜 목록에 보이는 가장 많은 날 수(기간 길이는 제한하지 않는다, design.md 12절) */
 export const LIST_MAX = 10
 
 /** 씨암·SONO 글(panel.ts OVERLAP_TEXT의 into·choice) */
@@ -43,8 +43,6 @@ export const RANGE_TEXT = {
     empty: '시작일과 끝일을 골라 주세요.',
     reversed: '시작일이 끝일보다 뒤예요.',
     future: '오늘 뒤 날짜는 고를 수 없어요.',
-    /** 양 끝 포함 MAX_DAYS(92)일보다 긺 */
-    tooLong: `한 번에 ${MAX_DAYS}일까지 고를 수 있어요.`,
     scan: '살펴보기',
   },
   todayOnly: {
@@ -196,24 +194,14 @@ export function dayList(days: readonly string[], confirmed: readonly string[] = 
   return sorted.length > LIST_MAX ? shown + RANGE_TEXT.more(sorted.length - LIST_MAX) : shown
 }
 
-/** 양 끝 포함 날 수('YYYY-MM-DD' 둘, from ≤ to) */
-function spanDays(from: string, to: string): number {
-  const at = (date: string) => {
-    const { y, m, d } = ymd(date)
-    return Date.UTC(y, m - 1, d)
-  }
-  return Math.round((at(to) - at(from)) / 86_400_000) + 1
-}
-
 /**
- * 기간 고르기를 막는 까닭(없으면 null), 차례대로 첫 하나: 빈 칸 → 시작일 > 끝일 → 끝일 > 오늘 → 양 끝 포함 MAX_DAYS(92)일보다 긺.
+ * 기간 고르기를 막는 까닭(없으면 null), 차례대로 첫 하나: 빈 칸 → 시작일 > 끝일 → 끝일 > 오늘. 기간 길이는 막지 않는다(design.md 12절).
  * main.ts가 [살펴보기]를 받을 때도 같은 규칙으로 한 번 더 볼 수 있게 내보낸다
  */
 export function pickProblem(from: string, to: string, today: string): string | null {
   if (!from || !to) return RANGE_TEXT.pick.empty
   if (from > to) return RANGE_TEXT.pick.reversed
   if (to > today) return RANGE_TEXT.pick.future
-  if (spanDays(from, to) > MAX_DAYS) return RANGE_TEXT.pick.tooLong
   return null
 }
 

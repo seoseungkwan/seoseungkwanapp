@@ -1,9 +1,9 @@
 // TASK-1 REQ-3703: 기간 채우기 공용 타입·시간 상수(design.md 5절)
 import { describe, expect, it } from 'vitest'
+import * as rangeTypes from './rangeTypes'
 import {
   FALLBACK_MS,
   LOAD_TIMEOUT_MS,
-  MAX_DAYS,
   SAVE_TIMEOUT_MS,
   STABLE_MS,
   type Block,
@@ -39,8 +39,8 @@ describe('rangeTypes', () => {
     expect([loads.length, saves.length, j.status]).toEqual([3, 4, 'confirmed'])
   })
 
-  it('AC-3701.2 한 번에 고를 수 있는 날은 92일(사용자 "92일(약 3달)까지")', () => {
-    expect(MAX_DAYS).toBe(92)
+  it('AC-3701.2 기간 길이 제한은 없다(TASK-13, 사용자 "제한 없음") — MAX_DAYS 상수가 없다', () => {
+    expect('MAX_DAYS' in rangeTypes).toBe(false)
   })
 
   it('AC-3705.2 새로 멈추는 경우 ⑥~⑩: noSaveButton·dateChanged·cellsMissing(count)·overlapUnpicked·unexpected', () => {

@@ -7,7 +7,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { OVERLAP_TEXT } from './panel'
-import { MAX_DAYS, type Block, type FailWhy, type RangeAction, type RangeView, type RunSummary, type ScanSummary } from './rangeTypes'
+import type { Block, FailWhy, RangeAction, RangeView, RunSummary, ScanSummary } from './rangeTypes'
 import { dayList, periodLabel, RANGE_TEXT, renderRange } from './rangeView'
 import type { OverlapChoice } from './types'
 
@@ -187,8 +187,6 @@ describe('AC-3701.1·3701.2 기간 고르기(pick, 시안 ②)', () => {
     ['시작일 > 끝일', '2026-10-31', '2026-10-01', '시작일이 끝일보다 뒤예요.'],
     ['끝일 > 오늘', '2026-11-01', '2026-11-14', '오늘 뒤 날짜는 고를 수 없어요.'],
     ['둘 다 오늘 뒤', '2026-11-20', '2026-11-21', '오늘 뒤 날짜는 고를 수 없어요.'],
-    ['93일(8/13~11/13)', '2026-08-13', '2026-11-13', '한 번에 92일까지 고를 수 있어요.'],
-    ['한 해(해 넘김)', '2025-11-13', '2026-11-13', '한 번에 92일까지 고를 수 있어요.'],
   ])('AC-3701.2: %s이면 [살펴보기]가 disabled이고 까닭 한 줄이 보이며, 눌러도 scan이 없다', (_name, fromValue, toValue, line) => {
     const p = draw(pick())
     const [from, to] = inputs(p)
@@ -205,33 +203,37 @@ describe('AC-3701.1·3701.2 기간 고르기(pick, 시안 ②)', () => {
     expect(p.button('살펴보기').disabled).toBe(false)
   })
 
-  it("AC-3701.2: 양 끝 포함 92일(MAX_DAYS)까지는 되고 93일이면 '한 번에 92일까지 고를 수 있어요.'로 막힌다(달·해 넘김도)", () => {
-    expect(MAX_DAYS).toBe(92)
-    expect(RANGE_TEXT.pick.tooLong).toBe('한 번에 92일까지 고를 수 있어요.')
+  it('AC-3701.2: 기간 길이는 막지 않는다(TASK-13) — 93일·400일·731일(달·해 넘김)도 막는 줄 없이 [살펴보기]가 열려 scan을 부른다', () => {
     const p = draw(pick())
     const [from, to] = inputs(p)
-    for (const [a, b, blocked] of [
-      ['2026-08-14', '2026-11-13', false],
-      ['2026-08-13', '2026-11-13', true],
-      ['2025-12-01', '2026-03-02', false],
-      ['2025-12-01', '2026-03-03', true],
-      ['2024-01-01', '2024-04-01', false],
-      ['2024-01-01', '2024-04-02', true],
+    for (const [a, b] of [
+      ['2026-08-13', '2026-11-13'], // 93일
+      ['2025-10-10', '2026-11-13'], // 400일
+      ['2024-11-13', '2026-11-13'], // 731일
     ] as const) {
       type(from, a)
       type(to, b)
-      expect(why(p), `${a}~${b}`).toBe(blocked ? '한 번에 92일까지 고를 수 있어요.' : null)
-      expect(p.button('살펴보기').disabled, `${a}~${b}`).toBe(blocked)
+      expect(why(p), `${a}~${b}`).toBeNull()
+      expect(p.button('살펴보기').disabled, `${a}~${b}`).toBe(false)
       p.button('살펴보기').click()
     }
     expect(p.act.mock.calls).toEqual([
-      [{ kind: 'scan', from: '2026-08-14', to: '2026-11-13' }],
-      [{ kind: 'scan', from: '2025-12-01', to: '2026-03-02' }],
-      [{ kind: 'scan', from: '2024-01-01', to: '2024-04-01' }],
+      [{ kind: 'scan', from: '2026-08-13', to: '2026-11-13' }],
+      [{ kind: 'scan', from: '2025-10-10', to: '2026-11-13' }],
+      [{ kind: 'scan', from: '2024-11-13', to: '2026-11-13' }],
     ])
   })
 
-  it('AC-3701.2: 막는 줄은 차례대로 첫 하나 — 빈 칸 → 시작일 > 끝일 → 오늘 뒤 → 92일', () => {
+  it("AC-3701.2: 길이를 막는 글('한 번에 92일까지')·MAX_DAYS가 화면 글과 코드에 없다(TASK-13)", () => {
+    expect(Object.keys(RANGE_TEXT.pick)).not.toContain('tooLong')
+    expect(JSON.stringify(RANGE_TEXT)).not.toContain('92일')
+    for (const file of ['rangeTypes.ts', 'rangeView.ts', 'main.ts']) {
+      const source = readFileSync(path.join(ROOT, 'extension-erp', 'src', file), 'utf8')
+      expect(source, file).not.toMatch(/MAX_DAYS|92일/)
+    }
+  })
+
+  it('AC-3701.2: 막는 줄은 차례대로 첫 하나 — 빈 칸 → 시작일 > 끝일 → 오늘 뒤(길이로는 막지 않음)', () => {
     const p = draw(pick())
     const [from, to] = inputs(p)
     type(from, '')
@@ -244,13 +246,13 @@ describe('AC-3701.1·3701.2 기간 고르기(pick, 시안 ②)', () => {
     type(to, '2026-11-14')
     expect(why(p)).toBe('오늘 뒤 날짜는 고를 수 없어요.')
     type(to, '2026-11-13')
-    expect(why(p)).toBe('한 번에 92일까지 고를 수 있어요.')
+    expect(why(p)).toBeNull()
   })
 
-  it('AC-3701.2: 처음 값이 93일이면 처음부터 막혀 있다', () => {
-    const p = draw(pick('2026-08-13', '2026-11-13'))
-    expect(why(p)).toBe('한 번에 92일까지 고를 수 있어요.')
-    expect(p.button('살펴보기').disabled).toBe(true)
+  it('AC-3701.2: 처음 값이 731일이어도 처음부터 열려 있다', () => {
+    const p = draw(pick('2024-11-13', '2026-11-13'))
+    expect(why(p)).toBeNull()
+    expect(p.button('살펴보기').disabled).toBe(false)
   })
 
   it('AC-3701.2: change 이벤트로도 다시 본다', () => {
@@ -750,7 +752,6 @@ describe('글은 승인된 시안·design.md 4절 그대로', () => {
       RANGE_TEXT.blocked.noSaveBar.how,
       RANGE_TEXT.blocked.readOnly.what,
       RANGE_TEXT.blocked.readOnly.how,
-      RANGE_TEXT.pick.tooLong,
       RANGE_TEXT.blocked.dateChanged.what,
       RANGE_TEXT.blocked.dateChanged.how,
       RANGE_TEXT.blocked.cellsMissing.how,

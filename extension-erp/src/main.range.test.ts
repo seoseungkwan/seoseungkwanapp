@@ -7,17 +7,19 @@ import { ETC_NAMES, mountErpPage, sampleDay, settingsFirst, type ErpPage, type E
 import { explain } from './errors'
 import { startPage, WATCH_MS } from './main'
 import { HOST_ID } from './panel'
-import type { RangeView } from './rangeTypes'
+import type { RangeAction, RangeView } from './rangeTypes'
 import { SETTINGS_KEY, type ClosingDay, type Settings } from './types'
 
 // TASK-8: 기간 안내에 넘긴 모양(RangeView)을 차례대로 적는다(그리기는 진짜 rangeView 그대로)
-const seen = vi.hoisted(() => ({ views: [] as unknown[] }))
+// TASK-13: 마지막으로 넘긴 단추 알림(act)도 적어 둔다(그림을 거치지 않고 main에 scan을 보내 보려고)
+const seen = vi.hoisted(() => ({ views: [] as unknown[], act: null as ((action: RangeAction) => void) | null }))
 vi.mock('./rangeView', async (importOriginal) => {
   const real = await importOriginal<typeof import('./rangeView')>()
   return {
     ...real,
     renderRange(...args: Parameters<typeof real.renderRange>) {
       seen.views.push(args[1])
+      seen.act = args[2]
       return real.renderRange(...args)
     },
   }
@@ -127,6 +129,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   vi.setSystemTime(NOW)
   seen.views.length = 0
+  seen.act = null
 })
 
 afterEach(() => {
@@ -538,27 +541,35 @@ describe('AC-3701.1 AC-3701.3 TASK-8 [기간 채우기] 열기·기간 막기', 
     expect(dates().map((d) => d.value)).toEqual(['2026-11-01', '2026-11-10'])
   })
 
-  it('AC-3701.1 AC-3701.2: 92일보다 긴 기간은 [살펴보기]를 눌러도 살펴보지 않고(main이 한 번 더 막음), 92일은 살펴본다', async () => {
+  it('AC-3701.1 AC-3701.2: 400일 기간도 [살펴보기]로 살펴보기를 시작한다(main도 길이로 막지 않음, TASK-13)', async () => {
     const t = start()
-    await scan('2026-08-10', '2026-11-10')
+    await scan('2025-10-07', '2026-11-10')
+    expect(lead()).toBe('기간 안 날을 살펴보는 중이에요.')
+    expect(lines()).toContain('400일 중 0일')
+    act('그만두기').click()
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(t.asked()).toEqual(['2025-10-07'])
+    expect(panel().hidden).toBe(true)
+  })
+
+  it('AC-3701.2: main은 빈 칸·시작일 > 끝일·끝일 > 오늘인 scan을 그대로 받지 않는다(그림의 막기를 거치지 않고 보내도)', async () => {
+    const t = start()
+    rangeButton().click()
+    await flush()
+    for (const [from, to] of [
+      ['', '2026-11-10'],
+      ['2026-11-01', ''],
+      ['2026-11-10', '2026-11-01'],
+      ['2026-11-01', '2026-11-11'],
+    ]) {
+      seen.act?.({ kind: 'scan', from, to })
+      await flush()
+    }
     await vi.advanceTimersByTimeAsync(5_000)
     expect(t.asked()).toEqual([])
     expect(t.page.date()).toBe('2026-11-09')
     expect(seen.views.some((v) => (v as RangeView).kind === 'scanning')).toBe(false)
-    expect(rangeButton().disabled).toBe(false)
     expect(lead()).toBe('채울 기간을 골라 주세요.')
-
-    const [from] = dates()
-    from.value = '2026-08-11'
-    from.dispatchEvent(new Event('input', { bubbles: true }))
-    act('살펴보기').click()
-    await flush()
-    expect(lead()).toBe('기간 안 날을 살펴보는 중이에요.')
-    expect(lines()).toContain('92일 중 0일')
-    act('그만두기').click()
-    await vi.advanceTimersByTimeAsync(5_000)
-    expect(t.asked()).toEqual(['2026-08-11'])
-    expect(panel().hidden).toBe(true)
   })
 })
 
