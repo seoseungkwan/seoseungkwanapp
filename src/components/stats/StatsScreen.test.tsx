@@ -20,6 +20,7 @@ import type { RxGroup } from '@/types/rxGroups'
 import type { BitSectionsView, PatientMix, RxSplitView, StatsLoaded, StatsLoadRequest, StatsSectionsRequest, StatsWorkerMessage, StatsWorkerRequest } from '@/types/stats'
 import { runAnalysis } from '@/workers/runAnalysis'
 import { createStatsWorker } from '@/workers/statsClient'
+import { planLoad } from './loadPlan'
 import { StatsScreen } from './StatsScreen'
 import { groupKey } from './treatmentView'
 import { statsRange } from './view'
@@ -68,6 +69,8 @@ const SHA = '0'.repeat(64)
 const HELLO = { helperVersion: MIN_HELPER, protocol: 1, extensionVersion: '0.1.0', extensionProtocol: 1 }
 const LOAD = '비트에서 불러오기'
 const FILE_NOTE = '파일 자료는 처방이 없는 접수와 같은 날 다시 접수한 건이 빠져 비트 PC 숫자보다 적을 수 있어요.'
+const SETTINGS = '불러오기 설정' // 불러오기 띠의 접는 단추(stats-pc-ux AC-4001.1)
+const PRIVACY_LINE = '환자 개인정보는 의원 PC 밖으로 나가지 않아요. 서버에는 숫자만 저장해요.'
 const BIT_AT = { at: '2026-11-13T09:42:00Z', source: 'bit' as const } // 18:42
 const FILE_AT = { at: '2026-11-12T09:30:00Z', source: 'file' as const } // 11월 12일 18:30
 // 여덟 칸 뒤에 비트 전용 세 칸(stats-bit-sections AC-2706.1)
@@ -233,6 +236,11 @@ function pressLoad(port: FakePort, chunks?: string[]) {
 }
 
 const fileInput = () => document.querySelector('input[type="file"]') as HTMLInputElement
+// 저장된 숫자가 있는 화면은 불러오기 상자가 접힌 채다(stats-pc-ux AC-4001.4). 펼칠 칸 안 단추를 role로 찾기 전에 펼친다(이미 펼쳤으면 그대로)
+function openSettings() {
+  const toggle = screen.getByRole('button', { name: SETTINGS })
+  if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle)
+}
 const fakeFile = (name = '가짜환자이름.xlsx') => new File(['가짜'], name)
 const OK_REPORT: FileReport = {
   index: 0,
@@ -637,13 +645,14 @@ describe('AC-514.4 파일 길', () => {
     expect(card.textContent).toContain('오류 번호 E-ANALYZE-TIMEOUT')
   })
 
-  it('AC-514.4 파일을 읽는 동안 불러오기·파일 고르기가 막히고, 끝나면 풀린다', async () => {
+  it('AC-514.4·AC-4001.2 파일을 읽는 동안 불러오기·파일 고르기가 막히고, 끝나면 풀린다([불러오기 설정]을 펼쳐 본다)', async () => {
     let finish: (answer: Awaited<ReturnType<typeof runAnalysis>>) => void = () => {}
     vi.mocked(runAnalysis).mockImplementation(() => new Promise((resolve) => (finish = resolve)))
     vi.mocked(toMonthPayload).mockReturnValue([])
     vi.mocked(toDayPayloads).mockReturnValue([])
     draw()
     await sectionsShown()
+    openSettings()
     fireEvent.change(fileInput(), { target: { files: [fakeFile()] } })
     const button = screen.getByRole('button', { name: '파일 고르기' })
     expect(button.getAttribute('aria-disabled')).toBe('true')
@@ -655,11 +664,12 @@ describe('AC-514.4 파일 길', () => {
 })
 
 describe('AC-514.5 연결 상태', () => {
-  it('AC-514.5 확장이 없는 곳은 안내와 파일 길, 저장된 숫자만 보인다', async () => {
+  it('AC-514.5·AC-4001.5 확장이 없는 곳은 [불러오기 설정]을 펼치면 안내와 파일 길이고, 저장된 숫자만 보인다', async () => {
     draw()
     await sectionsShown()
     expect(screen.getByText('비트 PC의 크롬에서 불러올 수 있어요')).toBeTruthy()
     expect(screen.queryByRole('button', { name: LOAD })).toBeNull()
+    openSettings()
     expect(screen.getByRole('button', { name: '파일 고르기' })).toBeTruthy()
     expect(pageText()).toContain('하루 평균 환자 수')
     expect(screen.getAllByText('비트 PC에서 불러오면 보여요')).toHaveLength(BIT_ONLY_COUNT)
@@ -674,10 +684,12 @@ describe('AC-514.5 연결 상태', () => {
     expect(screen.getByRole('link', { name: '비트 PC 연결' }).getAttribute('href')).toBe('/claim/setup')
   })
 
-  it('AC-514.5 안심 줄이 늘 보인다', async () => {
+  it('AC-514.5·AC-4001.1 안심 줄은 하나이고 [불러오기 설정] 펼칠 칸 안에 늘 있다', async () => {
     draw()
     await sectionsShown()
-    expect(screen.getByText('환자 개인정보는 의원 PC 밖으로 나가지 않아요. 서버에는 숫자만 저장해요.')).toBeTruthy()
+    expect(screen.getAllByText(PRIVACY_LINE)).toHaveLength(1)
+    const panel = document.getElementById(screen.getByRole('button', { name: SETTINGS }).getAttribute('aria-controls') ?? '')
+    expect(panel?.contains(screen.getByText(PRIVACY_LINE))).toBe(true)
   })
 })
 
@@ -857,7 +869,7 @@ describe('AC-514.6 읽기가 실패해도 방금 불러온 숫자는 보인다',
     expect(screen.getByRole('group', { name: '보고 고르기' })).toBeTruthy()
   })
 
-  it('AC-514.1 파일 확인 필요는 방금 불러온 처방별·보고가 없어 읽기가 실패하면 섹션을 그리지 않는다', async () => {
+  it('AC-514.1·AC-4001.4 파일 확인 필요는 방금 불러온 처방별·보고가 없어 읽기가 실패하면 섹션을 그리지 않는다(읽기 실패는 접힌 채라 펼쳐 본다)', async () => {
     vi.mocked(readDays).mockRejectedValue(new Error('가짜 실패'))
     vi.mocked(runAnalysis).mockResolvedValue({ files: [OK_REPORT], result: { quality: 'incomplete', skippedInvalidRows: 5 } as AnalysisResult })
     vi.mocked(toMonthPayload).mockReturnValue(null)
@@ -866,6 +878,7 @@ describe('AC-514.6 읽기가 실패해도 방금 불러온 숫자는 보인다',
     await screen.findByRole('alert')
     fireEvent.change(fileInput(), { target: { files: [fakeFile()] } })
     await screen.findByText('일부 기록을 확인하지 못해 저장하지 않았어요')
+    openSettings()
     await waitFor(() => expect(screen.getByRole('button', { name: '파일 고르기' }).getAttribute('aria-disabled')).toBeNull())
     expect(heading('기간 요약')).toBeNull()
   })
@@ -1004,7 +1017,7 @@ describe('AC-514.6 일은 한 번에 하나', () => {
     await loadIsFree()
   })
 
-  it('AC-514.6 다시 저장하는 동안 불러오기·파일은 막혀 새 숫자가 옛 숫자에 덮이지 않는다', async () => {
+  it('AC-514.6·AC-4001.2 다시 저장하는 동안 불러오기·파일은 막혀 새 숫자가 옛 숫자에 덮이지 않는다', async () => {
     const { port } = await saveFailedOnce()
     fileGoesWell()
     let finish: (answer: { saved: number }) => void = () => {}
@@ -1016,6 +1029,7 @@ describe('AC-514.6 일은 한 번에 하나', () => {
     fireEvent.click(load)
     expect(port.sent.filter((message) => message.cmd === 'stats.rows')).toHaveLength(1)
 
+    openSettings()
     expect(screen.getByRole('button', { name: '파일 고르기' }).getAttribute('aria-disabled')).toBe('true')
     fireEvent.change(fileInput(), { target: { files: [fakeFile()] } })
     expect(runAnalysis).not.toHaveBeenCalled()
@@ -1125,25 +1139,28 @@ describe('AC-514.6 일은 한 번에 하나', () => {
 })
 
 describe('AC-514.7 출처 줄과 파일 안내', () => {
-  it('AC-514.7 비트 출처 줄: 가장 최근 시각(한국 시간)과 덮은 끝', async () => {
+  it('AC-514.7·AC-4001.6 비트 출처 줄: 가장 최근 시각(한국 시간)과 덮은 끝(짧은 끝 글)', async () => {
     draw()
     await sectionsShown()
-    expect(pageText()).toContain('자료: 비트 PC · 11월 13일 18:42 저장 · 어제(11월 12일)까지 끝난 날로 저장했어요')
+    expect(pageText()).toContain('자료: 비트 PC · 11월 13일 18:42 저장 · 어제(11월 12일)까지')
+    expect(pageText()).not.toContain('끝난 날로 저장했어요')
   })
 
-  it('AC-514.7 파일 출처 줄', async () => {
+  it('AC-514.7·AC-4001.6 파일 출처 줄', async () => {
     answers({ [R30.current.from]: read([day('2026-11-01')], { latest: FILE_AT, fromFile: true }) })
     vi.mocked(readCoverage).mockResolvedValue([{ from: '2026-09-01', to: '2026-11-05' }])
     draw()
     await sectionsShown()
-    expect(pageText()).toContain('자료: 파일 · 11월 12일 18:30 저장 · 11월 5일까지 끝난 날로 저장했어요')
+    expect(pageText()).toContain('자료: 파일 · 11월 12일 18:30 저장 · 11월 5일까지')
+    expect(pageText()).not.toContain('끝난 날로 저장했어요')
   })
 
-  it('AC-514.8 오늘까지 덮었으면 오늘로 적는다', async () => {
+  it('AC-514.8·AC-4001.6 오늘까지 덮었으면 오늘로 적는다', async () => {
     vi.mocked(readCoverage).mockResolvedValue([{ from: '2026-09-01', to: TODAY }])
     draw()
     await sectionsShown()
-    expect(pageText()).toContain(' · 오늘(11월 13일)까지 끝난 날로 저장했어요')
+    expect(pageText()).toContain('18:42 저장 · 오늘(11월 13일)까지')
+    expect(pageText()).not.toContain('끝난 날로 저장했어요')
   })
 
   it('AC-514.7 latest.source가 bit이어도 fromFile이 true이면 문장이 글자 그대로 보인다', async () => {
@@ -1189,8 +1206,9 @@ describe('AC-514.7 출처 줄과 파일 안내', () => {
 })
 
 describe('AC-514.8 오늘 진료 끝', () => {
-  it('AC-514.8 켜고 불러오면 closeToday true로 가고 보고 날짜 줄에 진료 중이 없다', async () => {
+  it('AC-514.8·AC-4001.3 켜고 불러오면 closeToday true로 가고 보고 날짜 줄에 진료 중이 없다', async () => {
     const { port, fake } = await drawReady()
+    openSettings()
     fireEvent.click(screen.getByRole('checkbox', { name: '오늘 진료 끝' }))
     pressLoad(port)
     await waitFor(() => expect(fake.sent.find((message) => message.type === 'load')).toMatchObject({ closeToday: true }))
@@ -1886,7 +1904,7 @@ describe('AC-1205.7 불러올 때 묶음을 서버에서 다시 읽어 센다 (t
     expect(vi.mocked(saveStats).mock.calls[0]![0].days).toEqual([{ ...FRESH_ROW, groups: [{ id: groupKey(OTHER.codes), patients: 0, newPatients: 0, returning: 0 }] }])
   })
 
-  it('AC-1205.7 파일 길: 다시 읽기가 실패하면 화면에 있는 묶음으로 세고 파일 넣기를 막지 않는다', async () => {
+  it('AC-1205.7·AC-4001.2 파일 길: 다시 읽기가 실패하면 화면에 있는 묶음으로 세고 파일 넣기를 막지 않는다', async () => {
     fileGoesWell()
     draw()
     await sectionsShown()
@@ -1895,6 +1913,7 @@ describe('AC-1205.7 불러올 때 묶음을 서버에서 다시 읽어 센다 (t
     fireEvent.change(fileInput(), { target: { files: [fakeFile()] } })
     await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
     expect(vi.mocked(runAnalysis).mock.calls[0]![1]).toEqual({ today: TODAY, groups: defsOf(SAVED_GROUP) })
+    openSettings()
     await waitFor(() => expect(screen.getByRole('button', { name: '파일 고르기' }).getAttribute('aria-disabled')).toBeNull())
   })
 })
@@ -2046,7 +2065,7 @@ describe('통계 화면에 기간 고르기 잇기 (stats-period TASK-8)', () =>
     expect(split.textContent).not.toContain('처방마다 서로 다른 환자 수 · ')
   })
 
-  it('AC-1706.5 고른 기간의 출처 줄은 자르지 않은 덮은 기간의 끝(data.coveredTo)으로 쓴다', async () => {
+  it('AC-1706.5·AC-4001.6 고른 기간의 출처 줄은 자르지 않은 덮은 기간의 끝(data.coveredTo)으로 쓴다', async () => {
     vi.mocked(readCoverage).mockResolvedValue([{ from: '2025-01-01', to: '2026-11-12' }])
     answers({ ...SAVED_NOW, ...OCTOBER })
     draw()
@@ -2054,8 +2073,8 @@ describe('통계 화면에 기간 고르기 잇기 (stats-period TASK-8)', () =>
     pressUnit('일별')
     await sectionsShown()
     expect(pageText()).toContain('2026년 10월 1일 – 31일 · 일별')
-    expect(pageText()).toContain('자료: 비트 PC · 11월 13일 18:42 저장 · 어제(11월 12일)까지 끝난 날로 저장했어요')
-    expect(pageText()).not.toContain('10월 31일까지 끝난 날로 저장했어요')
+    expect(pageText()).toContain('자료: 비트 PC · 11월 13일 18:42 저장 · 어제(11월 12일)까지')
+    expect(pageText()).not.toContain('10월 31일까지')
   })
 
   it('AC-1707.1 고르기에 들어오면 [고른 기간 보고]가 맨 앞에 눌리고 저장된 숫자로 만든 글이며, 빠른 단추로 돌아오면 지금과 같다', async () => {
@@ -2374,9 +2393,16 @@ describe('REQ-3303 stats-load-range: 차례대로 읽고 저장·멈춤·이어�
   const rowsSent = (port: FakePort) => port.sent.filter((message) => message.cmd === 'stats.rows')
   const loadsSent = (sent: StatsWorkerRequest[]) => sent.filter((message): message is StatsLoadRequest => message.type === 'load')
   const splitsSent = (sent: StatsWorkerRequest[]) => sent.filter((message) => message.type === 'split')
-  const pickSpan = (name: string) => fireEvent.click(within(screen.getByRole('group', { name: '불러올 기간' })).getByRole('button', { name }))
+  // 불러올 기간·오늘 진료 끝은 [불러오기 설정] 펼칠 칸 안이다(stats-pc-ux AC-4001.1). [비트에서 불러오기]는 띠에 있다
+  const pickSpan = (name: string) => {
+    openSettings()
+    fireEvent.click(within(screen.getByRole('group', { name: '불러올 기간' })).getByRole('button', { name }))
+  }
   const pressStart = () => fireEvent.click(screen.getByRole('button', { name: LOAD }))
-  const closeToday = () => fireEvent.click(screen.getByRole('checkbox', { name: '오늘 진료 끝' }))
+  const closeToday = () => {
+    openSettings()
+    fireEvent.click(screen.getByRole('checkbox', { name: '오늘 진료 끝' }))
+  }
   const reportText = () => heading('원장님 보고 문장')!.closest('section')!.textContent ?? ''
   const boxOf = (text: string) => screen.getByText(text).closest('[role="status"]') as HTMLElement
   const failRows = (port: FakePort, code = 'E-STATS-TOO-BIG') => act(() => port.reply({ v: 1, id: port.last().id, type: 'error', code }))
@@ -2553,7 +2579,7 @@ describe('REQ-3303 stats-load-range: 차례대로 읽고 저장·멈춤·이어�
     expect(pageText()).not.toContain('비트 PC에서 읽는 중이에요')
   })
 
-  it('AC-3303.5 넷을 다 저장하면 띠 아래·개인정보 안내 줄 위 상자(role=status)에 저장한 날짜(해를 넘으면 양 끝에 해)와 볼 수 있는 해가 있다', async () => {
+  it('AC-3303.5·AC-4001.7 넷을 다 저장하면 불러오기 상자(개인정보 안내 줄이 든 펼칠 칸 포함) 바로 아래 상자(role=status)에 저장한 날짜(해를 넘으면 양 끝에 해)와 볼 수 있는 해가 있다', async () => {
     const { port } = await readyWith()
     pickSpan(ALL)
     pressStart()
@@ -2564,12 +2590,12 @@ describe('REQ-3303 stats-load-range: 차례대로 읽고 저장·멈춤·이어�
     expect(first.className).toContain('font-semibold')
     expect(screen.getByText(DONE[1]!).className).toContain('text-small')
     expect(screen.getByRole('button', { name: '파일 고르기' }).compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(box.compareDocumentPosition(screen.getByText(PRIVACY)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByText(PRIVACY).compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.queryByRole('button', { name: RESUME })).toBeNull()
     await loadIsFree()
   })
 
-  it('AC-3303.6 셋째 조각에서 통로가 끊기면 앞 둘은 저장된 채 멈추고, 상자에 번호와 [이어서 불러오기]가 있으며 오류 카드·넷째 요청은 없다', async () => {
+  it('AC-3303.6·AC-4001.7 셋째 조각에서 통로가 끊기면 앞 둘은 저장된 채 멈추고, 불러오기 상자 아래 상자에 번호와 [이어서 불러오기]가 있으며 오류 카드·넷째 요청은 없다', async () => {
     const { port } = await readyWith()
     pickSpan(ALL)
     pressStart()
@@ -2581,7 +2607,7 @@ describe('REQ-3303 stats-load-range: 차례대로 읽고 저장·멈춤·이어�
     expect(box.textContent).toContain('2022년 12월 – 2026년 11월은 저장됐어요. 남은 2020년 1월 – 2022년 11월은 [이어서 불러오기]로 읽어요. (오류 번호 E-BRIDGE-DISCONNECTED)')
     expect(within(box).getByRole('button', { name: RESUME })).toBeTruthy()
     expect(screen.getByText('4번 가운데 2번째까지 저장하고 멈췄어요.').className).toContain('font-semibold')
-    expect(box.compareDocumentPosition(screen.getByText(PRIVACY)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByText(PRIVACY).compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     await flush()
     expect(saveStats).toHaveBeenCalledTimes(2)
     expect(rowsSent(port)).toHaveLength(3)
@@ -2841,7 +2867,7 @@ describe('REQ-3303 stats-load-range: 차례대로 읽고 저장·멈춤·이어�
     expect(screen.queryByText('4번 가운데 2번째까지 저장하고 멈췄어요.')).toBeNull()
   })
 
-  it('AC-3303.9 화면을 다시 열면 멈춘 상자는 없다(기억하지 않는다)', async () => {
+  it('AC-3303.9·AC-4001.8 화면을 다시 열면 멈춘 상자는 없다(기억하지 않는다)', async () => {
     const { port } = await readyWith()
     pickSpan(ALL)
     pressStart()
@@ -2859,6 +2885,176 @@ describe('REQ-3303 stats-load-range: 차례대로 읽고 저장·멈춤·이어�
     await sectionsShown()
     expect(pageText()).not.toContain('저장하고 멈췄어요')
     expect(screen.queryByRole('button', { name: RESUME })).toBeNull()
+    expect(screen.getByRole('button', { name: SETTINGS }).getAttribute('aria-expanded')).toBe('false')
+    openSettings()
     expect(within(screen.getByRole('group', { name: '불러올 기간' })).getByRole('button', { name: '지금 보는 기간' }).getAttribute('aria-pressed')).toBe('true')
+  })
+})
+
+// ── 불러오기 띠 · 자료 글 · 접힘 (stats-pc-ux REQ-4001 TASK-4, 시안 docs/mockups/stats-pc-ux notes.md §1, design.md 'StatsScreen.tsx 바뀜') ──
+describe('REQ-4001 stats-pc-ux: 불러오기 띠 · 자료 글 · 접힘', () => {
+  const settings = () => screen.getByRole('button', { name: SETTINGS })
+  const foldPanel = () => document.getElementById(settings().getAttribute('aria-controls') ?? '') as HTMLElement
+  const band = () => foldPanel().previousElementSibling as HTMLElement
+  const expanded = () => settings().getAttribute('aria-expanded')
+  // 띠 왼쪽 자료 글(앞 글 + 뒤 muted span). 화면에 '자료:'로 시작하는 줄은 이것 하나뿐이다(기간 글 아래 따로 있던 자료 줄이 없다)
+  const sourceLine = () => {
+    const lines = screen.getAllByText(/^자료:/)
+    expect(lines).toHaveLength(1)
+    return lines[0]!
+  }
+
+  it('AC-4001.6: 띠 왼쪽 자료 글은 지금 자료 줄과 같은 글·색(앞 ink-2, 뒤 muted)이되 끝 글이 ` · 어제(…)까지`로 짧고 `끝난 날로 저장했어요`가 없다', async () => {
+    draw()
+    await sectionsShown()
+    const line = sourceLine()
+    expect(band().contains(line)).toBe(true)
+    expect(line.textContent).toBe('자료: 비트 PC · 11월 13일 18:42 저장 · 어제(11월 12일)까지')
+    const rest = line.querySelector('span')
+    expect(rest?.textContent).toBe(' · 어제(11월 12일)까지')
+    expect(rest?.className).toContain('text-muted')
+    expect(line.closest('.text-ink-2')).toBeTruthy()
+    expect(line.compareDocumentPosition(settings()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(pageText()).not.toContain('끝난 날로 저장했어요')
+  })
+
+  it('AC-4001.6: 오늘 진료 끝으로 덮었으면 ` · 오늘(11월 13일)까지`, 어제가 아닌 날이면 ` · 11월 5일까지`다', async () => {
+    vi.mocked(readCoverage).mockResolvedValue([{ from: '2026-09-01', to: TODAY }])
+    const first = draw()
+    await sectionsShown()
+    expect(sourceLine().textContent).toBe('자료: 비트 PC · 11월 13일 18:42 저장 · 오늘(11월 13일)까지')
+    first.unmount()
+
+    vi.mocked(readCoverage).mockResolvedValue([{ from: '2026-09-01', to: '2026-11-05' }])
+    draw()
+    await sectionsShown()
+    expect(sourceLine().textContent).toBe('자료: 비트 PC · 11월 13일 18:42 저장 · 11월 5일까지')
+  })
+
+  it('AC-4001.6: 방금 불러와 저장하면 띠 글에도 ` · 방금`이 같은 규칙으로 붙는다', async () => {
+    const { port } = await drawReady()
+    pressLoad(port)
+    await waitFor(() => expect(pageText()).toContain('자료: 비트 PC · 11월 13일 18:42 저장 · 방금 · 어제(11월 12일)까지'))
+    await sectionsShown()
+    expect(band().contains(sourceLine())).toBe(true)
+  })
+
+  it('AC-4001.6: 파일 자료 안내 글은 띠 안 자료 글 바로 아래 줄이고, 기간 줄 뒤에는 자료 글이 없다', async () => {
+    answers({ [R30.current.from]: read([day('2026-11-01')], { latest: FILE_AT, fromFile: true }) })
+    draw()
+    const note = await screen.findByText(FILE_NOTE)
+    await sectionsShown()
+    expect(band().contains(note)).toBe(true)
+    expect(note.previousElementSibling).toBe(sourceLine())
+    expect(sourceLine().compareDocumentPosition(screen.getByRole('group', { name: '기간' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("AC-4001.4: 저장된 숫자를 다 읽었는데 없으면('아직 저장된 통계가 없어요') 펼친 채 시작하고 자료 글은 `자료: 아직 저장된 숫자가 없어요`다", async () => {
+    answers({})
+    draw()
+    await screen.findByText('아직 저장된 통계가 없어요')
+    expect(expanded()).toBe('true')
+    expect(foldPanel().hidden).toBe(false)
+    expect(sourceLine().textContent).toBe('자료: 아직 저장된 숫자가 없어요')
+    expect(screen.getByRole('button', { name: '파일 고르기' })).toBeTruthy()
+  })
+
+  it('AC-4001.4: 저장된 숫자가 있으면 접힌 채이고 띠에 [비트에서 불러오기]가 있다', async () => {
+    await drawReady()
+    expect(expanded()).toBe('false')
+    expect(foldPanel().hidden).toBe(true)
+    expect(band().contains(screen.getByRole('button', { name: LOAD }))).toBe(true)
+    expect(screen.queryByRole('button', { name: '파일 고르기' })).toBeNull()
+  })
+
+  it('AC-4001.4: 저장된 숫자를 읽는 동안은 접힌 채이고 자료 글이 없다', () => {
+    vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
+    draw()
+    expect(expanded()).toBe('false')
+    expect(pageText()).not.toContain('자료:')
+  })
+
+  it('AC-4001.4: 읽기 실패는 접힌 채다', async () => {
+    vi.mocked(readDays).mockRejectedValueOnce(new Error('가짜 실패'))
+    draw()
+    await screen.findByRole('alert')
+    expect(expanded()).toBe('false')
+    expect(foldPanel().hidden).toBe(true)
+  })
+
+  it('AC-4001.4: 펼친 채 시작해 [불러오기 설정]을 누르지 않았으면 불러와 저장된 숫자가 생길 때 저절로 접힌다', async () => {
+    answers({})
+    const port = fakeChrome()
+    draw()
+    sayHello(port)
+    await screen.findByText('아직 저장된 통계가 없어요')
+    expect(expanded()).toBe('true')
+
+    answers(SAVED_NOW)
+    pressLoad(port)
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(pageText()).toContain('18:42 저장 · 방금'))
+    expect(pageText()).not.toContain('아직 저장된 통계가 없어요')
+    expect(expanded()).toBe('false')
+    expect(foldPanel().hidden).toBe(true)
+  })
+
+  it('AC-4001.4: 사용자가 [불러오기 설정]을 눌러 펼쳐 두었으면 저장된 뒤에도 펼친 채다', async () => {
+    answers({})
+    const port = fakeChrome()
+    draw()
+    sayHello(port)
+    await screen.findByText('아직 저장된 통계가 없어요')
+    fireEvent.click(settings())
+    fireEvent.click(settings())
+    expect(expanded()).toBe('true')
+
+    answers(SAVED_NOW)
+    pressLoad(port)
+    await waitFor(() => expect(pageText()).toContain('18:42 저장 · 방금'))
+    expect(expanded()).toBe('true')
+  })
+
+  it('AC-4001.4: 저장된 숫자가 없는 화면은 기간을 바꿔 다시 읽는 동안에도 펼친 채다(접혔다 펼쳐지며 깜박이지 않는다)', async () => {
+    answers({})
+    draw()
+    await screen.findByText('아직 저장된 통계가 없어요')
+    vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
+    pressPeriod('최근 90일')
+    expect(screen.getAllByText('불러오는 중').length).toBeGreaterThan(0)
+    expect(expanded()).toBe('true')
+  })
+
+  it('AC-4001.5: 저장된 숫자가 있어도 도우미가 없으면 펼친 채다', async () => {
+    const port = fakeChrome()
+    draw()
+    act(() => port.reply({ v: 1, id: port.last().id, type: 'error', code: 'E-HELPER-MISSING' }))
+    await sectionsShown()
+    expect(expanded()).toBe('true')
+    expect(screen.getByRole('link', { name: '비트 PC 연결' })).toBeTruthy()
+  })
+
+  it('AC-4001.3: 펼쳐 고른 불러올 기간은 접은 뒤 띠의 [비트에서 불러오기]로 그대로 읽는다', async () => {
+    const { port } = await drawReady()
+    fireEvent.click(settings())
+    fireEvent.click(within(screen.getByRole('group', { name: '불러올 기간' })).getByRole('button', { name: '최근 1년' }))
+    fireEvent.click(settings())
+    expect(foldPanel().hidden).toBe(true)
+    const request = pressLoad(port)
+    expect(request.args).toEqual(planLoad(TODAY, R30, '1y').parts[0]!.read)
+  })
+
+  it('AC-4001.8: 펼쳐 둔 화면을 다시 열면 접힌 채이고 브라우저 저장소에 쓰지 않는다', async () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    const first = draw()
+    await sectionsShown()
+    fireEvent.click(settings())
+    expect(expanded()).toBe('true')
+    first.unmount()
+
+    draw()
+    await sectionsShown()
+    expect(expanded()).toBe('false')
+    expect(setItem).not.toHaveBeenCalled()
   })
 })
