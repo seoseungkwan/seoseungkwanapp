@@ -8,6 +8,7 @@
 //   되돌린 뒤·다음 채우기·화면 떠남 때 지운다. 도우미 답과 이 기억은 어디에도 저장하지 않는다(chrome.storage에 쓰는 것은 overlap 선택뿐)
 // - 저장은 사용자가 누른다
 import { planCells } from './cells.js'
+import { dateLabels, readDate } from './erpday.js'
 import { E_BRIDGE_BAD_REPLY, E_BRIDGE_DISCONNECTED, E_CLOSING_FUTURE_DATE, E_HELPER_TIMEOUT } from './errors.js'
 import { fillAll, survey, undoAll, type FillMode, type UndoEntry } from './fill.js'
 import { createDock, HOST_ID, type Dock, type View } from './panel.js'
@@ -21,45 +22,8 @@ export const WATCH_MS = 500
 /** 도우미 답을 기다리는 가장 긴 시간(서비스 워커도 같은 시간에 연결을 닫는다) */
 export const READ_TIMEOUT_MS = 120_000
 
-const DATE_LABEL = '마감 일자'
-const YEAR_PICKER = '연도 선택'
-const DAY = /^(\d{4})-(\d{2})-(\d{2})$/
-const TODAY = /(\d{4}-\d{2}-\d{2})\s*\(오늘\)/
-
-const tidy = (text: string | null | undefined) => (text ?? '').replace(/\s+/g, ' ').trim()
-
-/** 있는 날짜인 'YYYY-MM-DD'면 그대로, 아니면 null */
-function realDay(text: string): string | null {
-  const m = DAY.exec(text)
-  if (!m) return null
-  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])]
-  const at = new Date(Date.UTC(y, mo - 1, d))
-  return at.getUTCFullYear() === y && at.getUTCMonth() === mo - 1 && at.getUTCDate() === d ? text : null
-}
-
-function dateLabels(doc: Document): HTMLLabelElement[] {
-  return [...doc.querySelectorAll('label')].filter((label) => tidy(label.textContent) === DATE_LABEL)
-}
-
-/**
- * 마감 일자: '마감 일자' label과 같은 줄의 날짜 칸(input.datepicker-input, '연도 선택' 칸 말고) 값,
- * 없으면 원무 권한 화면의 'YYYY-MM-DD (오늘)' 글자. 고르지 않았거나 날짜가 아니면 null
- */
-export function readDate(doc: Document): string | null {
-  for (const label of dateLabels(doc)) {
-    // 같은 줄: label의 부모부터 세 겹까지(달력 도구가 칸을 감싸도 찾게)
-    let row = label.parentElement
-    for (let up = 0; row && up < 3; up += 1, row = row.parentElement) {
-      const input = [...row.querySelectorAll<HTMLInputElement>('input.datepicker-input')].find(
-        (el) => el.getAttribute('aria-label') !== YEAR_PICKER,
-      )
-      if (input) return realDay(input.value.trim())
-      const today = TODAY.exec(row.textContent ?? '')
-      if (today) return realDay(today[1])
-    }
-  }
-  return null
-}
+/** 마감 일자 읽기는 erpday.ts로 옮겼다(기간 채우기와 같이 쓴다). 여기서 그대로 다시 내보낸다 */
+export { readDate }
 
 /** 단추를 둘 화면인가: 주소가 /h/closing이고 '마감 일자'가 있다 */
 export function onClosingPage(doc: Document): boolean {

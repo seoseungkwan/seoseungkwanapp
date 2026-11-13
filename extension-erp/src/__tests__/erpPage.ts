@@ -5,12 +5,43 @@
 //   기본 value 설정 함수 + bubbles input 이벤트여야 들어간다. 금액칸은 쉼표를 붙여 다시 그리고, 떠날 때(blur) 표시를 정리한다
 // - 업무일지 1 칸은 1 탭일 때만 있고(2 탭이면 사라짐), 업무일지 2 칸은 늘 있되 1 탭이면 `#closing-panel-w2[hidden]`이다
 // - 모든 단추 누름·select 바꿈을 적어 둔다(시험이 '저장·삭제·기본단가 단추를 누르지 않았다'를 본다)
+// - 기간 채우기(spec erp-closing-range design.md 7절, notes/erp-screen-1113.md): 날마다 서버 값(days) · 날짜 칸 input 이벤트(React 길)나
+//   popstate의 history.state.usr.selectDate로 날을 바꾸면 '로딩 중'(1 칸 묶음 자리·.closing-pdf-out '불러오는 중입니다.'·2 .cdf-empty)을 보이다
+//   loadMs 뒤 그날을 다시 그린다 · '전체 저장'(1 탭에만)·'일일 상세 저장'(.cdf-save-bar)은 누르면 '저장 중...' → saveMs 뒤 .toast-container 쪽지
+//   (2 저장 성공 뒤엔 그날을 다시 불러옴) · 그날 마감일지가 있을 때만 '마감일지 삭제' · showDialog()(새 판 안내 창). 옵션이 없으면 예전 모양 그대로다
 // 맨 아래에 시험용 도우미 답·설정(가짜 숫자, 환자 정보 없음)도 둔다
 import type { AgeBand, ClosingDay, GroupKey, Settings } from '../types'
 
 export type Tab = 'w1' | 'w2'
 
+/** 그날 서버에 있는 것(기간 채우기 시험용) */
+export type ErpDay = {
+  /** 그날 마감일지 상태. 없으면(undefined·null) 마감일지 없는 날('마감일지 삭제' 단추 없음, 상태 칸 처음 값 작성중) */
+  status?: 'draft' | 'confirmed' | null
+  /** 그날 저장된 칸 값(칸 코드 → 글자, 금액칸은 쉼표 없는 숫자) */
+  values?: Record<string, string>
+  /** 그날을 열면 '저장하지 않은 입력을 되살렸습니다' 띠(.journal-draft-notice)가 보인다 */
+  draftNotice?: boolean
+  /** 그날을 불러오지 못한다(.load-state-error, 칸 없음) */
+  loadError?: boolean
+}
+
+/** 저장 단추를 누른 결과: 성공 쪽지 · 오류 쪽지 · 끝내 답 없음('저장 중...' 그대로) */
+export type ErpSaveResult = 'ok' | 'error' | 'never'
+
 export type ErpPageOptions = {
+  /** 날마다 서버 값(날짜 'YYYY-MM-DD' → 그날). 주면 '마감일지 삭제' 단추는 그날 마감일지가 있을 때만 있다. 없으면 예전처럼 늘 있다 */
+  days?: Record<string, ErpDay>
+  /** 날짜를 바꾼 뒤(또는 2 저장 뒤) 그날이 다 그려지기까지(ms, 기본 0 = 다음 타이머). 'never'면 끝내 '로딩 중' */
+  loadMs?: number | 'never'
+  /** 저장 단추를 누른 결과(기본 늘 'ok') */
+  saveResult?: (which: Tab, date: string) => ErpSaveResult
+  /** 저장 단추를 누른 뒤 쪽지가 뜨기까지(ms, 기본 0 = 다음 타이머) */
+  saveMs?: number
+  /** 업무일지 2 저장 줄(.cdf-save-bar)이 없다(진료실 0개 등) */
+  noSaveBar?: boolean
+  /** 날짜 칸 input 이벤트로는 날이 안 바뀐다(React가 칸 글자를 되돌림). popstate의 history.state.usr.selectDate로만 바뀐다 */
+  dateInputOff?: boolean
   /** 처음 탭(기본 w1) */
   tab?: Tab
   /** 마감 일자 'YYYY-MM-DD'(기본 2026-11-09). null이면 날짜를 고르지 않은 화면(업무일지 칸 없음) */
@@ -49,8 +80,14 @@ export type ErpPage = {
   changes: string[]
   /** ERP 쪽(window)까지 올라온 keydown의 key(ERP 화면 단축키가 그대로 받는지 본다) */
   keys: string[]
-  /** 업무일지 2 영역이 input 이벤트를 받아 '고침 있음'이 켜졌는가 */
+  /** 업무일지 2 영역이 input 이벤트를 받아 '고침 있음'이 켜졌는가(그날을 다시 그리면 꺼짐) */
   readonly w2Dirty: boolean
+  /** 눌린 저장 단추(누른 차례): 어느 저장 · 그때 마감 일자 · 그때 기억(state) 복사 */
+  saves: { which: Tab; date: string; state: Record<string, string> }[]
+  /** 지금 고른 마감 일자(불러오는 중이어도 고른 날) */
+  date(): string | null
+  /** ERP 안내 창(새 판 안내, .dialog-overlay)을 띄운다. 크기가 있는 창이다. 띄운 창을 돌려준다(remove()로 닫힘) */
+  showDialog(): HTMLElement
   tab(): Tab
   /** 지금 화면에 붙은, 그 코드에 묶인 칸들 */
   inputs(key: string): (HTMLInputElement | HTMLTextAreaElement)[]
@@ -234,6 +271,10 @@ export function allKeys(therapists: string[] = ['김도수', '박충격']): stri
   return [...new Set([...W1_STAFF.map(([k]) => k), ...w1, ...w2Keys(therapists), 'REMARKS', 'STATUS'])]
 }
 
+/** 쪽지가 사라지기까지(ERP 12717줄) */
+const TOAST_MS = 3000
+const DAY = /^\d{4}-\d{2}-\d{2}$/
+
 // --- 금액칸 글자 ---
 
 function moneyRaw(text: string): string {
@@ -260,12 +301,29 @@ export function mountErpPage(doc: Document, options: ErpPageOptions = {}): ErpPa
     spaced: false,
     w1Delay: 0 as number | 'never',
     lockedKeys: [] as string[],
+    loadMs: 0 as number | 'never',
+    saveMs: 0,
+    noSaveBar: false,
+    dateInputOff: false,
     ...options,
   }
   const keys = allKeys(opts.therapists)
-  const state: Record<string, string> = Object.fromEntries(keys.map((k) => [k, '']))
-  state.STATUS = 'draft'
-  Object.assign(state, opts.values ?? {})
+  /** 서버에 있는 날마다 값. 저장하면 그날 것이 바뀐다 */
+  const db = new Map<string, ErpDay>(Object.entries(opts.days ?? {}))
+  /** 고른 마감 일자 */
+  let current: string | null = opts.date
+  const state: Record<string, string> = {}
+  /** 그날 서버 값으로 기억을 새로 채운다(같은 state 객체를 고친다) */
+  function resetState(extra?: Record<string, string>) {
+    const day = current ? db.get(current) : undefined
+    for (const k of Object.keys(state)) delete state[k]
+    for (const k of keys) state[k] = ''
+    state.STATUS = day?.status ?? 'draft'
+    Object.assign(state, day?.values ?? {}, extra ?? {})
+  }
+  resetState(opts.values)
+  /** 그날 마감일지가 있나(days를 안 주면 예전처럼 늘 있음) */
+  const hasJournal = () => opts.days === undefined || Boolean(current && db.get(current)?.status)
 
   const log: ErpPage['log'] = []
   const clicks: string[] = []
@@ -444,8 +502,69 @@ export function mountErpPage(doc: Document, options: ErpPageOptions = {}): ErpPa
         h('div', {}, h('label', {}, '특이사항 ', h('span', {}, '업무일지 2 와 같은 칸')), remarks),
         h('div', {}, h('label', {}, '상태'), status),
       ),
-      h('div', { class: 'card' }, button('중간저장'), h('button', { class: 'btn btn-primary' }, '전체 저장')),
+      saveCard(),
     )
+  }
+
+  /** 업무일지 1 저장 카드(1 탭에만, ERP 182159줄). '중간저장'은 누르면 적어 두기만 한다 */
+  function saveCard(): HTMLDivElement {
+    const middle = button('중간저장')
+    const all = h('button', { class: 'btn btn-primary' }, '전체 저장')
+    saver('w1', all, [middle, all])
+    return h('div', { class: 'card' }, middle, all)
+  }
+
+  /** 업무일지 2 저장 줄(진료실 1개 이상·불러오는 중 아님·오류 없음·본사 열람 아님일 때만, 조사 6절) */
+  function makeSaveBar(): HTMLDivElement {
+    const middle = button('중간저장')
+    const daily = h('button', { class: 'btn btn-primary' }, '일일 상세 저장')
+    const reset = button('초기화')
+    saver('w2', daily, [middle, daily, reset])
+    return h('div', { class: 'cdf-save-bar cdf-no-print' }, middle, daily, reset)
+  }
+
+  /**
+   * 저장 단추(ERP 그대로 확인 창 없음): 누르면 그때 기억을 saves에 적고 묶음 단추를 막고 글자 '저장 중...' →
+   * saveMs 뒤 단추를 되돌리고 쪽지(성공 '저장되었습니다.' · 오류 '저장 중 오류가 발생했습니다.'). 'never'면 끝나지 않는다.
+   * 성공하면 그날 서버 값이 지금 기억이 되고(마감일지 생김), 2 저장 뒤엔 그날을 다시 불러온다(조사 3절 onSaved)
+   */
+  function saver(which: Tab, btn: HTMLButtonElement, group: HTMLButtonElement[]) {
+    btn.addEventListener('click', () => {
+      if (loading || !current || btn.disabled || btn.closest('fieldset[disabled]')) return
+      const date = current
+      saves.push({ which, date, state: { ...state } })
+      const label = btn.textContent ?? ''
+      btn.textContent = '저장 중...'
+      for (const b of group) b.disabled = true
+      const result = opts.saveResult?.(which, date) ?? 'ok'
+      if (result === 'never') return
+      setTimeout(() => {
+        btn.textContent = label
+        for (const b of group) b.disabled = false
+        if (result === 'error') {
+          toast('error', '저장 중 오류가 발생했습니다.')
+          return
+        }
+        const before = db.get(date)
+        db.set(date, { status: which === 'w1' ? state.STATUS : (before?.status ?? state.STATUS), values: { ...state } })
+        toast('success', '저장되었습니다.')
+        if (date !== current) return
+        if (which === 'w1') paintDelete()
+        else startLoading()
+      }, opts.saveMs)
+    })
+  }
+
+  let toastBox: HTMLElement | null = null
+  /** 쪽지(.toast-container 안, 3초 뒤 사라짐, ERP 12689줄) */
+  function toast(kind: 'success' | 'error', message: string) {
+    if (!toastBox) {
+      toastBox = h('div', { class: 'toast-container' })
+      root.append(toastBox)
+    }
+    const el = h('div', { class: `toast toast-${kind}`, role: kind === 'error' ? 'alert' : 'status' }, h('span', { class: 'toast-message' }, message))
+    toastBox.append(el)
+    setTimeout(() => el.remove(), TOAST_MS)
   }
 
   // --- 업무일지 2 ---
@@ -634,15 +753,36 @@ export function mountErpPage(doc: Document, options: ErpPageOptions = {}): ErpPa
   const tabW1 = tabButton('w1', '업무일지 1')
   const tabW2 = tabButton('w2', '업무일지 2')
   const cardTitle = h('h3', { class: 'card-title' })
-  const dateRow = h(
-    'div',
-    {},
-    h('label', {}, '마감 일자'),
-    opts.todayOnly
-      ? h('strong', {}, `${opts.date ?? ''} (오늘)`)
-      : h('input', { class: 'datepicker-input', type: 'text', value: opts.date ?? '' }),
-    button('PDF 출력'),
-  )
+  /** '마감 일자' 날짜 칸. React 통제 칸처럼 값 추적기를 두어, 기본 value 설정 함수 + input 이벤트일 때만 날을 바꾼다 */
+  const dateEl = opts.todayOnly ? null : h('input', { class: 'datepicker-input', type: 'text', value: opts.date ?? '' })
+  let dateTracked = ''
+  if (dateEl) {
+    const desc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(dateEl) as object, 'value')
+    if (!desc?.get || !desc.set) throw new Error('value 설정자를 찾지 못했다')
+    const { get, set } = desc
+    Object.defineProperty(dateEl, 'value', {
+      configurable: true,
+      get(this: HTMLInputElement) {
+        return get.call(this)
+      },
+      set(this: HTMLInputElement, v: unknown) {
+        dateTracked = String(v)
+        set.call(this, v)
+      },
+    })
+    dateTracked = String(get.call(dateEl))
+    dateEl.addEventListener('input', () => {
+      const actual = String(get.call(dateEl))
+      if (actual === dateTracked) return
+      if (opts.dateInputOff) {
+        dateEl.value = current ?? ''
+        return
+      }
+      dateTracked = actual
+      if (DAY.test(actual)) pick(actual)
+    })
+  }
+  const dateRow = h('div', {}, h('label', {}, '마감 일자'), dateEl ?? h('strong', {}, `${opts.date ?? ''} (오늘)`), button('PDF 출력'))
   const w2Head = h(
     'div',
     {},
@@ -659,24 +799,12 @@ export function mountErpPage(doc: Document, options: ErpPageOptions = {}): ErpPa
   )
   const mainCard = h('div', { class: 'card' }, cardTitle, dateRow)
   const w2Panel = h('div', { role: 'tabpanel', id: 'closing-panel-w2', 'aria-labelledby': 'closing-tab-w2' })
-  if (opts.date) {
-    w2Panel.append(w2Content())
-    if (!opts.readOnly) {
-      w2Panel.append(
-        h(
-          'div',
-          { class: 'cdf-save-bar cdf-no-print' },
-          button('중간저장'),
-          h('button', { class: 'btn btn-primary' }, '일일 상세 저장'),
-          button('초기화'),
-        ),
-      )
-    }
-  }
   // 업무일지 2 영역: textarea가 아닌 칸의 input 이벤트로 '고침 있음'을 켠다(ERP 그대로)
   w2Panel.addEventListener('input', (e) => {
     if (!opts.readOnly && (e.target as Element | null)?.tagName !== 'TEXTAREA') w2Dirty = true
   })
+  const pageTitle = h('h2', {}, '마감일지')
+  const delButton = h('button', { class: 'btn btn-danger' }, '마감일지 삭제')
 
   const root = h(
     'div',
@@ -684,8 +812,8 @@ export function mountErpPage(doc: Document, options: ErpPageOptions = {}): ErpPa
     h(
       'div',
       { class: 'page' },
-      h('h2', {}, '마감일지'),
-      h('button', { class: 'btn btn-danger' }, '마감일지 삭제'),
+      pageTitle,
+      delButton,
       h(
         'div',
         {},
@@ -698,17 +826,45 @@ export function mountErpPage(doc: Document, options: ErpPageOptions = {}): ErpPa
     ),
   )
 
+  const saves: ErpPage['saves'] = []
+  /** 그날을 불러오는 중(날을 바꾼 뒤·2 저장 뒤 loadMs 동안) */
+  let loading = false
+  /** 그날을 불러오지 못했다(.load-state-error) */
+  let failed = false
+  let loadTimer: ReturnType<typeof setTimeout> | undefined
+  /** 그날마다 붙는 띠·오류 상자 */
+  let marks: Element[] = []
+  let w2Fieldset: HTMLFieldSetElement | null = null
+  let saveBar: HTMLDivElement | null = null
+  const w1Loading = h('div', { class: 'closing-w1-loading' }, '로딩 중...')
+  const pdfOut = h('div', { class: 'closing-pdf-out' }, '불러오는 중입니다.')
+  const w2Empty = h('div', { class: 'cdf-empty' }, '로딩 중...')
+
+  /** 화면에서 뗀 칸은 추적에서 뺀다 */
+  function forget(node: Node) {
+    for (const el of [...registry.keys()]) if (node.contains(el)) registry.delete(el)
+  }
+
   let w1Mounted: HTMLFieldSetElement | null = null
   function mountW1() {
-    if (tab !== 'w1' || w1Mounted || !opts.date) return
+    if (tab !== 'w1' || w1Mounted || !current || loading || failed) return
     w1Mounted = w1Fieldset()
     mainCard.append(w1Mounted)
   }
   function unmountW1() {
     if (!w1Mounted) return
     w1Mounted.remove()
-    for (const el of [...registry.keys()]) if (w1Mounted.contains(el)) registry.delete(el)
+    forget(w1Mounted)
     w1Mounted = null
+  }
+  function dropW2() {
+    for (const node of [w2Fieldset, saveBar]) {
+      if (!node) continue
+      node.remove()
+      forget(node)
+    }
+    w2Fieldset = null
+    saveBar = null
   }
   function paintTabs() {
     for (const [btn, key] of [
@@ -718,8 +874,75 @@ export function mountErpPage(doc: Document, options: ErpPageOptions = {}): ErpPa
       btn.setAttribute('aria-selected', String(tab === key))
       btn.className = `tab-btn${tab === key ? ' active' : ''}`
     }
-    cardTitle.textContent = `업무일지 ${tab === 'w1' ? 1 : 2}${opts.date ? ` - ${opts.date}` : ''}`
+    cardTitle.textContent = `업무일지 ${tab === 'w1' ? 1 : 2}${current ? ` - ${current}` : ''}`
     w2Panel.hidden = tab !== 'w2'
+  }
+  function paintDelete() {
+    if (!hasJournal()) delButton.remove()
+    else if (!delButton.isConnected) pageTitle.after(delButton)
+  }
+  /** 그날을 그린다: 마감일지 삭제 단추 · (오류면 오류 상자만) · 되살린 입력 띠 · 업무일지 2 칸·저장 줄 · 1 탭이면 업무일지 1 */
+  function paintDay() {
+    paintTabs()
+    paintDelete()
+    if (!current) return
+    const day = db.get(current)
+    failed = Boolean(day?.loadError)
+    if (failed) {
+      const box = h('div', { class: 'load-state-error', role: 'alert' }, h('p', {}, '이 날짜의 업무일지를 불러오지 못했습니다.'), button('다시 시도'))
+      mainCard.append(box)
+      marks.push(box)
+      return
+    }
+    if (day?.draftNotice) {
+      const band = h(
+        'div',
+        { class: 'journal-draft-notice', role: 'status' },
+        h('span', {}, '업무일지 1 - 저장하지 않은 입력을 되살렸습니다'),
+        button('되살린 입력 버리기'),
+      )
+      dateRow.after(band)
+      marks.push(band)
+    }
+    w2Fieldset = w2Content()
+    w2Panel.append(w2Fieldset)
+    if (!opts.readOnly && !opts.noSaveBar) {
+      saveBar = makeSaveBar()
+      w2Panel.append(saveBar)
+    }
+    mountW1()
+  }
+  /** 그날을 다시 불러온다: 칸을 떼고 '로딩 중' 표시 → loadMs 뒤 그날 서버 값으로 다시 그림 */
+  function startLoading() {
+    clearTimeout(loadTimer)
+    loading = true
+    for (const m of marks) m.remove()
+    marks = []
+    failed = false
+    unmountW1()
+    dropW2()
+    delButton.remove()
+    paintTabs()
+    if (tab === 'w1') mainCard.append(w1Loading)
+    mainCard.append(pdfOut)
+    w2Panel.append(w2Empty)
+    if (opts.loadMs === 'never') return
+    loadTimer = setTimeout(() => {
+      loading = false
+      w1Loading.remove()
+      pdfOut.remove()
+      w2Empty.remove()
+      resetState()
+      w2Dirty = false
+      paintDay()
+    }, opts.loadMs)
+  }
+  /** 날을 고른다(날짜 칸·popstate). 같은 날이면 아무것도 안 한다 */
+  function pick(date: string) {
+    if (date === current) return
+    current = date
+    if (dateEl && dateEl.value !== date) dateEl.value = date
+    startLoading()
   }
   function select(next: Tab) {
     if (next === tab) return
@@ -727,10 +950,15 @@ export function mountErpPage(doc: Document, options: ErpPageOptions = {}): ErpPa
     paintTabs()
     if (next === 'w2') {
       unmountW1()
+      w1Loading.remove()
       mainCard.append(w2Head)
       return
     }
     w2Head.remove()
+    if (loading) {
+      mainCard.append(w1Loading)
+      return
+    }
     const delay = opts.w1Delay
     if (delay === 'never') return
     if (delay === 0) queueMicrotask(mountW1)
@@ -739,9 +967,29 @@ export function mountErpPage(doc: Document, options: ErpPageOptions = {}): ErpPa
   tabW1.addEventListener('click', () => select('w1'))
   tabW2.addEventListener('click', () => select('w2'))
 
-  paintTabs()
-  if (tab === 'w1') mountW1()
-  else mainCard.append(w2Head)
+  paintDay()
+  if (tab !== 'w1') mainCard.append(w2Head)
+
+  // 둘째 길(조사 1절): React Router가 history.state.usr를 location.state로 읽고, selectDate가 바뀌면 그날을 불러온다. 원무 권한은 오늘로 고정
+  const view = doc.defaultView
+  view?.addEventListener('popstate', () => {
+    if (!root.isConnected || opts.todayOnly) return
+    const next = (view.history.state as { usr?: { selectDate?: unknown } } | null)?.usr?.selectDate
+    if (typeof next === 'string' && DAY.test(next)) pick(next)
+  })
+
+  /** ERP 안내 창(새 판 안내, 조사 8절). jsdom에는 배치가 없어 화면을 덮는 크기를 직접 준다 */
+  function showDialog(): HTMLElement {
+    const overlay = h(
+      'div',
+      { class: 'dialog-overlay' },
+      h('div', { class: 'dialog-box', role: 'dialog' }, h('p', {}, '시스템이 업데이트되었습니다'), button('지금 업데이트'), button('현 화면 유지')),
+    )
+    overlay.getBoundingClientRect = () =>
+      ({ x: 0, y: 0, top: 0, left: 0, right: 1280, bottom: 800, width: 1280, height: 800, toJSON: () => ({}) }) as DOMRect
+    root.append(overlay)
+    return overlay
+  }
 
   // --- React 뿌리 이벤트 ---
   root.addEventListener('input', (e) => {
@@ -794,6 +1042,9 @@ export function mountErpPage(doc: Document, options: ErpPageOptions = {}): ErpPa
     get w2Dirty() {
       return w2Dirty
     },
+    saves,
+    date: () => current,
+    showDialog,
     tab: () => tab,
     inputs: live,
     dom: (key) => live(key).map((el) => el.value),
