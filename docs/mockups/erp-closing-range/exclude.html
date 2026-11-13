@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>읽지 않을 처방 시안</title>
+<!-- erp-closing-range REQ-3709 넓히기 시안(2026-11-13). 모양은 extension-erp/options.html 그대로, 코드·이름은 예시 -->
+<style>
+:root{--canvas:#F7F8FA;--surface:#FFFFFF;--line:#E5E7EB;--line-strong:#D1D5DB;--muted:#6B7280;--ink-2:#374151;--ink:#111827;
+--accent:#2563EB;--accent-strong:#1D4ED8;--accent-soft:#EAF1FE;--positive:#15803D;
+--negative:#C2410C;--negative-soft:#FDF0EA;--warning:#B45309;--r-control:4px;--r-float:8px;
+--shadow-float:0 8px 24px rgba(17,24,39,.14),0 1px 3px rgba(17,24,39,.08)}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none !important}
+.nw{white-space:nowrap}
+body{font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;background:var(--canvas);color:var(--ink);font-size:14px;line-height:22px;font-variant-numeric:tabular-nums;word-break:keep-all;overflow-wrap:anywhere}
+button,input,select,textarea{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 14px;border-radius:var(--r-control);font-weight:500;white-space:nowrap}
+.btn-2{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink)}
+.btn-2:hover{background:var(--canvas)}
+.btn-1{background:var(--accent);color:var(--surface)}
+.btn-1:hover{background:var(--accent-strong)}
+
+.opt{background:var(--surface);min-height:100vh}
+.opt-top{border-bottom:1px solid var(--line)}
+.opt-top .in{max-width:1000px;margin:0 auto;padding:16px 24px;display:flex;align-items:center;gap:10px}
+.opt-top i{width:20px;height:20px;border-radius:5px;background:var(--accent);flex:none}
+.opt-top h1{font-size:18px;font-weight:600}
+.opt main{max-width:1000px;margin:0 auto;padding:20px 24px 120px;display:flex;flex-direction:column;gap:16px}
+.lead-p{color:var(--ink-2)}
+.notice{border-radius:var(--r-control);padding:10px 14px;color:var(--ink-2)}
+.notice.first{background:var(--accent-soft)}
+.notice.first b{color:var(--accent-strong);font-weight:600}
+.notice.err{background:var(--negative-soft)}
+.notice.err b{color:var(--negative);font-weight:600}
+.notice.ok,.notice.wait{color:var(--muted);padding:0;font-size:13px}
+/* 맨 위 '새 처음 코드' 줄(TASK-18): 글 두 줄 + 오른쪽 [더하기] */
+.notice.fresh{background:var(--accent-soft);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 16px;align-items:center}
+.notice.fresh p{grid-column:1}
+.notice.fresh b{color:var(--accent-strong);font-weight:600}
+.notice.fresh .btn{grid-column:2;grid-row:1 / span 2}
+.osec{border-top:1px solid var(--line-strong);padding-top:14px}
+.osec>h2{font-size:16px;font-weight:600}
+.osec>p{margin-top:2px;font-size:13px;color:var(--ink-2)}
+.orow{display:grid;grid-template-columns:210px minmax(0,1fr);gap:8px 20px;padding:12px 0;border-bottom:1px solid var(--line)}
+.orow:last-child{border-bottom:0}
+.oname b{font-weight:600;color:var(--ink)}
+.oname small{display:block;font-size:12px;line-height:17px;color:var(--muted);margin-top:2px}
+.opick{display:flex;flex-direction:column;gap:8px;min-width:0}
+
+.chip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 2px 0 9px;border:1px solid var(--line-strong);border-radius:var(--r-control);background:var(--surface);max-width:100%}
+.chip b{font-weight:600;color:var(--ink);white-space:nowrap}
+.chip .cn{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.chip .cn.gone{color:var(--warning)}
+.chip button{width:26px;height:26px;border-radius:3px;color:var(--muted);font-size:16px;flex:none}
+.chip button:hover{background:var(--canvas);color:var(--ink)}
+.none{font-size:13px;color:var(--muted)}
+.pickline{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;min-height:34px}
+.find{position:relative;flex:0 1 280px;min-width:200px}
+.find input,.etc input,.opick select{width:100%;height:34px;border:1px solid var(--line-strong);border-radius:var(--r-control);padding:0 10px;background:var(--surface)}
+.find input:focus,.etc input:focus,.opick select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.find input:disabled,.opick select:disabled{background:var(--canvas);color:var(--muted)}
+.dd{position:absolute;left:0;width:max(100%,400px);max-width:calc(100vw - 32px);top:calc(100% + 4px);z-index:5;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-float);box-shadow:var(--shadow-float);max-height:300px;overflow:auto;padding:4px}
+.dd button{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;text-align:left;padding:7px 10px;border-radius:var(--r-control)}
+.dd button:hover:not(:disabled){background:var(--accent-soft)}
+.dd button b{font-weight:600;color:var(--ink)}
+.dd button span{color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dd button em{font-style:normal;font-size:12px;color:var(--muted);white-space:nowrap}
+.dd button:disabled{cursor:default}
+.dd button:disabled b,.dd button:disabled span{color:var(--muted)}
+.dd .empty{padding:8px 10px;color:var(--muted);font-size:13px}
+/* 씨암·SONO 줄 바로 아래 '매출로 셀 코드' 줄(design.md 4절, TASK-15). 위 줄과 한 덩어리로 보이게 사이 줄을 뺀다 */
+.orow:has(+ .amt){border-bottom:0;padding-bottom:4px}
+.orow.amt{padding-top:4px}
+.amt .oname b{font-size:13px;font-weight:500;color:var(--ink-2)}
+.amt .about{font-size:13px;line-height:20px;color:var(--ink-2)}
+.pickline .sub{font-size:12px;color:var(--muted);white-space:nowrap;min-width:92px}
+.padd{display:inline-flex;align-items:center;gap:6px}
+.padd input{width:120px;height:34px;border:1px solid var(--line-strong);border-radius:var(--r-control);padding:0 10px;background:var(--surface)}
+.padd input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.padd input:disabled{background:var(--canvas);color:var(--muted)}
+.padd .btn{height:34px}
+.padd .btn:disabled{color:var(--muted);background:var(--canvas);cursor:default}
+.etc{display:flex;align-items:center;gap:8px;max-width:420px}
+.etc span{font-size:13px;color:var(--ink-2);white-space:nowrap}
+.etc input{max-width:240px}
+.opick select{flex:0 1 240px;min-width:200px}
+.savebar{position:sticky;bottom:0;z-index:10;background:var(--surface);border-top:1px solid var(--line)}
+.savebar .in{max-width:1000px;margin:0 auto;padding:12px 24px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.status{font-size:14px;color:var(--ink-2)}
+.status.saved{color:var(--positive);font-weight:500}
+.status.saved::before{content:'✓ '}
+.status.dirty{color:var(--warning)}
+.status.failed{font-weight:600}
+/* 저장 바 바로 위 알림 상자(TASK-18): 처방 없는 코드 묻기 · [처음 값으로] 묻기 · 겹침 막는 글 */
+.askbox{border-bottom:1px solid var(--line);background:var(--canvas)}
+.askbox .msg{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 420px}
+.askbox .msg b{font-weight:600;color:var(--warning)}
+.askbox .msg p{color:var(--ink-2)}
+.askbox.block{background:var(--negative-soft)}
+.askbox.block .msg p{color:var(--ink)}
+.askbox.block .msg b{color:var(--negative)}
+.savebar .acts{display:flex;gap:8px;margin-left:auto}
+.foot{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
+
+/* 좁은 창 */
+@media (max-width:720px){
+  .orow{grid-template-columns:minmax(0,1fr)}
+  .etc{max-width:none}
+  .find,.opick select{flex:1 1 100%}
+}
+@media (max-width:600px){
+  .opt main,.opt-top .in,.savebar .in{padding-left:16px;padding-right:16px}
+  .savebar .acts{width:100%}
+  .savebar .acts .btn{flex:1}
+}
+</style>
+</head>
+<body>
+<!-- 시안 본문. 위 <style>은 extension-erp/options.html 것을 그대로 붙이고 아래 칸만 더함 -->
+<style>
+.shots{background:#111827;color:#fff;font-size:13px}
+.shots .in{max-width:1000px;margin:0 auto;padding:8px 24px;display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}
+.shots a{color:#fff;opacity:.7;text-decoration:none;padding:2px 8px;border-radius:4px}
+.shots a.on{opacity:1;background:var(--accent)}
+.tag{display:inline-block;font-size:11px;line-height:18px;padding:0 6px;border-radius:3px;background:var(--accent-soft);color:var(--accent-strong);font-weight:600;margin-left:6px;vertical-align:1px}
+/* 읽지 않을 처방 줄: 위 줄과 한 덩어리 */
+.orow:has(+ .exc){border-bottom:0;padding-bottom:4px}
+.orow.exc{padding-top:4px}
+.exc .oname b{font-size:13px;font-weight:500;color:var(--ink-2)}
+.exc .about{font-size:13px;line-height:20px;color:var(--ink-2)}
+.exc .hint{font-size:12px;line-height:18px;color:var(--muted)}
+.exc .hint.err{color:var(--negative)}
+.rules{display:flex;flex-direction:column;gap:6px}
+.rule{display:flex;align-items:center;gap:8px;min-height:32px;padding:3px 2px 3px 10px;border:1px solid var(--line-strong);border-radius:var(--r-control);background:var(--surface);max-width:100%;align-self:flex-start}
+.rule b{font-weight:600;white-space:nowrap}
+.rule span{color:var(--ink-2)}
+.rule button{width:26px;height:26px;border-radius:3px;color:var(--muted);font-size:16px;flex:none}
+.tray{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px dashed var(--line-strong);border-radius:var(--r-control);background:var(--canvas)}
+.tray .chip{background:var(--surface)}
+.tray .pickline .sub{min-width:92px}
+.tray select{flex:0 1 240px;min-width:180px;height:34px;border:1px solid var(--line-strong);border-radius:var(--r-control);padding:0 8px;background:var(--surface)}
+.tray .acts2{display:flex}
+.tray .btn{height:34px}
+.tray .btn:disabled{color:var(--muted);background:var(--canvas);border-color:var(--line);cursor:default}
+.rad{display:inline-flex;align-items:center;gap:6px;height:34px;margin-right:14px;white-space:nowrap}
+.rad input{width:16px;height:16px;accent-color:var(--accent)}
+.old{font-size:12px;line-height:18px;color:var(--warning)}
+</style>
+<div class="opt">
+  <div class="shots"><div class="in"><b>시안 상태</b>
+    <a href="?s=empty" data-s="empty">① 처음(규칙 없음)</a>
+    <a href="?s=making" data-s="making">② 규칙 만드는 중</a>
+    <a href="?s=done" data-s="done">③ 규칙 넣음</a>
+    <a href="?s=err" data-s="err">④ 같이 있을 처방 없음</a>
+    <a href="?s=old" data-s="old">⑤ 옛 도우미</a>
+  </div></div>
+  <div class="opt-top"><div class="in"><i></i><h1>ERP 마감일지 채우기 · 설정</h1></div></div>
+  <main>
+    <p class="lead-p">ERP 칸마다 셀 비트 처방 코드를 고르세요. 여러 개를 고를 수 있어요. 코드를 고르지 않은 항목의 칸은 건드리지 않아요.</p>
+    <section class="osec">
+      <h2>치료별 건수 · 매출</h2>
+      <p>그날 고른 코드 가운데 하나라도 받은 환자 수를 건수로, 그날 고른 코드 처방 줄의 금액 합을 매출로 채워요. 씨암 · SONO 매출은 그 줄의 '셀 코드'로 세요.</p>
+
+      <div class="orow">
+        <div class="oname"><b>씨암</b><small>업무일지 1 씨암 · 업무일지 2 씨암(주사) 건수 · 매출</small></div>
+        <div class="opick"><div class="pickline">
+          <span class="chip"><b>CARM1</b><span class="cn">씨암 (예시 이름)</span><button aria-label="CARM1 빼기">×</button></span>
+          <div class="find"><input placeholder="코드나 이름으로 찾기"></div>
+        </div></div>
+      </div>
+      <div class="orow amt">
+        <div class="oname"><b>매출로 셀 코드</b></div>
+        <div class="opick">
+          <p class="about">씨암 코드가 있는 진료에서 아래 코드의 금액만 치료별 매출 씨암에 넣어요.</p>
+          <div class="pickline"><span class="sub">셀 코드</span>
+            <span class="chip"><b>LA358</b><span class="cn">주사 (예시)</span><button>×</button></span>
+            <span class="chip"><b>LA357</b><span class="cn">주사 (예시)</span><button>×</button></span>
+            <div class="find"><input placeholder="코드나 이름으로 찾기"></div>
+          </div>
+        </div>
+      </div>
+      <div class="orow exc">
+        <div class="oname"><b>읽지 않을 처방</b><span class="tag">새로</span></div>
+        <div class="opick" id="carmExc"></div>
+      </div>
+
+      <div class="orow">
+        <div class="oname"><b>SONO</b><small>업무일지 1 SONO · 업무일지 2 SONO(주사) 건수 · 매출</small></div>
+        <div class="opick"><div class="pickline">
+          <span class="chip"><b>SONO1</b><span class="cn">초음파 (예시 이름)</span><button>×</button></span>
+          <div class="find"><input placeholder="코드나 이름으로 찾기"></div>
+        </div></div>
+      </div>
+      <div class="orow amt">
+        <div class="oname"><b>매출로 셀 코드</b></div>
+        <div class="opick">
+          <p class="about">SONO 코드가 있는 진료에서 아래 코드의 금액만 치료별 매출 SONO에 넣어요.</p>
+          <div class="pickline"><span class="sub">셀 코드</span>
+            <span class="chip"><b>LA248</b><span class="cn">주사 (예시)</span><button>×</button></span>
+            <span class="chip"><b>LA357</b><span class="cn">주사 (예시)</span><button>×</button></span>
+            <div class="find"><input placeholder="코드나 이름으로 찾기"></div>
+          </div>
+        </div>
+      </div>
+      <div class="orow exc">
+        <div class="oname"><b>읽지 않을 처방</b><span class="tag">새로</span></div>
+        <div class="opick" id="sonoExc"></div>
+      </div>
+
+      <div class="orow">
+        <div class="oname"><b>관절조영</b><small>업무일지 1 관절조영술 · 업무일지 2 관절조영 건수 · 매출</small></div>
+        <div class="opick"><div class="pickline">
+          <span class="chip"><b>ARTH1</b><span class="cn">관절조영 (예시 이름)</span><button>×</button></span>
+          <div class="find"><input placeholder="코드나 이름으로 찾기"></div>
+        </div></div>
+      </div>
+      <div class="orow exc">
+        <div class="oname"><b>읽지 않을 처방</b><span class="tag">새로</span></div>
+        <div class="opick" id="arthExc"></div>
+      </div>
+      <p class="foot">도수 · 충격파 · 물리치료 · 기타 줄에도 같은 '읽지 않을 처방' 줄이 있어요.</p>
+    </section>
+    <section class="osec">
+      <h2>진료 · 치료현황만</h2>
+      <p>고른 코드를 받은 환자 수를 업무일지 1 진료 · 치료현황에 채워요.</p>
+      <div class="orow">
+        <div class="oname"><b>도수상담</b><small>업무일지 1 도수상담</small></div>
+        <div class="opick"><div class="pickline">
+          <span class="chip"><b>MC01</b><span class="cn">도수상담 (예시 이름)</span><button>×</button></span>
+          <div class="find"><input placeholder="코드나 이름으로 찾기"></div>
+        </div></div>
+      </div>
+      <div class="orow exc">
+        <div class="oname"><b>읽지 않을 처방</b><span class="tag">새로</span></div>
+        <div class="opick" id="mcExc"></div>
+      </div>
+      <p class="foot">리푸스 · 손발톱케어 · CT · 수술 줄과 운영 지표 ESWT Standard · ESWT Radial 줄에도 같은 줄이 있어요. 주사1회환자 · 물리치료내원 줄에는 없어요.</p>
+    </section>
+  </main>
+  <div class="savebar"><div class="in">
+    <p class="status dirty">바꾼 것을 아직 저장하지 않았어요.</p>
+    <div class="acts"><button class="btn btn-2">처음 값으로</button><button class="btn btn-1">저장</button></div>
+  </div></div>
+</div>
+<script>
+const s = new URLSearchParams(location.search).get('s') || 'making'
+document.querySelectorAll('.shots a').forEach(a => a.classList.toggle('on', a.dataset.s === s))
+const ABOUT = n => `고른 처방은 같이 있을 처방이 한 진료에 있으면 ${n}에 세지 않아요. 그 처방만 없는 것으로 보고, 같은 진료의 다른 ${n} 처방은 그대로 세요. 그 처방 때문에만 ${n}에 들던 진료는 건수에서도 빠져요.`
+const HINT = "'이 처방'을 고르고 같이 있을 처방을 찾아 담은 뒤 [규칙 더하기]를 누르세요. 규칙은 20개, 같이 있을 처방은 5개까지예요."
+const chip = (code, name) => `<span class="chip"><b>${code}</b><span class="cn">${name}</span><button aria-label="${code} 빼기">×</button></span>`
+const when = (withs, all) => withs.length < 2 ? '같이 있으면' : all ? '모두 있으면' : '하나라도 있으면'
+const rule = (code, withs, all) => `<div class="rule"><b>${code}</b><span>— ${withs.join(' · ')} ${when(withs, all)} 안 셈</span><button aria-label="규칙 지우기">×</button></div>`
+function exc(name, own, o) {
+  const rules = o.rules.length ? `<div class="rules">${o.rules.map(([c, w, a]) => rule(c, w, a)).join('')}</div>` : `<p class="none">규칙이 없으면 지금처럼 모두 세요.</p>`
+  const opts = ['<option>고르세요</option>', ...own.map(c => `<option ${c === o.pick ? 'selected' : ''}>${c}</option>`)].join('')
+  const dd = o.dd ? `<div class="dd">${o.dd}</div>` : ''
+  const ready = o.pick && o.withs.length
+  return `<p class="about">${ABOUT(name)}</p>${rules}
+    <div class="tray">
+      <div class="pickline"><span class="sub">이 처방</span><select>${opts}</select></div>
+      <div class="pickline"><span class="sub">같이 있을 처방</span>${o.withs.map(([c, n]) => chip(c, n)).join('')}
+        <div class="find"><input placeholder="코드나 이름으로 찾기" value="${o.q || ''}">${dd}</div></div>
+      <div class="pickline"><span class="sub">빼는 때</span><label class="rad"><input type="radio" name="w-${name}" ${o.all ? '' : 'checked'}>하나라도 있으면</label><label class="rad"><input type="radio" name="w-${name}" ${o.all ? 'checked' : ''}>모두 있을 때만</label></div>
+      <div class="acts2"><button class="btn btn-2" ${ready || o.err ? '' : 'disabled'}>규칙 더하기</button></div>
+    </div>
+    ${o.err ? `<p class="hint err">${o.err}</p>` : `<p class="hint">${HINT}</p>`}
+    ${o.old ? `<p class="old">ERP 도우미를 새 판으로 바꾸면 비트에 등록된 코드 전부에서 찾을 수 있어요.</p>` : ''}`
+}
+const row = (b, n, em) => `<button ${em ? 'disabled' : ''}><b>${b}</b><span>${n}</span><em>${em || ''}</em></button>`
+const none = { rules: [], withs: [] }
+const S = {
+  empty: { carm: none },
+  making: { carm: { rules: [], pick: 'LA357', withs: [['LA248', '주사 (예시)'], ['LA249', '예시 이름 다']], q: 'LA35',
+    dd: row('LA350', '예시 이름 가') + row('LA357', '주사 (예시)', '이 처방') + row('LA358', '주사 (예시)') } },
+  done: { carm: { rules: [['LA357', ['LA248', 'LA249'], false], ['CARM1', ['LA274', 'LA275'], true], ['LA358', ['SONO1'], false]], withs: [] } },
+  err: { carm: { rules: [], pick: 'LA357', withs: [], err: '같이 있을 처방을 하나 이상 담아 주세요.' } },
+  old: { carm: { rules: [], pick: 'LA357', withs: [], q: 'LA24', old: true,
+    dd: row('LA247', '예시 이름 나') + row('LA248', '주사 (예시)') } },
+}[s] || {}
+document.getElementById('carmExc').innerHTML = exc('씨암', ['CARM1', 'LA358', 'LA357'], S.carm || none)
+document.getElementById('sonoExc').innerHTML = exc('SONO', ['SONO1', 'LA248', 'LA357'], none)
+document.getElementById('arthExc').innerHTML = exc('관절조영', ['ARTH1'], none)
+document.getElementById('mcExc').innerHTML = exc('도수상담', ['MC01'], none)
+</script>
+
+</body>
+</html>
