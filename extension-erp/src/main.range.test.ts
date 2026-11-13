@@ -7,7 +7,47 @@ import { ETC_NAMES, mountErpPage, sampleDay, settingsFirst, type ErpPage, type E
 import { explain } from './errors'
 import { startPage, WATCH_MS } from './main'
 import { HOST_ID } from './panel'
+import type { RangeView } from './rangeTypes'
 import { SETTINGS_KEY, type ClosingDay, type Settings } from './types'
+
+// TASK-8: 기간 안내에 넘긴 모양(RangeView)을 차례대로 적는다(그리기는 진짜 rangeView 그대로).
+// TASK-7 전 rangeView는 새 까닭 다섯(dateChanged 등)을 그리지 못하고 던진다: 그때만 까닭 이름 + [닫기](+ design.md 4절
+// [이어서 하기] 넷이면 [이어서 하기])만 있는 대신 몸통을 쓴다. TASK-7과 합치면 진짜 몸통이 그려져 이 길은 쓰이지 않는다
+const seen = vi.hoisted(() => ({ views: [] as unknown[] }))
+vi.mock('./rangeView', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./rangeView')>()
+  const RESUMABLE = ['dialog', 'noSaveBar', 'helper', 'dateChanged']
+  return {
+    ...real,
+    renderRange(...args: Parameters<typeof real.renderRange>) {
+      const [doc, view, act] = args
+      seen.views.push(view)
+      try {
+        return real.renderRange(...args)
+      } catch (err) {
+        if (view.kind !== 'blocked') throw err
+        const box = doc.createElement('div')
+        const lead = doc.createElement('p')
+        lead.className = 'lead'
+        lead.textContent = `(멈춤 ${view.block.kind})`
+        const acts = doc.createElement('div')
+        acts.className = 'acts'
+        const button = (label: string, action: Parameters<typeof act>[0]) => {
+          const b = doc.createElement('button')
+          b.textContent = label
+          b.addEventListener('click', () => act(action))
+          acts.append(b)
+        }
+        button('닫기', { kind: 'close' })
+        if (RESUMABLE.includes(view.block.kind)) button('이어서 하기', { kind: 'resume' })
+        box.append(lead, acts)
+        return box
+      }
+    },
+  }
+})
+/** 마지막으로 보인 기간 안내 */
+const lastView = () => seen.views.at(-1) as RangeView
 
 const OPEN_OPTIONS = { open: 'options' }
 const ok = (data: unknown) => ({ type: 'result', data })
@@ -110,6 +150,7 @@ const NOW = new Date('2026-11-10T10:00:00+09:00')
 beforeEach(() => {
   vi.useFakeTimers()
   vi.setSystemTime(NOW)
+  seen.views.length = 0
 })
 
 afterEach(() => {
@@ -474,5 +515,198 @@ describe('AC-3704.3 화면을 떠나면', () => {
     rangeButton().click()
     await flush()
     expect(lead()).toBe('채울 기간을 골라 주세요.')
+  })
+})
+
+// --- TASK-8: 멈추는 경우 더하기(design.md 6절, AC-3705.2 ⑥~⑩) ---
+
+/** 사용자가 ERP 마감 일자를 바꾼 흉내(React 길: 기본 value 설정 함수 + input 이벤트) */
+function pickDate(date: string) {
+  const input = [...document.querySelectorAll<HTMLInputElement>('input.datepicker-input')].find((el) => el.getAttribute('aria-label') !== '연도 선택')
+  if (!input) throw new Error('마감 일자 칸이 없다')
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, date)
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+}
+/** 살펴본 뒤 [덮어쓰고 저장 시작] → 다 돌 때까지 */
+async function scanAndStart(from: string, to: string) {
+  await scan(from, to)
+  await vi.advanceTimersByTimeAsync(10_000)
+  act('덮어쓰고 저장 시작').click()
+  await vi.advanceTimersByTimeAsync(30_000)
+}
+/** 도우미 답 data를 읽으면 던진다(확장 안 뜻밖의 오류 흉내) */
+const throwing = (before?: () => void) => ({
+  type: 'result',
+  get data(): unknown {
+    before?.()
+    throw new Error('뜻밖')
+  },
+})
+
+describe('AC-3701.1 AC-3701.3 TASK-8 [기간 채우기] 열기·기간 막기', () => {
+  it('AC-3701.3: 원무 권한 화면에 ERP 안내 창이 떠 있어도 곧바로 원무 안내만 보이고 설정·도우미를 부르지 않는다', async () => {
+    const t = start({ page: { date: '2026-11-10', todayOnly: true }, stored: null })
+    t.page.showDialog()
+    rangeButton().click()
+    await flush()
+    expect(lead()).toBe('이 계정은 오늘 마감일지만 열 수 있어 기간 채우기를 쓸 수 없어요.')
+    expect(dates()).toHaveLength(0)
+    expect(actLabels()).toEqual(['닫기'])
+    expect(t.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('AC-3701.1: 마감 일자가 오늘 뒤 달이면 처음 값은 오늘 달 1일 · 오늘이다', async () => {
+    start({ page: { date: '2026-12-05' } })
+    rangeButton().click()
+    await flush()
+    expect(dates().map((d) => d.value)).toEqual(['2026-11-01', '2026-11-10'])
+  })
+
+  it('AC-3701.1 AC-3701.2: 92일보다 긴 기간은 [살펴보기]를 눌러도 살펴보지 않고(main이 한 번 더 막음), 92일은 살펴본다', async () => {
+    const t = start()
+    await scan('2026-08-10', '2026-11-10')
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(t.asked()).toEqual([])
+    expect(t.page.date()).toBe('2026-11-09')
+    expect(seen.views.some((v) => (v as RangeView).kind === 'scanning')).toBe(false)
+    expect(rangeButton().disabled).toBe(false)
+    expect(lead()).toBe('채울 기간을 골라 주세요.')
+
+    const [from] = dates()
+    from.value = '2026-08-11'
+    from.dispatchEvent(new Event('input', { bubbles: true }))
+    act('살펴보기').click()
+    await flush()
+    expect(lead()).toBe('기간 안 날을 살펴보는 중이에요.')
+    expect(lines()).toContain('92일 중 0일')
+    act('그만두기').click()
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(t.asked()).toEqual(['2026-08-11'])
+    expect(panel().hidden).toBe(true)
+  })
+})
+
+describe('AC-3705.2 AC-3703.1 TASK-8 채우는 도중 멈추는 경우', () => {
+  it('AC-3705.2 AC-3703.1: 채우는 중 마감 일자를 바꾸면 다음 저장 전에 멈추고 바뀐 날에는 저장하지 않으며, [이어서 하기]는 그날부터 간다', async () => {
+    let moved = false
+    const t = start({
+      page: {
+        saveResult: (which, date) => {
+          // 11/4 '전체 저장'을 누른 사이 사용자가 마감 일자를 11/2로 바꿈
+          if (which === 'w1' && date === N4 && !moved) {
+            moved = true
+            pickDate(N2)
+          }
+          return 'ok'
+        },
+      },
+    })
+    await scanAndStart(N3, N5)
+    expect(saved(t.page)).toEqual([`w1 ${N3}`, `w2 ${N3}`, `w1 ${N4}`])
+    expect(lastView()).toEqual({
+      kind: 'blocked',
+      block: { kind: 'dateChanged' },
+      run: { from: N3, to: N5, total: 3, saved: [N3], skipped: [], failed: [], remaining: [N4, N5] },
+    })
+    expect(actLabels()).toEqual(['닫기', '이어서 하기'])
+
+    act('이어서 하기').click()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(saved(t.page)).toEqual([`w1 ${N3}`, `w2 ${N3}`, `w1 ${N4}`, `w1 ${N4}`, `w2 ${N4}`, `w1 ${N5}`, `w2 ${N5}`])
+    expect(t.page.saves.some((s) => s.date === N2)).toBe(false)
+    expect(lead()).toBe('3일을 비트 값으로 저장했어요.')
+  })
+
+  it('AC-3705.2: 칸 하나를 화면에서 지우면 cellsMissing으로 멈추고 그날 칸을 하나도 바꾸지 않으며 저장도 누르지 않는다', async () => {
+    let page: ErpPage | null = null
+    let n4 = 0
+    let logAt = -1
+    const t = start({
+      answer: (date) => {
+        // 채울 때(두 번째로 11/4를 물을 때) 화면에서 씨암 건수 칸을 지움
+        if (date === N4 && ++n4 === 2 && page) {
+          for (const el of page.inputs('CARM_CNT')) el.remove()
+          logAt = page.log.length
+        }
+        return ok(bitDay(date))
+      },
+    })
+    page = t.page
+    await scanAndStart(N3, N4)
+    expect(saved(t.page)).toEqual([`w1 ${N3}`, `w2 ${N3}`])
+    expect(lastView()).toEqual({
+      kind: 'blocked',
+      block: { kind: 'cellsMissing', count: 1 },
+      run: { from: N3, to: N4, total: 2, saved: [N3], skipped: [], failed: [], remaining: [N4] },
+    })
+    expect(t.page.log).toHaveLength(logAt)
+    expect(actLabels()).toEqual(['닫기'])
+  })
+
+  it('AC-3705.2: 설정·승인 모두 고른 것이 없는데 그날 함께 있는 진료가 있으면 그날 칸을 바꾸지 않고 멈춘다', async () => {
+    let page: ErpPage | null = null
+    let n4 = 0
+    let logAt = -1
+    const t = start({
+      answer: (date) => {
+        if (date !== N4) return ok(bitDay(date))
+        // 살펴볼 때는 함께 있는 진료가 없다가 채울 때 생김(그 사이 비트에 진료가 들어옴)
+        n4 += 1
+        if (n4 === 2 && page) logAt = page.log.length
+        return ok(bitDay(date, 84, n4 === 1 ? null : { visits: 2, carm: 400_000, sono: 300_000 }))
+      },
+    })
+    page = t.page
+    await scanAndStart(N3, N4)
+    expect(saved(t.page)).toEqual([`w1 ${N3}`, `w2 ${N3}`])
+    expect(lastView()).toEqual({
+      kind: 'blocked',
+      block: { kind: 'overlapUnpicked' },
+      run: { from: N3, to: N4, total: 2, saved: [N3], skipped: [], failed: [], remaining: [N4] },
+    })
+    expect(t.page.log).toHaveLength(logAt)
+    expect(t.local.set).not.toHaveBeenCalled()
+    expect(actLabels()).toEqual(['닫기'])
+  })
+
+  it('AC-3705.2: 채우는 중 부품이 던지면 그때까지의 결과로 unexpected 안내가 보이고 [닫기]로 두 단추가 풀린다', async () => {
+    let n4 = 0
+    const t = start({ answer: (date) => (date === N4 && ++n4 === 2 ? throwing() : ok(bitDay(date))) })
+    await scanAndStart(N3, N5)
+    expect(saved(t.page)).toEqual([`w1 ${N3}`, `w2 ${N3}`])
+    expect(lastView()).toEqual({
+      kind: 'blocked',
+      block: { kind: 'unexpected' },
+      run: { from: N3, to: N5, total: 3, saved: [N3], skipped: [], failed: [], remaining: [N4, N5] },
+    })
+    expect(actLabels()).toEqual(['닫기'])
+    expect(fillButton().disabled).toBe(true)
+    act('닫기').click()
+    expect(panel().hidden).toBe(true)
+    expect(fillButton().disabled).toBe(false)
+    expect(rangeButton().disabled).toBe(false)
+  })
+
+  it('AC-3705.2: 살펴보는 중 부품이 던져도 unexpected 안내(0일 저장)이고 [닫기]로 단추가 풀린다', async () => {
+    const t = start({ answer: (date) => (date === N4 ? throwing() : ok(bitDay(date))) })
+    await scan(N3, N4)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(lastView()).toEqual({
+      kind: 'blocked',
+      block: { kind: 'unexpected' },
+      run: { from: N3, to: N4, total: 2, saved: [], skipped: [], failed: [], remaining: [N3, N4] },
+    })
+    expect(t.page.saves).toEqual([])
+    act('닫기').click()
+    expect(rangeButton().disabled).toBe(false)
+    expect(fillButton().disabled).toBe(false)
+  })
+
+  it('AC-3704.3 AC-3705.2: 던질 때 화면을 이미 떠났으면 아무 안내도 보이지 않는다', async () => {
+    start({ answer: (date) => (date === N4 ? throwing(() => handle?.stop()) : ok(bitDay(date))) })
+    await scan(N3, N4)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(seen.views.some((v) => (v as RangeView).kind === 'blocked')).toBe(false)
+    expect(document.getElementById(HOST_ID)).toBeNull()
   })
 })

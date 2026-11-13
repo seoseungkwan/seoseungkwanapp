@@ -13,10 +13,10 @@
 import { planCells } from './cells.js'
 import { blocker, dateLabels, draftNotice, readDate, readJournal, save as pressSave, setDate, waitLoaded } from './erpday.js'
 import { E_BRIDGE_BAD_REPLY, E_BRIDGE_DISCONNECTED, E_CLOSING_FUTURE_DATE, E_HELPER_TIMEOUT } from './errors.js'
-import { fillAll, survey, undoAll, type FillMode, type UndoEntry } from './fill.js'
+import { fillAll, locate, survey, undoAll, type FillMode, type UndoEntry } from './fill.js'
 import { createDock, HOST_ID, type Dock, type View } from './panel.js'
 import { rangeDays, runRange, scanRange, type RangeDeps } from './range.js'
-import type { RangeAction, RunSummary, ScanSummary } from './rangeTypes.js'
+import { MAX_DAYS, type RangeAction, type RunSummary, type ScanSummary } from './rangeTypes.js'
 import { load, saveOverlap, toGroups } from './settings.js'
 import type { ClosingDay, MoneyKey, OverlapChoice, Settings } from './types.js'
 
@@ -29,6 +29,22 @@ export const READ_TIMEOUT_MS = 120_000
 
 /** 마감 일자 읽기는 erpday.ts로 옮겼다(기간 채우기와 같이 쓴다). 여기서 그대로 다시 내보낸다 */
 export { readDate }
+
+const TODAY_ONLY = /\d{4}-\d{2}-\d{2}\s*\(오늘\)/
+/**
+ * 원무 권한 화면인가: '마감 일자' 줄(label 부모부터 세 겹)에 날짜 칸('연도 선택' 칸 말고)이 없이 'YYYY-MM-DD (오늘)' 글자.
+ * ERP 안내 창이 떠 있어도 같다(blocker는 안내 창을 먼저 본다). erpday.ts readDate가 칸을 찾는 차례와 같다
+ */
+function todayOnly(doc: Document): boolean {
+  for (const label of dateLabels(doc)) {
+    let row = label.parentElement
+    for (let up = 0; row && up < 3; up += 1, row = row.parentElement) {
+      if ([...row.querySelectorAll('input.datepicker-input')].some((el) => el.getAttribute('aria-label') !== '연도 선택')) return false
+      if (TODAY_ONLY.test(row.textContent ?? '')) return true
+    }
+  }
+  return false
+}
 
 /** 단추를 둘 화면인가: 주소가 /h/closing이고 '마감 일자'가 있다 */
 export function onClosingPage(doc: Document): boolean {
@@ -291,7 +307,7 @@ export function startPage(doc: Document = document): { stop(): void } {
     if (busy) return
     const mine = visit
     ranging = null
-    if (blocker(doc)?.kind === 'todayOnly') {
+    if (todayOnly(doc)) {
       dock.showRange({ kind: 'todayOnly' })
       return
     }
@@ -328,6 +344,15 @@ export function startPage(doc: Document = document): { stop(): void } {
         if (outcome.kind === 'day') return { day: outcome.day }
         const code = outcome.view.kind === 'err' ? outcome.view.code : E_CLOSING_FUTURE_DATE
         return { block: { kind: 'helper', code } }
+      },
+      dateIs: (date) => readDate(doc) === date,
+      // 넣을 칸(까닭 없음·값 있음, fill.ts eachTodo와 같은 고름) 중 화면에 없는 칸. 업무일지 1 칸은 waitLoaded가 둔 1 탭에서 찾는다
+      async missingCells(day, choice) {
+        const todo = planCells(day, r.settings, choice).filter((p) => !p.why && p.value !== null)
+        return todo.filter((p) => {
+          const at = locate(doc, p.where)
+          return 'skip' in at && at.skip === 'notFound'
+        }).length
       },
       async fill(day, choice) {
         await fillAll(doc, planCells(day, r.settings, choice), 'all')
@@ -413,8 +438,10 @@ export function startPage(doc: Document = document): { stop(): void } {
     const r = ranging
     if (!r) return
     switch (action.kind) {
-      case 'scan':
-        if (busy || r.phase !== 'pick' || action.from > action.to || action.to > today()) return
+      case 'scan': {
+        // 기간 고르기와 같은 막는 규칙을 한 번 더(빈 칸·시작일 > 끝일·오늘 뒤·92일보다 긺, AC-3701.2)
+        const span = rangeDays(action.from, action.to).length
+        if (busy || r.phase !== 'pick' || span === 0 || span > MAX_DAYS || action.to > today()) return
         busy = true
         dock.setRangeBusy(true)
         remember(null)
@@ -422,6 +449,7 @@ export function startPage(doc: Document = document): { stop(): void } {
         r.to = action.to
         await scanFlow(r)
         return
+      }
       case 'cancelScan':
         if (r.phase === 'scanning') r.halt = true
         return
