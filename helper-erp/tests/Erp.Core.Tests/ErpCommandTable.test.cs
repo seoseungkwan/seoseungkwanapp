@@ -128,37 +128,68 @@ public class ErpCommandTableTests
     [MemberData(nameof(BadFindArgs))]
     public void FindCodesRefuses(string args) => Refuses("closing.findCodes", args);
 
-    // ---- AC-3709.2 closing.day 묶음 exclude(erp-closing-range design.md 11절) --------------------------------
+    // ---- AC-3709.2 closing.day 묶음 exclude 규칙(erp-closing-range design.md 11절) ---------------------------
 
-    private static string ExcludeGroup(string key, string[] codes, string[] exclude) =>
-        "{\"key\":\"" + key + "\",\"codes\":" + Arr(codes) + ",\"exclude\":" + Arr(exclude) + "}";
+    /// <summary>규칙 하나 JSON { code, with, all? }. all이 null이면 그 칸을 넣지 않는다.</summary>
+    private static string ExRule(string code, string[] with, bool? all = null) =>
+        "{\"code\":" + JsonSerializer.Serialize(code) + ",\"with\":" + Arr(with) + (all == null ? "" : ",\"all\":" + (all.Value ? "true" : "false")) + "}";
 
-    [Fact(DisplayName = "AC-3709.2 묶음 exclude는 선택 칸이고 코드 꼴(codes와 같음) 0~20개를 받는다(매출 규칙 칸과 함께여도)")]
+    /// <summary>규칙 JSON들을 exclude에 담은 묶음.</summary>
+    private static string ExcludeGroup(string key, string[] codes, params string[] rules) =>
+        "{\"key\":\"" + key + "\",\"codes\":" + Arr(codes) + ",\"exclude\":[" + string.Join(",", rules) + "]}";
+
+    /// <summary>exclude 칸에 JSON 값을 그대로 넣은 씨암 묶음.</summary>
+    private static string RawExclude(string exclude) => "{\"key\":\"carm\",\"codes\":[\"CARM1\"],\"exclude\":" + exclude + "}";
+
+    private static readonly string[] Carm = { "CARM1" };
+
+    [Fact(DisplayName = "AC-3709.2 묶음 exclude는 선택 칸이고 규칙 0~20개 { code: 코드 꼴, with: 코드 꼴 1~5개, all?: 참/거짓 }을 받는다(매출 규칙 칸과 함께여도, 건수만 세는 묶음도)")]
     public void ExcludeAccepted()
     {
-        Accepts("closing.day", Day("2026-11-09", ExcludeGroup("carm", new[] { "CARM1" }, new string[0])));
-        Accepts("closing.day", Day("2026-11-09", ExcludeGroup("carm", new[] { "CARM1" }, new[] { "KK090", "PROLO C", new string('X', 20) })));
-        Accepts("closing.day", Day("2026-11-09", ExcludeGroup("pt", new[] { "MM010" }, Enumerable.Range(0, 20).Select(i => "X" + i).ToArray())));
+        Accepts("closing.day", Day("2026-11-09", ExcludeGroup("carm", Carm)));
+        Accepts("closing.day", Day("2026-11-09", ExcludeGroup("carm", Carm, ExRule("LA357", new[] { "LA248" }))));
+        Accepts("closing.day", Day("2026-11-09", ExcludeGroup("carm", Carm,
+            ExRule("LA357", new[] { "LA248", "KK090", "PROLO C", "A1", new string('X', 20) }, true),
+            ExRule("PROLO C", new[] { "LA248" }, false),
+            ExRule(new string('L', 20), new[] { "LA248" }))));
+        Accepts("closing.day", Day("2026-11-09", ExcludeGroup("pt", new[] { "MM010" }, Enumerable.Range(0, 20).Select(i => ExRule("X" + i, new[] { "MM010" })).ToArray())));
+        Accepts("closing.day", Day("2026-11-09", ExcludeGroup("manualConsult", new[] { "MC1" }, ExRule("MC1", new[] { "MM010" }))));
         Accepts("closing.day", Day("2026-11-09",
-            "{\"key\":\"sono\",\"codes\":[\"SONO1\"],\"amountPrefixes\":[\"LA\"],\"amountCodes\":[\"KK090\"],\"exclude\":[\"MM010\"]}",
+            "{\"key\":\"sono\",\"codes\":[\"SONO1\"],\"amountPrefixes\":[],\"amountCodes\":[\"KK090\"],\"exclude\":[" + ExRule("KK090", new[] { "CARM1" }, true) + "]}",
             Group("carm", "CARM1")));
     }
 
     public static TheoryData<string> BadExcludeArgs => new TheoryData<string>
     {
-        Day("2026-11-09", ExcludeGroup("carm", new[] { "CARM1" }, Enumerable.Range(0, 21).Select(i => "X" + i).ToArray())),
-        Day("2026-11-09", ExcludeGroup("carm", new[] { "CARM1" }, new[] { "" })),
-        Day("2026-11-09", ExcludeGroup("carm", new[] { "CARM1" }, new[] { "PROLO  C" })),
-        Day("2026-11-09", ExcludeGroup("carm", new[] { "CARM1" }, new[] { "PROLO\tC" })),
-        Day("2026-11-09", ExcludeGroup("carm", new[] { "CARM1" }, new[] { " KK090" })),
-        Day("2026-11-09", ExcludeGroup("carm", new[] { "CARM1" }, new[] { "KK090 " })),
-        Day("2026-11-09", ExcludeGroup("carm", new[] { "CARM1" }, new[] { new string('X', 21) })),
-        Day("2026-11-09", "{\"key\":\"carm\",\"codes\":[\"CARM1\"],\"exclude\":\"KK090\"}"),
-        Day("2026-11-09", "{\"key\":\"carm\",\"codes\":[\"CARM1\"],\"exclude\":[1]}"),
-        Day("2026-11-09", "{\"key\":\"carm\",\"codes\":[\"CARM1\"],\"exclude\":null}"),
+        Day("2026-11-09", ExcludeGroup("carm", Carm, Enumerable.Range(0, 21).Select(i => ExRule("X" + i, new[] { "MM010" })).ToArray())),   // 규칙 21개
+        Day("2026-11-09", ExcludeGroup("carm", Carm, ExRule("LA357", new string[0]))),                                                      // with 0개
+        Day("2026-11-09", ExcludeGroup("carm", Carm, ExRule("LA357", new[] { "A1", "A2", "A3", "A4", "A5", "A6" }))),                       // with 6개
+        Day("2026-11-09", ExcludeGroup("carm", Carm, ExRule("", new[] { "LA248" }))),
+        Day("2026-11-09", ExcludeGroup("carm", Carm, ExRule("LA  357", new[] { "LA248" }))),
+        Day("2026-11-09", ExcludeGroup("carm", Carm, ExRule("LA\t357", new[] { "LA248" }))),
+        Day("2026-11-09", ExcludeGroup("carm", Carm, ExRule(" LA357", new[] { "LA248" }))),
+        Day("2026-11-09", ExcludeGroup("carm", Carm, ExRule(new string('L', 21), new[] { "LA248" }))),
+        Day("2026-11-09", ExcludeGroup("carm", Carm, ExRule("LA357", new[] { "" }))),
+        Day("2026-11-09", ExcludeGroup("carm", Carm, ExRule("LA357", new[] { "KK  090" }))),
+        Day("2026-11-09", ExcludeGroup("carm", Carm, ExRule("LA357", new[] { "LA248", "KK090 " }))),
+        Day("2026-11-09", ExcludeGroup("carm", Carm, ExRule("LA357", new[] { new string('K', 21) }))),
+        Day("2026-11-09", RawExclude("[{\"code\":\"LA357\",\"with\":[\"LA248\"],\"all\":\"true\"}]")),                                     // all 글자
+        Day("2026-11-09", RawExclude("[{\"code\":\"LA357\",\"with\":[\"LA248\"],\"all\":1}]")),                                            // all 숫자
+        Day("2026-11-09", RawExclude("[{\"code\":\"LA357\",\"with\":[\"LA248\"],\"all\":null}]")),                                         // all null
+        Day("2026-11-09", RawExclude("[{\"code\":\"LA357\",\"with\":[\"LA248\"],\"why\":\"x\"}]")),                                        // 모르는 칸
+        Day("2026-11-09", RawExclude("[{\"with\":[\"LA248\"]}]")),                                                                         // code 없음
+        Day("2026-11-09", RawExclude("[{\"code\":\"LA357\"}]")),                                                                           // with 없음
+        Day("2026-11-09", RawExclude("[{\"code\":1,\"with\":[\"LA248\"]}]")),
+        Day("2026-11-09", RawExclude("[{\"code\":\"LA357\",\"with\":\"LA248\"}]")),
+        Day("2026-11-09", RawExclude("[{\"code\":\"LA357\",\"with\":[1]}]")),
+        Day("2026-11-09", RawExclude("[{\"code\":\"LA357\",\"with\":null}]")),
+        Day("2026-11-09", RawExclude("[\"KK090\"]")),                                                                                      // TASK-10의 코드 배열 꼴
+        Day("2026-11-09", RawExclude("[null]")),
+        Day("2026-11-09", RawExclude("\"KK090\"")),
+        Day("2026-11-09", RawExclude("null")),
     };
 
-    [Theory(DisplayName = "AC-3709.2 exclude 21개·빈 글자·빈칸 두 칸·탭·앞뒤 공백·21자·배열 아님·글자 아님·null은 E-HELPER-BAD-MESSAGE")]
+    [Theory(DisplayName = "AC-3709.2 규칙 21개·with 0개·6개·code/with 코드 꼴 아님·all이 참/거짓 아님·모르는 칸·빠진 칸·코드 배열 꼴(TASK-10)·배열 아님·null은 E-HELPER-BAD-MESSAGE")]
     [MemberData(nameof(BadExcludeArgs))]
     public void BadExcludeRefused(string args) => Refuses("closing.day", args);
 

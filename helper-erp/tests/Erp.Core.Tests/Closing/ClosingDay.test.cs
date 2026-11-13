@@ -366,11 +366,19 @@ public class ClosingDayTests
         Assert.DoesNotContain("V003", data.GetRawText(), StringComparison.Ordinal);
     }
 
-    // ---- AC-3709.2 읽지 않을 처방(exclude, erp-closing-range design.md 11절) ------------------------------------
+    // ---- AC-3709.2 읽지 않을 처방 규칙(exclude, erp-closing-range design.md 11절) -------------------------------
 
-    /// <summary>exclude가 있는 묶음(매출 규칙 칸은 null이면 보내지 않은 것). exclude가 null이면 그 칸을 보내지 않은 것이다.</summary>
-    private static ClosingGroup X(string key, string[] codes, string[]? exclude, string[]? prefixes = null, string[]? amountCodes = null) =>
+    /// <summary>규칙 하나(all 없음 = 거짓): with 가운데 하나라도 그 진료의 원래 처방에 있으면 code를 그 묶음에서 없는 것으로 본다.</summary>
+    private static ClosingExcludeRule Drop(string code, params string[] with) => new ClosingExcludeRule(code, with);
+
+    /// <summary>규칙 하나(all 참): with가 모두 그 진료의 원래 처방에 있을 때만 code를 없는 것으로 본다.</summary>
+    private static ClosingExcludeRule DropAll(string code, params string[] with) => new ClosingExcludeRule(code, with, all: true);
+
+    /// <summary>규칙이 있는 묶음(매출 규칙 칸은 null이면 보내지 않은 것). exclude가 null이면 그 칸을 보내지 않은 것이다.</summary>
+    private static ClosingGroup X(string key, string[] codes, ClosingExcludeRule[]? exclude, string[]? prefixes = null, string[]? amountCodes = null) =>
         new ClosingGroup(key, codes, prefixes, amountCodes, exclude);
+
+    private static readonly string[] NoPrefix = new string[0];
 
     /// <summary>
     /// 신환 V001(씨암 500 · KK090 1,000) · 재진 V002(씨암 700) · 90일초진 V003(씨암 300 · KK090 2,000, 수납 줄 없음).
@@ -381,8 +389,38 @@ public class ClosingDayTests
         .Visit("V002", 2, "4", 40, 1000m).Line("V002", "CARM1", 700m)
         .Visit("V003", 3, "3", 40, null).Line("V003", "CARM1", 300m).Line("V003", "kk090 ", 2000m);
 
-    [Fact(DisplayName = "AC-3709.2 exclude 코드가 하나라도 있는 진료는 그 묶음 사람 수·3분류·total·unpaidVisits에서 빠진다(exclude는 앞뒤 공백 뗀 대문자로 견줌), 다른 묶음은 그대로")]
-    public void ExcludeDropsVisitsFromItsGroup()
+    [Fact(DisplayName = "AC-3709.2 시안 예: 진료 CARM1·LA358·LA357·LA248, 씨암 셀 코드 LA358·LA357, 규칙 LA357 ← LA248 → 씨암 1명·금액은 LA358만(진료는 CARM1로 그대로 씨암에 듦)")]
+    public void MockupExample()
+    {
+        DayRig Rig() => new DayRig()
+            .Visit("V001", 1, "4", 40, 1000m).Line("V001", "CARM1", 0m)
+            .Line("V001", "LA358", 213800m).Line("V001", "LA357", 31650m).Line("V001", "LA248", 32610m);
+        ClosingGroup Carm(ClosingExcludeRule[]? exclude) => X("carm", new[] { "CARM1" }, exclude, NoPrefix, new[] { "LA358", "LA357" });
+
+        Assert.Equal(213800L + 31650L, GroupOf(Rig().Read(Carm(null)), "carm").Total);
+
+        var carm = GroupOf(Rig().Read(Carm(new[] { Drop("LA357", "LA248") })), "carm");
+        Assert.Equal(1L, carm.Patients);
+        Assert.Equal(new long[] { 0, 0, 1 }, Three(carm));
+        Assert.Equal(213800L, carm.Total);
+    }
+
+    [Fact(DisplayName = "AC-3709.2 그 처방 때문에만 묶음에 들던 진료(씨암 묶음 코드 LA357, 진료 LA357·LA248)는 건수에서 빠지고, 같이 있을 처방이 없는 진료는 그대로 센다(규칙 글자는 앞뒤 공백 뗀 대문자로 견줌)")]
+    public void RuleOnlyCodeDropsVisit()
+    {
+        var result = new DayRig()
+            .Visit("V001", 1, "4", 40, 1000m).Line("V001", "LA357", 31650m).Line("V001", "la248 ", 32610m)
+            .Visit("V002", 2, "1", 40, 1000m).Line("V002", "LA357", 31650m).Line("V002", "KK090", 32610m)
+            .Read(X("carm", new[] { "LA357" }, new[] { Drop(" la357", "LA248 ") }));
+
+        var carm = GroupOf(result, "carm");
+        Assert.Equal(1L, carm.Patients);
+        Assert.Equal(new long[] { 1, 0, 0 }, Three(carm));
+        Assert.Equal(31650L, carm.Total);
+    }
+
+    [Fact(DisplayName = "AC-3709.2 규칙 code가 묶음 코드면(CARM1 ← KK090) 그 진료가 그 묶음에서 통째로 빠진다: 사람 수·3분류·total·unpaidVisits. 다른 묶음(eswt)·환자현황·연령은 그대로")]
+    public void GroupCodeRuleDropsWholeVisit()
     {
         var plain = ExcludeDay().Read(G("carm", "CARM1"), G("eswt", "KK090"));
         var carm = GroupOf(plain, "carm");
@@ -391,75 +429,187 @@ public class ClosingDayTests
         Assert.Equal(1500L, carm.Total);
         Assert.Equal(1L, carm.UnpaidVisits);
 
-        var result = ExcludeDay().Read(X("carm", new[] { "CARM1" }, new[] { " kk090" }), G("eswt", "KK090"));
+        var result = ExcludeDay().Read(X("carm", new[] { "CARM1" }, new[] { Drop("carm1", " kk090") }), G("eswt", "KK090"));
         carm = GroupOf(result, "carm");
         Assert.Equal(1L, carm.Patients);
         Assert.Equal(new long[] { 0, 0, 1 }, Three(carm));
         Assert.Equal(700L, carm.Total);
         Assert.Equal(0L, carm.UnpaidVisits);
 
-        // 다른 묶음(eswt)은 exclude가 없는 것과 같다
         var eswt = GroupOf(result, "eswt");
         Assert.Equal(2L, eswt.Patients);
-        Assert.Equal(new long[] { 1, 1, 0 }, Three(eswt));
         Assert.Equal(3000L, eswt.Total);
         Assert.Equal(JsonOf(GroupOf(plain, "eswt")), JsonOf(eswt));
-        // 환자현황·연령은 묶음과 상관없이 그대로
         Assert.Equal(JsonOf(plain.Patients), JsonOf(result.Patients));
         Assert.Equal(JsonOf(plain.Ages), JsonOf(result.Ages));
     }
 
-    [Fact(DisplayName = "AC-3709.2 exclude는 진료 단위다: 같은 사람의 exclude 진료는 빠지고 다른 진료로 그 묶음 사람이면 그 진료 금액만 더한다")]
-    public void ExcludeIsPerVisit()
+    [Fact(DisplayName = "AC-3709.2 규칙은 진료 단위다: 같은 사람의 빠진 진료는 안 세고 다른 진료로 그 묶음 사람이면 그 진료 금액만 더한다(3분류는 그 사람의 모든 진료로)")]
+    public void RuleIsPerVisit()
     {
         var result = new DayRig()
             .Visit("V001", 1, "1", 40, 1000m).Line("V001", "CARM1", 500m).Line("V001", "KK090", 1000m)
             .Visit("V002", 1, "4", 40, 1000m).Line("V002", "CARM1", 700m)
-            .Visit("V003", 2, "4", 40, 1000m).Line("V003", "KK090", 900m)                   // 묶음 코드 없는 진료는 원래 안 셈
-            .Read(X("carm", new[] { "CARM1" }, new[] { "KK090" }));
+            .Visit("V003", 2, "4", 40, 1000m).Line("V003", "KK090", 900m)
+            .Read(X("carm", new[] { "CARM1" }, new[] { Drop("CARM1", "KK090") }));
 
         var carm = GroupOf(result, "carm");
         Assert.Equal(1L, carm.Patients);
-        Assert.Equal(new long[] { 1, 0, 0 }, Three(carm));   // 3분류는 지금처럼 그 사람의 모든 진료로 정한다
+        Assert.Equal(new long[] { 1, 0, 0 }, Three(carm));
         Assert.Equal(700L, carm.Total);
     }
 
-    [Fact(DisplayName = "AC-3709.2 매출 규칙 묶음도 exclude 진료의 규칙 금액(앞글자·더 셀 코드)을 더하지 않는다")]
-    public void ExcludeDropsRuleAmount()
+    [Fact(DisplayName = "AC-3709.2 with는 원래 처방으로 본다: 다른 규칙으로 빠진 처방(LA248)도 with로는 있어서 LA357 ← LA248이 맞는다")]
+    public void WithSeesOriginalCodes()
+    {
+        var result = new DayRig()
+            .Visit("V001", 1, "4", 40, 1000m).Line("V001", "CARM1", 0m).Line("V001", "LA358", 200000m)
+            .Line("V001", "LA248", 32610m).Line("V001", "LA357", 31650m).Line("V001", "ZZ1", 0m)
+            .Read(X("carm", new[] { "CARM1" }, new[] { Drop("LA248", "ZZ1"), Drop("LA357", "LA248") }, NoPrefix, new[] { "LA358", "LA248", "LA357" }));
+
+        Assert.Equal(200000L, GroupOf(result, "carm").Total);
+        Assert.Equal(1L, GroupOf(result, "carm").Patients);
+    }
+
+    [Fact(DisplayName = "AC-3709.2 all 참이면 with가 모두 있을 때만 빼고(하나만 있으면 안 뺌), all 거짓·없으면 with 하나라도 있으면 뺀다")]
+    public void AllNeedsEveryWith()
+    {
+        DayRig Rig() => new DayRig()
+            .Visit("V001", 1, "4", 40, 1000m).Line("V001", "CARM1", 0m).Line("V001", "LA357", 31650m).Line("V001", "LA248", 32610m)
+            .Visit("V002", 2, "4", 40, 1000m).Line("V002", "CARM1", 0m).Line("V002", "LA357", 31650m).Line("V002", "LA248", 32610m)
+            .Line("V002", "KK090", 1000m);
+        long Total(ClosingExcludeRule rule) => GroupOf(Rig().Read(X("carm", new[] { "CARM1" }, new[] { rule }, NoPrefix, new[] { "LA357" })), "carm").Total;
+
+        Assert.Equal(31650L, Total(DropAll("LA357", "LA248", "KK090")));                                      // V002만 둘 다 있음
+        Assert.Equal(0L, Total(Drop("LA357", "LA248", "KK090")));                                             // 하나라도(all 없음)
+        Assert.Equal(0L, Total(new ClosingExcludeRule("LA357", new[] { "KK090", "LA248" }, all: false)));     // 하나라도(all 거짓)
+        Assert.Equal(31650L * 2, Total(DropAll("LA357", "KK090", "MM010")));                                  // 둘 다 있는 진료 없음
+        Assert.Equal(31650L, Total(Drop("LA357", "KK090")));                                                  // V002만 KK090
+        Assert.Equal(0L, Total(DropAll("LA357", "LA248")));                                                   // with 하나면 all도 그 하나
+    }
+
+    [Fact(DisplayName = "AC-3709.2 같은 code 규칙이 여럿이면 하나라도 맞으면 뺀다(똑같은 규칙 둘도 받는다)")]
+    public void SameCodeRulesAnyMatch()
+    {
+        DayRig Rig() => new DayRig()
+            .Visit("V001", 1, "4", 40, 1000m).Line("V001", "CARM1", 0m).Line("V001", "LA357", 31650m).Line("V001", "LA248", 32610m);
+        long Total(params ClosingExcludeRule[] rules) =>
+            GroupOf(Rig().Read(X("carm", new[] { "CARM1" }, rules, NoPrefix, new[] { "LA357", "LA248" })), "carm").Total;
+
+        Assert.Equal(31650L + 32610L, Total(Drop("LA357", "ZZ1"), DropAll("LA357", "LA248", "ZZ2")));
+        Assert.Equal(32610L, Total(Drop("LA357", "ZZ1"), DropAll("LA357", "LA248", "ZZ2"), Drop("LA357", "LA248")));
+        Assert.Equal(32610L, Total(Drop("LA357", "LA248"), Drop("LA357", "LA248")));
+    }
+
+    [Fact(DisplayName = "AC-3709.2 매출 규칙 묶음도 빠진 처방의 규칙 금액(앞글자·셀 코드)을 더하지 않는다")]
+    public void RuleDropsRuleAmount()
     {
         var result = new DayRig()
             .Visit("V001", 1, "4", 40, 1000m).Line("V001", "CARM1", 0m).Line("V001", "LA358", 200000m).Line("V001", "MM010", 5000m)
             .Visit("V002", 2, "4", 40, 1000m).Line("V002", "CARM1", 0m).Line("V002", "LA272", 15000m).Line("V002", "KK090", 32610m)
-            .Read(X("carm", new[] { "CARM1" }, new[] { "MM010" }, new[] { "LA" }, new[] { "KK090" }));
+            .Read(X("carm", new[] { "CARM1" }, new[] { Drop("LA358", "MM010"), Drop("KK090", "LA272") }, new[] { "LA" }, new[] { "KK090" }));
 
         var carm = GroupOf(result, "carm");
-        Assert.Equal(1L, carm.Patients);
-        Assert.Equal(15000L + 32610L, carm.Total);
+        Assert.Equal(2L, carm.Patients);
+        Assert.Equal(15000L, carm.Total);
     }
 
-    [Fact(DisplayName = "AC-3709.2 씨암 exclude 진료는 overlap(함께 있는 진료)에서도 빠지고 씨암 total·사람 수에서 빠지며, SONO 묶음은 그대로")]
-    public void ExcludeDropsOverlap()
+    [Fact(DisplayName = "AC-3709.2 매출 규칙이 없는 묶음(관절조영)도 그 처방 금액만 빠지고 같은 진료의 다른 묶음 코드는 그대로 센다, 그 처방만 있던 진료는 빠진다, 원 미만은 묶음 합에서 버림")]
+    public void CodeTotalDropsOnlyThatCode()
+    {
+        var result = new DayRig()
+            .Visit("V001", 1, "4", 40, 1000m).Line("V001", "AR1", 1000.6m).Line("V001", "AR2", 500.7m).Line("V001", "KK090", 32610m)
+            .Visit("V002", 2, "4", 40, 1000m).Line("V002", "AR2", 500m).Line("V002", "KK090", 32610m)
+            .Visit("V003", 3, "4", 40, 1000m).Line("V003", "AR2", 300.5m)
+            .Read(X("arthro", new[] { "AR1", "AR2" }, new[] { Drop("AR2", "KK090") }), G("eswt", "KK090"));
+
+        var arthro = GroupOf(result, "arthro");
+        Assert.Equal(2L, arthro.Patients);
+        Assert.Equal(1301L, arthro.Total);    // 1,000.6 + 300.5 = 1,301.1 → 버림 (AR2 500.7·500은 안 셈)
+        Assert.Equal(65220L, GroupOf(result, "eswt").Total);
+        Assert.Equal(2L, GroupOf(result, "eswt").Patients);
+    }
+
+    [Fact(DisplayName = "AC-3709.2 진료·치료현황 묶음(도수상담)·ESWT 묶음(ESWT Standard)에도 규칙이 먹는다")]
+    public void CountOnlyGroupsUseRules()
+    {
+        DayRig Rig() => new DayRig()
+            .Visit("V001", 1, "1", 40, 1000m, "MC1", "ES1", "MM010")
+            .Visit("V002", 2, "4", 40, 1000m, "MC1", "ES1")
+            .Visit("V003", 3, "3", 40, 1000m, "MC2", "ES2", "MM010");
+        var plain = Rig().Read(G("manualConsult", "MC1", "MC2"), G("eswtStd", "ES1", "ES2"));
+        Assert.Equal(3L, GroupOf(plain, "manualConsult").Patients);
+        Assert.Equal(3L, GroupOf(plain, "eswtStd").Patients);
+
+        var result = Rig().Read(
+            X("manualConsult", new[] { "MC1", "MC2" }, new[] { Drop("MC1", "MM010") }),
+            X("eswtStd", new[] { "ES1", "ES2" }, new[] { DropAll("ES2", "MM010", "MC2") }));
+        var consult = GroupOf(result, "manualConsult");
+        Assert.Equal(2L, consult.Patients);
+        Assert.Equal(new long[] { 0, 1, 1 }, Three(consult));
+        var eswtStd = GroupOf(result, "eswtStd");
+        Assert.Equal(2L, eswtStd.Patients);
+        Assert.Equal(new long[] { 1, 0, 1 }, Three(eswtStd));
+    }
+
+    [Fact(DisplayName = "AC-3709.2 overlap(씨암·SONO 함께 있는 진료)은 묶음마다 자기 쓸 처방으로 센다: 씨암 LA247 ← SONO1이면 씨암 쪽 금액만 줄고, 규칙 없는 SONO는 그대로")]
+    public void OverlapUsesOwnCodes()
     {
         var plain = OverlapDay().Read(R("carm", new[] { "CARM1" }, La), R("sono", new[] { "SONO1" }, La, new[] { "KK090" }));
-        // V003(씨암·SONO 함께)에 KK090이 있다 → 씨암에서 빠지고, 함께 있는 진료도 0
-        var result = OverlapDay().Read(X("carm", new[] { "CARM1" }, new[] { "KK090" }, La), R("sono", new[] { "SONO1" }, La, new[] { "KK090" }));
+        var result = OverlapDay().Read(
+            X("carm", new[] { "CARM1" }, new[] { Drop("LA247", "SONO1") }, La), R("sono", new[] { "SONO1" }, La, new[] { "KK090" }));
 
         var overlap = Assert.IsType<ClosingOverlap>(result.Overlap);
-        Assert.Equal(new long[] { 0, 0, 0 }, new[] { overlap.Visits, overlap.Carm, overlap.Sono });
-        Assert.Equal(200000L + 15825L, GroupOf(result, "carm").Total);
-        Assert.Equal(2L, GroupOf(result, "carm").Patients);
+        Assert.Equal(new long[] { 1, 213800, 278060 }, new[] { overlap.Visits, overlap.Carm, overlap.Sono });
+        Assert.Equal(200000L + 213800L + 15825L, GroupOf(result, "carm").Total);
+        Assert.Equal(3L, GroupOf(result, "carm").Patients);
         Assert.Equal(JsonOf(GroupOf(plain, "sono")), JsonOf(GroupOf(result, "sono")));
+    }
 
-        // SONO 쪽 exclude(LA247은 V003에만)면 V003이 SONO에서 빠져 overlap 0, 씨암은 그대로
-        var sonoOut = OverlapDay().Read(R("carm", new[] { "CARM1" }, La), X("sono", new[] { "SONO1" }, new[] { "LA247" }, La, new[] { "KK090" }));
+    [Fact(DisplayName = "AC-3709.2 묶음 코드를 빼는 규칙(CARM1 ← SONO1)이면 함께 있는 진료가 씨암에서 빠져 overlap 0건, SONO는 그대로. SONO 쪽 규칙도 같고, 맞는 규칙이 없으면 그대로")]
+    public void OverlapDropsWhenGroupCodeRuled()
+    {
+        var plain = OverlapDay().Read(R("carm", new[] { "CARM1" }, La), R("sono", new[] { "SONO1" }, La, new[] { "KK090" }));
+
+        var carmOut = OverlapDay().Read(
+            X("carm", new[] { "CARM1" }, new[] { Drop("CARM1", "SONO1") }, La), R("sono", new[] { "SONO1" }, La, new[] { "KK090" }));
+        var overlap = Assert.IsType<ClosingOverlap>(carmOut.Overlap);
+        Assert.Equal(new long[] { 0, 0, 0 }, new[] { overlap.Visits, overlap.Carm, overlap.Sono });
+        Assert.Equal(200000L + 15825L, GroupOf(carmOut, "carm").Total);
+        Assert.Equal(2L, GroupOf(carmOut, "carm").Patients);
+        Assert.Equal(JsonOf(GroupOf(plain, "sono")), JsonOf(GroupOf(carmOut, "sono")));
+
+        var sonoOut = OverlapDay().Read(
+            R("carm", new[] { "CARM1" }, La), X("sono", new[] { "SONO1" }, new[] { Drop("SONO1", "CARM1") }, La, new[] { "KK090" }));
         var sonoOverlap = Assert.IsType<ClosingOverlap>(sonoOut.Overlap);
         Assert.Equal(new long[] { 0, 0, 0 }, new[] { sonoOverlap.Visits, sonoOverlap.Carm, sonoOverlap.Sono });
         Assert.Equal(31670L + 32610L + 25000L, GroupOf(sonoOut, "sono").Total);
         Assert.Equal(JsonOf(GroupOf(plain, "carm")), JsonOf(GroupOf(sonoOut, "carm")));
 
-        // exclude 코드가 없는 함께 있는 진료는 그대로 센다
-        var other = OverlapDay().Read(X("carm", new[] { "CARM1" }, new[] { "ZZ999" }, La), R("sono", new[] { "SONO1" }, La, new[] { "KK090" }));
+        var other = OverlapDay().Read(
+            X("carm", new[] { "CARM1" }, new[] { Drop("CARM1", "ZZ999") }, La), R("sono", new[] { "SONO1" }, La, new[] { "KK090" }));
         Assert.Equal(JsonOf(plain.Overlap), JsonOf(other.Overlap));
+        Assert.Equal(JsonOf(plain.Groups), JsonOf(other.Groups));
+    }
+
+    [Fact(DisplayName = "AC-3709.2 주사1회환자(injection)·물리치료내원(ptVisit) 묶음은 exclude를 쓰지 않는다(규칙이 맞아도 답이 규칙 없는 것과 같음)")]
+    public void InjectionAndPtVisitIgnoreRules()
+    {
+        DayRig Rig() => new DayRig()
+            .Visit("V001", 1, "1", 30, 1000m, "KK090", "MM010")
+            .Visit("V002", 2, "4", 30, 1000m, "AA222", "MM010");
+        var plain = ClosingFake.DataOf(Rig().Read(G("injection", "KK090"), G("ptVisit", "AA222")));
+        var ruled = Rig().Read(
+            X("injection", new[] { "KK090" }, new[] { Drop("KK090", "MM010") }),
+            X("ptVisit", new[] { "AA222" }, new[] { Drop("AA222", "MM010") }));
+
+        Assert.Equal(plain.GetRawText(), ClosingFake.DataOf(ruled).GetRawText());
+        var injection = Assert.IsType<ClosingInjection>(ruled.Injection);
+        Assert.Equal(1L, injection.NewPatients);
+        Assert.Equal(1L, injection.NewLines);
+        Assert.Equal(1L, ruled.Patients.PtVisit);
+        Assert.Equal(1L, GroupOf(ruled, "injection").Patients);
+        Assert.Equal(1L, GroupOf(ruled, "ptVisit").Patients);
     }
 
     [Fact(DisplayName = "AC-3709.2 exclude가 없거나(null) 빈 목록이면 지금(0.2.0)과 같은 답이다(묶음·환자현황·overlap·주사·연령 모두)")]
@@ -469,34 +619,45 @@ public class ClosingDayTests
             .Visit("V007", 6, "1", 30, null).Line("V007", "KK090", 1000m).Line("V007", "AA222", 0m)
             .Visit("V008", 7, "4", 50, 1000m).Line("V008", "AA222", 0m).Line("V008", "MM010", 9000m);
 
-        ClosingGroup[] Groups(string[]? exclude) => new[]
+        ClosingGroup[] Groups(ClosingExcludeRule[]? exclude) => new[]
         {
             X("carm", new[] { "CARM1" }, exclude, La),
             X("sono", new[] { "SONO1" }, exclude, La, new[] { "KK090" }),
             X("pt", new[] { "MM010" }, exclude),
+            X("manualConsult", new[] { "LA272" }, exclude),
             X("injection", new[] { "KK090" }, exclude),
             X("ptVisit", new[] { "AA222" }, exclude),
         };
 
         var plain = ClosingFake.DataOf(Rig().Read(
-            R("carm", new[] { "CARM1" }, La), R("sono", new[] { "SONO1" }, La, new[] { "KK090" }), G("pt", "MM010"), G("injection", "KK090"), G("ptVisit", "AA222")));
+            R("carm", new[] { "CARM1" }, La), R("sono", new[] { "SONO1" }, La, new[] { "KK090" }), G("pt", "MM010"), G("manualConsult", "LA272"),
+            G("injection", "KK090"), G("ptVisit", "AA222")));
         Assert.Equal(plain.GetRawText(), ClosingFake.DataOf(Rig().Read(Groups(null))).GetRawText());
-        Assert.Equal(plain.GetRawText(), ClosingFake.DataOf(Rig().Read(Groups(new string[0]))).GetRawText());
+        Assert.Equal(plain.GetRawText(), ClosingFake.DataOf(Rig().Read(Groups(new ClosingExcludeRule[0]))).GetRawText());
     }
 
     public static IEnumerable<object?[]> BadExcludes()
     {
-        var carm = new[] { "CARM1" };
-        yield return new object?[] { X("carm", carm, Enumerable.Range(0, 21).Select(i => "X" + i).ToArray()) };    // 21개
-        yield return new object?[] { X("carm", carm, new[] { "" }) };                                              // 빈 글자
-        yield return new object?[] { X("carm", carm, new[] { "  " }) };                                            // 빈칸뿐
-        yield return new object?[] { X("carm", carm, new[] { "KK  090" }) };                                       // 가운데 빈칸 두 칸
-        yield return new object?[] { X("carm", carm, new[] { "KK\t090" }) };                                       // 가운데 탭
-        yield return new object?[] { X("carm", carm, new[] { new string('K', 21) }) };                             // 21자
-        yield return new object?[] { X("carm", carm, new[] { (string)null! }) };                                   // null
+        ClosingGroup Bad(params ClosingExcludeRule[] rules) => X("carm", new[] { "CARM1" }, rules);
+        yield return new object?[] { Bad(Enumerable.Range(0, 21).Select(i => Drop("X" + i, "KK090")).ToArray()) };  // 규칙 21개
+        yield return new object?[] { Bad((ClosingExcludeRule)null!) };                                            // 규칙 null
+        yield return new object?[] { Bad(Drop("LA357")) };                                                        // with 0개
+        yield return new object?[] { Bad(Drop("LA357", "A1", "A2", "A3", "A4", "A5", "A6")) };                    // with 6개
+        yield return new object?[] { Bad(new ClosingExcludeRule("LA357", null!)) };                               // with null
+        yield return new object?[] { Bad(Drop("", "LA248")) };                                                    // code 빈 글자
+        yield return new object?[] { Bad(Drop("  ", "LA248")) };                                                  // code 빈칸뿐
+        yield return new object?[] { Bad(Drop("LA  357", "LA248")) };                                             // code 가운데 빈칸 두 칸
+        yield return new object?[] { Bad(Drop("LA\t357", "LA248")) };                                             // code 가운데 탭
+        yield return new object?[] { Bad(Drop(new string('L', 21), "LA248")) };                                   // code 21자
+        yield return new object?[] { Bad(Drop(null!, "LA248")) };                                                 // code null
+        yield return new object?[] { Bad(Drop("LA357", "")) };                                                    // with 빈 글자
+        yield return new object?[] { Bad(Drop("LA357", "LA248", "KK  090")) };                                    // with 빈칸 두 칸
+        yield return new object?[] { Bad(Drop("LA357", "KK\t090")) };                                             // with 탭
+        yield return new object?[] { Bad(Drop("LA357", new string('K', 21))) };                                   // with 21자
+        yield return new object?[] { Bad(Drop("LA357", (string)null!)) };                                         // with 글자 null
     }
 
-    [Theory(DisplayName = "AC-3709.2 exclude 21개·빈 글자·빈칸뿐·빈칸 두 칸·탭·21자·null은 DB에 닿기 전에 E-HELPER-BAD-MESSAGE")]
+    [Theory(DisplayName = "AC-3709.2 규칙 21개·null 규칙·with 0개·6개·null·code/with 빈 글자·빈칸뿐·빈칸 두 칸·탭·21자·null은 DB에 닿기 전에 E-HELPER-BAD-MESSAGE")]
     [MemberData(nameof(BadExcludes))]
     public void RefusesBadExclude(ClosingGroup group)
     {
@@ -506,20 +667,31 @@ public class ClosingDayTests
         Assert.Empty(db.Calls);
     }
 
-    [Fact(DisplayName = "AC-3709.2 exclude 20개·가운데 빈칸 코드('PROLO C')는 받는다")]
-    public void AcceptsTwentyExcludes()
+    [Fact(DisplayName = "AC-3709.2 규칙 20개·with 5개·가운데 빈칸 코드('PROLO C')는 받고, 주사1회환자·물리치료내원 묶음의 규칙도 꼴은 본다")]
+    public void AcceptsTwentyRules()
     {
-        var result = ExcludeDay().Read(X("carm", new[] { "CARM1" }, Enumerable.Range(0, 19).Select(i => "X" + i).Concat(new[] { "PROLO C" }).ToArray()));
+        var rules = Enumerable.Range(0, 19).Select(i => Drop("X" + i, "A1", "A2", "A3", "A4", "PROLO C"))
+            .Concat(new[] { DropAll("PROLO C", "HYALU MINI") }).ToArray();
+        var result = ExcludeDay().Read(X("carm", new[] { "CARM1" }, rules));
         Assert.Equal(3L, GroupOf(result, "carm").Patients);
+
+        var db = ClosingFake.Quiet();
+        Assert.Equal(ErrorCodes.BadMessage, Assert.ThrowsAny<HelperException>(() => ClosingDay.Read(db, Synthetic.Scope, ClosingFake.Day,
+            new[] { X("injection", new[] { "KK090" }, new[] { Drop("KK090") }) })).Code);
+        Assert.Equal(ErrorCodes.BadMessage, Assert.ThrowsAny<HelperException>(() => ClosingDay.Read(db, Synthetic.Scope, ClosingFake.Day,
+            new[] { X("ptVisit", new[] { "AA222" }, Enumerable.Range(0, 21).Select(i => Drop("X" + i, "A1")).ToArray()) })).Code);
+        Assert.Empty(db.Calls);
     }
 
-    [Fact(DisplayName = "AC-3709.2 exclude가 있어도 문장·매개변수는 그대로(주사1회환자 InjectionFirstSql 포함)이고 exclude 글자는 어느 문장·매개변수에도 없다")]
+    [Fact(DisplayName = "AC-3709.2 규칙이 있어도 문장·매개변수는 그대로(주사1회환자 InjectionFirstSql 포함)이고 규칙 글자는 어느 문장·매개변수에도 없다")]
     public void ExcludeAddsNoSql()
     {
         var plain = ExcludeDay();
         plain.Read(G("carm", "CARM1"), G("injection", "KK090"));
         var excluded = ExcludeDay();
-        excluded.Read(X("carm", new[] { "CARM1" }, new[] { "QZ1", "KK090" }), X("injection", new[] { "KK090" }, new[] { "QZ1" }));
+        excluded.Read(
+            X("carm", new[] { "CARM1" }, new[] { Drop("QZ1", "QW1"), DropAll("CARM1", "KK090", "QW1") }),
+            X("injection", new[] { "KK090" }, new[] { Drop("QZ1", "QW1") }));
 
         string Calls(DayRig rig) => string.Join("\n", rig.Db.Calls.Select(call =>
             call.Sql.Length + ":" + string.Join(",", call.Args.OrderBy(a => a.Key, StringComparer.Ordinal).Select(a => a.Key + "=" + a.Value))));
@@ -528,7 +700,9 @@ public class ClosingDayTests
         foreach (var call in excluded.Db.Calls)
         {
             Assert.DoesNotContain("QZ1", call.Sql, StringComparison.Ordinal);
+            Assert.DoesNotContain("QW1", call.Sql, StringComparison.Ordinal);
             Assert.All(call.Args.Values, value => Assert.NotEqual("QZ1", value as string));
+            Assert.All(call.Args.Values, value => Assert.NotEqual("QW1", value as string));
         }
     }
 

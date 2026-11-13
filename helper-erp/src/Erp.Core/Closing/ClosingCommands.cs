@@ -88,7 +88,7 @@ public static class ClosingCommands
 
     /// <summary>
     /// groups 칸을 [{key, codes, amountPrefixes?, amountCodes?, exclude?}] 목록으로 푼다. 모양이 틀리면 E-HELPER-BAD-MESSAGE.
-    /// 매출 규칙 두 칸(TASK-15)·읽지 않을 처방 exclude(erp-closing-range REQ-3709)는 없으면 null로 두고, 대문자로 바꾸기·개수·꼴 검사는 ClosingDay.Read가 DB 전에 한다.
+    /// 매출 규칙 두 칸(TASK-15)·읽지 않을 처방 규칙 exclude(erp-closing-range REQ-3709)는 없으면 null로 두고, 대문자로 바꾸기·개수·꼴 검사는 ClosingDay.Read가 DB 전에 한다.
     /// </summary>
     private static IReadOnlyList<ClosingGroup> Groups(Request request)
     {
@@ -105,10 +105,37 @@ public static class ClosingCommands
             var codes = Strings(request, codesValue);
             var prefixes = item.TryGetProperty("amountPrefixes", out var prefixesValue) ? Strings(request, prefixesValue) : null;
             var amountCodes = item.TryGetProperty("amountCodes", out var amountValue) ? Strings(request, amountValue) : null;
-            var exclude = item.TryGetProperty("exclude", out var excludeValue) ? Strings(request, excludeValue) : null;
+            var exclude = item.TryGetProperty("exclude", out var excludeValue) ? Rules(request, excludeValue) : null;
             groups.Add(new ClosingGroup(key, codes, prefixes, amountCodes, exclude));
         }
         return groups;
+    }
+
+    /// <summary>
+    /// exclude 칸을 [{code, with, all?}] 규칙 목록으로 푼다(AC-3709.2). 배열이 아니거나 규칙이 객체가 아니거나 code가 글자가 아니거나
+    /// with가 글자 배열이 아니거나 all이 참/거짓이 아니면 E-HELPER-BAD-MESSAGE. all이 없으면 거짓.
+    /// </summary>
+    private static List<ClosingExcludeRule> Rules(Request request, JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.Array) throw Bad(request);
+        var rules = new List<ClosingExcludeRule>();
+        foreach (var item in value.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object
+                || !item.TryGetProperty("code", out var codeValue) || !TryGetString(codeValue, out var code)
+                || !item.TryGetProperty("with", out var withValue))
+            {
+                throw Bad(request);
+            }
+            var all = false;
+            if (item.TryGetProperty("all", out var allValue))
+            {
+                if (allValue.ValueKind == JsonValueKind.True) all = true;
+                else if (allValue.ValueKind != JsonValueKind.False) throw Bad(request);
+            }
+            rules.Add(new ClosingExcludeRule(code, Strings(request, withValue), all));
+        }
+        return rules;
     }
 
     /// <summary>글자 배열 하나. 배열이 아니거나 글자가 아닌 칸이 있으면 E-HELPER-BAD-MESSAGE.</summary>

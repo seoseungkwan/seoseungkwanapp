@@ -13,13 +13,13 @@ namespace Erp.Core.Closing;
 /// <summary>
 /// closing.day args의 묶음 하나(design.md 2절): key는 GroupKeys 가운데 하나, codes는 1~20개.
 /// 매출 규칙 두 칸(TASK-15)은 보내지 않았으면 null: amountPrefixes 앞글자 0~5개 · amountCodes 더 셀 코드 0~20개.
-/// 읽지 않을 처방 exclude(erp-closing-range REQ-3709, design.md 11절)도 보내지 않았으면 null: 코드 0~20개.
+/// 읽지 않을 처방 exclude(erp-closing-range REQ-3709, design.md 11절)도 보내지 않았으면 null: 규칙(ClosingExcludeRule) 0~20개.
 /// </summary>
 public sealed class ClosingGroup
 {
     public ClosingGroup(
         string key, IReadOnlyList<string> codes, IReadOnlyList<string>? amountPrefixes = null, IReadOnlyList<string>? amountCodes = null,
-        IReadOnlyList<string>? exclude = null)
+        IReadOnlyList<ClosingExcludeRule>? exclude = null)
     {
         Key = key;
         Codes = codes;
@@ -36,7 +36,27 @@ public sealed class ClosingGroup
 
     public IReadOnlyList<string>? AmountCodes { get; }
 
-    public IReadOnlyList<string>? Exclude { get; }
+    public IReadOnlyList<ClosingExcludeRule>? Exclude { get; }
+}
+
+/// <summary>
+/// 묶음 exclude 규칙 하나(erp-closing-range REQ-3709, design.md 11절): 같이 있을 처방 With(코드 1~5개)가 그 진료의 원래 처방에 있으면
+/// (All이면 모두, 아니면 하나라도) 이 처방 Code를 그 묶음에서 없는 것으로 본다. JSON all이 없으면 거짓.
+/// </summary>
+public sealed class ClosingExcludeRule
+{
+    public ClosingExcludeRule(string code, IReadOnlyList<string> with, bool all = false)
+    {
+        Code = code;
+        With = with;
+        All = all;
+    }
+
+    public string Code { get; }
+
+    public IReadOnlyList<string> With { get; }
+
+    public bool All { get; }
 }
 
 /// <summary>closing.day 답(design.md 2절 ClosingDay). 칸 이름은 extension-erp/src/types.ts와 같다.</summary>
@@ -281,8 +301,9 @@ public static class ClosingDay
     public const int MaxPrefixLength = 10;
     public const int MaxAmountCodes = 20;
 
-    /// <summary>읽지 않을 처방(exclude) 최대 수(commands.json closing.day exclude max, erp-closing-range design.md 11절).</summary>
+    /// <summary>읽지 않을 처방(exclude) 규칙 최대 수·규칙 하나의 같이 있을 처방(with) 최대 수(commands.json closing.day exclude max·with max, erp-closing-range design.md 11절).</summary>
     public const int MaxExclude = 20;
+    public const int MaxWith = 5;
 
     public const string CarmKey = "carm";
     public const string SonoKey = "sono";
@@ -347,7 +368,7 @@ public static class ClosingDay
     /// 19개 넘음·모르는 key·같은 key 두 번·코드 0개나 21개 이상은 E-HELPER-BAD-MESSAGE. 코드는 앞뒤 공백을 떼고 대문자로(AC-3603.1) 바꾼 뒤
     /// 명령 표와 같은 꼴(1~20자, 가운데 빈칸 하나씩 — 'PROLO C'는 됨, 빈칸 두 칸·탭은 E-HELPER-BAD-MESSAGE, AC-3603.5)이어야 한다.
     /// 앞뒤 공백이 남은 코드는 명령 표 pattern이 먼저 막는다. 매출 규칙 두 칸(TASK-15, AC-3604.6): 앞글자 6개·더 셀 코드 21개·빈 글자·
-    /// 앞글자 빈칸·11자·더 셀 코드 꼴 틀림은 E-HELPER-BAD-MESSAGE, 둘 다 대문자로. 읽지 않을 처방 exclude(AC-3709.2)도 코드 꼴 0~20개만, 대문자로.
+    /// 앞글자 빈칸·11자·더 셀 코드 꼴 틀림은 E-HELPER-BAD-MESSAGE, 둘 다 대문자로. 읽지 않을 처방 exclude 규칙(AC-3709.2)은 CheckRules.
     /// </summary>
     private static List<Wanted> CheckGroups(IReadOnlyList<ClosingGroup>? groups)
     {
@@ -361,10 +382,29 @@ public static class ClosingDay
             var codes = CheckList(group.Codes, MaxCodesPerGroup, IsCode);
             var prefixes = CheckList(group.AmountPrefixes, MaxAmountPrefixes, IsPrefix);
             var amountCodes = CheckList(group.AmountCodes, MaxAmountCodes, IsCode);
-            var exclude = CheckList(group.Exclude, MaxExclude, IsCode);
+            var exclude = CheckRules(group.Key, group.Exclude);
             wanted.Add(new Wanted(group.Key, codes, prefixes, amountCodes, exclude));
         }
         return wanted;
+    }
+
+    /// <summary>
+    /// 읽지 않을 처방 규칙(AC-3709.2): 21개 넘음·null 규칙·code 꼴 틀림·with 없음·0개·6개 이상·with 꼴 틀림은 E-HELPER-BAD-MESSAGE.
+    /// code·with는 앞뒤 공백 뗀 대문자로(with는 겹침 없이), 없으면(null) 빈 목록. 주사1회환자·물리치료내원 묶음은 꼴만 보고 규칙은 쓰지 않는다(design.md 11절).
+    /// </summary>
+    private static List<ExcludeRule> CheckRules(string key, IReadOnlyList<ClosingExcludeRule>? raw)
+    {
+        var rules = new List<ExcludeRule>();
+        if (raw == null) return rules;
+        if (raw.Count > MaxExclude) throw BadMessage();
+        foreach (var rule in raw)
+        {
+            if (rule == null || rule.With == null || rule.With.Count < 1) throw BadMessage();
+            var code = NormalCode(rule.Code);
+            if (!IsCode(code)) throw BadMessage();
+            rules.Add(new ExcludeRule(code, CheckList(rule.With, MaxWith, IsCode), rule.All));
+        }
+        return key == InjectionKey || key == PtVisitKey ? new List<ExcludeRule>() : rules;
     }
 
     /// <summary>글자 목록 하나: max개 넘음·꼴 틀림은 E-HELPER-BAD-MESSAGE, 앞뒤 공백 뗀 대문자로 겹침 없이(받은 차례). 없으면(null) 빈 목록.</summary>
@@ -542,11 +582,12 @@ public static class ClosingDay
     // ---- 묶음(AC-3603.3·AC-3604.3) ------------------------------------------------------------------
 
     /// <summary>
-    /// 묶음에 드는 진료(Visit.Has: 묶음 코드가 하나라도 있고 exclude 코드는 하나도 없음)가 하나라도 있는 사람: 서로 다른 사람 수·3분류(재진 = 신환·90일초진이 아닌 모두),
+    /// 묶음에 드는 진료(Visit.Has: 그 묶음에서 쓸 처방에 묶음 코드가 하나라도 있음)가 하나라도 있는 사람: 서로 다른 사람 수·3분류(재진 = 신환·90일초진이 아닌 모두),
     /// total = 그 진료들의 묶음 코드 처방 줄 금액(DayCodesSql 금액 = 원내 줄 일수 × 수량 × 단가) 합, 묶음마다 원 미만 버림
     /// (TASK-14, 기본값 (사). 진찰료·묶음 밖 코드 줄·진료 총진료비는 더하지 않고, 한 코드가 두 묶음에 들면 묶음마다 더한다).
     /// 매출 규칙이 있으면(TASK-15, AC-3604.6) total = 그 진료들 안의 규칙에 맞는 줄 금액 합(RuleAmount, 묶음마다 원 미만 버림).
-    /// exclude 코드가 있는 진료는 사람 수·total·규칙 금액 모두에서 빠진다(AC-3709.2). exclude가 없으면 지금(0.2.0)과 같다.
+    /// 읽지 않을 처방 규칙(AC-3709.2)이 있으면 진료마다 맞는 규칙의 code를 없는 것으로 본 '쓸 처방'(Visit.CodesFor)으로 드는지·금액·규칙 금액을 센다.
+    /// 규칙이 없으면 지금(0.2.0)과 같다.
     /// 수납 줄이 없는 진료도 처방 금액은 그대로이고, 그 사람들의 그런 진료 수를 unpaidVisits에 센다.
     /// </summary>
     private static ClosingGroupCount CountGroup(List<Person> people, Wanted group)
@@ -567,29 +608,29 @@ public static class ClosingDay
         return count;
     }
 
-    /// <summary>진료 하나의 묶음 코드 줄 금액 합(TASK-14).</summary>
+    /// <summary>진료 하나의 묶음 코드 줄 금액 합(TASK-14). 그 묶음에서 쓸 처방만 본다(AC-3709.2).</summary>
     private static decimal CodeAmount(Visit visit, Wanted group)
     {
         var amount = 0m;
-        foreach (var pair in visit.Codes.Where(pair => group.Codes.Contains(pair.Key))) amount = ClosingRead.Add(amount, pair.Value.Amount);
+        foreach (var pair in visit.CodesFor(group).Where(pair => group.Codes.Contains(pair.Key))) amount = ClosingRead.Add(amount, pair.Value.Amount);
         return amount;
     }
 
     /// <summary>
     /// 진료 하나의 매출 규칙 금액(TASK-15, 기본값 (자)): 그 진료 처방 줄 가운데 코드가 앞글자 하나로 시작하고 바로 다음 글자가 숫자 0~9이거나
     /// (LA → LA358 맞음, LAYLA·'LA' 하나·LAX1 안 맞음) 더 셀 코드인 줄의 금액 합. 코드마다 한 번만 더하므로 두 규칙에 맞는 줄도 한 번이다.
-    /// 견주기는 C#에서만 한다(새 SQL 문장·매개변수 없음, 규칙 글자는 SQL에 들어가지 않는다).
+    /// 견주기는 C#에서만 한다(새 SQL 문장·매개변수 없음, 규칙 글자는 SQL에 들어가지 않는다). 그 묶음에서 쓸 처방만 본다(AC-3709.2).
     /// </summary>
     private static decimal RuleAmount(Visit visit, Wanted group)
     {
         var amount = 0m;
-        foreach (var pair in visit.Codes.Where(pair => group.Counts(pair.Key))) amount = ClosingRead.Add(amount, pair.Value.Amount);
+        foreach (var pair in visit.CodesFor(group).Where(pair => group.Counts(pair.Key))) amount = ClosingRead.Add(amount, pair.Value.Amount);
         return amount;
     }
 
     /// <summary>
-    /// 씨암·SONO가 함께 있는 진료(TASK-15, AC-3604.7): carm·sono 둘 다 매출 규칙이 있을 때만 두 묶음에 함께 드는(Visit.Has, exclude 진료는 빠짐, AC-3709.2)
-    /// 진료 수와 그 진료들만의 각 규칙 금액(원 미만 버림). 아니면 null. 진료번호 같은 줄 값은 싣지 않는다.
+    /// 씨암·SONO가 함께 있는 진료(TASK-15, AC-3604.7): carm·sono 둘 다 매출 규칙이 있을 때만 두 묶음에 함께 드는(Visit.Has, 묶음마다 자기 쓸 처방으로, AC-3709.2)
+    /// 진료 수와 그 진료들만의 각 규칙 금액(묶음마다 자기 쓸 처방으로, 원 미만 버림). 아니면 null. 진료번호 같은 줄 값은 싣지 않는다.
     /// </summary>
     private static ClosingOverlap? Overlap(List<Visit> visits, List<Wanted> wanted)
     {
@@ -707,17 +748,17 @@ public static class ClosingDay
 
     private static HelperException BadMessage() => new HelperException(ErrorCodes.BadMessage);
 
-    /// <summary>검사를 지난 묶음: key·코드(대문자, 겹침 없음, args 차례)·매출 규칙(앞글자·더 셀 코드, 대문자)·읽지 않을 처방(exclude, 대문자).</summary>
+    /// <summary>검사를 지난 묶음: key·코드(대문자, 겹침 없음, args 차례)·매출 규칙(앞글자·더 셀 코드, 대문자)·읽지 않을 처방 규칙(exclude, 대문자).</summary>
     private sealed class Wanted
     {
-        public Wanted(string key, List<string> ordered, List<string> prefixes, List<string> amountCodes, List<string> exclude)
+        public Wanted(string key, List<string> ordered, List<string> prefixes, List<string> amountCodes, List<ExcludeRule> rules)
         {
             Key = key;
             Ordered = ordered;
             Codes = new HashSet<string>(ordered, StringComparer.Ordinal);
             Prefixes = prefixes;
             AmountCodes = new HashSet<string>(amountCodes, StringComparer.Ordinal);
-            Exclude = new HashSet<string>(exclude, StringComparer.Ordinal);
+            Rules = rules;
         }
 
         public string Key { get; }
@@ -730,8 +771,20 @@ public static class ClosingDay
 
         public HashSet<string> AmountCodes { get; }
 
-        /// <summary>이 코드가 하나라도 있는 진료는 이 묶음에 들지 않는다(AC-3709.2). 비면 지금과 같다.</summary>
-        public HashSet<string> Exclude { get; }
+        /// <summary>읽지 않을 처방 규칙(AC-3709.2). 비면 지금과 같다(주사1회환자·물리치료내원 묶음은 늘 빈 목록).</summary>
+        public List<ExcludeRule> Rules { get; }
+
+        /// <summary>이 진료(원래 처방)에서 이 묶음이 없는 것으로 볼 코드: 맞는 규칙의 code. 맞는 규칙이 없으면 null.</summary>
+        public HashSet<string>? Dropped(Dictionary<string, CodeLines> codes)
+        {
+            HashSet<string>? dropped = null;
+            foreach (var rule in Rules.Where(rule => rule.Matches(codes)))
+            {
+                dropped ??= new HashSet<string>(StringComparer.Ordinal);
+                dropped.Add(rule.Code);
+            }
+            return dropped;
+        }
 
         /// <summary>앞글자·더 셀 코드가 하나라도 있으면 매출 규칙으로 센다(둘 다 비면 TASK-14 그대로).</summary>
         public bool HasRule => Prefixes.Count > 0 || AmountCodes.Count > 0;
@@ -742,6 +795,28 @@ public static class ClosingDay
             || Prefixes.Any(prefix => code.Length > prefix.Length
                 && code.StartsWith(prefix, StringComparison.Ordinal)
                 && code[prefix.Length] >= '0' && code[prefix.Length] <= '9');
+    }
+
+    /// <summary>
+    /// 검사를 지난 읽지 않을 처방 규칙 하나(AC-3709.2): code·with는 대문자(with는 겹침 없음). 맞나는 진료의 원래 처방으로 본다
+    /// (다른 규칙으로 빠진 처방도 with로는 있다): All이면 with가 모두, 아니면 하나라도 있으면 맞다.
+    /// </summary>
+    private sealed class ExcludeRule
+    {
+        public ExcludeRule(string code, List<string> with, bool all)
+        {
+            Code = code;
+            With = with;
+            All = all;
+        }
+
+        public string Code { get; }
+
+        public List<string> With { get; }
+
+        public bool All { get; }
+
+        public bool Matches(Dictionary<string, CodeLines> codes) => All ? With.All(codes.ContainsKey) : With.Any(codes.ContainsKey);
     }
 
     /// <summary>진료 하나의 코드 하나: 처방 줄 수·금액 합(도우미 안에서만 쓴다).</summary>
@@ -785,8 +860,18 @@ public static class ClosingDay
         /// <summary>이 진료의 코드 → 줄 수·금액(처방이 없으면 빈 표). 매출 규칙은 진료 단위로 본다(TASK-15).</summary>
         public Dictionary<string, CodeLines> Codes { get; set; } = new Dictionary<string, CodeLines>(StringComparer.Ordinal);
 
-        /// <summary>이 진료가 묶음에 드나: 묶음 코드가 하나라도 있고 exclude 코드는 하나도 없음(AC-3709.2). 사람 수·total·규칙 금액·overlap이 모두 이것을 쓴다.</summary>
-        public bool Has(Wanted group) => Codes.Keys.Any(group.Codes.Contains) && !Codes.Keys.Any(group.Exclude.Contains);
+        /// <summary>
+        /// 이 묶음에서 쓸 처방(AC-3709.2): 원래 처방에서 맞는 규칙의 code를 뺀 것. 맞는 규칙이 없으면 원래 처방 그대로(같은 차례).
+        /// 묶음에 드나·total·규칙 금액·overlap이 모두 이것을 쓴다.
+        /// </summary>
+        public IEnumerable<KeyValuePair<string, CodeLines>> CodesFor(Wanted group)
+        {
+            var dropped = group.Dropped(Codes);
+            return dropped == null ? Codes : Codes.Where(pair => !dropped.Contains(pair.Key));
+        }
+
+        /// <summary>이 진료가 묶음에 드나: 그 묶음에서 쓸 처방에 묶음 코드가 하나라도 있음. 사람 수·total·규칙 금액·overlap이 모두 이것을 쓴다.</summary>
+        public bool Has(Wanted group) => CodesFor(group).Any(pair => group.Codes.Contains(pair.Key));
     }
 
     /// <summary>그날 한 사람(도우미 안에서만 쓴다).</summary>

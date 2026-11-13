@@ -6,6 +6,7 @@
 //   기존 도우미·웹에 ERP 흔적 없음(AC-3601.6. git diff 자체는 끝 검토가 본다)
 // - spec erp-closing-range TASK-10(REQ-3708·3709): 새 명령 closing.findCodes(AC-3708.1)·묶음 exclude(AC-3709.2)의 명령 표·문장 글자,
 //   C# 시험(Erp* 시험 + Closing 시험. Closing 시험 감싸개 erp-closing.dotnet.test.ts는 TASK-10 범위 밖이라 여기서 Closing 시험을 한 번 더 돌린다)
+// - TASK-14(AC-3709.2): 묶음 exclude가 코드 배열에서 규칙 { code, with 1~5개, all? } 0~20개로 바뀜(design.md 11절)
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -123,7 +124,7 @@ describe('C# Erp.Core.Tests (ErpCommandTable·ErpProtocol·ErpReadGuard·ErpLogL
     expectAc('AC-3708.1')
   })
 
-  it('AC-3709.2 ERP 명령 표 closing.day 묶음 exclude(선택, 코드 꼴 0~20개): 21개·코드 꼴 아님은 E-HELPER-BAD-MESSAGE', () => {
+  it('AC-3709.2 ERP 명령 표 closing.day 묶음 exclude(선택, 규칙 0~20개 { code, with 1~5개, all? }): 21개·with 0개·6개·코드 꼴 아님·all 참/거짓 아님·모르는 칸은 E-HELPER-BAD-MESSAGE', () => {
     expectAc('AC-3709.2')
   })
 })
@@ -135,10 +136,12 @@ describe('AC-3603.5·AC-3604.6 helper-erp/commands.json 코드 꼴·매출 규�
     return table.commands['closing.day'].args.groups.items?.fields as Record<string, Spec>
   }
 
-  it('AC-3603.5 AC-3709.2: codes·amountCodes·exclude 항목은 ^\\S(?: ?\\S)*$ 1~20자, amountPrefixes 항목은 ^\\S{1,10}$ 1~10자다', () => {
+  it('AC-3603.5 AC-3709.2: codes·amountCodes·exclude 규칙 code·with 항목은 ^\\S(?: ?\\S)*$ 1~20자, amountPrefixes 항목은 ^\\S{1,10}$ 1~10자다', () => {
     const fields = groupFields()
     expect(Object.keys(fields)).toEqual(['key', 'codes', 'amountPrefixes', 'amountCodes', 'exclude'])
-    expect(fields.exclude.items, 'exclude').toEqual(fields.codes.items)
+    const rule = fields.exclude.items?.fields as Record<string, Spec>
+    expect(rule.code, 'exclude code').toEqual(fields.codes.items)
+    expect(rule.with.items, 'exclude with').toEqual(fields.codes.items)
     for (const name of ['codes', 'amountCodes']) {
       expect(fields[name].items, name).toEqual({ type: 'string', min: 1, max: 20, pattern: '^\\S(?: ?\\S)*$' })
     }
@@ -162,12 +165,22 @@ const FIND_CODES = {
   patient: false,
   args: { text: { type: 'string', min: 2, max: 20, pattern: '^\\S(?:.*\\S)?$' } },
 }
+/** codes 항목과 같은 코드 꼴 */
+const CODE = { type: 'string', min: 1, max: 20, pattern: '^\\S(?: ?\\S)*$' }
+/** 11절(TASK-14): 규칙 0~20개, 규칙마다 code 하나 · with 코드 1~5개 · 선택 all 참/거짓(표가 아는 object·array·bool 꼴) */
 const EXCLUDE = {
   type: 'array',
   optional: true,
   min: 0,
   max: 20,
-  items: { type: 'string', min: 1, max: 20, pattern: '^\\S(?: ?\\S)*$' },
+  items: {
+    type: 'object',
+    fields: {
+      code: CODE,
+      with: { type: 'array', min: 1, max: 5, items: CODE },
+      all: { type: 'bool', optional: true },
+    },
+  },
 }
 
 /** erp-closing-fill design.md 2절 표 + erp-closing-range 10절·11절 */
@@ -219,7 +232,7 @@ describe('TASK-10 closing.findCodes·묶음 exclude (erp-closing-range design.md
     expectAc('AC-3708.1', closingRun)
   })
 
-  it('AC-3709.2 (C# Closing 시험) exclude 코드가 있는 진료는 그 묶음 사람 수·total·규칙 금액·overlap에서 빠지고 다른 묶음은 그대로, 빈 exclude는 지금 답과 같음, 21개·코드 꼴 아님 거절', () => {
+  it('AC-3709.2 (C# Closing 시험) 진료마다 맞는 규칙(all이면 with 모두, 아니면 하나라도)의 code를 그 묶음에서 없는 것으로 봄: 사람 수·total·규칙 금액·overlap, with는 원래 처방으로, 다른 묶음·injection·ptVisit은 그대로, 빈 exclude는 지금 답과 같음, 꼴 거절', () => {
     expectAc('AC-3709.2', closingRun)
   })
 
@@ -231,7 +244,7 @@ describe('TASK-10 closing.findCodes·묶음 exclude (erp-closing-range design.md
     for (const bad of [' CA', 'CA ', '\tCA', 'CA\n', '  ']) expect(text.test(bad), JSON.stringify(bad)).toBe(false)
   })
 
-  it('AC-3709.2: commands.json closing.day 묶음 exclude = 선택 칸, 코드(codes 항목과 같은 꼴) 0~20개', () => {
+  it('AC-3709.2: commands.json closing.day 묶음 exclude = 선택 칸, 규칙 0~20개 { code: 코드 꼴, with: 코드 꼴 1~5개, all?: bool }', () => {
     const table = readJson(path.join(ERP, 'commands.json')) as {
       commands: Record<string, { args: Record<string, { items?: { fields?: Record<string, unknown> } }> }>
     }

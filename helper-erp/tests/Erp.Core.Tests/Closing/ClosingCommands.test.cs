@@ -510,45 +510,66 @@ public class ClosingCommandsTests
         Assert.Equal(("closing.findCodes", (string?)BitErrors.ReadFailed), Assert.Single(outcome.Log));
     }
 
-    // ---- closing.day 묶음 exclude(AC-3709.2, erp-closing-range design.md 11절) -----------------------------------
+    // ---- closing.day 묶음 exclude 규칙(AC-3709.2, erp-closing-range design.md 11절) ------------------------------
 
-    /// <summary>매출 규칙·exclude 칸이 있는 묶음 JSON. null이면 그 칸을 넣지 않는다.</summary>
-    private static string ExcludeG(string key, string[] codes, string[]? exclude, string[]? prefixes = null, string[]? amountCodes = null) =>
+    /// <summary>규칙 하나 JSON { code, with, all? }. all이 null이면 그 칸을 넣지 않는다.</summary>
+    private static string ExRule(string code, string[] with, bool? all = null) =>
+        "{\"code\":" + J(code) + ",\"with\":" + Arr(with) + (all == null ? "" : ",\"all\":" + (all.Value ? "true" : "false")) + "}";
+
+    /// <summary>매출 규칙·exclude 칸이 있는 묶음 JSON(rules는 규칙 JSON들). null이면 그 칸을 넣지 않는다.</summary>
+    private static string ExcludeG(string key, string[] codes, string[]? rules, string[]? prefixes = null, string[]? amountCodes = null) =>
         "{\"key\":" + J(key) + ",\"codes\":" + Arr(codes)
         + (prefixes == null ? "" : ",\"amountPrefixes\":" + Arr(prefixes))
         + (amountCodes == null ? "" : ",\"amountCodes\":" + Arr(amountCodes))
-        + (exclude == null ? "" : ",\"exclude\":" + Arr(exclude)) + "}";
+        + (rules == null ? "" : ",\"exclude\":[" + string.Join(",", rules) + "]") + "}";
 
-    [Fact(DisplayName = "AC-3709.2 closing.day 묶음 exclude(소문자 → 대문자)를 읽어 그 진료를 그 묶음 사람 수·total·overlap에서 빼고, 다른 묶음은 그대로")]
+    [Fact(DisplayName = "AC-3709.2 closing.day 묶음 exclude 규칙(소문자 → 대문자, all 참·거짓·없음)을 읽어 묶음마다 맞는 규칙의 처방만 빼고 센다(사람 수·total·overlap), 다른 묶음은 그대로")]
     public void ExcludeIsReadAndApplied()
     {
-        using var rig = RuleDay();
-        var args = DayArgs(ClosingFake.DayText,
-            ExcludeG("carm", new[] { "CARM1" }, new[] { "kk090" }, new[] { "LA" }),
-            ExcludeG("sono", new[] { "SONO1" }, null, new[] { "LA" }, new[] { "KK090" }));
-        var data = One(Handle(rig, "closing.day", args), "result").GetProperty("data");
+        JsonElement Data(string sonoRule)
+        {
+            using var rig = RuleDay();
+            var args = DayArgs(ClosingFake.DayText,
+                ExcludeG("carm", new[] { "CARM1" }, new[] { ExRule("la358", new[] { "sono1" }) }, new[] { "LA" }, new[] { "KK090" }),
+                ExcludeG("sono", new[] { "SONO1" }, new[] { sonoRule }, new[] { "LA" }, new[] { "KK090", "PROLO C" }));
+            return One(Handle(rig, "closing.day", args), "result").GetProperty("data");
+        }
 
-        var groups = data.GetProperty("groups").EnumerateArray().ToArray();
-        Assert.Equal(0, groups[0].GetProperty("patients").GetInt64());
-        Assert.Equal(0, groups[0].GetProperty("total").GetInt64());
+        // 씨암: V001에 SONO1이 있어 LA358을 안 셈 → KK090만. SONO: 'PROLO C' ← CARM1 · ZZ1 모두 있을 때만 → ZZ1이 없어 그대로
+        var kept = Data(ExRule("PROLO C", new[] { "CARM1", "ZZ1" }, all: true));
+        var groups = kept.GetProperty("groups").EnumerateArray().ToArray();
+        Assert.Equal(1, groups[0].GetProperty("patients").GetInt64());
+        Assert.Equal(32610, groups[0].GetProperty("total").GetInt64());
         Assert.Equal(2, groups[1].GetProperty("patients").GetInt64());
-        Assert.Equal(213800 + 32610 + 31670, groups[1].GetProperty("total").GetInt64());
-        var overlap = data.GetProperty("overlap");
-        Assert.Equal(0, overlap.GetProperty("visits").GetInt64());
-        Assert.Equal(0, overlap.GetProperty("carm").GetInt64());
-        Assert.Equal(0, overlap.GetProperty("sono").GetInt64());
+        Assert.Equal(213800 + 32610 + 50000 + 31670, groups[1].GetProperty("total").GetInt64());
+        var overlap = kept.GetProperty("overlap");
+        Assert.Equal(1, overlap.GetProperty("visits").GetInt64());
+        Assert.Equal(32610, overlap.GetProperty("carm").GetInt64());
+        Assert.Equal(213800 + 32610 + 50000, overlap.GetProperty("sono").GetInt64());
+
+        // 하나라도(all 거짓·없음) → CARM1이 있어 'PROLO C'를 SONO에서 안 셈, 씨암은 그대로
+        foreach (var rule in new[] { ExRule("PROLO C", new[] { "CARM1", "ZZ1" }, all: false), ExRule("prolo c", new[] { "ZZ1", "carm1" }) })
+        {
+            var dropped = Data(rule);
+            var both = dropped.GetProperty("groups").EnumerateArray().ToArray();
+            Assert.Equal(32610, both[0].GetProperty("total").GetInt64());
+            Assert.Equal(213800 + 32610 + 31670, both[1].GetProperty("total").GetInt64());
+            Assert.Equal(213800 + 32610, dropped.GetProperty("overlap").GetProperty("sono").GetInt64());
+            Assert.Equal(32610, dropped.GetProperty("overlap").GetProperty("carm").GetInt64());
+        }
     }
 
     [Fact(DisplayName = "AC-3709.2 exclude가 빈 목록이면 그 칸이 없는 것과 같은 답이다")]
     public void EmptyExcludeSameAsNone()
     {
-        string Answer(string[]? exclude)
+        string Answer(string[]? rules)
         {
             using var rig = RuleDay();
             var args = DayArgs(ClosingFake.DayText,
-                ExcludeG("carm", new[] { "CARM1" }, exclude, new[] { "LA" }),
-                ExcludeG("sono", new[] { "SONO1" }, exclude, new[] { "LA" }, new[] { "KK090" }),
-                ExcludeG("pt", new[] { "MM010" }, exclude));
+                ExcludeG("carm", new[] { "CARM1" }, rules, new[] { "LA" }),
+                ExcludeG("sono", new[] { "SONO1" }, rules, new[] { "LA" }, new[] { "KK090" }),
+                ExcludeG("pt", new[] { "MM010" }, rules),
+                ExcludeG("ptVisit", new[] { "AA222" }, rules));
             return One(Handle(rig, "closing.day", args), "result").GetProperty("data").GetRawText();
         }
 
@@ -558,15 +579,22 @@ public class ClosingCommandsTests
     public static IEnumerable<object[]> TableRefusesExclude()
     {
         var carm = new[] { "CARM1" };
-        yield return new object[] { "exclude 21개", DayArgs(ClosingFake.DayText, ExcludeG("carm", carm, Enumerable.Range(0, 21).Select(i => "X" + i).ToArray())) };
-        yield return new object[] { "빈 exclude 코드", DayArgs(ClosingFake.DayText, ExcludeG("carm", carm, new[] { "" })) };
-        yield return new object[] { "exclude 빈칸 두 칸", DayArgs(ClosingFake.DayText, ExcludeG("carm", carm, new[] { "KK  090" })) };
-        yield return new object[] { "exclude 탭", DayArgs(ClosingFake.DayText, ExcludeG("carm", carm, new[] { "KK\t090" })) };
-        yield return new object[] { "exclude 21자", DayArgs(ClosingFake.DayText, ExcludeG("carm", carm, new[] { new string('K', 21) })) };
-        yield return new object[] { "exclude가 배열 아님", DayArgs(ClosingFake.DayText, "{\"key\":\"carm\",\"codes\":[\"CARM1\"],\"exclude\":\"KK090\"}") };
+        string Rules(params string[] rules) => DayArgs(ClosingFake.DayText, ExcludeG("carm", carm, rules));
+        string RawExclude(string exclude) => DayArgs(ClosingFake.DayText, "{\"key\":\"carm\",\"codes\":[\"CARM1\"],\"exclude\":" + exclude + "}");
+        yield return new object[] { "규칙 21개", Rules(Enumerable.Range(0, 21).Select(i => ExRule("X" + i, new[] { "MM010" })).ToArray()) };
+        yield return new object[] { "with 0개", Rules(ExRule("LA357", new string[0])) };
+        yield return new object[] { "with 6개", Rules(ExRule("LA357", new[] { "A1", "A2", "A3", "A4", "A5", "A6" })) };
+        yield return new object[] { "code 빈 글자", Rules(ExRule("", new[] { "LA248" })) };
+        yield return new object[] { "code 빈칸 두 칸", Rules(ExRule("LA  357", new[] { "LA248" })) };
+        yield return new object[] { "with 탭", Rules(ExRule("LA357", new[] { "KK\t090" })) };
+        yield return new object[] { "with 21자", Rules(ExRule("LA357", new[] { new string('K', 21) })) };
+        yield return new object[] { "all 글자", RawExclude("[{\"code\":\"LA357\",\"with\":[\"LA248\"],\"all\":\"true\"}]") };
+        yield return new object[] { "모르는 칸", RawExclude("[{\"code\":\"LA357\",\"with\":[\"LA248\"],\"chart\":\"" + Fake.Chart + "\"}]") };
+        yield return new object[] { "코드 배열 꼴(TASK-10)", RawExclude("[\"KK090\"]") };
+        yield return new object[] { "exclude가 배열 아님", RawExclude("\"KK090\"") };
     }
 
-    [Theory(DisplayName = "AC-3709.2 exclude가 틀리면(21개·빈 글자·빈칸 두 칸·탭·21자·배열 아님) 명령 표가 E-HELPER-BAD-MESSAGE 하나, 비트를 열지 않음")]
+    [Theory(DisplayName = "AC-3709.2 exclude 규칙이 틀리면(21개·with 0개·6개·코드 꼴 아님·all 참/거짓 아님·모르는 칸·코드 배열 꼴·배열 아님) 명령 표가 E-HELPER-BAD-MESSAGE 하나, 비트를 열지 않음")]
     [MemberData(nameof(TableRefusesExclude))]
     public void TableRefusesBadExclude(string why, string args)
     {

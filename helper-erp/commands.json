@@ -50,7 +50,19 @@
                 "optional": true,
                 "min": 0,
                 "max": 20,
-                "items": { "type": "string", "min": 1, "max": 20, "pattern": "^\\S(?: ?\\S)*$" }
+                "items": {
+                  "type": "object",
+                  "fields": {
+                    "code": { "type": "string", "min": 1, "max": 20, "pattern": "^\\S(?: ?\\S)*$" },
+                    "with": {
+                      "type": "array",
+                      "min": 1,
+                      "max": 5,
+                      "items": { "type": "string", "min": 1, "max": 20, "pattern": "^\\S(?: ?\\S)*$" }
+                    },
+                    "all": { "type": "bool", "optional": true }
+                  }
+                }
               }
             }
           }
