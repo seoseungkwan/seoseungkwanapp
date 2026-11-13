@@ -9,6 +9,8 @@ export const SAVE_TIMEOUT_MS = 30_000
 export const STABLE_MS = 400
 /** 날짜 칸으로 안 바뀌면 이만큼 뒤 둘째 길(history.state + popstate) */
 export const FALLBACK_MS = 1_000
+/** 한 번에 고를 수 있는 날 수(2026-11-13 사용자 "92일(약 3달)까지") */
+export const MAX_DAYS = 92
 
 export type JournalState = { exists: boolean; status: 'draft' | 'confirmed' | null }
 export type LoadResult = 'ok' | 'error' | 'timeout'
@@ -19,6 +21,11 @@ export type Block =
   | { kind: 'noSaveBar' }
   | { kind: 'readOnly' }
   | { kind: 'helper'; code: string }
+  | { kind: 'noSaveButton' }
+  | { kind: 'dateChanged' }
+  | { kind: 'cellsMissing'; count: number }
+  | { kind: 'overlapUnpicked' }
+  | { kind: 'unexpected' }
 export type SkipWhy = 'zero' | 'draft'
 export type FailWhy = 'load' | 'w1Error' | 'w1Timeout' | 'w2Error' | 'w2Timeout'
 

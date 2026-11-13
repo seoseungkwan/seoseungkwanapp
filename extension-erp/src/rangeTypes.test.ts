@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   FALLBACK_MS,
   LOAD_TIMEOUT_MS,
+  MAX_DAYS,
   SAVE_TIMEOUT_MS,
   STABLE_MS,
   type Block,
@@ -36,6 +37,23 @@ describe('rangeTypes', () => {
     const saves: SaveResult[] = ['ok', 'error', 'timeout', 'missing']
     const j: JournalState = { exists: true, status: 'confirmed' }
     expect([loads.length, saves.length, j.status]).toEqual([3, 4, 'confirmed'])
+  })
+
+  it('AC-3701.2 한 번에 고를 수 있는 날은 92일(사용자 "92일(약 3달)까지")', () => {
+    expect(MAX_DAYS).toBe(92)
+  })
+
+  it('AC-3705.2 새로 멈추는 경우 ⑥~⑩: noSaveButton·dateChanged·cellsMissing(count)·overlapUnpicked·unexpected', () => {
+    const more: Block[] = [
+      { kind: 'noSaveButton' },
+      { kind: 'dateChanged' },
+      { kind: 'cellsMissing', count: 3 },
+      { kind: 'overlapUnpicked' },
+      { kind: 'unexpected' },
+    ]
+    expect(more.map((b) => b.kind)).toEqual(['noSaveButton', 'dateChanged', 'cellsMissing', 'overlapUnpicked', 'unexpected'])
+    const missing = more[2]
+    expect(missing.kind === 'cellsMissing' ? missing.count : -1).toBe(3)
   })
 
   it('AC-3703.4 RangeView·RangeAction 모양(시안 예시 숫자)', () => {
