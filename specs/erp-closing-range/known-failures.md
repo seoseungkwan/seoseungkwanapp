@@ -10,3 +10,7 @@
 | `src/components/landing/rules.test.ts` AC-212.4·AC-420.3 | 경로 구분자 `\` |
 
 같은 검사에서 통과: `tsc --noEmit -p .`·`-p extension-erp`, `npm run lint`(오류 0, 경고 2는 이 기능 밖), `npm run build`, Precheck.Core net10.0 1853/1853, Erp.Core net48 396/396, `npm run ext-erp:build`, `extension-erp`·`helper-erp` vitest 913/913.
+
+## Phase 2e 다시 검사 (2026-11-13, HEAD fc29bf1)
+
+전체 `npx vitest run --no-file-parallelism`: 시험 23,988개 가운데 위와 같은 4개만 실패, 6개 건너뜀(파일 392개 가운데 4개 실패). `tsc --noEmit -p .`·`-p extension-erp`, `npm run lint`(오류 0, 경고 2는 이 기능 밖), `npm run build`, `npm run ext-erp:build`, `dotnet build helper-erp/ErpHelper.sln -c Release`(net48, 경고 0) 통과. `git diff a9bc1cb...HEAD -- src helper`는 비어 있음.
