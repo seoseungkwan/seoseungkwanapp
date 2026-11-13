@@ -85,9 +85,18 @@ export type AmountRule = { prefixes: string[]; codes: string[] }
 export type OverlapChoice = 'carm' | 'sono' | 'both'
 
 /**
+ * 읽지 않을 처방 규칙 하나(REQ-3709, design.md 11절): 진료에 with가(all이면 모두, 아니면 하나라도) 있으면
+ * 그 묶음을 셀 때 code를 그 진료에 없는 것으로 본다
+ */
+export type ExcludeRule = { code: string; with: string[]; all: boolean }
+/** 읽지 않을 처방 규칙을 두는 묶음: 건수를 세는 17줄(주사1회환자 injection·물리치료내원 ptVisit은 없음) */
+export const EXCLUDE_KEYS: readonly GroupKey[] = GROUP_KEYS.filter((key) => key !== 'injection' && key !== 'ptVisit')
+
+/**
  * 설정 모양(design.md 4절). picks = 묶음마다 고른 처방 코드, reservations = 예약 줄마다 고른 예약 메모 번호,
  * amounts = 씨암·SONO 매출 규칙(TASK-15), overlap = 지난번 고른 함께 있는 진료 선택(ERP 화면이 saveOverlap으로만 쓴다),
- * defaultsSeen = 마지막 [저장] 때의 처음 값 판(TASK-18, settings.ts DEFAULTS_VERSION. 선택 칸이고 normalize가 늘 채운다 — 없으면 1)
+ * defaultsSeen = 마지막 [저장] 때의 처음 값 판(TASK-18, settings.ts DEFAULTS_VERSION. 선택 칸이고 normalize가 늘 채운다 — 없으면 1),
+ * excludes = 줄마다 읽지 않을 처방 규칙(REQ-3709, EXCLUDE_KEYS 줄만. 규칙이 있는 줄만 두고, 하나도 없으면 칸이 없다)
  */
 export type Settings = {
   v: 1
@@ -95,16 +104,20 @@ export type Settings = {
   etcNames: Record<EtcKey, string>
   reservations: Partial<Record<RsvRow, string[]>>
   amounts: Record<AmountKey, AmountRule>
+  excludes?: Partial<Record<GroupKey, ExcludeRule[]>>
   overlap?: OverlapChoice
   defaultsSeen?: number
 }
 
-/** 새 확장이 ERP 도우미에 보내는 명령 둘(helper-erp/commands.json commands) */
-export type ClosingCommand = 'closing.codes' | 'closing.day'
-/** closing.day args. 매출 규칙 두 칸은 carm·sono에만, 둘 중 하나라도 있을 때만 붙인다 */
+/** 새 확장이 ERP 도우미에 보내는 명령 셋(helper-erp/commands.json commands). closing.findCodes는 REQ-3708(도우미 0.3.0) */
+export type ClosingCommand = 'closing.codes' | 'closing.day' | 'closing.findCodes'
+/**
+ * closing.day args. 매출 규칙 두 칸은 carm·sono에만, 둘 중 하나라도 있을 때만 붙인다.
+ * exclude는 읽지 않을 처방 규칙이 있는 묶음에만 붙인다(REQ-3709 AC-3709.3, 없으면 지금 모양이라 옛 도우미에서도 된다)
+ */
 export type ClosingDayArgs = {
   date: string
-  groups: { key: GroupKey; codes: string[]; amountPrefixes?: string[]; amountCodes?: string[] }[]
+  groups: { key: GroupKey; codes: string[]; amountPrefixes?: string[]; amountCodes?: string[]; exclude?: ExcludeRule[] }[]
 }
 
 // --- 도우미 답(`{ v, id, type: 'result', data }`의 data) ---
@@ -115,6 +128,9 @@ export type ClosingCodes = {
   codes: { code: string; name: string | null; visits: number }[]
   kinds: { kind: string; name: string | null }[]
 }
+
+/** closing.findCodes { text } 답(REQ-3708 AC-3708.1): 비트에 등록된 코드 가운데 맞는 것, 코드 차례로 30개까지 */
+export type FoundCodes = { codes: { code: string; name: string | null }[] }
 
 export type AgeBand = '0' | '10' | '20' | '30' | '40' | '50' | '60' | '70' | '80' | '90'
 

@@ -6,16 +6,21 @@ import {
   MAX_CODES,
   MAX_ETC_NAME,
   MAX_RESULTS,
+  MAX_RULES,
+  MAX_WITH,
   addCode,
   addKind,
   cleanCode,
   cleanEtcName,
+  cleanExcludes,
   conflicts,
   defaults,
   load,
   newDefaultCodes,
   normalize,
   resetCodes,
+  ruleCodes,
+  ruleProblem,
   save,
   saveOverlap,
   search,
@@ -25,8 +30,9 @@ import {
 } from './settings'
 import * as settingsModule from './settings'
 import { ETC_CLASH_ROWS } from './cells'
-import { GROUP_KEYS, SETTINGS_KEY } from './types'
-import type { ClosingCodes, Settings } from './types'
+import { ERRORS, explain } from './errors'
+import { EXCLUDE_KEYS, GROUP_KEYS, SETTINGS_KEY } from './types'
+import type { ClosingCodes, ExcludeRule, Settings } from './types'
 
 /** chrome.storage.local 흉내. 넣은 값은 복사해 둔다(크롬처럼 JSON으로 오간다) */
 function fakeStorage(initial: Record<string, unknown> = {}) {
@@ -626,5 +632,244 @@ describe('AC-3615.7 겹침 conflicts', () => {
       { kind: 'sameMemo', memo: '2', rows: ['injection', 'clinic'] },
       { kind: 'sameMemo', memo: '3', rows: ['followup', 'etc'] },
     ])
+  })
+})
+
+// --- REQ-3709 읽지 않을 처방 규칙(design.md 11절, TASK-11). 코드는 시안 예시(환자 정보 없음) ---
+
+/** 규칙 시험 바탕: 씨암 셀 코드 LA358·LA357(시안 예), 도수상담 '.', ESWT Standard ESWT7, 주사1회환자 A15 */
+const RULE_BASE = () => {
+  const s = defaults()
+  s.amounts.carm.codes = ['LA358', 'LA357']
+  s.picks.manualConsult = ['.']
+  s.picks.eswtStd = ['ESWT7']
+  s.picks.injection = ['A15']
+  return s
+}
+const rule = (code: string, withs: string[], all = false): ExcludeRule => ({ code, with: withs, all })
+
+describe('AC-3709.1 읽지 않을 처방을 두는 줄', () => {
+  it('AC-3709.1: 건수를 세는 17줄(세 절 모두)이고 주사1회환자(injection)·물리치료내원(ptVisit)은 없다', () => {
+    expect([...EXCLUDE_KEYS]).toEqual([
+      'carm',
+      'sono',
+      'arthro',
+      'manual',
+      'eswt',
+      'pt',
+      'etc1',
+      'etc2',
+      'etc3',
+      'etc4',
+      'manualConsult',
+      'lipus',
+      'nail',
+      'ct',
+      'surgery',
+      'eswtStd',
+      'eswtRadial',
+    ])
+    expect(EXCLUDE_KEYS).not.toContain('injection')
+    expect(EXCLUDE_KEYS).not.toContain('ptVisit')
+  })
+
+  it("AC-3709.1: '이 처방' 고를 코드는 그 줄 코드, 씨암·SONO는 이어서 셀 코드(겹친 것은 한 번)다", () => {
+    const s = RULE_BASE()
+    s.amounts.carm.codes = ['LA358', 'CARM1', 'LA357']
+    expect(ruleCodes(s, 'carm')).toEqual(['CARM1', 'LA358', 'LA357'])
+    expect(ruleCodes(s, 'sono')).toEqual(['SONO1'])
+    expect(ruleCodes(s, 'arthro')).toEqual(['HA280'])
+    expect(ruleCodes(s, 'lipus')).toEqual([])
+  })
+})
+
+describe('AC-3709.4 저장값 excludes 다듬기(normalize · cleanExcludes)', () => {
+  const base = { v: 1, picks: { carm: ['CARM1'], arthro: ['HA280'], injection: ['A15'], ptVisit: ['AA222'] }, etcNames: {}, reservations: {} }
+  const withAmounts = { ...base, amounts: { carm: { prefixes: [], codes: ['LA358', 'LA357'] }, sono: { prefixes: [], codes: [] } } }
+
+  it('AC-3709.4: 규칙이 없으면 excludes 칸이 없다(지금 저장 모양 그대로)', () => {
+    expect(normalize(base)).not.toHaveProperty('excludes')
+    expect(normalize({ ...base, excludes: {} })).not.toHaveProperty('excludes')
+    expect(normalize({ ...base, excludes: 'x' })).not.toHaveProperty('excludes')
+    expect(normalize({ ...base, excludes: { carm: [] } })).not.toHaveProperty('excludes')
+    expect(defaults()).not.toHaveProperty('excludes')
+  })
+
+  it('AC-3709.4: 모르는 key·injection·ptVisit 규칙은 버리고, 규칙이 있는 줄만 둔다', () => {
+    const got = normalize({
+      ...withAmounts,
+      excludes: {
+        nope: [rule('CARM1', ['LA248'])],
+        injection: [rule('A15', ['LA248'])],
+        ptVisit: [rule('AA222', ['LA248'])],
+        carm: [rule('LA357', ['LA248'])],
+        arthro: 'x',
+      },
+    })
+    expect(got?.excludes).toEqual({ carm: [{ code: 'LA357', with: ['LA248'], all: false }] })
+  })
+
+  it('AC-3709.4: code는 그 줄 고른 코드나(씨암·SONO) 셀 코드에 있어야 하고, 아니면 그 규칙을 버린다', () => {
+    const got = normalize({
+      ...withAmounts,
+      excludes: {
+        carm: [rule('CARM1', ['LA274']), rule('LA358', ['SONO1']), rule('ZZ9', ['LA248']), { code: 3, with: ['LA248'] }, 'LA357', null],
+        // 관절조영 줄에는 셀 코드가 없다: 씨암 셀 코드(LA357)는 관절조영 '이 처방'이 아니다
+        arthro: [rule('LA357', ['LA248']), rule('HA280', ['LA248'])],
+      },
+    })
+    expect(got?.excludes).toEqual({
+      carm: [rule('CARM1', ['LA274']), rule('LA358', ['SONO1'])],
+      arthro: [rule('HA280', ['LA248'])],
+    })
+  })
+
+  it('AC-3709.4: with는 코드 꼴만·겹침 버림·code와 같은 것 버림·5개까지이고, 비면 규칙을 버린다', () => {
+    const got = normalize({
+      ...withAmounts,
+      excludes: {
+        carm: [
+          { code: 'LA357', with: ['LA248', ' LA248 ', 'A\tB', 3, '', 'LA357', 'L1', 'L2', 'PROLO  C', 'L4', 'L5'], all: false },
+          { code: 'LA358', with: ['LA358', 'A\tB', 7] },
+          { code: 'CARM1', with: 'LA248' },
+          { code: 'CARM1' },
+        ],
+      },
+    })
+    expect(MAX_WITH).toBe(5)
+    expect(got?.excludes).toEqual({ carm: [rule('LA357', ['LA248', 'L1', 'L2', 'PROLO C', 'L4'])] })
+  })
+
+  it('AC-3709.4: code·with(차례 상관없이)·all이 모두 같은 규칙은 앞 것만, 같은 code에 조건이 다른 규칙은 여럿 둔다', () => {
+    const got = normalize({
+      ...withAmounts,
+      excludes: {
+        carm: [
+          rule('LA357', ['LA248', 'LA249']),
+          rule('LA357', ['LA249', 'LA248']),
+          rule('LA357', ['LA248', 'LA249'], true),
+          rule('LA357', ['LA248']),
+          rule('LA357', ['LA248', 'LA249'], true),
+        ],
+      },
+    })
+    expect(got?.excludes?.carm).toEqual([rule('LA357', ['LA248', 'LA249']), rule('LA357', ['LA248', 'LA249'], true), rule('LA357', ['LA248'])])
+  })
+
+  it('AC-3709.4: 규칙은 줄마다 20개까지다', () => {
+    const many = Array.from({ length: 25 }, (_, i) => rule('CARM1', [`W${i}`]))
+    const got = normalize({ ...withAmounts, excludes: { carm: many } })
+    expect(MAX_RULES).toBe(20)
+    expect(got?.excludes?.carm).toEqual(many.slice(0, 20))
+  })
+
+  it('AC-3709.4: 저장값의 all이 참/거짓이 아니면(없음·글자·숫자·null) false다', () => {
+    for (const bad of [undefined, 'true', 1, null, {}]) {
+      const got = normalize({ ...withAmounts, excludes: { carm: [{ code: 'CARM1', with: ['LA274', 'LA275'], all: bad }] } })
+      expect(got?.excludes?.carm, String(bad)).toEqual([rule('CARM1', ['LA274', 'LA275'], false)])
+    }
+    const yes = normalize({ ...withAmounts, excludes: { carm: [{ code: 'CARM1', with: ['LA274', 'LA275'], all: true }] } })
+    expect(yes?.excludes?.carm).toEqual([rule('CARM1', ['LA274', 'LA275'], true)])
+  })
+
+  it('AC-3709.4: 줄에서 코드를 빼면(셀 코드 포함) 그 코드가 이 처방인 규칙이 다듬기에서 빠진다', () => {
+    const s = RULE_BASE()
+    s.excludes = { carm: [rule('LA357', ['LA248']), rule('CARM1', ['LA274'])], manualConsult: [rule('.', ['MA4'])] }
+    s.amounts.carm.codes = ['LA358']
+    expect(cleanExcludes(s.excludes, s.picks, s.amounts)).toEqual({ carm: [rule('CARM1', ['LA274'])], manualConsult: [rule('.', ['MA4'])] })
+    s.picks.carm = []
+    delete s.picks.manualConsult
+    expect(cleanExcludes(s.excludes, s.picks, s.amounts)).toEqual({})
+  })
+
+  it('AC-3709.4: [저장](save)하면 규칙이 저장값에 남고 load()가 같은 규칙을 돌려준다', async () => {
+    const { data } = fakeStorage()
+    const s = RULE_BASE()
+    s.excludes = { carm: [rule('LA357', ['LA248', 'LA249']), rule('CARM1', ['LA274', 'LA275'], true)], eswtStd: [rule('ESWT7', ['ESWT10'])] }
+    const saved = await save(s)
+    expect(saved.excludes).toEqual(s.excludes)
+    expect((data[SETTINGS_KEY] as Settings).excludes).toEqual(s.excludes)
+    expect((await load())?.excludes).toEqual(s.excludes)
+  })
+
+  it('AC-3709.4: [처음 값으로](resetCodes)는 규칙도 비운다(받은 설정은 그대로)', () => {
+    const s = RULE_BASE()
+    s.excludes = { carm: [rule('LA357', ['LA248'])], arthro: [rule('HA280', ['LA248'])] }
+    const got = resetCodes(s)
+    expect(got.excludes ?? {}).toEqual({})
+    expect(s.excludes.carm).toEqual([rule('LA357', ['LA248'])])
+  })
+})
+
+describe('AC-3709.4 [규칙 더하기] 까닭 ruleProblem', () => {
+  it("AC-3709.4: '이 처방'을 안 골랐으면 noCode, 같이 있을 처방이 없으면 noWith", () => {
+    expect(ruleProblem([], { code: '', with: ['LA248'], all: false })).toBe('noCode')
+    expect(ruleProblem([], { code: '', with: [], all: false })).toBe('noCode')
+    expect(ruleProblem([], { code: 'LA357', with: [], all: false })).toBe('noWith')
+    expect(ruleProblem([], rule('LA357', ['LA248']))).toBeNull()
+  })
+
+  it('AC-3709.4: 이 처방·같이 있을 처방(차례 상관없이)·빼는 때가 모두 같은 규칙이 있으면 same, 조건이 다르면 된다', () => {
+    const rules = [rule('LA357', ['LA248', 'LA249'])]
+    expect(ruleProblem(rules, rule('LA357', ['LA249', 'LA248']))).toBe('same')
+    expect(ruleProblem(rules, rule('LA357', ['LA248', 'LA249'], true))).toBeNull()
+    expect(ruleProblem(rules, rule('LA357', ['LA248']))).toBeNull()
+    expect(ruleProblem(rules, rule('CARM1', ['LA248', 'LA249']))).toBeNull()
+  })
+
+  it('AC-3709.4: 규칙이 20개면 full', () => {
+    const twenty = Array.from({ length: 20 }, (_, i) => rule('CARM1', [`W${i}`]))
+    expect(ruleProblem(twenty, rule('LA357', ['LA248']))).toBe('full')
+    expect(ruleProblem(twenty.slice(0, 19), rule('LA357', ['LA248']))).toBeNull()
+  })
+})
+
+describe('AC-3709.3 toGroups는 규칙이 있는 묶음에만 exclude를 붙인다', () => {
+  it('AC-3709.3: 규칙이 없으면 지금 모양 그대로(exclude 칸 없음)', () => {
+    for (const g of toGroups(RULE_BASE())) expect(g, g.key).not.toHaveProperty('exclude')
+  })
+
+  it('AC-3709.3: 규칙이 있는 묶음(치료별·진료 · 치료현황·ESWT 포함)에만 exclude: [{ code, with, all }]이고 all은 모두 있을 때만이면 true', () => {
+    const s = RULE_BASE()
+    s.excludes = {
+      carm: [rule('LA357', ['LA248', 'LA249']), rule('CARM1', ['LA274', 'LA275'], true)],
+      manualConsult: [rule('.', ['MA4'])],
+      eswtStd: [rule('ESWT7', ['ESWT10'], true)],
+    }
+    const groups = toGroups(s)
+    const byKey = (key: string) => groups.find((g) => g.key === key)
+    expect(byKey('carm')).toEqual({
+      key: 'carm',
+      codes: ['CARM1'],
+      amountPrefixes: [],
+      amountCodes: ['LA358', 'LA357'],
+      exclude: [
+        { code: 'LA357', with: ['LA248', 'LA249'], all: false },
+        { code: 'CARM1', with: ['LA274', 'LA275'], all: true },
+      ],
+    })
+    expect(byKey('manualConsult')).toEqual({ key: 'manualConsult', codes: ['.'], exclude: [{ code: '.', with: ['MA4'], all: false }] })
+    expect(byKey('eswtStd')).toEqual({ key: 'eswtStd', codes: ['ESWT7'], exclude: [{ code: 'ESWT7', with: ['ESWT10'], all: true }] })
+    for (const g of groups.filter((x) => !['carm', 'manualConsult', 'eswtStd'].includes(x.key))) expect(g, g.key).not.toHaveProperty('exclude')
+  })
+
+  it('AC-3709.3: 주사1회환자·물리치료내원 묶음과 그 줄에 없는 code 규칙은 보내지 않는다(normalize와 같음)', () => {
+    const s = RULE_BASE()
+    s.excludes = { injection: [rule('A15', ['LA248'])], ptVisit: [rule('AA222', ['LA248'])], arthro: [rule('ZZ9', ['LA248'])] }
+    const groups = toGroups(s)
+    for (const key of ['injection', 'ptVisit', 'arthro']) expect(groups.find((g) => g.key === key), key).not.toHaveProperty('exclude')
+  })
+
+  it('AC-3709.3: 돌려준 규칙은 복사본이라 설정을 바꾸지 않는다', () => {
+    const s = RULE_BASE()
+    s.excludes = { carm: [rule('LA357', ['LA248'])] }
+    toGroups(s)[0].exclude?.[0].with.push('X')
+    expect(s.excludes.carm?.[0].with).toEqual(['LA248'])
+  })
+
+  it('AC-3709.3: 옛 도우미가 exclude 칸 때문에 거절하면(E-HELPER-BAD-MESSAGE) errors.ts 옛 도우미 글이다', () => {
+    const said = explain('E-HELPER-BAD-MESSAGE')
+    expect(said).toEqual({ code: 'E-HELPER-BAD-MESSAGE', ...ERRORS['E-HELPER-UNKNOWN-COMMAND'] })
+    expect(said.what).toBe('ERP 도우미가 예전 판이에요.')
   })
 })

@@ -113,8 +113,9 @@ describe('AC-3609.6 도우미 통로: 이름표·명령', () => {
     expect(PROTOCOL).toBe(table.protocol)
   })
 
-  it('AC-3609.6: 받는 명령은 closing.codes·closing.day 둘뿐이고 ERP 명령 표의 명령과 같다', () => {
-    expect([...COMMANDS]).toEqual(['closing.codes', 'closing.day'])
+  // REQ-3708(TASK-10·11): 도우미 새 명령 closing.findCodes가 더해져 셋이다(명령 표도 셋)
+  it('AC-3609.6 AC-3708.2: 받는 명령은 closing.codes·closing.day·closing.findCodes 셋뿐이고 ERP 명령 표의 명령과 같다', () => {
+    expect([...COMMANDS]).toEqual(['closing.codes', 'closing.day', 'closing.findCodes'])
     expect(Object.keys(erpTable().commands).sort()).toEqual([...COMMANDS].sort())
   })
 
@@ -160,6 +161,27 @@ describe('AC-3609.6 요청마다 연결 하나', () => {
     port.emit({ v: 1, id: envelope(port).id, type: 'error', code: 'E-BIT-READ-FAILED' })
     expect(replies).toEqual([{ type: 'error', code: 'E-BIT-READ-FAILED' }])
     expect(port.disconnected).toBe(true)
+  })
+
+  it('AC-3708.2: closing.findCodes { text }도 같은 길로 도우미에 넘기고 받은 답을 고치지 않고 돌려준다', () => {
+    const t = setup()
+    const { replies, keep } = t.send({ cmd: 'closing.findCodes', args: { text: 'LA35' } })
+    expect(keep).toBe(true)
+    expect(t.runtime.connectNative).toHaveBeenCalledWith(HOST_NAME)
+    const port = t.natives[0]
+    expect(envelope(port)).toMatchObject({ v: 1, cmd: 'closing.findCodes', args: { text: 'LA35' } })
+    const data = { codes: [{ code: 'LA357', name: '주사 (예시)' }, { code: 'LA358', name: null }] }
+    port.emit({ v: 1, id: envelope(port).id, type: 'result', data })
+    expect(replies).toEqual([{ type: 'result', data }])
+    expect(port.disconnected).toBe(true)
+  })
+
+  it('AC-3708.3: 옛 도우미가 closing.findCodes를 모르면 그 오류 번호(E-HELPER-UNKNOWN-COMMAND)를 그대로 돌려준다', () => {
+    const t = setup()
+    const { replies } = t.send({ cmd: 'closing.findCodes', args: { text: 'LA35' } })
+    const port = t.natives[0]
+    port.emit({ v: 1, id: envelope(port).id, type: 'error', code: 'E-HELPER-UNKNOWN-COMMAND' })
+    expect(replies).toEqual([{ type: 'error', code: 'E-HELPER-UNKNOWN-COMMAND' }])
   })
 
   it('AC-3609.6: 요청 둘은 연결도 둘이고 id가 다르며, 답은 제 요청에만 간다', () => {

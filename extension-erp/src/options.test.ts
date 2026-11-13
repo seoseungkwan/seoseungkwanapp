@@ -42,7 +42,30 @@ const CODES: ClosingCodes = {
 
 type Reply = unknown | (() => Promise<unknown>)
 
-function fakeChrome(opts: { stored?: unknown; reply?: Reply } = {}) {
+/**
+ * 비트에 등록된 코드(가짜 도우미 closing.findCodes가 찾는 곳, REQ-3708): 1년 목록 + 1년 동안 쓰지 않은 등록 코드(시안 예시 코드·이름).
+ * 도우미처럼 코드가 그 글자로 시작하거나 이름에 그 글자가 든 코드를 코드 차례로 30개까지, 코드는 대문자
+ */
+const REGISTERED: { code: string; name: string | null }[] = [
+  ...SAMPLE.map(([code, name]) => ({ code, name })),
+  { code: 'LA350', name: '예시 이름 가' },
+  { code: 'LA357', name: '주사 (예시)' },
+  { code: 'LA247', name: '예시 이름 나' },
+  { code: 'LA248', name: '주사 (예시)' },
+  { code: 'LA249', name: '예시 이름 다' },
+  { code: 'LA274', name: null },
+  { code: 'LA275', name: null },
+]
+function helperFind(text: string) {
+  const q = text.toUpperCase()
+  const codes = REGISTERED.filter((c) => c.code.toUpperCase().startsWith(q) || (c.name ?? '').includes(text))
+    .map((c) => ({ code: c.code.toUpperCase(), name: c.name }))
+    .sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0))
+    .slice(0, 30)
+  return { type: 'result', data: { codes } }
+}
+
+function fakeChrome(opts: { stored?: unknown; reply?: Reply; find?: (text: string) => unknown } = {}) {
   const data: Record<string, unknown> = {}
   if (opts.stored !== undefined) data[SETTINGS_KEY] = JSON.parse(JSON.stringify(opts.stored))
   const local = {
@@ -52,10 +75,22 @@ function fakeChrome(opts: { stored?: unknown; reply?: Reply } = {}) {
     }),
   }
   const reply = 'reply' in opts ? opts.reply : { type: 'result', data: CODES }
-  const sendMessage = vi.fn(async () => (typeof reply === 'function' ? (reply as () => Promise<unknown>)() : reply))
+  const find = opts.find ?? helperFind
+  const sendMessage = vi.fn(async (message?: { cmd?: string; args?: { text?: string } }) => {
+    if (message?.cmd === 'closing.findCodes') return find(message.args?.text ?? '')
+    return typeof reply === 'function' ? (reply as () => Promise<unknown>)() : reply
+  })
   vi.stubGlobal('chrome', { runtime: { id: 'erp-test', sendMessage }, storage: { local } })
   return { data, local, sendMessage }
 }
+/** 도우미 찾기 0.4초 늦춤을 가짜 시계로 넘기고 답(약속)을 마저 푼다 */
+async function wait(ms: number) {
+  await vi.advanceTimersByTimeAsync(ms)
+  await vi.advanceTimersByTimeAsync(0)
+}
+/** closing.findCodes를 물은 글자들 */
+const asked = (sendMessage: ReturnType<typeof vi.fn>) =>
+  sendMessage.mock.calls.map((c) => c[0] as { cmd: string; args: { text?: string } }).filter((m) => m.cmd === 'closing.findCodes').map((m) => m.args.text)
 
 /** options.html을 jsdom 문서에 그대로 올린다(스크립트는 돌지 않는다) */
 function mountPage() {
@@ -136,6 +171,7 @@ beforeEach(() => {
   document.body.innerHTML = ''
 })
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -586,13 +622,16 @@ describe("AC-3707 씨암·SONO '매출로 셀 코드' 줄은 셀 코드만 더�
     expect(text(amt('sono').querySelector('.none'))).toBe('비어 있으면 위 코드 줄 금액만 넣어요.')
   })
 
-  it("AC-3707.1: '셀 코드' 찾기(aria '{이름} 셀 코드 찾기')로 코드를 하나씩 더하고(가운데 빈칸 코드 포함) [×]로 뺀다", async () => {
+  // AC-3708.2(TASK-11)로 셀 코드 찾기는 0.4초 뒤 도우미에 묻고, 이미 더한 코드는 '더함'이다(전엔 바로 1년 목록·'골랐어요')
+  it("AC-3707.1 AC-3708.2: '셀 코드' 찾기(aria '{이름} 셀 코드 찾기')로 코드를 하나씩 더하고(가운데 빈칸 코드 포함) [×]로 뺀다", async () => {
+    vi.useFakeTimers()
     await open()
     const find = cellFind('sono')
     expect(find.getAttribute('aria-label')).toBe('SONO 셀 코드 찾기')
     expect(cellFind('carm').getAttribute('aria-label')).toBe('씨암 셀 코드 찾기')
     expect(find.placeholder).toBe('코드나 이름으로 찾기')
     type(find, 'prolo')
+    await wait(400)
     const dd = amt('sono').querySelector<HTMLElement>('[data-add-dd]') as HTMLElement
     expect(dd.hidden).toBe(false)
     dd.querySelector<HTMLButtonElement>('[data-aadd="PROLO C"]')?.click()
@@ -602,11 +641,12 @@ describe("AC-3707 씨암·SONO '매출로 셀 코드' 줄은 셀 코드만 더�
     expect(status()).toBe('바꾼 것을 아직 저장하지 않았어요.')
     // 고른 코드 줄(SONO 묶음 코드)은 그대로
     expect(chipCodes('sono')).toEqual(['SONO1'])
-    // 같은 코드는 골랐어요로 막힌다
+    // 같은 코드는 '더함'으로 막힌다
     type(cellFind('sono'), 'PROLO')
+    await wait(400)
     const again = amt('sono').querySelector<HTMLButtonElement>('[data-aadd="PROLO C"]') as HTMLButtonElement
     expect(again.disabled).toBe(true)
-    expect(text(again.querySelector('em'))).toBe('골랐어요')
+    expect(text(again.querySelector('em'))).toBe('더함')
     amt('sono').querySelector<HTMLButtonElement>('[data-adel="PROLO C"]')?.click()
     expect(cellChips('sono')).toEqual([])
     expect(text(amt('sono').querySelector('.none'))).toBe('비어 있으면 위 코드 줄 금액만 넣어요.')
@@ -624,9 +664,12 @@ describe("AC-3707 씨암·SONO '매출로 셀 코드' 줄은 셀 코드만 더�
   })
 
   it('AC-3707.1 AC-3707.2: [저장]은 앞글자 없이(늘 빈 목록) 셀 코드만 쓰고 저장된 overlap을 지우지 않는다', async () => {
+    vi.useFakeTimers()
     const { data } = await open({ stored: WITH_PREFIXES })
     type(cellFind('sono'), 'LA358')
+    await wait(400) // AC-3708.2: 0.4초 뒤 도우미 답
     amt('sono').querySelector<HTMLButtonElement>('[data-aadd="LA358"]')?.click()
+    vi.useRealTimers()
     $('#optSave').click()
     await flush()
     const saved = data[SETTINGS_KEY] as Settings
@@ -649,6 +692,463 @@ describe("AC-3707 씨암·SONO '매출로 셀 코드' 줄은 셀 코드만 더�
     $('#optSave').click()
     await flush()
     expect((data[SETTINGS_KEY] as Settings).amounts).toEqual({ carm: { prefixes: [], codes: [] }, sono: { prefixes: [], codes: [] } })
+  })
+})
+
+/** 새 판 안내 줄(AC-3708.3) */
+const OLD_HELPER_LINE = 'ERP 도우미를 새 판으로 바꾸면 비트에 등록된 코드 전부에서 찾을 수 있어요.'
+/** 보이는 안내 줄(.old) 글 */
+const notes = (el: Element) => [...el.querySelectorAll<HTMLElement>('.old')].filter((p) => !p.hidden).map(text)
+/** 찾기 목록 줄: 코드 · 이름 · 꼬리 글 · 막힘 */
+const listed = (dd: Element, attr: string) =>
+  [...dd.querySelectorAll<HTMLButtonElement>(`[${attr}]`)].map((b) => [text(b.querySelector('b')), text(b.querySelector('span')), text(b.querySelector('em')), b.disabled])
+
+describe("AC-3708.2 AC-3708.3 '셀 코드' 찾기는 도우미 closing.findCodes에 묻는다(design.md 10절)", () => {
+  const amt = (key: string) => $(`[data-amount="${key}"]`)
+  const cellFind = (key: string) => amt(key).querySelector<HTMLInputElement>('[data-afind]') as HTMLInputElement
+  const cellChips = (key: string) => [...amt(key).querySelectorAll('[data-extras] .chip b')].map(text)
+  const dd = (key: string) => amt(key).querySelector<HTMLElement>('[data-add-dd]') as HTMLElement
+  const items = (key: string) => listed(dd(key), 'data-aadd')
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  it('AC-3708.2: 2자 미만이면(앞뒤 공백 뗌) 묻지 않고 목록을 열지 않는다', async () => {
+    const { sendMessage } = await open()
+    type(cellFind('carm'), 'L')
+    await wait(1000)
+    type(cellFind('carm'), '  L  ')
+    await wait(1000)
+    expect(asked(sendMessage)).toEqual([])
+    expect(dd('carm').hidden).toBe(true)
+  })
+
+  it("AC-3708.2: 2자 이상이면 '찾는 중…'을 보이고, 치기를 멈춘 지 0.4초 뒤 앞뒤 공백 뗀 글자로 한 번만 묻는다", async () => {
+    const { sendMessage } = await open()
+    type(cellFind('carm'), 'LA')
+    expect(dd('carm').hidden).toBe(false)
+    expect(text(dd('carm').querySelector('.empty'))).toBe('찾는 중…')
+    await wait(300)
+    type(cellFind('carm'), ' LA3 ')
+    await wait(399)
+    expect(asked(sendMessage)).toEqual([])
+    expect(text(dd('carm').querySelector('.empty'))).toBe('찾는 중…')
+    await wait(1)
+    expect(asked(sendMessage)).toEqual(['LA3'])
+    expect(sendMessage).toHaveBeenLastCalledWith({ cmd: 'closing.findCodes', args: { text: 'LA3' } })
+  })
+
+  it('AC-3708.2: 받은 코드를 코드 · 이름으로 보이고(1년 동안 안 쓴 등록 코드 포함) 누르면 셀 코드로 더한다', async () => {
+    const { sendMessage } = await open()
+    type(cellFind('carm'), 'LA35')
+    await wait(400)
+    expect(items('carm')).toEqual([
+      ['LA350', '예시 이름 가', '', false],
+      ['LA357', '주사 (예시)', '', false],
+      ['LA358', '주사 시술', '', false],
+    ])
+    dd('carm').querySelector<HTMLButtonElement>('[data-aadd="LA357"]')?.click()
+    expect(cellChips('carm')).toEqual(['LA357'])
+    expect(dd('carm').hidden).toBe(true)
+    expect(cellFind('carm').value).toBe('')
+    expect(status()).toBe('바꾼 것을 아직 저장하지 않았어요.')
+    expect(asked(sendMessage)).toEqual(['LA35'])
+  })
+
+  it("AC-3708.2: 이미 더한 코드는 목록에서 '더함'으로 보이고 눌리지 않는다", async () => {
+    await open({ stored: { ...SAVED, amounts: { carm: { prefixes: [], codes: ['LA358'] }, sono: { prefixes: [], codes: [] } } } })
+    type(cellFind('carm'), 'la35')
+    await wait(400)
+    expect(items('carm')).toEqual([
+      ['LA350', '예시 이름 가', '', false],
+      ['LA357', '주사 (예시)', '', false],
+      ['LA358', '주사 시술', '더함', true],
+    ])
+    dd('carm').querySelector<HTMLButtonElement>('[data-aadd="LA358"]')?.click()
+    expect(cellChips('carm')).toEqual(['LA358'])
+  })
+
+  it('AC-3708.2: 앞 질문의 답이 늦게 오면 버리고 마지막 글자의 답만 쓴다', async () => {
+    const pending: ((reply: unknown) => void)[] = []
+    const { sendMessage } = await open({ find: () => new Promise((ok) => pending.push(ok)) })
+    type(cellFind('carm'), 'LA')
+    await wait(400)
+    type(cellFind('carm'), 'LA35')
+    await wait(400)
+    expect(asked(sendMessage)).toEqual(['LA', 'LA35'])
+    expect(text(dd('carm').querySelector('.empty'))).toBe('찾는 중…')
+    pending[1](helperFind('LA35'))
+    await wait(0)
+    expect(items('carm').map((i) => i[0])).toEqual(['LA350', 'LA357', 'LA358'])
+    pending[0](helperFind('LA'))
+    await wait(0)
+    expect(items('carm').map((i) => i[0])).toEqual(['LA350', 'LA357', 'LA358'])
+  })
+
+  it("AC-3708.2: 0개면 '등록된 코드에 없어요.'", async () => {
+    await open()
+    type(cellFind('sono'), '없는말')
+    await wait(400)
+    expect(text(dd('sono').querySelector('.empty'))).toBe('등록된 코드에 없어요.')
+    expect(dd('sono').querySelectorAll('[data-aadd]')).toHaveLength(0)
+  })
+
+  it('AC-3708.3: 옛 도우미(E-HELPER-UNKNOWN-COMMAND)면 지금처럼 1년 목록에서 찾고 찾기 칸 아래에 새 판 안내 줄이 보인다', async () => {
+    await open({ find: () => ({ type: 'error', code: 'E-HELPER-UNKNOWN-COMMAND' }) })
+    expect(notes(amt('carm'))).toEqual([])
+    type(cellFind('carm'), 'LA35')
+    await wait(400)
+    expect(items('carm')).toEqual([['LA358', '주사 시술', '', false]])
+    expect(notes(amt('carm'))).toEqual([OLD_HELPER_LINE])
+    expect(notes(amt('sono'))).toEqual([])
+    dd('carm').querySelector<HTMLButtonElement>('[data-aadd="LA358"]')?.click()
+    expect(cellChips('carm')).toEqual(['LA358'])
+    // 다음 찾기도 1년 목록 + 안내 줄, 1년 목록에도 없으면 지금 글
+    type(cellFind('carm'), 'prolo')
+    await wait(400)
+    expect(items('carm')).toEqual([['PROLO C', '증식치료(C)', '', false]])
+    expect(notes(amt('carm'))).toEqual([OLD_HELPER_LINE])
+    type(cellFind('carm'), '없는말')
+    await wait(400)
+    expect(text(dd('carm').querySelector('.empty'))).toBe('맞는 코드가 없어요.')
+  })
+
+  it('AC-3708.3: 다른 오류면 그 오류 번호 글(errors.ts)이 보이고 1년 목록에서 찾는다', async () => {
+    await open({ find: () => ({ type: 'error', code: 'E-BIT-READ-FAILED' }) })
+    type(cellFind('sono'), 'LA35')
+    await wait(400)
+    const e = ERRORS['E-BIT-READ-FAILED']
+    expect(notes(amt('sono'))).toEqual([`${e.what} ${e.how} (E-BIT-READ-FAILED)`])
+    expect(items('sono')).toEqual([['LA358', '주사 시술', '', false]])
+    expect(document.body.textContent).not.toContain(OLD_HELPER_LINE)
+  })
+
+  it('AC-3708.3: 도우미를 부르지 못하면 E-HELPER-MISSING 글이고 1년 목록에서 찾는다', async () => {
+    await open({ find: () => Promise.reject(new Error('Could not establish connection. Receiving end does not exist.')) })
+    type(cellFind('carm'), 'LA35')
+    await wait(400)
+    const e = ERRORS['E-HELPER-MISSING']
+    expect(notes(amt('carm'))).toEqual([`${e.what} ${e.how} (E-HELPER-MISSING)`])
+    expect(items('carm').map((i) => i[0])).toEqual(['LA358'])
+  })
+
+  it('AC-3708.2: 고른 코드 줄(묶음 코드) 찾기는 그대로 1년 목록에서 바로 찾고 도우미에 묻지 않는다', async () => {
+    const { sendMessage } = await open()
+    type($<HTMLInputElement>('[data-find="carm"]'), 'LA35')
+    expect($$<HTMLButtonElement>('[data-dd="carm"] [data-add]').map((b) => b.dataset.add)).toEqual(['LA358'])
+    expect(text($('[data-dd="carm"] [data-add] em'))).toBe('최근 1년 2번')
+    await wait(1000)
+    expect(asked(sendMessage)).toEqual([])
+  })
+})
+
+describe("AC-3709 줄마다 '읽지 않을 처방' 규칙(design.md 11절 · 승인 시안 docs/mockups/erp-closing-range/exclude.html)", () => {
+  const KEYS = ['carm', 'sono', 'arthro', 'manual', 'eswt', 'pt', 'etc1', 'etc2', 'etc3', 'etc4', 'manualConsult', 'lipus', 'nail', 'ct', 'surgery', 'eswtStd', 'eswtRadial']
+  const ABOUT = (n: string) =>
+    `고른 처방은 같이 있을 처방이 한 진료에 있으면 ${n}에 세지 않아요. 그 처방만 없는 것으로 보고, 같은 진료의 다른 ${n} 처방은 그대로 세요. 그 처방 때문에만 ${n}에 들던 진료는 건수에서도 빠져요.`
+  const HINT = "'이 처방'을 고르고 같이 있을 처방을 찾아 담은 뒤 [규칙 더하기]를 누르세요. 규칙은 20개, 같이 있을 처방은 5개까지예요."
+  /** 씨암 셀 코드 LA358·LA357, SONO 셀 코드 LA248·LA357(시안 예) */
+  const CELLS = { ...SAVED, amounts: { carm: { prefixes: [], codes: ['LA358', 'LA357'] }, sono: { prefixes: [], codes: ['LA248', 'LA357'] } } }
+  const R1 = { code: 'LA357', with: ['LA248', 'LA249'], all: false }
+  const R2 = { code: 'CARM1', with: ['LA274', 'LA275'], all: true }
+
+  const exc = (key: string) => $(`[data-excludes="${key}"]`)
+  const xcode = (key: string) => exc(key).querySelector<HTMLSelectElement>('[data-xcode]') as HTMLSelectElement
+  const xfind = (key: string) => exc(key).querySelector<HTMLInputElement>('[data-xfind]') as HTMLInputElement
+  const xdd = (key: string) => exc(key).querySelector<HTMLElement>('[data-xdd]') as HTMLElement
+  const xall = (key: string) => [...exc(key).querySelectorAll<HTMLInputElement>('input[data-xall]')]
+  const xadd = (key: string) => exc(key).querySelector<HTMLButtonElement>('[data-xadd]') as HTMLButtonElement
+  const hint = (key: string) => text(exc(key).querySelector('.hint'))
+  const problem = (key: string) => text(exc(key).querySelector('.hint.err'))
+  const rules = (key: string) => [...exc(key).querySelectorAll('.rule')].map(parts)
+  const trayChips = (key: string) => [...exc(key).querySelectorAll('.tray .chip')].map(parts)
+  const options = (key: string) => [...xcode(key).options].map((o) => [o.value, text(o)])
+  const check = (radio: HTMLInputElement) => {
+    radio.checked = true
+    radio.dispatchEvent(new Event('change', { bubbles: true }))
+  }
+  /** 같이 있을 처방 찾기 칸에 치고 0.4초 뒤 그 코드를 눌러 담는다 */
+  async function pickWith(key: string, typed: string, code: string) {
+    type(xfind(key), typed)
+    await wait(400)
+    ;(xdd(key).querySelector(`[data-xwith="${code}"]`) as HTMLButtonElement).click()
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  it('AC-3709.1: 건수를 세는 17줄(세 절)마다 그 줄 코드 줄(씨암·SONO는 셀 코드 줄) 바로 아래에 있고, 주사1회환자·물리치료내원 줄에는 없다', async () => {
+    await open()
+    expect($$('[data-excludes]').map((r) => r.dataset.excludes)).toEqual(KEYS)
+    for (const key of KEYS) {
+      const above = key === 'carm' || key === 'sono' ? $(`[data-amount="${key}"]`) : row(key)
+      expect(above.nextElementSibling, key).toBe(exc(key))
+      expect(exc(key).className, key).toBe('orow exc')
+      expect(text(exc(key).querySelector('.oname b')), key).toBe('읽지 않을 처방')
+    }
+    const excIn = (i: number) => [...$$('.osec')[i].querySelectorAll<HTMLElement>('[data-excludes]')].map((r) => r.dataset.excludes)
+    expect(excIn(0)).toEqual(KEYS.slice(0, 10))
+    expect(excIn(1)).toEqual(KEYS.slice(10, 15))
+    expect(excIn(2)).toEqual(['eswtStd', 'eswtRadial'])
+    expect(excIn(3)).toEqual([])
+    expect(row('injection').nextElementSibling).toBeNull()
+    expect(row('ptVisit').nextElementSibling).toBeNull()
+    // 시안에만 있는 '새로' 꼬리표·맨 위 상태 줄은 없다
+    expect($$('.tag, .shots')).toHaveLength(0)
+  })
+
+  it("AC-3709.1: 안내 글은 그 줄 이름으로 시안 그대로이고, 규칙이 없으면 '규칙이 없으면 지금처럼 모두 세요.'", async () => {
+    await open()
+    for (const key of KEYS) {
+      expect(text(exc(key).querySelector('.about')), key).toBe(ABOUT(GROUP_NAMES[key as keyof typeof GROUP_NAMES]))
+      expect(text(exc(key).querySelector('.none')), key).toBe('규칙이 없으면 지금처럼 모두 세요.')
+      expect(rules(key), key).toEqual([])
+    }
+  })
+
+  it("AC-3709.1: 새 규칙 칸은 '이 처방'(고르세요 + 그 줄 코드, 씨암·SONO는 이어서 셀 코드) · '같이 있을 처방' 찾기 · '빼는 때' 둘 · 막힌 [규칙 더하기] · 아래 글이다", async () => {
+    await open({ stored: CELLS })
+    expect(options('carm')).toEqual([['', '고르세요'], ['CARM1', 'CARM1'], ['LA358', 'LA358'], ['LA357', 'LA357']])
+    expect(options('sono')).toEqual([['', '고르세요'], ['SONO1', 'SONO1'], ['LA248', 'LA248'], ['LA357', 'LA357']])
+    expect(options('manual')).toEqual([['', '고르세요'], ['도수', '도수'], ['MA4', 'MA4']])
+    expect(options('lipus')).toEqual([['', '고르세요']])
+    expect(xcode('carm').value).toBe('')
+    const tray = exc('carm').querySelector('.tray') as HTMLElement
+    expect([...tray.querySelectorAll('.pickline > .sub')].map(text)).toEqual(['이 처방', '같이 있을 처방', '빼는 때'])
+    expect(trayChips('carm')).toEqual([])
+    expect(xfind('carm').placeholder).toBe('코드나 이름으로 찾기')
+    expect(xfind('carm').getAttribute('aria-label')).toBe('씨암 같이 있을 처방 찾기')
+    expect(xall('carm').map((r) => [text(r.closest('label')), r.checked])).toEqual([
+      ['하나라도 있으면', true],
+      ['모두 있을 때만', false],
+    ])
+    // '빼는 때' name은 줄마다 따로(한 줄의 둘은 같은 name)
+    expect(new Set(KEYS.map((k) => xall(k)[0].name)).size).toBe(17)
+    for (const k of KEYS) expect(xall(k).map((r) => r.name), k).toEqual([xall(k)[0].name, xall(k)[0].name])
+    expect(text(xadd('carm'))).toBe('규칙 더하기')
+    expect(xadd('carm').disabled).toBe(true)
+    expect(hint('carm')).toBe(HINT)
+    expect(exc('carm').querySelector('.hint.err')).toBeNull()
+    expect(notes(exc('carm'))).toEqual([])
+  })
+
+  it("AC-3709.1: 같이 있을 처방 찾기는 셀 코드 찾기와 같고(0.4초 뒤 도우미), '이 처방'과 같은 코드는 '이 처방', 이미 담은 코드는 '담음'으로 막힌다. 담는 중인 것은 저장할 바꿈이 아니다", async () => {
+    const { sendMessage } = await open({ stored: CELLS })
+    choose(xcode('carm'), 'LA357')
+    await pickWith('carm', 'LA24', 'LA248')
+    expect(trayChips('carm')).toEqual(['LA248 주사 (예시) ×'])
+    expect(xfind('carm').value).toBe('')
+    expect(xdd('carm').hidden).toBe(true)
+    type(xfind('carm'), 'LA35')
+    expect(text(xdd('carm').querySelector('.empty'))).toBe('찾는 중…')
+    await wait(400)
+    expect(listed(xdd('carm'), 'data-xwith')).toEqual([
+      ['LA350', '예시 이름 가', '', false],
+      ['LA357', '주사 (예시)', '이 처방', true],
+      ['LA358', '주사 시술', '', false],
+    ])
+    type(xfind('carm'), 'LA24')
+    await wait(400)
+    expect(listed(xdd('carm'), 'data-xwith')).toEqual([
+      ['LA247', '예시 이름 나', '', false],
+      ['LA248', '주사 (예시)', '담음', true],
+      ['LA249', '예시 이름 다', '', false],
+    ])
+    expect(asked(sendMessage)).toEqual(['LA24', 'LA35', 'LA24'])
+    expect(status()).toBe('저장했어요.')
+  })
+
+  it('AC-3709.1: 같이 있을 처방은 5개까지 담고, 5개면 찾기 칸이 막힌다. [×]로 뺀다', async () => {
+    await open({ stored: CELLS })
+    for (const code of ['LA247', 'LA248', 'LA249']) await pickWith('carm', 'LA24', code)
+    for (const code of ['LA274', 'LA275']) await pickWith('carm', 'LA27', code)
+    expect(trayChips('carm')).toHaveLength(5)
+    expect(xfind('carm').disabled).toBe(true)
+    ;(exc('carm').querySelector('[data-xwdel="LA247"]') as HTMLButtonElement).click()
+    expect(trayChips('carm').map((c) => c.split(' ')[0])).toEqual(['LA248', 'LA249', 'LA274', 'LA275'])
+    expect(xfind('carm').disabled).toBe(false)
+  })
+
+  it('AC-3709.1 AC-3708.3: 옛 도우미면 같이 있을 처방도 1년 목록에서 찾고 새 규칙 칸 아래에 새 판 안내 줄이 보인다', async () => {
+    await open({ stored: CELLS, find: () => ({ type: 'error', code: 'E-HELPER-UNKNOWN-COMMAND' }) })
+    choose(xcode('carm'), 'LA358')
+    type(xfind('carm'), 'LA35')
+    await wait(400)
+    expect(listed(xdd('carm'), 'data-xwith')).toEqual([['LA358', '주사 시술', '이 처방', true]])
+    expect(notes(exc('carm'))).toEqual([OLD_HELPER_LINE])
+    expect(exc('carm').lastElementChild?.lastElementChild).toBe(exc('carm').querySelector('.old'))
+    expect(notes($('[data-amount="carm"]'))).toEqual([])
+  })
+
+  it("AC-3709.4: [규칙 더하기]는 그때 고른 '빼는 때'로 목록 끝에 더하고 새 규칙 칸을 비운다('하나라도 있으면'으로 돌아감). 조각 글의 {때}는 세 모양", async () => {
+    await open({ stored: CELLS })
+    choose(xcode('carm'), 'LA357')
+    expect(xadd('carm').disabled).toBe(false)
+    await pickWith('carm', 'LA24', 'LA248')
+    await pickWith('carm', 'LA24', 'LA249')
+    xadd('carm').click()
+    expect(rules('carm')).toEqual(['LA357 — LA248 · LA249 하나라도 있으면 안 셈 ×'])
+    expect(exc('carm').querySelector('.none')).toBeNull()
+    expect(xcode('carm').value).toBe('')
+    expect(trayChips('carm')).toEqual([])
+    expect(xadd('carm').disabled).toBe(true)
+    expect(hint('carm')).toBe(HINT)
+    expect(status()).toBe('바꾼 것을 아직 저장하지 않았어요.')
+    choose(xcode('carm'), 'CARM1')
+    await pickWith('carm', 'LA27', 'LA274')
+    await pickWith('carm', 'LA27', 'LA275')
+    check(xall('carm')[1])
+    xadd('carm').click()
+    expect(xall('carm').map((r) => r.checked)).toEqual([true, false])
+    // 같이 있을 처방이 하나면 '같이 있으면'
+    choose(xcode('carm'), 'LA358')
+    await pickWith('carm', 'SONO', 'SONO1')
+    check(xall('carm')[1])
+    xadd('carm').click()
+    expect(rules('carm')).toEqual([
+      'LA357 — LA248 · LA249 하나라도 있으면 안 셈 ×',
+      'CARM1 — LA274 · LA275 모두 있으면 안 셈 ×',
+      'LA358 — SONO1 같이 있으면 안 셈 ×',
+    ])
+    expect(exc('carm').querySelector('[data-xrdel]')?.getAttribute('aria-label')).toBe('규칙 지우기')
+    // 다른 줄은 그대로
+    expect(rules('sono')).toEqual([])
+  })
+
+  it("AC-3709.4: 더하지 못하면 아래 글 자리에 까닭이 보인다('이 처방' 안 고름 · 같이 있을 처방 없음). 둘 다 비면 [규칙 더하기]가 막혀 있다", async () => {
+    await open({ stored: CELLS })
+    expect(xadd('carm').disabled).toBe(true)
+    await pickWith('carm', 'LA24', 'LA248')
+    expect(xadd('carm').disabled).toBe(false)
+    xadd('carm').click()
+    expect(problem('carm')).toBe('이 처방을 골라 주세요.')
+    expect(exc('carm').querySelectorAll('.hint')).toHaveLength(1)
+    expect(rules('carm')).toEqual([])
+    // 새 규칙 칸을 고치면 아래 글로 돌아간다
+    choose(xcode('carm'), 'LA357')
+    expect(exc('carm').querySelector('.hint.err')).toBeNull()
+    expect(hint('carm')).toBe(HINT)
+    // 시안 ④: 같이 있을 처방 없음
+    ;(exc('carm').querySelector('[data-xwdel="LA248"]') as HTMLButtonElement).click()
+    expect(trayChips('carm')).toEqual([])
+    expect(xadd('carm').disabled).toBe(false)
+    xadd('carm').click()
+    expect(problem('carm')).toBe('같이 있을 처방을 하나 이상 담아 주세요.')
+    expect(rules('carm')).toEqual([])
+    expect(status()).toBe('저장했어요.')
+  })
+
+  it("AC-3709.4: 이 처방·같이 있을 처방·빼는 때가 모두 같은 규칙이 있으면 '이미 있는 규칙이에요.', 같은 '이 처방'에 조건이 다르면 더해진다", async () => {
+    await open({ stored: { ...CELLS, excludes: { carm: [R1] } } })
+    expect(rules('carm')).toEqual(['LA357 — LA248 · LA249 하나라도 있으면 안 셈 ×'])
+    choose(xcode('carm'), 'LA357')
+    await pickWith('carm', 'LA24', 'LA249')
+    await pickWith('carm', 'LA24', 'LA248')
+    xadd('carm').click()
+    expect(problem('carm')).toBe('이미 있는 규칙이에요.')
+    expect(rules('carm')).toHaveLength(1)
+    // 새 규칙 칸은 그대로라 '모두 있을 때만'으로 바꿔 더할 수 있다
+    expect(trayChips('carm').map((c) => c.split(' ')[0])).toEqual(['LA249', 'LA248'])
+    check(xall('carm')[1])
+    expect(exc('carm').querySelector('.hint.err')).toBeNull()
+    xadd('carm').click()
+    expect(rules('carm')).toEqual(['LA357 — LA248 · LA249 하나라도 있으면 안 셈 ×', 'LA357 — LA249 · LA248 모두 있으면 안 셈 ×'])
+  })
+
+  it("AC-3709.4: 규칙이 20개면 '규칙은 20개까지예요.'", async () => {
+    const twenty = Array.from({ length: 20 }, (_, i) => ({ code: 'CARM1', with: [`W${i}`], all: false }))
+    await open({ stored: { ...CELLS, excludes: { carm: twenty } } })
+    expect(rules('carm')).toHaveLength(20)
+    choose(xcode('carm'), 'LA357')
+    await pickWith('carm', 'LA24', 'LA248')
+    xadd('carm').click()
+    expect(problem('carm')).toBe('규칙은 20개까지예요.')
+    expect(rules('carm')).toHaveLength(20)
+  })
+
+  it('AC-3709.4: [저장]하면 규칙이 저장값에 남고 새 규칙 칸에 담는 중인 것은 들어가지 않는다. 다시 열면 규칙이 보인다', async () => {
+    const { data } = await open({ stored: CELLS })
+    choose(xcode('carm'), 'LA357')
+    await pickWith('carm', 'LA24', 'LA248')
+    xadd('carm').click()
+    choose(xcode('manualConsult'), '.')
+    await pickWith('manualConsult', 'MA', 'MA4')
+    await pickWith('manualConsult', 'MA', 'MA12')
+    check(xall('manualConsult')[1])
+    xadd('manualConsult').click()
+    // 담는 중(저장되지 않음)
+    choose(xcode('arthro'), 'HA280')
+    await pickWith('arthro', 'LA24', 'LA247')
+    vi.useRealTimers()
+    $('#optSave').click()
+    await flush()
+    const saved = data[SETTINGS_KEY] as Settings
+    expect(saved.excludes).toEqual({
+      carm: [{ code: 'LA357', with: ['LA248'], all: false }],
+      manualConsult: [{ code: '.', with: ['MA4', 'MA12'], all: true }],
+    })
+    expect(status()).toBe('저장했어요.')
+    await open({ stored: saved })
+    expect(rules('carm')).toEqual(['LA357 — LA248 같이 있으면 안 셈 ×'])
+    expect(rules('manualConsult')).toEqual(['. — MA4 · MA12 모두 있으면 안 셈 ×'])
+    expect(rules('arthro')).toEqual([])
+  })
+
+  it('AC-3709.4: 규칙 [×]로 지우고(저장할 바꿈), 모두 지우면 빈 글이며 저장값에 규칙 칸이 없다', async () => {
+    vi.useRealTimers()
+    const { data } = await open({ stored: { ...CELLS, excludes: { carm: [R1, R2] } } })
+    ;(exc('carm').querySelector('[data-xrdel]') as HTMLButtonElement).click()
+    expect(rules('carm')).toEqual(['CARM1 — LA274 · LA275 모두 있으면 안 셈 ×'])
+    expect(status()).toBe('바꾼 것을 아직 저장하지 않았어요.')
+    ;(exc('carm').querySelector('[data-xrdel]') as HTMLButtonElement).click()
+    expect(text(exc('carm').querySelector('.none'))).toBe('규칙이 없으면 지금처럼 모두 세요.')
+    $('#optSave').click()
+    await flush()
+    expect(data[SETTINGS_KEY]).not.toHaveProperty('excludes')
+  })
+
+  it("AC-3709.4: 줄에서 코드(씨암·SONO는 셀 코드 포함)를 빼면 그 코드가 '이 처방'인 규칙도 빠지고 고르기 목록에서도 빠진다", async () => {
+    vi.useRealTimers()
+    const SONO_RULE = { code: 'LA357', with: ['CARM1'], all: false }
+    const { data } = await open({ stored: { ...CELLS, excludes: { carm: [R1, R2], sono: [SONO_RULE] } } })
+    choose(xcode('carm'), 'LA357')
+    ;($('[data-amount="carm"]').querySelector('[data-adel="LA357"]') as HTMLButtonElement).click()
+    expect(rules('carm')).toEqual(['CARM1 — LA274 · LA275 모두 있으면 안 셈 ×'])
+    expect(options('carm').map((o) => o[0])).toEqual(['', 'CARM1', 'LA358'])
+    expect(xcode('carm').value).toBe('')
+    expect(rules('sono')).toEqual(['LA357 — CARM1 같이 있으면 안 셈 ×'])
+    ;(row('carm').querySelector('[data-del="CARM1"]') as HTMLButtonElement).click()
+    expect(rules('carm')).toEqual([])
+    $('#optSave').click()
+    await flush()
+    expect((data[SETTINGS_KEY] as Settings).excludes).toEqual({ sono: [SONO_RULE] })
+  })
+
+  it('AC-3709.4: [처음 값으로] → [바꾸기]는 규칙도 비운다(저장은 [저장])', async () => {
+    vi.useRealTimers()
+    const { data, local } = await open({ stored: { ...CELLS, excludes: { carm: [R1], arthro: [{ code: 'HA280', with: ['LA248'], all: false }] } } })
+    expect(rules('arthro')).toHaveLength(1)
+    $('#optReset').click()
+    askButton('reset').click()
+    for (const key of KEYS) expect(rules(key), key).toEqual([])
+    expect(local.set).not.toHaveBeenCalled()
+    $('#optSave').click()
+    await flush()
+    expect(data[SETTINGS_KEY]).not.toHaveProperty('excludes')
+  })
+
+  it('AC-3709.1: 코드 목록을 받지 못하면 같이 있을 처방 찾기도 셀 코드 찾기처럼 막히고, 규칙은 보이고 지울 수 있다', async () => {
+    vi.useRealTimers()
+    await open({ stored: { ...CELLS, excludes: { carm: [R1] } }, reply: { type: 'error', code: 'E-HELPER-MISSING' } })
+    for (const key of KEYS) {
+      expect(xfind(key).disabled, key).toBe(true)
+      expect(xfind(key).placeholder, key).toBe('코드 목록을 받지 못해 찾을 수 없어요')
+    }
+    expect(rules('carm')).toEqual(['LA357 — LA248 · LA249 하나라도 있으면 안 셈 ×'])
+    ;(exc('carm').querySelector('[data-xrdel]') as HTMLButtonElement).click()
+    expect(rules('carm')).toEqual([])
   })
 })
 
