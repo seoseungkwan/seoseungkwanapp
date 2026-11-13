@@ -7,6 +7,7 @@
 > - 마지막 검토 한 번(확장 시험 전체·lint·`npm run ext-erp:build`·`git diff c745fdc -- helper helper-erp src`에 코드 변경 없음(문서 `helper-erp/install/README.md`의 판 문장만)·화면 사진)
 > - Phase 2b(마지막 검토·오류/드문 경우 점검에서 나온 것, 사용자 "4가지 모두 고치기"·"92일까지"·"고친 부분 시험만 확인") — Step 1: 리드가 `rangeTypes.ts` 새 Block·`MAX_DAYS` → Step 2: TASK-7 ‖ TASK-8(일꾼 둘) → 합친 뒤 확장 시험 전체 → 설치 파일
 > - Phase 2c(2026-11-13 사용자 "그냥 저거 없애고 코드 추가만 할 수 있게 해줘"·"비트에 등록된 코드 전부") — Step 1: TASK-9 ‖ TASK-10(파일 안 겹침, 일꾼 둘) → Step 2: TASK-11 ‖ TASK-14(읽지 않을 처방이 규칙으로 바뀜, 사용자 "LA357만 빼기", 일꾼 둘) → TASK-13 → TASK-12 → 확장 시험 전체·도우미 시험(net48 포함)·빌드 → 설치 파일 다시(확장 + 도우미)
+> - Phase 2d(2026-11-13 사용자 "이거 헷갈리게되어있는거같은데" → "평소엔 안 묻기") — TASK-15 하나(일꾼 또는 리드) → 확장 시험 전체·빌드 → 확장 설치 파일만 다시(도우미 그대로) → 고친 부분 검토
 > - Phase 3 — TASK-6(사용자와 실제 ERP 화면)
 > 각 TASK는 시험을 먼저 써서 RED를 본다. 지금 확장 시험은 기대값을 바꾸지 않는다(바꿔야 하면 그 TASK 보고에 까닭).
 
@@ -128,3 +129,11 @@
 - Tests: helper-erp/tests/Erp.Core.Tests/Closing/ClosingDay.test.cs, helper-erp/tests/Erp.Core.Tests/ErpCommandTable.test.cs
 - TDD: required — design.md 11절. TASK-10이 만든 exclude(코드 배열·진료 통째로)를 규칙 `{ code, with, all? }`로 바꾼다. `all` 참이면 with 모두 있을 때만(하나만 있으면 안 뺌), 없거나 거짓이면 하나라도, 같은 code 규칙이 여럿이면 하나라도 맞으면 뺌, 진료·치료현황 묶음(예: manualConsult)·ESWT 묶음에도 규칙이 먹음, `all`이 참/거짓 아니면 거절. 가짜 DB로: 시안 예(진료 CARM1·LA358·LA357·LA248, 씨암 셀 코드 LA358·LA357, 규칙 LA357 ← LA248) → 씨암 건수 1·금액 LA358만, LA357·LA248만 있는 진료(씨암 묶음 코드가 LA357일 때) → 씨암 건수 0, with가 없는 진료는 그대로, 규칙 code가 묶음 코드면 진료 통째로 빠짐(CARM1 ← LA274), with는 원래 처방으로 봄, 다른 묶음(SONO)은 그대로, overlap은 묶음마다 자기 쓸 처방으로, 매출 규칙 없는 묶음(관절조영 등) 금액도 그 처방만 빠짐, injection·ptVisit 묶음 exclude는 안 씀, 규칙 없는·빈 exclude는 0.2.0 답과 같음, 꼴 거절(규칙 21개·with 0개·6개·code 꼴 아님·모르는 칸). TASK-10의 exclude 시험은 이 모양으로 바꾼다. Files 가운데 손댈 필요 없는 파일은 안 고친다. dotnet 시험은 `PATH="$HOME/.dotnet:$PATH"`
 - 차례: Phase 2c Step 2 (TASK-10 합친 뒤, TASK-11과 함께)
+
+## TASK-15: 함께 있는 진료는 돈이 두 번 셀 때만 묻기
+- REQ: REQ-3710
+- AC: AC-3710.1, AC-3710.2, AC-3710.3
+- Files: extension-erp/src/settings.ts, extension-erp/src/settings.test.ts, extension-erp/src/main.ts, extension-erp/src/main.test.ts, extension-erp/src/main.range.test.ts, extension-erp/src/range.ts, extension-erp/src/range.test.ts, extension-erp/src/rangeView.ts, extension-erp/src/rangeView.test.ts, extension-erp/README.md, extension-erp/src/readme.test.ts
+- Tests: extension-erp/src/settings.test.ts, extension-erp/src/main.test.ts, extension-erp/src/main.range.test.ts, extension-erp/src/readme.test.ts
+- TDD: required — design.md 13절. `overlapNeedsAsk`: 셀 코드 다름(LA358 / LA247) → false, 같은 코드 하나(LA247 양쪽) → true, 셀 코드 없으면 고른 코드로 봄(CARM1 / SONO1 → false), 대문자·공백. main(하루): false면 askOverlap 안 부르고 씨암 = carm.total · SONO = sono.total, 끝 안내에 함께 있는 진료 줄 없음, 지난번 고른 것이 'carm'이어도 무시, saveOverlap 안 부름 / true면 지금 시험 그대로. main(기간): false면 승인 안내에 함께 있는 진료 줄·단추 없고 [덮어쓰고 저장 시작]이 열리며 채우기가 'overlapUnpicked'로 멈추지 않음 / true면 지금 그대로. README 문장(AC-3710.3). 지금 함께 있는 진료 시험은 설정을 같은 코드가 있게 바꿔 그대로 살린다(기대값 바꾸면 보고에 까닭). Files 가운데 손댈 필요 없는 파일은 안 고친다
+- 차례: Phase 2d

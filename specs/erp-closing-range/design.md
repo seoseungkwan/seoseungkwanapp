@@ -177,3 +177,10 @@ export type RangeAction =
 ## 12. 기간 길이 제한 없음 (AC-3701.2, TASK-13)
 - 2026-11-13 사용자 "자동입력 기간 길게해" → 질문 답 "제한 없음". `rangeTypes.ts` `MAX_DAYS`와 `RANGE_TEXT.pick.tooLong`, `pickProblem`의 넷째 막는 줄, `main.ts` scan의 `span > MAX_DAYS`를 지운다. 막는 것은 빈 칸·시작일 > 끝일·끝일 > 오늘 셋
 - 긴 기간(예: 2년 730일)도 살펴보기·채우기가 되고 날짜 목록은 지금처럼 `LIST_MAX`로 줄인다. 하루 약 15~20초라 1년이면 살펴보기 약 20분 + 채우기 1시간 30분~2시간 — 사용자에게 알림. README 기간 고르기 문장에서 '한 번에 92일(약 3달)까지'를 빼고 '오래 걸리니 [멈추기]·[이어서 하기]를 쓰라'로
+
+## 13. 함께 있는 진료는 돈이 두 번 셀 때만 묻기 (REQ-3710, TASK-15)
+- 까닭: 셀 코드만 세게 된 뒤(REQ-3707) 씨암·SONO 줄은 서로 다른 코드 금액을 세므로, 같은 진료에 둘이 있어도 돈이 두 번 들어가지 않는다. 2026-11-13 실제 11-13 함께 있는 진료 5건 = 씨암 쪽 LA358만 · SONO 쪽 LA247·KK090 — 겹친 금액 없음. 두 번 세는 것은 같은 코드를 양쪽 돈 코드에 넣었을 때뿐
+- `settings.ts`에 순수 함수 `overlapNeedsAsk(settings): boolean` — 씨암 돈 코드(amounts.carm 셀 코드가 있으면 그것, 없으면 picks.carm)와 SONO 돈 코드(같은 식)가 하나라도 같으면(대문자·앞뒤 공백 뗀 값) true
+- `main.ts` [비트 값 채우기]: `overlapNeedsAsk`가 false면 `askOverlap`을 부르지 않고 choice 없이 칸 계획(cells.ts는 choice 없으면 둘 다 넣은 값) · 끝 안내 결과에 overlap 줄을 넣지 않는다. true면 지금 그대로
+- `main.ts` [기간 채우기]: false면 승인 안내로 넘기는 scan에서 함께 있는 진료 줄이 나오지 않게 하고(`overlapVisits` 0으로 보이게 또는 rangeView에 묻지 않음 표시 — 일꾼이 고르되 rangeView 글은 그대로), 채우기에는 choice 'both'를 넘겨 `overlapUnpicked`로 멈추지 않는다. 지난번 고른 것(`settings.overlap`)은 읽지도 저장하지도 않는다. true면 지금 그대로
+- 새 글 없음. cells.ts·range.ts 셈은 바꾸지 않는다(필요하면 그 TASK 보고에 까닭)

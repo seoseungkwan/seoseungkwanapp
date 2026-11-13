@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "erp-closing-range",
-  "approved_at": "2026-11-13T07:21:24Z",
+  "approved_at": "2026-11-13T08:37:55Z",
   "approved_via": "user-prompt",
-  "session_id": "3cdc290d-739b-4e3d-9dbb-5925ad0d7e5b",
-  "spec_sha256": "1a96848fc0fbee98f0483262d8c12d8d2283e3408de72c0745f9fc1bd2854db2",
+  "session_id": "9b571ac1-acc0-4848-bce6-045afd6edcb4",
+  "spec_sha256": "a30e4fa630576dd3df67b23467fb86ffdf4512e931ca42ffb41e8c0f6d07e90c",
   "scope": [
     "(없음",
     "extension-erp/README.md",
