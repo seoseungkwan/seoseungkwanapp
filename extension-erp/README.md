@@ -406,5 +406,5 @@ ERP 도우미 0.2.0이어도 나머지는 그대로 됩니다. 다만 '셀 코�
 - 확장 폴더 만들기: 저장소 맨 위 폴더에서 `npm run ext-erp:build` → `extension-erp/dist/`가 생깁니다(`tsc`로 `src/*.ts`를 `.js`로 바꾸고 `manifest.json`·`options.html`을 복사). 이 `dist` 폴더가 확장이고, 다른 PC에는 이 폴더를 zip으로 묶어 옮깁니다.
 - 확장 판 번호는 `manifest.json`의 `version`(지금 0.3.0)입니다. ERP 도우미가 바뀌는 판이면 ERP 도우미 판(`helper-erp/Directory.Build.props`)과 같이 올립니다. 0.3.0은 ERP 도우미도 바뀐 판이라(`closing.findCodes`·'읽지 않을 처방' 규칙) ERP 도우미도 0.3.0입니다.
 - 확장 이름표(ID)는 `manifest.json`의 공개 열쇠(`key`)로 정해지고(`lkancaiekmoieooheifdimahhkejfmjc`), ERP 도우미는 이 확장 하나만 받습니다. 개인 열쇠는 두지 않습니다.
-- 확장이 부르는 도우미 이름은 `com.seoseungkwan.erp_helper`, 명령은 `closing.codes`·`closing.day` 둘입니다(`helper-erp/commands.json`).
+- 확장이 부르는 도우미 이름은 `com.seoseungkwan.erp_helper`, 명령은 `closing.codes`·`closing.day`·`closing.findCodes` 셋입니다(`helper-erp/commands.json`. `closing.findCodes`는 ERP 도우미 0.3.0부터).
 - 화면 글은 `src/panel.ts`(ERP 화면 안내)·`src/rangeView.ts`(기간 채우기 안내)·`src/errors.ts`(오류 표)·`src/options.ts`(설정 화면)에 있습니다. 이 안내서의 화면 글을 그 글과 같게 둡니다.
