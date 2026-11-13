@@ -240,11 +240,11 @@ describe('AC-3609.2 누르면', () => {
     await flush()
     expect(t.dayCalls()).toHaveLength(1)
     expect(t.dayCalls()[0][0]).toEqual({ cmd: 'closing.day', args: { date: '2026-11-09', groups: toGroups(stored) } })
-    // 매출 규칙이 없는 예전 저장값도 처음 값 규칙(LA)으로 씨암·SONO에 붙어 간다(AC-3607.6)
+    // 매출 규칙이 없는 예전 저장값은 셀 코드가 없으니 씨암·SONO에 규칙 칸을 붙이지 않는다(AC-3707.2, 앞글자 LA는 읽지 않음)
     const sent = (t.dayCalls()[0][0] as { args: { groups: { key: string; amountPrefixes?: string[]; amountCodes?: string[] }[] } }).args.groups
     expect(sent.slice(0, 2)).toEqual([
-      { key: 'carm', codes: ['CARM1'], amountPrefixes: ['LA'], amountCodes: [] },
-      { key: 'sono', codes: ['SONO1'], amountPrefixes: ['LA'], amountCodes: [] },
+      { key: 'carm', codes: ['CARM1'] },
+      { key: 'sono', codes: ['SONO1'] },
     ])
     expect(text(button())).toBe('비트에서 읽는 중…')
     expect(button().disabled).toBe(true)
