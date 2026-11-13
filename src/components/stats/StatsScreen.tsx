@@ -162,11 +162,12 @@ function RangeText({ range, choice, todayDone }: { range: StatsRange; choice: St
   )
 }
 
+// 덮은 기간 끝 글. 불러오기 띠 한 줄에 들게 '… 끝난 날로 저장했어요'를 '…까지'로 줄였다(stats-pc-ux AC-4001.6, 시안 notes.md '새 글')
 function coverClause(to: string | undefined, today: string): string {
   if (to === undefined) return ''
-  if (to === today) return ` · 오늘(${longDate(to)})까지 끝난 날로 저장했어요`
-  if (to === addDays(today, -1)) return ` · 어제(${longDate(to)})까지 끝난 날로 저장했어요`
-  return ` · ${longDate(to)}까지 끝난 날로 저장했어요`
+  if (to === today) return ` · 오늘(${longDate(to)})까지`
+  if (to === addDays(today, -1)) return ` · 어제(${longDate(to)})까지`
+  return ` · ${longDate(to)}까지`
 }
 
 // 출처 줄 글: 앞은 ink-2, 뒤는 muted. latest가 null이면(시각을 못 읽는 브라우저) 출처 줄만 없다
@@ -181,11 +182,12 @@ function sourceLine(data: StatsData, today: string, notSaved: boolean): { main: 
   return { main: justSaved ? `${main} · 방금` : main, rest: coverClause(coveredTo ?? undefined, today) }
 }
 
-function SourceLine({ data, today, notSaved }: { data: StatsData; today: string; notSaved: boolean }) {
+// 불러오기 띠 왼쪽 자료 글(stats-pc-ux AC-4001.6). 기간 글 아래 따로 있던 자료 줄을 옮겼다. 파일 자료 안내는 그 아래 줄
+function SourceSummary({ data, today, notSaved }: { data: StatsData; today: string; notSaved: boolean }) {
   const line = sourceLine(data, today, notSaved)
   if (line === null && !data.fromFile) return null
   return (
-    <div className="mt-2 flex flex-wrap gap-x-2 text-small text-ink-2">
+    <div className="text-small text-ink-2">
       {line !== null && (
         <p>
           {line.main}
@@ -374,6 +376,9 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   const drawn = readFailed && unsaved === null && freshSplit ? { days: [], covered: [], range } : input
   // 못 읽은 기간을 "이 기간 자료가 없어요"라고 하지 않는다. 저장하지 못한 숫자에 그 기간이 없을 때는 맞는 말이다
   const drawnSaved = readFailed ? unsaved !== null : saved
+  // 불러오기 상자는 저장된 숫자를 한 번 읽어 하나도 없을 때만 펼친 채 시작한다('아직 저장된 통계가 없어요', stats-pc-ux AC-4001.4).
+  // 읽는 중을 showSections로 보지 않고 input으로 본다: 처음 읽기 전(input null)은 접힘, 그 뒤 기간을 바꿔 다시 읽는 동안은 앞 답 그대로라 접혔다 펼쳐지지 않는다
+  const canFold = readFailed || saved || input === null
 
   return (
     <div>
@@ -392,13 +397,11 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
         }}
         onLoad={loadFromBit}
         onFiles={takeFiles}
+        canFold={canFold}
+        summary={showSections && (!readFailed || unsaved !== null) ? <SourceSummary data={data} today={today} notSaved={incomplete !== null} /> : null}
       />
-      {/* [이어서 불러오기]는 일이 없고 비트 PC 연결이 'ready'일 때만 누를 수 있다(AC-3303.9·AC-3303.10) */}
+      {/* [이어서 불러오기]는 일이 없고 비트 PC 연결이 'ready'일 때만 누를 수 있다(AC-3303.9·AC-3303.10). 개인정보 줄은 불러오기 상자 펼칠 칸 안이다(AC-4001.1) */}
       {run !== null && run.plan.parts.length > 1 && <LoadRunBox run={run} busy={job !== null || state !== 'ready'} onResume={resumeLoad} />}
-      <p className="mt-3 flex max-w-160 items-start gap-1.5 text-small text-muted">
-        <Icon name="shield" size={14} className="mt-0.5 shrink-0 text-positive" />
-        <span>환자 개인정보는 의원 PC 밖으로 나가지 않아요. 서버에는 숫자만 저장해요.</span>
-      </p>
 
       {/* 세 칸 답의 오류는 처방별 답과 번호가 다를 때만 더한다(같은 번호 카드가 둘이지 않게) */}
       {[actionError, answered?.error ?? null, bitAnswered?.error != null && bitAnswered.error !== answered?.error ? bitAnswered.error : null].map(
@@ -465,7 +468,6 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
         </div>
         <RangeText range={range} choice={choice} todayDone={todayDone} />
       </div>
-      {showSections && (!readFailed || unsaved !== null) && <SourceLine data={data} today={today} notSaved={incomplete !== null} />}
 
       {waiting && <WaitingSections />}
       {/* 읽는 동안에도 내려놓지 않는다: 기간을 바꿔도 열어 둔 [자세히]·처방 줄이 열린 채 새 숫자로 그려진다(시안 §5) */}

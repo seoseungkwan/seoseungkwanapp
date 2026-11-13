@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
+import { useId, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { mergeRanges } from '@/lib/analytics/coverage'
@@ -18,13 +18,16 @@ import type { DateRange } from '@/types/dates'
 import type { ErrorCode } from '@/types/errors'
 import { runAnalysis } from '@/workers/runAnalysis'
 import { LOAD_SPANS, loadHint, planLoad, type LoadSpan } from './loadPlan'
+import { FoldButton } from './sections/HowCounted'
 import { longDate } from './sections/parts'
 import type { SaveInput } from './useStatsData'
 import type { StatsRange } from './view'
 
 // 자료 고르기 (stats REQ-514 AC-514.3·514.4·514.5·514.8, 시안 notes.md §3 '자료 고르기').
 // 왼쪽 비트 칸은 연결 상태마다 다르고, 오른쪽 파일 칸은 언제나 있다. 파일 이름은 화면에만 보이고 Worker·서버로 가지 않는다.
-// 비트 칸 위쪽의 '불러올 기간'(stats-load-range REQ-3301, 시안 docs/mockups/stats-load-range)은 화면을 열 때마다 [지금 보는 기간]이고 어디에도 기억하지 않는다
+// 비트 칸 위쪽의 '불러올 기간'(stats-load-range REQ-3301, 시안 docs/mockups/stats-load-range)은 화면을 열 때마다 [지금 보는 기간]이고 어디에도 기억하지 않는다.
+// 상자는 한 줄 띠 + 펼칠 칸이다(stats-pc-ux REQ-4001, 시안 docs/mockups/stats-pc-ux notes.md §1): 띠 = 왼쪽 자료 글(화면이 준다) · 오른쪽 'ready'면 [비트에서 불러오기] + [불러오기 설정].
+// 펼칠 칸 = 비트 칸(불러올 기간 · 오늘 진료 끝 · 안내 두 줄, 연결 상태 안내) | 파일 칸 + 개인정보 줄. 띠의 단추가 펼칠 칸에서 고른 값을 쓰려고 두 값을 이 부품이 들고 있다
 
 // 파일 길의 덮은 기간 상한. stats_coverage 제약(양 끝을 합쳐 800일)을 넘으면 saveStats가 아무것도 보내지 않아 [다시 저장]도 끝없이 실패한다
 const MAX_COVERED_DAYS = 800
@@ -63,11 +66,21 @@ export async function readFiles(files: File[], today: string, groups: readonly R
   return { failures, save: { months, days, covered: fileCovered(reports, today), source: 'file' }, incomplete: null }
 }
 
-const BAND = 'mt-4 flex flex-wrap items-start gap-x-8 gap-y-4 rounded-control bg-canvas px-5 py-4 max-md:flex-col max-md:gap-y-3 max-md:px-4 max-md:py-3'
-const BIT_CELL = 'flex min-w-0 flex-[1_1_420px] flex-wrap items-center gap-x-4 gap-y-2 max-md:w-full max-md:flex-none'
-const FILE_CELL =
-  'flex min-w-0 flex-[1_1_320px] flex-wrap items-center gap-x-3 gap-y-2 border-l border-line-strong pl-8 max-md:w-full max-md:flex-none max-md:border-t max-md:border-l-0 max-md:pt-3 max-md:pl-0'
+// 상자(끌어다 놓기 받음) = 띠 + 펼칠 칸(위 1px 줄). 띠·칸은 테두리 없는 줄이라 상자 안 상자가 없다(시안 .mk-load-*, 띠 위아래 10px → 8px 단계)
+const BOX = 'mt-4 rounded-control bg-canvas'
+const BAR = 'flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-2 pr-3 pl-5 max-md:px-4 max-md:py-3'
+const ACTIONS = 'flex flex-wrap items-center gap-x-4 gap-y-2 max-md:w-full'
+const MORE = 'border-t border-line px-5 py-4 max-md:px-4 max-md:py-3'
+// 1024px 이상 두 칸(사이 32px + 세로줄), 미만은 파일 칸이 아래로 가고 가로줄(위 12px)로 나눈다(시안 6(b))
+const COLS = 'flex flex-col gap-3 lg:flex-row lg:items-start lg:gap-8'
+const BIT_CELL = 'flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 lg:flex-[1_1_420px]'
+const FILE_CELL = 'flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 border-line-strong max-lg:border-t max-lg:pt-3 lg:flex-[1_1_320px] lg:border-l lg:pl-8'
 const HINT = 'text-small text-ink-2'
+const SETTINGS = '불러오기 설정'
+const PRIVACY = '환자 개인정보는 의원 PC 밖으로 나가지 않아요. 서버에는 숫자만 저장해요.'
+// 주의 상태: 안내·오류·[다시 확인]을 가리지 않게 펼친다(AC-4001.5). 연결 확인 중(오류 없음)은 아니다
+const CAUTION_STATES: ReadonlySet<BridgeState> = new Set<BridgeState>(['disconnected', 'busy', 'no-helper', 'update-helper', 'update-extension'])
+const isCaution = (state: BridgeState, helloError: string | null) => CAUTION_STATES.has(state) || (state === 'connecting' && helloError !== null)
 const NO_BIT = '이 PC에서는 아직 비트에서 불러올 수 없어요'
 const NO_BIT_LINE: Partial<Record<BridgeState, string>> = {
   'no-helper': '도우미 프로그램이 없어요. 비트 PC 연결 화면에서 설치하면 [비트에서 불러오기]가 생겨요.',
@@ -124,22 +137,21 @@ function SpanPicker({ span, job, onPick }: { span: LoadSpan; job: Props['job']; 
   )
 }
 
-function BitLoad({ today, range, job, onLoad }: { today: string; range: StatsRange; job: Props['job']; onLoad: Props['onLoad'] }) {
-  const [closeToday, setCloseToday] = useState(false)
-  const [span, setSpan] = useState<LoadSpan>('view')
+// 펼칠 칸에서 고른 '불러올 기간'·'오늘 진료 끝'. 띠의 [비트에서 불러오기]가 같은 값을 쓴다(AC-4001.3)
+type LoadChoice = { span: LoadSpan; closeToday: boolean; onSpan(span: LoadSpan): void; onCloseToday(on: boolean): void }
+
+// 펼칠 칸의 비트 PC 'ready' 칸: 불러올 기간 · 오늘 진료 끝 · 안내 두 줄. [비트에서 불러오기]는 띠에 있다
+function BitLoad({ today, range, job, choice }: { today: string; range: StatsRange; job: Props['job']; choice: LoadChoice }) {
+  const { span, closeToday } = choice
   // 계획은 안내 줄에만 쓴다. 누르면 고른 것만 넘기고 화면이 같은 함수로 다시 세운다
   const hint = useMemo(() => loadHint(today, range, planLoad(today, range, span)), [today, range, span])
   const date = longDate(today)
   return (
     <>
-      <SpanPicker span={span} job={job} onPick={setSpan} />
-      <button type="button" aria-disabled={job !== null || undefined} className={ds.button.primary} onClick={job === null ? () => onLoad(closeToday, span) : undefined}>
-        <Icon name="monitor" />
-        {job === 'bit' ? '불러오는 중' : '비트에서 불러오기'}
-      </button>
+      <SpanPicker span={span} job={job} onPick={choice.onSpan} />
       <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 text-body font-medium text-ink max-md:min-h-11">
         <span className={ds.checkboxWrap}>
-          <input type="checkbox" checked={closeToday} disabled={job !== null} onChange={(event) => setCloseToday(event.target.checked)} className={ds.checkbox} />
+          <input type="checkbox" checked={closeToday} disabled={job !== null} onChange={(event) => choice.onCloseToday(event.target.checked)} className={ds.checkbox} />
           <svg aria-hidden="true" className={ds.checkboxMark} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3.5 8.5l3 3 6-7" />
           </svg>
@@ -154,8 +166,10 @@ function BitLoad({ today, range, job, onLoad }: { today: string; range: StatsRan
   )
 }
 
-function BitCell({ state, helloError, today, range, job, onRetry, onLoad }: Omit<Props, 'onFiles' | 'progress'>) {
-  if (state === 'ready') return <BitLoad today={today} range={range} job={job} onLoad={onLoad} />
+type CellProps = Pick<Props, 'state' | 'helloError' | 'today' | 'range' | 'job' | 'onRetry'> & { choice: LoadChoice }
+
+function BitCell({ state, helloError, today, range, job, onRetry, choice }: CellProps) {
+  if (state === 'ready') return <BitLoad today={today} range={range} job={job} choice={choice} />
   if (state === 'no-extension') {
     return (
       <Message title="비트 PC의 크롬에서 불러올 수 있어요">
@@ -191,20 +205,37 @@ type Props = {
   range: StatsRange // 지금 보는 기간(불러올 기간 안내 줄의 계획)
   job: StatsJob | null // 다른 일을 하는 동안 불러오기·파일·불러올 기간을 막는다
   progress: string | null // 나눠 읽는 중 줄(조각이 둘 이상일 때 화면이 준다). null이면 지금 글
+  summary?: ReactNode // 띠 왼쪽 자료 글(화면이 만든다). 없으면 빈 자리
+  canFold?: boolean // 접은 채 시작해도 됨(저장된 숫자 있음 · 읽는 중 · 읽기 실패). 주지 않으면 펼친 채다
   onRetry(): void
   onLoad(closeToday: boolean, span: LoadSpan): void
   onFiles(files: File[]): void
 }
 
-export function SourcePicker({ onFiles, progress, ...rest }: Props) {
-  const { job } = rest
+export function SourcePicker({ onFiles, progress, summary, canFold = false, onLoad, ...cell }: Props) {
+  const { state, helloError, job } = cell
   const input = useRef<HTMLInputElement>(null)
+  const panelId = useId()
+  const [closeToday, setCloseToday] = useState(false)
+  const [span, setSpan] = useState<LoadSpan>('view')
+  const choice: LoadChoice = { span, closeToday, onSpan: setSpan, onCloseToday: setCloseToday }
+
+  // 펼침 = 사용자가 [불러오기 설정]으로 고른 값(null = 고르지 않음) ?? (!canFold || 주의 상태) (design.md '상태 흐름').
+  // 주의 상태로 들어가는 때 고른 값을 지워 다시 펼친다. 상태에만 두고 기억하지 않는다(AC-4001.8: 다시 열면 처음부터)
+  const caution = isCaution(state, helloError)
+  const [picked, setPicked] = useState<boolean | null>(null)
+  const [wasCaution, setWasCaution] = useState(caution)
+  if (caution !== wasCaution) {
+    setWasCaution(caution)
+    if (caution) setPicked(null)
+  }
+  const open = picked ?? (!canFold || caution)
 
   const take = (list: FileList | readonly File[] | null) => {
     const files = Array.from(list ?? [])
     if (job === null && files.length > 0) onFiles(files)
   }
-  // 칸 밖에 놓아도 브라우저가 파일을 열지 않게 띠 전체가 받는다
+  // 칸 밖에 놓아도 브라우저가 파일을 열지 않게 상자 전체(띠 포함, 접혀 있어도)가 받는다
   const drop = (event: DragEvent) => {
     event.preventDefault()
     take(event.dataTransfer.files)
@@ -212,27 +243,57 @@ export function SourcePicker({ onFiles, progress, ...rest }: Props) {
 
   return (
     <>
-      <div className={BAND} onDragOver={(event) => event.preventDefault()} onDrop={drop}>
-        <div className={BIT_CELL}>
-          <BitCell {...rest} />
+      <div className={BOX} onDragOver={(event) => event.preventDefault()} onDrop={drop}>
+        <div className={BAR}>
+          <div className="min-w-0">{summary}</div>
+          <div className={ACTIONS}>
+            {state === 'ready' && (
+              <button
+                type="button"
+                aria-disabled={job !== null || undefined}
+                className={`${ds.button.primary} max-md:flex-auto`}
+                onClick={job === null ? () => onLoad(closeToday, span) : undefined}
+              >
+                <Icon name="monitor" />
+                {job === 'bit' ? '불러오는 중' : '비트에서 불러오기'}
+              </button>
+            )}
+            <FoldButton label={SETTINGS} open={open} controls={panelId} onClick={() => setPicked(!open)} />
+          </div>
         </div>
-        <div className={FILE_CELL}>
-          <button type="button" aria-disabled={job !== null || undefined} className={`${ds.button.secondary} max-md:w-full`} onClick={job === null ? () => input.current?.click() : undefined}>
-            <Icon name="upload" />
-            파일 고르기
-          </button>
-          <span className={HINT}>또는 비트에서 내보낸 파일을 여기에 끌어다 놓아요</span>
-          <input
-            ref={input}
-            type="file"
-            multiple
-            hidden
-            accept=".xlsx,.xls,.csv"
-            onChange={(event) => {
-              take(event.target.files)
-              event.target.value = '' // 같은 파일을 다시 고를 수 있게
-            }}
-          />
+        <div id={panelId} hidden={!open} className={MORE}>
+          <div className={COLS}>
+            <div className={BIT_CELL}>
+              <BitCell {...cell} choice={choice} />
+            </div>
+            <div className={FILE_CELL}>
+              <button
+                type="button"
+                aria-disabled={job !== null || undefined}
+                className={`${ds.button.secondary} max-md:w-full`}
+                onClick={job === null ? () => input.current?.click() : undefined}
+              >
+                <Icon name="upload" />
+                파일 고르기
+              </button>
+              <span className={HINT}>또는 비트에서 내보낸 파일을 여기에 끌어다 놓아요</span>
+              <input
+                ref={input}
+                type="file"
+                multiple
+                hidden
+                accept=".xlsx,.xls,.csv"
+                onChange={(event) => {
+                  take(event.target.files)
+                  event.target.value = '' // 같은 파일을 다시 고를 수 있게
+                }}
+              />
+            </div>
+          </div>
+          <p className="mt-3 flex max-w-160 items-start gap-1.5 text-small text-muted">
+            <Icon name="shield" size={14} className="mt-0.5 shrink-0 text-positive" />
+            <span>{PRIVACY}</span>
+          </p>
         </div>
       </div>
       {(job === 'bit' || job === 'file') && (

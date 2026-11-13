@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ds } from '@/components/ui/classes'
 import { diffDays } from '@/lib/analytics/dates'
@@ -35,7 +36,7 @@ const onLoad = vi.fn()
 const onFiles = vi.fn()
 const onRetry = vi.fn()
 
-type Over = { job?: 'bit' | 'file' | 'save' | null; helloError?: string | null; progress?: string | null }
+type Over = { job?: 'bit' | 'file' | 'save' | null; helloError?: string | null; progress?: string | null; canFold?: boolean; summary?: ReactNode }
 
 function picker(state: BridgeState = 'ready', over: Over = {}) {
   return (
@@ -46,6 +47,8 @@ function picker(state: BridgeState = 'ready', over: Over = {}) {
       range={RANGE}
       job={over.job ?? null}
       progress={over.progress ?? null}
+      summary={over.summary}
+      canFold={over.canFold}
       onRetry={onRetry}
       onLoad={onLoad}
       onFiles={onFiles}
@@ -253,12 +256,13 @@ describe('AC-514.4 파일 넣기', () => {
     expect(onFiles).not.toHaveBeenCalled()
   })
 
-  it('AC-514.10 상자 안 상자가 없고 768px 미만에서 세로로 쌓이며 파일 단추가 전체 폭이다', () => {
+  it('AC-514.10·AC-4001.7 상자 안 상자가 없고 768px 미만에서 펼친 칸이 세로로 쌓이며(1024px 미만부터 세로) 띠 단추 줄·파일 단추가 전체 폭이다', () => {
     const { container } = draw()
     expect(nestedBoxes(container)).toEqual([])
-    const band = within(container).getByRole('button', { name: LOAD }).parentElement?.parentElement
-    expect(band?.className).toContain('max-md:flex-col')
-    expect(screen.getByRole('button', { name: '파일 고르기' }).className).toContain('max-md:w-full')
+    const file = screen.getByRole('button', { name: '파일 고르기' })
+    expect(file.className).toContain('max-md:w-full')
+    expect(file.parentElement?.parentElement?.className.split(' ')).toContain('flex-col')
+    expect(within(container).getByRole('button', { name: LOAD }).parentElement?.className).toContain('max-md:w-full')
   })
 })
 
@@ -530,7 +534,7 @@ describe('AC-3301.1 불러올 기간 묶음 단추', () => {
     vi.unstubAllGlobals()
   })
 
-  it("AC-3301.1 [비트에서 불러오기] 위 한 줄(basis-full)에 굵은 '불러올 기간' 글과 묶음이 있고 단추는 차례로 넷이다", () => {
+  it("AC-3301.1·AC-4001.1 펼칠 칸 맨 위 한 줄(basis-full)에 굵은 '불러올 기간' 글과 묶음이 있고 단추는 차례로 넷이며, [비트에서 불러오기]는 그 위 띠에 있다", () => {
     draw()
     const group = spanGroup()
     expect(within(group).getAllByRole('button').map((button) => button.textContent)).toEqual(SPAN_NAMES)
@@ -540,7 +544,11 @@ describe('AC-3301.1 불러올 기간 묶음 단추', () => {
     expect(title.parentElement).toBe(row)
     expect(classesOf(row)).toContain('basis-full')
     const load = screen.getByRole('button', { name: LOAD })
-    expect(row!.compareDocumentPosition(load) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(load.compareDocumentPosition(row!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const panel = document.getElementById(screen.getByRole('button', { name: '불러오기 설정' }).getAttribute('aria-controls') ?? '')
+    expect(panel?.contains(row!)).toBe(true)
+    expect(panel?.contains(load)).toBe(false)
+    expect(row?.parentElement?.firstElementChild).toBe(row)
   })
 
   it("AC-3301.1 넷째 단추 이름은 '전체 기간'이고, 어느 것을 골라도 화면에 '2020년부터 전부'라는 글이 없다", () => {
@@ -682,5 +690,216 @@ describe('AC-3303.4 나눠 읽는 중 줄', () => {
     for (const name of SPAN_NAMES) expect(spanButton(name).disabled).toBe(true)
     fireEvent.click(load)
     expect(onLoad).not.toHaveBeenCalled()
+  })
+})
+
+// ── 불러오기 띠 (stats-pc-ux REQ-4001 TASK-4, 시안 docs/mockups/stats-pc-ux notes.md §1, design.md 'SourcePicker.tsx 바뀜') ──
+// 상자 = 띠(왼쪽 자료 글 · 오른쪽 [비트에서 불러오기] + [불러오기 설정]) + 펼칠 칸(hidden). 펼침 = 사용자가 고른 값 ?? (!canFold || 주의 상태)
+
+const SETTINGS = '불러오기 설정'
+const PRIVACY = '환자 개인정보는 의원 PC 밖으로 나가지 않아요. 서버에는 숫자만 저장해요.'
+const DROP_TEXT = '또는 비트에서 내보낸 파일을 여기에 끌어다 놓아요'
+const SUMMARY = '자료: 가짜 자료 글'
+const toggle = () => screen.getByRole('button', { name: SETTINGS })
+const foldPanel = () => document.getElementById(toggle().getAttribute('aria-controls') ?? '') as HTMLElement
+const band = () => foldPanel().previousElementSibling as HTMLElement
+const box = () => foldPanel().parentElement as HTMLElement
+const expanded = () => toggle().getAttribute('aria-expanded')
+const folded = (state: BridgeState = 'ready', over: Over = {}) => draw(state, { canFold: true, summary: <p>{SUMMARY}</p>, ...over })
+// 주의 상태 여섯(design.md: 끊김 · 바쁨 · 연결 확인 오류 · 도우미 없음 · 도우미/확장 업데이트)
+const CAUTION: [string, BridgeState, string | null][] = [
+  ['연결 끊김', 'disconnected', null],
+  ['바쁨', 'busy', null],
+  ['연결 확인 오류', 'connecting', 'E-BRIDGE-BAD-REPLY'],
+  ['도우미 없음', 'no-helper', null],
+  ['도우미 업데이트', 'update-helper', null],
+  ['확장 업데이트', 'update-extension', null],
+]
+
+describe('REQ-4001 불러오기 상자를 한 줄 띠로 접기', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('AC-4001.1: canFold면 띠만 보인다 — 왼쪽 자료 글, 오른쪽 [비트에서 불러오기](주 단추) + [불러오기 설정](aria-expanded false, aria-controls = 펼칠 칸), 펼칠 칸은 hidden', () => {
+    folded()
+    const summary = within(band()).getByText(SUMMARY)
+    const load = within(band()).getByRole('button', { name: LOAD })
+    expect(tokens(load.className)).toEqual(expect.arrayContaining(tokens(ds.button.primary)))
+    expect(band().contains(toggle())).toBe(true)
+    expect(summary.compareDocumentPosition(load) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(load.compareDocumentPosition(toggle()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(expanded()).toBe('false')
+    expect(toggle().getAttribute('aria-controls')).toBeTruthy()
+    expect(foldPanel().hidden).toBe(true)
+    expect(classesOf(box())).toEqual(expect.arrayContaining(['bg-canvas', 'rounded-control']))
+  })
+
+  it('AC-4001.1: 펼칠 칸 안에 불러올 기간 · 오늘 진료 끝 · 안내 두 줄 · [파일 고르기]와 끌어다 놓기 글 · 개인정보 줄이 있고, 접힌 동안 role로 찾히지 않는다', () => {
+    folded()
+    for (const text of ['불러올 기간', '오늘 진료 끝', HINTS[0]!, CLOSE_OFF, '파일 고르기', DROP_TEXT, PRIVACY]) {
+      expect(foldPanel().textContent, text).toContain(text)
+      expect(band().textContent, text).not.toContain(text)
+    }
+    expect(foldPanel().contains(screen.getByText(PRIVACY))).toBe(true)
+    expect(screen.queryByRole('button', { name: '파일 고르기' })).toBeNull()
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(screen.queryByRole('group', { name: '불러올 기간' })).toBeNull()
+  })
+
+  it('AC-4001.1: canFold를 주지 않으면 지금처럼 펼친 채다', () => {
+    draw()
+    expect(expanded()).toBe('true')
+    expect(foldPanel().hidden).toBe(false)
+    expect(screen.getByRole('button', { name: '파일 고르기' })).toBeTruthy()
+    expect(screen.getByRole('group', { name: '불러올 기간' })).toBeTruthy()
+  })
+
+  it('AC-4001.2: [불러오기 설정]을 누르면 펼치고(aria-expanded true, 꺾쇠 180°) 다시 누르면 접는다. 펼친 칸 안 단추는 지금과 같다', () => {
+    folded()
+    const chev = () => toggle().querySelector('svg')?.getAttribute('class') ?? ''
+    expect(chev()).not.toContain('rotate-180')
+    fireEvent.click(toggle())
+    expect(expanded()).toBe('true')
+    expect(foldPanel().hidden).toBe(false)
+    expect(chev()).toContain('rotate-180')
+    expect(pressed()).toEqual(['true', 'false', 'false', 'false'])
+    expect((screen.getByRole('checkbox', { name: '오늘 진료 끝' }) as HTMLInputElement).disabled).toBe(false)
+    expect(screen.getByRole('button', { name: '파일 고르기' }).getAttribute('aria-disabled')).toBeNull()
+    fireEvent.click(toggle())
+    expect(expanded()).toBe('false')
+    expect(foldPanel().hidden).toBe(true)
+    expect(chev()).not.toContain('rotate-180')
+  })
+
+  it('AC-4001.2: 펼친 채 일이 있으면 불러올 기간·오늘 진료 끝·파일이 지금처럼 막힌다', () => {
+    folded('ready', { job: 'bit' })
+    fireEvent.click(toggle())
+    for (const name of SPAN_NAMES) expect(spanButton(name).disabled).toBe(true)
+    expect((screen.getByRole('checkbox', { name: '오늘 진료 끝' }) as HTMLInputElement).disabled).toBe(true)
+    expect(screen.getByRole('button', { name: '파일 고르기' }).getAttribute('aria-disabled')).toBe('true')
+  })
+
+  it('AC-4001.3: 펼쳐 고른 불러올 기간·오늘 진료 끝은 접은 뒤에도 남고, 접은 채 띠의 [비트에서 불러오기]가 그 값으로 onLoad를 부른다', () => {
+    folded()
+    fireEvent.click(within(band()).getByRole('button', { name: LOAD }))
+    expect(onLoad).toHaveBeenLastCalledWith(false, 'view')
+
+    fireEvent.click(toggle())
+    fireEvent.click(spanButton('최근 2년'))
+    fireEvent.click(screen.getByRole('checkbox', { name: '오늘 진료 끝' }))
+    fireEvent.click(toggle())
+    expect(foldPanel().hidden).toBe(true)
+    fireEvent.click(within(band()).getByRole('button', { name: LOAD }))
+    expect(onLoad).toHaveBeenLastCalledWith(true, '2y')
+    expect(onLoad).toHaveBeenCalledTimes(2)
+
+    fireEvent.click(toggle())
+    expect(pressed()).toEqual(['false', 'false', 'true', 'false'])
+    expect((screen.getByRole('checkbox', { name: '오늘 진료 끝' }) as HTMLInputElement).checked).toBe(true)
+  })
+
+  it('AC-4001.3: 접은 채 일이 있으면 띠 단추가 막히고 비트 일 중에는 "불러오는 중"이다', () => {
+    const { rerender } = folded('ready', { job: 'bit' })
+    const busy = within(band()).getByRole('button', { name: '불러오는 중' })
+    expect(busy.getAttribute('aria-disabled')).toBe('true')
+    fireEvent.click(busy)
+    expect(onLoad).not.toHaveBeenCalled()
+    for (const job of ['file', 'save'] as const) {
+      rerender(picker('ready', { canFold: true, job }))
+      const load = within(band()).getByRole('button', { name: LOAD })
+      expect(load.getAttribute('aria-disabled')).toBe('true')
+      fireEvent.click(load)
+    }
+    expect(onLoad).not.toHaveBeenCalled()
+    expect(foldPanel().hidden).toBe(true)
+  })
+
+  it.each(CAUTION)('AC-4001.5: %s는 canFold여도 펼친 채이고 [비트에서 불러오기]가 없다', (_name, state, helloError) => {
+    folded(state, { helloError })
+    expect(expanded()).toBe('true')
+    expect(foldPanel().hidden).toBe(false)
+    expect(screen.queryByRole('button', { name: LOAD, hidden: true })).toBeNull()
+  })
+
+  it.each(CAUTION)('AC-4001.5: 접어 둔 뒤 %s로 바뀌면 다시 펼치고, 그 뒤 [불러오기 설정]으로 접을 수 있다', (_name, state, helloError) => {
+    const { rerender } = folded()
+    fireEvent.click(toggle())
+    fireEvent.click(toggle()) // 사용자가 펼쳤다가 접었다
+    expect(foldPanel().hidden).toBe(true)
+    rerender(picker(state, { canFold: true, helloError }))
+    expect(expanded()).toBe('true')
+    expect(foldPanel().hidden).toBe(false)
+    fireEvent.click(toggle())
+    expect(expanded()).toBe('false')
+    rerender(picker(state, { canFold: true, helloError }))
+    expect(expanded()).toBe('false')
+  })
+
+  it("AC-4001.5: [비트에서 불러오기]는 'ready'일 때만 띠에 있다. 연결을 확인하는 중(오류 없음)은 canFold면 접힌 채이고 단추가 아직 없다", () => {
+    folded('connecting')
+    expect(expanded()).toBe('false')
+    expect(screen.queryByRole('button', { name: LOAD, hidden: true })).toBeNull()
+    expect(within(band()).getAllByRole('button').map((button) => button.textContent)).toEqual([SETTINGS])
+  })
+
+  it("AC-4001.5: 확장 없음은 띠에 [불러오기 설정]만 있고, 펼치면 '비트 PC의 크롬에서 불러올 수 있어요' 안내와 [파일 고르기]다", () => {
+    folded('no-extension')
+    expect(expanded()).toBe('false')
+    expect(within(band()).getAllByRole('button').map((button) => button.textContent)).toEqual([SETTINGS])
+    fireEvent.click(toggle())
+    expect(within(foldPanel()).getByText('비트 PC의 크롬에서 불러올 수 있어요')).toBeTruthy()
+    expect(within(foldPanel()).getByRole('button', { name: '파일 고르기' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: LOAD, hidden: true })).toBeNull()
+  })
+
+  it('AC-4001.7: 펼친 칸은 1024px 이상 두 칸(lg:flex-row, 파일 칸 lg:border-l)이고 미만은 파일 칸이 아래로 가며 가로줄(max-lg:border-t)이다', () => {
+    draw()
+    const file = screen.getByRole('button', { name: '파일 고르기' }).parentElement!
+    expect(classesOf(file)).toEqual(expect.arrayContaining(['lg:border-l', 'max-lg:border-t']))
+    expect(classesOf(file)).not.toContain('border-l')
+    expect(classesOf(file)).not.toContain('max-md:border-t')
+    const cols = file.parentElement!
+    expect(classesOf(cols)).toEqual(expect.arrayContaining(['flex', 'flex-col', 'lg:flex-row']))
+    expect(cols.firstElementChild?.contains(spanGroup())).toBe(true)
+    expect(cols.lastElementChild).toBe(file)
+    expect(foldPanel().contains(cols)).toBe(true)
+  })
+
+  it('AC-4001.7: 접힌 채·펼친 채 모두 상자 안 상자가 없다', () => {
+    const { container } = folded()
+    expect(nestedBoxes(container)).toEqual([])
+    fireEvent.click(toggle())
+    expect(nestedBoxes(container)).toEqual([])
+  })
+
+  it('AC-4001.7: 접힌 채 띠(자료 글 위)에 끌어다 놓아도 파일을 받고 브라우저가 열지 않는다', () => {
+    folded()
+    const file = fileNamed('가짜환자.xlsx')
+    const place = screen.getByText(SUMMARY)
+    expect(fireEvent.dragOver(place, { dataTransfer: { files: [file] } })).toBe(false)
+    expect(fireEvent.drop(place, { dataTransfer: { files: [file] } })).toBe(false)
+    expect(onFiles).toHaveBeenCalledWith([file])
+  })
+
+  it('AC-4001.7: 읽는 중 줄은 상자 바로 아래다', () => {
+    folded('ready', { job: 'bit' })
+    const working = screen.getByText('비트 PC에서 읽는 중이에요. 기간이 길면 1분쯤 걸려요.').closest('p')
+    expect(working?.previousElementSibling).toBe(box())
+  })
+
+  it('AC-4001.8: 펼침은 다시 그리면 처음 규칙으로 돌아가고 브라우저 저장소·서버에 아무것도 쓰지 않는다', () => {
+    const stored = vi.spyOn(Storage.prototype, 'setItem')
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const first = folded()
+    fireEvent.click(toggle())
+    expect(expanded()).toBe('true')
+    first.unmount()
+    folded()
+    expect(expanded()).toBe('false')
+    expect(stored).not.toHaveBeenCalled()
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 })
