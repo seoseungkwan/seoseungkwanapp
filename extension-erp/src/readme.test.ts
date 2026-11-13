@@ -2,11 +2,12 @@
 // 안내서의 화면 글은 기간 안내 글(rangeView.ts RANGE_TEXT = design.md 4절, 승인된 시안 ①~⑤) 그대로여야 한다.
 // 숫자·날짜 자리는 안내서에서 {이름}으로 쓴다: 화면 글 함수에 표시 숫자(901…)를 넣어 부른 뒤 그 숫자를 {이름}으로 바꿔 견준다
 // TASK-9 REQ-3707: 설정 '매출로 셀 코드' 설명은 설정 화면 글(options.ts AMOUNT) 그대로이고 '이 글자 뒤에 숫자' 설명은 없다
+// TASK-11 REQ-3708·REQ-3709: '셀 코드' 찾기 글(options.ts FIND)과 '읽지 않을 처방' 설명(options.ts EXCLUDE)도 화면 글 그대로다
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { AMOUNT } from './options'
+import { AMOUNT, EXCLUDE, FIND } from './options'
 import { OVERLAP_TEXT } from './panel'
 import { RANGE_TEXT } from './rangeView'
 
@@ -272,5 +273,38 @@ describe("AC-3707.3 안내서 '매출로 셀 코드' — 화면 글(options.ts A
     expect(update).toContain('줄어듭니다')
     expect(part(README, '4-2.')).toContain("'7. 새 판으로 바꾸기'")
     expect(MANIFEST.version).toBe('0.3.0')
+  })
+})
+
+describe("AC-3709.1 안내서 '읽지 않을 처방' — 화면 글(options.ts EXCLUDE) 그대로", () => {
+  it('AC-3709.1 AC-3709.4: 4-6 소절에 안내 글·칸 이름·빼는 때 둘·[규칙 더하기]·아래 글·규칙 조각 글·빈 글·까닭 넷이 화면 글 그대로 있다', () => {
+    const sec = part(README, '4-6.')
+    expect(sec).toContain(`**'${EXCLUDE.title}'**`)
+    expectQuoted(sec, EXCLUDE.about('{이름}'))
+    expectQuoted(sec, EXCLUDE.empty)
+    expectQuoted(sec, EXCLUDE.hint)
+    for (const label of [EXCLUDE.code, EXCLUDE.with, EXCLUDE.when, EXCLUDE.any, EXCLUDE.all]) expect(sec, label).toContain(`**'${label}'**`)
+    expect(sec).toContain(`**[${EXCLUDE.add}]**`)
+    expectQuoted(sec, EXCLUDE.rule('{코드}', ['{같이 있을 처방}'], false))
+    for (const when of [EXCLUDE.whenOne, EXCLUDE.whenAny, EXCLUDE.whenAll]) expect(sec, when).toContain(`'${when}'`)
+    for (const line of Object.values(EXCLUDE.problems)) expectQuoted(sec, line)
+    expect(Object.keys(EXCLUDE.problems)).toEqual(['noCode', 'noWith', 'same', 'full'])
+  })
+
+  it('AC-3709.1 AC-3709.4: 넣는 줄(주사1회환자·물리치료내원 없음)·담는 중인 것은 저장 안 됨·코드를 빼면 규칙도 빠짐·[처음 값으로]가 적혀 있다', () => {
+    const sec = part(README, '4-6.')
+    for (const name of ['씨암', 'SONO', '관절조영', '도수', '충격파', '물리치료', '기타1~4', '도수상담', '리푸스', '손발톱케어', 'CT', '수술', 'ESWT Standard', 'ESWT Radial']) {
+      expect(sec, name).toContain(name)
+    }
+    expect(sec).toContain('주사1회환자·물리치료내원 줄에는 없습니다')
+    expect(sec).toContain('저장되지 않습니다')
+    expect(sec).toContain("그 코드가 '이 처방'인 규칙도 빠집니다")
+    expect(sec).toContain('**[처음 값으로]**는 규칙도 비웁니다')
+  })
+
+  it("AC-3708.2 AC-3708.3: 4-2 '셀 코드' 찾기 설명에 도우미 찾기 글('찾는 중…'·'등록된 코드에 없어요.'·'더함')과 옛 도우미 안내 줄이 화면 글 그대로 있다", () => {
+    const cell = part(README, '4-2.')
+    for (const line of [FIND.waiting, FIND.none, FIND.added, FIND.old]) expectQuoted(cell, line)
+    expect(cell).toContain('두 글자 이상')
   })
 })

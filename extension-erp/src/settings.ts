@@ -1,9 +1,20 @@
 // 확장 설정(design.md 4절 설정 모양): 처음 값·저장·불러오기·도우미에 보낼 묶음·코드 찾기와 고르기 규칙,
-// [저장] 전 검사(겹침·처방 없는 코드)와 처음 값 판(TASK-18)
+// [저장] 전 검사(겹침·처방 없는 코드)와 처음 값 판(TASK-18), 읽지 않을 처방 규칙(REQ-3709, design.md 11절)
 // 설정 화면(options.ts)과 ERP 화면 쪽(main.ts)이 같이 쓴다. 그래서 types.js와 고정 줄 이름(cells.js, types.js만 부름) 말고는 불러오지 않는다
 import { ETC_CLASH_ROWS } from './cells.js'
-import { AMOUNT_KEYS, CODE_PATTERN, GROUP_KEYS, MAX_CODE_LENGTH, RSV_ROWS, SETTINGS_KEY } from './types.js'
-import type { AmountKey, AmountRule, ClosingCodes, ClosingDayArgs, EtcKey, GroupKey, OverlapChoice, RsvRow, Settings } from './types.js'
+import { AMOUNT_KEYS, CODE_PATTERN, EXCLUDE_KEYS, GROUP_KEYS, MAX_CODE_LENGTH, RSV_ROWS, SETTINGS_KEY } from './types.js'
+import type {
+  AmountKey,
+  AmountRule,
+  ClosingCodes,
+  ClosingDayArgs,
+  EtcKey,
+  ExcludeRule,
+  GroupKey,
+  OverlapChoice,
+  RsvRow,
+  Settings,
+} from './types.js'
 
 /**
  * 처음 값 판(기본값 (타)). 2 = 물리치료 MM085·MM080·MM020 · 크라이오 CRYO3을 더한 판(2026-11-10 밤).
@@ -17,6 +28,9 @@ export const MAX_CODES = 20
 export const MAX_RESULTS = 30
 /** 기타1~4 ERP 줄 이름 글자 수 */
 export const MAX_ETC_NAME = 20
+/** 읽지 않을 처방: 줄마다 규칙 수 · 규칙마다 같이 있을 처방 수(closing.day exclude 꼴, AC-3709.2) */
+export const MAX_RULES = 20
+export const MAX_WITH = 5
 
 export const ETC_KEYS: readonly EtcKey[] = ['etc1', 'etc2', 'etc3', 'etc4']
 
@@ -108,6 +122,78 @@ function cleanAmounts(raw: unknown): Settings['amounts'] {
   return { carm: one('carm'), sono: one('sono') }
 }
 
+// --- 읽지 않을 처방 규칙(REQ-3709, design.md 11절) ---
+
+const isAmountKey = (key: GroupKey): key is AmountKey => (AMOUNT_KEYS as readonly string[]).includes(key)
+
+/** 규칙의 '이 처방'이 될 수 있는 코드: 그 줄 고른 코드, 씨암·SONO는 이어서 셀 코드(겹친 것은 한 번) */
+function ownCodes(key: GroupKey, picks: Settings['picks'], amounts: Settings['amounts'] | undefined): string[] {
+  const cells = isAmountKey(key) ? (amounts?.[key]?.codes ?? []) : []
+  return [...(picks[key] ?? []), ...cells].filter((code, i, all) => all.indexOf(code) === i)
+}
+
+/** 설정 화면 '이 처방' 고르기 목록(AC-3709.1) */
+export function ruleCodes(settings: Settings, key: GroupKey): string[] {
+  return ownCodes(key, settings.picks, settings.amounts)
+}
+
+/** 이 처방 · 같이 있을 처방(차례 상관없이) · 빼는 때가 모두 같은 규칙인가 */
+function sameRule(a: ExcludeRule, b: ExcludeRule): boolean {
+  return a.code === b.code && a.all === b.all && a.with.length === b.with.length && a.with.every((code) => b.with.includes(code))
+}
+
+/** 규칙 하나: code는 그 줄 코드에 있어야 하고, with는 코드 꼴만·겹침·code와 같은 것을 떼고 5개까지(비면 null), all은 참일 때만 true */
+function cleanRule(raw: unknown, own: readonly string[]): ExcludeRule | null {
+  if (!isRecord(raw) || typeof raw.code !== 'string') return null
+  const code = cleanCode(raw.code)
+  if (code === null || !own.includes(code)) return null
+  const withs: string[] = []
+  for (const item of Array.isArray(raw.with) ? raw.with : []) {
+    if (withs.length >= MAX_WITH) break
+    const other = typeof item === 'string' ? cleanCode(item) : null
+    if (other !== null && other !== code && !withs.includes(other)) withs.push(other)
+  }
+  return withs.length > 0 ? { code, with: withs, all: raw.all === true } : null
+}
+
+/**
+ * 읽지 않을 처방 규칙 다듬기(design.md 11절): EXCLUDE_KEYS 줄만(모르는 key·injection·ptVisit 버림) 줄마다 cleanRule로 맞추고,
+ * 똑같은 규칙은 앞 것만 20개까지. 규칙이 있는 줄만 둔다. 줄에서 코드를 빼면 이것으로 그 코드가 '이 처방'인 규칙이 빠진다
+ */
+export function cleanExcludes(
+  raw: unknown,
+  picks: Settings['picks'],
+  amounts: Settings['amounts'] | undefined,
+): NonNullable<Settings['excludes']> {
+  const rows = isRecord(raw) ? raw : {}
+  const out: NonNullable<Settings['excludes']> = {}
+  for (const key of EXCLUDE_KEYS) {
+    const list = rows[key]
+    if (!Array.isArray(list)) continue
+    const own = ownCodes(key, picks, amounts)
+    const rules: ExcludeRule[] = []
+    for (const item of list) {
+      if (rules.length >= MAX_RULES) break
+      const rule = cleanRule(item, own)
+      if (rule && !rules.some((r) => sameRule(r, rule))) rules.push(rule)
+    }
+    if (rules.length > 0) out[key] = rules
+  }
+  return out
+}
+
+/** [규칙 더하기]를 막는 까닭(AC-3709.4): '이 처방' 안 고름 · 같이 있을 처방 없음 · 똑같은 규칙이 있음 · 20개 */
+export type RuleProblem = 'noCode' | 'noWith' | 'same' | 'full'
+
+/** 새 규칙을 그 줄 규칙 끝에 더할 수 있으면 null, 아니면 까닭(이 차례로 본다) */
+export function ruleProblem(rules: readonly ExcludeRule[], rule: ExcludeRule): RuleProblem | null {
+  if (!rule.code) return 'noCode'
+  if (rule.with.length === 0) return 'noWith'
+  if (rules.some((r) => sameRule(r, rule))) return 'same'
+  if (rules.length >= MAX_RULES) return 'full'
+  return null
+}
+
 const isOverlap = (value: unknown): value is OverlapChoice => OVERLAP_CHOICES.includes(value as OverlapChoice)
 
 /** 처음 값 판: 1 이상 정수면 그 수, 없거나 틀리면 1(TASK-18 전에 저장한 설정) */
@@ -134,7 +220,11 @@ export function normalize(raw: unknown): Settings | null {
     const kinds = cleanList(rawRsv[row], Infinity)
     if (kinds.length > 0) reservations[row] = kinds
   }
-  const settings: Settings = { v: 1, picks, etcNames, reservations, amounts: cleanAmounts(raw.amounts) }
+  const amounts = cleanAmounts(raw.amounts)
+  const settings: Settings = { v: 1, picks, etcNames, reservations, amounts }
+  // 읽지 않을 처방 규칙은 있는 줄만, 하나도 없으면 칸을 두지 않는다(지금 저장 모양 그대로)
+  const excludes = cleanExcludes(raw.excludes, picks, amounts)
+  if (Object.keys(excludes).length > 0) settings.excludes = excludes
   if (isOverlap(raw.overlap)) settings.overlap = raw.overlap
   settings.defaultsSeen = cleanSeen(raw.defaultsSeen)
   return settings
@@ -176,19 +266,23 @@ export async function saveOverlap(choice: OverlapChoice): Promise<void> {
 /**
  * closing.day args groups: 코드가 있는 항목만 GROUP_KEYS 차례로. 씨암·SONO에는 셀 코드가 있을 때만
  * amountPrefixes(늘 빈 목록, 도우미 0.2.0 모양)·amountCodes 두 칸을 붙인다(셀 코드가 비면 붙이지 않아 TASK-14 규칙, AC-3707.2).
- * 규칙이 빠진 설정은 normalize처럼 처음 값(셀 코드 없음)으로 본다
+ * 규칙이 빠진 설정은 normalize처럼 처음 값(셀 코드 없음)으로 본다.
+ * 읽지 않을 처방 규칙이 있는 묶음에만 exclude: [{ code, with, all }]를 붙인다(AC-3709.3, normalize와 같은 다듬기)
  */
 export function toGroups(settings: Settings): ClosingDayArgs['groups'] {
   const amounts = cleanAmounts(settings.amounts)
+  const excludes = cleanExcludes(settings.excludes, settings.picks, amounts)
   return GROUP_KEYS.flatMap((key) => {
     const codes = settings.picks[key] ?? []
     if (codes.length === 0) return []
     const group: ClosingDayArgs['groups'][number] = { key, codes: [...codes] }
-    const rule = (AMOUNT_KEYS as readonly string[]).includes(key) ? amounts[key as AmountKey] : null
+    const rule = isAmountKey(key) ? amounts[key] : null
     if (rule && rule.codes.length > 0) {
       group.amountPrefixes = []
       group.amountCodes = [...rule.codes]
     }
+    const rules = excludes[key]
+    if (rules) group.exclude = rules.map((r) => ({ code: r.code, with: [...r.with], all: r.all }))
     return [group]
   })
 }
@@ -234,10 +328,14 @@ export function newDefaultCodes(saved: Settings): { key: GroupKey; codes: string
   })
 }
 
-/** [처음 값으로] → [바꾸기](AC-3615.5): 고른 코드(picks)·씨암·SONO 매출 규칙(amounts)만 처음 값, 나머지 칸은 그대로(새 복사본) */
+/**
+ * [처음 값으로] → [바꾸기](AC-3615.5): 고른 코드(picks)·씨암·SONO 매출 규칙(amounts)만 처음 값이고 읽지 않을 처방 규칙은 비운다
+ * (AC-3709.4, 처음 값은 규칙 없음이라 칸을 뺀다). 나머지 칸은 그대로(새 복사본)
+ */
 export function resetCodes(settings: Settings): Settings {
   const first = defaults()
   const copy = JSON.parse(JSON.stringify(settings)) as Settings
+  delete copy.excludes
   return { ...copy, picks: first.picks, amounts: first.amounts }
 }
 
