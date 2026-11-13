@@ -72,7 +72,7 @@ export function runRange(days: string[], deps, choice: OverlapChoice | undefined
 - 날짜 모양: `periodLabel(from, to, today?)` — 같은 날 '{M}월 {D}일' · 같은 달 '{M}월 {D}일~{D2}일' · 같은 해 '{M}월 {D}일~{M2}월 {D2}일' · 다른 해 '{Y}년 {M}월 {D}일~{Y2}년 {M2}월 {D2}일'. 앞 셋은 그 해가 `today`의 해가 아니면 앞에 '{Y}년 '을 붙인다(연도를 잘못 친 것이 보이게). `dayList` — 'M/D'를 ' · '로, 확정한 날은 뒤에 ' 확정', 10개를 넘으면 앞 10개 + ' 외 {k}일'. '지금:' 줄은 '{M}월 {D}일'. 숫자는 쉼표
 - 글 (`RANGE_TEXT`, 시안 그대로 + 시안에 없는 것):
   - 단추 '기간 채우기' · 머리 작은 글(`.pt`): pick '기간 채우기' · scanning '기간 채우기 · 살펴보는 중' · confirm '기간 채우기 · 확인' · running '기간 채우기 · 저장 중' · stopped·blocked '기간 채우기 · 멈춤' · end '기간 채우기 · 끝'
-  - pick: '채울 기간을 골라 주세요.' · 칸 이름 '시작일'·'끝일'(`input[type=date]`, `max` = 오늘) · '오늘 뒤 날짜는 고를 수 없어요. [살펴보기]를 누르면 기간 안 날마다 이미 적어 둔 것이 있는지 먼저 봐요. 아직 아무 칸도 바꾸지 않아요.' · 막는 줄: 빈 칸 '시작일과 끝일을 골라 주세요.' / 시작일 > 끝일 '시작일이 끝일보다 뒤예요.' / 오늘 뒤 '오늘 뒤 날짜는 고를 수 없어요.' / 92일(`MAX_DAYS`)보다 긺 '한 번에 92일까지 고를 수 있어요.'(이 차례로 첫 하나) · [닫기]·[살펴보기]
+  - pick: '채울 기간을 골라 주세요.' · 칸 이름 '시작일'·'끝일'(`input[type=date]`, `max` = 오늘) · '오늘 뒤 날짜는 고를 수 없어요. [살펴보기]를 누르면 기간 안 날마다 이미 적어 둔 것이 있는지 먼저 봐요. 아직 아무 칸도 바꾸지 않아요.' · 막는 줄: 빈 칸 '시작일과 끝일을 골라 주세요.' / 시작일 > 끝일 '시작일이 끝일보다 뒤예요.' / 오늘 뒤 '오늘 뒤 날짜는 고를 수 없어요.'(이 차례로 첫 하나, 기간 길이 제한 없음 — 12절) · [닫기]·[살펴보기]
   - todayOnly: '이 계정은 오늘 마감일지만 열 수 있어 기간 채우기를 쓸 수 없어요.' · '날짜를 고를 수 있는 계정으로 열어 주세요. 아무 칸도 바꾸지 않았어요.' · [닫기]
   - scanning: '기간 안 날을 살펴보는 중이에요.' · 진행 막대 · '{N}일 중 {k}일' · '아직 아무 칸도 바꾸지 않아요.' · [그만두기]
   - confirm: 굵은 줄 '{기간} 중 {S}일을 비트 값으로 덮어쓰고 저장해요.'(시작일 = 끝일이면 '{기간}을 비트 값으로 덮어쓰고 저장해요.') · 묶음 '새로 채울 날 {n}일' / '이미 적어 둔 날 {m}일 — 작성중 {a}일 · 확정 {b}일 ({dayList})' / '확인하지 못한 날 {u}일 — 채울 때 다시 불러와요 ({dayList})' / '진료 0건이라 건너뛸 날 {z}일 ({dayList})' · 경고 '이미 적어 둔 {m}일도 비트 값으로 바뀌어요.'(+ b > 0이면 ' 확정한 날도 바뀌어요.') / '날마다 ERP의 '전체 저장'과 '일일 상세 저장'을 확장이 눌러요. 상태(작성중·확정)는 그대로 둬요.' / 함께 있는 진료(AC-3702.3) '씨암·SONO를 같이 받은 진료는 지난번 고른 대로 {OVERLAP_TEXT.into} 넣어요.' 또는 묻는 줄 '씨암·SONO를 같이 받은 진료가 {K}건 있어요. 어디에 넣을까요?' + `OVERLAP_TEXT.choice` 세 단추(누른 것 `aria-pressed="true"`) · 작은 줄 '도는 동안 이 크롬 창을 닫거나 다른 화면으로 옮기지 마세요.' · [닫기]·[덮어쓰고 저장 시작]. S = 0이면 '{기간}에는 채울 날이 없어요.' + 건너뛸 날 묶음 + [닫기]
@@ -99,7 +99,7 @@ export const LOAD_TIMEOUT_MS = 30_000
 export const SAVE_TIMEOUT_MS = 30_000
 export const STABLE_MS = 400
 export const FALLBACK_MS = 1_000
-export const MAX_DAYS = 92                         // 한 번에 고를 수 있는 날 수(사용자 결정 11-13)
+// MAX_DAYS 없음(12절, 기간 길이 제한 없음)
 export type JournalState = { exists: boolean; status: 'draft' | 'confirmed' | null }
 export type LoadResult = 'ok' | 'error' | 'timeout'
 export type SaveResult = 'ok' | 'error' | 'timeout' | 'missing'
@@ -133,7 +133,7 @@ export type RangeAction =
 (`OverlapChoice`·`ClosingDay`는 `types.ts`에서 import)
 
 ## 6. 잇기 `extension-erp/src/main.ts` (TASK-4)
-- [기간 채우기](`onRange`): `busy`면 무시 → `todayOnly(doc)`(안내 창이 떠 있어도)면 `todayOnly` → 설정 `load()`(null이면 지금처럼 설정 화면 열기 + `first`) → `pick`(처음 값 AC-3701.1, `today`를 넘겨 periodLabel이 해를 붙이게). `scan`은 pick과 같은 막는 규칙(92일 포함)을 한 번 더 본다
+- [기간 채우기](`onRange`): `busy`면 무시 → `todayOnly(doc)`(안내 창이 떠 있어도)면 `todayOnly` → 설정 `load()`(null이면 지금처럼 설정 화면 열기 + `first`) → `pick`(처음 값 AC-3701.1, `today`를 넘겨 periodLabel이 해를 붙이게). `scan`은 pick과 같은 막는 규칙을 한 번 더 본다(기간 길이는 보지 않음)
 - `runRange`에 넘기는 `choice`는 승인 때 고른 것, 없으면 설정의 지난번 고른 것(둘 다 없으면 undefined → 그날 함께 있는 진료가 있으면 `overlapUnpicked`로 멈춤)
 - 살펴보기·채우기 흐름에서 뜻밖의 오류(throw)는 잡아서 그때까지의 결과로 `blocked` `{ kind: 'unexpected' }`를 보인다([닫기]로 단추가 풀림). `gone()`이면 아무것도 보이지 않는다
 - `scan` → `busy = true`, `setRangeBusy(true)`, 지금 [되돌리기]·[지난 결과] 기억을 지움(`remember(null)`) → `scanRange` → `scanning` 진행 → 결과: `confirm`(설정 `overlap`을 `last`로) / `blocked`(k = 0) / 그만둠이면 닫기
@@ -152,3 +152,27 @@ export type RangeAction =
 - ERP가 판을 자주 바꾼다(11-10·11-11·11-13 세 번) → 표시를 못 찾으면 그날 '불러오지 못함'·'missing'으로 멈추거나 건너뛰지 아무거나 누르지 않는다
 - 로그인이 풀리면 화면이 /login으로 가 확장 기억이 사라진다 → 다시 [살펴보기]부터(같은 값으로 다시 저장되어 괜찮음)
 - 원무(오늘만) 계정은 쓸 수 없다(AC-3701.3)
+
+## 9. 설정 '매출로 셀 코드'는 코드만 (REQ-3707, TASK-9)
+- 설정 화면(`options.ts` `amountRow`): '이 글자 뒤에 숫자' 줄(`data-prefixes`·글자 칸 `data-prefix`·[더하기] `data-padd`)과 그 처리(`addPrefixFrom`·입력·Enter)를 지운다. 안내 글은 `AMOUNT.about` 첫 문장만: '{이름} 코드가 있는 진료에서 아래 코드의 금액만 치료별 매출 {이름}에 넣어요.' 코드 줄(`data-extras`) 이름 글은 '셀 코드'
+- 앞글자는 읽지 않는다(사용자 "그 내가 원하는것만 읽게해야해"): `settings.ts` `defaultRule`은 `{ prefixes: [], codes: [] }`, `cleanAmounts`는 저장값의 `prefixes`를 버리고 늘 `[]`(셀 코드만 다듬음). 그래서 `toGroups`는 셀 코드가 있을 때만 `amountPrefixes: []`·`amountCodes`를 붙인다(도우미 0.2.0 그대로, 지금 씨암 설정과 같은 모양). `options.ts`의 앞글자 조각·[×](`data-pdel`) 처리도 지운다. `AmountRule` 타입의 `prefixes` 칸은 도우미 모양 때문에 남기고 늘 빈 목록
+- `settings.ts`의 `addPrefix`·`cleanPrefix`·`MAX_PREFIXES`는 쓰는 곳이 없어 지운다
+- 셀 코드가 비면 '비어 있으면 위 코드 줄 금액만 넣어요.' 그대로
+- README 처음 값 표(씨암·SONO 줄)와 '매출로 셀 코드' 설명을 화면 글에 맞춘다: 처음 값은 셀 코드 없음, 셀 코드는 찾아서 하나씩 더함(20개까지), 새 판으로 바꾼 뒤 씨암·SONO 셀 코드를 확인할 것(전 판 처음 값 LA로 세던 SONO 등은 코드를 넣기 전까지 매출이 줄어듦). '이 글자 뒤에 숫자' 설명은 지운다
+- 시안: 바뀌는 것은 줄 하나를 지우는 것뿐이라 클릭 목업 대신 사용자 답의 글 그림으로 본다(2026-11-13)
+
+## 10. 등록된 코드 전부에서 찾기 (REQ-3708, TASK-10·11·12)
+- 잰 것(2026-11-13 이 PC 비트 DB, 건수만): SeeMst 609,202줄 · 코드 546,073개 · 오늘 쓸 수 있는 코드 391,980개(전부 SeeMdcTyp 1). 1년 쓴 코드는 410개. 코드·이름 찾기 TOP 30 한 번이 연결 포함 약 3초. 그래서 목록을 통째로 받지 않고(네이티브 메시지 1MB 넘음) 도우미가 글자마다 찾는다
+- 도우미(TASK-10): `ClosingSql.FindCodesSql` = `SELECT TOP 30 UPPER(LTRIM(RTRIM(s.SeeOdrCod))) Code, MAX(s.SeeKorNam) Name FROM dbo.SeeMst s WHERE s.SeeOdrCod<>'' AND @day BETWEEN s.SeeAdpDte AND s.SeeExpDte AND (s.SeeOdrCod LIKE @starts OR s.SeeKorNam LIKE @contains) GROUP BY UPPER(LTRIM(RTRIM(s.SeeOdrCod))) ORDER BY Code`. `@starts` = 글자 + '%', `@contains` = '%' + 글자 + '%'이고 글자 안의 `%`·`_`·`[`는 `[%]`·`[_]`·`[[]`로 바꾼다. 시간 제한 15초. `Parameters`에 넣고, `commands.json`에 `closing.findCodes { text }`(patient false)를 더한다(인자 꼴은 표가 아는 글자 꼴을 쓰고, 없으면 표를 넓힌다). 답 `{ codes: [{ code, name }] }`. 이름이 NULL이면 null
+- 확장(TASK-11): `types.ts` `ClosingCommand`에 `closing.findCodes`, `background.ts` `COMMANDS`에 더함. `options.ts` '셀 코드' 찾기만 바꾼다(묶음 코드 찾기 줄은 지금처럼 1년 목록). 0.4초 늦춰 묻기·마지막 질문 답만 쓰기·'찾는 중…'·'등록된 코드에 없어요.'·옛 도우미 안내 줄은 REQ-3708 글 그대로
+- 판·안내서(TASK-12): `helper-erp/Directory.Build.props` 0.3.0, 판 번호가 박힌 시험 함께(찾기: `grep -rn "0\.2\.0" helper-erp/tests extension-erp/src`), README 두 곳 짝 문장
+- 위험: 진료 중 DB에 찾기 질문이 몰릴 수 있다 → 2자 이상·0.4초 늦춤·설정 화면에서만. 이름 LIKE '%…%'는 표를 훑지만 39만 줄 한 번이 3초 안이라 받아들인다
+
+## 11. 읽지 않을 처방 (REQ-3709, TASK-10·11)
+- 도우미(TASK-10): `commands.json` `closing.day` groups 항목에 `exclude`(선택, 코드 배열 0~20, `codes`와 같은 항목 꼴)를 더한다. 지금 표가 아는 꼴만 쓴다(`helper/` 고치지 않음). `ClosingDay`에서 진료가 묶음에 드는지(`Has`)를 '묶음 코드가 하나라도 있고 exclude 코드는 하나도 없음'으로 바꾸고, 사람 수·total·규칙 금액·overlap이 모두 이 판단을 쓴다. 주사1회환자(`InjectionFirstSql`)는 바꾸지 않는다(확장이 그 묶음에는 exclude를 보내지 않음)
+- 확장 설정(TASK-11): `Settings.excludes?: Partial<Record<GroupKey, string[]>>`. normalize는 모르는 key·코드 꼴 아닌 것·겹침을 버리고 20개까지, 그 묶음 코드와 같은 코드는 버린다. `toGroups`는 exclude가 있는 묶음에만 `exclude`를 붙인다. [처음 값으로] 같은 지금 단추는 excludes를 picks처럼 다룬다(지금 단추가 picks·amounts만 처음 값으로 돌리면 excludes도 비움)
+- 설정 화면(TASK-11): 각 줄 코드 줄 아래 `data-excludes` 줄. 찾기는 REQ-3708 찾기 부품을 같이 쓴다
+
+## 12. 기간 길이 제한 없음 (AC-3701.2, TASK-13)
+- 2026-11-13 사용자 "자동입력 기간 길게해" → 질문 답 "제한 없음". `rangeTypes.ts` `MAX_DAYS`와 `RANGE_TEXT.pick.tooLong`, `pickProblem`의 넷째 막는 줄, `main.ts` scan의 `span > MAX_DAYS`를 지운다. 막는 것은 빈 칸·시작일 > 끝일·끝일 > 오늘 셋
+- 긴 기간(예: 2년 730일)도 살펴보기·채우기가 되고 날짜 목록은 지금처럼 `LIST_MAX`로 줄인다. 하루 약 15~20초라 1년이면 살펴보기 약 20분 + 채우기 1시간 30분~2시간 — 사용자에게 알림. README 기간 고르기 문장에서 '한 번에 92일(약 3달)까지'를 빼고 '오래 걸리니 [멈추기]·[이어서 하기]를 쓰라'로

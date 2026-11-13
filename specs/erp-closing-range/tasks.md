@@ -6,6 +6,7 @@
 > - Phase 2 — TASK-4 ‖ TASK-5(일꾼 둘)
 > - 마지막 검토 한 번(확장 시험 전체·lint·`npm run ext-erp:build`·`git diff c745fdc -- helper helper-erp src`에 코드 변경 없음(문서 `helper-erp/install/README.md`의 판 문장만)·화면 사진)
 > - Phase 2b(마지막 검토·오류/드문 경우 점검에서 나온 것, 사용자 "4가지 모두 고치기"·"92일까지"·"고친 부분 시험만 확인") — Step 1: 리드가 `rangeTypes.ts` 새 Block·`MAX_DAYS` → Step 2: TASK-7 ‖ TASK-8(일꾼 둘) → 합친 뒤 확장 시험 전체 → 설치 파일
+> - Phase 2c(2026-11-13 사용자 "그냥 저거 없애고 코드 추가만 할 수 있게 해줘"·"비트에 등록된 코드 전부") — Step 1: TASK-9 ‖ TASK-10(파일 안 겹침, 일꾼 둘) → Step 2: TASK-11 → TASK-13 → TASK-12 → 확장 시험 전체·도우미 시험(net48 포함)·빌드 → 설치 파일 다시(확장 + 도우미)
 > - Phase 3 — TASK-6(사용자와 실제 ERP 화면)
 > 각 TASK는 시험을 먼저 써서 RED를 본다. 지금 확장 시험은 기대값을 바꾸지 않는다(바꿔야 하면 그 TASK 보고에 까닭).
 
@@ -77,3 +78,43 @@
 - Tests: (없음 — 사용자와 함께 보는 확인)
 - TDD: n/a — 새 판 확장(0.3.0)을 이 PC 크롬에 붙이고 사용자가 고른 하루 이틀로: 날짜 바뀜·달력 창 안 열림·불러옴 신호·두 저장 쪽지·숨은 2 탭 저장·확정 유지·끝 안내·캘린더 반영, `notes/erp-screen-1113.md` '실제 화면에서 볼 것' 여섯 줄. 다르면 그 부분만 명세를 고쳐 다시 승인
 - 차례: Phase 3 (마지막 검토·설치 파일 뒤)
+
+## TASK-9: 설정 '매출로 셀 코드'는 코드만 더하기
+- REQ: REQ-3707
+- AC: AC-3707.1, AC-3707.2, AC-3707.3
+- Files: extension-erp/src/options.ts, extension-erp/src/options.test.ts, extension-erp/src/settings.ts, extension-erp/src/settings.test.ts, extension-erp/README.md, extension-erp/src/readme.test.ts
+- Tests: extension-erp/src/options.test.ts, extension-erp/src/settings.test.ts, extension-erp/src/readme.test.ts
+- TDD: required — design.md 9절. `options.test.ts`: 씨암·SONO 줄에 '이 글자 뒤에 숫자'·글자 칸·[더하기]가 없음, 안내 글 한 문장, 코드 줄 이름 '셀 코드', 앞글자 조각이 어디에도 없음(저장값에 LA가 있어도), [저장]하면 앞글자 없이 저장, 셀 코드가 비면 '비어 있으면…' 줄, 도우미 목록을 못 받으면 코드 찾기만 막힘. 지금 AC-3607.6 앞글자 더하기 시험(글자 칸·5개 제한)은 이 TASK에서 지우거나 AC-3707로 바꾼다(앞글자 더하기가 없어져서). `settings.test.ts`: 처음 값 규칙은 빈 것, 저장값의 앞글자(LA)는 버려짐, toGroups는 셀 코드가 있을 때만 `amountPrefixes: []`·`amountCodes`, 앞글자만 있던 저장값이면 규칙 칸을 붙이지 않음. `addPrefix`·`cleanPrefix` 시험과 처음 값 LA를 기대하던 AC-3607.6 시험은 AC-3707.2로 바꾼다. `readme.test.ts`: README '매출로 셀 코드' 설명이 화면 글과 같고 '이 글자 뒤에 숫자'가 없음
+- 차례: Phase 2c (TASK-6 전)
+
+## TASK-10: 도우미 새 명령 closing.findCodes
+- REQ: REQ-3708, REQ-3709
+- AC: AC-3708.1, AC-3709.2
+- Files: helper-erp/commands.json, helper-erp/src/Erp.Core/Closing/ClosingSql.cs, helper-erp/src/Erp.Core/Closing/ClosingCommands.cs, helper-erp/src/Erp.Core/Closing/ClosingCodes.cs, helper-erp/src/Erp.Core/Closing/ClosingDay.cs, helper-erp/tests/Erp.Core.Tests/Closing/ClosingDay.test.cs, helper-erp/src/Erp.Core/ErpCommandTable.cs, helper-erp/src/Erp.Core/ErpReadGuard.cs, helper-erp/tests/Erp.Core.Tests/Closing/ClosingCommands.test.cs, helper-erp/tests/Erp.Core.Tests/Closing/ClosingCodes.test.cs, helper-erp/tests/Erp.Core.Tests/ErpCommandTable.test.cs, helper-erp/tests/Erp.Core.Tests/ErpReadGuard.test.cs, helper-erp/tests/erp-core.dotnet.test.ts
+- Tests: helper-erp/tests/Erp.Core.Tests/Closing/ClosingCommands.test.cs, helper-erp/tests/Erp.Core.Tests/Closing/ClosingDay.test.cs, helper-erp/tests/Erp.Core.Tests/ErpCommandTable.test.cs, helper-erp/tests/erp-core.dotnet.test.ts
+- TDD: required — design.md 10절. 가짜 DB로: 글자 앞부분·이름 가운데 맞는 코드, 오늘 쓸 수 없는 줄 빠짐, 코드마다 한 줄·대문자·30개까지·코드 차례, `%`·`_`·`[` 글자 바꿈, 1자·21자·빈 글자 거절, 문장이 관문 표에 있고 매개변수 셋(@day·@starts·@contains), 환자 표를 읽지 않음. design.md 11절 exclude: exclude 코드가 있는 진료는 그 묶음 사람 수·total·규칙 금액·overlap에서 빠짐, 다른 묶음은 그대로, 빈 exclude는 지금 답과 같음, 21개·코드 꼴 아님 거절. Files 가운데 손댈 필요 없는 파일은 안 고친다. dotnet 시험은 `PATH="$HOME/.dotnet:$PATH"`
+- 차례: Phase 2c Step 1 (TASK-9와 함께)
+
+## TASK-11: 설정 '셀 코드' 찾기를 도우미에 묻기 · 읽지 않을 처방
+- REQ: REQ-3708, REQ-3709
+- AC: AC-3708.2, AC-3708.3, AC-3709.1, AC-3709.3
+- Files: extension-erp/src/options.ts, extension-erp/src/options.test.ts, extension-erp/src/types.ts, extension-erp/src/background.ts, extension-erp/src/background.test.ts, extension-erp/src/settings.ts, extension-erp/src/settings.test.ts, extension-erp/README.md, extension-erp/src/readme.test.ts
+- Tests: extension-erp/src/options.test.ts, extension-erp/src/background.test.ts, extension-erp/src/settings.test.ts
+- TDD: required — design.md 10절. 가짜 chrome.runtime으로: 2자 미만이면 안 물음, 0.4초 늦춤(가짜 시계), '찾는 중…', 받은 목록 누르면 더함, 늦게 온 앞 답 버림, 이미 더한 코드 '더함', 0개 글, E-HELPER-UNKNOWN-COMMAND면 1년 목록 + 안내 줄, 다른 오류면 오류 글 + 1년 목록, 묶음 코드 찾기는 그대로. background는 새 명령을 통과시킴. design.md 11절: 줄마다 '읽지 않을 처방' 줄(주사1회환자·물리치료내원 줄 없음)·안내 글·20개·그 줄 코드는 '이 줄 코드'로 안 눌림·[저장] 뒤 저장값, settings normalize(모르는 key·꼴·겹침·그 묶음 코드 버림), toGroups는 있는 묶음에만 exclude. README에 '읽지 않을 처방' 설명
+- 차례: Phase 2c Step 2 (TASK-9·10 뒤)
+
+## TASK-12: 도우미 판 0.3.0·안내서 짝 문장
+- REQ: REQ-3708
+- AC: AC-3708.4
+- Files: helper-erp/Directory.Build.props, helper-erp/install/README.md, extension-erp/README.md, extension-erp/src/readme.test.ts, helper-erp/tests/erp-core.dotnet.test.ts, extension-erp/src/manifest.test.ts
+- Tests: extension-erp/src/readme.test.ts, helper-erp/tests/erp-core.dotnet.test.ts
+- TDD: required — 판 0.3.0, 판 번호가 박힌 시험 함께 고침, README 두 곳 짝 문장('확장 0.3.0 ↔ ERP 도우미 0.3.0')·도우미 다시 설치해야 등록 코드 전부 찾기가 됨
+- 차례: Phase 2c Step 2 (TASK-11 뒤)
+
+## TASK-13: 기간 길이 제한 없애기
+- REQ: REQ-3701, REQ-3706
+- AC: AC-3701.2, AC-3706.1
+- Files: extension-erp/src/rangeTypes.ts, extension-erp/src/rangeTypes.test.ts, extension-erp/src/rangeView.ts, extension-erp/src/rangeView.test.ts, extension-erp/src/main.ts, extension-erp/src/main.range.test.ts, extension-erp/README.md, extension-erp/src/readme.test.ts
+- Tests: extension-erp/src/rangeTypes.test.ts, extension-erp/src/rangeView.test.ts, extension-erp/src/main.range.test.ts, extension-erp/src/readme.test.ts
+- TDD: required — design.md 12절. 93일·400일·731일도 [살펴보기]가 열리고 막는 줄 없음(빈 칸·시작일 > 끝일·오늘 뒤는 그대로 막음), main scan이 400일을 받아 살펴보기를 시작함, MAX_DAYS·'한 번에 92일까지' 글이 코드·README에 없음. 92일 시험(AC-3701.2)은 이 TASK에서 바꾼다
+- 차례: Phase 2c Step 2 (TASK-11 뒤, 리드)
