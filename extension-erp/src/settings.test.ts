@@ -18,6 +18,7 @@ import {
   load,
   newDefaultCodes,
   normalize,
+  overlapNeedsAsk,
   resetCodes,
   ruleCodes,
   ruleProblem,
@@ -871,5 +872,50 @@ describe('AC-3709.3 toGroups는 규칙이 있는 묶음에만 exclude를 붙인�
     const said = explain('E-HELPER-BAD-MESSAGE')
     expect(said).toEqual({ code: 'E-HELPER-BAD-MESSAGE', ...ERRORS['E-HELPER-UNKNOWN-COMMAND'] })
     expect(said.what).toBe('ERP 도우미가 예전 판이에요.')
+  })
+})
+
+describe('AC-3710.1 AC-3710.2 함께 있는 진료를 물을까 overlapNeedsAsk(돈 코드가 씨암·SONO 양쪽에 있을 때만)', () => {
+  /** 씨암·SONO 고른 코드와 셀 코드만 바꾼 처음 값 */
+  const money = (carm: { picks?: string[]; cells?: string[] }, sono: { picks?: string[]; cells?: string[] }): Settings => {
+    const s = defaults()
+    s.picks.carm = carm.picks ?? ['CARM1']
+    s.picks.sono = sono.picks ?? ['SONO1']
+    s.amounts = { carm: { prefixes: [], codes: carm.cells ?? [] }, sono: { prefixes: [], codes: sono.cells ?? [] } }
+    return s
+  }
+
+  it('AC-3710.1: 셀 코드가 서로 다르면(씨암 LA358 / SONO LA247·KK090) false', () => {
+    expect(overlapNeedsAsk(money({ cells: ['LA358'] }, { cells: ['LA247', 'KK090'] }))).toBe(false)
+  })
+
+  it('AC-3710.2: 같은 셀 코드 하나가 양쪽에 있으면(LA247) true', () => {
+    expect(overlapNeedsAsk(money({ cells: ['LA247'] }, { cells: ['LA247'] }))).toBe(true)
+    expect(overlapNeedsAsk(money({ cells: ['LA358', 'LA247'] }, { cells: ['KK090', 'LA247'] }))).toBe(true)
+  })
+
+  it('AC-3710.1: 셀 코드가 없으면 그 줄 고른 코드를 돈 코드로 본다(CARM1 / SONO1 → false, 처음 값 설정도 false)', () => {
+    expect(overlapNeedsAsk(money({}, {}))).toBe(false)
+    expect(overlapNeedsAsk(defaults())).toBe(false)
+    // 매출 규칙 칸이 없는 옛 설정도 고른 코드로 본다
+    const old = { ...defaults(), amounts: undefined } as unknown as Settings
+    expect(overlapNeedsAsk(old)).toBe(false)
+    old.picks.sono = ['SONO1', 'CARM1']
+    expect(overlapNeedsAsk(old)).toBe(true)
+  })
+
+  it('AC-3710.2: 고른 코드끼리 같은 코드가 있으면(셀 코드 없음) true', () => {
+    expect(overlapNeedsAsk(money({ picks: ['CARM1', 'LA247'] }, { picks: ['SONO1', 'LA247'] }))).toBe(true)
+  })
+
+  it('AC-3710.1 AC-3710.2: 한쪽만 셀 코드가 있으면 그쪽은 셀 코드, 다른 쪽은 고른 코드로 견준다', () => {
+    // 씨암 고른 코드 CARM1은 셀 코드(LA358)가 있어 돈 코드가 아니다
+    expect(overlapNeedsAsk(money({ cells: ['LA358'] }, { picks: ['SONO1', 'CARM1'] }))).toBe(false)
+    expect(overlapNeedsAsk(money({ cells: ['LA247'] }, { picks: ['SONO1', 'LA247'] }))).toBe(true)
+  })
+
+  it('AC-3710.2: 대문자·앞뒤 공백을 맞춰 견준다', () => {
+    expect(overlapNeedsAsk(money({ cells: [' la247 '] }, { cells: ['LA247'] }))).toBe(true)
+    expect(overlapNeedsAsk(money({ picks: ['carm1'] }, { picks: ['SONO1', ' CARM1'] }))).toBe(true)
   })
 })

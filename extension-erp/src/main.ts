@@ -2,7 +2,7 @@
 // - 주소가 /h/closing이고 '마감 일자'가 있을 때만 오른쪽 아래에 단추를 붙인다. 화면 안 이동(주소만 바뀜)은 0.5초마다 보고 안다
 // - 누르면: 마감 일자 읽기 → 오늘(이 PC 날짜)보다 뒤면 멈춤(도우미 안 부름) → 설정(저장한 적 없으면 설정 화면 열기) →
 //   서비스 워커에 closing.day(120초) → 오류면 errors.ts 글 → 날짜가 그대로인지 → 진료 0건이면 멈추고 묻기([그래도 채우기]) →
-//   씨암·SONO가 함께 있는 진료 묻기(고른 것을 설정 overlap에 기억, TASK-15) → 칸 계획 → 이미 적힌 칸 세기 → 모두 잠김이면 읽기 전용 →
+//   씨암·SONO가 함께 있는 진료 묻기(돈 코드가 양쪽에 같을 때만, 고른 것을 설정 overlap에 기억, TASK-15) → 칸 계획 → 이미 적힌 칸 세기 → 모두 잠김이면 읽기 전용 →
 //   적힌 칸이 있으면 묻기([바꾸기]·[빈 칸만]) → 누를 때마다 날짜 다시 확인 → 채움 → 안내. 오류·날짜 바뀜·묻기 닫음이면 어느 칸도 바꾸지 않는다
 // - [되돌리기]·[지난 결과]의 기억(넣은 칸과 넣기 전 글자, 마지막 안내)은 이 화면 기억(startPage 안 변수)에만 두고
 //   되돌린 뒤·다음 채우기·화면 떠남 때 지운다. 도우미 답과 이 기억은 어디에도 저장하지 않는다(chrome.storage에 쓰는 것은 overlap 선택뿐)
@@ -17,7 +17,7 @@ import { fillAll, locate, survey, undoAll, type FillMode, type UndoEntry } from 
 import { createDock, HOST_ID, type Dock, type View } from './panel.js'
 import { rangeDays, runRange, scanRange, type RangeDeps } from './range.js'
 import type { RangeAction, RunSummary, ScanSummary } from './rangeTypes.js'
-import { load, saveOverlap, toGroups } from './settings.js'
+import { load, overlapNeedsAsk, saveOverlap, toGroups } from './settings.js'
 import type { ClosingDay, MoneyKey, OverlapChoice, Settings } from './types.js'
 
 /** 단추를 붙이는 화면 주소 */
@@ -210,8 +210,10 @@ export function startPage(doc: Document = document): { stop(): void } {
         const go = await dock.askZero(date)
         if (!still() || !go || moved()) return
       }
-      // 씨암·SONO가 함께 있는 진료(AC-3609.7): 채우기 전에 묻고, 누를 때 날짜를 다시 보고, 고른 것을 기억한 뒤 그대로 채운다
-      const overlap = day.overlap && day.overlap.visits > 0 ? day.overlap : null
+      // 씨암·SONO가 함께 있는 진료(AC-3609.7): 채우기 전에 묻고, 누를 때 날짜를 다시 보고, 고른 것을 기억한 뒤 그대로 채운다.
+      // 돈이 두 번 세지 않으면(씨암·SONO 돈 코드가 다름, AC-3710.1) 묻지 않고 고른 것 없이(둘 다 넣은 값) 채우며
+      // 끝 안내에 함께 있는 진료 줄이 없고 지난번 고른 것은 읽지도 쓰지도 않는다
+      const overlap = day.overlap && day.overlap.visits > 0 && overlapNeedsAsk(settings) ? day.overlap : null
       let choice: OverlapChoice | undefined
       if (overlap) {
         const picked = await dock.askOverlap({ visits: overlap.visits, carm: overlap.carm, sono: overlap.sono, last: settings.overlap })
@@ -384,7 +386,9 @@ export function startPage(doc: Document = document): { stop(): void } {
     }
     r.scan = out.scan
     r.phase = 'confirm'
-    dock.showRange({ kind: 'confirm', scan: out.scan, ...(r.settings.overlap ? { last: r.settings.overlap } : {}) })
+    // 돈이 두 번 세지 않으면(AC-3710.1) 승인 안내에 함께 있는 진료 줄을 보이지 않고(0건으로 넘김) 지난번 고른 것도 읽지 않는다
+    if (!overlapNeedsAsk(r.settings)) dock.showRange({ kind: 'confirm', scan: { ...out.scan, overlapVisits: 0 } })
+    else dock.showRange({ kind: 'confirm', scan: out.scan, ...(r.settings.overlap ? { last: r.settings.overlap } : {}) })
   }
 
   /** 하루씩 채우고 저장 → 끝·멈춤 안내. prior = 앞 결과(처음이면 진료 0건 날을 건너뛴 날로 넣은 것) */
@@ -446,9 +450,11 @@ export function startPage(doc: Document = document): { stop(): void } {
         if (r.phase !== 'confirm' || !scan) return
         r.phase = 'running'
         const mine = visit
-        r.choice = action.choice ?? r.settings.overlap
+        const ask = overlapNeedsAsk(r.settings)
+        // 돈이 두 번 세지 않으면(AC-3710.1) 둘 다 넣기로 채워 'overlapUnpicked'로 멈추지 않고, 지난번 고른 것은 읽지도 쓰지도 않는다
+        r.choice = ask ? (action.choice ?? r.settings.overlap) : 'both'
         // 묻기에서 새로 고른 것만 기억한다(지금 saveOverlap). 기억하지 못해도 고른 대로 채운다
-        if (action.choice && action.choice !== r.settings.overlap) {
+        if (ask && action.choice && action.choice !== r.settings.overlap) {
           try {
             await saveOverlap(action.choice)
           } catch {

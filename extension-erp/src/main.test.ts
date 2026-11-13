@@ -352,7 +352,16 @@ describe('AC-3609.4 채운 뒤 안내', () => {
   })
 })
 
-describe('AC-3609.7 함께 있는 진료 묻기 → 누름 → 날짜 확인 → saveOverlap → 채움', () => {
+/**
+ * AC-3710.2: 같은 셀 코드(LA247)를 씨암·SONO 둘 다에 넣은 설정. 돈이 두 번 셀 수 있어 함께 있는 진료를 묻는다.
+ * settingsFirst(CARM1 / SONO1, 셀 코드 없음)는 돈 코드가 달라 묻지 않는다(AC-3710.1)
+ */
+const settingsShared = (): Settings => ({
+  ...settingsFirst(),
+  amounts: { carm: { prefixes: [], codes: ['LA247'] }, sono: { prefixes: [], codes: ['LA247'] } },
+})
+
+describe('AC-3609.7 함께 있는 진료 묻기(같은 돈 코드가 씨암·SONO 양쪽에 있는 설정) → 누름 → 날짜 확인 → saveOverlap → 채움', () => {
   // sampleDay 씨암 total 1,001,234 · SONO total 2,001,234. 함께 있는 진료 9건: 씨암 쪽 400,000 · SONO 쪽 300,000
   const OVERLAP = { visits: 9, carm: 400_000, sono: 300_000 }
   const dayWith = (overlap: unknown) => ({ ...sampleDay(), overlap })
@@ -364,7 +373,7 @@ describe('AC-3609.7 함께 있는 진료 묻기 → 누름 → 날짜 확인 →
     local.set.mock.calls.map(([items]) => (items as Record<string, Settings>)[SETTINGS_KEY])
 
   it('AC-3609.7: overlap.visits > 0이면 칸을 채우기 전에 묻는 줄과 세 단추가 나오고, 아직 아무 칸도 바꾸지 않는다', async () => {
-    const t = start({ reply: ok(dayWith(OVERLAP)) })
+    const t = start({ stored: settingsShared(), reply: ok(dayWith(OVERLAP)) })
     const before = { ...t.page.state }
     button().click()
     await flush()
@@ -377,7 +386,7 @@ describe('AC-3609.7 함께 있는 진료 묻기 → 누름 → 날짜 확인 →
   })
 
   it("AC-3609.7: [SONO에 넣기]를 누르면 overlap 'sono'를 기억하고 씨암에서 씨암 쪽 금액을 빼 채우며, 채운 뒤 함께 있는 진료 줄이 있다", async () => {
-    const t = start({ reply: ok(dayWith(OVERLAP)) })
+    const t = start({ stored: settingsShared(), reply: ok(dayWith(OVERLAP)) })
     button().click()
     await flush()
     choice('sono').click()
@@ -391,7 +400,7 @@ describe('AC-3609.7 함께 있는 진료 묻기 → 누름 → 날짜 확인 →
   })
 
   it("AC-3609.7: [씨암에 넣기]면 SONO에서 SONO 쪽 금액을 빼고, [둘 다 넣기]면 두 칸 모두 묶음 total이다", async () => {
-    let t = start({ reply: ok(dayWith(OVERLAP)) })
+    let t = start({ stored: settingsShared(), reply: ok(dayWith(OVERLAP)) })
     button().click()
     await flush()
     choice('carm').click()
@@ -402,7 +411,7 @@ describe('AC-3609.7 함께 있는 진료 묻기 → 누름 → 날짜 확인 →
     handle?.stop()
     document.body.innerHTML = ''
 
-    t = start({ reply: ok(dayWith(OVERLAP)) })
+    t = start({ stored: settingsShared(), reply: ok(dayWith(OVERLAP)) })
     button().click()
     await flush()
     choice('both').click()
@@ -413,7 +422,7 @@ describe('AC-3609.7 함께 있는 진료 묻기 → 누름 → 날짜 확인 →
   })
 
   it("AC-3609.7: 지난번 고른 것(저장된 overlap)은 ' (지난번)'이 붙고 먼저 포커스를 받는다", async () => {
-    start({ stored: { ...settingsFirst(), overlap: 'sono' } as Settings, reply: ok(dayWith(OVERLAP)) })
+    start({ stored: { ...settingsShared(), overlap: 'sono' } as Settings, reply: ok(dayWith(OVERLAP)) })
     button().click()
     await flush()
     expect(labels()).toEqual(['씨암에 넣기', 'SONO에 넣기 (지난번)', '둘 다 넣기', '안내 닫기'])
@@ -421,7 +430,7 @@ describe('AC-3609.7 함께 있는 진료 묻기 → 누름 → 날짜 확인 →
   })
 
   it('AC-3609.7: 누르기 전에 마감 일자가 바뀌었으면 채우지 않고 기억도 바꾸지 않는다(AC-3609.3과 같은 글)', async () => {
-    const t = start({ reply: ok(dayWith(OVERLAP)) })
+    const t = start({ stored: settingsShared(), reply: ok(dayWith(OVERLAP)) })
     const before = { ...t.page.state }
     button().click()
     await flush()
@@ -434,7 +443,7 @@ describe('AC-3609.7 함께 있는 진료 묻기 → 누름 → 날짜 확인 →
   })
 
   it('AC-3618.3 AC-3609.7: [안내 닫기] 단추면 안내가 닫히고 아무 칸도·기억(overlap)도 바꾸지 않으며, 다시 누르면 다시 묻는다', async () => {
-    const t = start({ stored: { ...settingsFirst(), overlap: 'carm' } as Settings, reply: ok(dayWith(OVERLAP)) })
+    const t = start({ stored: { ...settingsShared(), overlap: 'carm' } as Settings, reply: ok(dayWith(OVERLAP)) })
     const before = { ...t.page.state }
     button().click()
     await flush()
@@ -452,7 +461,7 @@ describe('AC-3609.7 함께 있는 진료 묻기 → 누름 → 날짜 확인 →
   })
 
   it('AC-3609.7: [안내 닫기]면 아무 칸도 바꾸지 않고 기억도 바꾸지 않으며, 다시 누르면 다시 묻는다', async () => {
-    const t = start({ reply: ok(dayWith(OVERLAP)) })
+    const t = start({ stored: settingsShared(), reply: ok(dayWith(OVERLAP)) })
     const before = { ...t.page.state }
     button().click()
     await flush()
@@ -473,7 +482,7 @@ describe('AC-3609.7 함께 있는 진료 묻기 → 누름 → 날짜 확인 →
     ['overlap null', null],
     ['overlap 0건', { visits: 0, carm: 0, sono: 0 }],
   ])('AC-3609.7: %s 이면 묻지 않고 바로 채운다', async (_name, overlap) => {
-    const t = start({ reply: ok(dayWith(overlap)) })
+    const t = start({ stored: settingsShared(), reply: ok(dayWith(overlap)) })
     button().click()
     await flush()
     expect(lead()).toBe('2026-11-09 비트 값으로 93칸을 채웠어요. 저장은 하지 않았어요.')
@@ -483,7 +492,7 @@ describe('AC-3609.7 함께 있는 진료 묻기 → 누름 → 날짜 확인 →
   })
 
   it('AC-3609.7: 묻는 동안 화면을 떠나면 늦게 누른 단추로 채우지 않는다', async () => {
-    const t = start({ reply: ok(dayWith(OVERLAP)) })
+    const t = start({ stored: settingsShared(), reply: ok(dayWith(OVERLAP)) })
     const before = { ...t.page.state }
     button().click()
     await flush()
@@ -494,6 +503,55 @@ describe('AC-3609.7 함께 있는 진료 묻기 → 누름 → 날짜 확인 →
     await flush()
     expect(t.page.state).toEqual(before)
     expect(t.local.set).not.toHaveBeenCalled()
+  })
+})
+
+describe('AC-3710.1 AC-3710.2 [비트 값 채우기] 함께 있는 진료는 돈이 두 번 셀 때만 묻는다', () => {
+  // sampleDay 씨암 total 1,001,234 · SONO total 2,001,234. 함께 있는 진료 9건: 씨암 쪽 400,000 · SONO 쪽 300,000
+  const OVERLAP = { visits: 9, carm: 400_000, sono: 300_000 }
+  const ASK = '씨암·SONO 코드가 함께 있는 진료가 9건 있어요(씨암 쪽 400,000원 · SONO 쪽 300,000원). 어디에 넣을까요?'
+  const FILLED = '2026-11-09 비트 값으로 93칸을 채웠어요. 저장은 하지 않았어요.'
+  /** 씨암·SONO 셀 코드만 바꾼 settingsFirst */
+  const cells = (carm: string[], sono: string[]): Settings => ({
+    ...settingsFirst(),
+    amounts: { carm: { prefixes: [], codes: carm }, sono: { prefixes: [], codes: sono } },
+  })
+
+  it('AC-3710.1: 셀 코드가 없고 고른 코드가 다르면(CARM1 / SONO1) 함께 있는 진료가 있어도 묻지 않고 두 칸 모두 묶음 total로 채우며, 끝 안내에 함께 있는 진료 줄이 없다', async () => {
+    const t = start({ reply: ok({ ...sampleDay(), overlap: OVERLAP }) })
+    button().click()
+    await flush()
+    expect(lead()).toBe(FILLED)
+    expect(shadow().querySelector('[data-choice]')).toBeNull()
+    expect([t.page.state.CARM_AMT, t.page.state.SONO_AMT]).toEqual(['1001234', '2001234'])
+    expect(shadow().querySelector('.ovl')).toBeNull()
+    expect(lines().join(' ')).not.toContain('함께 있는 진료')
+    expect(t.local.set).not.toHaveBeenCalled()
+  })
+
+  it("AC-3710.1: 셀 코드가 서로 다르면(LA358 / LA247·KK090) 지난번 고른 것('carm')이 있어도 쓰지 않고 바꾸지도 않는다", async () => {
+    const t = start({ stored: { ...cells(['LA358'], ['LA247', 'KK090']), overlap: 'carm' }, reply: ok({ ...sampleDay(), overlap: OVERLAP }) })
+    button().click()
+    await flush()
+    expect(lead()).toBe(FILLED)
+    // 'carm'을 썼다면 SONO에서 SONO 쪽 금액을 뺐을 것이다
+    expect([t.page.state.CARM_AMT, t.page.state.SONO_AMT]).toEqual(['1001234', '2001234'])
+    expect(shadow().querySelector('.ovl')).toBeNull()
+    expect(t.local.set).not.toHaveBeenCalled()
+  })
+
+  it('AC-3710.2: 같은 셀 코드(LA247)가 씨암·SONO 둘 다에 있으면 지금 그대로 채우기 전에 묻는다', async () => {
+    const t = start({ stored: cells(['LA358', 'LA247'], ['LA247']), reply: ok({ ...sampleDay(), overlap: OVERLAP }) })
+    const before = { ...t.page.state }
+    button().click()
+    await flush()
+    expect(lead()).toBe(ASK)
+    expect(t.page.state).toEqual(before)
+    act('SONO에 넣기').click()
+    await flush()
+    expect(t.page.state.CARM_AMT).toBe(String(1_001_234 - 400_000))
+    expect(text(shadow().querySelector('.ovl'))).toBe('함께 있는 진료 9건은 SONO에 넣었어요.')
+    expect(t.local.set).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -728,6 +786,7 @@ describe('AC-3612.2 진료 0건인 날은 멈춘다', () => {
   it('AC-3612.2: [그래도 채우기] 다음에 겹친 진료 묻기 → 이미 적힌 칸 묻기를 거쳐 채운다', async () => {
     const t = start({
       page: { values: { NEW_PATIENT: '3' } },
+      stored: settingsShared(),
       reply: ok({ ...zeroDay(), overlap: { visits: 2, carm: 10, sono: 20 } }),
     })
     button().click()
@@ -850,6 +909,7 @@ describe('AC-3612.3 이미 적힌 칸이 바뀌면 먼저 묻는다', () => {
     // 씨암 매출 칸에 SONO에 넣기로 고른 값(1,001,234 − 400,000)이 이미 적혀 있다
     const t = start({
       page: { values: { CARM_AMT: '601234' } },
+      stored: settingsShared(),
       reply: ok({ ...sampleDay(), overlap: { visits: 9, carm: 400_000, sono: 300_000 } }),
     })
     button().click()
@@ -865,6 +925,7 @@ describe('AC-3612.3 이미 적힌 칸이 바뀌면 먼저 묻는다', () => {
 
     start({
       page: { values: { CARM_AMT: '601234' } },
+      stored: settingsShared(),
       reply: ok({ ...sampleDay(), overlap: { visits: 9, carm: 400_000, sono: 300_000 } }),
     })
     button().click()

@@ -294,7 +294,16 @@ describe('AC-3702.1 AC-3703.1 사흘(새로·작성중·진료 0건): 살펴보�
   })
 })
 
-describe('AC-3702.3 함께 있는 진료', () => {
+/**
+ * AC-3710.2: 같은 셀 코드(LA247)를 씨암·SONO 둘 다에 넣은 설정. 돈이 두 번 셀 수 있어 함께 있는 진료를 묻는다.
+ * settingsFirst(CARM1 / SONO1, 셀 코드 없음)는 돈 코드가 달라 묻지 않는다(AC-3710.1)
+ */
+const settingsShared = (): Settings => ({
+  ...settingsFirst(),
+  amounts: { carm: { prefixes: [], codes: ['LA247'] }, sono: { prefixes: [], codes: ['LA247'] } },
+})
+
+describe('AC-3702.3 함께 있는 진료(같은 돈 코드가 씨암·SONO 양쪽에 있는 설정)', () => {
   const OVERLAP = { visits: 2, carm: 400_000, sono: 300_000 }
   const answer: Answer = (date) => ok(bitDay(date, 84, date === N4 ? OVERLAP : null))
   const writes = (local: { set: { mock: { calls: unknown[][] } } }) =>
@@ -302,7 +311,7 @@ describe('AC-3702.3 함께 있는 진료', () => {
   const pick = (c: string) => shadow().querySelector<HTMLButtonElement>(`.pb button[data-choice="${c}"]`) as HTMLButtonElement
 
   it('AC-3702.3: 지난번 고른 것이 없으면 묻고, 고른 것(SONO)을 saveOverlap으로 기억한 뒤 그대로 채운다', async () => {
-    const t = start({ answer })
+    const t = start({ stored: settingsShared(), answer })
     await scan(N3, N4)
     await vi.advanceTimersByTimeAsync(10_000)
     expect(lines()).toContain('씨암·SONO를 같이 받은 진료가 2건 있어요. 어디에 넣을까요?')
@@ -320,7 +329,7 @@ describe('AC-3702.3 함께 있는 진료', () => {
   })
 
   it('AC-3702.3: 지난번 고른 것(씨암)이 있으면 그 줄이 보이고 바로 시작할 수 있으며, 다시 기억하지 않는다', async () => {
-    const t = start({ stored: { ...settingsFirst(), overlap: 'carm' }, answer })
+    const t = start({ stored: { ...settingsShared(), overlap: 'carm' }, answer })
     await scan(N3, N4)
     await vi.advanceTimersByTimeAsync(10_000)
     expect(lines()).toContain('씨암·SONO를 같이 받은 진료는 지난번 고른 대로 씨암에 넣어요.')
@@ -330,6 +339,72 @@ describe('AC-3702.3 함께 있는 진료', () => {
     const n4 = t.page.saves.find((s) => s.which === 'w1' && s.date === N4)
     expect(n4?.state.CARM_AMT).toBe('1001234')
     expect(n4?.state.SONO_AMT).toBe(String(2_001_234 - 300_000))
+  })
+})
+
+describe('AC-3710.1 AC-3710.2 [기간 채우기] 함께 있는 진료는 돈이 두 번 셀 때만 묻는다', () => {
+  const OVERLAP = { visits: 2, carm: 400_000, sono: 300_000 }
+  const answer: Answer = (date) => ok(bitDay(date, 84, date === N4 ? OVERLAP : null))
+  const ASK = '씨암·SONO를 같이 받은 진료가 2건 있어요. 어디에 넣을까요?'
+  /** 씨암·SONO 셀 코드만 바꾼 settingsFirst */
+  const cells = (carm: string[], sono: string[]): Settings => ({
+    ...settingsFirst(),
+    amounts: { carm: { prefixes: [], codes: carm }, sono: { prefixes: [], codes: sono } },
+  })
+  const overlapLines = () => lines().filter((line) => line.includes('씨암·SONO를 같이 받은 진료'))
+
+  it('AC-3710.1: 셀 코드가 없고 고른 코드가 다르면(CARM1 / SONO1) 승인 안내에 함께 있는 진료 줄·단추가 없고, 바로 시작해 두 칸 모두 묶음 total로 저장한다', async () => {
+    const t = start({ answer })
+    await scan(N3, N4)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(lead()).toContain('비트 값으로 덮어쓰고 저장해요.')
+    expect(overlapLines()).toEqual([])
+    expect(shadow().querySelector('.pb [data-choice]')).toBeNull()
+    expect(act('덮어쓰고 저장 시작').disabled).toBe(false)
+    act('덮어쓰고 저장 시작').click()
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(saved(t.page)).toEqual([`w1 ${N3}`, `w2 ${N3}`, `w1 ${N4}`, `w2 ${N4}`])
+    const n4 = t.page.saves.find((s) => s.which === 'w1' && s.date === N4)
+    expect([n4?.state.CARM_AMT, n4?.state.SONO_AMT]).toEqual(['1001234', '2001234'])
+    expect(lead()).toBe('2일을 비트 값으로 저장했어요.')
+    expect(t.local.set).not.toHaveBeenCalled()
+  })
+
+  it("AC-3710.1: 셀 코드가 서로 다르면(LA358 / LA247·KK090) 지난번 고른 것('sono')이 있어도 그 줄이 없고 쓰지도 바꾸지도 않는다", async () => {
+    const t = start({ stored: { ...cells(['LA358'], ['LA247', 'KK090']), overlap: 'sono' }, answer })
+    await scan(N3, N4)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(overlapLines()).toEqual([])
+    act('덮어쓰고 저장 시작').click()
+    await vi.advanceTimersByTimeAsync(20_000)
+    const n4 = t.page.saves.find((s) => s.which === 'w1' && s.date === N4)
+    // 'sono'를 썼다면 씨암에서 씨암 쪽 금액을 뺐을 것이다
+    expect([n4?.state.CARM_AMT, n4?.state.SONO_AMT]).toEqual(['1001234', '2001234'])
+    expect(t.local.set).not.toHaveBeenCalled()
+  })
+
+  it("AC-3710.1: 살펴볼 때 없던 함께 있는 진료가 채울 때 생겨도 'overlapUnpicked'로 멈추지 않고 끝까지 저장한다", async () => {
+    let n4 = 0
+    const t = start({
+      answer: (date) => {
+        if (date !== N4) return ok(bitDay(date))
+        n4 += 1
+        return ok(bitDay(date, 84, n4 === 1 ? null : OVERLAP))
+      },
+    })
+    await scanAndStart(N3, N4)
+    expect(saved(t.page)).toEqual([`w1 ${N3}`, `w2 ${N3}`, `w1 ${N4}`, `w2 ${N4}`])
+    expect(seen.views.some((v) => (v as RangeView).kind === 'blocked')).toBe(false)
+    expect(lastView()).toMatchObject({ kind: 'end', run: { saved: [N3, N4], remaining: [] } })
+    expect(t.local.set).not.toHaveBeenCalled()
+  })
+
+  it('AC-3710.2: 같은 셀 코드(LA247)가 씨암·SONO 둘 다에 있으면 지금 그대로 묻고, 고를 때까지 시작이 막힌다', async () => {
+    start({ stored: cells(['LA358', 'LA247'], ['LA247']), answer })
+    await scan(N3, N4)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(overlapLines()).toContain(ASK)
+    expect(act('덮어쓰고 저장 시작').disabled).toBe(true)
   })
 })
 
@@ -630,11 +705,12 @@ describe('AC-3705.2 AC-3703.1 TASK-8 채우는 도중 멈추는 경우', () => {
     expect(actLabels()).toEqual(['닫기'])
   })
 
-  it('AC-3705.2: 설정·승인 모두 고른 것이 없는데 그날 함께 있는 진료가 있으면 그날 칸을 바꾸지 않고 멈춘다', async () => {
+  it('AC-3705.2 AC-3710.2: (같은 돈 코드가 양쪽에 있는 설정) 설정·승인 모두 고른 것이 없는데 그날 함께 있는 진료가 있으면 그날 칸을 바꾸지 않고 멈춘다', async () => {
     let page: ErpPage | null = null
     let n4 = 0
     let logAt = -1
     const t = start({
+      stored: settingsShared(),
       answer: (date) => {
         if (date !== N4) return ok(bitDay(date))
         // 살펴볼 때는 함께 있는 진료가 없다가 채울 때 생김(그 사이 비트에 진료가 들어옴)

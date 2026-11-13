@@ -3,6 +3,7 @@
 // 숫자·날짜 자리는 안내서에서 {이름}으로 쓴다: 화면 글 함수에 표시 숫자(901…)를 넣어 부른 뒤 그 숫자를 {이름}으로 바꿔 견준다
 // TASK-9 REQ-3707: 설정 '매출로 셀 코드' 설명은 설정 화면 글(options.ts AMOUNT) 그대로이고 '이 글자 뒤에 숫자' 설명은 없다
 // TASK-11 REQ-3708·REQ-3709: '셀 코드' 찾기 글(options.ts FIND)과 '읽지 않을 처방' 설명(options.ts EXCLUDE)도 화면 글 그대로다
+// TASK-15 REQ-3710: 함께 있는 진료 설명은 '돈이 두 번 셀 때만 묻는다' 문장 그대로다
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -326,5 +327,18 @@ describe("AC-3709.1 안내서 '읽지 않을 처방' — 화면 글(options.ts E
     const cell = part(README, '4-2.')
     for (const line of [FIND.waiting, FIND.none, FIND.added, FIND.old]) expectQuoted(cell, line)
     expect(cell).toContain('두 글자 이상')
+  })
+})
+
+describe('AC-3710.3 안내서 함께 있는 진료 — 돈이 두 번 셀 때만 묻는다', () => {
+  const SENTENCE = '씨암·SONO 셀 코드가 서로 다르면 묻지 않고 각 줄에 자기 셀 코드 금액만 넣어요. 같은 코드를 씨암·SONO 둘 다에 넣었을 때만 어디에 넣을지 물어요.'
+
+  it("AC-3710.3: 4-2 소절의 함께 있는 진료 설명이 정한 문장 그대로이고, '함께 있으면 늘 묻는다'는 옛 설명은 없다", () => {
+    expect(part(README, '4-2.')).toContain(SENTENCE)
+    expect(README).not.toContain('표시 코드가 함께 있으면, 채울 때 어디에 넣을지 묻습니다')
+  })
+
+  it('AC-3710.3: 확장 판 번호는 0.3.0 그대로다', () => {
+    expect(MANIFEST.version).toBe('0.3.0')
   })
 })

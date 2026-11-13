@@ -256,6 +256,21 @@ export async function save(settings: Settings): Promise<Settings> {
   return clean
 }
 
+/**
+ * 함께 있는 진료(씨암·SONO 둘 다 든 진료)를 어디에 넣을지 물어야 하나(REQ-3710, spec erp-closing-range design.md 13절).
+ * 줄마다 '돈 코드' = 그 줄 셀 코드(amounts)가 있으면 셀 코드, 없으면 그 줄 고른 코드(picks). 씨암·SONO 돈 코드에 같은 코드가
+ * 하나라도 있을 때(대문자·앞뒤 공백 뗀 값으로 견줌)만 true — 그때만 같은 금액이 두 줄에 두 번 들어간다
+ */
+export function overlapNeedsAsk(settings: Settings): boolean {
+  const tidy = (list: readonly string[] | undefined) => (list ?? []).map((code) => code.trim().toUpperCase()).filter((code) => code !== '')
+  const money = (key: AmountKey) => {
+    const cells = tidy(settings.amounts?.[key]?.codes)
+    return cells.length > 0 ? cells : tidy(settings.picks[key])
+  }
+  const sono = new Set(money('sono'))
+  return money('carm').some((code) => sono.has(code))
+}
+
 /** ERP 화면에서 고른 함께 있는 진료 선택만 바꿔 쓴다(설정의 다른 칸은 그대로). 저장한 설정이 없으면 아무것도 쓰지 않는다 */
 export async function saveOverlap(choice: OverlapChoice): Promise<void> {
   const current = normalize(await stored())
