@@ -11,7 +11,7 @@
 //   승인 안내 → 하루씩 채우고 두 저장(runRange) → 끝·멈춤 안내. 살펴보기부터 안내를 닫을 때까지 두 단추·[지난 결과]를 막는다.
 //   살펴본 결과·남은 날은 이 화면 기억(ranging)에만 두고 닫기·화면 떠남 때 지운다(AC-3703.5·3704.3)
 import { planCells } from './cells.js'
-import { blocker, dateLabels, draftNotice, readDate, readJournal, save as pressSave, setDate, waitLoaded } from './erpday.js'
+import { blocker, dateLabels, draftNotice, readDate, readJournal, save as pressSave, setDate, todayOnly, waitLoaded } from './erpday.js'
 import { E_BRIDGE_BAD_REPLY, E_BRIDGE_DISCONNECTED, E_CLOSING_FUTURE_DATE, E_HELPER_TIMEOUT } from './errors.js'
 import { fillAll, locate, survey, undoAll, type FillMode, type UndoEntry } from './fill.js'
 import { createDock, HOST_ID, type Dock, type View } from './panel.js'
@@ -30,21 +30,6 @@ export const READ_TIMEOUT_MS = 120_000
 /** 마감 일자 읽기는 erpday.ts로 옮겼다(기간 채우기와 같이 쓴다). 여기서 그대로 다시 내보낸다 */
 export { readDate }
 
-const TODAY_ONLY = /\d{4}-\d{2}-\d{2}\s*\(오늘\)/
-/**
- * 원무 권한 화면인가: '마감 일자' 줄(label 부모부터 세 겹)에 날짜 칸('연도 선택' 칸 말고)이 없이 'YYYY-MM-DD (오늘)' 글자.
- * ERP 안내 창이 떠 있어도 같다(blocker는 안내 창을 먼저 본다). erpday.ts readDate가 칸을 찾는 차례와 같다
- */
-function todayOnly(doc: Document): boolean {
-  for (const label of dateLabels(doc)) {
-    let row = label.parentElement
-    for (let up = 0; row && up < 3; up += 1, row = row.parentElement) {
-      if ([...row.querySelectorAll('input.datepicker-input')].some((el) => el.getAttribute('aria-label') !== '연도 선택')) return false
-      if (TODAY_ONLY.test(row.textContent ?? '')) return true
-    }
-  }
-  return false
-}
 
 /** 단추를 둘 화면인가: 주소가 /h/closing이고 '마감 일자'가 있다 */
 export function onClosingPage(doc: Document): boolean {

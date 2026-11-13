@@ -10,39 +10,15 @@ import { HOST_ID } from './panel'
 import type { RangeView } from './rangeTypes'
 import { SETTINGS_KEY, type ClosingDay, type Settings } from './types'
 
-// TASK-8: 기간 안내에 넘긴 모양(RangeView)을 차례대로 적는다(그리기는 진짜 rangeView 그대로).
-// TASK-7 전 rangeView는 새 까닭 다섯(dateChanged 등)을 그리지 못하고 던진다: 그때만 까닭 이름 + [닫기](+ design.md 4절
-// [이어서 하기] 넷이면 [이어서 하기])만 있는 대신 몸통을 쓴다. TASK-7과 합치면 진짜 몸통이 그려져 이 길은 쓰이지 않는다
+// TASK-8: 기간 안내에 넘긴 모양(RangeView)을 차례대로 적는다(그리기는 진짜 rangeView 그대로)
 const seen = vi.hoisted(() => ({ views: [] as unknown[] }))
 vi.mock('./rangeView', async (importOriginal) => {
   const real = await importOriginal<typeof import('./rangeView')>()
-  const RESUMABLE = ['dialog', 'noSaveBar', 'helper', 'dateChanged']
   return {
     ...real,
     renderRange(...args: Parameters<typeof real.renderRange>) {
-      const [doc, view, act] = args
-      seen.views.push(view)
-      try {
-        return real.renderRange(...args)
-      } catch (err) {
-        if (view.kind !== 'blocked') throw err
-        const box = doc.createElement('div')
-        const lead = doc.createElement('p')
-        lead.className = 'lead'
-        lead.textContent = `(멈춤 ${view.block.kind})`
-        const acts = doc.createElement('div')
-        acts.className = 'acts'
-        const button = (label: string, action: Parameters<typeof act>[0]) => {
-          const b = doc.createElement('button')
-          b.textContent = label
-          b.addEventListener('click', () => act(action))
-          acts.append(b)
-        }
-        button('닫기', { kind: 'close' })
-        if (RESUMABLE.includes(view.block.kind)) button('이어서 하기', { kind: 'resume' })
-        box.append(lead, acts)
-        return box
-      }
+      seen.views.push(args[1])
+      return real.renderRange(...args)
     },
   }
 })
