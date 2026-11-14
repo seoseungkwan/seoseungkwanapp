@@ -15,9 +15,9 @@ const DESC = '첫 내원일에 이 처방을 받은 신환이, 불러온 자료 
 const FOOT = '집계 중 = 이번 달과 지난달. 첫 내원이 얼마 안 돼서 다시 받으러 오면 1회가 줄 수 있어요. 막대 안 숫자는 실제 인원이에요.'
 const MISSING = '이 기간 숫자는 1회 신환을 세기 전에 저장했어요. 비트에서 다시 불러오거나 파일을 다시 넣으면 보여요.'
 const NO_VALUE = '–'
-// 두 갈래 색(design.md 5-8): 현재까지 1회 = accent, 2회 이상 = st-ret
+// 두 갈래 색(design.md 5-8): 현재까지 1회 = accent, 2회 이상 = st-ink(짙은 남색). 둘 다 막대 안 흰 숫자와 대비 4.5:1 이상(AC-4410.2)
 const ONCE_TONE = 'bg-accent'
-const MORE_TONE = 'bg-st-ret'
+const MORE_TONE = 'bg-st-ink'
 
 // 카드 안 작은 칸(위 얇은 선, 제목 15px)
 const BLOCK = 'mt-6 border-t border-st-line pt-5'

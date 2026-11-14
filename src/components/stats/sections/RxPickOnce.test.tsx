@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { statsRange, type RxLine, type StatsInput, type StatsPeriod } from '@/components/stats/view'
@@ -97,7 +99,7 @@ describe('AC-4410.1: 묶음 틀 · 처방 단추 · 범례', () => {
     expect(items.map((li) => li.textContent)).toEqual(['현재까지 1회', '2회 이상'])
     const [once, more] = items.map((li) => li.querySelector('[aria-hidden="true"]')!)
     expect(classes(once!)).toContain('bg-accent')
-    expect(classes(more!)).toContain('bg-st-ret')
+    expect(classes(more!)).toContain('bg-st-ink')
   })
 })
 
@@ -118,7 +120,16 @@ describe('AC-4410.2: 달 줄 · 100% 막대 · 줄 끝 글 · 합계', () => {
     expect(once!.style.flexBasis).toBe('66.67%')
     expect(more!.style.flexBasis).toBe('33.33%')
     expect(classes(once!)).toEqual(expect.arrayContaining(['bg-accent', 'text-surface']))
-    expect(classes(more!)).toEqual(expect.arrayContaining(['bg-st-ret', 'text-surface']))
+    expect(classes(more!)).toEqual(expect.arrayContaining(['bg-st-ink', 'text-surface']))
+  })
+
+  it('AC-4410.2: 두 갈래 바탕은 막대 안 흰 숫자(text-surface)와 대비 4.5:1 이상이다(1회 파랑 · 2회 이상 짙은 남색)', () => {
+    draw()
+    const bar = barOf(rowOf('2026년 10월 (15일부터)'))!
+    const tones = (Array.from(bar.children) as HTMLElement[]).map((part) => classes(part).find((name) => name.startsWith('bg-'))!)
+    expect(tones).toEqual(['bg-accent', 'bg-st-ink'])
+    const surface = tokenColor('surface')
+    for (const tone of tones) expect(contrast(tokenColor(tone.slice(3)), surface)).toBeGreaterThanOrEqual(4.5)
   })
 
   it('AC-4410.2: 0명인 갈래는 그리지 않는다(1회 1명 · 2회 이상 0명)', () => {
@@ -223,3 +234,22 @@ describe('AC-4417.2: 횟수 막대 움직임', () => {
     expect(nestedBoxes(container)).toEqual([])
   })
 })
+
+// globals.css :root의 색 토큰 값(#RRGGBB)과 WCAG 대비
+function tokenColor(name: string): string {
+  const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
+  const found = css.match(new RegExp(`--${name}:\\s*(#[0-9A-Fa-f]{6});`))
+  if (!found) throw new Error(`--${name} 토큰이 없다`)
+  return found[1]!
+}
+function luminance(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map((at) => {
+    const c = parseInt(hex.slice(at, at + 2), 16) / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!
+}
+function contrast(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+  return (hi! + 0.05) / (lo! + 0.05)
+}

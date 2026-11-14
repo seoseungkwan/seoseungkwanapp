@@ -734,7 +734,7 @@ const ST_MOTIONS = ['st-move-period', 'st-move-heat', 'st-move-toggle', 'st-donu
 const STATS_SCREEN_CLASSES = new Set([
   'rounded-st',
   'rounded-st-sm',
-  'rounded-full', // 스위치·꼬리표만(design.md 5-2) — 어디에 쓰는지는 화면 시험이 본다
+  'rounded-full', // 스위치·꼬리표·바로가기 링크만(design.md 5-1) — 어디에 쓰는지는 화면 시험이 본다
   'shadow-st-card',
   ...ST_TEXT_SIZES.map((size) => `text-st-${size}`),
   ...['text', 'bg', 'border'].flatMap((kind) => ST_COLORS.map((color) => `${kind}-${color}`)),
