@@ -24,14 +24,14 @@
 | 금지 | 이유 |
 |------|------|
 | 그라데이션(바탕·글자·선), 원형 빛, 격자 바탕, 유리 효과(blur·`backdrop-filter`), `filter` | 장식이다. "AI가 만든 템플릿" 느낌 **(사용자)** |
-| 카드 그림자, 떠 있는 카드 | 그림자는 떠 있는 층(계정 메뉴·확인 창·툴팁·[전체 메뉴] 판·1분 전 안내·건너뛰기 링크)에만 쓴다 |
+| 카드 그림자, 떠 있는 카드 | 그림자는 떠 있는 층(계정 메뉴·확인 창·툴팁·[전체 메뉴] 판·1분 전 안내·건너뛰기 링크)에만 쓴다. 예외는 통계 화면 카드의 아주 옅은 그림자(`shadow-st-card`) 하나다(아래 '통계 화면(first90)') |
 | 상자 안 상자(테두리 상자 안에 또 테두리 상자), 같은 카드 반복 | 같은 상자 반복이 템플릿 티의 첫째 원인이다. 안쪽은 선으로 나눈다 |
-| 큰 둥글기(8px 넘는 모서리, 999px 둥근 단추) | 모서리는 4px(조작 요소·패널)와 8px(떠 있는 층)뿐이다. 예외는 대시보드의 비트 읽는 표시 둘(`.bit-read-bar` 2px, `.bit-read-spin` 50%)뿐이다(아래 '움직임 › 비트 읽는 표시') |
+| 큰 둥글기(8px 넘는 모서리, 999px 둥근 단추) | 모서리는 4px(조작 요소·패널)와 8px(떠 있는 층)뿐이다. 예외는 대시보드의 비트 읽는 표시 둘(`.bit-read-bar` 2px, `.bit-read-spin` 50%)과 통계 화면(카드 14px·작은 칸 8px·스위치와 꼬리표의 둥근 끝, 아래 '통계 화면(first90)')뿐이다(아래 '움직임 › 비트 읽는 표시') |
 | 두 번째 글꼴(IBM Plex Sans KR·Space Grotesk 등) | Pretendard 하나만 쓴다 **(사용자, 2026-10-30)** (업무일지 양식 칸은 예외 — 아래 '업무일지 양식') |
 | 700 굵기(`font-bold` 등)와 300 이하 굵기 | 글꼴 파일이 400·500·600뿐이라 다른 굵기는 가짜 굵게가 된다 (업무일지 양식 칸은 예외 — 아래 '업무일지 양식') |
 | 지어낸 숫자(예시 표시 없는 숫자), 실제 화면의 예시 숫자 | 믿고 쓰는 데이터 서비스여야 한다. 예시는 랜딩·로그인 미리보기에서만 "예시" 표시와 함께 쓴다 |
 | 일러스트·사진·영상, 이모지, 반짝이(✦) 아이콘, "Powered by AI" | 그림 대신 제품 화면을 보여 준다 |
-| 장식 애니메이션, 숫자 순환, `animate-*`, `globals.css`의 비트 읽는 표시 둘 밖의 `@keyframes`, '짧은 반응 허용' 밖의 전환 효과 | 움직이는 것은 앱·랜딩·인증 화면 조작 요소의 짧은 반응과 탭 줄의 불러오기 줄, 대시보드의 비트 읽는 표시 둘(`.bit-read-bar`·`.bit-read-spin`)뿐이다(아래 '움직임') |
+| 장식 애니메이션, 숫자 순환, `animate-*`, `globals.css`의 비트 읽는 표시 둘·통계 화면 셋(`st-donut`·`st-rise`·`st-in`) 밖의 `@keyframes`, '짧은 반응 허용' 밖의 전환 효과 | 움직이는 것은 앱·랜딩·인증 화면 조작 요소의 짧은 반응과 탭 줄의 불러오기 줄, 대시보드의 비트 읽는 표시 둘(`.bit-read-bar`·`.bit-read-spin`), 통계 화면의 정한 움직임(`st-*`, 아래 '통계 화면(first90)')뿐이다(아래 '움직임') |
 | 토큰 밖의 색과 값: Tailwind 기본 색(`bg-blue-500`), 대괄호 임의 값(`bg-[#…]`·`p-[10px]`), 화면 소스의 16진수·`rgb(`·`hsl(`·`color-mix(` | 값은 `:root` 한 곳이다. 16진수 색은 `:root`·`LogoMark.tsx`·`GoogleMark.tsx`에만 있다 (업무일지 양식 칸은 예외 — 아래 '업무일지 양식') |
 | 제목 반쪽만 색칠, 섹션마다 다른 포인트 색 | 강조색은 하나다 |
 | 영문 소제목(SIGN IN·AI ANALYSIS·PRIVACY FIRST 등) | 한국어 페이지다. 대신 넣는 것은 없다 |
@@ -143,6 +143,7 @@
 - 화면 폭 기준은 768px·1024px 두 개다. 휴대폰 값을 먼저 쓰고 넓어지면서 바꾼다
   - Tailwind: `md:`(768)·`lg:`(1024)·`max-md:`·`max-lg:`만 쓴다. `sm:`·`xl:`은 쓰지 않는다
   - 예외 하나(stats-pc-ux): 통계 '환자 구성' 세 열(`src/components/stats/sections/PatientMixSection.tsx`)만 1280px 경계 `min-[80rem]:`을 쓴다(1024~1279px 두 열 → 1280px 이상 세 열). 규칙 시험 예외 목록에 이 파일 × 그 클래스들만 적었고, 다른 파일의 `min-[…]:`·`xl:`은 그대로 잡는다
+  - 예외 둘(first90): 통계 화면 파일만 경계 넷 `min-[1100px]:`·`min-[1200px]:`·`max-[1199px]:`·`max-[379px]:`을 쓴다(아래 '통계 화면(first90)')
   - 랜딩 CSS: `@media (min-width: 768px)`·`(min-width: 1024px)`, 숨김 도우미만 `(max-width: 767.98px)`
 - 1024px 이상은 12칸이다(칸 사이 24px). 768px 미만은 한 줄이다
   - 랜딩 768~1023px: 두 칸 배치는 위아래로 쌓고, 목록 두 칸(개인정보 약속)은 두 칸 그대로 둔다
@@ -237,12 +238,14 @@
 | `scale.ts` | `niceScale`: 눈금 간격과 최대 |
 | `KpiStat` | 이름 + Sparkline → 값 + 단위 → 증감 줄 |
 | `Sparkline` | 작은 선 그래프(88×28, 작은 것 56×22) |
-| `StackedBarChart` | 주별 쌓은 막대(신환·재진, 계열 색 `accent`·`chart-3`·`hatch-warning`) + 화면 읽기 표. `hideZeroTotals`: 합계 0인 칸은 막대 위 글자 없음 |
+| `StackedBarChart` | 주별 쌓은 막대(신환·재진, 계열 색 `accent`·`chart-3`·`hatch-warning`, 통계 화면은 `f90`·`ret`·`rough`도) + 화면 읽기 표. `hideZeroTotals`: 합계 0인 칸은 막대 위 글자 없음. 통계 화면 props(`mark`·`motion`·`selected`·`onPick`)는 아래 '통계 화면(first90)' |
+| `DonutChart` | 통계 화면 원 조각(내원 구성). 그림은 `aria-hidden`, 값은 부르는 쪽 범례 글(아래 '통계 화면(first90)') |
 | `ChartLegend` | 범례(accent 면 · chart-3 면 · 빗금 `hatch` · 구분 없음 빗금 `hatch-warning` · 지난 기간 막대) |
 | `RankedBars` | 순위 막대(동네 등) |
 | `InlineBar` | 표 줄 안 작은 막대(이번 값 + 지난 기간 눈금) |
 
 - **서버에서 그대로 그린다.** `'use client'`·React 훅·타이머·`animate-*`·`transition*`이 없다. 움직이지 않는다
+  - 예외(first90): `DonutChart`·`StackedBarChart`·`InlineBar` 셋만 `motion`을 받으면 `globals.css`의 움직임 이름(`st-*`)을 붙인다. 움직임은 CSS가 하고 차트 안에는 여전히 훅·타이머·`animate-*`·`transition*`이 없다(`charts/rules.test.ts`). 다른 차트 파일은 `st-*`를 붙이지 않는다
 - **막대는 HTML이다.** `div`/`span`에 % 높이·폭(inline style)을 주고, 눈금 글자·값 글자는 HTML 글자로 쓴다. 그래서 칸 폭이 바뀌어도 글자는 늘 12px이다
   - inline style은 % 값(0~100, 소수 둘째 자리)뿐이다: 쌓은 막대 `height`·`bottom`, 순위 막대 `width`, 줄 안 막대 `width`·`left`
   - SVG는 Sparkline, 빗금(패턴·id 없이 `<path stroke="currentColor">` 하나, 4px 간격), 화살표, 범례 표시에만 쓴다
@@ -494,8 +497,8 @@
 - 제목과 랜딩 약속 문구에 줄바꿈 태그를 넣지 않는다
 
 ## 움직임
-- 장식으로 움직이는 것이 없다. 히어로 숫자 순환·장식 애니메이션·`animate-*`가 없고, `@keyframes`는 아래 '비트 읽는 표시' 둘 밖에 없다
-- 모션 줄이기 전역 규칙(`globals.css`)은 그대로 둔다. 아래 짧은 반응과 비트 읽는 표시도 이 규칙이 모두 끈다
+- 장식으로 움직이는 것이 없다. 히어로 숫자 순환·장식 애니메이션·`animate-*`가 없고, `@keyframes`는 아래 '비트 읽는 표시' 둘과 통계 화면 셋(`st-donut`·`st-rise`·`st-in`, 아래 '통계 화면(first90)') 밖에 없다
+- 모션 줄이기 전역 규칙(`globals.css`)은 그대로 둔다. 아래 짧은 반응과 비트 읽는 표시, 통계 화면 움직임도 이 규칙이 모두 끈다
 
 ### 짧은 반응 허용 (대시보드 1안부터, 사용자 2026-10-31 · 랜딩·인증까지 넓힘, 총괄 ui-90)
 - 조작 요소만 누름과 올림에 짧게 반응한다
@@ -507,7 +510,7 @@
 - 시간: 150ms(Tailwind `transition` 기본값 `--default-transition-duration`, 곡선 기본값). 휴대폰 아래 단추가 올라올 때만 200ms(`duration-200`). 120~200ms 밖은 쓰지 않는다(아래 불러오기 줄과 비트 읽는 표시만 예외)
 - 클래스: `transition`(기본 속성 목록)과 `duration-200`, 나타남은 `starting:` 변형. `transition-all`·`delay-*`·`ease-*` 임의 곡선·`animate-*`는 쓰지 않는다(비트 읽는 표시도 `animate-*`를 쓰지 않는다)
 - 떠 있는 층(계정 메뉴·툴팁·[전체 메뉴] 판)은 나타날 때만 움직이고 닫힐 때는 바로 사라진다
-- 그래프(`components/charts`)와 미리보기(`components/preview`)는 움직이지 않는다
+- 그래프(`components/charts`)와 미리보기(`components/preview`)는 움직이지 않는다(통계 화면 차트 셋의 `motion`만 예외 — 아래 '통계 화면(first90)')
 
 ### 불러오기 줄 (예외 하나, ui-90)
 - 탭을 누른 뒤 경로가 아직 그대로인 동안 탭 줄 맨 아래에 `aria-hidden` 2px `accent` 줄이 왼쪽에서 80%까지 700ms 동안 감속하며 차오른다(`scaleX`, `duration-700 ease-out`). 경로가 바뀌면 150ms에 사라진다(`delay-*` 없음)
@@ -522,6 +525,40 @@
 - 위 2px·50%는 '모서리·선·그림자'의 두 가지(4px·8px) 밖의 값이고, 이 두 표시에만 해당한다. 다른 곳에 쓰지 않는다
 - 값은 시안 `docs/mockups/bit-dashboard/css_extra.css`를 따른다. `@keyframes`는 `globals.css`의 이 두 표시에만 쓰고, 클래스는 `ReadStatus.tsx` 한 파일에서만 쓴다. Tailwind `animate-*` 금지는 그대로다(규칙 시험: `globals.test.ts`, `theme.test.ts` AC-202.4, `ui/classes.test.ts`)
 - 모션 줄이기 기기에서는 전역 규칙으로 움직이지 않는다. 막대는 `accent` 40%의 전체 폭 띠로 서고(진행률로 읽히지 않게), 도는 고리는 그 자리에 멈춘다
+
+## 통계 화면(first90)
+사용자가 통계 화면 새 시안을 승인했다 **(사용자, 2026-11-14)**. 기준 시안은 `docs/mockups/first90/redesign.html`, 명세는 `specs/first90/design.md` 5절(5-1 토큰 · 5-2 규칙 예외 · 5-3 움직임 · 5-4 차트 기반)이다. 이 절의 예외는 아래 파일에만 해당하고, 다른 화면은 이 문서의 일반 규칙 그대로다.
+
+- **예외 파일**: `src/components/stats/**`·`src/components/revenue/**`(시험 파일 빼고)와 차트 셋 `src/components/charts/DonutChart.tsx`·`StackedBarChart.tsx`·`InlineBar.tsx`. 그 밖의 파일(대시보드·미리보기·다른 차트·앱 틀·`src/app/(app)/stats/page.tsx` 포함)이 아래 클래스를 쓰면 규칙 시험이 잡는다
+- **토큰**(`globals.css` `:root`에 더함, 지금 토큰 값은 그대로)
+  - 바탕·글자·선: `--st-canvas` #F4F6F9 · `--st-ink` #172B4D · `--st-ink-2` #3B4A63 · `--st-muted` #5B6B82 · `--st-line` #E5EAF1 · `--st-line-2` #CBD3DF
+  - 계열: 신환은 지금 `--accent`, 90일초진 `--st-f90` #0D9488, 재진 `--st-ret` #6B89BF, 참고 금액 `--st-ref` #B7791F · `--st-ref-2` #E9C98F, 주의 글자 `--st-warn-ink` #975A16. 옅은 노랑은 지금 `--warning-soft`
+  - 시간대 칸 여섯 단계: `--st-h0` #F1F4F8 · `--st-h1` #DCE8FC · `--st-h2` #B5CEF8 · `--st-h3` #7FA9F1 · `--st-h4` #3F7BE6 · `--st-h5` #1D4ED8
+  - 모서리·그림자: `--st-r` 14px(768px 미만 12px) · `--st-r-sm` 8px · `--st-card-shadow` `0 1px 2px rgb(23 43 77 / 0.04)`
+  - 글자 크기: `--fs-st-15`·`17`·`18`·`22`·`34`·`40`(768px 미만 34 → 28, 40 → 34). 줄 높이 토큰은 없다 — `text-st-*`는 크기만 주므로 쓰는 곳이 `leading-*`을 함께 준다
+  - 움직임 시간: `--st-t-toggle` 200ms · `--st-t-period` 300ms · `--st-t-first` 450ms(아래 움직임 규칙만 쓴다)
+  - 768px 미만 값은 `globals.css`의 `@media (max-width: 767.98px) { :root { … } }` 한 곳에서만 바꾼다
+- **허용 클래스**(예외 파일에서만)
+  - 화면 폭 경계 넷: `min-[1100px]:` · `min-[1200px]:` · `max-[1199px]:` · `max-[379px]:`. 다른 경계(`min-[900px]:`·`min-[1280px]:`·`xl:` …)는 그대로 잡는다. Tailwind 4의 `max-[Npx]:`는 `width < N`이라 `max-[1199px]:`는 1199px부터, `max-[379px]:`는 379px부터 빠진다
+  - 모서리·그림자: `rounded-st`(카드) · `rounded-st-sm`(작은 칸) · `rounded-full`(스위치·꼬리표만) · `shadow-st-card`(카드만)
+  - 글자 크기: `text-st-15`·`text-st-17`·`text-st-18`·`text-st-22`·`text-st-34`·`text-st-40`
+  - 색: 위 st 색 17개의 `text-st-*`·`bg-st-*`·`border-st-*`(투명도 `/N` 포함). `fill-`·`stroke-`·`ring-`·`outline-` 같은 다른 쓰임은 잡는다 — svg는 `currentColor` + `text-st-*`로 칠한다
+  - 움직임 이름 일곱(아래)
+- **그대로 금지**(예외 파일에서도): 600 넘는 굵기(`font-bold`·`font-[700]` …)와 300 이하 굵기, 그라데이션(`bg-linear-*`·`from-*` …, 빗금은 svg), `animate-*`, `transition-*`·`duration-*`(200 밖)·`ease-*`·`delay-*`, 지어낸 숫자, 어두운 화면(다크 모드)
+- **움직임**(`globals.css`, CSS만). 차트·통계 칸은 이름만 붙인다. 모션 줄이기 기기에서는 전역 끄기가 모두 끄고, 바탕 강조는 아예 없다. 탭·펼치기·단추 묶음은 움직이지 않는다
+  - `st-donut`(도넛 svg, 조각은 `seg`): 처음 붙을 때 한 번 450ms, `stroke-dasharray` 0 → 제 길이(`@keyframes st-donut`). 다시 그려도(값만 바뀜) 되풀이하지 않는다
+  - `st-move-period`: 기간을 바꾸면 높이·폭·`flex-basis`·`stroke-dasharray`·`stroke-dashoffset`이 300ms `ease-out`. 숫자 글은 바로 바뀐다
+  - `st-move-heat`: 시간대 칸 바탕·글자 색 200ms
+  - `st-move-toggle`: 스위치 손잡이 옮김(`transform`·`translate`) 200ms
+  - `st-rise`: 빗금 막대가 붙을 때 아래에서 솟음(`scaleY` 0 → 1) 200ms(`@keyframes st-rise`)
+  - `st-tag-in`: "참고 포함" 꼬리표가 붙을 때 투명도 200ms(`@keyframes st-in`)
+  - `st-flash`: 매출 요약 칸 바탕 `accent-soft`. 부르는 쪽이 250ms 동안 붙였다 뗀다. `prefers-reduced-motion: no-preference` 기기에서만 보인다
+- **차트 기반**
+  - `StackedBarChart`: tone `f90`(`bg-st-f90`)·`ret`(`bg-st-ret`)·`rough`(`bg-st-ref-2` 바탕 + `text-st-ref` 3px 빗금 svg, 8px 간격). 칸 `mark: 'unchecked'` = 막대 대신 점선 칸(`border-dashed border-st-line-2`, `bg-warning-soft`, 칸 높이의 반) + 칸 위 글 "확인 필요"(dense면 글 없음), 값은 눈금·굵은 합계에 넣지 않고 화면 읽기 표는 '–'·"확인 필요"다. `motion`(막대·조각 `st-move-period`, 빗금 조각 `st-rise`) · `selected`(고른 칸 `bg-accent-soft`) · `onPick(key)`(칸이 `tabIndex -1` 단추가 되고 누름·올림에 부름, 막대 위 글은 768px 이상에서만). 고른 칸 상태와 아래 줄 글(`role="status"`)은 부르는 쪽이 갖는다. 새 props를 주지 않으면 마크업이 지금과 한 글자도 같다
+  - `InlineBar`: `motion`이면 막대에 `st-move-period`
+  - `DonutChart({ slices: { name, value, tone: 'accent' | 'f90' | 'ret' }[], center: [윗줄,아랫줄], motion })`: 둘레 100 원 조각(위부터 시계 방향, 조각 사이 0.6), 가운데 두 줄, PC 160px·휴대폰 124px. 그림은 `aria-hidden`이고 값은 부르는 쪽 범례 글이 준다
+  - `stats/trendSeries.ts`의 `trendSeries(known)`: 앎이면 신환(`accent`)·90일초진(`f90`)·재진(`ret`), 모름이면 신환·"재진(90일초진 포함)"(`ret`). 처방 자세히 차트의 `TREND_SERIES`는 그대로다
+- **규칙 시험**: `ui/classes.test.ts`(파일 × 클래스 예외, 굵기·그라데이션은 예외 파일에서도), `app/theme.test.ts`(토큰·`@theme inline` 이름·휴대폰 값), `app/globals.test.ts`(움직임 이름·키프레임·모션 줄이기), `charts/rules.test.ts`(`st-*`는 차트 셋만)
 
 ## 업무일지 양식 (엑셀 예외)
 사용자가 "엑셀이랑 완전 똑같이"를 골랐다 **(사용자, 2026-10-29)**. 결정 기록은 `docs/ADR.md`의 업무일지 ADR, 기준 시안은 `docs/mockups/worklog/`, 명세는 `specs/worklog/design.md` 2·7·11-1·12·13절이다.

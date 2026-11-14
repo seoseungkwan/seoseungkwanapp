@@ -92,6 +92,35 @@
   --text-panel--line-height: var(--lh-subtitle);
   --text-title-sm: var(--fs-title);
   --text-title-sm--line-height: var(--lh-title);
+
+  /* 통계 화면(first90 design.md 5-1·5-2, UI_GUIDE '통계 화면(first90)'). 통계 화면 파일만 쓴다(classes.test.ts가 막는다).
+     글자 st-*는 크기만 준다(줄 높이 토큰 없음 — 쓰는 곳이 leading-*을 함께 준다) */
+  --color-st-canvas: var(--st-canvas);
+  --color-st-ink: var(--st-ink);
+  --color-st-ink-2: var(--st-ink-2);
+  --color-st-muted: var(--st-muted);
+  --color-st-line: var(--st-line);
+  --color-st-line-2: var(--st-line-2);
+  --color-st-f90: var(--st-f90);
+  --color-st-ret: var(--st-ret);
+  --color-st-ref: var(--st-ref);
+  --color-st-ref-2: var(--st-ref-2);
+  --color-st-warn-ink: var(--st-warn-ink);
+  --color-st-h0: var(--st-h0);
+  --color-st-h1: var(--st-h1);
+  --color-st-h2: var(--st-h2);
+  --color-st-h3: var(--st-h3);
+  --color-st-h4: var(--st-h4);
+  --color-st-h5: var(--st-h5);
+  --radius-st: var(--st-r);
+  --radius-st-sm: var(--st-r-sm);
+  --shadow-st-card: var(--st-card-shadow);
+  --text-st-15: var(--fs-st-15);
+  --text-st-17: var(--fs-st-17);
+  --text-st-18: var(--fs-st-18);
+  --text-st-22: var(--fs-st-22);
+  --text-st-34: var(--fs-st-34);
+  --text-st-40: var(--fs-st-40);
 }
 
 /* 앱 초기화: 앱 화면 뿌리(.app-ui) 안에만. 랜딩에는 닿지 않는다 */
@@ -207,6 +236,47 @@
   --xl-lav: #CCCCFF;
   --xl-gray: #D9D9D9;
   --xl-focus: #107C41;
+
+  /* 통계 화면 — first90 design.md 5-1, UI_GUIDE '통계 화면(first90)'. 신환은 위 --accent, 옅은 노랑은 위 --warning-soft를 쓴다 */
+  --st-canvas: #F4F6F9;
+  --st-ink: #172B4D;
+  --st-ink-2: #3B4A63;
+  --st-muted: #5B6B82;
+  --st-line: #E5EAF1;
+  --st-line-2: #CBD3DF;
+  --st-f90: #0D9488;
+  --st-ret: #6B89BF;
+  --st-ref: #B7791F;
+  --st-ref-2: #E9C98F;
+  --st-warn-ink: #975A16;
+  --st-h0: #F1F4F8;
+  --st-h1: #DCE8FC;
+  --st-h2: #B5CEF8;
+  --st-h3: #7FA9F1;
+  --st-h4: #3F7BE6;
+  --st-h5: #1D4ED8;
+  --st-r: 14px;
+  --st-r-sm: 8px;
+  --st-card-shadow: 0 1px 2px rgb(23 43 77 / 0.04);
+  --fs-st-15: 15px;
+  --fs-st-17: 17px;
+  --fs-st-18: 18px;
+  --fs-st-22: 22px;
+  --fs-st-34: 34px;
+  --fs-st-40: 40px;
+  /* 움직임 시간(아래 .st-* 규칙만 쓴다) */
+  --st-t-toggle: 200ms;
+  --st-t-period: 300ms;
+  --st-t-first: 450ms;
+}
+
+/* 통계 화면 휴대폰(768px 미만) 값: 카드 모서리와 큰 숫자만 줄인다. 다른 토큰은 바꾸지 않는다 */
+@media (max-width: 767.98px) {
+  :root {
+    --st-r: 12px;
+    --fs-st-34: 28px;
+    --fs-st-40: 34px;
+  }
 }
 
 body {
@@ -269,6 +339,77 @@ body {
 @keyframes bit-read-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* 통계 화면 움직임 (first90 REQ-4417, design.md 5-3, UI_GUIDE '통계 화면(first90)'). 차트·통계 칸은 이름만 붙이고 움직임은 이 CSS가 한다.
+   시간은 위 :root의 --st-t-* 토큰이다. 아래 모션 줄이기 전역 끄기가 모두 끈다(여기는 !important를 쓰지 않는다).
+   탭·펼치기·단추 묶음에는 움직임이 없다 */
+
+/* 도넛 조각: 처음 붙을 때 한 번 0 → 제 길이(둘레 100). 끝 값을 두지 않아 끝나면 조각 제 값이고, 다시 그려도(값만 바뀜) 되풀이하지 않는다 */
+.st-donut .seg {
+  animation: st-donut var(--st-t-first) ease-out;
+}
+
+@keyframes st-donut {
+  from {
+    stroke-dasharray: 0 100;
+  }
+}
+
+/* 기간을 바꾸면: 막대 높이·가로 막대 폭·횟수 막대(flex-basis)·도넛 조각. 숫자 글은 바로 바뀐다 */
+.st-move-period {
+  transition-property: height, width, flex-basis, stroke-dasharray, stroke-dashoffset;
+  transition-duration: var(--st-t-period);
+  transition-timing-function: ease-out;
+}
+
+/* 시간대 칸 색 */
+.st-move-heat {
+  transition-property: background-color, color;
+  transition-duration: var(--st-t-toggle);
+}
+
+/* 스위치 손잡이(Tailwind translate-x-*는 translate 속성을 쓴다) */
+.st-move-toggle {
+  transition-property: transform, translate;
+  transition-duration: var(--st-t-toggle);
+  transition-timing-function: ease-out;
+}
+
+/* 참고 금액 빗금 막대: 붙을 때 아래에서 솟는다 */
+.st-rise {
+  transform-origin: bottom;
+  animation: st-rise var(--st-t-toggle) ease-out;
+}
+
+@keyframes st-rise {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* "참고 포함" 꼬리표: 붙을 때 투명도 */
+.st-tag-in {
+  animation: st-in var(--st-t-toggle) ease-out;
+}
+
+@keyframes st-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 매출 요약 칸 바탕 강조: 칸이 250ms 동안 이 이름을 붙였다 뗀다(RevenueSummary). 움직임을 켠 기기에서만 보인다 */
+@media (prefers-reduced-motion: no-preference) {
+  .st-flash {
+    background-color: var(--accent-soft);
   }
 }
 

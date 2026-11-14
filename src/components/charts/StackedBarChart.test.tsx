@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { ReactElement } from 'react'
-import { describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render as mount } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nestedBoxes } from '@/testing/boxes'
 import { StackedBarChart, type BarBucket, type BarSeries } from './StackedBarChart'
 
@@ -1105,5 +1106,259 @@ describe('AC-3709.3: StackedBarChart trend — 그림 칸 안 점선 추세선 �
     expect(html).not.toContain('url(#')
     expect(root.querySelectorAll('[id]')).toHaveLength(0)
     expect(nestedBoxes(root)).toEqual([])
+  })
+})
+
+// ── first90 통계 화면 차트 기반 (REQ-4416·REQ-4417, design.md 5-4, 시안 docs/mockups/first90/redesign.html). 예시 값은 지어낸 것이다.
+// 새 tone f90·ret·rough, 칸 mark 'unchecked'(점선 칸 + "확인 필요"), 선택 props motion·selected·onPick. 주지 않으면 지금 마크업과 한 글자도 같다
+const THREE_SERIES: BarSeries[] = [
+  { name: '신환', tone: 'accent' },
+  { name: '90일초진', tone: 'f90' },
+  { name: '재진', tone: 'ret' },
+]
+const THREE_BUCKETS: BarBucket[] = [
+  { key: 'd1', label: '1', rangeLabel: '11월 1일', state: 'complete', values: [10, 20, 70] },
+  { key: 'd2', label: '2', rangeLabel: '11월 2일', state: 'complete', values: [5, 0, 45] },
+  { key: 'd3', label: '3', rangeLabel: '11월 3일', state: 'in-progress', values: [2, 3, 15] },
+]
+const REVENUE_SERIES: BarSeries[] = [
+  { name: '매출', tone: 'accent' },
+  { name: '참고 금액', tone: 'rough' },
+]
+// 확인된 날 · 참고 금액이 있는 날(빗금) · 확인 필요한 날(점선 칸, 값은 그리지 않는다) · 확인된 날
+const REVENUE_BUCKETS: BarBucket[] = [
+  { key: 'r1', label: '1', rangeLabel: '11월 1일', state: 'complete', values: [50, 0] },
+  { key: 'r2', label: '2', rangeLabel: '11월 2일', state: 'complete', values: [0, 40] },
+  { key: 'r3', label: '3', rangeLabel: '11월 3일', state: 'complete', values: [9999, 0], mark: 'unchecked' },
+  { key: 'r4', label: '4', rangeLabel: '11월 4일', state: 'complete', values: [80, 0] },
+]
+const columnsOf = (root: Element) => {
+  const columns = figureOf(root).querySelector('.absolute.inset-0.flex')?.children
+  expect(columns).toBeTruthy()
+  return Array.from(columns!)
+}
+const dashedBoxOf = (column: Element) => Array.from(column.children).find((el) => classesOf(el).includes('border-dashed'))
+const ROUGH_KS = Array.from({ length: 55 }, (_, i) => 8 * (i + 1)) // 8, 16, …, 440
+
+describe('AC-4416.2: StackedBarChart 새 props를 주지 않으면 지금 마크업 그대로다(대시보드·미리보기 그대로)', () => {
+  it('AC-4416.2: motion false·selected·onPick 없음은 주지 않은 것과 한 글자도 같고, REQ-314 전 고정값(sha256)과도 같다', async () => {
+    for (const compact of [false, true]) {
+      const now = chart({ compact }).html
+      expect(chart({ compact, motion: false }).html, `compact=${compact}`).toBe(now)
+      expect(chart({ compact, motion: undefined, selected: undefined, onPick: undefined }).html, `compact=${compact}`).toBe(now)
+      expect(now).not.toMatch(/st-|button/)
+    }
+    expect(await sha256(withoutTableBox(chart({ motion: false }).html))).toBe(BEFORE_REQ_314.md)
+    expect(await sha256(withoutTableBox(chart({ compact: true, motion: false }).html))).toBe(BEFORE_REQ_314.sm)
+  })
+
+  it('AC-4416.2: 지금 칸 모양(빈 칸·비교 막대·구분 없음·추세선)에 새 props를 안 주면 마크업이 그대로이고 st- 이름이 없다', () => {
+    const buckets: BarBucket[] = [
+      { ...BUCKETS[0]!, comparison: 500 },
+      { ...BUCKETS[1]!, blank: 'no-data' },
+      { ...BUCKETS[2]!, blank: 'future' },
+      BUCKETS[7]!,
+    ]
+    const series: BarSeries[] = [...SERIES, { name: '구분 없음', tone: 'hatch-warning' }]
+    const props = { buckets, series, trend: { from: { at: 0, value: 100 }, to: { at: 3, value: 200 } } }
+    expect(chart({ ...props, motion: false }).html).toBe(chart(props).html)
+    expect(chart(props).html).not.toContain('st-')
+  })
+})
+
+describe('AC-4416.1: StackedBarChart 새 tone — f90(bg-st-f90)·ret(bg-st-ret)', () => {
+  it('AC-4416.1: 신환·90일초진·재진 세 갈래는 위부터 bg-accent·bg-st-f90·bg-st-ret 조각이고 높이는 값/합계 %다', () => {
+    const { root } = chart({ series: THREE_SERIES, buckets: THREE_BUCKETS })
+    const list = bars(figureOf(root))
+    const segments = segmentsOf(list[0]!)
+    expect(segments).toHaveLength(3)
+    expectClasses(segments[0], 'w-full', 'bg-accent')
+    expectClasses(segments[1], 'w-full', 'bg-st-f90')
+    expectClasses(segments[2], 'w-full', 'bg-st-ret')
+    expect(segments.map(styleOf)).toEqual(['height:10%', 'height:20%', 'height:70%'])
+    // 0인 계열은 그리지 않는다(지금 규칙 그대로)
+    expect(segmentsOf(list[1]!).map((el) => classesOf(el).find((c) => c.startsWith('bg-')))).toEqual(['bg-accent', 'bg-st-ret'])
+  })
+
+  it('AC-4416.1: 화면 읽기 표 열은 기간·신환·90일초진·재진·합계·상태다', () => {
+    const table = tableOf(chart({ series: THREE_SERIES, buckets: THREE_BUCKETS }).root)
+    expect(Array.from(table.querySelectorAll('thead th')).map(textOf)).toEqual(['기간', '신환', '90일초진', '재진', '합계', '상태'])
+    expect(rows(table)).toEqual([
+      ['11월 1일', '10', '20', '70', '100', '완료'],
+      ['11월 2일', '5', '0', '45', '50', '완료'],
+      ['11월 3일', '2', '3', '15', '20', '집계 중'],
+    ])
+  })
+})
+
+describe('AC-4416.3: StackedBarChart rough tone — 참고 금액 빗금은 svg다(그라데이션·pattern 없음)', () => {
+  const roughSegment = (root: Element) => {
+    const segment = segmentsOf(bars(figureOf(root))[1]!)[0]
+    expect(segment).toBeTruthy()
+    return segment!
+  }
+
+  it('AC-4416.3: 빗금 조각은 bg-st-ref-2 바탕(relative) 안에 viewBox 없는 aria-hidden svg 하나(text-st-ref)다', () => {
+    const segment = roughSegment(chart({ series: REVENUE_SERIES, buckets: REVENUE_BUCKETS }).root)
+    expectClasses(segment, 'relative', 'w-full', 'bg-st-ref-2')
+    expect(styleOf(segment)).toBe('height:100%')
+    const svgs = segment.querySelectorAll('svg')
+    expect(svgs).toHaveLength(1)
+    expect(svgs[0]!.getAttribute('aria-hidden')).toBe('true')
+    expectClasses(svgs[0], 'absolute', 'inset-0', 'size-full', 'text-st-ref')
+    for (const attr of ['viewBox', 'style', 'width', 'height', 'id']) expect(svgs[0]!.hasAttribute(attr), attr).toBe(false)
+  })
+
+  it('AC-4416.3: 빗금 선은 3px <path stroke="currentColor"> 하나이고 8px 간격(M0 k L k 0, k = 8 … 440)이다', () => {
+    const path = roughSegment(chart({ series: REVENUE_SERIES, buckets: REVENUE_BUCKETS }).root).querySelector('svg path')!
+    expect(path.getAttribute('stroke')).toBe('currentColor')
+    expect(path.getAttribute('stroke-width')).toBe('3')
+    expect(path.getAttribute('fill')).toBe('none')
+    expect(hatchKs(path.getAttribute('d') ?? '')).toEqual(ROUGH_KS)
+  })
+
+  it('AC-4416.3: <pattern>·url(#…)·id·그라데이션이 없다', () => {
+    const { root, html } = chart({ series: REVENUE_SERIES, buckets: REVENUE_BUCKETS, motion: true })
+    expect(html).not.toMatch(/<pattern|<linearGradient|gradient/i)
+    expect(html).not.toContain('url(#')
+    expect(root.querySelectorAll('[id]')).toHaveLength(0)
+  })
+})
+
+describe('AC-4416.1: StackedBarChart mark "unchecked" — 막대 대신 점선 칸 + 칸 위 글 "확인 필요"', () => {
+  it('AC-4416.1: 그 칸은 막대·조각 없이 점선 칸(border-dashed border-st-line-2, 옅은 노랑 바탕, 칸 높이의 반)이고 높이 style이 없다', () => {
+    const columns = columnsOf(chart({ series: REVENUE_SERIES, buckets: REVENUE_BUCKETS }).root)
+    const box = dashedBoxOf(columns[2]!)
+    expect(box).toBeTruthy()
+    expectClasses(box, 'relative', 'w-1/2', 'max-w-10', 'h-1/2', 'border', 'border-dashed', 'border-st-line-2', 'bg-warning-soft')
+    expect(box!.hasAttribute('style')).toBe(false)
+    expect(segmentsOf(box!)).toEqual([])
+    expect(box!.querySelector('svg')).toBeNull()
+    // 다른 칸에는 점선 칸이 없다
+    for (const i of [0, 1, 3]) expect(dashedBoxOf(columns[i]!), `칸 ${i}`).toBeUndefined()
+  })
+
+  it('AC-4416.1: 칸 위 글은 "확인 필요"(caption 600 st-warn-ink, 막대 위 글 자리)이고 합계 숫자는 없다', () => {
+    const { root } = chart({ series: REVENUE_SERIES, buckets: REVENUE_BUCKETS })
+    const box = dashedBoxOf(columnsOf(root)[2]!)!
+    const above = aboveBar(box)
+    expect(above).toHaveLength(1)
+    expect(textOf(above[0])).toBe('확인 필요')
+    expectClasses(above[0], 'absolute', 'bottom-full', 'left-1/2', 'mb-1', '-translate-x-1/2', 'whitespace-nowrap', 'text-caption', 'font-semibold', 'text-st-warn-ink')
+    expect(leafByText(figureOf(root), '9,999')).toHaveLength(0)
+  })
+
+  it('AC-4416.1: 그 칸 값은 눈금·굵은 합계에 넣지 않는다 — 눈금은 다른 칸(최대 80)으로 잡고 마지막 완료 칸이 굵다', () => {
+    const { root } = chart({ series: REVENUE_SERIES, buckets: REVENUE_BUCKETS })
+    const figure = figureOf(root)
+    expect(leafByText(figure, '10,000')).toHaveLength(0)
+    // 80 → 간격 20, 최대 80(9,999를 넣었다면 최대 10,000)
+    expect(leafByText(figure, '60')).toHaveLength(1)
+    expect(styleOf(bars(figure)[3]!)).toBe('height:100%')
+    expectClasses(oneLeaf(bars(figure)[3]!, '80'), 'font-semibold', 'text-ink')
+  })
+
+  it('AC-4416.1: 화면 읽기 표의 그 줄은 계열·합계가 "–"이고 상태가 "확인 필요"다', () => {
+    expect(rows(tableOf(chart({ series: REVENUE_SERIES, buckets: REVENUE_BUCKETS }).root))).toEqual([
+      ['11월 1일', '50', '0', '50', '완료'],
+      ['11월 2일', '0', '40', '40', '완료'],
+      ['11월 3일', '–', '–', '–', '확인 필요'],
+      ['11월 4일', '80', '0', '80', '완료'],
+    ])
+  })
+
+  it('AC-4416.1: dense면 칸 위 글을 그리지 않는다(점선 칸은 그대로)', () => {
+    const box = dashedBoxOf(columnsOf(chart({ series: REVENUE_SERIES, buckets: REVENUE_BUCKETS, dense: true }).root)[2]!)!
+    expect(aboveBar(box)).toEqual([])
+    expectClasses(box, 'border-dashed')
+  })
+})
+
+describe('AC-4417.2: StackedBarChart motion — 막대 st-move-period, 빗금 조각 st-rise(움직임은 globals.css CSS만)', () => {
+  it('AC-4417.2: motion이면 완료 막대·쌓은 조각·덜 끝난 막대·비교 막대에 st-move-period가 붙는다', () => {
+    const buckets = THREE_BUCKETS.map((b) => ({ ...b, comparison: 40 }))
+    const { root } = chart({ series: THREE_SERIES, buckets, motion: true })
+    const list = bars(figureOf(root))
+    expect(list).toHaveLength(3)
+    for (const bar of list) expectClasses(bar, 'st-move-period')
+    for (const segment of segmentsOf(list[0]!)) expectClasses(segment, 'st-move-period')
+    const faint = Array.from(figureOf(root).querySelectorAll('.bg-faint'))
+    expect(faint).toHaveLength(3)
+    for (const el of faint) expectClasses(el, 'st-move-period')
+  })
+
+  it('AC-4417.2: motion이면 빗금(rough) 조각에 st-rise가 붙고, 점선 칸에는 움직임 이름이 없다', () => {
+    const { root } = chart({ series: REVENUE_SERIES, buckets: REVENUE_BUCKETS, motion: true })
+    expectClasses(segmentsOf(bars(figureOf(root))[1]!)[0], 'st-rise')
+    expect(classesOf(segmentsOf(bars(figureOf(root))[0]!)[0])).not.toContain('st-rise')
+    expect(classesOf(dashedBoxOf(columnsOf(root)[2]!)).filter((c) => c.startsWith('st-'))).toEqual([])
+  })
+
+  it('AC-4417.2·AC-4417.4: motion은 움직임 이름만 더한다 — 이름을 빼면 motion 없는 마크업과 같고, animate-*·transition 클래스·style이 없다', () => {
+    const cases: Array<Partial<Parameters<typeof StackedBarChart>[0]>> = [
+      {},
+      { compact: true },
+      { series: THREE_SERIES, buckets: THREE_BUCKETS },
+      { series: REVENUE_SERIES, buckets: REVENUE_BUCKETS },
+    ]
+    for (const props of cases) {
+      const moving = chart({ ...props, motion: true }).html
+      expect(moving).toContain('st-move-period')
+      expect(moving.replace(/ st-(?:move-period|rise)/g, '')).toBe(chart(props).html)
+      expect(moving).not.toMatch(/animate-|transition|animation/)
+    }
+  })
+})
+
+describe('AC-4416.2: StackedBarChart selected·onPick — 고른 칸 표시와 누름·올림(상태는 부르는 쪽이 갖는다)', () => {
+  afterEach(() => cleanup())
+
+  it('AC-4416.2: selected 칸만 옅은 파랑 바탕(bg-accent-soft)이고, onPick이 없으면 칸은 단추가 아니다', () => {
+    const { root, html } = chart({ selected: '9.21' })
+    const columns = columnsOf(root)
+    columns.forEach((column, i) => {
+      if (i === 2) expectClasses(column, 'bg-accent-soft')
+      else expect(classesOf(column), `칸 ${i}`).not.toContain('bg-accent-soft')
+    })
+    expect(html).not.toContain('<button')
+    // 표시만 더한다
+    expect(html.replace(' bg-accent-soft', '')).toBe(chart().html)
+  })
+
+  it('AC-4416.2: onPick이 있으면 칸마다 type="button"·tabindex -1 단추(그림은 aria-hidden 그대로)이고 누르면·올리면 그 칸 키로 부른다', () => {
+    const onPick = vi.fn()
+    const { container } = mount(<StackedBarChart title="일별 내원" unit="건" series={THREE_SERIES} buckets={THREE_BUCKETS} onPick={onPick} selected="d2" />)
+    const figure = figureOf(container)
+    const columns = columnsOf(container)
+    expect(columns.map((c) => c.tagName.toLowerCase())).toEqual(['button', 'button', 'button'])
+    for (const column of columns) {
+      expect(column.getAttribute('type')).toBe('button')
+      expect(column.getAttribute('tabindex')).toBe('-1')
+      expectClasses(column, 'cursor-pointer')
+      expect(figure.contains(column)).toBe(true)
+    }
+    expectClasses(columns[1], 'bg-accent-soft')
+    fireEvent.click(columns[0]!)
+    expect(onPick).toHaveBeenLastCalledWith('d1')
+    fireEvent.mouseEnter(columns[2]!)
+    expect(onPick).toHaveBeenLastCalledWith('d3')
+    expect(onPick).toHaveBeenCalledTimes(2)
+  })
+
+  it('AC-4416.2: onPick이 있으면 막대 위 숫자·"확인 필요"는 768px 이상에서만 보인다(max-md:hidden), 앞으로 올 칸은 단추가 아니다', () => {
+    const buckets: BarBucket[] = [...REVENUE_BUCKETS, { key: 'r5', label: '5', rangeLabel: '11월 5일', state: 'complete', values: [0, 0], blank: 'future' }]
+    const { container } = mount(<StackedBarChart title="매출" unit="만 원" series={REVENUE_SERIES} buckets={buckets} onPick={() => {}} />)
+    const columns = columnsOf(container)
+    expect(columns.map((c) => c.tagName.toLowerCase())).toEqual(['button', 'button', 'button', 'button', 'div'])
+    const labels = [...bars(figureOf(container)).flatMap(aboveBar)]
+    expect(labels.length).toBeGreaterThan(3)
+    for (const above of labels) expectClasses(above, 'max-md:hidden')
+    expect(aboveBar(dashedBoxOf(columns[2]!)!)).toHaveLength(1)
+  })
+
+  it('AC-4416.2: onPick·selected를 줘도 화면 읽기 표는 그대로다', () => {
+    const base = tableOf(chart({ series: REVENUE_SERIES, buckets: REVENUE_BUCKETS }).root).outerHTML
+    const picked = tableOf(chart({ series: REVENUE_SERIES, buckets: REVENUE_BUCKETS, selected: 'r2', onPick: () => {}, motion: true }).root).outerHTML
+    expect(picked).toBe(base)
   })
 })
