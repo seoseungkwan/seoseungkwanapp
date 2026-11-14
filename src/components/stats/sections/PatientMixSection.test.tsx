@@ -5,15 +5,18 @@ import { statsRange } from '@/components/stats/view'
 import { formatPatientMix, mixBar } from '@/lib/analytics/patientMix'
 import { VISIT_HOURS } from '@/lib/analytics/visitHours'
 import type { BitSectionsView, MixRow, MixRowKind, PatientMix } from '@/types/stats'
+import { StatsCard } from './parts'
 import { PatientMixSection, type BitSectionsShown } from './PatientMixSection'
 
-// 환자 구성 칸 (stats-bit-sections AC-2706.1·AC-2706.2·AC-2706.5·AC-2706.6·AC-2703.9·AC-2707.1, 시안 docs/mockups/stats-bit-sections).
-// 이름·숫자는 모두 시험 안에서 지은 가짜다
+// 환자 구성 칸 (stats-bit-sections AC-2706.1·AC-2706.2·AC-2706.5·AC-2706.6·AC-2703.9·AC-2707.1, first90 REQ-4412 AC-4412.4,
+// 시안 docs/mockups/first90/redesign.html '환자 구성'). 이름·숫자는 모두 시험 안에서 지은 가짜다
 
 const HOSPITAL = '튼튼의원'
 const TODAY = '2026-11-13'
 const R30 = statsRange(TODAY, '30d') // 10월 14일 ~ 11월 12일, 견줄 기간 9월 14일 ~ 10월 13일
 const R7 = statsRange(TODAY, '7d')
+const COMPARED_FOOT = '증감은 지난 30일(9월 14일 – 10월 13일)의 명 수와 견줬어요.'
+const NO_PREVIOUS = '지난 기간 자료가 없어 견주지 못해요. 지난 기간이 든 기간을 불러오면 보여요.'
 
 const row = (label: string, people: number, visits: number, total: number, previous: number | null = null, kind: MixRowKind = 'row'): MixRow => ({
   label,
@@ -55,7 +58,9 @@ const ready = (all: PatientMix = ALL, fresh: PatientMix = NEW): BitSectionsView 
 const draw = (view: BitSectionsShown, range = R30, className = 'col-span-12') =>
   render(<PatientMixSection view={view} range={range} hospitalName={HOSPITAL} className={className} />)
 const section = () => screen.getByRole('heading', { level: 2, name: '환자 구성' }).closest('section')!
-const items = (name: string) => within(screen.getByRole('list', { name })).getAllByRole('listitem')
+// 줄 목록은 탭 패널 안에 있어 고르지 않은 탭의 목록은 hidden 안이다. 줄 글은 숨김과 상관없이 읽는다
+const listOf = (name: string) => screen.getByRole('list', { name, hidden: true })
+const items = (name: string) => within(listOf(name)).getAllByRole('listitem', { hidden: true })
 const labels = (name: string) => items(name).map((item) => item.children[0]!.textContent)
 const itemOf = (list: string, label: string) => items(list).find((item) => item.children[0]!.textContent === label)!
 const pressed = (group: string) =>
@@ -63,6 +68,10 @@ const pressed = (group: string) =>
     .getAllByRole('button')
     .map((button) => [button.textContent, button.getAttribute('aria-pressed')])
 const press = (group: string, name: string) => fireEvent.click(within(screen.getByRole('group', { name: group })).getByRole('button', { name }))
+const tabs = () => within(screen.getByRole('tablist', { name: '환자 구성 보기' })).getAllByRole('tab')
+const tab = (name: string) => within(screen.getByRole('tablist', { name: '환자 구성 보기' })).getByRole('tab', { name })
+const openTab = (name: string) => fireEvent.click(tab(name))
+const panelOf = (name: string) => document.getElementById(tab(name).getAttribute('aria-controls')!)!
 
 const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
 function fakeClipboard() {
@@ -76,27 +85,40 @@ afterEach(() => {
   else Reflect.deleteProperty(navigator, 'clipboard')
 })
 
-describe('AC-2706.1·AC-2706.2 환자 구성 칸', () => {
-  it('AC-2706.1: h2 "환자 구성" + 옆 설명 "어떤 분들이 오시는지 · {기간 이름}", 섹션 틀은 놓는 쪽의 칸 폭을 받는다', () => {
+describe('AC-2706.1·AC-2706.2·AC-4412.4 환자 구성 칸', () => {
+  it('AC-2706.1·AC-4412.4: 제목 "환자 구성" + 옆 글 "명 = 서로 다른 환자 · 건 = 접수 건수 · 전체 {n}명", 섹션 틀은 놓는 쪽의 칸 폭을 받는다', () => {
     draw(ready())
-    expect(section().textContent).toContain('어떤 분들이 오시는지 · 최근 30일')
+    const heading = screen.getByRole('heading', { level: 2, name: '환자 구성' })
+    expect(heading.parentElement!.textContent).toContain('환자 구성명 = 서로 다른 환자 · 건 = 접수 건수 · 전체 1,248명')
+    expect(section().textContent).not.toContain('어떤 분들이 오시는지')
     expect(section().className.split(' ')).toContain('col-span-12')
     expect(section().className.split(' ')).toContain('border-t')
     cleanup()
     draw(ready(), R7)
-    expect(screen.getByText('어떤 분들이 오시는지 · 최근 7일')).toBeTruthy()
+    expect(screen.getByText('명 = 서로 다른 환자 · 건 = 접수 건수 · 전체 1,248명')).toBeTruthy()
   })
 
-  it('AC-2706.2: [전체][신환](누구를 셀까)은 처음 [전체]이고 옆 글이 "명 = 서로 다른 환자 · 건 = 접수 건수 · 전체 N명"이다', () => {
+  it('AC-4412.4: 환자 카드 안에서는 h3다', () => {
+    render(
+      <StatsCard title="환자">
+        <PatientMixSection view={ready()} range={R30} hospitalName={HOSPITAL} />
+      </StatsCard>,
+    )
+    expect(screen.getByRole('heading', { level: 3, name: '환자 구성' })).toBeTruthy()
+    expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['환자 구성'])
+  })
+
+  it('AC-2706.2·AC-4412.4: [전체][신환](누구를 셀까)은 머리 줄에 있고 처음 [전체]이다', () => {
     draw(ready())
     expect(pressed('누구를 셀까')).toEqual([
       ['전체', 'true'],
       ['신환', 'false'],
     ])
-    expect(screen.getByText('명 = 서로 다른 환자 · 건 = 접수 건수 · 전체 1,248명')).toBeTruthy()
+    const head = screen.getByRole('heading', { level: 2, name: '환자 구성' }).parentElement!
+    expect(within(head).getByRole('group', { name: '누구를 셀까' })).toBeTruthy()
   })
 
-  it('AC-2706.2: [신환]을 누르면 세 열이 모두 신환 숫자이고 옆 글이 "신환 N명"이다', () => {
+  it('AC-2706.2·AC-4412.4: [신환]을 누르면 세 탭이 모두 신환 숫자이고 옆 글이 "신환 N명"이다', () => {
     draw(ready())
     press('누구를 셀까', '신환')
     expect(pressed('누구를 셀까')).toEqual([
@@ -109,22 +131,67 @@ describe('AC-2706.1·AC-2706.2 환자 구성 칸', () => {
     expect(labels('동네')).toEqual(['권선구'])
   })
 
-  it('AC-2706.2: 연령대·보험·동네 세 열(h3)이고 동네 열에만 [구·시][동](동네 단위)이 있으며 처음 [구·시]다', () => {
+  it('AC-4412.4: 세 열(h3) 대신 탭 셋 "연령대" · "보험" · "동네"이고 처음 연령대다', () => {
     draw(ready())
-    expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['연령대', '보험', '동네'])
-    expect(pressed('동네 단위')).toEqual([
-      ['구·시', 'true'],
-      ['동', 'false'],
+    expect(screen.queryAllByRole('heading', { level: 3 })).toEqual([])
+    expect(tabs().map((t) => [t.textContent, t.getAttribute('aria-selected'), t.getAttribute('tabindex')])).toEqual([
+      ['연령대', 'true', '0'],
+      ['보험', 'false', '-1'],
+      ['동네', 'false', '-1'],
     ])
-    const townColumn = screen.getByRole('heading', { level: 3, name: '동네' }).parentElement!
-    expect(within(townColumn).getByRole('group', { name: '동네 단위' })).toBeTruthy()
+    expect(panelOf('연령대').hidden).toBe(false)
+    expect(panelOf('보험').hidden).toBe(true)
+    expect(panelOf('동네').hidden).toBe(true)
+    expect(panelOf('연령대').getAttribute('role')).toBe('tabpanel')
+    expect(panelOf('연령대').getAttribute('aria-labelledby')).toBe(tab('연령대').id)
+    expect(screen.getByRole('list', { name: '연령대' })).toBeTruthy()
+    expect(screen.queryByRole('list', { name: '보험' })).toBeNull()
     expect(labels('연령대')).toEqual(['10세 미만', '10대', '80세 이상', '생년월일 없음'])
     expect(labels('보험')).toEqual(['건강보험', '차상위'])
     expect(labels('동네')).toEqual(['영통구', '그 밖 23곳', '주소 없음'])
   })
 
-  it('AC-2706.2: [동]을 누르면 동네 열만 동 줄이다', () => {
+  it('AC-4412.4: 탭을 누르면 그 탭의 줄만 보인다', () => {
     draw(ready())
+    openTab('보험')
+    expect(tabs().map((t) => t.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false'])
+    expect(panelOf('보험').hidden).toBe(false)
+    expect(panelOf('연령대').hidden).toBe(true)
+    expect(screen.getByRole('list', { name: '보험' })).toBeTruthy()
+    expect(screen.queryByRole('list', { name: '연령대' })).toBeNull()
+  })
+
+  it('AC-4412.4: → ← Home End로 탭을 옮기면 바로 고르고 초점도 옮긴다(롤빙 tabindex)', () => {
+    draw(ready())
+    const list = screen.getByRole('tablist', { name: '환자 구성 보기' })
+    fireEvent.keyDown(list, { key: 'ArrowRight' })
+    expect(tabs().map((t) => t.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false'])
+    expect(document.activeElement).toBe(tab('보험'))
+    expect(tabs().map((t) => t.getAttribute('tabindex'))).toEqual(['-1', '0', '-1'])
+    fireEvent.keyDown(list, { key: 'End' })
+    expect(document.activeElement).toBe(tab('동네'))
+    fireEvent.keyDown(list, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(tab('연령대'))
+    fireEvent.keyDown(list, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(tab('동네'))
+    fireEvent.keyDown(list, { key: 'Home' })
+    expect(tabs().map((t) => t.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false'])
+  })
+
+  it('AC-2706.2·AC-4412.4: [구·시][동](동네 단위)은 동네 탭 안에만 있고 처음 [구·시]다', () => {
+    draw(ready())
+    expect(screen.queryByRole('group', { name: '동네 단위' })).toBeNull()
+    openTab('동네')
+    expect(pressed('동네 단위')).toEqual([
+      ['구·시', 'true'],
+      ['동', 'false'],
+    ])
+    expect(panelOf('동네').contains(screen.getByRole('group', { name: '동네 단위' }))).toBe(true)
+  })
+
+  it('AC-2706.2: [동]을 누르면 동네 탭만 동 줄이다', () => {
+    draw(ready())
+    openTab('동네')
     press('동네 단위', '동')
     expect(pressed('동네 단위')).toEqual([
       ['구·시', 'false'],
@@ -134,7 +201,7 @@ describe('AC-2706.1·AC-2706.2 환자 구성 칸', () => {
     expect(labels('보험')).toEqual(['건강보험', '차상위'])
   })
 
-  it('AC-2706.2: 줄은 이름 | 막대 | N명 | N건 · P%이고 비율은 mixShareText(1% 미만 포함), 막대 폭은 mixBar다', () => {
+  it('AC-2706.2·AC-4412.4: 줄은 이름 | 막대 | N명 | N건 · P%이고 비율은 mixShareText(1% 미만 포함), 막대 폭은 mixBar다', () => {
     draw(ready())
     const health = itemOf('보험', '건강보험')
     expect([...health.children].slice(0, 4).map((cell) => cell.textContent)).toEqual(['건강보험', '', '1,071명', '1,943건 · 86%'])
@@ -143,6 +210,11 @@ describe('AC-2706.1·AC-2706.2 환자 구성 칸', () => {
     expect(bar.getAttribute('aria-hidden')).toBe('true')
     expect((bar.firstElementChild as HTMLElement).style.width).toBe(`${mixBar(ALL.insurance[0]!, ALL.insurance)}%`)
     expect((itemOf('보험', '차상위').children[1]!.firstElementChild as HTMLElement).style.width).toBe(`${mixBar(ALL.insurance[1]!, ALL.insurance)}%`)
+  })
+
+  it('AC-4417.2: 막대 폭은 기간을 바꾸면 300ms 바뀐다(st-move-period)', () => {
+    draw(ready())
+    expect(itemOf('보험', '건강보험').children[1]!.firstElementChild!.className).toContain('st-move-period')
   })
 
   it('AC-2706.2: 그 밖·없음 줄은 이름이 흐린 글자이고 막대가 흐린 색이다', () => {
@@ -155,15 +227,20 @@ describe('AC-2706.1·AC-2706.2 환자 구성 칸', () => {
     expect(plain.children[1]!.firstElementChild!.className).toContain('bg-accent')
   })
 
-  it('AC-2706.2·AC-4005.2: 1280px 이상 4·4·4 세 열이고 오른쪽 두 열은 왼쪽 선, 1024px보다 좁으면 위아래로 쌓고 열 사이에 위 선이다', () => {
+  it('AC-4412.4: 1100px 이상에서는 줄을 두 열로 세로로 채운다(위에서 아래로 왼쪽 열 먼저, 줄은 열 사이에서 끊기지 않는다)', () => {
     draw(ready())
-    const columns = screen.getAllByRole('heading', { level: 3 }).map((h) => h.parentElement!.parentElement!)
-    const grid = columns[0]!.parentElement!
-    expect(grid.className.split(' ')).toEqual(expect.arrayContaining(['grid', 'grid-cols-1', 'min-[80rem]:grid-cols-3']))
-    expect(columns[0]!.className).not.toContain('border')
-    for (const column of columns.slice(1)) {
-      expect(column.className.split(' ')).toEqual(expect.arrayContaining(['lg:border-l', 'lg:border-line', 'lg:pl-6', 'max-lg:border-t', 'max-lg:border-line', 'max-lg:pt-4']))
+    for (const name of ['연령대', '보험', '동네']) {
+      const list = listOf(name)
+      expect(list.tagName, name).toBe('OL')
+      expect(list.className.split(' '), name).toEqual(expect.arrayContaining(['min-[1100px]:columns-2', 'min-[1100px]:gap-x-12']))
+      for (const item of items(name)) expect(item.className.split(' '), name).toContain('break-inside-avoid')
     }
+  })
+
+  it('AC-4412.4: 세 열 · 1280px 경계(min-[80rem]:) 클래스는 남지 않는다', () => {
+    const { container } = draw(ready())
+    expect(container.innerHTML).not.toContain('min-[80rem]')
+    expect(container.innerHTML).not.toMatch(/lg:grid-cols-2|lg:row-span-2|lg:border-l/)
   })
 
   it('AC-2706.2: 아래 글과 [표 복사]가 있다', () => {
@@ -175,56 +252,19 @@ describe('AC-2706.1·AC-2706.2 환자 구성 칸', () => {
   })
 })
 
-// ── stats-pc-ux: 1024~1279px 두 열 (REQ-4005 AC-4005.2, design.md '배치', 시안 notes.md §6(a)) ─────────────────
-describe('AC-4005.2: 환자 구성 열 — 1280px 이상 세 열 · 1024~1279px 두 열 · 1023px 이하 한 열', () => {
-  const columnsOf = () => screen.getAllByRole('heading', { level: 3 }).map((h) => h.parentElement!.parentElement!)
-  const classesOf = (el: Element) => el.className.split(' ').filter(Boolean)
-
-  it('AC-4005.2: 감싸개는 한 열 → 1024px 두 열(lg:grid-cols-2) → 1280px 세 열(min-[80rem]:grid-cols-3)이고 1024px 세 열은 없다', () => {
-    draw(ready())
-    const grid = columnsOf()[0]!.parentElement!
-    expect(classesOf(grid)).toEqual(expect.arrayContaining(['grid', 'grid-cols-1', 'lg:grid-cols-2', 'lg:gap-x-6', 'min-[80rem]:grid-cols-3']))
-    expect(classesOf(grid)).not.toContain('lg:grid-cols-3')
-  })
-
-  it('AC-4005.2: 열 사이 위아래 틈이 없어 오른쪽 열 왼쪽 세로줄이 보험 → 동네로 끊기지 않는다', () => {
-    draw(ready())
-    const grid = columnsOf()[0]!.parentElement!
-    expect(classesOf(grid).filter((name) => /(?:^|:)gap(?:-y)?-/.test(name))).toEqual(['lg:gap-x-6'])
-    const [, insurance, town] = columnsOf()
-    for (const column of [insurance!, town!]) expect(classesOf(column)).toEqual(expect.arrayContaining(['lg:border-l', 'lg:border-line', 'lg:pl-6']))
-  })
-
-  it('AC-4005.2: 1024~1279px은 왼쪽 연령대가 두 줄을 차지하고 오른쪽 위 보험 · 아래 동네다(동네 위 24px)', () => {
-    draw(ready())
-    const [age, insurance, town] = columnsOf()
-    expect(age!.querySelector('h3')!.textContent).toBe('연령대')
-    expect(classesOf(age!)).toContain('lg:row-span-2')
-    expect(classesOf(insurance!).filter((name) => /^lg:(?:col|row)-/.test(name))).toEqual([])
-    expect(town!.querySelector('h3')!.textContent).toBe('동네')
-    expect(classesOf(town!)).toEqual(expect.arrayContaining(['lg:col-start-2', 'lg:row-start-2', 'lg:pt-6']))
-  })
-
-  it('AC-4005.2: 1280px 이상은 세 열 한 줄로 되돌린다(연령대 한 줄 · 동네 셋째 열 첫 줄 · 위 여백 없음)', () => {
-    draw(ready())
-    const [age, , town] = columnsOf()
-    expect(classesOf(age!)).toContain('min-[80rem]:row-span-1')
-    expect(classesOf(town!)).toEqual(expect.arrayContaining(['min-[80rem]:col-start-3', 'min-[80rem]:row-start-1', 'min-[80rem]:pt-0']))
-  })
-})
-
-// ── stats-pc-ux: 세 열 아래 [어떻게 세나요?] · [표 복사] 줄 (REQ-4004 AC-4004.2 ⑥·AC-4004.3, REQ-4005 AC-4005.1) ─────────────────
-describe('AC-4004.2 ⑥·AC-4004.3·AC-4005.1: 환자 구성 아래 줄과 접는 설명', () => {
+// ── stats-pc-ux: 줄 아래 [어떻게 세나요?] · [표 복사] 줄 (REQ-4004 AC-4004.2 ⑥·AC-4004.3, REQ-4005 AC-4005.1), first90 AC-4412.4 견줌 글 ─────────────────
+describe('AC-4004.2 ⑥·AC-4004.3·AC-4005.1·AC-4412.4: 환자 구성 아래 줄과 접는 설명', () => {
   const FOOT = '명은 기간 안 마지막 내원 때의 나이·보험·주소로 한 번만 세요. 보험·동네는 비트에 적힌 이름 그대로예요(차상위는 한 줄로 묶어요).'
   const howButton = () => screen.getByRole('button', { name: '어떻게 세나요?' })
   const howBody = () => document.getElementById(howButton().getAttribute('aria-controls')!)!
   const copyButton = () => screen.getByRole('button', { name: '표 복사' })
-  const gridOf = () => screen.getByRole('heading', { level: 3, name: '연령대' }).parentElement!.parentElement!.parentElement!
 
-  it('AC-4005.1: 세 열 바로 다음 줄이 왼쪽 [어떻게 세나요?] · 오른쪽 끝 [표 복사] 한 줄(flex-wrap justify-between)이다', () => {
+  it('AC-4005.1·AC-4412.4: 탭 패널 다음이 견줌 글, 그 바로 다음 줄이 왼쪽 [어떻게 세나요?] · 오른쪽 끝 [표 복사] 한 줄(flex-wrap justify-between)이다', () => {
     draw(ready())
     const line = howButton().parentElement!
-    expect(gridOf().nextElementSibling).toBe(line.parentElement)
+    const foot = screen.getByText(COMPARED_FOOT)
+    expect(panelOf('동네').nextElementSibling).toBe(foot)
+    expect(foot.nextElementSibling).toBe(line.parentElement)
     expect(line.parentElement!.firstElementChild).toBe(line)
     expect(line.className.split(' ')).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'items-center', 'justify-between']))
     expect(line.firstElementChild).toBe(howButton())
@@ -250,9 +290,9 @@ describe('AC-4004.2 ⑥·AC-4004.3·AC-4005.1: 환자 구성 아래 줄과 접�
     expect(howBody().hidden).toBe(false)
   })
 
-  it('AC-4004.3: 견줘요 줄과 [전체][신환] 옆 글은 접지 않고 그대로 보인다', () => {
+  it('AC-4004.3·AC-4412.4: 견줌 글과 [전체][신환] 옆 글은 접지 않고 그대로 보인다', () => {
     draw(ready())
-    expect(screen.getByText('지난 30일(9월 14일 ~ 10월 13일)과 견줘요 · 명 기준').closest('[hidden]')).toBeNull()
+    expect(screen.getByText(COMPARED_FOOT).closest('[hidden]')).toBeNull()
     expect(screen.getByText(/^명 = 서로 다른 환자 · 건 = 접수 건수/).closest('[hidden]')).toBeNull()
   })
 
@@ -265,12 +305,19 @@ describe('AC-4004.2 ⑥·AC-4004.3·AC-4005.1: 환자 구성 아래 줄과 접�
   })
 })
 
-describe('AC-2703.9 지난 기간과 견주기', () => {
-  it('AC-2703.9: 견줬으면 [전체][신환] 줄 아래에 "지난 30일(9월 14일 ~ 10월 13일)과 견줘요 · 명 기준"이다', () => {
+describe('AC-2703.9·AC-4412.4 지난 기간과 견주기', () => {
+  it('AC-2703.9·AC-4412.4: 견줬으면 줄 아래 글이 "증감은 {비교 이름}({시작} – {끝})의 명 수와 견줬어요."이고 위의 "…과 견줘요 · 명 기준" 줄은 없다', () => {
     draw(ready())
-    const line = screen.getByText('지난 30일(9월 14일 ~ 10월 13일)과 견줘요 · 명 기준')
+    const line = screen.getByText(COMPARED_FOOT)
     expect(line.className).toContain('text-muted')
+    expect(screen.queryByText(/견줘요 · 명 기준/)).toBeNull()
     expect(screen.queryByText(/견주지 못해요/)).toBeNull()
+  })
+
+  it('AC-4412.4: 견줄 기간 이름과 날짜는 지금 통계 탭의 견줄 기간이다', () => {
+    draw(ready(), R7)
+    expect(R7.previous).toEqual(expect.objectContaining({ from: '2026-10-30', to: '2026-11-05' }))
+    expect(screen.getByText(`증감은 ${R7.previous.name}(10월 30일 – 11월 5일)의 명 수와 견줬어요.`)).toBeTruthy()
   })
 
   it('AC-2703.9: ▲는 text-positive·"늘어남", ▼는 text-negative·"줄어듦"이고 화살표는 화면 읽기에서 뺀다(DeltaText와 같은 색)', () => {
@@ -306,11 +353,12 @@ describe('AC-2703.9 지난 기간과 견주기', () => {
     expect(itemOf('연령대', '생년월일 없음').children[4]!.textContent).toBe('')
     expect(itemOf('동네', '그 밖 23곳').children[4]!.textContent).toBe('')
     expect(itemOf('동네', '주소 없음').children[4]!.textContent).toBe('')
+    openTab('동네')
     press('동네 단위', '동')
     expect(itemOf('동네', '동 없는 주소').children[4]!.textContent).toBe('')
   })
 
-  it('AC-2703.9: 견주지 못했으면 견주지 못함 줄이고 줄에 증감 칸이 없다', () => {
+  it('AC-2703.9·AC-4412.4: 견주지 못했으면 아래 글이 견주지 못함 글이고 줄에 증감 칸이 없다', () => {
     const notCompared = (mix: PatientMix): PatientMix => ({
       ...mix,
       compared: false,
@@ -320,8 +368,9 @@ describe('AC-2703.9 지난 기간과 견주기', () => {
       town: mix.town.map((one) => ({ ...one, previous: null })),
     })
     draw(ready(notCompared(ALL), notCompared(NEW)))
-    expect(screen.getByText('지난 기간 자료가 없어 견주지 못해요. 지난 기간이 든 기간을 불러오면 보여요.')).toBeTruthy()
-    expect(screen.queryByText(/견줘요 · 명 기준/)).toBeNull()
+    const foot = screen.getByText(NO_PREVIOUS)
+    expect(panelOf('동네').nextElementSibling).toBe(foot)
+    expect(screen.queryByText(/견줬어요|견줘요 · 명 기준/)).toBeNull()
     const health = itemOf('보험', '건강보험')
     expect(health.children).toHaveLength(4)
     expect(section().textContent).not.toMatch(/[▲▼]|늘어남|줄어듦|변화 없음|새로/)
@@ -339,11 +388,13 @@ describe('AC-2707.1 [표 복사]', () => {
     expect(screen.getAllByText('복사했어요').length).toBeGreaterThan(0)
   })
 
-  it('AC-2707.1: [신환]·[동]을 고르면 그 숫자·묶음의 글이다(화면에 보이는 것 그대로)', async () => {
+  it('AC-2707.1·AC-4412.4: [신환]·[동]을 고르면 그 숫자·묶음의 글이다(화면에 보이는 것 그대로, 고른 탭과는 상관없다)', async () => {
     const writeText = fakeClipboard()
     draw(ready())
     press('누구를 셀까', '신환')
+    openTab('동네')
     press('동네 단위', '동')
+    openTab('보험')
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: '표 복사' }))
     })
@@ -368,6 +419,7 @@ describe('AC-2706.5·AC-2706.6 숫자가 없을 때', () => {
     expect(body.textContent).not.toContain('어떤 분들이 오시는지')
     expect(within(body).queryByRole('button')).toBeNull()
     expect(within(body).queryByRole('list')).toBeNull()
+    expect(within(body).queryByRole('tablist')).toBeNull()
   })
 
   it('AC-2706.6: 고른 기간에 접수가 하나도 없으면 "이 기간에 불러온 접수가 없어요."다', () => {
@@ -377,7 +429,7 @@ describe('AC-2706.5·AC-2706.6 숫자가 없을 때', () => {
     expect(within(section()).queryByRole('button')).toBeNull()
   })
 
-  it('AC-2706.1: 이 기간 답을 기다리는 동안은 제목·설명만이다', () => {
+  it('AC-2706.1·AC-4412.4: 이 기간 답을 기다리는 동안은 제목·설명만이다(지금 안내 그대로)', () => {
     draw('waiting')
     expect(section().textContent).toBe('환자 구성어떤 분들이 오시는지 · 최근 30일')
   })
