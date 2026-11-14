@@ -5,6 +5,7 @@ import type { StatsRange } from '@/components/stats/view'
 import { averageText, cellAverage, cellLevel, hourName, unknownHoursNote } from '@/lib/analytics/visitHours'
 import type { VisitHours } from '@/types/stats'
 import { DetailToggle, type DetailTable } from './DetailToggle'
+import { HowCounted } from './HowCounted'
 import { BitNoteSection, bitState, type BitSectionsShown } from './PatientMixSection'
 import { Note, Section } from './parts'
 
@@ -131,7 +132,10 @@ export function VisitHoursSection({ view, range, className }: Props) {
           </div>
           {unknown !== null && <Note>{unknown}</Note>}
           {panel}
-          <Note>{FOOT}</Note>
+          {/* 아래 글은 "어떻게 세나요?" 안에 접는다(stats-pc-ux AC-4004.2 ⑦). 범례·접수 시각 모름은 그대로 보인다(AC-4004.3) */}
+          <HowCounted>
+            <Note>{FOOT}</Note>
+          </HowCounted>
         </Section>
       )}
     </DetailToggle>

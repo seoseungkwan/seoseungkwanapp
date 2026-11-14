@@ -6,6 +6,7 @@ import type { StatsRange } from '@/components/stats/view'
 import { formatPatientMix, mixBar, mixDelta, mixShareText, type MixUnit, type MixWho } from '@/lib/analytics/patientMix'
 import type { BitSectionsView, MixRow, PatientMix } from '@/types/stats'
 import { CopyButton } from './CopyButton'
+import { HowCounted } from './HowCounted'
 import { EmptyNote, longDate, Section } from './parts'
 
 // 환자 구성 (stats-bit-sections AC-2706.1·AC-2706.2·AC-2703.9·AC-2707.1, 시안 docs/mockups/stats-bit-sections).
@@ -66,9 +67,13 @@ const SEG_BUTTON =
 const SEG_ON = 'bg-accent-soft font-semibold text-accent-strong'
 const SEG_OFF = 'font-medium text-ink-2 transition hover:bg-canvas'
 
-// 1024px 이상 4·4·4 세 열, 오른쪽 두 열은 왼쪽 1px line + 안쪽 24. 좁으면 위아래로 쌓고 열 사이에 위 선(시안 .cols·.col)
-const COLUMNS = 'mt-4 grid grid-cols-1 lg:grid-cols-3 lg:gap-x-6'
+// 1280px 이상 4·4·4 세 열, 오른쪽 두 열은 왼쪽 1px line + 안쪽 24. 1024px 미만은 위아래로 쌓고 열 사이에 위 선(시안 .cols·.col).
+// 1024~1279px은 두 열: 왼쪽 연령대가 두 줄을 차지하고 오른쪽 위 보험 · 아래 동네(위 24px). 위아래 틈이 없어 오른쪽 열 세로줄이 이어진다
+// (stats-pc-ux AC-4005.2, 시안 notes.md §6(a)). min-[80rem]: 경계는 이 파일에서만 규칙 시험의 예외다(UI_GUIDE '칸·폭', ui/classes.test.ts)
+const COLUMNS = 'mt-4 grid grid-cols-1 lg:grid-cols-2 lg:gap-x-6 min-[80rem]:grid-cols-3'
 const COLUMN_SIDE = 'min-w-0 max-lg:mt-5 max-lg:border-t max-lg:border-line max-lg:pt-4 lg:border-l lg:border-line lg:pl-6'
+const COLUMN_AGE = 'min-w-0 lg:row-span-2 min-[80rem]:row-span-1'
+const COLUMN_TOWN = `${COLUMN_SIDE} lg:col-start-2 lg:row-start-2 lg:pt-6 min-[80rem]:col-start-3 min-[80rem]:row-start-1 min-[80rem]:pt-0`
 // 줄: 이름 | 막대 | N명 | N건 · P% | 증감(견줄 때만). 칸 폭은 시안 .r 그대로
 const ROW_BASE = 'grid min-h-8.5 items-center gap-y-0.5 border-b border-line py-1.5 text-small'
 const ROW_COMPARED = `${ROW_BASE} grid-cols-[84px_minmax(24px,1fr)_56px_92px_44px] gap-x-1.5`
@@ -181,7 +186,7 @@ export function PatientMixSection({ view, range, hospitalName, className }: Prop
       </div>
       <p className="mt-2 text-small text-muted">{compareLine(range, mix)}</p>
       <div className={COLUMNS}>
-        <div className="min-w-0">
+        <div className={COLUMN_AGE}>
           <ColumnHead title="연령대" />
           <MixRows name="연령대" rows={mix.age} compared={mix.compared} />
         </div>
@@ -189,17 +194,17 @@ export function PatientMixSection({ view, range, hospitalName, className }: Prop
           <ColumnHead title="보험" />
           <MixRows name="보험" rows={mix.insurance} compared={mix.compared} />
         </div>
-        <div className={COLUMN_SIDE}>
+        <div className={COLUMN_TOWN}>
           <ColumnHead title="동네">
             <Segments<MixUnit> label="동네 단위" options={UNIT_OPTIONS} value={unit} onChange={setUnit} fit />
           </ColumnHead>
           <MixRows name="동네" rows={unit === 'city' ? mix.city : mix.town} compared={mix.compared} />
         </div>
       </div>
-      <div className="mt-2 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+      {/* 세 열 바로 다음 줄: [어떻게 세나요?] · [표 복사], 아래 글은 그 안에 접는다(stats-pc-ux AC-4005.1·AC-4004.2 ⑥) */}
+      <HowCounted side={<CopyButton text={formatPatientMix(hospitalName, range.label, who, unit, mix)} label="표 복사" fullOnPhone />}>
         <p className="text-small text-muted">{FOOT}</p>
-        <CopyButton text={formatPatientMix(hospitalName, range.label, who, unit, mix)} label="표 복사" fullOnPhone />
-      </div>
+      </HowCounted>
     </Section>
   )
 }
