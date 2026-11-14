@@ -133,7 +133,7 @@ public class RevenueCommandsTests
         Assert.Empty(rig.Connector.Opened);
     }
 
-    [Fact(DisplayName = "AC-003.7 답의 칸은 AC-002.2와 같다: {days, codes}, 날 줄 15칸, 코드 줄 4칸, 칸 이름 camelCase, null 그대로")]
+    [Fact(DisplayName = "AC-003.7 AC-4101.1 답의 칸은 AC-002.2와 같다: {days, codes, dayCodes}, 날 줄 15칸, 코드 줄 4칸, 칸 이름 camelCase, null 그대로")]
     public void ReplyHasExactFields()
     {
         using var rig = Ready();
@@ -145,7 +145,7 @@ public class RevenueCommandsTests
 
         Assert.Equal(new[] { "v", "id", "type", "data" }, Json.Keys(reply));
         var data = reply.GetProperty("data");
-        Assert.Equal(new[] { "days", "codes" }, Json.Keys(data));
+        Assert.Equal(new[] { "days", "codes", "dayCodes" }, Json.Keys(data));
 
         var days = data.GetProperty("days").EnumerateArray().ToArray();
         Assert.Equal(3, days.Length);
@@ -223,5 +223,66 @@ public class RevenueCommandsTests
         Assert.Equal("result", reply.GetProperty("type").GetString());
         var code = Assert.Single(reply.GetProperty("data").GetProperty("codes").EnumerateArray().ToArray());
         Assert.Equal("도수 치료", code.GetProperty("name").GetString());
+    }
+
+    // ---- AC-4101 날마다 처방별 금액(dayCodes) ---------------------------------------------------------
+
+    [Fact(DisplayName = "AC-4101.1 답 JSON은 {\"days\":…,\"codes\":…,\"dayCodes\":[[\"2026-10-01\",\"MM101\",3,45000],…]} 모양: 줄마다 [날짜, 코드, 건수, 금액|null], 날짜·코드 차례")]
+    public void DayCodesReplyShape()
+    {
+        using var rig = Ready();
+        RevenueFake.Codes(rig.Session, RevenueFake.Code("MM101", 4, 46200.9m, name: "가상 처방"));
+        RevenueFake.DayCodes(rig.Session,
+            RevenueFake.DayCode("20261002", "MM101", 1, 1200.9m),
+            RevenueFake.DayCode("20261001", "MM101", 3, 45000.4m),
+            RevenueFake.DayCode("20261001", "CARM1", 2, null, missing: 1));
+        var outcome = Handle(rig, "2026-10-01", "2026-10-02");
+        var data = Assert.Single(outcome.Sink.Replies).GetProperty("data");
+
+        Assert.Equal(new[] { "days", "codes", "dayCodes" }, Json.Keys(data));
+        Assert.Equal("[[\"2026-10-01\",\"CARM1\",2,null],[\"2026-10-01\",\"MM101\",3,45000],[\"2026-10-02\",\"MM101\",1,1200]]", data.GetProperty("dayCodes").GetRawText());
+        Assert.StartsWith("{\"days\":[{\"date\":\"2026-10-01\"", data.GetRawText(), System.StringComparison.Ordinal);
+        Assert.Contains("],\"codes\":[{\"code\":\"MM101\",\"name\":\"가상 처방\",\"count\":4,\"amount\":46200}],\"dayCodes\":[[", data.GetRawText(), System.StringComparison.Ordinal);
+        Assert.Equal(("revenue.days", (string?)null), Assert.Single(outcome.Log));
+    }
+
+    [Fact(DisplayName = "AC-4101.2 날 단위 답의 뒤쪽 칸에 가짜 차트번호·이름이 섞여 와도 읽는 다섯 칸만 보고 답·진단 기록에 없다")]
+    public void DayCodesCarryNoPatientText()
+    {
+        using var rig = Ready();
+        RevenueFake.DayCodes(rig.Session, new object?[] { "20261030", "MM101", 1L, 100m, 0L, Fake.Chart, Fake.Name });
+        var outcome = Handle(rig);
+
+        Assert.Equal("result", Assert.Single(outcome.Sink.Replies).GetProperty("type").GetString());
+        Assert.DoesNotContain(Fake.Chart, outcome.Text);
+        Assert.DoesNotContain(Fake.Name, outcome.Text);
+    }
+
+    [Fact(DisplayName = "AC-4101.4 날 단위 문장(CodeAmountsByDay)이 실패하면 days·codes도 보내지 않고 E-BIT-READ-FAILED 오류 답 하나, 세션은 닫음")]
+    public void DayCodesFailureIsOneError()
+    {
+        using var rig = Ready();
+        RevenueFake.Codes(rig.Session, RevenueFake.Code("MM101", 1, 1m));
+        rig.Session.Fail(RevenueSql.CodeAmountsByDay, BitErrors.ReadFailed);
+        var outcome = Handle(rig);
+
+        AssertOneError(outcome, "E-BIT-READ-FAILED");
+        Assert.DoesNotContain("\"days\"", outcome.Text);
+        Assert.Equal(1, rig.Session.Disposed);
+        Assert.Equal(("revenue.days", (string?)"E-BIT-READ-FAILED"), Assert.Single(outcome.Log));
+    }
+
+    [Fact(DisplayName = "AC-4101.5 도우미 판은 0.6.0이고 명령 표의 revenue.days는 그대로다(새 명령·새 인자 없음: from·to 날짜, 31일, 환자 아님)")]
+    public void VersionAndCommandTableStay()
+    {
+        Assert.Equal("0.6.0", HelperVersion.Value);
+
+        using var table = JsonDocument.Parse(CommandTable.EmbeddedBytes());
+        var commands = table.RootElement.GetProperty("commands");
+        Assert.Equal(13, commands.EnumerateObject().Count());
+        Assert.Equal(
+            "{\"patient\":false,\"maxDays\":31,\"args\":{\"from\":{\"type\":\"date\"},\"to\":{\"type\":\"date\"}}}",
+            JsonSerializer.Serialize(commands.GetProperty("revenue.days")));
+        Assert.Equal(1, table.RootElement.GetProperty("protocol").GetInt32());
     }
 }

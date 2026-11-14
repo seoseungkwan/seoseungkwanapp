@@ -1,4 +1,4 @@
-// 도우미 매출 읽기(TASK-3, REQ-003)의 C# 시험(helper/tests/Precheck.Core.Tests/Revenue/*.test.cs)을 감싼다.
+// 도우미 매출 읽기(TASK-3, REQ-003)와 날마다 처방별 금액(spec stats-revenue TASK-1, REQ-4101)의 C# 시험(helper/tests/Precheck.Core.Tests/Revenue/*.test.cs)을 감싼다.
 // dotnet test를 한 번 돌리고, AC마다 그 AC ID가 붙은 C# 시험이 실제로 돌았고 하나도 실패하지 않았는지 본다.
 import { beforeAll, describe, expect, it } from 'vitest'
 import { runDotnet } from './runDotnet'
@@ -54,7 +54,29 @@ describe('REQ-003 도우미 매출 읽기 (C# Precheck.Core.Tests.Revenue)', () 
     expectAc('AC-003.7')
   })
 
-  it('AC-003.8 ReadOnlyGuard는 매출 문장 10개를 정해 둔 매개변수와 함께만 통과, 읽기 문장 하나, 기존 Sql 상수는 그대로', () => {
+  it('AC-003.8 ReadOnlyGuard는 매출 문장 11개를 정해 둔 매개변수와 함께만 통과, 읽기 문장 하나, 기존 Sql 상수는 그대로', () => {
     expectAc('AC-003.8')
+  })
+})
+
+describe('REQ-4101 도우미 날마다 처방별 금액 dayCodes (C# Precheck.Core.Tests.Revenue)', () => {
+  it('AC-4101.1 답은 {days, codes, dayCodes}, days·codes는 지금과 같고 dayCodes는 [날짜, 코드, 건수, 금액|null] 줄의 목록, 날짜 차례·같은 날은 코드 글자 차례', () => {
+    expectAc('AC-4101.1')
+  })
+
+  it('AC-4101.2 CodeAmountsByDay는 CodeAmounts와 WHERE·금액 식·MissingValues가 같고 LEFT(o.OdrDtm,8)·코드로 묶는 것만 다르며 이름·차트번호·환자 칸 없음, 기간에 한 번·@from·@to·@hospital뿐, 관문 통과, 바꾼 문장·다른 매개변수는 DB 앞에서 막힘', () => {
+    expectAc('AC-4101.2')
+  })
+
+  it('AC-4101.3 날마다 공백 뺀 같은 코드 합침, 모양 틀림·_REST → 그날 _REST, 하루 300개를 넘으면 금액 큰 차례 299개 + _REST(금액 null 맨 뒤), 합친 금액에서 원 미만 버림, 빠진 값 → null, 하루 300줄·9,300줄 이하', () => {
+    expectAc('AC-4101.3')
+  })
+
+  it('AC-4101.4 날 단위 문장 읽기 실패·답 모양 틀림·기간 밖 날이면 일부만 답하지 않고 E-BIT-READ-FAILED 하나', () => {
+    expectAc('AC-4101.4')
+  })
+
+  it('AC-4101.5 도우미 판 0.6.0, 명령 표 revenue.days는 그대로(새 명령·새 인자 없음)', () => {
+    expectAc('AC-4101.5')
   })
 })

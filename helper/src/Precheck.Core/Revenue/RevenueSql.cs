@@ -344,6 +344,27 @@ SELECT SUM(OrpInsAmt),SUM(OrpInsOwn) FROM NativeRows";
 )
 SELECT SUM(OrpInsAmt),SUM(OrpInsOwn) FROM NativeRows";
 
+    // ---- 날 단위 문장(spec stats-revenue REQ-4101) ---------------------------------------------------------
+
+    /// <summary>
+    /// 기간의 날(처방일 앞 8자리)·처방 코드별 줄 수·금액·빠진 값 수. CodeAmounts와 WHERE·금액 식·MissingValues가 글자까지 같고
+    /// Codes의 첫 칸(Day)·GROUP BY 줄·끝 SELECT만 다르다. 이름(SeeMst) 하위 질의는 없다(이름은 기간 CodeAmounts가 준다).
+    /// </summary>
+    public const string CodeAmountsByDay = @"WITH Codes AS (
+  SELECT LEFT(o.OdrDtm,8) AS Day, RTRIM(o.OdrCod) AS Code, COUNT_BIG(*) AS Lines,
+         CAST(SUM(CAST(o.OdrDay AS decimal(10,0)) * CASE WHEN o.OdrOutLab = 'S' THEN o.OdrQty ELSE o.OdrDtrQty END * o.OdrPrc) AS decimal(28,5)) AS Amount,
+         SUM(CASE WHEN o.OdrDay IS NULL OR o.OdrPrc IS NULL OR (CASE WHEN o.OdrOutLab = 'S' THEN o.OdrQty ELSE o.OdrDtrQty END) IS NULL
+                  THEN CONVERT(bigint,1) ELSE CONVERT(bigint,0) END) AS MissingValues
+  FROM dbo.OdrInf o
+  WHERE o.OdrDtm >= @from AND o.OdrDtm < @to AND RTRIM(o.OdrCod) <> ''
+    AND o.OdrDelFlg = 'N' AND o.OdrCanYon = 'N' AND o.OdrOspTyp = 'I' AND o.OdrOutCod <> '99'
+    AND EXISTS (SELECT 1 FROM dbo.DepMst d WHERE d.DepCod = o.OdrDepCod AND d.DepHspNum = @hospital
+                AND o.OdrDtm BETWEEN d.DepAdpDte + '0000' AND d.DepExpDte + '2359')
+    AND EXISTS (SELECT 1 FROM dbo.OcmInf c WHERE c.OcmNum = o.OdrOcmNum AND c.OcmPatTyp = 'O'
+                AND c.OcmComStt IN ('HN','PN','TN','VN','OE','WN','OB') AND c.OcmRsuYon <> 'O')
+  GROUP BY LEFT(o.OdrDtm,8), RTRIM(o.OdrCod))
+SELECT c.Day, c.Code, c.Lines, c.Amount, c.MissingValues FROM Codes c";
+
     private static readonly SqlParam Day = new SqlParam("@day", SqlParamKind.Char, 8);
     private static readonly SqlParam NextDay = new SqlParam("@nextDay", SqlParamKind.Char, 8);
     private static readonly SqlParam From = new SqlParam("@from", SqlParamKind.Char, 12);
@@ -363,5 +384,6 @@ SELECT SUM(OrpInsAmt),SUM(OrpInsOwn) FROM NativeRows";
         [CodeAmounts] = new[] { From, To, Hospital },
         [FinanceNormalExtra] = new[] { Day, NextDay, Hospital },
         [FinanceReceivableExtra] = new[] { Day, NextDay, Hospital },
+        [CodeAmountsByDay] = new[] { From, To, Hospital },
     };
 }

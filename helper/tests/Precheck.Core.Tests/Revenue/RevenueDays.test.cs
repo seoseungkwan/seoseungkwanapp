@@ -61,7 +61,7 @@ public class RevenueDaysTests
 
     // ---- AC-003.1 어떤 문장을 언제 돌리는가 -------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-003.1 3일 기간이면 줄 3개, HistoryGuard 한 번, 날마다 문장 8개를 그날 기간으로, 마지막에 CodeAmounts 한 번")]
+    [Fact(DisplayName = "AC-003.1 AC-4101.2 3일 기간이면 줄 3개, HistoryGuard 한 번, 날마다 문장 8개를 그날 기간으로, 그 뒤 CodeAmounts 한 번, 맨 끝에 CodeAmountsByDay 한 번")]
     public void RunsEightStatementsEachDay()
     {
         var db = RevenueFake.Quiet(new FakeDb());
@@ -70,8 +70,9 @@ public class RevenueDaysTests
         Assert.Equal(new[] { First, Middle, Last }, result.Days.Select(day => day.Date));
         Assert.Equal(RevenueSql.HistoryGuard, db.Calls[0].Sql);
         Assert.Empty(db.Calls[0].Args);
-        Assert.Equal(RevenueSql.CodeAmounts, db.Calls[db.Calls.Count - 1].Sql);
-        Assert.Equal(1 + 3 * 8 + 1, db.Calls.Count);
+        Assert.Equal(RevenueSql.CodeAmounts, db.Calls[db.Calls.Count - 2].Sql);
+        Assert.Equal(RevenueSql.CodeAmountsByDay, db.Calls[db.Calls.Count - 1].Sql);
+        Assert.Equal(1 + 3 * 8 + 2, db.Calls.Count);
 
         var days = new[] { ("20261030", "20261031"), ("20261031", "20261101"), ("20261101", "20261102") };
         foreach (var (day, next) in days)
@@ -678,5 +679,266 @@ public class RevenueDaysTests
         Assert.Equal("9999-12-30", Assert.Single(Read(db, "9999-12-30", "9999-12-30").Days).Date);
         var codes = Assert.Single(db.Calls, call => call.Sql == RevenueSql.CodeAmounts);
         Assert.Equal("999912310000", codes.Args["@to"]);
+    }
+
+    // ---- AC-4101 날마다 처방별 금액(dayCodes) ---------------------------------------------------------
+
+    /// <summary>dayCodes 한 줄을 글자로: 날짜|코드|건수|금액(null은 "null").</summary>
+    private static string Line(object?[] row) =>
+        string.Join("|", row.Select(cell => cell == null ? "null" : Convert.ToString(cell, CultureInfo.InvariantCulture)));
+
+    private static string[] DayLines(FakeDb db, string from = First, string to = Last) => Read(db, from, to).DayCodes.Select(Line).ToArray();
+
+    private static string CodeOf(object?[] row) => (string)row[1]!;
+
+    private static string Json(object value) => System.Text.Json.JsonSerializer.Serialize(value);
+
+    [Fact(DisplayName = "AC-4101.2 CodeAmountsByDay는 기간에 한 번만: @from = 첫날 0000, @to = 끝날 다음 날 0000, @hospital 셋뿐이고 날마다 문장은 그대로 8개")]
+    public void ReadsDayCodesOncePerPeriod()
+    {
+        var db = RevenueFake.Quiet(new FakeDb());
+        Read(db, First, Last);
+
+        var call = Assert.Single(db.Calls, c => c.Sql == RevenueSql.CodeAmountsByDay);
+        Assert.Equal(3, call.Args.Count);
+        Assert.Equal("202610300000", call.Args["@from"]);
+        Assert.Equal("202611020000", call.Args["@to"]);
+        Assert.Equal(Synthetic.Scope, call.Args["@hospital"]);
+        Assert.Equal(TimeSpan.FromSeconds(90), call.Timeout);
+        foreach (var next in new[] { "20261031", "20261101", "20261102" }) Assert.Equal(8, RevenueFake.CallsOn(db, next).Count);
+
+        var month = RevenueFake.Quiet(new FakeDb());
+        Read(month, "2026-10-01", "2026-10-31");
+        var monthCall = Assert.Single(month.Calls, c => c.Sql == RevenueSql.CodeAmountsByDay);
+        Assert.Equal("202610010000", monthCall.Args["@from"]);
+        Assert.Equal("202611010000", monthCall.Args["@to"]);
+    }
+
+    [Fact(DisplayName = "AC-4101.1 답은 days·codes·dayCodes이고 days·codes는 날 단위 줄이 있어도 지금과 같다")]
+    public void DayCodesLeaveDaysAndCodesAlone()
+    {
+        var plain = RevenueFake.Quiet(new FakeDb());
+        RevenueFake.Codes(plain, RevenueFake.Code("CARM1", 4, 12345.67m, name: "씨암"));
+        var withDayCodes = RevenueFake.Quiet(new FakeDb());
+        RevenueFake.Codes(withDayCodes, RevenueFake.Code("CARM1", 4, 12345.67m, name: "씨암"));
+        RevenueFake.DayCodes(withDayCodes,
+            RevenueFake.DayCode("20261030", "CARM1", 3, 10000.67m),
+            RevenueFake.DayCode("20261031", "CARM1", 1, 2345m));
+
+        var before = Read(plain, First, Last);
+        var after = Read(withDayCodes, First, Last);
+
+        Assert.Empty(before.DayCodes);
+        Assert.Equal(new[] { "2026-10-30|CARM1|3|10000", "2026-10-31|CARM1|1|2345" }, after.DayCodes.Select(Line));
+        Assert.Equal(Json(before.Days), Json(after.Days));
+        Assert.Equal(Json(before.Codes), Json(after.Codes));
+    }
+
+    [Fact(DisplayName = "AC-4101.1 dayCodes 줄은 [날짜 YYYY-MM-DD, 코드, 건수, 금액]이고 날짜 차례·같은 날은 코드 글자(Ordinal) 차례다(DB 답 차례·금액 차례와 상관없이)")]
+    public void DayCodesAreOrderedByDateThenCode()
+    {
+        var db = RevenueFake.Quiet(new FakeDb());
+        RevenueFake.DayCodes(db,
+            RevenueFake.DayCode("20261101", "MM101", 1, 500m),
+            RevenueFake.DayCode("20261030", "도수", 2, 90000m),
+            RevenueFake.DayCode("20261030", "MM101", 3, 45000m),
+            RevenueFake.DayCode("20261031", "a1", 1, 10m),
+            RevenueFake.DayCode("20261030", "9X", 1, 1m),
+            RevenueFake.DayCode("20261030", "CARM1", 5, 120000m),
+            RevenueFake.DayCode("20261030", "a1", 4, 4000m));
+        var rows = Read(db, First, Last).DayCodes;
+
+        Assert.Equal(new[]
+        {
+            "2026-10-30|9X|1|1",
+            "2026-10-30|CARM1|5|120000",
+            "2026-10-30|MM101|3|45000",
+            "2026-10-30|a1|4|4000",
+            "2026-10-30|도수|2|90000",
+            "2026-10-31|a1|1|10",
+            "2026-11-01|MM101|1|500",
+        }, rows.Select(Line));
+        Assert.All(rows, row =>
+        {
+            Assert.Equal(4, row.Length);
+            Assert.IsType<string>(row[0]);
+            Assert.IsType<string>(row[1]);
+            Assert.IsType<long>(row[2]);
+            Assert.IsType<long>(row[3]);
+        });
+    }
+
+    [Fact(DisplayName = "AC-4101.3 앞뒤 공백을 뺀 같은 코드는 그날 한 줄로 합친다(건수 합, 금액은 합친 값에서 원 미만 버림), 다른 날의 같은 코드는 따로")]
+    public void MergesSameCodeWithinDay()
+    {
+        var db = RevenueFake.Quiet(new FakeDb());
+        RevenueFake.DayCodes(db,
+            RevenueFake.DayCode("20261030", "도수", 2, 1000.6m),
+            RevenueFake.DayCode("20261030", " 도수 ", 3, 2000.6m),
+            RevenueFake.DayCode("20261031", "도수", 1, 10.9m));
+        Assert.Equal(new[] { "2026-10-30|도수|5|3001", "2026-10-31|도수|1|10" }, DayLines(db));
+    }
+
+    [Fact(DisplayName = "AC-4101.3 모양이 틀린 코드·_REST는 그날의 _REST 한 줄로 합친다(날마다 따로, 실패하지 않음)")]
+    public void BadShapesGoToThatDaysRest()
+    {
+        var db = RevenueFake.Quiet(new FakeDb());
+        RevenueFake.DayCodes(db,
+            RevenueFake.DayCode("20261030", "A B", 1, 100m),
+            RevenueFake.DayCode("20261030", "X!", 2, 200m),
+            RevenueFake.DayCode("20261030", new string('C', 31), 3, 300m),
+            RevenueFake.DayCode("20261030", "A\nB", 4, 400m),
+            RevenueFake.DayCode("20261030", "", 5, 500m),
+            RevenueFake.DayCode("20261030", null, 6, 600m),
+            RevenueFake.DayCode("20261030", "_REST", 7, 700m),
+            RevenueFake.DayCode("20261030", "OK-1", 1, 1m),
+            RevenueFake.DayCode("20261030", new string('가', 30), 1, 2m),
+            RevenueFake.DayCode("20261031", "X!", 2, 50.5m),
+            RevenueFake.DayCode("20261031", "Y?", 2, 50.5m));
+
+        Assert.Equal(new[]
+        {
+            "2026-10-30|OK-1|1|1",
+            "2026-10-30|_REST|28|2800",
+            "2026-10-30|" + new string('가', 30) + "|1|2",
+            "2026-10-31|_REST|4|101",
+        }, DayLines(db));
+    }
+
+    [Fact(DisplayName = "AC-4101.3 하루 300개까지는 _REST 없이 300줄 그대로")]
+    public void NoDayRestUpTo300()
+    {
+        var db = RevenueFake.Quiet(new FakeDb());
+        RevenueFake.DayCodes(db, Enumerable.Range(1, 300).Select(i => RevenueFake.DayCode("20261030", "C" + i, 1, i)).ToArray());
+        var rows = Read(db, First, First).DayCodes;
+
+        Assert.Equal(300, rows.Count);
+        Assert.DoesNotContain(rows, row => CodeOf(row) == "_REST");
+    }
+
+    [Fact(DisplayName = "AC-4101.3 하루 301개면 금액 큰 차례 299개 + 그날 _REST 한 줄로 300줄, 중복 없음, 다른 날은 그대로")]
+    public void CutsDayAfter299ByAmount()
+    {
+        var db = RevenueFake.Quiet(new FakeDb());
+        var input = Enumerable.Range(1, 301).Select(i => RevenueFake.DayCode("20261030", "C" + i, 2, i * 10m)).ToList();
+        input.Add(RevenueFake.DayCode("20261031", "C1", 1, 5m));
+        RevenueFake.DayCodes(db, input.ToArray());
+        var rows = Read(db, First, Middle).DayCodes;
+        var first = rows.Where(row => (string)row[0]! == First).ToArray();
+
+        Assert.Equal(300, first.Length);
+        Assert.Equal(300, first.Select(CodeOf).Distinct().Count());
+        Assert.DoesNotContain(first, row => CodeOf(row) == "C1" || CodeOf(row) == "C2");
+        Assert.Contains(first, row => CodeOf(row) == "C3");
+        Assert.Equal("2026-10-30|_REST|4|30", Line(first.Single(row => CodeOf(row) == "_REST")));
+        Assert.Equal(new[] { "2026-10-31|C1|1|5" }, rows.Where(row => (string)row[0]! == Middle).Select(Line));
+    }
+
+    [Fact(DisplayName = "AC-4101.3 금액 null은 맨 뒤라서 먼저 그날 _REST로 가고, 그 _REST 금액도 null")]
+    public void NullDayAmountGoesToRestFirst()
+    {
+        var db = RevenueFake.Quiet(new FakeDb());
+        var input = Enumerable.Range(1, 300).Select(i => RevenueFake.DayCode("20261030", "C" + i, 1, i)).ToList();
+        input.Insert(0, RevenueFake.DayCode("20261030", "NOAMOUNT", 5, 99999m, missing: 1));
+        RevenueFake.DayCodes(db, input.ToArray());
+        var rows = Read(db, First, First).DayCodes;
+
+        Assert.Equal(300, rows.Count);
+        Assert.DoesNotContain(rows, row => CodeOf(row) == "NOAMOUNT" || CodeOf(row) == "C1");
+        Assert.Equal("2026-10-30|_REST|6|null", Line(rows.Single(row => CodeOf(row) == "_REST")));
+    }
+
+    [Fact(DisplayName = "AC-4101.3 값이 빠진 줄(MissingValues ≠ 0)이 섞인 그날 그 코드의 금액은 null, 건수는 그대로 더함")]
+    public void MissingValuesNullDayAmount()
+    {
+        var db = RevenueFake.Quiet(new FakeDb());
+        RevenueFake.DayCodes(db,
+            RevenueFake.DayCode("20261030", "SONO1", 2, 5000m, missing: 1),
+            RevenueFake.DayCode("20261030", "도수", 1, 100m),
+            RevenueFake.DayCode("20261030", "도수 ", 2, 100m, missing: 1),
+            RevenueFake.DayCode("20261031", "도수", 1, 100m));
+        Assert.Equal(new[] { "2026-10-30|SONO1|2|null", "2026-10-30|도수|3|null", "2026-10-31|도수|1|100" }, DayLines(db));
+    }
+
+    [Fact(DisplayName = "AC-4101.3 웹이 받지 못하는 금액(음수·안전한 정수 넘음)은 그 줄만 null이고 실패하지 않는다, -0.5는 0")]
+    public void UnrepresentableDayAmountIsNull()
+    {
+        var db = RevenueFake.Quiet(new FakeDb());
+        RevenueFake.DayCodes(db,
+            RevenueFake.DayCode("20261030", "MINUS", 1, -100m),
+            RevenueFake.DayCode("20261030", "HUGE", 1, 9007199254740992m),
+            RevenueFake.DayCode("20261030", "MOST", 1, 9007199254740991m),
+            RevenueFake.DayCode("20261030", "TINY", 1, -0.5m));
+        Assert.Equal(
+            new[] { "2026-10-30|HUGE|1|null", "2026-10-30|MINUS|1|null", "2026-10-30|MOST|1|9007199254740991", "2026-10-30|TINY|1|0" },
+            DayLines(db, First, First));
+    }
+
+    [Fact(DisplayName = "AC-4101.3 31일 모두 하루 301개여도 dayCodes는 하루 300줄·모두 9,300줄(= 31 × 300)을 넘지 않는다")]
+    public void DayCodesStayWithinLimits()
+    {
+        Assert.Equal(300, RevenueDays.MaxDayCodesPerDay);
+        Assert.Equal(9300, RevenueDays.MaxDays * RevenueDays.MaxDayCodesPerDay);
+
+        var db = RevenueFake.Quiet(new FakeDb());
+        var start = D("2026-10-01");
+        RevenueFake.DayCodes(db, Enumerable.Range(0, 31)
+            .SelectMany(d => Enumerable.Range(1, 301).Select(i => RevenueFake.DayCode(start.AddDays(d).ToString("yyyyMMdd", CultureInfo.InvariantCulture), "C" + i, 1, i)))
+            .ToArray());
+        var rows = Read(db, "2026-10-01", "2026-10-31").DayCodes;
+
+        Assert.Equal(9300, rows.Count);
+        Assert.Equal(31, rows.Select(row => (string)row[0]!).Distinct().Count());
+        Assert.All(rows.GroupBy(row => (string)row[0]!), day => Assert.Equal(300, day.Count()));
+    }
+
+    public static IEnumerable<object?[]> BadDays()
+    {
+        yield return new object?[] { "첫날 앞", "20261029" };
+        yield return new object?[] { "끝날 뒤", "20261102" };
+        yield return new object?[] { "7자", "2026103" };
+        yield return new object?[] { "줄 그은 모양", "2026-10-30" };
+        yield return new object?[] { "없는 날", "20261032" };
+        yield return new object?[] { "빈칸 붙음", "20261030 " };
+        yield return new object?[] { "NULL", null };
+        yield return new object?[] { "글자 아님", 20261030L };
+    }
+
+    [Theory(DisplayName = "AC-4101.3 AC-4101.4 날 글자가 yyyyMMdd가 아니거나 기간 밖이면 일부만 답하지 않고 E-BIT-READ-FAILED")]
+    [MemberData(nameof(BadDays))]
+    public void BadDayIsReadFailed(string what, object? day)
+    {
+        Assert.NotEmpty(what);
+        var db = RevenueFake.Quiet(new FakeDb());
+        RevenueFake.DayCodes(db, RevenueFake.DayCode("20261030", "OK", 1, 1m), RevenueFake.DayCode(day, "MM101", 1, 1m));
+        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => Read(db, First, Last)).Code);
+    }
+
+    [Fact(DisplayName = "AC-4101.4 CodeAmountsByDay가 실패하면 days·codes도 돌려주지 않고 E-BIT-READ-FAILED 하나")]
+    public void DayCodesFailureThrows()
+    {
+        var db = RevenueFake.Quiet(new FakeDb());
+        RevenueFake.Codes(db, RevenueFake.Code("CARM1", 1, 1m));
+        db.Fail(RevenueSql.CodeAmountsByDay, BitErrors.ReadFailed);
+        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => Read(db, First, Last)).Code);
+        Assert.Single(db.Calls, call => call.Sql == RevenueSql.CodeAmountsByDay);
+    }
+
+    public static IEnumerable<object?[]> BrokenDayAnswers()
+    {
+        yield return new object?[] { "칸 모자람", new[] { new object?[] { "20261030", "C1", 1L, 1m } } };
+        yield return new object?[] { "건수 숫자 아님", new[] { new object?[] { "20261030", "C1", "x", 1m, 0L } } };
+        yield return new object?[] { "금액 숫자 아님", new[] { new object?[] { "20261030", "C1", 1L, "not a number", 0L } } };
+        yield return new object?[] { "빠진 값 수 숫자 아님", new[] { new object?[] { "20261030", "C1", 1L, 1m, "x" } } };
+    }
+
+    [Theory(DisplayName = "AC-4101.4 날 단위 답의 모양이 틀리면 도우미가 죽지 않고 E-BIT-READ-FAILED")]
+    [MemberData(nameof(BrokenDayAnswers))]
+    public void BrokenDayAnswerIsReadFailed(string what, object?[][] rows)
+    {
+        Assert.NotEmpty(what);
+        var db = RevenueFake.Quiet(new FakeDb());
+        RevenueFake.DayCodes(db, rows);
+        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => Read(db, First, First)).Code);
     }
 }

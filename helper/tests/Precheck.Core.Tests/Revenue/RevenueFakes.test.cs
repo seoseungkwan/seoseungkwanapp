@@ -35,7 +35,7 @@ internal static class RevenueFake
     /// <summary>세 검사를 지난 날에 돌리는 문장 8개.</summary>
     public static readonly string[] EightStatements = Checks.Concat(MoneyStatements).Concat(new[] { RevenueSql.Patients }).ToArray();
 
-    /// <summary>검사 모두 0, 기본 금액·건수, 처방 없음.</summary>
+    /// <summary>검사 모두 0, 기본 금액·건수, 처방 없음(기간 합계·날 단위 둘 다).</summary>
     public static T Quiet<T>(T db) where T : FakeDb
     {
         Row(db, RevenueSql.HistoryGuard, 0L);
@@ -46,6 +46,7 @@ internal static class RevenueFake
         Row(db, RevenueSql.FinanceReceivableExtra, ReceivableExtra);
         Row(db, RevenueSql.Patients, 10L, 3L, 0L, 0L, 0L);
         db.Answer(RevenueSql.CodeAmounts, _ => new object?[0][]);
+        db.Answer(RevenueSql.CodeAmountsByDay, _ => new object?[0][]);
         return db;
     }
 
@@ -64,9 +65,16 @@ internal static class RevenueFake
     public static object?[] Code(string? code, long lines, decimal? amount, long missing = 0, string? name = null) =>
         new object?[] { code, lines, amount, missing, name };
 
-    /// <summary>그날 돌린 문장들(@to·@nextDay로 가른다). HistoryGuard·CodeAmounts는 날에 속하지 않는다.</summary>
+    /// <summary>날 단위 처방 줄(CodeAmountsByDay 답): 날(yyyyMMdd)·코드·줄 수·금액·빠진 값 수.</summary>
+    public static void DayCodes(FakeDb db, params object?[][] rows) =>
+        db.Answer(RevenueSql.CodeAmountsByDay, _ => rows);
+
+    public static object?[] DayCode(object? day, string? code, long lines, decimal? amount, long missing = 0) =>
+        new object?[] { day, code, lines, amount, missing };
+
+    /// <summary>그날 돌린 문장들(@to·@nextDay로 가른다). HistoryGuard·CodeAmounts·CodeAmountsByDay는 날에 속하지 않는다.</summary>
     public static List<(string Sql, Dictionary<string, object?> Args, TimeSpan Timeout)> CallsOn(FakeDb db, string nextDay) =>
-        db.Calls.Where(call => call.Sql != RevenueSql.HistoryGuard && call.Sql != RevenueSql.CodeAmounts
+        db.Calls.Where(call => call.Sql != RevenueSql.HistoryGuard && call.Sql != RevenueSql.CodeAmounts && call.Sql != RevenueSql.CodeAmountsByDay
             && (Is(call.Args, "@nextDay", nextDay) || Is(call.Args, "@to", nextDay + "0000"))).ToList();
 
     private static bool Is(Dictionary<string, object?> args, string name, string value) =>

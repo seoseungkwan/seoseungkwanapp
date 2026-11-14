@@ -106,12 +106,13 @@ describe('REQ-035 도우미 배선 (글자·빌드)', () => {
   // 0.4.0 = 0.3.0 + 환자 탭 contact.targets(patients TASK-9). 0.3.0도 다른 화면은 그대로 쓰므로 막는 기준 MIN_HELPER는 0.3.0에 둔다
   // 0.5.0 = 0.4.0 + 통계 세 칸(stats.rows v3)·예약 문자 명단·장기 미방문 명단(stats-bit-sections·patients-bit-lists TASK-7). MIN은 그대로 0.3.0
   // 0.5.1 = 0.5.0 + 긴 기간 통계 읽기 속도(첫 내원 해시 잇기, helper-stats-speed TASK-2). MIN은 그대로 0.3.0
-  it('AC-035.7·AC-3402.2 릴리스: 도우미 Version과 웹 LATEST_HELPER가 같은 판 0.5.1이고 MIN_HELPER는 0.3.0이다', () => {
+  // 0.6.0 = 0.5.1 + revenue.days 답에 날마다 처방별 금액 dayCodes(stats-revenue TASK-1). 새 명령 없음, MIN은 그대로 0.3.0
+  it('AC-035.7·AC-3402.2·AC-4101.5 릴리스: 도우미 Version과 웹 LATEST_HELPER가 같은 판 0.6.0이고 MIN_HELPER는 0.3.0이다', () => {
     const props = readFileSync(path.join(ROOT, 'helper', 'Directory.Build.props'), 'utf8')
-    expect(props.match(/<Version>([^<]+)<\/Version>/)?.[1]).toBe('0.5.1')
+    expect(props.match(/<Version>([^<]+)<\/Version>/)?.[1]).toBe('0.6.0')
     const versions = readFileSync(path.join(ROOT, 'src', 'lib', 'bridge', 'versions.ts'), 'utf8')
     expect(versions).toContain("MIN_HELPER = '0.3.0'")
-    expect(versions).toContain("LATEST_HELPER = '0.5.1'")
+    expect(versions).toContain("LATEST_HELPER = '0.6.0'")
   })
 
   it('AC-035.7 배선까지 넣은 도우미가 x86 net48로 빌드된다(Program.cs·InputParts.cs는 이 빌드로만 컴파일된다)', () => {

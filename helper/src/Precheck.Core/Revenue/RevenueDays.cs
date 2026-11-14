@@ -76,13 +76,14 @@ public sealed class RevenueCode
     public long? Amount { get; set; }
 }
 
-/// <summary>revenue.days 답 {days, codes}.</summary>
+/// <summary>revenue.days 답 {days, codes, dayCodes}(dayCodes는 도우미 0.6.0부터).</summary>
 public sealed class RevenueResult
 {
-    public RevenueResult(IReadOnlyList<RevenueDay> days, IReadOnlyList<RevenueCode> codes)
+    public RevenueResult(IReadOnlyList<RevenueDay> days, IReadOnlyList<RevenueCode> codes, IReadOnlyList<object?[]> dayCodes)
     {
         Days = days;
         Codes = codes;
+        DayCodes = dayCodes;
     }
 
     [JsonPropertyName("days")]
@@ -90,6 +91,10 @@ public sealed class RevenueResult
 
     [JsonPropertyName("codes")]
     public IReadOnlyList<RevenueCode> Codes { get; }
+
+    /// <summary>날 단위 처방 줄 [날짜(yyyy-MM-dd), 코드, 건수, 금액 또는 null]. 날짜 차례, 같은 날은 코드 글자(Ordinal) 차례(REQ-4101).</summary>
+    [JsonPropertyName("dayCodes")]
+    public IReadOnlyList<object?[]> DayCodes { get; }
 }
 
 /// <summary>
@@ -100,6 +105,9 @@ public static class RevenueDays
 {
     public const int MaxDays = 31;
     public const int MaxCodes = 1000;
+
+    /// <summary>dayCodes 하루 줄 수 한도(_REST 포함). MaxDays × 이것 = 답 한도 9,300줄(design.md 잰 것).</summary>
+    public const int MaxDayCodesPerDay = 300;
 
     /// <summary>모양이 맞지 않거나 1,000개를 넘쳐 합친 나머지(이름 없는 '그 밖').</summary>
     public const string RestCode = "_REST";
@@ -139,7 +147,8 @@ public static class RevenueDays
         {
             days.Add(ReadDay(db, hospitalScope, day, historyKnown));
         }
-        return new RevenueResult(days, ReadCodes(db, hospitalScope, first, last));
+        var codes = ReadCodes(db, hospitalScope, first, last);
+        return new RevenueResult(days, codes, ReadDayCodes(db, hospitalScope, first, last));
     }
 
     private static RevenueDay ReadDay(IBitDb db, string scope, DateTime day, bool historyKnown)
@@ -236,15 +245,134 @@ public static class RevenueDays
         row.ReturnVisits = visits - newPatients;
     }
 
-    private static IReadOnlyList<RevenueCode> ReadCodes(IBitDb db, string scope, DateTime first, DateTime last)
-    {
-        var values = new Dictionary<string, string>(StringComparer.Ordinal)
+    private static IReadOnlyList<RevenueCode> ReadCodes(IBitDb db, string scope, DateTime first, DateTime last) =>
+        TidyCodes(Query(db, RevenueSql.CodeAmounts, PeriodValues(scope, first, last)));
+
+    /// <summary>기간 문장 매개변수: 첫날 0000 ~ 끝날 다음 날 0000.</summary>
+    private static Dictionary<string, string> PeriodValues(string scope, DateTime first, DateTime last) =>
+        new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["@from"] = Key(first) + Midnight,
             ["@to"] = Key(last.AddDays(1)) + Midnight,
             ["@hospital"] = scope,
         };
-        return TidyCodes(Query(db, RevenueSql.CodeAmounts, values));
+
+    /// <summary>
+    /// 날 단위 처방 줄(REQ-4101). 문장은 기간에 한 번. 정리는 TidyCodes와 같은 규칙을 날마다 한다: 앞뒤 공백을 뺀 같은 코드는 그날 한 줄로
+    /// 합치고, 모양이 틀린 코드·_REST, 하루 300줄을 넘게 하는 금액 순 299번째 뒤 코드(금액 null은 맨 뒤)는 그날 _REST 한 줄로 합친다.
+    /// 금액은 합친 decimal에서 원 미만을 버리고(웹이 받지 못하는 값은 null), 빠진 값이 섞이면 null. 날 글자가 yyyyMMdd가 아니거나 기간 밖이면 읽기 실패.
+    /// </summary>
+    private static IReadOnlyList<object?[]> ReadDayCodes(IBitDb db, string scope, DateTime first, DateTime last)
+    {
+        var days = new SortedDictionary<DateTime, DayLines>();
+        foreach (var row in Query(db, RevenueSql.CodeAmountsByDay, PeriodValues(scope, first, last)))
+        {
+            if (row.Count < 5) throw ReadFailed();
+            var day = DayOf(row[0], first, last);
+            if (!days.TryGetValue(day, out var lines)) days[day] = lines = new DayLines();
+            lines.Add(new DayCode
+            {
+                Code = (row[1] as string ?? "").Trim(),
+                Count = Number(row[2]),
+                Amount = Number(row[4]) != 0 ? null : Amount(row[3]),
+            });
+        }
+
+        var result = new List<object?[]>();
+        foreach (var pair in days)
+        {
+            var date = pair.Key.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            foreach (var line in pair.Value.Fold())
+            {
+                result.Add(new object?[] { date, line.Code, line.Count, line.Amount.HasValue ? WebAmount(line.Amount.Value) : null });
+            }
+        }
+        return result;
+    }
+
+    private static DateTime DayOf(object? cell, DateTime first, DateTime last)
+    {
+        if (!(cell is string text)
+            || !DateTime.TryParseExact(text, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day)
+            || day < first || day > last)
+        {
+            throw ReadFailed();
+        }
+        return day;
+    }
+
+    /// <summary>날 단위 한 줄. 금액은 버리기 전 decimal(null = 값 빠짐).</summary>
+    private sealed class DayCode
+    {
+        public string Code { get; set; } = "";
+
+        public long Count { get; set; }
+
+        public decimal? Amount { get; set; }
+    }
+
+    /// <summary>하루치 코드 줄: 맞는 모양은 코드별로 합치고, 그 밖은 _REST 몫으로 모은다.</summary>
+    private sealed class DayLines
+    {
+        private readonly Dictionary<string, DayCode> merged = new Dictionary<string, DayCode>(StringComparer.Ordinal);
+        private readonly List<DayCode> rest = new List<DayCode>();
+
+        public void Add(DayCode line)
+        {
+            if (!CodeShape.IsMatch(line.Code) || line.Code == RestCode)
+            {
+                rest.Add(line);
+            }
+            else if (merged.TryGetValue(line.Code, out var same))
+            {
+                same.Count += line.Count;
+                same.Amount = AddDecimals(same.Amount, line.Amount);
+            }
+            else
+            {
+                merged[line.Code] = line;
+            }
+        }
+
+        /// <summary>하루 MaxDayCodesPerDay줄 이하, 코드 글자 차례.</summary>
+        public IEnumerable<DayCode> Fold()
+        {
+            var ordered = merged.Values
+                .OrderBy(code => code.Amount.HasValue ? 0 : 1)
+                .ThenByDescending(code => code.Amount ?? 0m)
+                .ThenBy(code => code.Code, StringComparer.Ordinal)
+                .ToList();
+            var folded = new List<DayCode>(rest);
+            if (ordered.Count + (folded.Count > 0 ? 1 : 0) > MaxDayCodesPerDay)
+            {
+                folded.AddRange(ordered.Skip(MaxDayCodesPerDay - 1));
+                ordered = ordered.Take(MaxDayCodesPerDay - 1).ToList();
+            }
+            if (folded.Count > 0)
+            {
+                ordered.Add(new DayCode
+                {
+                    Code = RestCode,
+                    Count = folded.Sum(code => code.Count),
+                    Amount = folded.Aggregate((decimal?)0m, (sum, code) => AddDecimals(sum, code.Amount)),
+                });
+            }
+            return ordered.OrderBy(code => code.Code, StringComparer.Ordinal);
+        }
+    }
+
+    /// <summary>둘 중 하나라도 null(값 빠짐)이면 null. decimal을 넘치면 웹이 받지 못하는 금액이므로 null.</summary>
+    private static decimal? AddDecimals(decimal? left, decimal? right)
+    {
+        if (!left.HasValue || !right.HasValue) return null;
+        try
+        {
+            return left.Value + right.Value;
+        }
+        catch (OverflowException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -301,9 +429,11 @@ public static class RevenueDays
     }
 
     /// <summary>원 미만 버림. 웹이 받지 못하는 금액(음수·안전한 정수 넘음)은 값을 맞춰 고치지 않고 null로 둔다(그 코드 때문에 한 달이 거부되지 않게).</summary>
-    private static long? CodeAmount(object? cell)
+    private static long? CodeAmount(object? cell) => WebAmount(Amount(cell));
+
+    private static long? WebAmount(decimal amount)
     {
-        var whole = decimal.Truncate(Amount(cell));
+        var whole = decimal.Truncate(amount);
         return whole < 0m || whole > MaxSafeInteger ? (long?)null : decimal.ToInt64(whole);
     }
 

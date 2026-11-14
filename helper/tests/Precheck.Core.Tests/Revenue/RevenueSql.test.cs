@@ -14,7 +14,7 @@ namespace Precheck.Core.Tests.Revenue;
 /// <summary>
 /// AC-1001.3 사본은 고치지 않는다. 첫 내원 연결 조건 글 하나(FirstVisitJoin)만 바꾼 사본과 견준다.
 /// AC-003.1 원본 문장은 사본과 공백·끝 ;·-- 줄만 다르고, Extra 둘은 원본과 정해 둔 줄만 다르다.
-/// AC-003.8 ReadOnlyGuard는 매출 문장 10개를 정해 둔 매개변수와 함께만 통과시킨다. 기존 Sql 상수·시험은 그대로.
+/// AC-003.8 ReadOnlyGuard는 매출 문장 11개(AC-4101.2 날 단위 CodeAmountsByDay 포함)를 정해 둔 매개변수와 함께만 통과시킨다. 기존 Sql 상수·시험은 그대로.
 /// </summary>
 public class RevenueSqlTests
 {
@@ -34,8 +34,8 @@ public class RevenueSqlTests
         ["patients.sql"] = RevenueSql.Patients,
     };
 
-    private static readonly string[] Ten = Originals.Values
-        .Concat(new[] { RevenueSql.CodeAmounts, RevenueSql.FinanceNormalExtra, RevenueSql.FinanceReceivableExtra })
+    private static readonly string[] Eleven = Originals.Values
+        .Concat(new[] { RevenueSql.CodeAmounts, RevenueSql.FinanceNormalExtra, RevenueSql.FinanceReceivableExtra, RevenueSql.CodeAmountsByDay })
         .ToArray();
 
     private static string OriginalDirectory()
@@ -157,13 +157,13 @@ public class RevenueSqlTests
 
     // ---- AC-003.8 허용 목록 -------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-003.8 매출 문장은 10개이고 모두 읽기 문장 하나다(SELECT·WITH 시작, ;·주석·쓰기 낱말 없음)")]
+    [Fact(DisplayName = "AC-003.8 AC-4101.2 매출 문장은 11개(날 단위 CodeAmountsByDay 더함)이고 모두 읽기 문장 하나다(SELECT·WITH 시작, ;·주석·쓰기 낱말 없음)")]
     public void StatementsAreSingleReads()
     {
         var forbidden = new Regex(@"\b(INSERT|UPDATE|DELETE|MERGE|EXEC|EXECUTE|DROP|ALTER|CREATE|TRUNCATE|INTO|GRANT|REVOKE|DENY|OPENROWSET|OPENQUERY|BULK|SHUTDOWN|DBCC|BACKUP|RESTORE|WAITFOR)\b|xp_|sp_", RegexOptions.IgnoreCase);
-        Assert.Equal(10, Ten.Distinct(StringComparer.Ordinal).Count());
-        Assert.Equal(Ten.OrderBy(sql => sql, StringComparer.Ordinal), RevenueSql.Parameters.Keys.OrderBy(sql => sql, StringComparer.Ordinal));
-        foreach (var sql in Ten)
+        Assert.Equal(11, Eleven.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(Eleven.OrderBy(sql => sql, StringComparer.Ordinal), RevenueSql.Parameters.Keys.OrderBy(sql => sql, StringComparer.Ordinal));
+        foreach (var sql in Eleven)
         {
             Assert.True(sql.StartsWith("SELECT ", StringComparison.Ordinal) || sql.StartsWith("WITH ", StringComparison.Ordinal));
             Assert.DoesNotContain(";", sql, StringComparison.Ordinal);
@@ -184,7 +184,7 @@ public class RevenueSqlTests
             ["@to"] = "Char:12",
             ["@hospital"] = "VarChar:32",
         };
-        foreach (var sql in Ten)
+        foreach (var sql in Eleven)
         {
             var named = Regex.Matches(sql, @"@\w+").Cast<Match>().Select(m => m.Value).Distinct().OrderBy(name => name, StringComparer.Ordinal);
             var declared = RevenueSql.Parameters[sql];
@@ -197,7 +197,7 @@ public class RevenueSqlTests
     [Fact(DisplayName = "AC-003.8 ReadOnlyGuard는 매출 문장을 정해 둔 매개변수와 함께 통과시키고 표를 돌려준다")]
     public void GuardPassesRevenueStatements()
     {
-        foreach (var sql in Ten)
+        foreach (var sql in Eleven)
         {
             Assert.True(Sql.IsAllowed(sql));
             ReadOnlyGuard.Require(sql);
@@ -224,7 +224,7 @@ public class RevenueSqlTests
     [Fact(DisplayName = "AC-003.8 매개변수가 빠지거나·더해지거나·글자가 아니거나·길면 막는다")]
     public void GuardRefusesBadArguments()
     {
-        foreach (var sql in Ten.Where(sql => RevenueSql.Parameters[sql].Length > 0))
+        foreach (var sql in Eleven.Where(sql => RevenueSql.Parameters[sql].Length > 0))
         {
             var missing = ValidArgs(sql);
             missing.Remove(missing.Keys.First());
@@ -253,5 +253,97 @@ public class RevenueSqlTests
         foreach (var sql in new[] { Sql.UserScopeSql, Sql.ScopesSql, Sql.InstitutionSql, Sql.SnapshotStateSql }) Assert.Contains(sql, Sql.All);
         foreach (var sql in RevenueSql.Parameters.Keys) Assert.DoesNotContain(sql, Sql.All);
         Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => Sql.ParametersOf("SELECT 1")).Code);
+    }
+
+    // ---- AC-4101.2 날 단위 처방 금액 문장 ---------------------------------------------------------------
+
+    private const string CodesHead = "WITH Codes AS ( SELECT RTRIM(o.OdrCod) AS Code,";
+    private const string CodesGroup = "GROUP BY RTRIM(o.OdrCod))";
+
+    [Fact(DisplayName = "AC-4101.2 CodeAmountsByDay는 CodeAmounts와 WHERE·금액 식·MissingValues가 글자까지 같고, 첫 칸 LEFT(o.OdrDtm,8) AS Day·GROUP BY 줄·끝 SELECT(이름 하위 질의 없음)만 다르다")]
+    public void DayStatementDiffersOnlyInDayColumn()
+    {
+        var old = Squash(RevenueSql.CodeAmounts);
+        Assert.StartsWith(CodesHead, old, StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(old, Regex.Escape(CodesGroup)).Cast<Match>());
+        var body = old.Substring(CodesHead.Length, old.IndexOf(CodesGroup, StringComparison.Ordinal) - CodesHead.Length);
+
+        // 견주는 몸통에 WHERE·금액 식·MissingValues가 다 들어 있다(빈 곳을 견주지 않는다)
+        Assert.Contains("AS Amount", body, StringComparison.Ordinal);
+        Assert.Contains("AS MissingValues", body, StringComparison.Ordinal);
+        Assert.Contains("WHERE o.OdrDtm >= @from AND o.OdrDtm < @to", body, StringComparison.Ordinal);
+        Assert.Contains("c.OcmRsuYon <> 'O')", body, StringComparison.Ordinal);
+
+        var expected = "WITH Codes AS ( SELECT LEFT(o.OdrDtm,8) AS Day, RTRIM(o.OdrCod) AS Code," + body
+            + "GROUP BY LEFT(o.OdrDtm,8), RTRIM(o.OdrCod)) SELECT c.Day, c.Code, c.Lines, c.Amount, c.MissingValues FROM Codes c";
+        Assert.Equal(expected, Squash(RevenueSql.CodeAmountsByDay));
+    }
+
+    [Fact(DisplayName = "AC-4101.2 CodeAmountsByDay는 이름(SeeMst)·차트번호·환자 칸을 읽지 않는다: 답 칸은 Day·Code·Lines·Amount·MissingValues 다섯뿐")]
+    public void DayStatementReadsNoPatientColumns()
+    {
+        var sql = Squash(RevenueSql.CodeAmountsByDay);
+        foreach (var word in new[] { "SeeMst", "SeeKorNam", "Nam", "Cht", "Pbs", "SELECT TOP" }) Assert.DoesNotContain(word, sql, StringComparison.Ordinal);
+        Assert.EndsWith(") SELECT c.Day, c.Code, c.Lines, c.Amount, c.MissingValues FROM Codes c", sql, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "AC-4101.2 CodeAmountsByDay 매개변수 표는 @from·@to Char 12·@hospital VarChar 32 셋뿐이고 관문(허용 목록)을 지난다")]
+    public void DayStatementParameters()
+    {
+        var sql = RevenueSql.CodeAmountsByDay;
+        Assert.Equal(
+            new[] { "@from:Char:12", "@to:Char:12", "@hospital:VarChar:32" },
+            RevenueSql.Parameters[sql].Select(p => p.Name + ":" + p.Kind + ":" + p.Size));
+        Assert.True(Sql.IsAllowed(sql));
+        Assert.Same(RevenueSql.Parameters[sql], Sql.ParametersOf(sql));
+        Assert.DoesNotContain(sql, Sql.All);
+
+        var db = new FakeDb().Answer(sql, _ => new object?[0][]);
+        ReadOnlyGuard.Query(db, sql, ValidArgs(sql), TimeSpan.FromSeconds(90));
+        Assert.Single(db.Calls);
+    }
+
+    public static IEnumerable<object?[]> BadDayStatements()
+    {
+        yield return new object?[] { "끝 공백", RevenueSql.CodeAmountsByDay + " " };
+        yield return new object?[] { "이어 붙임", RevenueSql.CodeAmountsByDay + "; DELETE FROM dbo.OdrInf" };
+        yield return new object?[] { "소문자", RevenueSql.CodeAmountsByDay.ToLowerInvariant() };
+        yield return new object?[] { "병원 글자 박음", RevenueSql.CodeAmountsByDay.Replace("@hospital", "'SYNTHETIC'") };
+        yield return new object?[] { "날 자리 바꿈", RevenueSql.CodeAmountsByDay.Replace("LEFT(o.OdrDtm,8)", "LEFT(o.OdrDtm,6)") };
+        yield return new object?[] { "이름 칸 더함", RevenueSql.CodeAmountsByDay.Replace("c.MissingValues FROM", "c.MissingValues, (SELECT TOP 1 RTRIM(s.SeeKorNam) FROM dbo.SeeMst s) AS Name FROM") };
+    }
+
+    [Theory(DisplayName = "AC-4101.2 글자를 고친 CodeAmountsByDay는 DB에 닿기 전에 E-BIT-READ-FAILED로 막는다")]
+    [MemberData(nameof(BadDayStatements))]
+    public void GuardRefusesChangedDayStatement(string what, string sql)
+    {
+        Assert.NotEmpty(what);
+        Assert.NotEqual(RevenueSql.CodeAmountsByDay, sql);
+        var db = new FakeDb().Answer(sql, _ => new object?[0][]);
+        var args = ValidArgs(RevenueSql.CodeAmountsByDay);
+        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Query(db, sql, args, TimeSpan.FromSeconds(90))).Code);
+        Assert.Empty(db.Calls);
+    }
+
+    public static IEnumerable<object?[]> BadDayArguments()
+    {
+        yield return new object?[] { "@day 더함", "@day", "20261030", null };
+        yield return new object?[] { "@hospital 빠짐", null, null, "@hospital" };
+        yield return new object?[] { "@from 13자", "@from", "2026103000000", null };
+        yield return new object?[] { "@to 숫자", "@to", 202610310000L, null };
+    }
+
+    [Theory(DisplayName = "AC-4101.2 CodeAmountsByDay에 다른 매개변수(더함·빠짐·긺·글자 아님)를 주면 DB에 닿기 전에 E-BIT-READ-FAILED")]
+    [MemberData(nameof(BadDayArguments))]
+    public void GuardRefusesOtherDayArguments(string what, string? set, object? value, string? remove)
+    {
+        Assert.NotEmpty(what);
+        var sql = RevenueSql.CodeAmountsByDay;
+        var args = ValidArgs(sql);
+        if (set != null) args[set] = value;
+        if (remove != null) args.Remove(remove);
+        var db = new FakeDb().Answer(sql, _ => new object?[0][]);
+        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Query(db, sql, args, TimeSpan.FromSeconds(90))).Code);
+        Assert.Empty(db.Calls);
     }
 }
