@@ -664,12 +664,12 @@ describe('AC-4105.6 소스 규칙', () => {
     expect(source).not.toMatch(/components\/revenue\/view/)
   })
 
-  it('AC-4105.6 보기 타입은 components/revenue/types.ts에 있고 view.ts는 그것을 다시 내보낸다(실행 코드 없음)', () => {
+  // view.ts는 TASK-8(AC-4110.4)이 지웠다 — 다시 내보내기 확인은 그때 빠졌다
+  it('AC-4105.6 보기 타입은 components/revenue/types.ts에 있다(실행 코드 없음)', () => {
     const types = readFileSync(join(process.cwd(), 'src/components/revenue/types.ts'), 'utf8')
     for (const name of ['Tone', 'Kpi', 'DeltaText', 'Notice', 'SrTable', 'LegendItem', 'Axis', 'BarKind', 'Column', 'Chart', 'StackSegment', 'StackColumn', 'StackChart', 'SplitRow', 'TreatmentRow']) {
       expect(types).toMatch(new RegExp(`export type ${name}\\b`))
     }
     expect(types).not.toMatch(/^(?:import|export (?:const|function|class))/m)
-    expect(readFileSync(join(process.cwd(), 'src/components/revenue/view.ts'), 'utf8')).toMatch(/from '\.\/types'/)
   })
 })
