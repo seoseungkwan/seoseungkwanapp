@@ -74,102 +74,87 @@ afterEach(cleanup)
 
 const cellText = (name: string) => screen.getByText(name).closest('.grid-cols-4 > div')!.textContent
 
-describe('AC-513.1·AC-801.1·AC-1201.1·AC-4003.1: 섹션 차례', () => {
-  // 처방 세 칸은 한 칸 `처방` + 탭 셋이다(stats-pc-ux AC-4003.1). 비트 전용 세 칸은 bit를 줄 때만 있다
-  const TITLES = ['기간 요약', '환자 수 추이', '신환 재방문율', '처방', '원장님 보고 문장', '요일별 환자 수']
+describe('AC-513.1·AC-801.1·AC-1201.1·AC-4003.1·AC-4411.1: 섹션 차례', () => {
+  // first90 AC-4411.1: 요약 자리 → 큰 카드(환자 · 매출 · 처방 · 진료 운영 · 보고). 처방 세 칸은 처방 카드 + 탭 셋이다(stats-pc-ux AC-4003.1).
+  // 카드 안 작은 칸(h3) 이름은 각 칸 시험이 본다. 매출 카드는 revenue를, 비트 칸은 bit를 줄 때만 있다
+  const PLACES = [
+    ['stats-summary', '기간 요약'],
+    ['stats-patients', '환자'],
+    ['stats-rx', '처방'],
+    ['stats-ops', '진료 운영'],
+    ['stats-report', '원장님 보고 문장'],
+  ]
+  const titleOf = (el: Element) => document.getElementById(el.getAttribute('aria-labelledby') ?? '')?.textContent ?? null
+  const places = () => [...document.querySelectorAll('section[id^="stats-"]')].map((el) => [el.id, titleOf(el)])
   const draw = (saved: boolean) =>
     render(
       <StatsSections input={inputOf(saved ? [day('2026-11-02', 10)] : [], saved ? WHOLE : [])} saved={saved} split={null} hospitalName="튼튼의원" report={null} groups={GROUPS} />,
     )
 
-  it('AC-513.1·AC-801.1·AC-1201.1·AC-4003.1: 여섯 섹션이 승인본 차례이고 섹션마다 h2다. 처방 추세 · 처방별 추세 · 처방별 신환·재진 · 처방 골라 보기 h2는 없다', () => {
+  it('AC-513.1·AC-801.1·AC-1201.1·AC-4003.1·AC-4411.1: 요약 → 카드 넷이 승인본 차례다. 처방 추세 · 처방별 추세 · 처방별 신환·재진 · 처방 골라 보기는 제목이 아니다', () => {
     draw(true)
-    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(TITLES)
+    expect(places()).toEqual(PLACES)
     expect(screen.queryByRole('heading', { name: '처방 추세' })).toBeNull()
-    for (const name of ['처방별 추세', '처방별 신환·재진', '처방 골라 보기']) expect(screen.queryByRole('heading', { level: 2, name, hidden: true }), name).toBeNull()
+    for (const name of ['처방별 추세', '처방별 신환·재진', '처방 골라 보기']) expect(screen.queryByRole('heading', { name, hidden: true }), name).toBeNull()
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['묶음별 추세', '처방별 신환·재진', '처방 골라 보기'])
   })
 
-  it('AC-513.1·AC-801.1·AC-1201.1·AC-4003.1: 저장된 숫자가 없어도 차례가 같다', () => {
+  it('AC-513.1·AC-801.1·AC-1201.1·AC-4003.1·AC-4411.1: 저장된 숫자가 없어도 차례가 같다', () => {
     draw(false)
-    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(TITLES)
+    expect(places()).toEqual(PLACES)
     expect(screen.queryByRole('heading', { name: '처방 추세' })).toBeNull()
   })
 
-  it('AC-513.1·AC-801.1·AC-1201.1·AC-4003.1: 1024px 이상 배치는 12 / 8·4 / 12 / 7·5이고 오른쪽 칸은 왼쪽 선 + 안쪽 24다', () => {
+  it('AC-4411.1: 카드는 나란히 놓지 않고 한 줄씩 쌓는다(12칸 배치·세로선 없음)', () => {
     draw(true)
-    const sectionOf = (title: string) => screen.getByRole('heading', { level: 2, name: title }).closest('section')!.className
-    expect(sectionOf('기간 요약')).toContain('col-span-12')
-    expect(sectionOf('환자 수 추이')).toContain('lg:col-span-8')
-    expect(sectionOf('원장님 보고 문장')).toContain('lg:col-span-7')
-    // 처방 칸은 전체 폭이고 세로선·왼쪽 여백이 없다
-    expect(sectionOf('처방').split(' ')).toContain('col-span-12')
-    expect(sectionOf('처방')).not.toContain('lg:')
-    for (const [title, span] of [
-      ['신환 재방문율', 'lg:col-span-4'],
-      ['요일별 환자 수', 'lg:col-span-5'],
-    ] as const) {
-      expect(sectionOf(title)).toContain(span)
-      expect(sectionOf(title)).toContain('lg:border-l')
-      expect(sectionOf(title)).toContain('lg:pl-6')
+    for (const [id] of PLACES) {
+      const className = document.getElementById(id)!.className
+      expect(className, id).not.toMatch(/col-span-|lg:border-l/)
     }
   })
 
-  it('AC-1201.1·AC-3708.7·AC-4003.4: 처음 고른 첫 탭(묶음별 추세)이면 처방 칸 h2 옆에 승인본 설명이 있다(group-exclude AC-3708.7 글자)', () => {
+  it('AC-1201.1·AC-3708.7·AC-4411.3: 처방 카드 머리 줄에 승인본 옆 글이 있고 [묶음 고치기]는 처방 카드 안에 있다(group-exclude AC-3708.7 글자)', () => {
     draw(true)
-    const head = screen.getByRole('heading', { level: 2, name: '처방' }).parentElement!
-    expect(within(head).getByText('만들어 둔 묶음마다 건수와 총환자 대비 · 같은 날 같은 환자는 1건')).toBeTruthy()
-    expect(within(head).getByRole('button', { name: '묶음 고치기' })).toBeTruthy()
+    const rx = document.getElementById('stats-rx')!
+    const head = document.getElementById(rx.getAttribute('aria-labelledby')!)!.parentElement!
+    expect(within(head).getAllByText('만들어 둔 묶음마다 건수와 총환자 대비 · 같은 날 같은 환자는 1건').length).toBeGreaterThan(0)
+    expect(within(rx).getByRole('button', { name: '묶음 고치기' })).toBeTruthy()
   })
 
-  it('AC-4002.6: 아홉 칸 section마다 목차 id와 목차 띠에 가리지 않는 scroll-margin이 있고, 안쪽(탭 안 칸 포함)에는 id가 없다', () => {
-    const IDS = [
-      ['기간 요약', 'stats-summary'],
-      ['환자 수 추이', 'stats-trend'],
-      ['신환 재방문율', 'stats-revisit'],
-      ['처방', 'stats-rx'],
-      ['원장님 보고 문장', 'stats-report'],
-      ['요일별 환자 수', 'stats-weekday'],
-      ['환자 구성', 'stats-mix'],
-      ['시간대별 접수', 'stats-hours'],
-      ['원장님별', 'stats-doctors'],
-    ] as const
+  it('AC-4002.6·AC-4411.2: 바로가기 자리 section마다 id와 띠에 가리지 않는 scroll-margin이 있고, 안쪽(탭 안 칸 포함)에는 id가 없다', () => {
     const { container } = render(
       <StatsSections input={inputOf([day('2026-11-02', 10)], WHOLE)} saved split={null} hospitalName="튼튼의원" report={null} groups={GROUPS} bit={null} />,
     )
-    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(IDS.map(([title]) => title))
-    for (const [title, id] of IDS) {
-      const section = screen.getByRole('heading', { level: 2, name: title }).closest('section')!
-      expect(section.id, title).toBe(id)
-      expect(section.className.split(' '), title).toEqual(expect.arrayContaining(['scroll-mt-36.25', 'max-md:scroll-mt-34.75']))
+    expect(places()).toEqual(PLACES)
+    for (const [id] of PLACES) {
+      expect(document.getElementById(id)!.tagName, id).toBe('SECTION')
+      expect(document.getElementById(id)!.className.split(' '), id).toEqual(expect.arrayContaining(['scroll-mt-41', 'max-md:scroll-mt-40']))
     }
-    expect(container.querySelectorAll('[id^="stats-"]')).toHaveLength(IDS.length)
-    // 탭 안 칸(묶음별 추세 · 처방별 신환·재진 · 처방 골라 보기)은 h2 칸이 아니다(숨은 패널 포함)
+    expect(container.querySelectorAll('[id^="stats-"]')).toHaveLength(PLACES.length)
+    // 탭 안 칸(묶음별 추세 · 처방별 신환·재진 · 처방 골라 보기)은 제목 칸이 아니다(숨은 패널 포함)
     const rx = container.querySelector<HTMLElement>('#stats-rx')!
-    expect(within(rx).queryAllByRole('heading', { level: 2, hidden: true }).map((h) => h.textContent)).toEqual(['처방'])
+    const titles = within(rx).queryAllByRole('heading', { hidden: true }).map((h) => h.textContent)
+    for (const name of ['처방별 추세', '처방별 신환·재진', '처방 골라 보기']) expect(titles, name).not.toContain(name)
   })
 
-  // stats-revenue: 매출 값(useStatsRevenue 값 + 마지막 끝난 날)을 주면 `매출` 칸이 재방문율 다음 · 처방 앞에 있고 기간 요약에 둘째 줄이 있다.
-  // 주지 않으면 지금 아홉 칸 그대로다(위 AC-4002.6 시험)
+  // stats-revenue: 매출 값(useStatsRevenue 값 + 마지막 끝난 날)을 주면 `매출` 카드가 환자 카드 다음 · 처방 카드 앞에 있고 기간 요약에 둘째 줄이 있다.
+  // 주지 않으면 매출 카드가 없다(위 시험)
   const REVENUE_READY = { state: 'ready' as const, days: [], codes: [], monthCodes: [], noDayCodes: false, lastDay: '2026-11-12', onReread: () => undefined }
-  const TEN = ['기간 요약', '환자 수 추이', '신환 재방문율', '매출', '처방', '원장님 보고 문장', '요일별 환자 수', '환자 구성', '시간대별 접수', '원장님별']
+  const WITH_REVENUE = [PLACES[0], PLACES[1], ['stats-revenue', '매출'], ...PLACES.slice(2)]
   const drawWithRevenue = (revenue: Omit<typeof REVENUE_READY, 'state'> & { state: 'reading' | 'ready' | 'read-failed' } = REVENUE_READY) =>
     render(
       <StatsSections input={inputOf([day('2026-11-02', 10)], WHOLE)} saved split={null} hospitalName="튼튼의원" report={null} groups={GROUPS} bit={null} revenue={revenue} />,
     )
   const summaryGrids = () => [...screen.getByRole('heading', { level: 2, name: '기간 요약' }).closest('section')!.querySelectorAll('.grid')]
 
-  it('AC-4109.1·AC-4107.1: 매출 값을 주면 h2 열이 승인본 차례이고 `매출`은 재방문율 다음 · 처방 앞 전체 폭 칸(목차 자리 id stats-revenue)이다', () => {
+  it('AC-4109.1·AC-4107.1·AC-4411.1: 매출 값을 주면 `매출` 카드가 환자 카드 다음 · 처방 카드 앞(바로가기 자리 id stats-revenue)이다', () => {
     const { container } = drawWithRevenue()
-    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(TEN)
-    const section = screen.getByRole('heading', { level: 2, name: '매출' }).closest('section')!
-    expect(section.id).toBe('stats-revenue')
-    expect(section.className.split(' ')).toEqual(expect.arrayContaining(['col-span-12', 'scroll-mt-36.25', 'max-md:scroll-mt-34.75']))
-    expect(section.className).not.toContain('lg:')
-    expect(container.querySelectorAll('[id^="stats-"]')).toHaveLength(TEN.length)
+    expect(places()).toEqual(WITH_REVENUE)
+    expect(document.getElementById('stats-revenue')!.className.split(' ')).toEqual(expect.arrayContaining(['scroll-mt-41', 'max-md:scroll-mt-40']))
+    expect(container.querySelectorAll('[id^="stats-"]')).toHaveLength(WITH_REVENUE.length)
   })
 
-  it('AC-4109.1·AC-4106.3: 매출 값을 주면 기간 요약에 둘째 줄(매출 네 칸)이 있고, 주지 않으면 지금 아홉 칸 그대로 둘째 줄이 없다', () => {
+  it('AC-4109.1·AC-4106.3: 매출 값을 주면 기간 요약에 둘째 줄(매출 네 칸)이 있고, 주지 않으면 매출 카드·둘째 줄이 없다', () => {
     drawWithRevenue()
     expect(summaryGrids()).toHaveLength(2)
     expect([...summaryGrids()[1]!.children].map((cell) => cell.textContent)).toEqual(['매출–자료 없음', '건당 진료비–자료 없음', '확인 필요한 날–자료 없음', '비교 기간보다–자료 없음'])
@@ -177,7 +162,7 @@ describe('AC-513.1·AC-801.1·AC-1201.1·AC-4003.1: 섹션 차례', () => {
     cleanup()
 
     render(<StatsSections input={inputOf([day('2026-11-02', 10)], WHOLE)} saved split={null} hospitalName="튼튼의원" report={null} groups={GROUPS} bit={null} />)
-    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(TEN.filter((title) => title !== '매출'))
+    expect(places()).toEqual(PLACES)
     expect(summaryGrids()).toHaveLength(1)
   })
 
