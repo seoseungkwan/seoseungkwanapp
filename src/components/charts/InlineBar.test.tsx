@@ -105,3 +105,32 @@ describe('AC-205.7: InlineBar — aria-hidden 감싸개(140×12) 안에 이번 �
     expect(inline(86, 74, 402).querySelectorAll('svg')).toHaveLength(0)
   })
 })
+
+// ── first90 REQ-4417 줄 안 막대 움직임 (design.md 5-4·5-3): motion이면 막대에 st-move-period(폭 300ms, globals.css CSS만). 주지 않으면 지금 마크업 그대로
+const NOW_86 =
+  '<span aria-hidden="true" class="relative block h-3 w-35 shrink-0"><span class="absolute top-0.5 left-0 h-2 bg-accent" style="width:21.39%"></span><span class="absolute top-0 h-3 w-0.5 -translate-x-1/2 bg-faint" style="left:18.41%"></span></span>'
+
+describe('AC-4417.2: InlineBar motion — 막대 폭이 바뀌면 st-move-period로 움직인다', () => {
+  it('AC-4417.2: motion을 주지 않거나 false면 마크업이 지금과 한 글자도 같다(st- 이름 없음)', () => {
+    expect(renderToStaticMarkup(<InlineBar current={86} previous={74} max={402} />)).toBe(NOW_86)
+    expect(renderToStaticMarkup(<InlineBar current={86} previous={74} max={402} motion={false} />)).toBe(NOW_86)
+    expect(renderToStaticMarkup(<InlineBar current={86} previous={null} max={402} motion={false} />)).toBe(
+      renderToStaticMarkup(<InlineBar current={86} previous={null} max={402} />),
+    )
+  })
+
+  it('AC-4417.2: motion이면 이번 막대에만 st-move-period가 붙고 눈금·감싸개는 그대로다', () => {
+    const root = mount(<InlineBar current={86} previous={74} max={402} motion />)
+    expectClasses(barOf(root)[0], 'absolute', 'left-0', 'top-0.5', 'h-2', 'bg-accent', 'st-move-period')
+    expect(styleOf(barOf(root)[0])).toBe('width:21.39%')
+    expect(classesOf(tickOf(root)[0])).not.toContain('st-move-period')
+    expect(classesOf(wrapperOf(root))).not.toContain('st-move-period')
+    // 이름 하나만 더한다
+    expect(root.innerHTML.replace(' st-move-period', '')).toBe(NOW_86)
+  })
+
+  it('AC-4417.2·AC-4417.4: motion이어도 animate-*·transition 클래스·style이 없다(움직임은 CSS 이름이 한다)', () => {
+    const html = renderToStaticMarkup(<InlineBar current={86} previous={74} max={402} motion />)
+    expect(html).not.toMatch(/animate-|transition|animation/)
+  })
+})

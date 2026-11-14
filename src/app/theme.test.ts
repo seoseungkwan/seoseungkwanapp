@@ -174,8 +174,47 @@ const TYPE: Record<string, [number, number, 'heading' | 'display' | null]> = {
 const ELEV_FLOAT = '0 1px 2px rgb(17 24 39 / 0.06), 0 6px 16px rgb(17 24 39 / 0.1)'
 const FONT_UI = "var(--font-pretendard), 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif"
 
+// ---------- 통계 화면 토큰 (first90 REQ-4416 AC-4416.1, design.md 5-1, UI_GUIDE '통계 화면(first90)') ----------
+// 지금 토큰 값은 그대로 두고 --st-*·--fs-st-*만 더한다. 신환 색은 지금 --accent, 옅은 노랑은 지금 --warning-soft를 쓴다
+const ST_COLOR_TOKENS: Record<string, string> = {
+  'st-canvas': '#F4F6F9',
+  'st-ink': '#172B4D',
+  'st-ink-2': '#3B4A63',
+  'st-muted': '#5B6B82',
+  'st-line': '#E5EAF1',
+  'st-line-2': '#CBD3DF',
+  'st-f90': '#0D9488',
+  'st-ret': '#6B89BF',
+  'st-ref': '#B7791F',
+  'st-ref-2': '#E9C98F',
+  'st-warn-ink': '#975A16',
+  'st-h0': '#F1F4F8',
+  'st-h1': '#DCE8FC',
+  'st-h2': '#B5CEF8',
+  'st-h3': '#7FA9F1',
+  'st-h4': '#3F7BE6',
+  'st-h5': '#1D4ED8',
+}
+// 글자 크기 여섯. 줄 높이 토큰은 없다(design.md 5-1) — Tailwind text-st-*는 크기만 주므로 쓰는 곳이 leading-*을 함께 준다
+const ST_TEXT_SIZES = [15, 17, 18, 22, 34, 40] as const
+const ST_CARD_SHADOW = '0 1px 2px rgb(23 43 77 / 0.04)'
+const ST_TOKENS: Record<string, string> = {
+  ...Object.fromEntries(Object.entries(ST_COLOR_TOKENS).map(([name, value]) => [`--${name}`, value])),
+  '--st-r': '14px',
+  '--st-r-sm': '8px',
+  '--st-card-shadow': ST_CARD_SHADOW,
+  ...Object.fromEntries(ST_TEXT_SIZES.map((size) => [`--fs-st-${size}`, `${size}px`])),
+  '--st-t-toggle': '200ms',
+  '--st-t-period': '300ms',
+  '--st-t-first': '450ms',
+}
+// 768px 미만(휴대폰)에서만 바꾸는 값. layer 밖 '@media (max-width: 767.98px) { :root { … } }' 한 곳에만 둔다
+const ST_PHONE_HEAD = '@media (max-width: 767.98px)'
+const ST_PHONE: Record<string, string> = { '--st-r': '12px', '--fs-st-34': '28px', '--fs-st-40': '34px' }
+
 // :root 토큰 전부: 변수 이름 → 값
 const TOKENS: Record<string, string> = {
+  ...ST_TOKENS,
   ...Object.fromEntries(Object.entries(COLOR_TOKENS).map(([name, value]) => [`--${name}`, value])),
   ...Object.fromEntries(
     Object.entries(TYPE).flatMap(([step, [size, lineHeight]]) => [
@@ -328,29 +367,35 @@ describe('AC-202.2: @theme inline은 토큰을 var()로만 가리킨다', () => 
     }
   })
 
-  it('AC-202.2: 색은 :root 색 토큰 전부(차트·항목 색 포함)를 같은 이름으로 가리키고, 옛 색 별칭(ok·danger·warn)은 남지 않는다', () => {
+  it('AC-202.2·AC-4416.1: 색은 :root 색 토큰 전부(차트·항목 색과 통계 화면 st-* 17색 포함)를 같은 이름으로 가리키고, 옛 색 별칭(ok·danger·warn)은 남지 않는다', () => {
     const colors = themeDecls().filter(([name]) => name.startsWith('--color-') && name !== '--color-*')
     const names = colors.map(([name]) => name)
     expect(names.length, '같은 색 이름을 두 번 선언했다').toBe(new Set(names).size)
     expect(Object.fromEntries(colors)).toEqual({
       ...Object.fromEntries(Object.keys(COLOR_TOKENS).map((name) => [`--color-${name}`, `var(--${name})`])),
       ...Object.fromEntries(Object.entries(OLD_COLORS).map(([old, token]) => [`--color-${old}`, `var(--${token})`])),
+      ...Object.fromEntries(Object.keys(ST_COLOR_TOKENS).map((name) => [`--color-${name}`, `var(--${name})`])),
     })
   })
 
-  it('AC-202.2: 모서리는 control·float(+ 대시보드 빈 자리가 쓰는 옛 card는 control), 그림자는 float 하나다', () => {
+  it('AC-202.2·AC-4416.1: 모서리는 control·float(+ 대시보드 빈 자리가 쓰는 옛 card는 control)와 통계 화면 st·st-sm, 그림자는 float와 통계 화면 카드(st-card)다', () => {
     const decls = themeDecls()
     const radii = decls.filter(([name]) => name.startsWith('--radius-') && name !== '--radius-*')
     expect(Object.fromEntries(radii)).toEqual({
       '--radius-control': 'var(--r-control)',
       '--radius-float': 'var(--r-float)',
       ...Object.fromEntries(Object.entries(OLD_RADII).map(([old, token]) => [`--radius-${old}`, `var(--${token})`])),
+      '--radius-st': 'var(--st-r)',
+      '--radius-st-sm': 'var(--st-r-sm)',
     })
     const shadows = decls.filter(([name]) => name.startsWith('--shadow-') && name !== '--shadow-*')
-    expect(shadows).toEqual([['--shadow-float', 'var(--elev-float)']])
+    expect(shadows).toEqual([
+      ['--shadow-float', 'var(--elev-float)'],
+      ['--shadow-st-card', 'var(--st-card-shadow)'],
+    ])
   })
 
-  it('AC-202.2: 글자는 11단계(크기·줄 높이, heading·heading-m·metric은 --ls-heading, display·display-m은 --ls-display)이고, 옛 별칭은 표의 단계를 그대로 가리킨다', () => {
+  it('AC-202.2·AC-4416.1: 글자는 11단계(크기·줄 높이, heading·heading-m·metric은 --ls-heading, display·display-m은 --ls-display)와 통계 화면 크기 여섯(st-15·17·18·22·34·40, 크기만)이고, 옛 별칭은 표의 단계를 그대로 가리킨다', () => {
     const texts = themeDecls().filter(([name]) => name.startsWith('--text-') && name !== '--text-*')
     const names = texts.map(([name]) => name)
     expect(names.length, '같은 글자 이름을 두 번 선언했다').toBe(new Set(names).size)
@@ -358,9 +403,47 @@ describe('AC-202.2: @theme inline은 토큰을 var()로만 가리킨다', () => 
       Object.fromEntries([
         ...Object.keys(TYPE).flatMap((step) => textTheme(step, step)),
         ...Object.entries(OLD_TEXT).flatMap(([old, step]) => textTheme(old, step)),
+        ...ST_TEXT_SIZES.map((size) => [`--text-st-${size}`, `var(--fs-st-${size})`]),
       ]),
     )
   })
+
+  it('AC-4416.1: 통계 화면 이름은 @theme inline 안에서 시간 토큰(--st-t-*)·휴대폰 값을 가리키지 않는다 — 시간은 globals.css 움직임 규칙만 쓴다', () => {
+    const themeText = themeBlocks().map(([, body]) => body).join('\n')
+    expect(themeText).not.toContain('--st-t-')
+    expect(themeText).not.toMatch(/@media/)
+  })
+
+  it('AC-4416.1: 실제 Tailwind로 돌리면 통계 화면 클래스(bg-st-f90·text-st-34·border-st-line·rounded-st·rounded-st-sm·shadow-st-card)는 var(토큰)을 쓰고, 표에 없는 이름(text-st-16·bg-st-blue)은 만들어지지 않는다', async () => {
+    const css = await tailwindCss([
+      ...Object.keys(ST_COLOR_TOKENS).map((name) => `bg-${name}`),
+      ...ST_TEXT_SIZES.map((size) => `text-st-${size}`),
+      'text-st-ink',
+      'border-st-line',
+      'rounded-st',
+      'rounded-st-sm',
+      'shadow-st-card',
+      'rounded-full',
+      'text-st-16',
+      'bg-st-blue',
+      'rounded-st-lg',
+      'shadow-st',
+    ])
+    for (const name of Object.keys(ST_COLOR_TOKENS)) expect(utility(css, `.bg-${name}`), name).toContain(`background-color: var(--${name})`)
+    for (const size of ST_TEXT_SIZES) {
+      const rule = utility(css, `.text-st-${size}`)
+      expect(rule, `.text-st-${size}가 없다`).not.toBeNull()
+      expect(rule).toContain(`font-size: var(--fs-st-${size})`)
+    }
+    expect(utility(css, '.text-st-ink')).toContain('color: var(--st-ink)')
+    expect(utility(css, '.border-st-line')).toContain('border-color: var(--st-line)')
+    expect(utility(css, '.rounded-st')).toContain('border-radius: var(--st-r)')
+    expect(utility(css, '.rounded-st-sm')).toContain('border-radius: var(--st-r-sm)')
+    expect(utility(css, '.shadow-st-card')).toContain('--tw-shadow: var(--st-card-shadow)')
+    // 스위치·꼬리표의 둥근 끝(rounded-full)은 Tailwind 기본 이름이 그대로 만든다(토큰 없음)
+    expect(utility(css, '.rounded-full')).not.toBeNull()
+    for (const gone of ['.text-st-16', '.bg-st-blue', '.rounded-st-lg', '.shadow-st']) expect(utility(css, gone), gone).toBeNull()
+  }, 30_000)
 
   it('AC-202.2: 글꼴은 --font-sans: var(--font-ui) 하나다', () => {
     const fonts = themeDecls().filter(([name]) => name.startsWith('--font-'))
@@ -449,16 +532,42 @@ describe('AC-013.1: 앱 초기화는 .app-ui 안에만', () => {
 })
 
 describe('AC-202.1: 토큰 값은 layer 밖 :root 한 곳', () => {
-  it('AC-202.1: layer 밖 :root는 하나이고, 변수 선언만 있다', () => {
+  it('AC-202.1·AC-4416.1: layer 밖 :root는 하나이고 변수 선언만 있다 — 그 밖의 :root는 통계 화면 휴대폰 값 한 곳(@media (max-width: 767.98px))뿐이다', () => {
     const bodies = rootBodies()
     expect(bodies.length, 'layer 밖 :root는 하나다').toBe(1)
     const statements = bodies[0].split(';').map((d) => d.trim()).filter(Boolean)
     expect(statements.filter((d) => !d.startsWith('--')), ':root에 변수 말고 다른 선언이 있다').toEqual([])
-    // layer 안이나 다른 곳에 :root를 또 두지 않는다
-    expect([...globals().matchAll(/:root\b/g)].length, 'globals.css의 :root 개수').toBe(1)
+    // layer 안이나 다른 곳에 :root를 또 두지 않는다(휴대폰 값 블록 하나만 더 있다)
+    expect([...globals().matchAll(/:root\b/g)].length, 'globals.css의 :root 개수').toBe(2)
+    const phone = rules(outsideLayers(globals())).filter(([s]) => s.replace(/\s+/g, ' ') === ST_PHONE_HEAD)
+    expect(phone.length, `${ST_PHONE_HEAD} 블록은 하나다`).toBe(1)
+    expect(rules(phone[0][1]).map(([s]) => s)).toEqual([':root'])
   })
 
-  it('AC-202.1·AC-007.1: :root에 토큰 표의 이름·값이 한 번씩 있고, 그 밖에는 design.md 랜딩 별칭과 업무일지 양식 색 넷만 있다(16진수는 대소문자 무시)', () => {
+  it('AC-4416.1: 768px 미만에서 바뀌는 통계 화면 값은 --st-r 12px·--fs-st-34 28px·--fs-st-40 34px 셋뿐이고, 지금 토큰은 휴대폰에서도 바꾸지 않는다', () => {
+    const phone = rules(outsideLayers(globals())).find(([s]) => s.replace(/\s+/g, ' ') === ST_PHONE_HEAD)
+    expect(phone, `${ST_PHONE_HEAD} 블록이 없다`).toBeDefined()
+    const [[, body]] = rules(phone![1])
+    const statements = body.split(';').map((d) => d.trim()).filter(Boolean)
+    expect(statements.filter((d) => !d.startsWith('--')), '휴대폰 :root에 변수 말고 다른 선언이 있다').toEqual([])
+    expect(Object.fromEntries(declarations(body))).toEqual(ST_PHONE)
+    // 바뀌는 이름은 모두 :root에 PC 값이 있는 통계 화면 토큰이다
+    for (const name of Object.keys(ST_PHONE)) expect(Object.keys(ST_TOKENS), name).toContain(name)
+  })
+
+  it('AC-4416.1: 지금 토큰 값은 그대로다 — 통계 화면 이름(--st-*·--fs-st-*)은 지금 토큰 이름과 겹치지 않는다', () => {
+    const current = Object.keys(TOKENS).filter((name) => !(name in ST_TOKENS))
+    expect(current.length, '지금 토큰 표').toBeGreaterThan(40)
+    for (const name of Object.keys(ST_TOKENS)) expect(name, name).toMatch(/^--(?:st|fs-st)-[\w-]+$/)
+    expect(current.filter((name) => /^--(?:st|fs-st)-/.test(name))).toEqual([])
+    // 지금 값(표)과 :root 값이 같다(아래 시험이 이름·값 전부를 견준다) — 신환은 --accent, 옅은 노랑은 --warning-soft를 그대로 쓴다
+    const root = Object.fromEntries(declarations(rootBodies().join('\n')).map(([name, value]) => [name, upperHex(value)]))
+    for (const name of current) expect(root[name], name).toBe(upperHex(TOKENS[name]))
+    expect(root['--accent']).toBe('#2563EB')
+    expect(root['--warning-soft']).toBe('#FDF4E3')
+  })
+
+  it('AC-202.1·AC-007.1·AC-4416.1: :root에 토큰 표(통계 화면 토큰 포함)의 이름·값이 한 번씩 있고, 그 밖에는 design.md 랜딩 별칭과 업무일지 양식 색 넷만 있다(16진수는 대소문자 무시)', () => {
     const decls = declarations(rootBodies().join('\n'))
     const names = decls.map(([name]) => name)
     expect(names.length, '같은 변수를 두 번 선언했다').toBe(new Set(names).size)
@@ -696,12 +805,15 @@ describe('AC-202.4: globals.css에 장식이 없고 body는 토큰 글꼴', () =
     expect(css).not.toMatch(/blur\(/i)
   })
 
-  it('AC-202.4: 그림자 값은 --elev-float 하나뿐이다(box-shadow·text-shadow·drop-shadow 선언 없음)', () => {
+  it('AC-202.4·AC-4416.1: 그림자 값은 --elev-float와 통계 화면 카드 그림자(--st-card-shadow) 둘뿐이다(box-shadow·text-shadow·drop-shadow 선언 없음)', () => {
     const css = globals()
     expect(css).not.toMatch(/(box|text)-shadow\s*:/i)
     expect(css).not.toMatch(/drop-shadow/i)
     const shadowLike = allDeclarations(css).filter(([, value]) => /\d(px)?\s+-?\d+px\s+-?\d+px/.test(value) || /rgba?\(/.test(value))
-    expect(shadowLike).toEqual([['--elev-float', ELEV_FLOAT]])
+    expect(shadowLike).toEqual([
+      ['--elev-float', ELEV_FLOAT],
+      ['--st-card-shadow', ST_CARD_SHADOW],
+    ])
   })
 
   it('AC-202.4: body는 하나이고 바탕 surface·글자 ink·글꼴 var(--font-ui)·keep-all·가로 넘침 clip이다', () => {
@@ -717,14 +829,29 @@ describe('AC-202.4: globals.css에 장식이 없고 body는 토큰 글꼴', () =
 
   // 비트 읽는 표시 둘(bit-dashboard AC-601.17, UI_GUIDE '움직임 › 비트 읽는 표시'). 이름 하나까지 이 목록뿐이다. 값은 globals.test.ts가 본다
   const BIT_READ_RULES = ['.bit-read-bar', '.bit-read-bar::after', '@keyframes bit-read-bar', '.bit-read-spin', '@keyframes bit-read-spin']
+  // 통계 화면 움직임(first90 AC-4417.1·AC-4417.2·AC-4417.4, design.md 5-3)과 휴대폰 토큰 값(AC-4416.1). 값은 globals.test.ts가 본다
+  const ST_RULES = [
+    '.st-donut .seg',
+    '@keyframes st-donut',
+    '.st-move-period',
+    '.st-move-heat',
+    '.st-move-toggle',
+    '.st-rise',
+    '@keyframes st-rise',
+    '.st-tag-in',
+    '@keyframes st-in',
+    '@media (prefers-reduced-motion: no-preference)',
+  ]
 
-  it('AC-202.4·AC-601.17: layer 밖 선택자는 :root·body·모션 줄이기 블록과 비트 읽는 표시 둘(과 그 @keyframes)뿐이고, 모션 줄이기는 모든 animation·transition을 끈다', () => {
+  it('AC-202.4·AC-601.17·AC-4417.4: layer 밖 선택자는 :root·body·모션 줄이기 블록과 비트 읽는 표시 둘(과 그 @keyframes), 통계 화면 움직임·휴대폰 값뿐이고, 모션 줄이기는 모든 animation·transition을 끈다', () => {
     const outside = outsideLayers(globals())
     const selectors = rules(outside).map(([s]) => s.replace(/\s+/g, ' '))
-    const allowed = new Set([':root', 'body', '@media (prefers-reduced-motion: reduce)', ...BIT_READ_RULES])
+    const allowed = new Set([':root', 'body', '@media (prefers-reduced-motion: reduce)', ...BIT_READ_RULES, ...ST_RULES, ST_PHONE_HEAD])
     expect(selectors.filter((s) => !allowed.has(s))).toEqual([])
     expect(selectors.filter((s) => BIT_READ_RULES.includes(s))).toEqual(BIT_READ_RULES)
-    const motion = rules(outside).find(([s]) => /prefers-reduced-motion/.test(s))?.[1] ?? ''
+    expect(selectors.filter((s) => ST_RULES.includes(s))).toEqual(ST_RULES)
+    // 움직임을 켠 기기 블록(no-preference, 통계 화면 바탕 강조)과 헷갈리지 않게 reduce 블록을 찾는다
+    const motion = rules(outside).find(([s]) => /prefers-reduced-motion:\s*reduce/.test(s))?.[1] ?? ''
     expect(motion).toMatch(/\*\s*,\s*\*::before\s*,\s*\*::after\s*\{/)
     expect(motion).toMatch(/animation:\s*none\s*!important/)
     expect(motion).toMatch(/transition:\s*none\s*!important/)

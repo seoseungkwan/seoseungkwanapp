@@ -72,6 +72,11 @@ const COLOR_FN = /\b(?:rgba?|hsla?|oklch|oklab|color-mix)\(/
 const ROLE_IMG = /\brole\s*[:=]\s*\{?\s*['"`]img['"`]/
 const MOTION_CLASS = /^!?(?:animate-|transition(?:-|$))/
 const utilityOf = (token: string) => token.split(':').pop() ?? ''
+// 통계 화면 움직임 이름(first90 AC-4417.2·AC-4417.4, design.md 5-2·5-3): 움직임은 globals.css의 .st-* CSS가 한다.
+// 차트 폴더에서 이 이름을 붙이는 파일은 통계 화면 차트 셋뿐이고, 붙이는 이름도 정한 일곱 가운데 하나다
+const ST_MOTION_FILES = ['src/components/charts/DonutChart.tsx', 'src/components/charts/StackedBarChart.tsx', 'src/components/charts/InlineBar.tsx']
+const ST_MOTIONS = new Set(['st-move-period', 'st-move-heat', 'st-move-toggle', 'st-donut', 'st-rise', 'st-tag-in', 'st-flash'])
+const ST_MOTION_CLASS = /^!?st-/
 
 // 소스 하나가 어긴 규칙(없으면 빈 배열)
 function violations(text: string, file: string): string[] {
@@ -88,6 +93,9 @@ function violations(text: string, file: string): string[] {
   for (const piece of stringPieces(source)) {
     for (const token of piece.split(/\s+/).filter(Boolean)) {
       if (MOTION_CLASS.test(utilityOf(token))) found.push(`움직임 클래스 ${token}`)
+      if (ST_MOTION_CLASS.test(utilityOf(token)) && !(ST_MOTION_FILES.includes(file) && ST_MOTIONS.has(utilityOf(token).replace(/^!/, '')))) {
+        found.push(`통계 움직임 클래스 ${token}`)
+      }
     }
   }
 
@@ -215,5 +223,46 @@ describe('AC-205.8: 차트 폴더 소스 규칙 — 서버에서 그대로 그�
       ')',
     ].join('\n')
     expect(violations(ok, 'ok.tsx')).toEqual([])
+  })
+})
+
+describe('AC-4417.2·AC-4417.4: 통계 화면 차트 — 움직임 이름(st-*)은 DonutChart·StackedBarChart·InlineBar만 붙이고, 차트 규칙은 그대로다', () => {
+  it('AC-4417.2: 도넛·쌓은 막대·줄 안 막대 셋이 검사 목록에 들고 규칙을 지킨다 — DonutChart에는 aria-hidden svg가 실제로 있다', () => {
+    expect(chartSources()).toEqual(expect.arrayContaining(ST_MOTION_FILES))
+    for (const file of ST_MOTION_FILES) expect(violations(readFileSync(join(ROOT, file), 'utf8'), file), file).toEqual([])
+    const file = 'src/components/charts/DonutChart.tsx'
+    let svgs = 0
+    walk(parse(readFileSync(join(ROOT, file), 'utf8'), file), (node) => {
+      if ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && node.tagName.getText() === 'svg') svgs += 1
+    })
+    expect(svgs).toBeGreaterThan(0)
+  })
+
+  it.each(ST_MOTION_FILES)('AC-4417.2: %s는 정한 움직임 이름(st-move-period·st-donut·st-rise 등)을 붙여도 된다', (file) => {
+    const text = 'export const A = (p: { on: boolean }) => <div className={`h-2 bg-accent${p.on ? \' st-move-period\' : \'\'}`}><span className="st-rise" /><svg aria-hidden="true" className="st-donut" /></div>'
+    expect(violations(text, file)).toEqual([])
+  })
+
+  it.each(['src/components/charts/KpiStat.tsx', 'src/components/charts/ChartTable.tsx', 'src/components/charts/Sparkline.tsx', 'bad.tsx'])(
+    'AC-4417.2: 다른 차트 파일(%s)이 st-* 움직임 이름을 붙이면 잡는다',
+    (file) => {
+      expect(violations('export const A = () => <div className="h-2 st-move-period" />', file)).toEqual(['통계 움직임 클래스 st-move-period'])
+      expect(violations('export const c = `max-md:st-donut`', file)).toEqual(['통계 움직임 클래스 max-md:st-donut'])
+    },
+  )
+
+  it.each(ST_MOTION_FILES)("AC-4417.4: %s에서도 'use client'·훅·타이머·animate-*·transition*·정하지 않은 st-* 이름은 잡는다", (file) => {
+    for (const bad of [
+      "'use client'\nexport const A = 1",
+      'export function A() { const [a] = useState(0); return a }',
+      'export function A() { setTimeout(() => 0, 250); return null }',
+      'export const A = () => <div className="animate-pulse" />',
+      'export const A = () => <div className="transition" />',
+      'export const c = `h-2 transition-[height]`',
+      'export const A = () => <div className="st-move" />',
+      'export const A = () => <div className="st-spin" />',
+    ]) {
+      expect(violations(bad, file).length, `${file}: ${bad}`).toBeGreaterThan(0)
+    }
   })
 })

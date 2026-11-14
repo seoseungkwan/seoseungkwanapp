@@ -29,29 +29,30 @@ describe('AC-004.3: 모션 줄이기', () => {
   })
 })
 
-// 비트 읽는 표시 둘 (bit-dashboard AC-601.17, design.md '결정'): 사용자 결정으로 이 둘만 @keyframes를 쓴다. 값은 시안 docs/mockups/bit-dashboard/css_extra.css
-describe('AC-601.17: 움직이는 것은 비트 읽는 표시 둘뿐이다', () => {
-  const css = () => withoutComments(read(GLOBALS))
-  const motionBlock = () => css().match(/@media\s*\(\s*prefers-reduced-motion:\s*reduce\s*\)\s*\{([\s\S]*?\})\s*\}/)![1]
-  // 선택자 하나의 선언('속성' → '값'). 같은 선택자가 둘이면 글에서 먼저 나온 것
-  const declsOf = (text: string, selector: string): Record<string, string> => {
-    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const body = text.match(new RegExp(`(?:^|[}\\s])${escaped}\\s*\\{([^{}]*)\\}`))?.[1]
-    expect(body, `${selector} 규칙이 없다`).toBeDefined()
-    return Object.fromEntries(
-      body!
-        .split(';')
-        .map((decl) => decl.trim())
-        .filter(Boolean)
-        .map((decl) => {
-          const colon = decl.indexOf(':')
-          return [decl.slice(0, colon).trim(), decl.slice(colon + 1).trim().replace(/\s+/g, ' ')]
-        }),
-    )
-  }
+const css = () => withoutComments(read(GLOBALS))
+const motionBlock = () => css().match(/@media\s*\(\s*prefers-reduced-motion:\s*reduce\s*\)\s*\{([\s\S]*?\})\s*\}/)![1]
+// 선택자 하나의 선언('속성' → '값'). 같은 선택자가 둘이면 글에서 먼저 나온 것
+const declsOf = (text: string, selector: string): Record<string, string> => {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const body = text.match(new RegExp(`(?:^|[}\\s])${escaped}\\s*\\{([^{}]*)\\}`))?.[1]
+  expect(body, `${selector} 규칙이 없다`).toBeDefined()
+  return Object.fromEntries(
+    body!
+      .split(';')
+      .map((decl) => decl.trim())
+      .filter(Boolean)
+      .map((decl) => {
+        const colon = decl.indexOf(':')
+        return [decl.slice(0, colon).trim(), decl.slice(colon + 1).trim().replace(/\s+/g, ' ')]
+      }),
+  )
+}
 
-  it('AC-601.17: @keyframes는 정확히 bit-read-bar·bit-read-spin 둘이다', () => {
-    expect([...css().matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1])).toEqual(['bit-read-bar', 'bit-read-spin'])
+// 비트 읽는 표시 둘 (bit-dashboard AC-601.17, design.md '결정'): 사용자 결정으로 이 둘만 @keyframes를 쓴다. 값은 시안 docs/mockups/bit-dashboard/css_extra.css.
+// first90(design.md 5-3, AC-4417.1·AC-4417.3)이 통계 화면 움직임 키프레임 셋(st-donut·st-rise·st-in)을 더했다. 그 밖의 키프레임은 없다
+describe('AC-601.17·AC-4417.1: 움직이는 것은 비트 읽는 표시 둘과 통계 화면 움직임뿐이다', () => {
+  it('AC-601.17·AC-4417.1·AC-4417.3: @keyframes는 정확히 bit-read-bar·bit-read-spin과 통계 화면 셋(st-donut·st-rise·st-in)이다', () => {
+    expect([...css().matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1])).toEqual(['bit-read-bar', 'bit-read-spin', 'st-donut', 'st-rise', 'st-in'])
   })
 
   // animation 선언 찾기: (속성, 값). 접두사 붙은 것도 같은 선언이다(landing/rules.test.ts의 BANNED_PROP과 같다)
@@ -66,9 +67,16 @@ describe('AC-601.17: 움직이는 것은 비트 읽는 표시 둘뿐이다', () 
     expect(props('.a { color: var(--ink); }')).toEqual([])
   })
 
-  it('AC-601.17: animation 선언은 두 표시의 것과 모션 줄이기 전체 끄기뿐이고, animation-* 낱개 선언이 없다', () => {
+  it('AC-601.17·AC-4417.1·AC-4417.3: animation 선언은 두 표시의 것과 통계 화면 셋(도넛·빗금 막대·꼬리표)과 모션 줄이기 전체 끄기뿐이고, animation-* 낱개 선언이 없다', () => {
     const found = [...css().matchAll(ANIMATION_DECL)].map((m) => `${m[1]}: ${m[2].trim().replace(/\s+/g, ' ')}`)
-    expect(found).toEqual(['animation: bit-read-bar 1.6s ease-in-out infinite', 'animation: bit-read-spin 800ms linear infinite', 'animation: none !important'])
+    expect(found).toEqual([
+      'animation: bit-read-bar 1.6s ease-in-out infinite',
+      'animation: bit-read-spin 800ms linear infinite',
+      'animation: st-donut var(--st-t-first) ease-out',
+      'animation: st-rise var(--st-t-toggle) ease-out',
+      'animation: st-in var(--st-t-toggle) ease-out',
+      'animation: none !important',
+    ])
   })
 
   it('AC-601.17: 막대는 시안 값대로 4px 띠 안에서 32% 조각이 왼쪽 밖에서 오른쪽 끝까지 흐른다(1.6초, 왕복 없음)', () => {
@@ -114,6 +122,73 @@ describe('AC-601.17: 움직이는 것은 비트 읽는 표시 둘뿐이다', () 
 
   it('AC-601.17: 멈춘 막대는 진행률로 읽히지 않게 전체 폭 옅은 띠로 선다(시안 값)', () => {
     expect(declsOf(motionBlock(), '.bit-read-bar::after')).toEqual({ left: '0', width: '100%', opacity: '.4' })
+  })
+})
+
+// ── 통계 화면 움직임 (first90 REQ-4417, design.md 5-3·5-2, UI_GUIDE '통계 화면(first90)'). 움직임은 CSS만 한다 — 차트 부품은 이 이름을 붙이기만 한다.
+// 시간은 :root 토큰(--st-t-toggle 200ms · --st-t-period 300ms · --st-t-first 450ms, theme.test.ts가 값을 본다)을 가리킨다
+const ST_MOTION_RULES = ['.st-donut .seg', '.st-move-period', '.st-move-heat', '.st-move-toggle', '.st-rise', '.st-tag-in']
+// 바탕 강조(.st-flash)는 움직임을 켠 기기에서만 있다
+const noPreferenceBlocks = () => [...css().matchAll(/@media\s*\(\s*prefers-reduced-motion:\s*no-preference\s*\)\s*\{([\s\S]*?\})\s*\}/g)].map((m) => m[1])
+
+describe('AC-4417.1·AC-4417.2·AC-4417.3·AC-4417.4: 통계 화면 움직임 이름(st-*)은 globals.css의 CSS만으로 움직인다', () => {
+  it('AC-4417.1: 도넛 조각(.st-donut .seg)은 붙을 때 한 번 450ms 그려진다 — stroke-dasharray 0 → 제 길이(둘레 100), 되풀이·채움(fill-mode) 없음', () => {
+    expect(declsOf(css(), '.st-donut .seg')).toEqual({ animation: 'st-donut var(--st-t-first) ease-out' })
+    expect(css().replace(/\s+/g, ' ')).toContain('@keyframes st-donut { from { stroke-dasharray: 0 100; } }')
+    // 끝 값(to)은 조각 제 값이다 — 끝나면 그 값 그대로라 다시 그려도(값만 바뀜) 되풀이하지 않는다
+    expect(css().replace(/\s+/g, ' ')).not.toMatch(/@keyframes st-donut \{[^}]*\} to\b/)
+  })
+
+  it('AC-4417.2: 기간을 바꾸면 막대 높이·가로 막대 폭·횟수 막대(flex-basis)·도넛 조각이 300ms ease-out, 시간대 칸 색이 200ms 바뀐다', () => {
+    expect(declsOf(css(), '.st-move-period')).toEqual({
+      'transition-property': 'height, width, flex-basis, stroke-dasharray, stroke-dashoffset',
+      'transition-duration': 'var(--st-t-period)',
+      'transition-timing-function': 'ease-out',
+    })
+    expect(declsOf(css(), '.st-move-heat')).toEqual({
+      'transition-property': 'background-color, color',
+      'transition-duration': 'var(--st-t-toggle)',
+    })
+  })
+
+  it('AC-4417.3: 스위치 손잡이는 옮김 200ms, 빗금 막대는 아래 기준으로 솟음 200ms, "참고 포함" 꼬리표는 투명도 200ms다', () => {
+    // Tailwind v4의 translate-x-*는 transform이 아니라 translate 속성을 쓴다 → 둘 다 옮긴다
+    expect(declsOf(css(), '.st-move-toggle')).toEqual({
+      'transition-property': 'transform, translate',
+      'transition-duration': 'var(--st-t-toggle)',
+      'transition-timing-function': 'ease-out',
+    })
+    expect(declsOf(css(), '.st-rise')).toEqual({ 'transform-origin': 'bottom', animation: 'st-rise var(--st-t-toggle) ease-out' })
+    expect(css().replace(/\s+/g, ' ')).toContain('@keyframes st-rise { from { transform: scaleY(0); } to { transform: scaleY(1); } }')
+    expect(declsOf(css(), '.st-tag-in')).toEqual({ animation: 'st-in var(--st-t-toggle) ease-out' })
+    expect(css().replace(/\s+/g, ' ')).toContain('@keyframes st-in { from { opacity: 0; } to { opacity: 1; } }')
+  })
+
+  it('AC-4417.3·AC-4417.4: 매출 요약 칸 바탕 강조(.st-flash)는 옅은 파랑(--accent-soft)이고, 움직임을 켠 기기(no-preference) 블록 하나 안에만 있다', () => {
+    const blocks = noPreferenceBlocks()
+    expect(blocks).toHaveLength(1)
+    expect(declsOf(blocks[0]!, '.st-flash')).toEqual({ 'background-color': 'var(--accent-soft)' })
+    // 블록 안에는 .st-flash 하나뿐이고, 블록 밖에는 .st-flash 규칙이 없다
+    expect([...blocks[0]!.matchAll(/([^{}]+)\{/g)].map((m) => m[1]!.trim())).toEqual(['.st-flash'])
+    const outside = css().replace(/@media\s*\(\s*prefers-reduced-motion:\s*no-preference\s*\)\s*\{[\s\S]*?\}\s*\}/g, '')
+    expect(outside).not.toContain('.st-flash')
+  })
+
+  it('AC-4417.4: 모션 줄이기 기기에서는 전역 끄기가 통계 화면 움직임도 모두 끈다 — st-* 규칙은 !important를 쓰지 않아 전역 끄기를 이기지 못한다', () => {
+    expect(motionBlock()).toMatch(/\*\s*,\s*\*::before\s*,\s*\*::after\s*\{\s*animation:\s*none\s*!important;\s*transition:\s*none\s*!important/)
+    for (const selector of ST_MOTION_RULES) {
+      const decls = declsOf(css(), selector)
+      expect(Object.keys(decls).length, selector).toBeGreaterThan(0)
+      for (const [prop, value] of Object.entries(decls)) expect(value, `${selector} ${prop}`).not.toContain('!important')
+      // 움직임은 animation·transition 선언으로만 한다(끄기가 닿는 속성)
+      expect(Object.keys(decls).filter((prop) => !/^(?:animation|transition-(?:property|duration|timing-function)|transform-origin)$/.test(prop)), selector).toEqual([])
+    }
+    expect(css()).not.toMatch(/st-[\w-]+[^{}]*\{[^}]*!important/)
+  })
+
+  it('AC-4417.4: 통계 화면 움직임 이름은 정한 일곱(st-move-period·st-move-heat·st-move-toggle·st-donut·st-rise·st-tag-in·st-flash)뿐이다', () => {
+    const names = new Set([...css().matchAll(/\.(st-[\w-]+)/g)].map((m) => m[1]))
+    expect([...names].sort()).toEqual(['st-donut', 'st-flash', 'st-move-heat', 'st-move-period', 'st-move-toggle', 'st-rise', 'st-tag-in'])
   })
 })
 

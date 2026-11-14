@@ -670,12 +670,24 @@ const TEXT_OK = new Set([...FONT_SIZES, ...TOKEN_COLORS, ...TEXT_OTHER])
 const RADIUS_OK = new Set(['rounded-control', 'rounded-float', 'rounded-none'])
 const SCREEN_OK = new Set(['md', 'lg', 'max-md', 'max-lg'])
 const DECORATION = /^(?:bg-(?:linear|radial|conic|gradient)(?:-|$)|(?:from|via|to)-|backdrop-|blur(?:-|$)|animate-)/
+// 굵기는 400·500·600뿐이다(AC-203.3, first90 AC-4416.3 — 통계 화면 예외 파일에서도 그대로)
+const BAD_WEIGHT = /^font-(?:thin|extralight|light|bold|extrabold|black|\[(?:bold|bolder|lighter)\])$/
+const NUMBER_WEIGHT = /^font-\[?(\d+)\]?$/
+// 통계 화면 토큰 이름(first90 design.md 5-1·5-2): --color-st-*·--text-st-*·--radius-st-*·--shadow-st-card를 쓰는 유틸리티. 예외 파일 밖에서는 잡는다
+const ST_TOKEN_UTILITY =
+  /^(?:bg|text|border(?:-[trblxyse])?|outline|ring(?:-offset)?|fill|stroke|divide|decoration|accent|caret|placeholder|(?:inset-|drop-)?shadow|rounded(?:-[trblse]{1,2})?)-st(?:-|$)/
+// 통계 화면 움직임 이름(globals.css .st-*, design.md 5-3). 예외 파일 밖에서는 잡는다
+const ST_MOTION_UTILITY = /^st-/
 
 // 클래스 하나가 어긴 규칙(없으면 빈 배열)
 function ruleBreaks(token: string): string[] {
   const { variants, utility } = parseClass(token)
   const bare = utility.replace(/^-/, '')
   const breaks: string[] = []
+  const weight = bare.match(NUMBER_WEIGHT)
+  if (BAD_WEIGHT.test(bare) || (weight !== null && !['400', '500', '600'].includes(weight[1]!))) breaks.push('굵기 400·500·600 밖')
+  if (ST_TOKEN_UTILITY.test(bare)) breaks.push('통계 화면 토큰')
+  if (ST_MOTION_UTILITY.test(bare)) breaks.push('통계 화면 움직임 클래스')
   const spacing = utility.match(SPACING)
   if (spacing) {
     const [, prefix = '', value = ''] = spacing
@@ -703,12 +715,44 @@ const LOAD_BAR_FILE = 'src/components/shell/LoadBar.tsx'
 const PATIENT_MIX_FILE = 'src/components/stats/sections/PatientMixSection.tsx'
 const WIDE_1280 = ['min-[80rem]:grid-cols-3', 'min-[80rem]:row-span-1', 'min-[80rem]:col-start-3', 'min-[80rem]:row-start-1', 'min-[80rem]:pt-0']
 const RULE_EXCEPTIONS: Readonly<Record<string, readonly string[]>> = { [LOAD_BAR_FILE]: ['duration-700', 'ease-out'], [PATIENT_MIX_FILE]: WIDE_1280 }
+
+// 규칙 예외(first90 REQ-4416 AC-4416.2, design.md 5-2, UI_GUIDE '통계 화면(first90)'): 통계 화면 파일만 아래 클래스를 쓴다.
+// 파일: src/components/stats/**·src/components/revenue/**(시험 빼고)와 통계 화면 차트 셋. 굵기 600 넘음·그라데이션·animate-*·transition-*은 여기서도 잡는다(AC-4416.3)
+const STATS_SCREEN_DIRS = ['src/components/stats/', 'src/components/revenue/']
+const STATS_SCREEN_CHARTS = ['src/components/charts/DonutChart.tsx', 'src/components/charts/StackedBarChart.tsx', 'src/components/charts/InlineBar.tsx']
+const isStatsScreenFile = (file: string) =>
+  !/\.test\.tsx?$/.test(file) && (STATS_SCREEN_DIRS.some((dir) => file.startsWith(dir)) || STATS_SCREEN_CHARTS.includes(file))
+// 화면 폭 경계 넷(1100·1200px 이상, 1200·380px 미만)
+const STATS_SCREENS = ['min-[1100px]', 'min-[1200px]', 'max-[1199px]', 'max-[379px]']
+const ST_COLORS = [
+  'st-canvas', 'st-ink', 'st-ink-2', 'st-muted', 'st-line', 'st-line-2',
+  'st-f90', 'st-ret', 'st-ref', 'st-ref-2', 'st-warn-ink',
+  'st-h0', 'st-h1', 'st-h2', 'st-h3', 'st-h4', 'st-h5',
+]
+const ST_TEXT_SIZES = ['15', '17', '18', '22', '34', '40']
+// 움직임 이름 일곱(globals.css가 정의한다, design.md 5-3)
+const ST_MOTIONS = ['st-move-period', 'st-move-heat', 'st-move-toggle', 'st-donut', 'st-rise', 'st-tag-in', 'st-flash']
+const STATS_SCREEN_CLASSES = new Set([
+  'rounded-st',
+  'rounded-st-sm',
+  'rounded-full', // 스위치·꼬리표만(design.md 5-2) — 어디에 쓰는지는 화면 시험이 본다
+  'shadow-st-card',
+  ...ST_TEXT_SIZES.map((size) => `text-st-${size}`),
+  ...['text', 'bg', 'border'].flatMap((kind) => ST_COLORS.map((color) => `${kind}-${color}`)),
+  ...ST_MOTIONS,
+])
+// 통계 화면 파일의 클래스 하나에서 허용분을 뗀다: 경계 넷을 지우고, 허용 클래스(색 투명도 /N 포함)는 늘 통과하는 'block'으로 바꾼다.
+// 나머지(다른 경계·변형, 굵기·그라데이션·움직임)는 그대로 남아 ruleBreaks가 잡는다
+function withoutStatsAllowance(token: string): string {
+  const { variants, utility } = parseClass(token)
+  const kept = variants.filter((v) => !STATS_SCREENS.includes(v))
+  const allowed = STATS_SCREEN_CLASSES.has(utility.replace(/\/\d+$/, ''))
+  return [...kept, allowed ? 'block' : utility].join(':')
+}
 const fileBreaksIn = (file: string, classes: string) =>
-  breaksIn(
-    tokens(classes)
-      .filter((t) => !(RULE_EXCEPTIONS[file] ?? []).includes(t))
-      .join(' '),
-  )
+  tokens(classes)
+    .filter((t) => !(RULE_EXCEPTIONS[file] ?? []).includes(t))
+    .flatMap((t) => ruleBreaks(isStatsScreenFile(file) ? withoutStatsAllowance(t) : t).map((why) => `${t} (${why})`))
 
 describe('AC-204.6: 규칙 — 간격 단계·토큰 모서리·그림자·글자 11단계·장식 없음·화면 폭 접두사·overflow-clip', () => {
   it('AC-204.6: 검사 대상이 비어 있지 않다(ds 키 전부 + 목록 파일이 있다)', () => {
@@ -721,7 +765,7 @@ describe('AC-204.6: 규칙 — 간격 단계·토큰 모서리·그림자·글�
     expect(breaksIn(dsAt(key)), key).toEqual([])
   })
 
-  it('AC-204.6·AC-405.3·AC-4006.2: 검사 목록 파일의 클래스 글자가 규칙을 지킨다(불러오기 줄 한 파일의 두 클래스 · 환자 구성 한 파일의 1280px 경계 클래스만 예외)', () => {
+  it('AC-204.6·AC-405.3·AC-4006.2·AC-4416.2: 검사 목록 파일의 클래스 글자가 규칙을 지킨다(불러오기 줄 한 파일의 두 클래스 · 환자 구성 한 파일의 1280px 경계 클래스 · 통계 화면 파일의 st 이름·경계 넷만 예외)', () => {
     for (const file of ruleFiles()) {
       expect(
         stringPieces(file).flatMap((piece) => fileBreaksIn(file, piece)),
@@ -940,13 +984,182 @@ describe('AC-4006.2: 규칙 — 1280px 경계 예외는 PatientMixSection.tsx �
     }
   })
 
-  it('AC-4006.2: 검사 목록 파일 가운데 min-[…]:·max-[…]: 경계를 쓰는 곳은 PatientMixSection.tsx뿐이다', () => {
-    const users = ruleFiles().filter((file) =>
+  it('AC-4006.2·AC-4416.2: 검사 목록 파일 가운데 min-[…]:·max-[…]: 경계를 쓰는 곳은 PatientMixSection.tsx와 통계 화면 파일뿐이고, 통계 화면 파일은 경계 넷(min-[1100px]·min-[1200px]·max-[1199px]·max-[379px])만 쓴다', () => {
+    const bracketsOf = (file: string) =>
       stringPieces(file)
         .flatMap(tokens)
-        .some((t) => parseClass(t).variants.some((v) => /^(?:min|max)-\[/.test(v))),
-    )
-    expect(users).toEqual([PATIENT_MIX_FILE])
+        .flatMap((t) => parseClass(t).variants.filter((v) => /^(?:min|max)-\[/.test(v)))
+    const users = ruleFiles().filter((file) => bracketsOf(file).length > 0)
+    expect(users).toContain(PATIENT_MIX_FILE)
+    expect(users.filter((file) => file !== PATIENT_MIX_FILE && !isStatsScreenFile(file))).toEqual([])
+    for (const file of users.filter((f) => f !== PATIENT_MIX_FILE)) {
+      expect(bracketsOf(file).filter((v) => !STATS_SCREENS.includes(v)), file).toEqual([])
+    }
+  })
+})
+
+// ── first90 REQ-4416 통계 화면 규칙 예외 (design.md 5-2, UI_GUIDE '통계 화면(first90)'):
+// 통계 화면 파일(stats/**·revenue/**, 차트 셋)만 st 토큰 이름·움직임 이름·경계 넷·rounded-full을 쓴다. 다른 파일은 지금처럼 잡는다.
+// 굵기 600 넘음·그라데이션·animate-*·transition-* 같은 금지는 예외 파일에서도 그대로다(AC-4416.3)
+const STATS_ALLOWED_SAMPLE = [
+  'rounded-st',
+  'rounded-st-sm',
+  'rounded-full',
+  'shadow-st-card',
+  ...ST_TEXT_SIZES.map((size) => `text-st-${size}`),
+  'text-st-ink',
+  'text-st-muted',
+  'text-st-warn-ink',
+  'bg-st-canvas',
+  'bg-st-f90',
+  'bg-st-ret',
+  'bg-st-ref-2',
+  'bg-st-h3',
+  'bg-st-f90/40',
+  'border-st-line',
+  'border-st-line-2',
+  'min-[1100px]:grid-cols-3',
+  'min-[1200px]:col-span-2',
+  'max-[1199px]:hidden',
+  'max-[379px]:grid-cols-1',
+  'min-[1100px]:text-st-40',
+  'max-md:text-st-22',
+  'hover:bg-st-h1',
+  ...ST_MOTIONS,
+]
+
+describe('AC-4416.2·AC-4416.3: 규칙 — 통계 화면 예외는 정한 파일 × 정한 클래스뿐이고, 굵기·그라데이션 금지는 그 파일에서도 그대로다', () => {
+  it('AC-4416.2: 예외 파일은 stats/**·revenue/**(시험 빼고)와 DonutChart·StackedBarChart·InlineBar 셋이다', () => {
+    for (const file of [
+      'src/components/stats/StatsScreen.tsx',
+      'src/components/stats/sections/PatientMixSection.tsx',
+      'src/components/stats/trendSeries.ts',
+      'src/components/revenue/RevenueSection.tsx',
+      ...STATS_SCREEN_CHARTS,
+    ]) {
+      expect(isStatsScreenFile(file), file).toBe(true)
+    }
+    for (const file of [
+      'src/components/stats/StatsScreen.test.tsx',
+      'src/components/revenue/RevenueSection.test.tsx',
+      'src/components/charts/KpiStat.tsx',
+      'src/components/charts/ChartTable.tsx',
+      'src/components/charts/DonutChart.test.tsx',
+      'src/components/dashboard/summary/DailySection.tsx',
+      'src/components/preview/DashboardPreview.tsx',
+      'src/components/shell/AppShell.tsx',
+      'src/components/claim/x.tsx',
+      'src/components/ui/classes.ts',
+      'src/app/(app)/stats/page.tsx',
+      'src/components/statsx/A.tsx',
+    ]) {
+      expect(isStatsScreenFile(file), file).toBe(false)
+    }
+    // 차트 셋은 실제로 있고 검사 목록에 든다
+    for (const file of STATS_SCREEN_CHARTS) expect(ruleFiles(), file).toContain(file)
+  })
+
+  it('AC-4416.2: 예외 파일에서는 허용 클래스(st 토큰·움직임 이름 일곱·경계 넷·rounded-full)가 통과한다', () => {
+    for (const file of ['src/components/stats/sections/A.tsx', 'src/components/revenue/B.tsx', ...STATS_SCREEN_CHARTS]) {
+      expect(fileBreaksIn(file, STATS_ALLOWED_SAMPLE.join(' ')), file).toEqual([])
+    }
+  })
+
+  it.each([
+    'src/components/dashboard/summary/DailySection.tsx',
+    'src/components/preview/DashboardPreview.tsx',
+    'src/components/charts/KpiStat.tsx',
+    'src/components/shell/AppShell.tsx',
+    'src/components/claim/x.tsx',
+    'src/app/(app)/stats/page.tsx',
+  ])('AC-4416.2: 목록 밖 파일(%s)이 통계 화면 클래스를 쓰면 하나하나 잡는다', (file) => {
+    for (const cls of STATS_ALLOWED_SAMPLE) expect(fileBreaksIn(file, cls).length, `${file}: ${cls}`).toBeGreaterThan(0)
+    expect(fileBreaksIn(file, 'rounded-st')).toEqual(['rounded-st (통계 화면 토큰)', 'rounded-st (모서리 토큰 밖)'])
+    expect(fileBreaksIn(file, 'min-[1100px]:grid-cols-3')).toEqual(['min-[1100px]:grid-cols-3 (화면 폭 접두사 min-[1100px]:)'])
+    expect(fileBreaksIn(file, 'st-move-period')).toEqual(['st-move-period (통계 화면 움직임 클래스)'])
+    expect(fileBreaksIn(file, 'bg-st-f90')).toEqual(['bg-st-f90 (통계 화면 토큰)'])
+  })
+
+  it.each([
+    'font-bold',
+    'font-extrabold',
+    'font-black',
+    'min-[1100px]:font-bold',
+    'max-md:font-black',
+    'font-[700]',
+    'font-800',
+    'font-[bolder]',
+    'bg-linear-to-r',
+    'bg-gradient-to-b',
+    'bg-radial',
+    'min-[1200px]:bg-conic',
+    'from-st-ref',
+    'via-st-ref-2',
+    'to-accent',
+    'animate-pulse',
+    'motion-safe:animate-spin',
+    'transition-all',
+    'transition-colors',
+    'transition-transform',
+    'duration-300',
+    'ease-out',
+    'delay-75',
+    'min-[900px]:flex',
+    'min-[1280px]:grid-cols-3',
+    'max-[767px]:hidden',
+    'min-[80rem]:grid-cols-3',
+    'xl:flex',
+    'rounded-lg',
+    'rounded-2xl',
+    'rounded-t-st',
+    'shadow-md',
+    'shadow-st',
+    'text-st-16',
+    'text-st-48',
+    'bg-st-blue',
+    'fill-st-f90',
+    'ring-st-line',
+    'st-move',
+    'st-spin',
+    'st-donut-x',
+    'p-2.5',
+    'overflow-hidden',
+  ])('AC-4416.3: 통계 화면 파일에서도 %s는 잡는다', (bad) => {
+    for (const file of ['src/components/stats/sections/A.tsx', 'src/components/revenue/B.tsx', 'src/components/charts/DonutChart.tsx']) {
+      expect(fileBreaksIn(file, bad).length, `${file}: ${bad}`).toBeGreaterThan(0)
+    }
+  })
+
+  it('AC-4416.3: 굵기 규칙은 400·500·600(font-normal·font-medium·font-semibold)만 통과한다', () => {
+    for (const ok of ['font-normal', 'font-medium', 'font-semibold', 'font-[600]', 'font-sans', 'max-md:font-medium']) expect(ruleBreaks(ok), ok).toEqual([])
+    for (const bad of ['font-bold', 'font-thin', 'font-light', 'font-extralight', 'font-[700]', 'font-[300]', 'font-900']) {
+      expect(ruleBreaks(bad), bad).toContain('굵기 400·500·600 밖')
+    }
+  })
+
+  it('AC-4416.2: 허용 클래스는 규칙 자체로는 여전히 잡힌다(예외는 파일 목록이 준다)', () => {
+    for (const cls of STATS_ALLOWED_SAMPLE.filter((c) => !/^(?:max-md|hover):/.test(c))) expect(ruleBreaks(cls).length, cls).toBeGreaterThan(0)
+    expect(ruleBreaks('max-md:text-st-22').length).toBeGreaterThan(0)
+    expect(ruleBreaks('hover:bg-st-h1').length).toBeGreaterThan(0)
+  })
+
+  it('AC-4416.2: 검사 목록 파일 가운데 st 토큰 이름·움직임 이름·경계 넷을 쓰는 곳은 통계 화면 파일뿐이다', () => {
+    const usesStats = (t: string) => {
+      const { variants, utility } = parseClass(t)
+      const bare = utility.replace(/^-/, '')
+      return ST_TOKEN_UTILITY.test(bare) || ST_MOTION_UTILITY.test(bare) || variants.some((v) => STATS_SCREENS.includes(v))
+    }
+    const users = ruleFiles().filter((file) => stringPieces(file).flatMap(tokens).some(usesStats))
+    expect(users.filter((file) => !isStatsScreenFile(file))).toEqual([])
+    // 검사 자체가 잡는다
+    for (const t of ['bg-st-f90', 'text-st-34', 'st-donut', 'max-[379px]:hidden', 'rounded-st-sm']) expect(usesStats(t), t).toBe(true)
+    for (const t of ['bg-accent', 'text-small', 'stroke-current', 'max-md:hidden', 'rounded-control']) expect(usesStats(t), t).toBe(false)
+  })
+
+  it('AC-4416.2: 움직임 이름 일곱은 globals.css가 정의하는 이름 그대로다', () => {
+    const css = readFileSync(join(ROOT, 'src/app/globals.css'), 'utf8')
+    const defined = new Set([...css.matchAll(/\.(st-[\w-]+)/g)].map((m) => m[1]))
+    expect([...defined].sort()).toEqual([...ST_MOTIONS].sort())
   })
 })
 
