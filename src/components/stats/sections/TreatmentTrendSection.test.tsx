@@ -14,7 +14,7 @@ import { nestedBoxes } from '@/testing/boxes'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
 import type { RxGroup } from '@/types/rxGroups'
-import { Section } from './parts'
+import { Section, StatsCard } from './parts'
 import { RxSection } from './RxSection'
 import { TreatmentTrendSection } from './TreatmentTrendSection'
 
@@ -992,5 +992,50 @@ describe('AC-4003.6: 묶음별 추세 · 묶음 고치기 제목', () => {
     expect(body.hidden).toBe(true)
     for (const note of NOTES) expect(body.contains(screen.getByText(note))).toBe(true)
     expect(head.contains(how)).toBe(false)
+  })
+})
+
+// ── first90: 처방 카드 머리(REQ-4413 AC-4413.1). 카드 h2 `처방`이 칸 머리를 대신하고 [묶음 고치기]는 카드 머리 줄 오른쪽이다 ─────────────────
+describe('AC-4413.1: 처방 카드 안의 묶음별 추세', () => {
+  const inCard = (input: StatsInput = inputOf()) =>
+    render(
+      <StatsCard id="stats-rx" title="처방" desc={DESC}>
+        <RxSection
+          tabs={[
+            { name: '묶음별 추세', panel: <Live input={input} /> },
+            { name: '처방별 신환·재진', panel: <p>둘째 탭</p> },
+          ]}
+        />
+      </StatsCard>,
+    )
+  const cardHead = () => screen.getByRole('heading', { level: 2, name: '처방' }).parentElement!
+
+  it('AC-4413.1: h2는 카드의 `처방` 하나이고 [묶음 고치기]는 카드 머리 줄 오른쪽(ml-auto, 휴대폰 폭 전체)이며 설명은 카드 옆 글 하나뿐이다', async () => {
+    inCard()
+    const edit = await within(cardHead()).findByRole('button', { name: '묶음 고치기' })
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['처방'])
+    expect(classOf(edit.parentElement!)).toContain('ml-auto')
+    hasAll(edit, `${ds.button.secondarySmall} max-md:w-full`)
+    expect(cardHead().textContent).toBe(`처방${DESC}묶음 고치기`)
+    expect(screen.getAllByText(DESC)).toHaveLength(1)
+    expect(within(screen.getByRole('tabpanel')).getAllByRole('list').length).toBeGreaterThan(0)
+  })
+
+  it('AC-4413.1: [묶음 고치기]를 누르면 탭 안 h3로 초점이 가고 카드 머리에는 옆 글만 남는다. [그만두기]로 닫으면 카드 머리 단추로 초점이 온다', async () => {
+    const user = userEvent.setup()
+    inCard()
+    await user.click(await within(cardHead()).findByRole('button', { name: '묶음 고치기' }))
+    const h3 = within(screen.getByRole('tabpanel')).getByRole('heading', { level: 3, name: EDIT_TITLE })
+    expect(document.activeElement).toBe(h3)
+    expect(cardHead().textContent).toBe(`처방${DESC}`)
+    await user.click(screen.getByRole('button', { name: '그만두기' }))
+    await waitFor(() => expect(document.activeElement).toBe(within(cardHead()).getByRole('button', { name: '묶음 고치기' })))
+  })
+
+  it('AC-4413.1: 고른 기간이어도 카드 안에서는 설명이 카드 옆 글 하나뿐이다', async () => {
+    inCard({ days: ALL_READY, covered: WHOLE, range: rangeOf(TODAY, { kind: 'month', unit: 'day', month: '2026-11' }, false) })
+    await within(cardHead()).findByRole('button', { name: '묶음 고치기' })
+    expect(screen.queryByText(`${DESC} · 2026년 11월`)).toBeNull()
+    expect(screen.getAllByText(DESC)).toHaveLength(1)
   })
 })

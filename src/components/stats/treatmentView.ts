@@ -3,7 +3,7 @@ import type { RxGroupDef } from '@/types/analysis'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
 import type { RxCond, RxGroup, StatsRxGroup } from '@/types/rxGroups'
-import { codeKey, rxDetail, rxPickRows, type RxDetailPoint, type RxPickRow, type StatsInput } from './view'
+import { codeKey, rxDetail, rxPickRows, type RxDetailPoint, type RxPickRow, type StatsInput, type StatsRange } from './view'
 
 // 처방별 추세의 숫자 (treatment-trend REQ-1205~1209, design.md '다시 불러오기 판단'·'화면 숫자'). view.ts와 같은 규칙의 순수 함수다.
 // 묶음 열쇠 = 넣는 처방·빼는 처방·조건의 지문(groupKey, group-exclude REQ-3704). 불러올 때 묶음마다 이 열쇠로 세어 일 줄 groups에 넣고, 화면은 지금 묶음의 열쇠 줄 숫자만 쓴다.
@@ -166,3 +166,14 @@ export function uncomparedNames(rows: readonly TreatmentRow[]): string[] {
 
 // 열린 줄 열쇠: 저장된 id, 없으면(제안) 'new:' + 이름
 export const rowKey = (group: RxGroup): string => group.id ?? `new:${group.name}`
+
+// 1023px 이하 표 위 비교 글(first90 AC-4413.2): 비교마다 '증감은 {비교 이름}({시작} – {끝})과 비교'. 끝 날짜가 늘 '일'이라 조사는 '과'다.
+// 두 끝의 해가 다르면 양 끝에 해를 붙인다(카드 옆 글 cardRangeText와 같은 규칙). 작년 비교는 고른 기간에만 있다
+const dateText = (ymd: string, withYear: boolean) => `${withYear ? `${Number(ymd.slice(0, 4))}년 ` : ''}${Number(ymd.slice(5, 7))}월 ${Number(ymd.slice(8, 10))}일`
+export function compareNotes(range: StatsRange): string[] {
+  const compares = [range.previous, ...(range.lastYear === null ? [] : [range.lastYear])]
+  return compares.map(({ name, from, to }) => {
+    const withYear = from.slice(0, 4) !== to.slice(0, 4)
+    return `증감은 ${name}(${dateText(from, withYear)} – ${dateText(to, withYear)})과 비교`
+  })
+}

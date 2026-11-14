@@ -14,6 +14,7 @@ import { ds } from '@/components/ui/classes'
 import type { RxGroup, StatsRxGroup } from '@/types/rxGroups'
 import { HowCounted } from './HowCounted'
 import { EmptyNote, hasRows, NO_RANGE_DATA, Section, todayOf } from './parts'
+import { useTabDesc } from './RxSection'
 import { TreatmentDetail } from './TreatmentDetail'
 import { TreatmentGroupEditor } from './TreatmentGroupEditor'
 import { TreatmentTable, type ReadyTreatmentRow } from './TreatmentTable'
@@ -26,6 +27,7 @@ import { comparedNote } from './trendLabels'
 // 묶음·열린 줄·고치는 내용은 React 상태와 서버 표에만 있다(AC-1211.3).
 // 통계 화면에서는 처방 칸 첫 탭 `묶음별 추세` 안이다(stats-pc-ux): 고치기 제목은 탭 이름을 쓰고(AC-4003.6), 늘 같은 네 글은 "어떻게 세나요?" 안에 접는다(AC-4004.2 ①).
 // 따로 그릴 때의 h2 TITLE은 그대로다(앱에서는 탭 이름이 대신한다, design.md 표)
+// 처방 카드 안(first90 AC-4413.1): [묶음 고치기]는 카드 머리 줄 오른쪽이고, 설명은 카드 옆 글(같은 글, AC-4411.3)이 대신해 따로 그리지 않는다
 
 const TITLE = '처방별 추세'
 const EDIT_TITLE = '묶음별 추세 · 묶음 고치기'
@@ -119,6 +121,8 @@ export function TreatmentTrendSection({
   const [modes, setModes] = useState<Readonly<Record<string, ChartMode>>>({})
   const headingRef = useRef<HTMLHeadingElement>(null)
   const editRef = useRef<HTMLButtonElement>(null)
+  // 카드가 옆 글을 가졌으면 head는 없다. 패널 맨 위 줄(lead)도 그리지 않는다: 카드 옆 글이 이 칸 설명과 같은 글이다
+  const { head: desc } = useTabDesc(periodDesc(DESC, input.range))
   const focusNext = useRef<'heading' | 'edit' | null>(null) // 다음 그림 뒤 초점을 줄 곳
 
   useEffect(() => {
@@ -204,7 +208,7 @@ export function TreatmentTrendSection({
   )
 
   return (
-    <Section title={TITLE} desc={periodDesc(DESC, input.range)} action={editButton} className={`${className} ${PHONE_FULL_ACTION}`}>
+    <Section title={TITLE} desc={desc} action={editButton} className={`${className} ${PHONE_FULL_ACTION}`}>
       {note && (
         <p role="status" className="mt-2 text-small text-positive">
           {note}

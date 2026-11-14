@@ -2,8 +2,8 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { Section, SectionAnchor, TOC_SCROLL } from './parts'
-import { RxSection, type RxTab } from './RxSection'
+import { Section, SectionAnchor, StatsCard, TOC_SCROLL } from './parts'
+import { RxSection, useTabDesc, type RxTab } from './RxSection'
 
 // 처방 탭 칸 (stats-pc-ux TASK-1, design.md 'sections/RxSection.tsx', 시안 notes.md §4). 탭 안 칸은 시험 안의 작은 가짜 칸이다(이름·글은 지어낸 값)
 
@@ -340,5 +340,103 @@ describe('AC-4002.6: 목차 자리 id', () => {
     const section = container.querySelector('section')!
     expect(section.hasAttribute('id')).toBe(false)
     expect(classesOf(section)).not.toEqual(expect.arrayContaining(TOC_SCROLL.split(' ')))
+  })
+})
+
+// ── first90: 큰 카드 안 처방 칸(REQ-4413 AC-4413.1, design.md 5-5). 카드 제목과 같은 제목이면 제 머리 없이 카드 머리를 쓴다 ─────────────────
+describe('AC-4413.1: 카드 안 처방 칸 — 카드 h2 하나 · 탭 셋 그대로 · 단추는 카드 머리', () => {
+  const CARD_DESC = '가짜 카드 설명'
+  // 진짜 탭 칸처럼 useTabDesc로 설명을 나눠 쓰는 가짜 칸
+  function LeadTab({ name, desc, action }: { name: string; desc?: string; action?: ReactNode }) {
+    const { head, lead } = useTabDesc(desc)
+    return (
+      <Section title={name} desc={head} action={action}>
+        {lead}
+        <p>{name} 내용</p>
+      </Section>
+    )
+  }
+  const LEAD_TABS: RxTab[] = [
+    { name: '묶음별 추세', panel: <LeadTab name="첫째" action={<button type="button">첫째 단추</button>} /> },
+    { name: '처방별 신환·재진', panel: <LeadTab name="둘째" desc="둘째 탭 설명" /> },
+    { name: '처방 골라 보기', panel: <LeadTab name="셋째" desc="셋째 탭 설명" /> },
+  ]
+  const inCard = (tabs: readonly RxTab[] = LEAD_TABS, ownDesc = true, notice?: ReactNode) =>
+    render(
+      <StatsCard id="stats-rx" title="처방" desc={ownDesc ? CARD_DESC : undefined}>
+        <RxSection tabs={tabs} notice={notice} />
+      </StatsCard>,
+    )
+
+  it('AC-4413.1: 제목이 카드와 같으면 h2는 카드의 `처방` 하나이고 칸 section·위 선이 없다. 탭 셋 이름·차례·첫 탭 고름은 그대로다', () => {
+    const { container } = inCard()
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['처방'])
+    expect(container.querySelectorAll('section')).toHaveLength(1)
+    expect(container.querySelector('section')!.id).toBe('stats-rx')
+    const list = screen.getByRole('tablist', { name: '처방 보기' })
+    expect(within(list).getAllByRole('tab').map((t) => t.textContent)).toEqual(['묶음별 추세', '처방별 신환·재진', '처방 골라 보기'])
+    expect(tabs().map((t) => t.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false'])
+    expect(classesOf(list.parentElement!)).not.toContain('border-line-strong')
+    expect(classesOf(list.parentElement!)).toContain('min-w-0')
+  })
+
+  it('AC-4413.1: 고른 탭의 단추는 카드 머리 줄 오른쪽(ml-auto)에 한 번 있고, 휴대폰에서는 줄 전체 폭이다', () => {
+    inCard()
+    const edit = within(head()).getByRole('button', { name: '첫째 단추' })
+    expect(screen.getAllByRole('button', { name: '첫째 단추' })).toHaveLength(1)
+    expect(classesOf(edit.parentElement!)).toContain('ml-auto')
+    expect(classesOf(edit.parentElement!.parentElement!)).toEqual(expect.arrayContaining(['contents', 'max-md:[&>.ml-auto]:w-full']))
+    expect(head().textContent).toBe(`처방${CARD_DESC}첫째 단추`)
+    fireEvent.click(tabNamed('처방별 신환·재진'))
+    expect(screen.queryByRole('button', { name: '첫째 단추' })).toBeNull()
+  })
+
+  it('AC-4413.1: 카드가 옆 글을 가졌으면 탭 설명은 카드 머리에 가지 않고 그 패널 맨 위 한 줄(small muted)이다', () => {
+    inCard()
+    fireEvent.click(tabNamed('처방별 신환·재진'))
+    expect(head().textContent).toBe(`처방${CARD_DESC}`)
+    const panel = panelOf(tabNamed('처방별 신환·재진'))
+    const lead = within(panel).getByText('둘째 탭 설명')
+    expect(panel.firstElementChild).toBe(lead)
+    expect(lead.tagName).toBe('P')
+    expect(classesOf(lead)).toEqual(expect.arrayContaining(['text-small', 'text-st-muted']))
+    expect(screen.getAllByText('셋째 탭 설명')).toHaveLength(1)
+  })
+
+  it('AC-4413.1: 카드에 옆 글이 없으면(매출 카드) 탭 설명은 지금처럼 카드 머리 줄에 가고 패널 맨 위 줄은 없다', () => {
+    inCard(LEAD_TABS, false)
+    fireEvent.click(tabNamed('처방별 신환·재진'))
+    expect(head().textContent).toBe('처방둘째 탭 설명')
+    expect(panelOf(tabNamed('처방별 신환·재진')).firstElementChild!.textContent).toBe('둘째 내용')
+  })
+
+  it('AC-4413.1: notice는 탭 줄 바로 앞 한 번이고, 키로 탭을 옮기는 것·숨은 패널은 그대로다', () => {
+    inCard(LEAD_TABS, true, <div role="note">가짜 안내 줄</div>)
+    const note = screen.getByRole('note')
+    expect(note.nextElementSibling).toBe(screen.getByRole('tablist'))
+    expect(note.closest('[role="tabpanel"]')).toBeNull()
+    const [first, second] = tabs()
+    first!.focus()
+    fireEvent.keyDown(first!, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(second)
+    expect(tabs().map((t) => panelOf(t).hidden)).toEqual([true, false, true])
+    expect(screen.getByText('첫째 내용')).toBeTruthy()
+  })
+
+  it('AC-4413.1: 카드 머리의 [묶음 고치기]를 누르면 첫 탭 안에 h3가 생기고, 닫으면 카드 머리로 단추·초점이 돌아온다', () => {
+    inCard([{ name: '묶음별 추세', panel: <EditableTab /> }, ...LEAD_TABS.slice(1)])
+    fireEvent.click(within(head()).getByRole('button', { name: '묶음 고치기' }))
+    const h3 = within(panelOf(tabNamed('묶음별 추세'))).getByRole('heading', { level: 3, name: '가짜 묶음 · 묶음 고치기' })
+    expect(document.activeElement).toBe(h3)
+    expect(screen.queryByRole('button', { name: '묶음 고치기' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '그만두기' }))
+    expect(document.activeElement).toBe(within(head()).getByRole('button', { name: '묶음 고치기' }))
+  })
+
+  it('AC-4413.1: 카드 밖이면 useTabDesc는 설명을 머리 줄로 보내고(지금 그대로) 패널 맨 위 줄이 없다', () => {
+    render(<RxSection tabs={LEAD_TABS} />)
+    fireEvent.click(tabNamed('처방별 신환·재진'))
+    expect(head().textContent).toBe('처방둘째 탭 설명')
+    expect(panelOf(tabNamed('처방별 신환·재진')).firstElementChild!.textContent).toBe('둘째 내용')
   })
 })

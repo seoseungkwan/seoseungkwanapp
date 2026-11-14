@@ -22,8 +22,9 @@ const TODAY = '2026-11-13'
 const WHOLE: DateRange[] = [{ from: '2024-12-01', to: '2026-11-12' }]
 const NOW = '2026-11-02' // 최근 30일 안
 const BEFORE = '2026-09-21' // 지난 30일 안
-// 총환자 대비 칸(96px)이 건수(84px) 뒤에 든다(group-exclude design.md '화면')
-const COLUMNS = 'lg:grid-cols-[minmax(200px,1fr)_84px_96px_184px_128px_128px_16px]'
+// 총환자 대비 칸이 건수 뒤에 든다(group-exclude design.md '화면'). 막대는 이름 다음 제 칸이다(first90 AC-4413.2)
+const COLUMNS = 'lg:grid-cols-[minmax(160px,220px)_minmax(0,1fr)_88px_88px_168px_112px_112px_16px]'
+const COLUMNS_TWO = 'lg:grid-cols-[minmax(120px,200px)_minmax(0,1fr)_88px_80px_144px_144px_104px_104px_16px]'
 const PHONE_COLUMNS = 'max-lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_16px]'
 const STALE = '다시 불러오면 보여요'
 const NO_CODES = '넣은 처방이 없어요. [묶음 고치기]에서 넣어 주세요.'
@@ -117,11 +118,11 @@ describe('AC-1207.3: 준비된 줄의 이름·코드·막대·숫자', () => {
     expect((manual.querySelector('.bg-faint') as HTMLElement).style.left).toBe('8.33%')
   })
 
-  it('AC-1207.3: 막대는 이름 아래(같은 첫 칸)이고 칸 폭을 채운다', () => {
+  it('AC-1207.3·AC-4413.2: 막대는 이름 다음 둘째 칸(머리의 막대 칸)이고 칸 폭을 채운다', () => {
     draw(PLAIN, [SHOCK])
     const bar = barOf(rowOf('충격파'))!
     const cell = bar.parentElement!
-    expect(hasClasses(cell, 'lg:col-start-1 lg:row-start-2 [&>span]:w-full')).toBe(true)
+    expect(hasClasses(cell, 'lg:col-start-2 lg:row-start-1 [&>span]:w-full')).toBe(true)
   })
 
   it('AC-1207.3: 비교 기간을 이 열쇠로 세지 않았으면(견준 짝 없음) 막대는 건수이고 눈금이 없으며 증감은 비교할 수 없음이다', () => {
@@ -175,7 +176,7 @@ describe('AC-1207.4·AC-1207.5(그리기): 비율과 0건 줄', () => {
 })
 
 describe('AC-1207.6: 구분 없음', () => {
-  it('AC-1207.6: 신환 + 재진 < 건수이면 줄 아래에 구분 없음 n건 칩과 두 비율 글자의 합이 있다(건수 7·신환 1·재진 5)', () => {
+  it('AC-1207.6·AC-4413.2: 신환 + 재진 < 건수이면 줄 아래(이름·막대 칸 밑)에 구분 없음 n건 칩과 두 비율 글자의 합이 있다(건수 7·신환 1·재진 5)', () => {
     draw([day(NOW, [line(SHOCK_KEY, 7, 1, 5)])], [SHOCK])
     const row = rowOf('충격파')
     expect(cellOf(row, '14.2%')).toBeTruthy()
@@ -184,7 +185,7 @@ describe('AC-1207.6: 구분 없음', () => {
     expect(hasClasses(chip, ds.chip.warning)).toBe(true)
     const note = cellOf(row, '신환율과 재진율을 더하면 85.6%예요')
     expect(note.parentElement).toBe(chip.parentElement)
-    expect(hasClasses(chip.parentElement!, 'lg:col-start-1 lg:row-start-3')).toBe(true)
+    expect(hasClasses(chip.parentElement!, 'lg:col-[1/3] lg:row-start-2')).toBe(true)
   })
 
   it('AC-1207.6: 같으면 칩과 설명이 없다(건수 3·신환 1·재진 2의 99.9%에도 없다)', () => {
@@ -201,17 +202,17 @@ describe('AC-1207.7·AC-3708.2: 넓은 화면의 머리 줄과 칸', () => {
     ['30d', '지난 30일보다'],
     ['90d', '지난 90일보다'],
     ['12m', '작년 같은 12달보다'],
-  ] as const)('AC-1207.7·AC-3708.2: %s 머리 줄은 묶음·건수·총환자 대비·%s·신환·재진이고 화면 읽기에서 숨긴다', (period, compare) => {
+  ] as const)('AC-1207.7·AC-3708.2·AC-4413.2: %s 머리 줄은 묶음·(막대)·건수·총환자 대비·%s·신환·재진이고 화면 읽기에서 숨긴다', (period, compare) => {
     const { container } = draw(PLAIN, [SHOCK], { period })
     const head = headOf(container)
-    expect(Array.from(head.children).map((el) => el.textContent)).toEqual(['묶음', '건수', '총환자 대비', compare, '신환', '재진', ''])
+    expect(Array.from(head.children).map((el) => el.textContent)).toEqual(['묶음', '', '건수', '총환자 대비', compare, '신환', '재진', ''])
     expect(head.getAttribute('aria-hidden')).toBe('true')
   })
 
-  it('AC-1207.7·AC-3708.2: 숫자 머리(건수·총환자 대비·신환·재진)는 오른쪽, 묶음·비교 머리는 왼쪽 정렬이다(시안 .cols)', () => {
+  it('AC-1207.7·AC-3708.2·AC-4413.2: 숫자 머리(건수·총환자 대비·비교·신환·재진)는 오른쪽, 묶음·막대 머리는 왼쪽 정렬이다', () => {
     const { container } = draw(PLAIN, [SHOCK])
     const aligned = Array.from(headOf(container).children).map((el) => el.classList.contains('text-right'))
-    expect(aligned).toEqual([false, true, true, false, true, true, false])
+    expect(aligned).toEqual([false, false, true, true, true, true, true, false])
   })
 
   it('AC-1207.7: 머리 줄·준비된 줄·기다리는 줄의 칸 폭이 같다', () => {
@@ -227,16 +228,16 @@ describe('AC-1207.7·AC-3708.2: 넓은 화면의 머리 줄과 칸', () => {
     expect(headOf(container).classList.contains('max-lg:hidden')).toBe(true)
   })
 
-  it('AC-1207.7·AC-3708.2: 넓은 화면의 칸 자리는 건수 2 · 총환자 대비 3 · 증감 4 · 신환 5 · 재진 6 · 꺾쇠 7이다', () => {
+  it('AC-1207.7·AC-3708.2·AC-4413.2: 넓은 화면의 칸 자리는 막대 2 · 건수 3 · 총환자 대비 4 · 증감 5 · 신환 6 · 재진 7 · 꺾쇠 8이다', () => {
     draw(PLAIN, [SHOCK])
     const row = rowOf('충격파')
-    expect(cellOf(row, '120건').classList.contains('lg:col-start-2')).toBe(true)
-    expect(within(row).getByText('총환자 대비').parentElement!.classList.contains('lg:col-start-3')).toBe(true)
-    expect(cellOf(row, '70건 (+140.0%)').closest('.lg\\:col-start-4')).not.toBeNull()
-    expect(within(row).getByText('신환').parentElement!.classList.contains('lg:col-start-5')).toBe(true)
-    expect(within(row).getByText('재진').parentElement!.classList.contains('lg:col-start-6')).toBe(true)
+    expect(cellOf(row, '120건').classList.contains('lg:col-start-3')).toBe(true)
+    expect(within(row).getByText('총환자 대비').parentElement!.classList.contains('lg:col-start-4')).toBe(true)
+    expect(cellOf(row, '70건 (+140.0%)').closest('.lg\\:col-start-5')).not.toBeNull()
+    expect(within(row).getByText('신환').parentElement!.classList.contains('lg:col-start-6')).toBe(true)
+    expect(within(row).getByText('재진').parentElement!.classList.contains('lg:col-start-7')).toBe(true)
     const chev = Array.from(row.querySelectorAll('svg')).find((svg) => !barOf(row)?.contains(svg))!
-    expect(chev.classList.contains('lg:col-start-7')).toBe(true)
+    expect(chev.classList.contains('lg:col-start-8')).toBe(true)
   })
 })
 
@@ -266,11 +267,11 @@ describe('AC-1207.9: 다시 불러와야 하는 줄·처방 없는 줄', () => {
     expect(item.querySelector('svg')).toBeNull()
   })
 
-  it('AC-1207.9·AC-3708.2: 기다리는 글은 small muted이고 넓으면 건수~재진 자리(2~7번 선, 총환자 대비 칸 포함), 좁으면 이름 아래 폭 전체다', () => {
+  it('AC-1207.9·AC-3708.2·AC-4413.2: 기다리는 글은 small muted이고 넓으면 막대~재진 자리(2~8번 선, 총환자 대비 칸 포함), 좁으면 이름 아래 폭 전체다', () => {
     draw(MIXED, [SHOCK, CARM, FROZEN])
     for (const text of [STALE, NO_CODES]) {
       const note = screen.getByText(text)
-      expect(hasClasses(note, 'text-small text-muted lg:col-[2/7] max-lg:col-[1/4] max-lg:row-start-2'), text).toBe(true)
+      expect(hasClasses(note, 'text-small text-muted lg:col-[2/8] max-lg:col-[1/4] max-lg:row-start-2'), text).toBe(true)
     }
   })
 
@@ -362,19 +363,19 @@ describe('AC-1212.1: 1024px 미만 쌓임', () => {
     expect((lineOf('충격파').firstElementChild as HTMLElement).classList.contains(PHONE_COLUMNS)).toBe(true)
   })
 
-  it('AC-1212.1·AC-3708.3: 1줄 이름·코드(왼쪽) + 꺾쇠(오른쪽) / 2줄 큰 건수(왼쪽) + 증감(오른쪽) / 3줄 총환자 대비(폭 전체, 왼쪽) / 4줄 막대(폭 전체) / 5줄 신환(왼쪽) + 재진(오른쪽) / 6줄 구분 없음', () => {
+  it('AC-1212.1·AC-3708.3·AC-4413.2: 1줄 이름·코드(왼쪽) + 건수(오른쪽) + 꺾쇠 / 2줄 막대(폭 전체) / 3줄 총환자 대비(왼쪽) + 증감(오른쪽) / 4줄 신환(왼쪽) + 재진(오른쪽) / 5줄 구분 없음', () => {
     draw([day(BEFORE, [line(SHOCK_KEY, 5, 1)]), day(NOW, [line(SHOCK_KEY, 7, 1, 5)])], [SHOCK])
     const row = rowOf('충격파')
-    expect(hasClasses(cellOf(row, '충격파').parentElement!, 'max-lg:col-[1/3] max-lg:row-start-1')).toBe(true)
+    expect(hasClasses(cellOf(row, '충격파').parentElement!, 'max-lg:col-start-1 max-lg:row-start-1')).toBe(true)
     const chev = Array.from(row.querySelectorAll('svg')).find((svg) => !barOf(row)?.contains(svg))!
     expect(hasClasses(chev, 'max-lg:col-start-3 max-lg:row-start-1')).toBe(true)
-    expect(hasClasses(cellOf(row, '7건'), 'max-lg:col-start-1 max-lg:row-start-2 max-lg:text-left max-lg:text-title')).toBe(true)
-    expect(hasClasses(cellOf(row, '2건 (+40.0%)').closest('.max-lg\\:row-start-2.max-lg\\:col-\\[2\\/4\\]')!, 'max-lg:text-right')).toBe(true)
-    expect(hasClasses(within(row).getByText('총환자 대비').parentElement!, 'max-lg:col-[1/4] max-lg:row-start-3 max-lg:text-left')).toBe(true)
-    expect(hasClasses(barOf(row)!.parentElement!, 'max-lg:col-[1/4] max-lg:row-start-4')).toBe(true)
-    expect(hasClasses(within(row).getByText('신환').parentElement!, 'max-lg:col-start-1 max-lg:row-start-5')).toBe(true)
-    expect(hasClasses(within(row).getByText('재진').parentElement!, 'max-lg:col-[2/4] max-lg:row-start-5 text-right')).toBe(true)
-    expect(hasClasses(cellOf(row, '구분 없음 1건').parentElement!, 'max-lg:col-[1/4] max-lg:row-start-6')).toBe(true)
+    expect(hasClasses(cellOf(row, '7건'), 'max-lg:col-start-2 max-lg:row-start-1 text-right')).toBe(true)
+    expect(hasClasses(barOf(row)!.parentElement!, 'max-lg:col-[1/4] max-lg:row-start-2')).toBe(true)
+    expect(hasClasses(within(row).getByText('총환자 대비').parentElement!, 'max-lg:col-start-1 max-lg:row-start-3 max-lg:text-left')).toBe(true)
+    expect(hasClasses(cellOf(row, '2건 (+40.0%)').closest('.max-lg\\:row-start-3.max-lg\\:col-\\[2\\/4\\]')!, 'text-right')).toBe(true)
+    expect(hasClasses(within(row).getByText('신환').parentElement!, 'max-lg:col-start-1 max-lg:row-start-4')).toBe(true)
+    expect(hasClasses(within(row).getByText('재진').parentElement!, 'max-lg:col-[2/4] max-lg:row-start-4 text-right')).toBe(true)
+    expect(hasClasses(cellOf(row, '구분 없음 1건').parentElement!, 'max-lg:col-[1/4] max-lg:row-start-5')).toBe(true)
   })
 
   it('AC-1212.1: 이름표 신환·재진은 1024px 이상에서만 숨고(화면 읽기는 읽는다) 좁으면 muted로 보인다', () => {
@@ -414,15 +415,15 @@ describe('AC-1705.2: 고른 기간의 처방별 추세 표', () => {
   // 줄 안 비교 칸: 휴대폰 이름표('{name}보다', 넓으면 화면 읽기에만)가 든 칸
   const compareOf = (name: string) => within(rowOf('충격파')).getByText(`${name}보다`).parentElement!
 
-  it('AC-1705.2·AC-3708.2: 머리에 비교마다 "{name}보다"가 있다(9월보다·작년 10월보다). 총환자 대비 칸은 비교 앞이다', () => {
+  it('AC-1705.2·AC-3708.2·AC-4413.2: 머리에 비교마다 "{name}보다"가 있다(9월보다·작년 10월보다). 총환자 대비 칸은 비교 앞이다', () => {
     const { container } = drawPick(THREE)
-    expect(headTexts(container)).toEqual(['묶음', '건수', '총환자 대비', '9월보다', '작년 10월보다', '신환', '재진', ''])
-    expect(headOf(container).classList.contains('lg:grid-cols-[minmax(200px,1fr)_84px_96px_184px_184px_128px_128px_16px]')).toBe(true)
+    expect(headTexts(container)).toEqual(['묶음', '', '건수', '총환자 대비', '9월보다', '작년 10월보다', '신환', '재진', ''])
+    expect(headOf(container).classList.contains(COLUMNS_TWO)).toBe(true)
   })
 
-  it('AC-1705.2·AC-3708.2: 해는 "2025년보다" 하나다', () => {
+  it('AC-1705.2·AC-3708.2·AC-4413.2: 해는 "2025년보다" 하나다', () => {
     const { container } = drawPick([day('2025-03-02', [line(SHOCK_KEY, 40, 4)]), day('2026-03-02', [line(SHOCK_KEY, 60, 6)])], { kind: 'year', year: '2026' })
-    expect(headTexts(container)).toEqual(['묶음', '건수', '총환자 대비', '2025년보다', '신환', '재진', ''])
+    expect(headTexts(container)).toEqual(['묶음', '', '건수', '총환자 대비', '2025년보다', '신환', '재진', ''])
     expect(headOf(container).classList.contains(COLUMNS)).toBe(true)
   })
 
@@ -449,9 +450,9 @@ describe('AC-1705.2: 고른 기간의 처방별 추세 표', () => {
 })
 
 describe('AC-1705.5: 빠른 단추의 처방별 추세 표는 지금과 같다', () => {
-  it('AC-1705.5·AC-3708.2: 머리는 묶음·건수·총환자 대비·"지난 30일보다"·신환·재진이고 칸 폭이 한 비교 칸 그대로다', () => {
+  it('AC-1705.5·AC-3708.2·AC-4413.2: 머리는 묶음·(막대)·건수·총환자 대비·"지난 30일보다"·신환·재진이고 칸 폭이 한 비교 칸 그대로다', () => {
     const { container } = draw(PLAIN, [SHOCK])
-    expect(Array.from(headOf(container).children).map((cell) => cell.textContent)).toEqual(['묶음', '건수', '총환자 대비', '지난 30일보다', '신환', '재진', ''])
+    expect(Array.from(headOf(container).children).map((cell) => cell.textContent)).toEqual(['묶음', '', '건수', '총환자 대비', '지난 30일보다', '신환', '재진', ''])
     expect(headOf(container).classList.contains(COLUMNS)).toBe(true)
     expect(screen.queryByText(/자료가 없어요\. 비트 PC에서 그 기간을 불러오면 보여요\./)).toBeNull()
   })
@@ -501,7 +502,7 @@ describe('AC-3708.1: 표 위 총환자 줄', () => {
 })
 
 describe('AC-3708.2: 넓은 화면의 총환자 대비 칸', () => {
-  it('AC-3708.2: 준비된 줄마다 총환자 대비 칸에 rateText(건수, 총환자)가 있다(600·오른쪽·고정폭, 이름표는 넓으면 화면 읽기에만)', () => {
+  it('AC-3708.2·AC-4413.2: 준비된 줄마다 총환자 대비 칸에 rateText(건수, 총환자)가 있다(600·오른쪽·고정폭, 이름표는 넓으면 화면 읽기에만)', () => {
     draw(PEOPLE, [SHOCK, MANUAL])
     // 충격파 120 ÷ 1,234 = 9.72…% → 9.7%, 도수치료 40 ÷ 1,234 = 3.24…% → 3.2%
     for (const [name, count, text] of [
@@ -513,7 +514,7 @@ describe('AC-3708.2: 넓은 화면의 총환자 대비 칸', () => {
       const label = within(row).getByText('총환자 대비')
       const cell = label.parentElement!
       expect(cell.textContent, name).toBe(`총환자 대비 ${text}`)
-      expect(hasClasses(cell, 'font-semibold text-right tabular-nums lg:col-start-3 lg:row-[1/span_2]'), name).toBe(true)
+      expect(hasClasses(cell, 'font-semibold text-right tabular-nums lg:col-start-4 lg:row-start-1'), name).toBe(true)
       expect(hasClasses(label, 'lg:sr-only text-muted font-normal'), name).toBe(true)
     }
   })
@@ -523,21 +524,21 @@ describe('AC-3708.2: 넓은 화면의 총환자 대비 칸', () => {
     expect(within(rowOf('충격파')).getByText('총환자 대비').parentElement!.textContent).toBe('총환자 대비 –')
   })
 
-  it('AC-3708.2: 고른 기간에 비교가 둘(작년)이면 총환자 대비 3 · 비교 4·5 · 신환 6 · 재진 7 · 꺾쇠 8이고 기다리는 글은 2~8번 선이다', () => {
+  it('AC-3708.2·AC-4413.2: 고른 기간에 비교가 둘(작년)이면 총환자 대비 4 · 비교 5·6 · 신환 7 · 재진 8 · 꺾쇠 9이고 기다리는 글은 2~9번 선이다', () => {
     const OCT: StatsPick = { kind: 'month', unit: 'day', month: '2026-10' }
     const days = [day('2025-10-06', [line(SHOCK_KEY, 100, 10)]), day('2026-09-07', [line(SHOCK_KEY, 50, 5)]), day('2026-10-05', [line(SHOCK_KEY, 120, 30)], 400)]
     const input: StatsInput = { days, covered: [{ from: '2025-01-01', to: '2026-11-05' }], range: rangeOf('2026-11-06', OCT, false) }
     render(<TreatmentTable input={input} rows={treatmentRows(input, [SHOCK, CARM])} opened={new Set()} onToggle={() => {}} renderPanel={() => null} />)
     const row = rowOf('충격파')
     expect(within(row).getByText('총환자 대비').parentElement!.textContent).toBe('총환자 대비 30.0%')
-    expect(hasClasses(within(row).getByText('총환자 대비').parentElement!, 'lg:col-start-3')).toBe(true)
-    expect(hasClasses(within(row).getByText('9월보다').parentElement!, 'lg:col-start-4')).toBe(true)
-    expect(hasClasses(within(row).getByText('작년 10월보다').parentElement!, 'lg:col-start-5')).toBe(true)
-    expect(hasClasses(within(row).getByText('신환').parentElement!, 'lg:col-start-6')).toBe(true)
-    expect(hasClasses(within(row).getByText('재진').parentElement!, 'lg:col-start-7')).toBe(true)
+    expect(hasClasses(within(row).getByText('총환자 대비').parentElement!, 'lg:col-start-4')).toBe(true)
+    expect(hasClasses(within(row).getByText('9월보다').parentElement!, 'lg:col-start-5')).toBe(true)
+    expect(hasClasses(within(row).getByText('작년 10월보다').parentElement!, 'lg:col-start-6')).toBe(true)
+    expect(hasClasses(within(row).getByText('신환').parentElement!, 'lg:col-start-7')).toBe(true)
+    expect(hasClasses(within(row).getByText('재진').parentElement!, 'lg:col-start-8')).toBe(true)
     const chev = Array.from(row.querySelectorAll('svg')).find((svg) => !barOf(row)?.contains(svg))!
-    expect(chev.classList.contains('lg:col-start-8')).toBe(true)
-    expect(hasClasses(screen.getByText(STALE), 'lg:col-[2/8]')).toBe(true)
+    expect(chev.classList.contains('lg:col-start-9')).toBe(true)
+    expect(hasClasses(screen.getByText(STALE), 'lg:col-[2/9]')).toBe(true)
   })
 
   it('AC-3708.2: 기다리는 줄에는 총환자 대비 칸이 없다', () => {
@@ -548,12 +549,12 @@ describe('AC-3708.2: 넓은 화면의 총환자 대비 칸', () => {
 })
 
 describe('AC-3708.3: 좁은 화면의 총환자 대비', () => {
-  it('AC-3708.3: 건수 아래 줄(셋째 줄, 폭 전체, 왼쪽)에 `총환자 대비 x%`가 있고 이름표가 보인다(sr-only가 아니다). 머리 줄은 숨는다', () => {
+  it('AC-3708.3·AC-4413.2: 막대 아래 셋째 줄 왼쪽에 `총환자 대비 x%`가 있고 이름표가 보인다(sr-only가 아니다). 머리 줄은 숨는다', () => {
     const { container } = draw(PEOPLE, [SHOCK])
     const row = rowOf('충격파')
     const label = within(row).getByText('총환자 대비')
     expect(label.classList.contains('sr-only')).toBe(false)
-    expect(hasClasses(label.parentElement!, 'max-lg:col-[1/4] max-lg:row-start-3 max-lg:text-left max-lg:text-small')).toBe(true)
+    expect(hasClasses(label.parentElement!, 'max-lg:col-start-1 max-lg:row-start-3 max-lg:text-left max-lg:text-small')).toBe(true)
     expect(follows(cellOf(row, '120건'), label)).toBe(true)
     expect(headOf(container).classList.contains('max-lg:hidden')).toBe(true)
   })
@@ -637,5 +638,63 @@ describe('AC-3708.5: 빼는 처방 줄', () => {
       const tokens = (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
       expect(tokens.filter((token) => OTHER_WIDTH.test(token))).toEqual([])
     }
+  })
+})
+
+// ── first90: 순위 줄 모양(REQ-4413 AC-4413.2) · 가로 막대 움직임(REQ-4417 AC-4417.2) ─────────────────
+describe('AC-4413.2: 순위 줄 — 큰 건수 · 표 위 비교 글 · 아래 글', () => {
+  const FOOT = '같은 날 같은 환자는 1건 · 한 환자가 여러 묶음을 받을 수 있어 비율의 합은 100%가 아니에요.'
+
+  it('AC-4413.2: 건수는 "{n}건" 한 글자 덩이이고 크게(18px 600) 오른쪽 정렬·고정폭 숫자다', () => {
+    draw(PLAIN, [SHOCK])
+    const count = cellOf(rowOf('충격파'), '120건')
+    expect(hasClasses(count, 'text-st-18 leading-7 font-semibold text-right tabular-nums')).toBe(true)
+    expect(count.classList.contains('max-lg:text-title')).toBe(false)
+  })
+
+  it('AC-4413.2: 증감·신환·재진 칸도 오른쪽 정렬이다(좁을 때 왼쪽 칸은 왼쪽)', () => {
+    draw(PLAIN, [SHOCK])
+    const row = rowOf('충격파')
+    expect(hasClasses(cellOf(row, '70건 (+140.0%)').closest('.lg\\:col-start-5')!, 'text-right')).toBe(true)
+    expect(hasClasses(within(row).getByText('신환').parentElement!, 'text-right max-lg:text-left')).toBe(true)
+    expect(hasClasses(within(row).getByText('재진').parentElement!, 'text-right')).toBe(true)
+  })
+
+  it.each([
+    ['30d', '증감은 지난 30일(9월 14일 – 10월 13일)과 비교'],
+    ['12m', '증감은 작년 같은 12달(2024년 12월 1일 – 2025년 11월 30일)과 비교'],
+  ] as const)('AC-4413.2: %s 표 위(총환자 줄 다음)에 1023px 이하에서만 보이는 비교 글 "%s"가 있다', (period, text) => {
+    const { container } = draw(PLAIN, [SHOCK], { period })
+    const note = screen.getByText(text)
+    expect(note.tagName).toBe('P')
+    expect(hasClasses(note, 'lg:hidden text-small text-muted')).toBe(true)
+    expect(note.previousElementSibling!.textContent).toMatch(/^이 기간 총환자 /)
+    expect(follows(note, container.querySelector('ul')!)).toBe(true)
+  })
+
+  it('AC-4413.2: 고른 기간에 비교가 둘이면 비교 글도 둘이다', () => {
+    const input: StatsInput = {
+      days: [day('2025-10-06', [line(SHOCK_KEY, 100, 10)]), day('2026-10-05', [line(SHOCK_KEY, 120, 30)])],
+      covered: [{ from: '2025-01-01', to: '2026-11-05' }],
+      range: rangeOf('2026-11-06', { kind: 'month', unit: 'day', month: '2026-10' }, false),
+    }
+    render(<TreatmentTable input={input} rows={treatmentRows(input, [SHOCK])} opened={new Set()} onToggle={() => {}} renderPanel={() => null} />)
+    expect(screen.getByText('증감은 9월(9월 1일 – 9월 30일)과 비교')).toBeTruthy()
+    expect(screen.getByText('증감은 작년 10월(10월 1일 – 10월 31일)과 비교')).toBeTruthy()
+  })
+
+  it('AC-4413.2: 줄 목록 아래에 "같은 날 같은 환자는 1건 · …" 한 줄이 있다(small muted)', () => {
+    const { container } = draw(PLAIN, [SHOCK, CARM])
+    const foot = screen.getByText(FOOT)
+    expect(foot.tagName).toBe('P')
+    expect(hasClasses(foot, 'text-small text-muted')).toBe(true)
+    expect(follows(container.querySelector('ul')!, foot)).toBe(true)
+  })
+})
+
+describe('AC-4417.2: 가로 막대 폭 움직임', () => {
+  it('AC-4417.2: 묶음 줄 막대(이번 막대)에 st-move-period가 붙는다', () => {
+    draw(PLAIN, [SHOCK, MANUAL])
+    for (const name of ['충격파', '도수치료']) expect((barOf(rowOf(name))!.querySelector('.bg-accent') as HTMLElement).classList.contains('st-move-period'), name).toBe(true)
   })
 })

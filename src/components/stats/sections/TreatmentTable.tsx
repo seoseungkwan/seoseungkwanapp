@@ -6,7 +6,7 @@ import { InlineBar } from '@/components/charts/InlineBar'
 import { Icon } from '@/components/common/Icon'
 import { addedRateText, rateText } from '@/components/stats/rxPickView'
 import { periodPatients } from '@/components/stats/treatmentChart'
-import { groupCond, groupOut, keptCond, rowKey, type TreatmentRow } from '@/components/stats/treatmentView'
+import { compareNotes, groupCond, groupOut, keptCond, rowKey, type TreatmentRow } from '@/components/stats/treatmentView'
 import { codeKey, type RxPickRow, type StatsInput, type StatsRange } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
 import type { Delta } from '@/types/analysis'
@@ -15,55 +15,57 @@ import { DeltaText, PartialChip } from './parts'
 
 // 처방별 추세 묶음 줄 표 (treatment-trend REQ-1207·1209·1212, design.md '화면', 시안 docs/mockups/treatment-trend/index.html .cols·.row). props만 받는다.
 // 머리 줄·묶음 줄(준비·다시 불러와야 함·처방 없음)·열린 칸 자리. 숫자는 treatmentRows가 낸 값이고 열린 칸 그림은 renderPanel로 받는다.
-// 넓으면(1024px 이상) 한 줄 칸, 좁으면 한 묶음이 여섯 줄로 쌓인다(시안은 900px이지만 폭 접두사 규칙 때문에 max-lg:, design.md '시안과 다른 곳').
+// 넓으면(1024px 이상) 한 줄 칸, 좁으면 한 묶음이 다섯 줄로 쌓인다(시안은 900px이지만 폭 접두사 규칙 때문에 max-lg:, design.md '시안과 다른 곳').
 // 고른 기간(stats-period AC-1705.2)은 비교마다 '{name}보다' 칸이고(작년 비교가 있으면 칸이 하나 는다) 견줄 수 없는 칸은 '–'다. 빠른 단추는 지금 칸 그대로다.
 // group-exclude REQ-3708(시안 docs/mockups/group-exclude .allpt·.c-share·.out-line): 표 위 총환자 줄(prop 없이 input으로 센다), 건수 뒤 총환자 대비 칸
 // (넓으면 96px 칸, 좁으면 셋째 줄 이름표 보임), 이름 칸의 조건 *·조건 줄·빼는 처방 줄. 빼는 처방·조건이 없는 묶음의 이름 칸은 지금 그대로다
+// first90 AC-4413.2(시안 docs/mockups/first90 .s-rank): 가로 막대 순위 줄. 머리 칸 묶음 · (막대) · 건수 · 총환자 대비 · {비교}보다 · 신환 · 재진,
+// 건수는 크게(18px 600), 수 칸은 오른쪽 정렬. 좁으면 이름·건수 → 막대 → 총환자 대비·증감 → 신환·재진으로 쌓고 표 위에 비교 기간 글을 둔다. 막대 폭은 기간을 바꾸면 움직인다(AC-4417.2)
 
 export type ReadyTreatmentRow = Extract<TreatmentRow, { kind: 'ready' }>
 
 const STALE = '다시 불러오면 보여요'
 const NO_CODES = '넣은 처방이 없어요. [묶음 고치기]에서 넣어 주세요.'
+const FOOT = '같은 날 같은 환자는 1건 · 한 환자가 여러 묶음을 받을 수 있어 비율의 합은 100%가 아니에요.'
 
-// 머리·줄이 같이 쓰는 칸. 줄 올림과 위아래 선은 놓는 쪽이 준다
-const COLUMNS =
-  'grid w-full items-center gap-x-3 lg:grid-cols-[minmax(200px,1fr)_84px_96px_184px_128px_128px_16px] max-lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_16px] max-lg:gap-x-2 max-lg:gap-y-0.5'
+// 머리·줄이 같이 쓰는 칸. 줄 올림과 위아래 선은 놓는 쪽이 준다. 좁으면 반·반·꺾쇠 세 칸이다
+const PHONE_COLUMNS = 'max-lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_16px] max-lg:gap-x-2 max-lg:gap-y-0.5'
+const COLUMNS = `grid w-full items-center gap-x-3 lg:grid-cols-[minmax(160px,220px)_minmax(0,1fr)_88px_88px_168px_112px_112px_16px] ${PHONE_COLUMNS}`
 const LINE = 'border-b border-line py-3 text-left text-body text-ink'
-// 넓으면 숫자 칸은 이름·막대 두 줄의 가운데(시안 grid-row: 1 / span 2), 구분 없음은 셋째 줄
-const NAME_CELL = 'min-w-0 wrap-anywhere lg:col-start-1 lg:row-start-1 max-lg:col-[1/3] max-lg:row-start-1'
+// 넓으면 한 줄(구분 없음만 둘째 줄 이름·막대 칸 밑), 좁으면 1줄 이름 + 건수 · 2줄 막대 · 3줄 총환자 대비 + 증감 · 4줄 신환 + 재진 · 5줄 구분 없음
+const NAME_CELL = 'min-w-0 wrap-anywhere lg:col-start-1 lg:row-start-1 max-lg:col-start-1 max-lg:row-start-1'
 // 이름 칸 아래 줄(조건·빼는 처방, 시안 .out-line)
 const PART_LINE = 'mt-0.5 block text-caption text-ink-2'
-const BAR_CELL = 'mt-1.5 block [&>span]:w-full lg:col-start-1 lg:row-start-2 max-lg:col-[1/4] max-lg:row-start-4'
-const GAP_CELL = 'mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-caption text-ink-2 lg:col-start-1 lg:row-start-3 max-lg:col-[1/4] max-lg:row-start-6'
+const BAR_CELL = 'block [&>span]:w-full lg:col-start-2 lg:row-start-1 max-lg:col-[1/4] max-lg:row-start-2 max-lg:mt-1.5'
+const GAP_CELL = 'mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-caption text-ink-2 lg:col-[1/3] lg:row-start-2 max-lg:col-[1/4] max-lg:row-start-5'
 const COUNT_CELL =
-  'flex flex-wrap items-center justify-end gap-x-1.5 gap-y-0.5 text-right font-semibold whitespace-nowrap tabular-nums lg:col-start-2 lg:row-[1/span_2] max-lg:col-start-1 max-lg:row-start-2 max-lg:justify-start max-lg:text-left max-lg:text-title'
-// 총환자 대비(시안 .c-share): 넓으면 건수 뒤 칸(이름표는 화면 읽기에만), 좁으면 건수 아래 셋째 줄 폭 전체(이름표 보임)
+  'flex flex-wrap items-center justify-end gap-x-1.5 gap-y-0.5 text-right text-st-18 leading-7 font-semibold whitespace-nowrap tabular-nums lg:col-start-3 lg:row-start-1 max-lg:col-start-2 max-lg:row-start-1'
+// 총환자 대비(시안 .c-share): 넓으면 건수 뒤 칸(이름표는 화면 읽기에만), 좁으면 막대 아래 셋째 줄 왼쪽(이름표 보임)
 const SHARE_CELL =
-  'text-right font-semibold whitespace-nowrap tabular-nums lg:col-start-3 lg:row-[1/span_2] max-lg:col-[1/4] max-lg:row-start-3 max-lg:text-left max-lg:text-small'
-const DELTA_CELL = 'text-small font-semibold lg:col-start-4 lg:row-[1/span_2] max-lg:col-[2/4] max-lg:row-start-2 max-lg:text-right'
-const PAIR_CELL = 'text-right text-small text-ink-2 tabular-nums lg:row-[1/span_2] max-lg:row-start-5 max-lg:mt-1.5'
-const NEW_PLACE = 'lg:col-start-5 max-lg:col-start-1 max-lg:text-left'
-const RETURNING_PLACE = 'lg:col-start-6 max-lg:col-[2/4]'
-const CHEV_CELL = 'text-muted transition lg:col-start-7 lg:row-[1/span_2] max-lg:col-start-3 max-lg:row-start-1'
-const WAIT_CELL = 'text-small text-muted lg:col-[2/7] lg:row-start-1 max-lg:col-[1/4] max-lg:row-start-2'
+  'text-right font-semibold whitespace-nowrap tabular-nums lg:col-start-4 lg:row-start-1 max-lg:col-start-1 max-lg:row-start-3 max-lg:mt-1.5 max-lg:text-left max-lg:text-small'
+const DELTA_CELL = 'text-right text-small font-semibold lg:col-start-5 lg:row-start-1 max-lg:col-[2/4] max-lg:row-start-3 max-lg:mt-1.5'
+const PAIR_CELL = 'text-right text-small text-ink-2 tabular-nums lg:row-start-1 max-lg:row-start-4 max-lg:mt-1'
+const NEW_PLACE = 'lg:col-start-6 max-lg:col-start-1 max-lg:text-left'
+const RETURNING_PLACE = 'lg:col-start-7 max-lg:col-[2/4]'
+const CHEV_CELL = 'text-muted transition lg:col-start-8 lg:row-start-1 max-lg:col-start-3 max-lg:row-start-1'
+const WAIT_CELL = 'text-small text-muted lg:col-[2/8] lg:row-start-1 max-lg:col-[1/4] max-lg:row-start-2'
 const PANEL = 'border-b border-line bg-canvas p-4 max-md:-mx-4 [&_th]:bg-canvas'
-// 고른 기간 비교 칸(넓으면 넷째·다섯째 칸, 좁으면 둘째 줄 오른쪽에 위아래로). 좁을 때만 이름표가 보인다
-const PICK_COMPARES = 'lg:contents max-lg:col-[2/4] max-lg:row-start-2 max-lg:flex max-lg:flex-col max-lg:items-end max-lg:gap-0.5'
-const PICK_COMPARE = ['text-small font-semibold lg:col-start-4 lg:row-[1/span_2]', 'text-small font-semibold lg:col-start-5 lg:row-[1/span_2]'] as const
+// 고른 기간 비교 칸(넓으면 다섯째·여섯째 칸, 좁으면 셋째 줄 오른쪽에 위아래로). 좁을 때만 이름표가 보인다
+const PICK_COMPARES = 'lg:contents max-lg:col-[2/4] max-lg:row-start-3 max-lg:mt-1.5 max-lg:flex max-lg:flex-col max-lg:items-end max-lg:gap-0.5'
+const PICK_COMPARE = ['text-right text-small font-semibold lg:col-start-5 lg:row-start-1', 'text-right text-small font-semibold lg:col-start-6 lg:row-start-1'] as const
 const COMPARE_LABEL = 'mr-1 font-normal text-muted lg:sr-only'
 const NO_VALUE = '–'
 const UNAVAILABLE: Delta = { kind: 'unavailable' }
 
-// 칸 자리. 비교 칸이 둘(고른 기간 + 작년)이면 칸이 하나 늘어 뒤 칸이 한 칸씩 밀린다
+// 칸 자리. 비교 칸이 둘(고른 기간 + 작년)이면 칸이 하나 늘어 뒤 칸이 한 칸씩 밀린다(이름·비교·신환·재진 칸을 좁혀 넓은 화면 폭 안에 든다)
 type Layout = { columns: string; newPlace: string; returningPlace: string; chev: string; wait: string }
 const ONE: Layout = { columns: COLUMNS, newPlace: NEW_PLACE, returningPlace: RETURNING_PLACE, chev: CHEV_CELL, wait: WAIT_CELL }
 const TWO: Layout = {
-  columns:
-    'grid w-full items-center gap-x-3 lg:grid-cols-[minmax(200px,1fr)_84px_96px_184px_184px_128px_128px_16px] max-lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_16px] max-lg:gap-x-2 max-lg:gap-y-0.5',
-  newPlace: 'lg:col-start-6 max-lg:col-start-1 max-lg:text-left',
-  returningPlace: 'lg:col-start-7 max-lg:col-[2/4]',
-  chev: 'text-muted transition lg:col-start-8 lg:row-[1/span_2] max-lg:col-start-3 max-lg:row-start-1',
-  wait: 'text-small text-muted lg:col-[2/8] lg:row-start-1 max-lg:col-[1/4] max-lg:row-start-2',
+  columns: `grid w-full items-center gap-x-3 lg:grid-cols-[minmax(120px,200px)_minmax(0,1fr)_88px_80px_144px_144px_104px_104px_16px] ${PHONE_COLUMNS}`,
+  newPlace: 'lg:col-start-7 max-lg:col-start-1 max-lg:text-left',
+  returningPlace: 'lg:col-start-8 max-lg:col-[2/4]',
+  chev: 'text-muted transition lg:col-start-9 lg:row-start-1 max-lg:col-start-3 max-lg:row-start-1',
+  wait: 'text-small text-muted lg:col-[2/9] lg:row-start-1 max-lg:col-[1/4] max-lg:row-start-2',
 }
 
 // 고른 기간의 비교 하나(바로 전 = comparable·delta, 작년 = lastYear). previous null = 견줄 수 없음('–')
@@ -146,7 +148,7 @@ function Numbers({ row, max, picked, layout, patients }: { row: RxPickRow; max: 
   return (
     <>
       <span className={BAR_CELL}>
-        <InlineBar current={row.comparable?.current ?? row.count} previous={row.comparable?.previous ?? null} max={max} />
+        <InlineBar current={row.comparable?.current ?? row.count} previous={row.comparable?.previous ?? null} max={max} motion />
       </span>
       {row.gapCount > 0 && (
         <span className={GAP_CELL}>
@@ -257,12 +259,19 @@ export function TreatmentTable({
         <span className="font-semibold text-ink tabular-nums">{`${formatCount(patients)}명`}</span>{' '}
         <span className="text-muted">· 날마다 온 환자 수를 더한 값</span>
       </p>
+      {/* 좁으면 머리 줄이 없어 증감이 무엇과 견준 것인지 표 위에 적는다(AC-4413.2) */}
+      {compareNotes(input.range).map((text) => (
+        <p key={text} className="mt-1 text-small text-muted lg:hidden">
+          {text}
+        </p>
+      ))}
       <div aria-hidden="true" className={`${layout.columns} mt-2 h-9 border-b border-line text-small font-medium text-muted max-lg:hidden`}>
         <span>묶음</span>
+        <span />
         <span className="text-right">건수</span>
         <span className="text-right">총환자 대비</span>
         {heads.map((name) => (
-          <span key={name}>{`${name}보다`}</span>
+          <span key={name} className="text-right">{`${name}보다`}</span>
         ))}
         <span className="text-right">신환</span>
         <span className="text-right">재진</span>
@@ -288,6 +297,7 @@ export function TreatmentTable({
           )
         })}
       </ul>
+      <p className="mt-3 text-small text-muted">{FOOT}</p>
       {picked !== null &&
         missingCompares(rows, picked).map((name) => (
           <p key={name} className="mt-2 text-small text-muted">{`${name}: 자료가 없어요. 비트 PC에서 그 기간을 불러오면 보여요.`}</p>

@@ -14,13 +14,17 @@ import type { AgainWindow } from '@/types/payload'
 import { EmptyNote, hasRows, NO_RANGE_DATA, Section, todayOf } from './parts'
 import { RxPickAgain } from './RxPickAgain'
 import { RxPickDetail, type RxPickMode } from './RxPickDetail'
+import { RxPickOnce } from './RxPickOnce'
 import { RxPickSearch } from './RxPickSearch'
 import { RxPickTable } from './RxPickTable'
+import { useTabDesc } from './RxSection'
 
 // 처방 골라 보기 칸 (rx-picker REQ-801·803·806·812, 시안 docs/mockups/rx-picker). 찾기·표·그래프와 두 훅을 잇고, 그래프 열림·모양을 든다.
 // 건수 표 바로 아래에 같은 처방 재방문 묶음을 잇는다(fu-rate REQ-1308). 고른 날 수는 이 칸의 React 상태뿐이고 남기지 않는다(다시 열면 7일).
 // 고른 처방·그래프 열림은 React 상태와 서버 표에만 있다(AC-812.6). 기간별 key를 주지 않는다: 기간을 바꿔도 열린 줄과 모양·고른 날 수가 그대로여야 한다(AC-806.5).
 // 훅과 상태는 빈 상태보다 위에 둔다: 기간을 읽지 못하면 saved가 잠깐 false가 되는데, 그때도 열린 줄과 모양을 잊지 않으려고
+// first90: 처방을 하나 이상 고르면 같은 처방 재방문 아래에 '신환이 그 처방을 받은 횟수' 묶음(RxPickOnce, AC-4410.1)을 둔다.
+// 처방 카드(옆 글 있음) 안이면 칸 설명은 패널 맨 위 한 줄이다(useTabDesc, AC-4413.1)
 
 const TITLE = '처방 골라 보기'
 const DESC = '고른 처방만 건수와 신환율·재진율, 같은 처방 재방문을 봐요'
@@ -65,6 +69,7 @@ export function RxPickerSection({ input, saved, hospitalName, revision, classNam
   const shownPicks = useMemo<RxLine[]>(() => rows.map(({ code, name }) => ({ code, name })), [rows])
   // 최근 7일 + 14·30일만 넓은 날 줄을 더 읽는다(AC-1308.4). 묶음 줄은 건수 표 줄의 차례·이름이다
   const again = useAgainDays(input, win, revision, shownPicks.length > 0)
+  const { head, lead } = useTabDesc(periodDesc(DESC, input.range))
 
   if (!saved) {
     return (
@@ -113,7 +118,8 @@ export function RxPickerSection({ input, saved, hospitalName, revision, classNam
   }
 
   return (
-    <Section title={TITLE} desc={periodDesc(DESC, input.range)} className={className}>
+    <Section title={TITLE} desc={head} className={className}>
+      {lead}
       <RxPickSearch
         catalog={lines}
         picks={shownPicks}
@@ -151,6 +157,7 @@ export function RxPickerSection({ input, saved, hospitalName, revision, classNam
         ))}
       {/* 고른 처방이 비어도 같은 자리에 그대로 둔다: 예시 열림이 이 화면 안에서 남는다(AC-1307.5) */}
       {state === 'ready' && <RxPickAgain picks={shownPicks} input={again.input} win={win} onWin={setWin} daysState={again.state} onRetryDays={again.retry} />}
+      {state === 'ready' && shownPicks.length > 0 && <RxPickOnce picks={shownPicks} input={input} />}
     </Section>
   )
 }

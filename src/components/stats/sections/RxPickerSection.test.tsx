@@ -11,7 +11,9 @@ import { nestedBoxes } from '@/testing/boxes'
 import type { DateRange } from '@/types/dates'
 import type { AgainCounts, AgainWindow, DayAgainPayload, DayPayload } from '@/types/payload'
 import type { RxPick } from '@/types/rxPicks'
+import { StatsCard } from './parts'
 import { RxPickerSection } from './RxPickerSection'
+import { RxSection } from './RxSection'
 
 // 조각을 잇는 칸 (rx-picker REQ-801·802·803·804·806·812). 저장은 가짜이고 메모리의 줄을 실제처럼 바꾼다. 처방·날 숫자는 모두 이 파일에서 지어낸 값이다
 
@@ -1003,5 +1005,47 @@ describe('AC-4004.2 ②③·AC-4005.1: 처방 골라 보기 칸 안의 접는 �
     expect(table!.parentElement!.contains(copy)).toBe(true)
     const againSection = screen.getByRole('heading', { level: 3, name: AGAIN }).closest('section')!
     expect(copy.compareDocumentPosition(againSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
+// ── first90: 신환이 그 처방을 받은 횟수 묶음 자리(REQ-4410 AC-4410.1) · 처방 카드 안 설명(REQ-4413 AC-4413.1) ─────────────────
+describe('AC-4410.1·AC-4413.1: 횟수 묶음 자리와 카드 안 설명', () => {
+  const ONCE = '신환이 그 처방을 받은 횟수'
+  const AGAIN = '같은 처방 재방문'
+  const onceSection = () => screen.queryByRole('heading', { level: 3, name: ONCE })?.closest('section') ?? null
+
+  beforeEach(() => {
+    vi.mocked(readCoverage).mockReset().mockResolvedValue([])
+  })
+
+  it('AC-4410.1: 처방을 하나 이상 고르면 같은 처방 재방문 묶음 바로 아래에 횟수 묶음이 있고 처방 단추는 고른 처방 차례다', async () => {
+    stored = [B, A]
+    await drawReady()
+    const again = screen.getByRole('heading', { level: 3, name: AGAIN }).closest('section')!
+    const once = onceSection()!
+    expect(again.nextElementSibling).toBe(once)
+    expect(once.parentElement).toBe(screen.getByRole('heading', { level: 2, name: TITLE }).closest('section'))
+    expect(within(within(once).getByRole('group', { name: '처방' })).getAllByRole('button').map((b) => b.textContent)).toEqual([B.name, A.name])
+  })
+
+  it('AC-4410.1: 고른 처방이 없으면 횟수 묶음이 없다', async () => {
+    await drawReady()
+    expect(screen.getByRole('heading', { level: 3, name: AGAIN })).toBeTruthy()
+    expect(onceSection()).toBeNull()
+  })
+
+  it('AC-4413.1: 처방 카드(옆 글 있음) 안 셋째 탭이면 설명은 카드 머리가 아니라 패널 맨 위 한 줄이다', async () => {
+    const CARD_DESC = '만들어 둔 묶음마다 건수와 총환자 대비 · 같은 날 같은 환자는 1건'
+    render(
+      <StatsCard id="stats-rx" title="처방" desc={CARD_DESC}>
+        <RxSection tabs={[{ name: '처방 골라 보기', panel: sectionOf({ className: '' }) }]} />
+      </StatsCard>,
+    )
+    await ready()
+    const head = screen.getByRole('heading', { level: 2, name: '처방' }).parentElement!
+    expect(head.textContent).toBe(`처방${CARD_DESC}`)
+    const panel = screen.getByRole('tabpanel')
+    expect(panel.firstElementChild!.textContent).toBe(DESC)
+    expect(screen.getAllByText(DESC)).toHaveLength(1)
   })
 })

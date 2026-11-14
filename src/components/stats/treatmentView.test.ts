@@ -9,6 +9,7 @@ import type { DayPayload } from '@/types/payload'
 import type { RxCond, RxGroup, StatsRxGroup } from '@/types/rxGroups'
 import { rateText } from './rxPickView'
 import {
+  compareNotes,
   GROUP_KEY,
   groupCond,
   groupDefs,
@@ -872,5 +873,24 @@ describe('AC-3704.6 treatmentRows 빼는 처방·조건을 바꿈', () => {
     expect(after.group).toBe(renamed)
     expect(after.row.name).toBe('PT만')
     expect(counted(after.row)).toEqual(counted(before.row))
+  })
+})
+
+// ── first90: 1023px 이하 표 위 비교 글(REQ-4413 AC-4413.2) ─────────────────
+describe('AC-4413.2 compareNotes: 비교마다 "증감은 {비교 이름}({시작} – {끝})과 비교"', () => {
+  it('AC-4413.2 빠른 단추는 비교 하나이고 같은 해면 날짜에 해가 없다', () => {
+    expect(compareNotes(statsRange('2026-11-13', '7d'))).toEqual(['증감은 지난 7일(10월 30일 – 11월 5일)과 비교'])
+    expect(compareNotes(statsRange('2026-11-13', '30d'))).toEqual(['증감은 지난 30일(9월 14일 – 10월 13일)과 비교'])
+    expect(compareNotes(statsRange('2026-11-13', '90d'))).toEqual(['증감은 지난 90일(5월 17일 – 8월 14일)과 비교'])
+  })
+
+  it('AC-4413.2 두 끝의 해가 다르면 양 끝에 해를 붙인다', () => {
+    expect(compareNotes(statsRange('2026-11-13', '12m'))).toEqual(['증감은 작년 같은 12달(2024년 12월 1일 – 2025년 11월 30일)과 비교'])
+    expect(compareNotes(statsRange('2027-02-05', '30d'))).toEqual(['증감은 지난 30일(2026년 12월 7일 – 2027년 1월 5일)과 비교'])
+  })
+
+  it('AC-4413.2 고른 기간에 작년 비교가 있으면 둘이다(바로 전 먼저)', () => {
+    const range = rangeOf('2026-11-06', { kind: 'month', unit: 'day', month: '2026-10' }, false)
+    expect(compareNotes(range)).toEqual(['증감은 9월(9월 1일 – 9월 30일)과 비교', '증감은 작년 10월(10월 1일 – 10월 31일)과 비교'])
   })
 })
