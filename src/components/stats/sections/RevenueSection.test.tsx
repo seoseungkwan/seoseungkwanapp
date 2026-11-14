@@ -46,7 +46,11 @@ const PER_VISIT_BARS = [bar('2026-10-15', '10.15', '10월 15일', 57), bar('2026
 const TREND: TrendTab = {
   desc: '매출 = 총진료비 · 수납한 날 기준, 하루씩',
   lead: { text: '이 기간 매출', amount: '1억 3,261만 원', rest: '· 지난 30일 1억 3,200만 원' },
+  tag: false,
+  series: [{ name: '매출', tone: 'accent' }],
   buckets: TREND_BARS,
+  legend: [],
+  tips: {},
   dense: false,
   note: NOTE,
   how: TREND_HOW,
@@ -134,7 +138,10 @@ const KPIS: Kpi[] = [
 const PER_VISIT: PerVisitTab = {
   desc: '접수 한 건 기준 · 접수취소는 세지 않아요',
   kpis: KPIS,
+  series: [{ name: '건당 진료비', tone: 'accent' }],
   buckets: PER_VISIT_BARS,
+  legend: [],
+  tips: {},
   dense: false,
   note: NOTE,
   notice: null,
@@ -142,7 +149,7 @@ const PER_VISIT: PerVisitTab = {
 }
 
 type Ready = Extract<RevenueTabs, { kind: 'ready' }>
-const ready = (over: Partial<Omit<Ready, 'kind'>> = {}): Ready => ({ kind: 'ready', trend: TREND, split: SPLIT, treatments: TREATMENTS, perVisit: PER_VISIT, ...over })
+const ready = (over: Partial<Omit<Ready, 'kind'>> = {}): Ready => ({ kind: 'ready', trend: TREND, split: SPLIT, treatments: TREATMENTS, perVisit: PER_VISIT, rough: null, ...over })
 
 const TAB_NAMES = ['매출 추이', '급여·비급여·기타', '치료별 매출', '건당 진료비']
 const OLD_HELPER_LEAD = '도우미가 예전 판이라 치료별 매출은 읽지 못했어요.'
@@ -604,5 +611,191 @@ describe('AC-4408.1: 매출 칸 제목 줄의 참고 금액 포함 스위치', (
       expect(screen.queryByRole('switch')).toBeNull()
       cleanup()
     }
+  })
+})
+
+// first90 AC-4408.3·AC-4408.4·AC-4408.5·AC-4417.3: 점선·빗금 막대 · 범례 · 아래 글 · 막대 누르기 아래 줄 · 치료별 매출 순위.
+// 켜짐 막대(rough)는 revenueView가 따로 준다. 스위치 상태(mode)는 부르는 쪽(StatsSections)이 갖는다
+const DASHED = '휴진한 날은 칸이 없어요. 점선 칸은 확인 필요한 날(10월 28일)이에요. 0원이 아니라 금액이 확실하지 않아 합계에서 뺀 날이에요.'
+const ROUGH =
+  '휴진한 날은 칸이 없어요. 빗금 막대는 확인 필요한 날(10월 28일)의 참고 금액이에요. 원장님별 표와 같은 기준(그날 수납한 줄의 총진료비 합, 환불은 빼기)으로 셌어요. 비트 외래환자경영통계와 조금 다를 수 있어요.'
+const MARKED: BarBucket = { key: '2026-10-28', label: '', rangeLabel: '10월 28일', state: 'complete', values: [0], mark: 'unchecked' }
+const OUT_LEGEND: TrendTab['legend'] = [
+  { label: '매출', mark: 'accent' },
+  { label: '확인 필요한 날(뺌)', mark: 'unchecked' },
+]
+const IN_LEGEND: TrendTab['legend'] = [
+  { label: '매출', mark: 'accent' },
+  { label: '참고 금액(확인 필요한 날)', mark: 'rough' },
+]
+const OUT_TREND: TrendTab = {
+  ...TREND,
+  buckets: [TREND_BARS[0]!, MARKED, TREND_BARS[2]!],
+  legend: OUT_LEGEND,
+  tips: { '2026-10-15': '10.15(목) 매출 530만 원', '2026-10-28': '10.28(수) 확인 필요한 날 · 금액을 빼고 셌어요', '2026-11-13': '11.13(금) 매출 570만 원' },
+  note: DASHED,
+}
+const IN_TREND: TrendTab = {
+  ...TREND,
+  lead: { text: '이 기간 매출', amount: '1억 3,759만 원', rest: '· 지난 30일 1억 3,200만 원' },
+  tag: true,
+  series: [
+    { name: '참고 금액', tone: 'rough' },
+    { name: '매출', tone: 'accent' },
+  ],
+  buckets: [
+    { ...TREND_BARS[0]!, values: [0, 530] },
+    { key: '2026-10-28', label: '', rangeLabel: '10월 28일', state: 'complete', values: [498, 0] },
+    { ...TREND_BARS[2]!, values: [0, 570] },
+  ],
+  legend: IN_LEGEND,
+  tips: { '2026-10-15': '10.15(목) 매출 530만 원', '2026-10-28': '10.28(수) 참고 금액 498만 원 · 확인 필요한 날', '2026-11-13': '11.13(금) 매출 570만 원' },
+  note: ROUGH,
+}
+const OUT_PER_VISIT: PerVisitTab = {
+  ...PER_VISIT,
+  buckets: [PER_VISIT_BARS[0]!, MARKED, PER_VISIT_BARS[2]!],
+  legend: [
+    { label: '건당 진료비', mark: 'accent' },
+    { label: '확인 필요한 날(뺌)', mark: 'unchecked' },
+  ],
+  tips: { '2026-10-15': '10.15(목) 건당 진료비 57,608원', '2026-10-28': '10.28(수) 확인 필요한 날 · 금액을 빼고 셌어요', '2026-11-13': '11.13(금) 건당 진료비 61,000원' },
+  note: DASHED,
+}
+const IN_PER_VISIT: PerVisitTab = {
+  ...PER_VISIT,
+  series: [
+    { name: '건당 진료비(참고 금액)', tone: 'rough' },
+    { name: '건당 진료비', tone: 'accent' },
+  ],
+  buckets: [
+    { ...PER_VISIT_BARS[0]!, values: [0, 57] },
+    { key: '2026-10-28', label: '', rangeLabel: '10월 28일', state: 'complete', values: [52, 0] },
+    { ...PER_VISIT_BARS[2]!, values: [0, 61] },
+  ],
+  legend: [
+    { label: '건당 진료비', mark: 'accent' },
+    { label: '참고 금액(확인 필요한 날)', mark: 'rough' },
+  ],
+  tips: { '2026-10-15': '10.15(목) 건당 진료비 57,608원', '2026-10-28': '10.28(수) 건당 진료비 52,421원 · 참고 금액 · 확인 필요한 날', '2026-11-13': '11.13(금) 건당 진료비 61,000원' },
+  note: ROUGH,
+}
+const roughTabs = (over: Partial<Omit<Ready, 'kind'>> = {}) => ready({ trend: OUT_TREND, perVisit: OUT_PER_VISIT, rough: { trend: IN_TREND, perVisit: IN_PER_VISIT }, ...over })
+const drawMode = (tabsIn: RevenueTabs, mode: 'out' | 'in') => render(<RevenueSection tabs={tabsIn} noDayCodes={false} onReread={() => undefined} mode={mode} />)
+const plotOf = () => shown().querySelector('div[aria-hidden="true"]') as HTMLElement
+const legendOf = () => within(shown()).getAllByRole('list')[0]!
+const barButtons = () => [...plotOf().querySelectorAll('button')]
+
+describe('AC-4408.3: 매출 추이 막대 — 꺼짐 점선 칸 · 켜짐 빗금 막대 · 범례 · 아래 글', () => {
+  it('AC-4408.3: 꺼짐이면 확인 필요한 날은 점선 칸이고 칸 위 글 `확인 필요`(768px 이상), 범례 `매출` · `확인 필요한 날(뺌)`은 막대 위, 막대 아래 글은 점선 글이다', () => {
+    drawMode(roughTabs(), 'out')
+    const plot = plotOf()
+    expect(classesOf(within(plot).getByText('확인 필요'))).toContain('max-md:hidden')
+    expect(plot.querySelector('.border-dashed')).not.toBeNull()
+    expect(within(legendOf()).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['매출', '확인 필요한 날(뺌)'])
+    expect(legendOf().compareDocumentPosition(plot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(shown()).getByText(DASHED)).toBeTruthy()
+    expect(within(shown()).queryByText('참고 포함')).toBeNull()
+    expect(within(within(shown()).getByRole('table', { name: '매출 추이 (만 원)' })).getByRole('rowheader', { name: '10월 28일' }).parentElement!.textContent).toBe('10월 28일––확인 필요')
+  })
+
+  it('AC-4408.3·AC-4417.3: 켜짐이면 참고 금액 날은 빗금 막대(st-rise로 솟음)·칸 위 금액, 범례 `참고 금액(확인 필요한 날)`, 머리 글에 `참고 포함` 꼬리표(st-tag-in), 막대 아래 글은 빗금 글이다', () => {
+    drawMode(roughTabs(), 'in')
+    const lead = within(shown()).getByText('1억 3,759만 원').parentElement!
+    expect(lead.textContent).toBe('이 기간 매출 1억 3,759만 원 참고 포함 · 지난 30일 1억 3,200만 원')
+    expect(classesOf(within(lead).getByText('참고 포함'))).toEqual(expect.arrayContaining(['st-tag-in', 'rounded-full', 'text-st-warn-ink']))
+    const plot = plotOf()
+    expect(plot.querySelector('.st-rise')).not.toBeNull()
+    expect(plot.querySelector('.st-rise svg path')).not.toBeNull() // 빗금은 svg 선(그라데이션 아님)
+    expect(within(plot).getByText('498')).toBeTruthy()
+    expect(within(plot).queryByText('확인 필요')).toBeNull()
+    expect(within(legendOf()).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['매출', '참고 금액(확인 필요한 날)'])
+    const table = within(shown()).getByRole('table', { name: '매출 추이 (만 원)' })
+    expect(within(table).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['기간', '참고 금액', '매출', '합계', '상태'])
+    expect(within(shown()).getByText(ROUGH)).toBeTruthy()
+  })
+
+  it('AC-4408.3·AC-4417.3: 막대는 기간을 바꾸면 높이가 움직이고(st-move-period) 막대 위 숫자는 768px 이상에서만 보인다', () => {
+    drawMode(roughTabs(), 'out')
+    const plot = plotOf()
+    expect(plot.querySelectorAll('.st-move-period').length).toBeGreaterThan(0)
+    expect(classesOf(within(plot).getByText('530').parentElement!)).toContain('max-md:hidden')
+  })
+
+  it('AC-4408.3: mode가 in이어도 켜짐 막대가 없으면(rough null) 꺼짐 막대 그대로다', () => {
+    drawMode(ready({ trend: OUT_TREND, perVisit: OUT_PER_VISIT }), 'in')
+    expect(within(shown()).queryByText('참고 포함')).toBeNull()
+    expect(within(plotOf()).getByText('확인 필요')).toBeTruthy()
+    expect(within(shown()).getByText(DASHED)).toBeTruthy()
+  })
+
+  it('AC-4408.3: 범례가 없으면(확인 필요한 날 없음) 범례 목록을 그리지 않는다', () => {
+    drawMode(ready(), 'out')
+    expect(within(shown()).queryByRole('list')).toBeNull()
+  })
+})
+
+describe('AC-4408.3: 막대를 누르면(PC는 올리기도) 막대 아래 줄 글(role="status")', () => {
+  it('AC-4408.3: 처음은 빈 줄이고, 누르면 그 칸 글 · 올리면 그 칸 글이며 고른 칸 바탕이 옅은 파랑이다', () => {
+    drawMode(roughTabs(), 'out')
+    const status = within(shown()).getByRole('status')
+    expect(status.textContent).toBe('')
+    expect(plotOf().compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const [first, second] = barButtons()
+    expect(first!.tabIndex).toBe(-1)
+    fireEvent.click(first!)
+    expect(status.textContent).toBe('10.15(목) 매출 530만 원')
+    expect(classesOf(barButtons()[0]!)).toContain('bg-accent-soft')
+    fireEvent.mouseEnter(second!)
+    expect(status.textContent).toBe('10.28(수) 확인 필요한 날 · 금액을 빼고 셌어요')
+  })
+
+  it('AC-4408.3: 스위치를 바꿔도 고른 칸은 그대로이고 글은 켜짐 글(`참고 금액 {금액} · 확인 필요한 날`)로 바뀐다', () => {
+    const view = drawMode(roughTabs(), 'out')
+    fireEvent.click(barButtons()[1]!)
+    expect(within(shown()).getByRole('status').textContent).toBe('10.28(수) 확인 필요한 날 · 금액을 빼고 셌어요')
+    view.rerender(<RevenueSection tabs={roughTabs()} noDayCodes={false} onReread={() => undefined} mode="in" />)
+    expect(within(shown()).getByRole('status').textContent).toBe('10.28(수) 참고 금액 498만 원 · 확인 필요한 날')
+  })
+
+  it('AC-4408.3: 건당 진료비 탭도 같은 규칙이다(꺼짐 점선 칸 · 켜짐 빗금 · 아래 줄 글)', () => {
+    const view = drawMode(roughTabs(), 'out')
+    pick('건당 진료비')
+    expect(within(plotOf()).getByText('확인 필요')).toBeTruthy()
+    expect(within(legendOf()).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['건당 진료비', '확인 필요한 날(뺌)'])
+    fireEvent.click(barButtons()[0]!)
+    expect(within(shown()).getByRole('status').textContent).toBe('10.15(목) 건당 진료비 57,608원')
+    view.rerender(<RevenueSection tabs={roughTabs()} noDayCodes={false} onReread={() => undefined} mode="in" />)
+    expect(plotOf().querySelector('.st-rise')).not.toBeNull()
+    fireEvent.click(barButtons()[1]!)
+    expect(within(shown()).getByRole('status').textContent).toBe('10.28(수) 건당 진료비 52,421원 · 참고 금액 · 확인 필요한 날')
+    expect(within(shown()).getByText(ROUGH)).toBeTruthy()
+    // 숫자 칸 셋은 그대로다
+    expect(within(shown()).getByText('57,333원')).toBeTruthy()
+  })
+})
+
+describe('AC-4408.4·AC-4408.5: 급여·비급여·기타·치료별 매출은 스위치와 상관없고 탭 넷은 그대로', () => {
+  it('AC-4408.4: 켜짐이어도 급여·비급여·기타·치료별 매출 탭의 글은 꺼짐과 한 글자도 다르지 않다', () => {
+    const texts = (mode: 'out' | 'in') => {
+      const view = drawMode(roughTabs(), mode)
+      const out = ['급여·비급여·기타', '치료별 매출'].map((name) => {
+        pick(name)
+        return shown().textContent
+      })
+      view.unmount()
+      return out
+    }
+    expect(texts('in')).toEqual(texts('out'))
+  })
+
+  it('AC-4408.5: 탭 넷(매출 추이 · 급여·비급여·기타 · 치료별 매출 · 건당 진료비)이고 치료별 매출은 가로 막대 순위(금액 크게 · 막대 폭 움직임)다', () => {
+    drawMode(roughTabs(), 'in')
+    expect(tabs().map((t) => t.textContent)).toEqual(TAB_NAMES)
+    pick('치료별 매출')
+    const items = within(shown()).getAllByRole('listitem')
+    expect(items).toHaveLength(3)
+    expect(classesOf(within(items[0]!).getByText('3,768만 원'))).toEqual(expect.arrayContaining(['text-st-18', 'font-semibold', 'text-st-ink']))
+    expect(classesOf(items[0]!.querySelector('[style*="width"]')!)).toContain('st-move-period')
   })
 })

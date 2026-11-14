@@ -1,10 +1,11 @@
+import type { LegendItem as ChartLegendItem } from '@/components/charts/ChartLegend'
 import { formatCount, formatRate } from '@/components/charts/format'
 import { niceScale } from '@/components/charts/scale'
-import type { BarBucket } from '@/components/charts/StackedBarChart'
+import type { BarBucket, BarSeries } from '@/components/charts/StackedBarChart'
 import { longDate, tickLabels, type Period } from '@/components/dashboard/summary/view'
 import { formatManWon, formatWon } from '@/components/revenue/money'
 import type { DeltaText, Kpi, LegendItem, Notice, SplitRow, StackChart, StackColumn, StackSegment, TreatmentRow } from '@/components/revenue/types'
-import { addDays, addMonths, compareYmd, diffDays, eachDay, monthOf, monthRange, weekStartOf } from '@/lib/analytics/dates'
+import { addDays, addMonths, compareYmd, diffDays, eachDay, monthOf, monthRange, weekdayOf, weekStartOf } from '@/lib/analytics/dates'
 import { compare, isWorkDay, perVisit, sumPeriod, type PeriodSum } from '@/lib/revenue/summary'
 import { groupTreatments } from '@/lib/revenue/treatments'
 import type { BucketState } from '@/types/analysis'
@@ -66,8 +67,15 @@ export type RoughInfo = { days: number; roughDays: number }
 
 /** 탭 첫 줄: text + 굵은 amount + 회색 rest(없으면 null). 사이 빈칸은 그리는 쪽이 둔다 */
 export type Lead = { text: string; amount: string; rest: string | null }
-/** note = 막대 아래 글(없으면 null) · how = [어떻게 세나요?] 문단 */
-export type TrendTab = { desc: string; lead: Lead; buckets: BarBucket[]; dense: boolean; note: string | null; how: string[] }
+/** 막대를 누르면(PC는 올리기도) 막대 아래 줄에 보일 글(first90 AC-4408.3): 칸 키 → 글. 값이 없는 칸('–')은 글이 없다 */
+export type BarTips = Readonly<Record<string, string>>
+/**
+ * 매출 추이·건당 진료비 탭의 막대(first90 AC-4408.3): series = 계열(첫째가 맨 위), legend = 막대 위 범례(그릴 것이 없으면 빈 배열),
+ * tips = 막대 아래 줄 글, note = 막대 아래 글(없으면 null). 꺼짐은 확인 필요한 날이 점선 칸(mark 'unchecked'), 켜짐은 참고 금액이 빗금(rough) 계열이다
+ */
+export type BarsView = { series: BarSeries[]; buckets: BarBucket[]; legend: ChartLegendItem[]; tips: BarTips; dense: boolean; note: string | null }
+/** tag = 머리 글 "참고 포함" 꼬리표(켜짐) · how = [어떻게 세나요?] 문단 */
+export type TrendTab = BarsView & { desc: string; lead: Lead; tag: boolean; how: string[] }
 /** lastYear = '작년 같은 때보다' 칸(작년 비교가 있는 고른 기간만, 없으면 null) */
 export type RevenueSplitRow = SplitRow & { lastYear: DeltaText | null }
 export type SplitTab = { desc: string; notice: Notice | null; head: string[]; rows: RevenueSplitRow[]; how: string[]; chart: StackChart | null }
@@ -81,8 +89,14 @@ export type TreatmentsTab = {
   lines: string[]
   how: string[]
 }
-export type PerVisitTab = { desc: string; kpis: Kpi[]; buckets: BarBucket[]; dense: boolean; note: string | null; notice: Notice | null; how: string[] }
-export type RevenueTabs = { kind: 'empty' } | { kind: 'ready'; trend: TrendTab; split: SplitTab; treatments: TreatmentsTab; perVisit: PerVisitTab }
+export type PerVisitTab = BarsView & { desc: string; kpis: Kpi[]; notice: Notice | null; how: string[] }
+/** 참고 금액 포함(켜짐)으로 센 두 탭(first90 AC-4408.3). 숫자 칸·설명은 꺼짐과 같고 막대·범례·아래 글·머리 글만 다르다 */
+export type RoughTabs = { trend: TrendTab; perVisit: PerVisitTab }
+/**
+ * rough = 켜짐 두 탭. 보는 기간에 참고 금액이 있는 확인 필요한 날이 없으면 null(켜도 꺼짐과 같다).
+ * 급여·비급여·기타·치료별 매출은 스위치와 상관없이 하나다(AC-4408.4)
+ */
+export type RevenueTabs = { kind: 'empty' } | { kind: 'ready'; trend: TrendTab; split: SplitTab; treatments: TreatmentsTab; perVisit: PerVisitTab; rough: RoughTabs | null }
 
 // ── 글자 ─────────────────────────────────────────────────
 
@@ -119,6 +133,14 @@ const TREND_HOW = [
 ]
 const CLOSED_NOTE = '휴진한 날은 칸이 없어요.'
 const CLOSED_OR_UNSAVED_NOTE = '휴진한 날과 아직 불러오지 않은 날은 칸이 없어요.'
+// 확인 필요한 날 막대(first90 AC-4408.3): 꺼짐 점선 칸 · 켜짐 빗금 막대의 아래 글과 범례
+const dashedNote = (dates: readonly string[]) => `점선 칸은 확인 필요한 날(${daysText(dates)})이에요. 0원이 아니라 금액이 확실하지 않아 합계에서 뺀 날이에요.`
+const roughNote = (dates: readonly string[]) =>
+  `빗금 막대는 확인 필요한 날(${daysText(dates)})의 참고 금액이에요. 원장님별 표와 같은 기준(그날 수납한 줄의 총진료비 합, 환불은 빼기)으로 셌어요. 비트 외래환자경영통계와 조금 다를 수 있어요.`
+const ROUGH_LEGEND: ChartLegendItem = { label: '참고 금액(확인 필요한 날)', mark: 'rough' }
+const UNCHECKED_LEGEND: ChartLegendItem = { label: '확인 필요한 날(뺌)', mark: 'unchecked' }
+const UNCHECKED_TIP = '확인 필요한 날 · 금액을 빼고 셌어요'
+const WEEKDAY_NAMES = '월화수목금토일'
 
 const SPLIT_NOTE =
   '매출은 총진료비예요. 급여(요양비용총액)는 공단이 내는 몫과 환자가 내는 몫(본인부담)을 더한 금액, 비급여는 환자가 모두 내는 금액, 기타는 100/100 미만 항목과 전액 본인부담 금액이에요. '
@@ -312,13 +334,13 @@ function monthSlots(range: StatsRange, view: DateRange): Slot[] {
   return slots
 }
 
-// 해 고르기의 앞으로 올 달(첫날이 오늘 이후)은 빈 칸으로 잇는다(환자 수 추이와 같다)
-function futureBuckets(range: StatsRange): BarBucket[] {
+// 해 고르기의 앞으로 올 달(첫날이 오늘 이후)은 빈 칸으로 잇는다(환자 수 추이와 같다). values = 계열 수만큼의 0
+function futureBuckets(range: StatsRange, values: number[]): BarBucket[] {
   if (range.whole === undefined) return []
   const lastMonth = monthOf(range.whole.to)
   const bars: BarBucket[] = []
   for (let month = addMonths(monthOf(range.current.to), 1); compareYmd(month, lastMonth) <= 0 && compareYmd(`${month}-01`, range.load.to) >= 0; month = addMonths(month, 1)) {
-    bars.push({ key: month, label: monthLabel(month), rangeLabel: yearMonth(month), state: 'partial', values: [0], blank: 'future' })
+    bars.push({ key: month, label: monthLabel(month), rangeLabel: yearMonth(month), state: 'partial', values, blank: 'future' })
   }
   return bars
 }
@@ -349,33 +371,104 @@ function contextOf(input: RevenueInput, withRough = false): Ctx | null {
 
 const filled = (slots: readonly SlotSum[]) => slots.flatMap(({ slot, sum, state }) => (sum === null ? [] : [{ slot, sum, state }]))
 
-// 막대: 값이 null이면(확인 필요한 날뿐·나눌 수 없음) 'no-data' 칸('–')이다
-function barsOf(ctx: Ctx, value: (sum: Sum) => number | null): BarBucket[] {
+// ── 매출 추이·건당 진료비 막대 (first90 AC-4408.3) ────────────
+
+/**
+ * 칸 하나의 막대 값. main = 확인된 날 몫, rough = 참고 금액 몫(꺼짐이면 늘 0).
+ * 'unchecked' = 칸의 날이 확인 필요한 날(켜짐에서는 참고 금액이 없는 날)과 쉬는 날뿐이라 0원 막대가 아니라 점선 칸이다. null = 셀 수 없는 칸('–')
+ */
+type BarValue = { main: number; rough: number } | 'unchecked' | null
+/** 탭마다 다른 것: 계열 이름 · 막대 값 · 아래 줄 글('매출 530만 원'), roughDay = 하루 칸이 참고 금액 날일 때의 글 */
+type BarKind = { main: string; rough: string; value(sum: Sum): BarValue; text(sum: Sum): string; roughDay(sum: Sum): string }
+
+const roughDaysOf = (sum: Sum) => sum.roughDays ?? []
+const onlyUnchecked = (sum: Sum) => sum.workDays === 0 && sum.uncheckedDays.length > 0
+
+// 매출 막대(만 원 아래 버림). 참고 금액 몫은 칸 매출 안에서 자른다(두 몫의 합 = 칸 매출을 버린 값, 음수 참고 금액은 조각을 그리지 않는다)
+function totalValue(sum: Sum): BarValue {
+  if (sum.workDays === 0) return onlyUnchecked(sum) ? 'unchecked' : null
+  const whole = Math.floor(sum.total / WON_PER_MAN)
+  const rough = Math.max(0, Math.min(whole, Math.floor((sum.roughSum ?? 0) / WON_PER_MAN)))
+  return { main: whole - rough, rough }
+}
+
+// 건당 진료비 막대(천 원 아래 버림)는 나눌 수 없어서, 칸의 진료한 날이 모두 참고 금액 날일 때만 빗금 계열이다
+function perVisitValue(sum: Sum): BarValue {
+  const value = perVisit(sum)
+  if (value === null) return onlyUnchecked(sum) ? 'unchecked' : null
+  const bar = Math.floor(value / WON_PER_CHEON)
+  const rough = roughDaysOf(sum)
+  return rough.length > 0 && rough.length === sum.workDays ? { main: 0, rough: bar } : { main: bar, rough: 0 }
+}
+
+const perVisitText = (sum: Sum) => `건당 진료비 ${formatWon(perVisit(sum) ?? 0)}`
+const TREND_KIND: BarKind = {
+  main: '매출',
+  rough: '참고 금액',
+  value: totalValue,
+  text: (sum) => `매출 ${formatManWon(sum.total)}`,
+  roughDay: (sum) => `참고 금액 ${formatManWon(sum.roughSum ?? 0)} · 확인 필요한 날`,
+}
+const PER_VISIT_KIND: BarKind = {
+  main: '건당 진료비',
+  rough: '건당 진료비(참고 금액)',
+  value: perVisitValue,
+  text: perVisitText,
+  roughDay: (sum) => `${perVisitText(sum)} · 참고 금액 · 확인 필요한 날`,
+}
+
+// 막대 아래 줄 글 앞말: 하루 칸은 '10.28(수)', 주·달 칸은 칸 이름('10월 5일 – 11일' · '2026년 10월')
+const whenOf = (unit: Unit, slot: Slot) => (unit === 'day' ? `${shortDate(slot.key)}(${WEEKDAY_NAMES[weekdayOf(slot.key) - 1]})` : slot.rangeLabel)
+
+// 칸 글: 점선 칸 · 하루 참고 금액 날 · 그 밖(주·달 칸에 참고 금액이 들었으면 ' · 참고 {금액} 포함')
+function tipOf(ctx: Ctx, kind: BarKind, slot: Slot, sum: Sum, value: Exclude<BarValue, null>): string {
+  const when = whenOf(ctx.unit, slot)
+  if (value === 'unchecked') return `${when} ${UNCHECKED_TIP}`
+  const rough = roughDaysOf(sum)
+  if (rough.length === 0) return `${when} ${kind.text(sum)}`
+  return ctx.unit === 'day' ? `${when} ${kind.roughDay(sum)}` : `${when} ${kind.text(sum)} · 참고 ${formatManWon(sum.roughSum ?? 0)} 포함`
+}
+
+// 막대 칸 · 계열 · 범례 · 아래 줄 글 · 아래 글. withRough(켜짐)이면 계열이 둘(참고 금액 빗금이 맨 위)이다
+function barsView(ctx: Ctx, kind: BarKind, withRough: boolean): BarsView {
+  const zeros = () => (withRough ? [0, 0] : [0])
+  const tips: Record<string, string> = {}
   const bars = filled(ctx.slots).map(({ slot, sum, state }): BarBucket => {
     const head = { key: slot.key, label: slot.label, rangeLabel: slot.rangeLabel, state }
-    const v = value(sum)
-    return v === null ? { ...head, values: [0], blank: 'no-data' } : { ...head, values: [v] }
+    const value = kind.value(sum)
+    if (value === null) return { ...head, values: zeros(), blank: 'no-data' }
+    tips[slot.key] = tipOf(ctx, kind, slot, sum, value)
+    if (value === 'unchecked') return { ...head, values: zeros(), mark: 'unchecked' }
+    return { ...head, values: withRough ? [value.rough, value.main] : [value.main] }
   })
-  return ctx.unit === 'month' ? [...bars, ...futureBuckets(ctx.input.range)] : bars
+  const buckets = ctx.unit === 'month' ? [...bars, ...futureBuckets(ctx.input.range, zeros())] : bars
+  const main: BarSeries = { name: kind.main, tone: 'accent' }
+  const extra = [...(withRough ? [ROUGH_LEGEND] : []), ...(buckets.some((bucket) => bucket.mark === 'unchecked') ? [UNCHECKED_LEGEND] : [])]
+  return {
+    series: withRough ? [{ name: kind.rough, tone: 'rough' }, main] : [main],
+    buckets,
+    legend: extra.length === 0 ? [] : [{ label: kind.main, mark: 'accent' }, ...extra],
+    tips,
+    dense: buckets.length > DENSE_OVER,
+    note: barNote(ctx),
+  }
 }
 
-const totalBar = (sum: Sum) => (sum.workDays === 0 ? null : Math.floor(sum.total / WON_PER_MAN))
-function perVisitBar(sum: Sum): number | null {
-  const value = perVisit(sum)
-  return value === null ? null : Math.floor(value / WON_PER_CHEON)
-}
-
-// 막대 아래 글(기본값 7). 날 칸: 휴진(+ 저장 안 한 날) 문장 + 확인 필요한 날. 주·달 칸: 확인 필요한 날 + 12개월의 끝나지 않은 달 빗금
+// 막대 아래 글(기본값 7, first90 AC-4408.3). 켜짐(ctx가 참고 금액을 더해 셈)이면 참고 금액 날은 빗금 글, 남은 확인 필요한 날은 꺼짐 글이다.
+// 날 칸: 휴진(+ 저장 안 한 날) 문장 + 빗금 글 + 점선 글. 주·달 칸: 빗금 글 + 확인 필요한 날 + 12개월의 끝나지 않은 달 빗금
 function barNote(ctx: Ctx): string | null {
-  const unchecked = ctx.sum.uncheckedDays
+  const rough = roughDaysOf(ctx.sum)
+  const left = ctx.sum.uncheckedDays.filter((date) => !rough.includes(date))
+  const roughPart = rough.length === 0 ? [] : [roughNote(rough)]
   if (ctx.unit === 'day') {
     const first = savedAll(ctx.byDay, ctx.view) ? CLOSED_NOTE : CLOSED_OR_UNSAVED_NOTE
-    return unchecked.length === 0 ? first : `${first} '–'는 확인 필요한 날(${daysText(unchecked)})이에요. 그날 금액은 합계에 넣지 않았어요.`
+    return [first, ...roughPart, ...(left.length === 0 ? [] : [dashedNote(left)])].join(' ')
   }
   const { lastDay, range } = ctx.input
   const open = range.period === '12m' && filled(ctx.slots).some(({ slot }) => slot.cut && slot.key === monthOf(lastDay))
   const parts = [
-    ...(unchecked.length === 0 ? [] : [`확인 필요한 날(${daysText(unchecked)})은 금액을 합계에 넣지 않았어요.`]),
+    ...roughPart,
+    ...(left.length === 0 ? [] : [`확인 필요한 날(${daysText(left)})은 금액을 합계에 넣지 않았어요.`]),
     ...(open ? [`빗금 칸은 아직 끝나지 않은 달이에요(${monthNumber(lastDay)}월은 ${dayNumber(lastDay)}일까지).`] : []),
   ]
   return parts.length === 0 ? null : parts.join(' ')
@@ -499,15 +592,14 @@ export function roughInfo(input: RevenueInput | 'reading' | 'read-failed'): Roug
 
 // ── 탭 넷 ────────────────────────────────────────────────
 
-function trendTab(ctx: Ctx): TrendTab {
+// withRough(켜짐): ctx가 참고 금액을 더해 센 것이고, 머리 글 금액·비교 금액도 그 셈이다(first90 AC-4408.3)
+function trendTab(ctx: Ctx, withRough = false): TrendTab {
   const { sum, main, name, unit } = ctx
-  const buckets = barsOf(ctx, totalBar)
   return {
     desc: `매출 = 총진료비 · 수납한 날 기준, ${EACH[unit]}`,
     lead: { text: '이 기간 매출', amount: sum.workDays === 0 ? DASH : formatManWon(sum.total), rest: main === null ? null : `· ${name} ${formatManWon(main.before.total)}` },
-    buckets,
-    dense: buckets.length > DENSE_OVER,
-    note: barNote(ctx),
+    tag: withRough,
+    ...barsView(ctx, TREND_KIND, withRough),
     how: TREND_HOW,
   }
 }
@@ -649,7 +741,6 @@ function perVisitTab(ctx: Ctx): PerVisitTab {
   const value = perVisit(sum)
   const before = main === null ? null : perVisit(main.before)
   const delta = main === null ? NO_DELTA : deltaText(perVisit(main.now), before)
-  const buckets = barsOf(ctx, perVisitBar)
   return {
     desc: PER_VISIT_DESC,
     kpis: [
@@ -669,17 +760,28 @@ function perVisitTab(ctx: Ctx): PerVisitTab {
             srText: '',
           },
     ],
-    buckets,
-    dense: buckets.length > DENSE_OVER,
-    note: barNote(ctx),
+    ...barsView(ctx, PER_VISIT_KIND, false),
     notice: dayNotice(sum.noVisitDays, NO_VISIT_REST),
     how: PER_VISIT_HOW,
   }
 }
 
-/** 매출 칸 탭 넷(AC-4107.2~AC-4107.8의 숫자·글). 보는 기간에 저장된 매출이 없거나 모두 쉬는 날이면 empty(AC-4107.7) */
+/**
+ * 매출 칸 탭 넷(AC-4107.2~AC-4107.8의 숫자·글). 보는 기간에 저장된 매출이 없거나 모두 쉬는 날이면 empty(AC-4107.7).
+ * 참고 금액 포함 스위치(first90 AC-4408.3): 보는 기간에 참고 금액이 있는 확인 필요한 날이 있으면 rough에 켜짐 두 탭(매출 추이·건당 진료비)을 더 센다.
+ * 켜짐 건당 진료비 탭은 막대만 참고 금액을 더하고 숫자 칸 셋·안내 줄·설명은 꺼짐 그대로다. 급여·비급여·기타·치료별 매출은 켜짐에도 이 하나다(AC-4408.4)
+ */
 export function revenueTabs(input: RevenueInput): RevenueTabs {
   const ctx = contextOf(input)
   if (ctx === null) return { kind: 'empty' }
-  return { kind: 'ready', trend: trendTab(ctx), split: splitTab(ctx), treatments: treatmentsTab(ctx), perVisit: perVisitTab(ctx) }
+  const perVisit = perVisitTab(ctx)
+  const roughCtx = roughOf(ctx.byDay, ctx.sum.uncheckedDays).dates.length > 0 ? contextOf(input, true) : null
+  return {
+    kind: 'ready',
+    trend: trendTab(ctx),
+    split: splitTab(ctx),
+    treatments: treatmentsTab(ctx),
+    perVisit,
+    rough: roughCtx === null ? null : { trend: trendTab(roughCtx, true), perVisit: { ...perVisit, ...barsView(roughCtx, PER_VISIT_KIND, true) } },
+  }
 }

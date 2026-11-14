@@ -225,6 +225,19 @@ describe('AC-4110.4 남는 부품은 그대로 있다(통계 매출 칸이 쓴�
     expect(classesOf(row.lastElementChild!.lastElementChild!)).toContain('max-md:hidden')
     expect(row.lastElementChild!.lastElementChild!.textContent).toBe('처방 40번')
   })
+
+  it('AC-4408.5·AC-4417.2 순위 막대는 처방 카드와 같은 가로 막대 순위 모양이다: 줄 높이 56px 이상 · 이름 600 · 금액 크게(18px 600 ink) · 몫·건수는 ink-2, 막대 폭은 기간을 바꾸면 움직인다(st-move-period)', () => {
+    const { container } = render(<TreatmentBars rows={TREATMENTS} />)
+    const row = screen.getAllByRole('listitem')[0]!
+    expect(classesOf(row)).toContain('min-h-14')
+    expect(classesOf(within(row).getByText('가짜 묶음'))).toEqual(expect.arrayContaining(['font-semibold', 'text-st-ink']))
+    expect(classesOf(within(row).getByText('400만 원'))).toEqual(expect.arrayContaining(['text-st-18', 'font-semibold', 'text-st-ink', 'tabular-nums']))
+    expect(classesOf(within(row).getByText('30.7%').parentElement!)).toContain('text-st-ink-2')
+    const bars = [...container.querySelectorAll<HTMLElement>('[style*="width"]')]
+    expect(bars.map((bar) => classesOf(bar).includes('st-move-period'))).toEqual([true, true])
+    // 그라데이션·둥근 막대 없음(rounded-full은 스위치·꼬리표만)
+    expect(container.innerHTML).not.toMatch(/gradient|rounded-full/)
+  })
 })
 
 // ── 지운 매출 화면(AC-4110.4) ──
@@ -362,9 +375,10 @@ describe('AC-009.5·AC-4111.2 소스 규칙(폴더의 새 파일을 저절로 �
     }
   })
 
-  it("AC-009.5·AC-4111.2 남는 부품은 모두 훅·'use client'·타이머·움직임이 없는 순수 부품이고, 통로 client.ts·Worker·네트워크·저장소를 쓰지 않는다", () => {
+  it("AC-009.5·AC-4111.2·AC-4417.2 남는 부품은 모두 훅·'use client'·타이머가 없는 순수 부품이고(움직임은 globals.css의 이름 붙은 st-move-period 하나뿐), 통로 client.ts·Worker·네트워크·저장소를 쓰지 않는다", () => {
     for (const name of files()) {
       const text = code(name)
+      expect([...new Set(text.match(/\bst-[\w-]+/g) ?? [])].filter((cls) => /^st-(?:move|donut|rise|tag|flash)/.test(cls)), name).toEqual(name === 'TreatmentBars.tsx' ? ['st-move-period'] : [])
       expect(text, name).not.toMatch(/['"]use client['"]/)
       expect(text, name).not.toMatch(/\buse[A-Z]\w*\s*\(/)
       expect(text, name).not.toMatch(/\b(?:setInterval|setTimeout|requestAnimationFrame)\b/)

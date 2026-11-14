@@ -1,14 +1,16 @@
 'use client'
 
 import Link from 'next/link'
-import { StackedBarChart, type BarBucket, type BarSeries } from '@/components/charts/StackedBarChart'
+import { useState } from 'react'
+import { ChartLegend } from '@/components/charts/ChartLegend'
+import { StackedBarChart } from '@/components/charts/StackedBarChart'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { StackBars } from '@/components/revenue/MonthBars'
 import { BANNER, KpiRow, Note as RevenueNote, NoticeLine, STRONG } from '@/components/revenue/RevenueParts'
 import { SplitTable } from '@/components/revenue/RevenueSplit'
 import { TreatmentBars } from '@/components/revenue/TreatmentBars'
-import type { Lead, PerVisitTab, RevenueMode, RevenueTabs, RoughInfo, SplitTab, TreatmentsTab, TrendTab } from '@/components/stats/revenueView'
+import type { BarsView, Lead, PerVisitTab, RevenueMode, RevenueTabs, RoughInfo, SplitTab, TreatmentsTab, TrendTab } from '@/components/stats/revenueView'
 import { ds } from '@/components/ui/classes'
 import { HowCounted } from './HowCounted'
 import { CHART_NO_SIDE_SCROLL, EmptyNote, Section, thinTotals } from './parts'
@@ -18,6 +20,11 @@ import { RxSection } from './RxSection'
 // 통계 '매출' 칸 + 탭 넷 (stats-revenue REQ-4107 AC-4107.1~AC-4107.10, design.md '칸 부품', 시안 docs/mockups/stats-revenue).
 // 탭·키(← → Home End)·고르지 않은 패널 hidden·패널 상태 지킴·설명 portal은 처방 칸과 같은 부품(RxSection)이 맡는다. 패널마다 Section(탭 패널 모드)이라 설명이 탭 따라 바뀐다.
 // 글·숫자는 모두 revenueView(revenueTabs)가 준 값 그대로 그린다. 고른 탭·[어떻게 세나요?] 펼침은 React 상태뿐이다(주소·저장소·서버에 쓰지 않는다)
+// first90(REQ-4408 AC-4408.3~AC-4408.5, REQ-4417 AC-4417.3, design.md 5-7, 시안 docs/mockups/first90/redesign.html #s-rev):
+//   매출 추이·건당 진료비 막대는 mode가 'in'이고 켜짐 막대(tabs.rough)가 있으면 그것을, 아니면 꺼짐 막대를 그린다(꺼짐 = 확인 필요한 날 점선 칸, 켜짐 = 참고 금액 빗금 막대).
+//   범례는 막대 위, 막대를 누르면(PC는 올리기도) 막대 아래 줄(role="status")에 그 칸 글이 나온다. 고른 칸은 이 칸의 React 상태이고 스위치를 바꿔도 남는다.
+//   막대는 기간을 바꾸면 높이가 움직이고(st-move-period) 빗금 조각은 붙을 때 솟는다(st-rise), 머리 글 "참고 포함" 꼬리표는 붙을 때 나타난다(st-tag-in).
+//   급여·비급여·기타·치료별 매출은 mode와 상관없다(AC-4408.4)
 
 const TITLE = '매출'
 const TABLIST_LABEL = '매출 보기'
@@ -32,8 +39,11 @@ const SETTINGS_HREF = '/settings'
 // 치료별 매출의 '셀 날 없음' 첫 줄(revenueView): 앞말 '자료 없음'은 굵게(빈 상태 한 줄과 같은 모양)
 const NONE_HEAD = '자료 없음 · '
 
-const TREND_SERIES: BarSeries[] = [{ name: '매출', tone: 'accent' }]
-const PER_VISIT_SERIES: BarSeries[] = [{ name: '건당 진료비', tone: 'accent' }]
+const ROUGH_TAG = '참고 포함'
+// "참고 포함" 꼬리표(매출 요약 칸과 같은 모양): 붙을 때 200ms 나타난다(AC-4417.3)
+const TAG = 'st-tag-in inline-flex items-center rounded-full bg-warning-soft px-2 align-middle text-caption font-semibold text-st-warn-ink'
+// 막대 아래 줄(시안 .s-tip): 누르거나 올린 칸 글. 처음은 빈 줄이고 자리는 둔다(글이 생겨도 아래가 밀리지 않게)
+const TIP = 'mt-2 min-h-5 text-body font-semibold text-st-ink tabular-nums'
 // [어떻게 세나요?] 안 문단 묶음(처방별 추세 NOTES_BOX와 같은 폭·사이). 시안은 이 칸에서만 단추 줄 위·단추와 글 사이를 12px로 둔다:
 // HowCounted(mt-2·글 칸 mt-1)에 위 pt-1 · 글 pt-2를 더한다(글 칸 첫 줄의 mt는 HowCounted가 0으로 맞춘다)
 const HOW_BOX = 'grid max-w-182 gap-1 pt-2'
@@ -65,12 +75,18 @@ function How({ paragraphs }: { paragraphs: readonly string[] }) {
   )
 }
 
-// 탭 첫 줄: 글 + 굵은 금액 + 회색 비교 글(없으면 없음). 사이 빈칸은 여기서 둔다
-function LeadLine({ lead }: { lead: Lead }) {
+// 탭 첫 줄(시안 .s-lead 15px · 금액 17px): 글 + 굵은 금액 + "참고 포함" 꼬리표(켜짐) + 회색 비교 글(없으면 없음). 사이 빈칸은 여기서 둔다
+function LeadLine({ lead, tag = false }: { lead: Lead; tag?: boolean }) {
   return (
-    <p className="mt-3 text-small text-ink-2">
+    <p className="mt-3 text-st-15 text-ink-2">
       {lead.text}{' '}
-      <span className="font-semibold text-ink tabular-nums">{lead.amount}</span>
+      <span className="text-st-17 font-semibold text-ink tabular-nums">{lead.amount}</span>
+      {tag && (
+        <>
+          {' '}
+          <span className={TAG}>{ROUGH_TAG}</span>
+        </>
+      )}
       {lead.rest !== null && (
         <>
           {' '}
@@ -81,12 +97,34 @@ function LeadLine({ lead }: { lead: Lead }) {
   )
 }
 
-// 막대(환자 수 추이와 같은 감싸개: 칸이 많으면 휴대폰에서 막대 위 숫자를 줄이고 옆으로 밀리지 않게)
-function Bars({ title, unit, series, buckets, dense, gap }: { title: string; unit: string; series: BarSeries[]; buckets: BarBucket[]; dense: boolean; gap: string }) {
+// 범례(있을 때만) → 막대(환자 수 추이와 같은 감싸개: 칸이 많으면 휴대폰에서 막대 위 숫자를 줄이고 옆으로 밀리지 않게) → 막대 아래 줄.
+// 고른 칸은 여기 상태다. 같은 자리에 그대로 있어 켜짐·꺼짐 막대가 바뀌어도 남고, 글은 지금 막대의 그 칸 글이다
+function Bars({ title, unit, view, gap }: { title: string; unit: string; view: BarsView; gap: string }) {
+  const [picked, setPicked] = useState<string | null>(null)
+  const legend = view.legend.length > 0
   return (
-    <div className={`${gap} ${thinTotals(buckets.length)} ${CHART_NO_SIDE_SCROLL}`}>
-      <StackedBarChart title={title} unit={unit} series={series} buckets={buckets} dense={dense} />
-    </div>
+    <>
+      {legend && (
+        <div className={gap}>
+          <ChartLegend items={view.legend} />
+        </div>
+      )}
+      <div className={`${legend ? 'mt-2' : gap} ${thinTotals(view.buckets.length)} ${CHART_NO_SIDE_SCROLL}`}>
+        <StackedBarChart
+          title={title}
+          unit={unit}
+          series={view.series}
+          buckets={view.buckets}
+          dense={view.dense}
+          motion
+          selected={picked ?? undefined}
+          onPick={setPicked}
+        />
+      </div>
+      <p role="status" className={TIP}>
+        {picked === null ? '' : (view.tips[picked] ?? '')}
+      </p>
+    </>
   )
 }
 
@@ -100,8 +138,8 @@ const ReadingLine = () => (
 function TrendPanel({ tab }: { tab: TrendTab }) {
   return (
     <Section title="매출 추이" desc={tab.desc}>
-      <LeadLine lead={tab.lead} />
-      <Bars title="매출 추이" unit="만 원" series={TREND_SERIES} buckets={tab.buckets} dense={tab.dense} gap="mt-3" />
+      <LeadLine lead={tab.lead} tag={tab.tag} />
+      <Bars title="매출 추이" unit="만 원" view={tab} gap="mt-3" />
       {tab.note !== null && <RevenueNote>{tab.note}</RevenueNote>}
       <How paragraphs={tab.how} />
     </Section>
@@ -165,7 +203,7 @@ function PerVisitPanel({ tab }: { tab: PerVisitTab }) {
     <Section title="건당 진료비" desc={tab.desc}>
       {tab.notice && <NoticeLine notice={tab.notice} />}
       <KpiRow kpis={tab.kpis} />
-      <Bars title="건당 진료비" unit="천 원" series={PER_VISIT_SERIES} buckets={tab.buckets} dense={tab.dense} gap="mt-6" />
+      <Bars title="건당 진료비" unit="천 원" view={tab} gap="mt-6" />
       {tab.note !== null && <RevenueNote>{tab.note}</RevenueNote>}
       <How paragraphs={tab.how} />
     </Section>
@@ -217,6 +255,10 @@ export function RevenueSection({ tabs, noDayCodes, onReread, className, mode = '
       </Section>
     )
   }
+  // 켜짐 막대는 참고 금액이 있는 날이 있을 때만 있다. 없으면 켜짐이어도 꺼짐 막대다(셈이 같다)
+  const bars = mode === 'in' ? tabs.rough : null
+  const trend = bars?.trend ?? tabs.trend
+  const perVisit = bars?.perVisit ?? tabs.perVisit
   return (
     <>
       {rough !== null && onMode !== undefined && <RoughSwitch mode={mode} onChange={onMode} days={rough.days} roughDays={rough.roughDays} />}
@@ -226,10 +268,10 @@ export function RevenueSection({ tabs, noDayCodes, onReread, className, mode = '
         notice={noDayCodes ? <OldHelperNote /> : undefined}
         className={className}
         tabs={[
-          { name: '매출 추이', panel: <TrendPanel tab={tabs.trend} /> },
+          { name: '매출 추이', panel: <TrendPanel tab={trend} /> },
           { name: '급여·비급여·기타', panel: <SplitPanel tab={tabs.split} /> },
           { name: '치료별 매출', panel: <TreatmentsPanel tab={tabs.treatments} /> },
-          { name: '건당 진료비', panel: <PerVisitPanel tab={tabs.perVisit} /> },
+          { name: '건당 진료비', panel: <PerVisitPanel tab={perVisit} /> },
         ]}
       />
     </>
