@@ -9,7 +9,7 @@ import type { DateRange } from '@/types/dates'
 import type { ErrorCode } from '@/types/errors'
 import type { DayPayload } from '@/types/payload'
 import type { BitSectionsView, RxSplitView, StatsChecks, StatsLoaded } from '@/types/stats'
-import { doneText, partSave, planLoad, progressText, stoppedText, type LoadPlan, type LoadSpan } from './loadPlan'
+import { doneText, partSave, planLoad, progressText, revenueProgressText, stoppedText, type LoadPlan, type LoadSpan } from './loadPlan'
 import { lastDayOf, type StatsChoice } from './periodPick'
 import { PERIOD_BUTTON, PERIOD_GROUP, PERIOD_OFF, PERIOD_ON, PeriodPicker } from './PeriodPicker'
 import { dayNumber, longDate, monthNumber, PERIOD_NAME, Section } from './sections/parts'
@@ -18,6 +18,7 @@ import { StatsSections } from './sections/StatsSections'
 import { readFiles, SourcePicker, type FileFailure, type FileIncomplete, type StatsJob } from './SourcePicker'
 import { useStatsData, type SavedLatest, type StatsData } from './useStatsData'
 import { StatsToc } from './StatsToc'
+import { useStatsRevenue, type RevenueFailure } from './useStatsRevenue'
 import { useStatsRxGroups } from './useStatsRxGroups'
 import { errorCodeOf, useStatsWorker } from './useStatsWorker'
 import { DEFAULT_STATS_PERIOD, rangeOf, type CompareRange, type StatsPeriod, type StatsRange } from './view'
@@ -26,6 +27,8 @@ import { DEFAULT_STATS_PERIOD, rangeOf, type CompareRange, type StatsPeriod, typ
 // 처방별 신환·재진과 보고 문장은 이 화면에서 비트로 불러온 뒤에만 있다(서버에 저장하지 않는다).
 // 기간은 빠른 단추 넷 또는 기간 골라 보기(stats-period REQ-1703)다. 고른 것은 상태에만 두고(처음은 최근 30일) range = rangeOf(today, choice, todayDone)
 // 처방별 추세 묶음 훅은 여기서 한 번 부른다: 불러오기(묶음으로 셈)와 칸(보기·고치기)이 같은 묶음을 쓴다(treatment-trend design.md '잇기')
+// 매출(stats-revenue REQ-4108, design.md '화면 잇기'): 저장된 매출은 열 때 읽어 기간 요약 둘째 줄·매출 칸에 그린다(useStatsRevenue). 비트 매출은 [비트에서 불러오기]가
+// 통계 조각을 모두 저장한 뒤에만 같은 일 안에서 통계가 쥔 같은 비트 연결(useStatsWorker.revenueDays)로 읽는다. 열기만 해서는 비트에서 읽지 않는다
 
 const PERIODS: StatsPeriod[] = ['7d', '30d', '90d', '12m']
 const SOURCE_NAME = { bit: '비트 PC', file: '파일' } as const
@@ -36,12 +39,14 @@ const NOT_SAVED = '일부 기록을 확인하지 못해 저장하지 않았어�
 const QUICK_CAPTION = '빠르게 보기'
 const UNIT_NAME = { day: '일별', week: '주별', month: '월별' } as const
 
-// 기다리는 칸은 StatsSections와 같은 자리다. 처방 세 칸은 한 칸 `처방`이다(stats-pc-ux AC-4003.1). 목차 id는 없다(AC-4002.6)
+// 기다리는 칸은 StatsSections와 같은 자리다. 처방 세 칸은 한 칸 `처방`이다(stats-pc-ux AC-4003.1). 목차 id는 없다(AC-4002.6).
+// `매출`은 신환 재방문율 다음 · 처방 앞 전체 폭이다(stats-revenue AC-4109.1)
 const SIDE = 'lg:border-l lg:border-line lg:pl-6'
 const WAITING: { title: string; place: string }[] = [
   { title: '기간 요약', place: 'col-span-12' },
   { title: '환자 수 추이', place: 'col-span-12 lg:col-span-8' },
   { title: '신환 재방문율', place: `col-span-12 lg:col-span-4 ${SIDE}` },
+  { title: '매출', place: 'col-span-12' },
   { title: '처방', place: 'col-span-12' },
   { title: '원장님 보고 문장', place: 'col-span-12 lg:col-span-7' },
   { title: '요일별 환자 수', place: `col-span-12 lg:col-span-5 ${SIDE}` },
@@ -104,8 +109,9 @@ function IncompleteCard({ note, latest }: { note: Incomplete; latest: SavedLates
 }
 
 // 끝난·멈춘 나눠 읽기(stats-load-range AC-3303.5·AC-3303.6). done = 저장한 조각 수, savedTo = 처음 누를 때의 저장한 끝날,
+// closeToday = 처음 누를 때의 '오늘 진료 끝'([이어서 불러오기] 뒤 매출을 이 값으로 읽는다, stats-revenue design.md '화면 잇기'),
 // stop = 멈춘 까닭 글('(오류 번호 …)' 또는 확인 건수 글), null이면 다 끝남. 화면 상태에만 두고 기억하지 않는다
-type LoadRun = { plan: LoadPlan; done: number; savedTo: string; stop: string | null }
+type LoadRun = { plan: LoadPlan; done: number; savedTo: string; closeToday: boolean; stop: string | null }
 
 // 띠 아래 상자(시안 docs/mockups/stats-load-range #result). 조각이 둘 이상일 때만 그린다. 멈춤은 [이어서 불러오기]가 남은 조각을 읽는다
 function LoadRunBox({ run, busy, onResume }: { run: LoadRun; busy: boolean; onResume(): void }) {
@@ -119,6 +125,32 @@ function LoadRunBox({ run, busy, onResume }: { run: LoadRun; busy: boolean; onRe
           이어서 불러오기
         </button>
       )}
+    </div>
+  )
+}
+
+// 매출만 실패 상자(stats-revenue AC-4108.5·기본값 13, 시안 docs/mockups/stats-revenue ?s=rev-failed): 통계 조각은 모두 저장했는데 매출 덩어리가 실패·멈춤일 때
+// 띠 바로 아래(나눠 읽기 상자 다음). 오류 번호는 처음 난 것, savedTo = 전에 저장한 매출의 끝날(없으면 null).
+// [매출만 다시 읽기]는 같은 불러올 기간·같은 '오늘 진료 끝'으로 매출만 다시 읽는다. 화면 상태에만 두고 기억하지 않는다
+const REVENUE_FAILED = '매출은 읽지 못했어요'
+const REVENUE_RETRY = '매출만 다시 읽기'
+
+function revenueFailLine({ code, savedTo }: RevenueFailure): string {
+  const before = savedTo === null ? '매출은 아직 저장된 숫자가 없어요.' : `매출 칸은 전에 저장한 숫자(${longDate(savedTo)}까지)예요.`
+  return `환자·처방은 방금 저장했어요. ${before} (오류 번호 ${code})`
+}
+
+function RevenueFailBox({ failure, busy, onRetry }: { failure: RevenueFailure; busy: boolean; onRetry(): void }) {
+  return (
+    <div role="status" className="mt-4 flex items-start gap-2 rounded-control bg-warning-soft px-4 py-3">
+      <Icon name="stop" className="mt-0.5 shrink-0 text-warning" />
+      <div className="min-w-0">
+        <p className="text-body font-semibold text-warning">{REVENUE_FAILED}</p>
+        <p className="mt-0.5 text-body text-ink-2">{revenueFailLine(failure)}</p>
+        <button type="button" aria-disabled={busy || undefined} className={`mt-2 ${ds.button.secondary}`} onClick={busy ? undefined : onRetry}>
+          {REVENUE_RETRY}
+        </button>
+      </div>
     </div>
   )
 }
@@ -218,8 +250,11 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   const data = useStatsData(choice, today)
   const { todayDone } = data
   const range = useMemo(() => rangeOf(today, choice, todayDone), [today, choice, todayDone])
-  const { state, helloError, retry, load, split, sections } = useStatsWorker()
+  const lastDay = lastDayOf(today, todayDone)
+  const { state, helloError, retry, load, split, sections, revenueDays } = useStatsWorker()
   const groups = useStatsRxGroups(data.input?.days ?? NO_DAYS)
+  // 비트 PC가 아니면(확장 없음·휴대폰·연결 전) call이 없어 저장된 매출만 읽는다(AC-4108.7)
+  const revenue = useStatsRevenue({ range, today, lastDay, call: state === 'ready' ? revenueDays : null })
 
   const [job, setJob] = useState<StatsJob | null>(null)
   const [actionError, setActionError] = useState<ErrorCode | null>(null)
@@ -232,6 +267,9 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   const [savedUnread, setSavedUnread] = useState(false) // 방금 저장에 성공했고 그 뒤 아직 읽기에 성공하지 못했다(AC-514.11)
   const [partAt, setPartAt] = useState<{ plan: LoadPlan; at: number } | null>(null) // 나눠 읽는 중인 조각(읽는 중 줄, AC-3303.4)
   const [run, setRun] = useState<LoadRun | null>(null) // 끝난·멈춘 나눠 읽기(상자·이어서, AC-3303.5 ~ AC-3303.9)
+  // 마지막 매출 읽기의 불러올 기간·'오늘 진료 끝'([매출만 다시 읽기]가 같은 값으로 읽는다)과 지운 매출만 실패 상자(새 불러오기를 시작하면 그때의 실패를 감춘다, 기본값 13)
+  const [revenueRun, setRevenueRun] = useState<{ whole: DateRange; closeToday: boolean } | null>(null)
+  const [revenueHidden, setRevenueHidden] = useState<RevenueFailure | null>(null)
   const working = useRef(false)
 
   const { from: splitFrom, to: splitTo } = splitSpan(range)
@@ -280,17 +318,19 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   const answered = splitAnswer !== null && splitAnswer.loads === loads && splitAnswer.from === splitFrom && splitAnswer.to === splitTo ? splitAnswer : null
 
   // 일은 한 번에 하나다: 불러오기·파일·[다시 저장]이 겹치면 늦게 끝난 저장이 더 새 숫자를 덮을 수 있다.
-  // 불러오기·파일은 앞 일의 안내를 지우고 시작한다. [다시 저장]은 하던 저장을 잇는 것이라 안내를 그대로 둔다
-  async function runJob(kind: StatsJob, work: () => Promise<unknown>) {
+  // 불러오기·파일은 앞 일의 안내를 지우고 시작한다. [다시 저장]은 하던 저장을 잇는 것이라 안내를 그대로 둔다.
+  // [매출만 다시 읽기](keep)는 비트 일이지만 다른 안내를 지우지 않는다(stats-revenue design.md '화면 잇기')
+  async function runJob(kind: StatsJob, work: () => Promise<unknown>, { keep = false }: { keep?: boolean } = {}) {
     if (working.current) return
     working.current = true
     setJob(kind)
-    if (kind !== 'save') {
+    if (kind !== 'save' && !keep) {
       setActionError(null)
       setFileFailures([])
       setIncomplete(null)
       setSavedUnread(false)
       setRun(null)
+      setRevenueHidden(revenue.failure)
     }
     try {
       await work()
@@ -303,13 +343,18 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   }
 
   // 비트 불러오기는 불러올 기간의 계획(planLoad) 조각을 새것부터 하나씩 읽고 저장한다(stats-load-range REQ-3303). 조각이 하나면 지금 그대로다.
-  // 처음 누를 때(start 0)와 [이어서 불러오기](멈춘 조각부터, closeToday false)가 같이 쓴다. 일은 처음부터 끝까지 'bit' 하나다.
+  // 처음 누를 때(start 0)와 [이어서 불러오기](멈춘 조각부터)가 같이 쓴다. closeToday는 처음 누를 때의 값이고 첫 조각(i 0)에만 가므로
+  // [이어서 불러오기](start 1 이상)의 비트 요청은 늘 closeToday false다. 일은 처음부터 끝까지 'bit' 하나다.
   // 묶음은 누를 때 한 번 서버에서 다시 읽어 모든 조각이 같이 쓴다(AC-1205.7). 비트 요청은 그것을 기다리지 않는다.
   // forLoad는 거절하지 않고 5초 안에 늘 풀린다(실패·한도 넘김이면 화면의 묶음).
-  // 첫 조각의 읽기 실패(runJob의 오류 카드)·확인 필요·저장 실패는 지금과 같고, 둘째부터는 다음 조각을 읽지 않고 멈춤 상자다
-  async function readParts(plan: LoadPlan, start: number, closeToday: boolean, savedTo: string) {
+  // 첫 조각의 읽기 실패(runJob의 오류 카드)·확인 필요·저장 실패는 지금과 같고, 둘째부터는 다음 조각을 읽지 않고 멈춤 상자다.
+  // 모든 조각을 저장했을 때만 참이다(그때만 매출을 읽는다, stats-revenue AC-4108.4)
+  async function readParts(plan: LoadPlan, start: number, closeToday: boolean, savedTo: string): Promise<boolean> {
     const groupDefs = groups.forLoad()
-    const stop = (done: number, reason: string) => setRun({ plan, done, savedTo, stop: reason })
+    const stop = (done: number, reason: string) => {
+      setRun({ plan, done, savedTo, closeToday, stop: reason })
+      return false
+    }
     try {
       for (let i = start; i < plan.parts.length; i++) {
         const part = plan.parts[i]!
@@ -326,29 +371,48 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
         if (i === 0) setReport({ numbers: view.report, loadedAt: clockOf(new Date()), closedToday: closeToday })
         if (i === plan.keepAt) setLoads((n) => n + 1)
         if (view.quality !== 'valid' || view.months === null || view.days === null) {
-          if (i === 0) return setIncomplete({ kind: 'bit', checks: view.checks })
-          return stop(i, incompleteLine({ kind: 'bit', checks: view.checks }))
+          if (i > 0) return stop(i, incompleteLine({ kind: 'bit', checks: view.checks }))
+          setIncomplete({ kind: 'bit', checks: view.checks })
+          return false
         }
         // 이 조각이 저장할 달·날·세 칸 합계·덮은 기간만(partSave). 조각이 하나면 Worker 값 그대로다(세 칸 합계 검사·크기는 saveStats, AC-2902.2)
         const saved = await data.save(partSave(view, part))
         setSavedUnread(saved)
-        if (!saved) return i === 0 ? undefined : stop(i, '(오류 번호 E-STATS-SAVE-FAILED)')
+        if (!saved) return i === 0 ? false : stop(i, '(오류 번호 E-STATS-SAVE-FAILED)')
       }
-      setRun({ plan, done: plan.parts.length, savedTo, stop: null })
+      setRun({ plan, done: plan.parts.length, savedTo, closeToday, stop: null })
+      return true
     } finally {
       setPartAt(null)
     }
   }
 
+  // 통계 조각을 모두 저장한 뒤 같은 일 안에서 불러올 기간 전체의 매출 빈 날을 읽고 저장한다(stats-revenue AC-4108.2). sync는 거절하지 않고 끝나면 다시 읽는다.
+  // 이 불러올 기간·'오늘 진료 끝'은 [매출만 다시 읽기]가 같은 값으로 쓴다
+  async function syncRevenue(whole: DateRange, closeToday: boolean) {
+    setRevenueRun({ whole, closeToday })
+    await revenue.sync({ whole, closeToday })
+  }
+
   const loadFromBit = (closeToday: boolean, span: LoadSpan) => {
     const plan = planLoad(today, range, span)
-    void runJob('bit', () => readParts(plan, 0, closeToday, lastDayOf(today, closeToday)))
+    void runJob('bit', async () => {
+      if (await readParts(plan, 0, closeToday, lastDayOf(today, closeToday))) await syncRevenue(plan.whole, closeToday)
+    })
   }
 
   const resumeLoad = () => {
     if (run === null || run.stop === null) return
-    const { plan, done, savedTo } = run
-    void runJob('bit', () => readParts(plan, done, false, savedTo))
+    const { plan, done, savedTo, closeToday } = run
+    void runJob('bit', async () => {
+      if (await readParts(plan, done, closeToday, savedTo)) await syncRevenue(plan.whole, closeToday)
+    })
+  }
+
+  // [매출만 다시 읽기](AC-4108.5): 통계 조각은 다시 읽지 않고 다른 안내도 지우지 않는다. 그동안 일은 'bit'라 다른 불러오기 단추가 막힌다
+  const rereadRevenue = () => {
+    if (revenueRun === null) return
+    void runJob('bit', () => revenue.sync(revenueRun), { keep: true })
   }
 
   const takeFiles = (files: File[]) =>
@@ -378,6 +442,10 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   // 불러오기 상자는 저장된 숫자를 한 번 읽어 하나도 없을 때만 펼친 채 시작한다('아직 저장된 통계가 없어요', stats-pc-ux AC-4001.4).
   // 읽는 중을 showSections로 보지 않고 input으로 본다: 처음 읽기 전(input null)은 접힘, 그 뒤 기간을 바꿔 다시 읽는 동안은 앞 답 그대로라 접혔다 펼쳐지지 않는다
   const canFold = readFailed || saved || input === null
+  // 읽는 중 줄: 매출을 읽는 동안은 매출 글(AC-4108.3·기본값 12), 나눠 읽는 동안은 조각 글, 아니면 SourcePicker의 지금 글
+  const revenueLine = revenue.progress === null ? null : revenueProgressText(revenue.progress.done, revenue.progress.total)
+  const partLine = partAt === null ? null : progressText(partAt.plan, partAt.at)
+  const revenueFailure = revenue.failure !== null && revenue.failure !== revenueHidden ? revenue.failure : null
 
   return (
     <div>
@@ -389,7 +457,7 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
         today={today}
         range={range}
         job={job}
-        progress={partAt !== null && job === 'bit' ? progressText(partAt.plan, partAt.at) : null}
+        progress={job === 'bit' ? (revenueLine ?? partLine) : null}
         onRetry={() => {
           setActionError((c) => (c === 'E-BRIDGE-DISCONNECTED' ? null : c))
           retry()
@@ -401,6 +469,8 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
       />
       {/* [이어서 불러오기]는 일이 없고 비트 PC 연결이 'ready'일 때만 누를 수 있다(AC-3303.9·AC-3303.10). 개인정보 줄은 불러오기 상자 펼칠 칸 안이다(AC-4001.1) */}
       {run !== null && run.plan.parts.length > 1 && <LoadRunBox run={run} busy={job !== null || state !== 'ready'} onResume={resumeLoad} />}
+      {/* 매출만 실패 상자(stats-revenue AC-4108.5): 나눠 읽기 상자 다음. [매출만 다시 읽기]도 일이 없고 비트 PC 연결이 'ready'일 때만 누를 수 있다 */}
+      {revenueFailure !== null && revenueRun !== null && <RevenueFailBox failure={revenueFailure} busy={job !== null || state !== 'ready'} onRetry={rereadRevenue} />}
 
       {/* 세 칸 답의 오류는 처방별 답과 번호가 다를 때만 더한다(같은 번호 카드가 둘이지 않게) */}
       {[actionError, answered?.error ?? null, bitAnswered?.error != null && bitAnswered.error !== answered?.error ? bitAnswered.error : null].map(
@@ -463,13 +533,13 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
               ))}
             </div>
           </div>
-          <PeriodPicker choice={choice} lastDay={lastDayOf(today, todayDone)} todayDone={todayDone} onChoose={setChoice} />
+          <PeriodPicker choice={choice} lastDay={lastDay} todayDone={todayDone} onChoose={setChoice} />
         </div>
         <RangeText range={range} choice={choice} todayDone={todayDone} />
       </div>
 
       {/* 목차 띠(stats-pc-ux AC-4002.1): 칸을 그릴 때만, 기간 줄 바로 다음. 이 바깥 div의 바로 아래 자식이어야 끝까지 붙는다(작은 div 안이면 그 div가 끝날 때 떨어진다) */}
-      {showSections && <StatsToc range={range} lastDay={lastDayOf(today, todayDone)} />}
+      {showSections && <StatsToc range={range} lastDay={lastDay} />}
       {waiting && <WaitingSections />}
       {/* 읽는 동안에도 내려놓지 않는다: 기간을 바꿔도 열어 둔 [자세히]·처방 줄이 열린 채 새 숫자로 그려진다(시안 §5) */}
       {drawn !== null && (
@@ -483,6 +553,15 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
             groups={groups}
             revision={data.revision}
             bit={bit}
+            revenue={{
+              state: revenue.state,
+              days: revenue.days,
+              codes: revenue.codes,
+              monthCodes: revenue.monthCodes,
+              noDayCodes: revenue.noDayCodes,
+              lastDay,
+              onReread: revenue.reread,
+            }}
           />
         </div>
       )}

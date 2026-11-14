@@ -5,13 +5,14 @@ import { compareYmd } from '@/lib/analytics/dates'
 import type { StatsRange } from './view'
 
 // 목차 띠 (stats-pc-ux REQ-4002, design.md 'StatsToc.tsx', 시안 docs/mockups/stats-pc-ux/notes.md 3번).
-// 기간 줄 아래에 놓이고 내리면 앱 머리줄(넓은 화면 102px · 휴대폰 94px) 바로 아래에 붙는다. 왼쪽 기간 글 + 칸 링크 아홉.
+// 기간 줄 아래에 놓이고 내리면 앱 머리줄(넓은 화면 102px · 휴대폰 94px) 바로 아래에 붙는다. 왼쪽 기간 글 + 칸 링크 열(stats-revenue AC-4109.1: `매출`은 재방문율 다음).
 // 칸 자리는 DOM에서 id로 찾는다(칸을 그리는 쪽과 props로 잇지 않는다). 주소(#…)·브라우저 저장소를 쓰지 않고, 상태는 이 부품 안에만 둔다
 
 export const TOC_LINKS: readonly { id: string; name: string }[] = [
   { id: 'stats-summary', name: '기간 요약' },
   { id: 'stats-trend', name: '환자 수' },
   { id: 'stats-revisit', name: '재방문율' },
+  { id: 'stats-revenue', name: '매출' },
   { id: 'stats-rx', name: '처방' },
   { id: 'stats-report', name: '보고 문장' },
   { id: 'stats-weekday', name: '요일별' },
