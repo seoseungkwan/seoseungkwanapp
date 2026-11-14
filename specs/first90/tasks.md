@@ -80,13 +80,14 @@
 ## TASK-4: 대시보드 — 하루 분석 5칸 · 보고 문장 · 기간별 흐름
 - REQ: REQ-4404
 - AC: AC-4404.1, AC-4404.2, AC-4404.3
-- Files: src/components/dashboard/summary/view.ts, src/components/dashboard/summary/DailySection.tsx, src/components/dashboard/summary/FlowSection.tsx, src/components/dashboard/summary/flow.ts, src/components/dashboard/summary/view.test.ts, src/components/dashboard/summary/flow.test.ts, src/components/dashboard/summary/DashboardAnalysis.test.tsx, src/components/dashboard/summary/LiveDashboard.test.tsx, src/components/dashboard/live/BitDashboard.test.tsx
-- Tests: src/components/dashboard/summary/view.test.ts, src/components/dashboard/summary/flow.test.ts, src/components/dashboard/summary/DashboardAnalysis.test.tsx, src/components/dashboard/summary/LiveDashboard.test.tsx, src/components/dashboard/live/BitDashboard.test.tsx
+- Files: src/components/dashboard/summary/view.ts, src/components/dashboard/summary/DailySection.tsx, src/components/dashboard/summary/FlowSection.tsx, src/components/dashboard/summary/flow.ts, src/components/dashboard/summary/view.test.ts, src/components/dashboard/summary/flow.test.ts, src/components/dashboard/summary/DashboardAnalysis.test.tsx, src/components/dashboard/summary/LiveDashboard.test.tsx, src/components/dashboard/live/BitDashboard.test.tsx, src/components/dashboard/live/DashboardSkeleton.tsx, src/components/dashboard/live/DashboardSkeleton.test.tsx, src/app/(app)/dashboard/page.test.tsx
+- Tests: src/components/dashboard/summary/view.test.ts, src/components/dashboard/summary/flow.test.ts, src/components/dashboard/summary/DashboardAnalysis.test.tsx, src/components/dashboard/summary/LiveDashboard.test.tsx, src/components/dashboard/live/BitDashboard.test.tsx, src/components/dashboard/live/DashboardSkeleton.test.tsx, src/app/(app)/dashboard/page.test.tsx
 - TDD: required
   - 5칸 이름 차례(오늘·지난 날).
   - 모름: '–'·"새 도우미(0.7.0)면 나와요"·재진 "90일초진 포함".
   - 문장 두 모양.
   - 흐름 막대: 모든 칸이 앎이면 TASK-5의 `trendSeries(true)` 세 갈래·색, 아니면 지금 두 갈래. 대시보드 모양·움직임은 그대로(`motion` 안 줌).
+  - (덧붙임) 숫자 없는 자리·뼈대(`DashboardSkeleton`)도 5칸, 기준일 옆 글 "숫자 5개와 보고 문장에 적용", 세 갈래일 때 그래프 옆 글(AC-4404.1·4404.3).
 - 차례: Phase 3 (TASK-6과 병렬)
 
 ## TASK-5: 통계 화면 기반 — 토큰 · 규칙 예외 · 움직임 CSS · 차트 기반
@@ -109,8 +110,8 @@
 ## TASK-6: 통계 틀 — 카드 · 바로가기 띠 · 차례
 - REQ: REQ-4411
 - AC: AC-4411.1, AC-4411.2, AC-4411.3, AC-4411.4
-- Files: src/components/stats/sections/parts.tsx, src/components/stats/sections/parts.test.tsx, src/components/stats/sections/StatsSections.tsx, src/components/stats/StatsToc.tsx, src/components/stats/StatsToc.test.tsx, src/components/stats/StatsScreen.tsx, src/components/stats/StatsScreen.test.tsx, src/app/(app)/stats/page.test.tsx
-- Tests: src/components/stats/sections/parts.test.tsx, src/components/stats/StatsToc.test.tsx, src/components/stats/StatsScreen.test.tsx, src/app/(app)/stats/page.test.tsx, src/components/stats/sections/*.test.tsx
+- Files: src/components/stats/sections/parts.tsx, src/components/stats/sections/parts.test.tsx, src/components/stats/sections/StatsSections.tsx, src/components/stats/StatsToc.tsx, src/components/stats/StatsToc.test.tsx, src/components/stats/StatsScreen.tsx, src/components/stats/StatsScreen.test.tsx, src/app/(app)/stats/page.test.tsx, src/components/stats/sections/PeriodSummary.test.tsx, src/app/globals.css, src/app/globals.test.ts, docs/UI_GUIDE.md
+- Tests: src/components/stats/sections/parts.test.tsx, src/components/stats/StatsToc.test.tsx, src/components/stats/StatsScreen.test.tsx, src/app/(app)/stats/page.test.tsx, src/components/stats/sections/*.test.tsx, src/app/globals.test.ts
 - TDD: required
   - `StatsCard`: section·h2·옆 글·오른쪽 자리·id. 카드 안 `Section`은 h3, 카드 밖은 지금처럼 h2(각 칸 시험 그대로 통과). 칸 하나·같은 제목이면 칸 머리 없이 옆 글·단추가 카드 머리로.
   - 카드 다섯의 h2·옆 글(AC-4411.3). 환자 카드 옆 글 "{기간 이름} · {시작 날짜} – {끝 날짜}".
@@ -118,6 +119,8 @@
   - 바로가기 띠: `nav` 이름 "통계 바로가기", 링크 여섯 차례·누르면 그 카드로, `aria-current`·모션 줄이기 그대로, 기간 글 없음(`tocRangeText` 없앰).
   - "어떻게 세나요?"·빈 자료 글·읽는 중 글은 칸 안에 그대로 남는다(AC-4411.4, 지금 칸 시험이 증명).
   - `StatsScreen.test.tsx`는 카드 h2·차례·바로가기만 본다. 작은 칸(h3) 이름·글은 각 칸 시험이 본다. 그래야 TASK-8~12가 이 파일을 고치지 않는다.
+  - `PeriodSummary.test.tsx`는 `StatsSections` 차례를 보는 '섹션 차례' 묶음만 새 차례로 고친다. 나머지는 TASK-7 몫이다.
+  - 바로가기 띠 모양과 화면 바탕은 design 5-5 그대로(띠는 불투명 회색 바탕·알약 링크, 바탕은 `#main:has([data-st-canvas])`). `UI_GUIDE.md`의 둥근 끝 예외에 바로가기 링크를 더한다.
 - 차례: Phase 3 (TASK-4와 병렬)
 
 ## TASK-7: 환자 요약 · 매출 요약 · 참고 금액 포함 스위치

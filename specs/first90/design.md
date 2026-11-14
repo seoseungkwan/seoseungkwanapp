@@ -102,7 +102,7 @@ ORDER BY v.PatientId,v.VisitDay
 | 규칙 예외 | `ui/classes.test.ts`, `app/theme.test.ts`, `app/globals.test.ts`, `charts/rules.test.ts`, `docs/UI_GUIDE.md` | 아래 5-2 |
 | 차트 기반 | `charts/StackedBarChart.tsx`, `charts/InlineBar.tsx`, 새 `charts/DonutChart.tsx`, 새 `stats/trendSeries.ts` | 아래 5-4 |
 | 틀·카드 | `sections/parts.tsx`, `sections/StatsSections.tsx`, `stats/StatsScreen.tsx` | 아래 5-5 |
-| 바로가기 띠 | `stats/StatsToc.tsx` | `TOC_LINKS` 여섯(요약 `stats-summary` · 환자 `stats-patients` · 매출 `stats-revenue` · 처방 `stats-rx` · 진료 운영 `stats-ops` · 보고 `stats-report`). `tocRangeText`와 띠 왼쪽 글을 없앤다. 지금 칸 고르기·모션 줄이기는 그대로 |
+| 바로가기 띠 | `stats/StatsToc.tsx` | `TOC_LINKS` 여섯(요약 `stats-summary` · 환자 `stats-patients` · 매출 `stats-revenue` · 처방 `stats-rx` · 진료 운영 `stats-ops` · 보고 `stats-report`). `tocRangeText`와 띠 왼쪽 글을 없앤다. 지금 칸 고르기·모션 줄이기는 그대로. 띠 모양은 5-5 |
 | 환자 요약 | `sections/PeriodSummary.tsx`, `stats/view.ts summaryCells`, `stats/periodPick.ts` | 칸 넷 + 칸 안 증감(5-6). 매출 줄은 빼서 `RevenueSummary`로 |
 | 매출 요약·스위치 | 새 `sections/RevenueSummary.tsx`, 새 `sections/RoughSwitch.tsx`, 새 `sections/SummaryCell.tsx`, `stats/revenueView.ts revenueCells`, `lib/revenue/summary.ts` | 5-7. 요약 칸 모양은 `SummaryCell` 하나를 두 줄이 같이 쓴다(대시보드 `KpiStat`은 그대로 둔다) |
 | 환자 카드 | `sections/PatientTrendSection.tsx`, 새 `sections/VisitMixSection.tsx`, `sections/RevisitSection.tsx`, `sections/PatientMixSection.tsx`, `stats/view.ts`(visitMix·재방문 대상 기간) | 도넛은 `PatientTrendSection`이 일별 내원 왼쪽(좁으면 위)에 놓는다. `StatsSections`는 고치지 않는다 |
@@ -127,11 +127,11 @@ ORDER BY v.PatientId,v.VisitDay
 - 예외 파일: `src/components/stats/**`, `src/components/revenue/**`(시험 파일 빼고), `src/components/charts/DonutChart.tsx`·`StackedBarChart.tsx`·`InlineBar.tsx`·`ChartLegend.tsx`(범례 색 표시).
 - 허용하는 것(이 파일들에서만):
   - 화면 폭 접두사 `min-[1100px]:`·`min-[1200px]:`·`max-[1200px]:`·`max-[380px]:`(Tailwind 4의 `max-[N]:`은 N 미만).
-  - 모서리 `rounded-st`·`rounded-st-sm`·`rounded-full`(스위치·꼬리표만), 그림자 `shadow-st-card`.
+  - 모서리 `rounded-st`·`rounded-st-sm`·`rounded-full`(스위치·꼬리표·바로가기 링크만), 그림자 `shadow-st-card`.
   - 글자 `text-st-15`·`text-st-17`·`text-st-18`·`text-st-22`·`text-st-34`·`text-st-40`과 `text-st-*`·`bg-st-*`·`border-st-*` 색.
   - 움직임은 Tailwind `animate-*`·`transition*` 클래스가 아니라 `globals.css`의 이름 붙은 클래스(`st-move-period`·`st-move-heat`·`st-move-toggle`·`st-donut`·`st-rise`·`st-tag-in`·`st-flash`)로만 한다. `@keyframes`는 `st-donut`·`st-rise`·`st-in` 셋을 더한다.
 - `charts/rules.test.ts`: 차트 부품은 지금처럼 `'use client'`·hooks·`animate-*`·`transition*`가 없다. 이름 붙은 `st-*` 움직임 클래스는 `DonutChart`·`StackedBarChart`·`InlineBar`에서만 받고, 다른 차트 파일에 있으면 잡는다.
-- 그대로 지키는 것: 600 넘는 굵기 금지(시안 700 → 600), 그라데이션 금지(빗금은 svg `pattern`·path, 보고 미리보기에 흐림 덧칠 없음), 지어낸 숫자 금지, 다크 모드 없음.
+- 그대로 지키는 것: 600 넘는 굵기 금지(시안 700 → 600), 그라데이션 금지(빗금은 svg `pattern`·path, 보고 미리보기에 흐림 덧칠 없음, 바로가기 띠도 흐림 없이 불투명 바탕), 지어낸 숫자 금지, 다크 모드 없음.
 - `UI_GUIDE.md`에 '통계 화면(first90)' 절을 더해 위 목록을 적는다. 규칙 시험은 예외 목록을 상수로 두고, 목록 밖 파일이 쓰면 실패한다(지금 `WIDE_1280` 방식). 환자 구성 1280px 예외(`WIDE_1280`)는 환자 구성을 탭으로 바꾸는 작업(TASK-9)에서 없앤다.
 
 ### 5-3. 움직임 (`globals.css`, CSS만)
@@ -160,7 +160,8 @@ ORDER BY v.PatientId,v.VisitDay
 - 카드에 칸이 하나뿐이고 칸 제목이 카드 제목과 같으면(매출·처방·보고) 칸 머리를 따로 그리지 않는다. 칸의 옆 글·오른쪽 단추는 카드 머리 자리에 그린다(지금 탭 패널 방식과 같다). 제목이 두 번 나오지 않는다.
 - `HowCounted`는 그대로 쓰고, 긴 설명 글은 그 칸의 "어떻게 세나요?" 안으로 옮긴다(AC-4411.4).
 - `StatsSections` 차례(AC-4411.1): 환자 요약 → 매출 요약(`stats-summary` 한 자리) → 환자 카드(일별 내원·재방문율·환자 구성) → 매출 카드 → 처방 카드 → 진료 운영 카드(요일별·시간대별·원장님별, 1200px 이상 30:70) → 보고 카드.
-- 화면 바탕 `bg-st-canvas`는 `StatsScreen`의 통계 본문에만 준다.
+- 화면 바탕: `StatsScreen` 맨 바깥에 `data-st-canvas`를 둔다. `globals.css`의 `#main:has([data-st-canvas])`가 앱 본문 바탕을 `--st-canvas`로 칠한다(인쇄는 흰 바탕). 그래서 1280px보다 넓은 화면도 양옆까지 회색이다. 앱 틀 파일(`AppShell`)은 고치지 않는다. 음수 여백으로 덮지 않는다.
+- 바로가기 띠 모양(시안 `.s-nav`): 띠 바탕 `bg-st-canvas`(불투명, 흐림 없음)·아래 선 `border-st-line`. 링크는 알약(`rounded-full`, 높이 36px 이상, 14px·600). 지금 카드 링크는 `bg-st-ink text-white`, 올리면 `bg-st-line`. 초점 고리는 지금 규칙.
 
 ### 5-6. 환자 요약 셈 (`view.ts`·`periodPick.ts`)
 - `SummaryCell`에 `delta2: { label: string; delta: Delta } | null`(작년 줄)과 칸 키 `first90`을 더한다. `compare` 칸 키는 없앤다.
