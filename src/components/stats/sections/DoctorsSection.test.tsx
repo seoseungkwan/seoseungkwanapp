@@ -57,9 +57,9 @@ describe('AC-2706.4 원장님별 칸', () => {
     expect(section().className.split(' ')).toContain('col-span-12')
   })
 
-  it('AC-2706.4: 표 머리는 원장님 | 실환자 | 신환 | 내원 | 매출 | 1인당 진료비 | 비중이다', () => {
+  it('AC-2706.4·AC-4109.2: 표 머리는 원장님 | 실환자 | 신환 | 내원 | 매출 | 건당 진료비 | 비중이다', () => {
     draw(ready())
-    expect(within(table()).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['원장님', '실환자', '신환', '내원', '매출', '1인당 진료비', '비중'])
+    expect(within(table()).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['원장님', '실환자', '신환', '내원', '매출', '건당 진료비', '비중'])
   })
 
   it('AC-2706.4·AC-2705.6: 줄은 N명·N건·N원(천 단위 쉼표), 1인당 진료비, 비중 백분율이고 내원 0이면 1인당 진료비가 "–"다', () => {
@@ -122,11 +122,11 @@ describe('AC-2706.4 원장님별 칸', () => {
     expect(within(table()).getAllByRole('columnheader')[1]!.className).toContain('max-md:px-1.5')
   })
 
-  it('AC-2706.4: 아래 글이 시안 그대로다', () => {
+  it('AC-2706.4·AC-4109.2: 아래 글이 시안 그대로다(건당 진료비 · 확인 필요한 날 한 문장)', () => {
     draw(ready())
     expect(
       screen.getByText(
-        '환자 수는 접수할 때 정한 진료의, 매출은 수납할 때 적힌 진료의로 나눠요. 두 원장님께 진료받은 분은 양쪽에 세요(합계는 한 번). 매출은 수납한 날의 총진료비(공단 + 본인부담 + 비급여)예요. 1인당 진료비는 매출 ÷ 내원 건수예요.',
+        '환자 수는 접수할 때 정한 진료의, 매출은 수납할 때 적힌 진료의로 나눠요. 두 원장님께 진료받은 분은 양쪽에 세요(합계는 한 번). 매출은 수납한 날의 총진료비(공단 + 본인부담 + 비급여)예요. 건당 진료비는 매출 ÷ 내원 건수예요. 확인 필요한 날(환불 등)도 더해서 위 매출 칸과 다를 수 있어요.',
       ),
     ).toBeTruthy()
   })
@@ -154,7 +154,7 @@ describe('AC-2706.4 원장님별 칸', () => {
 // ── stats-pc-ux: 표 아래 [어떻게 세나요?] · [표 복사] 줄 (REQ-4004 AC-4004.2 ⑧, REQ-4005 AC-4005.1) ─────────────────
 describe('AC-4004.2 ⑧·AC-4005.1: 원장님별 표 아래 줄과 접는 설명', () => {
   const FOOT =
-    '환자 수는 접수할 때 정한 진료의, 매출은 수납할 때 적힌 진료의로 나눠요. 두 원장님께 진료받은 분은 양쪽에 세요(합계는 한 번). 매출은 수납한 날의 총진료비(공단 + 본인부담 + 비급여)예요. 1인당 진료비는 매출 ÷ 내원 건수예요.'
+    '환자 수는 접수할 때 정한 진료의, 매출은 수납할 때 적힌 진료의로 나눠요. 두 원장님께 진료받은 분은 양쪽에 세요(합계는 한 번). 매출은 수납한 날의 총진료비(공단 + 본인부담 + 비급여)예요. 건당 진료비는 매출 ÷ 내원 건수예요. 확인 필요한 날(환불 등)도 더해서 위 매출 칸과 다를 수 있어요.'
   const howButton = () => screen.getByRole('button', { name: '어떻게 세나요?' })
   const howBody = () => document.getElementById(howButton().getAttribute('aria-controls')!)!
   const copyButton = () => screen.getByRole('button', { name: '표 복사' })
@@ -176,7 +176,7 @@ describe('AC-4004.2 ⑧·AC-4005.1: 원장님별 표 아래 줄과 접는 설명
     expect(copyButton().classList.contains('max-md:w-full')).toBe(true)
   })
 
-  it('AC-4004.2: 아래 글은 "어떻게 세나요?" 칸 안에 있고 처음에는 접혀(hidden) 있어 그 자리에 보이지 않으며, 펼친 글은 그 줄 아래다', () => {
+  it('AC-4004.2·AC-4109.2: 아래 글은 "어떻게 세나요?" 칸 안에 있고 처음에는 접혀(hidden) 있어 그 자리에 보이지 않으며, 펼친 글은 그 줄 아래다', () => {
     draw(ready())
     expect(howButton().getAttribute('aria-expanded')).toBe('false')
     expect(howBody().hidden).toBe(true)

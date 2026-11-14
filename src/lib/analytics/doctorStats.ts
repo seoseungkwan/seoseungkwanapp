@@ -20,7 +20,7 @@ export type DoctorInput = {
 
 export const NO_DOCTOR = '진료의 미지정'
 const TOTAL_LABEL = '합계'
-const HEADER = ['원장님', '실환자', '신환', '내원', '매출', '1인당 진료비', '비중'].join('\t')
+const HEADER = ['원장님', '실환자', '신환', '내원', '매출', '건당 진료비', '비중'].join('\t') // 표 머리와 같은 이름(stats-revenue AC-4109.2)
 const EPSILON = 1e-9 // 0.5485 × 1000 = 548.4999… 같은 부동소수 오차가 반올림을 바꾸지 않게
 
 const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
@@ -28,7 +28,7 @@ const comma = (n: number) => n.toLocaleString('en-US')
 
 type Tally = { patients: Set<number>; newPatients: Set<number>; visits: number; amount: number }
 
-// 1인당 진료비 = 매출 ÷ 내원의 원 미만을 버린 값(0 쪽으로), 내원 0이면 null(AC-2705.6). || 0은 −0을 0으로
+// 건당 진료비 = 매출 ÷ 내원의 원 미만을 버린 값(0 쪽으로), 내원 0이면 null(AC-2705.6). || 0은 −0을 0으로
 const perVisitOf = (amount: number, visits: number) => (visits > 0 ? Math.trunc(amount / visits) || 0 : null)
 
 // 진료의 코드 null = 진료의 미지정. 진료의(접수·매출 어느 쪽이든, 미지정 빼고)가 한 분 이하면 single(AC-2705.5)
