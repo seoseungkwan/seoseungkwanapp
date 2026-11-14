@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Precheck.Core.Bit;
 using Precheck.Core.Protocol;
+using Precheck.Core.Stats;
 
 namespace Precheck.Core.Revenue;
 
@@ -58,6 +59,14 @@ public sealed class RevenueDay
     /// <summary>나눔 네 칸(insurer·noncovered·copay·otherTotal)만 null이고 남는 다섯 칸은 숫자다.</summary>
     [JsonPropertyName("splitUnconfirmed")]
     public bool SplitUnconfirmed { get; set; }
+
+    /// <summary>
+    /// 확인 필요한 날(Unconfirmed)의 참고 금액(spec first90 AC-4405.1, 도우미 0.7.0부터). 원 단위 정수이고 환불이 크면 음수다.
+    /// 그 밖의 날은 null이고 JSON에 열쇠를 쓰지 않는다(AC-4405.2).
+    /// </summary>
+    [JsonPropertyName("roughTotal")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? RoughTotal { get; set; }
 }
 
 /// <summary>기간 전체의 처방 코드 한 줄. Name은 없으면 null, Amount는 값 빠짐이면 null(AC-002.2).</summary>
@@ -76,7 +85,7 @@ public sealed class RevenueCode
     public long? Amount { get; set; }
 }
 
-/// <summary>revenue.days 답 {days, codes, dayCodes}(dayCodes는 도우미 0.6.0부터).</summary>
+/// <summary>revenue.days 답 {days, codes, dayCodes}(dayCodes는 도우미 0.6.0부터, 날 줄의 roughTotal은 0.7.0부터).</summary>
 public sealed class RevenueResult
 {
     public RevenueResult(IReadOnlyList<RevenueDay> days, IReadOnlyList<RevenueCode> codes, IReadOnlyList<object?[]> dayCodes)
@@ -172,6 +181,7 @@ public static class RevenueDays
     /// Unconfirmed(금액 아홉 칸 null) = 세 검사 또는 total·cash·card·transfer·receivableIn의 음수. 이쪽을 먼저 본다.
     /// SplitUnconfirmed(나눔 네 칸만 null, 남는 다섯 칸은 그대로) = insurer + copay ≠ 요양비용총액 또는 insurer·noncovered·copay·otherTotal의 음수.
     /// otherTotal은 나머지라서 총액에 섞인 다른 금액도 여기에 든다. 그것을 잡는 것은 의원 PC 확인표 ⑤뿐이다(design.md 2절 2).
+    /// Unconfirmed로 끝나는 두 곳(세 검사, 음수)에서만 참고 금액 RoughTotal을 더 읽는다(spec first90 AC-4405.1). 다른 칸·검사 순서는 그대로다(AC-4405.2).
     /// </summary>
     private static void ReadMoney(IBitDb db, IReadOnlyDictionary<string, string> values, RevenueDay row)
     {
@@ -180,6 +190,7 @@ public static class RevenueDays
             if (Number(Row(db, check, values, 1)[0]) != 0)
             {
                 row.Unconfirmed = true;
+                row.RoughTotal = Rough(db, values);
                 return;
             }
         }
@@ -207,6 +218,7 @@ public static class RevenueDays
         if (new[] { total, cash, card, transfer, receivableIn }.Any(value => value < 0))
         {
             row.Unconfirmed = true;
+            row.RoughTotal = Rough(db, values);
             return;
         }
 
@@ -228,6 +240,25 @@ public static class RevenueDays
         row.Noncovered = noncovered;
         row.Copay = copay;
         row.OtherTotal = otherTotal;
+    }
+
+    /// <summary>
+    /// 확인 필요한 날의 참고 금액(spec first90 AC-4405.1): 통계 원장님별 금액 doctorDays와 같은 두 문장(StatsSql 정상수납 → 미수입금)을
+    /// 그날 @day·@nextDay·@hospital로 읽는다. 줄마다 셋째 칸(총진료비)의 원 미만을 버리고(0 쪽으로) 모두 더한다. 환불 음수는 그대로 빼고,
+    /// 진료의 칸이 빈 줄도 그날 수납이라 더한다. 칸이 모자라거나 숫자가 아니거나 웹이 받지 못하는 큰 값이면 읽기 실패다(일부만 답하지 않음).
+    /// </summary>
+    private static long Rough(IBitDb db, IReadOnlyDictionary<string, string> values)
+    {
+        var sum = 0m;
+        foreach (var sql in new[] { StatsSql.DoctorMoneyNormalSql, StatsSql.DoctorMoneyReceivableSql })
+        {
+            foreach (var line in Query(db, sql, values, StatsSql.ParametersOf(sql)))
+            {
+                if (line.Count < 3) throw ReadFailed();
+                sum = Add(sum, Won(Amount(line[2])));
+            }
+        }
+        return Won(sum);
     }
 
     /// <summary>AC-003.3. 재진이 음수가 되면 원본은 멈춘다(invalid_aggregate). 여기서는 검사 칸과 같게 그날 셋 다 null로 둔다.</summary>
@@ -460,10 +491,14 @@ public static class RevenueDays
     private static string Key(DateTime day) => day.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
 
     /// <summary>정해 둔 문장을 그 문장의 매개변수만 골라 돌린다.</summary>
-    private static IReadOnlyList<IReadOnlyList<object?>> Query(IBitDb db, string sql, IReadOnlyDictionary<string, string> values)
+    private static IReadOnlyList<IReadOnlyList<object?>> Query(IBitDb db, string sql, IReadOnlyDictionary<string, string> values) =>
+        Query(db, sql, values, RevenueSql.Parameters[sql]);
+
+    /// <summary>매개변수 표를 받아 돌린다(참고 금액은 통계 문장이라 StatsSql 표를 쓴다). 시간 제한은 매출 문장과 같은 90초.</summary>
+    private static IReadOnlyList<IReadOnlyList<object?>> Query(IBitDb db, string sql, IReadOnlyDictionary<string, string> values, IReadOnlyList<SqlParam> parameters)
     {
         var args = new Dictionary<string, object?>(StringComparer.Ordinal);
-        foreach (var parameter in RevenueSql.Parameters[sql]) args[parameter.Name] = values[parameter.Name];
+        foreach (var parameter in parameters) args[parameter.Name] = values[parameter.Name];
         return ReadOnlyGuard.Query(db, sql, args, QueryTimeout);
     }
 

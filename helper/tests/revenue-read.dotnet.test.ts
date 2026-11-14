@@ -1,4 +1,5 @@
-// 도우미 매출 읽기(TASK-3, REQ-003)와 날마다 처방별 금액(spec stats-revenue TASK-1, REQ-4101)의 C# 시험(helper/tests/Precheck.Core.Tests/Revenue/*.test.cs)을 감싼다.
+// 도우미 매출 읽기(TASK-3, REQ-003)와 날마다 처방별 금액(spec stats-revenue TASK-1, REQ-4101)·확인 필요한 날의 참고 금액(spec first90 TASK-1, REQ-4405)의
+// C# 시험(helper/tests/Precheck.Core.Tests/Revenue/*.test.cs)을 감싼다.
 // dotnet test를 한 번 돌리고, AC마다 그 AC ID가 붙은 C# 시험이 실제로 돌았고 하나도 실패하지 않았는지 본다.
 import { beforeAll, describe, expect, it } from 'vitest'
 import { runDotnet } from './runDotnet'
@@ -26,7 +27,7 @@ function expectAc(ac: string) {
 }
 
 describe('REQ-003 도우미 매출 읽기 (C# Precheck.Core.Tests.Revenue)', () => {
-  it('AC-003.1 AC-1001.3 관문 → HistoryGuard 한 번 → 날마다 세 검사를 원본 순서대로, 지난 날 문장 8개·걸린 날 2~4개, 원본 문장은 연결 조건 한 가지만 바꾼 사본과 공백·끝 ;·-- 줄만 다르고 Extra 둘은 정해 둔 줄만 다르다', () => {
+  it('AC-003.1 AC-1001.3 AC-4405.1 관문 → HistoryGuard 한 번 → 날마다 세 검사를 원본 순서대로, 지난 날 문장 8개·걸린 날 2~4개 + 참고 금액 문장 2개, 원본 문장은 연결 조건 한 가지만 바꾼 사본과 공백·끝 ;·-- 줄만 다르고 Extra 둘은 정해 둔 줄만 다르다', () => {
     expectAc('AC-003.1')
   })
 
@@ -76,7 +77,21 @@ describe('REQ-4101 도우미 날마다 처방별 금액 dayCodes (C# Precheck.Co
     expectAc('AC-4101.4')
   })
 
-  it('AC-4101.5 도우미 판 0.6.0, 명령 표 revenue.days는 그대로(새 명령·새 인자 없음)', () => {
+  it('AC-4101.5 AC-4405.3 도우미 판(0.6.0 다음 0.7.0), 명령 표 revenue.days는 그대로(새 명령·새 인자 없음)', () => {
     expectAc('AC-4101.5')
+  })
+})
+
+describe('REQ-4405 도우미가 확인 필요한 날의 참고 금액을 보낸다 · 판 0.7.0 (C# Precheck.Core.Tests.Revenue)', () => {
+  it('AC-4405.1 unconfirmed인 날(세 검사·음수)에 roughTotal = 그날 정상수납 + 미수입금 줄 총진료비 합(줄마다 원 미만 버림, 환불 음수 그대로), 원장님별 doctorDays와 같은 문장', () => {
+    expectAc('AC-4405.1')
+  })
+
+  it('AC-4405.2 확인된 날은 roughTotal 열쇠가 없고 다른 칸·검사 순서는 그대로', () => {
+    expectAc('AC-4405.2')
+  })
+
+  it('AC-4405.3 도우미 판 0.7.0, 명령 목록은 그대로', () => {
+    expectAc('AC-4405.3')
   })
 })

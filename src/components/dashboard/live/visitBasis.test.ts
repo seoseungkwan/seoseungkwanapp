@@ -260,10 +260,16 @@ describe('AC-602.2 같은 날 두 번 접수', () => {
     await expect(readReply(reply)).resolves.toEqual({ kind: 'failed', code: 'E-BIT-DATA-UNSURE' })
   })
 
-  it('AC-602.2 SQL 글: 접수 줄 SQL은 환자·날마다 PeriodVisits 줄 수를 COUNT_BIG(*)로 센다', () => {
+  // AC-4401.2 다섯째 칸(first90 design.md 2-1): 세는 줄은 그대로 PeriodVisits이고, 접수 번호로 이은 OcmInf에서 '3' 접수만 더 센다
+  it('AC-602.2·AC-4401.2 SQL 글: 접수 줄 SQL은 환자·날마다 PeriodVisits 줄 수를 COUNT_BIG(*)로 세고, 다섯째 칸은 접수 번호로 이은 OcmInf의 90일초진(OcmDgsNfs = 3) 수다', () => {
     const sql = patientDaysSql()
-    expect(sql).toContain('SELECT v.PatientId,v.VisitDay,COUNT_BIG(*) Visits,LEFT(f.FirstDtm,8) FirstDay')
-    expect(sql).toContain('GROUP BY v.PatientId,v.VisitDay,f.FirstDtm')
+    expect(sql).toContain(
+      "SELECT v.PatientId,v.VisitDay,COUNT_BIG(*) Visits,LEFT(f.FirstDtm,8) FirstDay, SUM(CASE WHEN o.OcmDgsNfs='3' THEN 1 ELSE 0 END) First90 " +
+        'FROM PeriodVisits v LEFT HASH JOIN FirstVisits f ON f.PatientId=v.PatientId JOIN dbo.OcmInf o ON o.OcmNum=v.VisitId ' +
+        'WHERE v.PatientId IS NOT NULL GROUP BY v.PatientId,v.VisitDay,f.FirstDtm ORDER BY v.PatientId,v.VisitDay',
+    )
+    expect(sql.match(/\bHASH\b/g)).toHaveLength(1)
+    expect(visitsSql()).not.toContain('OcmDgsNfs')
   })
 })
 

@@ -52,8 +52,8 @@ public class StatsSqlTests
     // 사본에서 Visits 부분이 끝나고 처방 쪽이 시작하는 자리(공백을 한 칸으로 줄인 글 기준)
     private const string OrdersStart = ", Orders AS (";
 
-    // AC-503.5의 SELECT 글(공백을 한 칸으로 줄인 글 기준)
-    private const string PatientDaysSelect = "SELECT v.PatientId,v.VisitDay,COUNT_BIG(*) Visits,LEFT(f.FirstDtm,8) FirstDay FROM PeriodVisits v LEFT HASH JOIN FirstVisits f ON f.PatientId=v.PatientId WHERE v.PatientId IS NOT NULL GROUP BY v.PatientId,v.VisitDay,f.FirstDtm ORDER BY v.PatientId,v.VisitDay";
+    // AC-503.5의 SELECT 글(공백을 한 칸으로 줄인 글 기준). AC-4401.2 다섯째 칸(그 환자·날 '3' 접수 수)과 OcmInf 접수 번호 잇기만 더했다(first90 design.md 2-1)
+    private const string PatientDaysSelect = "SELECT v.PatientId,v.VisitDay,COUNT_BIG(*) Visits,LEFT(f.FirstDtm,8) FirstDay, SUM(CASE WHEN o.OcmDgsNfs='3' THEN 1 ELSE 0 END) First90 FROM PeriodVisits v LEFT HASH JOIN FirstVisits f ON f.PatientId=v.PatientId JOIN dbo.OcmInf o ON o.OcmNum=v.VisitId WHERE v.PatientId IS NOT NULL GROUP BY v.PatientId,v.VisitDay,f.FirstDtm ORDER BY v.PatientId,v.VisitDay";
 
     private static readonly string[] Constants =
     {
@@ -144,7 +144,7 @@ public class StatsSqlTests
         Assert.DoesNotContain("@eswt", StatsSql.VisitRowsSql);
     }
 
-    [Fact(DisplayName = "AC-503.5 AC-1001.3 AC-3401.3 접수 줄 SQL은 연결 조건 한 가지만 바꾼 원본 사본의 Visits 부분(공백만 다름) 뒤에 첫 내원을 해시 잇기로 잇는 정해 둔 SELECT를 이은 글이고 처방 표 OdrInf를 잇지 않는다")]
+    [Fact(DisplayName = "AC-503.5 AC-1001.3 AC-3401.3 AC-4401.2 접수 줄 SQL은 연결 조건 한 가지만 바꾼 원본 사본의 Visits 부분(공백만 다름) 뒤에 첫 내원을 해시 잇기로 잇는 정해 둔 SELECT를 이은 글이고 처방 표 OdrInf를 잇지 않는다")]
     public void PatientDaysIsVisitsPlusSelect()
     {
         var original = Squash(FirstVisitJoin.ApplyTo(RowsOriginal, ReadOriginal(RowsOriginal)));
@@ -155,6 +155,33 @@ public class StatsSqlTests
         var sql = StatsSql.PatientDaysSql;
         Assert.Equal(visits + " " + PatientDaysSelect, Squash(sql));
         Assert.DoesNotContain("OdrInf", sql);
+    }
+
+    [Fact(DisplayName = "AC-4401.2 접수 줄 SQL은 자기 SELECT에서만 OcmInf를 접수 번호(o.OcmNum=v.VisitId)로 힌트 없이 잇고 다섯째 칸 First90에 '3' 접수 수를 센다, 공유 Visits 글은 그대로이고 HASH는 한 번뿐이다")]
+    public void PatientDaysCountsFirst90()
+    {
+        var original = Squash(FirstVisitJoin.ApplyTo(RowsOriginal, ReadOriginal(RowsOriginal)));
+        var visits = original.Substring(0, original.IndexOf(OrdersStart, StringComparison.Ordinal));
+        var sql = Squash(StatsSql.PatientDaysSql);
+
+        // Visits 글(원본 사본 그대로) + 자기 SELECT 하나
+        Assert.StartsWith(visits + " SELECT ", sql, StringComparison.Ordinal);
+        var select = sql.Substring(visits.Length + 1);
+        Assert.Equal(0, Count(visits, "OcmDgsNfs"));
+        Assert.Equal(0, Count(visits, "First90"));
+
+        // 다섯째 칸: 그 환자·날 접수 가운데 OcmDgsNfs = '3'인 수(넷째 칸 FirstDay 바로 뒤, 마지막 칸)
+        Assert.Contains("LEFT(f.FirstDtm,8) FirstDay, SUM(CASE WHEN o.OcmDgsNfs='3' THEN 1 ELSE 0 END) First90 FROM PeriodVisits v", select, StringComparison.Ordinal);
+        Assert.Equal(1, Count(select, "JOIN dbo.OcmInf o ON o.OcmNum=v.VisitId"));
+        Assert.Equal(0, Count(select, "HASH JOIN dbo.OcmInf"));
+
+        // 해시 힌트는 지금처럼 첫 내원 잇기 한 번뿐이다
+        Assert.Single(Regex.Matches(sql, @"\bHASH\b", RegexOptions.IgnoreCase));
+        Assert.Equal(1, Count(sql, "LEFT HASH JOIN FirstVisits f ON f.PatientId=v.PatientId"));
+
+        // 다섯째 칸 글이 든 통계 문장은 접수 줄 하나뿐이다(다른 문장은 한 글자도 바뀌지 않음, 위의 원본 사본 대조 시험들)
+        Assert.Single(StatsSql.All.Concat(StatsSql.Sections), statement => statement.Contains("First90"));
+        ReadOnlyGuard.Require(StatsSql.PatientDaysSql, VisitArgs());
     }
 
     [Fact(DisplayName = "AC-503.5 접수 줄 SQL은 매개변수를 받는 SELECT로 ReadOnlyGuard를 지나고(@from·@to Char(12)·@hospital VarChar(32)) 청구 Sql.All에는 없다")]

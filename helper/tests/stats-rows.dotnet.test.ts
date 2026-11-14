@@ -93,3 +93,17 @@ describe('REQ-2701 도우미가 stats.rows 답 v3에 접수 줄·사람 줄·원
     expectAc('AC-2701.7')
   })
 })
+
+describe('REQ-4401 도우미가 환자·날마다 90일초진 접수 수를 보낸다 (C# Precheck.Core.Tests.Stats)', () => {
+  it('AC-4401.1 patientDays 한 줄은 [환자, 날, 접수 수, 첫 내원일, 90일초진 접수 수] 다섯 칸이고 다섯째 칸은 그 환자·날 OcmDgsNfs = 3인 접수 수, 답의 v는 4', () => {
+    expectAc('AC-4401.1')
+  })
+
+  it('AC-4401.2 PatientDaysSql만 바뀐다: 자기 SELECT에서 OcmInf를 접수 번호로 잇고 다섯째 칸을 센다, 공유 Visits CTE·다른 문장은 그대로, HASH 힌트는 한 번', () => {
+    expectAc('AC-4401.2')
+  })
+
+  it('AC-4401.3 첫 내원일인 환자·날도 그날 90일초진 접수 수를 고치지 않고 그대로 보낸다', () => {
+    expectAc('AC-4401.3')
+  })
+})

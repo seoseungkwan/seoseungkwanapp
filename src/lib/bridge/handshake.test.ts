@@ -74,9 +74,10 @@ describe('AC-004.4 웹 versions.ts 값', () => {
   // 도우미 0.5.0 = 0.4.0 + 통계 세 칸(stats.rows v3)·예약 문자 명단·장기 미방문 명단(spec stats-bit-sections·patients-bit-lists). MIN은 그대로 0.3.0
   // 도우미 0.5.1 = 0.5.0 + 긴 기간 통계 읽기 속도(첫 내원 해시 잇기, spec helper-stats-speed). MIN은 그대로 0.3.0
   // 도우미 0.6.0 = 0.5.1 + revenue.days 답에 날마다 처방별 금액 dayCodes(spec stats-revenue). 새 명령 없음, MIN은 그대로 0.3.0
-  it('AC-004.4·AC-012.1·AC-604.1·AC-3402.1·AC-4101.5 지금 값은 도우미 최소 0.3.0·최신 0.6.0, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
+  // 도우미 0.7.0 = 0.6.0 + stats.rows v4(90일초진 칸)·revenue.days 참고 금액 roughTotal(spec first90). 새 명령 없음, MIN은 그대로 0.3.0
+  it('AC-004.4·AC-012.1·AC-604.1·AC-3402.1·AC-4101.5·AC-4405.3 지금 값은 도우미 최소 0.3.0·최신 0.7.0, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
     expect(MIN_HELPER).toBe('0.3.0')
-    expect(LATEST_HELPER).toBe('0.6.0')
+    expect(LATEST_HELPER).toBe('0.7.0')
     expect(MIN_EXTENSION).toBe('0.1.0')
     expect(compareVersions(MIN_HELPER, LATEST_HELPER)).toBeLessThanOrEqual(0)
     expect(WEB_VERSIONS).toEqual({

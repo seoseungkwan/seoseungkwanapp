@@ -9,6 +9,8 @@ namespace Precheck.Core.Revenue;
 /// OperationalReportSql.cs에서 옮겼고 사본(helper/tests/Precheck.Core.Tests/Revenue/original-sql/*.sql)과 공백·끝 ;·-- 줄만 다르다(시험이 비교).
 /// 예외 하나: Patients의 첫 내원 연결 조건만 색인을 쓸 수 있는 c.OcmChtNum=p.PatientId로 바꿨다(spec bit-read-speed, AC-1001.3).
 /// 그 밖의 조건·칸 순서를 고치지 않는다: 의원이 쓰는 일일 보고와 같은 숫자가 나와야 한다. ReadOnlyGuard는 이 표의 문장을 표의 매개변수와 함께만 통과시킨다.
+/// 확인 필요한 날의 참고 금액(spec first90 AC-4405.1)은 이 표에 새 문장을 더하지 않고 통계 원장님별 금액 문장 둘
+/// (StatsSql.DoctorMoneyNormalSql·DoctorMoneyReceivableSql)을 그대로 쓴다. 그 둘은 StatsSql 표로 관문을 지난다.
 /// </summary>
 public static class RevenueSql
 {

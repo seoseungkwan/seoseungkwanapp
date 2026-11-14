@@ -56,12 +56,16 @@ FROM Orders o LEFT JOIN FirstVisits f ON f.PatientId=o.PatientId
 ORDER BY o.PatientId,o.VisitDay,o.Code";
 
     /// <summary>
-    /// 접수 줄 [차트번호, 진료일, 접수 건수, 첫 내원일], 환자·날마다 한 줄(AC-503.5). 원본에 없는 새 문장이다: 원본 Visits 글 뒤에 이 SELECT를 이었다.
+    /// 접수 줄 [차트번호, 진료일, 접수 건수, 첫 내원일, 90일초진 접수 수], 환자·날마다 한 줄(AC-503.5). 원본에 없는 새 문장이다: 원본 Visits 글 뒤에 이 SELECT를 이었다.
     /// 처방 표를 잇지 않아 처방 없는 접수도 나오고, Visits 조건을 지나지 못한 접수(취소 등)와 차트번호 없는 접수는 나오지 않는다.
+    /// 다섯째 칸(spec first90 AC-4401.1·AC-4401.2): 이 SELECT에서만 OcmInf를 접수 번호로 이어(기본 키 잇기라 힌트 없음) 그 환자·날 접수 가운데
+    /// 내원 구분 OcmDgsNfs = '3'(90일초진)인 수를 센다. 공유 Visits 글과 HASH 힌트(첫 내원 잇기 한 번)는 그대로다. 첫 내원일인 날도 그대로 센다(AC-4401.3, 신환 우선은 웹).
     /// </summary>
     public const string PatientDaysSql = Visits + @"
-SELECT v.PatientId,v.VisitDay,COUNT_BIG(*) Visits,LEFT(f.FirstDtm,8) FirstDay
+SELECT v.PatientId,v.VisitDay,COUNT_BIG(*) Visits,LEFT(f.FirstDtm,8) FirstDay,
+ SUM(CASE WHEN o.OcmDgsNfs='3' THEN 1 ELSE 0 END) First90
 FROM PeriodVisits v LEFT HASH JOIN FirstVisits f ON f.PatientId=v.PatientId
+JOIN dbo.OcmInf o ON o.OcmNum=v.VisitId
 WHERE v.PatientId IS NOT NULL
 GROUP BY v.PatientId,v.VisitDay,f.FirstDtm
 ORDER BY v.PatientId,v.VisitDay";

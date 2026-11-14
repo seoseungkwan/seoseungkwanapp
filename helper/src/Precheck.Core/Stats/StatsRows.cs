@@ -90,15 +90,19 @@ public sealed class StatsVisitRow
     public string? FirstDay { get; }
 }
 
-/// <summary>접수 줄 [차트번호, 진료일, 접수 건수, 첫 내원일], 환자·날마다 한 줄. 글자는 앞뒤 공백만 없앤 원본 값, 첫 내원일이 없으면 null.</summary>
+/// <summary>
+/// 접수 줄 [차트번호, 진료일, 접수 건수, 첫 내원일, 90일초진 접수 수], 환자·날마다 한 줄. 글자는 앞뒤 공백만 없앤 원본 값, 첫 내원일이 없으면 null.
+/// 90일초진 접수 수(spec first90 AC-4401.1)는 그 환자·날 접수 가운데 내원 구분 '3'인 수이고, 첫 내원일인 날도 고치지 않는다(AC-4401.3).
+/// </summary>
 public sealed class StatsPatientDay
 {
-    public StatsPatientDay(string? chart, string? day, long visits, string? firstDay)
+    public StatsPatientDay(string? chart, string? day, long visits, string? firstDay, long first90)
     {
         Chart = chart;
         Day = day;
         Visits = visits;
         FirstDay = firstDay;
+        First90 = first90;
     }
 
     public string? Chart { get; }
@@ -108,6 +112,9 @@ public sealed class StatsPatientDay
     public long Visits { get; }
 
     public string? FirstDay { get; }
+
+    /// <summary>그 환자·날의 90일초진('3') 접수 수.</summary>
+    public long First90 { get; }
 }
 
 /// <summary>stats.rows가 비트에서 읽은 통계 줄 전부(보고 숫자는 StatsReport).</summary>
@@ -190,7 +197,7 @@ public static class StatsRows
         var patientDays = new List<StatsPatientDay>(patientRows.Count);
         foreach (var row in patientRows)
         {
-            patientDays.Add(new StatsPatientDay(Text(Cell(row, 0)), Text(Cell(row, 1)), Number(Cell(row, 2)), FirstDay(Cell(row, 3))));
+            patientDays.Add(new StatsPatientDay(Text(Cell(row, 0)), Text(Cell(row, 1)), Number(Cell(row, 2)), FirstDay(Cell(row, 3)), Number(Cell(row, 4))));
         }
 
         var total = Single(ReadOnlyGuard.Query(db, StatsSql.VisitSummarySql, visitArgs, StatsSql.DataTimeout));

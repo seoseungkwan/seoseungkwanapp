@@ -18,11 +18,13 @@ namespace Precheck.Core.Stats;
 /// v3(stats-bit-sections AC-2701.1)는 v2 열쇠를 같은 차례·같은 값으로 쓴 뒤 비트 전용 세 칸 열쇠 넷을 이 차례로 더한다:
 ///   visits[[차트번호|null, 진료일, 접수 시각 HHmm|null, 보험 이름|null, 진료의 코드|null]], people[[차트번호, 생년월일|null, 주소 앞부분|null]],
 ///   doctors[[코드, 이름|null]], doctorDays[[수납일, 진료의 코드, 총진료비]].
+/// v4(spec first90 AC-4401.1, 도우미 0.7.0)는 v3과 열쇠·차례가 같고 patientDays 줄만 다섯 칸이다:
+///   patientDays[[차트번호, 진료일, 접수 건수, 첫 내원일|null, 90일초진 접수 수]].
 /// 줄은 객체보다 작은 배열이다. 다 만든 글자를 Chunker가 나눠 보낸다.
 /// </summary>
 public static class StatsPayload
 {
-    public const int Version = 3;
+    public const int Version = 4;
 
     public static string Build(string from, string to, StatsRowsResult rows, StatsReportResult report, StatsExtraResult extra)
     {
@@ -70,6 +72,7 @@ public static class StatsPayload
                 WriteText(writer, day.Day);
                 writer.WriteNumberValue(day.Visits);
                 WriteText(writer, day.FirstDay);
+                writer.WriteNumberValue(day.First90);
                 writer.WriteEndArray();
             }
             writer.WriteEndArray();
