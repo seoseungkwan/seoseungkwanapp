@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { Icon } from '@/components/common/Icon'
+import { ds } from '@/components/ui/classes'
 import { addDays, addMonths, monthOf, monthRange } from '@/lib/analytics/dates'
 import { formatClinicReport } from '@/lib/clinicReport/reportText'
 import type { ClinicReportMode, ClinicReportNumbers, ClinicReportResult } from '@/types/clinicReport'
@@ -14,6 +15,8 @@ import { EmptyNote, longDate, monthNumber, Section, weekdayName } from './parts'
 // report null = 비트 PC에서 불러온 자료가 없음. 벌은 차례가 아니라 기간으로 찾는다. 고르기 상태는 화면 안에만 둔다.
 // pick(stats-period REQ-1707) = 고른 기간 보고. 있으면 [고른 기간 보고]가 맨 앞이고 처음 눌려 있다. 저장된 숫자로 만든 글이라 비트 없이도 보인다.
 // 보고 글 아래 · 글들은 "어떻게 세나요?" 안에 접는다(stats-pc-ux AC-4004.2 ⑤, 글이 있을 때만). 날짜 줄·확정 못 함·개인정보 줄은 그대로 보인다(AC-4004.3)
+// 보고 카드(first90 REQ-4415, 시안 redesign.html .s-rep): 글은 처음 네 줄만 보이고, 그 아래 [전체 보기]·[접기]와 [복사]가 있다. [복사]는 늘 글 전체다.
+// 네 줄 셈은 글의 줄바꿈으로 나눈 줄 수(빈 줄도 한 줄)다. 네 줄 이하면 [전체 보기]도 줄 수 제한도 없다(AC-4415.2). 흐림 덧칠·움직임은 없다(design.md 5-2·5-3)
 
 export type ReportData = {
   numbers: StatsLoaded['report']
@@ -74,16 +77,51 @@ function shownOf(result: Extract<ClinicReportResult, { text: string }>): Shown {
   return { lines: result.text.split('\n'), unconfirmed: new Set(result.unconfirmedLines), notes: result.notes, text: result.text }
 }
 
-// 줄마다 블록이라 빈 줄도 자리를 지킨다. 띄어쓰기는 그대로 둔다(whitespace-pre-wrap). '확인 필요' 줄은 색과 글자를 함께 쓴다
-function ReportText({ shown }: { shown: Shown }) {
+// 미리보기 줄 수. 줄 수 제한 클래스(line-clamp-4)와 같은 수다
+const PREVIEW_LINES = 4
+// 글 칸(시안 .s-rep: 옅은 회색 · 8px 모서리 · 14px 글자). 여백은 바깥 칸이 갖고 줄 수 제한은 안쪽 칸에 붙인다 — 잘린 다음 줄이 아래 여백에 비치지 않게.
+// 안쪽 칸 -mx-2 px-2: '확인 필요' 줄 바탕(-mx-2)이 줄 수 제한의 잘림(overflow)에 깎이지 않게 그만큼 넓힌다
+const TEXT_BOX = 'mt-2 rounded-st-sm bg-st-canvas px-4 py-3 text-body text-st-ink'
+const TEXT_LINES = '-mx-2 whitespace-pre-wrap px-2'
+
+// 글 아래 단추 줄(시안 .s-rep-a): [전체 보기]·[접기](네 줄이 넘을 때만) + [복사]. 글이 없으면 막힌 [복사]만
+function Actions({ toggle, copyText }: { toggle?: ReactNode; copyText: string | null }) {
   return (
-    <div className="mt-2 whitespace-pre-wrap rounded-control bg-canvas px-5 py-4 text-body text-ink">
-      {shown.lines.map((line, i) => (
-        <span key={i} className={shown.unconfirmed.has(i) ? '-mx-2 block min-h-5.5 bg-warning-soft px-2 font-medium text-warning' : 'block min-h-5.5'}>
-          {line}
-        </span>
-      ))}
+    <div className="mt-3 flex flex-wrap items-start justify-end gap-2">
+      {toggle}
+      <CopyButton text={copyText} label="복사" />
     </div>
+  )
+}
+
+// 줄마다 블록이라 빈 줄도 자리를 지킨다. 빈 줄은 br 한 줄이라 줄 수 제한도 한 줄로 센다. 띄어쓰기는 그대로 둔다(whitespace-pre-wrap). '확인 필요' 줄은 색과 글자를 함께 쓴다.
+// 고른 보고가 바뀌면 놓는 쪽이 key로 다시 그려 다시 접힌다
+function ReportText({ shown }: { shown: Shown }) {
+  const [open, setOpen] = useState(false)
+  const boxId = useId()
+  const long = shown.lines.length > PREVIEW_LINES
+  return (
+    <>
+      <div id={boxId} className={TEXT_BOX}>
+        <div className={long && !open ? `${TEXT_LINES} line-clamp-4` : TEXT_LINES}>
+          {shown.lines.map((line, i) => (
+            <span key={i} className={shown.unconfirmed.has(i) ? '-mx-2 block min-h-5.5 bg-warning-soft px-2 font-medium text-warning' : 'block min-h-5.5'}>
+              {line === '' ? <br /> : line}
+            </span>
+          ))}
+        </div>
+      </div>
+      <Actions
+        copyText={shown.text}
+        toggle={
+          long && (
+            <button type="button" aria-expanded={open} aria-controls={boxId} onClick={() => setOpen(!open)} className={ds.button.secondarySmall}>
+              {open ? '접기' : '전체 보기'}
+            </button>
+          )
+        }
+      />
+    </>
   )
 }
 
@@ -114,7 +152,7 @@ function BitBody({ bit, report, today }: { bit: Bit; report: ReportData; today: 
   return (
     <>
       {numbers !== null && <p className="mt-4 text-small text-muted">{dateLine(key, today, report, numbers)}</p>}
-      {shown !== null && <ReportText shown={shown} />}
+      {shown !== null && <ReportText key={key} shown={shown} />}
       {shown !== null && shown.notes.length > 0 && (
         <HowCounted>
           <ul className="mt-2 grid gap-1">
@@ -131,16 +169,24 @@ function BitBody({ bit, report, today }: { bit: Bit; report: ReportData; today: 
       )}
       {result !== null && 'error' in result && result.error === 'unconfirmed' && <Unconfirmable place={place} reason={result.reason} />}
       {(numbers === null || (result !== null && 'error' in result && result.error === 'future-date')) && <EmptyNote title={BIT_ONLY}>{BIT_REASON}</EmptyNote>}
+      {shown === null && <Actions copyText={null} />}
     </>
   )
 }
 
 function PickBody({ pick }: { pick: PickReport }) {
-  if (pick.text === null) return <p className="mt-4 text-body text-ink-2">{`${pick.label}은 자료가 없어 보고 문장을 만들 수 없어요.`}</p>
+  if (pick.text === null) {
+    return (
+      <>
+        <p className="mt-4 text-body text-ink-2">{`${pick.label}은 자료가 없어 보고 문장을 만들 수 없어요.`}</p>
+        <Actions copyText={null} />
+      </>
+    )
+  }
   return (
     <>
       <p className="mt-4 text-small text-muted">{`${pick.label} · 저장된 숫자로 만든 글이에요`}</p>
-      <ReportText shown={{ lines: pick.text.split('\n'), unconfirmed: new Set(), notes: [], text: pick.text }} />
+      <ReportText key="pick" shown={{ lines: pick.text.split('\n'), unconfirmed: new Set(), notes: [], text: pick.text }} />
     </>
   )
 }
@@ -160,10 +206,10 @@ export function ReportSection({ report, hospitalName, today, saved, pick = null,
   }
   const buttons: { key: PickKey; name: string }[] = [...(pick === null ? [] : [{ key: 'pick' as const, name: PICK_NAME }]), ...PICKS]
   const bit = key === 'pick' || report === null ? null : bitReport(key, report, hospitalName, today)
-  const copyText = key === 'pick' ? (pick?.text ?? null) : (bit?.shown?.text ?? null)
+  // 고르기 묶음 줄은 지금 그대로다(AC-4415.1). [복사]는 글 아래 줄로 옮겼다
   return (
     <Section title={TITLE} desc={DESC} className={className}>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
         <div role="group" aria-label="보고 고르기" className={GROUP}>
           {buttons.map((item) => (
             <button
@@ -177,10 +223,14 @@ export function ReportSection({ report, hospitalName, today, saved, pick = null,
             </button>
           ))}
         </div>
-        <CopyButton key={key} text={copyText} label="복사" fullOnPhone />
       </div>
       {key === 'pick' && pick !== null && <PickBody pick={pick} />}
-      {key !== 'pick' && report === null && <EmptyNote title={BIT_ONLY}>{BIT_REASON}</EmptyNote>}
+      {key !== 'pick' && report === null && (
+        <>
+          <EmptyNote title={BIT_ONLY}>{BIT_REASON}</EmptyNote>
+          <Actions copyText={null} />
+        </>
+      )}
       {bit !== null && report !== null && <BitBody bit={bit} report={report} today={today} />}
       <p className="mt-3 flex items-start gap-1.5 text-caption text-muted">
         <Icon name="shield" size={14} className="mt-px shrink-0 text-positive" />

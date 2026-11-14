@@ -47,8 +47,11 @@ function textOf(mode: ClinicReportMode, n: ClinicReportNumbers, hospitalName = H
   if ('error' in result) throw new Error(result.error)
   return result
 }
+// 글 줄들을 담은 칸(줄 수 제한이 붙는 곳). 바탕·모서리·여백은 그 바깥 칸(textBox)이 맡는다(first90 AC-4415.1: 여백 안으로 다음 줄이 비치지 않게)
 const reportBox = () => screen.getByText('고생하셨습니다 !!').parentElement!
+const textBox = () => reportBox().parentElement!
 const shownLines = () => Array.from(reportBox().children).map((line) => line.textContent)
+const classesOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
 
 const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
 afterEach(() => {
@@ -107,9 +110,9 @@ describe('AC-513.6: 고르기', () => {
 })
 
 describe('AC-513.6: 보고 글', () => {
-  it('AC-513.6: 글자로만 그리고 줄바꿈·띄어쓰기를 그대로 두며 canvas 칸이다', () => {
+  it('AC-513.6·AC-4415.1: 글자로만 그리고 줄바꿈·띄어쓰기를 그대로 두며 시안의 옅은 회색 작은 둥근 칸이다', () => {
     draw(data())
-    expect(reportBox().className).toContain('bg-canvas')
+    expect(classesOf(textBox())).toEqual(expect.arrayContaining(['bg-st-canvas', 'rounded-st-sm', 'text-st-ink']))
     expect(reportBox().className).toContain('whitespace-pre-wrap')
     expect(shownLines()).toContain('총환                  120명')
     expect(shownLines()).toContain('')
@@ -128,6 +131,127 @@ describe('AC-513.6: 보고 글', () => {
     expect(notes.length).toBeGreaterThan(0)
     for (const note of notes) expect(screen.getByText(note)).toBeTruthy()
     expect(screen.getByText('보고 문장은 숫자만 쓰고 환자 이름은 쓰지 않아요.')).toBeTruthy()
+  })
+})
+
+// ── first90: 네 줄 미리보기 · [전체 보기] · [복사] (REQ-4415, design.md 5-0·5-2·5-3, 시안 redesign.html .s-rep) ─────────────────
+// 네 줄 셈: jsdom은 줄을 그리지 않으므로 글의 줄바꿈으로 나눈 줄 수(빈 줄도 한 줄)로 센다. 화면에서는 줄 수 제한(line-clamp-4)이 자른다
+describe('AC-4415.1·AC-4415.2: 네 줄 미리보기 · [전체 보기] · [복사]', () => {
+  const more = () => screen.getByRole('button', { name: '전체 보기' })
+  const drawPick = (text: string | null) =>
+    render(<ReportSection report={data()} hospitalName={HOSPITAL} today={TODAY} saved pick={{ label: '2026년 10월 1일 – 31일', text }} />)
+  const clipboard = () => {
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    return writeText
+  }
+
+  it('AC-4415.1: 처음에는 글 칸에 줄 수 제한(line-clamp-4)이 붙어 네 줄만 보이고, 글 줄은 모두 그대로 있다', () => {
+    draw(data())
+    const { text } = textOf('daily', DAILY[0]!)
+    expect(text.split('\n').length).toBeGreaterThan(4)
+    expect(classesOf(reportBox())).toContain('line-clamp-4')
+    expect(shownLines()).toEqual(text.split('\n'))
+  })
+
+  it('AC-4415.1: 빈 줄도 줄바꿈(br) 한 줄이라 화면의 네 줄 셈에 든다', () => {
+    draw(data())
+    const blanks = Array.from(reportBox().children).filter((line) => line.textContent === '')
+    expect(blanks.length).toBeGreaterThan(0)
+    for (const blank of blanks) expect(blank.querySelector('br')).not.toBeNull()
+  })
+
+  it('AC-4415.1: 글 바로 아래 줄에 [전체 보기] · [복사]가 차례로 있고, 보고 고르기 줄에는 [복사]가 없다', () => {
+    draw(data())
+    const row = textBox().nextElementSibling as HTMLElement
+    expect(within(row).getAllByRole('button').map((button) => button.textContent)).toEqual(['전체 보기', '복사'])
+    const group = screen.getByRole('group', { name: '보고 고르기' })
+    expect(group.parentElement!.contains(screen.getByRole('button', { name: '복사' }))).toBe(false)
+    expect(within(group).getAllByRole('button')).toHaveLength(4)
+  })
+
+  it('AC-4415.1: [전체 보기]를 누르면 줄 수 제한이 풀리고 [접기](aria-expanded true)가 되며, 다시 누르면 네 줄로 돌아온다', () => {
+    draw(data())
+    expect(more().getAttribute('aria-expanded')).toBe('false')
+    expect(textBox().id).not.toBe('')
+    expect(more().getAttribute('aria-controls')).toBe(textBox().id)
+    fireEvent.click(more())
+    const fold = screen.getByRole('button', { name: '접기' })
+    expect(fold.getAttribute('aria-expanded')).toBe('true')
+    expect(fold.getAttribute('aria-controls')).toBe(textBox().id)
+    expect(screen.queryByRole('button', { name: '전체 보기' })).toBeNull()
+    expect(classesOf(reportBox())).not.toContain('line-clamp-4')
+    fireEvent.click(fold)
+    expect(more().getAttribute('aria-expanded')).toBe('false')
+    expect(classesOf(reportBox())).toContain('line-clamp-4')
+  })
+
+  it('AC-4415.1: 접힌 채로 [복사]를 눌러도 글 전체를 복사한다', async () => {
+    const writeText = clipboard()
+    draw(data())
+    expect(more().getAttribute('aria-expanded')).toBe('false')
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '복사' }))
+    })
+    expect(writeText).toHaveBeenCalledWith(textOf('daily', DAILY[0]!).text)
+  })
+
+  it('AC-4415.1: 다른 보고를 고르면 그 글은 다시 네 줄로 접혀 있다', () => {
+    draw(data())
+    fireEvent.click(more())
+    pick('어제 일일보고')
+    expect(shownLines()).toEqual(textOf('daily', DAILY[1]!).text.split('\n'))
+    expect(more().getAttribute('aria-expanded')).toBe('false')
+    expect(classesOf(reportBox())).toContain('line-clamp-4')
+  })
+
+  it('AC-4415.1: 흐림 덧칠(그라데이션·가림 층)과 움직임 클래스가 없다(접힘·펼침 둘 다)', () => {
+    const { container } = draw(data())
+    const DECORATION = /^(?:[\w-]+:)*(?:bg-(?:linear|radial|conic|gradient)|from-|via-|to-|mask-|backdrop-|blur|animate-|st-)/
+    const MOTION = /^(?:[\w-]+:)*(?:transition|duration-|ease-|delay-)/
+    const check = () => {
+      expect(Array.from(container.querySelectorAll('*')).flatMap(classesOf).filter((token) => DECORATION.test(token))).toEqual([])
+      const box = [textBox(), ...Array.from(textBox().querySelectorAll('*'))]
+      expect(box.flatMap(classesOf).filter((token) => MOTION.test(token) || /^(?:after|before):/.test(token))).toEqual([])
+      expect(textBox().children).toHaveLength(1) // 글 줄 칸 하나뿐: 위에 덮는 층이 없다
+    }
+    check()
+    fireEvent.click(more())
+    check()
+  })
+
+  it('AC-4415.2: 글이 네 줄이면 [전체 보기]가 없고 줄 수 제한도 없으며 [복사]는 있다', () => {
+    drawPick('첫 줄\n둘째 줄\n셋째 줄\n넷째 줄')
+    expect(screen.queryByRole('button', { name: '전체 보기' })).toBeNull()
+    expect(classesOf(screen.getByText('넷째 줄').parentElement!)).not.toContain('line-clamp-4')
+    expect(screen.getByRole('button', { name: '복사' }).getAttribute('aria-disabled')).toBeNull()
+  })
+
+  it('AC-4415.2: 한 줄 고른 기간 글도 [전체 보기]가 없다', () => {
+    drawPick('2026년 10월 1일 – 31일 환자는 하루 평균 42명, 신환 120명·재진 980명입니다.')
+    expect(screen.queryByRole('button', { name: '전체 보기' })).toBeNull()
+    expect(screen.getByRole('button', { name: '복사' })).toBeTruthy()
+  })
+
+  it('AC-4415.1·AC-4415.2: 다섯 줄(빈 줄 포함)이면 [전체 보기]가 있다 — 네 줄 셈은 글의 줄바꿈으로 나눈 줄 수다', () => {
+    drawPick('첫 줄\n\n셋째 줄\n넷째 줄\n다섯째 줄')
+    expect(more().getAttribute('aria-expanded')).toBe('false')
+    expect(classesOf(screen.getByText('다섯째 줄').parentElement!)).toContain('line-clamp-4')
+  })
+
+  it('AC-4415.1: 글이 없는 벌(확정할 수 없음·비트 자료 없음·고른 기간 자료 없음)은 [전체 보기]가 없고 [복사]는 막힌 채다', () => {
+    draw(data({ daily: [DAILY[0]!, { ok: false, period: '2026-11-12', reason: '가짜 사유 글' }] }))
+    pick('어제 일일보고')
+    expect(screen.queryByRole('button', { name: '전체 보기' })).toBeNull()
+    expect(screen.getByRole('button', { name: '복사' }).getAttribute('aria-disabled')).toBe('true')
+    cleanup()
+    draw(data({ daily: [numbers('2026-11-12')] }))
+    expect(screen.queryByRole('button', { name: '전체 보기' })).toBeNull()
+    expect(screen.getByRole('button', { name: '복사' }).getAttribute('aria-disabled')).toBe('true')
+    cleanup()
+    drawPick(null)
+    expect(screen.queryByRole('button', { name: '전체 보기' })).toBeNull()
+    expect(screen.getByRole('button', { name: '복사' }).getAttribute('aria-disabled')).toBe('true')
   })
 })
 
@@ -156,9 +280,11 @@ describe('AC-4004.2 ⑤·AC-4004.3: 보고 아래 · 글은 "어떻게 세나요
     expect(howBody().hidden).toBe(true)
   })
 
-  it('AC-4004.2: 접는 칸은 보고 글 바로 아래(지금 자리)다', () => {
+  it('AC-4004.2·AC-4415.1: 접는 칸은 보고 글과 그 아래 [전체 보기]·[복사] 줄 바로 다음이다', () => {
     draw(data())
-    expect(reportBox().nextElementSibling).toBe(howButton().parentElement)
+    const buttons = textBox().nextElementSibling!
+    expect(buttons.contains(screen.getByRole('button', { name: '복사' }))).toBe(true)
+    expect(buttons.nextElementSibling).toBe(howButton().parentElement)
     expect(howButton().parentElement!.contains(howBody())).toBe(true)
   })
 
