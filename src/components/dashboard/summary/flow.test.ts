@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { checkCustom, pickRange, type StatsPick } from '@/components/stats/periodPick'
+import { trendSeries } from '@/components/stats/trendSeries'
 import { patientTrend } from '@/components/stats/view'
+import type { BarBucket } from '@/components/charts/StackedBarChart'
 import type { DayPayload } from '@/types/payload'
-import { flowBasis, flowDense, flowOf, flowTicks, flowTrend, QUICK_CHOICE, rankLine, todayFinished, type FlowChoice } from './flow'
+import { flowBasis, flowDense, flowOf, flowSeries, flowTicks, flowTrend, QUICK_CHOICE, rankLine, todayFinished, type FlowChoice } from './flow'
 import { PERIODS, periodRange, tickLabels, trendBuckets } from './view'
 
 // 대시보드 기간별 흐름의 고른 기간 잇기 (dashboard-period REQ-1801·REQ-1802·REQ-1803, design.md 'summary/flow.ts').
@@ -10,16 +12,18 @@ import { PERIODS, periodRange, tickLabels, trendBuckets } from './view'
 
 const TODAY = '2026-11-06'
 
-type DayOptions = { partial?: boolean; newPatients?: number; returning?: number }
+// first90: 새 도우미(v4) 날의 90일초진 수(first90 AC-4402.2). 주면 totals에 열쇠가 생기고 환자 수에 더한다. 주지 않으면 옛 날(열쇠 없음)이다
+type DayOptions = { partial?: boolean; newPatients?: number; returning?: number; first90?: number }
 function day(ymd: string, o: DayOptions = {}): DayPayload {
   const newPatients = o.newPatients ?? 2
   const returning = o.returning ?? 8
+  const first90 = o.first90 === undefined ? {} : { first90: o.first90 }
   return {
     schemaVersion: 2,
     quality: 'valid',
     day: ymd,
     partial: o.partial ?? false,
-    totals: { patients: newPatients + returning, newPatients, returning, unknown: 0 },
+    totals: { patients: newPatients + (o.first90 ?? 0) + returning, newPatients, returning, unknown: 0, ...first90 },
     rx: [],
     groups: [],
     revisit: { cohort: newPatients, within7: 0, within14: 0 },
@@ -217,6 +221,123 @@ describe('flowTrend · flowTicks · flowDense — 환자 수 추이 칸 (AC-1802
   ] as const)('AC-1802.2: 고른 기간(%s) 칸은 통계 patientTrend에 고른 기간 하나를 덮은 기간으로 넘긴 것과 같다(대시보드는 덮은 기간을 읽지 않는다)', (_, pick) => {
     const f = flow(pick)
     expect(flowTrend(OCT_DAYS, f)).toEqual(patientTrend({ days: OCT_DAYS, covered: [{ from: f.current.from, to: f.current.to }], range: f.range! }))
+  })
+})
+
+// 기간별 흐름 막대의 90일초진 (first90 REQ-4404 AC-4404.3, design.md 5-9). 모든 칸이 앎이면 [신환, 90일초진, 재진] 세 갈래, 아니면 지금 두 갈래([신환, 재진(90일초진 포함)])다
+describe('flowTrend · flowSeries — 90일초진 갈래 (AC-4404.3)', () => {
+  // 칸 모양(키·글자·상태·빈 칸)만(값은 비운다). 값은 시험마다 따로 본다
+  const shape = (buckets: BarBucket[] | null) => buckets?.map((bucket) => ({ ...bucket, values: [] })) ?? null
+  const valuesOf = (buckets: BarBucket[] | null) => buckets?.map((b) => b.values) ?? null
+  // 10월: 모두 새 도우미 날(기간 밖 9-30·11-02 포함). 주: 10-01~04 · 10-05~11(덜 끝난 날) · 10-12~18 · 10-19~25(줄 없음) · 10-26~31
+  const OCT_KNOWN = [
+    day('2026-09-30', { newPatients: 50, first90: 9, returning: 50 }),
+    day('2026-10-01', { newPatients: 1, first90: 1, returning: 2 }),
+    day('2026-10-02', { newPatients: 3, first90: 2, returning: 4 }),
+    day('2026-10-08', { newPatients: 2, first90: 0, returning: 5 }),
+    day('2026-10-09', { partial: true, newPatients: 1, first90: 3, returning: 1 }),
+    day('2026-10-13', { newPatients: 4, first90: 1, returning: 6 }),
+    day('2026-10-27', { newPatients: 2, first90: 2, returning: 2 }),
+    day('2026-10-31', { newPatients: 5, first90: 4, returning: 5 }),
+    day('2026-11-02', { newPatients: 50, first90: 9, returning: 50 }),
+  ]
+  // 10월 13일만 옛 도우미 날(90일초진이 재진에 들어 있다)
+  const OCT_MIXED = OCT_KNOWN.map((d) => (d.day === '2026-10-13' ? day('2026-10-13', { newPatients: 4, returning: 7 }) : d))
+  // 최근 7일(10월 30일 – 11월 5일): 모두 새 도우미 날. 오늘 줄은 기간 밖이다
+  const RECENT_KNOWN = [
+    day('2026-10-30', { newPatients: 2, first90: 3, returning: 5 }),
+    day('2026-11-02', { partial: true, newPatients: 1, first90: 0, returning: 4 }),
+    day('2026-11-05', { newPatients: 4, first90: 1, returning: 6 }),
+    day(TODAY, { first90: 9 }),
+  ]
+
+  it.each(PERIODS)('AC-4404.3: 최근 %i일 — 기간 안 모든 날에 first90이 있으면 칸 값은 [신환, 90일초진, 재진]이고 칸·글자·상태는 지금 trendBuckets 그대로다', (period) => {
+    const buckets = flowTrend(RECENT_KNOWN, flow(period))
+    expect(shape(buckets)).toEqual(shape(trendBuckets(RECENT_KNOWN, periodRange(TODAY, period), period)))
+    expect(valuesOf(buckets)).toEqual([
+      [2, 3, 5],
+      [1, 0, 4],
+      [4, 1, 6],
+    ])
+  })
+
+  it('AC-4404.3: 최근 N일 — 하루라도 first90이 없으면 두 값이고, 새 도우미 날의 재진은 returning + 90일초진(옛 날과 같은 뜻)이다', () => {
+    const mixed = [day('2026-10-30', { newPatients: 2, first90: 3, returning: 5 }), day('2026-11-05', { newPatients: 4, returning: 7 })]
+    const buckets = flowTrend(mixed, flow(7))
+    expect(shape(buckets)).toEqual(shape(trendBuckets(mixed, periodRange(TODAY, 7), 7)))
+    expect(valuesOf(buckets)).toEqual([
+      [2, 8],
+      [4, 7],
+    ])
+  })
+
+  it('AC-4404.3: 고른 기간 일별(2026년 10월) — 모두 앎이면 날마다 [신환, 90일초진, 재진], 칸 모양은 patientTrend 그대로다', () => {
+    const f = flow(month('2026-10'))
+    const buckets = flowTrend(OCT_KNOWN, f)
+    expect(shape(buckets)).toEqual(shape(patientTrend({ days: OCT_KNOWN, covered: [{ from: f.current.from, to: f.current.to }], range: f.range! })))
+    expect(valuesOf(buckets)).toEqual([
+      [1, 1, 2],
+      [3, 2, 4],
+      [2, 0, 5],
+      [1, 3, 1],
+      [4, 1, 6],
+      [2, 2, 2],
+      [5, 4, 5],
+    ])
+  })
+
+  it("AC-4404.3: 고른 기간 주별 — 모두 앎이면 칸마다 [신환 합, 90일초진 합, 재진 합], 줄 없는 주는 [0, 0, 0](빈 칸), 칸 모양은 patientTrend 그대로다", () => {
+    const f = flow(month('2026-10', 'week'))
+    const buckets = flowTrend(OCT_KNOWN, f)
+    expect(shape(buckets)).toEqual(shape(patientTrend({ days: OCT_KNOWN, covered: [{ from: f.current.from, to: f.current.to }], range: f.range! })))
+    expect(buckets!.map((b) => b.blank)).toEqual([undefined, undefined, undefined, 'no-data', undefined])
+    expect(valuesOf(buckets)).toEqual([
+      [4, 3, 6],
+      [3, 3, 6],
+      [4, 1, 6],
+      [0, 0, 0],
+      [7, 6, 7],
+    ])
+  })
+
+  it('AC-4404.3: 고른 기간 해 — 모두 앎이면 달마다 세 값, 앞으로 올 달은 빈 칸이다', () => {
+    const days = [day('2026-01-15', { first90: 1 }), day('2026-03-10', { first90: 2 }), day('2026-11-02', { first90: 3 }), day(TODAY, { partial: true, first90: 4 })]
+    const buckets = flowTrend(days, flow(year('2026')))!
+    expect(buckets[0]).toMatchObject({ state: 'complete', values: [2, 1, 8] })
+    expect(buckets[1]).toMatchObject({ blank: 'no-data', values: [0, 0, 0] })
+    expect(buckets[10]).toMatchObject({ state: 'partial', values: [2, 3, 8] }) // 오늘(덜 끝남)은 끝난 날 밖이다
+    expect(buckets[11]!.blank).toBe('future')
+  })
+
+  it('AC-4404.3: 고른 기간 — 하루라도 first90이 없으면 두 값이고, 새 도우미 날의 재진은 returning + 90일초진이다(재진이 줄어 보이지 않는다)', () => {
+    const f = flow(month('2026-10', 'week'))
+    expect(valuesOf(flowTrend(OCT_MIXED, f))).toEqual([
+      [4, 9],
+      [3, 9],
+      [4, 7],
+      [0, 0],
+      [7, 13],
+    ])
+  })
+
+  it('AC-4404.3: flowSeries — 기간 안 모든 날이 앎이면 통계 일별 내원과 같은 세 갈래(trendSeries(true): 신환 accent · 90일초진 f90 · 재진 ret)다', () => {
+    expect(flowSeries(RECENT_KNOWN, flow(7))).toEqual(trendSeries(true))
+    expect(flowSeries(OCT_KNOWN, flow(month('2026-10', 'week')))).toEqual([
+      { name: '신환', tone: 'accent' },
+      { name: '90일초진', tone: 'f90' },
+      { name: '재진', tone: 'ret' },
+    ])
+  })
+
+  it('AC-4404.3: flowSeries — 하나라도 없거나 기간 안 줄이 없으면 지금 두 갈래(신환 accent · 재진 chart-3) 그대로다', () => {
+    const now = [
+      { name: '신환', tone: 'accent' },
+      { name: '재진', tone: 'chart-3' },
+    ]
+    expect(flowSeries(OCT_MIXED, flow(month('2026-10', 'week')))).toEqual(now)
+    expect(flowSeries([day('2026-11-05')], flow(7))).toEqual(now)
+    expect(flowSeries([], flow(30))).toEqual(now)
+    expect(flowSeries([day(TODAY, { first90: 1 })], flow(7))).toEqual(now)
   })
 })
 

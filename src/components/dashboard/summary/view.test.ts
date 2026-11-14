@@ -7,6 +7,7 @@ import type { RxGroupLine } from './source'
 import {
   dayCount,
   DEFAULT_PERIOD,
+  first90Known,
   groupRank,
   longDate,
   PERIODS,
@@ -32,16 +33,18 @@ type GroupLine = DayPayload['groups'][number]
 // 일 줄의 묶음 열쇠 줄(id = 묶음 열쇠)
 const g = (id: string, patients: number): GroupLine => ({ id, patients, newPatients: 0, returning: patients })
 
-type DayOptions = { partial?: boolean; newPatients?: number; returning?: number; rx?: Rx[]; groups?: GroupLine[]; revisit?: RevisitPayload }
+// first90: 새 도우미(v4) 날의 90일초진 수(first90 AC-4402.2). 주면 totals에 열쇠가 생기고 환자 수에 더한다. 주지 않으면 옛 날(열쇠 없음)이다
+type DayOptions = { partial?: boolean; newPatients?: number; returning?: number; first90?: number; rx?: Rx[]; groups?: GroupLine[]; revisit?: RevisitPayload }
 function day(ymd: string, o: DayOptions = {}): DayPayload {
   const newPatients = o.newPatients ?? 2
   const returning = o.returning ?? 8
+  const first90 = o.first90 === undefined ? {} : { first90: o.first90 }
   return {
     schemaVersion: 2,
     quality: 'valid',
     day: ymd,
     partial: o.partial ?? false,
-    totals: { patients: newPatients + returning, newPatients, returning, unknown: 0 },
+    totals: { patients: newPatients + (o.first90 ?? 0) + returning, newPatients, returning, unknown: 0, ...first90 },
     rx: o.rx ?? [],
     groups: o.groups ?? [],
     revisit: o.revisit ?? { cohort: newPatients, within7: 0, within14: 0 },
@@ -82,6 +85,20 @@ describe('todayView — 오늘 숫자와 넷째 칸', () => {
   it('AC-311.2: 7일 전이 0명이고 오늘이 있으면 compareNumbers 그대로(새로 생김)', () => {
     const view = todayView(TODAY, [day(TODAY, { newPatients: 1, returning: 2 }), day(LAST_WEEK, { newPatients: 0, returning: 0 })])
     expect(view.compare).toEqual({ kind: 'delta', delta: compareNumbers(3, 0), weekday: '토' })
+  })
+
+  it('AC-4404.1: 그날 줄에 first90이 있으면 counts에 first90(0도 숫자)이고 재진은 returning 그대로, 없으면(옛 도우미 날) first90 열쇠가 없다', () => {
+    const known = todayView(TODAY, [day(TODAY, { newPatients: 4, first90: 3, returning: 6 })])
+    expect(known.counts).toEqual({ patients: 13, newPatients: 4, first90: 3, returning: 6 })
+    expect(todayView(TODAY, [day(TODAY, { partial: true, newPatients: 1, first90: 0, returning: 5 })]).counts).toEqual({ patients: 6, newPatients: 1, first90: 0, returning: 5 })
+    const old = todayView(TODAY, [day(TODAY, { newPatients: 4, returning: 9 })]).counts
+    expect(old).toEqual({ patients: 13, newPatients: 4, returning: 9 })
+    expect(old !== null && 'first90' in old).toBe(false)
+  })
+
+  it('AC-4404.1: 지난주 비교는 환자 수끼리다 — 7일 전이 옛 도우미 날이어도 그대로 견준다', () => {
+    const view = todayView(TODAY, [day(TODAY, { newPatients: 4, first90: 3, returning: 6 }), day(LAST_WEEK, { newPatients: 2, returning: 8 })])
+    expect(view.compare).toEqual({ kind: 'delta', delta: compareNumbers(13, 10), weekday: '토' })
   })
 
   it('AC-311.2: 요일 이름은 오늘의 요일 한 글자(월 … 일)', () => {
@@ -164,6 +181,24 @@ describe('trendBuckets — 환자 수 추이 칸', () => {
     const buckets = trendBuckets([day('2026-10-03'), day('2026-10-17'), day('2026-10-29')], MONTH, 30) ?? []
     expect(buckets.map((b) => b.key)).toEqual(['2026-10-03', '2026-10-17', '2026-10-29'])
     expect(buckets.filter((b) => b.values.every((v) => v === 0))).toEqual([])
+  })
+})
+
+describe('first90Known — 기간 안 모든 줄에 90일초진이 있는지 (AC-4404.3)', () => {
+  const MONTH = periodRange(TODAY, 30) // 2026-10-01 – 2026-10-30
+
+  it('AC-4404.3: 기간 안 모든 일 줄에 first90이 있을 때만 참이다(0도 있음). 하나라도 없으면 거짓', () => {
+    expect(first90Known([day('2026-10-03', { first90: 1 }), day('2026-10-17', { first90: 0 })], MONTH)).toBe(true)
+    expect(first90Known([day('2026-10-03', { first90: 1 }), day('2026-10-17')], MONTH)).toBe(false)
+    expect(first90Known([day('2026-10-03'), day('2026-10-17')], MONTH)).toBe(false)
+  })
+
+  it('AC-4404.3: 기간 밖 줄(오늘·기간 앞)은 상관없고, 같은 날 두 줄은 뒤의 것으로 본다. 기간 안 줄이 없으면 거짓', () => {
+    expect(first90Known([day('2026-09-30'), day('2026-10-17', { first90: 2 }), day(TODAY)], MONTH)).toBe(true)
+    expect(first90Known([day('2026-10-17'), day('2026-10-17', { first90: 2 })], MONTH)).toBe(true)
+    expect(first90Known([day('2026-10-17', { first90: 2 }), day('2026-10-17')], MONTH)).toBe(false)
+    expect(first90Known([day('2026-09-30', { first90: 1 })], MONTH)).toBe(false)
+    expect(first90Known([], MONTH)).toBe(false)
   })
 })
 
@@ -481,6 +516,24 @@ describe('reportSentence — 원장님 보고 문장', () => {
     expect(s.full).toBe(`${s.first} ${s.rest}`)
   })
 
+  it('AC-4404.2: 그날 first90이 있으면 둘째 문장은 "신환 {n}명, 90일초진 {n}명, 재진 {n}명입니다."(숫자는 formatCount, 뒤 문장은 그대로)', () => {
+    const closed = reportSentence(todayView(TODAY, [day(TODAY, { newPatients: 4, first90: 3, returning: 6 }), day(LAST_WEEK, { newPatients: 2, returning: 8 })]))
+    expect(closed).toEqual({
+      first: '오늘 환자 13명이 왔습니다.',
+      rest: '신환 4명, 90일초진 3명, 재진 6명입니다. 지난주 토요일보다 3명 많습니다.',
+      full: '오늘 환자 13명이 왔습니다. 신환 4명, 90일초진 3명, 재진 6명입니다. 지난주 토요일보다 3명 많습니다.',
+    })
+    const open = reportSentence(todayView(TODAY, [day(TODAY, { partial: true, newPatients: 120, first90: 1000, returning: 114 })]))
+    expect(open?.full).toBe('오늘 지금까지 환자 1,234명이 왔습니다. 신환 120명, 90일초진 1,000명, 재진 114명입니다.')
+    const zero = reportSentence(todayView(TODAY, [day(TODAY, { newPatients: 1, first90: 0, returning: 2 })]))
+    expect(zero?.rest).toBe('신환 1명, 90일초진 0명, 재진 2명입니다.')
+  })
+
+  it('AC-4404.2: 그날 first90이 없으면(옛 도우미 날) 지금 문장 그대로다 — 7일 전이 새 도우미 날이어도', () => {
+    const s = reportSentence(todayView(TODAY, [day(TODAY, { newPatients: 4, returning: 9 }), day(LAST_WEEK, { newPatients: 2, first90: 1, returning: 7 })]))
+    expect(s?.full).toBe('오늘 환자 13명이 왔습니다. 신환 4명, 재진 9명입니다. 지난주 토요일보다 3명 많습니다.')
+  })
+
   it('AC-317.1: 처방 이름·코드는 문장에 들지 않는다(totals만)', () => {
     const today = day(TODAY, { newPatients: 4, returning: 9, rx: [rx('MM042', '홍길동 처방', 13)] })
     const s = reportSentence(todayView(TODAY, [today, day(LAST_WEEK)]))
@@ -509,6 +562,13 @@ describe('reportSentence — 지난 날짜', () => {
     expect(reportSentence(todayView(SATURDAY, fewer), LABEL)?.rest).toBe('신환 1명, 재진 2명입니다. 지난주 토요일보다 7명 적습니다.')
     const same = [day(SATURDAY), day(WEEK_BEFORE)]
     expect(reportSentence(todayView(SATURDAY, same), LABEL)?.rest).toBe('신환 2명, 재진 8명입니다. 지난주 토요일과 같습니다.')
+  })
+
+  it('AC-4404.2: 지난 날짜도 그날 first90이 있으면 둘째 문장에 90일초진이 든다. 덜 끝난 지난 날은 지금처럼 두 줄뿐이다', () => {
+    const days = [day(SATURDAY, { newPatients: 4, first90: 2, returning: 7 }), day(WEEK_BEFORE)]
+    expect(reportSentence(todayView(SATURDAY, days), LABEL)?.full).toBe('10월 31일 환자 13명이 왔습니다. 신환 4명, 90일초진 2명, 재진 7명입니다. 지난주 토요일보다 3명 많습니다.')
+    const partial = [day(SATURDAY, { partial: true, newPatients: 4, first90: 2, returning: 7 })]
+    expect(reportSentence(todayView(SATURDAY, partial), LABEL)?.full).toBe('10월 31일 환자 13명까지 확인됐어요. 그날 자료가 중간까지만 저장돼 있어요.')
   })
 
   it('AC-605.2: 7일 전 자료가 없으면 비교 문장이 없다', () => {

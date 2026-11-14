@@ -1,14 +1,15 @@
 import { formatCount } from '@/components/charts/format'
-import type { BarBucket } from '@/components/charts/StackedBarChart'
+import type { BarBucket, BarSeries } from '@/components/charts/StackedBarChart'
 import { lastDayOf, pickRange, type StatsChoice, type StatsPick } from '@/components/stats/periodPick'
+import { trendSeries } from '@/components/stats/trendSeries'
 import { patientTrend, type StatsPeriod, type StatsRange } from '@/components/stats/view'
 import { diffDays, monthOf, monthRange } from '@/lib/analytics/dates'
-import type { TrendBucket } from '@/types/analysis'
+import type { Totals, TrendBucket } from '@/types/analysis'
 import type { DayPayload } from '@/types/payload'
-import { longDate, periodRange, tickLabels, todayView, trendBuckets, type Period, type PeriodRange } from './view'
+import { first90Known, longDate, periodRange, tickLabels, todayView, trendBuckets, type Period, type PeriodRange } from './view'
 
 // 대시보드 기간별 흐름의 고른 것 → 그릴 기간 (dashboard-period REQ-1801·REQ-1802·REQ-1803, design.md 'summary/flow.ts').
-// 순수 모듈이다. 통계는 여기와 DashboardAnalysis.tsx에서만 부른다: periodPick(pickRange·lastDayOf·타입), view(patientTrend·타입).
+// 순수 모듈이다. 통계는 여기와 DashboardAnalysis.tsx에서만 부른다: periodPick(pickRange·lastDayOf·타입), trendSeries(세 갈래, first90 AC-4404.3), view(patientTrend·타입).
 // summary/view.ts는 통계를 부르지 않는다(통계 view.ts가 그 파일을 불러 고리가 생긴다). 날짜는 lib/analytics/dates.ts만 쓴다.
 // 빠른 단추 갈래는 지금 함수(periodRange·trendBuckets·tickLabels)를 그대로 불러 지금과 한 글자도 같다
 
@@ -31,6 +32,11 @@ export const QUICK_CHOICE: Record<Period, StatsPeriod> = { 7: '7d', 30: '30d', 9
 const YESTERDAY = ' (어제까지)' // 빠른 단추는 늘 어제에서 끝난다
 const TICK_DAYS = 31 // 고른 기간 일별 눈금: 31일 이하는 7일마다(30일 기간 눈금), 넘으면 21일마다(90일 기간 눈금). 통계 dayBars와 같다
 const DENSE_OVER = 7 // 고른 기간 막대 위 합계는 칸 7개 이하일 때만(빠른 단추는 지금처럼 7일만)
+// 90일초진을 모르는 칸이 있을 때의 환자 수 추이 두 갈래: 지금 이름·색 그대로다(first90 AC-4404.3 '아니면 지금처럼')
+const TWO_SERIES: readonly BarSeries[] = [
+  { name: '신환', tone: 'accent' },
+  { name: '재진', tone: 'chart-3' },
+]
 
 const yearOf = (ymd: string) => ymd.slice(0, 4)
 const yearName = (ymd: string) => `${Number(yearOf(ymd))}년`
@@ -67,12 +73,32 @@ export function flowOf(today: string, choice: FlowChoice, todayDone: boolean): F
   return { period: null, range, current: range.current, head, span: head, bucket: range.bucket, lastDay, picker: choice }
 }
 
-// 환자 수 추이 칸. 고른 기간은 통계 patientTrend를 빌린다(주·달 칸·잘린 주·앞으로 올 달 규칙을 두 벌 두지 않는다).
+// 칸 셈(값 [신환, 재진]). 고른 기간은 통계 patientTrend를 빌린다(주·달 칸·잘린 주·앞으로 올 달 규칙을 두 벌 두지 않는다).
 // 대시보드는 덮은 기간을 읽지 않으므로 고른 기간 하나를 덮은 것으로 넘긴다: 줄 없는 날은 칸이 없고(지금 대시보드 규칙),
 // 주·달의 '일부 기간'은 기간에 잘림·끝나지 않음·partial 줄로만 정해지며, 줄 없는 주·달은 '–'(no-data), 해 고르기의 앞으로 올 달은 빈 칸(future)이다
-export function flowTrend(days: readonly DayPayload[], flow: Flow): BarBucket[] | null {
+function barsOf(days: readonly DayPayload[], flow: Flow): BarBucket[] | null {
   if (flow.period !== null) return trendBuckets(days, flow.current, flow.period)
   return patientTrend({ days, covered: [{ from: flow.current.from, to: flow.current.to }], range: flow.range })
+}
+
+// 줄의 totals만 바꾼다. 칸 셈에는 first90 열쇠 없이 넘긴다 — 칸 셈은 신환·재진 두 값만 센다
+const withTotals = (days: readonly DayPayload[], totals: (t: Totals) => Totals): DayPayload[] => days.map((row) => ({ ...row, totals: totals(row.totals) }))
+const plainTotals = ({ patients, newPatients, returning, unknown }: Totals, more = 0): Totals => ({ patients, newPatients, returning: returning + more, unknown })
+
+// 환자 수 추이 칸 (first90 AC-4404.3, design.md 5-9).
+// 기간 안 모든 줄에 90일초진 수가 있으면 값 [신환, 90일초진, 재진]: 같은 칸 셈을 신환 자리에 90일초진을 넣어 한 번 더 돌려 칸마다 잇는다(칸·상태는 같다).
+// 하나라도 없으면 값 [신환, 재진]이고 재진 = returning + (first90 ?? 0) — 새 도우미 날의 재진에서 빠진 90일초진을 되돌려 옛 날과 같은 뜻(90일초진 포함)이다
+export function flowTrend(days: readonly DayPayload[], flow: Flow): BarBucket[] | null {
+  if (!first90Known(days, flow.current)) return barsOf(withTotals(days, (t) => plainTotals(t, t.first90 ?? 0)), flow)
+  const base = barsOf(withTotals(days, (t) => plainTotals(t)), flow)
+  const first90 = barsOf(withTotals(days, (t) => ({ ...plainTotals(t), newPatients: t.first90 ?? 0 })), flow)
+  if (base === null || first90 === null) return base
+  return base.map((bucket, i) => ({ ...bucket, values: [bucket.values[0]!, first90[i]!.values[0]!, bucket.values[1]!] }))
+}
+
+// 환자 수 추이 계열(표·범례도 같은 계열). 기간 안 모든 줄에 90일초진 수가 있으면 통계 일별 내원과 같은 세 갈래·색, 아니면 지금 두 갈래다(first90 AC-4404.3)
+export function flowSeries(days: readonly DayPayload[], flow: Flow): BarSeries[] {
+  return first90Known(days, flow.current) ? trendSeries(true) : [...TWO_SERIES]
 }
 
 // 환자 수 추이 빈 틀의 날짜 눈금. 고른 기간의 주·달 칸은 눈금이 없다

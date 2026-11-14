@@ -11,7 +11,7 @@ import { ds } from '@/components/ui/classes'
 import type { TrendBucket } from '@/types/analysis'
 import type { DayPayload } from '@/types/payload'
 import { NO_DATA, NOTE, SECTION, SECTION_HEAD, SECTION_TITLE } from './DailySection'
-import { flowBasis, flowDense, flowOf, flowTicks, flowTrend, rankLine, todayFinished, type Flow, type FlowChoice } from './flow'
+import { flowBasis, flowDense, flowOf, flowSeries, flowTicks, flowTrend, rankLine, todayFinished, type Flow, type FlowChoice } from './flow'
 import { PeriodButtons } from './PeriodButtons'
 import { isConnected, type RxGroupLine, type SummarySource } from './source'
 import { TableToggle } from './TableToggle'
@@ -38,16 +38,13 @@ import {
 // 빠른 단추가 '기간 골라 보기' 이름 줄 아래 고르기 단추와 끝을 맞춘다) · 다음 줄로 넘어간 고르기 묶음은 오른쪽에 붙음. 768px 미만은 지금 클래스 그대로다
 const HEAD_WITH_PICKER = 'md:items-end md:justify-end'
 
-const TREND_SERIES: BarSeries[] = [
-  { name: '신환', tone: 'accent' },
-  { name: '재진', tone: 'chart-3' },
+// 환자 수 추이 범례 = 막대 계열(flowSeries: 지금 두 갈래, 모든 칸이 90일초진을 알면 세 갈래 — first90 AC-4404.3)의 이름·tone 그대로.
+// '일부 기간'은 고른 기간에 그런 칸(잘린 주·끝나지 않은 달·덜 끝난 줄)이 있을 때만 붙는다(통계 탭 환자 수 추이와 같은 빗금). 빠른 단추 범례는 지금 그대로다
+const PARTIAL_LEGEND: LegendItem = { label: '일부 기간', mark: 'hatch' }
+const trendLegend = (series: readonly BarSeries[], partial: boolean): LegendItem[] => [
+  ...series.map(({ name, tone }): LegendItem => ({ label: name, mark: tone })),
+  ...(partial ? [PARTIAL_LEGEND] : []),
 ]
-const TREND_LEGEND: LegendItem[] = [
-  { label: '신환', mark: 'accent' },
-  { label: '재진', mark: 'chart-3' },
-]
-// 고른 기간에 '일부 기간' 칸(잘린 주·끝나지 않은 달·덜 끝난 줄)이 있을 때만(통계 탭 환자 수 추이와 같은 빗금). 빠른 단추 범례는 지금 그대로다
-const TREND_LEGEND_PARTIAL: LegendItem[] = [...TREND_LEGEND, { label: '일부 기간', mark: 'hatch' }]
 const TREND_DESC: Record<TrendBucket, string> = { day: '신환·재진, 하루씩', week: '신환·재진, 한 주씩', month: '신환·재진, 한 달씩' }
 const WEEK_DESC = '하루 평균, 요일마다'
 // 표가 있는 두 그래프(환자 수 추이·요일별 환자 수)의 설명 줄·표 캡션 뒤에 붙는 단위와 기간 기준(dashboard-ux AC-2706.3)
@@ -179,6 +176,7 @@ function FlowCharts({ flow, period, groups }: { flow: Flow; period: PeriodDays; 
   const reading = period.kind === 'reading'
   const empty = reading ? READING : NO_DATA
   const trend = reading ? null : flowTrend(days, flow)
+  const series = flowSeries(days, flow) // 읽는 중이면 줄이 없어 지금 두 갈래다
   // 빈 칸(자료 없음·앞으로 올 달)은 빗금 칸이 아니다(통계 탭 PatientTrendSection과 같다)
   const partial = flow.period === null && trend !== null && trend.some((bucket) => !bucket.blank && bucket.state !== 'complete')
   // 빠른 단추는 지금 그대로(30일만 30일 줄을 옮겨 '가장 최근 신환' 글). 고른 기간은 7·14·30일 줄 모두 고른 기간이고 뺀 날이 있으면 줄 아래 글
@@ -189,10 +187,10 @@ function FlowCharts({ flow, period, groups }: { flow: Flow; period: PeriodDays; 
       <Chart
         title="환자 수 추이"
         desc={withBasis(TREND_DESC[flow.bucket], flow)}
-        aside={<ChartLegend items={partial ? TREND_LEGEND_PARTIAL : TREND_LEGEND} />}
+        aside={<ChartLegend items={trendLegend(series, partial)} />}
         className="md:col-span-2 lg:col-span-8"
       >
-        <TrendBody buckets={trend} flow={flow} message={empty} />
+        <TrendBody buckets={trend} series={series} flow={flow} message={empty} />
       </Chart>
       <Chart title="신환 재방문율" desc="처음 온 환자가 다시 온 비율" className="lg:col-span-4 lg:border-l lg:border-line lg:pl-6">
         <RevisitRows cells={cells} skipped={skipped} empty={empty} />
@@ -222,13 +220,13 @@ function FlowCharts({ flow, period, groups }: { flow: Flow; period: PeriodDays; 
 
 // 환자 수 추이: 자료가 있으면 칸마다 쌓은 막대(빠른 단추는 지금처럼 7일만 막대 위 합계, 고른 기간은 칸 7개 이하만) + 그 아래 [표로 보기](AC-2706.1),
 // 없으면(기간 안 자료 없음·읽는 중) 빈 틀 + 가운데 글 + 날짜 눈금(고른 기간의 주·달 칸은 눈금 없음). 표를 펼친 동안 그래프는 화면 읽기 표를 빼고 그린다
-function TrendBody({ buckets, flow, message }: { buckets: BarBucket[] | null; flow: Flow; message: string }) {
+function TrendBody({ buckets, series, flow, message }: { buckets: BarBucket[] | null; series: BarSeries[]; flow: Flow; message: string }) {
   if (buckets === null) return <EmptyTrend message={message} ticks={flowTicks(flow)} />
   return (
-    <TableToggle caption={withBasis('환자 수 추이', flow)} series={TREND_SERIES} buckets={buckets}>
+    <TableToggle caption={withBasis('환자 수 추이', flow)} series={series} buckets={buckets}>
       {(open) => (
         <div className={`mt-3 ${ds.chartNoSideScroll}`}>
-          <StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={buckets} dense={flowDense(flow, buckets)} srTable={!open} />
+          <StackedBarChart title="환자 수 추이" unit="명" series={series} buckets={buckets} dense={flowDense(flow, buckets)} srTable={!open} />
         </div>
       )}
     </TableToggle>

@@ -16,7 +16,8 @@ export const PERIODS: readonly Period[] = [7, 30, 90]
 export const DEFAULT_PERIOD: Period = 30
 
 export type DayState = 'none' | 'open' | 'closed' // 오늘 줄 없음 · 덜 끝남(partial true) · 끝남(partial false)
-export type TodayCounts = { patients: number; newPatients: number; returning: number }
+// first90 = 그날 90일초진 수(first90 AC-4404.1). 새 도우미(v4) 날에만 있고 그때 returning에는 90일초진이 빠져 있다. 옛 날은 열쇠가 없고 returning에 들어 있다
+export type TodayCounts = { patients: number; newPatients: number; returning: number; first90?: number }
 export type TodayCompare =
   | { kind: 'wait' } // 오늘이 끝나지 않음 → "오늘 진료가 끝나면 비교해요"
   | { kind: 'no-last-week' } // 7일 전 줄 없음·덜 끝남 → "지난주 자료가 없어요"
@@ -70,8 +71,8 @@ function daysIn(days: readonly DayPayload[], range: { from: string; to: string }
 export function todayView(today: string, days: readonly DayPayload[]): TodayView {
   const row = rowOn(days, today)
   if (row === null) return { state: 'none', counts: null, compare: WAIT }
-  const { patients, newPatients, returning } = row.totals
-  const counts = { patients, newPatients, returning }
+  const { patients, newPatients, returning, first90 } = row.totals
+  const counts: TodayCounts = first90 === undefined ? { patients, newPatients, returning } : { patients, newPatients, returning, first90 }
   if (row.partial) return { state: 'open', counts, compare: WAIT }
   const lastWeek = rowOn(days, addDays(today, -7))
   if (lastWeek === null || lastWeek.partial) return { state: 'closed', counts, compare: { kind: 'no-last-week' } }
@@ -110,6 +111,12 @@ export function trendBuckets(days: readonly DayPayload[], range: PeriodRange, pe
     state: row.partial ? 'partial' : 'complete',
     values: [row.totals.newPatients, row.totals.returning],
   }))
+}
+
+// 기간 안 모든 일 줄(같은 날은 뒤의 것)에 90일초진 수가 있는지(first90 AC-4404.3). 기간 안 줄이 없으면 거짓이다
+export function first90Known(days: readonly DayPayload[], range: { from: string; to: string }): boolean {
+  const rows = daysIn(days, range)
+  return rows.length > 0 && rows.every((row) => row.totals.first90 !== undefined)
 }
 
 // N일 값이 숫자인 날. within30은 선택 칸이라 빠진 칸(undefined)도 null처럼 뺀다
@@ -224,12 +231,13 @@ function lastWeekSentence(compare: TodayCompare, patients: number): string | nul
 }
 
 // 오늘 줄의 totals(와 끝난 날이면 7일 전 비교)만으로 만든다 — 환자 이름·차트번호·처방 이름은 쓰지 않는다.
+// 둘째 문장: 그날 90일초진 수가 있으면 "신환 · 90일초진 · 재진", 없으면 지금처럼 "신환 · 재진"이다(first90 AC-4404.2).
 // first = 처음 "다."까지(h1), rest = 그 뒤(앞뒤 빈칸 뺌), full = 둘을 빈칸 하나로 이은 글([복사]).
 // dayLabel('10월 31일')을 주면 지난 날짜 문장이다: 시작의 "오늘"만 그 글자로 바꾼다(bit-dashboard AC-605.2).
 // 지난 날인데 그날 줄이 덜 끝남(partial true)이면 신환·재진·지난주 비교 없이 두 줄만 돌려준다(bit-dashboard AC-605.9)
 export function reportSentence(view: TodayView, dayLabel?: string): { first: string; rest: string; full: string } | null {
   if (view.counts === null) return null
-  const { patients, newPatients, returning } = view.counts
+  const { patients, newPatients, returning, first90 } = view.counts
   if (dayLabel !== undefined && view.state === 'open') {
     const first = `${dayLabel} 환자 ${formatCount(patients)}명까지 확인됐어요.`
     const rest = '그날 자료가 중간까지만 저장돼 있어요.'
@@ -238,7 +246,9 @@ export function reportSentence(view: TodayView, dayLabel?: string): { first: str
   const when = dayLabel ?? (view.state === 'open' ? '오늘 지금까지' : '오늘')
   const sentences = [
     `${when} 환자 ${formatCount(patients)}명이 왔습니다.`,
-    `신환 ${formatCount(newPatients)}명, 재진 ${formatCount(returning)}명입니다.`,
+    first90 === undefined
+      ? `신환 ${formatCount(newPatients)}명, 재진 ${formatCount(returning)}명입니다.`
+      : `신환 ${formatCount(newPatients)}명, 90일초진 ${formatCount(first90)}명, 재진 ${formatCount(returning)}명입니다.`,
     view.state === 'closed' ? lastWeekSentence(view.compare, patients) : null,
   ]
   const text = sentences.filter((s) => s !== null).join(' ')

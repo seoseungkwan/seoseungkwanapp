@@ -44,12 +44,13 @@ const AT_342 = new Date('2026-11-02T06:42:00Z') // 한국 오후 3시 42분
 const AT_345 = new Date('2026-11-02T06:45:00Z')
 const NONE: SummarySource = { kind: 'none' }
 
-const day = (ymd: string, newPatients: number, returning: number, partial = false): DayPayload => ({
+// first90: 새 도우미(v4) 날의 90일초진 수(first90 AC-4402.2). 주면 totals에 열쇠가 생기고 환자 수에 더한다. 주지 않으면 옛 날(열쇠 없음)이다
+const day = (ymd: string, newPatients: number, returning: number, partial = false, first90?: number): DayPayload => ({
   schemaVersion: 2,
   quality: 'valid',
   day: ymd,
   partial,
-  totals: { patients: newPatients + returning, newPatients, returning, unknown: 0 },
+  totals: { patients: newPatients + (first90 ?? 0) + returning, newPatients, returning, unknown: 0, ...(first90 === undefined ? {} : { first90 }) },
   rx: [],
   groups: [],
   revisit: { cohort: newPatients, within7: 0, within14: 0 },
@@ -181,11 +182,12 @@ const expectGainsOfReading = () => {
   expect(within(flow()).queryByText(/^연결/)).toBeNull()
   expect(within(flow()).queryByRole('heading', { level: 3 })).toBeNull()
 }
+// 이름으로 찾은 숫자 칸의 KpiStat 글(이름 + 값). 칸 차례와 칸 아래 글(90일초진 칸, first90 AC-4404.1)은 'AC-4404.1' 시험이 본다
+const kpiText = (label: string) => kpiCells().find((cell) => cell.querySelector('span')?.textContent === label)?.firstElementChild?.textContent
 const expectNumbersShown = (patients: number, newPatients: number, returning: number) => {
-  const [first, second, third] = kpiCells()
-  expect(first!.textContent).toBe(`오늘 환자 수${patients}명`)
-  expect(second!.textContent).toBe(`신환${newPatients}명`)
-  expect(third!.textContent).toBe(`재진${returning}명`)
+  expect(kpiText('오늘 환자 수')).toBe(`오늘 환자 수${patients}명`)
+  expect(kpiText('신환')).toBe(`신환${newPatients}명`)
+  expect(kpiText('재진')).toBe(`재진${returning}명`)
   expect(bigLine().textContent).toBe(`오늘 지금까지 환자 ${patients}명이 왔습니다.`)
 }
 const expectBeforeConnect = () => {
@@ -333,6 +335,52 @@ describe('AC-601.1: 열면 저절로 읽는다', () => {
     await answer(days())
     rerender(<BitDashboard today={TODAY} initial={NONE} />)
     expect(readBitDays).toHaveBeenCalledTimes(1)
+  })
+})
+
+// 90일초진 칸과 보고 문장 (first90 REQ-4404). 새 도우미(v4) 날은 totals.first90이 있고 재진에서 90일초진이 빠져 있다. 옛 날은 열쇠가 없다
+describe('AC-4404.1·AC-4404.2: 비트 숫자의 90일초진', () => {
+  const V4_DAYS = [day(TODAY, 9, 50, true, 5), day('2026-10-26', 7, 52, false, 8)]
+
+  it('AC-4404.1·AC-4404.2: 새 도우미 날이면 숫자 칸 다섯(오늘 환자 수 · 신환 · 90일초진 · 재진 · 지난주 같은 요일보다)이고, 둘째 문장에 90일초진이 든다', async () => {
+    onBitPc()
+    draw()
+    await answer(days(V4_DAYS))
+    const cells = kpiCells()
+    expect(cells.map((cell) => cell.querySelector('span')?.textContent)).toEqual(['오늘 환자 수', '신환', '90일초진', '재진', '지난주 같은 요일보다'])
+    expect(cells.slice(0, 4).map((cell) => cell.textContent)).toEqual(['오늘 환자 수64명', '신환9명', '90일초진5명', '재진50명'])
+    expect(bigLine().textContent).toBe('오늘 지금까지 환자 64명이 왔습니다.')
+    expect(screen.getByText('신환 9명, 90일초진 5명, 재진 50명입니다.')).toBeTruthy()
+    noText('새 도우미(0.7.0)면 나와요')
+    noText('90일초진 포함')
+  })
+
+  it('AC-4404.1·AC-4404.2: 옛 도우미 날이면 90일초진 "–" + "새 도우미(0.7.0)면 나와요", 재진은 지금 값 + "90일초진 포함"이고 문장은 지금 그대로다', async () => {
+    onBitPc()
+    draw()
+    await answer(days())
+    const cells = kpiCells()
+    expect(cells).toHaveLength(5)
+    expect(cells[2]!.textContent).toBe('90일초진–새 도우미(0.7.0)면 나와요')
+    expect(cells[3]!.textContent).toBe('재진55명90일초진 포함')
+    expect(screen.getByText('신환 9명, 재진 55명입니다.')).toBeTruthy()
+  })
+
+  it('AC-4404.1·AC-4404.2: 지난 날을 골라도 그날 줄로 정한다 — 새 도우미 날은 "환자 수" · 90일초진 숫자 · 문장에 90일초진', async () => {
+    onBitPc()
+    draw()
+    await answer(days(V4_DAYS))
+    pickDay('2026-10-26')
+    const cells = kpiCellsOf('10월 26일 하루 분석')
+    expect(cells.slice(0, 4).map((cell) => cell.textContent)).toEqual(['환자 수67명', '신환7명', '90일초진8명', '재진52명'])
+    expect(screen.getByText('신환 7명, 90일초진 8명, 재진 52명입니다.')).toBeTruthy()
+  })
+
+  it('AC-4404.1: 숫자가 없을 때(처음 읽는 중)는 지금 칸 넷 그대로다', () => {
+    onBitPc()
+    draw()
+    expect(kpiCells()).toHaveLength(4)
+    expect(within(todaySection()).queryByText('90일초진')).toBeNull()
   })
 })
 
@@ -1498,7 +1546,7 @@ const kpiCellsOf = (title: string) => Array.from(kpiRow(region(title)).children)
 describe('AC-605.2·AC-605.3·AC-605.4: 고른 날로 그린다', () => {
   afterEach(() => setClipboard(undefined))
 
-  it('AC-605.2·AC-605.3: 지난 날짜를 고르면 보고 문장과 하루 줄이 그날로 바뀌고, 날짜 줄·[오늘로]도 따라온다', async () => {
+  it('AC-605.2·AC-605.3·AC-4404.1: 지난 날짜를 고르면 보고 문장과 하루 줄이 그날로 바뀌고, 날짜 줄·[오늘로]도 따라온다', async () => {
     await readDays()
     pickDay('2026-10-26')
 
@@ -1509,17 +1557,17 @@ describe('AC-605.2·AC-605.3·AC-605.4: 고른 날로 그린다', () => {
     expect(button('오늘로')).toBeTruthy()
 
     const cells = kpiCellsOf('10월 26일 하루 분석')
-    expect(cells.slice(0, 3).map((cell) => cell.textContent)).toEqual(['환자 수67명', '신환7명', '재진60명'])
-    expect(cells[3]!.textContent).toContain('12명 (+21.8%)')
-    expect(cells[3]!.textContent).toContain('지난주 월요일')
+    expect(cells.slice(0, 4).map((cell) => cell.textContent)).toEqual(['환자 수67명', '신환7명', '90일초진–새 도우미(0.7.0)면 나와요', '재진60명90일초진 포함'])
+    expect(cells[4]!.textContent).toContain('12명 (+21.8%)')
+    expect(cells[4]!.textContent).toContain('지난주 월요일')
   })
 
-  it('AC-605.3: 7일 전 자료가 없는 날은 넷째 칸이 "지난주 자료가 없어요"이고 문장에 비교가 없다', async () => {
+  it('AC-605.3·AC-4404.1: 7일 전 자료가 없는 날은 다섯째 칸이 "지난주 자료가 없어요"이고 문장에 비교가 없다', async () => {
     await readDays()
     pickDay('2026-10-25')
     expect(bigLine().textContent).toBe('10월 25일 환자 3명이 왔습니다.')
     expect(screen.getByText('신환 1명, 재진 2명입니다.')).toBeTruthy()
-    expect(within(kpiCellsOf('10월 25일 하루 분석')[3] as HTMLElement).getByText('지난주 자료가 없어요')).toBeTruthy()
+    expect(within(kpiCellsOf('10월 25일 하루 분석')[4] as HTMLElement).getByText('지난주 자료가 없어요')).toBeTruthy()
   })
 
   it('AC-605.2: [복사]는 고른 날의 문장을 복사한다', async () => {
@@ -1546,7 +1594,7 @@ describe('AC-605.2·AC-605.3·AC-605.4: 고른 날로 그린다', () => {
     noButton('복사했어요')
   })
 
-  it('AC-605.4: 자료가 없는 지난 날짜(휴진일 등)면 문구와 "자료 없음"이 나오고 [복사]가 막힌다', async () => {
+  it('AC-605.4·AC-4404.1: 자료가 없는 지난 날짜(휴진일 등)면 문구와 "자료 없음"이 나오고 [복사]가 막힌다', async () => {
     const writeText = vi.fn(() => Promise.resolve())
     setClipboard({ writeText })
     await readDays()
@@ -1554,7 +1602,7 @@ describe('AC-605.2·AC-605.3·AC-605.4: 고른 날로 그린다', () => {
 
     expect(bigLine().textContent).toBe('이 날은 진료 자료가 없어요')
     expect(screen.getByText('진료가 없었거나 비트에 접수 기록이 없는 날이에요.')).toBeTruthy()
-    expect(kpiCellsOf('10월 18일 하루 분석').map((cell) => cell.textContent)).toEqual(['환자 수–자료 없음', '신환–자료 없음', '재진–자료 없음', '지난주 같은 요일보다–자료 없음'])
+    expect(kpiCellsOf('10월 18일 하루 분석').map((cell) => cell.textContent)).toEqual(['환자 수–자료 없음', '신환–자료 없음', '90일초진–자료 없음', '재진–자료 없음', '지난주 같은 요일보다–자료 없음'])
     const copy = button('복사')
     expect(copy.getAttribute('aria-disabled')).toBe('true')
     fireEvent.click(copy)

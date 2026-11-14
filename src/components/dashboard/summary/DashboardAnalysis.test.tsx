@@ -15,6 +15,7 @@ import { StackedBarChart, type BarSeries } from '@/components/charts/StackedBarC
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { PeriodPicker } from '@/components/stats/PeriodPicker'
 import type { StatsPick } from '@/components/stats/periodPick'
+import { trendSeries } from '@/components/stats/trendSeries'
 import { ds } from '@/components/ui/classes'
 import { addDays } from '@/lib/analytics/dates'
 import { isBorderBox, nestedBoxes } from '@/testing/boxes'
@@ -40,16 +41,18 @@ const rx = (code: string, name: string, patients: number): Rx => ({ code, name, 
 type GroupLine = DayPayload['groups'][number]
 // 일 줄의 묶음 열쇠 줄(id = 통계 탭 묶음 열쇠, bit-dashboard REQ-606)
 const g = (id: string, patients: number): GroupLine => ({ id, patients, newPatients: 0, returning: patients })
-type DayOptions = { partial?: boolean; newPatients?: number; returning?: number; rx?: Rx[]; groups?: GroupLine[]; revisit?: RevisitPayload }
+// first90: 새 도우미(v4) 날의 90일초진 수(first90 AC-4402.2). 주면 totals에 열쇠가 생기고 환자 수에 더한다. 주지 않으면 옛 날(열쇠 없음)이다
+type DayOptions = { partial?: boolean; newPatients?: number; returning?: number; first90?: number; rx?: Rx[]; groups?: GroupLine[]; revisit?: RevisitPayload }
 function day(ymd: string, o: DayOptions = {}): DayPayload {
   const newPatients = o.newPatients ?? 2
   const returning = o.returning ?? 8
+  const first90 = o.first90 === undefined ? {} : { first90: o.first90 }
   return {
     schemaVersion: 2,
     quality: 'valid',
     day: ymd,
     partial: o.partial ?? false,
-    totals: { patients: newPatients + returning, newPatients, returning, unknown: 0 },
+    totals: { patients: newPatients + (o.first90 ?? 0) + returning, newPatients, returning, unknown: 0, ...first90 },
     rx: o.rx ?? [],
     groups: o.groups ?? [],
     revisit: o.revisit ?? { cohort: newPatients, within7: 0, within14: 0 },
@@ -104,6 +107,23 @@ const TREND_SERIES: BarSeries[] = [
   { name: '신환', tone: 'accent' },
   { name: '재진', tone: 'chart-3' },
 ]
+// 새 도우미 날만 있는 연결 뒤 자료(first90 REQ-4404): 오늘 끝남(13명 = 신환 4 · 90일초진 3 · 재진 6) · 지난주 토요일 끝남(10명) · 기간 안 여러 날(덜 끝난 날 하나)
+const KNOWN_DAYS = [
+  day(TODAY, { newPatients: 4, first90: 3, returning: 6 }),
+  day('2026-10-24', { newPatients: 2, first90: 1, returning: 7 }),
+  day('2026-10-30', { newPatients: 3, first90: 2, returning: 5 }),
+  day('2026-10-12', { partial: true, newPatients: 1, first90: 0, returning: 5 }),
+  day('2026-10-05', { newPatients: 5, first90: 4, returning: 11 }),
+]
+// 90일초진을 모르는 날의 두 칸(AC-4404.1): 90일초진 "–" + 안내 글, 재진은 지금 값 + "90일초진 포함"
+const F90_UNKNOWN = '새 도우미(0.7.0)면 나와요'
+const RETURNING_NOTE = '90일초진 포함'
+const unknownReturning = (value: number) => (
+  <>
+    <KpiStat label="재진" value={value} format="count" unit="명" />
+    <p className="text-small text-muted">{RETURNING_NOTE}</p>
+  </>
+)
 const WEEK_SERIES: BarSeries[] = [{ name: '환자 수', tone: 'accent' }]
 
 const tokens = (classes: string | null) => (classes ?? '').split(/\s+/).filter(Boolean)
@@ -186,20 +206,20 @@ describe('오늘 하루 분석 — 연결 전', () => {
 })
 
 describe('오늘 하루 분석 — 연결 뒤', () => {
-  it('AC-311.2: 칩과 아래 한 줄이 없고, 첫 세 칸은 오늘 줄 totals(KpiStat count · "명")', () => {
+  it('AC-311.2·AC-4404.1: 칩과 아래 한 줄이 없고, 환자 수·신환·재진 칸은 오늘 줄 totals(KpiStat count · "명", 옛 도우미 날 재진은 "90일초진 포함")', () => {
     draw(data(FULL_DAYS))
     const section = region('오늘 하루 분석')
     expect(within(section).queryByText('비트 PC 연결 전')).toBeNull()
     expect(within(section).queryByText(/연결하면 이 숫자로/)).toBeNull()
-    const [patients, newPatients, returning] = kpiCells()
+    const [patients, newPatients, , returning] = kpiCells()
     expect(patients!.innerHTML).toBe(markupOf(<KpiStat label="오늘 환자 수" value={13} format="count" unit="명" />))
     expect(newPatients!.innerHTML).toBe(markupOf(<KpiStat label="신환" value={4} format="count" unit="명" />))
-    expect(returning!.innerHTML).toBe(markupOf(<KpiStat label="재진" value={9} format="count" unit="명" />))
+    expect(returning!.innerHTML).toBe(markupOf(unknownReturning(9)))
   })
 
-  it('AC-311.2: 오늘과 7일 전이 모두 끝났으면 넷째 칸 값은 증감 글자(화살표 · "늘어남" · "3명 (+30.0%)") + "지난주 토요일"', () => {
+  it('AC-311.2·AC-4404.1: 오늘과 7일 전이 모두 끝났으면 다섯째 칸 값은 증감 글자(화살표 · "늘어남" · "3명 (+30.0%)") + "지난주 토요일"', () => {
     draw(data(FULL_DAYS))
-    const cell = kpiCells()[3] as HTMLElement
+    const cell = kpiCells()[4] as HTMLElement
     expect(within(cell).getByText('지난주 같은 요일보다')).toBeTruthy()
     const value = within(cell).getByText('3명 (+30.0%)').parentElement!
     hasAll(value, `${DELTA_VALUE} text-positive`)
@@ -211,52 +231,144 @@ describe('오늘 하루 분석 — 연결 뒤', () => {
     expect(within(cell).queryByText('–')).toBeNull()
   })
 
-  it('AC-311.2: 넷째 칸 값 줄의 화면 읽기 글자와 증감 글자 사이에 빈칸이 있다("늘어남 3명 …", 붙여 읽지 않게)', () => {
+  it('AC-311.2·AC-4404.1: 다섯째 칸 값 줄의 화면 읽기 글자와 증감 글자 사이에 빈칸이 있다("늘어남 3명 …", 붙여 읽지 않게)', () => {
     draw(data(FULL_DAYS))
-    const value = within(kpiCells()[3] as HTMLElement).getByText('3명 (+30.0%)').parentElement!
+    const value = within(kpiCells()[4] as HTMLElement).getByText('3명 (+30.0%)').parentElement!
     expect(value.textContent).toBe('늘어남 3명 (+30.0%)')
   })
 
-  it('AC-311.2: 줄어들면 화살표 · "줄어듦" · negative, 같으면 화살표 없이 "변화 없음"', () => {
+  it('AC-311.2·AC-4404.1: 줄어들면 화살표 · "줄어듦" · negative, 같으면 화살표 없이 "변화 없음"', () => {
     draw(data([day(TODAY, { newPatients: 1, returning: 4 }), day('2026-10-24', { newPatients: 2, returning: 8 })]))
-    const down = within(kpiCells()[3] as HTMLElement).getByText('5명 (−50.0%)').parentElement!
+    const down = within(kpiCells()[4] as HTMLElement).getByText('5명 (−50.0%)').parentElement!
     hasAll(down, `${DELTA_VALUE} text-negative`)
     expect(classesOf(down)).not.toContain('text-metric')
     expect(within(down).getByText('줄어듦')).toBeTruthy()
     expect(down.querySelector('svg')).not.toBeNull()
     cleanup()
     draw(data([day(TODAY, { newPatients: 2, returning: 8 }), day('2026-10-24', { newPatients: 2, returning: 8 })]))
-    const flat = within(kpiCells()[3] as HTMLElement).getByText('변화 없음').parentElement!
+    const flat = within(kpiCells()[4] as HTMLElement).getByText('변화 없음').parentElement!
     hasAll(flat, `${DELTA_VALUE} text-muted`)
     expect(classesOf(flat)).not.toContain('text-metric')
     expect(flat.querySelector('svg')).toBeNull()
-    expect(within(kpiCells()[3] as HTMLElement).getByText('지난주 토요일')).toBeTruthy()
+    expect(within(kpiCells()[4] as HTMLElement).getByText('지난주 토요일')).toBeTruthy()
   })
 
-  it('AC-311.2: 오늘 줄이 덜 끝났으면 넷째 칸은 "–" + "오늘 진료가 끝나면 비교해요"', () => {
+  it('AC-311.2·AC-4404.1: 오늘 줄이 덜 끝났으면 다섯째 칸은 "–" + "오늘 진료가 끝나면 비교해요"', () => {
     draw(data([day(TODAY, { partial: true, newPatients: 4, returning: 9 }), day('2026-10-24')]))
-    expect(kpiCells()[3]!.innerHTML).toBe(
+    expect(kpiCells()[4]!.innerHTML).toBe(
       markupOf(<KpiStat label="지난주 같은 요일보다" value={null} format="count" unit="명" emptyText="오늘 진료가 끝나면 비교해요" />),
     )
     expect(kpiCells()[0]!.innerHTML).toBe(markupOf(<KpiStat label="오늘 환자 수" value={13} format="count" unit="명" />))
   })
 
-  it('AC-311.2·AC-311.6: 오늘 끝남 + 7일 전 줄 없음/덜 끝남 → "–" + "지난주 자료가 없어요"', () => {
+  it('AC-311.2·AC-311.6·AC-4404.1: 오늘 끝남 + 7일 전 줄 없음/덜 끝남 → "–" + "지난주 자료가 없어요"', () => {
     const expected = markupOf(<KpiStat label="지난주 같은 요일보다" value={null} format="count" unit="명" emptyText="지난주 자료가 없어요" />)
     draw(data([day(TODAY), day('2026-10-23')]))
-    expect(kpiCells()[3]!.innerHTML).toBe(expected)
+    expect(kpiCells()[4]!.innerHTML).toBe(expected)
     cleanup()
     draw(data([day(TODAY), day('2026-10-24', { partial: true })]))
-    expect(kpiCells()[3]!.innerHTML).toBe(expected)
+    expect(kpiCells()[4]!.innerHTML).toBe(expected)
   })
 
-  it('AC-311.2·AC-311.6: 오늘 줄이 없으면 세 칸 "–" + "자료 없음"(KpiStat 기본), 넷째 칸 "오늘 진료가 끝나면 비교해요"', () => {
+  it('AC-311.2·AC-311.6·AC-4404.1: 오늘 줄이 없으면 네 칸 "–" + "자료 없음"(KpiStat 기본), 다섯째 칸 "오늘 진료가 끝나면 비교해요"', () => {
     draw(data([day('2026-10-30'), day('2026-10-24')]))
-    const labels = ['오늘 환자 수', '신환', '재진']
+    const labels = ['오늘 환자 수', '신환', '90일초진', '재진']
     labels.forEach((label, i) => {
       expect(kpiCells()[i]!.innerHTML).toBe(markupOf(<KpiStat label={label} value={null} format="count" unit="명" />))
     })
-    expect(within(kpiCells()[3] as HTMLElement).getByText('오늘 진료가 끝나면 비교해요')).toBeTruthy()
+    expect(within(kpiCells()[4] as HTMLElement).getByText('오늘 진료가 끝나면 비교해요')).toBeTruthy()
+  })
+})
+
+// 90일초진 칸 (first90 REQ-4404 AC-4404.1, 첫 시안 docs/mockups/first90/index.html '대시보드 · 하루 분석'). 칸 아래 글은 지금처럼 없고,
+// 그날 90일초진을 모를 때만 90일초진 "새 도우미(0.7.0)면 나와요"·재진 "90일초진 포함"이다(design.md 8). 숫자가 없을 때(연결 전·읽는 중 등)는 지금 칸 넷 그대로다
+describe('오늘 하루 분석 — 다섯 칸 (AC-4404.1)', () => {
+  const LABELS = ['오늘 환자 수', '신환', '90일초진', '재진', '지난주 같은 요일보다']
+
+  it('AC-4404.1: 그날 first90이 있으면 다섯 칸 이 차례 — 오늘 환자 수 · 신환 · 90일초진 · 재진(returning) · 지난주 같은 요일보다, 칸 아래 글이 없다', () => {
+    draw(data(KNOWN_DAYS))
+    const cells = kpiCells()
+    expect(cells).toHaveLength(5)
+    expect(cells.map((c) => c.querySelector('span')?.textContent)).toEqual(LABELS)
+    expect(cells[0]!.innerHTML).toBe(markupOf(<KpiStat label="오늘 환자 수" value={13} format="count" unit="명" />))
+    expect(cells[1]!.innerHTML).toBe(markupOf(<KpiStat label="신환" value={4} format="count" unit="명" />))
+    expect(cells[2]!.innerHTML).toBe(markupOf(<KpiStat label="90일초진" value={3} format="count" unit="명" />))
+    expect(cells[3]!.innerHTML).toBe(markupOf(<KpiStat label="재진" value={6} format="count" unit="명" />))
+    expect(cells[4]!.textContent).toContain('3명 (+30.0%)')
+    expect(cells[4]!.textContent).toContain('지난주 토요일')
+    const section = region('오늘 하루 분석')
+    expect(within(section).queryByText(F90_UNKNOWN)).toBeNull()
+    expect(within(section).queryByText(RETURNING_NOTE)).toBeNull()
+  })
+
+  it('AC-4404.1: 그날 first90이 0이면 "0명"이다(모름이 아니다)', () => {
+    draw(data([day(TODAY, { newPatients: 1, first90: 0, returning: 2 })]))
+    expect(kpiCells()[2]!.innerHTML).toBe(markupOf(<KpiStat label="90일초진" value={0} format="count" unit="명" />))
+    expect(kpiCells()[3]!.innerHTML).toBe(markupOf(<KpiStat label="재진" value={2} format="count" unit="명" />))
+  })
+
+  it('AC-4404.1: 그날 first90이 없으면(옛 도우미 날) 90일초진은 "–" + "새 도우미(0.7.0)면 나와요", 재진은 지금 값 + "90일초진 포함"', () => {
+    draw(data(FULL_DAYS))
+    const cells = kpiCells()
+    expect(cells).toHaveLength(5)
+    expect(cells.map((c) => c.querySelector('span')?.textContent)).toEqual(LABELS)
+    expect(cells[2]!.innerHTML).toBe(markupOf(<KpiStat label="90일초진" value={null} format="count" unit="명" emptyText={F90_UNKNOWN} />))
+    expect(cells[2]!.textContent).toBe('90일초진–새 도우미(0.7.0)면 나와요')
+    expect(cells[3]!.innerHTML).toBe(markupOf(unknownReturning(9)))
+    expect(cells[3]!.textContent).toBe('재진9명90일초진 포함')
+    hasAll(within(cells[3] as HTMLElement).getByText(RETURNING_NOTE), 'text-small text-muted')
+  })
+
+  it('AC-4404.1: 오늘이 옛 도우미 날이면 7일 전이 새 도우미 날이어도 모름 모양이고, 반대도 그날 줄만 본다', () => {
+    draw(data([day(TODAY, { newPatients: 4, returning: 9 }), day('2026-10-24', { newPatients: 2, first90: 1, returning: 7 })]))
+    expect(kpiCells()[2]!.textContent).toBe('90일초진–새 도우미(0.7.0)면 나와요')
+    cleanup()
+    draw(data([day(TODAY, { newPatients: 4, first90: 3, returning: 6 }), day('2026-10-24', { newPatients: 2, returning: 8 })]))
+    expect(kpiCells().map((c) => c.textContent).slice(0, 4)).toEqual(['오늘 환자 수13명', '신환4명', '90일초진3명', '재진6명'])
+  })
+
+  it('AC-4404.1: 지난 날을 고르면 첫 칸 이름만 "환자 수"이고 차례·값은 같다', () => {
+    render(<DashboardAnalysis today="2026-11-02" day={TODAY} source={data(KNOWN_DAYS)} />)
+    const cells = Array.from(region('10월 31일 하루 분석').children[1]!.children)
+    expect(cells.map((c) => c.querySelector('span')?.textContent)).toEqual(['환자 수', '신환', '90일초진', '재진', '지난주 같은 요일보다'])
+    expect(cells.map((c) => c.textContent).slice(0, 4)).toEqual(['환자 수13명', '신환4명', '90일초진3명', '재진6명'])
+    expect(cells[4]!.textContent).toContain('3명 (+30.0%)')
+  })
+
+  it('AC-4404.1: 그날 줄이 없으면 다섯 칸 모두 "–"이고 90일초진·재진도 KpiStat 기본 "자료 없음"이다(모르는 날 글이 아니다)', () => {
+    render(<DashboardAnalysis today="2026-11-02" day="2026-10-29" source={data(KNOWN_DAYS)} />)
+    const cells = Array.from(region('10월 29일 하루 분석').children[1]!.children)
+    expect(cells.map((c) => c.textContent)).toEqual(['환자 수–자료 없음', '신환–자료 없음', '90일초진–자료 없음', '재진–자료 없음', '지난주 같은 요일보다–자료 없음'])
+  })
+
+  it('AC-4404.1: 768px 이상 5칸 한 줄(칸 사이 1px line 세로선), 768px 미만 2칸씩 — 다섯째 칸은 셋째 줄 두 칸 폭(위 선, 왼쪽 0)', () => {
+    draw(data(KNOWN_DAYS))
+    hasAll(kpiRow(), 'grid grid-cols-5 border-b border-line max-md:grid-cols-2')
+    expect(classesOf(kpiRow())).not.toContain('grid-cols-4')
+    const [a, b, c, d, e] = kpiCells()
+    hasAll(a!, 'min-w-0 py-4 pr-5 pl-0 max-md:py-3 max-md:pr-4')
+    expect(classesOf(a!)).not.toContain('border-l')
+    hasAll(b!, 'min-w-0 border-l border-line py-4 px-5 max-md:py-3 max-md:px-4')
+    hasAll(c!, 'min-w-0 border-l border-line py-4 pr-5 pl-5 max-md:border-t max-md:border-l-0 max-md:py-3 max-md:pr-4 max-md:pl-0')
+    hasAll(d!, 'min-w-0 border-l border-line py-4 px-5 max-md:border-t max-md:py-3 max-md:px-4')
+    hasAll(e!, 'min-w-0 border-l border-line py-4 pr-5 pl-5 max-md:col-span-2 max-md:border-t max-md:border-l-0 max-md:py-3 max-md:pr-4 max-md:pl-0')
+  })
+
+  it('AC-4404.1: 숫자가 없을 때(연결 전·읽는 중·읽지 못함)는 지금 칸 넷 그대로다 — 90일초진 칸이 없다', () => {
+    draw(NONE)
+    hasAll(kpiRow(), 'grid grid-cols-4')
+    expect(kpiCells().map((c) => c.querySelector('span')?.textContent)).toEqual(['오늘 환자 수', '신환', '재진', '지난주 같은 요일보다'])
+    cleanup()
+    render(<DashboardAnalysis today={TODAY} source={NONE} emptyChip="읽는 중" emptyText="읽는 중" />)
+    expect(kpiCells()).toHaveLength(4)
+    expect(screen.queryByText('90일초진')).toBeNull()
+  })
+
+  it('AC-4404.1: 대시보드 파일은 통계 화면 전용 클래스(st 토큰·움직임)를 직접 쓰지 않는다', () => {
+    const dir = join(process.cwd(), 'src/components/dashboard/summary')
+    for (const file of ['DailySection.tsx', 'FlowSection.tsx', 'flow.ts', 'view.ts']) {
+      expect(readFileSync(join(dir, file), 'utf8'), file).not.toMatch(/\b(?:bg|text|border|fill|stroke|shadow|rounded)-st\b|\b(?:bg|text|border)-st-|\bst-(?:move|rise|in|donut|flash|tag)/)
+    }
   })
 })
 
@@ -682,6 +794,82 @@ describe('기간별 흐름 — 연결 뒤 그래프', () => {
 
 // '처방 상위' = 통계 탭 처방별 추세 묶음 (bit-dashboard REQ-606, design.md '처방 상위 = 통계 탭 묶음' 칸 그리기 ①~⑤).
 // 묶음은 새 prop이 아니라 source(data)의 groups로 온다. 숫자는 groupRank(view.ts)가 세고, 여기서는 그린 모양·글자·링크를 본다
+// 기간별 흐름 막대의 90일초진 (first90 REQ-4404 AC-4404.3, design.md 5-9). 모든 칸이 앎이면 통계 일별 내원과 같은 세 갈래·색(trendSeries(true)),
+// 아니면 지금 두 갈래(신환 accent · 재진 chart-3)다. 대시보드 모양·움직임은 그대로다(StackedBarChart에 motion·onPick을 주지 않는다)
+describe('기간별 흐름 — 90일초진 세 갈래 (AC-4404.3)', () => {
+  const MONTH_FLOW = flowOf(TODAY, 30, false)
+  const trendRootOf = () => chart('환자 수 추이').querySelector('table')!.parentElement!.parentElement!
+
+  it('AC-4404.3: 기간 안 모든 날에 first90이 있으면 환자 수 추이 = StackedBarChart(신환 accent · 90일초진 f90 · 재진 ret), 칸 값 [신환, 90일초진, 재진]', () => {
+    draw(data(KNOWN_DAYS))
+    const buckets = flowTrend(KNOWN_DAYS, MONTH_FLOW)!
+    expect(buckets.map((b) => b.values)).toEqual([
+      [5, 4, 11],
+      [1, 0, 5],
+      [2, 1, 7],
+      [3, 2, 5],
+    ])
+    expect(trendRootOf().outerHTML).toBe(markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={trendSeries(true)} buckets={buckets} dense />))
+  })
+
+  it('AC-4404.3: 세 갈래 범례는 계열 tone 그대로(ChartLegend 신환 accent · 90일초진 f90 · 재진 ret)다', () => {
+    draw(data(KNOWN_DAYS))
+    expect(chart('환자 수 추이').querySelector('ul')!.outerHTML).toBe(
+      markupOf(
+        <ChartLegend
+          items={[
+            { label: '신환', mark: 'accent' },
+            { label: '90일초진', mark: 'f90' },
+            { label: '재진', mark: 'ret' },
+          ]}
+        />,
+      ),
+    )
+  })
+
+  it('AC-4404.3: 세 갈래의 [표로 보기] 표도 세 계열 칸이다', async () => {
+    draw(data(KNOWN_DAYS))
+    await userEvent.setup().click(within(chart('환자 수 추이')).getByRole('button', { name: '표로 보기' }))
+    const table = chart('환자 수 추이').querySelector('table')!
+    expect(table.parentElement!.outerHTML).toBe(
+      markupOf(<ChartTable caption="환자 수 추이 · 단위 명 · 최근 30일" series={trendSeries(true)} buckets={flowTrend(KNOWN_DAYS, MONTH_FLOW)!} />),
+    )
+  })
+
+  it('AC-4404.3: 하루라도 first90이 없으면 지금 두 갈래(신환 accent · 재진 chart-3)·범례 그대로이고, 새 도우미 날의 재진은 returning + 90일초진이다', () => {
+    const mixed = [...KNOWN_DAYS, day('2026-10-20', { newPatients: 1, returning: 9 })]
+    draw(data(mixed))
+    const buckets = flowTrend(mixed, MONTH_FLOW)!
+    expect(buckets.map((b) => b.values)).toEqual([
+      [5, 15],
+      [1, 5],
+      [1, 9],
+      [2, 8],
+      [3, 7],
+    ])
+    expect(trendRootOf().outerHTML).toBe(markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={buckets} dense />))
+    expect(chart('환자 수 추이').querySelector('ul')!.outerHTML).toBe(
+      markupOf(
+        <ChartLegend
+          items={[
+            { label: '신환', mark: 'accent' },
+            { label: '재진', mark: 'chart-3' },
+          ]}
+        />,
+      ),
+    )
+  })
+
+  it('AC-4404.3: 대시보드 모양·움직임은 그대로다 — 기간별 흐름에 움직임 클래스·누르는 막대 단추가 없고, 요일별 환자 수는 한 계열 그대로다', () => {
+    draw(data(KNOWN_DAYS))
+    const flow = region('기간별 흐름')
+    expect(flow.innerHTML).not.toMatch(/st-move|st-rise|st-in\b|st-donut/)
+    expect(chart('환자 수 추이').querySelector('[aria-hidden="true"] button')).toBeNull()
+    const week = chart('요일별 환자 수').querySelector('table')!.parentElement!.parentElement!
+    expect(week.outerHTML).toBe(markupOf(<StackedBarChart title="요일별 환자 수" unit="명" series={WEEK_SERIES} buckets={weekdayBuckets(KNOWN_DAYS, periodRange(TODAY, 30))!} />))
+  })
+})
+
 describe("기간별 흐름 — '처방 상위' = 통계 탭 묶음 (REQ-606)", () => {
   const MONTH = periodRange(TODAY, 30)
   const UNREAD = '통계 탭 묶음을 읽지 못했어요. 화면을 새로 열면 다시 읽어요.'
@@ -1028,11 +1216,12 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
     'FlowSection.tsx: @/components/common/ErrorCard', // dashboard-ux AC-2707.4: 기간별 흐름 구역으로 옮김
     'PeriodButtons.tsx: @/components/stats/PeriodPicker', // dashboard-ux AC-2703.2: 추이 조회 기간 묶음
     'flow.ts: @/components/stats/periodPick',
+    'flow.ts: @/components/stats/trendSeries', // first90 AC-4404.3: 세 갈래는 통계 일별 내원과 같은 계열
     'flow.ts: @/components/stats/view',
   ]
   const EXCEPTIONS = new Set([SOURCE_READ_TYPE, ...LIVE_IMPORTS, ...PERIOD_IMPORTS])
 
-  it('AC-311.8·AC-606.6·AC-2701.1: 불러오는 곳은 react · next/link · 차트 부품 · ds · Icon · dates · compare · 저장 모양 타입 · 이 폴더뿐이다(shell·briefing·notReadyFeatures·supabase·lib/auth 없음)', () => {
+  it('AC-311.8·AC-606.6·AC-2701.1·AC-4404.3: 불러오는 곳은 react · next/link · 차트 부품 · ds · Icon · dates · compare · 저장 모양 타입 · 이 폴더뿐이다(shell·briefing·notReadyFeatures·supabase·lib/auth 없음)', () => {
     const all = appFiles().flatMap((file) => importsOf(file).map((from) => `${file}: ${from}`))
     expect(all.length).toBeGreaterThan(0)
     expect(all.filter((entry) => !ALLOWED.test(entry.split(': ')[1]!) && !EXCEPTIONS.has(entry))).toEqual([])
@@ -1055,13 +1244,14 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
     expect(ds.chartNoSideScroll).toBe('relative [&_.text-center]:flex [&_.text-center]:flex-col [&_.text-center]:items-center [&_table]:right-0')
   })
 
-  it('AC-1805.2·AC-2703.2: summary/view.ts는 components/stats를 부르지 않고(통계 view.ts가 이 파일을 불러 고리가 생긴다), 통계를 부르는 곳은 flow.ts(periodPick·view)와 DashboardAnalysis.tsx·PeriodButtons.tsx(PeriodPicker)뿐이다', () => {
+  it('AC-1805.2·AC-2703.2·AC-4404.3: summary/view.ts는 components/stats를 부르지 않고(통계 view.ts가 이 파일을 불러 고리가 생긴다), 통계를 부르는 곳은 flow.ts(periodPick·trendSeries·view)와 DashboardAnalysis.tsx·PeriodButtons.tsx(PeriodPicker)뿐이다', () => {
     expect(importsOf('view.ts').filter((from) => from.includes('components/stats'))).toEqual([])
     expect(code('view.ts')).not.toMatch(/components\/stats/)
     const stats = appFiles().flatMap((file) => importsOf(file).flatMap((from) => (from.startsWith('@/components/stats') ? [`${file}: ${from}`] : [])))
     expect(stats.sort()).toEqual([
       'PeriodButtons.tsx: @/components/stats/PeriodPicker',
       'flow.ts: @/components/stats/periodPick',
+      'flow.ts: @/components/stats/trendSeries',
       'flow.ts: @/components/stats/view',
     ])
     // 새 파일 둘은 lib/storage를 부르지 않는다(옛 기간 읽기는 LiveDashboard가 만들어 source.older로 준다)
@@ -1152,42 +1342,42 @@ describe('고른 날 (day)', () => {
     render(<DashboardAnalysis today={today} day={dayValue} source={source} />)
   const cellsOf = (title: string) => Array.from(region(title).children[1]!.children)
 
-  it('AC-605.3: 지난 날짜를 고르면 제목은 "{월}월 {일}일 하루 분석", 첫 칸 이름은 "환자 수"이고 그날 숫자다', () => {
+  it('AC-605.3·AC-4404.1: 지난 날짜를 고르면 제목은 "{월}월 {일}일 하루 분석", 첫 칸 이름은 "환자 수"이고 그날 숫자다', () => {
     drawDay('2026-10-31')
     expect(screen.getByRole('heading', { level: 2, name: '10월 31일 하루 분석' })).toBeTruthy()
     const cells = cellsOf('10월 31일 하루 분석')
-    expect(cells.slice(0, 3).map((cell) => cell.textContent)).toEqual(['환자 수13명', '신환4명', '재진9명'])
+    expect(cells.slice(0, 4).map((cell) => cell.textContent)).toEqual(['환자 수13명', '신환4명', '90일초진–새 도우미(0.7.0)면 나와요', '재진9명90일초진 포함'])
   })
 
-  it('AC-605.3: 넷째 칸은 그날과 7일 전을 견준 값이다', () => {
+  it('AC-605.3·AC-4404.1: 다섯째 칸은 그날과 7일 전을 견준 값이다', () => {
     drawDay('2026-10-31')
-    const fourth = cellsOf('10월 31일 하루 분석')[3]!
+    const fourth = cellsOf('10월 31일 하루 분석')[4]!
     expect(fourth.textContent).toContain('지난주 같은 요일보다')
     expect(fourth.textContent).toContain('3명 (+30.0%)')
     expect(fourth.textContent).toContain('지난주 토요일')
     hasAll(within(fourth as HTMLElement).getByText('3명 (+30.0%)').parentElement!, DELTA_VALUE)
   })
 
-  it('AC-605.3: 7일 전 자료가 없으면 넷째 칸은 "지난주 자료가 없어요"다', () => {
+  it('AC-605.3·AC-4404.1: 7일 전 자료가 없으면 다섯째 칸은 "지난주 자료가 없어요"다', () => {
     drawDay('2026-10-30')
-    const fourth = cellsOf('10월 30일 하루 분석')[3]!
+    const fourth = cellsOf('10월 30일 하루 분석')[4]!
     expect(within(fourth as HTMLElement).getByText('지난주 자료가 없어요')).toBeTruthy()
   })
 
-  it('AC-605.3: 지난 날짜의 하루 줄에는 "오늘" 글자가 없다(저장 숫자에 덜 끝난 표시가 남은 날도)', () => {
+  it('AC-605.3·AC-4404.1: 지난 날짜의 하루 줄에는 "오늘" 글자가 없다(저장 숫자에 덜 끝난 표시가 남은 날도)', () => {
     drawDay('2026-10-12') // partial
     const section = region('10월 12일 하루 분석')
     expect(section.textContent).not.toContain('오늘')
-    const fourth = cellsOf('10월 12일 하루 분석')[3]!
+    const fourth = cellsOf('10월 12일 하루 분석')[4]!
     expect(within(fourth as HTMLElement).getByText('자료 없음')).toBeTruthy()
   })
 
-  it('AC-605.4: 자료가 없는 지난 날짜면 숫자 칸 넷이 모두 "–" + "자료 없음"이고 첫 칸 이름은 "환자 수"다', () => {
+  it('AC-605.4·AC-4404.1: 자료가 없는 지난 날짜면 숫자 칸 다섯이 모두 "–" + "자료 없음"이고 첫 칸 이름은 "환자 수"다', () => {
     drawDay('2026-10-29')
     const section = region('10월 29일 하루 분석')
     const cells = cellsOf('10월 29일 하루 분석')
-    expect(cells).toHaveLength(4)
-    expect(cells.map((cell) => cell.textContent)).toEqual(['환자 수–자료 없음', '신환–자료 없음', '재진–자료 없음', '지난주 같은 요일보다–자료 없음'])
+    expect(cells).toHaveLength(5)
+    expect(cells.map((cell) => cell.textContent)).toEqual(['환자 수–자료 없음', '신환–자료 없음', '90일초진–자료 없음', '재진–자료 없음', '지난주 같은 요일보다–자료 없음'])
     expect(section.textContent).not.toContain('오늘')
     // 읽기는 끝났으니 칩은 없다
     expect(within(section).queryByText('비트 PC 연결 전')).toBeNull()
@@ -1492,6 +1682,27 @@ describe('기간 고르기 (dashboard-period)', () => {
       expect(legend()).toEqual(['신환', '재진', '일부 기간'])
     })
 
+    it("AC-4404.3: 고른 기간(2026년 10월 주별)도 모든 날에 first90이 있으면 세 갈래 막대이고, 범례는 신환 · 90일초진 · 재진 · '일부 기간'이다", async () => {
+      const known = NOW_DAYS.map((d) => ({ ...d, totals: { ...d.totals, patients: d.totals.patients + 1, first90: 1 } }))
+      drawNow(source({ days: known }))
+      await pickUnit('주별')
+      const buckets = flowTrend(known, flowOfPick(month('2026-10', 'week')))!
+      expect(buckets.every((b) => b.values.length === 3)).toBe(true)
+      expect(trendRoot().outerHTML).toBe(markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={trendSeries(true)} buckets={buckets} />))
+      expect(chart('환자 수 추이').querySelector('ul')!.outerHTML).toBe(
+        markupOf(
+          <ChartLegend
+            items={[
+              { label: '신환', mark: 'accent' },
+              { label: '90일초진', mark: 'f90' },
+              { label: '재진', mark: 'ret' },
+              { label: '일부 기간', mark: 'hatch' },
+            ]}
+          />,
+        ),
+      )
+    })
+
     it("AC-1802.2: 빠른 단추 범례는 덜 끝난 날이 있어도 지금 그대로(신환·재진)", () => {
       drawNow(source({ days: [...NOW_DAYS, day('2026-10-20', { partial: true })] }))
       expect(legend()).toEqual(['신환', '재진'])
@@ -1782,11 +1993,11 @@ describe('표로 보기 · 증감 공통 (REQ-2706)', () => {
     expect(Array.from(table.querySelectorAll('tbody th')).map((th) => th.textContent)).toEqual(buckets.map((b) => b.rangeLabel))
   })
 
-  it('AC-2706.4: "지난주 같은 요일보다" 값 줄은 DeltaText(화살표 12px 꾸밈 · 화면 읽기 글 · 증감 글)로 그리고, 보이는 글·화면 읽기 글은 그대로다', () => {
+  it('AC-2706.4·AC-4404.1: "지난주 같은 요일보다" 값 줄은 DeltaText(화살표 12px 꾸밈 · 화면 읽기 글 · 증감 글)로 그리고, 보이는 글·화면 읽기 글은 그대로다', () => {
     draw(data(FULL_DAYS))
     const view = todayView(TODAY, FULL_DAYS)
     if (view.compare.kind !== 'delta') throw new Error('증감 칸이 아니다')
-    const value = within(kpiCells()[3] as HTMLElement).getByText('3명 (+30.0%)').parentElement!
+    const value = within(kpiCells()[4] as HTMLElement).getByText('3명 (+30.0%)').parentElement!
     const host = document.createElement('div')
     host.innerHTML = markupOf(<DeltaText delta={view.compare.delta} unit="명" className="" arrow={12} />)
     expect(value.innerHTML).toBe(host.firstElementChild!.innerHTML)

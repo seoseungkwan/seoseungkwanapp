@@ -9,8 +9,8 @@ import { isConnected, type SummarySource } from './source'
 import { longDate, todayView, type TodayView } from './view'
 
 // 일별 현황 구역(dashboard-ux AC-2707.2·AC-2707.4, 앞 tab-frame REQ-311 '오늘 하루 분석'): DashboardAnalysis에서 나눴다.
-// 머리(h2 + 연결 전 칩) → 기준일 묶음 "일별 현황 기준일"(AC-2703.1, 날짜 고르기는 부르는 쪽이 준다) → 숫자 칸 넷 → [안내 줄] → 보고 문장 자리(sentence).
-// 숫자가 없으면 칩 + 빈 칸 넷 + 안내 줄이다(숫자를 지어내지 않는다)
+// 머리(h2 + 연결 전 칩) → 기준일 묶음 "일별 현황 기준일"(AC-2703.1, 날짜 고르기는 부르는 쪽이 준다) → 숫자 칸 다섯(first90 AC-4404.1) → [안내 줄] → 보고 문장 자리(sentence).
+// 숫자가 없으면(연결 전·읽는 중·읽지 못함) 칩 + 지금 빈 칸 넷 + 안내 줄이다(숫자를 지어내지 않는다)
 
 export const SECTION = 'mt-12 border-t border-line-strong pt-5 max-md:mt-8 max-md:pt-4' // 메모 §3 '덩어리 사이'
 export const SECTION_HEAD = 'mb-4 flex flex-wrap items-center gap-3'
@@ -19,17 +19,25 @@ export const SECTION_TITLE = 'text-title font-semibold text-ink'
 export const NOTE = 'text-small text-muted max-w-130'
 export const NO_DATA = '자료 없음'
 
-const KPI_LABELS = ['오늘 환자 수', '신환', '재진'] as const
-const PAST_KPI_LABELS = ['환자 수', '신환', '재진'] as const
 const LAST_WEEK_LABEL = '지난주 같은 요일보다'
-// 숫자 칸 넷: 위아래 16·좌우 20, 첫 칸 왼쪽 0, 칸 사이 1px line 세로선.
-// 768px 미만 2칸 × 2줄: 12·16, 왼쪽 칸 왼쪽 0, 둘째 줄 위 1px line(셋째 칸은 세로선 없음)
+// 90일초진 칸 (first90 AC-4404.1, 첫 시안 docs/mockups/first90/index.html). 칸 아래 글은 지금처럼 없고, 그날 90일초진을 모를 때만 두 글이다(design.md 8)
+const F90_LABEL = '90일초진'
+const F90_UNKNOWN = '새 도우미(0.7.0)면 나와요'
+const RETURNING_NOTE = '90일초진 포함'
+// 숫자 칸: 위아래 16·좌우 20, 첫 칸 왼쪽 0, 칸 사이 1px line 세로선.
+// 768px 미만 2칸씩: 12·16, 왼쪽 칸 왼쪽 0, 둘째 줄부터 위 1px line(왼쪽 칸은 세로선 없음). 다섯째 칸은 셋째 줄 두 칸 폭이다(시안 그대로)
 const KPI_CELLS = [
   'min-w-0 py-4 pr-5 pl-0 max-md:py-3 max-md:pr-4',
   'min-w-0 border-l border-line py-4 px-5 max-md:py-3 max-md:px-4',
   'min-w-0 border-l border-line py-4 pr-5 pl-5 max-md:border-t max-md:border-l-0 max-md:py-3 max-md:pr-4 max-md:pl-0',
   'min-w-0 border-l border-line py-4 px-5 max-md:border-t max-md:py-3 max-md:px-4',
+  'min-w-0 border-l border-line py-4 pr-5 pl-5 max-md:col-span-2 max-md:border-t max-md:border-l-0 max-md:py-3 max-md:pr-4 max-md:pl-0',
 ] as const
+// 숫자 줄: 숫자가 있으면 다섯 칸, 숫자가 없으면 지금 칸 넷(90일초진 칸 없음)
+const KPI_ROW = { five: 'grid grid-cols-5 border-b border-line max-md:grid-cols-2', four: 'grid grid-cols-4 border-b border-line max-md:grid-cols-2' } as const
+
+// 지난주 칸 앞의 숫자 칸 하나: KpiStat(count · "명") + [칸 아래 글]. emptyText 없음 = KpiStat 기본 '자료 없음'
+type CountCell = { label: string; value: number | null; emptyText?: string; note?: string }
 
 
 export type DailySectionProps = {
@@ -88,21 +96,37 @@ export function DailySection({
   )
 }
 
-// 숫자 줄: 오늘 환자 수 · 신환 · 재진 · 지난주 같은 요일보다. view null = 숫자 없음(칸마다 emptyText).
+// 숫자 칸(지난주 칸 앞). 숫자 없음(view null) = 지금 칸 넷의 셋(칸마다 emptyText).
+// 숫자 있음 = 환자 수 · 신환 · 90일초진 · 재진(AC-4404.1): 그날 first90이 있으면 그 값과 returning, 없으면 90일초진 "–" + 안내 글, 재진은 지금 값 + "90일초진 포함".
+// 그날 줄이 없으면(counts null) 넷 모두 KpiStat 기본 '자료 없음'이다
+function countCells(first: string, view: TodayView | null, emptyText: string): CountCell[] {
+  if (view === null) return [first, '신환', '재진'].map((label) => ({ label, value: null, emptyText }))
+  const { counts } = view
+  if (counts === null) return [first, '신환', F90_LABEL, '재진'].map((label) => ({ label, value: null }))
+  const head = [
+    { label: first, value: counts.patients },
+    { label: '신환', value: counts.newPatients },
+  ]
+  if (counts.first90 === undefined) {
+    return [...head, { label: F90_LABEL, value: null, emptyText: F90_UNKNOWN }, { label: '재진', value: counts.returning, note: RETURNING_NOTE }]
+  }
+  return [...head, { label: F90_LABEL, value: counts.first90 }, { label: '재진', value: counts.returning }]
+}
+
+// 숫자 줄: 숫자 칸 + 지난주 같은 요일보다. view null = 숫자 없음(칸마다 emptyText).
 // past = 지난 날짜(AC-605.3·AC-605.4): 첫 칸 이름이 "환자 수"이고, 그 날은 끝나기를 기다릴 날이 아니라 비교할 수 없으면 "자료 없음"이다
 function TodayNumbers({ view, emptyText, past }: { view: TodayView | null; emptyText: string; past: boolean }) {
-  const counts = view?.counts ?? null
-  const values = counts === null ? [null, null, null] : [counts.patients, counts.newPatients, counts.returning]
+  const cells = countCells(past ? '환자 수' : '오늘 환자 수', view, emptyText)
 
   return (
-    <div className="grid grid-cols-4 border-b border-line max-md:grid-cols-2">
-      {(past ? PAST_KPI_LABELS : KPI_LABELS).map((label, i) => (
+    <div className={view === null ? KPI_ROW.four : KPI_ROW.five}>
+      {cells.map(({ label, value, emptyText: empty, note }, i) => (
         <div key={label} className={KPI_CELLS[i]}>
-          {/* 연결 뒤 빈 값은 KpiStat 기본 '자료 없음' */}
-          <KpiStat label={label} value={values[i] ?? null} format="count" unit="명" emptyText={view === null ? emptyText : undefined} />
+          <KpiStat label={label} value={value} format="count" unit="명" emptyText={empty} />
+          {note !== undefined && <p className="text-small text-muted">{note}</p>}
         </div>
       ))}
-      <div className={KPI_CELLS[3]}>
+      <div className={view === null ? KPI_CELLS[3] : KPI_CELLS[4]}>
         {view?.compare.kind === 'delta' ? (
           <DeltaStat delta={view.compare.delta} weekday={view.compare.weekday} />
         ) : (
@@ -119,7 +143,7 @@ function TodayNumbers({ view, emptyText, past }: { view: TodayView | null; empty
   )
 }
 
-// 넷째 칸의 값이 증감일 때. KpiStat의 값은 숫자 하나라 증감을 값으로 쓸 수 없어 같은 글자 단계로 따로 둔다:
+// 지난주 칸(마지막 칸)의 값이 증감일 때. KpiStat의 값은 숫자 하나라 증감을 값으로 쓸 수 없어 같은 글자 단계로 따로 둔다:
 // 이름(small muted) → 값 줄(600: DeltaText — 화살표 꾸밈 12px + 화면 읽기 글자 + 증감 글자, KpiStat 증감 줄과 같은 부품·색 규칙, dashboard-ux AC-2706.4) → "지난주 {요일}요일"(small muted).
 // 값 줄은 PC 20/36, 폰 16/32다(bit-dashboard design.md '### 날짜 고르기', 시안 .kpi-v.sm). metric(28)이면 좁은 폭에서 세 줄로 꺾이고, 글자 토큰의 줄 높이는 28·24라 줄 높이를 따로 준다
 const DELTA_VALUE = 'mt-1 flex flex-wrap items-center gap-x-1 text-title leading-9 font-semibold tabular-nums max-md:text-subtitle max-md:leading-8'
