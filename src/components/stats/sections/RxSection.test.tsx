@@ -283,6 +283,45 @@ describe('AC-4003.6: 탭 안 고치기 — 패널 맨 위 h3 · 초점', () => {
   })
 })
 
+// ── stats-revenue: 매출 칸이 같은 탭 부품을 쓴다(design.md '칸 부품', 결정 6). 넘김 값 title·label·notice, 주지 않으면 지금 글자 그대로 ─────────────────
+describe('AC-4107.1·AC-4107.8: 넘김 값 title · label · notice', () => {
+  const NOTICE = (
+    <div role="note">
+      <p>가짜 안내 줄</p>
+    </div>
+  )
+
+  it('AC-4107.1: title·label을 주면 h2와 tablist 이름이 그 글자이고, 탭·키·패널은 그대로다', () => {
+    render(<RxSection tabs={TABS} title="가짜 칸" label="가짜 칸 보기" />)
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['가짜 칸'])
+    const list = screen.getByRole('tablist', { name: '가짜 칸 보기' })
+    expect(within(list).getAllByRole('tab').map((t) => t.textContent)).toEqual(['묶음별 추세', '처방별 신환·재진', '처방 골라 보기'])
+    expect(screen.queryByRole('tablist', { name: '처방 보기' })).toBeNull()
+    const [first, second] = tabs()
+    first!.focus()
+    fireEvent.keyDown(first!, { key: 'ArrowRight' })
+    expect(second!.getAttribute('aria-selected')).toBe('true')
+    expect(tabs().map((t) => panelOf(t).hidden)).toEqual([true, false, true])
+  })
+
+  it('AC-4107.1: 주지 않으면 지금 글자(h2 `처방` · tablist `처방 보기`)이고 머리 줄 다음이 곧 탭 줄이다', () => {
+    draw()
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('처방')
+    expect(head().nextElementSibling).toBe(screen.getByRole('tablist', { name: '처방 보기' }))
+    expect(screen.queryByRole('note')).toBeNull()
+  })
+
+  it('AC-4107.8: notice는 머리 줄과 탭 줄 사이에 한 번 그려지고 탭 패널 밖이다', () => {
+    render(<RxSection tabs={TABS} notice={NOTICE} />)
+    const note = screen.getByRole('note')
+    expect(head().nextElementSibling).toBe(note)
+    expect(note.nextElementSibling).toBe(screen.getByRole('tablist'))
+    expect(note.closest('[role="tabpanel"]')).toBeNull()
+    fireEvent.click(tabNamed('처방 골라 보기'))
+    expect(screen.getAllByRole('note')).toEqual([note])
+  })
+})
+
 describe('AC-4002.6: 목차 자리 id', () => {
   it('AC-4002.6: SectionAnchor로 감싸면 처방 칸 section에 그 id와 TOC_SCROLL이 붙고, 탭 안에는 id가 겹치지 않는다', () => {
     const { container } = render(

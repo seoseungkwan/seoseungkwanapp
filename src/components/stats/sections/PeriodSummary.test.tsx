@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { groupKey } from '@/components/stats/treatmentView'
 import type { StatsRxGroupsView } from '@/components/stats/useStatsRxGroups'
 import type { StatsPick } from '@/components/stats/periodPick'
+import { revenueCells, type RevenueCell } from '@/components/stats/revenueView'
 import { rangeOf, statsRange, summaryCells, type StatsInput, type StatsPeriod } from '@/components/stats/view'
 import { nestedBoxes } from '@/testing/boxes'
 import type { ClinicReportNumbers } from '@/types/clinicReport'
@@ -500,5 +501,143 @@ describe('AC-1704.1·AC-1704.2·AC-1704.4: 고른 기간의 기간 요약', () =
   it('AC-1704.2: 끝나지 않은 날이 없으면 붙지 않는다', () => {
     render(<PeriodSummary input={pickOf(OCT, DAYS, SEP_OCT)} saved />)
     expect(screen.queryByText(/자료 없는 날/)).toBeNull()
+  })
+})
+
+// ── stats-revenue: 기간 요약 둘째 줄 매출 네 칸 (REQ-4106, design.md '칸 부품', 시안 docs/mockups/stats-revenue).
+// 칸 값은 revenueView(TASK-4)가 주는 모양을 손으로 만든 가짜(시안 숫자·글)다. 읽는 중·읽기 실패는 revenueCells가 주는 값 그대로다
+describe('AC-4106.1~AC-4106.4: 기간 요약 둘째 줄(매출 네 칸)', () => {
+  const UP = [day('2026-09-21', 100), day('2026-11-02', 110)]
+  const cell = (key: RevenueCell['key'], label: string, value: string, unit: string | null, note: string | null, tone: RevenueCell['tone'], srText = ''): RevenueCell => ({
+    key,
+    label,
+    value,
+    unit,
+    note,
+    tone,
+    srText,
+  })
+  const TOTAL = cell('total', '매출', '1억 3,261만', '원', '진료한 날 25일 평균 530만 원', 'ink')
+  const PER_VISIT = cell('perVisit', '건당 진료비', '57,333', '원', '매출 ÷ 접수 2,313건', 'ink')
+  const UNCHECKED = cell('unchecked', '확인 필요한 날', '1', '일', '10월 28일 · 그날 금액은 매출에 넣지 않았어요', 'warn')
+  const COMPARE = cell('compare', '비교 기간보다', '60만 원 (+0.4%)', null, '지난 30일 매출 1억 3,200만 원', 'up', '늘어남')
+  const MOCKUP = [TOTAL, PER_VISIT, UNCHECKED, COMPARE]
+  const grids = (container: HTMLElement) => [...container.querySelectorAll('section .grid')] as HTMLElement[]
+  const revenueGrid = (container: HTMLElement) => grids(container)[1]!
+  const cellsOf = (container: HTMLElement) => [...revenueGrid(container).children] as HTMLElement[]
+  const drawWith = (revenue: readonly RevenueCell[], input = inputOf(UP, WHOLE)) => render(<PeriodSummary input={input} saved revenue={revenue} />).container
+
+  it('AC-4106.1: 환자 첫 줄 바로 아래 둘째 줄에 네 칸이 매출 · 건당 진료비 · 확인 필요한 날 · 비교 기간보다 차례이고 시안 글이다', () => {
+    const container = drawWith(MOCKUP)
+    const [first, second] = grids(container)
+    expect(grids(container)).toHaveLength(2)
+    expect(first!.nextElementSibling).toBe(second)
+    expect(cellsOf(container).map((el) => el.textContent)).toEqual([
+      '매출1억 3,261만원진료한 날 25일 평균 530만 원',
+      '건당 진료비57,333원매출 ÷ 접수 2,313건',
+      '확인 필요한 날1일10월 28일 · 그날 금액은 매출에 넣지 않았어요',
+      '비교 기간보다▲ 60만 원 (+0.4%)늘어남지난 30일 매출 1억 3,200만 원',
+    ])
+  })
+
+  it('AC-4106.1: 값 옆 `원`·`일`은 작은 글자(body 500 muted)이고 값은 metric 600 고정폭이다', () => {
+    const container = drawWith(MOCKUP)
+    const [total, , unchecked] = cellsOf(container)
+    const value = within(total!).getByText('1억 3,261만')
+    expect(value.className.split(' ')).toEqual(expect.arrayContaining(['mt-1', 'text-metric', 'font-semibold', 'tabular-nums', 'text-ink']))
+    const unit = within(value).getByText('원')
+    expect(unit.tagName).toBe('SPAN')
+    expect(unit.className.split(' ')).toEqual(expect.arrayContaining(['ml-0.5', 'text-body', 'font-medium', 'text-muted']))
+    expect(within(unchecked!).getByText('일').tagName).toBe('SPAN')
+  })
+
+  it('AC-4106.1: 확인 필요한 날 값은 주황(text-warning), 늘어남은 초록(text-positive) + 꾸밈 ▲ + 글 `늘어남`이다', () => {
+    const container = drawWith(MOCKUP)
+    const [, , unchecked, compare] = cellsOf(container)
+    expect(within(unchecked!).getByText('1').className).toContain('text-warning')
+    const delta = compare!.querySelector('.text-positive')!
+    expect(delta).not.toBeNull()
+    expect(delta.querySelector('[aria-hidden="true"]')!.textContent).toBe('▲ ')
+    expect(within(compare!).getByText('늘어남').className.split(' ')).toEqual(expect.arrayContaining(['text-small', 'font-medium']))
+  })
+
+  it('AC-4106.1: 칸 모양·나눔 줄·휴대폰 2칸 × 2줄은 첫 줄과 같다', () => {
+    const container = drawWith(MOCKUP)
+    const [first, second] = grids(container)
+    const classes = (el: Element) => el.className.split(' ').filter(Boolean)
+    expect(classes(second!)).toEqual(expect.arrayContaining(['grid', 'grid-cols-4', 'border-b', 'border-line', 'max-md:grid-cols-2', 'max-md:[&_.text-metric]:text-heading-m']))
+    expect(classes(second!)).not.toContain('mt-2')
+    expect([...second!.children].map((el) => el.className)).toEqual([...first!.children].map((el) => el.className))
+    expect(second!.querySelectorAll('.text-metric')).toHaveLength(4)
+  })
+
+  it('AC-4106.2: 확인 필요한 날이 없으면 `없음`이고 아래 글이 없다', () => {
+    const container = drawWith([TOTAL, PER_VISIT, cell('unchecked', '확인 필요한 날', '없음', null, null, 'ink'), COMPARE])
+    const unchecked = cellsOf(container)[2]!
+    expect(unchecked.textContent).toBe('확인 필요한 날없음')
+    expect(unchecked.querySelectorAll('p')).toHaveLength(1)
+  })
+
+  it('AC-4106.2: 줄어듦은 ▼ + 글 + `줄어듦`이고 빨강(text-negative)이다', () => {
+    const container = drawWith([TOTAL, PER_VISIT, UNCHECKED, cell('compare', '비교 기간보다', '60만 원 (−0.4%)', null, '지난 30일 매출 1억 3,321만 원', 'down', '줄어듦')])
+    const compare = cellsOf(container)[3]!
+    expect(compare.textContent).toBe('비교 기간보다▼ 60만 원 (−0.4%)줄어듦지난 30일 매출 1억 3,321만 원')
+    expect(compare.querySelector('.text-negative')).not.toBeNull()
+  })
+
+  it('AC-4106.2: 변화 없음은 화살표 없이 글자만이다', () => {
+    const container = drawWith([TOTAL, PER_VISIT, UNCHECKED, cell('compare', '비교 기간보다', '변화 없음', null, '지난 30일 매출 1억 3,261만 원', 'flat')])
+    const compare = cellsOf(container)[3]!
+    expect(compare.textContent).toBe('비교 기간보다변화 없음지난 30일 매출 1억 3,261만 원')
+    expect(compare.textContent).not.toMatch(/[▲▼]/)
+  })
+
+  it('AC-4106.2: 견주지 않으면 `–`와 `비교할 자료가 없어요`다', () => {
+    const container = drawWith([TOTAL, PER_VISIT, UNCHECKED, cell('compare', '비교 기간보다', '–', null, '비교할 자료가 없어요', 'none')])
+    const compare = cellsOf(container)[3]!
+    expect(compare.textContent).toBe('비교 기간보다–비교할 자료가 없어요')
+    expect(within(compare).getByText('–').className).toContain('text-muted')
+  })
+
+  it.each<[string, 'reading' | 'read-failed', string]>([
+    ['읽는 중', 'reading', '불러오는 중'],
+    ['읽기 실패', 'read-failed', '자료 없음'],
+  ])('AC-4106.3: 매출을 %s이면 네 칸 모두 값 `–`이고 아래 글은 그 글이다. 환자 첫 줄은 바뀌지 않는다', (_name, state, note) => {
+    const plain = render(<PeriodSummary input={inputOf(UP, WHOLE)} saved />).container
+    const firstRow = grids(plain)[0]!.outerHTML
+    cleanup()
+    const container = drawWith(revenueCells(state))
+    expect(cellsOf(container).map((el) => el.textContent)).toEqual([`매출–${note}`, `건당 진료비–${note}`, `확인 필요한 날–${note}`, `비교 기간보다–${note}`])
+    for (const el of cellsOf(container)) expect(within(el).getByText('–').className).toContain('text-muted')
+    expect(grids(container)[0]!.outerHTML).toBe(firstRow)
+  })
+
+  it('AC-4106.3: 저장된 매출이 없음(자료 없음 칸 넷)도 네 칸 모두 `–` · `자료 없음`이다', () => {
+    const blank = (key: RevenueCell['key'], label: string) => cell(key, label, '–', null, '자료 없음', 'none')
+    const container = drawWith([blank('total', '매출'), blank('perVisit', '건당 진료비'), blank('unchecked', '확인 필요한 날'), blank('compare', '비교 기간보다')])
+    expect(cellsOf(container).map((el) => el.textContent)).toEqual(['매출–자료 없음', '건당 진료비–자료 없음', '확인 필요한 날–자료 없음', '비교 기간보다–자료 없음'])
+  })
+
+  it('AC-4106.4: 고른 기간은 칸 이름·글이 비교 이름(`9월보다` · `9월 매출 …`)이고 작년 비교 칸 없이 네 칸이다(첫 줄이 다섯 칸이어도 둘째 줄은 같은 4칸 격자)', () => {
+    const input: StatsInput = {
+      days: [day('2026-09-07', 30), day('2026-10-05', 40)],
+      covered: [{ from: '2026-09-01', to: '2026-10-31' }],
+      range: rangeOf('2026-11-06', { kind: 'month', unit: 'day', month: '2026-10' }, false),
+    }
+    const picked = [TOTAL, PER_VISIT, UNCHECKED, cell('compare', '9월보다', '60만 원 (+0.4%)', null, '9월 매출 1억 3,200만 원', 'up', '늘어남')]
+    const container = drawWith(picked, input)
+    const [first, second] = grids(container)
+    expect(first!.className).toContain('grid-cols-5')
+    expect(second!.className.split(' ')).toEqual(expect.arrayContaining(['grid-cols-4', 'max-md:grid-cols-2']))
+    const labels = cellsOf(container).map((el) => el.querySelector('.text-small')!.textContent)
+    expect(labels).toEqual(['매출', '건당 진료비', '확인 필요한 날', '9월보다'])
+    expect(cellsOf(container)[3]!.textContent).toContain('9월 매출 1억 3,200만 원')
+    expect(revenueGrid(container).textContent).not.toContain('작년')
+  })
+
+  it('AC-4106.1: revenue를 주지 않으면 둘째 줄이 없고 지금 마크업 그대로다', () => {
+    const container = render(<PeriodSummary input={inputOf(UP, WHOLE)} saved />).container
+    expect(grids(container)).toHaveLength(1)
+    expect(screen.queryByText('건당 진료비')).toBeNull()
   })
 })
