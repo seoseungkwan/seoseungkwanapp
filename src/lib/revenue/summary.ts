@@ -18,6 +18,7 @@ export type DaySplit = { covered: number; insurer: number; selfPay: number; nonc
  * visits = 아는 접수 건수 전부(null인 날만 건너뜀, unconfirmed인 날도 든다), 아는 날이 하나도 없으면 null(진짜 0건과 다르다).
  * perVisitTotal·perVisitCount = 짝이 맞는 날(unconfirmed 아니고 visits가 null 아닌 날)의 total 합·visits 합.
  * uncheckedDays = unconfirmed인 날만. noVisitDays = unconfirmed 아니고 visits가 null인 날. days = unconfirmed 아닌 날 수(쉬는 날·나눔을 못 한 날 포함).
+ * workDays = 진료한 날 수: unconfirmed도 쉬는 날(접수 0건·금액 아홉 칸 모두 0)도 아닌 날(stats-revenue AC-4105.1, 하루 평균의 분모).
  * null = 자료 없음(줄이 없거나, 모두 0이고 확인 필요한 날도 나눔을 못 한 날도 없음)
  */
 export type PeriodSum = {
@@ -35,6 +36,7 @@ export type PeriodSum = {
   noSplitDays: string[]
   noVisitDays: string[]
   days: number
+  workDays: number
 } | null
 
 /** 13달 한 칸. 자료 없는 달은 숫자 칸이 모두 null(0이 아님), partial = 아직 끝나지 않은 달 */
@@ -62,7 +64,10 @@ export function splitDay(row: RevenueDayRow): DaySplit {
 // 내원을 셀 수 없는 날(null)은 0이 아니다
 const isAllZero = (row: RevenueDayRow) => row.visits === 0 && REVENUE_MONEY_KEYS.every((key) => row[key] === 0)
 
-export function sumPeriod(rows: RevenueDayRow[], range: DateRange): PeriodSum {
+/** 진료한 날: 확인 필요한 날도 쉬는 날(접수 0건·금액 아홉 칸 모두 0)도 아닌 날(stats-revenue AC-4105.1). workDays가 세는 날이다 */
+export const isWorkDay = (row: RevenueDayRow) => !row.unconfirmed && !isAllZero(row)
+
+export function sumPeriod(rows: readonly RevenueDayRow[], range: DateRange): PeriodSum {
   const inRange = rows
     .filter((row) => compareYmd(row.date, range.from) >= 0 && compareYmd(row.date, range.to) <= 0)
     .sort((a, b) => compareYmd(a.date, b.date))
@@ -76,6 +81,7 @@ export function sumPeriod(rows: RevenueDayRow[], range: DateRange): PeriodSum {
   let perVisitTotal = 0
   let perVisitCount = 0
   let days = 0
+  let workDays = 0
   for (const row of inRange) {
     if (row.visits !== null) visits = (visits ?? 0) + row.visits // 확인 필요한 날의 내원도 이 합에는 센다. perVisitCount에서는 금액과 함께 빠진다
     if (row.unconfirmed) {
@@ -83,6 +89,7 @@ export function sumPeriod(rows: RevenueDayRow[], range: DateRange): PeriodSum {
       continue
     }
     days += 1
+    if (isWorkDay(row)) workDays += 1
     total += row.total ?? 0
     // 건수를 모르는 날의 금액만 남기면 분모가 모자라 건당 진료비가 부푼다. 금액과 건수를 함께 뺀다
     if (row.visits === null) {
@@ -106,7 +113,7 @@ export function sumPeriod(rows: RevenueDayRow[], range: DateRange): PeriodSum {
 
   if (uncheckedDays.length === 0 && noSplitDays.length === 0 && inRange.every(isAllZero)) return null
   // 나눔이 있는 날이 쉬는 날뿐이어도 null이다. 날마다 비는 달에도 일요일이 있어 0원·빈 막대가 되지 않게
-  return { total, ...(split.splitTotal === 0 ? NO_SPLIT : split), visits, perVisitTotal, perVisitCount, uncheckedDays, noSplitDays, noVisitDays, days }
+  return { total, ...(split.splitTotal === 0 ? NO_SPLIT : split), visits, perVisitTotal, perVisitCount, uncheckedDays, noSplitDays, noVisitDays, days, workDays }
 }
 
 const yesterdayOf = (today: string) => addDays(today, -1)

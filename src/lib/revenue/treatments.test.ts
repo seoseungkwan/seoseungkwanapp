@@ -68,6 +68,22 @@ describe('AC-006.1 코드는 그 코드를 품은 첫 묶음 하나에만 든다
   })
 })
 
+describe('AC-4105.5 코드는 대소문자를 가리지 않고 묶음에 든다(통계 codeKey와 같은 규칙)', () => {
+  it('AC-4105.5 대소문자만 다른 코드는 같은 묶음으로 들어간다', () => {
+    const groups = [group('물리치료', ['mm101'], 0)]
+    expect(groupTreatments([row('MM101', 2, 1000), row('Mm101', 1, 500), row('mm101', 1, 250)], groups)).toEqual([named('물리치료', 1750, 4)])
+  })
+
+  it('AC-4105.5 대소문자만 다른 코드가 두 묶음에 있으면 sortOrder가 앞선 묶음에서만 센다', () => {
+    const groups = [group('뒤 묶음', ['ESWT1'], 1), group('앞 묶음', ['eswt1'], 0)]
+    expect(groupTreatments([row('Eswt1', 3, 900)], groups)).toEqual([named('앞 묶음', 900, 3)])
+  })
+
+  it('AC-4105.5 _REST는 그대로 그 밖 처방이다', () => {
+    expect(groupTreatments([row(REVENUE_REST_CODE, 2, 400)], [group('주사', ['_rest'], 0)])).toEqual([rest(400, 2)])
+  })
+})
+
 describe('AC-006.2 묶음마다 합을 내고 금액 큰 순으로 놓는다', () => {
   it('AC-006.2 금액·건수 합을 내고 금액 큰 순이다', () => {
     const groups = [group('작은', ['A1'], 0), group('큰', ['B1', 'B2'], 1)]
