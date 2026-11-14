@@ -89,3 +89,45 @@ export function visitHoursHeadline(view: VisitHours): string | null {
 export function unknownHoursNote(unknown: number): string | null {
   return unknown > 0 ? `접수 시각을 모르는 ${comma(unknown)}건은 뺐어요.` : null
 }
+
+// ── 진료 운영 카드 시간대별 접수 글자·칸 색 (first90 REQ-4414 AC-4414.3, 시안 docs/mockups/first90/redesign.html .s-hm) ──
+// 위 셈(칸 합·문 연 날·가장 붐비는 칸·averageText)을 그대로 쓰고 글자와 색 구간만 더한다
+
+const HEAT_STEP = 5 // 색 구간 폭: 0건 · 0.1–4.9 · 5–9.9 · 10–14.9 · 15–19.9 · 20건 이상
+const weekdayName = (weekday: number) => `${WEEKDAYS[weekday - 1]}요일`
+// 소수 한 자리 반올림(averageText와 같은 규칙, 0도 '0.0')
+const oneDecimal = (average: number) => (Math.round(average * 10 + EPSILON) / 10).toFixed(1)
+
+// 시 칸 이름 '09:00–09:59'
+export function hourSpan(hour: number): string {
+  const hh = String(hour).padStart(2, '0')
+  return `${hh}:00–${hh}:59`
+}
+
+// 칸 색 단계 0~5(범례 여섯 구간). 보이는 글자(소수 한 자리)로 고르고, 접수가 있으면 0.0으로 보여도 첫 구간이다
+export function heatLevel(average: number): number {
+  if (!(average > 0)) return 0
+  return Math.min(LEVELS, 1 + Math.floor(Number(oneDecimal(average)) / HEAT_STEP))
+}
+
+// 칸 글자: 0이면 '0'(진료한 날이지만 그 시간 접수가 없었음), 아니면 averageText
+export function heatText(average: number): string {
+  return average === 0 ? '0' : averageText(average)
+}
+
+// 칸을 누르면 아래 줄에 나오는 글(칸 단추 이름도 같다)
+export function heatTip(weekday: number, hour: number, sum: number, openDays: number): string {
+  const name = weekdayName(weekday)
+  return `${name} ${hourSpan(hour)} · 하루 평균 ${oneDecimal(cellAverage(sum, openDays))}건 · ${name} ${comma(openDays)}일 동안 ${comma(sum)}건 ÷ ${comma(openDays)}일`
+}
+
+// 머리 줄 조각: '가장 붐비는 때 {when} · 하루 평균 {average} {detail}'. 센 접수가 없으면 null
+export function peakParts(view: VisitHours): { when: string; average: string; detail: string } | null {
+  const { peak } = view
+  if (peak === null) return null
+  const row = view.rows.find((one) => one.weekday === peak.weekday)
+  if (row === undefined) return null
+  const sum = row.cells[view.hours.indexOf(peak.hour)] ?? 0
+  const name = weekdayName(peak.weekday)
+  return { when: `${name} ${hourSpan(peak.hour)}`, average: `${averageText(peak.average)}건`, detail: `(${name} ${comma(row.openDays)}일 동안 ${comma(sum)}건)` }
+}

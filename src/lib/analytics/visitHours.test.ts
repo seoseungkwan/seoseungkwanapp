@@ -5,7 +5,12 @@ import {
   averageText,
   cellAverage,
   cellLevel,
+  heatLevel,
+  heatText,
+  heatTip,
   hourName,
+  hourSpan,
+  peakParts,
   unknownHoursNote,
   visitHours,
   visitHoursHeadline,
@@ -160,5 +165,68 @@ describe('AC-2704.4 칸 색 단계 = ⌈칸 ÷ 가장 큰 칸 × 5⌉', () => {
     [1.8, 3, 3],
   ])('AC-2704.4: 칸 %d · 가장 큰 칸 %d → %d단계', (average, peak, level) => {
     expect(cellLevel(average, peak)).toBe(level)
+  })
+})
+
+// ── first90 진료 운영 카드: 시간대별 접수 글자·칸 색 (REQ-4414 AC-4414.3, 시안 docs/mockups/first90/redesign.html .s-hm) ──
+// 위 셈(칸 합·문 연 날·가장 붐비는 칸·averageText)은 그대로 쓰고 글자와 색 구간만 더한다
+describe('AC-4414.3 시간대별 접수 칸 글자·색 구간·아래 줄 글', () => {
+  it.each<[number, string]>([
+    [8, '08:00–08:59'],
+    [9, '09:00–09:59'],
+    [12, '12:00–12:59'],
+    [20, '20:00–20:59'],
+  ])('AC-4414.3: %d시 칸 이름은 %s다', (hour, span) => {
+    expect(hourSpan(hour)).toBe(span)
+  })
+
+  it.each<[number, number]>([
+    [0, 0],
+    [0.02, 1], // 소수 한 자리로 0.0이어도 접수가 있으면 첫 구간
+    [0.1, 1],
+    [4.9, 1],
+    [4.94, 1],
+    [4.95, 2], // 보이는 글자 5.0 → 5–9.9
+    [5, 2],
+    [9.9, 2],
+    [10, 3],
+    [14.5, 3],
+    [14.96, 4], // 15.0
+    [15.3, 4],
+    [19.9, 4],
+    [20, 5],
+    [24.25, 5],
+  ])('AC-4414.3: 하루 평균 %d → 색 %d단계(범례 0건 · 0.1–4.9 · 5–9.9 · 10–14.9 · 15–19.9 · 20건 이상)', (average, level) => {
+    expect(heatLevel(average)).toBe(level)
+  })
+
+  it('AC-4414.3: 칸 글자는 0이면 "0", 아니면 소수 한 자리(averageText 그대로)다', () => {
+    expect(heatText(0)).toBe('0')
+    expect(heatText(57 / 4)).toBe(averageText(57 / 4))
+    expect(heatText(57 / 4)).toBe('14.3')
+    expect(heatText(8)).toBe('8.0')
+  })
+
+  it('AC-4414.3: 아래 줄 글은 "{요일}요일 {hh}:00–{hh}:59 · 하루 평균 {v}건 · {요일}요일 {d}일 동안 {n}건 ÷ {d}일"이다', () => {
+    expect(heatTip(1, 9, 97, 4)).toBe('월요일 09:00–09:59 · 하루 평균 24.3건 · 월요일 4일 동안 97건 ÷ 4일')
+    expect(heatTip(6, 13, 0, 4)).toBe('토요일 13:00–13:59 · 하루 평균 0.0건 · 토요일 4일 동안 0건 ÷ 4일')
+    expect(heatTip(3, 10, 1234, 52)).toBe('수요일 10:00–10:59 · 하루 평균 23.7건 · 수요일 52일 동안 1,234건 ÷ 52일')
+  })
+
+  it('AC-4414.3: 머리 줄 조각은 가장 붐비는 칸(visitHours 셈 그대로)의 요일·시간, 하루 평균, 그 요일 문 연 날·접수 합이다', () => {
+    const view = visitHours(
+      [
+        ...times(3, '2026-11-02', 9),
+        at('2026-11-09', 9), // 월 9시: 4 ÷ 2 = 2.0
+        ...times(3, '2026-11-06', 14), // 금 14시: 3 ÷ 1 = 3.0
+      ],
+      FROM,
+      TO,
+    )
+    expect(peakParts(view)).toEqual({ when: '금요일 14:00–14:59', average: '3.0건', detail: '(금요일 1일 동안 3건)' })
+  })
+
+  it('AC-4414.3: 센 접수가 없으면 머리 줄이 없다', () => {
+    expect(peakParts(visitHours([at('2026-11-02', null)], FROM, TO))).toBeNull()
   })
 })

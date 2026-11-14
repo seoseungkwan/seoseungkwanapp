@@ -568,6 +568,20 @@ export function weekdayBars(days: readonly DayPayload[], range: StatsRange): Bar
   return weekdayBuckets(days, range.current)
 }
 
+// 진료 운영 카드 요일별 내원(first90 AC-4414.2): 늘 월~일 일곱 줄. 진료한 날이 없는 요일은 average null.
+// 평균·일부 기간은 weekdayBars 칸 그대로다(셈을 바꾸지 않는다). 기간 안 자료가 없으면 null
+export type WeekdayRow = { key: string; name: string; label: string; average: number | null; partial: boolean }
+const WEEKDAY_NAMES = '월화수목금토일'
+export function weekdayRows(days: readonly DayPayload[], range: StatsRange): WeekdayRow[] | null {
+  const bars = weekdayBars(days, range)
+  if (bars === null) return null
+  return [...WEEKDAY_NAMES].map((name, i) => {
+    const key = String(i + 1)
+    const bar = bars.find((one) => one.key === key)
+    return { key, name, label: `${name}요일`, average: bar ? (bar.values[0] ?? 0) : null, partial: bar ? bar.state !== 'complete' : false }
+  })
+}
+
 // ── 처방 추세 ────────────────────────────────────────────
 
 function chunks<T>(list: readonly T[], size: number): T[][] {
