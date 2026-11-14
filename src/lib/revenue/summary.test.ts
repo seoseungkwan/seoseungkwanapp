@@ -119,7 +119,7 @@ describe('AC-005.1 splitDay 하루 나눔', () => {
 })
 
 describe('AC-005.2 sumPeriod 기간 합', () => {
-  it('AC-005.2 원 합이 그대로이고 기타 합이 들어 있으며 급여 + 비급여 + 기타 = splitTotal이다', () => {
+  it('AC-005.2·AC-4105.1 원 합이 그대로이고 기타 합이 들어 있으며 급여 + 비급여 + 기타 = splitTotal이다', () => {
     const rows = [
       day('2026-10-01', { total: 266_357, insurer: 123_457, copay: 52_901, noncovered: 88_888, otherTotal: 1_111 }),
       day('2026-10-02', { total: 400_007, insurer: 300_001, copay: 99_999, noncovered: 0, otherTotal: 7 }),
@@ -139,6 +139,7 @@ describe('AC-005.2 sumPeriod 기간 합', () => {
       noSplitDays: [],
       noVisitDays: [],
       days: 2,
+      workDays: 2,
     })
   })
 
@@ -150,7 +151,7 @@ describe('AC-005.2 sumPeriod 기간 합', () => {
     expect(sum?.visits).toBe(30)
   })
 
-  it('AC-005.2 확인 필요한 날은 금액에서 빠지고 목록에 있으며 내원은 그대로 더한다', () => {
+  it('AC-005.2·AC-4105.1 확인 필요한 날은 금액에서 빠지고 목록에 있으며 내원은 그대로 더한다', () => {
     const sum = sumPeriod([day('2026-10-01'), uncheckedDay('2026-10-02')], OCT_3)
     expect(sum).toEqual({
       total: 1_000_000,
@@ -167,10 +168,11 @@ describe('AC-005.2 sumPeriod 기간 합', () => {
       noSplitDays: [],
       noVisitDays: [],
       days: 1,
+      workDays: 1,
     })
   })
 
-  it('AC-005.2 나눔을 못 한 날은 총액에 들어가고 나눔 합·splitTotal에서 빠지며 noSplitDays에만 있다(splitTotal < 총액, 맞춰 고치지 않음)', () => {
+  it('AC-005.2·AC-4105.1 나눔을 못 한 날은 총액에 들어가고 나눔 합·splitTotal에서 빠지며 noSplitDays에만 있다(splitTotal < 총액, 맞춰 고치지 않음)', () => {
     const sum = sumPeriod([day('2026-10-01'), noSplitDay('2026-10-02')], OCT_3)
     expect(sum).toEqual({
       total: 1_500_000,
@@ -187,6 +189,7 @@ describe('AC-005.2 sumPeriod 기간 합', () => {
       noSplitDays: ['2026-10-02'],
       noVisitDays: [],
       days: 2,
+      workDays: 2,
     })
   })
 
@@ -597,5 +600,35 @@ describe('AC-005.6 perVisit 건당 진료비', () => {
 
   it('AC-005.6 합이 null이면 null이다', () => {
     expect(perVisit(null)).toBeNull()
+  })
+})
+
+describe('AC-4105.1 sumPeriod 진료한 날 수(workDays)', () => {
+  it('AC-4105.1 workDays는 확인 필요한 날과 쉬는 날(접수 0건·금액 모두 0)을 뺀 날 수다', () => {
+    const rows = [day('2026-10-01'), uncheckedDay('2026-10-02'), restDay('2026-10-03')]
+    expect(sumPeriod(rows, OCT_3)).toMatchObject({ days: 2, workDays: 1 })
+  })
+
+  it('AC-4105.1 나눔을 못 한 날·접수 건수를 모르는 날·접수 0건이지만 금액이 있는 날은 진료한 날이다', () => {
+    const rows = [noSplitDay('2026-10-01'), day('2026-10-02', { visits: null }), restDay('2026-10-03', { receivableIn: 30_000 })]
+    expect(sumPeriod(rows, OCT_3)).toMatchObject({ days: 3, workDays: 3 })
+  })
+
+  it('AC-4105.1 31일 기간에 확인 필요한 날 2일 · 쉬는 날 5일 · 나눔을 못 한 날 2일이면 workDays는 24다', () => {
+    const rest = new Set(['2026-03-01', '2026-03-08', '2026-03-15', '2026-03-22', '2026-03-29'])
+    const unchecked = new Set(['2026-03-02', '2026-03-03'])
+    const noSplit = new Set(['2026-03-10', '2026-03-11'])
+    const march = { from: '2026-03-01', to: '2026-03-31' }
+    const rows = eachDay(march).map((date) => {
+      if (rest.has(date)) return restDay(date)
+      if (unchecked.has(date)) return uncheckedDay(date)
+      if (noSplit.has(date)) return noSplitDay(date)
+      return day(date)
+    })
+    expect(sumPeriod(rows, march)).toMatchObject({ days: 29, workDays: 24 })
+  })
+
+  it('AC-4105.1 모든 날이 확인 필요한 날이면 workDays는 0이다(합은 null이 아님)', () => {
+    expect(sumPeriod([uncheckedDay('2026-10-01'), restDay('2026-10-02')], OCT_3)).toMatchObject({ total: 0, days: 1, workDays: 0 })
   })
 })

@@ -1,0 +1,623 @@
+import { formatCount, formatRate } from '@/components/charts/format'
+import { niceScale } from '@/components/charts/scale'
+import type { BarBucket } from '@/components/charts/StackedBarChart'
+import { longDate, tickLabels, type Period } from '@/components/dashboard/summary/view'
+import { formatManWon, formatWon } from '@/components/revenue/money'
+import type { DeltaText, Kpi, LegendItem, Notice, SplitRow, StackChart, StackColumn, StackSegment, Tone, TreatmentRow } from '@/components/revenue/types'
+import { addDays, addMonths, compareYmd, diffDays, eachDay, monthOf, monthRange, weekStartOf } from '@/lib/analytics/dates'
+import { compare, isWorkDay, perVisit, sumPeriod, type PeriodSum } from '@/lib/revenue/summary'
+import { groupTreatments } from '@/lib/revenue/treatments'
+import type { BucketState } from '@/types/analysis'
+import type { DateRange } from '@/types/dates'
+import type { RevenueCodeRow, RevenueDayRow } from '@/types/revenue'
+import type { RxGroup } from '@/types/rxGroups'
+import type { StatsRange } from './view'
+
+// 통계 매출 칸의 셈 (stats-revenue REQ-4105 · AC-4105.1~AC-4105.6, design.md '매출 보기').
+// 순수 모듈이다: 통로·서버·브라우저 저장소·화면 부품을 쓰지 않는다. 오늘·마지막 끝난 날은 인자(range.load.to · lastDay)로만 받는다.
+// 날짜는 lib/analytics/dates.ts, 매출 숫자의 뜻은 lib/revenue/summary.ts·treatments.ts, 금액 글은 components/revenue/money.ts다.
+// 글자는 승인 시안 docs/mockups/stats-revenue(index.html·notes.md)와 requirements.md 기본값 그대로다. 자료가 없으면 숫자를 지어내지 않는다('–'·'자료 없음')
+
+// ── 입력·출력 ────────────────────────────────────────────
+
+// 입력 모양은 types/revenue.ts(TASK-3)의 새 이름 대신 같은 모양을 풀어 적는다(구조 타입이라 그대로 맞는다)
+/** 저장된 날 줄 + 그날 날 단위 처방 금액이 있는지(SavedRevenueDay) */
+type SavedDay = RevenueDayRow & { dayCodes: boolean }
+/** 보는 기간 날 단위 코드별 합(sales_code_totals, RevenueCodeTotal). amount = 값 있는 줄의 합, missing = 금액이 빠진 줄이 있었음 */
+type CodeTotal = { code: string; count: number; amount: number; missing: boolean }
+/** 옛 달 합계(sales_codes, RevenueMonthCode). month = 'YYYY-MM' */
+type MonthCode = RevenueCodeRow & { month: string }
+
+export type RevenueInput = {
+  range: StatsRange
+  /** 마지막 끝난 날(어제, 오늘 진료 끝이면 오늘) */
+  lastDay: string
+  /** readSpan(range) 안 저장된 날 */
+  days: readonly SavedDay[]
+  codes: readonly CodeTotal[]
+  /** 보는 기간에 걸친 달의 옛 달 합계 */
+  monthCodes: readonly MonthCode[]
+  /** 통계 처방 묶음(저장된 것 또는 제안). 넣는 처방(codes)만 쓰고 빼는 처방·조건은 쓰지 않는다 */
+  groups: readonly RxGroup[] | 'reading' | 'read-failed'
+  /** 도우미 예전 판 표시(기본값 9) */
+  noDayCodes: boolean
+}
+
+/**
+ * 기간 요약 둘째 줄 한 칸. value = 큰 글(작은 단위는 unit: '1억 3,261만' + '원'). 증감 칸의 value는 화살표 없는 '60만 원 (+0.4%)'이고
+ * 화살표(▲·▼, 꾸밈)는 tone('up'·'down')으로 붙인다. srText = 방향 글('늘어남'·'줄어듦', 시안은 작은 글자로 보인다), 없으면 ''
+ */
+export type RevenueCell = {
+  key: 'total' | 'perVisit' | 'unchecked' | 'compare'
+  label: string
+  value: string
+  unit: string | null
+  note: string | null
+  tone: Tone
+  srText: string
+}
+
+/** 탭 첫 줄: text + 굵은 amount + 회색 rest(없으면 null). 사이 빈칸은 그리는 쪽이 둔다 */
+export type Lead = { text: string; amount: string; rest: string | null }
+/** note = 막대 아래 글(없으면 null) · how = [어떻게 세나요?] 문단 */
+export type TrendTab = { desc: string; lead: Lead; buckets: BarBucket[]; dense: boolean; note: string | null; how: string[] }
+/** lastYear = '작년 같은 때보다' 칸(작년 비교가 있는 고른 기간만, 없으면 null) */
+export type RevenueSplitRow = SplitRow & { lastYear: DeltaText | null }
+export type SplitTab = { desc: string; notice: Notice | null; head: string[]; rows: RevenueSplitRow[]; how: string[]; chart: StackChart | null }
+/** lines = rows가 아닐 때 보이는 줄(읽는 중·읽기 실패·셀 날 없음) */
+export type TreatmentsTab = {
+  desc: string
+  state: 'rows' | 'reading' | 'read-failed' | 'none'
+  lead: Lead | null
+  rows: TreatmentRow[]
+  notice: Notice | null
+  lines: string[]
+  how: string[]
+}
+export type PerVisitTab = { desc: string; kpis: Kpi[]; buckets: BarBucket[]; dense: boolean; note: string | null; notice: Notice | null; how: string[] }
+export type RevenueTabs = { kind: 'empty' } | { kind: 'ready'; trend: TrendTab; split: SplitTab; treatments: TreatmentsTab; perVisit: PerVisitTab }
+
+// ── 글자 ─────────────────────────────────────────────────
+
+const DASH = '–'
+const MINUS = '−'
+const NO_DATA = '자료 없음'
+const READING = '불러오는 중'
+const NO_COMPARE = '비교할 자료가 없어요'
+const WON_PER_MAN = 10_000
+const WON_PER_CHEON = 1_000
+// 그리는 위치 %를 자를 때 부동소수 오차(28.999…)를 막는다(components/charts/format.ts와 같은 규칙)
+const EPSILON = 1e-9
+const DENSE_OVER = 31 // 막대 위 숫자는 칸 31개 이하일 때만(환자 수 추이와 같다)
+const TICK_DAYS = 31 // 고른 기간 일별 눈금: 31일 이하는 7일마다, 넘으면 21일마다(환자 수 추이와 같다)
+const WEEK_LABEL_ALL = 6
+const WEEK_LABEL_STEP = 3
+const RUNS_MAX = 5 // 날짜 글 묶음이 이보다 많으면 앞 넷 + ' 외 n일'(기본값 10)
+const RUNS_SHOWN = 4
+const YEAR_MONTHS = 12
+const QUICK_DAYS: Record<'7d' | '30d' | '90d', Period> = { '7d': 7, '30d': 30, '90d': 90 }
+
+type Unit = 'day' | 'week' | 'month'
+const EACH: Record<Unit, string> = { day: '하루씩', week: '한 주씩', month: '한 달씩' }
+const EVERY: Record<Unit, string> = { day: '날마다', week: '주마다', month: '달마다' }
+const TABLE_HEAD: Record<Unit, string> = { day: '날짜', week: '주', month: '달' }
+
+const LABELS: Record<RevenueCell['key'], string> = { total: '매출', perVisit: '건당 진료비', unchecked: '확인 필요한 날', compare: '비교 기간보다' }
+
+const TREND_HOW = [
+  '매출은 수납한 날(회계일)의 총진료비예요. 총진료비 = 공단부담 + 본인부담 + 비급여 + 기타이고, 그날 정상 수납한 것과 미수금으로 들어온 것을 더해요.',
+  "환불·변경수납·예치금이 있거나 수납 연결이 겹친 날은 '확인 필요한 날'로 두고 그날 금액을 매출에 넣지 않아요. 비트 외래환자경영통계에서 그날을 직접 확인해 주세요.",
+  "그래서 아래 '원장님별'의 매출 합계(그런 날도 더해요)나 '원장님 보고 문장'의 총진료비(그런 날이 든 날·달은 '확인 필요')와 다를 수 있어요.",
+  '막대 칸은 환자 수 추이와 같아요: 최근 7일·30일·90일은 하루씩, 최근 12개월은 한 달씩, 기간 골라 보기는 고른 단위(일별·주별·월별)예요.',
+]
+const CLOSED_NOTE = '휴진한 날은 칸이 없어요.'
+const CLOSED_OR_UNSAVED_NOTE = '휴진한 날과 아직 불러오지 않은 날은 칸이 없어요.'
+
+const SPLIT_NOTE =
+  '매출은 총진료비예요. 급여(요양비용총액)는 공단이 내는 몫과 환자가 내는 몫(본인부담)을 더한 금액, 비급여는 환자가 모두 내는 금액, 기타는 100/100 미만 항목과 전액 본인부담 금액이에요. '
+const SPLIT_FULL = '셋을 더하면 매출이에요.'
+const SPLIT_PARTIAL = '이 기간은 나눔을 못 한 날이 빠져서 셋을 더해도 매출보다 작아요. 막대도 나눔이 있는 날만 더해요.'
+const SPLIT_NONE_PARTIAL = '자료 없음. 이 기간은 쉬는 날 말고는 모두 나눔을 못 해서 숫자를 지어 넣지 않았어요. 매출 추이와 건당 진료비 탭은 그대로 볼 수 있어요.'
+const SPLIT_NONE = '자료 없음. 숫자를 지어 넣지 않았어요.'
+const SPLIT_DAY_BARS = '막대는 날마다 아래부터 급여·비급여·기타예요. 확인 필요한 날과 나눔을 못 한 날은 막대가 없어요.'
+const splitSpanBars = (unit: Unit) => `막대는 ${EVERY[unit]} 아래부터 급여·비급여·기타예요. 확인 필요한 날과 나눔을 못 한 날은 더하지 않아요.`
+const NO_SPLIT_REST = '은 나눔을 못 해서 이 표에서 빠졌어요. 매출 합계에는 들어 있어요.'
+const SPLIT_BLANK_ROWS: [string, SplitRow['kind']][] = [
+  ['급여', 'main'],
+  ['공단부담', 'sub'],
+  ['본인부담', 'sub'],
+  ['비급여', 'main'],
+  ['기타', 'main'],
+  ['합계', 'sum'],
+]
+const STACK_LEGEND: LegendItem[] = [
+  { key: 'other', label: '기타' },
+  { key: 'noncovered', label: '비급여' },
+  { key: 'covered', label: '급여' },
+]
+
+const TREAT_HOW = [
+  "처방 금액(단가 × 수량 × 일수)으로 세요. 처방한 날 기준이고 환불·할인이 빠지지 않아 매출과 조금 달라요. 어느 묶음에도 넣지 않은 처방은 '그 밖 처방'으로 세요.",
+  '묶음은 처방 칸 [묶음 고치기]에서 고쳐요. 처방 하나는 한 묶음에만 들어가서 금액을 두 번 세지 않아요. 묶음의 빼는 처방·조건은 매출에는 쓰지 않아요(넣는 처방 금액을 모두 더해요).',
+  "'처방 n번'은 그 기간에 그 묶음 처방을 낸 횟수예요. 처방 칸의 '건'(같은 날 같은 환자는 1건)과 세는 법이 달라요.",
+]
+const TREAT_NONE = '자료 없음 · 새 도우미로 [비트에서 불러오기]를 하면 이 기간의 치료별 매출이 채워져요.'
+const TREAT_OLD_HELPER = '치료별 매출은 날마다 나눠 저장한 날부터 볼 수 있어요. 지금 도우미는 달 합계만 읽어요.'
+const GROUPS_FAILED = '처방별 추세 묶음을 읽지 못했어요'
+const NO_CODES_REST = '은 치료별로 나눠 저장하지 않아 이 표에서 빠졌어요.'
+const REST_DETAIL = '진찰료·약·검사 등'
+
+const PER_VISIT_DESC = '접수 한 건 기준 · 접수취소는 세지 않아요'
+const PER_VISIT_HOW = [
+  '매출을 그 기간의 접수 건수로 나눠요. 같은 분이 다섯 번 오면 다섯 건으로 세요. 원장님 보고 문장의 건당진료비와 같은 식이고, 원 아래는 버려요.',
+  "확인 필요한 날은 금액을 알 수 없어서 그날 접수 건수도 함께 빼고 나눠요. 그래서 '원장님별'의 건당 진료비(그런 날도 더해요)와 조금 다를 수 있어요.",
+]
+const NO_VISIT_REST = '은 접수 건수를 확인하지 못해 건당 진료비에서 빠졌어요. 매출 합계에는 들어 있어요.'
+
+const monthNumber = (ymd: string) => Number(ymd.slice(5, 7))
+const dayNumber = (ymd: string) => Number(ymd.slice(8, 10))
+const shortDate = (ymd: string) => `${monthNumber(ymd)}.${dayNumber(ymd)}`
+const yearMonth = (month: string) => `${Number(month.slice(0, 4))}년 ${Number(month.slice(5, 7))}월`
+const monthLabel = (month: string) => `${Number(month.slice(5, 7))}월`
+const earlier = (a: string, b: string) => (compareYmd(a, b) <= 0 ? a : b)
+const later = (a: string, b: string) => (compareYmd(a, b) >= 0 ? a : b)
+const countText = (n: number) => `${formatCount(n)}건`
+const shareText = (part: number, whole: number) => (whole > 0 ? `${formatRate(part / whole)}%` : DASH)
+/** '1억 3,261만 원' → '1억 3,261만', '5,000원' → '5,000'(작은 '원'은 unit) */
+const manValue = (n: number) => formatManWon(n).replace(/ ?원$/, '')
+
+// 그리는 위치 %: 0~100, 소수 둘째 자리까지 버림. max가 0 이하이면 0
+function percent(value: number, max: number): number {
+  if (!(max > 0)) return 0
+  return Math.min(100, Math.max(0, Math.trunc((value / max) * 10_000 + EPSILON) / 100))
+}
+
+// '10월 1일 – 4일' · '9월 28일 – 10월 4일' · 하루면 '10월 1일'(환자 수 추이 주 칸과 같다)
+function spanText({ from, to }: DateRange): string {
+  if (from === to) return longDate(from)
+  return `${longDate(from)} – ${monthOf(from) === monthOf(to) ? `${dayNumber(to)}일` : longDate(to)}`
+}
+
+/**
+ * 날짜 글(기본값 10): 달이 바뀔 때마다 달을 쓰고 이어진 날은 묶는다('10월 28일·11월 3일–4일').
+ * 묶음이 다섯을 넘으면 앞 넷 뒤에 ' 외 {남은 날 수}일'. 받는 날짜는 날짜 차례다(sumPeriod의 목록)
+ */
+function daysText(dates: readonly string[]): string {
+  const runs: [string, string][] = []
+  for (const date of dates) {
+    const last = runs.at(-1)
+    if (last !== undefined && addDays(last[1], 1) === date) last[1] = date
+    else runs.push([date, date])
+  }
+  const shown = runs.length > RUNS_MAX ? runs.slice(0, RUNS_SHOWN) : runs
+  const parts: string[] = []
+  let month = ''
+  for (const [from, to] of shown) {
+    const head = monthOf(from) === month ? `${dayNumber(from)}일` : longDate(from)
+    parts.push(from === to ? head : `${head}–${monthOf(from) === monthOf(to) ? `${dayNumber(to)}일` : longDate(to)}`)
+    month = monthOf(to)
+  }
+  const hidden = runs.slice(shown.length).reduce((n, [from, to]) => n + diffDays(from, to) + 1, 0)
+  return `${parts.join('·')}${hidden > 0 ? ` 외 ${formatCount(hidden)}일` : ''}`
+}
+
+function dayNotice(dates: readonly string[], rest: string): Notice | null {
+  return dates.length === 0 ? null : { lead: `${formatCount(dates.length)}일(${daysText(dates)})`, rest }
+}
+
+const NO_DELTA: DeltaText = { dir: 'none', text: DASH, srText: '' }
+
+// 비율은 소수 첫째 자리에서 0 쪽으로 버리고(summary.ts compare), 버려서 0이면 '변화 없음'이다
+function deltaText(now: number | null, before: number | null): DeltaText {
+  const change = compare(now, before)
+  if (change === null) return NO_DELTA
+  if (change.rate === 0) return { dir: 'flat', text: '변화 없음', srText: '' }
+  const size = Math.abs(change.rate).toFixed(1)
+  return change.rate > 0 ? { dir: 'up', text: `+${size}%`, srText: '늘어남' } : { dir: 'down', text: `${MINUS}${size}%`, srText: '줄어듦' }
+}
+
+const blankKpi = (name: string, sub: string): Kpi => ({ name, value: DASH, sub, tone: 'none', srText: '' })
+
+// ── 기간·비교·칸 ─────────────────────────────────────────
+
+type Sum = NonNullable<PeriodSum>
+type Compared = { now: Sum; before: Sum }
+type Slot = { key: string; label: string; rangeLabel: string; tableName: string; span: DateRange; cut: boolean }
+type SlotSum = { slot: Slot; sum: PeriodSum; state: BucketState }
+
+type Ctx = {
+  input: RevenueInput
+  unit: Unit
+  /** 보는 기간: 기간 첫날 ~ (기간 끝과 마지막 끝난 날 가운데 이른 날) */
+  view: DateRange
+  byDay: ReadonlyMap<string, SavedDay>
+  sum: Sum
+  /** 비교 쪽 이름('지난 30일' · '9월' · '작년 같은 11달') */
+  name: string
+  /** 바로 전 기간과 견줄 두 합(견주지 않으면 null, 기본값 5) */
+  main: Compared | null
+  /** 작년 같은 때(작년 비교가 있는 고른 기간만) */
+  lastYear: Compared | null
+  slots: SlotSum[]
+}
+
+// 막대 칸: 빠른 단추 7·30·90일은 하루씩, 12개월은 한 달씩, 고른 기간은 고른 단위(AC-4105.3)
+const unitOf = (range: StatsRange): Unit => (range.period === null ? range.bucket : range.period === '12m' ? 'month' : 'day')
+
+const rowsIn = (byDay: ReadonlyMap<string, SavedDay>, span: DateRange) => eachDay(span).flatMap((day) => byDay.get(day) ?? [])
+const sumIn = (byDay: ReadonlyMap<string, SavedDay>, span: DateRange) => sumPeriod(rowsIn(byDay, span), span)
+const savedAll = (byDay: ReadonlyMap<string, SavedDay>, span: DateRange) => eachDay(span).every((day) => byDay.has(day))
+
+type Pair = { now: DateRange; before: DateRange; name: string }
+
+// 바로 전 기간. 12개월은 끝나지 않은 달(말일이 마지막 끝난 날보다 뒤)과 작년 같은 달을 양쪽에서 뺀다
+function mainPair({ range, lastDay }: RevenueInput, view: DateRange): Pair | null {
+  if (range.period !== '12m') return { now: view, before: { from: range.previous.from, to: range.previous.to }, name: range.previous.name }
+  const months = Array.from({ length: YEAR_MONTHS }, (_, i) => addMonths(monthOf(range.current.from), i))
+  const kept = months.filter((month) => compareYmd(monthRange(month).to, lastDay) <= 0)
+  const last = kept.at(-1)
+  if (last === undefined) return null
+  return {
+    now: { from: range.current.from, to: monthRange(last).to },
+    before: { from: range.previous.from, to: monthRange(addMonths(last, -YEAR_MONTHS)).to },
+    name: kept.length === YEAR_MONTHS ? range.previous.name : `작년 같은 ${kept.length}달`,
+  }
+}
+
+// 두 기간 가운데 마지막 끝난 날까지 저장하지 않은 날이 하루라도 있거나 진료한 날이 없으면 견주지 않는다(기본값 5)
+function comparedOf(byDay: ReadonlyMap<string, SavedDay>, now: DateRange, before: DateRange): Compared | null {
+  if (!savedAll(byDay, now) || !savedAll(byDay, before)) return null
+  const a = sumIn(byDay, now)
+  const b = sumIn(byDay, before)
+  if (a === null || b === null || a.workDays === 0 || b.workDays === 0) return null
+  return { now: a, before: b }
+}
+
+function daySlots(range: StatsRange, view: DateRange): Slot[] {
+  const tickPeriod: Period = range.period !== null && range.period !== '12m' ? QUICK_DAYS[range.period] : eachDay(range.current).length <= TICK_DAYS ? 30 : 90
+  const ticks = new Map(tickLabels(range.current, tickPeriod).map((tick) => [tick.day, tick.label]))
+  return eachDay(view).map((day) => ({ key: day, label: ticks.get(day) ?? '', rangeLabel: longDate(day), tableName: day, span: { from: day, to: day }, cut: false }))
+}
+
+// 주는 월–일을 기간(과 마지막 끝난 날)으로 자른다. 잘린 칸은 일부 기간이다
+function weekSlots(range: StatsRange, view: DateRange): Slot[] {
+  const { current } = range
+  const weeks: DateRange[] = []
+  for (let start = weekStartOf(current.from); compareYmd(start, current.to) <= 0; start = addDays(start, 7)) weeks.push({ from: start, to: addDays(start, 6) })
+  const step = weeks.length <= WEEK_LABEL_ALL ? 1 : WEEK_LABEL_STEP
+  return weeks.flatMap((whole, i): Slot[] => {
+    const span = { from: later(whole.from, current.from), to: earlier(whole.to, view.to) }
+    if (compareYmd(span.from, span.to) > 0) return []
+    const text = spanText(span)
+    return [{ key: span.from, label: i % step === 0 ? shortDate(span.from) : '', rangeLabel: text, tableName: text, span, cut: span.from !== whole.from || span.to !== whole.to }]
+  })
+}
+
+function monthSlots(range: StatsRange, view: DateRange): Slot[] {
+  const { current } = range
+  const slots: Slot[] = []
+  for (let month = monthOf(current.from); compareYmd(`${month}-01`, view.to) <= 0; month = addMonths(month, 1)) {
+    const whole = monthRange(month)
+    const span = { from: later(whole.from, current.from), to: earlier(whole.to, view.to) }
+    slots.push({ key: month, label: monthLabel(month), rangeLabel: yearMonth(month), tableName: yearMonth(month), span, cut: span.from !== whole.from || span.to !== whole.to })
+  }
+  return slots
+}
+
+// 해 고르기의 앞으로 올 달(첫날이 오늘 이후)은 빈 칸으로 잇는다(환자 수 추이와 같다)
+function futureBuckets(range: StatsRange): BarBucket[] {
+  if (range.whole === undefined) return []
+  const lastMonth = monthOf(range.whole.to)
+  const bars: BarBucket[] = []
+  for (let month = addMonths(monthOf(range.current.to), 1); compareYmd(month, lastMonth) <= 0 && compareYmd(`${month}-01`, range.load.to) >= 0; month = addMonths(month, 1)) {
+    bars.push({ key: month, label: monthLabel(month), rangeLabel: yearMonth(month), state: 'partial', values: [0], blank: 'future' })
+  }
+  return bars
+}
+
+function contextOf(input: RevenueInput): Ctx | null {
+  const { range, lastDay } = input
+  const view = { from: range.current.from, to: earlier(range.current.to, lastDay) }
+  const byDay = new Map(input.days.map((row) => [row.date, row]))
+  const sum = sumIn(byDay, view)
+  if (sum === null) return null
+  const unit = unitOf(range)
+  const slots = unit === 'day' ? daySlots(range, view) : unit === 'week' ? weekSlots(range, view) : monthSlots(range, view)
+  const pair = mainPair(input, view)
+  return {
+    input,
+    unit,
+    view,
+    byDay,
+    sum,
+    name: pair?.name ?? range.previous.name,
+    main: pair === null ? null : comparedOf(byDay, pair.now, pair.before),
+    lastYear: range.lastYear === null ? null : comparedOf(byDay, view, range.lastYear),
+    // 칸 안 저장된 날이 없거나 모두 쉬는 날이면 sum이 null이고 칸이 없다. 저장하지 않은 날이 든 칸·잘린 칸은 일부 기간이다
+    slots: slots.map((slot) => ({ slot, sum: sumIn(byDay, slot.span), state: slot.cut || !savedAll(byDay, slot.span) ? 'partial' : 'complete' })),
+  }
+}
+
+const filled = (slots: readonly SlotSum[]) => slots.flatMap(({ slot, sum, state }) => (sum === null ? [] : [{ slot, sum, state }]))
+
+// 막대: 값이 null이면(확인 필요한 날뿐·나눌 수 없음) 'no-data' 칸('–')이다
+function barsOf(ctx: Ctx, value: (sum: Sum) => number | null): BarBucket[] {
+  const bars = filled(ctx.slots).map(({ slot, sum, state }): BarBucket => {
+    const head = { key: slot.key, label: slot.label, rangeLabel: slot.rangeLabel, state }
+    const v = value(sum)
+    return v === null ? { ...head, values: [0], blank: 'no-data' } : { ...head, values: [v] }
+  })
+  return ctx.unit === 'month' ? [...bars, ...futureBuckets(ctx.input.range)] : bars
+}
+
+const totalBar = (sum: Sum) => (sum.workDays === 0 ? null : Math.floor(sum.total / WON_PER_MAN))
+function perVisitBar(sum: Sum): number | null {
+  const value = perVisit(sum)
+  return value === null ? null : Math.floor(value / WON_PER_CHEON)
+}
+
+// 막대 아래 글(기본값 7). 날 칸: 휴진(+ 저장 안 한 날) 문장 + 확인 필요한 날. 주·달 칸: 확인 필요한 날 + 12개월의 끝나지 않은 달 빗금
+function barNote(ctx: Ctx): string | null {
+  const unchecked = ctx.sum.uncheckedDays
+  if (ctx.unit === 'day') {
+    const first = savedAll(ctx.byDay, ctx.view) ? CLOSED_NOTE : CLOSED_OR_UNSAVED_NOTE
+    return unchecked.length === 0 ? first : `${first} '–'는 확인 필요한 날(${daysText(unchecked)})이에요. 그날 금액은 합계에 넣지 않았어요.`
+  }
+  const { lastDay, range } = ctx.input
+  const open = range.period === '12m' && filled(ctx.slots).some(({ slot }) => slot.cut && slot.key === monthOf(lastDay))
+  const parts = [
+    ...(unchecked.length === 0 ? [] : [`확인 필요한 날(${daysText(unchecked)})은 금액을 합계에 넣지 않았어요.`]),
+    ...(open ? [`빗금 칸은 아직 끝나지 않은 달이에요(${monthNumber(lastDay)}월은 ${dayNumber(lastDay)}일까지).`] : []),
+  ]
+  return parts.length === 0 ? null : parts.join(' ')
+}
+
+// ── 기간 요약 둘째 줄 ─────────────────────────────────────
+
+const blankCell = (key: RevenueCell['key'], note: string, label = LABELS[key]): RevenueCell => ({ key, label, value: DASH, unit: null, note, tone: 'none', srText: '' })
+const blankCells = (note: string, compareLabel = LABELS.compare): RevenueCell[] => [
+  blankCell('total', note),
+  blankCell('perVisit', note),
+  blankCell('unchecked', note),
+  blankCell('compare', note, compareLabel),
+]
+
+function compareCell(ctx: Ctx, label: string): RevenueCell {
+  const none = blankCell('compare', NO_COMPARE, label)
+  if (ctx.main === null) return none
+  const { now, before } = ctx.main
+  const change = compare(now.total, before.total)
+  if (change === null) return none
+  const note = `${ctx.name} 매출 ${formatManWon(before.total)}`
+  if (change.rate === 0) return { ...none, value: '변화 없음', note, tone: 'flat' }
+  const rising = change.rate > 0
+  const value = `${formatManWon(Math.abs(now.total - before.total))} (${rising ? '+' : MINUS}${Math.abs(change.rate).toFixed(1)}%)`
+  return { ...none, value, note, tone: rising ? 'up' : 'down', srText: rising ? '늘어남' : '줄어듦' }
+}
+
+/** 기간 요약 둘째 줄 네 칸(AC-4106.1~AC-4106.4): 매출 · 건당 진료비 · 확인 필요한 날 · 비교 기간보다(고른 기간은 '{비교 이름}보다') */
+export function revenueCells(input: RevenueInput | 'reading' | 'read-failed'): RevenueCell[] {
+  if (input === 'reading') return blankCells(READING)
+  if (input === 'read-failed') return blankCells(NO_DATA)
+  const compareLabel = input.range.period === null ? `${input.range.previous.name}보다` : LABELS.compare
+  const ctx = contextOf(input)
+  if (ctx === null) return blankCells(NO_DATA, compareLabel)
+  const { sum } = ctx
+  const value = perVisit(sum)
+  const unchecked = sum.uncheckedDays
+  return [
+    sum.workDays === 0
+      ? blankCell('total', NO_DATA)
+      : {
+          key: 'total',
+          label: LABELS.total,
+          value: manValue(sum.total),
+          unit: '원',
+          note: `진료한 날 ${formatCount(sum.workDays)}일 평균 ${formatManWon(Math.floor(sum.total / sum.workDays))}`,
+          tone: 'ink',
+          srText: '',
+        },
+    value === null
+      ? blankCell('perVisit', NO_DATA)
+      : { key: 'perVisit', label: LABELS.perVisit, value: formatCount(value), unit: '원', note: `매출 ÷ 접수 ${countText(sum.perVisitCount)}`, tone: 'ink', srText: '' },
+    unchecked.length === 0
+      ? { key: 'unchecked', label: LABELS.unchecked, value: '없음', unit: null, note: null, tone: 'ink', srText: '' }
+      : {
+          key: 'unchecked',
+          label: LABELS.unchecked,
+          value: formatCount(unchecked.length),
+          unit: '일',
+          note: `${daysText(unchecked)} · 그날 금액은 매출에 넣지 않았어요`,
+          tone: 'warn',
+          srText: '',
+        },
+    compareCell(ctx, compareLabel),
+  ]
+}
+
+// ── 탭 넷 ────────────────────────────────────────────────
+
+function trendTab(ctx: Ctx): TrendTab {
+  const { sum, main, name, unit } = ctx
+  const buckets = barsOf(ctx, totalBar)
+  return {
+    desc: `매출 = 총진료비 · 수납한 날 기준, ${EACH[unit]}`,
+    lead: { text: '이 기간 매출', amount: sum.workDays === 0 ? DASH : formatManWon(sum.total), rest: main === null ? null : `· ${name} ${formatManWon(main.before.total)}` },
+    buckets,
+    dense: buckets.length > DENSE_OVER,
+    note: barNote(ctx),
+    how: TREND_HOW,
+  }
+}
+
+// 그림 칸마다 아래부터 급여·비급여·기타. 나눔이 없는 칸(확인 필요한 날·나눔을 못 한 날뿐)은 겹이 없다. 눈금은 칸 매출의 최대(매출 추이와 같다)
+function stackChart(ctx: Ctx): StackChart | null {
+  const cells = filled(ctx.slots)
+  const scale = niceScale(Math.max(0, ...cells.map(({ sum }) => (sum.workDays === 0 ? 0 : sum.total))))
+  const won = (value: number | null) => (value === null ? DASH : formatWon(value))
+  const columns = cells.map(({ slot, sum, state }): StackColumn => {
+    const { covered, noncovered, other } = sum
+    const segments: StackSegment[] | null =
+      covered === null || noncovered === null || other === null
+        ? null
+        : [
+            { key: 'covered', height: percent(covered, scale.max) },
+            { key: 'noncovered', height: percent(noncovered, scale.max) },
+            { key: 'other', height: percent(other, scale.max) },
+          ]
+    return { month: slot.key, label: slot.label, year: '', kind: 'other', partial: state === 'partial', segments }
+  })
+  if (columns.every((column) => column.segments === null)) return null
+  const title = `${EVERY[ctx.unit]} 급여·비급여·기타`
+  return {
+    title,
+    legend: STACK_LEGEND,
+    axis: { unit: '(만 원)', ticks: scale.ticks.map((tick) => ({ label: formatCount(tick / WON_PER_MAN), bottom: percent(tick, scale.max) })) },
+    columns,
+    table: {
+      caption: `${title} (원)`,
+      head: [TABLE_HEAD[ctx.unit], '급여', '비급여', '기타'],
+      rows: cells.map(({ slot, sum }) => [slot.tableName, won(sum.covered), won(sum.noncovered), won(sum.other)]),
+    },
+  }
+}
+
+function splitTab(ctx: Ctx): SplitTab {
+  const { sum, input, name } = ctx
+  const { range } = input
+  const hasNoSplit = sum.noSplitDays.length > 0
+  const withYear = range.lastYear !== null
+  const head = ['나눔', range.name, '몫', `${name}보다`, ...(withYear ? ['작년 같은 때보다'] : [])]
+  const notice = dayNotice(sum.noSplitDays, NO_SPLIT_REST)
+  const { covered, insurer, selfPay, noncovered, other, splitTotal } = sum
+  if (splitTotal === null || covered === null || insurer === null || selfPay === null || noncovered === null || other === null) {
+    return {
+      desc: NO_DATA,
+      notice,
+      head,
+      rows: SPLIT_BLANK_ROWS.map(([rowName, kind]) => ({ name: rowName, kind, amount: DASH, share: DASH, delta: NO_DELTA, lastYear: withYear ? NO_DELTA : null })),
+      how: [hasNoSplit ? SPLIT_NONE_PARTIAL : SPLIT_NONE],
+      chart: null,
+    }
+  }
+  // 이 기간이나 비교 기간에 나눔을 못 한 날이 있으면 견주지 않는다(AC-4105.4)
+  const deltaOf = (pair: Compared | null, pick: (s: Sum) => number | null) =>
+    hasNoSplit || pair === null || pair.now.noSplitDays.length > 0 || pair.before.noSplitDays.length > 0 ? NO_DELTA : deltaText(pick(pair.now), pick(pair.before))
+  const row = (rowName: string, kind: SplitRow['kind'], value: number, pick: ((s: Sum) => number | null) | null): RevenueSplitRow => ({
+    name: rowName,
+    kind,
+    amount: formatManWon(value),
+    share: shareText(value, splitTotal),
+    delta: pick === null ? NO_DELTA : deltaOf(ctx.main, pick),
+    lastYear: withYear ? (pick === null ? NO_DELTA : deltaOf(ctx.lastYear, pick)) : null,
+  })
+  return {
+    desc: `${range.name} 비급여 몫 ${shareText(noncovered, splitTotal)} · 기타 몫 ${shareText(other, splitTotal)}`,
+    notice,
+    head,
+    rows: [
+      row('급여', 'main', covered, (s) => s.covered),
+      row('공단부담', 'sub', insurer, null),
+      row('본인부담', 'sub', selfPay, null),
+      row('비급여', 'main', noncovered, (s) => s.noncovered),
+      row('기타', 'main', other, (s) => s.other),
+      { ...row(hasNoSplit ? '합계' : '합계 · 매출', 'sum', splitTotal, (s) => s.total), share: '100%' },
+    ],
+    how: [`${SPLIT_NOTE}${hasNoSplit ? SPLIT_PARTIAL : SPLIT_FULL}`, ctx.unit === 'day' ? SPLIT_DAY_BARS : splitSpanBars(ctx.unit)],
+    chart: stackChart(ctx),
+  }
+}
+
+// 보는 기간에 통째로 든 달 가운데 날 단위 처방 금액이 하루도 없고 옛 달 합계가 있는 달(기본값 4)
+function oldMonthsOf({ input, view, byDay }: Ctx): Set<string> {
+  const withTotals = new Set(input.monthCodes.map((row) => row.month))
+  const months = new Set<string>()
+  for (let month = monthOf(view.from); compareYmd(`${month}-01`, view.to) <= 0; month = addMonths(month, 1)) {
+    const whole = monthRange(month)
+    const inside = compareYmd(whole.from, view.from) >= 0 && compareYmd(whole.to, view.to) <= 0
+    if (inside && withTotals.has(month) && !eachDay(whole).some((day) => byDay.get(day)?.dayCodes === true)) months.add(month)
+  }
+  return months
+}
+
+// 금액이 빠진 줄이 섞인 코드 합은 아는 금액 + 금액 없는 빈 줄로 넘긴다(groupTreatments가 missing을 단다)
+function codeRows(codes: readonly CodeTotal[]): RevenueCodeRow[] {
+  return codes.flatMap(({ code, count, amount, missing }) => {
+    const known: RevenueCodeRow = { code, name: null, count, amount }
+    return missing ? [known, { code, name: null, count: 0, amount: null }] : [known]
+  })
+}
+
+function treatmentsTab(ctx: Ctx): TreatmentsTab {
+  const { input, view, byDay } = ctx
+  const empty = { desc: `${input.range.name} · 처방한 날 기준 · 처방 칸의 묶음으로 세요`, lead: null, rows: [] as TreatmentRow[], notice: null, how: TREAT_HOW }
+  if (input.groups === 'reading') return { ...empty, state: 'reading', lines: [READING] }
+  if (input.groups === 'read-failed') return { ...empty, state: 'read-failed', lines: [GROUPS_FAILED] }
+  const oldMonths = oldMonthsOf(ctx)
+  const totals = groupTreatments([...codeRows(input.codes), ...input.monthCodes.filter((row) => oldMonths.has(row.month))], input.groups)
+  if (totals.length === 0) return { ...empty, state: 'none', lines: input.noDayCodes ? [TREAT_NONE, TREAT_OLD_HELPER] : [TREAT_NONE] }
+  // 날 단위 처방 금액도 옛 달 합계도 없는 진료한 날은 표에서 빠진다
+  const missing = rowsIn(byDay, view)
+    .filter((row) => isWorkDay(row) && !row.dayCodes && !oldMonths.has(monthOf(row.date)))
+    .map((row) => row.date)
+  const whole = totals.reduce((n, item) => n + item.amount, 0)
+  const max = Math.max(0, ...totals.filter((item) => !item.rest).map((item) => item.amount))
+  const unknown = (item: (typeof totals)[number]) => item.missing && item.amount === 0 // 금액을 모르는 코드뿐이면 0원이 아니다
+  return {
+    ...empty,
+    state: 'rows',
+    lead: { text: '이 기간 처방 금액', amount: totals.every(unknown) ? DASH : formatManWon(whole), rest: '· 묶음은 처방 칸의 묶음 그대로예요' },
+    rows: totals.map((item) => ({
+      name: item.name,
+      amount: unknown(item) ? DASH : formatManWon(item.amount),
+      share: unknown(item) ? DASH : shareText(item.amount, whole),
+      detail: item.rest ? REST_DETAIL : `처방 ${formatCount(item.count)}번`,
+      width: percent(item.amount, max),
+      rest: item.rest,
+      missing: item.missing,
+    })),
+    notice: dayNotice(missing, NO_CODES_REST),
+    lines: [],
+  }
+}
+
+function perVisitTab(ctx: Ctx): PerVisitTab {
+  const { sum, main, name, input } = ctx
+  const now = input.range.name
+  const value = perVisit(sum)
+  const before = main === null ? null : perVisit(main.before)
+  const delta = main === null ? NO_DELTA : deltaText(perVisit(main.now), before)
+  const buckets = barsOf(ctx, perVisitBar)
+  return {
+    desc: PER_VISIT_DESC,
+    kpis: [
+      value === null
+        ? blankKpi(`${now} 건당 진료비`, NO_DATA)
+        : { name: `${now} 건당 진료비`, value: formatWon(value), sub: `매출 ÷ 접수 ${countText(sum.perVisitCount)}`, tone: 'ink', srText: '' },
+      delta.dir === 'none' || before === null
+        ? blankKpi(`${name}보다`, NO_COMPARE)
+        : { name: `${name}보다`, value: delta.text, sub: `${name} ${formatWon(before)}`, tone: delta.dir, srText: delta.srText },
+      sum.visits === null
+        ? blankKpi(`${now} 접수 건수`, NO_DATA)
+        : {
+            name: `${now} 접수 건수`,
+            value: countText(sum.visits),
+            sub: main !== null && main.before.visits !== null ? `${name} ${countText(main.before.visits)}` : NO_COMPARE,
+            tone: 'ink',
+            srText: '',
+          },
+    ],
+    buckets,
+    dense: buckets.length > DENSE_OVER,
+    note: barNote(ctx),
+    notice: dayNotice(sum.noVisitDays, NO_VISIT_REST),
+    how: PER_VISIT_HOW,
+  }
+}
+
+/** 매출 칸 탭 넷(AC-4107.2~AC-4107.8의 숫자·글). 보는 기간에 저장된 매출이 없거나 모두 쉬는 날이면 empty(AC-4107.7) */
+export function revenueTabs(input: RevenueInput): RevenueTabs {
+  const ctx = contextOf(input)
+  if (ctx === null) return { kind: 'empty' }
+  return { kind: 'ready', trend: trendTab(ctx), split: splitTab(ctx), treatments: treatmentsTab(ctx), perVisit: perVisitTab(ctx) }
+}

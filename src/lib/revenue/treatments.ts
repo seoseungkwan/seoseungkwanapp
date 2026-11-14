@@ -5,6 +5,8 @@ import { RX_GROUP_CODES_MAX, RX_GROUP_NAME_MAX, RX_GROUPS_MAX, type RxGroup } fr
 const REST_NAME = '그 밖 처방'
 
 const upperCode = (code: string) => code.trim().toUpperCase()
+// 묶음 견주기 열쇠: 통계 묶음(components/stats/view.ts codeKey)처럼 대소문자를 가리지 않는다(stats-revenue AC-4105.5)
+const groupKey = (code: string) => code.toUpperCase()
 
 /** 원본 일일 보고(OperationalReportSql.Treatments)의 다섯 규칙. 제안에만 쓰고, 이 표 밖에 따로 적지 않는다 */
 export const SUGGESTED_GROUPS: readonly { name: string; match: (code: string) => boolean }[] = [
@@ -37,9 +39,10 @@ const hasNumbers = (t: TreatmentTotal) => t.amount !== 0 || t.count !== 0
 
 /**
  * 묶음마다 금액·건수 합. 금액 큰 순(같으면 sortOrder 순), '그 밖 처방'은 맨 뒤.
- * 통계용으로 한 코드가 여러 묶음에 있어도 되므로(plan.md §7), 매출을 두 번 세지 않게 sortOrder 순 첫 묶음에서만 센다
+ * 통계용으로 한 코드가 여러 묶음에 있어도 되므로(plan.md §7), 매출을 두 번 세지 않게 sortOrder 순 첫 묶음에서만 센다.
+ * 코드는 대소문자를 가리지 않는다('mm101' 묶음에 'MM101' 줄이 든다). _REST는 글자 그대로 견준다
  */
-export function groupTreatments(codes: RevenueCodeRow[], groups: RxGroup[]): TreatmentTotal[] {
+export function groupTreatments(codes: readonly RevenueCodeRow[], groups: readonly RxGroup[]): TreatmentTotal[] {
   const ordered = [...groups].sort((a, b) => a.sortOrder - b.sortOrder)
   const totals = ordered.map((g): TreatmentTotal => ({ name: g.name, amount: 0, count: 0, missing: false, rest: false }))
   const restTotal: TreatmentTotal = { name: REST_NAME, amount: 0, count: 0, missing: false, rest: true }
@@ -47,12 +50,12 @@ export function groupTreatments(codes: RevenueCodeRow[], groups: RxGroup[]): Tre
   const firstGroup = new Map<string, TreatmentTotal>()
   ordered.forEach((g, i) => {
     for (const code of g.codes) {
-      if (!firstGroup.has(code)) firstGroup.set(code, totals[i])
+      if (!firstGroup.has(groupKey(code))) firstGroup.set(groupKey(code), totals[i])
     }
   })
 
   for (const row of codes) {
-    const total = row.code === REVENUE_REST_CODE ? restTotal : (firstGroup.get(row.code) ?? restTotal)
+    const total = row.code === REVENUE_REST_CODE ? restTotal : (firstGroup.get(groupKey(row.code)) ?? restTotal)
     total.count += row.count
     if (row.amount === null) total.missing = true
     else total.amount += row.amount

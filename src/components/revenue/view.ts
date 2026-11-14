@@ -9,6 +9,26 @@ import type { DateRange } from '@/types/dates'
 import type { RevenueCodeRow, RevenueDayRow } from '@/types/revenue'
 import type { RxGroup } from '@/types/rxGroups'
 import { formatManWon, formatWon } from './money'
+import type {
+  Axis,
+  BarKind,
+  Chart,
+  Column,
+  DeltaText,
+  Kpi,
+  LegendItem,
+  Notice,
+  SplitRow,
+  SrTable,
+  StackChart,
+  StackColumn,
+  StackSegment,
+  Tone,
+  TreatmentRow,
+} from './types'
+
+// 보기 타입은 types.ts로 옮겼다(stats-revenue). 남는 부품이 그대로 './view'에서 불러오도록 다시 내보낸다
+export type { Axis, BarKind, DeltaText, Kpi, LegendItem, Notice, SplitRow, SrTable, StackChart, StackColumn, StackSegment, Tone, TreatmentRow }
 
 // 매출 화면의 보기 모양(spec revenue design.md 9절, REQ-008). 순수 함수다: React·네트워크·저장소 없음, 오늘은 인자로만 받는다.
 // 글자는 승인된 시안 docs/mockups/revenue/gen.py 그대로다. 숫자는 받은 자료에서만 나온다(자료가 없으면 "–"와 "자료 없음", AC-008.4)
@@ -53,28 +73,11 @@ export type RevenueViewInput = {
   sync: RevenueSync
 }
 
-export type Tone = 'ink' | 'warn' | 'up' | 'down' | 'flat' | 'none'
-/** 숫자 칸. srText = 화면 읽기로 주는 방향("늘어남"·"줄어듦") */
-export type Kpi = { name: string; value: string; sub: string | null; tone: Tone; srText: string }
-export type DeltaText = { dir: 'up' | 'down' | 'flat' | 'none'; text: string; srText: string }
-/** lead는 굵게, rest는 이어서 */
-export type Notice = { lead: string; rest: string }
-export type SrTable = { caption: string; head: string[]; rows: string[][] }
-export type LegendItem = { key: string; label: string }
-export type Axis = { unit: string; ticks: { label: string; bottom: number }[] }
-export type BarKind = 'selected' | 'last-year' | 'other'
-type Column = { month: string; label: string; year: string; kind: BarKind; partial: boolean }
 export type BarColumn = Column & { bar: { height: number; value: string } | null }
-export type StackSegment = { key: 'covered' | 'noncovered' | 'other'; height: number }
-export type StackColumn = Column & { segments: StackSegment[] | null }
-type Chart<C> = { title: string; legend: LegendItem[]; axis: Axis; columns: C[]; table: SrTable }
 export type BarChart = Chart<BarColumn>
-export type StackChart = Chart<StackColumn>
 
 export type TrendView = { title: string; sub: string; kpis: Kpi[]; chart: BarChart | null }
-export type SplitRow = { name: string; kind: 'main' | 'sub' | 'sum'; amount: string; share: string; delta: DeltaText }
 export type SplitView = { title: string; sub: string; notice: Notice | null; head: string[]; rows: SplitRow[]; note: string; chart: StackChart | null }
-export type TreatmentRow = { name: string; amount: string; share: string; detail: string; width: number; rest: boolean; missing: boolean }
 type TreatmentsHead = { title: string; sub: string; editLabel: string; editDisabled: boolean }
 export type TreatmentsView = TreatmentsHead &
   (
