@@ -1362,3 +1362,50 @@ describe('AC-4416.2: StackedBarChart selected·onPick — 고른 칸 표시와 �
     expect(picked).toBe(base)
   })
 })
+
+describe('AC-4408.3: StackedBarChart 음수 값(환불이 더 많은 날의 참고 금액) — 높이는 0%로 자르고 칸 위 숫자만 보인다', () => {
+  // 통계 매출 켜짐 막대 차례(참고 금액 빗금이 맨 위): 하루 칸 음수는 빗금 계열, 섞인 칸 음수는 매출 계열
+  const ROUGH_FIRST: BarSeries[] = [
+    { name: '참고 금액', tone: 'rough' },
+    { name: '매출', tone: 'accent' },
+  ]
+  const NEGATIVE: BarBucket[] = [
+    { key: 'n1', label: '1', rangeLabel: '11월 1일', state: 'complete', values: [0, 50] },
+    { key: 'n2', label: '2', rangeLabel: '11월 2일', state: 'complete', values: [-5, 0] },
+    { key: 'n3', label: '3', rangeLabel: '11월 3일 – 9일', state: 'partial', values: [0, -42] },
+    { key: 'n4', label: '4', rangeLabel: '11월 10일', state: 'complete', values: [0, 80] },
+  ]
+
+  it('AC-4408.3: 음수 칸 막대 높이는 0%이고 조각을 그리지 않는다(빗금·매출 계열 모두). 모든 style 값은 0 이상이다', () => {
+    const { root } = chart({ series: ROUGH_FIRST, buckets: NEGATIVE, motion: true })
+    const list = bars(figureOf(root))
+    expect(list).toHaveLength(4)
+    expect(styleOf(list[1]!)).toBe('height:0%')
+    expect(segmentsOf(list[1]!)).toEqual([])
+    expect(list[1]!.querySelector('svg')).toBeNull()
+    expect(styleOf(list[2]!)).toBe('height:0%')
+    for (const el of all(root).filter((node) => node.hasAttribute('style'))) expect(styleOf(el), styleOf(el)).toMatch(/^(height|bottom):\d+(?:\.\d{1,2})?%$/)
+  })
+
+  it('AC-4408.3: 칸 위 숫자는 음수 그대로(−5 · −42)이고 눈금은 양수 칸(최대 80)으로 잡는다', () => {
+    const { root } = chart({ series: ROUGH_FIRST, buckets: NEGATIVE })
+    const list = bars(figureOf(root))
+    expect(textOf(aboveBar(list[1]!)[0])).toBe('−5')
+    expect(leafByText(aboveBar(list[2]!)[0]!, '−42')).toHaveLength(1)
+    expect(leafByText(figureOf(root), '60')).toHaveLength(1)
+    expect(styleOf(list[3]!)).toBe('height:100%')
+    expect(rows(tableOf(root))).toEqual([
+      ['11월 1일', '0', '50', '50', '완료'],
+      ['11월 2일', '−5', '0', '−5', '완료'],
+      ['11월 3일 – 9일', '0', '−42', '−42', '일부 기간'],
+      ['11월 10일', '0', '80', '80', '완료'],
+    ])
+  })
+
+  it('AC-4408.3: 양수 칸 마크업은 음수 칸이 옆에 있어도 같다', () => {
+    const positive = NEGATIVE.map((bucket) => (bucket.values.some((v) => v < 0) ? { ...bucket, values: [0, 0] } : bucket))
+    const withNegative = bars(figureOf(chart({ series: ROUGH_FIRST, buckets: NEGATIVE }).root))
+    const withoutNegative = bars(figureOf(chart({ series: ROUGH_FIRST, buckets: positive }).root))
+    for (const i of [0, 3]) expect(withNegative[i]!.outerHTML, `칸 ${i}`).toBe(withoutNegative[i]!.outerHTML)
+  })
+})

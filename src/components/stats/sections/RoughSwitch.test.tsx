@@ -11,7 +11,8 @@ afterEach(cleanup)
 
 const OFF = '확인 필요한 날 3일은 빼고 셌어요'
 const ON = '확인 필요한 날 2일의 참고 금액을 더했어요'
-const OLD = '도우미가 예전 판(0.6.0)이라 참고 금액을 알 수 없어요'
+const PART = '참고 금액 2일 포함 · 1일 금액 미확인'
+const NO_ROUGH = '이 기간 확인 필요한 날은 참고 금액 없이 저장됐어요. 도우미 0.7.0으로 다시 불러오면 보여요'
 const describedText = (button: HTMLElement) => document.getElementById(button.getAttribute('aria-describedby') ?? '')?.textContent
 const classes = (el: Element) => el.className.split(' ').filter(Boolean)
 
@@ -26,11 +27,25 @@ describe('AC-4408.1 RoughSwitch', () => {
     expect(describedText(button)).toBe(OFF)
   })
 
-  it('AC-4408.1 켜짐이면 aria-checked="true"이고 아래 글의 {n}은 참고 금액이 있는 날 수다', () => {
-    render(<RoughSwitch mode="in" onChange={() => undefined} days={3} roughDays={2} />)
+  it('AC-4408.1 켜짐이면 aria-checked="true"이고 아래 글의 {n}은 참고 금액이 있는 날 수다(확인 필요한 날 모두에 참고 금액이 있음)', () => {
+    render(<RoughSwitch mode="in" onChange={() => undefined} days={2} roughDays={2} />)
     const button = screen.getByRole('switch', { name: '참고 금액 포함' })
     expect(button.getAttribute('aria-checked')).toBe('true')
     expect(describedText(button)).toBe(ON)
+  })
+
+  it('AC-4408.1 켜짐인데 참고 금액이 없는 확인 필요한 날도 있으면 아래 글은 "참고 금액 {m}일 포함 · {k}일 금액 미확인"이다', () => {
+    render(<RoughSwitch mode="in" onChange={() => undefined} days={3} roughDays={2} />)
+    const button = screen.getByRole('switch', { name: '참고 금액 포함' })
+    expect(button.getAttribute('aria-checked')).toBe('true')
+    expect(describedText(button)).toBe(PART)
+    cleanup()
+    render(<RoughSwitch mode="in" onChange={() => undefined} days={1_204} roughDays={1_000} />)
+    expect(describedText(screen.getByRole('switch'))).toBe('참고 금액 1,000일 포함 · 204일 금액 미확인')
+    cleanup()
+    // 꺼짐 글은 그대로다(확인 필요한 날 모두)
+    render(<RoughSwitch mode="out" onChange={() => undefined} days={3} roughDays={2} />)
+    expect(describedText(screen.getByRole('switch'))).toBe(OFF)
   })
 
   it('AC-4408.1 누르면 반대 mode로 바꾸라고 부른다', () => {
@@ -44,13 +59,14 @@ describe('AC-4408.1 RoughSwitch', () => {
     expect(onChange).toHaveBeenCalledTimes(2)
   })
 
-  it('AC-4408.1 참고 금액이 있는 날이 없으면 눌리지 않고(aria-disabled="true", 꺼짐) 아래 글은 옛 도우미 글이다', () => {
+  it('AC-4408.1 참고 금액이 있는 날이 없으면 눌리지 않고(aria-disabled="true", 꺼짐) 아래 글은 저장된 자료 기준 글이다(판 이름으로 단정하지 않음)', () => {
     const onChange = vi.fn()
     render(<RoughSwitch mode="in" onChange={onChange} days={3} roughDays={0} />)
     const button = screen.getByRole('switch', { name: '참고 금액 포함' })
     expect(button.getAttribute('aria-disabled')).toBe('true')
     expect(button.getAttribute('aria-checked')).toBe('false')
-    expect(describedText(button)).toBe(OLD)
+    expect(describedText(button)).toBe(NO_ROUGH)
+    expect(describedText(button)).not.toContain('예전 판')
     fireEvent.click(button)
     expect(onChange).not.toHaveBeenCalled()
     expect(classes(button)).toEqual(expect.arrayContaining(['aria-disabled:cursor-not-allowed', 'aria-disabled:bg-st-canvas', 'aria-disabled:text-st-muted']))
@@ -91,7 +107,7 @@ describe('AC-4408.1 RoughSwitch', () => {
   })
 
   it('AC-4408.1 모양: 알약(rounded-full) 40px 단추 · 켜면 참고 금액 색 테두리와 옅은 노랑 바탕 · 아래 글은 12px muted', () => {
-    render(<RoughSwitch mode="in" onChange={() => undefined} days={3} roughDays={2} />)
+    render(<RoughSwitch mode="in" onChange={() => undefined} days={2} roughDays={2} />)
     const button = screen.getByRole('switch')
     expect(classes(button)).toEqual(
       expect.arrayContaining(['rounded-full', 'min-h-10', 'border', 'border-st-line-2', 'bg-surface', 'font-semibold', 'aria-checked:border-st-ref', 'aria-checked:bg-warning-soft']),
