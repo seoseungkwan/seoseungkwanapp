@@ -119,13 +119,18 @@ describe('AC-4410.2: 달 줄 · 100% 막대 · 줄 끝 글 · 합계', () => {
     expect(more!.textContent).toBe('1')
     expect(once!.style.flexBasis).toBe('66.67%')
     expect(more!.style.flexBasis).toBe('33.33%')
+  })
+
+  it('AC-4410.2: 집계가 끝난 달 막대는 1회 파랑 · 2회 이상 짙은 남색 바탕에 흰 숫자다(최근 12개월의 3월)', () => {
+    draw([SHOCK], inputOf([day('2026-03-10', [[SHOCK, 4, 1]]), ...DAYS], '12m'))
+    const [once, more] = Array.from(barOf(rowOf('3월'))!.children) as HTMLElement[]
     expect(classes(once!)).toEqual(expect.arrayContaining(['bg-accent', 'text-surface']))
     expect(classes(more!)).toEqual(expect.arrayContaining(['bg-st-ink', 'text-surface']))
   })
 
   it('AC-4410.2: 두 갈래 바탕은 막대 안 흰 숫자(text-surface)와 대비 4.5:1 이상이다(1회 파랑 · 2회 이상 짙은 남색)', () => {
-    draw()
-    const bar = barOf(rowOf('2026년 10월 (15일부터)'))!
+    draw([SHOCK], inputOf([day('2026-03-10', [[SHOCK, 4, 1]]), ...DAYS], '12m'))
+    const bar = barOf(rowOf('3월'))!
     const tones = (Array.from(bar.children) as HTMLElement[]).map((part) => classes(part).find((name) => name.startsWith('bg-'))!)
     expect(tones).toEqual(['bg-accent', 'bg-st-ink'])
     const surface = tokenColor('surface')
@@ -172,21 +177,37 @@ describe('AC-4410.2: 달 줄 · 100% 막대 · 줄 끝 글 · 합계', () => {
 })
 
 describe('AC-4410.3: 집계 중', () => {
-  it('AC-4410.3: 오늘이 든 달과 그 앞 달은 달 이름 옆에 "집계 중" 꼬리표가 있고 막대가 옅다(opacity-55)', () => {
+  it('AC-4410.3: 오늘이 든 달과 그 앞 달은 달 이름 옆에 "집계 중" 꼬리표가 있고 막대가 옅다(옅은 바탕 + 진한 숫자, 막대 전체 투명 없음)', () => {
     draw()
     for (const label of ['2026년 10월 (15일부터)', '11월 (13일까지)']) {
       const name = screen.getByText(label)
       const tag = within(name).getByText('집계 중')
       expect(classes(tag)).toEqual(expect.arrayContaining(['rounded-full', 'text-caption']))
-      expect(classes(barOf(rowOf(label))!)).toContain('opacity-55')
+      const bar = barOf(rowOf(label))!
+      expect(classes(bar).some((name) => name.startsWith('opacity-'))).toBe(false)
+      for (const part of Array.from(bar.children)) {
+        expect(classes(part)).toContain('text-st-ink')
+        expect(classes(part)).not.toContain('text-surface')
+      }
     }
+    // 두 갈래가 다 있는 10월: 1회 연한 파랑 · 2회 이상 연한 회색
+    const [once, more] = Array.from(barOf(rowOf('2026년 10월 (15일부터)'))!.children) as HTMLElement[]
+    expect(classes(once!)).toContain('bg-st-h2')
+    expect(classes(more!)).toContain('bg-st-line-2')
+  })
+
+  it('AC-4410.3: 집계 중 막대 숫자와 옅은 바탕 대비는 4.5:1 이상이다', () => {
+    const ink = tokenColor('st-ink')
+    for (const tone of ['st-h2', 'st-line-2']) expect(contrast(tokenColor(tone), ink)).toBeGreaterThanOrEqual(4.5)
   })
 
   it('AC-4410.3: 그 밖 달은 꼬리표가 없고 막대가 옅지 않다(최근 12개월의 3월)', () => {
     draw([SHOCK], inputOf([day('2026-03-10', [[SHOCK, 4, 1]]), ...DAYS], '12m'))
     const march = rowOf('3월')
     expect(within(march).queryByText('집계 중')).toBeNull()
-    expect(classes(barOf(march)!)).not.toContain('opacity-55')
+    const [once, more] = Array.from(barOf(march)!.children) as HTMLElement[]
+    expect(classes(once!)).toEqual(expect.arrayContaining(['bg-accent', 'text-surface']))
+    expect(classes(more!)).toEqual(expect.arrayContaining(['bg-st-ink', 'text-surface']))
     expect(within(march).getByText('신환 4명 · 1회 25.0%')).toBeTruthy()
     expect(within(section()).getAllByText('집계 중')).toHaveLength(2)
   })

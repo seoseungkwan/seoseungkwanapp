@@ -8,7 +8,7 @@ import { EmptyNote, hasRows, NO_RANGE_DATA, todayOf } from './parts'
 
 // 신환이 그 처방을 받은 횟수 묶음 (first90 REQ-4410, design.md 5-8, 시안 docs/mockups/first90 .s-once). 처방 골라 보기의 '같은 처방 재방문' 아래에 놓는다.
 // 고른 처방 하나를 단추 묶음(aria-pressed)에서 고르고(React 상태, 처음 첫째), 보는 기간의 달마다 100% 가로 막대 두 갈래(현재까지 1회 · 2회 이상)를 그린다.
-// 숫자는 onceView가 낸 값이다. 막대 갈래 폭(flex-basis)은 기간을 바꾸면 움직인다(st-move-period, AC-4417.2). 집계 중 달은 꼬리표 + 옅은 막대다
+// 숫자는 onceView가 낸 값이다. 막대 갈래 폭(flex-basis)은 기간을 바꾸면 움직인다(st-move-period, AC-4417.2). 집계 중 달은 꼬리표 + 옅은 바탕·진한 숫자 막대다
 
 const TITLE = '신환이 그 처방을 받은 횟수'
 const DESC = '첫 내원일에 이 처방을 받은 신환이, 불러온 자료 끝날까지 이 처방을 몇 날 받았는지 달마다 봐요'
@@ -16,8 +16,13 @@ const FOOT = '집계 중 = 이번 달과 지난달. 첫 내원이 얼마 안 돼
 const MISSING = '이 기간 숫자는 1회 신환을 세기 전에 저장했어요. 비트에서 다시 불러오거나 파일을 다시 넣으면 보여요.'
 const NO_VALUE = '–'
 // 두 갈래 색(design.md 5-8): 현재까지 1회 = accent, 2회 이상 = st-ink(짙은 남색). 둘 다 막대 안 흰 숫자와 대비 4.5:1 이상(AC-4410.2)
+// 집계 중 달은 옅은 바탕 + 진한 남색 숫자(AC-4410.3): 1회 st-h2, 2회 이상 st-line-2. 막대 전체를 투명하게 하지 않아 숫자가 흐려지지 않는다
 const ONCE_TONE = 'bg-accent'
 const MORE_TONE = 'bg-st-ink'
+const ONCE_PART = `${ONCE_TONE} text-surface`
+const MORE_PART = `${MORE_TONE} text-surface`
+const ONCE_SOFT = 'bg-st-h2 text-st-ink'
+const MORE_SOFT = 'bg-st-line-2 text-st-ink'
 
 // 카드 안 작은 칸(위 얇은 선, 제목 15px)
 const BLOCK = 'mt-6 border-t border-st-line pt-5'
@@ -31,7 +36,7 @@ const ROW = 'grid grid-cols-[150px_minmax(0,1fr)_150px] items-center gap-x-4 py-
 const MONTH = 'text-small text-st-ink-2 max-md:col-start-1 max-md:row-start-1'
 const TAG = 'ml-1.5 rounded-full bg-st-line px-1.5 py-px text-caption font-semibold text-st-ink-2'
 const BAR = 'flex h-6 overflow-clip rounded-st-sm max-md:col-[1/3] max-md:row-start-2'
-const PART = 'st-move-period flex min-w-0 items-center justify-center text-caption font-semibold whitespace-nowrap text-surface'
+const PART = 'st-move-period flex min-w-0 items-center justify-center text-caption font-semibold whitespace-nowrap'
 const END = 'text-right text-small text-st-ink-2 tabular-nums max-md:col-start-2 max-md:row-start-1'
 const NOTE = 'mt-2 text-small text-st-muted'
 
@@ -53,11 +58,11 @@ function totalText(total: OnceTotal): string {
 function OnceBar({ row }: { row: OnceRow }) {
   if (row.newPatients === 0 || row.once === null || row.more === null) return null
   const parts = [
-    { key: 'once', value: row.once, tone: ONCE_TONE },
-    { key: 'more', value: row.more, tone: MORE_TONE },
+    { key: 'once', value: row.once, tone: row.counting ? ONCE_SOFT : ONCE_PART },
+    { key: 'more', value: row.more, tone: row.counting ? MORE_SOFT : MORE_PART },
   ].filter((part) => part.value > 0)
   return (
-    <span role="img" aria-label={`신환 ${formatCount(row.newPatients)}명 중 1회 ${formatCount(row.once)}명, 2회 이상 ${formatCount(row.more)}명`} className={row.counting ? `${BAR} opacity-55` : BAR}>
+    <span role="img" aria-label={`신환 ${formatCount(row.newPatients)}명 중 1회 ${formatCount(row.once)}명, 2회 이상 ${formatCount(row.more)}명`} className={BAR}>
       {parts.map((part) => (
         <span key={part.key} className={`${PART} ${part.tone}`} style={{ flexBasis: `${percentOf(part.value, row.newPatients)}%` }}>
           {formatCount(part.value)}
