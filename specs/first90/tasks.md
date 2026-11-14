@@ -200,3 +200,27 @@
   - 네 줄 이하면 [전체 보기] 없음. 흐림 덧칠(그라데이션) 없음.
   - 보고 글(`formatClinicReport`)은 바꾸지 않는다.
 - 차례: Phase 6 (TASK-11과 병렬)
+
+## TASK-13: 검토 보완 — 1회 신환 범위 · 대시보드 두 갈래 이름
+- REQ: REQ-4409, REQ-4410, REQ-4404
+- AC: AC-4409.3, AC-4410.1, AC-4410.3, AC-4410.4, AC-4404.3
+- Files: src/components/stats/loadPlan.ts, src/components/stats/loadPlan.test.ts, src/components/stats/sections/RxPickOnce.tsx, src/components/stats/sections/RxPickOnce.test.tsx, src/components/dashboard/summary/flow.ts, src/components/dashboard/summary/flow.test.ts, src/components/dashboard/summary/DashboardAnalysis.test.tsx, src/components/dashboard/summary/TableToggle.test.tsx, src/components/preview/sample.test.ts
+- Tests: src/components/stats/loadPlan.test.ts, src/components/stats/sections/RxPickOnce.test.tsx, src/components/dashboard/summary/flow.test.ts, src/components/dashboard/summary/DashboardAnalysis.test.tsx
+- TDD: required
+  - `partSave`: 가장 새 조각이 아닌 조각(read 끝 > save 끝)의 날 줄 `rx[]`에서 `once`를 뺀다. 가장 새 조각·한 조각은 그대로(`after30`과 같은 규칙).
+  - RxPickOnce 옆 글·아래 글·빈 글을 AC 글로 바꾼다. 계산·막대·색은 그대로.
+  - 대시보드 두 갈래 둘째 이름 "재진(90일초진 포함)", 색 그대로. 세 갈래·옆 글은 그대로.
+- 차례: 검토 보완 (TASK-14와 병렬)
+
+## TASK-14: 검토 보완 — 참고 금액 일부·비교 기간·음수·켜짐 안내
+- REQ: REQ-4408
+- AC: AC-4408.1, AC-4408.2, AC-4408.3, AC-4408.4
+- Files: src/components/stats/sections/RoughSwitch.tsx, src/components/stats/sections/RoughSwitch.test.tsx, src/components/stats/revenueView.ts, src/components/stats/revenueView.test.ts, src/components/stats/sections/RevenueSection.tsx, src/components/stats/sections/RevenueSection.test.tsx, src/components/stats/sections/RevenueSummary.test.tsx, src/components/stats/sections/PeriodSummary.test.tsx, src/components/stats/StatsScreen.test.tsx, src/components/charts/StackedBarChart.tsx, src/components/charts/StackedBarChart.test.tsx
+- Tests: src/components/stats/sections/RoughSwitch.test.tsx, src/components/stats/revenueView.test.ts, src/components/stats/sections/RevenueSection.test.tsx, src/components/charts/StackedBarChart.test.tsx
+- TDD: required
+  - 켜짐 스위치 글(빠진 날이 있을 때), 눌리지 않는 글(저장된 자료 기준).
+  - 총매출 아래 비교 기간 빠진 날 줄(꺼짐·켜짐 각 기준).
+  - 음수 참고 금액 막대 값 0 쪽 버림(매출·건당), 하루 칸은 빗금 계열, 섞인 칸은 매출 계열. 차트 높이 음수 → 0%.
+  - 켜짐 매출 추이 [어떻게 세나요?] 둘째 문단, 켜짐 급여·비급여·기타·치료별 매출 맨 위 안내(`RoughTabs.outside`).
+  - 급여·비급여·기타·치료별 매출 계산에는 참고 금액을 넣지 않는다(그대로).
+- 차례: 검토 보완 (TASK-13과 병렬)
