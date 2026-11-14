@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { checkResult } from '@/lib/bridge/protocol'
 import { BIT_FILL_KEYS, bitValuesFrom } from '@/lib/worklog/bitFill'
 import type { RevenueDayRow, RevenueDaysResult } from '@/types/revenue'
 import { useBitFill } from './useBitFill'
@@ -169,6 +170,46 @@ describe('AC-017.1 열면 읽기', () => {
     await settle()
     expect(bridge.call).toHaveBeenCalledTimes(1)
     expect(result.current.status).toBe('ready')
+  })
+})
+
+describe('AC-4102.3 도우미 0.6.0 답(dayCodes가 든 답)', () => {
+  // 새 도우미는 날 줄 옆에 날 단위 처방 줄을 더 준다. 업무일지는 날 줄만 쓰므로 채우는 칸·값이 같아야 한다
+  const withDayCodes = (date: string, over: Partial<RevenueDayRow> = {}): RevenueDaysResult => ({
+    ...answer(date, over),
+    dayCodes: [
+      [date, 'MM101', 3, 45000],
+      [date, '_REST', 1, null],
+    ],
+  })
+
+  it('AC-4102.3: dayCodes가 든 답은 통로 검사를 지나는 모양이다(진짜 검사로 확인)', () => {
+    expect(checkResult('revenue.days', withDayCodes(TODAY))).toBe(true)
+    expect(checkResult('revenue.days', withDayCodes(TODAY, UNCONFIRMED))).toBe(true)
+  })
+
+  it('AC-4102.3: dayCodes가 든 답으로도 옛 답과 같은 칸을 같은 값으로 채운다', async () => {
+    bridge.call.mockResolvedValueOnce(answer(TODAY))
+    const old = setup()
+    await settle()
+    const before = old.result.current
+    old.unmount()
+
+    bridge.call.mockResolvedValueOnce(withDayCodes(TODAY))
+    const { result } = setup()
+    await settle()
+    expect(result.current.status).toBe('ready')
+    expect(result.current.status).toBe(before.status)
+    expect(result.current.values).toEqual(before.values)
+    expect(result.current.values).toEqual(bitValuesFrom(row(TODAY)).values)
+  })
+
+  it('AC-4102.3: dayCodes가 든 답의 확인 필요한 날도 지금처럼 unconfirmed이고 신환·재진만 채운다', async () => {
+    bridge.call.mockResolvedValueOnce(withDayCodes(TODAY, UNCONFIRMED))
+    const { result } = setup()
+    await settle()
+    expect(result.current.status).toBe('unconfirmed')
+    expect(result.current.values).toEqual({ newPatients: 12, returnPatients: 48 })
   })
 })
 

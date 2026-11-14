@@ -68,7 +68,18 @@ export type RevenueCodeRow = { code: string; name: string | null; count: number;
 /** 코드 줄의 칸(정확히 이것뿐) */
 export const REVENUE_CODE_KEYS = ['code', 'name', 'count', 'amount'] as const satisfies readonly (keyof RevenueCodeRow)[]
 
-export type RevenueDaysResult = { days: RevenueDayRow[]; codes: RevenueCodeRow[] }
+/** 날 단위 처방 한 줄(도우미 0.6.0부터, specs/stats-revenue): [날짜, 코드, 건수, 금액 또는 null(값 빠짐)] */
+export type RevenueDayCodeRow = readonly [date: string, code: string, count: number, amount: number | null]
+
+/** dayCodes 없음 = 옛 도우미(0.6.0 전). 있으면 날 줄과 같은 기간의 날 단위 처방 줄 */
+export type RevenueDaysResult = { days: RevenueDayRow[]; codes: RevenueCodeRow[]; dayCodes?: RevenueDayCodeRow[] }
+
+/** 저장된 날 줄(읽기용). dayCodes = 그날 날 단위 처방 줄을 함께 저장했는지(sales_days.day_codes) */
+export type SavedRevenueDay = RevenueDayRow & { dayCodes: boolean }
+/** 범위 안 날 단위 처방 줄을 코드마다 더한 것(sales_code_totals). amount는 null을 뺀 합, missing = 금액이 빠진 줄이 있었음 */
+export type RevenueCodeTotal = { code: string; count: number; amount: number; missing: boolean }
+/** 옛 달 합계 한 줄(sales_codes). month는 'YYYY-MM' */
+export type RevenueMonthCode = RevenueCodeRow & { month: string }
 
 /** 처방 코드 모양. 예약 코드 _REST = 모양이 맞지 않거나 1,000개를 넘쳐 합친 나머지(이름 없음) */
 export const REVENUE_CODE_SHAPE = /^[0-9A-Za-z가-힣_.\-]{1,30}$/
@@ -76,5 +87,9 @@ export const REVENUE_REST_CODE = '_REST'
 /** 한 번에 읽는 날 수 한도(commands.json maxDays와 같다) */
 export const REVENUE_MAX_DAYS = 31
 export const REVENUE_MAX_CODES = 1000
+/** dayCodes 하루 줄 수 한도(도우미 MaxDayCodesPerDay와 같다. 넘친 날은 도우미가 _REST로 접는다) */
+export const REVENUE_DAY_CODES_PER_DAY = 300
+/** dayCodes 한 답의 줄 수 한도 = REVENUE_MAX_DAYS × REVENUE_DAY_CODES_PER_DAY(save_revenue_range도 9,300줄까지 받는다) */
+export const REVENUE_MAX_DAY_CODES = 9300
 /** 처방 이름 글자 수 한도(1~100자) */
 export const REVENUE_NAME_MAX = 100

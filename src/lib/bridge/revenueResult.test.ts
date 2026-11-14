@@ -2,11 +2,15 @@
 import { describe, expect, it } from 'vitest'
 import { addDays } from '@/lib/analytics/dates'
 import {
+  REVENUE_DAY_CODES_PER_DAY,
   REVENUE_DAY_KEYS,
   REVENUE_KEPT_KEYS,
+  REVENUE_MAX_DAY_CODES,
+  REVENUE_MAX_DAYS,
   REVENUE_MONEY_KEYS,
   REVENUE_SPLIT_KEYS,
   type RevenueCodeRow,
+  type RevenueDayCodeRow,
   type RevenueDayRow,
   type RevenueDaysResult,
 } from '@/types/revenue'
@@ -472,5 +476,168 @@ describe('AC-002.2·AC-002.3 codes 줄', () => {
 
   it.each([[null], ['MM001'], [3], [[]]])('AC-002.2 코드 줄이 객체가 아니면(%j) 통과하지 않는다', (row) => {
     expect(check({ days: [day('2026-10-01')], codes: [row] })).toBe(false)
+  })
+})
+
+// ── 도우미 0.6.0의 셋째 열쇠 dayCodes(stats-revenue TASK-3, REQ-4102 · AC-4102.1·AC-4102.2). 날 줄은 good()의 10월 1일~5일 ──
+
+/** 날 단위 처방 한 줄. 금액 null = 값 빠짐 */
+const dc = (date: string, c: string, count = 3, amount: number | null = 45_000): RevenueDayCodeRow => [date, c, count, amount]
+
+const DAY_CODES: RevenueDayCodeRow[] = [
+  dc('2026-10-01', 'MM101'),
+  dc('2026-10-01', 'MX122', 1, null),
+  dc('2026-10-01', '_REST', 2, 7_000),
+  dc('2026-10-02', 'MM101', 0, 0),
+  dc('2026-10-05', '가.처방_1-2', 4, 12_000),
+]
+
+const withDayCodes = (dayCodes: unknown): Record<string, unknown> => ({ ...good(), dayCodes })
+
+/** 맞는 dayCodes의 i번째 줄만 바꾼 것 */
+const withDayCodeRow = (i: number, row: unknown) => withDayCodes(DAY_CODES.map((r, j) => (j === i ? row : r)))
+
+/** 그날 서로 다른 코드 n줄 */
+const codesOn = (date: string, n: number): RevenueDayCodeRow[] => Array.from({ length: n }, (_, i) => dc(date, `C${i}`, 1, i))
+
+describe('AC-4102.1 답 열쇠는 옛 두 벌 또는 새 세 벌', () => {
+  it('AC-4102.1 옛 도우미 답(days·codes 두 열쇠)은 지금처럼 받는다', () => {
+    expect(check(good())).toBe(true)
+  })
+
+  it('AC-4102.1 새 도우미 답(days·codes·dayCodes 세 열쇠)을 받는다', () => {
+    expect(check(withDayCodes(DAY_CODES))).toBe(true)
+  })
+
+  it('AC-4102.1 dayCodes가 빈 목록이어도 받는다(처방이 없는 기간)', () => {
+    expect(check(withDayCodes([]))).toBe(true)
+  })
+
+  it.each([
+    ['extra', []],
+    ['chart', FAKE_CHART],
+    ['name', FAKE_NAME],
+    ['codesByDay', []],
+  ])('AC-4102.1 세 열쇠에 넷째 열쇠(%s)가 더 있으면 E-BRIDGE-BAD-REPLY(거부)다', (key, value) => {
+    expect(check({ ...withDayCodes(DAY_CODES), [key]: value })).toBe(false)
+  })
+
+  it('AC-4102.1 dayCodes가 있어도 days나 codes가 빠지면 거부한다', () => {
+    const data = good()
+    expect(check({ days: data.days, dayCodes: DAY_CODES })).toBe(false)
+    expect(check({ codes: data.codes, dayCodes: DAY_CODES })).toBe(false)
+    expect(check({ dayCodes: DAY_CODES })).toBe(false)
+  })
+
+  it.each(['day_codes', 'DayCodes', 'daycodes'])('AC-4102.1 이름이 다른 셋째 열쇠(%s)는 거부한다', (key) => {
+    expect(check({ ...good(), [key]: DAY_CODES })).toBe(false)
+  })
+})
+
+describe('AC-4102.2 dayCodes 줄을 받는 경우', () => {
+  it('AC-4102.2 한도 상수: 하루 300줄, 모두 9,300줄(31일 × 300)', () => {
+    expect(REVENUE_DAY_CODES_PER_DAY).toBe(300)
+    expect(REVENUE_MAX_DAY_CODES).toBe(9300)
+    expect(REVENUE_MAX_DAY_CODES).toBe(REVENUE_MAX_DAYS * REVENUE_DAY_CODES_PER_DAY)
+  })
+
+  it('AC-4102.2 하루 300줄(한도)은 받는다', () => {
+    expect(check(withDayCodes(codesOn('2026-10-03', 300)))).toBe(true)
+  })
+
+  it('AC-4102.2 31일 × 300줄 = 9,300줄(한도)은 받는다', () => {
+    const days = daysFrom('2026-10-01', 31)
+    expect(check({ days, codes: [], dayCodes: days.flatMap((d) => codesOn(d.date, 300)) })).toBe(true)
+  })
+
+  it('AC-4102.2 같은 코드가 다른 날에 있는 것은 받는다', () => {
+    expect(check(withDayCodes([dc('2026-10-01', 'MM101'), dc('2026-10-02', 'MM101'), dc('2026-10-05', 'MM101')]))).toBe(true)
+  })
+
+  it('AC-4102.2 건수·금액 0, 금액 null, 안전한 정수의 끝(2^53-1)은 받는다', () => {
+    expect(check(withDayCodes([dc('2026-10-01', 'A', 0, 0), dc('2026-10-01', 'B', 0, null)]))).toBe(true)
+    expect(check(withDayCodes([dc('2026-10-01', 'A', Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER)]))).toBe(true)
+  })
+
+  it('AC-4102.2 코드 모양: 영문·숫자·한글·_ . - 로 1~30자(_REST 포함)', () => {
+    expect(check(withDayCodes([dc('2026-10-01', 'A'.repeat(30)), dc('2026-10-01', '7'), dc('2026-10-01', '_REST')]))).toBe(true)
+  })
+
+  it('AC-4102.2 확인 필요한 날·나눔만 빈 날·0인 날에도 코드 줄이 있을 수 있다', () => {
+    expect(check(withDayCodes([dc('2026-10-02', 'MM101'), dc('2026-10-03', 'MM101', 0, 0), dc('2026-10-05', 'MM101', 1, null)]))).toBe(true)
+  })
+})
+
+describe('AC-4102.2 dayCodes를 거부하는 아홉 경우(모두 E-BRIDGE-BAD-REPLY)', () => {
+  it.each([[{}], [null], ['MM101'], [3], [true], [{ 0: DAY_CODES[0] }]])('AC-4102.2 ① dayCodes가 목록이 아니면(%j) 거부한다', (value) => {
+    expect(check(withDayCodes(value))).toBe(false)
+  })
+
+  it('AC-4102.2 ① dayCodes 열쇠가 있는데 값이 undefined여도 거부한다', () => {
+    expect(check(withDayCodes(undefined))).toBe(false)
+  })
+
+  it.each([[null], ['2026-10-01'], [3], [{ date: '2026-10-01', code: 'MM101', count: 3, amount: 45_000 }]])(
+    'AC-4102.2 ① 줄이 목록이 아니면(%j) 거부한다',
+    (row) => {
+      expect(check(withDayCodeRow(0, row))).toBe(false)
+    },
+  )
+
+  it.each([
+    ['칸 셋', ['2026-10-01', 'MM101', 3]],
+    ['칸 다섯(차트번호)', ['2026-10-01', 'MM101', 3, 45_000, FAKE_CHART]],
+    ['칸 다섯(이름)', ['2026-10-01', 'MM101', 3, 45_000, FAKE_NAME]],
+    ['칸 둘', ['2026-10-01', 'MM101']],
+    ['빈 줄', []],
+  ])('AC-4102.2 ② 줄의 칸이 넷이 아니면(%s) 거부한다', (_label, row) => {
+    expect(check(withDayCodeRow(0, row))).toBe(false)
+  })
+
+  it.each(['2026-10-06', '2026-09-30', '2026-02-30', '20261001', '2026-10-1', '', 20261001, null])(
+    'AC-4102.2 ③ 날짜가 days에 있는 날이 아니면(%j) 거부한다',
+    (date) => {
+      expect(check(withDayCodeRow(0, [date, 'MM101', 3, 45_000]))).toBe(false)
+    },
+  )
+
+  it.each(['', 'A'.repeat(31), 'MM 101', 'MM/101', 'MM101\n', '<b>', 'MM:1', 101, null])(
+    'AC-4102.2 ④ 코드 모양이 아니면(%j) 거부한다',
+    (c) => {
+      expect(check(withDayCodeRow(0, ['2026-10-01', c, 3, 45_000]))).toBe(false)
+    },
+  )
+
+  it('AC-4102.2 ⑤ 같은 날 같은 코드가 두 번 있으면 거부한다', () => {
+    expect(check(withDayCodes([...DAY_CODES, dc('2026-10-01', 'MM101', 1, 100)]))).toBe(false)
+    expect(check(withDayCodes([dc('2026-10-05', '_REST'), dc('2026-10-05', '_REST')]))).toBe(false)
+  })
+
+  it('AC-4102.2 ⑥ 하루 301줄은 거부한다(300줄까지)', () => {
+    expect(check(withDayCodes(codesOn('2026-10-03', 301)))).toBe(false)
+    expect(check(withDayCodes([...codesOn('2026-10-01', 150), ...codesOn('2026-10-02', 301)]))).toBe(false)
+  })
+
+  it('AC-4102.2 ⑦ 모두 9,301줄은 거부한다(9,300줄까지)', () => {
+    const days = daysFrom('2026-10-01', 31)
+    const full = days.flatMap((d) => codesOn(d.date, 300))
+    expect(check({ days, codes: [], dayCodes: [...full, dc('2026-10-31', 'EXTRA')] })).toBe(false)
+    expect(check({ days: [day('2026-10-01')], codes: [], dayCodes: [...full, dc('2026-10-01', 'EXTRA')] })).toBe(false)
+  })
+
+  it.each([-1, 1.5, '3', null, Number.NaN, Infinity, 2 ** 53, true])('AC-4102.2 ⑧ 건수가 0 이상 안전한 정수가 아니면(%j) 거부한다', (count) => {
+    expect(check(withDayCodeRow(0, ['2026-10-01', 'MM101', count, 45_000]))).toBe(false)
+  })
+
+  it.each(['45000', '', -1, 1.5, 2 ** 53, Infinity, Number.NaN, false, undefined, {}])(
+    'AC-4102.2 ⑨ 금액이 null 또는 0 이상 안전한 정수가 아니면(%j) 거부한다',
+    (amount) => {
+      expect(check(withDayCodeRow(0, ['2026-10-01', 'MM101', 3, amount]))).toBe(false)
+    },
+  )
+
+  it('AC-4102.2 dayCodes가 맞아도 days가 틀리면 거부한다(날 줄 검사는 그대로)', () => {
+    const data = withDayCodes(DAY_CODES)
+    expect(check({ ...data, days: [{ ...day('2026-10-01'), chart: FAKE_CHART }] })).toBe(false)
   })
 })

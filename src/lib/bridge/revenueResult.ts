@@ -4,9 +4,11 @@ import { addDays, isYmd } from '@/lib/analytics/dates'
 import {
   REVENUE_CODE_KEYS,
   REVENUE_CODE_SHAPE,
+  REVENUE_DAY_CODES_PER_DAY,
   REVENUE_DAY_KEYS,
   REVENUE_KEPT_KEYS,
   REVENUE_MAX_CODES,
+  REVENUE_MAX_DAY_CODES,
   REVENUE_MAX_DAYS,
   REVENUE_MONEY_KEYS,
   REVENUE_NAME_MAX,
@@ -16,7 +18,12 @@ import {
 
 type Rec = Record<string, unknown>
 
+/** 옛 도우미 답의 열쇠 */
 const RESULT_KEYS = ['days', 'codes'] as const satisfies readonly (keyof RevenueDaysResult)[]
+/** 도우미 0.6.0부터(specs/stats-revenue AC-4102.1): 날 단위 처방 줄 dayCodes가 더해진다 */
+const RESULT_KEYS_WITH_DAY_CODES = [...RESULT_KEYS, 'dayCodes'] as const satisfies readonly (keyof RevenueDaysResult)[]
+/** dayCodes 줄은 [날짜, 코드, 건수, 금액] 칸 넷 */
+const DAY_CODE_CELLS = 4
 const MONEY_KEYS: readonly string[] = REVENUE_MONEY_KEYS
 /** 금액이 아닌 숫자 칸(건수) */
 const COUNT_KEYS: readonly string[] = REVENUE_DAY_KEYS.filter(
@@ -81,7 +88,30 @@ function isCodes(codes: unknown): boolean {
   return true
 }
 
-/** revenue.days의 result.data가 정해 둔 모양인가. 아니면 통로가 E-BRIDGE-BAD-REPLY로 거부한다 */
+/** 날 단위 처방 줄(AC-4102.2): 칸 넷인 목록 · 날짜는 days에 있는 날 · 코드 모양 · 같은 날 같은 코드 없음 ·
+ *  하루 300줄·모두 9,300줄 이하 · 건수는 0 이상 안전한 정수 · 금액은 null 또는 0 이상 안전한 정수 */
+function isDayCodes(dayCodes: unknown, days: readonly { date: string }[]): boolean {
+  if (!Array.isArray(dayCodes) || dayCodes.length > REVENUE_MAX_DAY_CODES) return false
+  const perDay = new Map<string, Set<string>>(days.map((d) => [d.date, new Set<string>()]))
+  for (const row of dayCodes) {
+    if (!Array.isArray(row) || row.length !== DAY_CODE_CELLS) return false
+    const [date, code, count, amount] = row as unknown[]
+    const seen = typeof date === 'string' ? perDay.get(date) : undefined
+    if (seen === undefined) return false
+    if (typeof code !== 'string' || !REVENUE_CODE_SHAPE.test(code) || seen.has(code)) return false
+    if (!isCount(count) || !(amount === null || isCount(amount))) return false
+    seen.add(code)
+    if (seen.size > REVENUE_DAY_CODES_PER_DAY) return false
+  }
+  return true
+}
+
+/** revenue.days의 result.data가 정해 둔 모양인가. 아니면 통로가 E-BRIDGE-BAD-REPLY로 거부한다.
+ *  열쇠는 옛 두 벌(days·codes) 또는 새 세 벌(+ dayCodes)과 정확히 같아야 한다. dayCodes는 날 줄 검사 뒤에 본다(날짜 목록을 쓴다) */
 export function isRevenueDays(data: unknown): data is RevenueDaysResult {
-  return isRecord(data) && exactKeys(data, RESULT_KEYS) && isDays(data.days) && isCodes(data.codes)
+  if (!isRecord(data)) return false
+  const withDayCodes = Object.hasOwn(data, 'dayCodes')
+  if (!exactKeys(data, withDayCodes ? RESULT_KEYS_WITH_DAY_CODES : RESULT_KEYS)) return false
+  if (!isDays(data.days) || !isCodes(data.codes)) return false
+  return !withDayCodes || isDayCodes(data.dayCodes, data.days as { date: string }[])
 }

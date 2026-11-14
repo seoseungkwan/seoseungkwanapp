@@ -238,3 +238,74 @@ describe('AC-002.4 화면 통로 connectScreenBridge({runtime})로 revenue.days 
     await expect(p).rejects.toMatchObject({ code: 'E-HELPER-UNKNOWN-COMMAND' })
   })
 })
+
+// 도우미 0.6.0의 셋째 열쇠 dayCodes(stats-revenue TASK-3, REQ-4102). 날 줄은 ANSWER의 10월 1일~3일
+const NEW_ANSWER: RevenueDaysResult = {
+  ...ANSWER,
+  dayCodes: [
+    ['2026-10-01', 'MM101', 3, 45_000],
+    ['2026-10-01', '_REST', 1, null],
+    ['2026-10-03', 'MX122', 2, 0],
+  ],
+}
+
+/** 그날 서로 다른 코드 n줄 */
+const codesOn = (date: string, n: number) => Array.from({ length: n }, (_, i) => [date, `C${i}`, 1, i])
+
+const BAD_DAY_CODES: [string, unknown][] = [
+  ['① 목록이 아님', { 0: ['2026-10-01', 'MM101', 3, 45_000] }],
+  ['② 칸 셋', [['2026-10-01', 'MM101', 3]]],
+  ['② 칸 다섯', [['2026-10-01', 'MM101', 3, 45_000, 0]]],
+  ['③ days에 없는 날', [['2026-10-04', 'MM101', 3, 45_000]]],
+  ['④ 코드 모양', [['2026-10-01', 'MM 101', 3, 45_000]]],
+  ['⑤ 같은 날 같은 코드', [['2026-10-01', 'MM101', 3, 45_000], ['2026-10-01', 'MM101', 1, 100]]],
+  ['⑥ 하루 301줄', codesOn('2026-10-02', 301)],
+  ['⑦ 9,301줄', [...codesOn('2026-10-01', 3101), ...codesOn('2026-10-02', 3100), ...codesOn('2026-10-03', 3100)]],
+  ['⑧ 건수 음수', [['2026-10-01', 'MM101', -1, 45_000]]],
+  ['⑧ 건수 소수', [['2026-10-01', 'MM101', 1.5, 45_000]]],
+  ['⑨ 금액 글자', [['2026-10-01', 'MM101', 3, '45000']]],
+]
+
+describe('AC-4102.1·AC-4102.2 화면 통로로 dayCodes가 든 답 부르기', () => {
+  it('AC-4102.1 dayCodes가 든 새 답을 검사해 그대로 돌려준다', async () => {
+    const t = await ready()
+    const p = t.track(t.screen.call('revenue.days', PERIOD))
+    t.port.reply({ v: 1, id: 'req-2', type: 'result', data: NEW_ANSWER })
+    await expect(p).resolves.toEqual(NEW_ANSWER)
+  })
+
+  it('AC-4102.1 옛 답(dayCodes 없음)도 지금처럼 받는다', async () => {
+    const t = await ready()
+    const p = t.track(t.screen.call('revenue.days', PERIOD))
+    t.port.reply({ v: 1, id: 'req-2', type: 'result', data: ANSWER })
+    await expect(p).resolves.toEqual(ANSWER)
+  })
+
+  it('AC-4102.1 넷째 열쇠가 있으면 E-BRIDGE-BAD-REPLY이고 그 글자는 화면에 닿지 않는다', async () => {
+    const t = await ready()
+    const p = t.track(t.screen.call('revenue.days', PERIOD))
+    t.port.reply({ v: 1, id: 'req-2', type: 'result', data: { ...NEW_ANSWER, patients: [FAKE_CHART, FAKE_NAME] } })
+    await expect(p).rejects.toMatchObject({ code: 'E-BRIDGE-BAD-REPLY' })
+    const seen = JSON.stringify(t.seenByScreen)
+    expect(seen).not.toContain(FAKE_CHART)
+    expect(seen).not.toContain(FAKE_NAME)
+  })
+
+  it.each(BAD_DAY_CODES)('AC-4102.2 dayCodes가 틀리면(%s) E-BRIDGE-BAD-REPLY다', async (_label, dayCodes) => {
+    const t = await ready()
+    const p = t.track(t.screen.call('revenue.days', PERIOD))
+    t.port.reply({ v: 1, id: 'req-2', type: 'result', data: { ...ANSWER, dayCodes } })
+    await expect(p).rejects.toMatchObject({ code: 'E-BRIDGE-BAD-REPLY' })
+  })
+
+  it('AC-4102.2 dayCodes 줄에 섞인 다섯째 칸(차트번호·이름)은 거부되고 화면에 닿지 않는다', async () => {
+    const t = await ready()
+    const p = t.track(t.screen.call('revenue.days', PERIOD))
+    const dayCodes = [['2026-10-01', 'MM101', 3, 45_000, FAKE_CHART], ['2026-10-01', 'MX122', 1, 100, FAKE_NAME]]
+    t.port.reply({ v: 1, id: 'req-2', type: 'result', data: { ...ANSWER, dayCodes } })
+    await expect(p).rejects.toMatchObject({ code: 'E-BRIDGE-BAD-REPLY' })
+    const seen = JSON.stringify(t.seenByScreen)
+    expect(seen).not.toContain(FAKE_CHART)
+    expect(seen).not.toContain(FAKE_NAME)
+  })
+})
