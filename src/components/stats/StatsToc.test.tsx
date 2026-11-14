@@ -13,13 +13,14 @@ import { statsRange } from './view'
 const TODAY = '2026-11-14'
 const YESTERDAY = '2026-11-13'
 const RANGE = statsRange(TODAY, '30d')
-const NAMES = ['기간 요약', '환자 수', '재방문율', '처방', '보고 문장', '요일별', '환자 구성', '시간대별', '원장님별']
-const IDS = ['stats-summary', 'stats-trend', 'stats-revisit', 'stats-rx', 'stats-report', 'stats-weekday', 'stats-mix', 'stats-hours', 'stats-doctors']
+// 열 칸(stats-revenue AC-4109.1: `매출`은 재방문율 다음 · 처방 앞)
+const NAMES = ['기간 요약', '환자 수', '재방문율', '매출', '처방', '보고 문장', '요일별', '환자 구성', '시간대별', '원장님별']
+const IDS = ['stats-summary', 'stats-trend', 'stats-revisit', 'stats-revenue', 'stats-rx', 'stats-report', 'stats-weekday', 'stats-mix', 'stats-hours', 'stats-doctors']
 
 const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
 const rect = (top: number, height = 40) => ({ top, bottom: top + height, left: 0, right: 0, width: 0, height, x: 0, y: top, toJSON: () => ({}) }) as DOMRect
 
-// 띠 + 아홉 칸(빈 section)을 그린다. 칸 자리는 tops로 바꾼다
+// 띠 + 열 칸(빈 section)을 그린다. 칸 자리는 tops로 바꾼다
 function draw(range = RANGE, lastDay = YESTERDAY) {
   const view = render(
     <div>
@@ -135,7 +136,7 @@ describe('AC-4002.5: 지금 칸 고르기 activeTocIndex', () => {
 })
 
 describe('AC-4002.1·AC-4002.2: 목차 띠 마크업', () => {
-  it('AC-4002.1·AC-4002.2: nav "칸 바로 가기" 안에 왼쪽 기간 글과 링크 아홉이 차례대로 있고 href가 칸 id다', () => {
+  it('AC-4002.1·AC-4002.2·AC-4109.1: nav "칸 바로 가기" 안에 왼쪽 기간 글과 링크 열이 차례대로 있고 href가 칸 id다', () => {
     const { nav, links } = draw()
     expect(nav.tagName).toBe('NAV')
     expect(TOC_LINKS.map((link) => link.name)).toEqual(NAMES)
@@ -215,10 +216,10 @@ describe('AC-4002.4: 링크 누름', () => {
     const replaceState = vi.spyOn(window.history, 'replaceState')
     const { links, sections } = draw()
 
-    fireEvent.click(links[3]!)
+    fireEvent.click(links[4]!)
     expect(window.location.hash).toBe('#before')
     expect(scrollIntoView).toHaveBeenCalledTimes(1)
-    expect(scrollIntoView.mock.contexts[0]).toBe(sections[3])
+    expect(scrollIntoView.mock.contexts[0]).toBe(sections[4])
     expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'start', behavior: 'smooth' })
     expect(currentNames(links)).toEqual(['처방'])
 
@@ -236,7 +237,7 @@ describe('AC-4002.4: 링크 누름', () => {
     window.matchMedia = matchMedia as unknown as typeof window.matchMedia
     const { links } = draw()
 
-    fireEvent.click(links[8]!)
+    fireEvent.click(links[9]!)
     expect(matchMedia).toHaveBeenCalledWith('(prefers-reduced-motion: reduce)')
     expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'start', behavior: 'auto' })
     expect(currentNames(links)).toEqual(['원장님별'])
@@ -246,7 +247,7 @@ describe('AC-4002.4: 링크 누름', () => {
     delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
     delete (window as { matchMedia?: unknown }).matchMedia
     const { links } = draw()
-    expect(() => fireEvent.click(links[5]!)).not.toThrow()
+    expect(() => fireEvent.click(links[6]!)).not.toThrow()
     expect(currentNames(links)).toEqual(['요일별'])
   })
 
@@ -278,23 +279,27 @@ describe('AC-4002.4: 링크 누름', () => {
 })
 
 describe('AC-4002.5: 내릴 때 지금 칸 따라가기', () => {
-  it('AC-4002.5: 내리면 띠 아래끝 + 48px 기준선 위 마지막 칸이 강조되고, 나란한 칸은 왼쪽이다', () => {
+  it('AC-4002.5·AC-4109.1: 내리면 띠 아래끝 + 48px 기준선 위 마지막 칸이 강조되고, 나란한 칸은 왼쪽이다', () => {
     const { nav, links, sections } = draw()
     vi.spyOn(nav, 'getBoundingClientRect').mockReturnValue(rect(102, 44)) // 기준선 = 146 + 48 = 194
 
-    placeSections(sections, [-900, -500, -500, 120, 600, 600, 1300, 1700, 2100])
+    placeSections(sections, [-900, -500, -500, -200, 120, 600, 600, 1300, 1700, 2100])
     fireEvent.scroll(window)
     expect(currentNames(links)).toEqual(['처방'])
 
-    placeSections(sections, [-900, 100, 100, 600, 900, 900, 1300, 1700, 2100])
+    placeSections(sections, [-900, 100, 100, 350, 600, 900, 900, 1300, 1700, 2100])
     fireEvent.scroll(window)
     expect(currentNames(links)).toEqual(['환자 수'])
 
-    placeSections(sections, [-3000, -2500, -2500, -2000, 150, 150, 900, 1300, 1700])
+    placeSections(sections, [-900, -500, -500, 150, 600, 900, 900, 1300, 1700, 2100])
+    fireEvent.scroll(window)
+    expect(currentNames(links)).toEqual(['매출'])
+
+    placeSections(sections, [-3000, -2500, -2500, -2300, -2000, 150, 150, 900, 1300, 1700])
     fireEvent.scroll(window)
     expect(currentNames(links)).toEqual(['보고 문장'])
 
-    placeSections(sections, [300, 700, 700, 1100, 1500, 1500, 1900, 2300, 2700])
+    placeSections(sections, [300, 700, 700, 900, 1100, 1500, 1500, 1900, 2300, 2700])
     fireEvent.scroll(window)
     expect(currentNames(links)).toEqual([])
   })
@@ -302,7 +307,7 @@ describe('AC-4002.5: 내릴 때 지금 칸 따라가기', () => {
   it('AC-4002.5: 쪽 맨 아래까지 내리면 원장님별이다', () => {
     const { nav, links, sections } = draw()
     vi.spyOn(nav, 'getBoundingClientRect').mockReturnValue(rect(102, 44))
-    placeSections(sections, [-3000, -2500, -2500, -2000, -1500, -1500, -900, 300, 600])
+    placeSections(sections, [-3000, -2500, -2500, -2300, -2000, -1500, -1500, -900, 300, 600])
     setScroll({ y: 5000 - window.innerHeight, height: 5000 })
     fireEvent.scroll(window)
     expect(currentNames(links)).toEqual(['원장님별'])
@@ -315,7 +320,7 @@ describe('AC-4002.5: 내릴 때 지금 칸 따라가기', () => {
   it('AC-4002.5: 크기가 바뀌어도 다시 고른다', () => {
     const { nav, links, sections } = draw()
     vi.spyOn(nav, 'getBoundingClientRect').mockReturnValue(rect(102, 44))
-    placeSections(sections, [-900, -500, -500, 120, 600, 600, 1300, 1700, 2100])
+    placeSections(sections, [-900, -500, -500, -200, 120, 600, 600, 1300, 1700, 2100])
     fireEvent(window, new Event('resize'))
     expect(currentNames(links)).toEqual(['처방'])
   })
@@ -323,7 +328,7 @@ describe('AC-4002.5: 내릴 때 지금 칸 따라가기', () => {
   it('AC-4002.4·AC-4002.5: 누른 뒤 스크롤이 끝날 때(scrollend)까지는 누른 링크(나란한 오른쪽 칸이어도)가 그대로이고, 끝나면 다시 따라간다', () => {
     const { nav, links, sections } = draw()
     vi.spyOn(nav, 'getBoundingClientRect').mockReturnValue(rect(102, 44))
-    placeSections(sections, [-900, 150, 150, 600, 900, 900, 1300, 1700, 2100])
+    placeSections(sections, [-900, 150, 150, 400, 600, 900, 900, 1300, 1700, 2100])
 
     fireEvent.click(links[2]!)
     fireEvent.scroll(window)
@@ -339,7 +344,7 @@ describe('AC-4002.5: 내릴 때 지금 칸 따라가기', () => {
     vi.useFakeTimers()
     const { nav, links, sections } = draw()
     vi.spyOn(nav, 'getBoundingClientRect').mockReturnValue(rect(102, 44))
-    placeSections(sections, [-900, 150, 150, 600, 900, 900, 1300, 1700, 2100])
+    placeSections(sections, [-900, 150, 150, 400, 600, 900, 900, 1300, 1700, 2100])
 
     fireEvent.click(links[2]!)
     vi.advanceTimersByTime(1400)

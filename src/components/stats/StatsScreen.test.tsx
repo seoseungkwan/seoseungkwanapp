@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { addDays, compareYmd } from '@/lib/analytics/dates'
+import { addDays, compareYmd, eachDay } from '@/lib/analytics/dates'
 import { MIN_HELPER } from '@/lib/bridge/versions'
 import { readRxPicks } from '@/lib/storage/rxPicks'
 import { readCoverage, readDays, readMonths, saveStats } from '@/lib/storage/stats'
@@ -16,14 +16,15 @@ import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
 import type { ClinicReportNumbers } from '@/types/clinicReport'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload, MonthSections } from '@/types/payload'
+import type { RevenueDayRow, RevenueDaysResult, SavedRevenueDay } from '@/types/revenue'
 import type { RxGroup } from '@/types/rxGroups'
 import type { BitSectionsView, PatientMix, RxSplitView, StatsLoaded, StatsLoadRequest, StatsSectionsRequest, StatsWorkerMessage, StatsWorkerRequest } from '@/types/stats'
 import { runAnalysis } from '@/workers/runAnalysis'
 import { createStatsWorker } from '@/workers/statsClient'
-import { planLoad } from './loadPlan'
+import { planLoad, revenueProgressText } from './loadPlan'
 import { StatsScreen } from './StatsScreen'
 import { groupKey } from './treatmentView'
-import { statsRange } from './view'
+import { readSpan, statsRange } from './view'
 
 // 통계 화면 (stats REQ-514, 시안 docs/mockups/stats/notes.md §2·§3). 가짜 Worker·가짜 chrome.runtime·가짜 저장으로 시험한다.
 // 숫자·이름은 모두 가짜이고 이 파일 안에서만 만든다
@@ -60,6 +61,10 @@ vi.mock('@/lib/payload/toMonthPayload', async (importOriginal) => ({
   toMonthPayload: vi.fn(),
 }))
 vi.mock('@/lib/payload/toDayPayloads', () => ({ toDayPayloads: vi.fn() }))
+// 매출 저장소 가짜(stats-revenue TASK-7). 기본 동작은 beforeEach: 어제까지 쉬는 날 줄이 저장돼 있고(금액 0 · 날 단위 처방 금액 있음), 저장하면 그 날 줄이 바뀐다
+const revenueStore = vi.hoisted(() => ({ saveRange: vi.fn(), loadDays: vi.fn(), codeTotals: vi.fn(), monthCodes: vi.fn() }))
+vi.mock('@/lib/storage/revenue', () => ({ createRevenueStore: vi.fn(() => revenueStore) }))
+vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: vi.fn(() => ({})) }))
 
 const TODAY = '2026-11-13' // 금요일
 const HOSPITAL = '가짜정형외과의원'
@@ -73,14 +78,16 @@ const SETTINGS = '불러오기 설정' // 불러오기 띠의 접는 단추(stat
 const PRIVACY_LINE = '환자 개인정보는 의원 PC 밖으로 나가지 않아요. 서버에는 숫자만 저장해요.'
 const BIT_AT = { at: '2026-11-13T09:42:00Z', source: 'bit' as const } // 18:42
 const FILE_AT = { at: '2026-11-12T09:30:00Z', source: 'file' as const } // 11월 12일 18:30
-// 처방 세 칸은 한 칸 `처방` + 탭 셋이다(stats-pc-ux AC-4003.1). 여섯 칸 뒤에 비트 전용 세 칸(stats-bit-sections AC-2706.1)
-const SECTIONS = ['기간 요약', '환자 수 추이', '신환 재방문율', '처방', '원장님 보고 문장', '요일별 환자 수', '환자 구성', '시간대별 접수', '원장님별']
+// 처방 세 칸은 한 칸 `처방` + 탭 셋이다(stats-pc-ux AC-4003.1). 여섯 칸 뒤에 비트 전용 세 칸(stats-bit-sections AC-2706.1).
+// `매출`은 신환 재방문율 다음 · 처방 앞이다(stats-revenue AC-4109.1)
+const SECTIONS = ['기간 요약', '환자 수 추이', '신환 재방문율', '매출', '처방', '원장님 보고 문장', '요일별 환자 수', '환자 구성', '시간대별 접수', '원장님별']
 const RX_TABS = ['묶음별 추세', '처방별 신환·재진', '처방 골라 보기'] as const
-// 목차 띠 링크 아홉과 그 칸 id(stats-pc-ux AC-4002.1·AC-4002.6). 칸 차례는 SECTIONS와 같다
+// 목차 띠 링크 열과 그 칸 id(stats-pc-ux AC-4002.1·AC-4002.6, stats-revenue AC-4109.1). 칸 차례는 SECTIONS와 같다
 const TOC = [
   ['기간 요약', 'stats-summary'],
   ['환자 수', 'stats-trend'],
   ['재방문율', 'stats-revisit'],
+  ['매출', 'stats-revenue'],
   ['처방', 'stats-rx'],
   ['보고 문장', 'stats-report'],
   ['요일별', 'stats-weekday'],
@@ -128,6 +135,56 @@ function numbers(period: string): ClinicReportNumbers {
   }
 }
 
+// ── 매출(stats-revenue TASK-7) 가짜 자료. 금액·건수는 모두 지어낸 값이다 ──
+const YESTERDAY = '2026-11-12'
+const REVENUE_ZERO: Omit<RevenueDayRow, 'date'> = {
+  visits: 0,
+  newPatients: 0,
+  returnVisits: 0,
+  total: 0,
+  insurer: 0,
+  noncovered: 0,
+  copay: 0,
+  otherTotal: 0,
+  cash: 0,
+  card: 0,
+  transfer: 0,
+  receivableIn: 0,
+  unconfirmed: false,
+  splitUnconfirmed: false,
+}
+// 쉬는 날(접수 0건 · 금액 모두 0) 줄
+const closedDay = (date: string): RevenueDayRow => ({ date, ...REVENUE_ZERO })
+// 진료한 날 줄: 접수 70건 · 매출 300만 원(공단부담 150만 + 본인부담 45만 + 비급여 90만 + 기타 15만)
+const workDay = (date: string): RevenueDayRow => ({
+  ...closedDay(date),
+  visits: 70,
+  newPatients: 5,
+  returnVisits: 65,
+  total: 3_000_000,
+  insurer: 1_500_000,
+  noncovered: 900_000,
+  copay: 450_000,
+  otherTotal: 150_000,
+  cash: 200_000,
+  card: 1_100_000,
+  transfer: 50_000,
+})
+/** 도우미 revenue.days 답: 범위의 날마다 줄 하나. withDayCodes가 거짓이면 옛 도우미(dayCodes 열쇠 없음) */
+function revenueAnswer(range: DateRange, row: (date: string) => RevenueDayRow = closedDay, withDayCodes = true): RevenueDaysResult {
+  const days = eachDay(range).map(row)
+  return withDayCodes ? { days, codes: [], dayCodes: [] } : { days, codes: [] }
+}
+// 가짜 서버의 매출: 저장한 날 줄 + revenueSavedTo까지는 쉬는 날 줄(날 단위 처방 금액 있음). null이면 저장된 매출이 없다
+let revenueDb = new Map<string, SavedRevenueDay>()
+let revenueSavedTo: string | null = YESTERDAY
+const savedRevenue = (range: DateRange): SavedRevenueDay[] =>
+  eachDay(range).flatMap((date) => {
+    const row = revenueDb.get(date)
+    if (row !== undefined) return [row]
+    return revenueSavedTo !== null && compareYmd(date, revenueSavedTo) <= 0 ? [{ ...closedDay(date), dayCodes: true }] : []
+  })
+
 const FRESH_ROW = day('2026-11-05', 77)
 const LOADED: StatsLoaded = {
   range: R30.load,
@@ -156,14 +213,23 @@ const SPLIT: RxSplitView = {
   headline: '가짜 머리 글',
 }
 
+// 매출 빈 날 읽기(revenue.days)의 답(stats-revenue TASK-7). 통계 조각을 모두 저장하면 화면이 같은 통로로 묻는다.
+// null이면 답을 들고 있다(시험이 port.reply로 직접 답한다). 기본은 쉬는 날 줄로 바로 답한다
+type RevenueReply = (range: DateRange) => { type: 'result'; data: unknown } | { type: 'error'; code: string } | null
+
 class FakePort implements PortLike {
   sent: Record<string, unknown>[] = []
+  revenueReply: RevenueReply = (range) => ({ type: 'result', data: revenueAnswer(range) })
   private messageFns: ((m: unknown) => void)[] = []
   private disconnectFns: (() => void)[] = []
   onMessage = { addListener: (fn: (m: unknown) => void) => void this.messageFns.push(fn) }
   onDisconnect = { addListener: (fn: () => void) => void this.disconnectFns.push(fn) }
   postMessage(m: unknown) {
     this.sent.push(m as Record<string, unknown>)
+    const { id, cmd, args } = m as { id?: unknown; cmd?: unknown; args?: unknown }
+    if (cmd !== 'revenue.days') return
+    const answer = this.revenueReply(args as DateRange)
+    if (answer !== null) queueMicrotask(() => this.reply({ v: 1, id, ...answer }))
   }
   disconnect() {}
   reply(m: unknown) {
@@ -350,6 +416,15 @@ beforeEach(() => {
   vi.mocked(readRxPicks).mockResolvedValue([])
   vi.mocked(readCoverage).mockResolvedValue([{ from: '2026-09-01', to: '2026-11-12' }])
   vi.mocked(saveStats).mockResolvedValue({ saved: 1 })
+  for (const fn of Object.values(revenueStore)) fn.mockReset()
+  revenueDb = new Map()
+  revenueSavedTo = YESTERDAY
+  revenueStore.loadDays.mockImplementation(async (range: DateRange) => savedRevenue(range))
+  revenueStore.codeTotals.mockResolvedValue([])
+  revenueStore.monthCodes.mockResolvedValue([])
+  revenueStore.saveRange.mockImplementation(async (_range: DateRange, result: RevenueDaysResult) => {
+    for (const row of result.days) revenueDb.set(row.date, { ...row, dayCodes: result.dayCodes !== undefined })
+  })
   fakeWorker()
 })
 
@@ -361,7 +436,7 @@ afterEach(() => {
 })
 
 describe('AC-514.1 첫 그림', () => {
-  it('AC-514.1·AC-801.2·AC-1201.2·AC-4003.1 읽는 동안 섹션 자리는 아홉 칸 모두 "불러오는 중"이고 머리·기간은 먼저 보인다', () => {
+  it('AC-514.1·AC-801.2·AC-1201.2·AC-4003.1·AC-4109.1 읽는 동안 섹션 자리는 열 칸 모두 "불러오는 중"이고 머리·기간은 먼저 보인다', () => {
     vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
     draw()
     expect(screen.getByRole('heading', { name: '통계', level: 1 })).toBeTruthy()
@@ -458,7 +533,7 @@ describe('AC-514.2 기간 단추', () => {
     expect(streams()).toBe(1)
   })
 
-  it('AC-514.2·AC-4003.1 기간을 바꿔도 열어 둔 [자세히]는 열린 채다(notes §5)', async () => {
+  it('AC-514.2·AC-4003.1·AC-4111.1 기간을 바꿔도 열어 둔 [자세히]는 열린 채다(notes §5)', async () => {
     const R90 = statsRange(TODAY, '90d')
     answers({ ...SAVED_NOW, [R90.current.from]: read([day('2026-11-01', 10), day('2026-11-02', 10)], { latest: BIT_AT }) })
     draw()
@@ -468,7 +543,8 @@ describe('AC-514.2 기간 단추', () => {
     expect(opened()).toHaveLength(1)
 
     pressPeriod('최근 90일')
-    expect(screen.getAllByText('불러오는 중')).toHaveLength(SECTIONS.length)
+    // 보이는 기다리는 칸 열이 모두 "불러오는 중"이다. 숨은 칸 묶음 안의 매출 읽는 중 글(기간 요약 둘째 줄·매출 칸)은 세지 않는다(stats-revenue AC-4111.1)
+    expect(screen.getAllByText('불러오는 중').filter((node) => node.closest('[hidden]') === null)).toHaveLength(SECTIONS.length)
     await sectionsShown()
     expect(screen.queryByText('불러오는 중')).toBeNull()
     expect(opened()).toHaveLength(1)
@@ -1288,7 +1364,7 @@ describe('AC-514.10 폭별 배치', () => {
     expect(group.parentElement?.className).toContain('max-md:flex-col')
   })
 
-  it('AC-514.10·AC-801.2·AC-1201.2·AC-4003.1 기다리는 칸은 섹션과 같은 12칸 배치이고 좁으면 모두 12칸이다', () => {
+  it('AC-514.10·AC-801.2·AC-1201.2·AC-4003.1·AC-4107.1 기다리는 칸은 섹션과 같은 12칸 배치이고 좁으면 모두 12칸이다', () => {
     vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
     draw()
     const place = (name: string) => heading(name)?.closest('section')?.className ?? ''
@@ -1296,6 +1372,7 @@ describe('AC-514.10 폭별 배치', () => {
     expect(place('환자 수 추이')).toContain('lg:col-span-8')
     expect(place('신환 재방문율')).toContain('lg:col-span-4')
     expect(place('처방')).not.toContain('lg:')
+    expect(place('매출')).not.toContain('lg:')
     expect(place('원장님 보고 문장')).toContain('lg:col-span-7')
     expect(place('요일별 환자 수')).toContain('lg:col-span-5')
     for (const name of SECTIONS) expect(place(name)).toMatch(/(^| )col-span-12( |$)/)
@@ -3109,7 +3186,7 @@ describe('REQ-4002·REQ-4003 stats-pc-ux: 목차 띠 · 처방 탭', () => {
   // 처방 칸 머리 줄의 회색 설명(고른 탭 칸의 것 하나만 있다)
   const headDescs = () => [...rxHead().querySelectorAll('.text-muted')].map((node) => node.textContent)
 
-  it('AC-4003.1: h2 아홉이 승인본 차례이고 `처방` 칸은 12칸 폭(lg: 없음)이다. 처방별 추세 · 처방별 신환·재진 · 처방 골라 보기 h2는 없다', async () => {
+  it('AC-4003.1·AC-4109.1: h2 열이 승인본 차례이고 `처방` 칸은 12칸 폭(lg: 없음)이다. 처방별 추세 · 처방별 신환·재진 · 처방 골라 보기 h2는 없다', async () => {
     draw()
     await sectionsShown()
     expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual(SECTIONS)
@@ -3120,16 +3197,16 @@ describe('REQ-4002·REQ-4003 stats-pc-ux: 목차 띠 · 처방 탭', () => {
     expect(within(sectionOf('처방')).queryAllByRole('heading', { level: 2, hidden: true }).map((node) => node.textContent)).toEqual(['처방'])
   })
 
-  it('AC-4003.1: 불러오는 중 칸도 같은 아홉 제목이고 `처방` 칸은 12칸 폭이다', () => {
+  it('AC-4003.1·AC-4109.1: 불러오는 중 칸도 같은 열 제목이고 `처방` 칸은 12칸 폭이다', () => {
     vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
     draw()
     expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual(SECTIONS)
-    expect(screen.getAllByText('불러오는 중')).toHaveLength(9)
+    expect(screen.getAllByText('불러오는 중')).toHaveLength(10)
     expect(sectionOf('처방').className.split(' ')).toContain('col-span-12')
     expect(sectionOf('처방').className).not.toContain('lg:')
   })
 
-  it('AC-4002.1·AC-4002.6: 목차 띠는 기간 줄 바로 다음이고 화면 바깥 div의 바로 아래 자식이며, 링크 아홉의 href가 그 칸 section의 id다', async () => {
+  it('AC-4002.1·AC-4002.6·AC-4109.1: 목차 띠는 기간 줄 바로 다음이고 화면 바깥 div의 바로 아래 자식이며, 링크 열의 href가 그 칸 section의 id다', async () => {
     draw()
     await sectionsShown()
     const nav = toc()!
@@ -3326,5 +3403,340 @@ describe('REQ-4002·REQ-4003 stats-pc-ux: 목차 띠 · 처방 탭', () => {
     expect(window.location.search).toBe(search)
     expect(saveStats).not.toHaveBeenCalled()
     expect(saveStatsRxGroups).not.toHaveBeenCalled()
+  })
+})
+
+// ── 매출을 통계에 잇기 (stats-revenue REQ-4107·REQ-4108·REQ-4109 TASK-7, 시안 docs/mockups/stats-revenue, design.md '화면 잇기') ──
+// 매출 저장소는 가짜(revenueStore), 비트 매출 읽기는 통계와 같은 가짜 통로(FakePort.revenueReply)다. 금액·건수는 모두 지어낸 값이다.
+// 오늘 11월 13일 · 오늘 진료 끝 꺼짐 → 마지막 끝난 날 11월 12일. 기본 가짜 서버는 11월 12일까지 쉬는 날 줄이 저장돼 있어 매출 읽기 계획은 어제 하루다
+describe('stats-revenue: 매출 칸 · 목차 열 개 · 불러오기 뒤 매출 · 매출만 실패 상자', () => {
+  const ALL = '전체 기간'
+  const RESUME = '이어서 불러오기'
+  const RETRY = '매출만 다시 읽기'
+  const FAIL_TITLE = '매출은 읽지 못했어요'
+  const READING_LINE = '비트 PC에서 읽는 중이에요 (환자·처방 저장 끝 · 매출 읽는 중). 다 끝날 때까지 이 창을 닫지 마세요.'
+  const OLD_HELPER = '도우미가 예전 판이라 치료별 매출은 읽지 못했어요.'
+  const EMPTY_LINE = '자료 없음 · 불러오면 이 기간의 매출이 하루씩 막대로 그려져요.'
+  const WORK_CELLS = ['매출300만원진료한 날 1일 평균 300만 원', '건당 진료비42,857원매출 ÷ 접수 70건', '확인 필요한 날없음', '비교 기간보다–비교할 자료가 없어요']
+  const BLANK_CELLS = ['매출–자료 없음', '건당 진료비–자료 없음', '확인 필요한 날–자료 없음', '비교 기간보다–자료 없음']
+  const DONE_TODAY = '2020년 1월 1일 – 2026년 11월 13일을 저장했어요.'
+  const WHOLE_ALL: DateRange = { from: '2020-01-01', to: TODAY }
+
+  const revenueSent = (port: FakePort) => port.sent.filter((message) => message.cmd === 'revenue.days')
+  const rowsSent = (port: FakePort) => port.sent.filter((message) => message.cmd === 'stats.rows')
+  // 기간 요약 둘째 줄(매출 네 칸) = 기간 요약 칸 안 둘째 격자
+  const revenueRow = () => sectionOf('기간 요약').querySelectorAll('.grid')[1] as HTMLElement | undefined
+  const revenueCellsText = () => [...(revenueRow()?.children ?? [])].map((cell) => cell.textContent)
+  const failBox = () => (screen.queryByText(FAIL_TITLE)?.closest('[role="status"]') ?? null) as HTMLElement | null
+  const wholeReads = (whole: DateRange) => revenueStore.loadDays.mock.calls.filter(([range]) => range.from === whole.from && range.to === whole.to).length
+  const pickSpan = (name: string) => {
+    openSettings()
+    fireEvent.click(within(screen.getByRole('group', { name: '불러올 기간' })).getByRole('button', { name }))
+  }
+  const closeToday = () => {
+    openSettings()
+    fireEvent.click(screen.getByRole('checkbox', { name: '오늘 진료 끝' }))
+  }
+  const pressStart = () => fireEvent.click(screen.getByRole('button', { name: LOAD }))
+  const failRowsReply = (port: FakePort) => act(() => port.reply({ v: 1, id: port.last().id, type: 'error', code: 'E-STATS-TOO-BIG' }))
+  async function finishPart(port: FakePort, k: number) {
+    await waitFor(() => expect(rowsSent(port)).toHaveLength(k))
+    return finishStream(port)
+  }
+
+  // 확장 연결 수를 세는 가짜 chrome.runtime(두 번째 연결이 없는지 본다)
+  function countedChrome() {
+    const port = new FakePort()
+    const connect = vi.fn(() => port)
+    vi.stubGlobal('chrome', { runtime: { connect } })
+    return { port, connect }
+  }
+
+  async function ready() {
+    const { port, connect } = countedChrome()
+    draw()
+    sayHello(port)
+    await sectionsShown()
+    return { port, connect }
+  }
+
+  it('AC-4109.1·AC-4107.1: h2 열이 승인본 차례이고 `매출`은 재방문율 다음 · 처방 앞 전체 폭(col-span-12, lg: 없음)이다. 불러오는 중 칸도 같은 열 제목·자리다', async () => {
+    expect(SECTIONS).toEqual(['기간 요약', '환자 수 추이', '신환 재방문율', '매출', '처방', '원장님 보고 문장', '요일별 환자 수', '환자 구성', '시간대별 접수', '원장님별'])
+    vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
+    const first = draw()
+    expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual(SECTIONS)
+    expect(screen.getAllByText('불러오는 중')).toHaveLength(10)
+    expect(sectionOf('매출').className.split(' ')).toContain('col-span-12')
+    expect(sectionOf('매출').className).not.toContain('lg:')
+    expect(sectionOf('매출').id).toBe('')
+    first.unmount()
+
+    answers(SAVED_NOW)
+    draw()
+    await sectionsShown()
+    expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual(SECTIONS)
+    expect(sectionOf('매출').className.split(' ')).toContain('col-span-12')
+    expect(sectionOf('매출').className).not.toContain('lg:')
+    expect(sectionOf('신환 재방문율').compareDocumentPosition(sectionOf('매출')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(sectionOf('매출').compareDocumentPosition(sectionOf('처방')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('AC-4109.1: 목차 띠 링크는 열 개이고 `매출` 링크 href는 #stats-revenue = 매출 칸 section id다', async () => {
+    draw()
+    await sectionsShown()
+    const links = within(screen.getByRole('navigation', { name: TOC_NAME })).getAllByRole('link')
+    expect(links.map((link) => link.textContent)).toEqual(['기간 요약', '환자 수', '재방문율', '매출', '처방', '보고 문장', '요일별', '환자 구성', '시간대별', '원장님별'])
+    const revenueLink = within(screen.getByRole('navigation', { name: TOC_NAME })).getByRole('link', { name: '매출' })
+    expect(revenueLink.getAttribute('href')).toBe('#stats-revenue')
+    expect(sectionOf('매출').id).toBe('stats-revenue')
+    expect(document.getElementById('stats-revenue')).toBe(sectionOf('매출'))
+  })
+
+  it('AC-4108.2·AC-4106.1: 열면 저장된 매출로 기간 요약 둘째 줄과 매출 칸을 그리고, 열기만 해서는 비트에서 매출을 읽지 않는다', async () => {
+    revenueDb.set('2026-11-02', { ...workDay('2026-11-02'), dayCodes: true })
+    const { port } = await ready()
+    await waitFor(() => expect(revenueCellsText()).toEqual(WORK_CELLS))
+    expect(revenueStore.loadDays).toHaveBeenCalledWith(readSpan(R30))
+    expect(within(sectionOf('매출')).getByRole('tablist', { name: '매출 보기' })).toBeTruthy()
+    await flush()
+    expect(revenueSent(port)).toEqual([])
+    expect(revenueStore.saveRange).not.toHaveBeenCalled()
+  })
+
+  it('AC-4106.3: 저장된 매출이 없는 기간은 둘째 줄 네 칸이 `–` · `자료 없음`이고 매출 칸은 한 줄이다', async () => {
+    await ready()
+    expect(revenueCellsText()).toEqual(BLANK_CELLS)
+    expect(sectionOf('매출').textContent).toBe(`매출${EMPTY_LINE}`)
+  })
+
+  it('AC-4108.7: 비트 PC가 아닌 기기(확장 없음)는 저장된 매출만 보이고 비트 매출 읽기·저장이 없다', async () => {
+    revenueDb.set('2026-11-02', { ...workDay('2026-11-02'), dayCodes: true })
+    draw()
+    await sectionsShown()
+    await waitFor(() => expect(revenueCellsText()).toEqual(WORK_CELLS))
+    await flush()
+    expect(revenueStore.saveRange).not.toHaveBeenCalled()
+    expect(revenueStore.loadDays.mock.calls.map(([range]) => range)).toEqual(revenueStore.loadDays.mock.calls.map(() => readSpan(R30)))
+  })
+
+  it('AC-4108.2·AC-4108.6: [비트에서 불러오기]는 통계 조각 저장이 끝난 뒤에만 같은 통로로 revenue.days를 묻고(두 번째 연결 없음), 저장한 뒤 다시 읽은 숫자로 둘째 줄과 매출 칸을 그린다', async () => {
+    const { port, connect } = await ready()
+    port.revenueReply = (range) => ({ type: 'result', data: revenueAnswer(range, workDay) })
+    expect(revenueCellsText()).toEqual(BLANK_CELLS)
+    let finishSave: () => void = () => undefined
+    vi.mocked(saveStats).mockImplementationOnce(() => new Promise((resolve) => (finishSave = () => resolve({ saved: 1 }))))
+
+    pressLoad(port)
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
+    await flush()
+    expect(revenueSent(port)).toEqual([]) // 통계 조각 저장이 끝나기 전에는 묻지 않는다
+    await act(async () => finishSave())
+
+    await waitFor(() => expect(revenueSent(port)).toHaveLength(1))
+    expect(revenueSent(port)[0]!.args).toEqual({ from: YESTERDAY, to: YESTERDAY })
+    expect(wholeReads(R30.load)).toBe(1) // 불러올 기간 전체의 저장 표시로 계획한다
+    await waitFor(() => expect(revenueStore.saveRange).toHaveBeenCalledTimes(1))
+    expect(revenueStore.saveRange.mock.calls[0]![0]).toEqual({ from: YESTERDAY, to: YESTERDAY })
+    await loadIsFree()
+    await waitFor(() => expect(revenueCellsText()).toEqual(WORK_CELLS))
+    expect(within(sectionOf('매출')).getByRole('tablist', { name: '매출 보기' })).toBeTruthy()
+    expect(within(sectionOf('매출')).queryByRole('note')).toBeNull() // 새 도우미 답이라 예전 판 줄이 없다
+    expect(connect).toHaveBeenCalledTimes(1)
+    expect(rowsSent(port)).toHaveLength(1)
+  })
+
+  it('AC-4108.3: 매출을 읽는 동안 불러오는 중 줄은 시안 글이고 불러오기·파일 고르기가 막히며, 끝나면 풀린다', async () => {
+    const { port } = await ready()
+    port.revenueReply = () => null
+    pressLoad(port)
+    await waitFor(() => expect(revenueSent(port)).toHaveLength(1))
+    expect(pageText()).toContain(READING_LINE)
+    expect(revenueProgressText(1, 1)).toBe(READING_LINE)
+    expect(screen.getByRole('button', { name: '불러오는 중' }).getAttribute('aria-disabled')).toBe('true')
+    openSettings()
+    expect(screen.getByRole('button', { name: '파일 고르기' }).getAttribute('aria-disabled')).toBe('true')
+
+    act(() => port.reply({ v: 1, id: revenueSent(port)[0]!.id, type: 'result', data: revenueAnswer({ from: YESTERDAY, to: YESTERDAY }) }))
+    await loadIsFree()
+    expect(pageText()).not.toContain('매출 읽는 중')
+  })
+
+  it('AC-4108.3: 매출 덩어리가 둘 이상이면 불러오는 중 줄에 차례(k/n)가 붙고 덩어리를 새것부터 하나씩 읽는다', async () => {
+    revenueSavedTo = null
+    const { port } = await ready()
+    port.revenueReply = () => null
+    pressLoad(port)
+    const CHUNKS: DateRange[] = [
+      { from: '2026-10-13', to: YESTERDAY },
+      { from: '2026-09-12', to: '2026-10-12' },
+      { from: '2026-09-01', to: '2026-09-11' },
+    ]
+    for (const [i, range] of CHUNKS.entries()) {
+      await waitFor(() => expect(revenueSent(port)).toHaveLength(i + 1))
+      const request = revenueSent(port)[i]!
+      expect(request.args).toEqual(range)
+      expect(pageText()).toContain(`비트 PC에서 읽는 중이에요 (환자·처방 저장 끝 · 매출 읽는 중 ${i + 1}/3). 다 끝날 때까지 이 창을 닫지 마세요.`)
+      act(() => port.reply({ v: 1, id: request.id, type: 'result', data: revenueAnswer(range) }))
+    }
+    await loadIsFree()
+    expect(revenueSent(port)).toHaveLength(3)
+    expect(revenueStore.saveRange.mock.calls.map(([range]) => range)).toEqual(CHUNKS)
+  })
+
+  it.each<[string, () => void, (port: FakePort) => unknown, () => Promise<unknown>]>([
+    [
+      '첫 조각 읽기 실패',
+      () => undefined,
+      (port) => failRowsReply(port),
+      () => waitFor(() => expect(screen.getAllByRole('alert').some((card) => card.textContent?.includes('E-STATS-TOO-BIG'))).toBe(true)),
+    ],
+    ['확인이 필요한 기록', () => void fakeWorker(INCOMPLETE), (port) => finishStream(port), () => screen.findByText('일부 기록을 확인하지 못해 저장하지 않았어요')],
+    ['저장 실패', () => void vi.mocked(saveStats).mockRejectedValueOnce(new Error('가짜 실패')), (port) => finishStream(port), () => screen.findByRole('button', { name: '다시 저장' })],
+  ])('AC-4108.4: 통계 %s면 매출은 읽지 않는다', async (_name, before, finish, shown) => {
+    before()
+    const { port } = await ready()
+    pressStart()
+    finish(port)
+    await shown()
+    await loadIsFree()
+    await flush()
+    expect(revenueSent(port)).toEqual([])
+    expect(wholeReads(R30.load)).toBe(0)
+    expect(revenueStore.saveRange).not.toHaveBeenCalled()
+  })
+
+  it('AC-4108.4: 나눠 읽기가 멈추면 매출을 읽지 않고, [이어서 불러오기]로 남은 조각이 모두 저장되면 처음 누를 때의 오늘 진료 끝으로 불러올 기간 전체의 매출을 읽는다', async () => {
+    const { port } = await ready()
+    closeToday()
+    pickSpan(ALL)
+    pressStart()
+    await finishPart(port, 1)
+    await finishPart(port, 2)
+    await waitFor(() => expect(rowsSent(port)).toHaveLength(3))
+    failRowsReply(port)
+    await screen.findByText('4번 가운데 2번째까지 저장하고 멈췄어요.')
+    await loadIsFree()
+    await flush()
+    expect(revenueSent(port)).toEqual([])
+    expect(wholeReads(WHOLE_ALL)).toBe(0)
+
+    fireEvent.click(screen.getByRole('button', { name: RESUME }))
+    await finishPart(port, 4)
+    await finishPart(port, 5)
+    await waitFor(() => expect(revenueSent(port)).toHaveLength(1))
+    expect(wholeReads(WHOLE_ALL)).toBe(1)
+    // 처음 누를 때 오늘 진료 끝이었다 → 어제와 오늘을 읽는다
+    expect(revenueSent(port)[0]!.args).toEqual({ from: YESTERDAY, to: TODAY })
+    await loadIsFree()
+    expect(await screen.findByText(DONE_TODAY)).toBeTruthy()
+  })
+
+  it('AC-4108.5: 매출 덩어리가 실패하면 띠 바로 아래 상자에 시안 글과 [매출만 다시 읽기]가 있고 오류 카드는 없다(통계는 저장됐다)', async () => {
+    const { port } = await ready()
+    port.revenueReply = () => ({ type: 'error', code: 'E-BIT-READ-FAILED' })
+    pressLoad(port)
+    await waitFor(() => expect(failBox()).not.toBeNull())
+    const box = failBox()!
+    expect(box.textContent).toBe(`${FAIL_TITLE}환자·처방은 방금 저장했어요. 매출 칸은 전에 저장한 숫자(11월 12일까지)예요. (오류 번호 E-BIT-READ-FAILED)${RETRY}`)
+    expect(screen.getByText(FAIL_TITLE).className.split(' ')).toEqual(expect.arrayContaining(['font-semibold', 'text-warning']))
+    expect(box.className.split(' ')).toEqual(expect.arrayContaining(['bg-warning-soft', 'rounded-control']))
+    expect(within(box).getByRole('button', { name: RETRY })).toBeTruthy()
+    // 띠 바로 아래: 불러오기 상자(개인정보 줄이 든 펼칠 칸) 다음, 기간 단추 앞
+    expect(screen.getByText(PRIVACY_LINE).compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(box.compareDocumentPosition(screen.getByRole('group', { name: '기간' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.queryAllByRole('alert').filter((card) => card.textContent?.includes('E-BIT-READ-FAILED'))).toEqual([])
+    await loadIsFree()
+    expect(saveStats).toHaveBeenCalledTimes(1)
+    expect(revenueStore.saveRange).not.toHaveBeenCalled()
+  })
+
+  it('AC-4108.5: [매출만 다시 읽기]는 같은 불러올 기간·같은 오늘 진료 끝으로 매출만 다시 읽고 다른 안내를 지우지 않으며, 그동안 불러오기가 막히고, 성공하면 상자가 없어진다', async () => {
+    const { port } = await ready()
+    closeToday()
+    pickSpan(ALL)
+    port.revenueReply = () => ({ type: 'error', code: 'E-BIT-READ-FAILED' })
+    pressStart()
+    for (let k = 1; k <= 4; k++) await finishPart(port, k)
+    await waitFor(() => expect(failBox()).not.toBeNull())
+    await loadIsFree()
+    expect(screen.getByText(DONE_TODAY)).toBeTruthy()
+    expect(revenueSent(port)).toHaveLength(1)
+    expect(revenueSent(port)[0]!.args).toEqual({ from: YESTERDAY, to: TODAY })
+    const loads = vi.mocked(readDays).mock.calls.length
+
+    port.revenueReply = () => null
+    fireEvent.click(within(failBox()!).getByRole('button', { name: RETRY }))
+    await waitFor(() => expect(revenueSent(port)).toHaveLength(2))
+    expect(revenueSent(port)[1]!.args).toEqual({ from: YESTERDAY, to: TODAY })
+    expect(wholeReads(WHOLE_ALL)).toBe(2)
+    expect(rowsSent(port)).toHaveLength(4)
+    expect(screen.getByText(DONE_TODAY)).toBeTruthy()
+    expect(pageText()).toContain(READING_LINE)
+    expect(screen.getByRole('button', { name: '불러오는 중' }).getAttribute('aria-disabled')).toBe('true')
+    expect(within(failBox()!).getByRole('button', { name: RETRY }).getAttribute('aria-disabled')).toBe('true')
+    fireEvent.click(within(failBox()!).getByRole('button', { name: RETRY }))
+    await flush()
+    expect(revenueSent(port)).toHaveLength(2)
+
+    act(() => port.reply({ v: 1, id: revenueSent(port)[1]!.id, type: 'result', data: revenueAnswer({ from: YESTERDAY, to: TODAY }) }))
+    await loadIsFree()
+    await waitFor(() => expect(failBox()).toBeNull())
+    expect(screen.getByText(DONE_TODAY)).toBeTruthy()
+    expect(rowsSent(port)).toHaveLength(4)
+    expect(vi.mocked(saveStats)).toHaveBeenCalledTimes(4)
+    expect(revenueStore.saveRange).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(readDays).mock.calls.length).toBeGreaterThanOrEqual(loads)
+  })
+
+  it('AC-4108.5: 전에 저장한 매출이 없으면 둘째 문장이 `매출은 아직 저장된 숫자가 없어요.`이고, [비트에서 불러오기]를 다시 누르면 상자가 없어진다', async () => {
+    revenueSavedTo = null
+    const { port } = await ready()
+    port.revenueReply = () => ({ type: 'error', code: 'E-BIT-READ-FAILED' })
+    pressLoad(port)
+    await waitFor(() => expect(failBox()).not.toBeNull())
+    expect(failBox()!.textContent).toBe(`${FAIL_TITLE}환자·처방은 방금 저장했어요. 매출은 아직 저장된 숫자가 없어요. (오류 번호 E-BIT-READ-FAILED)${RETRY}`)
+    await loadIsFree()
+
+    port.revenueReply = () => null
+    pressLoad(port)
+    expect(failBox()).toBeNull()
+  })
+
+  it('AC-4108.6: 답에 날 단위 처방 금액(dayCodes)이 없으면 매출 칸 제목과 탭 사이에 도우미 예전 판 줄이 켜진다', async () => {
+    const { port } = await ready()
+    port.revenueReply = (range) => ({ type: 'result', data: revenueAnswer(range, workDay, false) })
+    pressLoad(port)
+    await loadIsFree()
+    await waitFor(() => expect(within(sectionOf('매출')).getByRole('note').textContent).toContain(OLD_HELPER))
+    const note = within(sectionOf('매출')).getByRole('note')
+    expect(within(note).getByRole('link', { name: '설정에서 새 도우미 받기' }).getAttribute('href')).toBe('/settings')
+    expect(note.compareDocumentPosition(within(sectionOf('매출')).getByRole('tablist', { name: '매출 보기' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('AC-4107.1·AC-4107.9: 매출 칸의 [다시 읽기]는 저장된 매출만 다시 읽는다(통계 숫자는 다시 읽지 않는다)', async () => {
+    revenueStore.loadDays.mockRejectedValueOnce(new Error('가짜 실패'))
+    draw()
+    await sectionsShown()
+    await waitFor(() => expect(within(sectionOf('매출')).getByRole('alert').textContent).toContain('E-STATS-READ-FAILED'))
+    expect(revenueCellsText()).toEqual(BLANK_CELLS)
+    const reads = vi.mocked(readDays).mock.calls.length
+    fireEvent.click(within(sectionOf('매출')).getByRole('button', { name: '다시 읽기' }))
+    await waitFor(() => expect(sectionOf('매출').textContent).toBe(`매출${EMPTY_LINE}`))
+    expect(within(sectionOf('매출')).queryByRole('alert')).toBeNull()
+    expect(vi.mocked(readDays).mock.calls.length).toBe(reads)
+  })
+
+  it('AC-4111.1: 매출 답은 Worker로 가지 않고 통계 저장 줄 모양은 그대로다', async () => {
+    const { port } = countedChrome()
+    const fake = fakeWorker()
+    draw()
+    sayHello(port)
+    await sectionsShown()
+    port.revenueReply = (range) => ({ type: 'result', data: revenueAnswer(range, workDay) })
+    pressLoad(port)
+    await waitFor(() => expect(revenueStore.saveRange).toHaveBeenCalledTimes(1))
+    await loadIsFree()
+    expect(fake.sent.some((message) => JSON.stringify(message).includes('revenue'))).toBe(false)
+    expect(Object.keys(vi.mocked(saveStats).mock.calls[0]![0]).sort()).toEqual(['covered', 'days', 'months', 'source'])
   })
 })

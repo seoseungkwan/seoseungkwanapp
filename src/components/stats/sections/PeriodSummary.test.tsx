@@ -149,6 +149,52 @@ describe('AC-513.1·AC-801.1·AC-1201.1·AC-4003.1: 섹션 차례', () => {
     expect(within(rx).queryAllByRole('heading', { level: 2, hidden: true }).map((h) => h.textContent)).toEqual(['처방'])
   })
 
+  // stats-revenue: 매출 값(useStatsRevenue 값 + 마지막 끝난 날)을 주면 `매출` 칸이 재방문율 다음 · 처방 앞에 있고 기간 요약에 둘째 줄이 있다.
+  // 주지 않으면 지금 아홉 칸 그대로다(위 AC-4002.6 시험)
+  const REVENUE_READY = { state: 'ready' as const, days: [], codes: [], monthCodes: [], noDayCodes: false, lastDay: '2026-11-12', onReread: () => undefined }
+  const TEN = ['기간 요약', '환자 수 추이', '신환 재방문율', '매출', '처방', '원장님 보고 문장', '요일별 환자 수', '환자 구성', '시간대별 접수', '원장님별']
+  const drawWithRevenue = (revenue: Omit<typeof REVENUE_READY, 'state'> & { state: 'reading' | 'ready' | 'read-failed' } = REVENUE_READY) =>
+    render(
+      <StatsSections input={inputOf([day('2026-11-02', 10)], WHOLE)} saved split={null} hospitalName="튼튼의원" report={null} groups={GROUPS} bit={null} revenue={revenue} />,
+    )
+  const summaryGrids = () => [...screen.getByRole('heading', { level: 2, name: '기간 요약' }).closest('section')!.querySelectorAll('.grid')]
+
+  it('AC-4109.1·AC-4107.1: 매출 값을 주면 h2 열이 승인본 차례이고 `매출`은 재방문율 다음 · 처방 앞 전체 폭 칸(목차 자리 id stats-revenue)이다', () => {
+    const { container } = drawWithRevenue()
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(TEN)
+    const section = screen.getByRole('heading', { level: 2, name: '매출' }).closest('section')!
+    expect(section.id).toBe('stats-revenue')
+    expect(section.className.split(' ')).toEqual(expect.arrayContaining(['col-span-12', 'scroll-mt-36.25', 'max-md:scroll-mt-34.75']))
+    expect(section.className).not.toContain('lg:')
+    expect(container.querySelectorAll('[id^="stats-"]')).toHaveLength(TEN.length)
+  })
+
+  it('AC-4109.1·AC-4106.3: 매출 값을 주면 기간 요약에 둘째 줄(매출 네 칸)이 있고, 주지 않으면 지금 아홉 칸 그대로 둘째 줄이 없다', () => {
+    drawWithRevenue()
+    expect(summaryGrids()).toHaveLength(2)
+    expect([...summaryGrids()[1]!.children].map((cell) => cell.textContent)).toEqual(['매출–자료 없음', '건당 진료비–자료 없음', '확인 필요한 날–자료 없음', '비교 기간보다–자료 없음'])
+    expect(screen.getByRole('heading', { level: 2, name: '매출' }).closest('section')!.textContent).toBe('매출자료 없음 · 불러오면 이 기간의 매출이 하루씩 막대로 그려져요.')
+    cleanup()
+
+    render(<StatsSections input={inputOf([day('2026-11-02', 10)], WHOLE)} saved split={null} hospitalName="튼튼의원" report={null} groups={GROUPS} bit={null} />)
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(TEN.filter((title) => title !== '매출'))
+    expect(summaryGrids()).toHaveLength(1)
+  })
+
+  it('AC-4107.1·AC-4106.3: 매출을 읽는 중이면 둘째 줄 네 칸과 매출 칸이 `불러오는 중`이고, 읽기 실패면 매출 칸 [다시 읽기]가 매출만 다시 읽는다', () => {
+    drawWithRevenue({ ...REVENUE_READY, state: 'reading' })
+    expect([...summaryGrids()[1]!.children].map((cell) => cell.textContent)).toEqual(['매출–불러오는 중', '건당 진료비–불러오는 중', '확인 필요한 날–불러오는 중', '비교 기간보다–불러오는 중'])
+    expect(screen.getByRole('heading', { level: 2, name: '매출' }).closest('section')!.textContent).toBe('매출불러오는 중')
+    cleanup()
+
+    const onReread = vi.fn()
+    drawWithRevenue({ ...REVENUE_READY, state: 'read-failed', onReread })
+    const section = screen.getByRole('heading', { level: 2, name: '매출' }).closest('section')!
+    expect(within(section).getByRole('alert').textContent).toContain('E-STATS-READ-FAILED')
+    fireEvent.click(within(section).getByRole('button', { name: '다시 읽기' }))
+    expect(onReread).toHaveBeenCalledTimes(1)
+  })
+
   it('AC-513.1: 섹션 위는 1px line-strong이고 도구 단추 줄이 없다', () => {
     draw(true)
     const section = screen.getByRole('heading', { level: 2, name: '기간 요약' }).closest('section')!
