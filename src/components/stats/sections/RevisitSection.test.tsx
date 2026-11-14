@@ -234,12 +234,14 @@ describe('AC-513.3: 신환 재방문율 [자세히]', () => {
     ])
   })
 
-  it('AC-513.3: 표는 줄과 첫 재방문까지 날수 아래, 안내 글 바로 뒤에 열린다', () => {
+  it('AC-513.3·AC-4004.2: 표는 줄과 첫 재방문까지 날수 아래, 안내 글을 접은 "어떻게 세나요?" 칸 바로 뒤에 열린다', () => {
     render(<RevisitSection input={inputOf(DAYS_30, '30d')} saved />)
     fireEvent.click(screen.getByRole('button', { name: '자세히' }))
     const button = screen.getByRole('button', { name: '접기' })
     const panel = document.getElementById(button.getAttribute('aria-controls')!)!
-    expect(panel.previousElementSibling!.textContent).toContain("'30일 넘어 다시 옴'은")
+    const fold = panel.previousElementSibling!
+    expect(fold.contains(screen.getByRole('button', { name: '어떻게 세나요?' }))).toBe(true)
+    expect(fold.textContent).toContain("'30일 넘어 다시 옴'은")
     expect(panel.parentElement!.lastElementChild).toBe(panel)
   })
 
@@ -327,6 +329,54 @@ describe('AC-513.4: 신환 재방문율 빈 상태', () => {
   it('AC-513.4: 저장된 숫자는 있는데 이 기간 자료가 없으면 그 문구다(비교 기간에만 줄이 있어도)', () => {
     render(<RevisitSection input={inputOf([day('2026-09-15', [20, 5, 8, 10, 2])], '30d')} saved />)
     expect(screen.getByText('자료 없음').parentElement!.textContent).toBe('자료 없음 · 불러온 숫자에 이 기간 자료가 없어요.')
+  })
+})
+
+// ── stats-pc-ux: '30일 넘어 다시 옴' 끝날 안내 접기 (REQ-4004 AC-4004.2 ④, 기본값 11) ─────────────────
+describe('AC-4004.2 ④: 신환 재방문율 끝날 안내는 "어떻게 세나요?" 안이다', () => {
+  const NOTE = "'30일 넘어 다시 옴'은 불러온 자료 끝날(11월 12일)까지 본 수라, 다시 불러오면 늘 수 있어요."
+  const howButton = () => screen.getByRole('button', { name: '어떻게 세나요?' })
+  const howBody = () => document.getElementById(howButton().getAttribute('aria-controls')!)!
+  const list = () => screen.getByRole('list', { name: '첫 재방문까지 날수' })
+
+  it('AC-4004.2: 안내 글은 "어떻게 세나요?" 칸 안에 있고 처음에는 접혀(hidden) 있어 그 자리에 보이지 않는다', () => {
+    render(<RevisitSection input={inputOf(DAYS_30, '30d')} saved />)
+    expect(howButton().getAttribute('aria-expanded')).toBe('false')
+    expect(howBody().hidden).toBe(true)
+    expect(screen.getByText(NOTE).closest('[hidden]')).toBe(howBody())
+    expect(howBody().textContent).toBe(NOTE)
+  })
+
+  it('AC-4004.2: 누르면 안내가 보이고 다시 누르면 접힌다', () => {
+    render(<RevisitSection input={inputOf(DAYS_30, '30d')} saved />)
+    fireEvent.click(howButton())
+    expect(howButton().getAttribute('aria-expanded')).toBe('true')
+    expect(howBody().hidden).toBe(false)
+    fireEvent.click(howButton())
+    expect(howBody().hidden).toBe(true)
+  })
+
+  it('AC-4004.2: 접는 칸은 첫 재방문 목록 바로 아래, [자세히] 칸 바로 앞이다(지금 안내 자리)', () => {
+    render(<RevisitSection input={inputOf(DAYS_30, '30d')} saved />)
+    const fold = howButton().parentElement!
+    expect(fold.contains(howBody())).toBe(true)
+    expect(list().nextElementSibling).toBe(fold)
+    expect(fold.nextElementSibling!.id).toBe(screen.getByRole('button', { name: '자세히' }).getAttribute('aria-controls'))
+  })
+
+  it("AC-4004.2: '30일 넘어 다시 옴' 줄이 없으면(합친 넷) 넣을 글이 없어 접는 칸도 없다", () => {
+    render(
+      <RevisitSection
+        input={inputOf([day('2026-09-15', [20, 5, 8, 10, 2]), day('2026-10-12', [30, 6, 9, 15, null]), day('2026-11-02', [10, 3, 4])], '30d')}
+        saved
+      />,
+    )
+    expect(screen.queryByRole('button', { name: '어떻게 세나요?' })).toBeNull()
+  })
+
+  it('AC-4004.2: 빈 상태 칸에는 접는 칸이 없다', () => {
+    render(<RevisitSection input={inputOf([], '30d', [])} saved />)
+    expect(screen.queryByRole('button', { name: '어떻게 세나요?' })).toBeNull()
   })
 })
 

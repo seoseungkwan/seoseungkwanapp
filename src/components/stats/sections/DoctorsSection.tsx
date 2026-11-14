@@ -5,6 +5,7 @@ import type { StatsRange } from '@/components/stats/view'
 import { doctorShareText, formatDoctors } from '@/lib/analytics/doctorStats'
 import type { DoctorRow, DoctorTable } from '@/types/stats'
 import { CopyButton } from './CopyButton'
+import { HowCounted } from './HowCounted'
 import { BitNoteSection, bitState, type BitSectionsShown } from './PatientMixSection'
 import { Section } from './parts'
 
@@ -117,10 +118,10 @@ export function DoctorsSection({ view, range, hospitalName, className }: Props) 
   return (
     <Section title={TITLE} desc={desc} className={className}>
       <DoctorsTable view={doctors} />
-      <div className="mt-2 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+      {/* 표 바로 다음 줄: [어떻게 세나요?] · [표 복사], 아래 글은 그 안에 접는다(stats-pc-ux AC-4005.1·AC-4004.2 ⑧) */}
+      <HowCounted side={<CopyButton text={formatDoctors(hospitalName, range.label, doctors)} label="표 복사" fullOnPhone />}>
         <p className="text-small text-muted">{FOOT}</p>
-        <CopyButton text={formatDoctors(hospitalName, range.label, doctors)} label="표 복사" fullOnPhone />
-      </div>
+      </HowCounted>
     </Section>
   )
 }

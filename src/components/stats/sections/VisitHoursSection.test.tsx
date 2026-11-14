@@ -141,6 +141,50 @@ describe('AC-2706.3 시간대별 접수 칸', () => {
   })
 })
 
+// ── stats-pc-ux: 아래 글 접기 (REQ-4004 AC-4004.2 ⑦·AC-4004.3) ─────────────────
+describe('AC-4004.2 ⑦·AC-4004.3: 시간대별 접수 아래 글은 "어떻게 세나요?" 안이다', () => {
+  const FOOT = '병원 접수 시간(8시~20시) 기준이에요. 8시 전 접수는 8시 칸, 20시 넘은 접수는 20시 칸에 넣어요. 예약 대기·취소한 접수는 세지 않아요. 문을 연 날만 평균에 넣어요.'
+  const howButton = () => screen.getByRole('button', { name: '어떻게 세나요?' })
+  const howBody = () => document.getElementById(howButton().getAttribute('aria-controls')!)!
+  const detailPanel = () => document.getElementById(screen.getByRole('button', { name: '자세히' }).getAttribute('aria-controls')!)!
+
+  it('AC-4004.2: 아래 글은 "어떻게 세나요?" 칸 안에 있고 처음에는 접혀(hidden) 있어 그 자리에 보이지 않는다', () => {
+    draw(ready())
+    expect(howButton().getAttribute('aria-expanded')).toBe('false')
+    expect(howBody().hidden).toBe(true)
+    expect(screen.getByText(FOOT).closest('[hidden]')).toBe(howBody())
+    expect(howBody().textContent).toBe(FOOT)
+    fireEvent.click(howButton())
+    expect(howBody().hidden).toBe(false)
+  })
+
+  it('AC-4004.2: 접는 칸은 [자세히] 칸 바로 다음이고 칸의 맨 끝이다(지금 자리)', () => {
+    draw(ready())
+    const fold = howButton().parentElement!
+    expect(fold.contains(howBody())).toBe(true)
+    expect(detailPanel().nextElementSibling).toBe(fold)
+    expect(section().lastElementChild).toBe(fold)
+  })
+
+  it('AC-4004.3: 적음 … 많음 범례와 접수 시각 모름 안내는 접지 않고 접는 칸 앞에 그대로 보인다', () => {
+    draw(ready())
+    const legend = screen.getByText('적음').parentElement!
+    const unknown = screen.getByText('접수 시각을 모르는 3건은 뺐어요.')
+    for (const shown of [legend, unknown]) {
+      expect(shown.closest('[hidden]')).toBeNull()
+      expect(shown.compareDocumentPosition(howButton()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
+  })
+
+  it('AC-4004.2: 빈 상태·기다리는 칸에는 접는 칸이 없다', () => {
+    draw(null)
+    expect(screen.queryByRole('button', { name: '어떻게 세나요?' })).toBeNull()
+    cleanup()
+    draw('waiting')
+    expect(screen.queryByRole('button', { name: '어떻게 세나요?' })).toBeNull()
+  })
+})
+
 describe('AC-2706.5·AC-2706.6 숫자가 없을 때', () => {
   it.each<[string, BitSectionsShown, string]>([
     ['이 기기에서 불러오지 않음', null, '비트 PC에서 불러오면 보여요 · 진료 줄은 서버에 저장하지 않아서, 비트 PC에서 불러온 화면에서만 볼 수 있어요.'],

@@ -6,12 +6,14 @@ import { periodDesc, revisitRates, type FirstRevisit, type FirstRevisitKey, type
 import { compareYmd } from '@/lib/analytics/dates'
 import type { DateRange } from '@/types/dates'
 import { DetailToggle, type DetailTable } from './DetailToggle'
+import { HowCounted } from './HowCounted'
 import { EmptyNote, hasRows, longDate, NO_RANGE_DATA, Note, Section, yearMonth } from './parts'
 
 // 신환 재방문율 + 첫 재방문까지 날수 (stats REQ-513 AC-513.1·513.3·513.4·513.10, AC-511.4, 시안 notes.md §3 '신환 재방문율').
 // 날짜는 revisitRates의 d30Cohort·firstRevisit의 from·to를 그대로, 숫자는 비율 칸의 within·cohort를 쓴다.
 // 첫 재방문은 first.items 차례 그대로 그린다(시안 .rk). 막대 폭은 다섯 가운데 가장 큰 값 대비이고 '아직 다시 안 옴'만 막대가 line-strong이다.
-// 합친 넷(stats-load-range AC-3306.2)이면 넷 가운데 가장 큰 값 대비, 합친 줄만 line-strong이고 '30일 넘어 다시 옴' 끝날 안내는 없다
+// 합친 넷(stats-load-range AC-3306.2)이면 넷 가운데 가장 큰 값 대비, 합친 줄만 line-strong이고 '30일 넘어 다시 옴' 끝날 안내는 없다.
+// 끝날 안내는 "어떻게 세나요?" 안에 접는다(stats-pc-ux AC-4004.2 ④). 안내가 없으면 접는 칸도 없다(기본값 11)
 
 const TITLE = '신환 재방문율'
 const DESC = '처음 온 환자가 다시 온 비율'
@@ -122,7 +124,11 @@ function FirstRevisitBlock({ rates, input }: { rates: RevisitRates; input: Stats
       {heading}
       <p className="mt-1 text-caption text-muted">{baseLine(first, period)}</p>
       <FirstRevisitList first={first} />
-      {end !== null && <Note>{`'30일 넘어 다시 옴'은 불러온 자료 끝날(${longDate(end)})까지 본 수라, 다시 불러오면 늘 수 있어요.`}</Note>}
+      {end !== null && (
+        <HowCounted>
+          <Note>{`'30일 넘어 다시 옴'은 불러온 자료 끝날(${longDate(end)})까지 본 수라, 다시 불러오면 늘 수 있어요.`}</Note>
+        </HowCounted>
+      )}
     </>
   )
 }

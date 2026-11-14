@@ -151,6 +151,50 @@ describe('AC-2706.4 원장님별 칸', () => {
   })
 })
 
+// ── stats-pc-ux: 표 아래 [어떻게 세나요?] · [표 복사] 줄 (REQ-4004 AC-4004.2 ⑧, REQ-4005 AC-4005.1) ─────────────────
+describe('AC-4004.2 ⑧·AC-4005.1: 원장님별 표 아래 줄과 접는 설명', () => {
+  const FOOT =
+    '환자 수는 접수할 때 정한 진료의, 매출은 수납할 때 적힌 진료의로 나눠요. 두 원장님께 진료받은 분은 양쪽에 세요(합계는 한 번). 매출은 수납한 날의 총진료비(공단 + 본인부담 + 비급여)예요. 1인당 진료비는 매출 ÷ 내원 건수예요.'
+  const howButton = () => screen.getByRole('button', { name: '어떻게 세나요?' })
+  const howBody = () => document.getElementById(howButton().getAttribute('aria-controls')!)!
+  const copyButton = () => screen.getByRole('button', { name: '표 복사' })
+
+  it('AC-4005.1: 표 바로 다음 줄이 왼쪽 [어떻게 세나요?] · 오른쪽 끝 [표 복사] 한 줄(flex-wrap justify-between)이다', () => {
+    draw(ready())
+    const line = howButton().parentElement!
+    expect(table().parentElement!.nextElementSibling).toBe(line.parentElement)
+    expect(line.parentElement!.firstElementChild).toBe(line)
+    expect(line.className.split(' ')).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'items-center', 'justify-between']))
+    expect(line.firstElementChild).toBe(howButton())
+    expect(line.lastElementChild!.contains(copyButton())).toBe(true)
+  })
+
+  it('AC-4005.1: 768px 미만은 [표 복사]가 줄 전체 폭이고 [어떻게 세나요?]가 그 아래다(order)', () => {
+    draw(ready())
+    expect(howButton().classList.contains('max-md:order-2')).toBe(true)
+    expect(howButton().parentElement!.lastElementChild!.classList.contains('max-md:w-full')).toBe(true)
+    expect(copyButton().classList.contains('max-md:w-full')).toBe(true)
+  })
+
+  it('AC-4004.2: 아래 글은 "어떻게 세나요?" 칸 안에 있고 처음에는 접혀(hidden) 있어 그 자리에 보이지 않으며, 펼친 글은 그 줄 아래다', () => {
+    draw(ready())
+    expect(howButton().getAttribute('aria-expanded')).toBe('false')
+    expect(howBody().hidden).toBe(true)
+    expect(screen.getByText(FOOT).closest('[hidden]')).toBe(howBody())
+    expect(howBody().textContent).toBe(FOOT)
+    expect(howButton().parentElement!.nextElementSibling).toBe(howBody())
+    fireEvent.click(howButton())
+    expect(howBody().hidden).toBe(false)
+  })
+
+  it('AC-4004.2·AC-2705.5: 원장님이 한 분이면 접는 칸·[표 복사]가 없다(지금처럼)', () => {
+    draw(ready({ kind: 'single' }))
+    expect(screen.queryByRole('button', { name: '어떻게 세나요?' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '표 복사' })).toBeNull()
+    expect(screen.queryByText(FOOT)).toBeNull()
+  })
+})
+
 describe('AC-2706.5·AC-2706.6 숫자가 없을 때', () => {
   it.each<[string, BitSectionsShown, string]>([
     ['이 기기에서 불러오지 않음', null, '비트 PC에서 불러오면 보여요 · 진료 줄은 서버에 저장하지 않아서, 비트 PC에서 불러온 화면에서만 볼 수 있어요.'],
