@@ -131,6 +131,59 @@ describe('AC-513.6: 보고 글', () => {
   })
 })
 
+// ── stats-pc-ux: 보고 아래 · 글 접기 (REQ-4004 AC-4004.2 ⑤·AC-4004.3, 기본값 11) ─────────────────
+describe('AC-4004.2 ⑤·AC-4004.3: 보고 아래 · 글은 "어떻게 세나요?" 안이다', () => {
+  const PRIVACY = '보고 문장은 숫자만 쓰고 환자 이름은 쓰지 않아요.'
+  const howButton = () => screen.getByRole('button', { name: '어떻게 세나요?' })
+  const howBody = () => document.getElementById(howButton().getAttribute('aria-controls')!)!
+
+  it('AC-4004.2: · 글들은 "어떻게 세나요?" 칸 안에 차례대로 있고 처음에는 접혀(hidden) 있어 그 자리에 보이지 않는다', () => {
+    draw(data())
+    const notes = textOf('daily', DAILY[0]!).notes
+    expect(howButton().getAttribute('aria-expanded')).toBe('false')
+    expect(howBody().hidden).toBe(true)
+    for (const note of notes) expect(screen.getByText(note).closest('[hidden]')).toBe(howBody())
+    const items = Array.from(howBody().querySelectorAll('li')).map((li) => li.lastElementChild!.textContent)
+    expect(items).toEqual(notes)
+  })
+
+  it('AC-4004.2: 누르면 · 글이 보이고 다시 누르면 접힌다', () => {
+    draw(data())
+    fireEvent.click(howButton())
+    expect(howButton().getAttribute('aria-expanded')).toBe('true')
+    expect(howBody().hidden).toBe(false)
+    fireEvent.click(howButton())
+    expect(howBody().hidden).toBe(true)
+  })
+
+  it('AC-4004.2: 접는 칸은 보고 글 바로 아래(지금 자리)다', () => {
+    draw(data())
+    expect(reportBox().nextElementSibling).toBe(howButton().parentElement)
+    expect(howButton().parentElement!.contains(howBody())).toBe(true)
+  })
+
+  it('AC-4004.3: 날짜 줄과 개인정보 줄은 접지 않고 그대로 보이며 개인정보 줄은 접는 칸 다음이다', () => {
+    draw(data())
+    expect(screen.getByText('11월 13일 금요일 · 18:42까지 불러온 숫자예요(오늘은 진료 중)').closest('[hidden]')).toBeNull()
+    const privacy = screen.getByText(PRIVACY)
+    expect(privacy.closest('[hidden]')).toBeNull()
+    expect(howButton().parentElement!.contains(privacy)).toBe(false)
+    expect(howButton().compareDocumentPosition(privacy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('AC-4004.2: 넣을 · 글이 없으면(고른 기간 보고 · 확정할 수 없음 · 비트 자료 없음) 접는 칸도 없다', () => {
+    render(<ReportSection report={null} hospitalName={HOSPITAL} today={TODAY} saved pick={{ label: '2026년 10월', text: '가짜 보고 글' }} />)
+    expect(screen.queryByRole('button', { name: '어떻게 세나요?' })).toBeNull()
+    cleanup()
+    draw(data({ daily: [DAILY[0]!, { ok: false, period: '2026-11-12', reason: '가짜 사유 글' }] }))
+    pick('어제 일일보고')
+    expect(screen.queryByRole('button', { name: '어떻게 세나요?' })).toBeNull()
+    cleanup()
+    draw(null)
+    expect(screen.queryByRole('button', { name: '어떻게 세나요?' })).toBeNull()
+  })
+})
+
 describe("AC-513.6: '확인 필요' 줄", () => {
   const UNCONFIRMED = numbers('2026-11-12', { financeUnconfirmed: true, financeUnconfirmedReason: '가짜 사유' })
 

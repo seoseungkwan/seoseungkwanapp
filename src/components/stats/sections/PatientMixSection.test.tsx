@@ -155,11 +155,11 @@ describe('AC-2706.1·AC-2706.2 환자 구성 칸', () => {
     expect(plain.children[1]!.firstElementChild!.className).toContain('bg-accent')
   })
 
-  it('AC-2706.2: 1024px 이상 4·4·4 세 열이고 오른쪽 두 열은 왼쪽 선, 그보다 좁으면 위아래로 쌓고 열 사이에 위 선이다', () => {
+  it('AC-2706.2·AC-4005.2: 1280px 이상 4·4·4 세 열이고 오른쪽 두 열은 왼쪽 선, 1024px보다 좁으면 위아래로 쌓고 열 사이에 위 선이다', () => {
     draw(ready())
     const columns = screen.getAllByRole('heading', { level: 3 }).map((h) => h.parentElement!.parentElement!)
     const grid = columns[0]!.parentElement!
-    expect(grid.className.split(' ')).toEqual(expect.arrayContaining(['grid', 'grid-cols-1', 'lg:grid-cols-3']))
+    expect(grid.className.split(' ')).toEqual(expect.arrayContaining(['grid', 'grid-cols-1', 'min-[80rem]:grid-cols-3']))
     expect(columns[0]!.className).not.toContain('border')
     for (const column of columns.slice(1)) {
       expect(column.className.split(' ')).toEqual(expect.arrayContaining(['lg:border-l', 'lg:border-line', 'lg:pl-6', 'max-lg:border-t', 'max-lg:border-line', 'max-lg:pt-4']))
@@ -172,6 +172,96 @@ describe('AC-2706.1·AC-2706.2 환자 구성 칸', () => {
       screen.getByText('명은 기간 안 마지막 내원 때의 나이·보험·주소로 한 번만 세요. 보험·동네는 비트에 적힌 이름 그대로예요(차상위는 한 줄로 묶어요).'),
     ).toBeTruthy()
     expect(screen.getByRole('button', { name: '표 복사' })).toBeTruthy()
+  })
+})
+
+// ── stats-pc-ux: 1024~1279px 두 열 (REQ-4005 AC-4005.2, design.md '배치', 시안 notes.md §6(a)) ─────────────────
+describe('AC-4005.2: 환자 구성 열 — 1280px 이상 세 열 · 1024~1279px 두 열 · 1023px 이하 한 열', () => {
+  const columnsOf = () => screen.getAllByRole('heading', { level: 3 }).map((h) => h.parentElement!.parentElement!)
+  const classesOf = (el: Element) => el.className.split(' ').filter(Boolean)
+
+  it('AC-4005.2: 감싸개는 한 열 → 1024px 두 열(lg:grid-cols-2) → 1280px 세 열(min-[80rem]:grid-cols-3)이고 1024px 세 열은 없다', () => {
+    draw(ready())
+    const grid = columnsOf()[0]!.parentElement!
+    expect(classesOf(grid)).toEqual(expect.arrayContaining(['grid', 'grid-cols-1', 'lg:grid-cols-2', 'lg:gap-x-6', 'min-[80rem]:grid-cols-3']))
+    expect(classesOf(grid)).not.toContain('lg:grid-cols-3')
+  })
+
+  it('AC-4005.2: 열 사이 위아래 틈이 없어 오른쪽 열 왼쪽 세로줄이 보험 → 동네로 끊기지 않는다', () => {
+    draw(ready())
+    const grid = columnsOf()[0]!.parentElement!
+    expect(classesOf(grid).filter((name) => /(?:^|:)gap(?:-y)?-/.test(name))).toEqual(['lg:gap-x-6'])
+    const [, insurance, town] = columnsOf()
+    for (const column of [insurance!, town!]) expect(classesOf(column)).toEqual(expect.arrayContaining(['lg:border-l', 'lg:border-line', 'lg:pl-6']))
+  })
+
+  it('AC-4005.2: 1024~1279px은 왼쪽 연령대가 두 줄을 차지하고 오른쪽 위 보험 · 아래 동네다(동네 위 24px)', () => {
+    draw(ready())
+    const [age, insurance, town] = columnsOf()
+    expect(age!.querySelector('h3')!.textContent).toBe('연령대')
+    expect(classesOf(age!)).toContain('lg:row-span-2')
+    expect(classesOf(insurance!).filter((name) => /^lg:(?:col|row)-/.test(name))).toEqual([])
+    expect(town!.querySelector('h3')!.textContent).toBe('동네')
+    expect(classesOf(town!)).toEqual(expect.arrayContaining(['lg:col-start-2', 'lg:row-start-2', 'lg:pt-6']))
+  })
+
+  it('AC-4005.2: 1280px 이상은 세 열 한 줄로 되돌린다(연령대 한 줄 · 동네 셋째 열 첫 줄 · 위 여백 없음)', () => {
+    draw(ready())
+    const [age, , town] = columnsOf()
+    expect(classesOf(age!)).toContain('min-[80rem]:row-span-1')
+    expect(classesOf(town!)).toEqual(expect.arrayContaining(['min-[80rem]:col-start-3', 'min-[80rem]:row-start-1', 'min-[80rem]:pt-0']))
+  })
+})
+
+// ── stats-pc-ux: 세 열 아래 [어떻게 세나요?] · [표 복사] 줄 (REQ-4004 AC-4004.2 ⑥·AC-4004.3, REQ-4005 AC-4005.1) ─────────────────
+describe('AC-4004.2 ⑥·AC-4004.3·AC-4005.1: 환자 구성 아래 줄과 접는 설명', () => {
+  const FOOT = '명은 기간 안 마지막 내원 때의 나이·보험·주소로 한 번만 세요. 보험·동네는 비트에 적힌 이름 그대로예요(차상위는 한 줄로 묶어요).'
+  const howButton = () => screen.getByRole('button', { name: '어떻게 세나요?' })
+  const howBody = () => document.getElementById(howButton().getAttribute('aria-controls')!)!
+  const copyButton = () => screen.getByRole('button', { name: '표 복사' })
+  const gridOf = () => screen.getByRole('heading', { level: 3, name: '연령대' }).parentElement!.parentElement!.parentElement!
+
+  it('AC-4005.1: 세 열 바로 다음 줄이 왼쪽 [어떻게 세나요?] · 오른쪽 끝 [표 복사] 한 줄(flex-wrap justify-between)이다', () => {
+    draw(ready())
+    const line = howButton().parentElement!
+    expect(gridOf().nextElementSibling).toBe(line.parentElement)
+    expect(line.parentElement!.firstElementChild).toBe(line)
+    expect(line.className.split(' ')).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'items-center', 'justify-between']))
+    expect(line.firstElementChild).toBe(howButton())
+    expect(line.lastElementChild!.contains(copyButton())).toBe(true)
+  })
+
+  it('AC-4005.1: 768px 미만은 [표 복사]가 줄 전체 폭이고 [어떻게 세나요?]가 그 아래다(order)', () => {
+    draw(ready())
+    expect(howButton().classList.contains('max-md:order-2')).toBe(true)
+    expect(howButton().parentElement!.lastElementChild!.classList.contains('max-md:w-full')).toBe(true)
+    expect(copyButton().classList.contains('max-md:w-full')).toBe(true)
+  })
+
+  it('AC-4004.2: 아래 글은 "어떻게 세나요?" 칸 안에 있고 처음에는 접혀(hidden) 있어 그 자리에 보이지 않으며, 펼친 글은 그 줄 아래다', () => {
+    draw(ready())
+    expect(howButton().getAttribute('aria-expanded')).toBe('false')
+    expect(howBody().hidden).toBe(true)
+    expect(screen.getByText(FOOT).closest('[hidden]')).toBe(howBody())
+    expect(howBody().textContent).toBe(FOOT)
+    expect(howButton().parentElement!.nextElementSibling).toBe(howBody())
+    fireEvent.click(howButton())
+    expect(howButton().getAttribute('aria-expanded')).toBe('true')
+    expect(howBody().hidden).toBe(false)
+  })
+
+  it('AC-4004.3: 견줘요 줄과 [전체][신환] 옆 글은 접지 않고 그대로 보인다', () => {
+    draw(ready())
+    expect(screen.getByText('지난 30일(9월 14일 ~ 10월 13일)과 견줘요 · 명 기준').closest('[hidden]')).toBeNull()
+    expect(screen.getByText(/^명 = 서로 다른 환자 · 건 = 접수 건수/).closest('[hidden]')).toBeNull()
+  })
+
+  it('AC-4004.2: 빈 상태·기다리는 칸에는 접는 칸이 없다', () => {
+    draw(null)
+    expect(screen.queryByRole('button', { name: '어떻게 세나요?' })).toBeNull()
+    cleanup()
+    draw('waiting')
+    expect(screen.queryByRole('button', { name: '어떻게 세나요?' })).toBeNull()
   })
 })
 

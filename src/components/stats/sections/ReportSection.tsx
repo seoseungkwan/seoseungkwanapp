@@ -7,11 +7,13 @@ import { formatClinicReport } from '@/lib/clinicReport/reportText'
 import type { ClinicReportMode, ClinicReportNumbers, ClinicReportResult } from '@/types/clinicReport'
 import type { StatsLoaded } from '@/types/stats'
 import { CopyButton } from './CopyButton'
+import { HowCounted } from './HowCounted'
 import { EmptyNote, longDate, monthNumber, Section, weekdayName } from './parts'
 
 // 원장님 보고 문장 (stats REQ-513 AC-513.6·513.8, 시안 notes.md §3). 글은 formatClinicReport가 정하고(TASK-10) 여기서는 글자로만 그린다.
 // report null = 비트 PC에서 불러온 자료가 없음. 벌은 차례가 아니라 기간으로 찾는다. 고르기 상태는 화면 안에만 둔다.
-// pick(stats-period REQ-1707) = 고른 기간 보고. 있으면 [고른 기간 보고]가 맨 앞이고 처음 눌려 있다. 저장된 숫자로 만든 글이라 비트 없이도 보인다
+// pick(stats-period REQ-1707) = 고른 기간 보고. 있으면 [고른 기간 보고]가 맨 앞이고 처음 눌려 있다. 저장된 숫자로 만든 글이라 비트 없이도 보인다.
+// 보고 글 아래 · 글들은 "어떻게 세나요?" 안에 접는다(stats-pc-ux AC-4004.2 ⑤, 글이 있을 때만). 날짜 줄·확정 못 함·개인정보 줄은 그대로 보인다(AC-4004.3)
 
 export type ReportData = {
   numbers: StatsLoaded['report']
@@ -114,16 +116,18 @@ function BitBody({ bit, report, today }: { bit: Bit; report: ReportData; today: 
       {numbers !== null && <p className="mt-4 text-small text-muted">{dateLine(key, today, report, numbers)}</p>}
       {shown !== null && <ReportText shown={shown} />}
       {shown !== null && shown.notes.length > 0 && (
-        <ul className="mt-2 grid gap-1">
-          {shown.notes.map((note) => (
-            <li key={note} className="grid grid-cols-[12px_minmax(0,1fr)] text-small text-ink-2">
-              <span aria-hidden="true" className="text-muted">
-                ·
-              </span>
-              <span>{note}</span>
-            </li>
-          ))}
-        </ul>
+        <HowCounted>
+          <ul className="mt-2 grid gap-1">
+            {shown.notes.map((note) => (
+              <li key={note} className="grid grid-cols-[12px_minmax(0,1fr)] text-small text-ink-2">
+                <span aria-hidden="true" className="text-muted">
+                  ·
+                </span>
+                <span>{note}</span>
+              </li>
+            ))}
+          </ul>
+        </HowCounted>
       )}
       {result !== null && 'error' in result && result.error === 'unconfirmed' && <Unconfirmable place={place} reason={result.reason} />}
       {(numbers === null || (result !== null && 'error' in result && result.error === 'future-date')) && <EmptyNote title={BIT_ONLY}>{BIT_REASON}</EmptyNote>}
