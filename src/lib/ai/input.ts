@@ -139,8 +139,10 @@ export function buildReportInput(months: ValidReportMonths): ReportInput {
   const present = all.filter((m): m is MonthPayload => m !== null)
   const metrics: ReportMetric[] = []
 
+  // 재진은 지금 뜻(= 접수 건수 − 신환 − 알 수 없음, 90일초진 포함)으로 넣는다. 새 도우미 달(first90 있음)과 옛 달을 견줘도 같은 뜻(spec first90 AC-4402.6)
   for (const [field, label, kind] of TOTALS) {
-    metrics.push(metric(`total.${field}`, label, kind, all, (m) => m.totals[field]))
+    const pick = field === 'returning' ? (m: MonthPayload) => m.totals.returning + (m.totals.first90 ?? 0) : (m: MonthPayload) => m.totals[field]
+    metrics.push(metric(`total.${field}`, label, kind, all, pick))
   }
   for (const [within, days] of [['within7', 7], ['within14', 14]] as const) {
     metrics.push(metric(`revisit.${within}`, `신환 ${days}일 재방문율`, 'rate', all, (m) => revisitRate(m.revisit, within)))

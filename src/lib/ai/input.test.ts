@@ -872,8 +872,8 @@ describe('AC-2904.5 지표 종류', () => {
   })
 })
 
-describe('AC-4402.6 AI 입력은 first90을 넣지 않는다', () => {
-  // 세 달 모두 v4 합계(다섯 열쇠, 지어낸 숫자). 저장 검사를 통과한 것만 쓴다
+describe('AC-4402.6 AI 입력은 first90을 따로 넣지 않고 재진에 더한다', () => {
+  // 세 달 모두 v4 합계(다섯 열쇠, 지어낸 숫자): 원래 재진에서 90일초진을 떼어 낸 모양. 저장 검사를 통과한 것만 쓴다
   const withFirst90 = (payload: MonthPayload, first90: number): MonthPayload =>
     valid({ ...payload, totals: { ...payload.totals, first90, returning: payload.totals.returning - first90 } })
   const v4Months = (): ValidReportMonths => ({
@@ -882,26 +882,30 @@ describe('AC-4402.6 AI 입력은 first90을 넣지 않는다', () => {
     lastYear: withFirst90(lastYear(), 0),
     groupNames: { ...GROUP_NAMES },
   })
-  // 같은 달에서 first90 열쇠만 뺀 것(검사를 거치지 않고 바로 넣는다)
-  const dropFirst90 = (payload: MonthPayload | null): MonthPayload | null => {
+  // 같은 달의 옛 모양: first90 열쇠가 없고 재진에 90일초진이 들어 있다(검사를 거치지 않고 바로 넣는다)
+  const oldShape = (payload: MonthPayload | null): MonthPayload | null => {
     if (payload === null) return null
-    const totals = { ...payload.totals }
-    delete totals.first90
-    return { ...payload, totals }
+    const { first90 = 0, ...totals } = payload.totals
+    return { ...payload, totals: { ...totals, returning: totals.returning + first90 } }
   }
 
-  it('AC-4402.6: 세 달 합계에 first90이 있어도 입력(지표 ID·이름·세 달 값·차례)과 지문이 first90 열쇠만 뺀 자료와 같다', async () => {
+  it('AC-4402.6: 세 달 합계에 first90이 있어도 입력(지표 ID·이름·세 달 값·차례)과 지문이 옛 모양(재진에 90일초진 포함) 자료와 같다', async () => {
     const months = v4Months()
-    const plain: ValidReportMonths = { ...months, selected: dropFirst90(months.selected)!, prev: dropFirst90(months.prev), lastYear: dropFirst90(months.lastYear) }
+    const plain: ValidReportMonths = { ...months, selected: oldShape(months.selected)!, prev: oldShape(months.prev), lastYear: oldShape(months.lastYear) }
     expect(buildReportInput(months)).toEqual(buildReportInput(plain))
     expect(await reportFingerprint(buildReportInput(months))).toBe(await reportFingerprint(buildReportInput(plain)))
   })
 
-  it('AC-4402.6: 합계 지표는 지금과 같은 접수 건수·신환·재진뿐이고 first90·90일초진 지표가 없다', () => {
+  it('AC-4402.6: 합계 지표는 지금과 같은 접수 건수·신환·재진뿐이고 first90·90일초진 지표가 없다. 재진은 returning + first90', () => {
     const input = buildReportInput(v4Months())
     expect(ids(input).filter((id) => id.startsWith('total.'))).toEqual(['total.patients', 'total.newPatients', 'total.returning'])
     expect(JSON.stringify(input)).not.toContain('first90')
     expect(input.metrics.filter((m) => m.label.includes('90일'))).toEqual([])
-    expect(metricOf(input, 'total.returning')).toEqual(visits('total.returning', '재진', 75, 73, 75))
+    expect(metricOf(input, 'total.returning')).toEqual(visits('total.returning', '재진', 85, 80, 75))
+  })
+
+  it('AC-4402.6: 이번 달만 v4이고 지난달·작년이 옛 달이어도 재진 뜻이 같아 거짓으로 줄지 않는다', () => {
+    const input = buildReportInput({ selected: withFirst90(selected(), 10), prev: prev(), lastYear: lastYear(), groupNames: { ...GROUP_NAMES } })
+    expect(metricOf(input, 'total.returning')).toEqual(visits('total.returning', '재진', 85, 80, 75))
   })
 })

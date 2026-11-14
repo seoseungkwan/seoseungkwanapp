@@ -76,7 +76,7 @@ ORDER BY v.PatientId,v.VisitDay
 ### 3-4. payload·검사
 - `toDayPayloads.ts`·`toMonthPayload.ts`·`groupCounts.ts`·`history.ts copyTotals`: `first90`·`once`가 있을 때만 옮긴다. 달 `rx[].once`는 두지 않는다. 표는 날 payload로 센다.
 - `validate.ts totalsOf`: 네 열쇠 또는 다섯 열쇠(AC-4402.5). 처방 줄 `once`는 선택 열쇠이고 `0 ≤ once ≤ newPatients` 정수다.
-- `lib/ai/input.ts`: totals를 옮길 때 정해진 네 열쇠만 고른다(AC-4402.6). 덕분에 `output.ts`의 숫자 단어 막기에 걸리지 않는다.
+- `lib/ai/input.ts`: totals를 옮길 때 정해진 열쇠만 고른다(AC-4402.6). 덕분에 `output.ts`의 숫자 단어 막기에 걸리지 않는다. 재진은 `returning + (first90 ?? 0)`로 넣어 옛 뜻(접수 건수 − 신환 − 알 수 없음)을 지킨다. 이번 달이 v4이고 작년 달이 v3이어도 재진이 거짓으로 줄어 보이지 않는다.
 
 ## 4. 매출 자료
 

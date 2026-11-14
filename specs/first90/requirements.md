@@ -17,7 +17,7 @@
 - ERP 마감일지와 ERP 도우미(erp.minesolution.com 확장). 사용자 결정 "Erp마감일지는 따로빼".
 - 웹앱 업무일지의 비트 채우기(`RevenueDays.ReturnVisits`).
 - 처방 칸 '처방별 신환·재진'의 재진. 90일초진이 계속 재진 안에 든다.
-- AI 분석 보고: 입력에 90일초진을 넣지 않는다.
+- AI 분석 보고: 입력에 90일초진 칸을 따로 넣지 않는다(재진에 더해 지금 뜻 그대로 보낸다, AC-4402.6).
 - 파일로 넣는 길: 엑셀 열 '90일초진' 값은 지금처럼 '알 수 없음'이다.
 - 참고 금액 포함 스위치 상태를 기억하는 일.
 - 급여·비급여·기타 나눔과 치료별 매출에 참고 금액을 넣는 일.
@@ -45,7 +45,7 @@
   - 열쇠 네 개이고 `patients === newPatients + returning + unknown`(지금 그대로).
   - 열쇠 다섯 개이고 `patients === newPatients + first90 + returning + unknown`.
   - 그 밖은 거부한다.
-- AC-4402.6: Given `first90`이 든 payload, When AI 입력(`lib/ai/input.ts`)을 만들면, Then 지금과 같은 네 칸만 넣는다. `first90`은 넣지 않는다.
+- AC-4402.6: Given `first90`이 든 payload, When AI 입력(`lib/ai/input.ts`)을 만들면, Then 지금과 같은 합계 칸만 넣고 `first90` 칸은 따로 넣지 않는다. 재진 값은 지금 뜻(90일초진 포함)대로 `returning + first90`이다. 그래서 새 도우미 달과 옛 달을 견줘도 재진 뜻이 같다.
 
 ### REQ-4403: 통계 '환자 요약' 줄
 - AC-4403.1: Given 보는 기간의 모든 날에 `first90`이 있음, When 환자 요약을 그리면(빠르게 보기·기간 골라 보기 둘 다), Then 아래처럼 그린다.
