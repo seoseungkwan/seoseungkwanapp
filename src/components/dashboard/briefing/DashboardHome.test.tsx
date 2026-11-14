@@ -656,6 +656,8 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     expect(link, name).toBeDefined()
     return link as HTMLElement
   }
+  // 칸 이름(차례대로)
+  const namesOf = () => Array.from(list().querySelectorAll('a')).map((a) => textOf(a.querySelector('a > span > span')))
   // "사용 가능"(accent 500 + 꾸밈 arrow 14) / "연결 먼저"(ink-2 600 + 꾸밈 arrow 14) / "준비 중"(muted, 화살표 없음). 셋 다 small(13px)
   const expectUsable = (status: HTMLElement) => {
     expect(textOf(status)).toBe('사용 가능')
@@ -717,7 +719,7 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     }
   })
 
-  it('AC-316.4·AC-414.5·AC-010.1·AC-515.2·AC-714.4·AC-610.1·AC-012.5: 1줄 이름(subtitle 600, 준비 중만 ink-2, 올림 accent) + 오른쪽 상태, 2줄 설명(small muted) — 연결 전 상태는 청구·환자·매출 "연결 먼저" · AI 리포트·업무일지·설정 "사용 가능" · 나머지는 목록대로(개수는 목록에서 센다)', () => {
+  it('AC-316.4·AC-414.5·AC-4110.3·AC-515.2·AC-714.4·AC-610.1·AC-012.5: 1줄 이름(subtitle 600, 준비 중만 ink-2, 올림 accent) + 오른쪽 상태, 2줄 설명(small muted) — 연결 전 상태는 청구·환자 "연결 먼저" · AI 리포트·업무일지·설정 "사용 가능" · 나머지는 목록대로(개수는 목록에서 센다), 매출 칸은 없다', () => {
     renderBefore()
     const links = Array.from(list().querySelectorAll('a'))
     links.forEach((link, i) => {
@@ -742,7 +744,7 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
       hasAll(desc, 'mt-0.5 block text-small text-muted')
     })
     expectConnectFirst(statusOf(linkOf('청구')))
-    expectConnectFirst(statusOf(linkOf('매출')))
+    expect(namesOf()).not.toContain('매출')
     expectUsable(statusOf(linkOf('설정')))
     expectUsable(statusOf(linkOf('AI 리포트')))
     expect(textOf(linkOf('AI 리포트').children[1] as HTMLElement)).toBe('지난달·작년 같은 달과 견준 월간 AI 보고')
@@ -779,10 +781,10 @@ describe('DashboardHome: 기능 목차 (AC-316.4·AC-414.5)', () => {
     })
   })
 
-  it('AC-414.5·AC-010.1·AC-515.2·AC-714.4·AC-610.1·AC-012.5: 연결 뒤에는 청구·매출도 "사용 가능"(accent + 화살표)이고, AI 리포트·업무일지·설정은 그대로 "사용 가능", 준비 중 칸은 그대로 "준비 중"(개수는 목록에서 센다)', () => {
+  it('AC-414.5·AC-4110.3·AC-515.2·AC-714.4·AC-610.1·AC-012.5: 연결 뒤에는 청구도 "사용 가능"(accent + 화살표)이고, AI 리포트·업무일지·설정은 그대로 "사용 가능", 준비 중 칸은 그대로 "준비 중"(개수는 목록에서 센다), 매출 칸은 없다', () => {
     renderAfter()
     expectUsable(statusOf(linkOf('청구')))
-    expectUsable(statusOf(linkOf('매출')))
+    expect(namesOf()).not.toContain('매출')
     expectUsable(statusOf(linkOf('AI 리포트')))
     expectUsable(statusOf(linkOf('설정')))
     const links = Array.from(list().querySelectorAll('a'))

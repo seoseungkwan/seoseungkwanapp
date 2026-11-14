@@ -1,47 +1,26 @@
 import type { ReactNode } from 'react'
-import type { DeltaText, Kpi, Notice, SrTable, Tone } from './view'
+import type { DeltaText, Kpi, Notice, SrTable, Tone } from './types'
 
-// 매출 화면이 같이 쓰는 작은 부품(시안 docs/mockups/revenue/gen.py의 .dsec·.kpis·.ban·.d-note). 훅이 없다. 글자는 모두 보기 모양(view.ts)에서 받는다.
+// 통계 매출 칸(stats/sections/RevenueSection)이 쓰는 작은 부품(시안 docs/mockups/revenue/gen.py의 .kpis·.ban·.d-note). 훅이 없다. 글자는 모두 보기 값(types.ts 모양)으로 받는다.
+// 옛 매출 탭 화면만 쓰던 제목 줄·덩어리 머리·오류 번호 부품은 지웠다(stats-revenue AC-4110.4).
 // 시안의 15px·2px 모서리처럼 단계 밖 값은 가까운 토큰으로 바꿨다(UI_GUIDE '간격', '모서리')
 
-// 덩어리 사이: 위 48 + 위 1px line-strong + 선 아래 20 (폰 32 + 선 + 16)
-export const SECTION = 'mt-12 border-t border-line-strong pt-5 max-md:mt-8 max-md:pt-4'
 // 알림 줄(시안 .ban): 글 왼쪽 · 단추 오른쪽, 넘치면 줄바꿈. 바탕은 놓는 쪽이 정한다
 export const BANNER = 'mt-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-control px-4 py-3 text-body text-ink-2'
 export const STRONG = 'font-semibold text-ink'
-export const ERROR_NUMBER = 'mt-3 text-caption text-ink-2 tabular-nums'
 
 const GLYPH = {
-  left: 'm9.75 4.75-3.25 3.25 3.25 3.25',
-  right: 'm6.25 4.75 3.25 3.25-3.25 3.25',
   up: 'M8 12.5v-9M4.5 7 8 3.5 11.5 7',
   down: 'M8 3.5v9M4.5 9 8 12.5 11.5 9',
 } as const
 
-/** 시안 gen.py ICONS의 꺾쇠·화살표. 공용 Icon에 없는 그림이고 그 파일은 다른 기능 것이라 여기 둔다. 늘 꾸밈이다 */
+/** 시안 gen.py ICONS의 화살표. 공용 Icon에 없는 그림이고 그 파일은 다른 기능 것이라 여기 둔다. 늘 꾸밈이다 */
 export function Glyph({ name, size }: { name: keyof typeof GLYPH; size: number }) {
   return (
     <svg aria-hidden="true" width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
       <path d={GLYPH[name]} />
     </svg>
   )
-}
-
-export function PageTitle({ children }: { children: ReactNode }) {
-  return <h1 className="flex items-center gap-2 text-title font-semibold text-ink">{children}</h1>
-}
-
-export function BlockHead({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="flex min-h-8 flex-wrap items-center justify-between gap-x-3 gap-y-1">
-      <h2 className="text-title font-semibold text-ink">{title}</h2>
-      {children}
-    </div>
-  )
-}
-
-export function BlockSub({ children }: { children: ReactNode }) {
-  return <span className="text-small text-muted">{children}</span>
 }
 
 export function Note({ children }: { children: ReactNode }) {

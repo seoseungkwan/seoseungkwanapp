@@ -36,14 +36,14 @@ const hasNone = (el: Element, classes: string) => {
   for (const t of tokens(classes)) expect(classesOf(el), t).not.toContain(t)
 }
 
-// 탭과 탭 주소(tab-frame REQ-302, design.md '탭 목록'). 기능 자신의 화면이 있는 것은 READY의 탭이다(매출은 spec revenue AC-010.1, 통계는 stats AC-515.1, 환자는 patients AC-610.1, 업무일지는 worklog AC-012.2, 서식은 forms AC-3501.1)
+// 탭과 탭 주소(tab-frame REQ-302, design.md '탭 목록'). 기능 자신의 화면이 있는 것은 READY의 탭이다(통계는 stats AC-515.1, 환자는 patients AC-610.1, 업무일지는 worklog AC-012.2, 서식은 forms AC-3501.1).
+// 매출 탭은 통계 매출 칸으로 옮겨 없어졌다(stats-revenue AC-4110.1, /revenue는 next.config가 /stats로 넘긴다)
 const PATHS: readonly (readonly [string, string])[] = [
   ['대시보드', '/dashboard'],
   ['통계', '/stats'],
   ['청구', '/claim'],
   ['고시·공지', '/notices'],
   ['환자', '/patients'],
-  ['매출', '/revenue'],
   ['AI 리포트', '/ai-report'],
   ['서식', '/forms'],
   ['직원', '/staff'],
@@ -53,7 +53,7 @@ const PATHS: readonly (readonly [string, string])[] = [
   ['설정', '/settings'],
 ]
 const LABELS = PATHS.map(([label]) => label)
-const READY = ['대시보드', '통계', '청구', '환자', '매출', 'AI 리포트', '서식', '업무일지']
+const READY = ['대시보드', '통계', '청구', '환자', 'AI 리포트', '서식', '업무일지']
 // 준비 중 화면 주소(설정 빼고 화면이 없는 탭)
 const NOT_READY_PATHS = PATHS.filter(([label]) => !READY.includes(label) && label !== '설정')
 const EMAIL = 'manager@example.com'
@@ -78,8 +78,8 @@ afterEach(() => {
   delete (Element.prototype as Partial<Element>).scrollIntoView
 })
 
-// 주요 메뉴 다섯(탭 띠)과 나머지 여덟([더보기] 판). 둘 다 MENU 차례 그대로다(dashboard-ux AC-2702.1)
-const PRIMARY = ['대시보드', '통계', '청구', '환자', '매출']
+// 주요 메뉴 넷(탭 띠)과 나머지 여덟([더보기] 판). 둘 다 MENU 차례 그대로다(dashboard-ux AC-2702.1, 매출이 빠짐 stats-revenue AC-4110.1)
+const PRIMARY = ['대시보드', '통계', '청구', '환자']
 const PRIMARY_PATHS = PATHS.filter(([label]) => PRIMARY.includes(label))
 const MORE_PATHS = PATHS.filter(([label]) => !PRIMARY.includes(label))
 
@@ -98,8 +98,8 @@ const panel = () => {
   const id = moreButton().getAttribute('aria-controls')
   return id ? document.getElementById(id) : null
 }
-// 화면이 있는 탭(MENU ready: true) — 대시보드·통계·청구·환자·매출·AI 리포트·서식·업무일지·설정
-const READY_TABS = ['대시보드', '통계', '청구', '환자', '매출', 'AI 리포트', '서식', '업무일지', '설정']
+// 화면이 있는 탭(MENU ready: true) — 대시보드·통계·청구·환자·AI 리포트·서식·업무일지·설정
+const READY_TABS = ['대시보드', '통계', '청구', '환자', 'AI 리포트', '서식', '업무일지', '설정']
 // 준비 중 탭(MENU ready: false). 수는 NOT_READY_FEATURES에서 센다
 const NOT_READY_TABS = LABELS.filter((l) => !READY_TABS.includes(l))
 // 지금 탭 모양(ink 600 + 아래 2px accent 밑줄)과 기본 모양(ink-2 500)
@@ -112,27 +112,35 @@ const motionOf = (el: Element) =>
   classesOf(el).filter((c) => /(?:^|:)(?:animate-|transition|duration-|delay-|ease-|-?translate-|-?rotate-|-?scale-|opacity-)/.test(c))
 
 describe('menu', () => {
-  it('AC-302.1: 탭은 13개 — 대시보드 · 통계 · 청구 · 고시·공지 · 환자 · 매출 · AI 리포트 · 서식 · 직원 · 업무일지 · 재고 · 주소록 · 설정. 급여·일일마감·보고·월간 PDF·관리자는 없다', () => {
+  it('AC-302.1·AC-4110.1: 탭은 12개 — 대시보드 · 통계 · 청구 · 고시·공지 · 환자 · AI 리포트 · 서식 · 직원 · 업무일지 · 재고 · 주소록 · 설정. 매출·급여·일일마감·보고·월간 PDF·관리자는 없다', () => {
     expect(MENU.map((m) => m.label)).toEqual([
-      '대시보드', '통계', '청구', '고시·공지', '환자', '매출', 'AI 리포트', '서식', '직원', '업무일지', '재고', '주소록', '설정',
+      '대시보드', '통계', '청구', '고시·공지', '환자', 'AI 리포트', '서식', '직원', '업무일지', '재고', '주소록', '설정',
     ])
+    expect(MENU).toHaveLength(12)
     expect(MENU).toHaveLength(PATHS.length)
-    for (const gone of ['급여', '일일마감·보고', '월간 PDF', '관리자']) expect(MENU.map((m) => m.label as string), gone).not.toContain(gone)
+    for (const gone of ['매출', '급여', '일일마감·보고', '월간 PDF', '관리자']) expect(MENU.map((m) => m.label as string), gone).not.toContain(gone)
   })
 
-  it('AC-302.2: 탭 주소(path)는 표와 같고 13개가 모두 다르며 같은 origin 고정 경로다', () => {
+  it('AC-4110.1: 탭 주소에 /revenue가 없고, 주소 타입(MenuLabel·MenuPath·MenuHref)에도 매출·/revenue가 없다', () => {
+    expect(MENU.map((m) => m.path as string)).not.toContain('/revenue')
+    expect(MENU.map((m) => m.href as string | null)).not.toContain('/revenue')
+    const source = readFileSync(join(process.cwd(), 'src/components/shell/menu.ts'), 'utf8')
+    expect(source).not.toContain("'/revenue'")
+    expect(source).not.toContain("'매출'")
+  })
+
+  it('AC-302.2·AC-4110.1: 탭 주소(path)는 표와 같고 12개가 모두 다르며 같은 origin 고정 경로다', () => {
     expect(MENU.map((m) => [m.label, m.path])).toEqual(PATHS)
     expect(new Set(MENU.map((m) => m.path)).size).toBe(MENU.length)
     for (const { label, path } of MENU) expect(path, label).toMatch(/^\/[a-z0-9-]+(?:\/[a-z0-9-]+)*$/)
   })
 
-  it('AC-302.3·AC-010.1·AC-515.1·AC-714.1·AC-610.1·AC-012.2·AC-012.6·AC-3501.1: 기능 자신의 화면(href)은 대시보드 /dashboard · 통계 /stats · 청구 /claim · 환자 /patients · 매출 /revenue · AI 리포트 /ai-report · 서식 /forms · 업무일지 /worklog · 설정 /settings이고 나머지는 null. href가 있으면 path와 같다', () => {
+  it('AC-302.3·AC-4110.1·AC-515.1·AC-714.1·AC-610.1·AC-012.2·AC-012.6·AC-3501.1: 기능 자신의 화면(href)은 대시보드 /dashboard · 통계 /stats · 청구 /claim · 환자 /patients · AI 리포트 /ai-report · 서식 /forms · 업무일지 /worklog · 설정 /settings이고 나머지는 null. href가 있으면 path와 같다', () => {
     expect(MENU.filter((m) => m.href !== null).map(({ label, href }) => ({ label, href }))).toEqual([
       { label: '대시보드', href: '/dashboard' },
       { label: '통계', href: '/stats' },
       { label: '청구', href: '/claim' },
       { label: '환자', href: '/patients' },
-      { label: '매출', href: '/revenue' },
       { label: 'AI 리포트', href: '/ai-report' },
       { label: '서식', href: '/forms' },
       { label: '업무일지', href: '/worklog' },
@@ -148,7 +156,7 @@ describe('menu', () => {
     expect(settings?.owns).toEqual(['/claim/setup'])
   })
 
-  it('AC-006.4·AC-302.4·AC-010.1: 지금 탭 — /claim과 /claim/*은 청구, 설치·연결 확인(/claim/setup)은 목업처럼 설정 자리', () => {
+  it('AC-006.4·AC-302.4·AC-4110.1: 지금 탭 — /claim과 /claim/*은 청구, 설치·연결 확인(/claim/setup)은 목업처럼 설정 자리', () => {
     expect(currentMenuLabel('/dashboard')).toBe('대시보드')
     expect(currentMenuLabel('/claim')).toBe('청구')
     expect(currentMenuLabel('/claim/close')).toBe('청구')
@@ -159,7 +167,7 @@ describe('menu', () => {
     expect(currentMenuLabel('/claimed')).toBeNull()
     expect(currentMenuLabel('/admin')).toBeNull()
     expect(currentMenuLabel('/worklog')).toBe('업무일지')
-    // 준비 중 주소와 그 아래 경로는 그 탭. 화면이 생긴 매출도 같다
+    // 준비 중 주소와 그 아래 경로는 그 탭
     expect(NOT_READY_PATHS).toHaveLength(NOT_READY_FEATURES.length)
     expect(NOT_READY_PATHS.map(([, path]) => path)).toEqual(NOT_READY_FEATURES.map((f) => f.path))
     // 환자 탭도 그 탭이다(?tool=은 경로가 아니다)
@@ -168,8 +176,9 @@ describe('menu', () => {
       expect(currentMenuLabel(path), path).toBe(label)
       expect(currentMenuLabel(`${path}/x`), `${path}/x`).toBe(label)
     }
-    expect(currentMenuLabel('/revenue')).toBe('매출')
-    expect(currentMenuLabel('/revenue/x')).toBe('매출')
+    // 매출 탭은 없다(/revenue는 next.config가 /stats로 넘긴다, AC-4110.2)
+    expect(currentMenuLabel('/revenue')).toBeNull()
+    expect(currentMenuLabel('/revenue/x')).toBeNull()
     expect(currentMenuLabel('/stats')).toBe('통계')
     expect(currentMenuLabel('/stats/x')).toBe('통계')
     expect(currentMenuLabel('/ai-report')).toBe('AI 리포트')
@@ -181,7 +190,7 @@ describe('menu', () => {
     expect('ADMIN_ITEM' in menuModule).toBe(false)
   })
 
-  it('AC-416.4·AC-010.1·AC-515.1·AC-714.1·AC-610.1·AC-012.2·AC-3501.1: 항목마다 ready가 있고 화면이 있는 탭(대시보드·통계·청구·환자·매출·AI 리포트·서식·업무일지·설정)만 true다. ready: false인 주소들은 NOT_READY_FEATURES의 주소와 같다(순서도)', () => {
+  it('AC-416.4·AC-4110.1·AC-515.1·AC-714.1·AC-610.1·AC-012.2·AC-3501.1: 항목마다 ready가 있고 화면이 있는 탭(대시보드·통계·청구·환자·AI 리포트·서식·업무일지·설정)만 true다. ready: false인 주소들은 NOT_READY_FEATURES의 주소와 같다(순서도)', () => {
     for (const item of MENU) expect(typeof item.ready, item.label).toBe('boolean')
     expect(MENU.filter((m) => m.ready).map((m) => m.label)).toEqual(READY_TABS)
     expect(MENU.filter((m) => !m.ready).map((m) => m.label)).toEqual(NOT_READY_TABS)
@@ -190,20 +199,21 @@ describe('menu', () => {
     expect(NOT_READY_TABS).not.toContain('매출')
   })
 
-  it('AC-2702.1: primary는 대시보드·통계·청구·환자·매출만 true다 — PRIMARY_MENU는 그 다섯, MORE_MENU는 나머지 여덟(둘 다 MENU 차례·같은 항목). 이름·주소·ready는 MENU 그대로다', () => {
+  it('AC-2702.1·AC-4110.1: primary는 대시보드·통계·청구·환자만 true다 — PRIMARY_MENU는 그 넷, MORE_MENU는 나머지 여덟(둘 다 MENU 차례·같은 항목). 이름·주소·ready는 MENU 그대로다', () => {
     for (const item of MENU) expect(typeof item.primary, item.label).toBe('boolean')
     expect(MENU.filter((m) => m.primary).map((m) => m.label)).toEqual(PRIMARY)
     expect(PRIMARY_MENU).toEqual(MENU.filter((m) => m.primary))
     expect(MORE_MENU).toEqual(MENU.filter((m) => !m.primary))
     expect(PRIMARY_MENU.map((m) => [m.label, m.path])).toEqual(PRIMARY_PATHS)
     expect(MORE_MENU.map((m) => [m.label, m.path])).toEqual(MORE_PATHS)
+    expect(PRIMARY_MENU).toHaveLength(4)
     expect(MORE_MENU).toHaveLength(8)
     for (const item of [...PRIMARY_MENU, ...MORE_MENU]) expect(MENU, item.label).toContain(item)
   })
 })
 
 describe('TabBar', () => {
-  it('AC-2702.1: nav "메뉴"의 탭 띠 안에는 주요 메뉴 다섯(대시보드·통계·청구·환자·매출) 링크만 이 차례로 있고 href는 MENU.path다. 대시보드가 지금 화면이라 aria-current="page"', () => {
+  it('AC-2702.1·AC-4110.1: nav "메뉴"의 탭 띠 안에는 주요 메뉴 넷(대시보드·통계·청구·환자) 링크만 이 차례로 있고 href는 MENU.path다. 대시보드가 지금 화면이라 aria-current="page"', () => {
     render(<TabBar />)
     expect(nav().tagName).toBe('NAV')
     expect(tabItems().map((el) => el.textContent)).toEqual(PRIMARY)
@@ -214,7 +224,7 @@ describe('TabBar', () => {
     // 탭 띠 안에는 단추·툴팁·"준비 중" 글자가 없다([더보기] 단추는 띠 밖, AC-2702.1)
     expect(strip().querySelectorAll('button, [aria-disabled], [role="tooltip"], [aria-describedby]')).toHaveLength(0)
     expect(strip().textContent).not.toContain('준비 중')
-    // 판은 닫혀 있다 → nav 안 링크는 탭 띠의 다섯뿐이다
+    // 판은 닫혀 있다 → nav 안 링크는 탭 띠의 넷뿐이다
     expect(within(nav()).getAllByRole('link')).toEqual(links)
   })
 
@@ -240,8 +250,8 @@ describe('TabBar', () => {
   it.each([
     ['/stats', '통계', '/stats'],
     ['/stats/x', '통계', '/stats'],
-    ['/revenue', '매출', '/revenue'],
-  ])('AC-303.2·AC-2702.3: %s에서는 탭 띠의 [%s](%s 링크)만 지금 탭이고 지금 탭 모양이다. [청구]·[대시보드]는 아니다', (path, label, href) => {
+    ['/patients', '환자', '/patients'],
+  ])('AC-303.2·AC-2702.3·AC-4110.1: %s에서는 탭 띠의 [%s](%s 링크)만 지금 탭이고 지금 탭 모양이다. [청구]·[대시보드]는 아니다', (path, label, href) => {
     pathname.mockReturnValue(path)
     render(<TabBar />)
     const current = within(strip()).getByRole('link', { name: label })
@@ -262,7 +272,7 @@ describe('TabBar', () => {
     expect(within(nav()).queryByRole('link', { name: '관리자' })).toBeNull()
   })
 
-  it('AC-303.3·AC-2702.1: 탭 띠의 다섯은 모두 화면이 있는 탭이고 지금 탭이 아니면 같은 기본 모양(faint 아님)이다. 모든 탭은 올림 글자색만 짧게 바뀐다(transition, 그 밖의 움직임 없음)', () => {
+  it('AC-303.3·AC-2702.1·AC-4110.1: 탭 띠의 넷은 모두 화면이 있는 탭이고 지금 탭이 아니면 같은 기본 모양(faint 아님)이다. 모든 탭은 올림 글자색만 짧게 바뀐다(transition, 그 밖의 움직임 없음)', () => {
     pathname.mockReturnValue('/dashboard')
     render(<TabBar />)
     for (const label of PRIMARY) expect(READY_TABS, label).toContain(label)
@@ -374,9 +384,9 @@ describe('TabBar', () => {
     return { scrollTo }
   }
 
-  it('AC-008.7·AC-2702.1: 처음 그릴 때 지금 탭(띠 끝 [매출])이 보이게 탭 띠만 옆으로 민다(띠 오른쪽 끝에 맞춤). nav·페이지(창)는 움직이지 않는다', () => {
+  it('AC-008.7·AC-2702.1·AC-4110.1: 처음 그릴 때 지금 탭(띠 끝 [환자])이 보이게 탭 띠만 옆으로 민다(띠 오른쪽 끝에 맞춤). nav·페이지(창)는 움직이지 않는다', () => {
     const { scrollTo } = layout({ overflow: true })
-    pathname.mockReturnValue('/revenue')
+    pathname.mockReturnValue('/patients')
     render(<TabBar />)
     expect(strip().scrollLeft).toBe(590) // 980 - 390
     expect(nav().scrollLeft).toBe(0)
@@ -384,22 +394,22 @@ describe('TabBar', () => {
     expect(scrollTo).not.toHaveBeenCalled()
   })
 
-  it('AC-008.7·AC-2702.1: 탭이 한 줄에 다 들어가면(넘치지 않으면) 아무것도 밀지 않는다', () => {
+  it('AC-008.7·AC-2702.1·AC-4110.1: 탭이 한 줄에 다 들어가면(넘치지 않으면) 아무것도 밀지 않는다', () => {
     const { scrollTo } = layout({ overflow: false })
-    pathname.mockReturnValue('/revenue')
+    pathname.mockReturnValue('/patients')
     render(<TabBar />)
     expect(strip().scrollLeft).toBe(0)
     expect(scrollIntoView).not.toHaveBeenCalled()
     expect(scrollTo).not.toHaveBeenCalled()
   })
 
-  it('AC-303.5·AC-2702.1: 탭 띠가 넘치면 처음 그릴 때 지금 탭(/revenue의 [매출])이 보이게 띠만 민다. 띠 밖 오른쪽 끝에 [더보기] 단추가 있고 서랍(dialog)·띠 끝 흐림은 없다', () => {
+  it('AC-303.5·AC-2702.1·AC-4110.1: 탭 띠가 넘치면 처음 그릴 때 지금 탭(/patients의 [환자])이 보이게 띠만 민다. 띠 밖 오른쪽 끝에 [더보기] 단추가 있고 서랍(dialog)·띠 끝 흐림은 없다', () => {
     const { scrollTo } = layout({ overflow: true })
-    pathname.mockReturnValue('/revenue')
+    pathname.mockReturnValue('/patients')
     render(<TabBar />)
     hasAll(strip(), 'max-lg:overflow-x-auto max-lg:[scrollbar-width:thin]')
     hasNone(strip().firstElementChild as HTMLElement, 'flex-wrap')
-    expect(within(strip()).getByRole('link', { name: '매출' }).getAttribute('aria-current')).toBe('page')
+    expect(within(strip()).getByRole('link', { name: '환자' }).getAttribute('aria-current')).toBe('page')
     expect(strip().scrollLeft).toBe(590)
     expect(scrollTo).not.toHaveBeenCalled()
     // [더보기]는 탭 띠 밖, 띠 바로 다음(오른쪽 끝)
@@ -420,13 +430,13 @@ describe('TabBar', () => {
     expect(within(nav()).getAllByRole('button')).toEqual([moreButton()])
   })
 
-  it('AC-416.5·AC-2702.1: 키보드 초점이 띠 밖으로 밀린 탭에 가면 탭 띠만 밀어 그 탭이 보인다(오른쪽·왼쪽 모두). 보이는 탭은 그대로, 창은 움직이지 않는다', () => {
-    const { scrollTo } = layout({ overflow: true, at: { 대시보드: 0, 통계: 80, 매출: 900 } })
+  it('AC-416.5·AC-2702.1·AC-4110.1: 키보드 초점이 띠 밖으로 밀린 탭에 가면 탭 띠만 밀어 그 탭이 보인다(오른쪽·왼쪽 모두). 보이는 탭은 그대로, 창은 움직이지 않는다', () => {
+    const { scrollTo } = layout({ overflow: true, at: { 대시보드: 0, 통계: 80, 환자: 900 } })
     render(<TabBar />)
     expect(strip().scrollLeft).toBe(0) // 지금 탭(대시보드)은 처음부터 보인다
     act(() => within(strip()).getByRole('link', { name: '통계' }).focus())
     expect(strip().scrollLeft).toBe(0)
-    act(() => within(strip()).getByRole('link', { name: '매출' }).focus())
+    act(() => within(strip()).getByRole('link', { name: '환자' }).focus())
     expect(strip().scrollLeft).toBe(590) // 980 - 390
     act(() => within(strip()).getByRole('link', { name: '대시보드' }).focus())
     expect(strip().scrollLeft).toBe(0)
@@ -751,12 +761,12 @@ describe('TabBar 누른 탭 · 불러오기 줄', () => {
     expect(strip().querySelectorAll('[aria-current]')).toHaveLength(1)
   })
 
-  it('AC-405.2: 누른 뒤 다른 탭을 또 누르면 마지막에 누른 탭 하나만 누른 탭이다', async () => {
+  it('AC-405.2·AC-4110.1: 누른 뒤 다른 탭을 또 누르면 마지막에 누른 탭 하나만 누른 탭이다', async () => {
     const user = userEvent.setup()
     render(<TabBar />)
     await user.click(stripLink('통계'))
-    await user.click(stripLink('매출'))
-    expect(pendings()).toEqual([stripLink('매출')])
+    await user.click(stripLink('환자'))
+    expect(pendings()).toEqual([stripLink('환자')])
     hasAll(stripLink('통계'), IDLE_LOOK)
   })
 
@@ -885,14 +895,14 @@ describe('TabBar 누른 탭 · 불러오기 줄', () => {
     expect(classesOf(bar).filter((c) => /(?:^|:)(?:delay-|duration-|ease-)/.test(c))).toEqual([])
   })
 
-  it('AC-405.3: 다시 누르면 줄이 0에서 다시 차오른다(새 줄)', async () => {
+  it('AC-405.3·AC-4110.1: 다시 누르면 줄이 0에서 다시 차오른다(새 줄)', async () => {
     const user = userEvent.setup()
     const { rerender } = render(<TabBar />)
     await user.click(stripLink('통계'))
     const first = loadBar()
     pathname.mockReturnValue('/stats')
     rerender(<TabBar />)
-    await user.click(stripLink('매출'))
+    await user.click(stripLink('환자'))
     expect(loadBar()).not.toBe(first)
     hasAll(loadBar(), 'scale-x-80 duration-700 ease-out starting:scale-x-0')
   })
@@ -1273,7 +1283,7 @@ describe('AppShell', () => {
     expect(within(nav()).queryByRole('link', { name: '관리자' })).toBeNull()
   })
 
-  it('AC-303.4·AC-304.1·AC-2702.1: 관리자여도 탭 줄에 [관리자]·구분선이 없고(링크는 주요 메뉴 다섯뿐), 계정 메뉴를 열면 첫 항목이 [가입 승인] /admin이다', async () => {
+  it('AC-303.4·AC-304.1·AC-2702.1: 관리자여도 탭 줄에 [관리자]·구분선이 없고(링크는 주요 메뉴 넷뿐), 계정 메뉴를 열면 첫 항목이 [가입 승인] /admin이다', async () => {
     const user = userEvent.setup()
     shell(true)
     expect(within(nav()).queryByRole('link', { name: '관리자' })).toBeNull()

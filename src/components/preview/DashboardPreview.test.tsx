@@ -81,12 +81,13 @@ describe('AC-206.2: 상자 하나 안에 위 줄 → 탭 줄 → KPI 줄 → 차
     expect(textOf(chip)).toBe('예시 숫자')
   })
 
-  it('AC-206.2·AC-421.2: 탭 줄 — 36px·아래 1px line·small 500·사이 20px, span 13개가 실제 탭 이름(MENU) 순서다', () => {
+  it('AC-206.2·AC-421.2·AC-4110.1: 탭 줄 — 36px·아래 1px line·small 500·사이 20px, span 12개가 실제 탭 이름(MENU) 순서다(매출 없음)', () => {
     const { tabs } = parts()
     expectClasses(tabs, 'flex', 'h-9', 'border-b', 'border-line', 'text-small', 'font-medium', 'gap-x-5')
     const items = Array.from(tabs.children)
-    expect(items.map((el) => el.tagName)).toEqual(Array(13).fill('SPAN'))
+    expect(items.map((el) => el.tagName)).toEqual(Array(12).fill('SPAN'))
     expect(items.map(textOf)).toEqual(MENU.map((item) => item.label))
+    expect(items.map(textOf)).not.toContain('매출')
     expect(items.map(textOf)).not.toContain('급여')
   })
 
@@ -101,10 +102,10 @@ describe('AC-206.2: 상자 하나 안에 위 줄 → 탭 줄 → KPI 줄 → 차
     }
   })
 
-  it('AC-206.2·AC-407.2·AC-421.2: 첫 탭만 ink 600 + 아래 2px accent, 나머지 12개는 muted(밑줄 색 없음)', () => {
+  it('AC-206.2·AC-407.2·AC-421.2·AC-4110.1: 첫 탭만 ink 600 + 아래 2px accent, 나머지 11개는 muted(밑줄 색 없음)', () => {
     const [first, ...rest] = Array.from(parts().tabs.children)
     expectClasses(first, 'text-ink', 'font-semibold', 'border-b-2', 'border-accent')
-    expect(rest).toHaveLength(12)
+    expect(rest).toHaveLength(11)
     for (const tab of rest) {
       expectClasses(tab, 'text-muted', 'border-transparent')
       expectNoClasses(tab, 'text-faint', 'text-ink', 'font-semibold', 'border-accent')

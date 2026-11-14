@@ -98,10 +98,10 @@ describe('AC-305.5: 준비 중 주소의 페이지 = notReadyFeature(주소)를 
     expect(PAGES.map((p) => p.path)).toEqual(NOT_READY_FEATURES.map((f) => f.path))
   })
 
-  it('AC-010.1: /revenue는 준비 중 주소가 아니다 — 페이지 표와 준비 중 목록에 없고, 그 페이지 소스는 준비 중 화면을 쓰지 않는다', () => {
+  it('AC-010.1·AC-4110.2: /revenue는 준비 중 주소가 아니다 — 페이지 표와 준비 중 목록에 없고, 그 페이지 파일도 없다(next.config가 /stats로 넘긴다)', () => {
     expect(PAGES.map((p) => p.path as string)).not.toContain('/revenue')
     expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/revenue')
-    expect(readFileSync(join(ROOT, pageFile('/revenue')), 'utf8')).not.toMatch(/NotReadyScreen|notReadyFeature/)
+    expect(existsSync(join(ROOT, pageFile('/revenue')))).toBe(false)
   })
 
   it('AC-515.3: 이 표의 주소는 준비 중 목록(NOT_READY_FEATURES)·탭 목록(MENU)의 준비 중 항목과 같고 /stats는 없다', () => {

@@ -1,5 +1,5 @@
 import { STRONG } from './RevenueParts'
-import type { TreatmentRow } from './view'
+import type { TreatmentRow } from './types'
 
 // 치료별 순위 막대 (TASK-9, 시안 gen.py treat(), UI_GUIDE '순위 막대'). 훅이 없는 순수 부품이다. 막대 폭만 % inline style이고 막대는 꾸밈(aria-hidden)이다. 글자가 곧 정보다.
 // 금액·몫·건수를 같이 보여서 components/charts의 RankedBars(값 하나)를 쓰지 못한다.

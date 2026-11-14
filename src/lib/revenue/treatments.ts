@@ -1,6 +1,7 @@
-// 치료 묶음 계산·제안·고치기(spec revenue design.md 7절, REQ-006). 순수 함수: 네트워크·저장소·React 없음. 묶음은 코드 목록이고 처방 이름으로 묶지 않는다
+// 치료 묶음 계산·제안·이름 고치기(spec revenue design.md 7절, REQ-006). 순수 함수: 네트워크·저장소·React 없음. 묶음은 코드 목록이고 처방 이름으로 묶지 않는다.
+// 매출 묶음 화면만 쓰던 묶음 더하기·지우기·처방 옮기기는 지웠다(stats-revenue AC-4110.4). 이름 검사는 통계 묶음 고치기가 쓴다
 import { REVENUE_REST_CODE, type RevenueCodeRow } from '@/types/revenue'
-import { RX_GROUP_CODES_MAX, RX_GROUP_NAME_MAX, RX_GROUPS_MAX, type RxGroup } from '@/types/rxGroups'
+import { RX_GROUP_NAME_MAX, type RxGroup } from '@/types/rxGroups'
 
 const REST_NAME = '그 밖 처방'
 
@@ -66,6 +67,7 @@ export function groupTreatments(codes: readonly RevenueCodeRow[], groups: readon
   return hasNumbers(restTotal) ? [...sorted, restTotal] : sorted
 }
 
+// 'tooMany'는 통계 묶음 고치기(treatmentEdit)가 묶음 수 한도에 쓴다
 export type GroupEditError = 'empty' | 'tooLong' | 'duplicate' | 'badChars' | 'digits' | 'tooMany'
 
 // DB CHECK(rx_groups.name)와 같은 규칙. 글자 수는 DB의 char_length처럼 코드 포인트로 센다.
@@ -83,14 +85,6 @@ const renumber = (groups: RxGroup[]): RxGroup[] => groups.map((g, sortOrder) => 
 
 // 고치기 함수는 받은 목록을 바꾸지 않고 새 목록을 돌려준다. 없는 자리를 받으면 아무것도 하지 않고 목록 그대로 돌려준다
 
-export function addGroup(groups: RxGroup[], name: string): RxGroup[] | GroupEditError {
-  if (groups.length >= RX_GROUPS_MAX) return 'tooMany'
-  const trimmed = name.trim()
-  const error = nameError(trimmed, groups)
-  if (error) return error
-  return renumber([...groups, { id: null, name: trimmed, codes: [], sortOrder: groups.length }])
-}
-
 export function renameGroup(groups: RxGroup[], index: number, name: string): RxGroup[] | GroupEditError {
   if (!groups[index]) return groups
   const trimmed = name.trim()
@@ -100,25 +94,4 @@ export function renameGroup(groups: RxGroup[], index: number, name: string): RxG
   )
   if (error) return error
   return renumber(groups.map((g, i) => (i === index ? { ...g, name: trimmed } : g)))
-}
-
-/** 지운 묶음의 코드는 어느 묶음에도 없게 된다('그 밖 처방') */
-export function deleteGroup(groups: RxGroup[], index: number): RxGroup[] {
-  if (!groups[index]) return groups
-  return renumber(groups.filter((_, i) => i !== index))
-}
-
-/** 코드를 다른 모든 묶음에서 빼고 toIndex 자리의 묶음에 넣는다(null이면 그 밖). 고른 묶음이 꽉 찼으면 옮기지 않는다 */
-export function moveCode(groups: RxGroup[], code: string, toIndex: number | null): RxGroup[] {
-  if (toIndex !== null) {
-    const target = groups[toIndex]
-    if (!target) return groups
-    if (!target.codes.includes(code) && target.codes.length >= RX_GROUP_CODES_MAX) return groups
-  }
-  return renumber(
-    groups.map((g, i) => {
-      if (i !== toIndex) return { ...g, codes: g.codes.filter((c) => c !== code) }
-      return g.codes.includes(code) ? g : { ...g, codes: [...g.codes, code] }
-    }),
-  )
 }

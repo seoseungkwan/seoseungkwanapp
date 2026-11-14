@@ -9,7 +9,6 @@ src/
 │   ├── globals.css      # 디자인 토큰 한 곳(`:root`), Tailwind `@theme inline`(토큰을 var()로만), 모션 줄이기 규칙 (docs/UI_GUIDE.md, ADR-019)
 │   ├── fonts/           # Pretendard 1.3.9 정적 subset 세 굵기(400·500·600) woff2 + OFL.txt. layout.tsx가 next/font/local로 낸다 (ADR-019)
 │   ├── (app)/<기능 주소>/page.tsx  # 화면이 아직 없는 탭(/notices 등)의 준비 중 화면 = components/common/NotReadyScreen + notReadyFeatures. 기능 명세가 진짜 화면으로 바꿀 때 shell/menu.ts·dashboard/briefing/features.ts·common/notReadyFeatures.ts를 같이 고친다(맞춤은 (app)/tabFrame.test.tsx, specs/tab-frame)
-│   ├── (app)/revenue/page.tsx  # 매출 화면 = components/revenue/RevenueScreen (specs/revenue)
 │   ├── (app)/patients/page.tsx # 환자 탭 = components/patients/PatientsEntry (specs/patients)
 │   ├── (app)/forms/page.tsx    # 서식 탭 = components/forms/FormsScreen (specs/forms)
 │   └── api/ai/          # 유일한 서버 경로 (§5). forms/route.ts = 서식 AI 정리 `POST /api/ai/forms`(적은 글을 Claude로 보내는 예외, ADR-028)
@@ -19,8 +18,8 @@ src/
 │   ├── payload/         # [환자 구역] 저장 모양(toMonthPayload·toDayPayloads)·검사(validate.ts)
 │   ├── patients/        # [환자 구역] 환자 탭 계산(F/U·정기 주사 명단, 원본 양지바른 옮김) — specs/patients
 │   ├── errors.ts        # 오류 문구 한 곳 (§8)
-│   ├── revenue/         # 매출 계산(집계만 다뤄 환자 구역이 아니다): summary.ts·treatments.ts·sync.ts (specs/revenue)
-│   ├── storage/         # 검사한 숫자만 저장. revenue.ts = sales_days·sales_codes, rxGroups.ts = rx_groups (specs/revenue). stats.ts = stats_months·stats_days·stats_coverage (specs/stats). statsRxGroups.ts = stats_rx_groups (specs/treatment-trend). formNotices.ts = form_notices (specs/forms)
+│   ├── revenue/         # 매출 계산(집계만 다뤄 환자 구역이 아니다): summary.ts·treatments.ts·sync.ts(빈 날 31일 덩어리 읽기) (specs/revenue, specs/stats-revenue)
+│   ├── storage/         # 검사한 숫자만 저장. revenue.ts = sales_days·sales_codes, rxGroups.ts = rx_groups (specs/revenue). stats.ts = stats_months·stats_days·stats_coverage (specs/stats). statsRxGroups.ts = stats_rx_groups (specs/treatment-trend). formNotices.ts = form_notices (specs/forms). 2026-11-14 바뀜: revenue.ts는 save_revenue_range로 sales_days·sales_day_codes를 저장하고, rxGroups.ts(매출 탭 묶음 저장)는 지웠다(표 rx_groups는 남김, specs/stats-revenue)
 │   │   └── worklogDays.ts  # 업무일지 하루 읽기·저장(Supabase, 바뀐 칸만)
 │   ├── worklog/         # 업무일지 합계·칸 글자 읽기·날짜·개인정보 모양 검사·자동 저장. 환자 구역이 아니다
 │   ├── forms/           # 서식(휴진 안내) 순수 함수: 카드 검사·날짜 글(notice)·테마 23개(themes)·배치(layout)·AI 글과 답 검사(ai)·그림 파일(png). 환자 구역이 아니다(구역에서는 analytics/dates·payload/validate만 불러 쓴다) (specs/forms)
@@ -29,7 +28,7 @@ src/
 │   ├── common/LogoMark.tsx  # 로고 마크 한 곳(병원 십자 C③, 고정 두 색). 랜딩·앱 틀·인증 틀이 같이 쓴다 (ADR-018)
 │   ├── dashboard/briefing/  # 대시보드 브리핑(날짜 줄·큰 문장·연결 순서)·지금 바로 쓸 수 있어요·기능 목차(features.ts). 서버 컴포넌트(폰 아래 단추 StickyConnect만 클라이언트), 자료를 읽지 않고 연결 상태도 판정하지 않는다 (specs/tab-frame)
 │   ├── dashboard/summary/   # 대시보드 오늘 하루 분석·기간별 흐름·원장님 보고 문장(계산은 view.ts). 자료 읽는 자리는 source.ts 하나이고 지금은 늘 자료 없음 — 통계 명세가 진짜 읽기로 바꾼다 (specs/tab-frame)
-│   ├── revenue/         # 매출 화면(RevenueScreen). 보기 모양은 view.ts, 그래프는 charts/를 불러 쓰기만 한다 (specs/revenue)
+│   ├── revenue/         # 통계 매출 칸(stats/sections/RevenueSection)이 쓰는 매출 부품: 숫자 칸 줄·안내 줄·증감 글·급여 표·세 겹 막대·순위 막대(RevenueParts·RevenueSplit·MonthBars·TreatmentBars), 금액 글(money.ts), 보기 타입(types.ts). 매출 탭 화면은 지웠다 (specs/revenue, specs/stats-revenue)
 │   ├── ai-report/       # AI 리포트 탭 화면(AiReportScreen·ReportBody·UsageAside·RedoDialog)과 서버 경로 `GET/POST /api/ai/report`를 부르는 reportClient. 달·읽기·분석 상태는 화면에만 둔다 (specs/ai-report-screen)
 │   ├── worklog/         # 업무일지 화면. 엑셀 양식 `sheet.module.css`는 앱 화면의 유일한 CSS Module (docs/UI_GUIDE.md '업무일지 양식')
 │   ├── forms/           # 서식 화면(FormsScreen·NoticeList·NoticeEditor·PreviewPanel, 상태는 formsState)과 안내문 SVG(Poster). 그림 안의 테마 색·글꼴 PosterPretendard 700·900은 앱 토큰 예외 (ADR-028, docs/UI_GUIDE.md '토큰')
@@ -65,7 +64,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 ```
 [통계] 파일 끌어다 놓기 → Worker: parse → aggregate → compare → 화면
        화면 → toMonthPayload·toDayPayloads + 덮은 기간 → validate → lib/storage/stats.ts → stats_months·stats_days·stats_coverage
-[매출] 비트 PC 도우미 읽기(`revenue.days`) → 확장 → lib/bridge → 집계만 → lib/storage → sales_days·sales_codes (2026-11-01 바뀜, specs/revenue)
+[매출] 통계 매출 칸 · `sales_day_codes`: 통계 [비트에서 불러오기] → 통계 조각 저장 뒤 같은 연결로 비트 PC 도우미 읽기(`revenue.days`, 빈 날만 31일 덩어리) → 확장 → lib/bridge → 집계만 → lib/storage(save_revenue_range) → sales_days·sales_day_codes(날마다 처방별 금액). 옛 달 합계 sales_codes는 읽기만 한다. 매출 탭은 없앴고 /revenue는 /stats로 넘긴다 (2026-11-14 바뀜, specs/stats-revenue)
 [입력] 재고·직원·급여·일일마감·보고 → 브라우저 → Supabase(RLS)
 [업무일지] 칸 입력 → 자동 저장(800ms, 바뀐 칸만, 막는 모양 칸 뺌) → worklog_days(RLS). 화면은 60초마다·다시 보일 때 다시 읽는다
 [AI]   [AI 분석] → app/api/ai: 승인 확인 → DB 집계 읽기(stats_months 세 달 + stats_rx_groups 묶음 이름, specs/ai-report-stats) → validate → Claude API
@@ -96,6 +95,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 | `stats_rx_groups` | 통계 처방별 추세의 묶음. 칸: `id`·`hospital_id`·`name`·`codes`·`sort_order`·`updated_at`. 저장은 `save_stats_rx_groups`로 목록 통째(새 묶음 넣기·고치기·빠진 묶음 지우기). 처방 하나는 한 묶음에만 든다(대소문자 무시, 저장이 끝날 때 DB가 검사). 매출 탭 묶음(`rx_groups`)과 따로 둔다. 더한 칸: 빼는 처방 `out_codes`(코드 목록, 그날 하나라도 받은 환자는 그 묶음에서 뺀다)·넣는 처방마다 조건 `cond`(`[{ code, unless }]`, 그날 `unless` 가운데 하나라도 받으면 그 넣는 처방으로는 세지 않는다). 두 칸은 칸 검사(`stats_rx_group_parts_ok`)를 지나야 하고, '한 묶음에만'은 넣는 처방에만 써서 빼는 처방·조건 처방은 다른 묶음의 넣는 처방이어도 된다. 두 칸 없이 저장하는 옛 탭은 고친 줄의 두 칸을 그대로 둔다(specs/group-exclude) (specs/treatment-trend) |
 | `sales_days` | 일 매출 집계. 칸은 specs/revenue design.md 6절 |
 | `sales_codes` | 달별 처방 코드 집계(코드·이름·건수·금액). 칸은 specs/revenue design.md 6절 |
+| `sales_day_codes` | 날마다 처방 코드 집계(날·코드·건수·금액). 통계 매출 칸의 치료별 매출이 쓴다. 저장은 `save_revenue_range`(날 줄과 한 트랜잭션), 코드별 합은 `sales_code_totals`. `sales_days.day_codes`가 그날 이 줄이 있는지 적는다 (specs/stats-revenue) |
 | `inventory_items` · `inventory_moves` | 품목(단위·최소 수량) · 입고·사용·실사 |
 | `employees` · `incentive_rules` | 직원(세후 기본급·재직 여부) · 인센티브 항목(방식·금액·%) |
 | `payroll_months` | 달마다 입력값·결과(jsonb), `draft`·`final`. `final`은 RLS로 수정 불가 |

@@ -11,7 +11,7 @@ export type SampleKpi = Pick<KpiStatProps, 'label' | 'value' | 'format' | 'unit'
 
 export const SAMPLE_CLINIC = '예시정형외과의원'
 // 탭 줄: 실제 앱 탭 13개(이름·순서는 components/shell/menu.ts의 MENU와 같다. 미리보기는 shell을 불러오지 않고 시험이 견준다, ui-90 AC-421.2)
-export const PREVIEW_TABS = ['대시보드', '통계', '청구', '고시·공지', '환자', '매출', 'AI 리포트', '서식', '직원', '업무일지', '재고', '주소록', '설정'] as const
+export const PREVIEW_TABS = ['대시보드', '통계', '청구', '고시·공지', '환자', 'AI 리포트', '서식', '직원', '업무일지', '재고', '주소록', '설정'] as const
 
 // 쌓은 막대 계열: 신환(맨 위·범례 첫째) → 재진. 칸의 values도 이 순서다
 export const SAMPLE_SERIES: BarSeries[] = [

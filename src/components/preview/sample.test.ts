@@ -144,10 +144,11 @@ describe('AC-206.1·AC-421.2: 병원 이름·탭 (예시)', () => {
     expect(SAMPLE_CLINIC).toBe('예시정형외과의원')
   })
 
-  it('AC-421.2: 탭은 실제 앱 탭 13개 — PREVIEW_TABS가 MENU의 이름·순서와 같다(급여·일일마감 같은 없는 탭 없음)', () => {
-    expect(PREVIEW_TABS).toHaveLength(13)
+  it('AC-421.2·AC-4110.1: 탭은 실제 앱 탭 12개 — PREVIEW_TABS가 MENU의 이름·순서와 같다(매출·급여·일일마감 같은 없는 탭 없음)', () => {
+    expect(PREVIEW_TABS).toHaveLength(12)
     expect([...PREVIEW_TABS]).toEqual(MENU.map((item) => item.label))
-    expect([...PREVIEW_TABS]).toEqual(['대시보드', '통계', '청구', '고시·공지', '환자', '매출', 'AI 리포트', '서식', '직원', '업무일지', '재고', '주소록', '설정'])
+    expect([...PREVIEW_TABS]).toEqual(['대시보드', '통계', '청구', '고시·공지', '환자', 'AI 리포트', '서식', '직원', '업무일지', '재고', '주소록', '설정'])
+    expect(PREVIEW_TABS as readonly string[]).not.toContain('매출')
     expect(PREVIEW_TABS).not.toContain('급여')
     expect(readFileSync(join(ROOT, 'src/components/preview/sample.ts'), 'utf8'), '옛 탭 6개 목록은 없다').not.toMatch(/SAMPLE_TABS/)
   })

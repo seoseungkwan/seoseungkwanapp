@@ -1,11 +1,11 @@
-import { addDays, addMonths, compareYmd, diffDays, monthOf, monthRange } from '@/lib/analytics/dates'
+import { compareYmd } from '@/lib/analytics/dates'
 import type { DateRange } from '@/types/dates'
 import { REVENUE_MONEY_KEYS, type RevenueDayRow } from '@/types/revenue'
 
-// 금액 나눔·기간 합·비교(spec revenue design.md 7절, REQ-005). 순수 함수: 입력은 날 줄뿐이고 오늘은 인자로만 받는다.
+// 금액 나눔·기간 합·비교(spec revenue design.md 7절, REQ-005). 순수 함수: 입력은 날 줄뿐이다. 기간은 부르는 쪽(통계 매출 칸)이 정한다.
 // 매출 = total(총진료비) = 급여(insurer + copay) + 비급여 + 기타(나눔이 있는 날).
+// 옛 매출 탭의 달 기간·13달 셈은 지웠다(stats-revenue AC-4110.4)
 
-const SERIES_MONTHS = 13
 // components/charts/format.ts와 같은 규칙: 부동소수 오차(28.999…)를 막으려고 아주 작은 값을 더한 뒤 자른다
 const EPSILON = 1e-9
 const NO_SPLIT = { covered: null, insurer: null, selfPay: null, noncovered: null, other: null, splitTotal: null }
@@ -38,18 +38,6 @@ export type PeriodSum = {
   days: number
   workDays: number
 } | null
-
-/** 13달 한 칸. 자료 없는 달은 숫자 칸이 모두 null(0이 아님), partial = 아직 끝나지 않은 달 */
-export type MonthPoint = {
-  month: string
-  partial: boolean
-  total: number | null
-  covered: number | null
-  noncovered: number | null
-  other: number | null
-  visits: number | null
-  perVisit: number | null
-}
 
 export function splitDay(row: RevenueDayRow): DaySplit {
   if (row.unconfirmed || row.splitUnconfirmed) return null
@@ -116,65 +104,12 @@ export function sumPeriod(rows: readonly RevenueDayRow[], range: DateRange): Per
   return { total, ...(split.splitTotal === 0 ? NO_SPLIT : split), visits, perVisitTotal, perVisitCount, uncheckedDays, noSplitDays, noVisitDays, days, workDays }
 }
 
-const yesterdayOf = (today: string) => addDays(today, -1)
-const earlier = (a: string, b: string) => (compareYmd(a, b) <= 0 ? a : b)
-
-// 그 달 1일 ~ (말일과 어제 가운데 이른 날)
-function elapsedRange(month: string, today: string): DateRange {
-  const { from, to } = monthRange(month)
-  return { from, to: earlier(to, yesterdayOf(today)) }
-}
-
-// 그 달 1일 ~ 1일부터 offset일 뒤(그 달이 짧으면 말일)
-function sameLengthIn(month: string, offset: number): DateRange {
-  const { from, to } = monthRange(month)
-  return { from, to: earlier(addDays(from, offset), to) }
-}
-
-/** 오늘이 1일이면 이번 달은 고를 수 없다(firstMonth가 지난달을 준다). 그래도 부르면 끝이 시작보다 앞인 빈 기간이다 */
-export function periodsFor(month: string, today: string): { current: DateRange; lastMonth: DateRange; lastYear: DateRange } {
-  const current = elapsedRange(month, today)
-  const offset = diffDays(current.from, current.to)
-  return {
-    current,
-    lastMonth: sameLengthIn(addMonths(month, -1), offset),
-    lastYear: sameLengthIn(addMonths(month, -12), offset),
-  }
-}
-
-/** 처음 고르는 달: 어제가 속한 달 */
-export function firstMonth(today: string): string {
-  return monthOf(yesterdayOf(today))
-}
-
 /** rate는 % 소수 첫째 자리 버림(0 쪽으로). before가 null·0이면 비교할 수 없어 null */
 export function compare(now: number | null, before: number | null): { dir: 'up' | 'down' | 'same'; rate: number } | null {
   if (now === null || before === null || before === 0) return null
   const change = ((now - before) / before) * 100
   const rate = (Math.sign(change) * Math.trunc(Math.abs(change) * 10 + EPSILON)) / 10 || 0 // −0을 0으로
   return { dir: now > before ? 'up' : now < before ? 'down' : 'same', rate }
-}
-
-/** 13개, 오래된 달부터 */
-export function monthSeries(rows: RevenueDayRow[], lastMonth: string, today: string): MonthPoint[] {
-  return Array.from({ length: SERIES_MONTHS }, (_, index) => {
-    const month = addMonths(lastMonth, index - SERIES_MONTHS + 1)
-    const partial = compareYmd(monthRange(month).to, yesterdayOf(today)) > 0
-    const sum = sumPeriod(rows, elapsedRange(month, today))
-    if (sum === null) {
-      return { month, partial, total: null, covered: null, noncovered: null, other: null, visits: null, perVisit: null }
-    }
-    return {
-      month,
-      partial,
-      total: sum.total,
-      covered: sum.covered,
-      noncovered: sum.noncovered,
-      other: sum.other,
-      visits: sum.visits,
-      perVisit: perVisit(sum),
-    }
-  })
 }
 
 /** 건당 진료비: 짝이 맞는 날의 total 합 ÷ visits 합, 원 미만 버림. 나눔을 못 한 날도 보통 날처럼 든다 */

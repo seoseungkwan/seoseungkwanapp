@@ -1,8 +1,10 @@
-// 금액 나눔·기간 합·비교(TASK-5, REQ-005 · AC-005.1~AC-005.6). 자료는 모두 가짜 숫자다. 오늘은 인자로만 준다
+// 금액 나눔·기간 합·비교(TASK-5, REQ-005 · AC-005.1~AC-005.6, 옛 달 셈은 지움 AC-4110.4). 자료는 모두 가짜 숫자다. 오늘은 인자로만 준다
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { eachDay } from '@/lib/analytics/dates'
 import type { RevenueDayRow } from '@/types/revenue'
-import { compare, firstMonth, monthSeries, perVisit, periodsFor, splitDay, sumPeriod } from './summary'
+import { compare, perVisit, splitDay, sumPeriod } from './summary'
 
 // 나눔이 있는 보통 날: 1,000,000 = (500,000 + 200,000) + 250,000 + 50,000
 function day(date: string, over: Partial<RevenueDayRow> = {}): RevenueDayRow {
@@ -338,49 +340,15 @@ describe('AC-005.2 sumPeriod 기간 합', () => {
   })
 })
 
-describe('AC-005.3 periodsFor·firstMonth 기간', () => {
-  it('AC-005.3 지난 달을 고르면 끝은 말일이고, 지난달이 짧으면 3월 31일 → 2월 28일이다', () => {
-    expect(periodsFor('2026-03', '2026-04-15')).toEqual({
-      current: { from: '2026-03-01', to: '2026-03-31' },
-      lastMonth: { from: '2026-02-01', to: '2026-02-28' },
-      lastYear: { from: '2025-03-01', to: '2025-03-31' },
-    })
+// 옛 매출 탭의 달 기간·13달 셈(periodsFor·firstMonth·monthSeries·MonthPoint)과 그 시험은 지웠다(stats-revenue TASK-8, AC-4110.4)
+describe('AC-4110.4 옛 달 기간·13달 셈이 없다', () => {
+  it('AC-4110.4 summary.ts는 splitDay·isWorkDay·sumPeriod·compare·perVisit만 내보낸다', async () => {
+    expect(Object.keys(await import('./summary')).sort()).toEqual(['compare', 'isWorkDay', 'perVisit', 'splitDay', 'sumPeriod'])
   })
 
-  it('AC-005.3 이번 달은 어제까지이고 비교 기간도 같은 날짜까지다', () => {
-    expect(periodsFor('2026-10', '2026-10-15')).toEqual({
-      current: { from: '2026-10-01', to: '2026-10-14' },
-      lastMonth: { from: '2026-09-01', to: '2026-09-14' },
-      lastYear: { from: '2025-10-01', to: '2025-10-14' },
-    })
-  })
-
-  it('AC-005.3 이번 달 말일에는 어제까지이고, 다음 달 1일에는 그 달 말일까지다', () => {
-    expect(periodsFor('2026-10', '2026-10-31').current).toEqual({ from: '2026-10-01', to: '2026-10-30' })
-    expect(periodsFor('2026-10', '2026-11-01').current).toEqual({ from: '2026-10-01', to: '2026-10-31' })
-  })
-
-  it('AC-005.3 윤년 2월 29일의 작년 같은 때는 28일이다', () => {
-    expect(periodsFor('2028-02', '2028-03-10')).toEqual({
-      current: { from: '2028-02-01', to: '2028-02-29' },
-      lastMonth: { from: '2028-01-01', to: '2028-01-29' },
-      lastYear: { from: '2027-02-01', to: '2027-02-28' },
-    })
-  })
-
-  it('AC-005.3 1월의 지난달은 작년 12월이다', () => {
-    expect(periodsFor('2026-01', '2026-01-15').lastMonth).toEqual({ from: '2025-12-01', to: '2025-12-14' })
-  })
-
-  it('AC-005.3 오늘이 1일이면 이번 달 기간은 비어 있어 합이 없다', () => {
-    const { current } = periodsFor('2026-11', '2026-11-01')
-    expect(sumPeriod([day('2026-11-01'), day('2026-10-31')], current)).toBeNull()
-  })
-
-  it('AC-005.3 firstMonth는 어제가 속한 달이다(오늘이 1일이면 지난달)', () => {
-    expect(firstMonth('2026-11-02')).toBe('2026-11')
-    expect(firstMonth('2026-11-01')).toBe('2026-10')
-    expect(firstMonth('2026-01-01')).toBe('2025-12')
+  it('AC-4110.4 소스에 옛 이름(periodsFor·firstMonth·monthSeries·MonthPoint)이 없다', () => {
+    const source = readFileSync(join(process.cwd(), 'src/lib/revenue/summary.ts'), 'utf8')
+    for (const name of ['periodsFor', 'firstMonth', 'monthSeries', 'MonthPoint']) expect(source, name).not.toMatch(new RegExp(`\\b${name}\\b`))
   })
 })
 
@@ -420,124 +388,6 @@ describe('AC-005.4 compare 늘고 준 비율', () => {
 
   it('AC-005.4 now가 null이어도 비교할 수 없다', () => {
     expect(compare(null, 10_000)).toBeNull()
-  })
-})
-
-describe('AC-005.5 monthSeries 13달', () => {
-  const emptyMonth = (month: string, partial = false) => ({
-    month,
-    partial,
-    total: null,
-    covered: null,
-    noncovered: null,
-    other: null,
-    visits: null,
-    perVisit: null,
-  })
-
-  it('AC-005.5 마지막 달부터 거꾸로 13달을 오래된 달부터 돌려준다', () => {
-    const series = monthSeries([], '2026-10', '2026-10-16')
-    expect(series.map((p) => p.month)).toEqual([
-      '2025-10',
-      '2025-11',
-      '2025-12',
-      '2026-01',
-      '2026-02',
-      '2026-03',
-      '2026-04',
-      '2026-05',
-      '2026-06',
-      '2026-07',
-      '2026-08',
-      '2026-09',
-      '2026-10',
-    ])
-  })
-
-  it('AC-005.5 달마다 총액·급여·비급여·기타·내원·건당 진료비를 낸다', () => {
-    const rows = [day('2026-09-01'), day('2026-09-30', { visits: 30 })]
-    const point = monthSeries(rows, '2026-10', '2026-10-16').find((p) => p.month === '2026-09')
-    expect(point).toEqual({
-      month: '2026-09',
-      partial: false,
-      total: 2_000_000,
-      covered: 1_400_000,
-      noncovered: 500_000,
-      other: 100_000,
-      visits: 40,
-      perVisit: 50_000,
-    })
-  })
-
-  it('AC-005.5 자료 없는 달은 0이 아니라 null이다(모두 0인 달도)', () => {
-    const rows = [restDay('2026-08-02'), restDay('2026-08-09')]
-    const series = monthSeries(rows, '2026-10', '2026-10-16')
-    expect(series.find((p) => p.month === '2026-08')).toEqual(emptyMonth('2026-08'))
-    expect(series.find((p) => p.month === '2026-07')).toEqual(emptyMonth('2026-07'))
-  })
-
-  it('AC-005.5 진행 중인 달은 어제까지만 더하고 partial이다', () => {
-    const rows = [
-      day('2026-10-01'),
-      day('2026-10-15'),
-      day('2026-10-16', { total: 7_000_000, insurer: 6_500_000 }),
-    ]
-    const last = monthSeries(rows, '2026-10', '2026-10-16').at(-1)
-    expect(last).toEqual({
-      month: '2026-10',
-      partial: true,
-      total: 2_000_000,
-      covered: 1_400_000,
-      noncovered: 500_000,
-      other: 100_000,
-      visits: 20,
-      perVisit: 100_000,
-    })
-  })
-
-  it('AC-005.5 이번 달 말일에도 끝나지 않은 달이고, 다음 달 1일이면 끝난 달이다', () => {
-    const rows = [day('2026-10-30'), day('2026-10-31')]
-    expect(monthSeries(rows, '2026-10', '2026-10-31').at(-1)).toMatchObject({ partial: true, total: 1_000_000 })
-    expect(monthSeries(rows, firstMonth('2026-11-01'), '2026-11-01').at(-1)).toMatchObject({
-      month: '2026-10',
-      partial: false,
-      total: 2_000_000,
-    })
-  })
-
-  it('AC-005.5 쉬는 날 말고 모두 나눔을 못 한 달의 급여·비급여·기타는 null이고 총액은 있다', () => {
-    const rows = [restDay('2026-07-05'), noSplitDay('2026-07-06'), restDay('2026-07-31')]
-    expect(monthSeries(rows, '2026-10', '2026-10-16').find((p) => p.month === '2026-07')).toEqual({
-      month: '2026-07',
-      partial: false,
-      total: 500_000,
-      covered: null,
-      noncovered: null,
-      other: null,
-      visits: 10,
-      perVisit: 50_000,
-    })
-  })
-
-  it('AC-005.5 달마다 perVisit은 AC-005.6과 같은 규칙이다: 확인 필요한 날과 접수 건수를 모르는 날은 금액·건수가 둘 다 빠진다', () => {
-    const rows = [day('2026-09-01'), uncheckedDay('2026-09-02', { visits: 90 }), day('2026-09-03', { visits: null })]
-    const point = monthSeries(rows, '2026-10', '2026-10-16').find((p) => p.month === '2026-09')
-    expect(point).toMatchObject({ total: 2_000_000, visits: 100, perVisit: 100_000 })
-  })
-
-  it('AC-005.5 달의 visits가 모두 null이면 visits·perVisit은 null이고 total은 숫자다', () => {
-    const rows = [day('2026-09-01', { visits: null }), day('2026-09-02', { visits: null })]
-    const point = monthSeries(rows, '2026-10', '2026-10-16').find((p) => p.month === '2026-09')
-    expect(point).toEqual({
-      month: '2026-09',
-      partial: false,
-      total: 2_000_000,
-      covered: 1_400_000,
-      noncovered: 500_000,
-      other: 100_000,
-      visits: null,
-      perVisit: null,
-    })
   })
 })
 

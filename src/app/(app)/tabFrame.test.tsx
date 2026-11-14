@@ -66,7 +66,6 @@ const SCREEN_DIR: Record<string, string> = {
   '/claim/setup': 'claim/setup',
   '/stats': 'stats',
   '/patients': 'patients',
-  '/revenue': 'revenue',
   '/ai-report': 'ai-report',
   '/forms': 'forms', // spec forms AC-3501.1
   '/worklog': 'worklog',
@@ -167,9 +166,9 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     },
   )
 
-  it('AC-307.3·AC-010.1·AC-515.4·AC-714.3·AC-610.1·AC-012.4·AC-012.6·AC-3501.1: 쓰는 화면이 있는 칸의 페이지는 NotReadyScreen을 쓰지 않는 자기 화면이다 — 칸은 MENU의 ready 탭(대시보드 뺌)과 같고 /stats·/claim·/patients·/revenue·/ai-report·/forms·/worklog·/settings다', () => {
+  it('AC-307.3·AC-4110.1·AC-515.4·AC-714.3·AC-610.1·AC-012.4·AC-012.6·AC-3501.1: 쓰는 화면이 있는 칸의 페이지는 NotReadyScreen을 쓰지 않는 자기 화면이다 — 칸은 MENU의 ready 탭(대시보드 뺌)과 같고 /stats·/claim·/patients·/ai-report·/forms·/worklog·/settings다', () => {
     expect(READY.map((f) => f.href)).toEqual(MENU.filter((m) => m.ready && m.label !== '대시보드').map((m) => m.path))
-    expect(READY.map((f) => f.href)).toEqual(['/stats', '/claim', '/patients', '/revenue', '/ai-report', '/forms', '/worklog', '/settings'])
+    expect(READY.map((f) => f.href)).toEqual(['/stats', '/claim', '/patients', '/ai-report', '/forms', '/worklog', '/settings'])
     expect(READY.map((f) => f.href)).toContain('/stats')
     expect(READY.map((f) => f.href)).toContain('/patients')
     expect(READY.map((f) => f.href)).toContain('/ai-report')
@@ -206,14 +205,15 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     expect(MENU.filter((m) => m.href === null && m.label !== '설정').map((m) => [m.label, m.path])).toEqual(fromNotReady)
   })
 
-  it('AC-010.1: 매출 — 준비 중 목록에 없고, 탭은 ready·자기 화면 주소이며, 목차는 청구와 같은 connect-first에 넷째 설명이 건당 진료비다', () => {
+  it('AC-4110.1·AC-4110.3: 매출 탭이 없다 — 세 곳(menu · features · notReady) 어디에도 매출·/revenue가 없고 /revenue 페이지 파일도 없다. 통계 목차 설명에 매출이 든다', () => {
+    expect(MENU.map((m) => m.label as string)).not.toContain('매출')
+    expect(MENU.map((m) => m.path as string)).not.toContain('/revenue')
+    expect(DASHBOARD_FEATURES.map((f) => f.name)).not.toContain('매출')
+    expect(DASHBOARD_FEATURES.map((f) => f.href)).not.toContain('/revenue')
     expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/revenue')
-    expect(MENU.find((m) => m.label === '매출')).toMatchObject({ path: '/revenue', href: '/revenue', ready: true })
-    const revenue = DASHBOARD_FEATURES.find((f) => f.name === '매출')
-    expect(revenue?.status).toBe('connect-first')
-    expect(revenue?.status).toBe(DASHBOARD_FEATURES.find((f) => f.name === '청구')?.status)
-    expect(revenue?.desc.split('·')[3]).toBe('건당 진료비')
-    expect(revenue?.desc).not.toContain('한 사람당 평균 진료비')
+    expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('매출')
+    expect(existsSync(pageFile('/revenue'))).toBe(false)
+    expect(DASHBOARD_FEATURES.find((f) => f.name === '통계')?.desc.split('·')).toContain('매출')
   })
 
   it('AC-010.1·AC-2702.2: [더보기] 판이 세는 준비 중 수 = NOT_READY_FEATURES 수 = 목차의 준비 중 칸 수(매출이 빠진 수) — 준비 중 탭은 모두 [더보기] 판에 있다', () => {

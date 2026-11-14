@@ -5,6 +5,7 @@ import type { Metadata } from 'next'
 import type { ComponentType } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import nextConfig from '../../next.config'
 import { AuthFrame } from '@/components/auth/AuthFrame'
 import { NotFoundScreen } from '@/components/common/NotFoundScreen'
 import type { Hospital, Me } from '@/lib/auth/hospital.server'
@@ -134,7 +135,7 @@ describe('AC-410.4: 두 404의 탭 이름 — "찾는 화면이 없어요"', () 
 })
 
 describe('AC-410.5: 잡는 페이지보다 구체적인 기존 주소는 모두 자기 페이지가 있다', () => {
-  // 탭 주소 13개(MENU) + 처음 화면 · 로그인 · 가입 · 대기 · 로그인 콜백 · 비트 PC 연결 · 관리자
+  // 탭 주소 12개(MENU) + 처음 화면 · 로그인 · 가입 · 대기 · 로그인 콜백 · 비트 PC 연결 · 관리자. /revenue는 없다(아래 AC-4110.2)
   const ROUTES: Array<[string, string]> = [
     ['/', 'src/app/page.tsx'],
     ['/login', 'src/app/login/page.tsx'],
@@ -146,7 +147,6 @@ describe('AC-410.5: 잡는 페이지보다 구체적인 기존 주소는 모두 
     ['/claim', 'src/app/(app)/claim/page.tsx'],
     ['/notices', 'src/app/(app)/notices/page.tsx'],
     ['/patients', 'src/app/(app)/patients/page.tsx'],
-    ['/revenue', 'src/app/(app)/revenue/page.tsx'],
     ['/ai-report', 'src/app/(app)/ai-report/page.tsx'],
     ['/forms', 'src/app/(app)/forms/page.tsx'],
     ['/staff', 'src/app/(app)/staff/page.tsx'],
@@ -162,11 +162,36 @@ describe('AC-410.5: 잡는 페이지보다 구체적인 기존 주소는 모두 
     expect(existsSync(join(ROOT, file)), file).toBe(true)
   })
 
+  it('AC-4110.2: /revenue는 자기 라우트 파일이 없다(페이지·시험·폴더 모두). next.config가 /stats로 넘긴다', () => {
+    expect(existsSync(join(ROOT, 'src/app/(app)/revenue/page.tsx'))).toBe(false)
+    expect(existsSync(join(ROOT, 'src/app/(app)/revenue/page.test.tsx'))).toBe(false)
+    expect(existsSync(join(ROOT, 'src/app/(app)/revenue'))).toBe(false)
+  })
+
   it('AC-410.5: 모든 주소를 잡는 폴더는 앱 틀 안의 (app)/[...rest] 하나뿐이다(앱 틀 guard를 같이 받는다)', () => {
     const catchAlls = readdirSync(join(ROOT, 'src/app'), { recursive: true, encoding: 'utf8' })
       .map((rel) => rel.split('\\').join('/'))
       .filter((rel) => rel.split('/').some((seg) => /^\[{1,2}\.\.\./.test(seg)))
       .map((rel) => rel.split('/').slice(0, rel.split('/').findIndex((seg) => /^\[{1,2}\.\.\./.test(seg)) + 1).join('/'))
     expect([...new Set(catchAlls)]).toEqual(['(app)/[...rest]'])
+  })
+})
+
+describe('AC-4110.2: /revenue → /stats 넘기기 (next.config redirects)', () => {
+  it('AC-4110.2: redirects()는 { source: /revenue, destination: /stats, permanent: false } 하나뿐이다', async () => {
+    expect(nextConfig.redirects).toBeTypeOf('function')
+    expect(await nextConfig.redirects!()).toEqual([{ source: '/revenue', destination: '/stats', permanent: false }])
+  })
+
+  it('AC-4110.2: 넘기는 곳은 같은 origin 고정 경로다(바깥 주소·주소 조각·쿼리로 정하는 곳이 없다, 열린 넘기기 금지)', async () => {
+    for (const rule of await nextConfig.redirects!()) {
+      expect(rule.destination, rule.source).toMatch(/^\/[a-z][a-z/-]*$/)
+      expect(rule.source, rule.source).toMatch(/^\/[a-z][a-z/-]*$/)
+      expect('has' in rule || 'missing' in rule, rule.source).toBe(false)
+    }
+  })
+
+  it('AC-4110.2: 넘기는 주소 /stats는 자기 페이지가 있다', () => {
+    expect(existsSync(join(ROOT, 'src/app/(app)/stats/page.tsx'))).toBe(true)
   })
 })

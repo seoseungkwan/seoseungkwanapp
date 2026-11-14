@@ -9,7 +9,6 @@ import { groupKey } from '@/components/stats/treatmentView'
 import type { StatsRxGroupsView } from '@/components/stats/useStatsRxGroups'
 import { rangeOf, statsRange, type StatsInput, type StatsPeriod } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
-import { createRxGroupStore } from '@/lib/storage/rxGroups'
 import { readDays } from '@/lib/storage/stats'
 import { nestedBoxes } from '@/testing/boxes'
 import type { DateRange } from '@/types/dates'
@@ -28,11 +27,6 @@ vi.mock('@/lib/storage/stats', () => ({
   readCoverage: vi.fn(),
   readMonths: vi.fn(),
   saveStats: vi.fn(),
-}))
-// 매출 묶음 저장 코드. 이 칸은 부르지 않는다(AC-1210.15)
-vi.mock('@/lib/storage/rxGroups', () => ({
-  createRxGroupStore: vi.fn(),
-  RxGroupStoreError: class extends Error {},
 }))
 
 const TODAY = '2026-11-13'
@@ -158,7 +152,6 @@ const list = () => sectionEl().querySelector('ul')
 beforeEach(() => {
   saves = []
   vi.mocked(readDays).mockReset().mockResolvedValue(read())
-  vi.mocked(createRxGroupStore).mockReset()
   window.localStorage.clear()
   window.sessionStorage.clear()
 })
@@ -754,8 +747,9 @@ describe('AC-1210.14: 그만두기', () => {
   })
 })
 
-describe('AC-1210.15: 매출 묶음 저장을 부르지 않는다', () => {
-  it('AC-1210.15: 저장하면 받은 통계 묶음 저장만 한 번 부르고 매출 묶음 저장 코드(createRxGroupStore)는 부르지 않는다', async () => {
+// 매출 묶음 저장(lib/storage/rxGroups)은 지웠다(stats-revenue AC-4110.4) → 그 가짜와 '부르지 않는다' 확인은 뺐다
+describe('AC-1210.15: 통계 묶음 저장만 부른다', () => {
+  it('AC-1210.15·AC-4110.4·AC-4111.1: 저장하면 받은 통계 묶음 저장만 한 번 부른다', async () => {
     const user = userEvent.setup()
     const view = viewOf()
     drawView(view)
@@ -764,7 +758,6 @@ describe('AC-1210.15: 매출 묶음 저장을 부르지 않는다', () => {
     await user.click(screen.getByRole('button', { name: '저장' }))
     await waitFor(() => expect(heading().textContent).toBe(TITLE))
     expect(view.save).toHaveBeenCalledTimes(1)
-    expect(createRxGroupStore).not.toHaveBeenCalled()
   })
 })
 
