@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { compareNumbers } from '@/lib/analytics/compare'
 import { checkCustom, defaultPick, lastDayOf, pickRange, pickReportText, stepPick, type StatsPick } from './periodPick'
+import type { Delta } from '@/types/analysis'
 import type { StatsRange, SummaryCell } from './view'
 
 // 통계 기간 고르기의 날짜·이름 셈 (stats-period REQ-1701·REQ-1702·REQ-1707, design.md periodPick.ts). 시험의 오늘은 2026-11-06(금)이다.
@@ -300,18 +301,25 @@ describe('AC-1702.4 고를 수 있는 날짜 한도 (2020-01-01부터, 한 번�
   })
 })
 
-// 기간 요약 칸(view.ts summaryCells가 고른 기간에 주는 모양). 비교 칸의 delta null = 견줄 수 없음
-function cellsOf(o: { average: number | null; newCount?: number; returning?: number; compare?: number | null; lastYear?: number | null }): SummaryCell[] {
-  const compareCell = (key: 'compare' | 'lastYear', before: number | null | undefined): SummaryCell[] =>
-    before === undefined
-      ? []
-      : [{ key, label: '', value: before, note: '', partial: false, delta: before === null || o.average === null ? null : compareNumbers(o.average, before) }]
+// 환자 요약 칸(view.ts summaryCells가 고른 기간에 주는 모양, first90 AC-4403.2). 바로 전 비교 = 평균 칸 delta, 작년 = 평균 칸 delta2.
+// 견줄 수 없으면 unavailable. first90을 주지 않으면(또는 null) 90일초진 칸은 확인 불가이고 재진 값은 90일초진 포함이다
+function cellsOf(o: { average: number | null; newCount?: number; first90?: number | null; returning?: number; compare?: number | null; lastYear?: number | null }): SummaryCell[] {
+  const deltaOf = (before: number | null): Delta => (before === null || o.average === null ? { kind: 'unavailable' } : compareNumbers(o.average, before))
+  const base = { hint: null, note: '', partial: false, delta: null, delta2: null, unknown: false }
+  const unknown = o.first90 === undefined || o.first90 === null
   return [
-    { key: 'average', label: '하루 평균 환자 수', value: o.average, note: '', partial: false, delta: null },
-    { key: 'new', label: '신환', value: o.newCount ?? null, note: '', partial: false, delta: null },
-    { key: 'returning', label: '재진', value: o.returning ?? null, note: '', partial: false, delta: null },
-    ...compareCell('compare', o.compare),
-    ...compareCell('lastYear', o.lastYear),
+    {
+      ...base,
+      key: 'average',
+      label: '하루 평균 내원',
+      unit: '건',
+      value: o.average,
+      delta: o.compare === undefined ? null : deltaOf(o.compare),
+      delta2: o.lastYear === undefined ? null : { label: '', delta: deltaOf(o.lastYear) },
+    },
+    { ...base, key: 'new', label: '신환', unit: '명', value: o.newCount ?? null },
+    { ...base, key: 'first90', label: '90일초진', unit: '건', value: unknown ? null : o.first90!, unknown },
+    { ...base, key: 'returning', label: '재진', unit: '건', value: o.returning ?? null },
   ]
 }
 
@@ -343,6 +351,25 @@ describe('AC-1707.2 고른 기간 보고 문장', () => {
     expect(pickReportText(range, cells, [])).toBe(
       '2025년 1월 1일 – 12월 31일 환자는 하루 평균 40명, 신환 1,000명·재진 9,000명입니다. 하루 평균은 2024년보다 10명(20.0%) 줄었습니다.',
     )
+  })
+})
+
+describe('AC-4403.4 고른 기간 보고 첫 문장의 90일초진', () => {
+  it('AC-4403.4 모든 날에 first90이 있으면 "… 신환 {n}명·90일초진 {n}명·재진 {n}명입니다."이다', () => {
+    const cells = cellsOf({ average: 42, newCount: 120, first90: 60, returning: 920, compare: 39, lastYear: 44 })
+    expect(pickReportText(octoberRange(), cells, top2)).toBe(
+      '2026년 10월 1일 – 31일 환자는 하루 평균 42명, 신환 120명·90일초진 60명·재진 920명입니다. 하루 평균은 9월보다 3명(7.6%) 늘었고, 작년 10월보다는 2명(4.5%) 줄었습니다. 처방은 도수치료 310건, 체외충격파 95건 순으로 많았습니다.',
+    )
+  })
+
+  it('AC-4403.4 90일초진이 0건이어도 쓴다(0은 모름이 아니다)', () => {
+    const cells = cellsOf({ average: 42, newCount: 120, first90: 0, returning: 980 })
+    expect(pickReportText(octoberRange(), cells, [])).toMatch(/^2026년 10월 1일 – 31일 환자는 하루 평균 42명, 신환 120명·90일초진 0명·재진 980명입니다\./)
+  })
+
+  it('AC-4403.4 first90이 없는 날이 있으면(확인 불가) 지금 문장 그대로다(재진 값은 90일초진 포함)', () => {
+    const cells = cellsOf({ average: 42, newCount: 120, returning: 980, compare: 39 })
+    expect(pickReportText(octoberRange(), cells, [])).toBe('2026년 10월 1일 – 31일 환자는 하루 평균 42명, 신환 120명·재진 980명입니다. 하루 평균은 9월보다 3명(7.6%) 늘었습니다. 작년 10월은 자료가 없어 비교하지 않았습니다.')
   })
 })
 

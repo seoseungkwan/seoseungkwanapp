@@ -7,7 +7,7 @@ import type { BarBucket } from '@/components/charts/StackedBarChart'
 import type { Kpi, StackChart, TreatmentRow } from '@/components/revenue/types'
 import type { PerVisitTab, RevenueSplitRow, RevenueTabs, SplitTab, TreatmentsTab, TrendTab } from '@/components/stats/revenueView'
 import { nestedBoxes } from '@/testing/boxes'
-import { SectionAnchor, TOC_SCROLL } from './parts'
+import { SectionAnchor, StatsCard, TOC_SCROLL } from './parts'
 import { RevenueSection } from './RevenueSection'
 
 // 통계 매출 칸 (stats-revenue TASK-5, REQ-4107 · AC-4107.1(칸 안 구조)~AC-4107.10, design.md '칸 부품', 시안 docs/mockups/stats-revenue).
@@ -559,6 +559,50 @@ describe('AC-4107.10: 고른 탭·펼침은 화면 상태뿐 · 소스 규칙', 
       pick(name)
       fireEvent.click(howButton())
       expect(nestedBoxes(container)).toEqual([])
+    }
+  })
+})
+
+// first90 AC-4408.1: 참고 금액 포함 스위치의 둘째 자리(매출 칸 제목 줄 오른쪽). 상태는 부르는 쪽(StatsSections)이 갖는다
+describe('AC-4408.1: 매출 칸 제목 줄의 참고 금액 포함 스위치', () => {
+  const drawCard = (props: Partial<Parameters<typeof RevenueSection>[0]> = {}) =>
+    render(
+      <StatsCard title="매출">
+        <RevenueSection tabs={ready()} noDayCodes={false} onReread={() => undefined} {...props} />
+      </StatsCard>,
+    )
+  const cardHead = () => screen.getAllByRole('heading', { level: 2, name: '매출' })[0]!.parentElement!
+
+  it('AC-4408.1: 확인 필요한 날이 있으면 큰 카드 제목 줄 오른쪽에 스위치가 있고, 누르면 onMode를 부른다', () => {
+    const onMode = vi.fn()
+    drawCard({ mode: 'out', onMode, rough: { days: 2, roughDays: 1 } })
+    const button = within(cardHead()).getByRole('switch', { name: '참고 금액 포함' })
+    expect(button.getAttribute('aria-checked')).toBe('false')
+    expect(within(cardHead()).getByText('확인 필요한 날 2일은 빼고 셌어요')).toBeTruthy()
+    fireEvent.click(button)
+    expect(onMode).toHaveBeenCalledWith('in')
+  })
+
+  it('AC-4408.1: 켜짐이면 aria-checked="true"이고 아래 글은 참고 금액 글이다', () => {
+    drawCard({ mode: 'in', onMode: () => undefined, rough: { days: 2, roughDays: 1 } })
+    expect(within(cardHead()).getByRole('switch').getAttribute('aria-checked')).toBe('true')
+    expect(within(cardHead()).getByText('확인 필요한 날 1일의 참고 금액을 더했어요')).toBeTruthy()
+  })
+
+  it('AC-4408.1: 확인 필요한 날이 없거나 rough를 주지 않으면 스위치가 없다. 탭 넷은 그대로다', () => {
+    drawCard({ mode: 'out', onMode: () => undefined, rough: { days: 0, roughDays: 0 } })
+    expect(screen.queryByRole('switch')).toBeNull()
+    expect(tabs()).toHaveLength(4)
+    cleanup()
+    drawCard()
+    expect(screen.queryByRole('switch')).toBeNull()
+  })
+
+  it('AC-4408.1: 읽는 중·읽기 실패·자료 없음 칸에는 스위치가 없다', () => {
+    for (const tabsIn of ['reading', 'read-failed', { kind: 'empty' }] as const) {
+      drawCard({ tabs: tabsIn, mode: 'out', onMode: () => undefined, rough: { days: 2, roughDays: 1 } })
+      expect(screen.queryByRole('switch')).toBeNull()
+      cleanup()
     }
   })
 })

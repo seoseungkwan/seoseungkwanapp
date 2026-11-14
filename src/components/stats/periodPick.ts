@@ -194,19 +194,22 @@ function rxSentence(top: readonly ReportRx[]): string | null {
 // [고른 기간 보고] 글. cells = summaryCells(고른 기간), top = 처방별 추세 준비된 줄 건수 1·2위.
 // 하루 평균이 없으면(current 자료 없음) null이다. 견줄 수 없는 비교는 '…은 자료가 없어 비교하지 않았습니다.'로 대신한다
 export function pickReportText(range: StatsRange, cells: readonly SummaryCell[], top: readonly ReportRx[]): string | null {
-  const valueOf = (key: SummaryCell['key']) => cells.find((cell) => cell.key === key)?.value ?? null
+  const cellOf = (key: SummaryCell['key']) => cells.find((cell) => cell.key === key)
+  const valueOf = (key: SummaryCell['key']) => cellOf(key)?.value ?? null
   const average = valueOf('average')
   const newCount = valueOf('new')
+  const first90 = valueOf('first90') // null = 확인 불가(first90 없는 날이 있음). 0은 쓴다(first90 AC-4403.4)
   const returning = valueOf('returning')
   if (average === null || newCount === null || returning === null) return null
+  // 바로 전 비교 = 평균 칸 delta, 작년 비교 = 평균 칸 delta2(first90 AC-4403.2)
   const compares = [
-    { name: range.previous.name, delta: cells.find((cell) => cell.key === 'compare')?.delta },
-    ...(range.lastYear === null ? [] : [{ name: range.lastYear.name, delta: cells.find((cell) => cell.key === 'lastYear')?.delta }]),
+    { name: range.previous.name, delta: cellOf('average')?.delta },
+    ...(range.lastYear === null ? [] : [{ name: range.lastYear.name, delta: cellOf('average')?.delta2?.delta }]),
   ]
   const clauses = compares.flatMap(({ name, delta }) => (canCompare(delta) ? [{ name, delta }] : []))
   const rx = rxSentence(top)
   const sentences = [
-    `${range.label} 환자는 하루 평균 ${formatCount(average)}명, 신환 ${formatCount(newCount)}명·재진 ${formatCount(returning)}명입니다.`,
+    `${range.label} 환자는 하루 평균 ${formatCount(average)}명, 신환 ${formatCount(newCount)}명·${first90 === null ? '' : `90일초진 ${formatCount(first90)}명·`}재진 ${formatCount(returning)}명입니다.`,
     ...(clauses.length === 0 ? [] : [`하루 평균은 ${clauses.map(({ name, delta }, i) => compareClause(name, delta, average, i > 0)).join('고, ')}습니다.`]),
     ...compares.filter(({ delta }) => !canCompare(delta)).map(({ name }) => `${name}${hasFinal(name) ? '은' : '는'} 자료가 없어 비교하지 않았습니다.`),
     ...(rx === null ? [] : [rx]),

@@ -3,7 +3,7 @@ import { niceScale } from '@/components/charts/scale'
 import type { BarBucket } from '@/components/charts/StackedBarChart'
 import { longDate, tickLabels, type Period } from '@/components/dashboard/summary/view'
 import { formatManWon, formatWon } from '@/components/revenue/money'
-import type { DeltaText, Kpi, LegendItem, Notice, SplitRow, StackChart, StackColumn, StackSegment, Tone, TreatmentRow } from '@/components/revenue/types'
+import type { DeltaText, Kpi, LegendItem, Notice, SplitRow, StackChart, StackColumn, StackSegment, TreatmentRow } from '@/components/revenue/types'
 import { addDays, addMonths, compareYmd, diffDays, eachDay, monthOf, monthRange, weekStartOf } from '@/lib/analytics/dates'
 import { compare, isWorkDay, perVisit, sumPeriod, type PeriodSum } from '@/lib/revenue/summary'
 import { groupTreatments } from '@/lib/revenue/treatments'
@@ -44,18 +44,25 @@ export type RevenueInput = {
 }
 
 /**
- * 기간 요약 둘째 줄 한 칸. value = 큰 글(작은 단위는 unit: '1억 3,261만' + '원'). 증감 칸의 value는 화살표 없는 '60만 원 (+0.4%)'이고
- * 화살표(▲·▼, 꾸밈)는 tone('up'·'down')으로 붙인다. srText = 방향 글('늘어남'·'줄어듦', 시안은 작은 글자로 보인다), 없으면 ''
+ * 매출 요약 한 칸(first90 AC-4408.2, 시안 docs/mockups/first90/redesign.html #s-sum-rev). value = 큰 글(작은 단위는 unit: '1억 3,261만' + '원'), 값이 없으면 '–'.
+ * hint = 이름 옆 옅은 글(건당 진료비 '매출 ÷ 접수 n건'), tag = "참고 포함" 꼬리표(켜짐에서 참고 금액이 든 칸).
+ * delta = 증감 줄(총매출·건당 진료비. 화살표 ▲·▼는 dir로 그리는 쪽이 붙이고, srText = 줄 끝 옅은 글), notes = 아래 글 줄들
  */
 export type RevenueCell = {
-  key: 'total' | 'perVisit' | 'unchecked' | 'compare'
+  key: 'total' | 'perVisit' | 'unchecked'
   label: string
+  hint: string | null
+  tag: boolean
   value: string
   unit: string | null
-  note: string | null
-  tone: Tone
-  srText: string
+  tone: 'ink' | 'warn' | 'none'
+  delta: DeltaText | null
+  notes: string[]
 }
+/** 참고 금액 포함 스위치(first90 AC-4408.1): out = 확인 필요한 날을 뺌(처음), in = 그 가운데 참고 금액이 있는 날을 더함 */
+export type RevenueMode = 'out' | 'in'
+/** 스위치에 줄 날 수: days = 보는 기간의 확인 필요한 날, roughDays = 그 가운데 참고 금액(roughTotal)이 숫자인 날 */
+export type RoughInfo = { days: number; roughDays: number }
 
 /** 탭 첫 줄: text + 굵은 amount + 회색 rest(없으면 null). 사이 빈칸은 그리는 쪽이 둔다 */
 export type Lead = { text: string; amount: string; rest: string | null }
@@ -102,7 +109,7 @@ const EACH: Record<Unit, string> = { day: '하루씩', week: '한 주씩', month
 const EVERY: Record<Unit, string> = { day: '날마다', week: '주마다', month: '달마다' }
 const TABLE_HEAD: Record<Unit, string> = { day: '날짜', week: '주', month: '달' }
 
-const LABELS: Record<RevenueCell['key'], string> = { total: '매출', perVisit: '건당 진료비', unchecked: '확인 필요한 날', compare: '비교 기간보다' }
+const LABELS: Record<RevenueCell['key'], string> = { total: '총매출', perVisit: '건당 진료비', unchecked: '확인 필요한 날' }
 
 const TREND_HOW = [
   '매출은 수납한 날(회계일)의 총진료비예요. 총진료비 = 공단부담 + 본인부담 + 비급여 + 기타이고, 그날 정상 수납한 것과 미수금으로 들어온 것을 더해요.',
@@ -245,7 +252,8 @@ type Ctx = {
 const unitOf = (range: StatsRange): Unit => (range.period === null ? range.bucket : range.period === '12m' ? 'month' : 'day')
 
 const rowsIn = (byDay: ReadonlyMap<string, SavedDay>, span: DateRange) => eachDay(span).flatMap((day) => byDay.get(day) ?? [])
-const sumIn = (byDay: ReadonlyMap<string, SavedDay>, span: DateRange) => sumPeriod(rowsIn(byDay, span), span)
+// withRough = 참고 금액 포함(first90 AC-4408.2): 확인 필요한 날 가운데 참고 금액이 숫자인 날을 더한다(lib/revenue/summary.ts)
+const sumIn = (byDay: ReadonlyMap<string, SavedDay>, span: DateRange, withRough = false) => sumPeriod(rowsIn(byDay, span), span, { withRough })
 const savedAll = (byDay: ReadonlyMap<string, SavedDay>, span: DateRange) => eachDay(span).every((day) => byDay.has(day))
 
 type Pair = { now: DateRange; before: DateRange; name: string }
@@ -265,10 +273,10 @@ function mainPair({ range, lastDay }: RevenueInput, view: DateRange): Pair | nul
 }
 
 // 두 기간 가운데 마지막 끝난 날까지 저장하지 않은 날이 하루라도 있거나 진료한 날이 없으면 견주지 않는다(기본값 5)
-function comparedOf(byDay: ReadonlyMap<string, SavedDay>, now: DateRange, before: DateRange): Compared | null {
+function comparedOf(byDay: ReadonlyMap<string, SavedDay>, now: DateRange, before: DateRange, withRough = false): Compared | null {
   if (!savedAll(byDay, now) || !savedAll(byDay, before)) return null
-  const a = sumIn(byDay, now)
-  const b = sumIn(byDay, before)
+  const a = sumIn(byDay, now, withRough)
+  const b = sumIn(byDay, before, withRough)
   if (a === null || b === null || a.workDays === 0 || b.workDays === 0) return null
   return { now: a, before: b }
 }
@@ -315,11 +323,12 @@ function futureBuckets(range: StatsRange): BarBucket[] {
   return bars
 }
 
-function contextOf(input: RevenueInput): Ctx | null {
+// withRough(기본 꺼짐): 보는 기간·비교 두 기간·막대 칸을 모두 같은 방식으로 센다(first90 AC-4408.2)
+function contextOf(input: RevenueInput, withRough = false): Ctx | null {
   const { range, lastDay } = input
   const view = { from: range.current.from, to: earlier(range.current.to, lastDay) }
   const byDay = new Map(input.days.map((row) => [row.date, row]))
-  const sum = sumIn(byDay, view)
+  const sum = sumIn(byDay, view, withRough)
   if (sum === null) return null
   const unit = unitOf(range)
   const slots = unit === 'day' ? daySlots(range, view) : unit === 'week' ? weekSlots(range, view) : monthSlots(range, view)
@@ -331,10 +340,10 @@ function contextOf(input: RevenueInput): Ctx | null {
     byDay,
     sum,
     name: pair?.name ?? range.previous.name,
-    main: pair === null ? null : comparedOf(byDay, pair.now, pair.before),
-    lastYear: range.lastYear === null ? null : comparedOf(byDay, view, range.lastYear),
+    main: pair === null ? null : comparedOf(byDay, pair.now, pair.before, withRough),
+    lastYear: range.lastYear === null ? null : comparedOf(byDay, view, range.lastYear, withRough),
     // 칸 안 저장된 날이 없거나 모두 쉬는 날이면 sum이 null이고 칸이 없다. 저장하지 않은 날이 든 칸·잘린 칸은 일부 기간이다
-    slots: slots.map((slot) => ({ slot, sum: sumIn(byDay, slot.span), state: slot.cut || !savedAll(byDay, slot.span) ? 'partial' : 'complete' })),
+    slots: slots.map((slot) => ({ slot, sum: sumIn(byDay, slot.span, withRough), state: slot.cut || !savedAll(byDay, slot.span) ? 'partial' : 'complete' })),
   }
 }
 
@@ -372,67 +381,120 @@ function barNote(ctx: Ctx): string | null {
   return parts.length === 0 ? null : parts.join(' ')
 }
 
-// ── 기간 요약 둘째 줄 ─────────────────────────────────────
+// ── 매출 요약 칸 셋 (first90 AC-4408.1·AC-4408.2) ───────────
 
-const blankCell = (key: RevenueCell['key'], note: string, label = LABELS[key]): RevenueCell => ({ key, label, value: DASH, unit: null, note, tone: 'none', srText: '' })
-const blankCells = (note: string, compareLabel = LABELS.compare): RevenueCell[] => [
-  blankCell('total', note),
-  blankCell('perVisit', note),
-  blankCell('unchecked', note),
-  blankCell('compare', note, compareLabel),
-]
+const NO_COMPARE_DELTA: DeltaText = { dir: 'none', text: NO_COMPARE, srText: '' }
+const FLAT_DELTA: DeltaText = { dir: 'flat', text: '변화 없음', srText: '' }
 
-function compareCell(ctx: Ctx, label: string): RevenueCell {
-  const none = blankCell('compare', NO_COMPARE, label)
-  if (ctx.main === null) return none
-  const { now, before } = ctx.main
-  const change = compare(now.total, before.total)
-  if (change === null) return none
-  const note = `${ctx.name} 매출 ${formatManWon(before.total)}`
-  if (change.rate === 0) return { ...none, value: '변화 없음', note, tone: 'flat' }
-  const rising = change.rate > 0
-  const value = `${formatManWon(Math.abs(now.total - before.total))} (${rising ? '+' : MINUS}${Math.abs(change.rate).toFixed(1)}%)`
-  return { ...none, value, note, tone: rising ? 'up' : 'down', srText: rising ? '늘어남' : '줄어듦' }
+const blankCell = (key: RevenueCell['key'], note: string): RevenueCell => ({ key, label: LABELS[key], hint: null, tag: false, value: DASH, unit: null, tone: 'none', delta: null, notes: [note] })
+const blankCells = (note: string): RevenueCell[] => [blankCell('total', note), blankCell('perVisit', note), blankCell('unchecked', note)]
+
+/** 확인 필요한 날 가운데 참고 금액(roughTotal)이 숫자인 날(0·음수 포함)과 그 합. 받는 날짜 차례 그대로다 */
+function roughOf(byDay: ReadonlyMap<string, SavedDay>, dates: readonly string[]): { dates: string[]; sum: number } {
+  const found: string[] = []
+  let sum = 0
+  for (const date of dates) {
+    const rough = byDay.get(date)?.roughTotal
+    if (typeof rough !== 'number') continue
+    found.push(date)
+    sum += rough
+  }
+  return { dates: found, sum }
 }
 
-/** 기간 요약 둘째 줄 네 칸(AC-4106.1~AC-4106.4): 매출 · 건당 진료비 · 확인 필요한 날 · 비교 기간보다(고른 기간은 '{비교 이름}보다') */
-export function revenueCells(input: RevenueInput | 'reading' | 'read-failed'): RevenueCell[] {
+// 총매출 증감: 금액 차 + 비율('60만 원 (+0.4%)'), 줄 끝 글 = '{비교 이름}보다 늘어남·줄어듦'. 견줄 수 없으면 '비교할 자료가 없어요'(기본값 5)
+function totalDelta(ctx: Ctx): DeltaText {
+  if (ctx.main === null) return NO_COMPARE_DELTA
+  const { now, before } = ctx.main
+  const change = compare(now.total, before.total)
+  if (change === null) return NO_COMPARE_DELTA
+  if (change.rate === 0) return FLAT_DELTA
+  const rising = change.rate > 0
+  const text = `${formatManWon(Math.abs(now.total - before.total))} (${rising ? '+' : MINUS}${Math.abs(change.rate).toFixed(1)}%)`
+  return { dir: rising ? 'up' : 'down', text, srText: `${ctx.name}보다 ${rising ? '늘어남' : '줄어듦'}` }
+}
+
+// 건당 진료비 증감: 비율만('+2.9%'), 줄 끝 글 없음. 같은 두 기간의 건당 진료비끼리 견준다
+function perVisitDelta(ctx: Ctx): DeltaText {
+  if (ctx.main === null) return NO_COMPARE_DELTA
+  const change = deltaText(perVisit(ctx.main.now), perVisit(ctx.main.before))
+  return change.dir === 'none' ? NO_COMPARE_DELTA : { ...change, srText: '' }
+}
+
+// 확인 필요한 날 아래 글: 참고 금액이 있는 날과 없는 날을 한 줄씩. 있는 날은 켜짐이면 '참고 금액 {합} 포함', 꺼짐이면 '금액이 확실하지 않아 뺐어요'
+function uncheckedNotes(unchecked: readonly string[], rough: { dates: string[]; sum: number }, withRough: boolean): string[] {
+  const unknown = unchecked.filter((date) => !rough.dates.includes(date))
+  return [
+    ...(rough.dates.length === 0 ? [] : [`${daysText(rough.dates)} · ${withRough ? `참고 금액 ${formatManWon(rough.sum)} 포함` : '금액이 확실하지 않아 뺐어요'}`]),
+    ...(unknown.length === 0 ? [] : [`${daysText(unknown)} · 금액을 알 수 없어 뺐어요`]),
+  ]
+}
+
+/**
+ * 매출 요약 칸 셋(AC-4105.1·AC-4105.2·AC-4408.2): 총매출(+ 증감 줄) · 건당 진료비(+ 비율 증감 줄) · 확인 필요한 날.
+ * mode 'in'(참고 금액 포함)은 보는 기간에 참고 금액이 있는 날이 있을 때만 셈을 바꾸고(비교 기간도 같은 방식), 없으면 'out'과 같다
+ */
+export function revenueCells(input: RevenueInput | 'reading' | 'read-failed', mode: RevenueMode = 'out'): RevenueCell[] {
   if (input === 'reading') return blankCells(READING)
   if (input === 'read-failed') return blankCells(NO_DATA)
-  const compareLabel = input.range.period === null ? `${input.range.previous.name}보다` : LABELS.compare
-  const ctx = contextOf(input)
-  if (ctx === null) return blankCells(NO_DATA, compareLabel)
+  const plain = contextOf(input)
+  if (plain === null) return blankCells(NO_DATA)
+  const rough = roughOf(plain.byDay, plain.sum.uncheckedDays)
+  const withRough = mode === 'in' && rough.dates.length > 0
+  const ctx = withRough ? (contextOf(input, true) ?? plain) : plain
   const { sum } = ctx
   const value = perVisit(sum)
   const unchecked = sum.uncheckedDays
+  const roughNote = withRough ? ` · 참고 ${formatManWon(rough.sum)} 포함` : ''
   return [
     sum.workDays === 0
       ? blankCell('total', NO_DATA)
       : {
           key: 'total',
           label: LABELS.total,
+          hint: null,
+          tag: withRough,
           value: manValue(sum.total),
           unit: '원',
-          note: `진료한 날 ${formatCount(sum.workDays)}일 평균 ${formatManWon(Math.floor(sum.total / sum.workDays))}`,
           tone: 'ink',
-          srText: '',
+          delta: totalDelta(ctx),
+          notes: [`진료한 날 ${formatCount(sum.workDays)}일 · 하루 평균 ${formatManWon(Math.floor(sum.total / sum.workDays))}${roughNote}`],
         },
     value === null
       ? blankCell('perVisit', NO_DATA)
-      : { key: 'perVisit', label: LABELS.perVisit, value: formatCount(value), unit: '원', note: `매출 ÷ 접수 ${countText(sum.perVisitCount)}`, tone: 'ink', srText: '' },
+      : {
+          key: 'perVisit',
+          label: LABELS.perVisit,
+          hint: `매출 ÷ 접수 ${countText(sum.perVisitCount)}`,
+          tag: withRough,
+          value: formatCount(value),
+          unit: '원',
+          tone: 'ink',
+          delta: perVisitDelta(ctx),
+          notes: [],
+        },
     unchecked.length === 0
-      ? { key: 'unchecked', label: LABELS.unchecked, value: '없음', unit: null, note: null, tone: 'ink', srText: '' }
+      ? { key: 'unchecked', label: LABELS.unchecked, hint: null, tag: false, value: '없음', unit: null, tone: 'ink', delta: null, notes: [] }
       : {
           key: 'unchecked',
           label: LABELS.unchecked,
+          hint: null,
+          tag: false,
           value: formatCount(unchecked.length),
           unit: '일',
-          note: `${daysText(unchecked)} · 그날 금액은 매출에 넣지 않았어요`,
           tone: 'warn',
-          srText: '',
+          delta: null,
+          notes: uncheckedNotes(unchecked, rough, withRough),
         },
-    compareCell(ctx, compareLabel),
   ]
+}
+
+/** 참고 금액 포함 스위치에 줄 날 수(AC-4408.1). 보는 기간만 센다. 읽는 중·읽기 실패·저장된 매출 없음이면 null(스위치 없음) */
+export function roughInfo(input: RevenueInput | 'reading' | 'read-failed'): RoughInfo | null {
+  if (input === 'reading' || input === 'read-failed') return null
+  const ctx = contextOf(input)
+  if (ctx === null) return null
+  return { days: ctx.sum.uncheckedDays.length, roughDays: roughOf(ctx.byDay, ctx.sum.uncheckedDays).dates.length }
 }
 
 // ── 탭 넷 ────────────────────────────────────────────────

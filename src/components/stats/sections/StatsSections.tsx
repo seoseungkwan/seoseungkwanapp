@@ -1,11 +1,11 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Icon } from '@/components/common/Icon'
 import { pickReportText, type ReportRx } from '@/components/stats/periodPick'
-import { revenueCells, revenueTabs, type RevenueInput } from '@/components/stats/revenueView'
+import { revenueCells, revenueTabs, roughInfo, type RevenueInput, type RevenueMode } from '@/components/stats/revenueView'
 import { TOC_LINKS } from '@/components/stats/StatsToc'
 import { treatmentRows } from '@/components/stats/treatmentView'
 import type { StatsRxGroupsView } from '@/components/stats/useStatsRxGroups'
-import { summaryCells, type StatsInput, type StatsRange } from '@/components/stats/view'
+import { summaryCells, summaryDesc, type StatsInput, type StatsRange } from '@/components/stats/view'
 import { addDays } from '@/lib/analytics/dates'
 import type { RevenueCodeTotal, RevenueMonthCode, SavedRevenueDay } from '@/types/revenue'
 import type { RxGroup } from '@/types/rxGroups'
@@ -16,17 +16,18 @@ import { PatientTrendSection } from './PatientTrendSection'
 import { PeriodSummary } from './PeriodSummary'
 import { ReportSection, type PickReport, type ReportData } from './ReportSection'
 import { RevenueSection } from './RevenueSection'
+import { RevenueSummary } from './RevenueSummary'
 import { RevisitSection } from './RevisitSection'
 import { RxPickerSection } from './RxPickerSection'
 import { RxSection } from './RxSection'
 import { RxSplitSection } from './RxSplitSection'
-import { cardRangeText, Section, SectionAnchor, StatsCard, todayOf } from './parts'
+import { cardRangeText, SectionAnchor, StatsCard, todayOf } from './parts'
 import { TreatmentTrendSection } from './TreatmentTrendSection'
 import { VisitHoursSection } from './VisitHoursSection'
 import { WeekdaySection } from './WeekdaySection'
 
 // 통계 틀 (first90 REQ-4411 AC-4411.1·AC-4411.3, design.md 5-5, 시안 docs/mockups/first90/redesign.html): 요약 자리 → 큰 카드 다섯을 한 줄씩 쌓는다(사이 16px).
-//   요약 자리(stats-summary): 기간 요약(+ 매출 둘째 줄) 칸 그대로
+//   요약 자리(stats-summary): 환자 요약 카드(이 카드가 id를 갖는다) + 바로 뒤 매출 요약 카드(revenue를 받을 때만, first90 AC-4408.2)
 //   환자(stats-patients): 환자 수 추이 · 신환 재방문율 · 환자 구성(비트)
 //   매출(stats-revenue): 매출 칸(탭 넷). revenue를 받을 때만(stats-revenue AC-4107.1, 통계 화면은 늘 준다)
 //   처방(stats-rx): 처방 칸 + 탭 셋(stats-pc-ux AC-4003.1). 탭 안 칸은 지금 칸 그대로(props도 그대로)이고 Section 탭 패널 모드로 그려진다
@@ -34,14 +35,19 @@ import { WeekdaySection } from './WeekdaySection'
 //   보고(stats-report): 원장님 보고 문장 칸
 // 카드 안 칸은 h3 작은 칸이고 칸 사이는 얇은 선뿐이다(parts.tsx StatsCard). 비트 칸은 bit를 받을 때만 그린다(stats-bit-sections AC-2706.1, 통계 화면은 늘 준다).
 // 고른 기간(stats-period)이면 보고 칸에 [고른 기간 보고](저장된 숫자로 만든 글)를 넣고, 처방별 신환·재진 설명 끝에 기간 이름을 붙인다.
-// 매출(stats-revenue): revenue를 받으면 기간 요약에 둘째 줄(매출 네 칸)도 넣는다. 숫자는 revenueView(순수)가 통계 기간·처방 칸 묶음으로 센다
+// 매출(stats-revenue): revenue를 받으면 매출 요약 카드(칸 셋)도 넣는다. 숫자는 revenueView(순수)가 통계 기간·처방 칸 묶음으로 센다.
+// 참고 금액 포함 스위치(first90 AC-4408.1): 상태 하나를 여기서 갖고(저장하지 않음, 처음 꺼짐) 매출 요약·매출 카드 두 스위치에 같은 값을 준다.
+// 보는 기간에 참고 금액이 있는 날이 없으면 켤 수 없고 셈은 꺼짐 그대로다. 매출 카드 탭 넷의 셈은 아직 꺼짐 그대로다
 
 const REPORT_RX = 2
-// 바로가기 띠 바로 아래 첫 자리(기간 요약)의 위 여백: 칸 위 48px(휴대폰 32px) 대신 24px(휴대폰 20px) (stats-pc-ux 기본값 14)
+// 바로가기 띠 바로 아래 첫 자리(환자 요약)의 위 여백: 칸 위 48px(휴대폰 32px) 대신 24px(휴대폰 20px) (stats-pc-ux 기본값 14)
 const FIRST_GAP = '[&>:first-child]:mt-6 max-md:[&>:first-child]:mt-5'
 // 자리 id는 바로가기 띠 링크와 같은 차례다(AC-4411.2)
 const [SUMMARY_ID, PATIENTS_ID, REVENUE_ID, RX_ID, OPS_ID, REPORT_ID] = TOC_LINKS.map((link) => link.id)
 // 카드 다섯의 h2·옆 글(AC-4411.3). 환자 카드 옆 글은 기간에 따라 cardRangeText가 만든다. 매출 카드 옆 글은 매출 칸 설명 글이다(같은 제목 칸 규칙)
+const SUMMARY = '환자 요약'
+const REVENUE_SUMMARY = '매출 요약'
+const REVENUE_SUMMARY_DESC = '총진료비 · 수납한 날 기준'
 const PATIENTS = '환자'
 const REVENUE = '매출'
 const RX = '처방'
@@ -89,7 +95,7 @@ type Props = {
   groups: StatsRxGroupsView // 처방별 추세 묶음 훅 값(통계 화면이 한 번 부른다)
   revision?: number // 저장에 성공하거나 [다시 읽기]를 누를 때마다 는다. 처방 찾기 목록이 넓은 범위를 다시 읽는 때를 안다
   bit?: BitSectionsShown // 비트 전용 세 칸 보기. null = 이 기기에서 불러오지 않음, 'waiting' = 이 기간 답을 기다림. 주지 않으면 세 칸이 없다
-  revenue?: StatsRevenueShown // 매출 칸·기간 요약 둘째 줄. 주지 않으면 둘 다 없다
+  revenue?: StatsRevenueShown // 매출 카드·매출 요약 카드. 주지 않으면 둘 다 없다
 }
 
 // 마지막 끝난 날: 통계 화면은 매출 값에 오늘 진료 끝을 반영한 날을 준다. 매출을 주지 않으면 어제다
@@ -118,13 +124,18 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
       noDayCodes,
     }
   }, [input.range, revenueState, revenueDays, revenueCodes, revenueMonthCodes, lastDay, noDayCodes, groups.state, groups.groups])
-  const summaryRevenue = useMemo(() => (revenueIn === null ? undefined : revenueCells(revenueIn)), [revenueIn])
+  const [mode, setMode] = useState<RevenueMode>('out')
+  const rough = useMemo(() => (revenueIn === null ? null : roughInfo(revenueIn)), [revenueIn])
+  // 참고 금액이 있는 날이 없는 기간으로 바뀌면 켜 둔 값이 있어도 꺼짐으로 센다(스위치도 꺼짐으로 보인다)
+  const shownMode: RevenueMode = rough !== null && rough.roughDays > 0 ? mode : 'out'
+  const summaryRevenue = useMemo(() => (revenueIn === null ? undefined : revenueCells(revenueIn, shownMode)), [revenueIn, shownMode])
   const tabs = useMemo(() => (revenueIn === null || typeof revenueIn === 'string' ? revenueIn : revenueTabs(revenueIn)), [revenueIn])
   return (
     <div className={STACK}>
       <SectionAnchor id={SUMMARY_ID!}>
-        <PeriodSummary input={input} saved={saved} revenue={summaryRevenue} />
+        <PeriodSummary input={input} saved={saved} />
       </SectionAnchor>
+      {summaryRevenue && <RevenueSummary cells={summaryRevenue} mode={shownMode} onMode={setMode} rough={rough} />}
       <StatsCard id={PATIENTS_ID} title={PATIENTS} desc={cardRangeText(input.range, lastDayOf(input.range, revenue))}>
         <PatientTrendSection input={input} saved={saved} />
         <RevisitSection input={input} saved={saved} />
@@ -132,7 +143,7 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
       </StatsCard>
       {revenue !== undefined && tabs !== null && (
         <StatsCard id={REVENUE_ID} title={REVENUE}>
-          <RevenueSection tabs={tabs} noDayCodes={noDayCodes} onReread={revenue.onReread} />
+          <RevenueSection tabs={tabs} noDayCodes={noDayCodes} onReread={revenue.onReread} mode={shownMode} onMode={setMode} rough={rough} />
         </StatsCard>
       )}
       <StatsCard id={RX_ID} title={RX} desc={RX_DESC}>
@@ -163,14 +174,17 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
   )
 }
 
-// 읽는 동안의 기다리는 자리(stats AC-514.1, first90 AC-4411.1): 그린 화면과 같은 차례의 기간 요약 + 카드 다섯, 자리마다 "불러오는 중" 한 줄.
+// 읽는 동안의 기다리는 자리(stats AC-514.1, first90 AC-4411.1·AC-4408.2): 그린 화면과 같은 차례의 환자 요약 · 매출 요약 + 카드 다섯, 자리마다 "불러오는 중" 한 줄.
 // 바로가기 id는 없다(stats-pc-ux AC-4002.6: 숨은 칸 묶음만 id를 가진다). 카드 안 작은 칸 이름은 그리지 않는다
 export function StatsWaiting({ range, lastDay }: { range: StatsRange; lastDay: string }) {
   return (
     <div className={STACK}>
-      <Section title="기간 요약">
+      <StatsCard title={SUMMARY} desc={summaryDesc(range)}>
         <WaitingLine />
-      </Section>
+      </StatsCard>
+      <StatsCard title={REVENUE_SUMMARY} desc={REVENUE_SUMMARY_DESC}>
+        <WaitingLine />
+      </StatsCard>
       <StatsCard title={PATIENTS} desc={cardRangeText(range, lastDay)}>
         <WaitingLine />
       </StatsCard>

@@ -96,10 +96,10 @@ const CARDS = [
   ['stats-ops', '진료 운영'],
   ['stats-report', '원장님 보고 문장'],
 ] as const
-// 그린 화면의 바로가기 자리 차례: 요약 자리(기간 요약 칸, stats-summary) → 카드 다섯(AC-4411.1)
-const PLACES = [['stats-summary', '기간 요약'], ...CARDS]
-// 읽는 동안의 기다리는 자리: 같은 차례의 제목(h2) 여섯이고 자리마다 "불러오는 중" 한 줄, 바로가기 id는 없다
-const WAITING_TITLES = PLACES.map(([, title]) => title)
+// 그린 화면의 바로가기 자리 차례: 요약 자리(환자 요약 카드, stats-summary) → 카드 다섯(AC-4411.1). 매출 요약 카드는 요약 자리 안이라 id가 없다(first90 AC-4408.2)
+const PLACES = [['stats-summary', '환자 요약'], ...CARDS]
+// 읽는 동안의 기다리는 자리: 같은 차례의 제목(h2) 일곱(환자 요약 · 매출 요약 · 카드 다섯)이고 자리마다 "불러오는 중" 한 줄, 바로가기 id는 없다
+const WAITING_TITLES = ['환자 요약', '매출 요약', ...CARDS.map(([, title]) => title)]
 // 바로가기 띠 링크 열과 그 자리 id(AC-4411.2)
 const TOC = [
   ['요약', 'stats-summary'],
@@ -312,7 +312,7 @@ function rxPanel(name: (typeof RX_TABS)[number]) {
 // 기다리는 칸에도 같은 제목이 있어 "불러오는 중"이 없어질 때까지 본다
 const sectionsShown = () =>
   waitFor(() => {
-    expect(heading('기간 요약')).toBeTruthy()
+    expect(heading('환자 요약')).toBeTruthy()
     expect(screen.queryByText('불러오는 중')).toBeNull()
   })
 const periodButtons = () => within(screen.getByRole('group', { name: '기간' })).getAllByRole('button')
@@ -459,7 +459,7 @@ afterEach(() => {
 })
 
 describe('AC-514.1 첫 그림', () => {
-  it('AC-514.1·AC-801.2·AC-1201.2·AC-4003.1·AC-4411.1 읽는 동안 기다리는 자리는 요약 + 카드 다섯 모두 "불러오는 중"이고 머리·기간은 먼저 보인다', () => {
+  it('AC-514.1·AC-801.2·AC-1201.2·AC-4003.1·AC-4411.1·AC-4408.2 읽는 동안 기다리는 자리는 요약 + 카드 다섯 모두 "불러오는 중"이고 머리·기간은 먼저 보인다', () => {
     vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
     draw()
     expect(screen.getByRole('heading', { name: '통계', level: 1 })).toBeTruthy()
@@ -469,13 +469,13 @@ describe('AC-514.1 첫 그림', () => {
     expect(pageText()).not.toContain('아직 저장된 통계가 없어요')
   })
 
-  it('AC-514.1·AC-513.1·AC-801.1·AC-1201.1·AC-4003.1·AC-4411.1 읽으면 요약 → 카드 다섯을 승인본 차례대로 그리고 readMonths를 쓰지 않는다', async () => {
+  it('AC-514.1·AC-513.1·AC-801.1·AC-1201.1·AC-4003.1·AC-4411.1·AC-4403.1 읽으면 요약 → 카드 다섯을 승인본 차례대로 그리고 readMonths를 쓰지 않는다', async () => {
     draw()
     await sectionsShown()
     expect(screen.queryByText('불러오는 중')).toBeNull()
     expect(placesShown()).toEqual(PLACES)
     expect(heading('처방 추세')).toBeNull()
-    expect(pageText()).toContain('하루 평균 환자 수')
+    expect(pageText()).toContain('하루 평균 내원')
     expect(readMonths).not.toHaveBeenCalled()
   })
 
@@ -498,13 +498,13 @@ describe('AC-514.1 첫 그림', () => {
     expect(pageText()).not.toContain('숫자를 불러오면 이 기간의')
   })
 
-  it('AC-514.1 읽기 실패는 오류 카드 + [다시 읽기]이고 섹션을 그리지 않으며, 누르면 다시 읽어 그린다', async () => {
+  it('AC-514.1·AC-4403.1 읽기 실패는 오류 카드 + [다시 읽기]이고 섹션을 그리지 않으며, 누르면 다시 읽어 그린다', async () => {
     vi.mocked(readDays).mockRejectedValueOnce(new Error('가짜 실패'))
     draw()
     const card = await screen.findByRole('alert')
     expect(card.textContent).toContain('오류 번호 E-STATS-READ-FAILED')
     expect(card.textContent).toContain('저장된 통계를 읽지 못했어요')
-    expect(heading('기간 요약')).toBeNull()
+    expect(heading('환자 요약')).toBeNull()
     expect(screen.queryByRole('group', { name: '기간' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: '다시 읽기' }))
@@ -555,7 +555,7 @@ describe('AC-514.2 기간 단추', () => {
     expect(streams()).toBe(1)
   })
 
-  it('AC-514.2·AC-4003.1·AC-4111.1 기간을 바꿔도 열어 둔 [자세히]는 열린 채다(notes §5)', async () => {
+  it('AC-514.2·AC-4003.1·AC-4111.1·AC-4408.2 기간을 바꿔도 열어 둔 [자세히]는 열린 채다(notes §5)', async () => {
     const R90 = statsRange(TODAY, '90d')
     answers({ ...SAVED_NOW, [R90.current.from]: read([day('2026-11-01', 10), day('2026-11-02', 10)], { latest: BIT_AT }) })
     draw()
@@ -785,14 +785,14 @@ describe('AC-514.4 파일 길', () => {
 })
 
 describe('AC-514.5 연결 상태', () => {
-  it('AC-514.5·AC-4001.5 확장이 없는 곳은 [불러오기 설정]을 펼치면 안내와 파일 길이고, 저장된 숫자만 보인다', async () => {
+  it('AC-514.5·AC-4001.5·AC-4403.1 확장이 없는 곳은 [불러오기 설정]을 펼치면 안내와 파일 길이고, 저장된 숫자만 보인다', async () => {
     draw()
     await sectionsShown()
     expect(screen.getByText('비트 PC의 크롬에서 불러올 수 있어요')).toBeTruthy()
     expect(screen.queryByRole('button', { name: LOAD })).toBeNull()
     openSettings()
     expect(screen.getByRole('button', { name: '파일 고르기' })).toBeTruthy()
-    expect(pageText()).toContain('하루 평균 환자 수')
+    expect(pageText()).toContain('하루 평균 내원')
     expect(screen.getAllByText('비트 PC에서 불러오면 보여요')).toHaveLength(BIT_ONLY_COUNT)
   })
 
@@ -815,7 +815,7 @@ describe('AC-514.5 연결 상태', () => {
 })
 
 describe('AC-514.6 저장 실패·확인 필요', () => {
-  it('AC-514.6 저장 실패 → 새 숫자를 그대로 두고 오류 카드 + [다시 저장], 누르면 같은 값을 보내고 카드가 사라진다', async () => {
+  it('AC-514.6·AC-4403.1 저장 실패 → 새 숫자를 그대로 두고 오류 카드 + [다시 저장], 누르면 같은 값을 보내고 카드가 사라진다', async () => {
     const { port } = await drawReady()
     vi.mocked(saveStats).mockRejectedValueOnce(new Error('가짜 실패'))
     const reads = vi.mocked(readDays).mock.calls.length
@@ -828,7 +828,7 @@ describe('AC-514.6 저장 실패·확인 필요', () => {
     await sectionsShown() // 출처 줄은 처방별 답까지 받은 뒤 보인다
     expect(pageText()).toContain('자료: 비트 PC · 방금 불러옴 · 아직 저장하지 못했어요')
     // 저장된 10·10명에 방금 만든 77명을 합친 하루 평균
-    await waitFor(() => expect(pageText()).toContain('32명'))
+    await waitFor(() => expect(pageText()).toContain('32건'))
     expect(vi.mocked(readDays).mock.calls.length).toBe(reads)
 
     fireEvent.click(screen.getByRole('button', { name: '다시 저장' }))
@@ -898,7 +898,7 @@ describe('AC-514.6 저장 실패·확인 필요', () => {
 })
 
 describe('AC-514.6 읽기가 실패해도 방금 불러온 숫자는 보인다', () => {
-  it('AC-514.6 읽기와 저장이 모두 실패하면 새 숫자로 섹션을 그리고 두 카드를 보인다', async () => {
+  it('AC-514.6·AC-4403.1 읽기와 저장이 모두 실패하면 새 숫자로 섹션을 그리고 두 카드를 보인다', async () => {
     vi.mocked(readDays).mockRejectedValue(new Error('가짜 실패'))
     vi.mocked(saveStats).mockRejectedValue(new Error('가짜 실패'))
     const port = fakeChrome()
@@ -907,7 +907,7 @@ describe('AC-514.6 읽기가 실패해도 방금 불러온 숫자는 보인다',
     sayHello(port)
     await screen.findByRole('button', { name: LOAD })
     await screen.findByRole('alert')
-    expect(heading('기간 요약')).toBeNull()
+    expect(heading('환자 요약')).toBeNull()
 
     pressLoad(port)
     await waitFor(() => expect(pageText()).toContain('오류 번호 E-STATS-SAVE-FAILED'))
@@ -966,13 +966,13 @@ describe('AC-514.6 읽기가 실패해도 방금 불러온 숫자는 보인다',
     expect(pageText()).not.toContain('자료:')
   })
 
-  it('AC-514.6 확인 필요 뒤 기간을 바꾼 읽기가 실패하면 앞 기간 숫자 없이 처방별·보고만 지금 기간으로 그린다', async () => {
+  it('AC-514.6·AC-4403.1 확인 필요 뒤 기간을 바꾼 읽기가 실패하면 앞 기간 숫자 없이 처방별·보고만 지금 기간으로 그린다', async () => {
     const port = fakeChrome()
     fakeWorker(INCOMPLETE)
     draw()
     sayHello(port)
     await sectionsShown()
-    expect(pageText()).toContain('하루 평균 환자 수')
+    expect(pageText()).toContain('하루 평균 내원')
     pressLoad(port)
     await screen.findByText('일부 기록을 확인하지 못해 저장하지 않았어요')
     await sectionsShown()
@@ -990,7 +990,7 @@ describe('AC-514.6 읽기가 실패해도 방금 불러온 숫자는 보인다',
     expect(screen.getByRole('group', { name: '보고 고르기' })).toBeTruthy()
   })
 
-  it('AC-514.1·AC-4001.4 파일 확인 필요는 방금 불러온 처방별·보고가 없어 읽기가 실패하면 섹션을 그리지 않는다(읽기 실패는 접힌 채라 펼쳐 본다)', async () => {
+  it('AC-514.1·AC-4001.4·AC-4403.1 파일 확인 필요는 방금 불러온 처방별·보고가 없어 읽기가 실패하면 섹션을 그리지 않는다(읽기 실패는 접힌 채라 펼쳐 본다)', async () => {
     vi.mocked(readDays).mockRejectedValue(new Error('가짜 실패'))
     vi.mocked(runAnalysis).mockResolvedValue({ files: [OK_REPORT], result: { quality: 'incomplete', skippedInvalidRows: 5 } as AnalysisResult })
     vi.mocked(toMonthPayload).mockReturnValue(null)
@@ -1001,10 +1001,10 @@ describe('AC-514.6 읽기가 실패해도 방금 불러온 숫자는 보인다',
     await screen.findByText('일부 기록을 확인하지 못해 저장하지 않았어요')
     openSettings()
     await waitFor(() => expect(screen.getByRole('button', { name: '파일 고르기' }).getAttribute('aria-disabled')).toBeNull())
-    expect(heading('기간 요약')).toBeNull()
+    expect(heading('환자 요약')).toBeNull()
   })
 
-  it('AC-514.1·AC-514.3 저장에 성공했는데 다시 읽기가 실패하면 카드뿐이고, [다시 읽기]로 처방별·보고가 돌아온다', async () => {
+  it('AC-514.1·AC-514.3·AC-4403.1 저장에 성공했는데 다시 읽기가 실패하면 카드뿐이고, [다시 읽기]로 처방별·보고가 돌아온다', async () => {
     const port = fakeChrome()
     const hand = handWorker()
     draw()
@@ -1017,7 +1017,7 @@ describe('AC-514.6 읽기가 실패해도 방금 불러온 숫자는 보인다',
     await loadIsFree()
     expect(screen.queryByText('불러오는 중')).toBeNull()
     await hand.answerSplit(0, '가짜처방하나')
-    expect(heading('기간 요약')).toBeNull()
+    expect(heading('환자 요약')).toBeNull()
     expect(screen.queryByRole('group', { name: '보고 고르기' })).toBeNull()
 
     answers(SAVED_NOW)
@@ -1028,18 +1028,18 @@ describe('AC-514.6 읽기가 실패해도 방금 불러온 숫자는 보인다',
     expect(hand.splits).toHaveLength(1)
   })
 
-  it('AC-514.1 Worker를 못 만드는 브라우저에서도 저장된 숫자는 보인다', async () => {
+  it('AC-514.1·AC-4403.1 Worker를 못 만드는 브라우저에서도 저장된 숫자는 보인다', async () => {
     vi.mocked(createStatsWorker).mockImplementation(() => {
       throw new Error('가짜 실패')
     })
     draw()
     await sectionsShown()
-    expect(pageText()).toContain('하루 평균 환자 수')
+    expect(pageText()).toContain('하루 평균 내원')
   })
 })
 
 describe('AC-514.1 기간을 바꾼 읽기 실패', () => {
-  it('AC-514.1 앞 기간 숫자를 보이지 않고 오류 카드 + [다시 읽기]이며, 누르면 다시 그린다', async () => {
+  it('AC-514.1·AC-4403.1 앞 기간 숫자를 보이지 않고 오류 카드 + [다시 읽기]이며, 누르면 다시 그린다', async () => {
     draw()
     await sectionsShown()
     vi.mocked(readDays).mockRejectedValueOnce(new Error('가짜 실패'))
@@ -1047,7 +1047,7 @@ describe('AC-514.1 기간을 바꾼 읽기 실패', () => {
 
     const card = await screen.findByRole('alert')
     expect(card.textContent).toContain('오류 번호 E-STATS-READ-FAILED')
-    expect(heading('기간 요약')).toBeNull()
+    expect(heading('환자 요약')).toBeNull()
     expect(screen.queryByText('불러오는 중')).toBeNull()
     expect(pageText()).not.toContain('자료:')
     expect(pageText()).not.toContain('아직 저장된 통계가 없어요')
@@ -1060,7 +1060,7 @@ describe('AC-514.1 기간을 바꾼 읽기 실패', () => {
 })
 
 describe('AC-514.2 처방별 답은 그 기간·그 불러오기의 것만 쓴다', () => {
-  it('AC-514.2·AC-4003.1 기간을 바꾸면 그 기간 답이 올 때까지 앞 기간 처방 숫자를 보이지 않고 기다린다', async () => {
+  it('AC-514.2·AC-4003.1·AC-4408.2 기간을 바꾸면 그 기간 답이 올 때까지 앞 기간 처방 숫자를 보이지 않고 기다린다', async () => {
     const { hand } = await loadedWithSplit()
     pressPeriod('최근 7일')
     await waitFor(() => expect(hand.splits).toHaveLength(2))
@@ -1074,7 +1074,7 @@ describe('AC-514.2 처방별 답은 그 기간·그 불러오기의 것만 쓴�
     expect(screen.getByText('가짜처방둘')).toBeTruthy()
   })
 
-  it('AC-514.3·AC-4003.1 다시 불러오면 기간이 같아도 앞 불러오기의 처방 답을 쓰지 않고 새 답을 기다린다', async () => {
+  it('AC-514.3·AC-4003.1·AC-4408.2 다시 불러오면 기간이 같아도 앞 불러오기의 처방 답을 쓰지 않고 새 답을 기다린다', async () => {
     const { port, hand } = await loadedWithSplit()
     pressLoad(port)
     await waitFor(() => expect(hand.splits).toHaveLength(2))
@@ -1162,9 +1162,9 @@ describe('AC-514.6 일은 한 번에 하나', () => {
     expect(screen.queryByRole('button', { name: '다시 저장' })).toBeNull()
   })
 
-  it('AC-514.6 다시 저장하는 동안 "저장하는 중"이고 다시 눌러도 한 번만 보내며 새 숫자는 그대로 보인다', async () => {
+  it('AC-514.6·AC-4403.1 다시 저장하는 동안 "저장하는 중"이고 다시 눌러도 한 번만 보내며 새 숫자는 그대로 보인다', async () => {
     await saveFailedOnce()
-    await waitFor(() => expect(pageText()).toContain('32명'))
+    await waitFor(() => expect(pageText()).toContain('32건'))
     let finish: (answer: { saved: number }) => void = () => {}
     vi.mocked(saveStats).mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)))
     fireEvent.click(screen.getByRole('button', { name: '다시 저장' }))
@@ -1173,14 +1173,14 @@ describe('AC-514.6 일은 한 번에 하나', () => {
     expect(busy.getAttribute('aria-disabled')).toBe('true')
     fireEvent.click(busy)
     expect(saveStats).toHaveBeenCalledTimes(2)
-    expect(pageText()).toContain('32명')
-    expect(heading('기간 요약')).toBeTruthy()
+    expect(pageText()).toContain('32건')
+    expect(heading('환자 요약')).toBeTruthy()
 
     await act(async () => finish({ saved: 1 }))
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
   })
 
-  it('AC-514.6 다시 저장이 또 실패하면 카드와 새 숫자가 그대로이고 다시 누를 수 있다', async () => {
+  it('AC-514.6·AC-4403.1 다시 저장이 또 실패하면 카드와 새 숫자가 그대로이고 다시 누를 수 있다', async () => {
     await saveFailedOnce()
     vi.mocked(saveStats).mockRejectedValueOnce(new Error('가짜 실패'))
     fireEvent.click(screen.getByRole('button', { name: '다시 저장' }))
@@ -1188,7 +1188,7 @@ describe('AC-514.6 일은 한 번에 하나', () => {
     await loadIsFree()
     const retry = await screen.findByRole('button', { name: '다시 저장' })
     expect(retry.getAttribute('aria-disabled')).toBeNull()
-    expect(pageText()).toContain('32명')
+    expect(pageText()).toContain('32건')
   })
 
   it('AC-514.6 저장하지 못한 숫자가 남아 있는 동안의 확인 필요는 "전에 저장한 숫자"라고 하지 않는다', async () => {
@@ -1386,7 +1386,7 @@ describe('AC-514.10 폭별 배치', () => {
     expect(group.parentElement?.className).toContain('max-md:flex-col')
   })
 
-  it('AC-514.10·AC-801.2·AC-4411.1 기다리는 자리는 그린 화면과 같은 차례의 요약 + 카드 다섯이고, 카드는 나란히 놓지 않고 한 줄씩 쌓는다', () => {
+  it('AC-514.10·AC-801.2·AC-4411.1·AC-4408.2 기다리는 자리는 그린 화면과 같은 차례의 요약 + 카드 다섯이고, 카드는 나란히 놓지 않고 한 줄씩 쌓는다', () => {
     vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
     draw()
     const places = WAITING_TITLES.map(waitingCard)
@@ -1770,10 +1770,10 @@ describe('처방 골라 보기를 통계 탭에 넣기 (rx-picker)', () => {
     expect(picker().getByRole('combobox', { name: '처방 찾기' })).toBeTruthy()
   })
 
-  it('AC-801.2·AC-4003.1·AC-4411.1 기다리는 자리의 차례가 그린 자리와 같다', async () => {
+  it('AC-801.2·AC-4003.1·AC-4411.1·AC-4408.2 기다리는 자리의 차례가 그린 자리와 같다(환자 요약 · 매출 요약 · 카드 다섯)', async () => {
     vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
     draw()
-    expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual(PLACES.map(([, title]) => title))
+    expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual(WAITING_TITLES)
     expect(waitingCard('처방').textContent).toContain('불러오는 중')
   })
 
@@ -1856,7 +1856,7 @@ describe('처방 골라 보기를 통계 탭에 넣기 (rx-picker)', () => {
     await waitFor(() => expect(wideReads()).toBe(2))
   })
 
-  it('AC-812.3·AC-4003.1 고른 처방을 읽지 못하면 오류 카드는 이 칸(셋째 탭)에만 있고 다른 칸·기간 단추·다른 오류 카드는 그대로다', async () => {
+  it('AC-812.3·AC-4003.1·AC-4403.1 고른 처방을 읽지 못하면 오류 카드는 이 칸(셋째 탭)에만 있고 다른 칸·기간 단추·다른 오류 카드는 그대로다', async () => {
     vi.mocked(readRxPicks).mockRejectedValue(new Error('가짜 실패'))
     draw()
     await sectionsShown()
@@ -1867,7 +1867,7 @@ describe('처방 골라 보기를 통계 탭에 넣기 (rx-picker)', () => {
     expect(again).toHaveLength(1)
     expect(rxPanel('처방 골라 보기').contains(again[0]!)).toBe(true)
     expect(placesShown()).toEqual(PLACES)
-    expect(pageText()).toContain('하루 평균 환자 수')
+    expect(pageText()).toContain('하루 평균 내원')
     expect(pageText()).not.toContain('아직 고른 처방이 없어요')
     pressPeriod('최근 7일')
     await sectionsShown()
@@ -3167,14 +3167,14 @@ describe('REQ-4002·REQ-4003·REQ-4411: 바로가기 띠 · 처방 탭', () => {
     for (const name of ['처방별 추세', ...RX_TABS]) expect(titles, name).not.toContain(name)
   })
 
-  it('AC-4411.1·AC-4003.1: 불러오는 중 자리도 같은 차례의 제목이고 자리마다 "불러오는 중" 한 줄이다', () => {
+  it('AC-4411.1·AC-4003.1·AC-4408.2: 불러오는 중 자리도 같은 차례의 제목이고 자리마다 "불러오는 중" 한 줄이다', () => {
     vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
     draw()
     expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual(WAITING_TITLES)
     expect(screen.getAllByText('불러오는 중')).toHaveLength(WAITING_TITLES.length)
   })
 
-  it('AC-4411.2·AC-4002.1·AC-4002.6: 바로가기 띠는 기간 줄 바로 다음이고 화면 바깥 div의 바로 아래 자식이며, 링크 여섯의 href가 그 자리 section의 id다', async () => {
+  it('AC-4411.2·AC-4002.1·AC-4002.6·AC-4403.1: 바로가기 띠는 기간 줄 바로 다음이고 화면 바깥 div의 바로 아래 자식이며, 링크 여섯의 href가 그 자리 section의 id다', async () => {
     draw()
     await sectionsShown()
     const nav = toc()!
@@ -3188,7 +3188,7 @@ describe('REQ-4002·REQ-4003·REQ-4411: 바로가기 띠 · 처방 탭', () => {
     expect(periodLine.contains(screen.getByRole('group', { name: '기간 골라 보기' }))).toBe(true)
     expect(periodLine.parentElement).toBe(outer)
     expect(nav.previousElementSibling).toBe(periodLine)
-    expect(nav.compareDocumentPosition(sectionOf('기간 요약')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(nav.compareDocumentPosition(sectionOf('환자 요약')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
     const links = within(nav).getAllByRole('link')
     expect(links.map((link) => link.textContent)).toEqual(TOC.map(([name]) => name))
@@ -3220,7 +3220,7 @@ describe('REQ-4002·REQ-4003·REQ-4411: 바로가기 띠 · 처방 탭', () => {
     }
   })
 
-  it('AC-4002.1·AC-4002.6: 읽는 동안·읽기 실패에는 목차 띠가 없고, 불러오는 중 칸에는 id가 없다', async () => {
+  it('AC-4002.1·AC-4002.6·AC-4408.2: 읽는 동안·읽기 실패에는 목차 띠가 없고, 불러오는 중 칸에는 id가 없다', async () => {
     vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
     const first = draw()
     expect(toc()).toBeNull()
@@ -3252,11 +3252,11 @@ describe('REQ-4002·REQ-4003·REQ-4411: 바로가기 띠 · 처방 탭', () => {
     expect(within(toc()!).getAllByRole('link')).toHaveLength(TOC.length)
   })
 
-  it('AC-4002.1(기본값 14): 목차 띠 아래 첫 칸(기간 요약)의 위 여백만 줄인다(24px · 휴대폰 20px)', async () => {
+  it('AC-4002.1(기본값 14)·AC-4403.1: 목차 띠 아래 첫 칸(기간 요약)의 위 여백만 줄인다(24px · 휴대폰 20px)', async () => {
     draw()
     await sectionsShown()
-    const grid = sectionOf('기간 요약').parentElement!
-    expect(grid.firstElementChild).toBe(sectionOf('기간 요약'))
+    const grid = sectionOf('환자 요약').parentElement!
+    expect(grid.firstElementChild).toBe(sectionOf('환자 요약'))
     expect(grid.className.split(' ')).toEqual(expect.arrayContaining(['[&>:first-child]:mt-6', 'max-md:[&>:first-child]:mt-5']))
   })
 
@@ -3369,15 +3369,16 @@ describe('stats-revenue: 매출 카드 · 바로가기 여섯 · 불러오기 �
   const READING_LINE = '비트 PC에서 읽는 중이에요 (환자·처방 저장 끝 · 매출 읽는 중). 다 끝날 때까지 이 창을 닫지 마세요.'
   const OLD_HELPER = '도우미가 예전 판이라 치료별 매출은 읽지 못했어요.'
   const EMPTY_LINE = '자료 없음 · 불러오면 이 기간의 매출이 하루씩 막대로 그려져요.'
-  const WORK_CELLS = ['매출300만원진료한 날 1일 평균 300만 원', '건당 진료비42,857원매출 ÷ 접수 70건', '확인 필요한 날없음', '비교 기간보다–비교할 자료가 없어요']
-  const BLANK_CELLS = ['매출–자료 없음', '건당 진료비–자료 없음', '확인 필요한 날–자료 없음', '비교 기간보다–자료 없음']
+  // 매출 요약 칸 셋(first90 AC-4408.2, 옛 기간 요약 둘째 줄)
+  const WORK_CELLS = ['총매출300만원비교할 자료가 없어요진료한 날 1일 · 하루 평균 300만 원', '건당 진료비매출 ÷ 접수 70건42,857원비교할 자료가 없어요', '확인 필요한 날없음']
+  const BLANK_CELLS = ['총매출–자료 없음', '건당 진료비–자료 없음', '확인 필요한 날–자료 없음']
   const DONE_TODAY = '2020년 1월 1일 – 2026년 11월 13일을 저장했어요.'
   const WHOLE_ALL: DateRange = { from: '2020-01-01', to: TODAY }
 
   const revenueSent = (port: FakePort) => port.sent.filter((message) => message.cmd === 'revenue.days')
   const rowsSent = (port: FakePort) => port.sent.filter((message) => message.cmd === 'stats.rows')
-  // 기간 요약 둘째 줄(매출 네 칸) = 기간 요약 칸 안 둘째 격자
-  const revenueRow = () => sectionOf('기간 요약').querySelectorAll('.grid')[1] as HTMLElement | undefined
+  // 매출 요약 칸 셋 = 매출 요약 카드 안 격자(first90 AC-4408.2)
+  const revenueRow = () => (heading('매출 요약')?.closest('section')?.querySelector('.grid') ?? undefined) as HTMLElement | undefined
   const revenueCellsText = () => [...(revenueRow()?.children ?? [])].map((cell) => cell.textContent)
   const failBox = () => (screen.queryByText(FAIL_TITLE)?.closest('[role="status"]') ?? null) as HTMLElement | null
   const wholeReads = (whole: DateRange) => revenueStore.loadDays.mock.calls.filter(([range]) => range.from === whole.from && range.to === whole.to).length
@@ -3412,11 +3413,11 @@ describe('stats-revenue: 매출 카드 · 바로가기 여섯 · 불러오기 �
     return { port, connect }
   }
 
-  it('AC-4109.1·AC-4107.1·AC-4411.1: 매출 카드는 환자 카드 다음 · 처방 카드 앞이다. 불러오는 중 자리도 같은 차례다', async () => {
+  it('AC-4109.1·AC-4107.1·AC-4411.1·AC-4408.2: 매출 카드는 환자 카드 다음 · 처방 카드 앞이다. 불러오는 중 자리도 같은 차례다', async () => {
     vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
     const first = draw()
     expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual(WAITING_TITLES)
-    expect(WAITING_TITLES.slice(1, 4)).toEqual(['환자', '매출', '처방'])
+    expect(WAITING_TITLES.slice(2, 5)).toEqual(['환자', '매출', '처방'])
     expect(screen.getAllByText('불러오는 중')).toHaveLength(WAITING_TITLES.length)
     expect(waitingCard('매출').id).toBe('')
     first.unmount()
@@ -3439,7 +3440,7 @@ describe('stats-revenue: 매출 카드 · 바로가기 여섯 · 불러오기 �
     expect(titleOf(card('stats-revenue'))).toBe('매출')
   })
 
-  it('AC-4108.2·AC-4106.1: 열면 저장된 매출로 기간 요약 둘째 줄과 매출 칸을 그리고, 열기만 해서는 비트에서 매출을 읽지 않는다', async () => {
+  it('AC-4108.2·AC-4106.1·AC-4408.2: 열면 저장된 매출로 기간 요약 둘째 줄과 매출 칸을 그리고, 열기만 해서는 비트에서 매출을 읽지 않는다', async () => {
     revenueDb.set('2026-11-02', { ...workDay('2026-11-02'), dayCodes: true })
     const { port } = await ready()
     await waitFor(() => expect(revenueCellsText()).toEqual(WORK_CELLS))
@@ -3450,13 +3451,13 @@ describe('stats-revenue: 매출 카드 · 바로가기 여섯 · 불러오기 �
     expect(revenueStore.saveRange).not.toHaveBeenCalled()
   })
 
-  it('AC-4106.3: 저장된 매출이 없는 기간은 둘째 줄 네 칸이 `–` · `자료 없음`이고 매출 칸은 한 줄이다', async () => {
+  it('AC-4106.3·AC-4408.2: 저장된 매출이 없는 기간은 둘째 줄 네 칸이 `–` · `자료 없음`이고 매출 칸은 한 줄이다', async () => {
     await ready()
     expect(revenueCellsText()).toEqual(BLANK_CELLS)
     expect(card('stats-revenue').textContent).toBe(`매출${EMPTY_LINE}`)
   })
 
-  it('AC-4108.7: 비트 PC가 아닌 기기(확장 없음)는 저장된 매출만 보이고 비트 매출 읽기·저장이 없다', async () => {
+  it('AC-4108.7·AC-4408.2: 비트 PC가 아닌 기기(확장 없음)는 저장된 매출만 보이고 비트 매출 읽기·저장이 없다', async () => {
     revenueDb.set('2026-11-02', { ...workDay('2026-11-02'), dayCodes: true })
     draw()
     await sectionsShown()
@@ -3466,7 +3467,7 @@ describe('stats-revenue: 매출 카드 · 바로가기 여섯 · 불러오기 �
     expect(revenueStore.loadDays.mock.calls.map(([range]) => range)).toEqual(revenueStore.loadDays.mock.calls.map(() => readSpan(R30)))
   })
 
-  it('AC-4108.2·AC-4108.6: [비트에서 불러오기]는 통계 조각 저장이 끝난 뒤에만 같은 통로로 revenue.days를 묻고(두 번째 연결 없음), 저장한 뒤 다시 읽은 숫자로 둘째 줄과 매출 칸을 그린다', async () => {
+  it('AC-4108.2·AC-4108.6·AC-4408.2: [비트에서 불러오기]는 통계 조각 저장이 끝난 뒤에만 같은 통로로 revenue.days를 묻고(두 번째 연결 없음), 저장한 뒤 다시 읽은 숫자로 둘째 줄과 매출 칸을 그린다', async () => {
     const { port, connect } = await ready()
     port.revenueReply = (range) => ({ type: 'result', data: revenueAnswer(range, workDay) })
     expect(revenueCellsText()).toEqual(BLANK_CELLS)
@@ -3660,7 +3661,7 @@ describe('stats-revenue: 매출 카드 · 바로가기 여섯 · 불러오기 �
     expect(note.compareDocumentPosition(within(card('stats-revenue')).getByRole('tablist', { name: '매출 보기' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('AC-4107.1·AC-4107.9: 매출 칸의 [다시 읽기]는 저장된 매출만 다시 읽는다(통계 숫자는 다시 읽지 않는다)', async () => {
+  it('AC-4107.1·AC-4107.9·AC-4408.2: 매출 칸의 [다시 읽기]는 저장된 매출만 다시 읽는다(통계 숫자는 다시 읽지 않는다)', async () => {
     revenueStore.loadDays.mockRejectedValueOnce(new Error('가짜 실패'))
     draw()
     await sectionsShown()

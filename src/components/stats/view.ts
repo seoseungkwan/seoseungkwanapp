@@ -8,7 +8,7 @@ import { buildTrend, comparisonRange } from '@/lib/analytics/rxTrend'
 import type { Delta, TrendBucket, TrendPoint } from '@/types/analysis'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
-import { pickRange, type StatsChoice } from './periodPick'
+import { hasFinal, pickRange, type StatsChoice } from './periodPick'
 
 // 통계 화면의 숫자 (stats REQ-511, design.md TASK-11). 입력은 일 숫자와 덮은 기간뿐이고 저장된 달 줄은 읽지 않는다.
 // 순수 함수다. 날짜는 lib/analytics/dates.ts, 증감은 compareNumbers, 처방 건수는 buildTrend, 대시보드 view의 함수는 불러 쓰기만 한다.
@@ -40,15 +40,22 @@ export type StatsRange = {
 // days·covered는 저장 모양과 readCoverage가 준 덮은 기간이다
 export type StatsInput = { days: readonly DayPayload[]; covered: readonly DateRange[]; range: StatsRange }
 
-// 값이 null이면 화면의 값 자리는 "–"이고 아래 글(note)이 까닭이다. partial = '일부 기간' 표시.
-// 넷째 칸(compare)은 value가 늘 null이고 delta가 값이다(delta null = 비교할 자료가 없음)
+// 환자 요약 칸 넷(first90 REQ-4403): 하루(한 달) 평균 내원 · 신환 · 90일초진 · 재진.
+// value가 null이면 화면의 값 자리는 "–"이고 note가 까닭이다('자료 없음', 90일초진 확인 불가는 옛 도우미 글). 값이 있으면 note는 ''이다.
+// hint = 이름 옆 옅은 글(값이 null이면 null), unit = 값 뒤 작은 단위, partial = '일부 기간' 표시.
+// delta = 칸 안 증감 줄(견줄 수 없으면 unavailable, 고른 기간의 신환·90일초진·재진은 null), delta2 = 고른 기간 평균 칸의 작년 비교 둘째 줄(없으면 null).
+// unknown = 90일초진을 셀 수 없음(보는 기간에 first90이 없는 날이 있음, AC-4403.3). 그때 재진 값은 90일초진 포함이다
 export type SummaryCell = {
-  key: 'average' | 'new' | 'returning' | 'compare' | 'lastYear' // lastYear = 둘째 비교 칸(고른 기간의 작년 같은 기간)
+  key: 'average' | 'new' | 'first90' | 'returning'
   label: string
+  hint: string | null
   value: number | null
+  unit: '건' | '명'
   note: string
   partial: boolean
   delta: Delta | null
+  delta2: { label: string; delta: Delta } | null
+  unknown: boolean
 }
 
 // kind 이름은 대시보드 RateCell과 같다. value 0~1. within·cohort = 비율을 낸 두 합, excluded = 값이 null이라 뺀 칸이 있음
@@ -90,10 +97,7 @@ type RevisitKey = 'within7' | 'within14' | 'within30'
 const DAY_COUNT: Record<DayPeriod, Period> = { '7d': 7, '30d': 30, '90d': 90 }
 export const PERIOD_NAME: Record<StatsPeriod, string> = { '7d': '최근 7일', '30d': '최근 30일', '90d': '최근 90일', '12m': '최근 12개월' }
 export const COMPARE_NAME: Record<StatsPeriod, string> = { '7d': '지난 7일', '30d': '지난 30일', '90d': '지난 90일', '12m': '작년 같은 12달' }
-// 짝을 빼고 견줄 때의 비교 쪽 이름. COMPARE_NAME은 칸 수를 말해서('작년 같은 12달') 남은 칸 수와 어긋난다
-const PAIR_NAME: Record<StatsRange['grain'], string> = { day: '지난 기간', month: '작년' }
 const AVERAGE_UNIT: Record<StatsRange['grain'], string> = { day: '하루', month: '한 달' }
-const CELL_UNIT: Record<StatsRange['grain'], string> = { day: '일', month: '달' }
 const DETAIL_BUCKET: Record<StatsPeriod, TrendBucket> = { '7d': 'day', '30d': 'day', '90d': 'week', '12m': 'month' }
 const YEAR_MONTHS = 12
 const TICK_DAYS = 31 // 고른 기간 일별 눈금: 31일 이하는 30일 기간의 눈금(7일마다), 넘으면 90일 기간의 눈금(21일마다)
@@ -108,7 +112,6 @@ const NO_RATE: StatsRateCell = { kind: 'none' }
 const IN_PROGRESS: StatsRateCell = { kind: 'in-progress' }
 const UNAVAILABLE: Delta = { kind: 'unavailable' }
 const NO_DATA = '자료 없음'
-const NO_COMPARE = '비교할 자료가 없어요'
 
 const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 const sum = <T>(list: readonly T[], of: (item: T) => number) => list.reduce((total, item) => total + of(item), 0)
@@ -180,7 +183,8 @@ export function periodDesc(desc: string, range: StatsRange): string {
 
 // ── 칸(일 기간은 날, 12개월은 달) ─────────────────────────
 
-type Cell = { key: string; patients: number; newPatients: number; returning: number; partial: boolean }
+// first90 = 칸의 모든 줄에 first90이 있을 때만 그 합(아니면 null). returningWith90 = 줄마다 returning + (first90 ?? 0)의 합(옛 도우미 날의 재진과 같은 셈)
+type Cell = { key: string; patients: number; newPatients: number; returning: number; first90: number | null; returningWith90: number; partial: boolean }
 
 // 달마다 덜 끝났는지. buildTrend 달 점 그대로다(달이 끝나지 않았거나, 덮이지 않은 날이나 덜 끝난 일 줄이 있다)
 function monthStates({ days, covered }: StatsInput, span: DateRange): { month: string; partial: boolean }[] {
@@ -194,6 +198,8 @@ function cellOfRows(key: string, rows: readonly DayPayload[], partial: boolean):
     patients: sum(rows, (row) => row.totals.patients),
     newPatients: sum(rows, (row) => row.totals.newPatients),
     returning: sum(rows, (row) => row.totals.returning),
+    first90: rows.every((row) => typeof row.totals.first90 === 'number') ? sum(rows, (row) => row.totals.first90 ?? 0) : null,
+    returningWith90: sum(rows, (row) => row.totals.returning + (row.totals.first90 ?? 0)),
     partial,
   }
 }
@@ -224,68 +230,98 @@ const cellsIn = (slots: readonly Slot[]) => slots.flatMap((slot) => (slot.cell =
 
 const flooredAverage = (cells: readonly Cell[]) => (cells.length === 0 ? null : Math.floor(sum(cells, (cell) => cell.patients) / cells.length))
 
-// ── 기간 요약 ────────────────────────────────────────────
+// ── 환자 요약 (first90 REQ-4403) ──────────────────────────
 
-function totalCell(key: 'new' | 'returning', label: string, cells: readonly Cell[], of: (cell: Cell) => number): SummaryCell {
+const SUMMARY_DESC = '접수 기준 · 같은 분이 여러 번 오면 여러 건'
+const OLD_FIRST90 = '예전 도우미(0.6.0)는 90일초진을 따로 세지 못해요. 지금은 재진에 들어 있어요.'
+
+/** 환자 요약 옆 글(AC-4403.1): '접수 기준 · 같은 분이 여러 번 오면 여러 건 · 증감은 {비교 이름}과/와 비교' */
+export function summaryDesc(range: StatsRange): string {
+  const name = range.previous.name
+  return `${SUMMARY_DESC} · 증감은 ${name}${hasFinal(name) ? '과' : '와'} 비교`
+}
+
+// 보는 기간의 모든 날 줄에 first90이 있는지(도우미 v4). 줄이 없으면 참이다(확인 불가가 아니라 '자료 없음')
+const knowsFirst90 = (input: StatsInput) => rowsIn(input.days, input.range.current).every((row) => typeof row.totals.first90 === 'number')
+
+// 짝이 끝난 칸끼리(빠르게 보기의 증감). 고른 기간은 짝 짓지 않아 null이다
+type Paired = { now: readonly Cell[]; before: readonly Cell[] }
+
+const averageDelta = (now: number | null, before: number | null): Delta => (now === null || before === null ? UNAVAILABLE : compareNumbers(now, before))
+
+// 합 증감: 짝이 끝난 칸끼리의 합을 견준다. 어느 쪽이든 칸이 없거나, 셀 수 없는 칸(of가 null)이 있으면 견줄 수 없다
+function sumDelta(paired: Paired, of: (cell: Cell) => number | null): Delta {
+  if (paired.now.length === 0 || paired.before.length === 0) return UNAVAILABLE
+  const total = (cells: readonly Cell[]) => {
+    let n = 0
+    for (const cell of cells) {
+      const value = of(cell)
+      if (value === null) return null
+      n += value
+    }
+    return n
+  }
+  return averageDelta(total(paired.now), total(paired.before))
+}
+
+function averageCell(label: string, value: number | null, basis: string, delta: Delta, delta2: SummaryCell['delta2']): SummaryCell {
+  return { key: 'average', label, hint: value === null ? null : basis, value, unit: '건', note: value === null ? NO_DATA : '', partial: false, delta, delta2, unknown: false }
+}
+
+function countCell(key: 'new' | 'first90' | 'returning', label: string, hint: string, unit: SummaryCell['unit'], cells: readonly Cell[], of: (cell: Cell) => number, delta: Delta | null): SummaryCell {
   const none = cells.length === 0
-  return { key, label, value: none ? null : sum(cells, of), note: none ? NO_DATA : '기간 합계', partial: cells.some((cell) => cell.partial), delta: null }
+  return { key, label, hint: none ? null : hint, value: none ? null : sum(cells, of), unit, note: none ? NO_DATA : '', partial: cells.some((cell) => cell.partial), delta, delta2: null, unknown: false }
 }
 
-// 넷째 칸. finished는 평균 칸에 든 칸이고 comparedNow는 그 가운데 짝도 끝난 칸이라, 둘의 수가 다르면 평균 칸과 다른 칸으로 견준 것이다
-function compareCell(range: StatsRange, finished: readonly Cell[], comparedNow: readonly Cell[], comparedBefore: readonly Cell[]): SummaryCell {
-  const now = flooredAverage(comparedNow)
-  const before = flooredAverage(comparedBefore)
-  const label = '비교 기간보다'
-  if (now === null || before === null) return { key: 'compare', label, value: null, note: NO_COMPARE, partial: false, delta: null }
-  const note =
-    comparedNow.length < finished.length
-      ? `견준 ${formatCount(comparedNow.length)}${CELL_UNIT[range.grain]} 평균 · 이번 ${formatCount(now)}명 · ${PAIR_NAME[range.grain]} ${formatCount(before)}명`
-      : `${range.previous.name} ${AVERAGE_UNIT[range.grain]} 평균 ${formatCount(before)}명`
-  return { key: 'compare', label, value: null, note, partial: false, delta: compareNumbers(now, before) }
+// 신환·90일초진·재진. 합에는 덜 끝난 칸도 넣는다(일부 기간 표시). 90일초진을 셀 수 있으면 재진 = returning이고, 증감은 짝 칸 모두에 first90이 있을 때만 낸다
+// (비교 쪽 재진에 90일초진이 섞이면 지어낸 줄어듦이 된다). 셀 수 없으면 90일초진은 확인 불가이고 재진 = returning + first90(양쪽 같은 셈)이다(AC-4403.3)
+function countCells(current: readonly Cell[], known: boolean, paired: Paired | null): SummaryCell[] {
+  const delta = (of: (cell: Cell) => number | null) => (paired === null ? null : sumDelta(paired, of))
+  const first90: SummaryCell = known
+    ? countCell('first90', '90일초진', '90일 넘어 다시 온 내원', '건', current, (cell) => cell.first90 ?? 0, delta((cell) => cell.first90))
+    : { key: 'first90', label: '90일초진', hint: null, value: null, unit: '건', note: OLD_FIRST90, partial: false, delta: null, delta2: null, unknown: true }
+  const returning = known
+    ? countCell('returning', '재진', '그 밖의 내원', '건', current, (cell) => cell.returning, delta((cell) => (cell.first90 === null ? null : cell.returning)))
+    : countCell('returning', '재진', '90일초진 포함', '건', current, (cell) => cell.returningWith90, delta((cell) => cell.returningWith90))
+  return [countCell('new', '신환', '처음 온 환자', '명', current, (cell) => cell.newPatients, delta((cell) => cell.newPatients)), first90, returning]
 }
 
-// 평균 칸은 끝난 칸 전체의 평균이다. 증감은 짝이 모두 끝난 칸끼리만 낸다(stats-core 007.1 '완전한 칸끼리만 증감', AC-511.6과 같은 규칙). 신환·재진 합에는 덜 끝난 칸도 넣는다.
-// 두 기간의 자리 수는 같다(날 N개끼리, 달 12개끼리)
+// 평균 칸은 끝난 칸 전체의 평균이다. 증감은 짝이 모두 끝난 칸끼리만 낸다(stats-core 007.1 '완전한 칸끼리만 증감', AC-511.6과 같은 규칙):
+// 평균은 그 칸들의 버린 평균끼리, 신환·90일초진·재진은 그 칸들의 합끼리. 두 기간의 자리 수는 같다(날 N개끼리, 달 12개끼리)
 export function summaryCells(input: StatsInput): SummaryCell[] {
   const { range } = input
   if (range.period === null) return pickSummaryCells(input)
   const now = slotsOf(input, range.current)
   const before = slotsOf(input, range.previous)
-  const paired = (_: Slot, i: number) => !now[i].unfinished && !before[i].unfinished
+  const isPaired = (_: Slot, i: number) => !now[i].unfinished && !before[i].unfinished
+  const paired: Paired = { now: cellsIn(now.filter(isPaired)), before: cellsIn(before.filter(isPaired)) }
   const current = cellsIn(now)
   const finished = current.filter((cell) => !cell.partial)
   const average = flooredAverage(finished)
   const basis = range.grain === 'month' ? `끝난 달 ${formatCount(finished.length)}달 평균` : `진료한 날 ${formatCount(finished.length)}일 평균`
   return [
-    { key: 'average', label: `${AVERAGE_UNIT[range.grain]} 평균 환자 수`, value: average, note: average === null ? NO_DATA : basis, partial: false, delta: null },
-    totalCell('new', '신환', current, (cell) => cell.newPatients),
-    totalCell('returning', '재진', current, (cell) => cell.returning),
-    compareCell(range, finished, cellsIn(now.filter(paired)), cellsIn(before.filter(paired))),
+    averageCell(`${AVERAGE_UNIT[range.grain]} 평균 내원`, average, basis, averageDelta(flooredAverage(paired.now), flooredAverage(paired.before)), null),
+    ...countCells(current, knowsFirst90(input), paired),
   ]
 }
 
-// 고른 기간의 비교 칸 하나. 날 수가 달라 짝 짓지 않고 기간마다 끝난 날 평균(버림)을 낸다.
+// 고른 기간의 비교 하나. 날 수가 달라 짝 짓지 않고 기간마다 끝난 날 평균(버림)을 낸다.
 // 비교 기간에 끝나지 않은 날(줄 없고 덮지 않음, partial 줄)이 하루라도 있거나 진료한 날이 없으면 견주지 않는다(0이 아니다)
-function pickCompareCell(input: StatsInput, key: 'compare' | 'lastYear', span: CompareRange, average: number | null): SummaryCell {
+function pickDelta(input: StatsInput, span: CompareRange, average: number | null): Delta {
   const slots = slotsOf(input, span)
-  const before = slots.some((slot) => slot.unfinished) ? null : flooredAverage(cellsIn(slots))
-  const label = `${span.name}보다`
-  if (before === null) return { key, label, value: null, note: `${span.label} 자료가 없어요`, partial: false, delta: null }
-  return { key, label, value: null, note: `${span.label} 하루 평균 ${formatCount(before)}명`, partial: false, delta: average === null ? null : compareNumbers(average, before) }
+  return averageDelta(average, slots.some((slot) => slot.unfinished) ? null : flooredAverage(cellsIn(slots)))
 }
 
-// 고른 기간(AC-1704.1·AC-1704.2): 평균·신환·재진 + 비교마다 한 칸('compare' = 바로 전, 'lastYear' = 작년). 고른 기간은 늘 일 칸이다
+// 고른 기간(AC-1704.1·AC-1704.2, first90 AC-4403.2): 평균 칸에만 증감이 있다(delta = 바로 전, delta2 = 작년 같은 기간). 고른 기간은 늘 일 칸이다
 function pickSummaryCells(input: StatsInput): SummaryCell[] {
   const { range } = input
   const current = cellsIn(slotsOf(input, range.current))
   const finished = current.filter((cell) => !cell.partial)
   const average = flooredAverage(finished)
+  const delta2 = range.lastYear === null ? null : { label: `${range.lastYear.name}보다`, delta: pickDelta(input, range.lastYear, average) }
   return [
-    { key: 'average', label: '하루 평균 환자 수', value: average, note: average === null ? NO_DATA : `진료한 날 ${formatCount(finished.length)}일 평균`, partial: false, delta: null },
-    totalCell('new', '신환', current, (cell) => cell.newPatients),
-    totalCell('returning', '재진', current, (cell) => cell.returning),
-    pickCompareCell(input, 'compare', range.previous, average),
-    ...(range.lastYear === null ? [] : [pickCompareCell(input, 'lastYear', range.lastYear, average)]),
+    averageCell('하루 평균 내원', average, `진료한 날 ${formatCount(finished.length)}일 평균`, pickDelta(input, range.previous, average), delta2),
+    ...countCells(current, knowsFirst90(input), null),
   ]
 }
 

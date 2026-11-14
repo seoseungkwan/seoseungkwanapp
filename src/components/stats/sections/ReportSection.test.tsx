@@ -340,6 +340,13 @@ describe('AC-1707.1·AC-1707.3·AC-1707.4: [고른 기간 보고]', () => {
     expect(screen.getByRole('button', { name: /복사/ }).getAttribute('aria-disabled')).toBe('true')
   })
 
+  it('AC-4403.4: 모든 날에 90일초진이 있는 고른 기간 글(신환·90일초진·재진)도 글 그대로 한 덩이로 보인다', () => {
+    const text = '2026년 10월 1일 – 31일 환자는 하루 평균 42명, 신환 120명·90일초진 60명·재진 920명입니다. 하루 평균은 9월보다 3명(7.6%) 늘었습니다.'
+    drawPick(data(), { label: '2026년 10월 1일 – 31일', text })
+    expect(screen.getByText(text)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /복사/ }).getAttribute('aria-disabled')).toBeNull()
+  })
+
   it('AC-1707.4: 비트 자료도 고른 기간도 없으면(report null, pick null) 지금처럼 안내 한 줄뿐이다', () => {
     drawPick(null, null)
     expect(screen.queryByRole('group', { name: '보고 고르기' })).toBeNull()
