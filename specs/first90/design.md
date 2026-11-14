@@ -124,9 +124,9 @@ ORDER BY v.PatientId,v.VisitDay
 - 대비: 글자 `#172B4D` 14.1:1, `#5B6B82` 5.43:1, `#975A16` 5.54:1(흰 바탕). `#B7791F`·`#6B89BF`·`#0D9488`은 그림·막대에만 쓰고 작은 글자에는 쓰지 않는다.
 
 ### 5-2. 규칙 예외 (사용자 승인 시안, 2026-11-14)
-- 예외 파일: `src/components/stats/**`, `src/components/revenue/**`(시험 파일 빼고), `src/components/charts/DonutChart.tsx`·`StackedBarChart.tsx`·`InlineBar.tsx`.
+- 예외 파일: `src/components/stats/**`, `src/components/revenue/**`(시험 파일 빼고), `src/components/charts/DonutChart.tsx`·`StackedBarChart.tsx`·`InlineBar.tsx`·`ChartLegend.tsx`(범례 색 표시).
 - 허용하는 것(이 파일들에서만):
-  - 화면 폭 접두사 `min-[1100px]:`·`min-[1200px]:`·`max-[1199px]:`·`max-[379px]:`.
+  - 화면 폭 접두사 `min-[1100px]:`·`min-[1200px]:`·`max-[1200px]:`·`max-[380px]:`(Tailwind 4의 `max-[N]:`은 N 미만).
   - 모서리 `rounded-st`·`rounded-st-sm`·`rounded-full`(스위치·꼬리표만), 그림자 `shadow-st-card`.
   - 글자 `text-st-15`·`text-st-17`·`text-st-18`·`text-st-22`·`text-st-34`·`text-st-40`과 `text-st-*`·`bg-st-*`·`border-st-*` 색.
   - 움직임은 Tailwind `animate-*`·`transition*` 클래스가 아니라 `globals.css`의 이름 붙은 클래스(`st-move-period`·`st-move-heat`·`st-move-toggle`·`st-donut`·`st-rise`·`st-tag-in`·`st-flash`)로만 한다. `@keyframes`는 `st-donut`·`st-rise`·`st-in` 셋을 더한다.
@@ -150,11 +150,12 @@ ORDER BY v.PatientId,v.VisitDay
   - 선택 props: `motion?: boolean`(true면 막대에 `st-move-period`, 빗금 조각에 `st-rise`), `selected?: string`(고른 칸 키 표시), `onPick?: (key: string) => void`(칸을 누름·올림). 주지 않으면 지금 마크업 그대로다(대시보드·preview 그대로).
   - 차트 안에는 hooks가 없다. 고른 칸 상태와 아래 줄 글(`role="status"`)은 통계 칸이 갖는다.
 - `InlineBar`: 선택 prop `motion?: boolean`(true면 `st-move-period`). 주지 않으면 지금 마크업 그대로다.
+- `ChartLegend`: `LegendItem.mark`에 `'f90'`·`'ret'`(색 칸)·`'rough'`(참고 금액 빗금)·`'unchecked'`(점선 칸)를 더한다. 쌓은 막대 계열 tone을 그대로 범례 표시로 넘길 수 있다(대시보드 미리보기 포함). 지금 표시는 그대로다.
 - `DonutChart({ slices: { name, value, tone }[], center: [string, string], motion?: boolean })`: svg 원 조각, `aria-hidden`. 화면 읽기용 값은 범례 글이 맡는다.
 - `stats/trendSeries.ts`: `trendSeries(known: boolean): BarSeries[]` — known이면 신환(accent)·90일초진(f90)·재진(ret), 아니면 신환·"재진(90일초진 포함)"(ret). 통계 일별 내원과 대시보드 기간별 흐름이 같이 쓴다. `parts.tsx TREND_SERIES`는 처방 자세히 차트(`RxPickDetail`·`TreatmentDetail`)가 계속 쓰므로 그대로 둔다.
 
 ### 5-5. 틀·카드 (`parts.tsx`·`StatsSections.tsx`)
-- `StatsCard({ id, title, desc, action, children })`: `section`(`rounded-st bg-white shadow-st-card`) + h2 + 옆 글 + 오른쪽 자리. `id`는 바로가기 자리이고 `TOC_SCROLL`을 붙인다.
+- `StatsCard({ id, title, desc, action, children })`: `section`(`rounded-st bg-surface shadow-st-card`) + h2 + 옆 글 + 오른쪽 자리. `id`는 바로가기 자리이고 `TOC_SCROLL`을 붙인다.
 - `StatsCard` 안의 `Section`은 h3 작은 칸으로 그린다(문맥 `CardContext`). 칸 사이는 얇은 선(`border-st-line`)뿐이다. 카드 밖에서 그리는 `Section`(각 칸 시험)은 지금처럼 h2다.
 - 카드에 칸이 하나뿐이고 칸 제목이 카드 제목과 같으면(매출·처방·보고) 칸 머리를 따로 그리지 않는다. 칸의 옆 글·오른쪽 단추는 카드 머리 자리에 그린다(지금 탭 패널 방식과 같다). 제목이 두 번 나오지 않는다.
 - `HowCounted`는 그대로 쓰고, 긴 설명 글은 그 칸의 "어떻게 세나요?" 안으로 옮긴다(AC-4411.4).

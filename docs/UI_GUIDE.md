@@ -143,7 +143,7 @@
 - 화면 폭 기준은 768px·1024px 두 개다. 휴대폰 값을 먼저 쓰고 넓어지면서 바꾼다
   - Tailwind: `md:`(768)·`lg:`(1024)·`max-md:`·`max-lg:`만 쓴다. `sm:`·`xl:`은 쓰지 않는다
   - 예외 하나(stats-pc-ux): 통계 '환자 구성' 세 열(`src/components/stats/sections/PatientMixSection.tsx`)만 1280px 경계 `min-[80rem]:`을 쓴다(1024~1279px 두 열 → 1280px 이상 세 열). 규칙 시험 예외 목록에 이 파일 × 그 클래스들만 적었고, 다른 파일의 `min-[…]:`·`xl:`은 그대로 잡는다
-  - 예외 둘(first90): 통계 화면 파일만 경계 넷 `min-[1100px]:`·`min-[1200px]:`·`max-[1199px]:`·`max-[379px]:`을 쓴다(아래 '통계 화면(first90)')
+  - 예외 둘(first90): 통계 화면 파일만 경계 넷 `min-[1100px]:`·`min-[1200px]:`·`max-[1200px]:`·`max-[380px]:`을 쓴다(아래 '통계 화면(first90)')
   - 랜딩 CSS: `@media (min-width: 768px)`·`(min-width: 1024px)`, 숨김 도우미만 `(max-width: 767.98px)`
 - 1024px 이상은 12칸이다(칸 사이 24px). 768px 미만은 한 줄이다
   - 랜딩 768~1023px: 두 칸 배치는 위아래로 쌓고, 목록 두 칸(개인정보 약속)은 두 칸 그대로 둔다
@@ -529,7 +529,7 @@
 ## 통계 화면(first90)
 사용자가 통계 화면 새 시안을 승인했다 **(사용자, 2026-11-14)**. 기준 시안은 `docs/mockups/first90/redesign.html`, 명세는 `specs/first90/design.md` 5절(5-1 토큰 · 5-2 규칙 예외 · 5-3 움직임 · 5-4 차트 기반)이다. 이 절의 예외는 아래 파일에만 해당하고, 다른 화면은 이 문서의 일반 규칙 그대로다.
 
-- **예외 파일**: `src/components/stats/**`·`src/components/revenue/**`(시험 파일 빼고)와 차트 셋 `src/components/charts/DonutChart.tsx`·`StackedBarChart.tsx`·`InlineBar.tsx`. 그 밖의 파일(대시보드·미리보기·다른 차트·앱 틀·`src/app/(app)/stats/page.tsx` 포함)이 아래 클래스를 쓰면 규칙 시험이 잡는다
+- **예외 파일**: `src/components/stats/**`·`src/components/revenue/**`(시험 파일 빼고)와 차트 넷 `src/components/charts/DonutChart.tsx`·`StackedBarChart.tsx`·`InlineBar.tsx`·`ChartLegend.tsx`(범례 색 표시). 그 밖의 파일(대시보드·미리보기·다른 차트·앱 틀·`src/app/(app)/stats/page.tsx` 포함)이 아래 클래스를 쓰면 규칙 시험이 잡는다
 - **토큰**(`globals.css` `:root`에 더함, 지금 토큰 값은 그대로)
   - 바탕·글자·선: `--st-canvas` #F4F6F9 · `--st-ink` #172B4D · `--st-ink-2` #3B4A63 · `--st-muted` #5B6B82 · `--st-line` #E5EAF1 · `--st-line-2` #CBD3DF
   - 계열: 신환은 지금 `--accent`, 90일초진 `--st-f90` #0D9488, 재진 `--st-ret` #6B89BF, 참고 금액 `--st-ref` #B7791F · `--st-ref-2` #E9C98F, 주의 글자 `--st-warn-ink` #975A16. 옅은 노랑은 지금 `--warning-soft`
@@ -539,7 +539,7 @@
   - 움직임 시간: `--st-t-toggle` 200ms · `--st-t-period` 300ms · `--st-t-first` 450ms(아래 움직임 규칙만 쓴다)
   - 768px 미만 값은 `globals.css`의 `@media (max-width: 767.98px) { :root { … } }` 한 곳에서만 바꾼다
 - **허용 클래스**(예외 파일에서만)
-  - 화면 폭 경계 넷: `min-[1100px]:` · `min-[1200px]:` · `max-[1199px]:` · `max-[379px]:`. 다른 경계(`min-[900px]:`·`min-[1280px]:`·`xl:` …)는 그대로 잡는다. Tailwind 4의 `max-[Npx]:`는 `width < N`이라 `max-[1199px]:`는 1199px부터, `max-[379px]:`는 379px부터 빠진다
+  - 화면 폭 경계 넷: `min-[1100px]:` · `min-[1200px]:` · `max-[1200px]:` · `max-[380px]:`. 다른 경계(`min-[900px]:`·`min-[1280px]:`·`xl:` …)는 그대로 잡는다. Tailwind 4의 `max-[Npx]:`는 `width < N`이라 `max-[1200px]:`는 1200px 미만, `max-[380px]:`는 380px 미만이다(`min-[1200px]:`와 겹치지 않는다)
   - 모서리·그림자: `rounded-st`(카드) · `rounded-st-sm`(작은 칸) · `rounded-full`(스위치·꼬리표만) · `shadow-st-card`(카드만)
   - 글자 크기: `text-st-15`·`text-st-17`·`text-st-18`·`text-st-22`·`text-st-34`·`text-st-40`
   - 색: 위 st 색 17개의 `text-st-*`·`bg-st-*`·`border-st-*`(투명도 `/N` 포함). `fill-`·`stroke-`·`ring-`·`outline-` 같은 다른 쓰임은 잡는다 — svg는 `currentColor` + `text-st-*`로 칠한다

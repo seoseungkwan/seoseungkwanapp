@@ -717,13 +717,13 @@ const WIDE_1280 = ['min-[80rem]:grid-cols-3', 'min-[80rem]:row-span-1', 'min-[80
 const RULE_EXCEPTIONS: Readonly<Record<string, readonly string[]>> = { [LOAD_BAR_FILE]: ['duration-700', 'ease-out'], [PATIENT_MIX_FILE]: WIDE_1280 }
 
 // 규칙 예외(first90 REQ-4416 AC-4416.2, design.md 5-2, UI_GUIDE '통계 화면(first90)'): 통계 화면 파일만 아래 클래스를 쓴다.
-// 파일: src/components/stats/**·src/components/revenue/**(시험 빼고)와 통계 화면 차트 셋. 굵기 600 넘음·그라데이션·animate-*·transition-*은 여기서도 잡는다(AC-4416.3)
+// 파일: src/components/stats/**·src/components/revenue/**(시험 빼고)와 통계 화면 차트 넷(범례 포함). 굵기 600 넘음·그라데이션·animate-*·transition-*은 여기서도 잡는다(AC-4416.3)
 const STATS_SCREEN_DIRS = ['src/components/stats/', 'src/components/revenue/']
-const STATS_SCREEN_CHARTS = ['src/components/charts/DonutChart.tsx', 'src/components/charts/StackedBarChart.tsx', 'src/components/charts/InlineBar.tsx']
+const STATS_SCREEN_CHARTS = ['src/components/charts/DonutChart.tsx', 'src/components/charts/StackedBarChart.tsx', 'src/components/charts/InlineBar.tsx', 'src/components/charts/ChartLegend.tsx']
 const isStatsScreenFile = (file: string) =>
   !/\.test\.tsx?$/.test(file) && (STATS_SCREEN_DIRS.some((dir) => file.startsWith(dir)) || STATS_SCREEN_CHARTS.includes(file))
 // 화면 폭 경계 넷(1100·1200px 이상, 1200·380px 미만)
-const STATS_SCREENS = ['min-[1100px]', 'min-[1200px]', 'max-[1199px]', 'max-[379px]']
+const STATS_SCREENS = ['min-[1100px]', 'min-[1200px]', 'max-[1200px]', 'max-[380px]']
 const ST_COLORS = [
   'st-canvas', 'st-ink', 'st-ink-2', 'st-muted', 'st-line', 'st-line-2',
   'st-f90', 'st-ret', 'st-ref', 'st-ref-2', 'st-warn-ink',
@@ -984,7 +984,7 @@ describe('AC-4006.2: 규칙 — 1280px 경계 예외는 PatientMixSection.tsx �
     }
   })
 
-  it('AC-4006.2·AC-4416.2: 검사 목록 파일 가운데 min-[…]:·max-[…]: 경계를 쓰는 곳은 PatientMixSection.tsx와 통계 화면 파일뿐이고, 통계 화면 파일은 경계 넷(min-[1100px]·min-[1200px]·max-[1199px]·max-[379px])만 쓴다', () => {
+  it('AC-4006.2·AC-4416.2: 검사 목록 파일 가운데 min-[…]:·max-[…]: 경계를 쓰는 곳은 PatientMixSection.tsx와 통계 화면 파일뿐이고, 통계 화면 파일은 경계 넷(min-[1100px]·min-[1200px]·max-[1200px]·max-[380px])만 쓴다', () => {
     const bracketsOf = (file: string) =>
       stringPieces(file)
         .flatMap(tokens)
@@ -1020,8 +1020,8 @@ const STATS_ALLOWED_SAMPLE = [
   'border-st-line-2',
   'min-[1100px]:grid-cols-3',
   'min-[1200px]:col-span-2',
-  'max-[1199px]:hidden',
-  'max-[379px]:grid-cols-1',
+  'max-[1200px]:hidden',
+  'max-[380px]:grid-cols-1',
   'min-[1100px]:text-st-40',
   'max-md:text-st-22',
   'hover:bg-st-h1',
@@ -1152,7 +1152,7 @@ describe('AC-4416.2·AC-4416.3: 규칙 — 통계 화면 예외는 정한 파일
     const users = ruleFiles().filter((file) => stringPieces(file).flatMap(tokens).some(usesStats))
     expect(users.filter((file) => !isStatsScreenFile(file))).toEqual([])
     // 검사 자체가 잡는다
-    for (const t of ['bg-st-f90', 'text-st-34', 'st-donut', 'max-[379px]:hidden', 'rounded-st-sm']) expect(usesStats(t), t).toBe(true)
+    for (const t of ['bg-st-f90', 'text-st-34', 'st-donut', 'max-[380px]:hidden', 'rounded-st-sm']) expect(usesStats(t), t).toBe(true)
     for (const t of ['bg-accent', 'text-small', 'stroke-current', 'max-md:hidden', 'rounded-control']) expect(usesStats(t), t).toBe(false)
   })
 

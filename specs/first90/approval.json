@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "first90",
-  "approved_at": "2026-11-14T09:56:55Z",
+  "approved_at": "2026-11-14T10:19:47Z",
   "approved_via": "auto",
   "session_id": "ee7482fb-91b9-4bf4-8006-43c8aed7902e",
-  "spec_sha256": "78669b26b498c9a6bcc7a127e965f7eb554fa9cd29972c223a1502a23364f225",
+  "spec_sha256": "5bb6fc424116f5e73096c3e001683d7a5ccd38f4522ae67a995000e91174af23",
   "scope": [
     "docs/UI_GUIDE.md",
     "helper/Directory.Build.props",
@@ -34,6 +34,8 @@
     "src/app/globals.css",
     "src/app/globals.test.ts",
     "src/app/theme.test.ts",
+    "src/components/charts/ChartLegend.test.tsx",
+    "src/components/charts/ChartLegend.tsx",
     "src/components/charts/ChartTable.test.tsx",
     "src/components/charts/DonutChart.test.tsx",
     "src/components/charts/DonutChart.tsx",

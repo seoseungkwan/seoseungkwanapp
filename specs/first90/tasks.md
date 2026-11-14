@@ -92,14 +92,15 @@
 ## TASK-5: 통계 화면 기반 — 토큰 · 규칙 예외 · 움직임 CSS · 차트 기반
 - REQ: REQ-4416, REQ-4417
 - AC: AC-4416.1, AC-4416.2, AC-4416.3, AC-4417.1, AC-4417.2, AC-4417.4
-- Files: src/app/globals.css, src/app/globals.test.ts, src/app/theme.test.ts, src/components/ui/classes.test.ts, src/components/charts/rules.test.ts, docs/UI_GUIDE.md, src/components/charts/StackedBarChart.tsx, src/components/charts/StackedBarChart.test.tsx, src/components/charts/InlineBar.tsx, src/components/charts/InlineBar.test.tsx, src/components/charts/DonutChart.tsx, src/components/charts/DonutChart.test.tsx, src/components/stats/trendSeries.ts, src/components/stats/trendSeries.test.ts
-- Tests: src/app/globals.test.ts, src/app/theme.test.ts, src/app/fonts.test.ts, src/components/ui/classes.test.ts, src/components/charts/rules.test.ts, src/components/charts/StackedBarChart.test.tsx, src/components/charts/InlineBar.test.tsx, src/components/charts/DonutChart.test.tsx, src/components/charts/ChartTable.test.tsx, src/components/stats/trendSeries.test.ts, src/components/preview/DashboardPreview.test.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx
+- Files: src/app/globals.css, src/app/globals.test.ts, src/app/theme.test.ts, src/components/ui/classes.test.ts, src/components/charts/rules.test.ts, docs/UI_GUIDE.md, src/components/charts/StackedBarChart.tsx, src/components/charts/StackedBarChart.test.tsx, src/components/charts/InlineBar.tsx, src/components/charts/InlineBar.test.tsx, src/components/charts/ChartLegend.tsx, src/components/charts/ChartLegend.test.tsx, src/components/charts/DonutChart.tsx, src/components/charts/DonutChart.test.tsx, src/components/stats/trendSeries.ts, src/components/stats/trendSeries.test.ts
+- Tests: src/app/globals.test.ts, src/app/theme.test.ts, src/app/fonts.test.ts, src/components/ui/classes.test.ts, src/components/charts/rules.test.ts, src/components/charts/StackedBarChart.test.tsx, src/components/charts/InlineBar.test.tsx, src/components/charts/ChartLegend.test.tsx, src/components/charts/DonutChart.test.tsx, src/components/charts/ChartTable.test.tsx, src/components/stats/trendSeries.test.ts, src/components/preview/DashboardPreview.test.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx
 - TDD: required
   - 토큰: design.md 5-1의 `--st-*` 값과 `@theme inline` 이름. 지금 토큰 값은 그대로(지금 theme 시험 통과).
   - 규칙 예외: 예외 파일 목록 × 허용 클래스(5-2)는 통과, 목록 밖 파일이 `rounded-st`·`min-[1100px]:`·`text-st-40` 등을 쓰면 실패(가짜 소스로 증명). 굵기 600 넘음·그라데이션은 예외 파일에서도 실패.
   - `@keyframes`는 지금 것 + `st-donut`·`st-rise`·`st-in`만. reduced-motion 안에서 `st-*` 움직임 클래스가 모두 꺼짐.
   - 차트 규칙: 차트 파일은 여전히 'use client'·hooks·`animate-*`·`transition*` 없음. `st-*` 움직임 클래스는 DonutChart·StackedBarChart·InlineBar만.
   - StackedBarChart: 새 tone `f90`·`ret`·`rough`(svg 빗금), `mark: 'unchecked'` 점선 칸 + "확인 필요", `motion`·`selected`·`onPick`. 새 props를 안 주면 지금 마크업과 같다(대시보드·preview 시험 그대로 통과).
+  - ChartLegend 새 표시 `f90`·`ret`·`rough`·`unchecked`, 지금 표시 마크업 그대로. 계열 tone을 범례로 넘기는 `DashboardPreview`가 형식 검사를 통과.
   - InlineBar `motion`. DonutChart 조각 비율·가운데 두 줄·`aria-hidden`·`motion`일 때만 `st-donut`.
   - trendSeries: 앎 → 신환·90일초진·재진(accent·f90·ret), 모름 → 신환·"재진(90일초진 포함)".
   - UI_GUIDE '통계 화면(first90)' 절(시험 아님, 문서).

@@ -261,3 +261,33 @@ describe('AC-3709.3·AC-3709.4: ChartLegend trend·line — 추세선(12px 점�
     }
   })
 })
+
+// 통계 화면 표시(first90 design.md 5-4): 90일초진·재진 색 칸, 참고 금액 빗금, 확인 필요한 날 점선 칸
+describe('AC-4416.1 AC-4408.3 AC-4412.2 새 범례 표시', () => {
+  const FIRST90: LegendItem[] = [
+    { label: '신환', mark: 'accent' },
+    { label: '90일초진', mark: 'f90' },
+    { label: '재진', mark: 'ret' },
+    { label: '참고 금액(확인 필요한 날)', mark: 'rough' },
+    { label: '확인 필요한 날(뺌)', mark: 'unchecked' },
+  ]
+  const items = () => [...render(FIRST90).root.querySelectorAll('li')]
+
+  it('AC-4412.2: f90·ret는 10×10 색 칸(bg-st-f90·bg-st-ret)이고 모든 표시는 꾸밈(aria-hidden)이다', () => {
+    const li = items()
+    expectClasses(markOf(li[1]!), 'size-2.5', 'bg-st-f90')
+    expectClasses(markOf(li[2]!), 'size-2.5', 'bg-st-ret')
+    for (const item of li) expect(markOf(item).getAttribute('aria-hidden')).toBe('true')
+    expect(li.map((item) => item.textContent)).toEqual(FIRST90.map((item) => item.label))
+  })
+
+  it('AC-4408.3: rough는 st-ref-2 바탕에 text-st-ref 빗금 선 svg(그라데이션·패턴 없음), unchecked는 점선 칸(border-dashed border-st-line-2 bg-warning-soft)이다', () => {
+    const li = items()
+    const rough = markOf(li[3]!)
+    expect(rough.tagName.toLowerCase()).toBe('svg')
+    expectClasses(rough, 'shrink-0', 'bg-st-ref-2', 'text-st-ref')
+    expect(rough.querySelector('path')?.getAttribute('stroke')).toBe('currentColor')
+    expectClasses(markOf(li[4]!), 'size-2.5', 'border', 'border-dashed', 'border-st-line-2', 'bg-warning-soft')
+    expect(render(FIRST90).html).not.toMatch(/gradient|<pattern/i)
+  })
+})
