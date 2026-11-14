@@ -155,6 +155,38 @@ describe('AC-4105.1·AC-4408.2 revenueCells: 매출 요약 칸 셋', () => {
     expect(off.delta).toEqual({ dir: 'up', text: '568만 원 (+4.4%)', srText: '지난 30일보다 늘어남' })
   })
 
+  it('AC-4408.2 꺼짐: 비교 기간에 확인 필요한 날이 있으면 총매출 아래 글 끝에 `{비교 이름}도 확인 필요한 날 {k}일을 빼고 견줬어요` 줄을 더한다(k = 그 기간 확인 필요한 날 모두)', () => {
+    const days = withDays(mockupDays(), { '2026-09-16': uncheckedDay('2026-09-16'), '2026-09-17': uncheckedDay('2026-09-17', { roughTotal: 5_077_000 }) })
+    expect(cellOf(revenueCells(inputOf({ days })), 'total').notes).toEqual(['진료한 날 25일 · 하루 평균 530만 원', '지난 30일도 확인 필요한 날 2일을 빼고 견줬어요'])
+    // 보는 기간에 참고 금액이 있는 날이 없으면 켜도 꺼짐 셈이라 비교 기간도 모두 뺀다
+    expect(cellOf(revenueCells(inputOf({ days }), 'in'), 'total').notes).toEqual(['진료한 날 25일 · 하루 평균 530만 원', '지난 30일도 확인 필요한 날 2일을 빼고 견줬어요'])
+  })
+
+  it('AC-4408.2 켜짐: 비교 기간의 확인 필요한 날 가운데 참고 금액이 없는 날만 {k}로 센다. 모두 참고 금액이 있으면 줄이 없다', () => {
+    const days = withDays(roughMockupDays(), { '2026-09-16': uncheckedDay('2026-09-16'), '2026-09-17': uncheckedDay('2026-09-17', { roughTotal: 5_077_000 }) })
+    expect(cellOf(revenueCells(inputOf({ days }), 'in'), 'total').notes).toEqual(['진료한 날 26일 · 하루 평균 529만 원 · 참고 498만 원 포함', '지난 30일도 확인 필요한 날 1일을 빼고 견줬어요'])
+    expect(cellOf(revenueCells(inputOf({ days })), 'total').notes).toEqual(['진료한 날 25일 · 하루 평균 530만 원', '지난 30일도 확인 필요한 날 2일을 빼고 견줬어요'])
+    const allRough = withDays(roughMockupDays(), { '2026-09-17': uncheckedDay('2026-09-17', { roughTotal: 5_077_000 }) })
+    expect(cellOf(revenueCells(inputOf({ days: allRough }), 'in'), 'total').notes).toEqual(['진료한 날 26일 · 하루 평균 529만 원 · 참고 498만 원 포함'])
+    expect(cellOf(revenueCells(inputOf({ days: allRough })), 'total').notes).toEqual(['진료한 날 25일 · 하루 평균 530만 원', '지난 30일도 확인 필요한 날 1일을 빼고 견줬어요'])
+  })
+
+  it('AC-4408.2 비교 기간에 확인 필요한 날이 없거나 견줄 수 없으면(비교 없음) 그 줄이 없다', () => {
+    expect(cellOf(revenueCells(inputOf()), 'total').notes).toEqual(['진료한 날 25일 · 하루 평균 530만 원'])
+    // 비교 기간에 저장하지 않은 날이 있어 견주지 않으면 그 기간의 확인 필요한 날도 말하지 않는다
+    const days = withDays(mockupDays(), { '2026-09-16': null, '2026-09-17': uncheckedDay('2026-09-17') })
+    expect(cellOf(revenueCells(inputOf({ days })), 'total')).toMatchObject({ delta: NO_COMPARE_DELTA, notes: ['진료한 날 25일 · 하루 평균 530만 원'] })
+  })
+
+  it('AC-4408.2 {비교 이름}은 증감 줄과 같은 이름이다(최근 12개월 `작년 같은 11달`)', () => {
+    const range = statsRange(TODAY, '12m')
+    const days = [
+      ...eachDay(span('2024-12-01', '2025-11-30')).map((date) => (date === '2025-03-04' ? uncheckedDay(date) : paid(date, 1_000_000))),
+      ...eachDay(span('2025-12-01', '2026-11-13')).map((date) => paid(date, 1_100_000)),
+    ]
+    expect(cellOf(revenueCells(inputOf({ range, days })), 'total').notes).toEqual(['진료한 날 348일 · 하루 평균 110만 원', '작년 같은 11달도 확인 필요한 날 1일을 빼고 견줬어요'])
+  })
+
   it('AC-4408.2 참고 금액이 있는 날과 없는 날이 섞이면 아래 글이 두 줄이다(없는 날은 켜도 빠진다)', () => {
     const days = withDays(roughMockupDays(), { '2026-11-03': uncheckedDay('2026-11-03') })
     expect(cellOf(revenueCells(inputOf({ days })), 'unchecked').notes).toEqual(['10월 28일 · 금액이 확실하지 않아 뺐어요', '11월 3일 · 금액을 알 수 없어 뺐어요'])
@@ -544,7 +576,19 @@ describe('AC-4408.3 매출 추이·건당 진료비 막대: 꺼짐은 점선 칸
       { label: '참고 금액(확인 필요한 날)', mark: 'rough' },
     ])
     expect(perVisit.note).toBe(`휴진한 날은 칸이 없어요. ${ROUGH_NOTE('10월 28일')}`)
-    expect([tabs.rough!.trend.desc, tabs.rough!.trend.how]).toEqual([tabs.trend.desc, tabs.trend.how])
+    expect(tabs.rough!.trend.desc).toBe(tabs.trend.desc)
+  })
+
+  it('AC-4408.3 켜짐: 매출 추이 [어떻게 세나요?] 둘째 문단만 켜짐 글이고 다른 문단은 꺼짐 그대로다', () => {
+    const tabs = ready(inputOf({ days: roughMockupDays() }))
+    const off = tabs.trend.how
+    expect(tabs.rough!.trend.how).toEqual([
+      off[0],
+      "환불·변경수납·예치금이 있거나 수납 연결이 겹친 날은 '확인 필요한 날'로 둬요. '참고 금액 포함'을 켜면 참고 금액이 있는 날은 그 금액을 더하고, 없는 날은 빼요. 비트 외래환자경영통계에서 그날을 직접 확인해 주세요.",
+      off[2],
+      off[3],
+    ])
+    expect(off[1]).toBe("환불·변경수납·예치금이 있거나 수납 연결이 겹친 날은 '확인 필요한 날'로 두고 그날 금액을 매출에 넣지 않아요. 비트 외래환자경영통계에서 그날을 직접 확인해 주세요.")
   })
 
   it('AC-4408.3 켜짐: 건당 진료비 탭 숫자 칸 셋은 매출 요약 켜짐 건당 진료비와 같은 셈(참고 금액 날 금액·접수 더함, 비교 기간도)이고 첫 칸 아래 글에 `참고 금액 포함`', () => {
@@ -609,6 +653,56 @@ describe('AC-4408.3 매출 추이·건당 진료비 막대: 꺼짐은 점선 칸
   })
 })
 
+describe('AC-4408.3 음수 참고 금액(환불이 더 많은 날) 막대', () => {
+  // 10월 28일(접수 10건) 참고 금액 roughTotal원
+  const negativeDays = (roughTotal: number) => withDays(mockupDays(), { '2026-10-28': uncheckedDay('2026-10-28', { visits: 10, roughTotal }) })
+
+  it('AC-4408.3 하루 칸: 값은 0 쪽으로 버리고(−5.2만 → −5) 참고 금액(빗금) 계열에 들며, 칸 글과 부호·크기가 맞는다', () => {
+    const { rough } = ready(inputOf({ days: negativeDays(-52_000) }))
+    expect(bucketOf(rough!.trend.buckets, '2026-10-28')).toEqual({ key: '2026-10-28', label: '', rangeLabel: '10월 28일', state: 'complete', values: [-5, 0] })
+    expect(rough!.trend.tips['2026-10-28']).toBe('10.28(수) 참고 금액 −5만 원 · 확인 필요한 날')
+    // 다른 날은 그대로다
+    expect(bucketOf(rough!.trend.buckets, '2026-10-15')).toMatchObject({ values: [0, 530] })
+  })
+
+  it('AC-4408.3 하루 칸 건당 진료비도 0 쪽으로 버리고(−5,200원 → −5) 참고 금액 계열이다', () => {
+    const { rough } = ready(inputOf({ days: negativeDays(-52_000) }))
+    expect(bucketOf(rough!.perVisit.buckets, '2026-10-28')).toMatchObject({ values: [-5, 0] })
+    expect(rough!.perVisit.tips['2026-10-28']).toBe('10.28(수) 건당 진료비 −5,200원 · 참고 금액 · 확인 필요한 날')
+  })
+
+  it('AC-4408.3 만 원·천 원보다 작은 음수는 0이다(−0이 아니다)', () => {
+    const { rough } = ready(inputOf({ days: negativeDays(-5_000) }))
+    const [roughValue, mainValue] = rough!.trend.buckets.find((bucket) => bucket.key === '2026-10-28')!.values
+    expect(Object.is(roughValue, 0) && Object.is(mainValue, 0)).toBe(true)
+    expect(rough!.trend.tips['2026-10-28']).toBe('10.28(수) 참고 금액 −5,000원 · 확인 필요한 날')
+    const [perRough, perMain] = rough!.perVisit.buckets.find((bucket) => bucket.key === '2026-10-28')!.values
+    expect(Object.is(perRough, 0) && Object.is(perMain, 0)).toBe(true) // −500원 → 0
+  })
+
+  it('AC-4408.3 확인된 날과 섞인 주 칸은 칸 매출 합(음수를 뺀 값)을 0 쪽으로 버려 매출 계열로 그린다', () => {
+    const days = eachDay(span('2026-10-01', '2026-10-31')).map((date) =>
+      isSunday(date) ? restDay(date) : date === '2026-10-01' ? uncheckedDay(date, { roughTotal: -2_425_000 }) : date === '2026-10-07' ? uncheckedDay(date, { roughTotal: -520_000 }) : day(date),
+    )
+    const trend = ready(inputOf({ range: OCT_WEEKS, days })).rough!.trend
+    // 10월 1일 – 4일: 2,000,000 − 2,425,000 = −425,000 → −42(아래로 버리면 −43) · 10월 5일 – 11일: 5,000,000 − 520,000 = 4,480,000 → 448
+    expect(trend.buckets.map((bucket) => bucket.values)).toEqual([
+      [0, -42],
+      [0, 448],
+      [0, 600],
+      [0, 600],
+      [0, 600],
+    ])
+    expect(trend.tips['2026-10-01']).toBe('10월 1일 – 4일 매출 −42만 원 · 참고 −242만 원 포함')
+    expect(trend.tips['2026-10-05']).toBe('10월 5일 – 11일 매출 448만 원 · 참고 −52만 원 포함')
+  })
+
+  it('AC-4408.3 양수 참고 금액 막대는 지금 그대로다(하루 칸 빗금 · 섞인 칸은 빗금 조각을 매출 위에)', () => {
+    expect(bucketOf(ready(inputOf({ days: roughMockupDays() })).rough!.trend.buckets, '2026-10-28')).toMatchObject({ values: [498, 0] })
+    expect(ready(inputOf({ range: OCT_WEEKS, days: octRoughDays() })).rough!.trend.buckets[1]).toMatchObject({ values: [250, 500] })
+  })
+})
+
 describe('AC-4408.3 막대를 누르면 보일 아래 줄 글(tips)', () => {
   it('AC-4408.3 꺼짐: `{m.d}({요일}) 매출 {금액}` · `{m.d}({요일}) 확인 필요한 날 · 금액을 빼고 셌어요`', () => {
     const { trend } = ready(inputOf())
@@ -648,8 +742,21 @@ describe('AC-4408.4·AC-4408.5 켜짐에도 급여·비급여·기타·치료별
     const tabs = ready(inputOf({ days: roughMockupDays(), codes, groups }))
     expect(tabs.split).toEqual(plain.split)
     expect(tabs.treatments).toEqual(plain.treatments)
-    expect(Object.keys(tabs.rough!)).toEqual(['trend', 'perVisit'])
+    expect(Object.keys(tabs.rough!)).toEqual(['trend', 'perVisit', 'outside'])
     expect(tabs.split.desc).toBe('최근 30일 비급여 몫 31.4% · 기타 몫 4.6%')
+  })
+
+  it('AC-4408.4 켜짐 두 탭 맨 위 안내(outside): `참고 금액 {금액}(확인 필요한 날 {m}일)은 이 탭에 넣지 않아 합이 총매출과 달라요.`', () => {
+    expect(ready(inputOf({ days: roughMockupDays() })).rough!.outside).toBe('참고 금액 498만 원(확인 필요한 날 1일)은 이 탭에 넣지 않아 합이 총매출과 달라요.')
+    // {m} = 보는 기간에 참고 금액이 있는 날 수(없는 날·비교 기간 날은 세지 않는다), {금액} = 그 합
+    const days = withDays(roughMockupDays(), {
+      '2026-11-03': uncheckedDay('2026-11-03', { roughTotal: 1_020_000 }),
+      '2026-11-04': uncheckedDay('2026-11-04'),
+      '2026-09-16': uncheckedDay('2026-09-16', { roughTotal: 9_000_000 }),
+    })
+    expect(ready(inputOf({ days })).rough!.outside).toBe('참고 금액 600만 원(확인 필요한 날 2일)은 이 탭에 넣지 않아 합이 총매출과 달라요.')
+    const negative = withDays(mockupDays(), { '2026-10-28': uncheckedDay('2026-10-28', { roughTotal: -52_000 }) })
+    expect(ready(inputOf({ days: negative })).rough!.outside).toBe('참고 금액 −5만 원(확인 필요한 날 1일)은 이 탭에 넣지 않아 합이 총매출과 달라요.')
   })
 })
 

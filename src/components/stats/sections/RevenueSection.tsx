@@ -24,7 +24,8 @@ import { RxSection } from './RxSection'
 //   매출 추이·건당 진료비 막대는 mode가 'in'이고 켜짐 막대(tabs.rough)가 있으면 그것을, 아니면 꺼짐 막대를 그린다(꺼짐 = 확인 필요한 날 점선 칸, 켜짐 = 참고 금액 빗금 막대).
 //   범례는 막대 위, 막대를 누르면(PC는 올리기도) 막대 아래 줄(role="status")에 그 칸 글이 나온다. 고른 칸은 이 칸의 React 상태이고 스위치를 바꿔도 남는다.
 //   막대는 기간을 바꾸면 높이가 움직이고(st-move-period) 빗금 조각은 붙을 때 솟는다(st-rise), 머리 글 "참고 포함" 꼬리표는 붙을 때 나타난다(st-tag-in).
-//   급여·비급여·기타·치료별 매출은 mode와 상관없다(AC-4408.4)
+//   급여·비급여·기타·치료별 매출은 mode와 상관없다(AC-4408.4). 다만 켜짐이고 켜짐 셈(tabs.rough)이 있으면 그 두 탭 맨 위(설명 줄 아래)에
+//   tabs.rough.outside(참고 금액은 이 탭에 넣지 않아 합이 총매출과 다르다)를 막대 아래 글과 같은 모양으로 둔다(2026-11-15 검토 보완)
 
 const TITLE = '매출'
 const TABLIST_LABEL = '매출 보기'
@@ -146,9 +147,11 @@ function TrendPanel({ tab }: { tab: TrendTab }) {
   )
 }
 
-function SplitPanel({ tab }: { tab: SplitTab }) {
+// outside = 켜짐 안내 글(없으면 null). 두 탭(급여·비급여·기타·치료별 매출) 맨 위에 둔다
+function SplitPanel({ tab, outside }: { tab: SplitTab; outside: string | null }) {
   return (
     <Section title="급여·비급여·기타" desc={tab.desc}>
+      {outside !== null && <RevenueNote>{outside}</RevenueNote>}
       {tab.notice && <NoticeLine notice={tab.notice} />}
       <div className="mt-4 grid gap-y-6 md:grid-cols-12 md:gap-x-6">
         <div className="min-w-0 md:col-span-5">
@@ -181,9 +184,10 @@ function TreatmentLines({ tab }: { tab: TreatmentsTab }) {
   )
 }
 
-function TreatmentsPanel({ tab }: { tab: TreatmentsTab }) {
+function TreatmentsPanel({ tab, outside }: { tab: TreatmentsTab; outside: string | null }) {
   return (
     <Section title="치료별 매출" desc={tab.desc}>
+      {outside !== null && <RevenueNote>{outside}</RevenueNote>}
       {tab.state === 'rows' ? (
         <>
           {tab.lead && <LeadLine lead={tab.lead} />}
@@ -259,6 +263,7 @@ export function RevenueSection({ tabs, noDayCodes, onReread, className, mode = '
   const bars = mode === 'in' ? tabs.rough : null
   const trend = bars?.trend ?? tabs.trend
   const perVisit = bars?.perVisit ?? tabs.perVisit
+  const outside = bars?.outside ?? null
   return (
     <>
       {rough !== null && onMode !== undefined && <RoughSwitch mode={mode} onChange={onMode} days={rough.days} roughDays={rough.roughDays} />}
@@ -269,8 +274,8 @@ export function RevenueSection({ tabs, noDayCodes, onReread, className, mode = '
         className={className}
         tabs={[
           { name: '매출 추이', panel: <TrendPanel tab={trend} /> },
-          { name: '급여·비급여·기타', panel: <SplitPanel tab={tabs.split} /> },
-          { name: '치료별 매출', panel: <TreatmentsPanel tab={tabs.treatments} /> },
+          { name: '급여·비급여·기타', panel: <SplitPanel tab={tabs.split} outside={outside} /> },
+          { name: '치료별 매출', panel: <TreatmentsPanel tab={tabs.treatments} outside={outside} /> },
           { name: '건당 진료비', panel: <PerVisitPanel tab={perVisit} /> },
         ]}
       />

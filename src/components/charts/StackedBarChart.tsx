@@ -89,6 +89,7 @@ const ROUGH_HATCH = hatchPath(8)
 
 // 눈금 글자: 정수는 세 자리 쉼표, 간격 2.5(최대 10)의 2.5·7.5는 그대로
 export const tickText = (t: number) => (Number.isInteger(t) ? formatCount(t) : String(t))
+// 높이·위치 %. 음수 값(환불이 더 많은 날의 참고 금액, first90 AC-4408.3)은 percentOf가 0%로 자른다(칸 위 숫자만 음수로 보인다)
 const at = (v: number, max: number) => `${percentOf(v, max)}%`
 
 // 추세선 (group-exclude REQ-3709 AC-3709.3·AC-3709.4, design.md '그래프 부품'). 막대 그림과 꺾은선 그림(RateLineChart)이 같이 쓴다.

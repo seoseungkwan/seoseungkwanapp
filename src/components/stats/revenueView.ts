@@ -90,8 +90,11 @@ export type TreatmentsTab = {
   how: string[]
 }
 export type PerVisitTab = BarsView & { desc: string; kpis: Kpi[]; notice: Notice | null; how: string[] }
-/** 참고 금액 포함(켜짐)으로 센 두 탭(first90 AC-4408.3). 숫자 칸·설명은 꺼짐과 같고 막대·범례·아래 글·머리 글만 다르다 */
-export type RoughTabs = { trend: TrendTab; perVisit: PerVisitTab }
+/**
+ * 참고 금액 포함(켜짐)으로 센 두 탭(first90 AC-4408.3). 숫자 칸·설명은 꺼짐과 같고 막대·범례·아래 글·머리 글만 다르다.
+ * outside = 켜짐일 때 급여·비급여·기타·치료별 매출 탭 맨 위 안내 글(AC-4408.4, 두 탭은 참고 금액을 넣지 않아 합이 총매출과 다르다)
+ */
+export type RoughTabs = { trend: TrendTab; perVisit: PerVisitTab; outside: string }
 /**
  * rough = 켜짐 두 탭. 보는 기간에 참고 금액이 있는 확인 필요한 날이 없으면 null(켜도 꺼짐과 같다).
  * 급여·비급여·기타·치료별 매출은 스위치와 상관없이 하나다(AC-4408.4)
@@ -131,6 +134,13 @@ const TREND_HOW = [
   "그래서 아래 '원장님별'의 매출 합계(그런 날도 더해요)나 '원장님 보고 문장'의 총진료비(그런 날이 든 날·달은 '확인 필요')와 다를 수 있어요.",
   '막대 칸은 환자 수 추이와 같아요: 최근 7일·30일·90일은 하루씩, 최근 12개월은 한 달씩, 기간 골라 보기는 고른 단위(일별·주별·월별)예요.',
 ]
+// 켜짐 둘째 문단(first90 AC-4408.3, 2026-11-15 검토 보완). 다른 문단은 꺼짐 그대로다
+const TREND_HOW_ROUGH = [
+  TREND_HOW[0]!,
+  "환불·변경수납·예치금이 있거나 수납 연결이 겹친 날은 '확인 필요한 날'로 둬요. '참고 금액 포함'을 켜면 참고 금액이 있는 날은 그 금액을 더하고, 없는 날은 빼요. 비트 외래환자경영통계에서 그날을 직접 확인해 주세요.",
+  TREND_HOW[2]!,
+  TREND_HOW[3]!,
+]
 const CLOSED_NOTE = '휴진한 날은 칸이 없어요.'
 const CLOSED_OR_UNSAVED_NOTE = '휴진한 날과 아직 불러오지 않은 날은 칸이 없어요.'
 // 확인 필요한 날 막대(first90 AC-4408.3): 꺼짐 점선 칸 · 켜짐 빗금 막대의 아래 글과 범례
@@ -141,6 +151,10 @@ const ROUGH_LEGEND: ChartLegendItem = { label: '참고 금액(확인 필요한 �
 const UNCHECKED_LEGEND: ChartLegendItem = { label: '확인 필요한 날(뺌)', mark: 'unchecked' }
 const UNCHECKED_TIP = '확인 필요한 날 · 금액을 빼고 셌어요'
 const WEEKDAY_NAMES = '월화수목금토일'
+// 켜짐 급여·비급여·기타·치료별 매출 탭 맨 위 안내(first90 AC-4408.4, 2026-11-15 검토 보완)
+const outsideNote = (sum: number, days: number) => `참고 금액 ${formatManWon(sum)}(확인 필요한 날 ${formatCount(days)}일)은 이 탭에 넣지 않아 합이 총매출과 달라요.`
+// 총매출 아래 비교 기간 빠진 날 줄(first90 AC-4408.2, 2026-11-15 검토 보완)
+const comparedNote = (name: string, days: number) => `${name}도 확인 필요한 날 ${formatCount(days)}일을 빼고 견줬어요`
 
 const SPLIT_NOTE =
   '매출은 총진료비예요. 급여(요양비용총액)는 공단이 내는 몫과 환자가 내는 몫(본인부담)을 더한 금액, 비급여는 환자가 모두 내는 금액, 기타는 100/100 미만 항목과 전액 본인부담 금액이에요. '
@@ -389,22 +403,28 @@ type BarKind = { main: string; rough: string; value(sum: Sum): BarValue; text(su
 
 const roughDaysOf = (sum: Sum) => sum.roughDays ?? []
 const onlyUnchecked = (sum: Sum) => sum.workDays === 0 && sum.uncheckedDays.length > 0
+// 칸의 진료한 날이 모두 참고 금액 날(켜짐)
+const onlyRough = (sum: Sum) => roughDaysOf(sum).length > 0 && roughDaysOf(sum).length === sum.workDays
+// 막대 값은 0 쪽으로 버린다(음수 참고 금액도, first90 AC-4408.3). −0은 0으로(칸 위 숫자·화면 읽기 표에 '−0'이 없게)
+const toZero = (x: number) => Math.trunc(x) || 0
 
-// 매출 막대(만 원 아래 버림). 참고 금액 몫은 칸 매출 안에서 자른다(두 몫의 합 = 칸 매출을 버린 값, 음수 참고 금액은 조각을 그리지 않는다)
+// 매출 막대(만 원 아래 0 쪽 버림). 참고 금액 몫은 칸 매출 안에서 자른다(두 몫의 합 = 칸 매출을 버린 값).
+// 음수 참고 금액: 하루 칸(진료한 날이 참고 금액 날뿐)은 참고 금액 계열, 확인된 날과 섞인 칸은 칸 매출 합을 매출 계열로 그린다(높이 0은 차트가 자른다)
 function totalValue(sum: Sum): BarValue {
   if (sum.workDays === 0) return onlyUnchecked(sum) ? 'unchecked' : null
-  const whole = Math.floor(sum.total / WON_PER_MAN)
-  const rough = Math.max(0, Math.min(whole, Math.floor((sum.roughSum ?? 0) / WON_PER_MAN)))
+  const whole = toZero(sum.total / WON_PER_MAN)
+  const roughSum = sum.roughSum ?? 0
+  if (roughSum < 0) return onlyRough(sum) ? { main: 0, rough: whole } : { main: whole, rough: 0 }
+  const rough = Math.max(0, Math.min(whole, toZero(roughSum / WON_PER_MAN)))
   return { main: whole - rough, rough }
 }
 
-// 건당 진료비 막대(천 원 아래 버림)는 나눌 수 없어서, 칸의 진료한 날이 모두 참고 금액 날일 때만 빗금 계열이다
+// 건당 진료비 막대(천 원 아래 0 쪽 버림)는 나눌 수 없어서, 칸의 진료한 날이 모두 참고 금액 날일 때만 빗금 계열이다
 function perVisitValue(sum: Sum): BarValue {
   const value = perVisit(sum)
   if (value === null) return onlyUnchecked(sum) ? 'unchecked' : null
-  const bar = Math.floor(value / WON_PER_CHEON)
-  const rough = roughDaysOf(sum)
-  return rough.length > 0 && rough.length === sum.workDays ? { main: 0, rough: bar } : { main: bar, rough: 0 }
+  const bar = toZero(value / WON_PER_CHEON)
+  return onlyRough(sum) ? { main: 0, rough: bar } : { main: bar, rough: 0 }
 }
 
 const perVisitText = (sum: Sum) => `건당 진료비 ${formatWon(perVisit(sum) ?? 0)}`
@@ -513,6 +533,19 @@ function totalDelta(ctx: Ctx): DeltaText {
   return { dir: rising ? 'up' : 'down', text, srText: `${ctx.name}보다 ${rising ? '늘어남' : '줄어듦'}` }
 }
 
+// 비교 기간에서 빠진 확인 필요한 날 수(AC-4408.2): 꺼짐은 그 기간 확인 필요한 날 모두, 켜짐(참고 금액을 더해 센 ctx)은 그 가운데 참고 금액이 없는 날
+function comparedMissing({ before }: Compared): number {
+  const rough = roughDaysOf(before)
+  return before.uncheckedDays.filter((date) => !rough.includes(date)).length
+}
+
+// 총매출 아래 글 줄들: 진료한 날·하루 평균(켜짐이면 참고 금액 포함) + 견준 비교 기간에 빠진 날이 있으면 '{비교 이름}도 확인 필요한 날 {k}일을 빼고 견줬어요'
+function totalNotes(ctx: Ctx, delta: DeltaText, roughNote: string): string[] {
+  const { sum, main, name } = ctx
+  const missing = main === null || delta.dir === 'none' ? 0 : comparedMissing(main)
+  return [`진료한 날 ${formatCount(sum.workDays)}일 · 하루 평균 ${formatManWon(Math.floor(sum.total / sum.workDays))}${roughNote}`, ...(missing === 0 ? [] : [comparedNote(name, missing)])]
+}
+
 // 건당 진료비 증감: 비율만('+2.9%'), 줄 끝 글 없음. 같은 두 기간의 건당 진료비끼리 견준다
 function perVisitDelta(ctx: Ctx): DeltaText {
   if (ctx.main === null) return NO_COMPARE_DELTA
@@ -545,6 +578,7 @@ export function revenueCells(input: RevenueInput | 'reading' | 'read-failed', mo
   const value = perVisit(sum)
   const unchecked = sum.uncheckedDays
   const roughNote = withRough ? ` · 참고 ${formatManWon(rough.sum)} 포함` : ''
+  const delta = totalDelta(ctx)
   return [
     sum.workDays === 0
       ? blankCell('total', NO_DATA)
@@ -556,8 +590,8 @@ export function revenueCells(input: RevenueInput | 'reading' | 'read-failed', mo
           value: manValue(sum.total),
           unit: '원',
           tone: 'ink',
-          delta: totalDelta(ctx),
-          notes: [`진료한 날 ${formatCount(sum.workDays)}일 · 하루 평균 ${formatManWon(Math.floor(sum.total / sum.workDays))}${roughNote}`],
+          delta,
+          notes: totalNotes(ctx, delta, roughNote),
         },
     value === null
       ? blankCell('perVisit', NO_DATA)
@@ -606,7 +640,7 @@ function trendTab(ctx: Ctx, withRough = false): TrendTab {
     lead: { text: '이 기간 매출', amount: sum.workDays === 0 ? DASH : formatManWon(sum.total), rest: main === null ? null : `· ${name} ${formatManWon(main.before.total)}` },
     tag: withRough,
     ...barsView(ctx, TREND_KIND, withRough),
-    how: TREND_HOW,
+    how: withRough ? TREND_HOW_ROUGH : TREND_HOW,
   }
 }
 
@@ -776,18 +810,20 @@ function perVisitTab(ctx: Ctx, withRough = false): PerVisitTab {
 /**
  * 매출 칸 탭 넷(AC-4107.2~AC-4107.8의 숫자·글). 보는 기간에 저장된 매출이 없거나 모두 쉬는 날이면 empty(AC-4107.7).
  * 참고 금액 포함 스위치(first90 AC-4408.3): 보는 기간에 참고 금액이 있는 확인 필요한 날이 있으면 rough에 켜짐 두 탭(매출 추이·건당 진료비)을 더 센다.
- * 켜짐 건당 진료비 탭은 막대·숫자 칸 셋·안내 줄 모두 켜짐 셈이라 매출 요약 켜짐 건당 진료비와 같다(설명 줄·첫 문단은 꺼짐 그대로). 급여·비급여·기타·치료별 매출은 켜짐에도 이 하나다(AC-4408.4)
+ * 켜짐 건당 진료비 탭은 막대·숫자 칸 셋·안내 줄 모두 켜짐 셈이라 매출 요약 켜짐 건당 진료비와 같다(설명 줄·첫 문단은 꺼짐 그대로). 급여·비급여·기타·치료별 매출은 켜짐에도 이 하나다(AC-4408.4).
+ * 켜짐이면 그 두 탭 맨 위에 rough.outside(보는 기간 참고 금액 합·날 수, 그 탭에는 넣지 않음)를 그린다
  */
 export function revenueTabs(input: RevenueInput): RevenueTabs {
   const ctx = contextOf(input)
   if (ctx === null) return { kind: 'empty' }
-  const roughCtx = roughOf(ctx.byDay, ctx.sum.uncheckedDays).dates.length > 0 ? contextOf(input, true) : null
+  const found = roughOf(ctx.byDay, ctx.sum.uncheckedDays)
+  const roughCtx = found.dates.length > 0 ? contextOf(input, true) : null
   return {
     kind: 'ready',
     trend: trendTab(ctx),
     split: splitTab(ctx),
     treatments: treatmentsTab(ctx),
     perVisit: perVisitTab(ctx),
-    rough: roughCtx === null ? null : { trend: trendTab(roughCtx, true), perVisit: perVisitTab(roughCtx, true) },
+    rough: roughCtx === null ? null : { trend: trendTab(roughCtx, true), perVisit: perVisitTab(roughCtx, true), outside: outsideNote(found.sum, found.dates.length) },
   }
 }
