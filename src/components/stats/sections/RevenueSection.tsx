@@ -8,10 +8,11 @@ import { StackBars } from '@/components/revenue/MonthBars'
 import { BANNER, KpiRow, Note as RevenueNote, NoticeLine, STRONG } from '@/components/revenue/RevenueParts'
 import { SplitTable } from '@/components/revenue/RevenueSplit'
 import { TreatmentBars } from '@/components/revenue/TreatmentBars'
-import type { Lead, PerVisitTab, RevenueTabs, SplitTab, TreatmentsTab, TrendTab } from '@/components/stats/revenueView'
+import type { Lead, PerVisitTab, RevenueMode, RevenueTabs, RoughInfo, SplitTab, TreatmentsTab, TrendTab } from '@/components/stats/revenueView'
 import { ds } from '@/components/ui/classes'
 import { HowCounted } from './HowCounted'
 import { CHART_NO_SIDE_SCROLL, EmptyNote, Section, thinTotals } from './parts'
+import { RoughSwitch } from './RoughSwitch'
 import { RxSection } from './RxSection'
 
 // 통계 '매출' 칸 + 탭 넷 (stats-revenue REQ-4107 AC-4107.1~AC-4107.10, design.md '칸 부품', 시안 docs/mockups/stats-revenue).
@@ -42,6 +43,10 @@ type Props = {
   noDayCodes: boolean // 이 화면에서 읽은 답에 날 단위 처방 금액이 없었음(기본값 9)
   onReread(): void // 저장된 매출만 다시 읽기(AC-4107.9)
   className?: string
+  // 참고 금액 포함 스위치(first90 AC-4408.1): 상태는 StatsSections 하나가 갖고 매출 요약 스위치와 같은 값이다. rough·onMode를 주고 탭이 있을 때만 카드 제목 줄에 그린다
+  mode?: RevenueMode
+  onMode?(mode: RevenueMode): void
+  rough?: RoughInfo | null
 }
 
 function How({ paragraphs }: { paragraphs: readonly string[] }) {
@@ -182,7 +187,7 @@ function OldHelperNote() {
   )
 }
 
-export function RevenueSection({ tabs, noDayCodes, onReread, className }: Props) {
+export function RevenueSection({ tabs, noDayCodes, onReread, className, mode = 'out', onMode, rough = null }: Props) {
   if (tabs === 'reading') {
     return (
       <Section title={TITLE} className={className}>
@@ -213,17 +218,20 @@ export function RevenueSection({ tabs, noDayCodes, onReread, className }: Props)
     )
   }
   return (
-    <RxSection
-      title={TITLE}
-      label={TABLIST_LABEL}
-      notice={noDayCodes ? <OldHelperNote /> : undefined}
-      className={className}
-      tabs={[
-        { name: '매출 추이', panel: <TrendPanel tab={tabs.trend} /> },
-        { name: '급여·비급여·기타', panel: <SplitPanel tab={tabs.split} /> },
-        { name: '치료별 매출', panel: <TreatmentsPanel tab={tabs.treatments} /> },
-        { name: '건당 진료비', panel: <PerVisitPanel tab={tabs.perVisit} /> },
-      ]}
-    />
+    <>
+      {rough !== null && onMode !== undefined && <RoughSwitch mode={mode} onChange={onMode} days={rough.days} roughDays={rough.roughDays} />}
+      <RxSection
+        title={TITLE}
+        label={TABLIST_LABEL}
+        notice={noDayCodes ? <OldHelperNote /> : undefined}
+        className={className}
+        tabs={[
+          { name: '매출 추이', panel: <TrendPanel tab={tabs.trend} /> },
+          { name: '급여·비급여·기타', panel: <SplitPanel tab={tabs.split} /> },
+          { name: '치료별 매출', panel: <TreatmentsPanel tab={tabs.treatments} /> },
+          { name: '건당 진료비', panel: <PerVisitPanel tab={tabs.perVisit} /> },
+        ]}
+      />
+    </>
   )
 }

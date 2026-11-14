@@ -8,7 +8,7 @@ import type { DateRange } from '@/types/dates'
 import type { RevenueDayRow } from '@/types/revenue'
 import type { RxGroup, StatsRxGroup } from '@/types/rxGroups'
 import { pickRange } from './periodPick'
-import { revenueCells, revenueTabs, type RevenueCell, type RevenueInput } from './revenueView'
+import { revenueCells, revenueTabs, roughInfo, type RevenueCell, type RevenueInput } from './revenueView'
 import { statsRange } from './view'
 
 type Day = RevenueDayRow & { dayCodes: boolean }
@@ -78,15 +78,20 @@ function withDays(days: readonly Day[], changes: Record<string, Day | null>): Da
   return days.flatMap((row) => (row.date in changes ? (changes[row.date] === null ? [] : [changes[row.date]!]) : [row]))
 }
 
+// 10월 28일(확인 필요한 날, 접수 95건)에 참고 금액 498만 원이 있는 시안 숫자(first90 시안 '참고 금액 포함')
+const roughMockupDays = () => withDays(mockupDays(), { '2026-10-28': uncheckedDay('2026-10-28', { visits: 95, roughTotal: 4_980_000 }) })
+
 const ready = (input: RevenueInput) => {
   const tabs = revenueTabs(input)
   if (tabs.kind !== 'ready') throw new Error('ready가 아니다')
   return tabs
 }
 const cellOf = (cells: RevenueCell[], key: RevenueCell['key']) => cells.find((cell) => cell.key === key)!
-// 화면에 보이는 글: 화살표(꾸밈) + 값 + 작은 단위 + 방향 글
-const ARROW: Partial<Record<RevenueCell['tone'], string>> = { up: '▲ ', down: '▼ ' }
-const shown = (cell: RevenueCell) => `${ARROW[cell.tone] ?? ''}${cell.value}${cell.unit ?? ''}${cell.srText ? ` ${cell.srText}` : ''}`
+// 화면에 보이는 글: 값 + 작은 단위, 증감 줄은 화살표(꾸밈) + 글 + 꼬리 글(first90 AC-4408.2)
+const ARROW: Record<string, string> = { up: '▲ ', down: '▼ ' }
+const shown = (cell: RevenueCell) => `${cell.value}${cell.unit ?? ''}`
+const deltaShown = (cell: RevenueCell) => (cell.delta === null ? null : `${ARROW[cell.delta.dir] ?? ''}${cell.delta.text}${cell.delta.srText ? ` ${cell.delta.srText}` : ''}`)
+const NO_COMPARE_DELTA = { dir: 'none', text: '비교할 자료가 없어요', srText: '' }
 
 const NONE_DELTA = { dir: 'none', text: '–', srText: '' }
 const up = (text: string) => ({ dir: 'up', text, srText: '늘어남' })
@@ -94,87 +99,146 @@ const down = (text: string) => ({ dir: 'down', text, srText: '줄어듦' })
 
 // ── 기간 요약 둘째 줄 ─────────────────────────────────────
 
-describe('AC-4105.1 revenueCells: 기간 요약 둘째 줄 네 칸', () => {
-  it('AC-4105.1 시안 숫자: 1억 3,261만 원 · 진료한 날 25일 평균 530만 원 · 57,333원 · 1일 · ▲ 60만 원 (+0.4%) 늘어남', () => {
-    expect(revenueCells(inputOf())).toEqual([
-      { key: 'total', label: '매출', value: '1억 3,261만', unit: '원', note: '진료한 날 25일 평균 530만 원', tone: 'ink', srText: '' },
-      { key: 'perVisit', label: '건당 진료비', value: '57,333', unit: '원', note: '매출 ÷ 접수 2,313건', tone: 'ink', srText: '' },
-      { key: 'unchecked', label: '확인 필요한 날', value: '1', unit: '일', note: '10월 28일 · 그날 금액은 매출에 넣지 않았어요', tone: 'warn', srText: '' },
-      { key: 'compare', label: '비교 기간보다', value: '60만 원 (+0.4%)', unit: null, note: '지난 30일 매출 1억 3,200만 원', tone: 'up', srText: '늘어남' },
+describe('AC-4105.1·AC-4408.2 revenueCells: 매출 요약 칸 셋', () => {
+  it('AC-4105.1·AC-4408.2 시안 숫자(꺼짐): 총매출 1억 3,261만 원 ▲ 60만 원 (+0.4%) 지난 30일보다 늘어남 · 57,333원 ▲ +2.9% · 1일', () => {
+    expect(revenueCells(inputOf({ days: roughMockupDays() }))).toEqual([
+      {
+        key: 'total',
+        label: '총매출',
+        hint: null,
+        tag: false,
+        value: '1억 3,261만',
+        unit: '원',
+        tone: 'ink',
+        delta: { dir: 'up', text: '60만 원 (+0.4%)', srText: '지난 30일보다 늘어남' },
+        notes: ['진료한 날 25일 · 하루 평균 530만 원'],
+      },
+      { key: 'perVisit', label: '건당 진료비', hint: '매출 ÷ 접수 2,313건', tag: false, value: '57,333', unit: '원', tone: 'ink', delta: { dir: 'up', text: '+2.9%', srText: '' }, notes: [] },
+      { key: 'unchecked', label: '확인 필요한 날', hint: null, tag: false, value: '1', unit: '일', tone: 'warn', delta: null, notes: ['10월 28일 · 금액이 확실하지 않아 뺐어요'] },
     ])
-    expect(shown(cellOf(revenueCells(inputOf()), 'compare'))).toBe('▲ 60만 원 (+0.4%) 늘어남')
-    expect(shown(cellOf(revenueCells(inputOf()), 'perVisit'))).toBe('57,333원')
-    expect(shown(cellOf(revenueCells(inputOf()), 'unchecked'))).toBe('1일')
+    const cells = revenueCells(inputOf())
+    expect(deltaShown(cellOf(cells, 'total'))).toBe('▲ 60만 원 (+0.4%) 지난 30일보다 늘어남')
+    expect(shown(cellOf(cells, 'perVisit'))).toBe('57,333원')
+    expect(deltaShown(cellOf(cells, 'perVisit'))).toBe('▲ +2.9%')
+    expect(shown(cellOf(cells, 'unchecked'))).toBe('1일')
   })
 
-  it('AC-4105.1 확인 필요한 날이 없으면 값 `없음`이고 아래 글이 없다', () => {
+  it('AC-4408.2 참고 금액이 없는 확인 필요한 날(옛 도우미)은 `{날짜} · 금액을 알 수 없어 뺐어요`다', () => {
+    expect(cellOf(revenueCells(inputOf()), 'unchecked').notes).toEqual(['10월 28일 · 금액을 알 수 없어 뺐어요'])
+    expect(cellOf(revenueCells(inputOf(), 'in'), 'unchecked').notes).toEqual(['10월 28일 · 금액을 알 수 없어 뺐어요'])
+  })
+
+  it('AC-4408.2 켜짐: 매출 = 확인된 날 + 참고 금액, 건당 = 그 매출 ÷ 접수(참고 금액 날 포함, 버림), 비교 기간도 같은 방식, 두 칸에 "참고 포함"', () => {
+    const cells = revenueCells(inputOf({ days: roughMockupDays() }), 'in')
+    expect(cellOf(cells, 'total')).toEqual({
+      key: 'total',
+      label: '총매출',
+      hint: null,
+      tag: true,
+      value: '1억 3,759만',
+      unit: '원',
+      tone: 'ink',
+      delta: { dir: 'up', text: '558만 원 (+4.2%)', srText: '지난 30일보다 늘어남' },
+      notes: ['진료한 날 26일 · 하루 평균 529만 원 · 참고 498만 원 포함'],
+    })
+    expect(cellOf(cells, 'perVisit')).toEqual({ key: 'perVisit', label: '건당 진료비', hint: '매출 ÷ 접수 2,408건', tag: true, value: '57,139', unit: '원', tone: 'ink', delta: { dir: 'up', text: '+2.5%', srText: '' }, notes: [] })
+    expect(cellOf(cells, 'unchecked')).toMatchObject({ value: '1', unit: '일', tag: false, notes: ['10월 28일 · 참고 금액 498만 원 포함'] })
+  })
+
+  it('AC-4408.2 비교 기간의 참고 금액도 켜짐에서 더한다(같은 방식)', () => {
+    const days = withDays(roughMockupDays(), { '2026-09-16': uncheckedDay('2026-09-16', { roughTotal: 5_077_000 }) })
+    const cell = cellOf(revenueCells(inputOf({ days }), 'in'), 'total')
+    // 지난 30일: 132,005,000원 그대로(그날 참고 금액이 그날 확인된 금액과 같다) → 이번 137,592,000원과 견준다
+    expect(cell.delta).toEqual({ dir: 'up', text: '558만 원 (+4.2%)', srText: '지난 30일보다 늘어남' })
+    const off = cellOf(revenueCells(inputOf({ days })), 'total')
+    // 꺼짐: 지난 30일은 그날을 빼 126,928,000원, 이번은 132,612,000원
+    expect(off.delta).toEqual({ dir: 'up', text: '568만 원 (+4.4%)', srText: '지난 30일보다 늘어남' })
+  })
+
+  it('AC-4408.2 참고 금액이 있는 날과 없는 날이 섞이면 아래 글이 두 줄이다(없는 날은 켜도 빠진다)', () => {
+    const days = withDays(roughMockupDays(), { '2026-11-03': uncheckedDay('2026-11-03') })
+    expect(cellOf(revenueCells(inputOf({ days })), 'unchecked').notes).toEqual(['10월 28일 · 금액이 확실하지 않아 뺐어요', '11월 3일 · 금액을 알 수 없어 뺐어요'])
+    expect(cellOf(revenueCells(inputOf({ days }), 'in'), 'unchecked').notes).toEqual(['10월 28일 · 참고 금액 498만 원 포함', '11월 3일 · 금액을 알 수 없어 뺐어요'])
+  })
+
+  it('AC-4408.2 참고 금액이 있는 날이 없으면 켜짐도 꺼짐과 같다(꼬리표 없음)', () => {
+    expect(revenueCells(inputOf(), 'in')).toEqual(revenueCells(inputOf()))
+  })
+
+  it('AC-4408.2 견줄 수 없으면 총매출·건당 진료비 증감 줄은 `비교할 자료가 없어요`다', () => {
+    const input = inputOf({ days: withDays(mockupDays(), { '2026-09-16': null }) })
+    expect(cellOf(revenueCells(input), 'perVisit').delta).toEqual(NO_COMPARE_DELTA)
+    expect(cellOf(revenueCells(input), 'total').delta).toEqual(NO_COMPARE_DELTA)
+  })
+
+  it('AC-4105.1·AC-4408.2 확인 필요한 날이 없으면 값 `없음`이고 아래 글이 없다', () => {
     const days = withDays(mockupDays(), { '2026-10-28': day('2026-10-28', { total: 0, insurer: 0, copay: 0, noncovered: 0, otherTotal: 0, visits: 0 }) })
-    expect(cellOf(revenueCells(inputOf({ days })), 'unchecked')).toEqual({ key: 'unchecked', label: '확인 필요한 날', value: '없음', unit: null, note: null, tone: 'ink', srText: '' })
+    expect(cellOf(revenueCells(inputOf({ days })), 'unchecked')).toEqual({ key: 'unchecked', label: '확인 필요한 날', hint: null, tag: false, value: '없음', unit: null, tone: 'ink', delta: null, notes: [] })
   })
 
-  it('AC-4105.1 진료한 날은 확인 필요한 날·쉬는 날(접수 0건·금액 모두 0)을 빼고, 하루 평균은 매출 ÷ 진료한 날이다', () => {
+  it('AC-4105.1·AC-4408.2 진료한 날은 확인 필요한 날·쉬는 날(접수 0건·금액 모두 0)을 빼고, 하루 평균은 매출 ÷ 진료한 날이다', () => {
     const days = [day('2026-11-10', { total: 3_000_000, insurer: 2_500_000 }), day('2026-11-11'), restDay('2026-11-12'), uncheckedDay('2026-11-13')]
-    expect(cellOf(revenueCells(inputOf({ days })), 'total')).toMatchObject({ value: '400만', unit: '원', note: '진료한 날 2일 평균 200만 원' })
+    expect(cellOf(revenueCells(inputOf({ days })), 'total')).toMatchObject({ value: '400만', unit: '원', notes: ['진료한 날 2일 · 하루 평균 200만 원'] })
   })
 
-  it('AC-4105.1 건당 진료비는 짝이 맞는 날의 매출 ÷ 접수 건수이고 원 미만을 버린다(확인 필요한 날·접수 모르는 날 뺌)', () => {
+  it('AC-4105.1·AC-4408.2 건당 진료비는 짝이 맞는 날의 매출 ÷ 접수 건수이고 원 미만을 버린다(확인 필요한 날·접수 모르는 날 뺌)', () => {
     const days = [
       day('2026-11-10', { total: 10_001, insurer: 10_001, copay: 0, noncovered: 0, otherTotal: 0, visits: 2 }),
       uncheckedDay('2026-11-11', { visits: 50 }),
       day('2026-11-12', { visits: null }),
     ]
-    expect(cellOf(revenueCells(inputOf({ days })), 'perVisit')).toMatchObject({ value: '5,000', unit: '원', note: '매출 ÷ 접수 2건' })
+    expect(cellOf(revenueCells(inputOf({ days })), 'perVisit')).toMatchObject({ value: '5,000', unit: '원', hint: '매출 ÷ 접수 2건' })
   })
 
-  it('AC-4105.1 저장된 날이 없거나 모두 쉬는 날이면 네 칸 모두 `–` · `자료 없음`이다', () => {
-    const blank = (key: RevenueCell['key'], label: string) => ({ key, label, value: '–', unit: null, note: '자료 없음', tone: 'none', srText: '' })
-    const empty = [blank('total', '매출'), blank('perVisit', '건당 진료비'), blank('unchecked', '확인 필요한 날'), blank('compare', '비교 기간보다')]
+  it('AC-4105.1·AC-4408.2 저장된 날이 없거나 모두 쉬는 날이면 세 칸 모두 `–` · `자료 없음`이다', () => {
+    const blank = (key: RevenueCell['key'], label: string) => ({ key, label, hint: null, tag: false, value: '–', unit: null, tone: 'none', delta: null, notes: ['자료 없음'] })
+    const empty = [blank('total', '총매출'), blank('perVisit', '건당 진료비'), blank('unchecked', '확인 필요한 날')]
     expect(revenueCells(inputOf({ days: [] }))).toEqual(empty)
     expect(revenueCells(inputOf({ days: eachDay(R30.current).map((date) => restDay(date)) }))).toEqual(empty)
   })
 
-  it('AC-4105.1 매출을 읽는 중이면 `–` · `불러오는 중`, 읽기 실패면 `–` · `자료 없음`이다', () => {
-    const labels = ['매출', '건당 진료비', '확인 필요한 날', '비교 기간보다']
+  it('AC-4105.1·AC-4408.2 매출을 읽는 중이면 `–` · `불러오는 중`, 읽기 실패면 `–` · `자료 없음`이다', () => {
+    const labels = ['총매출', '건당 진료비', '확인 필요한 날']
     for (const [state, note] of [
       ['reading', '불러오는 중'],
       ['read-failed', '자료 없음'],
     ] as const) {
       const cells = revenueCells(state)
       expect(cells.map((cell) => cell.label)).toEqual(labels)
-      for (const cell of cells) expect(cell).toMatchObject({ value: '–', unit: null, note, tone: 'none', srText: '' })
+      for (const cell of cells) expect(cell).toMatchObject({ value: '–', unit: null, notes: [note], tone: 'none', delta: null, tag: false })
     }
   })
 
-  it('AC-4105.1 보는 기간이 확인 필요한 날뿐이면 매출·건당 진료비는 `–`(0원이 아님)이고 확인 필요한 날은 센다', () => {
+  it('AC-4105.1·AC-4408.2 보는 기간이 확인 필요한 날뿐이면 매출·건당 진료비는 `–`(0원이 아님)이고 확인 필요한 날은 센다', () => {
     const days = [uncheckedDay('2026-11-12'), uncheckedDay('2026-11-13'), restDay('2026-11-11')]
     const cells = revenueCells(inputOf({ days }))
-    expect(cellOf(cells, 'total')).toMatchObject({ value: '–', unit: null, note: '자료 없음', tone: 'none' })
-    expect(cellOf(cells, 'perVisit')).toMatchObject({ value: '–', unit: null, note: '자료 없음' })
-    expect(cellOf(cells, 'unchecked')).toMatchObject({ value: '2', unit: '일', note: '11월 12일–13일 · 그날 금액은 매출에 넣지 않았어요', tone: 'warn' })
+    expect(cellOf(cells, 'total')).toMatchObject({ value: '–', unit: null, notes: ['자료 없음'], tone: 'none' })
+    expect(cellOf(cells, 'perVisit')).toMatchObject({ value: '–', unit: null, notes: ['자료 없음'] })
+    expect(cellOf(cells, 'unchecked')).toMatchObject({ value: '2', unit: '일', notes: ['11월 12일–13일 · 금액을 알 수 없어 뺐어요'], tone: 'warn' })
   })
 })
 
-describe('AC-4105.1 날짜 글 규칙(기본값 10)', () => {
-  const note = (dates: string[]) => cellOf(revenueCells(inputOf({ days: withDays(mockupDays(), Object.fromEntries(dates.map((d) => [d, uncheckedDay(d)]))) })), 'unchecked').note
+describe('AC-4105.1·AC-4408.2 날짜 글 규칙(기본값 10)', () => {
+  const note = (dates: string[]) => cellOf(revenueCells(inputOf({ days: withDays(mockupDays(), Object.fromEntries(dates.map((d) => [d, uncheckedDay(d)]))) })), 'unchecked').notes.join('\n')
 
-  it('AC-4105.1 달이 바뀔 때마다 달을 쓰고 이어진 날은 묶는다', () => {
-    expect(note(['2026-10-28', '2026-11-03', '2026-11-04'])).toBe('10월 28일·11월 3일–4일 · 그날 금액은 매출에 넣지 않았어요')
+  it('AC-4105.1·AC-4408.2 달이 바뀔 때마다 달을 쓰고 이어진 날은 묶는다', () => {
+    expect(note(['2026-10-28', '2026-11-03', '2026-11-04'])).toBe('10월 28일·11월 3일–4일 · 금액을 알 수 없어 뺐어요')
   })
 
-  it('AC-4105.1 달을 넘어 이어진 날은 끝에 달을 다시 쓰고, 그 달 안의 다음 날은 날만 쓴다', () => {
-    expect(note(['2026-10-31', '2026-11-01', '2026-11-02', '2026-11-04'])).toBe('10월 28일·31일–11월 2일·4일 · 그날 금액은 매출에 넣지 않았어요')
+  it('AC-4105.1·AC-4408.2 달을 넘어 이어진 날은 끝에 달을 다시 쓰고, 그 달 안의 다음 날은 날만 쓴다', () => {
+    expect(note(['2026-10-31', '2026-11-01', '2026-11-02', '2026-11-04'])).toBe('10월 28일·31일–11월 2일·4일 · 금액을 알 수 없어 뺐어요')
   })
 
-  it('AC-4105.1 묶음이 다섯을 넘으면 앞 넷 뒤에 ` 외 {n}일`(남은 날 수)이다', () => {
+  it('AC-4105.1·AC-4408.2 묶음이 다섯을 넘으면 앞 넷 뒤에 ` 외 {n}일`(남은 날 수)이다', () => {
     const days = withDays(
       mockupDays().map((row) => (row.date === '2026-10-28' ? day(row.date) : row)),
       Object.fromEntries(['2026-10-15', '2026-10-17', '2026-10-20', '2026-10-21', '2026-10-23', '2026-10-27', '2026-10-29', '2026-10-30'].map((d) => [d, uncheckedDay(d)])),
     )
-    expect(cellOf(revenueCells(inputOf({ days })), 'unchecked')).toMatchObject({ value: '8', note: '10월 15일·17일·20일–21일·23일 외 3일 · 그날 금액은 매출에 넣지 않았어요' })
+    expect(cellOf(revenueCells(inputOf({ days })), 'unchecked')).toMatchObject({ value: '8', notes: ['10월 15일·17일·20일–21일·23일 외 3일 · 금액을 알 수 없어 뺐어요'] })
   })
 
-  it('AC-4105.1 묶음이 다섯이면 모두 쓴다', () => {
-    expect(note(['2026-10-15', '2026-10-17', '2026-10-20', '2026-11-03'])).toBe('10월 15일·17일·20일·28일·11월 3일 · 그날 금액은 매출에 넣지 않았어요')
+  it('AC-4105.1·AC-4408.2 묶음이 다섯이면 모두 쓴다', () => {
+    expect(note(['2026-10-15', '2026-10-17', '2026-10-20', '2026-11-03'])).toBe('10월 15일·17일·20일·28일·11월 3일 · 금액을 알 수 없어 뺐어요')
   })
 })
 
@@ -187,26 +251,26 @@ const sevenDays = (now: number, before: number) => [
   ...eachDay(span('2026-11-07', '2026-11-13')).map((date) => paid(date, now)),
 ]
 
-describe('AC-4105.2 비교 기간보다', () => {
-  it('AC-4105.2 바로 전 기간(지난 7일)과 견주고, 줄었으면 `▼ … 줄어듦`이다', () => {
-    const cell = cellOf(revenueCells(inputOf({ range: R7, days: sevenDays(1_000_000, 1_100_000) })), 'compare')
-    expect(cell).toEqual({ key: 'compare', label: '비교 기간보다', value: '70만 원 (−9.0%)', unit: null, note: '지난 7일 매출 770만 원', tone: 'down', srText: '줄어듦' })
-    expect(shown(cell)).toBe('▼ 70만 원 (−9.0%) 줄어듦')
+describe('AC-4105.2·AC-4408.2 총매출 증감 줄', () => {
+  it('AC-4105.2·AC-4408.2 바로 전 기간(지난 7일)과 견주고, 줄었으면 `▼ … 지난 7일보다 줄어듦`이다', () => {
+    const cell = cellOf(revenueCells(inputOf({ range: R7, days: sevenDays(1_000_000, 1_100_000) })), 'total')
+    expect(cell.delta).toEqual({ dir: 'down', text: '70만 원 (−9.0%)', srText: '지난 7일보다 줄어듦' })
+    expect(deltaShown(cell)).toBe('▼ 70만 원 (−9.0%) 지난 7일보다 줄어듦')
   })
 
-  it('AC-4105.2 비율은 소수 첫째 자리에서 0 쪽으로 버린다(+4.08% → +4.0%)', () => {
-    expect(cellOf(revenueCells(inputOf({ range: R7, days: sevenDays(1_040_800, 1_000_000) })), 'compare')).toMatchObject({ value: '28만 원 (+4.0%)', tone: 'up', srText: '늘어남' })
+  it('AC-4105.2·AC-4408.2 비율은 소수 첫째 자리에서 0 쪽으로 버린다(+4.08% → +4.0%)', () => {
+    expect(cellOf(revenueCells(inputOf({ range: R7, days: sevenDays(1_040_800, 1_000_000) })), 'total').delta).toEqual({ dir: 'up', text: '28만 원 (+4.0%)', srText: '지난 7일보다 늘어남' })
   })
 
-  it('AC-4105.2 버려서 0이면 `변화 없음`이다(화살표·방향 글 없음)', () => {
-    const cell = cellOf(revenueCells(inputOf({ range: R7, days: sevenDays(1_000_000, 1_000_500) })), 'compare')
-    expect(cell).toMatchObject({ value: '변화 없음', unit: null, note: '지난 7일 매출 700만 원', tone: 'flat', srText: '' })
-    expect(shown(cell)).toBe('변화 없음')
+  it('AC-4105.2·AC-4408.2 버려서 0이면 `변화 없음`이다(화살표·방향 글 없음)', () => {
+    const cell = cellOf(revenueCells(inputOf({ range: R7, days: sevenDays(1_000_000, 1_000_500) })), 'total')
+    expect(cell.delta).toEqual({ dir: 'flat', text: '변화 없음', srText: '' })
+    expect(deltaShown(cell)).toBe('변화 없음')
   })
 
-  it('AC-4105.2 비교 기간에 매출을 저장하지 않은 날이 하루라도 있으면 견주지 않는다(`–` · `비교할 자료가 없어요`, 다른 탭 비교도 없음)', () => {
+  it('AC-4105.2·AC-4408.2 비교 기간에 매출을 저장하지 않은 날이 하루라도 있으면 견주지 않는다(`비교할 자료가 없어요`, 다른 탭 비교도 없음)', () => {
     const input = inputOf({ days: withDays(mockupDays(), { '2026-09-16': null }) })
-    expect(cellOf(revenueCells(input), 'compare')).toEqual({ key: 'compare', label: '비교 기간보다', value: '–', unit: null, note: '비교할 자료가 없어요', tone: 'none', srText: '' })
+    expect(cellOf(revenueCells(input), 'total').delta).toEqual(NO_COMPARE_DELTA)
     const tabs = ready(input)
     expect(tabs.trend.lead).toEqual({ text: '이 기간 매출', amount: '1억 3,261만 원', rest: null })
     expect(tabs.split.rows.map((row) => row.delta)).toEqual(Array(6).fill(NONE_DELTA))
@@ -214,12 +278,12 @@ describe('AC-4105.2 비교 기간보다', () => {
     expect(tabs.perVisit.kpis[2]).toMatchObject({ value: '2,408건', sub: '비교할 자료가 없어요' })
   })
 
-  it('AC-4105.2 이번 기간에 저장하지 않은 날이 있어도 견주지 않는다', () => {
+  it('AC-4105.2·AC-4408.2 이번 기간에 저장하지 않은 날이 있어도 견주지 않는다', () => {
     const input = inputOf({ days: withDays(mockupDays(), { '2026-11-02': null }) })
-    expect(cellOf(revenueCells(input), 'compare')).toMatchObject({ value: '–', note: '비교할 자료가 없어요' })
+    expect(cellOf(revenueCells(input), 'total').delta).toEqual(NO_COMPARE_DELTA)
   })
 
-  it('AC-4105.2 최근 12개월은 끝나지 않은 달(11월)과 작년 같은 달을 양쪽에서 빼고 견준다', () => {
+  it('AC-4105.2·AC-4408.2 최근 12개월은 끝나지 않은 달(11월)과 작년 같은 달을 양쪽에서 빼고 견준다', () => {
     const range = statsRange(TODAY, '12m') // 2025년 12월 – 2026년 11월, 작년 같은 12달 2024년 12월 – 2025년 11월
     const days = [
       ...eachDay(span('2024-12-01', '2025-10-31')).map((date) => paid(date, 1_000_000)),
@@ -228,22 +292,27 @@ describe('AC-4105.2 비교 기간보다', () => {
     ]
     const input = inputOf({ range, days })
     const cells = revenueCells(input)
-    expect(cellOf(cells, 'total')).toMatchObject({ value: '3억 8,280만', note: '진료한 날 348일 평균 110만 원' })
-    expect(cellOf(cells, 'compare')).toMatchObject({ value: '3,350만 원 (+10.0%)', note: '작년 같은 11달 매출 3억 3,500만 원', tone: 'up' })
+    expect(cellOf(cells, 'total')).toMatchObject({
+      value: '3억 8,280만',
+      notes: ['진료한 날 348일 · 하루 평균 110만 원'],
+      delta: { dir: 'up', text: '3,350만 원 (+10.0%)', srText: '작년 같은 11달보다 늘어남' },
+    })
     const tabs = ready(input)
     expect(tabs.trend.lead).toEqual({ text: '이 기간 매출', amount: '3억 8,280만 원', rest: '· 작년 같은 11달 3억 3,500만 원' })
     expect(tabs.split.head).toEqual(['나눔', '최근 12개월', '몫', '작년 같은 11달보다'])
     expect(tabs.split.rows.at(-1)).toMatchObject({ name: '합계 · 매출', delta: up('+10.0%') })
   })
 
-  it('AC-4105.2 최근 12개월의 마지막 달이 끝났으면(말일에 진료 끝) 열두 달 모두 견주고 이름은 `작년 같은 12달`이다', () => {
+  it('AC-4105.2·AC-4408.2 최근 12개월의 마지막 달이 끝났으면(말일에 진료 끝) 열두 달 모두 견주고 이름은 `작년 같은 12달`이다', () => {
     const today = '2026-11-30'
     const range = statsRange(today, '12m')
     const days = [...eachDay(span('2024-12-01', '2025-11-30')).map((date) => paid(date, 1_000_000)), ...eachDay(span('2025-12-01', '2026-11-30')).map((date) => paid(date, 1_000_000))]
-    expect(cellOf(revenueCells(inputOf({ range, lastDay: today, days })), 'compare')).toMatchObject({ value: '변화 없음', note: '작년 같은 12달 매출 3억 6,500만 원' })
+    expect(cellOf(revenueCells(inputOf({ range, lastDay: today, days })), 'total').delta).toEqual({ dir: 'flat', text: '변화 없음', srText: '' })
+    const rising = days.map((row) => (row.date >= '2025-12-01' ? paid(row.date, 1_100_000) : row))
+    expect(cellOf(revenueCells(inputOf({ range, lastDay: today, days: rising })), 'total').delta).toMatchObject({ srText: '작년 같은 12달보다 늘어남' })
   })
 
-  it('AC-4105.2 고른 기간은 이름·글이 통계 비교 이름을 따르고(`9월보다` · `9월 매출 …`) 기간 요약에 작년 칸은 없다', () => {
+  it('AC-4105.2·AC-4408.2 고른 기간은 증감 꼬리 글이 통계 비교 이름을 따르고(`9월보다 늘어남`) 작년 칸은 없다', () => {
     const range = pickRange(TODAY, { kind: 'month', unit: 'day', month: '2026-10' }, false)
     const days = [
       ...eachDay(span('2025-10-01', '2025-10-31')).map((date) => paid(date, 1_240_000)),
@@ -251,8 +320,24 @@ describe('AC-4105.2 비교 기간보다', () => {
       ...eachDay(span('2026-10-01', '2026-10-31')).map((date) => paid(date, 1_000_000)),
     ]
     const cells = revenueCells(inputOf({ range, days }))
-    expect(cells.map((cell) => cell.key)).toEqual(['total', 'perVisit', 'unchecked', 'compare'])
-    expect(cellOf(cells, 'compare')).toMatchObject({ label: '9월보다', value: '400만 원 (+14.8%)', note: '9월 매출 2,700만 원', tone: 'up' })
+    expect(cells.map((cell) => cell.key)).toEqual(['total', 'perVisit', 'unchecked'])
+    expect(cellOf(cells, 'total').delta).toEqual({ dir: 'up', text: '400만 원 (+14.8%)', srText: '9월보다 늘어남' })
+  })
+})
+
+describe('AC-4408.1 roughInfo: 스위치에 줄 날 수', () => {
+  it('AC-4408.1 보는 기간의 확인 필요한 날 수와 그 가운데 참고 금액이 있는 날 수다', () => {
+    const days = withDays(roughMockupDays(), { '2026-11-03': uncheckedDay('2026-11-03'), '2026-09-20': uncheckedDay('2026-09-20', { roughTotal: 100_000 }) })
+    expect(roughInfo(inputOf({ days }))).toEqual({ days: 2, roughDays: 1 })
+    expect(roughInfo(inputOf())).toEqual({ days: 1, roughDays: 0 })
+  })
+
+  it('AC-4408.1 확인 필요한 날이 없으면 0일, 읽는 중·읽기 실패·저장된 날 없음이면 null이다', () => {
+    const days = withDays(mockupDays(), { '2026-10-28': day('2026-10-28') })
+    expect(roughInfo(inputOf({ days }))).toEqual({ days: 0, roughDays: 0 })
+    expect(roughInfo('reading')).toBeNull()
+    expect(roughInfo('read-failed')).toBeNull()
+    expect(roughInfo(inputOf({ days: [] }))).toBeNull()
   })
 })
 
@@ -635,10 +720,10 @@ describe('AC-4105.1 탭 설명 넷 · 매출 추이 첫 줄 · 건당 진료비 
     expect(revenueTabs(inputOf({ days: eachDay(R30.current).map((date) => restDay(date)) }))).toEqual({ kind: 'empty' })
   })
 
-  it('AC-4105.1 보는 기간 끝은 기간 끝과 마지막 끝난 날 가운데 이른 날이다(마지막 끝난 날 뒤의 줄은 세지 않음)', () => {
+  it('AC-4105.1·AC-4408.2 보는 기간 끝은 기간 끝과 마지막 끝난 날 가운데 이른 날이다(마지막 끝난 날 뒤의 줄은 세지 않음)', () => {
     const days = [...eachDay(span('2026-11-01', '2026-11-14')).map((date) => day(date))]
     const range = pickRange(TODAY, { kind: 'month', unit: 'day', month: '2026-11' }, true) // 11월 1일 – 14일(오늘 진료 끝)
-    expect(cellOf(revenueCells(inputOf({ range, lastDay: '2026-11-13', days })), 'total')).toMatchObject({ value: '1,300만', note: '진료한 날 13일 평균 100만 원' })
+    expect(cellOf(revenueCells(inputOf({ range, lastDay: '2026-11-13', days })), 'total')).toMatchObject({ value: '1,300만', notes: ['진료한 날 13일 · 하루 평균 100만 원'] })
   })
 })
 

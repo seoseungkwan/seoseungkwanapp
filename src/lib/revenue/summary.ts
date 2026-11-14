@@ -20,6 +20,7 @@ export type DaySplit = { covered: number; insurer: number; selfPay: number; nonc
  * uncheckedDays = unconfirmed인 날만. noVisitDays = unconfirmed 아니고 visits가 null인 날. days = unconfirmed 아닌 날 수(쉬는 날·나눔을 못 한 날 포함).
  * workDays = 진료한 날 수: unconfirmed도 쉬는 날(접수 0건·금액 아홉 칸 모두 0)도 아닌 날(stats-revenue AC-4105.1, 하루 평균의 분모).
  * null = 자료 없음(줄이 없거나, 모두 0이고 확인 필요한 날도 나눔을 못 한 날도 없음)
+ * roughDays·roughSum = 참고 금액 포함(withRough)으로 셀 때만 있는 열쇠(first90 AC-4408.2): 더한 확인 필요한 날(참고 금액이 숫자인 날)과 그 금액 합
  */
 export type PeriodSum = {
   total: number
@@ -37,7 +38,12 @@ export type PeriodSum = {
   noVisitDays: string[]
   days: number
   workDays: number
+  roughDays?: string[]
+  roughSum?: number
 } | null
+
+/** withRough = 확인 필요한 날 가운데 참고 금액(roughTotal)이 숫자인 날(0·음수 포함)을 매출·접수 건수 짝·진료한 날에 더한다(first90 AC-4408.2). 나눔(급여·비급여·기타)에는 넣지 않는다 */
+type SumOptions = { withRough?: boolean }
 
 export function splitDay(row: RevenueDayRow): DaySplit {
   if (row.unconfirmed || row.splitUnconfirmed) return null
@@ -55,7 +61,8 @@ const isAllZero = (row: RevenueDayRow) => row.visits === 0 && REVENUE_MONEY_KEYS
 /** 진료한 날: 확인 필요한 날도 쉬는 날(접수 0건·금액 아홉 칸 모두 0)도 아닌 날(stats-revenue AC-4105.1). workDays가 세는 날이다 */
 export const isWorkDay = (row: RevenueDayRow) => !row.unconfirmed && !isAllZero(row)
 
-export function sumPeriod(rows: readonly RevenueDayRow[], range: DateRange): PeriodSum {
+export function sumPeriod(rows: readonly RevenueDayRow[], range: DateRange, options: SumOptions = {}): PeriodSum {
+  const withRough = options.withRough === true
   const inRange = rows
     .filter((row) => compareYmd(row.date, range.from) >= 0 && compareYmd(row.date, range.to) <= 0)
     .sort((a, b) => compareYmd(a.date, b.date))
@@ -70,10 +77,25 @@ export function sumPeriod(rows: readonly RevenueDayRow[], range: DateRange): Per
   let perVisitCount = 0
   let days = 0
   let workDays = 0
+  const roughDays: string[] = []
+  let roughSum = 0
   for (const row of inRange) {
     if (row.visits !== null) visits = (visits ?? 0) + row.visits // 확인 필요한 날의 내원도 이 합에는 센다. perVisitCount에서는 금액과 함께 빠진다
     if (row.unconfirmed) {
       uncheckedDays.push(row.date)
+      // 참고 금액 포함: 그날은 확인 필요한 날 그대로이고(days에 넣지 않음) 금액만 참고 금액으로 더한다. 나눔은 없다
+      if (withRough && typeof row.roughTotal === 'number') {
+        roughDays.push(row.date)
+        roughSum += row.roughTotal
+        total += row.roughTotal
+        workDays += 1
+        if (row.visits === null) {
+          noVisitDays.push(row.date)
+        } else {
+          perVisitTotal += row.roughTotal
+          perVisitCount += row.visits
+        }
+      }
       continue
     }
     days += 1
@@ -101,7 +123,8 @@ export function sumPeriod(rows: readonly RevenueDayRow[], range: DateRange): Per
 
   if (uncheckedDays.length === 0 && noSplitDays.length === 0 && inRange.every(isAllZero)) return null
   // 나눔이 있는 날이 쉬는 날뿐이어도 null이다. 날마다 비는 달에도 일요일이 있어 0원·빈 막대가 되지 않게
-  return { total, ...(split.splitTotal === 0 ? NO_SPLIT : split), visits, perVisitTotal, perVisitCount, uncheckedDays, noSplitDays, noVisitDays, days, workDays }
+  const sum = { total, ...(split.splitTotal === 0 ? NO_SPLIT : split), visits, perVisitTotal, perVisitCount, uncheckedDays, noSplitDays, noVisitDays, days, workDays }
+  return withRough ? { ...sum, roughDays, roughSum } : sum
 }
 
 /** rate는 % 소수 첫째 자리 버림(0 쪽으로). before가 null·0이면 비교할 수 없어 null */

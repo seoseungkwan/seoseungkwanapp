@@ -26,6 +26,7 @@ import {
   rxPickRows,
   statsRange,
   summaryCells,
+  summaryDesc,
   weekdayBars,
   type StatsInput,
   type StatsPeriod,
@@ -240,17 +241,16 @@ describe('AC-1701.5 빠른 단추 넷의 넓힌 기간 모양', () => {
     }
   })
 
-  it("AC-1701.5 기간 요약의 넷째 칸 글은 range.previous.name을 쓴다(빠른 단추는 COMPARE_NAME 그대로)", () => {
+  it('AC-1701.5·AC-4403.1 환자 요약 옆 글은 range.previous.name을 쓴다(빠른 단추는 COMPARE_NAME 그대로)', () => {
     const base = statsRange('2026-11-13', '7d')
     const range = { ...base, previous: { ...base.previous, name: '비교 이름' } }
-    const days = daysFrom('2026-10-30', '2026-11-12')
-    const cells = summaryCells({ days, covered: [{ from: '2026-10-30', to: '2026-11-12' }], range })
-    expect(cellOf(cells, 'compare').note).toBe('비교 이름 하루 평균 10명')
+    expect(summaryDesc(range)).toBe('접수 기준 · 같은 분이 여러 번 오면 여러 건 · 증감은 비교 이름과 비교')
+    expect(summaryDesc(base)).toBe('접수 기준 · 같은 분이 여러 번 오면 여러 건 · 증감은 지난 7일과 비교')
   })
 
-  it("AC-1701.5 SummaryCell.key에 둘째 비교 칸 'lastYear'가 있다", () => {
-    const keys: SummaryCell['key'][] = ['average', 'new', 'returning', 'compare', 'lastYear']
-    expect(keys).toHaveLength(5)
+  it("AC-1701.5·AC-4403.2 SummaryCell.key는 칸 넷이고 '비교 기간보다'(compare)·'lastYear' 칸은 없다(작년은 delta2)", () => {
+    const keys: SummaryCell['key'][] = ['average', 'new', 'first90', 'returning']
+    expect(keys).toHaveLength(4)
   })
 })
 
@@ -263,13 +263,13 @@ describe('AC-511.2 summaryCells', () => {
     ...monthRows('2026-11', { newPatients: 1, returning: 4 }),
   ]
 
-  it('AC-511.2 네 칸이다: 평균 환자 수, 신환, 재진, 비교 기간보다', () => {
+  it('AC-511.2·AC-4403.1 네 칸이다: 하루 평균 내원, 신환, 90일초진, 재진', () => {
     const cells = summaryCells(input('2026-11-13', '30d', [day('2026-11-02')], [{ from: '2026-10-01', to: '2026-11-12' }]))
-    expect(cells.map((cell) => cell.key)).toEqual(['average', 'new', 'returning', 'compare'])
-    expect(cells.map((cell) => cell.label)).toEqual(['하루 평균 환자 수', '신환', '재진', '비교 기간보다'])
+    expect(cells.map((cell) => cell.key)).toEqual(['average', 'new', 'first90', 'returning'])
+    expect(cells.map((cell) => cell.label)).toEqual(['하루 평균 내원', '신환', '90일초진', '재진'])
   })
 
-  it('AC-511.2 일 기간 평균은 자료 있는 끝난 날 평균이고 버린다. 자료 없는 날은 0으로 치지 않는다', () => {
+  it('AC-511.2·AC-4403.2 일 기간 평균은 자료 있는 끝난 날 평균이고 버린다. 자료 없는 날은 0으로 치지 않는다', () => {
     const days = [
       day('2026-11-06', { newPatients: 2, returning: 8 }),
       day('2026-11-09', { newPatients: 3, returning: 8 }),
@@ -277,12 +277,12 @@ describe('AC-511.2 summaryCells', () => {
       day('2026-11-11', { newPatients: 4, returning: 8 }),
     ]
     const cells = summaryCells(input('2026-11-13', '7d', days, [{ from: '2026-11-06', to: '2026-11-12' }]))
-    expect(cellOf(cells, 'average')).toMatchObject({ value: 11, note: '진료한 날 4일 평균', partial: false })
-    expect(cellOf(cells, 'new')).toMatchObject({ value: 13, note: '기간 합계', partial: false })
-    expect(cellOf(cells, 'returning')).toMatchObject({ value: 32, note: '기간 합계', partial: false })
+    expect(cellOf(cells, 'average')).toMatchObject({ value: 11, hint: '진료한 날 4일 평균', partial: false })
+    expect(cellOf(cells, 'new')).toMatchObject({ value: 13, hint: '처음 온 환자', partial: false })
+    expect(cellOf(cells, 'returning')).toMatchObject({ value: 32, hint: '90일초진 포함', partial: false })
   })
 
-  it('AC-511.2 비교 기간보다는 버린 평균끼리의 compareNumbers 증감이다', () => {
+  it('AC-511.2·AC-4403.2 비교 기간보다는 버린 평균끼리의 compareNumbers 증감이다', () => {
     const days = [
       day('2026-11-06', { newPatients: 0, returning: 10 }),
       day('2026-11-07', { newPatients: 0, returning: 11 }),
@@ -291,30 +291,28 @@ describe('AC-511.2 summaryCells', () => {
     ]
     const cells = summaryCells(input('2026-11-13', '7d', days, [{ from: '2026-10-30', to: '2026-11-12' }]))
     expect(cellOf(cells, 'average').value).toBe(10)
-    expect(cellOf(cells, 'compare').delta).toEqual(compareNumbers(10, 9))
-    expect(cellOf(cells, 'compare').note).toBe('지난 7일 하루 평균 9명')
+    expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(10, 9))
   })
 
-  it('AC-511.2 11월 15일의 12개월 보기 — 덜 끝난 11월과 작년 11월을 빼고 견주어 그 달 때문에 ▼가 나오지 않는다', () => {
+  it('AC-511.2·AC-4403.2 11월 15일의 12개월 보기 — 덜 끝난 11월과 작년 11월을 빼고 견주어 그 달 때문에 ▼가 나오지 않는다', () => {
     const cells = summaryCells(input('2026-11-15', '12m', november15, covered12m))
-    expect(cellOf(cells, 'average')).toMatchObject({ label: '한 달 평균 환자 수', value: 200, note: '끝난 달 11달 평균', partial: false })
-    expect(cellOf(cells, 'compare').delta).toEqual(compareNumbers(200, 200))
-    expect(cellOf(cells, 'compare').note).toBe('작년 같은 12달 한 달 평균 200명')
+    expect(cellOf(cells, 'average')).toMatchObject({ label: '한 달 평균 내원', value: 200, hint: '끝난 달 11달 평균', partial: false })
+    expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(200, 200))
   })
 
-  it('AC-511.2 신환·재진 합에는 덜 끝난 칸도 넣고 일부 기간 표시를 붙인다', () => {
+  it('AC-511.2·AC-4403.2 신환·재진 합에는 덜 끝난 칸도 넣고 일부 기간 표시를 붙인다', () => {
     const cells = summaryCells(input('2026-11-15', '12m', november15, covered12m))
     expect(cellOf(cells, 'new')).toMatchObject({ value: 11 * 20 + 2, partial: true })
     expect(cellOf(cells, 'returning')).toMatchObject({ value: 11 * 180 + 8, partial: true })
   })
 
-  it('AC-511.2 오늘이 1일이라 이번 달 줄이 없어도 작년 같은 달을 비교에서 뺀다', () => {
+  it('AC-511.2·AC-4403.2 오늘이 1일이라 이번 달 줄이 없어도 작년 같은 달을 비교에서 뺀다', () => {
     const days = monthsFrom('2024-12', 23).flatMap((month) => monthRows(month, month === '2025-11' ? { newPatients: 100, returning: 900 } : finishedMonth))
     const cells = summaryCells(input('2026-11-01', '12m', days, [{ from: '2024-12-01', to: '2026-10-31' }]))
-    expect(cellOf(cells, 'compare').delta).toEqual(compareNumbers(200, 200))
+    expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(200, 200))
   })
 
-  it('AC-511.2 덮이지 않은 달의 짝(작년 같은 달)도 비교에서 뺀다', () => {
+  it('AC-511.2·AC-4403.2 덮이지 않은 달의 짝(작년 같은 달)도 비교에서 뺀다', () => {
     const days = [
       ...monthsFrom('2024-12', 6).flatMap((month) => monthRows(month, { newPatients: 100, returning: 900 })),
       ...monthsFrom('2025-06', 6).flatMap((month) => monthRows(month, finishedMonth)),
@@ -326,11 +324,11 @@ describe('AC-511.2 summaryCells', () => {
       { from: '2026-06-01', to: '2026-11-14' },
     ]
     const cells = summaryCells(input('2026-11-15', '12m', days, covered))
-    expect(cellOf(cells, 'average').note).toBe('끝난 달 5달 평균')
-    expect(cellOf(cells, 'compare').delta).toEqual(compareNumbers(200, 200))
+    expect(cellOf(cells, 'average').hint).toBe('끝난 달 5달 평균')
+    expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(200, 200))
   })
 
-  it('AC-511.2 일 기간도 덜 끝난 날과 그 짝인 날을 빼고 견준다', () => {
+  it('AC-511.2·AC-4403.2 일 기간도 덜 끝난 날과 그 짝인 날을 빼고 견준다', () => {
     const days = [
       day('2026-11-10', { newPatients: 0, returning: 20 }),
       day('2026-11-12', { newPatients: 0, returning: 5, partial: true }),
@@ -339,14 +337,14 @@ describe('AC-511.2 summaryCells', () => {
     ]
     const cells = summaryCells(input('2026-11-13', '7d', days, [{ from: '2026-10-30', to: '2026-11-12' }]))
     expect(cellOf(cells, 'average').value).toBe(20)
-    expect(cellOf(cells, 'compare').delta).toEqual(compareNumbers(20, 20))
+    expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(20, 20))
     expect(cellOf(cells, 'returning')).toMatchObject({ value: 25, partial: true })
   })
 
   describe('일 기간의 덮이지 않은 날', () => {
     const only = (ymd: string, patients: number) => day(ymd, { newPatients: 0, returning: patients })
 
-    it('AC-511.2 며칠 전에 불러온 일 기간 — 덮이지 않아 줄이 없는 날의 짝도 빼서 가짜 ▼가 없다', () => {
+    it('AC-511.2·AC-4403.2 며칠 전에 불러온 일 기간 — 덮이지 않아 줄이 없는 날의 짝도 빼서 가짜 ▼가 없다', () => {
       // 오늘 11월 13일(금), 덮은 기간 끝 11월 8일. 이번 기간은 금 100·토 40뿐이고 같은 요일끼리는 비교 기간과 같다
       const days = [
         only('2026-11-06', 100),
@@ -360,24 +358,23 @@ describe('AC-511.2 summaryCells', () => {
       ]
       const cells = summaryCells(input('2026-11-13', '7d', days, [{ from: '2026-10-30', to: '2026-11-08' }]))
       expect(cellOf(cells, 'average').value).toBe(70)
-      expect(cellOf(cells, 'compare').delta).toEqual(compareNumbers(70, 70))
-      expect(cellOf(cells, 'compare').note).toBe('지난 7일 하루 평균 70명')
+      expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(70, 70))
     })
 
-    it('AC-511.2 덮인 날에 줄이 없으면 휴진이라 그 짝은 비교에 남는다', () => {
+    it('AC-511.2·AC-4403.2 덮인 날에 줄이 없으면 휴진이라 그 짝은 비교에 남는다', () => {
       // 11월 9일은 덮인 휴진일이고 그 짝이 11월 2일이다
       const days = [only('2026-11-06', 20), only('2026-10-30', 20), only('2026-11-02', 50)]
       const cells = summaryCells(input('2026-11-13', '7d', days, [{ from: '2026-10-30', to: '2026-11-12' }]))
-      expect(cellOf(cells, 'compare').delta).toEqual(compareNumbers(20, 35))
+      expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(20, 35))
     })
 
-    it('AC-511.2 덮은 기간 밖의 줄도 partial이 false면 끝난 날이고 짝도 남는다(AC-511.3 trendBuckets 칸과 같다)', () => {
+    it('AC-511.2·AC-4403.2 덮은 기간 밖의 줄도 partial이 false면 끝난 날이고 짝도 남는다(AC-511.3 trendBuckets 칸과 같다)', () => {
       const days = [only('2026-11-10', 20), only('2026-11-03', 30)]
       const inputs = input('2026-11-13', '7d', days, [{ from: '2026-10-30', to: '2026-11-05' }])
       const cells = summaryCells(inputs)
-      expect(cellOf(cells, 'average')).toMatchObject({ value: 20, note: '진료한 날 1일 평균' })
+      expect(cellOf(cells, 'average')).toMatchObject({ value: 20, hint: '진료한 날 1일 평균' })
       expect(cellOf(cells, 'returning')).toMatchObject({ value: 20, partial: false })
-      expect(cellOf(cells, 'compare').delta).toEqual(compareNumbers(20, 30))
+      expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(20, 30))
       expect(patientTrend(inputs)).toMatchObject([{ key: '2026-11-10', state: 'complete' }])
     })
   })
@@ -393,34 +390,31 @@ describe('AC-511.2 summaryCells', () => {
       ...perMonth('2026-11', 10),
     ]
 
-    it('AC-511.2 작년 앞쪽 달이 덮이지 않은 12개월 보기, 두 해 숫자가 같음 — 짝이 남은 달끼리 견주어 변화 없음이고 아래 글이 견준 칸을 말한다', () => {
+    it('AC-511.2·AC-4403.2 작년 앞쪽 달이 덮이지 않은 12개월 보기, 두 해 숫자가 같음 — 짝이 남은 달끼리 견주어 변화 없음이고 아래 글이 견준 칸을 말한다', () => {
       const cells = summaryCells(input('2026-11-15', '12m', earlyLastYearMissing, [{ from: '2025-06-01', to: '2026-11-14' }]))
-      expect(cellOf(cells, 'average')).toMatchObject({ value: 209, note: '끝난 달 11달 평균' })
-      expect(cellOf(cells, 'compare').delta).toEqual(compareNumbers(100, 100))
-      expect(cellOf(cells, 'compare').note).toBe('견준 5달 평균 · 이번 100명 · 작년 100명')
+      expect(cellOf(cells, 'average')).toMatchObject({ value: 209, hint: '끝난 달 11달 평균' })
+      expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(100, 100))
     })
 
-    it('AC-511.2 11월 15일의 12개월 보기가 온전히 덮임 — 덜 끝난 이번 달은 평균에 들지 않아 아래 글은 그대로다', () => {
+    it('AC-511.2·AC-4403.2 11월 15일의 12개월 보기가 온전히 덮임 — 덜 끝난 이번 달은 평균에 들지 않아 아래 글은 그대로다', () => {
       const cells = summaryCells(input('2026-11-15', '12m', november15, covered12m))
-      expect(cellOf(cells, 'compare').note).toBe('작년 같은 12달 한 달 평균 200명')
+      expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(200, 200))
     })
 
-    it('AC-511.2 덮은 기간이 며칠 전에 끝난 일 기간 — 줄 없는 이번 쪽 날은 평균에 들지 않아 아래 글은 그대로다', () => {
+    it('AC-511.2·AC-4403.2 덮은 기간이 며칠 전에 끝난 일 기간 — 줄 없는 이번 쪽 날은 평균에 들지 않아 아래 글은 그대로다', () => {
       const days = [only('2026-11-06', 100), only('2026-10-30', 100), only('2026-11-02', 900)]
       const cells = summaryCells(input('2026-11-13', '7d', days, [{ from: '2026-10-30', to: '2026-11-08' }]))
-      expect(cellOf(cells, 'compare').delta).toEqual(compareNumbers(100, 100))
-      expect(cellOf(cells, 'compare').note).toBe('지난 7일 하루 평균 100명')
+      expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(100, 100))
     })
 
-    it('AC-511.2 일 기간에서 비교 쪽 날이 덮이지 않으면 끝난 이번 날도 빼고 "견준 {n}일"이라 적는다. 평균 칸 값은 그대로다', () => {
+    it('AC-511.2·AC-4403.2 일 기간에서 비교 쪽 날이 덮이지 않으면 끝난 이번 날도 빼고 "견준 {n}일"이라 적는다. 평균 칸 값은 그대로다', () => {
       const days = [...daysFrom('2026-11-06', '2026-11-07', { newPatients: 0, returning: 300 }), ...daysFrom('2026-11-08', '2026-11-12', { newPatients: 0, returning: 100 }), ...daysFrom('2026-11-01', '2026-11-05', { newPatients: 0, returning: 100 })]
       const cells = summaryCells(input('2026-11-13', '7d', days, [{ from: '2026-11-01', to: '2026-11-12' }]))
-      expect(cellOf(cells, 'average')).toMatchObject({ value: 157, note: '진료한 날 7일 평균' })
-      expect(cellOf(cells, 'compare').delta).toEqual(compareNumbers(100, 100))
-      expect(cellOf(cells, 'compare').note).toBe('견준 5일 평균 · 이번 100명 · 지난 기간 100명')
+      expect(cellOf(cells, 'average')).toMatchObject({ value: 157, hint: '진료한 날 7일 평균' })
+      expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(100, 100))
     })
 
-    it('AC-511.2 {n}은 짝 수가 아니라 남은 이번 쪽 칸 수다(두 쪽 다 휴진인 날은 칸이 없다)', () => {
+    it('AC-511.2·AC-4403.2 {n}은 짝 수가 아니라 남은 이번 쪽 칸 수다(두 쪽 다 휴진인 날은 칸이 없다)', () => {
       const days = [
         only('2026-11-06', 300),
         only('2026-11-07', 300),
@@ -434,109 +428,103 @@ describe('AC-511.2 summaryCells', () => {
         only('2026-11-05', 100),
       ]
       const cells = summaryCells(input('2026-11-13', '7d', days, [{ from: '2026-11-01', to: '2026-11-12' }]))
-      expect(cellOf(cells, 'compare').note).toBe('견준 4일 평균 · 이번 100명 · 지난 기간 100명')
+      expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(100, 100))
     })
 
-    it('AC-511.2 비교 쪽 칸만 덜 끝나도 그 짝의 끝난 이번 칸을 양쪽에서 뺀다', () => {
+    it('AC-511.2·AC-4403.2 비교 쪽 칸만 덜 끝나도 그 짝의 끝난 이번 칸을 양쪽에서 뺀다', () => {
       const days = [only('2026-11-10', 50), only('2026-11-11', 20), day('2026-11-03', { newPatients: 0, returning: 1000, partial: true }), only('2026-11-04', 20)]
       const cells = summaryCells(input('2026-11-13', '7d', days, [{ from: '2026-10-30', to: '2026-11-12' }]))
       expect(cellOf(cells, 'average').value).toBe(35)
-      expect(cellOf(cells, 'compare').delta).toEqual(compareNumbers(20, 20))
-      expect(cellOf(cells, 'compare').note).toBe('견준 1일 평균 · 이번 20명 · 지난 기간 20명')
+      expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(20, 20))
     })
 
-    it('AC-511.2 12개월에서 작년 같은 달이 일부만 덮이면 줄이 있어도 그 짝을 뺀다', () => {
+    it('AC-511.2·AC-4403.2 12개월에서 작년 같은 달이 일부만 덮이면 줄이 있어도 그 짝을 뺀다', () => {
       const days = [...perMonth('2025-08', 1000), ...perMonth('2025-09', 100), ...perMonth('2026-08', 50), ...perMonth('2026-09', 100)]
       const cells = summaryCells(input('2026-11-15', '12m', days, [{ from: '2025-08-15', to: '2026-11-14' }]))
-      expect(cellOf(cells, 'average')).toMatchObject({ value: 75, note: '끝난 달 2달 평균' })
-      expect(cellOf(cells, 'compare').delta).toEqual(compareNumbers(100, 100))
-      expect(cellOf(cells, 'compare').note).toBe('견준 1달 평균 · 이번 100명 · 작년 100명')
+      expect(cellOf(cells, 'average')).toMatchObject({ value: 75, hint: '끝난 달 2달 평균' })
+      expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(100, 100))
     })
 
-    it('AC-511.2 12개월에서 덮였는데 줄이 없는 달은 휴진이라 짝을 빼지 않고 아래 글도 그대로다', () => {
+    it('AC-511.2·AC-4403.2 12개월에서 덮였는데 줄이 없는 달은 휴진이라 짝을 빼지 않고 아래 글도 그대로다', () => {
       const days = [...perMonth('2026-07', 100), ...perMonth('2025-07', 100), ...perMonth('2025-08', 300)]
       const cells = summaryCells(input('2026-11-13', '12m', days, [{ from: '2025-07-01', to: '2026-11-12' }]))
-      expect(cellOf(cells, 'compare').delta).toEqual(compareNumbers(100, 200))
-      expect(cellOf(cells, 'compare').note).toBe('작년 같은 12달 한 달 평균 200명')
+      expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(100, 200))
     })
 
-    it('AC-511.2 짝을 빼서 이번 쪽에 남은 칸이 없으면 "비교할 자료가 없어요"다', () => {
+    it('AC-511.2·AC-4403.2 짝을 빼서 이번 쪽에 남은 칸이 없으면 "비교할 자료가 없어요"다', () => {
       // 11월 6일의 짝은 덮이지 않았고, 11월 3일의 짝 11월 10일은 덮인 휴진일이다
       const days = [only('2026-11-06', 100), only('2026-11-03', 100)]
       const cells = summaryCells(input('2026-11-13', '7d', days, [{ from: '2026-11-01', to: '2026-11-12' }]))
       expect(cellOf(cells, 'average').value).toBe(100)
-      expect(cellOf(cells, 'compare')).toMatchObject({ value: null, delta: null, note: '비교할 자료가 없어요' })
+      expect(cellOf(cells, 'average').delta).toEqual({ kind: 'unavailable' })
     })
 
-    it('AC-511.2 짝을 빼서 비교 쪽에 남은 칸이 없으면 "비교할 자료가 없어요"다', () => {
+    it('AC-511.2·AC-4403.2 짝을 빼서 비교 쪽에 남은 칸이 없으면 "비교할 자료가 없어요"다', () => {
       // 11월 3일의 짝 11월 10일은 덜 끝났고, 11월 12일의 짝 11월 5일은 덮인 휴진일이다
       const days = [day('2026-11-10', { partial: true }), only('2026-11-12', 100), only('2026-11-03', 100)]
       const cells = summaryCells(input('2026-11-13', '7d', days, [{ from: '2026-10-30', to: '2026-11-12' }]))
       expect(cellOf(cells, 'average').value).toBe(100)
-      expect(cellOf(cells, 'compare')).toMatchObject({ value: null, delta: null, note: '비교할 자료가 없어요' })
+      expect(cellOf(cells, 'average').delta).toEqual({ kind: 'unavailable' })
     })
   })
 
-  it('AC-511.2 비교 기간 이름은 넷째 칸 글자와 [자세히] 표 머리가 같이 쓴다', () => {
+  it('AC-511.2·AC-4403.1 비교 기간 이름은 환자 요약 옆 글과 [자세히] 표 머리가 같이 쓴다', () => {
     expect(COMPARE_NAME).toEqual({ '7d': '지난 7일', '30d': '지난 30일', '90d': '지난 90일', '12m': '작년 같은 12달' })
-    const days = [day('2026-11-10'), day('2026-11-03')]
-    const cells = summaryCells(input('2026-11-13', '7d', days, [{ from: '2026-10-30', to: '2026-11-12' }]))
-    expect(cellOf(cells, 'compare').note).toContain(COMPARE_NAME['7d'])
+    expect(summaryDesc(statsRange('2026-11-13', '7d'))).toContain(COMPARE_NAME['7d'])
   })
 
-  it('AC-511.2 비교 기간의 덜 끝난 칸도 평균에서 뺀다', () => {
+  it('AC-511.2·AC-4403.2 비교 기간의 덜 끝난 칸도 평균에서 뺀다', () => {
     const days = [day('2026-11-10', { newPatients: 0, returning: 20 }), day('2026-11-03', { newPatients: 0, returning: 20 }), day('2026-11-04', { newPatients: 0, returning: 1000, partial: true })]
     const cells = summaryCells(input('2026-11-13', '7d', days, [{ from: '2026-10-30', to: '2026-11-12' }]))
-    expect(cellOf(cells, 'compare').delta).toEqual(compareNumbers(20, 20))
-    expect(cellOf(cells, 'compare').note).toBe('지난 7일 하루 평균 20명')
+    expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(20, 20))
   })
 
-  it('AC-511.2 비교 기간 자료가 없으면 넷째 칸은 "비교할 자료가 없어요"다', () => {
+  it('AC-511.2·AC-4403.2 비교 기간 자료가 없으면 넷째 칸은 "비교할 자료가 없어요"다', () => {
     const cells = summaryCells(input('2026-11-13', '7d', [day('2026-11-10')], [{ from: '2026-11-06', to: '2026-11-12' }]))
     expect(cellOf(cells, 'average').value).toBe(10)
-    expect(cellOf(cells, 'compare')).toMatchObject({ value: null, delta: null, note: '비교할 자료가 없어요' })
+    expect(cellOf(cells, 'average').delta).toEqual({ kind: 'unavailable' })
   })
 
-  it('AC-511.2 덜 끝난 달만 자료가 있는 12개월 보기 — 평균 칸 "자료 없음", 넷째 칸 "비교할 자료가 없어요", 신환·재진 합은 일부 기간과 함께', () => {
+  it('AC-511.2·AC-4403.2 덜 끝난 달만 자료가 있는 12개월 보기 — 평균 칸 "자료 없음", 넷째 칸 "비교할 자료가 없어요", 신환·재진 합은 일부 기간과 함께', () => {
     const days = daysFrom('2026-11-02', '2026-11-12', { newPatients: 1, returning: 2 })
     const cells = summaryCells(input('2026-11-13', '12m', days, [{ from: '2026-11-02', to: '2026-11-12' }]))
     expect(cellOf(cells, 'average')).toMatchObject({ value: null, note: '자료 없음' })
-    expect(cellOf(cells, 'compare')).toMatchObject({ value: null, delta: null, note: '비교할 자료가 없어요' })
+    expect(cellOf(cells, 'average').delta).toEqual({ kind: 'unavailable' })
     expect(cellOf(cells, 'new')).toMatchObject({ value: 11, partial: true })
     expect(cellOf(cells, 'returning')).toMatchObject({ value: 22, partial: true })
   })
 
-  it('AC-511.2 끝난 날이 없는 일 기간 — 평균 칸 "자료 없음", 넷째 칸 "비교할 자료가 없어요", 합은 일부 기간과 함께', () => {
+  it('AC-511.2·AC-4403.2 끝난 날이 없는 일 기간 — 평균 칸 "자료 없음", 넷째 칸 "비교할 자료가 없어요", 합은 일부 기간과 함께', () => {
     const days = [day('2026-11-10', { partial: true }), day('2026-11-03')]
     const cells = summaryCells(input('2026-11-13', '7d', days, [{ from: '2026-10-30', to: '2026-11-12' }]))
     expect(cellOf(cells, 'average')).toMatchObject({ value: null, note: '자료 없음' })
-    expect(cellOf(cells, 'compare')).toMatchObject({ value: null, delta: null, note: '비교할 자료가 없어요' })
+    expect(cellOf(cells, 'average').delta).toEqual({ kind: 'unavailable' })
     expect(cellOf(cells, 'new')).toMatchObject({ value: 2, partial: true })
   })
 
-  it('AC-511.2 기간에 자료가 하나도 없으면 네 칸 모두 숫자가 없다', () => {
+  it('AC-511.2·AC-4403.2 기간에 자료가 하나도 없으면 네 칸 모두 숫자가 없다', () => {
     const cells = summaryCells(input('2026-11-13', '30d', [], []))
     expect(cells).toHaveLength(4)
     expect(cellOf(cells, 'average')).toMatchObject({ value: null, note: '자료 없음' })
     expect(cellOf(cells, 'new')).toMatchObject({ value: null, note: '자료 없음', partial: false })
     expect(cellOf(cells, 'returning')).toMatchObject({ value: null, note: '자료 없음', partial: false })
-    expect(cellOf(cells, 'compare')).toMatchObject({ value: null, delta: null, note: '비교할 자료가 없어요' })
+    expect(cellOf(cells, 'average').delta).toEqual({ kind: 'unavailable' })
   })
 
-  it('AC-511.2 처방 없는 접수만 있는 달도 칸이 나오고 RangeError가 나지 않는다', () => {
+  it('AC-511.2·AC-4403.2 처방 없는 접수만 있는 달도 칸이 나오고 RangeError가 나지 않는다', () => {
     const days = monthRows('2026-08', { newPatients: 1, returning: 1, rx: [] })
     const cells = summaryCells(input('2026-11-13', '12m', days, [{ from: '2026-08-01', to: '2026-08-31' }]))
-    expect(cellOf(cells, 'average')).toMatchObject({ value: 4, note: '끝난 달 1달 평균' })
+    expect(cellOf(cells, 'average')).toMatchObject({ value: 4, hint: '끝난 달 1달 평균' })
   })
 
-  it('AC-511.2 달 칸의 합에는 덮이지 않은 날의 줄도 넣지만 그 달은 평균에서 뺀다', () => {
+  it('AC-511.2·AC-4403.2 달 칸의 합에는 덮이지 않은 날의 줄도 넣지만 그 달은 평균에서 뺀다', () => {
     const days = [...monthRows('2026-08', finishedMonth), ...monthRows('2026-09', finishedMonth), day('2026-09-20', finishedMonth)]
     const cells = summaryCells(input('2026-11-13', '12m', days, [{ from: '2026-08-01', to: '2026-09-10' }]))
-    expect(cellOf(cells, 'average')).toMatchObject({ value: 200, note: '끝난 달 1달 평균' })
+    expect(cellOf(cells, 'average')).toMatchObject({ value: 200, hint: '끝난 달 1달 평균' })
     expect(cellOf(cells, 'new')).toMatchObject({ value: 50, partial: true })
   })
 
-  it('AC-511.2 그 달의 일 줄만 있고 달 줄이 없어도 12개월 요약과 추이가 같은 숫자다', () => {
+  it('AC-511.2·AC-4403.2 그 달의 일 줄만 있고 달 줄이 없어도 12개월 요약과 추이가 같은 숫자다', () => {
     const inputs = input('2026-11-15', '12m', november15, covered12m)
     const buckets = patientTrend(inputs)!
     const cells = summaryCells(inputs)
@@ -544,6 +532,104 @@ describe('AC-511.2 summaryCells', () => {
     expect(buckets.reduce((total, bucket) => total + bucket.values[1], 0)).toBe(cellOf(cells, 'returning').value)
     const finished = buckets.filter((bucket) => bucket.state === 'complete')
     expect(Math.floor(finished.reduce((total, bucket) => total + bucket.values[0] + bucket.values[1], 0) / finished.length)).toBe(cellOf(cells, 'average').value)
+  })
+})
+
+// ── 환자 요약 (first90 REQ-4403): 90일초진 칸·칸 안 증감·옛 도우미 ─────────────────
+describe('AC-4403.1·AC-4403.2·AC-4403.3 환자 요약 칸 넷', () => {
+  // 도우미 v4 날(first90 있음). patients = 신환 + 90일초진 + 재진
+  const day90 = (ymd: string, newPatients: number, first90: number, returning: number, partial = false): DayPayload => ({
+    ...day(ymd, { newPatients, returning, partial }),
+    totals: { patients: newPatients + first90 + returning, newPatients, returning, unknown: 0, first90 },
+  })
+  const COVERED: DateRange[] = [{ from: '2026-10-30', to: '2026-11-12' }]
+  // 7일 보기(11월 13일): 이번 11월 6일 – 12일, 지난 10월 30일 – 11월 5일. 나머지 날은 휴진
+  const NOW = [day90('2026-11-10', 2, 3, 15), day90('2026-11-11', 4, 1, 15)]
+  const BEFORE = [day90('2026-11-03', 1, 2, 15), day90('2026-11-04', 1, 2, 15)]
+  const OLD_F90 = '예전 도우미(0.6.0)는 90일초진을 따로 세지 못해요. 지금은 재진에 들어 있어요.'
+
+  it('AC-4403.1 모든 날에 first90이 있으면 칸 넷의 이름·옆 글·값·단위가 승인본이다(재진은 returning 합)', () => {
+    const cells = summaryCells(input('2026-11-13', '7d', [...BEFORE, ...NOW], COVERED))
+    expect(cells.map(({ key, label, hint, value, unit, unknown }) => ({ key, label, hint, value, unit, unknown }))).toEqual([
+      { key: 'average', label: '하루 평균 내원', hint: '진료한 날 2일 평균', value: 20, unit: '건', unknown: false },
+      { key: 'new', label: '신환', hint: '처음 온 환자', value: 6, unit: '명', unknown: false },
+      { key: 'first90', label: '90일초진', hint: '90일 넘어 다시 온 내원', value: 4, unit: '건', unknown: false },
+      { key: 'returning', label: '재진', hint: '그 밖의 내원', value: 30, unit: '건', unknown: false },
+    ])
+  })
+
+  it('AC-4403.1 최근 12개월은 첫 칸이 "한 달 평균 내원" · "끝난 달 {n}달 평균"이다', () => {
+    const days = [...monthRows('2026-09', { newPatients: 1, returning: 9 }), ...monthRows('2026-10', { newPatients: 1, returning: 9 })]
+    expect(cellOf(summaryCells(input('2026-11-13', '12m', days, [{ from: '2026-09-01', to: '2026-11-12' }])), 'average')).toMatchObject({
+      label: '한 달 평균 내원',
+      hint: '끝난 달 2달 평균',
+      value: 20,
+      unit: '건',
+    })
+  })
+
+  it('AC-4403.2 빠르게 보기: 하루 평균은 짝이 끝난 칸끼리 평균, 신환·90일초진·재진은 짝이 끝난 칸끼리 합을 견준다', () => {
+    const cells = summaryCells(input('2026-11-13', '7d', [...BEFORE, ...NOW], COVERED))
+    expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(20, 18))
+    expect(cellOf(cells, 'new').delta).toEqual(compareNumbers(6, 2))
+    expect(cellOf(cells, 'first90').delta).toEqual(compareNumbers(4, 4))
+    expect(cellOf(cells, 'returning').delta).toEqual(compareNumbers(30, 30))
+    for (const cell of cells) expect(cell.delta2).toBeNull()
+  })
+
+  it('AC-4403.2 덜 끝난 칸은 값에 넣고 증감에서는 그 짝과 함께 뺀다', () => {
+    const days = [...BEFORE, day90('2026-11-02', 50, 50, 50), ...NOW, day90('2026-11-09', 9, 9, 9, true)] // 11월 9일(덜 끝남)의 짝 = 11월 2일
+    const cells = summaryCells(input('2026-11-13', '7d', days, COVERED))
+    expect(cellOf(cells, 'new')).toMatchObject({ value: 15, partial: true, delta: compareNumbers(6, 2) })
+    expect(cellOf(cells, 'first90')).toMatchObject({ value: 13, partial: true, delta: compareNumbers(4, 4) })
+    expect(cellOf(cells, 'returning')).toMatchObject({ value: 39, partial: true, delta: compareNumbers(30, 30) })
+  })
+
+  it('AC-4403.2 비교 기간의 짝 칸에 first90이 없으면 90일초진·재진 증감은 "견줄 수 없음"이다(재진 기준이 달라 지어낸 줄어듦이 되지 않게)', () => {
+    const before = [day90('2026-11-03', 1, 2, 15), day('2026-11-04', { newPatients: 1, returning: 17 })]
+    const cells = summaryCells(input('2026-11-13', '7d', [...before, ...NOW], COVERED))
+    expect(cellOf(cells, 'first90')).toMatchObject({ value: 4, unknown: false, delta: { kind: 'unavailable' } })
+    expect(cellOf(cells, 'returning')).toMatchObject({ value: 30, delta: { kind: 'unavailable' } })
+    expect(cellOf(cells, 'new').delta).toEqual(compareNumbers(6, 2))
+  })
+
+  it('AC-4403.2 견줄 칸이 없으면 네 칸 모두 "견줄 수 없음"(화면 글 "비교할 자료가 없어요")이다', () => {
+    const cells = summaryCells(input('2026-11-13', '7d', NOW, [{ from: '2026-11-06', to: '2026-11-12' }]))
+    for (const cell of cells) expect(cell.delta, cell.key).toEqual({ kind: 'unavailable' })
+  })
+
+  it('AC-4403.2 고른 기간은 하루 평균 칸에만 증감이 있고, 작년 비교가 있으면 둘째 줄(delta2 "{작년 이름}보다")이다', () => {
+    const range = rangeOf('2026-11-06', { kind: 'month', unit: 'day', month: '2026-10' }, false)
+    const days = [day90('2026-09-07', 2, 3, 25), day90('2026-10-05', 4, 6, 30), day90('2026-10-06', 4, 6, 34)]
+    const cells = summaryCells({ days, covered: [{ from: '2026-09-01', to: '2026-10-31' }], range })
+    expect(cells.map((cell) => cell.key)).toEqual(['average', 'new', 'first90', 'returning'])
+    expect(cellOf(cells, 'average')).toMatchObject({ value: 42, delta: compareNumbers(42, 30), delta2: { label: '작년 10월보다', delta: { kind: 'unavailable' } } })
+    for (const key of ['new', 'first90', 'returning'] as const) expect(cellOf(cells, key)).toMatchObject({ delta: null, delta2: null })
+    const yearOnly = summaryCells({ days, covered: [{ from: '2025-10-01', to: '2026-10-31' }], range: rangeOf('2026-11-06', { kind: 'year', year: '2026' }, false) })
+    expect(cellOf(yearOnly, 'average').delta2).toBeNull()
+  })
+
+  it('AC-4403.2 고른 기간의 작년 같은 기간에 자료가 있으면 둘째 줄도 평균끼리 견준다', () => {
+    const range = rangeOf('2026-11-06', { kind: 'month', unit: 'day', month: '2026-10' }, false)
+    const days = [day90('2025-10-10', 2, 2, 46), day90('2026-09-07', 2, 3, 25), day90('2026-10-05', 4, 6, 30), day90('2026-10-06', 4, 6, 34)]
+    const cells = summaryCells({ days, covered: [{ from: '2025-10-01', to: '2025-10-31' }, { from: '2026-09-01', to: '2026-10-31' }], range })
+    expect(cellOf(cells, 'average').delta2).toEqual({ label: '작년 10월보다', delta: compareNumbers(42, 50) })
+  })
+
+  it('AC-4403.3 보는 기간에 first90이 없는 날이 하루라도 있으면 90일초진은 확인 불가·옛 도우미 글·증감 없음, 재진은 "90일초진 포함"·returning + first90', () => {
+    const now = [NOW[0]!, day('2026-11-11', { newPatients: 4, returning: 16 })]
+    const cells = summaryCells(input('2026-11-13', '7d', [...BEFORE, ...now], COVERED))
+    expect(cellOf(cells, 'first90')).toMatchObject({ value: null, unknown: true, hint: null, note: OLD_F90, delta: null, delta2: null })
+    // 재진 = (15 + 3) + 16, 지난 기간도 같은 셈 (15 + 2) × 2
+    expect(cellOf(cells, 'returning')).toMatchObject({ label: '재진', hint: '90일초진 포함', value: 34, unknown: false, delta: compareNumbers(34, 34) })
+    expect(cellOf(cells, 'average')).toMatchObject({ value: 20, delta: compareNumbers(20, 18) })
+  })
+
+  it('AC-4403.3 first90이 없는 옛 자료(v2·v3·파일)만 있으면 재진은 returning 합이고 증감도 그 합끼리다', () => {
+    const days = [day('2026-11-03', { newPatients: 1, returning: 17 }), day('2026-11-10', { newPatients: 2, returning: 18 })]
+    const cells = summaryCells(input('2026-11-13', '7d', days, COVERED))
+    expect(cellOf(cells, 'returning')).toMatchObject({ value: 18, hint: '90일초진 포함', delta: compareNumbers(18, 17) })
+    expect(cellOf(cells, 'first90')).toMatchObject({ value: null, unknown: true })
   })
 })
 
@@ -1559,69 +1645,74 @@ describe('AC-1704.4 periodDesc', () => {
 })
 
 describe('AC-1704.1 summaryCells — 고른 기간', () => {
-  it("AC-1704.1 칸은 '하루 평균 환자 수'·'신환'·'재진'·'9월보다'·'작년 10월보다'다", () => {
+  it("AC-1704.1·AC-4403.2 칸은 '하루 평균 내원'·'신환'·'90일초진'·'재진'이고 '9월보다'·'작년 10월보다'는 평균 칸의 증감 줄(delta·delta2)이다", () => {
     const cells = summaryCells(pickInput(OCT, octDays(), THREE))
-    expect(cells.map((cell) => cell.key)).toEqual(['average', 'new', 'returning', 'compare', 'lastYear'])
-    expect(cells.map((cell) => cell.label)).toEqual(['하루 평균 환자 수', '신환', '재진', '9월보다', '작년 10월보다'])
+    expect(cells.map((cell) => cell.key)).toEqual(['average', 'new', 'first90', 'returning'])
+    expect(cells.map((cell) => cell.label)).toEqual(['하루 평균 내원', '신환', '90일초진', '재진'])
+    expect(cellOf(cells, 'average').delta2?.label).toBe('작년 10월보다')
   })
 
-  it('AC-1704.1 하루 평균은 진료한 날 평균(버림)이고 신환·재진은 기간 합계다', () => {
+  it('AC-1704.1·AC-4403.2 하루 평균은 진료한 날 평균(버림)이고 신환·재진은 기간 합계다(증감 줄은 평균 칸에만)', () => {
     const cells = summaryCells(pickInput(OCT, octDays(), THREE))
     const work = workDays('2026-10-01', '2026-10-31')
-    expect(cellOf(cells, 'average')).toEqual({ key: 'average', label: '하루 평균 환자 수', value: 42, note: `진료한 날 ${work}일 평균`, partial: false, delta: null })
-    expect(cellOf(cells, 'new')).toMatchObject({ value: 2 * work, note: '기간 합계', partial: false })
-    expect(cellOf(cells, 'returning')).toMatchObject({ value: 40 * work, note: '기간 합계', partial: false })
-  })
-
-  it("AC-1704.1 비교 칸 글은 '{비교 label} 하루 평균 N명'이고 증감은 하루 평균끼리 compareNumbers다(날 수가 달라 짝 짓지 않는다)", () => {
-    const cells = summaryCells(pickInput(OCT, octDays(), THREE))
-    expect(cellOf(cells, 'compare')).toEqual({ key: 'compare', label: '9월보다', value: null, note: '9월 1일 – 30일 하루 평균 39명', partial: false, delta: compareNumbers(42, 39) })
-    expect(cellOf(cells, 'lastYear')).toEqual({
-      key: 'lastYear',
-      label: '작년 10월보다',
-      value: null,
-      note: '2025년 10월 1일 – 31일 하루 평균 44명',
+    expect(cellOf(cells, 'average')).toEqual({
+      key: 'average',
+      label: '하루 평균 내원',
+      hint: `진료한 날 ${work}일 평균`,
+      value: 42,
+      unit: '건',
+      note: '',
       partial: false,
-      delta: compareNumbers(42, 44),
+      delta: compareNumbers(42, 39),
+      delta2: { label: '작년 10월보다', delta: compareNumbers(42, 44) },
+      unknown: false,
     })
+    expect(cellOf(cells, 'new')).toMatchObject({ value: 2 * work, hint: '처음 온 환자', partial: false, delta: null, delta2: null })
+    expect(cellOf(cells, 'returning')).toMatchObject({ value: 40 * work, hint: '90일초진 포함', partial: false, delta: null, delta2: null })
   })
 
-  it("AC-1704.1 비교 기간에 줄 없고 덮지 않은 날이 하루라도 있으면 그 비교는 value·delta null, '{label} 자료가 없어요'다(0이 아니다)", () => {
+  it('AC-1704.1·AC-4403.2 증감은 하루 평균끼리 compareNumbers다(날 수가 달라 짝 짓지 않는다)', () => {
+    const cells = summaryCells(pickInput(OCT, octDays(), THREE))
+    expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(42, 39))
+    expect(cellOf(cells, 'average').delta2).toEqual({ label: '작년 10월보다', delta: compareNumbers(42, 44) })
+  })
+
+  it('AC-1704.1·AC-4403.2 비교 기간에 줄 없고 덮지 않은 날이 하루라도 있으면 그 비교는 견줄 수 없음이다(0이 아니다)', () => {
     const days = octDays().filter((row) => row.day !== '2025-10-01')
     const covered = [{ from: '2025-10-02', to: '2025-10-31' }, THREE[1]!]
     const cells = summaryCells(pickInput(OCT, days, covered))
-    expect(cellOf(cells, 'lastYear')).toEqual({ key: 'lastYear', label: '작년 10월보다', value: null, note: '2025년 10월 1일 – 31일 자료가 없어요', partial: false, delta: null })
-    expect(cellOf(cells, 'compare').delta).toEqual(compareNumbers(42, 39))
+    expect(cellOf(cells, 'average').delta2).toEqual({ label: '작년 10월보다', delta: { kind: 'unavailable' } })
+    expect(cellOf(cells, 'average').delta).toEqual(compareNumbers(42, 39))
   })
 
-  it('AC-1704.1 비교 기간에 partial 줄이 하루라도 있으면 그 비교도 자료가 없어요다', () => {
+  it('AC-1704.1·AC-4403.2 비교 기간에 partial 줄이 하루라도 있으면 그 비교도 견줄 수 없음이다', () => {
     const days = octDays().map((row) => (row.day === '2026-09-10' ? { ...row, partial: true } : row))
     const cells = summaryCells(pickInput(OCT, days, THREE))
-    expect(cellOf(cells, 'compare')).toMatchObject({ value: null, delta: null, note: '9월 1일 – 30일 자료가 없어요' })
-    expect(cellOf(cells, 'lastYear').delta).toEqual(compareNumbers(42, 44))
+    expect(cellOf(cells, 'average').delta).toEqual({ kind: 'unavailable' })
+    expect(cellOf(cells, 'average').delta2?.delta).toEqual(compareNumbers(42, 44))
   })
 
-  it('AC-1704.1 작년 기간을 불러온 적 없으면(줄 없고 덮지 않음) 자료가 없어요다. 덮였어도 진료한 날이 하루도 없으면 같다', () => {
+  it('AC-1704.1·AC-4403.2 작년 기간을 불러온 적 없으면(줄 없고 덮지 않음) 견줄 수 없음이다. 덮였어도 진료한 날이 하루도 없으면 같다', () => {
     const days = octDays().filter((row) => !row.day.startsWith('2025-'))
     const unread = summaryCells(pickInput(OCT, days, [{ from: '2026-09-01', to: '2026-11-05' }]))
-    expect(cellOf(unread, 'lastYear')).toMatchObject({ value: null, delta: null, note: '2025년 10월 1일 – 31일 자료가 없어요' })
+    expect(cellOf(unread, 'average').delta2).toEqual({ label: '작년 10월보다', delta: { kind: 'unavailable' } })
     const empty = summaryCells(pickInput(OCT, days, THREE))
-    expect(cellOf(empty, 'lastYear')).toMatchObject({ value: null, delta: null, note: '2025년 10월 1일 – 31일 자료가 없어요' })
+    expect(cellOf(empty, 'average').delta2).toEqual({ label: '작년 10월보다', delta: { kind: 'unavailable' } })
   })
 
-  it('AC-1704.1 해 고르기는 비교 하나(2025년보다)라 칸이 넷이다', () => {
+  it('AC-1704.1·AC-4403.2 해 고르기는 비교 하나(2024년)라 평균 칸에 둘째 줄이 없다', () => {
     const days = [...openDays('2024-01-01', '2024-12-31', 30), ...openDays('2025-01-01', '2025-12-31', 33)]
     const cells = summaryCells(pickInput({ kind: 'year', year: '2025' }, days, [{ from: '2024-01-01', to: '2025-12-31' }]))
-    expect(cells.map((cell) => cell.key)).toEqual(['average', 'new', 'returning', 'compare'])
-    expect(cellOf(cells, 'compare')).toMatchObject({ label: '2024년보다', note: '2024년 1월 1일 – 12월 31일 하루 평균 30명', delta: compareNumbers(33, 30) })
+    expect(cells.map((cell) => cell.key)).toEqual(['average', 'new', 'first90', 'returning'])
+    expect(cellOf(cells, 'average')).toMatchObject({ delta: compareNumbers(33, 30), delta2: null })
   })
 
-  it('AC-1704.1 고른 기간에 자료가 없으면 평균은 자료 없음이고 비교 증감도 없다', () => {
+  it('AC-1704.1·AC-4403.2 고른 기간에 자료가 없으면 평균은 자료 없음이고 비교 증감도 없다', () => {
     const days = octDays().filter((row) => !row.day.startsWith('2026-10'))
     const cells = summaryCells(pickInput(OCT, days, THREE))
     expect(cellOf(cells, 'average')).toMatchObject({ value: null, note: '자료 없음' })
-    expect(cellOf(cells, 'compare').delta).toBeNull()
-    expect(cellOf(cells, 'lastYear').delta).toBeNull()
+    expect(cellOf(cells, 'average').delta).toEqual({ kind: 'unavailable' })
+    expect(cellOf(cells, 'average').delta2?.delta).toEqual({ kind: 'unavailable' })
   })
 })
 
@@ -1640,19 +1731,18 @@ describe('AC-1704.2 끝나지 않은 기간은 같은 날까지 견준다', () =
     { from: '2026-10-01', to: '2026-11-05' },
   ]
 
-  it('AC-1704.2 11월(1–5일까지 저장)은 10월 1–5일·작년 11월 1–5일의 하루 평균과 견준다', () => {
+  it('AC-1704.2·AC-4403.2 11월(1–5일까지 저장)은 10월 1–5일·작년 11월 1–5일의 하루 평균과 견준다', () => {
     const cells = summaryCells(pickInput(NOV, days, covered))
-    expect(cellOf(cells, 'average')).toMatchObject({ value: 50, note: '진료한 날 5일 평균' })
-    expect(cellOf(cells, 'compare')).toMatchObject({ label: '10월보다', note: '10월 1일 – 5일 하루 평균 40명', delta: compareNumbers(50, 40) })
-    expect(cellOf(cells, 'lastYear')).toMatchObject({ label: '작년 11월보다', note: '2025년 11월 1일 – 5일 하루 평균 45명', delta: compareNumbers(50, 45) })
+    expect(cellOf(cells, 'average')).toMatchObject({ value: 50, hint: '진료한 날 5일 평균', delta: compareNumbers(50, 40) })
+    expect(cellOf(cells, 'average').delta2).toEqual({ label: '작년 11월보다', delta: compareNumbers(50, 45) })
   })
 
-  it('AC-1704.2 고른 기간의 끝나지 않은 날(줄 없고 덮지 않음, partial 줄)은 평균에서 빼고 missingDays가 그 날 수다', () => {
+  it('AC-1704.2·AC-4403.2 고른 기간의 끝나지 않은 날(줄 없고 덮지 않음, partial 줄)은 평균에서 빼고 missingDays가 그 날 수다', () => {
     const holes = days.filter((row) => row.day !== '2026-11-02' && row.day !== '2026-11-03').map((row) => (row.day === '2026-11-04' ? { ...row, partial: true } : row))
     const cut = [{ from: '2025-11-01', to: '2025-11-30' }, { from: '2026-10-01', to: '2026-11-01' }, { from: '2026-11-04', to: '2026-11-05' }]
     const input = pickInput(NOV, holes, cut)
     expect(missingDays(input)).toBe(3)
-    expect(cellOf(summaryCells(input), 'average')).toMatchObject({ value: 50, note: '진료한 날 2일 평균' })
+    expect(cellOf(summaryCells(input), 'average')).toMatchObject({ value: 50, hint: '진료한 날 2일 평균' })
   })
 
   it('AC-1704.2 모두 끝난 기간·빠른 단추는 missingDays가 0이다', () => {
