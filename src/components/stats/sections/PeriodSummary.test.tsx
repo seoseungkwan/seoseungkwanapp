@@ -424,7 +424,7 @@ describe('AC-513.9: 섹션 소스 규칙', () => {
     }
   })
 
-  it('AC-513.9·AC-1201.1·AC-4003.2: 여섯 섹션을 모두 채우고 모두 열고 처방 탭을 모두 골라도 그린 화면에 상자 안 상자가 없다', () => {
+  it('AC-513.9·AC-1201.1·AC-4003.2·AC-4413.1: 여섯 섹션을 모두 채우고 모두 열고 처방 탭을 모두 골라도 그린 화면에 상자 안 상자가 없다', () => {
     const withRx = (ymd: string, patients: number): DayPayload => ({
       ...day(ymd, patients),
       rx: [{ code: 'RA', name: '가짜 처방', type: '', patients, newPatients: 2, returning: patients - 2 }],
@@ -488,7 +488,7 @@ describe('AC-513.9: 섹션 소스 규칙', () => {
     fireEvent.click(screen.getByRole('tab', { name: '처방별 신환·재진' }))
     expect(screen.getByRole('table', { name: '처방별 신환·재진 (명)' })).toBeTruthy()
     expect(screen.getByText('고생하셨습니다 !!')).toBeTruthy()
-    expect(within(container).getAllByRole('heading', { level: 2 })).toHaveLength(6)
+    expect(within(container).getAllByRole('heading', { level: 2 })).toHaveLength(5) // 처방 카드 안 RxSection이 제 h2 '처방'을 더는 그리지 않는다(TASK-8, AC-4413.1)
     expect(nestedBoxes(container)).toEqual([])
     fireEvent.click(screen.getByRole('tab', { name: '처방 골라 보기' }))
     expect(nestedBoxes(container)).toEqual([])
