@@ -1,7 +1,8 @@
 import { addDays, compareYmd, diffDays, eachDay } from '@/lib/analytics/dates'
+import { compareVersions } from '@/lib/bridge/handshake'
 import type { RevenueRangeStore } from '@/lib/storage/revenue'
 import type { DateRange } from '@/types/dates'
-import { REVENUE_MAX_DAYS, type RevenueDaysResult } from '@/types/revenue'
+import { REVENUE_MAX_DAYS, type RevenueDaysResult, type SavedRevenueDay } from '@/types/revenue'
 
 // 매출 읽기 계획과 차례(spec revenue design.md 7절 → specs/stats-revenue design.md '매출 읽기 차례'). 통로·저장소는 인자로만 받는다(call·store).
 // 도우미는 한 번에 한 명령씩 처리하고 비트 DB에 부담을 주므로 덩어리는 늘 차례로 읽는다.
@@ -19,6 +20,22 @@ function codeOf(error: unknown): string {
 }
 
 // ── 통계 매출의 빈 날 읽기(specs/stats-revenue design.md '매출 읽기 차례', REQ-4104) ──
+
+/** 확인 필요한 날의 참고 금액(roughTotal)을 주는 첫 도우미(specs/first90 REQ-4405) */
+const ROUGH_HELPER = '0.7.0'
+
+/**
+ * planRevenue에 넘기는 그날의 저장 표시(specs/first90 AC-4407.1·AC-4407.2). 참이면 '다 저장됨'이라 다시 읽지 않는다.
+ * 지금은 dayCodes(날 단위 처방 금액이 있는지) 그대로다. 단, 확인 필요한 날인데 참고 금액이 없고(null·열쇠 없음) 연결된 도우미가 0.7.0 이상이면
+ * 거짓(한 번 다시 읽음)이다. 0.7.0 미만·판을 모르면(연결 정보 없음·읽을 수 없는 판은 compareVersions가 가장 낮게 본다) 그대로 둔다: 옛 도우미로는 참고 금액을 얻지 못해 매번 다시 읽게 되기 때문이다
+ */
+export function savedMark(
+  row: Pick<SavedRevenueDay, 'dayCodes' | 'unconfirmed' | 'roughTotal'>,
+  helperVersion: string | null | undefined,
+): boolean {
+  const roughHelper = typeof helperVersion === 'string' && compareVersions(helperVersion, ROUGH_HELPER) >= 0
+  return row.dayCodes && !(row.unconfirmed && typeof row.roughTotal !== 'number' && roughHelper)
+}
 
 /**
  * 불러올 기간 whole 가운데 매출을 읽을 날을 31일 이하 덩어리로 묶어 새것부터 준다(AC-4104.1).

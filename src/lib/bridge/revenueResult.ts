@@ -1,5 +1,6 @@
 // revenue.days 답 검사(spec revenue design.md 5-2, AC-002.2·AC-002.3) [환자 자료 구역]. 칸 이름·종류·짝(unconfirmed와 금액 아홉 칸,
-// splitUnconfirmed와 나눔 네 칸, 둘이 함께 참이 아님)·날짜 이어짐을 정확히 본다. 정해 둔 칸 밖의 칸(차트번호·이름 등)이 하나라도 있으면 거부해 화면에 닿지 않게 한다
+// splitUnconfirmed와 나눔 네 칸, 둘이 함께 참이 아님)·날짜 이어짐을 정확히 본다. 정해 둔 칸 밖의 칸(차트번호·이름 등)이 하나라도 있으면 거부해 화면에 닿지 않게 한다.
+// 날 줄의 참고 금액 roughTotal(specs/first90 AC-4406.4)은 선택 열쇠: unconfirmed 날에만, 절댓값 10^12 이하 정수로만 받는다
 import { addDays, isYmd } from '@/lib/analytics/dates'
 import {
   REVENUE_CODE_KEYS,
@@ -12,6 +13,7 @@ import {
   REVENUE_MAX_DAYS,
   REVENUE_MONEY_KEYS,
   REVENUE_NAME_MAX,
+  REVENUE_ROUGH_MAX,
   REVENUE_SPLIT_KEYS,
   type RevenueDaysResult,
 } from '@/types/revenue'
@@ -25,6 +27,9 @@ const RESULT_KEYS_WITH_DAY_CODES = [...RESULT_KEYS, 'dayCodes'] as const satisfi
 /** dayCodes 줄은 [날짜, 코드, 건수, 금액] 칸 넷 */
 const DAY_CODE_CELLS = 4
 const MONEY_KEYS: readonly string[] = REVENUE_MONEY_KEYS
+/** 도우미 0.7.0부터(specs/first90 AC-4406.4): unconfirmed 날에만 더해지는 선택 열쇠 */
+const ROUGH_KEY = 'roughTotal'
+const DAY_KEYS_WITH_ROUGH: readonly string[] = [...REVENUE_DAY_KEYS, ROUGH_KEY]
 /** 금액이 아닌 숫자 칸(건수) */
 const COUNT_KEYS: readonly string[] = REVENUE_DAY_KEYS.filter(
   (k) => k !== 'date' && k !== 'unconfirmed' && k !== 'splitUnconfirmed' && !MONEY_KEYS.includes(k),
@@ -38,6 +43,9 @@ const exactKeys = (x: Rec, keys: readonly string[]): boolean =>
 
 /** 0 이상 안전한 정수 */
 const isCount = (n: unknown): n is number => Number.isSafeInteger(n) && (n as number) >= 0
+
+/** 참고 금액: 절댓값 10^12 이하 정수(환불이 많은 날은 음수) */
+const isRough = (n: unknown): boolean => Number.isSafeInteger(n) && Math.abs(n as number) <= REVENUE_ROUGH_MAX
 
 /** 줄바꿈·제어 문자(C0·DEL·C1·U+2028·U+2029) */
 function hasControl(s: string): boolean {
@@ -53,7 +61,11 @@ const isName = (x: unknown): boolean =>
   x === null || (typeof x === 'string' && x.length >= 1 && x.length <= REVENUE_NAME_MAX && !hasControl(x))
 
 function isDayRow(d: unknown): d is Rec & { date: string } {
-  if (!isRecord(d) || !exactKeys(d, REVENUE_DAY_KEYS)) return false
+  if (!isRecord(d)) return false
+  // roughTotal은 선택 열쇠다(옛 도우미·확인된 날은 없음). 있으면 unconfirmed 날의 정수만 받는다
+  const withRough = Object.hasOwn(d, ROUGH_KEY)
+  if (!exactKeys(d, withRough ? DAY_KEYS_WITH_ROUGH : REVENUE_DAY_KEYS)) return false
+  if (withRough && !(d.unconfirmed === true && isRough(d[ROUGH_KEY]))) return false
   if (typeof d.date !== 'string' || !isYmd(d.date)) return false
   if (typeof d.unconfirmed !== 'boolean' || typeof d.splitUnconfirmed !== 'boolean') return false
   if (!COUNT_KEYS.every((k) => d[k] === null || isCount(d[k]))) return false

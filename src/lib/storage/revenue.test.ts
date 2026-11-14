@@ -94,6 +94,8 @@ const sentDay = (date: string) => ({
   receivable_in: 70,
   unconfirmed: false,
   split_unconfirmed: false,
+  // 참고 금액(first90 AC-4406.3): 확인된 날·열쇠가 없는 답은 null로 보낸다
+  rough_total: null,
 })
 
 const DAY_COLUMNS = Object.keys(sentDay('2026-09-01')).sort()
@@ -163,7 +165,7 @@ describe('AC-4104.3 saveRange', () => {
     expect(steps(calls)).toEqual([['save_revenue_range', 'rpc']])
   })
 
-  it('AC-4104.3 인자는 정확히 넷: p_from·p_to = 덩어리 범위, p_days = 날 줄, p_day_codes = 날 단위 코드 줄', async () => {
+  it('AC-4104.3·AC-4406.3 인자는 정확히 넷: p_from·p_to = 덩어리 범위, p_days = 날 줄(rough_total 포함), p_day_codes = 날 단위 코드 줄', async () => {
     const { client, calls } = fakeClient()
     await createRevenueStore(client).saveRange(RANGE, withCodes())
     const args = calls[0].args ?? {}
@@ -180,7 +182,7 @@ describe('AC-4104.3 saveRange', () => {
     })
   })
 
-  it('AC-4104.3 날 줄은 정해 둔 열다섯 칸(snake_case)뿐이고, 표시·null 칸이 그대로 간다', async () => {
+  it('AC-4104.3·AC-4406.3 날 줄은 정해 둔 열다섯 칸 + rough_total(snake_case)뿐이고, 표시·null 칸이 그대로 간다', async () => {
     const { client, calls } = fakeClient()
     const split = day('2026-09-02', { splitUnconfirmed: true, insurer: null, noncovered: null, copay: null, otherTotal: null })
     await createRevenueStore(client).saveRange(RANGE, { days: [day('2026-09-01'), split], codes: [], dayCodes: [] })
@@ -222,7 +224,7 @@ describe('AC-4104.3 saveRange', () => {
     expect(JSON.stringify(calls[0].args)).not.toContain('가짜 처방')
   })
 
-  it('AC-4104.3 답에 정해 두지 않은 칸이 섞여 있어도 보내지 않는다(chart·name·hospital_id·fetched_at 없음)', async () => {
+  it('AC-4104.3·AC-4406.3 답에 정해 두지 않은 칸이 섞여 있어도 보내지 않는다(chart·name·hospital_id·fetched_at 없음, 칸은 열다섯 + rough_total)', async () => {
     const { client, calls } = fakeClient()
     const planted = { chart: '900001', name: '가상환자01', hospital_id: 'h-1', fetched_at: '2026-01-01T00:00:00+00:00' }
     await createRevenueStore(client).saveRange(RANGE, {
@@ -281,21 +283,21 @@ describe('AC-4104.4 loadDays', () => {
     expect(calls[0].orders).toEqual(['day'])
   })
 
-  it('AC-4104.4 칸을 골라 읽는다: 열다섯 칸 + day_codes(hospital_id·fetched_at은 읽지 않는다)', async () => {
+  it('AC-4104.4·AC-4406.3 칸을 골라 읽는다: 열다섯 칸 + rough_total + day_codes(hospital_id·fetched_at은 읽지 않는다)', async () => {
     const { client, calls } = pagedClient({})
     await createRevenueStore(client).loadDays(RANGE)
     expect(columnsOf(calls[0])).toEqual([...DAY_COLUMNS, 'day_codes'].sort())
   })
 
-  it('AC-4104.4 날 줄을 camelCase로, 날 단위 처방 금액이 있는지를 dayCodes로 돌려준다', async () => {
+  it('AC-4104.4·AC-4406.3 날 줄을 camelCase로, 날 단위 처방 금액이 있는지를 dayCodes로, 참고 금액을 roughTotal로 돌려준다', async () => {
     const splitDb = { ...savedDb('2026-09-02', false), split_unconfirmed: true, insurer: null, noncovered: null, copay: null, other_total: null }
     const { client } = pagedClient({ sales_days: [savedDb('2026-09-01', true), splitDb] })
     const days = await createRevenueStore(client).loadDays(RANGE)
     expect(days).toEqual([
-      { ...day('2026-09-01'), dayCodes: true },
-      { ...day('2026-09-02', { splitUnconfirmed: true, insurer: null, noncovered: null, copay: null, otherTotal: null }), dayCodes: false },
+      { ...day('2026-09-01'), dayCodes: true, roughTotal: null },
+      { ...day('2026-09-02', { splitUnconfirmed: true, insurer: null, noncovered: null, copay: null, otherTotal: null }), dayCodes: false, roughTotal: null },
     ])
-    for (const row of days) expect(Object.keys(row).sort()).toEqual([...Object.keys(day('2026-09-01')), 'dayCodes'].sort())
+    for (const row of days) expect(Object.keys(row).sort()).toEqual([...Object.keys(day('2026-09-01')), 'dayCodes', 'roughTotal'].sort())
   })
 
   it('AC-4104.4 줄이 없으면 빈 목록이다', async () => {
@@ -432,5 +434,84 @@ describe('AC-4104.4 monthCodes', () => {
       throw new Error(RAW)
     })
     expectFailure(await failure(() => createRevenueStore(client).monthCodes('2026-09', '2026-09')), 'E-STATS-READ-FAILED')
+  })
+})
+
+// ── 참고 금액 roughTotal ↔ rough_total(first90 TASK-3, REQ-4406 · AC-4406.3). 금액은 모두 지어낸 값이다 ──
+
+/** 확인 필요한 날(금액 아홉 칸 null). over로 roughTotal을 단다 */
+const uncheckedDay = (date: string, over: Partial<RevenueDayRow> = {}): RevenueDayRow =>
+  day(date, {
+    total: null,
+    insurer: null,
+    noncovered: null,
+    copay: null,
+    otherTotal: null,
+    cash: null,
+    card: null,
+    transfer: null,
+    receivableIn: null,
+    unconfirmed: true,
+    ...over,
+  })
+const MONEY_NULLS = {
+  total: null,
+  insurer: null,
+  noncovered: null,
+  copay: null,
+  other_total: null,
+  cash: null,
+  card: null,
+  transfer: null,
+  receivable_in: null,
+}
+/** 저장된 확인 필요한 날 줄(표 칸 이름) */
+const uncheckedDb = (date: string, rough: number | null) => ({ ...savedDb(date, true), ...MONEY_NULLS, unconfirmed: true, rough_total: rough })
+
+describe('AC-4406.3 참고 금액 저장·읽기', () => {
+  it('AC-4406.3 저장: 확인 필요한 날의 roughTotal을 rough_total로 보내고(음수·0 포함), 열쇠가 없는 날은 null이다', async () => {
+    const { client, calls } = fakeClient()
+    const days = [uncheckedDay('2026-09-01', { roughTotal: -52_000 }), uncheckedDay('2026-09-02', { roughTotal: 0 }), uncheckedDay('2026-09-03')]
+    await createRevenueStore(client).saveRange({ from: '2026-09-01', to: '2026-09-03' }, { days, codes: [], dayCodes: [] })
+    const sent = calls[0].args?.p_days as Record<string, unknown>[]
+    expect(sent.map((row) => row.rough_total)).toEqual([-52_000, 0, null])
+    expect(sent[0]).toEqual({ ...sentDay('2026-09-01'), ...MONEY_NULLS, unconfirmed: true, rough_total: -52_000 })
+    for (const row of sent) expect(Object.keys(row).sort()).toEqual(DAY_COLUMNS)
+  })
+
+  it('AC-4406.3 저장: 옛 도우미 답(dayCodes·roughTotal 없음)도 rough_total null로 보낸다', async () => {
+    const { client, calls } = fakeClient()
+    await createRevenueStore(client).saveRange(RANGE, { days: [day('2026-09-01'), uncheckedDay('2026-09-02')], codes: [] })
+    const sent = calls[0].args?.p_days as Record<string, unknown>[]
+    expect(sent.map((row) => row.rough_total)).toEqual([null, null])
+    expect(calls[0].args).toHaveProperty('p_day_codes', null)
+  })
+
+  it('AC-4406.3 읽기: rough_total을 roughTotal로 돌려준다(음수·0 그대로, 확인된 날은 null)', async () => {
+    const { client } = pagedClient({
+      sales_days: [uncheckedDb('2026-09-01', -52_000), uncheckedDb('2026-09-02', 0), uncheckedDb('2026-09-03', 870_000), savedDb('2026-09-04', true)],
+    })
+    const days = await createRevenueStore(client).loadDays({ from: '2026-09-01', to: '2026-09-04' })
+    expect(days.map((row) => [row.date, row.unconfirmed, row.roughTotal])).toEqual([
+      ['2026-09-01', true, -52_000],
+      ['2026-09-02', true, 0],
+      ['2026-09-03', true, 870_000],
+      ['2026-09-04', false, null],
+    ])
+    expect(days[0]).toEqual({ ...uncheckedDay('2026-09-01'), dayCodes: true, roughTotal: -52_000 })
+  })
+
+  it('AC-4406.3 읽기: 옛 줄(참고 금액을 모르는 확인 필요한 날, rough_total null)은 roughTotal null이다', async () => {
+    const { client } = pagedClient({ sales_days: [uncheckedDb('2026-09-01', null)] })
+    const [row] = await createRevenueStore(client).loadDays(RANGE)
+    expect(row).toHaveProperty('roughTotal', null)
+  })
+
+  it('AC-4406.3 읽기: 답 줄에 rough_total 칸이 아예 없어도 roughTotal은 undefined가 아니라 null이다', async () => {
+    const legacy: Record<string, unknown> = { ...uncheckedDb('2026-09-01', null) }
+    delete legacy.rough_total
+    const { client } = pagedClient({ sales_days: [legacy] })
+    const [row] = await createRevenueStore(client).loadDays(RANGE)
+    expect(row).toHaveProperty('roughTotal', null)
   })
 })

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { compareYmd, monthOf } from '@/lib/analytics/dates'
 import { isErrorCode } from '@/lib/errors'
-import { planRevenue, syncRanges } from '@/lib/revenue/sync'
+import { planRevenue, savedMark, syncRanges } from '@/lib/revenue/sync'
 import { createRevenueStore } from '@/lib/storage/revenue'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { DateRange } from '@/types/dates'
@@ -14,6 +14,8 @@ import { readSpan, type StatsRange } from './view'
 // 읽기: readSpan(range) 날 줄 · 보는 기간(첫날 ~ 기간 끝과 마지막 끝난 날 가운데 이른 날) 코드별 합 · 그 달들의 옛 달 합계를 함께 읽는다.
 //   기간·마지막 끝난 날이 바뀔 때, 저장 뒤, [다시 읽기]에 다시 읽고 늦게 온 앞 답은 버린다(useStatsData와 같은 방식).
 // sync([비트에서 불러오기]가 통계 조각을 모두 저장한 뒤): 불러올 기간의 저장 표시 → planRevenue → syncRanges(덩어리 하나씩 call → 저장) → 다시 읽기.
+//   저장 표시는 savedMark(그날 줄, helperVersion)다: 도우미 0.7.0 이상이면 참고 금액이 없는 확인 필요한 날도 한 번 다시 읽는다(specs/first90 AC-4407.1·AC-4407.2).
+//   helperVersion은 연결 정보(hello)의 도우미 판을 받는다. 주지 않으면 판을 모르는 것으로 보아 지금처럼 고른다.
 //   call은 통계 훅(useStatsWorker.revenueDays)이 쥔 같은 연결의 것을 받는다. 이 훅은 통로를 직접 붙이지 않는다(두 번째 연결 = E-BRIDGE-BUSY).
 //   call이 null(비트 PC 아님)이면 아무것도 하지 않는다. 거절하지 않는다.
 // 숫자·표시는 React 상태에만 둔다. 브라우저 저장소·주소·서버 밖 어디에도 쓰지 않는다(도우미 예전 판 표시도 다시 열면 꺼진 채, 기본값 9)
@@ -73,7 +75,20 @@ const codeOf = (error: unknown): string => {
   return typeof code === 'string' && isErrorCode(code) ? code : READ_FAILED
 }
 
-export function useStatsRevenue({ range, today, lastDay, call }: { range: StatsRange; today: string; lastDay: string; call: RevenueCall | null }): StatsRevenue {
+export function useStatsRevenue({
+  range,
+  today,
+  lastDay,
+  call,
+  helperVersion,
+}: {
+  range: StatsRange
+  today: string
+  lastDay: string
+  call: RevenueCall | null
+  /** 연결된 도우미 판(hello.helperVersion). 없으면 모름 */
+  helperVersion?: string | null
+}): StatsRevenue {
   const { from: spanFrom, to: spanTo } = readSpan(range)
   const { from: viewFrom, to: viewTo } = viewSpan(range, lastDay)
   const [attempt, setAttempt] = useState(0)
@@ -118,7 +133,7 @@ export function useStatsRevenue({ range, today, lastDay, call }: { range: StatsR
       try {
         const saved = await store.loadDays(whole)
         const savedDates = saved.map((row) => row.date)
-        const ranges = planRevenue(whole, today, closeToday, new Map(saved.map((row) => [row.date, row.dayCodes])))
+        const ranges = planRevenue(whole, today, closeToday, new Map(saved.map((row) => [row.date, savedMark(row, helperVersion)])))
         if (ranges.length > 0) setProgress({ done: 1, total: ranges.length })
         let answered = false
         const result = await syncRanges({
@@ -154,7 +169,7 @@ export function useStatsRevenue({ range, today, lastDay, call }: { range: StatsR
         setAttempt((n) => n + 1)
       }
     },
-    [call, today],
+    [call, today, helperVersion],
   )
 
   const state: StatsRevenue['state'] = failedKey === key ? 'read-failed' : stored?.key === key ? 'ready' : 'reading'

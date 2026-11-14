@@ -22,9 +22,15 @@ export type RevenueDayRow = {
   unconfirmed: boolean
   /** 나눔만 셀 수 없음, insurer·noncovered·copay·otherTotal만 null이고 남는 다섯 칸은 숫자: ① insurer + copay ≠ 요양비용총액(금액 맞춤 검사) ② 그 네 칸 가운데 음수. unconfirmed와 함께 참이 되지 않는다. 까닭은 답에 없다 */
   splitUnconfirmed: boolean
+  /**
+   * 참고 금액(specs/first90 REQ-4405·REQ-4406): unconfirmed 날의 정상수납 + 미수입금 줄 총진료비 합(원장님별과 같은 기준, 줄마다 원 미만 버림, 환불은 음수 그대로).
+   * 도우미 답(0.7.0부터)에는 unconfirmed 날에만 있고 절댓값 REVENUE_ROUGH_MAX 이하 정수다(옛 도우미·확인된 날은 열쇠가 없다).
+   * 저장된 줄(SavedRevenueDay)을 읽으면 늘 있고, 확인된 날·참고 금액을 모르는 옛 줄은 null이다(sales_days.rough_total)
+   */
+  roughTotal?: number | null
 }
 
-/** 날 줄의 칸(정확히 이것뿐) */
+/** 날 줄의 칸(정확히 이것뿐). 선택 열쇠 roughTotal은 따로 본다(lib/bridge/revenueResult.ts) */
 export const REVENUE_DAY_KEYS = [
   'date',
   'visits',
@@ -74,7 +80,7 @@ export type RevenueDayCodeRow = readonly [date: string, code: string, count: num
 /** dayCodes 없음 = 옛 도우미(0.6.0 전). 있으면 날 줄과 같은 기간의 날 단위 처방 줄 */
 export type RevenueDaysResult = { days: RevenueDayRow[]; codes: RevenueCodeRow[]; dayCodes?: RevenueDayCodeRow[] }
 
-/** 저장된 날 줄(읽기용). dayCodes = 그날 날 단위 처방 줄을 함께 저장했는지(sales_days.day_codes) */
+/** 저장된 날 줄(읽기용). dayCodes = 그날 날 단위 처방 줄을 함께 저장했는지(sales_days.day_codes), roughTotal = sales_days.rough_total(없으면 null) */
 export type SavedRevenueDay = RevenueDayRow & { dayCodes: boolean }
 /** 범위 안 날 단위 처방 줄을 코드마다 더한 것(sales_code_totals). amount는 null을 뺀 합, missing = 금액이 빠진 줄이 있었음 */
 export type RevenueCodeTotal = { code: string; count: number; amount: number; missing: boolean }
@@ -93,3 +99,5 @@ export const REVENUE_DAY_CODES_PER_DAY = 300
 export const REVENUE_MAX_DAY_CODES = 9300
 /** 처방 이름 글자 수 한도(1~100자) */
 export const REVENUE_NAME_MAX = 100
+/** 참고 금액 roughTotal의 절댓값 한도(10^12원, specs/first90 AC-4406.4) */
+export const REVENUE_ROUGH_MAX = 1_000_000_000_000

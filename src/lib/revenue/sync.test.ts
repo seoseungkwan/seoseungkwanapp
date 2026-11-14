@@ -6,15 +6,15 @@ import { addDays, compareYmd, diffDays, eachDay } from '@/lib/analytics/dates'
 import { BridgeError } from '@/lib/bridge/protocol'
 import { RevenueStoreError } from '@/lib/storage/revenue'
 import type { DateRange } from '@/types/dates'
-import type { RevenueDaysResult } from '@/types/revenue'
-import { planRevenue, syncRanges } from './sync'
+import type { RevenueDaysResult, SavedRevenueDay } from '@/types/revenue'
+import { planRevenue, savedMark, syncRanges } from './sync'
 
 type Failures = Record<string, unknown>
 
 // 옛 매출 탭의 달 가져오기(planFetch·spanMonths·syncRevenue·ALL_FROM_MONTH·FetchSpan)와 그 시험은 지웠다(stats-revenue TASK-8, AC-4110.4)
 describe('AC-4110.4 옛 달 가져오기 함수가 없다', () => {
-  it('AC-4110.4 sync.ts는 planRevenue·syncRanges만 내보낸다', async () => {
-    expect(Object.keys(await import('./sync')).sort()).toEqual(['planRevenue', 'syncRanges'])
+  it('AC-4110.4·AC-4407.1 sync.ts는 planRevenue·savedMark(저장 표시)·syncRanges만 내보낸다', async () => {
+    expect(Object.keys(await import('./sync')).sort()).toEqual(['planRevenue', 'savedMark', 'syncRanges'])
   })
 
   it('AC-4110.4 소스에 옛 이름(planFetch·spanMonths·syncRevenue·ALL_FROM_MONTH·FetchSpan·saveMonth·RevenueStore)이 없다', () => {
@@ -351,5 +351,71 @@ describe('AC-4104.2 syncRanges', () => {
     const { call, store } = rangeFakes()
     await syncRanges({ call, store, ranges })
     expect(call.mock.calls.map(([range]) => range)).toEqual([dr('2026-11-13', '2026-11-14'), dr('2026-10-01', '2026-10-02')])
+  })
+})
+
+// ── 참고 금액이 없는 확인 필요한 날을 한 번 다시 읽는다(first90 TASK-3, REQ-4407 · AC-4407.1·AC-4407.2) ──
+
+type Mark = Pick<SavedRevenueDay, 'dayCodes' | 'unconfirmed' | 'roughTotal'>
+/** 저장 표시에 쓰는 세 칸. 기본은 확인된 날·날 단위 처방 금액 있음·참고 금액 없음(null) */
+const mark = (over: Partial<Mark> = {}): Mark => ({ dayCodes: true, unconfirmed: false, roughTotal: null, ...over })
+/** 확인 필요한 날 · 참고 금액 null · 날 단위 처방 금액 있음 */
+const UNCHECKED = mark({ unconfirmed: true })
+const NEW_HELPERS = ['0.7.0', '0.7.1', '0.8.0', '0.10.0', '1.0.0']
+const OLD_HELPERS = ['0.6.0', '0.6.9', '0.5.1', '0.3.0']
+/** 판을 모름: 연결 정보 없음 · 읽을 수 없는 판 */
+const UNKNOWN_HELPERS = [undefined, null, '', '0.7', 'v0.7.0', 'abc']
+
+describe('AC-4407.1 savedMark: 도우미 0.7.0 이상이면 참고 금액이 없는 확인 필요한 날을 다시 읽는다', () => {
+  it.each(NEW_HELPERS)('AC-4407.1 확인 필요한 날 · 참고 금액 null · 도우미 %s → 거짓(다시 읽을 날)', (version) => {
+    expect(savedMark(UNCHECKED, version)).toBe(false)
+  })
+
+  it('AC-4407.1 저장 줄에 roughTotal 열쇠가 없어도 참고 금액 없음으로 본다', () => {
+    expect(savedMark({ dayCodes: true, unconfirmed: true }, '0.7.0')).toBe(false)
+  })
+
+  it.each([870_000, 0, -52_000])('AC-4407.1 확인 필요한 날이라도 참고 금액이 있으면(%j, 0·음수 포함) 지금 그대로 참', (roughTotal) => {
+    expect(savedMark(mark({ unconfirmed: true, roughTotal }), '0.7.0')).toBe(true)
+  })
+
+  it('AC-4407.1 확인된 날은 지금 그대로다(dayCodes 값)', () => {
+    expect(savedMark(mark(), '0.7.0')).toBe(true)
+    expect(savedMark(mark({ dayCodes: false }), '0.7.0')).toBe(false)
+  })
+
+  it('AC-4407.1 날 단위 처방 금액이 없는 날(dayCodes 거짓)은 판과 참고 금액에 상관없이 거짓이다(지금 그대로)', () => {
+    for (const version of [...NEW_HELPERS, ...OLD_HELPERS, ...UNKNOWN_HELPERS]) {
+      expect(savedMark({ ...UNCHECKED, dayCodes: false }, version)).toBe(false)
+      expect(savedMark(mark({ unconfirmed: true, roughTotal: 1_000, dayCodes: false }), version)).toBe(false)
+    }
+  })
+})
+
+describe('AC-4407.2 savedMark: 도우미 0.7.0 미만이면 지금 그대로', () => {
+  it.each(OLD_HELPERS)('AC-4407.2 도우미 %s → 참고 금액이 없는 확인 필요한 날도 참(다시 읽지 않음)', (version) => {
+    expect(savedMark(UNCHECKED, version)).toBe(true)
+  })
+
+  it.each(UNKNOWN_HELPERS)('AC-4407.2 도우미 판을 모르면(%j) 예전 판처럼 지금 그대로 참', (version) => {
+    expect(savedMark(UNCHECKED, version)).toBe(true)
+  })
+})
+
+describe('AC-4407.1·AC-4407.2 planRevenue에 넘기는 저장 표시', () => {
+  // 9월 1일 ~ 11월 12일 모두 저장(날 단위 처방 금액 있음). 10월 5·6일은 참고 금액이 없는 확인 필요한 날, 10월 20일은 참고 금액이 있는 확인 필요한 날
+  const rows = (): (Mark & { date: string })[] =>
+    eachDay(dr('2026-09-01', '2026-11-12')).map((date) => ({
+      date,
+      ...(['2026-10-05', '2026-10-06'].includes(date) ? UNCHECKED : date === '2026-10-20' ? mark({ unconfirmed: true, roughTotal: 870_000 }) : mark()),
+    }))
+  const marks = (version: string | undefined) => new Map(rows().map((row) => [row.date, savedMark(row, version)]))
+
+  it('AC-4407.1 도우미 0.7.0이면 참고 금액이 없는 확인 필요한 날을 덩어리로 고르고, 참고 금액이 있는 날은 고르지 않는다', () => {
+    expect(planRevenue(WHOLE, NOV_14, false, marks('0.7.0'))).toEqual([dr('2026-11-13', '2026-11-13'), dr('2026-10-05', '2026-10-06')])
+  })
+
+  it.each(['0.6.0', undefined])('AC-4407.2 도우미 %j면 그런 날도 고르지 않는다(어제만)', (version) => {
+    expect(planRevenue(WHOLE, NOV_14, false, marks(version))).toEqual([dr('2026-11-13', '2026-11-13')])
   })
 })

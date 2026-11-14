@@ -8,6 +8,7 @@ import {
   REVENUE_MAX_DAY_CODES,
   REVENUE_MAX_DAYS,
   REVENUE_MONEY_KEYS,
+  REVENUE_ROUGH_MAX,
   REVENUE_SPLIT_KEYS,
   type RevenueCodeRow,
   type RevenueDayCodeRow,
@@ -639,5 +640,70 @@ describe('AC-4102.2 dayCodes를 거부하는 아홉 경우(모두 E-BRIDGE-BAD-R
   it('AC-4102.2 dayCodes가 맞아도 days가 틀리면 거부한다(날 줄 검사는 그대로)', () => {
     const data = withDayCodes(DAY_CODES)
     expect(check({ ...data, days: [{ ...day('2026-10-01'), chart: FAKE_CHART }] })).toBe(false)
+  })
+})
+
+// ── 도우미 0.7.0의 참고 금액 roughTotal(first90 TASK-3, REQ-4406 · AC-4406.4). 금액은 모두 지어낸 값이다 ──
+
+describe('AC-4406.4 날 줄의 참고 금액 roughTotal', () => {
+  const D = '2026-10-02'
+  const checkRow = (row: unknown) => check({ days: [row], codes: [] })
+  /** 확인 필요한 날에 roughTotal 열쇠를 단 줄 */
+  const rough = (value: unknown) => ({ ...unconfirmedDay(D), roughTotal: value })
+  const CONFIRMED: [string, RevenueDayRow][] = [
+    ['금액 아홉 칸이 다 있는 날', day(D)],
+    ['나눔만 빈 날', splitDay(D)],
+  ]
+
+  it('AC-4406.4 한도 상수는 10^12이고, roughTotal은 정확히 있어야 하는 열다섯 칸 목록에 들지 않는다(선택 열쇠)', () => {
+    expect(REVENUE_ROUGH_MAX).toBe(1_000_000_000_000)
+    expect([...REVENUE_DAY_KEYS]).toEqual([...DAY_KEYS])
+    expect(REVENUE_DAY_KEYS).not.toContain('roughTotal')
+  })
+
+  it.each([1_234_560, 0, -52_000, 1_000_000_000_000, -1_000_000_000_000])(
+    'AC-4406.4 확인 필요한 날의 roughTotal %j(원 단위 정수, 환불 음수·절댓값 10^12까지)는 받는다',
+    (value) => {
+      expect(checkRow(rough(value))).toBe(true)
+    },
+  )
+
+  it('AC-4406.4 옛 도우미처럼 확인 필요한 날에 roughTotal 열쇠가 없어도 받는다', () => {
+    expect(checkRow(unconfirmedDay(D))).toBe(true)
+  })
+
+  it('AC-4406.4 dayCodes가 있는 세 열쇠 답에서도, 확인 필요한 날만 열쇠가 있고 다른 날은 없는 답을 받는다', () => {
+    const data = good()
+    const days = data.days.map((d) => (d.unconfirmed ? { ...d, roughTotal: 870_000 } : d))
+    expect(check({ ...data, days, dayCodes: [] })).toBe(true)
+    expect(check({ ...data, days })).toBe(true)
+  })
+
+  it('AC-4406.4 확인 필요한 날의 건수 칸이 숫자여도(금액만 null) roughTotal을 받는다', () => {
+    expect(checkRow({ ...rough(-3_000), visits: 30 })).toBe(true)
+  })
+
+  describe.each(CONFIRMED)('AC-4406.4 확인된 날(%s)에 roughTotal 열쇠가 있으면 거부한다', (_label, row) => {
+    it.each([1_000, 0, -1, null, undefined])('AC-4406.4 roughTotal: %j', (value) => {
+      expect(checkRow(row)).toBe(true) // 열쇠가 없으면 맞는 줄이다(거부는 열쇠 때문이다)
+      expect(checkRow({ ...row, roughTotal: value })).toBe(false)
+    })
+  })
+
+  it.each([1.5, -0.5, 1_000_000_000_001, -1_000_000_000_001, 2 ** 53, Number.NaN, Infinity, -Infinity, '1000', '', null, undefined, true, {}, []])(
+    'AC-4406.4 확인 필요한 날의 roughTotal이 절댓값 10^12 이하 정수가 아니면(%j: 소수·한도 넘음·글자·null·없는 값) 거부한다',
+    (value) => {
+      expect(checkRow(rough(value))).toBe(false)
+    },
+  )
+
+  it.each(['rough_total', 'RoughTotal', 'roughtotal', 'rough'])('AC-4406.4 이름이 다른 열쇠(%s)는 정해 둔 칸 밖이라 거부한다', (key) => {
+    expect(checkRow({ ...unconfirmedDay(D), [key]: 1_000 })).toBe(false)
+  })
+
+  it('AC-4406.4 roughTotal이 있어도 날 줄의 다른 검사(정해 둔 칸 밖의 칸·금액 짝)는 그대로다', () => {
+    expect(checkRow({ ...rough(1_000), chart: FAKE_CHART })).toBe(false)
+    expect(checkRow({ ...rough(1_000), total: 1_000 })).toBe(false)
+    expect(checkRow(without(rough(1_000), 'splitUnconfirmed'))).toBe(false)
   })
 })

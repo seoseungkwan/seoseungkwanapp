@@ -98,7 +98,8 @@ function deferred<T>() {
 }
 
 type Call = (range: DateRange) => Promise<RevenueDaysResult>
-type Props = { range: StatsRange; today: string; lastDay: string; call: Call | null }
+// helperVersion: 연결된 도우미 판(first90 AC-4407.1). 주지 않으면 모름
+type Props = { range: StatsRange; today: string; lastDay: string; call: Call | null; helperVersion?: string | null }
 const props = (over: Partial<Props> = {}): Props => ({ range: RECENT30, today: TODAY, lastDay: LAST_DAY, call: null, ...over })
 const draw = (over: Partial<Props> = {}) => renderHook((p: Props) => useStatsRevenue(p), { initialProps: props(over) })
 type View = ReturnType<typeof draw>
@@ -510,5 +511,60 @@ describe('AC-4108.2 같은 연결 · 저장소', () => {
       expect(text, word).not.toContain(word)
     }
     expect(text).toContain('createRevenueStore(supabaseBrowser())')
+  })
+})
+
+describe('AC-4407.1·AC-4407.2 참고 금액이 없는 확인 필요한 날을 한 번 다시 읽는다(sync의 저장 표시)', () => {
+  /** 저장된 확인 필요한 날(금액 아홉 칸 null). roughTotal = 참고 금액(null = 모름) */
+  const unchecked = (date: string, roughTotal: number | null): SavedRevenueDay => ({
+    ...dayRow(date),
+    total: null,
+    insurer: null,
+    noncovered: null,
+    copay: null,
+    otherTotal: null,
+    cash: null,
+    card: null,
+    transfer: null,
+    receivableIn: null,
+    unconfirmed: true,
+    dayCodes: true,
+    roughTotal,
+  })
+  // seedWithGaps 위에: 10-25·10-26은 참고 금액을 모르는 확인 필요한 날, 10-27은 참고 금액이 있는 확인 필요한 날
+  function seedUnchecked() {
+    seedWithGaps()
+    db.set('2026-10-25', unchecked('2026-10-25', null))
+    db.set('2026-10-26', unchecked('2026-10-26', null))
+    db.set('2026-10-27', unchecked('2026-10-27', -52_000))
+  }
+
+  it.each(['0.7.0', '0.8.1'])('AC-4407.1: 도우미 %s면 참고 금액을 모르는 확인 필요한 날(10-25 ~ 10-26)도 새것부터 덩어리로 다시 읽는다', async (helperVersion) => {
+    seedUnchecked()
+    const call = answering()
+    const view = draw({ call, helperVersion })
+    await ready(view)
+    await syncOnce(view)
+    expect(asked(call)).toEqual([CHUNKS[0], { from: '2026-10-25', to: '2026-10-26' }, CHUNKS[1], CHUNKS[2]])
+    expect(asked(store.saveRange)).toEqual(asked(call))
+  })
+
+  it.each([['0.6.0'], ['0.5.1'], [null], [undefined]])('AC-4407.2: 도우미 %j(0.7.0 미만·모름)면 그런 날도 다시 읽지 않는다(지금 그대로)', async (helperVersion) => {
+    seedUnchecked()
+    const call = answering()
+    const view = draw({ call, helperVersion })
+    await ready(view)
+    await syncOnce(view)
+    expect(asked(call)).toEqual(CHUNKS)
+  })
+
+  it('AC-4407.1: 같은 화면에서 도우미 판이 바뀌면(새 도우미로 다시 연결) 다음 sync부터 바뀐 판으로 고른다', async () => {
+    seedUnchecked()
+    const call = answering()
+    const view = draw({ call, helperVersion: '0.6.0' })
+    await ready(view)
+    view.rerender(props({ call, helperVersion: '0.7.0' }))
+    await syncOnce(view)
+    expect(asked(call)).toContainEqual({ from: '2026-10-25', to: '2026-10-26' })
   })
 })

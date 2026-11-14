@@ -34,7 +34,7 @@ export class RevenueStoreError extends Error {
 export type RevenueRangeStore = {
   /** 덩어리 하나(31일까지)를 save_revenue_range로 저장. 실패 E-REVENUE-SAVE-FAILED */
   saveRange(range: DateRange, result: RevenueDaysResult): Promise<void>
-  /** 범위 안 저장된 날 줄 + 날 단위 처방 줄이 있는지. 실패 E-STATS-READ-FAILED */
+  /** 범위 안 저장된 날 줄 + 날 단위 처방 줄이 있는지 + 참고 금액(없으면 null). 실패 E-STATS-READ-FAILED */
   loadDays(range: DateRange): Promise<SavedRevenueDay[]>
   /** 범위 안 날 단위 처방 줄의 코드별 합(sales_code_totals). 실패 E-STATS-READ-FAILED */
   codeTotals(range: DateRange): Promise<RevenueCodeTotal[]>
@@ -50,16 +50,22 @@ const CODE_TOTALS_FUNCTION = 'sales_code_totals'
 type DayKey = (typeof REVENUE_DAY_KEYS)[number]
 type DbDayRow = Record<string, unknown>
 type DbCodeRow = RevenueCodeRow & { month: string }
-type DbSavedDay = Record<string, unknown> & { day_codes: boolean }
+type DbSavedDay = Record<string, unknown> & { day_codes: boolean; rough_total?: number | null }
 type DbCodeTotal = RevenueCodeTotal
 
 /** camelCase → snake_case. date만 표에서 day다 */
 const columnOf = (key: DayKey) => (key === 'date' ? 'day' : key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`))
 
-const SAVED_DAY_SELECT = [...REVENUE_DAY_KEYS.map(columnOf), 'day_codes'].join(',')
+/** 참고 금액 칸(specs/first90 AC-4406.3): 날 줄 열다섯 칸 뒤에 함께 보내고 읽는다 */
+const ROUGH_COLUMN = 'rough_total'
+const SAVED_DAY_SELECT = [...REVENUE_DAY_KEYS.map(columnOf), ROUGH_COLUMN, 'day_codes'].join(',')
 const CODE_SELECT = 'month,code,name,count,amount'
 
-const toDbDay = (row: RevenueDayRow) => Object.fromEntries(REVENUE_DAY_KEYS.map((key) => [columnOf(key), row[key]]))
+// 열쇠가 없는 답(옛 도우미·확인된 날)은 null로 보낸다
+const toDbDay = (row: RevenueDayRow) => ({
+  ...Object.fromEntries(REVENUE_DAY_KEYS.map((key) => [columnOf(key), row[key]])),
+  [ROUGH_COLUMN]: row.roughTotal ?? null,
+})
 const fromDbDay = (row: DbDayRow) => Object.fromEntries(REVENUE_DAY_KEYS.map((key) => [key, row[columnOf(key)]])) as RevenueDayRow
 
 /** 튜플 → 정해 둔 네 칸 새 객체(다섯째 칸이 섞여 있어도 보내지 않는다) */
@@ -98,7 +104,7 @@ async function readOrFail<T>(read: () => Promise<T>): Promise<T> {
 }
 
 export function createRevenueStore(client: SupabaseClient): RevenueRangeStore {
-  // 날 줄은 정해 둔 열다섯 칸, 코드 줄은 {day, code, count, amount}만 새 객체로. 옛 도우미(dayCodes 없음)면 null → 서버가 그 범위 코드 줄을 지우고 day_codes 거짓
+  // 날 줄은 정해 둔 열다섯 칸 + rough_total, 코드 줄은 {day, code, count, amount}만 새 객체로. 옛 도우미(dayCodes 없음)면 null → 서버가 그 범위 코드 줄을 지우고 day_codes 거짓
   async function writeRange(range: DateRange, result: RevenueDaysResult): Promise<void> {
     const { error } = await client.rpc(SAVE_RANGE_FUNCTION, {
       p_from: range.from,
@@ -122,7 +128,8 @@ export function createRevenueStore(client: SupabaseClient): RevenueRangeStore {
         const rows = await readAll<DbSavedDay>((from, to) =>
           client.from('sales_days').select(SAVED_DAY_SELECT).gte('day', range.from).lte('day', range.to).order('day').range(from, to),
         )
-        return rows.map((row) => ({ ...fromDbDay(row as unknown as DbDayRow), dayCodes: row.day_codes }))
+        // 참고 금액을 모르는 옛 줄은 null(undefined로 두지 않는다)
+        return rows.map((row) => ({ ...fromDbDay(row as unknown as DbDayRow), dayCodes: row.day_codes, roughTotal: row.rough_total ?? null }))
       }),
     // 함수 답도 쪽마다 같은 차례여야 빠짐·겹침이 없다(함수 안 order by에 기대지 않는다)
     codeTotals: (range) =>
