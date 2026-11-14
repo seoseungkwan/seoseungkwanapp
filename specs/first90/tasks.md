@@ -61,8 +61,8 @@
 ## TASK-3: 매출 자료 — roughTotal 받기·저장 · SQL · 다시 읽을 날
 - REQ: REQ-4406, REQ-4407
 - AC: AC-4406.1, AC-4406.2, AC-4406.3, AC-4406.4, AC-4407.1, AC-4407.2
-- Files: src/lib/bridge/revenueResult.ts, src/types/revenue.ts, src/lib/storage/revenue.ts, src/lib/revenue/sync.ts, src/components/stats/useStatsRevenue.ts, supabase/migrations/20261115000000_sales_day_rough.sql, src/lib/bridge/revenueResult.test.ts, src/lib/storage/revenue.test.ts, src/lib/revenue/sync.test.ts, src/components/stats/useStatsRevenue.test.ts, supabase/salesDayRough.rls.test.ts
-- Tests: src/lib/bridge/revenueResult.test.ts, src/lib/storage/revenue.test.ts, src/lib/revenue/sync.test.ts, src/components/stats/useStatsRevenue.test.ts, supabase/salesDayRough.rls.test.ts, supabase/salesDayCodes.rls.test.ts, supabase/revenue.rls.test.ts
+- Files: src/lib/bridge/revenueResult.ts, src/types/revenue.ts, src/lib/storage/revenue.ts, src/lib/revenue/sync.ts, src/components/stats/useStatsRevenue.ts, src/components/stats/useStatsWorker.ts, src/components/stats/StatsScreen.tsx, supabase/migrations/20261115000000_sales_day_rough.sql, src/lib/bridge/revenueResult.test.ts, src/lib/storage/revenue.test.ts, src/lib/revenue/sync.test.ts, src/components/stats/useStatsRevenue.test.ts, src/components/stats/useStatsWorker.test.ts, src/components/stats/StatsScreen.test.tsx, supabase/salesDayRough.rls.test.ts
+- Tests: src/lib/bridge/revenueResult.test.ts, src/lib/storage/revenue.test.ts, src/lib/revenue/sync.test.ts, src/components/stats/useStatsRevenue.test.ts, src/components/stats/useStatsWorker.test.ts, src/components/stats/StatsScreen.test.tsx, supabase/salesDayRough.rls.test.ts, supabase/salesDayCodes.rls.test.ts, supabase/revenue.rls.test.ts
 - TDD: required
   - 답 검사: unconfirmed 줄의 `roughTotal` 받음(음수 포함) · 열쇠 없음 받음 · 확인된 날에 열쇠 있음 거부 · 소수·10^12 넘음 거부.
   - 저장소: 넣기 인자에 `rough_total`, 읽기 select·옮기기, 옛 줄 null.
@@ -70,7 +70,7 @@
     - 확인 필요한 날, 참고 금액 null, 도우미 0.7.0 → false(다시 읽음).
     - 0.6.0 → 지금 그대로.
     - 확인된 날 → 지금 그대로.
-  - 훅이 그 함수를 쓴다.
+  - 훅이 그 함수를 쓴다. 도우미 판은 `useStatsWorker`가 `hello.helperVersion`을 내보내고 `StatsScreen`이 `useStatsRevenue`에 넘긴다(연결 전·판 모름은 null).
   - SQL(PGlite, 지금 RLS 시험과 같은 흉내):
     - 두 번 실행해도 됨, 칸·CHECK(`rough_total`이 있으면 `total`은 null), 칸 권한.
     - `save_revenue_range`가 `rough_total`을 저장하고, 옛 인자(열쇠 없음)는 null로 저장.

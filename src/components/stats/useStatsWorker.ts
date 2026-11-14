@@ -44,7 +44,7 @@ export function errorCodeOf(error: unknown): ErrorCode {
 
 export function useStatsWorker() {
   const [worker] = useState(lazyStatsWorker)
-  const { state, helloError, retry, stream, call, close } = useBridge({ worker })
+  const { state, hello, helloError, retry, stream, call, close } = useBridge({ worker })
 
   useEffect(() => () => worker.terminate(), [worker])
 
@@ -87,5 +87,8 @@ export function useStatsWorker() {
   // 도우미에는 from·to만 간다. 답은 통로가 검사한 숫자(날 줄·코드 줄·날 단위 처방 줄)이고 Worker로 가지 않는다
   const revenueDays = useCallback(({ from, to }: DateRange) => call('revenue.days', { from, to }), [call])
 
-  return { state, helloError, retry, load, split, sections, revenueDays }
+  // 연결된 도우미 판(first90 AC-4407.1): 매출 다시 읽을 날 고르기가 쓴다. 연결 전·hello 전은 null
+  const helperVersion = hello?.helperVersion ?? null
+
+  return { state, helloError, retry, load, split, sections, revenueDays, helperVersion }
 }

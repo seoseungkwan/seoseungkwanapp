@@ -81,7 +81,7 @@ ORDER BY v.PatientId,v.VisitDay
 ## 4. 매출 자료
 
 - `revenueResult.ts`: 날 줄 열쇠 검사에 `roughTotal`을 선택 열쇠로 더한다. 규칙은 `unconfirmed` 참일 때만, |값| ≤ 10^12 정수(AC-4406.4).
-- `types/revenue.ts`: `RevenueDay.roughTotal?: number`. 저장 줄 `SalesDayRow.rough_total: number | null`.
+- `types/revenue.ts`: `RevenueDayRow.roughTotal?: number | null`(저장 줄에서 읽으면 없을 때 null, 도우미 답 검사는 null을 받지 않는다). DB 줄은 `storage/revenue.ts`의 `DbSavedDay.rough_total: number | null`.
 - `storage/revenue.ts`: `save_revenue_range` 인자 줄에 `rough_total`, 읽기 select에 `rough_total`.
 - SQL `supabase/migrations/20261115000000_sales_day_rough.sql`:
   - `alter table … add column if not exists rough_total bigint`.
@@ -91,7 +91,7 @@ ORDER BY v.PatientId,v.VisitDay
   - 사용자가 SQL Editor에 붙여 실행한다.
 - 다시 읽기: 저장 표시(`saved`)를 만드는 곳에서 아래 조건이면 그날을 '덜 저장됨'(false)으로 둔다. `planRevenue` 자체의 날 고르기는 그대로다.
   - `unconfirmed && rough_total === null && helperAtLeast('0.7.0')`.
-  - 도우미 판은 지금 연결 정보에서 받는다.
+  - 도우미 판은 `useStatsWorker`가 연결 정보의 `hello.helperVersion`을 `helperVersion`으로 내보내고, `StatsScreen`이 `useStatsRevenue({ …, helperVersion })`로 넘긴다.
 
 ## 5. 화면 (통계 화면 개선, redesign.html)
 
@@ -198,7 +198,7 @@ ORDER BY v.PatientId,v.VisitDay
 ## 7. 위험
 1. **판 차례**: 새 도우미(v4·roughTotal)를 운영 웹(v2·v3만 받음)에 쓰면 통계 불러오기가 실패한다.
    - 웹을 먼저 배포한 뒤 도우미를 설치한다.
-   - SQL을 먼저 붙인다. 안 붙인 채로 새 웹을 올리면 매출 저장이 `rough_total` 때문에 실패한다.
+   - SQL을 먼저 붙인다. 안 붙인 채로 새 웹을 올리면 새 웹이 없는 `rough_total` 칸을 읽으려다 실패해 매출 칸이 읽기 실패로 나온다(옛 저장 함수는 모르는 칸을 무시해 저장은 된다).
 2. **1회 신환이 낡을 수 있음**: 지난 날 칸의 `once`는 그 날을 불러온 때의 자료 끝날까지 센 값이다. 그 뒤 그 날을 다시 불러오지 않으면, 그동안 다시 온 환자도 1회로 남는다. 옆 글 "불러온 자료 끝날까지"와 '집계 중' 꼬리표로 알리고, 최근 1년 다시 불러오기로 맞춘다.
 3. **참고 금액 포함 비교**: 비교 기간에 참고 금액이 없는 확인 필요한 날이 있으면 두 기간의 기준이 조금 다르다. 그런 날은 지금처럼 빠진다.
 4. **화면 고침 범위가 넓음**: 칸마다 지금 시험이 많다. 지금 시험의 글·구조 기대값은 이 명세가 바꾸는 것만 고치고, 계산 시험은 고치지 않는다. 대시보드·preview가 같이 쓰는 `StackedBarChart`는 새 props를 주지 않으면 마크업이 같아야 한다.

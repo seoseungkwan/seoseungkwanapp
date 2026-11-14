@@ -251,10 +251,10 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   const { todayDone } = data
   const range = useMemo(() => rangeOf(today, choice, todayDone), [today, choice, todayDone])
   const lastDay = lastDayOf(today, todayDone)
-  const { state, helloError, retry, load, split, sections, revenueDays } = useStatsWorker()
+  const { state, helloError, retry, load, split, sections, revenueDays, helperVersion } = useStatsWorker()
   const groups = useStatsRxGroups(data.input?.days ?? NO_DAYS)
   // 비트 PC가 아니면(확장 없음·휴대폰·연결 전) call이 없어 저장된 매출만 읽는다(AC-4108.7)
-  const revenue = useStatsRevenue({ range, today, lastDay, call: state === 'ready' ? revenueDays : null })
+  const revenue = useStatsRevenue({ range, today, lastDay, call: state === 'ready' ? revenueDays : null, helperVersion })
 
   const [job, setJob] = useState<StatsJob | null>(null)
   const [actionError, setActionError] = useState<ErrorCode | null>(null)

@@ -837,3 +837,15 @@ describe('AC-4108.2 매출은 같은 비트 연결로', () => {
     expect(text).toContain("'revenue.days'")
   })
 })
+
+describe('first90 AC-4407.1 도우미 판', () => {
+  it('AC-4407.1 연결 전에는 helperVersion이 null이고, hello 뒤에는 hello의 도우미 판이다', async () => {
+    const chrome = fakeChrome()
+    fakeWorker()
+    const view = renderHook(() => useStatsWorker())
+    expect(view.result.current.helperVersion).toBeNull()
+    const port = chrome.port()
+    act(() => port.reply({ v: 1, id: port.last().id, type: 'result', data: { ...HELLO, helperVersion: '0.7.0' } }))
+    await waitFor(() => expect(view.result.current.helperVersion).toBe('0.7.0'))
+  })
+})

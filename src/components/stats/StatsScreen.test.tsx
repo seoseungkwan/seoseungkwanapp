@@ -23,6 +23,7 @@ import { runAnalysis } from '@/workers/runAnalysis'
 import { createStatsWorker } from '@/workers/statsClient'
 import { planLoad, revenueProgressText } from './loadPlan'
 import { StatsScreen } from './StatsScreen'
+import { useStatsRevenue } from './useStatsRevenue'
 import { groupKey } from './treatmentView'
 import { readSpan, statsRange } from './view'
 
@@ -64,6 +65,11 @@ vi.mock('@/lib/payload/toDayPayloads', () => ({ toDayPayloads: vi.fn() }))
 // 매출 저장소 가짜(stats-revenue TASK-7). 기본 동작은 beforeEach: 어제까지 쉬는 날 줄이 저장돼 있고(금액 0 · 날 단위 처방 금액 있음), 저장하면 그 날 줄이 바뀐다
 const revenueStore = vi.hoisted(() => ({ saveRange: vi.fn(), loadDays: vi.fn(), codeTotals: vi.fn(), monthCodes: vi.fn() }))
 vi.mock('@/lib/storage/revenue', () => ({ createRevenueStore: vi.fn(() => revenueStore) }))
+// 진짜 useStatsRevenue를 그대로 돌리고 받은 인자만 본다(first90 AC-4407.1: 도우미 판을 넘긴다)
+vi.mock('./useStatsRevenue', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./useStatsRevenue')>()
+  return { ...real, useStatsRevenue: vi.fn(real.useStatsRevenue) }
+})
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: vi.fn(() => ({})) }))
 
 const TODAY = '2026-11-13' // 금요일
@@ -3738,5 +3744,15 @@ describe('stats-revenue: 매출 칸 · 목차 열 개 · 불러오기 뒤 매출
     await loadIsFree()
     expect(fake.sent.some((message) => JSON.stringify(message).includes('revenue'))).toBe(false)
     expect(Object.keys(vi.mocked(saveStats).mock.calls[0]![0]).sort()).toEqual(['covered', 'days', 'months', 'source'])
+  })
+})
+
+describe('first90 AC-4407.1: 연결된 도우미 판을 매출 훅에 넘긴다', () => {
+  it('AC-4407.1 연결 전에는 helperVersion이 null이고, hello 뒤에는 hello의 도우미 판을 useStatsRevenue에 넘긴다', async () => {
+    vi.mocked(useStatsRevenue).mockClear()
+    await drawReady()
+    const calls = vi.mocked(useStatsRevenue).mock.calls
+    expect(calls[0]![0].helperVersion).toBeNull()
+    expect(calls.at(-1)![0].helperVersion).toBe(MIN_HELPER)
   })
 })
