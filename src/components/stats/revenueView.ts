@@ -181,6 +181,12 @@ const PER_VISIT_HOW = [
   '매출을 그 기간의 접수 건수로 나눠요. 같은 분이 다섯 번 오면 다섯 건으로 세요. 원장님 보고 문장의 건당진료비와 같은 식이고, 원 아래는 버려요.',
   "확인 필요한 날은 금액을 알 수 없어서 그날 접수 건수도 함께 빼고 나눠요. 그래서 '원장님별'의 건당 진료비(그런 날도 더해요)와 조금 다를 수 있어요.",
 ]
+// 켜짐 둘째 문단(first90 AC-4408.3). 첫 문단은 꺼짐 그대로다
+const PER_VISIT_HOW_ROUGH = [
+  PER_VISIT_HOW[0]!,
+  '참고 금액 포함을 켜면 참고 금액이 있는 확인 필요한 날은 그 참고 금액과 그날 접수 건수를 더해 나눠요. 참고 금액이 없는 날은 금액과 접수 건수를 함께 빼요.',
+]
+const ROUGH_SUB = ' · 참고 금액 포함'
 const NO_VISIT_REST = '은 접수 건수를 확인하지 못해 건당 진료비에서 빠졌어요. 매출 합계에는 들어 있어요.'
 
 const monthNumber = (ymd: string) => Number(ymd.slice(5, 7))
@@ -735,7 +741,8 @@ function treatmentsTab(ctx: Ctx): TreatmentsTab {
   }
 }
 
-function perVisitTab(ctx: Ctx): PerVisitTab {
+// withRough(켜짐): ctx가 참고 금액을 더해 센 것이라 숫자 칸 셋·안내 줄이 매출 요약 켜짐 건당 진료비와 같은 셈이다(first90 AC-4408.3)
+function perVisitTab(ctx: Ctx, withRough = false): PerVisitTab {
   const { sum, main, name, input } = ctx
   const now = input.range.name
   const value = perVisit(sum)
@@ -746,7 +753,7 @@ function perVisitTab(ctx: Ctx): PerVisitTab {
     kpis: [
       value === null
         ? blankKpi(`${now} 건당 진료비`, NO_DATA)
-        : { name: `${now} 건당 진료비`, value: formatWon(value), sub: `매출 ÷ 접수 ${countText(sum.perVisitCount)}`, tone: 'ink', srText: '' },
+        : { name: `${now} 건당 진료비`, value: formatWon(value), sub: `매출 ÷ 접수 ${countText(sum.perVisitCount)}${withRough ? ROUGH_SUB : ''}`, tone: 'ink', srText: '' },
       delta.dir === 'none' || before === null
         ? blankKpi(`${name}보다`, NO_COMPARE)
         : { name: `${name}보다`, value: delta.text, sub: `${name} ${formatWon(before)}`, tone: delta.dir, srText: delta.srText },
@@ -760,28 +767,27 @@ function perVisitTab(ctx: Ctx): PerVisitTab {
             srText: '',
           },
     ],
-    ...barsView(ctx, PER_VISIT_KIND, false),
+    ...barsView(ctx, PER_VISIT_KIND, withRough),
     notice: dayNotice(sum.noVisitDays, NO_VISIT_REST),
-    how: PER_VISIT_HOW,
+    how: withRough ? PER_VISIT_HOW_ROUGH : PER_VISIT_HOW,
   }
 }
 
 /**
  * 매출 칸 탭 넷(AC-4107.2~AC-4107.8의 숫자·글). 보는 기간에 저장된 매출이 없거나 모두 쉬는 날이면 empty(AC-4107.7).
  * 참고 금액 포함 스위치(first90 AC-4408.3): 보는 기간에 참고 금액이 있는 확인 필요한 날이 있으면 rough에 켜짐 두 탭(매출 추이·건당 진료비)을 더 센다.
- * 켜짐 건당 진료비 탭은 막대만 참고 금액을 더하고 숫자 칸 셋·안내 줄·설명은 꺼짐 그대로다. 급여·비급여·기타·치료별 매출은 켜짐에도 이 하나다(AC-4408.4)
+ * 켜짐 건당 진료비 탭은 막대·숫자 칸 셋·안내 줄 모두 켜짐 셈이라 매출 요약 켜짐 건당 진료비와 같다(설명 줄·첫 문단은 꺼짐 그대로). 급여·비급여·기타·치료별 매출은 켜짐에도 이 하나다(AC-4408.4)
  */
 export function revenueTabs(input: RevenueInput): RevenueTabs {
   const ctx = contextOf(input)
   if (ctx === null) return { kind: 'empty' }
-  const perVisit = perVisitTab(ctx)
   const roughCtx = roughOf(ctx.byDay, ctx.sum.uncheckedDays).dates.length > 0 ? contextOf(input, true) : null
   return {
     kind: 'ready',
     trend: trendTab(ctx),
     split: splitTab(ctx),
     treatments: treatmentsTab(ctx),
-    perVisit,
-    rough: roughCtx === null ? null : { trend: trendTab(roughCtx, true), perVisit: { ...perVisit, ...barsView(roughCtx, PER_VISIT_KIND, true) } },
+    perVisit: perVisitTab(ctx),
+    rough: roughCtx === null ? null : { trend: trendTab(roughCtx, true), perVisit: perVisitTab(roughCtx, true) },
   }
 }

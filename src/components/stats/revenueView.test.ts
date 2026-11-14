@@ -530,7 +530,7 @@ describe('AC-4408.3 매출 추이·건당 진료비 막대: 꺼짐은 점선 칸
     expect(ready(inputOf({ days })).rough!.trend.lead.rest).toBe('· 지난 30일 1억 3,692만 원')
   })
 
-  it('AC-4408.3 켜짐: 건당 진료비 막대도 참고 금액 날은 빗금(참고 금액 ÷ 그날 접수, 천 원 아래 버림)이고 숫자 칸 셋·설명은 지금 그대로다', () => {
+  it('AC-4408.3 켜짐: 건당 진료비 막대도 참고 금액 날은 빗금(참고 금액 ÷ 그날 접수, 천 원 아래 버림)이다', () => {
     const tabs = ready(inputOf({ days: roughMockupDays() }))
     const perVisit = tabs.rough!.perVisit
     expect(perVisit.series).toEqual([
@@ -544,9 +544,35 @@ describe('AC-4408.3 매출 추이·건당 진료비 막대: 꺼짐은 점선 칸
       { label: '참고 금액(확인 필요한 날)', mark: 'rough' },
     ])
     expect(perVisit.note).toBe(`휴진한 날은 칸이 없어요. ${ROUGH_NOTE('10월 28일')}`)
-    expect(perVisit.kpis).toEqual(tabs.perVisit.kpis)
-    expect([perVisit.desc, perVisit.notice, perVisit.how]).toEqual([tabs.perVisit.desc, tabs.perVisit.notice, tabs.perVisit.how])
     expect([tabs.rough!.trend.desc, tabs.rough!.trend.how]).toEqual([tabs.trend.desc, tabs.trend.how])
+  })
+
+  it('AC-4408.3 켜짐: 건당 진료비 탭 숫자 칸 셋은 매출 요약 켜짐 건당 진료비와 같은 셈(참고 금액 날 금액·접수 더함, 비교 기간도)이고 첫 칸 아래 글에 `참고 금액 포함`', () => {
+    const input = inputOf({ days: roughMockupDays() })
+    const tabs = ready(input)
+    const perVisit = tabs.rough!.perVisit
+    expect(perVisit.kpis).toEqual([
+      { name: '최근 30일 건당 진료비', value: '57,139원', sub: '매출 ÷ 접수 2,408건 · 참고 금액 포함', tone: 'ink', srText: '' },
+      { name: '지난 30일보다', value: '+2.5%', sub: '지난 30일 55,698원', tone: 'up', srText: '늘어남' },
+      { name: '최근 30일 접수 건수', value: '2,408건', sub: '지난 30일 2,370건', tone: 'ink', srText: '' },
+    ])
+    // 한 화면에 같은 이름 두 숫자가 없다: 매출 요약 켜짐 칸과 같은 값·같은 접수 건수
+    const cell = cellOf(revenueCells(input, 'in'), 'perVisit')
+    expect(perVisit.kpis[0]!.value).toBe(`${cell.value}${cell.unit}`)
+    expect(perVisit.kpis[0]!.sub).toBe(`${cell.hint} · 참고 금액 포함`)
+    expect(perVisit.kpis[1]!.value).toBe(cell.delta!.text)
+    // 꺼짐 탭은 지금 그대로다
+    expect(tabs.perVisit.kpis[0]).toEqual({ name: '최근 30일 건당 진료비', value: '57,333원', sub: '매출 ÷ 접수 2,313건', tone: 'ink', srText: '' })
+  })
+
+  it('AC-4408.3 켜짐: 건당 진료비 탭 [어떻게 세나요?] 둘째 문단만 켜짐 글이고 설명 줄·첫 문단·안내 줄은 꺼짐 그대로다', () => {
+    const tabs = ready(inputOf({ days: roughMockupDays() }))
+    const perVisit = tabs.rough!.perVisit
+    expect([perVisit.desc, perVisit.notice]).toEqual([tabs.perVisit.desc, tabs.perVisit.notice])
+    expect(perVisit.how).toEqual([
+      tabs.perVisit.how[0],
+      '참고 금액 포함을 켜면 참고 금액이 있는 확인 필요한 날은 그 참고 금액과 그날 접수 건수를 더해 나눠요. 참고 금액이 없는 날은 금액과 접수 건수를 함께 빼요.',
+    ])
   })
 
   it('AC-4408.3 켜짐에서도 참고 금액이 없는 확인 필요한 날은 점선 칸이고, 범례·아래 글에 둘 다 있다', () => {
