@@ -4,12 +4,14 @@ import type { DateRange } from './dates'
 
 export type Grain = 'day' | 'week' | 'month'
 
-// patients = newPatients + returning + unknown. 일 칸은 그날 값(파일 길은 줄 표시로 센 그날 환자, 도우미 길은 접수 건수),
-// 주·달 칸은 그 일 칸들의 합이다(칸 안 서로 다른 환자 수가 아니다, AC-501.6)
-export type Totals = { patients: number; newPatients: number; returning: number; unknown: number }
+// patients = newPatients + (first90 ?? 0) + returning + unknown. 일 칸은 그날 값(파일 길은 줄 표시로 센 그날 환자, 도우미 길은 접수 건수),
+// 주·달 칸은 그 일 칸들의 합이다(칸 안 서로 다른 환자 수가 아니다, AC-501.6).
+// first90 = 90일초진 접수 수(첫 내원일이 아닌 환자·날만, spec first90 REQ-4402). 도우미 v4 답일 때만 있고, 없으면 재진에 들어 있다
+export type Totals = { patients: number; newPatients: number; returning: number; unknown: number; first90?: number }
 
-// 도우미 길의 접수 줄: 환자·날마다 한 줄. receptions = 그날 접수 건수, firstVisit = 그날이 첫 내원일
-export type PatientDay = { patient: number; date: string; receptions: number; firstVisit: boolean }
+// 도우미 길의 접수 줄: 환자·날마다 한 줄. receptions = 그날 접수 건수, firstVisit = 그날이 첫 내원일,
+// first90 = 그중 90일초진 접수 수(도우미 v4 답에만 있다)
+export type PatientDay = { patient: number; date: string; receptions: number; firstVisit: boolean; first90?: number }
 
 // 1회 · 2회 · 3~5회 · 6회+ (환자 수). 네 칸의 합 = 그 처방의 patients
 export type FollowUp = [number, number, number, number]
@@ -28,6 +30,8 @@ export type RxStats = {
   returning: number // 그중 그 칸의 재진. newPatients + returning ≤ patients(나머지는 알 수 없음)
   followup: FollowUp
   regions: { name: string; patients: number }[] // 이 칸에서 이 처방을 받은 환자의 동네별 수. 이름 순, null 주소는 NO_ADDRESS('주소 없음')
+  // 일 칸에만 있다: 그 칸 신환 중 불러온 자료 끝날까지 이 처방을 받은 서로 다른 날이 그날 하루뿐인 환자 수(spec first90 AC-4409.1). once ≤ newPatients
+  once?: number
 }
 
 // 그룹 코드 중 하나라도 받은 환자. followup은 그룹 코드 중 하나라도 받은 서로 다른 날 수

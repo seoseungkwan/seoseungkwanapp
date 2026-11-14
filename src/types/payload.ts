@@ -18,7 +18,7 @@ export type MonthPayload = {
   quality: 'valid' // 불완전한 결과는 변환 거부
   month: string // 'YYYY-MM'
   partial: boolean // 그 달이 완전(complete)하지 않음 — 덜 덮였거나 아직 끝나지 않음
-  totals: Totals
+  totals: Totals // first90은 그 달 모든 날에 있을 때만 그 합(선택 칸, 버전을 올리지 않음)
   rx: Array<{ code: string; name: string; type: string; patients: number; newPatients: number; returning: number; followup: FollowUp }> // 처방코드 순
   groups: Array<{ id: string; patients: number; newPatients: number; returning: number; followup: FollowUp }> // id 순
   revisit: RevisitPayload
@@ -44,7 +44,8 @@ export type DayPayload = {
   day: string // 'YYYY-MM-DD'
   partial: boolean // 그 날이 완전하지 않음 — 덮이지 않았거나 오늘
   totals: Totals
-  rx: Array<{ code: string; name: string; type: string; patients: number; newPatients: number; returning: number }> // 처방코드 순
+  // 처방코드 순. once = 그날 신환 중 그 처방을 받은 날이 그날뿐인 환자(선택 칸, spec first90 AC-4409.2). 없으면 이 기능 전에 저장한 날이다
+  rx: Array<{ code: string; name: string; type: string; patients: number; newPatients: number; returning: number; once?: number }>
   groups: Array<{ id: string; patients: number; newPatients: number; returning: number }> // id 순
   revisit: RevisitPayload
   again?: DayAgainPayload // 선택 칸. 없으면 이 기능 전에 저장한 날(0이 아니라 '셀 수 없음'). 버전을 올리지 않는다

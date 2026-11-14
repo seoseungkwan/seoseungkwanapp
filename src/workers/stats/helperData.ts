@@ -25,7 +25,7 @@ const REPORT_AMOUNTS = [
 const TREATMENTS = ['manual', 'eswt', 'carm', 'sono', 'cryo'] as const
 const SUMMARY_KEYS = ['visits', 'patients', 'newPatients', 'noChart', 'duplicate', 'noFirst'] as const
 const TOP_KEYS = ['v', 'from', 'to', 'summary', 'days', 'patientDays', 'codes', 'rows', 'report']
-// v3(stats-bit-sections AC-2701.1)는 v2 열쇠를 그대로 두고 이 넷을 더한다
+// v3(stats-bit-sections AC-2701.1)는 v2 열쇠를 그대로 두고 이 넷을 더한다. v4(first90 AC-4402.1)는 v3과 같은 열쇠이고 접수 줄만 다섯 칸이다
 const V3_KEYS = ['visits', 'people', 'doctors', 'doctorDays']
 const MAX_DOCTORS = 1_000
 const MAX_INSURANCE = 100 // 보험 이름 한도(비트 InsCodNam보다 넉넉하게)
@@ -43,16 +43,17 @@ export type StatsRowsExtra = {
   doctorDays: [day: string, doctor: string, amount: number][]
 }
 export type StatsRowsData = {
-  v: 2 | 3
+  v: 2 | 3 | 4
   from: string // YYYY-MM-DD, 요청과 같다
   to: string
   summary: StatsSummary
   days: [day: string, visits: number, patients: number, newPatients: number][] // 날짜는 YYYYMMDD
-  patientDays: [chart: string, day: string, receptions: number, first: string | null][] // 환자·날마다 한 줄, 날짜는 YYYYMMDD
+  // 환자·날마다 한 줄, 날짜는 YYYYMMDD. first90(그날 90일초진 접수 수, 0 ~ receptions)은 v4 답에만 있다
+  patientDays: [chart: string, day: string, receptions: number, first: string | null, first90?: number][]
   codes: [code: string, name: string][]
   rows: [chart: string, day: string, code: string, first: string | null][] // 날짜는 YYYYMMDD
   report: { daily: ClinicReportNumbers[]; monthly: ClinicReportNumbers[] }
-  extra?: StatsRowsExtra // v3에만
+  extra?: StatsRowsExtra // v3·v4에만
 }
 
 // 비트 전용 세 칸의 Worker 메모리 모양(design.md). p는 진료 줄과 같은 PatientIds 번호, 날짜는 YYYY-MM-DD
@@ -182,14 +183,16 @@ function checkRows(rows: unknown, rules: DayRules): Firsts {
   return firsts
 }
 
-function checkPatientDays(lines: unknown, rules: DayRules): Receipts {
+// withFirst90 = v4 답: 줄마다 다섯째 칸(90일초진 접수 수)이 0 이상 그날 접수 수 이하 정수다. v2·v3 답은 네 칸
+function checkPatientDays(lines: unknown, rules: DayRules, withFirst90: boolean): Receipts {
   if (!Array.isArray(lines) || lines.length > MAX_STATS_ROWS) bad()
   const firsts: Firsts = new Map()
   const visits = new Set<string>()
   for (const line of lines as unknown[]) {
-    if (!Array.isArray(line) || line.length !== 4) bad()
-    const [chart, day, receptions, first] = line as unknown[]
+    if (!Array.isArray(line) || line.length !== (withFirst90 ? 5 : 4)) bad()
+    const [chart, day, receptions, first, first90] = line as unknown[]
     if (!isCount(receptions) || receptions < 1) bad()
+    if (withFirst90 && !(isCount(first90) && first90 <= receptions)) bad()
     const person = personOf(chart, day, first, rules)
     const visit = visitKey(person, day as string)
     if (visits.has(visit)) bad()
@@ -298,8 +301,8 @@ export function parseStatsRows(text: string, req: { from: string; to: string }):
   } catch {
     bad() // 파서 예외 글에는 자료 조각이 들어 있다
   }
-  if (!isRecord(value) || (value.v !== 2 && value.v !== 3)) bad()
-  if (!hasExactly(value, value.v === 3 ? [...TOP_KEYS, ...V3_KEYS] : TOP_KEYS)) bad()
+  if (!isRecord(value) || (value.v !== 2 && value.v !== 3 && value.v !== 4)) bad()
+  if (!hasExactly(value, value.v === 2 ? TOP_KEYS : [...TOP_KEYS, ...V3_KEYS])) bad()
   if (value.from !== req.from || value.to !== req.to) bad()
 
   const { summary, days, codes } = value
@@ -316,9 +319,9 @@ export function parseStatsRows(text: string, req: { from: string; to: string }):
 
   const rules = { from, to, isDay }
   const rowFirsts = checkRows(value.rows, rules)
-  const receipts = checkPatientDays(value.patientDays, rules)
+  const receipts = checkPatientDays(value.patientDays, rules, value.v === 4)
   checkReport(value.report, req.to)
-  const extra = value.v === 3 ? checkExtra(value, rules) : null
+  const extra = value.v === 2 ? null : checkExtra(value, rules)
 
   // 모양을 다 본 뒤에 대조한다: 모양이 틀린 답이 '접수가 바뀌었어요'로 보이지 않게
   const v2 = value as unknown as StatsRowsData
@@ -345,15 +348,15 @@ export function toConsumptionRows(data: StatsRowsData, ids: PatientIds): Consump
   }))
 }
 
-// 접수 줄 → aggregate의 셋째 인자. ids는 진료 줄과 같은 것을 넘긴다(같은 환자 = 같은 번호)
+// 접수 줄 → aggregate의 셋째 인자. ids는 진료 줄과 같은 것을 넘긴다(같은 환자 = 같은 번호).
+// v4 답이면 줄마다 first90을 싣는다(모든 줄에 있으면 v4다). v2·v3 답의 줄에는 열쇠가 없다
 export function toPatientDays(data: StatsRowsData, ids: PatientIds): PatientDay[] {
   const dateOf = dashedMemo()
-  return data.patientDays.map(([chart, day, receptions, first]) => ({
-    patient: ids.idOf(chart),
-    date: dateOf(day),
-    receptions,
-    firstVisit: first === day,
-  }))
+  return data.patientDays.map(([chart, day, receptions, first, first90]) => {
+    const line: PatientDay = { patient: ids.idOf(chart), date: dateOf(day), receptions, firstVisit: first === day }
+    if (first90 !== undefined) line.first90 = first90
+    return line
+  })
 }
 
 export function toVisitRows(data: StatsRowsData, ids: PatientIds): VisitRow[] {
@@ -366,7 +369,7 @@ export function toVisitRows(data: StatsRowsData, ids: PatientIds): VisitRow[] {
   }))
 }
 
-// v3 새 자료 → Worker 메모리 모양. v2면 null. ids는 진료 줄·접수 줄과 같은 것을 넘긴다(같은 환자 = 같은 번호).
+// v3·v4 새 자료 → Worker 메모리 모양. v2면 null. ids는 진료 줄·접수 줄과 같은 것을 넘긴다(같은 환자 = 같은 번호).
 // 차트번호 없는 접수는 p = -1, 접수 시는 HHmm의 앞 두 자리
 export function toStatsExtra(data: StatsRowsData, ids: PatientIds): StatsExtra | null {
   const { extra } = data

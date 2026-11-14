@@ -137,3 +137,33 @@ describe('AC-1205.8 묶음 칸 크기 — 묶음 50개(칸마다 네 자리 숫�
     expect(grown).toBeLessThanOrEqual(4500)
   })
 })
+
+describe('AC-4402.4·AC-4409.2 fillGroupCounts는 first90·once 열쇠를 지킨다', () => {
+  // 손으로 만든 v4 날 줄(지어낸 숫자)
+  const v4Day = (): DayPayload => ({
+    schemaVersion: 2,
+    quality: 'valid',
+    day: '2026-09-02',
+    partial: false,
+    totals: { patients: 5, newPatients: 2, first90: 1, returning: 2, unknown: 0 },
+    rx: [{ code: 'ESWT1', name: '가짜 충격파', type: '행위', patients: 3, newPatients: 2, returning: 1, once: 1 }],
+    groups: [{ id: ESWT.id, patients: 3, newPatients: 2, returning: 1 }],
+    revisit: { cohort: 2, within7: null, within14: null, within30: null, after30: null },
+  })
+
+  it('AC-4402.4·AC-4409.2: 묶음 칸만 채우고 totals.first90·rx[].once는 그대로 둔다', () => {
+    const [filled] = fillGroupCounts([v4Day()], IDS)
+    expect(filled.totals).toEqual(v4Day().totals)
+    expect(filled.rx).toEqual(v4Day().rx)
+    expect(validateDayPayload(filled)).toEqual(filled)
+  })
+
+  it('AC-4402.4·AC-4409.2: 열쇠가 없는 날 줄에는 채운 뒤에도 없다', () => {
+    const day = v4Day()
+    const old: DayPayload = { ...day, totals: { patients: 5, newPatients: 2, returning: 3, unknown: 0 }, rx: [{ ...day.rx[0] }] }
+    delete old.rx[0].once
+    const [filled] = fillGroupCounts([old], IDS)
+    expect('first90' in filled.totals).toBe(false)
+    expect('once' in filled.rx[0]).toBe(false)
+  })
+})

@@ -871,3 +871,37 @@ describe('AC-2904.5 지표 종류', () => {
     for (const id of ['age:40대', 'insurance:건강보험', 'town:원천동', 'doctor:김가상.patients', 'doctor:김가상.newPatients']) expect(kindOf(id), id).toBe('count')
   })
 })
+
+describe('AC-4402.6 AI 입력은 first90을 넣지 않는다', () => {
+  // 세 달 모두 v4 합계(다섯 열쇠, 지어낸 숫자). 저장 검사를 통과한 것만 쓴다
+  const withFirst90 = (payload: MonthPayload, first90: number): MonthPayload =>
+    valid({ ...payload, totals: { ...payload.totals, first90, returning: payload.totals.returning - first90 } })
+  const v4Months = (): ValidReportMonths => ({
+    selected: withFirst90(selected(), 10),
+    prev: withFirst90(prev(), 7),
+    lastYear: withFirst90(lastYear(), 0),
+    groupNames: { ...GROUP_NAMES },
+  })
+  // 같은 달에서 first90 열쇠만 뺀 것(검사를 거치지 않고 바로 넣는다)
+  const dropFirst90 = (payload: MonthPayload | null): MonthPayload | null => {
+    if (payload === null) return null
+    const totals = { ...payload.totals }
+    delete totals.first90
+    return { ...payload, totals }
+  }
+
+  it('AC-4402.6: 세 달 합계에 first90이 있어도 입력(지표 ID·이름·세 달 값·차례)과 지문이 first90 열쇠만 뺀 자료와 같다', async () => {
+    const months = v4Months()
+    const plain: ValidReportMonths = { ...months, selected: dropFirst90(months.selected)!, prev: dropFirst90(months.prev), lastYear: dropFirst90(months.lastYear) }
+    expect(buildReportInput(months)).toEqual(buildReportInput(plain))
+    expect(await reportFingerprint(buildReportInput(months))).toBe(await reportFingerprint(buildReportInput(plain)))
+  })
+
+  it('AC-4402.6: 합계 지표는 지금과 같은 접수 건수·신환·재진뿐이고 first90·90일초진 지표가 없다', () => {
+    const input = buildReportInput(v4Months())
+    expect(ids(input).filter((id) => id.startsWith('total.'))).toEqual(['total.patients', 'total.newPatients', 'total.returning'])
+    expect(JSON.stringify(input)).not.toContain('first90')
+    expect(input.metrics.filter((m) => m.label.includes('90일'))).toEqual([])
+    expect(metricOf(input, 'total.returning')).toEqual(visits('total.returning', '재진', 75, 73, 75))
+  })
+})

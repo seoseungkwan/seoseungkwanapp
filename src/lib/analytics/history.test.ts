@@ -166,3 +166,32 @@ describe('AC-009.1 buildHistory — 최근 12달 추세', () => {
     expect(view.lastMonth?.totals).not.toBe(months[0].totals)
   })
 })
+
+describe('AC-4402.4 buildHistory는 first90 열쇠를 지킨다', () => {
+  // 저장된 v4 달: 재진 = 환자 − 신환 − 90일초진(지어낸 숫자)
+  const withFirst90 = (month: string, patients: number, newPatients: number, first90: number): MonthPayload => {
+    const base = saved(month, patients, newPatients)
+    return { ...base, totals: { patients, newPatients, first90, returning: patients - newPatients - first90, unknown: 0 } }
+  }
+
+  it('AC-4402.4: 기준 달·지난달·작년 같은 달 합계에 first90이 있으면 그대로 옮기고, 증감은 지금 세 칸이다', () => {
+    const view = buildHistory([withFirst90('2025-09', 900, 180, 30), withFirst90('2026-08', 1000, 200, 50), withFirst90('2026-09', 1100, 220, 80)])
+    expect(view.base).toEqual({ month: '2026-09', totals: { patients: 1100, newPatients: 220, first90: 80, returning: 800, unknown: 0 } })
+    expect(view.lastMonth?.totals).toEqual({ patients: 1000, newPatients: 200, first90: 50, returning: 750, unknown: 0 })
+    expect(view.lastYear?.totals).toEqual({ patients: 900, newPatients: 180, first90: 30, returning: 690, unknown: 0 })
+    expect(Object.keys(view.vsLastMonth).sort()).toEqual(['newPatients', 'patients', 'returning'])
+  })
+
+  it('AC-4402.4: first90이 없는 달은 열쇠가 없다(지금 그대로)', () => {
+    const view = buildHistory([withFirst90('2026-08', 1000, 200, 50), saved('2026-09', 1100, 220)])
+    expect(Object.keys(view.base?.totals ?? {}).sort()).toEqual(['newPatients', 'patients', 'returning', 'unknown'])
+    expect(view.lastMonth?.totals.first90).toBe(50)
+  })
+
+  it('AC-4402.4: 돌려준 합계는 사본이다(first90이 있어도)', () => {
+    const months = [withFirst90('2026-09', 1100, 220, 80)]
+    const view = buildHistory(months)
+    expect(view.base?.totals).not.toBe(months[0].totals)
+    expect(months[0].totals.first90).toBe(80)
+  })
+})

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { aggregate } from '@/lib/analytics/aggregate'
 import { buildSummary } from '@/lib/analytics/compare'
 import { eachDay } from '@/lib/analytics/dates'
-import type { RxGroupDef } from '@/types/analysis'
+import type { PatientDay, RxGroupDef } from '@/types/analysis'
 import type { AnalysisResult } from '@/types/analyze'
 import type { ConsumptionRow } from '@/types/consumption'
 import type { DateRange } from '@/types/dates'
@@ -335,5 +335,56 @@ describe('AC-008.1 v2: 처방 재진 · 그룹 · 재방문', () => {
     expect(summary.within30 !== null).toBe(counted)
     expect(september.revisit.within30).toBe(summary.within30)
     expect(september.revisit.after30).toBe(summary.after30)
+  })
+})
+
+// ── first90: 달 payload의 90일초진 — 그 달 모든 날에 있을 때만 그 합 ──
+// 9/2·9/3·9/4 세 날. 숫자는 모두 지어낸 값이다
+const SEPT_LINES: PatientDay[] = [
+  { patient: 1, date: '2026-09-02', receptions: 1, firstVisit: true, first90: 0 },
+  { patient: 2, date: '2026-09-02', receptions: 2, firstVisit: false, first90: 1 },
+  { patient: 3, date: '2026-09-03', receptions: 1, firstVisit: false, first90: 1 },
+  { patient: 1, date: '2026-09-04', receptions: 1, firstVisit: false, first90: 0 },
+]
+
+function analyzeHelper(lines: readonly PatientDay[]): AnalysisResult {
+  const rows = [row({ patient: 1, firstVisit: true }), row({ patient: 2 }), row({ patient: 3, date: '2026-09-03' }), row({ patient: 1, date: '2026-09-04' })]
+  const aggregates = aggregate(rows, [], lines)
+  return { quality: 'valid', skippedInvalidRows: 0, unknownVisitRows: 0, aggregates, summary: buildSummary({ aggregates, covered: [SEPTEMBER], quality: 'valid', today: TODAY }) }
+}
+
+describe('AC-4402.4 달 payload의 first90', () => {
+  it('AC-4402.4: 그 달 모든 날에 first90이 있으면 그 합으로 두고 저장 검사를 지난다', () => {
+    const [september] = toMonthPayload(analyzeHelper(SEPT_LINES))!
+    expect(september.totals).toEqual({ patients: 5, newPatients: 1, first90: 2, returning: 2, unknown: 0 })
+    expect(validateMonthPayload(JSON.parse(JSON.stringify(september)))).toEqual(september)
+  })
+
+  it('AC-4402.4: 한 날이라도 first90이 없으면 열쇠를 두지 않는다(합계는 지금처럼 네 칸)', () => {
+    const lines = SEPT_LINES.map((line, i) => {
+      if (i !== 3) return line
+      const rest = { ...line }
+      delete rest.first90
+      return rest
+    })
+    const [september] = toMonthPayload(analyzeHelper(lines))!
+    expect(september.totals).toEqual({ patients: 5, newPatients: 1, returning: 4, unknown: 0 })
+    expect(validateMonthPayload(september)).toEqual(september)
+  })
+
+  it('AC-4402.4: 파일 길 달은 열쇠가 없다', () => {
+    for (const month of toMonthPayload(septemberToOct24())!) expect(Object.keys(month.totals).sort()).toEqual(['newPatients', 'patients', 'returning', 'unknown'])
+  })
+
+  it('AC-4402.4: 달 처방 줄에는 once를 두지 않는다(날 칸에 있어도, 달 칸 줄에 붙어 있어도)', () => {
+    const result = analyzeHelper(SEPT_LINES)
+    expect(result.aggregates.day.some((bucket) => bucket.rx.some((x) => x.once !== undefined))).toBe(true)
+    const tainted: AnalysisResult = {
+      ...result,
+      aggregates: { ...result.aggregates, month: result.aggregates.month.map((bucket) => ({ ...bucket, rx: bucket.rx.map((x) => ({ ...x, once: 0 })) })) },
+    }
+    for (const payload of [...toMonthPayload(result)!, ...toMonthPayload(tainted)!]) {
+      for (const x of payload.rx) expect('once' in x).toBe(false)
+    }
   })
 })
