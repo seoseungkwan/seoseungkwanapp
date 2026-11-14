@@ -123,7 +123,8 @@ function timeText(plan: LoadPlan): string {
   return days <= HALF_MINUTE_DAYS ? '30초쯤 걸려요.' : '1분쯤 걸려요.'
 }
 
-// 단추 아래 안내 줄(AC-3301.3·AC-3301.4). 날짜 글은 비교 글처럼 해가 같으면 해 없이, 넘으면 양 끝에 해
+// 단추 아래 안내 줄(AC-3301.3·AC-3301.4). 날짜 글은 비교 글처럼 해가 같으면 해 없이, 넘으면 양 끝에 해.
+// 불러오기 하나로 환자·처방·매출을 함께 읽는다(stats-revenue AC-4108.1·기본값 12): 첫 줄 끝은 '…의 환자·처방·매출을 함께 읽어요.' · '…을 2년씩 n번에 나눠 읽어요.'
 export function loadHint(today: string, range: StatsRange, plan: LoadPlan): string {
   const dates = spanLabel(plan.whole, false)
   const { span } = plan
@@ -134,7 +135,7 @@ export function loadHint(today: string, range: StatsRange, plan: LoadPlan): stri
   } else {
     head = (span === '1y' || span === '2y') && plan.whole.from === spanFirst(today, span) ? `${dates}${SPAN_TAG[span]}` : dates
   }
-  const read = plan.parts.length > 1 ? `을 2년씩 ${plan.parts.length}번에 나눠 읽어요.` : '을 읽어요.'
+  const read = plan.parts.length > 1 ? `의 환자·처방·매출을 2년씩 ${plan.parts.length}번에 나눠 읽어요.` : '의 환자·처방·매출을 함께 읽어요.'
   const once = span === 'all' ? ' 한 번 저장한 달은 남으니 처음 한 번만 하면 돼요.' : ''
   return `${head}${read} ${timeText(plan)}${once}`
 }
@@ -147,6 +148,16 @@ export function monthsLabel({ from, to }: DateRange): string {
 // 나눠 읽는 중 줄(조각이 둘 이상). at = 읽는 조각의 차례(0부터)
 export function progressText(plan: LoadPlan, at: number): string {
   return `비트 PC에서 읽는 중이에요 (${at + 1}/${plan.parts.length} · ${monthsLabel(plan.parts[at].save)}). 다 끝날 때까지 이 창을 닫지 마세요.`
+}
+
+// 안내 둘째 줄(stats-revenue AC-4108.1, 시안 notes.md '불러오기'). 불러올 기간·나눠 읽기와 상관없이 같다(기본값 12)
+export const REVENUE_HINT = '매출은 이 가운데 아직 가져오지 않은 날만 읽어요. 처음 한 번은 한 달에 10초쯤 더 걸려요.'
+
+// 통계 조각을 모두 저장한 뒤 매출을 읽는 중 줄(AC-4108.3). done = 읽는 덩어리의 차례(1부터), total = 덩어리 수.
+// 덩어리가 둘 이상일 때만 차례를 붙인다(기본값 12). 덩어리를 세는 동안(0/0)·하나뿐이면 시안 글 그대로다
+export function revenueProgressText(done: number, total: number): string {
+  const order = total > 1 ? ` ${done}/${total}` : ''
+  return `비트 PC에서 읽는 중이에요 (환자·처방 저장 끝 · 매출 읽는 중${order}). 다 끝날 때까지 이 창을 닫지 마세요.`
 }
 
 // 다 저장한 상자. savedTo = 저장한 끝날(오늘 진료 끝이면 오늘, 아니면 어제)

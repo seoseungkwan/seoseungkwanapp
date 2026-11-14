@@ -519,13 +519,16 @@ const classesOf = (el: Element | null | undefined) => tokens(el?.getAttribute('c
 const spanGroup = () => screen.getByRole('group', { name: '불러올 기간' })
 const spanButton = (name: string) => within(spanGroup()).getByRole('button', { name }) as HTMLButtonElement
 const pressed = () => within(spanGroup()).getAllByRole('button').map((button) => button.getAttribute('aria-pressed'))
-// 시험의 오늘은 2026-11-13이고 지금 보는 기간은 최근 30일이다(명세 예시의 11월 9일 대신 이 파일의 오늘로 같은 규칙)
+// 시험의 오늘은 2026-11-13이고 지금 보는 기간은 최근 30일이다(명세 예시의 11월 9일 대신 이 파일의 오늘로 같은 규칙).
+// 첫 줄 끝은 stats-revenue AC-4108.1(기본값 12)로 '…의 환자·처방·매출을 함께 읽어요.' · '…의 환자·처방·매출을 2년씩 n번에 나눠 읽어요.'다
 const HINTS = [
-  '지금 보는 기간(최근 30일)과 비교할 지난 30일이 든 9월 1일 – 11월 13일을 읽어요. 빨리 끝나요.',
-  '2025년 12월 1일 – 2026년 11월 13일(1년)을 읽어요. 30초쯤 걸려요.',
-  '2024년 12월 1일 – 2026년 11월 13일(2년)을 읽어요. 1분쯤 걸려요.',
-  '2020년 1월 1일 – 2026년 11월 13일을 2년씩 4번에 나눠 읽어요. 4분쯤 걸려요. 한 번 저장한 달은 남으니 처음 한 번만 하면 돼요.',
+  '지금 보는 기간(최근 30일)과 비교할 지난 30일이 든 9월 1일 – 11월 13일의 환자·처방·매출을 함께 읽어요. 빨리 끝나요.',
+  '2025년 12월 1일 – 2026년 11월 13일(1년)의 환자·처방·매출을 함께 읽어요. 30초쯤 걸려요.',
+  '2024년 12월 1일 – 2026년 11월 13일(2년)의 환자·처방·매출을 함께 읽어요. 1분쯤 걸려요.',
+  '2020년 1월 1일 – 2026년 11월 13일의 환자·처방·매출을 2년씩 4번에 나눠 읽어요. 4분쯤 걸려요. 한 번 저장한 달은 남으니 처음 한 번만 하면 돼요.',
 ]
+// 안내 둘째 줄(stats-revenue AC-4108.1, 시안 docs/mockups/stats-revenue notes.md '불러오기')
+const REVENUE_LINE = '매출은 이 가운데 아직 가져오지 않은 날만 읽어요. 처음 한 번은 한 달에 10초쯤 더 걸려요.'
 const CLOSE_OFF = '꺼 두면 오늘(11월 13일)은 진료 중이라, 어제까지만 끝난 날로 저장해요.'
 
 describe('AC-3301.1 불러올 기간 묶음 단추', () => {
@@ -642,7 +645,7 @@ describe('AC-3301.2 일이 있으면 막힘 · onLoad(오늘 진료 끝, 고른 
 })
 
 describe('AC-3301.3 단추 아래 안내 줄', () => {
-  it('AC-3301.3 고른 것마다 읽을 날짜와 걸리는 때를 말한다', () => {
+  it('AC-3301.3·AC-4108.1 고른 것마다 읽을 날짜와 걸리는 때를 말한다(첫 줄 끝은 환자·처방·매출을 함께 · 나눠 읽어요)', () => {
     draw()
     SPAN_NAMES.forEach((name, i) => {
       fireEvent.click(spanButton(name))
@@ -651,12 +654,13 @@ describe('AC-3301.3 단추 아래 안내 줄', () => {
     })
   })
 
-  it("AC-3301.3 안내 줄은 basis-full text-small text-ink-2이고 [비트에서 불러오기] 뒤, '오늘 진료 끝' 안내 바로 위에 있다", () => {
+  it("AC-3301.3·AC-4108.1 안내 줄은 basis-full text-small text-ink-2이고 [비트에서 불러오기] 뒤, 매출 안내 줄 바로 위(그 아래가 '오늘 진료 끝' 안내)에 있다", () => {
     draw()
     const hint = screen.getByText(HINTS[0])
     expect(hint.tagName).toBe('P')
     expect(classesOf(hint).sort()).toEqual(['basis-full', 'text-small', 'text-ink-2'].sort())
-    expect(hint.nextElementSibling?.textContent).toBe(CLOSE_OFF)
+    expect(hint.nextElementSibling?.textContent).toBe(REVENUE_LINE)
+    expect(hint.nextElementSibling?.nextElementSibling?.textContent).toBe(CLOSE_OFF)
     const load = screen.getByRole('button', { name: LOAD })
     expect(load.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
@@ -690,6 +694,35 @@ describe('AC-3303.4 나눠 읽는 중 줄', () => {
     for (const name of SPAN_NAMES) expect(spanButton(name).disabled).toBe(true)
     fireEvent.click(load)
     expect(onLoad).not.toHaveBeenCalled()
+  })
+})
+
+// ── 매출을 함께 읽는 안내 (stats-revenue REQ-4108 AC-4108.1, 시안 docs/mockups/stats-revenue notes.md '불러오기') ──
+
+describe('AC-4108.1 펼친 칸의 매출 안내 줄', () => {
+  it('AC-4108.1: 안내 첫 줄 바로 다음에 매출 안내 한 줄이 첫 줄과 같은 글자 모양(p · basis-full text-small text-ink-2)으로 있고, 그다음이 오늘 진료 끝 안내다', () => {
+    draw()
+    const line = screen.getByText(REVENUE_LINE)
+    expect(line.tagName).toBe('P')
+    expect(classesOf(line).sort()).toEqual(['basis-full', 'text-small', 'text-ink-2'].sort())
+    expect(line.previousElementSibling?.textContent).toBe(HINTS[0])
+    expect(line.nextElementSibling?.textContent).toBe(CLOSE_OFF)
+    expect(foldPanel().contains(line)).toBe(true)
+  })
+
+  it('AC-4108.1: 불러올 기간을 바꾸거나 오늘 진료 끝을 켜도 매출 안내는 같은 글 한 줄이다(기본값 12)', () => {
+    draw()
+    for (const name of SPAN_NAMES) {
+      fireEvent.click(spanButton(name))
+      expect(screen.getAllByText(REVENUE_LINE)).toHaveLength(1)
+    }
+    fireEvent.click(screen.getByRole('checkbox', { name: '오늘 진료 끝' }))
+    expect(screen.getAllByText(REVENUE_LINE)).toHaveLength(1)
+  })
+
+  it.each(['no-extension', 'no-helper', 'busy', 'connecting'] as const)('AC-4108.1: 비트 PC가 준비되지 않은 상태(%s)에는 매출 안내 줄이 없다', (state) => {
+    draw(state)
+    expect(screen.queryByText(REVENUE_LINE)).toBeNull()
   })
 })
 
@@ -736,9 +769,9 @@ describe('REQ-4001 불러오기 상자를 한 줄 띠로 접기', () => {
     expect(classesOf(box())).toEqual(expect.arrayContaining(['bg-canvas', 'rounded-control']))
   })
 
-  it('AC-4001.1: 펼칠 칸 안에 불러올 기간 · 오늘 진료 끝 · 안내 두 줄 · [파일 고르기]와 끌어다 놓기 글 · 개인정보 줄이 있고, 접힌 동안 role로 찾히지 않는다', () => {
+  it('AC-4001.1·AC-4108.1: 펼칠 칸 안에 불러올 기간 · 오늘 진료 끝 · 안내 세 줄 · [파일 고르기]와 끌어다 놓기 글 · 개인정보 줄이 있고, 접힌 동안 role로 찾히지 않는다', () => {
     folded()
-    for (const text of ['불러올 기간', '오늘 진료 끝', HINTS[0]!, CLOSE_OFF, '파일 고르기', DROP_TEXT, PRIVACY]) {
+    for (const text of ['불러올 기간', '오늘 진료 끝', HINTS[0]!, REVENUE_LINE, CLOSE_OFF, '파일 고르기', DROP_TEXT, PRIVACY]) {
       expect(foldPanel().textContent, text).toContain(text)
       expect(band().textContent, text).not.toContain(text)
     }

@@ -4,7 +4,21 @@ import { addDays, addMonths, compareYmd, diffDays, monthOf, monthRange } from '@
 import type { DateRange } from '@/types/dates'
 import type { DayPayload, MonthPayload, MonthSections } from '@/types/payload'
 import type { StatsLoaded } from '@/types/stats'
-import { LOAD_SPANS, MAX_READ_DAYS, doneText, loadHint, monthsLabel, partSave, planLoad, progressText, stoppedText, type LoadPart, type LoadSpan } from './loadPlan'
+import {
+  LOAD_SPANS,
+  MAX_READ_DAYS,
+  REVENUE_HINT,
+  doneText,
+  loadHint,
+  monthsLabel,
+  partSave,
+  planLoad,
+  progressText,
+  revenueProgressText,
+  stoppedText,
+  type LoadPart,
+  type LoadSpan,
+} from './loadPlan'
 import { pickRange } from './periodPick'
 import { statsRange, type StatsRange } from './view'
 
@@ -326,12 +340,12 @@ describe("AC-3302.7 가장 새 조각이 아닌 조각은 '30일 넘어 다시 �
 // ── 글 ──────────────────────────────────────────────────
 
 describe('AC-3301.3 최근 30일의 안내 줄 (시안 네 글)', () => {
-  it('AC-3301.3 고른 것마다 시안 글 그대로다', () => {
+  it('AC-3301.3·AC-4108.1 고른 것마다 시안 글 그대로다(첫 줄 끝은 환자·처방·매출을 함께 · 나눠 읽어요)', () => {
     expect(SPANS.map((span) => loadHint(TODAY, recent30, planLoad(TODAY, recent30, span)))).toEqual([
-      '지금 보는 기간(최근 30일)과 비교할 지난 30일이 든 9월 1일 – 11월 9일을 읽어요. 빨리 끝나요.',
-      '2025년 12월 1일 – 2026년 11월 9일(1년)을 읽어요. 30초쯤 걸려요.',
-      '2024년 12월 1일 – 2026년 11월 9일(2년)을 읽어요. 1분쯤 걸려요.',
-      '2020년 1월 1일 – 2026년 11월 9일을 2년씩 4번에 나눠 읽어요. 4분쯤 걸려요. 한 번 저장한 달은 남으니 처음 한 번만 하면 돼요.',
+      '지금 보는 기간(최근 30일)과 비교할 지난 30일이 든 9월 1일 – 11월 9일의 환자·처방·매출을 함께 읽어요. 빨리 끝나요.',
+      '2025년 12월 1일 – 2026년 11월 9일(1년)의 환자·처방·매출을 함께 읽어요. 30초쯤 걸려요.',
+      '2024년 12월 1일 – 2026년 11월 9일(2년)의 환자·처방·매출을 함께 읽어요. 1분쯤 걸려요.',
+      '2020년 1월 1일 – 2026년 11월 9일의 환자·처방·매출을 2년씩 4번에 나눠 읽어요. 4분쯤 걸려요. 한 번 저장한 달은 남으니 처음 한 번만 하면 돼요.',
     ])
   })
 })
@@ -339,39 +353,39 @@ describe('AC-3301.3 최근 30일의 안내 줄 (시안 네 글)', () => {
 describe('AC-3301.4 다른 기간의 안내 줄 규칙', () => {
   const hint = (range: StatsRange, span: LoadSpan) => loadHint(TODAY, range, planLoad(TODAY, range, span))
 
-  it('AC-3301.4 2026년 10월 일별 + 지금 보는 기간: 비교 이름 둘을 ·로 잇고 받침이면 이', () => {
+  it('AC-3301.4·AC-4108.1 2026년 10월 일별 + 지금 보는 기간: 비교 이름 둘을 ·로 잇고 받침이면 이', () => {
     expect(hint(monthPick('2026-10'), 'view')).toBe(
-      '지금 보는 기간(2026년 10월)과 비교할 9월·작년 10월이 든 2025년 10월 1일 – 2026년 11월 9일을 읽어요. 1분쯤 걸려요.',
+      '지금 보는 기간(2026년 10월)과 비교할 9월·작년 10월이 든 2025년 10월 1일 – 2026년 11월 9일의 환자·처방·매출을 함께 읽어요. 1분쯤 걸려요.',
     )
   })
 
-  it('AC-3301.4 직접 날짜 2026-10-03 ~ 11-01: 받침이 없으면 가', () => {
+  it('AC-3301.4·AC-4108.1 직접 날짜 2026-10-03 ~ 11-01: 받침이 없으면 가', () => {
     const range = pickRange(TODAY, { kind: 'custom', unit: 'day', from: '2026-10-03', to: '2026-11-01' }, false)
     expect(hint(range, 'view')).toBe(
-      '지금 보는 기간(직접 고른 기간)과 비교할 바로 전 30일·작년 같은 날짜가 든 2025년 10월 1일 – 2026년 11월 9일을 읽어요. 1분쯤 걸려요.',
+      '지금 보는 기간(직접 고른 기간)과 비교할 바로 전 30일·작년 같은 날짜가 든 2025년 10월 1일 – 2026년 11월 9일의 환자·처방·매출을 함께 읽어요. 1분쯤 걸려요.',
     )
   })
 
-  it("AC-3301.4 최근 12개월 + 최근 1년: whole 첫날이 단추 첫날과 다르면 '(1년)'이 없다", () => {
-    expect(hint(recent12m, '1y')).toBe('2024년 12월 1일 – 2026년 11월 9일을 읽어요. 1분쯤 걸려요.')
+  it("AC-3301.4·AC-4108.1 최근 12개월 + 최근 1년: whole 첫날이 단추 첫날과 다르면 '(1년)'이 없다", () => {
+    expect(hint(recent12m, '1y')).toBe('2024년 12월 1일 – 2026년 11월 9일의 환자·처방·매출을 함께 읽어요. 1분쯤 걸려요.')
   })
 
-  it('AC-3301.4 2025년(월별) + 지금 보는 기간: 조각이 둘이면 2년씩 2번에 나눠 읽고 2분쯤', () => {
+  it('AC-3301.4·AC-4108.1 2025년(월별) + 지금 보는 기간: 조각이 둘이면 2년씩 2번에 나눠 읽고 2분쯤', () => {
     expect(hint(yearPick('2025'), 'view')).toBe(
-      '지금 보는 기간(2025년)과 비교할 2024년이 든 2024년 1월 1일 – 2026년 11월 9일을 2년씩 2번에 나눠 읽어요. 2분쯤 걸려요.',
+      '지금 보는 기간(2025년)과 비교할 2024년이 든 2024년 1월 1일 – 2026년 11월 9일의 환자·처방·매출을 2년씩 2번에 나눠 읽어요. 2분쯤 걸려요.',
     )
   })
 
-  it('AC-3301.4 걸리는 때: 조각 하나면 100일 이하 빨리 · 400일 이하 30초 · 그 위 1분', () => {
+  it('AC-3301.4·AC-4108.1 걸리는 때: 조각 하나면 100일 이하 빨리 · 400일 이하 30초 · 그 위 1분', () => {
     // 최근 7일: 2026-10-01 ~ 11-09 = 40일 · 최근 90일: 2026-05-01 ~ 11-09 = 193일
-    expect(hint(statsRange(TODAY, '7d'), 'view')).toBe('지금 보는 기간(최근 7일)과 비교할 지난 7일이 든 10월 1일 – 11월 9일을 읽어요. 빨리 끝나요.')
-    expect(hint(statsRange(TODAY, '90d'), 'view')).toBe('지금 보는 기간(최근 90일)과 비교할 지난 90일이 든 5월 1일 – 11월 9일을 읽어요. 30초쯤 걸려요.')
+    expect(hint(statsRange(TODAY, '7d'), 'view')).toBe('지금 보는 기간(최근 7일)과 비교할 지난 7일이 든 10월 1일 – 11월 9일의 환자·처방·매출을 함께 읽어요. 빨리 끝나요.')
+    expect(hint(statsRange(TODAY, '90d'), 'view')).toBe('지금 보는 기간(최근 90일)과 비교할 지난 90일이 든 5월 1일 – 11월 9일의 환자·처방·매출을 함께 읽어요. 30초쯤 걸려요.')
     expect(hint(recent30, '2y')).toMatch(/1분쯤 걸려요\.$/)
   })
 
-  it("AC-3301.4 '한 번 저장한 달은 남으니…'는 전체 기간일 때만 붙는다", () => {
+  it("AC-3301.4·AC-4108.1 '한 번 저장한 달은 남으니…'는 전체 기간일 때만 붙는다", () => {
     expect(hint(yearPick('2020'), 'all')).toBe(
-      '2019년 1월 1일 – 2026년 11월 9일을 2년씩 4번에 나눠 읽어요. 4분쯤 걸려요. 한 번 저장한 달은 남으니 처음 한 번만 하면 돼요.',
+      '2019년 1월 1일 – 2026년 11월 9일의 환자·처방·매출을 2년씩 4번에 나눠 읽어요. 4분쯤 걸려요. 한 번 저장한 달은 남으니 처음 한 번만 하면 돼요.',
     )
     expect(hint(yearPick('2020'), 'view')).not.toContain('처음 한 번만')
     expect(hint(yearPick('2020'), '2y')).not.toContain('처음 한 번만')
@@ -430,6 +444,47 @@ describe('AC-3303.6 멈춘 상자 글', () => {
       '4번 가운데 3번째까지 저장하고 멈췄어요.',
       '2020년 12월 – 2026년 11월은 저장됐어요. 남은 2020년 1월 – 2020년 11월은 [이어서 불러오기]로 읽어요. 차트번호 없는 내원 2건이 있어요. 비트에서 이 기록을 고친 뒤 다시 불러와 주세요.',
     ])
+  })
+})
+
+// ── 매출을 함께 읽는 글 (stats-revenue REQ-4108, 시안 docs/mockups/stats-revenue notes.md '불러오기', requirements.md 기본값 12) ──
+
+describe('AC-4108.1 불러오기 설정 안내 두 줄', () => {
+  it('AC-4108.1: 최근 30일 · 오늘 11월 14일의 첫 줄은 시안 글 그대로다(…의 환자·처방·매출을 함께 읽어요.)', () => {
+    const today = '2026-11-14'
+    const range = statsRange(today, '30d')
+    expect(loadHint(today, range, planLoad(today, range, 'view'))).toBe(
+      '지금 보는 기간(최근 30일)과 비교할 지난 30일이 든 9월 1일 – 11월 14일의 환자·처방·매출을 함께 읽어요. 빨리 끝나요.',
+    )
+  })
+
+  it('AC-4108.1: 첫 줄 끝은 두 모양뿐이다 — 한 번에 읽으면 함께 읽어요, 나눠 읽으면 2년씩 n번에 나눠 읽어요(기본값 12)', () => {
+    for (const span of SPANS) {
+      const plan = planLoad(TODAY, recent30, span)
+      const text = loadHint(TODAY, recent30, plan)
+      const tail = plan.parts.length > 1 ? `의 환자·처방·매출을 2년씩 ${plan.parts.length}번에 나눠 읽어요. ` : '의 환자·처방·매출을 함께 읽어요. '
+      expect(text, span).toContain(tail)
+      expect(text, span).not.toContain('을 읽어요.')
+    }
+  })
+
+  it('AC-4108.1: 둘째 줄 REVENUE_HINT는 시안 글 그대로이고 불러올 기간과 상관없이 같다', () => {
+    expect(REVENUE_HINT).toBe('매출은 이 가운데 아직 가져오지 않은 날만 읽어요. 처음 한 번은 한 달에 10초쯤 더 걸려요.')
+  })
+})
+
+describe('AC-4108.3 매출 읽는 중 줄', () => {
+  it('AC-4108.3: 덩어리가 하나면 시안 글 그대로다', () => {
+    expect(revenueProgressText(1, 1)).toBe('비트 PC에서 읽는 중이에요 (환자·처방 저장 끝 · 매출 읽는 중). 다 끝날 때까지 이 창을 닫지 마세요.')
+  })
+
+  it('AC-4108.3: 덩어리가 둘 이상이면 차례를 붙인다(기본값 12: 매출 읽는 중 3/13)', () => {
+    expect(revenueProgressText(3, 13)).toBe('비트 PC에서 읽는 중이에요 (환자·처방 저장 끝 · 매출 읽는 중 3/13). 다 끝날 때까지 이 창을 닫지 마세요.')
+    expect(revenueProgressText(1, 2)).toBe('비트 PC에서 읽는 중이에요 (환자·처방 저장 끝 · 매출 읽는 중 1/2). 다 끝날 때까지 이 창을 닫지 마세요.')
+  })
+
+  it('AC-4108.3: 읽을 덩어리를 세는 동안(0/0)은 차례 없이 시안 글이다', () => {
+    expect(revenueProgressText(0, 0)).toBe(revenueProgressText(1, 1))
   })
 })
 

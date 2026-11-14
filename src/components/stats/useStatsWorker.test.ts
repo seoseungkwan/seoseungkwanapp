@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useBridge } from '@/components/claim/useBridge'
 import { MIN_HELPER } from '@/lib/bridge/versions'
 import { createStatsWorker } from '@/workers/statsClient'
 import type { RxGroupDef } from '@/types/analysis'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
+import type { DateRange } from '@/types/dates'
+import type { RevenueDaysResult } from '@/types/revenue'
 import type { BitSectionsView, RxSplitView, StatsLoaded, StatsWorkerMessage, StatsWorkerRequest } from '@/types/stats'
 import { errorCodeOf, useStatsWorker } from './useStatsWorker'
 
@@ -16,6 +21,11 @@ vi.mock('@/workers/statsClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/workers/statsClient')>()),
   createStatsWorker: vi.fn(),
 }))
+// 진짜 useBridge를 그대로 돌리고 몇 번 불렸는지만 센다(stats-revenue AC-4108.2: 연결은 하나)
+vi.mock('@/components/claim/useBridge', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/components/claim/useBridge')>()
+  return { ...real, useBridge: vi.fn(real.useBridge) }
+})
 
 const RANGE = { from: '2026-09-01', to: '2026-11-13' }
 const TODAY = '2026-11-13'
@@ -709,5 +719,121 @@ describe('AC-2702.3 세 칸 보기 묻기', () => {
     const first = view.result.current.sections
     view.rerender()
     expect(view.result.current.sections).toBe(first)
+  })
+})
+
+// stats-revenue TASK-6: 매출 빈 날 읽기(revenue.days)는 통계가 쥔 같은 useBridge 연결의 call로 묻는다.
+// 매출을 따로 useBridge로 붙이면 확장이 다른 창(E-BRIDGE-BUSY)으로 본다(design.md 위험 4). 답은 모두 지어낸 값이다
+describe('AC-4108.2 매출은 같은 비트 연결로', () => {
+  const DAY = '2026-11-12'
+  const ANSWER: RevenueDaysResult = {
+    days: [
+      {
+        date: DAY,
+        visits: 80,
+        newPatients: 6,
+        returnVisits: 74,
+        total: 4_100_000,
+        insurer: 2_000_000,
+        noncovered: 1_300_000,
+        copay: 600_000,
+        otherTotal: 200_000,
+        cash: 300_000,
+        card: 1_700_000,
+        transfer: 100_000,
+        receivableIn: 0,
+        unconfirmed: false,
+        splitUnconfirmed: false,
+      },
+    ],
+    codes: [{ code: 'MM101', name: '가짜처방', count: 12, amount: 540_000 }],
+    dayCodes: [[DAY, 'MM101', 12, 540_000]],
+  }
+
+  it('AC-4108.2: revenueDays는 통계 불러오기와 같은 포트로 revenue.days {from, to}만 묻고 검사한 답을 돌려준다(두 번째 연결 없음)', async () => {
+    const { chrome, fake, view, port } = drawReady()
+    act(() => {
+      void view.result.current.load({ range: RANGE, today: TODAY, closeToday: false })
+    })
+    const rows = port.last()
+    expect(rows.cmd).toBe('stats.rows')
+    act(() => port.reply({ v: 1, id: rows.id, type: 'end', count: 0, bytes: 0, sha256: SHA }))
+    await waitFor(() => expect(fake.sent.some((message) => message.type === 'load')).toBe(true))
+    fake.reply({ type: 'loaded', streamId: rows.id as string, view: VIEW })
+
+    // 화면이 넘기는 범위 객체에 다른 칸이 붙어 있어도 도우미에는 from·to만 간다
+    const range = { from: DAY, to: DAY, name: '가짜 이름' } as DateRange
+    let answer: RevenueDaysResult | null = null
+    act(() => {
+      void view.result.current.revenueDays(range).then((result) => (answer = result))
+    })
+    const request = port.last()
+    expect(request.cmd).toBe('revenue.days')
+    expect(request.args).toEqual({ from: DAY, to: DAY })
+    act(() => port.reply({ v: 1, id: request.id, type: 'result', data: ANSWER }))
+    await waitFor(() => expect(answer).toEqual(ANSWER))
+
+    expect(chrome.ports).toHaveLength(1)
+    expect(port.disconnected).toBe(false)
+    expect(createStatsWorker).toHaveBeenCalledTimes(1)
+    // 매출 답은 화면 쪽 call 답이라 Worker로 가지 않는다
+    expect(fake.sent.map((message) => message.type)).toEqual(['bridge-port', 'load'])
+  })
+
+  it('AC-4108.2: 도우미가 오류 번호로 답하면 revenueDays는 그 번호로 거절한다(매출 읽기 차례가 번호로 가른다)', async () => {
+    const { view, port } = drawReady()
+    let failure: unknown = null
+    act(() => {
+      void view.result.current.revenueDays({ from: DAY, to: DAY }).catch((e: unknown) => (failure = e))
+    })
+    act(() => port.reply({ v: 1, id: port.last().id, type: 'error', code: 'E-BIT-READ-FAILED' }))
+    await waitFor(() => expect(failure).not.toBeNull())
+    expect(errorCodeOf(failure)).toBe('E-BIT-READ-FAILED')
+  })
+
+  it('AC-4108.2: 답 모양이 틀리면(넷째 열쇠) E-BRIDGE-BAD-REPLY로 거절하고 받은 글자는 거절에 담지 않는다', async () => {
+    const { view, port } = drawReady()
+    let failure: unknown = null
+    act(() => {
+      void view.result.current.revenueDays({ from: DAY, to: DAY }).catch((e: unknown) => (failure = e))
+    })
+    act(() => port.reply({ v: 1, id: port.last().id, type: 'result', data: { ...ANSWER, chart: '가짜-차트번호-0001' } }))
+    await waitFor(() => expect(failure).not.toBeNull())
+    expect(errorCodeOf(failure)).toBe('E-BRIDGE-BAD-REPLY')
+    expect(JSON.stringify(failure)).not.toContain('가짜-차트번호')
+  })
+
+  it('AC-4108.2: useBridge는 그릴 때마다 한 번만 불린다(매출이 따로 연결을 붙이지 않는다)', async () => {
+    vi.mocked(useBridge).mockClear()
+    const chrome = fakeChrome()
+    fakeWorker()
+    let renders = 0
+    const view = renderHook(() => {
+      renders++
+      return useStatsWorker()
+    })
+    const port = chrome.port()
+    act(() => port.reply({ v: 1, id: port.last().id, type: 'result', data: HELLO }))
+    await waitFor(() => expect(view.result.current.state).toBe('ready'))
+    act(() => {
+      void view.result.current.revenueDays({ from: DAY, to: DAY }).catch(() => undefined)
+    })
+    expect(vi.mocked(useBridge).mock.calls).toHaveLength(renders)
+    expect(chrome.ports).toHaveLength(1)
+  })
+
+  it('AC-4108.2: revenueDays는 다시 그려도 같은 함수다(화면이 매출 훅에 넘겨도 다시 읽지 않게)', () => {
+    const { view } = drawReady()
+    const first = view.result.current.revenueDays
+    view.rerender()
+    expect(view.result.current.revenueDays).toBe(first)
+  })
+
+  it('AC-4108.2: 통계 훅 소스에서 useBridge 부르기는 한 곳뿐이다', () => {
+    const text = readFileSync(join(process.cwd(), 'src/components/stats/useStatsWorker.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|\s)\/\/.*$/gm, '$1')
+    expect(text.match(/useBridge\(/g)).toHaveLength(1)
+    expect(text).toContain("'revenue.days'")
   })
 })

@@ -44,7 +44,7 @@ export function errorCodeOf(error: unknown): ErrorCode {
 
 export function useStatsWorker() {
   const [worker] = useState(lazyStatsWorker)
-  const { state, helloError, retry, stream, close } = useBridge({ worker })
+  const { state, helloError, retry, stream, call, close } = useBridge({ worker })
 
   useEffect(() => () => worker.terminate(), [worker])
 
@@ -83,5 +83,9 @@ export function useStatsWorker() {
     [worker],
   )
 
-  return { state, helloError, retry, load, split, sections }
+  // 매출 빈 날 읽기(stats-revenue AC-4108.2): 통계가 쥔 이 연결의 call로 묻는다(새 연결 없음). 매출을 따로 useBridge로 붙이면 확장이 다른 창(E-BRIDGE-BUSY)으로 본다.
+  // 도우미에는 from·to만 간다. 답은 통로가 검사한 숫자(날 줄·코드 줄·날 단위 처방 줄)이고 Worker로 가지 않는다
+  const revenueDays = useCallback(({ from, to }: DateRange) => call('revenue.days', { from, to }), [call])
+
+  return { state, helloError, retry, load, split, sections, revenueDays }
 }

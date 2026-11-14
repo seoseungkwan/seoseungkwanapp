@@ -17,7 +17,7 @@ import type { BridgeState } from '@/types/bridge'
 import type { DateRange } from '@/types/dates'
 import type { ErrorCode } from '@/types/errors'
 import { runAnalysis } from '@/workers/runAnalysis'
-import { LOAD_SPANS, loadHint, planLoad, type LoadSpan } from './loadPlan'
+import { LOAD_SPANS, REVENUE_HINT, loadHint, planLoad, type LoadSpan } from './loadPlan'
 import { FoldButton } from './sections/HowCounted'
 import { longDate } from './sections/parts'
 import type { SaveInput } from './useStatsData'
@@ -27,7 +27,8 @@ import type { StatsRange } from './view'
 // 왼쪽 비트 칸은 연결 상태마다 다르고, 오른쪽 파일 칸은 언제나 있다. 파일 이름은 화면에만 보이고 Worker·서버로 가지 않는다.
 // 비트 칸 위쪽의 '불러올 기간'(stats-load-range REQ-3301, 시안 docs/mockups/stats-load-range)은 화면을 열 때마다 [지금 보는 기간]이고 어디에도 기억하지 않는다.
 // 상자는 한 줄 띠 + 펼칠 칸이다(stats-pc-ux REQ-4001, 시안 docs/mockups/stats-pc-ux notes.md §1): 띠 = 왼쪽 자료 글(화면이 준다) · 오른쪽 'ready'면 [비트에서 불러오기] + [불러오기 설정].
-// 펼칠 칸 = 비트 칸(불러올 기간 · 오늘 진료 끝 · 안내 두 줄, 연결 상태 안내) | 파일 칸 + 개인정보 줄. 띠의 단추가 펼칠 칸에서 고른 값을 쓰려고 두 값을 이 부품이 들고 있다
+// 펼칠 칸 = 비트 칸(불러올 기간 · 오늘 진료 끝 · 안내 세 줄, 연결 상태 안내) | 파일 칸 + 개인정보 줄. 띠의 단추가 펼칠 칸에서 고른 값을 쓰려고 두 값을 이 부품이 들고 있다.
+// 안내 세 줄 = 읽을 날짜(환자·처방·매출을 함께) · 매출은 빈 날만(stats-revenue AC-4108.1, 시안 docs/mockups/stats-revenue) · 오늘 진료 끝
 
 // 파일 길의 덮은 기간 상한. stats_coverage 제약(양 끝을 합쳐 800일)을 넘으면 saveStats가 아무것도 보내지 않아 [다시 저장]도 끝없이 실패한다
 const MAX_COVERED_DAYS = 800
@@ -140,7 +141,7 @@ function SpanPicker({ span, job, onPick }: { span: LoadSpan; job: Props['job']; 
 // 펼칠 칸에서 고른 '불러올 기간'·'오늘 진료 끝'. 띠의 [비트에서 불러오기]가 같은 값을 쓴다(AC-4001.3)
 type LoadChoice = { span: LoadSpan; closeToday: boolean; onSpan(span: LoadSpan): void; onCloseToday(on: boolean): void }
 
-// 펼칠 칸의 비트 PC 'ready' 칸: 불러올 기간 · 오늘 진료 끝 · 안내 두 줄. [비트에서 불러오기]는 띠에 있다
+// 펼칠 칸의 비트 PC 'ready' 칸: 불러올 기간 · 오늘 진료 끝 · 안내 세 줄. [비트에서 불러오기]는 띠에 있다
 function BitLoad({ today, range, job, choice }: { today: string; range: StatsRange; job: Props['job']; choice: LoadChoice }) {
   const { span, closeToday } = choice
   // 계획은 안내 줄에만 쓴다. 누르면 고른 것만 넘기고 화면이 같은 함수로 다시 세운다
@@ -159,6 +160,7 @@ function BitLoad({ today, range, job, choice }: { today: string; range: StatsRan
         오늘 진료 끝
       </label>
       <p className={`basis-full ${HINT}`}>{hint}</p>
+      <p className={`basis-full ${HINT}`}>{REVENUE_HINT}</p>
       <p className={`basis-full ${HINT}`}>
         {closeToday ? `켜고 불러오면 오늘(${date}) 숫자도 끝난 날로 저장해요. 진료가 다 끝난 뒤에 켜 주세요.` : `꺼 두면 오늘(${date})은 진료 중이라, 어제까지만 끝난 날로 저장해요.`}
       </p>
