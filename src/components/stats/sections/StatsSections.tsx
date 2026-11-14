@@ -1,10 +1,12 @@
 import { useMemo } from 'react'
+import { Icon } from '@/components/common/Icon'
 import { pickReportText, type ReportRx } from '@/components/stats/periodPick'
 import { revenueCells, revenueTabs, type RevenueInput } from '@/components/stats/revenueView'
 import { TOC_LINKS } from '@/components/stats/StatsToc'
 import { treatmentRows } from '@/components/stats/treatmentView'
 import type { StatsRxGroupsView } from '@/components/stats/useStatsRxGroups'
-import { summaryCells, type StatsInput } from '@/components/stats/view'
+import { summaryCells, type StatsInput, type StatsRange } from '@/components/stats/view'
+import { addDays } from '@/lib/analytics/dates'
 import type { RevenueCodeTotal, RevenueMonthCode, SavedRevenueDay } from '@/types/revenue'
 import type { RxGroup } from '@/types/rxGroups'
 import type { RxSplitView } from '@/types/stats'
@@ -18,27 +20,39 @@ import { RevisitSection } from './RevisitSection'
 import { RxPickerSection } from './RxPickerSection'
 import { RxSection } from './RxSection'
 import { RxSplitSection } from './RxSplitSection'
-import { SectionAnchor, todayOf } from './parts'
+import { cardRangeText, Section, SectionAnchor, StatsCard, todayOf } from './parts'
 import { TreatmentTrendSection } from './TreatmentTrendSection'
 import { VisitHoursSection } from './VisitHoursSection'
 import { WeekdaySection } from './WeekdaySection'
 
-// 섹션 여섯을 승인본 차례·배치로 놓는다 (treatment-trend AC-1201.1이 rx-picker AC-801.1·stats AC-513.1을 대신한다, 시안 notes.md §2).
-// 1024px 이상 12칸(12 / 8·4 / 12 / 7·5), 오른쪽 칸은 왼쪽 1px line + 안쪽 24. 그보다 좁으면 모두 12칸이고 세로선이 없다.
-// 처방 세 칸은 전체 폭 한 칸 `처방` + 탭 셋이다(stats-pc-ux AC-4003.1, 시안 docs/mockups/stats-pc-ux notes.md §4): 탭 안 칸은 지금 칸 그대로(props도 그대로)이고
-// Section 탭 패널 모드로 그려진다(h2 없이, 설명·단추는 처방 칸 머리 줄).
-// 칸마다 목차 자리(SectionAnchor, 목차 띠 TOC_LINKS id)를 감싼다(AC-4002.6). 첫 칸의 위 여백만 줄인다(목차 띠 바로 아래, 기본값 14).
+// 통계 틀 (first90 REQ-4411 AC-4411.1·AC-4411.3, design.md 5-5, 시안 docs/mockups/first90/redesign.html): 요약 자리 → 큰 카드 다섯을 한 줄씩 쌓는다(사이 16px).
+//   요약 자리(stats-summary): 기간 요약(+ 매출 둘째 줄) 칸 그대로
+//   환자(stats-patients): 환자 수 추이 · 신환 재방문율 · 환자 구성(비트)
+//   매출(stats-revenue): 매출 칸(탭 넷). revenue를 받을 때만(stats-revenue AC-4107.1, 통계 화면은 늘 준다)
+//   처방(stats-rx): 처방 칸 + 탭 셋(stats-pc-ux AC-4003.1). 탭 안 칸은 지금 칸 그대로(props도 그대로)이고 Section 탭 패널 모드로 그려진다
+//   진료 운영(stats-ops): 요일별 · 시간대별(비트)은 1200px 이상 한 줄 30% · 70%, 좁으면 쌓는다. 원장님별(비트)은 그 아래 전체 폭
+//   보고(stats-report): 원장님 보고 문장 칸
+// 카드 안 칸은 h3 작은 칸이고 칸 사이는 얇은 선뿐이다(parts.tsx StatsCard). 비트 칸은 bit를 받을 때만 그린다(stats-bit-sections AC-2706.1, 통계 화면은 늘 준다).
 // 고른 기간(stats-period)이면 보고 칸에 [고른 기간 보고](저장된 숫자로 만든 글)를 넣고, 처방별 신환·재진 설명 끝에 기간 이름을 붙인다.
-// 여섯 칸 뒤에 비트 전용 세 칸(환자 구성 → 시간대별 접수 → 원장님별, 모두 12칸, stats-bit-sections AC-2706.1). 세 칸은 bit를 받을 때만 그린다(통계 화면은 늘 준다)
-// 매출(stats-revenue AC-4107.1·AC-4109.1, 시안 docs/mockups/stats-revenue): revenue를 받으면 `신환 재방문율` 다음 · `처방` 앞에 전체 폭 `매출` 칸(탭 넷)을 놓고
-// 기간 요약에 둘째 줄(매출 네 칸)을 넣는다. 숫자는 revenueView(순수)가 통계 기간·처방 칸 묶음으로 센다. 주지 않으면 매출 칸·둘째 줄이 없다(bit처럼, 통계 화면은 늘 준다)
+// 매출(stats-revenue): revenue를 받으면 기간 요약에 둘째 줄(매출 네 칸)도 넣는다. 숫자는 revenueView(순수)가 통계 기간·처방 칸 묶음으로 센다
 
-const SIDE = 'lg:border-l lg:border-line lg:pl-6'
 const REPORT_RX = 2
-// 목차 띠 바로 아래 첫 칸(기간 요약)의 위 여백: 칸 사이 48px(휴대폰 32px) 대신 24px(휴대폰 20px) (design.md '배치')
+// 바로가기 띠 바로 아래 첫 자리(기간 요약)의 위 여백: 칸 위 48px(휴대폰 32px) 대신 24px(휴대폰 20px) (stats-pc-ux 기본값 14)
 const FIRST_GAP = '[&>:first-child]:mt-6 max-md:[&>:first-child]:mt-5'
-// 칸 id는 목차 띠 링크와 같은 차례다(AC-4002.1)
-const [SUMMARY_ID, TREND_ID, REVISIT_ID, REVENUE_ID, RX_ID, REPORT_ID, WEEKDAY_ID, MIX_ID, HOURS_ID, DOCTORS_ID] = TOC_LINKS.map((link) => link.id)
+// 자리 id는 바로가기 띠 링크와 같은 차례다(AC-4411.2)
+const [SUMMARY_ID, PATIENTS_ID, REVENUE_ID, RX_ID, OPS_ID, REPORT_ID] = TOC_LINKS.map((link) => link.id)
+// 카드 다섯의 h2·옆 글(AC-4411.3). 환자 카드 옆 글은 기간에 따라 cardRangeText가 만든다. 매출 카드 옆 글은 매출 칸 설명 글이다(같은 제목 칸 규칙)
+const PATIENTS = '환자'
+const REVENUE = '매출'
+const RX = '처방'
+const RX_DESC = '만들어 둔 묶음마다 건수와 총환자 대비 · 같은 날 같은 환자는 1건'
+const OPS = '진료 운영'
+const OPS_DESC = '언제 붐비는지 · 원장님마다'
+const REPORT = '원장님 보고 문장'
+const REPORT_DESC = '비트 PC에서 불러온 숫자로 만든 보고 글 · 환자 이름은 쓰지 않아요'
+const STACK = `flex flex-col gap-4 ${FIRST_GAP}`
+// 진료 운영 카드 윗줄(요일별 30% · 시간대별 70%, 시안 .s-row-ops). 칸은 min-w-0이라 줄어든다
+const OPS_ROW = 'flex min-w-0 flex-col gap-6 min-[1200px]:flex-row min-[1200px]:gap-8'
 
 /** 매출 칸에 넘기는 값: 통계 매출 훅(useStatsRevenue)의 읽은 숫자·상태 + 마지막 끝난 날 + [다시 읽기](저장된 매출만) */
 export type StatsRevenueShown = {
@@ -78,6 +92,9 @@ type Props = {
   revenue?: StatsRevenueShown // 매출 칸·기간 요약 둘째 줄. 주지 않으면 둘 다 없다
 }
 
+// 마지막 끝난 날: 통계 화면은 매출 값에 오늘 진료 끝을 반영한 날을 준다. 매출을 주지 않으면 어제다
+const lastDayOf = (range: StatsRange, revenue: StatsRevenueShown | undefined) => revenue?.lastDay ?? addDays(todayOf(range), -1)
+
 export function StatsSections({ input, saved, split, report, hospitalName, groups, revision = 0, bit, revenue }: Props) {
   const pick = useMemo(() => pickReport(input, groups.groups), [input, groups.groups])
   const name = input.range.period === null ? input.range.name : null
@@ -104,59 +121,80 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
   const summaryRevenue = useMemo(() => (revenueIn === null ? undefined : revenueCells(revenueIn)), [revenueIn])
   const tabs = useMemo(() => (revenueIn === null || typeof revenueIn === 'string' ? revenueIn : revenueTabs(revenueIn)), [revenueIn])
   return (
-    <div className={`grid grid-cols-12 gap-x-6 ${FIRST_GAP}`}>
+    <div className={STACK}>
       <SectionAnchor id={SUMMARY_ID!}>
-        <PeriodSummary input={input} saved={saved} revenue={summaryRevenue} className="col-span-12" />
+        <PeriodSummary input={input} saved={saved} revenue={summaryRevenue} />
       </SectionAnchor>
-      <SectionAnchor id={TREND_ID!}>
-        <PatientTrendSection input={input} saved={saved} className="col-span-12 lg:col-span-8" />
-      </SectionAnchor>
-      <SectionAnchor id={REVISIT_ID!}>
-        <RevisitSection input={input} saved={saved} className={`col-span-12 lg:col-span-4 ${SIDE}`} />
-      </SectionAnchor>
+      <StatsCard id={PATIENTS_ID} title={PATIENTS} desc={cardRangeText(input.range, lastDayOf(input.range, revenue))}>
+        <PatientTrendSection input={input} saved={saved} />
+        <RevisitSection input={input} saved={saved} />
+        {bit !== undefined && <PatientMixSection view={bit} range={input.range} hospitalName={hospitalName} />}
+      </StatsCard>
       {revenue !== undefined && tabs !== null && (
-        <SectionAnchor id={REVENUE_ID!}>
-          <RevenueSection tabs={tabs} noDayCodes={noDayCodes} onReread={revenue.onReread} className="col-span-12" />
-        </SectionAnchor>
+        <StatsCard id={REVENUE_ID} title={REVENUE}>
+          <RevenueSection tabs={tabs} noDayCodes={noDayCodes} onReread={revenue.onReread} />
+        </StatsCard>
       )}
-      <SectionAnchor id={RX_ID!}>
+      <StatsCard id={RX_ID} title={RX} desc={RX_DESC}>
         <RxSection
           tabs={[
             { name: '묶음별 추세', panel: <TreatmentTrendSection input={input} saved={saved} groups={groups} revision={revision} /> },
             { name: '처방별 신환·재진', panel: <RxSplitSection view={split} hospitalName={hospitalName} saved={saved} name={name} /> },
             { name: '처방 골라 보기', panel: <RxPickerSection input={input} saved={saved} hospitalName={hospitalName} revision={revision} /> },
           ]}
-          className="col-span-12"
         />
-      </SectionAnchor>
+      </StatsCard>
+      <StatsCard id={OPS_ID} title={OPS} desc={OPS_DESC}>
+        {bit === undefined ? (
+          <WeekdaySection days={input.days} range={input.range} saved={saved} />
+        ) : (
+          <div className={OPS_ROW}>
+            <WeekdaySection days={input.days} range={input.range} saved={saved} className="min-[1200px]:basis-3/10" />
+            <VisitHoursSection view={bit} range={input.range} className="min-[1200px]:basis-7/10" />
+          </div>
+        )}
+        {bit !== undefined && <DoctorsSection view={bit} range={input.range} hospitalName={hospitalName} />}
+      </StatsCard>
       {/* 고르기에 들어오고 나갈 때 다시 그린다: [고른 기간 보고]가 처음 눌리고, 나가면 [오늘 일일보고]다 */}
-      <SectionAnchor id={REPORT_ID!}>
-        <ReportSection
-          key={pick === null ? 'quick' : 'pick'}
-          report={report}
-          hospitalName={hospitalName}
-          today={todayOf(input.range)}
-          saved={saved}
-          pick={pick}
-          className="col-span-12 lg:col-span-7"
-        />
-      </SectionAnchor>
-      <SectionAnchor id={WEEKDAY_ID!}>
-        <WeekdaySection days={input.days} range={input.range} saved={saved} className={`col-span-12 lg:col-span-5 ${SIDE}`} />
-      </SectionAnchor>
-      {bit !== undefined && (
-        <>
-          <SectionAnchor id={MIX_ID!}>
-            <PatientMixSection view={bit} range={input.range} hospitalName={hospitalName} className="col-span-12" />
-          </SectionAnchor>
-          <SectionAnchor id={HOURS_ID!}>
-            <VisitHoursSection view={bit} range={input.range} className="col-span-12" />
-          </SectionAnchor>
-          <SectionAnchor id={DOCTORS_ID!}>
-            <DoctorsSection view={bit} range={input.range} hospitalName={hospitalName} className="col-span-12" />
-          </SectionAnchor>
-        </>
-      )}
+      <StatsCard id={REPORT_ID} title={REPORT} desc={REPORT_DESC}>
+        <ReportSection key={pick === null ? 'quick' : 'pick'} report={report} hospitalName={hospitalName} today={todayOf(input.range)} saved={saved} pick={pick} />
+      </StatsCard>
     </div>
+  )
+}
+
+// 읽는 동안의 기다리는 자리(stats AC-514.1, first90 AC-4411.1): 그린 화면과 같은 차례의 기간 요약 + 카드 다섯, 자리마다 "불러오는 중" 한 줄.
+// 바로가기 id는 없다(stats-pc-ux AC-4002.6: 숨은 칸 묶음만 id를 가진다). 카드 안 작은 칸 이름은 그리지 않는다
+export function StatsWaiting({ range, lastDay }: { range: StatsRange; lastDay: string }) {
+  return (
+    <div className={STACK}>
+      <Section title="기간 요약">
+        <WaitingLine />
+      </Section>
+      <StatsCard title={PATIENTS} desc={cardRangeText(range, lastDay)}>
+        <WaitingLine />
+      </StatsCard>
+      <StatsCard title={REVENUE}>
+        <WaitingLine />
+      </StatsCard>
+      <StatsCard title={RX} desc={RX_DESC}>
+        <WaitingLine />
+      </StatsCard>
+      <StatsCard title={OPS} desc={OPS_DESC}>
+        <WaitingLine />
+      </StatsCard>
+      <StatsCard title={REPORT} desc={REPORT_DESC}>
+        <WaitingLine />
+      </StatsCard>
+    </div>
+  )
+}
+
+function WaitingLine() {
+  return (
+    <p className="mt-3 flex items-center gap-1.5 text-body text-muted">
+      <Icon name="clock" size={14} className="shrink-0" />
+      불러오는 중
+    </p>
   )
 }

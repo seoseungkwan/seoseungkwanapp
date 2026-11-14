@@ -1,10 +1,10 @@
-import { createContext, useContext, useId, type ReactNode, type Ref } from 'react'
+import { createContext, useContext, useId, useMemo, useState, type ReactNode, type Ref } from 'react'
 import { createPortal } from 'react-dom'
 import { formatDelta, type DeltaUnit } from '@/components/charts/format'
 import type { BarSeries } from '@/components/charts/StackedBarChart'
 import { patientTrend, type StatsInput, type StatsRange } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
-import { monthOf, weekdayOf } from '@/lib/analytics/dates'
+import { compareYmd, monthOf, weekdayOf } from '@/lib/analytics/dates'
 import type { Delta } from '@/types/analysis'
 
 // 통계 섹션들이 같이 쓰는 틀·글자 (stats REQ-513, 시안 docs/mockups/stats/notes.md §2·§3·§4). props만 받는다
@@ -38,8 +38,9 @@ export function onlyThisMonthPartial(partialMonths: readonly string[], today: st
 export const SECTION = 'mt-12 min-w-0 border-t border-line-strong pt-5 max-md:mt-8 max-md:pt-4'
 export const SECTION_HEAD = 'flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1'
 export const HEADING = 'text-title font-semibold text-ink'
-// 목차 띠에 가리지 않는 scroll-margin(stats-pc-ux AC-4002.6, design.md '배치'): 머리줄 + 목차 띠 − 1px. 칸 위 줄은 띠 뒤로 숨고 제목이 띠 바로 아래에 온다
-export const TOC_SCROLL = 'scroll-mt-36.25 max-md:scroll-mt-34.75'
+// 바로가기 띠에 가리지 않는 scroll-margin(stats-pc-ux AC-4002.6, first90 AC-4411.2): 머리줄 + 띠 + 9px(시안 .s-card scroll-margin 164).
+// 넓은 화면 102 + 53(위아래 8 + 링크 36 + 아래 선 1) + 9 = 164px, 휴대폰 94 + 57(위아래 6 + 링크 44 + 선 1) + 9 = 160px
+export const TOC_SCROLL = 'scroll-mt-41 max-md:scroll-mt-40'
 // 코드로 초점을 옮기는 제목(headingRef): Tab 차례에는 들지 않고, 붙는 머리줄·목차 띠에 가리지 않게 TOC_SCROLL, 코드로 옮긴 초점이라 고리는 그리지 않는다
 const FOCUS_HEADING = `${HEADING} ${TOC_SCROLL} focus:outline-none`
 // 탭 안 고치기 제목(h3): 탭 칸 h2 `처방` 아래라 한 단계 작다(AC-4003.6)
@@ -59,6 +60,69 @@ export const NoAnchor = ({ children }: { children: ReactNode }) => <AnchorContex
 export type SectionPanel = { active: boolean; slot: HTMLElement | null }
 export const SectionPanelContext = createContext<SectionPanel | null>(null)
 
+// ── 큰 카드 (first90 REQ-4411 AC-4411.3, design.md 5-5, 시안 docs/mockups/first90/redesign.html .s-card) ──
+// 카드 = 흰 바탕 + 둥근 모서리 + 옅은 그림자(테두리 없음: 상자 안 상자가 되지 않는다). 머리 줄 = h2 + 옆 글 + 오른쪽 자리.
+// 카드 안 칸 사이는 얇은 선(border-st-line) 하나뿐이고 첫 칸 위에는 선이 없다
+const CARD = 'min-w-0 rounded-st bg-surface px-6 py-5 shadow-st-card max-md:px-4 max-md:py-4'
+const CARD_HEAD = 'flex flex-wrap items-baseline gap-x-3 gap-y-1'
+const CARD_HEADING = 'text-st-18 leading-7 font-semibold text-st-ink'
+const CARD_DESC = 'text-small text-st-muted'
+const CARD_BODY = 'mt-4 max-md:mt-3 [&>*+*]:mt-6 [&>*+*]:border-t [&>*+*]:border-st-line [&>*+*]:pt-5'
+// 카드 안 작은 칸 제목(h3, 시안 .s-sub h3 15px)
+const SUB_HEADING = 'text-st-15 leading-6 font-semibold text-st-ink'
+
+// 카드 문맥: 카드 안 Section이 읽는다. title = 카드 h2(같은 제목 칸 규칙), ownDesc = 카드가 옆 글을 가졌는지,
+// slot = 카드 머리 줄 안 옆 글·단추 자리(붙기 전 첫 그림에는 null). 처방 탭 칸(RxSection)도 이 문맥으로 카드 머리를 쓸 수 있다
+export type StatsCardContext = { title: string; ownDesc: boolean; slot: HTMLElement | null }
+const CardContext = createContext<StatsCardContext | null>(null)
+export const useStatsCard = () => useContext(CardContext)
+
+// 카드 머리 줄·카드 안 칸 머리 줄의 옆 글·오른쪽 단추
+function CardExtras({ desc, action }: { desc?: string; action?: ReactNode }) {
+  return (
+    <>
+      {desc && <span className={CARD_DESC}>{desc}</span>}
+      {action && <span className="ml-auto">{action}</span>}
+    </>
+  )
+}
+
+// 큰 카드. id(선택) = 바로가기 자리(TOC_SCROLL로 띠에 가리지 않는다). 주지 않으면(기다리는 자리) id·scroll-margin이 없다.
+// 안의 Section은 h3 작은 칸이고, 카드 제목과 같은 제목의 칸은 칸 머리 없이 옆 글·단추를 카드 머리 자리에 그린다(아래 Section).
+// 감싼 목차 자리 id(SectionAnchor)는 안쪽에 넘기지 않는다
+export function StatsCard({ id, title, desc, action, children }: { id?: string; title: string; desc?: string; action?: ReactNode; children: ReactNode }) {
+  const headingId = useId()
+  const [slot, setSlot] = useState<HTMLElement | null>(null)
+  const ownDesc = desc !== undefined
+  const context = useMemo(() => ({ title, ownDesc, slot }), [title, ownDesc, slot])
+  return (
+    <section id={id} aria-labelledby={headingId} className={id ? `${CARD} ${TOC_SCROLL}` : CARD}>
+      <div className={CARD_HEAD}>
+        <h2 id={headingId} className={CARD_HEADING}>
+          {title}
+        </h2>
+        {desc && <span className={CARD_DESC}>{desc}</span>}
+        {/* 같은 제목 칸의 옆 글·단추 자리. contents라 안의 글·단추가 이 머리 줄의 칸이 되고, 비면 자리도 없다 */}
+        <div ref={setSlot} className="contents" />
+        {action && <span className="ml-auto">{action}</span>}
+      </div>
+      <CardContext.Provider value={context}>
+        <NoAnchor>
+          <div className={CARD_BODY}>{children}</div>
+        </NoAnchor>
+      </CardContext.Provider>
+    </section>
+  )
+}
+
+// 환자 카드 옆 글(AC-4411.3): '최근 30일 · 10월 15일 – 11월 13일'. 끝 = 기간 끝과 마지막 끝난 날 중 이른 날. 해가 다르면 양 끝에 해를 붙인다
+export function cardRangeText(range: StatsRange, lastDay: string): string {
+  const { from } = range.current
+  const to = compareYmd(range.current.to, lastDay) <= 0 ? range.current.to : lastDay
+  const date = from.slice(0, 4) === to.slice(0, 4) ? longDate : (ymd: string) => `${Number(ymd.slice(0, 4))}년 ${longDate(ymd)}`
+  return `${range.name} · ${date(from)} – ${date(to)}`
+}
+
 // 머리 줄 안 설명·오른쪽 단추(보통 칸과 탭 칸 머리 줄이 같은 모양)
 function HeadExtras({ desc, action }: { desc?: string; action?: ReactNode }) {
   return (
@@ -73,7 +137,9 @@ function HeadExtras({ desc, action }: { desc?: string; action?: ReactNode }) {
 // headingRef(선택, treatment-trend AC-1210.2): 칸 모습이 바뀔 때 제목에 초점을 주려고 h2를 넘긴다. 주지 않으면 마크업이 그대로다.
 // 두 모드(stats-pc-ux design.md 'Section 두 모드'): 목차 자리(SectionAnchor) 안이면 section에 id + TOC_SCROLL.
 // 탭 패널(SectionPanelContext) 안이면 section·h2 없이 내용만 그리고, 고른 탭일 때만 설명·단추를 탭 칸 머리 줄 자리에 portal로 그린다(className은 쓰지 않는다).
-// 탭 패널에서 headingRef를 주면(고치기) 패널 맨 위 h3로 제목을 그리고 ref를 붙인다
+// 탭 패널에서 headingRef를 주면(고치기) 패널 맨 위 h3로 제목을 그리고 ref를 붙인다.
+// 큰 카드(StatsCard) 안이면(first90 design.md 5-5) h3 작은 칸이다(위 줄·여백 없이, 칸 사이 선은 카드가 긋는다). 제목이 카드 제목과 같으면
+// 칸 머리 없이 내용만 그리고 옆 글·단추를 카드 머리 자리에 portal로 그린다 — 카드가 옆 글을 가졌으면 카드 글을 쓰고 칸 글은 그리지 않는다
 export function Section({
   title,
   desc,
@@ -92,6 +158,7 @@ export function Section({
   const id = useId()
   const anchor = useSectionAnchor()
   const panel = useContext(SectionPanelContext)
+  const card = useStatsCard()
 
   if (panel) {
     const extras = panel.active && panel.slot && (desc || action) ? createPortal(<HeadExtras desc={desc} action={action} />, panel.slot) : null
@@ -105,6 +172,31 @@ export function Section({
         )}
         <NoPanel>{children}</NoPanel>
       </>
+    )
+  }
+
+  if (card) {
+    const place = className ? `min-w-0 ${className}` : 'min-w-0'
+    if (title === card.title) {
+      const shown = card.ownDesc ? undefined : desc
+      const extras = card.slot && (shown || action) ? createPortal(<CardExtras desc={shown} action={action} />, card.slot) : null
+      return (
+        <div className={place}>
+          {extras}
+          {children}
+        </div>
+      )
+    }
+    return (
+      <section aria-labelledby={id} className={place}>
+        <div className={SECTION_HEAD}>
+          <h3 id={id} ref={headingRef} tabIndex={headingRef ? -1 : undefined} className={headingRef ? `${SUB_HEADING} ${TOC_SCROLL} focus:outline-none` : SUB_HEADING}>
+            {title}
+          </h3>
+          <CardExtras desc={desc} action={action} />
+        </div>
+        {children}
+      </section>
     )
   }
 

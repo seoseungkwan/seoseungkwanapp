@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -86,5 +86,24 @@ describe('/stats 페이지 (AC-515.4)', () => {
   it('AC-515.4: 페이지는 통계 표를 읽지 않고 새 서버 경로를 만들지 않는다 — 화면을 놓기만 한다(ADR-004)', () => {
     expect(SOURCE).toMatch(/from '@\/components\/stats\/StatsScreen'/)
     expect(SOURCE).not.toMatch(/['"]use client['"]|['"]use server['"]|supabase|guard\.server|stats_days|stats_months|readDays|\bfetch\s*\(/)
+  })
+})
+
+// 통계 화면 바탕(first90 AC-4411.1, design.md 5-5 '화면 바탕'): StatsScreen 맨 바깥의 data-st-canvas 표시를 보고 globals.css의
+// #main:has([data-st-canvas])가 앱 본문 바탕을 칠한다. 페이지·앱 틀은 고치지 않는다 → 다른 탭·대시보드의 흰 바탕은 그대로다
+describe('/stats 바탕 (AC-4411.1)', () => {
+  const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
+
+  it('AC-4411.1: 페이지·앱 틀(layout·AppShell)은 통계 바탕 토큰을 쓰지 않는다', () => {
+    for (const path of ['src/app/(app)/stats/page.tsx', 'src/app/(app)/layout.tsx', 'src/components/shell/AppShell.tsx']) {
+      expect(read(path), path).not.toContain('st-canvas')
+    }
+  })
+
+  it('AC-4411.1: 통계 부품 가운데 바탕 표시(data-st-canvas)를 두는 파일은 StatsScreen 하나뿐이다', () => {
+    const files = (readdirSync(join(process.cwd(), 'src/components/stats'), { recursive: true }) as string[])
+      .map((file) => file.split('\\').join('/'))
+      .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file))
+    expect(files.filter((file) => read(`src/components/stats/${file}`).includes('data-st-canvas'))).toEqual(['StatsScreen.tsx'])
   })
 })

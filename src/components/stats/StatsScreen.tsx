@@ -12,9 +12,9 @@ import type { BitSectionsView, RxSplitView, StatsChecks, StatsLoaded } from '@/t
 import { doneText, partSave, planLoad, progressText, revenueProgressText, stoppedText, type LoadPlan, type LoadSpan } from './loadPlan'
 import { lastDayOf, type StatsChoice } from './periodPick'
 import { PERIOD_BUTTON, PERIOD_GROUP, PERIOD_OFF, PERIOD_ON, PeriodPicker } from './PeriodPicker'
-import { dayNumber, longDate, monthNumber, PERIOD_NAME, Section } from './sections/parts'
+import { dayNumber, longDate, monthNumber, PERIOD_NAME } from './sections/parts'
 import type { ReportData } from './sections/ReportSection'
-import { StatsSections } from './sections/StatsSections'
+import { StatsSections, StatsWaiting } from './sections/StatsSections'
 import { readFiles, SourcePicker, type FileFailure, type FileIncomplete, type StatsJob } from './SourcePicker'
 import { useStatsData, type SavedLatest, type StatsData } from './useStatsData'
 import { StatsToc } from './StatsToc'
@@ -38,22 +38,6 @@ const NOT_SAVED = '일부 기록을 확인하지 못해 저장하지 않았어�
 // 빠른 단추 묶음 위의 이름(시안 BEpX6zDbmmBmvBhZqCKmno '빠르게 보기'). 단추 모양은 PeriodPicker.tsx의 것을 쓴다
 const QUICK_CAPTION = '빠르게 보기'
 const UNIT_NAME = { day: '일별', week: '주별', month: '월별' } as const
-
-// 기다리는 칸은 StatsSections와 같은 자리다. 처방 세 칸은 한 칸 `처방`이다(stats-pc-ux AC-4003.1). 목차 id는 없다(AC-4002.6).
-// `매출`은 신환 재방문율 다음 · 처방 앞 전체 폭이다(stats-revenue AC-4109.1)
-const SIDE = 'lg:border-l lg:border-line lg:pl-6'
-const WAITING: { title: string; place: string }[] = [
-  { title: '기간 요약', place: 'col-span-12' },
-  { title: '환자 수 추이', place: 'col-span-12 lg:col-span-8' },
-  { title: '신환 재방문율', place: `col-span-12 lg:col-span-4 ${SIDE}` },
-  { title: '매출', place: 'col-span-12' },
-  { title: '처방', place: 'col-span-12' },
-  { title: '원장님 보고 문장', place: 'col-span-12 lg:col-span-7' },
-  { title: '요일별 환자 수', place: `col-span-12 lg:col-span-5 ${SIDE}` },
-  { title: '환자 구성', place: 'col-span-12' },
-  { title: '시간대별 접수', place: 'col-span-12' },
-  { title: '원장님별', place: 'col-span-12' },
-]
 
 const NO_DAYS: readonly DayPayload[] = []
 
@@ -226,21 +210,6 @@ function SourceSummary({ data, today, notSaved }: { data: StatsData; today: stri
         </p>
       )}
       {data.fromFile && <p>{FILE_NOTE}</p>}
-    </div>
-  )
-}
-
-function WaitingSections() {
-  return (
-    <div className="grid grid-cols-12 gap-x-6">
-      {WAITING.map(({ title, place }) => (
-        <Section key={title} title={title} className={place}>
-          <p className="mt-3 flex items-center gap-1.5 text-body text-muted">
-            <Icon name="clock" size={14} className="shrink-0" />
-            불러오는 중
-          </p>
-        </Section>
-      ))}
     </div>
   )
 }
@@ -447,8 +416,10 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   const partLine = partAt === null ? null : progressText(partAt.plan, partAt.at)
   const revenueFailure = revenue.failure !== null && revenue.failure !== revenueHidden ? revenue.failure : null
 
+  // 통계 바탕(first90 AC-4411.1, design.md 5-5 '화면 바탕'): 맨 바깥 표시 하나만 둔다. 회색은 globals.css의 #main:has(이 표시)가
+  // 앱 본문 전체(넓은 화면 양옆까지)에 칠하고 인쇄는 흰 바탕이다. 음수 여백으로 덮지 않고 앱 틀(AppShell)은 고치지 않는다
   return (
-    <div>
+    <div data-st-canvas="">
       <h1 className="text-title font-semibold text-ink">통계</h1>
       {/* 끊김 카드는 끊겨 있는 동안만 참이라 [다시 확인]을 누를 때 지운다(AC-514.12) */}
       <SourcePicker
@@ -538,9 +509,9 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
         <RangeText range={range} choice={choice} todayDone={todayDone} />
       </div>
 
-      {/* 목차 띠(stats-pc-ux AC-4002.1): 칸을 그릴 때만, 기간 줄 바로 다음. 이 바깥 div의 바로 아래 자식이어야 끝까지 붙는다(작은 div 안이면 그 div가 끝날 때 떨어진다) */}
-      {showSections && <StatsToc range={range} lastDay={lastDay} />}
-      {waiting && <WaitingSections />}
+      {/* 바로가기 띠(first90 AC-4411.2·stats-pc-ux AC-4002.1): 칸을 그릴 때만, 기간 줄 바로 다음. 이 바깥 div의 바로 아래 자식이어야 끝까지 붙는다(작은 div 안이면 그 div가 끝날 때 떨어진다) */}
+      {showSections && <StatsToc />}
+      {waiting && <StatsWaiting range={range} lastDay={lastDay} />}
       {/* 읽는 동안에도 내려놓지 않는다: 기간을 바꿔도 열어 둔 [자세히]·처방 줄이 열린 채 새 숫자로 그려진다(시안 §5) */}
       {drawn !== null && (
         <div hidden={!showSections}>

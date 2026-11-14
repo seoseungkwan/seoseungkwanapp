@@ -192,6 +192,51 @@ describe('AC-4417.1·AC-4417.2·AC-4417.3·AC-4417.4: 통계 화면 움직임 �
   })
 })
 
+// 통계 화면 바탕 (first90 AC-4411.1, design.md 5-5 '화면 바탕'): StatsScreen 맨 바깥의 data-st-canvas 표시를 보고 앱 본문 main#main을 회색으로 칠한다.
+// main의 bg-surface는 Tailwind utilities layer에 있다 → 같은 @layer utilities 안에서 id 선택자(#main)가 클래스(.bg-surface)를 이긴다.
+// layer 밖 선택자 목록(theme.test AC-202.4)은 늘리지 않는다. 화면(screen)에서만 칠해 인쇄는 main의 흰 바탕 그대로다
+const CANVAS_RULE = '#main:has([data-st-canvas])'
+// 이름 붙은 @layer 블록 몸통 전부(괄호 짝 맞춤, 파일 순서대로)
+const layerBlocks = (text: string, name: string): string[] => {
+  const out: string[] = []
+  for (const m of text.matchAll(new RegExp(`@layer\\s+${name}\\s*\\{`, 'g'))) {
+    const open = m.index + m[0].length - 1
+    let depth = 0
+    for (let i = open; i < text.length; i++) {
+      if (text[i] === '{') depth++
+      if (text[i] === '}' && --depth === 0) {
+        out.push(text.slice(open + 1, i))
+        break
+      }
+    }
+  }
+  return out
+}
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+describe('AC-4411.1: 통계 화면 바탕(#main:has([data-st-canvas]))', () => {
+  it('AC-4411.1: @layer utilities 안 @media screen 규칙 하나가 #main:has([data-st-canvas]) 바탕을 var(--st-canvas)로 칠하고, 다른 곳(layer 밖·인쇄)에는 이 규칙이 없다', () => {
+    const text = css()
+    expect(text.split(CANVAS_RULE).length - 1, '규칙은 한 번만 있다').toBe(1)
+    const inUtilities = layerBlocks(text, 'utilities').filter((body) => body.includes(CANVAS_RULE))
+    expect(inUtilities, '@layer utilities 안에 있다').toHaveLength(1)
+    const screenBody = inUtilities[0]!.match(new RegExp(`@media\\s+screen\\s*\\{\\s*${escapeRe(CANVAS_RULE)}\\s*\\{([^{}]*)\\}\\s*\\}`))?.[1]
+    expect(screenBody, '@media screen 안에 있다(인쇄는 흰 바탕)').toBeDefined()
+    expect(declsOf(`${CANVAS_RULE} {${screenBody}}`, CANVAS_RULE)).toEqual({ 'background-color': 'var(--st-canvas)' })
+    expect(text).not.toMatch(/@media\s+print/)
+  })
+
+  it('AC-4411.1: 실제 Tailwind로 돌린 CSS에서도 그 규칙이 main의 .bg-surface와 같은 utilities layer에 남는다(id 선택자라 클래스를 이긴다)', async () => {
+    const { default: postcss } = await import('postcss')
+    const { default: tailwind } = await import('@tailwindcss/postcss')
+    const out = (await postcss([tailwind({ base: ROOT, optimize: false })]).process(read(GLOBALS), { from: GLOBALS })).css
+    const utilities = layerBlocks(out, 'utilities').join('\n')
+    expect(utilities).toContain('.bg-surface {')
+    expect(utilities).toMatch(new RegExp(`@media screen\\s*\\{\\s*${escapeRe(CANVAS_RULE)}\\s*\\{\\s*background-color:\\s*var\\(--st-canvas\\);?\\s*\\}`))
+    expect(out.split(CANVAS_RULE).length - 1, 'Tailwind가 규칙을 옮기거나 겹쳐 만들지 않는다').toBe(1)
+  }, 30_000)
+})
+
 describe('AC-005.3: 금지한 장식', () => {
   it('AC-005.3: 랜딩 CSS에 그라데이션 글자(background-clip: text)가 없다', () => {
     for (const path of landingCss()) {

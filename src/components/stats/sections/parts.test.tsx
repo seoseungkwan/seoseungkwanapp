@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { createRef, useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { Section, SectionAnchor, SectionPanelContext, TOC_SCROLL } from './parts'
+import { pickRange } from '@/components/stats/periodPick'
+import { statsRange } from '@/components/stats/view'
+import { nestedBoxes } from '@/testing/boxes'
+import { cardRangeText, Section, SectionAnchor, SectionPanelContext, StatsCard, TOC_SCROLL } from './parts'
 
-// 칸 틀 Section의 두 모드 (stats-pc-ux TASK-1, design.md 'sections/parts.tsx — Section 두 모드'). 칸 이름·글은 시험 안에서 지은 가짜다
+// 칸 틀 Section의 두 모드 (stats-pc-ux TASK-1, design.md 'sections/parts.tsx — Section 두 모드')와
+// 큰 카드 StatsCard · 카드 안 칸 (first90 TASK-6, design.md 5-5). 칸 이름·글은 시험 안에서 지은 가짜다
 
 afterEach(cleanup)
 
@@ -64,6 +68,10 @@ describe('AC-4002.6: 목차 자리(SectionAnchor)', () => {
     expect(tokens).toHaveLength(2)
     expect(tokens[0]).toMatch(/^scroll-mt-/)
     expect(tokens[1]).toMatch(/^max-md:scroll-mt-/)
+  })
+
+  it('AC-4002.6·AC-4411.2: 카드는 바로가기 띠 아래 9px에 선다 — 머리줄 102 + 띠 53(위아래 8 + 링크 36 + 선 1) + 9 = 164px, 휴대폰 94 + 57(6 + 44 + 6 + 1) + 9 = 160px(시안 .s-card scroll-margin 164)', () => {
+    expect(tocTokens()).toEqual(['scroll-mt-41', 'max-md:scroll-mt-40'])
   })
 
   it('AC-4002.6: id는 안쪽 Section에 넘기지 않는다(겹친 id 없음). 감싸지 않은 Section에는 id·scroll-margin이 없다', () => {
@@ -204,5 +212,233 @@ describe('AC-4003.2·AC-4003.4: 탭 패널 모드(SectionPanelContext)', () => {
       </SectionAnchor>,
     )
     expect(container.querySelector('#stats-fake')).toBeNull()
+  })
+})
+
+// ── 큰 카드 (first90 REQ-4411 AC-4411.3, design.md 5-5, 시안 docs/mockups/first90/redesign.html .s-card) ─────────
+describe('AC-4411.3: 큰 카드 StatsCard', () => {
+  it('AC-4411.3: section(rounded-st bg-surface shadow-st-card, bg-white 없음)에 h2 · 옆 글 · 오른쪽 자리가 차례로 있고, id를 주면 그 id와 바로가기 scroll-margin(TOC_SCROLL)이 붙는다', () => {
+    render(
+      <StatsCard id="stats-fake" title="가짜 카드" desc="가짜 카드 글" action={<button type="button">가짜 카드 단추</button>}>
+        <p>카드 내용</p>
+      </StatsCard>,
+    )
+    const section = document.getElementById('stats-fake')!
+    const h2 = screen.getByRole('heading', { level: 2, name: '가짜 카드' })
+    expect(section.tagName).toBe('SECTION')
+    expect(section.getAttribute('aria-labelledby')).toBe(h2.id)
+    expect(classesOf(section)).toEqual(expect.arrayContaining(['rounded-st', 'bg-surface', 'shadow-st-card', ...tocTokens()]))
+    expect(classesOf(section)).not.toContain('bg-white')
+    expect(classesOf(h2)).toEqual(expect.arrayContaining(['text-st-18', 'font-semibold', 'text-st-ink']))
+    const head = h2.parentElement!
+    expect(head.firstElementChild).toBe(h2)
+    expect(classesOf(within(head).getByText('가짜 카드 글'))).toEqual(expect.arrayContaining(['text-small', 'text-st-muted']))
+    expect(classesOf(within(head).getByRole('button', { name: '가짜 카드 단추' }).parentElement!)).toContain('ml-auto')
+    expect(section.textContent).toBe('가짜 카드가짜 카드 글가짜 카드 단추카드 내용')
+  })
+
+  it('AC-4411.3: id를 주지 않으면(기다리는 자리) id·scroll-margin이 없고, 옆 글·단추를 주지 않으면 머리 줄은 h2뿐이다', () => {
+    const { container } = render(
+      <StatsCard title="가짜 카드">
+        <p>카드 내용</p>
+      </StatsCard>,
+    )
+    const section = container.querySelector('section')!
+    expect(section.hasAttribute('id')).toBe(false)
+    expect(classesOf(section)).not.toEqual(expect.arrayContaining(tocTokens()))
+    expect(section.textContent).toBe('가짜 카드카드 내용')
+  })
+
+  it('AC-4411.3: 카드는 네 변 테두리 상자가 아니다 — 안에 테두리 칸이 있어도 상자 안 상자가 없다', () => {
+    const { container } = render(
+      <StatsCard title="가짜 카드">
+        <Section title="가짜 작은 칸">
+          <div className="border border-line">안 상자</div>
+        </Section>
+      </StatsCard>,
+    )
+    expect(nestedBoxes(container)).toEqual([])
+  })
+})
+
+describe('AC-4411.3: 카드 안 Section은 h3 작은 칸이고 칸 사이는 얇은 선뿐이다', () => {
+  function Card() {
+    return (
+      <StatsCard id="stats-fake" title="가짜 카드">
+        <Section title="첫 작은 칸" desc="첫 칸 글" action={<button type="button">첫 칸 단추</button>} className="min-[1200px]:basis-3/10">
+          <p>첫 내용</p>
+        </Section>
+        <Section title="둘째 작은 칸">
+          <p>둘째 내용</p>
+        </Section>
+      </StatsCard>
+    )
+  }
+
+  it('AC-4411.3: 카드 안 칸은 section + h3(text-st-15)이고 옆 글·단추는 h3 옆 머리 줄이다. 카드 안 h2는 카드 제목 하나뿐이다', () => {
+    render(<Card />)
+    const card = document.getElementById('stats-fake')!
+    expect(within(card).getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['가짜 카드'])
+    const h3 = within(card).getByRole('heading', { level: 3, name: '첫 작은 칸' })
+    expect(classesOf(h3)).toEqual(expect.arrayContaining(['text-st-15', 'font-semibold', 'text-st-ink']))
+    const sub = h3.closest('section')!
+    expect(sub).not.toBe(card)
+    expect(sub.getAttribute('aria-labelledby')).toBe(h3.id)
+    expect(classesOf(sub)).toEqual(expect.arrayContaining(['min-w-0', 'min-[1200px]:basis-3/10']))
+    expect(sub.hasAttribute('id')).toBe(false)
+    const head = h3.parentElement!
+    expect(classesOf(within(head).getByText('첫 칸 글'))).toEqual(expect.arrayContaining(['text-small', 'text-st-muted']))
+    expect(classesOf(within(head).getByRole('button', { name: '첫 칸 단추' }).parentElement!)).toContain('ml-auto')
+    expect(within(card).getByRole('heading', { level: 3, name: '둘째 작은 칸' })).toBeTruthy()
+  })
+
+  it('AC-4411.3: 칸 사이는 얇은 선(border-st-line) 하나이고 첫 칸 위에는 선이 없다. 칸 자신은 테두리를 갖지 않는다', () => {
+    render(<Card />)
+    const card = document.getElementById('stats-fake')!
+    const subs = within(card)
+      .getAllByRole('heading', { level: 3 })
+      .map((h) => h.closest('section')!)
+    const body = subs[0]!.parentElement!
+    expect(subs[1]!.parentElement).toBe(body)
+    expect(body.firstElementChild).toBe(subs[0])
+    expect(classesOf(body)).toEqual(expect.arrayContaining(['[&>*+*]:border-t', '[&>*+*]:border-st-line']))
+    for (const sub of subs) expect(classesOf(sub).filter((t) => t.startsWith('border'))).toEqual([])
+  })
+
+  it('AC-4411.3: 카드 밖 Section은 지금처럼 h2이고, 카드를 감싼 목차 자리 id는 카드 안 칸에 붙지 않는다', () => {
+    const { container } = render(
+      <>
+        <Section title="카드 밖 칸">
+          <p>밖 내용</p>
+        </Section>
+        <SectionAnchor id="stats-outer">
+          <StatsCard title="가짜 카드">
+            <Section title="카드 안 칸">
+              <p>안 내용</p>
+            </Section>
+          </StatsCard>
+        </SectionAnchor>
+      </>,
+    )
+    expect(screen.getByRole('heading', { level: 2, name: '카드 밖 칸' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 3, name: '카드 안 칸' })).toBeTruthy()
+    expect(container.querySelector('#stats-outer')).toBeNull()
+  })
+
+  it('AC-4411.3·AC-4003.6: 카드 안 칸에 headingRef를 주면 그 h3에 ref · tabIndex -1 · TOC_SCROLL이 붙는다', () => {
+    const ref = createRef<HTMLHeadingElement>()
+    render(
+      <StatsCard title="가짜 카드">
+        <Section title="가짜 작은 칸" headingRef={ref}>
+          <p>내용</p>
+        </Section>
+      </StatsCard>,
+    )
+    const h3 = screen.getByRole('heading', { level: 3, name: '가짜 작은 칸' })
+    expect(ref.current).toBe(h3)
+    expect(h3.tabIndex).toBe(-1)
+    expect(classesOf(h3)).toEqual(expect.arrayContaining(tocTokens()))
+  })
+
+  it('AC-4411.3·AC-4003.2: 카드 안 탭 패널은 지금처럼 탭 패널 모드다(section·제목 없이 내용만, 설명은 탭 칸 자리)', () => {
+    render(
+      <StatsCard title="가짜 카드">
+        <Slotted active>
+          <Section title="가짜 탭 칸" desc="가짜 탭 설명">
+            <p>탭 내용</p>
+          </Section>
+        </Slotted>
+      </StatsCard>,
+    )
+    expect(screen.getByTestId('panel').querySelector('section, h2, h3')).toBeNull()
+    expect(screen.getByTestId('slot').textContent).toBe('가짜 탭 설명')
+  })
+})
+
+describe('AC-4411.3: 칸 하나 · 같은 제목이면 칸 머리 없이 카드 머리를 쓴다(매출·처방·보고)', () => {
+  function SameTitle({ title, cardDesc }: { title: string; cardDesc?: string }) {
+    return (
+      <StatsCard id="stats-fake" title="같은 이름" desc={cardDesc}>
+        <Section title={title} desc="칸 글" action={<button type="button">칸 단추</button>} className="col-span-12">
+          <p>칸 내용</p>
+        </Section>
+      </StatsCard>
+    )
+  }
+
+  it('AC-4411.3: 제목이 두 번 나오지 않는다 — h3·칸 section 없이 칸 옆 글·단추를 카드 머리 줄에 한 번 그리고 내용은 카드 안이다', () => {
+    render(<SameTitle title="같은 이름" />)
+    const card = document.getElementById('stats-fake')!
+    expect(screen.getAllByText('같은 이름')).toHaveLength(1)
+    expect(within(card).getAllByRole('heading').map((h) => `${h.tagName}:${h.textContent}`)).toEqual(['H2:같은 이름'])
+    expect(card.querySelectorAll('section')).toHaveLength(0)
+    const head = screen.getByRole('heading', { level: 2, name: '같은 이름' }).parentElement!
+    expect(within(head).getByText('칸 글')).toBeTruthy()
+    expect(classesOf(within(head).getByRole('button', { name: '칸 단추' }).parentElement!)).toContain('ml-auto')
+    expect(screen.getAllByText('칸 글')).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: '칸 단추' })).toHaveLength(1)
+    expect(card.textContent).toBe('같은 이름칸 글칸 단추칸 내용')
+  })
+
+  it('AC-4411.3: 카드가 옆 글을 가졌으면 카드 글만 쓰고(칸 글은 그리지 않는다) 칸 단추는 카드 머리 줄 오른쪽이다', () => {
+    render(<SameTitle title="같은 이름" cardDesc="카드 글" />)
+    const head = screen.getByRole('heading', { level: 2, name: '같은 이름' }).parentElement!
+    expect(within(head).getByText('카드 글')).toBeTruthy()
+    expect(screen.queryByText('칸 글')).toBeNull()
+    expect(classesOf(within(head).getByRole('button', { name: '칸 단추' }).parentElement!)).toContain('ml-auto')
+    expect(document.getElementById('stats-fake')!.textContent).toBe('같은 이름카드 글칸 단추칸 내용')
+  })
+
+  it('AC-4411.3: 같은 제목 칸의 내용은 카드 안 한 덩어리다(칸 사이 선이 그 내용 사이에 들지 않는다)', () => {
+    render(
+      <StatsCard id="stats-fake" title="같은 이름">
+        <Section title="같은 이름">
+          <p>첫 줄</p>
+          <p>둘째 줄</p>
+        </Section>
+      </StatsCard>,
+    )
+    const first = screen.getByText('첫 줄')
+    const block = first.parentElement!
+    expect(block.contains(screen.getByText('둘째 줄'))).toBe(true)
+    const body = block.parentElement!
+    expect(classesOf(body)).toContain('[&>*+*]:border-t')
+    expect(body.children).toHaveLength(1)
+  })
+
+  it('AC-4411.3: 제목이 다르면 같은 제목 규칙이 아니다 — h3 작은 칸이고 칸 글은 카드 머리에 가지 않는다', () => {
+    render(<SameTitle title="다른 이름" />)
+    expect(screen.getByRole('heading', { level: 3, name: '다른 이름' })).toBeTruthy()
+    const head = screen.getByRole('heading', { level: 2, name: '같은 이름' }).parentElement!
+    expect(within(head).queryByText('칸 글')).toBeNull()
+  })
+})
+
+describe('AC-4411.3: 환자 카드 옆 글 cardRangeText', () => {
+  const TODAY = '2026-11-14'
+  const YESTERDAY = '2026-11-13'
+
+  it('AC-4411.3: 최근 30일은 "{기간 이름} · {시작 월 일} – {끝 월 일}"이다(시안 날짜 모양)', () => {
+    expect(cardRangeText(statsRange(TODAY, '30d'), YESTERDAY)).toBe('최근 30일 · 10월 15일 – 11월 13일')
+  })
+
+  it('AC-4411.3: 오늘 진료가 끝났어도 빠른 기간의 끝(어제)을 넘지 않는다', () => {
+    expect(cardRangeText(statsRange(TODAY, '30d'), TODAY)).toBe('최근 30일 · 10월 15일 – 11월 13일')
+  })
+
+  it('AC-4411.3: 최근 12개월은 이번 달 말일 대신 마지막 끝난 날에서 끊고, 해가 달라 양 끝에 해를 붙인다', () => {
+    expect(cardRangeText(statsRange(TODAY, '12m'), YESTERDAY)).toBe('최근 12개월 · 2025년 12월 1일 – 2026년 11월 13일')
+  })
+
+  it('AC-4411.3: 고른 달은 "그 달 이름 · 1일 – 말일"이고, 끝나지 않은 달은 마지막 끝난 날까지다', () => {
+    expect(cardRangeText(pickRange(TODAY, { kind: 'month', unit: 'day', month: '2026-10' }, false), YESTERDAY)).toBe('2026년 10월 · 10월 1일 – 10월 31일')
+    expect(cardRangeText(pickRange(TODAY, { kind: 'month', unit: 'day', month: '2026-11' }, true), TODAY)).toBe('2026년 11월 · 11월 1일 – 11월 14일')
+  })
+
+  it('AC-4411.3: 해를 넘는 고른 기간은 양 끝에 해를 붙이고, 한 해 안의 해 고르기는 붙이지 않는다', () => {
+    expect(cardRangeText(pickRange(TODAY, { kind: 'custom', unit: 'month', from: '2025-11-15', to: '2026-11-13' }, false), YESTERDAY)).toBe(
+      '직접 고른 기간 · 2025년 11월 15일 – 2026년 11월 13일',
+    )
+    expect(cardRangeText(pickRange(TODAY, { kind: 'year', year: '2025' }, false), YESTERDAY)).toBe('2025년 · 1월 1일 – 12월 31일')
   })
 })
