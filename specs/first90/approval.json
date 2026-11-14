@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "first90",
-  "approved_at": "2026-11-14T15:03:42Z",
+  "approved_at": "2026-11-14T15:16:20Z",
   "approved_via": "auto",
   "session_id": "ee7482fb-91b9-4bf4-8006-43c8aed7902e",
-  "spec_sha256": "b9f85a9425a6426243dac48c06d0677214a5f604725c8d7a5262f276a9a9158f",
+  "spec_sha256": "88d1ef009160057dcec0e258f2f11c40d198372480748ef3334f525b6486ed45",
   "scope": [
     "docs/UI_GUIDE.md",
     "helper/Directory.Build.props",

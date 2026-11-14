@@ -181,7 +181,7 @@ ORDER BY v.PatientId,v.VisitDay
 - `onceView(days, code, range, today)` → `{ rows: { month, label, sub, counting, newPatients, once: number | null }[], total: { newPatients, once: number | null }, missing: boolean }`.
 - `label`: 첫 줄·1월은 'YYYY년 M월', 그 밖 'M월'. `sub`: '(13일까지)' · '(15일부터)' · '(7일 – 13일)' · null. `counting`: 오늘 달 또는 그 앞 달.
 - 비율은 `Math.floor(once / newPatients * 1000) / 10`. 2회 이상 = 신환 − 1회.
-- 부품은 100% 가로 막대 두 갈래(`bg-accent`·`bg-st-ink`)이고 막대 안에 인원 숫자. 2회 이상은 처음 `bg-st-ret`(흰 글자 대비 약 3.5:1)였으나 사용자 결정(2026-11-15 "더 진한 색으로")으로 `bg-st-ink`(약 14:1)로 바꿨다. `st-ret`는 재진 계열 색으로 그대로 둔다. 집계 중이면 막대 `opacity-55`. `RxPickerSection`이 '같은 처방 재방문' 아래에 놓고, 고른 처방은 React 상태(처음 첫째)다.
+- 부품은 100% 가로 막대 두 갈래(`bg-accent`·`bg-st-ink`)이고 막대 안에 인원 숫자. 2회 이상은 처음 `bg-st-ret`(흰 글자 대비 약 3.5:1)였으나 사용자 결정(2026-11-15 "더 진한 색으로")으로 `bg-st-ink`(약 14:1)로 바꿨다. `st-ret`는 재진 계열 색으로 그대로 둔다. 집계 중이면 막대 바탕을 옅은 색으로 바꾸고 숫자를 진하게 한다: 1회 `bg-st-h2`, 2회 이상 `bg-st-line-2`, 숫자 `text-st-ink`(대비 약 8.8:1·9.3:1). 처음은 막대 전체 `opacity-55`였으나 최근 30일에서는 두 달 모두 집계 중이라 숫자가 늘 흐려서 바꿨다(사용자 결정 2026-11-15 "옅은 바탕 + 진한 숫자"). `RxPickerSection`이 '같은 처방 재방문' 아래에 놓고, 고른 처방은 React 상태(처음 첫째)다.
 
 ### 5-9. 대시보드 (`components/dashboard/summary/*`)
 - `todayView.counts.first90: number | null`.
