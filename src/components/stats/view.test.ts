@@ -30,6 +30,7 @@ import {
   visitMix,
   visitTrend,
   weekdayBars,
+  weekdayRows,
   type StatsInput,
   type StatsPeriod,
   type SummaryCell,
@@ -1081,6 +1082,37 @@ describe('AC-511.5 weekdayBars', () => {
 
   it('AC-511.5 자료가 없으면 null이다', () => {
     expect(weekdayBars([], statsRange('2026-11-13', '12m'))).toBeNull()
+  })
+})
+
+// ── first90 진료 운영 카드 요일별 내원 (REQ-4414 AC-4414.2): 월~일 일곱 줄. 평균·일부 기간은 weekdayBars 셈 그대로다 ──
+describe('AC-4414.2 weekdayRows', () => {
+  const range = statsRange('2026-11-13', '30d')
+
+  it('AC-4414.2: 늘 월~일 일곱 줄이고 진료한 날이 없는 요일은 average가 null이다', () => {
+    // 11월 9일·2일 월요일, 11월 10일 화요일(덜 끝난 줄). 수~일은 없다
+    const rows = [day('2026-11-09', { newPatients: 5, returning: 5 }), day('2026-11-02', { newPatients: 1, returning: 2 }), day('2026-11-10', { partial: true })]
+    expect(weekdayRows(rows, range)).toEqual([
+      { key: '1', name: '월', label: '월요일', average: 6, partial: false },
+      { key: '2', name: '화', label: '화요일', average: 10, partial: true },
+      { key: '3', name: '수', label: '수요일', average: null, partial: false },
+      { key: '4', name: '목', label: '목요일', average: null, partial: false },
+      { key: '5', name: '금', label: '금요일', average: null, partial: false },
+      { key: '6', name: '토', label: '토요일', average: null, partial: false },
+      { key: '7', name: '일', label: '일요일', average: null, partial: false },
+    ])
+  })
+
+  it('AC-4414.2: 평균과 일부 기간은 weekdayBars 칸 그대로다(셈을 바꾸지 않는다)', () => {
+    const rows = [day('2026-11-09', { newPatients: 5, returning: 6 }), day('2026-11-02', { newPatients: 1, returning: 2 }), day('2026-11-12', { partial: true })]
+    const bars = weekdayBars(rows, range)!
+    const shown = weekdayRows(rows, range)!.filter((row) => row.average !== null)
+    expect(shown.map((row) => [row.key, row.average, row.partial])).toEqual(bars.map((bar) => [bar.key, bar.values[0], bar.state !== 'complete']))
+  })
+
+  it('AC-4414.2: 기간 안 자료가 없으면 null이다', () => {
+    expect(weekdayRows([], range)).toBeNull()
+    expect(weekdayRows([day('2026-01-05')], range)).toBeNull()
   })
 })
 

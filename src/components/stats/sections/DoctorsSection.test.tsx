@@ -6,10 +6,11 @@ import { formatDoctors } from '@/lib/analytics/doctorStats'
 import { VISIT_HOURS } from '@/lib/analytics/visitHours'
 import type { BitSectionsView, DoctorRow, DoctorsView, DoctorTable, PatientMix } from '@/types/stats'
 import { DoctorsSection } from './DoctorsSection'
+import { StatsCard } from './parts'
 import type { BitSectionsShown } from './PatientMixSection'
 
-// 원장님별 칸 (stats-bit-sections AC-2706.1·AC-2706.4·AC-2706.5·AC-2706.6·AC-2705.5·AC-2705.6·AC-2707.2, 시안 docs/mockups/stats-bit-sections).
-// 이름·숫자는 모두 시험 안에서 지은 가짜다
+// 원장님별 칸 (stats-bit-sections AC-2706.1·AC-2706.4·AC-2706.5·AC-2706.6·AC-2705.5·AC-2705.6·AC-2707.2, first90 REQ-4414 AC-4414.4,
+// 시안 docs/mockups/first90/redesign.html .s-tbl·.s-docs). 이름·숫자는 모두 시험 안에서 지은 가짜다
 
 const HOSPITAL = '튼튼의원'
 const TODAY = '2026-11-13'
@@ -42,6 +43,20 @@ const section = () => screen.getByRole('heading', { level: 2, name: '원장님�
 const table = () => screen.getByRole('table', { name: '원장님별 환자·신환·매출' })
 const bodyRows = () => within(table()).getAllByRole('row').slice(1)
 const texts = (tr: HTMLElement) => within(tr).getAllByRole('cell').map((td) => td.textContent)
+const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
+const DESC = '원장님마다 환자·신환·내원·매출'
+const FOOT_NOW = '확인 필요한 날도 더해서 셌어요. 그래서 위 매출 요약과 다를 수 있어요.'
+// 768px 미만 원장님 카드: [이름, 매출] + 아래 다섯 칸 [이름표, 값]
+const cards = () => screen.getByRole('list', { name: '원장님별 카드' })
+const cardOf = (li: HTMLElement) => ({
+  head: [...li.firstElementChild!.children].map((el) => el.textContent),
+  cells: [...li.querySelectorAll('dl > div')].map((div) => [div.querySelector('dt')!.textContent, div.querySelector('dd')!.textContent]),
+})
+const inCard = (view: BitSectionsShown) => (
+  <StatsCard id="stats-ops" title="진료 운영" desc="언제 붐비는지 · 원장님마다">
+    <DoctorsSection view={view} range={R30} hospitalName={HOSPITAL} />
+  </StatsCard>
+)
 
 const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
 afterEach(() => {
@@ -50,10 +65,18 @@ afterEach(() => {
   else Reflect.deleteProperty(navigator, 'clipboard')
 })
 
-describe('AC-2706.4 원장님별 칸', () => {
-  it('AC-2706.1: h2 "원장님별" + 옆 설명 "원장님마다 환자·신환·매출 · {기간 이름}"이고 칸 폭은 놓는 쪽이 준다', () => {
+describe('AC-2706.4·AC-4414.4 원장님별 칸', () => {
+  it('AC-4414.4: 진료 운영 카드 안에서는 h3 "원장님별" + 옆 글 "원장님마다 환자·신환·내원·매출"이고 윗줄 아래 전체 폭이다', () => {
+    render(inCard(ready()))
+    const heading = screen.getByRole('heading', { level: 3, name: '원장님별' })
+    expect(screen.getByText(DESC)).toBeTruthy()
+    expect(tokens(heading.closest('section')!).filter((t) => t.includes('basis-'))).toEqual([])
+  })
+
+  it('AC-2706.1·AC-4414.4: h2 "원장님별" + 옆 설명 "원장님마다 환자·신환·내원·매출"이고 칸 폭은 놓는 쪽이 준다', () => {
     draw(ready())
-    expect(screen.getByText('원장님마다 환자·신환·매출 · 최근 30일')).toBeTruthy()
+    expect(screen.getByText(DESC)).toBeTruthy()
+    expect(screen.queryByText(/최근 30일/)).toBeNull()
     expect(section().className.split(' ')).toContain('col-span-12')
   })
 
@@ -85,24 +108,29 @@ describe('AC-2706.4 원장님별 칸', () => {
     }
   })
 
-  it('AC-2706.4: 비중은 작은 막대 + 백분율이고 휴대폰은 백분율만이다(막대는 꾸밈)', () => {
+  it('AC-4414.4: 비중은 백분율 글자만이다(시안 표에 작은 막대가 없다)', () => {
     draw(ready())
-    const share = within(bodyRows()[0]!).getAllByRole('cell')[6]!
-    const bar = share.querySelector('[aria-hidden="true"]') as HTMLElement
-    expect(bar.className.split(' ')).toContain('max-md:hidden')
-    expect((bar.firstElementChild as HTMLElement).style.width).toBe('54.79%')
-    expect((bar.firstElementChild as HTMLElement).className).toContain('bg-accent')
+    for (const tr of bodyRows()) expect(within(tr).getAllByRole('cell')[6]!.querySelector('[aria-hidden="true"]')).toBeNull()
   })
 
-  it('AC-2706.4: 합계 줄은 마지막이고 위에 진한 선·굵은 글자, 비중은 막대 없이 100%다', () => {
+  it('AC-4414.4: 내원·매출 칸은 16px 굵게(text-lead font-semibold)이고 다른 숫자 칸은 보통 굵기다', () => {
+    draw(ready())
+    const [, patients, newPatients, visits, amount, perVisit, share] = within(bodyRows()[0]!).getAllByRole('cell')
+    for (const key of [visits!, amount!]) expect(tokens(key)).toEqual(expect.arrayContaining(['text-lead', 'font-semibold', 'text-st-ink']))
+    for (const plain of [patients!, newPatients!, perVisit!, share!]) {
+      expect(tokens(plain)).not.toContain('text-lead')
+      expect(tokens(plain)).not.toContain('font-semibold')
+    }
+  })
+
+  it('AC-2706.4·AC-4414.4: 끝 줄 "합계"는 마지막이고 위에 진한 선·굵은 글자, 비중은 100%다', () => {
     draw(ready())
     const total = bodyRows().at(-1)!
+    expect(within(total).getAllByRole('cell')[0]!.textContent).toBe('합계')
     for (const td of within(total).getAllByRole('cell')) {
-      expect(td.className).toContain('border-t')
-      expect(td.className).toContain('border-line-strong')
-      expect(td.className).toContain('font-semibold')
+      expect(tokens(td)).toEqual(expect.arrayContaining(['border-t', 'border-st-line-2', 'font-semibold']))
     }
-    expect(within(total).getAllByRole('cell')[6]!.querySelector('[aria-hidden="true"]')).toBeNull()
+    expect(within(total).getAllByRole('cell')[6]!.textContent).toBe('100%')
   })
 
   it('AC-2706.4: 합계 매출이 0이면 비중이 모두 "–"다', () => {
@@ -115,11 +143,82 @@ describe('AC-2706.4 원장님별 칸', () => {
     expect(bodyRows().map((tr) => within(tr).getAllByRole('cell')[6]!.textContent)).toEqual(['–', '–', '–'])
   })
 
-  it('AC-2706.4: 휴대폰은 표 글자가 작고 칸 사이가 좁으며, 표만 옆으로 밀린다', () => {
+  it('AC-4414.4: 표는 768px 이상에서만(옆으로 밀리는 칸), 768px 미만은 원장님 카드 목록이다', () => {
     draw(ready())
-    expect(table().className.split(' ')).toContain('max-md:text-small')
-    expect(table().parentElement!.className.split(' ')).toContain('overflow-x-auto')
-    expect(within(table()).getAllByRole('columnheader')[1]!.className).toContain('max-md:px-1.5')
+    expect(tokens(table().parentElement!)).toEqual(expect.arrayContaining(['overflow-x-auto', 'max-md:hidden']))
+    expect(tokens(cards())).toContain('md:hidden')
+  })
+
+  it('AC-4414.4: 768px 미만 카드는 원장님마다 이름과 매출을 크게, 아래 "내원" · "건당 진료비" · "실환자" · "신환" · "비중" 다섯 칸이고 합계 카드도 같다', () => {
+    draw(ready())
+    const items = within(cards()).getAllByRole('listitem')
+    expect(items.map(cardOf)).toEqual([
+      {
+        head: ['김원장', '48,320,500원'],
+        cells: [
+          ['내원', '1,268건'],
+          ['건당 진료비', '38,107원'],
+          ['실환자', '702명'],
+          ['신환', '104명'],
+          ['비중', '54.8%'],
+        ],
+      },
+      {
+        head: ['이원장', '39,871,200원'],
+        cells: [
+          ['내원', '1,042건'],
+          ['건당 진료비', '38,264원'],
+          ['실환자', '591명'],
+          ['신환', '82명'],
+          ['비중', '45.2%'],
+        ],
+      },
+      {
+        head: ['진료의 미지정', '0원'],
+        cells: [
+          ['내원', '0건'],
+          ['건당 진료비', '–'],
+          ['실환자', '0명'],
+          ['신환', '0명'],
+          ['비중', '0.0%'],
+        ],
+      },
+      {
+        head: ['합계', '88,191,700원'],
+        cells: [
+          ['내원', '2,310건'],
+          ['건당 진료비', '38,178원'],
+          ['실환자', '1,248명'],
+          ['신환', '186명'],
+          ['비중', '100%'],
+        ],
+      },
+    ])
+    const [name, amount] = [...items[0]!.firstElementChild!.children]
+    expect(tokens(name!)).toEqual(expect.arrayContaining(['text-lead', 'font-semibold']))
+    expect(tokens(amount!)).toEqual(expect.arrayContaining(['text-title', 'font-semibold']))
+    expect(tokens(items.at(-1)!)).toEqual(expect.arrayContaining(['border-t', 'border-st-line-2']))
+  })
+
+  it('AC-4414.4: 합계 매출이 0이면 카드 비중도 모두 "–"다', () => {
+    const zero: DoctorTable = {
+      kind: 'table',
+      rows: [doctor('김원장', 1, 0, 1, 0, 0, null), doctor('이원장', 1, 0, 1, 0, 0, null)],
+      total: doctor('합계', 2, 0, 2, 0, 0, null),
+    }
+    draw(ready(zero))
+    expect(within(cards()).getAllByRole('listitem').map((li) => cardOf(li).cells.at(-1))).toEqual([
+      ['비중', '–'],
+      ['비중', '–'],
+      ['비중', '–'],
+    ])
+  })
+
+  it('AC-4414.4: 아래 글 "확인 필요한 날도 더해서 셌어요. 그래서 위 매출 요약과 다를 수 있어요."가 접지 않고 칸 맨 끝에 보인다', () => {
+    draw(ready())
+    const foot = screen.getByText(FOOT_NOW)
+    expect(foot.closest('[hidden]')).toBeNull()
+    expect(section().lastElementChild).toBe(foot)
   })
 
   it('AC-2706.4·AC-4109.2: 아래 글이 시안 그대로다(건당 진료비 · 확인 필요한 날 한 문장)', () => {
@@ -142,12 +241,14 @@ describe('AC-2706.4 원장님별 칸', () => {
     expect(screen.getAllByText('복사했어요').length).toBeGreaterThan(0)
   })
 
-  it('AC-2705.5: 원장님이 한 분이면 표·[표 복사] 대신 한 줄 안내이고 옆 설명은 그대로다', () => {
+  it('AC-2705.5·AC-4414.4: 원장님이 한 분이면 표·카드·[표 복사]·아래 글 대신 한 줄 안내이고 옆 글은 같다', () => {
     draw(ready({ kind: 'single' }))
     expect(screen.getByText('원장님이 한 분이라 나누어 볼 것이 없어요.')).toBeTruthy()
-    expect(screen.getByText('원장님마다 환자·신환·매출 · 최근 30일')).toBeTruthy()
+    expect(screen.getByText(DESC)).toBeTruthy()
     expect(screen.queryByRole('table')).toBeNull()
+    expect(screen.queryByRole('list')).toBeNull()
     expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.queryByText(FOOT_NOW)).toBeNull()
   })
 })
 
@@ -218,8 +319,8 @@ describe('AC-2706.5·AC-2706.6 숫자가 없을 때', () => {
     expect(within(section()).queryByRole('table')).toBeNull()
   })
 
-  it('AC-2706.1: 이 기간 답을 기다리는 동안은 제목·설명만이다', () => {
+  it('AC-2706.1·AC-4414.4: 이 기간 답을 기다리는 동안은 제목·설명만이다', () => {
     draw('waiting')
-    expect(section().textContent).toBe('원장님별원장님마다 환자·신환·매출 · 최근 30일')
+    expect(section().textContent).toBe('원장님별원장님마다 환자·신환·내원·매출')
   })
 })
