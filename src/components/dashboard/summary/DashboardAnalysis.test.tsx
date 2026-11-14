@@ -103,9 +103,10 @@ const RX_NAMES = ['물리치료', '도수치료', '주사', '견인', '초음파
 // 묶음까지 실은 연결 뒤 자료(처방 상위 = 묶음 막대)
 const FULL = grouped(FULL_DAYS, LINES)
 
+// 90일초진을 모르는 칸이 있을 때의 두 갈래(first90 AC-4404.3): 둘째 이름은 통계 일별 내원과 같은 '재진(90일초진 포함)', 색은 그대로
 const TREND_SERIES: BarSeries[] = [
   { name: '신환', tone: 'accent' },
-  { name: '재진', tone: 'chart-3' },
+  { name: '재진(90일초진 포함)', tone: 'chart-3' },
 ]
 // 새 도우미 날만 있는 연결 뒤 자료(first90 REQ-4404): 오늘 끝남(13명 = 신환 4 · 90일초진 3 · 재진 6) · 지난주 토요일 끝남(10명) · 기간 안 여러 날(덜 끝난 날 하나)
 const KNOWN_DAYS = [
@@ -639,7 +640,7 @@ describe('기간별 흐름 — 연결 뒤 그래프 칸 (AC-311.4 · 연결 뒤 
     for (const h of within(section).getAllByRole('heading', { level: 3 })) hasAll(h, 'text-subtitle font-semibold')
   })
 
-  it('AC-311.4: 기간 안 자료가 없을 때 환자 수 추이 — 범례(ChartLegend 신환 accent · 재진 chart-3), 가로선 다섯(마지막 line-strong, aria-hidden), 가운데 "자료 없음", 날짜 눈금', () => {
+  it('AC-311.4: 기간 안 자료가 없을 때 환자 수 추이 — 범례(ChartLegend 신환 accent · 재진(90일초진 포함) chart-3, AC-4404.3), 가로선 다섯(마지막 line-strong, aria-hidden), 가운데 "자료 없음", 날짜 눈금', () => {
     draw(EMPTY_RANGE)
     const group = chart('환자 수 추이')
     expect(group.querySelector('ul')!.outerHTML).toBe(
@@ -647,7 +648,7 @@ describe('기간별 흐름 — 연결 뒤 그래프 칸 (AC-311.4 · 연결 뒤 
         <ChartLegend
           items={[
             { label: '신환', mark: 'accent' },
-            { label: '재진', mark: 'chart-3' },
+            { label: '재진(90일초진 포함)', mark: 'chart-3' },
           ]}
         />,
       ),
@@ -801,7 +802,7 @@ describe('기간별 흐름 — 연결 뒤 그래프', () => {
 // '처방 상위' = 통계 탭 처방별 추세 묶음 (bit-dashboard REQ-606, design.md '처방 상위 = 통계 탭 묶음' 칸 그리기 ①~⑤).
 // 묶음은 새 prop이 아니라 source(data)의 groups로 온다. 숫자는 groupRank(view.ts)가 세고, 여기서는 그린 모양·글자·링크를 본다
 // 기간별 흐름 막대의 90일초진 (first90 REQ-4404 AC-4404.3, design.md 5-9). 모든 칸이 앎이면 통계 일별 내원과 같은 세 갈래·색(trendSeries(true)),
-// 아니면 지금 두 갈래(신환 accent · 재진 chart-3)다. 대시보드 모양·움직임은 그대로다(StackedBarChart에 motion·onPick을 주지 않는다)
+// 아니면 두 갈래(신환 accent · 재진(90일초진 포함) chart-3, 색은 지금 그대로)다. 대시보드 모양·움직임은 그대로다(StackedBarChart에 motion·onPick을 주지 않는다)
 describe('기간별 흐름 — 90일초진 세 갈래 (AC-4404.3)', () => {
   const MONTH_FLOW = flowOf(TODAY, 30, false)
   const trendRootOf = () => chart('환자 수 추이').querySelector('table')!.parentElement!.parentElement!
@@ -850,7 +851,7 @@ describe('기간별 흐름 — 90일초진 세 갈래 (AC-4404.3)', () => {
     )
   })
 
-  it('AC-4404.3: 하루라도 first90이 없으면 지금 두 갈래(신환 accent · 재진 chart-3)·범례 그대로이고, 새 도우미 날의 재진은 returning + 90일초진이다', () => {
+  it('AC-4404.3: 하루라도 first90이 없으면 두 갈래(신환 accent · 재진(90일초진 포함) chart-3)·범례이고, 새 도우미 날의 재진은 returning + 90일초진이다', () => {
     const mixed = [...KNOWN_DAYS, day('2026-10-20', { newPatients: 1, returning: 9 })]
     draw(data(mixed))
     const buckets = flowTrend(mixed, MONTH_FLOW)!
@@ -867,7 +868,7 @@ describe('기간별 흐름 — 90일초진 세 갈래 (AC-4404.3)', () => {
         <ChartLegend
           items={[
             { label: '신환', mark: 'accent' },
-            { label: '재진', mark: 'chart-3' },
+            { label: '재진(90일초진 포함)', mark: 'chart-3' },
           ]}
         />,
       ),
@@ -1629,14 +1630,14 @@ describe('기간 고르기 (dashboard-period)', () => {
   })
 
   describe('그래프 넷이 고른 기간을 따름 (REQ-1802)', () => {
-    it("AC-1802.1·AC-2706.3: 2026년 10월 일별 — 설명 '신환·재진, 하루씩 · 단위 명 · {기간 글}', 자료 있는 날마다 한 칸(칸 7개 넘어 dense), 범례는 신환·재진뿐", async () => {
+    it("AC-1802.1·AC-2706.3: 2026년 10월 일별 — 설명 '신환·재진, 하루씩 · 단위 명 · {기간 글}', 자료 있는 날마다 한 칸(칸 7개 넘어 dense), 범례는 신환·재진(90일초진 포함)뿐(AC-4404.3)", async () => {
       drawNow()
       await pickUnit('일별')
       const buckets = flowTrend(NOW_DAYS, flowOfPick(month('2026-10')))!
       expect(buckets).toHaveLength(26)
       expect(trendRoot().outerHTML).toBe(markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={buckets} dense />))
       expect(chart('환자 수 추이').children[1]!.textContent).toBe('신환·재진, 하루씩 · 단위 명 · 10월 1일 – 31일')
-      expect(legend()).toEqual(['신환', '재진'])
+      expect(legend()).toEqual(['신환', '재진(90일초진 포함)'])
     })
 
     it("AC-1802.1: 기간 안 줄이 없으면 빈 틀 + '자료 없음'이고 눈금은 일별일 때만 있다(8월 일별 7일마다, 주별은 없음)", async () => {
@@ -1664,7 +1665,7 @@ describe('기간 고르기 (dashboard-period)', () => {
           <ChartLegend
             items={[
               { label: '신환', mark: 'accent' },
-              { label: '재진', mark: 'chart-3' },
+              { label: '재진(90일초진 포함)', mark: 'chart-3' },
               { label: '일부 기간', mark: 'hatch' },
             ]}
           />,
@@ -1693,7 +1694,7 @@ describe('기간 고르기 (dashboard-period)', () => {
       expect(buckets.map((b) => b.label)).toEqual(['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'])
       expect(trendRoot().outerHTML).toBe(markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={TREND_SERIES} buckets={buckets} dense />))
       expect(chart('환자 수 추이').children[1]!.textContent).toBe('신환·재진, 한 달씩 · 단위 명 · 1월 1일 – 11월 5일 (어제까지)')
-      expect(legend()).toEqual(['신환', '재진', '일부 기간'])
+      expect(legend()).toEqual(['신환', '재진(90일초진 포함)', '일부 기간'])
     })
 
     it("AC-4404.3: 고른 기간(2026년 10월 주별)도 모든 날에 first90이 있으면 세 갈래 막대이고, 범례는 신환 · 90일초진 · 재진 · '일부 기간'이다", async () => {
@@ -1717,9 +1718,9 @@ describe('기간 고르기 (dashboard-period)', () => {
       )
     })
 
-    it("AC-1802.2: 빠른 단추 범례는 덜 끝난 날이 있어도 지금 그대로(신환·재진)", () => {
+    it("AC-1802.2: 빠른 단추 범례는 덜 끝난 날이 있어도 신환·재진(90일초진 포함)(AC-4404.3)", () => {
       drawNow(source({ days: [...NOW_DAYS, day('2026-10-20', { partial: true })] }))
-      expect(legend()).toEqual(['신환', '재진'])
+      expect(legend()).toEqual(['신환', '재진(90일초진 포함)'])
     })
 
     it("AC-1802.3: 고른 기간 — 7·14·30일 줄 모두 고른 기간의 날로 세고, 값이 없는 날을 뺀 줄 아래에 '온 뒤 N일이 안 된 날의 신환은 빼고 셌어요', '가장 최근 신환' 글은 없다", async () => {

@@ -329,10 +329,10 @@ describe('flowTrend · flowSeries — 90일초진 갈래 (AC-4404.3)', () => {
     ])
   })
 
-  it('AC-4404.3: flowSeries — 하나라도 없거나 기간 안 줄이 없으면 지금 두 갈래(신환 accent · 재진 chart-3) 그대로다', () => {
+  it('AC-4404.3: flowSeries — 하나라도 없거나 기간 안 줄이 없으면 두 갈래이고 둘째 이름은 통계 일별 내원과 같은 "재진(90일초진 포함)"이다(신환 accent · 재진(90일초진 포함) chart-3, 색은 그대로)', () => {
     const now = [
       { name: '신환', tone: 'accent' },
-      { name: '재진', tone: 'chart-3' },
+      { name: '재진(90일초진 포함)', tone: 'chart-3' },
     ]
     expect(flowSeries(OCT_MIXED, flow(month('2026-10', 'week')))).toEqual(now)
     expect(flowSeries([day('2026-11-05')], flow(7))).toEqual(now)

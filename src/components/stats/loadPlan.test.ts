@@ -229,7 +229,7 @@ describe('AC-3302.5 keepAt = 비교 범위를 다 담는 가장 새 조각, 없�
 const REVISIT = { cohort: 5, within7: 1, within14: 2, within30: 3, after30: 1 }
 const UNSURE = { ...REVISIT, after30: null }
 const monthRow = (month: string, revisit: object = REVISIT) => ({ month, partial: false, revisit }) as unknown as MonthPayload
-const dayRow = (day: string, revisit: object = REVISIT) => ({ day, partial: false, revisit }) as unknown as DayPayload
+const dayRow = (day: string, revisit: object = REVISIT, rx: readonly object[] = []) => ({ day, partial: false, revisit, rx }) as unknown as DayPayload
 const sectionRow = (month: string) => ({ v: 1, month, partial: false }) as unknown as MonthSections
 
 function loaded(read: DateRange, extra: Partial<StatsLoaded> = {}): StatsLoaded {
@@ -333,6 +333,61 @@ describe("AC-3302.7 가장 새 조각이 아닌 조각은 '30일 넘어 다시 �
     for (const span of ['view', '2y'] as const) {
       const [only] = planLoad(TODAY, recent30, span).parts
       expect(revisits(partSave(viewFor(only), only))).toEqual([REVISIT, REVISIT, REVISIT, REVISIT])
+    }
+  })
+})
+
+describe('AC-4409.3 가장 새 조각이 아닌 조각은 날 줄 처방 줄의 once(1회 신환)를 뺀다', () => {
+  // 날 줄 처방 줄: once 1 · once 0 · once 없음(이 기능 전 Worker 값과 같은 모양). 달 줄 처방 줄에는 once가 없다
+  const RX = [
+    { code: 'A1', name: '물리치료', type: '급여', patients: 4, newPatients: 2, returning: 2, once: 1 },
+    { code: 'B2', name: '도수치료', type: '비급여', patients: 2, newPatients: 1, returning: 1, once: 0 },
+    { code: 'C3', name: '주사', type: '급여', patients: 1, newPatients: 0, returning: 1 },
+  ]
+  const NO_ONCE = RX.map(({ code, name, type, patients, newPatients, returning }) => ({ code, name, type, patients, newPatients, returning }))
+  const MONTH_RX = [{ code: 'A1', name: '물리치료', type: '급여', patients: 40, newPatients: 20, returning: 20, followup: [10, 5, 3, 2] }]
+  const monthsOf = ({ save }: LoadPart) => [monthOf(save.from), monthOf(save.to)]
+  const daysOf = ({ save }: LoadPart) => [save.from, save.to]
+  const viewFor = (part: LoadPart) =>
+    loaded(part.read, {
+      months: monthsOf(part).map((month) => ({ ...monthRow(month), rx: MONTH_RX }) as unknown as MonthPayload),
+      days: daysOf(part).map((ymd) => dayRow(ymd, REVISIT, RX)),
+    })
+  // 날 줄마다 처방 줄의 once 열쇠가 있는지(toEqual은 undefined 열쇠를 없는 것과 같게 보므로 열쇠를 따로 본다)
+  const onceKeys = (input: ReturnType<typeof partSave>) => input.days.map((row) => row.rx.map((line) => 'once' in line))
+  const WITH_KEYS = [true, true, false]
+  const WITHOUT_KEYS = [false, false, false]
+
+  it('AC-4409.3 최근 30일 + 전체 기간(조각 넷): 첫 조각 날 줄은 once 그대로, 둘째 ~ 넷째 조각 날 줄의 처방 줄에는 once 열쇠가 없고 다른 칸·달 줄 처방 줄은 그대로', () => {
+    const { parts } = planLoad(TODAY, recent30, 'all')
+    expect(parts).toHaveLength(4)
+    parts.forEach((part, i) => {
+      const view = viewFor(part)
+      const saved = partSave(view, part)
+      const revisit = i === 0 ? REVISIT : UNSURE
+      expect(saved.days).toEqual(daysOf(part).map((ymd) => dayRow(ymd, revisit, i === 0 ? RX : NO_ONCE)))
+      expect(onceKeys(saved)).toEqual(i === 0 ? [WITH_KEYS, WITH_KEYS] : [WITHOUT_KEYS, WITHOUT_KEYS])
+      expect(saved.months).toEqual(monthsOf(part).map((month) => ({ ...monthRow(month, revisit), rx: MONTH_RX })))
+      // Worker 답은 바꾸지 않는다
+      expect(view.days!.map((row) => row.rx)).toEqual([RX, RX])
+      expect(view.days!.map((row) => row.rx.map((line) => 'once' in line))).toEqual([WITH_KEYS, WITH_KEYS])
+    })
+  })
+
+  it('AC-4409.3 2025년 8월 일별 + 지금 보는 기간(조각 둘): 둘째(2024-08-01 ~ 11-30) 날 줄은 once 없음, 첫 조각은 그대로', () => {
+    const { parts } = planLoad(TODAY, monthPick('2025-08'), 'view')
+    expect(parts).toHaveLength(2)
+    expect(onceKeys(partSave(viewFor(parts[0]), parts[0]))).toEqual([WITH_KEYS, WITH_KEYS])
+    expect(onceKeys(partSave(viewFor(parts[1]), parts[1]))).toEqual([WITHOUT_KEYS, WITHOUT_KEYS])
+  })
+
+  it('AC-4409.3 조각 하나인 계획(지금 보는 기간 · 최근 2년)은 날 줄 once가 Worker 값 그대로다', () => {
+    for (const span of ['view', '2y'] as const) {
+      const { parts } = planLoad(TODAY, recent30, span)
+      expect(parts).toHaveLength(1)
+      const saved = partSave(viewFor(parts[0]), parts[0])
+      expect(saved.days.map((row) => row.rx)).toEqual([RX, RX])
+      expect(onceKeys(saved)).toEqual([WITH_KEYS, WITH_KEYS])
     }
   })
 })

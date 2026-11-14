@@ -32,10 +32,11 @@ export const QUICK_CHOICE: Record<Period, StatsPeriod> = { 7: '7d', 30: '30d', 9
 const YESTERDAY = ' (어제까지)' // 빠른 단추는 늘 어제에서 끝난다
 const TICK_DAYS = 31 // 고른 기간 일별 눈금: 31일 이하는 7일마다(30일 기간 눈금), 넘으면 21일마다(90일 기간 눈금). 통계 dayBars와 같다
 const DENSE_OVER = 7 // 고른 기간 막대 위 합계는 칸 7개 이하일 때만(빠른 단추는 지금처럼 7일만)
-// 90일초진을 모르는 칸이 있을 때의 환자 수 추이 두 갈래: 지금 이름·색 그대로다(first90 AC-4404.3 '아니면 지금처럼')
+// 90일초진을 모르는 칸이 있을 때의 환자 수 추이 두 갈래(first90 AC-4404.3, 2026-11-15 검토 보완): 색은 지금 그대로이고,
+// 둘째 이름은 통계 일별 내원과 같은 '재진(90일초진 포함)'이다 — 값이 재진 + 90일초진이라 옛 자료와 견줄 때 기준을 이름으로 드러낸다
 const TWO_SERIES: readonly BarSeries[] = [
   { name: '신환', tone: 'accent' },
-  { name: '재진', tone: 'chart-3' },
+  { name: '재진(90일초진 포함)', tone: 'chart-3' },
 ]
 
 const yearOf = (ymd: string) => ymd.slice(0, 4)
@@ -96,7 +97,7 @@ export function flowTrend(days: readonly DayPayload[], flow: Flow): BarBucket[] 
   return base.map((bucket, i) => ({ ...bucket, values: [bucket.values[0]!, first90[i]!.values[0]!, bucket.values[1]!] }))
 }
 
-// 환자 수 추이 계열(표·범례도 같은 계열). 기간 안 모든 줄에 90일초진 수가 있으면 통계 일별 내원과 같은 세 갈래·색, 아니면 지금 두 갈래다(first90 AC-4404.3)
+// 환자 수 추이 계열(표·범례도 같은 계열). 기간 안 모든 줄에 90일초진 수가 있으면 통계 일별 내원과 같은 세 갈래·색, 아니면 두 갈래(TWO_SERIES)다(first90 AC-4404.3)
 export function flowSeries(days: readonly DayPayload[], flow: Flow): BarSeries[] {
   return first90Known(days, flow.current) ? trendSeries(true) : [...TWO_SERIES]
 }
