@@ -296,8 +296,11 @@ test.describe('같은 처방 재방문 개인정보(실제 Supabase)', () => {
     ])
     expect(days.ok(), '날 숫자 저장').toBe(true)
     expect(coverage.ok(), '덮은 기간 저장').toBe(true)
-    await expect(page.getByText(/저장했어요/).first()).toBeVisible(SLOW)
-    await expect(page.getByText(/· 방금/).first()).toBeVisible(SLOW)
+    // 불러오기 띠의 자료 글이 방금 저장한 숫자로 바뀐다(stats-pc-ux AC-4001.6: 끝 글이 '…까지'로 짧아져 '저장했어요'가 없다)
+    await expect(page.getByText(/저장 · 방금/).first()).toBeVisible(SLOW)
+
+    // 처방 골라 보기(같은 처방 재방문 포함)는 처방 칸 셋째 탭이다(stats-pc-ux AC-4003.2): 고르지 않은 탭 안은 숨어 있어 먼저 고른다
+    await page.getByRole('tab', { name: '처방 골라 보기', exact: true }).click()
 
     // 처방 하나를 고른다. 고르기 전에는 날 수 단추가 없다(AC-1307.2)
     const search = page.getByRole('combobox', { name: '처방 찾기' })
@@ -364,6 +367,8 @@ test.describe('같은 처방 재방문 개인정보(실제 Supabase)', () => {
     // 새 페이지로 다시 열면 고른 날 수가 남지 않고 7일 안이다(AC-1309.2)
     const again = await context.newPage()
     await again.goto('/stats')
+    // 다시 열면 처방 칸은 첫 탭이다(stats-pc-ux AC-4003.7)
+    await again.getByRole('tab', { name: '처방 골라 보기', exact: true }).click()
     await expect(winGroup(again)).toBeVisible(SLOW)
     await expect(winButton(again, '7일 안')).toHaveAttribute('aria-pressed', 'true')
     await expect(winButton(again, '14일 안')).toHaveAttribute('aria-pressed', 'false')

@@ -222,10 +222,12 @@ test.describe('처방별 추세 개인정보(실제 Supabase)', () => {
       ])
       expect(dayResponse.ok(), '날 숫자 저장').toBe(true)
       expect(coverage.ok(), '덮은 기간 저장').toBe(true)
-      await expect(page.getByText(/저장했어요/).first()).toBeVisible(SLOW)
+      // 불러오기 띠의 자료 글이 방금 저장한 숫자로 바뀐다(stats-pc-ux AC-4001.6: 끝 글이 '…까지'로 짧아져 '저장했어요'가 없다)
+      await expect(page.getByText(/저장 · 방금/).first()).toBeVisible(SLOW)
     }
 
-    // 1) 처음 넣기: 저장된 숫자가 생겨 [묶음 고치기]가 나오고, 찾기 목록에 파일의 처방이 든다
+    // 1) 처음 넣기: 저장된 숫자가 생겨 [묶음 고치기]가 나오고, 찾기 목록에 파일의 처방이 든다.
+    //    묶음별 추세는 처방 칸 첫 탭이라 처음부터 보인다(stats-pc-ux AC-4003.2)
     await upload()
 
     // 2) 묶음 고치기: 첫 묶음에 처방 A를 넣고, 새 묶음(TEST_GROUP)을 만들어 처방 B를 넣고,
@@ -234,7 +236,8 @@ test.describe('처방별 추세 개인정보(실제 Supabase)', () => {
     await expect(edit).toBeVisible(SLOW)
     await expect(edit).not.toHaveAttribute('aria-disabled', 'true', SLOW)
     await edit.click()
-    const editHeading = page.getByRole('heading', { name: '처방별 추세 · 묶음 고치기' })
+    // 고치기 제목은 첫 탭 안 h3다(stats-pc-ux AC-4003.6)
+    const editHeading = page.getByRole('heading', { name: '묶음별 추세 · 묶음 고치기', level: 3 })
     await expect(editHeading).toBeVisible(SLOW)
 
     // 찾기 칸(넣는 처방·빼는 처방·조건 처방, 화면에 하나만 열림)에서 코드를 고른다

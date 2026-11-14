@@ -17,6 +17,7 @@ import type { ReportData } from './sections/ReportSection'
 import { StatsSections } from './sections/StatsSections'
 import { readFiles, SourcePicker, type FileFailure, type FileIncomplete, type StatsJob } from './SourcePicker'
 import { useStatsData, type SavedLatest, type StatsData } from './useStatsData'
+import { StatsToc } from './StatsToc'
 import { useStatsRxGroups } from './useStatsRxGroups'
 import { errorCodeOf, useStatsWorker } from './useStatsWorker'
 import { DEFAULT_STATS_PERIOD, rangeOf, type CompareRange, type StatsPeriod, type StatsRange } from './view'
@@ -35,15 +36,13 @@ const NOT_SAVED = '일부 기록을 확인하지 못해 저장하지 않았어�
 const QUICK_CAPTION = '빠르게 보기'
 const UNIT_NAME = { day: '일별', week: '주별', month: '월별' } as const
 
-// 기다리는 칸은 StatsSections와 같은 자리다
+// 기다리는 칸은 StatsSections와 같은 자리다. 처방 세 칸은 한 칸 `처방`이다(stats-pc-ux AC-4003.1). 목차 id는 없다(AC-4002.6)
 const SIDE = 'lg:border-l lg:border-line lg:pl-6'
 const WAITING: { title: string; place: string }[] = [
   { title: '기간 요약', place: 'col-span-12' },
   { title: '환자 수 추이', place: 'col-span-12 lg:col-span-8' },
   { title: '신환 재방문율', place: `col-span-12 lg:col-span-4 ${SIDE}` },
-  { title: '처방별 추세', place: 'col-span-12' },
-  { title: '처방별 신환·재진', place: 'col-span-12' },
-  { title: '처방 골라 보기', place: 'col-span-12' },
+  { title: '처방', place: 'col-span-12' },
   { title: '원장님 보고 문장', place: 'col-span-12 lg:col-span-7' },
   { title: '요일별 환자 수', place: `col-span-12 lg:col-span-5 ${SIDE}` },
   { title: '환자 구성', place: 'col-span-12' },
@@ -469,6 +468,8 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
         <RangeText range={range} choice={choice} todayDone={todayDone} />
       </div>
 
+      {/* 목차 띠(stats-pc-ux AC-4002.1): 칸을 그릴 때만, 기간 줄 바로 다음. 이 바깥 div의 바로 아래 자식이어야 끝까지 붙는다(작은 div 안이면 그 div가 끝날 때 떨어진다) */}
+      {showSections && <StatsToc range={range} lastDay={lastDayOf(today, todayDone)} />}
       {waiting && <WaitingSections />}
       {/* 읽는 동안에도 내려놓지 않는다: 기간을 바꿔도 열어 둔 [자세히]·처방 줄이 열린 채 새 숫자로 그려진다(시안 §5) */}
       {drawn !== null && (
