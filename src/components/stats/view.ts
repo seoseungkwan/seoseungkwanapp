@@ -66,7 +66,22 @@ export type StatsRateCell = { kind: 'rate'; value: number; within: number; cohor
 export type FirstRevisitKey = 'within7' | 'days8to14' | 'days15to30' | 'after30' | 'never' | 'after30OrNever'
 export type FirstRevisit = { from: string; to: string; cohort: number; items: { key: FirstRevisitKey; label: string; count: number }[] }
 
-export type RevisitRates = { d7: StatsRateCell; d14: StatsRateCell; d30: StatsRateCell; d30Cohort: DateRange | null; firstRevisit: FirstRevisit | null }
+// spans = 줄마다 실제로 센 날(센 칸의 처음 ~ 끝, 12개월은 달 첫날 ~ 끝날). 비율이 아닌 줄(집계 중·자료 없음)은 null이다(first90 AC-4412.3 '대상: … 에 온 신환')
+export type RevisitSpans = { d7: DateRange | null; d14: DateRange | null; d30: DateRange | null }
+export type RevisitRates = {
+  d7: StatsRateCell
+  d14: StatsRateCell
+  d30: StatsRateCell
+  d30Cohort: DateRange | null
+  firstRevisit: FirstRevisit | null
+  spans: RevisitSpans
+}
+
+// 일별 내원 칸 (first90 AC-4412.2). known = 보는 기간 모든 날에 first90이 있음 → 칸 값 [신환, 90일초진, 재진], 아니면 [신환, 재진(90일초진 포함)]
+export type VisitTrend = { buckets: BarBucket[]; known: boolean }
+// 내원 구성 도넛 (first90 AC-4412.1). share = 누적 내원 대비 %, 소수 첫째 자리 아래 버림. known이 아니면 신환 · 재진(90일초진 포함) 두 조각이다
+export type VisitSlice = { key: 'new' | 'first90' | 'returning'; name: string; tone: 'accent' | 'f90' | 'ret'; value: number; share: number }
+export type VisitMix = { total: number; known: boolean; slices: VisitSlice[] }
 
 // 고른 기간의 작년 비교 하나(바로 전은 comparable·delta). previous null = 견줄 수 없음(delta unavailable)
 export type YearCompare = { previous: number | null; delta: Delta }
@@ -348,6 +363,50 @@ export function patientTrend(input: StatsInput): BarBucket[] | null {
   }))
 }
 
+// 줄의 신환·재진 값만 바꾼다(칸·상태 셈은 patientTrend 그대로 빌린다, 대시보드 flow.ts와 같은 방법)
+const withCounts = (input: StatsInput, counts: (totals: DayPayload['totals']) => { newPatients: number; returning: number }): StatsInput => ({
+  ...input,
+  days: input.days.map((row) => ({ ...row, totals: { ...row.totals, ...counts(row.totals) } })),
+})
+
+// 일별 내원 (first90 AC-4412.2). 칸·글·상태·빈 칸은 patientTrend 그대로이고 값만 세 갈래(또는 90일초진을 재진에 되돌린 두 갈래)다.
+// 빈 칸(blank)은 patientTrend가 값 0으로 두므로 세 갈래도 [0, 0, 0]이다. 보는 기간에 줄이 없으면 null
+export function visitTrend(input: StatsInput): VisitTrend | null {
+  const known = knowsFirst90(input)
+  if (!known) {
+    const buckets = patientTrend(withCounts(input, (t) => ({ newPatients: t.newPatients, returning: t.returning + (t.first90 ?? 0) })))
+    return buckets === null ? null : { buckets, known }
+  }
+  const base = patientTrend(input)
+  const first90 = patientTrend(withCounts(input, (t) => ({ newPatients: t.first90 ?? 0, returning: 0 })))
+  if (base === null || first90 === null) return null
+  return { known, buckets: base.map((bucket, i) => ({ ...bucket, values: [bucket.values[0] ?? 0, first90[i]?.values[0] ?? 0, bucket.values[1] ?? 0] })) }
+}
+
+const shareOf = (value: number, total: number) => (total === 0 ? 0 : Math.floor((value * 1000) / total) / 10)
+
+// 내원 구성 (first90 AC-4412.1): 보는 기간 일 줄의 누적 내원(같은 분이 여러 번 오면 여러 건). 줄이 없으면 null
+export function visitMix(input: StatsInput): VisitMix | null {
+  const rows = rowsIn(input.days, input.range.current)
+  if (rows.length === 0) return null
+  const known = knowsFirst90(input)
+  const newPatients = sum(rows, (row) => row.totals.newPatients)
+  const first90 = sum(rows, (row) => row.totals.first90 ?? 0)
+  const returning = sum(rows, (row) => row.totals.returning) + (known ? 0 : first90)
+  const parts: Omit<VisitSlice, 'share'>[] = known
+    ? [
+        { key: 'new', name: '신환', tone: 'accent', value: newPatients },
+        { key: 'first90', name: '90일초진', tone: 'f90', value: first90 },
+        { key: 'returning', name: '재진', tone: 'ret', value: returning },
+      ]
+    : [
+        { key: 'new', name: '신환', tone: 'accent', value: newPatients },
+        { key: 'returning', name: '재진', tone: 'ret', value: returning },
+      ]
+  const total = sum(parts, (part) => part.value)
+  return { total, known, slices: parts.map((part) => ({ ...part, share: shareOf(part.value, total) })) }
+}
+
 // 고른 기간의 막대(AC-1704.3). 칸을 모두 만든다: 일별은 날마다(휴진한 날 = 줄 없고 덮은 날만 칸 없음), 주별은 월–일을 기간으로 자름,
 // 월별은 달마다(해 고르기는 1월~12월). 자료 없는 칸은 blank 'no-data'(0이 아니다), 해 고르기의 앞으로 올 달은 blank 'future'다. 기간에 줄이 없으면 null
 function pickTrend({ days, covered, range }: StatsInput): BarBucket[] | null {
@@ -478,17 +537,28 @@ function firstRevisitOf(units: readonly RevisitUnit[]): FirstRevisit | null {
   }
 }
 
+// 비율 줄이 실제로 센 칸의 처음 ~ 끝(비율이 아니면 null)
+function spanOf(units: readonly RevisitUnit[], key: RevisitKey, cell: StatsRateCell): DateRange | null {
+  if (cell.kind !== 'rate') return null
+  const counted = countedUnits(units, key)
+  return { from: counted[0]!.from, to: counted[counted.length - 1]!.to }
+}
+
 // '30d'의 날은 모두 온 지 30일이 안 되어 늘 집계 중이므로, 30일 줄과 첫 재방문까지 날수만 finishedCohort의 날로 센다
 export function revisitRates({ days, range }: StatsInput): RevisitRates {
   const units = revisitUnits(rowsIn(days, range.current), range.grain)
   const units30 = range.finishedCohort === null ? units : revisitUnits(rowsIn(days, range.finishedCohort), range.grain)
   const firstRevisit = firstRevisitOf(units30)
+  const d7 = rateOf(units, 'within7')
+  const d14 = rateOf(units, 'within14')
+  const d30 = rateOf(units30, 'within30')
   return {
-    d7: rateOf(units, 'within7'),
-    d14: rateOf(units, 'within14'),
-    d30: rateOf(units30, 'within30'),
+    d7,
+    d14,
+    d30,
     d30Cohort: range.finishedCohort !== null && firstRevisit !== null ? { from: firstRevisit.from, to: firstRevisit.to } : null,
     firstRevisit,
+    spans: { d7: spanOf(units, 'within7', d7), d14: spanOf(units, 'within14', d14), d30: spanOf(units30, 'within30', d30) },
   }
 }
 

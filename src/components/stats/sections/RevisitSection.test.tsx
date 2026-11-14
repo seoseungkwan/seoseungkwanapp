@@ -5,11 +5,16 @@ import type { StatsPick } from '@/components/stats/periodPick'
 import { rangeOf, statsRange, type StatsInput, type StatsPeriod } from '@/components/stats/view'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload } from '@/types/payload'
+import { StatsCard } from './parts'
 import { RevisitSection } from './RevisitSection'
 
-// 신환 재방문율 + 첫 재방문까지 날수 (stats REQ-513 AC-513.1·513.3·513.4·513.10, 시안 notes.md §3). 가짜 일 줄은 이 파일 안에서만 만든다
+// 신환 재방문율 + 첫 재방문까지 날수 (stats REQ-513 AC-513.1·513.3·513.4·513.10, first90 REQ-4412 AC-4412.3, REQ-4417 AC-4417.2,
+// 시안 docs/mockups/first90/redesign.html .s-rates·.s-why). 가짜 일 줄은 이 파일 안에서만 만든다
 
 const TODAY = '2026-11-13'
+const DESC = '처음 온 환자가 온 다음 날부터 그 날수 안에 다시 온 비율'
+const WHY = '세 비율은 대상 신환이 서로 달라요. 온 뒤 그 날수가 다 지난 신환만 세기 때문이에요.'
+const WHY_END = '그래서 30일 비율이 14일보다 낮게 나올 수 있어요. 같은 신환끼리 보면 30일 비율은 14일보다 낮을 수 없어요.'
 
 type Numbers = [cohort: number, within7: number | null, within14: number | null, within30?: number | null, after30?: number | null]
 function day(ymd: string, [cohort, within7, within14, within30 = null, after30 = null]: Numbers): DayPayload {
@@ -31,8 +36,12 @@ const inputOf = (days: DayPayload[], period: StatsPeriod, covered: DateRange[] =
 })
 // 줄(이름으로 찾은 li)
 const row = (name: string) => screen.getByText(name).closest('li')!
-// h3 "첫 재방문까지 날수" 바로 아래 글
-const firstNote = () => screen.getByRole('heading', { level: 3, name: '첫 재방문까지 날수' }).nextElementSibling!.textContent
+// 셀 수 있는 줄의 글 셋: 인원 · 대상 기간 · 관찰 기준
+const rateTexts = (name: string) => Array.from(row(name).querySelectorAll('p:not(:first-child), p > span')).map((el) => el.textContent)
+// 첫 재방문까지 날수 접는 칸(details)과 그 안 첫 글
+const foldOf = () => screen.getByText('첫 재방문까지 날수').closest('details')!
+const firstNote = () => foldOf().querySelector('summary')!.nextElementSibling!.textContent
+const why = () => screen.queryByText((_, el) => el?.tagName === 'P' && (el.textContent ?? '').startsWith(WHY))
 
 afterEach(cleanup)
 
@@ -45,18 +54,23 @@ const DAYS_30 = [
   day('2026-11-10', [10, null, null]),
 ]
 
-describe('AC-513.10: 최근 30일', () => {
-  it('AC-513.10: 30일 줄은 "집계 중" 대신 비율과 날짜 caption이다({N} = cohort, {K} = within)', () => {
+describe('AC-513.10·AC-4412.3: 최근 30일', () => {
+  it('AC-513.10·AC-4412.3: 30일 줄은 "집계 중" 대신 비율 · "신환 {대상}명 중 {다시 온}명" · 대상 기간(finishedCohort 안 센 날) · 관찰 기준이다', () => {
     render(<RevisitSection input={inputOf(DAYS_30, '30d')} saved />)
     const line = row('30일 안에 다시 옴')
     expect(line.textContent).toContain('50.0%')
     expect(line.textContent).not.toContain('집계 중')
-    expect(within(line).getByText('9월 15일 – 10월 12일에 온 신환 50명 가운데 25명 · 온 뒤 30일이 지난 가장 최근 신환이에요')).toBeTruthy()
+    expect(within(line).getByText('신환 50명 중 25명')).toBeTruthy()
+    expect(within(line).getByText('대상: 9월 15일 – 10월 12일에 온 신환')).toBeTruthy()
+    expect(within(line).getByText('온 뒤 30일이 다 지난 신환만 셌어요')).toBeTruthy()
   })
 
-  it('AC-513.10: 30일 줄에는 뺀 칸이 있어도 "…빼고 셌어요"를 붙이지 않는다', () => {
+  it('AC-513.10·AC-4412.3: 줄에는 "…빼고 셌어요"·"가운데" 옛 글이 없다', () => {
     render(<RevisitSection input={inputOf(DAYS_30, '30d')} saved />)
-    expect(row('30일 안에 다시 옴').textContent).not.toContain('빼고 셌어요')
+    for (const name of ['7일 안에 다시 옴', '14일 안에 다시 옴', '30일 안에 다시 옴']) {
+      expect(row(name).textContent, name).not.toContain('빼고 셌어요')
+      expect(row(name).textContent, name).not.toContain('가운데')
+    }
   })
 
   it('AC-513.10: 첫 재방문까지 날수의 기준 줄은 같은 날짜를 쓴다', () => {
@@ -64,27 +78,28 @@ describe('AC-513.10: 최근 30일', () => {
     expect(screen.getByText('9월 15일 – 10월 12일에 온 신환 50명 기준 (온 뒤 30일이 지난 날만)')).toBeTruthy()
   })
 
-  it('AC-513.10: 7·14일 줄은 고른 기간 그대로이고 뺀 날이 있으면 "…빼고 셌어요"다', () => {
+  it('AC-513.10·AC-4412.3: 7·14일 줄은 보는 기간에서 그 값이 숫자인 날만 세고 대상 기간이 그 날이다', () => {
     render(<RevisitSection input={inputOf(DAYS_30, '30d')} saved />)
-    expect(within(row('7일 안에 다시 옴')).getByText('신환 10명 가운데 3명 · 온 뒤 7일이 안 된 날의 신환은 빼고 셌어요')).toBeTruthy()
+    expect(rateTexts('7일 안에 다시 옴')).toEqual(['신환 10명 중 3명', '대상: 11월 2일 – 11월 2일에 온 신환온 뒤 7일이 다 지난 신환만 셌어요', '대상: 11월 2일 – 11월 2일에 온 신환', '온 뒤 7일이 다 지난 신환만 셌어요'])
     expect(row('7일 안에 다시 옴').textContent).toContain('30.0%')
-    expect(within(row('14일 안에 다시 옴')).getByText('신환 10명 가운데 4명 · 온 뒤 14일이 안 된 날의 신환은 빼고 셌어요')).toBeTruthy()
+    expect(within(row('14일 안에 다시 옴')).getByText('신환 10명 중 4명')).toBeTruthy()
+    expect(within(row('14일 안에 다시 옴')).getByText('온 뒤 14일이 다 지난 신환만 셌어요')).toBeTruthy()
   })
 
-  it('AC-513.10: 7·14일 줄은 뺀 날이 없으면 caption이 "신환 N명 가운데 K명"뿐이다', () => {
+  it('AC-513.10·AC-4412.3: 센 날이 여럿이면 대상 기간은 첫 센 날 – 끝 센 날이다', () => {
     render(<RevisitSection input={inputOf([day('2026-11-02', [10, 3, 4]), day('2026-11-05', [10, 2, 5])], '30d')} saved />)
-    expect(within(row('7일 안에 다시 옴')).getByText('신환 20명 가운데 5명')).toBeTruthy()
-    expect(within(row('14일 안에 다시 옴')).getByText('신환 20명 가운데 9명')).toBeTruthy()
-    expect(row('7일 안에 다시 옴').textContent).not.toContain('빼고 셌어요')
-    expect(row('14일 안에 다시 옴').textContent).not.toContain('빼고 셌어요')
+    expect(within(row('7일 안에 다시 옴')).getByText('신환 20명 중 5명')).toBeTruthy()
+    expect(within(row('14일 안에 다시 옴')).getByText('신환 20명 중 9명')).toBeTruthy()
+    expect(within(row('7일 안에 다시 옴')).getByText('대상: 11월 2일 – 11월 5일에 온 신환')).toBeTruthy()
   })
 
-  it('AC-513.10: 최근 90일·12개월도 뺀 칸이 없으면 "…빼고 셌어요"가 없다', () => {
+  it('AC-513.10·AC-4412.3: 최근 90일·12개월도 같은 모양이고 12개월은 달로 쓴다', () => {
     const { unmount } = render(<RevisitSection input={inputOf([day('2026-09-15', [20, 5, 8, 10, 2])], '90d')} saved />)
-    expect(within(row('30일 안에 다시 옴')).getByText('신환 20명 가운데 10명')).toBeTruthy()
+    expect(within(row('30일 안에 다시 옴')).getByText('신환 20명 중 10명')).toBeTruthy()
     unmount()
     render(<RevisitSection input={inputOf([day('2026-01-10', [20, 5, 8, 10, 2])], '12m')} saved />)
-    expect(within(row('7일 안에 다시 옴')).getByText('신환 20명 가운데 5명')).toBeTruthy()
+    expect(within(row('7일 안에 다시 옴')).getByText('신환 20명 중 5명')).toBeTruthy()
+    expect(within(row('7일 안에 다시 옴')).getByText('대상: 2026년 1월 – 2026년 1월에 온 신환')).toBeTruthy()
   })
 
   it('AC-513.10: 30일 줄이 비율이 아니면 목업의 "집계 중"이다', () => {
@@ -111,9 +126,10 @@ describe('AC-513.10: 최근 30일', () => {
     expect(firstNote()).toBe('집계 중 · 신환이 온 뒤 30일이 지나야 날수를 셀 수 있어요. 최근 90일이나 최근 12개월에서 볼 수 있어요.')
   })
 
-  it('AC-513.10: 최근 90일은 고른 기간으로 세고 날짜 caption을 쓰지 않는다', () => {
+  it('AC-513.10·AC-4412.3: 최근 90일은 보는 기간으로 세고 30일 줄의 대상은 그 값이 숫자인 날이다', () => {
     render(<RevisitSection input={inputOf([day('2026-09-15', [20, 5, 8, 10, 2]), day('2026-11-10', [10, 3, 4])], '90d')} saved />)
-    expect(within(row('30일 안에 다시 옴')).getByText('신환 20명 가운데 10명 · 온 뒤 30일이 안 된 날의 신환은 빼고 셌어요')).toBeTruthy()
+    expect(within(row('30일 안에 다시 옴')).getByText('신환 20명 중 10명')).toBeTruthy()
+    expect(within(row('30일 안에 다시 옴')).getByText('대상: 9월 15일 – 9월 15일에 온 신환')).toBeTruthy()
     expect(screen.getByText('9월 15일 – 9월 15일에 온 신환 20명 기준 (온 뒤 30일이 지난 날만)')).toBeTruthy()
   })
 
@@ -123,24 +139,33 @@ describe('AC-513.10: 최근 30일', () => {
     expect(firstNote()).toBe('집계 중 · 신환이 온 뒤 30일이 지나야 날수를 셀 수 있어요.')
   })
 
-  it('AC-513.10: 12개월은 달 단위 글이다', () => {
+  it('AC-513.10·AC-4412.3: 12개월은 달 단위 글이다', () => {
     render(
       <RevisitSection
         input={inputOf([day('2026-01-10', [20, 5, 8, 10, 2]), day('2026-09-10', [30, 6, 9, 15, 3]), day('2026-11-02', [10, null, null])], '12m')}
         saved
       />,
     )
-    expect(within(row('7일 안에 다시 옴')).getByText('신환 50명 가운데 11명 · 온 뒤 7일이 안 된 달의 신환은 빼고 셌어요')).toBeTruthy()
+    expect(within(row('7일 안에 다시 옴')).getByText('신환 50명 중 11명')).toBeTruthy()
+    expect(within(row('7일 안에 다시 옴')).getByText('대상: 2026년 1월 – 2026년 9월에 온 신환')).toBeTruthy()
     expect(screen.getByText('2026년 1월 – 2026년 9월에 온 신환 50명 기준 (온 뒤 30일이 지난 달만)')).toBeTruthy()
   })
 })
 
-describe('AC-513.1: 신환 재방문율 짜임', () => {
-  it('AC-513.1: h2 + 옆 설명 + 줄 셋 + h3 "첫 재방문까지 날수"다', () => {
+describe('AC-513.1·AC-4412.3: 신환 재방문율 짜임', () => {
+  it('AC-513.1·AC-4412.3: h2 + 옆 글 "처음 온 환자가 온 다음 날부터 그 날수 안에 다시 온 비율" + 줄 셋 + 접는 칸 "첫 재방문까지 날수"다', () => {
     render(<RevisitSection input={inputOf(DAYS_30, '30d')} saved />)
     expect(screen.getByRole('heading', { level: 2, name: '신환 재방문율' })).toBeTruthy()
-    expect(screen.getByText('처음 온 환자가 다시 온 비율')).toBeTruthy()
-    expect(screen.getByRole('heading', { level: 3, name: '첫 재방문까지 날수' })).toBeTruthy()
+    expect(screen.getByText(DESC)).toBeTruthy()
+    expect(screen.queryByRole('heading', { level: 3 })).toBeNull()
+    expect(foldOf().querySelector('summary')!.textContent).toBe('첫 재방문까지 날수')
+  })
+
+  it('AC-4412.3: 줄 셋의 이름은 "7일 안에 다시 옴" · "14일 안에 다시 옴" · "30일 안에 다시 옴"이고 1100px가 아니라 768px부터 세 칸이다', () => {
+    render(<RevisitSection input={inputOf(DAYS_30, '30d')} saved />)
+    const list = row('7일 안에 다시 옴').parentElement!
+    expect(Array.from(list.children).map((li) => li.firstElementChild!.textContent)).toEqual(['7일 안에 다시 옴', '14일 안에 다시 옴', '30일 안에 다시 옴'])
+    expect(list.className.split(' ')).toEqual(expect.arrayContaining(['grid', 'grid-cols-3', 'max-md:grid-cols-1']))
   })
 
   it('AC-513.1: 줄 셋의 목록에는 점이 없다(시안, list-none)', () => {
@@ -158,9 +183,69 @@ describe('AC-513.1: 신환 재방문율 짜임', () => {
     expect(row('30일 안에 다시 옴').querySelector('[aria-hidden="true"]')).not.toBeNull()
   })
 
+  it('AC-4417.2: 비율 막대 폭은 기간을 바꾸면 300ms 바뀐다(st-move-period)', () => {
+    render(<RevisitSection input={inputOf(DAYS_30, '30d')} saved />)
+    expect(row('30일 안에 다시 옴').querySelector('.bg-accent')!.className).toContain('st-move-period')
+  })
+
   it('AC-513.1: 집계 중 줄에는 막대가 없다', () => {
     render(<RevisitSection input={inputOf([day('2026-11-10', [10, null, null])], '7d')} saved />)
     expect(row('7일 안에 다시 옴').querySelector('.bg-accent')).toBeNull()
+  })
+
+  it('AC-4412.3: 환자 카드 안에서는 h3다', () => {
+    render(
+      <StatsCard title="환자">
+        <RevisitSection input={inputOf(DAYS_30, '30d')} saved />
+      </StatsCard>,
+    )
+    expect(screen.getByRole('heading', { level: 3, name: '신환 재방문율' })).toBeTruthy()
+  })
+
+  describe('AC-4412.3: 줄 아래 까닭 단락', () => {
+    it('AC-4412.3: 최근 30일에 셀 수 있는 줄이 셋이면 까닭 + 30일 문장(그 앞 30일 날짜) + 끝 문장이다', () => {
+      render(<RevisitSection input={inputOf(DAYS_30, '30d')} saved />)
+      expect(why()!.textContent).toBe(`${WHY} 30일은 최근 30일 신환이 아직 30일이 안 지나서 그 앞 30일(9월 15일 – 10월 12일)에 온 신환을 셌어요. ${WHY_END}`)
+      const list = row('7일 안에 다시 옴').parentElement!
+      expect(list.nextElementSibling).toBe(why())
+    })
+
+    it('AC-4412.3: 최근 30일이 아니면 30일 문장이 없다', () => {
+      render(<RevisitSection input={inputOf([day('2026-09-15', [20, 5, 8, 10, 2]), day('2026-11-02', [10, 3, 4])], '90d')} saved />)
+      expect(why()!.textContent).toBe(`${WHY} ${WHY_END}`)
+    })
+
+    it('AC-4412.3: 셀 수 있는 줄이 둘이면 단락이 있고(30일 줄이 집계 중이면 30일 문장 없음), 하나면 없다', () => {
+      render(<RevisitSection input={inputOf([day('2026-11-02', [10, 3, 4])], '30d')} saved />)
+      expect(why()!.textContent).toBe(`${WHY} ${WHY_END}`)
+      cleanup()
+      render(<RevisitSection input={inputOf([day('2026-11-02', [10, 3, null])], '30d')} saved />)
+      expect(why()).toBeNull()
+      cleanup()
+      render(<RevisitSection input={inputOf([day('2026-11-10', [10, null, null])], '7d')} saved />)
+      expect(why()).toBeNull()
+    })
+
+    it('AC-4412.3: 단락은 옅은 바탕의 작은 칸이고 테두리 상자가 아니다', () => {
+      render(<RevisitSection input={inputOf(DAYS_30, '30d')} saved />)
+      expect(why()!.className.split(' ')).toEqual(expect.arrayContaining(['rounded-st-sm', 'bg-st-canvas', 'text-small', 'text-st-ink-2']))
+      expect(why()!.className.split(' ')).not.toContain('border')
+    })
+  })
+
+  describe('AC-4412.3: 첫 재방문까지 날수 접는 칸', () => {
+    it('AC-4412.3: 처음 닫혀 있고 안 내용(기준 줄 · 목록)은 지금 그대로다', () => {
+      render(<RevisitSection input={inputOf(DAYS_30, '30d')} saved />)
+      const fold = foldOf()
+      expect(fold.open).toBe(false)
+      expect(firstNote()).toBe('9월 15일 – 10월 12일에 온 신환 50명 기준 (온 뒤 30일이 지난 날만)')
+      expect(fold.contains(screen.getByRole('list', { name: '첫 재방문까지 날수' }))).toBe(true)
+    })
+
+    it('AC-4412.3: 접는 칸은 까닭 단락 다음이다', () => {
+      render(<RevisitSection input={inputOf(DAYS_30, '30d')} saved />)
+      expect(why()!.nextElementSibling).toBe(foldOf())
+    })
   })
 
   describe('첫 재방문까지 날수 목록', () => {
@@ -234,12 +319,13 @@ describe('AC-513.3: 신환 재방문율 [자세히]', () => {
     ])
   })
 
-  it('AC-513.3·AC-4004.2: 표는 줄과 첫 재방문까지 날수 아래, 안내 글을 접은 "어떻게 세나요?" 칸 바로 뒤에 열린다', () => {
+  it('AC-513.3·AC-4004.2·AC-4412.3: 표는 줄과 첫 재방문까지 날수 아래, 안내 글을 접은 "어떻게 세나요?" 칸이 든 접는 칸 바로 뒤에 열린다', () => {
     render(<RevisitSection input={inputOf(DAYS_30, '30d')} saved />)
     fireEvent.click(screen.getByRole('button', { name: '자세히' }))
     const button = screen.getByRole('button', { name: '접기' })
     const panel = document.getElementById(button.getAttribute('aria-controls')!)!
     const fold = panel.previousElementSibling!
+    expect(fold).toBe(foldOf())
     expect(fold.contains(screen.getByRole('button', { name: '어떻게 세나요?' }))).toBe(true)
     expect(fold.textContent).toContain("'30일 넘어 다시 옴'은")
     expect(panel.parentElement!.lastElementChild).toBe(panel)
@@ -294,11 +380,12 @@ describe('AC-3306.2: 합친 넷의 첫 재방문까지 날수', () => {
     expect(widths()).toEqual(['100%', '10%', '50%', '40%'])
   })
 
-  it("AC-3306.2: '30일 넘어 다시 옴'은 불러온 자료 끝날… 안내가 없다", () => {
+  it("AC-3306.2·AC-4412.3: '30일 넘어 다시 옴'은 불러온 자료 끝날… 안내가 없다(목록이 접는 칸의 끝이고 그 뒤가 [자세히] 표 자리다)", () => {
     render(<RevisitSection input={inputOf(MERGED_30, '30d')} saved />)
     expect(screen.queryByText(/'30일 넘어 다시 옴'은 불러온 자료 끝날/)).toBeNull()
-    // 목록 바로 뒤가 [자세히] 표 자리다(안내 줄이 끼지 않는다)
-    expect(list().nextElementSibling!.id).toBe(screen.getByRole('button', { name: '자세히' }).getAttribute('aria-controls'))
+    expect(list().nextElementSibling).toBeNull()
+    expect(list().parentElement).toBe(foldOf())
+    expect(foldOf().nextElementSibling!.id).toBe(screen.getByRole('button', { name: '자세히' }).getAttribute('aria-controls'))
   })
 
   it('AC-3306.2: [자세히] 표의 첫 재방문 줄도 넷이다', () => {
@@ -318,12 +405,13 @@ describe('AC-3306.2: 합친 넷의 첫 재방문까지 날수', () => {
 })
 
 describe('AC-513.4: 신환 재방문율 빈 상태', () => {
-  it('AC-513.4: 저장된 숫자가 없으면 줄·[자세히] 없이 시안 문구다', () => {
+  it('AC-513.4·AC-4412.3: 저장된 숫자가 없으면 줄·[자세히] 없이 시안 문구다', () => {
     render(<RevisitSection input={inputOf([], '30d', [])} saved={false} />)
     expect(screen.getByText('자료 없음').parentElement!.textContent).toBe('자료 없음 · 불러오면 처음 온 환자가 7·14·30일 안에 다시 온 비율이 보여요.')
     expect(screen.queryByRole('button')).toBeNull()
     expect(screen.queryByRole('heading', { level: 3 })).toBeNull()
-    expect(screen.queryByText('처음 온 환자가 다시 온 비율')).toBeNull()
+    expect(screen.queryByText(DESC)).toBeNull()
+    expect(screen.queryByText('첫 재방문까지 날수')).toBeNull()
   })
 
   it('AC-513.4: 저장된 숫자는 있는데 이 기간 자료가 없으면 그 문구다(비교 기간에만 줄이 있어도)', () => {
@@ -356,12 +444,13 @@ describe('AC-4004.2 ④: 신환 재방문율 끝날 안내는 "어떻게 세나�
     expect(howBody().hidden).toBe(true)
   })
 
-  it('AC-4004.2: 접는 칸은 첫 재방문 목록 바로 아래, [자세히] 칸 바로 앞이다(지금 안내 자리)', () => {
+  it('AC-4004.2·AC-4412.3: 접는 칸은 첫 재방문 목록 바로 아래(첫 재방문 접는 칸의 끝)이고 그 뒤가 [자세히] 칸이다', () => {
     render(<RevisitSection input={inputOf(DAYS_30, '30d')} saved />)
     const fold = howButton().parentElement!
     expect(fold.contains(howBody())).toBe(true)
     expect(list().nextElementSibling).toBe(fold)
-    expect(fold.nextElementSibling!.id).toBe(screen.getByRole('button', { name: '자세히' }).getAttribute('aria-controls'))
+    expect(fold.nextElementSibling).toBeNull()
+    expect(foldOf().nextElementSibling!.id).toBe(screen.getByRole('button', { name: '자세히' }).getAttribute('aria-controls'))
   })
 
   it("AC-4004.2: '30일 넘어 다시 옴' 줄이 없으면(합친 넷) 넣을 글이 없어 접는 칸도 없다", () => {
@@ -385,15 +474,15 @@ describe('AC-1704.4·AC-1704.5: 고른 기간의 신환 재방문율', () => {
   const OCT: StatsPick = { kind: 'month', unit: 'day', month: '2026-10' }
   const pickOf = (days: DayPayload[]): StatsInput => ({ days, covered: [{ from: '2025-01-01', to: '2026-11-05' }], range: rangeOf('2026-11-06', OCT, false) })
 
-  it('AC-1704.4: 설명 끝에 " · {name}"이 붙는다', () => {
+  it('AC-1704.4·AC-4412.3: 설명 끝에 " · {name}"이 붙는다', () => {
     render(<RevisitSection input={pickOf([day('2026-10-05', [2, 1, 1])])} saved />)
-    expect(screen.getByText('처음 온 환자가 다시 온 비율 · 2026년 10월')).toBeTruthy()
+    expect(screen.getByText(`${DESC} · 2026년 10월`)).toBeTruthy()
   })
 
-  it('AC-1704.5: current 날만 센다(바로 전 9월 줄은 넣지 않는다)', () => {
+  it('AC-1704.5·AC-4412.3: current 날만 센다(바로 전 9월 줄은 넣지 않는다)', () => {
     render(<RevisitSection input={pickOf([day('2026-09-07', [2, 2, 2]), day('2026-10-05', [2, 1, 1])])} saved />)
     expect(row('7일 안에 다시 옴').textContent).toContain('50.0%')
-    expect(row('7일 안에 다시 옴').textContent).toContain('신환 2명 가운데 1명')
+    expect(row('7일 안에 다시 옴').textContent).toContain('신환 2명 중 1명')
   })
 
   it('AC-1704.5: current에 줄이 없으면 지금처럼 "불러온 숫자에 이 기간 자료가 없어요."다', () => {
@@ -401,8 +490,9 @@ describe('AC-1704.4·AC-1704.5: 고른 기간의 신환 재방문율', () => {
     expect(screen.getByText('자료 없음').parentElement!.textContent).toBe('자료 없음 · 불러온 숫자에 이 기간 자료가 없어요.')
   })
 
-  it('AC-1704.5: 빼고 센 칸의 글은 "날"이다(고른 기간은 일 칸)', () => {
+  it('AC-1704.5·AC-4412.3: 그 날수가 안 지난 날은 대상 기간에 들지 않는다(고른 기간은 일 칸)', () => {
     render(<RevisitSection input={pickOf([day('2026-10-05', [2, 1, 1]), day('2026-10-30', [2, null, null])])} saved />)
-    expect(row('7일 안에 다시 옴').textContent).toContain('온 뒤 7일이 안 된 날의 신환은 빼고 셌어요')
+    expect(within(row('7일 안에 다시 옴')).getByText('대상: 10월 5일 – 10월 5일에 온 신환')).toBeTruthy()
+    expect(within(row('7일 안에 다시 옴')).getByText('온 뒤 7일이 다 지난 신환만 셌어요')).toBeTruthy()
   })
 })

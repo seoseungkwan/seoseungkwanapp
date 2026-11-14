@@ -711,10 +711,9 @@ function ruleBreaks(token: string): string[] {
 const breaksIn = (classes: string) => tokens(classes).flatMap((t) => ruleBreaks(t).map((why) => `${t} (${why})`))
 // 규칙 예외(ui-90 AC-405.3, UI_GUIDE '움직임 › 불러오기 줄'): 불러오기 줄 한 파일의 700ms·감속 곡선 두 클래스뿐이다. 다른 파일의 같은 클래스는 그대로 잡는다
 const LOAD_BAR_FILE = 'src/components/shell/LoadBar.tsx'
-// 규칙 예외(stats-pc-ux AC-4006.2, UI_GUIDE '칸·폭'): 통계 환자 구성 세 열의 1280px 경계(min-[80rem]:) 클래스들뿐이다. 다른 파일·다른 경계는 그대로 잡는다
+// 환자 구성 칸(first90 AC-4412.4): 탭으로 바뀌어 1280px 경계(min-[80rem]:) 예외를 없앴다. 이제 다른 통계 화면 파일과 같은 경계 넷만 쓴다
 const PATIENT_MIX_FILE = 'src/components/stats/sections/PatientMixSection.tsx'
-const WIDE_1280 = ['min-[80rem]:grid-cols-3', 'min-[80rem]:row-span-1', 'min-[80rem]:col-start-3', 'min-[80rem]:row-start-1', 'min-[80rem]:pt-0']
-const RULE_EXCEPTIONS: Readonly<Record<string, readonly string[]>> = { [LOAD_BAR_FILE]: ['duration-700', 'ease-out'], [PATIENT_MIX_FILE]: WIDE_1280 }
+const RULE_EXCEPTIONS: Readonly<Record<string, readonly string[]>> = { [LOAD_BAR_FILE]: ['duration-700', 'ease-out'] }
 
 // 규칙 예외(first90 REQ-4416 AC-4416.2, design.md 5-2, UI_GUIDE '통계 화면(first90)'): 통계 화면 파일만 아래 클래스를 쓴다.
 // 파일: src/components/stats/**·src/components/revenue/**(시험 빼고)와 통계 화면 차트 넷(범례 포함). 굵기 600 넘음·그라데이션·animate-*·transition-*은 여기서도 잡는다(AC-4416.3)
@@ -765,7 +764,7 @@ describe('AC-204.6: 규칙 — 간격 단계·토큰 모서리·그림자·글�
     expect(breaksIn(dsAt(key)), key).toEqual([])
   })
 
-  it('AC-204.6·AC-405.3·AC-4006.2·AC-4416.2: 검사 목록 파일의 클래스 글자가 규칙을 지킨다(불러오기 줄 한 파일의 두 클래스 · 환자 구성 한 파일의 1280px 경계 클래스 · 통계 화면 파일의 st 이름·경계 넷만 예외)', () => {
+  it('AC-204.6·AC-405.3·AC-4412.4·AC-4416.2: 검사 목록 파일의 클래스 글자가 규칙을 지킨다(불러오기 줄 한 파일의 두 클래스 · 통계 화면 파일의 st 이름·경계 넷만 예외)', () => {
     for (const file of ruleFiles()) {
       expect(
         stringPieces(file).flatMap((piece) => fileBreaksIn(file, piece)),
@@ -909,10 +908,9 @@ describe('AC-313.2: 규칙 — 짧은 반응 밖의 움직임(transition-*·dura
 
 // ── ui-90 AC-405.3 불러오기 줄 예외: 700ms·감속 곡선은 LoadBar.tsx 한 파일에서만 통과한다(UI_GUIDE '움직임 › 불러오기 줄')
 describe('AC-405.3: 규칙 — 불러오기 줄 예외는 LoadBar.tsx 한 파일 × duration-700·ease-out 두 클래스뿐이다', () => {
-  it('AC-405.3·AC-4006.2: 움직임 예외는 파일 하나(LoadBar.tsx) × 클래스 둘이고(나머지 예외는 환자 구성 1280px 경계 하나뿐), 그 파일이 있고 검사 목록에 든다', () => {
+  it('AC-405.3·AC-4412.4: 예외는 파일 하나(LoadBar.tsx) × 클래스 둘뿐이고(환자 구성 1280px 경계 예외는 없앴다), 그 파일이 있고 검사 목록에 든다', () => {
     expect(RULE_EXCEPTIONS).toEqual({
       'src/components/shell/LoadBar.tsx': ['duration-700', 'ease-out'],
-      'src/components/stats/sections/PatientMixSection.tsx': WIDE_1280,
     })
     expect(existsSync(join(ROOT, LOAD_BAR_FILE))).toBe(true)
     expect(ruleFiles()).toContain(LOAD_BAR_FILE)
@@ -951,50 +949,35 @@ describe('AC-405.3: 규칙 — 불러오기 줄 예외는 LoadBar.tsx 한 파일
   })
 })
 
-// ── stats-pc-ux AC-4006.2 환자 구성 1280px 경계 예외 (requirements.md 기본값 12, design.md '배치', UI_GUIDE '칸·폭'):
-// 1024~1279px 두 열 → 1280px 이상 세 열로 되돌리는 min-[80rem]: 클래스는 PatientMixSection.tsx 한 파일에서만 통과한다
-describe('AC-4006.2: 규칙 — 1280px 경계 예외는 PatientMixSection.tsx 한 파일 × min-[80rem]: 클래스뿐이다', () => {
-  it('AC-4006.2: 예외 클래스는 모두 min-[80rem]: 경계이고, 그 파일이 있고 검사 목록에 든다', () => {
-    expect(WIDE_1280.length).toBeGreaterThan(0)
-    for (const cls of WIDE_1280) expect(parseClass(cls).variants, cls).toEqual(['min-[80rem]'])
+// ── first90 AC-4412.4 환자 구성 탭 (requirements.md REQ-4412, design.md 5-2 'WIDE_1280 없앰'):
+// 세 열 → 탭으로 바뀌어 1280px 경계(min-[80rem]:) 예외가 없다. 환자 구성도 다른 통계 화면 파일처럼 경계 넷만 쓴다
+describe('AC-4412.4·AC-4416.2: 규칙 — 환자 구성 1280px 경계 예외는 없다', () => {
+  it('AC-4412.4: PatientMixSection.tsx가 있고 검사 목록에 들며 예외 목록에 없다', () => {
     expect(existsSync(join(ROOT, PATIENT_MIX_FILE))).toBe(true)
     expect(ruleFiles()).toContain(PATIENT_MIX_FILE)
+    expect(Object.keys(RULE_EXCEPTIONS)).not.toContain(PATIENT_MIX_FILE)
   })
 
-  it('AC-4006.2: PatientMixSection.tsx는 예외 클래스를 모두 실제로 쓴다(쓰지 않는 예외를 남기지 않는다)', () => {
+  it('AC-4412.4: PatientMixSection.tsx는 min-[80rem]: 경계를 쓰지 않는다', () => {
     const used = stringPieces(PATIENT_MIX_FILE).flatMap(tokens)
-    for (const cls of WIDE_1280) expect(used, cls).toContain(cls)
+    expect(used.filter((t) => parseClass(t).variants.includes('min-[80rem]'))).toEqual([])
   })
 
-  it('AC-4006.2: 예외 클래스는 규칙 자체로는 여전히 화면 폭 접두사 밖이다', () => {
-    for (const cls of WIDE_1280) expect(ruleBreaks(cls), cls).toContain('화면 폭 접두사 min-[80rem]:')
-  })
-
-  it.each(['src/components/stats/sections/DoctorsSection.tsx', 'src/components/stats/StatsScreen.tsx', 'src/components/shell/LoadBar.tsx', 'src/components/claim/x.tsx'])(
-    'AC-4006.2: 다른 파일(%s)의 min-[80rem]: 클래스는 그대로 잡는다',
+  it.each(['src/components/stats/sections/PatientMixSection.tsx', 'src/components/stats/sections/DoctorsSection.tsx', 'src/components/stats/StatsScreen.tsx', 'src/components/claim/x.tsx'])(
+    'AC-4412.4: %s의 min-[80rem]: 클래스는 잡는다',
     (file) => {
       expect(fileBreaksIn(file, 'min-[80rem]:grid-cols-3')).toEqual(['min-[80rem]:grid-cols-3 (화면 폭 접두사 min-[80rem]:)'])
     },
   )
 
-  it('AC-4006.2: PatientMixSection.tsx에서도 예외 목록 밖의 화면 폭 접두사(다른 경계·다른 클래스)는 잡는다', () => {
-    expect(fileBreaksIn(PATIENT_MIX_FILE, WIDE_1280.join(' '))).toEqual([])
-    for (const bad of ['xl:grid-cols-3', 'min-[80rem]:hidden', 'min-[1280px]:grid-cols-3', 'min-[90rem]:grid-cols-3', 'max-[80rem]:grid-cols-2', 'sm:grid-cols-2']) {
-      expect(fileBreaksIn(PATIENT_MIX_FILE, bad).length, bad).toBeGreaterThan(0)
-    }
-  })
-
-  it('AC-4006.2·AC-4416.2: 검사 목록 파일 가운데 min-[…]:·max-[…]: 경계를 쓰는 곳은 PatientMixSection.tsx와 통계 화면 파일뿐이고, 통계 화면 파일은 경계 넷(min-[1100px]·min-[1200px]·max-[1200px]·max-[380px])만 쓴다', () => {
+  it('AC-4412.4·AC-4416.2: 검사 목록 파일 가운데 min-[…]:·max-[…]: 경계를 쓰는 곳은 통계 화면 파일뿐이고 경계 넷(min-[1100px]·min-[1200px]·max-[1200px]·max-[380px])만 쓴다', () => {
     const bracketsOf = (file: string) =>
       stringPieces(file)
         .flatMap(tokens)
         .flatMap((t) => parseClass(t).variants.filter((v) => /^(?:min|max)-\[/.test(v)))
     const users = ruleFiles().filter((file) => bracketsOf(file).length > 0)
-    expect(users).toContain(PATIENT_MIX_FILE)
-    expect(users.filter((file) => file !== PATIENT_MIX_FILE && !isStatsScreenFile(file))).toEqual([])
-    for (const file of users.filter((f) => f !== PATIENT_MIX_FILE)) {
-      expect(bracketsOf(file).filter((v) => !STATS_SCREENS.includes(v)), file).toEqual([])
-    }
+    expect(users.filter((file) => !isStatsScreenFile(file))).toEqual([])
+    for (const file of users) expect(bracketsOf(file).filter((v) => !STATS_SCREENS.includes(v)), file).toEqual([])
   })
 })
 

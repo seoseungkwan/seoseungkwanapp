@@ -27,6 +27,8 @@ import {
   statsRange,
   summaryCells,
   summaryDesc,
+  visitMix,
+  visitTrend,
   weekdayBars,
   type StatsInput,
   type StatsPeriod,
@@ -1966,5 +1968,163 @@ describe('AC-1705.4 rxDetail — 고른 기간의 그래프 칸은 range.bucket,
     expect(rxDetail(pickInput(OCT, days, THREE), 'A').current).toHaveLength(31)
     const year = rxDetail(pickInput({ kind: 'year', year: '2025' }, [], [{ from: '2024-01-01', to: '2025-12-31' }]), 'A')
     expect(year.current.map((p) => p.start.slice(0, 7))).toEqual(monthsFrom('2025-01', 12))
+  })
+})
+
+// ── first90 REQ-4412 환자 카드 셈 (design.md 5-0 'view.ts(visitMix·재방문 대상 기간)'). 숫자는 모두 지어낸 것이다 ──
+describe('AC-4412.1·AC-4412.2·AC-4412.3 환자 카드 셈', () => {
+  const today = '2026-11-13'
+  // 도우미 v4 날(first90 있음): returning에는 90일초진이 빠져 있다
+  const v4 = (ymd: string, newPatients: number, first90: number, returning: number, o: DayOptions = {}): DayPayload => ({
+    ...day(ymd, { ...o, newPatients, returning }),
+    totals: { patients: newPatients + first90 + returning, newPatients, returning, unknown: 0, first90 },
+  })
+  // 옛 도우미(v3)·파일 날: first90 열쇠가 없고 returning에 90일초진이 들어 있다
+  const old = (ymd: string, newPatients: number, returning: number) => day(ymd, { newPatients, returning })
+  const WHOLE: DateRange[] = [{ from: '2024-12-01', to: '2026-11-12' }]
+
+  describe('AC-4412.2 visitTrend — 일별 내원 칸', () => {
+    it('AC-4412.2 모든 날에 first90이 있으면 known이고 칸 값은 [신환, 90일초진, 재진]이다(칸·상태는 patientTrend 그대로)', () => {
+      const rows = [v4('2026-11-10', 2, 3, 15), v4('2026-11-12', 4, 1, 20, { partial: true })]
+      const trend = visitTrend(input(today, '30d', rows, WHOLE))!
+      expect(trend.known).toBe(true)
+      expect(trend.buckets.map((b) => b.values)).toEqual([
+        [2, 3, 15],
+        [4, 1, 20],
+      ])
+      const base = patientTrend(input(today, '30d', rows, WHOLE))!
+      expect(trend.buckets.map(({ key, label, rangeLabel, state }) => ({ key, label, rangeLabel, state }))).toEqual(
+        base.map(({ key, label, rangeLabel, state }) => ({ key, label, rangeLabel, state })),
+      )
+    })
+
+    it('AC-4412.2 하루라도 first90이 없으면 두 갈래이고 재진 = returning + (first90 ?? 0)이다', () => {
+      const rows = [v4('2026-11-10', 2, 3, 15), old('2026-11-11', 1, 9)]
+      const trend = visitTrend(input(today, '30d', rows, WHOLE))!
+      expect(trend.known).toBe(false)
+      expect(trend.buckets.map((b) => b.values)).toEqual([
+        [2, 18],
+        [1, 9],
+      ])
+    })
+
+    it('AC-4412.2 보는 기간 밖 옛 날은 상관없다(비교 기간에만 옛 날)', () => {
+      const trend = visitTrend(input(today, '7d', [old('2026-11-01', 1, 9), v4('2026-11-10', 2, 3, 15)], WHOLE))!
+      expect(trend.known).toBe(true)
+      expect(trend.buckets.map((b) => b.values)).toEqual([[2, 3, 15]])
+    })
+
+    it('AC-4412.2 12개월 달 칸은 그 달 일 줄의 합이다', () => {
+      const rows = [v4('2026-08-01', 1, 2, 3), v4('2026-08-02', 1, 1, 4), v4('2026-10-05', 2, 0, 5)]
+      const trend = visitTrend(input(today, '12m', rows, [{ from: '2026-08-01', to: '2026-10-31' }]))!
+      expect(trend.known).toBe(true)
+      expect(trend.buckets.map((b) => [b.key, b.values])).toEqual([
+        ['2026-08', [2, 3, 7]],
+        ['2026-10', [2, 0, 5]],
+      ])
+    })
+
+    it('AC-4412.2 고른 기간 주별의 자료 없는 칸(blank)은 그대로이고 값은 세 갈래 0이다', () => {
+      const rows = [v4('2026-10-01', 2, 1, 7), v4('2026-10-06', 3, 2, 5)]
+      const trend = visitTrend(pickInput(OCT_WEEK, rows, [{ from: '2026-10-01', to: '2026-10-25' }]))!
+      expect(trend.buckets.map((b) => [b.key, b.blank ?? null, b.values])).toEqual([
+        ['2026-10-01', null, [2, 1, 7]],
+        ['2026-10-05', null, [3, 2, 5]],
+        ['2026-10-12', 'no-data', [0, 0, 0]],
+        ['2026-10-19', 'no-data', [0, 0, 0]],
+        ['2026-10-26', 'no-data', [0, 0, 0]],
+      ])
+    })
+
+    it('AC-4412.2 보는 기간에 줄이 없으면 null이다', () => {
+      expect(visitTrend(input(today, '30d', [], WHOLE))).toBeNull()
+    })
+  })
+
+  describe('AC-4412.1 visitMix — 내원 구성', () => {
+    it('AC-4412.1 모든 날에 first90이 있으면 세 갈래이고 누적 내원은 세 값의 합, 비율은 소수 첫째 자리 아래 버림이다', () => {
+      const mix = visitMix(input(today, '30d', [v4('2026-11-02', 100, 93, 900), v4('2026-11-10', 138, 200, 977)], WHOLE))!
+      expect(mix).toEqual({
+        total: 2408,
+        known: true,
+        slices: [
+          { key: 'new', name: '신환', tone: 'accent', value: 238, share: 9.8 },
+          { key: 'first90', name: '90일초진', tone: 'f90', value: 293, share: 12.1 },
+          { key: 'returning', name: '재진', tone: 'ret', value: 1877, share: 77.9 },
+        ],
+      })
+    })
+
+    it('AC-4412.1 하루라도 first90이 없으면 두 갈래 "신환" · "재진"이고 재진 = returning + (first90 ?? 0)이다', () => {
+      const mix = visitMix(input(today, '30d', [v4('2026-11-02', 100, 93, 900), old('2026-11-10', 138, 1177)], WHOLE))!
+      expect(mix).toEqual({
+        total: 2408,
+        known: false,
+        slices: [
+          { key: 'new', name: '신환', tone: 'accent', value: 238, share: 9.8 },
+          { key: 'returning', name: '재진', tone: 'ret', value: 2170, share: 90.1 },
+        ],
+      })
+    })
+
+    it('AC-4412.1 반올림하지 않고 버린다(2/3 → 66.6)', () => {
+      const mix = visitMix(input(today, '30d', [v4('2026-11-02', 2, 0, 1)], WHOLE))!
+      expect(mix.slices.map((slice) => slice.share)).toEqual([66.6, 0, 33.3])
+    })
+
+    it('AC-4412.1 보는 기간 날만 센다(비교 기간 날은 넣지 않는다)', () => {
+      const mix = visitMix(input(today, '7d', [v4('2026-11-01', 50, 50, 50), v4('2026-11-10', 1, 2, 3)], WHOLE))!
+      expect(mix.total).toBe(6)
+    })
+
+    it('AC-4412.1 합이 0이면 비율은 0이고, 줄이 없으면 null이다', () => {
+      expect(visitMix(input(today, '30d', [v4('2026-11-02', 0, 0, 0)], WHOLE))!.slices.map((slice) => slice.share)).toEqual([0, 0, 0])
+      expect(visitMix(input(today, '30d', [], WHOLE))).toBeNull()
+    })
+  })
+
+  describe('AC-4412.3 revisitRates spans — 줄마다 실제로 센 날', () => {
+    const counted = (cohort: number, within7: number | null, within14: number | null, within30: number | null = null): Partial<RevisitPayload> => ({
+      cohort,
+      within7,
+      within14,
+      within30,
+      after30: within30 === null ? null : 0,
+    })
+
+    it('AC-4412.3 최근 30일: 7·14일은 그 값이 숫자인 날의 처음 ~ 끝, 30일은 finishedCohort 안 센 날(d30Cohort와 같다)이다', () => {
+      const days = [
+        day('2026-09-15', { revisit: counted(20, 5, 8, 10) }),
+        day('2026-10-12', { revisit: counted(30, 6, 9, 15) }),
+        day('2026-10-15', { revisit: counted(4, 1, 2) }),
+        day('2026-10-29', { revisit: counted(4, 1, 2) }),
+        day('2026-11-05', { revisit: counted(4, 1, null) }),
+        day('2026-11-10', { revisit: counted(4, null, null) }),
+      ]
+      const result = revisitRates(input(today, '30d', days, []))
+      expect(result.spans).toEqual({
+        d7: { from: '2026-10-15', to: '2026-11-05' },
+        d14: { from: '2026-10-15', to: '2026-10-29' },
+        d30: { from: '2026-09-15', to: '2026-10-12' },
+      })
+      expect(result.spans.d30).toEqual(result.d30Cohort)
+    })
+
+    it('AC-4412.3 12개월은 센 달의 첫날 ~ 끝날이다', () => {
+      const days = [
+        day('2026-01-10', { revisit: counted(20, 5, 8, 10) }),
+        day('2026-09-10', { revisit: counted(30, 6, 9, 15) }),
+        day('2026-11-02', { revisit: counted(10, null, null) }),
+      ]
+      const { spans } = revisitRates(input(today, '12m', days, []))
+      expect(spans.d7).toEqual({ from: '2026-01-01', to: '2026-09-30' })
+      expect(spans.d30).toEqual({ from: '2026-01-01', to: '2026-09-30' })
+    })
+
+    it('AC-4412.3 셀 수 없는 줄(집계 중·자료 없음)은 null이다', () => {
+      const { spans } = revisitRates(input(today, '7d', [day('2026-11-10', { revisit: counted(4, null, null) })], []))
+      expect(spans).toEqual({ d7: null, d14: null, d30: null })
+      expect(revisitRates(input(today, '7d', [], [])).spans).toEqual({ d7: null, d14: null, d30: null })
+    })
   })
 })
