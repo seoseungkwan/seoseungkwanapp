@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { addDays, addMonths, monthOf } from '@/lib/analytics/dates'
 import { validateDayPayload, validateMonthPayload, validateMonthSections } from '@/lib/payload/validate'
+import type { Totals } from '@/types/analysis'
 import type {
   BitSectionsView,
   RxSplitView,
@@ -1601,5 +1602,83 @@ describe('AC-3304.1 keep: false면 Worker 메모리를 바꾸지 않는다(나�
     await loadInto(failed.host, 'b', helperJson({ v: 1 }), { ...B, keep: false })
     expect(failed.sent.map((m) => m.type)).toEqual(['loaded', 'failed'])
     expect(failed.host.memory()?.range).toEqual(A)
+  })
+})
+
+// ── v4 답(first90): v3 답 + 접수 줄 다섯째 칸(그 환자·날의 90일초진 접수 수) ──
+// 1번 환자가 10/5에 다시 온 접수가 90일초진이다. 2번 환자의 9/1(첫 내원일) 줄에도 1을 두어 신환 쪽으로 세는지 본다. 숫자는 모두 지어낸 값이다
+const V4_LINES = receptionsOf(ROWS).map(([person, day, receptions, first]) => [
+  person,
+  day,
+  receptions,
+  first,
+  (person === CHARTS[0] && day === '20261005') || (person === CHARTS[1] && day === '20260901') ? 1 : 0,
+])
+const v4Json = () => v3Json({ v: 4, patientDays: V4_LINES })
+const totalsOn = (view: StatsLoaded, day: string) => dayOf(view, day)?.totals
+
+describe('AC-4402.2·AC-4402.4 loadJob: v4 답이면 날·달 저장 줄에 first90', () => {
+  it('AC-4402.2·AC-4402.4: 날 줄 totals에 first90(첫 내원일 줄은 빼고), 재진은 그만큼 준다', () => {
+    const { view } = loadJob(v4Json(), OPTS)
+    expect(totalsOn(view, '2026-09-01')).toEqual({ patients: 2, newPatients: 2, first90: 0, returning: 0, unknown: 0 })
+    expect(totalsOn(view, '2026-10-05')).toEqual({ patients: 1, newPatients: 0, first90: 1, returning: 0, unknown: 0 })
+    expect(totalsOn(view, TODAY)).toEqual({ patients: 1, newPatients: 0, first90: 0, returning: 1, unknown: 0 })
+  })
+
+  it('AC-4402.4: 달 줄 totals의 first90은 그 달 날 줄의 합이고, 날·달 줄 모두 저장 검사를 지난다', () => {
+    const { view } = loadJob(v4Json(), OPTS)
+    expect(monthIn(view, '2026-09')?.totals).toEqual({ patients: 5, newPatients: 5, first90: 0, returning: 0, unknown: 0 })
+    expect(monthIn(view, '2026-10')?.totals).toEqual({ patients: 1, newPatients: 0, first90: 1, returning: 0, unknown: 0 })
+    for (const month of view.months ?? []) expect(validateMonthPayload(JSON.parse(JSON.stringify(month)))).toEqual(month)
+    for (const day of view.days ?? []) expect(validateDayPayload(JSON.parse(JSON.stringify(day)))).toEqual(day)
+  })
+
+  it('AC-4402.2: first90 말고는 v3 답과 같다(재진에 90일초진을 더하면 v3 값)', () => {
+    const v3 = loadJob(v3Json(), OPTS).view
+    const v4 = loadJob(v4Json(), OPTS).view
+    const folded = <T extends { totals: Totals }>(line: T): T => {
+      const { first90 = 0, ...totals } = line.totals
+      return { ...line, totals: { ...totals, returning: totals.returning + first90 } }
+    }
+    expect({ ...v4, days: v4.days?.map(folded), months: v4.months?.map(folded) }).toEqual(v3)
+    expectNoPatientData(v4)
+  })
+
+  it('AC-4402.3: v2·v3 답의 날·달 저장 줄 totals에는 first90 열쇠가 없다', () => {
+    for (const text of [helperJson(), v3Json()]) {
+      const { view } = loadJob(text, OPTS)
+      for (const line of [...(view.days ?? []), ...(view.months ?? [])]) expect(Object.keys(line.totals).sort()).toEqual(['newPatients', 'patients', 'returning', 'unknown'])
+    }
+  })
+
+  it('AC-4402.1: Worker 메모리(BitMemory)에 답의 판이 남는다', () => {
+    expect(loadJob(helperJson(), OPTS).bit.v).toBe(2)
+    expect(loadJob(v3Json(), OPTS).bit.v).toBe(3)
+    expect(loadJob(v4Json(), OPTS).bit.v).toBe(4)
+  })
+})
+
+describe('AC-4409.1·AC-4409.2 loadJob: 날 저장 줄 처방마다 once', () => {
+  it('AC-4409.1·AC-4409.2: 첫 내원일 처방을 그날만 받은 신환 수. 1번 환자는 10/5에 MM042를 또 받아 9/1에서 빠진다', () => {
+    const { view } = loadJob(helperJson(), OPTS)
+    const onceOn = (day: string) => dayOf(view, day)?.rx.map((x) => [x.code, x.newPatients, x.once])
+    expect(onceOn('2026-09-01')).toEqual([['MM042', 2, 1]])
+    expect(onceOn('2026-09-02')).toEqual([
+      ['B4001', 1, 1],
+      ['MM042', 1, 1],
+    ])
+    expect(onceOn('2026-10-05')).toEqual([['MM042', 0, 0]])
+  })
+
+  it('AC-4409.2: 옛 도우미(v2)·v3·v4 답 모두 같은 once다(Worker가 진료 줄로 센다). 달 줄 처방에는 once가 없다', () => {
+    const onceLists = (text: string) => {
+      const { view } = loadJob(text, OPTS)
+      for (const month of view.months ?? []) for (const x of month.rx) expect('once' in x).toBe(false)
+      return (view.days ?? []).map((day) => day.rx.map((x) => x.once))
+    }
+    const v2 = onceLists(helperJson())
+    expect(v2.flat().every((n) => typeof n === 'number')).toBe(true)
+    expect(onceLists(v3Json())).toEqual(v2)
+    expect(onceLists(v4Json())).toEqual(v2)
   })
 })

@@ -20,6 +20,7 @@ import { diffDays, monthOf, monthRange, weekRange, weekStartOf } from './dates'
 // 환자 수(totals)는 접수 기준이라 주·달 칸은 일 칸의 합이다 — 한 달에 다섯 번 온 사람은 5다(AC-501.6).
 // 줄은 한 번만 훑으며 그 날의 세 칸에 같이 넣는다. rxCode·region은 숫자 번호로 바꿔 Map 열쇠로 쓴다
 // 같은 처방 재방문(again)은 일 칸에만 있다: 처방·환자마다 받은 날을 모아 두었다가 다 훑은 뒤 센다. 칸에는 처방별 몇 명·몇 번뿐이다
+// 1회 신환(처방 줄 once)도 일 칸에만 있고 같은 모음(처방·환자마다 받은 날)으로 센다(spec first90 AC-4409.1)
 // 묶음(groups)도 모은 뒤 판단한다: 빼는 처방·조건 처방은 그날 어느 줄에든 있을 수 있어서다(spec group-exclude 셈 규칙)
 
 export const NO_ADDRESS = '주소 없음'
@@ -67,6 +68,7 @@ type BucketAcc = {
   revisit: RevisitCounts
   totals: Totals // 일 칸은 그날 값, 주·달 칸은 일 칸의 합. 줄을 다 훑은 뒤 채운다
   again: Map<number, AgainAcc> // 처방 번호 → 그날 시작한 환자 수와 창 숫자. 일 칸만 쓴다
+  once: Map<number, number> // 처방 번호 → 그날 1회 신환 수. 일 칸만 쓴다
 }
 
 // 글자 → 0, 1, 2…(처음 나온 순서). 칸마다 글자 열쇠를 찾지 않게
@@ -142,6 +144,7 @@ function bucketIn(buckets: Map<string, BucketAcc>, key: string, rangeOf: (key: s
       revisit: { cohort: 0, within7: 0, within14: 0, within30: 0, after30: 0 },
       totals: { patients: 0, newPatients: 0, returning: 0, unknown: 0 },
       again: new Map(),
+      once: new Map(),
     }
     buckets.set(key, bucket)
   }
@@ -230,14 +233,18 @@ function addVisits(totals: Totals, visit: Map<number, number>): void {
   }
 }
 
+// first90은 일 칸에 있을 때만 더한다. v4 접수 줄이면 모든 일 칸에 있고 아니면 어느 일 칸에도 없어서,
+// 주·달 칸에는 모든 일 칸에 있을 때만 생긴다(AC-4402.2)
 function addTotals(into: Totals, day: Totals): void {
   into.patients += day.patients
   into.newPatients += day.newPatients
   into.returning += day.returning
   into.unknown += day.unknown
+  if (day.first90 !== undefined) into.first90 = (into.first90 ?? 0) + day.first90
 }
 
 // patientDays(도우미 길의 접수 줄)가 있으면 일 칸 totals는 접수대로 세고 처방 없는 날의 칸도 만들며, 재방문도 접수를 본다.
+// 접수 줄 모두에 first90이 있으면(도우미 v4) 일 칸 totals에 90일초진(first90)을 따로 센다. 하나라도 없으면(v2·v3) 열쇠가 없다.
 // 없으면(파일 길) 일 칸 totals는 줄 표시로 센다. 어느 쪽이든 칸의 visit·rx·groups·regions에는 접수 줄을 쓰지 않는다
 export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] = [], patientDays?: readonly PatientDay[]): Aggregates {
   const buckets: Record<Grain, Map<string, BucketAcc>> = { day: new Map(), week: new Map(), month: new Map() }
@@ -373,17 +380,23 @@ export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] 
     }
   }
 
-  for (const { patient, date, receptions, firstVisit } of patientDays ?? []) {
+  const withFirst90 = patientDays !== undefined && patientDays.length > 0 && patientDays.every((line) => line.first90 !== undefined)
+  for (const { patient, date, receptions, firstVisit, first90 = 0 } of patientDays ?? []) {
     const [day] = trioOf(date)
     day.totals.patients += receptions
     if (firstVisit) day.totals.newPatients++
+    else if (withFirst90) day.totals.first90 = (day.totals.first90 ?? 0) + first90 // 첫 내원일의 90일초진 접수는 신환 쪽이다(신환 우선)
     noteVisit(patient, date, firstVisit)
   }
 
-  // 일 칸 totals를 마무리하고 주·달 칸에 더한다. 날짜마다 한 번이라 일 칸도 한 번씩이다
+  // 일 칸 totals를 마무리하고 주·달 칸에 더한다. 날짜마다 한 번이라 일 칸도 한 번씩이다.
+  // v4면 재진 = 접수 − 신환 − 90일초진(unknown은 도우미 길에서 늘 0)
   for (const [day, week, month] of bucketsOfDate.values()) {
     if (patientDays === undefined) addVisits(day.totals, day.visit)
-    else day.totals.returning = day.totals.patients - day.totals.newPatients
+    else {
+      if (withFirst90) day.totals.first90 = day.totals.first90 ?? 0 // 90일초진을 셀 줄이 없는 날도 0
+      day.totals.returning = day.totals.patients - day.totals.newPatients - (day.totals.first90 ?? 0)
+    }
     addTotals(week.totals, day.totals)
     addTotals(month.totals, day.totals)
   }
@@ -423,6 +436,16 @@ export function aggregate(rows: ConsumptionRow[], groups: readonly RxGroupDef[] 
     }
   }
 
+  // 1회 신환: 처방·환자마다 받은 서로 다른 날(불러온 자료 전체)이 하루뿐이고 그날 표시가 신환이면 그날 일 칸의 그 처방에 1.
+  // 같은 날 두 줄은 하루이고, 다른 처방·다른 진료로 다시 온 것은 상관없다. 그날 표시는 위에서 이미 정했다
+  for (const [rx, byPatient] of rxDays) {
+    for (const [patient, days] of byPatient) {
+      if (days.length !== 1) continue
+      const [day] = days
+      if (day.rx.get(rx)?.visit.get(patient) === NEW) day.once.set(rx, (day.once.get(rx) ?? 0) + 1)
+    }
+  }
+
   const finish = (grain: Grain): BucketStats[] =>
     [...buckets[grain].values()]
       .sort((a, b) => compareText(a.key, b.key))
@@ -444,13 +467,13 @@ function countPatients(days: Map<number, number>, visit: Map<number, number>) {
   return { patients: days.size, newPatients, returning, followup }
 }
 
-// 센 것 → 화면용 숫자. 환자 번호는 여기서 버린다(몇 명인지만 남긴다)
+// 센 것 → 화면용 숫자. 환자 번호는 여기서 버린다(몇 명인지만 남긴다). isDay = 일 칸(again·처방 줄 once를 싣는다)
 function toStats(
   bucket: BucketAcc,
   rxCodes: readonly string[],
   regionNames: readonly string[],
   groups: readonly RxGroupDef[],
-  withAgain: boolean,
+  isDay: boolean,
 ): BucketStats {
   const rx: RxStats[] = []
   for (const [id, acc] of bucket.rx) {
@@ -464,6 +487,7 @@ function toStats(
       returning,
       followup,
       regions: regionStats(acc.regions, regionNames),
+      ...(isDay ? { once: bucket.once.get(id) ?? 0 } : {}),
     })
   }
 
@@ -475,7 +499,7 @@ function toStats(
     regions: regionStats(bucket.regions, regionNames),
     groups: groupStats(bucket, groups),
     revisit: { ...bucket.revisit },
-    ...(withAgain ? { again: againStats(bucket.again, rxCodes) } : {}),
+    ...(isDay ? { again: againStats(bucket.again, rxCodes) } : {}),
   }
 }
 

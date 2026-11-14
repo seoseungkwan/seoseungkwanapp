@@ -3,7 +3,7 @@ import { aggregate } from '@/lib/analytics/aggregate'
 import { buildSummary } from '@/lib/analytics/compare'
 import { bucketState } from '@/lib/analytics/coverage'
 import { addDays } from '@/lib/analytics/dates'
-import type { RxGroupDef } from '@/types/analysis'
+import type { PatientDay, RxGroupDef, Totals } from '@/types/analysis'
 import type { AnalysisResult } from '@/types/analyze'
 import type { ConsumptionRow } from '@/types/consumption'
 import type { DateRange } from '@/types/dates'
@@ -96,7 +96,7 @@ describe('AC-008.2 줄이 있는 날마다 하나, 날짜 순', () => {
 })
 
 describe('AC-008.2 담는 것: 합계·처방(코드·이름·유형·환자·신환·재진)·그룹(환자·신환·재진)·재방문 — 동네·F/U 없음', () => {
-  it('하루 칸 숫자 그대로(AC-1302.2: 같은 처방 재방문 again도)', () => {
+  it('하루 칸 숫자 그대로(AC-1302.2: 같은 처방 재방문 again도, AC-4409.2: 처방 줄 once도)', () => {
     const payloads = toDayPayloads(analyze(mixedDay(), [COVERED], TODAY, 'valid', GROUPS))!
     expect(dayOf(payloads, '2026-09-02')).toEqual({
       schemaVersion: 2,
@@ -104,9 +104,10 @@ describe('AC-008.2 담는 것: 합계·처방(코드·이름·유형·환자·�
       day: '2026-09-02',
       partial: false,
       totals: { patients: 4, newPatients: 1, returning: 2, unknown: 1 },
+      // once: D1001의 신환(환자 1)은 9/5에 또 받아 0, MM101의 신환(환자 1)은 다시 받지 않아 1
       rx: [
-        { code: 'D1001', name: '가짜정 10mg', type: '약품', patients: 3, newPatients: 1, returning: 1 },
-        { code: 'MM101', name: '가짜 도수 10분', type: '행위', patients: 2, newPatients: 1, returning: 1 },
+        { code: 'D1001', name: '가짜정 10mg', type: '약품', patients: 3, newPatients: 1, returning: 1, once: 0 },
+        { code: 'MM101', name: '가짜 도수 10분', type: '행위', patients: 2, newPatients: 1, returning: 1, once: 1 },
       ],
       groups: [
         { id: 'g-drug', patients: 3, newPatients: 1, returning: 1 },
@@ -127,13 +128,13 @@ describe('AC-008.2 담는 것: 합계·처방(코드·이름·유형·환자·�
     expect(dayOf(payloads, '2026-09-05').again).toEqual({ ready: [true, true, true], rx: [] })
   })
 
-  it('모든 층의 열쇠가 정해진 것뿐이다(동네·F/U·칸 범위가 없다, AC-1302.2: again은 ready·rx, 그 줄은 back·code·more·starts)', () => {
+  it('모든 층의 열쇠가 정해진 것뿐이다(동네·F/U·칸 범위가 없다, AC-1302.2: again은 ready·rx, 그 줄은 back·code·more·starts, AC-4409.2: 처방 줄에 once)', () => {
     const payloads = JSON.parse(JSON.stringify(toDayPayloads(analyze(mixedDay(), [COVERED], TODAY, 'valid', GROUPS))))
     expect(payloads).toHaveLength(2)
     for (const p of payloads) {
       expect(sorted(p)).toEqual(['again', 'day', 'groups', 'partial', 'quality', 'revisit', 'rx', 'schemaVersion', 'totals'])
       expect(sorted(p.totals)).toEqual(['newPatients', 'patients', 'returning', 'unknown'])
-      for (const x of p.rx) expect(sorted(x)).toEqual(['code', 'name', 'newPatients', 'patients', 'returning', 'type'])
+      for (const x of p.rx) expect(sorted(x)).toEqual(['code', 'name', 'newPatients', 'once', 'patients', 'returning', 'type'])
       for (const x of p.groups) expect(sorted(x)).toEqual(['id', 'newPatients', 'patients', 'returning'])
       expect(sorted(p.revisit)).toEqual(['after30', 'cohort', 'within14', 'within30', 'within7'])
       expect(sorted(p.again)).toEqual(['ready', 'rx'])
@@ -377,5 +378,82 @@ describe('REQ-1302 날 숫자에 같은 처방 재방문(again)을 담는다', (
     const result = analyze(mixedDay(), [COVERED], TODAY, 'incomplete')
     expect(result.aggregates.day.some((bucket) => (bucket.again ?? []).length > 0)).toBe(true)
     expect(toDayPayloads(result)).toBeNull()
+  })
+})
+
+// ── first90: 날 칸의 90일초진(totals.first90)과 처방 줄의 1회 신환(once) ──
+// 9/2: 환자 1 첫 내원, 환자 2·3 다시 옴(환자 2의 접수 2건 중 1건이 90일초진). 숫자는 모두 지어낸 값이다
+const V4_DAYS: PatientDay[] = [
+  { patient: 1, date: '2026-09-02', receptions: 1, firstVisit: true, first90: 0 },
+  { patient: 2, date: '2026-09-02', receptions: 2, firstVisit: false, first90: 1 },
+  { patient: 3, date: '2026-09-02', receptions: 1, firstVisit: false, first90: 0 },
+]
+function withoutFirst90(lines: readonly PatientDay[]): PatientDay[] {
+  return lines.map((line) => {
+    const rest = { ...line }
+    delete rest.first90
+    return rest
+  })
+}
+
+function analyzeHelper(lines: readonly PatientDay[]): AnalysisResult {
+  const rows = [row({ patient: 1, firstVisit: true }), row({ patient: 2 }), row({ patient: 3, rxCode: 'MM101' })]
+  const aggregates = aggregate(rows, [], lines)
+  return { quality: 'valid', skippedInvalidRows: 0, unknownVisitRows: 0, aggregates, summary: buildSummary({ aggregates, covered: [COVERED], quality: 'valid', today: TODAY }) }
+}
+
+describe('AC-4402.4 날 payload는 날 칸의 first90을 그대로 옮긴다', () => {
+  it('AC-4402.4: v4 날 칸이면 totals에 first90이 그대로 있고 저장 검사를 지난다', () => {
+    const payload = dayOf(toDayPayloads(analyzeHelper(V4_DAYS))!, '2026-09-02')
+    expect(payload.totals).toEqual({ patients: 4, newPatients: 1, first90: 1, returning: 2, unknown: 0 })
+    expect(validateDayPayload(JSON.parse(JSON.stringify(payload)))).toEqual(payload)
+  })
+
+  it('AC-4402.4: 날 칸에 first90이 없으면(v2·v3·파일 길) totals 열쇠는 지금 네 개다', () => {
+    for (const result of [analyzeHelper(withoutFirst90(V4_DAYS)), analyze(mixedDay())]) {
+      for (const payload of toDayPayloads(result)!) expect(sorted(payload.totals)).toEqual(['newPatients', 'patients', 'returning', 'unknown'])
+    }
+  })
+
+  it('AC-4402.4: 날 칸 totals에 다른 칸이 붙어 있어도 first90 말고는 따라가지 않는다', () => {
+    const result = analyzeHelper(V4_DAYS)
+    const tainted: AnalysisResult = {
+      ...result,
+      aggregates: { ...result.aggregates, day: result.aggregates.day.map((bucket) => ({ ...bucket, totals: { ...bucket.totals, chartNo: 'C-0001' } as Totals })) },
+    }
+    expect(JSON.stringify(toDayPayloads(tainted))).toBe(JSON.stringify(toDayPayloads(result)))
+  })
+})
+
+describe('AC-4409.2 날 payload의 처방 줄에 once를 넣는다', () => {
+  it('AC-4409.2: 날 칸 처방 줄의 once를 그대로 옮긴다(0 이상 newPatients 이하). schemaVersion은 2 그대로', () => {
+    const payload = dayOf(toDayPayloads(analyze(mixedDay()))!, '2026-09-02')
+    expect(payload.rx.map((x) => [x.code, x.newPatients, x.once])).toEqual([
+      ['D1001', 1, 0],
+      ['MM101', 1, 1],
+    ])
+    expect(payload.schemaVersion).toBe(2)
+  })
+
+  it('AC-4409.2: 날 칸 처방 줄에 once가 없으면 payload 줄에도 열쇠가 없다', () => {
+    const result = analyze(mixedDay())
+    const old: AnalysisResult = {
+      ...result,
+      aggregates: {
+        ...result.aggregates,
+        day: result.aggregates.day.map((bucket) => ({
+          ...bucket,
+          rx: bucket.rx.map((x) => {
+            const rest = { ...x }
+            delete rest.once
+            return rest
+          }),
+        })),
+      },
+    }
+    for (const payload of toDayPayloads(old)!) {
+      for (const x of payload.rx) expect(sorted(x)).toEqual(['code', 'name', 'newPatients', 'patients', 'returning', 'type'])
+      expect(validateDayPayload(payload)).toEqual(payload)
+    }
   })
 })

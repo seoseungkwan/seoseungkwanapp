@@ -81,12 +81,16 @@ function listOf<T>(value: unknown, max: number, itemOf: (item: unknown) => T | n
   return items
 }
 
+// 네 열쇠면 patients = 신환 + 재진 + 알 수 없음, first90(90일초진)까지 다섯 열쇠면 patients = 신환 + 90일초진 + 재진 + 알 수 없음.
+// 그 밖은 null(spec first90 AC-4402.5). first90이 undefined면 없는 것과 같다(JSON에 남지 않는 값)
 function totalsOf(value: unknown): Totals | null {
-  const o = exactly(value, TOTALS_KEYS)
+  const o = exactly(value, TOTALS_KEYS, ['first90'])
   if (o === null) return null
-  const { patients, newPatients, returning, unknown } = o
+  const { patients, newPatients, returning, unknown, first90 } = o
   if (!isCount(patients) || !isCount(newPatients) || !isCount(returning) || !isCount(unknown)) return null
-  return patients === newPatients + returning + unknown ? { patients, newPatients, returning, unknown } : null
+  if (first90 === undefined) return patients === newPatients + returning + unknown ? { patients, newPatients, returning, unknown } : null
+  if (!isCount(first90)) return null
+  return patients === newPatients + first90 + returning + unknown ? { patients, newPatients, first90, returning, unknown } : null
 }
 
 function followupOf(value: unknown): FollowUp | null {
@@ -107,13 +111,23 @@ function followupFor(value: unknown, patients: number): FollowUp | null {
   return followup !== null && followup[0] + followup[1] + followup[2] + followup[3] === patients ? followup : null
 }
 
-function rxOf(value: unknown, withFollowup: boolean) {
-  const o = exactly(value, withFollowup ? MONTH_RX_KEYS : DAY_RX_KEYS)
+function rxOf(value: unknown, withFollowup: boolean, optional: readonly string[] = []) {
+  const o = exactly(value, withFollowup ? MONTH_RX_KEYS : DAY_RX_KEYS, optional)
   if (o === null) return null
   const { code, name, type } = o
   const counts = countsOf(o)
   if (!isCode(code) || !isText(name) || !isText(type) || counts === null) return null
   return { code, name, type, ...counts }
+}
+
+// 날 처방 줄. once(1회 신환)는 선택 칸이고 0 이상 그 줄 신환 이하 정수다(spec first90 AC-4409.2).
+// 없으면(이 기능 전에 저장한 날) 돌려주는 줄에도 없다. undefined는 없는 것과 같다
+function dayRxOf(value: unknown): DayPayload['rx'][number] | null {
+  const rx = rxOf(value, false, ['once'])
+  if (rx === null) return null
+  const { once } = value as Fields
+  if (once === undefined) return rx
+  return isCount(once) && once <= rx.newPatients ? { ...rx, once } : null
 }
 
 function groupOf(value: unknown, withFollowup: boolean) {
@@ -246,7 +260,7 @@ export function validateDayPayload(value: unknown): DayPayload | null {
   const { day, partial } = o
   if (typeof day !== 'string' || !isYmd(day) || typeof partial !== 'boolean') return null
   const totals = totalsOf(o.totals)
-  const rx = listOf(o.rx, MAX_RX, (item) => rxOf(item, false))
+  const rx = listOf(o.rx, MAX_RX, dayRxOf)
   const groups = listOf(o.groups, MAX_GROUPS, (item) => groupOf(item, false))
   if (totals === null || rx === null || groups === null) return null
   const revisit = revisitOf(o.revisit, totals.newPatients)

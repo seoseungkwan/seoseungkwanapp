@@ -3,11 +3,12 @@ import { addDays } from '@/lib/analytics/dates'
 import type { BucketRef, BucketStats, Summary } from '@/types/analysis'
 import type { AnalysisResult } from '@/types/analyze'
 import { AGAIN_WINDOWS, type AgainCounts, type DayAgainPayload, type DayPayload } from '@/types/payload'
-import { compareText, revisitPayload } from './toMonthPayload'
+import { compareText, revisitPayload, totalsPayload } from './toMonthPayload'
 
 // 분석 결과 → 병원 계정에 저장할 일 숫자(폰에서 '어제'를 보려고). 줄이 있는 날마다 하나, 날짜 오름차순.
 // 정해진 열쇠만 골라 새로 만든다. 동네(하루 칸은 작다)와 F/U(하루는 늘 1회)는 싣지 않는다.
-// 같은 처방 재방문(again)은 처방별 몇 명·몇 번뿐이다(환자 번호·날짜 목록 없음, fu-rate)
+// 같은 처방 재방문(again)은 처방별 몇 명·몇 번뿐이다(환자 번호·날짜 목록 없음, fu-rate).
+// 합계의 first90(90일초진)과 처방 줄의 once(1회 신환)는 칸에 있을 때만 옮긴다(spec first90 AC-4402.4·AC-4409.2)
 
 // 집계 오류가 섞인 묶음(quality !== 'valid')이면 null — 멀쩡한 날만 골라 저장하지도 않는다
 export function toDayPayloads(result: AnalysisResult): DayPayload[] | null {
@@ -46,18 +47,23 @@ function againPayload(bucket: BucketStats, partial: boolean, summary: Summary): 
   }
 }
 
+type DayRx = DayPayload['rx'][number]
+
+function rxPayload({ code, name, type, patients, newPatients, returning, once }: BucketStats['rx'][number]): DayRx {
+  const line: DayRx = { code, name, type, patients, newPatients, returning }
+  if (once !== undefined) line.once = once
+  return line
+}
+
 function toPayload(bucket: BucketStats, ref: BucketRef | undefined, summary: Summary): DayPayload {
-  const { patients, newPatients, returning, unknown } = bucket.totals
   const partial = ref?.state !== 'complete' // 오늘(집계 중)·덜 덮인 날
   return {
     schemaVersion: 2,
     quality: 'valid',
     day: bucket.key,
     partial,
-    totals: { patients, newPatients, returning, unknown },
-    rx: bucket.rx
-      .map((x) => ({ code: x.code, name: x.name, type: x.type, patients: x.patients, newPatients: x.newPatients, returning: x.returning }))
-      .sort((a, b) => compareText(a.code, b.code)),
+    totals: totalsPayload(bucket.totals),
+    rx: bucket.rx.map(rxPayload).sort((a, b) => compareText(a.code, b.code)),
     groups: bucket.groups
       .map((g) => ({ id: g.id, patients: g.patients, newPatients: g.newPatients, returning: g.returning }))
       .sort((a, b) => compareText(a.id, b.id)),

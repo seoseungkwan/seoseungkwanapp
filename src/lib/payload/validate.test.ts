@@ -1155,3 +1155,102 @@ describe('AC-3503.4 hasPrivateShape: 전화·붙임표 주민번호·붙여 쓴 
     expect(hasPrivateShape(text)).toBe(false)
   })
 })
+
+// ── first90: 합계 다섯 열쇠(90일초진) · 날 처방 줄 once(1회 신환) ──
+// good()·goodDay() 모두 합계가 환자 12 = 신환 3 + 재진 8 + 알 수 없음 1이다. 숫자는 모두 지어낸 값이다
+const totalsChecks: [string, (totals: unknown) => unknown][] = [
+  ['달', (totals) => validateMonthPayload({ ...good(), totals })?.totals ?? null],
+  ['일', (totals) => validateDayPayload({ ...goodDay(), totals })?.totals ?? null],
+]
+
+describe.each(totalsChecks)('AC-4402.5 합계 검사(%s): 네 열쇠 또는 다섯 열쇠', (_, totalsAfterCheck) => {
+  it.each<[string, object]>([
+    ['네 열쇠, patients = 신환 + 재진 + 알 수 없음(지금 그대로)', { patients: 12, newPatients: 3, returning: 8, unknown: 1 }],
+    ['다섯 열쇠, patients = 신환 + 90일초진 + 재진 + 알 수 없음', { patients: 12, newPatients: 3, first90: 2, returning: 6, unknown: 1 }],
+    ['다섯 열쇠, 90일초진 0', { patients: 12, newPatients: 3, first90: 0, returning: 8, unknown: 1 }],
+    ['다섯 열쇠, 모두 90일초진', { patients: 12, newPatients: 3, first90: 9, returning: 0, unknown: 0 }],
+  ])('AC-4402.5: 받는다: %s', (_name, totals) => {
+    expect(totalsAfterCheck(totals)).toStrictEqual(totals)
+  })
+
+  it('AC-4402.5: first90이 undefined면 네 열쇠와 같다(JSON에 남지 않는 값)', () => {
+    expect(totalsAfterCheck({ patients: 12, newPatients: 3, first90: undefined, returning: 8, unknown: 1 })).toStrictEqual({
+      patients: 12,
+      newPatients: 3,
+      returning: 8,
+      unknown: 1,
+    })
+  })
+
+  it.each<[string, object]>([
+    ['다섯 열쇠인데 90일초진을 빼고 맞춘 합', { patients: 12, newPatients: 3, first90: 2, returning: 8, unknown: 1 }],
+    ['다섯 열쇠 합보다 환자가 많음', { patients: 13, newPatients: 3, first90: 2, returning: 6, unknown: 1 }],
+    ['다섯 열쇠 합보다 환자가 적음', { patients: 11, newPatients: 3, first90: 2, returning: 6, unknown: 1 }],
+    ['네 열쇠인데 합이 모자람', { patients: 12, newPatients: 3, returning: 6, unknown: 1 }],
+    ['90일초진 음수(합은 맞음)', { patients: 12, newPatients: 3, first90: -1, returning: 9, unknown: 1 }],
+    ['90일초진 소수', { patients: 12, newPatients: 3, first90: 1.5, returning: 6.5, unknown: 1 }],
+    ['90일초진 글자', { patients: 12, newPatients: 3, first90: '2', returning: 6, unknown: 1 }],
+    ['90일초진 null', { patients: 12, newPatients: 3, first90: null, returning: 8, unknown: 1 }],
+    ['90일초진 NaN', { patients: 12, newPatients: 3, first90: NaN, returning: 8, unknown: 1 }],
+    ['여섯 열쇠(열쇠 밖 칸)', { patients: 12, newPatients: 3, first90: 2, returning: 6, unknown: 1, patientIds: [1] }],
+    ['90일초진 대신 다른 이름', { patients: 12, newPatients: 3, f90: 2, returning: 6, unknown: 1 }],
+    ['unknown 없이 다섯째 칸', { patients: 12, newPatients: 3, first90: 3, returning: 6 }],
+  ])('AC-4402.5: null: %s', (_name, totals) => {
+    expect(totalsAfterCheck(totals)).toBeNull()
+  })
+
+  it('AC-4402.5: 돌려준 합계는 새 객체다', () => {
+    const totals = { patients: 12, newPatients: 3, first90: 2, returning: 6, unknown: 1 }
+    const checked = totalsAfterCheck(totals)
+    expect(checked).not.toBe(totals)
+    expect(checked).toStrictEqual(totals)
+  })
+})
+
+describe('AC-4409.2 날 처방 줄 once: 선택 열쇠, 0 이상 newPatients 이하 정수', () => {
+  // goodDay().rx[0]은 신환 3명, rx[1]은 신환 0명이다
+  it('AC-4409.2: once가 없으면 지금처럼 통과하고 돌려준 줄에 열쇠가 없다(이 기능 전에 저장한 날)', () => {
+    const checked = validateDayPayload(goodDay())
+    expect(checked).toStrictEqual(goodDay())
+    for (const line of checked?.rx ?? []) expect('once' in line).toBe(false)
+  })
+
+  it.each<[string, number, number]>([
+    ['0', 0, 0],
+    ['1', 0, 1],
+    ['= newPatients', 0, 3],
+    ['신환 0명 줄의 0', 1, 0],
+  ])('AC-4409.2: 받는다: once %s', (_name, at, once) => {
+    const payload = editedDay(['rx', at, 'once'], once)
+    expect(validateDayPayload(payload)).toStrictEqual(payload)
+  })
+
+  it('AC-4409.2: once가 undefined면 없는 것과 같다(JSON에 남지 않는 값)', () => {
+    const checked = validateDayPayload(editedDay(['rx', 0, 'once'], undefined))
+    expect(checked).toStrictEqual(goodDay())
+  })
+
+  it.each<[string, number, unknown]>([
+    ['newPatients보다 큼', 0, 4],
+    ['신환 0명 줄에 1', 1, 1],
+    ['음수', 0, -1],
+    ['소수', 0, 0.5],
+    ['글자', 0, '1'],
+    ['null', 0, null],
+    ['불리언', 0, true],
+    ['안전한 정수를 넘음', 0, Number.MAX_SAFE_INTEGER + 2],
+  ])('AC-4409.2: null: once %s', (_name, at, once) => {
+    expect(validateDayPayload(editedDay(['rx', at, 'once'], once))).toBeNull()
+  })
+
+  it('AC-4409.2: 달 처방 줄에는 once를 받지 않는다(정해진 열쇠 밖)', () => {
+    expect(validateMonthPayload(edited(['rx', 0, 'once'], 1))).toBeNull()
+  })
+
+  it('AC-4409.2: 돌려준 줄은 새 객체다 — 고쳐도 넣은 값은 그대로', () => {
+    const payload = editedDay(['rx', 0, 'once'], 2) as DayPayload
+    const checked = validateDayPayload(payload)!
+    checked.rx[0].once = 99
+    expect(payload.rx[0].once).toBe(2)
+  })
+})

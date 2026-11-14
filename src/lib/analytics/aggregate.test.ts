@@ -192,6 +192,10 @@ function naiveAggregate(rows: ConsumptionRow[], groups: RxGroupDef[] = [], split
           ...splitOf(cases, rxPatients),
           followup: followupOf(cases, rxPatients),
           regions: regionsOf(inBucket.filter((r) => r.rxCode === code)),
+          // 1회 신환(first90 AC-4409.1, 일 칸만): 그날 신환 중 불러온 자료 전체에서 그 처방을 받은 서로 다른 날이 그날 하루뿐인 환자
+          ...(grain === 'day'
+            ? { once: rxPatients.filter((p) => statusIn(inBucket, p, [key], split) === 'new' && rxDays.get(`${p}|${code}`)?.size === 1).length }
+            : {}),
         }
       })
       const groupStats = [...groups]
@@ -244,7 +248,7 @@ describe('AC-006.1 aggregate — 칸', () => {
     expect(aggregate([])).toEqual({ day: [], week: [], month: [] })
   })
 
-  it('작은 자료의 결과 전체 모양', () => {
+  it('작은 자료의 결과 전체 모양(AC-4409.1: 일 칸 처방 줄에만 once)', () => {
     const agg = aggregate([
       row({ patient: 1, date: MON, firstVisit: true }),
       row({ patient: 1, date: MON, firstVisit: true, rxCode: 'AA154', rxName: '초진 진찰료', rxType: '진찰료' }),
@@ -278,7 +282,10 @@ describe('AC-006.1 aggregate — 칸', () => {
           key: MON,
           range: { from: MON, to: MON },
           totals: { patients: 1, newPatients: 1, returning: 0, unknown: 0 },
-          rx: [exam, { code: 'D1001', name: '가짜정 10mg', type: '약품', patients: 1, newPatients: 1, returning: 0, followup: [1, 0, 0, 0], regions: yeoksam }],
+          rx: [
+            { ...exam, once: 1 },
+            { code: 'D1001', name: '가짜정 10mg', type: '약품', patients: 1, newPatients: 1, returning: 0, followup: [1, 0, 0, 0], regions: yeoksam, once: 1 },
+          ],
           regions: [{ name: '서울특별시 강남구 역삼동', patients: 1 }],
           groups: [],
           revisit: { cohort: 1, within7: 0, within14: 0, within30: 0, after30: 0 },
@@ -301,6 +308,7 @@ describe('AC-006.1 aggregate — 칸', () => {
               returning: 1,
               followup: [1, 0, 0, 0],
               regions: [{ name: '주소 없음', patients: 1 }],
+              once: 0,
             },
           ],
           regions: [{ name: '주소 없음', patients: 1 }],
@@ -731,12 +739,12 @@ describe('AC-006.1·AC-006.2·AC-006.3·AC-006.4 가짜 파일', () => {
     expect(cases.size).toBeLessThan(rows.length)
   })
 
-  it('느리지만 뻔한 기준 계산과 모든 칸이 같다', SLOW, () => {
+  it('느리지만 뻔한 기준 계산과 모든 칸이 같다(AC-4409.1: 일 칸 처방 줄 once 포함)', SLOW, () => {
     const { rows } = parsed()
     expect(aggregate(rows)).toEqual(naiveAggregate(rows))
   })
 
-  it('그룹을 넣어도 느리지만 뻔한 기준과 모든 칸이 같다(겹치는 그룹·없는 코드 그룹 포함)', SLOW, () => {
+  it('그룹을 넣어도 느리지만 뻔한 기준과 모든 칸이 같다(겹치는 그룹·없는 코드 그룹 포함, AC-4409.1: once 포함)', SLOW, () => {
     const { rows } = parsed()
     const codes = [...new Set(rows.map((r) => r.rxCode))].sort()
     const groups: RxGroupDef[] = [
@@ -1606,7 +1614,7 @@ describe('AC-1301.6 결과 모양 — 일 칸에만 again', () => {
     }
   })
 
-  it('AC-1301.6 가짜 파일: again은 느리지만 뻔한 기준과 같고, again을 빼면 이 기능 전 칸과 같다', SLOW, () => {
+  it('AC-1301.6·AC-4409.1 가짜 파일: again은 느리지만 뻔한 기준과 같고, again을 빼면 이 기능 전 칸과 같다(once는 기준에도 있다)', SLOW, () => {
     const rows = fakeRows()
     const agg = aggregate(rows)
     const naive = naiveAggregate(rows)
@@ -1829,7 +1837,7 @@ describe('AC-3703.6 입원 줄은 넣는 처방·빼는 처방·조건 모두 �
 })
 
 describe('AC-3703.7 빼는 처방·조건이 없는 묶음은 이 기능 전과 같다', () => {
-  it('AC-3703.7: 가짜 파일 — 빈 out·cond, 버려지는 조건(넣는 처방에 없는 코드·빈 unless·코드 자신)은 칸이 없는 정의와 모든 칸이 같다', SLOW, () => {
+  it('AC-3703.7·AC-4409.1: 가짜 파일 — 빈 out·cond, 버려지는 조건(넣는 처방에 없는 코드·빈 unless·코드 자신)은 칸이 없는 정의와 모든 칸이 같다(기준에 once 포함)', SLOW, () => {
     const rows = fakeRows()
     const codes = [...new Set(rows.map((r) => r.rxCode))].sort()
     const plain: RxGroupDef[] = [
@@ -2010,7 +2018,7 @@ describe('AC-3804.4 가짜 파일 — 처방·묶음 신환·재진 새 규칙 �
   const rxSplit = (buckets: readonly { rx: RxStats[] }[]) => buckets.map((b) => b.rx.map((r) => [r.code, r.newPatients, r.returning]))
   const groupSplit = (buckets: readonly { groups: GroupStats[] }[]) => buckets.map((b) => b.groups.map((g) => [g.id, g.newPatients, g.returning]))
 
-  it('AC-3804.4: 일·주·달 모든 칸이 느린 기준(받은·센 날의 그날 표시)과 같고, 주·달 칸에 옛 규칙(칸 안 큰 값)과 다른 칸이 있으며, 신환 + 재진 ≤ 환자', SLOW, () => {
+  it('AC-3804.4·AC-4409.1: 일·주·달 모든 칸이 느린 기준(받은·센 날의 그날 표시, once 포함)과 같고, 주·달 칸에 옛 규칙(칸 안 큰 값)과 다른 칸이 있으며, 신환 + 재진 ≤ 환자', SLOW, () => {
     const rows = fakeRows()
     const agg = aggregate(rows, EXCLUDE)
     const naive = naiveAggregate(rows)
@@ -2030,6 +2038,167 @@ describe('AC-3804.4 가짜 파일 — 처방·묶음 신환·재진 새 규칙 �
       for (const bucket of agg[grain]) {
         for (const line of [...bucket.rx, ...bucket.groups]) expect(line.newPatients + line.returning).toBeLessThanOrEqual(line.patients)
       }
+    }
+  })
+})
+
+// ── first90: 도우미 v4 접수 줄의 90일초진 · 처방 줄의 1회 신환(once) ──
+// 숫자는 모두 지어낸 값이다. receipt()의 first90을 주면 v4 접수 줄, 주지 않으면 v2·v3 접수 줄이다
+
+const totalsOf = (agg: Aggregates, grain: Grain, key: string) => bucketOf(agg, grain, key).totals
+
+describe('AC-4402.2 도우미 v4 — 일 칸 totals.first90', () => {
+  it('AC-4402.2: first90 = 첫 내원일이 아닌 줄의 first90 합, returning = patients − newPatients − first90 − unknown', () => {
+    const agg = aggregate(
+      [],
+      [],
+      [
+        receipt({ patient: 1, receptions: 2, first90: 1 }),
+        receipt({ patient: 2, receptions: 1, first90: 1 }),
+        receipt({ patient: 3, receptions: 3, first90: 0 }),
+        receipt({ patient: 4, receptions: 1, firstVisit: true, first90: 0 }),
+      ],
+    )
+    expect(totalsOf(agg, 'day', MON)).toEqual({ patients: 7, newPatients: 1, first90: 2, returning: 4, unknown: 0 })
+  })
+
+  it('AC-4402.2: 첫 내원일인 환자·날의 90일초진 접수는 first90에 넣지 않는다(신환 우선, 남은 접수는 재진)', () => {
+    const agg = aggregate([], [], [receipt({ patient: 1, receptions: 2, firstVisit: true, first90: 2 }), receipt({ patient: 2, first90: 1 })])
+    expect(totalsOf(agg, 'day', MON)).toEqual({ patients: 3, newPatients: 1, first90: 1, returning: 1, unknown: 0 })
+  })
+
+  it('AC-4402.2: 90일초진이 없는 v4 날도 first90 열쇠가 있고 0이다(진료 줄만 있는 날 포함)', () => {
+    const agg = aggregate([row({ patient: 5, date: TUE })], [], [receipt({ patient: 1, first90: 0 })])
+    expect(totalsOf(agg, 'day', MON)).toEqual({ patients: 1, newPatients: 0, first90: 0, returning: 1, unknown: 0 })
+    expect(totalsOf(agg, 'day', TUE).first90).toBe(0)
+  })
+
+  it('AC-4402.2: 주·달 칸은 일 칸의 합이다(모든 일 칸에 first90이 있다)', () => {
+    const NOV = '2026-11-02'
+    const agg = aggregate(
+      [],
+      [],
+      [
+        receipt({ patient: 1, date: MON, receptions: 2, first90: 1 }),
+        receipt({ patient: 2, date: TUE, first90: 1 }),
+        receipt({ patient: 3, date: NEXT_MON, firstVisit: true, first90: 1 }),
+        receipt({ patient: 1, date: NOV, receptions: 3, first90: 2 }),
+      ],
+    )
+    for (const bucket of agg.day) expect(bucket.totals.first90).toBeTypeOf('number')
+    expect(totalsOf(agg, 'week', MON)).toEqual({ patients: 3, newPatients: 0, first90: 2, returning: 1, unknown: 0 })
+    expect(totalsOf(agg, 'week', NEXT_MON)).toEqual({ patients: 1, newPatients: 1, first90: 0, returning: 0, unknown: 0 })
+    expect(totalsOf(agg, 'month', '2026-10')).toEqual({ patients: 4, newPatients: 1, first90: 2, returning: 1, unknown: 0 })
+    expect(totalsOf(agg, 'month', '2026-11')).toEqual({ patients: 3, newPatients: 0, first90: 2, returning: 1, unknown: 0 })
+  })
+
+  it('AC-4402.2: 처방·묶음·동네·재방문·같은 처방 재방문은 first90과 상관없다(같은 줄의 v3 접수 줄과 같다)', () => {
+    const rows = fakeRows()
+    const groups: RxGroupDef[] = [{ id: 'g-a', codes: ['D1001', 'MM042'] }]
+    const v3 = receiptsOf(rows)
+    const v4 = v3.map((line) => ({ ...line, receptions: 2, first90: 1 }))
+    const plain = aggregate(rows, groups, v3.map((line) => ({ ...line, receptions: 2 })))
+    const with90 = aggregate(rows, groups, v4)
+    const strip = (agg: Aggregates) => GRAINS.map((grain) => agg[grain].map((bucket) => ({ ...bucket, totals: null })))
+    expect(strip(with90)).toEqual(strip(plain))
+    // 재진은 90일초진만큼 줄고 나머지 합계는 같다
+    for (const grain of GRAINS) {
+      with90[grain].forEach((bucket, i) => {
+        const before = plain[grain][i].totals
+        const { first90 = -1, ...rest } = bucket.totals
+        expect(first90).toBeGreaterThanOrEqual(0)
+        expect(rest).toEqual({ ...before, returning: before.returning - first90 })
+      })
+    }
+    expect(sum(with90.month.map((bucket) => bucket.totals.first90 ?? 0))).toBeGreaterThan(0) // 빈 비교로 통과하지 않게
+  })
+})
+
+describe('AC-4402.3 v2·v3 접수 줄과 파일 길 — totals에 first90 열쇠가 없다', () => {
+  const noFirst90 = (agg: Aggregates) => GRAINS.every((grain) => agg[grain].every((bucket) => !('first90' in bucket.totals)))
+
+  it('AC-4402.3: 파일 길(셋째 인자 없음)은 일·주·달 어디에도 열쇠가 없다', () => {
+    const agg = aggregate(fakeRows())
+    expect(agg.day.length).toBeGreaterThan(0)
+    expect(noFirst90(agg)).toBe(true)
+  })
+
+  it('AC-4402.3: v2·v3 접수 줄(first90 없음)은 열쇠가 없고 값은 지금과 같다(재진 = 환자 − 신환)', () => {
+    const agg = aggregate([], [], [receipt({ patient: 1, receptions: 2 }), receipt({ patient: 2, firstVisit: true, date: TUE })])
+    expect(noFirst90(agg)).toBe(true)
+    expect(totalsOf(agg, 'day', MON)).toEqual({ patients: 2, newPatients: 0, returning: 2, unknown: 0 })
+    expect(totalsOf(agg, 'week', MON)).toEqual({ patients: 3, newPatients: 1, returning: 2, unknown: 0 })
+  })
+
+  it('AC-4402.2·AC-4402.3: 접수 줄 한 줄이라도 first90이 없으면 v4가 아니다 — 일·주·달 어디에도 열쇠가 없고 재진은 지금처럼 센다', () => {
+    const agg = aggregate([], [], [receipt({ patient: 1, first90: 1 }), receipt({ patient: 2, date: TUE })])
+    expect(noFirst90(agg)).toBe(true)
+    expect(totalsOf(agg, 'day', MON)).toEqual({ patients: 1, newPatients: 0, returning: 1, unknown: 0 })
+    expect(totalsOf(agg, 'month', '2026-10')).toEqual({ patients: 2, newPatients: 0, returning: 2, unknown: 0 })
+  })
+})
+
+describe('AC-4409.1 처방 줄 once — 그날 신환 중 불러온 자료 끝날까지 그 처방을 받은 날이 그날뿐인 환자', () => {
+  const onceOf = (agg: Aggregates, key: string, code = 'D1001') => rxOf(bucketOf(agg, 'day', key), code).once
+
+  it('AC-4409.1: 첫 내원일에 받은 처방을 그날 하루만 받음 → 1', () => {
+    expect(onceOf(aggregate([newAt(MON)]), MON)).toBe(1)
+  })
+
+  it('AC-4409.1: 다른 날 같은 처방을 또 받음 → 0(다시 받은 날이 다른 달이어도)', () => {
+    expect(onceOf(aggregate([newAt(MON), row({ date: WED })]), MON)).toBe(0)
+    expect(onceOf(aggregate([newAt(MON), row({ date: '2027-02-01' })]), MON)).toBe(0)
+  })
+
+  it('AC-4409.1: 다른 처방만 다시 받음 → 1(다른 처방·다른 진료로 다시 온 것은 상관없다)', () => {
+    const agg = aggregate([newAt(MON), row({ date: WED, rxCode: 'MM042' }), row({ date: NEXT_MON, rxCode: 'AA254' })])
+    expect(onceOf(agg, MON)).toBe(1)
+    expect(onceOf(agg, WED, 'MM042')).toBe(0) // 재진 날이라 신환이 아니다
+  })
+
+  it('AC-4409.1: 같은 날 두 줄은 하루 → 1', () => {
+    expect(onceOf(aggregate([newAt(MON), newAt(MON)]), MON)).toBe(1)
+  })
+
+  it('AC-4409.1: 처방 코드는 글자 그대로 같아야 같은 처방이다', () => {
+    expect(onceOf(aggregate([newAt(MON), row({ date: WED, rxCode: 'd1001' })]), MON)).toBe(1)
+  })
+
+  it('AC-4409.1: 신환만 센다 — 재진·알 수 없음은 1회로 받아도 세지 않고 once ≤ newPatients', () => {
+    const agg = aggregate([
+      newAt(MON, 1),
+      newAt(MON, 2),
+      row({ patient: 2, date: TUE }),
+      row({ patient: 3, date: MON, firstVisit: false }),
+      row({ patient: 4, date: MON, firstVisit: null }),
+    ])
+    const line = rxOf(bucketOf(agg, 'day', MON), 'D1001')
+    expect([line.patients, line.newPatients, line.once]).toEqual([4, 2, 1])
+    expect(onceOf(agg, TUE)).toBe(0)
+  })
+
+  it('AC-4409.1: 주·달 칸의 처방 줄에는 once 열쇠가 없다', () => {
+    const agg = aggregate([newAt(MON), row({ date: WED, rxCode: 'MM042' })])
+    for (const grain of ['week', 'month'] as const) {
+      for (const bucket of agg[grain]) for (const line of bucket.rx) expect('once' in line).toBe(false)
+    }
+    for (const bucket of agg.day) for (const line of bucket.rx) expect(line.once).toBeTypeOf('number')
+  })
+
+  it('AC-4409.1: 도우미 길도 같은 셈이다 — 처방 없는 접수로 다시 온 것은 상관없다', () => {
+    const agg = aggregate([newAt(MON)], [], [receipt({ firstVisit: true }), receipt({ date: WED })])
+    expect(onceOf(agg, MON)).toBe(1)
+  })
+
+  it('AC-4409.1: 가짜 파일 — 1회 신환과 다시 받은 신환이 모두 있고 0 이상 newPatients 이하 정수다', SLOW, () => {
+    const agg = aggregate(fakeRows())
+    const lines = agg.day.flatMap((bucket) => bucket.rx)
+    expect(lines.some((line) => (line.once ?? 0) > 0)).toBe(true)
+    expect(lines.some((line) => line.newPatients > (line.once ?? 0))).toBe(true)
+    for (const line of lines) {
+      expect(Number.isInteger(line.once)).toBe(true)
+      expect(line.once).toBeGreaterThanOrEqual(0)
+      expect(line.once).toBeLessThanOrEqual(line.newPatients)
     }
   })
 })

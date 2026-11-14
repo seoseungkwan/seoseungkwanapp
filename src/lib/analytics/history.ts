@@ -15,7 +15,9 @@ const ALL_UNAVAILABLE: TotalsDelta = { patients: UNAVAILABLE, newPatients: UNAVA
 // 'YYYY-MM'은 글자 순서가 곧 달 순서다
 const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
-const copyTotals = ({ patients, newPatients, returning, unknown }: Totals): Totals => ({ patients, newPatients, returning, unknown })
+// first90(90일초진)은 저장된 달에 있을 때만 옮긴다(spec first90 AC-4402.4). 증감은 지금 세 칸 그대로다
+const copyTotals = ({ patients, newPatients, returning, unknown, first90 }: Totals): Totals =>
+  first90 === undefined ? { patients, newPatients, returning, unknown } : { patients, newPatients, first90, returning, unknown }
 
 function totalsDelta(current: Totals, previous: Totals): TotalsDelta {
   return {

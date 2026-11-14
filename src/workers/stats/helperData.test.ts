@@ -929,3 +929,121 @@ describe('AC-2702.2 toFirstVisits: 접수 줄의 첫 내원일 표', () => {
     expect([...toFirstVisits(data, ids)]).toEqual([[one, '2026-09-01']])
   })
 })
+
+// ── v4 답(first90): v3 열쇠 그대로 + 접수 줄 다섯째 칸(그 환자·날의 90일초진 접수 수) ──
+// 1번 환자: 9/1 첫 내원(90일초진 0건), 9/2 다시 옴(그 접수 1건이 90일초진). 숫자는 모두 지어낸 값이다
+
+const goodV4 = () => ({
+  ...goodV3(),
+  v: 4,
+  patientDays: [
+    [chart(1), '20260901', 1, '20260901', 0],
+    [chart(1), '20260902', 1, '20260901', 1],
+  ],
+})
+
+// goodV4()의 한 자리만 바꾼 JSON 글자
+function changedV4(path: ReadonlyArray<string | number>, value: unknown): string {
+  const draft = goodV4() as unknown
+  let at = draft as Record<string | number, unknown>
+  for (const key of path.slice(0, -1)) at = at[key] as Record<string | number, unknown>
+  const last = path[path.length - 1]
+  if (value === DROP) Reflect.deleteProperty(at, last)
+  else at[last] = value
+  return JSON.stringify(draft)
+}
+
+describe('AC-4402.1 parseStatsRows: v2·v3 접수 줄은 네 칸, v4는 다섯 칸', () => {
+  it('AC-4402.1: 맞는 v4 답(v3 열쇠 그대로, 접수 줄 다섯 칸)을 받는다', () => {
+    const data = parseStatsRows(JSON.stringify(goodV4()), REQ)
+    expect(data.v).toBe(4)
+    expect(data.patientDays).toEqual(goodV4().patientDays)
+    expect(data.extra).toBeDefined()
+  })
+
+  it('AC-4402.1: v2·v3 답의 네 칸 접수 줄은 지금처럼 받는다', () => {
+    expect(parseStatsRows(JSON.stringify(good()), REQ).patientDays).toEqual(good().patientDays)
+    expect(parseStatsRows(JSON.stringify(goodV3()), REQ).patientDays).toEqual(goodV3().patientDays)
+  })
+
+  it.each<[string, ReadonlyArray<string | number>, unknown]>([
+    ['다섯째 칸 0', ['patientDays', 1, 4], 0],
+    ['다섯째 칸 = 접수 수', ['patientDays', 1], [chart(1), '20260902', 2, '20260901', 2]],
+    ['첫 내원일 줄의 다섯째 칸(웹이 신환 쪽으로 센다)', ['patientDays', 0, 4], 1],
+  ])('AC-4402.1: 받는다: %s', (_name, path, value) => {
+    expect(() => parseStatsRows(changedV4(path, value), REQ)).not.toThrow()
+  })
+
+  it.each<[string, ReadonlyArray<string | number>, unknown]>([
+    ['v4인데 접수 줄이 네 칸', ['patientDays', 1], [chart(1), '20260902', 1, '20260901']],
+    ['v4인데 접수 줄이 여섯 칸', ['patientDays', 1], [chart(1), '20260902', 1, '20260901', 0, 0]],
+    ['다섯째 칸이 음수', ['patientDays', 1, 4], -1],
+    ['다섯째 칸이 소수', ['patientDays', 1, 4], 0.5],
+    ['다섯째 칸이 글자', ['patientDays', 1, 4], '1'],
+    ['다섯째 칸이 null', ['patientDays', 1, 4], null],
+    ['다섯째 칸이 접수 수보다 큼', ['patientDays', 1, 4], 2],
+    ['v4인데 v3 새 열쇠가 없음', ['visits'], DROP],
+  ])('AC-4402.1: E-BRIDGE-BAD-REPLY: %s', (_name, path, value) => {
+    expect(codeOf(() => parseStatsRows(changedV4(path, value), REQ))).toBe(BAD_REPLY)
+  })
+
+  it('AC-4402.1: v3 답에 다섯 칸 접수 줄이 있으면 거절한다', () => {
+    expect(codeOf(() => parseStatsRows(changedV3(['patientDays'], goodV4().patientDays), REQ))).toBe(BAD_REPLY)
+  })
+
+  it('AC-4402.1: v2 답에 다섯 칸 접수 줄이 있으면 거절한다', () => {
+    expect(codeOf(() => parseStatsRows(changed(['patientDays'], goodV4().patientDays), REQ))).toBe(BAD_REPLY)
+  })
+
+  it('AC-4402.1: 판이 5면 거절한다', () => {
+    expect(codeOf(() => parseStatsRows(changedV4(['v'], 5), REQ))).toBe(BAD_REPLY)
+  })
+
+  it('AC-4402.1: v4 답의 진료 줄·세 칸·첫 내원일은 v3 답과 같게 읽힌다', () => {
+    const v3 = parseStatsRows(JSON.stringify(goodV3()), REQ)
+    const v4 = parseStatsRows(JSON.stringify(goodV4()), REQ)
+    expect(toConsumptionRows(v4, createPatientIds())).toEqual(toConsumptionRows(v3, createPatientIds()))
+    expect(toVisitRows(v4, createPatientIds())).toEqual(toVisitRows(v3, createPatientIds()))
+    expect(toStatsExtra(v4, createPatientIds())).toEqual(toStatsExtra(v3, createPatientIds()))
+    expect(toFirstVisits(v4, createPatientIds())).toEqual(toFirstVisits(v3, createPatientIds()))
+  })
+
+  it('AC-4402.1: toPatientDays — v4 줄에만 first90을 싣고, v2·v3 줄에는 열쇠가 없다', () => {
+    const ids = createPatientIds()
+    const one = ids.idOf(chart(1))
+    expect(toPatientDays(parseStatsRows(JSON.stringify(goodV4()), REQ), ids)).toEqual([
+      { patient: one, date: '2026-09-01', receptions: 1, firstVisit: true, first90: 0 },
+      { patient: one, date: '2026-09-02', receptions: 1, firstVisit: false, first90: 1 },
+    ])
+    for (const reply of [good(), goodV3()]) {
+      const lines = toPatientDays(parseStatsRows(JSON.stringify(reply), REQ), createPatientIds())
+      expect(lines).toHaveLength(2)
+      for (const line of lines) expect(Object.keys(line).sort()).toEqual(['date', 'firstVisit', 'patient', 'receptions'])
+    }
+  })
+
+  it('AC-4402.1: 오류에 자료가 섞이지 않는다', () => {
+    let error: unknown
+    try {
+      parseStatsRows(changedV4(['patientDays', 1, 4], chart(7)), REQ)
+    } catch (e) {
+      error = e
+    }
+    expect(error).toBeInstanceOf(StatsDataError)
+    expect((error as Error).message).toBe(BAD_REPLY)
+    expect(String((error as Error).stack)).not.toContain(chart(7))
+  })
+})
+
+describe('AC-4402.2 v4 답 → aggregate: 첫 내원일이 아닌 줄의 90일초진만 first90', () => {
+  it('AC-4402.2: 9/1은 첫 내원(first90 0), 9/2는 90일초진 1건이라 재진 0', () => {
+    const data = parseStatsRows(JSON.stringify(goodV4()), REQ)
+    const ids = createPatientIds()
+    const { day, month } = aggregate(toConsumptionRows(data, ids), [], toPatientDays(data, ids))
+    expect(day.map((bucket) => bucket.totals)).toEqual([
+      { patients: 1, newPatients: 1, first90: 0, returning: 0, unknown: 0 },
+      { patients: 1, newPatients: 0, first90: 1, returning: 0, unknown: 0 },
+    ])
+    expect(month.map((bucket) => bucket.totals)).toEqual([{ patients: 2, newPatients: 1, first90: 1, returning: 0, unknown: 0 }])
+  })
+})

@@ -43,6 +43,7 @@ import {
   toStatsExtra,
   toVisitRows,
   type StatsExtra,
+  type StatsRowsData,
   type StatsSummary,
   type VisitRow,
 } from './helperData'
@@ -61,8 +62,10 @@ export type StatsMemory = {
 }
 
 // 비트 전용 세 칸(sections 일)이 쓰는 값. Worker 밖으로 나가지 않고 저장하지 않는다. 다음 load가 memory와 함께 덮어쓴다.
-// extra = v3 접수 줄·사람 표·원장님 표·날·원장님 금액(v2 답이면 null), first = 환자 → 첫 내원일(v2면 비어 있다)
+// v = 답의 판(4면 날 숫자에 90일초진 first90이 있다, spec first90), extra = v3·v4 접수 줄·사람 표·원장님 표·날·원장님 금액(v2 답이면 null),
+// first = 환자 → 첫 내원일(v2면 비어 있다)
 export type BitMemory = {
+  v: StatsRowsData['v']
   range: DateRange
   extra: StatsExtra | null
   first: ReadonlyMap<number, string>
@@ -125,7 +128,7 @@ export function loadJob(
   }
   // 같은 ids로 바꾼다: 진료 줄·접수 줄·사람 표에서 같은 환자 = 같은 번호. view는 v2 답과 같다(AC-2708.1)
   const extra = toStatsExtra(data, ids)
-  const bit: BitMemory = { range: { from, to }, extra, first: extra === null ? new Map() : toFirstVisits(data, ids) }
+  const bit: BitMemory = { v: data.v, range: { from, to }, extra, first: extra === null ? new Map() : toFirstVisits(data, ids) }
   // v3 답이면 달 줄마다 같은 달의 세 칸 합계를 싣는다(묶음 이름과 수만, spec stats-bit-ai AC-2901.1). 달 줄이 없으면(incomplete) null.
   // v2 답이면 열쇠를 두지 않는다(AC-2901.6) — 화면 값이 지금과 글자 그대로 같다
   if (extra !== null) {

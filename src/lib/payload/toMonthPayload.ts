@@ -1,4 +1,4 @@
-import type { BucketRef, BucketStats } from '@/types/analysis'
+import type { BucketRef, BucketStats, Totals } from '@/types/analysis'
 import type { AnalysisResult } from '@/types/analyze'
 import type { MonthPayload, RevisitPayload } from '@/types/payload'
 import { MIN_REGION_PATIENTS } from './validate'
@@ -9,6 +9,11 @@ import { MIN_REGION_PATIENTS } from './validate'
 
 // 글자 순서. localeCompare는 브라우저마다 달라 쓰지 않는다
 export const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+
+// 합계 네 칸 + first90(칸에 있을 때만, spec first90 AC-4402.4). aggregate는 주·달 칸에 모든 일 칸에 있을 때만 first90을 둔다
+export function totalsPayload({ patients, newPatients, returning, unknown, first90 }: Totals): Totals {
+  return first90 === undefined ? { patients, newPatients, returning, unknown } : { patients, newPatients, first90, returning, unknown }
+}
 
 // 요약이 '집계 중'으로 정한 재방문은 null. 요약에 없는 칸(있을 수 없지만)도 집계 중으로 둔다
 export function revisitPayload(bucket: BucketStats, ref: BucketRef | undefined): RevisitPayload {
@@ -31,14 +36,14 @@ export function toMonthPayload(result: AnalysisResult): MonthPayload[] | null {
     .map((bucket) => toPayload(bucket, refOf.get(bucket.key)))
 }
 
+// 달 처방 줄에는 once를 두지 않는다(1회 신환은 날 숫자로 센다)
 function toPayload(bucket: BucketStats, ref: BucketRef | undefined): MonthPayload {
-  const { patients, newPatients, returning, unknown } = bucket.totals
   return {
     schemaVersion: 2,
     quality: 'valid',
     month: bucket.key,
     partial: ref?.state !== 'complete',
-    totals: { patients, newPatients, returning, unknown },
+    totals: totalsPayload(bucket.totals),
     rx: bucket.rx
       .map((x) => ({
         code: x.code,
