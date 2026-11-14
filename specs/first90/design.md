@@ -175,13 +175,13 @@ ORDER BY v.PatientId,v.VisitDay
 - `RoughSwitch({ mode, onChange, days, roughDays })`: `button role="switch" aria-checked`, 이름 "참고 금액 포함", 아래 글 셋(AC-4408.1). 참고 금액이 있는 날이 없으면 `aria-disabled="true"`. 확인 필요한 날이 없으면 그리지 않는다. 두 곳의 이름 id는 `useId`로 따로 만든다.
 - `sumPeriod(rows, range, { withRough })`: 'in'이면 확인 필요한 날 가운데 `roughTotal`이 있는 날의 금액과 접수 건수를 더하고 `roughDays: string[]`·`roughSum`을 낸다. 급여·비급여·기타 합에는 넣지 않는다. `workDays`도 그날을 센다.
 - 비교 기간도 같은 `withRough`로 센다. 건당 진료비 증감은 `compare(now, before)`의 비율만 쓴다.
-- `revenueCells(input, mode)` → 칸 셋(총매출·건당 진료비·확인 필요한 날). `revenueTabs(input, mode)`: 매출 추이·건당 진료비 탭의 막대 칸은 'out'이면 확인 필요한 날을 `mark: 'unchecked'`(값 없음), 'in'이고 참고 금액이 있으면 `'rough'` 계열 막대(값 = 참고 금액). 급여·비급여·기타·치료별 매출 탭은 mode와 상관없다(AC-4408.4).
+- `revenueCells(input, mode)` → 칸 셋(총매출·건당 진료비·확인 필요한 날). `revenueTabs(input, mode)`: 매출 추이·건당 진료비 탭의 막대 칸은 'out'이면 확인 필요한 날을 `mark: 'unchecked'`(값 없음), 'in'이고 참고 금액이 있으면 `'rough'` 계열 막대(값 = 참고 금액). 급여·비급여·기타·치료별 매출 탭은 mode와 상관없다(AC-4408.4). 켜짐 건당 진료비 탭은 막대뿐 아니라 숫자 칸 셋·안내 줄도 켜짐 셈(`perVisitTab(roughCtx, true)`)이라 매출 요약 건당 진료비와 같다. 첫 칸 아래 글에 " · 참고 금액 포함"을 붙이고 [어떻게 세나요?] 둘째 문단만 켜짐 글로 바꾼다(사용자 결정 2026-11-15: 한 화면에 같은 이름 두 숫자가 보이지 않게).
 
 ### 5-8. 신환이 그 처방을 받은 횟수 (`onceView.ts`·`RxPickOnce.tsx`)
 - `onceView(days, code, range, today)` → `{ rows: { month, label, sub, counting, newPatients, once: number | null }[], total: { newPatients, once: number | null }, missing: boolean }`.
 - `label`: 첫 줄·1월은 'YYYY년 M월', 그 밖 'M월'. `sub`: '(13일까지)' · '(15일부터)' · '(7일 – 13일)' · null. `counting`: 오늘 달 또는 그 앞 달.
 - 비율은 `Math.floor(once / newPatients * 1000) / 10`. 2회 이상 = 신환 − 1회.
-- 부품은 100% 가로 막대 두 갈래(`bg-accent`·`bg-st-ret`)이고 막대 안에 인원 숫자. 집계 중이면 막대 `opacity-55`. `RxPickerSection`이 '같은 처방 재방문' 아래에 놓고, 고른 처방은 React 상태(처음 첫째)다.
+- 부품은 100% 가로 막대 두 갈래(`bg-accent`·`bg-st-ink`)이고 막대 안에 인원 숫자. 2회 이상은 처음 `bg-st-ret`(흰 글자 대비 약 3.5:1)였으나 사용자 결정(2026-11-15 "더 진한 색으로")으로 `bg-st-ink`(약 14:1)로 바꿨다. `st-ret`는 재진 계열 색으로 그대로 둔다. 집계 중이면 막대 `opacity-55`. `RxPickerSection`이 '같은 처방 재방문' 아래에 놓고, 고른 처방은 React 상태(처음 첫째)다.
 
 ### 5-9. 대시보드 (`components/dashboard/summary/*`)
 - `todayView.counts.first90: number | null`.
