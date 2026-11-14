@@ -170,7 +170,7 @@ describe('오늘 하루 분석 — 연결 전', () => {
   it.each([
     ['none', NONE],
     ['data인데 days가 비었음', data([])],
-  ] as const)('AC-311.1·AC-414.3: 연결 전(%s) — h2 옆 neutral 칩 "비트 PC 연결 전", 네 칸 이 순서, 모두 "–" + "연결하면 보여요"', (_, source) => {
+  ] as const)('AC-311.1·AC-414.3·AC-4404.1: 연결 전(%s) — h2 옆 neutral 칩 "비트 PC 연결 전", 다섯 칸 이 순서, 모두 "–" + "연결하면 보여요"', (_, source) => {
     draw(source)
     const section = region('오늘 하루 분석')
     expect(within(section).getByRole('heading', { level: 2 }).textContent).toBe('오늘 하루 분석')
@@ -178,16 +178,17 @@ describe('오늘 하루 분석 — 연결 전', () => {
     hasAll(chip, ds.chip.neutral)
     expect(chip.parentElement).toBe(within(section).getByRole('heading', { level: 2 }).parentElement)
     const cells = kpiCells()
-    expect(cells.map((c) => c.querySelector('span')?.textContent)).toEqual(['오늘 환자 수', '신환', '재진', '지난주 같은 요일보다'])
+    expect(cells.map((c) => c.querySelector('span')?.textContent)).toEqual(['오늘 환자 수', '신환', '90일초진', '재진', '지난주 같은 요일보다'])
     for (const cell of cells) {
       expect(within(cell as HTMLElement).getByText('–')).toBeTruthy()
       expect(within(cell as HTMLElement).getByText('연결하면 보여요')).toBeTruthy()
     }
   })
 
-  it('AC-311.1: 네 칸은 KpiStat(count · 단위 "명" · emptyText "연결하면 보여요") 그대로다', () => {
+  it('AC-311.1·AC-4404.1: 다섯 칸은 KpiStat(count · 단위 "명" · emptyText "연결하면 보여요") 그대로다', () => {
     draw(NONE)
-    const labels = ['오늘 환자 수', '신환', '재진', '지난주 같은 요일보다']
+    const labels = ['오늘 환자 수', '신환', '90일초진', '재진', '지난주 같은 요일보다']
+    expect(kpiCells()).toHaveLength(5)
     kpiCells().forEach((cell, i) => {
       expect(cell.innerHTML).toBe(markupOf(<KpiStat label={labels[i]!} value={null} format="count" unit="명" emptyText="연결하면 보여요" />))
     })
@@ -281,7 +282,7 @@ describe('오늘 하루 분석 — 연결 뒤', () => {
 })
 
 // 90일초진 칸 (first90 REQ-4404 AC-4404.1, 첫 시안 docs/mockups/first90/index.html '대시보드 · 하루 분석'). 칸 아래 글은 지금처럼 없고,
-// 그날 90일초진을 모를 때만 90일초진 "새 도우미(0.7.0)면 나와요"·재진 "90일초진 포함"이다(design.md 8). 숫자가 없을 때(연결 전·읽는 중 등)는 지금 칸 넷 그대로다
+// 그날 90일초진을 모를 때만 90일초진 "새 도우미(0.7.0)면 나와요"·재진 "90일초진 포함"이다(design.md 8). 숫자가 없을 때(연결 전·읽는 중 등)도 다섯 칸이다
 describe('오늘 하루 분석 — 다섯 칸 (AC-4404.1)', () => {
   const LABELS = ['오늘 환자 수', '신환', '90일초진', '재진', '지난주 같은 요일보다']
 
@@ -354,14 +355,17 @@ describe('오늘 하루 분석 — 다섯 칸 (AC-4404.1)', () => {
     hasAll(e!, 'min-w-0 border-l border-line py-4 pr-5 pl-5 max-md:col-span-2 max-md:border-t max-md:border-l-0 max-md:py-3 max-md:pr-4 max-md:pl-0')
   })
 
-  it('AC-4404.1: 숫자가 없을 때(연결 전·읽는 중·읽지 못함)는 지금 칸 넷 그대로다 — 90일초진 칸이 없다', () => {
+  it('AC-4404.1: 숫자가 없을 때(연결 전·읽는 중·읽지 못함)도 다섯 칸이다 — 90일초진 칸도 그 emptyText이고 배치는 숫자 있을 때와 같다', () => {
     draw(NONE)
-    hasAll(kpiRow(), 'grid grid-cols-4')
-    expect(kpiCells().map((c) => c.querySelector('span')?.textContent)).toEqual(['오늘 환자 수', '신환', '재진', '지난주 같은 요일보다'])
+    hasAll(kpiRow(), 'grid grid-cols-5 border-b border-line max-md:grid-cols-2')
+    expect(classesOf(kpiRow())).not.toContain('grid-cols-4')
+    expect(kpiCells().map((c) => c.querySelector('span')?.textContent)).toEqual(LABELS)
+    hasAll(kpiCells()[4]!, 'min-w-0 border-l border-line py-4 pr-5 pl-5 max-md:col-span-2 max-md:border-t max-md:border-l-0 max-md:py-3 max-md:pr-4 max-md:pl-0')
     cleanup()
     render(<DashboardAnalysis today={TODAY} source={NONE} emptyChip="읽는 중" emptyText="읽는 중" />)
-    expect(kpiCells()).toHaveLength(4)
-    expect(screen.queryByText('90일초진')).toBeNull()
+    expect(kpiCells()).toHaveLength(5)
+    expect(kpiCells()[2]!.innerHTML).toBe(markupOf(<KpiStat label="90일초진" value={null} format="count" unit="명" emptyText="읽는 중" />))
+    expect(screen.queryByText(F90_UNKNOWN)).toBeNull()
   })
 
   it('AC-4404.1: 대시보드 파일은 통계 화면 전용 클래스(st 토큰·움직임)를 직접 쓰지 않는다', () => {
@@ -379,11 +383,12 @@ describe('숫자가 없을 때 글 바꾸기 (bit-dashboard)', () => {
   const READ_GAINS_NOTE = '읽기가 끝나면 이 자리에 그래프 4개가 그려지고, 기간 단추로 7일·30일·90일을 바꿔 볼 수 있어요.'
   const READ_REVISIT = '처음 온 환자가 7·14일 안에 다시 온 비율이에요.'
 
-  it('AC-601.2: emptyChip·emptyText·emptyNote가 칩·숫자 칸 넷·안내 줄을 바꾸고 모양은 그대로다', () => {
+  it('AC-601.2·AC-4404.1: emptyChip·emptyText·emptyNote가 칩·숫자 칸 다섯·안내 줄을 바꾸고 모양은 그대로다', () => {
     render(<DashboardAnalysis today={TODAY} source={NONE} emptyChip="읽는 중" emptyText="읽는 중" emptyNote={READ_NOTE} />)
     const section = region('오늘 하루 분석')
     hasAll(within(section).getByText('읽는 중', { selector: 'span.' + ds.chip.neutral.split(' ')[0] }), ds.chip.neutral)
-    const labels = ['오늘 환자 수', '신환', '재진', '지난주 같은 요일보다']
+    const labels = ['오늘 환자 수', '신환', '90일초진', '재진', '지난주 같은 요일보다']
+    expect(kpiCells()).toHaveLength(5)
     kpiCells().forEach((cell, i) => {
       expect(cell.innerHTML).toBe(markupOf(<KpiStat label={labels[i]!} value={null} format="count" unit="명" emptyText="읽는 중" />))
     })
@@ -392,11 +397,11 @@ describe('숫자가 없을 때 글 바꾸기 (bit-dashboard)', () => {
     expect(within(section).queryByText(TODAY_NOTE)).toBeNull()
   })
 
-  it('AC-601.4·AC-601.7: emptyNote가 null이면 안내 줄이 없다', () => {
+  it('AC-601.4·AC-601.7·AC-4404.1: emptyNote가 null이면 안내 줄이 없다', () => {
     render(<DashboardAnalysis today={TODAY} source={NONE} emptyChip="읽지 못함" emptyText="읽지 못했어요" emptyNote={null} />)
     const section = region('오늘 하루 분석')
     expect(within(section).getByText('읽지 못함')).toBeTruthy()
-    expect(within(section).getAllByText('읽지 못했어요')).toHaveLength(4)
+    expect(within(section).getAllByText('읽지 못했어요')).toHaveLength(5)
     expect(section.querySelector('.max-w-130')).toBeNull()
   })
 
@@ -416,7 +421,7 @@ describe('숫자가 없을 때 글 바꾸기 (bit-dashboard)', () => {
     expect(shown).toEqual(expected)
   })
 
-  it('AC-601.11: emptyCharts면 읽었는데 자료가 없는 것이다 — 목록 대신 빈 그래프 틀 넷("자료 없음"), 숫자 칸은 emptyText', () => {
+  it('AC-601.11·AC-4404.1: emptyCharts면 읽었는데 자료가 없는 것이다 — 목록 대신 빈 그래프 틀 넷("자료 없음"), 숫자 칸 다섯은 emptyText', () => {
     render(<DashboardAnalysis today={TODAY} source={data([])} emptyChip="자료 없음" emptyText="자료 없음" emptyNote={null} emptyCharts />)
     const flow = region('기간별 흐름')
     expect(within(flow).queryByText(GAINS_TITLE)).toBeNull()
@@ -426,7 +431,7 @@ describe('숫자가 없을 때 글 바꾸기 (bit-dashboard)', () => {
     expect(within(chart('처방 상위')).getByText('자료 없음')).toBeTruthy()
     expect(flow.querySelector('table')).toBeNull()
     const section = region('오늘 하루 분석')
-    expect(within(section).getAllByText('자료 없음')).toHaveLength(5) // 칩 + 칸 넷
+    expect(within(section).getAllByText('자료 없음')).toHaveLength(6) // 칩 + 칸 다섯
     expect(within(section).queryByText(TODAY_NOTE)).toBeNull()
   })
 
@@ -577,7 +582,7 @@ describe('기간별 흐름 — 연결 전 "연결하면 생기는 것 4가지" (
     }
   })
 
-  it.each([7, 30, 90] as const)('AC-414.4·AC-414.7: 연결 전(기간 %i일) 글자에서 고정 글자(기간 글자 · 기간 단추 · "4가지"와 번호 1~4 · 시안 설명 · 안내 줄)를 빼면 숫자가 없다', async (period) => {
+  it.each([7, 30, 90] as const)('AC-414.4·AC-414.7·AC-4404.1: 연결 전(기간 %i일) 글자에서 고정 글자(기간 글자 · 기간 단추 · "4가지"와 번호 1~4 · 시안 설명 · 안내 줄 · 칸 이름 "90일초진")를 빼면 숫자가 없다', async (period) => {
     const { container } = draw(NONE)
     if (period !== 30) await choose(`최근 ${period}일`)
     const fixed = [
@@ -590,6 +595,7 @@ describe('기간별 흐름 — 연결 전 "연결하면 생기는 것 4가지" (
       GAINS_NOTE,
       '추이 조회 기간',
       '아래 그래프 4개에 적용 · 기준일과 따로예요', // dashboard-ux AC-2703.2
+      '90일초진', // 숫자 칸 이름(first90 AC-4404.1) — 90은 이름의 일부다
     ].sort((a, b) => b.length - a.length)
     // 번호 상자 1~4는 덩어리째 뺀다
     const numbers = Array.from(gainsList().children).map((li) => li.children[0]!.textContent)
@@ -810,6 +816,14 @@ describe('기간별 흐름 — 90일초진 세 갈래 (AC-4404.3)', () => {
       [3, 2, 5],
     ])
     expect(trendRootOf().outerHTML).toBe(markupOf(<StackedBarChart title="환자 수 추이" unit="명" series={trendSeries(true)} buckets={buckets} dense />))
+  })
+
+  it('AC-4404.3: 세 갈래면 그래프 옆 글이 "신환·90일초진·재진, 하루씩 · 단위 명 · {기간 글}"이고, 두 갈래면 지금 글 그대로다', () => {
+    draw(data(KNOWN_DAYS))
+    expect(chart('환자 수 추이').children[1]!.textContent).toBe('신환·90일초진·재진, 하루씩 · 단위 명 · 최근 30일')
+    cleanup()
+    draw(data([...KNOWN_DAYS, day('2026-10-20', { newPatients: 1, returning: 9 })]))
+    expect(chart('환자 수 추이').children[1]!.textContent).toBe('신환·재진, 하루씩 · 단위 명 · 최근 30일')
   })
 
   it('AC-4404.3: 세 갈래 범례는 계열 tone 그대로(ChartLegend 신환 accent · 90일초진 f90 · 재진 ret)다', () => {
@@ -1091,9 +1105,9 @@ describe('신환 재방문율 30일 줄 (AC-516.2)', () => {
 })
 
 describe('짜임 — 폭별 칸 (AC-311.7)', () => {
-  it('AC-311.7: 숫자 줄은 768px 이상 4칸 한 줄(칸 사이 1px line 세로선), 768px 미만 2칸 × 2줄(둘째 줄 위 선)', () => {
+  it('AC-311.7·AC-4404.1: 숫자 없는 숫자 줄도 768px 이상 5칸 한 줄(칸 사이 1px line 세로선), 768px 미만 2칸씩(둘째 줄부터 위 선)', () => {
     draw(NONE)
-    hasAll(kpiRow(), 'grid grid-cols-4 border-b border-line max-md:grid-cols-2')
+    hasAll(kpiRow(), 'grid grid-cols-5 border-b border-line max-md:grid-cols-2')
     const [a, b, c, d] = kpiCells()
     hasAll(a!, 'min-w-0 py-4 pr-5 pl-0 max-md:py-3 max-md:pr-4')
     expect(classesOf(a!)).not.toContain('border-l')
@@ -1383,9 +1397,9 @@ describe('고른 날 (day)', () => {
     expect(within(section).queryByText('비트 PC 연결 전')).toBeNull()
   })
 
-  it('AC-605.4: 읽었는데 빈 배열인 화면에서 지난 날짜를 골라도 제목·첫 칸 이름은 그 날이고 숫자 칸은 받은 글자다', () => {
+  it('AC-605.4·AC-4404.1: 읽었는데 빈 배열인 화면에서 지난 날짜를 골라도 제목·첫 칸 이름은 그 날이고 숫자 칸 다섯은 받은 글자다', () => {
     render(<DashboardAnalysis today={LATER} day="2026-10-29" source={data([])} emptyChip="자료 없음" emptyText="자료 없음" emptyNote={null} emptyCharts />)
-    expect(cellsOf('10월 29일 하루 분석').map((cell) => cell.textContent)).toEqual(['환자 수–자료 없음', '신환–자료 없음', '재진–자료 없음', '지난주 같은 요일보다–자료 없음'])
+    expect(cellsOf('10월 29일 하루 분석').map((cell) => cell.textContent)).toEqual(['환자 수–자료 없음', '신환–자료 없음', '90일초진–자료 없음', '재진–자료 없음', '지난주 같은 요일보다–자료 없음'])
   })
 
   it('AC-605.3: day가 없거나 오늘이면 지금처럼 오늘이다', () => {

@@ -168,12 +168,13 @@ const expectEmptyNumbers = (chip: string, text: string) => {
   // 칩은 제목 줄에 있다(숫자 칸과 글자가 같을 수 있다)
   hasAll(within(todaySection().children[0] as HTMLElement).getByText(chip), ds.chip.neutral)
   const cells = kpiCells()
-  expect(cells).toHaveLength(4)
+  expect(cells).toHaveLength(5) // first90 AC-4404.1: 숫자가 없어도 다섯 칸
   for (const cell of cells) {
     expect(within(cell as HTMLElement).getByText('–')).toBeTruthy()
     expect(within(cell as HTMLElement).getByText(text)).toBeTruthy()
   }
-  expect(cells.map((cell) => cell.textContent).join('')).not.toMatch(/\d/)
+  // 칸 이름 "90일초진"(first90 AC-4404.1)의 90은 이름의 일부라 빼고 본다
+  expect(cells.map((cell) => cell.textContent).join('').split('90일초진').join('')).not.toMatch(/\d/)
 }
 const expectGainsOfReading = () => {
   expect(within(flow()).getByText('읽기가 끝나면 생기는 것 4가지')).toBeTruthy()
@@ -376,11 +377,12 @@ describe('AC-4404.1·AC-4404.2: 비트 숫자의 90일초진', () => {
     expect(screen.getByText('신환 7명, 90일초진 8명, 재진 52명입니다.')).toBeTruthy()
   })
 
-  it('AC-4404.1: 숫자가 없을 때(처음 읽는 중)는 지금 칸 넷 그대로다', () => {
+  it('AC-4404.1: 숫자가 없을 때(처음 읽는 중)도 다섯 칸이고 90일초진 칸은 "읽는 중"이다', () => {
     onBitPc()
     draw()
-    expect(kpiCells()).toHaveLength(4)
-    expect(within(todaySection()).queryByText('90일초진')).toBeNull()
+    expect(kpiCells()).toHaveLength(5)
+    expect(within(kpiCells()[2] as HTMLElement).getByText('90일초진')).toBeTruthy()
+    expect(within(kpiCells()[2] as HTMLElement).getByText('읽는 중')).toBeTruthy()
   })
 })
 
@@ -401,7 +403,7 @@ describe('AC-601.2: 저장 숫자 없이 처음 읽는 중', () => {
     expect(bar.getAttribute('aria-valuenow')).toBeNull()
   })
 
-  it('AC-601.2: 오늘 하루 분석은 칩 "읽는 중" + 숫자 칸 넷 "읽는 중"이고 지어낸 값이 없다', () => {
+  it('AC-601.2·AC-4404.1: 오늘 하루 분석은 칩 "읽는 중" + 숫자 칸 다섯 "읽는 중"이고 지어낸 값이 없다', () => {
     draw()
     expectEmptyNumbers('읽는 중', '읽는 중')
     expect(within(todaySection()).getByText('읽기가 끝나면 이 숫자로 원장님 보고 문장을 만들어 숫자 칸 아래에 보여 드려요.')).toBeTruthy()
@@ -1500,12 +1502,12 @@ describe('AC-605.1·AC-605.7: 날짜 줄', () => {
     expectDateControl()
   })
 
-  it('AC-605.1: 읽었는데 일 숫자가 빈 배열이어도 읽은 화면이라 날짜 고르기가 있고, 지난 날짜는 AC-605.4 문구다', async () => {
+  it('AC-605.1·AC-4404.1: 읽었는데 일 숫자가 빈 배열이어도 읽은 화면이라 날짜 고르기가 있고, 지난 날짜는 AC-605.4 문구다(숫자 칸 다섯)', async () => {
     await readDays([])
     expectDateControl()
     pickDay('2026-10-26')
     expect(bigLine().textContent).toBe('이 날은 진료 자료가 없어요')
-    expect(kpiCellsOf('10월 26일 하루 분석').map((cell) => cell.textContent)).toEqual(['환자 수–자료 없음', '신환–자료 없음', '재진–자료 없음', '지난주 같은 요일보다–자료 없음'])
+    expect(kpiCellsOf('10월 26일 하루 분석').map((cell) => cell.textContent)).toEqual(['환자 수–자료 없음', '신환–자료 없음', '90일초진–자료 없음', '재진–자료 없음', '지난주 같은 요일보다–자료 없음'])
   })
 
   it.each<[string, () => Promise<unknown> | void, string]>([
@@ -2121,12 +2123,13 @@ describe('dashboard-ux 화면 통합 (TASK-5)', () => {
     expect(within(daily).getByText(REPORT_NAME)).toBeTruthy()
   })
 
-  it('AC-2703.1: 기준일 묶음 "일별 현황 기준일" 안에 날짜 고르기와 적용 글 "숫자 4개와 보고 문장에 적용"이 있다', () => {
+  it('AC-2703.1·AC-4404.1: 기준일 묶음 "일별 현황 기준일" 안에 날짜 고르기와 적용 글 "숫자 5개와 보고 문장에 적용"이 있다', () => {
     notBitPc()
     draw(SAVED)
     const group = screen.getByRole('group', { name: '일별 현황 기준일' })
     expect(within(group).getByRole('group', { name: '날짜 고르기' })).toBeTruthy()
-    expect(within(group).getByText('숫자 4개와 보고 문장에 적용')).toBeTruthy()
+    expect(within(group).getByText('숫자 5개와 보고 문장에 적용')).toBeTruthy()
+    expect(within(group).queryByText('숫자 4개와 보고 문장에 적용')).toBeNull()
   })
 
   it('AC-2707.1: 연결 전에는 지금 화면 그대로 — 머리 줄·AI 요약이 없고 AI 리포트를 읽지 않는다', () => {

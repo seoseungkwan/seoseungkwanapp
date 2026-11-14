@@ -1,11 +1,11 @@
 // 저장 숫자를 읽는 동안의 뼈대 (dashboard-ux REQ-2701 AC-2701.1, design.md §2, 시안 docs/mockups/dashboard-ux/index.html skeleton()).
-// 연결 전 화면을 그리지 않는다(읽는 중일 뿐 연결 전이 아니다). 실제 배치와 같은 차례: 머리 줄 · 숫자 칸 4 · AI 요약 자리 · 그래프 자리.
+// 연결 전 화면을 그리지 않는다(읽는 중일 뿐 연결 전이 아니다). 실제 배치와 같은 차례: 머리 줄 · 숫자 칸 5(first90 AC-4404.1) · AI 요약 자리 · 그래프 자리.
 // 꾸밈은 모두 aria-hidden이고 글자가 없어 숫자를 지어내지 않는다. 화면 읽기는 role=status 글 하나만 읽는다.
 // 움직임은 없다(새 CSS 애니메이션을 만들지 않는다). 색·모서리는 토큰(bg-line·bg-canvas·rounded-control·rounded-float)만 쓴다. 훅이 없어 서버 그림과 같다
 
 /** 뼈대 한 토막 */
 const BAR = 'block rounded-control bg-line'
-const NUMBER_CELLS = [0, 1, 2, 3] as const
+const NUMBER_CELLS = [0, 1, 2, 3, 4] as const
 const AI_CARDS = [0, 1, 2] as const
 
 export function DashboardSkeleton() {
@@ -21,9 +21,9 @@ export function DashboardSkeleton() {
           <span className={`${BAR} h-7 w-30`} />
           <span className={`${BAR} h-4 w-55 max-w-full`} />
         </div>
-        {/* 일별 현황: 이름 · 숫자 칸 넷 · 보고 문장 */}
+        {/* 일별 현황: 이름 · 숫자 칸 다섯 · 보고 문장 */}
         <span className={`${BAR} mt-8 h-5 w-35`} />
-        <div data-part="numbers" className="mt-3 grid grid-cols-2 border-y border-line md:grid-cols-4">
+        <div data-part="numbers" className="mt-3 grid grid-cols-2 border-y border-line md:grid-cols-5">
           {NUMBER_CELLS.map((cell) => (
             <div key={cell} className="flex flex-col gap-3 py-4 pr-4">
               <span className={`${BAR} h-3.5 w-3/5`} />

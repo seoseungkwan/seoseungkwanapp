@@ -250,10 +250,10 @@ describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', ()
     expect(h1Texts(await drawBeforeConnect(AT_TODAY))).toEqual([H1])
   })
 
-  it('AC-307.5·AC-414.3·AC-414.4·AC-2701.1: 분석 칸은 모두 연결 전 모양이다 — 숫자 칸 넷 "연결하면 보여요", 연결 전 칩, "연결하면 생기는 것 4가지"(빈 그래프 틀·차트 부품 없음)', async () => {
+  it('AC-307.5·AC-414.3·AC-414.4·AC-2701.1·AC-4404.1: 분석 칸은 모두 연결 전 모양이다 — 숫자 칸 다섯 "연결하면 보여요", 연결 전 칩, "연결하면 생기는 것 4가지"(빈 그래프 틀·차트 부품 없음)', async () => {
     const html = await drawBeforeConnect(AT_TODAY)
     const text = plain(html)
-    expect(countOf(text, '연결하면 보여요')).toBe(4)
+    expect(countOf(text, '연결하면 보여요')).toBe(5)
     expect(text).toContain('비트 PC 연결 전')
     expect(text).toContain('연결하면 이 숫자로 원장님 보고 문장을 만들어 숫자 칸 아래에 보여 드려요.')
     expect(text).toContain(GAINS_TITLE)
@@ -267,7 +267,7 @@ describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', ()
     expect(html).not.toMatch(/<h3\b/)
   })
 
-  it('AC-307.5·AC-414.7·AC-010.1·AC-606.6·AC-2701.1: 고정 글자(날짜 줄 · 기간 글자 · 기간 단추 셋 · 연결 순서 번호와 "5단계" · "4가지"와 번호 1~4 · 기능 수 글 · 시안 설명 · 안내 줄)를 빼면 숫자가 없다(지어낸 숫자 없음)', async () => {
+  it('AC-307.5·AC-414.7·AC-010.1·AC-606.6·AC-2701.1·AC-4404.1: 고정 글자(날짜 줄 · 기간 글자 · 기간 단추 셋 · 연결 순서 번호와 "5단계" · "4가지"와 번호 1~4 · 기능 수 글 · 시안 설명 · 안내 줄 · 칸 이름 "90일초진")를 빼면 숫자가 없다(지어낸 숫자 없음)', async () => {
     let html = await drawBeforeConnect(AT_TODAY)
     // 번호 줄(연결 순서 두 벌 1~5 · 연결하면 생기는 것 1~4): 줄 맨 앞 번호 칸의 번호만 뺀다
     const lists = [...html.matchAll(/<ol\b[^>]*>[\s\S]*?<\/ol>/g)].map((m) => m[0])
@@ -294,6 +294,7 @@ describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', ()
       ...GAINS_DIGIT_DESC,
       GAINS_NOTE,
       '아래 그래프 4개에 적용 · 기준일과 따로예요', // 추이 조회 기간 적용 글(dashboard-ux AC-2703.2) — 4는 그래프 수다
+      '90일초진', // 숫자 칸 이름(first90 AC-4404.1) — 90은 이름의 일부다
     ].sort((a, b) => b.length - a.length)
     let text = plain(html)
     for (const s of fixed) {

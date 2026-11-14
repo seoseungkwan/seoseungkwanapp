@@ -46,6 +46,8 @@ const trendLegend = (series: readonly BarSeries[], partial: boolean): LegendItem
   ...(partial ? [PARTIAL_LEGEND] : []),
 ]
 const TREND_DESC: Record<TrendBucket, string> = { day: '신환·재진, 하루씩', week: '신환·재진, 한 주씩', month: '신환·재진, 한 달씩' }
+// 세 갈래(모든 칸이 90일초진을 앎)일 때 설명 줄(first90 AC-4404.3)
+const TREND_DESC_F90: Record<TrendBucket, string> = { day: '신환·90일초진·재진, 하루씩', week: '신환·90일초진·재진, 한 주씩', month: '신환·90일초진·재진, 한 달씩' }
 const WEEK_DESC = '하루 평균, 요일마다'
 // 표가 있는 두 그래프(환자 수 추이·요일별 환자 수)의 설명 줄·표 캡션 뒤에 붙는 단위와 기간 기준(dashboard-ux AC-2706.3)
 const UNIT = '단위 명'
@@ -186,7 +188,7 @@ function FlowCharts({ flow, period, groups }: { flow: Flow; period: PeriodDays; 
     <div className="grid gap-y-8 md:grid-cols-2 md:gap-x-6 lg:grid-cols-12">
       <Chart
         title="환자 수 추이"
-        desc={withBasis(TREND_DESC[flow.bucket], flow)}
+        desc={withBasis((series.length === 3 ? TREND_DESC_F90 : TREND_DESC)[flow.bucket], flow)}
         aside={<ChartLegend items={trendLegend(series, partial)} />}
         className="md:col-span-2 lg:col-span-8"
       >

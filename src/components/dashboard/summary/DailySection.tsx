@@ -33,8 +33,8 @@ const KPI_CELLS = [
   'min-w-0 border-l border-line py-4 px-5 max-md:border-t max-md:py-3 max-md:px-4',
   'min-w-0 border-l border-line py-4 pr-5 pl-5 max-md:col-span-2 max-md:border-t max-md:border-l-0 max-md:py-3 max-md:pr-4 max-md:pl-0',
 ] as const
-// 숫자 줄: 숫자가 있으면 다섯 칸, 숫자가 없으면 지금 칸 넷(90일초진 칸 없음)
-const KPI_ROW = { five: 'grid grid-cols-5 border-b border-line max-md:grid-cols-2', four: 'grid grid-cols-4 border-b border-line max-md:grid-cols-2' } as const
+// 숫자 줄: 숫자가 있든 없든 다섯 칸(first90 AC-4404.1)
+const KPI_ROW = 'grid grid-cols-5 border-b border-line max-md:grid-cols-2'
 
 // 지난주 칸 앞의 숫자 칸 하나: KpiStat(count · "명") + [칸 아래 글]. emptyText 없음 = KpiStat 기본 '자료 없음'
 type CountCell = { label: string; value: number | null; emptyText?: string; note?: string }
@@ -85,7 +85,7 @@ export function DailySection({
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
             {dateLine}
-            <span className="text-small text-muted">숫자 4개와 보고 문장에 적용</span>
+            <span className="text-small text-muted">숫자 5개와 보고 문장에 적용</span>
           </div>
         </div>
       )}
@@ -96,11 +96,11 @@ export function DailySection({
   )
 }
 
-// 숫자 칸(지난주 칸 앞). 숫자 없음(view null) = 지금 칸 넷의 셋(칸마다 emptyText).
+// 숫자 칸(지난주 칸 앞). 숫자 없음(view null) = 같은 넷(환자 수 · 신환 · 90일초진 · 재진), 칸마다 emptyText(AC-4404.1).
 // 숫자 있음 = 환자 수 · 신환 · 90일초진 · 재진(AC-4404.1): 그날 first90이 있으면 그 값과 returning, 없으면 90일초진 "–" + 안내 글, 재진은 지금 값 + "90일초진 포함".
 // 그날 줄이 없으면(counts null) 넷 모두 KpiStat 기본 '자료 없음'이다
 function countCells(first: string, view: TodayView | null, emptyText: string): CountCell[] {
-  if (view === null) return [first, '신환', '재진'].map((label) => ({ label, value: null, emptyText }))
+  if (view === null) return [first, '신환', F90_LABEL, '재진'].map((label) => ({ label, value: null, emptyText }))
   const { counts } = view
   if (counts === null) return [first, '신환', F90_LABEL, '재진'].map((label) => ({ label, value: null }))
   const head = [
@@ -119,14 +119,14 @@ function TodayNumbers({ view, emptyText, past }: { view: TodayView | null; empty
   const cells = countCells(past ? '환자 수' : '오늘 환자 수', view, emptyText)
 
   return (
-    <div className={view === null ? KPI_ROW.four : KPI_ROW.five}>
+    <div className={KPI_ROW}>
       {cells.map(({ label, value, emptyText: empty, note }, i) => (
         <div key={label} className={KPI_CELLS[i]}>
           <KpiStat label={label} value={value} format="count" unit="명" emptyText={empty} />
           {note !== undefined && <p className="text-small text-muted">{note}</p>}
         </div>
       ))}
-      <div className={view === null ? KPI_CELLS[3] : KPI_CELLS[4]}>
+      <div className={KPI_CELLS[4]}>
         {view?.compare.kind === 'delta' ? (
           <DeltaStat delta={view.compare.delta} weekday={view.compare.weekday} />
         ) : (
