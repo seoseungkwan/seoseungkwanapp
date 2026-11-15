@@ -6,7 +6,7 @@ import { GROUP_KEY, groupKey } from '@/components/stats/treatmentView'
 import { validateMonthPayload } from '@/lib/payload/validate'
 import type { ReportInput, SavedReport } from '@/types/aiReport'
 import { generateReport, isReportStale, type GenerateDeps } from './generate'
-import { addUsage, loadReportMonths, readSavedReport, readUsage, saveReport } from './store'
+import { addUsage, loadReportMonths, readSavedReport, readUsage, saveReport, takeAiImage } from './store'
 
 // 실제 Supabase에 붙지 않는다. 쓰기 시험의 가짜 클라이언트는 rpc 하나만 있고, 그 밖의 이름(from·auth·storage …)을 꺼내면
 // touched에 남기고 부르면 던진다 — 쓰기를 직접(from('ai_reports').insert 등) 하면 시험이 실패한다. 읽기 시험의 가짜는 아래 fakeReadClient다
@@ -810,5 +810,50 @@ describe('loadReportMonths — 세 칸 sections (AC-2903.1)', () => {
     const months = await loadReportMonths(fakeStatsClient({ months: answer([outside, first, second]) }).client, '2026-10')
     expect(months.selected).toBe(first.payload)
     expect(months.sections).toEqual({ selected: { from: 'first' }, prev: null, lastYear: null })
+  })
+})
+
+// 휴진 안내 AI 배경의 하루 한도(specs/forms-themes REQ-4607 AC-4607.2, design.md 4-5절). DB 함수 take_ai_image()가 세고, 여기는 부르기만 한다
+describe('takeAiImage 하루 한도 부르기 (AC-4607.2)', () => {
+  it("AC-4607.2 rpc('take_ai_image')를 인자 없이 한 번 부르고, 답 true면 true·false면 false", async () => {
+    for (const answer of [true, false]) {
+      const { client, rpc, touched } = fakeClient(async () => ({ data: answer, error: null }))
+      await expect(takeAiImage(client)).resolves.toBe(answer)
+      expect(rpc).toHaveBeenCalledTimes(1)
+      expect(rpc.mock.calls[0]).toEqual(['take_ai_image'])
+      expect(touched).toEqual(['rpc'])
+    }
+    expectNoConsole()
+  })
+
+  it("AC-4607.2 error가 있으면(승인 안 됨 42501 등, data가 true여도) 정확히 'failed'이고 오류 글자가 답에 없다", async () => {
+    for (const data of [true, false, null]) {
+      const { client } = fakeClient(async () => ({ data, error: { ...READ_ERROR, message: `hospital not approved ${SECRET}` } }))
+      const result = await takeAiImage(client)
+      expect(result).toBe('failed')
+      expect(JSON.stringify(result)).not.toContain(SECRET)
+    }
+    expectNoConsole()
+  })
+
+  it("AC-4607.2 부름이 던지면(거절·바로 던짐) 'failed'", async () => {
+    const rejecting = fakeClient(async () => boom())
+    await expect(takeAiImage(rejecting.client)).resolves.toBe('failed')
+    const throwing = fakeClient(boom as never)
+    await expect(takeAiImage(throwing.client)).resolves.toBe('failed')
+    expectNoConsole()
+  })
+
+  it("AC-4607.2 답이 불리언이 아니면(null·글자·숫자·객체·배열) 'failed'", async () => {
+    for (const data of [null, undefined, 'true', 1, 0, {}, [true]]) {
+      const { client } = fakeClient(async () => ({ data, error: null }))
+      await expect(takeAiImage(client), JSON.stringify(data)).resolves.toBe('failed')
+    }
+    expectNoConsole()
+  })
+
+  it('AC-4607.2 store.ts는 take_ai_image를 rpc 글자 하나로만 부른다(병원 칸·인자 없음)', () => {
+    const calls = storeSource().match(/\.rpc\(\s*'take_ai_image'[^)]*\)/g) ?? []
+    expect(calls).toEqual([".rpc('take_ai_image')"])
   })
 })

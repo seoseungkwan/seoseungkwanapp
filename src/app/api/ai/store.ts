@@ -170,6 +170,18 @@ export async function readUsage(supabase: SupabaseClient, thisMonth: string): Pr
   }
 }
 
+// 휴진 안내 AI 배경의 하루 한도(specs/forms-themes design.md 4-5절). take_ai_image()가 오늘(한국 날짜) 한 장을 센다:
+// true = 셌음, false = 한도, 'failed' = 오류(승인 안 됨 42501 등)·던짐·답이 불리언이 아님. 병원·날짜는 DB가 정한다(보내지 않는다)
+export async function takeAiImage(supabase: SupabaseClient): Promise<boolean | 'failed'> {
+  try {
+    const { data, error } = await supabase.rpc('take_ai_image')
+    if (error || typeof data !== 'boolean') return 'failed'
+    return data
+  } catch {
+    return 'failed'
+  }
+}
+
 // error가 없으면 true. error가 있거나 부름이 던지면 false(오류 내용은 밖에 내지 않는다)
 async function rpcOk(supabase: SupabaseClient, fn: string, args: Record<string, unknown>): Promise<boolean> {
   try {
