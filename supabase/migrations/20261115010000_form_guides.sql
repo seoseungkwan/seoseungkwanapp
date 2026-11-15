@@ -5,7 +5,7 @@
 --
 -- 왜: 만든 환자 안내문(접수대·대기실에 붙이는 A4 한 장)을 휴대폰과 컴퓨터에서 같이 보고 다시 고치려고 계정에 둔다.
 -- 머리표·제목·큰 문구·상자·그림 이름·줄·작은 글뿐이고 환자 칸은 없다. 안 모양(열쇠·글자 길이·개인정보 모양·배치)은
--- 앱이 checkGuideValue로 저장 전·읽은 뒤에 본다. DB는 객체인지·크기(4,000바이트)만 막는다(휴진 안내와 같은 까닭).
+-- 앱이 checkGuideValue로 저장 전·읽은 뒤에 본다. DB는 객체인지·크기(16,000바이트, AI 그림 도형을 함께 담는다)만 막는다(휴진 안내와 같은 까닭).
 --
 -- 권한: 로그인 안 한 사용자(anon)는 아무것도 못 한다. 승인된 병원 사용자만 자기 병원 줄을 읽고 넣고 고치고 지운다.
 -- hospital_id·id·created_at·updated_at은 칸 권한이 없어 DB가 정한다. updated_at은 고칠 때마다 트리거가 지금 시각으로 바꾼다.
@@ -20,7 +20,7 @@ grant execute on function public.my_hospital_id() to authenticated;
 create table public.form_guides (
   id uuid primary key default gen_random_uuid(),
   hospital_id uuid not null default public.my_hospital_id() references public.hospitals (id) on delete cascade,
-  content jsonb not null check (jsonb_typeof(content) = 'object' and octet_length(content::text) <= 4000),
+  content jsonb not null check (jsonb_typeof(content) = 'object' and octet_length(content::text) <= 16000), -- AI 그림 도형(8,000바이트까지)을 함께 담는다
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

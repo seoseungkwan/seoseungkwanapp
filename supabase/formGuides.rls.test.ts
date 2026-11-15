@@ -556,7 +556,7 @@ describe('AC-4508.3 칸 제약', SLOW, () => {
     await expect(rows(`update ${TABLE} set content = $1::jsonb`, [JSON.stringify([GUIDE])])).rejects.toThrow(CHECK)
     await expect(rows(`update ${TABLE} set content = '"글"'::jsonb`)).rejects.toThrow(CHECK)
     await expect(rows(`update ${TABLE} set content = 'null'::jsonb`)).rejects.toThrow(CHECK)
-    await expect(rows(`update ${TABLE} set content = $1::jsonb`, [JSON.stringify({ ...GUIDE, note: 'x'.repeat(4000) })])).rejects.toThrow(
+    await expect(rows(`update ${TABLE} set content = $1::jsonb`, [JSON.stringify({ ...GUIDE, note: 'x'.repeat(16000) })])).rejects.toThrow(
       CHECK,
     )
     expect(await snapshot()).toEqual(before)
@@ -570,13 +570,13 @@ describe('AC-4508.3 칸 제약', SLOW, () => {
     return row
   }
 
-  it('AC-4508.3: content 글이 4,000바이트면 들어가고 4,001바이트면 거부된다', async () => {
+  it('AC-4508.3: content 글이 16,000바이트면 들어가고 16,001바이트면 거부된다(AI 그림 도형을 함께 담는다)', async () => {
     const ok = { ...GUIDE, note: 'x'.repeat(10) }
-    const pad = 4000 - ((await bytesOf(ok)).n as number)
+    const pad = 16000 - ((await bytesOf(ok)).n as number)
     const exact = { ...GUIDE, note: 'x'.repeat(10 + pad) }
     const over = { ...GUIDE, note: 'x'.repeat(10 + pad + 1) }
-    expect((await bytesOf(exact)).n).toBe(4000)
-    expect((await bytesOf(over)).n).toBe(4001)
+    expect((await bytesOf(exact)).n).toBe(16000)
+    expect((await bytesOf(over)).n).toBe(16001)
     await expect(insert({ content: over })).rejects.toThrow(CHECK)
     await become(A)
     await insert({ content: exact })
@@ -584,11 +584,11 @@ describe('AC-4508.3 칸 제약', SLOW, () => {
     expect(await rows(`select content from ${TABLE}`)).toEqual([{ content: exact }])
   })
 
-  it('AC-4508.3: 크기는 글자 수가 아니라 바이트다(한글 1,400자는 4,000바이트를 넘는다)', async () => {
-    const korean = { ...GUIDE, note: '가'.repeat(1400) }
+  it('AC-4508.3: 크기는 글자 수가 아니라 바이트다(한글 5,400자는 16,000바이트를 넘는다)', async () => {
+    const korean = { ...GUIDE, note: '가'.repeat(5400) }
     const size = await bytesOf(korean)
-    expect(size.chars).toBeLessThan(4000)
-    expect(size.n).toBeGreaterThan(4000)
+    expect(size.chars).toBeLessThan(16000)
+    expect(size.n).toBeGreaterThan(16000)
     await expect(insert({ content: korean })).rejects.toThrow(CHECK)
     expect(await snapshot()).toEqual([])
   })
