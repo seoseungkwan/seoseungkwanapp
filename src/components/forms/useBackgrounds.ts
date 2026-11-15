@@ -38,6 +38,7 @@ export type Backgrounds = {
   look: (notice: ClosureNotice) => PosterLook
   storeWork: StoreWork // 마지막으로 한 저장소 일(E-FORMS-BG-STORE-FAILED를 어느 칸에 보일지)
   setMode(mode: Mode): void // 'theme'이고 지금 값이 내 배경이면 onPick(null)
+  noticeChanged(): void // 안내문을 열거나 새로 만들 때: 칸만 '테마 그림'으로(값은 그대로 — 내 배경 값이면 shownMode가 'mine'). 만든 배경은 남는다(시안 openNotice)
   setWords(text: string): void // 30자까지 자른다(reducer)
   make(): Promise<void>
   remake(): Promise<void> // 만든 배경의 말로 다시 만든다
@@ -201,6 +202,7 @@ export function useBackgrounds(pick: ThemePick | null, onPick: (pick: ThemePick 
     look: (notice) => posterLook(notice, state),
     storeWork,
     setMode,
+    noticeChanged: () => dispatch({ type: 'mode', mode: 'theme' }),
     setWords: (text) => dispatch({ type: 'words', text }),
     make: () => make(state.words),
     remake: async () => {

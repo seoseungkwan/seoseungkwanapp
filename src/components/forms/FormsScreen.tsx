@@ -134,9 +134,17 @@ export function FormsScreen({ today }: { today?: string }) {
 
   function openNotice(id: string) {
     const notice = state.list.kind === 'ok' ? state.list.items.find((n) => n.id === id) : undefined
-    if (notice) leave(() => dispatch({ type: 'open', notice }))
+    if (notice)
+      leave(() => {
+        dispatch({ type: 'open', notice })
+        bg.noticeChanged()
+      })
   }
-  const newNotice = () => leave(() => dispatch({ type: 'new' }))
+  const newNotice = () =>
+    leave(() => {
+      dispatch({ type: 'new' })
+      bg.noticeChanged()
+    })
 
   async function save() {
     if (ready === null || working.current.store) return

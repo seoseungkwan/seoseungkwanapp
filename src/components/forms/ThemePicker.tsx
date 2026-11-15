@@ -148,7 +148,7 @@ function MineBox({ id, pick, bg, note, onPick }: { id: string; pick: ThemePick |
             aria-describedby={`${id}-words-note`}
             onChange={(e) => bg.setWords(e.target.value)}
           />
-          <button type="button" className={ds.button.primary} disabled={state.making || state.words.trim() === ''} onClick={() => void bg.make()}>
+          <button type="button" className={ds.button.primaryLarge} disabled={state.making || state.words.trim() === ''} onClick={() => void bg.make()}>
             {state.making ? '만드는 중…' : 'AI로 배경 만들기'}
           </button>
         </div>

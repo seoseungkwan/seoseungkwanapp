@@ -672,6 +672,25 @@ describe('AC-4612.3: [테마 그림]으로 돌아가기·내 배경 안내문 �
     expect(firstHref(poster())).toBe('/poster/themes/liberation.svg')
     expect(listBackgrounds).toHaveBeenCalledTimes(1)
   })
+
+  it('AC-4612.3: [내 배경]을 직접 누른 뒤에도 테마를 쓰는 안내문을 열거나 새로 만들면 [테마 그림] 칸으로 열리고, 만든 배경은 남지만 미리보기에 얹지 않는다(시안 openNotice)', async () => {
+    const { user } = await open([AUG, { ...LIB, theme: 'liberation-2' }])
+    await makeTrial(user)
+    await user.click(screen.getByRole('button', { name: /^2025년 8월 · 광복절 / }))
+    expect(kind('테마 그림').getAttribute('aria-pressed')).toBe('true')
+    expect(art(2).getAttribute('aria-pressed')).toBe('true')
+    expect(firstHref(poster())).toBe('/poster/themes/liberation-2.svg')
+    expect(outputsDisabled()).toEqual([false, false, false])
+
+    // 만든 배경은 남아 있다: [내 배경]을 누르면 다시 얹힌다
+    await user.click(kind('내 배경'))
+    expect(within(bgBox()).getByText('만든 배경: 봄 벚꽃')).toBeTruthy()
+    expect(firstHref(poster())).toBe(TRIAL.image)
+
+    await user.click(screen.getByRole('button', { name: /새로 만들기/ }))
+    expect(kind('테마 그림').getAttribute('aria-pressed')).toBe('true')
+    expect(firstHref(poster())).not.toBe(TRIAL.image)
+  })
 })
 
 describe('AC-4612.4: [이 배경 지우기]', () => {
