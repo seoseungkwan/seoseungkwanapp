@@ -18,6 +18,7 @@
 - CRITICAL: 서버 코드는 `app/api/ai/` 하나뿐이다. 나머지는 브라우저 + Supabase RLS. 예외는 인증뿐이다: 로그인 콜백·middleware·페이지 guard(`*.server.ts`)는 세션과 내 병원·관리자 줄만 읽고 쓰지 않는다 (ADR-004)
 - CRITICAL: AI 경로는 브라우저가 보낸 숫자를 쓰지 않는다. 서버가 DB에서 읽어 `validate.ts`로 검사한 집계만 보낸다. 답은 글자로만 그린다(HTML 금지) (`plan.md §6-2`)
 - 예외 (ADR-028): 서식 AI 정리(`app/api/ai/forms`, 환자 안내문은 그 아래 `guide`·AI 그림 `guide/picture`)만 사용자가 적은 글을 Claude로 보낸다 — 500자까지, 전화·주민번호·메일 모양이면 보내지 않고, 저장·로그하지 않는다(AI 그림의 '그릴 것'만 20자까지이고 그림 이름으로 안내문과 함께 저장). AI 그림은 도형·색 이름·숫자로만 받아 앱이 그린다. 안내문 그림 안의 색·글꼴 700·900은 `components/forms` 안에서만 쓴다(휴진 안내 테마 색은 `lib/forms/themes.ts`, 환자 안내문 로고색은 `components/forms/guideColors.ts`에 둔다)
+- 예외 (ADR-029): 휴진 안내 AI 배경(`app/api/ai/forms/background`)만 사용자가 적은 짧은 말(30자까지, 개인정보 모양 거부)을 OpenAI 그림 AI로 보낸다. 열쇠 `OPENAI_API_KEY`는 서버 환경 변수에만, 하루 20장, 저장은 고른 그림만(`form_backgrounds`·Storage `form-backgrounds`)
 - 날짜 계산은 `lib/analytics/dates.ts` 한 곳(한국 날짜). 오류 문구는 `lib/errors.ts` 한 곳('무엇이 · 어떻게 고치나 · 번호')
 - 금액은 원 단위 정수다. 반올림하지 않고 원 미만은 항목마다 버린다. 합계는 항목 금액의 합 (`plan.md §5`)
 - 같은 효과면 코드 대신 DB 제약. 자동 계산보다 직접 입력 + 조정 칸 (`plan.md §0`)
