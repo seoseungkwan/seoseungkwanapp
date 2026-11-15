@@ -16,12 +16,12 @@
 - DB: `form_notices.accent text` (null 또는 `^#[0-9a-f]{6}$`)
 
 ## 3. 검사 `lib/forms/notice.ts`
-- `checkNotice`: 열쇠는 지금 넷(`year·month·cards·theme`) 그대로이거나 거기에 `accent` 하나를 더한 다섯. `accent`가 있으면 null 또는 `isAccentHex`여야 하고 아니면 null을 돌려준다
+- `checkNotice`: 열쇠는 지금 넷(`year·month·cards·theme`) 그대로이거나 거기에 `accent` 하나를 더한 다섯. `accent` 열쇠가 있으면 값이 null 또는 `isAccentHex`여야 하고, 아니면(undefined 포함) null을 돌려준다
 - 돌려주는 값: `accent`가 문자열이면 `{ …, accent }`, null이거나 없으면 `accent` 열쇠를 넣지 않는다(지금 `toEqual` 기대가 그대로 맞는다)
 
 ## 4. 저장 `lib/storage/formNotices.ts`
 - `COLUMNS`에 `accent`를 더한다: `'id, year, month, cards, theme, accent, updated_at'`
-- `savedOf`: `checkNotice({ year, month, cards, theme, accent })` — 표의 null은 자동, 틀린 모양이면 그 줄을 버린다(AC-4703.3)
+- `savedOf`: `checkNotice({ year, month, cards, theme, accent })` — 표의 null은 자동, 틀린 모양이면 그 줄을 버린다(AC-4703.3). 표 줄에 `accent` 칸이 없으면(undefined) 그 줄도 버린다(지금 '테마 칸이 없는 줄'과 같은 규칙. SQL을 붙인 표는 늘 이 칸을 준다)
 - `bodyOf`: 보내는 몸통은 `year·month·cards·theme·accent` 다섯(`accent: n.accent ?? null`, 칸이 빠지지 않는다 — 자동으로 되돌린 값을 DB에 null로 쓰려고). 검사는 `checkNotice`로, 보내는 객체는 다섯 열쇠를 골라 새로 만든다
 
 ## 5. 상태 `components/forms/formsState.ts`
@@ -51,7 +51,7 @@ type Props = { month: number; accent: string | null; autoAccent: string; onAccen
 - 앱 화면 색은 토큰·`ds`만(16진수 글자 없음). 사용자가 고른 색 값은 색 칸 `value`로만 쓴다
 
 ### 7-2. `NoticeEditor.tsx`·`FormsScreen.tsx`
-- `NoticeEditor`: 받는 값에 `autoAccent: string`, `onAccent`를 더하고 `ThemePicker` 바로 아래(같은 '배경' 칸 끝)에 `<AccentPicker month={state.month} accent={state.accent} autoAccent={autoAccent} onAccent={onAccent} />`
+- `NoticeEditor`: 받는 값에 `autoAccent: string`, `onAccent`를 더하고 `ThemePicker` 바로 아래에(`ThemePicker`의 `<section>` 밖, 눈으로는 '배경' 칸 맨 아래 — 시안과 같은 모습. `ThemePicker.tsx`는 고치지 않는다) `<AccentPicker month={state.month} accent={state.accent} autoAccent={autoAccent} onAccent={onAccent} />`
 - `FormsScreen`: `const autoAccent = look.background?.accent ?? themeOf(look.theme).accent`(`look`은 지금 `bg.look(preview)`), `onAccent={(accent) => dispatch({ type: 'accent', accent })}`를 `NoticeEditor`에 넘긴다. 미리보기·인쇄 사본의 `Poster`는 `notice={preview}`(= `previewNotice(state)`, 5절)를 그대로 받으므로 따로 넘기지 않는다
 
 ## 8. SQL `supabase/migrations/20261115030000_form_notices_accent.sql`
@@ -66,7 +66,8 @@ grant insert (accent), update (accent) on table public.form_notices to authentic
 
 ## 9. 기존 명세·시험과의 관계
 바꾸는 기존 기대:
-- `src/lib/storage/formNotices.test.ts`: 읽는 칸 목록(`COLUMNS`)에 `accent`, 넣기·고치기 몸통 열쇠에 `accent`(AC-3507.1·AC-3507.7 묶음의 칸 목록·몸통 기대만)
+- `src/lib/storage/formNotices.test.ts`: 읽는 칸 목록(`COLUMNS`)에 `accent`, 넣기·고치기 몸통 열쇠에 `accent`(AC-3507.1·AC-3507.7 묶음의 칸 목록·몸통 기대만), 가짜 표 줄 `dbRow`에 `accent: null`을 더한다(실제 표는 늘 이 칸을 준다. AC-3507.2·AC-3507.6의 기대 값은 그대로)
+- `e2e/forms-privacy.spec.ts`(E2E, `npm test` 밖): 저장 몸통 열쇠 기대를 `['accent', 'cards', 'month', 'theme', 'year']`로 바꾸고 보낸 `accent`가 null(자동)인지 본다. 저장된 줄 `checkNotice` 부르기에 `accent: added[0].accent`를 넣는다. 머리 주석에 SQL `20261115030000_form_notices_accent.sql`도 먼저 붙여야 한다고 적는다
 - `src/lib/forms/notice.test.ts`: 열쇠가 하나 더 있으면 null이라는 기대가 `accent` 하나를 더한 경우를 쓰고 있으면 다른 열쇠 이름으로 바꾼다(뜻은 그대로)
 
 기대는 그대로 두고 시험만 더하는 것: `src/lib/forms/themes.test.ts`, `src/lib/forms/notice.test.ts`, `src/components/forms/formsState.test.ts`
