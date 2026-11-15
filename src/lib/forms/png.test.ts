@@ -4,9 +4,12 @@ import { join } from 'node:path'
 import { cleanup, render } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { GuidePoster } from '@/components/forms/GuidePoster'
 import { Poster } from '@/components/forms/Poster'
+import type { GuideContent } from '@/types/formGuide'
 import type { ClosureNotice } from '@/types/forms'
-import { downloadPosterPng, svgForImage } from './png'
+import { guideFileName } from './guide'
+import { downloadGuidePng, downloadPosterPng, svgForImage } from './png'
 
 // 서식 탭 휴진 안내 그림 파일(spec forms REQ-3506 AC-3506.2·3506.3, design.md 7절 '그림 파일').
 // svgForImage는 순수 함수라 글만 본다. downloadPosterPng는 fetch·Image·canvas·URL·<a>를 흉내 내 성공(true)·실패(false)만 본다.
@@ -323,6 +326,178 @@ describe('AC-3506.2: downloadPosterPng — 1588×2246 PNG를 안내 달 파일 �
       writable: true,
     })
     await expect(downloadPosterPng(posterElement(), FILE)).resolves.toBe(false)
+    expect(env.clicks).toHaveLength(0)
+    for (const spy of env.quiet) expect(spy).not.toHaveBeenCalled()
+  })
+})
+
+// ---------- 환자 안내문 그림 파일 (specs/forms-guide REQ-4509 AC-4509.2·4509.3, design.md 6절 '그림 파일') ----------
+// 환자 안내문에는 테마 그림이 없다: svgForImage는 theme 없이 부르고, downloadGuidePng는 글꼴 둘·로고만 읽는다
+
+// 예시 1(보험 서류 안내)과, 그 그림을 AI 그림(clip-path url(#…))으로 바꾼 것
+const GUIDE: GuideContent = {
+  tag: '보험 서류 안내', subtitle: '보험사에 낼 서류는', big1: '수납할 때', big2: '말씀해 주세요', firstSmall: false,
+  boxTop: '이렇게 말씀해 주세요', boxBottom: '"보험 서류 필요해요"', picture: 'document', drawing: null, bandTitle: '이런 서류가 필요하실 때', mark: 'check',
+  lines: [{ text: '진단서', em: '' }, { text: '진료비 영수증', em: '영수증' }], note: '필요한 서류는 보험사마다 다르니 미리 확인해 주세요',
+}
+const GUIDE_DRAWN: GuideContent = {
+  ...GUIDE,
+  picture: 'custom',
+  drawing: { subject: '휠체어', shapes: [{ kind: 'circle', nums: [78, 108, 34], d: '', fill: 'yellow', stroke: 'dark', width: 9 }] },
+}
+const GUIDE_FILE = guideFileName(GUIDE)
+
+function guideElement(content: GuideContent = GUIDE): SVGSVGElement {
+  const { container } = render(createElement(GuidePoster, { content }))
+  const svg = container.querySelector('svg')
+  if (!svg) throw new Error('svg가 없다')
+  return svg
+}
+const guideText = (content: GuideContent = GUIDE) => new XMLSerializer().serializeToString(guideElement(content))
+const GUIDE_ASSETS = { bold: BOLD, black: BLACK, logo: LOGO_PNG }
+
+describe('AC-4509.3: svgForImage — 테마 그림 없이(theme 생략) 부르면 글꼴·로고만 바꾼다', () => {
+  it('AC-4509.3: 환자 안내문 SVG에는 처음에 /poster/ 주소 셋(Bold·Black·로고)만 있고 테마 그림 주소는 없다(바꾸기 전 확인)', () => {
+    const svg = guideText()
+    expect(svg).toContain('url(/poster/fonts/Pretendard-Bold.subset.woff2)')
+    expect(svg).toContain('url(/poster/fonts/Pretendard-Black.subset.woff2)')
+    expect(svg).toContain('href="/poster/logo.png"')
+    expect(svg).not.toContain('/poster/themes/')
+    expect(svg.match(/\/poster\//g)).toHaveLength(3)
+  })
+
+  it('AC-4509.3: theme 없이 부르면 글꼴 둘·로고가 data:가 되고(풀면 바이트 그대로) /poster/가 남지 않으며 테마 data:(svg+xml)는 생기지 않는다', () => {
+    const out = svgForImage(guideText(), GUIDE_ASSETS)
+    expect(out).not.toContain('/poster/')
+    expect(dataUrls(out, 'data:image/svg+xml;base64,')).toHaveLength(0)
+    const logos = dataUrls(out, 'data:image/png;base64,')
+    expect(logos).toHaveLength(1)
+    expect(same(decode(logos[0]), LOGO_PNG)).toBe(true)
+    const fonts = dataUrls(out, 'data:font/woff2;base64,')
+    expect(fonts).toHaveLength(2)
+    expect(same(decode(fonts[0]), BOLD)).toBe(true)
+    expect(same(decode(fonts[1]), BLACK)).toBe(true)
+  })
+
+  it('AC-4509.3: 바깥·상대 주소가 남지 않는다(href·url()은 data: 또는 #뿐 — AI 그림의 clip-path 포함, xmlns 이름표만 예외)', () => {
+    const out = svgForImage(guideText(GUIDE_DRAWN), GUIDE_ASSETS)
+    expect(out).not.toContain('/poster/')
+    expect(out.replace(/\sxmlns(?::\w+)?="[^"]*"/g, '')).not.toMatch(/https?:/i)
+    const hrefs = [...out.matchAll(/\s(?:xlink:)?href=(["'])(.*?)\1/g)].map((m) => m[2])
+    expect(hrefs).toHaveLength(1)
+    for (const href of hrefs) expect(href.startsWith('data:'), href.slice(0, 40)).toBe(true)
+    const urls = [...out.matchAll(/url\(\s*["']?([^"')]*)/g)].map((m) => m[1])
+    expect(urls).toHaveLength(3) // 글꼴 둘 + AI 그림 clip-path
+    for (const url of urls) expect(url.startsWith('data:') || url.startsWith('#'), url.slice(0, 40)).toBe(true)
+    expect(rootTag(out)).toMatch(/\swidth="1588"/)
+    expect(rootTag(out)).toMatch(/\sheight="2246"/)
+    expect(rootTag(out)).toMatch(/\sviewBox="0 0 794 1123"/)
+  })
+
+  it('AC-4509.3: theme를 주지 않으면 테마 그림 주소는 건드리지 않는다(그대로 남고 data:가 되지 않는다)', () => {
+    const svg = '<svg><image href="/poster/themes/m05.svg"/><image href="/poster/logo.png"/></svg>'
+    const out = svgForImage(svg, { bold: new Uint8Array([1]), black: new Uint8Array([2]), logo: new Uint8Array([7, 8, 9]) })
+    expect(out.match(/\/poster\/themes\/m05\.svg/g)).toHaveLength(1)
+    expect(out).toContain('href="/poster/themes/m05.svg"')
+    expect(dataUrls(out, 'data:image/svg+xml;base64,')).toHaveLength(0)
+    expect(dataUrls(out, 'data:image/png;base64,').map((b64) => [...decode(b64)])).toEqual([[7, 8, 9]])
+  })
+})
+
+describe('AC-4509.2: downloadGuidePng — 글꼴 둘·로고만 읽어 1588×2246 PNG를 환자안내문_<머리표>.png로 내려받는다', () => {
+  it('AC-4509.2: 파일 이름은 환자안내문_<머리표>.png다', () => {
+    expect(GUIDE_FILE).toBe('환자안내문_보험 서류 안내.png')
+  })
+
+  it('AC-4509.2: 성공하면 true — 자산 셋(글꼴 둘·로고)만 읽고, 그림용 SVG → 그림 → canvas 1588×2246 → PNG → <a download>', async () => {
+    const env = setup()
+    await expect(downloadGuidePng(guideElement(GUIDE_DRAWN), GUIDE_FILE)).resolves.toBe(true)
+
+    expect([...env.fetchCalls].sort()).toEqual(['/poster/fonts/Pretendard-Black.subset.woff2', '/poster/fonts/Pretendard-Bold.subset.woff2', '/poster/logo.png'])
+
+    expect(env.blobs[0].type).toBe('image/svg+xml')
+    const text = await env.blobs[0].text()
+    expect(text).not.toContain('/poster/')
+    expect(dataUrls(text, 'data:image/svg+xml;base64,')).toHaveLength(0)
+    expect(dataUrls(text, 'data:font/woff2;base64,')).toHaveLength(2)
+    expect(dataUrls(text, 'data:image/png;base64,')).toHaveLength(1)
+    expect(text).toContain('보험 서류 안내')
+    expect(text).toContain('<clipPath')
+    expect(rootTag(text)).toMatch(/\swidth="1588"/)
+    expect(env.images.map((i) => i.src)).toEqual(['blob:poster-1'])
+
+    expect(env.canvases).toHaveLength(1)
+    expect([env.canvases[0].width, env.canvases[0].height]).toEqual([1588, 2246])
+    expect(env.drawImage).toHaveBeenCalledTimes(1)
+    expect(env.drawImage.mock.calls[0].slice(1)).toEqual([0, 0, 1588, 2246])
+    expect(env.toBlob.mock.calls[0][1]).toBe('image/png')
+
+    expect(env.blobs[1].type).toBe('image/png')
+    expect(env.clicks).toEqual([{ download: '환자안내문_보험 서류 안내.png', href: 'blob:poster-2', connected: true }])
+    expect(document.querySelectorAll('a[download]')).toHaveLength(0)
+
+    expect(env.revoke).toHaveBeenCalledWith('blob:poster-1')
+    vi.runAllTimers()
+    expect(env.revoke).toHaveBeenCalledWith('blob:poster-2')
+    expect(env.revoke).toHaveBeenCalledTimes(2)
+    for (const spy of env.quiet) expect(spy).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['fetch가 던짐(연결 끊김)', { fetchFails: 'throw' }],
+    ['Bold 글꼴 읽기 실패(!ok)', { fetchFails: 'bold' }],
+    ['Black 글꼴 읽기 실패(!ok)', { fetchFails: 'black' }],
+    ['로고 읽기 실패(!ok)', { fetchFails: 'logo' }],
+  ] as const)('AC-4509.2: 자산을 못 읽으면 false — %s, 그림·내려받기를 하지 않는다', async (_, mode) => {
+    const env = setup(mode)
+    await expect(downloadGuidePng(guideElement(), GUIDE_FILE)).resolves.toBe(false)
+    expect(env.images).toHaveLength(0)
+    expect(env.clicks).toHaveLength(0)
+    expect(env.create).not.toHaveBeenCalled()
+    for (const spy of env.quiet) expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('AC-4509.2: 그림을 못 그리면(Image error) false, 만든 SVG 주소는 거둔다', async () => {
+    const env = setup({ imageError: true })
+    await expect(downloadGuidePng(guideElement(), GUIDE_FILE)).resolves.toBe(false)
+    expect(env.clicks).toHaveLength(0)
+    expect(env.create).toHaveBeenCalledTimes(1)
+    expect(env.revoke).toHaveBeenCalledWith('blob:poster-1')
+    for (const spy of env.quiet) expect(spy).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['toBlob이 null', { nullBlob: true }],
+    ['canvas 2d를 못 얻음', { noContext: true }],
+  ] as const)('AC-4509.2: %s이면 false, 내려받기를 하지 않고 SVG 주소는 거둔다', async (_, mode) => {
+    const env = setup(mode)
+    await expect(downloadGuidePng(guideElement(), GUIDE_FILE)).resolves.toBe(false)
+    expect(env.clicks).toHaveLength(0)
+    expect(env.revoke).toHaveBeenCalledWith('blob:poster-1')
+  })
+
+  it('AC-4509.2: 테마 그림은 읽지 않는다 — 바깥 주소(/poster/themes/…)가 남은 SVG면 그리지 않고 false', async () => {
+    const env = setup()
+    const svg = guideElement()
+    const extra = document.createElementNS('http://www.w3.org/2000/svg', 'image')
+    extra.setAttribute('href', '/poster/themes/children.svg')
+    svg.prepend(extra)
+    await expect(downloadGuidePng(svg, GUIDE_FILE)).resolves.toBe(false)
+    expect(env.fetchCalls).not.toContain('/poster/themes/children.svg')
+    expect(env.create).not.toHaveBeenCalled()
+    expect(env.clicks).toHaveLength(0)
+  })
+
+  it('AC-4509.2: 브라우저 기능이 아예 없어 던져도(createObjectURL 없음) false로 끝난다', async () => {
+    const env = setup()
+    Object.defineProperty(URL, 'createObjectURL', {
+      value: () => {
+        throw new Error('없음')
+      },
+      configurable: true,
+      writable: true,
+    })
+    await expect(downloadGuidePng(guideElement(), GUIDE_FILE)).resolves.toBe(false)
     expect(env.clicks).toHaveLength(0)
     for (const spy of env.quiet) expect(spy).not.toHaveBeenCalled()
   })

@@ -1,12 +1,13 @@
 import { LOGO } from './layout'
 
-// 서식 탭 휴진 안내 그림 파일(PNG) 만들기 (specs/forms design.md 7절 '그림 파일', AC-3506.2·3506.3; 로고는 specs/forms-logo 5절).
-// SVG를 그림(Image)으로 그리면 바깥 주소(/poster/…)를 읽지 않으므로, 테마 그림·글꼴 두 개·병원 로고를 data: 주소로 넣은 SVG 글을 쓴다.
+// 서식 탭 안내문 그림 파일(PNG) 만들기 — 휴진 안내(specs/forms design.md 7절 '그림 파일', AC-3506.2·3506.3; 로고는 specs/forms-logo 5절)와
+// 환자 안내문(specs/forms-guide design.md 6절, AC-4509.2·4509.3).
+// SVG를 그림(Image)으로 그리면 바깥 주소(/poster/…)를 읽지 않으므로, 테마 그림(휴진 안내만)·글꼴 두 개·병원 로고를 data: 주소로 넣은 SVG 글을 쓴다.
 // 그림은 blob: 주소라 CSP(img-src 'self' data: blob:)를 바꾸지 않는다. 실패는 false — 화면이 E-FORMS-IMAGE-FAILED를 보인다
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 export const IMAGE_SIZE = { width: 1588, height: 2246 } as const // 시안(794×1123)의 2배
-// 안내문 SVG(components/forms/Poster.tsx)가 쓰는 주소
+// 안내문 SVG(components/forms/Poster.tsx·GuidePoster.tsx)가 쓰는 주소
 const FONT_URLS = { bold: '/poster/fonts/Pretendard-Bold.subset.woff2', black: '/poster/fonts/Pretendard-Black.subset.woff2' } as const
 const THEME_PATH = /^\/poster\/themes\/([a-z0-9]+)\.svg$/
 const THEME_HREF = /(\s(?:xlink:)?href=)(["'])\/poster\/themes\/[a-z0-9]+\.svg\2/g
@@ -43,14 +44,18 @@ function sizeRoot(svg: string): string {
   })
 }
 
-// 순수: 안내문 SVG 글에서 테마 그림·글꼴·로고 주소를 data: 주소로 바꾸고 width/height를 1588×2246으로 둔다
-export function svgForImage(svg: string, assets: { theme: string; bold: Uint8Array; black: Uint8Array; logo: Uint8Array }): string {
-  const theme = `data:image/svg+xml;base64,${base64(new TextEncoder().encode(assets.theme))}`
+// 순수: 안내문 SVG 글에서 글꼴·로고 주소(와 theme를 주면 테마 그림 주소)를 data: 주소로 바꾸고 width/height를 1588×2246으로 둔다.
+// 환자 안내문은 테마 그림이 없어 theme를 주지 않는다 — 그때는 테마 주소를 건드리지 않는다(남으면 내려받기가 false로 막는다)
+export function svgForImage(svg: string, assets: { theme?: string; bold: Uint8Array; black: Uint8Array; logo: Uint8Array }): string {
   const bold = `url(data:font/woff2;base64,${base64(assets.bold)})`
   const black = `url(data:font/woff2;base64,${base64(assets.black)})`
   const logo = `data:image/png;base64,${base64(assets.logo)}`
-  return sizeRoot(svg)
-    .replace(THEME_HREF, (_, attr: string, quote: string) => `${attr}${quote}${theme}${quote}`)
+  let out = sizeRoot(svg)
+  if (assets.theme !== undefined) {
+    const theme = `data:image/svg+xml;base64,${base64(new TextEncoder().encode(assets.theme))}`
+    out = out.replace(THEME_HREF, (_, attr: string, quote: string) => `${attr}${quote}${theme}${quote}`)
+  }
+  return out
     .replace(LOGO_HREF, (_, attr: string, quote: string) => `${attr}${quote}${logo}${quote}`)
     .replace(fontUrl(FONT_URLS.bold), () => bold)
     .replace(fontUrl(FONT_URLS.black), () => black)
@@ -108,15 +113,19 @@ function saveFile(png: Blob, fileName: string) {
   }
 }
 
-// 브라우저: 화면의 <svg>를 글로 → 자산을 읽어 svgForImage → Blob → Image → canvas(1588×2246) → PNG → <a download>.
+// 두 안내문이 같이 쓰는 안쪽 흐름: 화면의 <svg>를 글로 → 자산을 읽어 svgForImage → /poster/가 남았나 → Blob → Image →
+// canvas(1588×2246) → PNG → <a download>. withTheme이면(휴진 안내) 첫 <image>의 테마 그림도 읽어 넣는다.
 // 어떤 실패든 false다(던지지 않고 로그를 남기지 않는다)
-export async function downloadPosterPng(svg: SVGSVGElement, fileName: string): Promise<boolean> {
+async function downloadPng(svg: SVGSVGElement, fileName: string, withTheme: boolean): Promise<boolean> {
   try {
-    const href = svg.querySelector('image')?.getAttribute('href') ?? ''
-    const themePath = THEME_PATH.test(href) ? href : null
-    if (!themePath) return false
+    let themePath: string | null = null
+    if (withTheme) {
+      const href = svg.querySelector('image')?.getAttribute('href') ?? ''
+      if (!THEME_PATH.test(href)) return false
+      themePath = href
+    }
     const [theme, bold, black, logo] = await Promise.all([
-      readText(themePath),
+      themePath === null ? undefined : readText(themePath),
       readBytes(FONT_URLS.bold),
       readBytes(FONT_URLS.black),
       readBytes(LOGO.href),
@@ -131,4 +140,14 @@ export async function downloadPosterPng(svg: SVGSVGElement, fileName: string): P
   } catch {
     return false
   }
+}
+
+// 휴진 안내 그림 파일: 테마 그림·글꼴 둘·로고를 읽는다
+export function downloadPosterPng(svg: SVGSVGElement, fileName: string): Promise<boolean> {
+  return downloadPng(svg, fileName, true)
+}
+
+// 환자 안내문 그림 파일(AC-4509.2): 글꼴 둘·로고만 읽는다(테마 그림이 없다). 파일 이름은 guideFileName(환자안내문_<머리표>.png)
+export function downloadGuidePng(svg: SVGSVGElement, fileName: string): Promise<boolean> {
+  return downloadPng(svg, fileName, false)
 }
