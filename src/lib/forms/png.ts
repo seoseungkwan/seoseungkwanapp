@@ -9,15 +9,19 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
 export const IMAGE_SIZE = { width: 1588, height: 2246 } as const // 시안(794×1123)의 2배
 // 안내문 SVG(components/forms/Poster.tsx·GuidePoster.tsx)가 쓰는 주소
 const FONT_URLS = { bold: '/poster/fonts/Pretendard-Bold.subset.woff2', black: '/poster/fonts/Pretendard-Black.subset.woff2' } as const
-const THEME_PATH = /^\/poster\/themes\/([a-z0-9]+)\.svg$/
-const THEME_HREF = /(\s(?:xlink:)?href=)(["'])\/poster\/themes\/[a-z0-9]+\.svg\2/g
+// 테마 그림 1(<열쇠>.svg)과 그림 2(<열쇠>-2.svg)만 (specs/forms-themes AC-4604.1)
+const THEME_PATH = /^\/poster\/themes\/([a-z0-9]+(?:-2)?)\.svg$/
+const THEME_HREF = /(\s(?:xlink:)?href=)(["'])\/poster\/themes\/[a-z0-9]+(?:-2)?\.svg\2/g
+// 내 배경(AI 배경)은 첫 image가 이미 data: 주소라 읽지 않고 그대로 둔다(AC-4604.2)
+const BACKGROUND_DATA = 'data:image/jpeg;base64,'
 const PNG_REVOKE_MS = 10_000 // 내려받기가 시작된 뒤 PNG 주소를 거둔다
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')
 const LOGO_HREF = new RegExp(`(\\s(?:xlink:)?href=)(["'])${escapeRegExp(LOGO.href)}\\2`, 'g')
 const fontUrl = (path: string) => new RegExp(`url\\(\\s*(["']?)${escapeRegExp(path)}\\1\\s*\\)`, 'g')
 
-function base64(bytes: Uint8Array): string {
+// 바이트 → base64 글. 내 배경 그림 data: 주소(lib/forms/backgroundImage)도 이것을 쓴다
+export function base64(bytes: Uint8Array): string {
   let binary = ''
   const CHUNK = 0x8000 // 인자 수 한도를 넘지 않게 나눠 바꾼다
   for (let i = 0; i < bytes.length; i += CHUNK) binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
@@ -114,15 +118,16 @@ function saveFile(png: Blob, fileName: string) {
 }
 
 // 두 안내문이 같이 쓰는 안쪽 흐름: 화면의 <svg>를 글로 → 자산을 읽어 svgForImage → /poster/가 남았나 → Blob → Image →
-// canvas(1588×2246) → PNG → <a download>. withTheme이면(휴진 안내) 첫 <image>의 테마 그림도 읽어 넣는다.
+// canvas(1588×2246) → PNG → <a download>. withTheme이면(휴진 안내) 첫 <image>의 테마 그림도 읽어 넣는다 —
+// 첫 <image>가 내 배경(JPEG data: 주소)이면 테마를 읽지 않고 그대로 두고, 둘 다 아니면 false다.
 // 어떤 실패든 false다(던지지 않고 로그를 남기지 않는다)
 async function downloadPng(svg: SVGSVGElement, fileName: string, withTheme: boolean): Promise<boolean> {
   try {
     let themePath: string | null = null
     if (withTheme) {
       const href = svg.querySelector('image')?.getAttribute('href') ?? ''
-      if (!THEME_PATH.test(href)) return false
-      themePath = href
+      if (THEME_PATH.test(href)) themePath = href
+      else if (!href.startsWith(BACKGROUND_DATA)) return false
     }
     const [theme, bold, black, logo] = await Promise.all([
       themePath === null ? undefined : readText(themePath),
