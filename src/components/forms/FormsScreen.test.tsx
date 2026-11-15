@@ -104,7 +104,7 @@ describe('AC-3501.3: 화면 머리', () => {
     expect(screen.getByRole('heading', { level: 1, name: '서식' })).toBeTruthy()
     const tools = screen.getByRole('group', { name: '서식 도구' })
     const buttons = within(tools).getAllByRole('button')
-    expect(buttons.map((b) => [b.textContent, b.getAttribute('aria-pressed')])).toEqual([['휴진 안내', 'true']])
+    expect(buttons.map((b) => [b.textContent, b.getAttribute('aria-pressed')])).toEqual([['휴진 안내', 'true'], ['환자 안내문', 'false']])
   })
 })
 

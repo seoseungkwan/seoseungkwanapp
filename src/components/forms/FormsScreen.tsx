@@ -4,11 +4,10 @@ import { useEffect, useReducer, useRef, useState } from 'react'
 import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { memoProblem } from '@/lib/forms/ai'
-import { fileNameOf } from '@/lib/forms/notice'
+import { fileNameOf, noticeTitle } from '@/lib/forms/notice'
 import { downloadPosterPng } from '@/lib/forms/png'
 import { themeInUse } from '@/lib/forms/themes'
 import { deleteNotice, insertNotice, listNotices, updateNotice } from '@/lib/storage/formNotices'
-import type { SavedNotice } from '@/types/forms'
 import {
   LEAVE_CONFIRM,
   formsReducer,
@@ -19,12 +18,15 @@ import {
   tidyAnswerOf,
   type TidyAnswer,
 } from './formsState'
+import { GuideWorkspace } from './GuideWorkspace'
 import { NoticeEditor } from './NoticeEditor'
-import { NoticeList } from './NoticeList'
+import { NoticeList, type SavedList } from './NoticeList'
 import { Poster } from './Poster'
 import { PreviewPanel } from './PreviewPanel'
 
 // 서식 탭 화면 — 휴진 안내 (spec forms REQ-3501~3507, design.md 10절, 승인 시안 docs/mockups/forms/screen.html).
+// 도구 줄 [휴진 안내]·[환자 안내문](spec forms-guide REQ-4501, design.md 9절): 고른 도구 한 벌만 보인다. 환자 안내문(GuideWorkspace)은
+// 처음 누를 때 만들고 그 뒤로는 숨기기만 해, 두 도구 모두 오가도 고치던 값이 남는다(버릴지 묻지 않는다). 인쇄 사본은 보이는 도구의 것 하나뿐이다.
 // 상태는 이 한 곳(useReducer, formsState.ts). 대충 적은 글은 [정리하기] 때만 /api/ai/forms로 보내고 저장하지 않는다(ADR-028).
 // 저장은 브라우저 Supabase + RLS(lib/storage/formNotices). 인쇄는 window.print — 인쇄 면에는 A4 한 장의 안내문만 나온다(AC-3506.1)
 
@@ -33,6 +35,11 @@ const DELETE_CONFIRM = '이 안내문을 지울까요?'
 // 서식 화면에 있을 때만 쓰이는 인쇄 쪽 크기(globals.css는 고치지 않는다)
 const PRINT_PAGE = '@media print { @page { size: A4 portrait; margin: 0 } }'
 const BUSY: TidyAnswer = { kind: 'error', code: 'E-AI-BUSY' }
+type Tool = 'closure' | 'guide'
+const TOOLS: readonly [Tool, string][] = [
+  ['closure', '휴진 안내'],
+  ['guide', '환자 안내문'],
+]
 
 // 던지지 않는다. 연결이 끊기면 E-AI-BUSY, 몸통이 JSON이 아니면 null로 읽어 tidyAnswerOf가 가른다.
 // redirect: 'manual' — 로그인이 끊겨 돌려보내는 답을 따라가지 않는다(E-AI-FAILED로 보인다)
@@ -55,6 +62,8 @@ async function askTidy(text: string): Promise<TidyAnswer> {
 export function FormsScreen({ today }: { today?: string }) {
   const [state, dispatch] = useReducer(formsReducer, today, (given) => initialState(given ?? todayInKorea()))
   const [imaging, setImaging] = useState(false)
+  const [tool, setTool] = useState<Tool>('closure')
+  const [guideSeen, setGuideSeen] = useState(false) // 환자 안내문을 한 번이라도 눌렀다(그때 만들고 목록을 읽는다)
   const posterRef = useRef<HTMLDivElement>(null)
   // 늦게 온 답 버리기: 다른 안내문으로 옮기면 번호를 올린다
   const tidyNo = useRef(0)
@@ -66,6 +75,15 @@ export function FormsScreen({ today }: { today?: string }) {
   const theme = themeInUse(preview)
   const ready = readyNotice(state)
   const dirty = isDirty(state)
+  const list: SavedList =
+    state.list.kind === 'ok'
+      ? { kind: 'ok', items: state.list.items.map((n) => ({ id: n.id, title: noticeTitle(n), updatedAt: n.updatedAt })) }
+      : state.list
+
+  function pick(next: Tool) {
+    setTool(next)
+    if (next === 'guide') setGuideSeen(true)
+  }
 
   async function readList() {
     listNo.current += 1
@@ -112,7 +130,10 @@ export function FormsScreen({ today }: { today?: string }) {
     next()
   }
 
-  const openNotice = (notice: SavedNotice) => leave(() => dispatch({ type: 'open', notice }))
+  function openNotice(id: string) {
+    const notice = state.list.kind === 'ok' ? state.list.items.find((n) => n.id === id) : undefined
+    if (notice) leave(() => dispatch({ type: 'open', notice }))
+  }
   const newNotice = () => leave(() => dispatch({ type: 'new' }))
 
   async function save() {
@@ -150,48 +171,71 @@ export function FormsScreen({ today }: { today?: string }) {
       <style>{PRINT_PAGE}</style>
       <div className="print:hidden">
         <h1 className="text-title font-semibold text-ink">서식</h1>
-        <div role="group" aria-label="서식 도구" className={`${ds.segment.group} mt-3 max-md:grid-cols-1`}>
-          <button type="button" aria-pressed="true" className={`${ds.segment.button} ${ds.segment.on}`}>
-            휴진 안내
-          </button>
+        <div role="group" aria-label="서식 도구" className={`${ds.segment.group} mt-3 max-md:grid-cols-2`}>
+          {TOOLS.map(([id, name]) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={tool === id}
+              className={`${ds.segment.button} ${tool === id ? ds.segment.on : ds.segment.off}`}
+              onClick={() => pick(id)}
+            >
+              {name}
+            </button>
+          ))}
         </div>
-        <div className="mt-4 grid grid-cols-1 items-start gap-4 xl:grid-cols-[232px_minmax(360px,1fr)_440px]">
-          <NoticeList list={state.list} openId={state.id} busy={state.store !== null} onNew={newNotice} onOpen={openNotice} onRetry={retryList} />
-          <NoticeEditor
-            state={state}
-            onMemo={(text) => dispatch({ type: 'memo', text })}
-            onTidy={() => void tidy()}
-            onCard={(index, field, value) => dispatch({ type: 'card', index, field, value })}
-            onAddCard={() => dispatch({ type: 'addCard' })}
-            onRemoveCard={(index) => dispatch({ type: 'removeCard', index })}
-            onMonth={(value) => dispatch({ type: 'month', value })}
-            onTheme={(next) => dispatch({ type: 'theme', theme: next })}
-          />
-          <PreviewPanel
-            notice={preview}
-            theme={theme}
-            posterRef={posterRef}
-            ready={ready !== null}
-            canDelete={state.id !== null}
-            saveMark={dirty ? 'dirty' : state.id !== null ? 'saved' : null}
-            saving={state.store === 'saving'}
-            deleting={state.store === 'deleting'}
-            imaging={imaging}
-            storeError={state.storeError}
-            imageFailed={state.imageFailed}
-            onSave={() => void save()}
-            onPrint={() => window.print()}
-            onImage={() => void image()}
-            onDelete={() => void remove()}
-          />
+        {/* 휴진 안내 세 칸. hidden 상자에는 display 클래스를 주지 않는다(주면 hidden이 이기지 못한다) */}
+        <div hidden={tool !== 'closure'}>
+          <div className="mt-4 grid grid-cols-1 items-start gap-4 xl:grid-cols-[232px_minmax(360px,1fr)_440px]">
+            <NoticeList
+              label="저장한 안내문"
+              emptyText="아직 저장한 안내문이 없어요"
+              list={list}
+              openId={state.id}
+              busy={state.store !== null}
+              onNew={newNotice}
+              onOpen={openNotice}
+              onRetry={retryList}
+            />
+            <NoticeEditor
+              state={state}
+              onMemo={(text) => dispatch({ type: 'memo', text })}
+              onTidy={() => void tidy()}
+              onCard={(index, field, value) => dispatch({ type: 'card', index, field, value })}
+              onAddCard={() => dispatch({ type: 'addCard' })}
+              onRemoveCard={(index) => dispatch({ type: 'removeCard', index })}
+              onMonth={(value) => dispatch({ type: 'month', value })}
+              onTheme={(next) => dispatch({ type: 'theme', theme: next })}
+            />
+            <PreviewPanel
+              poster={<Poster notice={preview} theme={theme} />}
+              empty={preview.cards.length === 0}
+              posterRef={posterRef}
+              ready={ready !== null}
+              canDelete={state.id !== null}
+              saveMark={dirty ? 'dirty' : state.id !== null ? 'saved' : null}
+              saving={state.store === 'saving'}
+              deleting={state.store === 'deleting'}
+              imaging={imaging}
+              storeError={state.storeError}
+              imageFailed={state.imageFailed}
+              onSave={() => void save()}
+              onPrint={() => window.print()}
+              onImage={() => void image()}
+              onDelete={() => void remove()}
+            />
+          </div>
         </div>
       </div>
-      {/* 인쇄 사본: 화면에는 숨기고 인쇄 면에만 A4(210×297mm) 한 장으로 나온다 */}
-      <div data-print-copy="" aria-hidden="true" className="hidden print:block">
-        <div className="h-[297mm] w-[210mm] *:block *:size-full">
-          <Poster notice={preview} theme={theme} />
+      {/* 인쇄 사본: 휴진 안내가 보일 때만. 화면에는 숨기고 인쇄 면에만 A4(210×297mm) 한 장으로 나온다 */}
+      {tool === 'closure' && (
+        <div data-print-copy="" aria-hidden="true" className="hidden print:block">
+          <div className="h-[297mm] w-[210mm] *:block *:size-full">
+            <Poster notice={preview} theme={theme} />
+          </div>
         </div>
-      </div>
+      )}
+      {guideSeen && <GuideWorkspace hidden={tool !== 'guide'} />}
     </>
   )
 }
