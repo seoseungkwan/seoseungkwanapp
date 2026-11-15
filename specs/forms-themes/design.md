@@ -441,7 +441,7 @@ OpenAI는 서버만 부른다. 그래서 브라우저 CSP에 `api.openai.com`을
 ## 15. 기존 명세·시험과의 관계
 바꾸는 기존 기대:
 - `src/lib/forms/assets.test.ts` AC-3504.5 묶음: 폴더 목록 23 → 46(`-2` 더함), 견줄 시안 폴더 `docs/mockups/forms/themes` → `docs/mockups/forms-themes/themes`, `<image>`·`<style>` 없음 검사 더함. 60,000바이트 한도는 그대로
-- `src/lib/errors.test.ts`: `ALL_CODES`에 네 번호를 더한다
+- `src/lib/errors.test.ts`: `ALL_CODES`에 네 번호를 더한다. AC-3507.5('이 명세가 더하는 E-FORMS- 번호는 표의 다섯뿐이다')의 거르는 조건에 `&& !code.startsWith('E-FORMS-BG-')`를 더한다(네 번호를 넣으면 반드시 깨지는 줄이다. 같은 파일의 `E-PATIENTS-` 검사와 같은 꼴, 뜻은 그대로)
 
 기대는 그대로 두고 시험만 더하는 것: `src/lib/forms/themes.test.ts`, `src/lib/forms/notice.test.ts`, `src/lib/ai/cost.test.ts`, `src/app/api/ai/store.test.ts`
 
