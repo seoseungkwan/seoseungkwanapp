@@ -1,6 +1,6 @@
 import { useId } from 'react'
 import { LOGO, POSTER, layoutPoster } from '@/lib/forms/layout'
-import { themeHref, themeOf } from '@/lib/forms/themes'
+import { isAccentHex, themeHref, themeOf } from '@/lib/forms/themes'
 import type { BackgroundLook } from '@/types/formBackground'
 import type { ClosureNotice, ThemeArt, ThemeId } from '@/types/forms'
 
@@ -65,7 +65,8 @@ export function Poster({ notice, theme, art = 1, background = null }: PosterProp
   const shadowId = `poster-shadow-${uid}`
   const softId = `poster-soft-${uid}`
   const bg = usableBackground(background)
-  const accent = bg ? bg.accent : themeOf(theme).accent
+  // 강조색('N월'·날짜 띠·카드 아래 글): 직접 고른 글자 색이 맞는 모양이면 그 색, 아니면 자동(배경 강조색 또는 테마 강조색) (specs/forms-accent design.md 6절)
+  const accent = isAccentHex(notice.accent) ? notice.accent : bg ? bg.accent : themeOf(theme).accent
   const layout = layoutPoster(notice)
   const { cx } = POSTER
   const cardsLabel = layout.cards.map((c) => `${c.date.text} ${c.name.text} ${c.status.text}`).join(', ')
