@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>시안 — 서식 탭 환자 안내문</title>
+<style>
+  @font-face { font-family: 'AppPretendard'; font-weight: 400; src: url('../../../src/app/fonts/Pretendard-Regular.subset.woff2') format('woff2'); }
+  @font-face { font-family: 'AppPretendard'; font-weight: 500; src: url('../../../src/app/fonts/Pretendard-Medium.subset.woff2') format('woff2'); }
+  @font-face { font-family: 'AppPretendard'; font-weight: 600; src: url('../../../src/app/fonts/Pretendard-SemiBold.subset.woff2') format('woff2'); }
+  @font-face { font-family: 'PosterPretendard'; font-weight: 700; src: url('../forms/fonts/Pretendard-Bold.subset.woff2') format('woff2'); }
+  @font-face { font-family: 'PosterPretendard'; font-weight: 900; src: url('../forms/fonts/Pretendard-Black.subset.woff2') format('woff2'); }
+  /* 앱 토큰(src/app/globals.css :root) */
+  :root { --canvas:#F7F8FA; --surface:#FFFFFF; --line:#E5E7EB; --line-strong:#D1D5DB; --faint:#9CA3AF; --muted:#6B7280; --ink-2:#374151; --ink:#111827;
+          --accent:#2563EB; --accent-strong:#1D4ED8; --accent-soft:#EAF1FE; --negative:#C2410C; --negative-soft:#FDF0EA; --positive:#15803D; --warning:#B45309; }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--canvas); color: var(--ink); font: 400 14px/22px 'AppPretendard', 'Malgun Gothic', sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+  .mock-bar { font: 13px/1.4 sans-serif; background: #fff8d6; border-bottom: 1px solid #e5d58a; padding: 8px 16px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .mock-bar button, .mock-bar a { border: 1px solid #c9b860; background: #fff; border-radius: 4px; padding: 3px 10px; cursor: pointer; color: #333; text-decoration: none; font-size: 13px; }
+  .mock-bar a.on { background: #f0e39a; font-weight: 600; }
+  .mock-bar span { color: #7a6a10; margin-left: 6px; }
+
+  /* 안내문 모음 */
+  .sheet { max-width: 1320px; margin: 0 auto; padding: 24px 16px; }
+  .sheet h1 { font-size: 20px; line-height: 28px; font-weight: 600; }
+  .sheet p.lead { margin-top: 4px; color: var(--muted); font-size: 13px; }
+  .grid { margin-top: 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+  .grid figure { margin: 0; }
+  .grid figcaption { margin-top: 6px; font-size: 13px; color: var(--ink-2); }
+  .grid svg, .one svg { display: block; width: 100%; height: auto; box-shadow: 0 1px 3px rgb(0 0 0 / .12); background: #fff; }
+  .one { width: 794px; }
+  .icons { margin-top: 16px; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 14px; }
+  .icons figure { margin: 0; background: #E6E006; border-radius: 8px; padding: 10px; text-align: center; }
+  .icons svg { width: 100%; height: auto; display: block; }
+  .icons figcaption { font-size: 12px; margin-top: 4px; color: #2e2e2e; font-weight: 600; }
+  @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .icons { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
+
+  /* 앱 틀(간단히) — 기존 서식 시안(screen.html)과 같다 */
+  .top { background: var(--surface); border-bottom: 1px solid var(--line); }
+  .top-in { max-width: 1280px; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; gap: 20px; height: 52px; }
+  .brand { font-weight: 600; }
+  .tabs { display: flex; gap: 4px; overflow: hidden; }
+  .tabs a { padding: 6px 10px; border-radius: 4px; color: var(--ink-2); text-decoration: none; font-size: 13px; white-space: nowrap; }
+  .tabs a.on { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 24px; }
+  .wrap h1 { font-size: 20px; line-height: 28px; font-weight: 600; }
+  .tools { margin-top: 12px; display: inline-flex; border: 1px solid var(--line-strong); border-radius: 4px; overflow: hidden; background: var(--surface); }
+  .tools button { height: 32px; padding: 0 14px; border: 0; background: none; cursor: pointer; font-size: 13px; }
+  .tools button + button { border-left: 1px solid var(--line-strong); }
+  .tools button.on { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+  .cols { margin-top: 16px; display: grid; grid-template-columns: 232px minmax(360px, 1fr) 440px; gap: 16px; align-items: start; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+  .panel h2 { font-size: 14px; line-height: 22px; font-weight: 600; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; line-height: 20px; }
+  .caption { font-size: 12px; line-height: 16px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 16px; border-radius: 4px; border: 1px solid var(--line-strong); background: var(--surface); cursor: pointer; font-weight: 500; white-space: nowrap; }
+  .btn:hover { background: var(--canvas); }
+  .btn.primary { background: var(--accent); border-color: transparent; color: #fff; }
+  .btn.primary:hover { background: var(--accent-strong); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.sm { height: 30px; padding: 0 10px; font-size: 13px; }
+  .btn.ghost { border-color: transparent; color: var(--ink-2); }
+  .btn.danger { color: var(--negative); }
+  .list { margin-top: 12px; display: flex; flex-direction: column; gap: 4px; }
+  .item { text-align: left; border: 1px solid transparent; background: none; border-radius: 4px; padding: 8px 10px; cursor: pointer; }
+  .item:hover { background: var(--canvas); }
+  .item.on { border-color: var(--accent); background: var(--accent-soft); }
+  .item b { display: block; font-weight: 600; font-size: 13px; line-height: 20px; }
+  .item span { font-size: 12px; color: var(--muted); }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .label { font-size: 13px; font-weight: 600; }
+  .hint { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 6px; }
+  textarea { width: 100%; min-height: 96px; resize: vertical; border: 1px solid var(--line-strong); border-radius: 4px; padding: 10px 12px; background: var(--surface); line-height: 22px; }
+  textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+  input[type=text], select { height: 36px; border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 10px; background: var(--surface); min-width: 0; width: 100%; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .between { justify-content: space-between; }
+  .sep { border-top: 1px solid var(--line); margin: 16px 0; }
+  .notice { font-size: 12px; line-height: 18px; color: var(--muted); }
+  .err { margin-top: 8px; border: 1px solid var(--negative); background: var(--negative-soft); border-radius: 4px; padding: 10px 12px; font-size: 13px; line-height: 20px; }
+  .err b { color: var(--negative); }
+  .err code { font-size: 12px; color: var(--muted); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .group { border: 1px solid var(--line); border-radius: 8px; padding: 4px 12px 12px; margin-top: 12px; }
+  .group legend { padding: 0 4px; font-size: 12px; color: var(--muted); }
+  .bad { border-color: var(--negative) !important; }
+  .fielderr { color: var(--negative); font-size: 12px; line-height: 16px; }
+  .seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 4px; overflow: hidden; }
+  .seg button { height: 30px; padding: 0 12px; border: 0; background: var(--surface); cursor: pointer; font-size: 13px; }
+  .seg button + button { border-left: 1px solid var(--line-strong); }
+  .seg button.on { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+  .line-edit { display: grid; grid-template-columns: 1fr 150px auto; gap: 8px; align-items: start; margin-top: 8px; }
+  .check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
+  .preview svg { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; }
+  .actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .state { margin-top: 8px; font-size: 12px; }
+  .saved { color: var(--positive); }
+  .dirty { color: var(--warning); }
+  @media (max-width: 1100px) { .cols { grid-template-columns: 1fr; } .tabs { display: none; } }
+  @media (max-width: 520px) { .wrap { padding: 16px; } .two, .line-edit { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="mock-bar" id="bar">
+  <b>시안</b>
+  <a href="?s=posters" data-s="posters">안내문 6장</a>
+  <a href="?s=icons" data-s="icons">그림 16개</a>
+  <a href="?s=screen" data-s="screen">서식 화면</a>
+  <span id="barNote"></span>
+</div>
+<div id="app"></div>
+
+<script>
+// ───────────────────────────── 안내문 배치 (design.md 5절과 같은 값) ─────────────────────────────
+// 794×1123. 윗단 노랑 0~666, 띠 진회색 666~954, 로고 흰색 954~1123. 좌우 여백 51, 안쪽 폭 692.
+const Y = '#E6E006', D = '#2e2e2e', W = '#fff', NOTE = '#d6d6d6'
+const P = { w: 794, h: 1123, x: 51, inner: 692, topH: 666, bandY: 666, bandH: 288, logoY: 954 }
+const PIC = { x: 566, y: 468, size: 170 } // 그림: 오른쪽 58, 윗단 바닥에서 28 위
+const LOGO = { x: 197, y: 1005, w: 400, h: 68 } // 가로형 1033×175를 400 폭으로
+const LIMIT = { tag: 10, subtitle: 14, big: 8, boxTop: 16, boxBottom: 14, bandTitle: 16, line: 28, note: 28, lines: 4 }
+
+// 글자 폭 어림: PosterPretendard Black의 실제 글자 폭(em)을 조금 넉넉하게 반올림한 표
+function emOf(ch) {
+  if (/[ㄱ-힣一-鿿]/.test(ch)) return 0.87
+  if (/[0-9]/.test(ch)) return 0.71
+  if (/[MW]/.test(ch)) return 0.95
+  if (/[A-Z]/.test(ch)) return 0.8
+  if (/[a-z]/.test(ch)) return 0.62
+  if (ch === ' ') return 0.22
+  if (/[,.·:;'!]/.test(ch)) return 0.31
+  if (ch === '"') return 0.38
+  if (ch === '(' || ch === ')') return 0.43
+  if (ch === '~' || ch === '-') return 0.68
+  return 0.9 // ※ ✓ % 와 그 밖
+}
+function measure(text, size, spacing = 0) {
+  let em = 0, n = 0
+  for (const ch of text) { em += emOf(ch); n++ }
+  return (em + spacing * n) * size
+}
+// start에서 1px씩 줄여 inner 안에 들게. min 아래로는 줄이지 않고 ok=false
+function fit(text, start, min, inner, spacing = 0) {
+  let size = start
+  while (size > min && measure(text, size, spacing) > inner) size--
+  return { size, ok: measure(text, size, spacing) <= inner }
+}
+
+function layout(g) {
+  const problems = {}
+  const say = (key, msg) => { if (!problems[key]) problems[key] = msg }
+  // 머리표: 알약, 37px, 안쪽 여백 14·29
+  const tagFit = fit(g.tag, 37, 30, P.inner - 58)
+  if (!tagFit.ok) say('tag', '머리표가 한 줄에 들어가지 않아요. 줄여 주세요')
+  const pill = { x: P.x, y: 41, h: 65, w: Math.min(P.inner, Math.ceil(measure(g.tag, tagFit.size)) + 58), size: tagFit.size }
+  // 작은 제목: 67px → 56px, 자간 -0.03em, 줄 높이 1.12 → 가운데 124 + 37.5
+  const subFit = fit(g.subtitle, 67, 56, P.inner, -0.03)
+  if (!subFit.ok) say('subtitle', '작은 제목이 한 줄에 들어가지 않아요. 줄여 주세요')
+  const subtitle = { y: 161.5, size: subFit.size }
+  // 큰 문구 두 줄: 199부터. 보통은 두 줄 같은 크기(109 → 72), '윗줄 작게'면 8 띄우고 윗줄 80 → 56(줄 90) · 아랫줄 150 → 72(줄 168)
+  let big
+  if (g.firstSmall) {
+    const a = fit(g.big1, 80, 56, P.inner, -0.03), b = fit(g.big2, 150, 72, P.inner, -0.03)
+    if (!a.ok) say('big1', '한 줄에 들어가지 않아요. 줄여 주세요')
+    if (!b.ok) say('big2', '한 줄에 들어가지 않아요. 줄여 주세요')
+    big = [{ y: 252, size: a.size }, { y: 381, size: b.size }]
+  } else {
+    const a = fit(g.big1, 109, 72, P.inner, -0.03), b = fit(g.big2, 109, 72, P.inner, -0.03)
+    if (!a.ok) say('big1', '한 줄에 들어가지 않아요. 줄여 주세요')
+    if (!b.ok) say('big2', '한 줄에 들어가지 않아요. 줄여 주세요')
+    const size = Math.min(a.size, b.size)
+    big = [{ y: 260, size }, { y: 382, size }]
+  }
+  // 강조 상자: 왼쪽 51, 아래 끝 621(윗단 바닥에서 45 위). 테두리 5 · 안쪽 17·28 · 모서리 26 · 그림자 오른쪽 5 아래 6
+  let box = null
+  if (g.boxBottom.trim() !== '') {
+    const maxW = g.picture ? PIC.x - 16 - P.x : P.inner
+    const room = maxW - 66
+    const top = g.boxTop.trim() !== '' ? fit(g.boxTop, 24, 20, room) : null
+    const bottom = fit(g.boxBottom, 40, 30, room)
+    if (top && !top.ok) say('boxTop', g.picture ? '그림 옆 상자에 들어가지 않아요. 줄이거나 그림을 빼 주세요' : '상자에 들어가지 않아요. 줄여 주세요')
+    if (!bottom.ok) say('boxBottom', g.picture ? '그림 옆 상자에 들어가지 않아요. 줄이거나 그림을 빼 주세요' : '상자에 들어가지 않아요. 줄여 주세요')
+    const textW = Math.max(top ? measure(g.boxTop, top.size) : 0, measure(g.boxBottom, bottom.size))
+    const h = top ? 124 : 92
+    const y = 621 - h
+    box = { x: P.x, y, w: Math.min(maxW, Math.ceil(textW) + 66), h,
+      top: top && { y: y + 36.5, size: top.size }, bottom: { y: y + (top ? 78 : 46), size: bottom.size } }
+  } else if (g.boxTop.trim() !== '') say('boxBottom', '윗줄만 쓸 수는 없어요. 아랫줄을 적어 주세요')
+
+  // 띠: 위 여백 24, 제목(선택) 35px 줄 45.5 + 9, 줄들, 아래 작은 글(선택) 11.5 + 31, 아래 여백 16
+  let y = P.bandY + 24
+  const title = g.bandTitle.trim() !== '' ? (() => {
+    const f = fit(g.bandTitle, 35, 28, P.inner)
+    if (!f.ok) say('bandTitle', '띠 제목이 한 줄에 들어가지 않아요. 줄여 주세요')
+    const t = { y: y + 22.75, size: f.size }
+    y += 45.5 + 9
+    return t
+  })() : null
+  const lines = g.lines.filter((l) => l.text.trim() !== '')
+  const noteH = g.note.trim() !== '' ? 11.5 + 31 : 0
+  const avail = P.logoY - 16 - y - noteH
+  const check = g.mark === 'check'
+  const colW = (P.inner - 13) / 2
+  const twoCols = check && lines.length >= 2 && lines.every((l) => measure(l.text, 34) <= colW - 43)
+  const rowsN = Math.max(1, twoCols ? Math.ceil(lines.length / 2) : lines.length)
+  const base = check ? 59.5 : 67, minRow = check ? 44 : 54
+  let rowH = Math.min(base, avail / rowsN)
+  if (rowH < minRow) { say('band', '띠에 다 들어가지 않아요. 줄을 하나 빼거나, 띠 제목·아래 작은 글을 비워 주세요'); rowH = minRow }
+  const font = check ? Math.min(34, Math.floor(rowH / 1.35)) : 35
+  const circle = Math.min(49, rowH - 8)
+  const markSize = font + 2
+  const markW = 0.855 * markSize
+  const rows = lines.map((l, i) => {
+    const row = twoCols ? Math.floor(i / 2) : i
+    const col = twoCols ? i % 2 : 0
+    const x0 = P.x + col * (colW + 13)
+    const textX = check ? x0 + markW + 12 : P.x + circle + 17
+    const room = check ? (twoCols ? colW : P.inner) - markW - 12 : P.inner - circle - 17
+    const f = fit(l.text, font, 26, room)
+    const index = g.lines.indexOf(l)
+    if (!f.ok) say(`line${index}`, '한 줄에 들어가지 않아요. 줄여 주세요')
+    if (l.em && !l.text.includes(l.em)) say(`em${index}`, '그 줄에 있는 낱말만 강조할 수 있어요')
+    return { n: i + 1, x0, textX, y: y + rowH * (row + 0.5), size: f.size, text: l.text, em: l.text.includes(l.em) ? l.em : '' }
+  })
+  const bandRows = twoCols ? Math.ceil(lines.length / 2) : lines.length
+  const note = noteH ? (() => {
+    const text = `※ ${g.note.trim()}`
+    const f = fit(text, 24, 20, P.inner)
+    if (!f.ok) say('note', '아래 작은 글이 한 줄에 들어가지 않아요. 줄여 주세요')
+    return { text, y: y + bandRows * rowH + 11.5 + 15.5, size: f.size }
+  })() : null
+  if (lines.length === 0) say('lines', '줄을 하나 이상 적어 주세요')
+  return { pill, subtitle, big, box, title, rows, note, check, twoCols, rowH, circle, markSize, problems }
+}
+
+// ───────────────────────────── 그림 16개(170×170, 로고색 셋만) ─────────────────────────────
+const ICON_NAMES = {
+  spine: '척추', knee: '무릎', hand: '손(도수치료)', syringe: '주사', document: '서류', disc: '영상 CD', idcard: '신분증', clock: '시계',
+  chair: '의자', ticket: '번호표', calendar: '달력', card: '결제 카드', pill: '약', xray: '엑스레이', nosign: '금지', warning: '주의',
+}
+const s = (w = 6) => `stroke="${D}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"`
+const ICONS = {
+  spine: [[82, 34], [88, 57], [91, 80], [89, 103], [83, 126]].map(([x, y], i) =>
+    `<rect x="${x - 25}" y="${y}" width="50" height="17" rx="7" fill="${i === 2 ? Y : W}" ${s(5)}/><path d="M${x + 25} ${y + 8.5} h12" ${s(5)}/>`).join('') +
+    `<path d="M70 147 q15 -6 30 0" fill="none" ${s(5)}/>`,
+  knee: `<path d="M44 36 L74 30 L102 80 L80 98 Z" fill="${W}" ${s(6)}/><path d="M78 92 L102 82 L96 142 L68 142 Z" fill="${W}" ${s(6)}/>` +
+    `<circle cx="96" cy="86" r="14" fill="${Y}" ${s(5)}/><path d="M118 64 l8 -8 M122 88 h11 M118 110 l8 8" ${s(5)}/>`,
+  hand: [[56, 48, 46], [70, 36, 58], [84, 38, 56], [98, 50, 44]].map(([x, y, h]) => `<rect x="${x}" y="${y}" width="13" height="${h}" rx="6.5" fill="${Y}" ${s(5)}/>`).join('') +
+    `<rect x="36" y="88" width="13" height="38" rx="6.5" fill="${Y}" ${s(5)} transform="rotate(-38 42 107)"/>` +
+    `<rect x="54" y="78" width="60" height="52" rx="16" fill="${Y}" ${s(5)}/><rect x="66" y="128" width="38" height="16" rx="4" fill="${W}" ${s(5)}/>`,
+  syringe: `<g transform="rotate(-45 85 85)"><rect x="70" y="22" width="30" height="8" rx="3" fill="${D}"/><rect x="81" y="28" width="8" height="22" fill="${D}"/>` +
+    `<rect x="68" y="48" width="34" height="62" rx="5" fill="${W}" ${s(5)}/><rect x="72" y="76" width="26" height="30" fill="${Y}"/>` +
+    `<path d="M68 66 h10 M68 80 h10 M68 94 h10" ${s(4)}/><rect x="79" y="110" width="12" height="10" fill="${D}"/><path d="M85 120 V148" ${s(4)}/></g>`,
+  document: `<path d="M50 32 H104 L126 54 V140 H50 Z" fill="${W}" ${s(6)}/><path d="M104 32 V54 H126" fill="${Y}" ${s(6)}/>` +
+    `<path d="M64 72 H110 M64 90 H110 M64 108 H96" ${s(6)}/><circle cx="118" cy="128" r="17" fill="${Y}" ${s(5)}/><path d="M110 128 l6 6 l10 -12" fill="none" ${s(5)}/>`,
+  disc: `<circle cx="85" cy="85" r="54" fill="${Y}" ${s(6)}/><path d="M85 45 A40 40 0 0 1 125 85" fill="none" stroke="${W}" stroke-width="6" stroke-linecap="round"/>` +
+    `<path d="M45 85 A40 40 0 0 0 85 125" fill="none" stroke="${W}" stroke-width="6" stroke-linecap="round" opacity=".7"/><circle cx="85" cy="85" r="18" fill="${W}" ${s(6)}/><circle cx="85" cy="85" r="5" fill="${D}"/>`,
+  idcard: `<rect x="32" y="48" width="106" height="74" rx="10" fill="${W}" ${s(6)}/><rect x="44" y="62" width="34" height="44" rx="4" fill="${Y}" ${s(5)}/>` +
+    `<circle cx="61" cy="78" r="8" fill="${D}"/><path d="M47 106 Q61 86 75 106 Z" fill="${D}"/><path d="M90 70 H124 M90 86 H124 M90 102 H112" ${s(6)}/>`,
+  clock: `<circle cx="85" cy="85" r="54" fill="${Y}" ${s(6)}/><path d="M85 38 v10 M85 122 v10 M38 85 h10 M122 85 h10" ${s(5)}/>` +
+    `<path d="M85 85 V56 M85 85 L107 98" ${s(7)}/><circle cx="85" cy="85" r="6" fill="${D}"/>`,
+  chair: `<rect x="50" y="36" width="18" height="62" rx="6" fill="${Y}" ${s(6)}/><rect x="50" y="90" width="70" height="16" rx="6" fill="${Y}" ${s(6)}/>` +
+    `<path d="M58 108 V138 M112 108 V138" ${s(7)}/>`,
+  ticket: `<rect x="34" y="52" width="102" height="66" rx="8" fill="${Y}" ${s(6)}/><circle cx="34" cy="85" r="10" fill="${W}" ${s(6)}/><circle cx="136" cy="85" r="10" fill="${W}" ${s(6)}/>` +
+    `<rect x="20" y="70" width="11" height="30" fill="${W}"/><rect x="139" y="70" width="11" height="30" fill="${W}"/>` +
+    `<path d="M106 60 V110" ${s(4)} stroke-dasharray="6 7"/><path d="M52 74 H90 M52 96 H78" ${s(7)}/>`,
+  calendar: `<path d="M38 46 H132 V130 H38 Z" fill="${W}" ${s(6)}/><path d="M38 46 H132 V70 H38 Z" fill="${Y}" ${s(6)}/><path d="M62 36 V54 M108 36 V54" ${s(7)}/>` +
+    [62, 85, 108].flatMap((x) => [86, 102, 118].map((y) => (x === 108 && y === 118 ? '' : `<circle cx="${x}" cy="${y}" r="5" fill="${D}"/>`))).join('') +
+    `<circle cx="108" cy="116" r="10" fill="${Y}" ${s(4)}/>`,
+  card: `<rect x="32" y="52" width="106" height="68" rx="10" fill="${Y}" ${s(6)}/><rect x="35" y="66" width="100" height="13" fill="${D}"/>` +
+    `<rect x="48" y="90" width="24" height="17" rx="3" fill="${W}" ${s(4)}/><path d="M84 99 H122" ${s(6)}/>`,
+  pill: `<g transform="rotate(-35 80 80)"><rect x="40" y="62" width="82" height="36" rx="18" fill="${W}" ${s(6)}/><path d="M81 62 H58 A18 18 0 0 0 58 98 H81 Z" fill="${Y}" ${s(6)}/></g>` +
+    `<circle cx="120" cy="120" r="15" fill="${Y}" ${s(5)}/><path d="M111 120 H129" ${s(4)}/>`,
+  xray: `<rect x="40" y="32" width="90" height="106" rx="8" fill="${D}"/><rect x="40" y="32" width="26" height="12" rx="3" fill="${Y}"/>` +
+    `<rect x="80" y="54" width="10" height="62" fill="${W}"/><circle cx="79" cy="54" r="8" fill="${W}"/><circle cx="91" cy="54" r="8" fill="${W}"/>` +
+    `<circle cx="79" cy="116" r="8" fill="${W}"/><circle cx="91" cy="116" r="8" fill="${W}"/>`,
+  nosign: `<circle cx="85" cy="85" r="50" fill="${Y}" ${s(11)}/><path d="M50 50 L120 120" ${s(11)}/>`,
+  warning: `<path d="M85 36 L134 124 H36 Z" fill="${Y}" ${s(7)}/><rect x="79" y="62" width="12" height="36" rx="6" fill="${D}"/><circle cx="85" cy="110" r="7" fill="${D}"/>`,
+}
+function iconSvg(key) {
+  // 흰 원 받침(진회색 테두리 5) + 그림자(오른쪽 5·아래 6, 번짐 없음)
+  return `<circle cx="90" cy="91" r="82" fill="#000" fill-opacity=".18"/><circle cx="85" cy="85" r="80" fill="${W}" stroke="${D}" stroke-width="5"/>${ICONS[key]}`
+}
+
+// ───────────────────────────── 안내문 SVG ─────────────────────────────
+const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+function T(x, y, size, weight, fill, text, spacing = 0, anchor = 'start') {
+  return `<text x="${x}" y="${y}" font-family="PosterPretendard" font-size="${size}" font-weight="${weight}" fill="${fill}"${spacing ? ` letter-spacing="${spacing}em"` : ''} text-anchor="${anchor}" dominant-baseline="central">${esc(text)}</text>`
+}
+function lineText(r, color) {
+  if (!r.em) return T(r.textX, r.y, r.size, 900, color, r.text)
+  const at = r.text.indexOf(r.em)
+  const parts = [r.text.slice(0, at), r.em, r.text.slice(at + r.em.length)]
+  return `<text x="${r.textX}" y="${r.y}" font-family="PosterPretendard" font-size="${r.size}" font-weight="900" fill="${color}" dominant-baseline="central">` +
+    `${parts[0] ? `<tspan>${esc(parts[0])}</tspan>` : ''}<tspan fill="${Y}">${esc(parts[1])}</tspan>${parts[2] ? `<tspan>${esc(parts[2])}</tspan>` : ''}</text>`
+}
+function poster(g) {
+  const L = layout(g)
+  const out = []
+  out.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${P.w} ${P.h}" role="img" aria-label="${esc(`${g.tag}: ${g.subtitle} ${g.big1} ${g.big2}`)}">`)
+  out.push(`<rect width="794" height="666" fill="${Y}"/><rect y="666" width="794" height="288" fill="${D}"/><rect y="954" width="794" height="169" fill="${W}"/>`)
+  // 머리표
+  out.push(`<rect x="${L.pill.x}" y="${L.pill.y}" width="${L.pill.w}" height="${L.pill.h}" rx="${L.pill.h / 2}" fill="${D}"/>`)
+  out.push(T(L.pill.x + L.pill.w / 2, L.pill.y + L.pill.h / 2, L.pill.size, 900, Y, g.tag, 0, 'middle'))
+  // 작은 제목 · 큰 문구
+  out.push(T(P.x, L.subtitle.y, L.subtitle.size, 900, D, g.subtitle, -0.03))
+  out.push(T(P.x, L.big[0].y, L.big[0].size, 900, D, g.big1, -0.03))
+  out.push(T(P.x, L.big[1].y, L.big[1].size, 900, D, g.big2, -0.03))
+  // 강조 상자
+  if (L.box) {
+    const b = L.box
+    out.push(`<rect x="${b.x + 5}" y="${b.y + 6}" width="${b.w}" height="${b.h}" rx="26" fill="#000" fill-opacity=".18"/>`)
+    out.push(`<rect x="${b.x + 2.5}" y="${b.y + 2.5}" width="${b.w - 5}" height="${b.h - 5}" rx="23.5" fill="${W}" stroke="${D}" stroke-width="5"/>`)
+    if (b.top) out.push(T(b.x + 33, b.top.y, b.top.size, 700, D, g.boxTop))
+    out.push(T(b.x + 33, b.bottom.y, b.bottom.size, 900, D, g.boxBottom))
+  }
+  // 그림
+  if (g.picture) out.push(`<g transform="translate(${PIC.x} ${PIC.y})">${iconSvg(g.picture)}</g>`)
+  // 띠
+  if (L.title) out.push(T(P.x, L.title.y, L.title.size, 900, Y, g.bandTitle))
+  for (const r of L.rows) {
+    if (L.check) out.push(T(r.x0, r.y, L.markSize, 900, Y, '✓'))
+    else {
+      out.push(`<circle cx="${P.x + L.circle / 2}" cy="${r.y}" r="${L.circle / 2}" fill="${Y}"/>`)
+      out.push(T(P.x + L.circle / 2, r.y, Math.round(L.circle * 0.63), 900, D, String(r.n), 0, 'middle'))
+    }
+    out.push(lineText(r, W))
+  }
+  if (L.note) out.push(T(P.x, L.note.y, L.note.size, 700, NOTE, L.note.text))
+  // 로고
+  out.push(`<image href="../forms/logo.png" x="${LOGO.x}" y="${LOGO.y}" width="${LOGO.w}" height="${LOGO.h}"/>`)
+  out.push('</svg>')
+  return out.join('')
+}
+
+// ───────────────────────────── 예시 6장 (요청서, 2026-11-12에 실제로 만든 것) ─────────────────────────────
+const L1 = (text, em = '') => ({ text, em })
+const EXAMPLES = [
+  { name: '보험 서류 · 체크 두 열', tag: '보험 서류 안내', subtitle: '보험사에 낼 서류는', big1: '수납할 때', big2: '말씀해 주세요', firstSmall: false,
+    boxTop: '이렇게 말씀해 주세요', boxBottom: '"보험 서류 필요해요"', picture: 'document', bandTitle: '이런 서류가 필요하실 때', mark: 'check',
+    lines: [L1('진단서'), L1('진료비 영수증'), L1('진료비 세부내역서'), L1('통원 확인서')], note: '필요한 서류는 보험사마다 다르니 미리 확인해 주세요' },
+  { name: '영상 CD · 체크 세 항목', tag: '영상 CD 안내', subtitle: '다른 병원 영상 CD는', big1: '접수할 때', big2: '먼저 주세요', firstSmall: false,
+    boxTop: '이렇게 말씀해 주세요', boxBottom: '"영상 CD 가져왔어요"', picture: 'disc', bandTitle: '이런 영상을 가져오셨다면', mark: 'check',
+    lines: [L1('엑스레이'), L1('CT'), L1('MRI')], note: '미리 주시면 진료 때 바로 확인할 수 있습니다' },
+  { name: '신분증 · 체크 두 열', tag: '신분증 안내', subtitle: '접수할 때', big1: '신분증을', big2: '보여주세요', firstSmall: false,
+    boxTop: '건강보험으로 진료받으시려면', boxBottom: '본인 확인이 필요합니다', picture: 'idcard', bandTitle: '이런 신분증을 가져오세요', mark: 'check',
+    lines: [L1('주민등록증'), L1('운전면허증'), L1('건강보험증'), L1('모바일 건강보험증')], note: '신분증을 찍은 사진·복사본은 안 됩니다' },
+  { name: '대리 접수 · 체크 한 열', tag: '접수 안내', subtitle: '다른 분을 대신하는', big1: '대리 접수는', big2: '안 됩니다', firstSmall: false,
+    boxTop: '접수는', boxBottom: '환자 본인만 가능합니다', picture: 'nosign', bandTitle: '이렇게 해 주세요', mark: 'check',
+    lines: [L1('환자 본인이 오신 뒤에 접수해 주세요'), L1('가족·지인 접수는 대신 할 수 없습니다')], note: '본인 확인과 공정한 순서를 위해 양해 부탁드립니다' },
+  { name: '진료 시작 전 · 번호', tag: '진료 시작 전 안내', subtitle: '지금은 진료 시작 전입니다', big1: '순서 대기표를', big2: '적어 주세요', firstSmall: false,
+    boxTop: '순서 대기표는', boxBottom: '왼쪽 아래에 있습니다', picture: 'clock', bandTitle: '', mark: 'number',
+    lines: [L1('순서 대기표를 작성해 주세요'), L1('자리에 앉아 기다려 주세요'), L1('적으신 순서대로 접수해 드립니다')], note: '진료는 오전 9시, 오후 2시에 시작합니다' },
+  { name: '도수치료 · 윗줄 작게 + 줄 안 강조', tag: '도수치료 안내', subtitle: '도수치료 관리급여 적용', big1: '1회 비용', big2: '43,850원', firstSmall: true,
+    boxTop: '2026년 7월 1일부터', boxBottom: '건강보험 적용 중입니다', picture: 'spine', bandTitle: '도수치료 전에 꼭 확인하세요', mark: 'check',
+    lines: [L1('물리치료를 먼저 2주 이상 · 4회 이상 받은 뒤', '2주 이상 · 4회 이상'), L1('물리치료로 좋아지지 않을 때 적용', '좋아지지 않을 때'), L1('도수치료는 주 2회, 1년 15회까지', '주 2회, 1년 15회')], note: '' },
+]
+
+// ───────────────────────────── 화면 ─────────────────────────────
+const params = new URLSearchParams(location.search)
+const S = params.get('s') || 'posters'
+document.querySelectorAll('#bar a').forEach((a) => a.classList.toggle('on', a.dataset.s === S))
+const app = document.getElementById('app')
+
+if (S === 'posters') {
+  document.getElementById('barNote').textContent = '요청서 예시 6장을 그대로 넣은 그림 · 글자 크기는 앱과 같은 규칙으로 저절로 맞춤'
+  app.innerHTML = `<div class="sheet"><h1>환자 안내문 — 기본형 6장</h1><p class="lead">A4 세로 794×1123 · 로고색(노랑 #E6E006 · 진회색 #2e2e2e · 흰색)만 · 병원 이름·전화·주소 글자 없음(로고 그림만)</p>
+    <div class="grid">${EXAMPLES.map((g, i) => `<figure>${poster(g)}<figcaption>${i + 1}. ${esc(g.name)}</figcaption></figure>`).join('')}</div></div>`
+} else if (S === 'one') {
+  const g = EXAMPLES[Math.max(0, Math.min(5, Number(params.get('n') || 1) - 1))]
+  document.getElementById('bar').hidden = true
+  document.body.style.background = '#fff'
+  app.innerHTML = `<div class="one">${poster(g)}</div>`
+} else if (S === 'icons') {
+  document.getElementById('barNote').textContent = '미리 그려 둔 그림 16개 · AI가 메모에 맞는 것 하나를 고르고, 맞는 것이 없으면 그림 없이 · 직접 바꾸거나 뺄 수 있음'
+  app.innerHTML = `<div class="sheet"><h1>그림 16개</h1><p class="lead">흰 원 받침 + 진회색 테두리 · 로고색 셋만 · 글자 없음</p>
+    <div class="icons">${Object.keys(ICONS).map((k) => `<figure><svg viewBox="0 0 180 180">${iconSvg(k)}</svg><figcaption>${ICON_NAMES[k]}</figcaption></figure>`).join('')}</div></div>`
+} else {
+  screen()
+}
+
+function screen() {
+  document.getElementById('barNote').innerHTML = `<button data-go="1">예시 1 열기</button> <button data-go="5">예시 5(번호)</button> <button data-go="6">예시 6(윗줄 작게)</button>
+    <button data-go="new">새로 만들기</button> <button data-go="busy">정리하는 중</button> <button data-go="number">숫자 어긋남</button> <button data-go="over">띠 넘침</button>`
+  const saved = [
+    { id: 'a', title: '보험 서류 안내', at: '11월 12일', ex: 0 }, { id: 'b', title: '영상 CD 안내', at: '11월 12일', ex: 1 },
+    { id: 'c', title: '신분증 안내', at: '11월 12일', ex: 2 }, { id: 'd', title: '접수 안내', at: '11월 12일', ex: 3 },
+    { id: 'e', title: '진료 시작 전 안내', at: '11월 12일', ex: 4 }, { id: 'f', title: '도수치료 안내', at: '11월 12일', ex: 5 },
+  ]
+  const blank = () => ({ tag: '', subtitle: '', big1: '', big2: '', firstSmall: false, boxTop: '', boxBottom: '', picture: null, bandTitle: '', mark: 'check', lines: [L1('')], note: '' })
+  let st = { open: 'a', g: structuredClone(EXAMPLES[0]), memo: '', busy: false, error: null, baseline: JSON.stringify(EXAMPLES[0]) }
+  const go = params.get('go')
+
+  app.innerHTML = `
+  <header class="top"><div class="top-in"><span class="brand">병원 업무</span>
+    <nav class="tabs"><a>대시보드</a><a>통계</a><a>청구</a><a>고시·공지</a><a>환자</a><a>AI 리포트</a><a class="on">서식</a><a>직원</a><a>업무일지</a><a>재고</a><a>주소록</a><a>설정</a></nav></div></header>
+  <main class="wrap">
+    <h1>서식</h1>
+    <div class="tools" role="group" aria-label="서식 도구"><button aria-pressed="false">휴진 안내</button><button class="on" aria-pressed="true">환자 안내문</button></div>
+    <div class="cols">
+      <section class="panel" aria-label="저장한 환자 안내문">
+        <h2>저장한 환자 안내문</h2>
+        <button class="btn sm" id="newBtn" style="margin-top:10px;width:100%">+ 새로 만들기</button>
+        <div class="list" id="list"></div>
+      </section>
+      <section class="panel" aria-label="만들기" id="editor"></section>
+      <section class="panel preview" aria-label="미리보기">
+        <h2>미리보기 <span class="caption muted" style="font-weight:400">A4 세로</span></h2>
+        <div id="poster" style="margin-top:12px"></div>
+        <div class="actions"><button class="btn primary" id="save">저장</button><button class="btn" id="print">인쇄·PDF</button><button class="btn" id="png">그림 파일</button><button class="btn ghost danger" id="del">지우기</button></div>
+        <p class="state" id="state"></p>
+      </section>
+    </div>
+  </main>`
+
+  const $ = (id) => document.getElementById(id)
+  function field(key, label, max, hint = '', opt = false) {
+    return `<div class="field"><label class="label" for="f-${key}">${label}<span class="hint">${opt ? '선택 · ' : ''}${max}자까지${hint ? ' · ' + hint : ''}</span></label>
+      <input type="text" id="f-${key}" data-k="${key}" maxlength="${max}" value="${esc(st.g[key])}"><p class="fielderr" id="e-${key}" hidden></p></div>`
+  }
+  function renderEditor() {
+    const g = st.g
+    $('editor').innerHTML = `
+      <div class="field">
+        <label class="label" for="memo">대충 적기</label>
+        <textarea id="memo" maxlength="500" placeholder="예) 보험 서류 필요하면 수납할 때 말해 달라고. 진단서, 영수증, 세부내역서, 통원확인서. 보험사마다 다름">${esc(st.memo)}</textarea>
+        <div class="row between"><p class="notice">전화번호·주민번호·메일 주소는 적지 마세요. 적은 글은 정리할 때만 AI로 보내고 저장하지 않아요. AI는 적은 글에 없는 숫자를 넣지 않아요</p>
+          <span class="caption muted">${[...st.memo].length}/500</span></div>
+        <div class="row"><button class="btn primary" id="tidy" ${st.busy || !st.memo.trim() ? 'disabled' : ''}>${st.busy ? '정리하는 중…' : '정리하기'}</button></div>
+        ${st.error ? `<div class="err"><b>${st.error.what}</b><br>${st.error.fix} <code>${st.error.code}</code></div>` : ''}
+      </div>
+      <div class="sep"></div>
+      <h2>안내 내용</h2>
+      <fieldset class="group"><legend>노란 윗단</legend>
+        <div class="two">${field('tag', '머리표', LIMIT.tag)}${field('subtitle', '작은 제목', LIMIT.subtitle)}</div>
+        <div class="two" style="margin-top:8px">${field('big1', '큰 문구 윗줄', LIMIT.big)}${field('big2', '큰 문구 아랫줄', LIMIT.big)}</div>
+        <label class="check" style="margin-top:8px"><input type="checkbox" id="firstSmall" ${g.firstSmall ? 'checked' : ''}> 윗줄 작게(아랫줄을 크게 — 금액·횟수 안내)</label>
+        <div class="two" style="margin-top:8px">${field('boxTop', '흰 상자 윗줄', LIMIT.boxTop, '작은 글', true)}${field('boxBottom', '흰 상자 아랫줄', LIMIT.boxBottom, '굵은 글', true)}</div>
+        <div class="field" style="margin-top:8px"><label class="label" for="f-picture">그림<span class="hint">선택</span></label>
+          <select id="f-picture"><option value="">없음</option>${Object.entries(ICON_NAMES).map(([k, n]) => `<option value="${k}" ${g.picture === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+      </fieldset>
+      <fieldset class="group"><legend>진회색 띠</legend>
+        ${field('bandTitle', '띠 제목', LIMIT.bandTitle, '', true)}
+        <div class="row between" style="margin-top:10px"><span class="label">줄 표시</span>
+          <div class="seg" role="group" aria-label="줄 표시"><button data-mark="check" class="${g.mark === 'check' ? 'on' : ''}" aria-pressed="${g.mark === 'check'}">✓ 체크</button><button data-mark="number" class="${g.mark === 'number' ? 'on' : ''}" aria-pressed="${g.mark === 'number'}">1·2·3 번호</button></div></div>
+        <div id="lines">${g.lines.map((l, i) => `<div class="line-edit">
+            <div class="field"><input type="text" aria-label="줄 ${i + 1}" data-line="${i}" maxlength="${LIMIT.line}" value="${esc(l.text)}" placeholder="줄 ${i + 1} (${LIMIT.line}자까지)"><p class="fielderr" id="e-line${i}" hidden></p></div>
+            <div class="field"><input type="text" aria-label="줄 ${i + 1} 노랑 강조" data-em="${i}" value="${esc(l.em)}" placeholder="노랑 강조(선택)"><p class="fielderr" id="e-em${i}" hidden></p></div>
+            <button class="btn ghost sm" data-del="${i}" ${g.lines.length <= 1 ? 'disabled' : ''}>빼기</button></div>`).join('')}</div>
+        <div class="row" style="margin-top:8px"><button class="btn sm" id="addLine" ${g.lines.length >= LIMIT.lines ? 'disabled' : ''}>+ 줄 더하기</button><span class="caption muted">줄은 4개까지 · 짧은 항목은 저절로 두 열</span></div>
+        <p class="fielderr" id="e-band" hidden style="margin-top:6px"></p><p class="fielderr" id="e-lines" hidden></p>
+        <div style="margin-top:8px">${field('note', '아래 작은 글', LIMIT.note, '앞에 ※가 붙어요', true)}</div>
+      </fieldset>`
+    bind()
+    paint()
+  }
+  function paint() {
+    const L = layout(st.g)
+    $('poster').innerHTML = poster(st.g)
+    document.querySelectorAll('.fielderr').forEach((p) => { p.hidden = true })
+    document.querySelectorAll('#editor input').forEach((i) => i.classList.remove('bad'))
+    const required = { tag: '머리표', subtitle: '작은 제목', big1: '큰 문구 윗줄', big2: '큰 문구 아랫줄' }
+    for (const [k, n] of Object.entries(required)) if (!st.g[k].trim()) L.problems[k] = L.problems[k] || `${n}을 적어 주세요`
+    for (const [k, msg] of Object.entries(L.problems)) {
+      const p = $(`e-${k}`); if (!p) continue
+      p.textContent = msg; p.hidden = false
+      const input = $(`f-${k}`) || document.querySelector(`[data-line="${k.slice(4)}"]`) || document.querySelector(`[data-em="${k.slice(2)}"]`)
+      if (input && (k.startsWith('line') || k.startsWith('em') || $(`f-${k}`))) input.classList.add('bad')
+    }
+    const ok = Object.keys(L.problems).length === 0
+    ;['save', 'print', 'png'].forEach((b) => { $(b).disabled = !ok })
+    $('del').hidden = st.open === null
+    const dirty = JSON.stringify(st.g) !== st.baseline
+    $('state').innerHTML = dirty ? '<span class="dirty">저장하지 않은 내용이 있어요</span>' : st.open ? '<span class="saved">저장됨</span>' : ''
+    $('list').innerHTML = saved.map((x) => `<button class="item ${x.id === st.open ? 'on' : ''}" data-open="${x.id}"><b>${x.title}</b><span>${x.at} 고침</span></button>`).join('')
+    document.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => openSaved(b.dataset.open))
+  }
+  function bind() {
+    $('memo').oninput = (e) => { st.memo = e.target.value; st.error = null; const t = $('tidy'); t.disabled = !st.memo.trim() }
+    $('tidy').onclick = () => { st.busy = true; renderEditor(); setTimeout(() => { st.busy = false; st.g = structuredClone(EXAMPLES[0]); renderEditor() }, 900) }
+    document.querySelectorAll('[data-k]').forEach((i) => i.oninput = (e) => { st.g[e.target.dataset.k] = e.target.value; paint() })
+    $('firstSmall').onchange = (e) => { st.g.firstSmall = e.target.checked; paint() }
+    $('f-picture').onchange = (e) => { st.g.picture = e.target.value || null; paint() }
+    document.querySelectorAll('[data-mark]').forEach((b) => b.onclick = () => { st.g.mark = b.dataset.mark; renderEditor() })
+    document.querySelectorAll('[data-line]').forEach((i) => i.oninput = (e) => { st.g.lines[+e.target.dataset.line].text = e.target.value; paint() })
+    document.querySelectorAll('[data-em]').forEach((i) => i.oninput = (e) => { st.g.lines[+e.target.dataset.em].em = e.target.value; paint() })
+    document.querySelectorAll('[data-del]').forEach((b) => b.onclick = () => { st.g.lines.splice(+b.dataset.del, 1); renderEditor() })
+    $('addLine').onclick = () => { if (st.g.lines.length < LIMIT.lines) st.g.lines.push(L1('')); renderEditor() }
+  }
+  function openSaved(id) {
+    const x = saved.find((v) => v.id === id)
+    st = { ...st, open: id, g: structuredClone(EXAMPLES[x.ex]), error: null, memo: '' }
+    st.baseline = JSON.stringify(st.g)
+    renderEditor()
+  }
+  $('newBtn').onclick = () => { st = { ...st, open: null, g: blank(), memo: '', error: null, baseline: JSON.stringify(blank()) }; renderEditor() }
+  $('save').onclick = () => { st.baseline = JSON.stringify(st.g); if (!st.open) st.open = 'a'; paint() }
+  $('print').onclick = () => alert('인쇄 창이 열리고 A4 한 장에 안내문만 나와요(휴진 안내와 같음)')
+  $('png').onclick = () => alert('환자안내문_보험 서류 안내.png (1588×2246)를 내려받아요')
+  $('del').onclick = () => confirm('이 안내문을 지울까요?')
+  document.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => { location.search = `?s=screen&go=${b.dataset.go}` })
+
+  if (go === '5') openSaved('e')
+  else if (go === '6') openSaved('f')
+  else if (go === 'new') { st = { ...st, open: null, g: blank(), baseline: JSON.stringify(blank()) }; renderEditor() }
+  else if (go === 'busy') { st = { ...st, open: null, g: blank(), baseline: JSON.stringify(blank()), memo: '보험 서류 필요하면 수납할 때 말해 달라고. 진단서, 영수증, 세부내역서, 통원확인서. 보험사마다 다름', busy: true }; renderEditor() }
+  else if (go === 'number') {
+    st = { ...st, open: null, g: blank(), baseline: JSON.stringify(blank()), memo: '도수치료 관리급여 적용됐다고. 물리치료 먼저 받고 안 좋아지면 함',
+      error: { code: 'E-AI-FAILED', what: 'AI 리포트를 만들지 못했어요', fix: '[다시 분석]을 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.' } }
+    renderEditor()
+  } else if (go === 'over') {
+    openSaved('d')
+    st.g.lines = [L1('환자 본인이 오신 뒤에 접수해 주세요'), L1('가족·지인 접수는 대신 할 수 없습니다'), L1('보호자는 옆에서 도와주실 수 있습니다'), L1('접수 뒤에는 자리에서 기다려 주세요')]
+    renderEditor()
+  } else renderEditor()
+}
+</script>
+</body>
+</html>
