@@ -12,32 +12,32 @@ const 가 = (n: number) => '가'.repeat(n)
 const EXAMPLES: GuideContent[] = [
   {
     tag: '보험 서류 안내', subtitle: '보험사에 낼 서류는', big1: '수납할 때', big2: '말씀해 주세요', firstSmall: false,
-    boxTop: '이렇게 말씀해 주세요', boxBottom: '"보험 서류 필요해요"', picture: 'document', bandTitle: '이런 서류가 필요하실 때', mark: 'check',
+    boxTop: '이렇게 말씀해 주세요', boxBottom: '"보험 서류 필요해요"', picture: 'document', drawing: null, bandTitle: '이런 서류가 필요하실 때', mark: 'check',
     lines: [L('진단서'), L('진료비 영수증'), L('진료비 세부내역서'), L('통원 확인서')], note: '필요한 서류는 보험사마다 다르니 미리 확인해 주세요',
   },
   {
     tag: '영상 CD 안내', subtitle: '다른 병원 영상 CD는', big1: '접수할 때', big2: '먼저 주세요', firstSmall: false,
-    boxTop: '이렇게 말씀해 주세요', boxBottom: '"영상 CD 가져왔어요"', picture: 'disc', bandTitle: '이런 영상을 가져오셨다면', mark: 'check',
+    boxTop: '이렇게 말씀해 주세요', boxBottom: '"영상 CD 가져왔어요"', picture: 'disc', drawing: null, bandTitle: '이런 영상을 가져오셨다면', mark: 'check',
     lines: [L('엑스레이'), L('CT'), L('MRI')], note: '미리 주시면 진료 때 바로 확인할 수 있습니다',
   },
   {
     tag: '신분증 안내', subtitle: '접수할 때', big1: '신분증을', big2: '보여주세요', firstSmall: false,
-    boxTop: '건강보험으로 진료받으시려면', boxBottom: '본인 확인이 필요합니다', picture: 'idcard', bandTitle: '이런 신분증을 가져오세요', mark: 'check',
+    boxTop: '건강보험으로 진료받으시려면', boxBottom: '본인 확인이 필요합니다', picture: 'idcard', drawing: null, bandTitle: '이런 신분증을 가져오세요', mark: 'check',
     lines: [L('주민등록증'), L('운전면허증'), L('건강보험증'), L('모바일 건강보험증')], note: '신분증을 찍은 사진·복사본은 안 됩니다',
   },
   {
     tag: '접수 안내', subtitle: '다른 분을 대신하는', big1: '대리 접수는', big2: '안 됩니다', firstSmall: false,
-    boxTop: '접수는', boxBottom: '환자 본인만 가능합니다', picture: 'nosign', bandTitle: '이렇게 해 주세요', mark: 'check',
+    boxTop: '접수는', boxBottom: '환자 본인만 가능합니다', picture: 'nosign', drawing: null, bandTitle: '이렇게 해 주세요', mark: 'check',
     lines: [L('환자 본인이 오신 뒤에 접수해 주세요'), L('가족·지인 접수는 대신 할 수 없습니다')], note: '본인 확인과 공정한 순서를 위해 양해 부탁드립니다',
   },
   {
     tag: '진료 시작 전 안내', subtitle: '지금은 진료 시작 전입니다', big1: '순서 대기표를', big2: '적어 주세요', firstSmall: false,
-    boxTop: '순서 대기표는', boxBottom: '왼쪽 아래에 있습니다', picture: 'clock', bandTitle: '', mark: 'number',
+    boxTop: '순서 대기표는', boxBottom: '왼쪽 아래에 있습니다', picture: 'clock', drawing: null, bandTitle: '', mark: 'number',
     lines: [L('순서 대기표를 작성해 주세요'), L('자리에 앉아 기다려 주세요'), L('적으신 순서대로 접수해 드립니다')], note: '진료는 오전 9시, 오후 2시에 시작합니다',
   },
   {
     tag: '도수치료 안내', subtitle: '도수치료 관리급여 적용', big1: '1회 비용', big2: '43,850원', firstSmall: true,
-    boxTop: '2026년 7월 1일부터', boxBottom: '건강보험 적용 중입니다', picture: 'spine', bandTitle: '도수치료 전에 꼭 확인하세요', mark: 'check',
+    boxTop: '2026년 7월 1일부터', boxBottom: '건강보험 적용 중입니다', picture: 'spine', drawing: null, bandTitle: '도수치료 전에 꼭 확인하세요', mark: 'check',
     lines: [
       L('물리치료를 먼저 2주 이상 · 4회 이상 받은 뒤', '2주 이상 · 4회 이상'),
       L('물리치료로 좋아지지 않을 때 적용', '좋아지지 않을 때'),
@@ -247,6 +247,20 @@ describe('AC-4503.3: 흰 상자', () => {
     expect(over.box!.x + over.box!.w).toBe(550)
     expect(layoutGuide(withEx1({ boxTop: 가(24) })).problems).toEqual({})
     expect(layoutGuide(withEx1({ boxTop: 가(25) })).problems).toEqual({ boxTop: BOX_BY_PICTURE })
+  })
+
+  it("AC-4503.3: 그림이 AI로 그린 그림('custom')이어도 같은 자리에 그림이 있어 상자 최대 폭은 499(오른쪽 끝 550)다", () => {
+    const drawing: GuideContent['drawing'] = {
+      subject: '공', shapes: [{ kind: 'circle', nums: [85, 85, 50], d: '', fill: 'yellow', stroke: 'dark', width: 7 }],
+    }
+    const custom = (patch: Partial<GuideContent>) => withEx1({ picture: 'custom', drawing, ...patch })
+    const fits = layoutGuide(custom({ boxBottom: 가(16) }))
+    expect(fits.problems).toEqual({})
+    expect(fits.picture).toEqual({ x: 566, y: 468, size: 170 })
+    const over = layoutGuide(custom({ boxBottom: 가(17) }))
+    expect(over.problems).toEqual({ boxBottom: BOX_BY_PICTURE })
+    expect(over.box!.w).toBe(499)
+    expect(over.box!.x + over.box!.w).toBe(550)
   })
 
   it('AC-4503.3: 그림이 없으면 상자 오른쪽 끝이 743 이하이고, 넘으면 상자 까닭이 붙는다', () => {
