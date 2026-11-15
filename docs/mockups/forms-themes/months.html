@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>서식 시안 — 달 테마 그림 다시 그리기</title>
+<style>
+  /* 안내문 글꼴: 승인 시안과 같은 Pretendard subset Bold·Black */
+  @font-face { font-family: 'PosterPretendard'; font-weight: 700; src: url('../forms/fonts/Pretendard-Bold.subset.woff2') format('woff2'); }
+  @font-face { font-family: 'PosterPretendard'; font-weight: 900; src: url('../forms/fonts/Pretendard-Black.subset.woff2') format('woff2'); }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: #e9ecf0; font-family: 'PosterPretendard', 'Noto Sans KR', 'Malgun Gothic', sans-serif; color: #222; padding: 28px 32px 64px; }
+  h1 { font-size: 22px; font-weight: 700; }
+  .intro { margin: 6px 0 22px; font-size: 14px; color: #555; line-height: 1.7; }
+  section { margin: 0 0 34px; }
+  h2 { font-size: 18px; font-weight: 700; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+  h2 i { width: 16px; height: 16px; border-radius: 4px; display: inline-block; }
+  .row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; max-width: 1240px; }
+  figure { background: #fff; border-radius: 10px; padding: 10px; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+  figure svg { display: block; width: 100%; height: auto; border-radius: 4px; }
+  figcaption { margin-top: 8px; font-size: 14px; font-weight: 700; }
+  figcaption small { display: block; color: #666; font-weight: 400; font-size: 12.5px; margin-top: 2px; line-height: 1.5; }
+  .new figcaption b { color: #0b6b3a; }
+  @media (max-width: 760px) { body { padding: 18px 16px 48px; } .row { grid-template-columns: 1fr; } }
+  body.only { padding: 0; background: #fff; }
+  body.only #page svg { display: block; width: 794px; height: 1123px; }
+  body.cmp { padding: 18px; background: #e9ecf0; }
+  body.cmp #page .row { grid-template-columns: repeat(3, 520px); max-width: none; }
+  body.grid { padding: 16px; background: #e9ecf0; }
+  body.grid #page .g { display: grid; grid-template-columns: repeat(6, 250px); gap: 12px; }
+  body.grid #page figure { padding: 6px; }
+  body.grid #page figcaption { font-size: 13px; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div id="gallery">
+  <h1>달 테마 그림 다시 그리기 (시안)</h1>
+  <p class="intro">한 줄에 한 달씩, <b>지금 그림 · 새 1번(같은 소재를 정교하게) · 새 2번(다른 소재)</b>을 실제 안내문 모양으로 놓았어요.<br>
+  카드 두 장의 날짜·이름은 보기용 예시예요. 'N월' 글자·날짜 띠·아래 글 색(강조색)은 지금과 같아요.</p>
+  <div id="rows"></div>
+</div>
+<div id="page"></div>
+
+<script>
+// 달마다 강조색(src/lib/forms/themes.ts 그대로)과 보기용 카드 두 장, 그림 소재 설명
+const MONTHS = [
+  { id: 'm01', accent: '#3c6fb4', sample: [['2027-01-15', null, '학회'], ['2027-01-29', null, '원장님 학회', '오전진료']],
+    v1: '눈 결정 여섯 가지·눈 덮인 언덕과 전나무', v2: '눈 덮인 동백꽃·붉은 낙상홍 열매' },
+  { id: 'm02', accent: '#c2416b', sample: [['2027-02-19', null, '학회'], ['2027-02-26', null, '직원 연수']],
+    v1: '홍매·백매 가지(꽃술까지)·동박새', v2: '버들강아지·눈 녹는 시냇물' },
+  { id: 'm03', accent: '#3f9142', sample: [['2027-03-20', null, '원장님 학회', '오전진료'], ['2027-03-27', null, '학회']],
+    v1: '개나리 가지·흙에서 올라온 새싹', v2: '진달래 가지·호랑나비·흰나비' },
+  { id: 'm04', accent: '#d9487a', sample: [['2027-04-10', null, '학회'], ['2027-04-17', null, '직원 연수']],
+    v1: '벚꽃 가지·흩날리는 꽃잎·벚꽃 언덕', v2: '튤립 꽃다발·유채꽃 다발과 들판·꿀벌' },
+  { id: 'm05', accent: '#d8434e', sample: [['2027-05-15', null, '직원 연수'], ['2027-05-22', null, '학회']],
+    v1: '카네이션 꽃다발·리본', v2: '장미 넝쿨·초록 잎·꽃봉오리' },
+  { id: 'm06', accent: '#5b63c7', sample: [['2027-06-12', null, '학회'], ['2027-06-19', null, '원장님 학회', '오전진료']],
+    v1: '수국(파랑·보라·분홍)·톱니 잎', v2: '장마 — 빗줄기·우산·연잎 위 청개구리' },
+  { id: 'm07', accent: '#1d8fc7', sample: [['2027-07-29', '2027-07-31', '여름휴가'], ['2027-07-17', null, '학회']],
+    v1: '해·뭉게구름·말려 오는 파도·갈매기·불가사리', v2: '수박·합죽선 부채·나무 위 매미' },
+  { id: 'm08', accent: '#d46f00', sample: [['2026-08-03', '2026-08-05', '여름휴가'], ['2026-08-15', null, '광복절']],
+    v1: '해바라기(씨앗 무늬까지)·해바라기 밭', v2: '여름밤 — 반딧불·대나무·달' },
+  { id: 'm09', accent: '#c2458a', sample: [['2026-09-12', null, '학회'], ['2026-09-19', null, '직원 연수']],
+    v1: '코스모스·고추잠자리', v2: '누렇게 익은 벼 이삭·허수아비·참새' },
+  { id: 'm10', accent: '#c8501e', sample: [['2026-10-24', null, '학회'], ['2026-10-31', null, '원장님 학회', '오전진료']],
+    v1: '단풍잎·은행잎 가지와 낙엽 더미', v2: '국화 무더기·억새 이삭·보름달과 기러기' },
+  { id: 'm11', accent: '#8a5a2b', sample: [['2026-11-21', null, '학회'], ['2026-11-28', null, '직원 연수']],
+    v1: '참나무 잎 가지·도토리(비늘 깍정이)', v2: '감나무 까치밥·까치·겹겹 늦가을 산' },
+  { id: 'm12', accent: '#2e5e9e', sample: [['2026-12-24', null, '학회'], ['2026-12-31', null, '연말', '13시까지']],
+    v1: '눈 얹힌 겨울나무 가지·눈 결정·자작나무', v2: '남천 붉은 열매·목도리 두른 눈사람·눈 덮인 전나무 숲' },
+]
+const VERSIONS = [
+  { key: 0, label: '지금 그림', src: (id) => `../forms/themes/${id}.svg` },
+  { key: 1, label: '새 1번', src: (id) => `themes/${id}.svg` },
+  { key: 2, label: '새 2번', src: (id) => `themes/${id}-2.svg` },
+]
+
+const W = 794, H = 1123, CX = 397
+const DAYS = '일월화수목금토'
+const ymd = (s) => { const [y, m, d] = s.split('-').map(Number); return { y, m, d, wd: new Date(Date.UTC(y, m - 1, d)).getUTCDay() } }
+function dateLabel(start, end) {
+  const a = ymd(start)
+  const head = `${a.m}월 ${a.d}일(${DAYS[a.wd]})`
+  if (!end) return head
+  const b = ymd(end)
+  return b.m === a.m ? `${head}~${b.d}일(${DAYS[b.wd]})` : `${head}~${b.m}월 ${b.d}일(${DAYS[b.wd]})`
+}
+// 글자 폭 어림(design.md 5절)
+function textWidth(t, size) {
+  let em = 0
+  for (const ch of t) {
+    if (/[ㄱ-힣一-鿿]/.test(ch)) em += 1.0
+    else if (/[0-9]/.test(ch)) em += 0.62
+    else if (/[()]/.test(ch)) em += 0.38
+    else if (ch === '~') em += 0.6
+    else if (ch === ' ') em += 0.3
+    else em += 0.6
+  }
+  return em * size
+}
+const fit = (t, size, inner) => { while (size > 18 && textWidth(t, size) > inner) size -= 1; return size }
+const SHAPES = {
+  1: { w: 318, gap: 0,  head: 79, body: 224, rows: [534], cols: 1, f: [33, 46, 50] },
+  2: { w: 318, gap: 36, head: 79, body: 224, rows: [534], cols: 2, f: [33, 46, 50] },
+  3: { w: 226, gap: 24, head: 70, body: 196, rows: [534], cols: 3, f: [28, 38, 44] },
+  4: { w: 318, gap: 36, head: 60, body: 140, rows: [510, 734], cols: 2, f: [30, 38, 42] },
+}
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+// 로고: 가로형 1033×175. 너비 340, 아래 끝에서 54 위, 받침 없이 그대로(승인 ①)
+const LOGO = { w: 340, h: Math.round((340 * 175) / 1033), y: 1123 - 54 - Math.round((340 * 175) / 1033) }
+
+// docs/mockups/forms/logo.html의 poster()를 옮김 — 그림 주소만 바꿀 수 있게 했다
+function poster(theme, src) {
+  const cards = theme.sample.map(([start, end, name, status]) => ({ start, end, name, status: status ?? '휴진' }))
+  const month = ymd(cards[0].start).m
+  const s = SHAPES[cards.length]
+  const rowW = s.cols * s.w + (s.cols - 1) * s.gap
+  const x0 = (W - rowW) / 2
+  const T = (x, y, size, weight, fill, text, ls = 0) =>
+    `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-family="PosterPretendard" font-size="${size}" font-weight="${weight}" fill="${fill}" letter-spacing="${ls}em">${esc(text)}</text>`
+  let body = ''
+  cards.forEach((c, i) => {
+    const col = i % s.cols, row = Math.floor(i / s.cols)
+    const x = x0 + col * (s.w + s.gap), y = s.rows[row], inner = s.w - 32
+    const date = dateLabel(c.start, c.end)
+    const h = s.head + s.body, r = 22
+    body += `<g filter="url(#sh)"><rect x="${x}" y="${y}" width="${s.w}" height="${h}" rx="${r}" fill="#fff"/></g>`
+    body += `<path d="M${x} ${y + s.head} V${y + r} A${r} ${r} 0 0 1 ${x + r} ${y} H${x + s.w - r} A${r} ${r} 0 0 1 ${x + s.w} ${y + r} V${y + s.head} Z" fill="${theme.accent}"/>`
+    body += T(x + s.w / 2, y + s.head / 2, fit(date, s.f[0], inner), 700, '#fff', date, -0.02)
+    body += T(x + s.w / 2, y + s.head + s.body * 0.30, fit(c.name, s.f[1], inner), 900, '#262626', c.name, -0.03)
+    body += T(x + s.w / 2, y + s.head + s.body * 0.67, fit(c.status, s.f[2], inner), 900, theme.accent, c.status, 0.02)
+  })
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${month}월 테마">
+    <defs><filter id="sh" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="14" stdDeviation="17" flood-color="rgb(25,45,80)" flood-opacity=".16"/></filter></defs>
+    <image href="${src}" x="0" y="0" width="${W}" height="${H}"/>
+    ${T(CX, 162, 132, 900, theme.accent, `${month}월`, -0.02)}
+    ${T(CX, 296, 120, 900, '#262626', '진료일정안내', -0.045)}
+    ${T(CX, 417, 27, 700, '#3a3a3a', `${month}월 진료일정을 안내드리오니`, -0.02)}
+    ${T(CX, 459, 27, 700, '#3a3a3a', '진료 및 내원에 참고해주시길 바랍니다', -0.02)}
+    ${body}
+    <image href="../forms/logo.png" x="${CX - LOGO.w / 2}" y="${LOGO.y}" width="${LOGO.w}" height="${LOGO.h}"/>
+  </svg>`
+}
+
+function figure(m, v) {
+  const fig = document.createElement('figure')
+  if (v.key) fig.className = 'new'
+  const about = v.key === 1 ? m.v1 : v.key === 2 ? m.v2 : '지금 쓰는 그림'
+  fig.innerHTML = `${poster(m, v.src(m.id))}<figcaption>${v.key ? `<b>${v.label}</b>` : v.label}<small>${about}</small></figcaption>`
+  return fig
+}
+function row(m) {
+  const sec = document.createElement('section')
+  sec.innerHTML = `<h2><i style="background:${m.accent}"></i>${Number(m.id.slice(1))}월 <small style="font-weight:400;color:#777;font-size:13px">${m.id}</small></h2>`
+  const r = document.createElement('div')
+  r.className = 'row'
+  for (const v of VERSIONS) r.append(figure(m, v))
+  sec.append(r)
+  return sec
+}
+
+// 보기 방식: ?only=m04&v=1 (한 장, 794×1123) · ?cmp=m04 (세 장 나란히) · ?grid=1|2 (새 그림 12장 한눈에)
+const q = new URLSearchParams(location.search)
+const page = document.getElementById('page')
+if (q.get('only')) {
+  document.body.classList.add('only')
+  document.getElementById('gallery').remove()
+  const m = MONTHS.find((x) => x.id === q.get('only'))
+  page.innerHTML = poster(m, VERSIONS[Number(q.get('v') ?? 1)].src(m.id))
+} else if (q.get('cmp')) {
+  document.body.classList.add('cmp')
+  document.getElementById('gallery').remove()
+  page.append(row(MONTHS.find((x) => x.id === q.get('cmp'))))
+} else if (q.get('grid')) {
+  document.body.classList.add('grid')
+  document.getElementById('gallery').remove()
+  const v = VERSIONS[Number(q.get('grid'))]
+  const g = document.createElement('div')
+  g.className = 'g'
+  for (const m of MONTHS) {
+    const fig = document.createElement('figure')
+    fig.innerHTML = `${poster(m, v.src(m.id))}<figcaption>${Number(m.id.slice(1))}월 ${v.label}</figcaption>`
+    g.append(fig)
+  }
+  page.append(g)
+} else {
+  for (const m of MONTHS) document.getElementById('rows').append(row(m))
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>공휴일 테마 그림 시안</title>
+<style>
+  /* 안내문 글꼴: 승인 시안(../forms/logo.html)과 같은 Pretendard subset Bold·Black */
+  @font-face { font-family: 'PosterPretendard'; font-weight: 700; src: url('../forms/fonts/Pretendard-Bold.subset.woff2') format('woff2'); }
+  @font-face { font-family: 'PosterPretendard'; font-weight: 900; src: url('../forms/fonts/Pretendard-Black.subset.woff2') format('woff2'); }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: #e9ecf0; font-family: 'PosterPretendard', 'Noto Sans KR', 'Malgun Gothic', sans-serif; color: #222; padding: 28px 32px 64px; }
+  h1 { font-size: 22px; font-weight: 700; }
+  .intro { margin: 6px 0 22px; font-size: 14px; color: #555; line-height: 1.6; }
+  section { margin: 0 0 34px; }
+  h2 { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 700; margin: 0 0 12px; }
+  h2 i { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+  h2 small { color: #777; font-weight: 400; font-size: 12px; }
+  .row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; max-width: 1180px; }
+  figure { background: #fff; border-radius: 10px; padding: 10px; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+  figure svg { display: block; width: 100%; height: auto; border-radius: 4px; }
+  figcaption { margin-top: 8px; font-size: 13px; line-height: 1.45; }
+  figcaption b { display: block; font-size: 14px; font-weight: 700; }
+  figcaption span { color: #666; }
+  figure.old { opacity: .92; }
+  @media (max-width: 720px) {
+    body { padding: 18px 16px 48px; }
+    .row { grid-template-columns: 1fr; }
+  }
+  body.only { padding: 0; background: #fff; }
+  body.only #page svg { display: block; width: 794px; height: 1123px; }
+  body.cmp { padding: 16px; background: #e9ecf0; }
+  body.cmp #page { display: grid; grid-template-columns: repeat(3, 520px); gap: 16px; }
+  body.cmp #page figure { padding: 8px; }
+  body.cmp #page svg { width: 504px; height: auto; }
+</style>
+</head>
+<body>
+<div id="gallery">
+  <h1>공휴일 테마 그림 시안 — 지금 그림 · 새 1번 · 새 2번</h1>
+  <p class="intro">테마마다 한 줄에 세 장씩 놓았어요. 왼쪽이 지금 쓰는 그림, 가운데가 같은 소재를 훨씬 정교하게 다시 그린 1번, 오른쪽이 다른 소재·구도의 2번이에요.<br>
+  글자('N월'·진료일정안내·안내 두 줄)·흰 날짜 카드 2장·병원 로고는 승인 시안(../forms/logo.html)의 자리·크기 그대로 얹었어요. 카드 날짜·이름은 보기용 예시예요. 강조색은 바꾸지 않았어요.</p>
+  <div id="list"></div>
+</div>
+<div id="page"></div>
+
+<script>
+// 강조색은 src/lib/forms/themes.ts 값 그대로. sample은 보기용 카드 2장
+const THEMES = [
+  { id: 'newyear',    name: '신정',         accent: '#d9432f', sample: [['2027-01-01', null, '신정'], ['2027-01-02', null, '토요일', '오전진료']],
+    v1: '해돋이·겹산·구름', v2: '겨울 바다 첫 해·소나무·두루미' },
+  { id: 'seollal',    name: '설날',         accent: '#d6336c', sample: [['2027-02-06', '2027-02-08', '설 연휴'], ['2027-02-09', null, '대체공휴일']],
+    v1: '복주머니·방패연·색동', v2: '까치·색동 문양·윷놀이' },
+  { id: 'samiljeol',  name: '삼일절',       accent: '#2b5bb5', sample: [['2026-03-01', null, '삼일절'], ['2026-03-02', null, '대체공휴일']],
+    v1: '태극 괘·무궁화(파랑 강조)', v2: '휘날리는 태극기·무궁화 가지' },
+  { id: 'children',   name: '어린이날',     accent: '#f0522d', sample: [['2027-05-05', null, '어린이날'], ['2027-05-08', null, '원장님 학회', '오전진료']],
+    v1: '바람개비·풍선·색종이·종이비행기·언덕', v2: '무지개·연·크레파스 느낌 구름' },
+  { id: 'buddha',     name: '부처님오신날', accent: '#d9601a', sample: [['2026-05-24', null, '부처님오신날'], ['2026-05-25', null, '대체공휴일']],
+    v1: '연등·연꽃', v2: '연못 연잎·줄지어 걸린 연등' },
+  { id: 'memorial',   name: '현충일',       accent: '#2f4a7a', sample: [['2026-06-03', null, '지방선거일'], ['2026-06-06', null, '현충일']],
+    v1: '흰 국화·무궁화, 차분한 남색', v2: '흰 국화 다발·비둘기' },
+  { id: 'liberation', name: '광복절',       accent: '#e8312f', sample: [['2026-08-15', null, '광복절'], ['2026-08-17', null, '대체공휴일']],
+    v1: '태극 괘·무궁화(빨강 강조)', v2: '무궁화 꽃밭·태극 물결' },
+  { id: 'chuseok',    name: '추석',         accent: '#c8662a', sample: [['2026-09-24', '2026-09-26', '추석 연휴'], ['2026-09-28', null, '진료 다시 시작', '정상진료']],
+    v1: '보름달·억새·감·송편', v2: '한옥 지붕 위 보름달·밤·대추' },
+  { id: 'foundation', name: '개천절',       accent: '#2f7fc1', sample: [['2026-10-03', null, '개천절'], ['2026-10-05', null, '대체공휴일']],
+    v1: '열리는 하늘빛·구름·푸른 겹산·소나무', v2: '일월오봉도풍 해·달·다섯 봉우리·붉은 소나무·물결' },
+  { id: 'hangul',     name: '한글날',       accent: '#1f6e8c', sample: [['2026-10-09', null, '한글날'], ['2026-10-17', null, '원장님 학회', '오전진료']],
+    v1: '글자 아닌 도형 조각(○□△·막대)·붓 자국', v2: '한지 결·묵죽·붓걸이·벼루와 먹' },
+  { id: 'christmas',  name: '성탄절',       accent: '#c62f2f', sample: [['2026-12-25', null, '성탄절'], ['2026-12-31', null, '연말', '13시까지']],
+    v1: '솔잎 줄장식·매단 별과 공·트리·선물', v2: '화환·털양말·눈 덮인 마을' },
+]
+
+const W = 794, H = 1123, CX = 397
+const DAYS = '일월화수목금토'
+const ymd = (s) => { const [y, m, d] = s.split('-').map(Number); return { y, m, d, wd: new Date(Date.UTC(y, m - 1, d)).getUTCDay() } }
+function dateLabel(start, end) {
+  const a = ymd(start)
+  const head = `${a.m}월 ${a.d}일(${DAYS[a.wd]})`
+  if (!end) return head
+  const b = ymd(end)
+  return b.m === a.m ? `${head}~${b.d}일(${DAYS[b.wd]})` : `${head}~${b.m}월 ${b.d}일(${DAYS[b.wd]})`
+}
+// 글자 폭 어림(design.md 5절)
+function textWidth(t, size) {
+  let em = 0
+  for (const ch of t) {
+    if (/[ㄱ-힣一-鿿]/.test(ch)) em += 1.0
+    else if (/[0-9]/.test(ch)) em += 0.62
+    else if (/[()]/.test(ch)) em += 0.38
+    else if (ch === '~') em += 0.6
+    else if (ch === ' ') em += 0.3
+    else em += 0.6
+  }
+  return em * size
+}
+const fit = (t, size, inner) => { while (size > 18 && textWidth(t, size) > inner) size -= 1; return size }
+
+const SHAPES = {
+  1: { w: 318, gap: 0,  head: 79, body: 224, rows: [534], cols: 1, f: [33, 46, 50] },
+  2: { w: 318, gap: 36, head: 79, body: 224, rows: [534], cols: 2, f: [33, 46, 50] },
+  3: { w: 226, gap: 24, head: 70, body: 196, rows: [534], cols: 3, f: [28, 38, 44] },
+  4: { w: 318, gap: 36, head: 60, body: 140, rows: [510, 734], cols: 2, f: [30, 38, 42] },
+}
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+
+// 로고: 가로형 1033×175(테두리 있는 것). 너비 340, 아래 끝에서 54 위, 받침 없이 그대로(사용자 선택 ①)
+const LOGO = { w: 340, h: Math.round((340 * 175) / 1033), y: 1123 - 54 - Math.round((340 * 175) / 1033) }
+
+// 그림 주소: old = 지금 그림, 1 = 새 1번, 2 = 새 2번
+const ART = { old: (id) => `../forms/themes/${id}.svg`, 1: (id) => `themes/${id}.svg`, 2: (id) => `themes/${id}-2.svg` }
+
+// ../forms/logo.html의 poster()를 옮긴 것(그림 주소만 고를 수 있게)
+function poster(theme, v, cardCount) {
+  const sample = theme.sample.slice(0, cardCount ?? theme.sample.length)
+  const cards = sample.map(([start, end, name, status]) => ({ start, end, name, status: status ?? '휴진' }))
+  const month = ymd(cards[0].start).m
+  const s = SHAPES[cards.length]
+  const rowW = s.cols * s.w + (s.cols - 1) * s.gap
+  const x0 = (W - rowW) / 2
+  const T = (x, y, size, weight, fill, text, ls = 0) =>
+    `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-family="PosterPretendard" font-size="${size}" font-weight="${weight}" fill="${fill}" letter-spacing="${ls}em">${esc(text)}</text>`
+  let body = ''
+  cards.forEach((c, i) => {
+    const col = i % s.cols, row = Math.floor(i / s.cols)
+    const x = x0 + col * (s.w + s.gap), y = s.rows[row], inner = s.w - 32
+    const date = dateLabel(c.start, c.end)
+    const h = s.head + s.body, r = 22
+    body += `<g filter="url(#sh)"><rect x="${x}" y="${y}" width="${s.w}" height="${h}" rx="${r}" fill="#fff"/></g>`
+    body += `<path d="M${x} ${y + s.head} V${y + r} A${r} ${r} 0 0 1 ${x + r} ${y} H${x + s.w - r} A${r} ${r} 0 0 1 ${x + s.w} ${y + r} V${y + s.head} Z" fill="${theme.accent}"/>`
+    body += T(x + s.w / 2, y + s.head / 2, fit(date, s.f[0], inner), 700, '#fff', date, -0.02)
+    body += T(x + s.w / 2, y + s.head + s.body * 0.30, fit(c.name, s.f[1], inner), 900, '#262626', c.name, -0.03)
+    body += T(x + s.w / 2, y + s.head + s.body * 0.67, fit(c.status, s.f[2], inner), 900, theme.accent, c.status, 0.02)
+  })
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${theme.name} 테마">
+    <defs><filter id="sh" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="14" stdDeviation="17" flood-color="rgb(25,45,80)" flood-opacity=".16"/></filter></defs>
+    <image href="${ART[v](theme.id)}" x="0" y="0" width="${W}" height="${H}"/>
+    ${T(CX, 162, 132, 900, theme.accent, `${month}월`, -0.02)}
+    ${T(CX, 296, 120, 900, '#262626', '진료일정안내', -0.045)}
+    ${T(CX, 417, 27, 700, '#3a3a3a', `${month}월 진료일정을 안내드리오니`, -0.02)}
+    ${T(CX, 459, 27, 700, '#3a3a3a', '진료 및 내원에 참고해주시길 바랍니다', -0.02)}
+    ${body}
+    <image href="../forms/logo.png" x="${CX - LOGO.w / 2}" y="${LOGO.y}" width="${LOGO.w}" height="${LOGO.h}"/>
+  </svg>`
+}
+
+const LABEL = { old: ['지금 그림', ''], 1: ['새 1번', 'v1'], 2: ['새 2번', 'v2'] }
+const figure = (t, v, cardCount) =>
+  `<figure class="${v === 'old' ? 'old' : ''}">${poster(t, v, cardCount)}<figcaption><b>${LABEL[v][0]}</b><span>${LABEL[v][1] ? t[LABEL[v][1]] : '지금 쓰는 그림(../forms/themes)'}</span></figcaption></figure>`
+
+const params = new URLSearchParams(location.search)
+const only = params.get('only'), cmp = params.get('cmp')
+const cardCount = params.get('cards') ? Number(params.get('cards')) : undefined
+if (only) {
+  // 사진용: ?only=<열쇠>&v=old|1|2 → 794×1123 한 장
+  document.body.classList.add('only')
+  document.getElementById('gallery').remove()
+  document.getElementById('page').innerHTML = poster(THEMES.find((t) => t.id === only), params.get('v') ?? '1', cardCount)
+} else if (cmp) {
+  // 사진용: ?cmp=<열쇠> → 세 장 나란히
+  document.body.classList.add('cmp')
+  document.getElementById('gallery').remove()
+  const t = THEMES.find((x) => x.id === cmp)
+  document.getElementById('page').innerHTML = ['old', 1, 2].map((v) => figure(t, v, cardCount)).join('')
+} else {
+  for (const t of THEMES) {
+    const sec = document.createElement('section')
+    sec.innerHTML = `<h2><i style="background:${t.accent}"></i>${t.name}<small>${t.id}</small></h2><div class="row">${['old', 1, 2].map((v) => figure(t, v)).join('')}</div>`
+    document.getElementById('list').append(sec)
+  }
+}
+</script>
+</body>
+</html>

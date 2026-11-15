@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>서식 시안 — AI로 만든 휴진 안내 배경</title>
+<style>
+  @font-face { font-family: 'PosterPretendard'; font-weight: 700; src: url('../forms/fonts/Pretendard-Bold.subset.woff2') format('woff2'); }
+  @font-face { font-family: 'PosterPretendard'; font-weight: 900; src: url('../forms/fonts/Pretendard-Black.subset.woff2') format('woff2'); }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: #e9ecf0; font-family: 'PosterPretendard', 'Noto Sans KR', 'Malgun Gothic', sans-serif; color: #222; padding: 28px 32px 64px; }
+  h1 { font-size: 22px; font-weight: 700; }
+  .intro { margin: 6px 0 22px; font-size: 14px; color: #555; line-height: 1.7; }
+  .row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; max-width: 1240px; }
+  figure { background: #fff; border-radius: 10px; padding: 10px; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+  figure svg { display: block; width: 100%; height: auto; border-radius: 4px; }
+  figcaption { margin-top: 8px; font-size: 14px; font-weight: 700; }
+  figcaption small { display: block; color: #666; font-weight: 400; font-size: 12.5px; margin-top: 2px; line-height: 1.5; }
+  @media (max-width: 760px) { body { padding: 18px 16px 48px; } .row { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<h1>AI로 만든 휴진 안내 배경 (시험 3장)</h1>
+<p class="intro">OpenAI 그림 AI(gpt-image-2.6-flare, 보통 품질)로 실제로 만든 배경에 지금 휴진 안내 글자를 얹었어요.<br>
+글자 뒤에는 앱이 반투명 흰 판을 깔아 어떤 그림이 나와도 읽히게 해요. 강조색(날짜 띠·N월)은 그림에서 뽑은 색을 글자 대비 검사로 맞춘 예예요.<br>
+한 장 만드는 데 약 7초 · 약 50원(1024×1536) / 약 80원(A4 비율 1584×2240, 겨울 그림).</p>
+<div class="row" id="row"></div>
+<script>
+const SAMPLES = [
+  { src: 'ai-samples/spring.jpg', word: '봄 벚꽃', accent: '#c2456e', size: '1024×1536 · 약 50원', sample: [['2026-04-10', null, '학회'], ['2026-04-17', null, '직원 연수']] },
+  { src: 'ai-samples/chuseok.jpg', word: '추석 보름달', accent: '#c8501e', size: '1024×1536 · 약 50원', sample: [['2026-09-24', '2026-09-26', '추석 연휴'], ['2026-09-28', null, '진료 다시 시작', '정상진료']] },
+  { src: 'ai-samples/winter.jpg', word: '겨울 눈 덮인 숲', accent: '#2e5e9e', size: '1584×2240 · 약 80원', sample: [['2026-12-24', null, '학회'], ['2026-12-31', null, '연말', '13시까지']] },
+]
+const W = 794, H = 1123, CX = 397
+const DAYS = '일월화수목금토'
+const ymd = (s) => { const [y, m, d] = s.split('-').map(Number); return { y, m, d, wd: new Date(Date.UTC(y, m - 1, d)).getUTCDay() } }
+function dateLabel(start, end) {
+  const a = ymd(start); const head = `${a.m}월 ${a.d}일(${DAYS[a.wd]})`
+  if (!end) return head
+  const b = ymd(end); return b.m === a.m ? `${head}~${b.d}일(${DAYS[b.wd]})` : `${head}~${b.m}월 ${b.d}일(${DAYS[b.wd]})`
+}
+function textWidth(t, size) {
+  let em = 0
+  for (const ch of t) em += /[ㄱ-힣]/.test(ch) ? 1.0 : /[0-9]/.test(ch) ? 0.62 : /[()]/.test(ch) ? 0.38 : ch === '~' ? 0.6 : ch === ' ' ? 0.3 : 0.6
+  return em * size
+}
+const fit = (t, size, inner) => { while (size > 18 && textWidth(t, size) > inner) size -= 1; return size }
+const S2 = { w: 318, gap: 36, head: 79, body: 224, rows: [534], cols: 2, f: [33, 46, 50] }
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const LOGO = { w: 340, h: Math.round((340 * 175) / 1033), y: 1123 - 54 - Math.round((340 * 175) / 1033) }
+function poster(t, i) {
+  const cards = t.sample.map(([start, end, name, status]) => ({ start, end, name, status: status ?? '휴진' }))
+  const month = ymd(cards[0].start).m, s = S2
+  const x0 = (W - (s.cols * s.w + (s.cols - 1) * s.gap)) / 2
+  const T = (x, y, size, weight, fill, text, ls = 0) =>
+    `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-family="PosterPretendard" font-size="${size}" font-weight="${weight}" fill="${fill}" letter-spacing="${ls}em">${esc(text)}</text>`
+  let body = ''
+  cards.forEach((c, k) => {
+    const x = x0 + k * (s.w + s.gap), y = s.rows[0], inner = s.w - 32, r = 22, date = dateLabel(c.start, c.end)
+    body += `<g filter="url(#sh${i})"><rect x="${x}" y="${y}" width="${s.w}" height="${s.head + s.body}" rx="${r}" fill="#fff"/></g>`
+    body += `<path d="M${x} ${y + s.head} V${y + r} A${r} ${r} 0 0 1 ${x + r} ${y} H${x + s.w - r} A${r} ${r} 0 0 1 ${x + s.w} ${y + r} V${y + s.head} Z" fill="${t.accent}"/>`
+    body += T(x + s.w / 2, y + s.head / 2, fit(date, s.f[0], inner), 700, '#fff', date, -0.02)
+    body += T(x + s.w / 2, y + s.head + s.body * 0.30, fit(c.name, s.f[1], inner), 900, '#262626', c.name, -0.03)
+    body += T(x + s.w / 2, y + s.head + s.body * 0.67, fit(c.status, s.f[2], inner), 900, t.accent, c.status, 0.02)
+  })
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}">
+    <defs><filter id="sh${i}" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="14" stdDeviation="17" flood-color="rgb(25,45,80)" flood-opacity=".16"/></filter>
+      <filter id="soft${i}" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="18"/></filter></defs>
+    <image href="${t.src}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice"/>
+    <rect x="64" y="70" width="666" height="770" rx="40" fill="#fff" fill-opacity=".55" filter="url(#soft${i})"/>
+    <ellipse cx="${CX}" cy="${LOGO.y + LOGO.h / 2}" rx="210" ry="46" fill="#fff" fill-opacity=".7" filter="url(#soft${i})"/>
+    ${T(CX, 162, 132, 900, t.accent, `${month}월`, -0.02)}
+    ${T(CX, 296, 120, 900, '#262626', '진료일정안내', -0.045)}
+    ${T(CX, 417, 27, 700, '#3a3a3a', `${month}월 진료일정을 안내드리오니`, -0.02)}
+    ${T(CX, 459, 27, 700, '#3a3a3a', '진료 및 내원에 참고해주시길 바랍니다', -0.02)}
+    ${body}
+    <image href="../forms/logo.png" x="${CX - LOGO.w / 2}" y="${LOGO.y}" width="${LOGO.w}" height="${LOGO.h}"/>
+  </svg>`
+}
+document.getElementById('row').innerHTML = SAMPLES.map((t, i) =>
+  `<figure>${poster(t, i)}<figcaption>적은 말: '${t.word}'<small>${t.size}</small></figcaption></figure>`).join('')
+</script>
+</body>
+</html>
