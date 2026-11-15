@@ -137,13 +137,13 @@ export function FormsScreen({ today }: { today?: string }) {
     if (notice)
       leave(() => {
         dispatch({ type: 'open', notice })
-        bg.noticeChanged()
+        bg.noticeChanged(notice.theme)
       })
   }
   const newNotice = () =>
     leave(() => {
       dispatch({ type: 'new' })
-      bg.noticeChanged()
+      bg.noticeChanged(null)
     })
 
   async function save() {

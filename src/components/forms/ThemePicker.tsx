@@ -186,7 +186,7 @@ function MineBox({ id, pick, bg, note, onPick }: { id: string; pick: ThemePick |
               <button type="button" className={ds.button.secondarySmall} disabled={state.saving || state.making} onClick={() => void bg.remake()}>
                 다시 만들기
               </button>
-              <button type="button" className={ds.button.ghostSmall} disabled={state.saving} onClick={bg.discard}>
+              <button type="button" className={ds.button.ghostSmall} disabled={state.saving || state.making} onClick={bg.discard}>
                 안 쓰기
               </button>
             </div>

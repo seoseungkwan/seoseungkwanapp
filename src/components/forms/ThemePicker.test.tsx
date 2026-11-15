@@ -500,6 +500,17 @@ describe('AC-4611.5: [다시 만들기]·[안 쓰기]', () => {
     expect(firstHref(poster())).toBe(jpegDataUrl(BYTES))
     expect(monthFill(poster())).toBe(WINTER.accent)
   })
+
+  it('AC-4611.5: [다시 만들기]로 기다리는 동안에는 [안 쓰기]도 막힌다(늦게 온 그림이 버린 뒤 다시 얹히지 않게)', async () => {
+    const { user } = await open()
+    await makeTrial(user)
+    const answer = deferred<Response>()
+    fetchSpy.mockImplementationOnce(() => answer.promise)
+    await user.click(bgButton('다시 만들기'))
+    expect(bgButton('안 쓰기').disabled).toBe(true)
+    answer.resolve(json({ image: JPEG }))
+    await vi.waitFor(() => expect(bgButton('안 쓰기').disabled).toBe(false))
+  })
 })
 
 describe('AC-4611.6: 만들기 오류', () => {
@@ -671,6 +682,16 @@ describe('AC-4612.3: [테마 그림]으로 돌아가기·내 배경 안내문 �
     expect(kind('테마 그림').getAttribute('aria-pressed')).toBe('true')
     expect(firstHref(poster())).toBe('/poster/themes/liberation.svg')
     expect(listBackgrounds).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-4612.3: 내 배경을 쓰는 저장한 안내문을 열어 그 배경을 지워도 [내 배경] 칸에 남는다(시안 openNotice: 내 배경 값이면 내 배경 칸)', async () => {
+    const { user } = await open([AUG, DEC])
+    await user.click(screen.getByRole('button', { name: /^2026년 12월 · 학회·성탄절 / }))
+    await screen.findByText('고른 배경: 겨울 눈 덮인 숲')
+    await user.click(bgButton('이 배경 지우기'))
+    await vi.waitFor(() => expect(thumbNames()).toEqual([['추석 보름달 배경', 'false']]))
+    expect(kind('내 배경').getAttribute('aria-pressed')).toBe('true')
+    expect(within(bgBox()).getByText('1/30장')).toBeTruthy()
   })
 
   it('AC-4612.3: [내 배경]을 직접 누른 뒤에도 테마를 쓰는 안내문을 열거나 새로 만들면 [테마 그림] 칸으로 열리고, 만든 배경은 남지만 미리보기에 얹지 않는다(시안 openNotice)', async () => {
