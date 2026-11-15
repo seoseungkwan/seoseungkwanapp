@@ -179,6 +179,65 @@ describe('AC-4602.4: checkNotice는 theme이 null이거나 고른 그림 값(isT
   })
 })
 
+// ---------- 글자 색 (specs/forms-accent REQ-4703 AC-4703.1·AC-4703.3, design.md 3절, TASK-2) ----------
+
+describe('AC-4703.1·AC-4703.3: checkNotice의 글자 색(accent) 열쇠', () => {
+  const NOTICE_KEYS = ['cards', 'month', 'theme', 'year']
+
+  it('AC-4703.3: accent 열쇠가 없으면 지금처럼 받고, 돌려준 값에도 accent 열쇠가 없다', () => {
+    const checked = checkNotice(notice({ theme: 'children' }))
+    expect(checked).toEqual(notice({ theme: 'children' }))
+    expect(Object.keys(checked ?? {}).sort()).toEqual(NOTICE_KEYS)
+  })
+
+  it('AC-4703.3: accent가 null이면 자동 — 받되, 돌려준 값에는 accent 열쇠를 넣지 않는다', () => {
+    const checked = checkNotice(notice({ theme: 'children', accent: null }))
+    expect(checked).toEqual(notice({ theme: 'children' }))
+    expect(Object.keys(checked ?? {}).sort()).toEqual(NOTICE_KEYS)
+  })
+
+  it('AC-4703.1: accent가 # + 소문자 16진수 6자리면 그 값을 담은 새 객체를 돌려준다(옅은 색도 받는다)', () => {
+    for (const accent of ['#c62f2f', '#000000', '#ffffff', '#ffff00', '#2f4a7a']) {
+      const value = notice({ theme: 'christmas', accent })
+      const checked = checkNotice(value)
+      expect(checked, accent).toEqual(value)
+      expect(checked, accent).not.toBe(value)
+      expect(checked?.accent, accent).toBe(accent)
+      expect(Object.keys(checked ?? {}).sort(), accent).toEqual(['accent', ...NOTICE_KEYS])
+    }
+  })
+
+  it('AC-4703.1: 테마 저절로(null)·그림 2·내 배경 값과 함께여도 글자 색을 받는다', () => {
+    for (const theme of [null, 'auto-2', 'm05-2', 'bg-0f8e7d6c-5b4a-4392-8170-a1b2c3d4e5f6']) {
+      expect(checkNotice(notice({ theme, accent: '#c62f2f' })), String(theme)).toEqual(notice({ theme, accent: '#c62f2f' }))
+    }
+  })
+
+  it('AC-4703.3: accent 모양이 틀리면 null(대문자·3자리·8자리·# 없음·색 이름·빈 글·undefined·글이 아닌 값)', () => {
+    for (const accent of ['#C62F2F', '#c62F2f', '#abc', '#c62f2f00', 'c62f2f', 'red', '', ' #c62f2f', undefined, 0xc62f2f, true, {}, ['#c62f2f']]) {
+      expect(checkNotice(notice({ accent })), `accent ${String(accent)}`).toBeNull()
+    }
+  })
+
+  it('AC-4703.3: 열쇠는 넷 또는 accent를 더한 다섯뿐 — 여섯이거나 accent 대신 다른 열쇠·theme 대신 accent면 null', () => {
+    const without = (o: Record<string, unknown>, key: string) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== key))
+    expect(checkNotice(notice({ accent: '#c62f2f', id: 'x' }))).toBeNull()
+    expect(checkNotice(notice({ accent: null, memo: '메모' }))).toBeNull()
+    expect(checkNotice(notice({ color: '#c62f2f' }))).toBeNull()
+    expect(checkNotice(without(notice({ accent: '#c62f2f' }), 'theme'))).toBeNull()
+    expect(checkNotice(without(notice({ accent: null }), 'cards'))).toBeNull()
+  })
+
+  it('AC-4703.3: accent가 맞아도 다른 칸 규칙(연도·달·테마·카드)은 그대로 본다', () => {
+    const accent = '#c62f2f'
+    expect(checkNotice(notice({ accent, year: 2019 }))).toBeNull()
+    expect(checkNotice(notice({ accent, month: 13 }))).toBeNull()
+    expect(checkNotice(notice({ accent, theme: 'nope' }))).toBeNull()
+    expect(checkNotice(notice({ accent, cards: [] }))).toBeNull()
+    expect(checkNotice(notice({ accent, cards: [card({ status: 'a@b.kr' })] }))).toBeNull()
+  })
+})
+
 describe('AC-3509.4: 연도 정하기(글에 연도가 없을 때, 오늘 2026-11-10)', () => {
   const today = '2026-11-10'
 

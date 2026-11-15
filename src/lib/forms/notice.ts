@@ -2,7 +2,7 @@ import { compareYmd, diffDays, isYmd, weekdayOf } from '@/lib/analytics/dates'
 import { hasPrivateShape } from '@/lib/payload/validate'
 import { MAX_CARDS, MAX_NAME, MAX_RANGE_DAYS, MAX_STATUS, type ClosureNotice, type DraftCard, type NoticeCard } from '@/types/forms'
 // themes.ts도 이 파일(sortCards)을 부른다. 서로 부르는 것은 함수 안에서만이라 불러오는 차례와 상관없다
-import { isThemePick } from './themes'
+import { isAccentHex, isThemePick } from './themes'
 
 // 서식 탭 휴진 안내의 안내 내용 규칙 (specs/forms design.md 3절). 날짜 계산은 lib/analytics/dates.ts만 쓴다
 
@@ -15,6 +15,7 @@ const PAST_DAYS = 30 // 이보다 더 지난 날짜는 다음 해로 본다
 const CONTROL = /\p{Cc}/u
 const WEEKDAYS = '일월화수목금토'
 const NOTICE_KEYS = ['year', 'month', 'cards', 'theme']
+const NOTICE_KEYS_WITH_ACCENT = [...NOTICE_KEYS, 'accent'] // 글자 색 열쇠는 있어도 되고 없어도 된다(specs/forms-accent design.md 3절)
 const CARD_KEYS = ['start', 'end', 'name', 'status']
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -75,9 +76,13 @@ function storedCard(value: unknown): NoticeCard | null {
 }
 
 export function checkNotice(value: unknown): ClosureNotice | null {
-  const o = exactly(value, NOTICE_KEYS)
+  const withAccent = exactly(value, NOTICE_KEYS_WITH_ACCENT)
+  const o = withAccent ?? exactly(value, NOTICE_KEYS)
   if (o === null) return null
   const { year, month, cards, theme } = o
+  // 열쇠가 없으면 자동(null). 열쇠가 있으면 null(자동) 또는 '#' + 소문자 16진수 6자리, undefined도 틀린 값 (specs/forms-accent AC-4703.3)
+  const accent = withAccent === null ? null : withAccent.accent
+  if (accent !== null && !isAccentHex(accent)) return null
   if (!isInteger(year, MIN_YEAR, MAX_YEAR) || !isInteger(month, 1, 12)) return null
   // null(저절로·그림 1) 또는 고른 그림 값(테마 열쇠·<열쇠>-2·auto-2·bg-<uuid>) (specs/forms-themes AC-4602.4)
   if (theme !== null && !isThemePick(theme)) return null
@@ -88,7 +93,8 @@ export function checkNotice(value: unknown): ClosureNotice | null {
     if (card === null) return null
     checked.push(card)
   }
-  return { year, month, cards: checked, theme }
+  // 자동(null)이면 accent 열쇠를 넣지 않는다(글자 색 없는 지금 값과 똑같이 돌려준다)
+  return accent === null ? { year, month, cards: checked, theme } : { year, month, cards: checked, theme, accent }
 }
 
 const monthDay = (date: string) => `${Number(date.slice(5, 7))}월 ${Number(date.slice(8, 10))}일`

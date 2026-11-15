@@ -170,3 +170,18 @@ export function contrastRatio(a: string, b: string): number {
   const [light, dark] = [luminanceOf(a), luminanceOf(b)].sort((x, y) => y - x)
   return (light + 0.05) / (dark + 0.05)
 }
+
+// ---------- 직접 고른 글자 색 (specs/forms-accent design.md 2절) ----------
+
+const ACCENT_HEX = /^#[0-9a-f]{6}$/
+const LIGHT_BELOW = 4.5 // 흰색과의 명암비가 이보다 작으면 옅은 색
+
+// 글자 색('N월'·날짜 띠·카드 아래 글) 모양: '#' + 소문자 16진수 6자리만(AC-4702.3·AC-4703.3)
+export function isAccentHex(value: unknown): value is string {
+  return typeof value === 'string' && ACCENT_HEX.test(value)
+}
+
+// 흰 글자·흰 카드 위 글이 잘 안 보일 수 있는 옅은 색(흰색과 4.5 미만). 경고만 하고 막지 않는다(AC-4701.4)
+export function isLightAccent(hex: string): boolean {
+  return contrastRatio(hex, '#ffffff') < LIGHT_BELOW
+}

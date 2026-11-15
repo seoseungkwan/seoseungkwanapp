@@ -1,4 +1,5 @@
-// 서식 탭 휴진 안내문 읽기·저장(spec forms TASK-9, REQ-3507 · AC-3507.1·3507.2·3507.6·3507.7). 실제 Supabase에 붙지 않는다.
+// 서식 탭 휴진 안내문 읽기·저장(spec forms TASK-9, REQ-3507 · AC-3507.1·3507.2·3507.6·3507.7,
+// 글자 색 accent는 spec forms-accent TASK-2 · AC-4703.1·AC-4703.3). 실제 Supabase에 붙지 않는다.
 // 가짜 클라이언트가 어느 표에 어떤 칸·몸통·거르기가 나갔는지 적어 둔다. 표 권한·RLS는 supabase/formNotices.rls.test.ts가 증명한다.
 // 이름·날짜·id는 모두 지어낸 값이다
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,8 +10,8 @@ const { supabaseBrowser } = vi.hoisted(() => ({ supabaseBrowser: vi.fn() }))
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser }))
 
 const TABLE = 'form_notices'
-const COLUMNS = ['id', 'year', 'month', 'cards', 'theme', 'updated_at']
-const BODY_KEYS = ['cards', 'month', 'theme', 'year']
+const COLUMNS = ['id', 'year', 'month', 'cards', 'theme', 'accent', 'updated_at']
+const BODY_KEYS = ['accent', 'cards', 'month', 'theme', 'year']
 const CARD_KEYS = ['end', 'name', 'start', 'status']
 const SAVED_KEYS = ['cards', 'id', 'month', 'theme', 'updatedAt', 'year']
 const SECRET = 'secret detail' // 서버 답에 섞여 온 글자. 밖으로 나가면 안 된다
@@ -94,9 +95,10 @@ function fakeClient(reply: (call: Call) => Reply = () => ({ data: [] })) {
   return calls
 }
 
-/** 표에서 읽은 줄 그대로(select한 여섯 칸). 값은 복사해 둔다 */
+/** 표에서 읽은 줄 그대로(select한 일곱 칸). 글자 색 칸은 실제 표처럼 늘 오고 기본은 null(자동). 값은 복사해 둔다 */
 const dbRow = (id: string, updatedAt: string, notice: Record<string, unknown> = NOTICE) => ({
   id,
+  accent: null,
   ...structuredClone(notice),
   updated_at: updatedAt,
 })
@@ -176,7 +178,7 @@ afterEach(() => {
 })
 
 describe('AC-3507.2 listNotices 읽기', () => {
-  it('AC-3507.2: form_notices에서 여섯 칸만 updated_at 내림차순(최근 고친 차례)으로 최대 100개 한 번 읽는다(병원으로 거르지 않는다, RLS 몫)', async () => {
+  it('AC-3507.2: form_notices에서 일곱 칸만 updated_at 내림차순(최근 고친 차례)으로 최대 100개 한 번 읽는다(병원으로 거르지 않는다, RLS 몫)', async () => {
     const calls = fakeClient()
     await listNotices()
     expect(supabaseBrowser).toHaveBeenCalledTimes(1)
@@ -249,13 +251,13 @@ describe('AC-3507.6 읽은 줄도 저장할 때와 같은 검사', () => {
 })
 
 describe('AC-3507.1·AC-3507.7 insertNotice 넣기', () => {
-  it('AC-3507.1: form_notices에 한 줄을 넣고 여섯 칸을 돌려받아 한 줄(single)로 읽는다', async () => {
+  it('AC-3507.1: form_notices에 한 줄을 넣고 일곱 칸을 돌려받아 한 줄(single)로 읽는다', async () => {
     const calls = fakeClient(echoRow)
     await insertNotice(NOTICE)
     expect(calls).toHaveLength(1)
     expect(calls[0]).toMatchObject({ table: TABLE, op: 'insert', filters: [], single: true })
     expect(calls[0].columns).toEqual(COLUMNS)
-    expect(calls[0].body).toEqual({ year: 2027, month: 5, cards: [CHILDREN, MEETING], theme: 'children' })
+    expect(calls[0].body).toEqual({ year: 2027, month: 5, cards: [CHILDREN, MEETING], theme: 'children', accent: null })
   })
 
   it('AC-3507.1: 돌려받은 줄을 SavedNotice로 바꾼다(id·updatedAt은 DB가 준 값)', async () => {
@@ -290,14 +292,14 @@ describe('AC-3507.1·AC-3507.7 insertNotice 넣기', () => {
 })
 
 describe('AC-3507.1 updateNotice 고치기', () => {
-  it('AC-3507.1: 새 줄이 아니라 그 id 줄 하나만 고치고 여섯 칸을 돌려받는다', async () => {
+  it('AC-3507.1: 새 줄이 아니라 그 id 줄 하나만 고치고 일곱 칸을 돌려받는다', async () => {
     const calls = fakeClient(echoRow)
     await updateNotice(ID, AUTO)
     expect(calls).toHaveLength(1)
     expect(calls[0]).toMatchObject({ table: TABLE, op: 'update', single: true })
     expect(calls[0].filters).toEqual([['id', ID]])
     expect(calls[0].columns).toEqual(COLUMNS)
-    expect(calls[0].body).toEqual({ year: 2027, month: 5, cards: [CHILDREN], theme: null })
+    expect(calls[0].body).toEqual({ year: 2027, month: 5, cards: [CHILDREN], theme: null, accent: null })
   })
 
   it('AC-3507.1: 돌려받은 줄을 SavedNotice로 바꾼다', async () => {
@@ -321,7 +323,7 @@ describe('AC-3507.1 updateNotice 고치기', () => {
   })
 })
 
-describe('AC-3507.7 보내는 몸통은 넷뿐', () => {
+describe('AC-3507.7 보내는 몸통은 다섯뿐', () => {
   const SAVES: [string, (n: ClosureNotice) => Promise<unknown>][] = [
     ['insertNotice', (n) => insertNotice(n)],
     ['updateNotice', (n) => updateNotice(ID, n)],
@@ -343,14 +345,14 @@ describe('AC-3507.7 보내는 몸통은 넷뿐', () => {
       ],
     }) as unknown as ClosureNotice
 
-  it.each(SAVES)('AC-3507.7: %s — 몸통 열쇠는 year·month·cards·theme 넷, 카드마다 start·end·name·status 넷뿐이다', async (_, save) => {
+  it.each(SAVES)('AC-3507.7: %s — 몸통 열쇠는 year·month·cards·theme·accent 다섯, 카드마다 start·end·name·status 넷뿐이다', async (_, save) => {
     const calls = fakeClient(echoRow)
     await save(carrying())
     const body = calls[0].body as { cards: Record<string, unknown>[] }
     expect(Object.keys(body).sort()).toEqual(BODY_KEYS)
     expect(body.cards).toHaveLength(2)
     for (const c of body.cards) expect(Object.keys(c).sort()).toEqual(CARD_KEYS)
-    expect(body).toEqual({ year: 2027, month: 5, cards: [CHILDREN, MEETING], theme: 'children' })
+    expect(body).toEqual({ year: 2027, month: 5, cards: [CHILDREN, MEETING], theme: 'children', accent: null })
     const sent = JSON.stringify(body)
     for (const leak of ['대충 적은 글', 'memo', 'other-notice', 'other-hospital', 'updatedAt', 'kind', 'draft', 'raw', 'card-1']) {
       expect(sent).not.toContain(leak)
@@ -373,6 +375,114 @@ describe('AC-3507.7 보내는 몸통은 넷뿐', () => {
     const calls = fakeClient(echoRow)
     await expect(save({ ...NOTICE, cards: [{ ...CHILDREN, status: 'a@b.kr' }] })).resolves.toBe('failed')
     expect(calls).toEqual([])
+  })
+})
+
+// ---------- 글자 색 (spec forms-accent REQ-4703, design.md 4절, TASK-2) ----------
+
+const RED = '#c62f2f' // 직접 고른 글자 색(소문자 #rrggbb)
+const PICKED: ClosureNotice = { ...NOTICE, theme: 'christmas', accent: RED }
+
+describe('AC-4703.1 글자 색 저장 — 몸통에 accent가 늘 들어간다', () => {
+  const SAVES: [string, (n: ClosureNotice) => Promise<unknown>][] = [
+    ['insertNotice', (n) => insertNotice(n)],
+    ['updateNotice', (n) => updateNotice(ID, n)],
+  ]
+
+  it.each(SAVES)('AC-4703.1: %s — 고른 글자 색은 몸통 accent에 그대로 들어가고, 돌려받은 줄도 그 색으로 읽는다', async (_, save) => {
+    const calls = fakeClient(echoRow)
+    await expect(save(PICKED)).resolves.toEqual(savedOf(ID, UPDATED, PICKED))
+    const body = calls[0].body as Record<string, unknown>
+    expect(Object.keys(body).sort()).toEqual(BODY_KEYS)
+    expect(body).toEqual({ year: 2027, month: 5, cards: [CHILDREN, MEETING], theme: 'christmas', accent: RED })
+  })
+
+  it.each(SAVES)('AC-4703.1: %s — 자동(accent 열쇠 없음·null)이면 accent: null로 보내고(칸이 빠지지 않는다), 돌려받은 값에는 accent 열쇠가 없다', async (_, save) => {
+    for (const auto of [NOTICE, { ...NOTICE, accent: null }]) {
+      const calls = fakeClient(echoRow)
+      const saved = await save(auto)
+      const body = calls[0].body as Record<string, unknown>
+      expect(Object.keys(body).sort()).toEqual(BODY_KEYS)
+      expect(body.accent).toBeNull()
+      expect(saved).toEqual(savedOf(ID, UPDATED))
+      expect(Object.keys(saved as SavedNotice).sort()).toEqual(SAVED_KEYS)
+    }
+  })
+
+  it.each(SAVES)('AC-4703.1: %s — 화면 값에 다른 칸이 묻어 있어도 몸통은 다섯 열쇠를 골라 새로 만든다(받은 값은 고치지 않는다)', async (_, save) => {
+    const calls = fakeClient(echoRow)
+    const input = { ...structuredClone(PICKED), memo: '대충 적은 글', color: '#000000', hospital_id: 'other-hospital' } as unknown as ClosureNotice
+    const before = structuredClone(input)
+    await save(input)
+    const body = calls[0].body as Record<string, unknown>
+    expect(body).not.toBe(input)
+    expect(body).toEqual({ year: 2027, month: 5, cards: [CHILDREN, MEETING], theme: 'christmas', accent: RED })
+    expect(input).toEqual(before)
+  })
+
+  it.each(SAVES)('AC-4703.1: %s — 모양이 틀린 글자 색(대문자·3자리·# 없음·색 이름)은 보내지 않고 \'failed\'다', async (_, save) => {
+    for (const accent of ['#C62F2F', '#c62', 'c62f2f', 'red']) {
+      const calls = fakeClient(echoRow)
+      await expect(save({ ...NOTICE, accent }), accent).resolves.toBe('failed')
+      expect(calls, accent).toEqual([])
+    }
+  })
+})
+
+describe('AC-4703.3 읽은 줄의 글자 색', () => {
+  it('AC-4703.3: 읽는 칸에 accent가 있다', async () => {
+    const calls = fakeClient()
+    await listNotices()
+    expect(calls[0].columns).toContain('accent')
+  })
+
+  it('AC-4703.3: accent가 null인 줄은 글자 색 없는 안내문(자동)으로 읽는다 — 결과에 accent 열쇠가 없다', async () => {
+    fakeClient(() => ({ data: [dbRow(ID, UPDATED, { ...NOTICE, accent: null })] }))
+    const list = (await listNotices()) as SavedNotice[]
+    expect(list).toEqual([savedOf(ID, UPDATED)])
+    expect(Object.keys(list[0]).sort()).toEqual(SAVED_KEYS)
+  })
+
+  it('AC-4703.3: accent가 # + 소문자 16진수 6자리인 줄은 그 색으로 읽는다', async () => {
+    fakeClient(() => ({ data: [dbRow(ID, UPDATED, PICKED)] }))
+    const list = (await listNotices()) as SavedNotice[]
+    expect(list).toEqual([savedOf(ID, UPDATED, PICKED)])
+    expect(list[0].accent).toBe(RED)
+    expect(Object.keys(list[0]).sort()).toEqual(['accent', ...SAVED_KEYS].sort())
+  })
+
+  const BAD_ACCENTS: [string, unknown][] = [
+    ['대문자', '#C62F2F'],
+    ['3자리', '#abc'],
+    ['# 없음', 'c62f2f'],
+    ['8자리', '#c62f2f00'],
+    ['색 이름', 'red'],
+    ['빈 글', ''],
+    ['숫자', 0xc62f2f],
+  ]
+
+  it.each(BAD_ACCENTS)('AC-4703.3: accent가 %s인 줄은 읽지 않는다(고쳐 쓰지 않는다)', async (_, accent) => {
+    fakeClient(() => ({ data: [dbRow(ID, UPDATED, { ...NOTICE, accent })] }))
+    await expect(listNotices()).resolves.toEqual([])
+  })
+
+  it('AC-4703.3: accent 칸이 없는 줄(SQL을 붙이기 전 표 모양)은 읽지 않는다', async () => {
+    fakeClient(() => ({ data: [{ id: ID, ...structuredClone(NOTICE), updated_at: UPDATED }] }))
+    await expect(listNotices()).resolves.toEqual([])
+  })
+
+  it('AC-4703.3: 글자 색이 틀린 줄만 빼고 나머지는 차례 그대로 둔다', async () => {
+    fakeClient(() => ({
+      data: [
+        dbRow('good-1', '2026-11-10T09:00:00+00:00', PICKED),
+        ...BAD_ACCENTS.map(([, accent], i) => dbRow(`bad-${i}`, UPDATED, { ...NOTICE, accent })),
+        dbRow('good-2', '2026-11-01T09:00:00+00:00', AUTO),
+      ],
+    }))
+    await expect(listNotices()).resolves.toEqual([
+      savedOf('good-1', '2026-11-10T09:00:00+00:00', PICKED),
+      savedOf('good-2', '2026-11-01T09:00:00+00:00', AUTO),
+    ])
   })
 })
 

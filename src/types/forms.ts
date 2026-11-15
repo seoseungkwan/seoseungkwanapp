@@ -19,7 +19,9 @@ export type ThemeArt = 1 | 2
 export type ThemePick = ThemeId | `${ThemeId}-2` | 'auto-2' | `bg-${string}`
 
 export type NoticeCard = { start: string; end: string | null; name: string; status: string } // 날짜는 'YYYY-MM-DD'
-export type ClosureNotice = { year: number; month: number; cards: NoticeCard[]; theme: ThemePick | null } // theme null = 저절로·그림 1
+// theme null = 저절로·그림 1. accent = 'N월'·날짜 띠·카드 아래 글의 색(form_notices.accent): 없음·null = 자동,
+// 있으면 '#' + 소문자 16진수 6자리(specs/forms-accent design.md 2절). 선택 칸이라 글자 색 없는 지금 값도 그대로 맞는다
+export type ClosureNotice = { year: number; month: number; cards: NoticeCard[]; theme: ThemePick | null; accent?: string | null }
 export type SavedNotice = ClosureNotice & { id: string; updatedAt: string }
 // 화면이 고치는 중인 카드(빈 칸 허용). 검사를 넘으면 NoticeCard가 된다
 export type DraftCard = { start: string; end: string; name: string; status: string }
