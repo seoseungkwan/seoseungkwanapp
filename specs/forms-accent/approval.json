@@ -1,0 +1,29 @@
+{
+  "status": "approved",
+  "feature": "forms-accent",
+  "approved_at": "2026-11-15T08:01:40Z",
+  "approved_via": "auto",
+  "session_id": "4470afc2-d7c5-495e-b227-be7d95e5e044",
+  "spec_sha256": "7d0b944d6b5e72503163c4603061ea1799b04bf92af95ba7fef4d5e468c02cc1",
+  "scope": [
+    "docs/ARCHITECTURE.md",
+    "e2e/forms-privacy.spec.ts",
+    "src/components/forms/AccentPicker.test.tsx",
+    "src/components/forms/AccentPicker.tsx",
+    "src/components/forms/FormsScreen.tsx",
+    "src/components/forms/NoticeEditor.tsx",
+    "src/components/forms/Poster.tsx",
+    "src/components/forms/PosterAccent.test.tsx",
+    "src/components/forms/formsState.test.ts",
+    "src/components/forms/formsState.ts",
+    "src/lib/forms/notice.test.ts",
+    "src/lib/forms/notice.ts",
+    "src/lib/forms/themes.test.ts",
+    "src/lib/forms/themes.ts",
+    "src/lib/storage/formNotices.test.ts",
+    "src/lib/storage/formNotices.ts",
+    "src/types/forms.ts",
+    "supabase/formNoticesAccent.rls.test.ts",
+    "supabase/migrations/20261115030000_form_notices_accent.sql"
+  ]
+}
