@@ -1,8 +1,22 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { THEME_IDS, type ThemeId } from '@/types/forms'
-import { autoTheme, contrastWithWhite, THEMES, themeInUse, themeOf } from './themes'
+import { THEME_IDS, type ThemeArt, type ThemeId, type ThemePick } from '@/types/forms'
+import {
+  autoTheme,
+  BACKGROUND_FALLBACK_ACCENT,
+  backgroundPick,
+  contrastRatio,
+  contrastWithWhite,
+  isThemePick,
+  lookOfPick,
+  THEMES,
+  themeHref,
+  themeInUse,
+  themeOf,
+  withArt,
+  withTheme,
+} from './themes'
 
 // 서식 탭 휴진 안내의 테마 23개와 저절로 고르기 (specs/forms REQ-3504, design.md 4절, TASK-2)
 
@@ -102,5 +116,179 @@ describe('AC-3504.2: 테마 저절로 고르기', () => {
     const cards = cardsOf(['2027-05-05', '어린이날'])
     expect(themeInUse({ month: 5, cards, theme: null })).toBe('children')
     expect(themeInUse({ month: 5, cards, theme: 'm05' })).toBe('m05')
+  })
+})
+
+// ---------- 고른 그림 값 (specs/forms-themes REQ-4602, design.md 2절, TASK-3) ----------
+
+const UUID = '0f8e7d6c-5b4a-4392-8170-a1b2c3d4e5f6'
+const BG = `bg-${UUID}` as ThemePick
+const SECOND_ART = THEME_IDS.map((id) => `${id}-2`)
+const ALL_PICKS = [...THEME_IDS, ...SECOND_ART, 'auto-2', BG]
+const childrenCards = cardsOf(['2027-05-05', '어린이날'])
+const lookOf = (theme: ThemePick | null, month = 5, cards = childrenCards) => lookOfPick({ month, cards, theme })
+
+describe('AC-4602.1: 고른 그림 값의 모양(isThemePick)', () => {
+  it('AC-4602.1: 테마 열쇠 23개, <열쇠>-2 23개, auto-2, bg-<소문자 uuid>만 참이다', () => {
+    expect(ALL_PICKS).toHaveLength(48)
+    expect(new Set(ALL_PICKS).size).toBe(48)
+    for (const value of ALL_PICKS) expect(isThemePick(value), value).toBe(true)
+  })
+
+  it('AC-4602.1: 다른 소문자 uuid도 bg-를 붙이면 참이다', () => {
+    expect(isThemePick('bg-00000000-0000-0000-0000-000000000000')).toBe(true)
+    expect(isThemePick('bg-ffffffff-ffff-ffff-ffff-ffffffffffff')).toBe(true)
+  })
+
+  it.each([
+    'auto',
+    'auto-1',
+    'auto-3',
+    'm05-1',
+    'm05-3',
+    'm05-2-2',
+    'm05-22',
+    'm13',
+    'M05',
+    'nope',
+    '',
+    ' m05',
+    'm05 ',
+    'bg-xyz',
+    'bg-',
+    `bg-${UUID.toUpperCase()}`,
+    `BG-${UUID}`,
+    `bg-${UUID}0`,
+    `bg-${UUID.slice(1)}`,
+    `bg-${UUID.replace(/-/g, '')}`,
+    `bg-${UUID}-2`,
+    `bg-${UUID.replace('0f8e', '0g8e')}`,
+    UUID,
+  ])('AC-4602.1: "%s"는 거짓이다', (value) => {
+    expect(isThemePick(value)).toBe(false)
+  })
+
+  it('AC-4602.1: 글자가 아닌 값(숫자·null·undefined·참거짓·객체·배열)은 거짓이다', () => {
+    for (const value of [5, 0, Number.NaN, null, undefined, true, false, {}, [], ['m05'], { theme: 'm05' }]) {
+      expect(isThemePick(value), String(value)).toBe(false)
+    }
+  })
+})
+
+describe('AC-4602.2: 고른 그림 값 풀기(lookOfPick·themeInUse)', () => {
+  it('AC-4602.2: null → 저절로 고른 테마·그림 1', () => {
+    expect(lookOf(null)).toEqual({ kind: 'theme', theme: 'children', art: 1 })
+    expect(lookOf(null, 7, cardsOf(['2027-07-10', '학회']))).toEqual({ kind: 'theme', theme: 'm07', art: 1 })
+  })
+
+  it('AC-4602.2: auto-2 → 저절로 고른 테마·그림 2', () => {
+    expect(lookOf('auto-2')).toEqual({ kind: 'theme', theme: 'children', art: 2 })
+    expect(lookOf('auto-2', 7, cardsOf(['2027-07-10', '학회']))).toEqual({ kind: 'theme', theme: 'm07', art: 2 })
+  })
+
+  it.each([...THEME_IDS])('AC-4602.2: %s → 그 테마·그림 1이고, 뒤에 -2를 붙이면 그 테마·그림 2다(카드와 상관없이)', (id) => {
+    expect(lookOf(id)).toEqual({ kind: 'theme', theme: id, art: 1 })
+    expect(lookOf(`${id}-2`)).toEqual({ kind: 'theme', theme: id, art: 2 })
+  })
+
+  it('AC-4602.2: bg-<id> → 내 배경 id(앞의 bg-를 뗀 uuid)', () => {
+    expect(lookOf(BG)).toEqual({ kind: 'background', id: UUID })
+  })
+
+  it('AC-4602.2: themeInUse는 내 배경이면 저절로 테마를, 아니면 그 테마 열쇠를 돌려준다', () => {
+    expect(themeInUse({ month: 5, cards: childrenCards, theme: BG })).toBe('children')
+    expect(themeInUse({ month: 7, cards: cardsOf(['2027-07-10', '학회']), theme: BG })).toBe('m07')
+    expect(themeInUse({ month: 5, cards: childrenCards, theme: 'auto-2' })).toBe('children')
+    expect(themeInUse({ month: 5, cards: childrenCards, theme: 'm05-2' })).toBe('m05')
+    expect(themeInUse({ month: 5, cards: childrenCards, theme: 'christmas' })).toBe('christmas')
+    expect(themeInUse({ month: 5, cards: childrenCards, theme: null })).toBe('children')
+  })
+
+  it('AC-4602.2: themeHref는 풀린 테마·그림 번호의 그림 주소다(그림 1은 지금 주소 그대로)', () => {
+    expect(themeHref('m05')).toBe('/poster/themes/m05.svg')
+    expect(themeHref('m05', 1)).toBe('/poster/themes/m05.svg')
+    expect(themeHref('m05', 2)).toBe('/poster/themes/m05-2.svg')
+    for (const id of THEME_IDS) {
+      expect(themeHref(id, 1)).toBe(`/poster/themes/${id}.svg`)
+      expect(themeHref(id, 2)).toBe(`/poster/themes/${id}-2.svg`)
+    }
+  })
+})
+
+describe('AC-4602.3: 그림 번호·테마 바꾸기(withArt·withTheme)', () => {
+  it.each<[ThemePick | null, ThemeArt, ThemePick | null]>([
+    [null, 1, null],
+    [null, 2, 'auto-2'],
+    ['auto-2', 1, null],
+    ['auto-2', 2, 'auto-2'],
+    ['m05', 1, 'm05'],
+    ['m05', 2, 'm05-2'],
+    ['m05-2', 1, 'm05'],
+    ['m05-2', 2, 'm05-2'],
+    ['christmas', 2, 'christmas-2'],
+    ['christmas-2', 1, 'christmas'],
+  ])('AC-4602.3: withArt(%s, %s) → %s (테마는 그대로 그림만 바뀐다)', (pick, art, expected) => {
+    expect(withArt(pick, art)).toBe(expected)
+  })
+
+  it('AC-4602.3: 내 배경 값은 withArt로 바뀌지 않는다', () => {
+    expect(withArt(BG, 1)).toBe(BG)
+    expect(withArt(BG, 2)).toBe(BG)
+  })
+
+  it.each<[ThemePick | null, ThemeId | null, ThemePick | null]>([
+    [null, 'm06', 'm06'],
+    [null, null, null],
+    ['auto-2', 'm06', 'm06-2'],
+    ['auto-2', null, 'auto-2'],
+    ['m05', 'm06', 'm06'],
+    ['m05', null, null],
+    ['m05-2', 'm06', 'm06-2'],
+    ['m05-2', null, 'auto-2'],
+    ['m05-2', 'chuseok', 'chuseok-2'],
+    ['chuseok-2', 'm05', 'm05-2'],
+  ])('AC-4602.3: withTheme(%s, %s) → %s (그림 번호는 그대로 테마만 바뀐다)', (pick, theme, expected) => {
+    expect(withTheme(pick, theme)).toBe(expected)
+  })
+
+  it('AC-4602.3: 내 배경 값에서 테마를 고르면 그림 1이다(저절로 고르면 null)', () => {
+    expect(withTheme(BG, 'm06')).toBe('m06')
+    expect(withTheme(BG, 'christmas')).toBe('christmas')
+    expect(withTheme(BG, null)).toBeNull()
+  })
+
+  it.each([...THEME_IDS])('AC-4602.3: %s에서 그림 번호와 테마를 차례로 바꿔도 서로를 지키고, 풀면 맞는 그림이다', (id) => {
+    const second = withArt(withTheme(null, id), 2)
+    expect(second).toBe(`${id}-2`)
+    expect(isThemePick(second)).toBe(true)
+    expect(lookOf(second)).toEqual({ kind: 'theme', theme: id, art: 2 })
+    expect(withTheme(second, null)).toBe('auto-2')
+    expect(withArt(second, 1)).toBe(id)
+  })
+
+  it('AC-4602.3: backgroundPick(id)는 bg-<id>이고, 고른 그림 값으로 참이며 풀면 그 id다', () => {
+    expect(backgroundPick(UUID)).toBe(BG)
+    expect(isThemePick(backgroundPick(UUID))).toBe(true)
+    expect(lookOf(backgroundPick(UUID))).toEqual({ kind: 'background', id: UUID })
+  })
+})
+
+describe('AC-4605.2·AC-4605.3: 명암비와 대신 강조색(themes.ts)', () => {
+  it('AC-4605.2: contrastRatio는 WCAG 명암비 — 흰색·검정 21, 같은 색 1, 차례와 상관없다', () => {
+    expect(contrastRatio('#ffffff', '#000000')).toBeCloseTo(21, 5)
+    expect(contrastRatio('#000000', '#ffffff')).toBeCloseTo(21, 5)
+    expect(contrastRatio('#ffffff', '#ffffff')).toBeCloseTo(1, 5)
+    expect(contrastRatio('#2f4a7a', '#2f4a7a')).toBeCloseTo(1, 5)
+    expect(contrastRatio('#767676', '#ffffff')).toBeCloseTo(4.54, 2)
+  })
+
+  it.each(THEMES.map((t) => [t.id, t.accent] as const))('AC-4605.2: contrastRatio(%s 강조색, 흰색)는 contrastWithWhite와 같다', (_, accent) => {
+    expect(contrastRatio(accent, '#ffffff')).toBeCloseTo(contrastWithWhite(accent), 10)
+    expect(contrastRatio('#ffffff', accent)).toBeCloseTo(contrastWithWhite(accent), 10)
+  })
+
+  it('AC-4605.3: BACKGROUND_FALLBACK_ACCENT는 #+소문자 16진수 6자리이고 흰색과 4.5 이상이다', () => {
+    expect(BACKGROUND_FALLBACK_ACCENT).toMatch(/^#[0-9a-f]{6}$/)
+    expect(contrastRatio(BACKGROUND_FALLBACK_ACCENT, '#ffffff')).toBeGreaterThanOrEqual(4.5)
   })
 })

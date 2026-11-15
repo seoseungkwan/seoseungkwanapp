@@ -11,7 +11,7 @@ import {
   type DraftCard,
   type NoticeCard,
   type SavedNotice,
-  type ThemeId,
+  type ThemePick,
 } from '@/types/forms'
 
 // 서식 화면(휴진 안내)의 상태 한 곳과 순수 reducer (spec forms design.md 10절, 시안 docs/mockups/forms/screen.html).
@@ -34,7 +34,7 @@ export type FormsState = {
   month: number
   monthTouched: boolean // 안내 달을 직접 골랐다(카드를 따라가지 않는다)
   cards: DraftCard[]
-  theme: ThemeId | null // null = 저절로
+  theme: ThemePick | null // null = 저절로·그림 1 (고른 그림 값, specs/forms-themes design.md 2절)
   baseline: string | null // 마지막으로 저장하거나 연 값(snapshotOf). 새 안내문은 null
   list: ListState
   store: StoreWork | null
@@ -53,7 +53,7 @@ export type FormsAction =
   | { type: 'addCard' }
   | { type: 'removeCard'; index: number }
   | { type: 'month'; value: string } // <input type="month">의 'YYYY-MM'
-  | { type: 'theme'; theme: ThemeId | null }
+  | { type: 'theme'; theme: ThemePick | null }
   | { type: 'new' }
   | { type: 'open'; notice: SavedNotice }
   | { type: 'listLoading' }
@@ -99,7 +99,7 @@ export function initialState(today: string): FormsState {
 }
 
 // 저장 값 비교용 글. 이름·아래 글은 저장할 때처럼 앞뒤 공백을 뗀다(공백만 다르면 같은 값)
-function snapshotOf(n: { year: number; month: number; theme: ThemeId | null; cards: readonly { start: string; end: string | null; name: string; status: string }[] }): string {
+function snapshotOf(n: { year: number; month: number; theme: ThemePick | null; cards: readonly { start: string; end: string | null; name: string; status: string }[] }): string {
   return JSON.stringify([n.year, n.month, n.theme, n.cards.map((c) => [c.start, c.end ?? '', c.name.trim(), c.status.trim()])])
 }
 

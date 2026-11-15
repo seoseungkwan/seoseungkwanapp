@@ -1,8 +1,9 @@
-import type { ClosureNotice, ThemeId } from '@/types/forms'
+import { THEME_IDS, type ClosureNotice, type ThemeArt, type ThemeId, type ThemePick } from '@/types/forms'
 import { sortCards } from './notice'
 
 // 서식 탭 휴진 안내의 테마 23개(공휴일 11 + 달 12)와 저절로 고르기 (specs/forms design.md 4절).
-// 강조색은 승인된 테마 시안(docs/mockups/forms/themes.html)의 값. 그림은 public/poster/themes/<열쇠>.svg
+// 강조색은 승인된 테마 시안(docs/mockups/forms/themes.html)의 값. 그림은 public/poster/themes/<열쇠>.svg(그림 1)와
+// <열쇠>-2.svg(그림 2), 고른 그림 값(form_notices.theme 한 칸)은 specs/forms-themes design.md 2절
 
 export type Theme = {
   id: ThemeId
@@ -76,16 +77,96 @@ export function autoTheme(notice: Pickable): ThemeId {
   return themeOf(`m${String(notice.month).padStart(2, '0')}` as ThemeId).id
 }
 
-export function themeInUse(notice: Pickable & Pick<ClosureNotice, 'theme'>): ThemeId {
-  return notice.theme ?? autoTheme(notice)
+// ---------- 고른 그림 값 (specs/forms-themes REQ-4602, design.md 2절) ----------
+
+// 흑백에 가까운 AI 배경 그림의 대신 강조색(현충일 남색, 흰색과 8.8:1)
+export const BACKGROUND_FALLBACK_ACCENT = '#2f4a7a'
+
+// 안내문에 그릴 것: 테마 그림(열쇠·그림 번호) 또는 내 배경(id = 소문자 uuid)
+export type Look = { kind: 'theme'; theme: ThemeId; art: ThemeArt } | { kind: 'background'; id: string }
+
+const AUTO_SECOND: ThemePick = 'auto-2'
+const SECOND = '-2'
+const BACKGROUND_PREFIX = 'bg-'
+const BACKGROUND_PICK = /^bg-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+// 테마 쪽 값을 푼 것. theme null = 저절로
+type ThemePart = { theme: ThemeId | null; art: ThemeArt }
+
+function isThemeKey(value: unknown): value is ThemeId {
+  return (THEME_IDS as readonly unknown[]).includes(value)
 }
 
-// WCAG 2 상대 밝기로 견준 흰 글자와의 명암비
-export function contrastWithWhite(hex: string): number {
+const isBackgroundPick = (value: unknown): value is `bg-${string}` => typeof value === 'string' && BACKGROUND_PICK.test(value)
+
+// 테마 쪽 값(null·auto-2·<열쇠>·<열쇠>-2)이면 테마·그림 번호, 내 배경이나 모르는 값이면 null
+function themePartOf(pick: unknown): ThemePart | null {
+  if (pick === null) return { theme: null, art: 1 }
+  if (pick === AUTO_SECOND) return { theme: null, art: 2 }
+  if (isThemeKey(pick)) return { theme: pick, art: 1 }
+  if (typeof pick !== 'string' || !pick.endsWith(SECOND)) return null
+  const base = pick.slice(0, -SECOND.length)
+  return isThemeKey(base) ? { theme: base, art: 2 } : null
+}
+
+function pickOf({ theme, art }: ThemePart): ThemePick | null {
+  if (theme === null) return art === 2 ? AUTO_SECOND : null
+  return art === 2 ? `${theme}${SECOND}` : theme
+}
+
+// 테마 열쇠 23개, <열쇠>-2 23개, auto-2, bg-<소문자 uuid>만 참(AC-4602.1). null은 고른 값이 아니다(저절로)
+export function isThemePick(value: unknown): value is ThemePick {
+  if (isBackgroundPick(value)) return true
+  return value !== null && themePartOf(value) !== null
+}
+
+// 고른 값을 풀어 그릴 것을 정한다(AC-4602.2). 저절로면 카드 이름·안내 달로 고른 테마
+export function lookOfPick(notice: Pickable & Pick<ClosureNotice, 'theme'>): Look {
+  if (isBackgroundPick(notice.theme)) return { kind: 'background', id: notice.theme.slice(BACKGROUND_PREFIX.length) }
+  const { theme, art } = themePartOf(notice.theme) ?? { theme: null, art: 1 }
+  return { kind: 'theme', theme: theme ?? autoTheme(notice), art }
+}
+
+// 테마는 그대로 그림 번호만 바꾼다. 내 배경 값은 그대로(AC-4602.3)
+export function withArt(pick: ThemePick | null, art: ThemeArt): ThemePick | null {
+  const part = themePartOf(pick)
+  return part === null ? pick : pickOf({ theme: part.theme, art })
+}
+
+// 그림 번호는 그대로 테마만 바꾼다(theme null = 저절로). 내 배경에서 오면 그림 1(AC-4602.3)
+export function withTheme(pick: ThemePick | null, theme: ThemeId | null): ThemePick | null {
+  return pickOf({ theme, art: themePartOf(pick)?.art ?? 1 })
+}
+
+export const backgroundPick = (id: string): ThemePick => `${BACKGROUND_PREFIX}${id}`
+
+// 테마 그림 주소: 그림 1은 /poster/themes/<열쇠>.svg(지금 주소), 그림 2는 <열쇠>-2.svg
+export function themeHref(theme: ThemeId, art: ThemeArt = 1): string {
+  return `/poster/themes/${theme}${art === 2 ? SECOND : ''}.svg`
+}
+
+// 안내문의 테마 열쇠: 테마 값이면 그 테마, 내 배경이면 저절로 고른 테마
+export function themeInUse(notice: Pickable & Pick<ClosureNotice, 'theme'>): ThemeId {
+  const look = lookOfPick(notice)
+  return look.kind === 'theme' ? look.theme : autoTheme(notice)
+}
+
+// WCAG 2 상대 밝기('#rrggbb')
+function luminanceOf(hex: string): number {
   const channel = (offset: number) => {
     const c = parseInt(hex.slice(offset, offset + 2), 16) / 255
     return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
   }
-  const luminance = 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5)
-  return 1.05 / (luminance + 0.05)
+  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5)
+}
+
+// WCAG 2 상대 밝기로 견준 흰 글자와의 명암비
+export function contrastWithWhite(hex: string): number {
+  return 1.05 / (luminanceOf(hex) + 0.05)
+}
+
+// 두 색의 WCAG 2 명암비(1~21, 차례와 상관없다)
+export function contrastRatio(a: string, b: string): number {
+  const [light, dark] = [luminanceOf(a), luminanceOf(b)].sort((x, y) => y - x)
+  return (light + 0.05) / (dark + 0.05)
 }

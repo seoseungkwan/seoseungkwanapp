@@ -1,16 +1,8 @@
 import { compareYmd, diffDays, isYmd, weekdayOf } from '@/lib/analytics/dates'
 import { hasPrivateShape } from '@/lib/payload/validate'
-import {
-  MAX_CARDS,
-  MAX_NAME,
-  MAX_RANGE_DAYS,
-  MAX_STATUS,
-  THEME_IDS,
-  type ClosureNotice,
-  type DraftCard,
-  type NoticeCard,
-  type ThemeId,
-} from '@/types/forms'
+import { MAX_CARDS, MAX_NAME, MAX_RANGE_DAYS, MAX_STATUS, type ClosureNotice, type DraftCard, type NoticeCard } from '@/types/forms'
+// themes.ts도 이 파일(sortCards)을 부른다. 서로 부르는 것은 함수 안에서만이라 불러오는 차례와 상관없다
+import { isThemePick } from './themes'
 
 // 서식 탭 휴진 안내의 안내 내용 규칙 (specs/forms design.md 3절). 날짜 계산은 lib/analytics/dates.ts만 쓴다
 
@@ -82,14 +74,13 @@ function storedCard(value: unknown): NoticeCard | null {
   return card.name === name && card.status === status ? card : null
 }
 
-const isThemeId = (value: unknown): value is ThemeId => (THEME_IDS as readonly unknown[]).includes(value)
-
 export function checkNotice(value: unknown): ClosureNotice | null {
   const o = exactly(value, NOTICE_KEYS)
   if (o === null) return null
   const { year, month, cards, theme } = o
   if (!isInteger(year, MIN_YEAR, MAX_YEAR) || !isInteger(month, 1, 12)) return null
-  if (theme !== null && !isThemeId(theme)) return null
+  // null(저절로·그림 1) 또는 고른 그림 값(테마 열쇠·<열쇠>-2·auto-2·bg-<uuid>) (specs/forms-themes AC-4602.4)
+  if (theme !== null && !isThemePick(theme)) return null
   if (!Array.isArray(cards) || cards.length < 1 || cards.length > MAX_CARDS) return null
   const checked: NoticeCard[] = []
   for (const item of cards) {

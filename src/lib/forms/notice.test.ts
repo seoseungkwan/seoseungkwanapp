@@ -155,6 +155,30 @@ describe('AC-3507.6: 서버에서 읽은 줄·저장 직전 값 검사(checkNoti
   })
 })
 
+// ---------- 고른 그림 값 (specs/forms-themes REQ-4602 AC-4602.4, design.md 2절, TASK-3) ----------
+
+describe('AC-4602.4: checkNotice는 theme이 null이거나 고른 그림 값(isThemePick)일 때만 받는다', () => {
+  const UUID = '0f8e7d6c-5b4a-4392-8170-a1b2c3d4e5f6'
+
+  it('AC-4602.4: 지금 저장된 값(null·테마 열쇠 23개)은 그대로 통과한다', () => {
+    expect(checkNotice(notice({ theme: null }))?.theme).toBeNull()
+    expect(THEME_IDS).toHaveLength(23)
+    for (const theme of THEME_IDS) expect(checkNotice(notice({ theme })), theme).toEqual(notice({ theme }))
+  })
+
+  it('AC-4602.4: 그림 2(<열쇠>-2 23개·auto-2)와 내 배경(bg-<소문자 uuid>)도 받는다', () => {
+    for (const theme of [...THEME_IDS.map((id) => `${id}-2`), 'auto-2', `bg-${UUID}`]) {
+      expect(checkNotice(notice({ theme }))?.theme, theme).toBe(theme)
+    }
+  })
+
+  it('AC-4602.4: 고른 그림 값이 아니면 받지 않는다(bg- 대문자 uuid 포함)', () => {
+    for (const theme of [`bg-${UUID.toUpperCase()}`, `BG-${UUID}`, 'bg-xyz', 'auto', 'm05-3', 'M05', '', 5, true, {}, ['m05']]) {
+      expect(checkNotice(notice({ theme })), String(theme)).toBeNull()
+    }
+  })
+})
+
 describe('AC-3509.4: 연도 정하기(글에 연도가 없을 때, 오늘 2026-11-10)', () => {
   const today = '2026-11-10'
 
