@@ -1,12 +1,14 @@
 import { useId, type InputHTMLAttributes } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { ds } from '@/components/ui/classes'
-import { THEMES, autoTheme, themeOf } from '@/lib/forms/themes'
-import { MAX_CARDS, MAX_MEMO, MAX_NAME, MAX_STATUS, type DraftCard, type ThemeId } from '@/types/forms'
+import { autoTheme, themeOf } from '@/lib/forms/themes'
+import { MAX_CARDS, MAX_MEMO, MAX_NAME, MAX_STATUS, type DraftCard, type ThemePick } from '@/types/forms'
 import { cardProblems, draftDateLabel, monthProblem, previewNotice, type FormsState } from './formsState'
+import { ThemePicker } from './ThemePicker'
+import type { Backgrounds } from './useBackgrounds'
 
-// 서식 화면 가운데: 대충 적기 → [정리하기], 안내 달·카드 1~4장, 테마 고르기
-// (spec forms REQ-3502·REQ-3503·AC-3504.3, 시안 screen.html '만들기'). 색·글자는 토큰과 ds만 쓴다
+// 서식 화면 가운데: 대충 적기 → [정리하기], 안내 달·카드 1~4장, 맨 아래 '배경' 칸(ThemePicker — 테마 그림 1·2 / 내 배경)
+// (spec forms REQ-3502·REQ-3503·AC-3504.3, spec forms-themes REQ-4610~4612, 시안 screen.html '만들기'). 색·글자는 토큰과 ds만 쓴다
 
 const NOTE = '전화번호·주민번호·메일 주소는 적지 마세요. 적은 글은 정리할 때만 AI로 보내고 저장하지 않아요'
 const PLACEHOLDER = '예) 5월 5일 어린이날 휴진\n예) 추석 연휴 9월 24일부터 26일까지 쉬어요'
@@ -15,9 +17,6 @@ const TEXTAREA =
   'min-h-24 w-full min-w-0 resize-y rounded-control border border-line-strong bg-surface px-3 py-2 text-body text-ink placeholder:text-muted hover:border-muted focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent focus-visible:outline-hidden max-md:text-lead'
 const SECTION_TITLE = 'text-body font-semibold text-ink'
 
-const HOLIDAYS = THEMES.filter((theme) => theme.kind === 'holiday')
-const MONTHS = THEMES.filter((theme) => theme.kind === 'month')
-const isThemeId = (value: string): value is ThemeId => THEMES.some((theme) => theme.id === value)
 const pad = (n: number) => String(n).padStart(2, '0')
 
 type CardField = keyof DraftCard
@@ -29,7 +28,8 @@ type Props = {
   onAddCard: () => void
   onRemoveCard: (index: number) => void
   onMonth: (value: string) => void
-  onTheme: (theme: ThemeId | null) => void
+  onTheme: (theme: ThemePick | null) => void
+  bg: Backgrounds // '배경' 칸(내 배경·AI 배경)의 상태와 부르기(useBackgrounds)
 }
 
 type FieldProps = {
@@ -60,11 +60,12 @@ function CardField({ id, label, hint, error, input }: FieldProps) {
   )
 }
 
-export function NoticeEditor({ state, onMemo, onTidy, onCard, onAddCard, onRemoveCard, onMonth, onTheme }: Props) {
+export function NoticeEditor({ state, onMemo, onTidy, onCard, onAddCard, onRemoveCard, onMonth, onTheme, bg }: Props) {
   const id = useId()
   const problems = cardProblems(state)
   const monthError = monthProblem(state)
-  const autoName = themeOf(autoTheme(previewNotice(state))).name
+  const preview = previewNotice(state)
+  const autoName = themeOf(autoTheme(preview)).name
   const memoLength = Array.from(state.memo).length
 
   return (
@@ -186,34 +187,7 @@ export function NoticeEditor({ state, onMemo, onTidy, onCard, onAddCard, onRemov
 
       <hr className="my-4 border-line" />
 
-      <div className={ds.field}>
-        <label htmlFor={`${id}-theme`} className={ds.label}>
-          테마
-        </label>
-        <select
-          id={`${id}-theme`}
-          className={ds.input}
-          value={state.theme ?? 'auto'}
-          onChange={(e) => onTheme(isThemeId(e.target.value) ? e.target.value : null)}
-        >
-          <option value="auto">{`저절로(지금: ${autoName})`}</option>
-          <optgroup label="공휴일">
-            {HOLIDAYS.map((theme) => (
-              <option key={theme.id} value={theme.id}>
-                {theme.name}
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="달마다">
-            {MONTHS.map((theme) => (
-              <option key={theme.id} value={theme.id}>
-                {theme.name}
-              </option>
-            ))}
-          </optgroup>
-        </select>
-        <p className={ds.help}>카드 이름에 공휴일 이름이 있으면 그 공휴일, 없으면 안내 달의 그림이 저절로 골라져요</p>
-      </div>
+      <ThemePicker pick={state.theme} autoName={autoName} bg={bg} note={bg.look(preview).note} onPick={onTheme} />
     </section>
   )
 }

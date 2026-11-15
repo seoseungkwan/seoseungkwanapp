@@ -6,7 +6,6 @@ import { todayInKorea } from '@/lib/analytics/dates'
 import { memoProblem } from '@/lib/forms/ai'
 import { fileNameOf, noticeTitle } from '@/lib/forms/notice'
 import { downloadPosterPng } from '@/lib/forms/png'
-import { themeInUse } from '@/lib/forms/themes'
 import { deleteNotice, insertNotice, listNotices, updateNotice } from '@/lib/storage/formNotices'
 import {
   LEAVE_CONFIRM,
@@ -23,6 +22,7 @@ import { NoticeEditor } from './NoticeEditor'
 import { NoticeList, type SavedList } from './NoticeList'
 import { Poster } from './Poster'
 import { PreviewPanel } from './PreviewPanel'
+import { useBackgrounds } from './useBackgrounds'
 
 // 서식 탭 화면 — 휴진 안내 (spec forms REQ-3501~3507, design.md 10절, 승인 시안 docs/mockups/forms/screen.html).
 // 도구 줄 [휴진 안내]·[환자 안내문](spec forms-guide REQ-4501, design.md 9절): 고른 도구 한 벌만 보인다. 환자 안내문(GuideWorkspace)은
@@ -71,9 +71,11 @@ export function FormsScreen({ today }: { today?: string }) {
   // 같은 틀(render) 안에서 두 번 눌러도 한 번만 한다
   const working = useRef({ tidy: false, store: false, image: false })
 
+  // '배경' 칸(테마 그림 1·2 / 내 배경, specs/forms-themes design.md 10-4절): 미리보기·인쇄 사본에 그릴 그림과 뽑기 막힘
+  const bg = useBackgrounds(state.theme, (pick) => dispatch({ type: 'theme', theme: pick }))
   const preview = previewNotice(state)
-  const theme = themeInUse(preview)
-  const ready = readyNotice(state)
+  const look = bg.look(preview)
+  const ready = look.blocked ? null : readyNotice(state)
   const dirty = isDirty(state)
   const list: SavedList =
     state.list.kind === 'ok'
@@ -206,9 +208,10 @@ export function FormsScreen({ today }: { today?: string }) {
               onRemoveCard={(index) => dispatch({ type: 'removeCard', index })}
               onMonth={(value) => dispatch({ type: 'month', value })}
               onTheme={(next) => dispatch({ type: 'theme', theme: next })}
+              bg={bg}
             />
             <PreviewPanel
-              poster={<Poster notice={preview} theme={theme} />}
+              poster={<Poster notice={preview} theme={look.theme} art={look.art} background={look.background} />}
               empty={preview.cards.length === 0}
               posterRef={posterRef}
               ready={ready !== null}
@@ -231,7 +234,7 @@ export function FormsScreen({ today }: { today?: string }) {
       {tool === 'closure' && (
         <div data-print-copy="" aria-hidden="true" className="hidden print:block">
           <div className="h-[297mm] w-[210mm] *:block *:size-full">
-            <Poster notice={preview} theme={theme} />
+            <Poster notice={preview} theme={look.theme} art={look.art} background={look.background} />
           </div>
         </div>
       )}
