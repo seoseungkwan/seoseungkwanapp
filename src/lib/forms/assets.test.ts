@@ -9,7 +9,8 @@ import { describe, expect, it } from 'vitest'
 const ROOT = process.cwd()
 const POSTER_FONT_DIR = 'public/poster/fonts'
 const THEME_DIR = 'public/poster/themes'
-const MOCKUP_THEME_DIR = 'docs/mockups/forms/themes'
+// specs/forms-themes AC-4601.2: 견줄 승인 시안은 새 시안 폴더(옛 docs/mockups/forms/themes 대신)
+const MOCKUP_THEME_DIR = 'docs/mockups/forms-themes/themes'
 const APP_FONT_DIR = 'src/app/fonts'
 
 // npm pretendard@1.3.9 꾸러미의 dist/web/static/woff2-subset/ 두 파일(고치지 않음).
@@ -33,6 +34,8 @@ const THEME_KEYS = [
   'm01', 'm02', 'm03', 'm04', 'm05', 'm06', 'm07', 'm08', 'm09', 'm10', 'm11', 'm12',
 ] as const
 const THEME_BYTES_MAX = 60_000
+// 그림 파일 이름(specs/forms-themes design.md 3절): 열쇠마다 그림 1 `<열쇠>.svg`와 그림 2 `<열쇠>-2.svg`
+const THEME_FILES = THEME_KEYS.flatMap((key) => [`${key}.svg`, `${key}-2.svg`])
 
 const files = (dir: string) => readdirSync(join(ROOT, dir)).sort()
 const bytes = (rel: string) => readFileSync(join(ROOT, rel))
@@ -47,8 +50,8 @@ const sha256 = (buf: Buffer) => createHash('sha256').update(buf).digest('hex')
 const asLf = (buf: Buffer) => Buffer.from(buf.toString('latin1').replace(/\r\n/g, '\n'), 'latin1')
 const textBytes = (rel: string) => asLf(bytes(rel))
 
-const themeRel = (key: string) => `${THEME_DIR}/${key}.svg`
-const themeText = (key: string) => textBytes(themeRel(key)).toString('utf8')
+const themeRel = (name: string) => `${THEME_DIR}/${name}`
+const themeText = (name: string) => textBytes(themeRel(name)).toString('utf8')
 
 describe('AC-3510.1: public/poster/fonts/의 Pretendard 파일', () => {
   it('AC-3510.1: 폴더에는 Bold·Black 두 글꼴과 OFL.txt만 있다', () => {
@@ -84,42 +87,50 @@ describe('AC-3510.1: src/app/fonts의 세 글꼴은 그대로다', () => {
   })
 })
 
-describe('AC-3504.5: public/poster/themes/의 테마 그림 23개', () => {
-  it('AC-3504.5: 폴더에는 열쇠 23개의 <열쇠>.svg만 있다', () => {
+describe('AC-3504.5·AC-4601.1~4601.3: public/poster/themes/의 테마 그림 46장', () => {
+  it('AC-4601.1: 폴더에는 열쇠 23개마다 <열쇠>.svg(그림 1)와 <열쇠>-2.svg(그림 2)가 하나씩, 모두 46개만 있다', () => {
     expect(THEME_KEYS).toHaveLength(23)
     expect(new Set(THEME_KEYS).size).toBe(23)
-    expect(files(THEME_DIR)).toEqual(THEME_KEYS.map((key) => `${key}.svg`).sort())
+    expect(THEME_FILES).toHaveLength(46)
+    expect(new Set(THEME_FILES).size).toBe(46)
+    expect(files(THEME_DIR)).toEqual([...THEME_FILES].sort())
   })
 
-  it.each(THEME_KEYS)('AC-3504.5: %s.svg는 맨 바깥 <svg>가 viewBox="0 0 794 1123"이다', (key) => {
-    const root = themeText(key).match(/<svg\b[^>]*>/)?.[0]
-    expect(root, `${key}: <svg> 태그가 없다`).toBeDefined()
+  it.each(THEME_FILES)('AC-4601.3: %s는 맨 바깥 <svg>가 viewBox="0 0 794 1123"이다', (name) => {
+    const root = themeText(name).match(/<svg\b[^>]*>/)?.[0]
+    expect(root, `${name}: <svg> 태그가 없다`).toBeDefined()
     expect(root).toContain('viewBox="0 0 794 1123"')
   })
 
-  it.each(THEME_KEYS)('AC-3504.5: %s.svg에는 글자(<text>)·스크립트·<foreignObject>·이벤트 속성(on…=)이 없다', (key) => {
-    const text = themeText(key)
+  it.each(THEME_FILES)('AC-4601.3: %s에는 글자(<text>)·스크립트·<foreignObject>·<image>·<style>·이벤트 속성(on…=)이 없다', (name) => {
+    const text = themeText(name)
     expect(text).not.toMatch(/<text\b/i)
     expect(text).not.toMatch(/<script\b/i)
     expect(text).not.toMatch(/<foreignObject\b/i)
+    expect(text).not.toMatch(/<image\b/i)
+    expect(text).not.toMatch(/<style\b/i)
     expect(text).not.toMatch(/\son[a-z]+\s*=/i)
   })
 
-  it.each(THEME_KEYS)('AC-3504.5: %s.svg의 href·xlink:href·url()은 모두 #로 시작한다(바깥 주소 없음)', (key) => {
-    const text = themeText(key)
+  it.each(THEME_FILES)('AC-4601.3: %s의 href·xlink:href·url()은 모두 #로 시작한다(바깥 주소 없음)', (name) => {
+    const text = themeText(name)
     const hrefs = [...text.matchAll(/(?:xlink:)?href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)].map((m) => m[1] ?? m[2] ?? m[3])
-    for (const href of hrefs) expect(href, `${key}: href="${href}"`).toMatch(/^#/)
+    for (const href of hrefs) expect(href, `${name}: href="${href}"`).toMatch(/^#/)
     const urls = [...text.matchAll(/url\(\s*['"]?([^'")\s]*)/gi)].map((m) => m[1])
-    for (const url of urls) expect(url, `${key}: url(${url})`).toMatch(/^#/)
+    for (const url of urls) expect(url, `${name}: url(${url})`).toMatch(/^#/)
   })
 
-  it.each(THEME_KEYS)('AC-3504.5: %s.svg는 60KB(60,000바이트) 이하다', (key) => {
-    expect(textBytes(themeRel(key)).length).toBeLessThanOrEqual(THEME_BYTES_MAX)
+  it.each(THEME_FILES)('AC-4601.3: %s는 60KB(60,000바이트) 이하다', (name) => {
+    expect(textBytes(themeRel(name)).length).toBeLessThanOrEqual(THEME_BYTES_MAX)
   })
 
-  it.each(THEME_KEYS)('AC-3504.5: %s.svg는 승인 시안 docs/mockups/forms/themes/의 같은 파일과 바이트가 같다(LF로 견줌)', (key) => {
-    const copy = textBytes(themeRel(key))
-    const approved = textBytes(`${MOCKUP_THEME_DIR}/${key}.svg`)
+  it('AC-4601.2: 견줄 승인 시안 폴더 docs/mockups/forms-themes/themes/에도 같은 46장이 있다', () => {
+    expect(files(MOCKUP_THEME_DIR)).toEqual([...THEME_FILES].sort())
+  })
+
+  it.each(THEME_FILES)('AC-4601.2: %s는 승인 시안 docs/mockups/forms-themes/themes/의 같은 파일과 바이트가 같다(LF로 견줌, sha256)', (name) => {
+    const copy = textBytes(themeRel(name))
+    const approved = textBytes(`${MOCKUP_THEME_DIR}/${name}`)
     expect(sha256(copy)).toBe(sha256(approved))
   })
 })

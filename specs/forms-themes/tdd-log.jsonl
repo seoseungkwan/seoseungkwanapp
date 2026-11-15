@@ -1,0 +1,4 @@
+{"ts": "2026-11-15T05:22:06Z", "task": "TASK-1", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/lib/forms/assets.test.ts'", "tests": ["src/lib/forms/assets.test.ts"], "trigger": "src/lib/forms/assets.test.ts", "source": "post-hook"}
+{"ts": "2026-11-15T05:22:10Z", "task": "TASK-1", "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/lib/forms/assets.test.ts'", "tests": ["src/lib/forms/assets.test.ts"], "trigger": "src/lib/forms/assets.test.ts", "source": "post-hook"}
+{"ts": "2026-11-15T05:22:17Z", "task": "TASK-1", "reqs": ["REQ-4601"], "phase": "RED", "exit": 1, "cmd": "npx vitest run 'src/lib/forms/assets.test.ts'", "tests": ["src/lib/forms/assets.test.ts"], "expect": "red", "source": "tdd-run"}
+{"ts": "2026-11-15T05:22:36Z", "task": "TASK-1", "reqs": ["REQ-4601"], "phase": "GREEN", "exit": 0, "cmd": "npx vitest run 'src/lib/forms/assets.test.ts'", "tests": ["src/lib/forms/assets.test.ts"], "expect": "green", "source": "tdd-run"}
