@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PRICES, costMicroUsd } from './cost'
+import { IMAGE_COST_GUESS, IMAGE_PRICE, PRICES, costMicroUsd, imageCostMicroUsd } from './cost'
 
 // 비용은 백만분의 1달러(micro USD) 정수다(spec ai-report design.md '비용'). 정수 곱의 합만 하고 나누지 않는다
 
@@ -50,5 +50,38 @@ describe('AC-509.2 가격표에 없는 모델은 표의 가장 비싼 단가로 
       expect(unknown).toBeGreaterThanOrEqual(costMicroUsd({ model, ...usage }))
     }
     expect(unknown).toBeGreaterThan(costMicroUsd({ model: 'claude-opus-5-5', ...usage }))
+  })
+})
+
+describe('AC-4607.4 그림 값은 토큰 단가(입력 5·출력 30)로, 사용량이 없으면 한 장 60,000으로 센다', () => {
+  it('AC-4607.4 그림 단가는 입력 5·출력 30, 사용량 없을 때 한 장 60,000 micro USD', () => {
+    expect(IMAGE_PRICE).toEqual({ input: 5, output: 30 })
+    expect(IMAGE_COST_GUESS).toBe(60_000)
+  })
+
+  it('AC-4607.4 출력 1,868·입력 200이면 57,040 micro USD', () => {
+    const cost = imageCostMicroUsd({ inputTokens: 200, outputTokens: 1_868 })
+    expect(cost).toBe(57_040)
+    expect(cost).toBe(200 * IMAGE_PRICE.input + 1_868 * IMAGE_PRICE.output)
+    expect(Number.isSafeInteger(cost)).toBe(true)
+  })
+
+  it('AC-4607.4 입력 0·출력 0이면 0, 사용량이 없으면(null) 60,000', () => {
+    expect(imageCostMicroUsd({ inputTokens: 0, outputTokens: 0 })).toBe(0)
+    expect(imageCostMicroUsd(null)).toBe(60_000)
+    expect(imageCostMicroUsd(null)).toBe(IMAGE_COST_GUESS)
+  })
+
+  it('AC-4607.4 결과는 늘 정수다', () => {
+    for (const [inputTokens, outputTokens] of [[1, 1], [123, 4_567], [10_000, 0], [0, 99_999]]) {
+      const cost = imageCostMicroUsd({ inputTokens, outputTokens })
+      expect(Number.isSafeInteger(cost)).toBe(true)
+      expect(cost).toBe(inputTokens * 5 + outputTokens * 30)
+    }
+  })
+
+  it('AC-4607.4 그림 단가는 Claude 가격표(PRICES)에 들지 않아 모르는 모델 값도 그대로다', () => {
+    expect(Object.values(PRICES)).not.toContainEqual(IMAGE_PRICE)
+    expect(costMicroUsd({ model: 'gpt-image-2.6-flare', inputTokens: 10_000, outputTokens: 4_000 })).toBe(150_000)
   })
 })

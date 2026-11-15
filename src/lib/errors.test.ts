@@ -78,6 +78,10 @@ const ALL_CODES = [
   'E-FORMS-SAVE-FAILED',
   'E-FORMS-READ-FAILED',
   'E-FORMS-IMAGE-FAILED',
+  'E-FORMS-BG-LIMIT',
+  'E-FORMS-BG-QUOTA',
+  'E-FORMS-BG-FAILED',
+  'E-FORMS-BG-STORE-FAILED',
 ] as const satisfies readonly ErrorCode[]
 
 // 청구 사전점검 연결 번호(design.md 4-5 중 확장·도우미·통로 것). 비트 접속 번호는 TASK-6이 더한다
@@ -865,7 +869,7 @@ describe('AC-3506.3 서식 그림 파일 오류 문구', () => {
 
 describe('AC-3502.3·AC-3502.5·AC-3506.3·AC-3507.5 서식 명세가 더하는 번호', () => {
   it('AC-3507.5: 이 명세가 더하는 E-FORMS- 번호는 표의 다섯뿐이다', () => {
-    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-FORMS-')).sort()).toEqual(Object.keys(FORMS).sort())
+    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-FORMS-') && !code.startsWith('E-FORMS-BG-')).sort()).toEqual(Object.keys(FORMS).sort())
   })
 
   // vitest는 타입을 보지 않는다. 번호 타입(ErrorCode)에 없으면 tsc·npm run build가 실패하므로 타입 파일 글자로 본다
@@ -873,5 +877,49 @@ describe('AC-3502.3·AC-3502.5·AC-3506.3·AC-3507.5 서식 명세가 더하는 
     const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
     const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
     for (const code of Object.keys(FORMS)) expect(union).toContain(`'${code}'`)
+  })
+})
+
+// 휴진 안내 AI 배경(specs/forms-themes design.md 12절 표). 문구는 표의 글자 그대로(끝 마침표 없음)
+const FORMS_BG = {
+  'E-FORMS-BG-LIMIT': {
+    what: '오늘 만들 수 있는 AI 배경을 다 만들었어요',
+    fix: '하루 20장까지예요. 저장한 내 배경을 고르거나 내일 다시 만들어 주세요',
+  },
+  'E-FORMS-BG-QUOTA': {
+    what: 'OpenAI 그림 사용 한도에 닿았어요',
+    fix: 'OpenAI 관리 화면에서 결제 한도를 늘리거나 다음 달에 다시 해 주세요',
+  },
+  'E-FORMS-BG-FAILED': {
+    what: 'AI 배경을 만들지 못했어요',
+    fix: '적은 말을 바꾸거나 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요',
+  },
+  'E-FORMS-BG-STORE-FAILED': {
+    what: '내 배경을 저장하거나 읽지 못했어요',
+    fix: '인터넷 연결을 확인하고 다시 눌러 주세요. 만든 배경은 그대로 남아 있어요',
+  },
+} as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
+
+describe('AC-4613.4 휴진 안내 AI 배경 오류 번호', () => {
+  it.each(Object.keys(FORMS_BG) as Array<keyof typeof FORMS_BG>)('AC-4613.4: %s는 번호가 있고 무엇이·어떻게 고치나가 표 글자 그대로다', (code) => {
+    expect(isErrorCode(code), code).toBe(true)
+    expect(ALL_CODES, code).toContain(code)
+    expect(errorInfo(code)).toEqual(FORMS_BG[code])
+  })
+
+  it('AC-4613.4: 이 명세가 더하는 E-FORMS-BG- 번호는 표의 넷뿐이다', () => {
+    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-FORMS-BG-')).sort()).toEqual(Object.keys(FORMS_BG).sort())
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
+  it('AC-4613.4: 네 번호가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    for (const code of Object.keys(FORMS_BG)) expect(union).toContain(`'${code}'`)
+  })
+
+  it('AC-4613.4: 함께 쓰는 E-FORMS-PRIVATE·E-AI-BUSY는 지금 문구 그대로다', () => {
+    expect(errorInfo('E-FORMS-PRIVATE')).toEqual(FORMS['E-FORMS-PRIVATE'])
+    expect(errorInfo('E-AI-BUSY')).toEqual({ what: 'AI가 지금 바빠서 답하지 못했어요', fix: '1~2분 뒤 [다시 분석]을 눌러 주세요.' })
   })
 })

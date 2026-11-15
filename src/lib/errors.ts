@@ -315,6 +315,23 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '그림 파일을 만들지 못했어요',
     fix: '다시 눌러 보고, 계속 안 되면 [인쇄·PDF]로 PDF를 저장해 주세요',
   },
+  // 휴진 안내 AI 배경(specs/forms-themes design.md 12절). E-FORMS-PRIVATE·E-AI-BUSY는 위 문구를 그대로 쓴다
+  'E-FORMS-BG-LIMIT': {
+    what: '오늘 만들 수 있는 AI 배경을 다 만들었어요',
+    fix: '하루 20장까지예요. 저장한 내 배경을 고르거나 내일 다시 만들어 주세요',
+  },
+  'E-FORMS-BG-QUOTA': {
+    what: 'OpenAI 그림 사용 한도에 닿았어요',
+    fix: 'OpenAI 관리 화면에서 결제 한도를 늘리거나 다음 달에 다시 해 주세요',
+  },
+  'E-FORMS-BG-FAILED': {
+    what: 'AI 배경을 만들지 못했어요',
+    fix: '적은 말을 바꾸거나 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요',
+  },
+  'E-FORMS-BG-STORE-FAILED': {
+    what: '내 배경을 저장하거나 읽지 못했어요',
+    fix: '인터넷 연결을 확인하고 다시 눌러 주세요. 만든 배경은 그대로 남아 있어요',
+  },
 }
 
 /**

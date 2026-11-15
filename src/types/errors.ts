@@ -46,5 +46,7 @@ export type ErrorCode =
   | 'E-BIT-DATA-UNSURE' | 'E-BIT-IN-USE'
   // 서식 탭 휴진 안내(spec forms design.md 11절)
   | 'E-FORMS-PRIVATE' | 'E-FORMS-NO-DATE' | 'E-FORMS-SAVE-FAILED' | 'E-FORMS-READ-FAILED' | 'E-FORMS-IMAGE-FAILED'
+  // 휴진 안내 AI 배경(specs/forms-themes design.md 12절): 하루 한도 · OpenAI 한도 · 만들기 실패 · 내 배경 저장·읽기 실패
+  | 'E-FORMS-BG-LIMIT' | 'E-FORMS-BG-QUOTA' | 'E-FORMS-BG-FAILED' | 'E-FORMS-BG-STORE-FAILED'
 
 export type ErrorInfo = { what: string; fix: string }

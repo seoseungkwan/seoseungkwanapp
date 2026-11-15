@@ -24,3 +24,14 @@ export function costMicroUsd(u: Pick<AiUsage, 'model' | 'inputTokens' | 'outputT
   const price = Object.hasOwn(PRICES, u.model) ? PRICES[u.model] : MAX_PRICE
   return u.inputTokens * price.input + u.outputTokens * price.output
 }
+
+// 휴진 안내 AI 배경 그림 값(specs/forms-themes design.md 9절, AC-4607.4). PRICES에 넣지 않는다 —
+// 넣으면 '모르는 모델은 가장 비싼 단가' 규칙(AC-509.2)이 Claude 값까지 바꾼다
+export const IMAGE_PRICE: Price = { input: 5, output: 30 }
+// 답에 사용량이 없을 때 한 장 값(약 $0.06, 조금 넉넉히)
+export const IMAGE_COST_GUESS = 60_000
+
+export function imageCostMicroUsd(u: { inputTokens: number; outputTokens: number } | null): number {
+  if (u === null) return IMAGE_COST_GUESS
+  return u.inputTokens * IMAGE_PRICE.input + u.outputTokens * IMAGE_PRICE.output
+}
