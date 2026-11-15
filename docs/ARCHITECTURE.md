@@ -11,7 +11,7 @@ src/
 │   ├── (app)/<기능 주소>/page.tsx  # 화면이 아직 없는 탭(/notices 등)의 준비 중 화면 = components/common/NotReadyScreen + notReadyFeatures. 기능 명세가 진짜 화면으로 바꿀 때 shell/menu.ts·dashboard/briefing/features.ts·common/notReadyFeatures.ts를 같이 고친다(맞춤은 (app)/tabFrame.test.tsx, specs/tab-frame)
 │   ├── (app)/patients/page.tsx # 환자 탭 = components/patients/PatientsEntry (specs/patients)
 │   ├── (app)/forms/page.tsx    # 서식 탭 = components/forms/FormsScreen (specs/forms)
-│   └── api/ai/          # 유일한 서버 경로 (§5). forms/route.ts = 서식 AI 정리 `POST /api/ai/forms`(적은 글을 Claude로 보내는 예외, ADR-028)
+│   └── api/ai/          # 유일한 서버 경로 (§5). forms/route.ts = 서식 AI 정리 `POST /api/ai/forms`(적은 글을 Claude로 보내는 예외, ADR-028). forms/guide/route.ts = 환자 안내문 AI 정리 `POST /api/ai/forms/guide`, forms/guide/picture/route.ts = 환자 안내문 AI 그림 `POST /api/ai/forms/guide/picture`(도형·색 이름·숫자로만 받음) (ADR-028 덧붙임, specs/forms-guide)
 ├── lib/
 │   ├── parsers/         # [환자 구역] 파일 읽기. bit/ = 비트 '환자별 소모 통계'
 │   ├── analytics/       # [환자 구역] 세기(aggregate)·요약(compare)·날짜(dates.ts)
@@ -19,10 +19,10 @@ src/
 │   ├── patients/        # [환자 구역] 환자 탭 계산(F/U·정기 주사 명단, 원본 양지바른 옮김) — specs/patients
 │   ├── errors.ts        # 오류 문구 한 곳 (§8)
 │   ├── revenue/         # 매출 계산(집계만 다뤄 환자 구역이 아니다): summary.ts·treatments.ts·sync.ts(빈 날 31일 덩어리 읽기) (specs/revenue, specs/stats-revenue)
-│   ├── storage/         # 검사한 숫자만 저장. revenue.ts = sales_days·sales_codes, rxGroups.ts = rx_groups (specs/revenue). stats.ts = stats_months·stats_days·stats_coverage (specs/stats). statsRxGroups.ts = stats_rx_groups (specs/treatment-trend). formNotices.ts = form_notices (specs/forms). 2026-11-14 바뀜: revenue.ts는 save_revenue_range로 sales_days·sales_day_codes를 저장하고, rxGroups.ts(매출 탭 묶음 저장)는 지웠다(표 rx_groups는 남김, specs/stats-revenue)
+│   ├── storage/         # 검사한 숫자만 저장. revenue.ts = sales_days·sales_codes, rxGroups.ts = rx_groups (specs/revenue). stats.ts = stats_months·stats_days·stats_coverage (specs/stats). statsRxGroups.ts = stats_rx_groups (specs/treatment-trend). formNotices.ts = form_notices (specs/forms). formGuides.ts = form_guides (specs/forms-guide). 2026-11-14 바뀜: revenue.ts는 save_revenue_range로 sales_days·sales_day_codes를 저장하고, rxGroups.ts(매출 탭 묶음 저장)는 지웠다(표 rx_groups는 남김, specs/stats-revenue)
 │   │   └── worklogDays.ts  # 업무일지 하루 읽기·저장(Supabase, 바뀐 칸만)
 │   ├── worklog/         # 업무일지 합계·칸 글자 읽기·날짜·개인정보 모양 검사·자동 저장. 환자 구역이 아니다
-│   ├── forms/           # 서식(휴진 안내) 순수 함수: 카드 검사·날짜 글(notice)·테마 23개(themes)·배치(layout)·AI 글과 답 검사(ai)·그림 파일(png). 환자 구역이 아니다(구역에서는 analytics/dates·payload/validate만 불러 쓴다) (specs/forms)
+│   ├── forms/           # 서식 순수 함수. 휴진 안내: 카드 검사·날짜 글(notice)·테마 23개(themes)·배치(layout)·AI 글과 답 검사(ai)·그림 파일(png) (specs/forms). 환자 안내문: 칸 검사(guide)·배치(guideLayout)·AI 글과 답·숫자 검사(guideAi)·AI 그림 검사(guideDrawing) (specs/forms-guide). 환자 구역이 아니다(구역에서는 analytics/dates·payload/validate만 불러 쓴다)
 │   └── folder/          # (예정) 비트 폴더 핸들만 브라우저 저장소에 (§5)
 ├── components/<화면>/  # 화면 컴포넌트. 앱 화면은 Tailwind 클래스(ui/classes.ts), landing/ = 랜딩(CSS Module)
 │   ├── common/LogoMark.tsx  # 로고 마크 한 곳(병원 십자 C③, 고정 두 색). 랜딩·앱 틀·인증 틀이 같이 쓴다 (ADR-018)
@@ -31,7 +31,7 @@ src/
 │   ├── revenue/         # 통계 매출 칸(stats/sections/RevenueSection)이 쓰는 매출 부품: 숫자 칸 줄·안내 줄·증감 글·급여 표·세 겹 막대·순위 막대(RevenueParts·RevenueSplit·MonthBars·TreatmentBars), 금액 글(money.ts), 보기 타입(types.ts). 매출 탭 화면은 지웠다 (specs/revenue, specs/stats-revenue)
 │   ├── ai-report/       # AI 리포트 탭 화면(AiReportScreen·ReportBody·UsageAside·RedoDialog)과 서버 경로 `GET/POST /api/ai/report`를 부르는 reportClient. 달·읽기·분석 상태는 화면에만 둔다 (specs/ai-report-screen)
 │   ├── worklog/         # 업무일지 화면. 엑셀 양식 `sheet.module.css`는 앱 화면의 유일한 CSS Module (docs/UI_GUIDE.md '업무일지 양식')
-│   ├── forms/           # 서식 화면(FormsScreen·NoticeList·NoticeEditor·PreviewPanel, 상태는 formsState)과 안내문 SVG(Poster). 그림 안의 테마 색·글꼴 PosterPretendard 700·900은 앱 토큰 예외 (ADR-028, docs/UI_GUIDE.md '토큰')
+│   ├── forms/           # 서식 화면(FormsScreen·NoticeList·NoticeEditor·PreviewPanel, 상태는 formsState)과 안내문 SVG(Poster). 그림 안의 테마 색·글꼴 PosterPretendard 700·900은 앱 토큰 예외 (ADR-028, docs/UI_GUIDE.md '토큰'). 환자 안내문: SVG(GuidePoster)·그림 16개와 AI 그림(guidePictures)·로고색 한 곳(guideColors)·화면(GuideWorkspace·GuideEditor, 상태는 guideState) (specs/forms-guide)
 │   ├── patients/rows/   # [울타리] 환자 줄 화면(props로만). JSX는 되고 네트워크·console·브라우저 저장소·supabase·lib/auth·lib/storage는 못 쓴다. components/patients·app/(app)/patients 전체는 오류 보고 패키지(@sentry·@vercel/analytics·@vercel/speed-insights)도 못 쓴다 — specs/patients
 │   ├── charts/          # 차트 부품(숫자 글자·KPI·Sparkline·쌓은 막대·범례·순위 막대·줄 안 막대). 서버에서 그리는 순수 부품, 토큰 클래스만, 자료 모양은 `@/types/analysis` (specs/b2b-redesign)
 │   └── preview/         # 대시보드 미리보기 + 예시 자료(sample.ts). 랜딩 히어로·로그인 오른쪽이 같이 쓴다. 실제 자료를 읽지 않는다
@@ -50,6 +50,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 - `lib/supabase/`(연결), `lib/auth/`(문지기·가입·관리자·자동 로그아웃), `components/{auth,shell,dashboard,admin,common}/`, `supabase/migrations/`(SQL 편집기에 붙여 넣음) — `specs/auth/design.md`
 - 화면 컴포넌트 폴더: `src/components/<화면>/`. 페이지(`app/`)는 섹션을 놓기만 한다
 - 서식(휴진 안내): `components/forms/`(화면·안내문 SVG) · `lib/forms/`(순수 함수) · `lib/storage/formNotices.ts`(저장) · `public/poster/`(테마 그림·글꼴) · `app/api/ai/forms/`(AI 정리, ADR-028) — `specs/forms/design.md` 1절. 서식 두 폴더는 환자 자료 구역·브라우저 저장소를 쓰지 않는다(`src/lib/forms/rules.test.ts`)
+- 서식(환자 안내문): 같은 두 폴더 · `lib/storage/formGuides.ts`(저장, `form_guides`) · `app/api/ai/forms/guide/`(AI 정리, 그 아래 `picture/`는 AI 그림, ADR-028 덧붙임) — `specs/forms-guide/design.md` 1절. 휴진 안내 표·경로(`form_notices`·`app/api/ai/forms/route.ts`)는 그대로다
 
 ## 패턴
 - 서버 코드는 `app/api/ai/` 하나. 나머지는 브라우저 + Supabase RLS (§0). 예외: 인증(콜백·middleware·페이지 guard)은 세션과 내 줄만 읽는다 (ADR-004)
@@ -71,6 +72,8 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
        → 답 검사(근거 숫자는 앱이 채움) → ai_reports 저장(그 달 덮어씀) → ai_usage 기록 → 화면(글자로만) (ADR-024)
 [서식] 대충 적은 글(500자까지) → 개인정보 모양 검사(화면·서버) → app/api/ai/forms: 승인 확인 → Claude API(<memo>, effort low)
        → 답 검사 → 카드 → 화면에서 고치기 → form_notices(RLS, 달·카드·테마만). 적은 글은 저장·로그하지 않는다 (ADR-028)
+       환자 안내문: 적은 글 → app/api/ai/forms/guide → 답 검사(메모에 없는 숫자면 버림) → 칸 → 화면에서 고치기 → form_guides(RLS)
+       AI 그림: 그릴 것(20자까지) → app/api/ai/forms/guide/picture(effort medium) → 도형·색 이름·숫자 검사 → 앱이 그림 (ADR-028 덧붙임)
 [백업] [백업 내려받기] → 브라우저가 내 병원 모든 표 읽기 → JSON 파일 하나
 [청구] (예정) 도우미(비트 DB·화면) → 확장 → lib/bridge(풀지 않음) → Worker → 화면(보기 모양, PC 메모리만)
        고친 메모·완료 표시 → 도우미가 그 PC에 암호화 저장. 서버에는 건수(정수)·설정만 (ADR-020·021)
@@ -78,7 +81,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 - 환자 줄·차트번호·파일 이름은 Worker 밖으로 나가지 않는다. 차트번호는 메모리 안 번호로만 쓴다 (§4)
 - 예외는 청구·환자 연락 화면뿐이다: 일을 하려면 PC 화면에 환자 줄(차트번호·이름·전화)을 보여야 한다. 그 줄은 화면 줄 울타리 안에서만 그리고 서버·저장소·로그로 가지 않는다 (ADR-020)
 - 서버로 가는 것: 통계·매출 집계, 재고, 직원 이름·직종·금액, 일일마감·보고 내용, 병원 이름 (§4)
-- Claude API로 가는 것: 서버가 DB에서 꺼낸 집계와 인건비 총액뿐. 직원 이름·개인별 급여는 안 보낸다 (§2-3). 예외는 서식 AI 정리 하나다: 사용자가 적은 글(500자까지, 전화·주민번호·메일 모양이면 안 보냄)과 오늘 날짜 (ADR-028)
+- Claude API로 가는 것: 서버가 DB에서 꺼낸 집계와 인건비 총액뿐. 직원 이름·개인별 급여는 안 보낸다 (§2-3). 예외는 서식 AI 정리 하나다: 사용자가 적은 글(500자까지, 전화·주민번호·메일 모양이면 안 보냄)과 오늘 날짜. 환자 안내문은 적은 글, AI 그림은 그릴 것(20자까지)만 보낸다 (ADR-028)
 - 채팅 입력에 전화·주민번호·메일 모양이 있으면 보내지 않는다. 처방명은 '데이터'로 감싼다 (§6-2)
 - AI 경로 로그에는 오류 번호·경로만 남긴다 (§8)
 
@@ -104,6 +107,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 | `ai_usage` | 달별 토큰·비용 |
 | `ai_reports` | 달별 AI 리포트(병원·달마다 하나, 다시 분석하면 덮어씀)·만들 때 쓴 숫자의 지문. 쓰기는 DB 함수로만 (ADR-024) |
 | `form_notices` | 서식 휴진 안내 한 줄: 연·월·카드(1~4장, jsonb)·테마. 대충 적은 글은 두지 않는다. 칸은 specs/forms design.md 8절 (ADR-028) |
+| `form_guides` | 서식 환자 안내문 한 줄: 안내문 칸·고른 그림·AI로 그린 그림을 `content`(jsonb 객체, 16,000바이트까지) 하나에 담는다. 안 모양은 앱이 `checkGuideValue`로 본다. 대충 적은 글은 두지 않는다. 칸은 specs/forms-guide design.md 7절 (ADR-028 덧붙임) |
 
 - 금액은 원 단위 정수. 반올림하지 않고 원 미만은 항목마다 버린다. 합계는 항목 합. %는 소수 둘째 자리까지
 - 퇴사자는 지우지 않고 숨긴다(임금대장 3년 보존, §6-3). 주민번호·계좌번호는 저장하지 않는다
