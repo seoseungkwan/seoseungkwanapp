@@ -77,16 +77,18 @@ export async function POST(request: Request): Promise<Response> {
 
   // 제어 문자(줄바꿈 포함)나 전화·주민번호·메일 모양이 있으면 Claude로 보내지 않는다
   if (subjectProblem(text)) return fail('E-FORMS-PRIVATE')
+  // Claude에는 앞뒤 공백을 뗀 20자까지만 보낸다(떼기 전 길이는 막지 않으므로 그대로 보내면 공백이 얼마든 갈 수 있다)
+  const subject = text.trim()
 
   try {
     const result = await callClaude(
-      { system: drawingSystem(), user: formsUser(text), schema: DRAWING_SCHEMA, effort: 'medium' },
+      { system: drawingSystem(), user: formsUser(subject), schema: DRAWING_SCHEMA, effort: 'medium' },
       { timeoutMs: CALL_TIMEOUT_MS },
     )
     if (result.usage !== null) await recordUsage(result.usage)
     if (!result.ok) return fail(result.code === 'E-AI-BUSY' || result.code === 'E-AI-LIMIT' ? result.code : 'E-AI-FAILED')
 
-    const answer = drawingFromAnswer(result.text, text.trim())
+    const answer = drawingFromAnswer(result.text, subject)
     if (!answer.ok) return fail(answer.code)
     return Response.json({ drawing: answer.drawing }, { status: 200, headers: { 'Cache-Control': 'no-store' } })
   } catch {

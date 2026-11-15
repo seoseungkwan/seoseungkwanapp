@@ -82,6 +82,19 @@ describe('AC-4510.1: CLAUDE.md 아키텍처 규칙의 ADR-028 예외 줄', () =>
     for (const word of ['환자 안내문', 'components/forms/guideColors.ts']) expect(lines[0], word).toContain(word)
   })
 
+  it("AC-4510.1: 예외 줄은 AI 그림의 '그릴 것'(20자까지)이 그림 이름으로 안내문과 함께 저장된다고 적는다(\"저장하지 않는다\"와 어긋나지 않게)", () => {
+    const line = section(read('CLAUDE.md'), '아키텍처 규칙')
+      .split('\n')
+      .find((l) => l.includes('ADR-028'))
+    for (const word of ["'그릴 것'", '20자까지', '안내문과 함께 저장']) expect(line, word).toContain(word)
+  })
+
+  it("AC-4510.1: ADR-028 덧붙임의 '저장·로그하지 않는다'는 대충 적은 글을 말하고, '그릴 것'은 함께 저장한다고 적는다", () => {
+    const addendum = guideAddendum()
+    expect(addendum).toContain('대충 적은 글은 개인정보 모양이면 보내지 않고, 저장·로그하지 않는다')
+    expect(addendum).toContain("'그릴 것'은 그림 이름으로 안내문과 함께 저장한다")
+  })
+
   it('AC-4510.1: CLAUDE.md 전체에서도 ADR-028 줄은 하나다(다른 절에 새 줄을 늘리지 않았다)', () => {
     expect(read('CLAUDE.md').split('\n').filter((line) => line.includes('ADR-028'))).toHaveLength(1)
   })

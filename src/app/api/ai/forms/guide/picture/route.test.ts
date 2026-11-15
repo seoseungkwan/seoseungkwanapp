@@ -203,6 +203,14 @@ describe('AC-4512.3 Claude 부르기', () => {
     expect(req.user).toBe(formsUser(text))
     expect(req.user.match(/<\/memo>/g)).toHaveLength(1)
   })
+
+  it('AC-4512.1 앞뒤 공백이 아무리 길어도 Claude에는 앞뒤 공백을 뗀 그릴 것만 간다', async () => {
+    const pad = ' '.repeat(100_000)
+    const res = await POST(post({ text: `${pad}${SUBJECT}${pad}` }))
+    expect(res.status).toBe(200)
+    const [req] = mocks.callClaude.mock.calls[0]
+    expect(req.user).toBe(formsUser(SUBJECT))
+  })
 })
 
 describe('AC-4512.3 성공', () => {

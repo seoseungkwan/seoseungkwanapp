@@ -17,7 +17,7 @@
 - CRITICAL: `lib/parsers`·`lib/analytics`·`lib/payload`·`lib/precheck`·`lib/bridge`·`workers`는 환자 자료 구역이다. 네트워크·console·브라우저 저장소·React/Next/supabase/auth import를 쓰지 않는다. `lib/bridge`(비트 자료 통로)는 정해 둔 확장 ID 상수로만 확장과 말하고, 받은 조각을 바로 Worker로 넘긴다. 환자 줄을 그리는 `components/claim/rows`·`components/patients/rows`도 네트워크·저장소·console·supabase를 못 쓴다. `eslint.config.mjs`가 막고 `src/guardrails.test.ts`가 증명한다. 이 규칙을 풀지 않는다 (ADR-020)
 - CRITICAL: 서버 코드는 `app/api/ai/` 하나뿐이다. 나머지는 브라우저 + Supabase RLS. 예외는 인증뿐이다: 로그인 콜백·middleware·페이지 guard(`*.server.ts`)는 세션과 내 병원·관리자 줄만 읽고 쓰지 않는다 (ADR-004)
 - CRITICAL: AI 경로는 브라우저가 보낸 숫자를 쓰지 않는다. 서버가 DB에서 읽어 `validate.ts`로 검사한 집계만 보낸다. 답은 글자로만 그린다(HTML 금지) (`plan.md §6-2`)
-- 예외 (ADR-028): 서식 AI 정리(`app/api/ai/forms`, 환자 안내문은 그 아래 `guide`·AI 그림 `guide/picture`)만 사용자가 적은 글을 Claude로 보낸다 — 500자까지, 전화·주민번호·메일 모양이면 보내지 않고, 저장·로그하지 않는다. AI 그림은 도형·색 이름·숫자로만 받아 앱이 그린다. 안내문 그림 안의 색·글꼴 700·900은 `components/forms` 안에서만 쓴다(휴진 안내 테마 색은 `lib/forms/themes.ts`, 환자 안내문 로고색은 `components/forms/guideColors.ts`에 둔다)
+- 예외 (ADR-028): 서식 AI 정리(`app/api/ai/forms`, 환자 안내문은 그 아래 `guide`·AI 그림 `guide/picture`)만 사용자가 적은 글을 Claude로 보낸다 — 500자까지, 전화·주민번호·메일 모양이면 보내지 않고, 저장·로그하지 않는다(AI 그림의 '그릴 것'만 20자까지이고 그림 이름으로 안내문과 함께 저장). AI 그림은 도형·색 이름·숫자로만 받아 앱이 그린다. 안내문 그림 안의 색·글꼴 700·900은 `components/forms` 안에서만 쓴다(휴진 안내 테마 색은 `lib/forms/themes.ts`, 환자 안내문 로고색은 `components/forms/guideColors.ts`에 둔다)
 - 날짜 계산은 `lib/analytics/dates.ts` 한 곳(한국 날짜). 오류 문구는 `lib/errors.ts` 한 곳('무엇이 · 어떻게 고치나 · 번호')
 - 금액은 원 단위 정수다. 반올림하지 않고 원 미만은 항목마다 버린다. 합계는 항목 금액의 합 (`plan.md §5`)
 - 같은 효과면 코드 대신 DB 제약. 자동 계산보다 직접 입력 + 조정 칸 (`plan.md §0`)
