@@ -303,6 +303,98 @@ describe('AC-3507.1·AC-3507.2·AC-3507.3·AC-3507.4·AC-3507.5: 저장·목록'
   })
 })
 
+// 글자 색('N월'·날짜 띠·카드 아래 글) 상태 (spec forms-accent TASK-4, design.md 5절). null = 자동
+describe('AC-4703.2: 글자 색 상태', () => {
+  const RED = '#c62828'
+  const BLUE = '#1565c0'
+  const ready = () => typed(start(), 0, { start: '2027-05-05', name: '어린이날' })
+  const keysOf = (value: object | null) => Object.keys(value ?? {}).sort()
+
+  it('AC-4703.2: 새 안내문은 자동(null)으로 시작하고, 새로 만들기·지우기도 자동으로 돌아간다', () => {
+    expect(start().accent).toBeNull()
+    const picked = run(ready(), { type: 'accent', accent: RED })
+    expect(picked.accent).toBe(RED)
+    expect(run(picked, { type: 'new' }).accent).toBeNull()
+    const opened = run(start(), { type: 'open', notice: { ...MAY, accent: RED } })
+    expect(run(opened, { type: 'deleteStart' }, { type: 'deleted', id: 'may' }).accent).toBeNull()
+  })
+
+  it('AC-4703.2: 고른 색은 소문자로 넣고, null이면 자동으로 되돌린다', () => {
+    expect(run(start(), { type: 'accent', accent: '#C62828' }).accent).toBe(RED)
+    expect(run(start(), { type: 'accent', accent: BLUE }).accent).toBe(BLUE)
+    expect(run(start(), { type: 'accent', accent: RED }, { type: 'accent', accent: null }).accent).toBeNull()
+  })
+
+  it.each(['red', '#abc', '#c6282', '#c628288', '#c62828ff', 'c62828', '#c6282g', ' #c62828', ''])(
+    'AC-4703.2: 모양이 틀린 값 %j는 무시하고 상태를 그대로 둔다',
+    (value) => {
+      const before = run(ready(), { type: 'accent', accent: RED })
+      expect(before.accent).toBe(RED)
+      expect(run(before, { type: 'accent', accent: value })).toBe(before)
+    },
+  )
+
+  it('AC-4703.2: 열면 저장한 글자 색으로, 글자 색이 없거나 null이면 자동으로 열린다', () => {
+    expect(run(start(), { type: 'open', notice: { ...MAY, accent: RED } }).accent).toBe(RED)
+    expect(run(start(), { type: 'open', notice: { ...MAY, accent: null } }).accent).toBeNull()
+    expect(run(start(), { type: 'accent', accent: BLUE }, { type: 'open', notice: MAY }).accent).toBeNull()
+  })
+
+  it('AC-4703.2: 연 안내문의 글자 색을 바꾸면 바뀐 내용이 있고, 처음 색으로 되돌리면 없어진다', () => {
+    const opened = run(start(), { type: 'open', notice: { ...MAY, accent: RED } })
+    expect(isDirty(opened)).toBe(false)
+    const changed = run(opened, { type: 'accent', accent: BLUE })
+    expect(isDirty(changed)).toBe(true)
+    expect(isDirty(run(changed, { type: 'accent', accent: '#C62828' }))).toBe(false)
+    expect(isDirty(run(opened, { type: 'accent', accent: null }))).toBe(true)
+
+    const auto = run(start(), { type: 'open', notice: MAY })
+    expect(isDirty(auto)).toBe(false)
+    const picked = run(auto, { type: 'accent', accent: RED })
+    expect(isDirty(picked)).toBe(true)
+    expect(isDirty(run(picked, { type: 'accent', accent: null }))).toBe(false)
+  })
+
+  it('AC-4703.2: 저장하면 저장된 글자 색이 비교 기준이 되고 고른 색은 그대로다', () => {
+    const saved = run(ready(), { type: 'accent', accent: RED }, { type: 'saveStart' }, { type: 'saved', notice: { ...MAY, accent: RED } })
+    expect(saved.accent).toBe(RED)
+    expect(isDirty(saved)).toBe(false)
+    expect(isDirty(run(saved, { type: 'accent', accent: null }))).toBe(true)
+
+    const savedAuto = run(ready(), { type: 'saveStart' }, { type: 'saved', notice: MAY })
+    expect(savedAuto.accent).toBeNull()
+    expect(isDirty(savedAuto)).toBe(false)
+    expect(isDirty(run(savedAuto, { type: 'accent', accent: RED }))).toBe(true)
+  })
+
+  it('AC-4703.2: 저장·뽑기 값(readyNotice)에 고른 글자 색이 들어가고, 자동이면 accent 열쇠가 없다', () => {
+    expect(readyNotice(run(ready(), { type: 'accent', accent: RED }))).toEqual({ year: 2027, month: 5, cards: [CHILDREN], theme: null, accent: RED })
+    expect(keysOf(readyNotice(ready()))).toEqual(['cards', 'month', 'theme', 'year'])
+    expect(keysOf(readyNotice(run(ready(), { type: 'accent', accent: RED }, { type: 'accent', accent: null })))).toEqual(['cards', 'month', 'theme', 'year'])
+    expect(readyNotice(run(start(), { type: 'accent', accent: RED }))).toBeNull()
+  })
+
+  it('AC-4703.2: 미리보기·인쇄 사본 값(previewNotice)에 고른 글자 색이 들어가고, 자동이면 accent 열쇠가 없다', () => {
+    expect(previewNotice(run(start(), { type: 'accent', accent: RED }))).toEqual({ year: 2026, month: 11, theme: null, cards: [], accent: RED })
+    expect(previewNotice(run(ready(), { type: 'accent', accent: BLUE })).accent).toBe(BLUE)
+    expect(keysOf(previewNotice(start()))).toEqual(['cards', 'month', 'theme', 'year'])
+    expect(keysOf(previewNotice(run(ready(), { type: 'accent', accent: RED }, { type: 'accent', accent: null })))).toEqual(['cards', 'month', 'theme', 'year'])
+  })
+
+  it('AC-4703.2: AI 정리 답·실패는 고른 글자 색을 바꾸지 않는다', () => {
+    const picked = run(start(), { type: 'accent', accent: RED })
+    expect(run(picked, { type: 'tidyStart' }, { type: 'tidyDone', cards: [CHILDREN], truncated: false }).accent).toBe(RED)
+    expect(run(picked, { type: 'tidyStart' }, { type: 'tidyFailed', code: 'E-AI-FAILED' }).accent).toBe(RED)
+    expect(run(start(), { type: 'tidyDone', cards: [CHILDREN], truncated: false }).accent).toBeNull()
+  })
+
+  it('AC-4703.2: 카드·안내 달·테마를 바꿔도 고른 글자 색은 그대로다', () => {
+    const picked = run(start(), { type: 'accent', accent: RED })
+    const s = run(typed(picked, 0, { start: '2027-05-05', name: '어린이날' }), { type: 'month', value: '2027-06' }, { type: 'theme', theme: 'christmas' })
+    expect(s.accent).toBe(RED)
+  })
+})
+
 describe('AC-3506.3: 그림 파일 실패 표시', () => {
   it('AC-3506.3: 실패 표시를 켜고 끈다', () => {
     const s = run(start(), { type: 'imageFailed', failed: true })

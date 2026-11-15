@@ -1,5 +1,6 @@
 import { compareYmd, diffDays, isMonth, isYmd, todayInKorea } from '@/lib/analytics/dates'
 import { checkCard, checkNotice, dateLabel, noticeMonthOf, type CardErrors } from '@/lib/forms/notice'
+import { isAccentHex } from '@/lib/forms/themes'
 import {
   DEFAULT_STATUS,
   MAX_CARDS,
@@ -35,6 +36,7 @@ export type FormsState = {
   monthTouched: boolean // 안내 달을 직접 골랐다(카드를 따라가지 않는다)
   cards: DraftCard[]
   theme: ThemePick | null // null = 저절로·그림 1 (고른 그림 값, specs/forms-themes design.md 2절)
+  accent: string | null // 글자 색('#' + 소문자 16진수 6자리). null = 자동 (specs/forms-accent design.md 5절)
   baseline: string | null // 마지막으로 저장하거나 연 값(snapshotOf). 새 안내문은 null
   list: ListState
   store: StoreWork | null
@@ -54,6 +56,7 @@ export type FormsAction =
   | { type: 'removeCard'; index: number }
   | { type: 'month'; value: string } // <input type="month">의 'YYYY-MM'
   | { type: 'theme'; theme: ThemePick | null }
+  | { type: 'accent'; accent: string | null } // 색 고르기 칸의 값(소문자로 바꿔 넣는다) 또는 null(자동)
   | { type: 'new' }
   | { type: 'open'; notice: SavedNotice }
   | { type: 'listLoading' }
@@ -90,6 +93,7 @@ export function initialState(today: string): FormsState {
     monthTouched: false,
     cards: [blankCard()],
     theme: null,
+    accent: null,
     baseline: null,
     list: { kind: 'loading' },
     store: null,
@@ -98,9 +102,15 @@ export function initialState(today: string): FormsState {
   }
 }
 
-// 저장 값 비교용 글. 이름·아래 글은 저장할 때처럼 앞뒤 공백을 뗀다(공백만 다르면 같은 값)
-function snapshotOf(n: { year: number; month: number; theme: ThemePick | null; cards: readonly { start: string; end: string | null; name: string; status: string }[] }): string {
-  return JSON.stringify([n.year, n.month, n.theme, n.cards.map((c) => [c.start, c.end ?? '', c.name.trim(), c.status.trim()])])
+// 저장 값 비교용 글. 이름·아래 글은 저장할 때처럼 앞뒤 공백을 뗀다(공백만 다르면 같은 값). 글자 색이 없으면 자동(null)
+function snapshotOf(n: {
+  year: number
+  month: number
+  theme: ThemePick | null
+  accent?: string | null
+  cards: readonly { start: string; end: string | null; name: string; status: string }[]
+}): string {
+  return JSON.stringify([n.year, n.month, n.theme, n.accent ?? null, n.cards.map((c) => [c.start, c.end ?? '', c.name.trim(), c.status.trim()])])
 }
 
 // 안내 달을 직접 고르지 않았으면 가장 이른 시작 날짜의 달(날짜가 없으면 오늘의 달)
@@ -143,6 +153,11 @@ export function formsReducer(state: FormsState, action: FormsAction): FormsState
     }
     case 'theme':
       return { ...state, theme: action.theme }
+    case 'accent': {
+      if (action.accent === null) return { ...state, accent: null }
+      const accent = action.accent.toLowerCase()
+      return isAccentHex(accent) ? { ...state, accent } : state
+    }
     case 'new':
       return { ...initialState(state.today), list: state.list }
     case 'open': {
@@ -156,6 +171,7 @@ export function formsReducer(state: FormsState, action: FormsAction): FormsState
         monthTouched: true,
         cards: notice.cards.map(draftOf),
         theme: notice.theme,
+        accent: notice.accent ?? null,
         baseline: snapshotOf(notice),
       }
     }
@@ -209,7 +225,8 @@ export function readyNotice(state: FormsState): ClosureNotice | null {
     if (!('card' in result)) return null
     cards.push(result.card)
   }
-  return checkNotice({ year: state.year, month: state.month, cards, theme: state.theme })
+  // 자동(null)이면 checkNotice가 accent 열쇠 없이 돌려준다
+  return checkNotice({ year: state.year, month: state.month, cards, theme: state.theme, accent: state.accent })
 }
 
 // 시작 날짜가 있는 카드의 끝 날짜: 시작보다 뒤이고 31일 안일 때만, 아니면 null(하루짜리로 그린다)
@@ -226,7 +243,9 @@ export function previewNotice(state: FormsState): ClosureNotice {
   const cards = state.cards
     .filter((card) => isYmd(card.start))
     .map((card) => ({ start: card.start, end: endOf(card), name: cut(card.name.trim(), MAX_NAME), status: cut(card.status.trim(), MAX_STATUS) }))
-  return { year: state.year, month: state.month, theme: state.theme, cards }
+  const notice: ClosureNotice = { year: state.year, month: state.month, theme: state.theme, cards }
+  // 글자 색이 있을 때만 열쇠를 더한다(자동이면 글자 색 없는 지금 값과 똑같다)
+  return state.accent === null ? notice : { ...notice, accent: state.accent }
 }
 
 export function isDirty(state: FormsState): boolean {
