@@ -283,6 +283,6 @@ export async function deleteGuide(id: string): Promise<boolean>
 - `src/app/theme.test.ts` AC-202.3: 16진수 색 허용 파일에 `src/components/forms/guideColors.ts` 하나를 더한다(ADR-028 덧붙임)
 - `src/lib/forms/png.test.ts`: 기존 기대 그대로, 테마 없는 `svgForImage`·`downloadGuidePng` 시험을 더한다
 - `src/lib/forms/guideLayout.test.ts`(TASK-1, AI 그림 추가 전에 만듦): 예시 값에 `drawing: null`을 더한다(타입이 늘어서). 기대는 그대로이고, `picture: 'custom'`일 때도 상자 최대 폭 499인 시험을 더한다
-- `supabase/formGuides.rls.test.ts`(TASK-2): 크기 한도 기대를 4,000 → 16,000바이트로 바꾼다(AC-4508.2)
+- `supabase/formGuides.rls.test.ts`(TASK-2): 크기 한도 기대를 4,000 → 16,000바이트로 바꾼다(AC-4508.3)
 
 고치지 않은 채 통과해야 하는 것: `src/lib/forms/rules.test.ts`(새 파일 포함), `src/components/forms/Poster.test.tsx`, `src/components/forms/formsState.test.ts`, `src/lib/forms/layout.test.ts`, `src/lib/forms/ai.test.ts`, `src/app/api/ai/forms/route.test.ts`, `supabase/formNotices.rls.test.ts`, `src/guardrails.test.ts`, `src/app/fonts.test.ts`

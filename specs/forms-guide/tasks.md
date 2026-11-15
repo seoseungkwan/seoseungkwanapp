@@ -134,7 +134,7 @@
 
 ## TASK-14: 저장 표 크기 한도
 - Phase: 1
-- AC: AC-4508.2
+- AC: AC-4508.3
 - REQ: REQ-4508
 - Files: supabase/migrations/20261115010000_form_guides.sql, supabase/formGuides.rls.test.ts
 - Tests: supabase/formGuides.rls.test.ts

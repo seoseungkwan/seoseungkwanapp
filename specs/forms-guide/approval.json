@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "forms-guide",
-  "approved_at": "2026-11-15T03:09:52Z",
+  "approved_at": "2026-11-15T03:11:08Z",
   "approved_via": "auto",
   "session_id": "4470afc2-d7c5-495e-b227-be7d95e5e044",
-  "spec_sha256": "63759595f5986f3a477e37817445aac101a39b378a724f4c2975b7d5ad61fd15",
+  "spec_sha256": "aa566023eb2b8f9840832a205af09d12abe258902f3077e50b8d08f4aaec58c4",
   "scope": [
     "CLAUDE.md",
     "docs/ADR.md",
