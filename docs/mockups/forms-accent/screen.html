@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>시안 — 서식 탭 휴진 안내 배경(테마 그림 1·2 · AI 배경)</title>
+<style>
+  @font-face { font-family: 'AppPretendard'; font-weight: 400; src: url('../../../src/app/fonts/Pretendard-Regular.subset.woff2') format('woff2'); }
+  @font-face { font-family: 'AppPretendard'; font-weight: 500; src: url('../../../src/app/fonts/Pretendard-Medium.subset.woff2') format('woff2'); }
+  @font-face { font-family: 'AppPretendard'; font-weight: 600; src: url('../../../src/app/fonts/Pretendard-SemiBold.subset.woff2') format('woff2'); }
+  @font-face { font-family: 'PosterPretendard'; font-weight: 700; src: url('../forms/fonts/Pretendard-Bold.subset.woff2') format('woff2'); }
+  @font-face { font-family: 'PosterPretendard'; font-weight: 900; src: url('../forms/fonts/Pretendard-Black.subset.woff2') format('woff2'); }
+  /* 앱 토큰(src/app/globals.css :root) */
+  :root { --canvas:#F7F8FA; --surface:#FFFFFF; --line:#E5E7EB; --line-strong:#D1D5DB; --faint:#9CA3AF; --muted:#6B7280; --ink-2:#374151; --ink:#111827;
+          --accent:#2563EB; --accent-strong:#1D4ED8; --accent-soft:#EAF1FE; --negative:#C2410C; --negative-soft:#FDF0EA; --positive:#15803D; --warning:#B45309; }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--canvas); color: var(--ink); font: 400 14px/22px 'AppPretendard', 'Malgun Gothic', sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+  .mock-bar { font: 13px/1.4 sans-serif; background: #fff8d6; border-bottom: 1px solid #e5d58a; padding: 8px 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .mock-bar button { border: 1px solid #c9b860; background: #fff; border-radius: 4px; padding: 3px 10px; cursor: pointer; }
+  .mock-bar button.on { background: #f3e39a; font-weight: 700; }
+  .mock-bar span { color: #7a6a10; margin-left: 8px; }
+
+  /* 앱 틀(간단히) */
+  .top { background: var(--surface); border-bottom: 1px solid var(--line); }
+  .top-in { max-width: 1280px; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; gap: 20px; height: 52px; }
+  .brand { font-weight: 600; white-space: nowrap; }
+  .tabs { display: flex; gap: 4px; overflow: hidden; }
+  .tabs a { padding: 6px 10px; border-radius: 4px; color: var(--ink-2); text-decoration: none; font-size: 13px; white-space: nowrap; }
+  .tabs a.on { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 20px; line-height: 28px; font-weight: 600; }
+
+  /* 묶음 단추(ds.segment): 32px·4px·line-strong, 눌린 것 accent-soft·accent-strong 600, 휴대폰은 전체 폭 칸 나눔·44px */
+  .seg { display: inline-flex; flex-shrink: 0; overflow: clip; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--surface); }
+  .seg button { height: 30px; padding: 0 12px; border: 0; border-left: 1px solid var(--line-strong); background: none; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--ink-2); white-space: nowrap; }
+  .seg button:first-child { border-left: 0; }
+  .seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+  .tools { margin-top: 12px; }
+
+  .cols { margin-top: 16px; display: grid; grid-template-columns: 232px minmax(360px, 1fr) 440px; gap: 16px; align-items: start; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; min-width: 0; }
+  .panel h2 { font-size: 14px; line-height: 22px; font-weight: 600; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; line-height: 20px; }
+  .caption { font-size: 12px; line-height: 16px; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 16px; border-radius: 4px; border: 1px solid var(--line-strong); background: var(--surface); cursor: pointer; font-weight: 500; white-space: nowrap; }
+  .btn:hover { background: var(--canvas); }
+  .btn.primary { background: var(--accent); border-color: transparent; color: #fff; }
+  .btn.primary:hover { background: var(--accent-strong); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.sm { height: 30px; padding: 0 10px; font-size: 13px; }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--ink-2); }
+  .btn.ghost:hover { background: var(--canvas); }
+  .btn.danger { color: var(--negative); }
+
+  /* 저장한 안내문 */
+  .list { margin-top: 12px; display: flex; flex-direction: column; gap: 4px; }
+  .item { text-align: left; border: 1px solid transparent; background: none; border-radius: 4px; padding: 8px 10px; cursor: pointer; }
+  .item:hover { background: var(--canvas); }
+  .item.on { border-color: var(--accent); background: var(--accent-soft); }
+  .item b { display: block; font-weight: 600; font-size: 13px; line-height: 20px; }
+  .item span { font-size: 12px; color: var(--muted); }
+
+  /* 만들기 */
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .label { font-size: 13px; line-height: 20px; font-weight: 600; }
+  .help { font-size: 12px; line-height: 16px; color: var(--muted); }
+  textarea { width: 100%; min-height: 72px; resize: vertical; border: 1px solid var(--line-strong); border-radius: 4px; padding: 10px 12px; background: var(--surface); line-height: 22px; }
+  textarea:focus, input:focus, select:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+  input, select { height: 36px; border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 10px; background: var(--surface); min-width: 0; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .between { justify-content: space-between; }
+  .sep { border-top: 1px solid var(--line); margin: 16px 0; }
+  .notice { font-size: 12px; line-height: 18px; color: var(--muted); }
+  .err { margin-top: 8px; border: 1px solid var(--negative); background: var(--negative-soft); border-radius: 4px; padding: 10px 12px; font-size: 13px; line-height: 20px; }
+  .err b { color: var(--negative); }
+  .err code { font-size: 12px; color: var(--muted); }
+  .info { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+  .cards-edit { display: flex; flex-direction: column; gap: 14px; margin-top: 12px; }
+  .card-edit { border: 1px solid var(--line); border-radius: 8px; padding: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; position: relative; }
+  .card-edit .num { position: absolute; top: -9px; left: 10px; background: var(--surface); padding: 0 4px; font-size: 12px; color: var(--muted); }
+  .card-edit label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-2); min-width: 0; }
+
+  /* 배경 칸(새로 그리는 곳) */
+  .bg-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .bg-body { margin-top: 12px; display: flex; flex-direction: column; gap: 14px; }
+  .make-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .make-row input { flex: 1 1 200px; }
+  .trial { display: flex; gap: 12px; border: 1px solid var(--accent); background: var(--accent-soft); border-radius: 8px; padding: 12px; }
+  .trial img { width: 60px; height: 85px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); flex-shrink: 0; background: var(--surface); }
+  .trial .t-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .trial b { font-size: 13px; line-height: 20px; font-weight: 600; overflow-wrap: anywhere; }
+  .mine-head { display: flex; align-items: baseline; gap: 8px; }
+  .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; max-height: 360px; overflow-y: auto; padding: 2px; }
+  .thumb { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); padding: 4px; cursor: pointer; text-align: left; min-width: 0; }
+  .thumb:hover { background: var(--canvas); }
+  .thumb[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent); }
+  .thumb img { display: block; width: 100%; aspect-ratio: 120 / 170; object-fit: cover; border-radius: 2px; }
+  .thumb span { font-size: 12px; line-height: 16px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chosen { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .chosen .info { overflow-wrap: anywhere; min-width: 0; }
+
+  /* 미리보기 */
+  .preview svg { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; }
+  .empty-card { fill: none; stroke: #9aa3ad; stroke-width: 2; stroke-dasharray: 8 8; }
+  .actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+  @media (max-width: 1279px) { .cols { grid-template-columns: minmax(0, 1fr); } .tabs { display: none; } }
+  @media (max-width: 767px) {
+    .wrap { padding: 16px; }
+    .top-in { padding: 0 16px; }
+    .seg { display: grid; width: 100%; grid-template-columns: repeat(var(--n, 2), minmax(0, 1fr)); }
+    .seg button { height: 44px; padding: 0 4px; }
+    .tools { --n: 1; }
+    .card-edit { grid-template-columns: minmax(0, 1fr); }
+  }
+  .swatch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+  .swatch input[type=color] { width: 44px; height: 32px; padding: 2px; border: 1px solid var(--line-strong, #cbd5e1); border-radius: 6px; background: #fff; cursor: pointer; }
+  .swatch.off { opacity: .5; }
+</style>
+</head>
+<body>
+<div class="mock-bar" id="mockBar">
+  <b>시안 상태</b>
+  <button data-go="color">글자 색 직접(새)</button>
+  <button data-go="light">옅은 색 경고(새)</button>
+  <button data-go="pick">테마 그림 1·2</button>
+  <button data-go="ai">AI 빈 칸</button>
+  <button data-go="making">만드는 중</button>
+  <button data-go="made">다 만듦</button>
+  <button data-go="mine">내 배경 고르기</button>
+  <button data-go="error">오류</button>
+  <button data-go="full">내 배경 30장</button>
+  <button data-go="gone">지운 배경</button>
+  <span>오늘은 2026년 11월 15일이라고 친 예시 · 진짜처럼 눌러 봐도 돼요(AI 그림은 시험 때 만든 3장을 돌려 씀)</span>
+</div>
+
+<header class="top"><div class="top-in">
+  <span class="brand">병원 업무</span>
+  <nav class="tabs">
+    <a>대시보드</a><a>통계</a><a>청구</a><a>고시·공지</a><a>환자</a><a>매출</a><a>AI 리포트</a><a class="on">서식</a><a>직원</a><a>업무일지</a><a>재고</a><a>주소록</a><a>설정</a>
+  </nav>
+</div></header>
+
+<main class="wrap">
+  <h1>서식</h1>
+  <div class="seg tools" role="group" aria-label="서식 도구"><button aria-pressed="true">휴진 안내</button><button aria-pressed="false">환자 안내문</button></div>
+
+  <div class="cols">
+    <!-- 왼쪽: 저장한 안내문(지금 그대로) -->
+    <section class="panel" aria-label="저장한 안내문">
+      <div class="row between"><h2>저장한 안내문</h2></div>
+      <button class="btn sm" id="newBtn" style="margin-top:10px;width:100%">+ 새로 만들기</button>
+      <div class="list" id="noticeList"></div>
+    </section>
+
+    <!-- 가운데: 만들기 -->
+    <section class="panel" aria-label="만들기">
+      <div class="field">
+        <label class="label" for="memo">대충 적기</label>
+        <textarea id="memo" maxlength="500" placeholder="예) 5월 5일 어린이날 휴진&#10;예) 추석 연휴 9월 24일부터 26일까지 쉬어요"></textarea>
+        <div class="row between">
+          <p class="notice">전화번호·주민번호·메일 주소는 적지 마세요. 적은 글은 정리할 때만 AI로 보내고 저장하지 않아요</p>
+          <span class="caption muted">0/500</span>
+        </div>
+        <div class="row"><button class="btn primary" disabled>정리하기</button></div>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="row between">
+        <h2>안내 내용</h2>
+        <label class="row small">안내 달 <input type="month" id="month" style="width:160px" readonly></label>
+      </div>
+      <div class="cards-edit" id="cards"></div>
+      <div class="row" style="margin-top:10px"><button class="btn sm" disabled>+ 카드 더하기</button><span class="caption muted">카드는 4장까지 · 이어서 쉬는 날은 끝 날짜를 적어 한 장으로</span></div>
+
+      <div class="sep"></div>
+
+      <!-- 새 '배경' 칸(ThemePicker) -->
+      <section aria-labelledby="bgTitle">
+        <div class="bg-head">
+          <h2 id="bgTitle">배경</h2>
+          <div class="seg" role="group" aria-label="배경 종류">
+            <button id="modeTheme" aria-pressed="true">테마 그림</button><button id="modeMine" aria-pressed="false">내 배경</button>
+          </div>
+        </div>
+
+        <!-- 테마 그림 -->
+        <div class="bg-body" id="themeBox">
+          <div class="field">
+            <label class="label" for="theme">테마</label>
+            <select id="theme"></select>
+          </div>
+          <div class="field">
+            <span class="label" id="artLabel">그림</span>
+            <div class="seg" role="group" aria-label="그림" style="align-self:flex-start">
+              <button id="art1" aria-pressed="true">그림 1</button><button id="art2" aria-pressed="false">그림 2</button>
+            </div>
+            <p class="help">카드 이름에 공휴일 이름이 있으면 그 공휴일, 없으면 안내 달의 그림이 저절로 골라져요</p>
+          </div>
+        </div>
+
+        <!-- 내 배경 -->
+        <div class="bg-body" id="mineBox" hidden>
+          <div class="field">
+            <label class="label" for="words">AI 배경 만들기</label>
+            <div class="make-row">
+              <input id="words" maxlength="30" placeholder="예) 봄 벚꽃" autocomplete="off">
+              <button class="btn primary" id="make">AI로 배경 만들기</button>
+            </div>
+            <div class="row between" style="align-items:flex-start;flex-wrap:nowrap">
+              <p class="notice">적은 말만 OpenAI 그림 AI로 보내요. 전화번호·주민번호·메일 주소는 적지 마세요. 한 장에 10초쯤 걸리고 약 80원이 들어요(하루 20장까지)</p>
+              <span class="caption muted" id="wordCount" style="flex-shrink:0">0/30</span>
+            </div>
+            <p class="info" id="makingNote" hidden>그림을 만드는 중이에요. 10초쯤 걸려요</p>
+            <div class="err" id="makeErr" hidden></div>
+          </div>
+
+          <div class="trial" id="trial" hidden>
+            <img id="trialImg" alt="">
+            <div class="t-body">
+              <b id="trialTitle"></b>
+              <p class="small muted">미리보기에 얹어 보았어요. 저장해야 이 안내문에 쓰고 뽑을 수 있어요</p>
+              <div class="row">
+                <button class="btn sm primary" id="saveTrial">내 배경으로 저장</button>
+                <button class="btn sm" id="remake">다시 만들기</button>
+                <button class="btn sm ghost" id="discard">안 쓰기</button>
+              </div>
+              <p class="small" id="fullNote" hidden style="color:var(--warning)">내 배경은 30장까지예요. 안 쓰는 배경을 지워 주세요</p>
+              <div class="err" id="trialErr" hidden></div>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="mine-head"><h3 class="label">내 배경</h3><span class="caption muted" id="mineCount"></span></div>
+            <p class="small muted" id="mineLoading" hidden>내 배경을 읽는 중…</p>
+            <p class="small muted" id="mineEmpty" hidden>아직 저장한 배경이 없어요</p>
+            <div id="mineFailed" hidden><div class="err" id="mineErr"></div><button class="btn sm" id="reread" style="margin-top:8px">다시 읽기</button></div>
+            <div class="thumbs" id="thumbs"></div>
+          </div>
+
+          <div class="chosen" id="chosen" hidden>
+            <p class="info" id="chosenName"></p>
+            <button class="btn sm ghost danger" id="delBg">이 배경 지우기</button>
+          </div>
+          <p class="info" id="imgLoading" hidden>내 배경을 불러오는 중…</p>
+          <div id="imgFailed" hidden><div class="err" id="imgErr"></div><button class="btn sm" id="reimg" style="margin-top:8px">다시 읽기</button></div>
+          <p class="info" id="goneNote" hidden>고른 내 배경이 지워져 저절로 고른 테마로 보여요</p>
+        </div>
+
+        <!-- 새 '글자 색' 칸(forms-accent) -->
+        <div class="field" style="margin-top:16px">
+          <span class="label" id="colorLabel">글자 색</span>
+          <div class="row">
+            <div class="seg" role="group" aria-labelledby="colorLabel">
+              <button id="colorAuto" aria-pressed="true">자동</button><button id="colorOwn" aria-pressed="false">직접 고르기</button>
+            </div>
+            <label class="swatch" id="swatch"><input type="color" id="colorInput" aria-label="글자 색 고르기" value="#c62f2f"><span id="colorHex" class="caption tabular"></span></label>
+          </div>
+          <p class="help">'12월'·날짜 띠·카드 아래 글이 이 색이에요. 자동은 테마·배경에 맞춰 골라요</p>
+          <p class="small" id="lightNote" hidden style="color:var(--warning)">옅은 색이라 흰 글자·흰 카드 위 글이 잘 안 보일 수 있어요</p>
+        </div>
+      </section>
+    </section>
+
+    <!-- 오른쪽: 미리보기 -->
+    <section class="panel preview" aria-label="미리보기">
+      <h2 style="margin-bottom:10px">미리보기 <span class="caption muted">A4 세로</span></h2>
+      <div id="poster"></div>
+      <div class="actions">
+        <button class="btn primary" id="save">저장</button>
+        <button class="btn" id="print">인쇄·PDF</button>
+        <button class="btn" id="png">그림 파일</button>
+        <button class="btn ghost danger" id="del">지우기</button>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script>
+const THEMES = [
+  ['newyear','신정','#d9432f',['신정','새해','양력설']], ['seollal','설날','#d6336c',['설날','설연휴','설명절','구정']], ['samiljeol','삼일절','#2b5bb5',['삼일절','3·1절','3.1절','31절']],
+  ['children','어린이날','#f0522d',['어린이날']], ['buddha','부처님오신날','#d9601a',['부처님오신날','석가탄신일','석탄일','초파일']], ['memorial','현충일','#2f4a7a',['현충일']],
+  ['liberation','광복절','#e8312f',['광복절']], ['chuseok','추석','#c8662a',['추석','한가위']], ['foundation','개천절','#2f7fc1',['개천절']],
+  ['hangul','한글날','#1f6e8c',['한글날']], ['christmas','성탄절','#c62f2f',['성탄절','크리스마스','성탄']],
+  ['m01','1월','#3c6fb4',[]],['m02','2월','#c2416b',[]],['m03','3월','#3f9142',[]],['m04','4월','#d9487a',[]],['m05','5월','#d8434e',[]],['m06','6월','#5b63c7',[]],
+  ['m07','7월','#1d8fc7',[]],['m08','8월','#d46f00',[]],['m09','9월','#c2458a',[]],['m10','10월','#c8501e',[]],['m11','11월','#8a5a2b',[]],['m12','12월','#2e5e9e',[]],
+].map(([id, name, accent, words]) => ({ id, name, accent, words }))
+const byId = Object.fromEntries(THEMES.map((t) => [t.id, t]))
+// 시험 때 만든 AI 그림 3장(강조색은 ai-backgrounds.html에서 뽑은 예)
+const SAMPLES = { spring: { src: '../forms-themes/ai-samples/spring.jpg', accent: '#c2456e' }, chuseok: { src: '../forms-themes/ai-samples/chuseok.jpg', accent: '#c8501e' }, winter: { src: '../forms-themes/ai-samples/winter.jpg', accent: '#2e5e9e' } }
+const sampleFor = (w) => (/추석|보름달|한가위/.test(w) ? 'chuseok' : /겨울|눈|성탄/.test(w) ? 'winter' : 'spring')
+const ORDER = ['spring', 'chuseok', 'winter']
+const MAX_BG = 30
+const PRIVATE = /(?<!\d)(?:0\d{1,2}[-. ]\d{3,4}[-. ]\d{4}|01[016789]\d{7,8})(?!\d)|(?<!\d)\d{6}-\d{7}(?!\d)|[^\s@]+@[^\s@]+\.[^\s@]+|[\u0000-\u001f\u007f]/
+const ERR = {
+  'E-FORMS-PRIVATE': ['적은 글에 전화번호·주민번호·메일 주소 모양이 있어 보내지 않았어요', '그 부분을 지우고 다시 [정리하기]를 눌러 주세요'],
+  'E-FORMS-BG-LIMIT': ['오늘 만들 수 있는 AI 배경을 다 만들었어요', '하루 20장까지예요. 저장한 내 배경을 고르거나 내일 다시 만들어 주세요'],
+  'E-FORMS-BG-QUOTA': ['OpenAI 그림 사용 한도에 닿았어요', 'OpenAI 관리 화면에서 결제 한도를 늘리거나 다음 달에 다시 해 주세요'],
+  'E-FORMS-BG-FAILED': ['AI 배경을 만들지 못했어요', '적은 말을 바꾸거나 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요'],
+  'E-FORMS-BG-STORE-FAILED': ['내 배경을 저장하거나 읽지 못했어요', '인터넷 연결을 확인하고 다시 눌러 주세요. 만든 배경은 그대로 남아 있어요'],
+  'E-AI-BUSY': ['AI가 지금 바빠서 답하지 못했어요', '1~2분 뒤 [다시 분석]을 눌러 주세요.'],
+}
+const errHtml = (code) => `<b>${ERR[code][0]}</b><br>${ERR[code][1]} <code>${code}</code>`
+
+const DAYS = '일월화수목금토'
+const ymd = (s) => { const [y, m, d] = s.split('-').map(Number); return { y, m, d, wd: new Date(Date.UTC(y, m - 1, d)).getUTCDay() } }
+function dateLabel(c) {
+  const a = ymd(c.start), head = `${a.m}월 ${a.d}일(${DAYS[a.wd]})`
+  if (!c.end) return head
+  const b = ymd(c.end)
+  return b.m === a.m ? `${head}~${b.d}일(${DAYS[b.wd]})` : `${head}~${b.m}월 ${b.d}일(${DAYS[b.wd]})`
+}
+function textWidth(t, size) { let em = 0; for (const ch of t) em += /[ㄱ-힣]/.test(ch) ? 1 : /[0-9]/.test(ch) ? .62 : /[()]/.test(ch) ? .38 : ch === ' ' ? .3 : .6; return em * size }
+const fit = (t, size, inner) => { while (size > 18 && textWidth(t, size) > inner) size--; return size }
+const SHAPES = { 1: { w: 318, gap: 0, head: 79, body: 224, rows: [534], cols: 1, f: [33, 46, 50] }, 2: { w: 318, gap: 36, head: 79, body: 224, rows: [534], cols: 2, f: [33, 46, 50] },
+  3: { w: 226, gap: 24, head: 70, body: 196, rows: [534], cols: 3, f: [28, 38, 44] }, 4: { w: 318, gap: 36, head: 60, body: 140, rows: [510, 734], cols: 2, f: [30, 38, 42] } }
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const $ = (id) => document.getElementById(id)
+
+// ---------- 고른 그림 값(design.md 2절과 같은 뜻) ----------
+function autoTheme() {
+  for (const c of [...S.cards].sort((a, b) => (a.start < b.start ? -1 : 1))) {
+    const n = c.name.replace(/\s/g, '')
+    if (n === '설') return 'seollal'
+    const t = THEMES.find((t) => t.words.some((w) => n.includes(w)))
+    if (t) return t.id
+  }
+  return 'm' + S.month.split('-')[1]
+}
+function lookOfPick(p) {
+  if (p === null) return { kind: 'theme', theme: autoTheme(), art: 1 }
+  if (p === 'auto-2') return { kind: 'theme', theme: autoTheme(), art: 2 }
+  if (p.startsWith('bg-')) return { kind: 'bg', id: p.slice(3) }
+  return p.endsWith('-2') ? { kind: 'theme', theme: p.slice(0, -2), art: 2 } : { kind: 'theme', theme: p, art: 1 }
+}
+const artOf = (p) => (p === 'auto-2' || (p && !p.startsWith('bg-') && p.endsWith('-2')) ? 2 : 1)
+const themeValueOf = (p) => (p === null || p === 'auto-2' || p.startsWith('bg-') ? 'auto' : p.replace(/-2$/, ''))
+function withArt(p, art) { if (p && p.startsWith('bg-')) return p; const v = themeValueOf(p); return v === 'auto' ? (art === 2 ? 'auto-2' : null) : art === 2 ? v + '-2' : v }
+function withTheme(p, v) { const art = p && p.startsWith('bg-') ? 1 : artOf(p); return v === 'auto' ? (art === 2 ? 'auto-2' : null) : art === 2 ? v + '-2' : v }
+
+// ---------- 상태 ----------
+let S, notices, timer
+const item = (id, words, key) => ({ id, words, key })
+function base() {
+  return { noticeId: null, month: '2026-12', cards: [{ start: '2026-12-24', end: '', name: '학회', status: '휴진' }, { start: '2026-12-25', end: '', name: '성탄절', status: '휴진' }],
+    pick: null, mode: 'theme', words: '', making: false, makeErr: null, trial: null, saving: false, trialErr: null,
+    list: { kind: 'idle', items: [] }, images: {}, color: null }
+}
+const LIST2 = () => [item('b2', '추석 보름달', 'chuseok'), item('b1', '겨울 눈 덮인 숲', 'winter')]
+const shownMode = () => (S.pick && S.pick.startsWith('bg-') ? 'mine' : S.mode)
+function posterLook() {
+  if (shownMode() === 'mine' && S.trial) return { theme: autoTheme(), art: 1, bg: SAMPLES[S.trial.key], blocked: true, note: 'trial' }
+  const l = lookOfPick(S.pick)
+  if (l.kind === 'theme') return { theme: l.theme, art: l.art, bg: null, blocked: false, note: null }
+  const auto = { theme: autoTheme(), art: 1, bg: null }
+  if (S.list.kind === 'idle' || S.list.kind === 'loading') return { ...auto, blocked: true, note: 'loading' }
+  if (S.list.kind === 'failed') return { ...auto, blocked: true, note: 'failed' }
+  const it = S.list.items.find((x) => x.id === l.id)
+  if (!it) return { ...auto, blocked: false, note: 'missing' }
+  const img = S.images[it.id]
+  if (img === 'ok') return { theme: autoTheme(), art: 1, bg: SAMPLES[it.key], blocked: false, note: null }
+  if (img === 'failed') return { ...auto, blocked: true, note: 'failed' }
+  return { ...auto, blocked: true, note: 'loading' }
+}
+
+// ---------- 글자 색(forms-accent) ----------
+function lum(hex) { const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] }
+function contrast(a, b) { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05) }
+function autoAccent() { const look = posterLook(); return look.bg ? look.bg.accent : byId[look.theme].accent }
+
+// ---------- 안내문 그림 ----------
+function posterSvg(look) {
+  const theme = byId[look.theme], accent = S.color || (look.bg ? look.bg.accent : theme.accent)
+  const cards = S.cards.filter((c) => c.start).sort((a, b) => (a.start < b.start ? -1 : 1))
+  const month = Number(S.month.split('-')[1])
+  const T = (x, y, size, weight, fill, text, ls = 0) => `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-family="PosterPretendard" font-size="${size}" font-weight="${weight}" fill="${fill}" letter-spacing="${ls}em">${esc(text)}</text>`
+  let body = ''
+  const s = SHAPES[cards.length], rowW = s.cols * s.w + (s.cols - 1) * s.gap, x0 = (794 - rowW) / 2
+  cards.forEach((c, i) => {
+    const x = x0 + (i % s.cols) * (s.w + s.gap), y = s.rows[Math.floor(i / s.cols)], r = 22, inner = s.w - 32, date = dateLabel({ start: c.start, end: c.end || null })
+    body += `<g filter="url(#sh)"><rect x="${x}" y="${y}" width="${s.w}" height="${s.head + s.body}" rx="${r}" fill="#fff"/></g>`
+    body += `<path d="M${x} ${y + s.head} V${y + r} A${r} ${r} 0 0 1 ${x + r} ${y} H${x + s.w - r} A${r} ${r} 0 0 1 ${x + s.w} ${y + r} V${y + s.head} Z" fill="${accent}"/>`
+    body += T(x + s.w / 2, y + s.head / 2, fit(date, s.f[0], inner), 700, '#fff', date, -.02)
+    body += T(x + s.w / 2, y + s.head + s.body * .30, fit(c.name, s.f[1], inner), 900, '#262626', c.name, -.03)
+    body += T(x + s.w / 2, y + s.head + s.body * .67, fit(c.status, s.f[2], inner), 900, accent, c.status, .02)
+  })
+  const art = look.bg
+    ? `<image href="${look.bg.src}" x="0" y="0" width="794" height="1123" preserveAspectRatio="xMidYMid slice"/>
+       <rect x="64" y="70" width="666" height="770" rx="40" fill="#fff" fill-opacity=".55" filter="url(#soft)"/>
+       <ellipse cx="397" cy="1040" rx="210" ry="46" fill="#fff" fill-opacity=".7" filter="url(#soft)"/>`
+    : `<image href="../forms-themes/themes/${theme.id}${look.art === 2 ? '-2' : ''}.svg" width="794" height="1123"/>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" role="img" aria-label="${month}월 진료일정안내">
+    <defs><filter id="sh" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="14" stdDeviation="17" flood-color="rgb(25,45,80)" flood-opacity=".16"/></filter>
+      ${look.bg ? '<filter id="soft" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="18"/></filter>' : ''}</defs>
+    ${art}
+    ${T(397, 162, 132, 900, accent, `${month}월`, -.02)}
+    ${T(397, 296, 120, 900, '#262626', '진료일정안내', -.045)}
+    ${T(397, 417, 27, 700, '#3a3a3a', `${month}월 진료일정을 안내드리오니`, -.02)}
+    ${T(397, 459, 27, 700, '#3a3a3a', '진료 및 내원에 참고해주시길 바랍니다', -.02)}
+    ${body}
+    <image href="../forms/logo.png" x="227" y="1011" width="340" height="58"/></svg>`
+}
+
+// ---------- 그리기 ----------
+function render() {
+  // 저장한 안내문
+  $('noticeList').innerHTML = notices.map((n) => `<button class="item ${n.id === S.noticeId ? 'on' : ''}" data-open="${n.id}"><b>${esc(n.title)}</b><span>${n.when} 고침</span></button>`).join('')
+  $('del').hidden = !S.noticeId
+  // 안내 내용
+  $('month').value = S.month
+  $('cards').innerHTML = S.cards.map((c, i) => `<div class="card-edit"><span class="num">카드 ${i + 1}</span>
+      <label><span>시작 날짜</span><input type="date" value="${c.start}" readonly></label>
+      <label><span>끝 날짜 <span class="muted">(이어서 쉴 때)</span></span><input type="date" value="${c.end}" readonly></label>
+      <label><span>이름 <span class="muted">(10자까지)</span></span><input value="${esc(c.name)}" readonly></label>
+      <label><span>아래 글 <span class="muted">(6자까지)</span></span><input value="${esc(c.status)}" readonly></label></div>`).join('')
+
+  // 배경 칸
+  const mode = shownMode()
+  $('modeTheme').setAttribute('aria-pressed', String(mode === 'theme'))
+  $('modeMine').setAttribute('aria-pressed', String(mode === 'mine'))
+  $('themeBox').hidden = mode !== 'theme'
+  $('mineBox').hidden = mode !== 'mine'
+
+  const auto = byId[autoTheme()].name
+  const opt = (t) => `<option value="${t.id}">${t.name}</option>`
+  $('theme').innerHTML = `<option value="auto">저절로(지금: ${auto})</option><optgroup label="공휴일">${THEMES.filter((t) => !/^m\d\d$/.test(t.id)).map(opt).join('')}</optgroup><optgroup label="달마다">${THEMES.filter((t) => /^m\d\d$/.test(t.id)).map(opt).join('')}</optgroup>`
+  $('theme').value = themeValueOf(S.pick)
+  $('art1').setAttribute('aria-pressed', String(artOf(S.pick) === 1))
+  $('art2').setAttribute('aria-pressed', String(artOf(S.pick) === 2))
+
+  if ($('words').value !== S.words) $('words').value = S.words
+  $('wordCount').textContent = `${Array.from(S.words).length}/30`
+  $('make').disabled = S.making || S.words.trim() === ''
+  $('make').textContent = S.making ? '만드는 중…' : 'AI로 배경 만들기'
+  $('makingNote').hidden = !S.making
+  {
+    const auto = autoAccent()
+    $('colorAuto').setAttribute('aria-pressed', String(!S.color))
+    $('colorOwn').setAttribute('aria-pressed', String(!!S.color))
+    const shown = S.color || auto
+    if ($('colorInput').value !== shown) $('colorInput').value = shown
+    $('colorHex').textContent = S.color ? S.color : `자동 ${auto}`
+    $('swatch').classList.toggle('off', !S.color)
+    $('lightNote').hidden = !S.color || contrast(S.color, '#ffffff') >= 4.5
+  }
+  $('makeErr').hidden = !S.makeErr; $('makeErr').innerHTML = S.makeErr ? errHtml(S.makeErr) : ''
+
+  const full = S.list.kind === 'ok' && S.list.items.length >= MAX_BG
+  $('trial').hidden = !S.trial
+  if (S.trial) {
+    $('trialImg').src = SAMPLES[S.trial.key].src
+    $('trialTitle').textContent = `만든 배경: ${S.trial.words}`
+    $('saveTrial').disabled = S.saving || S.making || full || S.list.kind !== 'ok'
+    $('saveTrial').textContent = S.saving ? '저장하는 중…' : '내 배경으로 저장'
+    $('remake').disabled = S.saving || S.making
+    $('discard').disabled = S.saving
+    $('fullNote').hidden = !full
+    $('trialErr').hidden = !S.trialErr; $('trialErr').innerHTML = S.trialErr ? errHtml(S.trialErr) : ''
+  }
+
+  const L = S.list
+  $('mineCount').textContent = L.kind === 'ok' ? `${L.items.length}/30장` : ''
+  $('mineLoading').hidden = !(L.kind === 'loading' || L.kind === 'idle')
+  $('mineEmpty').hidden = !(L.kind === 'ok' && L.items.length === 0)
+  $('mineFailed').hidden = L.kind !== 'failed'; $('mineErr').innerHTML = errHtml('E-FORMS-BG-STORE-FAILED')
+  const chosenId = S.pick && S.pick.startsWith('bg-') ? S.pick.slice(3) : null
+  $('thumbs').hidden = L.kind !== 'ok' || L.items.length === 0
+  $('thumbs').innerHTML = L.kind === 'ok' ? L.items.map((x) => `<button class="thumb" data-bg="${x.id}" aria-pressed="${x.id === chosenId}" aria-label="${esc(x.words)} 배경"><img src="${SAMPLES[x.key].src}" alt=""><span>${esc(x.words)}</span></button>`).join('') : ''
+
+  const look = posterLook()
+  const chosen = L.kind === 'ok' && chosenId ? L.items.find((x) => x.id === chosenId) : null
+  $('chosen').hidden = !chosen
+  if (chosen) $('chosenName').textContent = `고른 배경: ${chosen.words}`
+  $('imgLoading').hidden = !(chosen && look.note === 'loading')
+  $('imgFailed').hidden = !(chosen && look.note === 'failed'); $('imgErr').innerHTML = errHtml('E-FORMS-BG-STORE-FAILED')
+  $('goneNote').hidden = look.note !== 'missing'
+
+  // 미리보기
+  $('poster').innerHTML = posterSvg(look)
+  for (const b of ['save', 'print', 'png']) $(b).disabled = look.blocked
+}
+
+function loadList(items, ms = 600) {
+  S.list = { kind: 'loading', items: [] }
+  render()
+  setTimeout(() => { S.list = { kind: 'ok', items }; for (const x of items) if (!(x.id in S.images)) S.images[x.id] = 'ok'; render() }, ms)
+}
+function setMode(m) {
+  if (m === 'theme' && S.pick && S.pick.startsWith('bg-')) S.pick = null
+  S.mode = m
+  if (m === 'mine' && S.list.kind === 'idle') { loadList(LIST2()); return }
+  render()
+}
+function make(words) {
+  if (PRIVATE.test(words)) { S.makeErr = 'E-FORMS-PRIVATE'; render(); return }
+  S.makeErr = null; S.making = true; render()
+  clearTimeout(timer)
+  timer = setTimeout(() => {
+    const prev = S.trial ? S.trial.key : null
+    let key = sampleFor(words)
+    if (prev === key) key = ORDER[(ORDER.indexOf(key) + 1) % ORDER.length] // [다시 만들기]면 다른 그림이 온 것처럼
+    S.making = false; S.trial = { words: words.trim(), key }; S.mode = 'mine'; render()
+  }, 1500)
+}
+let seq = 10
+
+document.addEventListener('input', (e) => {
+  if (e.target.id === 'colorInput') { S.color = e.target.value.toLowerCase(); render(); return }
+  if (e.target.id === 'words') { S.words = Array.from(e.target.value).slice(0, 30).join(''); S.makeErr = null; render() }
+})
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'theme') { S.pick = withTheme(S.pick, e.target.value); render() }
+})
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('button'); if (!t) return
+  if (t.dataset.go) { go(t.dataset.go); return }
+  if (t.id === 'modeTheme') setMode('theme')
+  if (t.id === 'colorAuto') { S.color = null; render() }
+  if (t.id === 'colorOwn' && !S.color) { S.color = autoAccent(); $('colorInput').click(); render() }
+  if (t.id === 'modeMine') setMode('mine')
+  if (t.id === 'art1') { S.pick = withArt(S.pick, 1); render() }
+  if (t.id === 'art2') { S.pick = withArt(S.pick, 2); render() }
+  if (t.id === 'make') make(S.words)
+  if (t.id === 'remake' && S.trial) make(S.trial.words)
+  if (t.id === 'discard') { S.trial = null; S.trialErr = null; render() }
+  if (t.id === 'saveTrial' && S.trial) {
+    S.saving = true; S.trialErr = null; render()
+    setTimeout(() => {
+      const it = item('b' + ++seq, S.trial.words, S.trial.key)
+      S.saving = false; S.list = { kind: 'ok', items: [it, ...S.list.items] }; S.images[it.id] = 'ok'; S.trial = null; S.pick = 'bg-' + it.id; render()
+    }, 700)
+  }
+  if (t.dataset.bg) {
+    const id = t.dataset.bg
+    S.pick = 'bg-' + id
+    if (S.images[id] !== 'ok') { S.images[id] = 'loading'; render(); setTimeout(() => { S.images[id] = 'ok'; render() }, 700) } else render()
+  }
+  if (t.id === 'reread') loadList(LIST2())
+  if (t.id === 'reimg') { const id = S.pick.slice(3); S.images[id] = 'loading'; render(); setTimeout(() => { S.images[id] = 'ok'; render() }, 700) }
+  if (t.id === 'delBg') {
+    if (confirm('이 배경을 지울까요? 이 배경을 쓴 다른 안내문은 저절로 고른 테마로 보여요')) {
+      const id = S.pick.slice(3)
+      S.list = { kind: 'ok', items: S.list.items.filter((x) => x.id !== id) }; delete S.images[id]; S.pick = null; render()
+    }
+  }
+  if (t.id === 'newBtn') { const keep = { list: S.list, images: S.images, trial: S.trial }; S = { ...base(), ...keep, month: '2027-01', cards: [{ start: '2027-01-01', end: '', name: '신정', status: '휴진' }] }; render() }
+  if (t.dataset.open) openNotice(t.dataset.open)
+  if (t.id === 'save') alert('(시안) 안내문을 저장해요. 고른 배경 값도 함께 저장돼요')
+  if (t.id === 'print') alert('(시안) 브라우저 인쇄 창이 열려요. A4 세로 한 장에 안내문만 나와요')
+  if (t.id === 'png') alert('(시안) 휴진안내_' + S.month + '.png 그림 파일(1588×2246)이 내려받아져요')
+  if (t.id === 'del') alert('(시안) 이 안내문을 지울까요? — 지금 화면과 같아요')
+})
+
+function openNotice(id) {
+  const n = notices.find((x) => x.id === id)
+  const keep = { list: S.list, images: S.images, trial: S.trial, words: S.words }
+  S = { ...base(), ...keep, noticeId: n.id, month: n.month, cards: JSON.parse(JSON.stringify(n.cards)), pick: n.pick, color: n.color ?? null, mode: n.pick && n.pick.startsWith('bg-') ? 'mine' : 'theme' }
+  if (S.mode === 'mine' && S.list.kind === 'idle') { loadList(LIST2()); return }
+  render()
+}
+
+function go(state) {
+  for (const b of document.querySelectorAll('#mockBar button')) b.classList.toggle('on', b.dataset.go === state)
+  clearTimeout(timer)
+  notices = [
+    { id: 'dec', title: '2026년 12월 · 학회·성탄절', when: '11월 15일', month: '2026-12', pick: 'bg-b1', color: '#c62f2f', cards: [{ start: '2026-12-24', end: '', name: '학회', status: '휴진' }, { start: '2026-12-25', end: '', name: '성탄절', status: '휴진' }] },
+    { id: 'aug', title: '2026년 8월 · 광복절·대체공휴일', when: '8월 3일', month: '2026-08', pick: 'liberation-2', cards: [{ start: '2026-08-15', end: '', name: '광복절', status: '휴진' }, { start: '2026-08-17', end: '', name: '대체공휴일', status: '휴진' }] },
+    { id: 'jun', title: '2026년 6월 · 현충일', when: '5월 28일', month: '2026-06', pick: 'bg-gone', cards: [{ start: '2026-06-06', end: '', name: '현충일', status: '휴진' }] },
+  ]
+  S = base()
+  const ok = (items) => { S.list = { kind: 'ok', items }; for (const x of items) S.images[x.id] = 'ok' }
+  if (state === 'color') { ok(LIST2()); S.noticeId = 'dec'; S.pick = 'bg-b2'; S.mode = 'mine'; S.color = '#c62f2f' }
+  if (state === 'light') { S.color = '#f6d365' }
+  if (state === 'ai') { S.mode = 'mine'; ok(LIST2()) }
+  if (state === 'making') { S.mode = 'mine'; ok(LIST2()); S.words = '봄 벚꽃'; S.making = true }
+  if (state === 'made') { S.mode = 'mine'; ok(LIST2()); S.words = '봄 벚꽃'; S.trial = { words: '봄 벚꽃', key: 'spring' } }
+  if (state === 'error') { S.mode = 'mine'; ok(LIST2()); S.words = '봄 벚꽃'; S.makeErr = 'E-FORMS-BG-LIMIT' }
+  if (state === 'full') {
+    S.mode = 'mine'; S.words = '봄 벚꽃'; S.trial = { words: '봄 벚꽃', key: 'spring' }
+    const words = ['겨울 눈 덮인 숲', '추석 보름달', '봄 벚꽃']
+    ok(Array.from({ length: MAX_BG }, (_, i) => item('f' + i, words[i % 3], ORDER[(2 - (i % 3) + 3) % 3])))
+  }
+  if (state === 'mine') { ok([item('b3', '봄 벚꽃', 'spring'), ...LIST2()]); S.noticeId = 'dec'; S.pick = 'bg-b1'; S.mode = 'mine' }
+  if (state === 'gone') { ok(LIST2()); const n = notices[2]; S.noticeId = n.id; S.month = n.month; S.cards = JSON.parse(JSON.stringify(n.cards)); S.pick = n.pick; S.mode = 'mine' }
+  render()
+}
+go(new URLSearchParams(location.search).get('s') || 'pick')
+</script>
+</body>
+</html>
