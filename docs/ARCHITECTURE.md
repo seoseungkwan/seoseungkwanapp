@@ -31,7 +31,7 @@ src/
 │   ├── revenue/         # 통계 매출 칸(stats/sections/RevenueSection)이 쓰는 매출 부품: 숫자 칸 줄·안내 줄·증감 글·급여 표·세 겹 막대·순위 막대(RevenueParts·RevenueSplit·MonthBars·TreatmentBars), 금액 글(money.ts), 보기 타입(types.ts). 매출 탭 화면은 지웠다 (specs/revenue, specs/stats-revenue)
 │   ├── ai-report/       # AI 리포트 탭 화면(AiReportScreen·ReportBody·UsageAside·RedoDialog)과 서버 경로 `GET/POST /api/ai/report`를 부르는 reportClient. 달·읽기·분석 상태는 화면에만 둔다 (specs/ai-report-screen)
 │   ├── worklog/         # 업무일지 화면. 엑셀 양식 `sheet.module.css`는 앱 화면의 유일한 CSS Module (docs/UI_GUIDE.md '업무일지 양식')
-│   ├── forms/           # 서식 화면(FormsScreen·NoticeList·NoticeEditor·PreviewPanel, 상태는 formsState)과 안내문 SVG(Poster). 그림 안의 테마 색·글꼴 PosterPretendard 700·900은 앱 토큰 예외 (ADR-028, docs/UI_GUIDE.md '토큰'). 환자 안내문: SVG(GuidePoster)·그림 16개와 AI 그림(guidePictures)·로고색 한 곳(guideColors)·화면(GuideWorkspace·GuideEditor, 상태는 guideState) (specs/forms-guide). 휴진 안내 '배경' 칸: ThemePicker·hook useBackgrounds·상태 backgroundState (specs/forms-themes)
+│   ├── forms/           # 서식 화면(FormsScreen·NoticeList·NoticeEditor·PreviewPanel, 상태는 formsState)과 안내문 SVG(Poster). 그림 안의 테마 색·글꼴 PosterPretendard 700·900은 앱 토큰 예외 (ADR-028, docs/UI_GUIDE.md '토큰'). 환자 안내문: SVG(GuidePoster)·그림 16개와 AI 그림(guidePictures)·로고색 한 곳(guideColors)·화면(GuideWorkspace·GuideEditor, 상태는 guideState) (specs/forms-guide). 휴진 안내 '배경' 칸: ThemePicker·hook useBackgrounds·상태 backgroundState (specs/forms-themes). 그 아래 '글자 색' 칸: AccentPicker (specs/forms-accent)
 │   ├── patients/rows/   # [울타리] 환자 줄 화면(props로만). JSX는 되고 네트워크·console·브라우저 저장소·supabase·lib/auth·lib/storage는 못 쓴다. components/patients·app/(app)/patients 전체는 오류 보고 패키지(@sentry·@vercel/analytics·@vercel/speed-insights)도 못 쓴다 — specs/patients
 │   ├── charts/          # 차트 부품(숫자 글자·KPI·Sparkline·쌓은 막대·범례·순위 막대·줄 안 막대). 서버에서 그리는 순수 부품, 토큰 클래스만, 자료 모양은 `@/types/analysis` (specs/b2b-redesign)
 │   └── preview/         # 대시보드 미리보기 + 예시 자료(sample.ts). 랜딩 히어로·로그인 오른쪽이 같이 쓴다. 실제 자료를 읽지 않는다
@@ -72,7 +72,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 [AI]   [AI 분석] → app/api/ai: 승인 확인 → DB 집계 읽기(stats_months 세 달 + stats_rx_groups 묶음 이름, specs/ai-report-stats) → validate → Claude API
        → 답 검사(근거 숫자는 앱이 채움) → ai_reports 저장(그 달 덮어씀) → ai_usage 기록 → 화면(글자로만) (ADR-024)
 [서식] 대충 적은 글(500자까지) → 개인정보 모양 검사(화면·서버) → app/api/ai/forms: 승인 확인 → Claude API(<memo>, effort low)
-       → 답 검사 → 카드 → 화면에서 고치기 → form_notices(RLS, 달·카드·테마만). 적은 글은 저장·로그하지 않는다 (ADR-028)
+       → 답 검사 → 카드 → 화면에서 고치기 → form_notices(RLS, 달·카드·테마·글자 색 accent만). 적은 글은 저장·로그하지 않는다 (ADR-028)
        환자 안내문: 적은 글 → app/api/ai/forms/guide → 답 검사(메모에 없는 숫자면 버림) → 칸 → 화면에서 고치기 → form_guides(RLS)
        AI 그림: 그릴 것(20자까지) → app/api/ai/forms/guide/picture(effort medium) → 도형·색 이름·숫자 검사 → 앱이 그림 (ADR-028 덧붙임)
        AI 배경: 적은 말(30자까지) → 개인정보 모양 검사(화면·서버) → app/api/ai/forms/background: 승인 확인 → 하루 한도(take_ai_image, 20장)
@@ -111,7 +111,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 | `worklog_settings` | 병원 업무일지 설정 한 줄: 시재 금액 `cash_float`(기본 300,000원) (specs/worklog-cash-float) |
 | `ai_usage` | 달별 토큰·비용 |
 | `ai_reports` | 달별 AI 리포트(병원·달마다 하나, 다시 분석하면 덮어씀)·만들 때 쓴 숫자의 지문. 쓰기는 DB 함수로만 (ADR-024) |
-| `form_notices` | 서식 휴진 안내 한 줄: 연·월·카드(1~4장, jsonb)·테마. 대충 적은 글은 두지 않는다. 칸은 specs/forms design.md 8절 (ADR-028). 테마 칸은 고른 그림 값(null·`auto-2`·`<열쇠>`·`<열쇠>-2`·`bg-<내 배경 id>`, 40자까지)이다 (specs/forms-themes design.md 2절) |
+| `form_notices` | 서식 휴진 안내 한 줄: 연·월·카드(1~4장, jsonb)·테마. 대충 적은 글은 두지 않는다. 칸은 specs/forms design.md 8절 (ADR-028). 테마 칸은 고른 그림 값(null·`auto-2`·`<열쇠>`·`<열쇠>-2`·`bg-<내 배경 id>`, 40자까지)이다 (specs/forms-themes design.md 2절). 글자 색 칸 `accent`는 null(자동) 또는 `#` + 소문자 16진수 6자리다 (specs/forms-accent design.md 2절) |
 | `form_guides` | 서식 환자 안내문 한 줄: 안내문 칸·고른 그림·AI로 그린 그림을 `content`(jsonb 객체, 16,000바이트까지) 하나에 담는다. 안 모양은 앱이 `checkGuideValue`로 본다. 대충 적은 글은 두지 않는다. 칸은 specs/forms-guide design.md 7절 (ADR-028 덧붙임) |
 | `form_backgrounds` | 서식 휴진 안내 '내 배경' 한 장: 적은 말 `words`(1~30자)·강조색 `accent`·작은 그림 `thumb`(120×170 JPEG base64, 16,000자까지)·그림 자리 `path`(`<병원 id>/<id>.jpg`, DB가 만듦). 큰 그림은 Storage `form-backgrounds`에만. 넣기(세 칸만)·읽기·지우기, 고치기 없음. 화면은 30장까지. 칸은 specs/forms-themes design.md 8-1절 (ADR-029) |
 | `ai_image_days` | 병원·한국 날짜마다 AI 배경 장 수(0~20). 표 권한·정책이 없고 DB 함수 `take_ai_image()`로만 센다(하루 20장, 보내기 전에) (ADR-029) |

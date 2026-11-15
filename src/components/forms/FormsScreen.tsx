@@ -6,6 +6,7 @@ import { todayInKorea } from '@/lib/analytics/dates'
 import { memoProblem } from '@/lib/forms/ai'
 import { fileNameOf, noticeTitle } from '@/lib/forms/notice'
 import { downloadPosterPng } from '@/lib/forms/png'
+import { themeOf } from '@/lib/forms/themes'
 import { deleteNotice, insertNotice, listNotices, updateNotice } from '@/lib/storage/formNotices'
 import {
   LEAVE_CONFIRM,
@@ -75,6 +76,8 @@ export function FormsScreen({ today }: { today?: string }) {
   const bg = useBackgrounds(state.theme, (pick) => dispatch({ type: 'theme', theme: pick }))
   const preview = previewNotice(state)
   const look = bg.look(preview)
+  // '글자 색' 칸의 자동 색: 미리보기에 쓰이는 배경 강조색, 없으면 테마 강조색 (specs/forms-accent design.md 7-2절)
+  const autoAccent = look.background?.accent ?? themeOf(look.theme).accent
   const ready = look.blocked ? null : readyNotice(state)
   const dirty = isDirty(state)
   const list: SavedList =
@@ -217,6 +220,8 @@ export function FormsScreen({ today }: { today?: string }) {
               onMonth={(value) => dispatch({ type: 'month', value })}
               onTheme={(next) => dispatch({ type: 'theme', theme: next })}
               bg={bg}
+              autoAccent={autoAccent}
+              onAccent={(accent) => dispatch({ type: 'accent', accent })}
             />
             <PreviewPanel
               poster={<Poster notice={preview} theme={look.theme} art={look.art} background={look.background} />}
