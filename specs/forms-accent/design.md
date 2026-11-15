@@ -67,7 +67,7 @@ grant insert (accent), update (accent) on table public.form_notices to authentic
 ## 9. 기존 명세·시험과의 관계
 바꾸는 기존 기대:
 - `src/lib/storage/formNotices.test.ts`: 읽는 칸 목록(`COLUMNS`)에 `accent`, 넣기·고치기 몸통 열쇠에 `accent`(AC-3507.1·AC-3507.7 묶음의 칸 목록·몸통 기대만), 가짜 표 줄 `dbRow`에 `accent: null`을 더한다(실제 표는 늘 이 칸을 준다. AC-3507.2·AC-3507.6의 기대 값은 그대로)
-- `e2e/forms-privacy.spec.ts`(E2E, `npm test` 밖): 저장 몸통 열쇠 기대를 `['accent', 'cards', 'month', 'theme', 'year']`로 바꾸고 보낸 `accent`가 null(자동)인지 본다. 저장된 줄 `checkNotice` 부르기에 `accent: added[0].accent`를 넣는다. 머리 주석에 SQL `20261115030000_form_notices_accent.sql`도 먼저 붙여야 한다고 적는다
+- `e2e/forms-privacy.spec.ts`(E2E, `npm test` 밖): 저장 몸통 열쇠 기대를 `['accent', 'cards', 'month', 'theme', 'year']`로 바꾸고 보낸 `accent`가 null(자동)인지 본다. 줄을 읽는 `readRows`의 select 칸과 `Row` 타입에 `accent`를 더하고, 저장된 줄 `checkNotice` 부르기에 `accent: added[0].accent`를 넣는다(기대 값은 그대로 — null은 열쇠 없이 돌려준다). 머리 주석에 SQL `20261115030000_form_notices_accent.sql`도 먼저 붙여야 한다고 적는다
 - `src/lib/forms/notice.test.ts`: 열쇠가 하나 더 있으면 null이라는 기대가 `accent` 하나를 더한 경우를 쓰고 있으면 다른 열쇠 이름으로 바꾼다(뜻은 그대로)
 
 기대는 그대로 두고 시험만 더하는 것: `src/lib/forms/themes.test.ts`, `src/lib/forms/notice.test.ts`, `src/components/forms/formsState.test.ts`
