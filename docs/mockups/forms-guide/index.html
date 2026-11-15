@@ -285,6 +285,41 @@ function iconSvg(key) {
   return `<circle cx="90" cy="91" r="82" fill="#000" fill-opacity=".18"/><circle cx="85" cy="85" r="80" fill="${W}" stroke="${D}" stroke-width="5"/>${ICONS[key]}`
 }
 
+// ───────────────────────────── AI 그림(도형 목록, REQ-4511) ─────────────────────────────
+// 앱은 Claude 답을 이 모양(도형 다섯 가지 · 색 이름 · 숫자)으로만 받아 검사한 뒤 그린다. 아래 셋은 시안용 손 그림
+const SH = (kind, nums, fill, stroke, width, d = '') => ({ kind, nums, d, fill, stroke, width })
+const DRAWINGS = {
+  '휠체어': { subject: '휠체어', shapes: [
+    SH('circle', [78, 108, 34], 'yellow', 'dark', 9), SH('circle', [78, 108, 9], 'white', 'dark', 5),
+    SH('path', [], 'none', 'dark', 10, 'M58 46 L58 90 L108 90'), SH('path', [], 'none', 'dark', 9, 'M108 90 L120 122 L134 122'),
+    SH('circle', [122, 132, 7], 'white', 'dark', 5), SH('path', [], 'none', 'dark', 9, 'M58 46 L44 46')] },
+  '우산': { subject: '우산', shapes: [
+    SH('path', [], 'yellow', 'dark', 8, 'M28 90 A57 50 0 0 1 142 90 Z'),
+    SH('path', [], 'none', 'dark', 5, 'M85 41 C70 52 62 70 60 90'), SH('path', [], 'none', 'dark', 5, 'M85 41 C100 52 108 70 110 90'),
+    SH('line', [85, 90, 85, 128], 'none', 'dark', 8), SH('path', [], 'none', 'dark', 8, 'M85 128 A12 12 0 0 1 61 128'),
+    SH('path', [], 'white', 'dark', 4, 'M44 104 C38 114 38 120 44 120 C50 120 50 114 44 104 Z'),
+    SH('path', [], 'white', 'dark', 4, 'M126 104 C120 114 120 120 126 120 C132 120 132 114 126 104 Z')] },
+  '계단': { subject: '계단', shapes: [
+    SH('path', [], 'yellow', 'dark', 7, 'M32 126 L32 106 L60 106 L60 82 L88 82 L88 58 L116 58 L116 126 Z'),
+    SH('path', [], 'none', 'dark', 6, 'M40 85 L108 32'),
+    SH('line', [46, 80, 46, 106], 'none', 'dark', 6), SH('line', [74, 58, 74, 82], 'none', 'dark', 6), SH('line', [102, 36, 102, 58], 'none', 'dark', 6)] },
+}
+const DRAW_COLOR = { yellow: Y, dark: D, white: W, none: 'none' }
+function drawingSvg(drawing, clip) {
+  const shape = (x) => {
+    const c = `fill="${DRAW_COLOR[x.fill]}" stroke="${DRAW_COLOR[x.stroke]}" stroke-width="${x.width}" stroke-linecap="round" stroke-linejoin="round"`
+    const n = x.nums
+    if (x.kind === 'circle') return `<circle cx="${n[0]}" cy="${n[1]}" r="${n[2]}" ${c}/>`
+    if (x.kind === 'ellipse') return `<ellipse cx="${n[0]}" cy="${n[1]}" rx="${n[2]}" ry="${n[3]}" ${c}/>`
+    if (x.kind === 'rect') return `<rect x="${n[0]}" y="${n[1]}" width="${n[2]}" height="${n[3]}" rx="${n[4]}" ${c}/>`
+    if (x.kind === 'line') return `<line x1="${n[0]}" y1="${n[1]}" x2="${n[2]}" y2="${n[3]}" ${c}/>`
+    return `<path d="${x.d}" ${c}/>`
+  }
+  return `<circle cx="90" cy="91" r="82" fill="#000" fill-opacity=".18"/><circle cx="85" cy="85" r="80" fill="${W}" stroke="${D}" stroke-width="5"/>` +
+    `<clipPath id="${clip}"><circle cx="85" cy="85" r="77.5"/></clipPath><g clip-path="url(#${clip})">${drawing.shapes.map(shape).join('')}</g>`
+}
+let clipSeq = 0
+
 // ───────────────────────────── 안내문 SVG ─────────────────────────────
 const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 function T(x, y, size, weight, fill, text, spacing = 0, anchor = 'start') {
@@ -318,7 +353,8 @@ function poster(g) {
     out.push(T(b.x + 33, b.bottom.y, b.bottom.size, 900, D, g.boxBottom))
   }
   // 그림
-  if (g.picture) out.push(`<g transform="translate(${PIC.x} ${PIC.y})">${iconSvg(g.picture)}</g>`)
+  if (g.picture === 'custom' && g.drawing) out.push(`<g transform="translate(${PIC.x} ${PIC.y})">${drawingSvg(g.drawing, `draw-${++clipSeq}`)}</g>`)
+  else if (g.picture && g.picture !== 'custom') out.push(`<g transform="translate(${PIC.x} ${PIC.y})">${iconSvg(g.picture)}</g>`)
   // 띠
   if (L.title) out.push(T(P.x, L.title.y, L.title.size, 900, Y, g.bandTitle))
   for (const r of L.rows) {
@@ -377,21 +413,23 @@ if (S === 'posters') {
 } else if (S === 'icons') {
   document.getElementById('barNote').textContent = '미리 그려 둔 그림 16개 · AI가 메모에 맞는 것 하나를 고르고, 맞는 것이 없으면 그림 없이 · 직접 바꾸거나 뺄 수 있음'
   app.innerHTML = `<div class="sheet"><h1>그림 16개</h1><p class="lead">흰 원 받침 + 진회색 테두리 · 로고색 셋만 · 글자 없음</p>
-    <div class="icons">${Object.keys(ICONS).map((k) => `<figure><svg viewBox="0 0 180 180">${iconSvg(k)}</svg><figcaption>${ICON_NAMES[k]}</figcaption></figure>`).join('')}</div></div>`
+    <div class="icons">${Object.keys(ICONS).map((k) => `<figure><svg viewBox="0 0 180 180">${iconSvg(k)}</svg><figcaption>${ICON_NAMES[k]}</figcaption></figure>`).join('')}</div>
+    <h1 style="margin-top:28px">AI로 그린 그림 (예)</h1><p class="lead">'그릴 것'을 적고 [AI로 그림 그리기]를 누르면 Claude가 도형(원·타원·네모·선·길)과 로고색 이름만으로 그려요 · 앱이 검사한 뒤 같은 받침에 넣어요 · 아래 셋은 시안용으로 같은 방법으로 그린 것</p>
+    <div class="icons">${Object.values(DRAWINGS).map((d) => `<figure><svg viewBox="0 0 180 180">${drawingSvg(d, `ex-${++clipSeq}`)}</svg><figcaption>${d.subject}</figcaption></figure>`).join('')}</div></div>`
 } else {
   screen()
 }
 
 function screen() {
   document.getElementById('barNote').innerHTML = `<button data-go="1">예시 1 열기</button> <button data-go="5">예시 5(번호)</button> <button data-go="6">예시 6(윗줄 작게)</button>
-    <button data-go="new">새로 만들기</button> <button data-go="busy">정리하는 중</button> <button data-go="number">숫자 어긋남</button> <button data-go="over">띠 넘침</button>`
+    <button data-go="new">새로 만들기</button> <button data-go="busy">정리하는 중</button> <button data-go="number">숫자 어긋남</button> <button data-go="over">띠 넘침</button> <button data-go="draw">AI 그림</button> <button data-go="drawing">그리는 중</button>`
   const saved = [
     { id: 'a', title: '보험 서류 안내', at: '11월 12일', ex: 0 }, { id: 'b', title: '영상 CD 안내', at: '11월 12일', ex: 1 },
     { id: 'c', title: '신분증 안내', at: '11월 12일', ex: 2 }, { id: 'd', title: '접수 안내', at: '11월 12일', ex: 3 },
     { id: 'e', title: '진료 시작 전 안내', at: '11월 12일', ex: 4 }, { id: 'f', title: '도수치료 안내', at: '11월 12일', ex: 5 },
   ]
-  const blank = () => ({ tag: '', subtitle: '', big1: '', big2: '', firstSmall: false, boxTop: '', boxBottom: '', picture: null, bandTitle: '', mark: 'check', lines: [L1('')], note: '' })
-  let st = { open: 'a', g: structuredClone(EXAMPLES[0]), memo: '', busy: false, error: null, baseline: JSON.stringify(EXAMPLES[0]) }
+  const blank = () => ({ tag: '', subtitle: '', big1: '', big2: '', firstSmall: false, boxTop: '', boxBottom: '', picture: null, drawing: null, bandTitle: '', mark: 'check', lines: [L1('')], note: '' })
+  let st = { open: 'a', g: structuredClone(EXAMPLES[0]), memo: '', busy: false, error: null, baseline: JSON.stringify(EXAMPLES[0]), subject: '', drawBusy: false, drawError: null }
   const go = params.get('go')
 
   app.innerHTML = `
@@ -440,7 +478,12 @@ function screen() {
         <label class="check" style="margin-top:8px"><input type="checkbox" id="firstSmall" ${g.firstSmall ? 'checked' : ''}> 윗줄 작게(아랫줄을 크게 — 금액·횟수 안내)</label>
         <div class="two" style="margin-top:8px">${field('boxTop', '흰 상자 윗줄', LIMIT.boxTop, '작은 글', true)}${field('boxBottom', '흰 상자 아랫줄', LIMIT.boxBottom, '굵은 글', true)}</div>
         <div class="field" style="margin-top:8px"><label class="label" for="f-picture">그림<span class="hint">선택</span></label>
-          <select id="f-picture"><option value="">없음</option>${Object.entries(ICON_NAMES).map(([k, n]) => `<option value="${k}" ${g.picture === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+          <select id="f-picture"><option value="">없음</option>${Object.entries(ICON_NAMES).map(([k, n]) => `<option value="${k}" ${g.picture === k ? 'selected' : ''}>${n}</option>`).join('')}${g.drawing ? `<option value="custom" ${g.picture === 'custom' ? 'selected' : ''}>AI로 그린 그림: ${esc(g.drawing.subject)}</option>` : ''}</select></div>
+        <div class="field" style="margin-top:8px"><label class="label" for="f-subject">새로 그릴 것<span class="hint">선택 · 20자까지</span></label>
+          <div class="row" style="margin-top:0;flex-wrap:nowrap"><input type="text" id="f-subject" maxlength="20" placeholder="예) 휠체어" value="${esc(st.subject)}">
+            <button class="btn sm" id="draw" style="flex:none" ${st.drawBusy || !st.subject.trim() ? 'disabled' : ''}>${st.drawBusy ? '그리는 중…' : 'AI로 그림 그리기'}</button></div>
+          <p class="notice">적은 낱말만 AI로 보내요. 마음에 안 들면 다시 눌러 새로 그려요</p>
+          ${st.drawError ? `<div class="err"><b>${st.drawError.what}</b><br>${st.drawError.fix} <code>${st.drawError.code}</code></div>` : ''}</div>
       </fieldset>
       <fieldset class="group"><legend>진회색 띠</legend>
         ${field('bandTitle', '띠 제목', LIMIT.bandTitle, '', true)}
@@ -484,6 +527,11 @@ function screen() {
     document.querySelectorAll('[data-k]').forEach((i) => i.oninput = (e) => { st.g[e.target.dataset.k] = e.target.value; paint() })
     $('firstSmall').onchange = (e) => { st.g.firstSmall = e.target.checked; paint() }
     $('f-picture').onchange = (e) => { st.g.picture = e.target.value || null; paint() }
+    $('f-subject').oninput = (e) => { st.subject = e.target.value; st.drawError = null; $('draw').disabled = st.drawBusy || !st.subject.trim() }
+    $('draw').onclick = () => {
+      st.drawBusy = true; renderEditor()
+      setTimeout(() => { st.drawBusy = false; const k = st.subject.trim(); st.g.drawing = structuredClone(DRAWINGS[k] || { ...DRAWINGS['휠체어'], subject: k }); st.g.picture = 'custom'; renderEditor() }, 1200)
+    }
     document.querySelectorAll('[data-mark]').forEach((b) => b.onclick = () => { st.g.mark = b.dataset.mark; renderEditor() })
     document.querySelectorAll('[data-line]').forEach((i) => i.oninput = (e) => { st.g.lines[+e.target.dataset.line].text = e.target.value; paint() })
     document.querySelectorAll('[data-em]').forEach((i) => i.oninput = (e) => { st.g.lines[+e.target.dataset.em].em = e.target.value; paint() })
@@ -514,6 +562,12 @@ function screen() {
   } else if (go === 'over') {
     openSaved('d')
     st.g.lines = [L1('환자 본인이 오신 뒤에 접수해 주세요'), L1('가족·지인 접수는 대신 할 수 없습니다'), L1('보호자는 옆에서 도와주실 수 있습니다'), L1('접수 뒤에는 자리에서 기다려 주세요')]
+    renderEditor()
+  } else if (go === 'draw' || go === 'drawing') {
+    const g = { tag: '휠체어 안내', subtitle: '휠체어가 필요하시면', big1: '접수대에', big2: '말씀해 주세요', firstSmall: false,
+      boxTop: '이렇게 말씀해 주세요', boxBottom: '"휠체어 필요해요"', picture: 'custom', drawing: structuredClone(DRAWINGS['휠체어']), bandTitle: '이럴 때 빌려 드려요', mark: 'check',
+      lines: [L1('걷기 힘드실 때'), L1('주사·시술 뒤'), L1('깁스를 하셨을 때'), L1('오래 서 계시기 힘들 때')], note: '다 쓰신 뒤에는 접수대에 돌려주세요' }
+    st = { ...st, open: null, g, baseline: JSON.stringify(blank()), subject: go === 'drawing' ? '우산' : '휠체어', drawBusy: go === 'drawing' }
     renderEditor()
   } else renderEditor()
 }
