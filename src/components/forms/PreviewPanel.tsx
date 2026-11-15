@@ -1,17 +1,17 @@
-import type { Ref } from 'react'
+import type { ReactNode, Ref } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { ds } from '@/components/ui/classes'
-import type { ClosureNotice, ThemeId } from '@/types/forms'
-import { Poster } from './Poster'
 
 // 서식 화면 오른쪽: 안내문 미리보기(A4 세로)와 [저장] [인쇄·PDF] [그림 파일] [지우기], 저장 상태와 오류
-// (spec forms AC-3505.4·REQ-3506·REQ-3507, 시안 screen.html '미리보기'). 앱 화면 색·글자는 토큰과 ds만 쓴다
+// (spec forms AC-3505.4·REQ-3506·REQ-3507, 시안 screen.html '미리보기'). 앱 화면 색·글자는 토큰과 ds만 쓴다.
+// 휴진 안내와 환자 안내문이 같이 쓴다(spec forms-guide design.md 9절): 그림(poster)은 부르는 쪽이 그려 넘기고,
+// 빈 카드 점선 상자(empty)는 휴진 안내만 쓴다
 
 type SaveMark = 'saved' | 'dirty' | null
 
 type Props = {
-  notice: ClosureNotice // 미리보기 값(시작 날짜 있는 카드만)
-  theme: ThemeId
+  poster: ReactNode // 미리보기 그림(휴진 안내 <Poster> · 환자 안내문 <GuidePoster>)
+  empty: boolean // 빈 카드 자리 안내를 보인다(휴진 안내: 시작 날짜 있는 카드가 없을 때)
   posterRef: Ref<HTMLDivElement> // 그림 파일이 이 안의 <svg>를 쓴다
   ready: boolean // 검사를 넘어 저장·뽑기를 할 수 있다
   canDelete: boolean
@@ -28,8 +28,7 @@ type Props = {
 }
 
 export function PreviewPanel(props: Props) {
-  const { notice, theme, posterRef, ready, canDelete, saveMark, saving, deleting, imaging, storeError, imageFailed } = props
-  const empty = notice.cards.length === 0
+  const { poster, empty, posterRef, ready, canDelete, saveMark, saving, deleting, imaging, storeError, imageFailed } = props
   return (
     <section aria-label="미리보기" className={`${ds.panel} p-4`}>
       <h2 className="text-body font-semibold text-ink">
@@ -37,7 +36,7 @@ export function PreviewPanel(props: Props) {
       </h2>
       <div className="relative mt-3 overflow-clip rounded-control border border-line">
         <div ref={posterRef} className="*:block *:h-auto *:w-full">
-          <Poster notice={notice} theme={theme} />
+          {poster}
         </div>
         {empty && (
           // 빈 카드 자리(AC-3505.4): 시안의 점선 상자 자리(x 160·y 560·폭 474·높이 250 / 794×1123)
