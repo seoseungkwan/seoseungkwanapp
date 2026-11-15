@@ -8,6 +8,8 @@ import {
   backgroundPick,
   contrastRatio,
   contrastWithWhite,
+  isAccentHex,
+  isLightAccent,
   isThemePick,
   lookOfPick,
   THEMES,
@@ -290,5 +292,38 @@ describe('AC-4605.2·AC-4605.3: 명암비와 대신 강조색(themes.ts)', () =>
   it('AC-4605.3: BACKGROUND_FALLBACK_ACCENT는 #+소문자 16진수 6자리이고 흰색과 4.5 이상이다', () => {
     expect(BACKGROUND_FALLBACK_ACCENT).toMatch(/^#[0-9a-f]{6}$/)
     expect(contrastRatio(BACKGROUND_FALLBACK_ACCENT, '#ffffff')).toBeGreaterThanOrEqual(4.5)
+  })
+})
+
+// ---------- 글자 색 (specs/forms-accent REQ-4702·REQ-4703, design.md 2절, TASK-2) ----------
+
+describe('AC-4702.3·AC-4703.3: 글자 색 모양(isAccentHex)', () => {
+  it('AC-4702.3: # + 소문자 16진수 6자리만 참이다(테마 강조색 23개·대신 강조색 포함)', () => {
+    for (const ok of ['#000000', '#ffffff', '#c62f2f', '#0a1b2c', '#ffff00', ...THEMES.map((t) => t.accent), BACKGROUND_FALLBACK_ACCENT]) {
+      expect(isAccentHex(ok), ok).toBe(true)
+    }
+  })
+
+  it('AC-4702.3: 대문자·3자리·8자리·# 없음·색 이름·앞뒤 공백·줄바꿈·16진수 아닌 글자는 거짓이다', () => {
+    for (const bad of ['#C62F2F', '#c62F2f', '#abc', '#c62f', '#c62f2', '#c62f2f0', '#c62f2f00', 'c62f2f', '##c62f2f', 'red', '', ' #c62f2f', '#c62f2f ', '#c62f2f\n', '#gggggg']) {
+      expect(isAccentHex(bad), JSON.stringify(bad)).toBe(false)
+    }
+  })
+
+  it('AC-4703.3: 글이 아닌 값(null·undefined·숫자·배열·객체·참거짓)은 거짓이다', () => {
+    for (const bad of [null, undefined, 0xc62f2f, ['#c62f2f'], { accent: '#c62f2f' }, true]) {
+      expect(isAccentHex(bad), String(bad)).toBe(false)
+    }
+  })
+})
+
+describe('AC-4701.4: 옅은 글자 색(isLightAccent, 흰색과 4.5 미만)', () => {
+  it('AC-4701.4: 흰색과 명암비 4.5 미만이면 참, 4.5 이상이면 거짓이다(경계 #777777 4.48 · #767676 4.54)', () => {
+    for (const light of ['#ffffff', '#ffff00', '#f9d71c', '#777777', '#ff0000']) expect(isLightAccent(light), light).toBe(true)
+    for (const dark of ['#767676', '#000000', '#c62f2f', BACKGROUND_FALLBACK_ACCENT]) expect(isLightAccent(dark), dark).toBe(false)
+  })
+
+  it.each(THEMES.map((t) => [t.id, t.accent] as const))('AC-4701.4: %s 강조색도 contrastRatio(색, 흰색) < 4.5와 같은 답이다', (_, accent) => {
+    expect(isLightAccent(accent)).toBe(contrastRatio(accent, '#ffffff') < 4.5)
   })
 })
