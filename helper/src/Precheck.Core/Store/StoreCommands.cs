@@ -44,6 +44,7 @@ public static class StoreCommands
     /// <summary>
     /// 웹이 보낸 journal은 모양만 보고 저장하지 않는다. 입력 기록은 도우미가 가지므로(TASK-17이 WorkStore.SaveMonth로 직접 쓴다)
     /// 입력 뒤에 늦게 도착한 저장이 기록을 되돌리거나 지우지 못한다.
+    /// sunap(수납일지, spec sunap-ilji AC-4902.5)은 그 달 파일의 sunap 칸만 바꾼다. month는 drafts·done·journal·sunap 중 하나가 있을 때만 온다.
     /// </summary>
     private static void Save(Func<WorkStore> open, Func<IDisposable?> acquire, Request request)
     {
@@ -53,8 +54,9 @@ public static class StoreCommands
         var done = Field(args, "done");
         var contact = Field(args, "contact");
         var settings = Field(args, "settings");
+        var sunap = Field(args, "sunap");
 
-        var hasMonthFields = drafts.HasValue || done.HasValue || args.TryGetProperty("journal", out _);
+        var hasMonthFields = drafts.HasValue || done.HasValue || sunap.HasValue || args.TryGetProperty("journal", out _);
         if ((month != null) != hasMonthFields || (month == null && !contact.HasValue && !settings.HasValue))
         {
             throw new ProtocolException(ErrorCodes.BadMessage, request.Id);
@@ -62,7 +64,7 @@ public static class StoreCommands
 
         using var workLock = acquire() ?? throw new HelperException(InputErrors.Busy);
         var store = open();
-        if (drafts.HasValue || done.HasValue) store.SaveMonth(month!, drafts, done, journal: null);
+        if (drafts.HasValue || done.HasValue || sunap.HasValue) store.SaveMonth(month!, drafts, done, journal: null, sunap: sunap);
         if (contact.HasValue) store.SaveContact(contact.Value);
         if (settings.HasValue) store.SaveSettings(settings.Value);
         store.Prune();

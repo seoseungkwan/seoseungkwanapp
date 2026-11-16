@@ -191,7 +191,7 @@ public class InputWiringJournalTests
         Assert.Equal(new[] { "work-2026-09.dat", StoreRig.MonthFile }, files.Names());
     }
 
-    [Fact(DisplayName = "AC-035.2 묶음 끝의 기록이 store.load로 다시 읽힌다(AC-018.5), 답의 달은 세 칸 그대로다")]
+    [Fact(DisplayName = "AC-035.2 묶음 끝의 기록이 store.load로 다시 읽힌다(AC-018.5), 답의 달은 세 칸에 수납일지 sunap 칸(AC-4902.5)만 더해진다")]
     public void ReadBackThroughLoad()
     {
         using var files = new StoreRig();
@@ -201,7 +201,7 @@ public class InputWiringJournalTests
 
         var month = Json.Parse(files.Open().Load(new[] { StoreRig.Month }, false, false)).GetProperty("months").GetProperty(StoreRig.Month);
 
-        Assert.Equal(new[] { "drafts", "done", "journal" }, Json.Keys(month));
+        Assert.Equal(new[] { "drafts", "done", "journal", "sunap" }, Json.Keys(month));
         StoreJson.Same("{\"v1\":\"done\",\"v2\":\"skipped\"}", month.GetProperty("journal"));
     }
 
@@ -294,7 +294,7 @@ public class InputWiringJournalTests
         StoreJson.Same("{\"v1\":\"2026-10-27\"}", files.Inside(StoreRig.MonthFile).GetProperty("journalDates"));
         var answer = files.Open().Load(new[] { StoreRig.Month }, false, false);
         Assert.DoesNotContain("journalDates", answer, StringComparison.Ordinal);
-        Assert.Equal(new[] { "drafts", "done", "journal" }, Json.Keys(Json.Parse(answer).GetProperty("months").GetProperty(StoreRig.Month)));
+        Assert.Equal(new[] { "drafts", "done", "journal", "sunap" }, Json.Keys(Json.Parse(answer).GetProperty("months").GetProperty(StoreRig.Month)));
     }
 
     [Fact(DisplayName = "AC-035.4 웹은 journalDates를 보낼 수 없다: 명령 표에 칸이 없어 store.save가 E-HELPER-BAD-MESSAGE다")]

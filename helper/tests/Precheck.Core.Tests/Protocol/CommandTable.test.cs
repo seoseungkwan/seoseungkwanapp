@@ -219,7 +219,7 @@ public class CommandTableTests
         Assert.Equal(expected, Check("contact.targets", args));
     }
 
-    [Fact(DisplayName = "AC-2801.5 commands.json의 contact.targets kind 값은 followup·injection·lapsed·reservation 넷이고 명령 이름·칸은 그대로다")]
+    [Fact(DisplayName = "AC-2801.5 AC-4902.1 commands.json의 contact.targets kind 값은 followup·injection·lapsed·reservation·sunap 다섯이고 명령 이름·칸은 그대로다")]
     public void ContactTargetsKindValues()
     {
         using var doc = JsonDocument.Parse(File.ReadAllBytes(Repo.PathOf("src", "lib", "bridge", "commands.json")));
@@ -227,11 +227,45 @@ public class CommandTableTests
         var args = targets.GetProperty("args");
         Assert.Equal(new[] { "kind", "from", "to" }, args.EnumerateObject().Select(p => p.Name).ToArray());
         Assert.Equal("enum", args.GetProperty("kind").GetProperty("type").GetString());
-        Assert.Equal(new[] { "followup", "injection", "lapsed", "reservation" }, args.GetProperty("kind").GetProperty("values").EnumerateArray().Select(v => v.GetString()).ToArray());
+        Assert.Equal(new[] { "followup", "injection", "lapsed", "reservation", "sunap" }, args.GetProperty("kind").GetProperty("values").EnumerateArray().Select(v => v.GetString()).ToArray());
         Assert.True(targets.GetProperty("patient").GetBoolean());
         Assert.Equal(1100, targets.GetProperty("maxDays").GetInt32());
         Assert.True(Table.Has("contact.targets"));
         Assert.True(Table.IsPatient("contact.targets"));
+    }
+
+    [Theory(DisplayName = "AC-4902.1 contact.targets kind에 sunap을 더했다(하루 from = to, 1,100일 한도 그대로), 글자가 다르면 E-HELPER-BAD-MESSAGE")]
+    [InlineData("sunap", "2026-10-30", "2026-10-30", null)]
+    [InlineData("sunap", "2026-08-29", "2026-08-29", null)]
+    [InlineData("Sunap", "2026-10-30", "2026-10-30", "E-HELPER-BAD-MESSAGE")]
+    [InlineData("sunap ", "2026-10-30", "2026-10-30", "E-HELPER-BAD-MESSAGE")]
+    [InlineData("sunap", "2026-10-31", "2026-10-30", "E-HELPER-BAD-MESSAGE")]   // from > to
+    [InlineData("sunap", "2026-10-30", "2026-13-01", "E-HELPER-BAD-MESSAGE")]
+    public void ContactTargetsSunapKind(string kind, string from, string to, string? expected)
+    {
+        var args = "{\"kind\":\"" + kind + "\",\"from\":\"" + from + "\",\"to\":\"" + to + "\"}";
+        Assert.Equal(expected, Check("contact.targets", args));
+    }
+
+    [Theory(DisplayName = "AC-4902.5 store.save 안쪽 칸 sunap?은 객체만 받는다(명령 표 {type:'json', of:'object', optional:true})")]
+    [InlineData("{\"month\":\"2026-10\",\"sunap\":{}}", null)]
+    [InlineData("{\"month\":\"2026-10\",\"sunap\":{\"2026-10-30\":{\"closedAt\":\"2026-10-30T09:30:00.000Z\"}}}", null)]
+    [InlineData("{\"month\":\"2026-10\",\"sunap\":[]}", "E-HELPER-BAD-MESSAGE")]
+    [InlineData("{\"month\":\"2026-10\",\"sunap\":\"x\"}", "E-HELPER-BAD-MESSAGE")]
+    [InlineData("{\"month\":\"2026-10\",\"sunap\":null}", "E-HELPER-BAD-MESSAGE")]
+    [InlineData("{\"month\":\"2026-10\",\"Sunap\":{}}", "E-HELPER-BAD-MESSAGE")]
+    public void StoreSaveSunapField(string inner, string? expected)
+    {
+        Assert.Equal(expected, Check("store.save", Payload(inner)));
+    }
+
+    [Fact(DisplayName = "AC-4902.5 commands.json store.save payload.fields의 sunap은 {type:'json', of:'object', optional:true}이고 다른 칸은 그대로다")]
+    public void StoreSaveSunapFieldShape()
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllBytes(Repo.PathOf("src", "lib", "bridge", "commands.json")));
+        var fields = doc.RootElement.GetProperty("commands").GetProperty("store.save").GetProperty("args").GetProperty("payload").GetProperty("fields");
+        Assert.Equal(new[] { "month", "drafts", "done", "journal", "sunap", "contact", "settings" }, Json.Keys(fields));
+        Assert.Equal("{\"type\":\"json\",\"of\":\"object\",\"optional\":true}", fields.GetProperty("sunap").GetRawText().Replace(" ", ""));
     }
 
     [Fact(DisplayName = "AC-001.2 contact.targets에 kind가 없으면 E-HELPER-BAD-MESSAGE")]

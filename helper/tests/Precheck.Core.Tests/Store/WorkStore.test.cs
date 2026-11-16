@@ -206,7 +206,7 @@ public class WorkStoreTests
         foreach (var month in new[] { "2026-09", "2026-10" })
         {
             var content = root.GetProperty("months").GetProperty(month);
-            Assert.Equal(new[] { "drafts", "done", "journal" }, Json.Keys(content));
+            Assert.Equal(new[] { "drafts", "done", "journal", "sunap" }, Json.Keys(content));
             foreach (var field in Json.Keys(content)) StoreJson.Same(StoreRig.Empty, content.GetProperty(field));
         }
         Assert.False(Directory.Exists(rig.Folder));

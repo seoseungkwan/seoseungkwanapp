@@ -5,6 +5,7 @@ using Precheck.Core.Bit;
 using Precheck.Core.Claim;
 using Precheck.Core.Protocol;
 using Precheck.Core.Registration;
+using Precheck.Core.Sunap;
 
 namespace Precheck.Core.Contact;
 
@@ -77,7 +78,7 @@ public static class ContactCommands
     /// contact.targets {kind, from, to}(REQ-605). 명령 표가 kind·날짜 모양·1,100일을 이미 검사했다. kind로 처리기를 나눈다(spec patients-bit-lists AC-2801.5):
     /// followup·injection → 31일·오늘 이하를 다시 보고 등록 병원 확인 → 83·47 표(ContactTargets.Build). 비트 로그인은 도우미가 켜진 동안 기억한다
     /// (등록 하나에 StatsLogin 하나, claim.month와 같은 방식). reservation → ReservationTargets.Build, lapsed → LapsedTargets.Build(기간을 다시 보고
-    /// 등록 병원 확인 → SQL 하나, 통계 화면·로그인 없음). 모두 다 만든 JSON을 chunk … end로 보낸다. 막히면 오류 번호 하나로 error(Dispatcher).
+    /// 등록 병원 확인 → SQL 하나, 통계 화면·로그인 없음), sunap → SunapTargets.Build(수납일지 하루 장부, spec sunap-ilji). 모두 다 만든 JSON을 chunk … end로 보낸다. 막히면 오류 번호 하나로 error(Dispatcher).
     /// 명령 이름은 그대로라 크롬 확장은 다시 올리지 않는다(확장은 명령 이름만 본다).
     /// </summary>
     public static void RegisterTargets(Dispatcher dispatcher, BitServices services)
@@ -98,6 +99,7 @@ public static class ContactCommands
     {
         ReservationTargets.Kind => ReservationTargets.Build(services, from, to),
         LapsedTargets.Kind => LapsedTargets.Build(services, from, to),
+        SunapTargets.Kind => SunapTargets.Build(services, from, to),
         _ => ContactTargets.Build(services, login, kind, from, to),
     };
 

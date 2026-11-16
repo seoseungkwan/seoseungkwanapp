@@ -96,14 +96,21 @@ describe('AC-004.5·AC-004.6·AC-004.9 명령 표 읽기', () => {
   })
 
   // spec patients-bit-lists: 새 명단 둘은 명령 이름을 더하지 않고 contact.targets의 kind 값만 더한다(크롬 확장은 명령 이름만 본다)
-  it('AC-2801.5 contact.targets kind 값은 followup·injection·lapsed·reservation이고 명령 이름은 그대로(환자 자료 조각 명령)다', () => {
+  it('AC-2801.5·AC-4902.1 contact.targets kind 값은 followup·injection·lapsed·reservation·sunap이고 명령 이름은 그대로(환자 자료 조각 명령)다', () => {
     const targets = commands.commands['contact.targets']
-    expect(targets.args.kind).toEqual({ type: 'enum', values: ['followup', 'injection', 'lapsed', 'reservation'] })
+    expect(targets.args.kind).toEqual({ type: 'enum', values: ['followup', 'injection', 'lapsed', 'reservation', 'sunap'] })
     expect(Object.keys(targets.args)).toEqual(['kind', 'from', 'to'])
     expect(targets.maxDays).toBe(1100)
     expect(COMMANDS).toContain('contact.targets')
     expect(PATIENT_COMMANDS).toContain('contact.targets')
     expect(Object.keys(table).filter((c) => c.startsWith('contact.'))).toEqual(['contact.targets'])
+  })
+
+  // spec sunap-ilji: 수납일지 고친 칸은 달 파일의 새 칸 sunap으로 저장한다(새 명령 없음)
+  it('AC-4902.5 store.save payload 칸은 month·drafts·done·journal·sunap·contact·settings이고 sunap은 고르는 객체 칸이다', () => {
+    const fields = commands.commands['store.save'].args.payload.fields as Record<string, unknown>
+    expect(Object.keys(fields)).toEqual(['month', 'drafts', 'done', 'journal', 'sunap', 'contact', 'settings'])
+    expect(fields.sunap).toEqual({ type: 'json', of: 'object', optional: true })
   })
 
   it('AC-004.9 보내는 명령은 store.save·bit.input 둘이다(표의 send:true)', () => {

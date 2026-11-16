@@ -61,6 +61,7 @@
             "drafts": { "type": "json", "of": "object", "optional": true },
             "done": { "type": "json", "of": "object", "optional": true },
             "journal": { "type": "json", "of": "object", "optional": true },
+            "sunap": { "type": "json", "of": "object", "optional": true },
             "contact": { "type": "json", "of": "object", "optional": true },
             "settings": { "type": "json", "of": "object", "optional": true }
           }
@@ -105,7 +106,7 @@
       "patient": true,
       "maxDays": 1100,
       "args": {
-        "kind": { "type": "enum", "values": ["followup", "injection", "lapsed", "reservation"] },
+        "kind": { "type": "enum", "values": ["followup", "injection", "lapsed", "reservation", "sunap"] },
         "from": { "type": "date" },
         "to": { "type": "date" }
       }

@@ -24,7 +24,7 @@ export type ArgsMap = {
   'claim.memos': Period
   'store.load': { months?: string[]; settings?: boolean; contact?: boolean }
   'sam.latest': Empty
-  'contact.targets': Period & { kind: 'followup' | 'injection' | 'lapsed' | 'reservation' }
+  'contact.targets': Period & { kind: 'followup' | 'injection' | 'lapsed' | 'reservation' | 'sunap' }
   'stats.rows': Period
   'revenue.days': Period
 }

@@ -15,7 +15,8 @@ namespace Precheck.Core.Store;
 
 /// <summary>
 /// 도우미 작업 저장(REQ-015, design.md 9-3). 파일은 머리 PRECHECK-STORE-1\n + IProtector로 암호화한 JSON이고,
-/// JSON 뿌리는 {profileId, 칸…}이다. work-YYYY-MM.dat {drafts, done, journal, journalDates?, originals?} · contact.dat {contact} · settings.dat {settings}.
+/// JSON 뿌리는 {profileId, 칸…}이다. work-YYYY-MM.dat {drafts, done, journal, journalDates?, originals?, sunap?} · contact.dat {contact} · settings.dat {settings}.
+/// sunap(수납일지 고친 칸·마감 표시, spec sunap-ilji AC-4902.5)은 웹이 그 달 전체를 보내 칸째 바꾸고, store.load로 나간다(없으면 {}).
 /// journalDates(진료 → 내원일)는 입력 기록과 함께 도우미만 쓰고 store.load로 나가지 않는다: 달 파일 이름에는 달뿐이라 쓰다 멈춘 진료의 날짜(AC-035.4)를 여기서 안다.
 /// originals(진료 → 바꾸기 전에 칸에 있던 글 목록, AC-037.1)도 도우미만 쓰고 store.load로 나가지 않는다. store.save가 지우지 못하게 그대로 옮겨 쓴다.
 /// bit.input 앞의 검사와 input-acks.dat는 WorkStoreRecords.cs에 있다(AC-035.9).
@@ -42,8 +43,9 @@ public sealed partial class WorkStore
     private const string OriginalsField = "originals";
     private const string ContactField = "contact";
     private const string SettingsField = "settings";
+    private const string SunapField = "sunap";
 
-    private static readonly string[] ObjectFields = { DraftsField, DoneField, JournalField, JournalDatesField, OriginalsField, ContactField, SettingsField };
+    private static readonly string[] ObjectFields = { DraftsField, DoneField, JournalField, JournalDatesField, OriginalsField, ContactField, SettingsField, SunapField };
     private static readonly byte[] HeaderBytes = Encoding.ASCII.GetBytes(RegistrationFile.Header);
     private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
     private static readonly Regex MonthShape = new Regex(@"^[0-9]{4}-(?:0[1-9]|1[0-2])\z", RegexOptions.CultureInvariant);
@@ -86,9 +88,9 @@ public sealed partial class WorkStore
     /// 달 파일 저장. null인 칸은 보내지 않은 것이라 저장해 둔 값을 그대로 둔다(파일 전체를 덮어쓰지 않는다).
     /// drafts·done은 보낸 값으로 칸 전체를 바꾼다. journal·journalDates는 도우미가 가진 기록이라 진료(visitKey)마다 합친다: 보낸 진료만 바꾸고 다른 기록은 남는다.
     /// originals도 진료마다 합치고(보낸 진료는 목록째 바꾼다), 값이 없으면 칸을 쓰지 않는다. 웹이 보낸 값은 여기로 오지 않는다(StoreCommands·명령 표).
-    /// journalDates는 값이 없으면 칸을 쓰지 않는다.
+    /// journalDates는 값이 없으면 칸을 쓰지 않는다. sunap은 drafts처럼 보낸 값으로 칸 전체를 바꾸고, 보낸 적도 저장된 적도 없으면 칸을 쓰지 않는다.
     /// </summary>
-    public void SaveMonth(string month, JsonElement? drafts, JsonElement? done, JsonElement? journal, JsonElement? journalDates = null, JsonElement? originals = null)
+    public void SaveMonth(string month, JsonElement? drafts, JsonElement? done, JsonElement? journal, JsonElement? journalDates = null, JsonElement? originals = null, JsonElement? sunap = null)
     {
         var path = MonthPath(month);
         RequireObject(drafts);
@@ -96,6 +98,7 @@ public sealed partial class WorkStore
         RequireObject(journal);
         RequireObject(journalDates);
         RequireObject(originals);
+        RequireObject(sunap);
         Guarded(() =>
         {
             var stored = ReadStored(path);
@@ -120,6 +123,8 @@ public sealed partial class WorkStore
                     WriteJournalEntries(writer, kept, originals);
                     writer.WriteEndObject();
                 }
+                var ledger = sunap ?? Field(stored, SunapField);
+                if (ledger.HasValue) WriteField(writer, SunapField, ledger);
             });
         });
     }
@@ -131,8 +136,8 @@ public sealed partial class WorkStore
     public void SaveSettings(JsonElement settings) => SaveWhole(SettingsFile, SettingsField, settings);
 
     /// <summary>
-    /// 물은 것만 담은 JSON 글자. {months?: {"YYYY-MM": {drafts, done, journal}}, contact?: {…}, settings?: {…}|null}.
-    /// 본 파일도 .bak도 없으면 달은 세 칸 모두 {}, contact는 {}, settings는 null(사본 없음, AC-013.9). 프로필 ID는 싣지 않는다.
+    /// 물은 것만 담은 JSON 글자. {months?: {"YYYY-MM": {drafts, done, journal, sunap}}, contact?: {…}, settings?: {…}|null}.
+    /// 본 파일도 .bak도 없으면 달은 네 칸 모두 {}, contact는 {}, settings는 null(사본 없음, AC-013.9). 프로필 ID는 싣지 않는다.
     /// 하나라도 막히면 그 오류만 던진다(반쪽 내용을 돌려주지 않는다). 조각으로 보내는 일은 부르는 쪽이 한다.
     /// </summary>
     public string Load(IReadOnlyList<string> months, bool settings, bool contact) => Load(months, settings, contact, mayRepair: true);
@@ -193,6 +198,7 @@ public sealed partial class WorkStore
                         WriteField(writer, DraftsField, Field(stored, DraftsField));
                         WriteField(writer, DoneField, Field(stored, DoneField));
                         WriteField(writer, JournalField, Field(stored, JournalField));
+                        WriteField(writer, SunapField, Field(stored, SunapField));
                         writer.WriteEndObject();
                     }
                     writer.WriteEndObject();

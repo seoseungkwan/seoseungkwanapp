@@ -345,7 +345,7 @@ public class InputReplaceTests
         var loaded = rig.Files.Open().Load(new[] { "2026-10" }, false, false);
         Assert.DoesNotContain("originals", loaded, StringComparison.Ordinal);
         Assert.DoesNotContain(Box, loaded, StringComparison.Ordinal);
-        Assert.Equal(new[] { "done", "drafts", "journal" }, Json.Parse(loaded).GetProperty("months").GetProperty("2026-10").EnumerateObject().Select(field => field.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+        Assert.Equal(new[] { "done", "drafts", "journal", "sunap" }, Json.Parse(loaded).GetProperty("months").GetProperty("2026-10").EnumerateObject().Select(field => field.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
     }
 
     [Fact(DisplayName = "AC-037.1 A→B→C로 바꾼 뒤 파일에 A와 B가 모두 있고, 다른 진료의 목록과 다른 칸은 그대로다")]

@@ -242,9 +242,9 @@ GROUP BY RTRIM(c.OcmChtNum),LEFT(c.OcmAcpDtm,8)";
     /// <summary>허용 목록(이 클래스의 SQL 상수 전부).</summary>
     public static IReadOnlyCollection<string> All => Allowed.Keys;
 
-    /// <summary>글자가 허용 목록의 문장과 똑같은가(대소문자·공백까지). 매출·통계·환자 탭 명단(Contact.ListSql) 문장도 본다.</summary>
+    /// <summary>글자가 허용 목록의 문장과 똑같은가(대소문자·공백까지). 매출·통계·환자 탭 명단(Contact.ListSql)·수납일지(Sunap.SunapSql) 문장도 본다.</summary>
     public static bool IsAllowed(string? sql) =>
-        sql != null && (Allowed.ContainsKey(sql) || RevenueSql.Parameters.ContainsKey(sql) || Stats.StatsSql.IsAllowed(sql) || Contact.ListSql.IsAllowed(sql));
+        sql != null && (Allowed.ContainsKey(sql) || RevenueSql.Parameters.ContainsKey(sql) || Stats.StatsSql.IsAllowed(sql) || Contact.ListSql.IsAllowed(sql) || Sunap.SunapSql.IsAllowed(sql));
 
     /// <summary>문장이 받는 매개변수 표. 허용 목록 밖이면 BitException(E-BIT-READ-FAILED).</summary>
     public static IReadOnlyList<SqlParam> ParametersOf(string sql)
@@ -252,6 +252,7 @@ GROUP BY RTRIM(c.OcmChtNum),LEFT(c.OcmAcpDtm,8)";
         if (sql != null && Allowed.TryGetValue(sql, out var parameters)) return parameters;
         if (sql != null && RevenueSql.Parameters.TryGetValue(sql, out var revenue)) return revenue;
         if (sql != null && Contact.ListSql.IsAllowed(sql)) return Contact.ListSql.ParametersOf(sql);
+        if (sql != null && Sunap.SunapSql.IsAllowed(sql)) return Sunap.SunapSql.ParametersOf(sql);
         return Stats.StatsSql.ParametersOf(sql!);
     }
 }
