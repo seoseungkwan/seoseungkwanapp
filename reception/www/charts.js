@@ -5,8 +5,11 @@
 //   (GET /api/visit/{k}/prev, detail.js pastCard 그대로: 사람 칸·특이사항 없이 recordOf의 같은 부분, 회색 테두리. 상세의 지난 진료기록부
 //   여러 장도 같은 카드다, reception-memo-papers AC-3404.3). 지난 내원이 없으면 첫 방문 카드.
 //   태블릿은 두 칸(왼쪽 오늘 | 오른쪽 직전), 폰은 위아래다(style.css, AC-3309.2)
+// - 직전 종이가 있으면 그 아래 "그 전 진료기록부"(section.older): papers?from=1 답의 장마다 머리 + 지난 종이 카드, 다음 쪽이 있으면
+//   [이전 진료기록부 더 보기 ▾](detail.js appendPast 그대로). 읽는 중·실패·없음은 한 줄이다(reception-arrange-tune AC-3605.3)
 // - 읽는 중·읽기 실패는 그 칸에 한 줄만 보인다(AC-3309.5). 다시 읽기·실패 뒤 다시 보기는 app.js가 정한다
-// - 같은 환자를 다시 그리면 화면 뼈대는 두고 머리·두 칸만 바꾼다. 펼쳐 둔 특이사항은 펼친 채다(AC-1502.4와 같다)
+// - 같은 환자를 다시 그리면 화면 뼈대는 두고 머리·두 칸만 바꾼다. 펼쳐 둔 특이사항은 펼친 채다(AC-1502.4와 같다).
+//   그 전 묶음은 같은 답(view.older)이면 두고 안 바꾼다([더 보기]로 붙인 장·초점이 남는다, AC-3605.4)
 // - 환자 글은 dom.js el()로 글 마디로만 넣는다(AC-3312.1). 도우미에 묻지 않는다: 자료는 app.js가 넘긴다. 문서 제목은 건드리지 않는다
 //
 // 쓰는 법 (app.js)
@@ -15,15 +18,20 @@
 //     today       'reading' | 'error' | getHistory(k, 0) 답(paper가 있다)
 //     prev        'reading' | 'error' | null(지난 내원 없음) | getPrev(k) 답의 prev { date, ago, room, ins, sym, dx, rx, out }
 //     view.today  오늘(Date). 없으면 지금 기기 날짜(오늘 종이 머리글·제목 날짜)
+//     view.older  'reading'(없으면 이것) | 'error' | getPapers(k, 1) 답 { papers, total, next }  그 전 진료기록부
+//     view.onMore(from) → Promise<다음 쪽 답>   그 전 진료기록부 [더 보기]가 다음 쪽을 읽는 곳(늦은 답은 app.js가 버린다)
 
 import { clear, el } from './dom.js'
-import { fitSpecial, paperCard, pastCard } from './detail.js'
+import { appendPast, fitSpecial, paperCard, pastCard } from './detail.js'
 
 const TODAY_HEADING = '오늘 진료기록부'
 const PREV_HEADING = '직전 진료기록부'
 const READING = '기록부를 읽는 중이에요'
 const FAILED = '지금 기록부를 읽지 못했어요'
 const NO_PREV = '첫 방문이라 직전 기록부가 없어요.'
+/** 그 전 진료기록부 (reception-arrange-tune AC-3605.3, 시안 Mock.html charts) */
+const OLDER_HEADING = '그 전 진료기록부'
+const NO_OLDER = '그 전 기록부는 없어요.'
 const BACK = '어레인지'
 const FOOT = '보기만 할 수 있어요 · 비트 자료는 바뀌지 않아요'
 
@@ -41,7 +49,7 @@ const STATUS_CLASS = { wait: 'status-wait', hold: 'status-hold', pay: 'status-pa
  * @param {object} row 목록 줄
  * @param {'reading' | 'error' | object} today 오늘 상세 답
  * @param {'reading' | 'error' | object | null} prev 직전 종이
- * @param {{ today?: Date }} [view]
+ * @param {{ today?: Date, older?: 'reading' | 'error' | object, onMore?: (from: number) => Promise<object> }} [view]
  * @returns {HTMLElement} .page.charts-page
  */
 export function renderCharts(host, row, today, prev, view = {}) {
@@ -50,9 +58,55 @@ export function renderCharts(host, row, today, prev, view = {}) {
   const day = dashedOf(view.today)
   replace(parts.top, headOf(row))
   replace(parts.today, [headingOf(TODAY_HEADING, day), todayOf(row, today, view.today, open)])
-  replace(parts.prev, [headingOf(PREV_HEADING, isPrev(prev) ? `${prev.date} · ${prev.ago}` : null), prevOf(prev)])
+  fillPrev(parts.prev, prev, view)
   fitSpecial(parts.today)
   return parts.page
+}
+
+/**
+ * 직전 칸: 제목 + 직전 종이, 직전 종이가 있으면 그 아래 그 전 묶음(section.older). 그 전 묶음은 그린 답과 같은 답이면 두고(붙인 장·초점이 남게),
+ * 다르면(읽는 중 → 답) 다시 채운다. 직전 종이가 없으면(첫 방문·읽는 중·실패) 묶음이 없다 (AC-3605.3·3605.4)
+ */
+function fillPrev(section, prev, view) {
+  let older = section.querySelector(':scope > section.older')
+  for (const child of [...section.childNodes]) if (child !== older) child.remove()
+  section.insertBefore(headingOf(PREV_HEADING, isPrev(prev) ? `${prev.date} · ${prev.ago}` : null), older)
+  section.insertBefore(prevOf(prev), older)
+  if (!isPrev(prev)) {
+    older?.remove()
+    return
+  }
+  const state = view.older ?? 'reading'
+  if (!older) {
+    older = el('section', { class: 'older' })
+    section.appendChild(older)
+  } else if (drawnOlder.get(older) === state) return
+  drawnOlder.set(older, state)
+  replace(older, [el('h2', { class: 'charts-h older' }, OLDER_HEADING), olderList(state, view.onMore)])
+}
+
+/** 그린 그 전 묶음마다 채운 답(같은 답이면 다시 채우지 않는다) */
+const drawnOlder = new WeakMap()
+
+/** 그 전 종이 자리: 읽는 중·실패 한 줄(상세와 같은 글) · 없음 글 · 장마다 머리 + 카드(+ [더 보기]) */
+function olderList(state, onMore) {
+  const list = el('div', { class: 'past-list' })
+  if (state === 'reading') list.append(el('p', { class: 'past-note' }, READING))
+  else if (!isPapers(state)) list.append(el('p', { class: 'past-note' }, FAILED))
+  else if (state.papers.length === 0) list.append(el('p', { class: 'no-visits' }, NO_OLDER))
+  else appendPast(list, state, onMore)
+  return list
+}
+
+/** 지난 종이 한 쪽 답 모양 { papers, total, next } (모양 검사는 api.js가 한다. 여기서는 그릴 수 있는지만) */
+function isPapers(page) {
+  return (
+    page !== null &&
+    typeof page === 'object' &&
+    Array.isArray(page.papers) &&
+    Number.isSafeInteger(page.total) &&
+    (page.next === null || Number.isSafeInteger(page.next))
+  )
 }
 
 /** 화면 뼈대. 같은 환자의 기록부가 이미 있으면 그것을 쓰고, 아니면 host를 비우고 새로 만든다 */

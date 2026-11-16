@@ -23,8 +23,8 @@ const K = fx.ARRANGE_KEYS
 /** 시안 판의 환자 이름 (가상환자21~30) */
 const NAMES = Array.from({ length: 10 }, (_, i) => `가상환자${21 + i}`)
 
-/** 같은 곳 길만: 판·상세·직전·찍음·어레인지 표시 (AC-1413.2) */
-const SAME_PC_API = /^\/api\/(?:board(?:\?fresh=1)?|visit\/[0-9a-f]{16}\/(?:history\?from=\d+|prev)|xray|arrange|lists)$/
+/** 같은 곳 길만: 판·상세·직전·지난 종이(그 전 진료기록부, reception-arrange-tune)·찍음·어레인지 표시 (AC-1413.2) */
+const SAME_PC_API = /^\/api\/(?:board(?:\?fresh=1)?|visit\/[0-9a-f]{16}\/(?:history\?from=\d+|prev|papers\?from=\d+)|xray|arrange|lists)$/
 
 // ---- 가짜 도우미 ------------------------------------------------------------------------------------
 
@@ -82,6 +82,11 @@ function boardReads(): number {
 
 function reads(k: string, what: 'history' | 'prev'): number {
   return urls().filter((u) => u === (what === 'history' ? `/api/visit/${k}/history?from=0` : `/api/visit/${k}/prev`)).length
+}
+
+/** 지난 종이 쪽 읽기(papers?from=N) 수 (reception-arrange-tune AC-3605.3) */
+function paperReads(k: string, from: number): number {
+  return urls().filter((u) => u === `/api/visit/${k}/papers?from=${from}`).length
 }
 
 /** 보낸 목록 쓰기 몸들 (reception-pick-lists AC-3501.3) */
@@ -762,6 +767,77 @@ describe('app.js 기록부', () => {
     expect(window.location.hash).toBe('#/a')
     expect(chartsPage()).toBeNull()
     expect(arrangePage()).not.toBeNull()
+  })
+
+  it('AC-3605.3 · AC-3605.4: 기록부를 열면 papers?from=1을 한 번 읽어 직전 아래 "그 전 진료기록부"에 장을 붙이고, [더 보기]는 papers?from=4를 읽어 붙인다. 저절로 다시 읽어도 다시 읽지 않고 붙인 장이 그대로다', async () => {
+    await open({ hash: '#/a' })
+    trOf('가상환자21').querySelector<HTMLButtonElement>('button.nm-btn')!.click()
+    await settle()
+    expect(paperReads(K.a, 1)).toBe(1)
+    expect(urls().filter((u) => u.includes('/papers?from=0'))).toEqual([])
+    const older = () => chartsPage()!.querySelector<HTMLElement>('section.chart-prev > section.older')
+    const cards = () => older()!.querySelectorAll(':scope > .past-list > article.paper.past').length
+    const more = () => older()!.querySelector<HTMLButtonElement>(':scope > .past-list > button.more-papers')
+    expect(textOf(older(), ':scope > h2.charts-h.older')).toBe('그 전 진료기록부')
+    expect(cards()).toBe(3)
+    expect(textOf(more(), ':scope > small')).toBe('32번 더 있어요 · 누를 때마다 3장씩')
+    more()!.click()
+    await settle()
+    expect(paperReads(K.a, 4)).toBe(1)
+    expect(cards()).toBe(6)
+    const section = older()
+    await wait(5000)
+    await wait(5000)
+    await wait(30_000)
+    expect(paperReads(K.a, 1)).toBe(1)
+    expect(older()).toBe(section)
+    expect(cards()).toBe(6)
+    expect(reads(K.a, 'prev')).toBe(1)
+    for (const u of urls()) expect(u).toMatch(SAME_PC_API)
+  })
+
+  it('AC-3605.3: 첫 방문(직전 없음) 환자는 "그 전 진료기록부" 묶음이 없다', async () => {
+    await open({ hash: `#/a/v/${K.c}` })
+    expect(textOf(chartsPage(), 'section.chart-prev .none-card')).toBe('첫 방문이라 직전 기록부가 없어요.')
+    expect(chartsPage()!.querySelector('section.older, .charts-h.older')).toBeNull()
+  })
+
+  it('AC-3605.4: 그 전 기록부 답이 오기 전에 다른 환자로 옮기거나 숨기면 늦은 답을 버린다', async () => {
+    server.pasts.set(K.b, 2)
+    await open({ hash: '#/a' })
+    const late = hold(`/api/visit/${K.a}/papers`)
+    trOf('가상환자21').querySelector<HTMLButtonElement>('button.nm-btn')!.click()
+    await settle()
+    expect(textOf(chartsPage(), 'section.older .past-note')).toBe('기록부를 읽는 중이에요')
+    appEl().querySelector<HTMLAnchorElement>('a.back')!.click()
+    await settle()
+    trOf('가상환자22').querySelector<HTMLButtonElement>('button.nm-btn')!.click()
+    await settle()
+    expect(window.location.hash).toBe(`#/a/v/${K.b}`)
+    // 가상환자22는 그 전 기록부 1장(더 보기 없음)
+    const cards = () => chartsPage()!.querySelectorAll('section.older article.paper.past').length
+    expect(cards()).toBe(1)
+    late.answer()
+    await settle()
+    expect(textOf(chartsPage(), 'h1.detail-name')).toBe('가상환자22')
+    expect(cards()).toBe(1)
+    expect(chartsPage()!.querySelector('section.older button.more-papers')).toBeNull()
+
+    // 숨김: 읽는 중에 숨기면 늦은 답은 그리지 않고, 다시 보이면 다시 읽는다
+    appEl().querySelector<HTMLAnchorElement>('a.back')!.click()
+    await settle()
+    const hidden = hold(`/api/visit/${K.b}/papers`)
+    trOf('가상환자22').querySelector<HTMLButtonElement>('button.nm-btn')!.click()
+    await settle()
+    expect(textOf(chartsPage(), 'section.older .past-note')).toBe('기록부를 읽는 중이에요')
+    hide()
+    hidden.answer()
+    await settle()
+    expectNoPatient()
+    show()
+    await settle()
+    expect(paperReads(K.b, 1)).toBe(3)
+    expect(cards()).toBe(1)
   })
 
   it('AC-3309.5: 기록부 읽기가 실패하면 그 칸에 "지금 기록부를 읽지 못했어요" 한 줄만 보이고(끊김 화면 아님) 다음 저절로 읽기에 다시 본다', async () => {

@@ -31,6 +31,9 @@
 //                                                                    채운다. onMore(from) → Promise<다음 쪽 답>
 //   pastCard(paper) → article.paper.past                             지난 종이 카드 하나(사람 칸·특이사항 없음). 기록부 화면(charts.js)의
 //                                                                    직전 종이도 이것이다
+//   appendPast(list, page, onMore)                                   지난 종이 한 쪽을 list(.past-list)에 붙인다(장마다 머리 + 카드, [지난번] 없음,
+//                                                                    다음 쪽이 있으면 [더 보기]). 기록부 화면의 "그 전 진료기록부"가 쓴다
+//                                                                    (reception-arrange-tune AC-3605.3)
 //     row                  지금 목록 줄(board.lists 안의 그 열쇠 줄)
 //     history              getHistory(k, 0) 답 { visits, next, more, first, total, todaySym, paper }
 //     options.today        오늘(Date). 없으면 지금 기기 날짜
@@ -425,6 +428,16 @@ export function pastCard(paper) {
     el('div', { class: 'paper-head' }, [el('span', { class: 'paper-title' }, PAPER_TITLE), el('span', { class: 'paper-date' }, paper.date)]),
     ...recordOf(paper, { day: paper.date.replaceAll('-', '') }),
   ])
+}
+
+/**
+ * 지난 종이 한 쪽을 list(.past-list)에 붙인다: 장마다 머리("M월 D일" · "N일 전", [지난번] 없음) + 카드, 다음 쪽이 있으면 [더 보기](onMore(next)).
+ * 기록부 화면(charts.js)의 "그 전 진료기록부"가 쓴다(reception-arrange-tune AC-3605.3)
+ * @param {HTMLElement} list .past-list @param {{ papers: object[], total: number, next: number | null }} page
+ * @param {(from: number) => Promise<object>} [onMore]
+ */
+export function appendPast(list, page, onMore) {
+  appendPage(list, page, false, onMore)
 }
 
 /** 한 쪽을 [더 보기] 앞(없으면 끝)에 장마다 머리 + 카드로 붙이고, [더 보기]를 그 쪽의 next로 바꾼다(없으면 뺀다). first면 첫 장에 [지난번] */
