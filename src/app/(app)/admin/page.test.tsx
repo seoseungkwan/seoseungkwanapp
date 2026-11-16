@@ -1,16 +1,18 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import type { ReactElement } from 'react'
+import { Children, type ReactElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdminApplications } from '@/components/admin/AdminApplications'
+import { InstallFilesAdmin } from '@/components/admin/InstallFilesAdmin'
 import { guardPage } from '@/lib/auth/guard.server'
 import { HospitalReadError, NotSignedInError, readMe, type Hospital, type Me } from '@/lib/auth/hospital.server'
 import AdminPage, { dynamic, metadata } from './page'
 
 // /admin 페이지 (REQ-007, AC-002.5, design.md '데이터 흐름' `(app)/admin/page.tsx # 관리자만`).
 // (app) 레이아웃은 지금 경로를 모르고 늘 '/dashboard'로 문지기를 부른다 → 관리자만 여는 이 페이지는 스스로 '/admin'으로 부른다.
-// 읽기(readMe)만 흉내 내고, guard·gate(어디로 보낼지)는 진짜를 쓴다
+// 읽기(readMe)만 흉내 내고, guard·gate(어디로 보낼지)는 진짜를 쓴다.
+// 설치 파일 칸(helper-download REQ-5104)은 가입 승인 위에 둔다. 그 목록도 브라우저가 읽는다
 
 vi.mock('@/lib/auth/hospital.server', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/auth/hospital.server')>()),
@@ -35,6 +37,8 @@ vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser }))
 const read = vi.mocked(readMe)
 const guard = vi.mocked(guardPage)
 const SOURCE = readFileSync(fileURLToPath(new URL('./page.tsx', import.meta.url)), 'utf8')
+// 페이지가 돌려준 묶음 안의 칸들(차례대로)
+const partsOf = (page: ReactElement) => Children.toArray((page.props as { children?: ReactNode }).children) as ReactElement[]
 
 const HOSPITAL: Hospital = {
   id: 'h1',
@@ -62,7 +66,7 @@ beforeEach(() => {
 describe('/admin 페이지 문지기', () => {
   it('AC-002.5: 승인된 관리자(admins에 있음)면 연다 — 가입 승인 화면(AdminApplications)을 그린다', async () => {
     const page = (await AdminPage()) as ReactElement
-    expect(page.type).toBe(AdminApplications)
+    expect(partsOf(page).map((part) => part.type)).toContain(AdminApplications)
     expect(redirect).not.toHaveBeenCalled()
   })
 
@@ -122,10 +126,21 @@ describe('/admin 페이지 그리기', () => {
     expect(SOURCE).toMatch(/from '@\/lib\/auth\/guard\.server'/)
   })
 
-  it('AC-007.1·AC-013.2: 앱 틀을 한 번 더 그리지 않는다 — 목록 컴포넌트 하나만 돌려준다(띠·탭·<main>은 (app)/layout 몫)', async () => {
+  it('AC-007.1·AC-013.2·AC-5104.1: 앱 틀을 한 번 더 그리지 않는다 — 세로 묶음 하나에 설치 파일 칸·가입 승인 둘만 돌려준다(띠·탭·<main>은 (app)/layout 몫)', async () => {
     const page = (await AdminPage()) as ReactElement
-    expect(page.type).toBe(AdminApplications)
-    expect(page.props).toEqual({})
+    expect(page.type).toBe('div')
+    const parts = partsOf(page)
+    expect(parts.map((part) => part.type)).toEqual([InstallFilesAdmin, AdminApplications])
+    for (const part of parts) expect(part.props).toEqual({})
+  })
+
+  it("AC-5104.1: '설치 파일' 칸이 가입 승인 목록 위에 있다 — 서버 그리기에서도 '설치 파일' 제목이 '가입 승인' 제목보다 먼저 나오고, 목록은 읽지 않는다", async () => {
+    const html = renderToStaticMarkup((await AdminPage()) as ReactElement)
+    const install = html.search(/<h2\b[^>]*>설치 파일<\/h2>/)
+    const applications = html.search(/<h1\b[^>]*>가입 승인<\/h1>/)
+    expect(install).toBeGreaterThan(-1)
+    expect(applications).toBeGreaterThan(install)
+    expect(supabaseBrowser).not.toHaveBeenCalled()
   })
 })
 
