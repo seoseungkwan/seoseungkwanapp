@@ -131,7 +131,8 @@ function RxRows({ rows }: { rows: readonly RxRow[] }) {
         <p className={note}>처방내역이 없어요.</p>
       ) : (
         <div className={tableBox}>
-          <table className={table}>
+          {/* 좁은 lg(1024px 근처)는 처방 칸이 고정 칸 합(약 228px)보다 좁다: 표를 20rem 아래로 줄이지 않고 칸 안에서 옆으로 스크롤한다 */}
+          <table className={`${table} lg:min-w-80`}>
             <colgroup>
               <col className="w-11" />
               <col className="w-16" />
@@ -156,7 +157,7 @@ function RxRows({ rows }: { rows: readonly RxRow[] }) {
                   <tr key={index}>
                     <td className={kindCell(row.kind === 'proc')}>{RX_LABEL[row.kind]}</td>
                     <td className={`${td} break-all font-semibold text-ink`}>{row.code}</td>
-                    <td className={`${td} break-words text-ink`}>
+                    <td className={`${td} break-words text-ink lg:overflow-hidden`}>
                       {/* lg 이상은 처방명 한 줄, 길면 끝을 …로 자르고 title에 전체 이름. 짧은 이름은 잘리지 않는다(AC-4803.6) */}
                       <span className="lg:flex lg:min-w-0 lg:items-baseline lg:gap-1">
                         <span title={row.name} className="lg:min-w-0 lg:truncate">

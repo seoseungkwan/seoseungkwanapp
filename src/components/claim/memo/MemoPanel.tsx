@@ -40,7 +40,7 @@ const EMPTY: Record<Show, string> = { all: '이 조건에 맞는 진료가 없�
  * 두 칸(AC-3101.1). lg(64rem, 보통 1024px) 이상의 높이는 useFitHeight가 두 칸 위 끝을 재어 정한다(창 높이 − 위 끝 − 16px, 가장 작게 20rem).
  * 잴 수 없을 때만 이 class의 예전 높이(화면 높이 − 위에 붙는 띠·탭 줄과 아래 여백)다. 각 칸이 따로 스크롤되어 페이지가 목록 길이만큼 늘지 않는다
  */
-const SPLIT = 'grid min-w-0 overflow-clip rounded-control border border-line bg-surface lg:h-[max(30rem,calc(100dvh-8.5rem))] lg:grid-cols-[360px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]'
+const SPLIT = 'grid min-w-0 overflow-clip rounded-control border border-line bg-surface lg:h-[max(30rem,calc(100dvh-8.5rem))] lg:grid-cols-[272px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]'
 
 export type MemoPanelProps = {
   channel: ClaimChannel
@@ -486,7 +486,8 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
   })()
 
   return (
-    <div className="flex flex-col gap-3">
+    // data-wide-page(claim-memo-fit AC-4801.1): 이 칸이 있는 동안 앱 틀(AppShell·TabBar)이 1024px 이상에서 1280 폭 제한을 푼다
+    <div data-wide-page="" className="flex flex-col gap-3">
       {viewFailed}
       {noAsk && (
         <div role="status" className={BAND}>
@@ -583,13 +584,14 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
             )}
             <InputMode visible={visible} selection={selection} onSelection={setSelection} problem={targets.problem} chips={targets.chips} typedOverChip={targets.typedOverChip} locked={locked} />
           </section>
-          {/* 두 칸(AC-3101.1): lg(64rem) 이상 나란히(왼쪽 360px)이고 잰 높이(없으면 class의 예전 높이), 좁으면 위아래(목록 화면 높이 40%까지). 각자 스크롤된다 */}
+          {/* 두 칸(AC-3101.1): lg(64rem) 이상 나란히(왼쪽 272px, claim-memo-fit AC-4802.1)이고 잰 높이(없으면 class의 예전 높이), 좁으면 위아래(목록 화면 높이 40%까지). 각자 스크롤된다 */}
           <div ref={splitRef} className={SPLIT} style={fitHeight === undefined ? undefined : { height: fitHeight }}>
             <div className="flex min-h-0 min-w-0 flex-col border-line max-lg:max-h-[40dvh] max-lg:border-b lg:border-r">
               {/* 맞춘 높이를 주면 높이가 맞춰진 뒤 고른 줄이 보이게 목록을 한 번 더 움직인다(AC-3101.4: 점검 결과에서 온 아래쪽 사람이 숨지 않는다) */}
               <MemoList groups={groups} counts={showCounts(targets)} show={show} selectedKey={shownKey} failed={failed} empty={targets.problem ?? EMPTY[show]} fitHeight={fitHeight} onShow={changeShow} onPick={pick} />
             </div>
-            <section ref={detailRef} aria-label="고른 환자 메모" className="min-h-0 min-w-0 overflow-y-auto overscroll-contain px-5 py-4 max-md:px-4">
+            {/* lg 이상은 세로 flex라 상세(머리 한 줄 + 세 칸)가 이 높이를 채우고 칸마다 스크롤된다. 넘치면 예전처럼 이 칸이 스크롤된다(AC-4803.7) */}
+            <section ref={detailRef} aria-label="고른 환자 메모" className="min-h-0 min-w-0 overflow-y-auto overscroll-contain px-5 py-4 max-md:px-4 lg:flex lg:flex-col lg:py-3">
               {detail}
             </section>
           </div>

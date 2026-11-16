@@ -269,6 +269,33 @@ describe('REQ-3101 왼쪽 환자 목록', () => {
   })
 })
 
+// claim-memo-fit: 목록을 272px로 좁히고 표시를 차트번호 바로 뒤로 붙인다(lg 이상만, 그 아래는 그대로)
+describe('REQ-4802 목록 표시를 왼쪽으로', () => {
+  const classes = (el: Element) => el.className.split(/\s+/)
+
+  it('AC-4802.2: lg 이상에서 이름 묶음은 남은 폭을 채우지 않고(lg:flex-none) 표시 묶음이 그 바로 뒤에 왼쪽 정렬(lg:justify-start)로 붙는다. lg 미만은 그대로(flex-1 · justify-end)', () => {
+    show(SAMPLE())
+    const line = lineOf('B')
+    const nameBox = within(line).getByText('가상환자B').parentElement!
+    expect(classes(nameBox)).toEqual(expect.arrayContaining(['flex-1', 'lg:flex-none', 'min-w-0']))
+    const tagBox = within(line).getByText('! 메모 바꿈').parentElement!
+    expect(classes(tagBox)).toEqual(expect.arrayContaining(['shrink-0', 'justify-end', 'lg:justify-start']))
+    expect(nameBox.nextElementSibling).toBe(tagBox)
+    // 줄 글과 차례는 그대로다(AC-3101.3)
+    expect(line.textContent).toBe('2가상환자B11/2 (월)9002! 메모 바꿈')
+  })
+
+  it('AC-4802.3: 목록 위 보기 단추는 lg 이상에서 안쪽 여백이 좁다(lg:px-2). 공용 단추 class(ds.segment.button)는 그대로 쓴다', () => {
+    show(SAMPLE())
+    const buttons = within(screen.getByRole('group', { name: '완료로 골라 보기' })).getAllByRole('button')
+    expect(buttons).toHaveLength(3)
+    for (const button of buttons) {
+      expect(classes(button)).toContain('lg:px-2')
+      expect(button.className).toContain(ds.segment.button)
+    }
+  })
+})
+
 describe('AC-3107.3 환자 줄 울타리', () => {
   const source = (name: string) => readFileSync(join(process.cwd(), 'src/components/claim/rows', name), 'utf-8')
   const imports = (text: string) => [...text.matchAll(/^import\s[^;]*?from\s+'([^']+)'/gm)].map((match) => match[1])

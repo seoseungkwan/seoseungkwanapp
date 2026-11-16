@@ -224,7 +224,7 @@ afterEach(() => {
 })
 
 describe('REQ-3101 두 칸 보기', () => {
-  it('AC-3101.1: 메모 칸은 위 도구 줄과 그 아래 두 칸(왼쪽 환자 목록 | 오른쪽 고른 환자 메모)이다. 1024px 이상 나란히(왼쪽 360px)·좁으면 위아래이고, 두 칸은 각자 스크롤되며 위 끝을 잴 수 없으면 예전 높이(화면 높이 - 8.5rem)다', async () => {
+  it('AC-3101.1·AC-4802.1: 메모 칸은 위 도구 줄과 그 아래 두 칸(왼쪽 환자 목록 | 오른쪽 고른 환자 메모)이다. 1024px 이상 나란히(왼쪽 272px)·좁으면 위아래이고, 두 칸은 각자 스크롤되며 위 끝을 잴 수 없으면 예전 높이(화면 높이 - 8.5rem)다', async () => {
     await toMemo()
     const bar = toolbar()
     const left = list()
@@ -234,7 +234,8 @@ describe('REQ-3101 두 칸 보기', () => {
     const split = right.parentElement!
     expect(split.contains(left)).toBe(true)
     const classes = (element: Element) => element.getAttribute('class')!.split(/\s+/)
-    expect(classes(split)).toEqual(expect.arrayContaining(['grid', 'lg:grid-cols-[360px_minmax(0,1fr)]', 'lg:grid-rows-[minmax(0,1fr)]', 'lg:h-[max(30rem,calc(100dvh-8.5rem))]']))
+    expect(classes(split)).toEqual(expect.arrayContaining(['grid', 'lg:grid-cols-[272px_minmax(0,1fr)]', 'lg:grid-rows-[minmax(0,1fr)]', 'lg:h-[max(30rem,calc(100dvh-8.5rem))]']))
+    expect(classes(split)).not.toContain('lg:grid-cols-[360px_minmax(0,1fr)]')
     expect(classes(split).filter((name) => /^grid-cols-/.test(name))).toEqual([]) // 1024px 아래는 한 줄에 하나(위아래)
     expect(classes(right)).toEqual(expect.arrayContaining(['min-h-0', 'overflow-y-auto', 'overscroll-contain']))
     expect(classes(left.parentElement!)).toEqual(expect.arrayContaining(['min-h-0', 'max-lg:max-h-[40dvh]']))
@@ -242,6 +243,24 @@ describe('REQ-3101 두 칸 보기', () => {
     expect(rowOf('가상환자a').getAttribute('aria-current')).toBe('true')
     expect(shown()).toBe('가상환자a')
     expect(split.style.height).toBe('') // jsdom은 위 끝을 재지 못한다(모두 0): 예전 높이 class가 맡는다
+  })
+
+  it('AC-4801.1: 메모 칸 뿌리(도구 줄과 두 칸을 감싼 칸)에 data-wide-page 표시가 하나 있어 앱 틀이 1024px 이상에서 1280 폭 제한을 푼다', async () => {
+    await toMemo()
+    const marked = document.querySelectorAll('[data-wide-page]')
+    expect(marked).toHaveLength(1)
+    expect(marked[0]!.contains(toolbar())).toBe(true)
+    expect(marked[0]!.contains(list())).toBe(true)
+    expect(marked[0]!.contains(detail())).toBe(true)
+  })
+
+  it('AC-4803.7: 오른쪽 상세 칸은 1024px 이상 세로 flex(lg:flex lg:flex-col)이고 넘치면 예전처럼 스크롤된다(overflow-y-auto 그대로). 고른 사람 상세가 그 높이를 채운다(lg:flex-1 lg:min-h-0)', async () => {
+    await toMemo()
+    const classes = (element: Element) => element.getAttribute('class')!.split(/\s+/)
+    const right = detail()
+    expect(classes(right)).toEqual(expect.arrayContaining(['min-h-0', 'overflow-y-auto', 'overscroll-contain', 'lg:flex', 'lg:flex-col']))
+    expect(right.children).toHaveLength(1)
+    expect(classes(right.firstElementChild!)).toEqual(expect.arrayContaining(['lg:flex-1', 'lg:min-h-0']))
   })
 
   describe('AC-3101.1·AC-3101.4 한 화면 높이', () => {

@@ -88,7 +88,7 @@ export function MemoList(props: {
         보기
         <div role="group" aria-label="완료로 골라 보기" className={`${ds.segment.group} max-md:grid-cols-3`}>
           {SHOWS.map(([value, label]) => (
-            <button key={value} type="button" aria-pressed={show === value} className={`${ds.segment.button} ${show === value ? ds.segment.on : ds.segment.off}`} onClick={() => onShow(value)}>
+            <button key={value} type="button" aria-pressed={show === value} className={`${ds.segment.button} lg:px-2 ${show === value ? ds.segment.on : ds.segment.off}`} onClick={() => onShow(value)}>
               {label} {counts[value]}
             </button>
           ))}
@@ -112,12 +112,12 @@ export function MemoList(props: {
                     <li key={row.key}>
                       <button type="button" ref={on ? selected : undefined} aria-current={on ? 'true' : 'false'} className={`${rowButton} ${on ? rowOn : rowOff}`} onClick={() => onPick(row.key)}>
                         <span className={`w-5 shrink-0 text-right text-caption tabular-nums ${small}`}>{group.id === 'batch' ? row.no : null}</span>
-                        <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
+                        <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 lg:flex-none">
                           <span className={`whitespace-nowrap text-body text-ink ${on ? 'font-semibold' : 'font-medium'}`}>{row.name}</span>
                           <span className={`whitespace-nowrap text-caption ${small}`}>{dayLabel(row.date)}</span>
                           <span className={`whitespace-nowrap text-caption ${small}`}>{row.chart}</span>
                         </span>
-                        <span className="flex shrink-0 flex-wrap justify-end gap-1">
+                        <span className="flex shrink-0 flex-wrap justify-end gap-1 lg:justify-start">
                           <RowTags row={row} group={group.id} failed={failed.has(row.key)} />
                         </span>
                       </button>

@@ -707,6 +707,17 @@ describe('REQ-4803 lg 이상: 머리 한 줄 · 아래 세 칸', () => {
     expect(second.querySelectorAll('td')[2].textContent).toBe('가상관절주')
   })
 
+  it('AC-4803.6: 좁은 lg(1024px 근처)에서도 처방 표는 최소 20rem 폭이라(표 칸 안에서 옆으로 스크롤) 처방명 칸이 0이 되지 않고, 처방명 칸은 넘친 글을 잘라 짧은 이름이 옆 칸(총투여량)과 겹치지 않는다', () => {
+    show({ row: row({ chartLines: LINES, rxRows: RX }) })
+    const rx = screen.getByRole('region', { name: '처방내역' })
+    const table = within(rx).getByRole('table')
+    has(table, 'w-full table-fixed lg:min-w-80')
+    const nameCell = within(rx).getAllByRole('row')[1].querySelectorAll('td')[2]
+    has(nameCell, 'lg:overflow-hidden')
+    // 1024px 아래는 그대로(줄바꿈)
+    has(nameCell, 'break-words')
+  })
+
   it('AC-4805.1: 짧은 이름이 처방명과 같으면(앞뒤 빈칸 빼고) 쓰지 않고, 다르면 처방명 뒤에 쓴다', () => {
     const rows: TargetRow['rxRows'] = [
       { kind: 'other', code: 'AA901', name: '가상진찰료', short: '가상진찰료', qty: 1, benefit: true },
