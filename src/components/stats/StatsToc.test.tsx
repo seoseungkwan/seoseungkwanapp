@@ -10,9 +10,9 @@ import { StatsToc, TOC_LINKS, activeTocIndex } from './StatsToc'
 // 지금 칸 고르기·누름·모션 줄이기는 stats-pc-ux REQ-4002 그대로다.
 // jsdom은 배치를 계산하지 않는다 → 카드 위끝·띠 자리는 getBoundingClientRect를 가짜로 바꿔 주고, scrollIntoView·matchMedia도 가짜를 넣는다
 
-// 카드 여섯(AC-4411.1 차례: 요약 → 환자 → 매출 → 처방 → 진료 운영 → 보고)
-const NAMES = ['요약', '환자', '매출', '처방', '진료 운영', '보고']
-const IDS = ['stats-summary', 'stats-patients', 'stats-revenue', 'stats-rx', 'stats-ops', 'stats-report']
+// 카드 일곱(AC-4411.1 차례: 요약 → 환자 → 매출 → 예약·전환(sunap-ilji AC-4906.1) → 처방 → 진료 운영 → 보고)
+const NAMES = ['요약', '환자', '매출', '예약·전환', '처방', '진료 운영', '보고']
+const IDS = ['stats-summary', 'stats-patients', 'stats-revenue', 'stats-sunap', 'stats-rx', 'stats-ops', 'stats-report']
 const NAV_NAME = '통계 바로가기'
 
 const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
@@ -100,7 +100,7 @@ describe('AC-4002.5: 지금 칸 고르기 activeTocIndex', () => {
 })
 
 describe('AC-4411.2: 바로가기 띠 마크업', () => {
-  it('AC-4411.2: nav "통계 바로가기" 안에 링크 여섯 "요약"·"환자"·"매출"·"처방"·"진료 운영"·"보고"가 차례로 있고 href가 카드 id다', () => {
+  it('AC-4411.2·AC-4906.1: nav "통계 바로가기" 안에 링크 일곱 "요약"·"환자"·"매출"·"예약·전환"·"처방"·"진료 운영"·"보고"가 차례로 있고 href가 카드 id다', () => {
     const { nav, links } = draw()
     expect(nav.tagName).toBe('NAV')
     expect(TOC_LINKS.map((link) => link.name)).toEqual(NAMES)
@@ -115,10 +115,10 @@ describe('AC-4411.2: 바로가기 띠 마크업', () => {
     expect('tocRangeText' in tocModule).toBe(false)
   })
 
-  it('AC-4411.2: 매출 카드가 없으면(revenue false) "매출" 링크도 없고 나머지 다섯은 차례 그대로다', () => {
+  it('AC-4411.2·AC-4906.1: 매출 카드가 없으면(revenue false) "매출" 링크도 없고 나머지 여섯은 차례 그대로다', () => {
     const { links } = draw(false)
-    expect(links.map((a) => a.textContent)).toEqual(['요약', '환자', '처방', '진료 운영', '보고'])
-    expect(links.map((a) => a.getAttribute('href'))).toEqual(['#stats-summary', '#stats-patients', '#stats-rx', '#stats-ops', '#stats-report'])
+    expect(links.map((a) => a.textContent)).toEqual(['요약', '환자', '예약·전환', '처방', '진료 운영', '보고'])
+    expect(links.map((a) => a.getAttribute('href'))).toEqual(['#stats-summary', '#stats-patients', '#stats-sunap', '#stats-rx', '#stats-ops', '#stats-report'])
   })
 })
 
@@ -209,10 +209,10 @@ describe('AC-4411.2·AC-4002.4: 링크 누름', () => {
     const replaceState = vi.spyOn(window.history, 'replaceState')
     const { links, sections } = draw()
 
-    fireEvent.click(links[3]!)
+    fireEvent.click(links[4]!)
     expect(window.location.hash).toBe('#before')
     expect(scrollIntoView).toHaveBeenCalledTimes(1)
-    expect(scrollIntoView.mock.contexts[0]).toBe(sections[3])
+    expect(scrollIntoView.mock.contexts[0]).toBe(sections[4])
     expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'start', behavior: 'smooth' })
     expect(currentNames(links)).toEqual(['처방'])
 
@@ -227,9 +227,9 @@ describe('AC-4411.2·AC-4002.4: 링크 누름', () => {
 
   it('AC-4411.2: 매출 카드가 없을 때도 누른 링크의 카드로 간다(처방 → stats-rx)', () => {
     const { links, sections } = draw(false)
-    fireEvent.click(links[2]!)
-    expect(scrollIntoView.mock.contexts[0]).toBe(sections[2])
-    expect(sections[2]!.id).toBe('stats-rx')
+    fireEvent.click(links[3]!)
+    expect(scrollIntoView.mock.contexts[0]).toBe(sections[3])
+    expect(sections[3]!.id).toBe('stats-rx')
     expect(currentNames(links)).toEqual(['처방'])
   })
 
@@ -238,7 +238,7 @@ describe('AC-4411.2·AC-4002.4: 링크 누름', () => {
     window.matchMedia = matchMedia as unknown as typeof window.matchMedia
     const { links } = draw()
 
-    fireEvent.click(links[5]!)
+    fireEvent.click(links[6]!)
     expect(matchMedia).toHaveBeenCalledWith('(prefers-reduced-motion: reduce)')
     expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'start', behavior: 'auto' })
     expect(currentNames(links)).toEqual(['보고'])
@@ -248,7 +248,7 @@ describe('AC-4411.2·AC-4002.4: 링크 누름', () => {
     delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
     delete (window as { matchMedia?: unknown }).matchMedia
     const { links } = draw()
-    expect(() => fireEvent.click(links[4]!)).not.toThrow()
+    expect(() => fireEvent.click(links[5]!)).not.toThrow()
     expect(currentNames(links)).toEqual(['진료 운영'])
   })
 
@@ -263,7 +263,7 @@ describe('AC-4411.2·AC-4002.4: 링크 누름', () => {
   it('AC-4002.4: 주소(location·history)와 브라우저 저장소를 쓰지 않는다', () => {
     const setItem = vi.spyOn(Storage.prototype, 'setItem')
     const { links, sections } = draw()
-    placeSections(sections, [-900, -500, 120, 600, 1300, 2100])
+    placeSections(sections, [-900, -500, 120, 400, 600, 1300, 2100])
     fireEvent.scroll(window)
     fireEvent.click(links[3]!)
     expect(setItem).not.toHaveBeenCalled()
@@ -284,31 +284,35 @@ describe('AC-4411.2·AC-4002.5: 내릴 때 지금 카드 따라가기', () => {
     const { nav, links, sections } = draw()
     vi.spyOn(nav, 'getBoundingClientRect').mockReturnValue(rect(102, 44)) // 기준선 = 146 + 48 = 194
 
-    placeSections(sections, [-900, -500, -200, 120, 600, 1300])
+    placeSections(sections, [-900, -500, -350, -200, 120, 600, 1300])
     fireEvent.scroll(window)
     expect(currentNames(links)).toEqual(['처방'])
 
-    placeSections(sections, [-900, 100, 350, 600, 900, 1300])
+    placeSections(sections, [-900, 100, 350, 500, 600, 900, 1300])
     fireEvent.scroll(window)
     expect(currentNames(links)).toEqual(['환자'])
 
-    placeSections(sections, [-900, -500, 150, 600, 900, 1300])
+    placeSections(sections, [-900, -500, 150, 400, 600, 900, 1300])
     fireEvent.scroll(window)
     expect(currentNames(links)).toEqual(['매출'])
 
-    placeSections(sections, [-3000, -2500, -2000, -1500, 150, 900])
+    placeSections(sections, [-900, -500, -200, 150, 600, 900, 1300])
+    fireEvent.scroll(window)
+    expect(currentNames(links)).toEqual(['예약·전환'])
+
+    placeSections(sections, [-3000, -2500, -2000, -1700, -1500, 150, 900])
     fireEvent.scroll(window)
     expect(currentNames(links)).toEqual(['진료 운영'])
 
-    placeSections(sections, [300, 700, 900, 1100, 1500, 1900])
+    placeSections(sections, [300, 700, 900, 1000, 1100, 1500, 1900])
     fireEvent.scroll(window)
     expect(currentNames(links)).toEqual([])
   })
 
-  it('AC-4411.2: 매출 카드가 없으면 나머지 다섯 카드로 따라간다', () => {
+  it('AC-4411.2: 매출 카드가 없으면 나머지 여섯 카드로 따라간다', () => {
     const { nav, links, sections } = draw(false)
     vi.spyOn(nav, 'getBoundingClientRect').mockReturnValue(rect(102, 44))
-    placeSections(sections, [-900, -500, 120, 600, 1300])
+    placeSections(sections, [-900, -500, -200, 120, 600, 1300])
     fireEvent.scroll(window)
     expect(currentNames(links)).toEqual(['처방'])
   })
@@ -316,7 +320,7 @@ describe('AC-4411.2·AC-4002.5: 내릴 때 지금 카드 따라가기', () => {
   it('AC-4002.5: 쪽 맨 아래까지 내리면 마지막 카드(보고)다', () => {
     const { nav, links, sections } = draw()
     vi.spyOn(nav, 'getBoundingClientRect').mockReturnValue(rect(102, 44))
-    placeSections(sections, [-3000, -2500, -2000, -1500, -900, 300])
+    placeSections(sections, [-3000, -2500, -2000, -1700, -1500, -900, 300])
     setScroll({ y: 5000 - window.innerHeight, height: 5000 })
     fireEvent.scroll(window)
     expect(currentNames(links)).toEqual(['보고'])
@@ -329,7 +333,7 @@ describe('AC-4411.2·AC-4002.5: 내릴 때 지금 카드 따라가기', () => {
   it('AC-4002.5: 크기가 바뀌어도 다시 고른다', () => {
     const { nav, links, sections } = draw()
     vi.spyOn(nav, 'getBoundingClientRect').mockReturnValue(rect(102, 44))
-    placeSections(sections, [-900, -500, -200, 120, 600, 1300])
+    placeSections(sections, [-900, -500, -350, -200, 120, 600, 1300])
     fireEvent(window, new Event('resize'))
     expect(currentNames(links)).toEqual(['처방'])
   })
@@ -337,7 +341,7 @@ describe('AC-4411.2·AC-4002.5: 내릴 때 지금 카드 따라가기', () => {
   it('AC-4002.4·AC-4002.5: 누른 뒤 스크롤이 끝날 때(scrollend)까지는 누른 링크가 그대로이고, 끝나면 다시 따라간다', () => {
     const { nav, links, sections } = draw()
     vi.spyOn(nav, 'getBoundingClientRect').mockReturnValue(rect(102, 44))
-    placeSections(sections, [-900, 150, 400, 600, 900, 1300])
+    placeSections(sections, [-900, 150, 400, 500, 600, 900, 1300])
 
     fireEvent.click(links[2]!)
     fireEvent.scroll(window)
@@ -353,7 +357,7 @@ describe('AC-4411.2·AC-4002.5: 내릴 때 지금 카드 따라가기', () => {
     vi.useFakeTimers()
     const { nav, links, sections } = draw()
     vi.spyOn(nav, 'getBoundingClientRect').mockReturnValue(rect(102, 44))
-    placeSections(sections, [-900, 150, 400, 600, 900, 1300])
+    placeSections(sections, [-900, 150, 400, 500, 600, 900, 1300])
 
     fireEvent.click(links[2]!)
     vi.advanceTimersByTime(1400)

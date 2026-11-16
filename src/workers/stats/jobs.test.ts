@@ -12,7 +12,8 @@ import type {
   StatsSplitRequest,
   StatsWorkerMessage,
 } from '@/types/stats'
-import { requestLoad, type WorkerLike } from '../statsClient'
+import type { SunapRates } from '@/types/sunap'
+import { requestLoad, requestSections, type WorkerLike } from '../statsClient'
 import { createStatsHost, loadJob, sectionsJob, splitJob } from './jobs'
 
 const TODAY = '2026-11-01'
@@ -1680,5 +1681,94 @@ describe('AC-4409.1·AC-4409.2 loadJob: 날 저장 줄 처방마다 once', () =>
     expect(v2.flat().every((n) => typeof n === 'number')).toBe(true)
     expect(onceLists(v3Json())).toEqual(v2)
     expect(onceLists(v4Json())).toEqual(v2)
+  })
+})
+
+// ── 통계 '예약·전환'의 Block 전환(spec sunap-ilji AC-4906.3): 세 칸 묻기에 Block·물리치료 묶음 정의가 오면 메모리의 접수·진료 줄로 그 기간 sunapRates를 함께 돌려준다 ──
+// v4 답(위 V4_LINES): 1번 환자 10/5 = 90일초진. Block = MM042, 물리치료 = B4001(3번 환자 9/2만). 묶음 열쇠는 지어낸 값이다
+describe('AC-4906.3 sectionsJob·sections: 세 칸 보기와 함께 sunapRates', () => {
+  const SUNAP = { block: { id: 't00000000000000a1', codes: ['MM042'] }, pt: { id: 't00000000000000a2', codes: ['B4001'] } }
+  const RATE_KEYS = ['block_n', 'd90_block', 'd90_n', 'first_block', 'first_n', 'pt_n', 'ret_block', 'ret_n', 'visits']
+  const ratesOf = (view: BitSectionsView): SunapRates => {
+    const ready = readyIn(view)
+    if (ready.sunap === undefined) throw new Error('sunap이 없다')
+    return ready.sunap
+  }
+
+  it('AC-4906.3: 불러온 범위 전체 — 환자·날마다 초진·90일초진·재진·Block·물리치료와 각 구분의 Block 수이고, 숫자 아홉 칸뿐이다', () => {
+    const view = sectionsJob(loadJob(v4Json(), OPTS).bit, { ...WHOLE, sunap: SUNAP })
+    const rates = ratesOf(view)
+    expect(Object.keys(rates).sort()).toEqual(RATE_KEYS)
+    expect(rates).toEqual({ visits: 7, first_n: 5, d90_n: 1, ret_n: 1, block_n: 6, pt_n: 1, first_block: 4, d90_block: 1, ret_block: 1 })
+    // 세 칸은 sunap 없이 묻은 답과 같다
+    const { sunap, ...rest } = readyIn(view)
+    expect(sunap).toBe(rates)
+    expect(rest).toEqual(sectionsJob(loadJob(v4Json(), OPTS).bit, WHOLE))
+  })
+
+  it('AC-4906.3: 불러온 범위의 일부를 고르면 그 기간 환자·날만 센다', () => {
+    expect(ratesOf(sectionsJob(loadJob(v4Json(), OPTS).bit, { ...OCTOBER_ON, previous: SEPTEMBER, sunap: SUNAP }))).toEqual({
+      visits: 2,
+      first_n: 0,
+      d90_n: 1,
+      ret_n: 1,
+      block_n: 2,
+      pt_n: 0,
+      first_block: 0,
+      d90_block: 1,
+      ret_block: 1,
+    })
+  })
+
+  it('AC-4906.3: v3 답(90일초진 칸 없음)이면 다시 온 날은 모두 재진이다', () => {
+    expect(ratesOf(sectionsJob(loadJob(v3Json(), OPTS).bit, { ...WHOLE, sunap: SUNAP }))).toMatchObject({ first_n: 5, d90_n: 0, ret_n: 2, d90_block: 0, ret_block: 2 })
+  })
+
+  it('AC-4906.3: 묶음 정의가 없으면 sunap 열쇠가 없고, 불러온 적 없음·범위 밖·옛 도우미는 지금 답 그대로다', () => {
+    expect('sunap' in readyIn(sectionsJob(loadJob(v4Json(), OPTS).bit, WHOLE))).toBe(false)
+    expect(sectionsJob(null, { ...WHOLE, sunap: SUNAP })).toEqual({ kind: 'none' })
+    expect(sectionsJob(loadJob(v4Json(), OPTS).bit, { from: '2026-08-01', to: TODAY, sunap: SUNAP })).toEqual({ kind: 'none' })
+    expect(sectionsJob(loadJob(helperJson(), OPTS).bit, { ...WHOLE, sunap: SUNAP })).toEqual({ kind: 'old-helper' })
+  })
+
+  it('AC-4906.3: Worker 입구(host.sections)에 묶음이 오면 불러온 뒤 sections-result에 sunap을 실어 보내고, 차트번호·묶음 이름이 없다', async () => {
+    const { host, sent } = hostUnderTest()
+    bridgeMessages('s1', v4Json()).forEach((m) => host.fromBridge(m))
+    await host.load(loadRequest('s1'))
+    sent.length = 0
+    host.sections({ ...sectionsRequest('b1', WHOLE), sunap: SUNAP })
+    expect(sent).toHaveLength(1)
+    const [reply] = sent
+    if (reply.type !== 'sections-result') throw new Error('sections-result가 아니다')
+    expect(reply.streamId).toBe('b1')
+    expect(ratesOf(reply.view)).toEqual(ratesOf(sectionsJob(loadJob(v4Json(), OPTS).bit, { ...WHOLE, sunap: SUNAP })))
+    expectOnlyLabelsAndNumbers(sent)
+  })
+
+  it('AC-4906.3: 화면 입구 requestSections → (구조화 복제) → Worker 입구로 이어도 같은 숫자다(빼는 처방·조건이 빠지지 않고 이름·차례는 가지 않는다)', async () => {
+    const sent: StatsWorkerMessage[] = []
+    const received: StatsSectionsRequest[] = []
+    const worker = {
+      onmessage: null as ((event: MessageEvent<StatsWorkerMessage>) => void) | null,
+      onerror: null,
+      onmessageerror: null,
+      postMessage: (request: StatsSectionsRequest) => {
+        const copy = structuredClone(request)
+        received.push(copy)
+        host.sections(copy)
+      },
+    }
+    const host = createStatsHost((message) => {
+      sent.push(message)
+      queueMicrotask(() => worker.onmessage?.({ data: structuredClone(message) } as MessageEvent<StatsWorkerMessage>))
+    })
+    bridgeMessages('s1', v4Json()).forEach((m) => host.fromBridge(m))
+    await host.load(loadRequest('s1'))
+    const block = { id: 't00000000000000a3', codes: ['MM042'], out: ['ZZ999'], cond: [{ code: 'MM042', unless: ['B4001'] }], name: '가짜 블록', sortOrder: 0 }
+    const pt = { ...SUNAP.pt, name: '가짜 물리치료', sortOrder: 1 }
+    const view = await requestSections(worker as unknown as WorkerLike, { ...WHOLE, sunap: { block, pt } })
+    expect(received.at(-1)?.sunap).toEqual({ block: { id: block.id, codes: block.codes, out: block.out, cond: block.cond }, pt: SUNAP.pt })
+    expect(JSON.stringify(received)).not.toContain('가짜')
+    expect(ratesOf(view)).toEqual(ratesOf(sectionsJob(loadJob(v4Json(), OPTS).bit, { ...WHOLE, sunap: { block: received.at(-1)!.sunap!.block, pt: SUNAP.pt } })))
   })
 })
