@@ -120,12 +120,12 @@ export function TabBar() {
   return (
     <nav aria-label="메뉴" className="relative flex border-b border-line bg-surface">
       {/* 탭 줄 감싸개(AC-2702.4): 1024px 이상 본문과 같은 1280 폭 가운데. position이 없어 폰 판의 기준은 nav 그대로다 */}
-      <div className="flex min-w-0 flex-1 lg:mx-auto lg:max-w-7xl">
+      <div className="flex min-w-0 flex-1 lg:mx-auto lg:max-w-7xl lg:group-has-[[data-wide-page]]/app:max-w-none">
         {/* 탭 띠: 주요 메뉴 다섯(AC-2702.1). 1024px 미만은 이것만 옆으로 밀린다. 키보드 초점이 간 탭도 보이게 띠만 민다(ui-90 AC-416.5) */}
         <div ref={stripRef} className="min-w-0 flex-1 max-lg:overflow-x-auto max-lg:[scrollbar-width:thin]">
           {/* 탭 줄 하나(감싸개를 더하지 않는다). 1024px 이상은 위쪽 띠 안쪽과 같은 1280 폭·좌우 24px로 가운데에 놓인다.
               첫 탭은 왼쪽으로 12px 당겨 글자가 로고 왼쪽 끝과 맞는다(모든 폭, 시안의 폰 줄도 글자 16px로 맞음) */}
-          <div className="flex w-max min-w-full items-stretch px-6 max-md:px-4 lg:mx-auto lg:w-full lg:min-w-0 lg:max-w-7xl [&>:first-child]:-ml-3">
+          <div className="flex w-max min-w-full items-stretch px-6 max-md:px-4 lg:mx-auto lg:w-full lg:min-w-0 lg:max-w-7xl lg:group-has-[[data-wide-page]]/app:max-w-none [&>:first-child]:-ml-3">
             {PRIMARY_MENU.map((item) => (
               <TabLink
                 key={item.label}
