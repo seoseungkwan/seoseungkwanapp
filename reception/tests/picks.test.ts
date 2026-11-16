@@ -11,6 +11,17 @@ import type { FakeBoard, FakePicks } from './fixtures'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const WWW = path.join(ROOT, 'reception', 'www')
+/** 목록 여섯 탭·이름 바꾸기 승인 시안 (reception-arrange-tune) */
+const TUNE_MOCKUP = path.join(ROOT, 'docs', 'mockups', 'reception-arrange-tune', 'Mock.html')
+
+/** 창 위 안내 글 (reception-arrange-tune AC-3604.1, 시안 listSheet) */
+const SUB = '칸을 넣을 때 보이는 단추를 정해요. 이름을 누르면 바꿀 수 있어요'
+/** 탭 여섯 (AC-3604.1) */
+const TAB_NAMES = ['C-ARM', 'SONO', 'PT', '도수', '충격파', '견인']
+/** 충격파 탭 위 안내 (AC-3604.1, 시안 LISTS.eswt.fixed) */
+const ESWT_FIXED = '칸에는 "3000타 2부위"처럼 타수와 부위 수가 함께 보여요.'
+/** 이름 바꾸기 줄 안내 (AC-3604.2) */
+const RENAME_HINT = '1~10글자 · 같은 이름은 안 돼요'
 
 interface ArrangeView {
   toast?: { text: string; undo: boolean } | null
@@ -108,7 +119,43 @@ function groupOf(root: ParentNode, label: string): HTMLElement {
 }
 
 function names(root: ParentNode, label: string): string[] {
-  return [...groupOf(root, label).querySelectorAll(':scope > ul.lt-list > li.lt-row > span.lt-name')].map((n) => n.textContent ?? '')
+  return [...groupOf(root, label).querySelectorAll(':scope > ul.lt-list > li.lt-row > .lt-name')].map((n) => n.textContent ?? '')
+}
+
+/** 탭 [글, 고름] 중 고른 것만 true인 여섯 */
+function sixTabs(on: string): [string, boolean][] {
+  return TAB_NAMES.map((name) => [name, name === on])
+}
+
+/** 이름 단추(누르면 바꾸기 줄) */
+function nameButton(root: ParentNode, label: string, name: string): HTMLButtonElement {
+  return rowOf(root, label, name).querySelector<HTMLButtonElement>(':scope > button.lt-name')!
+}
+
+/** 열린 바꾸기 줄들(창 전체) */
+function renameRows(root: ParentNode): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>('.list-sheet li.lt-row.is-rename')]
+}
+
+function renameInput(root: ParentNode): HTMLInputElement {
+  const input = root.querySelector<HTMLInputElement>('.list-sheet li.lt-row.is-rename > input.lt-rename')
+  if (!input) throw new Error('바꾸기 글 칸 없음')
+  return input
+}
+
+/** 바꾸기 글 칸에 적는다 */
+function typeRename(root: ParentNode, text: string) {
+  const input = renameInput(root)
+  input.value = text
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
+function renameButton(root: ParentNode, cls: 'lt-ok' | 'lt-no'): HTMLButtonElement {
+  return root.querySelector<HTMLButtonElement>(`.list-sheet li.lt-row.is-rename > button.${cls}`)!
+}
+
+function renameKey(root: ParentNode, key: string) {
+  renameInput(root).dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
 }
 
 function rowOf(root: ParentNode, label: string, name: string): HTMLElement {
@@ -189,7 +236,7 @@ function cssValue(selector: string, prop: string): string | undefined {
 // ---- 창 (AC-3505.1) ---------------------------------------------------------------------------------
 
 describe('REQ-3505 목록 고치기 창', () => {
-  it('AC-3505.1: 어레인지 머리의 [목록 고치기]를 누르면 창 "고르기 목록 고치기"가 열린다: 탭 C-ARM(시술·약재)·SONO, 줄마다 ▲ ▼ ✕(시술은 [약재 없음]도), 무리마다 글 칸 + [더하기], 아래 안내 글, [취소]·[저장]', () => {
+  it('AC-3505.1 · AC-3604.1: 어레인지 머리의 [목록 고치기]를 누르면 창 "고르기 목록 고치기"가 열린다: 위 안내 글(이름을 누르면 바꿀 수 있어요), 탭 C-ARM(시술·약재)·SONO·PT·도수·충격파·견인, 줄마다 이름 단추 ▲ ▼ ✕(시술은 [약재 없음]도), 무리마다 글 칸 + [더하기], 아래 안내 글, [취소]·[저장]', () => {
     const app = draw()
     const button = listButton(app)!
     expect(button.getAttribute('type')).toBe('button')
@@ -201,11 +248,8 @@ describe('REQ-3505 목록 고치기 창', () => {
     expect(sheet.getAttribute('aria-label')).toBe('고르기 목록 고치기')
     expect(app.querySelectorAll('.sheet-back').length).toBe(1)
     expect(shapeOf(sheet)).toEqual(['div.sheet-h', 'div.lt-tabs', 'div.lt-groups', 'p.lt-foot-note', 'div.sheet-go'])
-    expect(textsOf(sheet, '.sheet-h > span')).toEqual(['고르기 목록 고치기', '칸을 넣을 때 보이는 단추를 정해요'])
-    expect(tabs(app)).toEqual([
-      ['C-ARM', true],
-      ['SONO', false],
-    ])
+    expect(textsOf(sheet, '.sheet-h > span')).toEqual(['고르기 목록 고치기', SUB])
+    expect(tabs(app)).toEqual(sixTabs('C-ARM'))
     expect(groups(app).map(headOf)).toEqual([
       ['시술', '하나 골라요 · 4개'],
       ['약재', '하나 골라요 · 3개'],
@@ -213,15 +257,16 @@ describe('REQ-3505 목록 고치기 창', () => {
     expect(names(app, '시술')).toEqual(['목', '등', '허리', '리덕션'])
     expect(names(app, '약재')).toEqual(['TP', '하프', '기본'])
     const row = rowOf(app, '시술', '목')
-    expect(shapeOf(row)).toEqual(['span.lt-name', 'button.lt-flag', 'button.lt-btn', 'button.lt-btn', 'button.lt-btn.del'])
+    expect(shapeOf(row)).toEqual(['button.lt-name', 'button.lt-flag', 'button.lt-btn', 'button.lt-btn', 'button.lt-btn.del'])
     expect([...row.querySelectorAll('button')].map((b) => [b.textContent, b.getAttribute('aria-label'), b.getAttribute('type')])).toEqual([
+      ['목', null, 'button'],
       ['약재 없음', null, 'button'],
       ['▲', '위로', 'button'],
       ['▼', '아래로', 'button'],
       ['✕', '빼기', 'button'],
     ])
     expect(flags(app)).toEqual(['리덕션'])
-    expect(shapeOf(rowOf(app, '약재', 'TP'))).toEqual(['span.lt-name', 'button.lt-btn', 'button.lt-btn', 'button.lt-btn.del'])
+    expect(shapeOf(rowOf(app, '약재', 'TP'))).toEqual(['button.lt-name', 'button.lt-btn', 'button.lt-btn', 'button.lt-btn.del'])
     // 맨 위 ▲·맨 아래 ▼는 꺼져 있다
     expect(btn(app, '시술', '목', 'up').disabled).toBe(true)
     expect(btn(app, '시술', '목', 'down').disabled).toBe(false)
@@ -236,10 +281,7 @@ describe('REQ-3505 목록 고치기 창', () => {
     expect(textsOf(sheet, ':scope > .sheet-go > button')).toEqual(['취소', '저장'])
 
     tab(app, 'SONO')
-    expect(tabs(app)).toEqual([
-      ['C-ARM', false],
-      ['SONO', true],
-    ])
+    expect(tabs(app)).toEqual(sixTabs('SONO'))
     expect(shapeOf(listSheet(app))).toEqual(['div.sheet-h', 'div.lt-tabs', 'p.lt-fixed', 'div.lt-groups', 'p.lt-foot-note', 'div.sheet-go'])
     expect(textOf(listSheet(app), ':scope > p.lt-fixed')).toBe('쪽(오른쪽·왼쪽·양쪽)은 늘 있어요. 부위 앞에 붙어 "오른 어깨"처럼 보여요.')
     expect(groups(app).map(headOf)).toEqual([
@@ -262,6 +304,147 @@ describe('REQ-3505 목록 고치기 창', () => {
     expect(shapeOf(groupOf(empty, '약재'))).toEqual(['h3', 'div.lt-empty', 'form.lt-add'])
     expect(textOf(groupOf(empty, '약재'), '.lt-empty')).toBe('아직 없어요. 아래에 적고 [더하기]를 눌러요')
     expect(headOf(groupOf(empty, '약재'))).toEqual(['약재', '하나 골라요 · 0개'])
+  })
+
+  it('AC-3604.1: PT(종류)·도수(시간)·충격파(타수 · 부위 수 + 위 안내)·견인(부위) 탭은 시안 글 그대로이고 줄마다 이름 단추 ▲ ▼ ✕(약재 없음 없음)와 글 칸 + [더하기]가 있다', () => {
+    const app = draw()
+    openList(app)
+    const plain = ['div.sheet-h', 'div.lt-tabs', 'div.lt-groups', 'p.lt-foot-note', 'div.sheet-go']
+    for (const [name, shape, heads, lists, holders] of [
+      ['PT', plain, [['종류', '하나 골라요 · 2개']], [['ICE', 'HP']], ['새 종류']],
+      ['도수', plain, [['시간', '하나 골라요 · 2개']], [['30분', '50분']], ['새 시간']],
+      [
+        '충격파',
+        ['div.sheet-h', 'div.lt-tabs', 'p.lt-fixed', 'div.lt-groups', 'p.lt-foot-note', 'div.sheet-go'],
+        [
+          ['타수', '안 골라도 돼요 · 4개'],
+          ['부위 수', '하나 골라요 · 4개'],
+        ],
+        [
+          ['2000타', '3000타', '4000타', '6000타'],
+          ['1부위', '2부위', '3부위', '4부위'],
+        ],
+        ['새 타수', '새 부위 수'],
+      ],
+      ['견인', plain, [['부위', '하나 골라요 · 2개']], [['목', '허리']], ['새 부위']],
+    ] as const) {
+      tab(app, name)
+      expect(tabs(app), name).toEqual(sixTabs(name))
+      const sheet = listSheet(app)!
+      expect(shapeOf(sheet), name).toEqual(shape)
+      expect(textsOf(sheet, '.sheet-h > span'), name).toEqual(['고르기 목록 고치기', SUB])
+      expect(groups(app).map(headOf), name).toEqual(heads)
+      expect(groups(app).map((g) => names(app, headOf(g)[0])), name).toEqual(lists)
+      expect(groups(app).map((g) => g.querySelector('form.lt-add > input')!.getAttribute('placeholder')), name).toEqual(holders)
+      expect(sheet.querySelector('.lt-flag'), name).toBeNull()
+      const first = groups(app)[0]!.querySelector(':scope > ul.lt-list > li.lt-row')!
+      expect(shapeOf(first), name).toEqual(['button.lt-name', 'button.lt-btn', 'button.lt-btn', 'button.lt-btn.del'])
+      expect(textOf(sheet, ':scope > p.lt-foot-note'), name).toBe('저장하면 모든 폰·태블릿의 고르기 창이 바로 바뀌어요. 이미 표에 넣은 칸은 그대로예요.')
+    }
+    tab(app, '충격파')
+    expect(textOf(listSheet(app), ':scope > p.lt-fixed')).toBe(ESWT_FIXED)
+    // 시안 글 그대로
+    const html = readFileSync(TUNE_MOCKUP, 'utf8')
+    for (const text of [
+      SUB,
+      ESWT_FIXED,
+      RENAME_HINT,
+      "pt: { name: 'PT', groups: [{ key: 'pt', label: '종류', sub: '하나 골라요', min: 1,",
+      "ds: { name: '도수', groups: [{ key: 'ds', label: '시간', sub: '하나 골라요', min: 1,",
+      "{ key: 'hits', label: '타수', sub: '안 골라도 돼요', min: 0,",
+      "{ key: 'counts', label: '부위 수', sub: '하나 골라요', min: 1,",
+      "trac: { name: '견인', groups: [{ key: 'trac', label: '부위', sub: '하나 골라요', min: 1,",
+      "name: '충격파',",
+    ])
+      expect(html, text).toContain(text)
+  })
+
+  it('AC-3604.1: 새 탭의 [더하기]·▲·▼·✕는 초안만 바꾸고(이름 규칙·개수 한도 8 그대로) [저장]이 새 무리까지 넘긴다', () => {
+    const onLists = vi.fn(() => true)
+    const board = fx.arrangeMockupBoard()
+    const before = JSON.stringify(board)
+    const app = draw(board, { onLists })
+    openList(app)
+    tab(app, 'PT')
+    add(app, '종류', ' TENS ')
+    add(app, '종류', 'ICE')
+    add(app, '종류', '가'.repeat(11))
+    add(app, '종류', 'IR|HP')
+    expect(names(app, '종류')).toEqual(['ICE', 'HP', 'TENS'])
+    expect(groupOf(app, '종류').querySelector('input')!.value).toBe('IR|HP')
+    btn(app, '종류', 'TENS', 'up').click()
+    expect(names(app, '종류')).toEqual(['ICE', 'TENS', 'HP'])
+    tab(app, '도수')
+    btn(app, '시간', '50분', 'up').click()
+    expect(names(app, '시간')).toEqual(['50분', '30분'])
+    tab(app, '충격파')
+    btn(app, '타수', '6000타', 'del').click()
+    add(app, '부위 수', '5부위')
+    add(app, '타수', '1부위')
+    expect(names(app, '타수')).toEqual(['2000타', '3000타', '4000타', '1부위'])
+    tab(app, '견인')
+    add(app, '부위', '골반')
+    btn(app, '부위', '목', 'down').click()
+    expect(names(app, '부위')).toEqual(['허리', '목', '골반'])
+    expect(onLists).not.toHaveBeenCalled()
+    expect(JSON.stringify(board)).toBe(before)
+    saveButton(app).click()
+    const want = fx.defaultPicks()
+    want.pt = ['ICE', 'TENS', 'HP']
+    want.ds = ['50분', '30분']
+    want.eswt = { hits: ['2000타', '3000타', '4000타', '1부위'], counts: ['1부위', '2부위', '3부위', '4부위', '5부위'] }
+    want.trac = ['허리', '목', '골반']
+    expect(onLists).toHaveBeenLastCalledWith(want)
+
+    // 개수 한도 8
+    document.body.replaceChildren()
+    const full = fx.arrangeMockupBoard()
+    const eight = (head: string) => Array.from({ length: 8 }, (_, i) => `${head}${i + 1}`)
+    full.picks = { ...fx.defaultPicks(), pt: eight('피'), ds: eight('도'), eswt: { hits: eight('타'), counts: eight('수') }, trac: eight('견') }
+    const big = draw(full)
+    openList(big)
+    for (const [name, labels] of [
+      ['PT', ['종류']],
+      ['도수', ['시간']],
+      ['충격파', ['타수', '부위 수']],
+      ['견인', ['부위']],
+    ] as const) {
+      tab(big, name)
+      for (const label of labels) {
+        add(big, label, '더')
+        expect(headOf(groupOf(big, label))[1], label).toMatch(/ · 8개$/)
+        expect(groupOf(big, label).querySelector('input')!.value, label).toBe('더')
+      }
+    }
+  })
+
+  it('AC-3604.3: PT 종류·도수 시간·충격파 부위 수·견인 부위의 마지막 하나는 ✕가 꺼지고, 충격파 타수는 다 뺄 수 있다(C-ARM·SONO 규칙은 그대로)', () => {
+    const board = fx.arrangeMockupBoard()
+    board.picks = { ...fx.defaultPicks(), pt: ['ICE'], ds: ['30분'], eswt: { hits: ['2000타'], counts: ['1부위'] }, trac: ['목'] }
+    const app = draw(board)
+    openList(app)
+    tab(app, 'PT')
+    expect(btn(app, '종류', 'ICE', 'del').disabled).toBe(true)
+    btn(app, '종류', 'ICE', 'del').click()
+    expect(names(app, '종류')).toEqual(['ICE'])
+    add(app, '종류', 'HP')
+    expect(btn(app, '종류', 'ICE', 'del').disabled).toBe(false)
+    btn(app, '종류', 'ICE', 'del').click()
+    expect(names(app, '종류')).toEqual(['HP'])
+    expect(btn(app, '종류', 'HP', 'del').disabled).toBe(true)
+    tab(app, '도수')
+    expect(btn(app, '시간', '30분', 'del').disabled).toBe(true)
+    tab(app, '충격파')
+    expect(btn(app, '부위 수', '1부위', 'del').disabled).toBe(true)
+    expect(btn(app, '타수', '2000타', 'del').disabled).toBe(false)
+    btn(app, '타수', '2000타', 'del').click()
+    expect(names(app, '타수')).toEqual([])
+    expect(textOf(groupOf(app, '타수'), '.lt-empty')).toBe('아직 없어요. 아래에 적고 [더하기]를 눌러요')
+    tab(app, '견인')
+    expect(btn(app, '부위', '목', 'del').disabled).toBe(true)
+    // C-ARM 마지막 시술·약재는 그대로
+    tab(app, 'C-ARM')
+    expect(btn(app, '약재', 'TP', 'del').disabled).toBe(false)
   })
 
   it('AC-3505.1 · AC-3505.4: [목록 고치기]는 어레인지 머리 .top-status 맨 앞이고, 다시 눌러도 창은 하나다. 판에 picks가 없으면 꺼져 있어 창이 열리지 않는다', () => {
@@ -346,6 +529,7 @@ describe('REQ-3505 초안 고치기', () => {
     const board = fx.arrangeMockupBoard()
     const many = (head: string, n: number) => Array.from({ length: n }, (_, i) => `${head}${i + 1}`)
     board.picks = {
+      ...fx.defaultPicks(),
       carm: { procs: many('시', 12).map((n) => ({ n, noDrug: false })), drugs: many('약', 12) },
       sono: { parts: many('부', 40), plains: many('없', 12), withs: many('같', 12) },
     }
@@ -363,7 +547,7 @@ describe('REQ-3505 초안 고치기', () => {
 
   it('AC-3505.2: 마지막 시술과 SONO 마지막 부위(부위 + 부위 없이)의 ✕는 꺼진다. 약재·같이 하는 것은 다 뺄 수 있다', () => {
     const board = fx.arrangeMockupBoard()
-    board.picks = { carm: { procs: [{ n: '허리', noDrug: false }], drugs: ['TP'] }, sono: { parts: ['어깨'], plains: ['소독'], withs: ['DNA'] } }
+    board.picks = { ...fx.defaultPicks(), carm: { procs: [{ n: '허리', noDrug: false }], drugs: ['TP'] }, sono: { parts: ['어깨'], plains: ['소독'], withs: ['DNA'] } }
     const app = draw(board)
     openList(app)
     expect(btn(app, '시술', '허리', 'del').disabled).toBe(true)
@@ -398,10 +582,7 @@ describe('REQ-3505 초안 고치기', () => {
     view.renderArrange(app, next, { toast: { text: '띠', undo: false } })
     view.renderArrange(app, next, {})
     expect(listSheet(app)).toBe(sheet)
-    expect(tabs(app)).toEqual([
-      ['C-ARM', false],
-      ['SONO', true],
-    ])
+    expect(tabs(app)).toEqual(sixTabs('SONO'))
     expect(names(app, '부위')).toHaveLength(21)
     expect(names(app, '부위').at(-1)).toBe('꼬리')
     expect(input.isConnected).toBe(true)
@@ -410,6 +591,210 @@ describe('REQ-3505 초안 고치기', () => {
     // 창 안에서 다른 것을 눌러 다시 그려도 적던 글은 남는다
     btn(app, '부위', '목', 'down').click()
     expect(groupOf(app, '부위 없이').querySelector('input')!.value).toBe('적던')
+  })
+})
+
+// ---- 이름 바꾸기 (reception-arrange-tune AC-3604.2) -----------------------------------------------------------
+
+describe('REQ-3604 이름 바꾸기', () => {
+  it('AC-3604.2: 이름을 누르면 그 줄이 글 칸(그 이름) + [바꾸기]·[취소] + "1~10글자 · 같은 이름은 안 돼요"가 되고 글 칸에 초점이 간다. [바꾸기]는 초안의 그 이름만 바꾸고(차례·약재 없음 그대로) [저장]이 넘긴다', () => {
+    const onLists = vi.fn(() => true)
+    const app = draw(fx.arrangeMockupBoard(), { onLists })
+    openList(app)
+    nameButton(app, '시술', '목').click()
+    expect(renameRows(app)).toHaveLength(1)
+    const row = renameRows(app)[0]!
+    expect(shapeOf(row)).toEqual(['input.lt-rename', 'button.lt-ok', 'button.lt-no', 'p.lt-hint'])
+    const input = renameInput(app)
+    expect([input.type, input.maxLength, input.value, input.getAttribute('aria-label')]).toEqual(['text', 10, '목', '목 이름 바꾸기'])
+    expect(document.activeElement).toBe(input)
+    expect([...row.querySelectorAll('button')].map((b) => [b.textContent, b.getAttribute('type')])).toEqual([
+      ['바꾸기', 'button'],
+      ['취소', 'button'],
+    ])
+    expect(textOf(row, 'p.lt-hint')).toBe(RENAME_HINT)
+    expect(row.querySelector('p.lt-hint')!.classList.contains('is-bad')).toBe(false)
+    // 다른 줄은 그대로
+    expect(names(app, '시술')).toEqual(['등', '허리', '리덕션'])
+    typeRename(app, '  목뼈 ')
+    renameButton(app, 'lt-ok').click()
+    expect(renameRows(app)).toHaveLength(0)
+    expect(names(app, '시술')).toEqual(['목뼈', '등', '허리', '리덕션'])
+    expect(document.activeElement).toBe(nameButton(app, '시술', '목뼈'))
+    // 약재 없음 시술의 이름을 바꿔도 약재 없음은 남는다
+    nameButton(app, '시술', '리덕션').click()
+    typeRename(app, '정복')
+    renameButton(app, 'lt-ok').click()
+    expect(flags(app)).toEqual(['정복'])
+    // 다른 탭도 같다
+    tab(app, '충격파')
+    nameButton(app, '타수', '6000타').click()
+    expect(renameInput(app).getAttribute('aria-label')).toBe('6000타 이름 바꾸기')
+    typeRename(app, '5000타')
+    renameButton(app, 'lt-ok').click()
+    expect(names(app, '타수')).toEqual(['2000타', '3000타', '4000타', '5000타'])
+    saveButton(app).click()
+    const want = fx.defaultPicks()
+    want.carm.procs[0]!.n = '목뼈'
+    want.carm.procs[3]!.n = '정복'
+    want.eswt.hits[3] = '5000타'
+    expect(onLists).toHaveBeenLastCalledWith(want)
+  })
+
+  it('AC-3604.2: 이름 규칙(빈 글·10글자 넘음·"|"·제어 글자·무리 안 겹침·SONO 부위와 부위 없이 겹침)에 맞지 않으면 줄을 연 채 안내 글이 빨개지고(is-bad) 적던 글·초점이 남는다. 자기 이름 그대로는 맞고, 개수 한도는 보지 않는다', () => {
+    const app = draw()
+    openList(app)
+    nameButton(app, '시술', '등').click()
+    for (const bad of ['', '   ', '가'.repeat(11), '허리|목', '벨\u0007', '목', ' 리덕션 ']) {
+      typeRename(app, bad)
+      renameButton(app, 'lt-ok').click()
+      expect(renameRows(app), JSON.stringify(bad)).toHaveLength(1)
+      expect(renameRows(app)[0]!.querySelector('p.lt-hint')!.classList.contains('is-bad'), JSON.stringify(bad)).toBe(true)
+      expect(renameInput(app).value, JSON.stringify(bad)).toBe(bad)
+      expect(document.activeElement, JSON.stringify(bad)).toBe(renameInput(app))
+    }
+    expect(textOf(renameRows(app)[0], 'p.lt-hint')).toBe(RENAME_HINT)
+    typeRename(app, ' 등 ')
+    renameButton(app, 'lt-ok').click()
+    expect(renameRows(app)).toHaveLength(0)
+    expect(names(app, '시술')).toEqual(['목', '등', '허리', '리덕션'])
+    // SONO 부위 ↔ 부위 없이
+    tab(app, 'SONO')
+    nameButton(app, '부위', '어깨').click()
+    typeRename(app, '소독')
+    renameButton(app, 'lt-ok').click()
+    expect(renameRows(app)).toHaveLength(1)
+    typeRename(app, '견갑')
+    renameButton(app, 'lt-ok').click()
+    expect(names(app, '부위')).toContain('견갑')
+    expect(names(app, '부위')).not.toContain('어깨')
+
+    // 한도까지 찬 무리도 이름은 바꿀 수 있다
+    document.body.replaceChildren()
+    const board = fx.arrangeMockupBoard()
+    board.picks = { ...fx.defaultPicks(), pt: Array.from({ length: 8 }, (_, i) => `피${i + 1}`) }
+    const full = draw(board)
+    openList(full)
+    tab(full, 'PT')
+    nameButton(full, '종류', '피1').click()
+    typeRename(full, 'TENS')
+    renameButton(full, 'lt-ok').click()
+    expect(names(full, '종류')[0]).toBe('TENS')
+    expect(names(full, '종류')).toHaveLength(8)
+  })
+
+  it('AC-3604.2: 글 칸의 Enter는 [바꾸기], Esc는 바꾸기 줄만 닫고 창은 둔다. [취소]도 바꾸지 않고 닫는다', () => {
+    const app = draw()
+    openList(app)
+    nameButton(app, '약재', 'TP').click()
+    typeRename(app, 'TP2')
+    renameKey(app, 'Enter')
+    expect(renameRows(app)).toHaveLength(0)
+    expect(names(app, '약재')).toEqual(['TP2', '하프', '기본'])
+    nameButton(app, '약재', '하프').click()
+    typeRename(app, '반')
+    renameKey(app, 'Escape')
+    expect(listSheet(app)).not.toBeNull()
+    expect(renameRows(app)).toHaveLength(0)
+    expect(names(app, '약재')).toEqual(['TP2', '하프', '기본'])
+    expect(document.activeElement).toBe(nameButton(app, '약재', '하프'))
+    nameButton(app, '약재', '기본').click()
+    typeRename(app, '반')
+    renameButton(app, 'lt-no').click()
+    expect(renameRows(app)).toHaveLength(0)
+    expect(names(app, '약재')).toEqual(['TP2', '하프', '기본'])
+    // 바꾸기 줄이 없을 때 Esc는 창을 닫는다(지금 그대로)
+    listSheet(app)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(listSheet(app)).toBeNull()
+  })
+
+  it('AC-3604.2: 한 번에 한 줄이다: 다른 이름을 누르면 그 줄로 옮기고, 다른 탭·▲·▼·✕를 누르면 바꾸던 줄이 닫힌다. [더하기]는 닫지 않는다', () => {
+    const app = draw()
+    openList(app)
+    nameButton(app, '시술', '목').click()
+    typeRename(app, '적던')
+    nameButton(app, '약재', 'TP').click()
+    expect(renameRows(app)).toHaveLength(1)
+    expect(renameInput(app).value).toBe('TP')
+    expect(names(app, '시술')).toEqual(['목', '등', '허리', '리덕션'])
+    renameButton(app, 'lt-no').click()
+    for (const shut of [
+      () => btn(app, '시술', '목', 'down').click(),
+      () => btn(app, '시술', '목', 'up').click(),
+      () => btn(app, '시술', '허리', 'del').click(),
+      () => {
+        tab(app, 'SONO')
+        tab(app, 'C-ARM')
+      },
+    ]) {
+      nameButton(app, '약재', 'TP').click()
+      expect(renameRows(app)).toHaveLength(1)
+      shut()
+      expect(renameRows(app)).toHaveLength(0)
+    }
+    expect(names(app, '시술')).toEqual(['목', '등', '리덕션'])
+    expect(names(app, '약재')).toEqual(['TP', '하프', '기본'])
+    nameButton(app, '약재', '기본').click()
+    typeRename(app, '반')
+    add(app, '시술', '꼬리뼈')
+    expect(renameRows(app)).toHaveLength(1)
+    expect(renameInput(app).value).toBe('반')
+    expect(names(app, '시술').at(-1)).toBe('꼬리뼈')
+  })
+
+  it('AC-3604.2: 저절로 다시 그리기(renderArrange)에도 바꾸던 줄·글·초점이 남는다', () => {
+    const app = draw()
+    openList(app)
+    tab(app, '견인')
+    nameButton(app, '부위', '허리').click()
+    typeRename(app, '허리뼈')
+    const input = renameInput(app)
+    view.renderArrange(app, fx.arrangeMockupBoard('11:04:20'), { toast: { text: '띠', undo: false } })
+    view.renderArrange(app, fx.arrangeMockupBoard('11:04:25'), {})
+    expect(renameInput(app)).toBe(input)
+    expect(input.value).toBe('허리뼈')
+    expect(document.activeElement).toBe(input)
+    renameButton(app, 'lt-ok').click()
+    expect(names(app, '부위')).toEqual(['목', '허리뼈'])
+  })
+
+  it('AC-3604.1 · AC-3604.2: 새 탭·바꾸기 줄이 그리는 class는 모두 style.css에 모양이 있고, 탭 줄은 넘치면 옆으로 밀린다. 빨간 안내는 theme 빨강이다. 이름은 글자로만 들어간다', () => {
+    const css = readWww('style.css').replace(/\/\*[\s\S]*?\*\//g, '')
+    const app = draw()
+    openList(app)
+    const classes = new Set<string>()
+    const collect = () => {
+      for (const n of [app, ...app.querySelectorAll('*')]) for (const c of n.classList) classes.add(c)
+    }
+    for (const name of TAB_NAMES) {
+      tab(app, name)
+      collect()
+    }
+    nameButton(app, '부위', '목').click()
+    typeRename(app, '')
+    renameButton(app, 'lt-ok').click()
+    collect()
+    for (const cls of ['lt-name', 'is-rename', 'lt-rename', 'lt-ok', 'lt-no', 'lt-hint', 'is-bad']) expect(classes.has(cls), cls).toBe(true)
+    for (const cls of classes) expect(css, `.${cls}`).toMatch(new RegExp(`\\.${cls}(?![\\w-])`))
+    expect(cssValue('.lt-tabs', 'overflow-x')).toBe('auto')
+    expect(cssValue('.lt-tab', 'white-space')).toBe('nowrap')
+    expect(cssValue('.lt-tab', 'flex-shrink')).toBe('0')
+    expect(cssValue('button.lt-name', 'cursor')).toBe('pointer')
+    expect(cssValue('.lt-hint.is-bad', 'color')).toBe('var(--memo-red)')
+    expect(cssValue('.lt-row.is-rename', 'flex-wrap')).toBe('wrap')
+    expect(cssValue('.lt-hint', 'flex-basis')).toBe('100%')
+    // 이름에 HTML을 넣어도 글자로만
+    document.body.replaceChildren()
+    const odd = fx.arrangeMockupBoard()
+    odd.picks!.pt = ['<b>ICE</b>']
+    const drawn = draw(odd)
+    openList(drawn)
+    tab(drawn, 'PT')
+    expect(names(drawn, '종류')).toEqual(['<b>ICE</b>'])
+    nameButton(drawn, '종류', '<b>ICE</b>').click()
+    expect(renameInput(drawn).value).toBe('<b>ICE</b>')
+    expect(renameInput(drawn).getAttribute('aria-label')).toBe('<b>ICE</b> 이름 바꾸기')
+    expect(drawn.querySelector('.list-sheet b')).toBeNull()
   })
 })
 
