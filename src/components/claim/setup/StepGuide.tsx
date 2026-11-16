@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
+import { DownloadButton } from '@/components/install/DownloadButton'
 import { ds } from '@/components/ui/classes'
 import { errorInfo, isErrorCode } from '@/lib/errors'
-import { HELPER_RELEASES_URL } from './links'
 import type { ProblemGuideKind, StepGuideKind } from './steps'
 
 // 비트 PC 연결 단계 안내 (ui-90 REQ-412, 시안 docs/mockups/ui-90/app/gen.py setup_body '.howto'·'.errc-a').
 // - StepGuide: "할 차례" 단계 줄 아래 안내 상자(canvas·4px·안쪽 16px, 폰 12px). 순서 글(body ink-2) + 단추 줄([…내려받기]·[처음 등록] 주 · [다시 확인] 보조).
+//   […내려받기]는 웹앱 보관함에서 받는 단추(components/install/DownloadButton, helper-download REQ-5103)이고 옆에 판·크기·올린 날이 보인다
 //   다시 확인으로 풀리는 실패(retry)는 errors.ts '무엇이'·'어떻게'와 오류 번호를 한 번 보이고 [다시 확인]만 둔다
 // - ProblemActions: 진짜 문제(버전 안 맞음·의원 다름)의 단추 둘. 위 오류 상자(SetupAlert)의 단추 줄에 들어가고 그 단계 줄에는 단추가 없다
 // - HelperUpdateSteps: 도우미 업데이트 순서 글. 위 오류 상자(SetupAlert) 안에 넣는다
@@ -18,7 +19,7 @@ type ActionProps = {
   onRegister(): void
 }
 
-// 바깥 주소로 가는 단추 모양 링크. 새 탭으로 열고 이 창(연결)은 그대로 둔다. 랜딩 a 규칙(밑줄)이 닿지 않게 no-underline
+// 바깥 주소(웹스토어)로 가는 단추 모양 링크. 새 탭으로 열고 이 창(연결)은 그대로 둔다. 랜딩 a 규칙(밑줄)이 닿지 않게 no-underline
 function OutLink({ href, children }: { href: string; children: ReactNode }) {
   return (
     <a href={href} target="_blank" rel="noopener noreferrer" className={`${ds.button.primary} no-underline max-md:w-full`}>
@@ -46,16 +47,16 @@ function RegisterButton({ label, disabled, onRegister }: { label: '처음 등록
 /** 단추 줄: 사이 8px, 768px 미만은 한 줄에 하나씩(전체 폭) */
 export const actionsRow = 'mt-3 flex flex-wrap gap-2 max-md:grid'
 
-/** 확장 받는 단추: 웹스토어 주소가 있으면 [확장 설치하러 가기], 없으면 릴리스의 확장 zip [확장 내려받기] */
+/** 확장 받는 단추: 웹스토어 주소가 있으면 [확장 설치하러 가기], 없으면 웹앱 보관함의 확장 zip [확장 내려받기] */
 const extensionLink = (storeUrl: string | null) =>
-  storeUrl ? <OutLink href={storeUrl}>확장 설치하러 가기</OutLink> : <OutLink href={HELPER_RELEASES_URL}>확장 내려받기</OutLink>
+  storeUrl ? <OutLink href={storeUrl}>확장 설치하러 가기</OutLink> : <DownloadButton kind="extension" label="확장 내려받기" variant="primary" />
 
 /** 진짜 문제의 단추 둘: 내려받기·다시 등록(주) + [다시 확인](보조) */
 export function ProblemActions({ kind, storeUrl, disabled, onRetry, onRegister }: { kind: ProblemGuideKind } & ActionProps) {
   return (
     <>
       {kind === 'update-extension' && extensionLink(storeUrl)}
-      {kind === 'update-helper' && <OutLink href={HELPER_RELEASES_URL}>새 도우미 내려받기</OutLink>}
+      {kind === 'update-helper' && <DownloadButton kind="helper" label="새 도우미 내려받기" variant="primary" />}
       {kind === 'reregister' && <RegisterButton label="다시 등록" disabled={disabled} onRegister={onRegister} />}
       <RetryButton disabled={disabled} onRetry={onRetry} />
     </>
@@ -126,7 +127,7 @@ export function StepGuide({ kind, code, storeUrl, disabled, onRetry, onRegister 
         '받은 zip을 오른쪽 클릭 → [모두 압축 풀기]로 푼 뒤, 푼 폴더의 install.cmd를 두 번 누르세요. "Windows의 PC 보호" 창이 뜨면 [추가 정보]를 누른 뒤 [실행]을 누르세요.',
         '설치가 끝나면 [다시 확인]을 누르세요. 크롬은 다시 켤 필요가 없어요.',
       ]
-      main = <OutLink href={HELPER_RELEASES_URL}>도우미 내려받기</OutLink>
+      main = <DownloadButton kind="helper" label="도우미 내려받기" variant="primary" />
       break
     case 'register':
       items = [
