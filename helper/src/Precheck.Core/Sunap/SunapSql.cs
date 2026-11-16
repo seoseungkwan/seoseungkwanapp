@@ -27,10 +27,13 @@ public static class SunapSql
     /// <summary>위 글 + 통계 Orders 줄(그날 센 내원의 처방, 삭제·취소·원외 99 뺌).</summary>
     private static readonly string OrdersCte = Before(StatsSql.VisitRowsSql, VisitRowsSelect);
 
-    /// <summary>환자마다 [차트번호, 이름, 그날 첫 접수 yyyyMMddHHmm, 첫 내원일 yyyyMMdd|null, 그날 90일초진(OcmDgsNfs='3') 접수 수].</summary>
+    /// <summary>
+    /// 환자마다 [차트번호, 이름, 그날 첫 접수 yyyyMMddHHmm, 첫 내원일 yyyyMMdd|null, 그날 90일초진(OcmDgsNfs='3') 접수 수,
+    /// 진료의 코드(그날 센 내원들의 OcmDtrCod 중 빈 값 뺀 가장 작은 것, 없으면 NULL, spec sunap-doctors REQ-5002)].
+    /// </summary>
     public static readonly string PatientsSql = VisitsCte + @"
 SELECT v.PatientId,MAX(b.PbsPatNam) PatName,MIN(c.OcmAcpDtm) FirstAcp,LEFT(MIN(f.FirstDtm),8) FirstDay,
- SUM(CASE WHEN c.OcmDgsNfs='3' THEN 1 ELSE 0 END) First90
+ SUM(CASE WHEN c.OcmDgsNfs='3' THEN 1 ELSE 0 END) First90,MIN(NULLIF(RTRIM(c.OcmDtrCod),'')) DoctorId
 FROM PeriodVisits v JOIN dbo.OcmInf c ON c.OcmNum=v.VisitId
 LEFT JOIN FirstVisits f ON f.PatientId=v.PatientId
 LEFT JOIN dbo.PbsInf b ON b.PbsChtNum=v.PatientId

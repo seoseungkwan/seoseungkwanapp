@@ -10,18 +10,21 @@ using Precheck.Core.Contact;
 using Precheck.Core.Protocol;
 using Precheck.Core.Registration;
 using Precheck.Core.Revenue;
+using Precheck.Core.Stats;
 
 namespace Precheck.Core.Sunap;
 
 /// <summary>
 /// contact.targets {kind:'sunap', from:D, to:D}(spec sunap-ilji REQ-4902): 수납일지 하루 장부. 차례: 날 검사(from = to, 오늘−62일 ~ 오늘, 비트를 건드리지 않음)
 /// → 등록 병원 확인(HospitalGate) → 매출 확인 필요 검사 셋(revenue.days와 같은 차례, 하나라도 0이 아니면 unsure, 남은 검사는 돌리지 않음)
-/// → 환자·처방·다음 예약·금액·미수 입금 SQL(SunapSql) → JSON 하나. 통계 화면·비트 로그인 창은 쓰지 않는다. 나누기(chunk … end)는 ContactCommands가 한다.
-/// 답 {v:1, day, unsure, rows, paid}.
-/// rows 줄 = [차트, 이름, 첫 접수 HH:mm, 구분 new|d90|re, 현금, 카드, 계좌, 미수, [처방코드…], null|[다음 예약 yyyyMMddHHmm, 메모 앞 40자]], 첫 접수 차례.
+/// → 환자·처방·다음 예약·금액·미수 입금 SQL(SunapSql) → 원장님 이름(통계 StatsExtra.DoctorNames, 코드가 있을 때만) → JSON 하나.
+/// 통계 화면·비트 로그인 창은 쓰지 않는다. 나누기(chunk … end)는 ContactCommands가 한다.
+/// 답 {v:2, day, unsure, rows, paid, doctors}(v:2 = spec sunap-doctors REQ-5002).
+/// rows 줄 = [차트, 이름, 첫 접수 HH:mm, 구분 new|d90|re, 현금, 카드, 계좌, 미수, [처방코드…], null|[다음 예약 yyyyMMddHHmm, 메모 앞 40자], 진료의 코드|null], 첫 접수 차례.
 /// paid 줄 = [차트, 이름, 수납 시각 HH:mm|"", 현금, 카드+계좌], 시각 차례. 금액은 원 미만 버림(항목마다).
+/// doctors 줄 = [진료의 코드, 이름|null], rows에 나온 코드마다 한 번, 코드 차례. 이름은 통계 원장님 이름과 같은 규칙이다.
 /// 미수 = 그 환자 그날 내원들의 본인부담 총액(OrpTotOwn) − (현금 + 카드 + 계좌), 0보다 작으면 0.
-/// 환자 줄이 틀리면(차트번호 없음·두 줄·첫 접수가 그날 시각이 아님·숫자 아님) 일부만 보내지 않고 E-BIT-READ-FAILED다.
+/// 환자 줄이 틀리면(차트번호 없음·두 줄·첫 접수가 그날 시각이 아님·숫자 아님·진료의 코드 40자 넘음) 일부만 보내지 않고 E-BIT-READ-FAILED다.
 /// </summary>
 public static class SunapTargets
 {
@@ -33,7 +36,10 @@ public static class SunapTargets
     /// <summary>다음 예약 메모는 앞 40자만 싣는다(SQL도 40자로 자른다).</summary>
     public const int MemoLength = 40;
 
-    public const int Version = 1;
+    public const int Version = 2;
+
+    /// <summary>진료의 코드 길이 한도(통계 StatsExtra·Worker와 같은 40자). 넘으면 E-BIT-READ-FAILED.</summary>
+    private const int MaxDoctorLength = 40;
 
     private const string StampFormat = "yyyyMMddHHmm";
 
@@ -44,18 +50,20 @@ public static class SunapTargets
 
     private sealed class Row
     {
-        public Row(string chart, string name, string firstAcp, string kind)
+        public Row(string chart, string name, string firstAcp, string kind, string? doctor)
         {
             Chart = chart;
             Name = name;
             FirstAcp = firstAcp;
             Kind = kind;
+            Doctor = doctor;
         }
 
         public string Chart { get; }
         public string Name { get; }
         public string FirstAcp { get; }
         public string Kind { get; }
+        public string? Doctor { get; }
         public decimal Cash { get; set; }
         public decimal Card { get; set; }
         public decimal Check { get; set; }
@@ -96,6 +104,7 @@ public static class SunapTargets
         var unsure = false;
         var rows = new Dictionary<string, Row>(StringComparer.Ordinal);
         var paid = new List<Paid>();
+        IReadOnlyList<StatsDoctor> doctors = Array.Empty<StatsDoctor>();
         decimal dayTotal = 0m, dayCash = 0m, dayCard = 0m, dayCheck = 0m, dayReceivableIn = 0m;
 
         using (var hospital = HospitalGate.Open(services))
@@ -121,7 +130,7 @@ public static class SunapTargets
                 }
             }
 
-            foreach (var line in Read(db, SunapSql.PatientsSql, values, 5))
+            foreach (var line in Read(db, SunapSql.PatientsSql, values, 6))
             {
                 var chart = ClaimText.Cell(line, 0);
                 if (chart.Length == 0 || rows.ContainsKey(chart)) throw ReadFailed();
@@ -129,7 +138,9 @@ public static class SunapTargets
                 if (!IsStamp(firstAcp) || !firstAcp.StartsWith(dayKey, StringComparison.Ordinal)) throw ReadFailed();
                 var firstDay = ClaimText.Cell(line, 3);
                 var kind = firstDay == dayKey ? "new" : Number(line[4]) > 0 ? "d90" : "re";
-                rows.Add(chart, new Row(chart, ClaimText.Cell(line, 1), firstAcp, kind));
+                var doctor = ClaimText.Cell(line, 5);
+                if (doctor.Length > MaxDoctorLength) throw ReadFailed();
+                rows.Add(chart, new Row(chart, ClaimText.Cell(line, 1), firstAcp, kind, doctor.Length == 0 ? null : doctor));
             }
 
             foreach (var line in Read(db, SunapSql.CodesSql, values, 2))
@@ -187,6 +198,10 @@ public static class SunapTargets
                 if (cash == 0 && card == 0) continue;
                 paid.Add(new Paid(chart, ClaimText.Cell(line, 1), PaidClock(ClaimText.Cell(line, 2), dayKey), cash, card));
             }
+
+            // 원장님 이름은 통계 '원장님별'과 같은 함수·같은 SQL로(새 SQL 없음). 코드가 하나도 없으면 SQL을 부르지 않는다
+            var codes = new SortedSet<string>(rows.Values.Where(row => row.Doctor != null).Select(row => row.Doctor!), StringComparer.Ordinal);
+            doctors = StatsExtra.DoctorNames(db, codes);
         }
 
         // 매출(revenue.days)처럼 원 미만을 버린 날 합이 음수면 확인 필요. 환자 줄의 음수 칸도 확인 필요로 보고 0으로 보낸다
@@ -224,6 +239,7 @@ public static class SunapTargets
                     writer.WriteStringValue(ClaimText.Safe(row.RsvMemo));
                     writer.WriteEndArray();
                 }
+                WriteOptional(writer, row.Doctor);
                 writer.WriteEndArray();
             }
             writer.WriteEndArray();
@@ -239,7 +255,23 @@ public static class SunapTargets
                 writer.WriteEndArray();
             }
             writer.WriteEndArray();
+            writer.WriteStartArray("doctors");
+            foreach (var doctor in doctors)
+            {
+                writer.WriteStartArray();
+                writer.WriteStringValue(ClaimText.Safe(doctor.Code));
+                WriteOptional(writer, doctor.Name);
+                writer.WriteEndArray();
+            }
+            writer.WriteEndArray();
         });
+    }
+
+    /// <summary>글자면 그 글자(짝 없는 대리쌍은 U+FFFD), null이면 JSON null.</summary>
+    private static void WriteOptional(Utf8JsonWriter writer, string? value)
+    {
+        if (value == null) writer.WriteNullValue();
+        else writer.WriteStringValue(ClaimText.Safe(value));
     }
 
     /// <summary>정해 둔 문장을 그 문장의 매개변수만 골라 관문으로 돌린다(150초, 300,000줄·칸 모자람은 E-BIT-READ-FAILED).</summary>

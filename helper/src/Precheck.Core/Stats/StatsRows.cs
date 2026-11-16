@@ -532,7 +532,7 @@ public static class StatsExtra
     /// 원장님 이름(AC-2701.4): 코드 50개씩 이름 SQL을 부른다(빈 자리는 그 묶음의 첫 코드). SQL이 코드·UidExpDte 차례로 주므로
     /// 코드마다 마지막 줄(가장 늦은 줄)의 이름을 쓴다. 앞뒤 빈칸을 빼고 40자까지, 비었거나 UidMst에 없으면 null.
     /// </summary>
-    private static List<StatsDoctor> DoctorNames(IBitDb db, SortedSet<string> codes)
+    internal static List<StatsDoctor> DoctorNames(IBitDb db, SortedSet<string> codes)
     {
         var list = codes.ToList();
         var names = new Dictionary<string, string?>(StringComparer.Ordinal);

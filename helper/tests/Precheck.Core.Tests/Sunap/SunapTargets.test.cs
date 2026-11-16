@@ -20,16 +20,19 @@ namespace Precheck.Core.Tests.Sunap;
 
 /// <summary>
 /// contact.targets kind 'sunap'(spec sunap-ilji REQ-4902)의 가짜 비트 SQL 답. 모두 지어낸 것이다: 이름 '가상환자NN', 차트번호 9로 시작하는 6자리,
-/// 내원번호 V+숫자, 처방코드 MM110·KK020…, 예약 메모 '주사 오전'처럼 짧은 말. 줄 모양은 SunapSql 문장의 칸 차례 그대로다.
+/// 내원번호 V+숫자, 처방코드 MM110·KK020…, 예약 메모 '주사 오전'처럼 짧은 말, 진료의 코드 D001…·원장님 이름 '가짜원장 가'. 줄 모양은 SunapSql 문장의 칸 차례 그대로다.
 /// 가짜 오늘은 2026-10-30(Synthetic.Today)이고 장부 날도 기본은 그날이다.
 /// </summary>
 internal static class SunapData
 {
     public const string Day = "2026-10-30";
 
-    /// <summary>PatientsSql 한 줄: 차트번호·이름·그날 첫 접수 시각(yyyyMMddHHmm)·첫 내원일(yyyyMMdd)·그날 90일초진 접수 수.</summary>
-    public static object?[] Patient(string? chart, string? name, string? firstAcp, string? firstDay, object? first90) =>
-        new object?[] { chart, name, firstAcp, firstDay, first90 };
+    /// <summary>PatientsSql 한 줄: 차트번호·이름·그날 첫 접수 시각(yyyyMMddHHmm)·첫 내원일(yyyyMMdd)·그날 90일초진 접수 수·진료의 코드(sunap-doctors).</summary>
+    public static object?[] Patient(string? chart, string? name, string? firstAcp, string? firstDay, object? first90, string? doctor = null) =>
+        new object?[] { chart, name, firstAcp, firstDay, first90, doctor };
+
+    /// <summary>원장님 이름 SQL(StatsSql.DoctorNamesSql) 한 줄: 코드·이름·UidExpDte. SQL이 코드·UidExpDte 차례로 준다.</summary>
+    public static object?[] DoctorName(string? code, string? name, string? expires) => new object?[] { code, name, expires };
 
     /// <summary>CodesSql 한 줄: 차트번호·처방코드.</summary>
     public static object?[] Code(string? chart, string? code) => new object?[] { chart, code };
@@ -50,11 +53,12 @@ internal static class SunapData
     /// <summary>확인 필요 검사 셋(매출 revenue.days와 같은 문장·같은 차례).</summary>
     public static readonly string[] Checks = { RevenueSql.UnsupportedFinance, RevenueSql.FinanceMultiplicity, RevenueSql.ReceivableMultiplicity };
 
-    /// <summary>검사는 모두 0, 자료 문장은 빈 답.</summary>
+    /// <summary>검사는 모두 0, 자료 문장·원장님 이름 문장은 빈 답.</summary>
     public static void Defaults(FakeDb db)
     {
         foreach (var check in Checks) db.Answer(check, _ => new[] { new object?[] { 0L } });
         foreach (var sql in SunapSql.All) db.Answer(sql, _ => new object?[0][]);
+        db.Answer(StatsSql.DoctorNamesSql, _ => new object?[0][]);
     }
 }
 
@@ -120,18 +124,19 @@ public class SunapTargetsTests
 
     // ── AC-4902.1 하루 하나 · 모양 · 범위 ──────────────────────────────────────────
 
-    [Fact(DisplayName = "AC-4902.1 sunap: 등록 병원 확인 → 확인 필요 검사 셋 → 환자·처방·다음 예약·금액·미수 입금 SQL(그날 0시~다음 날 0시·병원 범위, 150초), 답은 {v:1, day, unsure, rows, paid}")]
+    [Fact(DisplayName = "AC-4902.1 sunap: 등록 병원 확인 → 확인 필요 검사 셋 → 환자·처방·다음 예약·금액·미수 입금 SQL(그날 0시~다음 날 0시·병원 범위, 150초), 답은 {v:2, day, unsure, rows, paid, doctors}(sunap-doctors)")]
     public void ReadsOneDayAfterHospitalCheck()
     {
         using var rig = new SunapRig();
         var json = rig.Build();
 
-        Assert.Equal(new[] { "v", "day", "unsure", "rows", "paid" }, Json.Keys(json));
-        Assert.Equal(1, json.GetProperty("v").GetInt32());
+        Assert.Equal(new[] { "v", "day", "unsure", "rows", "paid", "doctors" }, Json.Keys(json));
+        Assert.Equal(2, json.GetProperty("v").GetInt32());
         Assert.Equal("2026-10-30", json.GetProperty("day").GetString());
         Assert.False(json.GetProperty("unsure").GetBoolean());
         Assert.Empty(SunapRig.Lines(json, "rows"));
         Assert.Empty(SunapRig.Lines(json, "paid"));
+        Assert.Empty(SunapRig.Lines(json, "doctors"));
 
         Assert.Equal(new[]
         {
@@ -203,8 +208,8 @@ public class SunapTargetsTests
         var json = Replies.Join(rig.Send("sunap", SunapData.Day, SunapData.Day));
 
         Assert.Equal(
-            "{\"v\":1,\"day\":\"2026-10-30\",\"unsure\":false,\"rows\":[[\"900001\",\"가상환자01\",\"09:02\",\"re\",0,15000,0,0,[\"KK020\",\"MM110\"],[\"202611021030\",\"주사 오전\"]]],"
-            + "\"paid\":[[\"900002\",\"가상환자02\",\"11:20\",10000,0]]}",
+            "{\"v\":2,\"day\":\"2026-10-30\",\"unsure\":false,\"rows\":[[\"900001\",\"가상환자01\",\"09:02\",\"re\",0,15000,0,0,[\"KK020\",\"MM110\"],[\"202611021030\",\"주사 오전\"],null]],"
+            + "\"paid\":[[\"900002\",\"가상환자02\",\"11:20\",10000,0]],\"doctors\":[]}",
             Replies.Canon(json));
         Assert.Empty(rig.Screens.Calls);
         Assert.Empty(rig.Rig.Login.Calls);
@@ -336,11 +341,11 @@ public class SunapTargetsTests
 
         Assert.Equal(new[]
         {
-            "[\"900005\",\"가상환자05\",\"08:50\",\"re\",0,0,0,0,[],null]",
-            "[\"900001\",\"가상환자01\",\"09:02\",\"re\",7001,8000,0,14998,[\"KK020\",\"KK030\",\"MM110\"],null]",
-            "[\"900002\",\"가상환자02\",\"09:15\",\"new\",0,0,25000,0,[],null]",
-            "[\"900003\",\"가상환자03\",\"09:30\",\"d90\",0,0,0,16300,[\"AA100\"],null]",
-            "[\"900004\",\"\",\"09:45\",\"new\",0,0,0,0,[],null]",
+            "[\"900005\",\"가상환자05\",\"08:50\",\"re\",0,0,0,0,[],null,null]",
+            "[\"900001\",\"가상환자01\",\"09:02\",\"re\",7001,8000,0,14998,[\"KK020\",\"KK030\",\"MM110\"],null,null]",
+            "[\"900002\",\"가상환자02\",\"09:15\",\"new\",0,0,25000,0,[],null,null]",
+            "[\"900003\",\"가상환자03\",\"09:30\",\"d90\",0,0,0,16300,[\"AA100\"],null,null]",
+            "[\"900004\",\"\",\"09:45\",\"new\",0,0,0,0,[],null,null]",
         }, SunapRig.Lines(json, "rows"));
         Assert.False(json.GetProperty("unsure").GetBoolean());
     }
@@ -357,8 +362,8 @@ public class SunapTargetsTests
             SunapData.Money("V2", "900002", 30000m, 9000m, 0m, 0m, 5000m));         // 더 냈다 → 미수 0
         Assert.Equal(new[]
         {
-            "[\"900001\",\"가상환자01\",\"09:02\",\"re\",1000,2000,3000,4000,[],null]",
-            "[\"900002\",\"가상환자02\",\"09:03\",\"re\",9000,0,0,0,[],null]",
+            "[\"900001\",\"가상환자01\",\"09:02\",\"re\",1000,2000,3000,4000,[],null,null]",
+            "[\"900002\",\"가상환자02\",\"09:03\",\"re\",9000,0,0,0,[],null,null]",
         }, SunapRig.Lines(rig.Build(), "rows"));
     }
 
@@ -399,7 +404,7 @@ public class SunapTargetsTests
         }
     }
 
-    [Fact(DisplayName = "AC-4902.2 환자 SQL: 통계 Visits 글(외래·WN/HN/TN/PN·OcmRsuYon<>'O'·이 병원, 첫 내원 FirstVisits) 그대로 + 환자마다 이름·첫 접수·첫 내원일·OcmDgsNfs='3' 접수 수")]
+    [Fact(DisplayName = "AC-4902.2 AC-5002.1 환자 SQL: 통계 Visits 글(외래·WN/HN/TN/PN·OcmRsuYon<>'O'·이 병원, 첫 내원 FirstVisits) 그대로 + 환자마다 이름·첫 접수·첫 내원일·OcmDgsNfs='3' 접수 수·빈 값 뺀 가장 작은 진료의 코드")]
     public void PatientsSqlUsesStatsVisits()
     {
         var visits = Squash(StatsVisits);
@@ -408,7 +413,7 @@ public class SunapTargetsTests
 
         Assert.Equal(
             "SELECT v.PatientId,MAX(b.PbsPatNam) PatName,MIN(c.OcmAcpDtm) FirstAcp,LEFT(MIN(f.FirstDtm),8) FirstDay, "
-            + "SUM(CASE WHEN c.OcmDgsNfs='3' THEN 1 ELSE 0 END) First90 "
+            + "SUM(CASE WHEN c.OcmDgsNfs='3' THEN 1 ELSE 0 END) First90,MIN(NULLIF(RTRIM(c.OcmDtrCod),'')) DoctorId "
             + "FROM PeriodVisits v JOIN dbo.OcmInf c ON c.OcmNum=v.VisitId LEFT JOIN FirstVisits f ON f.PatientId=v.PatientId "
             + "LEFT JOIN dbo.PbsInf b ON b.PbsChtNum=v.PatientId WHERE v.PatientId IS NOT NULL GROUP BY v.PatientId",
             Rest(SunapSql.PatientsSql, StatsVisits));
@@ -577,12 +582,137 @@ public class SunapTargetsTests
         }
     }
 
+    // ── AC-5002 장부 줄에 원장님 (spec sunap-doctors) ─────────────────────────
+
+    [Fact(DisplayName = "AC-5002.1 sunap v:2: rows 줄마다 끝에 진료의 코드 한 칸(그날 센 내원들의 OcmDtrCod 중 빈 값 뺀 가장 작은 것, 앞뒤 빈칸 뺌, 40자까지), 없으면 null")]
+    public void RowsEndWithDoctorCode()
+    {
+        using var rig = new SunapRig();
+        var code40 = "D" + new string('9', 39);
+        rig.Answer(SunapSql.PatientsSql,
+            SunapData.Patient("900001", "가상환자01", "202610300902", "20240105", 0L, "D002"),
+            SunapData.Patient("900002", "가상환자02", "202610300915", "20261030", 0L, " D001 "),
+            SunapData.Patient("900003", "가상환자03", "202610300930", "20240105", 1L, "   "),
+            SunapData.Patient("900004", "가상환자04", "202610300945", "20240105", 0L, null),
+            SunapData.Patient("900005", "가상환자05", "202610300950", "20240105", 0L, code40));
+        var json = rig.Build();
+
+        Assert.Equal(2, json.GetProperty("v").GetInt32());
+        Assert.Equal(2, SunapTargets.Version);
+        var rows = json.GetProperty("rows").EnumerateArray().ToArray();
+        Assert.All(rows, row => Assert.Equal(11, row.GetArrayLength()));
+        Assert.Equal(new[] { "\"D002\"", "\"D001\"", "null", "null", "\"" + code40 + "\"" }, rows.Select(row => Replies.Canon(row[10])).ToArray());
+    }
+
+    [Fact(DisplayName = "AC-5002.1 진료의 코드가 40자를 넘거나 환자 줄에 코드 칸이 없으면(옛 다섯 칸) 일부만 보내지 않고 E-BIT-READ-FAILED, 세션은 닫고 이름 SQL은 부르지 않는다")]
+    public void BadDoctorCodeIsReadFailed()
+    {
+        var cases = new[]
+        {
+            SunapData.Patient("900001", "가상환자01", "202610300902", "20240105", 0L, "D" + new string('9', 40)),
+            SunapData.Patient("900001", "가상환자01", "202610300902", "20240105", 0L).Take(5).ToArray(),
+        };
+        foreach (var row in cases)
+        {
+            using var rig = new SunapRig();
+            rig.Answer(SunapSql.PatientsSql, row);
+            Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => rig.Build()).Code);
+            Assert.Equal(1, rig.Db.Disposed);
+            Assert.DoesNotContain(StatsSql.DoctorNamesSql, rig.Db.Sqls);
+        }
+    }
+
+    [Fact(DisplayName = "AC-5002.2 doctors: rows에 나온 코드마다 한 번 [코드, 이름|null], 코드 차례. 이름은 통계 원장님 이름 규칙(UidMst 가장 늦은 줄, 앞뒤 빈칸 뺌, 40자까지, 없으면 null)이고 이름 SQL은 미수 입금 다음에 한 번(코드 50자리, 150초)")]
+    public void DoctorsNamedOncePerCode()
+    {
+        using var rig = new SunapRig();
+        rig.Answer(SunapSql.PatientsSql,
+            SunapData.Patient("900001", "가상환자01", "202610300902", "20240105", 0L, "D003"),
+            SunapData.Patient("900002", "가상환자02", "202610300915", "20261030", 0L, "D001"),
+            SunapData.Patient("900003", "가상환자03", "202610300930", "20240105", 0L, "D001"),
+            SunapData.Patient("900004", "가상환자04", "202610300945", "20240105", 0L, "D002"),
+            SunapData.Patient("900005", "가상환자05", "202610300950", "20240105", 0L, "D004"),
+            SunapData.Patient("900006", "가상환자06", "202610300955", "20240105", 0L, null));
+        rig.Answer(StatsSql.DoctorNamesSql,
+            SunapData.DoctorName("D001", "가짜원장 옛이름", "20201231"),
+            SunapData.DoctorName("D001", "  가짜원장 가  ", "99991231"),
+            SunapData.DoctorName("D002", new string('나', 41), "99991231"),
+            SunapData.DoctorName("D004", "가짜원장 라", "20201231"),
+            SunapData.DoctorName("D004", "   ", "99991231"),                 // 가장 늦은 줄의 이름이 비었다
+            SunapData.DoctorName("D999", "가짜원장 안 부른 코드", "99991231"));
+        var json = rig.Build();
+
+        Assert.Equal(new[]
+        {
+            "[\"D001\",\"가짜원장 가\"]",
+            "[\"D002\",\"" + new string('나', 40) + "\"]",
+            "[\"D003\",null]",                                                 // UidMst에 없음
+            "[\"D004\",null]",
+        }, SunapRig.Lines(json, "doctors"));
+
+        Assert.Equal(new[]
+        {
+            SunapSql.PatientsSql, SunapSql.CodesSql, SunapSql.NextReservationSql, SunapSql.MoneySql, SunapSql.PaidSql, StatsSql.DoctorNamesSql,
+        }, rig.Db.Sqls.Skip(5));
+        var call = rig.Db.Calls.Last();
+        Assert.Equal(50, call.Args.Count);
+        Assert.Equal(new[] { "D001", "D002", "D003", "D004" }, Enumerable.Range(0, 4).Select(i => (string?)call.Args["@d" + i]).ToArray());
+        for (var i = 4; i < 50; i++) Assert.Equal("D001", call.Args["@d" + i]);
+        Assert.Equal(TimeSpan.FromSeconds(150), call.Timeout);
+    }
+
+    [Fact(DisplayName = "AC-5002.2 rows에 코드가 하나도 없으면 doctors는 []이고 이름 SQL을 부르지 않는다. 이름 SQL이 막히면 일부만 보내지 않고 error 하나(E-BIT-READ-FAILED, 답·기록에 환자 값 없음)")]
+    public void DoctorsEmptyWithoutCodesAndNameFailureIsReadFailed()
+    {
+        using (var rig = new SunapRig())
+        {
+            rig.Answer(SunapSql.PatientsSql, SunapData.Patient("900001", "가상환자01", "202610300902", "20240105", 0L));
+            var json = rig.Build();
+            Assert.Empty(SunapRig.Lines(json, "doctors"));
+            Assert.DoesNotContain(StatsSql.DoctorNamesSql, rig.Db.Sqls);
+        }
+
+        using var command = new ContactRig();
+        SunapData.Defaults(command.Db);
+        command.Db.Answer(SunapSql.PatientsSql, _ => new[] { SunapData.Patient("900001", "가상환자01", "202610300902", "20240105", 0L, "D001") });
+        command.Db.Fail(StatsSql.DoctorNamesSql, "E-BIT-READ-FAILED");
+        Assert.Equal("E-BIT-READ-FAILED", Replies.OnlyError(command.Send("sunap", SunapData.Day, SunapData.Day)));
+        foreach (var value in new[] { "가상환자", "900001", "D001" }) Assert.DoesNotContain(value, command.RawReplies, StringComparison.Ordinal);
+        Assert.Equal(new (string?, string?)[] { ("contact.targets", "E-BIT-READ-FAILED") }, command.Log);
+        Assert.Equal(1, command.Db.Disposed);
+    }
+
+    [Fact(DisplayName = "AC-5002.2 명령 contact.targets sunap 답 v:2: rows 끝 칸 코드와 맨 위 doctors [[코드, 이름|null]]가 한 JSON으로 chunk … end에 실린다")]
+    public void CommandSendsDoctors()
+    {
+        using var rig = new ContactRig();
+        SunapData.Defaults(rig.Db);
+        rig.Db.Answer(SunapSql.PatientsSql, _ => new[]
+        {
+            SunapData.Patient("900001", "가상환자01", "202610300902", "20240105", 0L, "D002"),
+            SunapData.Patient("900002", "가상환자02", "202610300910", "20261030", 0L, "D001"),
+        });
+        rig.Db.Answer(StatsSql.DoctorNamesSql, _ => new[] { SunapData.DoctorName("D001", "가짜원장 가", "99991231") });
+
+        var json = Replies.Join(rig.Send("sunap", SunapData.Day, SunapData.Day));
+
+        Assert.Equal(
+            "{\"v\":2,\"day\":\"2026-10-30\",\"unsure\":false,\"rows\":["
+            + "[\"900001\",\"가상환자01\",\"09:02\",\"re\",0,0,0,0,[],null,\"D002\"],"
+            + "[\"900002\",\"가상환자02\",\"09:10\",\"new\",0,0,0,0,[],null,\"D001\"]],"
+            + "\"paid\":[],\"doctors\":[[\"D001\",\"가짜원장 가\"],[\"D002\",null]]}",
+            Replies.Canon(json));
+    }
+
+    [Fact(DisplayName = "AC-5002.3 도우미 판은 0.9.0이다(웹 LATEST_HELPER 0.9.0·MIN_HELPER·SUNAP_HELPER 그대로는 handshake.test.ts가 본다)")]
+    public void HelperVersionIsZeroNine() => Assert.Equal("0.9.0", HelperVersion.Value);
+
     // ── AC-4902.6 판 ───────────────────────────────────────────────
 
-    [Fact(DisplayName = "AC-4902.6 도우미 판은 0.8.0이고 명령 이름 목록은 그대로다(명령 13개·protocol 1, contact.targets 칸은 kind·from·to)")]
+    [Fact(DisplayName = "AC-4902.6 도우미 판은 0.9.0이고 명령 이름 목록은 그대로다(명령 13개·protocol 1, contact.targets 칸은 kind·from·to)")]
     public void SunapVersionAndCommandNamesStay()
     {
-        Assert.Equal("0.8.0", HelperVersion.Value);
+        Assert.Equal("0.9.0", HelperVersion.Value);
 
         using var table = JsonDocument.Parse(CommandTable.EmbeddedBytes());
         var commands = table.RootElement.GetProperty("commands");

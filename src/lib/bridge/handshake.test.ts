@@ -76,9 +76,10 @@ describe('AC-004.4 웹 versions.ts 값', () => {
   // 도우미 0.6.0 = 0.5.1 + revenue.days 답에 날마다 처방별 금액 dayCodes(spec stats-revenue). 새 명령 없음, MIN은 그대로 0.3.0
   // 도우미 0.7.0 = 0.6.0 + stats.rows v4(90일초진 칸)·revenue.days 참고 금액 roughTotal(spec first90). 새 명령 없음, MIN은 그대로 0.3.0
   // 도우미 0.8.0 = 0.7.0 + 수납일지 하루 장부(contact.targets kind 'sunap')·달 파일 sunap 칸(spec sunap-ilji). 새 명령 없음, MIN은 그대로 0.3.0
-  it('AC-004.4·AC-012.1·AC-604.1·AC-3402.1·AC-4101.5·AC-4405.3·AC-4902.6 지금 값은 도우미 최소 0.3.0·최신 0.8.0, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
+  // 도우미 0.9.0 = 0.8.0 + 수납일지 장부 줄에 원장님(contact.targets sunap 답 v:2, spec sunap-doctors). 새 명령 없음, MIN·SUNAP은 그대로
+  it('AC-004.4·AC-012.1·AC-604.1·AC-3402.1·AC-4101.5·AC-4405.3·AC-4902.6·AC-5002.3 지금 값은 도우미 최소 0.3.0·최신 0.9.0, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
     expect(MIN_HELPER).toBe('0.3.0')
-    expect(LATEST_HELPER).toBe('0.8.0')
+    expect(LATEST_HELPER).toBe('0.9.0')
     expect(MIN_EXTENSION).toBe('0.1.0')
     expect(compareVersions(MIN_HELPER, LATEST_HELPER)).toBeLessThanOrEqual(0)
     expect(WEB_VERSIONS).toEqual({
@@ -95,13 +96,13 @@ describe('AC-004.4 웹 versions.ts 값', () => {
     expect(compareVersions(LIST_HELPER, LATEST_HELPER)).toBeLessThanOrEqual(0)
   })
 
-  it('AC-4902.6 수납일지 장부가 보는 SUNAP_HELPER는 0.8.0이고 LATEST_HELPER 이하다(최신 도우미를 깔면 장부가 열린다)', () => {
+  it('AC-4902.6·AC-5002.3 수납일지 장부가 보는 SUNAP_HELPER는 0.8.0 그대로이고 LATEST_HELPER 이하다(최신 도우미를 깔면 장부가 열린다)', () => {
     expect(SUNAP_HELPER).toBe('0.8.0')
     expect(compareVersions(SUNAP_HELPER, LATEST_HELPER)).toBeLessThanOrEqual(0)
     expect(compareVersions(LIST_HELPER, SUNAP_HELPER)).toBeLessThan(0)
   })
 
-  it('AC-004.4·AC-3402.1·AC-4902.6 LATEST_HELPER는 helper/Directory.Build.props의 도우미 버전과 같다(같은 커밋에서 올린다)', () => {
+  it('AC-004.4·AC-3402.1·AC-4902.6·AC-5002.3 LATEST_HELPER는 helper/Directory.Build.props의 도우미 버전과 같다(같은 커밋에서 올린다)', () => {
     const props = readFileSync(new URL('../../../helper/Directory.Build.props', import.meta.url), 'utf8')
     expect(props.match(/<Version>([^<]+)<\/Version>/)?.[1]).toBe(LATEST_HELPER)
   })
