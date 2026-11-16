@@ -998,3 +998,87 @@ describe('AC-4901.8·AC-4907.3 src/lib/sunap/**(수납일지 장부 규칙)도 �
     expect(results.flatMap((r) => r.messages.map((m) => `${r.filePath}:${m.line} ${m.ruleId}`))).toEqual([])
   })
 })
+
+describe('AC-4905.8 components/sunap/rows/**(수납일지 장부 줄): JSX는 되고 네트워크·console·저장소·supabase·lib/storage·lib/auth·통로(lib/bridge)·workers는 막힌다', SLOW, () => {
+  const ROWS = 'src/components/sunap/rows/Probe.tsx'
+
+  it.each([
+    ["fetch('x')", 'no-restricted-globals'],
+    ["window.fetch('x')", 'no-restricted-properties'],
+    ['new XMLHttpRequest()', 'no-restricted-globals'],
+    ["new WebSocket('x')", 'no-restricted-globals'],
+    ["new EventSource('x')", 'no-restricted-globals'],
+    ["navigator.sendBeacon('x')", 'no-restricted-properties'],
+    ['console.log(1)', 'no-console'],
+    ['const c = console; c.log(1)', 'no-restricted-globals'],
+    ['globalThis.console.log(1)', 'no-restricted-properties'],
+    ["localStorage.setItem('k', 'v')", 'no-restricted-globals'],
+    ["sessionStorage.getItem('k')", 'no-restricted-globals'],
+    ["indexedDB.open('x')", 'no-restricted-globals'],
+    ["window.localStorage.setItem('k', 'v')", 'no-restricted-properties'],
+    ["import { supabaseBrowser } from '@/lib/supabase/browser'", 'no-restricted-imports'],
+    ["import { createClient } from '@supabase/supabase-js'", 'no-restricted-imports'],
+    ["import { addSpend } from '@/lib/storage/sunap'", 'no-restricted-imports'],
+    ["import x from '../../../lib/storage/sunap'", 'no-restricted-imports'],
+    ["import { gate } from '@/lib/auth/gate'", 'no-restricted-imports'],
+    ["import { connectScreenBridge } from '@/lib/bridge/workerSink'", 'no-restricted-imports'],
+    ["import { connectBridge } from '@/lib/bridge/client'", 'no-restricted-imports'],
+    ["import x from '../../../lib/bridge/protocol'", 'no-restricted-imports'],
+    ["import type { SunapPatch } from '@/workers/sunap/messages'", 'no-restricted-imports'],
+    ["import * as Sentry from '@sentry/nextjs'", 'no-restricted-imports'],
+    ["export const load = async () => await import('@/lib/supabase/browser')", 'no-restricted-syntax'],
+    ["export const load = async () => await import('@/lib/storage/sunap')", 'no-restricted-syntax'],
+    ["export const load = async () => await import('@/lib/bridge/workerSink')", 'no-restricted-syntax'],
+    ["export const load = async () => await import('@/workers/sunap/handler')", 'no-restricted-syntax'],
+    ['export const load = async (name: string) => await import(name)', 'no-restricted-syntax'],
+  ])('AC-4905.8: %s → %s', async (code, rule) => {
+    expect(await errorRules(code, ROWS)).toContain(rule)
+  })
+
+  it('AC-4905.8: JSX·react·장부 규칙(lib/sunap)·수납일지 타입·같은 폴더 모양 import는 된다(props로 받은 줄을 그린다)', async () => {
+    const code = [
+      "import { useState } from 'react'",
+      "import { parseWon } from '@/lib/sunap/ledger'",
+      "import type { LedgerRow } from '@/types/sunap'",
+      "import { ds } from '@/components/ui/classes'",
+      'export function Rows({ rows }: { rows: LedgerRow[] }) {',
+      '  const [open] = useState(false)',
+      '  return <div className={ds.panel}>{open ? rows.map((r) => <p key={r.chart}>{r.name}{parseWon(String(r.cash))}</p>) : null}</div>',
+      '}',
+    ].join('\n')
+    expect(await lint(code, ROWS)).toEqual([])
+  })
+
+  it('AC-4905.8: 하위 폴더·시험 파일도 같은 울타리 아래 있다', async () => {
+    expect(await errorRules("fetch('x')", 'src/components/sunap/rows/sub/Probe.tsx')).toContain('no-restricted-globals')
+    expect(await errorRules('console.log(1)', 'src/components/sunap/rows/Probe.test.tsx')).toContain('no-console')
+    expect(await errorRules("localStorage.getItem('k')", 'src/components/sunap/rows/Probe.test.tsx')).toContain('no-restricted-globals')
+  })
+
+  it('AC-4905.8: 안내는 수납일지 장부 줄 화면(components/sunap/rows)을 말한다', async () => {
+    const messages = (await lint("fetch('x')", ROWS)).map((m) => m.message).join('\n')
+    expect(messages).toContain('components/sunap/rows')
+  })
+
+  it('AC-4905.8: components/sunap(줄 밖)은 서버 저장·통로 입구를 import할 수 있고, 오류 보고 패키지·client.ts는 막힌다', async () => {
+    const code = [
+      "import { addSpend } from '@/lib/storage/sunap'",
+      "import { supabaseBrowser } from '@/lib/supabase/browser'",
+      "import type { ScreenBridge } from '@/lib/bridge/workerSink'",
+      'export const parts = [addSpend, supabaseBrowser] as const',
+      'export type Bridge = ScreenBridge',
+    ].join('\n')
+    expect(await lint(code, 'src/components/sunap/Probe.tsx')).toEqual([])
+    expect(await errorRules("import * as Sentry from '@sentry/nextjs'", 'src/components/sunap/Probe.tsx')).toContain('no-restricted-imports')
+    expect(await errorRules("import { connectBridge } from '@/lib/bridge/client'", 'src/components/sunap/Probe.tsx')).toContain(
+      'no-restricted-imports',
+    )
+  })
+
+  it('AC-4905.8: 실제 장부 줄 소스(rows/LedgerRows·rows/PaidRows)는 울타리에 걸리는 것이 없다', async () => {
+    const files = ['src/components/sunap/rows/LedgerRows.tsx', 'src/components/sunap/rows/PaidRows.tsx']
+    const results = await eslint.lintFiles(files)
+    expect(results.map((r) => r.filePath.replace(/\\/g, '/').replace(/^.*\/src\//, 'src/')).sort()).toEqual([...files].sort())
+    expect(results.flatMap((r) => r.messages.map((m) => `${r.filePath}:${m.line} ${m.ruleId}`))).toEqual([])
+  })
+})
