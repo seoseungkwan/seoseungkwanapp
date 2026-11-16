@@ -346,6 +346,12 @@ function LedgerView({
       {localClosed && !serverClosed && server.status === 'ready' && problem === null && !busy && (
         <Banner tone="warn">이 PC에는 마감으로 적혔지만 서버에는 아직 올라가지 않았어요. [마감하기]를 다시 눌러 주세요.</Banner>
       )}
+      {view?.unsure === true && (
+        // 도우미가 매출 확인 필요 조건·음수 금액을 본 날(AC-4905.9). 마감은 막지 않는다
+        <Banner tone="warn">
+          <b className="font-semibold text-ink">확인 필요한 날</b> — 환불·변경수납·예치금이 있거나 수납 연결이 겹쳐서 장부 금액이 비트와 다를 수 있어요. 마감 전에 비트 수납 화면과 맞춰 보세요.
+        </Banner>
+      )}
       {!closed && unknown > 0 && settings && <UnknownBanner count={unknown} inj={settings.words.inj[0]} visit={settings.words.visit[0]} />}
       {settings && (blockDef === null || ptDef === null) && <p className="text-small text-muted">설정에서 Block·물리치료 묶음을 골라 주세요</p>}
 
