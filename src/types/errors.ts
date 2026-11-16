@@ -48,5 +48,7 @@ export type ErrorCode =
   | 'E-FORMS-PRIVATE' | 'E-FORMS-NO-DATE' | 'E-FORMS-SAVE-FAILED' | 'E-FORMS-READ-FAILED' | 'E-FORMS-IMAGE-FAILED'
   // 휴진 안내 AI 배경(specs/forms-themes design.md 12절): 하루 한도 · OpenAI 한도 · 만들기 실패 · 내 배경 저장·읽기 실패
   | 'E-FORMS-BG-LIMIT' | 'E-FORMS-BG-QUOTA' | 'E-FORMS-BG-FAILED' | 'E-FORMS-BG-STORE-FAILED'
+  // 도우미·확장 설치 파일 보관함(specs/helper-download design.md '오류'): 목록 읽기 · 받기 · 이름 · 크기 · 같은 판 · 올리기 실패
+  | 'E-INSTALL-READ-FAILED' | 'E-INSTALL-DOWNLOAD-FAILED' | 'E-INSTALL-FILE-NAME' | 'E-INSTALL-FILE-SIZE' | 'E-INSTALL-FILE-EXISTS' | 'E-INSTALL-UPLOAD-FAILED'
 
 export type ErrorInfo = { what: string; fix: string }
