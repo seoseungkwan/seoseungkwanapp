@@ -2,6 +2,7 @@ import type { RxGroupDef } from './analysis'
 import type { ClinicReportNumbers } from './clinicReport'
 import type { DateRange } from './dates'
 import type { DayPayload, MonthPayload, MonthSections } from './payload'
+import type { SunapRates } from './sunap'
 
 // 화면 ↔ 통계 Worker가 주고받는 모양. 화면이 받는 값에는 차트번호·환자 번호·진료 줄·접수 줄이 없다(AC-505.5)
 
@@ -78,11 +79,15 @@ export type DoctorTable = { kind: 'table'; rows: DoctorRow[]; total: DoctorRow }
 export type DoctorsView = { kind: 'single' } | DoctorTable
 
 // 고른 기간의 세 칸 보기(AC-2702.1·AC-2702.3). none = 불러온 적 없음·고른 기간이 불러온 범위 밖, old-helper = 옛 도우미(v2) 답.
-// mix는 [전체]·[신환] 둘 다, 동네는 [구·시]·[동] 둘 다 싣는다: 단추를 눌러도 Worker에 다시 묻지 않는다
+// mix는 [전체]·[신환] 둘 다, 동네는 [구·시]·[동] 둘 다 싣는다: 단추를 눌러도 Worker에 다시 묻지 않는다.
+// sunap = 통계 '예약·전환'의 Block 전환 수(spec sunap-ilji AC-4906.3, 숫자 아홉 칸). 묻기에 묶음 정의(sunap)가 있었을 때만 있다
 export type BitSectionsView =
   | { kind: 'none' }
   | { kind: 'old-helper' }
-  | { kind: 'ready'; mix: { all: PatientMix; new: PatientMix }; hours: VisitHours; doctors: DoctorsView }
+  | { kind: 'ready'; mix: { all: PatientMix; new: PatientMix }; hours: VisitHours; doctors: DoctorsView; sunap?: SunapRates }
+
+// 수납일지 설정에서 고른 Block·물리치료 묶음의 정의(열쇠·코드·빼는 처방·조건만, 이름은 안 감). 둘 다 골랐을 때만 화면이 싣는다(AC-4906.3)
+export type StatsSunapGroups = { block: RxGroupDef; pt: RxGroupDef }
 
 // 화면 → Worker. 기간·오늘·"오늘 진료 끝" 표시·통로 요청 id와 묶음 열쇠·코드만 간다(AC-505.7, 묶음은 treatment-trend AC-1205.4).
 // 조각은 통로 포트로 따로 온다. groups는 선택 칸이고 없으면 []로 본다(requestLoad는 늘 배열을 싣는다). 묶음 이름은 가지 않는다(AC-1213.3)
@@ -99,8 +104,9 @@ export type StatsLoadRequest = {
 }
 // split의 streamId는 통로 요청이 아니라 requestSplit이 정한 일 번호다. 답을 가려 받는 쓰임은 같다
 export type StatsSplitRequest = { type: 'split'; streamId: string; from: string; to: string }
-// 세 칸 보기 묻기. streamId는 requestSections가 정한 일 번호다. previous = 견줄 기간(지금 통계 탭의 range.previous, from·to만). 없으면 null(AC-2703.9)
-export type StatsSectionsRequest = { type: 'sections'; streamId: string; from: string; to: string; previous: DateRange | null }
+// 세 칸 보기 묻기. streamId는 requestSections가 정한 일 번호다. previous = 견줄 기간(지금 통계 탭의 range.previous, from·to만). 없으면 null(AC-2703.9).
+// sunap = Block·물리치료 묶음 정의(있으면 답에 sunapRates를 함께 싣는다, sunap-ilji AC-4906.3). 없으면 열쇠가 없다(지금 모양 그대로)
+export type StatsSectionsRequest = { type: 'sections'; streamId: string; from: string; to: string; previous: DateRange | null; sunap?: StatsSunapGroups }
 export type StatsWorkerRequest = { type: 'bridge-port' } | StatsLoadRequest | StatsSplitRequest | StatsSectionsRequest
 
 // Worker → 화면. streamId는 화면이 준 요청 id를 돌려주는 것이다: 시간이 지나 포기한 앞 일의 늦은 답을 다음 일의 답으로 받지 않으려고.

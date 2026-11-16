@@ -20,6 +20,7 @@ import { useStatsData, type SavedLatest, type StatsData } from './useStatsData'
 import { StatsToc } from './StatsToc'
 import { useStatsRevenue, type RevenueFailure } from './useStatsRevenue'
 import { useStatsRxGroups } from './useStatsRxGroups'
+import { useStatsSunap } from './useStatsSunap'
 import { errorCodeOf, useStatsWorker } from './useStatsWorker'
 import { DEFAULT_STATS_PERIOD, rangeOf, type CompareRange, type StatsPeriod, type StatsRange } from './view'
 
@@ -27,6 +28,7 @@ import { DEFAULT_STATS_PERIOD, rangeOf, type CompareRange, type StatsPeriod, typ
 // 처방별 신환·재진과 보고 문장은 이 화면에서 비트로 불러온 뒤에만 있다(서버에 저장하지 않는다).
 // 기간은 빠른 단추 넷 또는 기간 골라 보기(stats-period REQ-1703)다. 고른 것은 상태에만 두고(처음은 최근 30일) range = rangeOf(today, choice, todayDone)
 // 처방별 추세 묶음 훅은 여기서 한 번 부른다: 불러오기(묶음으로 셈)와 칸(보기·고치기)이 같은 묶음을 쓴다(treatment-trend design.md '잇기')
+// 예약·전환(sunap-ilji REQ-4906): 마감한 날·수납일지 Block·물리치료 묶음은 useStatsSunap이 읽고, 묶음 정의는 세 칸 묻기에 실어 Block 전환 수를 함께 받는다
 // 매출(stats-revenue REQ-4108, design.md '화면 잇기'): 저장된 매출은 열 때 읽어 기간 요약 둘째 줄·매출 칸에 그린다(useStatsRevenue). 비트 매출은 [비트에서 불러오기]가
 // 통계 조각을 모두 저장한 뒤에만 같은 일 안에서 통계가 쥔 같은 비트 연결(useStatsWorker.revenueDays)로 읽는다. 열기만 해서는 비트에서 읽지 않는다
 
@@ -222,6 +224,8 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   const lastDay = lastDayOf(today, todayDone)
   const { state, helloError, retry, load, split, sections, revenueDays, helperVersion } = useStatsWorker()
   const groups = useStatsRxGroups(data.input?.days ?? NO_DAYS)
+  const sunap = useStatsSunap(range, groups)
+  const sunapDefs = sunap.defs
   // 비트 PC가 아니면(확장 없음·휴대폰·연결 전) call이 없어 저장된 매출만 읽는다(AC-4108.7)
   const revenue = useStatsRevenue({ range, today, lastDay, call: state === 'ready' ? revenueDays : null, helperVersion })
 
@@ -244,12 +248,13 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   const { from: splitFrom, to: splitTo } = splitSpan(range)
   const { from: prevFrom, to: prevTo } = range.previous
   // 세 칸(환자 구성·시간대별 접수·원장님별)도 처방별과 같은 때(불러오기 횟수·기간·견줄 기간이 바뀔 때) 묻는다. 끝은 처방별처럼 불러온 끝에서 자른다.
-  // 견줄 기간은 range.previous 그대로다(Worker가 범위 안일 때만 센다). 처방별 묻기보다 먼저 둔다: 같은 때 묻는 처방별이 마지막 요청으로 남는다
+  // 견줄 기간은 range.previous 그대로다(Worker가 범위 안일 때만 센다). 처방별 묻기보다 먼저 둔다: 같은 때 묻는 처방별이 마지막 요청으로 남는다.
+  // 수납일지 묶음 정의가 있으면 함께 실어 같은 기간 Block 전환 수(sunap)를 받는다. 설정·묶음이 나중에 오거나 바뀌면 다시 묻는다(sunap-ilji AC-4906.3)
   useEffect(() => {
     if (loads === 0) return
     let current = true
     const asked = { loads, from: splitFrom, to: splitTo, prevFrom, prevTo }
-    sections({ from: splitFrom, to: splitTo, previous: { from: prevFrom, to: prevTo } }).then(
+    sections({ from: splitFrom, to: splitTo, previous: { from: prevFrom, to: prevTo }, sunap: sunapDefs }).then(
       (view) => {
         if (current) setBitAnswer({ ...asked, view, error: null })
       },
@@ -260,7 +265,7 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
     return () => {
       current = false
     }
-  }, [loads, sections, splitFrom, splitTo, prevFrom, prevTo])
+  }, [loads, sections, splitFrom, splitTo, prevFrom, prevTo, sunapDefs])
   const bitAnswered =
     bitAnswer !== null && bitAnswer.loads === loads && bitAnswer.from === splitFrom && bitAnswer.to === splitTo && bitAnswer.prevFrom === prevFrom && bitAnswer.prevTo === prevTo
       ? bitAnswer
@@ -533,6 +538,7 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
               lastDay,
               onReread: revenue.reread,
             }}
+            sunap={{ closed: sunap.closed, groups: sunap.groups, onReread: sunap.reread }}
           />
         </div>
       )}

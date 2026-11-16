@@ -12,14 +12,16 @@ import {
 } from '@/lib/analytics/rxVisitSplit'
 import { doctorStats } from '@/lib/analytics/doctorStats'
 import { patientMix } from '@/lib/analytics/patientMix'
+import { sunapRates } from '@/lib/analytics/sunapRates'
 import { visitHours } from '@/lib/analytics/visitHours'
 import { createPatientIds } from '@/lib/parsers/bit'
 import { fillGroupCounts } from '@/lib/payload/groupCounts'
 import { toDayPayloads } from '@/lib/payload/toDayPayloads'
 import { toMonthPayload } from '@/lib/payload/toMonthPayload'
 import { toMonthSections } from '@/lib/payload/toMonthSections'
-import type { RxGroupDef } from '@/types/analysis'
+import type { PatientDay, RxGroupDef } from '@/types/analysis'
 import type { AnalysisResult } from '@/types/analyze'
+import type { ConsumptionRow } from '@/types/consumption'
 import type { DateRange } from '@/types/dates'
 import type {
   BitSectionsView,
@@ -30,6 +32,7 @@ import type {
   StatsLoadRequest,
   StatsSectionsRequest,
   StatsSplitRequest,
+  StatsSunapGroups,
   StatsWorkerMessage,
 } from '@/types/stats'
 import { createAssembler, StatsDataError } from './assemble'
@@ -63,12 +66,15 @@ export type StatsMemory = {
 
 // 비트 전용 세 칸(sections 일)이 쓰는 값. Worker 밖으로 나가지 않고 저장하지 않는다. 다음 load가 memory와 함께 덮어쓴다.
 // v = 답의 판(4면 날 숫자에 90일초진 first90이 있다, spec first90), extra = v3·v4 접수 줄·사람 표·원장님 표·날·원장님 금액(v2 답이면 null),
-// first = 환자 → 첫 내원일(v2면 비어 있다)
+// first = 환자 → 첫 내원일(v2면 비어 있다).
+// patientDays·consumption = 통계 '예약·전환' Block 전환(spec sunap-ilji AC-4906.3)이 세는 접수 줄(환자·날)과 진료 줄. aggregate에 넣은 것과 같은 배열이다
 export type BitMemory = {
   v: StatsRowsData['v']
   range: DateRange
   extra: StatsExtra | null
   first: ReadonlyMap<number, string>
+  patientDays: readonly PatientDay[]
+  consumption: readonly ConsumptionRow[]
 }
 
 const earlier = (a: string, b: string) => (compareYmd(a, b) <= 0 ? a : b)
@@ -82,7 +88,9 @@ export function loadJob(
   const { from, to, today, closeToday, groups = [] } = opts
   const data = parseStatsRows(text, { from, to })
   const ids = createPatientIds()
-  const aggregates = aggregate(toConsumptionRows(data, ids), groups, toPatientDays(data, ids))
+  const consumption = toConsumptionRows(data, ids)
+  const patientDays = toPatientDays(data, ids)
+  const aggregates = aggregate(consumption, groups, patientDays)
 
   const { noChart, duplicate, noFirst } = data.summary
   const checks: StatsChecks = { noChart, duplicate, noFirst }
@@ -128,7 +136,7 @@ export function loadJob(
   }
   // 같은 ids로 바꾼다: 진료 줄·접수 줄·사람 표에서 같은 환자 = 같은 번호. view는 v2 답과 같다(AC-2708.1)
   const extra = toStatsExtra(data, ids)
-  const bit: BitMemory = { v: data.v, range: { from, to }, extra, first: extra === null ? new Map() : toFirstVisits(data, ids) }
+  const bit: BitMemory = { v: data.v, range: { from, to }, extra, first: extra === null ? new Map() : toFirstVisits(data, ids), patientDays, consumption }
   // v3 답이면 달 줄마다 같은 달의 세 칸 합계를 싣는다(묶음 이름과 수만, spec stats-bit-ai AC-2901.1). 달 줄이 없으면(incomplete) null.
   // v2 답이면 열쇠를 두지 않는다(AC-2901.6) — 화면 값이 지금과 글자 그대로 같다
   if (extra !== null) {
@@ -196,8 +204,12 @@ export function splitJob(memory: StatsMemory | null, { from, to }: { from: strin
 }
 
 // 화면이 고른 기간과 견줄 기간을 주면 메모리의 접수 줄로 세 칸 보기를 낸다. 결과에는 묶음 이름과 수만 있다(AC-2702.3·AC-2702.4).
-// 견줄 기간은 불러온 범위 안에 다 들어갈 때만 센다(일부만 걸치면 견주지 않는다, AC-2703.9). 시간대별·원장님별은 견주지 않는다(범위 밖)
-export function sectionsJob(bit: BitMemory | null, request: { from: string; to: string; previous?: DateRange | null }): BitSectionsView {
+// 견줄 기간은 불러온 범위 안에 다 들어갈 때만 센다(일부만 걸치면 견주지 않는다, AC-2703.9). 시간대별·원장님별은 견주지 않는다(범위 밖).
+// 묻기에 Block·물리치료 묶음(sunap)이 있으면 같은 기간의 sunapRates(숫자 아홉 칸)를 함께 싣는다(spec sunap-ilji AC-4906.3). 없으면 열쇠가 없다
+export function sectionsJob(
+  bit: BitMemory | null,
+  request: { from: string; to: string; previous?: DateRange | null; sunap?: StatsSunapGroups },
+): BitSectionsView {
   const { from, to } = request
   if (bit === null || !isInside(bit.range, { from, to })) return { kind: 'none' }
   const { extra, first } = bit
@@ -212,12 +224,15 @@ export function sectionsJob(bit: BitMemory | null, request: { from: string; to: 
     people: extra.people,
     first,
   }
-  return {
+  const view: Extract<BitSectionsView, { kind: 'ready' }> = {
     kind: 'ready',
     mix: { all: patientMix(input, 'all'), new: patientMix(input, 'new') },
     hours: visitHours(extra.visits, from, to),
     doctors: doctorStats({ from, to, visits: extra.visits, first, doctors: extra.doctors, doctorDays: extra.doctorDays }),
   }
+  const { sunap } = request
+  if (sunap === undefined) return view
+  return { ...view, sunap: sunapRates({ from, to, days: bit.patientDays, rows: bit.consumption, block: sunap.block, pt: sunap.pt }) }
 }
 
 type PendingText = { promise: Promise<string>; resolve(text: string | Promise<string>): void; reject(reason: unknown): void }

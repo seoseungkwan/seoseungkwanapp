@@ -10,6 +10,7 @@ import type {
   StatsLoadRequest,
   StatsSectionsRequest,
   StatsSplitRequest,
+  StatsSunapGroups,
   StatsWorkerMessage,
 } from '@/types/stats'
 import { AnalyzeError } from './runAnalysis'
@@ -123,13 +124,14 @@ export function requestSplit(worker: WorkerLike, req: { from: string; to: string
 let lastSections = 0
 
 // 기간을 바꿀 때마다 부른다(stats-bit-sections AC-2702.3). 고른 기간과 견줄 기간의 from·to만 간다(견줄 기간 이름 등은 안 감, 없으면 null).
-// 세 칸 보기는 Worker 메모리의 접수 줄로 만들어 묶음 이름과 수만 돌아온다. split과 따로 둔다: split 답 모양을 바꾸지 않으려고
+// 세 칸 보기는 Worker 메모리의 접수 줄로 만들어 묶음 이름과 수만 돌아온다. split과 따로 둔다: split 답 모양을 바꾸지 않으려고.
+// sunap(수납일지 Block·물리치료 묶음, spec sunap-ilji AC-4906.3)을 주면 copyGroupDef로 열쇠·코드(빼는 처방·조건)만 새로 만들어 싣고, 없거나 null이면 열쇠를 두지 않는다
 export function requestSections(
   worker: WorkerLike,
-  req: { from: string; to: string; previous?: DateRange | null },
+  req: { from: string; to: string; previous?: DateRange | null; sunap?: StatsSunapGroups | null },
   opts: { timeoutMs?: number } = {},
 ): Promise<BitSectionsView> {
-  const { from, to, previous } = req
+  const { from, to, previous, sunap } = req
   lastSections += 1
   const request: StatsSectionsRequest = {
     type: 'sections',
@@ -137,6 +139,7 @@ export function requestSections(
     from,
     to,
     previous: previous ? { from: previous.from, to: previous.to } : null,
+    ...(sunap ? { sunap: { block: copyGroupDef(sunap.block), pt: copyGroupDef(sunap.pt) } } : {}),
   }
   return ask(worker, request, (message) => (message.type === 'sections-result' ? message.view : undefined), opts.timeoutMs)
 }

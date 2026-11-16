@@ -3,13 +3,15 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 
 // 바로가기 띠 (first90 REQ-4411 AC-4411.2, design.md 5-0 '바로가기 띠'. 지금 칸 고르기·누름은 stats-pc-ux REQ-4002 그대로).
-// 기간 줄 아래에 놓이고 내리면 앱 머리줄(넓은 화면 102px · 휴대폰 94px) 바로 아래에 붙는다. 카드 링크 여섯뿐이다(띠 왼쪽 기간 글은 없앴다, 기간은 기간 줄에서 본다).
+// 기간 줄 아래에 놓이고 내리면 앱 머리줄(넓은 화면 102px · 휴대폰 94px) 바로 아래에 붙는다. 카드 링크 일곱뿐이다(띠 왼쪽 기간 글은 없앴다, 기간은 기간 줄에서 본다).
+// '예약·전환'(stats-sunap)은 매출 다음이다(spec sunap-ilji AC-4906.1).
 // 카드 자리는 DOM에서 id로 찾는다(카드를 그리는 쪽과 props로 잇지 않는다). 주소(#…)·브라우저 저장소를 쓰지 않고, 상태는 이 부품 안에만 둔다
 
 export const TOC_LINKS: readonly { id: string; name: string }[] = [
   { id: 'stats-summary', name: '요약' },
   { id: 'stats-patients', name: '환자' },
   { id: 'stats-revenue', name: '매출' },
+  { id: 'stats-sunap', name: '예약·전환' },
   { id: 'stats-rx', name: '처방' },
   { id: 'stats-ops', name: '진료 운영' },
   { id: 'stats-report', name: '보고' },

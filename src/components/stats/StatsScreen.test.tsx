@@ -8,6 +8,7 @@ import { MIN_HELPER } from '@/lib/bridge/versions'
 import { readRxPicks } from '@/lib/storage/rxPicks'
 import { readCoverage, readDays, readMonths, saveStats } from '@/lib/storage/stats'
 import { listStatsRxGroups, saveStatsRxGroups } from '@/lib/storage/statsRxGroups'
+import { listSunapDays, loadSunapSettings, type SunapDay } from '@/lib/storage/sunap'
 import { toDayPayloads } from '@/lib/payload/toDayPayloads'
 import { toMonthPayload } from '@/lib/payload/toMonthPayload'
 import { nestedBoxes } from '@/testing/boxes'
@@ -19,6 +20,7 @@ import type { DayPayload, MonthSections } from '@/types/payload'
 import type { RevenueDayRow, RevenueDaysResult, SavedRevenueDay } from '@/types/revenue'
 import type { RxGroup } from '@/types/rxGroups'
 import type { BitSectionsView, PatientMix, RxSplitView, StatsLoaded, StatsLoadRequest, StatsSectionsRequest, StatsWorkerMessage, StatsWorkerRequest } from '@/types/stats'
+import { DEFAULT_RSV_WORDS, SUNAP_TOTAL_KEYS, type SunapRates, type SunapTotals } from '@/types/sunap'
 import { runAnalysis } from '@/workers/runAnalysis'
 import { createStatsWorker } from '@/workers/statsClient'
 import { planLoad, revenueProgressText } from './loadPlan'
@@ -73,6 +75,12 @@ vi.mock('./useStatsRevenue', async (importOriginal) => {
   return { ...real, useStatsRevenue: vi.fn(real.useStatsRevenue) }
 })
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: vi.fn(() => ({})) }))
+// 수납일지 서버 저장 가짜(sunap-ilji TASK-6). 기본은 묶음 안 고름 · 마감한 날 없음(beforeEach)
+vi.mock('@/lib/storage/sunap', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/storage/sunap')>()),
+  loadSunapSettings: vi.fn(),
+  listSunapDays: vi.fn(),
+}))
 
 const TODAY = '2026-11-13' // 금요일
 const HOSPITAL = '가짜정형외과의원'
@@ -88,23 +96,25 @@ const BIT_AT = { at: '2026-11-13T09:42:00Z', source: 'bit' as const } // 18:42
 const FILE_AT = { at: '2026-11-12T09:30:00Z', source: 'file' as const } // 11월 12일 18:30
 // 처방 카드의 탭 셋(stats-pc-ux AC-4003.1)
 const RX_TABS = ['묶음별 추세', '처방별 신환·재진', '처방 골라 보기'] as const
-// 큰 카드 다섯(first90 AC-4411.1·AC-4411.3): [바로가기 자리 id, 카드 h2]. 카드 안 작은 칸(h3)의 이름·글은 각 칸 시험이 본다
+// 큰 카드 여섯(first90 AC-4411.1·AC-4411.3, 예약·전환은 sunap-ilji AC-4906.1): [바로가기 자리 id, 카드 h2]. 카드 안 작은 칸(h3)의 이름·글은 각 칸 시험이 본다
 const CARDS = [
   ['stats-patients', '환자'],
   ['stats-revenue', '매출'],
+  ['stats-sunap', '예약·전환'],
   ['stats-rx', '처방'],
   ['stats-ops', '진료 운영'],
   ['stats-report', '원장님 보고 문장'],
 ] as const
-// 그린 화면의 바로가기 자리 차례: 요약 자리(환자 요약 카드, stats-summary) → 카드 다섯(AC-4411.1). 매출 요약 카드는 요약 자리 안이라 id가 없다(first90 AC-4408.2)
+// 그린 화면의 바로가기 자리 차례: 요약 자리(환자 요약 카드, stats-summary) → 카드 여섯(AC-4411.1). 매출 요약 카드는 요약 자리 안이라 id가 없다(first90 AC-4408.2)
 const PLACES = [['stats-summary', '환자 요약'], ...CARDS]
-// 읽는 동안의 기다리는 자리: 같은 차례의 제목(h2) 일곱(환자 요약 · 매출 요약 · 카드 다섯)이고 자리마다 "불러오는 중" 한 줄, 바로가기 id는 없다
+// 읽는 동안의 기다리는 자리: 같은 차례의 제목(h2) 여덟(환자 요약 · 매출 요약 · 카드 여섯)이고 자리마다 "불러오는 중" 한 줄, 바로가기 id는 없다
 const WAITING_TITLES = ['환자 요약', '매출 요약', ...CARDS.map(([, title]) => title)]
 // 바로가기 띠 링크 열과 그 자리 id(AC-4411.2)
 const TOC = [
   ['요약', 'stats-summary'],
   ['환자', 'stats-patients'],
   ['매출', 'stats-revenue'],
+  ['예약·전환', 'stats-sunap'],
   ['처방', 'stats-rx'],
   ['진료 운영', 'stats-ops'],
   ['보고', 'stats-report'],
@@ -437,6 +447,10 @@ beforeEach(() => {
   vi.mocked(saveStatsRxGroups).mockImplementation(async (after) => after.map((group, i) => ({ ...group, id: group.id ?? `saved${i}` })))
   answers(SAVED_NOW)
   vi.mocked(readRxPicks).mockResolvedValue([])
+  vi.mocked(loadSunapSettings).mockReset()
+  vi.mocked(listSunapDays).mockReset()
+  vi.mocked(loadSunapSettings).mockResolvedValue({ blockGroup: null, ptGroup: null, words: DEFAULT_RSV_WORDS })
+  vi.mocked(listSunapDays).mockResolvedValue([])
   vi.mocked(readCoverage).mockResolvedValue([{ from: '2026-09-01', to: '2026-11-12' }])
   vi.mocked(saveStats).mockResolvedValue({ saved: 1 })
   for (const fn of Object.values(revenueStore)) fn.mockReset()
@@ -3413,11 +3427,11 @@ describe('stats-revenue: 매출 카드 · 바로가기 여섯 · 불러오기 �
     return { port, connect }
   }
 
-  it('AC-4109.1·AC-4107.1·AC-4411.1·AC-4408.2: 매출 카드는 환자 카드 다음 · 처방 카드 앞이다. 불러오는 중 자리도 같은 차례다', async () => {
+  it('AC-4109.1·AC-4107.1·AC-4411.1·AC-4408.2·AC-4906.1: 매출 카드는 환자 카드 다음 · 예약·전환 카드 앞이다. 불러오는 중 자리도 같은 차례다', async () => {
     vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
     const first = draw()
     expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual(WAITING_TITLES)
-    expect(WAITING_TITLES.slice(2, 5)).toEqual(['환자', '매출', '처방'])
+    expect(WAITING_TITLES.slice(2, 6)).toEqual(['환자', '매출', '예약·전환', '처방'])
     expect(screen.getAllByText('불러오는 중')).toHaveLength(WAITING_TITLES.length)
     expect(waitingCard('매출').id).toBe('')
     first.unmount()
@@ -3426,14 +3440,14 @@ describe('stats-revenue: 매출 카드 · 바로가기 여섯 · 불러오기 �
     draw()
     await sectionsShown()
     expect(placesShown()).toEqual(PLACES)
-    expect(placesShown().slice(1, 4).map(([id]) => id)).toEqual(['stats-patients', 'stats-revenue', 'stats-rx'])
+    expect(placesShown().slice(1, 5).map(([id]) => id)).toEqual(['stats-patients', 'stats-revenue', 'stats-sunap', 'stats-rx'])
   })
 
-  it('AC-4109.1·AC-4411.2: 바로가기 링크는 여섯이고 `매출` 링크 href는 #stats-revenue = 매출 카드 section id다', async () => {
+  it('AC-4109.1·AC-4411.2·AC-4906.1: 바로가기 링크는 일곱이고 `매출` 링크 href는 #stats-revenue = 매출 카드 section id다', async () => {
     draw()
     await sectionsShown()
     const links = within(screen.getByRole('navigation', { name: TOC_NAME })).getAllByRole('link')
-    expect(links.map((link) => link.textContent)).toEqual(['요약', '환자', '매출', '처방', '진료 운영', '보고'])
+    expect(links.map((link) => link.textContent)).toEqual(['요약', '환자', '매출', '예약·전환', '처방', '진료 운영', '보고'])
     const revenueLink = within(screen.getByRole('navigation', { name: TOC_NAME })).getByRole('link', { name: '매출' })
     expect(revenueLink.getAttribute('href')).toBe('#stats-revenue')
     expect(card('stats-revenue').tagName).toBe('SECTION')
@@ -3794,8 +3808,132 @@ describe('REQ-4411 first90: 큰 카드 · 바탕', () => {
   })
 
   it('AC-4411.1·AC-4411.2: 매출을 주지 않으면 매출 카드가 없고 나머지 차례는 그대로다', () => {
-    render(<StatsSections input={{ days: [], covered: [], range: R30 }} saved={false} split={null} report={null} hospitalName={HOSPITAL} groups={GROUPS_VIEW} bit={null} />)
+    render(
+      <StatsSections
+        input={{ days: [], covered: [], range: R30 }}
+        saved={false}
+        split={null}
+        report={null}
+        hospitalName={HOSPITAL}
+        groups={GROUPS_VIEW}
+        bit={null}
+        sunap={{ closed: [], groups: 'none', onReread: () => undefined }}
+      />,
+    )
     expect(placesShown()).toEqual(PLACES.filter(([id]) => id !== 'stats-revenue'))
     expect(document.getElementById('stats-revenue')).toBeNull()
+  })
+})
+
+// ── 통계 '예약·전환' 칸 (spec sunap-ilji REQ-4906 TASK-6, 시안 docs/mockups/sunap-ilji ?s=stats). 숫자·묶음 이름은 지어낸 것이다 ──
+describe('REQ-4906 sunap-ilji: 예약·전환 카드', () => {
+  const SUNAP_CARD = 'stats-sunap'
+  const NO_CLOSED = '수납일지를 마감한 날이 없어요'
+  const NO_GROUPS = '수납일지 설정에서 Block·물리치료 묶음을 고르면 보여요'
+  const PT_GROUP: RxGroup = { id: 'g1', name: '가짜 물리치료', codes: ['B200'], sortOrder: 1 }
+  const ZERO = Object.fromEntries(SUNAP_TOTAL_KEYS.map((key) => [key, 0])) as SunapTotals
+  const closed = (day: string, over: Partial<SunapTotals>, late = false): SunapDay => ({ day, closedAt: `${day}T09:50:00Z`, late, totals: { ...ZERO, ...over } })
+  // 기간 전체를 비트에서 센 수(Worker가 세 칸 답에 싣는다)
+  const RATES: SunapRates = { visits: 20, first_n: 4, d90_n: 2, ret_n: 14, block_n: 5, pt_n: 12, first_block: 1, d90_block: 1, ret_block: 3 }
+  const sunapText = () => card(SUNAP_CARD).textContent ?? ''
+  const rowsIn = (title: string) =>
+    [...within(card(SUNAP_CARD)).getByRole('heading', { level: 3, name: title }).closest('section')!.querySelectorAll('dl > div')].map((row) =>
+      [...row.children].map((el) => el.textContent),
+    )
+  const chooseGroups = (blockGroup: string, ptGroup: string) => {
+    vi.mocked(listStatsRxGroups).mockResolvedValue([SAVED_GROUP, PT_GROUP])
+    vi.mocked(loadSunapSettings).mockResolvedValue({ blockGroup, ptGroup, words: DEFAULT_RSV_WORDS })
+  }
+  const answerWithRates = (message: StatsSectionsRequest): StatsWorkerMessage => ({
+    type: 'sections-result',
+    streamId: message.streamId,
+    view: message.sunap === undefined ? BIT_READY : { ...BIT_READY, sunap: RATES },
+  })
+
+  it('AC-4906.1 바로가기 띠의 "매출" 다음이 "예약·전환"(#stats-sunap)이고 그 자리는 h2 "예약·전환" 카드다. 비트 PC가 아니어도 카드가 있다', async () => {
+    draw()
+    await sectionsShown()
+    const links = within(screen.getByRole('navigation', { name: TOC_NAME })).getAllByRole('link')
+    const at = links.findIndex((link) => link.textContent === '매출')
+    expect(links[at + 1]!.textContent).toBe('예약·전환')
+    expect(links[at + 1]!.getAttribute('href')).toBe('#stats-sunap')
+    expect(titleOf(card(SUNAP_CARD))).toBe('예약·전환')
+    expect(card(SUNAP_CARD).previousElementSibling).toBe(card('stats-revenue'))
+    expect(card(SUNAP_CARD).nextElementSibling).toBe(card('stats-rx'))
+  })
+
+  it('AC-4906.2 열면 고른 기간(첫날 ~ 기간 끝과 오늘 가운데 이른 날)의 마감한 날을 읽어 합으로 예약률을 그리고, 기간을 바꾸면 다시 읽는다', async () => {
+    vi.mocked(listSunapDays).mockResolvedValue([
+      closed('2026-11-01', { first_n: 4, rsv_first: 3, d90_n: 2, rsv_d90: 1 }),
+      closed('2026-11-02', { first_n: 6, rsv_first: 2, d90_n: 3, rsv_d90: 3 }, true),
+    ])
+    draw()
+    await sectionsShown()
+    await waitFor(() => expect(sunapText()).toContain('50.0%'))
+    expect(listSunapDays).toHaveBeenLastCalledWith(expect.anything(), R30.current.from, R30.current.to)
+    expect(rowsIn('초진 예약률')).toEqual([
+      ['초진', '', '10명'],
+      ['주사치료·진료(경과) 예약', '', '5명'],
+      ['마감한 날', '진료한 날 2일 중', '2일'],
+      ['늦은 마감 섞임', '', '1일'],
+    ])
+    expect(sunapText()).toContain('80.0%')
+    expect(rowsIn('90일 예약률')).toEqual([
+      ['90일초진', '', '5명'],
+      ['주사치료·진료(경과) 예약', '', '4명'],
+    ])
+
+    pressPeriod('최근 12개월')
+    await sectionsShown()
+    await waitFor(() => expect(listSunapDays).toHaveBeenLastCalledWith(expect.anything(), R12.current.from, TODAY))
+  })
+
+  it('AC-4906.2 마감한 날이 없으면 두 예약률 칸 모두 "수납일지를 마감한 날이 없어요"다', async () => {
+    draw()
+    await sectionsShown()
+    await waitFor(() => expect(within(card(SUNAP_CARD)).getAllByText(NO_CLOSED)).toHaveLength(2))
+  })
+
+  it('AC-4906.2 마감한 날을 읽지 못하면 카드 안 오류 카드와 [다시 읽기]이고, 누르면 다시 읽는다', async () => {
+    vi.mocked(listSunapDays).mockRejectedValueOnce(new Error('가짜 실패'))
+    draw()
+    await sectionsShown()
+    const alert = await within(card(SUNAP_CARD)).findByRole('alert')
+    expect(alert.textContent).toContain('오류 번호 E-STATS-READ-FAILED')
+    fireEvent.click(within(card(SUNAP_CARD)).getByRole('button', { name: '다시 읽기' }))
+    await waitFor(() => expect(within(card(SUNAP_CARD)).getAllByText(NO_CLOSED)).toHaveLength(2))
+    expect(within(card(SUNAP_CARD)).queryByRole('alert')).toBeNull()
+  })
+
+  it('AC-4906.3 수납일지 설정의 묶음 id로 통계 묶음 정의(열쇠·코드만)를 찾아 세 칸 묻기에 싣고, 답의 sunapRates로 Block 전환 비율을 그린다', async () => {
+    chooseGroups('g0', 'g1')
+    const { fake } = await loadedWithBit(answerWithRates)
+    await waitFor(() => expect(rowsIn('Block 전환')).toHaveLength(5))
+    const asked = sectionsSent(fake.sent)
+    expect(asked.at(-1)).toEqual({
+      type: 'sections',
+      streamId: expect.any(String),
+      from: R30.current.from,
+      to: R30.current.to,
+      previous: { from: R30.previous.from, to: R30.previous.to },
+      sunap: { block: defsOf(SAVED_GROUP)[0], pt: defsOf(PT_GROUP)[0] },
+    })
+    expect(JSON.stringify(asked)).not.toContain('가짜 물리치료')
+    expect(rowsIn('Block 전환')).toEqual([
+      ['초진+Block', '1/4', '25.0%'],
+      ['90일+Block', '1/2', '50.0%'],
+      ['재진+Block (Block 중)', '3/5', '60.0%'],
+      ['Block', '5/20', '25.0%'],
+      ['물리치료', '12/20', '60.0%'],
+    ])
+    expect(sunapText()).not.toContain(NO_GROUPS)
+  })
+
+  it('AC-4906.3 묶음을 안 골랐거나 고른 묶음이 지워졌으면 세 칸 묻기에 싣지 않고 "수납일지 설정에서 Block·물리치료 묶음을 고르면 보여요"다', async () => {
+    chooseGroups('g0', 'g9-지워짐')
+    const { fake } = await loadedWithBit(answerWithRates)
+    await waitFor(() => expect(sunapText()).toContain(NO_GROUPS))
+    expect(sectionsSent(fake.sent).every((message) => !('sunap' in message))).toBe(true)
+    expect(rowsIn('Block 전환')).toEqual([])
   })
 })

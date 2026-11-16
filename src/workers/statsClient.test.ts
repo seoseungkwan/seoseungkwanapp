@@ -480,6 +480,29 @@ const SECTIONS_VIEW: BitSectionsView = {
 const sectionsIdOf = (fake: ReturnType<typeof fakeWorker>, index = fake.sent.length - 1) => (fake.sent[index] as StatsSectionsRequest).streamId
 
 describe('AC-2702.3 requestSections — 가짜 Worker', () => {
+  it('AC-4906.3: Block·물리치료 묶음을 주면 sunap에 열쇠·코드(빼는 처방·조건)만 새로 만들어 싣고, 주지 않거나 null이면 sunap 열쇠가 없다', () => {
+    const fake = fakeWorker()
+    const block = { id: 't00000000000000a1', codes: ['MM042'], out: ['ZZ999'], cond: [{ code: 'MM042', unless: ['B4001'] }], name: '가짜 묶음', sortOrder: 3 }
+    const pt = { id: 't00000000000000a2', codes: ['B4001'], out: [], cond: [] }
+    void requestSections(fake.like, { ...RANGE, previous: PREVIOUS, sunap: { block, pt } })
+    void requestSections(fake.like, { ...RANGE, sunap: null })
+    void requestSections(fake.like, RANGE)
+    expect(fake.sent).toEqual([
+      {
+        type: 'sections',
+        streamId: sectionsIdOf(fake, 0),
+        ...RANGE,
+        previous: PREVIOUS,
+        sunap: { block: { id: block.id, codes: ['MM042'], out: ['ZZ999'], cond: [{ code: 'MM042', unless: ['B4001'] }] }, pt: { id: pt.id, codes: ['B4001'] } },
+      },
+      { type: 'sections', streamId: sectionsIdOf(fake, 1), ...RANGE, previous: null },
+      { type: 'sections', streamId: sectionsIdOf(fake, 2), ...RANGE, previous: null },
+    ])
+    const sent = fake.sent[0] as StatsSectionsRequest
+    expect(sent.sunap?.block.codes).not.toBe(block.codes)
+    expect(JSON.stringify(fake.sent)).not.toContain('가짜 묶음')
+  })
+
   it('AC-2702.3: Worker에는 기간·견줄 기간(from·to만)·일 번호만 간다(다른 칸을 넘겨도)', () => {
     const fake = fakeWorker()
     const previous = { ...PREVIOUS, name: '지난 30일', why: '지난 30일', label: '9월 1일 ~ 9월 30일' }

@@ -6,6 +6,7 @@ import { isErrorCode } from '@/lib/errors'
 import type { RxGroupDef } from '@/types/analysis'
 import type { DateRange } from '@/types/dates'
 import type { ErrorCode } from '@/types/errors'
+import type { StatsSunapGroups } from '@/types/stats'
 import { createStatsWorker, requestLoad, requestSections, requestSplit } from '@/workers/statsClient'
 
 // 통계 Worker 하나와 통로 (stats REQ-514, design.md TASK-14). 조각은 통로 포트로 Worker에만 가고(lib/bridge/workerSink.ts), 화면은 숫자만 받는다.
@@ -76,10 +77,11 @@ export function useStatsWorker() {
 
   const split = useCallback(async ({ from, to }: DateRange) => requestSplit(worker.current(), { from, to }), [worker])
 
-  // 세 칸 보기(stats-bit-sections): 고른 기간과 견줄 기간(range.previous)의 from·to만 Worker로 간다. 답은 묶음 이름과 수뿐이다
+  // 세 칸 보기(stats-bit-sections): 고른 기간과 견줄 기간(range.previous)의 from·to만 Worker로 간다. 답은 묶음 이름과 수뿐이다.
+  // sunap = 수납일지 Block·물리치료 묶음 정의(sunap-ilji AC-4906.3). 주면 답에 그 기간 Block 전환 수가 함께 온다
   const sections = useCallback(
-    async ({ from, to, previous }: DateRange & { previous?: DateRange | null }) =>
-      requestSections(worker.current(), { from, to, previous: previous ?? null }),
+    async ({ from, to, previous, sunap }: DateRange & { previous?: DateRange | null; sunap?: StatsSunapGroups | null }) =>
+      requestSections(worker.current(), { from, to, previous: previous ?? null, sunap: sunap ?? null }),
     [worker],
   )
 
