@@ -2,7 +2,7 @@ import type { RxGroupDef } from './analysis'
 import type { ClinicReportNumbers } from './clinicReport'
 import type { DateRange } from './dates'
 import type { DayPayload, MonthPayload, MonthSections } from './payload'
-import type { SunapRates } from './sunap'
+import type { DoctorBreakdown, SunapRates } from './sunap'
 
 // 화면 ↔ 통계 Worker가 주고받는 모양. 화면이 받는 값에는 차트번호·환자 번호·진료 줄·접수 줄이 없다(AC-505.5)
 
@@ -80,11 +80,19 @@ export type DoctorsView = { kind: 'single' } | DoctorTable
 
 // 고른 기간의 세 칸 보기(AC-2702.1·AC-2702.3). none = 불러온 적 없음·고른 기간이 불러온 범위 밖, old-helper = 옛 도우미(v2) 답.
 // mix는 [전체]·[신환] 둘 다, 동네는 [구·시]·[동] 둘 다 싣는다: 단추를 눌러도 Worker에 다시 묻지 않는다.
-// sunap = 통계 '예약·전환'의 Block 전환 수(spec sunap-ilji AC-4906.3, 숫자 아홉 칸). 묻기에 묶음 정의(sunap)가 있었을 때만 있다
+// sunap = 통계 '예약·전환'의 Block 전환 수(spec sunap-ilji AC-4906.3, 숫자 아홉 칸). 묻기에 묶음 정의(sunap)가 있었을 때만 있다.
+// sunapDoctors = 같은 셈의 원장님별 표(spec sunap-doctors AC-5004.1, 원장님 이름과 수만). sunap과 함께만 있고, 원장님이 한 분 이하면 null
 export type BitSectionsView =
   | { kind: 'none' }
   | { kind: 'old-helper' }
-  | { kind: 'ready'; mix: { all: PatientMix; new: PatientMix }; hours: VisitHours; doctors: DoctorsView; sunap?: SunapRates }
+  | {
+      kind: 'ready'
+      mix: { all: PatientMix; new: PatientMix }
+      hours: VisitHours
+      doctors: DoctorsView
+      sunap?: SunapRates
+      sunapDoctors?: DoctorBreakdown | null
+    }
 
 // 수납일지 설정에서 고른 Block·물리치료 묶음의 정의(열쇠·코드·빼는 처방·조건만, 이름은 안 감). 둘 다 골랐을 때만 화면이 싣는다(AC-4906.3)
 export type StatsSunapGroups = { block: RxGroupDef; pt: RxGroupDef }

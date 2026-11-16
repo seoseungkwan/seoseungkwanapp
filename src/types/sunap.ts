@@ -35,7 +35,13 @@ export type SunapReplyRow = [
 ]
 // 미수 입금(예전 미수를 그날 냄): 현금 = 현금, 카드 = 카드+계좌
 export type SunapReplyPaid = [chart: string, name: string, time: string, cash: number, card: number]
-export type SunapReply = { v: 1; day: string; unsure: boolean; rows: SunapReplyRow[]; paid: SunapReplyPaid[] }
+// 도우미 0.9.0(v2, spec sunap-doctors): 줄 끝에 진료의 코드 한 칸(그날 그 환자 접수의 가장 작은 진료의, 없으면 null)
+export type SunapReplyRowV2 = [...SunapReplyRow, doctor: string | null]
+// 줄에 나온 진료의 코드마다 한 번: [코드, 이름(모르면 null)]
+export type SunapReplyDoctor = [code: string, name: string | null]
+export type SunapReply =
+  | { v: 1; day: string; unsure: boolean; rows: SunapReplyRow[]; paid: SunapReplyPaid[] }
+  | { v: 2; day: string; unsure: boolean; rows: SunapReplyRowV2[]; paid: SunapReplyPaid[]; doctors: SunapReplyDoctor[] }
 
 // ── PC 저장 (work-YYYY-MM.dat의 칸 sunap, design.md 'PC 저장') ──────────────
 export type SunapEdit = {
@@ -79,10 +85,19 @@ export type LedgerRow = {
   rsv: LedgerRsv
   note: string
   edited: LedgerEditedField[]
+  doctor: string | null // 진료의 코드(v1 답이면 null)
 }
 export type PaidRow = { chart: string; name: string; time: string; cash: number; card: number }
-// closedAt·late는 PC 저장 그대로(마감 전이면 null·false)
-export type Ledger = { day: string; unsure: boolean; rows: LedgerRow[]; paid: PaidRow[]; closedAt: string | null; late: boolean }
+// closedAt·late는 PC 저장 그대로(마감 전이면 null·false). doctors = 답의 진료의 이름 목록(v1 답이면 빈 목록)
+export type Ledger = {
+  day: string
+  unsure: boolean
+  rows: LedgerRow[]
+  paid: PaidRow[]
+  closedAt: string | null
+  late: boolean
+  doctors: SunapReplyDoctor[]
+}
 
 // ── 서버 숫자 (sunap_days 24칸, design.md 'DB') ─────────────────────────
 export const SUNAP_TOTAL_KEYS = [
@@ -119,3 +134,8 @@ export type SunapRates = Pick<
   SunapTotals,
   'visits' | 'first_n' | 'd90_n' | 'ret_n' | 'block_n' | 'pt_n' | 'first_block' | 'd90_block' | 'ret_block'
 >
+
+// 원장님별 표(spec sunap-doctors REQ-5001): 수납일지 하루(ledgerDoctors)·통계 기간(sunapDoctors)이 같이 쓴다.
+// code null = 진료의 미지정. label = 이름 → 코드 → '진료의 미지정'. rows는 내원 많은 차례(같으면 이름 글자 차례), total = 줄들의 합
+export type DoctorRates = { code: string | null; label: string; rates: SunapRates }
+export type DoctorBreakdown = { rows: DoctorRates[]; total: SunapRates }

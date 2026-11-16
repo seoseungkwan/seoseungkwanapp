@@ -7,10 +7,14 @@ import {
   type LedgerSettings,
   type RsvWords,
   type SunapLocalDay,
+  type SunapRates,
   type SunapReply,
+  type SunapReplyDoctor,
   type SunapReplyRow,
+  type SunapReplyRowV2,
+  type SunapTotals,
 } from '@/types/sunap'
-import { buildLedger, closeLocal, dayTotals, parseWon, reopenLocal } from './ledger'
+import { buildLedger, closeLocal, dayTotals, ledgerDoctors, parseWon, reopenLocal } from './ledger'
 
 // ── 지어낸 자료: 승인 시안(docs/mockups/sunap-ilji/index.html) ROWS 16줄로 만든 도우미 답 ─────────
 // 차트·이름·금액은 시안의 지어낸 값이다. 13번 Block·16번 현금은 직원이 고친 칸(비트 값은 Block 아님·현금 0원)
@@ -80,7 +84,8 @@ const MOCK_SEEN: Seen[] = [
   ['re', 5000, 10000, 0, 0, false, true, 'visit', 'bit', ['cash']],
 ]
 
-const replyOf = (rows: SunapReplyRow[], over: Partial<SunapReply> = {}): SunapReply => ({ v: 1, day: DAY, unsure: false, rows, paid: [], ...over })
+type ReplyV1 = Extract<SunapReply, { v: 1 }>
+const replyOf = (rows: SunapReplyRow[], over: Partial<ReplyV1> = {}): SunapReply => ({ v: 1, day: DAY, unsure: false, rows, paid: [], ...over })
 const line = (chart: string, over: Partial<{ kind: SunapReplyRow[3]; cash: number; card: number; transfer: number; unpaid: number; codes: string[]; rsv: SunapReplyRow[9] }> = {}): SunapReplyRow => [
   chart,
   '가○○',
@@ -458,5 +463,152 @@ describe('AC-4901.7 parseWon — 금액 칸 글자 → 원 정수(0~99,999,999)'
 
   it.each(['-1', '1억', '100000000', '100,000,000', '12.5', 'abc', '원', '1 000', '+5'])('AC-4901.7: "%s" → invalid', (text) => {
     expect(parseWon(text)).toBe('invalid')
+  })
+})
+
+// ── 원장님별 (spec sunap-doctors REQ-5001) ─────────────────────────────
+// 시안 16줄에 원장님 코드를 붙인 도우미 0.9.0(v2) 답: D01 김○○ 7줄, D02 이○○ 6줄, 진료의 미지정(null) 3줄. 이름·코드는 지어낸 값이다
+
+const RATE_KEYS = ['visits', 'first_n', 'd90_n', 'ret_n', 'block_n', 'pt_n', 'first_block', 'd90_block', 'ret_block'] as const
+const ratesOf = (totals: SunapTotals): SunapRates => Object.fromEntries(RATE_KEYS.map((key) => [key, totals[key]])) as SunapRates
+const DOCTOR_OF: (string | null)[] = ['D01', 'D02', 'D01', 'D02', 'D01', 'D02', null, 'D01', 'D02', null, 'D01', 'D02', 'D02', 'D01', null, 'D01']
+const NAMES: SunapReplyDoctor[] = [
+  ['D01', '김○○'],
+  ['D02', '이○○'],
+]
+const v2Of = (rows: [SunapReplyRow, string | null][], doctors: SunapReplyDoctor[]): SunapReply => ({
+  v: 2,
+  day: DAY,
+  unsure: false,
+  rows: rows.map(([row, doctor]): SunapReplyRowV2 => [...row, doctor]),
+  paid: [],
+  doctors,
+})
+const MOCK_V2: SunapReply = {
+  ...v2Of(
+    MOCK_ROWS.map((row, at) => [row, DOCTOR_OF[at]]),
+    NAMES,
+  ),
+  paid: MOCK_REPLY.paid,
+}
+// 원장님 코드만 다른 줄들(재진 · Block·물리치료 없음)
+const linesOf = (doctors: (string | null)[]) => doctors.map((doctor, at): [SunapReplyRow, string | null] => [line(String(at + 1)), doctor])
+const summary = (ledger: Ledger, names?: SunapReplyDoctor[]) =>
+  (names === undefined ? ledgerDoctors(ledger) : ledgerDoctors(ledger, names))?.rows.map((row) => [row.code, row.label, row.rates.visits]) ?? null
+
+describe('AC-5001.1 buildLedger v2·ledgerDoctors — 장부 값으로 원장님마다 아홉 칸', () => {
+  it('AC-5001.1: v2 답이면 줄마다 doctor는 끝 칸, 장부 doctors는 답의 목록이다. v1 답이면 null·빈 목록이다', () => {
+    const ledger = buildLedger(MOCK_V2, MOCK_LOCAL, SETTINGS)
+    expect(ledger.rows.map((row) => row.doctor)).toEqual(DOCTOR_OF)
+    expect(ledger.doctors).toEqual(NAMES)
+    const old = buildLedger(MOCK_REPLY, MOCK_LOCAL, SETTINGS)
+    expect(old.rows.every((row) => row.doctor === null)).toBe(true)
+    expect(old.doctors).toEqual([])
+  })
+
+  it('AC-5001.1: v2 답도 다른 칸은 v1 답과 글자 그대로 같고, 받은 답을 바꾸지 않는다', () => {
+    const reply = structuredClone(MOCK_V2)
+    const ledger = buildLedger(reply, MOCK_LOCAL, SETTINGS)
+    const old = buildLedger(MOCK_REPLY, MOCK_LOCAL, SETTINGS)
+    expect(ledger.rows.map((row) => ({ ...row, doctor: null }))).toEqual(old.rows)
+    expect(dayTotals(ledger)).toEqual(dayTotals(old))
+    expect(reply).toEqual(MOCK_V2)
+  })
+
+  it('AC-5001.1: 시안 16줄 — 원장님마다 아홉 칸(직원이 고친 Block 포함)이고 합계는 dayTotals 아홉 칸과 같다', () => {
+    const ledger = buildLedger(MOCK_V2, MOCK_LOCAL, SETTINGS)
+    const doctors = ledgerDoctors(ledger)
+    expect(doctors).toEqual({
+      rows: [
+        {
+          code: 'D01',
+          label: '김○○',
+          rates: { visits: 7, first_n: 2, d90_n: 1, ret_n: 4, block_n: 5, pt_n: 5, first_block: 2, d90_block: 1, ret_block: 2 },
+        },
+        {
+          code: 'D02',
+          label: '이○○',
+          // 13번 줄(10344)은 직원이 Block으로 고쳤다
+          rates: { visits: 6, first_n: 0, d90_n: 1, ret_n: 5, block_n: 2, pt_n: 5, first_block: 0, d90_block: 0, ret_block: 2 },
+        },
+        {
+          code: null,
+          label: '진료의 미지정',
+          rates: { visits: 3, first_n: 2, d90_n: 0, ret_n: 1, block_n: 0, pt_n: 3, first_block: 0, d90_block: 0, ret_block: 0 },
+        },
+      ],
+      total: { visits: 16, first_n: 4, d90_n: 2, ret_n: 10, block_n: 7, pt_n: 13, first_block: 2, d90_block: 1, ret_block: 4 },
+    })
+    expect(doctors?.total).toEqual(ratesOf(dayTotals(ledger)))
+  })
+
+  it('AC-5001.1: Block·물리치료를 고치면 그 원장님 수가 바뀌고, 합계는 여전히 dayTotals 아홉 칸과 같다', () => {
+    const local: SunapLocalDay = { edits: { ...MOCK_LOCAL.edits, '10877': { block: true, pt: false } } }
+    const ledger = buildLedger(MOCK_V2, local, SETTINGS)
+    const doctors = ledgerDoctors(ledger)
+    expect(doctors?.rows[1]).toMatchObject({ code: 'D02', rates: { visits: 6, block_n: 3, ret_block: 3, pt_n: 4 } })
+    expect(doctors?.rows[0].rates).toMatchObject({ block_n: 5, pt_n: 5 })
+    expect(doctors?.total).toEqual(ratesOf(dayTotals(ledger)))
+  })
+})
+
+describe('AC-5001.2 ledgerDoctors — 원장님(미지정 빼고)이 두 분 이상일 때만', () => {
+  it('AC-5001.2: 옛 도우미 답(v1 — 모든 줄 null)이면 null이다', () => {
+    expect(ledgerDoctors(buildLedger(MOCK_REPLY, MOCK_LOCAL, SETTINGS))).toBeNull()
+  })
+
+  it('AC-5001.2: 원장님 한 분(미지정 줄이 있어도)·모든 줄 미지정·빈 장부는 null이다', () => {
+    expect(ledgerDoctors(buildLedger(v2Of(linesOf(['D01', 'D01', null]), NAMES), {}, SETTINGS))).toBeNull()
+    expect(ledgerDoctors(buildLedger(v2Of(linesOf([null, null]), []), {}, SETTINGS))).toBeNull()
+    expect(ledgerDoctors(buildLedger(v2Of([], NAMES), {}, SETTINGS))).toBeNull()
+  })
+
+  it('AC-5001.2: 두 분 이상이면 null 원장님은 "진료의 미지정" 줄로 함께 나온다', () => {
+    const ledger = buildLedger(v2Of(linesOf(['D01', 'D02', null, 'D01']), NAMES), {}, SETTINGS)
+    expect(summary(ledger)).toEqual([
+      ['D01', '김○○', 2],
+      ['D02', '이○○', 1],
+      [null, '진료의 미지정', 1],
+    ])
+    // 미지정 줄이 없으면 그 줄도 없다
+    expect(summary(buildLedger(v2Of(linesOf(['D01', 'D02']), NAMES), {}, SETTINGS))).toEqual([
+      ['D01', '김○○', 1],
+      ['D02', '이○○', 1],
+    ])
+  })
+})
+
+describe('AC-5001.3 ledgerDoctors — 이름은 이름 → 코드 → 진료의 미지정, 차례는 내원 많은 차례 · 같으면 이름 글자 차례', () => {
+  it('AC-5001.3: 이름이 없으면(null·목록에 없음) 코드가 줄 이름이다', () => {
+    const ledger = buildLedger(v2Of(linesOf(['D01', 'D01', 'D01', 'D02', 'D02', 'D03', null]), [['D01', '김○○'], ['D02', null]]), {}, SETTINGS)
+    expect(summary(ledger)).toEqual([
+      ['D01', '김○○', 3],
+      ['D02', 'D02', 2],
+      ['D03', 'D03', 1],
+      [null, '진료의 미지정', 1],
+    ])
+  })
+
+  it('AC-5001.3: 내원이 같으면 이름 글자 차례다(코드 차례가 아니다)', () => {
+    const names: SunapReplyDoctor[] = [
+      ['D01', '이○○'],
+      ['D02', '김○○'],
+      ['D03', '박○○'],
+    ]
+    const ledger = buildLedger(v2Of(linesOf(['D01', 'D02', 'D03', 'D03', 'D03', null, null, 'D01', 'D02']), names), {}, SETTINGS)
+    expect(summary(ledger)).toEqual([
+      ['D03', '박○○', 3],
+      ['D02', '김○○', 2],
+      ['D01', '이○○', 2],
+      [null, '진료의 미지정', 2],
+    ])
+  })
+
+  it('AC-5001.3: names를 따로 주면 그 이름을 쓴다(주지 않으면 장부의 doctors)', () => {
+    const ledger = buildLedger(v2Of(linesOf(['D01', 'D02']), NAMES), {}, SETTINGS)
+    expect(summary(ledger, [['D01', '최○○']])).toEqual([
+      ['D02', 'D02', 1],
+      ['D01', '최○○', 1],
+    ])
   })
 })
