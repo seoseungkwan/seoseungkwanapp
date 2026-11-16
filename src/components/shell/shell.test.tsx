@@ -1412,6 +1412,34 @@ describe('AppShell', () => {
     hasAll(tabRow, 'px-6 max-md:px-4 lg:mx-auto lg:w-full lg:min-w-0 lg:max-w-7xl')
   })
 
+  // claim-memo-fit REQ-4801: 앱 안에 [data-wide-page](메모 칸)가 있으면 1024px 이상에서 1280 폭 제한을 푼다. 감싸개 넷이 같이 넓어진다
+  const WIDE = 'lg:group-has-[[data-wide-page]]/app:max-w-none'
+
+  it('AC-4801.2: 뿌리에 이름 붙은 묶음 group/app이 있고, max-w-7xl 감싸개 넷(띠 안쪽·탭 줄 감싸개·탭 띠 안 줄·본문 안쪽)에 모두 넓힘 class가 있다. 그 밖의 class는 그대로다', () => {
+    const { container } = shell()
+    const root = container.firstElementChild as HTMLElement
+    hasAll(root, 'group/app app-ui bg-surface text-ink min-h-dvh')
+    const headerInner = screen.getByRole('banner').firstElementChild as HTMLElement
+    const tabRow = strip().firstElementChild as HTMLElement
+    const mainInner = screen.getByRole('main').firstElementChild as HTMLElement
+    hasAll(headerInner, `${WIDE} mx-auto w-full ${wrapper} h-14 max-md:h-12`)
+    hasAll(mainInner, `${WIDE} mx-auto w-full ${wrapper} pt-6 pb-12`)
+    hasAll(line(), `${WIDE} flex min-w-0 flex-1 lg:mx-auto lg:max-w-7xl`)
+    hasAll(tabRow, `${WIDE} px-6 max-md:px-4 lg:mx-auto lg:w-full lg:min-w-0 lg:max-w-7xl`)
+    // 1280 폭 감싸개는 이 넷뿐이고, 넓힘 class도 이 넷에만 있다(한 곳만 넓어져 왼쪽 끝이 어긋나지 않게)
+    const capped = Array.from(container.querySelectorAll('*')).filter((el) => classesOf(el).some((c) => /(?:^|:)max-w-7xl$/.test(c)))
+    expect(capped).toEqual([headerInner, line(), tabRow, mainInner])
+    const widened = Array.from(container.querySelectorAll('*')).filter((el) => classesOf(el).includes(WIDE))
+    expect(widened).toEqual(capped)
+  })
+
+  it('AC-4801.3: 앱 틀 뿌리에 이름 없는 group class가 없다 — 묶음은 group/app 하나뿐이다(안쪽 group-hover 등이 앱 전체에 걸리지 않게)', () => {
+    const { container } = shell()
+    const root = container.firstElementChild as HTMLElement
+    expect(classesOf(root)).not.toContain('group')
+    expect(classesOf(root).filter((c) => c === 'group' || c.startsWith('group/'))).toEqual(['group/app'])
+  })
+
   it('AC-218.1: 병원 이름은 subtitle 600(넘치면 말줄임), 로고 옆 12px(폰 8px)', () => {
     shell()
     const banner = screen.getByRole('banner')

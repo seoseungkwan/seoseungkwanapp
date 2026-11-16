@@ -14,6 +14,8 @@ const SKIP_LINK =
 // 위에 붙는 묶음 하나(sticky·top 0·z 10)에 위쪽 띠와 탭 줄이 함께 있다. 그 아래 본문.
 // 위쪽 띠(흰·56px, 폰 48px): 로고·병원 이름 | 한국 시각·계정 단추. [서비스 이름]과 세로 구분선은 두지 않는다(사용자 결정 2026-10-30).
 // 안쪽 감싸개 셋(띠·탭 줄·본문)은 같은 1280 폭·가운데·좌우 24px(폰 16px). 폰은 서랍 없음.
+// 넓힘(claim-memo-fit REQ-4801): 뿌리는 이름 붙은 묶음 group/app(이름 없는 group은 안쪽 group-hover를 앱 전체에 걸어 쓰지 않는다).
+// 1024px 이상에서 앱 안에 [data-wide-page](메모 칸)가 있으면 감싸개 넷(띠 안쪽·탭 줄 둘·본문 안쪽)이 같이 1280 제한을 풀어 왼쪽 끝이 맞는다.
 // 관리자 여부는 계정 메뉴([가입 승인])에만 넘긴다(탭 줄에는 관리자 탭이 없다, tab-frame REQ-303·304)
 export function AppShell({
   hospitalName,
@@ -27,7 +29,7 @@ export function AppShell({
   children: ReactNode
 }) {
   return (
-    <div className="app-ui flex min-h-dvh flex-col bg-surface text-ink">
+    <div className="group/app app-ui flex min-h-dvh flex-col bg-surface text-ink">
       {/* 평소에는 화면 읽기에만. 키보드 초점이면 왼쪽 위 띠 위에 뜬다(시안 .skip: 위 6px·왼쪽 8px·붙는 묶음 z 10 위).
           not-sr-only가 0으로 돌리는 테두리 두께·안쪽 여백·크기는 초점일 때 다시 준다(같은 변형에서 뒤에 온다) */}
       <a href="#main" className={SKIP_LINK}>
@@ -35,7 +37,7 @@ export function AppShell({
       </a>
       <div className="sticky top-0 z-10 print:hidden">
         <header className="border-b border-line bg-surface">
-          <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between gap-4 px-6 max-md:h-12 max-md:gap-2 max-md:px-4">
+          <div className="mx-auto flex h-14 w-full max-w-7xl items-center lg:group-has-[[data-wide-page]]/app:max-w-none justify-between gap-4 px-6 max-md:h-12 max-md:gap-2 max-md:px-4">
             <div className="flex min-w-0 items-center gap-3 max-md:gap-2">
               {/* 로고는 랜딩·인증 화면과 같은 LogoMark. LogoMark가 정한 고정 두 색(로고 C③)으로 그리고 읽지 않는다 */}
               <LogoMark size={24} className="shrink-0" />
@@ -58,7 +60,7 @@ export function AppShell({
         tabIndex={-1}
         className="flex-1 scroll-mt-25.5 bg-surface focus:outline-none max-md:scroll-mt-23.5"
       >
-        <div className="mx-auto w-full max-w-7xl px-6 pt-6 pb-12 max-md:px-4 max-md:pt-4 max-md:pb-8 print:p-0">{children}</div>
+        <div className="mx-auto w-full max-w-7xl px-6 pt-6 lg:group-has-[[data-wide-page]]/app:max-w-none pb-12 max-md:px-4 max-md:pt-4 max-md:pb-8 print:p-0">{children}</div>
       </main>
     </div>
   )
