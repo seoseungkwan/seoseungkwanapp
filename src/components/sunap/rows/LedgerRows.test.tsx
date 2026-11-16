@@ -27,6 +27,7 @@ const base: LedgerRow = {
   rsv: { kind: 'none', source: 'bit', at: null },
   note: '',
   edited: [],
+  doctor: null,
 }
 function row(over: Partial<LedgerRow>): LedgerRow {
   const r = { ...base, ...over }
@@ -45,7 +46,7 @@ const ROWS: LedgerRow[] = [
   row({ chart: '16455', name: '황○○', time: '10:47', cash: 5000, card: 10000, pt: true, edited: ['cash'], rsv: { kind: 'visit', source: 'bit', at: '202611241400' } }),
   row({ chart: '21006', name: '임○○', time: '10:03', kind: 'new', unpaid: 16300, pt: true, rsv: { kind: 'visit', source: 'hand', at: null }, note: '카드 두고 오심, 내일 입금' }),
 ]
-const TOTALS = dayTotals({ day: '2026-11-16', unsure: false, rows: ROWS, paid: [], closedAt: null, late: false })
+const TOTALS = dayTotals({ day: '2026-11-16', unsure: false, rows: ROWS, paid: [], closedAt: null, late: false, doctors: [] })
 
 function renderRows(editable = true, closed = !editable) {
   const onEdit = vi.fn()

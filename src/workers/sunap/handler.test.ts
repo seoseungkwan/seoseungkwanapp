@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildLedger, dayTotals } from '@/lib/sunap/ledger'
+import { buildLedger, dayTotals, ledgerDoctors } from '@/lib/sunap/ledger'
 import type { RxGroupDef } from '@/types/analysis'
-import { DEFAULT_RSV_WORDS, type LedgerSettings, type SunapLocalDay, type SunapLocalMonth, type SunapReply } from '@/types/sunap'
+import { DEFAULT_RSV_WORDS, type Ledger, type LedgerSettings, type SunapLocalDay, type SunapLocalMonth, type SunapReply } from '@/types/sunap'
 import { createHandler } from './handler'
 import type { SunapStreamRef, SunapWorkerMessage } from './messages'
 
@@ -31,12 +31,30 @@ const REPLY: SunapReply = {
     ['20789', '가상환자05', '', 0, 15000],
   ],
 }
+// 도우미 0.9.0(v2) 답(spec sunap-doctors): 줄 끝 칸이 진료의 코드, 맨 위 doctors가 [코드, 이름|null]. 원장님 이름도 지어낸 가짜
+const REPLY2: SunapReply = {
+  v: 2,
+  day: DAY,
+  unsure: false,
+  rows: [
+    [...REPLY.rows[0], 'D01'],
+    [...REPLY.rows[1], 'D02'],
+    [...REPLY.rows[2], 'D01'],
+  ],
+  paid: REPLY.paid,
+  doctors: [
+    ['D01', '가상원장가'],
+    ['D02', null],
+  ],
+}
 const NAMES = /가상환자/
 const CHARTS = /1023[123]|2078[89]/
 // 다른 날의 PC 저장(그대로 다시 보내야 한다)
 const OTHER: SunapLocalDay = { edits: { '30001': { note: '다른 날' } }, closedAt: '2026-11-15T09:30:00.000Z', late: false, fixed: { '30001': 'none' } }
 
 const kst = (text: string) => new Date(`${text}+09:00`).getTime()
+// v1 답의 장부 보기: 원장님별 수(doctors)는 null(spec sunap-doctors AC-5003.1·5003.2)
+const viewOf = (ledger: Ledger) => ({ type: 'ledger', ...ledger, totals: dayTotals(ledger), doctors: null })
 
 type Sent = { type: string; ticket: number | string; cmd: string; payload: string }
 type Saved = { month: string; sunap: SunapLocalMonth }
@@ -146,7 +164,7 @@ describe('AC-4904.1 load: 비트 하루 답 + 그 달 PC 저장 → 장부 보�
     const local: SunapLocalDay = { edits: { '10231': { card: 12000, note: '카드 나눔' } } }
     const out = await h.load({ month: { [DAY]: local, [OTHER_DAY]: OTHER } })
     const ledger = buildLedger(REPLY, local, SETTINGS)
-    expect(out).toEqual({ type: 'ledger', ...ledger, totals: dayTotals(ledger) })
+    expect(out).toEqual(viewOf(ledger))
     const view = h.last('ledger')
     expect(view.day).toBe(DAY)
     expect(view.rows.map((row) => [row.chart, row.card, row.block, row.pt, row.rsv.kind, row.edited])).toEqual([
@@ -169,7 +187,7 @@ describe('AC-4904.1 load: 비트 하루 답 + 그 달 PC 저장 → 장부 보�
     const h = harness()
     const out = await h.load({ month: {} })
     const ledger = buildLedger(REPLY, {}, SETTINGS)
-    expect(out).toEqual({ type: 'ledger', ...ledger, totals: dayTotals(ledger) })
+    expect(out).toEqual(viewOf(ledger))
   })
 
   it('AC-4904.1 묶음을 안 골랐으면(null) Block·물리치료는 모두 거짓이다', async () => {
@@ -318,7 +336,7 @@ describe('AC-4904.2 edit: 그 날 고친 칸 저장 → 새 장부 보기', () =
     expect(h.all('ledger')).toHaveLength(ledgers + 1)
     const local: SunapLocalDay = { edits: { '10232': { cash: 7000 } } }
     const ledger = buildLedger(REPLY, local, SETTINGS)
-    expect(view).toEqual({ type: 'ledger', ...ledger, totals: dayTotals(ledger) })
+    expect(view).toEqual(viewOf(ledger))
     expect(view.rows[1]).toMatchObject({ cash: 7000, edited: ['cash'] })
   })
 
@@ -460,7 +478,7 @@ describe('AC-4904.3 close·reopen: closeLocal·reopenLocal 저장', () => {
     await h.ack()
     const ledger = buildLedger(REPLY, local, SETTINGS)
     const totals = dayTotals(ledger)
-    expect(h.last('ledger')).toEqual({ type: 'ledger', ...ledger, totals })
+    expect(h.last('ledger')).toEqual(viewOf(ledger))
     expect(h.last('ledger').closedAt).toBe(new Date(now).toISOString())
     expect(h.last('closed')).toEqual({ type: 'closed', day: DAY, totals, late: false })
     expect(totals).toMatchObject({
@@ -658,5 +676,144 @@ describe('AC-4904.4 오류는 번호만, 환자 줄은 장부 보기에만', () 
     expect(h.posted).toEqual([])
     const out = await h.load()
     expect(out.type).toBe('ledger')
+  })
+})
+
+// ── spec sunap-doctors AC-5003.1 도우미 답 v1·v2 ───────────────────────
+
+describe('AC-5003.1 도우미 답 v:1·v:2 → 장부 줄의 진료의', () => {
+  // v2 줄 하나: v1 줄 열 칸 + 진료의 코드
+  const line2 = (index: number, doctor: unknown, patch: Record<number, unknown> = {}) => {
+    const line: unknown[] = [...REPLY.rows[index], doctor]
+    for (const [at, value] of Object.entries(patch)) line[Number(at)] = value
+    return line
+  }
+
+  it('AC-5003.1: v:1 답(옛 도우미)이면 줄마다 doctor는 null이고 원장님별 수(doctors)도 null이다', async () => {
+    const h = harness()
+    const out = await h.load()
+    expect(out).toEqual(viewOf(buildLedger(REPLY, {}, SETTINGS)))
+    expect(h.last('ledger').rows.map((row) => row.doctor)).toEqual([null, null, null])
+    expect(h.last('ledger').doctors).toBeNull()
+  })
+
+  it('AC-5003.1: v:2 답이면 줄 끝 칸이 doctor이고 그 값으로 장부를 만든다', async () => {
+    const h = harness()
+    const local: SunapLocalDay = { edits: { '10232': { block: true } } }
+    const out = await h.load({ reply: REPLY2, month: { [DAY]: local } })
+    const ledger = buildLedger(REPLY2, local, SETTINGS)
+    expect(out).toEqual({ type: 'ledger', ...ledger, totals: dayTotals(ledger), doctors: ledgerDoctors(ledger) })
+    expect(h.last('ledger').rows.map((row) => [row.chart, row.doctor])).toEqual([
+      ['10231', 'D01'],
+      ['10232', 'D02'],
+      ['10233', 'D01'],
+    ])
+  })
+
+  it('AC-5003.1: v:2 줄의 진료의가 null(진료의 미지정)이어도 받고, 코드·이름 40자도 받는다', async () => {
+    const h = harness()
+    const long = 'D'.repeat(40)
+    const reply = {
+      ...REPLY2,
+      rows: [line2(0, long), line2(1, 'D02'), line2(2, null)],
+      doctors: [
+        [long, '가'.repeat(40)],
+        ['D02', null],
+      ],
+    }
+    const out = await h.load({ reply })
+    expect(out.type).toBe('ledger')
+    expect(h.last('ledger').rows.map((row) => row.doctor)).toEqual([long, 'D02', null])
+    expect(h.last('ledger').doctors?.rows.map((row) => row.label)).toEqual(expect.arrayContaining(['가'.repeat(40), 'D02', '진료의 미지정']))
+  })
+
+  it.each([
+    ['v가 3', { ...REPLY2, v: 3 }],
+    ['v:2인데 doctors 없음', { ...REPLY2, doctors: undefined }],
+    ['doctors가 배열 아님', { ...REPLY2, doctors: { D01: '가상원장가' } }],
+    ['v:2인데 줄 칸 10개', { ...REPLY2, rows: [REPLY.rows[0]] }],
+    ['v:2 줄 칸 12개', { ...REPLY2, rows: [[...line2(0, 'D01'), 'D02']] }],
+    ['줄 코드가 doctors에 없음', { ...REPLY2, rows: [line2(0, 'D09')] }],
+    ['줄 코드 빈 글', { ...REPLY2, rows: [line2(0, '')], doctors: [['', null]] }],
+    ['줄 코드 숫자', { ...REPLY2, rows: [line2(0, 1)] }],
+    ['줄 코드 41자', { ...REPLY2, rows: [line2(0, 'D'.repeat(41))], doctors: [['D'.repeat(41), null]] }],
+    ['doctors 줄이 한 칸', { ...REPLY2, doctors: [['D01'], ['D02', null]] }],
+    ['doctors 줄이 세 칸', { ...REPLY2, doctors: [['D01', null, 'x'], ['D02', null]] }],
+    ['doctors 코드 41자', { ...REPLY2, rows: [line2(0, 'D02')], doctors: [['D'.repeat(41), null], ['D02', null]] }],
+    ['doctors 코드 숫자', { ...REPLY2, rows: [line2(0, 'D02')], doctors: [[1, null], ['D02', null]] }],
+    ['doctors 이름 빈 글', { ...REPLY2, doctors: [['D01', ''], ['D02', null]] }],
+    ['doctors 이름 41자', { ...REPLY2, doctors: [['D01', '가'.repeat(41)], ['D02', null]] }],
+    ['doctors 이름 숫자', { ...REPLY2, doctors: [['D01', 7], ['D02', null]] }],
+    ['doctors 같은 코드 두 번', { ...REPLY2, doctors: [['D01', '가상원장가'], ['D01', null], ['D02', null]] }],
+    ['v:2 다른 칸 모양(구분 x)', { ...REPLY2, rows: [line2(0, 'D01', { 3: 'x' })] }],
+  ])('AC-5003.1: v:2 답 모양이 틀리면(%s) 장부 없이 E-BRIDGE-BAD-REPLY', async (_label, reply) => {
+    const h = harness()
+    const out = await h.load({ reply })
+    expect(out).toEqual({ type: 'error', op: 'load', code: 'E-BRIDGE-BAD-REPLY' })
+    expect(h.all('ledger')).toEqual([])
+  })
+})
+
+// ── spec sunap-doctors AC-5003.2 ledger 메시지의 doctors ────────────────
+
+describe('AC-5003.2 ledger 메시지에 원장님별 수(ledgerDoctors)가 함께 간다', () => {
+  // [이름, 내원, 초진, Block, 물리치료, 초진+Block]
+  const counts = (h: ReturnType<typeof harness>) =>
+    h.last('ledger').doctors?.rows.map((row) => [row.label, row.rates.visits, row.rates.first_n, row.rates.block_n, row.rates.pt_n, row.rates.first_block])
+
+  it('AC-5003.2: 처음 불러올 때 원장님이 두 분이면 doctors = ledgerDoctors(장부)이고 합계는 장부 합계 아홉 칸과 같다', async () => {
+    const h = harness()
+    await h.load({ reply: REPLY2 })
+    const view = h.last('ledger')
+    expect(view.doctors).toEqual(ledgerDoctors(buildLedger(REPLY2, {}, SETTINGS)))
+    expect(counts(h)).toEqual([
+      ['가상원장가', 2, 0, 1, 1, 0],
+      ['D02', 1, 1, 0, 1, 0],
+    ])
+    expect(view.totals).toMatchObject(view.doctors!.total)
+  })
+
+  it('AC-5003.2: 원장님이 한 분이면 doctors는 null이다', async () => {
+    const h = harness()
+    await h.load({ reply: { ...REPLY2, rows: REPLY2.rows.map((line) => [...line.slice(0, 10), 'D01']), doctors: [['D01', '가상원장가']] } })
+    expect(h.last('ledger').rows.every((row) => row.doctor === 'D01')).toBe(true)
+    expect(h.last('ledger').doctors).toBeNull()
+  })
+
+  it('AC-5003.2: Block·물리치료를 고치면 저장 답 뒤 ledger의 원장님별 수도 바뀐다', async () => {
+    const h = harness()
+    await h.load({ reply: REPLY2 })
+    await h.screen({ type: 'edit', chart: '10232', patch: { block: true } })
+    await h.ack()
+    expect(counts(h)).toEqual([
+      ['가상원장가', 2, 0, 1, 1, 0],
+      ['D02', 1, 1, 1, 1, 1],
+    ])
+    await h.screen({ type: 'edit', chart: '10231', patch: { pt: false } })
+    await h.ack()
+    expect(counts(h)).toEqual([
+      ['가상원장가', 2, 0, 1, 0, 0],
+      ['D02', 1, 1, 1, 1, 1],
+    ])
+    const local: SunapLocalDay = { edits: { '10232': { block: true }, '10231': { pt: false } } }
+    expect(h.last('ledger').doctors).toEqual(ledgerDoctors(buildLedger(REPLY2, local, SETTINGS)))
+  })
+
+  it('AC-5003.2: 마감·풀기 뒤 ledger에도 원장님별 수가 함께 간다', async () => {
+    const h = harness()
+    const local: SunapLocalDay = { edits: { '10233': { block: true } } }
+    await h.load({ reply: REPLY2, month: { [DAY]: local } })
+    const expected = ledgerDoctors(buildLedger(REPLY2, local, SETTINGS))
+    expect(expected).not.toBeNull()
+    const ledgers = h.all('ledger').length
+    await h.screen({ type: 'close', now: kst('2026-11-16T18:30:00') })
+    await h.ack()
+    expect(h.all('ledger')).toHaveLength(ledgers + 1)
+    expect(h.last('ledger').doctors).toEqual(expected)
+    await h.screen({ type: 'reopen' })
+    await h.ack()
+    expect(h.all('ledger')).toHaveLength(ledgers + 2)
+    expect(h.last('ledger').closedAt).toBeNull()
+    expect(h.last('ledger').doctors).toEqual(expected)
   })
 })

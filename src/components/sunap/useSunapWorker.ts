@@ -84,8 +84,8 @@ export function useSunapWorker(bridge: SunapBridge, worker: SunapWorkerHandle): 
       const message = (event as MessageEvent<SunapWorkerMessage>).data
       if (message.type === 'ledger') {
         if (message.day !== day.current) return
-        const { day: viewDay, unsure, rows, paid, closedAt, late, totals } = message
-        setView({ day: viewDay, unsure, rows, paid, closedAt, late, totals })
+        const { day: viewDay, unsure, rows, paid, closedAt, late, totals, doctors } = message
+        setView({ day: viewDay, unsure, rows, paid, closedAt, late, totals, doctors })
         setError(null)
         if (loadingNow.current) {
           loadingNow.current = false

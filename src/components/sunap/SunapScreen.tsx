@@ -19,6 +19,7 @@ import type { BridgeState } from '@/types/bridge'
 import type { ErrorCode } from '@/types/errors'
 import type { StatsRxGroup } from '@/types/rxGroups'
 import type { SunapSettings as Settings } from '@/types/sunap'
+import { DoctorTable } from './DoctorTable'
 import { dayTitle, monthDay, stateText, type LedgerPatch } from './labels'
 import { LockLine, RemoteView, type RemoteReason, type ServerDayView } from './RemoteView'
 import { LedgerRows } from './rows/LedgerRows'
@@ -32,13 +33,16 @@ import { useSunapWorker, useSunapWorkerObject, type SunapWorkerApi } from './use
 // 접수 PC(도우미 0.8.0 이상 연결 · 오늘−62일 안)는 Worker가 비트·PC 저장에서 만든 장부를 그린다. 환자 줄은 rows 울타리 안에서만 그린다.
 // 서버에는 마감할 때 합계 숫자(closeSunapDay)·지출만 간다. 다른 기기·옛 도우미·62일 넘은 날은 서버 숫자만(RemoteView).
 // 마감하기 = Worker close(PC에 고정) → closeSunapDay. 마감 풀기 = reopenSunapDay → Worker reopen(서버가 먼저 풀려야 PC도 푼다).
-// 시안과 다른 곳(design.md): 원장님별 표가 없다. 시안에 없는 글(읽는 중·오류·묶음 안 고름·서버에 아직 안 올라간 마감)은 더했다
+// 원장님별 표(spec sunap-doctors AC-5003.3)는 장부 아래·미수 입금/지출 위에, 원장님(미지정 빼고)이 두 분 이상일 때만(Worker가 doctors를 보낼 때만) 그린다. 서버 숫자 화면(RemoteView)에는 없다.
+// 시안과 다른 곳(design.md): 원장님별 hint는 '접수할 때 정한 진료의 기준'. 시안에 없는 글(읽는 중·오류·묶음 안 고름·서버에 아직 안 올라간 마감)은 더했다
 
 export type SunapMode = 'ledger' | 'connecting' | 'device' | 'old-helper' | 'old-day'
 type BridgeLink = { state: BridgeState; helperVersion?: string; helloError: string | null }
 
 // 비트는 오늘부터 62일 전까지만 다시 읽는다(design.md '62일')
 const LEDGER_DAYS = 62
+// 원장님별 표 hint(spec sunap-doctors design.md '시안과 다른 곳')
+const DOCTOR_HINT = '엑셀 진료실 1~4 자리 · 접수할 때 정한 진료의 기준'
 
 /** 이 기기·이 날에 무엇을 그리나 */
 export function screenMode(link: BridgeLink, day: string, today: string): SunapMode {
@@ -366,6 +370,7 @@ function LedgerView({
         <>
           <SunapCards totals={view.totals} spends={server.spends} />
           <LedgerRows rows={view.rows} totals={view.totals} editable={editable} closed={closed} onEdit={edit} />
+          {view.doctors !== null && <DoctorTable data={view.doctors} hint={DOCTOR_HINT} />}
           <div className="grid grid-cols-2 gap-3 max-lg:grid-cols-1">
             <PaidRows paid={view.paid} />
             {server.status === 'ready' && (

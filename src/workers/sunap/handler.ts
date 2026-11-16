@@ -1,5 +1,5 @@
 import { BridgeError, isErrorCode, isRecord } from '@/lib/bridge/protocol'
-import { buildLedger, closeLocal, dayTotals, reopenLocal } from '@/lib/sunap/ledger'
+import { buildLedger, closeLocal, dayTotals, ledgerDoctors, reopenLocal } from '@/lib/sunap/ledger'
 import type { LedgerRow, LedgerSettings, SunapLocalDay, SunapReply } from '@/types/sunap'
 import { createAssembler, type AssembleResult } from '../patients/assemble'
 import type { SunapLedgerView, SunapOp, SunapPatch, SunapWorkerMessage } from './messages'
@@ -73,9 +73,10 @@ export function createHandler(deps: { post(message: unknown): void }) {
     })
   }
 
+  // 처음·고침·마감·풀기 모두 여기서 보낸다: 원장님별 수도 고친 값(Block·물리치료)이 든 장부로 센다(spec sunap-doctors AC-5003.2)
   function postLedger(current: Session): SunapLedgerView {
     const ledger = buildLedger(current.reply, current.local, current.settings)
-    const view = { ...ledger, totals: dayTotals(ledger) }
+    const view: SunapLedgerView = { ...ledger, totals: dayTotals(ledger), doctors: ledgerDoctors(ledger) }
     post({ type: 'ledger', ...view })
     return view
   }

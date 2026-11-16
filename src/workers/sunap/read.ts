@@ -10,8 +10,10 @@ import type {
   SunapEdit,
   SunapLocalDay,
   SunapReply,
+  SunapReplyDoctor,
   SunapReplyPaid,
   SunapReplyRow,
+  SunapReplyRowV2,
   VisitKind,
 } from '@/types/sunap'
 import { LEDGER_EDITED_FIELDS } from '@/types/sunap'
@@ -28,6 +30,8 @@ type Rec = Record<string, unknown>
 
 const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/
 const STAMP = /^\d{12}$/
+// 진료의 코드·이름 글자 수 한도(도우미 SunapTargets와 같다)
+const DOCTOR_MAX = 40
 const VISIT_KINDS = new Set<unknown>(['new', 'd90', 're'] satisfies VisitKind[])
 const RSV_KINDS = new Set<unknown>(['none', 'inj', 'visit', 'etc', 'unknown'] satisfies RsvKind[])
 const HAND_KINDS = new Set<unknown>(['none', 'inj', 'visit', 'etc'] satisfies HandRsvKind[])
@@ -44,6 +48,8 @@ const isTexts = (x: unknown): x is string[] => Array.isArray(x) && x.every(isTex
 const amount = (x: unknown): number => (isAmount(x) ? x : fail(BAD_REPLY))
 const text = (x: unknown): string => (isText(x) ? x : fail(BAD_REPLY))
 const chartOf = (x: unknown): string => (isText(x) && x !== '' ? x : fail(BAD_REPLY))
+// 1~40자 글
+const isShort = (x: unknown): x is string => isText(x) && x.length >= 1 && x.length <= DOCTOR_MAX
 
 // 열쇠로 자기 칸만 찾는다(constructor 같은 기본 이름에 속지 않게)
 export function own(table: Rec, key: string): unknown {
@@ -67,6 +73,27 @@ function readRow(line: unknown): SunapReplyRow {
   return [chartOf(chart), text(name), clock, kind as VisitKind, amount(cash), amount(card), amount(transfer), amount(unpaid), [...codes], next]
 }
 
+// 도우미 0.9.0(v2, spec sunap-doctors AC-5003.1): 줄 열한 칸 = v1 열 칸 + 진료의 코드(null 또는 doctors에 있는 코드)
+function readRowV2(line: unknown, codes: ReadonlySet<string>): SunapReplyRowV2 {
+  if (!Array.isArray(line) || line.length !== 11) fail(BAD_REPLY)
+  const doctor: unknown = line[10]
+  if (doctor !== null && !(isText(doctor) && codes.has(doctor))) fail(BAD_REPLY)
+  return [...readRow(line.slice(0, 10)), doctor]
+}
+
+// 맨 위 doctors: [코드 1~40자, 이름 null 또는 1~40자], 코드마다 한 번
+function readDoctors(list: unknown): SunapReplyDoctor[] {
+  if (!Array.isArray(list)) fail(BAD_REPLY)
+  const doctors = (list as unknown[]).map((pair): SunapReplyDoctor => {
+    if (!Array.isArray(pair) || pair.length !== 2) fail(BAD_REPLY)
+    const [code, name] = pair as unknown[]
+    if (!isShort(code) || (name !== null && !isShort(name))) fail(BAD_REPLY)
+    return [code, name]
+  })
+  if (new Set(doctors.map(([code]) => code)).size !== doctors.length) fail(BAD_REPLY)
+  return doctors
+}
+
 function readPaid(line: unknown): SunapReplyPaid {
   if (!Array.isArray(line) || line.length !== 5) fail(BAD_REPLY)
   const [chart, name, time, cash, card] = line as unknown[]
@@ -75,14 +102,29 @@ function readPaid(line: unknown): SunapReplyPaid {
   return [chartOf(chart), text(name), clock, amount(cash), amount(card)]
 }
 
-/** contact.targets {kind: 'sunap', from: day, to: day}의 답. 그날 답이 아니거나 칸 하나라도 틀리면 E-BRIDGE-BAD-REPLY(반쪽 장부를 만들지 않는다) */
+/**
+ * contact.targets {kind: 'sunap', from: day, to: day}의 답. v 1(도우미 0.8.x)·2(0.9.0, 줄 끝 진료의·맨 위 doctors)를 받는다.
+ * 그날 답이 아니거나 칸 하나라도 틀리면 E-BRIDGE-BAD-REPLY(반쪽 장부를 만들지 않는다)
+ */
 export function readReply(json: unknown, day: string): SunapReply {
-  if (!isRecord(json) || json.v !== 1 || json.day !== day || typeof json.unsure !== 'boolean') fail(BAD_REPLY)
+  if (!isRecord(json) || (json.v !== 1 && json.v !== 2) || json.day !== day || typeof json.unsure !== 'boolean') fail(BAD_REPLY)
   if (!Array.isArray(json.rows) || !Array.isArray(json.paid)) fail(BAD_REPLY)
-  const rows = (json.rows as unknown[]).map(readRow)
+  const lines = json.rows as unknown[]
+  const paid = (json.paid as unknown[]).map(readPaid)
   // 고친 칸은 차트번호 열쇠로 둔다. 같은 차트가 두 줄이면 어느 줄을 고쳤는지 모른다
-  if (new Set(rows.map((row) => row[0])).size !== rows.length) fail(BAD_REPLY)
-  return { v: 1, day, unsure: json.unsure, rows, paid: (json.paid as unknown[]).map(readPaid) }
+  const unique = (charts: string[]) => {
+    if (new Set(charts).size !== charts.length) fail(BAD_REPLY)
+  }
+  if (json.v === 1) {
+    const rows = lines.map(readRow)
+    unique(rows.map((row) => row[0]))
+    return { v: 1, day, unsure: json.unsure, rows, paid }
+  }
+  const doctors = readDoctors(json.doctors)
+  const codes = new Set(doctors.map(([code]) => code))
+  const rows = lines.map((line) => readRowV2(line, codes))
+  unique(rows.map((row) => row[0]))
+  return { v: 2, day, unsure: json.unsure, rows, paid, doctors }
 }
 
 // ── PC 저장 (design.md 'PC 저장') ─────────────────────────────────

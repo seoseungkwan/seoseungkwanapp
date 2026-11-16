@@ -2,7 +2,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { BridgeError } from '@/lib/bridge/protocol'
-import { SUNAP_TOTAL_KEYS, DEFAULT_RSV_WORDS, type SunapTotals } from '@/types/sunap'
+import { SUNAP_TOTAL_KEYS, DEFAULT_RSV_WORDS, type DoctorBreakdown, type SunapRates, type SunapTotals } from '@/types/sunap'
 import type { SunapWorkerMessage } from '@/workers/sunap/messages'
 import { useSunapWorker, type SunapWorkerHandle } from './useSunapWorker'
 
@@ -35,7 +35,7 @@ class FakeWorker implements SunapWorkerHandle {
 
 const TOTALS = Object.fromEntries(SUNAP_TOTAL_KEYS.map((key) => [key, 0])) as SunapTotals
 const ASK = { day: '2026-11-16', words: DEFAULT_RSV_WORDS, blockDef: { id: 'b', codes: ['MM110'] }, ptDef: null }
-const ledger = (day = '2026-11-16', closedAt: string | null = null): SunapWorkerMessage => ({
+const ledger = (day = '2026-11-16', closedAt: string | null = null, doctors: DoctorBreakdown | null = null): SunapWorkerMessage => ({
   type: 'ledger',
   day,
   unsure: false,
@@ -44,6 +44,7 @@ const ledger = (day = '2026-11-16', closedAt: string | null = null): SunapWorker
   closedAt,
   late: false,
   totals: TOTALS,
+  doctors,
 })
 
 function setup(stream = vi.fn(async (cmd: string) => ({ id: cmd === 'store.load' ? 's1' : 't1', count: 1 }))) {
@@ -167,5 +168,25 @@ describe('AC-4905.4 마감·마감 풀기', () => {
     })
     worker.reply({ type: 'error', op: 'reopen', code: 'E-BRIDGE-DISCONNECTED' })
     await expect(opening).resolves.toEqual({ code: 'E-BRIDGE-DISCONNECTED' })
+  })
+})
+
+describe('AC-5003.2 원장님별 수', () => {
+  it('AC-5003.2: 장부 보기의 doctors(원장님별 수, 없으면 null)를 그대로 쥔다', async () => {
+    const rates: SunapRates = { visits: 2, first_n: 1, d90_n: 0, ret_n: 1, block_n: 1, pt_n: 1, first_block: 1, d90_block: 0, ret_block: 0 }
+    const doctors: DoctorBreakdown = {
+      rows: [
+        { code: 'D01', label: '가상원장가', rates },
+        { code: 'D02', label: 'D02', rates },
+      ],
+      total: rates,
+    }
+    const { worker, hook } = setup()
+    act(() => hook.result.current.load(ASK))
+    await waitFor(() => expect(worker.posted).toHaveLength(1))
+    worker.reply(ledger('2026-11-16', null, doctors))
+    expect(hook.result.current.view?.doctors).toEqual(doctors)
+    worker.reply(ledger())
+    expect(hook.result.current.view?.doctors).toBeNull()
   })
 })

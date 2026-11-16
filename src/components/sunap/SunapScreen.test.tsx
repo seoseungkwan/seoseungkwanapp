@@ -22,7 +22,8 @@ import {
 import { listStatsRxGroups } from '@/lib/storage/statsRxGroups'
 import type { BridgeState } from '@/types/bridge'
 import type { StatsRxGroup } from '@/types/rxGroups'
-import { DEFAULT_RSV_WORDS, type Ledger, type LedgerRow, type SunapSettings } from '@/types/sunap'
+import { DEFAULT_RSV_WORDS, type DoctorBreakdown, type Ledger, type LedgerRow, type SunapRates, type SunapSettings } from '@/types/sunap'
+import type { SunapLedgerView } from '@/workers/sunap/messages'
 import { screenMode, SunapScreen } from './SunapScreen'
 
 // 수납일지 화면(spec sunap-ilji REQ-4905, 시안 docs/mockups/sunap-ilji ?s=open·pick·closed·late·settings·remote).
@@ -44,7 +45,7 @@ vi.mock('@/lib/storage/sunap', async (importOriginal) => ({
   saveSunapSettings: vi.fn(),
 }))
 
-type FakeState = { view: (Ledger & { totals: ReturnType<typeof dayTotals> }) | null; loading: boolean; loadedAt: Date | null; error: { op: string; code: string } | null }
+type FakeState = { view: SunapLedgerView | null; loading: boolean; loadedAt: Date | null; error: { op: string; code: string } | null }
 const fake = vi.hoisted(() => ({
   worker: {},
   state: null as unknown,
@@ -85,6 +86,7 @@ const base: LedgerRow = {
   rsv: { kind: 'none', source: 'bit', at: null },
   note: '',
   edited: [],
+  doctor: null,
 }
 const row = (over: Partial<LedgerRow>): LedgerRow => {
   const r = { ...base, ...over }
@@ -106,8 +108,32 @@ const PAID = [
   { chart: '20788', name: '문○○', time: '', cash: 10000, card: 0 },
   { chart: '11530', name: '배○○', time: '', cash: 0, card: 15000 },
 ]
-const ledgerOf = (day: string, closedAt: string | null = null, late = false): Ledger => ({ day, unsure: false, rows: ROWS, paid: PAID, closedAt, late })
+const ledgerOf = (day: string, closedAt: string | null = null, late = false): Ledger => ({ day, unsure: false, rows: ROWS, paid: PAID, closedAt, late, doctors: [] })
 const TOTALS = dayTotals(ledgerOf(TODAY))
+
+// 원장님별 수(spec sunap-doctors AC-5003.3). 이름·숫자는 지어낸 값. [내원, 초진, 90일초진, Block, 물리치료, 초진+Block, 90일+Block, 재진+Block]
+const rates = (visits: number, first: number, d90: number, block: number, pt: number, firstBlock: number, d90Block: number, retBlock: number): SunapRates => ({
+  visits,
+  first_n: first,
+  d90_n: d90,
+  ret_n: visits - first - d90,
+  block_n: block,
+  pt_n: pt,
+  first_block: firstBlock,
+  d90_block: d90Block,
+  ret_block: retBlock,
+})
+const DOCTORS: DoctorBreakdown = {
+  rows: [
+    { code: 'D01', label: '가상원장가', rates: rates(6, 1, 1, 4, 5, 1, 1, 2) },
+    { code: 'D02', label: 'D02', rates: rates(4, 1, 0, 2, 2, 0, 0, 2) },
+  ],
+  total: rates(10, 2, 1, 6, 7, 1, 1, 4),
+}
+const DOCTOR_HINT = '엑셀 진료실 1~4 자리 · 접수할 때 정한 진료의 기준'
+// 가짜 Worker가 장부 보기에 싣는 원장님별 수(시험마다 null로 시작)
+let doctorsNow: DoctorBreakdown | null = null
+const viewOf = (ledger: Ledger): SunapLedgerView => ({ ...ledger, totals: TOTALS, doctors: doctorsNow })
 
 const GROUPS: StatsRxGroup[] = [
   { id: 'g-block', name: '신경차단술', codes: ['MM110', 'MM120'], sortOrder: 0 },
@@ -142,6 +168,7 @@ const viewNow = () => (fake.state as FakeState).view
 
 beforeEach(() => {
   localClosed = {}
+  doctorsNow = null
   withBridge('ready', '0.8.0')
   vi.mocked(listStatsRxGroups).mockResolvedValue(GROUPS)
   vi.mocked(loadSunapSettings).mockResolvedValue(SETTINGS)
@@ -156,7 +183,7 @@ beforeEach(() => {
   fake.load.mockReset().mockImplementation((ask: { day: string }) => {
     const closed = localClosed[ask.day]
     const ledger = ledgerOf(ask.day, closed?.closedAt ?? null, closed?.late ?? false)
-    fake.set!((() => ({ view: { ...ledger, totals: TOTALS }, loading: false, loadedAt: new Date('2026-11-16T09:40:00.000Z'), error: null })) as never)
+    fake.set!((() => ({ view: viewOf(ledger), loading: false, loadedAt: new Date('2026-11-16T09:40:00.000Z'), error: null })) as never)
   })
   fake.edit.mockReset()
   fake.close.mockReset().mockImplementation(async () => {
@@ -278,7 +305,7 @@ describe('AC-4905.9 도우미가 확인 필요(unsure)라고 한 날', () => {
   it('AC-4905.9: unsure가 참이면 장부 위에 확인 필요한 날 한 줄이 보이고 [마감하기]는 그대로 누를 수 있다', async () => {
     fake.load.mockImplementation((ask: { day: string }) => {
       const ledger = { ...ledgerOf(ask.day), unsure: true }
-      fake.set!((() => ({ view: { ...ledger, totals: TOTALS }, loading: false, loadedAt: new Date('2026-11-16T09:40:00.000Z'), error: null })) as never)
+      fake.set!((() => ({ view: viewOf(ledger), loading: false, loadedAt: new Date('2026-11-16T09:40:00.000Z'), error: null })) as never)
     })
     await open()
     expect(fullText(UNSURE)).toBeTruthy()
@@ -617,5 +644,47 @@ describe('AC-4905.7 도우미 없는 기기·옛 도우미는 서버 숫자만(�
     for (const state of ['no-extension', 'no-helper', 'busy', 'disconnected', 'update-extension'] as const) {
       expect(screenMode({ state, helloError: null }, TODAY, TODAY)).toBe('device')
     }
+  })
+})
+
+describe('AC-5003.3 원장님별 표(spec sunap-doctors, 시안 doctorPanel)', () => {
+  // a가 문서에서 b보다 앞에 있다
+  const before = (a: Element, b: Element) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+
+  it('AC-5003.3: doctors가 있으면 장부 아래·미수 입금/지출 위에 원장님별 표와 hint가 보인다', async () => {
+    doctorsNow = DOCTORS
+    await open()
+    const table = screen.getByRole('region', { name: '원장님별' })
+    expect(within(table).getByText(DOCTOR_HINT)).toBeTruthy()
+    expect(within(table).getByText('가상원장가')).toBeTruthy()
+    expect(within(table).getByText('D02')).toBeTruthy()
+    expect(within(table).getByText('합계')).toBeTruthy()
+    expect(before(screen.getByRole('heading', { name: '환자 장부' }), table)).toBe(true)
+    expect(before(table, screen.getByRole('heading', { name: '미수 입금' }))).toBe(true)
+    expect(before(table, screen.getByRole('region', { name: '지출 목록' }))).toBe(true)
+  })
+
+  it('AC-5003.3: 마감한 날에도 doctors가 있으면 보인다', async () => {
+    doctorsNow = DOCTORS
+    localClosed = { [TODAY]: { closedAt: '2026-11-16T09:52:00.000Z', late: false } }
+    vi.mocked(loadSunapDay).mockResolvedValue({ day: TODAY, closedAt: '2026-11-16T09:52:00.000Z', late: false, totals: TOTALS })
+    await open()
+    await waitFor(() => expect(chip().textContent).toBe('마감됨 · 18:52'))
+    expect(screen.getByRole('region', { name: '원장님별' })).toBeTruthy()
+  })
+
+  it('AC-5003.3: doctors가 null이면 원장님별 표가 없다', async () => {
+    await open()
+    expect(viewNow()?.doctors).toBeNull()
+    expect(screen.queryByRole('region', { name: '원장님별' })).toBeNull()
+  })
+
+  it('AC-5003.3: 도우미 없는 기기 화면(RemoteView)에는 장부 보기에 doctors가 있어도 없다', async () => {
+    withBridge('no-extension')
+    render(<SunapScreen initialToday={TODAY} />)
+    expect(await screen.findByText('환자 장부는 접수 PC에서만 보여요')).toBeTruthy()
+    setFake((prev) => ({ ...prev, view: { ...ledgerOf(TODAY), totals: TOTALS, doctors: DOCTORS } }))
+    expect(screen.queryByRole('region', { name: '원장님별' })).toBeNull()
+    expect(screen.queryByText(DOCTOR_HINT)).toBeNull()
   })
 })

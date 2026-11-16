@@ -1,5 +1,5 @@
 import type { RxGroupDef } from '@/types/analysis'
-import type { Ledger, RsvWords, SunapEdit, SunapTotals } from '@/types/sunap'
+import type { DoctorBreakdown, Ledger, RsvWords, SunapEdit, SunapTotals } from '@/types/sunap'
 
 // 수납일지 장부 Worker 메시지 약속 (spec sunap-ilji design.md 'Worker 메시지', REQ-4904) [환자 자료 구역].
 // 화면 훅(useSunapWorker)은 이 타입으로 주고받는다. 통로 포트는 기존 connectScreenBridge가 {type: 'bridge-port'}로 넘긴다.
@@ -33,8 +33,11 @@ export type SunapScreenMessage =
 
 export type SunapOp = 'load' | 'edit' | 'close' | 'reopen'
 
-/** 장부 보기 = buildLedger 결과 + dayTotals */
-export type SunapLedgerView = Ledger & { totals: SunapTotals }
+/**
+ * 장부 보기 = buildLedger 결과 + dayTotals. doctors는 장부의 진료의 이름 목록 대신 원장님별 수
+ * (ledgerDoctors, spec sunap-doctors AC-5003.2): 원장님(미지정 빼고) 두 분 이상일 때만, 아니면·옛 도우미 답이면 null
+ */
+export type SunapLedgerView = Omit<Ledger, 'doctors'> & { totals: SunapTotals; doctors: DoctorBreakdown | null }
 
 /**
  * Worker → 화면. edit·close·reopen은 PC 저장(store.save)이 됐다는 답이 온 뒤에만 ledger를 보낸다.

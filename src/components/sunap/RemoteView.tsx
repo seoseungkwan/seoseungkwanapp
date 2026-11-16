@@ -9,7 +9,7 @@ import { SPEND_LABEL, SunapCards } from './SunapCards'
 
 // 다른 기기 수납일지(spec sunap-ilji AC-4905.7, 시안 remotePage): 도우미 없는 PC·폰·0.8.0 미만 도우미, 그리고 오늘−62일보다 이른 날.
 // 서버 숫자만 그린다(마감한 날 합계 24칸·그날 지출). 고치기·마감 단추가 없다. 날짜 줄은 SunapScreen이 그린다.
-// 시안과 다른 곳: 원장님별 표를 뺐다(design.md). 읽는 중·읽기 실패·옛 도우미·62일 넘은 날·지출 없음 글은 시안에 없어 더했다
+// 시안과 다른 곳: 원장님별 표를 뺐다(design.md, 서버에 원장님별 숫자를 두지 않는다 — spec sunap-doctors AC-5003.3). 읽는 중·읽기 실패·옛 도우미·62일 넘은 날·지출 없음 글은 시안에 없어 더했다
 
 /** 서버에서 읽은 그날(마감 줄·지출). closed = null은 마감 전 */
 export type ServerDayView = { status: 'loading' | 'ready' | 'failed'; closed: SunapDay | null; spends: readonly SunapSpend[] }
