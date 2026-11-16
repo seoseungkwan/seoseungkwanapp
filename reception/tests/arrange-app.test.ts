@@ -23,8 +23,8 @@ const K = fx.ARRANGE_KEYS
 /** 시안 판의 환자 이름 (가상환자21~30) */
 const NAMES = Array.from({ length: 10 }, (_, i) => `가상환자${21 + i}`)
 
-/** 같은 곳 길만: 판·상세·직전·찍음·어레인지 표시 (AC-1413.2) */
-const SAME_PC_API = /^\/api\/(?:board(?:\?fresh=1)?|visit\/[0-9a-f]{16}\/(?:history\?from=\d+|prev)|xray|arrange|lists)$/
+/** 같은 곳 길만: 판·상세·직전·지난 종이(그 전 진료기록부, reception-arrange-tune)·찍음·어레인지 표시 (AC-1413.2) */
+const SAME_PC_API = /^\/api\/(?:board(?:\?fresh=1)?|visit\/[0-9a-f]{16}\/(?:history\?from=\d+|prev|papers\?from=\d+)|xray|arrange|lists)$/
 
 // ---- 가짜 도우미 ------------------------------------------------------------------------------------
 
@@ -82,6 +82,11 @@ function boardReads(): number {
 
 function reads(k: string, what: 'history' | 'prev'): number {
   return urls().filter((u) => u === (what === 'history' ? `/api/visit/${k}/history?from=0` : `/api/visit/${k}/prev`)).length
+}
+
+/** 지난 종이 쪽 읽기(papers?from=N) 수 (reception-arrange-tune AC-3605.3) */
+function paperReads(k: string, from: number): number {
+  return urls().filter((u) => u === `/api/visit/${k}/papers?from=${from}`).length
 }
 
 /** 보낸 목록 쓰기 몸들 (reception-pick-lists AC-3501.3) */
@@ -442,6 +447,68 @@ describe('app.js 어레인지 쓰기', () => {
     expect(textOf(trOf('가상환자26'), 'button.ptf-btn')).toBe('↓ 내려옴 11:05')
   })
 
+  it('AC-3602.3: 자리비움 → [되돌리기]는 POST /api/arrange away clear를 보내고 돌아옴이 생기지 않는다(아무 표시 없음)', async () => {
+    await open({ hash: '#/a' })
+    trOf('가상환자21').querySelector<HTMLButtonElement>('button.t-btn')!.click()
+    expect(toastText()).toBe('가상환자21 · 자리비움 11:04')
+    await settle()
+    expect(textOf(trOf('가상환자21'), '.away-tag')).toBe('자리비움11:05')
+    undoButton()!.click()
+    expect(toastText()).toBeNull()
+    expect(trOf('가상환자21').querySelector('.away-tag, .rtn-tag, .rtn-wt')).toBeNull()
+    await settle()
+    expect(writes()).toEqual([
+      { k: K.a, op: 'away', v: 'on' },
+      { k: K.a, op: 'away', v: 'clear' },
+    ])
+    expect(server.board.arrange!.rows.find((r) => r.k === K.a)).toMatchObject({ away: null, back: null, backWait: null })
+    expect(trOf('가상환자21').classList.contains('away')).toBe(false)
+    expect(trOf('가상환자21').querySelector('.away-tag, .rtn-tag, .rtn-wt')).toBeNull()
+    expect(toastText()).toBeNull()
+  })
+
+  it('AC-3602.1 · AC-3602.3: 자리비움 줄의 접수 칸을 누르면 "돌아옴 HH:MM"·"0분째"를 미리 그리고 away off를 보낸다. 띠 "{이름} · 돌아옴 HH:MM"의 [되돌리기]는 away on이다. 그 줄 치료 칸을 누르면 기다린 글이 없어진다', async () => {
+    await open({ hash: '#/a' })
+    const t = () => trOf('가상환자24').querySelector<HTMLButtonElement>('button.t-btn')!
+    t().click()
+    expect(trOf('가상환자24').classList.contains('away')).toBe(false)
+    expect([textOf(t(), '.rtn-tag'), textOf(t(), '.rtn-wt')]).toEqual(['돌아옴 11:04', '0분째'])
+    expect(toastText()).toBe('가상환자24 · 돌아옴 11:04')
+    await settle()
+    expect(writes()).toEqual([{ k: K.d, op: 'away', v: 'off' }])
+    expect([textOf(t(), '.rtn-tag'), textOf(t(), '.rtn-wt')]).toEqual(['돌아옴 11:05', '0분째'])
+    cellOf('가상환자24', 'ds').click()
+    expect(t().querySelector('.rtn-wt')).toBeNull()
+    expect(textOf(t(), '.rtn-tag')).toBe('돌아옴 11:05')
+    await settle()
+    expect(t().querySelector('.rtn-wt')).toBeNull()
+    expect(textOf(t(), '.rtn-tag')).toBe('돌아옴 11:05')
+    expect(writes().at(-1)).toEqual({ k: K.d, op: 'step', col: 'ds' })
+
+    // 다시 누르면 새 자리비움, [되돌리기]는 away clear
+    t().click()
+    expect(textOf(t(), '.away-tag')).toBe('자리비움11:04')
+    expect(t().querySelector('.rtn-tag')).toBeNull()
+    await settle()
+    expect(textOf(t(), '.away-tag')).toBe('자리비움11:05')
+    undoButton()!.click()
+    await settle()
+    expect(writes().slice(-2)).toEqual([
+      { k: K.d, op: 'away', v: 'on' },
+      { k: K.d, op: 'away', v: 'clear' },
+    ])
+    expect(t().querySelector('.away-tag, .rtn-tag, .rtn-wt')).toBeNull()
+  })
+
+  it('AC-3605.2: 비고 칸을 누르면 성함을 누른 것과 같이 #/a/v/{열쇠} 기록부가 열린다', async () => {
+    await open({ hash: '#/a' })
+    trOf('가상환자21').querySelector<HTMLButtonElement>('td.c-memo > button.memo-btn')!.click()
+    await settle()
+    expect(window.location.hash).toBe(`#/a/v/${K.a}`)
+    expect(chartsPage()).not.toBeNull()
+    expect(textOf(chartsPage(), 'h1.detail-name')).toBe('가상환자21')
+  })
+
   it('AC-3308.11: 저절로 다시 읽어도 어레인지 탭·표 뼈대(옆으로 민 위치)·세로 위치·열린 고르기 창·[오늘 치료 종료] 펼침을 지키고, 창의 줄이 판에서 사라지면 창을 닫는다', async () => {
     await open({ hash: '#/a' })
     const wrap = appEl().querySelector('.wrap')
@@ -700,6 +767,77 @@ describe('app.js 기록부', () => {
     expect(window.location.hash).toBe('#/a')
     expect(chartsPage()).toBeNull()
     expect(arrangePage()).not.toBeNull()
+  })
+
+  it('AC-3605.3 · AC-3605.4: 기록부를 열면 papers?from=1을 한 번 읽어 직전 아래 "그 전 진료기록부"에 장을 붙이고, [더 보기]는 papers?from=4를 읽어 붙인다. 저절로 다시 읽어도 다시 읽지 않고 붙인 장이 그대로다', async () => {
+    await open({ hash: '#/a' })
+    trOf('가상환자21').querySelector<HTMLButtonElement>('button.nm-btn')!.click()
+    await settle()
+    expect(paperReads(K.a, 1)).toBe(1)
+    expect(urls().filter((u) => u.includes('/papers?from=0'))).toEqual([])
+    const older = () => chartsPage()!.querySelector<HTMLElement>('section.chart-prev > section.older')
+    const cards = () => older()!.querySelectorAll(':scope > .past-list > article.paper.past').length
+    const more = () => older()!.querySelector<HTMLButtonElement>(':scope > .past-list > button.more-papers')
+    expect(textOf(older(), ':scope > h2.charts-h.older')).toBe('그 전 진료기록부')
+    expect(cards()).toBe(3)
+    expect(textOf(more(), ':scope > small')).toBe('32번 더 있어요 · 누를 때마다 3장씩')
+    more()!.click()
+    await settle()
+    expect(paperReads(K.a, 4)).toBe(1)
+    expect(cards()).toBe(6)
+    const section = older()
+    await wait(5000)
+    await wait(5000)
+    await wait(30_000)
+    expect(paperReads(K.a, 1)).toBe(1)
+    expect(older()).toBe(section)
+    expect(cards()).toBe(6)
+    expect(reads(K.a, 'prev')).toBe(1)
+    for (const u of urls()) expect(u).toMatch(SAME_PC_API)
+  })
+
+  it('AC-3605.3: 첫 방문(직전 없음) 환자는 "그 전 진료기록부" 묶음이 없다', async () => {
+    await open({ hash: `#/a/v/${K.c}` })
+    expect(textOf(chartsPage(), 'section.chart-prev .none-card')).toBe('첫 방문이라 직전 기록부가 없어요.')
+    expect(chartsPage()!.querySelector('section.older, .charts-h.older')).toBeNull()
+  })
+
+  it('AC-3605.4: 그 전 기록부 답이 오기 전에 다른 환자로 옮기거나 숨기면 늦은 답을 버린다', async () => {
+    server.pasts.set(K.b, 2)
+    await open({ hash: '#/a' })
+    const late = hold(`/api/visit/${K.a}/papers`)
+    trOf('가상환자21').querySelector<HTMLButtonElement>('button.nm-btn')!.click()
+    await settle()
+    expect(textOf(chartsPage(), 'section.older .past-note')).toBe('기록부를 읽는 중이에요')
+    appEl().querySelector<HTMLAnchorElement>('a.back')!.click()
+    await settle()
+    trOf('가상환자22').querySelector<HTMLButtonElement>('button.nm-btn')!.click()
+    await settle()
+    expect(window.location.hash).toBe(`#/a/v/${K.b}`)
+    // 가상환자22는 그 전 기록부 1장(더 보기 없음)
+    const cards = () => chartsPage()!.querySelectorAll('section.older article.paper.past').length
+    expect(cards()).toBe(1)
+    late.answer()
+    await settle()
+    expect(textOf(chartsPage(), 'h1.detail-name')).toBe('가상환자22')
+    expect(cards()).toBe(1)
+    expect(chartsPage()!.querySelector('section.older button.more-papers')).toBeNull()
+
+    // 숨김: 읽는 중에 숨기면 늦은 답은 그리지 않고, 다시 보이면 다시 읽는다
+    appEl().querySelector<HTMLAnchorElement>('a.back')!.click()
+    await settle()
+    const hidden = hold(`/api/visit/${K.b}/papers`)
+    trOf('가상환자22').querySelector<HTMLButtonElement>('button.nm-btn')!.click()
+    await settle()
+    expect(textOf(chartsPage(), 'section.older .past-note')).toBe('기록부를 읽는 중이에요')
+    hide()
+    hidden.answer()
+    await settle()
+    expectNoPatient()
+    show()
+    await settle()
+    expect(paperReads(K.b, 1)).toBe(3)
+    expect(cards()).toBe(1)
   })
 
   it('AC-3309.5: 기록부 읽기가 실패하면 그 칸에 "지금 기록부를 읽지 못했어요" 한 줄만 보이고(끊김 화면 아님) 다음 저절로 읽기에 다시 본다', async () => {

@@ -23,6 +23,8 @@
 //   · '처방 나옴' 열쇠와 끝 시각(60초), 고른 창, [오늘 치료 종료] 펼침, 기록부 자료, 표의 세로 위치는 메모리에만 둔다(AC-3308.11·3310.2)
 //   · 기록부: 오늘 종이(history?from=0)는 상세와 같은 조건(칸·오늘 처방이 바뀌거나 30초)으로만 다시 읽고 직전 종이(prev)는 한 번만 읽는다.
 //     실패한 칸은 다음 저절로 읽기에 다시 본다(AC-3309.3·3309.5). 그 환자가 판에서 사라지면 표(#/a)로 돌아간다
+//     그 전 진료기록부(papers?from=1)는 환자를 열 때 한 번만 읽고(실패하면 한 줄, 다시 읽지 않음) [더 보기]는 papers?from=next다.
+//     다른 환자·숨김·끊김 뒤 온 답은 버린다(reception-arrange-tune AC-3605.3·3605.4)
 //   · 숨김·끊김은 어레인지 상태를 모두 지운다. 숨김 뒤에는 주소(#/a·#/a/v/{열쇠})를 남겨 다시 읽고, 끊김 뒤에는 표(#/a)다(AC-3312.2)
 //
 // 쓰는 법
@@ -477,17 +479,47 @@ export function startApp() {
     win.location.hash = `#/a/v/${k}`
   }
 
-  /** 기록부: 처음이면 오늘·직전을 읽고, 열려 있으면 머리·오늘 종이를 새 줄로 그리고 오늘 종이를 다시 읽을지 정한다 */
+  /** 기록부: 처음이면 오늘·직전·그 전을 읽고, 열려 있으면 머리·오늘 종이를 새 줄로 그리고 오늘 종이를 다시 읽을지 정한다 */
   function drawChart(k, row) {
-    if (chart === null || chart.k !== k) {
-      chart = { k, today: 'reading', prev: 'reading', mark: null, busyToday: false, busyPrev: false }
+    const fresh = chart === null || chart.k !== k
+    if (fresh) {
+      chart = { k, today: 'reading', prev: 'reading', older: 'reading', mark: null, busyToday: false, busyPrev: false }
       sheet = null
       if (typeof win.scrollTo === 'function') win.scrollTo(0, 0)
     }
     const mine = chart
-    renderCharts(host, row, mine.today, mine.prev)
+    renderCharts(host, row, mine.today, mine.prev, chartView(mine))
     readToday(mine, row)
     readPrev(mine)
+    if (fresh) readOlder(mine)
+  }
+
+  /** 기록부 화면의 그 전 진료기록부 값: 답(또는 읽는 중·실패)과 [더 보기]가 다음 쪽을 읽는 곳. 기록부가 바뀌면(다른 환자·숨김·끊김) 답을 버린다 */
+  function chartView(c) {
+    return {
+      older: c.older,
+      onMore: (from) =>
+        getPapers(c.k, from, { signal: poll.signal() }).then((papers) => {
+          if (chart !== c) throw new Error('늦은 답')
+          return papers
+        }),
+    }
+  }
+
+  /** 그 전 진료기록부 첫 쪽(papers?from=1): 열 때 한 번만 읽는다. 실패하면 한 줄이고 다시 읽지 않는다(AC-3605.3·3605.4) */
+  function readOlder(c) {
+    getPapers(c.k, 1, { signal: poll.signal() }).then(
+      (papers) => {
+        if (chart !== c) return
+        c.older = papers
+        redrawChart(c)
+      },
+      () => {
+        if (chart !== c) return
+        c.older = 'error'
+        redrawChart(c)
+      },
+    )
   }
 
   /** 오늘 종이: 처음·실패 뒤·칸이나 오늘 처방이 바뀜·30초 지남이면 읽는다(AC-1404.8과 같은 조건, AC-3309.3) */
@@ -539,7 +571,7 @@ export function startApp() {
 
   function redrawChart(c) {
     const row = findRow(poll.board(), c.k)
-    if (chart === c && chartKey() === c.k && row) renderCharts(host, row, c.today, c.prev)
+    if (chart === c && chartKey() === c.k && row) renderCharts(host, row, c.today, c.prev, chartView(c))
   }
 
   /** 기록부를 열 때의 표 세로 위치로 */

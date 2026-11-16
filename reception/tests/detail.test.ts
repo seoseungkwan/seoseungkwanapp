@@ -1051,10 +1051,35 @@ describe('detail.js 종이 카드 나눠 쓰기 (reception-arrange 기록부 화
   interface Shared {
     paperCard?: (row: FakeRow, paper: FakePaper, options?: { today?: Date; open?: boolean }) => HTMLElement
     recordOf?: (paper: Omit<FakePaper, 'res' | 'addr' | 'tel' | 'cel' | 'special'>, options: { kind?: string; day: string; lane?: string }) => Node[]
+    appendPast?: (list: HTMLElement, page: FakePapers, onMore?: (from: number) => Promise<unknown>) => void
   }
   let shared: Shared
   beforeAll(async () => {
     shared = (await import(/* @vite-ignore */ DETAIL_JS)) as Shared
+  })
+
+  it('AC-3605.3: appendPast(list, 한 쪽, onMore)는 상세 지난 종이 자리와 같은 장 머리("M월 D일" · "N일 전", [지난번] 없음)·종이 카드(pastCard)·[이전 진료기록부 더 보기 ▾]를 list에 붙이고, [더 보기]는 onMore(next)로 다음 쪽을 붙인다(기록부 화면 "그 전 진료기록부")', async () => {
+    expect(typeof shared.appendPast).toBe('function')
+    const list = document.createElement('div')
+    list.className = 'past-list'
+    document.body.appendChild(list)
+    const onMore = vi.fn(() => Promise.resolve(pastPage(4, 3, 10)))
+    shared.appendPast!(list, pastPage(1, 3, 10), onMore)
+    expect(shapeOf(list)).toEqual(['div.past-h', 'article.paper.past', 'div.past-h', 'article.paper.past', 'div.past-h', 'article.paper.past', 'button.more-papers'])
+    expect(list.querySelector('.last-badge')).toBeNull()
+    const first = fx.fakePastPaper(1)
+    const [, m, d] = first.date.split('-')
+    expect(textOf(list, ':scope > .past-h > strong')).toBe(`${Number(m)}월 ${Number(d)}일`)
+    expect(textOf(list, ':scope > .past-h > .visit-ago')).toBe(first.ago)
+    expect(list.querySelector(':scope > article.paper.past')!.outerHTML).toBe(view.pastCard(first).outerHTML)
+    const more = list.querySelector<HTMLButtonElement>(':scope > button.more-papers')!
+    expect(moreTexts(more)).toEqual(['이전 진료기록부 더 보기 ▾', '6번 더 있어요 · 누를 때마다 3장씩'])
+    more.click()
+    await flush()
+    expect(onMore).toHaveBeenLastCalledWith(4)
+    expect(list.querySelectorAll(':scope > article.paper.past')).toHaveLength(6)
+    expect(list.querySelector('.last-badge')).toBeNull()
+    expect(moreTexts(list.querySelector(':scope > button.more-papers'))).toEqual(['이전 진료기록부 더 보기 ▾', '3번 더 있어요 · 누를 때마다 3장씩'])
   })
 
   it('AC-3309.1: paperCard(줄, paper, { today })는 상세의 오늘 종이 카드와 한 글자도 같다(모양 그대로)', () => {

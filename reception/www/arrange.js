@@ -13,7 +13,9 @@
 //   renderArrange(host, board, view) → .page.arrange    host는 #app. 안에 다른 화면이 있으면 지우고 그린다
 //     view.reading · view.onRefresh · view.onTab   머리(board.js topOf)
 //     view.sheet         열린 고르기 창 { k, col, kind: 'add'|'done'|'part' } | null. 그 줄·칸이 판에 맞지 않으면 그리지 않는다.
-//                        충격파 넣기 창은 고른 타수·부위 수 { …, hit, count }도 담는다(AC-3402.2, 목록 밖 값은 안 고른 것)
+//                        충격파 넣기 창은 고른 타수·부위 수 { …, hit, count }도 담는다(AC-3402.2, 목록 밖 값은 안 고른 것).
+//                        PT·도수·충격파·견인 넣기 창 단추는 판 picks 목록이고(충격파는 타수 줄·부위 수 줄, 타수가 비면 타수 줄 없음),
+//                        판에 picks가 없으면 이 넣기 창도 열리지 않는다(X-RAY 넣기는 그대로, reception-arrange-tune AC-3604.4)
 //                        C-ARM 넣기 창(빈 칸 add · [시술 고르기] part)은 { …, proc, drug }, SONO 넣기 창(빈 칸 add · [부위 고르기] part)은
 //                        { …, side, picked, withs }를 담는다(reception-pick-lists AC-3503.1·3504.3). 목록은 판 picks뿐이고 목록 밖 값은 안 고른 것,
 //                        판에 picks가 없으면 두 넣기 창은 열리지 않는다(AC-3505.4)
@@ -26,18 +28,19 @@
 //     view.onPart(k, col, v, t)    [부위 고르기]·[시술 고르기] 창에서 고름(part)
 //     view.onSet(k, col, v)        완료 창의 [준비로·준비완료로 되돌리기](set todo|ready)
 //     view.onRemove(k, col)        완료 창의 [칸에서 빼기](remove)
-//     view.onAway(k, on|off)       접수 칸 누름(away)
+//     view.onAway(k, on|off)       접수 칸 누름(away): 자리비움 줄은 off(돌아옴), 다른 줄(돌아옴 줄 포함)은 on (reception-arrange-tune AC-3602.3)
 //     view.onPtf(k, up|down|off)   [PT 먼저] 누름(ptf): 없음 → up → down → 없음
 //     view.onEnd(k) · view.onRestore(k)   [치료 종료](end on) · [다시 넣기](end off)
-//     view.onChart(k)              성함 누름(기록부 열기)
+//     view.onChart(k)              성함·비고 칸 누름(기록부 열기, 비고는 reception-arrange-tune AC-3605.2)
 //     view.onUndo()                띠의 [되돌리기]
 //     view.onSheet(sheet|null) · view.onEnded(open)   창 열고 닫음 · 펼침 바뀜
 //     view.onLists(picks) → Promise<boolean>   목록 고치기 창(picks.js, 머리 [목록 고치기])의 [저장]. 참이면 창을 닫는다(reception-pick-lists AC-3505.3).
 //                        목록 고치기 창은 다시 그려도 지우지 않는다(초안·적던 글·초점이 남게, AC-3505.2). 판에 picks가 없으면 열리지 않는다
 //   planOf(board, { k, op, col?, v?, t? }) → { board, toast, undo }   맞지 않는 쓰기면 받은 판 그대로·toast null·undo null.
-//                      SONO·C-ARM add·part는 판 picks로 본다(도우미 PickLists.IsSono·IsCarm과 같은 규칙, reception-pick-lists AC-3502.3)
-//   CHOICES            X-RAY·PT·도수·충격파·견인 고르기 목록(design.md 4절). C# ArrangeChoices(ArrangeMarks.cs)와 같은 글이다(시험이 견준다).
-//                      SONO·C-ARM 목록은 화면에 두지 않고 판 picks만 쓴다(reception-pick-lists AC-3505.4)
+//                      SONO·C-ARM add·part는 판 picks로 본다(도우미 PickLists.IsSono·IsCarm과 같은 규칙, reception-pick-lists AC-3502.3).
+//                      PT·도수·충격파·견인 add도 판 picks로 본다(도우미 AddOf와 같은 규칙, reception-arrange-tune AC-3604.4).
+//                      away는 on(되돌리기 clear)·off(돌아옴, 되돌리기 on)·clear(되돌리기 없음)이고, 칸 쓰기는 그 줄의 backWait를 지운다(AC-3602.3)
+//   picksOf(board)     판의 고르기 목록(없으면 null). 고르기 목록 글은 화면 파일에 두지 않고 판 picks만 쓴다(AC-3505.4·AC-3604.4)
 
 import { clear, el } from './dom.js'
 import { refreshText, topOf } from './board.js'
@@ -68,33 +71,23 @@ const PICKED_EMPTY = '아직 없어요 · 아래에서 부위를 눌러요'
 const SIDE_HINT = '안 고르면 부위만 담겨요'
 const PLAIN_HINT = '쪽·부위 없이 그대로 담겨요'
 
-/** 충격파 부위 수·타수 (reception-memo-papers AC-3402.1, 시안 Mock.html). 칸 글은 "N부위" 또는 "{타수} N부위" */
-const ESWT_COUNTS = Object.freeze(['1부위', '2부위', '3부위', '4부위'])
-const ESWT_HITS = Object.freeze(['2000타', '3000타', '4000타', '6000타'])
-
-/** 칸마다 직접 넣기(add)의 고르기 목록 (design.md 4절). SONO·C-ARM은 판 picks다 */
-export const CHOICES = Object.freeze({
-  xray: Object.freeze([XRAY_TAKE]),
-  pt: Object.freeze(['ICE', 'HP']),
-  ds: Object.freeze(['30분', '50분']),
-  eswt: Object.freeze([...ESWT_COUNTS, ...ESWT_HITS.flatMap((hit) => ESWT_COUNTS.map((count) => `${hit} ${count}`))]),
-  trac: Object.freeze(['목', '허리']),
-})
-
 /**
  * 칸 일곱 (표 차례, 시안 COLS): key JSON 이름, head·sub 표 머리 글, name 띠·창에 쓰는 이름,
  * rx 처방에서 오는 칸(직접 넣으면 점선 "직접"), three 준비 → 준비완료 → 완료 세 단계(부위·순서가 있는 칸),
- * pick 부위·시술이 없는 칸의 고르기 단추 글
+ * pick 부위·시술이 없는 칸의 고르기 단추 글, listed 머리 작은 글이 판 picks 목록인 칸(PT·도수·견인, reception-arrange-tune AC-3604.4)
  */
 const COLS = [
   { key: 'xray', head: 'X-RAY', sub: '', name: 'X-RAY', rx: true, three: false },
   { key: 'sono', head: 'SONO', sub: '부위·준비·순서', name: 'SONO', rx: true, three: true, pick: '부위 고르기' },
   { key: 'carm', head: 'C-ARM', sub: '시술·약재·순서', name: 'C-ARM', rx: true, three: true, pick: '시술 고르기' },
-  { key: 'pt', head: 'PT', sub: 'ICE·HP', name: 'PT', rx: false, three: false },
-  { key: 'ds', head: '도수', sub: '30·50분', name: '도수', rx: false, three: false },
+  { key: 'pt', head: 'PT', sub: '', name: 'PT', rx: false, three: false, listed: true },
+  { key: 'ds', head: '도수', sub: '', name: '도수', rx: false, three: false, listed: true },
   { key: 'eswt', head: '충격파', sub: '타수·부위 수', name: '충격파', rx: false, three: false },
-  { key: 'trac', head: '견인', sub: '목·허리', name: '견인', rx: false, three: false },
+  { key: 'trac', head: '견인', sub: '', name: '견인', rx: false, three: false, listed: true },
 ]
+
+/** 머리 작은 글에서 목록 이름을 잇는 글 (시안 headSubs) */
+const HEAD_JOIN = '·'
 const COL = new Map(COLS.map((col) => [col.key, col]))
 
 /** 칸 단계와 차례 (todo 준비 · ready 준비완료 · done 완료) */
@@ -113,16 +106,21 @@ const LEGEND = [
   ['done', '✓ 완료'],
   ['manual', '직접 넣음'],
   ['away', '자리비움'],
+  ['rtn', '돌아옴'],
   ['ptup', '↑ PT 먼저'],
 ]
 
-/** 쓰는 법 두 줄 (시안 .howto) */
+/** 쓰는 법 두 줄 (시안 .howto, 둘째 줄은 reception-arrange-tune 시안 Mock.html) */
 const HOWTO = [
   '치료 칸을 누르면 다음 단계로 넘어가요 (준비 → 준비완료 → 완료, 준비완료는 SONO·C-ARM만). X-RAY·SONO·C-ARM은 처방이 나오면 저절로 들어오고(SONO는 [부위 고르기], C-ARM은 [시술 고르기]로 골라요), PT·도수·충격파·견인은 빈 칸을 눌러 골라 넣어요.',
-  '접수 시각을 누르면 자리비움, 성함을 누르면 오늘·직전 진료기록부가 열려요. [PT 먼저]는 누를 때마다 ↑ 올라감 → ↓ 내려옴 → 지움.',
+  '접수 시각을 누르면 자리비움, 다시 누르면 돌아옴이에요(다음 치료 칸을 누를 때까지 돌아온 뒤 기다린 시간이 보여요). 성함이나 비고를 누르면 오늘·직전·그 전 진료기록부가 열려요. [PT 먼저]는 누를 때마다 ↑ 올라감 → ↓ 내려옴 → 지움.',
 ]
 
-const FOOT = '표시(준비완료·완료·자리비움·PT 먼저·치료 종료)는 의원 PC에만 남아요 · 비트 자료는 바뀌지 않아요'
+const FOOT = '표시(준비완료·완료·자리비움·돌아옴·PT 먼저·치료 종료)는 의원 PC에만 남아요 · 비트 자료는 바뀌지 않아요'
+/** 돌아옴 이름표 "돌아옴 HH:MM" (reception-arrange-tune AC-3602.1) */
+const BACK_LABEL = '돌아옴'
+/** 돌아온 바로 그때의 기다린 글(도우미가 0분부터 센다, AC-3601.4·AC-3602.3) */
+const BACK_WAIT_START = '0분째'
 const EMPTY = '지금 안내할 환자가 없어요'
 const ENDED_EMPTY = '아직 없어요'
 const NO_LAST = '첫 방문이라 지난 증상이 없어요'
@@ -164,6 +162,7 @@ export function renderArrange(host, board, view = {}) {
 
   const onPicks = picks ? () => openLists(parts.page, picks, view.onLists) : null
   replace(parts.top, topOf(board, { ...view, tab: 'arrange', onPicks }))
+  headSubsOf(parts.page, picks)
   replace(parts.asof, `${board.at} 기준 · ${refreshText(board.every)}`)
   const rxNew = new Set(Array.isArray(view.rxNew) ? view.rxNew : [])
   const flash = new Set(Array.isArray(view.flash) ? view.flash : [])
@@ -234,8 +233,7 @@ export function planOf(board, ask) {
       )
     }
     case 'add': {
-      if (!row || !col || cell) return same
-      if (col.three ? !fits(picksOf(board), col.key, ask.v, ask.t) : !CHOICES[col.key].includes(ask.v) || isText(ask.t)) return same
+      if (!row || !col || cell || !addFits(picksOf(board), col, ask.v, ask.t)) return same
       const added = {
         st: 'todo',
         det: col.three || col.key === 'xray' ? '' : ask.v,
@@ -264,13 +262,13 @@ export function planOf(board, ask) {
       )
     }
     case 'away': {
-      if (!row || (ask.v !== 'on' && ask.v !== 'off')) return same
-      const on = ask.v === 'on'
-      return made(
-        withRow(board, index, { ...row, away: on ? stamp : null }),
-        on ? `${name} · 자리비움 ${stamp}` : `${name} · 자리비움 풀었어요`,
-        { k, op: 'away', v: on ? 'off' : 'on' },
-      )
+      // on 자리비움(되돌리기 clear) · off 돌아옴(되돌리기 on) · clear 되돌리기(아무 표시 없음, 조용히 보내 띠는 보이지 않는다) (AC-3602.3)
+      if (!row) return same
+      if (ask.v === 'on') return made(withRow(board, index, { ...row, away: stamp, back: null, backWait: null }), `${name} · 자리비움 ${stamp}`, { k, op: 'away', v: 'clear' })
+      if (ask.v === 'off')
+        return made(withRow(board, index, { ...row, away: null, back: stamp, backWait: BACK_WAIT_START }), `${name} · ${BACK_LABEL} ${stamp}`, { k, op: 'away', v: 'on' })
+      if (ask.v === 'clear') return made(withRow(board, index, { ...row, away: null, back: null, backWait: null }), `${name} · 자리비움을 되돌렸어요`, null)
+      return same
     }
     case 'ptf': {
       if (!row || !['up', 'down', 'off'].includes(ask.v)) return same
@@ -332,20 +330,30 @@ function partsOf(host) {
   }
 }
 
-/** 표 머리 (시안 차례) */
+/** 표 머리 (시안 차례). 접수 작은 글은 "·" 뒤에서만 줄을 바꾼다(시안 span.nw + wbr, AC-3602.2). PT·도수·견인 작은 글은 headSubsOf가 넣는다 */
 function headOf() {
   const th = (cls, text, sub) => el('th', { class: cls }, [text, sub ? el('span', { class: 'sm' }, sub) : null])
   return el(
     'thead',
     null,
     el('tr', null, [
-      th('c-t', '접수', '누르면 자리비움'),
+      th('c-t', '접수', ['누르면 ', el('span', { class: 'nw' }, '자리비움·'), el('wbr'), '돌아옴']),
       th('c-nm', '성함'),
       ...COLS.map((col) => th(`c-${col.key}`, col.head, col.sub)),
       th('c-memo', '비고', '접수 메모 · 지난번 증상'),
       el('th', { class: 'c-end' }),
     ]),
   )
+}
+
+/** PT·도수·견인 머리 작은 글: 판 picks 목록을 "·"로 이은 글(목록이 없으면 작은 글 없음). 그릴 때마다 바꾼다 (AC-3604.4) */
+function headSubsOf(page, picks) {
+  for (const col of COLS) {
+    if (!col.listed) continue
+    const th = page.querySelector(`:scope > .wrap > table.arr > thead th.c-${col.key}`)
+    const sub = picks ? picks[col.key].join(HEAD_JOIN) : ''
+    if (th) replace(th, [col.head, sub !== '' ? el('span', { class: 'sm' }, sub) : null])
+  }
 }
 
 // ---- 누르기 ---------------------------------------------------------------------------------------------
@@ -365,13 +373,17 @@ function actionsOf(host, view, redraw, picks) {
     call('onSheet', null)
   }
   return {
+    /** 판의 고르기 목록(없으면 null): 충격파 칸 글을 타수·부위 수로 나눌 때 쓴다 */
+    picks,
     call,
     close,
     cell(k, col, cell) {
-      if (!cell && col.three) {
-        if (picks) open(pickSheet(k, col.key, 'add'))
-      } else if (!cell) open(col.key === 'eswt' ? { k, col: col.key, kind: 'add', hit: null, count: null } : { k, col: col.key, kind: 'add' })
-      else if (cell.st === 'done') open({ k, col: col.key, kind: 'done' })
+      if (!cell) {
+        // 판에 picks가 없으면 X-RAY 말고는 넣기 창을 열지 않는다(AC-3505.4·AC-3604.4)
+        if (col.key !== 'xray' && !picks) return
+        if (col.three) open(pickSheet(k, col.key, 'add'))
+        else open(col.key === 'eswt' ? { k, col: col.key, kind: 'add', hit: null, count: null } : { k, col: col.key, kind: 'add' })
+      } else if (cell.st === 'done') open({ k, col: col.key, kind: 'done' })
       else call('onCell', k, col.key)
     },
     /** [부위 고르기]·[시술 고르기]: 판에 picks가 없으면 열지 않는다(AC-3505.4) */
@@ -396,13 +408,12 @@ function actionsOf(host, view, redraw, picks) {
     },
     /** 충격파 창의 타수(hit)·부위 수(count) 단추: 고르거나 고른 것을 다시 누르면 풀고, 창 값을 onSheet로 넘긴다(AC-3402.2) */
     eswt(sheet, group, label) {
-      const next = { ...sheet, hit: eswtHit(sheet), count: eswtCount(sheet) }
+      const next = { ...sheet, hit: eswtHit(sheet, picks), count: eswtCount(sheet, picks) }
       next[group] = next[group] === label ? null : label
       redraw({ sheet: next })
       call('onSheet', next)
-      // 다시 그린 창에서 누른 단추에 초점을 돌려 둔다(타수 줄이 위, 부위 수 줄이 아래)
-      const row = host.querySelectorAll('.sheet-back > .sheet > .opts.four')[group === 'hit' ? 0 : 1]
-      const again = [...(row?.querySelectorAll(':scope > button.opt') ?? [])].find((b) => b.textContent === label)
+      // 다시 그린 창에서 누른 단추에 초점을 돌려 둔다(줄은 data-g로 찾는다: 타수 목록이 비면 타수 줄이 없다)
+      const again = [...host.querySelectorAll(`.sheet-back > .sheet > .opts[data-g="${group}"] > button.opt`)].find((b) => b.textContent === label)
       again?.focus({ preventScroll: true })
     },
     pick(sheet, label) {
@@ -429,7 +440,7 @@ function rowOf(row, list, marks, act) {
     el('td', { class: 'c-t' }, awayOf(row, list, act)),
     el('td', { class: 'c-nm' }, [nameOf(row, list, marks.rxNew, act), ptfOf(row, act)]),
     ...COLS.map((col) => el('td', { class: `c-${col.key}` }, cellOf(row.k, col, row.cells?.[col.key] ?? null, act))),
-    el('td', { class: 'c-memo' }, memoOf(row, list)),
+    el('td', { class: 'c-memo' }, memoOf(row, list, act)),
     el(
       'td',
       { class: 'c-end' },
@@ -438,13 +449,17 @@ function rowOf(row, list, marks, act) {
   ])
 }
 
-/** 접수 칸: 접수 시각, 자리비움이면 "자리비움" + 그 시각. 누르면 자리비움 표시·해제 */
+/**
+ * 접수 칸: 접수 시각(+ 기다린 글), 자리비움이면 "자리비움" + 그 시각, 아니고 돌아왔으면 "돌아옴 {back}" + (셈 중이면) 돌아온 뒤 기다린 글
+ * (reception-arrange-tune AC-3602.1). 누르면 자리비움 줄은 돌아옴(off), 다른 줄은 자리비움(on)
+ */
 function awayOf(row, list, act) {
   const time = typeof list.time === 'string' ? (TIME.exec(list.time)?.[0] ?? list.time) : ''
+  const back = isText(row.back) ? [el('span', { class: 'rtn-tag' }, `${BACK_LABEL} ${row.back}`), isText(row.backWait) ? el('span', { class: 'wt rtn-wt' }, row.backWait) : null] : null
   return el('button', { type: 'button', class: 't-btn', on: { click: () => act.call('onAway', row.k, row.away ? 'off' : 'on') } }, [
     el('span', { class: 't-time' }, time),
     waitedSpan(list),
-    row.away ? el('span', { class: 'away-tag' }, ['자리비움', el('br'), row.away]) : null,
+    row.away ? el('span', { class: 'away-tag' }, ['자리비움', el('br'), row.away]) : back,
   ])
 }
 
@@ -503,19 +518,20 @@ function cellOf(k, col, cell, act) {
     ord ? el('span', { class: 'ord' }, `${ord}번`) : null,
     manual ? el('span', { class: 'mn' }, '직접') : null,
     el('span', { class: 'st' }, st === 'todo' ? '준비' : withTime(st === 'ready' ? '준비완료' : '✓', cell.at)),
-    col.key === 'eswt' ? eswtText(cell, st === 'done') : st === 'done' ? doneText(col, cell) : detOf(k, col, cell, act),
+    col.key === 'eswt' ? eswtText(cell, st === 'done', act.picks?.eswt.hits ?? []) : st === 'done' ? doneText(col, cell) : detOf(k, col, cell, act),
   ])
 }
 
-/** 충격파 칸 글 "{타수} N부위"를 타수와 나머지로 나눈다(타수가 없으면 hit null) */
-const ESWT_SPLIT = /^(\S+타) (.+)$/
-
-/** 충격파 칸의 글: 타수가 있으면 타수(위)·부위 수(아래), 없으면 칸 글 하나. 완료 칸의 부위 수는 작은 글(AC-3402.3) */
-function eswtText(cell, done) {
+/**
+ * 충격파 칸의 글: 판 picks 타수 이름 + 빈칸으로 시작하면 타수(위)·나머지(아래), 아니면 칸 글 하나(여럿 맞으면 긴 이름).
+ * 완료 칸의 부위 수는 작은 글(AC-3402.3, 나누기는 reception-arrange-tune AC-3604.4)
+ */
+function eswtText(cell, done, hits) {
   if (!isText(cell.det)) return null
-  const split = ESWT_SPLIT.exec(cell.det)
-  const rest = el('span', { class: done ? 'det sm' : 'det' }, split ? split[2] : cell.det)
-  return split ? [el('span', { class: 'hit' }, split[1]), rest] : rest
+  const det = cell.det
+  const hit = hits.filter((name) => det.length > name.length + 1 && det.startsWith(`${name} `)).reduce((long, name) => (long === null || name.length > long.length ? name : long), null)
+  const rest = el('span', { class: done ? 'det sm' : 'det' }, hit === null ? det : det.slice(hit.length + 1))
+  return hit === null ? rest : [el('span', { class: 'hit' }, hit), rest]
 }
 
 /** 단계 글 뒤에 시각(모르면 단계 글만) */
@@ -564,12 +580,15 @@ function partButton(k, col, act) {
   )
 }
 
-/** 비고 칸: 메모 상자(있을 때) + "지난번 …"(줄은 " / "로 이음, 없으면 첫 방문 글) */
-function memoOf(row, list) {
-  return [
+/**
+ * 비고 칸: 기록부 여는 단추(칸 가득, 누르면 성함과 같이 onChart, reception-arrange-tune AC-3605.2) 안에
+ * 메모 상자(있을 때) + "지난번 …"(줄은 " / "로 이음, 세 줄까지, 없으면 첫 방문 글)
+ */
+function memoOf(row, list, act) {
+  return el('button', { type: 'button', class: 'memo-btn', on: { click: () => act.call('onChart', row.k) } }, [
     isText(list.memo) ? el('div', { class: 'arr-memo' }, list.memo) : null,
     isText(row.last) ? el('div', { class: 'lastsym' }, [el('span', { class: 'lastsym-label' }, LAST_LABEL), oneLine(row.last)]) : el('div', { class: 'lastsym' }, NO_LAST),
-  ]
+  ])
 }
 
 /** 여러 줄 글을 한 줄로: 빈 줄은 빼고 " / "로 잇는다(시안 oneLine) */
@@ -621,7 +640,7 @@ function endedOf(ended, lists, open, act) {
 
 /**
  * 열린 고르기 창. 그 줄이 판에 없거나 칸이 창 종류에 맞지 않으면(다른 기기가 바꿈) 그리지 않는다(AC-3308.11).
- * SONO·C-ARM 넣기 창은 판 picks가 없으면 그리지 않는다(AC-3505.4)
+ * SONO·C-ARM·PT·도수·충격파·견인 넣기 창은 판 picks가 없으면 그리지 않는다(AC-3505.4·AC-3604.4)
  */
 function sheetOf(sheet, rows, lists, act, picks) {
   if (!sheet || typeof sheet !== 'object') return null
@@ -633,7 +652,7 @@ function sheetOf(sheet, rows, lists, act, picks) {
   let title
   let sub
   let options
-  if (sheet.kind === 'add' && !cell && col.key === 'eswt') return eswtSheetOf(sheet, col, name, act)
+  if (sheet.kind === 'add' && !cell && col.key === 'eswt') return picks ? eswtSheetOf(sheet, col, name, picks, act) : null
   if (col.three && ((sheet.kind === 'add' && !cell) || (sheet.kind === 'part' && cell))) {
     if (!picks) return null
     return col.key === 'carm' ? carmSheetOf(sheet, col, name, picks, act) : sonoSheetOf(sheet, col, name, picks, act)
@@ -641,7 +660,8 @@ function sheetOf(sheet, rows, lists, act, picks) {
   if (sheet.kind === 'add' && !cell) {
     title = `${col.name} 직접 넣기`
     sub = `${name} · 처방에 없어도 넣을 수 있어요`
-    options = CHOICES[col.key]
+    options = col.key === 'xray' ? [XRAY_TAKE] : picks?.[col.key]
+    if (!options) return null
   } else if (sheet.kind === 'done' && cell?.st === 'done') {
     title = `${col.name} · 완료`
     sub = typeof cell.at === 'string' && cell.at !== '' ? `${name} · ${cell.at}에 완료로 바꿨어요` : `${name} · 완료로 바꿨어요`
@@ -659,19 +679,19 @@ function sheetOf(sheet, rows, lists, act, picks) {
 }
 
 /**
- * 충격파 넣기 창 (AC-3402.2, 시안 eswtSheet): [타수] 넷 · [부위 수] 넷 두 줄과 [닫기]·[넣기 · …].
- * 부위 수를 고르기 전에는 [넣기]가 꺼져 있고 타수는 안 골라도 된다. 고른 값은 sheet.hit·sheet.count(목록 밖 값은 안 고른 것)
+ * 충격파 넣기 창 (AC-3402.2, 시안 eswtSheet): [타수] 줄 · [부위 수] 줄(판 picks.eswt, 타수 목록이 비면 타수 줄 없음, AC-3604.4)과
+ * [닫기]·[넣기 · …]. 부위 수를 고르기 전에는 [넣기]가 꺼져 있고 타수는 안 골라도 된다. 고른 값은 sheet.hit·sheet.count(목록 밖 값은 안 고른 것)
  */
-function eswtSheetOf(sheet, col, name, act) {
+function eswtSheetOf(sheet, col, name, picks, act) {
   const title = `${col.name} 직접 넣기`
-  const hit = eswtHit(sheet)
-  const count = eswtCount(sheet)
+  const hit = eswtHit(sheet, picks)
+  const count = eswtCount(sheet, picks)
   const value = count === null ? null : hit === null ? count : `${hit} ${count}`
   const row = (label, group, options, chosen) => [
     el('div', { class: 'opt-label' }, label),
     el(
       'div',
-      { class: 'opts four', role: 'group', 'aria-label': label },
+      { class: 'opts four', role: 'group', 'aria-label': label, 'data-g': group },
       options.map((option) =>
         el(
           'button',
@@ -683,8 +703,8 @@ function eswtSheetOf(sheet, col, name, act) {
   ]
   return sheetBack(title, act, [
     el('div', { class: 'sheet-h' }, [el('span', { class: 'sheet-title' }, title), el('span', { class: 'sheet-sub' }, `${name} · 타수와 부위 수를 골라요`)]),
-    row('타수', 'hit', ESWT_HITS, hit),
-    row('부위 수', 'count', ESWT_COUNTS, count),
+    picks.eswt.hits.length > 0 ? row('타수', 'hit', picks.eswt.hits, hit) : null,
+    row('부위 수', 'count', picks.eswt.counts, count),
     el('div', { class: 'sheet-go' }, [
       el('button', { type: 'button', class: 'sheet-close', on: { click: () => act.close() } }, '닫기'),
       el(
@@ -888,6 +908,19 @@ function fits(picks, colKey, v, t) {
   )
 }
 
+/**
+ * 빈 칸 넣기(add) 글이 지금 목록에 맞는가: SONO·C-ARM은 fits, X-RAY는 "X-ray 찍기", PT·도수·견인은 판 picks 목록 이름 하나,
+ * 충격파는 부위 수 하나 또는 "{타수} {부위 수}"(도우미 AddOf와 같다, reception-arrange-tune AC-3603.3·AC-3604.4). 이름표(t)는 SONO·C-ARM만
+ */
+function addFits(picks, col, v, t) {
+  if (col.three) return fits(picks, col.key, v, t)
+  if (isText(t)) return false
+  if (col.key === 'xray') return v === XRAY_TAKE
+  if (!picks || !isText(v)) return false
+  if (col.key === 'eswt') return picks.eswt.counts.includes(v) || picks.eswt.hits.some((hit) => picks.eswt.counts.some((count) => `${hit} ${count}` === v))
+  return picks[col.key].includes(v)
+}
+
 /** "|"로 이은 이름표 글 → 글 목록(없거나 빈 글이면 빈 목록) */
 function tagsOf(t) {
   return typeof t === 'string' && t !== '' ? t.split(JOIN) : []
@@ -909,13 +942,13 @@ function textOnly(node) {
     .join('')
 }
 
-/** 창 값의 타수·부위 수: 목록 글이 아니면 null */
-function eswtHit(sheet) {
-  return ESWT_HITS.includes(sheet?.hit) ? sheet.hit : null
+/** 창 값의 타수·부위 수: 판 picks.eswt 목록 글이 아니면 null */
+function eswtHit(sheet, picks) {
+  return picks?.eswt.hits.includes(sheet?.hit) ? sheet.hit : null
 }
 
-function eswtCount(sheet) {
-  return ESWT_COUNTS.includes(sheet?.count) ? sheet.count : null
+function eswtCount(sheet, picks) {
+  return picks?.eswt.counts.includes(sheet?.count) ? sheet.count : null
 }
 
 /** 고르기 창의 어두운 바탕 + 창(class는 cls). 바깥 누름·Esc는 닫기 */
@@ -959,17 +992,22 @@ function arrangeOf(board) {
 }
 
 /**
- * 판의 SONO·C-ARM 고르기 목록 picks (reception-pick-lists AC-3501.4). 없거나 모양이 틀리면 null(두 넣기 창이 열리지 않는다).
- * 글이 아닌 이름은 뺀다
+ * 판의 고르기 목록 picks { carm, sono, pt, ds, eswt: { hits, counts }, trac } (reception-pick-lists AC-3501.4 · reception-arrange-tune AC-3604.4).
+ * 없거나 모양이 틀리면 null(SONO·C-ARM·PT·도수·충격파·견인 넣기 창이 열리지 않는다). 글이 아닌 이름은 빼고, 없는 무리는 빈 목록이다
  */
 export function picksOf(board) {
   const picks = board?.picks
   if (!picks || typeof picks !== 'object' || !picks.carm || typeof picks.carm !== 'object' || !picks.sono || typeof picks.sono !== 'object') return null
   const texts = (list) => (Array.isArray(list) ? list.filter(isText) : [])
   const procs = Array.isArray(picks.carm.procs) ? picks.carm.procs.filter((item) => item && isText(item.n)) : []
+  const eswt = picks.eswt && typeof picks.eswt === 'object' ? picks.eswt : {}
   return {
     carm: { procs: procs.map((item) => ({ n: item.n, noDrug: item.noDrug === true })), drugs: texts(picks.carm.drugs) },
     sono: { parts: texts(picks.sono.parts), plains: texts(picks.sono.plains), withs: texts(picks.sono.withs) },
+    pt: texts(picks.pt),
+    ds: texts(picks.ds),
+    eswt: { hits: texts(eswt.hits), counts: texts(eswt.counts) },
+    trac: texts(picks.trac),
   }
 }
 
@@ -990,12 +1028,15 @@ function withRow(board, index, row) {
   return { ...board, arrange: { rows, ended: arrange.ended } }
 }
 
-/** index번째 줄의 칸 하나를 바꾼 판 사본. allDone은 칸이 하나 이상이고 모두 완료일 때 true (AC-3305.8) */
+/**
+ * index번째 줄의 칸 하나를 바꾼 판 사본. allDone은 칸이 하나 이상이고 모두 완료일 때 true (AC-3305.8).
+ * 칸 쓰기는 돌아온 뒤 기다린 셈을 멈추므로 backWait를 지운다(back은 둔다, reception-arrange-tune AC-3602.3)
+ */
 function withCell(board, index, key, cell) {
   const row = arrangeOf(board).rows[index]
   const cells = { ...row.cells, [key]: cell }
   const present = Object.values(cells).filter(Boolean)
-  return withRow(board, index, { ...row, cells, allDone: present.length > 0 && present.every((item) => item.st === 'done') })
+  return withRow(board, index, { ...row, cells, backWait: null, allDone: present.length > 0 && present.every((item) => item.st === 'done') })
 }
 
 /** 그린 머리의 [새로 고침]이 읽는 중인가 */

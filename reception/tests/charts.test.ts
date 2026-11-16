@@ -6,20 +6,32 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import * as fx from './fixtures'
-import type { FakeHistory, FakePrev, FakeRow } from './fixtures'
+import type { FakeHistory, FakePapers, FakePrev, FakeRow } from './fixtures'
 
 type Today = 'reading' | 'error' | FakeHistory
 type Prev = 'reading' | 'error' | FakePrev | null
+/** 그 전 진료기록부 papers?from=1 답 자리 (reception-arrange-tune AC-3605.3) */
+type Older = 'reading' | 'error' | FakePapers
+
+interface ChartsView {
+  today?: Date
+  older?: Older
+  onMore?: (from: number) => Promise<unknown>
+}
 
 interface ChartsJs {
-  renderCharts: (host: HTMLElement, row: FakeRow, today: Today, prev: Prev, view?: { today?: Date }) => HTMLElement
+  renderCharts: (host: HTMLElement, row: FakeRow, today: Today, prev: Prev, view?: ChartsView) => HTMLElement
 }
 
 interface DetailJs {
   paperCard: (row: FakeRow, paper: FakeHistory['paper'], options?: { today?: Date; open?: boolean }) => HTMLElement
+  pastCard?: (paper: FakePrev) => HTMLElement
 }
+
+/** 돌아옴·비고 기록부 승인 시안 (reception-arrange-tune) */
+const TUNE_MOCKUP = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'docs', 'mockups', 'reception-arrange-tune', 'Mock.html')
 
 // 화면 파일은 빌드 없는 JS라 형 선언이 없다(design.md 결정 '화면은 빌드 없는 JS'). 경로를 값으로 두어 형 검사가 묻지 않게 한다
 const CHARTS_JS = '../www/charts.js'
@@ -147,7 +159,8 @@ describe('REQ-3309 기록부 화면 (charts.js)', () => {
 
     expect(prev!.querySelector('h2')?.firstChild?.textContent).toBe('직전 진료기록부')
     expect(textOf(prev, 'h2 > .h-dt')).toBe('2026-10-26 · 14일 전')
-    expect(shapeOf(prev)).toEqual(['h2.charts-h', 'article.paper.past'])
+    // 직전 아래 "그 전 진료기록부" 묶음(reception-arrange-tune AC-3605.3)
+    expect(shapeOf(prev)).toEqual(['h2.charts-h', 'article.paper.past', 'section.older'])
   })
 
   it('AC-3309.1: 직전 종이는 머리글(외래진료기록부·날짜)·<내원내역>·<증상>·<상병>·<처방>·<원외처방>뿐이고 사람 칸·특이사항이 없다', () => {
@@ -242,6 +255,178 @@ describe('REQ-3309 기록부 화면 (charts.js)', () => {
     expect(other).not.toBe(page)
     expect(other.getAttribute('data-k')).toBe(fx.ARRANGE_KEYS.c)
     expect(app.children.length).toBe(1)
+  })
+})
+
+// ---- 그 전 진료기록부 (reception-arrange-tune AC-3605.3 · 3605.4) ------------------------------------------------
+
+/** 바로 끝나는 일(약속 답)을 다 돌린다 */
+async function flush() {
+  for (let i = 0; i < 5; i += 1) await Promise.resolve()
+}
+
+/** "yyyy-MM-dd" → "M월 D일" */
+function monthDay(date: string): string {
+  const [, m, d] = date.split('-')
+  return `${Number(m)}월 ${Number(d)}일`
+}
+
+describe('REQ-3605 그 전 진료기록부 (charts.js)', () => {
+  const olderOf = (page: ParentNode) => page.querySelector<HTMLElement>('section.chart-prev > section.older')
+  const listOf = (page: ParentNode) => olderOf(page)?.querySelector<HTMLElement>(':scope > div.past-list') ?? null
+  const moreOf = (page: ParentNode) => listOf(page)?.querySelector<HTMLButtonElement>(':scope > button.more-papers') ?? null
+  const cardsOf = (page: ParentNode) => [...(listOf(page)?.querySelectorAll<HTMLElement>(':scope > article.paper.past') ?? [])]
+  const drawWith = (prev: Prev, view: ChartsView) => {
+    const app = appHost()
+    const page = charts.renderCharts(app, A(), TODAY_HISTORY(), prev, { today: TODAY, ...view })
+    return { app, page }
+  }
+
+  it('AC-3605.3: 직전 기록부가 있으면 그 아래 "그 전 진료기록부"(h2.charts-h.older)와 papers?from=1 답의 장마다 머리("M월 D일" · "N일 전", [지난번] 없음) + 지난 종이 카드(detail.js pastCard 그대로)를 붙이고, 다음 쪽이 있으면 [이전 진료기록부 더 보기 ▾]다', () => {
+    const older = fx.fakePapers(36, 1)
+    expect(older.papers).toHaveLength(3)
+    expect(older.next).toBe(4)
+    const { page } = drawWith(fx.fakePrev(), { older })
+    const section = olderOf(page)!
+    expect(section).not.toBeNull()
+    expect(shapeOf(section)).toEqual(['h2.charts-h.older', 'div.past-list'])
+    expect(textOf(section, ':scope > h2')).toBe('그 전 진료기록부')
+    const list = listOf(page)!
+    expect(shapeOf(list)).toEqual(['div.past-h', 'article.paper.past', 'div.past-h', 'article.paper.past', 'div.past-h', 'article.paper.past', 'button.more-papers'])
+    const heads = [...list.querySelectorAll(':scope > .past-h')]
+    expect(heads.map((h) => shapeOf(h))).toEqual(Array.from({ length: 3 }, () => ['strong', 'span.visit-ago']))
+    expect(heads.map((h) => [textOf(h, 'strong'), textOf(h, '.visit-ago')])).toEqual(older.papers.map((p) => [monthDay(p.date), p.ago]))
+    expect(section.querySelector('.last-badge')).toBeNull()
+    expect(cardsOf(page).map((c) => c.outerHTML)).toEqual(older.papers.map((p) => detail.pastCard!(p).outerHTML))
+    const more = moreOf(page)!
+    expect(more.getAttribute('type')).toBe('button')
+    expect(more.firstChild?.textContent).toBe('이전 진료기록부 더 보기 ▾')
+    expect(textOf(more, ':scope > small')).toBe('32번 더 있어요 · 누를 때마다 3장씩')
+    // 시안 글 그대로
+    const html = readFileSync(TUNE_MOCKUP, 'utf8')
+    for (const text of [
+      "h.className = 'charts-h older'",
+      "h.textContent = '그 전 진료기록부'",
+      "list.className = 'past-list'",
+      "more.innerHTML = '이전 진료기록부 더 보기 ▾<small>3번 더 있어요 · 누를 때마다 3장씩</small>'",
+      'prev.append(h, list)',
+    ])
+      expect(html, text).toContain(text)
+  })
+
+  it('AC-3605.3: [더 보기]는 view.onMore(next)를 한 번 불러 그 쪽 3장을 아래에 붙이고 [더 보기]를 다음 쪽으로 바꾼다(끝이면 없다). 읽는 동안 꺼져 있고 실패하면 한 줄 + 다시 누를 수 있다', async () => {
+    let answer: (page: FakePapers | null) => void = () => {}
+    const onMore = vi.fn(
+      () =>
+        new Promise<FakePapers>((resolve, reject) => {
+          answer = (page) => (page ? resolve(page) : reject(new Error('실패')))
+        }),
+    )
+    const { page } = drawWith(fx.fakePrev(), { older: fx.fakePapers(10, 1), onMore })
+    moreOf(page)!.click()
+    await flush()
+    expect(onMore).toHaveBeenCalledTimes(1)
+    expect(onMore).toHaveBeenLastCalledWith(4)
+    expect(moreOf(page)!.disabled).toBe(true)
+    moreOf(page)!.click()
+    expect(onMore).toHaveBeenCalledTimes(1)
+    answer(null)
+    await flush()
+    expect(textOf(listOf(page), ':scope > p.past-note')).toBe('지금 기록부를 읽지 못했어요')
+    expect(moreOf(page)!.disabled).toBe(false)
+    moreOf(page)!.click()
+    await flush()
+    answer(fx.fakePapers(10, 4))
+    await flush()
+    expect(onMore).toHaveBeenCalledTimes(2)
+    expect(cardsOf(page)).toHaveLength(6)
+    expect(listOf(page)!.querySelector('p.past-note')).toBeNull()
+    expect(textOf(moreOf(page), ':scope > small')).toBe('3번 더 있어요 · 누를 때마다 3장씩')
+    moreOf(page)!.click()
+    await flush()
+    expect(onMore).toHaveBeenLastCalledWith(7)
+    answer(fx.fakePapers(10, 7))
+    await flush()
+    expect(cardsOf(page)).toHaveLength(9)
+    expect(moreOf(page)).toBeNull()
+    expect(page.querySelector('section.older .last-badge')).toBeNull()
+  })
+
+  it('AC-3605.3: 읽는 중(older 없음 포함)은 "기록부를 읽는 중이에요", 실패는 "지금 기록부를 읽지 못했어요", 없으면 "그 전 기록부는 없어요."다. 첫 방문(직전 없음)·직전을 읽는 중·실패면 이 묶음이 없다', () => {
+    for (const [older, shape, text] of [
+      ['reading', 'p.past-note', '기록부를 읽는 중이에요'],
+      [undefined, 'p.past-note', '기록부를 읽는 중이에요'],
+      ['error', 'p.past-note', '지금 기록부를 읽지 못했어요'],
+      [fx.fakePapers(1, 1), 'p.no-visits', '그 전 기록부는 없어요.'],
+    ] as const) {
+      const { page } = drawWith(fx.fakePrev(), older === undefined ? {} : { older })
+      expect(shapeOf(olderOf(page)), String(older)).toEqual(['h2.charts-h.older', 'div.past-list'])
+      expect(shapeOf(listOf(page)), String(older)).toEqual([shape])
+      expect(textOf(listOf(page), ':scope > p'), String(older)).toBe(text)
+      document.body.replaceChildren()
+    }
+    for (const prev of [null, 'reading', 'error'] as const) {
+      const { page } = drawWith(prev, { older: fx.fakePapers(36, 1) })
+      expect(olderOf(page), String(prev)).toBeNull()
+      expect(page.querySelector('.charts-h.older'), String(prev)).toBeNull()
+      document.body.replaceChildren()
+    }
+  })
+
+  it('AC-3605.4: 같은 환자를 같은 답으로 다시 그리면 그 전 묶음은 그대로다([더 보기]로 붙인 장·초점 포함). 읽는 중에서 답이 오면 채우고, 다른 환자면 새로 그린다', async () => {
+    const older = fx.fakePapers(36, 1)
+    const onMore = vi.fn(() => Promise.resolve(fx.fakePapers(36, 4)))
+    const { app, page } = drawWith(fx.fakePrev(), { older, onMore })
+    const section = olderOf(page)!
+    moreOf(page)!.click()
+    await flush()
+    expect(cardsOf(page)).toHaveLength(6)
+    moreOf(page)!.focus()
+    const focused = document.activeElement
+    expect(focused).toBe(moreOf(page))
+    // 판을 저절로 다시 읽어 머리·오늘 종이가 바뀌어도
+    charts.renderCharts(app, { ...A(), lane: 'pay', laneLabel: '수납대기' }, TODAY_HISTORY(), fx.fakePrev(), { today: TODAY, older, onMore })
+    charts.renderCharts(app, A(), TODAY_HISTORY(), fx.fakePrev(), { today: TODAY, older, onMore })
+    expect(olderOf(page)).toBe(section)
+    expect(cardsOf(page)).toHaveLength(6)
+    expect(document.activeElement).toBe(focused)
+    expect(shapeOf(page.querySelector('section.chart-prev'))).toEqual(['h2.charts-h', 'article.paper.past', 'section.older'])
+    expect(onMore).toHaveBeenCalledTimes(1)
+
+    // 읽는 중 → 답
+    document.body.replaceChildren()
+    const later = drawWith(fx.fakePrev(), { older: 'reading' })
+    charts.renderCharts(later.app, A(), TODAY_HISTORY(), fx.fakePrev(), { today: TODAY, older: 'reading' })
+    expect(textOf(listOf(later.page), ':scope > p.past-note')).toBe('기록부를 읽는 중이에요')
+    charts.renderCharts(later.app, A(), TODAY_HISTORY(), fx.fakePrev(), { today: TODAY, older })
+    expect(cardsOf(later.page)).toHaveLength(3)
+    // 직전을 읽는 중 → 직전 답이 오면 그 아래에 생긴다
+    document.body.replaceChildren()
+    const first = drawWith('reading', { older })
+    expect(olderOf(first.page)).toBeNull()
+    charts.renderCharts(first.app, A(), TODAY_HISTORY(), fx.fakePrev(), { today: TODAY, older })
+    expect(cardsOf(first.page)).toHaveLength(3)
+    // 다른 환자면 새로
+    const other = charts.renderCharts(first.app, C(), TODAY_HISTORY(), fx.fakePrev(), { today: TODAY, older: 'reading' })
+    expect(other).not.toBe(first.page)
+    expect(textOf(listOf(other), ':scope > p.past-note')).toBe('기록부를 읽는 중이에요')
+  })
+
+  it('AC-3605.3: 그 전 묶음의 머리는 위로 띄우고(28px) 첫 장 머리는 붙인다(시안). 그리는 class는 모두 style.css에 모양이 있다. 지난 종이 글은 글자로만 들어간다', () => {
+    expect(cssValue('.charts-h.older', 'margin-top')).toBe('28px')
+    expect(cssValue('.chart-prev .past-list > .past-h:first-child', 'margin-top')).toBe('0')
+    const css = readFileSync(STYLE_CSS, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    const pages = [drawWith(fx.fakePrev(), { older: fx.fakePapers(36, 1) }).page, drawWith(fx.fakePrev(), { older: fx.fakePapers(1, 1) }).page, drawWith(fx.fakePrev(), { older: 'error' }).page]
+    const classes = new Set(pages.flatMap((page) => [page, ...page.querySelectorAll('*')].flatMap((n) => [...n.classList])))
+    for (const cls of ['older', 'past-list', 'past-h', 'visit-ago', 'more-papers', 'no-visits', 'past-note']) expect(classes.has(cls), cls).toBe(true)
+    for (const cls of classes) expect(css, `.${cls}`).toMatch(new RegExp(`\\.${cls}(?![\\w-])`))
+    document.body.replaceChildren()
+    const odd = fx.fakePapers(36, 1)
+    odd.papers[0]!.sym = '<b>가상 증상</b>'
+    odd.papers[0]!.ago = '<i>7일 전</i>'
+    const { page } = drawWith(fx.fakePrev(), { older: odd })
+    expect(textOf(listOf(page), '.past-h .visit-ago')).toBe('<i>7일 전</i>')
+    expect(page.querySelector('section.older b, section.older i')).toBeNull()
   })
 })
 

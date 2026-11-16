@@ -11,8 +11,6 @@ import type { FakeBoard } from './fixtures'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const WWW = path.join(ROOT, 'reception', 'www')
-/** C# 고르기 목록 ArrangeChoices가 사는 파일 (design.md 4절, TASK-4) */
-const ARRANGE_MARKS_CS = path.join(ROOT, 'helper', 'src', 'Precheck.Core', 'Reception', 'ArrangeMarks.cs')
 const MOCKUP = path.join(ROOT, 'docs', 'mockups', 'reception-arrange', 'Arrange.html')
 /** 수정 묶음 승인 시안(reception-memo-papers, 2026-11-11)과 그 시안이 theme.css에 더한 색(진료보류 진한 노랑 AC-3401.1, 메모 빨강·펜 검정 AC-3403.6) */
 const MEMO_PAPERS_MOCKUP = path.join(ROOT, 'docs', 'mockups', 'reception-memo-papers', 'Mock.html')
@@ -20,6 +18,8 @@ const MEMO_PAPERS_ADDED = ['#FFD43B', '#C9A100', '#E03131', '#FFF1F1', '#222222'
 const PHONE_MOCKUPS = path.join(ROOT, 'docs', 'mockups', 'reception-phone')
 /** 고르기 목록 승인 시안(reception-pick-lists, 2026-11-12) */
 const PICK_LISTS_MOCKUP = path.join(ROOT, 'docs', 'mockups', 'reception-pick-lists', 'Mock.html')
+/** 돌아옴·목록 여섯 탭·비고 기록부 승인 시안(reception-arrange-tune, 2026-11-16). 새 색은 없고 theme.css 토큰만 쓴다(notes.md) */
+const TUNE_MOCKUP = path.join(ROOT, 'docs', 'mockups', 'reception-arrange-tune', 'Mock.html')
 
 type Col = 'xray' | 'sono' | 'carm' | 'pt' | 'ds' | 'eswt' | 'trac'
 
@@ -82,7 +82,8 @@ interface ArrangeView {
 interface ArrangeJs {
   renderArrange: (host: HTMLElement, board: FakeBoard, view?: ArrangeView) => HTMLElement
   planOf: (board: FakeBoard, ask: Ask) => Plan
-  CHOICES: Record<string, string[]>
+  /** 옛 고정 목록(X-RAY·PT·도수·충격파·견인). 목록이 모두 판 picks로 옮겨 가 없다 (reception-arrange-tune AC-3604.4) */
+  CHOICES?: Record<string, string[]>
   /** 옛 SONO·C-ARM 부위 목록. 고르기 목록이 판 picks로 옮겨 가 없다 (reception-pick-lists) */
   PARTS?: string[]
 }
@@ -96,7 +97,6 @@ beforeAll(async () => {
   const missing: ArrangeJs = {
     renderArrange: (host) => host.appendChild(document.createElement('div')),
     planOf: (board) => ({ board, toast: null, undo: null }),
-    CHOICES: {},
   }
   view = ((await import(/* @vite-ignore */ ARRANGE_JS).catch(() => missing)) ?? missing) as ArrangeJs
 })
@@ -245,36 +245,19 @@ function hexColors(text: string): string[] {
   })
 }
 
-/** C# 파일의 글자 상수(보통 "…"·@"…")를 나온 차례대로 */
-function csStrings(cs: string): string[] {
-  const text = cs.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-  const out: string[] = []
-  for (const m of text.matchAll(/@"((?:[^"]|"")*)"|"((?:[^"\\\n]|\\.)*)"/g)) {
-    out.push(m[1] !== undefined ? m[1].replaceAll('""', '"') : m[2]!.replace(/\\(.)/g, '$1'))
-  }
-  return out
-}
-
-/** list가 strings 안에 끊김 없이 그 차례로 있는가 */
-function hasRun(strings: string[], list: string[]): boolean {
-  for (let i = 0; i + list.length <= strings.length; i += 1) if (list.every((s, j) => strings[i + j] === s)) return true
-  return false
-}
-
 // ---- 시안의 글 (Arrange.html) -------------------------------------------------------------------------
 
 /** 옛 SONO·C-ARM 부위 목록과 부위 없이 넣는 글 (reception-arrange 시안 Arrange.html). 이제 화면에 없다 (reception-pick-lists) */
 const OLD_PARTS = ['목', '등', '허리', '오른 어깨', '왼 어깨', '양 어깨', '팔꿈치', '손목', '고관절', '오른 무릎', '왼 무릎', '양 무릎', '발목', '발바닥', '기타']
 const LATER = '부위는 나중에'
-/** 충격파 부위 수·타수 (reception-memo-papers AC-3402.1, 시안 Mock.html eswtSheet) */
+/** 기본 picks의 충격파 부위 수·타수 (reception-arrange-tune AC-3603.1, 시안 Mock.html eswtSheet) */
 const ESWT_COUNTS = ['1부위', '2부위', '3부위', '4부위']
 const ESWT_HITS = ['2000타', '3000타', '4000타', '6000타']
-/** 화면이 갖는 고르기 목록: SONO·C-ARM은 판 picks로 옮겨 가 없다 (reception-pick-lists AC-3505.4) */
-const CHOICES: Record<Exclude<Col, 'sono' | 'carm'>, string[]> = {
+/** 넣기 창 목록: X-RAY는 화면 글 하나, PT·도수·견인은 기본 picks(AC-3603.1)다. 화면은 PT·도수·충격파·견인 목록 글을 갖지 않는다(AC-3604.4) */
+const CHOICES: Record<'xray' | 'pt' | 'ds' | 'trac', string[]> = {
   xray: ['X-ray 찍기'],
   pt: ['ICE', 'HP'],
   ds: ['30분', '50분'],
-  eswt: [...ESWT_COUNTS, ...ESWT_HITS.flatMap((hit) => ESWT_COUNTS.map((count) => `${hit} ${count}`))],
   trac: ['목', '허리'],
 }
 const COL_NAMES: Record<Col, string> = { xray: 'X-RAY', sono: 'SONO', carm: 'C-ARM', pt: 'PT', ds: '도수', eswt: '충격파', trac: '견인' }
@@ -283,11 +266,17 @@ const COLS: Col[] = ['xray', 'sono', 'carm', 'pt', 'ds', 'eswt', 'trac']
 const HOWTO_PICK = '(SONO는 [부위 고르기], C-ARM은 [시술 고르기]로 골라요)'
 const OLD_HOWTO_0 =
   '치료 칸을 누르면 다음 단계로 넘어가요 (준비 → 준비완료 → 완료, 준비완료는 SONO·C-ARM만). X-RAY·SONO·C-ARM은 처방이 나오면 저절로 들어오고, PT·도수·충격파·견인은 빈 칸을 눌러 골라 넣어요.'
+/** 옛 쓰는 법 둘째 줄·아래 글 (reception-arrange 시안 Arrange.html) */
+const OLD_HOWTO_1 = '접수 시각을 누르면 자리비움, 성함을 누르면 오늘·직전 진료기록부가 열려요. [PT 먼저]는 누를 때마다 ↑ 올라감 → ↓ 내려옴 → 지움.'
+const OLD_FOOT = '표시(준비완료·완료·자리비움·PT 먼저·치료 종료)는 의원 PC에만 남아요 · 비트 자료는 바뀌지 않아요'
+/** 쓰는 법 두 줄·아래 글 (둘째 줄·아래 글은 reception-arrange-tune AC-3602.2, 시안 Mock.html table) */
 const HOWTO = [
   `치료 칸을 누르면 다음 단계로 넘어가요 (준비 → 준비완료 → 완료, 준비완료는 SONO·C-ARM만). X-RAY·SONO·C-ARM은 처방이 나오면 저절로 들어오고${HOWTO_PICK}, PT·도수·충격파·견인은 빈 칸을 눌러 골라 넣어요.`,
-  '접수 시각을 누르면 자리비움, 성함을 누르면 오늘·직전 진료기록부가 열려요. [PT 먼저]는 누를 때마다 ↑ 올라감 → ↓ 내려옴 → 지움.',
+  '접수 시각을 누르면 자리비움, 다시 누르면 돌아옴이에요(다음 치료 칸을 누를 때까지 돌아온 뒤 기다린 시간이 보여요). 성함이나 비고를 누르면 오늘·직전·그 전 진료기록부가 열려요. [PT 먼저]는 누를 때마다 ↑ 올라감 → ↓ 내려옴 → 지움.',
 ]
-const FOOT = '표시(준비완료·완료·자리비움·PT 먼저·치료 종료)는 의원 PC에만 남아요 · 비트 자료는 바뀌지 않아요'
+const FOOT = '표시(준비완료·완료·자리비움·돌아옴·PT 먼저·치료 종료)는 의원 PC에만 남아요 · 비트 자료는 바뀌지 않아요'
+/** 접수 머리 작은 글 (AC-3602.2): "·" 뒤에서만 줄을 바꾼다(시안 span.nw + wbr) */
+const T_SUB = '누르면 자리비움·돌아옴'
 const ACTIVE_NAMES = ['가상환자21', '가상환자22', '가상환자23', '가상환자24', '가상환자25', '가상환자26', '가상환자27', '가상환자28']
 
 // ---- 머리 · 탭 (AC-3308.1) ---------------------------------------------------------------------------
@@ -358,15 +347,15 @@ describe('REQ-3308 어레인지 탭 머리', () => {
 // ---- 표 화면 (AC-3308.2 · 3308.3) ---------------------------------------------------------------------
 
 describe('REQ-3308 어레인지 표', () => {
-  it('AC-3308.2 · AC-3504.4: 시안 차례대로 머리·기준 시각 줄(기준 글 + 표시 뜻 여섯)·쓰는 법 두 줄(첫 줄에 "(SONO는 [부위 고르기], C-ARM은 [시술 고르기]로 골라요)")·표·[오늘 치료 종료 N명]·아래 글이 있다', () => {
+  it('AC-3308.2 · AC-3504.4 · AC-3602.2: 시안 차례대로 머리·기준 시각 줄(기준 글 + 표시 뜻 일곱, 자리비움 뒤 "돌아옴")·쓰는 법 두 줄(첫 줄에 "(SONO는 [부위 고르기], C-ARM은 [시술 고르기]로 골라요)", 둘째 줄은 돌아옴·비고 시안 글)·표·[오늘 치료 종료 N명]·아래 글(돌아옴 시안 글)이 있다', () => {
     const { app, page } = draw()
     expect(app.children.length).toBe(1)
     expect(app.firstElementChild).toBe(page)
     expect(shapeOf(page)).toEqual(['header.top', 'div.sub-line', 'p.howto', 'div.wrap', 'p.empty-note', 'section.ended', 'footer.foot'])
     expect(shapeOf(page.querySelector('.sub-line'))).toEqual(['span.asof', 'span.legend'])
     expect(textOf(page, '.sub-line > span.asof')).toBe('11:04:15 기준 · 5초마다 저절로 바뀌어요')
-    expect(shapeOf(page.querySelector('.legend'))).toEqual(['span.lg.todo', 'span.lg.ready', 'span.lg.done', 'span.lg.manual', 'span.lg.away', 'span.lg.ptup'])
-    expect(textsOf(page, '.legend > span.lg')).toEqual(['준비', '준비완료', '✓ 완료', '직접 넣음', '자리비움', '↑ PT 먼저'])
+    expect(shapeOf(page.querySelector('.legend'))).toEqual(['span.lg.todo', 'span.lg.ready', 'span.lg.done', 'span.lg.manual', 'span.lg.away', 'span.lg.rtn', 'span.lg.ptup'])
+    expect(textsOf(page, '.legend > span.lg')).toEqual(['준비', '준비완료', '✓ 완료', '직접 넣음', '자리비움', '돌아옴', '↑ PT 먼저'])
     const howto = page.querySelector('p.howto')!
     expect([...howto.childNodes].map((n) => (n instanceof Element ? n.tagName.toLowerCase() : n.textContent))).toEqual([HOWTO[0], 'br', HOWTO[1]])
     expect(shapeOf(page.querySelector('.wrap'))).toEqual(['table.arr'])
@@ -375,23 +364,61 @@ describe('REQ-3308 어레인지 표', () => {
     expect(textOf(page, 'footer.foot')).toBe(FOOT)
   })
 
-  it('AC-3308.2 · AC-3402.3 · AC-3503.4: 표 머리는 접수(누르면 자리비움)·성함·X-RAY·SONO(부위·준비·순서)·C-ARM(시술·약재·순서)·PT(ICE·HP)·도수(30·50분)·충격파(타수·부위 수)·견인(목·허리)·비고(접수 메모 · 지난번 증상)·빈 머리다', () => {
+  it('AC-3308.2 · AC-3402.3 · AC-3503.4 · AC-3602.2 · AC-3604.4: 표 머리는 접수(누르면 자리비움·돌아옴)·성함·X-RAY·SONO(부위·준비·순서)·C-ARM(시술·약재·순서)·PT(ICE·HP)·도수(30분·50분)·충격파(타수·부위 수)·견인(목·허리)·비고(접수 메모 · 지난번 증상)·빈 머리다', () => {
     const { page } = draw()
     const ths = [...page.querySelectorAll('table.arr > thead > tr > th')]
     expect(ths.map((th) => th.className)).toEqual(['c-t', 'c-nm', 'c-xray', 'c-sono', 'c-carm', 'c-pt', 'c-ds', 'c-eswt', 'c-trac', 'c-memo', 'c-end'])
     expect(ths.map((th) => [th.firstChild?.nodeType === Node.TEXT_NODE ? th.firstChild.textContent : '', th.querySelector(':scope > span.sm')?.textContent ?? null])).toEqual([
-      ['접수', '누르면 자리비움'],
+      ['접수', T_SUB],
       ['성함', null],
       ['X-RAY', null],
       ['SONO', '부위·준비·순서'],
       ['C-ARM', '시술·약재·순서'],
       ['PT', 'ICE·HP'],
-      ['도수', '30·50분'],
+      ['도수', '30분·50분'],
       ['충격파', '타수·부위 수'],
       ['견인', '목·허리'],
       ['비고', '접수 메모 · 지난번 증상'],
       ['', null],
     ])
+    // 접수 머리 작은 글은 "·" 뒤에서만 줄을 바꾼다: "누르면 " + span.nw "자리비움·" + wbr + "돌아옴" (시안)
+    const sub = page.querySelector('table.arr > thead th.c-t > span.sm')!
+    expect([...sub.childNodes].map((n) => (n instanceof Element ? `${n.tagName.toLowerCase()}${n.className ? `.${n.className}` : ''}:${n.textContent}` : n.textContent))).toEqual([
+      '누르면 ',
+      'span.nw:자리비움·',
+      'wbr:',
+      '돌아옴',
+    ])
+    expect(cssValue('.arr th.c-t .sm', 'word-break')).toBe('keep-all')
+    expect(cssValue('.arr th.c-t .sm .nw', 'white-space')).toBe('nowrap')
+  })
+
+  it('AC-3604.4: PT·도수·견인 머리 작은 글은 판 picks 목록을 "·"로 이은 글이고(충격파는 "타수·부위 수"), 목록이 바뀐 판으로 다시 그리면 바뀐다. picks가 없으면 목록 글이 없다', () => {
+    const app = appHost()
+    const sub = (col: Col) => app.querySelector(`table.arr > thead th.c-${col} > span.sm`)?.textContent ?? null
+    const board = fx.arrangeMockupBoard()
+    board.picks!.pt = ['ICE', 'HP', 'TENS']
+    board.picks!.ds = ['20분']
+    board.picks!.trac = ['목', '허리', '골반']
+    board.picks!.eswt = { hits: [], counts: ['1부위'] }
+    view.renderArrange(app, board, {})
+    expect([sub('pt'), sub('ds'), sub('eswt'), sub('trac')]).toEqual(['ICE·HP·TENS', '20분', '타수·부위 수', '목·허리·골반'])
+    const head = app.querySelector('table.arr > thead')
+    view.renderArrange(app, fx.arrangeMockupBoard('11:04:20'), {})
+    // 뼈대(머리)는 그대로 두고 글만 바꾼다
+    expect(app.querySelector('table.arr > thead')).toBe(head)
+    expect([sub('pt'), sub('ds'), sub('eswt'), sub('trac')]).toEqual(['ICE·HP', '30분·50분', '타수·부위 수', '목·허리'])
+    const none = fx.arrangeMockupBoard('11:04:25')
+    delete none.picks
+    view.renderArrange(app, none, {})
+    expect([sub('pt'), sub('ds'), sub('trac')]).toEqual([null, null, null])
+    expect(textOf(app, 'th.c-pt')).toBe('PT')
+    // 넘치면 줄임표 (한 줄)
+    for (const col of ['pt', 'ds', 'trac'] as const) {
+      expect(cssValue(`.arr th.c-${col} .sm`, 'white-space'), col).toBe('nowrap')
+      expect(cssValue(`.arr th.c-${col} .sm`, 'text-overflow'), col).toBe('ellipsis')
+      expect(cssValue(`.arr th.c-${col} .sm`, 'overflow'), col).toBe('hidden')
+    }
   })
 
   it('AC-3308.2: [오늘 치료 종료 N명]은 접힌 단추(aria-expanded)이고 누르면 그 자리에서 펼쳐 끝난 줄(종료 시각·이름·차트번호·[다시 넣기])을 보이며 onEnded(펼침)를 부른다', () => {
@@ -490,16 +517,19 @@ describe('REQ-3308 어레인지 표', () => {
     expect(plain.querySelectorAll('.rx-new').length).toBe(1)
   })
 
-  it('AC-3308.3: 비고 칸은 메모 상자(있을 때)와 "지난번 …"(줄은 " / "로 이음), 지난 증상이 없으면 "첫 방문이라 지난 증상이 없어요"다. 끝 칸은 [치료 종료]이고 allDone이면 노랑(is-go)이다', () => {
+  it('AC-3308.3 · AC-3605.2: 비고 칸은 기록부 여는 단추(button.memo-btn) 안에 메모 상자(있을 때)와 "지난번 …"(줄은 " / "로 이음), 지난 증상이 없으면 "첫 방문이라 지난 증상이 없어요"다. 끝 칸은 [치료 종료]이고 allDone이면 노랑(is-go)이다', () => {
     const { page } = draw()
-    const memo = trOf(page, '가상환자21').querySelector('td.c-memo')!
+    const td = trOf(page, '가상환자21').querySelector('td.c-memo')!
+    expect(shapeOf(td)).toEqual(['button.memo-btn'])
+    const memo = td.querySelector(':scope > button.memo-btn')!
+    expect(memo.getAttribute('type')).toBe('button')
     expect(shapeOf(memo)).toEqual(['div.arr-memo', 'div.lastsym'])
     expect(textOf(memo, '.arr-memo')).toBe('오른 무릎 주사 2차')
     expect(shapeOf(memo.querySelector('.lastsym'))).toEqual(['span.lastsym-label'])
     expect(textOf(memo, '.lastsym-label')).toBe('지난번')
     expect(textOf(memo, '.lastsym')).toBe('지난번Rt knee pain / 계단·앉았다 일어날 때 심함 / xr: OA gr.2')
     // 메모가 없으면 상자도 없다
-    expect(shapeOf(trOf(page, '가상환자26').querySelector('td.c-memo'))).toEqual(['div.lastsym'])
+    expect(shapeOf(trOf(page, '가상환자26').querySelector('td.c-memo > button.memo-btn'))).toEqual(['div.lastsym'])
     const first = trOf(page, '가상환자23').querySelector('td.c-memo .lastsym')!
     expect(first.textContent).toBe('첫 방문이라 지난 증상이 없어요')
     expect(first.querySelector('.lastsym-label')).toBeNull()
@@ -751,7 +781,7 @@ describe('REQ-3308 칸 누르기', () => {
     expect(removed.undo).toBeNull()
   })
 
-  it('AC-3308.7: 빈 칸을 누르면 고르기 창 "{칸} 직접 넣기"에 그 칸의 목록이 나오고 고르면 onAdd(열쇠, 칸, 글)를 부른다(충격파는 두 줄 창 AC-3402.2, SONO·C-ARM은 넣기 창 AC-3503.1·AC-3504.1)', () => {
+  it('AC-3308.7 · AC-3604.4: 빈 칸을 누르면 고르기 창 "{칸} 직접 넣기"에 그 칸의 목록(X-RAY는 "X-ray 찍기", PT·도수·견인은 판 picks)이 나오고 고르면 onAdd(열쇠, 칸, 글)를 부른다(충격파는 두 줄 창 AC-3402.2, SONO·C-ARM은 넣기 창 AC-3503.1·AC-3504.1)', () => {
     for (const col of ['xray', 'pt', 'ds', 'trac'] as const) {
       const onAdd = vi.fn()
       const onSheet = vi.fn()
@@ -794,18 +824,75 @@ describe('REQ-3308 칸 누르기', () => {
     expect(view.planOf(board, { k: K.g, op: 'part', col: 'sono', v: '오른 어깨' }).undo).toEqual({ k: K.g, op: 'part', col: 'sono', v: '왼 어깨' })
   })
 
-  it('AC-3308.7 · AC-3503.1 · AC-3504.1: 고르기 목록 CHOICES는 design.md 4절 표(시안 글) 그대로이고 SONO·C-ARM 목록(옛 PARTS·"부위는 나중에")은 없다', () => {
-    expect(view.CHOICES).toEqual(CHOICES)
+  it('AC-3308.7 · AC-3503.1 · AC-3504.1 · AC-3604.4: 화면 arrange.js는 고정 목록(옛 CHOICES·PARTS·"부위는 나중에")을 내보내지 않는다. 목록은 판 picks뿐이다', () => {
+    expect(view.CHOICES).toBeUndefined()
     expect(view.PARTS).toBeUndefined()
+    expect(readWww('arrange.js')).not.toMatch(/ESWT_(?:HITS|COUNTS)|CHOICES/)
   })
 
-  it('AC-3308.7: 화면 CHOICES는 C# ArrangeChoices(helper/src/Precheck.Core/Reception/ArrangeMarks.cs)와 같은 글이다(SONO·C-ARM 빼고)', () => {
-    expect(existsSync(ARRANGE_MARKS_CS), 'ArrangeMarks.cs가 없다').toBe(true)
-    const strings = csStrings(readFileSync(ARRANGE_MARKS_CS, 'utf8'))
-    for (const list of [view.CHOICES.xray, view.CHOICES.pt, view.CHOICES.ds, view.CHOICES.eswt, view.CHOICES.trac]) {
-      expect(list?.length ?? 0, JSON.stringify(list)).toBeGreaterThan(0)
-      expect(hasRun(strings, list!), `C# ArrangeChoices에 ${JSON.stringify(list)}가 그 차례로 없다`).toBe(true)
+  it('AC-3603.1 · AC-3604.4: 가짜 판의 기본 picks는 AC-3603.1 값 그대로다(차례 포함, C#은 TASK-2 시험이 같은 값에 고정한다)', () => {
+    const d = fx.defaultPicks()
+    expect(d.pt).toEqual(['ICE', 'HP'])
+    expect(d.ds).toEqual(['30분', '50분'])
+    expect(d.eswt).toEqual({ hits: ['2000타', '3000타', '4000타', '6000타'], counts: ['1부위', '2부위', '3부위', '4부위'] })
+    expect(d.trac).toEqual(['목', '허리'])
+    expect(Object.keys(d)).toEqual(['carm', 'sono', 'pt', 'ds', 'eswt', 'trac'])
+    expect(fx.arrangeMockupBoard().picks).toEqual(d)
+  })
+
+  it('AC-3604.4: PT·도수·충격파·견인 넣기 창 단추는 판 picks 목록이고, picks가 없으면 그 넣기 창이 열리지 않는다(X-RAY 넣기는 그대로). planOf(add)도 판 picks로 본다', () => {
+    const board = fx.arrangeMockupBoard()
+    board.picks!.pt = ['ICE', 'HP', 'TENS']
+    board.picks!.ds = ['20분']
+    board.picks!.trac = ['골반']
+    const onAdd = vi.fn()
+    for (const [col, want] of [
+      ['pt', ['ICE', 'HP', 'TENS']],
+      ['ds', ['20분']],
+      ['trac', ['골반']],
+    ] as const) {
+      const { page } = draw(board, { onAdd })
+      cellOf(page, '가상환자28', col).click()
+      expect(optionsOf(page), col).toEqual(want)
+      pick(page, want.at(-1)!)
+      expect(onAdd, col).toHaveBeenLastCalledWith(K.h, col, want.at(-1))
+      document.body.replaceChildren()
     }
+    expect(arrRow(view.planOf(board, { k: K.h, op: 'add', col: 'pt', v: 'TENS' }).board, K.h)!.cells.pt).toMatchObject({ det: 'TENS', manual: true })
+    expect(view.planOf(board, { k: K.h, op: 'add', col: 'pt', v: 'ICE' }).toast).toBe('가상환자28 · PT 직접 넣었어요')
+    for (const [col, v] of [
+      ['pt', '30분'],
+      ['ds', '30분'],
+      ['trac', '목'],
+      ['pt', ''],
+    ] as const) {
+      const plan = view.planOf(board, { k: K.h, op: 'add', col, v })
+      expect(plan.toast, `${col} ${v}`).toBeNull()
+      expect(plan.board, `${col} ${v}`).toBe(board)
+    }
+
+    const none = fx.arrangeMockupBoard()
+    delete none.picks
+    const onSheet = vi.fn()
+    const bare = draw(none, { onSheet }).page
+    for (const col of ['pt', 'ds', 'eswt', 'trac'] as const) cellOf(bare, '가상환자28', col).click()
+    expect(sheetOf(bare)).toBeNull()
+    expect(onSheet).not.toHaveBeenCalled()
+    for (const sheet of [
+      { k: K.h, col: 'pt', kind: 'add' as const },
+      { k: K.h, col: 'eswt', kind: 'add' as const, hit: null, count: '1부위' },
+    ])
+      expect(sheetOf(draw(none, { sheet }).page), sheet.col).toBeNull()
+    cellOf(bare, '가상환자28', 'xray').click()
+    expect(optionsOf(bare)).toEqual(['X-ray 찍기'])
+    for (const [col, v] of [
+      ['pt', 'ICE'],
+      ['ds', '30분'],
+      ['eswt', '2부위'],
+      ['trac', '목'],
+    ] as const)
+      expect(view.planOf(none, { k: K.h, op: 'add', col, v }).toast, col).toBeNull()
+    expect(view.planOf(none, { k: K.h, op: 'add', col: 'xray', v: 'X-ray 찍기' }).toast).toBe('가상환자28 · X-RAY 직접 넣었어요')
   })
 
   it('AC-3308.15: [오늘 치료 종료]의 수납완료로 빠진 줄은 "HH:MM 수납"(시각이 없으면 "수납완료"), [치료 종료]로 뺀 줄은 "HH:MM 종료"이고 [다시 넣기]는 둘 다 onRestore(열쇠)다', () => {
@@ -856,15 +943,15 @@ describe('REQ-3308 칸 누르기', () => {
     expect([onAway.mock.calls.length, onEnd.mock.calls.length, onRestore.mock.calls.length]).toEqual([2, 1, 1])
   })
 
-  it('AC-3308.8: planOf(away·end)는 자리비움·줄 빼기·다시 넣기를 미리 그리고 띠 "{이름} · 자리비움 HH:MM"·"{이름} 님을 표에서 뺐어요"·"{이름} 님을 표에 다시 넣었어요"와 반대 쓰기를 준다', () => {
+  it('AC-3308.8 · AC-3602.3: planOf(away·end)는 자리비움·돌아옴·줄 빼기·다시 넣기를 미리 그리고 띠 "{이름} · 자리비움 HH:MM"·"{이름} · 돌아옴 HH:MM"·"{이름} 님을 표에서 뺐어요"·"{이름} 님을 표에 다시 넣었어요"와 되돌리기 쓰기(자리비움은 away clear)를 준다', () => {
     const board = fx.arrangeMockupBoard()
     const on = view.planOf(board, { k: K.a, op: 'away', v: 'on' })
     expect(arrRow(on.board, K.a)!.away).toBe('11:04')
     expect(on.toast).toBe('가상환자21 · 자리비움 11:04')
-    expect(on.undo).toEqual({ k: K.a, op: 'away', v: 'off' })
+    expect(on.undo).toEqual({ k: K.a, op: 'away', v: 'clear' })
     const off = view.planOf(board, { k: K.d, op: 'away', v: 'off' })
     expect(arrRow(off.board, K.d)!.away).toBeNull()
-    expect(off.toast).toBe('가상환자24 · 자리비움 풀었어요')
+    expect(off.toast).toBe('가상환자24 · 돌아옴 11:04')
     expect(off.undo).toEqual({ k: K.d, op: 'away', v: 'on' })
     const end = view.planOf(board, { k: K.a, op: 'end', v: 'on' })
     expect(arrRow(end.board, K.a)).toBeNull()
@@ -999,6 +1086,9 @@ describe('REQ-3308 어레인지 모양 (style.css·theme.css)', () => {
     for (const c of Object.values(want)) expect(mockup.has(c), c).toBe(true)
     const memoMockup = new Set(hexColors(readFileSync(MEMO_PAPERS_MOCKUP, 'utf8')))
     for (const c of MEMO_PAPERS_ADDED) expect(memoMockup.has(c), c).toBe(true)
+    // 돌아옴·목록 여섯 탭·비고 기록부 시안(reception-arrange-tune)은 새 색이 없다: theme.css :root 색은 모두 그 시안에도 같은 값으로 있다
+    const tune = readFileSync(TUNE_MOCKUP, 'utf8')
+    for (const [name, value] of root) for (const c of hexColors(value)) expect(tune, `${name} ${c}`).toMatch(new RegExp(`${name}:\\s*${c}`, 'i'))
     expect(cssValue('.arr th.c-sono', 'background')).toBe('var(--sono-head)')
     expect(cssValue('.arr td.c-sono', 'background')).toBe('var(--sono-col)')
     expect(cssValue('.arr th.c-carm', 'background')).toBe('var(--carm-head)')
@@ -1036,15 +1126,62 @@ function goButton(root: ParentNode): HTMLButtonElement {
 }
 
 describe('REQ-3402 충격파 타수·부위 수', () => {
-  it('AC-3402.1: 화면 CHOICES.eswt는 "1부위"~"4부위" 넷 뒤에 타수(2000·3000·4000·6000타)마다 "{타수} {N부위}" 넷, 모두 스물이다(C# ArrangeChoices와 같은 차례)', () => {
-    expect(view.CHOICES.eswt).toEqual([
-      '1부위', '2부위', '3부위', '4부위',
-      '2000타 1부위', '2000타 2부위', '2000타 3부위', '2000타 4부위',
-      '3000타 1부위', '3000타 2부위', '3000타 3부위', '3000타 4부위',
-      '4000타 1부위', '4000타 2부위', '4000타 3부위', '4000타 4부위',
-      '6000타 1부위', '6000타 2부위', '6000타 3부위', '6000타 4부위',
-    ])
-    expect(hasRun(csStrings(readFileSync(ARRANGE_MARKS_CS, 'utf8')), view.CHOICES.eswt!)).toBe(true)
+  it('AC-3402.1 · AC-3604.4: planOf(add 충격파)는 판 picks.eswt로 본다: 부위 수 하나 또는 "{타수} {부위 수}"만 받고(도우미 AddOf와 같다), 목록 밖·차례가 뒤집힌 글·빈 글은 맞지 않는 쓰기다', () => {
+    const board = fx.arrangeMockupBoard()
+    for (const v of ['1부위', '4부위', '2000타 1부위', '6000타 4부위']) expect(arrRow(view.planOf(board, { k: K.h, op: 'add', col: 'eswt', v }).board, K.h)!.cells.eswt, v).toMatchObject({ det: v })
+    for (const v of ['5부위', '2000타', '1부위 2000타', '5000타 1부위', '2000타  1부위', '']) {
+      const plan = view.planOf(board, { k: K.h, op: 'add', col: 'eswt', v })
+      expect(plan.toast, v).toBeNull()
+      expect(plan.board, v).toBe(board)
+    }
+    const other = fx.arrangeMockupBoard()
+    other.picks!.eswt = { hits: ['3천'], counts: ['한 부위'] }
+    expect(view.planOf(other, { k: K.h, op: 'add', col: 'eswt', v: '3천 한 부위' }).toast).toBe('가상환자28 · 충격파 직접 넣었어요')
+    expect(view.planOf(other, { k: K.h, op: 'add', col: 'eswt', v: '한 부위' }).toast).toBe('가상환자28 · 충격파 직접 넣었어요')
+    expect(view.planOf(other, { k: K.h, op: 'add', col: 'eswt', v: '2부위' }).toast).toBeNull()
+  })
+
+  it('AC-3604.4: 충격파 넣기 창은 판 picks의 타수 줄·부위 수 줄이고, 타수 목록이 비면 타수 줄이 없다(부위 수만 골라 넣는다). 칸 글은 picks 타수 이름 + 빈칸으로 시작할 때만 타수·부위 수로 나눈다', () => {
+    const board = fx.arrangeMockupBoard()
+    board.picks!.eswt = { hits: ['3천', '5천'], counts: ['한 부위', '두 부위', '세 부위'] }
+    const onAdd = vi.fn()
+    const { page } = draw(board, { onAdd })
+    cellOf(page, '가상환자28', 'eswt').click()
+    expect(eswtButtons(page, 0).map((b) => b.textContent)).toEqual(['3천', '5천'])
+    expect(eswtButtons(page, 1).map((b) => b.textContent)).toEqual(['한 부위', '두 부위', '세 부위'])
+    eswtPick(page, '5천')
+    eswtPick(page, '두 부위')
+    expect(picked(page, 0)).toEqual(['5천'])
+    expect(document.activeElement?.textContent).toBe('두 부위')
+    expect(goButton(page).textContent).toBe('넣기 · 5천 두 부위')
+    goButton(page).click()
+    expect(onAdd).toHaveBeenLastCalledWith(K.h, 'eswt', '5천 두 부위')
+
+    document.body.replaceChildren()
+    const noHits = fx.arrangeMockupBoard()
+    noHits.picks!.eswt = { hits: [], counts: ['1부위', '2부위'] }
+    const onSheet = vi.fn()
+    const bare = draw(noHits, { onAdd, onSheet }).page
+    cellOf(bare, '가상환자28', 'eswt').click()
+    const sheet = sheetOf(bare)!
+    expect(shapeOf(sheet)).toEqual(['div.sheet-h', 'div.opt-label', 'div.opts.four', 'div.sheet-go'])
+    expect(textsOf(sheet, ':scope > .opt-label')).toEqual(['부위 수'])
+    expect(eswtButtons(bare, 0).map((b) => b.textContent)).toEqual(['1부위', '2부위'])
+    eswtPick(bare, '2부위')
+    expect(onSheet).toHaveBeenLastCalledWith({ k: K.h, col: 'eswt', kind: 'add', hit: null, count: '2부위' })
+    expect(document.activeElement?.textContent).toBe('2부위')
+    goButton(bare).click()
+    expect(onAdd).toHaveBeenLastCalledWith(K.h, 'eswt', '2부위')
+
+    // 칸 글 나누기: 목록의 타수 이름 + 빈칸으로 시작하면 타수(위)·나머지(아래), 아니면 칸 글 하나
+    document.body.replaceChildren()
+    const cells = fx.arrangeMockupBoard()
+    cells.picks!.eswt = { hits: ['3천'], counts: ['2부위'] }
+    arrRow(cells, K.c)!.cells.eswt!.det = '3천 2부위'
+    arrRow(cells, K.d)!.cells.eswt = fx.fakeCell({ det: '3000타 2부위', manual: true })
+    const drawn = draw(cells).page
+    expect(cellParts(cellOf(drawn, '가상환자23', 'eswt'))).toEqual(['span.st:준비', 'span.hit:3천', 'span.det:2부위'])
+    expect(cellParts(cellOf(drawn, '가상환자24', 'eswt'))).toEqual(['span.st:준비', 'span.det:3000타 2부위'])
   })
 
   it('AC-3402.2: 빈 충격파 칸을 누르면 창 "충격파 직접 넣기"에 [타수] 넷·[부위 수] 넷 두 줄과 [닫기]·[넣기]가 있고, 처음에는 아무것도 안 골라 [넣기]가 꺼져 있다', () => {
@@ -1190,6 +1327,7 @@ describe('REQ-3402 충격파 타수·부위 수', () => {
     document.body.replaceChildren()
     const odd = fx.arrangeMockupBoard()
     arrRow(odd, K.c)!.cells.eswt!.det = '<b>3000타 2부위</b>'
+    odd.picks!.eswt.hits.push('<b>3000타')
     const drawn = draw(odd).page
     expect(cellParts(cellOf(drawn, '가상환자23', 'eswt'))).toEqual(['span.st:준비', 'span.hit:<b>3000타', 'span.det:2부위</b>'])
     expect(drawn.querySelector('td.c-eswt b')).toBeNull()
@@ -1686,6 +1824,161 @@ describe('REQ-3504 SONO 넣기', () => {
   })
 })
 
+// ---- 돌아옴 (reception-arrange-tune REQ-3602) ----------------------------------------------------------------
+
+describe('REQ-3602 돌아옴', () => {
+  /** 접수 칸 단추 */
+  const tBtn = (root: ParentNode, name: string) => trOf(root, name).querySelector<HTMLButtonElement>('td.c-t > button.t-btn')!
+  /** 줄의 [back, backWait] */
+  const backOf = (board: FakeBoard, k: string) => [arrRow(board, k)!.back, arrRow(board, k)!.backWait]
+
+  it('AC-3602.1: 접수 칸은 away면 "자리비움" + 시각(줄 away), away 없이 back이면 이름표 "돌아옴 {back}"이고 backWait가 있으면 그 아래 backWait 글(.wt.rtn-wt)이다. 돌아옴 줄은 색칠(away)하지 않는다', () => {
+    const { page } = draw()
+    expect(shapeOf(tBtn(page, '가상환자25'))).toEqual(['span.t-time', 'span.rtn-tag', 'span.wt.rtn-wt'])
+    expect(textsOf(tBtn(page, '가상환자25'), ':scope > span')).toEqual(['10:15', '돌아옴 10:52', '12분째'])
+    expect(shapeOf(tBtn(page, '가상환자22'))).toEqual(['span.t-time', 'span.rtn-tag'])
+    expect(textOf(tBtn(page, '가상환자22'), '.rtn-tag')).toBe('돌아옴 10:31')
+    expect(trOf(page, '가상환자25').classList.contains('away')).toBe(false)
+    expect(trOf(page, '가상환자22').classList.contains('away')).toBe(false)
+    expect(page.querySelectorAll('.rtn-tag').length).toBe(2)
+
+    // 목록 줄의 기다린 글이 있으면 그 아래, away가 있으면 back은 그리지 않는다
+    document.body.replaceChildren()
+    const board = fx.arrangeMockupBoard()
+    for (const rows of Object.values(board.lists)) for (const r of rows) if (r.k === K.e) r.waited = '보류 49분째'
+    arrRow(board, K.d)!.back = '10:20'
+    arrRow(board, K.d)!.backWait = '3분째'
+    const again = draw(board).page
+    expect(shapeOf(tBtn(again, '가상환자25'))).toEqual(['span.t-time', 'span.wt', 'span.rtn-tag', 'span.wt.rtn-wt'])
+    expect(textsOf(tBtn(again, '가상환자25'), ':scope > span')).toEqual(['10:15', '49분째 대기', '돌아옴 10:52', '12분째'])
+    expect(shapeOf(tBtn(again, '가상환자24'))).toEqual(['span.t-time', 'span.away-tag'])
+    expect(trOf(again, '가상환자24').classList.contains('away')).toBe(true)
+    // 시각 글은 글자로만
+    document.body.replaceChildren()
+    const odd = fx.arrangeMockupBoard()
+    arrRow(odd, K.e)!.backWait = '<b>12분째</b>'
+    const drawn = draw(odd).page
+    expect(textOf(tBtn(drawn, '가상환자25'), '.rtn-wt')).toBe('<b>12분째</b>')
+    expect(drawn.querySelector('td.c-t b')).toBeNull()
+  })
+
+  it('AC-3602.1: 돌아옴 색은 시안 그대로 theme.css 초록(--ok) 글자이고(새 색 없음) 표시 뜻 [돌아옴]은 흰 바탕·초록 테두리다', () => {
+    expect(cssValue('.rtn-tag', 'color')).toBe('var(--ok)')
+    expect(cssValue('.rtn-tag', 'font-weight')).toBe('800')
+    expect(cssValue('.wt.rtn-wt', 'color')).toBe('var(--ok)')
+    expect(cssValue('.wt.rtn-wt', 'font-weight')).toBe('800')
+    expect(cssValue('.lg.rtn', 'background')).toBe('var(--surface)')
+    expect(cssValue('.lg.rtn', 'border-color')).toBe('var(--ok)')
+    expect(cssValue('.lg.rtn', 'color')).toBe('var(--ok)')
+  })
+
+  it('AC-3602.3: 접수 칸을 누르면 자리비움 줄은 onAway(열쇠, off), 돌아옴 줄·표시 없는 줄은 onAway(열쇠, on)이다(돌아옴을 다시 누르면 새 자리비움)', () => {
+    const onAway = vi.fn()
+    const { page } = draw(fx.arrangeMockupBoard(), { onAway })
+    tBtn(page, '가상환자24').click()
+    expect(onAway).toHaveBeenLastCalledWith(K.d, 'off')
+    tBtn(page, '가상환자25').click()
+    expect(onAway).toHaveBeenLastCalledWith(K.e, 'on')
+    tBtn(page, '가상환자22').click()
+    expect(onAway).toHaveBeenLastCalledWith(K.b, 'on')
+    expect(onAway).toHaveBeenCalledTimes(3)
+  })
+
+  it('AC-3602.3: planOf(away off)는 자리비움 줄을 away null·back 판 시:분·backWait "0분째"로 미리 그리고 띠 "{이름} · 돌아옴 HH:MM"·되돌리기 away on을 준다. away on은 back·backWait를 지우고 되돌리기는 away clear다', () => {
+    const board = fx.arrangeMockupBoard()
+    const before = JSON.stringify(board)
+    const off = view.planOf(board, { k: K.d, op: 'away', v: 'off' })
+    expect(arrRow(off.board, K.d)).toMatchObject({ away: null, back: '11:04', backWait: '0분째' })
+    expect(off.toast).toBe('가상환자24 · 돌아옴 11:04')
+    expect(off.undo).toEqual({ k: K.d, op: 'away', v: 'on' })
+    const on = view.planOf(board, { k: K.e, op: 'away', v: 'on' })
+    expect(arrRow(on.board, K.e)).toMatchObject({ away: '11:04', back: null, backWait: null })
+    expect(on.toast).toBe('가상환자25 · 자리비움 11:04')
+    expect(on.undo).toEqual({ k: K.e, op: 'away', v: 'clear' })
+    // 막 돌아온 줄의 그린 모양
+    const drawn = draw(off.board).page
+    expect(shapeOf(tBtn(drawn, '가상환자24'))).toEqual(['span.t-time', 'span.rtn-tag', 'span.wt.rtn-wt'])
+    expect(textsOf(tBtn(drawn, '가상환자24'), ':scope > span')).toEqual(['10:02', '돌아옴 11:04', '0분째'])
+    expect(trOf(drawn, '가상환자24').classList.contains('away')).toBe(false)
+    expect(JSON.stringify(board)).toBe(before)
+  })
+
+  it('AC-3602.3: planOf(away clear)는 away·back·backWait를 null로 미리 얹고 띠 글을 주며(되돌리기는 조용히 보내 보이지 않음) 되돌리기는 없다. away 값이 on·off·clear가 아니면 맞지 않는 쓰기다', () => {
+    const board = fx.arrangeMockupBoard()
+    for (const k of [K.d, K.e, K.b, K.a]) {
+      const plan = view.planOf(board, { k, op: 'away', v: 'clear' })
+      expect(arrRow(plan.board, k), k).toMatchObject({ away: null, back: null, backWait: null })
+      expect(typeof plan.toast, k).toBe('string')
+      expect(plan.toast!.length, k).toBeGreaterThan(0)
+      expect(plan.undo, k).toBeNull()
+    }
+    for (const v of ['back', 'ON', '', undefined]) {
+      const plan = view.planOf(board, { k: K.a, op: 'away', v })
+      expect(plan.toast, String(v)).toBeNull()
+      expect(plan.board, String(v)).toBe(board)
+    }
+  })
+
+  it('AC-3602.3: 칸 쓰기(step·set·add·remove·part, X-RAY 칸 포함)는 그 줄의 backWait만 지우고 back은 둔다. 맞지 않는 칸 쓰기·ptf는 backWait를 그대로 둔다', () => {
+    const board = fx.arrangeMockupBoard()
+    for (const ask of [
+      { k: K.e, op: 'step', col: 'carm' },
+      { k: K.e, op: 'set', col: 'pt', v: 'done' },
+      { k: K.e, op: 'add', col: 'xray', v: 'X-ray 찍기' },
+      { k: K.e, op: 'add', col: 'ds', v: '30분' },
+      { k: K.e, op: 'remove', col: 'trac' },
+      { k: K.e, op: 'part', col: 'carm', v: '허리', t: 'TP' },
+    ]) {
+      const plan = view.planOf(board, ask)
+      expect(plan.toast, JSON.stringify(ask)).not.toBeNull()
+      expect(backOf(plan.board, K.e), JSON.stringify(ask)).toEqual(['10:52', null])
+    }
+    for (const ask of [
+      { k: K.e, op: 'ptf', v: 'up' },
+      { k: K.e, op: 'step', col: 'sono' },
+      { k: K.e, op: 'add', col: 'pt', v: 'ICE' },
+    ])
+      expect(backOf(view.planOf(board, ask).board, K.e), JSON.stringify(ask)).toEqual(['10:52', '12분째'])
+    // back이 없는 줄·셈이 멈춘 줄은 그대로
+    expect(backOf(view.planOf(board, { k: K.c, op: 'step', col: 'pt' }).board, K.c)).toEqual([null, null])
+    expect(backOf(view.planOf(board, { k: K.b, op: 'step', col: 'pt' }).board, K.b)).toEqual(['10:31', null])
+    // 셈을 멈춘 칸 쓰기 뒤 그린 모양: "돌아옴 10:52"만
+    const drawn = draw(view.planOf(board, { k: K.e, op: 'step', col: 'carm' }).board).page
+    expect(shapeOf(tBtn(drawn, '가상환자25'))).toEqual(['span.t-time', 'span.rtn-tag'])
+  })
+})
+
+// ---- 비고 (reception-arrange-tune REQ-3605) -------------------------------------------------------------------
+
+describe('REQ-3605 비고', () => {
+  it('AC-3605.1: 지난번 증상은 세 줄까지 보이고 넘치면 줄임표다(line-clamp 3)', () => {
+    expect(cssValue('.lastsym', '-webkit-line-clamp')).toBe('3')
+    expect(cssValue('.lastsym', 'line-clamp')).toBe('3')
+    expect(cssValue('.lastsym', 'display')).toBe('-webkit-box')
+    expect(cssValue('.lastsym', 'overflow')).toBe('hidden')
+  })
+
+  it('AC-3605.2: 비고 칸을 누르면 성함을 누른 것과 같이 onChart(열쇠)를 부르고 다른 쓰기는 부르지 않는다. 단추는 칸 가득·왼쪽 맞춤이고 44px 이상이다', () => {
+    const onChart = vi.fn()
+    const onAway = vi.fn()
+    const onCell = vi.fn()
+    const { page } = draw(fx.arrangeMockupBoard(), { onChart, onAway, onCell })
+    const memo = (name: string) => trOf(page, name).querySelector<HTMLButtonElement>('td.c-memo > button.memo-btn')!
+    memo('가상환자21').click()
+    expect(onChart).toHaveBeenLastCalledWith(K.a)
+    memo('가상환자23').click()
+    expect(onChart).toHaveBeenLastCalledWith(K.c)
+    memo('가상환자21').querySelector<HTMLElement>('.arr-memo')!.click()
+    expect(onChart).toHaveBeenLastCalledWith(K.a)
+    expect(onChart).toHaveBeenCalledTimes(3)
+    expect(onAway).not.toHaveBeenCalled()
+    expect(onCell).not.toHaveBeenCalled()
+    expect(cssValue('.memo-btn', 'width')).toBe('100%')
+    expect(cssValue('.memo-btn', 'text-align')).toBe('left')
+    expect(Number.parseFloat(cssValue('.memo-btn', 'min-height') ?? '0')).toBeGreaterThanOrEqual(44)
+  })
+})
+
 // ---- 환자 글 (AC-3312.1) ---------------------------------------------------------------------------------
 
 describe('REQ-3312 환자 글은 글자로만', () => {
@@ -1725,8 +2018,27 @@ describe('REQ-3312 환자 글은 글자로만', () => {
 describe('승인 시안', () => {
   it('AC-3308.2: 승인 시안 Arrange.html에 시험이 옮긴 글이 있다', () => {
     const html = readFileSync(MOCKUP, 'utf8')
-    for (const text of [OLD_HOWTO_0, HOWTO[1]!, FOOT, ...OLD_PARTS, LATER, '처방에 없어도 넣을 수 있어요', '첫 방문이라 지난 증상이 없어요']) expect(html, text).toContain(text)
+    for (const text of [OLD_HOWTO_0, OLD_HOWTO_1, OLD_FOOT, ...OLD_PARTS, LATER, '처방에 없어도 넣을 수 있어요', '첫 방문이라 지난 증상이 없어요']) expect(html, text).toContain(text)
     expect(nameOf(K.a)).toBe('가상환자21')
+  })
+
+  it('AC-3602.2 · AC-3604.4 · AC-3605.1: 돌아옴 승인 시안(reception-arrange-tune Mock.html)에 시험이 옮긴 글·class가 있다', () => {
+    const html = readFileSync(TUNE_MOCKUP, 'utf8')
+    for (const text of [
+      HOWTO[1]!,
+      FOOT,
+      "lg.className = 'lg rtn'",
+      "lg.textContent = '돌아옴'",
+      '누르면 <span class="nw">자리비움·</span><wbr>돌아옴',
+      '<span class="rtn-tag">돌아옴 ${mark.at}</span>',
+      '<span class="wt rtn-wt">${mark.mins}분째</span>',
+      "toast(`${nameOf(tr)} · 돌아옴 ${NOW}`, undo)",
+      "b.className = 'memo-btn'",
+      "items.join('·')",
+      '-webkit-line-clamp: 3;',
+      'color: var(--ok);',
+    ])
+      expect(html, text).toContain(text)
   })
 
   it('AC-3503.1 · AC-3504.1: 고르기 목록 승인 시안 Mock.html에 시험이 옮긴 글이 있다', () => {
