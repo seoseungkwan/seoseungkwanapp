@@ -44,6 +44,7 @@ const PATHS: readonly (readonly [string, string])[] = [
   ['청구', '/claim'],
   ['고시·공지', '/notices'],
   ['환자', '/patients'],
+  ['수납일지', '/sunap'],
   ['AI 리포트', '/ai-report'],
   ['서식', '/forms'],
   ['직원', '/staff'],
@@ -53,7 +54,7 @@ const PATHS: readonly (readonly [string, string])[] = [
   ['설정', '/settings'],
 ]
 const LABELS = PATHS.map(([label]) => label)
-const READY = ['대시보드', '통계', '청구', '환자', 'AI 리포트', '서식', '업무일지']
+const READY = ['대시보드', '통계', '청구', '환자', '수납일지', 'AI 리포트', '서식', '업무일지']
 // 준비 중 화면 주소(설정 빼고 화면이 없는 탭)
 const NOT_READY_PATHS = PATHS.filter(([label]) => !READY.includes(label) && label !== '설정')
 const EMAIL = 'manager@example.com'
@@ -78,8 +79,8 @@ afterEach(() => {
   delete (Element.prototype as Partial<Element>).scrollIntoView
 })
 
-// 주요 메뉴 넷(탭 띠)과 나머지 여덟([더보기] 판). 둘 다 MENU 차례 그대로다(dashboard-ux AC-2702.1, 매출이 빠짐 stats-revenue AC-4110.1)
-const PRIMARY = ['대시보드', '통계', '청구', '환자']
+// 주요 메뉴 다섯(탭 띠)과 나머지 여덟([더보기] 판). 둘 다 MENU 차례 그대로다(dashboard-ux AC-2702.1, 매출이 빠짐 stats-revenue AC-4110.1, 수납일지가 다섯째 sunap-ilji AC-4907.1)
+const PRIMARY = ['대시보드', '통계', '청구', '환자', '수납일지']
 const PRIMARY_PATHS = PATHS.filter(([label]) => PRIMARY.includes(label))
 const MORE_PATHS = PATHS.filter(([label]) => !PRIMARY.includes(label))
 
@@ -99,7 +100,7 @@ const panel = () => {
   return id ? document.getElementById(id) : null
 }
 // 화면이 있는 탭(MENU ready: true) — 대시보드·통계·청구·환자·AI 리포트·서식·업무일지·설정
-const READY_TABS = ['대시보드', '통계', '청구', '환자', 'AI 리포트', '서식', '업무일지', '설정']
+const READY_TABS = ['대시보드', '통계', '청구', '환자', '수납일지', 'AI 리포트', '서식', '업무일지', '설정']
 // 준비 중 탭(MENU ready: false). 수는 NOT_READY_FEATURES에서 센다
 const NOT_READY_TABS = LABELS.filter((l) => !READY_TABS.includes(l))
 // 지금 탭 모양(ink 600 + 아래 2px accent 밑줄)과 기본 모양(ink-2 500)
@@ -112,11 +113,11 @@ const motionOf = (el: Element) =>
   classesOf(el).filter((c) => /(?:^|:)(?:animate-|transition|duration-|delay-|ease-|-?translate-|-?rotate-|-?scale-|opacity-)/.test(c))
 
 describe('menu', () => {
-  it('AC-302.1·AC-4110.1: 탭은 12개 — 대시보드 · 통계 · 청구 · 고시·공지 · 환자 · AI 리포트 · 서식 · 직원 · 업무일지 · 재고 · 주소록 · 설정. 매출·급여·일일마감·보고·월간 PDF·관리자는 없다', () => {
+  it('AC-302.1·AC-4110.1·AC-4907.1: 탭은 13개 — 대시보드 · 통계 · 청구 · 고시·공지 · 환자 · 수납일지 · AI 리포트 · 서식 · 직원 · 업무일지 · 재고 · 주소록 · 설정. 매출·급여·일일마감·보고·월간 PDF·관리자는 없다', () => {
     expect(MENU.map((m) => m.label)).toEqual([
-      '대시보드', '통계', '청구', '고시·공지', '환자', 'AI 리포트', '서식', '직원', '업무일지', '재고', '주소록', '설정',
+      '대시보드', '통계', '청구', '고시·공지', '환자', '수납일지', 'AI 리포트', '서식', '직원', '업무일지', '재고', '주소록', '설정',
     ])
-    expect(MENU).toHaveLength(12)
+    expect(MENU).toHaveLength(13)
     expect(MENU).toHaveLength(PATHS.length)
     for (const gone of ['매출', '급여', '일일마감·보고', '월간 PDF', '관리자']) expect(MENU.map((m) => m.label as string), gone).not.toContain(gone)
   })
@@ -129,7 +130,7 @@ describe('menu', () => {
     expect(source).not.toContain("'매출'")
   })
 
-  it('AC-302.2·AC-4110.1: 탭 주소(path)는 표와 같고 12개가 모두 다르며 같은 origin 고정 경로다', () => {
+  it('AC-302.2·AC-4110.1·AC-4907.1: 탭 주소(path)는 표와 같고 13개가 모두 다르며 같은 origin 고정 경로다', () => {
     expect(MENU.map((m) => [m.label, m.path])).toEqual(PATHS)
     expect(new Set(MENU.map((m) => m.path)).size).toBe(MENU.length)
     for (const { label, path } of MENU) expect(path, label).toMatch(/^\/[a-z0-9-]+(?:\/[a-z0-9-]+)*$/)
@@ -141,6 +142,7 @@ describe('menu', () => {
       { label: '통계', href: '/stats' },
       { label: '청구', href: '/claim' },
       { label: '환자', href: '/patients' },
+      { label: '수납일지', href: '/sunap' },
       { label: 'AI 리포트', href: '/ai-report' },
       { label: '서식', href: '/forms' },
       { label: '업무일지', href: '/worklog' },
@@ -167,6 +169,7 @@ describe('menu', () => {
     expect(currentMenuLabel('/claimed')).toBeNull()
     expect(currentMenuLabel('/admin')).toBeNull()
     expect(currentMenuLabel('/worklog')).toBe('업무일지')
+    expect(currentMenuLabel('/sunap')).toBe('수납일지')
     // 준비 중 주소와 그 아래 경로는 그 탭
     expect(NOT_READY_PATHS).toHaveLength(NOT_READY_FEATURES.length)
     expect(NOT_READY_PATHS.map(([, path]) => path)).toEqual(NOT_READY_FEATURES.map((f) => f.path))
@@ -199,14 +202,14 @@ describe('menu', () => {
     expect(NOT_READY_TABS).not.toContain('매출')
   })
 
-  it('AC-2702.1·AC-4110.1: primary는 대시보드·통계·청구·환자만 true다 — PRIMARY_MENU는 그 넷, MORE_MENU는 나머지 여덟(둘 다 MENU 차례·같은 항목). 이름·주소·ready는 MENU 그대로다', () => {
+  it('AC-2702.1·AC-4110.1·AC-4907.1: primary는 대시보드·통계·청구·환자·수납일지만 true다 — PRIMARY_MENU는 그 다섯, MORE_MENU는 나머지 여덟(둘 다 MENU 차례·같은 항목). 이름·주소·ready는 MENU 그대로다', () => {
     for (const item of MENU) expect(typeof item.primary, item.label).toBe('boolean')
     expect(MENU.filter((m) => m.primary).map((m) => m.label)).toEqual(PRIMARY)
     expect(PRIMARY_MENU).toEqual(MENU.filter((m) => m.primary))
     expect(MORE_MENU).toEqual(MENU.filter((m) => !m.primary))
     expect(PRIMARY_MENU.map((m) => [m.label, m.path])).toEqual(PRIMARY_PATHS)
     expect(MORE_MENU.map((m) => [m.label, m.path])).toEqual(MORE_PATHS)
-    expect(PRIMARY_MENU).toHaveLength(4)
+    expect(PRIMARY_MENU).toHaveLength(5)
     expect(MORE_MENU).toHaveLength(8)
     for (const item of [...PRIMARY_MENU, ...MORE_MENU]) expect(MENU, item.label).toContain(item)
   })

@@ -80,6 +80,7 @@ const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ meta
   { path: '/ai-report', title: 'AI 리포트', load: () => import('./(app)/ai-report/page') },
   { path: '/forms', title: '서식', load: () => import('./(app)/forms/page') }, // 화면이 있는 탭(forms AC-3501.3)
   { path: '/worklog', title: '업무일지', load: () => import('./(app)/worklog/page') },
+  { path: '/sunap', title: '수납일지', load: () => import('./(app)/sunap/page') },
   { path: '/claim', title: '청구', load: () => import('./(app)/claim/page') },
   { path: '/patients', title: '환자', load: () => import('./(app)/patients/page') }, // 화면이 있는 탭(patients AC-610.1)
   { path: '/claim/setup', title: '비트 PC 연결', load: () => import('./(app)/claim/setup/page') },
@@ -92,12 +93,12 @@ describe('AC-402.4: 앱 페이지의 탭 이름', () => {
     expect(await staticTitle(load)).toBe(title)
   })
 
-  it('AC-402.4·AC-4110.1: 앱 페이지 표는 MENU의 탭 주소와 /claim/setup·/admin이 빠짐없이 있고, 14개의 탭 이름은 모두 다르다(매출 없음)', async () => {
+  it('AC-402.4·AC-4110.1·AC-4907.2: 앱 페이지 표는 MENU의 탭 주소와 /claim/setup·/admin이 빠짐없이 있고, 15개의 탭 이름은 모두 다르다(매출 없음)', async () => {
     expect(APP_PAGES.map((p) => p.path).sort()).toEqual([...MENU.map((m) => m.path), '/claim/setup', '/admin'].sort())
     const titles = await Promise.all(APP_PAGES.map(({ load }) => staticTitle(load)))
-    expect(titles).toHaveLength(14)
+    expect(titles).toHaveLength(15)
     expect(titles.every((t) => typeof t === 'string' && t !== '')).toBe(true)
-    expect(new Set(titles).size).toBe(14)
+    expect(new Set(titles).size).toBe(15)
     expect(titles).not.toContain('매출')
   })
 

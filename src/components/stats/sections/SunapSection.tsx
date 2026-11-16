@@ -53,7 +53,7 @@ const CELL_NEXT = 'border-l border-st-line px-5 max-md:border-t max-md:border-l-
 const CELL_LAST = 'border-l border-st-line pl-5 max-md:border-t max-md:border-l-0 max-md:pt-4 max-md:pl-0'
 const BIG = 'mt-2 text-st-34 leading-tight font-semibold text-st-ink tabular-nums'
 // 줄: 이름 | 가운데 글 | 값 (시안 .kv). 아래 묶음은 위 선 하나로 나눈다(시안 hr)
-const LIST = 'grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-2.5 gap-y-1 text-small leading-5'
+const LIST = 'grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-1 text-small leading-5'
 const LIST_TOP = `mt-3 ${LIST}`
 const LIST_BELOW = `mt-1.5 border-t border-st-line pt-1.5 ${LIST}`
 const LINE = 'mt-3 text-body text-ink-2'
