@@ -7,7 +7,6 @@ import { errorInfo } from '@/lib/errors'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
 import type { ErrorCode } from '@/types/errors'
 import { checkedAtText } from './checkedAt'
-import { HELPER_RELEASES_URL } from './links'
 import { SetupScreen } from './SetupScreen'
 
 // 비트 PC 연결 화면 (precheck REQ-006 · ui-90 REQ-412, 시안 docs/mockups/ui-90/app/gen.py setup_body · 다른 창 카드는 precheck 목업 화면 6).
@@ -906,10 +905,22 @@ describe('AC-006.3·AC-412.7 새 도우미', () => {
     renderSetup()
     await screen.findByText('준비됨')
     expect(screen.getByText('새 도우미가 있어요.')).toBeTruthy()
-    expect(screen.getByRole('link', { name: '새 도우미 내려받기' }).getAttribute('href')).toBe(HELPER_RELEASES_URL)
+    expect(await screen.findByRole('button', { name: '새 도우미 내려받기' })).toBeTruthy()
     expect(screen.getByRole('link', { name: '청구로 가기' })).toBeTruthy()
     for (const li of rows()) expectMark(li, 'check')
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('AC-5103.4: "새 도우미가 있어요" 줄의 [새 도우미 내려받기]는 웹앱 받기 단추(보조)이고 GitHub 링크가 아니다. 주 단추는 [청구로 가기] 하나', async () => {
+    fakeExtension({ hello: helloWith({ helperVersion: '0.3.0' }) })
+    renderSetup()
+    await screen.findByText('준비됨')
+    const get = await screen.findByRole('button', { name: '새 도우미 내려받기' })
+    expect(screen.queryByRole('link', { name: '새 도우미 내려받기' })).toBeNull()
+    expect(get.hasAttribute('disabled')).toBe(false)
+    fireEvent.click(get)
+    await waitFor(() => expect(installStore.download).toHaveBeenCalledWith(HELPER_FILE))
+    expect(document.body.innerHTML).not.toContain('github.com')
   })
 
   it('AC-006.3: 최신 도우미면 그 줄이 없다', async () => {

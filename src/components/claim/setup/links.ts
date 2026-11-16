@@ -1,10 +1,5 @@
-// 비트 PC 연결 화면의 바깥 주소(design.md 12절·13절). 주소는 이 파일 한 곳에 둔다
-
-/**
- * 옛 받는 곳(GitHub 릴리스). 단계 안내·위 오류 상자의 받기 단추는 웹앱 보관함으로 바뀌었다(helper-download REQ-5103, components/install/DownloadButton).
- * 남은 쓰임은 SetupScreen의 '새 도우미가 있어요' 한 줄뿐이다 — 그 줄을 바꾸는 다음 TASK가 이 상수를 지운다
- */
-export const HELPER_RELEASES_URL = 'https://github.com/seoseungkwan/seoseungkwanapp/releases'
+// 비트 PC 연결 화면의 바깥 주소(design.md 12절·13절). 주소는 이 파일 한 곳에 둔다.
+// 도우미·확장 zip은 웹앱 보관함에서 받는다(helper-download, components/install/DownloadButton)
 
 /**
  * 크롬 웹스토어 비공개(unlisted) 등록 주소. 등록(사용자 일: 개발자 등록·심사 며칠) 전이라 아직 없다 →
