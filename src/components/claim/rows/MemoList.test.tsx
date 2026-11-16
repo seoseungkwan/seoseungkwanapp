@@ -285,6 +285,23 @@ describe('REQ-4802 목록 표시를 왼쪽으로', () => {
     expect(line.textContent).toBe('2가상환자B11/2 (월)9002! 메모 바꿈')
   })
 
+  it('AC-4806.1: lg 미만 목록 줄 class는 이 기능 전과 같다(lg: class만 더했다)', () => {
+    show(SAMPLE())
+    const line = lineOf('B')
+    const base = (el: Element) => classes(el).filter((name) => !name.startsWith('lg:'))
+    expect(base(within(line).getByText('가상환자B').parentElement!)).toEqual(['flex', 'min-w-0', 'flex-1', 'flex-wrap', 'items-baseline', 'gap-x-2'])
+    expect(base(within(line).getByText('! 메모 바꿈').parentElement!)).toEqual(['flex', 'shrink-0', 'flex-wrap', 'justify-end', 'gap-1'])
+  })
+
+  it('AC-4806.2: 이 기능이 고친 환자 줄 파일(MemoList·MemoDetail·BitMemoCard)은 네트워크·저장소·console·supabase를 쓰지 않는다', () => {
+    const read = (name: string) => readFileSync(join(process.cwd(), 'src/components/claim/rows', name), 'utf-8')
+    for (const name of ['MemoList.tsx', 'MemoDetail.tsx', 'BitMemoCard.tsx']) {
+      const text = read(name)
+      expect(text).not.toMatch(/\b(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|localStorage|sessionStorage|indexedDB|console|supabase)\b/)
+      expect(text).not.toMatch(/\bimport\(/)
+    }
+  })
+
   it('AC-4802.3: 목록 위 보기 단추는 lg 이상에서 안쪽 여백이 좁다(lg:px-2). 공용 단추 class(ds.segment.button)는 그대로 쓴다', () => {
     show(SAMPLE())
     const buttons = within(screen.getByRole('group', { name: '완료로 골라 보기' })).getAllByRole('button')
