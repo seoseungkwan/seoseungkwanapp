@@ -9,6 +9,7 @@
 > | 1 | TASK-1 | SQL·보관함 권한 + 함수·오류 |
 > | 2 | TASK-2 | 받기 단추(연결 화면·설정 탭) |
 > | 2 | TASK-3 | 관리자 '설치 파일' 칸 |
+> | 3 | TASK-4 | 연결 화면 '새 도우미' 줄·GitHub 주소 지우기(구현 중 찾은 빠진 곳) |
 >
 > - **사용자 단계**: 배포 전 `20261117000000_install_files.sql`을 Supabase SQL Editor에 붙여 넣기 → 배포 뒤 관리자 화면에서 도우미·확장 zip 올리기
 
@@ -35,3 +36,11 @@
 - Files: src/components/admin/InstallFilesAdmin.tsx, src/components/admin/InstallFilesAdmin.test.tsx, src/app/(app)/admin/page.tsx, src/app/(app)/admin/page.test.tsx
 - Tests: src/components/admin/InstallFilesAdmin.test.tsx, src/app/(app)/admin/page.test.tsx
 - TDD: required — design.md '화면'. `src/components/install/**`(TASK-2)는 고치지 않는다(크기·날짜 글자 함수가 필요하면 `src/lib/storage/installFiles.ts`의 것을 쓴다 — TASK-1이 `installMeta(file)`로 '0.9.0 · 0.9MB · 11월 17일 올림' 글자를 함께 만든다)
+
+## TASK-4: 연결 화면 '새 도우미' 줄·GitHub 주소 지우기
+- Phase: 3
+- AC: AC-5103.4
+- REQ: REQ-5103
+- Files: src/components/claim/setup/SetupScreen.tsx, src/components/claim/setup/links.ts, src/components/claim/setup/SetupScreen.test.tsx, src/components/install/noGithub.test.ts
+- Tests: src/components/claim/setup/SetupScreen.test.tsx, src/components/install/noGithub.test.ts
+- TDD: required — TASK-2 일꾼이 찾은 빠진 곳: `SetupScreen.tsx`의 `<a href={HELPER_RELEASES_URL}>새 도우미 내려받기</a>`(import 포함) 두 군데만 `DownloadButton kind="helper" variant="secondary"`로 바꾸고, `links.ts`에서 상수를 지우고, `src/`에 GitHub 릴리스 주소가 없음을 시험한다
