@@ -179,15 +179,15 @@ public class ListsRouteTests
 
     // ---- AC-3502.4 몸 한도 -----------------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-3502.4 읽기 한도는 4096바이트: 꼭 4096이면 읽고, Content-Length가 4096을 넘으면(다섯 자리 포함) 몸을 읽지 않고 413")]
-    public void ReaderLimitIs4096()
+    [Fact(DisplayName = "AC-3502.4 읽기 한도는 8192바이트(spec reception-arrange-tune AC-3603.5): 꼭 8192면 읽고, Content-Length가 8192를 넘으면(다섯 자리 포함) 몸을 읽지 않고 413")]
+    public void ReaderLimitIs8192()
     {
-        Assert.Equal(4096, HttpRequestReader.MaxBody);
-        var body = new string('x', 4096);
-        var request = HttpRequestReader.Read(new MemoryStream(Encoding.ASCII.GetBytes("POST /api/lists HTTP/1.1\r\nHost: a\r\nContent-Length: 4096\r\n\r\n" + body)), TimeSpan.FromSeconds(5));
-        Assert.Equal(4096, request!.Body.Length);
-        Assert.Equal(4096, HttpRequestReader.Read(new MemoryStream(Encoding.ASCII.GetBytes("POST /api/lists HTTP/1.1\r\nHost: a\r\nContent-Length: 0004096\r\n\r\n" + body)), TimeSpan.FromSeconds(5))!.Body.Length);
-        foreach (var length in new[] { "4097", "9999", "10000", "99999999999" })
+        Assert.Equal(8192, HttpRequestReader.MaxBody);
+        var body = new string('x', 8192);
+        var request = HttpRequestReader.Read(new MemoryStream(Encoding.ASCII.GetBytes("POST /api/lists HTTP/1.1\r\nHost: a\r\nContent-Length: 8192\r\n\r\n" + body)), TimeSpan.FromSeconds(5));
+        Assert.Equal(8192, request!.Body.Length);
+        Assert.Equal(8192, HttpRequestReader.Read(new MemoryStream(Encoding.ASCII.GetBytes("POST /api/lists HTTP/1.1\r\nHost: a\r\nContent-Length: 0008192\r\n\r\n" + body)), TimeSpan.FromSeconds(5))!.Body.Length);
+        foreach (var length in new[] { "8193", "9999", "10000", "99999999999" })
         {
             var e = Assert.Throws<HttpReadException>(() => HttpRequestReader.Read(new MemoryStream(Encoding.ASCII.GetBytes("POST /api/lists HTTP/1.1\r\nHost: a\r\nContent-Length: " + length + "\r\n\r\n")), TimeSpan.FromSeconds(5)));
             Assert.Equal(413, e.Status);
@@ -198,10 +198,10 @@ public class ListsRouteTests
     {
         new object[] { "/api/xray", 256 },
         new object[] { "/api/arrange", 1024 },
-        new object[] { "/api/lists", 4096 },
+        new object[] { "/api/lists", 8192 },
     };
 
-    [Theory(DisplayName = "AC-3502.4 쓰기 검사 전에 /api/xray 256·/api/arrange 1024·/api/lists 4096바이트를 넘으면 413이다(쓰기 머리가 틀려도 413, 한도까지는 413이 아님)")]
+    [Theory(DisplayName = "AC-3502.4 쓰기 검사 전에 /api/xray 256·/api/arrange 1024·/api/lists 8192바이트(spec reception-arrange-tune AC-3603.5)를 넘으면 413이다(쓰기 머리가 틀려도 413, 한도까지는 413이 아님)")]
     [MemberData(nameof(PathLimits))]
     public void RouterLimitsPerPath(string path, int limit)
     {

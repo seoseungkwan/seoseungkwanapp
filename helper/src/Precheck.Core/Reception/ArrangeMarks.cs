@@ -17,7 +17,7 @@ namespace Precheck.Core.Reception;
 public enum ArrangeStep { Todo, Ready, Done, Gone }
 
 /// <summary>
-/// 칸 하나의 표시(AC-3304.2). det는 고르기 목록(ArrangeChoices)의 글, SONO·C-ARM part는 줄을 "|"로 이은 글이고 tags는 이름표(같이 하는 것·약재) 목록이다
+/// 칸 하나의 표시(AC-3304.2). det는 PT·도수·충격파·견인 칸 글(모양만 본다, spec reception-arrange-tune AC-3603.4), SONO·C-ARM part는 줄을 "|"로 이은 글이고 tags는 이름표(같이 하는 것·약재) 목록이다
 /// (spec reception-pick-lists AC-3502.1). 시각은 "HH:MM".
 /// </summary>
 public sealed class CellMark
@@ -136,58 +136,50 @@ public sealed class VisitMark
 }
 
 /// <summary>
-/// 고르기 목록(spec reception-arrange design.md 4절, AC-3304.4). 화면(reception/www/arrange.js의 CHOICES)과 쓰기 검사가 같은 글을 쓴다
-/// (화면 시험이 이 파일의 글을 읽어 견준다). SONO·C-ARM은 고칠 수 있는 고르기 목록(PickLists, spec reception-pick-lists)이라 여기 없고,
-/// 표시의 part·tags는 모양만 본다(AC-3502.1).
+/// 넣기 글과 칸 글 검사(spec reception-arrange design.md 4절 · spec reception-arrange-tune design.md 2절, AC-3603.3·AC-3603.4).
+/// PT·도수·충격파·견인 넣기 글은 고칠 수 있는 고르기 목록(PickLists)에서 나온다(AddOf). SONO·C-ARM도 PickLists로 보므로(spec reception-pick-lists) 여기서는 빈 목록이다.
+/// 표시의 det·part·tags는 목록에 있는지가 아니라 모양만 본다(목록을 고친 뒤에도 이미 넣은 칸은 그대로 보이게, AC-3502.1·AC-3603.4).
 /// </summary>
 public static class ArrangeChoices
 {
     /// <summary>SONO part 한 줄의 글자 한도: 쪽 글(오른·왼·양) + 빈칸 + 이름 10글자.</summary>
     private const int MaxPartLine = 13;
 
+    /// <summary>PT·도수·충격파·견인 칸 글의 글자 한도: 충격파 "{타수} {부위 수}"(이름 10글자 + 빈칸 + 이름 10글자).</summary>
+    private const int MaxDetail = PickLists.MaxName * 2 + 1;
+
     /// <summary>X-RAY 직접 넣기 글(칸 글은 "").</summary>
     public const string XrayShot = "X-ray 찍기";
 
-    private static readonly IReadOnlyList<string> Pt = Array.AsReadOnly(new[] { "ICE", "HP" });
-    private static readonly IReadOnlyList<string> Ds = Array.AsReadOnly(new[] { "30분", "50분" });
-    /// <summary>충격파: 부위 수 넷 + 타수(2000·3000·4000·6000타)마다 부위 수 넷(spec reception-memo-papers AC-3402.1). 화면 시험이 글을 그 차례로 견주려고 모두 적는다.</summary>
-    private static readonly IReadOnlyList<string> Eswt = Array.AsReadOnly(new[]
-    {
-        "1부위", "2부위", "3부위", "4부위",
-        "2000타 1부위", "2000타 2부위", "2000타 3부위", "2000타 4부위",
-        "3000타 1부위", "3000타 2부위", "3000타 3부위", "3000타 4부위",
-        "4000타 1부위", "4000타 2부위", "4000타 3부위", "4000타 4부위",
-        "6000타 1부위", "6000타 2부위", "6000타 3부위", "6000타 4부위",
-    });
-
-    private static readonly IReadOnlyList<string> Trac = Array.AsReadOnly(new[] { "목", "허리" });
     private static readonly IReadOnlyList<string> None = Array.AsReadOnly(new string[0]);
     private static readonly IReadOnlyList<string> Xray = Array.AsReadOnly(new[] { XrayShot });
 
-    /// <summary>빈 칸에 직접 넣을 때(add) 고르는 글. SONO·C-ARM은 고르기 목록(PickLists)으로 보므로 빈 목록.</summary>
-    public static IReadOnlyList<string> AddOf(ArrangeCol col) => col switch
+    /// <summary>
+    /// 빈 칸에 직접 넣을 때(add) 고르는 글(AC-3603.3): PT·도수·견인 = 그 목록, 충격파 = 부위 수 + 타수마다 "{타수} {부위 수}"(타수 차례, 그 안은 부위 수 차례),
+    /// X-RAY = "X-ray 찍기", SONO·C-ARM = 빈 목록(PickLists.IsSono·IsCarm으로 본다).
+    /// </summary>
+    public static IReadOnlyList<string> AddOf(ArrangeCol col, PickLists lists)
     {
-        ArrangeCol.Xray => Xray,
-        ArrangeCol.Sono => None,
-        ArrangeCol.Carm => None,
-        _ => DetailsOf(col),
-    };
+        if (lists == null) throw new ArgumentNullException(nameof(lists));
+        return col switch
+        {
+            ArrangeCol.Xray => Xray,
+            ArrangeCol.Pt => lists.Pt,
+            ArrangeCol.Ds => lists.Ds,
+            ArrangeCol.Eswt => Array.AsReadOnly(lists.EswtCounts.Concat(lists.EswtHits.SelectMany(hit => lists.EswtCounts.Select(count => hit + " " + count))).ToArray()),
+            ArrangeCol.Trac => lists.Trac,
+            _ => None,
+        };
+    }
 
-    /// <summary>칸에 남는 글(det). 처방 칸(X-RAY·SONO·C-ARM)은 빈 목록(det는 "").</summary>
-    public static IReadOnlyList<string> DetailsOf(ArrangeCol col) => col switch
-    {
-        ArrangeCol.Pt => Pt,
-        ArrangeCol.Ds => Ds,
-        ArrangeCol.Eswt => Eswt,
-        ArrangeCol.Trac => Trac,
-        _ => None,
-    };
-
-    /// <summary>그 칸의 det로 받는 글인가.</summary>
+    /// <summary>
+    /// 그 칸의 det로 받는 글인가(AC-3603.4): PT·도수·충격파·견인은 1~21글자이고 "|"·제어 글자·짝 없는 대리쌍이 없는 글, 다른 칸은 "".
+    /// 목록에 있는지는 보지 않는다.
+    /// </summary>
     public static bool IsDetail(ArrangeCol col, string? det)
     {
-        var list = DetailsOf(col);
-        return det != null && (list.Count == 0 ? det.Length == 0 : list.Contains(det));
+        if (det == null) return false;
+        return ArrangeMap.ManualOnly.Contains(col) ? IsText(det, MaxDetail) : det.Length == 0;
     }
 
     /// <summary>
@@ -237,7 +229,7 @@ public static class ArrangeChoices
 /// (kept는 참일 때만, AC-3304.5. back·backStop은 값이 있을 때만이고 backStop은 back이 있을 때만, spec reception-arrange-tune AC-3601.1).
 /// 칸은 { st, manual, det, part, readyAt, doneAt, addedAt[, tags: [글…]] }(tags는 비지 않을 때만, spec reception-pick-lists AC-3502.1).
 /// 규칙은 XrayMarks와 같다(두 파일은 서로 깨뜨리지 않게 따로 둔다): 잠금 하나로 한 번에 하나, 임시 파일 → 바꾸기, 처음 한 번 읽어 메모리에,
-/// 날이 다르면 비움, 1MB를 넘거나 모양이 틀리면 빈 표시 + 기록에 E-STORE-BROKEN 한 번. det는 고르기 목록의 글, 시각은 "HH:MM"만 받고(AC-3304.4)
+/// 날이 다르면 비움, 1MB를 넘거나 모양이 틀리면 빈 표시 + 기록에 E-STORE-BROKEN 한 번. det는 모양만 보고(spec reception-arrange-tune AC-3603.4), 시각은 "HH:MM"만 받고(AC-3304.4)
 /// SONO·C-ARM part·tags는 모양만 본다(AC-3502.1).
 /// 기록(report)에는 오류 번호만 간다.
 /// </summary>

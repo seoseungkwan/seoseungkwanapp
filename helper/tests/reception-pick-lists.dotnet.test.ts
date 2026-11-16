@@ -59,7 +59,7 @@ describe('REQ-3502 칸 표시·쓰기 (C# Precheck.Core.Tests.Reception.PickChoi
     expectAc('AC-3502.3')
   })
 
-  it('AC-3502.4 읽기 한도 4096바이트(넘으면 413), 쓰기 검사 전에 /api/xray 256·/api/arrange 1024·/api/lists 4096바이트를 넘으면 413', () => {
+  it('AC-3502.4 읽기 한도 8192바이트(넘으면 413, AC-3603.5), 쓰기 검사 전에 /api/xray 256·/api/arrange 1024·/api/lists 8192바이트를 넘으면 413', () => {
     expectAc('AC-3502.4')
   })
 })

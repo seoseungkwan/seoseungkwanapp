@@ -223,7 +223,7 @@ public static class ArrangeWrite
     }
 
     /// <summary>
-    /// 빈 칸에만 직접 넣는다: 직접 칸은 그 칸 목록의 글이 칸 글, X-RAY는 칸 글 없음,
+    /// 빈 칸에만 직접 넣는다: 직접 칸(PT·도수·충격파·견인)은 지금 고르기 목록으로 본 글이 칸 글(spec reception-arrange-tune AC-3603.3), X-RAY는 칸 글 없음,
     /// SONO·C-ARM은 지금 고르기 목록으로 본 v가 part, t를 나눈 것이 tags(AC-3502.3).
     /// </summary>
     private static ArrangeWriteResult AddCell(VisitMark mark, ArrangeCol col, ArrangeCell? cell, string v, string? t, string hhmm, PickLists lists)
@@ -234,7 +234,7 @@ public static class ArrangeWrite
             if (!IsPick(lists, col, v, t)) return ArrangeWriteResult.Refused(400);
             return ArrangeWriteResult.Marks(mark.WithCell(col, new CellMark(ArrangeStep.Todo, true, "", v, null, null, hhmm, PickLists.TagsOf(t))));
         }
-        if (!ArrangeChoices.AddOf(col).Contains(v)) return ArrangeWriteResult.Refused(400);
+        if (!ArrangeChoices.AddOf(col, lists).Contains(v, StringComparer.Ordinal)) return ArrangeWriteResult.Refused(400);
         var det = ArrangeMap.ManualOnly.Contains(col) ? v : "";
         return ArrangeWriteResult.Marks(mark.WithCell(col, new CellMark(ArrangeStep.Todo, true, det, null, null, null, hhmm)));
     }

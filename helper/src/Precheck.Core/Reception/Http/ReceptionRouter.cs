@@ -23,7 +23,7 @@ namespace Precheck.Core.Reception.Http;
 /// - POST /api/arrange {k, op, col?, v?, t?}(어레인지 표시를 넘겼을 때만) → 쓰기 검사·몸 모양·그날 네 칸 줄 → ArrangeWrite → 204(spec reception-arrange AC-3306.1).
 ///   이때 GET /api/board 답에는 arrange 칸과 맨 위 picks(지금 고르기 목록, spec reception-pick-lists AC-3501.4)가 더 있다(AC-3305.1).
 /// - POST /api/lists(고르기 목록 저장소를 넘겼을 때만) → 쓰기 검사(403) → 목록 모양(400) → ReceptionLists.Save → 204(spec reception-pick-lists AC-3501.3).
-/// - 쓰기 길은 쓰기 검사 전에 몸 크기를 본다: /api/xray 256·/api/arrange 1024·/api/lists 4096바이트를 넘으면 413(AC-3502.4).
+/// - 쓰기 길은 쓰기 검사 전에 몸 크기를 본다: /api/xray 256·/api/arrange 1024·/api/lists 8192바이트를 넘으면 413(AC-3502.4·spec reception-arrange-tune AC-3603.5).
 /// - GET /link(주소 보내기 화면, LinkPage)는 이 PC 자신(루프백)만. 다른 곳에는 없는 길이다(404, AC-1406.8). /qr 길은 없다(QR 없음).
 /// - 그 밖은 화면 파일(StaticFiles, 질의 글 없이 GET만). 어디에도 없으면 404, 있는 길에 다른 방법이면 405(Allow).
 /// 비트를 볼 수 없으면 503 {"state":"unavailable"}(환자 자료 없음). 기록에는 오류 번호만 남긴다(AC-1406.7).

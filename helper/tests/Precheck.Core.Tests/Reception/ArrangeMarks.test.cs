@@ -20,7 +20,7 @@ namespace Precheck.Core.Tests.Reception.ArrangeStore;
 /// AC-3304.1 data\reception-arrange.dat(머리 + IProtector로 감싼 { day, visits })에 임시 파일 → 바꾸기로, 잠금 하나로 한 번에 하나씩 쓴다.
 /// AC-3304.2 내원 하나의 표시는 칸마다 { st, manual, det, part, readyAt, doneAt, addedAt }와 away·ptf·endedAt뿐이다.
 /// AC-3304.3 날이 오늘이 아니면 빈 표시, 1MB를 넘거나 모양이 틀리면 빈 표시 + 기록에 오류 번호만.
-/// AC-3304.4 글 칸(det·part)은 칸마다 정해 둔 고르기 목록(ArrangeChoices)의 글만 받는다.
+/// AC-3304.4 글 칸(det·part)은 모양만 본다(det: 직접 칸 1~21글자, 다른 칸 "", spec reception-arrange-tune AC-3603.4가 목록 소속 검사를 대신함).
 /// AC-3312.3 파일·기록에는 내원번호와 정해 둔 글(단계·부위·칸 글·시각)만 있다.
 /// 가짜 암호화(XorProtector)·임시 폴더·주입한 시계만 쓴다. 내원번호는 가짜(V+숫자)다.
 /// </summary>
@@ -280,13 +280,14 @@ public class ArrangeMarksTests : IDisposable
         Assert.Equal(new[] { "V1002" }, Open(other).Today().Keys);
     }
 
-    [Theory(DisplayName = "AC-3304.3 모양이 틀린 파일(칸 더함·틀린 단계·틀린 시각·목록 밖 글·JSON 아님)은 빈 표시, 기록에 E-STORE-BROKEN만")]
+    [Theory(DisplayName = "AC-3304.3 모양이 틀린 파일(칸 더함·틀린 단계·틀린 시각·모양이 틀린 글·JSON 아님)은 빈 표시, 기록에 E-STORE-BROKEN만")]
     [InlineData("not json")]
     [InlineData("{\"day\":\"20261109\",\"visits\":{},\"x\":1}")]
     [InlineData("{\"day\":\"2026-11-09\",\"visits\":{}}")]
     [InlineData("{\"day\":\"20261109\",\"visits\":{\"V1\":{\"cells\":{},\"away\":\"10:2\",\"ptf\":null,\"endedAt\":null}}}")]
     [InlineData("{\"day\":\"20261109\",\"visits\":{\"V1\":{\"cells\":{},\"away\":null,\"ptf\":null,\"endedAt\":null,\"name\":\"가상환자07\"}}}")]
-    [InlineData("{\"day\":\"20261109\",\"visits\":{\"V1\":{\"cells\":{\"pt\":{\"st\":\"done\",\"manual\":true,\"det\":\"가상환자07\",\"part\":null,\"readyAt\":null,\"doneAt\":null,\"addedAt\":null}},\"away\":null,\"ptf\":null,\"endedAt\":null}}}")]
+    [InlineData("{\"day\":\"20261109\",\"visits\":{\"V1\":{\"cells\":{\"pt\":{\"st\":\"done\",\"manual\":true,\"det\":\"가|상\",\"part\":null,\"readyAt\":null,\"doneAt\":null,\"addedAt\":null}},\"away\":null,\"ptf\":null,\"endedAt\":null}}}")]
+    [InlineData("{\"day\":\"20261109\",\"visits\":{\"V1\":{\"cells\":{\"xray\":{\"st\":\"done\",\"manual\":true,\"det\":\"가상환자07\",\"part\":null,\"readyAt\":null,\"doneAt\":null,\"addedAt\":null}},\"away\":null,\"ptf\":null,\"endedAt\":null}}}")]
     [InlineData("{\"day\":\"20261109\",\"visits\":{\"V1\":{\"cells\":{\"sono\":{\"st\":\"later\",\"manual\":false,\"det\":\"\",\"part\":null,\"readyAt\":null,\"doneAt\":null,\"addedAt\":null}},\"away\":null,\"ptf\":null,\"endedAt\":null}}}")]
     [InlineData("{\"day\":\"20261109\",\"visits\":{\"V1\":{\"cells\":{\"bed\":{\"st\":\"done\",\"manual\":true,\"det\":\"\",\"part\":null,\"readyAt\":null,\"doneAt\":null,\"addedAt\":null}},\"away\":null,\"ptf\":null,\"endedAt\":null}}}")]
     [InlineData("{\"day\":\"20261109\",\"visits\":{\"V1\":{\"cells\":{},\"away\":null,\"ptf\":{\"st\":\"left\",\"at\":\"10:00\"},\"endedAt\":null}}}")]
@@ -301,19 +302,20 @@ public class ArrangeMarksTests : IDisposable
 
     // ---- AC-3304.4 고르기 목록 --------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-3304.4 고르기 목록(ArrangeChoices)은 design.md 4절 표 그대로다(X-ray 찍기, ICE·HP, 30분·50분, 1~4부위 + 타수×부위 수 16개(AC-3402.1), 목·허리). SONO·C-ARM은 고르기 목록(picks, spec reception-pick-lists)이라 여기 없다")]
+    [Fact(DisplayName = "AC-3304.4 기본 고르기 목록(ArrangeChoices.AddOf(칸, PickLists.Defaults))은 design.md 4절 표 그대로다(X-ray 찍기, ICE·HP, 30분·50분, 1~4부위 + 타수×부위 수 16개(AC-3402.1), 목·허리). SONO·C-ARM은 고르기 목록(picks, spec reception-pick-lists)이라 빈 목록이다")]
     public void ChoicesTable()
     {
-        Assert.Equal(new[] { "X-ray 찍기" }, ArrangeChoices.AddOf(ArrangeCol.Xray));
-        Assert.Empty(ArrangeChoices.AddOf(ArrangeCol.Sono));
-        Assert.Empty(ArrangeChoices.AddOf(ArrangeCol.Carm));
-        Assert.Equal(new[] { "ICE", "HP" }, ArrangeChoices.AddOf(ArrangeCol.Pt));
-        Assert.Equal(new[] { "30분", "50분" }, ArrangeChoices.AddOf(ArrangeCol.Ds));
+        var lists = PickLists.Defaults;
+        Assert.Equal(new[] { "X-ray 찍기" }, ArrangeChoices.AddOf(ArrangeCol.Xray, lists));
+        Assert.Empty(ArrangeChoices.AddOf(ArrangeCol.Sono, lists));
+        Assert.Empty(ArrangeChoices.AddOf(ArrangeCol.Carm, lists));
+        Assert.Equal(new[] { "ICE", "HP" }, ArrangeChoices.AddOf(ArrangeCol.Pt, lists));
+        Assert.Equal(new[] { "30분", "50분" }, ArrangeChoices.AddOf(ArrangeCol.Ds, lists));
         var counts = new[] { "1부위", "2부위", "3부위", "4부위" };
-        Assert.Equal(counts.Concat(new[] { "2000타", "3000타", "4000타", "6000타" }.SelectMany(hit => counts.Select(count => hit + " " + count))), ArrangeChoices.AddOf(ArrangeCol.Eswt));
-        Assert.Equal(new[] { "목", "허리" }, ArrangeChoices.AddOf(ArrangeCol.Trac));
-        foreach (var col in new[] { ArrangeCol.Xray, ArrangeCol.Sono, ArrangeCol.Carm }) Assert.Empty(ArrangeChoices.DetailsOf(col));
-        foreach (var col in ArrangeMap.ManualOnly) Assert.Equal(ArrangeChoices.AddOf(col), ArrangeChoices.DetailsOf(col));
+        Assert.Equal(counts.Concat(new[] { "2000타", "3000타", "4000타", "6000타" }.SelectMany(hit => counts.Select(count => hit + " " + count))), ArrangeChoices.AddOf(ArrangeCol.Eswt, lists));
+        Assert.Equal(new[] { "목", "허리" }, ArrangeChoices.AddOf(ArrangeCol.Trac, lists));
+        foreach (var col in new[] { ArrangeCol.Xray, ArrangeCol.Sono, ArrangeCol.Carm }) Assert.True(ArrangeChoices.IsDetail(col, ""));
+        foreach (var col in ArrangeMap.ManualOnly) Assert.All(ArrangeChoices.AddOf(col, lists), det => Assert.True(ArrangeChoices.IsDetail(col, det), det));
     }
 
     [Fact(DisplayName = "AC-3304.4 칸마다 목록의 글(직접 칸 det)·모양이 맞는 SONO·C-ARM part(spec reception-pick-lists AC-3502.1)와 빈 det(처방 칸)는 받는다")]
@@ -322,7 +324,7 @@ public class ArrangeMarksTests : IDisposable
         var marks = Open();
         var i = 0;
         foreach (var col in ArrangeMap.ManualOnly)
-            foreach (var det in ArrangeChoices.DetailsOf(col))
+            foreach (var det in ArrangeChoices.AddOf(col, PickLists.Defaults))
                 marks.Update("V" + (3000 + i++), _ => new VisitMark().WithCell(col, Cell(ArrangeStep.Todo, manual: true, det: det, addedAt: "10:00")));
         foreach (var col in new[] { ArrangeCol.Sono, ArrangeCol.Carm })
             foreach (var part in new[] { "목", "오른 어깨", "오른 어깨|왼 무릎", "소독|양 무릎", "리덕션", "1|2|3|4|5|6" })
@@ -334,8 +336,8 @@ public class ArrangeMarksTests : IDisposable
 
     public static IEnumerable<object[]> BadMarks() => new[]
     {
-        new object[] { "pt 목록 밖 글", new VisitMark().WithCell(ArrangeCol.Pt, new CellMark(ArrangeStep.Todo, true, "가상환자07", null, null, null, "10:00")) },
-        new object[] { "ds에 pt 글", new VisitMark().WithCell(ArrangeCol.Ds, new CellMark(ArrangeStep.Todo, true, "ICE", null, null, null, "10:00")) },
+        new object[] { "pt 빈 글", new VisitMark().WithCell(ArrangeCol.Pt, new CellMark(ArrangeStep.Todo, true, "", null, null, null, "10:00")) },
+        new object[] { "ds 22글자", new VisitMark().WithCell(ArrangeCol.Ds, new CellMark(ArrangeStep.Todo, true, "가나다라마바사아자차카타파하가나다라마바사아", null, null, null, "10:00")) },
         new object[] { "xray에 글", new VisitMark().WithCell(ArrangeCol.Xray, new CellMark(ArrangeStep.Todo, true, "HP", null, null, null, "10:00")) },
         new object[] { "sono 부위 7줄", new VisitMark().WithCell(ArrangeCol.Sono, new CellMark(ArrangeStep.Todo, false, "", "1|2|3|4|5|6|7", null, null, null)) },
         new object[] { "carm 빈 부위", new VisitMark().WithCell(ArrangeCol.Carm, new CellMark(ArrangeStep.Todo, false, "", "", null, null, null)) },
@@ -347,7 +349,7 @@ public class ArrangeMarksTests : IDisposable
         new object[] { "PT 먼저 시각", new VisitMark(ptf: new PtFirst("up", "10:0")) },
     };
 
-    [Theory(DisplayName = "AC-3304.4 목록 밖 글·칸에 맞지 않는 글·모양 틀린 시각·PT 먼저 값은 쓰지 않는다(ArgumentException, 파일 그대로)")]
+    [Theory(DisplayName = "AC-3304.4 모양이 틀린 글(빈 글·22글자)·칸에 맞지 않는 글·모양 틀린 시각·PT 먼저 값은 쓰지 않는다(ArgumentException, 파일 그대로)")]
     [MemberData(nameof(BadMarks))]
     public void BadMarksRefused(string why, VisitMark bad)
     {
@@ -379,7 +381,7 @@ public class ArrangeMarksTests : IDisposable
 
         var allowed = new HashSet<string>(StringComparer.Ordinal) { "20261109", "todo", "ready", "done", "gone", "up", "down", "" };
         allowed.Add("오른 어깨");
-        foreach (var col in Enum.GetValues(typeof(ArrangeCol)).Cast<ArrangeCol>()) allowed.UnionWith(ArrangeChoices.DetailsOf(col));
+        foreach (var col in ArrangeMap.ManualOnly) allowed.UnionWith(ArrangeChoices.AddOf(col, PickLists.Defaults));
         var time = new System.Text.RegularExpressions.Regex(@"^\d{2}:\d{2}$");
 
         using var document = JsonDocument.Parse(Plain());

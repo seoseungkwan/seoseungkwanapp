@@ -261,7 +261,7 @@ public class PickBoardTests
         Assert.Equal(Picks.Json(Custom()), picks.GetRawText());
         Assert.True(PickLists.TryParse(Encoding.UTF8.GetBytes(picks.GetRawText()), out var read));
         Assert.Equal(Picks.Json(Custom()), Picks.Json(read));
-        Assert.Equal(new[] { "carm", "sono" }, picks.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(new[] { "carm", "sono", "pt", "ds", "eswt", "trac" }, picks.EnumerateObject().Select(p => p.Name));
         Assert.Equal(new[] { "n", "noDrug" }, picks.GetProperty("carm").GetProperty("procs")[0].EnumerateObject().Select(p => p.Name));
     }
 
@@ -428,13 +428,14 @@ public class PickWriteTests
     [Fact(DisplayName = "AC-3502.3 PT·충격파 등 다른 칸의 add 목록은 그대로이고 SONO·C-ARM 옛 부위 목록·\"부위는 나중에\"는 ArrangeChoices에 없다")]
     public void OtherChoicesUnchanged()
     {
-        Assert.Equal(new[] { "X-ray 찍기" }, ArrangeChoices.AddOf(ArrangeCol.Xray));
-        Assert.Equal(new[] { "ICE", "HP" }, ArrangeChoices.AddOf(ArrangeCol.Pt));
-        Assert.Equal(new[] { "30분", "50분" }, ArrangeChoices.AddOf(ArrangeCol.Ds));
-        Assert.Equal(new[] { "목", "허리" }, ArrangeChoices.AddOf(ArrangeCol.Trac));
-        Assert.Equal(20, ArrangeChoices.AddOf(ArrangeCol.Eswt).Count);
-        Assert.Empty(ArrangeChoices.AddOf(ArrangeCol.Sono));
-        Assert.Empty(ArrangeChoices.AddOf(ArrangeCol.Carm));
+        var lists = PickLists.Defaults;
+        Assert.Equal(new[] { "X-ray 찍기" }, ArrangeChoices.AddOf(ArrangeCol.Xray, lists));
+        Assert.Equal(new[] { "ICE", "HP" }, ArrangeChoices.AddOf(ArrangeCol.Pt, lists));
+        Assert.Equal(new[] { "30분", "50분" }, ArrangeChoices.AddOf(ArrangeCol.Ds, lists));
+        Assert.Equal(new[] { "목", "허리" }, ArrangeChoices.AddOf(ArrangeCol.Trac, lists));
+        Assert.Equal(20, ArrangeChoices.AddOf(ArrangeCol.Eswt, lists).Count);
+        Assert.Empty(ArrangeChoices.AddOf(ArrangeCol.Sono, lists));
+        Assert.Empty(ArrangeChoices.AddOf(ArrangeCol.Carm, lists));
         var members = typeof(ArrangeChoices).GetMembers().Select(m => m.Name).ToArray();
         Assert.DoesNotContain("Parts", members);
         Assert.DoesNotContain("PartLater", members);

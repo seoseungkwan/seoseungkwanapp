@@ -14,7 +14,8 @@ namespace Precheck.Core.Reception;
 
 /// <summary>
 /// SONO·C-ARM 고르기 목록 저장(spec reception-pick-lists design.md 1절, AC-3501.1·AC-3501.3). 비트에는 쓰지 않고 총괄 PC의 저장 폴더 파일 하나에만 둔다.
-/// 파일 `reception-lists.dat` = 머리 `PRECHECK-STORE-1\n` + IProtector(윈도우 DPAPI CurrentUser)로 감싼 목록 JSON `{ carm, sono }`(PickLists.Write). 날짜와 상관없다.
+/// 파일 `reception-lists.dat` = 머리 `PRECHECK-STORE-1\n` + IProtector(윈도우 DPAPI CurrentUser)로 감싼 목록 JSON `{ carm, sono, pt, ds, eswt, trac }`(PickLists.Write). 날짜와 상관없다.
+/// 새 무리 넷이 모두 없는 옛 파일 `{ carm, sono }`는 그 넷만 기본값으로 읽고, 일부만 있으면 깨진 파일이다(spec reception-arrange-tune AC-3603.1).
 /// 규칙은 XrayMarks·ArrangeMarks와 같다: 잠금 하나로 한 번에 하나, 임시 파일 → 바꾸기, 처음 한 번 읽어 메모리에.
 /// 파일이 없으면 기본값(PickLists.Defaults), 64KB를 넘거나 머리·풀기·모양이 틀리면 기본값 + 기록 E-STORE-BROKEN 한 번. 기록(report)에는 오류 번호만 간다.
 /// </summary>
@@ -112,7 +113,7 @@ public sealed class ReceptionLists
         }
         try
         {
-            return PickLists.TryParse(clear, out var lists) ? lists : null;
+            return PickLists.TryParseStored(clear, out var lists) ? lists : null;
         }
         finally
         {

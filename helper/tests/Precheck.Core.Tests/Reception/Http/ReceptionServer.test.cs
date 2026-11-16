@@ -66,7 +66,7 @@ public class ReceptionServerTests
         Assert.Equal(200, live.Get("/").Status);
     }
 
-    [Fact(DisplayName = "AC-1406.4 머리가 8KB를 넘으면 431, 모양이 틀리면 400, 몸이 4096바이트(/api/xray는 256바이트, AC-3502.4)를 넘으면 413이고 서버는 계속 돈다")]
+    [Fact(DisplayName = "AC-1406.4 머리가 8KB를 넘으면 431, 모양이 틀리면 400, 몸이 8192바이트(/api/xray는 256바이트, AC-3603.5)를 넘으면 413이고 서버는 계속 돈다")]
     public void BadRequestsAnswered()
     {
         using var live = new Live();
@@ -75,7 +75,7 @@ public class ReceptionServerTests
         Assert.Equal(400, Wire.Exchange(live.Port, "get / HTTP/1.1\r\nHost: " + live.Host + "\r\n\r\n").Status);
         var bigBody = "POST /api/xray HTTP/1.1\r\nHost: " + live.Host + "\r\nContent-Length: 300\r\n\r\n" + new string('c', 300);
         Assert.Equal(413, Wire.Exchange(live.Port, bigBody).Status);
-        var hugeBody = "POST /api/xray HTTP/1.1\r\nHost: " + live.Host + "\r\nContent-Length: 5000\r\n\r\n" + new string('d', 5000);
+        var hugeBody = "POST /api/xray HTTP/1.1\r\nHost: " + live.Host + "\r\nContent-Length: 9000\r\n\r\n" + new string('d', 9000);
         Assert.Equal(413, Wire.Exchange(live.Port, hugeBody).Status);
         Assert.Equal(200, live.Get("/").Status);
     }

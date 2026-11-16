@@ -13,6 +13,7 @@ namespace Precheck.Core.Tests.Reception.EswtHits;
 /// <summary>
 /// 충격파 타수·부위 수(spec reception-memo-papers design.md 2절, REQ-3402).
 /// AC-3402.1 충격파 고르기 목록은 "1부위"~"4부위" 넷과 "{타수} {N부위}" 열여섯(2000타·3000타·4000타·6000타)이고, 다른 글은 쓰기에서 400이다.
+/// 목록은 이제 고칠 수 있는 고르기 목록(PickLists)의 기본값이다(spec reception-arrange-tune AC-3603.1·AC-3603.3).
 /// </summary>
 public class EswtChoicesTests : IDisposable
 {
@@ -54,9 +55,9 @@ public class EswtChoicesTests : IDisposable
         var expected = Counts.Concat(Hits.SelectMany(hit => Counts.Select(count => hit + " " + count))).ToArray();
 
         Assert.Equal(20, expected.Length);
-        Assert.Equal(expected, ArrangeChoices.AddOf(ArrangeCol.Eswt));
-        Assert.Equal(expected, ArrangeChoices.DetailsOf(ArrangeCol.Eswt));
-        Assert.Contains("3000타 2부위", ArrangeChoices.AddOf(ArrangeCol.Eswt));
+        Assert.Equal(expected, ArrangeChoices.AddOf(ArrangeCol.Eswt, PickLists.Defaults));
+        Assert.All(expected, det => Assert.True(ArrangeChoices.IsDetail(ArrangeCol.Eswt, det), det));
+        Assert.Contains("3000타 2부위", ArrangeChoices.AddOf(ArrangeCol.Eswt, PickLists.Defaults));
     }
 
     [Theory(DisplayName = "AC-3402.1 add: 충격파 칸에 타수 있는 글도 타수 없는 글도 그대로 det로 넣는다")]

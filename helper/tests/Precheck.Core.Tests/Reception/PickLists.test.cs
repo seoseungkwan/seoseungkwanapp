@@ -31,11 +31,34 @@ internal static class Picks
 
     public static byte[] Bytes(string json) => Encoding.UTF8.GetBytes(json);
 
-    /// <summary>각 무리를 바꾼 목록 JSON(바꾸지 않은 무리는 기본값과 같은 글).</summary>
-    public static string Body(string? procs = null, string? drugs = null, string? parts = null, string? plains = null, string? withs = null) =>
+    /// <summary>
+    /// 각 무리를 바꾼 목록 JSON { carm, sono, pt, ds, eswt: { hits, counts }, trac }(spec reception-arrange-tune AC-3603.2).
+    /// 바꾸지 않은 SONO·C-ARM 무리는 작은 시험 목록, 새 무리(pt·ds·eswt·trac)는 기본값과 같은 글이다.
+    /// </summary>
+    public static string Body(
+        string? procs = null, string? drugs = null, string? parts = null, string? plains = null, string? withs = null,
+        string? pt = null, string? ds = null, string? hits = null, string? counts = null, string? trac = null)
+    {
+        var old = OldBody(procs, drugs, parts, plains, withs);
+        return old.Substring(0, old.Length - 1)
+            + ",\"pt\":" + (pt ?? "[\"ICE\",\"HP\"]") + ",\"ds\":" + (ds ?? "[\"30분\",\"50분\"]")
+            + ",\"eswt\":{\"hits\":" + (hits ?? "[\"2000타\",\"3000타\",\"4000타\",\"6000타\"]")
+            + ",\"counts\":" + (counts ?? "[\"1부위\",\"2부위\",\"3부위\",\"4부위\"]") + "}"
+            + ",\"trac\":" + (trac ?? "[\"목\",\"허리\"]") + "}";
+    }
+
+    /// <summary>새 무리 넷이 없는 옛 목록 JSON { carm, sono }(reception-pick-lists 모양).</summary>
+    public static string OldBody(string? procs = null, string? drugs = null, string? parts = null, string? plains = null, string? withs = null) =>
         "{\"carm\":{\"procs\":" + (procs ?? "[{\"n\":\"목\",\"noDrug\":false},{\"n\":\"리덕션\",\"noDrug\":true}]")
         + ",\"drugs\":" + (drugs ?? "[\"TP\"]") + "},\"sono\":{\"parts\":" + (parts ?? "[\"어깨\",\"무릎\"]")
         + ",\"plains\":" + (plains ?? "[\"소독\"]") + ",\"withs\":" + (withs ?? "[\"DNA\"]") + "}}";
+
+    /// <summary>Body() 끝에 맨 위 칸 하나를 더한 글.</summary>
+    public static string BodyWith(string extra)
+    {
+        var body = Body();
+        return body.Substring(0, body.Length - 1) + "," + extra + "}";
+    }
 
     public static string Strings(IEnumerable<string> names) => "[" + string.Join(",", names.Select(n => JsonSerializer.Serialize(n))) + "]";
 
@@ -83,12 +106,12 @@ public class PickListsTests
 
     // ---- AC-3501.2 모양 ----------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-3501.2 Write는 { carm: { procs: [{ n, noDrug }], drugs }, sono: { parts, plains, withs } }를 목록 차례 그대로 쓴다")]
+    [Fact(DisplayName = "AC-3501.2 Write는 { carm: { procs: [{ n, noDrug }], drugs }, sono: { parts, plains, withs } }(뒤에 새 무리, spec reception-arrange-tune AC-3603.2)를 목록 차례 그대로 쓴다")]
     public void WriteShape()
     {
         using var document = JsonDocument.Parse(Picks.Json(PickLists.Defaults));
         var root = document.RootElement;
-        Assert.Equal(new[] { "carm", "sono" }, root.EnumerateObject().Select(p => p.Name).ToArray());
+        Assert.Equal(new[] { "carm", "sono", "pt", "ds", "eswt", "trac" }, root.EnumerateObject().Select(p => p.Name).ToArray());
         var carm = root.GetProperty("carm");
         Assert.Equal(new[] { "procs", "drugs" }, carm.EnumerateObject().Select(p => p.Name).ToArray());
         var procs = carm.GetProperty("procs").EnumerateArray().ToArray();
@@ -106,8 +129,8 @@ public class PickListsTests
     [Fact(DisplayName = "AC-3501.2 바른 목록은 받는다: 칸 차례는 상관없고, 이름은 앞뒤 빈칸을 뺀 글로 남는다(가운데 빈칸·10글자는 그대로)")]
     public void AcceptsAndTrims()
     {
-        var body = "{\"sono\":{\"withs\":[\" DNA\"],\"plains\":[\"소독 \"],\"parts\":[\"  어깨\",\"위 팔\"]},"
-            + "\"carm\":{\"drugs\":[\"TP\",\"가나다라마바사아자차\"],\"procs\":[{\"noDrug\":true,\"n\":\" 리덕션 \"},{\"n\":\"허리\",\"noDrug\":false}]}}";
+        var body = "{\"trac\":[\"목\"],\"sono\":{\"withs\":[\" DNA\"],\"plains\":[\"소독 \"],\"parts\":[\"  어깨\",\"위 팔\"]},\"eswt\":{\"counts\":[\"1부위\"],\"hits\":[]},"
+            + "\"carm\":{\"drugs\":[\"TP\",\"가나다라마바사아자차\"],\"procs\":[{\"noDrug\":true,\"n\":\" 리덕션 \"},{\"n\":\"허리\",\"noDrug\":false}]},\"ds\":[\"30분\"],\"pt\":[\"HP\"]}";
         Assert.True(PickLists.TryParse(Picks.Bytes(body), out var lists));
         Assert.Equal(new[] { ("리덕션", true), ("허리", false) }, lists.Procs.Select(p => (p.N, p.NoDrug)).ToArray());
         Assert.Equal(new[] { "TP", "가나다라마바사아자차" }, lists.Drugs);
@@ -148,7 +171,7 @@ public class PickListsTests
         new object[] { "null", "null" },
         new object[] { "carm 없음", "{\"sono\":{\"parts\":[\"어깨\"],\"plains\":[],\"withs\":[]}}" },
         new object[] { "sono 없음", "{\"carm\":{\"procs\":[{\"n\":\"목\",\"noDrug\":false}],\"drugs\":[]}}" },
-        new object[] { "모르는 맨 위 칸", Picks.Body().TrimEnd('}') + "},\"x\":1}" },
+        new object[] { "모르는 맨 위 칸", Picks.BodyWith("\"x\":1") },
         new object[] { "같은 칸 두 번", "{\"carm\":{\"procs\":[{\"n\":\"목\",\"noDrug\":false}],\"drugs\":[]},\"carm\":{\"procs\":[{\"n\":\"목\",\"noDrug\":false}],\"drugs\":[]},\"sono\":{\"parts\":[\"어깨\"],\"plains\":[],\"withs\":[]}}" },
         new object[] { "carm에 모르는 칸", "{\"carm\":{\"procs\":[{\"n\":\"목\",\"noDrug\":false}],\"drugs\":[],\"x\":[]},\"sono\":{\"parts\":[\"어깨\"],\"plains\":[],\"withs\":[]}}" },
         new object[] { "drugs 없음", "{\"carm\":{\"procs\":[{\"n\":\"목\",\"noDrug\":false}]},\"sono\":{\"parts\":[\"어깨\"],\"plains\":[],\"withs\":[]}}" },
@@ -390,7 +413,7 @@ public class ReceptionListsTests : IDisposable
     {
         new object[] { "JSON 아님", Picks.Bytes("not json") },
         new object[] { "배열", Picks.Bytes("[]") },
-        new object[] { "모르는 칸(날짜)", Picks.Bytes(Picks.Body().TrimEnd('}') + "},\"day\":\"20261112\"}") },
+        new object[] { "모르는 칸(날짜)", Picks.Bytes(Picks.BodyWith("\"day\":\"20261112\"")) },
         new object[] { "시술 0개", Picks.Bytes(Picks.Body(procs: "[]")) },
         new object[] { "| 든 이름", Picks.Bytes(Picks.Body(parts: "[\"a|b\"]")) },
         new object[] { "잘못된 UTF-8", new byte[] { 0x7B, 0xC3, 0x28, 0x7D } },
@@ -455,7 +478,7 @@ public class ReceptionListsTests : IDisposable
         Assert.Empty(reports);
     }
 
-    [Fact(DisplayName = "AC-3501.3 파일은 저장 폴더의 reception-lists.dat 하나(임시 파일 없음)이고 머리 PRECHECK-STORE-1 뒤 IProtector 암호문이며, 푼 글은 목록 { carm, sono }뿐이다(날짜 없음)")]
+    [Fact(DisplayName = "AC-3501.3 파일은 저장 폴더의 reception-lists.dat 하나(임시 파일 없음)이고 머리 PRECHECK-STORE-1 뒤 IProtector 암호문이며, 푼 글은 목록 { carm, sono, pt, ds, eswt, trac }뿐이다(날짜 없음)")]
     public void OneEncryptedFileWithoutDay()
     {
         Open().Save(Changed());
@@ -465,7 +488,7 @@ public class ReceptionListsTests : IDisposable
         Assert.Equal(1, protector.ProtectCalls);
         foreach (var text in new[] { "꼬리뼈", "새약", "carm", "sono" }) Assert.False(Contains(data, text), text);
         using var document = JsonDocument.Parse(protector.LastPlain!);
-        Assert.Equal(new[] { "carm", "sono" }, document.RootElement.EnumerateObject().Select(p => p.Name).ToArray());
+        Assert.Equal(new[] { "carm", "sono", "pt", "ds", "eswt", "trac" }, document.RootElement.EnumerateObject().Select(p => p.Name).ToArray());
         Assert.True(PickLists.TryParse(protector.LastPlain!, out var stored));
         Assert.Equal(Picks.Json(Changed()), Picks.Json(stored));
         Assert.NotEqual(XrayMarks.FileName, ReceptionLists.FileName);

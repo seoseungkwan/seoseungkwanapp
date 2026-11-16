@@ -36,7 +36,7 @@ describe('REQ-1406 의원 와이파이 문: HTTP 읽기·답·문 지키기 (C# 
     expectAc('AC-1406.2')
   })
 
-  it('AC-1406.3 쓰기는 POST에 Origin = http://{Host}, X-Reception: 1, Content-Type: application/json, 몸 4096바이트(AC-3502.4) 이하일 때만 받고(넘으면 413), OPTIONS도 읽으며 어떤 답에도 CORS 머리가 없다', () => {
+  it('AC-1406.3 쓰기는 POST에 Origin = http://{Host}, X-Reception: 1, Content-Type: application/json, 몸 8192바이트(AC-3603.5) 이하일 때만 받고(넘으면 413), OPTIONS도 읽으며 어떤 답에도 CORS 머리가 없다', () => {
     expectAc('AC-1406.3')
   })
 

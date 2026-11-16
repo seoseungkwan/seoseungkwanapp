@@ -18,7 +18,7 @@ namespace Precheck.Core.Tests.Reception.HttpGate;
 /// AC-1406.4 요청 줄 1KB·머리 8KB를 넘으면 431, 5초(주입한 시간) 안에 다 오지 않으면 408, 아무것도 안 오거나 끊기면 답 없이 끊는다.
 ///           모양이 틀린 요청은 400이고 그 연결만 끝난다(읽기 틀에 남는 상태가 없다).
 /// AC-1406.2 Host 머리를 읽는다(대소문자 무시, 두 번 오면 이어 붙여 ClientGuard 검사에서 떨어진다).
-/// AC-1406.3 쓰기 요청의 몸은 4096바이트까지(넘으면 413, spec reception-pick-lists AC-3502.4), Content-Length만 받는다(Transfer-Encoding은 400), OPTIONS도 읽는다.
+/// AC-1406.3 쓰기 요청의 몸은 8192바이트까지(넘으면 413, spec reception-arrange-tune AC-3603.5), Content-Length만 받는다(Transfer-Encoding은 400), OPTIONS도 읽는다.
 /// 메모리 스트림과 가짜 연결(조각마다 기다림·영영 기다림)만 쓴다. 주소는 가짜 사설 주소다.
 /// </summary>
 public class HttpRequestReaderTests
@@ -59,12 +59,12 @@ public class HttpRequestReaderTests
 
     // ---- AC-1406.4 길이 제한 ----
 
-    [Fact(DisplayName = "AC-1406.4 제한 값: 요청 줄 1024바이트, 머리 8192바이트, 몸 4096바이트(AC-3502.4), 기본 시간 5초")]
+    [Fact(DisplayName = "AC-1406.4 제한 값: 요청 줄 1024바이트, 머리 8192바이트, 몸 8192바이트(AC-3603.5), 기본 시간 5초")]
     public void Limits()
     {
         Assert.Equal(1024, HttpRequestReader.MaxRequestLine);
         Assert.Equal(8192, HttpRequestReader.MaxHeaderBytes);
-        Assert.Equal(4096, HttpRequestReader.MaxBody);
+        Assert.Equal(8192, HttpRequestReader.MaxBody);
         Assert.Equal(TimeSpan.FromSeconds(5), HttpRequestReader.DefaultTimeout);
     }
 
@@ -353,16 +353,16 @@ public class HttpRequestReaderTests
         Assert.Equal(Ascii(body), request.Body);
     }
 
-    [Fact(DisplayName = "AC-1406.3 몸이 꼭 4096바이트면 읽는다")]
+    [Fact(DisplayName = "AC-1406.3 몸이 꼭 8192바이트면 읽는다")]
     public void BodyAtLimit()
     {
-        var body = new string('x', 4096);
-        var request = Must(ReadAll(Ascii(Head("POST /api/lists HTTP/1.1", HostLine, "Content-Length: 4096") + body)));
-        Assert.Equal(4096, request.Body.Length);
+        var body = new string('x', 8192);
+        var request = Must(ReadAll(Ascii(Head("POST /api/lists HTTP/1.1", HostLine, "Content-Length: 8192") + body)));
+        Assert.Equal(8192, request.Body.Length);
     }
 
-    [Theory(DisplayName = "AC-1406.3 Content-Length가 4096을 넘으면 몸을 읽지 않고 413")]
-    [InlineData("4097")]
+    [Theory(DisplayName = "AC-1406.3 Content-Length가 8192를 넘으면 몸을 읽지 않고 413")]
+    [InlineData("8193")]
     [InlineData("10000")]
     [InlineData("1000000")]
     [InlineData("99999999999999999999999999")]
