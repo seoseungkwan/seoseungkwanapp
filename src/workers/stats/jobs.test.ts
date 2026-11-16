@@ -1700,9 +1700,10 @@ describe('AC-4906.3 sectionsJob·sections: 세 칸 보기와 함께 sunapRates',
     const rates = ratesOf(view)
     expect(Object.keys(rates).sort()).toEqual(RATE_KEYS)
     expect(rates).toEqual({ visits: 7, first_n: 5, d90_n: 1, ret_n: 1, block_n: 6, pt_n: 1, first_block: 4, d90_block: 1, ret_block: 1 })
-    // 세 칸은 sunap 없이 묻은 답과 같다
-    const { sunap, ...rest } = readyIn(view)
+    // 세 칸은 sunap 없이 묻은 답과 같다(묶음과 함께 오는 원장님별 sunapDoctors도 뺀다, spec sunap-doctors AC-5004.1)
+    const { sunap, sunapDoctors, ...rest } = readyIn(view)
     expect(sunap).toBe(rates)
+    expect(sunapDoctors?.total).toEqual(rates)
     expect(rest).toEqual(sectionsJob(loadJob(v4Json(), OPTS).bit, WHOLE))
   })
 
@@ -1770,5 +1771,80 @@ describe('AC-4906.3 sectionsJob·sections: 세 칸 보기와 함께 sunapRates',
     expect(received.at(-1)?.sunap).toEqual({ block: { id: block.id, codes: block.codes, out: block.out, cond: block.cond }, pt: SUNAP.pt })
     expect(JSON.stringify(received)).not.toContain('가짜')
     expect(ratesOf(view)).toEqual(ratesOf(sectionsJob(loadJob(v4Json(), OPTS).bit, { ...WHOLE, sunap: { block: received.at(-1)!.sunap!.block, pt: SUNAP.pt } })))
+  })
+})
+
+// ── 통계 '예약·전환'의 원장님별(spec sunap-doctors AC-5004.1): 묶음을 실어 물으면 같은 기간·접수 줄·처방 줄·묶음과 접수 줄 진료의로 원장님별 표를 함께 싣는다 ──
+// v4 답(위 V3_EXTRA 접수 줄): 김가상(D9001) = 1번 9/1·3번 9/2·5번 9/3·1번 10/5(90일초진), 이가상(D9002) = 2번 9/1·4번 9/2·6번 11/1(재진).
+// Block = MM042, 물리치료 = B4001(3번 환자 9/2만). 묶음 열쇠는 지어낸 값이다
+describe('AC-5004.1 sectionsJob·sections: 묶음을 실어 물으면 원장님별 표(sunapDoctors)', () => {
+  const SUNAP = { block: { id: 't00000000000000b1', codes: ['MM042'] }, pt: { id: 't00000000000000b2', codes: ['B4001'] } }
+  const KIM = { visits: 4, first_n: 3, d90_n: 1, ret_n: 0, block_n: 3, pt_n: 1, first_block: 2, d90_block: 1, ret_block: 0 }
+  const LEE = { visits: 3, first_n: 2, d90_n: 0, ret_n: 1, block_n: 3, pt_n: 0, first_block: 2, d90_block: 0, ret_block: 1 }
+  const doctorsOf = (view: BitSectionsView) => {
+    const ready = readyIn(view)
+    if (!('sunapDoctors' in ready) || ready.sunapDoctors === undefined) throw new Error('sunapDoctors 열쇠가 없다')
+    return ready.sunapDoctors
+  }
+
+  it('AC-5004.1: 불러온 범위 전체 — 원장님마다 sunapRates와 같은 규칙으로 세고(내원 많은 차례), 합계는 같은 답의 sunap과 같다', () => {
+    const view = sectionsJob(loadJob(v4Json(), OPTS).bit, { ...WHOLE, sunap: SUNAP })
+    const table = doctorsOf(view)
+    if (table === null) throw new Error('원장님 두 분인데 표가 없다')
+    expect(table.rows.map((row) => [row.label, row.rates])).toEqual([
+      ['김가상', KIM],
+      ['이가상', LEE],
+    ])
+    expect(table.total).toEqual(readyIn(view).sunap)
+  })
+
+  it('AC-5004.1: 불러온 범위의 일부를 고르면 그 기간 환자·날만 원장님별로 센다', () => {
+    const table = doctorsOf(sectionsJob(loadJob(v4Json(), OPTS).bit, { ...OCTOBER_ON, previous: SEPTEMBER, sunap: SUNAP }))
+    expect(table?.rows.map((row) => [row.label, row.rates.visits, row.rates.d90_n, row.rates.ret_n])).toEqual([
+      ['김가상', 1, 1, 0],
+      ['이가상', 1, 0, 1],
+    ])
+  })
+
+  it('AC-5004.1: 접수 줄에 진료의가 없는 환자·날은 "진료의 미지정" 줄로 함께 나온다', () => {
+    // 6번 환자 11/1 접수만 진료의를 비운다 → 김가상 4 · 이가상 2 · 미지정 1
+    const visits = V3_EXTRA.visits.map((line) => (line[0] === CHARTS[5] ? [...line.slice(0, 4), null] : line))
+    const view = sectionsJob(loadJob(v3Json({ v: 4, patientDays: V4_LINES, visits }), OPTS).bit, { ...WHOLE, sunap: SUNAP })
+    const table = doctorsOf(view)
+    expect(table?.rows.map((row) => [row.label, row.rates.visits])).toEqual([
+      ['김가상', 4],
+      ['이가상', 2],
+      ['진료의 미지정', 1],
+    ])
+    expect(table?.total).toEqual(readyIn(view).sunap)
+  })
+
+  it('AC-5004.1: 그 기간 원장님이 한 분 이하면 null이고, 묶음 없이 물으면 sunapDoctors 열쇠가 없다', () => {
+    const { bit } = loadJob(v4Json(), OPTS)
+    // 10월은 1번 환자 10/5(김가상)뿐이다(차트번호 없는 접수는 환자·날 줄이 없다)
+    const october = readyIn(sectionsJob(bit, { from: '2026-10-01', to: '2026-10-31', sunap: SUNAP }))
+    expect(october.sunap?.visits).toBe(1)
+    expect('sunapDoctors' in october).toBe(true)
+    expect(october.sunapDoctors).toBeNull()
+    expect('sunapDoctors' in readyIn(sectionsJob(bit, WHOLE))).toBe(false)
+    expect(sectionsJob(loadJob(helperJson(), OPTS).bit, { ...WHOLE, sunap: SUNAP })).toEqual({ kind: 'old-helper' })
+  })
+
+  it('AC-5004.1·AC-2702.4: Worker 입구(host.sections)의 sections-result에 원장님별 표가 실리고, 원장님 이름과 수뿐이다(진료의 코드·차트번호 없음)', async () => {
+    const { host, sent } = hostUnderTest()
+    bridgeMessages('s1', v4Json()).forEach((m) => host.fromBridge(m))
+    await host.load(loadRequest('s1'))
+    sent.length = 0
+    host.sections({ ...sectionsRequest('b1', WHOLE), sunap: SUNAP })
+    expect(sent).toHaveLength(1)
+    const [reply] = sent
+    if (reply.type !== 'sections-result') throw new Error('sections-result가 아니다')
+    const table = doctorsOf(reply.view)
+    expect(table?.rows.map((row) => [row.label, row.rates])).toEqual([
+      ['김가상', KIM],
+      ['이가상', LEE],
+    ])
+    expect(table?.rows.map((row) => row.code)).toEqual([null, null])
+    expectOnlyLabelsAndNumbers(sent)
   })
 })

@@ -12,7 +12,7 @@ import {
 } from '@/lib/analytics/rxVisitSplit'
 import { doctorStats } from '@/lib/analytics/doctorStats'
 import { patientMix } from '@/lib/analytics/patientMix'
-import { sunapRates } from '@/lib/analytics/sunapRates'
+import { sunapDoctors, sunapRates } from '@/lib/analytics/sunapRates'
 import { visitHours } from '@/lib/analytics/visitHours'
 import { createPatientIds } from '@/lib/parsers/bit'
 import { fillGroupCounts } from '@/lib/payload/groupCounts'
@@ -35,6 +35,7 @@ import type {
   StatsSunapGroups,
   StatsWorkerMessage,
 } from '@/types/stats'
+import type { DoctorBreakdown } from '@/types/sunap'
 import { createAssembler, StatsDataError } from './assemble'
 import {
   dashed,
@@ -205,7 +206,8 @@ export function splitJob(memory: StatsMemory | null, { from, to }: { from: strin
 
 // 화면이 고른 기간과 견줄 기간을 주면 메모리의 접수 줄로 세 칸 보기를 낸다. 결과에는 묶음 이름과 수만 있다(AC-2702.3·AC-2702.4).
 // 견줄 기간은 불러온 범위 안에 다 들어갈 때만 센다(일부만 걸치면 견주지 않는다, AC-2703.9). 시간대별·원장님별은 견주지 않는다(범위 밖).
-// 묻기에 Block·물리치료 묶음(sunap)이 있으면 같은 기간의 sunapRates(숫자 아홉 칸)를 함께 싣는다(spec sunap-ilji AC-4906.3). 없으면 열쇠가 없다
+// 묻기에 Block·물리치료 묶음(sunap)이 있으면 같은 기간의 sunapRates(숫자 아홉 칸)를 함께 싣는다(spec sunap-ilji AC-4906.3). 없으면 열쇠가 없다.
+// 같은 때 같은 입력 + 접수 줄 진료의로 원장님별 표(sunapDoctors, 원장님 한 분 이하면 null)도 싣는다(spec sunap-doctors AC-5004.1)
 export function sectionsJob(
   bit: BitMemory | null,
   request: { from: string; to: string; previous?: DateRange | null; sunap?: StatsSunapGroups },
@@ -232,7 +234,19 @@ export function sectionsJob(
   }
   const { sunap } = request
   if (sunap === undefined) return view
-  return { ...view, sunap: sunapRates({ from, to, days: bit.patientDays, rows: bit.consumption, block: sunap.block, pt: sunap.pt }) }
+  const counted = { from, to, days: bit.patientDays, rows: bit.consumption, block: sunap.block, pt: sunap.pt }
+  return {
+    ...view,
+    sunap: sunapRates(counted),
+    sunapDoctors: withoutCodes(sunapDoctors({ ...counted, visits: extra.visits, doctors: extra.doctors })),
+  }
+}
+
+// 화면에는 원장님 이름과 수만 보낸다: 진료의 코드는 비운다(stats-bit-sections AC-2702.4, 화면 표는 이름만 쓴다).
+// 이름이 없는 진료의는 label이 이미 코드다(AC-2705.3과 같음)
+function withoutCodes(table: DoctorBreakdown | null): DoctorBreakdown | null {
+  if (table === null) return null
+  return { rows: table.rows.map(({ label, rates }) => ({ code: null, label, rates })), total: table.total }
 }
 
 type PendingText = { promise: Promise<string>; resolve(text: string | Promise<string>): void; reject(reason: unknown): void }

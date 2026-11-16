@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 import { formatCount } from '@/components/charts/format'
 import { ErrorCard } from '@/components/common/ErrorCard'
+import { DoctorTable } from '@/components/sunap/DoctorTable'
 import { sunapPct } from '@/components/stats/sunapView'
 import { ds } from '@/components/ui/classes'
 import type { SunapRates, SunapTotals } from '@/types/sunap'
@@ -12,7 +13,8 @@ import { EmptyNote, Note, Section } from './parts'
 
 // 통계 '예약·전환' 칸 (spec sunap-ilji REQ-4906 AC-4906.2·AC-4906.3, 시안 docs/mockups/sunap-ilji/index.html ?s=stats).
 // 큰 카드 '예약·전환'(StatsSections) 안의 칸 셋: 초진 예약률 · 90일 예약률(수납일지 마감한 날의 합) · Block 전환(비트에서 바로 센 기간 전체).
-// 넓은 화면은 세 열, 휴대폰은 한 열이다. 글은 시안 그대로이고 원장님별 표·시안 꼬리표 '새 칸'은 없다(design.md '시안과 다른 곳').
+// 넓은 화면은 세 열, 휴대폰은 한 열이다. 글은 시안 그대로이고 시안 꼬리표 '새 칸'은 없다(design.md '시안과 다른 곳').
+// 세 칸 아래 원장님별 표(spec sunap-doctors AC-5004.2)는 답에 sunapDoctors가 있을 때만(원장님 두 분 이상) 보인다.
 // 비율은 sunapView(sunapPct)가 만들고 분모가 0이면 '–'다. 숫자는 props로만 받는다(저장소·Worker는 StatsScreen이 잇는다)
 
 /** 마감한 날 한 줄에서 이 칸이 쓰는 것(listSunapDays의 SunapDay가 그대로 들어온다. 섹션은 저장소를 부르지 않는다) */
@@ -25,7 +27,7 @@ export type SunapGroupsState = 'reading' | 'failed' | 'none' | 'chosen'
 export type StatsSunapShown = { closed: SunapClosed; groups: SunapGroupsState; onReread(): void }
 
 type Props = StatsSunapShown & {
-  bit: BitSectionsShown // 세 칸 답. sunapRates는 답의 sunap에 있다(묶음을 실어 물었을 때만)
+  bit: BitSectionsShown // 세 칸 답. sunapRates는 답의 sunap, 원장님별 표는 sunapDoctors에 있다(묶음을 실어 물었을 때만)
   worked: readonly string[] // 진료한 날(기간 안 저장된 날 숫자에서 환자가 있는 날). 비면 모른다
 }
 
@@ -34,6 +36,7 @@ const RSV_D90 = '90일 예약률'
 const RSV_DESC = '수납일지 마감한 날만'
 const BLOCK = 'Block 전환'
 const BLOCK_DESC = '비트에서 바로 · 기간 전체'
+const DOCTOR_HINT = '비트에서 바로 · 수납일지에서 고친 체크는 안 들어가요'
 const RESERVED = '주사치료·진료(경과) 예약'
 const NO_CLOSED = '수납일지를 마감한 날이 없어요'
 const NO_GROUPS = '수납일지 설정에서 Block·물리치료 묶음을 고르면 보여요'
@@ -172,6 +175,18 @@ function BlockBody({ groups, bit }: { groups: SunapGroupsState; bit: BitSections
   return state.sunap === undefined ? null : <BlockRows rates={state.sunap} />
 }
 
+// 세 칸 아래 원장님별 표. Block 전환 칸과 같은 갈래로 묶음을 골랐고 접수가 있는 답일 때만, 원장님이 한 분 이하(null)·열쇠 없음이면 없다
+function DoctorBody({ groups, bit }: { groups: SunapGroupsState; bit: BitSectionsShown }) {
+  if (groups !== 'chosen') return null
+  const state = bitState(bit)
+  if (state.kind !== 'ready' || !state.sunapDoctors) return null
+  return (
+    <div className="mt-4">
+      <DoctorTable data={state.sunapDoctors} hint={DOCTOR_HINT} />
+    </div>
+  )
+}
+
 export function SunapSection({ closed, groups, bit, worked, onReread }: Props) {
   const sums = closed === 'reading' || closed === 'failed' ? 'blank' : closed.length === 0 ? 'empty' : sumClosed(closed)
   const failed = closed === 'failed' || groups === 'failed'
@@ -188,6 +203,7 @@ export function SunapSection({ closed, groups, bit, worked, onReread }: Props) {
           <BlockBody groups={groups} bit={bit} />
         </Section>
       </div>
+      <DoctorBody groups={groups} bit={bit} />
       {failed && (
         // 오류 카드 + 카드 밖 [다시 읽기](매출 칸 읽기 실패와 같은 모양)
         <div className="mt-4">

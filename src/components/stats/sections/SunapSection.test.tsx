@@ -7,7 +7,7 @@ import { VISIT_HOURS } from '@/lib/analytics/visitHours'
 import type { SunapDay } from '@/lib/storage/sunap'
 import type { DayPayload } from '@/types/payload'
 import type { BitSectionsView, PatientMix } from '@/types/stats'
-import { SUNAP_TOTAL_KEYS, type SunapRates, type SunapTotals } from '@/types/sunap'
+import { SUNAP_TOTAL_KEYS, type DoctorBreakdown, type SunapRates, type SunapTotals } from '@/types/sunap'
 import { StatsCard } from './parts'
 import type { BitSectionsShown } from './PatientMixSection'
 import { SunapSection, type SunapClosed, type SunapGroupsState } from './SunapSection'
@@ -26,13 +26,23 @@ const CLOSED: SunapDay[] = DATES.slice(0, 12).map((day, i) =>
 // 비트에서 바로 센 기간 전체(시안 Block 전환 칸)
 const RATES: SunapRates = { visits: 1388, first_n: 131, d90_n: 95, ret_n: 1162, block_n: 302, pt_n: 829, first_block: 58, d90_block: 31, ret_block: 213 }
 const MIX: PatientMix = { total: { people: 900, visits: 1388 }, compared: false, age: [], insurance: [], city: [], town: [] }
-const ready = (sunap?: SunapRates, visits = 1388): BitSectionsView => ({
+const ready = (sunap?: SunapRates, visits = 1388, sunapDoctors?: DoctorBreakdown | null): BitSectionsView => ({
   kind: 'ready',
   mix: { all: { ...MIX, total: { people: 900, visits } }, new: MIX },
   hours: { hours: [...VISIT_HOURS], rows: [], unknown: 0, peak: null },
   doctors: { kind: 'single' },
   ...(sunap === undefined ? {} : { sunap }),
+  ...(sunapDoctors === undefined ? {} : { sunapDoctors }),
 })
+// 원장님별(spec sunap-doctors AC-5004.2): RATES를 두 분으로 나눈 지어낸 숫자. Worker는 진료의 코드를 비워 보낸다(AC-2702.4)
+const DOCTORS: DoctorBreakdown = {
+  rows: [
+    { code: null, label: '김가상', rates: { visits: 800, first_n: 80, d90_n: 55, ret_n: 665, block_n: 180, pt_n: 480, first_block: 35, d90_block: 18, ret_block: 127 } },
+    { code: null, label: '이가상', rates: { visits: 588, first_n: 51, d90_n: 40, ret_n: 497, block_n: 122, pt_n: 349, first_block: 23, d90_block: 13, ret_block: 86 } },
+  ],
+  total: RATES,
+}
+const DOCTOR_HINT = '비트에서 바로 · 수납일지에서 고친 체크는 안 들어가요'
 
 const RSV_FIRST = '초진 예약률'
 const RSV_D90 = '90일 예약률'
@@ -250,5 +260,54 @@ describe('AC-4906.2·AC-4906.3 셈 도우미(sunapView)', () => {
     const day = (ymd: string, patients: number) => ({ day: ymd, totals: { patients, newPatients: 0, returning: patients, unknown: 0 } }) as DayPayload
     const days = [day('2026-11-03', 5), day('2026-11-01', 0), day('2026-11-02', 7), day('2026-11-02', 7), day('2026-10-31', 9), day('2026-11-17', 4)]
     expect(workedDays(days, { from: '2026-11-01', to: TODAY })).toEqual(['2026-11-02', '2026-11-03'])
+  })
+})
+
+describe('AC-5004.2 원장님별 표(세 칸 아래, 비트에서 바로)', () => {
+  const panel = () => screen.queryByRole('region', { name: '원장님별' })
+
+  it('AC-5004.2: 답에 sunapDoctors가 있으면 세 칸 아래·[어떻게 세나요?] 위에 원장님별 표와 hint가 있다', () => {
+    draw({ bit: ready(RATES, 1388, DOCTORS) })
+    const table = panel()
+    if (table === null) throw new Error('원장님별 표가 없다')
+    expect(within(table).getByText(DOCTOR_HINT)).toBeTruthy()
+    const names = within(table)
+      .getAllByRole('row')
+      .slice(1)
+      .map((row) => row.firstElementChild?.textContent)
+    expect(names).toEqual(['김가상', '이가상', '합계'])
+    expect(within(table).getAllByRole('row').at(-1)?.textContent).toContain('1,388명')
+    // 세 칸 묶음 바로 다음, 세 칸 안이 아니다
+    const grid = cell(RSV_FIRST).parentElement!
+    expect(grid.contains(table)).toBe(false)
+    expect(grid.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const how = screen.getByRole('button', { name: '어떻게 세나요?' })
+    expect(table.compareDocumentPosition(how) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // 세 칸 글은 그대로다
+    expect(rowsOf(BLOCK)[0]).toEqual(['초진+Block', '58/131', '44.3%'])
+  })
+
+  it('AC-5004.2: sunapDoctors가 null(원장님 한 분 이하)이거나 없으면 표가 없다', () => {
+    for (const bit of [ready(RATES, 1388, null), ready(RATES)]) {
+      const { unmount } = draw({ bit })
+      expect(panel()).toBeNull()
+      expect(screen.queryByRole('table')).toBeNull()
+      expect(document.body.textContent).not.toContain('원장님별')
+      unmount()
+    }
+  })
+
+  it('AC-5004.2: 빈 상태 갈래는 그대로다 — 묶음 설정이 없거나 읽는 중·실패, 접수가 없으면 답에 표가 있어도 그리지 않는다', () => {
+    const cases: [SunapGroupsState, BitSectionsShown][] = [
+      ['none', ready(RATES, 1388, DOCTORS)],
+      ['reading', ready(RATES, 1388, DOCTORS)],
+      ['failed', ready(RATES, 1388, DOCTORS)],
+      ['chosen', ready(RATES, 0, DOCTORS)],
+    ]
+    for (const [groups, bit] of cases) {
+      const { unmount } = draw({ groups, bit })
+      expect(panel()).toBeNull()
+      unmount()
+    }
   })
 })
