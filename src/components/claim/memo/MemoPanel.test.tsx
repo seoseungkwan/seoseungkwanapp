@@ -601,7 +601,7 @@ describe('REQ-3103 복사(완료)', () => {
     expect(statusLine().textContent).toBe('복사했고 완료했어요. 비트 메모 칸에 붙여 넣으세요.')
   })
 
-  it('AC-3103.2: [완료 풀기]를 누르면 Worker에 memoUndone을 보내고 메모 보기를 다시 받아 완료가 풀린다(AC-3104.2)', async () => {
+  it('AC-3103.2·AC-4804.1: [완료 풀기]를 누르면 Worker에 memoUndone을 보내고 메모 보기를 다시 받아 완료가 풀린다(AC-3104.2). 상태 줄은 없어진다', async () => {
     const { user, worker } = await toMemo(live(memoView()))
     fakeClipboard()
     await user.click(copyButton())
@@ -611,7 +611,9 @@ describe('REQ-3103 복사(완료)', () => {
     await waitFor(() => expect(copyButton().getAttribute('aria-label')).toBe('C 복사(완료)'))
     expect(rowOf('가상환자a').textContent).not.toContain('완료')
     expect(within(detail()).queryByRole('button', { name: '완료 풀기' })).toBeNull()
-    expect(statusLine().textContent).toBe('누르면 우리 메모가 복사되고 완료로 바뀌어요. 그다음 비트 메모 칸에 붙여 넣으세요.')
+    // AC-4804.1: 기본(ready)이면 상태 줄이 없다('누르면 우리 메모가 복사되고…' 글 없음)
+    expect(copyButton().parentElement!.querySelector('p')).toBeNull()
+    expect(detail().textContent).not.toContain('누르면 우리 메모가 복사되고')
   })
 
   it('AC-3103.3: 복사가 안 되면 Worker에 보내지 않고 완료로 바뀌지 않으며, 줄에 복사 못 함이 남고 상태 줄은 오류 알림이다. 다시 눌러 되면 복사 못 함이 지워진다', async () => {
@@ -647,7 +649,7 @@ describe('REQ-3103 복사(완료)', () => {
     expect(rowOf('가상환자c').textContent).toContain('복사 못 함')
   })
 
-  it('AC-3103.4: 복사가 오래 걸리면 단추는 복사 중…으로 막히고 C도 무시된다. 그사이 다른 사람으로 옮겨도 완료는 누른 사람에게 붙는다', async () => {
+  it('AC-3103.4·AC-4804.1: 복사가 오래 걸리면 단추는 복사 중…으로 막히고 C도 무시된다. 그사이 다른 사람으로 옮겨도 완료는 누른 사람에게 붙고 지금 사람은 상태 줄이 없다', async () => {
     const { user, worker } = await toMemo(live(memoView()))
     const clip = fakeClipboard()
     clip.hold = true
@@ -667,7 +669,9 @@ describe('REQ-3103 복사(완료)', () => {
     expect(shown()).toBe('가상환자b')
     expect(rowOf('가상환자b').textContent).not.toContain('완료')
     expect(copyButton().disabled).toBe(false)
-    expect(statusLine().textContent).toBe('누르면 우리 메모가 복사되고 완료로 바뀌어요. 그다음 비트 메모 칸에 붙여 넣으세요.')
+    // AC-4804.1: 기본(ready)이면 상태 줄이 없다('누르면 우리 메모가 복사되고…' 글 없음)
+    expect(copyButton().parentElement!.querySelector('p')).toBeNull()
+    expect(detail().textContent).not.toContain('누르면 우리 메모가 복사되고')
   })
 
   it('AC-3103.4: 오래 걸린 복사가 실패하면 옮긴 뒤에도 누른 사람 줄에 복사 못 함이 남고 지금 사람의 상태 줄은 그대로다', async () => {
@@ -713,14 +717,16 @@ describe('REQ-3103 복사(완료)', () => {
     expect(worker.of('memoCopied')).toEqual([])
   })
 
-  it('AC-3103.7: 다른 사람으로 옮기면 앞 사람의 잠깐 글(복사했고 완료했어요)은 지우고 새 사람의 상태를 보이며, 돌아오면 완료한 환자예요다', async () => {
+  it('AC-3103.7·AC-4804.1: 다른 사람으로 옮기면 앞 사람의 잠깐 글(복사했고 완료했어요)은 지우고 새 사람의 상태(기본이면 상태 줄 없음)를 보이며, 돌아오면 완료한 환자예요다', async () => {
     const { user } = await toMemo(live(memoView()))
     fakeClipboard()
     await user.click(copyButton())
     await waitFor(() => expect(statusLine().textContent).toBe('복사했고 완료했어요. 비트 메모 칸에 붙여 넣으세요.'))
     await user.click(within(detail()).getByRole('button', { name: '↓ 다음 사람' }))
     expect(shown()).toBe('가상환자b')
-    expect(statusLine().textContent).toBe('누르면 우리 메모가 복사되고 완료로 바뀌어요. 그다음 비트 메모 칸에 붙여 넣으세요.')
+    // AC-4804.1: 기본(ready)이면 상태 줄이 없다('누르면 우리 메모가 복사되고…' 글 없음)
+    expect(copyButton().parentElement!.querySelector('p')).toBeNull()
+    expect(detail().textContent).not.toContain('누르면 우리 메모가 복사되고')
     await user.click(within(detail()).getByRole('button', { name: '↑ 앞 사람' }))
     expect(shown()).toBe('가상환자a')
     expect(statusLine().textContent).toBe('완료한 환자예요. 다시 복사해도 완료는 그대로예요.')

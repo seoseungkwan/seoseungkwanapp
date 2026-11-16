@@ -66,8 +66,9 @@ export function BitMemoCard({ row, state, afterEntry, locked }: { row: Pick<Visi
     )
   }
 
+  // lg 이상 메모 확인 ① 칸에서는 우리 메모 칸과 남은 높이를 똑같이 나누고 넘치면 카드 안에서 스크롤된다(claim-memo-fit AC-4803.3)
   return (
-    <div role="group" aria-label="비트에 저장된 청구메모" className="flex min-w-0 flex-col gap-1 rounded-control border border-line bg-canvas px-3 py-2">
+    <div role="group" aria-label="비트에 저장된 청구메모" className="flex min-w-0 flex-col gap-1 rounded-control border border-line bg-canvas px-3 py-2 lg:min-h-24 lg:flex-1 lg:overflow-y-auto">
       <div className="flex flex-wrap items-center gap-1.5">
         <b className="text-small font-semibold text-ink">비트에 저장된 청구메모</b>
         {chips}

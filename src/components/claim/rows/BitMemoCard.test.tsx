@@ -74,3 +74,12 @@ describe('AC-018.25 카드', () => {
     expect(card().textContent).toContain('14:05 뒤에 비트에 입력한 사람이에요. 다시 불러오면 맞춰져요.')
   })
 })
+
+describe('AC-4803.3 메모 확인 ① 칸', () => {
+  it('AC-4803.3: 카드 뿌리는 lg에서 우리 메모 칸과 남은 높이를 똑같이 나누고(lg:flex-1, 가장 작게 lg:min-h-24) 넘치면 카드 안에서 스크롤된다. 지금 class는 그대로다', () => {
+    show({ compare: '다름', inBit: '비트 글' })
+    const classes = card().getAttribute('class')!.split(/\s+/)
+    expect(classes).toEqual(expect.arrayContaining(['flex', 'min-w-0', 'flex-col', 'gap-1', 'rounded-control', 'border', 'border-line', 'bg-canvas', 'px-3', 'py-2']))
+    expect(classes).toEqual(expect.arrayContaining(['lg:min-h-24', 'lg:flex-1', 'lg:overflow-y-auto']))
+  })
+})

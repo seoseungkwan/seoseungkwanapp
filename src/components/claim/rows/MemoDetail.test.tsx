@@ -302,10 +302,10 @@ describe('AC-3105.2 단추 줄', () => {
   })
 
   it('AC-3105.2: 상태 줄은 단추 줄 맨 아래 한 줄이다', () => {
-    show()
+    show({ row: row({ done: true }), status: 'done' })
     expect(statusLine().tagName).toBe('P')
     expect(statusLine().className).toContain('basis-full')
-    expect(statusLine().textContent).toContain('누르면 우리 메모가 복사되고')
+    expect(statusLine().textContent).toContain('완료한 환자예요.')
   })
 })
 
@@ -321,8 +321,7 @@ describe('REQ-3103 상태 줄', () => {
     ['AC-3103.5', 'none', '우리 메모가 없어 복사할 게 없어요.', 'text-muted', null, null],
     ['AC-3103.2', 'copied', '복사했고 완료했어요. 비트 메모 칸에 붙여 넣으세요.', 'text-positive', 'status', 'check'],
     ['AC-3103.7', 'done', '완료한 환자예요. 다시 복사해도 완료는 그대로예요.', 'text-positive', null, 'check'],
-    ['AC-3103.7', 'ready', '누르면 우리 메모가 복사되고 완료로 바뀌어요. 그다음 비트 메모 칸에 붙여 넣으세요.', 'text-muted', null, null],
-  ])('%s: 상태 %s의 상태 줄 글·색·역할', (_, status, text, tone, role, mark) => {
+  ])('%s·AC-4804.2: 상태 %s의 상태 줄 글·색·역할은 그대로다', (_, status, text, tone, role, mark) => {
     show({ status })
     const line = statusLine()
     expect(line.textContent).toBe(mark === '!' ? `!${text}` : text)
@@ -350,6 +349,29 @@ describe('REQ-3103 상태 줄', () => {
     show({ status: 'copied', row: row({ done: true }) })
     expect(screen.getByRole('status').textContent).toBe('복사했고 완료했어요. 비트 메모 칸에 붙여 넣으세요.')
   })
+
+  it("AC-4804.1: 상태가 ready(기본)면 단추 상자에 상태 줄이 없다('누르면 우리 메모가 복사되고…' 글 없음, AC-3103.7을 대신함)", () => {
+    show({ status: 'ready' })
+    expect(actionBar().querySelector('p')).toBeNull()
+    expect(statusLine().tagName).toBe('BUTTON')
+    expect(statusLine().textContent).toBe('메모 고치기')
+    expect(document.body.textContent).not.toContain('누르면 우리 메모가 복사되고')
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    // 지운 글은 파일에도 남지 않는다(상태 이름 ready는 memoSplit이 그대로 돌려준다)
+    const text = readFileSync(join(process.cwd(), 'src/components/claim/rows/MemoDetail.tsx'), 'utf-8')
+    expect(text).not.toContain('누르면 우리 메모가 복사되고')
+  })
+
+  it.each<CopyStatus>(['editing', 'locked', 'stuck', 'failed', 'failedAgain', 'reopened', 'mark', 'none', 'copied', 'done'])(
+    'AC-4804.2: ready가 아닌 상태(%s)는 상태 줄이 단추 상자 맨 아래에 그대로 있다',
+    (status) => {
+      show({ status, row: row({ done: status === 'copied' || status === 'done' }) })
+      expect(statusLine().tagName).toBe('P')
+      expect(statusLine().className).toContain('basis-full')
+      expect(statusLine().textContent).not.toBe('')
+    },
+  )
 })
 
 describe('AC-3105.3 두 칸', () => {
@@ -534,6 +556,170 @@ describe('AC-3105.5 증상·처방 표', () => {
     expect(chart.nextElementSibling).toBe(rx)
     const memos = screen.getByRole('group', { name: '우리 메모' })
     expect(memos.compareDocumentPosition(chart) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
+describe('REQ-4803 lg 이상: 머리 한 줄 · 아래 세 칸', () => {
+  // lg 미만은 지금 class 그대로이고 lg: class만 더한다(jsdom은 배치를 재지 않아 class·차례·구조를 본다). 처방·증상은 지어낸 것이다
+  const classes = (element: Element) => (element.getAttribute('class') ?? '').split(/\s+/)
+  const has = (element: Element, names: string) => expect(classes(element)).toEqual(expect.arrayContaining(names.split(' ')))
+  const RX: TargetRow['rxRows'] = [
+    { kind: 'proc', code: 'LA901', name: '가상신경차단술-아주 긴 처방 이름 가', short: 'GNB', qty: 2, benefit: true },
+    { kind: 'other', code: 'B901', name: '가상관절주', short: '', qty: null, benefit: false },
+  ]
+  const LINES: TargetRow['chartLines'] = [
+    { kind: 'subj', text: '가상 왼쪽 통증이 오래 이어지는 아주 긴 호소 글 가상 왼쪽 통증이 오래 이어지는 아주 긴 호소 글' },
+    { kind: 'proc', text: '가상시술 가 나' },
+  ]
+  const root = (view: ReturnType<typeof show>['view']) => view.container.firstElementChild as HTMLElement
+  const head = (view: ReturnType<typeof show>['view']) => root(view).firstElementChild as HTMLElement
+
+  it('AC-4803.1: 머리는 lg에서 한 줄이다: 왼쪽 묶음 lg:contents, 위치 글 lg:order-2 lg:ml-auto, 단추 묶음 lg:order-3 lg:flex-row', () => {
+    const { view } = show()
+    const top = head(view)
+    has(top, 'flex items-start justify-between gap-3 lg:flex-wrap lg:items-center lg:justify-start lg:gap-x-2.5 lg:gap-y-1')
+    expect(top.children).toHaveLength(2)
+    const [left, nav] = [...top.children]
+    has(left, 'flex min-w-0 flex-col gap-0.5 lg:contents')
+    const position = screen.getByText('입력할 사람 2 / 10')
+    expect(position.parentElement).toBe(left)
+    has(position, 'text-caption font-semibold text-accent-strong lg:order-2 lg:ml-auto')
+    expect(nav.contains(button('↑ 앞 사람'))).toBe(true)
+    expect(nav.contains(screen.getByText('키보드'))).toBe(true)
+    has(nav, 'flex shrink-0 flex-col items-end gap-1 lg:order-3 lg:flex-row lg:items-center')
+    // 이름·표시·진료일 줄은 차례(order)를 주지 않아 위치 글·단추 묶음보다 앞(왼쪽)에 선다
+    for (const element of [screen.getByRole('heading', { name: '가상환자A' }).parentElement!, screen.getByText('진료일').parentElement!]) {
+      expect(element.parentElement).toBe(left)
+      expect(classes(element).some((name) => name.includes('order'))).toBe(false)
+    }
+  })
+
+  it('AC-4803.1: 안내(까닭·PC가 찾음·점검 경고)는 머리 왼쪽 묶음 안 진료일 줄 바로 뒤에 있고 lg에서 가로로 잇는다', () => {
+    const { view } = show({ group: 'manual', groupName: '직접 입력', row: row({ chip: null, sameDay: 3, warned: true }) })
+    const left = head(view).firstElementChild as HTMLElement
+    const info = screen.getByText('점검 경고 있음 · 입력은 돼요').parentElement!
+    expect(info.parentElement).toBe(left)
+    expect(screen.getByText('진료일').parentElement!.nextElementSibling).toBe(info)
+    expect(left.lastElementChild).toBe(info)
+    expect([...info.children].map((element) => element.textContent)).toEqual([LEFT_GROUPS.manual.why, '같은 날 진료 3건', '점검 경고 있음 · 입력은 돼요'])
+    has(info, 'flex flex-col gap-0.5 text-small text-ink-2 lg:flex-row lg:flex-wrap lg:gap-x-2')
+    // 머리 밖(아래)에는 따로 안내 묶음이 없다: 뿌리는 머리 · 아래 둘뿐
+    expect(root(view).children).toHaveLength(2)
+    cleanup()
+    const plain = show()
+    expect(head(plain.view).firstElementChild!.children).toHaveLength(3)
+  })
+
+  it('AC-4803.2: 머리 아래는 lg에서 세 칸 격자이고 차례는 ① 단추 상자·메모 ② 증상 ③ 처방이다. 뿌리는 남은 높이를 채운다', () => {
+    const { view } = show({ row: row({ chartLines: LINES, rxRows: RX }) })
+    has(root(view), 'flex min-w-0 flex-col gap-3 lg:min-h-0 lg:flex-1 lg:gap-2.5')
+    const lower = root(view).lastElementChild as HTMLElement
+    has(lower, 'flex flex-col gap-3 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[clamp(13.75rem,30%,18.75rem)_minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]')
+    expect(lower.children).toHaveLength(2)
+    const [side, tables] = [...lower.children]
+    has(side, 'flex flex-col gap-3 lg:min-h-0 lg:overflow-y-auto lg:gap-2.5')
+    expect(side.firstElementChild).toBe(actionBar())
+    const memos = screen.getByRole('group', { name: '우리 메모' }).parentElement!
+    expect(side.lastElementChild).toBe(memos)
+    // 표 묶음은 lg에서 상자가 없어져(lg:contents) 증상·처방이 바깥 격자의 ②·③ 칸이 된다. lg 미만 2 : 3 두 칸은 그대로
+    const chart = screen.getByRole('region', { name: '증상 · 차트 원문' })
+    const rx = screen.getByRole('region', { name: '처방내역' })
+    has(tables, 'grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3 lg:contents')
+    expect([...tables.children]).toEqual([chart, rx])
+  })
+
+  it('AC-4803.3: ① 칸의 우리 메모와 비트 메모 카드는 lg에서 남은 높이를 똑같이 나누고, 알림 글은 우리 메모 바로 아래에 온다', () => {
+    show({ tableRow: tableRow({ missing: ['가상 사유 가'], unsaved: true, lastJournal: 'check' }), showUnsaved: true })
+    const ours = screen.getByRole('group', { name: '우리 메모' })
+    const memos = ours.parentElement!
+    has(memos, 'grid grid-cols-2 gap-x-3 gap-y-1 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:gap-2.5')
+    has(ours, 'flex min-h-28 min-w-0 flex-col gap-1 rounded-control border border-line bg-canvas px-3 py-2 lg:-order-2 lg:min-h-24 lg:flex-1 lg:overflow-y-auto')
+    const notes = screen.getByText('빠진 문장: 가상 사유 가').parentElement!
+    has(notes, 'col-start-1 flex flex-col gap-0.5 lg:-order-1')
+    expect(notes.textContent).toBe('빠진 문장: 가상 사유 가저장 안 됨지난 입력: 확인 필요')
+    // DOM 차례는 그대로(우리 메모 · 비트 메모 카드 · 알림 글)라 lg 미만 두 칸 모양은 같다. lg에서는 order로 우리 메모 → 알림 글 → 카드
+    const card = screen.getByRole('group', { name: '비트에 저장된 청구메모' })
+    expect([...memos.children]).toEqual([ours, card, notes])
+    expect(classes(card).some((name) => name.includes('order'))).toBe(false)
+  })
+
+  it('AC-4803.4: 단추 상자는 lg에서 복사 단추가 한 줄을 다 쓰고, 빈 칸은 숨고, 그 밖의 단추는 아래 줄에 나눠 선다', () => {
+    show({ row: row({ done: true, compare: '다름', inBit: '◈가상 비트 글', chip: '메모 바꿈' }), status: 'done' })
+    has(actionBar(), 'flex flex-wrap items-center gap-2 rounded-control border border-line bg-canvas px-3 py-2 lg:gap-1.5')
+    has(copyButton(), 'lg:basis-full')
+    const spacer = [...actionBar().children].find((element) => element.tagName === 'SPAN')!
+    has(spacer, 'flex-1 lg:hidden')
+    for (const name of ['완료 풀기', '메모 고치기', '바꾸지 않기']) has(button(name), 'lg:flex-1')
+    cleanup()
+    show({ group: 'diff', groupName: '다른 메모 있음', row: row({ chip: null, compare: '다름', inBit: '◈가상 비트 글', declined: true }) })
+    has(button('이 메모로 바꾸기'), 'lg:flex-1')
+    cleanup()
+    show({ group: 'held', groupName: '지난번 건너뜀', row: row({ chip: null }), heldCount: 2 })
+    has(button('다시 하기 (2명)'), 'lg:flex-1')
+    // 복사 단추는 늘 맨 앞, 상태 줄은 늘 맨 뒤(그대로)
+    expect(actionBar().firstElementChild).toBe(copyButton())
+    expect(classes(copyButton())).not.toContain('lg:flex-1')
+  })
+
+  it('AC-4803.5: 증상 표는 lg에서 칸 안에서 스크롤되고 글은 자르지 않고 다음 줄로 넘긴다', () => {
+    show({ row: row({ chartLines: LINES, rxRows: RX }) })
+    const chart = screen.getByRole('region', { name: '증상 · 차트 원문' })
+    has(chart, 'flex min-w-0 flex-col gap-1.5 lg:min-h-0')
+    const table = within(chart).getByRole('table')
+    has(table, 'w-full table-fixed border-collapse border border-line text-small lg:border-0')
+    const box = table.parentElement!
+    expect(box.tagName).toBe('DIV')
+    expect(box.parentElement).toBe(chart)
+    has(box, 'lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:border lg:border-line')
+    const text = within(chart).getByText(LINES[0].text)
+    has(text, 'whitespace-pre-wrap break-words')
+    expect(chart.querySelector('[class*="truncate"]')).toBeNull()
+    expect(chart.querySelector('[class*="ellipsis"]')).toBeNull()
+  })
+
+  it('AC-4803.6: 처방 표는 lg에서 칸 안에서 스크롤되고 표 머리는 위에 붙으며, 처방명은 한 줄로 잘리고 title에 전체 이름이 있다. 짧은 이름은 잘리지 않는다', () => {
+    show({ row: row({ chartLines: LINES, rxRows: RX }) })
+    const rx = screen.getByRole('region', { name: '처방내역' })
+    const table = within(rx).getByRole('table')
+    has(table, 'lg:border-0')
+    const box = table.parentElement!
+    expect(box.parentElement).toBe(rx)
+    has(box, 'lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:border lg:border-line')
+    has(rx, 'lg:min-h-0')
+    for (const th of within(rx).getAllByRole('columnheader')) has(th, 'whitespace-nowrap bg-canvas lg:sticky lg:top-0 lg:z-1')
+    const [first, second] = within(rx).getAllByRole('row').slice(1)
+    const nameCell = first.querySelectorAll('td')[2]
+    has(nameCell, 'break-words')
+    const wrap = nameCell.firstElementChild as HTMLElement
+    expect(nameCell.children).toHaveLength(1)
+    has(wrap, 'lg:flex lg:min-w-0 lg:items-baseline lg:gap-1')
+    const name = wrap.firstElementChild as HTMLElement
+    expect(name.textContent).toBe('가상신경차단술-아주 긴 처방 이름 가')
+    expect(name.getAttribute('title')).toBe('가상신경차단술-아주 긴 처방 이름 가')
+    has(name, 'lg:min-w-0 lg:truncate')
+    const short = within(wrap).getByText('GNB')
+    has(short, 'text-caption text-muted lg:shrink-0 lg:whitespace-nowrap')
+    expect(classes(short)).not.toContain('lg:truncate')
+    expect(nameCell.textContent).toBe('가상신경차단술-아주 긴 처방 이름 가 GNB')
+    // 짧은 이름이 없는 줄도 같은 틀이고 title이 있다
+    const plain = second.querySelectorAll('td')[2].firstElementChild!.firstElementChild!
+    expect(plain.getAttribute('title')).toBe('가상관절주')
+    expect(second.querySelectorAll('td')[2].textContent).toBe('가상관절주')
+  })
+
+  it('AC-4805.1: 짧은 이름이 처방명과 같으면(앞뒤 빈칸 빼고) 쓰지 않고, 다르면 처방명 뒤에 쓴다', () => {
+    const rows: TargetRow['rxRows'] = [
+      { kind: 'other', code: 'AA901', name: '가상진찰료', short: '가상진찰료', qty: 1, benefit: true },
+      { kind: 'other', code: 'AA902', name: '가상관리료 ', short: ' 가상관리료', qty: 1, benefit: true },
+      { kind: 'drug', code: 'A901', name: '가상주사_(20mL)', short: '가상약', qty: 1, benefit: true },
+      { kind: 'other', code: 'B901', name: '가상물리치료', short: '  ', qty: 1, benefit: true },
+    ]
+    show({ row: row({ rxRows: rows }) })
+    const rx = screen.getByRole('region', { name: '처방내역' })
+    const names = within(rx).getAllByRole('row').slice(1).map((tr) => tr.querySelectorAll('td')[2])
+    expect(names.map((td) => td.textContent)).toEqual(['가상진찰료', '가상관리료 ', '가상주사_(20mL) 가상약', '가상물리치료'])
+    for (const index of [0, 1, 3]) expect(names[index].querySelector('.text-muted')).toBeNull()
+    expect(within(names[2]).getByText('가상약').className).toContain('text-muted')
   })
 })
 
