@@ -577,7 +577,7 @@ describe('REQ-4803 lg 이상: 머리 한 줄 · 아래 세 칸', () => {
   it('AC-4803.1: 머리는 lg에서 한 줄이다: 왼쪽 묶음 lg:contents, 위치 글 lg:order-2 lg:ml-auto, 단추 묶음 lg:order-3 lg:flex-row', () => {
     const { view } = show()
     const top = head(view)
-    has(top, 'flex items-start justify-between gap-3 lg:flex-wrap lg:items-center lg:justify-start lg:gap-x-2.5 lg:gap-y-1')
+    has(top, 'flex items-start justify-between gap-3 lg:flex-wrap lg:items-center lg:justify-start lg:gap-x-2 lg:gap-y-1')
     expect(top.children).toHaveLength(2)
     const [left, nav] = [...top.children]
     has(left, 'flex min-w-0 flex-col gap-0.5 lg:contents')
@@ -612,12 +612,12 @@ describe('REQ-4803 lg 이상: 머리 한 줄 · 아래 세 칸', () => {
 
   it('AC-4803.2: 머리 아래는 lg에서 세 칸 격자이고 차례는 ① 단추 상자·메모 ② 증상 ③ 처방이다. 뿌리는 남은 높이를 채운다', () => {
     const { view } = show({ row: row({ chartLines: LINES, rxRows: RX }) })
-    has(root(view), 'flex min-w-0 flex-col gap-3 lg:min-h-0 lg:flex-1 lg:gap-2.5')
+    has(root(view), 'flex min-w-0 flex-col gap-3 lg:min-h-0 lg:flex-1 lg:gap-2')
     const lower = root(view).lastElementChild as HTMLElement
     has(lower, 'flex flex-col gap-3 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[clamp(13.75rem,30%,18.75rem)_minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]')
     expect(lower.children).toHaveLength(2)
     const [side, tables] = [...lower.children]
-    has(side, 'flex flex-col gap-3 lg:min-h-0 lg:overflow-y-auto lg:gap-2.5')
+    has(side, 'flex flex-col gap-3 lg:min-h-0 lg:overflow-y-auto lg:gap-2')
     expect(side.firstElementChild).toBe(actionBar())
     const memos = screen.getByRole('group', { name: '우리 메모' }).parentElement!
     expect(side.lastElementChild).toBe(memos)
@@ -632,7 +632,7 @@ describe('REQ-4803 lg 이상: 머리 한 줄 · 아래 세 칸', () => {
     show({ tableRow: tableRow({ missing: ['가상 사유 가'], unsaved: true, lastJournal: 'check' }), showUnsaved: true })
     const ours = screen.getByRole('group', { name: '우리 메모' })
     const memos = ours.parentElement!
-    has(memos, 'grid grid-cols-2 gap-x-3 gap-y-1 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:gap-2.5')
+    has(memos, 'grid grid-cols-2 gap-x-3 gap-y-1 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:gap-2')
     has(ours, 'flex min-h-28 min-w-0 flex-col gap-1 rounded-control border border-line bg-canvas px-3 py-2 lg:-order-2 lg:min-h-24 lg:flex-1 lg:overflow-y-auto')
     const notes = screen.getByText('빠진 문장: 가상 사유 가').parentElement!
     has(notes, 'col-start-1 flex flex-col gap-0.5 lg:-order-1')

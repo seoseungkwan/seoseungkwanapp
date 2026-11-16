@@ -228,8 +228,8 @@ export function MemoDetail(props: {
   // lg(1024px) 이상은 머리 한 줄 + 아래 세 칸(① 단추 상자·메모 ② 증상 ③ 처방, claim-memo-fit AC-4803.1~AC-4803.6).
   // DOM 차례는 그대로 두고 lg: class(contents·order·grid)로만 모양을 바꾼다. lg 미만은 지금 모양 그대로다
   return (
-    <div className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:flex-1 lg:gap-2.5">
-      <div className="flex items-start justify-between gap-3 lg:flex-wrap lg:items-center lg:justify-start lg:gap-x-2.5 lg:gap-y-1">
+    <div className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:flex-1 lg:gap-2">
+      <div className="flex items-start justify-between gap-3 lg:flex-wrap lg:items-center lg:justify-start lg:gap-x-2 lg:gap-y-1">
         <div className="flex min-w-0 flex-col gap-0.5 lg:contents">
           <p className="text-caption font-semibold text-accent-strong lg:order-2 lg:ml-auto">
             {groupName} {position.index} / {position.total}
@@ -266,7 +266,7 @@ export function MemoDetail(props: {
 
       <div className="flex flex-col gap-3 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[clamp(13.75rem,30%,18.75rem)_minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
         {/* ① 칸: 단추 상자 + 메모. lg 이상은 이 칸만 따로 스크롤된다 */}
-        <div className="flex flex-col gap-3 lg:min-h-0 lg:overflow-y-auto lg:gap-2.5">
+        <div className="flex flex-col gap-3 lg:min-h-0 lg:overflow-y-auto lg:gap-2">
           <div className="flex flex-wrap items-center gap-2 rounded-control border border-line bg-canvas px-3 py-2 lg:gap-1.5">
             <button type="button" aria-label={copying ? label : `C ${label}`} className={`${copyButton} lg:basis-full`} disabled={copyDisabled} onClick={onCopy}>
               <kbd className={kbdOnGreen}>C</kbd>
@@ -304,7 +304,7 @@ export function MemoDetail(props: {
 
           {/* 같은 크기 두 칸: 한 줄에 우리 메모 | 비트 메모 카드, 그 아래 줄에 우리 메모 칸의 알림 글(AC-3105.3).
               lg 이상은 세로로 우리 메모 → 알림 글 → 비트 메모 카드(order)이고 두 칸이 남은 높이를 반씩 쓴다(AC-4803.3) */}
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:gap-2.5">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:gap-2">
             <div role="group" aria-label="우리 메모" className="flex min-h-28 min-w-0 flex-col gap-1 rounded-control border border-line bg-canvas px-3 py-2 lg:-order-2 lg:min-h-24 lg:flex-1 lg:overflow-y-auto">
               <b className="text-small font-semibold text-ink">우리 메모</b>
               {editing ? (
