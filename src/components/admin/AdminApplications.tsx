@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
@@ -163,7 +163,8 @@ function RejectDialog({ row, onCancel, onConfirm }: { row: Application; onCancel
   )
 }
 
-export function AdminApplications() {
+// top: 제목 묶음 바로 아래·신청 탭 위에 그릴 칸(관리자 화면의 '설치 파일' 칸, helper-download AC-5104.3)
+export function AdminApplications({ top }: { top?: ReactNode } = {}) {
   const [rows, setRows] = useState<Application[] | null>(null) // null = 읽는 중
   const [loadError, setLoadError] = useState<{ error: unknown } | null>(null)
   const [tab, setTab] = useState<Tab>('pending')
@@ -269,6 +270,8 @@ export function AdminApplications() {
         <h1 className="text-title font-semibold text-ink">가입 승인</h1>
         <p className="max-w-140 text-body text-ink-2">{INTRO}</p>
       </div>
+
+      {top}
 
       {counts !== null && (
         <>

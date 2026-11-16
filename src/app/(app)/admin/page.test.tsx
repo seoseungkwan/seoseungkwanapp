@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { Children, type ReactElement, type ReactNode } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdminApplications } from '@/components/admin/AdminApplications'
@@ -37,8 +37,6 @@ vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser }))
 const read = vi.mocked(readMe)
 const guard = vi.mocked(guardPage)
 const SOURCE = readFileSync(fileURLToPath(new URL('./page.tsx', import.meta.url)), 'utf8')
-// 페이지가 돌려준 묶음 안의 칸들(차례대로)
-const partsOf = (page: ReactElement) => Children.toArray((page.props as { children?: ReactNode }).children) as ReactElement[]
 
 const HOSPITAL: Hospital = {
   id: 'h1',
@@ -66,7 +64,7 @@ beforeEach(() => {
 describe('/admin 페이지 문지기', () => {
   it('AC-002.5: 승인된 관리자(admins에 있음)면 연다 — 가입 승인 화면(AdminApplications)을 그린다', async () => {
     const page = (await AdminPage()) as ReactElement
-    expect(partsOf(page).map((part) => part.type)).toContain(AdminApplications)
+    expect(page.type).toBe(AdminApplications)
     expect(redirect).not.toHaveBeenCalled()
   })
 
@@ -126,20 +124,19 @@ describe('/admin 페이지 그리기', () => {
     expect(SOURCE).toMatch(/from '@\/lib\/auth\/guard\.server'/)
   })
 
-  it('AC-007.1·AC-013.2·AC-5104.1: 앱 틀을 한 번 더 그리지 않는다 — 세로 묶음 하나에 설치 파일 칸·가입 승인 둘만 돌려준다(띠·탭·<main>은 (app)/layout 몫)', async () => {
-    const page = (await AdminPage()) as ReactElement
-    expect(page.type).toBe('div')
-    const parts = partsOf(page)
-    expect(parts.map((part) => part.type)).toEqual([InstallFilesAdmin, AdminApplications])
-    for (const part of parts) expect(part.props).toEqual({})
+  it('AC-007.1·AC-013.2·AC-5104.3: 앱 틀을 한 번 더 그리지 않는다 — 가입 승인(AdminApplications) 하나만 돌려주고 설치 파일 칸은 그 top 자리로 넘긴다(띠·탭·<main>은 (app)/layout 몫)', async () => {
+    const page = (await AdminPage()) as ReactElement<{ top?: ReactNode }>
+    expect(page.type).toBe(AdminApplications)
+    expect(Object.keys(page.props)).toEqual(['top'])
+    expect((page.props.top as ReactElement).type).toBe(InstallFilesAdmin)
   })
 
-  it("AC-5104.1: '설치 파일' 칸이 가입 승인 목록 위에 있다 — 서버 그리기에서도 '설치 파일' 제목이 '가입 승인' 제목보다 먼저 나오고, 목록은 읽지 않는다", async () => {
+  it("AC-5104.1·AC-5104.3: 제목 '가입 승인'(h1)이 맨 위이고 그 아래 '설치 파일' 칸 — 서버 그리기에서 h1이 '설치 파일' 제목보다 먼저 나오고, 목록은 읽지 않는다", async () => {
     const html = renderToStaticMarkup((await AdminPage()) as ReactElement)
     const install = html.search(/<h2\b[^>]*>설치 파일<\/h2>/)
     const applications = html.search(/<h1\b[^>]*>가입 승인<\/h1>/)
-    expect(install).toBeGreaterThan(-1)
-    expect(applications).toBeGreaterThan(install)
+    expect(applications).toBeGreaterThan(-1)
+    expect(install).toBeGreaterThan(applications)
     expect(supabaseBrowser).not.toHaveBeenCalled()
   })
 })
