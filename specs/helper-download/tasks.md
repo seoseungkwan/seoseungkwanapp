@@ -10,6 +10,7 @@
 > | 2 | TASK-2 | 받기 단추(연결 화면·설정 탭) |
 > | 2 | TASK-3 | 관리자 '설치 파일' 칸 |
 > | 3 | TASK-4 | 연결 화면 '새 도우미' 줄·GitHub 주소 지우기(구현 중 찾은 빠진 곳) |
+> | 4 | TASK-5 | 관리자 화면 제목을 맨 위로(검토 고침) |
 >
 > - **사용자 단계**: 배포 전 `20261117000000_install_files.sql`을 Supabase SQL Editor에 붙여 넣기 → 배포 뒤 관리자 화면에서 도우미·확장 zip 올리기
 
@@ -44,3 +45,11 @@
 - Files: src/components/claim/setup/SetupScreen.tsx, src/components/claim/setup/links.ts, src/components/claim/setup/SetupScreen.test.tsx, src/components/install/noGithub.test.ts
 - Tests: src/components/claim/setup/SetupScreen.test.tsx, src/components/install/noGithub.test.ts
 - TDD: required — TASK-2 일꾼이 찾은 빠진 곳: `SetupScreen.tsx`의 `<a href={HELPER_RELEASES_URL}>새 도우미 내려받기</a>`(import 포함) 두 군데만 `DownloadButton kind="helper" variant="secondary"`로 바꾸고, `links.ts`에서 상수를 지우고, `src/`에 GitHub 릴리스 주소가 없음을 시험한다
+
+## TASK-5: 관리자 화면 제목을 맨 위로
+- Phase: 4
+- AC: AC-5104.3
+- REQ: REQ-5104
+- Files: src/components/admin/AdminApplications.tsx, src/components/admin/AdminApplications.test.tsx, src/app/(app)/admin/page.tsx, src/app/(app)/admin/page.test.tsx
+- Tests: src/components/admin/AdminApplications.test.tsx, src/app/(app)/admin/page.test.tsx
+- TDD: required — 검토 FIX: `AdminApplications`에 선택 props `top?: ReactNode`를 더해 제목 묶음 바로 아래(신청 탭 위)에 그리고, `page.tsx`는 `<AdminApplications top={<InstallFilesAdmin />} />`로 넘긴다. `page.test.tsx`의 차례 시험(설치 파일 h2가 가입 승인 h1보다 앞)을 h1이 먼저인 차례로 바꾼다. 가입 신청 동작은 그대로
