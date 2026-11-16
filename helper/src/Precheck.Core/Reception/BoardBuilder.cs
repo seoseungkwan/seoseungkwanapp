@@ -129,8 +129,8 @@ public static class BoardBuilder
         };
     }
 
-    /// <summary>"18분"·"1시간 4분"·"2시간".</summary>
-    private static string Span(int minutes)
+    /// <summary>"18분"·"1시간 4분"·"2시간". 어레인지 돌아온 뒤 기다린 글(spec reception-arrange-tune AC-3601.4)도 쓴다.</summary>
+    internal static string Span(int minutes)
     {
         if (minutes < 60) return minutes.ToString(CultureInfo.InvariantCulture) + "분";
         var hours = (minutes / 60).ToString(CultureInfo.InvariantCulture) + "시간";

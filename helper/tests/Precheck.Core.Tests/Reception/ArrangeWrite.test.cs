@@ -160,11 +160,13 @@ public class ArrangeWriteTests
         Assert.Equal(400, ArrangeWrite.Apply(Op("part", ArrangeCol.Sono, "부위는 나중에"), null, Cells((ArrangeCol.Sono, Cell(ArrangeStep.Todo))), Now).Status);
     }
 
-    [Fact(DisplayName = "AC-3306.2 away·ptf·end: on·up·down은 서버 시각을 남기고 off는 지운다")]
+    [Fact(DisplayName = "AC-3306.2 away·ptf·end: on·up·down은 서버 시각을 남기고 off는 지운다(away off는 돌아옴 시각을 남긴다, spec reception-arrange-tune AC-3601.2)")]
     public void RowMarks()
     {
         Assert.Equal("10:30", ArrangeWrite.Apply(Op("away", v: "on"), null, NoCells, Now).Next!.Away);
-        Assert.Null(ArrangeWrite.Apply(Op("away", v: "off"), new VisitMark(away: "10:00"), NoCells, Now).Next);
+        var off = ArrangeWrite.Apply(Op("away", v: "off"), new VisitMark(away: "10:00"), NoCells, Now).Next!;
+        Assert.Equal(((string?)null, "10:30"), (off.Away, off.Back));
+        Assert.Null(ArrangeWrite.Apply(Op("away", v: "clear"), new VisitMark(away: "10:00"), NoCells, Now).Next);
         var up = ArrangeWrite.Apply(Op("ptf", v: "up"), null, NoCells, Now).Next!.Ptf!;
         Assert.Equal(("up", "10:30"), (up.St, up.At));
         Assert.Equal("down", ArrangeWrite.Apply(Op("ptf", v: "down"), new VisitMark(ptf: new PtFirst("up", "10:00")), NoCells, Now).Next!.Ptf!.St);

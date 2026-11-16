@@ -137,7 +137,7 @@ public class ArrangeBuilderTests
 
     // ---- AC-3305.3 줄 모양 --------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-3305.3 줄은 k·away·ptf·last·cells(일곱 칸, 없으면 null)·allDone뿐이고 이름·차트번호·메모·상태·접수 시각은 다시 넣지 않는다")]
+    [Fact(DisplayName = "AC-3305.3 줄은 k·away·back·backWait(spec reception-arrange-tune AC-3601.4)·ptf·last·cells(일곱 칸, 없으면 null)·allDone뿐이고 이름·차트번호·메모·상태·접수 시각은 다시 넣지 않는다")]
     public void RowShape()
     {
         var scene = new Scene().Add(Visit("V1", "QA", "0910", null, "  허리 통증  ", Order("SONO1", "09:30")));
@@ -145,7 +145,7 @@ public class ArrangeBuilderTests
 
         var row = scene.Json().GetProperty("arrange").GetProperty("rows")[0];
 
-        Assert.Equal(new[] { "k", "away", "ptf", "last", "cells", "allDone" }, row.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(new[] { "k", "away", "back", "backWait", "ptf", "last", "cells", "allDone" }, row.EnumerateObject().Select(p => p.Name));
         Assert.Equal(scene.Key("V1"), row.GetProperty("k").GetString());
         Assert.Equal("10:50", row.GetProperty("away").GetString());
         Assert.Equal(new[] { "st", "at" }, row.GetProperty("ptf").EnumerateObject().Select(p => p.Name));

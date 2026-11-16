@@ -64,7 +64,9 @@ public sealed class ArrangeWriteResult
 /// 어레인지 쓰기 계산(spec reception-arrange design.md 8절, REQ-3306). 라우터가 지금 판으로 만든 그 줄의 칸 상태와 지금 표시를 주면
 /// 새 표시(또는 X-ray 완료 표시)를 정한다. 시각은 서버 시계의 "HH:MM"(hhmm)이다(AC-3306.3).
 /// op: step(다음 단계) · set(v = todo·ready·done) · add(빈 칸에 목록 글) · remove(직접 넣은 칸 빼기) · part(SONO·C-ARM 부위) ·
-/// away(on·off) · ptf(up·down·off) · end(on·off).
+/// away(on·off·clear) · ptf(up·down·off) · end(on·off).
+/// 돌아옴(spec reception-arrange-tune AC-3601.2·3601.3): away off는 back = 지금, on·clear는 back·backStop을 지운다.
+/// back이 있고 backStop이 없으면 받은 칸 쓰기(step·set·add·remove·part, X-RAY 칸 포함)가 backStop = 지금을 함께 남긴다.
 /// SONO·C-ARM의 add·part는 지금 고르기 목록(PickLists)으로 v·t를 본다(spec reception-pick-lists AC-3502.3): part = v, tags = t를 "|"로 나눈 것.
 /// </summary>
 public static class ArrangeWrite
@@ -150,7 +152,8 @@ public static class ArrangeWrite
         switch (op.Op)
         {
             case Away:
-                return OnOff(op.V, () => mark.WithAway(hhmm), () => mark.WithAway(null));
+                if (op.V == "clear") return ArrangeWriteResult.Marks(mark.WithAway(null).WithBack(null, null));
+                return OnOff(op.V, () => mark.WithAway(hhmm).WithBack(null, null), () => mark.WithAway(null).WithBack(hhmm, null));
             case End:
                 return OnOff(op.V, () => mark.WithEnded(hhmm), () => paid ? mark.WithEnded(null).WithKept(true) : mark.WithEnded(null));
             case PtFirstOp:
@@ -158,6 +161,18 @@ public static class ArrangeWrite
                 return op.V == "off" ? ArrangeWriteResult.Marks(mark.WithPtf(null)) : ArrangeWriteResult.Refused(400);
         }
 
+        // 돌아온 뒤 아직 세는 중이면 이 칸 쓰기가 받아질 때 센 것을 멈춘다(한 번만, AC-3601.3). 받지 않는 쓰기(400·404)는 표시를 쓰지 않는다
+        var counting = mark.Back != null && mark.BackStop == null;
+        var based = counting ? mark.WithBack(mark.Back, hhmm) : mark;
+        var result = CellWrite(op, based, cells, hhmm, lists);
+        // X-RAY 칸 쓰기는 어레인지 표시 없이 X-ray 표시만 내는데, 세는 중이면 멈춘 표시도 함께 낸다(라우터가 둘 다 쓴다)
+        if (counting && result.Status == 204 && !result.ChangesMarks) return ArrangeWriteResult.Marks(based, result.Xray);
+        return result;
+    }
+
+    /// <summary>칸 쓰기(step·set·add·remove·part) 하나.</summary>
+    private static ArrangeWriteResult CellWrite(ArrangeOp op, VisitMark mark, IReadOnlyDictionary<ArrangeCol, ArrangeCell> cells, string hhmm, PickLists lists)
+    {
         var col = op.Col!.Value;
         cells.TryGetValue(col, out var cell);
         switch (op.Op)

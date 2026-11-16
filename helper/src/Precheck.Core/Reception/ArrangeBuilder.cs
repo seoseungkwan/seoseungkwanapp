@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 
@@ -45,21 +46,33 @@ public sealed class ArrangeCell
     internal ArrangeCell WithOrd(int? ord) => new ArrangeCell(St, Det, Part, At, ord, Manual, Tags);
 }
 
-/// <summary>어레인지 줄 하나(AC-3305.3). 이름·차트번호·메모·상태·접수 시각은 화면이 같은 열쇠의 목록 줄에서 가져온다.</summary>
+/// <summary>
+/// 어레인지 줄 하나(AC-3305.3). 이름·차트번호·메모·상태·접수 시각은 화면이 같은 열쇠의 목록 줄에서 가져온다.
+/// 돌아온 시각·돌아온 뒤 기다린 글(spec reception-arrange-tune AC-3601.4)도 있다.
+/// </summary>
 public sealed class ArrangeRow
 {
-    public ArrangeRow(string key, string? away, PtFirst? ptf, string last, IReadOnlyDictionary<ArrangeCol, ArrangeCell> cells)
+    public ArrangeRow(
+        string key, string? away, PtFirst? ptf, string last, IReadOnlyDictionary<ArrangeCol, ArrangeCell> cells, string? back = null, string? backWait = null)
     {
         Key = key ?? throw new ArgumentNullException(nameof(key));
         Away = away;
         Ptf = ptf;
         Last = last ?? "";
         Cells = cells ?? throw new ArgumentNullException(nameof(cells));
+        Back = back;
+        BackWait = backWait;
     }
 
     public string Key { get; }
 
     public string? Away { get; }
+
+    /// <summary>자리비움을 푼(돌아온) 시각 "HH:MM". 없으면 null.</summary>
+    public string? Back { get; }
+
+    /// <summary>돌아온 뒤 기다린 글("12분째"). 돌아왔고 아직 칸 쓰기가 없을 때만, 아니면 null.</summary>
+    public string? BackWait { get; }
 
     public PtFirst? Ptf { get; }
 
@@ -192,7 +205,10 @@ public static class ArrangeBuilder
                 : new ReadOnlyDictionary<ArrangeCol, ArrangeCell>(entry.Cells.ToDictionary(
                     pair => pair.Key,
                     pair => pair.Value.Cell.WithOrd(ords.TryGetValue((index, pair.Key), out var ord) ? ord : (int?)null)));
-            return new ArrangeRow(keys.KeyOf(input.Day, entry.Visit.VisitId), entry.Mark?.Away, entry.Mark?.Ptf, Clean(entry.Visit.LastSymptom) ?? "", cells);
+            var back = Time(entry.Mark?.Back);
+            return new ArrangeRow(
+                keys.KeyOf(input.Day, entry.Visit.VisitId), entry.Mark?.Away, entry.Mark?.Ptf, Clean(entry.Visit.LastSymptom) ?? "", cells,
+                back, BackWaitOf(back, entry.Mark?.BackStop, input.ReadAt));
         }).ToArray();
 
         // 시각 늦은 순, 수납 시각을 모르는 줄(null)은 맨 뒤
@@ -268,6 +284,21 @@ public static class ArrangeBuilder
         }
         return cells;
     }
+
+    /// <summary>
+    /// 돌아온 뒤 기다린 글(AC-3601.4): back이 있고 backStop이 없을 때만 "{시간}째". 분 = 판 시각(시:분) − back, 음수면 0.
+    /// 시간 글은 목록 기다린 글과 같은 BoardBuilder.Span이다.
+    /// </summary>
+    private static string? BackWaitOf(string? back, string? backStop, DateTime boardAt)
+    {
+        if (back == null || backStop != null) return null;
+        var minutes = boardAt.Hour * 60 + boardAt.Minute - MinuteOf(back);
+        return BoardBuilder.Span(Math.Max(0, minutes)) + "째";
+    }
+
+    /// <summary>"HH:MM"(TimeShape로 본 글) → 그날 0시부터의 분.</summary>
+    private static int MinuteOf(string hhmm) =>
+        int.Parse(hhmm.Substring(0, 2), CultureInfo.InvariantCulture) * 60 + int.Parse(hhmm.Substring(3, 2), CultureInfo.InvariantCulture);
 
     /// <summary>표시의 단계에 따른 보일 시각: ready면 readyAt, done이면 doneAt, 그 밖·없으면 처방(넣은) 시각.</summary>
     private static string? AtOf(CellMark marked, string? since) => marked.St switch
