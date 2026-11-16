@@ -13,6 +13,10 @@ SunapScreen ─(마감: 숫자 24칸만)→ Supabase sunap_days / 지출 sunap_s
 - 원장님별 표·통계 원장님별 표를 뺐다(사용자 결정 10). 장부의 '원장님' 칸도 없다
 - 설정의 '지출 종류' 이름 바꾸기를 뺐다(MVP). 종류는 고정 넷
 - 장부 위 필터 칩·찾기 칸은 둔다. 시안의 '미수 생긴 날' 칸은 뺀다(도우미가 읽기 어려움, MVP)
+- (11-17 검토 뒤 더함) 도우미 답 `unsure`가 참이면 장부 위에 '확인 필요한 날' 한 줄(AC-4905.9, 통계 매출의 '확인 필요한 날'과 같은 말)
+- (11-17) 미수 입금 표의 '접수' 시각은 늘 '–'다: 비트 `OrpAccDte`·`OrcAccDte`가 char(8) 날짜뿐이다(실제 DB 확인). 사용자 결정: 칸은 둔다
+- 시안에 없던 글(구현 때 더함): 불러오는 중 글('비트 PC 연결을 확인하는 중이에요' 등), 서버 저장 실패 안내(마감·풀기·읽기), 0.8.0 미만 상자 '도우미 새 판(0.8.0)을 깔면 장부가 보여요', 62일 넘은 날 상자 '62일 넘게 지난 날은 합계·지출만 보여요', 빈 상태('아직 마감 전이에요'·'지출이 없어요'·'미수 입금이 없어요'), 금액·비고 고치기 판. 통계 칸은 '수납일지를 마감한 날이 없어요'·'수납일지 설정에서 Block·물리치료 묶음을 고르면 보여요'
+- 환자 이름을 그리는 예약 고르기 판(`RsvPicker`·`Pop`)도 `components/sunap/rows/` 울타리 안에 둔다
 
 ## 도우미 답 (`contact.targets` kind `sunap`, 조각 하나의 JSON)
 ```json
@@ -22,7 +26,7 @@ SunapScreen ─(마감: 숫자 24칸만)→ Supabase sunap_days / 지출 sunap_s
 ```
 - rows 칸: 차트, 이름, 첫 접수 HH:mm, 구분(`new`|`d90`|`re`), 현금, 카드, 계좌, 미수(원 정수), 처방코드 글자 목록(중복 없음), 예약(null 또는 [yyyyMMddHHmm, 메모 앞 40자, 메모 없으면 ""])
 - 센 내원 = `StatsSql` Visits 조건(외래·상태 WN/HN/TN/PN·`OcmRsuYon<>'O'`·이 병원). 첫 내원일 = `FirstVisits`와 같은 셈. 90일 = 그날 `OcmDgsNfs='3'` 내원이 있음
-- 금액 = `RevenueSql.FinanceNormal`의 `NativeRows`를 `ByDoctorDay`처럼 글자 바꾸기로 '내원(OrpOcmNum)별'로 만든 새 상수(원본 글이 바뀌면 바로 실패). 현금 `CashAmt`, 카드 `CardAmt`, 계좌 `CheckAmt`, 미수 `RcvAmt`
+- 금액 = `RevenueSql.FinanceNormal`의 `NativeRows`를 `ByDoctorDay`처럼 글자 바꾸기로 '내원(OrpOcmNum)별'로 만든 새 상수(원본 글이 바뀌면 바로 실패). 현금 `CashAmt`, 카드 `CardAmt`, 계좌 `CheckAmt`, 미수 = max(0, 본인부담 총액 `OrpTotOwn` − (현금+카드+계좌)). `RcvAmt`는 받은 돈의 합이라 미수로 쓰지 않는다(구현 때 바로잡음). 음수 금액(환불 등)은 0으로 보내고 `unsure`를 참으로 한다
 - 처방코드 = `VisitRowsSql`과 같은 줄을 그날·그 환자로 좁힌 새 상수
 - 예약 = 같은 차트, `OcmAcpDtm >= D+1일 0시`, 외래, 이 병원, (`RsvInf` `RsvDivTyp` 'R'·'' 줄 있음 또는 상태 WR·NR·CR), 상태 CN 아님 중 가장 이른 것. 메모 = `RTRIM(RsvRefCmt)` 앞 40자. **이 새 상수만 메모를 읽는다**(patients-bit-lists `ReservationsSql`의 '메모 안 읽음' 시험은 그대로)
 - paid = `FinanceReceivable`을 환자별로(현금 = 현금, 카드 = 카드+계좌). unsure = `RevenueDays`의 확인 필요 조건과 같음
@@ -79,6 +83,7 @@ type RsvKind = 'none' | 'inj' | 'visit' | 'etc' | 'unknown'
 - 시안 장부 16줄(시안 `ROWS`, 13번 Block·16번 현금은 고친 칸)로 만든 가짜 답의 합: visits 16, 초진 4·90일 2·재진 10, Block 7, 물리치료 13, rsv_first 3(3번 진료(경과)·10번 직접 진료(경과)·14번 주사치료), rsv_d90 2, first_block 2, d90_block 1, ret_block 4, 현금 4건 25,600, 카드 10건 193,600, 계좌 1건 25,000, FREE 1, 미수 1건 16,300, 미수 입금 현금 1건 10,000·카드 1건 15,000. 8번(종류 모름)은 예약률에 안 든다
 
 ## 위험
+- (11-16 실제 비트 확인, 개수만) 11-13·11-16 센 환자 65·93명 모두 돈 줄이 있었다(한 푼도 안 낸 환자도 빠지지 않음). 미수로 보인 환자 1명 1,000원·5명 7,000원 → 첫날 엑셀과 견준다
 - 비트 RsvInf·`RcvAmt` 뜻이 이 의원에서 맞는지 아직 실제로 견주지 않았다 → 설치 뒤 첫날 엑셀(또는 비트 수납 화면)과 사용자가 한 번 견준다. 다르면 고친다
 - 예약을 비트에 적기 시작한 지 얼마 안 되면 예약률이 낮다(사용자에게 안내함)
 - 장부 고친 칸은 그 PC에만 있다. PC를 바꾸면 고친 칸이 안 보인다(사용자 결정 1·접수 PC 한 대)

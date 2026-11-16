@@ -13,6 +13,7 @@
 > | 3 | TASK-5 | 수납일지 화면 + 울타리(components/sunap/rows) |
 > | 3 | TASK-6 | 통계 '예약·전환' 칸 |
 > | 4 | TASK-7 | 탭·주소 잇기 + 전체 검사·화면 확인 |
+> | 5 | TASK-8 | 검토 고침: '확인 필요한 날' 한 줄 + 미리보기 탭 수 시험 |
 >
 > - 겹치는 파일: `eslint.config.mjs`·`src/guardrails.test.ts`는 TASK-2(Phase 1)와 TASK-5(Phase 3)만, 차례로 고친다
 > - **사용자 단계**: (1) 배포 전 `20261116000000_sunap.sql`을 Supabase SQL Editor에 붙여 넣기 (2) 배포 뒤 도우미 0.8.0 정식 판을 접수 PC에 설치. Claude는 실제 Supabase에 붙지 않는다
@@ -72,3 +73,11 @@
 - Files: src/components/shell/menu.ts, src/components/shell/shell.test.tsx, src/app/(app)/sunap/page.tsx, src/app/(app)/sunap/page.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx, src/app/notFound.test.tsx, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/components/dashboard/briefing/DashboardHome.test.tsx, src/components/preview/sample.ts, src/components/preview/sample.test.ts, src/components/sunap/**
 - Tests: src/components/shell/shell.test.tsx, src/app/(app)/sunap/page.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx
 - TDD: required — 메뉴 줄 하나 + 주소 화면 하나 + 목록을 고정한 시험만 맞춘다. 그 뒤 전체 검사(`npm test`·`npm run lint`·`npm run build`)와 화면 확인(로그인 없는 하네스, 1440·390, 합성 자료). 화면 확인에서 고칠 것이 나오면 `src/components/sunap/**`만 고친다
+
+## TASK-8: 검토 고침 — '확인 필요한 날' 한 줄 + 미리보기 탭 수
+- Phase: 5
+- AC: AC-4905.9, AC-4907.1
+- REQ: REQ-4905, REQ-4907
+- Files: src/components/sunap/**, src/components/preview/DashboardPreview.test.tsx
+- Tests: src/components/sunap/SunapScreen.test.tsx, src/components/preview/DashboardPreview.test.tsx
+- TDD: required — 독립 검토(11-17) 뒤. 장부 위 '확인 필요한 날' 한 줄(글자는 AC-4905.9 그대로). `DashboardPreview.test.tsx`는 메뉴 목록을 고정한 시험이라(AC-4907.1) 탭 수 12→13·나머지 11→12만 바꾼다
