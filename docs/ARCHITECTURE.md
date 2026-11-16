@@ -109,6 +109,9 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 | `payroll_months` | 달마다 입력값·결과(jsonb), `draft`·`final`. `final`은 RLS로 수정 불가 |
 | `worklog_days` | 업무일지 하루 한 줄: 인원 2·수입 8·지출 4칸은 글자, 비고 5·업무사항 1·항목 이름 12칸 · 업무사항 글씨 크기 `memo_font_pt`(8·9·10·11·12·14·16pt, 기본 11, specs/worklog-memo-font) · 현금 시재(장수 8칸·그날 시재·환불/미수입금 현금 표시·차이 이유, specs/worklog-cash-float) |
 | `worklog_settings` | 병원 업무일지 설정 한 줄: 시재 금액 `cash_float`(기본 300,000원) (specs/worklog-cash-float) |
+| `sunap_days` | 수납일지 마감한 날 한 줄: `work_date`·`closed_at`·`late`(늦은 마감)와 합계 숫자 24칸(내원·구분·Block·물리치료·예약·결제별 건수·금액, 0~10억 정수). 환자 줄은 없다(장부는 접수 PC 도우미 저장). 다시 마감하면 덮어쓰고 마감 풀기는 지운다. 저장은 `lib/storage/sunap.ts` (specs/sunap-ilji) |
+| `sunap_spends` | 수납일지 그날 지출 한 줄: 종류(`cash`·`card`·`etc`·`parking`)·내용(1~50자, 개인정보 모양은 앱이 안 보냄)·금액(0~1억). 넣기·읽기·고치기(종류·내용·금액)·지우기 (specs/sunap-ilji) |
+| `sunap_settings` | 병원 수납일지 설정 한 줄: Block·물리치료 묶음 id(`block_group`·`pt_group`, 통계 처방 묶음, 바깥 키 없음 = 지워지면 안 고름)·예약 메모 말 `rsv_words`(jsonb 객체, 4,000바이트 미만). 지우기 없음 (specs/sunap-ilji) |
 | `ai_usage` | 달별 토큰·비용 |
 | `ai_reports` | 달별 AI 리포트(병원·달마다 하나, 다시 분석하면 덮어씀)·만들 때 쓴 숫자의 지문. 쓰기는 DB 함수로만 (ADR-024) |
 | `form_notices` | 서식 휴진 안내 한 줄: 연·월·카드(1~4장, jsonb)·테마. 대충 적은 글은 두지 않는다. 칸은 specs/forms design.md 8절 (ADR-028). 테마 칸은 고른 그림 값(null·`auto-2`·`<열쇠>`·`<열쇠>-2`·`bg-<내 배경 id>`, 40자까지)이다 (specs/forms-themes design.md 2절). 글자 색 칸 `accent`는 null(자동) 또는 `#` + 소문자 16진수 6자리다 (specs/forms-accent design.md 2절) |
