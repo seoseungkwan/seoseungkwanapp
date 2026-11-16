@@ -3,7 +3,7 @@
 import { useId, useState } from 'react'
 import { ds } from '@/components/ui/classes'
 import type { HandRsvKind, LedgerRow } from '@/types/sunap'
-import { RSV_LABEL, VISIT_LABEL, rsvDay, type LedgerPatch } from './labels'
+import { RSV_LABEL, VISIT_LABEL, rsvDay, type LedgerPatch } from '../labels'
 import { Pop, PopHead, type Anchor } from './Pop'
 
 // 다음 예약 직접 고르기 판(spec sunap-ilji AC-4905.3, 시안 ?s=pick). 받은 줄을 그리고 고른 값을 onPick으로만 넘긴다(장부 줄 화면이 연다).

@@ -5,8 +5,8 @@ import { ds } from '@/components/ui/classes'
 import { parseWon } from '@/lib/sunap/ledger'
 import type { LedgerEditedField, LedgerRow, SunapTotals } from '@/types/sunap'
 import { RSV_LABEL, VISIT_LABEL, WON_PROBLEM, cellWon, chipLine, chipTeal, rsvDay, won, type LedgerPatch } from '../labels'
-import { Pop, PopHead, anchorOf, type Anchor } from '../Pop'
-import { RsvPicker } from '../RsvPicker'
+import { Pop, PopHead, anchorOf, type Anchor } from './Pop'
+import { RsvPicker } from './RsvPicker'
 import { PanelHead, TABLE, TD, TD_INK, TD_MID, TD_MUTED, TD_NUM, TF, TF_MID, TF_NUM, TH, TH_MID, TH_NUM } from './parts'
 
 // 수납일지 환자 장부(spec sunap-ilji AC-4905.1·4905.2·4905.3, 시안 ledgerPanel) [장부 줄 화면 울타리 안].
@@ -236,11 +236,14 @@ export function LedgerRows({
   rows,
   totals,
   editable,
+  closed,
   onEdit,
 }: {
   rows: readonly LedgerRow[]
   totals: SunapTotals
   editable: boolean
+  /** 마감한 날(못 고치는 까닭이 마감일 때만 마감 안내를 띄운다. 불러오는 중·마감하는 중은 잠깐 막기만) */
+  closed: boolean
   onEdit(chart: string, patch: LedgerPatch): void
 }) {
   const [filter, setFilter] = useState<Filter>('all')
@@ -279,7 +282,7 @@ export function LedgerRows({
 
   return (
     <section aria-labelledby="sunap-ledger-title" className="min-w-0 rounded-control border border-line bg-surface">
-      <PanelHead id="sunap-ledger-title" title="환자 장부" hint={editable ? '칸을 누르면 고칠 수 있어요' : '마감한 날이라 고칠 수 없어요'}>
+      <PanelHead id="sunap-ledger-title" title="환자 장부" hint={closed ? '마감한 날이라 고칠 수 없어요' : '칸을 누르면 고칠 수 있어요'}>
         <span className="flex-1 max-md:hidden" />
         <div className="flex flex-wrap gap-1.5">
           {FILTERS.map(({ key, label, test: match }) => {

@@ -1075,8 +1075,8 @@ describe('AC-4905.8 components/sunap/rows/**(수납일지 장부 줄): JSX는 �
     )
   })
 
-  it('AC-4905.8: 실제 장부 줄 소스(rows/LedgerRows·rows/PaidRows)는 울타리에 걸리는 것이 없다', async () => {
-    const files = ['src/components/sunap/rows/LedgerRows.tsx', 'src/components/sunap/rows/PaidRows.tsx']
+  it('AC-4905.8: 실제 장부 줄 소스(rows/LedgerRows·rows/PaidRows·환자 이름을 그리는 rows/RsvPicker·rows/Pop)는 울타리에 걸리는 것이 없다', async () => {
+    const files = ['src/components/sunap/rows/LedgerRows.tsx', 'src/components/sunap/rows/PaidRows.tsx', 'src/components/sunap/rows/RsvPicker.tsx', 'src/components/sunap/rows/Pop.tsx']
     const results = await eslint.lintFiles(files)
     expect(results.map((r) => r.filePath.replace(/\\/g, '/').replace(/^.*\/src\//, 'src/')).sort()).toEqual([...files].sort())
     expect(results.flatMap((r) => r.messages.map((m) => `${r.filePath}:${m.line} ${m.ruleId}`))).toEqual([])

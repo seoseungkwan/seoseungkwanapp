@@ -359,7 +359,7 @@ function LedgerView({
       ) : (
         <>
           <SunapCards totals={view.totals} spends={server.spends} />
-          <LedgerRows rows={view.rows} totals={view.totals} editable={editable} onEdit={edit} />
+          <LedgerRows rows={view.rows} totals={view.totals} editable={editable} closed={closed} onEdit={edit} />
           <div className="grid grid-cols-2 gap-3 max-lg:grid-cols-1">
             <PaidRows paid={view.paid} />
             {server.status === 'ready' && (

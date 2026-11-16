@@ -47,9 +47,9 @@ const ROWS: LedgerRow[] = [
 ]
 const TOTALS = dayTotals({ day: '2026-11-16', unsure: false, rows: ROWS, paid: [], closedAt: null, late: false })
 
-function renderRows(editable = true) {
+function renderRows(editable = true, closed = !editable) {
   const onEdit = vi.fn()
-  render(<LedgerRows rows={ROWS} totals={TOTALS} editable={editable} onEdit={onEdit} />)
+  render(<LedgerRows rows={ROWS} totals={TOTALS} editable={editable} closed={closed} onEdit={onEdit} />)
   return { onEdit, user: userEvent.setup() }
 }
 
@@ -272,6 +272,13 @@ describe('AC-4905.3 다음 예약 고르기(시안 ?s=pick)', () => {
 })
 
 describe('AC-4905.4 마감한 날(시안 ?s=closed)은 고칠 수 없다', () => {
+  it('AC-4905.4: 마감 전인데 잠깐 못 고칠 때(불러오는 중·마감하는 중)는 마감 안내를 띄우지 않는다', () => {
+    renderRows(false, false)
+    expect(screen.getByText('칸을 누르면 고칠 수 있어요')).toBeTruthy()
+    expect(screen.queryByText('마감한 날이라 고칠 수 없어요')).toBeNull()
+    expect(screen.queryByRole('button', { name: '김○○ 카드' })).toBeNull()
+  })
+
   it('AC-4905.4: 안내 글이 바뀌고 금액·비고·예약 칸은 누를 수 없고 Block·물리치료는 막혀 있다', () => {
     renderRows(false)
     expect(screen.getByText('마감한 날이라 고칠 수 없어요')).toBeTruthy()
