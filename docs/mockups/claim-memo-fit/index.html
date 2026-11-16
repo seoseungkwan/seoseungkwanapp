@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>메모 확인 — 한눈에 보기</title>
+<!--
+  청구 3단계 '메모 확인' 오른쪽 상세에서 증상·처방내역이 아래로 밀려 매번 내려야 하던 것을 고치는 시안.
+  ?s=now(지금) · ?s=new(바꾼 뒤). ?p=long 이면 처방이 아주 긴 사람.
+  틀은 사용자 화면(가로 1440 · 세로 약 830 창, 머리 메뉴를 내린 상태, 두 칸 높이 약 533px)에 맞췄다.
+  색은 앱 토큰(src/app/globals.css :root)만 쓴다. 이름·차트·증상 글은 모두 지어낸 값이다. 어디로도 보내지 않는다.
+-->
+<style>
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-strong: #1D4ED8; --accent-soft: #EAF1FE;
+  --warning: #B45309; --warning-soft: #FDF4E3; --positive: #15803D; --r: 4px; --r-float: 8px;
+  --ui: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #E9ECF0; color: var(--ink-2); font: 14px/22px var(--ui); word-break: keep-all; }
+button { font: inherit; color: inherit; }
+
+/* 시안 머리(앱 밖) */
+.mhead { max-width: 1440px; margin: 0 auto; padding: 16px 12px 10px; display: grid; gap: 8px; }
+.mhead h1 { margin: 0; font-size: 19px; line-height: 27px; font-weight: 600; color: var(--ink); }
+.mhead p { margin: 0; font-size: 13px; line-height: 20px; }
+.bar { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 13px; color: var(--muted); }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line-strong); border-radius: 6px; overflow: hidden; background: var(--surface); }
+.seg a { padding: 5px 12px; font-size: 13px; color: var(--ink-2); text-decoration: none; white-space: nowrap; }
+.seg a + a { border-left: 1px solid var(--line-strong); }
+.seg a[aria-current="true"] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.stage { padding: 0 12px 16px; }
+.scaler { margin: 0 auto; transform-origin: top left; }
+/* 창 하나: 가로 1424(1440 − 오른쪽 스크롤 막대) × 세로 750 */
+.frame { width: 1424px; height: 750px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-float); overflow: hidden; }
+.page { height: 100%; margin: 0 auto; padding: 0 24px; display: flex; flex-direction: column; gap: 12px; }
+.now .page { max-width: 1280px; }
+
+/* 위 단계 · 도구 줄 (그대로) */
+.steps { flex: none; display: flex; gap: 14px; padding: 10px 0 0; font-size: 13px; color: var(--muted); }
+.steps span b { display: inline-block; min-width: 18px; margin-right: 4px; border: 1px solid var(--line-strong); border-radius: 3px; text-align: center; font-size: 12px; line-height: 17px; font-weight: 500; }
+.steps .on { color: var(--ink); font-weight: 600; }
+.steps .on b { border-color: var(--ink); }
+.toolbar { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; background: var(--canvas); border: 1px solid var(--line); border-radius: var(--r); font-size: 13px; }
+.trow { display: flex; align-items: center; gap: 10px; }
+.trow .sum b { font-size: 17px; color: var(--ink); }
+.trow .ok { color: var(--positive); font-weight: 600; }
+.sp { flex: 1; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink-2); font-size: 13px; white-space: nowrap; }
+.btn.sm { height: 30px; padding: 0 10px; }
+.btn.big { height: 36px; font-weight: 600; color: var(--ink); }
+.btn:disabled { opacity: .45; }
+.btn.go { height: 36px; padding: 0 14px; border-color: var(--positive); background: var(--positive); color: #fff; font-weight: 600; }
+kbd { display: inline-block; min-width: 18px; padding: 0 4px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 3px; background: var(--surface); font: 600 11px/15px var(--ui); text-align: center; color: var(--ink-2); }
+.btn.go kbd { background: rgb(255 255 255 / .2); border-color: rgb(255 255 255 / .55); color: #fff; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; color: var(--muted); }
+.radio { display: inline-flex; align-items: center; gap: 4px; }
+.radio i { width: 13px; height: 13px; border: 1px solid var(--line-strong); border-radius: 50%; display: inline-block; }
+.radio i.on { border: 4px solid var(--accent); }
+.date { height: 28px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); display: inline-flex; align-items: center; width: 132px; }
+
+/* 두 칸 */
+.split { flex: none; height: 533px; display: grid; grid-template-columns: 360px minmax(0, 1fr); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+/* 바꾼 뒤 목록: 표시(! 메모 바꿈 등)를 차트번호 바로 뒤로 붙이고 목록을 좁힌다 */
+.new .split { grid-template-columns: 272px minmax(0, 1fr); }
+.new .item { gap: 8px; }
+.new .item .mid { flex: none; gap: 6px; }
+.new .listtop { padding: 8px 10px; }
+.new .listtop .seg { flex-wrap: nowrap; }
+.new .listtop .seg span { padding: 4px 9px; white-space: nowrap; }
+.listpane { min-height: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line); }
+.listtop { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.listtop .seg span { padding: 4px 12px; font-size: 13px; }
+.listtop .seg span + span { border-left: 1px solid var(--line-strong); }
+.listtop .seg .on { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.ghead { flex: none; display: flex; justify-content: space-between; padding: 5px 14px; background: var(--canvas); border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.ghead .c { font-weight: 400; color: var(--muted); }
+.listwrap { flex: 1; min-height: 0; overflow-y: auto; }
+ol { list-style: none; margin: 0; padding: 0; }
+.item { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 12px 6px 9px; border-left: 3px solid transparent; border-bottom: 1px solid var(--line); }
+.item.sel { background: var(--accent-soft); border-left-color: var(--accent-strong); }
+.item .no { width: 18px; text-align: right; font-size: 12px; color: var(--muted); }
+.item .mid { flex: 1; display: flex; align-items: baseline; gap: 8px; }
+.item .nm { font-size: 14px; font-weight: 500; color: var(--ink); }
+.item.sel .nm { font-weight: 700; }
+.item .day, .item .cno { font-size: 12px; color: var(--muted); }
+.badge { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: var(--r); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.badge.warn { background: var(--warning-soft); color: var(--warning); }
+.badge.plain { border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); font-weight: 400; }
+
+/* 오른쪽 상세 공통 */
+.detail { min-height: 0; display: flex; flex-direction: column; }
+.pos { font-size: 12px; font-weight: 600; color: var(--accent-strong); white-space: nowrap; }
+.nm-big { font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); }
+.facts { font-size: 14px; color: var(--ink-2); white-space: nowrap; }
+.facts .k { color: var(--muted); }
+.facts .sep { color: var(--line-strong); margin: 0 6px; }
+.action { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; background: var(--canvas); border: 1px solid var(--line); border-radius: var(--r); }
+.status { flex-basis: 100%; margin: 0; font-size: 13px; line-height: 20px; color: var(--muted); }
+.box { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 8px 12px; background: var(--canvas); border: 1px solid var(--line); border-radius: var(--r); }
+.box .bt { font-size: 13px; font-weight: 600; color: var(--ink); }
+.box .txt { white-space: pre-wrap; font-size: 14px; color: var(--ink); }
+.box .none { font-size: 13px; color: var(--muted); line-height: 19px; }
+.sec { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; }
+.sec h4 { flex: none; margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.sec h4 span { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: 4px; }
+.tbox { border: 1px solid var(--line); min-height: 0; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 19px; table-layout: fixed; }
+.tbl th { position: sticky; top: 0; z-index: 1; padding: 4px 8px; background: var(--canvas); border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 500; color: var(--muted); text-align: left; white-space: nowrap; }
+.tbl td { padding: 5px 8px; border-top: 1px solid var(--line); vertical-align: top; color: var(--ink); overflow-wrap: anywhere; }
+.tbl tbody tr:first-child td { border-top: 0; }
+.tbl .k { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.tbl tr.proc .k { color: var(--ink); font-weight: 600; }
+.tbl .code { font-weight: 600; }
+.tbl .short { color: var(--muted); font-size: 12px; }
+.tbl .num { text-align: right; white-space: nowrap; color: var(--ink-2); }
+.tbl .ctr { text-align: center; white-space: nowrap; color: var(--ink-2); }
+
+/* 지금: 오른쪽 전체가 한 덩어리로 내려간다 */
+.now .detail { overflow-y: auto; padding: 16px 20px 20px; gap: 14px; }
+.now .head { display: flex; justify-content: space-between; gap: 12px; }
+.now .memos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.now .memos .box { min-height: 112px; }
+.now .tables { display: grid; grid-template-columns: minmax(0,2fr) minmax(0,3fr); gap: 12px; }
+
+/* 바꾼 뒤: 머리 한 줄 + 아래 세 칸(메모 | 증상 | 처방). 칸마다 따로 내린다 */
+.new .detail { overflow: hidden; padding: 12px 20px 14px; gap: 10px; }
+.new .head { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.new .head .who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
+.new .head .nav { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.new .cols { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+/* 메모 두 칸이 남은 높이를 반씩 나눠 크게 쓰고, 넘치면 칸 안에서 내린다 */
+.new .side .box { flex: 1 1 0; min-height: 96px; overflow-y: auto; overscroll-behavior: contain; }
+/* 처방명은 한 줄: 길면 끝을 … 로 자르고(마우스를 올리면 전체), 짧은 이름은 늘 보인다 */
+.new .tbl .nmcell { display: flex; gap: 4px; align-items: baseline; min-width: 0; }
+.new .tbl .nmtxt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.new .tbl .nmcell .short { flex: none; white-space: nowrap; }.new .side { min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 10px; }
+.new .side .action { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 8px; }
+.new .side .action .status { flex-basis: auto; }
+.new .side .action .go { width: 100%; }
+.new .side .action .two { display: flex; gap: 6px; }
+.new .side .action .two .btn { flex: 1; }
+.new .tbox { overflow-y: auto; overscroll-behavior: contain; }
+
+.notes { max-width: 1440px; margin: 0 auto; padding: 0 12px 40px; font-size: 13px; }
+.notes h2 { font-size: 15px; margin: 8px 0 6px; color: var(--ink); }
+.notes ul { padding-left: 20px; margin: 0 0 10px; }
+.notes li { margin: 2px 0; }
+</style>
+</head>
+<body>
+
+<header class="mhead">
+  <h1>청구 › 메모 확인 · 증상·처방내역을 한눈에</h1>
+  <p>이름·차트·증상 글은 지어낸 것이고, 줄 수와 길이는 보내 주신 화면(증상 8줄 · 처방 11줄)과 같게 맞췄어요. 틀은 가로 1440 창 크기예요.</p>
+  <div class="bar">
+    보기
+    <div class="seg" id="pick">
+      <a href="?s=now">지금</a>
+      <a href="?s=new">바꾼 뒤</a>
+    </div>
+    환자
+    <div class="seg" id="pickP">
+      <a href="?p=normal">보통(증상 8 · 처방 11줄)</a>
+      <a href="?p=long">아주 긴 사람(증상 14 · 처방 20줄)</a>
+    </div>
+  </div>
+</header>
+
+<div class="stage"><div class="scaler" id="scaler"><div class="frame" id="frame"></div></div></div>
+
+<section class="notes">
+  <h2>바꾸는 것 (가로 1024 이상 PC 화면만 · 폰과 좁은 화면은 지금 그대로)</h2>
+  <ul>
+    <li><b>청구 화면만 창 너비를 다 써요.</b> 지금은 양옆에 빈 곳이 있어요(가로 1440 창에서 약 200px). 다른 탭은 그대로예요.</li>
+    <li>왼쪽 환자 목록: '! 메모 바꿈' 같은 표시를 오른쪽 끝에서 <b>차트번호 바로 뒤로</b> 붙이고, 목록을 좁혀요(360 → 272px). 줄은 한 줄 그대로예요.</li>
+    <li>오른쪽 위는 <b>한 줄</b>: 이름 · 표시 · 진료일 · 차트 · 점검 경고 … 입력할 사람 1 / 27 · [↑ 앞 사람][↓ 다음 사람].</li>
+    <li>그 아래를 <b>세 칸으로 나란히</b>: ① 복사(완료) 단추 · 상태 줄 · [메모 고치기][바꾸지 않기] · 우리 메모 · 비트 메모 ② 증상 · 차트 원문 ③ 처방내역.</li>
+    <li>왼쪽 메모 칸을 넓혀요(220 → 300px). 우리 메모 · 비트 메모 두 칸이 남은 높이를 <b>똑같이 반씩</b> 크게 쓰고, 메모가 아주 길면 그 칸 안에서 내려가요.</li>
+    <li>복사 단추 밑의 기본 안내 글('누르면 우리 메모가 복사되고 완료로 바뀌어요. 그다음 비트 메모 칸에 붙여 넣으세요.')은 없애요. 복사했어요 · 복사 못 함 · 완료한 환자예요 같은 알림은 그 일이 있을 때만 같은 자리에 나와요.</li>
+    <li><b>증상은 자르지 않아요.</b> 긴 줄은 다음 줄로 넘어가 글이 다 보여요. 증상 칸을 넓혀서(처방 칸에서 가져옴) 줄이 덜 접혀요.</li>
+    <li>처방명은 한 줄로: 길면 끝을 '…'로 자르고, 마우스를 올리면 전체 이름이 떠요. 짧은 이름(SNB · 리도카인 등)은 늘 보여요.</li>
+    <li>처방에서 짧은 이름이 처방명과 똑같으면 한 번만 써요(예: 초진진찰료, 외래환자 의약품관리료).</li>
+    <li>보내 주신 크기의 사람(증상 8줄 · 처방 11줄)은 <b>내리지 않고 다 보여요.</b> 더 긴 사람은 <b>그 칸 안에서만</b> 내려가고, 표 머리와 다른 칸은 그대로 있어요.</li>
+    <li>글자 · 표의 칸 · 순서 · 단추와 움직임(복사(완료), ↑↓, C, 메모 고치기)은 지금과 같아요.</li>
+  </ul>
+</section>
+
+<script>
+const q = new URLSearchParams(location.search)
+const S = q.get('s') === 'now' ? 'now' : 'new'
+const P = q.get('p') === 'long' ? 'long' : 'normal'
+for (const a of document.querySelectorAll('#pick a')) { const s = new URL(a.href).searchParams.get('s'); a.href = `?s=${s}&p=${P}`; a.setAttribute('aria-current', String(s === S)) }
+for (const a of document.querySelectorAll('#pickP a')) { const p = new URL(a.href).searchParams.get('p'); a.href = `?s=${S}&p=${p}`; a.setAttribute('aria-current', String(p === P)) }
+
+const people = [
+  ['김하늘', 412, 'w'], ['이도윤', 735, 'w'], ['박서연', 918, 'w'], ['최민준', 1203, 'w'], ['정예린', 1577, 'w'], ['한지우', 2210, 'n'],
+  ['오세훈', 2864, 'n'], ['윤가람', 3105, 'w'], ['장보람', 3398, 'w'], ['임하준', 4120, 'w'], ['서다온', 4471, 'w'], ['문지호', 14893, 'w'],
+]
+const lines = [
+  ['subj', '우측 1,2 MTPJ plantar 및 proximal forefoot pain'], ['subj', '새 구두 신고 오래 서 있었다'], ['subj', '10일 전부터 통증'],
+  ['dx', 'xr(+): Hallux rigidus'], ['exam', 'Td(+): 1,2 MTPJ plantar, moderate'], ['dx', 'Metatarsalgia 1,2 MTPJ foot Rt'],
+  ['dx', 'Flexor tenosynovitis foot Rt(1,2 MT distal)'], ['plan', 'Rt FNB SNB 화요일 2차/다음주 목 3차주사.'],
+]
+if (P === 'long') lines.push(
+  ['subj', '좌측 무릎도 계단 오를 때 시큰거림'], ['exam', 'ROM full, effusion(-), McMurray(-)'], ['img', 'sono: 1,2 MTPJ synovial thickening'],
+  ['dx', 'Synovitis 1,2 MTPJ foot Rt'], ['plan', '깔창 교정 권유, 2주 뒤 재평가'], ['', '보존 치료 설명함'],
+)
+// [종류, 코드, 처방명, 짧은 이름, 양, 급여]
+const rxBase = [
+  ['proc', 'LA272', '척수신경말초지차단술-좌골신경', 'SNB', '1', true], ['proc', 'LA274', '척수신경말초지차단술-대퇴신경', 'FNB', '1', true],
+  ['drug', 'A15', '휴온스리도카인염산염수화물주사_(0.4266g/20mL)', '리도카인', '0.2', true], ['other', 'A30', '리포라제주', '리포라제주', '0.35', false],
+  ['other', 'AA154', '초진진찰료-의과의원보건의료원내의과', '초진진찰료-의과의원보건의료원내의과', '1', true],
+  ['other', 'AL801', '외래환자 의약품관리료-1일분(의원/치과의원/보건의료원 의·치과)', '외래환자 의약품관리료-1일분(의원/치과의원/보건의료원 의·치과)', '1', true],
+  ['other', 'G7403', '(Rt) Ankle / AP/Lat./Mortis', '족관절3매', '1', true], ['other', 'G7403', '(Lt) Ankle / AP/Lat./Mortis', '족관절3매', '1', true],
+  ['other', 'G7504', '(Rt) Foot / AP/Lat./Both oblique', '족골4매', '1', true], ['other', 'G7504', '(Lt) Foot / AP/Lat./Both oblique', '족골4매', '1', true],
+  ['other', 'sono1', '비급여초음파', 'Sono', '1', false],
+]
+const rxMore = [
+  ['other', 'MM101', '표층열치료', '핫팩', '1', true], ['other', 'MM102', '심층열치료', '초음파', '1', true], ['other', 'MM103', '간섭파전류치료', 'ICT', '1', true],
+  ['other', 'MM104', '경피적전기신경자극치료', 'TENS', '1', true], ['proc', 'MM301', '도수치료', '', '1', false], ['drug', 'P04', '파모티딘정_(20mg)', '파모', '14', true],
+  ['drug', 'P05', '아세클로페낙정_(100mg)', '아세클', '14', true], ['other', 'B01', '탄력붕대', '', '1', false], ['other', 'E01', '체외충격파', 'ESWT', '1', false],
+]
+const rx = P === 'long' ? [...rxBase, ...rxMore] : rxBase
+const LBL = { subj: '호소', exam: '검사', dx: '진단', img: '영상', proc: '시술', rx: '처치', plan: '계획', '': '' }
+const RX = { proc: '시술', drug: '약제', other: '기타' }
+const procs = rx.filter(r => r[0] === 'proc').length
+
+const steps = `<div class="steps">${['날짜 고르기', '점검 결과', '메모 확인', '비트에 입력', '입력 결과'].map((t, i) => `<span class="${i === 2 ? 'on' : ''}"><b>${i + 1}</b>${t}</span>`).join('')}</div>`
+const toolbar = `<div class="toolbar">
+  <div class="trow"><span class="sum"><b>27명</b> 입력해요 · 그중 <span class="ok">✓ 완료 0명</span> · 빠지는 사람 40명</span><span class="sp"></span>
+    <button class="btn">비트 메모 전체 불러오기</button><span class="small">비트에서 읽기만 해요. 비트 로그인 창은 뜨지 않아요.</span><button class="btn big">비트에 입력 (27명)</button></div>
+  <div class="trow"><span class="sp"></span><span class="small" style="color:var(--ink-2)">누르면 PC 화면에 확인 창이 떠요. 거기서 [확인]을 눌러야 들어가요. 다른 메모 18명은 우리 메모로 바뀌고, 원래 메모는 기록에 남아요.</span></div>
+  <div class="trow"><b style="color:var(--ink)">입력 방식</b><span class="radio"><i></i>처방코드별</span><span class="radio"><i class="on"></i>날짜별</span><span class="muted">|</span><span class="radio"><i></i>하루</span><span class="radio"><i class="on"></i>시작~끝</span>
+    <span class="small">시작</span><span class="date">2026-11-16</span><span class="small">끝</span><span class="date">2026-11-16</span><span class="sp"></span><span class="small" style="color:var(--ink-2)">불러온 기간 11/16 (월) ~ 11/16 (월)</span></div>
+  <div class="small">날짜별: 고른 날의 아직 안 된 사람 모두 · 입력 전에 비트 내원내역 창을 이 날짜가 모두 들어가게 띄워 두고, 처방코드·상병 검색칸은 비워 두세요.</div>
+</div>`
+const list = `<div class="listpane">
+  <div class="listtop">보기 <div class="seg"><span class="on">전체 67</span><span>미완료 67</span><span>완료 0</span></div></div>
+  <div class="ghead">입력할 사람 <span class="c">27명</span></div>
+  <div class="listwrap"><ol>${people.map(([n, c, t], i) => `<li class="item${i === 0 ? ' sel' : ''}"><span class="no">${i + 1}</span><span class="mid"><span class="nm">${n}</span><span class="day">11/16 (월)</span><span class="cno">${c}</span></span><span class="badge ${t === 'n' ? 'plain' : 'warn'}">${t === 'n' ? '새 메모' : '! 메모 바꿈'}</span></li>`).join('')}</ol></div>
+</div>`
+
+const chartTable = `<section class="sec"><h4>증상 · 차트 원문<span>${lines.length}줄</span></h4><div class="tbox"><table class="tbl"><colgroup><col style="width:44px"><col></colgroup><tbody>${lines.map(([k, t]) => `<tr class="${k === 'proc' ? 'proc' : ''}"><td class="k">${LBL[k]}</td><td>${t}</td></tr>`).join('')}</tbody></table></div></section>`
+// 바꾼 뒤에는 짧은 이름이 처방명과 같으면 한 번만 쓴다
+const showShort = (n, s) => s && (S === 'now' || s !== n)
+const rxTable = `<section class="sec"><h4>처방내역<span>${rx.length}줄 · 시술 ${procs}</span></h4><div class="tbox"><table class="tbl"><colgroup><col style="width:44px"><col style="width:64px"><col><col style="width:64px"><col style="width:56px"></colgroup>
+  <thead><tr><th>종류</th><th>코드</th><th>처방명</th><th style="text-align:right">총투여량</th><th style="text-align:center">급여</th></tr></thead>
+  <tbody>${rx.map(([k, c, n, s, qn, b]) => `<tr class="${k === 'proc' ? 'proc' : ''}"><td class="k">${RX[k]}</td><td class="code">${c}</td><td>${S === 'new' ? `<div class="nmcell"><span class="nmtxt" title="${n}">${n}</span>${showShort(n, s) ? `<span class="short">${s}</span>` : ''}</div>` : `${n}${showShort(n, s) ? ` <span class="short">${s}</span>` : ''}`}</td><td class="num">×${qn}</td><td class="ctr">${b ? '급여' : '비급여'}</td></tr>`).join('')}</tbody></table></div></section>`
+const STATUS = '누르면 우리 메모가 복사되고 완료로 바뀌어요. 그다음 비트 메모 칸에 붙여 넣으세요.'
+const ours = `<div class="box"><span class="bt">우리 메모</span><span class="txt">◈SNB\n◈FNB</span></div>`
+const bit = `<div class="box"><span class="bt">비트에 저장된 청구메모</span><span class="none">아직 불러오지 않았어요. [비트 메모 전체 불러오기]를 눌러 주세요.</span><span class="none">비트에서 읽기만 해요. 비트 로그인 창은 뜨지 않아요.</span></div>`
+
+let detail
+if (S === 'now') {
+  detail = `<section class="detail">
+    <div class="head"><div><div class="pos">입력할 사람 1 / 27</div><div style="display:flex;align-items:center;gap:10px"><span class="nm-big">김하늘</span><span class="badge warn">! 메모 바꿈</span></div>
+      <div class="facts"><span class="k">진료일</span> 11/16 (월)<span class="sep">|</span><span class="k">차트</span> 412</div></div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px"><div style="display:flex;gap:6px"><button class="btn sm" disabled>↑ 앞 사람</button><button class="btn sm">↓ 다음 사람</button></div><span class="small">키보드 <kbd>↑</kbd> <kbd>↓</kbd></span></div></div>
+    <div class="small" style="color:var(--ink-2)">점검 경고 있음 · 입력은 돼요</div>
+    <div class="action"><button class="btn go"><kbd>C</kbd>복사(완료)</button><span class="sp"></span><button class="btn sm">메모 고치기</button><button class="btn sm">바꾸지 않기</button><p class="status">${STATUS}</p></div>
+    <div class="memos">${ours}${bit}</div>
+    <div class="tables">${chartTable}${rxTable}</div></section>`
+} else {
+  detail = `<section class="detail">
+    <div class="head"><div class="who"><span class="nm-big">김하늘</span><span class="badge warn">! 메모 바꿈</span>
+      <span class="facts"><span class="k">진료일</span> 11/16 (월)<span class="sep">|</span><span class="k">차트</span> 412</span><span class="small">점검 경고 있음 · 입력은 돼요</span></div>
+      <div class="nav"><span class="pos">입력할 사람 1 / 27</span><button class="btn sm" disabled>↑ 앞 사람</button><button class="btn sm">↓ 다음 사람</button><span class="small">키보드 <kbd>↑</kbd> <kbd>↓</kbd></span></div></div>
+    <div class="cols">
+      <div class="side">
+        <div class="action"><button class="btn go"><kbd>C</kbd>복사(완료)</button><div class="two"><button class="btn sm">메모 고치기</button><button class="btn sm">바꾸지 않기</button></div></div>
+        ${ours}${bit}
+      </div>
+      ${chartTable}${rxTable}
+    </div></section>`
+}
+
+const frame = document.getElementById('frame')
+frame.className = `frame ${S}`
+frame.innerHTML = `<div class="page">${steps}${toolbar}<div class="split">${list}${detail}</div></div>`
+
+// 휴대폰에서도 틀 전체가 보이게 줄여 보인다(실제 앱은 줄이지 않는다)
+function fit() {
+  const sc = document.getElementById('scaler')
+  const k = Math.min(1, (document.documentElement.clientWidth - 24) / 1426)
+  sc.style.width = '1426px'; sc.style.transform = `scale(${k})`; sc.style.height = `${752 * k}px`; sc.style.marginLeft = k < 1 ? '0' : 'auto'
+}
+fit(); addEventListener('resize', fit)
+</script>
+</body>
+</html>
