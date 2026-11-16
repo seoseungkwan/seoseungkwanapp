@@ -265,7 +265,7 @@ export function SetupScreen({
           <span className="text-body text-ink">새 도우미가 있어요.</span>
           <span className={ds.help}>지금 도우미로도 그대로 쓸 수 있어요.</span>
           {/* 웹앱 보관함에서 받는다(helper-download AC-5103.4). 이 장면의 주 단추는 [청구로 가기]라 보조 */}
-          <span className="ml-auto">
+          <span className="ml-auto flex flex-wrap items-center gap-2 max-md:w-full">
             <DownloadButton kind="helper" label="새 도우미 내려받기" variant="secondary" />
           </span>
         </div>
