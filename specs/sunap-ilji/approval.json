@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "sunap-ilji",
-  "approved_at": "2026-11-16T12:30:05Z",
+  "approved_at": "2026-11-16T22:15:59Z",
   "approved_via": "user-prompt",
   "session_id": "b0bacc8e-b4c1-48e0-aa1e-81ddd7dbbf9b",
-  "spec_sha256": "ff4b4898e089bf9c29092912217f5b9408d76a09378b0d9373bbeb1827e75276",
+  "spec_sha256": "2a2a4421390d2cb5fde9363fbc81444457bceb89c8869eb96294a06b2221ae5d",
   "scope": [
     "CLAUDE.md",
     "docs/ARCHITECTURE.md",
@@ -26,6 +26,7 @@
     "src/components/dashboard/briefing/DashboardHome.test.tsx",
     "src/components/dashboard/briefing/features.test.ts",
     "src/components/dashboard/briefing/features.ts",
+    "src/components/preview/DashboardPreview.test.tsx",
     "src/components/preview/sample.test.ts",
     "src/components/preview/sample.ts",
     "src/components/shell/menu.ts",
