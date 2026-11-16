@@ -1,0 +1,462 @@
+import { describe, expect, it } from 'vitest'
+import type { RxGroupDef } from '@/types/analysis'
+import {
+  SUNAP_TOTAL_KEYS,
+  type Ledger,
+  type LedgerRow,
+  type LedgerSettings,
+  type RsvWords,
+  type SunapLocalDay,
+  type SunapReply,
+  type SunapReplyRow,
+} from '@/types/sunap'
+import { buildLedger, closeLocal, dayTotals, parseWon, reopenLocal } from './ledger'
+
+// ── 지어낸 자료: 승인 시안(docs/mockups/sunap-ilji/index.html) ROWS 16줄로 만든 도우미 답 ─────────
+// 차트·이름·금액은 시안의 지어낸 값이다. 13번 Block·16번 현금은 직원이 고친 칸(비트 값은 Block 아님·현금 0원)
+
+const DAY = '2026-11-16'
+const WORDS: RsvWords = { inj: ['주사', '블록'], visit: ['경과', '진료'], etc: ['기타'] }
+const BLOCK: RxGroupDef = { id: 'g-block', codes: ['MM110'] }
+const PT: RxGroupDef = { id: 'g-pt', codes: ['MM010', 'MM015'], out: ['ESWT7'] }
+const SETTINGS: LedgerSettings = { words: WORDS, blockDef: BLOCK, ptDef: PT }
+
+const MOCK_ROWS: SunapReplyRow[] = [
+  ['10231', '김○○', '09:02', 're', 0, 15000, 0, 0, ['MM110', 'MM010'], ['202611191030', '주사 오전']],
+  ['10877', '이○○', '09:05', 're', 4700, 0, 0, 0, ['MM010'], null],
+  ['21004', '박○○', '09:11', 'new', 0, 23400, 0, 0, ['MM110', 'MM015'], ['202611181400', '경과 보기']],
+  ['10552', '최○○', '09:14', 're', 0, 9800, 0, 0, ['MM010'], null],
+  ['19870', '정○○', '09:20', 'd90', 0, 18200, 0, 0, ['MM110'], ['202611200900', '블록']],
+  ['10013', '강○○', '09:31', 're', 0, 0, 0, 0, ['MM010'], null],
+  ['21005', '조○○', '09:38', 'new', 12000, 0, 0, 0, ['MM010'], null],
+  ['15220', '윤○○', '09:44', 're', 0, 31500, 0, 0, ['MM110', 'MM010', 'ESWT7'], ['202611211000', '전화 상담']],
+  ['10498', '장○○', '09:52', 're', 0, 0, 25000, 0, ['MM110', 'MM010'], ['202611230930', '주사']],
+  ['21006', '임○○', '10:03', 'new', 0, 0, 0, 16300, ['MM015'], null],
+  ['12740', '한○○', '10:10', 're', 3900, 0, 0, 0, ['mm010'], null],
+  ['18603', '오○○', '10:18', 'd90', 0, 14600, 0, 0, ['MM010'], ['202611181100', '진료']],
+  ['10344', '서○○', '10:25', 're', 0, 42800, 0, 0, ['D1001'], ['202611261030', '주사']],
+  ['21007', '신○○', '10:33', 'new', 0, 19700, 0, 0, ['MM110', 'MM010'], ['202611191500', '주사']],
+  ['11902', '권○○', '10:41', 're', 0, 8600, 0, 0, ['MM010'], null],
+  ['16455', '황○○', '10:47', 're', 0, 10000, 0, 0, ['MM010'], ['202611241000', '경과']],
+]
+const MOCK_REPLY: SunapReply = {
+  v: 1,
+  day: DAY,
+  unsure: false,
+  rows: MOCK_ROWS,
+  paid: [
+    ['20788', '문○○', '11:20', 10000, 0],
+    ['11530', '배○○', '15:42', 0, 15000],
+  ],
+}
+const MOCK_LOCAL: SunapLocalDay = {
+  edits: {
+    '21004': { note: '허리 MRI 결과 보러 오심' },
+    '10552': { rsv: 'inj', note: '전화로 예약하신다고 함' },
+    '21006': { rsv: 'visit', note: '카드 두고 오심, 내일 입금' },
+    '10344': { block: true },
+    '16455': { cash: 5000 },
+  },
+}
+
+// 시안 ROWS의 보이는 값: [구분, 현금, 카드, 계좌, 미수, Block, 물리치료, 예약 종류, 예약 출처, 고친 칸]
+type Seen = [LedgerRow['kind'], number, number, number, number, boolean, boolean, LedgerRow['rsv']['kind'], 'hand' | 'bit', string[]]
+const MOCK_SEEN: Seen[] = [
+  ['re', 0, 15000, 0, 0, true, true, 'inj', 'bit', []],
+  ['re', 4700, 0, 0, 0, false, true, 'none', 'bit', []],
+  ['new', 0, 23400, 0, 0, true, true, 'visit', 'bit', []],
+  ['re', 0, 9800, 0, 0, false, true, 'inj', 'hand', []],
+  ['d90', 0, 18200, 0, 0, true, false, 'inj', 'bit', []],
+  ['re', 0, 0, 0, 0, false, true, 'none', 'bit', []],
+  ['new', 12000, 0, 0, 0, false, true, 'none', 'bit', []],
+  ['re', 0, 31500, 0, 0, true, false, 'unknown', 'bit', []],
+  ['re', 0, 0, 25000, 0, true, true, 'inj', 'bit', []],
+  ['new', 0, 0, 0, 16300, false, true, 'visit', 'hand', []],
+  ['re', 3900, 0, 0, 0, false, true, 'none', 'bit', []],
+  ['d90', 0, 14600, 0, 0, false, true, 'visit', 'bit', []],
+  ['re', 0, 42800, 0, 0, true, false, 'inj', 'bit', ['block']],
+  ['new', 0, 19700, 0, 0, true, true, 'inj', 'bit', []],
+  ['re', 0, 8600, 0, 0, false, true, 'none', 'bit', []],
+  ['re', 5000, 10000, 0, 0, false, true, 'visit', 'bit', ['cash']],
+]
+
+const replyOf = (rows: SunapReplyRow[], over: Partial<SunapReply> = {}): SunapReply => ({ v: 1, day: DAY, unsure: false, rows, paid: [], ...over })
+const line = (chart: string, over: Partial<{ kind: SunapReplyRow[3]; cash: number; card: number; transfer: number; unpaid: number; codes: string[]; rsv: SunapReplyRow[9] }> = {}): SunapReplyRow => [
+  chart,
+  '가○○',
+  '09:00',
+  over.kind ?? 're',
+  over.cash ?? 0,
+  over.card ?? 10000,
+  over.transfer ?? 0,
+  over.unpaid ?? 0,
+  over.codes ?? [],
+  over.rsv === undefined ? null : over.rsv,
+]
+const rowOf = (ledger: Ledger, chart: string): LedgerRow => {
+  const found = ledger.rows.find((row) => row.chart === chart)
+  if (found === undefined) throw new Error(`장부 줄이 없어요: ${chart}`)
+  return found
+}
+const one = (row: SunapReplyRow, local: SunapLocalDay = {}, settings: LedgerSettings = SETTINGS) =>
+  rowOf(buildLedger(replyOf([row]), local, settings), row[0])
+
+describe('AC-4901.3 buildLedger — 고친 칸은 고친 값, Block·물리치료는 groupMatches', () => {
+  it('AC-4901.3: 시안 16줄 — 줄마다 구분·금액·Block·물리치료·예약·고친 칸이 시안과 같다', () => {
+    const ledger = buildLedger(MOCK_REPLY, MOCK_LOCAL, SETTINGS)
+    expect(ledger.rows.map((row) => row.chart)).toEqual(MOCK_ROWS.map((row) => row[0]))
+    ledger.rows.forEach((row, at) => {
+      const [kind, cash, card, transfer, unpaid, block, pt, rsvKind, source, edited] = MOCK_SEEN[at]
+      expect({ at, kind: row.kind, cash: row.cash, card: row.card, transfer: row.transfer, unpaid: row.unpaid, block: row.block, pt: row.pt }).toEqual({
+        at,
+        kind,
+        cash,
+        card,
+        transfer,
+        unpaid,
+        block,
+        pt,
+      })
+      expect({ at, rsv: row.rsv.kind, source: row.rsv.source, edited: row.edited }).toEqual({ at, rsv: rsvKind, source, edited })
+    })
+  })
+
+  it('AC-4901.3: 줄은 차트·이름·시각을 도우미 답 그대로 싣고, 비고는 고친 칸의 note(없으면 빈 글)다', () => {
+    const ledger = buildLedger(MOCK_REPLY, MOCK_LOCAL, SETTINGS)
+    expect(rowOf(ledger, '21004')).toMatchObject({ chart: '21004', name: '박○○', time: '09:11', note: '허리 MRI 결과 보러 오심' })
+    expect(rowOf(ledger, '10231').note).toBe('')
+  })
+
+  it.each([
+    ['cash', { cash: 3000 }, 'cash', 3000],
+    ['card', { card: 12000 }, 'card', 12000],
+    ['transfer', { transfer: 7000 }, 'transfer', 7000],
+    ['unpaid', { unpaid: 2500 }, 'unpaid', 2500],
+  ] as const)('AC-4901.3: %s를 고치면 그 칸은 고친 값이고 edited에 그 칸 이름이 있다', (_, edit, field, value) => {
+    const row = one(line('1'), { edits: { '1': edit } })
+    expect(row[field]).toBe(value)
+    expect(row.edited).toEqual([field])
+  })
+
+  it('AC-4901.3: 고친 값 0원도 고친 값이다(비트 카드 10,000 → 0)', () => {
+    const row = one(line('1'), { edits: { '1': { card: 0 } } })
+    expect(row.card).toBe(0)
+    expect(row.edited).toEqual(['card'])
+  })
+
+  it('AC-4901.3: Block·물리치료는 고친 값이 없으면 groupMatches로 정한다(넣는·빼는 처방, 대소문자)', () => {
+    expect(one(line('1', { codes: ['MM110'] }))).toMatchObject({ block: true, pt: false, edited: [] })
+    expect(one(line('1', { codes: ['mm110', 'mm015'] }))).toMatchObject({ block: true, pt: true })
+    expect(one(line('1', { codes: ['MM010', 'ESWT7'] }))).toMatchObject({ block: false, pt: false })
+    expect(one(line('1', { codes: [] }))).toMatchObject({ block: false, pt: false })
+  })
+
+  it('AC-4901.3: Block·물리치료를 고치면 고친 값(참→거짓도)이고 edited에 들어간다', () => {
+    const row = one(line('1', { codes: ['MM110', 'MM010'] }), { edits: { '1': { block: false, pt: false } } })
+    expect(row).toMatchObject({ block: false, pt: false, edited: ['block', 'pt'] })
+    expect(one(line('1'), { edits: { '1': { pt: true } } })).toMatchObject({ pt: true, edited: ['pt'] })
+  })
+
+  it('AC-4901.3: 묶음 정의가 없으면(null) Block·물리치료는 모두 빈 칸이다', () => {
+    const settings: LedgerSettings = { words: WORDS, blockDef: null, ptDef: null }
+    const ledger = buildLedger(MOCK_REPLY, {}, settings)
+    expect(ledger.rows.every((row) => !row.block && !row.pt)).toBe(true)
+  })
+
+  it('AC-4901.3: 고친 칸이 여럿이면 edited는 현금·카드·계좌·미수·Block·물리치료 차례다', () => {
+    const row = one(line('1', { codes: ['MM110'] }), { edits: { '1': { pt: true, unpaid: 100, block: false, cash: 1, transfer: 2, card: 3 } } })
+    expect(row.edited).toEqual(['cash', 'card', 'transfer', 'unpaid', 'block', 'pt'])
+  })
+
+  it('AC-4901.3: 비트 값과 같은 고친 값은 고친 칸으로 보이지 않는다(비트 값과 다를 때만 표시)', () => {
+    const row = one(line('1', { codes: ['MM110'] }), { edits: { '1': { card: 10000, block: true } } })
+    expect(row).toMatchObject({ card: 10000, block: true, edited: [] })
+  })
+
+  it('AC-4901.3: 예약 고르기·비고는 edited에 넣지 않는다(예약은 rsv.source, 비고는 비트 값이 없다)', () => {
+    const row = one(line('1'), { edits: { '1': { rsv: 'etc', note: '메모' } } })
+    expect(row.edited).toEqual([])
+    expect(row.note).toBe('메모')
+  })
+
+  it('AC-4901.3: FREE는 고친 값까지 넣은 네 칸이 다 0원일 때다', () => {
+    expect(one(line('1', { card: 0 })).free).toBe(true)
+    expect(one(line('1', { card: 0 }), { edits: { '1': { cash: 3000 } } }).free).toBe(false)
+    expect(one(line('1', { cash: 4700, card: 0 }), { edits: { '1': { cash: 0 } } }).free).toBe(true)
+    expect(one(line('1', { card: 0, unpaid: 16300 })).free).toBe(false)
+  })
+
+  it('AC-4901.3: 답에 없는 차트의 고친 칸은 무시하고, 줄 차례는 답 그대로다', () => {
+    const ledger = buildLedger(replyOf([line('2'), line('1')]), { edits: { '9': { cash: 1 } } }, SETTINGS)
+    expect(ledger.rows.map((row) => row.chart)).toEqual(['2', '1'])
+  })
+
+  it('AC-4901.3: 장부는 날짜·확인 필요·미수 입금 줄과 PC 저장의 마감 시각·늦은 마감을 싣는다', () => {
+    const ledger = buildLedger({ ...MOCK_REPLY, unsure: true }, { closedAt: '2026-11-16T09:52:00.000Z', late: true, fixed: {} }, SETTINGS)
+    expect(ledger).toMatchObject({ day: DAY, unsure: true, closedAt: '2026-11-16T09:52:00.000Z', late: true })
+    expect(ledger.paid).toEqual([
+      { chart: '20788', name: '문○○', time: '11:20', cash: 10000, card: 0 },
+      { chart: '11530', name: '배○○', time: '15:42', cash: 0, card: 15000 },
+    ])
+    expect(buildLedger(MOCK_REPLY, {}, SETTINGS)).toMatchObject({ closedAt: null, late: false })
+  })
+
+  it('AC-4901.3: 받은 답·PC 저장을 바꾸지 않는다', () => {
+    const reply = structuredClone(MOCK_REPLY)
+    const local = structuredClone(MOCK_LOCAL)
+    buildLedger(reply, local, SETTINGS)
+    expect(reply).toEqual(MOCK_REPLY)
+    expect(local).toEqual(MOCK_LOCAL)
+  })
+})
+
+describe('AC-4901.4 예약 — 직접 고름(hand) → 그날 고정(fixed) → 비트 예약 없음(none) → 메모 말', () => {
+  const RSV: SunapReplyRow[9] = ['202611191030', '주사 오전']
+
+  it('AC-4901.4: 직접 고른 값이 있으면 그 값이고 출처는 hand다(고정값·비트 메모보다 앞)', () => {
+    expect(one(line('1', { rsv: RSV }), { edits: { '1': { rsv: 'visit' } }, fixed: { '1': 'etc' } }).rsv).toEqual({
+      kind: 'visit',
+      source: 'hand',
+      at: '202611191030',
+    })
+    expect(one(line('1'), { edits: { '1': { rsv: 'inj' } } }).rsv).toEqual({ kind: 'inj', source: 'hand', at: null })
+  })
+
+  it('AC-4901.4: 직접 "예약 안 하고 가심"(none)을 고르면 비트 예약이 있어도 시각은 없다', () => {
+    expect(one(line('1', { rsv: RSV }), { edits: { '1': { rsv: 'none' } } }).rsv).toEqual({ kind: 'none', source: 'hand', at: null })
+  })
+
+  it('AC-4901.4: 직접 고른 값이 없고 그날 고정값이 있으면 그 값이고 출처는 bit다', () => {
+    expect(one(line('1', { rsv: RSV }), { fixed: { '1': 'unknown' } }).rsv).toEqual({ kind: 'unknown', source: 'bit', at: '202611191030' })
+    // 마감 뒤 비트에 새로 생긴 예약(전화 예약)은 고정된 '예약 안 하고 가심'을 바꾸지 않는다
+    expect(one(line('1', { rsv: RSV }), { fixed: { '1': 'none' } }).rsv).toEqual({ kind: 'none', source: 'bit', at: null })
+    // 마감 뒤 비트 예약이 지워져도 고정값 그대로
+    expect(one(line('1'), { fixed: { '1': 'inj' } }).rsv).toEqual({ kind: 'inj', source: 'bit', at: null })
+  })
+
+  it('AC-4901.4: 둘 다 없고 비트 예약이 없으면 none이다', () => {
+    expect(one(line('1')).rsv).toEqual({ kind: 'none', source: 'bit', at: null })
+  })
+
+  it('AC-4901.4: 둘 다 없고 비트 예약이 있으면 메모 말로 정한다(classifyMemo, 설정의 말)', () => {
+    expect(one(line('1', { rsv: ['202611181400', '경과 보기'] })).rsv).toEqual({ kind: 'visit', source: 'bit', at: '202611181400' })
+    expect(one(line('1', { rsv: ['202611181400', '기타'] })).rsv.kind).toBe('etc')
+    expect(one(line('1', { rsv: ['202611181400', ''] })).rsv.kind).toBe('unknown')
+    const custom: LedgerSettings = { ...SETTINGS, words: { inj: ['INJ'], visit: [], etc: [] } }
+    expect(one(line('1', { rsv: ['202611181400', 'inj 오전'] }), {}, custom).rsv.kind).toBe('inj')
+  })
+
+  it('AC-4901.4: 직접 고르기는 unknown을 받지 않는다 — 저장에 unknown이 있어도 직접 고른 값으로 보지 않는다', () => {
+    const local = { edits: { '1': { rsv: 'unknown' } } } as unknown as SunapLocalDay
+    expect(one(line('1', { rsv: RSV }), local).rsv).toEqual({ kind: 'inj', source: 'bit', at: '202611191030' })
+    expect(one(line('1'), local).rsv).toEqual({ kind: 'none', source: 'bit', at: null })
+  })
+})
+
+describe('AC-4901.5 dayTotals — 서버 숫자 24칸', () => {
+  it('AC-4901.5: 숫자 칸은 design.md sunap_days의 24칸이다', () => {
+    expect(SUNAP_TOTAL_KEYS).toEqual([
+      'visits', 'first_n', 'd90_n', 'ret_n', 'block_n', 'pt_n', 'rsv_first', 'rsv_d90', 'first_block', 'd90_block', 'ret_block',
+      'cash_n', 'cash_won', 'card_n', 'card_won', 'transfer_n', 'transfer_won',
+      'paid_cash_n', 'paid_cash_won', 'paid_card_n', 'paid_card_won', 'free_n', 'unpaid_n', 'unpaid_won',
+    ])
+    expect(Object.keys(dayTotals(buildLedger(replyOf([]), {}, SETTINGS))).sort()).toEqual([...SUNAP_TOTAL_KEYS].sort())
+  })
+
+  it('AC-4901.5: 시안 예(design.md "예") — 16줄의 합', () => {
+    expect(dayTotals(buildLedger(MOCK_REPLY, MOCK_LOCAL, SETTINGS))).toEqual({
+      visits: 16,
+      first_n: 4,
+      d90_n: 2,
+      ret_n: 10,
+      block_n: 7,
+      pt_n: 13,
+      rsv_first: 3,
+      rsv_d90: 2,
+      first_block: 2,
+      d90_block: 1,
+      ret_block: 4,
+      cash_n: 4,
+      cash_won: 25600,
+      card_n: 10,
+      card_won: 193600,
+      transfer_n: 1,
+      transfer_won: 25000,
+      paid_cash_n: 1,
+      paid_cash_won: 10000,
+      paid_card_n: 1,
+      paid_card_won: 15000,
+      free_n: 1,
+      unpaid_n: 1,
+      unpaid_won: 16300,
+    })
+  })
+
+  it('AC-4901.5: 빈 장부는 모두 0이다', () => {
+    const totals = dayTotals(buildLedger(replyOf([]), {}, SETTINGS))
+    expect(Object.values(totals).every((n) => n === 0)).toBe(true)
+  })
+
+  it('AC-4901.5: 초진·90일 예약은 inj·visit만 센다(etc·unknown·none은 안 든다)', () => {
+    const rows = [
+      line('1', { kind: 'new', rsv: ['202611181000', '주사'] }),
+      line('2', { kind: 'new', rsv: ['202611181000', '경과'] }),
+      line('3', { kind: 'new', rsv: ['202611181000', '기타'] }),
+      line('4', { kind: 'new', rsv: ['202611181000', '전화'] }),
+      line('5', { kind: 'new' }),
+      line('6', { kind: 'd90', rsv: ['202611181000', '진료'] }),
+      line('7', { kind: 'd90', rsv: ['202611181000', '기타'] }),
+      line('8', { kind: 're', rsv: ['202611181000', '주사'] }),
+    ]
+    const totals = dayTotals(buildLedger(replyOf(rows), {}, SETTINGS))
+    expect(totals).toMatchObject({ first_n: 5, d90_n: 2, ret_n: 1, rsv_first: 2, rsv_d90: 1 })
+  })
+
+  it('AC-4901.5: 초진·90일·재진 + Block은 그 구분 줄 중 Block 줄 수다(고친 Block 포함)', () => {
+    const rows = [
+      line('1', { kind: 'new', codes: ['MM110'] }),
+      line('2', { kind: 'new' }),
+      line('3', { kind: 'd90', codes: ['MM110'] }),
+      line('4', { kind: 're', codes: ['MM110'] }),
+      line('5', { kind: 're' }),
+    ]
+    const totals = dayTotals(buildLedger(replyOf(rows), { edits: { '5': { block: true }, '1': { block: false } } }, SETTINGS))
+    expect(totals).toMatchObject({ block_n: 3, first_block: 0, d90_block: 1, ret_block: 2 })
+  })
+
+  it('AC-4901.5: 결제 건수는 그 칸이 0원이 아닌 줄 수, 금액은 그 칸의 합이고 FREE는 네 칸 다 0원인 줄이다', () => {
+    const rows = [
+      line('1', { cash: 1000, card: 2000 }),
+      line('2', { cash: 0, card: 0 }),
+      line('3', { cash: 0, card: 0, transfer: 3000, unpaid: 400 }),
+      line('4', { cash: 0, card: 0 }),
+    ]
+    const totals = dayTotals(buildLedger(replyOf(rows), {}, SETTINGS))
+    expect(totals).toMatchObject({
+      visits: 4,
+      cash_n: 1,
+      cash_won: 1000,
+      card_n: 1,
+      card_won: 2000,
+      transfer_n: 1,
+      transfer_won: 3000,
+      unpaid_n: 1,
+      unpaid_won: 400,
+      free_n: 2,
+    })
+  })
+
+  it('AC-4901.5: 미수 입금은 paid 줄에서 현금·카드 따로 세고 내원 수에 넣지 않는다', () => {
+    const reply = replyOf([line('1')], {
+      paid: [
+        ['20788', '문○○', '11:20', 10000, 0],
+        ['11530', '배○○', '15:42', 0, 15000],
+        ['11531', '노○○', '16:00', 2000, 3000],
+      ],
+    })
+    expect(dayTotals(buildLedger(reply, {}, SETTINGS))).toMatchObject({
+      visits: 1,
+      paid_cash_n: 2,
+      paid_cash_won: 12000,
+      paid_card_n: 2,
+      paid_card_won: 18000,
+      cash_n: 0,
+      card_n: 1,
+    })
+  })
+})
+
+describe('AC-4901.6 closeLocal·reopenLocal — 처음 마감 때 예약 고정, 늦은 마감 표시', () => {
+  // 2026-11-16 18:52 한국 시각
+  const EVENING = new Date('2026-11-16T09:52:00.000Z')
+
+  it('AC-4901.6: 처음 마감이면 직접 고른 줄을 뺀 줄의 지금 예약 종류가 fixed에 들어간다', () => {
+    const ledger = buildLedger(MOCK_REPLY, MOCK_LOCAL, SETTINGS)
+    const closed = closeLocal(MOCK_LOCAL, ledger, EVENING)
+    expect(closed.fixed).toEqual({
+      '10231': 'inj',
+      '10877': 'none',
+      '21004': 'visit',
+      '19870': 'inj',
+      '10013': 'none',
+      '21005': 'none',
+      '15220': 'unknown',
+      '10498': 'inj',
+      '12740': 'none',
+      '18603': 'visit',
+      '10344': 'inj',
+      '21007': 'inj',
+      '11902': 'none',
+      '16455': 'visit',
+    })
+    expect(closed.closedAt).toBe('2026-11-16T09:52:00.000Z')
+    expect(closed.late).toBe(false)
+    expect(closed.edits).toEqual(MOCK_LOCAL.edits)
+  })
+
+  it('AC-4901.6: late = 한국 날짜로 now가 그 날보다 뒤', () => {
+    const ledger = buildLedger(replyOf([line('1')], { day: '2026-11-13' }), {}, SETTINGS)
+    expect(closeLocal({}, ledger, EVENING).late).toBe(true)
+    const today = buildLedger(replyOf([line('1')]), {}, SETTINGS)
+    // 23:59 한국 시각은 아직 그날, 다음 날 00:30은 늦은 마감
+    expect(closeLocal({}, today, new Date('2026-11-16T14:59:00.000Z')).late).toBe(false)
+    expect(closeLocal({}, today, new Date('2026-11-16T15:30:00.000Z')).late).toBe(true)
+  })
+
+  it('AC-4901.6: 이미 fixed가 있으면 fixed·late를 그대로 두고 마감 시각만 새로 적는다', () => {
+    const local: SunapLocalDay = { fixed: { '1': 'none' }, late: true }
+    const ledger = buildLedger(replyOf([line('1', { rsv: ['202611181000', '주사'] }), line('2')]), local, SETTINGS)
+    const closed = closeLocal(local, ledger, EVENING)
+    expect(closed).toEqual({ fixed: { '1': 'none' }, late: true, closedAt: '2026-11-16T09:52:00.000Z' })
+    // 비어 있는 fixed도 '이미 있음'이다
+    expect(closeLocal({ fixed: {}, late: false }, ledger, new Date('2026-11-20T01:00:00.000Z'))).toEqual({
+      fixed: {},
+      late: false,
+      closedAt: '2026-11-20T01:00:00.000Z',
+    })
+  })
+
+  it('AC-4901.6: 마감한 뒤 비트 예약이 바뀌어도 장부의 예약은 고정값이다', () => {
+    const before = buildLedger(replyOf([line('1'), line('2', { rsv: ['202611181000', '전화'] })]), {}, SETTINGS)
+    const closed = closeLocal({}, before, EVENING)
+    const after = buildLedger(replyOf([line('1', { rsv: ['202611201000', '주사'] }), line('2', { rsv: ['202611181000', '주사'] })]), closed, SETTINGS)
+    expect(after.rows.map((row) => row.rsv.kind)).toEqual(['none', 'unknown'])
+  })
+
+  it('AC-4901.6: reopenLocal은 closedAt만 지우고 fixed·late·고친 칸은 남긴다', () => {
+    const local: SunapLocalDay = { edits: { '1': { cash: 1 } }, closedAt: '2026-11-16T09:52:00.000Z', late: true, fixed: { '1': 'inj' } }
+    const opened = reopenLocal(local)
+    expect(opened).toEqual({ edits: { '1': { cash: 1 } }, late: true, fixed: { '1': 'inj' } })
+    expect('closedAt' in opened).toBe(false)
+    expect(buildLedger(replyOf([line('1')]), opened, SETTINGS).closedAt).toBeNull()
+  })
+
+  it('AC-4901.6: 받은 PC 저장을 바꾸지 않는다', () => {
+    const local: SunapLocalDay = { edits: { '1': { rsv: 'inj' } } }
+    const copy = structuredClone(local)
+    const ledger = buildLedger(replyOf([line('1')]), local, SETTINGS)
+    const closed = closeLocal(local, ledger, EVENING)
+    expect(local).toEqual(copy)
+    reopenLocal(closed)
+    expect(closed.closedAt).toBe('2026-11-16T09:52:00.000Z')
+  })
+})
+
+describe('AC-4901.7 parseWon — 금액 칸 글자 → 원 정수(0~99,999,999)', () => {
+  it.each([
+    ['12,000', 12000],
+    ['12000원', 12000],
+    ['', 0],
+    ['   ', 0],
+    ['0', 0],
+    [' 3,500 ', 3500],
+    ['3,500 원', 3500],
+    ['99,999,999', 99999999],
+  ] as const)('AC-4901.7: "%s" → %i', (text, won) => {
+    expect(parseWon(text)).toBe(won)
+  })
+
+  it.each(['-1', '1억', '100000000', '100,000,000', '12.5', 'abc', '원', '1 000', '+5'])('AC-4901.7: "%s" → invalid', (text) => {
+    expect(parseWon(text)).toBe('invalid')
+  })
+})

@@ -10,7 +10,7 @@ const compat = new FlatCompat({
 })
 
 const PATIENT_ZONE_MESSAGE =
-  '환자 자료 구역(lib/parsers·lib/analytics·lib/payload·lib/precheck·lib/patients·lib/bridge·workers)은 네트워크를 쓸 수 없다'
+  '환자 자료 구역(lib/parsers·lib/analytics·lib/payload·lib/precheck·lib/patients·lib/sunap·lib/bridge·workers)은 네트워크를 쓸 수 없다'
 const CONSOLE_MESSAGE = '환자 자료 구역은 console을 쓸 수 없다(환자 자료가 로그에 남는다)'
 const IMPORT_MESSAGE = '환자 자료 구역은 React·Next·services·supabase·lib/auth를 import할 수 없다'
 // 저장은 lib/storage가 검사한 달 숫자(MonthPayload)만 한다. 환자 줄이 저장소로 새지 않게
@@ -349,6 +349,7 @@ const eslintConfig = [
       'src/lib/payload/**',
       'src/lib/precheck/**',
       'src/lib/patients/**',
+      'src/lib/sunap/**',
       'src/workers/**',
     ],
     rules: patientZoneRules(),

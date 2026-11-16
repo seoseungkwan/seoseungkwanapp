@@ -927,3 +927,74 @@ describe('AC-013.7 청구 화면 폴더: 오류 보고 패키지 금지', SLOW, 
     expect(names.filter((name) => /^@sentry\/|^@vercel\/(analytics|speed-insights)$/.test(name))).toEqual([])
   })
 })
+
+describe('AC-4901.8·AC-4907.3 src/lib/sunap/**(수납일지 장부 규칙)도 환자 자료 구역 규칙 전부 아래 있다', SLOW, () => {
+  const SUNAP = 'src/lib/sunap/probe.ts'
+
+  it.each([
+    ["fetch('x')", 'no-restricted-globals'],
+    ["window.fetch('x')", 'no-restricted-properties'],
+    ['new XMLHttpRequest()', 'no-restricted-globals'],
+    ["new WebSocket('x')", 'no-restricted-globals'],
+    ["new EventSource('x')", 'no-restricted-globals'],
+    ["navigator.sendBeacon('x')", 'no-restricted-properties'],
+    ['console.log(1)', 'no-console'],
+    ['const c = console; c.log(1)', 'no-restricted-globals'],
+    ['self.console.log(1)', 'no-restricted-properties'],
+    ["localStorage.setItem('k', 'v')", 'no-restricted-globals'],
+    ["sessionStorage.getItem('k')", 'no-restricted-globals'],
+    ["indexedDB.open('x')", 'no-restricted-globals'],
+    ["window.localStorage.setItem('k', 'v')", 'no-restricted-properties'],
+    ["import React from 'react'", 'no-restricted-imports'],
+    ["import { NextResponse } from 'next/server'", 'no-restricted-imports'],
+    ["import { createClient } from '@supabase/supabase-js'", 'no-restricted-imports'],
+    ["import { supabaseBrowser } from '@/lib/supabase/browser'", 'no-restricted-imports'],
+    ["import { gate } from '@/lib/auth/gate'", 'no-restricted-imports'],
+    ["import { closeSunapDay } from '@/lib/storage/sunap'", 'no-restricted-imports'],
+    ["import x from '../storage/sunap'", 'no-restricted-imports'],
+    ["import { connect } from '@/lib/bridge/client'", 'no-restricted-imports'],
+    ["export const load = async () => await import('react')", 'no-restricted-syntax'],
+    ["export const load = async () => await import('@/lib/storage/sunap')", 'no-restricted-syntax'],
+    ['export const load = async (name: string) => await import(name)', 'no-restricted-syntax'],
+  ])('AC-4907.3: %s → %s', async (code, rule) => {
+    expect(await errorRules(code, SUNAP)).toContain(rule)
+  })
+
+  it('AC-4907.3: JSX가 막힌다(.tsx)', async () => {
+    expect(await errorRules('export const A = () => <div />', 'src/lib/sunap/probe.tsx')).toContain('no-restricted-syntax')
+  })
+
+  it('AC-4907.3: 하위 폴더·시험 파일도 같은 규칙 아래 있다', async () => {
+    expect(await errorRules("fetch('x')", 'src/lib/sunap/sub/probe.ts')).toContain('no-restricted-globals')
+    expect(await errorRules('console.log(1)', 'src/lib/sunap/probe.test.ts')).toContain('no-console')
+    expect(await errorRules("localStorage.getItem('k')", 'src/lib/sunap/probe.test.ts')).toContain('no-restricted-globals')
+  })
+
+  it('AC-4907.3: 묶음 판단·날짜 계산·수납일지 타입 import는 된다', async () => {
+    const code = [
+      "import { groupMatches } from '@/lib/analytics/groupMatch'",
+      "import { todayInKorea } from '@/lib/analytics/dates'",
+      "import type { SunapLocalDay } from '@/types/sunap'",
+      'export const pick = (local: SunapLocalDay) => [groupMatches, todayInKorea, local]',
+    ].join('\n')
+    expect(await lint(code, SUNAP)).toEqual([])
+  })
+
+  it('AC-4907.3: 안내는 lib/sunap을 환자 자료 구역으로 말한다', async () => {
+    const messages = (await lint("fetch('x')", SUNAP)).map((m) => m.message).join('\n')
+    expect(messages).toContain('lib/sunap')
+  })
+
+  it('AC-4901.8: 실제 장부 규칙 소스(lib/sunap·groupMatch·sunapRates)는 울타리에 걸리는 것이 없다', async () => {
+    const files = [
+      'src/lib/sunap/ledger.ts',
+      'src/lib/sunap/memo.ts',
+      'src/lib/analytics/groupMatch.ts',
+      'src/lib/analytics/sunapRates.ts',
+      'src/types/sunap.ts',
+    ]
+    const results = await eslint.lintFiles(files)
+    expect(results.map((r) => r.filePath.replace(/\\/g, '/').replace(/^.*\/src\//, 'src/')).sort()).toEqual([...files].sort())
+    expect(results.flatMap((r) => r.messages.map((m) => `${r.filePath}:${m.line} ${m.ruleId}`))).toEqual([])
+  })
+})
