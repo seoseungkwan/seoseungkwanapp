@@ -19,7 +19,6 @@ interface ArrangeView {
 
 interface ArrangeJs {
   renderArrange: (host: HTMLElement, board: FakeBoard, view?: ArrangeView) => HTMLElement
-  CHOICES: Record<string, string[]>
 }
 
 // 화면 파일은 빌드 없는 JS라 형 선언이 없다. 경로를 값으로 두어 형 검사가 묻지 않게 한다
@@ -27,7 +26,7 @@ const ARRANGE_JS = '../www/arrange.js'
 let view: ArrangeJs
 
 beforeAll(async () => {
-  const missing: ArrangeJs = { renderArrange: (host) => host.appendChild(document.createElement('div')), CHOICES: {} }
+  const missing: ArrangeJs = { renderArrange: (host) => host.appendChild(document.createElement('div')) }
   view = ((await import(/* @vite-ignore */ ARRANGE_JS).catch(() => missing)) ?? missing) as ArrangeJs
 })
 
@@ -451,6 +450,25 @@ describe('REQ-3505 저장·닫기', () => {
     expect(names(app, '약재')).toEqual(['TP', '하프', '기본'])
   })
 
+  it('AC-3604.5: [저장]은 판 picks의 PT·도수·충격파(타수·부위 수)·견인 무리도 초안 그대로 넘긴다(받은 판은 바꾸지 않는다)', () => {
+    const onLists = vi.fn(() => true)
+    const board = fx.arrangeMockupBoard()
+    board.picks!.pt = ['TENS', 'ICE']
+    board.picks!.ds = ['20분']
+    board.picks!.eswt = { hits: [], counts: ['한 부위'] }
+    board.picks!.trac = ['골반']
+    const before = JSON.stringify(board)
+    const app = draw(board, { onLists })
+    openList(app)
+    add(app, '약재', '반')
+    saveButton(app).click()
+    const want = JSON.parse(before).picks as FakePicks
+    want.carm.drugs.push('반')
+    expect(onLists).toHaveBeenLastCalledWith(want)
+    expect(Object.keys(onLists.mock.calls[0]![0] as object)).toEqual(['carm', 'sono', 'pt', 'ds', 'eswt', 'trac'])
+    expect(JSON.stringify(board)).toBe(before)
+  })
+
   it('AC-3505.3: [취소]·창 바깥 누름·Esc는 저장하지 않고 닫는다. 창 안을 누르면 닫히지 않는다', () => {
     const onLists = vi.fn(() => true)
     const app = draw(fx.arrangeMockupBoard(), { onLists })
@@ -507,11 +525,12 @@ describe('REQ-3505 저장·닫기', () => {
 // ---- 화면 파일 (AC-3505.4) -----------------------------------------------------------------------------
 
 describe('REQ-3505 화면 파일은 목록 글을 갖지 않는다', () => {
-  it('AC-3505.4: reception/www의 화면 파일은 SONO·C-ARM 기본 목록 이름을 글자 상수로 갖고 있지 않다(PT·도수·충격파·견인 목록 글과 같은 이름은 빼고 본다). 목록은 판 picks뿐이다', () => {
-    const fixed = new Set(Object.values(view.CHOICES).flat())
+  it('AC-3505.4 · AC-3604.4: reception/www의 화면 파일은 기본 목록 이름(C-ARM·SONO·PT·도수·충격파 타수와 부위 수·견인)을 글자 상수로 갖고 있지 않다. 목록은 판 picks뿐이다', () => {
     const d = fx.defaultPicks()
-    const listNames = [...d.carm.procs.map((p) => p.n), ...d.carm.drugs, ...d.sono.parts, ...d.sono.plains, ...d.sono.withs].filter((n) => !fixed.has(n))
-    expect(listNames.length).toBeGreaterThan(20)
+    const listNames = [
+      ...new Set([...d.carm.procs.map((p) => p.n), ...d.carm.drugs, ...d.sono.parts, ...d.sono.plains, ...d.sono.withs, ...d.pt, ...d.ds, ...d.eswt.hits, ...d.eswt.counts, ...d.trac]),
+    ]
+    expect(listNames.length).toBeGreaterThan(40)
     const files = readdirSync(WWW).filter((f) => /\.(?:js|html|css)$/.test(f))
     expect(files).toContain('picks.js')
     const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')

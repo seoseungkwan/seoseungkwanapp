@@ -442,6 +442,68 @@ describe('app.js 어레인지 쓰기', () => {
     expect(textOf(trOf('가상환자26'), 'button.ptf-btn')).toBe('↓ 내려옴 11:05')
   })
 
+  it('AC-3602.3: 자리비움 → [되돌리기]는 POST /api/arrange away clear를 보내고 돌아옴이 생기지 않는다(아무 표시 없음)', async () => {
+    await open({ hash: '#/a' })
+    trOf('가상환자21').querySelector<HTMLButtonElement>('button.t-btn')!.click()
+    expect(toastText()).toBe('가상환자21 · 자리비움 11:04')
+    await settle()
+    expect(textOf(trOf('가상환자21'), '.away-tag')).toBe('자리비움11:05')
+    undoButton()!.click()
+    expect(toastText()).toBeNull()
+    expect(trOf('가상환자21').querySelector('.away-tag, .rtn-tag, .rtn-wt')).toBeNull()
+    await settle()
+    expect(writes()).toEqual([
+      { k: K.a, op: 'away', v: 'on' },
+      { k: K.a, op: 'away', v: 'clear' },
+    ])
+    expect(server.board.arrange!.rows.find((r) => r.k === K.a)).toMatchObject({ away: null, back: null, backWait: null })
+    expect(trOf('가상환자21').classList.contains('away')).toBe(false)
+    expect(trOf('가상환자21').querySelector('.away-tag, .rtn-tag, .rtn-wt')).toBeNull()
+    expect(toastText()).toBeNull()
+  })
+
+  it('AC-3602.1 · AC-3602.3: 자리비움 줄의 접수 칸을 누르면 "돌아옴 HH:MM"·"0분째"를 미리 그리고 away off를 보낸다. 띠 "{이름} · 돌아옴 HH:MM"의 [되돌리기]는 away on이다. 그 줄 치료 칸을 누르면 기다린 글이 없어진다', async () => {
+    await open({ hash: '#/a' })
+    const t = () => trOf('가상환자24').querySelector<HTMLButtonElement>('button.t-btn')!
+    t().click()
+    expect(trOf('가상환자24').classList.contains('away')).toBe(false)
+    expect([textOf(t(), '.rtn-tag'), textOf(t(), '.rtn-wt')]).toEqual(['돌아옴 11:04', '0분째'])
+    expect(toastText()).toBe('가상환자24 · 돌아옴 11:04')
+    await settle()
+    expect(writes()).toEqual([{ k: K.d, op: 'away', v: 'off' }])
+    expect([textOf(t(), '.rtn-tag'), textOf(t(), '.rtn-wt')]).toEqual(['돌아옴 11:05', '0분째'])
+    cellOf('가상환자24', 'ds').click()
+    expect(t().querySelector('.rtn-wt')).toBeNull()
+    expect(textOf(t(), '.rtn-tag')).toBe('돌아옴 11:05')
+    await settle()
+    expect(t().querySelector('.rtn-wt')).toBeNull()
+    expect(textOf(t(), '.rtn-tag')).toBe('돌아옴 11:05')
+    expect(writes().at(-1)).toEqual({ k: K.d, op: 'step', col: 'ds' })
+
+    // 다시 누르면 새 자리비움, [되돌리기]는 away clear
+    t().click()
+    expect(textOf(t(), '.away-tag')).toBe('자리비움11:04')
+    expect(t().querySelector('.rtn-tag')).toBeNull()
+    await settle()
+    expect(textOf(t(), '.away-tag')).toBe('자리비움11:05')
+    undoButton()!.click()
+    await settle()
+    expect(writes().slice(-2)).toEqual([
+      { k: K.d, op: 'away', v: 'on' },
+      { k: K.d, op: 'away', v: 'clear' },
+    ])
+    expect(t().querySelector('.away-tag, .rtn-tag, .rtn-wt')).toBeNull()
+  })
+
+  it('AC-3605.2: 비고 칸을 누르면 성함을 누른 것과 같이 #/a/v/{열쇠} 기록부가 열린다', async () => {
+    await open({ hash: '#/a' })
+    trOf('가상환자21').querySelector<HTMLButtonElement>('td.c-memo > button.memo-btn')!.click()
+    await settle()
+    expect(window.location.hash).toBe(`#/a/v/${K.a}`)
+    expect(chartsPage()).not.toBeNull()
+    expect(textOf(chartsPage(), 'h1.detail-name')).toBe('가상환자21')
+  })
+
   it('AC-3308.11: 저절로 다시 읽어도 어레인지 탭·표 뼈대(옆으로 민 위치)·세로 위치·열린 고르기 창·[오늘 치료 종료] 펼침을 지키고, 창의 줄이 판에서 사라지면 창을 닫는다', async () => {
     await open({ hash: '#/a' })
     const wrap = appEl().querySelector('.wrap')

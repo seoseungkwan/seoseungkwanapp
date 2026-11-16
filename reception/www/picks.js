@@ -10,7 +10,8 @@
 //
 // 쓰는 법 (arrange.js)
 //   openLists(page, picks, onSave)   page(.page.arrange)에 창을 연다. 이미 열려 있으면 그 창을 둔다
-//     picks              판 picks { carm: { procs: [{ n, noDrug }], drugs }, sono: { parts, plains, withs } }
+//     picks              판 picks { carm: { procs: [{ n, noDrug }], drugs }, sono: { parts, plains, withs }, pt, ds, eswt: { hits, counts }, trac }
+//                        (PT·도수·충격파·견인 무리는 reception-arrange-tune AC-3603.2. 초안이 그대로 갖고 [저장]이 그대로 넘긴다)
 //     onSave(picks)      [저장]. 참(또는 참으로 끝나는 Promise)이면 창을 닫는다
 
 import { clear, el } from './dom.js'
@@ -261,13 +262,22 @@ function draftOf(picks) {
     parts: texts(picks?.sono?.parts),
     plains: texts(picks?.sono?.plains),
     withs: texts(picks?.sono?.withs),
+    pt: texts(picks?.pt),
+    ds: texts(picks?.ds),
+    hits: texts(picks?.eswt?.hits),
+    counts: texts(picks?.eswt?.counts),
+    trac: texts(picks?.trac),
   }
 }
 
-/** 초안 → 판 picks 모양 (POST /api/lists 몸) */
+/** 초안 → 판 picks 모양 (POST /api/lists 몸, 여섯 무리 reception-arrange-tune AC-3603.2) */
 function picksOf(draft) {
   return {
     carm: { procs: draft.procs.map((item) => ({ n: item.n, noDrug: item.noDrug })), drugs: [...draft.drugs] },
     sono: { parts: [...draft.parts], plains: [...draft.plains], withs: [...draft.withs] },
+    pt: [...draft.pt],
+    ds: [...draft.ds],
+    eswt: { hits: [...draft.hits], counts: [...draft.counts] },
+    trac: [...draft.trac],
   }
 }

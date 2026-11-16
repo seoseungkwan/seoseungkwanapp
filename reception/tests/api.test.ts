@@ -549,6 +549,39 @@ describe('api.js getBoard의 어레인지 자료', () => {
       expect(await reasonOf(api.getBoard()), String(i)).toBe('shape')
     }
   })
+
+  it('AC-3602.4: 어레인지 줄의 back(null 또는 "HH:MM")·backWait(null 또는 빈 글이 아닌 글)는 맞으면 그대로 받고, 없거나 모양이 틀리면 shape 실패다', async () => {
+    const board = fx.arrangeMockupBoard()
+    expect(board.arrange!.rows.map((r) => [r.back, r.backWait]).filter(([back]) => back !== null)).toEqual([
+      ['10:31', null],
+      ['10:52', '12분째'],
+    ])
+    fakeFetch(() => json(board))
+    await expect(api.getBoard()).resolves.toEqual(board)
+    const just = copyOf(board)
+    just.arrange!.rows[3]!.away = null
+    just.arrange!.rows[3]!.back = '11:04'
+    just.arrange!.rows[3]!.backWait = '0분째'
+    fakeFetch(() => json(just))
+    await expect(api.getBoard()).resolves.toEqual(just)
+    type Loose = Record<string, unknown>
+    const bad: Array<(b: fx.FakeBoard) => void> = [
+      (b) => delete (b.arrange!.rows[0] as unknown as Loose).back,
+      (b) => delete (b.arrange!.rows[0] as unknown as Loose).backWait,
+      (b) => ((b.arrange!.rows[1] as unknown as Loose).back = '오늘'),
+      (b) => ((b.arrange!.rows[1] as unknown as Loose).back = 1031),
+      (b) => ((b.arrange!.rows[1] as unknown as Loose).back = '10:31:00'),
+      (b) => ((b.arrange!.rows[4] as unknown as Loose).backWait = ''),
+      (b) => ((b.arrange!.rows[4] as unknown as Loose).backWait = 12),
+      (b) => ((b.arrange!.rows[4] as unknown as Loose).backWait = ['12분째']),
+    ]
+    for (const [i, change] of bad.entries()) {
+      const one = copyOf(board)
+      change(one)
+      fakeFetch(() => json(one))
+      expect(await reasonOf(api.getBoard()), String(i)).toBe('shape')
+    }
+  })
 })
 
 describe('api.js getBoard의 어레인지 칸 시각', () => {
@@ -631,6 +664,17 @@ describe('api.js setArrange', () => {
     expect(await reasonOf(arrangeApi().setArrange(k, 'part', 'sono', '가'.repeat(340)))).toBe('input')
     expect(calls).toEqual([])
   })
+
+  it('AC-3602.3: setArrange는 away v로 on·off·clear(되돌리기)를 받아 그대로 보낸다', async () => {
+    fakeFetch(() => Promise.resolve(new Response(null, { status: 204 })))
+    const k = fx.fakeKey(24)
+    for (const v of ['on', 'off', 'clear']) await expect(arrangeApi().setArrange(k, 'away', undefined, v), v).resolves.toBeUndefined()
+    expect(calls.map((c) => JSON.parse(String(c.init.body)))).toEqual([
+      { k, op: 'away', v: 'on' },
+      { k, op: 'away', v: 'off' },
+      { k, op: 'away', v: 'clear' },
+    ])
+  })
 })
 
 // ---- 고르기 목록 (reception-pick-lists design.md 3절, TASK-4) ----------------------------------------------------
@@ -652,12 +696,20 @@ function copyOf<T>(v: T): T {
   return JSON.parse(JSON.stringify(v)) as T
 }
 
-/** 고르기 목록 규칙(AC-3501.2)이 받는 가장 긴 목록: 이름은 모두 10글자(한글 9 + 숫자 1), 개수는 모두 한도까지 */
+/**
+ * 고르기 목록 규칙(AC-3501.2·AC-3603.2)이 받는 가장 긴 목록: 이름은 모두 한글 10글자(글마다 3바이트),
+ * 개수는 모두 한도까지(C-ARM 12·12, SONO 40·12·12, PT·도수·타수·부위 수·견인 8)
+ */
 function longestPicks(): fx.FakePicks {
-  const names = (n: number, head: string) => Array.from({ length: n }, (_, i) => `${head}${'가'.repeat(7)}${String(i).padStart(2, '0')}`)
+  const digit = '영일이삼사오육칠팔구'
+  const names = (n: number, head: string) => Array.from({ length: n }, (_, i) => `${head}${'가'.repeat(7)}${digit[Math.floor(i / 10)]}${digit[i % 10]}`)
   return {
     carm: { procs: names(12, '시').map((n, i) => ({ n, noDrug: i === 0 })), drugs: names(12, '약') },
     sono: { parts: names(40, '부'), plains: names(12, '없'), withs: names(12, '같') },
+    pt: names(8, '피'),
+    ds: names(8, '도'),
+    eswt: { hits: names(8, '타'), counts: names(8, '수') },
+    trac: names(8, '견'),
   }
 }
 
@@ -673,7 +725,14 @@ describe('api.js 판의 고르기 목록(picks)과 칸 이름표(tags)', () => {
     await expect(api.getBoard()).resolves.toEqual(board)
     // 비어 있는 무리도 맞는 모양이다(개수 규칙은 도우미가 본다)
     const few = copyOf(board)
-    few.picks = { carm: { procs: [{ n: '허리', noDrug: false }], drugs: [] }, sono: { parts: [], plains: ['소독'], withs: [] } }
+    few.picks = {
+      carm: { procs: [{ n: '허리', noDrug: false }], drugs: [] },
+      sono: { parts: [], plains: ['소독'], withs: [] },
+      pt: ['ICE'],
+      ds: ['30분'],
+      eswt: { hits: [], counts: ['1부위'] },
+      trac: ['목'],
+    }
     fakeFetch(() => json(few))
     await expect(api.getBoard()).resolves.toEqual(few)
     const none = copyOf(board)
@@ -705,6 +764,31 @@ describe('api.js 판의 고르기 목록(picks)과 칸 이름표(tags)', () => {
       (b) => ((b.picks!.sono as unknown as Loose).parts = '어깨'),
       (b) => ((b.picks!.sono.plains as unknown[])[1] = null),
       (b) => delete (b.picks!.sono as unknown as Loose).withs,
+    ]
+    for (const [i, change] of bad.entries()) {
+      const board = copyOf(fx.arrangeMockupBoard())
+      change(board)
+      fakeFetch(() => json(board))
+      expect(await reasonOf(api.getBoard()), String(i)).toBe('shape')
+    }
+  })
+
+  it('AC-3604.5: picks의 새 무리(PT pt·도수 ds·충격파 eswt { hits, counts }·견인 trac)가 없거나 글 목록이 아니면 shape 실패다', async () => {
+    type Loose = Record<string, unknown>
+    const bad: Array<(b: fx.FakeBoard) => void> = [
+      (b) => delete (b.picks as unknown as Loose).pt,
+      (b) => delete (b.picks as unknown as Loose).ds,
+      (b) => delete (b.picks as unknown as Loose).eswt,
+      (b) => delete (b.picks as unknown as Loose).trac,
+      (b) => ((b.picks as unknown as Loose).pt = 'ICE'),
+      (b) => ((b.picks!.ds as unknown[])[0] = 30),
+      (b) => ((b.picks as unknown as Loose).eswt = ['1부위']),
+      (b) => ((b.picks as unknown as Loose).eswt = null),
+      (b) => delete (b.picks!.eswt as unknown as Loose).hits,
+      (b) => delete (b.picks!.eswt as unknown as Loose).counts,
+      (b) => ((b.picks!.eswt.hits as unknown[])[1] = null),
+      (b) => ((b.picks!.eswt as unknown as Loose).counts = '1부위'),
+      (b) => ((b.picks!.trac as unknown[])[0] = { n: '목' }),
     ]
     for (const [i, change] of bad.entries()) {
       const board = copyOf(fx.arrangeMockupBoard())
@@ -758,11 +842,16 @@ describe('api.js setArrange의 이름표(t)', () => {
 })
 
 describe('api.js setLists', () => {
-  it('AC-3502.5: setLists(picks)는 POST /api/lists 하나를 쓰기 모양(X-Reception: 1·JSON·같은 곳·리퍼러 same-origin)으로, 몸은 picks 모양 칸만 담아 보내고 204면 끝난다', async () => {
+  it('AC-3502.5 · AC-3604.5: setLists(picks)는 POST /api/lists 하나를 쓰기 모양(X-Reception: 1·JSON·같은 곳·리퍼러 same-origin)으로, 몸은 picks 모양 칸(여섯 무리 { carm, sono, pt, ds, eswt: { hits, counts }, trac })만 담아 보내고 204면 끝난다', async () => {
     fakeFetch(() => Promise.resolve(new Response(null, { status: 204 })))
     const picks = fx.defaultPicks()
     await expect(pickApi().setLists(picks)).resolves.toBeUndefined()
-    const extra = { ...copyOf(picks), x: '더 붙은 칸', carm: { ...picks.carm, y: 1, procs: picks.carm.procs.map((p) => ({ ...p, z: true })) } }
+    const extra = {
+      ...copyOf(picks),
+      x: '더 붙은 칸',
+      carm: { ...picks.carm, y: 1, procs: picks.carm.procs.map((p) => ({ ...p, z: true })) },
+      eswt: { ...picks.eswt, w: 2 },
+    }
     await pickApi().setLists(extra)
     expect(calls.map((c) => c.url)).toEqual(['/api/lists', '/api/lists'])
     for (const { init } of calls) {
@@ -797,13 +886,20 @@ describe('api.js setLists', () => {
     expect((cut.error as ApiErrorLike)?.reason).toBe('aborted')
   })
 
-  it('AC-3502.5: 몸은 4096바이트까지 보낸다(규칙이 받는 가장 긴 목록). picks 모양이 틀리거나 몸이 4096바이트를 넘으면 보내지 않고 input 실패다', async () => {
+  it('AC-3502.5 · AC-3604.5: 몸은 8192바이트까지 보낸다(규칙이 받는 가장 긴 목록, 4096바이트를 넘는다). picks 모양이 틀리거나 몸이 8192바이트를 넘으면 보내지 않고 input 실패다', async () => {
     fakeFetch(() => Promise.resolve(new Response(null, { status: 204 })))
-    await expect(pickApi().setLists(longestPicks())).resolves.toBeUndefined()
+    const longest = longestPicks()
+    const size = new TextEncoder().encode(JSON.stringify(longest)).length
+    expect(size).toBeGreaterThan(4096)
+    expect(size).toBeLessThanOrEqual(8192)
+    await expect(pickApi().setLists(longest)).resolves.toBeUndefined()
     expect(calls.length).toBe(1)
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual(longest)
+    // 8192바이트를 갓 넘는 몸
     const big = longestPicks()
-    big.sono.parts = Array.from({ length: 130 }, () => '가'.repeat(10))
-    expect(new TextEncoder().encode(JSON.stringify(big)).length).toBeGreaterThan(4096)
+    const room = 8192 - size
+    big.trac[0] = `${big.trac[0]!}${'가'.repeat(Math.floor(room / 3) + 1)}`
+    expect(new TextEncoder().encode(JSON.stringify(big)).length).toBeGreaterThan(8192)
     expect(await reasonOf(pickApi().setLists(big))).toBe('input')
     const wrong: unknown[] = [
       null,
@@ -816,6 +912,12 @@ describe('api.js setLists', () => {
       { ...fx.defaultPicks(), carm: { procs: [{ n: '목', noDrug: false }], drugs: [1] } },
       { ...fx.defaultPicks(), sono: { parts: '어깨', plains: [], withs: [] } },
       { ...fx.defaultPicks(), sono: { parts: [], plains: [], withs: [null] } },
+      { carm: fx.defaultPicks().carm, sono: fx.defaultPicks().sono },
+      { ...fx.defaultPicks(), pt: 'ICE' },
+      { ...fx.defaultPicks(), ds: [30] },
+      { ...fx.defaultPicks(), eswt: { hits: [] } },
+      { ...fx.defaultPicks(), eswt: { hits: ['2000타'], counts: [1] } },
+      { ...fx.defaultPicks(), trac: undefined },
     ]
     for (const [i, picks] of wrong.entries()) expect(await reasonOf(pickApi().setLists(picks)), String(i)).toBe('input')
     expect(calls.length).toBe(1)

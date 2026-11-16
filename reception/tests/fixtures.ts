@@ -36,19 +36,26 @@ export interface FakeBoard {
   lists: Record<FakeList, FakeRow[]>
   /** 어레인지 표 (reception-arrange design.md 7절). 옛 도우미 답에는 없다 */
   arrange?: FakeArrange
-  /** SONO·C-ARM 고르기 목록 (reception-pick-lists AC-3501.4). 어레인지를 보내는 판에만 있다 */
+  /** 고르기 목록 (reception-pick-lists AC-3501.4, reception-arrange-tune AC-3603.2). 어레인지를 보내는 판에만 있다 */
   picks?: FakePicks
 }
 
-// ---- 고르기 목록 (reception-pick-lists design.md 1절, PickLists.cs Write 모양) ----------------------------------
+// ---- 고르기 목록 (reception-pick-lists design.md 1절 · reception-arrange-tune design.md 2절, PickLists.cs Write 모양) ----------
 
-/** 판 맨 위 picks: C-ARM 시술(약재 없음 표시)·약재, SONO 부위·부위 없이·같이 하는 것 */
+/**
+ * 판 맨 위 picks: C-ARM 시술(약재 없음 표시)·약재, SONO 부위·부위 없이·같이 하는 것,
+ * PT 종류·도수 시간·충격파 타수(hits)와 부위 수(counts)·견인 부위 (reception-arrange-tune AC-3603.2)
+ */
 export interface FakePicks {
   carm: { procs: { n: string; noDrug: boolean }[]; drugs: string[] }
   sono: { parts: string[]; plains: string[]; withs: string[] }
+  pt: string[]
+  ds: string[]
+  eswt: { hits: string[]; counts: string[] }
+  trac: string[]
 }
 
-/** 목록 파일이 없을 때의 기본 목록(AC-3501.1, 승인 시안 차례). 부를 때마다 새 사본이다 */
+/** 목록 파일이 없을 때의 기본 목록(AC-3501.1·AC-3603.1, 승인 시안 차례). 부를 때마다 새 사본이다 */
 export function defaultPicks(): FakePicks {
   return {
     carm: {
@@ -65,6 +72,10 @@ export function defaultPicks(): FakePicks {
       plains: ['소독', 'S/O', '봉합'],
       withs: ['DNA', '채혈'],
     },
+    pt: ['ICE', 'HP'],
+    ds: ['30분', '50분'],
+    eswt: { hits: ['2000타', '3000타', '4000타', '6000타'], counts: ['1부위', '2부위', '3부위', '4부위'] },
+    trac: ['목', '허리'],
   }
 }
 
@@ -90,10 +101,15 @@ export interface FakeCell {
   tags: string[]
 }
 
-/** 어레인지 줄 하나. 이름·차트번호·정보·메모·상태·접수 시각은 같은 k의 목록 줄에 있다 */
+/**
+ * 어레인지 줄 하나. 이름·차트번호·정보·메모·상태·접수 시각은 같은 k의 목록 줄에 있다.
+ * back 돌아온 시각·backWait 돌아온 뒤 기다린 글("12분째", 다음 치료 칸을 누르기 전까지만, reception-arrange-tune AC-3601.4)
+ */
 export interface FakeArrangeRow {
   k: string
   away: string | null
+  back: string | null
+  backWait: string | null
   ptf: { st: 'up' | 'down'; at: string } | null
   last: string
   cells: Record<FakeCol, FakeCell | null>
@@ -118,7 +134,7 @@ export function arrangeRow(
 ): FakeArrangeRow {
   const all = Object.fromEntries(ARRANGE_COLS.map((col) => [col, cells[col] ? fakeCell(cells[col]) : null])) as Record<FakeCol, FakeCell | null>
   const present = Object.values(all).filter((cell): cell is FakeCell => cell !== null)
-  return { k, away: null, ptf: null, last: '', ...over, cells: all, allDone: present.length > 0 && present.every((cell) => cell.st === 'done') }
+  return { k, away: null, back: null, backWait: null, ptf: null, last: '', ...over, cells: all, allDone: present.length > 0 && present.every((cell) => cell.st === 'done') }
 }
 
 /** 판에 어레인지 표를 얹은 사본. 어레인지를 보내는 판이라 고르기 목록 picks도 있다(없으면 기본 목록, AC-3501.4) */
@@ -143,9 +159,9 @@ export const ARRANGE_KEYS = {
 /**
  * 어레인지 승인 시안(docs/mockups/reception-arrange/Arrange.html)과 같은 모양의 판(11:04:15 기준, 지어낸 가짜 환자):
  * 표에 8명(접수 순 a~h), 오늘 치료 종료 2명(종료 늦은 순 j·i). 목록 칸은 진료대기 f·g·h, 진료보류 c·d·e, 수납대기 b, 수납완료 a·i·j다.
- * a 모든 칸 끝남(allDone) · b C-ARM 준비완료(1번)·PT·견인 · c 신환 X-RAY 끝남·SONO 부위 없음(1번)·PT ICE·충격파 2부위 ·
- * d 자리비움 10:50·X-RAY 직접 넣음 끝남·도수 30분 · e C-ARM 준비(2번)·PT·견인 목 · f PT 먼저 올라감 10:40 ·
- * g PT 먼저 내려옴 10:58·SONO 직접 넣음(2번) · h 신환 칸 없음
+ * a 모든 칸 끝남(allDone) · b C-ARM 준비완료(1번)·PT·견인·돌아옴 10:31(셈 멈춤) · c 신환 X-RAY 끝남·SONO 부위 없음(1번)·PT ICE·충격파 2부위 ·
+ * d 자리비움 10:50·X-RAY 직접 넣음 끝남·도수 30분 · e C-ARM 준비(2번)·PT·견인 목·돌아옴 10:52 12분째(셈 중) · f PT 먼저 올라감 10:40 ·
+ * g PT 먼저 내려옴 10:58·SONO 직접 넣음(2번) · h 신환 칸 없음 (돌아옴은 reception-arrange-tune 시안 Mock.html의 가상환자22·25)
  */
 export function arrangeMockupBoard(at = '11:04:15'): FakeBoard {
   const K = ARRANGE_KEYS
@@ -178,7 +194,7 @@ export function arrangeMockupBoard(at = '11:04:15'): FakeBoard {
           pt: { det: 'HP', at: '10:20', manual: true },
           trac: { det: '허리', at: '10:20', manual: true },
         },
-        { last: 'LBP with Rt buttock pain\n2주 전부터' },
+        { last: 'LBP with Rt buttock pain\n2주 전부터', back: '10:31' },
       ),
       arrangeRow(K.c, {
         xray: { st: 'done', at: '10:12' },
@@ -194,7 +210,7 @@ export function arrangeMockupBoard(at = '11:04:15'): FakeBoard {
           pt: { det: 'HP', at: '10:42', manual: true },
           trac: { det: '목', at: '10:50', manual: true },
         },
-        { last: 'neck pain 1달' },
+        { last: 'neck pain 1달', back: '10:52', backWait: '12분째' },
       ),
       arrangeRow(K.f, {}, { ptf: { st: 'up', at: '10:40' }, last: 'Lt knee pain\n붓기 있음' }),
       arrangeRow(K.g, { sono: { part: '왼 어깨', at: '11:02', ord: 2, manual: true } }, { ptf: { st: 'down', at: '10:58' }, last: 'Lt shoulder pain\n팔 뒤로 돌릴 때' }),
@@ -586,6 +602,8 @@ function applyArrange(board: FakeBoard, stash: Map<string, FakeArrangeRow>, ask:
     if (!row) return
     const present = Object.values(row.cells).filter((c): c is FakeCell => c !== null)
     row.allDone = present.length > 0 && present.every((c) => c.st === 'done')
+    // 받아진 칸 쓰기(X-RAY 칸 포함)는 돌아온 뒤 기다린 셈을 멈춘다 (reception-arrange-tune AC-3601.3). away·ptf·end는 멈추지 않는다
+    if (ask.op === 'step' || ask.op === 'set' || ask.op === 'add' || ask.op === 'remove' || ask.op === 'part') row.backWait = null
   }
   switch (ask.op) {
     case 'step':
@@ -623,8 +641,11 @@ function applyArrange(board: FakeBoard, stash: Map<string, FakeArrangeRow>, ask:
       cell.tags = tags
       break
     case 'away':
-      if (!row || (v !== 'on' && v !== 'off')) return 400
+      // on 자리비움 · off 돌아옴(셈은 0분부터) · clear 되돌리기(아무 표시 없음) (reception-arrange-tune AC-3601.2·AC-3601.4)
+      if (!row || (v !== 'on' && v !== 'off' && v !== 'clear')) return 400
       row.away = v === 'on' ? now : null
+      row.back = v === 'off' ? now : null
+      row.backWait = v === 'off' ? '0분째' : null
       break
     case 'ptf':
       if (!row || (v !== 'up' && v !== 'down' && v !== 'off')) return 400
@@ -748,7 +769,7 @@ export function fakeServer(board: FakeBoard = mockupBoard(), now = '13:43'): Fak
   return server
 }
 
-/** 판 picks 모양(이름·개수 규칙은 보지 않는다) */
+/** 판 picks 모양(이름·개수 규칙은 보지 않는다). PT·도수·충격파·견인 무리도 있어야 한다 (reception-arrange-tune AC-3603.2) */
 function isFakePicks(v: unknown): v is FakePicks {
   const texts = (list: unknown) => Array.isArray(list) && list.every((item) => typeof item === 'string')
   const p = v as FakePicks | null
@@ -760,7 +781,12 @@ function isFakePicks(v: unknown): v is FakePicks {
     texts(p.carm.drugs) &&
     texts(p.sono?.parts) &&
     texts(p.sono?.plains) &&
-    texts(p.sono?.withs)
+    texts(p.sono?.withs) &&
+    texts(p.pt) &&
+    texts(p.ds) &&
+    texts(p.eswt?.hits) &&
+    texts(p.eswt?.counts) &&
+    texts(p.trac)
   )
 }
 
