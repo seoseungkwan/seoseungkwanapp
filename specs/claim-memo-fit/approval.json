@@ -1,0 +1,21 @@
+{
+  "status": "approved",
+  "feature": "claim-memo-fit",
+  "approved_at": "2026-11-16T08:18:00Z",
+  "approved_via": "user-prompt",
+  "session_id": "4e5007b5-a465-44b0-97e3-9a27fb3773f3",
+  "spec_sha256": "08782ee4941f05788c67d5760439ca7188a95ab1125f21d3216223151b696b93",
+  "scope": [
+    "src/components/claim/memo/MemoPanel.test.tsx",
+    "src/components/claim/memo/MemoPanel.tsx",
+    "src/components/claim/rows/BitMemoCard.test.tsx",
+    "src/components/claim/rows/BitMemoCard.tsx",
+    "src/components/claim/rows/MemoDetail.test.tsx",
+    "src/components/claim/rows/MemoDetail.tsx",
+    "src/components/claim/rows/MemoList.test.tsx",
+    "src/components/claim/rows/MemoList.tsx",
+    "src/components/shell/AppShell.tsx",
+    "src/components/shell/TabBar.tsx",
+    "src/components/shell/shell.test.tsx"
+  ]
+}
