@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>시안 · 도우미·확장 웹앱에서 받기</title>
+<style>
+:root{--canvas:#F7F8FA;--surface:#FFFFFF;--line:#E5E7EB;--line-strong:#D1D5DB;--muted:#6B7280;--ink-2:#374151;--ink:#111827;--accent:#2563EB;--accent-strong:#1D4ED8;--accent-soft:#EAF1FE;--warning:#B45309;--warning-soft:#FDF4E3;--danger:#B91C1C;--danger-soft:#FDECEC;--success:#047857;--success-soft:#E7F6EF}
+*{box-sizing:border-box}
+body{margin:0;background:var(--canvas);color:var(--ink);font:15px/1.6 "Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif}
+.top{background:var(--surface);border-bottom:1px solid var(--line);padding:12px 24px;display:flex;align-items:center;gap:10px;font-weight:600}
+.top .logo{width:22px;height:22px;border-radius:6px;background:var(--accent);display:inline-block}
+.tabs{background:var(--surface);border-bottom:1px solid var(--line);padding:0 24px;display:flex;gap:22px;font-size:14px;color:var(--ink-2)}
+.tabs span{padding:12px 0}.tabs .on{color:var(--ink);font-weight:600;border-bottom:2px solid var(--accent)}
+main{max-width:960px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:22px;margin:0 0 4px}.desc{color:var(--muted);margin:0 0 20px;font-size:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:20px;margin-bottom:16px}
+.card h2{font-size:17px;margin:0 0 4px}.card .sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+.step{display:grid;grid-template-columns:32px 1fr auto;gap:4px 12px;align-items:center;padding:14px 0;border-top:1px solid var(--line)}
+.step:first-of-type{border-top:0}
+.num{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:600;background:var(--canvas);color:var(--muted);border:1px solid var(--line)}
+.num.done{background:var(--success-soft);color:var(--success);border-color:transparent}
+.num.now{background:var(--accent);color:#fff;border-color:transparent}
+.sname{font-weight:600}.state{font-size:13px;color:var(--muted)}.state.now{color:var(--accent);font-weight:600}.state.ok{color:var(--success)}
+.box{grid-column:2/4;background:var(--canvas);border-radius:4px;padding:16px;margin-top:8px}
+.box ol{margin:0 0 12px;padding-left:20px;color:var(--ink-2)}.box li{margin:2px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{height:36px;padding:0 14px;border-radius:6px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);font:600 14px inherit;font-family:inherit;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.meta{font-size:13px;color:var(--muted)}
+.new{display:inline-block;font-size:11px;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:2px}
+.alert{border-radius:8px;padding:14px 16px;margin-bottom:16px;border:1px solid}
+.alert.warn{background:var(--warning-soft);border-color:#F3D9A8}.alert.bad{background:var(--danger-soft);border-color:#F5C2C2}.alert.ok{background:var(--success-soft);border-color:#B7E4CF}
+.alert b{display:block;margin-bottom:2px}.alert p{margin:0 0 10px;color:var(--ink-2);font-size:14px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-size:13px;color:var(--muted);font-weight:600;padding:8px 12px 8px 0;border-bottom:1px solid var(--line)}
+td{padding:12px 12px 12px 0;border-bottom:1px solid var(--line);vertical-align:middle}
+td.r,th.r{text-align:right}
+code{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:0 5px;font:500 13px inherit;font-family:inherit}
+.hint{font-size:13px;color:var(--muted);margin-top:12px}
+.note{position:fixed;right:12px;bottom:12px;max-width:340px;background:#111827;color:#fff;border-radius:8px;padding:12px 14px;font-size:12.5px;line-height:1.5;opacity:.92}
+.note a{color:#93C5FD}
+@media (max-width:767px){
+ .top,.tabs{padding-left:16px;padding-right:16px}.tabs{overflow-x:auto}
+ .step{grid-template-columns:32px 1fr}.step .state{grid-column:2}.box{grid-column:1/3;padding:12px}
+ .btn{height:44px;width:100%;justify-content:center}
+ .hide-sm{display:none}.note{position:static;margin:16px;max-width:none}
+ table.files td,table.files th{padding-right:8px}
+}
+</style>
+</head>
+<body>
+<div class="top"><span class="logo"></span>양지바른정형외과</div>
+<div id="tabs" class="tabs"></div>
+<main id="app"></main>
+<div class="note" id="note"></div>
+<script>
+const S = new URLSearchParams(location.search).get('s') || 'setup'
+const HELPER = { ver: '0.9.0', size: '0.9MB', at: '11월 17일' }
+const EXT = { ver: '0.3.0', size: '6KB', at: '11월 17일' }
+const DL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>'
+const UP = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9"/><path d="m7 14 5-5 5 5"/><path d="M5 3h14"/></svg>'
+
+const tabs = on => ['대시보드', '통계', '청구', '환자', '수납일지', on === '가입 승인' ? '가입 승인' : '더보기 ▾'].map(t => `<span class="${t === on ? 'on' : ''}">${t}</span>`).join('')
+
+// 받기 단추: 파일이 없으면 눌리지 않고 한 줄 안내
+function dlButton(label, f, none) {
+  if (none) return `<button class="btn primary" disabled>${DL}${label}</button><span class="meta">아직 받을 파일이 없어요. 관리자에게 알려 주세요.</span>`
+  return `<button class="btn primary">${DL}${label}</button><span class="meta">${f.ver} · ${f.size} · ${f.at} 올림</span>`
+}
+
+function setupPage(none) {
+  return `<h1>비트 PC 연결</h1><p class="desc">이 PC의 비트를 웹앱과 잇는 순서예요. 한 번만 하면 돼요.</p>
+  <section class="card">
+    <div class="step"><span class="num done">1</span><span class="sname">크롬 확장 설치</span><span class="state ok">끝</span></div>
+    <div class="step"><span class="num now">2</span><span class="sname">도우미 설치</span><span class="state now">할 차례</span>
+      <div class="box"><ol>
+        <li>아래 [도우미 내려받기]를 눌러 zip을 받으세요.<span class="new">바뀜</span> <span class="meta">(GitHub 로그인 없이 바로 받아져요)</span></li>
+        <li>받은 zip을 오른쪽 클릭 → [모두 압축 풀기]로 푼 뒤, 푼 폴더의 install.cmd를 두 번 누르세요. "Windows의 PC 보호" 창이 뜨면 [추가 정보]를 누른 뒤 [실행]을 누르세요.</li>
+        <li>설치가 끝나면 [다시 확인]을 누르세요. 크롬은 다시 켤 필요가 없어요.</li>
+      </ol>
+      <div class="row">${dlButton('도우미 내려받기', HELPER, none)}<button class="btn">다시 확인</button></div></div></div>
+    <div class="step"><span class="num">3</span><span class="sname">비트 처음 등록</span><span class="state">기다림</span></div>
+  </section>`
+}
+
+function updatePage() {
+  return `<h1>비트 PC 연결</h1><p class="desc">이 PC의 비트를 웹앱과 잇는 순서예요. 한 번만 하면 돼요.</p>
+  <div class="alert warn"><b>도우미가 옛 판이에요 (지금 0.8.0)</b>
+    <p>새 도우미(${HELPER.ver})를 받아 다시 설치하세요. zip을 풀고 install.cmd를 두 번 누르면 덮어써요. 설치가 끝나면 [다시 확인]을 누르세요.</p>
+    <div class="row">${dlButton('새 도우미 내려받기', HELPER)}<button class="btn">다시 확인</button></div></div>
+  <section class="card">
+    <div class="step"><span class="num done">1</span><span class="sname">크롬 확장 설치</span><span class="state ok">끝</span></div>
+    <div class="step"><span class="num done">2</span><span class="sname">도우미 설치</span><span class="state" style="color:var(--warning);font-weight:600">새 판 있음</span></div>
+    <div class="step"><span class="num done">3</span><span class="sname">비트 처음 등록</span><span class="state ok">끝</span></div>
+  </section>`
+}
+
+function extPage() {
+  return `<h1>비트 PC 연결</h1><p class="desc">이 PC의 비트를 웹앱과 잇는 순서예요. 한 번만 하면 돼요.</p>
+  <section class="card">
+    <div class="step"><span class="num now">1</span><span class="sname">크롬 확장 설치</span><span class="state now">할 차례</span>
+      <div class="box"><ol>
+        <li>아래 [확장 내려받기]를 눌러 zip을 받고 오른쪽 클릭 → [모두 압축 풀기]로 푸세요.<span class="new">바뀜</span></li>
+        <li>크롬 주소창에 <code>chrome://extensions</code>를 넣고, 오른쪽 위 [개발자 모드]를 켜세요.</li>
+        <li>[압축해제된 확장 프로그램을 로드합니다]를 누르고 푼 폴더를 고르세요. 그다음 [다시 확인]을 누르세요.</li>
+      </ol>
+      <div class="row">${dlButton('확장 내려받기', EXT)}<button class="btn">다시 확인</button></div></div></div>
+    <div class="step"><span class="num">2</span><span class="sname">도우미 설치</span><span class="state">기다림</span></div>
+    <div class="step"><span class="num">3</span><span class="sname">비트 처음 등록</span><span class="state">기다림</span></div>
+  </section>`
+}
+
+function adminPage(mode) {
+  const alert = mode === 'bad'
+    ? `<div class="alert bad"><b>올리지 못했어요</b><p>파일 이름이 <code>precheck-helper-0.9.0.zip</code>처럼 '종류-판 번호.zip' 모양이어야 해요. GitHub 릴리스에서 받은 이름 그대로 올리세요. (오류 번호 E-INSTALL-FILE-NAME)</p></div>`
+    : mode === 'done'
+      ? `<div class="alert ok"><b>도우미 ${HELPER.ver}을 올렸어요</b><p style="margin:0">이제 모든 병원의 비트 PC 연결 화면에서 이 판을 받아요.</p></div>`
+      : ''
+  const row = (kind, f, uploading) => `<tr><td><b>${kind}</b></td><td>${f.ver}</td><td class="hide-sm">${f.size}</td><td class="hide-sm">${f.at}</td>
+    <td class="r"><button class="btn"${uploading ? ' disabled' : ''}>${UP}${uploading ? '올리는 중…' : '새 파일 올리기'}</button></td></tr>`
+  return `<h1>가입 승인</h1><p class="desc">병원 가입 신청을 승인하고, 설치 파일을 올려요.</p>
+  ${alert}
+  <section class="card"><h2>설치 파일 <span class="new">새 칸</span></h2>
+    <p class="sub">비트 PC 연결 화면의 [내려받기] 단추가 여기 올린 파일을 줘요. 로그인하고 승인된 사람만 받을 수 있어요.</p>
+    <table class="files"><thead><tr><th>종류</th><th>지금 판</th><th class="hide-sm">크기</th><th class="hide-sm">올린 날</th><th></th></tr></thead>
+    <tbody>${row('도우미', HELPER, mode === 'uploading')}${row('크롬 확장', EXT)}</tbody></table>
+    <p class="hint">새 판이 나오면 Claude가 바탕화면 <code>도우미-설치파일</code> 폴더에 zip을 놓아 둬요. 그 파일을 [새 파일 올리기]로 고르세요. 이름은 <code>precheck-helper-0.9.0.zip</code>·<code>precheck-extension-0.3.0.zip</code> 모양만 받아요(5MB까지). 예전 판은 지우지 않고 남겨 두고, 받기 단추는 가장 높은 판을 줘요.</p>
+  </section>
+  <section class="card"><h2>가입 신청</h2><p class="sub">(지금 화면 그대로 · 바뀌지 않음)</p>
+    <div style="height:90px;background:var(--canvas);border-radius:6px"></div></section>`
+}
+
+function settingsPage() {
+  const line = (kind, f, label, desc) => `<tr><td><b>${kind}</b><div class="meta">${desc}</div></td><td class="hide-sm">${f.ver}</td><td class="hide-sm">${f.size}</td>
+    <td class="r"><button class="btn">${DL}${label}</button></td></tr>`
+  return `<h1>설정</h1><p class="desc">이 병원에서 쓰는 설정이에요.</p>
+  <section class="card"><h2>비트 PC 연결 · 설치 파일 <span class="new">새 칸</span></h2>
+    <p class="sub">비트를 쓰는 PC(접수·진료실)에 확장과 도우미를 깔아야 청구·통계·환자·수납일지가 비트 자료를 읽어요. 새 판이 나오면 여기서 다시 받아 덮어 설치하세요.</p>
+    <table class="files"><thead><tr><th>종류</th><th class="hide-sm">지금 판</th><th class="hide-sm">크기</th><th></th></tr></thead>
+    <tbody>${line('크롬 확장', EXT, '확장 내려받기', '크롬에 붙이는 작은 프로그램')}${line('도우미', HELPER, '도우미 내려받기', '비트 자료를 읽는 PC 프로그램')}</tbody></table>
+    <div class="row" style="margin-top:14px"><button class="btn">비트 PC 연결 확인하러 가기 →</button><span class="meta">설치 순서와 연결 확인은 이 화면에서 해요(청구 탭 아래)</span></div>
+  </section>
+  <section class="card"><h2>병원 문구 · 처방 규칙 · 시재금 …</h2><p class="sub">(지금 설정 칸들 그대로 · 바뀌지 않음)</p>
+    <div style="height:90px;background:var(--canvas);border-radius:6px"></div></section>`
+}
+
+const NOTES = {
+  settings: '설정 탭 맨 위에 새 칸. 확장·도우미를 여기서도 받고, 설치 순서·연결 확인은 [비트 PC 연결 확인하러 가기]로 청구 탭 아래 연결 화면에 가요.',
+  setup: '비트 PC 연결 · 도우미 단계. [도우미 내려받기]가 GitHub 대신 웹앱 보관함에서 바로 받아요(로그인한 승인 사용자만).',
+  none: '관리자가 아직 파일을 안 올렸을 때: 단추가 눌리지 않고 한 줄 안내.',
+  update: '옛 도우미일 때 위 경고 상자의 [새 도우미 내려받기]도 같은 곳에서 받아요.',
+  ext: '확장 단계의 [확장 내려받기]도 웹앱에서 받아요(웹스토어 등록 전까지).',
+  admin: '관리자 화면(가입 승인) 맨 위에 새 칸 \'설치 파일\'. 관리자만 올릴 수 있어요.',
+  uploading: '올리는 중.', bad: '이름이 틀린 파일을 골랐을 때.', done: '올리기 끝.',
+}
+const app = document.getElementById('app'), tabsEl = document.getElementById('tabs')
+if (S === 'admin' || S === 'uploading' || S === 'bad' || S === 'done') { tabsEl.innerHTML = tabs('가입 승인'); app.innerHTML = adminPage(S) }
+else if (S === 'settings') { tabsEl.innerHTML = tabs('설정').replace('더보기 ▾', '<span class="on">설정</span>'); app.innerHTML = settingsPage() }
+else { tabsEl.innerHTML = tabs('청구'); app.innerHTML = S === 'update' ? updatePage() : S === 'ext' ? extPage() : setupPage(S === 'none') }
+document.getElementById('note').innerHTML = `<b>시안</b> · ${NOTES[S] || ''}<br>상태: ${Object.keys(NOTES).map(k => `<a href="?s=${k}">${k}</a>`).join(' · ')}`
+</script>
+</body>
+</html>

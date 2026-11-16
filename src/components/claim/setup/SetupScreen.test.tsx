@@ -7,7 +7,6 @@ import { errorInfo } from '@/lib/errors'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
 import type { ErrorCode } from '@/types/errors'
 import { checkedAtText } from './checkedAt'
-import { HELPER_RELEASES_URL } from './links'
 import { SetupScreen } from './SetupScreen'
 
 // 비트 PC 연결 화면 (precheck REQ-006 · ui-90 REQ-412, 시안 docs/mockups/ui-90/app/gen.py setup_body · 다른 창 카드는 precheck 목업 화면 6).
@@ -19,6 +18,12 @@ vi.mock('@/lib/bridge/versions', async (importOriginal) => {
 })
 const { router } = vi.hoisted(() => ({ router: { replace: vi.fn(), push: vi.fn() } }))
 vi.mock('next/navigation', () => ({ useRouter: () => router }))
+// 설치 파일 보관함(helper-download REQ-5103)은 가짜다: 목록·받기만 바꾸고 옆 글(installMeta)은 진짜 함수를 쓴다
+const installStore = vi.hoisted(() => ({ latest: vi.fn(), download: vi.fn() }))
+vi.mock('@/lib/storage/installFiles', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/storage/installFiles')>()
+  return { ...real, latestInstallFiles: installStore.latest, downloadInstallFile: installStore.download }
+})
 
 type Reply = Record<string, unknown>
 /** 'hold' = 답을 잡아 둔다(release()로 보낸다) */
@@ -221,6 +226,28 @@ function expectTurn(li: HTMLElement, label = '') {
 }
 const isBefore = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
 
+// 보관함의 가장 높은 판(지어낸 값). 옆 글은 installMeta 그대로 '판 · 크기 · M월 D일 올림'
+const UPLOADED = '2026-11-17T01:00:00.000Z' // 한국 11월 17일 10시
+const HELPER_FILE = { kind: 'helper', version: [0, 9, 0], name: 'precheck-helper-0.9.0.zip', path: 'helper/precheck-helper-0.9.0.zip', size: 889_612, uploadedAt: UPLOADED } as const
+const EXTENSION_FILE = { kind: 'extension', version: [0, 3, 0], name: 'precheck-extension-0.3.0.zip', path: 'extension/precheck-extension-0.3.0.zip', size: 6_480, uploadedAt: UPLOADED } as const
+const HELPER_META = '0.9.0 · 889KB · 11월 17일 올림'
+const EXTENSION_META = '0.3.0 · 6KB · 11월 17일 올림'
+const NO_FILE = '아직 받을 파일이 없어요. 관리자에게 알려 주세요.'
+/** 받기 단추(링크가 아닌 button, 주소 없음)와 바로 옆 글 */
+function expectDownload(scope: HTMLElement, name: string, meta: string) {
+  const get = within(scope).getByRole('button', { name }) as HTMLButtonElement
+  expect(get.getAttribute('href')).toBeNull()
+  expect(within(scope).queryByRole('link', { name })).toBeNull()
+  hasAll(get, ds.button.primary)
+  expect(get.nextElementSibling?.textContent).toBe(meta)
+  return get
+}
+
+beforeEach(() => {
+  installStore.latest.mockReset().mockResolvedValue({ helper: HELPER_FILE, extension: EXTENSION_FILE })
+  installStore.download.mockReset().mockResolvedValue(undefined)
+})
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -332,7 +359,7 @@ describe('AC-412.1 처음 들어옴(확장 없음, 아무것도 안 함)', () =>
     expect(document.body.textContent).not.toContain('오류 번호')
   })
 
-  it('AC-412.1: 1단계는 accent 칩 "할 차례" + 시안 순서 4줄 + [확장 내려받기](주, 새 탭) · [다시 확인](보조), 2~5단계는 neutral 칩 "대기"와 설명만("앞 단계를" 없음)', async () => {
+  it('AC-412.1·AC-5103.1: 1단계는 accent 칩 "할 차례" + 시안 순서 4줄 + [확장 내려받기](주, 웹앱 받기 단추) · [다시 확인](보조), 2~5단계는 neutral 칩 "대기"와 설명만("앞 단계를" 없음)', async () => {
     noExtension()
     renderSetup()
     await waitFor(() => expectTurn(row(STEP_TITLES[0])))
@@ -341,11 +368,8 @@ describe('AC-412.1 처음 들어옴(확장 없음, 아무것도 안 함)', () =>
     expect(guide).toBeTruthy()
     expect(within(guide).getAllByRole('listitem').map((li) => li.textContent)).toEqual(HOWTO)
     expect(within(guide).getByText('chrome://extensions').tagName).toBe('CODE')
-    const get = within(guide).getByRole('link', { name: '확장 내려받기' })
-    expect(get.getAttribute('href')).toBe(HELPER_RELEASES_URL)
-    expect(get.getAttribute('target')).toBe('_blank')
-    expect(get.getAttribute('rel')).toContain('noopener')
-    hasAll(get, ds.button.primary)
+    await within(guide).findByText(EXTENSION_META)
+    const get = expectDownload(guide, '확장 내려받기', EXTENSION_META)
     const again = within(guide).getByRole('button', { name: '다시 확인' })
     hasAll(again, ds.button.secondary)
     expect(isBefore(get, again)).toBe(true)
@@ -372,6 +396,7 @@ describe('AC-412.1 처음 들어옴(확장 없음, 아무것도 안 함)', () =>
     expect(go.getAttribute('rel')).toContain('noopener')
     hasAll(go, ds.button.primary)
     expect(within(first).queryByRole('link', { name: '확장 내려받기' })).toBeNull()
+    expect(within(first).queryByRole('button', { name: '확장 내려받기' })).toBeNull()
     expect(first.textContent).toContain('이 확장은 웹스토어 검색에 나오지 않아서 꼭 이 단추로 열어야 해요.')
     expect(first.textContent).toContain('[Chrome에 추가]를 누르세요.')
     expect(within(first).getByRole('button', { name: '다시 확인' })).toBeTruthy()
@@ -465,26 +490,24 @@ describe('AC-412.3 진짜 문제(버전 안 맞음·의원 다름)는 위 오류
     expect(pcValue('요양기관기호').querySelector(`path[d="${X_D}"]`)).not.toBeNull()
   })
 
-  it('AC-412.3: 도우미 버전 안 맞음 — 상자 안 [새 도우미 내려받기](주, 새 탭) · [다시 확인](보조), 2단계 줄은 칩과 설명만, 이 PC 도우미 "버전이 안 맞아요"', async () => {
+  it('AC-412.3·AC-5103.1: 도우미 버전 안 맞음 — 상자 안 [새 도우미 내려받기](주, 웹앱 받기 단추 + 도우미 옆 글) · [다시 확인](보조), 2단계 줄은 칩과 설명만, 이 PC 도우미 "버전이 안 맞아요"', async () => {
     fakeExtension({ hello: helloWith({ helperVersion: '0.0.9' }) })
     renderSetup()
-    await screen.findByRole('alert')
+    await screen.findByText(HELPER_META)
     const box = expectProblemBox('E-HELPER-OLD', '새 도우미 내려받기')
-    const get = within(box).getByRole('link', { name: '새 도우미 내려받기' })
-    expect(get.getAttribute('href')).toBe(HELPER_RELEASES_URL)
-    expect(get.getAttribute('target')).toBe('_blank')
+    expectDownload(box, '새 도우미 내려받기', HELPER_META)
     expectChipAndDescOnly(1, '버전 안 맞음')
     expect(pcValue('도우미').textContent).toBe('버전이 안 맞아요')
     hasAll(pcValue('도우미'), 'text-negative')
     expect(pcValue('도우미').querySelector(`path[d="${X_D}"]`)).not.toBeNull()
   })
 
-  it('AC-412.3: 확장 버전 안 맞음 — 상자 안 [확장 내려받기](주) · [다시 확인], 1단계 줄은 칩과 설명만, 이 PC 크롬 확장 프로그램 "버전이 안 맞아요"', async () => {
+  it('AC-412.3·AC-5103.1: 확장 버전 안 맞음 — 상자 안 [확장 내려받기](주, 웹앱 받기 단추 + 확장 옆 글) · [다시 확인], 1단계 줄은 칩과 설명만, 이 PC 크롬 확장 프로그램 "버전이 안 맞아요"', async () => {
     fakeExtension({ hello: helloWith({ extensionVersion: '0.0.9' }) })
     renderSetup()
-    await screen.findByRole('alert')
+    await screen.findByText(EXTENSION_META)
     const box = expectProblemBox('E-EXT-OLD', '확장 내려받기')
-    expect(within(box).getByRole('link', { name: '확장 내려받기' }).getAttribute('href')).toBe(HELPER_RELEASES_URL)
+    expectDownload(box, '확장 내려받기', EXTENSION_META)
     expectChipAndDescOnly(0, '버전 안 맞음')
     expect(pcValue('크롬 확장 프로그램').textContent).toBe('버전이 안 맞아요')
   })
@@ -515,7 +538,7 @@ type Scene = { arrange(): Fake | void; props?: Partial<Parameters<typeof SetupSc
 const SCENES: [string, Scene][] = [
   ['처음(확장 없음)', { arrange: noExtension, settled: () => screen.findByText(NOTE[0]) }],
   ['처음 + 웹스토어 주소', { arrange: noExtension, props: { extensionStoreUrl: STORE }, settled: () => screen.findByRole('link', { name: '확장 설치하러 가기' }) }],
-  ['도우미 없음', { arrange: () => fakeExtension({ hello: { type: 'error', code: 'E-HELPER-MISSING' } }), settled: () => screen.findByRole('link', { name: '도우미 내려받기' }) }],
+  ['도우미 없음', { arrange: () => fakeExtension({ hello: { type: 'error', code: 'E-HELPER-MISSING' } }), settled: () => screen.findByText(HELPER_META) }],
   ['도우미 버전 안 맞음', { arrange: () => fakeExtension({ hello: helloWith({ helperVersion: '0.0.9' }) }), settled: () => screen.findByRole('alert') }],
   ['확장 버전 안 맞음', { arrange: () => fakeExtension({ hello: helloWith({ extensionVersion: '0.0.9' }) }), settled: () => screen.findByRole('alert') }],
   [
@@ -677,18 +700,16 @@ describe('AC-412.6 768px 미만', () => {
 })
 
 describe('AC-006.1·AC-412.7 상태별 안내 (동작 그대로)', () => {
-  it('AC-006.1·AC-412.1: 도우미 없음 — 1번 Icon check, 2번 할 차례와 도우미 zip 받는 곳·설치 순서(경고 창 넘기는 법 포함)', async () => {
+  it('AC-006.1·AC-412.1·AC-5103.1: 도우미 없음 — 1번 Icon check, 2번 할 차례와 웹앱 [도우미 내려받기](옆에 판·크기·올린 날)·설치 순서(경고 창 넘기는 법 포함)', async () => {
     fakeExtension({ hello: { type: 'error', code: 'E-HELPER-MISSING' } })
     renderSetup()
-    await screen.findByRole('link', { name: '도우미 내려받기' })
+    await screen.findByText(HELPER_META)
     expect(screen.queryByRole('alert')).toBeNull()
     expectMark(row('크롬 확장 프로그램 설치'), 'check')
     const second = row('도우미 설치')
     expectTurn(second)
-    const get = within(second).getByRole('link', { name: '도우미 내려받기' })
-    expect(get.getAttribute('href')).toBe(HELPER_RELEASES_URL)
-    hasAll(get, ds.button.primary)
-    expect(HELPER_RELEASES_URL).toBe('https://github.com/seoseungkwan/seoseungkwanapp/releases')
+    const get = expectDownload(second, '도우미 내려받기', HELPER_META)
+    expect(get.disabled).toBe(false)
     expect(second.textContent).toContain('[모두 압축 풀기]')
     expect(second.textContent).toContain('install.cmd')
     expect(second.textContent).toContain('"Windows의 PC 보호" 창이 뜨면 [추가 정보]를 누른 뒤 [실행]을 누르세요.')
@@ -884,10 +905,22 @@ describe('AC-006.3·AC-412.7 새 도우미', () => {
     renderSetup()
     await screen.findByText('준비됨')
     expect(screen.getByText('새 도우미가 있어요.')).toBeTruthy()
-    expect(screen.getByRole('link', { name: '새 도우미 내려받기' }).getAttribute('href')).toBe(HELPER_RELEASES_URL)
+    expect(await screen.findByRole('button', { name: '새 도우미 내려받기' })).toBeTruthy()
     expect(screen.getByRole('link', { name: '청구로 가기' })).toBeTruthy()
     for (const li of rows()) expectMark(li, 'check')
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('AC-5103.4: "새 도우미가 있어요" 줄의 [새 도우미 내려받기]는 웹앱 받기 단추(보조)이고 GitHub 링크가 아니다. 주 단추는 [청구로 가기] 하나', async () => {
+    fakeExtension({ hello: helloWith({ helperVersion: '0.3.0' }) })
+    renderSetup()
+    await screen.findByText('준비됨')
+    const get = await screen.findByRole('button', { name: '새 도우미 내려받기' })
+    expect(screen.queryByRole('link', { name: '새 도우미 내려받기' })).toBeNull()
+    expect(get.hasAttribute('disabled')).toBe(false)
+    fireEvent.click(get)
+    await waitFor(() => expect(installStore.download).toHaveBeenCalledWith(HELPER_FILE))
+    expect(document.body.innerHTML).not.toContain('github.com')
   })
 
   it('AC-006.3: 최신 도우미면 그 줄이 없다', async () => {
@@ -1184,5 +1217,79 @@ describe('AC-408.2 그림은 공용 Icon, 간격은 단계 안', () => {
     const keep = screen.getByText(KEEP[0]).closest('ul') as HTMLElement
     hasAll(keep, 'grid list-disc gap-2 pl-5 text-body text-ink-2')
     hasNone(keep, 'pl-4.5 text-small')
+  })
+})
+
+// 받기 단추를 웹앱 보관함으로 (helper-download REQ-5103, 시안 docs/mockups/helper-download ?s=setup·none·update·ext).
+// 순서 글은 그대로이고 단추만 바뀐다. 보관함은 위 installStore 가짜다
+describe('AC-5103.1·AC-5103.3 비트 PC 연결의 웹앱 받기 단추', () => {
+  it.each<[string, () => void, string, string, typeof HELPER_FILE | typeof EXTENSION_FILE]>([
+    ['처음(확장 없음) — 1단계 [확장 내려받기]', noExtension, '확장 내려받기', EXTENSION_META, EXTENSION_FILE],
+    ['도우미 없음 — 2단계 [도우미 내려받기]', () => void fakeExtension({ hello: { type: 'error', code: 'E-HELPER-MISSING' } }), '도우미 내려받기', HELPER_META, HELPER_FILE],
+    ['도우미 버전 안 맞음 — 위 상자 [새 도우미 내려받기]', () => void fakeExtension({ hello: helloWith({ helperVersion: '0.0.9' }) }), '새 도우미 내려받기', HELPER_META, HELPER_FILE],
+    ['확장 버전 안 맞음 — 위 상자 [확장 내려받기]', () => void fakeExtension({ hello: helloWith({ extensionVersion: '0.0.9' }) }), '확장 내려받기', EXTENSION_META, EXTENSION_FILE],
+  ])('AC-5103.1: %s를 누르면 그 종류 파일로 downloadInstallFile을 한 번 부르고, 옆 글 뒤에 [다시 확인]이 온다', async (_name, arrange, name, meta, file) => {
+    arrange()
+    renderSetup()
+    await screen.findByText(meta)
+    const get = expectDownload(document.body, name, meta)
+    expect(isBefore(get.nextElementSibling as Element, button('다시 확인'))).toBe(true)
+    await userEvent.setup().click(get)
+    expect(installStore.download).toHaveBeenCalledTimes(1)
+    expect(installStore.download).toHaveBeenCalledWith(file)
+    // 목록은 화면에서 한 번 읽는다
+    expect(installStore.latest).toHaveBeenCalledTimes(1)
+  })
+
+  it("AC-5103.1: 올린 파일이 없으면 [도우미 내려받기]는 눌리지 않고 옆에 '아직 받을 파일이 없어요. 관리자에게 알려 주세요.' — 순서 글은 그대로", async () => {
+    installStore.latest.mockResolvedValue({ helper: null, extension: EXTENSION_FILE })
+    fakeExtension({ hello: { type: 'error', code: 'E-HELPER-MISSING' } })
+    renderSetup()
+    const second = await waitFor(() => {
+      const li = row('도우미 설치')
+      within(li).getByText(NO_FILE)
+      return li
+    })
+    const get = within(second).getByRole('button', { name: '도우미 내려받기' }) as HTMLButtonElement
+    expect(get.disabled).toBe(true)
+    expect(get.nextElementSibling?.textContent).toBe(NO_FILE)
+    expect(second.textContent).toContain('[도우미 내려받기]를 눌러 precheck-helper-버전.zip을 받으세요.')
+    expect((within(second).getByRole('button', { name: '다시 확인' }) as HTMLButtonElement).disabled).toBe(false)
+    await userEvent.setup().click(get)
+    expect(installStore.download).not.toHaveBeenCalled()
+  })
+
+  it('AC-5103.1: 웹스토어 주소가 있으면 [확장 설치하러 가기] 링크 그대로이고 받기 단추·목록 읽기가 없다', async () => {
+    noExtension()
+    renderSetup({ extensionStoreUrl: STORE })
+    await screen.findByRole('link', { name: '확장 설치하러 가기' })
+    expect(screen.queryByRole('button', { name: '확장 내려받기' })).toBeNull()
+    expect(installStore.latest).not.toHaveBeenCalled()
+  })
+
+  it('AC-5103.3: 받기가 실패하면 그 단계 안내 상자 안 단추 가까이에 E-INSTALL-DOWNLOAD-FAILED 안내(무엇이·어떻게·번호)가 보이고 원래 글은 없다', async () => {
+    installStore.download.mockRejectedValue(new Error(RAW))
+    fakeExtension({ hello: { type: 'error', code: 'E-HELPER-MISSING' } })
+    renderSetup()
+    await screen.findByText(HELPER_META)
+    const guide = guideOf(row('도우미 설치')) as HTMLElement
+    await userEvent.setup().click(within(guide).getByRole('button', { name: '도우미 내려받기' }))
+    const alert = await within(guide).findByRole('alert')
+    expectInfo(alert, 'E-INSTALL-DOWNLOAD-FAILED')
+    expect(document.body.textContent).not.toContain(RAW)
+    expect(screen.getAllByText(/오류 번호/)).toHaveLength(1)
+  })
+
+  it('AC-5103.3: 목록 읽기가 실패하면 받기 단추는 눌리지 않고 그 자리에 E-INSTALL-READ-FAILED 안내가 보인다', async () => {
+    installStore.latest.mockRejectedValue(new Error(RAW))
+    noExtension()
+    renderSetup()
+    await waitFor(() => expectTurn(row(STEP_TITLES[0])))
+    const guide = guideOf(row(STEP_TITLES[0])) as HTMLElement
+    const alert = await within(guide).findByRole('alert')
+    expectInfo(alert, 'E-INSTALL-READ-FAILED')
+    expect((within(guide).getByRole('button', { name: '확장 내려받기' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(within(guide).getByRole('button', { name: '다시 확인' })).toBeTruthy()
+    expect(document.body.textContent).not.toContain(RAW)
   })
 })

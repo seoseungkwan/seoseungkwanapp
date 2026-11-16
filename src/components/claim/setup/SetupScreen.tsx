@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useId, useState, type ReactNode } from 'react'
 import { Icon } from '@/components/common/Icon'
+import { DownloadButton } from '@/components/install/DownloadButton'
 import { MENU } from '@/components/shell/menu'
 import { ds } from '@/components/ui/classes'
 import { BridgeError } from '@/lib/bridge/protocol'
@@ -10,7 +11,7 @@ import type { ResultOf } from '@/types/bridge'
 import { maskInstitution } from '../maskInstitution'
 import { useBridge } from '../useBridge'
 import { checkedAtText } from './checkedAt'
-import { EXTENSION_STORE_URL, HELPER_RELEASES_URL } from './links'
+import { EXTENSION_STORE_URL } from './links'
 import { ReturnWhenReady } from './ReturnWhenReady'
 import { BusyCard, SetupAlert } from './SetupAlert'
 import { HelperUpdateSteps, ProblemActions, StepGuide } from './StepGuide'
@@ -258,19 +259,15 @@ export function SetupScreen({
         </div>
       )}
 
-      {/* 새 도우미 안내 한 줄: 지금 도우미로도 그대로 쓸 수 있다 (AC-006.3, design.md 13절) */}
+      {/* 새 도우미 안내 한 줄: 지금 도우미로도 그대로 쓸 수 있다 (AC-006.3, design.md 13절, 받기는 AC-5103.4) */}
       {helperUpdateAvailable && (
         <div className={line}>
           <span className="text-body text-ink">새 도우미가 있어요.</span>
           <span className={ds.help}>지금 도우미로도 그대로 쓸 수 있어요.</span>
-          <a
-            href={HELPER_RELEASES_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`${ds.textButton} ml-auto no-underline`}
-          >
-            새 도우미 내려받기
-          </a>
+          {/* 웹앱 보관함에서 받는다(helper-download AC-5103.4). 이 장면의 주 단추는 [청구로 가기]라 보조 */}
+          <span className="ml-auto flex flex-wrap items-center gap-2 max-md:w-full">
+            <DownloadButton kind="helper" label="새 도우미 내려받기" variant="secondary" />
+          </span>
         </div>
       )}
 

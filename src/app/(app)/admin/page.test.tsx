@@ -1,16 +1,18 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import type { ReactElement } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdminApplications } from '@/components/admin/AdminApplications'
+import { InstallFilesAdmin } from '@/components/admin/InstallFilesAdmin'
 import { guardPage } from '@/lib/auth/guard.server'
 import { HospitalReadError, NotSignedInError, readMe, type Hospital, type Me } from '@/lib/auth/hospital.server'
 import AdminPage, { dynamic, metadata } from './page'
 
 // /admin 페이지 (REQ-007, AC-002.5, design.md '데이터 흐름' `(app)/admin/page.tsx # 관리자만`).
 // (app) 레이아웃은 지금 경로를 모르고 늘 '/dashboard'로 문지기를 부른다 → 관리자만 여는 이 페이지는 스스로 '/admin'으로 부른다.
-// 읽기(readMe)만 흉내 내고, guard·gate(어디로 보낼지)는 진짜를 쓴다
+// 읽기(readMe)만 흉내 내고, guard·gate(어디로 보낼지)는 진짜를 쓴다.
+// 설치 파일 칸(helper-download REQ-5104)은 가입 승인 위에 둔다. 그 목록도 브라우저가 읽는다
 
 vi.mock('@/lib/auth/hospital.server', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/auth/hospital.server')>()),
@@ -122,10 +124,20 @@ describe('/admin 페이지 그리기', () => {
     expect(SOURCE).toMatch(/from '@\/lib\/auth\/guard\.server'/)
   })
 
-  it('AC-007.1·AC-013.2: 앱 틀을 한 번 더 그리지 않는다 — 목록 컴포넌트 하나만 돌려준다(띠·탭·<main>은 (app)/layout 몫)', async () => {
-    const page = (await AdminPage()) as ReactElement
+  it('AC-007.1·AC-013.2·AC-5104.3: 앱 틀을 한 번 더 그리지 않는다 — 가입 승인(AdminApplications) 하나만 돌려주고 설치 파일 칸은 그 top 자리로 넘긴다(띠·탭·<main>은 (app)/layout 몫)', async () => {
+    const page = (await AdminPage()) as ReactElement<{ top?: ReactNode }>
     expect(page.type).toBe(AdminApplications)
-    expect(page.props).toEqual({})
+    expect(Object.keys(page.props)).toEqual(['top'])
+    expect((page.props.top as ReactElement).type).toBe(InstallFilesAdmin)
+  })
+
+  it("AC-5104.1·AC-5104.3: 제목 '가입 승인'(h1)이 맨 위이고 그 아래 '설치 파일' 칸 — 서버 그리기에서 h1이 '설치 파일' 제목보다 먼저 나오고, 목록은 읽지 않는다", async () => {
+    const html = renderToStaticMarkup((await AdminPage()) as ReactElement)
+    const install = html.search(/<h2\b[^>]*>설치 파일<\/h2>/)
+    const applications = html.search(/<h1\b[^>]*>가입 승인<\/h1>/)
+    expect(applications).toBeGreaterThan(-1)
+    expect(install).toBeGreaterThan(applications)
+    expect(supabaseBrowser).not.toHaveBeenCalled()
   })
 })
 

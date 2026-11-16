@@ -850,3 +850,20 @@ describe('AdminApplications: 읽기 결과를 기다린다', () => {
     expect(error).not.toHaveBeenCalled()
   })
 })
+
+describe('AC-5104.3 제목 아래 top 자리', () => {
+  it('AC-5104.3: top으로 넘긴 칸은 제목 묶음(관리자·가입 승인·안내) 바로 아래, 신청 상태 탭 위에 그린다', async () => {
+    render(<AdminApplications top={<section aria-label="위 칸">위 칸</section>} />)
+    const tabs = await screen.findByRole('tablist', { name: '신청 상태' })
+    const h1 = screen.getByRole('heading', { level: 1, name: '가입 승인' })
+    const top = screen.getByRole('region', { name: '위 칸' })
+    expect(h1.compareDocumentPosition(top) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(top.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('AC-5104.3: top이 없으면 지금 그대로다(위 칸 없음)', async () => {
+    render(<AdminApplications />)
+    await screen.findByRole('tablist', { name: '신청 상태' })
+    expect(screen.queryByRole('region', { name: '위 칸' })).toBeNull()
+  })
+})
