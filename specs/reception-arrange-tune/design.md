@@ -7,19 +7,20 @@
 
 ### 도우미 (C#)
 - `VisitMark`(ArrangeMarks.cs)에 `Back`·`BackStop`(string? "HH:MM")을 더한다. 생성자 끝 선택 인자로 두어 다른 부르는 곳은 그대로 컴파일된다. `WithAway`처럼 `WithBack(back, backStop)`을 둔다. `IsEmpty`는 두 칸도 본다.
-- 저장(ArrangeMarks 쓰기·읽기): 내원 칸 목록에 `back`·`backStop`을 더하되 값이 있을 때만 쓴다. 읽기는 두 칸이 없어도 받고, 있으면 `IsTimeOrNull`로 본다(지금 away·ended와 같다). 옛 파일은 그대로 읽힌다.
+- 저장(ArrangeMarks 쓰기·읽기): 내원 칸 목록에 `back`·`backStop`을 더하되 각각 값이 있을 때만 쓴다. 읽기는 두 칸이 없어도 받고, 있으면 `IsTimeOrNull`로 본다(지금 away·ended와 같다). back 없이 backStop만 있으면 깨진 파일이다. 옛 파일은 그대로 읽힌다.
 - 쓰기(ArrangeWrite.Apply):
   - `away on` → `WithAway(hhmm).WithBack(null, null)`
   - `away off` → `WithAway(null).WithBack(hhmm, null)`
-  - 칸 쓰기(step·set·add·remove·part)가 표시를 내면, 결과 표시에 `Back != null && BackStop == null`이면 `WithBack(Back, hhmm)`. 칸 쓰기가 400 등으로 받아지지 않으면 바꾸지 않는다
-  - away·ptf·end는 back을 건드리지 않는다(away 자체는 위 규칙). X-ray 화면(XrayMarks)은 VisitMark를 쓰지 않으니 그대로다
-- 판(ArrangeBuilder·BoardModel): `ArrangeRow`에 `Back`·`BackWait`(string?)를 더해 JSON `back`·`backWait`로 늘 쓴다(null이면 null). `BackWait`는 `Back != null && BackStop == null`이고 판 시각(`BoardInput.At`의 시:분)이 있을 때 `Span(분) + "째"`. 분 = 판 시각 − back(음수면 0). `Span`은 BoardBuilder의 "18분"·"1시간 4분"·"2시간" 글과 같게 한다(같은 함수를 internal로 나눠 쓰거나 옮긴다).
+  - `away clear`(되돌리기 전용 새 값) → `WithAway(null).WithBack(null, null)`
+  - 칸 쓰기(step·set·add·remove·part)가 받아지면, `Back != null && BackStop == null`일 때 결과 표시에 `WithBack(Back, hhmm)`. X-RAY 칸 쓰기는 지금 `XrayOnly`(표시 없이 X-ray만)로 끝나는데, 셈 중이면 `ArrangeWriteResult.Marks(mark.WithBack(Back, hhmm), xray)`로 표시와 X-ray를 함께 낸다(라우터는 지금처럼 둘 다 쓴다). 칸 쓰기가 400 등으로 받아지지 않으면 바꾸지 않는다
+  - ptf·end는 back을 건드리지 않는다. X-ray 화면(`/api/xray`, XrayMarks)은 VisitMark를 쓰지 않으니 그대로다
+- 판(ArrangeBuilder·BoardModel): `ArrangeRow`에 `Back`·`BackWait`(string?)를 더해 JSON `back`·`backWait`로 늘 쓴다(null이면 null). `BackWait`는 `Back != null && BackStop == null`이고 판 시각(`BoardInput.ReadAt`, 판 "at"의 시:분)이 있을 때 `Span(분) + "째"`. 분 = 판 시각 − back(음수면 0). `Span`은 BoardBuilder의 "18분"·"1시간 4분"·"2시간" 글과 같게 한다(같은 함수를 internal로 나눠 쓴다).
 
 ### 화면 (arrange.js·api.js·style.css)
 - `api.js` 어레인지 줄 모양 검사에 `back`(null | 시:분)·`backWait`(null | 빈 글 아닌 글)을 더한다.
-- `awayOf`: away면 지금 그대로. 아니고 `back`이면 `span.back-tag`("돌아옴 {back}") + backWait가 있으면 `span.back-wait`(backWait). 색은 시안(mock.css의 돌아옴 색을 style.css 토큰으로).
-- `LEGEND`에 `['back', '돌아옴']`, 접수 머리 설명·`HOWTO` 둘째 줄·`FOOT`은 시안 글.
-- `planOf`: `away` off(지금 자리비움) → `{ ...row, away: null, back: stamp, backWait: '0분째' }`, 띠 `${name} · 돌아옴 ${stamp}`, 되돌리기 `{ op: 'away', v: 'on' }`. `away` on → `{ away: stamp, back: null, backWait: null }`. 칸 쓰기 → 그 줄 `backWait: null`(back은 둔다).
+- `awayOf`: away면 지금 그대로. 아니고 `back`이면 `span.rtn-tag`("돌아옴 {back}") + backWait가 있으면 `span.wt.rtn-wt`(backWait, 기다린 글 `.wt` 모양을 물려받음). class 이름과 색은 시안 그대로다(`.back`은 이미 다른 규칙이 있어 쓰지 않는다).
+- `LEGEND`에 `['rtn', '돌아옴']`(away 뒤, ptup 앞), 접수 머리 설명·`HOWTO` 둘째 줄·`FOOT`은 시안 글.
+- `planOf`: `away` off(지금 자리비움) → `{ ...row, away: null, back: stamp, backWait: '0분째' }`, 띠 `${name} · 돌아옴 ${stamp}`, 되돌리기 `{ op: 'away', v: 'on' }`. `away` on → `{ away: stamp, back: null, backWait: null }`, 되돌리기 `{ op: 'away', v: 'clear' }`. `away` clear → `{ away: null, back: null, backWait: null }`, 띠 글은 주고(app.js가 띠 글이 없는 쓰기를 버리므로) 되돌리기는 null. app.js는 고치지 않는다. 칸 쓰기(X-RAY 칸 포함) → 그 줄 `backWait: null`(back은 둔다). `api.js` `setArrange`는 away v로 `clear`도 받는다.
 
 ## 2. 고르기 목록 넓히기 (REQ-3603·3604)
 
@@ -35,20 +36,20 @@
 - 한도: 이름 1~10글자(지금 규칙), PT·도수·견인·부위 수 1~8, 타수 0~8, 무리 안 겹침 없음. 가장 큰 몸은 8192바이트 안에 든다(한글 이름 30바이트 × 140개 안팎).
 
 ### 도우미 (C#)
-- `PickLists`: `Pt`·`Ds`·`EswtHits`·`EswtCounts`·`Trac`(IReadOnlyList<string>)와 한도 상수를 더한다. `Defaults`에 AC-3603.1 값. 읽기(`ReceptionLists`의 파일 읽기)는 넷이 없으면 그 넷만 기본값, 있으면 모양 검사. 몸 읽기(`POST /api/lists`)는 여섯 모두 있어야 한다. `ToJson`은 여섯 모두 쓴다.
+- `PickLists`: `Pt`·`Ds`·`EswtHits`·`EswtCounts`·`Trac`(IReadOnlyList<string>)와 한도 상수를 더한다. `Defaults`에 AC-3603.1 값. 읽기(`ReceptionLists`의 파일 읽기)는 넷이 모두 없으면 그 넷만 기본값, 일부만 있으면 깨진 파일, 모두 있으면 모양 검사. 몸 읽기(`POST /api/lists`)는 여섯 모두 있어야 한다. JSON 쓰기(`Write(writer)`)는 여섯 모두 쓴다.
 - `ArrangeChoices`: 고정 목록 `Pt`·`Ds`·`Eswt`·`Trac`을 없앤다.
   - `AddOf(col, PickLists lists)`: PT·도수·견인 = 그 목록, 충격파 = 부위 수 + 타수 × 부위 수("{타수} {부위 수}"), X-RAY = "X-ray 찍기", SONO·C-ARM = 빈 목록(지금처럼 PickLists 규칙).
   - `IsDetail(col, det)`: PT·도수·충격파·견인은 1~21글자·"|"·제어 글자 없음(`IsText`), 다른 칸은 "". 목록 소속은 보지 않는다.
 - `ArrangeWrite.AddCell`은 `ArrangeChoices.AddOf(col, lists)`로 본다(지금 `lists` 인자 그대로).
 - 몸 한도: `HttpRequestReader.MaxBody` 8192, 라우터 `ListsMaxBody` = MaxBody. 256·1024는 그대로.
-- 충격파 타수 시험(`EswtChoices.test.cs`)처럼 고정 목록 글을 쓰던 시험은 기본 목록(`PickLists.Defaults`)으로 고친다.
+- 충격파 타수 시험(`EswtChoices.test.cs`)처럼 고정 목록 글을 쓰던 시험은 기본 목록(`PickLists.Defaults`)으로 고친다. C# 시험 하나가 `PickLists.Defaults`를 AC-3603.1 값(차례 그대로)에 고정한다.
 
 ### 화면
-- `api.js` `picks` 모양 검사에 새 무리, `setLists` 한도 8192.
-- `arrange.js`: `CHOICES`·`ESWT_COUNTS`·`ESWT_HITS`를 없애고 넣기 창은 판 `picks`(pt·ds·trac 목록, 충격파는 `eswt.counts` 줄·`eswt.hits` 줄)를 쓴다. 열 머리 작은 글은 PT·도수·견인 목록 `join('·')`(넘치면 줄임표), 충격파 "타수·부위 수". X-RAY 넣기는 그대로. `picks`가 없으면 PT·도수·충격파·견인 넣기 창도 열지 않는다. `planOf`의 add 검사도 판 `picks`로 본다(도우미 AddOf와 같은 규칙).
+- `api.js` `picks` 모양 검사에 새 무리, `setLists` 한도 8192. `picks.js`의 초안 만들기·내보내기(draftOf·picksOf)는 같은 TASK에서 새 무리를 그대로 넘기게만 고친다(그래야 지금 [저장] 시험이 깨지지 않는다).
+- `arrange.js`: `CHOICES`·`ESWT_COUNTS`·`ESWT_HITS`를 없애고 넣기 창은 판 `picks`(pt·ds·trac 목록, 충격파는 `eswt.counts` 줄·`eswt.hits` 줄, 타수가 비면 타수 줄 없음)를 쓴다. 충격파 칸 글을 타수·부위 수로 나누는 곳(`ESWT_SPLIT`)은 "타"로 끝난다고 보지 않고 판 `eswt.hits`의 이름 + 빈칸으로 시작하는지로 나눈다. 열 머리 작은 글은 PT·도수·견인 목록 `join('·')`(넘치면 줄임표), 충격파 "타수·부위 수". X-RAY 넣기는 그대로. `picks`가 없으면 PT·도수·충격파·견인 넣기 창도 열지 않는다. `planOf`의 add 검사도 판 `picks`로 본다(도우미 AddOf와 같은 규칙).
 - `picks.js`: `TABS`에 PT(종류)·도수(시간)·충격파(타수·부위 수, 위 안내)·견인(부위)을 더한다. 무리마다 `min`(마지막 ✕ 끄기: PT·도수·부위 수·견인 1, 타수 0)과 `max`(8).
-  - 이름 바꾸기: 창이 `renaming = { tab, group, index, text }` 하나를 갖는다. 이름 글을 누르면 그 줄이 글 칸 + [바꾸기]·[취소] + 안내가 된다. [바꾸기]는 더하기와 같은 이름 규칙(자기 자신과는 겹침으로 보지 않음)을 지나면 초안의 그 자리만 바꾼다. C-ARM 시술은 `noDrug`를 둔다. 다른 줄을 누르면 그 줄로 옮긴다. 다시 그리기에도 바꾸던 글과 초점이 남는다(지금 창 규칙).
-- 지금 시험이 화면 `CHOICES`와 C# 글을 견주던 곳은 `fixtures.ts`의 기본 `picks`와 C# `PickLists.Defaults.ToJson()`이 같은지 보는 시험으로 바꾼다.
+  - 이름 바꾸기: 창이 `renaming = { tab, group, index, text }` 하나를 갖는다. 이름 글을 누르면 그 줄이 글 칸 + [바꾸기]·[취소] + 안내가 된다. [바꾸기]는 더하기와 같은 이름 규칙(자기 자신과는 겹침으로 보지 않음, 개수 한도는 보지 않음)을 지나면 초안의 그 자리만 바꾸고, 아니면 줄을 연 채 안내 글을 빨갛게 한다. C-ARM 시술은 `noDrug`를 둔다. 다른 이름을 누르면 그 줄로 옮기고, 다른 탭·▲·▼·✕를 누르면 닫는다. 글 칸의 Esc는 바꾸기만 닫고 창은 닫지 않는다(지금 창의 Esc 처리보다 먼저 받는다). 다시 그리기에도 바꾸던 글과 초점이 남는다(지금 창 규칙).
+- 지금 시험이 화면 `CHOICES`와 C# 글을 견주던 곳(AC-3308.7·AC-3402.1)은 C# 파일을 읽지 않고 `fixtures.ts` 기본 `picks`를 AC-3603.1 값(차례 그대로)에 고정하는 시험으로 바꾼다. C# 쪽은 TASK-2 시험이 같은 값에 고정하므로 두 쪽이 명세 하나로 맞는다(일꾼 B 혼자서도 통과한다).
 
 ## 3. 비고와 기록부 (REQ-3605)
 - `style.css` `.lastsym`: `-webkit-line-clamp: 3; line-clamp: 3`.
@@ -62,3 +63,4 @@
 - 칸 글을 목록 소속 대신 모양으로 본다: 목록을 고쳐도 아침에 넣은 칸이 깨진 파일이 되지 않게. 대신 아무 글이나 받지 않도록 add만 지금 목록으로 본다.
 - 몸 한도를 8192로 올린다: 목록 여섯 무리가 4096을 넘을 수 있다. 머리 한도·길별 한도(256·1024)는 그대로라 다른 길에는 영향이 없다.
 - 그 전 기록부를 열 때 한 번 더 읽는다(비트 읽기 한 번 늘어남). 상세와 같은 8초 한도·읽기 전용 길을 쓴다.
+- 되돌리기 위험: 하루 중간에 옛 판 exe로 되돌리면 옛 판은 새 칸(back)이 든 표시 파일과 새 무리가 든 목록 파일을 깨진 파일로 본다. 그날 어레인지 표시는 사라지고 목록은 기본값이 된다(설치 안내에 적는다).

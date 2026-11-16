@@ -8,29 +8,29 @@
 ## 요구사항
 
 ### REQ-3601: 돌아옴 표시 (도우미)
-- AC-3601.1: Given 칸 표시 파일, When 쓰고 읽으면, Then 내원 표시에 새 칸 `back`(돌아온 시:분)·`backStop`(센 것을 멈춘 시:분)이 있다. 둘 다 있을 때만 쓰고, 두 칸이 없는 옛 파일도 읽힌다. 모양이 "HH:MM"이 아니면 깨진 파일이다
-- AC-3601.2: Given `POST /api/arrange` op `away`, When `on`이면, Then away = 지금 시:분이고 back·backStop을 지운다. When `off`면, Then away를 지우고 back = 지금 시:분, backStop을 지운다
-- AC-3601.3: Given back이 있고 backStop이 없는 내원, When 그 내원의 칸 쓰기(step·set·add·remove·part)가 받아지면, Then backStop = 지금 시:분이다. away·ptf·end와 X-RAY 화면 쓰기(`/api/xray`)는 멈추지 않는다
+- AC-3601.1: Given 칸 표시 파일, When 쓰고 읽으면, Then 내원 표시에 새 칸 `back`(돌아온 시:분)·`backStop`(센 것을 멈춘 시:분)이 있다. 두 칸은 각각 값이 있을 때만 쓰고, 두 칸이 없는 옛 파일도 읽힌다. 모양이 "HH:MM"이 아니거나 back 없이 backStop만 있으면 깨진 파일이다
+- AC-3601.2: Given `POST /api/arrange` op `away`, When `on`이면, Then away = 지금 시:분이고 back·backStop을 지운다. When `off`면, Then away를 지우고 back = 지금 시:분, backStop을 지운다. When `clear`(되돌리기)면, Then away·back·backStop을 모두 지운다
+- AC-3601.3: Given back이 있고 backStop이 없는 내원, When 그 내원의 칸 쓰기(step·set·add·remove·part, X-RAY 칸 포함)가 받아지면, Then backStop = 지금 시:분이다(X-RAY 칸 쓰기는 X-ray 표시와 이 표시를 함께 낸다). away·ptf·end와 X-RAY 화면 쓰기(`/api/xray`)는 멈추지 않는다
 - AC-3601.4: Given 판의 어레인지 줄, When `GET /api/board`, Then 줄마다 `back`(시:분 또는 null)·`backWait`가 있다. backWait는 back이 있고 backStop이 없을 때만 "{시간}째"(판 시각 − back, 0분부터, 목록 기다린 글과 같은 시간 글)이고 아니면 null이다
 
 ### REQ-3602: 돌아옴 표시 (화면)
 - AC-3602.1: Given 어레인지 줄, When 그리면, Then 접수 칸은 away면 지금처럼 "자리비움" + 시각, away가 없고 back이 있으면 이름표 "돌아옴 {back}"이고 backWait가 있으면 그 아래 backWait 글이다(시안 색)
 - AC-3602.2: Given 어레인지 화면, When 그리면, Then 표시 뜻에 "돌아옴"이 더해지고, 접수 머리 설명은 "누르면 자리비움·돌아옴", 쓰는 법 둘째 줄과 아래 글은 시안 글 그대로다
-- AC-3602.3: Given `planOf`, When 자리비움 줄의 접수 칸을 누르면, Then away null·back = 판 시:분·backWait "0분째"를 미리 얹고 띠 "{이름} · 돌아옴 {시:분}"·되돌리기 away on이다. away on은 back·backWait를 지우고, 칸 쓰기(step·set·add·remove·part)는 backWait만 지운다
+- AC-3602.3: Given `planOf`, When 자리비움 줄의 접수 칸을 누르면, Then away null·back = 판 시:분·backWait "0분째"를 미리 얹고 띠 "{이름} · 돌아옴 {시:분}"·되돌리기 away on이다. away on은 back·backWait를 지우고 되돌리기는 away clear(아무 표시 없음)다. `planOf(away clear)`는 away·back·backWait를 null로 미리 얹고 띠 글을 주며(되돌리기는 조용히 보내므로 보이지 않음) 되돌리기는 없다. 그래서 자리비움 → [되돌리기]는 away clear를 보내고 돌아옴이 생기지 않는다. 칸 쓰기(step·set·add·remove·part, X-RAY 칸 포함)는 backWait만 지운다. `setArrange`는 away v로 on·off·clear를 받는다
 - AC-3602.4: Given 화면 `api.js`, When 판을 읽으면, Then 어레인지 줄 `back`(null 또는 시:분)·`backWait`(null 또는 글) 모양이 틀리면 shape 실패다
 
 ### REQ-3603: 고르기 목록 넓히기 (도우미)
-- AC-3603.1: Given 목록 파일이 없음, When 읽으면, Then 지금 기본값에 더해 PT ICE·HP, 도수 30분·50분, 충격파 타수 2000타·3000타·4000타·6000타와 부위 수 1부위·2부위·3부위·4부위, 견인 목·허리다. 이 넷이 없는 옛 목록 파일은 그 넷만 기본값으로 읽는다
+- AC-3603.1: Given 목록 파일이 없음, When 읽으면, Then 지금 기본값에 더해 PT ICE·HP, 도수 30분·50분, 충격파 타수 2000타·3000타·4000타·6000타와 부위 수 1부위·2부위·3부위·4부위, 견인 목·허리다. 이 넷이 모두 없는 옛 목록 파일은 그 넷만 기본값으로 읽고, 일부만 있으면 깨진 파일(지금처럼 기본값 + E-STORE-BROKEN)이다
 - AC-3603.2: Given 목록 모양 검사, When 받으면, Then 새 무리도 지금 이름 규칙(1~10글자·"|"와 제어 글자 없음·무리 안 겹침 없음)이고 개수는 PT 1~8·도수 1~8·타수 0~8·부위 수 1~8·견인 1~8이다. 판 `picks`와 `POST /api/lists` 몸은 `{ carm, sono, pt, ds, eswt: { hits, counts }, trac }`이고 하나라도 빠지면 400이다
 - AC-3603.3: Given `POST /api/arrange` `add`, When PT·도수·견인·충격파 칸이면, Then 지금 목록으로 본다: PT·도수·견인 v = 그 목록 이름 하나, 충격파 v = 부위 수 하나 또는 "{타수} {부위 수}". 어긋나면 400이다
-- AC-3603.4: Given 칸 표시 파일과 칸 쓰기 `set`·`remove`·`step`, When 칸 글(det)을 보면, Then 목록에 있는지가 아니라 모양만 본다(PT·도수·충격파·견인은 1~21글자·"|"와 제어 글자 없음, 다른 칸은 ""). 목록을 고친 뒤에도 이미 넣은 칸은 그대로 읽히고 바뀐다
+- AC-3603.4: Given 칸 표시 파일과 칸 쓰기 `set`·`remove`·`step`, When 칸 글(det)을 보면, Then 목록에 있는지가 아니라 모양만 본다(PT·도수·충격파·견인은 1~21글자·"|"와 제어 글자 없음, 다른 칸은 ""). 목록을 고친 뒤에도 이미 넣은 칸은 그대로 읽히고 바뀐다. 이 AC가 reception-arrange AC-3304.4(칸 글은 목록 안의 글만)를 대신하므로, 목록 밖 칸 글을 막던 지금 시험 예(det "가상환자07", pt 목록 밖 글, ds에 pt 글)는 모양만 맞으면 받는 것으로 바뀐다(모양이 틀린 예는 그대로 막는다)
 - AC-3603.5: Given 쓰기 몸, When 받으면, Then 읽기 한도는 8192바이트(넘으면 413)이고 `/api/lists`는 8192바이트까지다. `/api/xray` 256·`/api/arrange` 1024는 그대로다
 
 ### REQ-3604: 목록 고치기와 넣기 창 (화면)
 - AC-3604.1: Given [목록 고치기], When 창을 열면, Then 탭은 C-ARM·SONO·PT·도수·충격파·견인이고, PT 종류·도수 시간·충격파 타수와 부위 수(+ 함께 보이는 안내)·견인 부위 무리와 위 안내 글은 시안 글 그대로다. 줄마다 ▲ ▼ ✕와 무리마다 글 칸 + [더하기]는 지금과 같다
-- AC-3604.2: Given 창의 이름, When 누르면, Then 그 줄이 글 칸(그 이름) + [바꾸기]·[취소] + "1~10글자 · 같은 이름은 안 돼요"가 된다(한 번에 한 줄, 모든 탭). [바꾸기]는 규칙에 맞으면 초안의 그 이름만 바꾸고(차례·약재 없음 그대로) 맞지 않으면 적던 글을 둔다. [취소]는 그대로 둔다. 저장은 지금처럼 [저장]이 한다
+- AC-3604.2: Given 창의 이름, When 누르면, Then 그 줄이 글 칸(그 이름) + [바꾸기]·[취소] + "1~10글자 · 같은 이름은 안 돼요"가 된다(한 번에 한 줄, 모든 탭). [바꾸기]는 이름 규칙(자기 자신과는 겹침으로 보지 않음, 개수 한도는 보지 않음)에 맞으면 초안의 그 이름만 바꾸고(차례·약재 없음 그대로) 맞지 않으면 줄을 연 채 안내 글이 빨개진다. [취소]와 글 칸의 Esc는 바꾸기 줄만 닫고(창은 둠), 다른 탭·▲·▼·✕를 누르면 바꾸던 줄이 닫힌다. 저장은 지금처럼 [저장]이 한다
 - AC-3604.3: Given 창, When 그리면, Then PT 종류·도수 시간·충격파 부위 수·견인 부위의 마지막 하나는 ✕가 꺼진다(지금 C-ARM·SONO 규칙 그대로)
-- AC-3604.4: Given 판 `picks`, When PT·도수·충격파·견인 빈 칸을 누르면, Then 넣기 창 단추는 그 목록이다(충격파는 타수 줄·부위 수 줄, 지금 창 모양). 열 머리 작은 글은 PT·도수·견인 목록을 "·"로 이은 글, 충격파 "타수·부위 수"다. 화면 파일은 이 목록 글을 갖지 않고, `picks`가 없으면 넣기 창이 열리지 않는다
+- AC-3604.4: Given 판 `picks`, When PT·도수·충격파·견인 빈 칸을 누르면, Then 넣기 창 단추는 그 목록이다(충격파는 타수 줄·부위 수 줄, 지금 창 모양, 타수 목록이 비면 타수 줄이 없다). 열 머리 작은 글은 PT·도수·견인 목록을 "·"로 이은 글, 충격파 "타수·부위 수"다. 화면 파일은 이 목록 글을 갖지 않고, `picks`가 없으면 넣기 창이 열리지 않는다
 - AC-3604.5: Given 화면 `api.js`, When 판을 읽고 목록을 쓰면, Then `picks`의 새 무리 모양이 틀리면 shape 실패이고 `setLists`는 몸이 8192바이트를 넘으면 보내지 않는다(input)
 
 ### REQ-3605: 비고와 기록부 (화면)
