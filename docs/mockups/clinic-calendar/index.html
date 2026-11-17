@@ -6,7 +6,8 @@
 <title>예약 탭 시안</title>
 <!--
   예약 탭(clinic-calendar) 시안. 의원 공용 구글 캘린더를 대신하는 예약표. 결정·기본값은 notes.md.
-  ?s=week(기본) · day · month · new · phone-new · overlap-warn · off-warn · detail · settings · phone-week · phone-day · empty
+  ?s=week(기본) · day · month · summary · new · phone-new · overlap-warn · off-warn · detail · settings · phone-week · phone-day · stats · empty
+  summary = 도구 줄 아래 기간 합계 줄 + 시행자별·종류별 표, stats = 통계 탭의 새 '예약' 칸(최근 12개월).
   색은 앱 토큰(src/app/globals.css :root)과 예약 색판 10색만 쓴다. 이름은 ○○, 차트번호·담당 표시 (가)(나)(다)는 모두 지어낸 값이다.
   지금 시각은 2026-11-17 (화) 10:40으로 고정. 어디로도 보내지 않는다.
 -->
@@ -28,6 +29,7 @@ button { cursor: pointer; }
 .num, .ch { font-variant-numeric: tabular-nums; }
 .mut { color: var(--muted); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.app b, .app strong { font-weight: 600; } /* 앱 글꼴 굵기는 400·500·600뿐 */
 
 /* 시안 머리(앱 밖) */
 .mhead { background: #E9ECF0; border-bottom: 1px solid var(--line-strong); }
@@ -107,10 +109,10 @@ details.legend-d summary { font-size: 13px; color: var(--ink-2); cursor: pointer
 details.legend-d .legend { margin-top: 8px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
 
 /* 도착 표시 */
-.mk { display: inline-grid; place-items: center; width: 13px; height: 13px; border-radius: 50%; color: #fff; font-size: 10px; line-height: 1; font-weight: 800; vertical-align: -2px; margin-right: 3px; flex: none; }
+.mk { display: inline-grid; place-items: center; width: 13px; height: 13px; border-radius: 50%; color: #fff; font-size: 10px; line-height: 1; font-weight: 600; vertical-align: -2px; margin-right: 3px; flex: none; }
 .mk.came { background: var(--positive); }
 .mk.noshow { background: var(--negative); }
-.mk.cancel { width: auto; height: 14px; padding: 0 4px; border-radius: 3px; background: #E5E7EB; color: var(--ink-2); font-size: 10px; font-weight: 700; }
+.mk.cancel { width: auto; height: 14px; padding: 0 4px; border-radius: 3px; background: #E5E7EB; color: var(--ink-2); font-size: 10px; font-weight: 600; }
 
 /* 예약표(주·일) */
 .cal { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: clip; --gw: 52px; }
@@ -154,18 +156,18 @@ details.legend-d .legend { margin-top: 8px; padding: 10px 12px; background: var(
 .evt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lines, 1); overflow: hidden; }
 .tk { white-space: nowrap; }
 .tk.ch { color: var(--ink-2); font-variant-numeric: tabular-nums; }
-.tk.nm { font-weight: 700; }
+.tk.nm { font-weight: 600; }
 .tk.len, .tk.memo { color: var(--muted); }
 .tk.tm { color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .ev.st-cancel { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--muted); }
 .ev.st-cancel .tk { text-decoration: line-through; color: var(--muted); }
 .ev.st-noshow { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--c) 13%, white) 0 6px, color-mix(in srgb, var(--c) 5%, white) 6px 12px); }
 .ev.ghost { background: repeating-linear-gradient(135deg, #EEF0F3 0 5px, #F9FAFB 5px 10px); box-shadow: none; outline: 1px dashed var(--faint); outline-offset: -1px; color: var(--muted); cursor: help; }
-.ev.ghost .gl { font-weight: 700; color: var(--ink-2); }
+.ev.ghost .gl { font-weight: 600; color: var(--ink-2); }
 .now { position: absolute; left: -1px; right: 0; height: 0; border-top: 2px solid var(--negative); z-index: 6; pointer-events: none; }
 .now::before { content: ""; position: absolute; left: -5px; top: -6px; width: 10px; height: 10px; border-radius: 50%; background: var(--negative); }
 .hov { position: absolute; left: 2px; right: 2px; height: calc(var(--slot) * 3 - 2px); border: 1px dashed var(--accent); border-radius: 4px; background: rgb(37 99 235 / 6%); color: var(--accent-strong); font-size: 11px; line-height: 14px; padding: 2px 6px; pointer-events: none; z-index: 3; font-weight: 600; }
-.draft { position: absolute; left: 2px; right: 2px; z-index: 7; border: 2px dashed var(--accent); border-radius: 4px; background: rgb(234 241 254 / 92%); color: var(--accent-strong); font-size: 12px; line-height: 15px; font-weight: 700; padding: 2px 6px; pointer-events: none; overflow: hidden; }
+.draft { position: absolute; left: 2px; right: 2px; z-index: 7; border: 2px dashed var(--accent); border-radius: 4px; background: rgb(234 241 254 / 92%); color: var(--accent-strong); font-size: 12px; line-height: 15px; font-weight: 600; padding: 2px 6px; pointer-events: none; overflow: hidden; }
 .draft.warn { border-color: var(--warning); background: rgb(253 244 227 / 94%); color: var(--warning); }
 .emptycard { position: absolute; left: 50%; top: 150px; transform: translateX(-50%); z-index: 7; width: min(420px, calc(100% - 32px)); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-float); box-shadow: var(--elev); padding: 20px; display: grid; gap: 8px; justify-items: start; }
 .emptycard h2 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
@@ -184,7 +186,7 @@ details.legend-d .legend { margin-top: 8px; padding: 10px 12px; background: var(
 .mn { font-size: 13px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; min-width: 24px; height: 24px; display: inline-grid; place-items: center; }
 .mc.today .mn { background: var(--accent); color: #fff; border-radius: 50%; }
 .mc.out { background: #FBFBFC; }
-.mc.out .mn, .mc.out .cnt, .mc.out .kc { color: var(--faint); }
+.mc.out .mn, .mc.out .cnt, .mc.out .kc, .mc.out .ns, .mc.out .chgn { color: var(--faint); }
 .mc.sun .mn { color: var(--muted); }
 .cnt { font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; }
 .kc { font-size: 12px; line-height: 17px; color: var(--muted); }
@@ -198,7 +200,7 @@ details.legend-d .legend { margin-top: 8px; padding: 10px 12px; background: var(
 .wl { display: grid; gap: 8px; }
 .dcard { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: clip; }
 .dch { border: 0; margin: 0; background: none; width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 12px; min-height: 52px; text-align: left; color: inherit; }
-.dch .n { font-size: 17px; font-weight: 700; color: var(--ink); min-width: 28px; height: 28px; display: inline-grid; place-items: center; font-variant-numeric: tabular-nums; }
+.dch .n { font-size: 17px; font-weight: 600; color: var(--ink); min-width: 28px; height: 28px; display: inline-grid; place-items: center; font-variant-numeric: tabular-nums; }
 .dcard.today .dch .n { background: var(--accent); color: #fff; border-radius: 50%; font-size: 15px; }
 .dch .w { font-size: 14px; color: var(--ink-2); font-weight: 500; }
 .dch .sum { margin-left: auto; font-size: 12px; line-height: 16px; color: var(--muted); text-align: right; }
@@ -280,7 +282,7 @@ textarea.inp { height: 60px; padding: 8px 10px; resize: vertical; line-height: 2
 /* 예약 자세히 */
 .dtop { display: grid; grid-template-columns: 6px minmax(0, 1fr); gap: 12px; }
 .dtop .bar { border-radius: 3px; background: var(--c); }
-.dname { font-size: 20px; line-height: 28px; font-weight: 700; color: var(--ink); }
+.dname { font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); }
 .dname .ch { font-weight: 600; color: var(--ink-2); margin-right: 8px; }
 .dsub { font-size: 14px; color: var(--ink-2); }
 .dl { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 6px 12px; margin: 0; font-size: 14px; }
@@ -308,7 +310,7 @@ textarea.inp { height: 60px; padding: 8px 10px; resize: vertical; line-height: 2
 .srow .pal { grid-column: 1 / -1; }
 .srow .mk1 { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 .tin { height: 32px; width: 100%; min-width: 0; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font-size: 13px; color: var(--ink); }
-.tin.one { width: 40px; text-align: center; font-weight: 700; }
+.tin.one { width: 40px; text-align: center; font-weight: 600; }
 .tin.bad { border-color: var(--negative); background: var(--negative-soft); }
 .tin:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
 .krow .nm.tin { font-weight: 600; }
@@ -342,6 +344,130 @@ textarea.inp { height: 60px; padding: 8px 10px; resize: vertical; line-height: 2
 .pop .foot { display: flex; justify-content: flex-end; gap: 8px; }
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 40; padding: 10px 16px; border-radius: var(--r-float); background: var(--ink); color: #fff; font-size: 13px; line-height: 20px; box-shadow: 0 8px 24px rgb(17 24 39 / 20%); max-width: calc(100vw - 32px); }
 .toast:empty { display: none; }
+
+/* 변경 표시(날짜·시작 시간을 옮긴 예약) */
+.mk.chg { width: auto; height: 14px; padding: 0 3px; border-radius: 3px; background: var(--accent-soft); color: var(--accent-strong); font-size: 10px; font-weight: 600; box-shadow: inset 0 0 0 1px #B4CDFA; }
+.chgn { color: var(--accent-strong); font-weight: 600; font-size: 12px; line-height: 17px; }
+.mlast { display: flex; flex-wrap: wrap; gap: 0 10px; }
+
+/* 기간 합계 줄 + 나눠 보기 */
+.sumline { width: 100%; margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; min-height: 40px; padding: 8px 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); text-align: left; color: var(--ink-2); font-size: 14px; line-height: 20px; }
+.sumline:hover { border-color: var(--line-strong); }
+.sumline[aria-expanded="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.sl-p { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.sl-items { display: flex; flex-wrap: wrap; align-items: baseline; }
+.sl-i { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sl-i + .sl-i::before { content: "·"; margin: 0 10px; color: var(--faint); }
+.sl-i b { color: var(--ink); }
+.sl-i em { font-style: normal; color: var(--muted); }
+.sl-more { margin-left: auto; color: var(--accent); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.sumpanel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px 16px; display: grid; gap: 12px; margin-top: -4px; min-width: 0; }
+.sp-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; }
+.sp-h h3 { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.sp-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 28px; }
+.sp-grid > div { min-width: 0; }
+.sp-grid h4 { margin: 0 0 2px; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink-2); }
+.tw { overflow-x: auto; }
+.bt { width: 100%; border-collapse: collapse; font-size: 13px; }
+.bt th, .bt td { height: 34px; padding: 0 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--ink); }
+.bt th:first-child, .bt td:first-child { text-align: left; padding-left: 0; }
+.bt th:last-child, .bt td:last-child { padding-right: 0; }
+.bt thead th { height: 30px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.bt td.rc { color: var(--ink-2); }
+.bt tfoot td { font-weight: 600; border-bottom: 0; border-top: 1px solid var(--line-strong); }
+.bt tbody tr[data-act] { cursor: pointer; }
+.bt tbody tr[data-act]:hover td { background: #F7F9FC; }
+.bt tbody tr.on td { background: var(--accent-soft); }
+.rs { display: none; }
+.bn { display: inline-flex; align-items: center; gap: 6px; }
+.bt i.sw { width: 8px; height: 8px; border-radius: 50%; }
+
+/* 통계 탭 '예약' 칸 — 지금 통계 화면(first90) 모양과 값 */
+.app.stats { --sx-canvas: #F4F6F9; --sx-ink: #172B4D; --sx-ink-2: #3B4A63; --sx-muted: #5B6B82; --sx-line: #E5EAF1; --sx-line-2: #CBD3DF; --sx-ret: #6B89BF; --sx-r: 14px; background: var(--sx-canvas); }
+.app.stats main { padding-top: 20px; padding-bottom: 56px; }
+.sx { display: grid; gap: 12px; color: var(--sx-ink); min-width: 0; }
+.sx > * { min-width: 0; }
+.sx-h1 { margin: 0; font-size: 22px; line-height: 30px; font-weight: 600; letter-spacing: -.01em; }
+.sx-load { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; background: #fff; border: 1px solid var(--sx-line); border-radius: var(--sx-r); padding: 12px 16px; font-size: 14px; color: var(--sx-ink-2); }
+.sx-load p { margin: 0; }
+.sx-la { display: flex; align-items: center; gap: 12px; }
+.sx-m { color: var(--sx-muted); font-weight: 400; }
+.sx-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 14px; border: 1px solid var(--sx-line-2); border-radius: 8px; background: #fff; color: var(--sx-ink); font-size: 14px; font-weight: 600; white-space: nowrap; }
+.sx-btn.pri { background: var(--accent); border-color: transparent; color: #fff; }
+.sx-btn.icon { width: 36px; min-height: 36px; padding: 0; font-size: 16px; }
+.sx-btn:disabled { opacity: .4; cursor: not-allowed; }
+.sx-link { border: 0; background: none; color: var(--accent); font-size: 14px; font-weight: 600; padding: 8px 0; min-height: 40px; }
+.sx-period { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.sx-period p { margin: 0; font-size: 14px; }
+.sx-seg { display: inline-flex; gap: 2px; padding: 3px; background: #E9EDF3; border-radius: 10px; }
+.sx-seg button { min-height: 36px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; color: var(--sx-ink-2); font-size: 14px; font-weight: 600; white-space: nowrap; }
+.sx-seg button[aria-pressed="true"] { background: #fff; color: var(--sx-ink); box-shadow: 0 1px 2px rgb(23 43 77 / 12%); }
+.sx-nav { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin: 0 -24px; padding: 8px 24px; border-top: 1px solid var(--sx-line); border-bottom: 1px solid var(--sx-line); }
+.sx-nav a { flex: none; padding: 8px 14px; border-radius: 999px; color: var(--sx-ink-2); font-size: 14px; font-weight: 600; text-decoration: none; min-height: 36px; display: inline-flex; align-items: center; }
+.sx-nav a:hover { background: #E3E8EF; }
+.sx-nav a[aria-current="true"] { background: var(--sx-ink); color: #fff; }
+.sx-new { margin-left: 4px; padding: 0 5px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-strong); font-size: 11px; line-height: 16px; }
+.sx-nav a[aria-current="true"] .sx-new { background: rgb(255 255 255 / 18%); color: #fff; }
+.sx-skip { margin: 0; font-size: 13px; line-height: 20px; color: var(--sx-muted); }
+.sx-card { background: #fff; border: 1px solid var(--sx-line); border-radius: var(--sx-r); padding: 20px 24px 22px; box-shadow: 0 1px 2px rgb(23 43 77 / 4%); display: grid; gap: 20px; min-width: 0; }
+.sx-card-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; }
+.sx-card-h h2 { margin: 0; font-size: 18px; line-height: 26px; font-weight: 600; letter-spacing: -.01em; }
+.sx-d { margin: 0; font-size: 13px; line-height: 20px; color: var(--sx-muted); }
+.sx-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px 40px; }
+.sx-sub { display: grid; gap: 4px; align-content: start; min-width: 0; }
+.sx-sub h3 { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--sx-ink); }
+.sx-line { border-top: 1px solid var(--sx-line); padding-top: 18px; gap: 8px; }
+.sx-subh { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.sx-mp { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sx-mp span { min-width: 104px; text-align: center; }
+.sx-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; line-height: 20px; color: var(--sx-ink-2); margin-top: 2px; }
+.sx-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.sx-tag { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; margin-left: 4px; border-radius: 999px; background: #E9EDF3; color: var(--sx-ink-2); font-size: 11px; font-weight: 600; vertical-align: 1px; }
+.sx-foot { margin: -8px 0 0; font-size: 13px; line-height: 20px; color: var(--sx-muted); }
+.sx .bt { font-size: 14px; }
+.sx .bt th, .sx .bt td { height: 38px; padding: 0 12px; color: var(--sx-ink-2); border-color: var(--sx-line); }
+.sx .bt th:first-child, .sx .bt td:first-child { padding-left: 0; color: var(--sx-ink); }
+.sx .bt th:last-child, .sx .bt td:last-child { padding-right: 0; }
+.sx .bt thead th { height: 32px; font-size: 13px; color: var(--sx-muted); }
+.sx .bt tfoot td { color: var(--sx-ink); border-top-color: var(--sx-line-2); }
+.sx .sp-grid h4 { font-size: 14px; color: var(--sx-ink); }
+.sx-how { font-size: 13px; line-height: 21px; color: var(--sx-ink-2); }
+.sx-how summary { cursor: pointer; color: var(--sx-ink); font-size: 14px; font-weight: 600; }
+.sx-how ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 2px; }
+/* 막대·선 그림 공통: 12달 칸, 왼쪽 눈금 */
+.chv { --gl: 40px; --gr: 0px; padding-top: 10px; }
+.chv.ln { --gr: 78px; }
+.cplot { position: relative; height: 200px; margin: 0 var(--gr) 0 var(--gl); border-bottom: 1px solid var(--sx-line-2); }
+.cg { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--sx-line); }
+.cg em { position: absolute; left: calc(-1 * var(--gl)); width: calc(var(--gl) - 7px); top: -8px; text-align: right; font-size: 11px; line-height: 14px; font-style: normal; color: var(--sx-muted); font-variant-numeric: tabular-nums; }
+.ccols { position: absolute; inset: 0; z-index: 2; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.cc { border: 0; margin: 0; padding: 0; background: none; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; min-width: 0; border-radius: 6px 6px 0 0; }
+.cc:hover { background: rgb(23 43 77 / 4%); }
+.cc.on { background: rgb(37 99 235 / 8%); }
+.cc:focus-visible { outline-offset: -2px; }
+.bb { flex: none; display: block; width: 60%; max-width: 24px; background: var(--sx-ret); border-radius: 4px 4px 0 0; }
+.cc.on .bb { background: var(--accent); }
+.cc.part .bb { background: #fff; box-shadow: inset 0 0 0 2px var(--sx-ret); }
+.cc.part.on .bb { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); }
+.bv { flex: none; margin-bottom: 4px; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--sx-ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cx { margin: 0 var(--gr) 0 var(--gl); display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); text-align: center; font-size: 12px; line-height: 16px; color: var(--sx-muted); padding-top: 6px; }
+.cx span { white-space: nowrap; min-width: 0; }
+.cx small { display: block; font-size: 10px; line-height: 13px; }
+.cx .on { color: var(--accent-strong); font-weight: 600; }
+.lsvg { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; overflow: visible; }
+.lsvg polyline { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.ld { position: absolute; z-index: 1; width: 8px; height: 8px; margin: -4px 0 0 -4px; background: var(--c); border-radius: 50%; box-shadow: 0 0 0 2px #fff; pointer-events: none; }
+.ld.sq, .lgm.sq { border-radius: 1px; }
+.ld.dm, .lgm.dm { border-radius: 1px; transform: rotate(45deg) scale(.92); }
+.ld.part { background: #fff; box-shadow: inset 0 0 0 2px var(--c), 0 0 0 2px #fff; }
+.le { position: absolute; left: calc(100% + 8px); margin-top: -8px; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; line-height: 16px; color: var(--sx-ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.le b { color: var(--sx-ink); font-weight: 600; }
+.lgl { position: relative; width: 20px; height: 10px; display: inline-grid; place-items: center; flex: none; }
+.lgl::before { content: ""; position: absolute; left: 0; right: 0; top: 4px; border-top: 2px solid var(--c); }
+.lgm { position: relative; width: 8px; height: 8px; background: var(--c); border-radius: 50%; box-shadow: 0 0 0 2px #fff; }
+.lgm.part { background: #fff; box-shadow: inset 0 0 0 2px var(--sx-muted), 0 0 0 2px #fff; }
+.ttip { position: fixed; z-index: 50; pointer-events: none; background: var(--ink); color: #fff; font-size: 12px; line-height: 18px; padding: 6px 10px; border-radius: 6px; box-shadow: var(--elev); white-space: pre-line; font-variant-numeric: tabular-nums; }
+.ttip[hidden] { display: none; }
 
 /* 좁은 화면(폰). 폰 상태(?s=phone-*)는 넓은 화면에서도 390px 틀 안에 그린다 */
 /* 1024px 이상: 앱의 넓은 화면(data-wide-page)처럼 띠·탭 줄·본문이 같이 1280 제한을 푼다 */
@@ -385,6 +511,39 @@ textarea.inp { height: 60px; padding: 8px 10px; resize: vertical; line-height: 2
 .narrow .pr { grid-template-columns: 48px auto; }
 .narrow .pr small { grid-column: 1 / -1; }
 .narrow .dwf .need { flex-basis: 100%; }
+.narrow .sumline { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; padding: 10px 12px; }
+.narrow .sl-more { grid-column: 2; grid-row: 1; font-size: 12px; }
+.narrow .sl-items { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.narrow .sl-i { display: grid; white-space: normal; padding: 0 0 0 8px; border-left: 1px solid var(--line); line-height: 18px; }
+.narrow .sl-i:first-child { border-left: 0; padding-left: 0; }
+.narrow .sl-i + .sl-i::before { content: none; }
+.narrow .sl-i .k { font-size: 12px; color: var(--muted); }
+.narrow .sl-i b { font-size: 16px; line-height: 22px; }
+.narrow .sl-i em { font-size: 12px; }
+.narrow .sumpanel { padding: 12px; }
+.narrow .sp-grid, .narrow .sx-two { grid-template-columns: minmax(0, 1fr); }
+.narrow .rc { display: none; }
+.narrow .rs { display: block; font-size: 11px; line-height: 14px; color: var(--muted); font-weight: 400; }
+.narrow .bt td { height: auto; padding-top: 6px; padding-bottom: 6px; }
+.narrow .mc .mlast { display: none; }
+.narrow .sx-load { padding: 12px; }
+.narrow .sx-card { padding: 16px; border-radius: 12px; gap: 16px; }
+.narrow .sx-period .sx-seg { width: 100%; }
+.narrow .sx-seg button { flex: 1; padding: 0 4px; font-size: 13px; }
+.narrow .sx-nav { margin: 0 -12px; padding: 6px 12px; }
+.narrow .sx .bt { font-size: 13px; }
+.narrow .sx .bt th, .narrow .sx .bt td { height: auto; padding: 7px 6px; }
+.narrow .sx .bt thead th { padding-top: 4px; padding-bottom: 4px; }
+.narrow .sx .rs { color: var(--sx-muted); }
+.narrow .chv { --gl: 34px; }
+.narrow .chv.ln { --gr: 64px; }
+.narrow .cplot { height: 180px; }
+.narrow .cg em { font-size: 10px; }
+.narrow .cx { font-size: 10px; }
+.narrow .cx small { font-size: 9px; }
+.narrow .bv { font-size: 11px; }
+.narrow .le { left: calc(100% + 6px); gap: 4px; font-size: 11px; }
+.narrow .sx-mp span { min-width: 92px; }
 </style>
 </head>
 <body>
@@ -409,17 +568,19 @@ textarea.inp { height: 60px; padding: 8px 10px; resize: vertical; line-height: 2
 <script>
 /* ───────── 상태 고르기 ───────── */
 const STATES = [
-  ['week', '주 보기 (기본)', '비트 PC(접수실) 화면이에요. 빈 칸을 누르면 그 시간으로 예약을 넣고, 예약을 누르면 자세히 봐요. 회색 빗금 칸이 비트 예약이에요(보기만 해요). 종일 줄을 누르면 학회 같은 메모나 시행자 휴무를 넣어요.'],
+  ['week', '주 보기 (기본)', "비트 PC(접수실) 화면이에요. 빈 칸을 누르면 그 시간으로 예약을 넣고, 예약을 누르면 자세히 봐요. 회색 빗금 칸이 비트 예약이에요(보기만 해요). 종일 줄을 누르면 학회 같은 메모나 시행자 휴무를 넣어요. 칸의 파란 '변경'은 날짜나 시작 시간을 옮긴 예약, 도구 줄 아래 줄은 이 주 합계예요."],
   ['day', '일 보기', '하루를 넓게 봐요. 예약마다 시간·길이·메모까지 보여요.'],
-  ['month', '월 보기', '날마다 예약 수와 종류별 수만 보여요. 날짜를 누르면 그날 일 보기로 가요.'],
+  ['month', '월 보기', '날마다 예약 수·종류별 수·지난 날 안 옴 수·변경 수만 보여요. 날짜를 누르면 그날 일 보기로 가요.'],
+  ['summary', '기간 합계 · 나눠 보기', '도구 줄 아래 줄은 지금 보이는 기간(일·주·월)의 합계예요. 누르면 시행자별·종류별 표가 열려요. 예약 수는 취소 포함·지운 것 빼고, 비율은 그 예약 수로 나눠요.'],
   ['new', '예약 더하기 · 비트 자동', "이름 칸에 '김'을 적은 모습이에요. 비트에 같은 이름이 3명이라 고르는 목록이 떠요. 하나를 누르면 차트번호가 채워져요. 담당·종류·메모는 직접 골라요."],
   ['phone-new', '폰 · 예약 더하기', '폰에는 비트가 없어 이름·차트번호를 손으로 적어요.'],
   ['overlap-warn', '경고 · 담당 겹침', '같은 담당에게 겹치는 예약이 있으면 알려 줘요. 그래도 저장할 수 있어요.'],
   ['off-warn', '경고 · 휴무인 담당', '그날 휴무로 표시한 담당을 고르면 알려 줘요. 그래도 저장할 수 있어요.'],
-  ['detail', '예약 자세히', '예약을 누르면 열려요. [다음 주에도]를 누르면 다음 주 같은 시간에 하나 더 넣어요.'],
+  ['detail', '예약 자세히', "예약을 누르면 열려요. 이 예약은 11/18 (수) 15:00에서 옮겨 와 '변경'과 원래 시간이 보여요. [다음 주에도]를 누르면 다음 주 같은 시간에 하나 더 넣어요."],
   ['settings', '설정', '종류(길이·색)·시행자(표시 한 글자·색)·보이는 시간을 정해요. 고쳐서 [저장]하면 예약표에 바로 보여요.'],
   ['phone-week', '폰 · 주 보기', '폰에서는 주 보기를 날짜별 목록으로 보여요. 오늘만 펼쳐 두었어요. 날짜 줄을 누르면 펼치고 접어요.'],
   ['phone-day', '폰 · 일 보기', '폰의 일 보기예요. 비트 예약 칸은 폰에는 안 보여요.'],
+  ['stats', '통계 탭 · 예약 칸', "통계 탭에 새로 생기는 '예약' 칸이에요. 최근 12개월 달마다 예약 수·취소율·변경율·안 옴율과 고른 달의 시행자별·종류별 표. 다른 칸은 지금 그대로라 줄였어요."],
   ['empty', '빈 화면', '예약이 하나도 없는 주예요.'],
 ]
 const Q = new URLSearchParams(location.search)
@@ -427,14 +588,16 @@ let S = Q.get('s'); if (!STATES.some(x => x[0] === S)) S = 'week'
 const PHONE = S.startsWith('phone-')
 const BIT = !PHONE
 const EMPTY = S === 'empty'
+const STATS = S === 'stats'
 const NOW = { date: '2026-11-17', min: 640 }
 const SLOT = 20
 
 document.getElementById('seg').innerHTML = STATES.map(([k, t]) => `<a href="?s=${k}" aria-current="${k === S}">${t}</a>`).join('')
 const cur = STATES.find(x => x[0] === S)
-document.getElementById('mnote').innerHTML = `<b>${cur[1]}</b> — ${cur[2]} <span class="mut">(${PHONE ? '폰 · 비트 없음' : '비트 PC · 접수실'})</span>`
+document.getElementById('mnote').innerHTML = `<b>${cur[1]}</b> — ${cur[2]} <span class="mut">(${STATS ? '통계 탭 · 비트 PC' : PHONE ? '폰 · 비트 없음' : '비트 PC · 접수실'})</span>`
 const TABS = ['대시보드', '통계', '청구', '환자', '업무일지', '수납일지', '예약', '더보기 ▾']
-document.getElementById('tabs').innerHTML = TABS.map(t => `<a href="#" ${t === '예약' ? 'aria-current="page" id="tab-cur"' : ''}>${t}</a>`).join('')
+if (STATS) document.getElementById('app').classList.add('stats')
+document.getElementById('tabs').innerHTML = TABS.map(t => `<a href="#" ${t === (STATS ? '통계' : '예약') ? 'aria-current="page" id="tab-cur"' : ''}>${t}</a>`).join('')
 
 /* ───────── 도움 ───────── */
 const $ = s => document.querySelector(s)
@@ -450,6 +613,7 @@ const mondayOf = s => addDays(s, -((dowOf(s) + 6) % 7))
 const md = s => { const d = toD(s); return `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일` }
 const mdw = s => `${md(s)} (${DOW[dowOf(s)]})`
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
+const fmtOrig = o => { const d = toD(o.date); return `${d.getUTCMonth() + 1}/${d.getUTCDate()} (${DOW[d.getUTCDay()]}) ${hm(o.start)}` }
 const ICON = {
   left: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg>',
   right: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg>',
@@ -467,6 +631,7 @@ const MK = {
   came: '<span class="mk came" title="왔음"><svg viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M2.2 5.3 4.2 7.2 7.9 3" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>',
   noshow: '<span class="mk noshow" title="안 옴">!</span>',
   cancel: '<span class="mk cancel" title="취소">취소</span>',
+  chg: '<span class="mk chg" title="날짜나 시작 시간을 옮김">변경</span>',
   wait: '',
 }
 
@@ -518,7 +683,7 @@ const BITPT = [
 const FIXED = EMPTY ? {} : {
   '2026-11-16': [{ start: 900, len: 30, staff: 'ga', kind: 'dosu', chart: '27741', name: '홍○○', rcpt: null }],
   '2026-11-17': [
-    { id: 'fix-detail', start: 570, len: 30, staff: 'ga', kind: 'dosu', chart: '10231', name: '김○○', memo: '허리 · 3회차', rcpt: 564, created: '11월 10일 (화) 16:05' },
+    { id: 'fix-detail', start: 570, len: 30, staff: 'ga', kind: 'dosu', chart: '10231', name: '김○○', memo: '허리 · 3회차', rcpt: 564, created: '11월 10일 (화) 16:05', orig: { date: '2026-11-18', start: 900 } },
     { start: 540, len: 30, staff: 'na', kind: 'jabo', chart: '23580', name: '정○○', rcpt: null },
     { start: 600, len: 30, staff: 'da', kind: 'dosu', chart: '18842', name: '문○○', cancel: true },
     { start: 620, len: 10, staff: 'won', kind: 'inj', chart: '30117', name: '송○○', mode: 'came' },
@@ -542,15 +707,20 @@ const MEMOS = ['', '', '', '', '', '허리', '목·어깨', '무릎', '2회차',
 let seq = 0
 const began = a => a.date < NOW.date || (a.date === NOW.date && a.start <= NOW.min)
 const ended = a => a.date < NOW.date || (a.date === NOW.date && a.start + a.len <= NOW.min)
-function mkAppt(o) { return { id: o.id || 'a' + (++seq), date: o.date, start: o.start, len: o.len, staff: o.staff, kind: o.kind, chart: o.chart || '', name: o.name, memo: o.memo || '', mode: o.mode || 'auto', cancel: !!o.cancel, rcpt: o.rcpt ?? null, created: o.created || '' } }
+function mkAppt(o) { return { id: o.id || 'a' + (++seq), date: o.date, start: o.start, len: o.len, staff: o.staff, kind: o.kind, chart: o.chart || '', name: o.name, memo: o.memo || '', mode: o.mode || 'auto', cancel: !!o.cancel, rcpt: o.rcpt ?? null, created: o.created || '', orig: o.orig || null } }
+// 달마다 조금씩 다른 비율(지어낸 값): [예약 밀도, 취소, 변경, 안 옴]. 11월 밀도는 1(승인된 주 보기 그대로)
+const MF = { '2025-12': [.92, .068, .082, .052], '2026-01': [.95, .072, .079, .055], '2026-02': [.88, .061, .088, .047], '2026-03': [1.02, .052, .07, .041], '2026-04': [1, .048, .068, .043], '2026-05': [.97, .055, .074, .046], '2026-06': [.98, .05, .071, .039], '2026-07': [1.04, .058, .077, .044], '2026-08': [.96, .064, .083, .05], '2026-09': [.93, .06, .086, .048], '2026-10': [1, .053, .072, .042], '2026-11': [1, .056, .075, .044] }
+const HOLI = new Set(['2025-12-25', '2026-01-01', '2026-02-16', '2026-02-17', '2026-02-18', '2026-03-02', '2026-05-05', '2026-05-25', '2026-06-03', '2026-06-06', '2026-08-17', '2026-09-24', '2026-09-25', '2026-09-26', '2026-10-05', '2026-10-09'])
 const DATA = {}
 function dayData(date) {
   if (DATA[date]) return DATA[date]
   const dd = { appts: [], ghosts: [] }
   DATA[date] = dd
   const w = dowOf(date)
-  if (EMPTY || w === 0) return dd
+  if (EMPTY || w === 0 || HOLI.has(date)) return dd
   const r = rng('ssk-cal-' + date)
+  const r2 = rng('ssk-cal-chg-' + date) // 변경 기록은 따로 굴려서 칸 자리는 그대로
+  const F = MF[date.slice(0, 7)] || [1, .05, .07, .045]
   const pick = arr => arr[Math.floor(r() * arr.length)]
   const pt = () => ({ chart: String(10000 + Math.floor(r() * 29000)), name: pick(SUR) + '○○' })
   const sessions = w === 6 ? [[540, 780]] : [[540, 780], [840, 1110]]
@@ -572,11 +742,16 @@ function dayData(date) {
         let len = kindOf(kind).len
         if (kind === 'dosu' && r() < .08) len = 60
         if (t + len > s1) break
-        if (r() < c.p) {
+        if (r() < c.p * F[0]) {
           const p = pt()
           const a = mkAppt({ date, start: t, len, staff: c.st, kind, chart: p.chart, name: p.name, memo: pick(MEMOS) })
-          if (began(a)) a.rcpt = r() < .92 ? t - Math.floor(r() * 15) : null
-          if (r() < .025) { a.cancel = true; a.rcpt = null }
+          if (began(a)) a.rcpt = r() < 1 - F[3] ? t - Math.floor(r() * 15) : null
+          if (r() < F[1]) { a.cancel = true; a.rcpt = null }
+          if (r2() < F[2]) {
+            const dd0 = [-3, -2, -1, 1, 2, 4][Math.floor(r2() * 6)]
+            let od = addDays(date, dd0); if (dowOf(od) === 0) od = addDays(od, dd0 > 0 ? 1 : -1)
+            a.orig = { date: od, start: clamp(t + [-90, -60, -30, 30, 60, 120][Math.floor(r2() * 6)], 540, 1080) }
+          }
           dd.appts.push(a)
           t = Math.ceil((t + len) / 10) * 10
         } else t += pick([10, 20, 30])
@@ -614,7 +789,7 @@ function status(a) {
 }
 
 /* ───────── 화면 상태 ───────── */
-const UI = { view: 'week', anchor: NOW.date, layer: null, open: new Set([NOW.date]), pop: null }
+const UI = { view: 'week', anchor: NOW.date, layer: null, open: new Set([NOW.date]), pop: null, sum: S === 'summary', sm: '2026-10' }
 if (S === 'day' || S === 'phone-day') UI.view = 'day'
 if (S === 'month') UI.view = 'month'
 function draft(o) { return { mode: 'new', id: null, date: NOW.date, start: 540, len: 30, name: '', chart: '', staff: null, kind: null, memo: '', picks: null, filled: null, notFound: false, ...o } }
@@ -632,7 +807,7 @@ function setMode() {
   const changed = document.body.classList.contains('narrow') !== narrow
   document.body.classList.toggle('framed', framed)
   document.body.classList.toggle('narrow', narrow)
-  document.body.classList.toggle('wide', !narrow && window.innerWidth >= 1024)
+  document.body.classList.toggle('wide', !narrow && window.innerWidth >= 1024 && !STATS) // 통계 탭은 1280 그대로
   return changed
 }
 const isNarrow = () => document.body.classList.contains('narrow')
@@ -662,7 +837,8 @@ function legendHTML() {
   const follow = SET.kinds.filter(k => !k.color).map(k => k.name).join('·')
   const inner = `<span class="bit ${BIT ? 'on' : 'off'}">${BIT ? '비트 연결됨' : '비트 없는 기기'}</span>
     <span class="lg"><b>색</b>${colors}${BIT ? '<span><i class="gh"></i>비트 예약</span>' : ''}${follow ? `<span class="mut">${esc(follow)}는 담당 색</span>` : ''}</span>
-    <span class="lg"><b>도착</b><span>${MK.came}왔음</span><span>${MK.noshow}안 옴</span><span>${MK.cancel}</span><span class="mut">표시 없음 = 아직</span><span class="mut">${BIT ? '비트 접수를 보고 저절로 표시해요' : '도착 표시는 비트 PC가 정해요'}</span></span>`
+    <span class="lg"><b>도착</b><span>${MK.came}왔음</span><span>${MK.noshow}안 옴</span><span>${MK.cancel}</span><span class="mut">표시 없음 = 아직</span><span class="mut">${BIT ? '비트 접수를 보고 저절로 표시해요' : '도착 표시는 비트 PC가 정해요'}</span></span>
+    <span class="lg"><b>변경</b><span>${MK.chg}날짜나 시작 시간을 옮긴 예약</span></span>`
   return isNarrow() ? `<details class="legend-d"><summary>색·도착 표시 보기</summary><div class="legend">${inner}</div></details>` : `<div class="legend">${inner}</div>`
 }
 
@@ -698,9 +874,9 @@ function evHTML(v, mode) {
   const kt = `${esc(k.name)}&nbsp;(${esc(s.mark)})`
   const stText = { came: '왔음', noshow: '안 옴', cancel: '취소', wait: '' }[st]
   const inner = mode === 'day'
-    ? `${MK[st]}<span class="tk ch">${a.chart}</span> <span class="tk nm">${a.name}</span> <span class="tk">${kt}</span>${lines < 2 ? ' ' : '<br>'}<span class="tk tm">${hm(a.start)}–${hm(end)}</span> <span class="tk len">· ${a.len}분</span>${a.memo ? ` <span class="tk memo">· ${esc(a.memo)}</span>` : ''}`
-    : `${MK[st]}<span class="tk ch">${a.chart}</span> <span class="tk nm">${a.name}</span> <span class="tk">${kt}</span> <span class="tk len">${a.len}분</span>`
-  const label = `${a.chart} ${a.name} ${k.name} (${s.mark}) ${hm(a.start)}–${hm(end)} ${a.len}분${stText ? ' · ' + stText : ''}`
+    ? `${MK[st]}${a.orig ? MK.chg : ''}<span class="tk ch">${a.chart}</span> <span class="tk nm">${a.name}</span> <span class="tk">${kt}</span>${lines < 2 ? ' ' : '<br>'}<span class="tk tm">${hm(a.start)}–${hm(end)}</span> <span class="tk len">· ${a.len}분</span>${a.memo ? ` <span class="tk memo">· ${esc(a.memo)}</span>` : ''}`
+    : `${MK[st]}${a.orig ? MK.chg : ''}<span class="tk ch">${a.chart}</span> <span class="tk nm">${a.name}</span> <span class="tk">${kt}</span> <span class="tk len">${a.len}분</span>`
+  const label = `${a.chart} ${a.name} ${k.name} (${s.mark}) ${hm(a.start)}–${hm(end)} ${a.len}분${stText ? ' · ' + stText : ''}${a.orig ? ` · 변경 (원래 ${fmtOrig(a.orig)})` : ''}`
   return `<button class="ev ${mode} st-${st}" data-act="appt" data-id="${a.id}" style="${pos};--c:${colorOf(a)}" title="${esc(label)}" aria-label="${esc(label)}"><span class="evt">${inner}</span></button>`
 }
 function adChip(it, d, i) {
@@ -752,7 +928,7 @@ function listHTML(days) {
     const list = rows.map(a => {
       if (a.ghost) return `<button class="arow ghost" data-act="ghost"><span class="at">${hm(a.start)}<small>비트</small></span><span class="bar"></span><span class="ab"><b>비트 예약 · ${a.chart} ${a.name}</b><small>보기만 해요</small></span></button>`
       const st = status(a), k = kindOf(a.kind), s = staffOf(a.staff)
-      return `<button class="arow st-${st}" data-act="appt" data-id="${a.id}" style="--c:${colorOf(a)}"><span class="at">${hm(a.start)}<small>${a.len}분</small></span><span class="bar"></span><span class="ab"><b><span class="ch">${a.chart}</span>${a.name}</b><small>${esc(k.name)} (${esc(s.mark)}) ${esc(s.name)}${a.memo ? ' · ' + esc(a.memo) : ''}</small></span>${stChip(st)}</button>`
+      return `<button class="arow st-${st}" data-act="appt" data-id="${a.id}" style="--c:${colorOf(a)}"><span class="at">${hm(a.start)}<small>${a.len}분</small></span><span class="bar"></span><span class="ab"><b>${a.orig ? MK.chg : ''}<span class="ch">${a.chart}</span>${a.name}</b><small>${esc(k.name)} (${esc(s.mark)}) ${esc(s.name)}${a.memo ? ' · ' + esc(a.memo) : ''}</small></span>${stChip(st)}</button>`
     }).join('')
     return `<div class="dcard ${d === NOW.date ? 'today' : ''}">
       <button class="dch" data-act="lday" data-date="${d}" aria-expanded="${open}"><span class="n">${toD(d).getUTCDate()}</span><span class="w">${DOW[dowOf(d)]}${d === NOW.date ? ' · 오늘' : ''}</span><span class="sum">${sum}</span><span class="car">${open ? '▲' : '▼'}</span></button>
@@ -772,12 +948,13 @@ function monthHTML() {
     const dd = dayData(d), live = dd.appts.filter(x => !x.cancel)
     const kc = SET.kinds.map(k => [k, live.filter(x => x.kind === k.id).length]).filter(x => x[1])
     const ns = d <= NOW.date ? live.filter(x => status(x) === 'noshow').length : 0
+    const chg = live.filter(x => x.orig).length
     const items = ALLDAY[d] || []
     const chips = items.map(it => it.type === 'memo' ? `<span class="mchip memo">${esc(it.text)}</span>` : `<span class="mchip off" style="--c:${staffOf(it.staff).color}">(${esc(staffOf(it.staff).mark)}) ${esc(staffOf(it.staff).name)} 휴무</span>`).join('')
     const out = d < first || d > last
     return `<button class="mc ${out ? 'out' : ''} ${d === NOW.date ? 'today' : ''} ${dowOf(d) === 0 ? 'sun' : ''}" data-act="mday" data-date="${d}" aria-label="${mdw(d)} 예약 ${live.length}">
       <span class="mtop"><span class="mn">${toD(d).getUTCDate()}</span>${live.length ? `<span class="cnt">예약 ${live.length}</span>` : ''}</span>${items.length ? '<span class="mdot" aria-hidden="true"></span>' : ''}
-      ${chips}${kc.length ? `<span class="kc">${kc.map(([k, n]) => `<span class="tk">${esc(k.name)} ${n}</span>`).join(' · ')}</span>` : ''}${ns ? `<span class="ns">안 옴 ${ns}</span>` : ''}</button>`
+      ${chips}${kc.length ? `<span class="kc">${kc.map(([k, n]) => `<span class="tk">${esc(k.name)} ${n}</span>`).join(' · ')}</span>` : ''}${ns || chg ? `<span class="mlast">${ns ? `<span class="ns">안 옴 ${ns}</span>` : ''}${chg ? `<span class="chgn">변경 ${chg}</span>` : ''}</span>` : ''}${HOLI.has(d) ? '<span class="kc">공휴일</span>' : ''}</button>`
   }).join('')
   return `<section class="mon" aria-label="월 보기"><div class="mh">${['월', '화', '수', '목', '금', '토', '일'].map(x => `<span>${x}</span>`).join('')}</div><div class="mg">${body}</div></section>`
 }
@@ -822,6 +999,7 @@ function addDrawer(D) {
       <div class="lk" id="lk">${lookupHTML(D)}</div>
     </div>
     ${PHONE ? `<p class="phnote">${ICON.info}<span>비트 PC에서는 자동으로 채워져요</span></p>` : ''}
+    ${D.mode === 'edit' ? `<p class="phnote">${ICON.info}<span>날짜나 시작 시간을 바꾸면 예약표에 '변경'으로 보이고 처음 시간이 남아요${findAppt(D.id)?.orig ? ` (지금: 원래 ${fmtOrig(findAppt(D.id).orig)})` : ''}. 길이·담당·종류·메모만 바꾸면 표시하지 않아요.</span></p>` : ''}
     <div class="field"><span class="lb">담당 (시행자)</span><div class="opts2" role="group" aria-label="담당">${staffBtns}</div></div>
     <div class="field"><span class="lb">종류</span><div class="opts2" role="group" aria-label="종류">${kindBtns}</div></div>
     <div class="field"><span class="lb">길이 <span class="hint">종류를 고르면 그 종류의 기본 길이가 들어가요 · 5분씩 바꿔요</span></span>
@@ -864,9 +1042,13 @@ function saveAdd(D) {
   const fields = { date: D.date, start: D.start, len: D.len, name: D.name.trim(), chart: D.chart, staff: D.staff, kind: D.kind, memo: D.memo.trim() }
   if (D.mode === 'edit') {
     const a = findAppt(D.id)
+    const moved = a.date !== D.date || a.start !== D.start
+    // 변경 기록: 날짜·시작이 바뀔 때만. 처음 시간 하나만 남기고, 처음 시간으로 되돌리면 지운다
+    if (moved && !a.orig) a.orig = { date: a.date, start: a.start }
+    if (a.orig && a.orig.date === D.date && a.orig.start === D.start) a.orig = null
     if (a.date !== D.date) { DATA[a.date].appts = DATA[a.date].appts.filter(x => x !== a); dayData(D.date).appts.push(a) }
     Object.assign(a, fields)
-    toast('예약을 고쳤어요. 다른 PC에도 몇 초 안에 보여요.')
+    toast(moved && a.orig ? `예약을 옮겼어요. '변경'으로 표시하고 원래 시간(${fmtOrig(a.orig)})을 남겼어요.` : '예약을 고쳤어요. 다른 PC에도 몇 초 안에 보여요.')
   } else {
     dayData(D.date).appts.push(mkAppt(fields))
     toast(`${mdw(D.date)} ${hm(D.start)} 예약을 넣었어요. 다른 PC에도 몇 초 안에 보여요.`)
@@ -882,7 +1064,7 @@ function detailDrawer(L) {
   const why = a.cancel ? '칸은 흐리게 남아요' : a.mode !== 'auto' ? '손으로 바꿈' : a.rcpt != null ? `비트 접수 ${hm(a.rcpt)} · 자동` : ended(a) ? '예약 시간이 끝나도 비트 접수가 없어요 · 자동' : '비트 접수가 생기면 저절로 왔음이 돼요'
   const body = `
     <div class="dtop" style="--c:${colorOf(a)}"><span class="bar"></span><div><div class="dname"><span class="ch">${a.chart || '차트번호 없음'}</span>${a.name}</div><div class="dsub">${esc(k.name)} · (${esc(s.mark)}) ${esc(s.name)}</div></div></div>
-    <dl class="dl"><dt>날짜</dt><dd>${mdw(a.date)}</dd><dt>시간</dt><dd class="num">${hm(a.start)} – ${hm(end)} · ${a.len}분</dd><dt>메모</dt><dd>${a.memo ? esc(a.memo) : '<span class="mut">없음</span>'}</dd></dl>
+    <dl class="dl"><dt>날짜</dt><dd>${mdw(a.date)}</dd><dt>시간</dt><dd class="num">${hm(a.start)} – ${hm(end)} · ${a.len}분</dd><dt>메모</dt><dd>${a.memo ? esc(a.memo) : '<span class="mut">없음</span>'}</dd>${a.orig ? `<dt>변경</dt><dd class="num">원래 ${fmtOrig(a.orig)}</dd>` : ''}</dl>
     <div class="hr"></div>
     <section class="fs"><h4>도착</h4><div class="arr">${now}<span class="mut">${why}</span></div>
       ${a.cancel ? '' : `<div><div class="vseg sm" role="group" aria-label="도착 바꾸기">${[['auto', '자동 (비트 따라)'], ['came', '왔음'], ['noshow', '안 옴']].map(([m, t]) => `<button data-act="arr" data-m="${m}" aria-pressed="${a.mode === m}">${t}</button>`).join('')}</div></div>
@@ -967,13 +1149,123 @@ function openPop(el, date) {
 }
 function renderPop() { $('#pop').innerHTML = UI.pop ? popHTML(UI.pop) : ''; if (UI.pop) setTimeout(() => ($('#ad-text') || $('#ad-staff'))?.focus(), 0) }
 
+
+/* ───────── 합계 줄·나눠 보기 ───────── */
+const monthDays = ym => { const [y, m] = ym.split('-').map(Number), n = new Date(Date.UTC(y, m, 0)).getUTCDate(); return Array.from({ length: n }, (_, i) => `${ym}-${pad(i + 1)}`) }
+const apptsOf = days => days.flatMap(d => dayData(d).appts) // 지운 예약은 이미 빠져 있고, 비트 예약 칸은 세지 않는다
+function tally(appts) { const t = { n: appts.length, c: 0, g: 0, x: 0 }; for (const a of appts) { if (a.cancel) t.c++; if (a.orig) t.g++; if (status(a) === 'noshow') t.x++ } return t }
+const pct = (k, n) => n ? (k / n * 100).toFixed(1) + '%' : '–'
+const fmtN = n => n.toLocaleString('ko-KR')
+function groupT(appts, key, list) {
+  const extra = [...new Set(appts.map(a => a[key]))].filter(id => !list.some(x => x.id === id))
+  return [...list.map(x => x.id), ...extra].map(id => ({ id, t: tally(appts.filter(a => a[key] === id)) }))
+}
+function btHTML(head, rows, total, totalLab = '합계') {
+  const c = (k, n) => `<td>${fmtN(k)}<span class="rs">${pct(k, n)}</span></td><td class="rc">${pct(k, n)}</td>`
+  const tr = (lab, t, attrs = '') => `<tr ${attrs}><td>${lab}</td><td>${fmtN(t.n)}</td>${c(t.c, t.n)}${c(t.g, t.n)}${c(t.x, t.n)}</tr>`
+  return `<table class="bt"><thead><tr><th scope="col">${head}</th><th scope="col">예약</th><th scope="col">취소</th><th scope="col" class="rc">취소율</th><th scope="col">변경</th><th scope="col" class="rc">변경율</th><th scope="col">안 옴</th><th scope="col" class="rc">안 옴율</th></tr></thead>
+    <tbody>${rows.map(r => tr(r.lab, r.t, r.attrs)).join('')}</tbody><tfoot>${tr(totalLab, total)}</tfoot></table>`
+}
+function breakHTML(appts) {
+  const T = tally(appts)
+  const st = groupT(appts, 'staff', SET.staff).map(r => { const s = staffOf(r.id); return { lab: `<span class="bn"><i class="sw" style="--c:${s.color}"></i>(${esc(s.mark)}) ${esc(s.name)}</span>`, t: r.t } })
+  const kd = groupT(appts, 'kind', SET.kinds).map(r => { const k = kindOf(r.id); return { lab: `<span class="bn"><i class="sw ${k.color ? '' : 'follow'}" style="--c:${k.color || ''}"></i>${esc(k.name)}</span>`, t: r.t } })
+  return `<div class="sp-grid"><div><h4>시행자별</h4><div class="tw">${btHTML('시행자', st, T)}</div></div><div><h4>종류별</h4><div class="tw">${btHTML('종류', kd, T)}</div></div></div>`
+}
+function viewDays() { return UI.view === 'month' ? monthDays(UI.anchor.slice(0, 7)) : UI.view === 'day' ? [UI.anchor] : weekDays() }
+function sumHTML() {
+  const appts = apptsOf(viewDays()), t = tally(appts)
+  const per = { day: '이 날', week: '이 주', month: '이 달' }[UI.view]
+  const it = (k, v, r) => `<span class="sl-i"><span class="k">${k}</span> <b>${fmtN(v)}</b>${r ? ` <em>(${r})</em>` : ''}</span>`
+  const line = `<button class="sumline" data-act="sum" aria-expanded="${UI.sum}" aria-controls="sumpanel"><span class="sl-p">${per} 합계</span><span class="sl-items">${it('예약', t.n)}${it('취소', t.c, pct(t.c, t.n))}${it('변경', t.g, pct(t.g, t.n))}${it('안 옴', t.x, pct(t.x, t.n))}</span><span class="sl-more">${UI.sum ? '접기 ▴' : '시행자·종류별 ▾'}</span></button>`
+  if (!UI.sum) return line
+  return line + `<section class="sumpanel" id="sumpanel" aria-label="${per} 나눠 보기">
+    <div class="sp-h"><h3>${rangeLabel(false)} · 나눠 보기</h3><span class="hint">예약 수는 취소 포함·지운 것 빼고 · 비율은 그 줄 예약 수로 나눠요 · 안 옴은 시간이 지난 예약만 · 비트 예약 칸은 세지 않아요</span></div>
+    ${breakHTML(appts)}</section>`
+}
+
+/* ───────── 통계 탭 '예약' 칸 ───────── */
+const YMS = Array.from({ length: 12 }, (_, i) => { const d = new Date(Date.UTC(2025, 11 + i, 1)); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}` })
+const CURYM = NOW.date.slice(0, 7)
+const ymLabel = ym => `${ym.slice(0, 4)}년 ${+ym.slice(5)}월`
+let STM = null
+const statMonths = () => STM || (STM = YMS.map(ym => ({ ym, t: tally(apptsOf(monthDays(ym))) })))
+const SER = [['c', '취소율', '취소', '#0D9488', ''], ['g', '변경율', '변경', '#2563EB', 'sq'], ['x', '안 옴율', '안 옴', '#EA580C', 'dm']]
+function tipOf(m) { const t = m.t; return `${ymLabel(m.ym)}${m.ym === CURYM ? ' (진행 중)' : ''}\n예약 ${fmtN(t.n)}\n취소 ${fmtN(t.c)} (${pct(t.c, t.n)})\n변경 ${fmtN(t.g)} (${pct(t.g, t.n)})\n안 옴 ${fmtN(t.x)} (${pct(t.x, t.n)})` }
+function xAxis(M) {
+  const nw = isNarrow() // 폰은 칸이 좁아 '12'·'25년'처럼 줄여 쓴다
+  return `<div class="cx" aria-hidden="true">${M.map(m => `<span class="${m.ym === UI.sm ? 'on' : ''}">${+m.ym.slice(5)}${nw ? '' : '월'}${m.ym.endsWith('-12') || m.ym.endsWith('-01') ? `<small>${nw ? m.ym.slice(2, 4) + '년' : m.ym.slice(0, 4)}</small>` : m.ym === CURYM ? `<small>${nw ? '진행' : '진행 중'}</small>` : ''}</span>`).join('')}</div>`
+}
+function colBtn(m, inner) { return `<button class="cc ${m.ym === UI.sm ? 'on' : ''} ${m.ym === CURYM ? 'part' : ''}" data-act="sx-month" data-ym="${m.ym}" data-tip="${esc(tipOf(m))}" aria-label="${esc(tipOf(m).replace(/\n/g, ', '))}">${inner}</button>` }
+function barChart(M) {
+  const max = Math.max(...M.map(m => m.t.n), 1), raw = max / 4, p = 10 ** Math.floor(Math.log10(raw))
+  const step = [1, 2, 2.5, 5, 10].map(x => x * p).find(x => x >= raw), top = Math.ceil(max / step) * step
+  let g = ''; for (let v = 0; v <= top; v += step) g += `<div class="cg" style="bottom:${v / top * 100}%"><em>${fmtN(v)}</em></div>`
+  const cols = M.map(m => colBtn(m, `${m.ym === UI.sm ? `<span class="bv">${fmtN(m.t.n)}</span>` : ''}<span class="bb" style="height:${(m.t.n / top * 100).toFixed(2)}%"></span>`)).join('')
+  return `<div class="chv"><div class="cplot">${g}<div class="ccols">${cols}</div></div>${xAxis(M)}</div>`
+}
+function lineChart(M) {
+  const val = (m, k) => m.t.n ? m.t[k] / m.t.n * 100 : 0
+  const top = Math.max(10, Math.ceil(Math.max(...M.flatMap(m => SER.map(s => val(m, s[0])))) / 2) * 2)
+  let g = ''; for (let v = 0; v <= top; v += 2) g += `<div class="cg" style="bottom:${v / top * 100}%"><em>${v}%</em></div>`
+  const X = i => (i + .5) / 12, Y = v => 1 - v / top, last = M.length - 1
+  const pts = (s, a, b) => M.slice(a, b + 1).map((m, j) => `${(X(a + j) * 1200).toFixed(1)},${(Y(val(m, s[0])) * 1000).toFixed(1)}`).join(' ')
+  const lines = SER.map(s => `<polyline points="${pts(s, 0, last - 1)}" stroke="${s[3]}"/><polyline points="${pts(s, last - 1, last)}" stroke="${s[3]}" stroke-dasharray="3 4"/>`).join('')
+  const dots = SER.map(s => M.map((m, i) => `<span class="ld ${s[4]} ${i === last ? 'part' : ''}" style="--c:${s[3]};left:${(X(i) * 100).toFixed(3)}%;top:${(Y(val(m, s[0])) * 100).toFixed(3)}%"></span>`).join('')).join('')
+  // 끝 이름표: 겹치지 않게 16px씩 띄운다
+  const H = isNarrow() ? 180 : 200
+  const ends = SER.map(s => ({ s, y: Y(val(M[last], s[0])) * H })).sort((a, b) => a.y - b.y)
+  for (let i = 1; i < ends.length; i++) ends[i].y = Math.max(ends[i].y, ends[i - 1].y + 16)
+  const labels = ends.map(e => `<span class="le" style="top:${e.y.toFixed(1)}px"><i class="lgm ${e.s[4]}" style="--c:${e.s[3]}"></i>${e.s[2]} <b>${val(M[last], e.s[0]).toFixed(1)}%</b></span>`).join('')
+  const cols = M.map(m => colBtn(m, '')).join('')
+  return `<div class="chv ln"><div class="cplot">${g}<svg class="lsvg" viewBox="0 0 1200 1000" preserveAspectRatio="none" aria-hidden="true">${lines}</svg>${dots}${labels}<div class="ccols">${cols}</div></div>${xAxis(M)}</div>`
+}
+function statsHTML() {
+  const M = statMonths(), sel = M.find(m => m.ym === UI.sm), si = YMS.indexOf(UI.sm)
+  const sumT = M.reduce((a, m) => ({ n: a.n + m.t.n, c: a.c + m.t.c, g: a.g + m.t.g, x: a.x + m.t.x }), { n: 0, c: 0, g: 0, x: 0 })
+  const rows = M.map(m => ({ lab: `${ymLabel(m.ym)}${m.ym === CURYM ? '<span class="sx-tag">진행 중</span>' : ''}`, t: m.t, attrs: `data-act="sx-month" data-ym="${m.ym}" class="${m.ym === UI.sm ? 'on' : ''}"` }))
+  const legend = SER.map(s => `<span><i class="lgl" style="--c:${s[3]}"><i class="lgm ${s[4]}" style="--c:${s[3]}"></i></i>${s[1]}</span>`).join('') + '<span><i class="lgm part"></i>이번 달(진행 중)</span>'
+  const nav = ['요약', '환자', '매출', '처방', '진료 운영', '예약', '보고'].map(t => t === '예약' ? `<a href="#sx-appt" aria-current="true">예약<span class="sx-new">새로</span></a>` : `<a href="#" data-act="sx-noop">${t}</a>`).join('')
+  return `<div class="sx">
+    <h1 class="sx-h1">통계</h1>
+    <div class="sx-load"><p>자료: 비트 PC · 11월 17일 10:12 저장 <span class="sx-m">· 어제(11월 16일)까지</span></p><div class="sx-la"><button class="sx-btn pri" data-act="sx-noop">비트에서 불러오기</button><button class="sx-link" data-act="sx-noop">불러오기 설정 ⌄</button></div></div>
+    <div class="sx-period"><div class="sx-seg" role="group" aria-label="빠르게 보기">${['최근 7일', '최근 30일', '최근 90일', '최근 12개월'].map(t => `<button data-act="sx-noop" aria-pressed="${t === '최근 30일'}">${t}</button>`).join('')}</div><button class="sx-btn" data-act="sx-noop">기간 골라 보기</button><p><strong>10월 18일 – 11월 16일</strong> <span class="sx-m">· 비교: 9월 18일 – 10월 17일</span></p></div>
+    <nav class="sx-nav" aria-label="통계 바로가기">${nav}</nav>
+    <p class="sx-skip">요약·환자·매출·처방·진료 운영·보고 칸은 지금 통계 탭 그대로라 시안에서는 줄였어요. 새로 생기는 건 아래 '예약' 칸 하나예요.</p>
+    <section class="sx-card" id="sx-appt" aria-labelledby="sx-appt-h">
+      <div class="sx-card-h"><h2 id="sx-appt-h">예약</h2><p class="sx-d">최근 12개월 · 예약 탭에 넣은 예약으로 세요(비트에서 불러오지 않아도 돼요) · 위 기간과 상관없이 늘 12개월 · 예약은 1년만 남아요</p></div>
+      <div class="sx-two">
+        <div class="sx-sub"><h3>월별 예약 수</h3><p class="sx-d">취소 포함 · 지운 예약 빼고</p>${barChart(M)}</div>
+        <div class="sx-sub"><h3>취소율 · 변경율 · 안 옴율</h3><p class="sx-d">그 달 예약 수로 나눠요</p><div class="sx-legend">${legend}</div>${lineChart(M)}</div>
+      </div>
+      <p class="sx-foot">막대나 달 칸에 마우스를 올리면 숫자가 나오고, 누르면 아래 표가 그 달로 바뀌어요. 11월은 아직 진행 중이라(17일부터는 앞으로 올 예약) 안 옴율이 낮게 나와요.</p>
+      <div class="sx-sub sx-line"><div class="sx-subh"><h3>월별 숫자</h3><span class="sx-d">줄을 누르면 아래 표가 그 달로 바뀌어요</span></div><div class="tw">${btHTML('달', rows, sumT, '12개월')}</div></div>
+      <div class="sx-sub sx-line"><div class="sx-subh"><h3>${ymLabel(UI.sm)} 나눠 보기${UI.sm === CURYM ? '<span class="sx-tag">진행 중</span>' : ''}</h3><div class="sx-mp"><button class="sx-btn icon" data-act="sx-prev" aria-label="이전 달" ${si <= 0 ? 'disabled' : ''}>‹</button><span>${ymLabel(UI.sm)}</span><button class="sx-btn icon" data-act="sx-next" aria-label="다음 달" ${si >= YMS.length - 1 ? 'disabled' : ''}>›</button></div></div>
+        ${breakHTML(apptsOf(monthDays(sel.ym)))}</div>
+      <details class="sx-how" open><summary>세는 법</summary><ul>
+        <li><b>예약 수</b>: 그 달에 잡혀 있는 예약. 취소한 예약은 넣고, 지운 예약과 비트 예약 칸은 빼요.</li>
+        <li><b>취소</b>: [예약 취소]를 누른 예약. <b>취소율</b> = 취소 ÷ 예약 수.</li>
+        <li><b>변경</b>: [고치기]로 날짜나 시작 시간을 옮긴 예약. 옮긴 뒤 날짜의 달에 세고, 여러 번 옮겨도 한 번이에요. 길이·담당·종류·메모만 바꾼 건 빼요.</li>
+        <li><b>안 옴</b>: 예약 시간이 끝났는데 비트 접수가 없거나 손으로 '안 옴'을 고른 예약. 취소한 예약은 빼요.</li>
+        <li>비율은 소수 첫째 자리까지(반올림). 시행자·종류는 예약에 적힌 담당·종류로 나눠요.</li>
+      </ul></details>
+    </section>
+  </div>`
+}
+
 /* ───────── 전체 그리기 ───────── */
 function renderMain() {
+  tip.hidden = true
+  if (STATS) {
+    $('#main').innerHTML = statsHTML()
+    const nav = $('.sx-nav'), a = nav.querySelector('[aria-current]'); nav.scrollLeft = a.offsetLeft - nav.clientWidth / 2 + a.offsetWidth / 2
+    return
+  }
   let v
   if (UI.view === 'month') v = monthHTML()
   else if (UI.view === 'day') v = gridHTML([UI.anchor])
   else v = isNarrow() ? listHTML(weekDays()) : gridHTML(weekDays())
-  $('#main').innerHTML = toolbarHTML() + legendHTML() + v
+  $('#main').innerHTML = toolbarHTML() + sumHTML() + legendHTML() + v
 }
 function renderLayer() {
   const L = UI.layer, el = $('#layer')
@@ -1011,6 +1303,11 @@ document.addEventListener('click', e => {
     case 'ghost': toast('비트에 있는 예약이에요. 여기서는 보기만 하고, 고치려면 비트에서 해요.'); break
     case 'settings': UI.layer = { type: 'settings', E: structuredClone(SET), menu: null }; renderLayer(); break
     case 'close': UI.layer = null; render(); break
+    // 합계 줄·통계
+    case 'sum': UI.sum = !UI.sum; renderMain(); $('.sumline')?.focus(); break
+    case 'sx-month': UI.sm = t.dataset.ym; renderMain(); break
+    case 'sx-prev': case 'sx-next': { const i = YMS.indexOf(UI.sm) + (act === 'sx-prev' ? -1 : 1); if (i >= 0 && i < YMS.length) { UI.sm = YMS[i]; renderMain(); $(`[data-act=${act}]`)?.focus() } break }
+    case 'sx-noop': e.preventDefault(); toast('시안이에요. 이 단추는 지금 통계 탭 그대로예요.'); break
     // 예약 더하기
     case 'pick': { const p = BITPT.find(x => x.chart === t.dataset.chart); Object.assign(L.D, { name: p.name, chart: p.chart, picks: null, filled: 'chart', notFound: false }); renderLayer(); break }
     case 'staff': L.D.staff = t.dataset.id; render(); break
@@ -1100,6 +1397,11 @@ document.addEventListener('keydown', e => {
   if (UI.pop) { UI.pop = null; renderPop() } else if (UI.layer) { UI.layer = null; render() }
 })
 window.addEventListener('resize', () => { if (setMode()) render() })
+// 그림 말풍선: 마우스를 올리거나 칸에 들어가면 그 달 숫자
+const tip = document.createElement('div'); tip.className = 'ttip'; tip.hidden = true; tip.setAttribute('role', 'tooltip'); document.body.appendChild(tip)
+function showTip(el, x, y) { tip.textContent = el.dataset.tip; tip.hidden = false; const w = tip.offsetWidth, h = tip.offsetHeight; tip.style.left = clamp(x + 14, 8, innerWidth - w - 8) + 'px'; tip.style.top = clamp(y - h - 12, 8, innerHeight - h - 8) + 'px' }
+document.addEventListener('mousemove', e => { const el = e.target.closest && e.target.closest('[data-tip]'); if (el) showTip(el, e.clientX, e.clientY); else tip.hidden = true })
+document.addEventListener('focusin', e => { const el = e.target.closest && e.target.closest('[data-tip]'); if (el) { const r = el.getBoundingClientRect(); showTip(el, r.left + r.width / 2, r.top) } else tip.hidden = true })
 
 setMode()
 render()
