@@ -134,24 +134,24 @@ public class ListsRouteTests
 
     // ---- AC-3501.4 판의 picks ---------------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-3501.4 GET /api/board의 맨 위 picks는 지금 목록이다: 처음엔 기본값, 저장하면 다음 읽기부터 새 목록")]
+    [Fact(DisplayName = "AC-3501.4 GET /api/board의 맨 위 picks는 지금 목록이다(+ 더한 칸 extra, spec reception-other-clinic AC-5703.6): 처음엔 기본값, 저장하면 다음 읽기부터 새 목록")]
     public void BoardPicksFollowSavedLists()
     {
         using var rig = new ArrangeRig(lists: true);
-        Assert.Equal(Picks.Json(PickLists.Defaults), rig.Board().GetProperty("picks").GetRawText());
+        Assert.Equal(Columns.Layouts.PicksJson(PickLists.Defaults), rig.Board().GetProperty("picks").GetRawText());
 
         Assert.Equal(204, PostLists(rig, NewLists()).Status);
 
         var board = rig.Board();
-        Assert.Equal(Picks.Json(Parse(NewLists())), board.GetProperty("picks").GetRawText());
-        Assert.Equal(new[] { "state", "at", "every", "counts", "lists", "arrange", "picks" }, board.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(Columns.Layouts.PicksJson(Parse(NewLists())), board.GetProperty("picks").GetRawText());
+        Assert.Equal(new[] { "state", "at", "every", "counts", "lists", "cfg", "arrange", "picks" }, board.EnumerateObject().Select(p => p.Name));
     }
 
     [Fact(DisplayName = "AC-3501.4 목록 저장소가 없어도 어레인지 판은 기본 목록을 picks로 보내고, 어레인지를 보내지 않는 판에는 picks가 없다")]
     public void PicksOnlyWithArrange()
     {
         using var without = new ArrangeRig();
-        Assert.Equal(Picks.Json(PickLists.Defaults), without.Board().GetProperty("picks").GetRawText());
+        Assert.Equal(Columns.Layouts.PicksJson(PickLists.Defaults), without.Board().GetProperty("picks").GetRawText());
 
         using var plain = new ServeRig();
         using var document = JsonDocument.Parse(plain.Get("/api/board").Body);
@@ -228,7 +228,7 @@ public class ListsRouteTests
         var body = ArrangeBody(rig.Key("V1003"), "add", "sono", string.Join("|", parts.Select(p => "오른 " + p)), string.Join("|", withs));
         Assert.InRange(body.Length, 600, 1024);
         Assert.Equal(204, rig.Post(body).Status);
-        Assert.Equal(12, rig.ArrangeMarks.Today()["V1003"].Cells[ArrangeCol.Sono].Tags.Count);
+        Assert.Equal(12, rig.ArrangeMarks.Today()["V1003"].Cells[ArrangeKeys.Sono].Tags.Count);
     }
 
     private static PickLists Parse(string json) =>

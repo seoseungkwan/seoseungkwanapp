@@ -35,7 +35,7 @@ public sealed class ArrangeCell
     /// <summary>단계에 따라 처방(넣은) 시각·준비완료 시각·완료 시각.</summary>
     public string? At { get; }
 
-    /// <summary>SONO·C-ARM의 끝나지 않은 칸 순서(1부터). 그 밖은 null.</summary>
+    /// <summary>단계 3 처방 칸(우리 의원은 SONO·C-ARM)의 끝나지 않은 칸 순서(1부터). 그 밖은 null.</summary>
     public int? Ord { get; }
 
     public bool Manual { get; }
@@ -53,7 +53,7 @@ public sealed class ArrangeCell
 public sealed class ArrangeRow
 {
     public ArrangeRow(
-        string key, string? away, PtFirst? ptf, string last, IReadOnlyDictionary<ArrangeCol, ArrangeCell> cells, string? back = null, string? backWait = null)
+        string key, string? away, PtFirst? ptf, string last, IReadOnlyDictionary<string, ArrangeCell> cells, string? back = null, string? backWait = null)
     {
         Key = key ?? throw new ArgumentNullException(nameof(key));
         Away = away;
@@ -79,8 +79,8 @@ public sealed class ArrangeRow
     /// <summary>가장 최근 지난 완료 내원의 증상 글(없으면 "").</summary>
     public string Last { get; }
 
-    /// <summary>있는 칸만(없는 칸은 JSON에서 null).</summary>
-    public IReadOnlyDictionary<ArrangeCol, ArrangeCell> Cells { get; }
+    /// <summary>있는 칸만(칸 열쇠 → 칸, 보이는 칸 가운데). 없는 칸은 JSON에서 null.</summary>
+    public IReadOnlyDictionary<string, ArrangeCell> Cells { get; }
 
     /// <summary>칸이 하나 이상이고 모두 완료(AC-3305.8).</summary>
     public bool AllDone => Cells.Count > 0 && Cells.Values.All(cell => cell.St == ArrangeStep.Done);
@@ -108,14 +108,18 @@ public sealed class ArrangeEnded
     public bool Paid { get; }
 }
 
-/// <summary>`/api/board` 답의 arrange(AC-3305.1).</summary>
+/// <summary>`/api/board` 답의 arrange(AC-3305.1). Cols는 줄 cells에 쓰는 칸 열쇠(보이는 칸, 설정 차례, 없으면 처음 일곱 칸).</summary>
 public sealed class Arrange
 {
-    public Arrange(IReadOnlyList<ArrangeRow> rows, IReadOnlyList<ArrangeEnded> ended)
+    public Arrange(IReadOnlyList<ArrangeRow> rows, IReadOnlyList<ArrangeEnded> ended, IReadOnlyList<string>? cols = null)
     {
         Rows = rows ?? throw new ArgumentNullException(nameof(rows));
         Ended = ended ?? throw new ArgumentNullException(nameof(ended));
+        Cols = cols ?? ArrangeKeys.Originals;
     }
+
+    /// <summary>줄 cells의 칸 열쇠(차례 그대로 JSON에 쓴다).</summary>
+    public IReadOnlyList<string> Cols { get; }
 
     public IReadOnlyList<ArrangeRow> Rows { get; }
 
@@ -123,30 +127,30 @@ public sealed class Arrange
 }
 
 /// <summary>
-/// 비트 날 줄 + 지도 + 어레인지 표시 + X-ray 완료 표시 → 어레인지 자료(spec reception-arrange design.md 7절, REQ-3305).
-/// 칸 하나: ① 오늘 처방을 지도로 처방 칸(xray·sono·carm)마다 모은다(가장 이른 시각, 첫 부위, AC-3301.3) ② 표시가 gone이면 칸 없음
-/// ③ 표시가 있으면 단계·시각·부위·이름표·글을 덮는다(직접 넣은 칸은 표시만으로 생김, 직접 칸 pt·ds·eswt·trac은 표시로만, 늘 manual)
+/// 비트 날 줄 + 칸 설정 + 어레인지 표시 + X-ray 완료 표시 → 어레인지 자료(spec reception-arrange design.md 7절, REQ-3305).
+/// 칸은 설정의 보이는 칸이다(ArrangeLayout, spec reception-other-clinic design.md 2절). 숨긴 칸·설정에 없는 열쇠의 표시는 쓰지 않는다.
+/// 칸 하나: ① 오늘 처방을 RxMatch로 처방 칸(rx)마다 모은다(한 처방이 여러 칸에 들 수 있음, 칸마다 가장 이른 시각·첫 부위, AC-3301.3·AC-5702.3) ② 표시가 gone이면 칸 없음
+/// ③ 표시가 있으면 단계·시각·부위·이름표·글을 덮는다(직접 넣은 칸은 표시만으로 생김, 직접 칸(mn)은 표시로만, 늘 manual)
 /// ④ X-RAY는 X-ray 완료 표시가 있으면 완료·그 시각(처방·표시가 없어도 직접 칸으로 생김, AC-3305.6).
+/// 부위(part)·이름표(tags)는 SONO·C-ARM 칸에만 있다(열쇠로 정함). 순서 번호(ord)는 단계 3 처방 칸마다 따로다(AC-5703.2).
 /// 처방이 사라진 처방 칸(직접 넣지 않음)의 표시는 칸을 만들지 않는다.
 /// 줄 고르기: [치료 종료] 시각이 있거나, 수납완료(끝남 칸)인데 다시 넣지(kept) 않았으면 rows가 아니라 ended다(AC-3305.2·AC-3305.10).
 /// </summary>
 public static class ArrangeBuilder
 {
-    private static readonly ArrangeCol[] OrderCols = { ArrangeCol.Xray, ArrangeCol.Sono, ArrangeCol.Carm };
-    private static readonly ArrangeCol[] QueueCols = { ArrangeCol.Sono, ArrangeCol.Carm };
     private static readonly Regex TimeShape = new Regex(@"^([01]\d|2[0-3]):[0-5]\d\z", RegexOptions.CultureInvariant);
-    private static readonly IReadOnlyDictionary<ArrangeCol, ArrangeCell> NoCells =
-        new ReadOnlyDictionary<ArrangeCol, ArrangeCell>(new Dictionary<ArrangeCol, ArrangeCell>());
+    private static readonly IReadOnlyDictionary<string, ArrangeCell> NoCells =
+        new ReadOnlyDictionary<string, ArrangeCell>(new Dictionary<string, ArrangeCell>(StringComparer.Ordinal));
 
     /// <summary>
-    /// statuses·hiddenRsu는 ReceptionMap.Statuses·HiddenRsu, map은 ArrangeMap.Rules(시험은 가짜), marks는 ArrangeMarks.Today(),
+    /// statuses·hiddenRsu는 ReceptionMap.Statuses·HiddenRsu, layout은 지금 설정의 칸(시험·옛 부르는 곳은 ArrangeLayout.Ours), marks는 ArrangeMarks.Today(),
     /// xray는 XrayMarks.Today()(내원번호 → "HH:MM"), keys는 그날 열쇠표(input.Day로 부른다).
     /// </summary>
     public static Arrange Build(
         BoardInput input,
         IReadOnlyDictionary<string, Lane> statuses,
         IEnumerable<string> hiddenRsu,
-        IReadOnlyList<ArrangeRule> map,
+        ArrangeLayout layout,
         IReadOnlyDictionary<string, VisitMark> marks,
         IReadOnlyDictionary<string, string> xray,
         VisitKeys keys)
@@ -154,7 +158,7 @@ public static class ArrangeBuilder
         if (input == null) throw new ArgumentNullException(nameof(input));
         if (statuses == null) throw new ArgumentNullException(nameof(statuses));
         if (hiddenRsu == null) throw new ArgumentNullException(nameof(hiddenRsu));
-        if (map == null) throw new ArgumentNullException(nameof(map));
+        if (layout == null) throw new ArgumentNullException(nameof(layout));
         if (marks == null) throw new ArgumentNullException(nameof(marks));
         if (xray == null) throw new ArgumentNullException(nameof(xray));
         if (keys == null) throw new ArgumentNullException(nameof(keys));
@@ -166,7 +170,7 @@ public static class ArrangeBuilder
             .OrderBy(item => item.Visit, AcceptedOrder.Instance)
             .ToArray();
 
-        var live = new List<(VisitRow Visit, Dictionary<ArrangeCol, Built> Cells, VisitMark? Mark)>();
+        var live = new List<(VisitRow Visit, Dictionary<string, Built> Cells, VisitMark? Mark)>();
         var ended = new List<ArrangeEnded>();
         foreach (var (visit, lane) in visits)
         {
@@ -182,12 +186,12 @@ public static class ArrangeBuilder
                 ended.Add(new ArrangeEnded(keys.KeyOf(input.Day, visit.VisitId), BoardBuilder.ClockOf(visit.PaidAt), paid: true));
                 continue;
             }
-            live.Add((visit, CellsOf(visit, mark, map, input.RxNames, xray), mark));
+            live.Add((visit, CellsOf(visit, mark, layout, input.RxNames, xray), mark));
         }
 
-        // 순서(AC-3305.5): 칸마다 끝나지 않은 칸을 (처방·넣은 시각, 접수 순)으로. 시각을 모르면 뒤로
-        var ords = new Dictionary<(int Row, ArrangeCol Col), int>();
-        foreach (var col in QueueCols)
+        // 순서(AC-3305.5·AC-5703.2): 단계 3 처방 칸마다 끝나지 않은 칸을 (처방·넣은 시각, 접수 순)으로. 시각을 모르면 뒤로
+        var ords = new Dictionary<(int Row, string Col), int>();
+        foreach (var col in layout.Keys.Where(layout.HasOrd))
         {
             var waiting = live
                 .Select((entry, index) => (Index: index, Cell: entry.Cells.TryGetValue(col, out var cell) ? cell : null))
@@ -202,9 +206,10 @@ public static class ArrangeBuilder
         {
             var cells = entry.Cells.Count == 0
                 ? NoCells
-                : new ReadOnlyDictionary<ArrangeCol, ArrangeCell>(entry.Cells.ToDictionary(
+                : new ReadOnlyDictionary<string, ArrangeCell>(entry.Cells.ToDictionary(
                     pair => pair.Key,
-                    pair => pair.Value.Cell.WithOrd(ords.TryGetValue((index, pair.Key), out var ord) ? ord : (int?)null)));
+                    pair => pair.Value.Cell.WithOrd(ords.TryGetValue((index, pair.Key), out var ord) ? ord : (int?)null),
+                    StringComparer.Ordinal));
             var back = Time(entry.Mark?.Back);
             return new ArrangeRow(
                 keys.KeyOf(input.Day, entry.Visit.VisitId), entry.Mark?.Away, entry.Mark?.Ptf, Clean(entry.Visit.LastSymptom) ?? "", cells,
@@ -212,7 +217,7 @@ public static class ArrangeBuilder
         }).ToArray();
 
         // 시각 늦은 순, 수납 시각을 모르는 줄(null)은 맨 뒤
-        return new Arrange(rows, ended.OrderByDescending(e => e.EndedAt ?? "", StringComparer.Ordinal).ToArray());
+        return new Arrange(rows, ended.OrderByDescending(e => e.EndedAt ?? "", StringComparer.Ordinal).ToArray(), layout.Keys);
     }
 
     /// <summary>만든 칸과 순서를 매길 시각(처방 또는 직접 넣은 시각).</summary>
@@ -229,30 +234,32 @@ public static class ArrangeBuilder
         public string? Since { get; }
     }
 
-    private static Dictionary<ArrangeCol, Built> CellsOf(
-        VisitRow visit, VisitMark? mark, IReadOnlyList<ArrangeRule> map, IReadOnlyDictionary<string, string> names, IReadOnlyDictionary<string, string> xray)
+    private static Dictionary<string, Built> CellsOf(
+        VisitRow visit, VisitMark? mark, ArrangeLayout layout, IReadOnlyDictionary<string, string> names, IReadOnlyDictionary<string, string> xray)
     {
-        // ① 처방 칸마다 모으기: 가장 이른 시각, 처음 빈 글 아닌 부위
-        var fromOrders = new Dictionary<ArrangeCol, (string? At, string? Part)>();
+        // ① 처방 칸마다 모으기(처방 하나가 맞는 칸 모두에): 칸마다 가장 이른 시각, 처음 빈 글 아닌 부위
+        var fromOrders = new Dictionary<string, (string? At, string? Part)>(StringComparer.Ordinal);
         foreach (var order in visit.Orders)
         {
             names.TryGetValue(order.Code, out var name);
-            if (!(ArrangeMap.Match(map, order.Code, name) is ArrangeCol col) || !OrderCols.Contains(col)) continue;
             var at = Time(order.At);
             var part = Clean(order.Part);
-            if (fromOrders.TryGetValue(col, out var seen))
-                fromOrders[col] = (Earlier(seen.At, at), seen.Part ?? part);
-            else
-                fromOrders[col] = (at, part);
+            foreach (var col in layout.RxMatch(order.Code, name))
+            {
+                if (fromOrders.TryGetValue(col, out var seen))
+                    fromOrders[col] = (Earlier(seen.At, at), seen.Part ?? part);
+                else
+                    fromOrders[col] = (at, part);
+            }
         }
 
-        var cells = new Dictionary<ArrangeCol, Built>();
-        foreach (ArrangeCol col in Enum.GetValues(typeof(ArrangeCol)))
+        var cells = new Dictionary<string, Built>(StringComparer.Ordinal);
+        foreach (var col in layout.Keys)
         {
             CellMark? marked = null;
             mark?.Cells.TryGetValue(col, out marked);
             var hasOrder = fromOrders.TryGetValue(col, out var order);
-            var manualOnly = ArrangeMap.ManualOnly.Contains(col);
+            var manualOnly = !layout.IsRx(col);
             Built? built = null;
 
             if (marked != null && marked.St == ArrangeStep.Gone)
@@ -273,7 +280,7 @@ public static class ArrangeBuilder
             }
 
             // ④ X-ray 완료 표시
-            if (col == ArrangeCol.Xray && xray.TryGetValue(visit.VisitId, out var shot) && Time(shot) is string shotAt)
+            if (col == ArrangeKeys.Xray && xray.TryGetValue(visit.VisitId, out var shot) && Time(shot) is string shotAt)
             {
                 built = built == null
                     ? new Built(new ArrangeCell(ArrangeStep.Done, "", null, shotAt, null, true), shotAt)
@@ -308,7 +315,8 @@ public static class ArrangeBuilder
         _ => since,
     };
 
-    private static bool IsQueue(ArrangeCol col) => col == ArrangeCol.Sono || col == ArrangeCol.Carm;
+    /// <summary>부위·이름표를 갖는 칸(SONO·C-ARM, 열쇠로 정함).</summary>
+    private static bool IsQueue(string col) => ArrangeChoices.IsShaped(col);
 
     private static string? Earlier(string? a, string? b) =>
         a == null ? b : b == null ? a : string.CompareOrdinal(a, b) <= 0 ? a : b;

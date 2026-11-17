@@ -66,9 +66,9 @@ public class ArrangeTuneListsTests : IDisposable
     private static PickLists Parse(string json) =>
         PickLists.TryParse(Encoding.UTF8.GetBytes(json), out var lists) ? lists : throw new InvalidOperationException("시험 목록이 틀렸다");
 
-    private static ArrangeOp Op(string op, ArrangeCol? col = null, string? v = null) => new ArrangeOp("0123456789abcdef", op, col, v);
+    private static ArrangeOp Op(string op, string? col = null, string? v = null) => new ArrangeOp("0123456789abcdef", op, col, v);
 
-    private static readonly IReadOnlyDictionary<ArrangeCol, ArrangeCell> NoCells = new Dictionary<ArrangeCol, ArrangeCell>();
+    private static readonly IReadOnlyDictionary<string, ArrangeCell> NoCells = new Dictionary<string, ArrangeCell>();
 
     /// <summary>PT 냉찜질·온찜질, 도수 20분, 충격파 타수 없음·부위 수 1부위·5부위, 견인 골반으로 바꾼 목록.</summary>
     private static PickLists Custom() => Parse(Picks.Body(
@@ -177,13 +177,13 @@ public class ArrangeTuneListsTests : IDisposable
         Assert.Equal(Picks.Json(PickLists.Defaults), Picks.Json(again));
     }
 
-    [Fact(DisplayName = "AC-3603.2 판(GET /api/board)의 picks는 여섯 무리이고 새 무리는 지금 목록이다")]
+    [Fact(DisplayName = "AC-3603.2 판(GET /api/board)의 picks는 여섯 무리(뒤에 더한 칸 extra, spec reception-other-clinic AC-5703.6)이고 새 무리는 지금 목록이다")]
     public void BoardPicksHaveSixGroups()
     {
         using var rig = new ArrangeRig(lists: true);
         var picks = rig.Board().GetProperty("picks");
-        Assert.Equal(new[] { "carm", "sono", "pt", "ds", "eswt", "trac" }, picks.EnumerateObject().Select(p => p.Name));
-        Assert.Equal(Picks.Json(PickLists.Defaults), picks.GetRawText());
+        Assert.Equal(new[] { "carm", "sono", "pt", "ds", "eswt", "trac", "extra" }, picks.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(Columns.Layouts.PicksJson(PickLists.Defaults), picks.GetRawText());
 
         rig.Lists!.Save(Custom());
         Assert.Equal(new[] { "골반" }, rig.Board().GetProperty("picks").GetProperty("trac").EnumerateArray().Select(e => e.GetString()));
@@ -327,51 +327,53 @@ public class ArrangeTuneListsTests : IDisposable
 
     // ---- AC-3603.3 add는 지금 목록으로 ------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-3603.3 ArrangeChoices.AddOf(칸, 목록)는 PT·도수·견인 = 그 목록, 충격파 = 부위 수 + 타수 × 부위 수, X-RAY = X-ray 찍기, SONO·C-ARM = 빈 목록")]
+    [Fact(DisplayName = "AC-3603.3 ArrangeChoices.IsAdd(설정, 칸, v, t)는 PT·도수·견인 = 그 목록 이름, 충격파 = 부위 수 하나 또는 타수|부위 수(spec reception-other-clinic AC-5703.4), X-RAY = X-ray 찍기를 받고 넘긴 목록을 따른다")]
     public void AddOfFollowsLists()
     {
-        var defaults = PickLists.Defaults;
-        Assert.Equal(Pt, ArrangeChoices.AddOf(ArrangeCol.Pt, defaults));
-        Assert.Equal(Ds, ArrangeChoices.AddOf(ArrangeCol.Ds, defaults));
-        Assert.Equal(Trac, ArrangeChoices.AddOf(ArrangeCol.Trac, defaults));
-        Assert.Equal(Counts.Concat(Hits.SelectMany(hit => Counts.Select(count => hit + " " + count))), ArrangeChoices.AddOf(ArrangeCol.Eswt, defaults));
-        Assert.Equal(new[] { "X-ray 찍기" }, ArrangeChoices.AddOf(ArrangeCol.Xray, defaults));
-        Assert.Empty(ArrangeChoices.AddOf(ArrangeCol.Sono, defaults));
-        Assert.Empty(ArrangeChoices.AddOf(ArrangeCol.Carm, defaults));
+        var defaults = ArrangeLayout.Ours;
+        Assert.All(Pt, v => Assert.True(ArrangeChoices.IsAdd(defaults, ArrangeKeys.Pt, v, null), v));
+        Assert.All(Ds, v => Assert.True(ArrangeChoices.IsAdd(defaults, ArrangeKeys.Ds, v, null), v));
+        Assert.All(Trac, v => Assert.True(ArrangeChoices.IsAdd(defaults, ArrangeKeys.Trac, v, null), v));
+        Assert.All(Counts.Concat(Hits.SelectMany(hit => Counts.Select(count => hit + "|" + count))), v => Assert.True(ArrangeChoices.IsAdd(defaults, ArrangeKeys.Eswt, v, null), v));
+        Assert.True(ArrangeChoices.IsAdd(defaults, ArrangeKeys.Xray, "X-ray 찍기", null));
+        Assert.False(ArrangeChoices.IsAdd(defaults, ArrangeKeys.Pt, "냉찜질", null));
 
-        var custom = Custom();
-        Assert.Equal(new[] { "냉찜질", "온찜질" }, ArrangeChoices.AddOf(ArrangeCol.Pt, custom));
-        Assert.Equal(new[] { "1부위", "5부위" }, ArrangeChoices.AddOf(ArrangeCol.Eswt, custom));
+        var custom = ArrangeLayout.OursWith(Custom());
+        Assert.True(ArrangeChoices.IsAdd(custom, ArrangeKeys.Pt, "냉찜질|온찜질", null));
+        Assert.False(ArrangeChoices.IsAdd(custom, ArrangeKeys.Pt, "ICE", null));
+        Assert.True(ArrangeChoices.IsAdd(custom, ArrangeKeys.Eswt, "5부위", null));
+        Assert.False(ArrangeChoices.IsAdd(custom, ArrangeKeys.Eswt, "2부위", null));
         var members = typeof(ArrangeChoices).GetMembers().Select(m => m.Name).ToArray();
         Assert.DoesNotContain("DetailsOf", members);
+        Assert.DoesNotContain("AddOf", members);
     }
 
     [Theory(DisplayName = "AC-3603.3 add PT·도수·견인·충격파는 넘긴 지금 목록의 글만 받고(204, det = v) 어긋나면 400")]
-    [InlineData(ArrangeCol.Pt, "냉찜질", 204)]
-    [InlineData(ArrangeCol.Pt, "ICE", 400)]
-    [InlineData(ArrangeCol.Ds, "20분", 204)]
-    [InlineData(ArrangeCol.Ds, "30분", 400)]
-    [InlineData(ArrangeCol.Trac, "골반", 204)]
-    [InlineData(ArrangeCol.Trac, "목", 400)]
-    [InlineData(ArrangeCol.Eswt, "5부위", 204)]
-    [InlineData(ArrangeCol.Eswt, "2부위", 400)]
-    [InlineData(ArrangeCol.Eswt, "2000타 1부위", 400)]
-    [InlineData(ArrangeCol.Pt, "온찜질 ", 400)]
-    [InlineData(ArrangeCol.Ds, "냉찜질", 400)]
-    public void AddFollowsPassedLists(ArrangeCol col, string v, int status)
+    [InlineData(ArrangeKeys.Pt, "냉찜질", 204)]
+    [InlineData(ArrangeKeys.Pt, "ICE", 400)]
+    [InlineData(ArrangeKeys.Ds, "20분", 204)]
+    [InlineData(ArrangeKeys.Ds, "30분", 400)]
+    [InlineData(ArrangeKeys.Trac, "골반", 204)]
+    [InlineData(ArrangeKeys.Trac, "목", 400)]
+    [InlineData(ArrangeKeys.Eswt, "5부위", 204)]
+    [InlineData(ArrangeKeys.Eswt, "2부위", 400)]
+    [InlineData(ArrangeKeys.Eswt, "2000타|1부위", 400)]
+    [InlineData(ArrangeKeys.Pt, "온찜질 ", 400)]
+    [InlineData(ArrangeKeys.Ds, "냉찜질", 400)]
+    public void AddFollowsPassedLists(string col, string v, int status)
     {
         var result = ArrangeWrite.Apply(Op("add", col, v), null, NoCells, Now, picks: Custom());
         Assert.Equal(status, result.Status);
         if (status == 204) Assert.Equal(v, result.Next!.Cells[col].Det);
     }
 
-    [Fact(DisplayName = "AC-3603.3 충격파 add는 부위 수 하나 또는 \"{타수} {부위 수}\"이고(기본 목록), 타수만·차례 바뀜·빈칸 둘은 400")]
+    [Fact(DisplayName = "AC-3603.3 충격파 add는 부위 수 하나 또는 \"{타수}|{부위 수}\"이고(기본 목록, 이음은 spec reception-other-clinic AC-5703.4), 타수만·차례 바뀜·빈 조각·옛 빈칸 이음은 400")]
     public void EswtAddShapes()
     {
-        Assert.Equal(204, ArrangeWrite.Apply(Op("add", ArrangeCol.Eswt, "3000타 2부위"), null, NoCells, Now).Status);
-        Assert.Equal(204, ArrangeWrite.Apply(Op("add", ArrangeCol.Eswt, "4부위"), null, NoCells, Now).Status);
-        foreach (var bad in new[] { "3000타", "2부위 3000타", "3000타  2부위", "3000타2부위", "5000타 2부위" })
-            Assert.Equal(400, ArrangeWrite.Apply(Op("add", ArrangeCol.Eswt, bad), null, NoCells, Now).Status);
+        Assert.Equal(204, ArrangeWrite.Apply(Op("add", ArrangeKeys.Eswt, "3000타|2부위"), null, NoCells, Now).Status);
+        Assert.Equal(204, ArrangeWrite.Apply(Op("add", ArrangeKeys.Eswt, "4부위"), null, NoCells, Now).Status);
+        foreach (var bad in new[] { "3000타", "2부위|3000타", "3000타||2부위", "3000타 2부위", "3000타2부위", "5000타|2부위" })
+            Assert.Equal(400, ArrangeWrite.Apply(Op("add", ArrangeKeys.Eswt, bad), null, NoCells, Now).Status);
     }
 
     [Fact(DisplayName = "AC-3603.3 [길] 저장한 목록으로 POST /api/arrange add를 본다: 새 PT 이름 204, 뺀 이름 400")]
@@ -390,51 +392,53 @@ public class ArrangeTuneListsTests : IDisposable
 
     // ---- AC-3603.4 칸 글은 모양만 --------------------------------------------------------------------------
 
-    [Theory(DisplayName = "AC-3603.4 IsDetail: PT·도수·충격파·견인은 1~21글자·\"|\"·제어 글자 없는 글(목록 소속은 안 봄), 다른 칸은 \"\"만")]
-    [InlineData(ArrangeCol.Pt, "가상환자07", true)]
-    [InlineData(ArrangeCol.Ds, "ICE", true)]
-    [InlineData(ArrangeCol.Eswt, "가나다라마바사아자차 가나다라마바사아자차", true)]
-    [InlineData(ArrangeCol.Trac, "골반", true)]
-    [InlineData(ArrangeCol.Pt, "", false)]
-    [InlineData(ArrangeCol.Eswt, "가나다라마바사아자차 가나다라마바사아자차카", false)]
-    [InlineData(ArrangeCol.Ds, "30|분", false)]
-    [InlineData(ArrangeCol.Trac, "목\n", false)]
-    [InlineData(ArrangeCol.Pt, "\u0085HP", false)]
-    [InlineData(ArrangeCol.Pt, null, false)]
-    [InlineData(ArrangeCol.Xray, "", true)]
-    [InlineData(ArrangeCol.Xray, "HP", false)]
-    [InlineData(ArrangeCol.Sono, "", true)]
-    [InlineData(ArrangeCol.Carm, "허리", false)]
-    public void DetailIsShapeOnly(ArrangeCol col, string? det, bool ok)
+    [Theory(DisplayName = "AC-3603.4 IsDetail: PT·도수·충격파·견인은 \"|\"로 나눈 조각마다 1~21글자·제어 글자 없는 글이거나 빈 글(spec reception-other-clinic AC-5703.5, 목록 소속은 안 봄), 다른 칸은 \"\"만")]
+    [InlineData(ArrangeKeys.Pt, "가상환자07", true)]
+    [InlineData(ArrangeKeys.Ds, "ICE", true)]
+    [InlineData(ArrangeKeys.Eswt, "가나다라마바사아자차 가나다라마바사아자차", true)]
+    [InlineData(ArrangeKeys.Trac, "골반", true)]
+    [InlineData(ArrangeKeys.Pt, "", true)]
+    [InlineData(ArrangeKeys.Eswt, "가나다라마바사아자차 가나다라마바사아자차카", false)]
+    [InlineData(ArrangeKeys.Ds, "30|분", true)]
+    [InlineData(ArrangeKeys.Ds, "30||분", false)]
+    [InlineData(ArrangeKeys.Ds, "|30분", false)]
+    [InlineData(ArrangeKeys.Trac, "목\n", false)]
+    [InlineData(ArrangeKeys.Pt, "\u0085HP", false)]
+    [InlineData(ArrangeKeys.Pt, null, false)]
+    [InlineData(ArrangeKeys.Xray, "", true)]
+    [InlineData(ArrangeKeys.Xray, "HP", false)]
+    [InlineData(ArrangeKeys.Sono, "", true)]
+    [InlineData(ArrangeKeys.Carm, "허리", false)]
+    public void DetailIsShapeOnly(string col, string? det, bool ok)
     {
         Assert.Equal(ok, ArrangeChoices.IsDetail(col, det));
         // 짝 없는 대리쌍은 속성 글에 넣을 수 없어 여기서 본다
-        Assert.False(ArrangeChoices.IsDetail(ArrangeCol.Pt, "H" + (char)0xD800 + "P"));
+        Assert.False(ArrangeChoices.IsDetail(ArrangeKeys.Pt, "H" + (char)0xD800 + "P"));
     }
 
     [Fact(DisplayName = "AC-3603.4 목록 밖 칸 글(det \"가상환자07\"·ds에 PT 글·고친 뒤 없어진 이름)도 모양이 맞으면 쓰고 표시 파일에서 그대로 읽힌다")]
     public void OffListDetailsStored()
     {
         var marks = OpenMarks();
-        marks.Update("V1", _ => new VisitMark().WithCell(ArrangeCol.Pt, new CellMark(ArrangeStep.Todo, true, "가상환자07", null, null, null, "10:00")));
-        marks.Update("V2", _ => new VisitMark().WithCell(ArrangeCol.Ds, new CellMark(ArrangeStep.Todo, true, "ICE", null, null, null, "10:00")));
-        marks.Update("V3", _ => new VisitMark().WithCell(ArrangeCol.Eswt, new CellMark(ArrangeStep.Done, true, "7000타 9부위", null, null, "10:20", "10:00")));
+        marks.Update("V1", _ => new VisitMark().WithCell(ArrangeKeys.Pt, new CellMark(ArrangeStep.Todo, true, "가상환자07", null, null, null, "10:00")));
+        marks.Update("V2", _ => new VisitMark().WithCell(ArrangeKeys.Ds, new CellMark(ArrangeStep.Todo, true, "ICE", null, null, null, "10:00")));
+        marks.Update("V3", _ => new VisitMark().WithCell(ArrangeKeys.Eswt, new CellMark(ArrangeStep.Done, true, "7000타 9부위", null, null, "10:20", "10:00")));
 
         var today = OpenMarks().Today();
-        Assert.Equal("가상환자07", today["V1"].Cells[ArrangeCol.Pt].Det);
-        Assert.Equal("ICE", today["V2"].Cells[ArrangeCol.Ds].Det);
-        Assert.Equal("7000타 9부위", today["V3"].Cells[ArrangeCol.Eswt].Det);
+        Assert.Equal("가상환자07", today["V1"].Cells[ArrangeKeys.Pt].Det);
+        Assert.Equal("ICE", today["V2"].Cells[ArrangeKeys.Ds].Det);
+        Assert.Equal("7000타 9부위", today["V3"].Cells[ArrangeKeys.Eswt].Det);
         Assert.Empty(reports);
     }
 
     public static IEnumerable<object[]> BadDetails() => new[]
     {
-        new object[] { "pt 빈 글", new VisitMark().WithCell(ArrangeCol.Pt, new CellMark(ArrangeStep.Todo, true, "", null, null, null, "10:00")) },
-        new object[] { "ds 22글자", new VisitMark().WithCell(ArrangeCol.Ds, new CellMark(ArrangeStep.Todo, true, new string('가', 22), null, null, null, "10:00")) },
-        new object[] { "trac | 든 글", new VisitMark().WithCell(ArrangeCol.Trac, new CellMark(ArrangeStep.Todo, true, "목|허리", null, null, null, "10:00")) },
-        new object[] { "eswt 제어 글자", new VisitMark().WithCell(ArrangeCol.Eswt, new CellMark(ArrangeStep.Todo, true, "1부위\u0007", null, null, null, "10:00")) },
-        new object[] { "xray에 글", new VisitMark().WithCell(ArrangeCol.Xray, new CellMark(ArrangeStep.Todo, true, "HP", null, null, null, "10:00")) },
-        new object[] { "sono에 글", new VisitMark().WithCell(ArrangeCol.Sono, new CellMark(ArrangeStep.Todo, false, "HP", null, null, null, null)) },
+        new object[] { "pt 빈 조각", new VisitMark().WithCell(ArrangeKeys.Pt, new CellMark(ArrangeStep.Todo, true, "|HP", null, null, null, "10:00")) },
+        new object[] { "ds 22글자", new VisitMark().WithCell(ArrangeKeys.Ds, new CellMark(ArrangeStep.Todo, true, new string('가', 22), null, null, null, "10:00")) },
+        new object[] { "trac 17조각", new VisitMark().WithCell(ArrangeKeys.Trac, new CellMark(ArrangeStep.Todo, true, string.Join("|", Enumerable.Repeat("목", 17)), null, null, null, "10:00")) },
+        new object[] { "eswt 제어 글자", new VisitMark().WithCell(ArrangeKeys.Eswt, new CellMark(ArrangeStep.Todo, true, "1부위\u0007", null, null, null, "10:00")) },
+        new object[] { "xray에 글", new VisitMark().WithCell(ArrangeKeys.Xray, new CellMark(ArrangeStep.Todo, true, "HP", null, null, null, "10:00")) },
+        new object[] { "sono에 글", new VisitMark().WithCell(ArrangeKeys.Sono, new CellMark(ArrangeStep.Todo, false, "HP", null, null, null, null)) },
     };
 
     [Theory(DisplayName = "AC-3603.4 모양이 틀린 칸 글은 여전히 쓰지 않는다(ArgumentException, 파일 그대로)")]
@@ -454,20 +458,20 @@ public class ArrangeTuneListsTests : IDisposable
     [Fact(DisplayName = "AC-3603.4 목록을 고친 뒤에도 이미 넣은 칸(목록 밖 글)은 step·set·remove로 바뀐다(det 그대로)")]
     public void OffListCellStillChanges()
     {
-        var current = new VisitMark().WithCell(ArrangeCol.Pt, new CellMark(ArrangeStep.Todo, true, "ICE", null, null, null, "09:50"));
-        var cells = new Dictionary<ArrangeCol, ArrangeCell> { [ArrangeCol.Pt] = new ArrangeCell(ArrangeStep.Todo, "ICE", null, "09:50", null, true) };
+        var current = new VisitMark().WithCell(ArrangeKeys.Pt, new CellMark(ArrangeStep.Todo, true, "ICE", null, null, null, "09:50"));
+        var cells = new Dictionary<string, ArrangeCell> { [ArrangeKeys.Pt] = new ArrangeCell(ArrangeStep.Todo, "ICE", null, "09:50", null, true) };
 
-        var step = ArrangeWrite.Apply(Op("step", ArrangeCol.Pt), current, cells, Now, picks: Custom());
-        Assert.Equal((204, ArrangeStep.Done, "ICE"), (step.Status, step.Next!.Cells[ArrangeCol.Pt].St, step.Next.Cells[ArrangeCol.Pt].Det));
-        var set = ArrangeWrite.Apply(Op("set", ArrangeCol.Pt, "todo"), step.Next, cells, Now, picks: Custom());
-        Assert.Equal((204, ArrangeStep.Todo, "ICE"), (set.Status, set.Next!.Cells[ArrangeCol.Pt].St, set.Next.Cells[ArrangeCol.Pt].Det));
-        var removed = ArrangeWrite.Apply(Op("remove", ArrangeCol.Pt), current, cells, Now, picks: Custom());
+        var step = ArrangeWrite.Apply(Op("step", ArrangeKeys.Pt), current, cells, Now, picks: Custom());
+        Assert.Equal((204, ArrangeStep.Done, "ICE"), (step.Status, step.Next!.Cells[ArrangeKeys.Pt].St, step.Next.Cells[ArrangeKeys.Pt].Det));
+        var set = ArrangeWrite.Apply(Op("set", ArrangeKeys.Pt, "todo"), step.Next, cells, Now, picks: Custom());
+        Assert.Equal((204, ArrangeStep.Todo, "ICE"), (set.Status, set.Next!.Cells[ArrangeKeys.Pt].St, set.Next.Cells[ArrangeKeys.Pt].Det));
+        var removed = ArrangeWrite.Apply(Op("remove", ArrangeKeys.Pt), current, cells, Now, picks: Custom());
         Assert.Equal(204, removed.Status);
         Assert.Null(removed.Next);
 
         var marks = OpenMarks();
         marks.Update("V1", _ => step.Next);
-        Assert.Equal("ICE", OpenMarks().Today()["V1"].Cells[ArrangeCol.Pt].Det);
+        Assert.Equal("ICE", OpenMarks().Today()["V1"].Cells[ArrangeKeys.Pt].Det);
     }
 
     // ---- AC-3603.5 몸 한도 -----------------------------------------------------------------------------------

@@ -9,6 +9,7 @@ using System.Threading;
 using Precheck.Core.Bit;
 using Precheck.Core.Reception;
 using Precheck.Core.Reception.Http;
+using Precheck.Core.Reception.Settings;
 using Precheck.Core.Store;
 using Precheck.Core.Tests.Bit;
 using Precheck.Core.Tests.Protocol;
@@ -90,8 +91,8 @@ public class ArrangeRouteTests
             Assert.All(statuses, status => Assert.Equal(204, status));
             var mark = rig.ArrangeMarks.Today()["V1003"];
             Assert.Equal(
-                new[] { ArrangeCol.Xray, ArrangeCol.Sono, ArrangeCol.Carm, ArrangeCol.Pt, ArrangeCol.Ds, ArrangeCol.Eswt, ArrangeCol.Trac },
-                mark.Cells.Keys.OrderBy(col => col));
+                new[] { ArrangeKeys.Xray, ArrangeKeys.Sono, ArrangeKeys.Carm, ArrangeKeys.Pt, ArrangeKeys.Ds, ArrangeKeys.Eswt, ArrangeKeys.Trac },
+                mark.Cells.Keys.OrderBy(col => col, ArrangeKeys.Order));
             Assert.Equal("10:00", mark.Away);
             Assert.Equal("up", mark.Ptf?.St);
         }
@@ -195,6 +196,8 @@ public class ArrangeRouteTests
 /// <summary>
 /// ServeRig와 같은 한 벌에 ArrangeMarks·가짜 지도·오늘 처방 시각(V1001 SONO1 09:20·G1234 09:25, V1002 G1234 09:40)을 더한 것.
 /// lists가 참이면 같은 저장 폴더의 고르기 목록(ReceptionLists, spec reception-pick-lists)도 라우터에 넘긴다.
+/// settings를 넘기면 라우터가 그 설정으로 칸을 정하고(spec reception-other-clinic TASK-2), 넘기지 않으면 우리 의원 처음 값(지금 목록)이다.
+/// 라우터는 이제 가짜 지도가 아니라 설정으로 칸을 정한다. 위 코드는 우리 의원 처음 값에서도 같은 칸이다(AC-5702.2).
 /// </summary>
 internal sealed class ArrangeRig : IDisposable
 {
@@ -207,15 +210,15 @@ internal sealed class ArrangeRig : IDisposable
 
     private static readonly IReadOnlyList<ArrangeRule> FakeMap = new[]
     {
-        ArrangeRule.CodePattern(@"^G\d{4}$", ArrangeCol.Xray),
-        ArrangeRule.Code("SONO1", ArrangeCol.Sono),
-        ArrangeRule.Code("CARM1", ArrangeCol.Carm),
+        ArrangeRule.CodePattern(@"^G\d{4}$", ArrangeKeys.Xray),
+        ArrangeRule.Code("SONO1", ArrangeKeys.Sono),
+        ArrangeRule.Code("CARM1", ArrangeKeys.Carm),
     };
 
     private readonly TempFolder data = new TempFolder();
     private readonly TempFolder logs = new TempFolder();
 
-    public ArrangeRig(bool registered = true, IReadOnlyDictionary<string, Lane>? statuses = null, bool lists = false)
+    public ArrangeRig(bool registered = true, IReadOnlyDictionary<string, Lane>? statuses = null, bool lists = false, Func<ReceptionSettings>? settings = null)
     {
         Bit = new Rig();
         if (registered) Bit.Registered();
@@ -237,7 +240,7 @@ internal sealed class ArrangeRig : IDisposable
         Lists = lists ? new ReceptionLists(new StoreFolder(data.Path), Bit.Protector, Log.Note) : null;
         Router = new ReceptionRouter(
             Bit.Services, Cache, XrayMarks, Keys, new StaticFiles(new FakeStatic()), () => new[] { ServeRig.ThisPc }, Log, Clock.Now,
-            statuses ?? ServeRig.Statuses, new string[0], null, ArrangeMarks, FakeMap, Lists);
+            statuses ?? ServeRig.Statuses, new string[0], null, ArrangeMarks, FakeMap, Lists, settings);
     }
 
     /// <summary>저장 폴더(data\).</summary>

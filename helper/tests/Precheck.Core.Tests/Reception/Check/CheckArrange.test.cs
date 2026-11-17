@@ -85,8 +85,8 @@ public class CheckArrangeSqlTests
     [Fact(DisplayName = "AC-3302.4 부위 칸 찾기의 코드(SONO1·CARM1)는 지금 지도(ArrangeMap)가 sono·carm에 넣는 코드다")]
     public void OrderTextCountCodesMatchMap()
     {
-        Assert.Equal(ArrangeCol.Sono, ArrangeMap.Match("SONO1", null));
-        Assert.Equal(ArrangeCol.Carm, ArrangeMap.Match("CARM1", null));
+        Assert.Equal(ArrangeKeys.Sono, ArrangeMap.Match("SONO1", null));
+        Assert.Equal(ArrangeKeys.Carm, ArrangeMap.Match("CARM1", null));
     }
 
     [Fact(DisplayName = "AC-3302.4 IsProbe는 OrderTextCount로 만든 글만 받고(그날 범위 매개변수 표), 고친 글·다른 검사는 받지 않는다")]
@@ -176,8 +176,8 @@ public class CheckArrangeSqlTests
     [Fact(DisplayName = "AC-3302.2 칸 이름 칸(CheckField.Arrange)은 지도가 넣는 칸의 JSON 이름, 없으면 -")]
     public void ArrangeColumnField()
     {
-        Assert.Equal("col=sono", CheckField.Arrange("col", ArrangeCol.Sono).ToString());
-        Assert.Equal("col=xray", CheckField.Arrange("col", ArrangeCol.Xray).ToString());
+        Assert.Equal("col=sono", CheckField.Arrange("col", ArrangeKeys.Sono).ToString());
+        Assert.Equal("col=xray", CheckField.Arrange("col", ArrangeKeys.Xray).ToString());
         Assert.Equal("col=-", CheckField.Arrange("col", null).ToString());
     }
 }

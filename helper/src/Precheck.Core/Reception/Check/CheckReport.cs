@@ -94,8 +94,8 @@ public sealed class CheckField
         return new CheckField(key, text != null && RxNameShape.IsMatch(text) && Letter.IsMatch(text) ? text : Unknown);
     }
 
-    /// <summary>어레인지 칸(AC-3302.2): 지도가 넣는 칸의 JSON 이름(xray…), 없으면 -.</summary>
-    public static CheckField Arrange(string? key, ArrangeCol? col) => new CheckField(key, col.HasValue ? ArrangeMap.KeyOf(col.Value) : "-");
+    /// <summary>어레인지 칸(AC-3302.2): 지도가 넣는 칸 열쇠(xray…), 없으면 -, 칸 열쇠 모양(ArrangeKeys.IsMarkKey)이 아니면 ?.</summary>
+    public static CheckField Arrange(string? key, string? col) => new CheckField(key, col == null ? "-" : ArrangeKeys.IsMarkKey(col) ? col : Unknown);
 
     /// <summary>
     /// 모양 단계의 값 목록(AC-1401.7): 빈 값을 뺀 서로 다른 값이 1~4가지이고 모두 ASCII 글자·숫자 두 글자 이하나 한글 한 글자(앞뒤 공백은 뗀다)일 때만

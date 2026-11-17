@@ -41,7 +41,7 @@ public class PickMarksTests : IDisposable
     private static CellMark Cell(ArrangeStep st, string? part, params string[] tags) =>
         new CellMark(st, true, "", part, null, null, "10:00", tags);
 
-    private static VisitMark With(ArrangeCol col, CellMark cell) => new VisitMark().WithCell(col, cell);
+    private static VisitMark With(string col, CellMark cell) => new VisitMark().WithCell(col, cell);
 
     /// <summary>파일의 암호문만 바꾼다(머리는 그대로).</summary>
     private void WritePlain(string json)
@@ -60,14 +60,14 @@ public class PickMarksTests : IDisposable
     public void PartAndTagsRoundTrip()
     {
         Open().Update("V1001", _ => new VisitMark()
-            .WithCell(ArrangeCol.Sono, Cell(ArrangeStep.Todo, "오른 어깨|왼 무릎|소독", "DNA", "채혈"))
-            .WithCell(ArrangeCol.Carm, Cell(ArrangeStep.Ready, "허리", "TP")));
+            .WithCell(ArrangeKeys.Sono, Cell(ArrangeStep.Todo, "오른 어깨|왼 무릎|소독", "DNA", "채혈"))
+            .WithCell(ArrangeKeys.Carm, Cell(ArrangeStep.Ready, "허리", "TP")));
 
         var mark = Open().Today()["V1001"];
-        Assert.Equal("오른 어깨|왼 무릎|소독", mark.Cells[ArrangeCol.Sono].Part);
-        Assert.Equal(new[] { "DNA", "채혈" }, mark.Cells[ArrangeCol.Sono].Tags);
-        Assert.Equal("허리", mark.Cells[ArrangeCol.Carm].Part);
-        Assert.Equal(new[] { "TP" }, mark.Cells[ArrangeCol.Carm].Tags);
+        Assert.Equal("오른 어깨|왼 무릎|소독", mark.Cells[ArrangeKeys.Sono].Part);
+        Assert.Equal(new[] { "DNA", "채혈" }, mark.Cells[ArrangeKeys.Sono].Tags);
+        Assert.Equal("허리", mark.Cells[ArrangeKeys.Carm].Part);
+        Assert.Equal(new[] { "TP" }, mark.Cells[ArrangeKeys.Carm].Tags);
         Assert.Empty(reports);
     }
 
@@ -75,9 +75,9 @@ public class PickMarksTests : IDisposable
     public void TagsWrittenOnlyWhenPresent()
     {
         Open().Update("V1001", _ => new VisitMark()
-            .WithCell(ArrangeCol.Sono, Cell(ArrangeStep.Todo, "어깨", "DNA"))
-            .WithCell(ArrangeCol.Carm, Cell(ArrangeStep.Todo, "리덕션"))
-            .WithCell(ArrangeCol.Pt, new CellMark(ArrangeStep.Todo, true, "HP", null, null, null, "10:00")));
+            .WithCell(ArrangeKeys.Sono, Cell(ArrangeStep.Todo, "어깨", "DNA"))
+            .WithCell(ArrangeKeys.Carm, Cell(ArrangeStep.Todo, "리덕션"))
+            .WithCell(ArrangeKeys.Pt, new CellMark(ArrangeStep.Todo, true, "HP", null, null, null, "10:00")));
 
         using var document = JsonDocument.Parse(protector.LastPlain!);
         var cells = document.RootElement.GetProperty("visits").GetProperty("V1001").GetProperty("cells");
@@ -93,7 +93,7 @@ public class PickMarksTests : IDisposable
         Open().Update("V1", _ => new VisitMark(away: "10:00"));
         WritePlain(CellJson("sono", "\"오른 무릎\""));
 
-        var cell = Open().Today()["V1"].Cells[ArrangeCol.Sono];
+        var cell = Open().Today()["V1"].Cells[ArrangeKeys.Sono];
         Assert.Equal("오른 무릎", cell.Part);
         Assert.Empty(cell.Tags);
         Assert.False(cell.Tags is IList<string> list && !list.IsReadOnly, "Tags를 고칠 수 있다");
@@ -108,32 +108,32 @@ public class PickMarksTests : IDisposable
         var tags = "[" + string.Join(",", Enumerable.Range(1, 12).Select(i => "\"이름표" + i + "\"")) + "]";
         WritePlain(CellJson("sono", "\"양 가나다라마바사아자차|꼬리뼈|1|2|3|4\"", tags));
 
-        var cell = Open().Today()["V1"].Cells[ArrangeCol.Sono];
+        var cell = Open().Today()["V1"].Cells[ArrangeKeys.Sono];
         Assert.Equal("양 가나다라마바사아자차|꼬리뼈|1|2|3|4", cell.Part);
         Assert.Equal(12, cell.Tags.Count);
         Assert.Empty(reports);
 
         var marks = Open();
-        marks.Update("V2", _ => With(ArrangeCol.Carm, Cell(ArrangeStep.Todo, "없는 시술", "없는 약")));
-        Assert.Equal(new[] { "없는 약" }, Open().Today()["V2"].Cells[ArrangeCol.Carm].Tags);
+        marks.Update("V2", _ => With(ArrangeKeys.Carm, Cell(ArrangeStep.Todo, "없는 시술", "없는 약")));
+        Assert.Equal(new[] { "없는 약" }, Open().Today()["V2"].Cells[ArrangeKeys.Carm].Tags);
     }
 
     public static IEnumerable<object[]> BadCells() => new[]
     {
-        new object[] { "7줄", With(ArrangeCol.Sono, Cell(ArrangeStep.Todo, "1|2|3|4|5|6|7")) },
-        new object[] { "14글자 줄", With(ArrangeCol.Sono, Cell(ArrangeStep.Todo, "가나다라마바사아자차카타파하")) },
-        new object[] { "빈 줄", With(ArrangeCol.Sono, Cell(ArrangeStep.Todo, "어깨|")) },
-        new object[] { "빈 부위", With(ArrangeCol.Carm, Cell(ArrangeStep.Todo, "")) },
-        new object[] { "제어 글자 줄", With(ArrangeCol.Sono, Cell(ArrangeStep.Todo, "어\n깨")) },
-        new object[] { "빈 이름표", With(ArrangeCol.Sono, Cell(ArrangeStep.Todo, "어깨", "")) },
-        new object[] { "| 든 이름표", With(ArrangeCol.Sono, Cell(ArrangeStep.Todo, "어깨", "DNA|채혈")) },
-        new object[] { "11글자 이름표", With(ArrangeCol.Sono, Cell(ArrangeStep.Todo, "어깨", "가나다라마바사아자차카")) },
-        new object[] { "제어 글자 이름표", With(ArrangeCol.Carm, Cell(ArrangeStep.Todo, "허리", "T\u0007P")) },
-        new object[] { "이름표 13개", With(ArrangeCol.Sono, Cell(ArrangeStep.Todo, "어깨", Enumerable.Range(1, 13).Select(i => "t" + i).ToArray())) },
-        new object[] { "null 이름표", With(ArrangeCol.Sono, Cell(ArrangeStep.Todo, "어깨", new string[] { null! })) },
-        new object[] { "PT 칸에 이름표", With(ArrangeCol.Pt, new CellMark(ArrangeStep.Todo, true, "HP", null, null, null, "10:00", new[] { "DNA" })) },
-        new object[] { "X-RAY 칸에 이름표", With(ArrangeCol.Xray, new CellMark(ArrangeStep.Todo, true, "", null, null, null, "10:00", new[] { "DNA" })) },
-        new object[] { "PT 칸에 부위", With(ArrangeCol.Pt, new CellMark(ArrangeStep.Todo, true, "HP", "어깨", null, null, "10:00")) },
+        new object[] { "7줄", With(ArrangeKeys.Sono, Cell(ArrangeStep.Todo, "1|2|3|4|5|6|7")) },
+        new object[] { "14글자 줄", With(ArrangeKeys.Sono, Cell(ArrangeStep.Todo, "가나다라마바사아자차카타파하")) },
+        new object[] { "빈 줄", With(ArrangeKeys.Sono, Cell(ArrangeStep.Todo, "어깨|")) },
+        new object[] { "빈 부위", With(ArrangeKeys.Carm, Cell(ArrangeStep.Todo, "")) },
+        new object[] { "제어 글자 줄", With(ArrangeKeys.Sono, Cell(ArrangeStep.Todo, "어\n깨")) },
+        new object[] { "빈 이름표", With(ArrangeKeys.Sono, Cell(ArrangeStep.Todo, "어깨", "")) },
+        new object[] { "| 든 이름표", With(ArrangeKeys.Sono, Cell(ArrangeStep.Todo, "어깨", "DNA|채혈")) },
+        new object[] { "11글자 이름표", With(ArrangeKeys.Sono, Cell(ArrangeStep.Todo, "어깨", "가나다라마바사아자차카")) },
+        new object[] { "제어 글자 이름표", With(ArrangeKeys.Carm, Cell(ArrangeStep.Todo, "허리", "T\u0007P")) },
+        new object[] { "이름표 13개", With(ArrangeKeys.Sono, Cell(ArrangeStep.Todo, "어깨", Enumerable.Range(1, 13).Select(i => "t" + i).ToArray())) },
+        new object[] { "null 이름표", With(ArrangeKeys.Sono, Cell(ArrangeStep.Todo, "어깨", new string[] { null! })) },
+        new object[] { "PT 칸에 이름표", With(ArrangeKeys.Pt, new CellMark(ArrangeStep.Todo, true, "HP", null, null, null, "10:00", new[] { "DNA" })) },
+        new object[] { "X-RAY 칸에 이름표", With(ArrangeKeys.Xray, new CellMark(ArrangeStep.Todo, true, "", null, null, null, "10:00", new[] { "DNA" })) },
+        new object[] { "PT 칸에 부위", With(ArrangeKeys.Pt, new CellMark(ArrangeStep.Todo, true, "HP", "어깨", null, null, "10:00")) },
     };
 
     [Theory(DisplayName = "AC-3502.1 모양이 틀린 part·tags는 쓰지 않는다(ArgumentException, 파일 그대로)")]
@@ -169,7 +169,7 @@ public class PickMarksTests : IDisposable
 
 /// <summary>
 /// 판의 어레인지 칸 tags·part(ArrangeBuilder·Board.ToJson, AC-3502.2)와 맨 위 picks(AC-3501.4).
-/// 가짜 상태 표·가짜 지도(SONO1·CARM1)·가짜 내원(V+숫자)만 쓴다.
+/// 가짜 상태 표·우리 의원 처음 값 칸(ArrangeLayout.Ours, SONO1 → sono·CARM1 → carm)·가짜 내원(V+숫자)만 쓴다.
 /// </summary>
 public class PickBoardTests
 {
@@ -178,7 +178,6 @@ public class PickBoardTests
 
     private static readonly IReadOnlyDictionary<string, Lane> Statuses = new Dictionary<string, Lane>(StringComparer.Ordinal) { ["QA"] = Lane.Wait };
     private static readonly string[] HiddenRsu = { "Z9" };
-    private static readonly IReadOnlyList<ArrangeRule> Map = new[] { ArrangeRule.Code("SONO1", ArrangeCol.Sono), ArrangeRule.Code("CARM1", ArrangeCol.Carm) };
     private static readonly IReadOnlyDictionary<string, string> NoNames = new Dictionary<string, string>(StringComparer.Ordinal);
     private static readonly IReadOnlyDictionary<string, string> NoXray = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -190,7 +189,7 @@ public class PickBoardTests
     private BoardInput Input(params VisitRow[] visits) => new BoardInput(Day, ReadAt, visits, NoNames);
 
     private Arrange Arranged(BoardInput input, Dictionary<string, VisitMark> marks) =>
-        ArrangeBuilder.Build(input, Statuses, HiddenRsu, Map, marks, NoXray, keys);
+        ArrangeBuilder.Build(input, Statuses, HiddenRsu, ArrangeLayout.Ours, marks, NoXray, keys);
 
     private Board BoardOf(BoardInput input) => BoardBuilder.Build(input, Statuses, HiddenRsu, NoXray, keys, ReadAt);
 
@@ -206,14 +205,14 @@ public class PickBoardTests
         var marks = new Dictionary<string, VisitMark>(StringComparer.Ordinal)
         {
             ["V1"] = new VisitMark()
-                .WithCell(ArrangeCol.Sono, new CellMark(ArrangeStep.Ready, false, "", "오른 어깨|왼 무릎", "10:00", null, null, new[] { "DNA", "채혈" }))
-                .WithCell(ArrangeCol.Carm, new CellMark(ArrangeStep.Todo, false, "", "허리", null, null, null, new[] { "TP" })),
+                .WithCell(ArrangeKeys.Sono, new CellMark(ArrangeStep.Ready, false, "", "오른 어깨|왼 무릎", "10:00", null, null, new[] { "DNA", "채혈" }))
+                .WithCell(ArrangeKeys.Carm, new CellMark(ArrangeStep.Todo, false, "", "허리", null, null, null, new[] { "TP" })),
         };
         var arrange = Arranged(input, marks);
         var v1 = arrange.Rows.Single(r => r.Key == keys.KeyOf(Day, "V1"));
-        Assert.Equal(new[] { "DNA", "채혈" }, v1.Cells[ArrangeCol.Sono].Tags);
-        Assert.Equal("오른 어깨|왼 무릎", v1.Cells[ArrangeCol.Sono].Part);
-        Assert.Equal(new[] { "TP" }, v1.Cells[ArrangeCol.Carm].Tags);
+        Assert.Equal(new[] { "DNA", "채혈" }, v1.Cells[ArrangeKeys.Sono].Tags);
+        Assert.Equal("오른 어깨|왼 무릎", v1.Cells[ArrangeKeys.Sono].Part);
+        Assert.Equal(new[] { "TP" }, v1.Cells[ArrangeKeys.Carm].Tags);
 
         using var document = JsonDocument.Parse(BoardOf(input).ToJson(arrange));
         var rows = document.RootElement.GetProperty("arrange").GetProperty("rows").EnumerateArray().ToArray();
@@ -235,8 +234,8 @@ public class PickBoardTests
         var marks = new Dictionary<string, VisitMark>(StringComparer.Ordinal)
         {
             ["V1"] = new VisitMark()
-                .WithCell(ArrangeCol.Pt, new CellMark(ArrangeStep.Todo, true, "HP", null, null, null, "10:00"))
-                .WithCell(ArrangeCol.Xray, new CellMark(ArrangeStep.Todo, true, "", null, null, null, "10:01")),
+                .WithCell(ArrangeKeys.Pt, new CellMark(ArrangeStep.Todo, true, "HP", null, null, null, "10:00"))
+                .WithCell(ArrangeKeys.Xray, new CellMark(ArrangeStep.Todo, true, "", null, null, null, "10:01")),
         };
         using var document = JsonDocument.Parse(BoardOf(input).ToJson(Arranged(input, marks)));
         var cells = document.RootElement.GetProperty("arrange").GetProperty("rows")[0].GetProperty("cells");
@@ -289,13 +288,13 @@ public class PickWriteTests
     private const string Now = "10:30";
     private const string Key = "0123456789abcdef";
 
-    private static ArrangeOp Op(string op, ArrangeCol? col, string? v, string? t = null) => new ArrangeOp(Key, op, col, v, t);
+    private static ArrangeOp Op(string op, string? col, string? v, string? t = null) => new ArrangeOp(Key, op, col, v, t);
 
-    private static readonly IReadOnlyDictionary<ArrangeCol, ArrangeCell> NoCells = new Dictionary<ArrangeCol, ArrangeCell>();
+    private static readonly IReadOnlyDictionary<string, ArrangeCell> NoCells = new Dictionary<string, ArrangeCell>();
 
-    private static IReadOnlyDictionary<ArrangeCol, ArrangeCell> One(ArrangeCol col, ArrangeCell cell) => new Dictionary<ArrangeCol, ArrangeCell> { [col] = cell };
+    private static IReadOnlyDictionary<string, ArrangeCell> One(string col, ArrangeCell cell) => new Dictionary<string, ArrangeCell> { [col] = cell };
 
-    private static CellMark? CellOf(ArrangeWriteResult result, ArrangeCol col) =>
+    private static CellMark? CellOf(ArrangeWriteResult result, string col) =>
         result.Next != null && result.Next.Cells.TryGetValue(col, out var cell) ? cell : null;
 
     private static PickLists Custom() =>
@@ -320,25 +319,28 @@ public class PickWriteTests
     [Fact(DisplayName = "AC-3502.3 SONO add: v = 겹침 없는 1~6줄·t = 같이 하는 것 일부면 빈 칸에 part = v, tags = t를 \"|\"로 나눈 것(직접 넣음·넣은 시각)")]
     public void SonoAdd()
     {
-        var result = ArrangeWrite.Apply(Op("add", ArrangeCol.Sono, "오른 어깨|왼 무릎", "DNA|채혈"), null, NoCells, Now);
+        var result = ArrangeWrite.Apply(Op("add", ArrangeKeys.Sono, "오른 어깨|왼 무릎", "DNA|채혈"), null, NoCells, Now);
         Assert.Equal(204, result.Status);
-        var cell = CellOf(result, ArrangeCol.Sono)!;
+        var cell = CellOf(result, ArrangeKeys.Sono)!;
         Assert.Equal((ArrangeStep.Todo, true, "", "오른 어깨|왼 무릎", "10:30"), (cell.St, cell.Manual, cell.Det, cell.Part, cell.AddedAt));
         Assert.Equal(new[] { "DNA", "채혈" }, cell.Tags);
 
-        var plain = CellOf(ArrangeWrite.Apply(Op("add", ArrangeCol.Sono, "소독"), null, NoCells, Now), ArrangeCol.Sono)!;
+        var plain = CellOf(ArrangeWrite.Apply(Op("add", ArrangeKeys.Sono, "소독"), null, NoCells, Now), ArrangeKeys.Sono)!;
         Assert.Equal("소독", plain.Part);
         Assert.Empty(plain.Tags);
-        Assert.Empty(CellOf(ArrangeWrite.Apply(Op("add", ArrangeCol.Sono, "어깨", ""), null, NoCells, Now), ArrangeCol.Sono)!.Tags);
+        Assert.Empty(CellOf(ArrangeWrite.Apply(Op("add", ArrangeKeys.Sono, "어깨", ""), null, NoCells, Now), ArrangeKeys.Sono)!.Tags);
     }
 
-    [Fact(DisplayName = "AC-3502.3 C-ARM add: v = 시술 하나·t = 약재 0~1개면 part = 시술, tags = [약재], 약재 없음 시술은 약재 없이")]
+    [Fact(DisplayName = "AC-3502.3 C-ARM add: v = 시술(1개 이상, 목록 차례, spec reception-other-clinic AC-5703.4)·t = 약재면 part = v, tags = 약재, 약재 없음 시술만 고르면 약재 없이")]
     public void CarmAdd()
     {
-        var cell = CellOf(ArrangeWrite.Apply(Op("add", ArrangeCol.Carm, "허리", "TP"), null, NoCells, Now), ArrangeCol.Carm)!;
+        var many = CellOf(ArrangeWrite.Apply(Op("add", ArrangeKeys.Carm, "목|허리", "TP|하프"), null, NoCells, Now), ArrangeKeys.Carm)!;
+        Assert.Equal("목|허리", many.Part);
+        Assert.Equal(new[] { "TP", "하프" }, many.Tags);
+        var cell = CellOf(ArrangeWrite.Apply(Op("add", ArrangeKeys.Carm, "허리", "TP"), null, NoCells, Now), ArrangeKeys.Carm)!;
         Assert.Equal(("허리", true), (cell.Part, cell.Manual));
         Assert.Equal(new[] { "TP" }, cell.Tags);
-        var reduction = CellOf(ArrangeWrite.Apply(Op("add", ArrangeCol.Carm, "리덕션"), null, NoCells, Now), ArrangeCol.Carm)!;
+        var reduction = CellOf(ArrangeWrite.Apply(Op("add", ArrangeKeys.Carm, "리덕션"), null, NoCells, Now), ArrangeKeys.Carm)!;
         Assert.Equal("리덕션", reduction.Part);
         Assert.Empty(reduction.Tags);
     }
@@ -346,49 +348,50 @@ public class PickWriteTests
     [Fact(DisplayName = "AC-3502.3 part: 있는 SONO·C-ARM 칸에 part = v·tags = t를 넣고(전 이름표는 바뀜), 단계 옮기기는 part·tags를 남긴다")]
     public void PartSetsTagsAndStepsKeepThem()
     {
-        var current = new VisitMark().WithCell(ArrangeCol.Sono, new CellMark(ArrangeStep.Todo, false, "", "목", null, null, null, new[] { "채혈" }));
-        var cells = One(ArrangeCol.Sono, new ArrangeCell(ArrangeStep.Todo, "", "목", "09:30", 1, false));
-        var parted = ArrangeWrite.Apply(Op("part", ArrangeCol.Sono, "양 무릎", "DNA"), current, cells, Now);
+        var current = new VisitMark().WithCell(ArrangeKeys.Sono, new CellMark(ArrangeStep.Todo, false, "", "목", null, null, null, new[] { "채혈" }));
+        var cells = One(ArrangeKeys.Sono, new ArrangeCell(ArrangeStep.Todo, "", "목", "09:30", 1, false));
+        var parted = ArrangeWrite.Apply(Op("part", ArrangeKeys.Sono, "양 무릎", "DNA"), current, cells, Now);
         Assert.Equal(204, parted.Status);
-        var cell = CellOf(parted, ArrangeCol.Sono)!;
+        var cell = CellOf(parted, ArrangeKeys.Sono)!;
         Assert.Equal(("양 무릎", ArrangeStep.Todo, false), (cell.Part, cell.St, cell.Manual));
         Assert.Equal(new[] { "DNA" }, cell.Tags);
 
-        var stepped = CellOf(ArrangeWrite.Apply(new ArrangeOp(Key, "step", ArrangeCol.Sono, null), parted.Next, cells, Now), ArrangeCol.Sono)!;
+        var stepped = CellOf(ArrangeWrite.Apply(new ArrangeOp(Key, "step", ArrangeKeys.Sono, null), parted.Next, cells, Now), ArrangeKeys.Sono)!;
         Assert.Equal((ArrangeStep.Ready, "양 무릎"), (stepped.St, stepped.Part));
         Assert.Equal(new[] { "DNA" }, stepped.Tags);
-        var set = CellOf(ArrangeWrite.Apply(new ArrangeOp(Key, "set", ArrangeCol.Sono, "done"), parted.Next, cells, Now), ArrangeCol.Sono)!;
+        var set = CellOf(ArrangeWrite.Apply(new ArrangeOp(Key, "set", ArrangeKeys.Sono, "done"), parted.Next, cells, Now), ArrangeKeys.Sono)!;
         Assert.Equal(new[] { "DNA" }, set.Tags);
 
-        var carm = ArrangeWrite.Apply(Op("part", ArrangeCol.Carm, "목", "기본"), null, One(ArrangeCol.Carm, new ArrangeCell(ArrangeStep.Todo, "", null, "09:40", 1, false)), Now);
-        Assert.Equal(("목", ArrangeStep.Todo, true), (CellOf(carm, ArrangeCol.Carm)!.Part, CellOf(carm, ArrangeCol.Carm)!.St, carm.ChangesMarks));
-        Assert.Equal(new[] { "기본" }, CellOf(carm, ArrangeCol.Carm)!.Tags);
+        var carm = ArrangeWrite.Apply(Op("part", ArrangeKeys.Carm, "목", "기본"), null, One(ArrangeKeys.Carm, new ArrangeCell(ArrangeStep.Todo, "", null, "09:40", 1, false)), Now);
+        Assert.Equal(("목", ArrangeStep.Todo, true), (CellOf(carm, ArrangeKeys.Carm)!.Part, CellOf(carm, ArrangeKeys.Carm)!.St, carm.ChangesMarks));
+        Assert.Equal(new[] { "기본" }, CellOf(carm, ArrangeKeys.Carm)!.Tags);
     }
 
     public static IEnumerable<object?[]> Refused() => new[]
     {
-        new object?[] { "SONO 목록 밖 부위", "add", ArrangeCol.Sono, "꼬리뼈", null },
-        new object?[] { "SONO 7줄", "add", ArrangeCol.Sono, "목|등|허리|어깨|위팔|팔꿈치|손목", null },
-        new object?[] { "SONO 겹친 줄", "add", ArrangeCol.Sono, "어깨|어깨", null },
-        new object?[] { "SONO 쪽 글 틀림", "add", ArrangeCol.Sono, "오른쪽 어깨", null },
-        new object?[] { "SONO 같이 목록 밖", "add", ArrangeCol.Sono, "어깨", "TP" },
-        new object?[] { "SONO 같이 겹침", "add", ArrangeCol.Sono, "어깨", "DNA|DNA" },
-        new object?[] { "SONO 부위는 나중에", "add", ArrangeCol.Sono, "부위는 나중에", null },
-        new object?[] { "C-ARM 부위는 나중에", "add", ArrangeCol.Carm, "부위는 나중에", null },
-        new object?[] { "C-ARM 목록 밖 시술", "add", ArrangeCol.Carm, "어깨", null },
-        new object?[] { "C-ARM 쪽 글 + 시술", "add", ArrangeCol.Carm, "오른 허리", null },
-        new object?[] { "C-ARM 시술 둘", "add", ArrangeCol.Carm, "허리|목", null },
-        new object?[] { "C-ARM 약재 둘", "add", ArrangeCol.Carm, "허리", "TP|하프" },
-        new object?[] { "C-ARM 약재 없음 시술에 약재", "add", ArrangeCol.Carm, "리덕션", "TP" },
-        new object?[] { "C-ARM 목록 밖 약재", "add", ArrangeCol.Carm, "허리", "DNA" },
-        new object?[] { "part SONO 부위는 나중에", "part", ArrangeCol.Sono, "부위는 나중에", null },
-        new object?[] { "part C-ARM 약재 없음에 약재", "part", ArrangeCol.Carm, "리덕션", "기본" },
-        new object?[] { "PT add에 t", "add", ArrangeCol.Pt, "HP", "DNA" },
-        new object?[] { "PT add에 빈 t", "add", ArrangeCol.Pt, "HP", "" },
-        new object?[] { "X-RAY add에 t", "add", ArrangeCol.Xray, "X-ray 찍기", "DNA" },
-        new object?[] { "step에 t", "step", ArrangeCol.Sono, null, "DNA" },
-        new object?[] { "set에 t", "set", ArrangeCol.Carm, "done", "TP" },
-        new object?[] { "remove에 t", "remove", ArrangeCol.Sono, null, "DNA" },
+        new object?[] { "SONO 목록 밖 부위", "add", ArrangeKeys.Sono, "꼬리뼈", null },
+        new object?[] { "SONO 7줄", "add", ArrangeKeys.Sono, "목|등|허리|어깨|위팔|팔꿈치|손목", null },
+        new object?[] { "SONO 겹친 줄", "add", ArrangeKeys.Sono, "어깨|어깨", null },
+        new object?[] { "SONO 쪽 글 틀림", "add", ArrangeKeys.Sono, "오른쪽 어깨", null },
+        new object?[] { "SONO 같이 목록 밖", "add", ArrangeKeys.Sono, "어깨", "TP" },
+        new object?[] { "SONO 같이 겹침", "add", ArrangeKeys.Sono, "어깨", "DNA|DNA" },
+        new object?[] { "SONO 부위는 나중에", "add", ArrangeKeys.Sono, "부위는 나중에", null },
+        new object?[] { "C-ARM 부위는 나중에", "add", ArrangeKeys.Carm, "부위는 나중에", null },
+        new object?[] { "C-ARM 목록 밖 시술", "add", ArrangeKeys.Carm, "어깨", null },
+        new object?[] { "C-ARM 쪽 글 + 시술", "add", ArrangeKeys.Carm, "오른 허리", null },
+        new object?[] { "C-ARM 시술 둘(목록 차례 아님)", "add", ArrangeKeys.Carm, "허리|목", null },
+        new object?[] { "C-ARM 시술 겹침", "add", ArrangeKeys.Carm, "허리|허리", null },
+        new object?[] { "C-ARM 약재 둘(목록 차례 아님)", "add", ArrangeKeys.Carm, "허리", "하프|TP" },
+        new object?[] { "C-ARM 약재 없음 시술에 약재", "add", ArrangeKeys.Carm, "리덕션", "TP" },
+        new object?[] { "C-ARM 목록 밖 약재", "add", ArrangeKeys.Carm, "허리", "DNA" },
+        new object?[] { "part SONO 부위는 나중에", "part", ArrangeKeys.Sono, "부위는 나중에", null },
+        new object?[] { "part C-ARM 약재 없음에 약재", "part", ArrangeKeys.Carm, "리덕션", "기본" },
+        new object?[] { "PT add에 t", "add", ArrangeKeys.Pt, "HP", "DNA" },
+        new object?[] { "PT add에 빈 t", "add", ArrangeKeys.Pt, "HP", "" },
+        new object?[] { "X-RAY add에 t", "add", ArrangeKeys.Xray, "X-ray 찍기", "DNA" },
+        new object?[] { "step에 t", "step", ArrangeKeys.Sono, null, "DNA" },
+        new object?[] { "set에 t", "set", ArrangeKeys.Carm, "done", "TP" },
+        new object?[] { "remove에 t", "remove", ArrangeKeys.Sono, null, "DNA" },
         new object?[] { "away에 t", "away", null, "on", "DNA" },
         new object?[] { "ptf에 t", "ptf", null, "up", "" },
         new object?[] { "end에 t", "end", null, "on", "x" },
@@ -396,18 +399,18 @@ public class PickWriteTests
 
     [Theory(DisplayName = "AC-3502.3 지금 목록에 어긋나거나, 다른 op·칸에 t가 있거나, v가 \"부위는 나중에\"면 400이다")]
     [MemberData(nameof(Refused))]
-    public void RefusedWrites(string why, string op, ArrangeCol? col, string? v, string? t)
+    public void RefusedWrites(string why, string op, string? col, string? v, string? t)
     {
-        IReadOnlyDictionary<ArrangeCol, ArrangeCell> cells = op == "add"
+        IReadOnlyDictionary<string, ArrangeCell> cells = op == "add"
             ? NoCells
-            : new Dictionary<ArrangeCol, ArrangeCell>
+            : new Dictionary<string, ArrangeCell>
             {
-                [ArrangeCol.Sono] = new ArrangeCell(ArrangeStep.Todo, "", null, "09:30", 1, true),
-                [ArrangeCol.Carm] = new ArrangeCell(ArrangeStep.Todo, "", null, "09:30", 1, true),
+                [ArrangeKeys.Sono] = new ArrangeCell(ArrangeStep.Todo, "", null, "09:30", 1, true),
+                [ArrangeKeys.Carm] = new ArrangeCell(ArrangeStep.Todo, "", null, "09:30", 1, true),
             };
         var current = op == "add" ? null : new VisitMark()
-            .WithCell(ArrangeCol.Sono, new CellMark(ArrangeStep.Todo, true, "", "목", null, null, "09:30"))
-            .WithCell(ArrangeCol.Carm, new CellMark(ArrangeStep.Todo, true, "", "허리", null, null, "09:30"));
+            .WithCell(ArrangeKeys.Sono, new CellMark(ArrangeStep.Todo, true, "", "목", null, null, "09:30"))
+            .WithCell(ArrangeKeys.Carm, new CellMark(ArrangeStep.Todo, true, "", "허리", null, null, "09:30"));
         var result = ArrangeWrite.Apply(Op(op, col, v, t), current, cells, Now);
         Assert.True(result.Status == 400, why + " → " + result.Status);
         Assert.False(result.ChangesMarks, why);
@@ -417,29 +420,29 @@ public class PickWriteTests
     public void ChecksFollowPassedLists()
     {
         var lists = Custom();
-        Assert.Equal(204, ArrangeWrite.Apply(Op("add", ArrangeCol.Sono, "왼 꼬리뼈|드레싱", "주사"), null, NoCells, Now, picks: lists).Status);
-        Assert.Equal(204, ArrangeWrite.Apply(Op("add", ArrangeCol.Carm, "꼬리뼈", "새약"), null, NoCells, Now, picks: lists).Status);
-        Assert.Equal(400, ArrangeWrite.Apply(Op("add", ArrangeCol.Sono, "어깨"), null, NoCells, Now, picks: lists).Status);
-        Assert.Equal(400, ArrangeWrite.Apply(Op("add", ArrangeCol.Carm, "허리", "TP"), null, NoCells, Now, picks: lists).Status);
-        Assert.Equal(400, ArrangeWrite.Apply(Op("add", ArrangeCol.Sono, "꼬리뼈"), null, NoCells, Now).Status);
-        Assert.Equal(204, ArrangeWrite.Apply(Op("add", ArrangeCol.Sono, "어깨"), null, NoCells, Now).Status);
+        Assert.Equal(204, ArrangeWrite.Apply(Op("add", ArrangeKeys.Sono, "왼 꼬리뼈|드레싱", "주사"), null, NoCells, Now, picks: lists).Status);
+        Assert.Equal(204, ArrangeWrite.Apply(Op("add", ArrangeKeys.Carm, "꼬리뼈", "새약"), null, NoCells, Now, picks: lists).Status);
+        Assert.Equal(400, ArrangeWrite.Apply(Op("add", ArrangeKeys.Sono, "어깨"), null, NoCells, Now, picks: lists).Status);
+        Assert.Equal(400, ArrangeWrite.Apply(Op("add", ArrangeKeys.Carm, "허리", "TP"), null, NoCells, Now, picks: lists).Status);
+        Assert.Equal(400, ArrangeWrite.Apply(Op("add", ArrangeKeys.Sono, "꼬리뼈"), null, NoCells, Now).Status);
+        Assert.Equal(204, ArrangeWrite.Apply(Op("add", ArrangeKeys.Sono, "어깨"), null, NoCells, Now).Status);
     }
 
     [Fact(DisplayName = "AC-3502.3 PT·충격파 등 다른 칸의 add 목록은 그대로이고 SONO·C-ARM 옛 부위 목록·\"부위는 나중에\"는 ArrangeChoices에 없다")]
     public void OtherChoicesUnchanged()
     {
-        var lists = PickLists.Defaults;
-        Assert.Equal(new[] { "X-ray 찍기" }, ArrangeChoices.AddOf(ArrangeCol.Xray, lists));
-        Assert.Equal(new[] { "ICE", "HP" }, ArrangeChoices.AddOf(ArrangeCol.Pt, lists));
-        Assert.Equal(new[] { "30분", "50분" }, ArrangeChoices.AddOf(ArrangeCol.Ds, lists));
-        Assert.Equal(new[] { "목", "허리" }, ArrangeChoices.AddOf(ArrangeCol.Trac, lists));
-        Assert.Equal(20, ArrangeChoices.AddOf(ArrangeCol.Eswt, lists).Count);
-        Assert.Empty(ArrangeChoices.AddOf(ArrangeCol.Sono, lists));
-        Assert.Empty(ArrangeChoices.AddOf(ArrangeCol.Carm, lists));
+        var layout = ArrangeLayout.Ours;
+        Assert.True(ArrangeChoices.IsAdd(layout, ArrangeKeys.Xray, "X-ray 찍기", null));
+        Assert.All(new[] { "ICE", "HP" }, v => Assert.True(ArrangeChoices.IsAdd(layout, ArrangeKeys.Pt, v, null), v));
+        Assert.All(new[] { "30분", "50분" }, v => Assert.True(ArrangeChoices.IsAdd(layout, ArrangeKeys.Ds, v, null), v));
+        Assert.All(new[] { "목", "허리" }, v => Assert.True(ArrangeChoices.IsAdd(layout, ArrangeKeys.Trac, v, null), v));
+        Assert.All(new[] { "1부위", "4부위", "2000타|1부위", "6000타|4부위" }, v => Assert.True(ArrangeChoices.IsAdd(layout, ArrangeKeys.Eswt, v, null), v));
+        Assert.False(ArrangeChoices.IsAdd(layout, ArrangeKeys.Sono, "부위는 나중에", null));
+        Assert.False(ArrangeChoices.IsAdd(layout, ArrangeKeys.Carm, "부위는 나중에", null));
         var members = typeof(ArrangeChoices).GetMembers().Select(m => m.Name).ToArray();
         Assert.DoesNotContain("Parts", members);
         Assert.DoesNotContain("PartLater", members);
-        Assert.Equal(204, ArrangeWrite.Apply(Op("add", ArrangeCol.Pt, "HP"), null, NoCells, Now).Status);
-        Assert.Equal(400, ArrangeWrite.Apply(Op("add", ArrangeCol.Pt, "도수"), null, NoCells, Now).Status);
+        Assert.Equal(204, ArrangeWrite.Apply(Op("add", ArrangeKeys.Pt, "HP"), null, NoCells, Now).Status);
+        Assert.Equal(400, ArrangeWrite.Apply(Op("add", ArrangeKeys.Pt, "도수"), null, NoCells, Now).Status);
     }
 }

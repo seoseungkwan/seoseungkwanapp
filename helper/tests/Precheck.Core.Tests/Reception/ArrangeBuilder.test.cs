@@ -10,7 +10,7 @@ namespace Precheck.Core.Tests.Reception.ArrangeBoard;
 
 /// <summary>
 /// 어레인지 자료 만들기(ArrangeBuilder·Board.ToJson(arrange), spec reception-arrange design.md 7절, REQ-3305·AC-3301.3).
-/// 가짜 상태 표·가짜 지도(X-ray ^G\d{4}$, SONO1·CARM1, 이름에 '초음파'면 SONO)·가짜 내원(V+숫자)만 쓴다.
+/// 가짜 상태 표·우리 의원 처음 값 칸(ArrangeLayout.Ours: X-ray G 촬영 코드, SONO1·EB422 등 → SONO, CARM1 → C-ARM, spec reception-other-clinic AC-5702.2)·가짜 내원(V+숫자)만 쓴다.
 /// </summary>
 public class ArrangeBuilderTests
 {
@@ -24,17 +24,9 @@ public class ArrangeBuilderTests
 
     private static readonly string[] HiddenRsu = { "Z9" };
 
-    private static readonly IReadOnlyList<ArrangeRule> Map = new[]
-    {
-        ArrangeRule.CodePattern(@"^G\d{4}$", ArrangeCol.Xray),
-        ArrangeRule.Code("SONO1", ArrangeCol.Sono),
-        ArrangeRule.Code("CARM1", ArrangeCol.Carm),
-        ArrangeRule.NameContains("초음파", ArrangeCol.Sono),
-    };
-
     private static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        ["US9"] = "무릎 초음파",
+        ["EB422"] = "흉부 초음파",
         ["ESWT7"] = "체외충격파",
     };
 
@@ -67,7 +59,7 @@ public class ArrangeBuilderTests
 
         public BoardInput Input() => new BoardInput(Day, ReadAt, Visits.ToArray(), Names);
 
-        public Arrange Build() => ArrangeBuilder.Build(Input(), Statuses, HiddenRsu, Map, Marks, Xray, Keys);
+        public Arrange Build() => ArrangeBuilder.Build(Input(), Statuses, HiddenRsu, ArrangeLayout.Ours, Marks, Xray, Keys);
 
         public string Key(string visit) => Keys.KeyOf(Day, visit);
 
@@ -81,7 +73,7 @@ public class ArrangeBuilderTests
         public ArrangeRow Row(string visit) => Build().Rows.Single(r => r.Key == Key(visit));
     }
 
-    private static ArrangeCell? CellOf(Scene scene, string visit, ArrangeCol col) =>
+    private static ArrangeCell? CellOf(Scene scene, string visit, string col) =>
         scene.Row(visit).Cells.TryGetValue(col, out var cell) ? cell : null;
 
     // ---- AC-3305.1 /api/board 답에 더함 -------------------------------------------------------------
@@ -181,12 +173,12 @@ public class ArrangeBuilderTests
             Visit("V1", "QA", "0900", null, null, Order("SONO1", "09:30")),
             Visit("V2", "QB", "0905", null, null, Order("SONO1", "09:31")),
             Visit("V3", "QC", "0910", null, null, Order("CARM1", "09:32")));
-        scene.With("V2", new VisitMark().WithCell(ArrangeCol.Sono, Mark(ArrangeStep.Ready, readyAt: "10:05")));
-        scene.With("V3", new VisitMark().WithCell(ArrangeCol.Carm, Mark(ArrangeStep.Done, readyAt: "10:00", doneAt: "10:20")));
+        scene.With("V2", new VisitMark().WithCell(ArrangeKeys.Sono, Mark(ArrangeStep.Ready, readyAt: "10:05")));
+        scene.With("V3", new VisitMark().WithCell(ArrangeKeys.Carm, Mark(ArrangeStep.Done, readyAt: "10:00", doneAt: "10:20")));
 
-        var todo = CellOf(scene, "V1", ArrangeCol.Sono)!;
-        var ready = CellOf(scene, "V2", ArrangeCol.Sono)!;
-        var done = CellOf(scene, "V3", ArrangeCol.Carm)!;
+        var todo = CellOf(scene, "V1", ArrangeKeys.Sono)!;
+        var ready = CellOf(scene, "V2", ArrangeKeys.Sono)!;
+        var done = CellOf(scene, "V3", ArrangeKeys.Carm)!;
 
         Assert.Equal((ArrangeStep.Todo, "09:30", false, ""), (todo.St, todo.At, todo.Manual, todo.Det));
         Assert.Equal((ArrangeStep.Ready, "10:05", false), (ready.St, ready.At, ready.Manual));
@@ -198,15 +190,15 @@ public class ArrangeBuilderTests
     {
         var scene = new Scene().Add(Visit("V1", "QA", "0900", null, null, Order("SONO1", "09:30"), Order("G1234", "09:30")));
         scene.With("V1", new VisitMark()
-            .WithCell(ArrangeCol.Carm, Mark(ArrangeStep.Todo, manual: true, addedAt: "09:50"))
-            .WithCell(ArrangeCol.Sono, Mark(ArrangeStep.Gone)));
+            .WithCell(ArrangeKeys.Carm, Mark(ArrangeStep.Todo, manual: true, addedAt: "09:50"))
+            .WithCell(ArrangeKeys.Sono, Mark(ArrangeStep.Gone)));
 
         var row = scene.Row("V1");
 
-        Assert.False(row.Cells.ContainsKey(ArrangeCol.Sono));
-        var carm = row.Cells[ArrangeCol.Carm];
+        Assert.False(row.Cells.ContainsKey(ArrangeKeys.Sono));
+        var carm = row.Cells[ArrangeKeys.Carm];
         Assert.Equal((ArrangeStep.Todo, "09:50", true), (carm.St, carm.At, carm.Manual));
-        Assert.Equal((ArrangeStep.Todo, "09:30", false), (row.Cells[ArrangeCol.Xray].St, row.Cells[ArrangeCol.Xray].At, row.Cells[ArrangeCol.Xray].Manual));
+        Assert.Equal((ArrangeStep.Todo, "09:30", false), (row.Cells[ArrangeKeys.Xray].St, row.Cells[ArrangeKeys.Xray].At, row.Cells[ArrangeKeys.Xray].Manual));
     }
 
     [Fact(DisplayName = "AC-3305.4 직접 칸(pt·ds·eswt·trac)은 처방을 보지 않고 표시로만 생기며 늘 manual true, 칸 글은 표시의 det다")]
@@ -216,35 +208,35 @@ public class ArrangeBuilderTests
         Assert.Empty(scene.Row("V1").Cells);
 
         scene.With("V1", new VisitMark()
-            .WithCell(ArrangeCol.Pt, Mark(ArrangeStep.Done, manual: true, det: "HP", addedAt: "09:40", doneAt: "10:00"))
-            .WithCell(ArrangeCol.Eswt, Mark(ArrangeStep.Todo, manual: false, det: "2부위", addedAt: "09:41")));
+            .WithCell(ArrangeKeys.Pt, Mark(ArrangeStep.Done, manual: true, det: "HP", addedAt: "09:40", doneAt: "10:00"))
+            .WithCell(ArrangeKeys.Eswt, Mark(ArrangeStep.Todo, manual: false, det: "2부위", addedAt: "09:41")));
 
         var row = scene.Row("V1");
-        Assert.Equal((ArrangeStep.Done, "HP", "10:00", true), (row.Cells[ArrangeCol.Pt].St, row.Cells[ArrangeCol.Pt].Det, row.Cells[ArrangeCol.Pt].At, row.Cells[ArrangeCol.Pt].Manual));
-        Assert.Equal((ArrangeStep.Todo, "2부위", "09:41", true), (row.Cells[ArrangeCol.Eswt].St, row.Cells[ArrangeCol.Eswt].Det, row.Cells[ArrangeCol.Eswt].At, row.Cells[ArrangeCol.Eswt].Manual));
+        Assert.Equal((ArrangeStep.Done, "HP", "10:00", true), (row.Cells[ArrangeKeys.Pt].St, row.Cells[ArrangeKeys.Pt].Det, row.Cells[ArrangeKeys.Pt].At, row.Cells[ArrangeKeys.Pt].Manual));
+        Assert.Equal((ArrangeStep.Todo, "2부위", "09:41", true), (row.Cells[ArrangeKeys.Eswt].St, row.Cells[ArrangeKeys.Eswt].Det, row.Cells[ArrangeKeys.Eswt].At, row.Cells[ArrangeKeys.Eswt].Manual));
     }
 
     [Fact(DisplayName = "AC-3305.4 처방이 사라진(직접 넣지 않은) 칸의 표시만 남으면 칸이 없다")]
     public void MarkWithoutOrder()
     {
         var scene = new Scene().Add(Visit("V1", "QA", "0900"));
-        scene.With("V1", new VisitMark().WithCell(ArrangeCol.Sono, Mark(ArrangeStep.Ready, readyAt: "10:00")));
+        scene.With("V1", new VisitMark().WithCell(ArrangeKeys.Sono, Mark(ArrangeStep.Ready, readyAt: "10:00")));
 
         Assert.Empty(scene.Row("V1").Cells);
     }
 
     // ---- AC-3301.3 같은 칸 모으기 --------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-3301.3 한 내원의 오늘 처방 여럿이 같은 칸에 들면 칸은 하나이고 시각은 가장 이른 것, 부위는 처음 빈 글 아닌 것이다(이름 규칙 포함)")]
+    [Fact(DisplayName = "AC-3301.3 한 내원의 오늘 처방 여럿이 같은 칸에 들면 칸은 하나이고 시각은 가장 이른 것, 부위는 처음 빈 글 아닌 것이다(다른 코드 포함)")]
     public void SameColumnMerged()
     {
         var scene = new Scene().Add(Visit("V1", "QA", "0900", null, null,
-            Order("SONO1", "09:40", null), Order("US9", "09:35", ""), Order("SONO1", null, "오른 어깨"), Order("SONO1", "09:50", "왼 무릎")));
+            Order("SONO1", "09:40", null), Order("EB422", "09:35", ""), Order("SONO1", null, "오른 어깨"), Order("SONO1", "09:50", "왼 무릎")));
 
         var row = scene.Row("V1");
 
         Assert.Single(row.Cells);
-        var sono = row.Cells[ArrangeCol.Sono];
+        var sono = row.Cells[ArrangeKeys.Sono];
         Assert.Equal("09:35", sono.At);
         Assert.Equal("오른 어깨", sono.Part);
     }
@@ -261,20 +253,20 @@ public class ArrangeBuilderTests
             Visit("V4", "QC", "0915", null, null, Order("SONO1", "09:00")),
             Visit("V5", "QA", "0920", null, null, Order("SONO1", "09:05")),
             Visit("V6", "QA", "0925"));
-        scene.With("V2", new VisitMark().WithCell(ArrangeCol.Sono, Mark(ArrangeStep.Ready, readyAt: "10:30")));
-        scene.With("V4", new VisitMark().WithCell(ArrangeCol.Sono, Mark(ArrangeStep.Done, doneAt: "09:30")));
+        scene.With("V2", new VisitMark().WithCell(ArrangeKeys.Sono, Mark(ArrangeStep.Ready, readyAt: "10:30")));
+        scene.With("V4", new VisitMark().WithCell(ArrangeKeys.Sono, Mark(ArrangeStep.Done, doneAt: "09:30")));
         scene.With("V5", new VisitMark(endedAt: "10:00"));
-        scene.With("V6", new VisitMark().WithCell(ArrangeCol.Carm, Mark(ArrangeStep.Todo, manual: true, addedAt: "09:44")));
+        scene.With("V6", new VisitMark().WithCell(ArrangeKeys.Carm, Mark(ArrangeStep.Todo, manual: true, addedAt: "09:44")));
 
-        int? Ord(string visit, ArrangeCol col) => CellOf(scene, visit, col)?.Ord;
+        int? Ord(string visit, string col) => CellOf(scene, visit, col)?.Ord;
 
-        Assert.Equal(1, Ord("V2", ArrangeCol.Sono));
-        Assert.Equal(2, Ord("V1", ArrangeCol.Sono));
-        Assert.Equal(3, Ord("V3", ArrangeCol.Sono));
-        Assert.Null(Ord("V4", ArrangeCol.Sono));
-        Assert.Equal(1, Ord("V6", ArrangeCol.Carm));
-        Assert.Equal(2, Ord("V2", ArrangeCol.Carm));
-        Assert.Null(Ord("V1", ArrangeCol.Xray));
+        Assert.Equal(1, Ord("V2", ArrangeKeys.Sono));
+        Assert.Equal(2, Ord("V1", ArrangeKeys.Sono));
+        Assert.Equal(3, Ord("V3", ArrangeKeys.Sono));
+        Assert.Null(Ord("V4", ArrangeKeys.Sono));
+        Assert.Equal(1, Ord("V6", ArrangeKeys.Carm));
+        Assert.Equal(2, Ord("V2", ArrangeKeys.Carm));
+        Assert.Null(Ord("V1", ArrangeKeys.Xray));
     }
 
     [Fact(DisplayName = "AC-3305.5 처방 시각을 모르는 칸(비트 시각 칸이 비거나 모양이 틀림)은 todo·at null(JSON \"at\":null)이고 순서는 시각 있는 칸 뒤다")]
@@ -284,9 +276,9 @@ public class ArrangeBuilderTests
             Visit("V1", "QA", "0900", null, null, Order("SONO1", null)),
             Visit("V2", "QA", "0905", null, null, Order("SONO1", "09:50")));
 
-        var unknown = CellOf(scene, "V1", ArrangeCol.Sono)!;
+        var unknown = CellOf(scene, "V1", ArrangeKeys.Sono)!;
         Assert.Equal((ArrangeStep.Todo, (string?)null, (int?)2), (unknown.St, unknown.At, unknown.Ord));
-        Assert.Equal(1, CellOf(scene, "V2", ArrangeCol.Sono)!.Ord);
+        Assert.Equal(1, CellOf(scene, "V2", ArrangeKeys.Sono)!.Ord);
         var cell = scene.Json().GetProperty("arrange").GetProperty("rows")[0].GetProperty("cells").GetProperty("sono");
         Assert.Equal(JsonValueKind.Null, cell.GetProperty("at").ValueKind);
     }
@@ -301,15 +293,15 @@ public class ArrangeBuilderTests
             Visit("V2", "QB", "0905"),
             Visit("V3", "QA", "0910", null, null, Order("G1234", "09:12")),
             Visit("V4", "QA", "0915"));
-        scene.With("V4", new VisitMark().WithCell(ArrangeCol.Xray, Mark(ArrangeStep.Todo, manual: true, addedAt: "09:20")));
+        scene.With("V4", new VisitMark().WithCell(ArrangeKeys.Xray, Mark(ArrangeStep.Todo, manual: true, addedAt: "09:20")));
         scene.Xray["V1"] = "09:55";
         scene.Xray["V2"] = "10:01";
         scene.Xray["V4"] = "10:02";
 
-        Assert.Equal((ArrangeStep.Done, "09:55", false), Tuple(CellOf(scene, "V1", ArrangeCol.Xray)!));
-        Assert.Equal((ArrangeStep.Done, "10:01", true), Tuple(CellOf(scene, "V2", ArrangeCol.Xray)!));
-        Assert.Equal((ArrangeStep.Todo, "09:12", false), Tuple(CellOf(scene, "V3", ArrangeCol.Xray)!));
-        Assert.Equal((ArrangeStep.Done, "10:02", true), Tuple(CellOf(scene, "V4", ArrangeCol.Xray)!));
+        Assert.Equal((ArrangeStep.Done, "09:55", false), Tuple(CellOf(scene, "V1", ArrangeKeys.Xray)!));
+        Assert.Equal((ArrangeStep.Done, "10:01", true), Tuple(CellOf(scene, "V2", ArrangeKeys.Xray)!));
+        Assert.Equal((ArrangeStep.Todo, "09:12", false), Tuple(CellOf(scene, "V3", ArrangeKeys.Xray)!));
+        Assert.Equal((ArrangeStep.Done, "10:02", true), Tuple(CellOf(scene, "V4", ArrangeKeys.Xray)!));
     }
 
     private static (ArrangeStep, string?, bool) Tuple(ArrangeCell cell) => (cell.St, cell.At, cell.Manual);
@@ -322,12 +314,12 @@ public class ArrangeBuilderTests
         var scene = new Scene().Add(
             Visit("V1", "QA", "0900", null, null, Order("SONO1", "09:10", "목"), Order("CARM1", "09:11", "허리")),
             Visit("V2", "QA", "0905", null, null, Order("SONO1", "09:12"), Order("G1234", "09:13", "목")));
-        scene.With("V1", new VisitMark().WithCell(ArrangeCol.Sono, Mark(ArrangeStep.Todo, part: "왼 어깨")));
+        scene.With("V1", new VisitMark().WithCell(ArrangeKeys.Sono, Mark(ArrangeStep.Todo, part: "왼 어깨")));
 
-        Assert.Equal("왼 어깨", CellOf(scene, "V1", ArrangeCol.Sono)!.Part);
-        Assert.Equal("허리", CellOf(scene, "V1", ArrangeCol.Carm)!.Part);
-        Assert.Null(CellOf(scene, "V2", ArrangeCol.Sono)!.Part);
-        Assert.Null(CellOf(scene, "V2", ArrangeCol.Xray)!.Part);
+        Assert.Equal("왼 어깨", CellOf(scene, "V1", ArrangeKeys.Sono)!.Part);
+        Assert.Equal("허리", CellOf(scene, "V1", ArrangeKeys.Carm)!.Part);
+        Assert.Null(CellOf(scene, "V2", ArrangeKeys.Sono)!.Part);
+        Assert.Null(CellOf(scene, "V2", ArrangeKeys.Xray)!.Part);
     }
 
     // ---- AC-3305.8 allDone ---------------------------------------------------------------------------
@@ -339,9 +331,9 @@ public class ArrangeBuilderTests
             Visit("V1", "QA", "0900", null, null, Order("SONO1", "09:10")),
             Visit("V2", "QA", "0905", null, null, Order("SONO1", "09:10")),
             Visit("V3", "QA", "0910"));
-        scene.With("V1", new VisitMark().WithCell(ArrangeCol.Sono, Mark(ArrangeStep.Done, doneAt: "09:40"))
-            .WithCell(ArrangeCol.Pt, Mark(ArrangeStep.Done, manual: true, det: "ICE", addedAt: "09:00", doneAt: "09:30")));
-        scene.With("V2", new VisitMark().WithCell(ArrangeCol.Pt, Mark(ArrangeStep.Done, manual: true, det: "ICE", addedAt: "09:00", doneAt: "09:30")));
+        scene.With("V1", new VisitMark().WithCell(ArrangeKeys.Sono, Mark(ArrangeStep.Done, doneAt: "09:40"))
+            .WithCell(ArrangeKeys.Pt, Mark(ArrangeStep.Done, manual: true, det: "ICE", addedAt: "09:00", doneAt: "09:30")));
+        scene.With("V2", new VisitMark().WithCell(ArrangeKeys.Pt, Mark(ArrangeStep.Done, manual: true, det: "ICE", addedAt: "09:00", doneAt: "09:30")));
 
         Assert.True(scene.Row("V1").AllDone);
         Assert.False(scene.Row("V2").AllDone);
