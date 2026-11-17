@@ -75,7 +75,7 @@ describe('AC-4905.7 다른 기기: 마감한 날의 합계·지출만', () => {
     expect(visits.getByText('58.7%')).toBeTruthy() // 물리치료 61/104
     const rates = card(/^예약 · Block 전환/)
     expect(rates.getByText('66.7%')).toBeTruthy() // 신환 예약률 6/9
-    expect(rates.getByText('신환 9명 중 6명 · 주사치료·진료(경과) 예약만')).toBeTruthy()
+    expect(rates.getByText('신환 9명 중 6명 · 예약률 ○ 종류 예약만')).toBeTruthy()
     expect(rates.getByText('90일초진 6명 중 3명')).toBeTruthy()
     expect(rates.getByText('17/23')).toBeTruthy()
     expect(rates.getByText('73.9%')).toBeTruthy()
@@ -128,5 +128,15 @@ describe('AC-4905.7 다른 기기: 마감한 날의 합계·지출만', () => {
   it('AC-4905.7: 읽는 중', () => {
     show({ status: 'loading', closed: null, spends: [] })
     expect(screen.getByRole('status').textContent).toBe('불러오는 중이에요')
+  })
+})
+
+// ── 2026-11-17 검토 고침(spec sunap-kinds AC-5503.7): 서버 숫자 화면은 설정을 읽지 않으니 종류 이름을 늘어놓지 않는다 ─────────
+describe('AC-5503.7 서버 숫자 화면의 예약률 아래 글', () => {
+  it.each(['device', 'old-helper', 'old-day'] as const)('AC-5503.7: %s 화면은 "예약률 ○ 종류 예약만"이고 종류 이름을 늘어놓지 않는다', (reason) => {
+    show({ status: 'ready', closed: CLOSED, spends: SPENDS }, reason)
+    const rates = card(/^예약 · Block 전환/)
+    expect(rates.getByText('신환 9명 중 6명 · 예약률 ○ 종류 예약만')).toBeTruthy()
+    expect(rates.queryByText(/주사치료·진료\(경과\) 예약만/)).toBeNull()
   })
 })

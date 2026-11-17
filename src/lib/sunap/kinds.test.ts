@@ -164,17 +164,17 @@ describe('AC-5501.2 readKinds — 저장·Worker가 받는 종류 목록 검사'
     ['빈 말', ['도수', '']],
     ['빈칸뿐인 말', ['   ']],
     ['21자 말', ['ㄱ'.repeat(WORD_MAX + 1)]],
-    ['이은 글 41자', ['ㄱ'.repeat(20), 'ㄴ'.repeat(19)]],
-    ['짧은 말이 많아 이은 글 41자', Array.from({ length: 14 }, (_, i) => String.fromCharCode(0xac00 + i)).concat('가나')],
+    ['","로 이은 글 41자', ['ㄱ'.repeat(20), 'ㄴ'.repeat(20)]],
+    ['짧은 말이 많아 ","로 이은 글 41자', Array.from({ length: 21 }, (_, i) => String.fromCharCode(0xac00 + i))],
   ])('AC-5501.2: 말이 틀리면(%s) null', (_label, words) => {
     expect(readKinds(withKind(2, { words }))).toBeNull()
   })
 
-  it('AC-5501.2: 말은 앞뒤 빈칸 뺀 1~20자, 한 종류의 말을 ", "로 이은 글이 40자 이하면 맞고, 읽은 값은 앞뒤 빈칸을 뺀 말이다', () => {
+  it('AC-5501.2: 말은 앞뒤 빈칸 뺀 1~20자, 한 종류의 말을 ","로 이은 글이 40자 이하면 맞고, 읽은 값은 앞뒤 빈칸을 뺀 말이다', () => {
     expect(readKinds(withKind(2, { words: ['ㄱ'.repeat(20)] }))?.[2].words).toEqual(['ㄱ'.repeat(20)])
-    // 19 + ', ' + 19 = 40자
+    // 19 + ',' + 19 = 39자
     expect(readKinds(withKind(2, { words: ['ㄱ'.repeat(19), 'ㄴ'.repeat(19)] }))?.[2].words).toHaveLength(2)
-    // 앞뒤 빈칸은 세지 않는다: 20 + 2 + 18 = 40자
+    // 앞뒤 빈칸은 세지 않는다: 20 + 1 + 18 = 39자
     expect(readKinds(withKind(2, { words: [`  ${'ㄱ'.repeat(20)} `, ` ${'ㄴ'.repeat(18)} `] }))?.[2].words).toEqual([
       'ㄱ'.repeat(20),
       'ㄴ'.repeat(18),
@@ -281,6 +281,25 @@ describe('AC-5502.4 종류 id 모양 — 직접 고르기·마감 고정값', ()
     for (const bad of ['x', 'k12345', 'NONE', '', 0, null]) {
       expect(isHandKind(bad)).toBe(false)
       expect(isFixedKind(bad)).toBe(false)
+    }
+  })
+})
+
+// ── 2026-11-17 검토 고침: 말 길이는 ','로 이은 글로 잰다(말 칸 40자 안에서 적은 글은 다듬은 뒤에도 늘 맞게) ─────────
+describe('AC-5501.2 말 길이는 ","로 이은 글', () => {
+  it('AC-5501.2: 띄어쓰기 없이 쉼표로 적은 37자 말(", "로 이으면 44자)도 맞고, ","로 이어 41자면 아니다', () => {
+    const words = ['도수치료', '수기치료', '도수', '수기', '체외충격파', '충격파', 'ESWT', 'manual']
+    expect(words.join(',')).toHaveLength(37)
+    expect(readKinds(withKind(2, { words }))?.[2].words).toEqual(words)
+    expect(readKinds(withKind(2, { words: ['ㄱ'.repeat(20), 'ㄴ'.repeat(20)] }))).toBeNull()
+    expect(readKinds(withKind(2, { words: ['ㄱ'.repeat(20), 'ㄴ'.repeat(19)] }))?.[2].words).toHaveLength(2)
+  })
+
+  it('AC-5501.2·AC-5501.3: 40자 안에서 쉼표(,·，)로 적은 어떤 글도 splitWords로 다듬으면 readKinds가 받는다', () => {
+    const texts = ['a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t', '도수치료,수기치료,도수,수기,체외충격파,충격파,ESWT,manual', ` 가 ，나 , 다,,라 ,${'ㅁ'.repeat(20)}`]
+    for (const text of texts) {
+      expect(text.length).toBeLessThanOrEqual(40)
+      expect(readKinds(withKind(2, { words: splitWords(text) })), text).not.toBeNull()
     }
   })
 })

@@ -685,7 +685,7 @@ describe('saveSunapSettings', () => {
     ['말에 숫자', kindAt(2, { words: [1] })],
     ['빈 말', kindAt(2, { words: ['도수', ' '] })],
     ['말 21자', kindAt(2, { words: ['ㄱ'.repeat(21)] })],
-    ['이은 말 41자', kindAt(2, { words: ['ㄱ'.repeat(20), 'ㄴ'.repeat(19)] })],
+    ['","로 이은 말 41자', kindAt(2, { words: ['ㄱ'.repeat(20), 'ㄴ'.repeat(20)] })],
   ])('AC-5501.2: 종류 목록이 틀리면(%s) 보내지 않고 failed다', async (_name, kinds) => {
     const { client, calls } = fakeClient()
     expect((await caught(() => saveSunapSettings(client, { ...SETTINGS, kinds } as SunapSettings))).kind).toBe('failed')

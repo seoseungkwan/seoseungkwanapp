@@ -91,7 +91,7 @@ export function RemoteView({ server, reason, onRetry }: { server: ServerDayView;
       )}
       {server.status === 'ready' &&
         (server.closed ? (
-          <SunapCards totals={server.closed.totals} spends={server.spends} />
+          <SunapCards totals={server.closed.totals} spends={server.spends} reserved={null} />
         ) : (
           <section className="grid justify-items-center gap-2 rounded-control border border-line bg-surface px-5 py-6 text-center">
             <b className="text-body font-semibold text-ink">아직 마감 전이에요</b>

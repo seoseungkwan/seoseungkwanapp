@@ -741,7 +741,7 @@ describe('AC-5502.4 load의 종류 목록(kinds)·직접 고른 값·고정값 �
     ['같은 이름', [...BASE, { ...DOSU, label: '기타' }]],
     ['counts 글자', [...BASE, { ...DOSU, counts: 'true' }]],
     ['말 21자', [...BASE, { ...DOSU, words: ['ㄱ'.repeat(21)] }]],
-    ['이은 말 41자', [...BASE, { ...DOSU, words: ['ㄱ'.repeat(20), 'ㄴ'.repeat(19)] }]],
+    ['","로 이은 말 41자', [...BASE, { ...DOSU, words: ['ㄱ'.repeat(20), 'ㄴ'.repeat(20)] }]],
     ['종류 11개', [...BASE, ...Array.from({ length: 8 }, (_, i) => ({ ...DOSU, id: `kdosu0${i}`, label: `도수 ${i}` }))]],
   ])('AC-5502.4: load의 kinds가 틀리면(%s) E-BRIDGE-REJECTED', async (label, kinds) => {
     const h = harness()

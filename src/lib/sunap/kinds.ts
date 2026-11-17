@@ -13,10 +13,11 @@ export const KIND_MIN = BASE_KIND_IDS.length
 export const KIND_MAX = 10
 export const LABEL_MAX = 10
 export const WORD_MAX = 20
-/** 한 종류의 말을 ', '로 이은 글 길이 한도 */
+/** 한 종류의 말을 ','로 이은 글 길이 한도(말 칸 글자 수와 같음) */
 export const WORDS_TEXT_MAX = 40
 
-const WORD_SEP = ', '
+// 말 길이는 ','로 이은 글로 잰다: 말 칸(40자)에 쉼표로 적은 글은 다듬어도(splitWords) 길어지지 않는다(2026-11-17 검토)
+const WORD_SEP = ','
 // 36진수 글자 차례(아래 차례로 찾기와 같다)
 const ID_CHARS = '0123456789abcdefghijklmnopqrstuvwxyz'
 // random이 겹치는 id만 내면 이만큼 해 보고 차례로 찾는다

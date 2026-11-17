@@ -135,19 +135,27 @@ function KindRow({
       >
         {n}
       </span>
-      <input
-        id={idOf('label')}
-        type="text"
-        aria-label={`${n}번째 종류 이름`}
-        placeholder="이름 (예: 도수치료)"
-        autoComplete="off"
-        autoFocus={fresh}
-        maxLength={LABEL_MAX}
-        value={draft.label}
-        onChange={(event) => onChange({ label: event.target.value })}
-        className={`${BOX} col-start-2 row-start-1 font-semibold`}
-        {...bad('label')}
-      />
+      {/* 이름 오류 글은 이름 칸 바로 아래(같은 칸 안), 말 오류 글은 말 줄 아래(2026-11-17 검토) */}
+      <div className="col-start-2 row-start-1 grid min-w-0 gap-1">
+        <input
+          id={idOf('label')}
+          type="text"
+          aria-label={`${n}번째 종류 이름`}
+          placeholder="이름 (예: 도수치료)"
+          autoComplete="off"
+          autoFocus={fresh}
+          maxLength={LABEL_MAX}
+          value={draft.label}
+          onChange={(event) => onChange({ label: event.target.value })}
+          className={`${BOX} font-semibold`}
+          {...bad('label')}
+        />
+        {problem?.field === 'label' && (
+          <p id={idOf('error')} className={ds.fieldError}>
+            {problem.text}
+          </p>
+        )}
+      </div>
       <div className="col-start-3 row-start-1 flex items-center gap-1.5 max-md:col-span-2 max-md:col-start-2 max-md:row-start-2">
         <span className="text-caption text-muted md:hidden">예약률</span>
         <div role="group" aria-label={`${draft.label.trim() || `${n}번째 종류`} 예약률`} className="inline-flex overflow-clip rounded-control border border-line-strong">
@@ -192,7 +200,7 @@ function KindRow({
           {...bad('words')}
         />
       </div>
-      {problem !== undefined && (
+      {problem?.field === 'words' && (
         <p id={idOf('error')} className={`${ds.fieldError} col-span-3 col-start-2 row-start-3 max-md:col-span-2 max-md:row-start-4`}>
           {problem.text}
         </p>

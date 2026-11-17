@@ -239,3 +239,29 @@ describe("AC-5601.4 설정 판 설명의 '초진'은 '신환'", () => {
     expect(document.body.textContent).not.toMatch(/(?<!90일)초진/)
   })
 })
+
+// ── 2026-11-17 검토 고침(spec sunap-kinds AC-5501.2·AC-5503.3) ─────────
+describe('AC-5503.3 검토 고침 — 긴 말 저장·이름 오류 자리', () => {
+  it('AC-5503.3·AC-5501.2: 띄어쓰기 없이 쉼표로 길게 적은 말(37자)도 저장된다', async () => {
+    const { user, onSave } = open()
+    await user.clear(wordsBox(3))
+    await user.type(wordsBox(3), '도수치료,수기치료,도수,수기,체외충격파,충격파,ESWT,manual')
+    await user.click(button('저장'))
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave.mock.calls[0]![0].kinds[2]!.words).toEqual(['도수치료', '수기치료', '도수', '수기', '체외충격파', '충격파', 'ESWT', 'manual'])
+  })
+
+  it('AC-5503.3: 이름 오류 글은 이름 칸 바로 아래, 말 오류 글은 말 칸 아래에 있다', async () => {
+    const { user } = open()
+    await user.clear(nameBox(1))
+    await user.clear(wordsBox(2))
+    await user.type(wordsBox(2), 'ㄱ'.repeat(21))
+    await user.click(button('저장'))
+    const nameError = item(1).getByText('이름을 적어 주세요')
+    expect(nameBox(1).nextElementSibling).toBe(nameError)
+    const wordsError = item(2).getByText('말 하나는 20자까지 적을 수 있어요')
+    expect(wordsBox(2).compareDocumentPosition(wordsError) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(nameBox(2).nextElementSibling).not.toBe(wordsError)
+  })
+})
