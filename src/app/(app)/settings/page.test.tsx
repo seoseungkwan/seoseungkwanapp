@@ -47,20 +47,22 @@ describe('/settings 페이지', () => {
     expect(metadata.title).toBe('설정')
   })
 
-  it('AC-012.6: 제목 "설정"과 안쪽 메뉴 — [청구·연락]은 지금 화면, [비트 PC 연결]은 /claim/setup 링크', async () => {
+  it('AC-012.6·AC-5201.1: 제목 "설정"과 안쪽 메뉴 — [청구]는 지금 화면, [비트 PC 연결]은 /claim/setup 링크, 옛 이름 청구·연락 글자 없음', async () => {
     render(<SettingsRoute />)
     expect(screen.getByRole('heading', { level: 1, name: '설정' })).toBeTruthy()
     const sub = screen.getByRole('navigation', { name: '설정 안 메뉴' })
-    const here = within(sub).getByRole('link', { name: '청구·연락' })
+    expect(within(sub).getAllByRole('link').map((a) => a.textContent)).toEqual(['청구', '비트 PC 연결'])
+    const here = within(sub).getByRole('link', { name: '청구' })
     expect(here.getAttribute('href')).toBe('/settings')
     expect(here.getAttribute('aria-current')).toBe('page')
     const setup = within(sub).getByRole('link', { name: '비트 PC 연결' })
     expect(setup.getAttribute('href')).toBe('/claim/setup')
     expect(setup.hasAttribute('aria-current')).toBe(false)
     await screen.findByText('LA-01')
+    expect(document.body.textContent).not.toContain('청구·연락')
   })
 
-  it("AC-012.6: '청구·연락'에 '점검 규칙' 칸이 있고 규칙 줄이 나온다", async () => {
+  it("AC-012.6: '청구'에 '점검 규칙' 칸이 있고 규칙 줄이 나온다", async () => {
     render(<SettingsRoute />)
     expect(screen.getByRole('heading', { level: 2, name: '점검 규칙' })).toBeTruthy()
     expect(await screen.findByText('신경차단술 12개월 횟수')).toBeTruthy()

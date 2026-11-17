@@ -254,19 +254,20 @@ afterEach(() => {
 })
 
 describe('SetupScreen 틀', () => {
-  it('AC-006.4·AC-412.5·AC-012.6: 제목 "설정"과 안쪽 메뉴 — [청구·연락]은 설정 화면(/settings) 링크이고, [비트 PC 연결]은 지금 화면(/claim/setup)', async () => {
+  it('AC-006.4·AC-412.5·AC-012.6·AC-5201.2: 제목 "설정"과 안쪽 메뉴 — [청구]는 설정 화면(/settings) 링크이고, [비트 PC 연결]은 지금 화면(/claim/setup), 옛 이름 청구·연락 글자 없음', async () => {
     fakeExtension({ hello: HELLO })
     renderSetup()
     expect(screen.getByRole('heading', { level: 1, name: '설정' })).toBeTruthy()
     const sub = screen.getByRole('navigation', { name: '설정 안 메뉴' })
-    const settings = within(sub).getByRole('link', { name: '청구·연락' })
+    const settings = within(sub).getByRole('link', { name: '청구' })
     expect(settings.getAttribute('href')).toBe('/settings')
     expect(settings.getAttribute('aria-current')).toBeNull()
     const here = within(sub).getByRole('link', { name: '비트 PC 연결' })
     expect(here.getAttribute('href')).toBe('/claim/setup')
     expect(here.getAttribute('aria-current')).toBe('page')
-    expect(sub.textContent).toBe('청구·연락비트 PC 연결')
+    expect(sub.textContent).toBe('청구비트 PC 연결')
     await screen.findByText('준비됨')
+    expect(document.body.textContent).not.toContain('청구·연락')
   })
 
   it('AC-006.2·AC-412.4·AC-412.5: 준비 순서 5단계(이름 그대로·설명은 시안 SDESC)와 이렇게 지켜요 세 줄, 아래 [연결 다시 확인] 줄이 없다', async () => {
@@ -318,10 +319,10 @@ describe('AC-034.2 설정 안 메뉴 모양', () => {
     await screen.findByText('준비됨')
   })
 
-  it('AC-034.2·AC-012.6: [청구·연락]은 설정 화면(/settings) 링크이고 기본 모양 ink-2 500(올림 ink)이며 칩이 없다', async () => {
+  it('AC-034.2·AC-012.6·AC-5201.2: [청구]는 설정 화면(/settings) 링크이고 기본 모양 ink-2 500(올림 ink)이며 칩이 없다', async () => {
     fakeExtension({ hello: HELLO })
     renderSetup()
-    const link = within(subnav()).getByRole('link', { name: '청구·연락' })
+    const link = within(subnav()).getByRole('link', { name: '청구' })
     expect(link.tagName).toBe('A')
     expect(link.getAttribute('href')).toBe('/settings')
     expect(link.hasAttribute('aria-disabled')).toBe(false)
