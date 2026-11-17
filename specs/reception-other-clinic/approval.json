@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "reception-other-clinic",
-  "approved_at": "2026-11-17T04:04:38Z",
+  "approved_at": "2026-11-17T05:53:32Z",
   "approved_via": "user-prompt",
   "session_id": "4e5007b5-a465-44b0-97e3-9a27fb3773f3",
-  "spec_sha256": "1917717eed860626b4d6c2e73dd34805e01279660486eef53504f8934ed800e6",
+  "spec_sha256": "e65ed4ec58811cda334caf86ec247396f8904a96e0cd0071449a8f27408cb31d",
   "scope": [
     "helper/install/install-reception.ps1",
     "helper/install/uninstall-reception.ps1",
@@ -21,6 +21,7 @@
     "helper/src/Precheck.Core/Reception/Http/BodyLimits.cs",
     "helper/src/Precheck.Core/Reception/Http/ClientGuard.cs",
     "helper/src/Precheck.Core/Reception/Http/HttpRequestReader.cs",
+    "helper/src/Precheck.Core/Reception/Http/HttpResponse.cs",
     "helper/src/Precheck.Core/Reception/Http/ReceptionRouter.cs",
     "helper/src/Precheck.Core/Reception/Http/ReceptionServer.cs",
     "helper/src/Precheck.Core/Reception/Http/SettingsRoutes.cs",
@@ -31,6 +32,7 @@
     "helper/src/Precheck.Reception/Program.cs",
     "helper/src/Precheck.Reception/ReceptionServices.cs",
     "helper/src/Precheck.Reception/RegisterEntry.cs",
+    "helper/src/Precheck.Windows/ConfirmWindow.cs",
     "helper/tests/Precheck.Core.Tests/Reception/Arrange*.test.cs",
     "helper/tests/Precheck.Core.Tests/Reception/ArrangeColumns.test.cs",
     "helper/tests/Precheck.Core.Tests/Reception/BoardBuilder.test.cs",
