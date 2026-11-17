@@ -1,7 +1,7 @@
 ﻿# 접수 현황 따로 지우기 (specs/reception-phone/design.md 11절 '따로 설치', TASK-35)
 # - install-reception.ps1이 만든 것만 지운다: 돌던 PrecheckReception을 끄고, 시작 항목(HKCU Run)·바탕 화면 "접수 현황 주소" 바로 가기·
 #   자기 폴더 %LOCALAPPDATA%\Seoseungkwan\PrecheckReception\을 지운다
-# - 도우미(PrecheckHelper)·도우미 data\(등록·고치던 메모·완료 표시·엑스레이 표시)·크롬 등록은 그대로 둔다
+# - 도우미(PrecheckHelper)·도우미 data\(등록·설정·로고·고치던 메모·완료 표시·엑스레이 표시)·크롬 등록은 그대로 둔다. 다시 깔면 설정이 그대로다(AC-5707.4)
 # - 관리자 권한이 필요 없다. 윈도우 PowerShell 5.1에서 돈다. 한글 문구가 깨지지 않게 이 파일은 UTF-8 BOM으로 저장한다
 # - 부르는 법: zip을 푼 폴더에서 uninstall-reception.cmd를 누른다(설치 폴더의 이 파일은 오른쪽 클릭 → 'PowerShell에서 실행')
 $ErrorActionPreference = 'Stop'
@@ -42,6 +42,7 @@ try {
     Write-Host ''
     Write-Host '접수 현황을 지웠습니다.' -ForegroundColor Green
     Write-Host "시작 항목과 바탕 화면 '접수 현황 주소'도 지웠습니다. 도우미와 고치던 메모·완료 표시는 그대로입니다."
+    Write-Host '설정과 등록은 남겨 두었습니다. 다시 설치하면 그대로 씁니다.'
 }
 catch {
     $exitCode = 1

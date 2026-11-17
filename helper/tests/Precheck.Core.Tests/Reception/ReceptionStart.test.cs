@@ -42,6 +42,12 @@ public class ReceptionStartTests
 
     private static bool WantsLink(string[]? args) => ReceptionStart.WantsLink(args);
 
+    private const string RegisterFlag = ReceptionStart.RegisterFlag;
+
+    private const int ExitCancelled = ReceptionStart.ExitCancelled;
+
+    private static bool WantsRegister(string[]? args) => ReceptionStart.WantsRegister(args);
+
     private static int RunStart(
         string[]? args, Func<IDisposable?> claim, Func<IDisposable> start, Action<string> open, Action wait, Action<string> note) =>
         new ReceptionStart(claim, start, open, wait, note).Run(args);
@@ -57,7 +63,20 @@ public class ReceptionStartTests
         public Exception? OpenFails { get; set; }
         public Exception? WaitFails { get; set; }
 
-        public int Run(params string[] args) => RunStart(args, Claim, Start, Open, Wait, Note);
+        /// <summary>등록 대리자의 답(저장했으면 참). NoRegister면 대리자를 넘기지 않는다.</summary>
+        public bool RegisterSaves { get; set; } = true;
+        public Exception? RegisterFails { get; set; }
+        public bool NoRegister { get; set; }
+
+        public int Run(params string[] args) =>
+            new ReceptionStart(Claim, Start, Open, Wait, Note, NoRegister ? null : (Func<bool>)Register).Run(args);
+
+        private bool Register()
+        {
+            Events.Add("register");
+            if (RegisterFails != null) throw RegisterFails;
+            return RegisterSaves;
+        }
 
         private IDisposable? Claim()
         {
@@ -543,10 +562,10 @@ public class ReceptionStartTests
 
     // ── AC-1413.1 바깥 연결 없음 ─────────────────────────────
 
-    [Fact(DisplayName = "AC-1413.1 늘 켜 두는 프로그램(Precheck.Reception/**)도 살핀다: Program·ReceptionServices·SingleInstance가 있고 바깥으로 나가는 연결 API가 없다")]
+    [Fact(DisplayName = "AC-1413.1 늘 켜 두는 프로그램(Precheck.Reception/**)도 살핀다: Program·ReceptionServices·SingleInstance·RegisterEntry가 있고 바깥으로 나가는 연결 API가 없다")]
     public void HostHasNoOutbound()
     {
-        foreach (var name in new[] { "Program.cs", "ReceptionServices.cs", "SingleInstance.cs" }) Assert.NotEmpty(App(name));
+        foreach (var name in new[] { "Program.cs", "ReceptionServices.cs", "SingleInstance.cs", "RegisterEntry.cs" }) Assert.NotEmpty(App(name));
         Assert.NotEmpty(Read("helper", "src", "Precheck.Core", "Reception", "ReceptionStart.cs"));
         new ReceptionTextTests().NoOutboundConnections();
     }
@@ -564,5 +583,133 @@ public class ReceptionStartTests
         Assert.Equal(2, urls.Count);
         Assert.All(urls, url => Assert.Equal("http://127.0.0.1:47200/link", url));
         Assert.True(IPAddress.IsLoopback(IPAddress.Parse(new Uri(LinkUrl).Host)));
+    }
+
+    // ── AC-5707.1 혼자 등록: --register (spec reception-other-clinic TASK-4, design.md 6절) ──
+
+    [Fact(DisplayName = "AC-5707.1 --register 깃발과 끝 번호: 저장 0 · 실패 1 · 취소 3(설치 파일이 이 번호로 가른다, 문 쓰임 2와 겹치지 않음)")]
+    public void RegisterConstants()
+    {
+        Assert.Equal("--register", RegisterFlag);
+        Assert.Equal(0, ExitOk);
+        Assert.Equal(1, ExitFailed);
+        Assert.Equal(3, ExitCancelled);
+        Assert.Equal(4, new HashSet<int> { ExitOk, ExitFailed, ExitPortBusy, ExitCancelled }.Count);
+    }
+
+    [Theory(DisplayName = "AC-5707.1 인자가 정확히 --register 하나일 때만 등록한다(대소문자·빈칸·둘째 인자·--link는 아니다)")]
+    [InlineData(new[] { "--register" }, true)]
+    [InlineData(new[] { "--REGISTER" }, false)]
+    [InlineData(new[] { "--register " }, false)]
+    [InlineData(new[] { " --register" }, false)]
+    [InlineData(new[] { "-register" }, false)]
+    [InlineData(new[] { "--register", "--register" }, false)]
+    [InlineData(new[] { "--register", "--link" }, false)]
+    [InlineData(new[] { "--link" }, false)]
+    [InlineData(new[] { "" }, false)]
+    [InlineData(new string[0], false)]
+    public void RegisterArgument(string[] args, bool expected) => Assert.Equal(expected, WantsRegister(args));
+
+    [Fact(DisplayName = "AC-5707.1 인자가 없거나(null) 안에 null이 있으면 --register가 아니다")]
+    public void RegisterArgumentNull()
+    {
+        Assert.False(WantsRegister(null));
+        Assert.False(WantsRegister(new string[] { null! }));
+    }
+
+    [Fact(DisplayName = "AC-5707.1 --register이고 저장했으면 끝 번호 0: 뮤텍스·서버·브라우저·기다림 없이 등록 대리자만 부르고 기록이 없다")]
+    public void RegisterSaved()
+    {
+        var script = new Script();
+        Assert.Equal(ExitOk, script.Run("--register"));
+        Assert.Equal(new[] { "register" }, script.Events);
+        Assert.Empty(script.Notes);
+    }
+
+    [Fact(DisplayName = "AC-5707.1 --register이고 로그인 취소·[취소]·시간 지남(대리자가 거짓)이면 끝 번호 3, 기록이 없다")]
+    public void RegisterCancelled()
+    {
+        var script = new Script { RegisterSaves = false };
+        Assert.Equal(ExitCancelled, script.Run("--register"));
+        Assert.Equal(new[] { "register" }, script.Events);
+        Assert.Empty(script.Notes);
+    }
+
+    [Fact(DisplayName = "AC-5707.1 --register이 실패하면 끝 번호 1이고 기록에는 오류 번호만(그 번호, 모르면 E-RECEPTION-FAILED) 남긴다")]
+    public void RegisterFailed()
+    {
+        var bit = new Script { RegisterFails = new BitException(BitErrors.NotFound) };
+        Assert.Equal(ExitFailed, bit.Run("--register"));
+        Assert.Equal(new[] { "register" }, bit.Events);
+        Assert.Equal(new[] { BitErrors.NotFound }, bit.Notes);
+
+        var mismatch = new Script { RegisterFails = new BitException(BitErrors.HospitalMismatch) };
+        Assert.Equal(ExitFailed, mismatch.Run("--register"));
+        Assert.Equal(new[] { BitErrors.HospitalMismatch }, mismatch.Notes);
+
+        var other = new Script { RegisterFails = new IOException("C:\\환자\\홍길동 boom") };
+        Assert.Equal(ExitFailed, other.Run("--register"));
+        Assert.Equal(new[] { "register" }, other.Events);
+        Assert.Equal(new[] { ReceptionErrors.Failed }, other.Notes);
+        Assert.All(bit.Notes.Concat(mismatch.Notes).Concat(other.Notes), code => Assert.True(ErrorCodes.IsCode(code), code));
+    }
+
+    [Fact(DisplayName = "AC-5707.1 접수 현황이 이미 돌고 있어도 --register은 뮤텍스를 보지 않고 등록만 한다(서버를 켜지도 끄지도 않는다)")]
+    public void RegisterIgnoresRunning()
+    {
+        var script = new Script { AlreadyRunning = true };
+        Assert.Equal(ExitOk, script.Run("--register"));
+        Assert.Equal(new[] { "register" }, script.Events);
+    }
+
+    [Fact(DisplayName = "AC-5707.1 등록 대리자가 없는데 --register이면 서버를 켜지 않고 끝 번호 1 + E-RECEPTION-FAILED. 인자 없음·--link는 대리자를 부르지 않는다")]
+    public void RegisterOnlyWithFlag()
+    {
+        var missing = new Script { NoRegister = true };
+        Assert.Equal(ExitFailed, missing.Run("--register"));
+        Assert.Empty(missing.Events);
+        Assert.Equal(new[] { ReceptionErrors.Failed }, missing.Notes);
+
+        var plain = new Script();
+        Assert.Equal(ExitOk, plain.Run());
+        Assert.Equal(new[] { "claim", "start", "wait", "stop", "release" }, plain.Events);
+
+        var link = new Script();
+        Assert.Equal(ExitOk, link.Run("--link"));
+        Assert.DoesNotContain("register", link.Events);
+
+        var two = new Script();
+        Assert.Equal(ExitOk, two.Run("--register", "--link"));
+        Assert.DoesNotContain("register", two.Events);
+        Assert.Equal(new[] { "claim", "start", "wait", "stop", "release" }, two.Events);
+    }
+
+    [Fact(DisplayName = "AC-5707.1 Program은 RegisterEntry.Run을 ReceptionStart에 넘기고, RegisterEntry는 ReceptionServices와 같은 부품(data\\·DPAPI·비트 찾기·로그인 창·확인 창)으로 RegisterFlow를 돈다(서버·뮤텍스 없음)")]
+    public void RegisterEntryWiring()
+    {
+        var program = Statements(App("Program.cs"));
+        Assert.Contains("new ReceptionStart(", program, StringComparison.Ordinal);
+        Assert.Contains("RegisterEntry.Run", program, StringComparison.Ordinal);
+
+        var entry = Statements(App("RegisterEntry.cs"));
+        var services = Statements(App("ReceptionServices.cs"));
+        foreach (var part in new[]
+        {
+            "new DpapiProtector()",
+            "new InstallationLocator(AppDomain.CurrentDomain.BaseDirectory, () => RegisteredInstall(store))",
+            "new BitServices(locator, new SqlBitConnector(), new VendorLogin(), new ConfirmWindow(), store)",
+        })
+        {
+            Assert.Contains(part, entry, StringComparison.Ordinal);
+            Assert.Contains(part, services, StringComparison.Ordinal);
+        }
+        // 등록 파일은 접수 현황 서버가 읽는 바로 그 data\ 폴더에 쓴다
+        Assert.Contains("new RegistrationStore(ReceptionServices.DataDirectory(), protector)", entry, StringComparison.Ordinal);
+        Assert.Contains("RegisterFlow.Run(", entry, StringComparison.Ordinal);
+        Assert.Equal(1, Count(entry, "RegisterFlow.Run("));
+        foreach (var word in new[] { "ReceptionServer", "Listen(", "Mutex", "SingleInstance", "MessageBox", "Console.", "Process.Start(" })
+        {
+            Assert.DoesNotContain(word, entry, StringComparison.Ordinal);
+        }
     }
 }
