@@ -48,23 +48,29 @@
  *            body > .sheet-back.memo-back > .sheet.memo-sheet > .sheet-h ; .memo-h ; textarea.memo-text ; .pen-tools > button(> span.pen-dot.ink|red) + button.clear-ink
  *                   ; canvas.memo-pad ; .memo-foot > button.memo-del + span.memo-note + button.sheet-x     body > .toast.memo-toast
  *            .sub-line > span.asof + span.legend > span.lg.todo|ready|done|manual|away|rtn|ptup
- *            p.howto · .wrap > table.arr > thead th.c-…(> span.sm (c-t는 > span.nw + wbr)) + tbody tr(.away)(.flash)[data-k]
+ *            p.howto · (div.setup-note[role=note] > span.sn-text > b + 글 ; button)   (고른 처방이 없는 처방 칸이 있을 때, reception-other-clinic AC-5710.4)
+ *            .wrap > table.arr(.cols-8(.cols-9…12)) > thead th.c-…(> span.sm (c-t는 > span.nw + wbr)) + tbody tr(.away)(.flash)[data-k]
+ *              치료 칸은 판 cfg.cols 차례(AC-5710.1): 처음 일곱은 th|td.c-xray|sono|carm|pt|ds|eswt|trac, 더한 칸은 th|td.c-x1….c-add. 8칸 이상이면 table.cols-8(AC-5710.5)
  *              td.c-t > button.t-btn > span.t-time + span.wt(.is-long) + (span.away-tag | span.rtn-tag + span.wt.rtn-wt)
  *              td.c-nm > button.nm-btn > span.l1 > span.chart + span.status… + span.rx-new
  *                                      > span.l2 > span.arr-name + span.meta + span.new-badge + span.open
  *                      + button.ptf-btn.none|up|down
- *              td.c-xray|sono|carm|pt|ds|eswt|trac > .cell.empty|todo|ready|done(.manual)
+ *              td.c-xray|sono|carm|pt|ds|eswt|trac|x1….c-add > .cell.empty|todo|ready|done(.manual)
  *                 > span.plus | span.ord + span.mn + span.st + (span.hit 충격파 타수) + (span.det(.sm) 줄마다 | button.part-btn) + span.tags > span.drug
+ *                 여러 개 고른 칸 글은 "·" + wbr로 잇는다(span.det·span.hit 안, AC-5710.3)
  *              td.c-memo > button.memo-btn > .arr-memo + .lastsym > span.lastsym-label + 글
  *              td.c-end > button.end-btn(.is-go)
  *            p.empty-note · section.ended > button.ended-h + (ul.ended-list > li > span.e-t + span.e-n + span.e-c + button.restore | p.empty-note)
  *            footer.foot
- *            .sheet-back > .sheet[role=dialog] > .sheet-h > span.sheet-title + span.sheet-sub ; .opts(.many) > button.opt ; button.sheet-x
- *              충격파 넣기: .sheet > .sheet-h ; (.opt-label + .opts.four > button.opt(.on)) ×2 ; .sheet-go > button.sheet-close + button.go
- *              C-ARM 넣기: .sheet > .sheet-h ; .opt-label + .opts.four[data-g=proc] ; .opt-label + .opts.trio(.no-drug)[data-g=drug] ; p.opt-note ; .sheet-go
+ *            .sheet-back > .sheet[role=dialog] > .sheet-h > span.sheet-title + span.sheet-sub ; .opts(.many) > button.opt ; button.sheet-x   (X-RAY 넣기·완료 창)
+ *              직접 칸 넣기 (PT·도수·견인·더한 칸, reception-other-clinic AC-5711.1·5711.2):
+ *                .sheet.pick-sheet > .sheet-h ; .pick-mode > span.opt-label + button.switch.sm[aria-pressed](> span.knob)
+ *                ; (.opts(.many)[data-g=pick] > button.opt ; button.sheet-x | .opts.duo[data-g=pick] > button.opt.check(.on) > span.box ; .sheet-go) ; button.pick-edit
+ *              충격파 넣기: .sheet > .sheet-h ; .pick-mode(타수) + .opts.four[data-g=hit] ; .opt-label + .opts.four[data-g=count] > button.opt(.check)(.on) ; .sheet-go ; button.pick-edit
+ *              C-ARM 넣기: .sheet > .sheet-h ; .pick-mode(시술) + .opts.four[data-g=proc] ; .opt-label + .opts.trio(.no-drug)[data-g=drug] ; p.opt-note ; .sheet-go ; button.pick-edit
  *              SONO 넣기: .sheet.sono-sheet > .sheet-h ; .opt-label + .picked > button.picked-chip(> span) | span.picked-empty
  *                         ; (.opt-label > span.opt-hint) + .opts.trio[data-g=side] ; .opt-label + .opts.four.parts[data-g=part]
- *                         ; .opt-label + .opts.trio[data-g=plain] ; .opt-label + .opts.duo[data-g=with] > button.opt.check(.on) > span.box ; .sheet-go
+ *                         ; .opt-label + .opts.trio[data-g=plain] ; .opt-label + .opts.duo[data-g=with] > button.opt.check(.on) > span.box ; .sheet-go ; button.pick-edit
  *            .toast[role=status] > span.toast-text + button.toast-undo
  *            목록 고치기 창 (reception-pick-lists). 머리의 [☰ 목록 고치기] 자리는 [⚙ 설정](button.set-open)이 되었다(reception-other-clinic AC-5709.2)
  *              .sheet-back.list-back > .sheet.list-sheet > .sheet-h ; .lt-tabs > button.lt-tab(.on) ; p.lt-fixed(SONO·충격파)
@@ -1413,6 +1419,41 @@ button.row-main {
   line-height: 1.5;
 }
 
+/* 새 병원 안내 줄 (reception-other-clinic AC-5710.4, 시안 .setup-note): 고른 처방이 없는 처방 칸이 있을 때 표 위. 단추는 44px(누르는 단추 규칙) */
+.setup-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0 12px 10px;
+  padding: 10px 12px 10px 14px;
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-m);
+  background: var(--surface-picked);
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.setup-note .sn-text {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.setup-note .sn-text b {
+  font-weight: 800;
+}
+
+.setup-note button {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-m);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
 /* 표는 옆으로 밀린다(폰). 접수·성함 칸은 왼쪽에 붙어 있다(AC-3308.10) */
 .wrap {
   overflow-x: auto;
@@ -1459,8 +1500,8 @@ button.row-main {
   white-space: nowrap;
 }
 
-/* PT·도수·견인 머리 작은 글은 판 목록을 "·"로 이은 글: 넘치면 줄임표 (reception-arrange-tune design.md) */
-.arr th.c-pt .sm, .arr th.c-ds .sm, .arr th.c-trac .sm {
+/* PT·도수·견인·더한 칸 머리 작은 글은 판 목록을 "·"로 이은 글: 넘치면 줄임표 (reception-arrange-tune design.md · reception-other-clinic AC-5710.1) */
+.arr th.c-pt .sm, .arr th.c-ds .sm, .arr th.c-trac .sm, .arr th.c-add .sm {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1472,6 +1513,11 @@ button.row-main {
 
 .arr th.c-carm {
   background: var(--carm-head);
+}
+
+/* 더한 칸은 옅은 회색 머리만, 칸 바탕은 흰색 그대로 (reception-other-clinic AC-5710.1, 시안 .arr th.c-x1) */
+.arr th.c-add {
+  background: var(--ground);
 }
 
 .arr td {
@@ -1527,7 +1573,7 @@ button.row-main {
   width: 118px;
 }
 
-.arr .c-pt, .arr .c-ds, .arr .c-trac {
+.arr .c-pt, .arr .c-ds, .arr .c-trac, .arr .c-add {
   width: 66px;
 }
 
@@ -1537,6 +1583,27 @@ button.row-main {
 
 .arr .c-end {
   width: 64px;
+}
+
+/* 치료 칸이 8개 이상이면 표 폭을 늘려 비고 칸 자리(200px 이상)를 지킨다. 넘치는 폭은 .wrap 안에서만 옆으로 밀린다 (reception-other-clinic AC-5710.5) */
+.arr.cols-8 {
+  min-width: 1106px;
+}
+
+.arr.cols-9 {
+  min-width: 1172px;
+}
+
+.arr.cols-10 {
+  min-width: 1238px;
+}
+
+.arr.cols-11 {
+  min-width: 1304px;
+}
+
+.arr.cols-12 {
+  min-width: 1370px;
 }
 
 /* 자리비움: 줄 앞쪽(접수·성함) 주황 · 처방 나옴: 노랑으로 세 번 반짝(AC-3310.2) */
@@ -1808,9 +1875,11 @@ button.row-main {
   color: var(--ink-3);
 }
 
+/* 여러 개 고른 칸 글은 "·" 뒤(wbr)에서 줄을 바꾸고 낱말 가운데서는 끊지 않는다(넘칠 때만 끊음, reception-other-clinic AC-5710.3) */
 .cell .det {
   font-size: 16px;
   font-weight: 800;
+  word-break: keep-all;
   overflow-wrap: anywhere;
 }
 
@@ -1848,6 +1917,8 @@ button.row-main {
   font-weight: 800;
   color: var(--ink);
   line-height: 1.15;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .cell.done .hit {
@@ -2273,6 +2344,98 @@ button.row-main {
   border-color: var(--ink);
   background: var(--ink);
   color: var(--on-ink);
+}
+
+/*
+ * 넣기 창 두 모드 (reception-other-clinic AC-5711.2·5711.4, 시안 .pick-mode·.switch·.pick-edit): 줄 이름 오른쪽 [같이 고르기] 켜기 단추,
+ * 맨 아래 [☰ 목록 고치기]. 켜기 단추는 설정 쪽과 같은 모양이고 작은 것(sm)도 44px(누르는 단추 규칙)
+ */
+.pick-mode {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.pick-mode .opt-label {
+  margin: 0;
+}
+
+.pick-sheet .opts {
+  margin-top: 10px;
+}
+
+.switch {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 4px 0 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-3);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.switch .knob {
+  position: relative;
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--line-2);
+}
+
+.switch .knob::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface);
+  transition: left 0.15s;
+}
+
+.switch[aria-pressed="true"] {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.switch[aria-pressed="true"] .knob {
+  background: var(--ok);
+}
+
+.switch[aria-pressed="true"] .knob::after {
+  left: 21px;
+}
+
+.switch.sm {
+  min-height: 44px;
+  padding-left: 10px;
+  font-size: 13px;
+}
+
+.pick-edit {
+  display: block;
+  min-height: 44px;
+  margin: 6px auto -6px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.pick-edit:disabled {
+  opacity: 0.45;
 }
 
 /* [☰ 목록 고치기] (reception-pick-lists AC-3505.1, 시안 .list-open)와 두 탭 머리의 [⚙ 설정] (reception-other-clinic AC-5709.2, 시안 .set-open) */
@@ -2970,7 +3133,7 @@ button.lt-name:hover {
     width: 136px;
   }
 
-  .arr .c-pt, .arr .c-ds, .arr .c-trac {
+  .arr .c-pt, .arr .c-ds, .arr .c-trac, .arr .c-add {
     width: 76px;
   }
 
@@ -2980,6 +3143,40 @@ button.lt-name:hover {
 
   .arr .c-end {
     width: 72px;
+  }
+
+  /* 치료 칸 8개 이상 (reception-other-clinic AC-5710.5, 시안 .arr.cols-8): 8칸은 표 폭 1180px 그대로 두고 치료 칸 폭을 조금씩 줄여 비고 칸을 지킨다.
+     9칸부터는 표 폭이 늘고 .wrap 안에서만 옆으로 밀린다 */
+  .arr.cols-8 {
+    min-width: 1180px;
+  }
+
+  .arr.cols-9 {
+    min-width: 1250px;
+  }
+
+  .arr.cols-10 {
+    min-width: 1320px;
+  }
+
+  .arr.cols-11 {
+    min-width: 1390px;
+  }
+
+  .arr.cols-12 {
+    min-width: 1460px;
+  }
+
+  .arr.cols-8 .c-sono, .arr.cols-8 .c-carm {
+    width: 118px;
+  }
+
+  .arr.cols-8 .c-pt, .arr.cols-8 .c-ds, .arr.cols-8 .c-trac, .arr.cols-8 .c-add {
+    width: 70px;
+  }
+
+  .arr.cols-8 .c-eswt {
+    width: 74px;
   }
 
   .arr-name {

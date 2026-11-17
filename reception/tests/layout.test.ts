@@ -773,3 +773,149 @@ describe('REQ-1503 메모 상자·신환 표시 모양 (style.css)', () => {
     for (const cls of ['memo', 'memo-label', 'new-badge']) expect(css, `.${cls}`).toMatch(new RegExp(`\.${cls}(?![\w-])`))
   })
 })
+
+// ---- 어레인지 칸이 많을 때 (reception-other-clinic AC-5710.5, 승인 시안 index.html '8칸 이상이면 치료 칸 폭을 조금씩 줄여') ----------------
+
+const ARRANGE_JS = '../www/arrange.js'
+
+interface ArrangeJs {
+  renderArrange: (host: HTMLElement, board: FakeBoard, view?: Record<string, unknown>) => HTMLElement
+}
+
+/** 기기 가로 폭(px): 태블릿 시안 1194, 폰 390 */
+const SCREEN = { tablet: 1194, phone: 390 } as const
+/** .wrap 안쪽 폭 = 기기 폭 − 좌우 여백(12 + 12) − 테두리(1 + 1) */
+const WRAP_EDGE = 26
+/** 비고 칸이 지켜야 하는 가장 작은 폭(px): 지금 우리 의원 표의 태블릿 비고 폭(212)과 폰(218)보다 조금 작은 값 */
+const MEMO_MIN = 200
+
+/** style.css 규칙 하나(@media 안이면 그 질의). 원래 차례(order) */
+interface CssRule {
+  selectors: string[]
+  media: string
+  decls: Map<string, string>
+  order: number
+}
+
+function cssRules(css: string): CssRule[] {
+  const rules: CssRule[] = []
+  const walk = (text: string, media: string) => {
+    let i = 0
+    while (i < text.length) {
+      const open = text.indexOf('{', i)
+      if (open < 0) break
+      const head = text.slice(i, open).trim()
+      let depth = 1
+      let j = open + 1
+      while (j < text.length && depth > 0) {
+        if (text[j] === '{') depth++
+        else if (text[j] === '}') depth--
+        j++
+      }
+      const body = text.slice(open + 1, j - 1)
+      if (head.startsWith('@media')) walk(body, head)
+      else {
+        const decls = new Map<string, string>()
+        for (const decl of body.split(';')) {
+          const colon = decl.indexOf(':')
+          if (colon > 0) decls.set(decl.slice(0, colon).trim().toLowerCase(), decl.slice(colon + 1).trim())
+        }
+        rules.push({ selectors: head.split(',').map((s) => s.trim()), media, decls, order: rules.length })
+      }
+      i = j
+    }
+  }
+  walk(css.replace(/\/\*[\s\S]*?\*\//g, ''), '')
+  return rules
+}
+
+/**
+ * 표(.arr…)나 그 안 칸(.arr… .c-…)의 prop 값: 고른 기기에서 켜지는 규칙(밖 + 태블릿이면 두 칸 질의) 가운데 맞는 선택자(table class·칸 class)의
+ * 가장 높은 우선(class 수), 같으면 뒤의 것. 이 시험이 읽는 선택자 모양은 '.arr(.x)*' · '.arr(.x)* .c-y'뿐이다
+ */
+function arrValue(rules: CssRule[], device: 'tablet' | 'phone', table: Element, cell: Element | null, prop: string): string | undefined {
+  let best: { weight: number; order: number; value: string } | null = null
+  for (const rule of rules) {
+    if (rule.media !== '' && !(device === 'tablet' && rule.media.includes(QUERY))) continue
+    const value = rule.decls.get(prop)
+    if (value === undefined) continue
+    for (const selector of rule.selectors) {
+      const m = /^\.arr((?:\.[\w-]+)*)(?:\s+\.([\w-]+))?$/.exec(selector)
+      if (!m) continue
+      const tableClasses = ['arr', ...(m[1] ? m[1].slice(1).split('.') : [])]
+      if (!tableClasses.every((c) => table.classList.contains(c))) continue
+      if ((m[2] === undefined) !== (cell === null)) continue
+      if (m[2] !== undefined && !cell!.classList.contains(m[2])) continue
+      const weight = tableClasses.length + (m[2] ? 1 : 0)
+      if (!best || weight > best.weight || (weight === best.weight && rule.order > best.order)) best = { weight, order: rule.order, value }
+    }
+  }
+  return best?.value
+}
+
+/** 우리 의원 처음 값에 더한 칸을 붙여 보이는 치료 칸이 n개인 판. hide는 숨길 처음 칸 열쇠 */
+function boardWith(n: number, hide: string[] = []): FakeBoard {
+  const settings = fx.oursSettings()
+  for (const col of settings.cols) if (hide.includes(col.k)) col.show = false
+  const shown = settings.cols.filter((c) => c.show).length
+  for (let i = 1; i <= n - shown; i++) {
+    settings.cols.push({ k: `x${i}`, name: `칸${i}`, kind: i % 2 === 0 ? 'rx' : 'mn', steps: 2, show: true, added: true, codes: [] })
+    settings.picks.extra[`x${i}`] = ['하나', '둘']
+  }
+  settings.nextX = n - shown + 1
+  return fx.withSettings(fx.arrangeMockupBoard(), settings)
+}
+
+describe('REQ-5710 어레인지 칸이 많을 때 (style.css)', () => {
+  it('AC-5710.5: 보이는 치료 칸이 8~12개면 태블릿 가로(1194)에서 치료 칸 폭이 줄어 비고 칸이 200px 이상 보이고(8칸은 지금 표 폭 그대로), 그래도 넘치는 폭은 표 상자(.wrap) 안에서만 옆으로 밀린다. 폰도 비고 칸을 지킨다', async () => {
+    const arrangeJs = (await import(/* @vite-ignore */ ARRANGE_JS)) as ArrangeJs
+    const rules = cssRules(readFileSync(STYLE_CSS, 'utf8'))
+    const cases: Array<[number, string[]]> = [
+      [7, []],
+      [8, []],
+      [8, ['sono']],
+      [9, []],
+      [10, ['xray']],
+      [11, []],
+      [12, []],
+      [12, ['sono', 'carm']],
+    ]
+    for (const [n, hide] of cases) {
+      document.body.replaceChildren()
+      const app = document.createElement('div')
+      document.body.appendChild(app)
+      arrangeJs.renderArrange(app, boardWith(n, hide), {})
+      const table = app.querySelector('table.arr')!
+      const heads = [...table.querySelectorAll('thead > tr > th')]
+      const label = `${n}칸${hide.length > 0 ? ` (${hide.join('·')} 숨김)` : ''}`
+      expect(heads.length, label).toBe(n + 4)
+      expect(table.classList.contains('cols-8'), label).toBe(n >= 8)
+      for (const device of ['tablet', 'phone'] as const) {
+        let fixed = 0
+        for (const th of heads) {
+          if (th.classList.contains('c-memo')) {
+            expect(arrValue(rules, device, table, th, 'width'), `${label} ${device} 비고`).toBeUndefined()
+            continue
+          }
+          const width = arrValue(rules, device, table, th, 'width')
+          expect(width, `${label} ${device} ${th.className}`).toMatch(/^\d+px$/)
+          fixed += Number.parseFloat(width!)
+        }
+        const minWidth = Number.parseFloat(arrValue(rules, device, table, null, 'min-width') ?? '0')
+        // table-layout: fixed · width 100%: 표 폭은 상자 안쪽 폭·min-width·칸 폭 합 가운데 큰 것, 비고 칸은 그 나머지
+        const width = Math.max(SCREEN[device] - WRAP_EDGE, minWidth, fixed)
+        expect(width - fixed, `${label} ${device} 비고 폭`).toBeGreaterThanOrEqual(MEMO_MIN)
+        if (device === 'tablet' && n <= 8) expect(width, `${label} 태블릿 표 폭`).toBe(1180)
+      }
+    }
+    // 넘치면 표 상자만 옆으로 밀린다(쪽 전체 가로 넘침 없음)
+    expect(cssValues(rules, '.wrap', 'overflow-x')).toEqual(['auto'])
+    expect(arrValue(rules, 'tablet', Object.assign(document.createElement('table'), { className: 'arr cols-8 cols-12' }), null, 'table-layout')).toBe('fixed')
+    for (const selector of ['.page.arrange', '.arrange', 'body', 'html']) expect(cssValues(rules, selector, 'min-width'), selector).toEqual([])
+  })
+})
+
+/** selector(쉼표 목록 가운데 하나와 같은 글)인 규칙들의 prop 값들 (질의 안 포함) */
+function cssValues(rules: CssRule[], selector: string, prop: string): string[] {
+  return rules.filter((r) => r.selectors.includes(selector) && r.decls.has(prop)).map((r) => r.decls.get(prop)!)
+}

@@ -23,8 +23,11 @@ const K = fx.ARRANGE_KEYS
 /** 시안 판의 환자 이름 (가상환자21~30) */
 const NAMES = Array.from({ length: 10 }, (_, i) => `가상환자${21 + i}`)
 
-/** 같은 곳 길만: 판·상세·직전·지난 종이(그 전 진료기록부, reception-arrange-tune)·찍음·어레인지 표시 (AC-1413.2) */
-const SAME_PC_API = /^\/api\/(?:board(?:\?fresh=1)?|visit\/[0-9a-f]{16}\/(?:history\?from=\d+|prev|papers\?from=\d+)|xray|arrange|lists)$/
+/**
+ * 같은 곳 길만: 판·상세·직전·지난 종이(그 전 진료기록부, reception-arrange-tune)·찍음·어레인지 표시 (AC-1413.2).
+ * 옛 목록 길(/api/lists)은 어레인지 화면이 더 부르지 않는다(목록 고치기는 설정의 칸 고치기로 옮김, reception-other-clinic AC-5709.2·5711.4)
+ */
+const SAME_PC_API = /^\/api\/(?:board(?:\?fresh=1)?|visit\/[0-9a-f]{16}\/(?:history\?from=\d+|prev|papers\?from=\d+)|xray|arrange)$/
 
 // ---- 가짜 도우미 ------------------------------------------------------------------------------------
 
@@ -87,11 +90,6 @@ function reads(k: string, what: 'history' | 'prev'): number {
 /** 지난 종이 쪽 읽기(papers?from=N) 수 (reception-arrange-tune AC-3605.3) */
 function paperReads(k: string, from: number): number {
   return urls().filter((u) => u === `/api/visit/${k}/papers?from=${from}`).length
-}
-
-/** 보낸 목록 쓰기 몸들 (reception-pick-lists AC-3501.3) */
-function listWrites(): unknown[] {
-  return calls.filter((c) => c.url === '/api/lists').map((c) => JSON.parse(c.body ?? 'null'))
 }
 
 /** 보낸 어레인지 쓰기 몸들 */
@@ -533,7 +531,7 @@ describe('app.js 어레인지 쓰기', () => {
     expect(appEl().querySelector('.sheet-back')).toBeNull()
   })
 
-  it('AC-3402.2: 충격파 두 줄 창에서 고른 타수·부위 수는 저절로 다시 읽기(5초)에도 남고, [넣기 · 3000타 2부위]는 add v="3000타 2부위"를 보내 칸에 타수·부위 수를 그린다', async () => {
+  it('AC-3402.2 · AC-5703.4: 충격파 두 줄 창에서 고른 타수·부위 수는 저절로 다시 읽기(5초)에도 남고, [넣기 · 3000타 2부위]는 add v="3000타|2부위"를 보내 칸에 타수·부위 수를 그린다', async () => {
     await open({ hash: '#/a' })
     const choose = (label: string) => [...appEl().querySelectorAll<HTMLButtonElement>('.sheet .opts.four > button.opt')].find((b) => b.textContent === label)!.click()
     const pressed = () => [...appEl().querySelectorAll('.sheet .opts.four > button.opt[aria-pressed="true"]')].map((b) => b.textContent)
@@ -550,7 +548,7 @@ describe('app.js 어레인지 쓰기', () => {
     expect(appEl().querySelector('.sheet-back')).toBeNull()
     expect(toastText()).toBe('가상환자28 · 충격파 직접 넣었어요')
     await settle()
-    expect(writes()).toEqual([{ k: K.h, op: 'add', col: 'eswt', v: '3000타 2부위' }])
+    expect(writes()).toEqual([{ k: K.h, op: 'add', col: 'eswt', v: '3000타|2부위' }])
     expect([textOf(cellOf('가상환자28', 'eswt'), '.hit'), textOf(cellOf('가상환자28', 'eswt'), '.det')]).toEqual(['3000타', '2부위'])
   })
 })
@@ -609,98 +607,113 @@ describe('app.js C-ARM·SONO 넣기', () => {
   })
 })
 
-// ---- 목록 고치기 (reception-pick-lists AC-3505) -------------------------------------------------------------
+// ---- 설정 칸·넣기 창 두 모드 (reception-other-clinic REQ-5710·REQ-5711) -------------------------------------------
+// 옛 머리 [☰ 목록 고치기](POST /api/lists) 자리는 [⚙ 설정]이 되었다(AC-5709.2). 목록 고치기는 넣기 창 [☰ 목록 고치기] → 칸 고치기 창(TASK-7)이다
 
-/** 목록 고치기 창 */
-function listSheet(): HTMLElement | null {
-  return appEl().querySelector('.sheet-back.list-back > .sheet.list-sheet')
+/** 넣기 창의 [같이 고르기] */
+function switchButton(): HTMLButtonElement {
+  return appEl().querySelector<HTMLButtonElement>('.sheet > .pick-mode > button.switch')!
 }
 
-/** 목록 고치기 창의 무리(머리 이름)에 적고 [더하기] */
-function addToList(label: string, text: string) {
-  const group = [...appEl().querySelectorAll('.list-sheet > .lt-groups > section.lt-group')].find((g) => g.querySelector('h3')?.firstChild?.textContent === label)!
-  const input = group.querySelector('input')!
-  input.value = text
-  input.dispatchEvent(new Event('input', { bubbles: true }))
-  group.querySelector<HTMLButtonElement>('form.lt-add > button[type="submit"]')!.click()
+/** 줄의 칸 하나(더한 칸 열쇠 포함) */
+function cellAt(name: string, col: string): HTMLElement {
+  return trOf(name).querySelector<HTMLElement>(`td.c-${col} > .cell`)!
 }
 
-function listNames(label: string): string[] {
-  const group = [...appEl().querySelectorAll('.list-sheet > .lt-groups > section.lt-group')].find((g) => g.querySelector('h3')?.firstChild?.textContent === label)!
-  return [...group.querySelectorAll('li.lt-row > .lt-name')].map((n) => n.textContent ?? '')
-}
-
-describe('app.js 목록 고치기', () => {
-  it('AC-3505.3: [저장]은 초안 전체를 POST /api/lists(X-Reception: 1)로 보내 204면 창을 닫고 띠 "목록을 저장했어요" 뒤 판을 다시 읽는다. 넣기 창은 새 목록을 쓴다', async () => {
+describe('app.js 넣기 창 두 모드·설정 칸', () => {
+  it('AC-5711.2 · AC-5711.5: PT 넣기 창 [같이 고르기]를 켜 고른 것은 저절로 다시 읽기(5초)에도 남고, [넣기 · ICE·HP]는 add v="ICE|HP"(X-Reception: 1)를 같은 PC 길로만 보내 칸에 "ICE·HP"를 그린다. 머리에는 옛 [☰ 목록 고치기]가 없다', async () => {
     await open({ hash: '#/a' })
-    appEl().querySelector<HTMLButtonElement>('header.top button.list-open')!.click()
-    expect(listSheet()).not.toBeNull()
-    addToList('시술', '꼬리뼈')
-    const before = boardReads()
-    listSheet()!.querySelector<HTMLButtonElement>('.sheet-go > button.go')!.click()
+    expect(appEl().querySelector('header.top button.list-open')).toBeNull()
+    expect(appEl().querySelector('header.top button.set-open')).not.toBeNull()
+    cellOf('가상환자28', 'pt').click()
+    expect(textOf(appEl(), '.sheet .sheet-sub')).toBe('가상환자28 · 누르면 바로 들어가요')
+    switchButton().click()
+    pickIn('pick', 'HP')
+    pickIn('pick', 'ICE')
+    await wait(5000)
+    expect(boardReads()).toBe(2)
+    expect(textOf(appEl(), '.sheet .sheet-title')).toBe('PT 직접 넣기')
+    expect(switchButton().getAttribute('aria-pressed')).toBe('true')
+    expect(textOf(appEl(), '.sheet .sheet-sub')).toBe('가상환자28 · 여러 개 골라 [넣기]를 눌러요')
+    expect(pressedIn('pick')).toEqual(['ICE', 'HP'])
+    expect(goButton().textContent).toBe('넣기 · ICE·HP')
+    goButton().click()
+    expect(appEl().querySelector('.sheet-back')).toBeNull()
+    expect(toastText()).toBe('가상환자28 · PT 직접 넣었어요')
+    expect(textOf(cellOf('가상환자28', 'pt'), '.det')).toBe('ICE·HP')
     await settle()
-    const want = fx.defaultPicks()
-    want.carm.procs.push({ n: '꼬리뼈', noDrug: false })
-    expect(listWrites()).toEqual([want])
-    const call = calls.find((c) => c.url === '/api/lists')!
+    expect(writes()).toEqual([{ k: K.h, op: 'add', col: 'pt', v: 'ICE|HP' }])
+    const call = calls.find((c) => c.url === '/api/arrange')!
     expect(call.method).toBe('POST')
     expect(new Headers(call.init.headers).get('X-Reception')).toBe('1')
-    expect(listSheet()).toBeNull()
-    expect(toastText()).toBe('목록을 저장했어요')
-    expect(undoButton()).toBeNull()
-    expect(boardReads()).toBe(before + 1)
-    expect(server.board.picks).toEqual(want)
-    cellOf('가상환자28', 'carm').click()
-    expect([...appEl().querySelectorAll('.sheet > .opts[data-g="proc"] > button.opt')].map((b) => b.textContent)).toEqual(['목', '등', '허리', '리덕션', '꼬리뼈'])
-    await wait(5000)
-    expect(toastText()).toBeNull()
+    expect(server.board.arrange!.rows.find((r) => r.k === K.h)!.cells.pt).toMatchObject({ det: 'ICE|HP', manual: true })
+    expect(textOf(cellOf('가상환자28', 'pt'), '.det')).toBe('ICE·HP')
+    undoButton()!.click()
+    await settle()
+    expect(writes().at(-1)).toEqual({ k: K.h, op: 'remove', col: 'pt' })
     for (const u of urls()) expect(u).toMatch(SAME_PC_API)
   })
 
-  it('AC-3505.3 · AC-3505.2: 저장이 실패하면(403·연결 안 됨) 창과 초안을 그대로 두고 띠 "목록을 저장하지 못했어요"다. 저절로 다시 읽어도 창·초안·적던 글이 남는다', async () => {
+  it('AC-5711.2 · AC-3312.2: 넣기 창이 [같이 고르기]를 켠 채 열려 있을 때 숨기면 창을 지우고(보내지 않음) 다시 보이면 창 없이 표다. 다시 연 넣기 창은 [같이 고르기]가 꺼져 있다', async () => {
     await open({ hash: '#/a' })
-    appEl().querySelector<HTMLButtonElement>('header.top button.list-open')!.click()
-    addToList('시술', '꼬리뼈')
-    statusNext('/api/lists', 403)
-    listSheet()!.querySelector<HTMLButtonElement>('.sheet-go > button.go')!.click()
-    await settle()
-    expect(listSheet()).not.toBeNull()
-    expect(listNames('시술')).toEqual(['목', '등', '허리', '리덕션', '꼬리뼈'])
-    expect(toastText()).toBe('목록을 저장하지 못했어요')
-    const sheet = listSheet()
-    const input = sheet!.querySelector('input')!
-    input.value = '적던'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    await wait(5000)
-    expect(boardReads()).toBe(2)
-    expect(listSheet()).toBe(sheet)
-    expect(input.value).toBe('적던')
-    expect(listNames('시술')).toEqual(['목', '등', '허리', '리덕션', '꼬리뼈'])
-    failNext('/api/lists')
-    listSheet()!.querySelector<HTMLButtonElement>('.sheet-go > button.go')!.click()
-    await settle()
-    expect(listSheet()).not.toBeNull()
-    expect(toastText()).toBe('목록을 저장하지 못했어요')
-    expect(server.board.picks).toEqual(fx.defaultPicks())
-  })
-
-  it('AC-3505.3 · AC-3312.2: [취소]는 보내지 않고 닫는다. 목록 창이 열린 채 숨기면 창을 지우고(보내지 않음) 다시 보이면 창 없이 어레인지 표다', async () => {
-    await open({ hash: '#/a' })
-    appEl().querySelector<HTMLButtonElement>('header.top button.list-open')!.click()
-    addToList('시술', '꼬리뼈')
-    listSheet()!.querySelector<HTMLButtonElement>('.sheet-go > button.sheet-close')!.click()
-    expect(listSheet()).toBeNull()
-    appEl().querySelector<HTMLButtonElement>('header.top button.list-open')!.click()
-    expect(listNames('시술')).toEqual(['목', '등', '허리', '리덕션'])
+    cellOf('가상환자28', 'pt').click()
+    switchButton().click()
+    pickIn('pick', 'ICE')
     hide()
     await settle()
-    expect(document.querySelector('.list-sheet')).toBeNull()
     expectNoPatient()
     show()
     await settle()
     expect(arrangePage()).not.toBeNull()
-    expect(listSheet()).toBeNull()
-    expect(listWrites()).toEqual([])
+    expect(appEl().querySelector('.sheet-back')).toBeNull()
+    cellOf('가상환자28', 'pt').click()
+    expect(switchButton().getAttribute('aria-pressed')).toBe('false')
+    expect(pressedIn('pick')).toEqual([])
+    expect(writes()).toEqual([])
+  })
+
+  it('AC-5710.1 · AC-5711.1: 판 cfg의 더한 칸 IMS는 비고 앞에 그려지고, 빈 칸을 누르면 "IMS 직접 넣기" 창에서 고른 것 하나로 add(col x1)를 보낸다. 목록이 빈 더한 칸은 창 없이 바로 add v ""다', async () => {
+    server = fx.fakeServer(fx.withSettings(fx.arrangeMockupBoard(), fx.imsSettings()), '11:05')
+    await open({ hash: '#/a' })
+    const heads = [...appEl().querySelectorAll('table.arr > thead > tr > th')].map((th) => th.className)
+    expect(heads.slice(-3)).toEqual(['c-x1 c-add', 'c-memo', 'c-end'])
+    expect(textOf(appEl(), 'table.arr > thead th.c-x1 > span.sm')).toBe('목·어깨·허리·무릎')
+    cellAt('가상환자28', 'x1').click()
+    expect(textOf(appEl(), '.sheet .sheet-title')).toBe('IMS 직접 넣기')
+    pickIn('pick', '허리')
+    expect(appEl().querySelector('.sheet-back')).toBeNull()
+    expect(toastText()).toBe('가상환자28 · IMS 직접 넣었어요')
+    await settle()
+    expect(writes()).toEqual([{ k: K.h, op: 'add', col: 'x1', v: '허리' }])
+    expect(server.board.arrange!.rows.find((r) => r.k === K.h)!.cells.x1).toMatchObject({ det: '허리', manual: true })
+    expect(textOf(cellAt('가상환자28', 'x1'), '.det')).toBe('허리')
+    running?.stop()
+
+    calls = []
+    server = fx.fakeServer(fx.withSettings(fx.arrangeMockupBoard(), fx.imsSettings([])), '11:05')
+    await open({ hash: '#/a' })
+    expect(textOf(appEl(), 'table.arr > thead th.c-x1 > span.sm')).toBeNull()
+    cellAt('가상환자28', 'x1').click()
+    expect(appEl().querySelector('.sheet-back')).toBeNull()
+    expect(toastText()).toBe('가상환자28 · IMS 직접 넣었어요')
+    await settle()
+    expect(writes()).toEqual([{ k: K.h, op: 'add', col: 'x1', v: '' }])
+    expect(cellAt('가상환자28', 'x1').className).toBe('cell todo')
+    for (const u of urls()) expect(u).toMatch(SAME_PC_API)
+  })
+
+  it('AC-5710.4: 새 병원 처음 값 판(SONO·C-ARM에 고른 처방 없음)이면 표 위 안내 줄이 있고 [설정에서 고르기]는 #/s(설정 쪽)로 간다. 우리 의원 판에는 안내 줄이 없다', async () => {
+    await open({ hash: '#/a' })
+    expect(appEl().querySelector('.setup-note')).toBeNull()
+    running?.stop()
+
+    server = fx.fakeServer(fx.withSettings(fx.arrangeMockupBoard(), fx.freshSettings()), '11:05')
+    await open({ hash: '#/a' })
+    expect(textOf(appEl(), '.page.arrange > .setup-note > .sn-text')).toBe('SONO·C-ARM 칸에 넣을 처방을 아직 안 골랐어요. 그동안은 빈 칸을 눌러 직접 넣어요.')
+    appEl().querySelector<HTMLButtonElement>('.page.arrange > .setup-note > button')!.click()
+    await settle()
+    expect(window.location.hash).toBe('#/s')
+    expect(arrangePage()).toBeNull()
   })
 })
 

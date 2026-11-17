@@ -236,6 +236,34 @@ export function withCfg(board: FakeBoard, cfg: FakeCfg): FakeBoard {
   return { ...board, cfg }
 }
 
+/**
+ * 우리 의원 처음 값 + 더한 칸 IMS(x1 · 직접 칸 · 두 단계, 승인 시안 COLS) 설정 문서. list는 IMS 고르기 목록(기본 목·어깨·허리·무릎).
+ * 부를 때마다 새 사본이다 (TASK-6 어레인지 표)
+ */
+export function imsSettings(list: string[] = ['목', '어깨', '허리', '무릎']): FakeSettings {
+  const settings = oursSettings()
+  settings.nextX = 2
+  settings.cols.push({ k: 'x1', name: 'IMS', kind: 'mn', steps: 2, show: true, added: true, codes: [] })
+  settings.picks.extra = { x1: [...list] }
+  return settings
+}
+
+/**
+ * 판의 cfg·picks를 설정 문서로 바꾼 사본(도우미 AC-5703.1·5703.2·5703.6과 같다): cfg는 cfgOf(로고만 판 것 그대로 — GET /api/logo를 묻지 않게),
+ * picks는 그 설정의 목록이고 extra는 보이는 더한 칸만, 어레인지 줄 cells에서는 보이지 않는 칸 열쇠를 뺀다
+ */
+export function withSettings(board: FakeBoard, settings: FakeSettings): FakeBoard {
+  const cfg = { ...cfgOf(settings), logo: { ...board.cfg.logo } }
+  const shown = new Set(cfg.cols.map((col) => col.k))
+  const { extra, ...lists } = structuredClone(settings.picks)
+  const picks: FakePicks = { ...lists, extra: Object.fromEntries(cfg.cols.filter((col) => col.added).map((col) => [col.k, extra[col.k] ?? []])) }
+  const arrange = board.arrange && {
+    rows: board.arrange.rows.map((row) => ({ ...row, cells: Object.fromEntries(Object.entries(row.cells).filter(([k]) => shown.has(k))) as FakeCells })),
+    ended: board.arrange.ended,
+  }
+  return { ...board, cfg, picks, ...(arrange ? { arrange } : {}) }
+}
+
 /** 지난 30일 처방 목록(승인 시안 CODES 차례, 내원 많은 순). SONO는 사전에 이름이 없다(null). AA 진찰료는 도우미가 뺀다 */
 export function fakeCodes(): FakeCode[] {
   return [
@@ -306,6 +334,9 @@ export interface FakeCell {
   tags: string[]
 }
 
+/** 어레인지 줄의 칸: 처음 일곱 칸 열쇠는 늘 있고(없으면 null), 더한 칸(x1…) 열쇠는 넣은 것만 있다 (reception-other-clinic AC-5703.2) */
+export type FakeCells = Record<FakeCol, FakeCell | null> & Record<string, FakeCell | null>
+
 /**
  * 어레인지 줄 하나. 이름·차트번호·정보·메모·상태·접수 시각은 같은 k의 목록 줄에 있다.
  * back 돌아온 시각·backWait 돌아온 뒤 기다린 글("12분째", 다음 치료 칸을 누르기 전까지만, reception-arrange-tune AC-3601.4)
@@ -317,7 +348,7 @@ export interface FakeArrangeRow {
   backWait: string | null
   ptf: { st: 'up' | 'down'; at: string } | null
   last: string
-  cells: Record<FakeCol, FakeCell | null>
+  cells: FakeCells
   allDone: boolean
 }
 
@@ -331,13 +362,16 @@ export function fakeCell(over: Partial<FakeCell> = {}): FakeCell {
   return { st: 'todo', det: '', part: null, at: '10:30', ord: null, manual: false, tags: [], ...over }
 }
 
-/** 어레인지 줄 하나: 주지 않은 칸은 없음(null), allDone은 칸이 하나 이상이고 모두 완료일 때 true (AC-3305.8) */
+/**
+ * 어레인지 줄 하나: 주지 않은 처음 일곱 칸은 없음(null), 더한 칸(x1…)은 준 것만, allDone은 칸이 하나 이상이고 모두 완료일 때 true (AC-3305.8)
+ */
 export function arrangeRow(
   k: string,
-  cells: Partial<Record<FakeCol, Partial<FakeCell>>> = {},
+  cells: Partial<Record<string, Partial<FakeCell>>> = {},
   over: Partial<Omit<FakeArrangeRow, 'cells' | 'allDone'>> = {},
 ): FakeArrangeRow {
-  const all = Object.fromEntries(ARRANGE_COLS.map((col) => [col, cells[col] ? fakeCell(cells[col]) : null])) as Record<FakeCol, FakeCell | null>
+  const keys = [...ARRANGE_COLS, ...Object.keys(cells).filter((col) => !(ARRANGE_COLS as string[]).includes(col))]
+  const all = Object.fromEntries(keys.map((col) => [col, cells[col] ? fakeCell(cells[col]) : null])) as FakeCells
   const present = Object.values(all).filter((cell): cell is FakeCell => cell !== null)
   return { k, away: null, back: null, backWait: null, ptf: null, last: '', ...over, cells: all, allDone: present.length > 0 && present.every((cell) => cell.st === 'done') }
 }
@@ -786,12 +820,12 @@ interface FakeArrangeAsk {
   t?: unknown
 }
 
-/** 세 단계 칸(준비 → 준비완료 → 완료)과 직접 칸 */
-const THREE_STEP = new Set<FakeCol>(['sono', 'carm'])
-const DIRECT = new Set<FakeCol>(['pt', 'ds', 'eswt', 'trac'])
+/** 부위·시술 칸(SONO·C-ARM): part·이름표(t)가 있는 칸. 칸 열쇠로 정한다 (reception-other-clinic design.md 1절) */
+const PARTED = new Set<string>(['sono', 'carm'])
 
 /**
  * 가짜 도우미의 어레인지 쓰기(design.md 8절 op 표의 줄기만): 판의 arrange를 그 자리에서 바꾼다. 시각은 now다.
+ * 칸은 판 cfg.cols의 보이는 칸(더한 칸 포함)이고 단계(steps)도 cfg를 따른다(reception-other-clinic AC-5703.2·5703.3, 단계 2 칸에 set ready는 400).
  * 칸이 없는 칸에 step·set·part, 빈 칸 아닌 칸에 add면 404·400처럼 false. 끝난 줄을 다시 넣으면 빼 두었던 줄(없으면 빈 줄)을 접수 순 자리에 넣는다
  */
 function applyArrange(board: FakeBoard, stash: Map<string, FakeArrangeRow>, ask: FakeArrangeAsk, now: string): number {
@@ -801,12 +835,15 @@ function applyArrange(board: FakeBoard, stash: Map<string, FakeArrangeRow>, ask:
   const row = arrange.rows.find((r) => r.k === k)
   const ended = arrange.ended.some((e) => e.k === k)
   if (!row && !ended) return 404
-  const col = ARRANGE_COLS.find((c) => c === ask.col)
+  const shown = board.cfg.cols.find((c) => c.k === ask.col)
+  const col = shown?.k
+  const three = shown?.steps === 3
+  const parted = col !== undefined && PARTED.has(col)
   const v = typeof ask.v === 'string' ? ask.v : undefined
   // 이름표(t)는 SONO·C-ARM의 add·part에만 온다(목록에 있는지는 보지 않는다)
-  if (ask.t !== undefined && (typeof ask.t !== 'string' || !(ask.op === 'add' || ask.op === 'part') || !col || !THREE_STEP.has(col))) return 400
+  if (ask.t !== undefined && (typeof ask.t !== 'string' || !(ask.op === 'add' || ask.op === 'part') || !parted)) return 400
   const tags = typeof ask.t === 'string' && ask.t !== '' ? ask.t.split('|') : []
-  const cell = row && col ? row.cells[col] : null
+  const cell = row && col ? (row.cells[col] ?? null) : null
   const settle = () => {
     if (!row) return
     const present = Object.values(row.cells).filter((c): c is FakeCell => c !== null)
@@ -818,22 +855,22 @@ function applyArrange(board: FakeBoard, stash: Map<string, FakeArrangeRow>, ask:
     case 'step':
       if (!cell) return 404
       if (cell.st === 'done') return 400
-      cell.st = cell.st === 'todo' && THREE_STEP.has(col!) ? 'ready' : 'done'
+      cell.st = cell.st === 'todo' && three ? 'ready' : 'done'
       cell.at = now
       if (cell.st === 'done') cell.ord = null
       break
     case 'set':
       if (!cell) return 404
-      if (v !== 'todo' && v !== 'ready' && v !== 'done') return 400
+      if ((v !== 'todo' && v !== 'ready' && v !== 'done') || (v === 'ready' && !three)) return 400
       cell.st = v
       if (v !== 'todo') cell.at = now
       if (v === 'done') cell.ord = null
       break
     case 'add':
-      if (!row || !col || cell || v === undefined || (THREE_STEP.has(col) && v === '부위는 나중에')) return 400
+      if (!row || !col || cell || v === undefined || (parted && v === '부위는 나중에')) return 400
       row.cells[col] = fakeCell({
-        det: DIRECT.has(col) ? v : '',
-        part: THREE_STEP.has(col) ? v : null,
+        det: parted || col === 'xray' ? '' : v,
+        part: parted ? v : null,
         at: now,
         manual: true,
         tags,
@@ -845,7 +882,7 @@ function applyArrange(board: FakeBoard, stash: Map<string, FakeArrangeRow>, ask:
       break
     case 'part':
       if (!cell) return 404
-      if (!THREE_STEP.has(col!) || v === undefined || v === '부위는 나중에') return 400
+      if (!parted || v === undefined || v === '부위는 나중에') return 400
       cell.part = v
       cell.tags = tags
       break

@@ -48,10 +48,16 @@ interface Sheet {
   /** C-ARM 넣기 창에서 고른 시술·약재 (reception-pick-lists AC-3503.1) */
   proc?: string | null
   drug?: string | null
-  /** SONO 넣기 창에서 고른 쪽·담은 것·같이 하는 것 (reception-pick-lists AC-3504.1) */
+  /** SONO 넣기 창에서 고른 쪽·담은 것·같이 하는 것 (reception-pick-lists AC-3504.1). 한 줄 칸 [같이 고르기]의 고른 것도 picked (reception-other-clinic AC-5711.2) */
   side?: string | null
   picked?: string[]
   withs?: string[]
+  /** [같이 고르기] 켜짐 (reception-other-clinic AC-5711.2). 켜면 충격파는 hits·counts, C-ARM은 procs·drugs에 여러 개 (AC-5711.3) */
+  multi?: boolean
+  hits?: string[]
+  counts?: string[]
+  procs?: string[]
+  drugs?: string[]
 }
 
 interface ArrangeView {
@@ -77,6 +83,12 @@ interface ArrangeView {
   onUndo?: () => void
   onSheet?: (sheet: Sheet | null) => void
   onEnded?: (open: boolean) => void
+  /** 머리 [⚙ 설정]·안내 줄 [설정에서 고르기] (reception-other-clinic AC-5709.2·5710.4) */
+  onSettings?: () => void
+  /** 넣기 창 [☰ 목록 고치기] (reception-other-clinic AC-5711.4): 칸 열쇠, 'list'(고르기 목록 탭), { back: 'sheet' }(그 넣기 창으로 돌아옴) */
+  onEditCol?: (col: string, tab: string, opts: { back: string }) => void
+  /** 받아 둔 로고 그림 (board.js topOf, reception-other-clinic AC-5709.1) */
+  logoPic?: { ver: number; src: string } | null
 }
 
 interface ArrangeJs {
@@ -150,7 +162,7 @@ function trOf(root: ParentNode, name: string): HTMLTableRowElement {
   return found
 }
 
-function cellOf(root: ParentNode, name: string, col: Col): HTMLElement {
+function cellOf(root: ParentNode, name: string, col: Col | string): HTMLElement {
   const cell = trOf(root, name).querySelector<HTMLElement>(`:scope > td.c-${col} > .cell`)
   if (!cell) throw new Error(`${name} ${col} 칸 없음`)
   return cell
@@ -269,9 +281,12 @@ const OLD_HOWTO_0 =
 /** 옛 쓰는 법 둘째 줄·아래 글 (reception-arrange 시안 Arrange.html) */
 const OLD_HOWTO_1 = '접수 시각을 누르면 자리비움, 성함을 누르면 오늘·직전 진료기록부가 열려요. [PT 먼저]는 누를 때마다 ↑ 올라감 → ↓ 내려옴 → 지움.'
 const OLD_FOOT = '표시(준비완료·완료·자리비움·PT 먼저·치료 종료)는 의원 PC에만 남아요 · 비트 자료는 바뀌지 않아요'
-/** 쓰는 법 두 줄·아래 글 (둘째 줄·아래 글은 reception-arrange-tune AC-3602.2, 시안 Mock.html table) */
+/**
+ * 쓰는 법 두 줄·아래 글. 첫 줄은 우리 의원 처음 값 cfg로 만든 글(reception-other-clinic AC-5710.2, 시안 HOWTO_NEW),
+ * 둘째 줄·아래 글은 reception-arrange-tune AC-3602.2(시안 Mock.html table)
+ */
 const HOWTO = [
-  `치료 칸을 누르면 다음 단계로 넘어가요 (준비 → 준비완료 → 완료, 준비완료는 SONO·C-ARM만). X-RAY·SONO·C-ARM은 처방이 나오면 저절로 들어오고${HOWTO_PICK}, PT·도수·충격파·견인은 빈 칸을 눌러 골라 넣어요.`,
+  `치료 칸을 누르면 다음 단계로 넘어가요 (준비 → 준비완료 → 완료, 준비완료는 SONO·C-ARM만). X-RAY·SONO·C-ARM은 처방이 나오면 저절로 들어오고${HOWTO_PICK}, PT·도수·충격파·견인은 빈 칸을 눌러 골라 넣어요(여러 개 골라도 돼요).`,
   '접수 시각을 누르면 자리비움, 다시 누르면 돌아옴이에요(다음 치료 칸을 누를 때까지 돌아온 뒤 기다린 시간이 보여요). 성함이나 비고를 누르면 오늘·직전·그 전 진료기록부가 열려요. [PT 먼저]는 누를 때마다 ↑ 올라감 → ↓ 내려옴 → 지움.',
 ]
 const FOOT = '표시(준비완료·완료·자리비움·돌아옴·PT 먼저·치료 종료)는 의원 PC에만 남아요 · 비트 자료는 바뀌지 않아요'
@@ -282,12 +297,17 @@ const ACTIVE_NAMES = ['가상환자21', '가상환자22', '가상환자23', '가
 // ---- 머리 · 탭 (AC-3308.1) ---------------------------------------------------------------------------
 
 describe('REQ-3308 어레인지 탭 머리', () => {
-  it('AC-3308.1 · AC-3403.1: 어레인지 화면 머리는 상표 줄(로고·메모 칸·연결됨·새로 고침) 아래 탭 단추 둘 [접수 현황]·[어레인지 N명]이고 [어레인지]가 aria-pressed="true"다. 문서 제목은 건드리지 않는다', () => {
+  it('AC-3308.1 · AC-3403.1 · AC-5709.1: 어레인지 화면 머리는 상표 줄(로고·메모 칸·연결됨·새로 고침) 아래 탭 단추 둘 [접수 현황]·[어레인지 N명]이고 [어레인지]가 aria-pressed="true"다. 로고는 판 cfg.logo와 받아 둔 그림(view.logoPic)으로만 그린다. 문서 제목은 건드리지 않는다', () => {
+    const pic = draw(fx.withCfg(fx.arrangeMockupBoard(), fx.oursCfg()), { logoPic: { ver: 1, src: fx.fakeLogoUrl() } }).page
+    expect(shapeOf(pic.querySelector(':scope > header.top > .top-row'))).toEqual(['img.logo', 'div.memo-box', 'div.top-status'])
+    expect(pic.querySelector('header.top img.logo')?.getAttribute('src')).toBe(fx.fakeLogoUrl())
+    document.body.replaceChildren()
+    // 시험 판의 cfg.logo는 '없이'라 로고 자리가 비고 메모 칸이 맨 앞이다
     const { page } = draw()
     expect(page.className).toBe('page arrange')
     const top = page.querySelector(':scope > header.top')
     expect(shapeOf(top)).toEqual(['div.top-row.with-memo', 'nav.tabs'])
-    expect(shapeOf(top?.querySelector('.top-row'))).toEqual(['img.logo', 'div.memo-box', 'div.top-status'])
+    expect(shapeOf(top?.querySelector('.top-row'))).toEqual(['div.memo-box', 'div.top-status'])
     expect(textOf(top, '.top-row > .memo-box')).toBe('메모 쓰기 · 펜이나 글자로')
     expect(textOf(top, '.top-status > span.conn')).toBe('연결됨')
     expect(top?.querySelector('.top-status > button.refresh')).not.toBeNull()
@@ -347,7 +367,7 @@ describe('REQ-3308 어레인지 탭 머리', () => {
 // ---- 표 화면 (AC-3308.2 · 3308.3) ---------------------------------------------------------------------
 
 describe('REQ-3308 어레인지 표', () => {
-  it('AC-3308.2 · AC-3504.4 · AC-3602.2: 시안 차례대로 머리·기준 시각 줄(기준 글 + 표시 뜻 일곱, 자리비움 뒤 "돌아옴")·쓰는 법 두 줄(첫 줄에 "(SONO는 [부위 고르기], C-ARM은 [시술 고르기]로 골라요)", 둘째 줄은 돌아옴·비고 시안 글)·표·[오늘 치료 종료 N명]·아래 글(돌아옴 시안 글)이 있다', () => {
+  it('AC-3308.2 · AC-3504.4 · AC-3602.2 · AC-5710.2: 시안 차례대로 머리·기준 시각 줄(기준 글 + 표시 뜻 일곱, 자리비움 뒤 "돌아옴")·쓰는 법 두 줄(첫 줄은 우리 의원 처음 값 cfg 글, 둘째 줄은 돌아옴·비고 시안 글)·표·[오늘 치료 종료 N명]·아래 글(돌아옴 시안 글)이 있다', () => {
     const { app, page } = draw()
     expect(app.children.length).toBe(1)
     expect(app.firstElementChild).toBe(page)
@@ -781,14 +801,14 @@ describe('REQ-3308 칸 누르기', () => {
     expect(removed.undo).toBeNull()
   })
 
-  it('AC-3308.7 · AC-3604.4: 빈 칸을 누르면 고르기 창 "{칸} 직접 넣기"에 그 칸의 목록(X-RAY는 "X-ray 찍기", PT·도수·견인은 판 picks)이 나오고 고르면 onAdd(열쇠, 칸, 글)를 부른다(충격파는 두 줄 창 AC-3402.2, SONO·C-ARM은 넣기 창 AC-3503.1·AC-3504.1)', () => {
+  it('AC-3308.7 · AC-3604.4 · AC-5711.1: 빈 칸을 누르면 고르기 창 "{칸} 직접 넣기"에 그 칸의 목록(X-RAY는 "X-ray 찍기", PT·도수·견인은 판 picks)이 나오고 고르면 onAdd(열쇠, 칸, 글)를 부른다. 작은 글은 X-RAY "처방에 없어도 넣을 수 있어요", 직접 칸 "누르면 바로 들어가요"다(충격파는 두 줄 창 AC-3402.2, SONO·C-ARM은 넣기 창 AC-3503.1·AC-3504.1)', () => {
     for (const col of ['xray', 'pt', 'ds', 'trac'] as const) {
       const onAdd = vi.fn()
       const onSheet = vi.fn()
       const { page } = draw(fx.arrangeMockupBoard(), { onAdd, onSheet })
       cellOf(page, '가상환자28', col).click()
       expect(onSheet, col).toHaveBeenLastCalledWith({ k: K.h, col, kind: 'add' })
-      expect(textsOf(page, '.sheet .sheet-h > span'), col).toEqual([`${COL_NAMES[col]} 직접 넣기`, '가상환자28 · 처방에 없어도 넣을 수 있어요'])
+      expect(textsOf(page, '.sheet .sheet-h > span'), col).toEqual([`${COL_NAMES[col]} 직접 넣기`, col === 'xray' ? '가상환자28 · 처방에 없어도 넣을 수 있어요' : '가상환자28 · 누르면 바로 들어가요'])
       expect(optionsOf(page), col).toEqual(CHOICES[col])
       expect(page.querySelector('.sheet .opts')?.className, col).toBe(CHOICES[col].length > 6 ? 'opts many' : 'opts')
       const last = CHOICES[col].at(-1)!
@@ -1126,22 +1146,23 @@ function goButton(root: ParentNode): HTMLButtonElement {
 }
 
 describe('REQ-3402 충격파 타수·부위 수', () => {
-  it('AC-3402.1 · AC-3604.4: planOf(add 충격파)는 판 picks.eswt로 본다: 부위 수 하나 또는 "{타수} {부위 수}"만 받고(도우미 AddOf와 같다), 목록 밖·차례가 뒤집힌 글·빈 글은 맞지 않는 쓰기다', () => {
+  it('AC-3402.1 · AC-3604.4 · AC-5703.4: planOf(add 충격파)는 판 picks.eswt로 본다: 타수 0개 이상 + 부위 수 1개 이상을 "|"로 이은 글(타수 먼저, 각각 목록 차례, 도우미와 같다)만 받고, 목록 밖·차례가 뒤집힌 글·겹침·옛 "{타수} {부위 수}"·빈 글은 맞지 않는 쓰기다', () => {
     const board = fx.arrangeMockupBoard()
-    for (const v of ['1부위', '4부위', '2000타 1부위', '6000타 4부위']) expect(arrRow(view.planOf(board, { k: K.h, op: 'add', col: 'eswt', v }).board, K.h)!.cells.eswt, v).toMatchObject({ det: v })
-    for (const v of ['5부위', '2000타', '1부위 2000타', '5000타 1부위', '2000타  1부위', '']) {
+    for (const v of ['1부위', '4부위', '2000타|1부위', '6000타|4부위', '2000타|3000타|1부위|2부위', '1부위|4부위'])
+      expect(arrRow(view.planOf(board, { k: K.h, op: 'add', col: 'eswt', v }).board, K.h)!.cells.eswt, v).toMatchObject({ det: v })
+    for (const v of ['5부위', '2000타', '2000타|3000타', '1부위|2000타', '5000타|1부위', '2000타 1부위', '2부위|1부위', '3000타|2000타|1부위', '1부위|1부위', '2000타||1부위', '']) {
       const plan = view.planOf(board, { k: K.h, op: 'add', col: 'eswt', v })
       expect(plan.toast, v).toBeNull()
       expect(plan.board, v).toBe(board)
     }
     const other = fx.arrangeMockupBoard()
     other.picks!.eswt = { hits: ['3천'], counts: ['한 부위'] }
-    expect(view.planOf(other, { k: K.h, op: 'add', col: 'eswt', v: '3천 한 부위' }).toast).toBe('가상환자28 · 충격파 직접 넣었어요')
+    expect(view.planOf(other, { k: K.h, op: 'add', col: 'eswt', v: '3천|한 부위' }).toast).toBe('가상환자28 · 충격파 직접 넣었어요')
     expect(view.planOf(other, { k: K.h, op: 'add', col: 'eswt', v: '한 부위' }).toast).toBe('가상환자28 · 충격파 직접 넣었어요')
     expect(view.planOf(other, { k: K.h, op: 'add', col: 'eswt', v: '2부위' }).toast).toBeNull()
   })
 
-  it('AC-3604.4: 충격파 넣기 창은 판 picks의 타수 줄·부위 수 줄이고, 타수 목록이 비면 타수 줄이 없다(부위 수만 골라 넣는다). 칸 글은 picks 타수 이름 + 빈칸으로 시작할 때만 타수·부위 수로 나눈다', () => {
+  it('AC-3604.4 · AC-5703.4: 충격파 넣기 창은 판 picks의 타수 줄·부위 수 줄이고, 타수 목록이 비면 타수 줄이 없다(부위 수만 골라 넣는다). 칸 글은 "|" 조각 가운데 앞의 picks 타수 이름을 타수로, 옛 글은 picks 타수 이름 + 빈칸으로 시작할 때만 나눈다', () => {
     const board = fx.arrangeMockupBoard()
     board.picks!.eswt = { hits: ['3천', '5천'], counts: ['한 부위', '두 부위', '세 부위'] }
     const onAdd = vi.fn()
@@ -1155,7 +1176,7 @@ describe('REQ-3402 충격파 타수·부위 수', () => {
     expect(document.activeElement?.textContent).toBe('두 부위')
     expect(goButton(page).textContent).toBe('넣기 · 5천 두 부위')
     goButton(page).click()
-    expect(onAdd).toHaveBeenLastCalledWith(K.h, 'eswt', '5천 두 부위')
+    expect(onAdd).toHaveBeenLastCalledWith(K.h, 'eswt', '5천|두 부위')
 
     document.body.replaceChildren()
     const noHits = fx.arrangeMockupBoard()
@@ -1164,8 +1185,8 @@ describe('REQ-3402 충격파 타수·부위 수', () => {
     const bare = draw(noHits, { onAdd, onSheet }).page
     cellOf(bare, '가상환자28', 'eswt').click()
     const sheet = sheetOf(bare)!
-    expect(shapeOf(sheet)).toEqual(['div.sheet-h', 'div.opt-label', 'div.opts.four', 'div.sheet-go'])
-    expect(textsOf(sheet, ':scope > .opt-label')).toEqual(['부위 수'])
+    expect(shapeOf(sheet)).toEqual(['div.sheet-h', 'div.pick-mode', 'div.opts.four', 'div.sheet-go', 'button.pick-edit'])
+    expect(textsOf(sheet, ':scope > .pick-mode > .opt-label')).toEqual(['부위 수'])
     expect(eswtButtons(bare, 0).map((b) => b.textContent)).toEqual(['1부위', '2부위'])
     eswtPick(bare, '2부위')
     expect(onSheet).toHaveBeenLastCalledWith({ k: K.h, col: 'eswt', kind: 'add', hit: null, count: '2부위' })
@@ -1173,15 +1194,19 @@ describe('REQ-3402 충격파 타수·부위 수', () => {
     goButton(bare).click()
     expect(onAdd).toHaveBeenLastCalledWith(K.h, 'eswt', '2부위')
 
-    // 칸 글 나누기: 목록의 타수 이름 + 빈칸으로 시작하면 타수(위)·나머지(아래), 아니면 칸 글 하나
+    // 칸 글 나누기: "|" 조각의 앞쪽 타수 이름은 타수(위)·나머지(아래). 옛 글은 목록의 타수 이름 + 빈칸으로 시작하면 나누고, 아니면 칸 글 하나
     document.body.replaceChildren()
     const cells = fx.arrangeMockupBoard()
     cells.picks!.eswt = { hits: ['3천'], counts: ['2부위'] }
     arrRow(cells, K.c)!.cells.eswt!.det = '3천 2부위'
     arrRow(cells, K.d)!.cells.eswt = fx.fakeCell({ det: '3000타 2부위', manual: true })
+    arrRow(cells, K.f)!.cells.eswt = fx.fakeCell({ det: '3천|2부위', manual: true })
+    arrRow(cells, K.g)!.cells.eswt = fx.fakeCell({ det: '3000타|2부위', manual: true })
     const drawn = draw(cells).page
     expect(cellParts(cellOf(drawn, '가상환자23', 'eswt'))).toEqual(['span.st:준비', 'span.hit:3천', 'span.det:2부위'])
     expect(cellParts(cellOf(drawn, '가상환자24', 'eswt'))).toEqual(['span.st:준비', 'span.det:3000타 2부위'])
+    expect(cellParts(cellOf(drawn, '가상환자26', 'eswt'))).toEqual(['span.st:준비', 'span.hit:3천', 'span.det:2부위'])
+    expect(cellParts(cellOf(drawn, '가상환자27', 'eswt'))).toEqual(['span.st:준비', 'span.det:3000타·2부위'])
   })
 
   it('AC-3402.2: 빈 충격파 칸을 누르면 창 "충격파 직접 넣기"에 [타수] 넷·[부위 수] 넷 두 줄과 [닫기]·[넣기]가 있고, 처음에는 아무것도 안 골라 [넣기]가 꺼져 있다', () => {
@@ -1194,9 +1219,9 @@ describe('REQ-3402 충격파 타수·부위 수', () => {
     expect(sheet.getAttribute('role')).toBe('dialog')
     expect(sheet.getAttribute('aria-modal')).toBe('true')
     expect(sheet.getAttribute('aria-label')).toBe('충격파 직접 넣기')
-    expect(shapeOf(sheet)).toEqual(['div.sheet-h', 'div.opt-label', 'div.opts.four', 'div.opt-label', 'div.opts.four', 'div.sheet-go'])
+    expect(shapeOf(sheet)).toEqual(['div.sheet-h', 'div.pick-mode', 'div.opts.four', 'div.opt-label', 'div.opts.four', 'div.sheet-go', 'button.pick-edit'])
     expect(textsOf(sheet, '.sheet-h > span')).toEqual(['충격파 직접 넣기', '가상환자28 · 타수와 부위 수를 골라요'])
-    expect(textsOf(sheet, ':scope > .opt-label')).toEqual(['타수', '부위 수'])
+    expect(textsOf(sheet, ':scope > .pick-mode > .opt-label, :scope > .opt-label')).toEqual(['타수', '부위 수'])
     expect(eswtButtons(page, 0).map((b) => b.textContent)).toEqual(ESWT_HITS)
     expect(eswtButtons(page, 1).map((b) => b.textContent)).toEqual(ESWT_COUNTS)
     for (const b of [...eswtButtons(page, 0), ...eswtButtons(page, 1)]) {
@@ -1211,7 +1236,7 @@ describe('REQ-3402 충격파 타수·부위 수', () => {
     expect(onAdd).not.toHaveBeenCalled()
   })
 
-  it('AC-3402.2: 타수만 골라도 [넣기]는 꺼져 있고, 부위 수를 고르면 [넣기 · 3000타 2부위]가 켜져 누르면 add v="3000타 2부위"를 부르고 창을 닫는다. 고를 때마다 창 값을 onSheet로 넘긴다', () => {
+  it('AC-3402.2 · AC-5703.4: 타수만 골라도 [넣기]는 꺼져 있고, 부위 수를 고르면 [넣기 · 3000타 2부위]가 켜져 누르면 add v="3000타|2부위"를 부르고 창을 닫는다. 고를 때마다 창 값을 onSheet로 넘긴다', () => {
     const onSheet = vi.fn()
     const onAdd = vi.fn()
     const { page } = draw(fx.arrangeMockupBoard(), { onSheet, onAdd })
@@ -1233,7 +1258,7 @@ describe('REQ-3402 충격파 타수·부위 수', () => {
     eswtPick(page, '3000타')
     goButton(page).click()
     expect(onAdd).toHaveBeenCalledTimes(1)
-    expect(onAdd).toHaveBeenLastCalledWith(K.h, 'eswt', '3000타 2부위')
+    expect(onAdd).toHaveBeenLastCalledWith(K.h, 'eswt', '3000타|2부위')
     expect(sheetOf(page)).toBeNull()
     expect(onSheet).toHaveBeenLastCalledWith(null)
   })
@@ -1303,9 +1328,9 @@ describe('REQ-3402 충격파 타수·부위 수', () => {
     expect(cellParts(cellOf(page, '가상환자23', 'eswt'))).toEqual(['span.st:준비', 'span.hit:3000타', 'span.det:2부위'])
     expect(cellParts(cellOf(page, '가상환자21', 'eswt'))).toEqual(['span.st:✓ 10:40', 'span.hit:4000타', 'span.det.sm:3부위'])
     expect(cellParts(cellOf(page, '가상환자24', 'eswt'))).toEqual(['span.st:준비', 'span.det:1부위'])
-    // 미리 그리기(planOf add)도 같은 글을 칸 글로 둔다
-    const plan = view.planOf(fx.arrangeMockupBoard(), { k: K.h, op: 'add', col: 'eswt', v: '6000타 4부위' })
-    expect(arrRow(plan.board, K.h)!.cells.eswt).toEqual({ st: 'todo', det: '6000타 4부위', part: null, at: '11:04', ord: null, manual: true, tags: [] })
+    // 미리 그리기(planOf add)도 보낸 글을 칸 글로 둔다(reception-other-clinic AC-5703.4)
+    const plan = view.planOf(fx.arrangeMockupBoard(), { k: K.h, op: 'add', col: 'eswt', v: '6000타|4부위' })
+    expect(arrRow(plan.board, K.h)!.cells.eswt).toEqual({ st: 'todo', det: '6000타|4부위', part: null, at: '11:04', ord: null, manual: true, tags: [] })
     expect(plan.toast).toBe('가상환자28 · 충격파 직접 넣었어요')
     document.body.replaceChildren()
     expect(cellParts(cellOf(draw(plan.board).page, '가상환자28', 'eswt'))).toEqual(['span.st:준비', 'span.hit:6000타', 'span.det:4부위'])
@@ -1385,9 +1410,9 @@ describe('REQ-3503 C-ARM 넣기', () => {
     expect(onSheet).toHaveBeenLastCalledWith(CARM_ADD)
     const sheet = sheetOf(page)!
     expect(sheet.getAttribute('aria-label')).toBe('C-ARM 넣기')
-    expect(shapeOf(sheet)).toEqual(['div.sheet-h', 'div.opt-label', 'div.opts.four', 'div.opt-label', 'div.opts.trio', 'div.sheet-go'])
+    expect(shapeOf(sheet)).toEqual(['div.sheet-h', 'div.pick-mode', 'div.opts.four', 'div.opt-label', 'div.opts.trio', 'div.sheet-go', 'button.pick-edit'])
     expect(textsOf(sheet, '.sheet-h > span')).toEqual(['C-ARM 넣기', '가상환자28 · 시술과 약재를 골라요'])
-    expect(textsOf(sheet, ':scope > .opt-label')).toEqual(['시술', '약재'])
+    expect(textsOf(sheet, ':scope > .pick-mode > .opt-label, :scope > .opt-label')).toEqual(['시술', '약재'])
     expect(labelsOf(page, 'proc')).toEqual(['목', '등', '허리', '리덕션'])
     expect(labelsOf(page, 'drug')).toEqual(['TP', '하프', '기본'])
     expect(onOf(page, 'proc')).toEqual([])
@@ -1471,7 +1496,7 @@ describe('REQ-3503 C-ARM 넣기', () => {
     const onSheet = vi.fn()
     const { page } = draw(fx.arrangeMockupBoard(), { onAdd, onSheet, sheet: { ...CARM_ADD, proc: '리덕션', drug: 'TP' } })
     const sheet = sheetOf(page)!
-    expect(shapeOf(sheet)).toEqual(['div.sheet-h', 'div.opt-label', 'div.opts.four', 'div.opt-label', 'div.opts.trio.no-drug', 'p.opt-note', 'div.sheet-go'])
+    expect(shapeOf(sheet)).toEqual(['div.sheet-h', 'div.pick-mode', 'div.opts.four', 'div.opt-label', 'div.opts.trio.no-drug', 'p.opt-note', 'div.sheet-go', 'button.pick-edit'])
     expect(textOf(sheet, 'p.opt-note')).toBe('리덕션은 약재 없이 넣어요')
     expect(groupButtons(page, 'drug').every((b) => b.disabled)).toBe(true)
     expect(onOf(page, 'drug')).toEqual([])
@@ -1522,7 +1547,7 @@ describe('REQ-3503 C-ARM 넣기', () => {
     expect(onPart).toHaveBeenCalledTimes(1)
   })
 
-  it('AC-3503.3: planOf(add·part)는 C-ARM v=시술·t=약재를 판 picks로 보고 칸(part 시술·tags 약재)을 미리 그린다. 띠 "{이름} · C-ARM 부위: 허리 TP". 목록 밖·약재 둘·약재 없음 시술의 약재·"부위는 나중에"는 맞지 않는 쓰기다', () => {
+  it('AC-3503.3 · AC-5703.4: planOf(add·part)는 C-ARM v=시술(1개 이상 "|", 목록 차례)·t=약재(0개 이상)를 판 picks로 보고 칸(part 시술·tags 약재)을 미리 그린다. 띠 "{이름} · C-ARM 부위: 허리 TP". 목록 밖·겹침·차례가 뒤집힌 글·약재 없음 시술만 고른 약재·"부위는 나중에"는 맞지 않는 쓰기다', () => {
     const board = fx.arrangeMockupBoard()
     const add = view.planOf(board, { k: K.h, op: 'add', col: 'carm', v: '허리', t: 'TP' })
     expect(arrRow(add.board, K.h)!.cells.carm).toEqual({ st: 'todo', det: '', part: '허리', at: '11:04', ord: null, manual: true, tags: ['TP'] })
@@ -1530,13 +1555,19 @@ describe('REQ-3503 C-ARM 넣기', () => {
     expect(add.undo).toEqual({ k: K.h, op: 'remove', col: 'carm' })
     expect(arrRow(view.planOf(board, { k: K.h, op: 'add', col: 'carm', v: '리덕션' }).board, K.h)!.cells.carm).toMatchObject({ part: '리덕션', tags: [] })
     expect(arrRow(view.planOf(board, { k: K.h, op: 'add', col: 'carm', v: '목', t: '' }).board, K.h)!.cells.carm).toMatchObject({ part: '목', tags: [] })
+    // 여러 개 (reception-other-clinic AC-5703.4)
+    expect(arrRow(view.planOf(board, { k: K.h, op: 'add', col: 'carm', v: '허리', t: 'TP|하프' }).board, K.h)!.cells.carm).toMatchObject({ part: '허리', tags: ['TP', '하프'] })
+    expect(arrRow(view.planOf(board, { k: K.h, op: 'add', col: 'carm', v: '목|허리|리덕션', t: 'TP|기본' }).board, K.h)!.cells.carm).toMatchObject({ part: '목|허리|리덕션', tags: ['TP', '기본'] })
+    expect(view.planOf(board, { k: K.h, op: 'add', col: 'carm', v: '목|리덕션', t: 'TP' }).toast).toBe('가상환자28 · C-ARM 직접 넣었어요')
     for (const [v, t] of [
       ['꼬리뼈', undefined],
-      ['허리', 'TP|하프'],
       ['허리', '없는약'],
+      ['허리', 'TP|TP'],
       ['리덕션', 'TP'],
       [LATER, undefined],
       ['허리|목', undefined],
+      ['목|목', undefined],
+      ['목||허리', undefined],
       ['', undefined],
     ] as const) {
       const plan = view.planOf(board, { k: K.h, op: 'add', col: 'carm', v, t })
@@ -1549,7 +1580,8 @@ describe('REQ-3503 C-ARM 넣기', () => {
     expect(part.toast).toBe('가상환자25 · C-ARM 부위: 허리 TP')
     expect(part.undo).toBeNull()
     expect(view.planOf(board, { k: K.e, op: 'part', col: 'carm', v: '리덕션' }).toast).toBe('가상환자25 · C-ARM 부위: 리덕션')
-    expect(view.planOf(board, { k: K.e, op: 'part', col: 'carm', v: '허리', t: 'TP|기본' }).toast).toBeNull()
+    expect(view.planOf(board, { k: K.e, op: 'part', col: 'carm', v: '허리', t: 'TP|기본' }).toast).toBe('가상환자25 · C-ARM 부위: 허리 TP·기본')
+    expect(view.planOf(board, { k: K.e, op: 'part', col: 'carm', v: '목|허리', t: 'TP' }).toast).toBe('가상환자25 · C-ARM 부위: 목·허리 TP')
     // 목록은 판 picks다: 바꾼 목록에 없는 시술은 맞지 않는다
     const other = fx.arrangeMockupBoard()
     other.picks!.carm = { procs: [{ n: '꼬리뼈', noDrug: false }], drugs: ['반'] }
@@ -1596,6 +1628,7 @@ describe('REQ-3504 SONO 넣기', () => {
       'div.opt-label',
       'div.opts.duo',
       'div.sheet-go',
+      'button.pick-edit',
     ])
     expect(textsOf(sheet, '.sheet-h > span')).toEqual(['SONO 넣기', '가상환자28 · 쪽을 누르고 부위를 눌러 담아요. 두 부위면 하나 더 담아요'])
     expect([...sheet.querySelectorAll(':scope > .opt-label')].map((l) => [labelOf(l), l.querySelector(':scope > span.opt-hint')?.textContent ?? null])).toEqual([
@@ -1631,7 +1664,7 @@ describe('REQ-3504 SONO 넣기', () => {
     const board = fx.arrangeMockupBoard()
     board.picks!.sono = { parts: [], plains: ['소독'], withs: [] }
     const few = sheetOf(draw(board, { sheet: SONO_ADD }).page)!
-    expect(shapeOf(few)).toEqual(['div.sheet-h', 'div.opt-label', 'div.picked', 'div.opt-label', 'div.opts.trio', 'div.sheet-go'])
+    expect(shapeOf(few)).toEqual(['div.sheet-h', 'div.opt-label', 'div.picked', 'div.opt-label', 'div.opts.trio', 'div.sheet-go', 'button.pick-edit'])
     expect(labelsOf(few, 'plain')).toEqual(['소독'])
   })
 
@@ -2014,6 +2047,696 @@ describe('REQ-3312 환자 글은 글자로만', () => {
   })
 })
 
+// ---- 다른 병원용 설정 칸 (reception-other-clinic REQ-5710·REQ-5711, 승인 시안 docs/mockups/reception-other-clinic/index.html) ----------
+
+/** 다른 병원용 승인 시안(2026-11-17) */
+const OTHER_MOCKUP = path.join(ROOT, 'docs', 'mockups', 'reception-other-clinic', 'index.html')
+/** IMS 직접 칸을 더한 쓰는 법 첫 줄 (AC-5710.2, 시안 HOWTO_OURS) */
+const HOWTO_IMS =
+  '치료 칸을 누르면 다음 단계로 넘어가요 (준비 → 준비완료 → 완료, 준비완료는 SONO·C-ARM만). X-RAY·SONO·C-ARM은 처방이 나오면 저절로 들어오고(SONO는 [부위 고르기], C-ARM은 [시술 고르기]로 골라요), PT·도수·충격파·견인·IMS는 빈 칸을 눌러 골라 넣어요(여러 개 골라도 돼요).'
+const NOTE_TAIL = ' 칸에 넣을 처방을 아직 안 골랐어요. 그동안은 빈 칸을 눌러 직접 넣어요.'
+const PT_ADD: Sheet = { k: K.h, col: 'pt', kind: 'add' }
+/** 시험 판의 끝 칸 넷(접수·성함·비고·끝) 빼고 치료 칸 머리만 고른다 */
+const EDGE_HEADS = ['c-t', 'c-nm', 'c-memo', 'c-end']
+
+/** 우리 의원 처음 값 + 더한 칸 IMS(x1, 직접 칸) 판. list는 IMS 고르기 목록 */
+function imsBoard(list?: string[]): FakeBoard {
+  return fx.withSettings(fx.arrangeMockupBoard(), fx.imsSettings(list))
+}
+
+/** 우리 의원 처음 값 설정을 edit로 바꾼 판 */
+function settingsBoard(edit: (settings: fx.FakeSettings) => void): FakeBoard {
+  const settings = fx.oursSettings()
+  edit(settings)
+  return fx.withSettings(fx.arrangeMockupBoard(), settings)
+}
+
+/** 설정 문서의 칸 하나 */
+function colIn(settings: fx.FakeSettings, k: string): fx.FakeSettingsCol {
+  const col = settings.cols.find((c) => c.k === k)
+  if (!col) throw new Error(`칸 ${k} 없음`)
+  return col
+}
+
+/** 표 머리 class 차례 */
+function headClasses(root: ParentNode): string[] {
+  return [...root.querySelectorAll('table.arr > thead > tr > th')].map((th) => th.className)
+}
+
+/** 치료 칸 머리 [글, 작은 글] */
+function headsOf(root: ParentNode): [string, string | null][] {
+  return [...root.querySelectorAll('table.arr > thead > tr > th')]
+    .filter((th) => !EDGE_HEADS.includes(th.className))
+    .map((th) => [th.firstChild?.nodeType === Node.TEXT_NODE ? (th.firstChild.textContent ?? '') : '', th.querySelector(':scope > span.sm')?.textContent ?? null])
+}
+
+/** 넣기 창의 [같이 고르기] */
+function switchOf(root: ParentNode): HTMLButtonElement | null {
+  return root.querySelector<HTMLButtonElement>('.sheet > .pick-mode > button.switch')
+}
+
+/** 넣기 창 맨 아래 [☰ 목록 고치기] */
+function editOf(root: ParentNode): HTMLButtonElement | null {
+  return root.querySelector<HTMLButtonElement>('.sheet > button.pick-edit')
+}
+
+/** 칸 글의 마디: 요소는 태그 이름, 글은 그 글 */
+function nodesOf(node: Element): string[] {
+  return [...node.childNodes].map((n) => (n instanceof Element ? n.tagName.toLowerCase() : (n.textContent ?? '')))
+}
+
+describe('REQ-5710 어레인지 표 — 설정 칸 (reception-other-clinic)', () => {
+  it('AC-5710.1: 더한 칸 IMS는 cfg 차례대로 비고 앞에 있고(c-x1 c-add), 머리는 이름 + 고르기 목록을 "·"로 이은 작은 글(넘치면 줄임표)이다. 더한 칸 머리는 옅은 회색, 칸 바탕은 흰색이고 SONO 노랑·C-ARM 민트는 sono·carm 열쇠만이다', () => {
+    const { page } = draw(imsBoard())
+    const classes = ['c-t', 'c-nm', 'c-xray', 'c-sono', 'c-carm', 'c-pt', 'c-ds', 'c-eswt', 'c-trac', 'c-x1 c-add', 'c-memo', 'c-end']
+    expect(headClasses(page)).toEqual(classes)
+    for (const tr of trs(page)) expect([...tr.children].map((td) => td.className)).toEqual(classes)
+    expect(headsOf(page)).toEqual([
+      ['X-RAY', null],
+      ['SONO', '부위·준비·순서'],
+      ['C-ARM', '시술·약재·순서'],
+      ['PT', 'ICE·HP'],
+      ['도수', '30분·50분'],
+      ['충격파', '타수·부위 수'],
+      ['견인', '목·허리'],
+      ['IMS', '목·어깨·허리·무릎'],
+    ])
+    const ims = cellOf(page, '가상환자28', 'x1')
+    expect(ims.className).toBe('cell empty')
+    expect(ims.getAttribute('aria-label')).toBe('IMS 넣기')
+    expect(cssValue('.arr th.c-add', 'background')).toBe('var(--ground)')
+    expect(cssValue('.arr td.c-add', 'background')).toBeUndefined()
+    expect(cssValue('.arr td', 'background')).toBe('var(--surface)')
+    expect(cssValue('.arr td.c-sono', 'background')).toBe('var(--sono-col)')
+    expect(cssValue('.arr td.c-carm', 'background')).toBe('var(--carm-col)')
+    for (const [prop, value] of [
+      ['white-space', 'nowrap'],
+      ['overflow', 'hidden'],
+      ['text-overflow', 'ellipsis'],
+    ] as const)
+      expect(cssValue('.arr th.c-add .sm', prop), prop).toBe(value)
+    // 목록이 빈 더한 칸은 작은 글이 없다
+    expect(headsOf(draw(imsBoard([])).page).at(-1)).toEqual(['IMS', null])
+  })
+
+  it('AC-5710.1: 칸 차례·이름·숨김은 cfg를 따른다(숨긴 칸은 머리·줄·쓰기 모두 없음). 이름을 바꾼 칸은 머리·넣기 창·띠가 새 이름이고, 단계·종류는 그 칸 설정이다(단계 3이면 준비완료, 처방 칸에 직접 넣으면 점선 "직접", 직접 칸이면 목록 작은 글)', () => {
+    const board = settingsBoard((s) => {
+      colIn(s, 'sono').show = false
+      colIn(s, 'pt').name = '물리치료'
+      colIn(s, 'pt').steps = 3
+      colIn(s, 'carm').steps = 2
+      colIn(s, 'xray').kind = 'mn'
+      colIn(s, 'eswt').kind = 'rx'
+      const order = ['xray', 'carm', 'trac', 'pt', 'ds', 'eswt', 'sono']
+      s.cols.sort((a, b) => order.indexOf(a.k) - order.indexOf(b.k))
+    })
+    const onSheet = vi.fn()
+    const { page } = draw(board, { onSheet })
+    expect(headClasses(page)).toEqual(['c-t', 'c-nm', 'c-xray', 'c-carm', 'c-trac', 'c-pt', 'c-ds', 'c-eswt', 'c-memo', 'c-end'])
+    expect(headsOf(page)).toEqual([
+      ['X-RAY', null],
+      ['C-ARM', '시술·약재·순서'],
+      ['견인', '목·허리'],
+      ['물리치료', 'ICE·HP'],
+      ['도수', '30분·50분'],
+      ['충격파', null],
+    ])
+    expect(page.querySelector('th.c-sono, td.c-sono')).toBeNull()
+    cellOf(page, '가상환자28', 'pt').click()
+    expect(textOf(sheetOf(page), '.sheet-title')).toBe('물리치료 직접 넣기')
+    expect(view.planOf(board, { k: K.h, op: 'add', col: 'pt', v: 'ICE' }).toast).toBe('가상환자28 · 물리치료 직접 넣었어요')
+    expect(view.planOf(board, { k: K.h, op: 'add', col: 'sono', v: '목' }).toast).toBeNull()
+    expect(view.planOf(board, { k: K.c, op: 'part', col: 'sono', v: '목' }).toast).toBeNull()
+    // 단계 3인 물리치료: 준비 → 준비완료. 단계 2인 C-ARM: 준비 → 완료, 준비완료로 바꾸기는 맞지 않는다
+    const pt = view.planOf(board, { k: K.c, op: 'step', col: 'pt' })
+    expect(arrRow(pt.board, K.c)!.cells.pt).toMatchObject({ st: 'ready', at: '11:04' })
+    expect(pt.toast).toBe('가상환자23 · 물리치료 준비완료로 바꿨어요')
+    const carm = view.planOf(board, { k: K.e, op: 'step', col: 'carm' })
+    expect(arrRow(carm.board, K.e)!.cells.carm).toMatchObject({ st: 'done' })
+    expect(view.planOf(carm.board, { k: K.e, op: 'set', col: 'carm', v: 'ready' }).toast).toBeNull()
+    // 완료 창: 단계 3이면 [준비완료로 되돌리기]가 있다
+    document.body.replaceChildren()
+    expect(optionsOf(draw(board, { sheet: { k: K.a, col: 'pt', kind: 'done' } }).page)).toEqual(['준비로 되돌리기', '준비완료로 되돌리기', '칸에서 빼기'])
+    arrRow(board, K.b)!.cells.carm!.st = 'done'
+    document.body.replaceChildren()
+    expect(optionsOf(draw(board, { sheet: { k: K.b, col: 'carm', kind: 'done' } }).page)).toEqual(['준비로 되돌리기'])
+    // 직접 표시는 처방 칸(rx)만: 직접 칸으로 바꾼 X-RAY는 점선이 없고, 처방 칸으로 바꾼 충격파는 점선 "직접"이다
+    document.body.replaceChildren()
+    const drawn = draw(board).page
+    expect(cellOf(drawn, '가상환자24', 'xray').className).toBe('cell done')
+    expect(cellOf(drawn, '가상환자23', 'eswt').className).toBe('cell todo manual')
+    expect(textOf(cellOf(drawn, '가상환자23', 'eswt'), '.mn')).toBe('직접')
+  })
+
+  it('AC-5710.2: 쓰는 법 첫 줄은 cfg.cols로 만든다: 우리 의원·새 병원 처음 값은 같은 글, IMS 직접 칸을 더하면 "PT·도수·충격파·견인·IMS는", 숨김·종류·단계·이름을 바꾸면 그대로 바뀐다. 둘째 줄은 그대로다', () => {
+    const firstOf = (board: FakeBoard) => {
+      document.body.replaceChildren()
+      const howto = draw(board).page.querySelector('p.howto')!
+      expect(nodesOf(howto).slice(1)).toEqual(['br', HOWTO[1]])
+      return howto.firstChild?.textContent ?? ''
+    }
+    const STEP3 = '치료 칸을 누르면 다음 단계로 넘어가요 (준비 → 준비완료 → 완료, 준비완료는 SONO·C-ARM만).'
+    const MN = 'PT·도수·충격파·견인은 빈 칸을 눌러 골라 넣어요(여러 개 골라도 돼요).'
+    expect(firstOf(fx.arrangeMockupBoard())).toBe(HOWTO[0])
+    expect(firstOf(fx.withSettings(fx.arrangeMockupBoard(), fx.freshSettings()))).toBe(HOWTO[0])
+    expect(firstOf(imsBoard())).toBe(HOWTO_IMS)
+    expect(
+      firstOf(
+        settingsBoard((s) => {
+          colIn(s, 'sono').show = false
+          colIn(s, 'carm').show = false
+        }),
+      ),
+    ).toBe(`치료 칸을 누르면 다음 단계로 넘어가요 (준비 → 완료). X-RAY는 처방이 나오면 저절로 들어오고, ${MN}`)
+    /** 칸 열쇠들의 설정 하나를 바꾼 판 */
+    const withEach = (keys: string[], edit: (col: fx.FakeSettingsCol) => void) =>
+      settingsBoard((s) => {
+        for (const k of keys) edit(colIn(s, k))
+      })
+    expect(
+      firstOf(
+        withEach(['carm'], (c) => {
+          c.show = false
+        }),
+      ),
+    ).toBe(
+      `치료 칸을 누르면 다음 단계로 넘어가요 (준비 → 준비완료 → 완료, 준비완료는 SONO만). X-RAY·SONO는 처방이 나오면 저절로 들어오고(SONO는 [부위 고르기]로 골라요), ${MN}`,
+    )
+    expect(
+      firstOf(
+        withEach(['sono'], (c) => {
+          c.name = '초음파'
+        }),
+      ),
+    ).toBe(
+      `치료 칸을 누르면 다음 단계로 넘어가요 (준비 → 준비완료 → 완료, 준비완료는 초음파·C-ARM만). X-RAY·초음파·C-ARM은 처방이 나오면 저절로 들어오고(초음파는 [부위 고르기], C-ARM은 [시술 고르기]로 골라요), ${MN}`,
+    )
+    expect(
+      firstOf(
+        withEach(['xray', 'sono', 'carm'], (c) => {
+          c.kind = 'mn'
+        }),
+      ),
+    ).toBe(`${STEP3} X-RAY·SONO·C-ARM·PT·도수·충격파·견인은 빈 칸을 눌러 골라 넣어요(여러 개 골라도 돼요).`)
+    expect(
+      firstOf(
+        withEach(['pt', 'ds', 'eswt', 'trac'], (c) => {
+          c.show = false
+        }),
+      ),
+    ).toBe(`${STEP3} X-RAY·SONO·C-ARM은 처방이 나오면 저절로 들어오고${HOWTO_PICK}.`)
+    expect(
+      firstOf(
+        withEach(['pt'], (c) => {
+          c.steps = 3
+        }),
+      ),
+    ).toBe(HOWTO[0].replace('준비완료는 SONO·C-ARM만', '준비완료는 SONO·C-ARM·PT만'))
+    expect(
+      firstOf(
+        withEach(['xray', 'sono', 'carm', 'pt', 'ds', 'eswt', 'trac'], (c) => {
+          c.show = false
+        }),
+      ),
+    ).toBe('치료 칸을 누르면 다음 단계로 넘어가요 (준비 → 완료).')
+    // 같은 자리에 다시 그리면 바뀐 cfg 글이다
+    document.body.replaceChildren()
+    const app = appHost()
+    view.renderArrange(app, fx.arrangeMockupBoard(), {})
+    view.renderArrange(app, imsBoard(), {})
+    expect(app.querySelector('p.howto')!.firstChild?.textContent).toBe(HOWTO_IMS)
+  })
+
+  it('AC-5710.2 · AC-3503.2: 조사는 마지막 글자로 정한다(한글 받침 있으면 "은"·없으면 "는", 영문 L·M·N·R은 "은", 숫자 0·1·3·6·7·8은 "은", 그 밖 "는"). C-ARM 약재 없음 글도 같은 규칙이다', () => {
+    for (const [name, topic] of [
+      ['물리치료', '는'],
+      ['침', '은'],
+      ['IMS', '는'],
+      ['LASER', '은'],
+      ['TENS', '는'],
+      ['ROOM', '은'],
+      ['Vel', '은'],
+      ['ice', '는'],
+      ['TEST0', '은'],
+      ['TEST1', '은'],
+      ['TEST2', '는'],
+      ['TEST3', '은'],
+      ['TEST4', '는'],
+      ['TEST5', '는'],
+      ['TEST6', '은'],
+      ['TEST7', '은'],
+      ['TEST8', '은'],
+      ['TEST9', '는'],
+      ['주사!', '는'],
+    ] as const) {
+      document.body.replaceChildren()
+      const board = settingsBoard((s) => {
+        for (const k of ['pt', 'ds', 'eswt']) colIn(s, k).show = false
+        colIn(s, 'trac').name = name
+      })
+      expect(draw(board).page.querySelector('p.howto')!.firstChild?.textContent, name).toContain(`, ${name}${topic} 빈 칸을 눌러 골라 넣어요(여러 개 골라도 돼요).`)
+    }
+    const board = fx.arrangeMockupBoard()
+    board.picks!.carm.procs.push({ n: 'RFL', noDrug: true }, { n: 'RF', noDrug: true })
+    expect(textOf(sheetOf(draw(board, { sheet: { k: K.h, col: 'carm', kind: 'add', proc: 'RFL', drug: null } }).page), 'p.opt-note')).toBe('RFL은 약재 없이 넣어요')
+    expect(textOf(sheetOf(draw(board, { sheet: { k: K.h, col: 'carm', kind: 'add', proc: 'RF', drug: null } }).page), 'p.opt-note')).toBe('RF는 약재 없이 넣어요')
+  })
+
+  it('AC-5710.3: 여러 개 넣은 칸 글은 "|" 조각을 고른 차례대로 "·"로 잇고 "·" 뒤에서 줄을 바꾼다(wbr, 낱말 가운데서는 끊지 않음). C-ARM은 시술들을 "·"로 이은 큰 글 + 약재 이름표들, SONO는 지금처럼 줄마다 하나, 충격파는 타수들(위)·부위 수들(아래)이다', () => {
+    const board = imsBoard()
+    const h = arrRow(board, K.h)!.cells
+    h.pt = fx.fakeCell({ det: 'ICE|HP', manual: true })
+    h.trac = fx.fakeCell({ det: '목|허리', manual: true })
+    h.ds = fx.fakeCell({ st: 'done', det: '30분|50분', at: '10:50', manual: true })
+    h.x1 = fx.fakeCell({ det: '목|어깨', manual: true })
+    h.carm = fx.fakeCell({ part: '목|허리', tags: ['TP', '하프'], manual: true })
+    h.eswt = fx.fakeCell({ det: '2000타|3000타|1부위|2부위', manual: true })
+    const f = arrRow(board, K.f)!.cells
+    f.eswt = fx.fakeCell({ det: '2부위|3부위', manual: true })
+    f.carm = fx.fakeCell({ st: 'done', part: '목|리덕션', tags: ['TP'], at: '10:55', manual: true })
+    f.sono = fx.fakeCell({ part: '오른 어깨|왼 무릎', tags: ['DNA'], manual: true })
+    const { page } = draw(board)
+    expect(cellParts(cellOf(page, '가상환자28', 'pt'))).toEqual(['span.st:준비', 'span.det:ICE·HP'])
+    expect(nodesOf(cellOf(page, '가상환자28', 'pt').querySelector('.det')!)).toEqual(['ICE·', 'wbr', 'HP'])
+    expect(cellParts(cellOf(page, '가상환자28', 'trac'))).toEqual(['span.st:준비', 'span.det:목·허리'])
+    expect(cellParts(cellOf(page, '가상환자28', 'ds'))).toEqual(['span.st:✓ 10:50', 'span.det.sm:30분·50분'])
+    expect(nodesOf(cellOf(page, '가상환자28', 'ds').querySelector('.det')!)).toEqual(['30분·', 'wbr', '50분'])
+    expect(cellParts(cellOf(page, '가상환자28', 'x1'))).toEqual(['span.st:준비', 'span.det:목·어깨'])
+    expect(cellParts(cellOf(page, '가상환자28', 'carm'))).toEqual(['span.mn:직접', 'span.st:준비', 'span.det:목·허리', 'span.tags:TP하프'])
+    expect(textsOf(cellOf(page, '가상환자28', 'carm'), '.tags > span.drug')).toEqual(['TP', '하프'])
+    expect(cellParts(cellOf(page, '가상환자28', 'eswt'))).toEqual(['span.st:준비', 'span.hit:2000타·3000타', 'span.det:1부위·2부위'])
+    expect(nodesOf(cellOf(page, '가상환자28', 'eswt').querySelector('.hit')!)).toEqual(['2000타·', 'wbr', '3000타'])
+    expect(cellParts(cellOf(page, '가상환자26', 'eswt'))).toEqual(['span.st:준비', 'span.det:2부위·3부위'])
+    expect(cellParts(cellOf(page, '가상환자26', 'carm'))).toEqual(['span.mn:직접', 'span.st:✓ 10:55', 'span.det.sm:목·리덕션', 'span.tags:TP'])
+    expect(cellParts(cellOf(page, '가상환자26', 'sono'))).toEqual(['span.mn:직접', 'span.st:준비', 'span.det:오른 어깨', 'span.det:왼 무릎', 'span.tags:DNA'])
+    // 미리 그리기도 보낸 글 그대로다
+    expect(arrRow(view.planOf(imsBoard(), { k: K.h, op: 'add', col: 'pt', v: 'ICE|HP' }).board, K.h)!.cells.pt).toMatchObject({ det: 'ICE|HP', manual: true })
+    expect(cssValue('.cell .det', 'word-break')).toBe('keep-all')
+    expect(cssValue('.cell .det', 'overflow-wrap')).toBe('anywhere')
+    expect(cssValue('.cell .hit', 'word-break')).toBe('keep-all')
+    // 조각 글도 글자로만
+    document.body.replaceChildren()
+    const odd = fx.arrangeMockupBoard()
+    arrRow(odd, K.h)!.cells.pt = fx.fakeCell({ det: '<b>ICE</b>|<i>HP</i>', manual: true })
+    const drawn = draw(odd).page
+    expect(textOf(cellOf(drawn, '가상환자28', 'pt'), '.det')).toBe('<b>ICE</b>·<i>HP</i>')
+    expect(drawn.querySelector('td.c-pt b, td.c-pt i')).toBeNull()
+  })
+
+  it('AC-5710.4: cfg.cols에 empty인 칸이 있으면 표 위(쓰는 법 아래) 안내 줄 "{칸 이름들} 칸에 넣을 처방을 아직 안 골랐어요. 그동안은 빈 칸을 눌러 직접 넣어요." + [설정에서 고르기](누르면 onSettings)이고, empty 칸이 없으면 안내 줄이 없다', () => {
+    const onSettings = vi.fn()
+    const app = appHost()
+    const page = view.renderArrange(app, fx.withSettings(fx.arrangeMockupBoard(), fx.freshSettings()), { onSettings })
+    expect(shapeOf(page)).toEqual(['header.top', 'div.sub-line', 'p.howto', 'div.setup-note', 'div.wrap', 'p.empty-note', 'section.ended', 'footer.foot'])
+    const note = page.querySelector<HTMLElement>(':scope > .setup-note')!
+    expect(note.getAttribute('role')).toBe('note')
+    expect(shapeOf(note)).toEqual(['span.sn-text', 'button'])
+    expect(nodesOf(note.querySelector('.sn-text')!)).toEqual(['b', NOTE_TAIL])
+    expect(textOf(note, '.sn-text > b')).toBe('SONO·C-ARM')
+    expect(textOf(note, '.sn-text')).toBe(`SONO·C-ARM${NOTE_TAIL}`)
+    const go = note.querySelector('button')!
+    expect(go.getAttribute('type')).toBe('button')
+    expect(go.textContent).toBe('설정에서 고르기')
+    expect(go.disabled).toBe(false)
+    go.click()
+    expect(onSettings).toHaveBeenCalledTimes(1)
+    // 다시 그려도 하나, 다 고르면 없어진다
+    view.renderArrange(app, fx.withSettings(fx.arrangeMockupBoard('11:04:20'), fx.freshSettings()), { onSettings })
+    expect(app.querySelectorAll('.setup-note').length).toBe(1)
+    view.renderArrange(app, fx.arrangeMockupBoard('11:04:25'), { onSettings })
+    expect(app.querySelector('.setup-note')).toBeNull()
+    expect(shapeOf(app.firstElementChild)).toEqual(['header.top', 'div.sub-line', 'p.howto', 'div.wrap', 'p.empty-note', 'section.ended', 'footer.foot'])
+    // 칸 이름은 설정 이름·차례, 숨긴 칸은 빼고, X-RAY 규칙을 끄고 처방이 없으면 X-RAY도 넣는다
+    document.body.replaceChildren()
+    const named = settingsBoard((s) => {
+      colIn(s, 'sono').codes = []
+      colIn(s, 'sono').name = '초음파'
+      colIn(s, 'xray').rule = false
+    })
+    expect(textOf(draw(named).page, '.setup-note > .sn-text')).toBe(`X-RAY·초음파${NOTE_TAIL}`)
+    document.body.replaceChildren()
+    const hidden = fx.freshSettings()
+    colIn(hidden, 'sono').show = false
+    expect(textOf(draw(fx.withSettings(fx.arrangeMockupBoard(), hidden)).page, '.setup-note > .sn-text')).toBe(`C-ARM${NOTE_TAIL}`)
+    // onSettings가 없으면 꺼져 있다
+    document.body.replaceChildren()
+    expect(draw(fx.withSettings(fx.arrangeMockupBoard(), fx.freshSettings())).page.querySelector<HTMLButtonElement>('.setup-note > button')!.disabled).toBe(true)
+    // 칸 이름은 글자로만
+    document.body.replaceChildren()
+    const odd = fx.freshSettings()
+    colIn(odd, 'sono').name = '<i>초</i>'
+    const drawn = draw(fx.withSettings(fx.arrangeMockupBoard(), odd)).page
+    expect(textOf(drawn, '.setup-note > .sn-text > b')).toBe('<i>초</i>·C-ARM')
+    expect(drawn.querySelector('.setup-note i')).toBeNull()
+    // 모양은 시안 값(theme.css 토큰만)
+    expect(cssValue('.setup-note', 'border-left')).toBe('4px solid var(--accent)')
+    expect(cssValue('.setup-note', 'background')).toBe('var(--surface-picked)')
+    expect(cssValue('.setup-note .sn-text b', 'font-weight')).toBe('800')
+  })
+})
+
+describe('REQ-5711 넣기 창 두 모드 (reception-other-clinic)', () => {
+  it('AC-5711.1: 직접 칸(PT·도수·견인·더한 칸)의 빈 칸을 누르면 창 "{칸 이름} 직접 넣기"가 "{이름} · 누르면 바로 들어가요"로 열리고, 줄 이름(종류·시간·부위·고르기) 아래 단추 하나를 누르면 그것 하나로 add를 보내고 닫힌다', () => {
+    for (const [col, name, label, items] of [
+      ['pt', 'PT', '종류', ['ICE', 'HP']],
+      ['ds', '도수', '시간', ['30분', '50분']],
+      ['trac', '견인', '부위', ['목', '허리']],
+      ['x1', 'IMS', '고르기', ['목', '어깨', '허리', '무릎']],
+    ] as const) {
+      const onAdd = vi.fn()
+      const onSheet = vi.fn()
+      const { page } = draw(imsBoard(), { onAdd, onSheet })
+      cellOf(page, '가상환자28', col).click()
+      expect(onSheet, col).toHaveBeenLastCalledWith({ k: K.h, col, kind: 'add' })
+      const sheet = sheetOf(page)!
+      expect(sheet.className, col).toBe('sheet pick-sheet')
+      expect(sheet.getAttribute('role'), col).toBe('dialog')
+      expect(sheet.getAttribute('aria-label'), col).toBe(`${name} 직접 넣기`)
+      expect(shapeOf(sheet), col).toEqual(['div.sheet-h', 'div.pick-mode', 'div.opts', 'button.sheet-x', 'button.pick-edit'])
+      expect(textsOf(sheet, '.sheet-h > span'), col).toEqual([`${name} 직접 넣기`, '가상환자28 · 누르면 바로 들어가요'])
+      expect(textOf(sheet, '.pick-mode > span.opt-label'), col).toBe(label)
+      expect(sheet.querySelector('.opts')!.getAttribute('role'), col).toBe('group')
+      expect(sheet.querySelector('.opts')!.getAttribute('aria-label'), col).toBe(label)
+      expect(optionsOf(page), col).toEqual(items)
+      expect(textOf(sheet, ':scope > button.sheet-x'), col).toBe('닫기')
+      pick(page, items[1])
+      expect(onAdd, col).toHaveBeenCalledTimes(1)
+      expect(onAdd, col).toHaveBeenLastCalledWith(K.h, col, items[1])
+      expect(sheetOf(page), col).toBeNull()
+      expect(onSheet, col).toHaveBeenLastCalledWith(null)
+      document.body.replaceChildren()
+    }
+  })
+
+  it('AC-5711.1 · AC-5703.4: 목록이 빈 더한 칸은 창 없이 바로 add v ""를 보낸다(planOf: 칸 글 없이 준비). 목록이 있는 칸의 v는 목록 이름 1~8개를 목록 차례로 "|"로 이은 글이고 빈 글·목록 밖·겹침·차례가 뒤집힌 글·이름표는 맞지 않는 쓰기다', () => {
+    const onAdd = vi.fn()
+    const onSheet = vi.fn()
+    const board = imsBoard([])
+    const { page } = draw(board, { onAdd, onSheet })
+    cellOf(page, '가상환자28', 'x1').click()
+    expect(onAdd).toHaveBeenCalledTimes(1)
+    expect(onAdd).toHaveBeenLastCalledWith(K.h, 'x1', '')
+    expect(onSheet).not.toHaveBeenCalled()
+    expect(sheetOf(page)).toBeNull()
+    expect(sheetOf(draw(board, { sheet: { k: K.h, col: 'x1', kind: 'add' } }).page)).toBeNull()
+    const plan = view.planOf(board, { k: K.h, op: 'add', col: 'x1', v: '' })
+    expect(arrRow(plan.board, K.h)!.cells.x1).toEqual({ st: 'todo', det: '', part: null, at: '11:04', ord: null, manual: true, tags: [] })
+    expect(plan.toast).toBe('가상환자28 · IMS 직접 넣었어요')
+    expect(plan.undo).toEqual({ k: K.h, op: 'remove', col: 'x1' })
+    document.body.replaceChildren()
+    expect(cellParts(cellOf(draw(plan.board).page, '가상환자28', 'x1'))).toEqual(['span.st:준비'])
+    expect(view.planOf(board, { k: K.h, op: 'add', col: 'x1', v: '목' }).toast).toBeNull()
+    const ims = imsBoard()
+    for (const v of ['목', '무릎', '목|허리', '목|어깨|허리|무릎']) expect(view.planOf(ims, { k: K.h, op: 'add', col: 'x1', v }).toast, v).toBe('가상환자28 · IMS 직접 넣었어요')
+    for (const v of ['', '허리|목', '목|목', '발목', '목|', 'ICE']) expect(view.planOf(ims, { k: K.h, op: 'add', col: 'x1', v }).toast, v).toBeNull()
+    expect(view.planOf(ims, { k: K.h, op: 'add', col: 'x1', v: '목', t: 'TP' }).toast).toBeNull()
+    expect(view.planOf(ims, { k: K.h, op: 'add', col: 'pt', v: 'ICE|HP' }).toast).toBe('가상환자28 · PT 직접 넣었어요')
+    for (const v of ['HP|ICE', 'ICE|ICE']) expect(view.planOf(ims, { k: K.h, op: 'add', col: 'pt', v }).toast, v).toBeNull()
+    const many = fx.arrangeMockupBoard()
+    many.picks!.pt = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
+    expect(view.planOf(many, { k: K.h, op: 'add', col: 'pt', v: 'A|B|C|D|E|F|G|H' }).toast).toBe('가상환자28 · PT 직접 넣었어요')
+    expect(view.planOf(many, { k: K.h, op: 'add', col: 'pt', v: 'A|B|C|D|E|F|G|H|I' }).toast).toBeNull()
+  })
+
+  it('AC-5711.2: 고르기가 둘 이상이면 줄 이름 오른쪽에 [같이 고르기](꺼짐)가 있고, 켜면 "{이름} · 여러 개 골라 [넣기]를 눌러요"·체크 상자 단추·[닫기] [넣기](꺼짐)다. 고른 것은 목록 차례로 [넣기 · ICE·HP]이고 누르면 add v "ICE|HP"를 보내고 닫힌다', () => {
+    const onAdd = vi.fn()
+    const onSheet = vi.fn()
+    const { page } = draw(fx.arrangeMockupBoard(), { onAdd, onSheet })
+    cellOf(page, '가상환자28', 'pt').click()
+    expect(shapeOf(sheetOf(page)!.querySelector('.pick-mode'))).toEqual(['span.opt-label', 'button.switch.sm'])
+    const off = switchOf(page)!
+    expect(off.getAttribute('type')).toBe('button')
+    expect(off.getAttribute('aria-pressed')).toBe('false')
+    expect(off.textContent).toBe('같이 고르기')
+    expect(shapeOf(off)).toEqual(['span.knob'])
+    expect(off.querySelector('.knob')!.getAttribute('aria-hidden')).toBe('true')
+    off.click()
+    expect(onSheet).toHaveBeenLastCalledWith({ ...PT_ADD, multi: true, picked: [] })
+    expect(onAdd).not.toHaveBeenCalled()
+    const sheet = sheetOf(page)!
+    expect(switchOf(page)!.getAttribute('aria-pressed')).toBe('true')
+    expect(document.activeElement).toBe(switchOf(page))
+    expect(textOf(sheet, '.sheet-sub')).toBe('가상환자28 · 여러 개 골라 [넣기]를 눌러요')
+    expect(shapeOf(sheet)).toEqual(['div.sheet-h', 'div.pick-mode', 'div.opts.duo', 'div.sheet-go', 'button.pick-edit'])
+    expect(labelsOf(page, 'pick')).toEqual(['ICE', 'HP'])
+    for (const b of groupButtons(page, 'pick')) {
+      expect(b.className).toBe('opt check')
+      expect(b.getAttribute('aria-pressed')).toBe('false')
+      expect(shapeOf(b)).toEqual(['span.box'])
+      expect(b.querySelector('.box')!.getAttribute('aria-hidden')).toBe('true')
+    }
+    expect(shapeOf(sheet.querySelector('.sheet-go'))).toEqual(['button.sheet-close', 'button.go'])
+    expect(textOf(sheet, '.sheet-go > button.sheet-close')).toBe('닫기')
+    expect(goOf(page).disabled).toBe(true)
+    expect(goOf(page).textContent).toBe('넣기')
+    choose(page, 'pick', 'HP')
+    expect(onOf(page, 'pick')).toEqual(['HP'])
+    expect(groupButtons(page, 'pick')[1]!.querySelector('.box')!.textContent).toBe('✓')
+    expect(labelOf(document.activeElement!)).toBe('HP')
+    choose(page, 'pick', 'ICE')
+    expect(onSheet).toHaveBeenLastCalledWith({ ...PT_ADD, multi: true, picked: ['ICE', 'HP'] })
+    expect(goOf(page).disabled).toBe(false)
+    expect(goOf(page).textContent).toBe('넣기 · ICE·HP')
+    choose(page, 'pick', 'HP')
+    expect(goOf(page).textContent).toBe('넣기 · ICE')
+    choose(page, 'pick', 'HP')
+    expect(onAdd).not.toHaveBeenCalled()
+    goOf(page).click()
+    expect(onAdd).toHaveBeenCalledTimes(1)
+    expect(onAdd).toHaveBeenLastCalledWith(K.h, 'pt', 'ICE|HP')
+    expect(sheetOf(page)).toBeNull()
+    expect(onSheet).toHaveBeenLastCalledWith(null)
+  })
+
+  it('AC-5711.2: [같이 고르기]는 창을 열 때마다 꺼져 있고, 끄면 고른 것을 비우고 하나는 한 번에로 돌아간다. [닫기]·바깥 누름·Esc는 넣지 않고 닫는다. 고르기가 하나뿐이면 [같이 고르기]가 없다', () => {
+    const onAdd = vi.fn()
+    const onSheet = vi.fn()
+    const { page } = draw(fx.arrangeMockupBoard(), { onAdd, onSheet })
+    cellOf(page, '가상환자28', 'pt').click()
+    switchOf(page)!.click()
+    choose(page, 'pick', 'ICE')
+    switchOf(page)!.click()
+    expect(onSheet).toHaveBeenLastCalledWith(PT_ADD)
+    expect(switchOf(page)!.getAttribute('aria-pressed')).toBe('false')
+    expect(shapeOf(sheetOf(page))).toEqual(['div.sheet-h', 'div.pick-mode', 'div.opts', 'button.sheet-x', 'button.pick-edit'])
+    expect(textOf(sheetOf(page), '.sheet-sub')).toBe('가상환자28 · 누르면 바로 들어가요')
+    switchOf(page)!.click()
+    expect(onOf(page, 'pick')).toEqual([])
+    for (const shut of [
+      (p: HTMLElement) => p.querySelector<HTMLButtonElement>('.sheet .sheet-go > button.sheet-close')!.click(),
+      (p: HTMLElement) => p.querySelector<HTMLElement>('.sheet-back')!.click(),
+      (p: HTMLElement) => sheetOf(p)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
+    ]) {
+      const p = draw(fx.arrangeMockupBoard(), { onAdd, onSheet, sheet: { ...PT_ADD, multi: true, picked: ['ICE'] } }).page
+      sheetOf(p)!.click()
+      expect(sheetOf(p)).not.toBeNull()
+      shut(p)
+      expect(sheetOf(p)).toBeNull()
+      expect(onSheet).toHaveBeenLastCalledWith(null)
+    }
+    cellOf(page, '가상환자28', 'pt').click()
+    expect(onSheet).toHaveBeenLastCalledWith(PT_ADD)
+    expect(switchOf(page)!.getAttribute('aria-pressed')).toBe('false')
+    expect(onAdd).not.toHaveBeenCalled()
+    document.body.replaceChildren()
+    const one = fx.arrangeMockupBoard()
+    one.picks!.trac = ['골반']
+    const solo = draw(one, { sheet: { k: K.h, col: 'trac', kind: 'add', multi: true, picked: ['골반'] } }).page
+    expect(switchOf(solo)).toBeNull()
+    expect(shapeOf(solo.querySelector('.sheet > .pick-mode'))).toEqual(['span.opt-label'])
+    expect(shapeOf(sheetOf(solo))).toEqual(['div.sheet-h', 'div.pick-mode', 'div.opts', 'button.sheet-x', 'button.pick-edit'])
+    expect(textOf(sheetOf(solo), '.sheet-sub')).toBe('가상환자28 · 누르면 바로 들어가요')
+  })
+
+  it('AC-5711.3 · AC-5703.4: 충격파 창의 [같이 고르기](줄 이름 "타수" 오른쪽)를 켜면 타수·부위 수 줄마다 여러 개를 체크해 [넣기 · 2000타·3000타 1부위·2부위]이고 add v는 타수들 먼저 목록 차례로 "|"로 이은 글이다. 부위 수가 없으면 [넣기]가 꺼져 있다', () => {
+    const onAdd = vi.fn()
+    const onSheet = vi.fn()
+    const { page } = draw(fx.arrangeMockupBoard(), { onAdd, onSheet })
+    cellOf(page, '가상환자28', 'eswt').click()
+    expect(textOf(sheetOf(page), '.pick-mode > .opt-label')).toBe('타수')
+    expect(switchOf(page)!.getAttribute('aria-pressed')).toBe('false')
+    switchOf(page)!.click()
+    expect(onSheet).toHaveBeenLastCalledWith({ k: K.h, col: 'eswt', kind: 'add', multi: true, hits: [], counts: [] })
+    const sheet = sheetOf(page)!
+    expect(shapeOf(sheet)).toEqual(['div.sheet-h', 'div.pick-mode', 'div.opts.four', 'div.opt-label', 'div.opts.four', 'div.sheet-go', 'button.pick-edit'])
+    expect(textOf(sheet, '.sheet-sub')).toBe('가상환자28 · 타수와 부위 수를 골라요')
+    for (const b of [...groupButtons(page, 'hit'), ...groupButtons(page, 'count')]) expect(b.className).toBe('opt check')
+    choose(page, 'hit', '3000타')
+    choose(page, 'hit', '2000타')
+    expect(goOf(page).disabled).toBe(true)
+    choose(page, 'count', '2부위')
+    choose(page, 'count', '1부위')
+    expect(onSheet).toHaveBeenLastCalledWith({ k: K.h, col: 'eswt', kind: 'add', multi: true, hits: ['2000타', '3000타'], counts: ['1부위', '2부위'] })
+    expect(onOf(page, 'hit')).toEqual(['2000타', '3000타'])
+    expect(goOf(page).textContent).toBe('넣기 · 2000타·3000타 1부위·2부위')
+    goOf(page).click()
+    expect(onAdd).toHaveBeenLastCalledWith(K.h, 'eswt', '2000타|3000타|1부위|2부위')
+    expect(sheetOf(page)).toBeNull()
+    const only = draw(fx.arrangeMockupBoard(), { onAdd, sheet: { k: K.h, col: 'eswt', kind: 'add', multi: true, hits: [], counts: ['3부위'] } }).page
+    expect(goOf(only).textContent).toBe('넣기 · 3부위')
+    goOf(only).click()
+    expect(onAdd).toHaveBeenLastCalledWith(K.h, 'eswt', '3부위')
+    // 타수 목록이 비고 부위 수가 하나면 고르기가 하나뿐이라 [같이 고르기]가 없다
+    const board = fx.arrangeMockupBoard()
+    board.picks!.eswt = { hits: [], counts: ['1부위'] }
+    expect(switchOf(draw(board, { sheet: { k: K.h, col: 'eswt', kind: 'add' } }).page)).toBeNull()
+  })
+
+  it('AC-5711.3 · AC-5703.4: C-ARM 창의 [같이 고르기](줄 이름 "시술" 오른쪽)를 켜면 시술·약재를 여러 개 체크해 [넣기 · 목·허리·리덕션 TP·기본]이고 v는 시술들·t는 약재들을 목록 차례로 "|"로 잇는다. 고른 시술이 모두 약재 없음이면 약재 줄이 흐리고 약재를 보내지 않는다. [시술 고르기]면 onPart다', () => {
+    const onAdd = vi.fn()
+    const onPart = vi.fn()
+    const onSheet = vi.fn()
+    const { page } = draw(fx.arrangeMockupBoard(), { onAdd, onSheet })
+    cellOf(page, '가상환자28', 'carm').click()
+    expect(textOf(sheetOf(page), '.pick-mode > .opt-label')).toBe('시술')
+    switchOf(page)!.click()
+    expect(onSheet).toHaveBeenLastCalledWith({ k: K.h, col: 'carm', kind: 'add', multi: true, procs: [], drugs: [] })
+    for (const b of [...groupButtons(page, 'proc'), ...groupButtons(page, 'drug')]) expect(b.className).toBe('opt check')
+    choose(page, 'proc', '리덕션')
+    expect(sheetOf(page)!.querySelector('.opts[data-g="drug"]')!.className).toBe('opts trio no-drug')
+    expect(groupButtons(page, 'drug').every((b) => b.disabled)).toBe(true)
+    expect(textOf(sheetOf(page), 'p.opt-note')).toBe('리덕션은 약재 없이 넣어요')
+    expect(goOf(page).textContent).toBe('넣기 · 리덕션')
+    choose(page, 'proc', '허리')
+    choose(page, 'proc', '목')
+    expect(sheetOf(page)!.querySelector('p.opt-note')).toBeNull()
+    expect(groupButtons(page, 'drug').some((b) => b.disabled)).toBe(false)
+    choose(page, 'drug', '기본')
+    choose(page, 'drug', 'TP')
+    expect(onSheet).toHaveBeenLastCalledWith({ k: K.h, col: 'carm', kind: 'add', multi: true, procs: ['목', '허리', '리덕션'], drugs: ['TP', '기본'] })
+    expect(onOf(page, 'proc')).toEqual(['목', '허리', '리덕션'])
+    expect(goOf(page).textContent).toBe('넣기 · 목·허리·리덕션 TP·기본')
+    goOf(page).click()
+    expect(onAdd).toHaveBeenLastCalledWith(K.h, 'carm', '목|허리|리덕션', 'TP|기본')
+    const nod = draw(fx.arrangeMockupBoard(), { onAdd, sheet: { k: K.h, col: 'carm', kind: 'add', multi: true, procs: ['리덕션'], drugs: ['TP'] } }).page
+    expect(onOf(nod, 'drug')).toEqual([])
+    expect(goOf(nod).textContent).toBe('넣기 · 리덕션')
+    goOf(nod).click()
+    expect(onAdd).toHaveBeenLastCalledWith(K.h, 'carm', '리덕션', '')
+    const board = fx.arrangeMockupBoard()
+    arrRow(board, K.e)!.cells.carm!.part = null
+    const part = draw(board, { onAdd, onPart, sheet: { k: K.e, col: 'carm', kind: 'part', multi: true, procs: ['목', '등'], drugs: ['하프'] } }).page
+    goOf(part).click()
+    expect(onPart).toHaveBeenLastCalledWith(K.e, 'carm', '목|등', '하프')
+    expect(onAdd).toHaveBeenCalledTimes(2)
+  })
+
+  it('AC-5711.3: SONO 창은 이미 줄마다 여러 개를 담는 창(AC-5703.4 "지금 규칙")이라 [같이 고르기] 없이 지금 그대로다', () => {
+    const { page } = draw(fx.arrangeMockupBoard(), { sheet: SONO_ADD })
+    expect(switchOf(page)).toBeNull()
+    expect(sheetOf(page)!.querySelector('.pick-mode')).toBeNull()
+    expect(sheetOf(page)!.className).toBe('sheet sono-sheet')
+  })
+
+  it('AC-5711.4: 목록으로 고르는 넣기 창(직접 칸·충격파·C-ARM·SONO, 빈 칸과 [부위·시술 고르기]) 맨 아래 [☰ 목록 고치기]를 누르면 onEditCol(칸 열쇠, "list", { back: "sheet" })를 한 번 부르고 넣기 창과 고른 값은 그대로다. X-RAY 넣기·완료 창에는 없고, onEditCol이 없으면 꺼져 있다', () => {
+    const board = imsBoard()
+    arrRow(board, K.e)!.cells.carm!.part = null
+    const sheets: Sheet[] = [
+      { k: K.h, col: 'pt', kind: 'add', multi: true, picked: ['HP'] },
+      { k: K.h, col: 'ds', kind: 'add' },
+      { k: K.h, col: 'trac', kind: 'add' },
+      { k: K.h, col: 'x1', kind: 'add' },
+      { k: K.h, col: 'eswt', kind: 'add', hit: '3000타', count: null },
+      { k: K.h, col: 'carm', kind: 'add', proc: '허리', drug: null },
+      { k: K.e, col: 'carm', kind: 'part', proc: null, drug: null },
+      { k: K.h, col: 'sono', kind: 'add', side: null, picked: ['목'], withs: [] },
+      { k: K.c, col: 'sono', kind: 'part', side: null, picked: [], withs: [] },
+    ]
+    for (const sheet of sheets) {
+      const onEditCol = vi.fn()
+      const onSheet = vi.fn()
+      const { page } = draw(board, { sheet, onEditCol, onSheet })
+      const edit = editOf(page)
+      expect(edit, `${sheet.col} ${sheet.kind}`).not.toBeNull()
+      expect(edit!.getAttribute('type')).toBe('button')
+      expect(edit!.textContent).toBe('☰ 목록 고치기')
+      expect(edit!.disabled).toBe(false)
+      expect(sheetOf(page)!.lastElementChild).toBe(edit)
+      const before = sheetOf(page)!.textContent
+      edit!.click()
+      expect(onEditCol, sheet.col).toHaveBeenCalledTimes(1)
+      expect(onEditCol).toHaveBeenLastCalledWith(sheet.col, 'list', { back: 'sheet' })
+      expect(onSheet).not.toHaveBeenCalled()
+      expect(sheetOf(page)!.textContent, sheet.col).toBe(before)
+      document.body.replaceChildren()
+      expect(editOf(draw(board, { sheet }).page)!.disabled, sheet.col).toBe(true)
+      document.body.replaceChildren()
+    }
+    expect(editOf(draw(board, { sheet: { k: K.h, col: 'xray', kind: 'add' }, onEditCol: vi.fn() }).page)).toBeNull()
+    expect(editOf(draw(board, { sheet: { k: K.a, col: 'pt', kind: 'done' }, onEditCol: vi.fn() }).page)).toBeNull()
+    expect(cssValue('.pick-edit', 'text-decoration')).toBe('underline')
+  })
+
+  it('AC-5711.5: [같이 고르기] 켜짐·고른 것은 view.sheet로 다시 그려도(저절로 다시 읽기) 남고 창 세로 위치도 그대로다. 목록 밖·겹친 값은 안 고른 것이고, 목록이 하나로 줄면 하나는 한 번에로 그린다', () => {
+    const tops = new WeakMap<Element, number>()
+    Object.defineProperty(HTMLElement.prototype, 'scrollTop', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return tops.get(this) ?? 0
+      },
+      set(this: HTMLElement, value: number) {
+        tops.set(this, value)
+      },
+    })
+    onTestFinished(() => {
+      Reflect.deleteProperty(HTMLElement.prototype, 'scrollTop')
+    })
+    const app = appHost()
+    let sheet: Sheet | null = null
+    const v: ArrangeView = { onSheet: (next) => (sheet = next) }
+    view.renderArrange(app, imsBoard(), v)
+    cellOf(app, '가상환자28', 'x1').click()
+    switchOf(app)!.click()
+    choose(app, 'pick', '허리')
+    sheetOf(app)!.scrollTop = 120
+    view.renderArrange(app, imsBoard(), { ...v, sheet })
+    expect(switchOf(app)!.getAttribute('aria-pressed')).toBe('true')
+    expect(onOf(app, 'pick')).toEqual(['허리'])
+    expect(goOf(app).textContent).toBe('넣기 · 허리')
+    expect(sheetOf(app)!.scrollTop).toBe(120)
+    document.body.replaceChildren()
+    const odd = draw(imsBoard(), { sheet: { k: K.h, col: 'x1', kind: 'add', multi: true, picked: ['무릎', '발목', '목', '무릎'] } }).page
+    expect(onOf(odd, 'pick')).toEqual(['목', '무릎'])
+    expect(goOf(odd).textContent).toBe('넣기 · 목·무릎')
+    const fewer = draw(imsBoard(['무릎']), { sheet: { k: K.h, col: 'x1', kind: 'add', multi: true, picked: ['무릎'] } }).page
+    expect(switchOf(fewer)).toBeNull()
+    expect(optionsOf(fewer)).toEqual(['무릎'])
+    const eswt = draw(fx.arrangeMockupBoard(), { sheet: { k: K.h, col: 'eswt', kind: 'add', multi: true, hits: ['6000타', '없는타'], counts: ['4부위', '1부위', '4부위'] } }).page
+    expect(onOf(eswt, 'hit')).toEqual(['6000타'])
+    expect(onOf(eswt, 'count')).toEqual(['1부위', '4부위'])
+    const carm = draw(fx.arrangeMockupBoard(), { sheet: { k: K.h, col: 'carm', kind: 'add', multi: true, procs: ['허리', '꼬리뼈', '목'], drugs: ['하프'] } }).page
+    expect(onOf(carm, 'proc')).toEqual(['목', '허리'])
+    expect(onOf(carm, 'drug')).toEqual(['하프'])
+  })
+
+  it('AC-5710.4 · AC-5711.2 · AC-5711.4: 새 모양(안내 줄·[같이 고르기]·체크 상자·[☰ 목록 고치기]·더한 칸)이 그리는 class는 모두 style.css에 있고 누르는 단추는 44px 이상이며, 새 규칙의 색은 theme.css 토큰(var())만 쓴다', () => {
+    const css = readWww('style.css').replace(/\/\*[\s\S]*?\*\//g, '')
+    const pages = [
+      draw(fx.withSettings(fx.arrangeMockupBoard(), fx.freshSettings())).page,
+      draw(imsBoard(), { sheet: { k: K.h, col: 'x1', kind: 'add', multi: true, picked: ['목'] } }).page,
+      draw(imsBoard(), { sheet: { k: K.h, col: 'pt', kind: 'add' } }).page,
+      draw(fx.arrangeMockupBoard(), { sheet: { k: K.h, col: 'carm', kind: 'add', multi: true, procs: ['리덕션'], drugs: [] } }).page,
+    ]
+    const classes = new Set(pages.flatMap((page) => [page, ...page.querySelectorAll('*')].flatMap((n) => [...n.classList])))
+    for (const cls of ['setup-note', 'sn-text', 'pick-sheet', 'pick-mode', 'switch', 'sm', 'knob', 'pick-edit', 'check', 'box', 'c-add', 'cols-8']) expect(classes.has(cls), cls).toBe(true)
+    // 더한 칸 열쇠 class(c-x1…)는 병원마다 달라 모양은 c-add 하나로 준다
+    expect(classes.has('c-x1')).toBe(true)
+    for (const cls of classes) if (!/^c-x\d+$/.test(cls)) expect(css, `.${cls}`).toMatch(new RegExp(`\\.${cls}(?![\\w-])`))
+    expect(css).not.toMatch(/\.c-x\d/)
+    for (const selector of ['.switch', '.switch.sm', '.pick-edit', '.setup-note button']) {
+      const value = cssValue(selector, 'min-height')
+      expect(value, selector).toBeDefined()
+      expect(Number.parseFloat(value!), selector).toBeGreaterThanOrEqual(44)
+    }
+    const rules = parseRules(readWww('style.css'))
+    for (const selector of ['.setup-note', '.setup-note button', '.switch', '.switch .knob', '.switch .knob::after', '.switch[aria-pressed="true"]', '.switch[aria-pressed="true"] .knob', '.pick-edit', '.arr th.c-add']) {
+      const decls = rules.filter((r) => r.selector.split(',').map((s) => s.trim()).includes(selector)).flatMap((r) => r.decls)
+      expect(decls.length, selector).toBeGreaterThan(0)
+      for (const [prop, value] of decls) if (/color|background|border|shadow/.test(prop)) expect(value, `${selector} ${prop}`).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i)
+    }
+  })
+})
+
 // 시안 파일이 그대로 있는지(시험이 글을 옮겨 적은 곳)
 describe('승인 시안', () => {
   it('AC-3308.2: 승인 시안 Arrange.html에 시험이 옮긴 글이 있다', () => {
@@ -2064,5 +2787,36 @@ describe('승인 시안', () => {
     ])
       expect(html, text).toContain(text)
     for (const name of [...fx.defaultPicks().sono.parts, ...fx.defaultPicks().sono.plains, ...fx.defaultPicks().sono.withs, ...fx.defaultPicks().carm.drugs]) expect(html, name).toContain(`'${name}'`)
+  })
+
+  it('AC-5710.2 · AC-5710.3 · AC-5710.4 · AC-5711.1 · AC-5711.2 · AC-5711.4: 다른 병원용 승인 시안(reception-other-clinic index.html)에 시험이 옮긴 글·class가 있다', () => {
+    const html = readFileSync(OTHER_MOCKUP, 'utf8')
+    for (const text of [
+      `${HOWTO[0]}<br>`,
+      `${HOWTO_IMS}<br>`,
+      `<b>SONO·C-ARM</b>${NOTE_TAIL}`,
+      '설정에서 고르기',
+      '직접 넣기`',
+      ' · 누르면 바로 들어가요',
+      ' · 여러 개 골라 [넣기]를 눌러요',
+      '같이 고르기',
+      '☰ 목록 고치기',
+      "label: '종류'",
+      "label: '시간'",
+      "label: '부위', min: 1, items: ['목', '허리']",
+      "label: '고르기'",
+      "{ class: 'setup-note', role: 'note' }",
+      "'sn-text'",
+      "'pick-mode'",
+      "class: 'switch sm'",
+      "'knob', 'aria-hidden': 'true'",
+      "'pick-edit'",
+      "'opts duo'",
+      "'opt check on' : 'opt check'",
+      "table.classList.add('cols-8')",
+      "replaceAll('·', '·<wbr>')",
+      '.arr th.c-x1 {\n  background: var(--ground);',
+    ])
+      expect(html, text).toContain(text)
   })
 })
