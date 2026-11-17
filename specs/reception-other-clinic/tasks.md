@@ -6,6 +6,7 @@
 > **Phase 1** — 일꾼 셋: TASK-1 설정 파일(C#) · TASK-4 혼자 설치(C#·설치 파일) · TASK-5 화면 머리·로고·읽고 쓰기
 > **Phase 2** — 일꾼 셋: TASK-2 칸 일반화(C#) · TASK-3 새 길 부품(C#) · TASK-6 어레인지 표·넣기 창(화면)
 > **Phase 3** — 일꾼 셋: TASK-7 설정 쪽(화면) · TASK-8 잇기·끝까지 시험(C#) · TASK-9 처음 값 표지(C#, 명세 고침 2026-11-17)
+> **Phase 4** — TASK-10 주소 보내기 화면 로고(C#, 명세 고침 2026-11-17 두 번째)
 > 끝: 합치기 → 전체 시험·lint → 화면 확인(가짜 판) → 전체 검토 한 번 → 접수 현황 새 설치 zip → [의원 PC] 확인
 > 화면 TASK는 가짜 판·설정·코드 목록을 `reception/tests/fixtures.ts`로 쓴다(서버 없이). C# TASK의 새 인자는 끝 선택 인자라 `Precheck.Reception/ReceptionServices.cs`는 TASK-8 전까지 그대로 컴파일된다.
 
@@ -89,3 +90,12 @@
 - Tests: helper/tests/reception-settings.dotnet.test.ts
 - TDD: required
 - TASK-1의 `SettingsStore`에 표지 파일 `reception-origin.dat`(같은 머리·IProtector·임시 파일 → 바꾸기)를 더한다. TASK-1의 옛 시험(AC-5701.1~5701.8)은 그대로 통과해야 한다(AC-5701.7 '다시 만들기' 기대만 AC-5701.9에 맞게). 사용자 결정 2026-11-17(명세 고침)
+
+## TASK-10: 주소 보내기 화면도 그 병원 로고 (C#)
+- Step: Phase 4
+- AC: AC-5715.1, AC-5715.2, AC-5715.3
+- REQ: REQ-5715
+- Files: helper/src/Precheck.Core/Reception/LinkPage.cs, helper/src/Precheck.Reception/ReceptionServices.cs, reception/www/link.css, helper/tests/Precheck.Core.Tests/Reception/LinkPage.test.cs, helper/tests/Precheck.Core.Tests/Reception/Http/OtherClinic.test.cs, helper/tests/reception-link-page.dotnet.test.ts
+- Tests: helper/tests/reception-link-page.dotnet.test.ts, helper/tests/reception-other-clinic.dotnet.test.ts
+- TDD: required
+- 옛 시험 AC-1411.4의 '머리는 /logo-wordmark.png' 기대는 AC-5715.1로 바꾼다(제목·주소 카드·복사 단추·CSP 기대는 그대로). 글자 로고 모양은 `link.css`에 `.link-logo-text`(제목 글꼴, 토큰 색만). 사용자 결정 2026-11-17(명세 고침)

@@ -143,6 +143,8 @@ public sealed class SettingsStore {   // data\reception-settings.dat, ReceptionL
 
 - 확인 창 제목(AC-5707.8): `Precheck.Windows/ConfirmWindow`에 제목 인자(기본 "청구메모 도우미", 도우미 쪽 부르는 곳은 그대로)를 두고, 접수 현황 프로그램(`RegisterEntry`·`ReceptionServices`)은 "접수 현황"을 넘긴다.
 
+- 주소 보내기 화면(AC-5715, 명세 고침 2026-11-17): `LinkPage.For(addresses, settings, logo)`(끝 선택 인자 둘: `Func<ReceptionSettings>`·`LogoStore`)가 그릴 때마다 설정 logo를 읽어 머리를 고른다. 그림은 `LogoStore.Read()` 바이트를 data: URL로 넣는다(CSP `img-src 'self' data:`라 따로 길이 필요 없다). 인자가 없으면 로고 없이 제목만. `ReceptionServices`가 같은 `SettingsStore`·`LogoStore`를 넘긴다. 탭 아이콘은 `/icon.png`.
+
 ## 7. 아이콘 (AC-5709.4)
 - favicon·apple-touch-icon·manifest 아이콘은 병원과 상관없는 `icon.png`(512×512, 바탕 `--ink`, 가운데 흰 가로 막대 셋 = 목록 모양)를 쓴다. 그림은 `reception/tools/make-icon.py`(파이썬 표준 라이브러리 zlib·struct만)로 만들고 결과 PNG를 커밋한다.
 - `logo-mark.png`·`logo-wordmark.png` 파일은 그대로 품는다(옮기기에 wordmark를 쓰고, 지금 품기 시험이 두 파일을 본다). 화면은 더 부르지 않는다.
