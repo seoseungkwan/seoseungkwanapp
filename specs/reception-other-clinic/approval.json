@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "reception-other-clinic",
-  "approved_at": "2026-11-17T09:47:55Z",
+  "approved_at": "2026-11-17T13:15:46Z",
   "approved_via": "user-prompt",
   "session_id": "4e5007b5-a465-44b0-97e3-9a27fb3773f3",
-  "spec_sha256": "044fea1a66d73415be3b71cfa653cdec80ba7a3a5bd9b86dab82e3ae1796ef59",
+  "spec_sha256": "79f66a8d93bd9f79b49d79d78b103bbc450da1d7e2a59fa5e3b6add94d9bf7b0",
   "scope": [
     "helper/install/install-reception.ps1",
     "helper/install/uninstall-reception.ps1",
