@@ -3,12 +3,12 @@
 ## 규칙 `src/lib/sunap/ledgerSort.ts` (환자 자료 구역, React·네트워크 없음)
 ```ts
 export type LedgerSort =
-  | { key: 'name' | 'kind' | 'cash' | 'card' | 'transfer' | 'unpaid'; dir: 'asc' | 'desc' }
+  | { key: 'name' | 'kind' | 'cash' | 'card' | 'transfer' | 'unpaid' | 'block' | 'pt'; dir: 'asc' | 'desc' }
   | { key: 'rsv'; by: 'kind' | 'date'; dir: 'asc' | 'desc' }
 export function sortLedger<T extends { row: LedgerRow }>(items: readonly T[], sort: LedgerSort | null): T[]
 ```
 - 화면은 `{ row, no }`(NO = 접수 번호)를 넘긴다 → 세운 뒤에도 NO가 그대로다. 비교가 같으면 받은 차례(안정 정렬).
-- 구분 차례 `new → d90 → re`. 예약 종류 차례 `inj → visit → etc → unknown`, `none`은 늘 맨 뒤. 예약 날짜는 `row.rsv.at`(`yyyyMMddHHmm` 글자, 없으면 null → 날짜 있는 줄 뒤).
+- 구분 차례 `new → d90 → re`. Block·물리치료는 `false → true`(오름차순). 예약 종류 차례 `inj → visit → etc → unknown`, `none`은 늘 맨 뒤. 예약 날짜는 `row.rsv.at`(`yyyyMMddHHmm` 글자, 없으면 null → 날짜 있는 줄 뒤).
 
 ## 화면 `src/components/sunap/rows/LedgerRows.tsx`
 - 상태 `sort: LedgerSort | null`(처음 null). 거르기·찾기 뒤의 `shown`을 `sortLedger`로 세운다.

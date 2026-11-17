@@ -333,7 +333,7 @@ function rsvCell(r, pick) {
 const Q = new URLSearchParams(location.search)
 let SORT = { key: Q.get('k'), dir: Q.get('d') === 'desc' ? 'desc' : 'asc', by: Q.get('by') === 'date' ? 'date' : 'kind' }
 let MENU = Q.get('menu') === '1'
-const SORT_COLS = { name: '이름', kind: '구분', cash: '현금', card: '카드', acct: '계좌', un: '미수', rsv: '다음 예약' }
+const SORT_COLS = { name: '이름', kind: '구분', cash: '현금', card: '카드', acct: '계좌', un: '미수', block: 'Block', pt: '물리치료', rsv: '다음 예약' }
 const KIND_ORDER = { '초진': 0, '90일초진': 1, '재진': 2 }
 const RSV_ORDER = { '주사치료': 0, '진료(경과)': 1, '기타': 2 }
 function rsvRank(r) {
@@ -351,6 +351,8 @@ function sortKey(r, key) {
   if (key === 'card') return card
   if (key === 'acct') return acct
   if (key === 'un') return un
+  if (key === 'block') return bl ? 1 : 0   // 오름차순 = 체크 안 한 줄 → 체크한 줄
+  if (key === 'pt') return pt ? 1 : 0
   if (key === 'rsv') return SORT.by === 'date' ? Number(rsvDate(rsv)) * 10 + Math.min(rsvRank(rsv), 8) : rsvRank(rsv) * 10000 + Number(rsvDate(rsv))
 }
 function ordered() {
@@ -394,7 +396,7 @@ function th(key, label, cls = '') {
   return `<th${cls ? ` class="${cls}"` : ''} aria-sort="${on ? (SORT.dir === 'asc' ? 'ascending' : 'descending') : 'none'}"><button class="sort${on ? ' on' : ''}" data-k="${key}" title="${label} · 지금 ${how}">${label}<span class="ar" aria-hidden="true">${ar}</span></button></th>`
 }
 function sortNote() {
-  if (!SORT.key) return '<span class="sortnote">제목(이름·구분·금액·다음 예약)을 누르면 줄을 세워요</span>'
+  if (!SORT.key) return '<span class="sortnote">제목(이름·구분·금액·Block·물리치료·다음 예약)을 누르면 줄을 세워요</span>'
   if (SORT.key === 'rsv') return `<span class="sortnote"><b>다음 예약 ${SORT.by === 'date' ? '날짜' : '종류'} 순 ${SORT.dir === 'asc' ? '▲' : '▼'}</b> · '예약 안 하고 가심'은 늘 맨 뒤 · 제목을 눌러 다른 기준·접수 순</span>`
   return `<span class="sortnote"><b>${SORT_COLS[SORT.key]} ${SORT.dir === 'asc' ? '오름차순' : '내림차순'}</b> · 한 번 더 누르면 ${SORT.dir === 'asc' ? '내림차순' : '접수 순'}</span>`
 }
@@ -457,7 +459,7 @@ function ledgerPanel(closed, pickRow) {
       <div class="filters"><span class="on">전체 <b>104</b></span><span>초진 <b>9</b></span><span>90일초진 <b>6</b></span><span>Block <b>23</b></span><span>예약 종류 모름 <b>2</b></span><span>고친 칸 있는 줄 <b>2</b></span></div>
       <span class="search">이름·차트번호 찾기</span></div>
     <div style="padding:0 20px 10px">${sortNote()}</div>
-    <div class="scroll"><table class="ledger"><thead><tr><th>NO</th><th>접수</th><th>차트</th>${th('name', '이름')}${th('kind', '구분')}${th('cash', '현금', 'r')}${th('card', '카드', 'r')}${th('acct', '계좌', 'r')}${th('un', '미수', 'r')}<th class="c">Block</th><th class="c">물리치료</th>${th('rsv', '다음 예약')}<th>비고</th></tr></thead>
+    <div class="scroll"><table class="ledger"><thead><tr><th>NO</th><th>접수</th><th>차트</th>${th('name', '이름')}${th('kind', '구분')}${th('cash', '현금', 'r')}${th('card', '카드', 'r')}${th('acct', '계좌', 'r')}${th('un', '미수', 'r')}${th('block', 'Block', 'c')}${th('pt', '물리치료', 'c')}${th('rsv', '다음 예약')}<th>비고</th></tr></thead>
     <tbody>${ledgerRows(pickRow)}<tr class="more"><td colspan="13">… 시안이라 16줄만 그렸어요. 실제로는 그날 내원 104줄이 모두 나와요.</td></tr></tbody>
     <tfoot><tr><td colspan="5">합계 · 104명</td><td class="r">156,000</td><td class="r">902,300</td><td class="r">88,000</td><td class="r" style="color:var(--negative)">42,000</td><td class="c">23</td><td class="c">61</td><td>예약 ${DAY.rsvFirst + DAY.rsvD90 + 31}명</td><td></td></tr></tfoot></table></div>
     <div class="legend"><span><i class="ed"></i>직원이 고친 칸(비트 값과 다름) — 눌러서 [비트 값으로 되돌리기]</span><span><span class="src bit" style="font-size:11px;font-weight:600;padding:0 5px;border:1px solid var(--line);border-radius:3px">비트</span> 비트 예약 메모로 정한 종류</span><span><span style="font-size:11px;font-weight:600;padding:0 5px;border-radius:3px;background:var(--accent);color:#fff">직접</span> 직원이 고른 예약</span><span>FREE = 그날 낸 돈 0원</span></div>
