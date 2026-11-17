@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>수납일지 줄 세우기 시안 · 수납일지 시안</title>
+<!--
+  엑셀 '일일 수납일지'(v25.04)를 웹앱 새 탭 '수납일지'로 옮기는 시안. 결정은 notes.md.
+  ?s=open(오늘, 마감 전) · closed(마감됨) · late(늦은 마감) · pick(예약 직접 고르기) · settings(설정) · remote(다른 기기: 합계만) · stats(통계 탭 새 칸)
+  색은 앱 토큰(src/app/globals.css :root)만 쓴다. 이름은 ○○로 가렸고 차트번호·숫자는 모두 지어낸 값이다. 어디로도 보내지 않는다.
+-->
+<style>
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB; --faint: #9CA3AF;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-strong: #1D4ED8; --accent-soft: #EAF1FE;
+  --positive: #15803D; --positive-soft: #ECF7EF; --negative: #C2410C; --negative-soft: #FDF0EA;
+  --warning: #B45309; --warning-soft: #FDF4E3; --cat-2: #0F766E; --r: 4px; --r-float: 8px;
+  --ui: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { overflow-x: hidden; }
+body { margin: 0; background: var(--canvas); color: var(--ink-2); font: 14px/22px var(--ui); word-break: keep-all; }
+button, input, select { font: inherit; color: inherit; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* 시안 머리(앱 밖) */
+.mhead { background: #E9ECF0; border-bottom: 1px solid var(--line-strong); }
+.mhead-in { max-width: 1280px; margin: 0 auto; padding: 12px 24px; display: grid; gap: 6px; }
+.mhead b { color: var(--ink); font-size: 15px; }
+.mhead .ex { margin-left: 6px; padding: 1px 7px; border-radius: 4px; background: #FEF3C7; color: #92400E; font-size: 12px; font-weight: 600; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg a { padding: 3px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); font-size: 12px; color: var(--ink-2); text-decoration: none; white-space: nowrap; }
+.seg a[aria-current="true"] { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+
+/* 앱 머리 · 탭 줄 */
+.top { background: var(--surface); border-bottom: 1px solid var(--line); }
+.top-in { max-width: 1280px; margin: 0 auto; height: 56px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 16px; font-weight: 600; color: var(--ink); }
+.brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-r { display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--muted); }
+.acct { height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); display: inline-flex; align-items: center; color: var(--ink-2); font-weight: 500; }
+nav { background: var(--surface); border-bottom: 1px solid var(--line); }
+.tabs { max-width: 1280px; margin: 0 auto; padding: 0 12px; display: flex; overflow-x: auto; scrollbar-width: thin; }
+.tabs a { position: relative; height: 44px; padding: 0 12px; display: inline-flex; align-items: center; white-space: nowrap; color: var(--ink-2); font-weight: 500; text-decoration: none; }
+.tabs a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+.tabs a[aria-current="page"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; background: var(--accent); }
+.tabs .new::before { content: "새"; margin-right: 4px; padding: 0 4px; border-radius: 3px; background: var(--accent-soft); color: var(--accent-strong); font-size: 11px; line-height: 16px; font-weight: 600; }
+
+/* 본문 */
+main { max-width: 1280px; margin: 0 auto; padding: 20px 24px 48px; display: grid; gap: 16px; }
+main > * { min-width: 0; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.datebox { display: inline-flex; align-items: center; gap: 4px; }
+.datebox .d { min-width: 172px; height: 36px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); display: inline-flex; align-items: center; justify-content: center; font-weight: 600; color: var(--ink); }
+.sp { flex: 1; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink); font-size: 14px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.btn.icon { width: 36px; padding: 0; }
+.btn.sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.btn.primary { border-color: transparent; background: var(--accent); color: #fff; font-weight: 600; }
+.btn.ghost { border-color: transparent; background: none; color: var(--ink-2); }
+.btn.text { border: 0; background: none; padding: 0; height: auto; color: var(--accent); font-size: 13px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--r); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.chip.gray { background: var(--canvas); border-color: var(--line-strong); color: var(--ink-2); }
+.chip.ok { background: var(--positive-soft); color: var(--positive); }
+.chip.warn { background: var(--warning-soft); color: var(--warning); }
+.chip.acc { background: var(--accent-soft); color: var(--accent-strong); }
+.chip.teal { background: #E6F4F2; color: var(--cat-2); }
+.chip.line { border-color: var(--line-strong); color: var(--muted); background: var(--surface); font-weight: 500; }
+.meta { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.lock { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); font-size: 13px; color: var(--ink-2); }
+.lock svg { flex: none; }
+.banner { padding: 10px 14px; border-radius: var(--r); font-size: 13px; line-height: 20px; }
+.banner.ok { background: var(--positive-soft); color: #14532D; }
+.banner.warn { background: var(--warning-soft); color: #78350F; }
+.banner.info { background: var(--accent-soft); color: #1E3A8A; }
+.banner b { font-weight: 600; }
+
+/* 요약 네 칸 */
+.cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; display: grid; align-content: start; gap: 10px; min-width: 0; }
+.card h3 { margin: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 14px; font-weight: 600; color: var(--ink); }
+.card h3 small { font-size: 12px; font-weight: 500; color: var(--muted); }
+.big { font-size: 24px; line-height: 32px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.big small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 4px; }
+.kv { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 10px; font-size: 13px; line-height: 20px; }
+.kv .m { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kv .v { text-align: right; color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kv .sub { color: var(--muted); }
+.kv .hr { grid-column: 1 / -1; height: 1px; background: var(--line); margin: 2px 0; }
+.rate { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: baseline; font-size: 13px; }
+.rate b { font-size: 18px; line-height: 26px; color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; }
+.rate em { grid-column: 1 / -1; font-style: normal; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: -2px; }
+.rate .key { color: var(--ink-2); font-weight: 500; }
+.bar { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; margin-top: 2px; }
+.bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.bar.teal i { background: var(--cat-2); }
+
+/* 칸(패널)과 표 */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); min-width: 0; }
+.phead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+.phead h2 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.phead .hint { font-size: 12px; color: var(--muted); }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { height: 40px; padding: 0 10px; border-bottom: 1px solid var(--line); white-space: nowrap; text-align: left; }
+th:first-child, td:first-child { padding-left: 20px; }
+th:last-child, td:last-child { padding-right: 20px; }
+thead th { height: 36px; background: var(--canvas); font-size: 12px; font-weight: 600; color: var(--muted); position: sticky; top: 0; z-index: 1; }
+td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
+td.c, th.c { text-align: center; }
+tfoot td { background: var(--canvas); font-weight: 600; color: var(--ink); border-bottom: 0; }
+.dr td:first-child { font-weight: 600; color: var(--ink); }
+.pct { color: var(--muted); font-weight: 400; margin-left: 4px; }
+.zero { color: var(--faint); }
+
+/* 장부 표 */
+.filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.filters span { height: 28px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 999px; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--ink-2); background: var(--surface); cursor: pointer; }
+.filters span b { font-weight: 600; color: var(--ink); }
+.filters span.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+.filters span.on b { color: #fff; }
+.search { height: 32px; width: 180px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r); font-size: 13px; color: var(--muted); display: inline-flex; align-items: center; }
+.ledger { min-width: 1180px; }
+.ledger td.money { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+.ledger td.cell { cursor: pointer; }
+.ledger th button.sort { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; border-radius: 3px; }
+.ledger th.r button.sort { flex-direction: row-reverse; }
+.ledger th button.sort:hover { color: var(--ink); }
+.ledger th button.sort:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ledger th button.sort .ar { font-size: 10px; color: var(--faint); width: 10px; text-align: center; }
+.ledger th button.sort.on { color: var(--ink); }
+.ledger th button.sort.on .ar { color: var(--accent); }
+.sortnote { font-size: 12px; color: var(--muted); }
+.sortnote b { color: var(--ink); font-weight: 600; }
+.ledger th.menuwrap { position: relative; }
+.ledger th .smenu { position: absolute; top: calc(100% + 4px); left: 8px; z-index: 30; min-width: 220px; display: grid; gap: 2px; padding: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(15,23,42,.12); font-weight: 400; }
+.ledger th .smenu button { all: unset; cursor: pointer; display: flex; justify-content: space-between; gap: 12px; padding: 7px 10px; border-radius: 4px; color: var(--ink); font-size: 13px; }
+.ledger th .smenu button:hover { background: var(--accent-soft); }
+.ledger th .smenu button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.ledger th .smenu small { color: var(--muted); font-size: 12px; }
+.ledger td.cell:hover { background: var(--accent-soft); }
+.ledger td.edited { position: relative; background: #FFFBEB; }
+.ledger td.edited::after { content: ""; position: absolute; top: 0; right: 0; border-style: solid; border-width: 0 8px 8px 0; border-color: transparent var(--warning) transparent transparent; }
+.ledger .name { color: var(--ink); font-weight: 600; }
+.ledger .chart { color: var(--muted); font-variant-numeric: tabular-nums; }
+.box { width: 18px; height: 18px; border: 1.5px solid var(--line-strong); border-radius: 3px; display: inline-grid; place-items: center; background: var(--surface); vertical-align: middle; }
+.box.on { background: var(--accent); border-color: var(--accent); }
+.box.on::after { content: ""; width: 9px; height: 5px; border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: translateY(-1px) rotate(-45deg); }
+.box.on.teal { background: var(--cat-2); border-color: var(--cat-2); }
+.rsv { display: flex; align-items: center; gap: 6px; }
+.rsv .when { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rsv .src { font-size: 11px; font-weight: 600; padding: 0 5px; border-radius: 3px; line-height: 16px; }
+.rsv .src.bit { background: var(--canvas); color: var(--muted); border: 1px solid var(--line); }
+.rsv .src.hand { background: var(--accent); color: #fff; }
+.rsv .none { color: var(--muted); }
+.caret { margin-left: auto; color: var(--faint); font-size: 11px; }
+.note { max-width: 220px; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2); }
+.note.empty { color: var(--faint); }
+.more td { height: 44px; text-align: center; color: var(--muted); font-size: 12px; background: repeating-linear-gradient(135deg, var(--surface) 0 8px, var(--canvas) 8px 16px); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 10px 20px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); }
+.legend i.ed { display: inline-block; width: 14px; height: 14px; vertical-align: -2px; margin-right: 4px; background: #FFFBEB; border: 1px solid var(--line); position: relative; }
+.legend i.ed::after { content: ""; position: absolute; top: 0; right: 0; border-style: solid; border-width: 0 6px 6px 0; border-color: transparent var(--warning) transparent transparent; }
+.closed .ledger td.cell { cursor: default; }
+.closed .ledger td.cell:hover { background: none; }
+.closed .ledger td.edited:hover { background: #FFFBEB; }
+.closed .caret { display: none; }
+
+/* 아래 두 칸: 미수 입금 · 지출 */
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.addrow td { height: 44px; }
+.sel { height: 30px; padding: 0 26px 0 8px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%236B7280' stroke-width='1.5'%3E%3Cpath d='M4.5 6.5 8 10l3.5-3.5'/%3E%3C/svg%3E") no-repeat right 6px center / 14px; display: inline-flex; align-items: center; font-size: 13px; color: var(--ink); min-width: 120px; }
+.inp { height: 30px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); display: inline-flex; align-items: center; font-size: 13px; color: var(--ink); min-width: 140px; }
+.inp.r { justify-content: flex-end; min-width: 96px; font-variant-numeric: tabular-nums; }
+.x { color: var(--faint); font-size: 16px; cursor: pointer; }
+
+/* 예약 고르기 판(떠 있는 판) */
+.scrim { position: fixed; inset: 0; background: rgb(17 24 39 / 18%); z-index: 20; }
+.pop { position: fixed; z-index: 21; width: 340px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-float); box-shadow: 0 8px 28px rgb(17 24 39 / 18%); padding: 16px; display: grid; gap: 12px; }
+.pop h4 { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
+.pop .who { font-size: 12px; color: var(--muted); }
+.opts { display: grid; gap: 4px; }
+.opt { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); font-size: 14px; color: var(--ink); cursor: pointer; }
+.opt.on { border-color: var(--accent); background: var(--accent-soft); }
+.opt .rd { width: 16px; height: 16px; border: 1.5px solid var(--line-strong); border-radius: 50%; }
+.opt.on .rd { border: 5px solid var(--accent); }
+.opt small { font-size: 12px; color: var(--muted); }
+.opt .cnt { font-size: 11px; font-weight: 600; color: var(--positive); }
+.opt .cnt.no { color: var(--faint); }
+.pop .foot { display: flex; justify-content: flex-end; gap: 8px; }
+.pop .tip { font-size: 12px; line-height: 18px; color: var(--muted); }
+
+/* 설정 판(오른쪽에서 나옴) */
+.drawer { position: fixed; z-index: 21; top: 0; right: 0; bottom: 0; width: 480px; max-width: 100%; background: var(--surface); border-left: 1px solid var(--line-strong); box-shadow: -8px 0 28px rgb(17 24 39 / 14%); display: flex; flex-direction: column; }
+.drawer .dh { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+.drawer .dh h3 { margin: 0; font-size: 17px; font-weight: 600; color: var(--ink); }
+.drawer .db { flex: 1; overflow-y: auto; padding: 16px 20px; display: grid; align-content: start; gap: 20px; }
+.drawer .df { padding: 12px 20px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; }
+.fs { display: grid; gap: 8px; }
+.fs > b { font-size: 14px; font-weight: 600; color: var(--ink); }
+.fs > p { margin: 0; font-size: 12px; line-height: 18px; color: var(--muted); }
+.fs .rowx { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 13px; }
+.fs .lab { width: 92px; flex: none; color: var(--ink-2); font-weight: 500; }
+.word { height: 26px; padding: 0 4px 0 8px; border: 1px solid var(--line-strong); border-radius: var(--r); display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--ink); background: var(--canvas); }
+.word i { font-style: normal; color: var(--faint); padding: 0 3px; cursor: pointer; }
+.word.add { border-style: dashed; color: var(--accent); background: var(--surface); padding: 0 8px; }
+.pending { padding: 8px 10px; border: 1px dashed var(--warning); border-radius: var(--r); background: var(--warning-soft); font-size: 12px; color: #78350F; }
+
+/* 통계 탭 화면(?s=stats) */
+.periodbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+.pseg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--r); overflow: hidden; }
+.pseg span { padding: 6px 12px; font-size: 13px; color: var(--ink-2); background: var(--surface); }
+.pseg span + span { border-left: 1px solid var(--line-strong); }
+.pseg span.on { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.toc { display: flex; gap: 4px; padding: 0 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.toc span { padding: 8px 12px; font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.toc span.on { color: var(--accent-strong); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+.sec { display: grid; gap: 12px; }
+.sec > h2 { margin: 0; font-size: 18px; line-height: 26px; font-weight: 600; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+.how { font-size: 12px; color: var(--accent); font-weight: 500; }
+.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.blurred { opacity: .45; filter: grayscale(.3); pointer-events: none; }
+
+/* 다른 기기 */
+.away { display: grid; justify-items: center; gap: 8px; padding: 28px 20px; text-align: center; }
+.away b { font-size: 15px; color: var(--ink); }
+.away p { margin: 0; font-size: 13px; color: var(--muted); max-width: 44ch; }
+
+@media (max-width: 1100px) {
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .two { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 767px) {
+  .mhead-in, .top-in, main { padding-left: 16px; padding-right: 16px; }
+  .top-in { height: 48px; }
+  .top-r time { display: none; }
+  .tabs { padding: 0 4px; }
+  main { padding-top: 12px; gap: 12px; }
+  .cards { grid-template-columns: minmax(0, 1fr); }
+  .three { grid-template-columns: minmax(0, 1fr); }
+  .datebox .d { min-width: 0; flex: 1; white-space: nowrap; height: 44px; }
+  .datebox .yr { display: none; }
+  .datebox { flex: 1; }
+  .btn { height: 44px; }
+  .btn.icon { width: 44px; }
+  .toolbar .sp { display: none; }
+  .phead { padding: 12px 16px; }
+  th:first-child, td:first-child { padding-left: 16px; }
+  th:last-child, td:last-child { padding-right: 16px; }
+  .drawer { width: 100%; }
+  .pop { left: 16px !important; right: 16px; width: auto; top: 120px !important; }
+}
+</style>
+</head>
+<body>
+<div class="mhead"><div class="mhead-in">
+  <div><b>수납일지 시안</b><span class="ex">예시 숫자</span> <span style="font-size:13px;color:var(--muted)">엑셀 수납일지 → 새 탭. 이름은 ○○로 가렸고 차트번호·금액은 모두 지어낸 값이에요.</span></div>
+  <div class="seg" id="seg"></div>
+</div></div>
+
+<header class="top"><div class="top-in">
+  <div class="brand"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 30 30"><rect x="3" y="3" width="24" height="24" rx="6" fill="none" stroke="#14C8BA" stroke-width="2.4"/><path d="M13.5 8h3a1 1 0 0 1 1 1v3.5H21a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3.5V21a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3.5H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3.5V9a1 1 0 0 1 1-1z" fill="#6D5DF5"/></svg><span>샘플정형외과의원</span></div>
+  <div class="top-r"><time id="clock">2026년 11월 16일 (월) 18:50 (KST)</time><span class="acct">계정 ▾</span></div>
+</div></header>
+<nav><div class="tabs" id="tabs"></div></nav>
+
+<main id="app"></main>
+<div id="layer"></div>
+
+<script>
+const S = new URLSearchParams(location.search).get('s') || 'open'
+const STATES = [
+  ['open', '오늘 · 마감 전'], ['pick', '예약 직접 고르기'], ['closed', '마감됨'], ['late', '늦은 마감'],
+  ['settings', '설정'], ['remote', '다른 기기(폰): 합계만'], ['stats', '통계 탭 새 칸'],
+]
+document.getElementById('seg').innerHTML = STATES.map(([k, t]) => `<a href="?s=${k}" aria-current="${k === S}">${t}</a>`).join('')
+
+const TABS = ['대시보드', '통계', '청구', '환자', '수납일지', '더보기 ▾']
+const here = S === 'stats' ? '통계' : '수납일지'
+document.getElementById('tabs').innerHTML = TABS.map(t => `<a href="#" ${t === here ? 'aria-current="page"' : ''} class="${t === '수납일지' ? 'new' : ''}">${t}</a>`).join('')
+
+const won = n => n === 0 ? '' : n.toLocaleString('ko-KR')
+const pct = (a, b) => b ? (Math.round(a / b * 1000) / 10).toFixed(1) + '%' : '–'
+const LOCK = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#6B7280" stroke-width="1.5"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>'
+
+/* 하루 숫자(지어낸 값, 104명 기준) */
+const DAY = {
+  visits: 104, first: 9, d90: 6, ret: 89, block: 23, pt: 61,
+  rsvFirst: 6, rsvD90: 3, firstBlock: 4, d90Block: 2, retBlock: 17,
+  pay: [['현금', 12, 156000], ['카드', 70, 902300], ['계좌이체', 5, 88000], ['미수 입금(현금)', 1, 10000], ['미수 입금(카드)', 1, 15000], ['FREE', 6, 0]],
+  unpaidNew: [3, 42000],
+  spend: [['현금', 2, 35000], ['카드', 1, 48000], ['기타', 0, 0], ['현금(주차지원)', 3, 9000]],
+}
+const DOCS = [
+  ['김○○ 원장', 52, 5, 3, 12, 30, 2, 1, 9],
+  ['이○○ 원장', 38, 3, 2, 8, 22, 2, 1, 5],
+  ['박○○ 원장', 14, 1, 1, 3, 9, 0, 0, 3],
+]
+/* 장부 줄(16줄만 그림). rsv: [방식, 종류, 날짜] 방식 bit=비트 예약에서 / hand=직접 고름 / none=예약 없음 / unk=예약 있는데 메모에 정해진 말 없음 */
+const ROWS = [
+  ['09:02', '10231', '김○○', '김', '재진', 0, 15000, 0, 0, 1, 1, ['bit', '주사치료', '11/19 (목)'], ''],
+  ['09:05', '10877', '이○○', '김', '재진', 4700, 0, 0, 0, 0, 1, ['none'], ''],
+  ['09:11', '21004', '박○○', '이', '초진', 0, 23400, 0, 0, 1, 1, ['bit', '진료(경과)', '11/18 (수)'], '허리 MRI 결과 보러 오심'],
+  ['09:14', '10552', '최○○', '이', '재진', 0, 9800, 0, 0, 0, 1, ['hand', '주사치료', ''], '전화로 예약하신다고 함'],
+  ['09:20', '19870', '정○○', '김', '90일초진', 0, 18200, 0, 0, 1, 0, ['bit', '주사치료', '11/20 (금)'], ''],
+  ['09:31', '10013', '강○○', '박', '재진', 0, 0, 0, 0, 0, 1, ['none'], ''],
+  ['09:38', '21005', '조○○', '김', '초진', 12000, 0, 0, 0, 0, 1, ['none'], ''],
+  ['09:44', '15220', '윤○○', '이', '재진', 0, 31500, 0, 0, 1, 0, ['unk', '', '11/21 (토)'], ''],
+  ['09:52', '10498', '장○○', '김', '재진', 0, 0, 25000, 0, 1, 1, ['bit', '주사치료', '11/23 (월)'], ''],
+  ['10:03', '21006', '임○○', '박', '초진', 0, 0, 0, 16300, 0, 1, ['hand', '진료(경과)', ''], '카드 두고 오심, 내일 입금'],
+  ['10:10', '12740', '한○○', '김', '재진', 3900, 0, 0, 0, 0, 1, ['none'], ''],
+  ['10:18', '18603', '오○○', '이', '90일초진', 0, 14600, 0, 0, 0, 1, ['bit', '진료(경과)', '11/18 (수)'], ''],
+  ['10:25', '10344', '서○○', '김', '재진', 0, 42800, 0, 0, 1, 0, ['bit', '주사치료', '11/26 (목)'], '', ['block']],
+  ['10:33', '21007', '신○○', '김', '초진', 0, 19700, 0, 0, 1, 1, ['bit', '주사치료', '11/19 (목)'], ''],
+  ['10:41', '11902', '권○○', '박', '재진', 0, 8600, 0, 0, 0, 1, ['none'], ''],
+  ['10:47', '16455', '황○○', '이', '재진', 5000, 10000, 0, 0, 0, 1, ['bit', '진료(경과)', '11/24 (화)'], '', ['cash']],
+]
+
+function kindChip(k) {
+  if (k === '초진') return '<span class="chip acc">초진</span>'
+  if (k === '90일초진') return '<span class="chip teal">90일초진</span>'
+  return '<span class="chip line">재진</span>'
+}
+function rsvCell(r, pick) {
+  const [m, t, d] = r
+  if (m === 'none') return `<div class="rsv"><span class="none">예약 안 하고 가심</span><span class="caret">▾</span></div>`
+  if (m === 'unk') return `<div class="rsv"><span class="chip warn">종류 모름</span><span class="when">${d}</span><span class="src bit">비트</span><span class="caret">▾</span></div>`
+  const chip = t === '주사치료' ? 'acc' : t === '진료(경과)' ? 'teal' : 'gray'
+  const src = m === 'hand' ? '<span class="src hand">직접</span>' : '<span class="src bit">비트</span>'
+  return `<div class="rsv"><span class="chip ${chip}">${t}</span>${d ? `<span class="when">${d}</span>` : ''}${src}<span class="caret">▾</span></div>`
+}
+/* ── 줄 세우기(시안 sunap-sort): 제목을 누를 때마다 오름차순 → 내림차순 → 접수 순 ── */
+const Q = new URLSearchParams(location.search)
+let SORT = { key: Q.get('k'), dir: Q.get('d') === 'desc' ? 'desc' : 'asc', by: Q.get('by') === 'date' ? 'date' : 'kind' }
+let MENU = Q.get('menu') === '1'
+const SORT_COLS = { name: '이름', kind: '구분', cash: '현금', card: '카드', acct: '계좌', un: '미수', block: 'Block', pt: '물리치료', rsv: '다음 예약' }
+const KIND_ORDER = { '초진': 0, '90일초진': 1, '재진': 2 }
+const RSV_ORDER = { '주사치료': 0, '진료(경과)': 1, '기타': 2 }
+function rsvRank(r) {
+  const [m, t] = r
+  if (m === 'none') return 9          // 예약 안 하고 가심은 늘 맨 뒤
+  if (m === 'unk') return 3           // 종류 모름
+  return RSV_ORDER[t] ?? 2
+}
+function rsvDate(r) { const d = r[2] || ''; return d ? d.slice(0, 5).replace('/', '').padStart(4, '0') : '9999' }
+function sortKey(r, key) {
+  const [t, ch, nm, dr, k, cash, card, acct, un, bl, pt, rsv] = r
+  if (key === 'name') return nm
+  if (key === 'kind') return KIND_ORDER[k]
+  if (key === 'cash') return cash
+  if (key === 'card') return card
+  if (key === 'acct') return acct
+  if (key === 'un') return un
+  if (key === 'block') return bl ? 1 : 0   // 오름차순 = 체크 안 한 줄 → 체크한 줄
+  if (key === 'pt') return pt ? 1 : 0
+  if (key === 'rsv') return SORT.by === 'date' ? Number(rsvDate(rsv)) * 10 + Math.min(rsvRank(rsv), 8) : rsvRank(rsv) * 10000 + Number(rsvDate(rsv))
+}
+function ordered() {
+  const list = ROWS.map((r, i) => ({ r, i }))
+  if (!SORT.key) return list
+  const sign = SORT.dir === 'desc' ? -1 : 1
+  return list.sort((a, b) => {
+    // 다음 예약: '예약 안 하고 가심'은 어느 쪽으로 세워도 맨 뒤
+    if (SORT.key === 'rsv') {
+      const an = a.r[11][0] === 'none', bn = b.r[11][0] === 'none'
+      if (an !== bn) return an ? 1 : -1
+    }
+    const x = sortKey(a.r, SORT.key), y = sortKey(b.r, SORT.key)
+    const c = typeof x === 'string' ? x.localeCompare(y, 'ko') : x - y
+    return c !== 0 ? sign * c : a.i - b.i   // 같으면 접수 순
+  })
+}
+const RSV_MENU = [
+  ['kind', 'asc', '종류 순 ▲', '주사치료 → 진료(경과) → 기타'],
+  ['kind', 'desc', '종류 순 ▼', '거꾸로'],
+  ['date', 'asc', '날짜 순 ▲', '가까운 예약부터'],
+  ['date', 'desc', '날짜 순 ▼', '먼 예약부터'],
+  [null, 'asc', '접수 순', '처음 순서로'],
+]
+function rsvTh() {
+  const on = SORT.key === 'rsv'
+  const ar = on ? (SORT.dir === 'asc' ? '▲' : '▼') : '↕'
+  const label = on ? `다음 예약 · ${SORT.by === 'date' ? '날짜' : '종류'}` : '다음 예약'
+  const menu = MENU ? `<div class="smenu" role="menu">${RSV_MENU.map(([by, dir, t, sub]) => {
+    const cur = by === null ? !on : on && SORT.by === by && SORT.dir === dir
+    return `<button role="menuitemradio" aria-checked="${cur}" class="${cur ? 'on' : ''}" data-by="${by ?? ''}" data-dir="${dir}"><span>${t}</span><small>${sub}</small></button>`
+  }).join('')}</div>` : ''
+  return `<th class="menuwrap" aria-sort="${on ? (SORT.dir === 'asc' ? 'ascending' : 'descending') : 'none'}"><button class="sort${on ? ' on' : ''}" data-menu="rsv" aria-haspopup="menu" aria-expanded="${MENU}">${label}<span class="ar" aria-hidden="true">${ar}</span><span class="ar" aria-hidden="true">▾</span></button>${menu}</th>`
+}
+function th(key, label, cls = '') {
+  if (key === 'rsv') return rsvTh()
+  if (!SORT_COLS[key]) return `<th${cls ? ` class="${cls}"` : ''}>${label}</th>`
+  const on = SORT.key === key
+  const ar = on ? (SORT.dir === 'asc' ? '▲' : '▼') : '↕'
+  const how = on ? (SORT.dir === 'asc' ? '오름차순' : '내림차순') : '접수 순'
+  return `<th${cls ? ` class="${cls}"` : ''} aria-sort="${on ? (SORT.dir === 'asc' ? 'ascending' : 'descending') : 'none'}"><button class="sort${on ? ' on' : ''}" data-k="${key}" title="${label} · 지금 ${how}">${label}<span class="ar" aria-hidden="true">${ar}</span></button></th>`
+}
+function sortNote() {
+  if (!SORT.key) return '<span class="sortnote">제목(이름·구분·금액·Block·물리치료·다음 예약)을 누르면 줄을 세워요</span>'
+  if (SORT.key === 'rsv') return `<span class="sortnote"><b>다음 예약 ${SORT.by === 'date' ? '날짜' : '종류'} 순 ${SORT.dir === 'asc' ? '▲' : '▼'}</b> · '예약 안 하고 가심'은 늘 맨 뒤 · 제목을 눌러 다른 기준·접수 순</span>`
+  return `<span class="sortnote"><b>${SORT_COLS[SORT.key]} ${SORT.dir === 'asc' ? '오름차순' : '내림차순'}</b> · 한 번 더 누르면 ${SORT.dir === 'asc' ? '내림차순' : '접수 순'}</span>`
+}
+function ledgerRows(pickRow) {
+  return ordered().map(({ r, i }) => {
+    const [t, ch, nm, dr, k, cash, card, acct, un, bl, pt, rsv, note, ed = []] = r
+    const free = cash + card + acct + un === 0
+    const e = f => ed.includes(f) ? ' edited' : ''
+    const pay = free
+      ? `<td class="money cell" colspan="4" style="text-align:center"><span class="chip gray">FREE · 0원</span></td>`
+      : `<td class="money cell${e('cash')}">${won(cash)}</td><td class="money cell">${won(card)}</td><td class="money cell">${won(acct)}</td><td class="money cell" style="color:var(--negative)">${won(un)}</td>`
+    return `<tr${pickRow === i ? ' style="background:var(--accent-soft)"' : ''}>
+      <td class="num" style="color:var(--muted)">${i + 1}</td><td class="num">${t}</td><td class="chart">${ch}</td><td class="name">${nm}</td>
+      <td>${kindChip(k)}</td>${pay}
+      <td class="c cell${e('block')}"><span class="box ${bl ? 'on' : ''}"></span></td>
+      <td class="c cell"><span class="box teal ${pt ? 'on' : ''}"></span></td>
+      <td class="cell" style="min-width:210px">${rsvCell(rsv)}</td>
+      <td class="cell"><div class="note ${note ? '' : 'empty'}">${note || '–'}</div></td></tr>`
+  }).join('')
+}
+
+/* 이름 · 가운데(옅게) · 값(진하게) 세 칸 줄. 'hr'은 가는 선 */
+const kv = (rows, style = '') => `<div class="kv"${style ? ` style="${style}"` : ''}>${rows.map(r => r === 'hr' ? '<i class="hr"></i>'
+  : `<span class="${r[3] || ''}">${r[0]}</span><span class="m">${r[1]}</span><span class="v"${r[4] ? ` style="${r[4]}"` : ''}>${r[2]}</span>`).join('')}</div>`
+
+function summaryCards() {
+  const d = DAY
+  const payTotal = d.pay.reduce((a, p) => a + p[2], 0), payCnt = d.pay.reduce((a, p) => a + p[1], 0)
+  const spTotal = d.spend.reduce((a, p) => a + p[2], 0), spCnt = d.spend.reduce((a, p) => a + p[1], 0)
+  return `<div class="cards">
+    <section class="card"><h3>수납 <small>${payCnt}건</small></h3><div class="big">${payTotal.toLocaleString()}<small>원</small></div>
+      ${kv([...d.pay.map(p => [p[0], p[1] + '건', p[2].toLocaleString()]), 'hr', ['오늘 생긴 미수', d.unpaidNew[0] + '건', d.unpaidNew[1].toLocaleString(), 'sub', 'color:var(--negative)']])}</section>
+    <section class="card"><h3>지출 <small>${spCnt}건</small></h3><div class="big">${spTotal.toLocaleString()}<small>원</small></div>
+      ${kv(d.spend.map(p => [p[0], p[1] + '건', p[2].toLocaleString(), '', p[2] ? '' : 'color:var(--faint)']))}</section>
+    <section class="card"><h3>내원 <small>총 내원 대비</small></h3><div class="big">${d.visits}<small>명</small></div>
+      ${kv([['초진', pct(d.first, d.visits), d.first + '명'], ['90일초진', pct(d.d90, d.visits), d.d90 + '명'], ['재진', pct(d.ret, d.visits), d.ret + '명'], 'hr',
+        ['Block', pct(d.block, d.visits), d.block + '명'], ['물리치료', pct(d.pt, d.visits), d.pt + '명']])}</section>
+    <section class="card"><h3>예약 · Block 전환</h3>
+      <div class="rate"><span class="key">초진 예약률</span><b>${pct(d.rsvFirst, d.first)}</b><em>초진 ${d.first}명 중 ${d.rsvFirst}명 · 주사치료·진료(경과) 예약만</em><span class="bar"><i style="width:${d.rsvFirst / d.first * 100}%"></i></span></div>
+      <div class="rate"><span class="key">90일 예약률</span><b>${pct(d.rsvD90, d.d90)}</b><em>90일초진 ${d.d90}명 중 ${d.rsvD90}명</em><span class="bar teal"><i style="width:${d.rsvD90 / d.d90 * 100}%"></i></span></div>
+      ${kv(['hr', ['초진+Block', `${d.firstBlock}/${d.first}`, pct(d.firstBlock, d.first)], ['90일+Block', `${d.d90Block}/${d.d90}`, pct(d.d90Block, d.d90)],
+        ['재진+Block <span class="sub">(Block 중)</span>', `${d.retBlock}/${d.block}`, pct(d.retBlock, d.block)]], 'margin-top:2px')}</section>
+  </div>`
+}
+
+function doctorPanel(title, hint) {
+  const c = (n, of) => `${n}<span class="pct">${pct(n, of)}</span>`
+  const sum = DOCS.reduce((a, r) => a.map((v, i) => i === 0 ? '합계' : v + r[i]), ['', 0, 0, 0, 0, 0, 0, 0, 0])
+  const row = r => `<tr><td>${r[0]}</td><td class="r">${r[1]}명</td><td class="r">${c(r[2], r[1])}</td><td class="r">${c(r[3], r[1])}</td><td class="r">${c(r[4], r[1])}</td><td class="r">${c(r[5], r[1])}</td>
+    <td class="r">${r[6]}<span class="pct">${pct(r[6], r[2])}</span></td><td class="r">${r[7]}<span class="pct">${pct(r[7], r[3])}</span></td><td class="r">${r[8]}<span class="pct">${pct(r[8], r[4])}</span></td></tr>`
+  return `<section class="panel"><div class="phead"><h2>${title}</h2><span class="hint">${hint}</span></div>
+    <div class="scroll"><table class="dr" style="min-width:860px"><thead><tr><th>원장님</th><th class="r">내원</th><th class="r">초진</th><th class="r">90일초진</th><th class="r">Block</th><th class="r">물리치료</th><th class="r">초진+Block</th><th class="r">90일+Block</th><th class="r">재진+Block</th></tr></thead>
+    <tbody>${DOCS.map(row).join('')}</tbody><tfoot>${row(sum).replace('<tr>', '<tr>')}</tfoot></table></div>
+    <div class="legend"><span>초진·90일초진·Block·물리치료 % = 그 원장님 내원 중</span><span>초진+Block % = 초진 중 · 90일+Block % = 90일초진 중 · 재진+Block % = Block 받은 사람 중(엑셀과 같음)</span></div></section>`
+}
+
+function ledgerPanel(closed, pickRow) {
+  return `<section class="panel ${closed ? 'closed' : ''}">
+    <div class="phead"><h2>환자 장부</h2><span class="hint">${closed ? '마감한 날이라 고칠 수 없어요' : '칸을 누르면 고칠 수 있어요'}</span><span class="sp"></span>
+      <div class="filters"><span class="on">전체 <b>104</b></span><span>초진 <b>9</b></span><span>90일초진 <b>6</b></span><span>Block <b>23</b></span><span>예약 종류 모름 <b>2</b></span><span>고친 칸 있는 줄 <b>2</b></span></div>
+      <span class="search">이름·차트번호 찾기</span></div>
+    <div style="padding:0 20px 10px">${sortNote()}</div>
+    <div class="scroll"><table class="ledger"><thead><tr><th>NO</th><th>접수</th><th>차트</th>${th('name', '이름')}${th('kind', '구분')}${th('cash', '현금', 'r')}${th('card', '카드', 'r')}${th('acct', '계좌', 'r')}${th('un', '미수', 'r')}${th('block', 'Block', 'c')}${th('pt', '물리치료', 'c')}${th('rsv', '다음 예약')}<th>비고</th></tr></thead>
+    <tbody>${ledgerRows(pickRow)}<tr class="more"><td colspan="13">… 시안이라 16줄만 그렸어요. 실제로는 그날 내원 104줄이 모두 나와요.</td></tr></tbody>
+    <tfoot><tr><td colspan="5">합계 · 104명</td><td class="r">156,000</td><td class="r">902,300</td><td class="r">88,000</td><td class="r" style="color:var(--negative)">42,000</td><td class="c">23</td><td class="c">61</td><td>예약 ${DAY.rsvFirst + DAY.rsvD90 + 31}명</td><td></td></tr></tfoot></table></div>
+    <div class="legend"><span><i class="ed"></i>직원이 고친 칸(비트 값과 다름) — 눌러서 [비트 값으로 되돌리기]</span><span><span class="src bit" style="font-size:11px;font-weight:600;padding:0 5px;border:1px solid var(--line);border-radius:3px">비트</span> 비트 예약 메모로 정한 종류</span><span><span style="font-size:11px;font-weight:600;padding:0 5px;border-radius:3px;background:var(--accent);color:#fff">직접</span> 직원이 고른 예약</span><span>FREE = 그날 낸 돈 0원</span></div>
+  </section>`
+}
+
+function bottomPanels(closed) {
+  const SP = [['현금', '택배비', 5000], ['현금', '다과', 30000], ['카드', '사무용품', 48000], ['현금(주차지원)', '주차 지원 3건', 9000]]
+  return `<div class="two">
+    <section class="panel"><div class="phead"><h2>미수 입금</h2><span class="hint">예전 미수를 오늘 내신 분 · 내원 수에는 안 들어가요</span></div>
+      <div class="scroll"><table style="min-width:460px"><thead><tr><th>접수</th><th>차트</th><th>이름</th><th>미수 생긴 날</th><th class="r">현금</th><th class="r">카드</th></tr></thead><tbody>
+      <tr><td class="num">11:20</td><td class="chart" style="color:var(--muted)">20788</td><td style="font-weight:600;color:var(--ink)">문○○</td><td class="num">11/12 (목)</td><td class="r">10,000</td><td class="r"></td></tr>
+      <tr><td class="num">15:42</td><td class="chart" style="color:var(--muted)">11530</td><td style="font-weight:600;color:var(--ink)">배○○</td><td class="num">11/14 (토)</td><td class="r"></td><td class="r">15,000</td></tr>
+      </tbody></table></div></section>
+    <section class="panel"><div class="phead"><h2>지출</h2><span class="hint">손으로 적어요 · 환자 정보가 없어 서버에도 저장돼요</span></div>
+      <div class="scroll"><table style="min-width:460px"><thead><tr><th>종류</th><th>내용</th><th class="r">금액</th><th></th></tr></thead><tbody>
+      ${SP.map(s => closed ? `<tr><td>${s[0]}</td><td>${s[1]}</td><td class="r">${s[2].toLocaleString()}</td><td></td></tr>` : `<tr><td><span class="sel">${s[0]}</span></td><td><span class="inp">${s[1]}</span></td><td class="r"><span class="inp r">${s[2].toLocaleString()}</span></td><td class="c"><span class="x" title="지우기">×</span></td></tr>`).join('')}
+      ${closed ? '' : '<tr class="addrow"><td colspan="4"><button class="btn sm">+ 지출 줄 더하기</button></td></tr>'}
+      </tbody><tfoot><tr><td colspan="2">합계 · 6건</td><td class="r">92,000</td><td></td></tr></tfoot></table></div></section>
+  </div>`
+}
+
+function toolbar(o) {
+  return `<div class="toolbar">
+    <div class="datebox"><button class="btn icon" aria-label="전날">‹</button><span class="d"><span class="yr">2026년&nbsp;</span>${o.date.replace('2026년 ', '')}</span><button class="btn icon" aria-label="다음 날">›</button></div>
+    ${o.today ? '' : '<button class="btn sm ghost">오늘</button>'}
+    ${o.chip}
+    <span class="sp"></span>
+    ${o.right}
+  </div>`
+}
+const LOCKLINE = `<div class="lock">${LOCK}<span>환자 이름 줄과 고친 칸은 <b style="color:var(--ink)">이 접수 PC 안에만</b> 저장돼요. 서버에는 마감할 때 합계·비율 숫자만 올라가요.</span></div>`
+
+function ledgerPage(mode) {
+  const closed = mode === 'closed' || mode === 'late'
+  const date = mode === 'late' ? '2026년 11월 13일 (금)' : '2026년 11월 16일 (월)'
+  const chip = mode === 'late' ? '<span class="chip warn">늦은 마감 · 11월 16일 18:55</span>'
+    : closed ? '<span class="chip ok">마감됨 · 18:52</span>' : '<span class="chip gray">마감 전</span>'
+  const right = closed
+    ? `<span class="meta">비트에서 18:40 불러옴</span><button class="btn">설정</button><button class="btn">마감 풀기</button>`
+    : `<span class="meta">비트에서 18:40 불러옴</span><button class="btn">비트에서 다시 불러오기</button><button class="btn">설정</button><button class="btn primary">마감하기</button>`
+  let banner = ''
+  if (mode === 'closed') banner = `<div class="banner ok"><b>11월 16일 마감했어요.</b> 합계·비율 숫자를 서버에 올렸어요(원장님 폰·통계에서 보여요). 예약은 지금 값으로 고정돼요. 고치려면 [마감 풀기]를 누르세요.</div>`
+  if (mode === 'late') banner = `<div class="banner warn"><b>이 날은 다음 날 이후에 마감했어요.</b> 그 사이 전화로 잡은 예약도 '예약함'으로 들어갔을 수 있어서, 예약률이 실제보다 조금 높을 수 있어요. 통계에도 이 표시가 같이 붙어요.</div>`
+  if (mode === 'open' || mode === 'pick') banner = `<div class="banner info"><b>예약 종류 모름 2줄</b> — 비트 예약은 있는데 메모에 정해진 말('주사', '경과')이 없어요. 다음 예약 칸을 눌러 직접 고르거나 비트 메모를 고쳐 주세요.</div>`
+  return toolbar({ date, today: mode !== 'late', chip, right }) + LOCKLINE + banner + summaryCards() + ledgerPanel(closed, -1) + bottomPanels(closed)
+}
+
+function remotePage() {
+  const chip = '<span class="chip ok">마감됨 · 18:52</span>'
+  return toolbar({ date: '2026년 11월 16일 (월)', today: true, chip, right: '' })
+    + `<div class="lock">${LOCK}<span>이 기기에서는 마감한 날의 합계·비율만 보여요. 환자 장부는 접수 PC에서만 열려요.</span></div>`
+    + summaryCards() + doctorPanel('원장님별', '처방한 원장님 기준')
+    + `<section class="panel"><div class="phead"><h2>지출</h2><span class="hint">6건 · 92,000원</span></div><div class="scroll"><table style="min-width:300px"><tbody>
+      <tr><td>현금</td><td>택배비</td><td class="r">5,000</td></tr><tr><td>현금</td><td>다과</td><td class="r">30,000</td></tr><tr><td>카드</td><td>사무용품</td><td class="r">48,000</td></tr><tr><td>현금(주차지원)</td><td>주차 지원 3건</td><td class="r">9,000</td></tr></tbody></table></div></section>
+      <section class="panel"><div class="away">${LOCK}<b>환자 장부는 접수 PC에서만 보여요</b><p>이름·차트번호가 든 줄은 서버로 올리지 않아요. 고치거나 마감하려면 접수 PC에서 수납일지를 여세요.</p></div></section>`
+}
+
+function statsPage() {
+  return `<div class="periodbar"><div class="pseg"><span>오늘</span><span>이번 주</span><span class="on">이번 달</span><span>지난달</span><span>직접</span></div><span class="meta">2026년 11월 1일 ~ 16일</span><span class="sp"></span><button class="btn">비트에서 불러오기</button></div>
+  <div class="toc"><span>요약</span><span>환자 구성</span><span>처방</span><span>매출</span><span class="on">예약·전환</span><span>재방문</span><span>시간대·동네</span></div>
+  <section class="sec"><h2>예약·전환 <span class="chip acc" style="font-weight:600">새 칸</span> <span class="how">어떻게 세나요? ▾</span></h2>
+    <div class="three">
+      <section class="card"><h3>초진 예약률 <small>수납일지 마감한 날만</small></h3><div class="big">63.4%</div>
+        ${kv([['초진', '', '112명'], ['주사치료·진료(경과) 예약', '', '71명'], 'hr', ['마감한 날', '진료한 날 14일 중', '12일', 'sub'], ['늦은 마감 섞임', '', '1일', 'sub', 'color:var(--warning)']])}</section>
+      <section class="card"><h3>90일 예약률 <small>수납일지 마감한 날만</small></h3><div class="big">51.2%</div>
+        ${kv([['90일초진', '', '82명'], ['주사치료·진료(경과) 예약', '', '42명'], 'hr', ['마감 안 한 날 2일은 빼고 셈', '', '', 'sub']])}</section>
+      <section class="card"><h3>Block 전환 <small>비트에서 바로 · 기간 전체</small></h3>
+        ${kv([['초진+Block', '58/131', '44.3%'], ['90일+Block', '31/95', '32.6%'], ['재진+Block <span class="sub">(Block 중)</span>', '213/302', '70.5%'], 'hr', ['Block', '302/1,388', '21.8%'], ['물리치료', '829/1,388', '59.7%']])}</section>
+    </div>
+    ${doctorPanel('원장님별 · 11월 1일 ~ 16일', '비트에서 바로 · 수납일지에서 고친 체크는 안 들어가요')}
+  </section>
+  <div class="blurred"><section class="sec"><h2>재방문</h2><div class="three"><section class="card" style="height:120px"></section><section class="card" style="height:120px"></section><section class="card" style="height:120px"></section></div></section></div>`
+}
+
+const app = document.getElementById('app')
+const layer = document.getElementById('layer')
+if (S === 'stats') app.innerHTML = statsPage()
+else if (S === 'remote') app.innerHTML = remotePage()
+else app.innerHTML = ledgerPage(S === 'settings' ? 'open' : S)
+app.addEventListener('click', (e) => {
+  const rerender = (focusSel) => { app.innerHTML = ledgerPage(S === 'settings' ? 'open' : S); if (focusSel) app.querySelector(focusSel)?.focus() }
+  const item = e.target.closest('.smenu button')
+  if (item) {
+    const by = item.dataset.by
+    SORT = by ? { key: 'rsv', by, dir: item.dataset.dir } : { key: null, dir: 'asc', by: 'kind' }
+    MENU = false; return rerender('button.sort[data-menu="rsv"]')
+  }
+  const m = e.target.closest('button.sort[data-menu]')
+  if (m) { MENU = !MENU; return rerender(MENU ? '.smenu button.on, .smenu button' : 'button.sort[data-menu="rsv"]') }
+  if (MENU && !e.target.closest('.smenu')) { MENU = false; rerender() }
+  const b = e.target.closest('button.sort'); if (!b) return
+  const k = b.dataset.k
+  SORT = SORT.key !== k ? { key: k, dir: 'asc', by: 'kind' } : SORT.dir === 'asc' ? { key: k, dir: 'desc', by: 'kind' } : { key: null, dir: 'asc', by: 'kind' }
+  app.innerHTML = ledgerPage(S === 'settings' ? 'open' : S)
+  app.querySelector(`button.sort[data-k="${k}"]`)?.focus()
+})
+
+if (S === 'pick') {
+  const row = app.querySelectorAll('.ledger tbody tr')[7]
+  const cell = row.children[12]
+  const rc = cell.getBoundingClientRect()
+  layer.innerHTML = `<div class="scrim"></div><div class="pop" style="top:${Math.min(rc.bottom + 6, innerHeight - 470)}px;left:${Math.max(16, Math.min(rc.left, innerWidth - 356))}px">
+    <div><h4>다음 예약 · 윤○○</h4><div class="who">15220 · 재진 · 이○○ 원장</div></div>
+    <div class="opts">
+      <div class="opt"><span class="rd"></span><span>비트 따라가기<br><small>지금: 11/21 (토) 예약 있음 · 종류 모름</small></span><span class="cnt no">—</span></div>
+      <div class="opt"><span class="rd"></span><span>예약 안 하고 가심</span><span class="cnt no">예약률 ✕</span></div>
+      <div class="opt on"><span class="rd"></span><span>주사치료</span><span class="cnt">예약률 ○</span></div>
+      <div class="opt"><span class="rd"></span><span>진료(경과)</span><span class="cnt">예약률 ○</span></div>
+      <div class="opt"><span class="rd"></span><span>기타</span><span class="cnt no">예약률 ✕</span></div>
+    </div>
+    <div class="tip">직접 고르면 비트 예약보다 이 값을 써요. 비트에 없는 예약(전화·종이 예약)도 여기서 고르면 돼요. 마감을 풀었다 다시 해도 직접 고른 값은 그대로예요.</div>
+    <div class="foot"><button class="btn sm">닫기</button><button class="btn sm primary">고르기</button></div></div>`
+}
+if (S === 'settings') {
+  layer.innerHTML = `<div class="scrim"></div><aside class="drawer">
+    <div class="dh"><h3>수납일지 설정</h3><button class="btn icon ghost" aria-label="닫기">✕</button></div>
+    <div class="db">
+      <div class="fs"><b>Block으로 셀 처방</b><p>통계 탭에 만들어 둔 처방 묶음 중 하나를 골라요. 묶음 안 코드를 바꾸면 수납일지·통계가 같이 바뀌어요.</p>
+        <div class="rowx"><span class="sel" style="min-width:220px">신경차단술 (코드 14개)</span><button class="btn text">처방 묶음 고치러 가기 →</button></div></div>
+      <div class="fs"><b>물리치료로 셀 처방</b><p>같은 방법으로 처방 묶음 하나를 골라요.</p>
+        <div class="rowx"><span class="sel" style="min-width:220px">기본 물리치료 (코드 9개)</span></div></div>
+      <div class="fs"><b>예약 메모 말</b><p>비트 예약 메모에 이 말이 들어 있으면 예약 종류를 자동으로 정해요. 여러 말이 겹치면 위 줄이 이겨요.</p>
+        <div class="rowx"><span class="lab">주사치료</span><span class="word">주사<i>×</i></span><span class="word">블록<i>×</i></span><span class="word add">+ 말 더하기</span></div>
+        <div class="rowx"><span class="lab">진료(경과)</span><span class="word">경과<i>×</i></span><span class="word">진료<i>×</i></span><span class="word add">+ 말 더하기</span></div>
+        <div class="rowx"><span class="lab">기타</span><span class="word">기타<i>×</i></span><span class="word add">+ 말 더하기</span></div>
+        <div class="pending">정해진 말이 없는 예약을 어떻게 셀지는 아직 안 정했어요(지금 시안은 '종류 모름'으로 보여 주고 예약률에서 뺌).</div></div>
+      <div class="fs"><b>지출 종류</b><p>엑셀과 같은 넷. 이름은 바꿀 수 있어요.</p>
+        <div class="rowx"><span class="word">현금</span><span class="word">카드</span><span class="word">기타</span><span class="word">현금(주차지원)</span></div></div>
+    </div>
+    <div class="df"><button class="btn">취소</button><button class="btn primary">저장</button></div></aside>`
+}
+</script>
+</body>
+</html>
