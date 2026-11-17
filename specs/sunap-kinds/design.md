@@ -43,7 +43,8 @@ export type LedgerSettings = { kinds: RsvKindDef[]; blockDef; ptDef }
 - `labels.ts`: `RSV_LABEL` 대신 `rsvLabel(kind, kinds)`(none·unknown은 지금 글, 목록에 없으면 '종류 모름').
 - `RsvPicker.tsx`·`LedgerRows.tsx`·`SortMenu.tsx`: props `kinds`. 칩 색 inj 파랑·visit 청록·unknown 노랑·나머지 회색.
 - `SunapScreen.tsx`: 설정 kinds를 Worker load·장부·고르기·카드·알림 띠에 넘김. `useSunapWorker.ts`: `SunapAsk.words` → `kinds`.
-- `SunapCards.tsx`: props `reserved: readonly string[]`(counts인 이름).
+- `SunapCards.tsx`: props `reserved: readonly string[]`(counts인 이름). `RemoteView.tsx`는 설정을 읽지 않고 `예약률 ○ 종류 예약만`(SunapCards에 그 글을 넘김).
+- 말 길이: `words.join(',').length <= 40`(말 칸 maxLength 40과 같은 셈, 다듬으면 줄기만 한다).
 - `stats/sections/SunapSection.tsx`: 글 두 곳만(AC-5503.8).
 
 ## 위험
