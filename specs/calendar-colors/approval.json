@@ -1,0 +1,28 @@
+{
+  "status": "approved",
+  "feature": "calendar-colors",
+  "approved_at": "2026-11-17T13:09:46Z",
+  "approved_via": "user-prompt",
+  "session_id": "b0bacc8e-b4c1-48e0-aa1e-81ddd7dbbf9b",
+  "spec_sha256": "065ca6c79ee412b83e5395e1d888718a88a1b8c4187dca6f844f446df8d05179",
+  "scope": [
+    "docs/UI_GUIDE.md",
+    "src/app/globals.css",
+    "src/app/theme.test.ts",
+    "src/components/calendar/AddPanel.test.tsx",
+    "src/components/calendar/AddPanel.tsx",
+    "src/components/calendar/CalendarScreen.test.tsx",
+    "src/components/calendar/CalendarSettings.test.tsx",
+    "src/components/calendar/CalendarSettings.tsx",
+    "src/components/calendar/CalendarToolbar.tsx",
+    "src/components/calendar/colors.test.ts",
+    "src/components/calendar/colors.ts",
+    "src/components/calendar/rows/ApptBlock.tsx",
+    "src/components/calendar/rows/TimeGrid.test.tsx",
+    "src/components/calendar/rows/TimeGrid.tsx",
+    "src/lib/calendar/rules.test.ts",
+    "src/lib/calendar/rules.ts",
+    "src/lib/storage/calendar.test.ts",
+    "src/types/calendar.ts"
+  ]
+}
