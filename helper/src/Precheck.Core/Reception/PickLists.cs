@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Precheck.Core.Reception;
 
@@ -28,6 +30,8 @@ public sealed class PickProc
 /// PT 1~8·도수 1~8·충격파 타수 0~8·부위 수 1~8·견인 1~8(AC-3603.2).
 /// 약재 없음 표시는 시술에만 있다. 쪽 글(오른·왼·양)은 목록이 아니라 고정이다.
 /// 쓰기 검사(AC-3502.3)는 IsCarm·IsSono가, PT·도수·충격파·견인 add(AC-3603.3)는 ArrangeChoices.AddOf가 이 목록으로 본다.
+/// 더한 칸 목록 Extra(spec reception-other-clinic AC-5701.4): 더한 칸 열쇠(x1~x99) → 이름 0~8개(이름 규칙은 PT와 같음). 설정 문서(ReceptionSettings) 안에서만 쓰고,
+/// 옛 목록 파일·몸 읽기(TryParse·TryParseStored)와 Write는 지금 모양 그대로다(extra를 받지도 쓰지도 않는다). extra까지 쓰는 것은 Write(writer, true).
 /// </summary>
 public sealed class PickLists
 {
@@ -43,6 +47,9 @@ public sealed class PickLists
     public const int MaxEswtCounts = 8;
     public const int MaxTrac = 8;
 
+    /// <summary>더한 칸 하나의 목록 이름 한도(AC-5701.4).</summary>
+    public const int MaxExtra = 8;
+
     /// <summary>SONO 칸 한 개에 담는 줄 수 한도.</summary>
     public const int MaxLines = 6;
 
@@ -56,6 +63,15 @@ public sealed class PickLists
     public static IReadOnlyList<string> Sides { get; } = Array.AsReadOnly(new[] { "오른", "왼", "양" });
 
     private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
+
+    /// <summary>더한 칸 열쇠 모양(AC-5701.2): x1~x99.</summary>
+    private static readonly Regex ExtraKey = new Regex(@"^x[1-9][0-9]?\z", RegexOptions.CultureInvariant);
+
+    private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> NoExtra =
+        new ReadOnlyDictionary<string, IReadOnlyList<string>>(new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal));
+
+    /// <summary>Extra를 쓰는 차례(받은 차례).</summary>
+    private readonly string[] extraOrder;
 
     // 맨 위 객체 → carm·sono·eswt → procs·hits·counts 배열 → 시술 객체
     private static readonly JsonDocumentOptions BodyJson = new JsonDocumentOptions { MaxDepth = 4 };
@@ -81,12 +97,12 @@ public sealed class PickLists
 
     /// <summary>
     /// 모양 규칙에 어긋나면 ArgumentException(null이면 ArgumentNullException). 이름은 앞뒤 빈칸을 뺀 글로 남는다.
-    /// 새 무리(pt·ds·eswtHits·eswtCounts·trac)는 넘기지 않으면(null) 기본값이다(AC-3603.1).
+    /// 새 무리(pt·ds·eswtHits·eswtCounts·trac)는 넘기지 않으면(null) 기본값이다(AC-3603.1). 더한 칸 목록(extra)은 넘기지 않으면 없다(AC-5701.4).
     /// </summary>
     public PickLists(
         IEnumerable<PickProc> procs, IEnumerable<string> drugs, IEnumerable<string> parts, IEnumerable<string> plains, IEnumerable<string> withs,
         IEnumerable<string>? pt = null, IEnumerable<string>? ds = null, IEnumerable<string>? eswtHits = null, IEnumerable<string>? eswtCounts = null,
-        IEnumerable<string>? trac = null)
+        IEnumerable<string>? trac = null, IEnumerable<KeyValuePair<string, IReadOnlyList<string>>>? extra = null)
     {
         if (procs == null) throw new ArgumentNullException(nameof(procs));
         var procList = procs.Select(p => p == null ? throw new ArgumentNullException(nameof(procs)) : new PickProc(Clean(p.N, nameof(procs)), p.NoDrug)).ToArray();
@@ -103,6 +119,23 @@ public sealed class PickLists
         EswtHits = Group(eswtHits ?? DefaultEswtHits, 0, MaxEswtHits, nameof(eswtHits));
         EswtCounts = Group(eswtCounts ?? DefaultEswtCounts, 1, MaxEswtCounts, nameof(eswtCounts));
         Trac = Group(trac ?? DefaultTrac, 1, MaxTrac, nameof(trac));
+        (Extra, extraOrder) = ExtraOf(extra);
+    }
+
+    /// <summary>extra만 바꾼 사본(나머지 무리는 같은 목록). 규칙에 어긋나면 ArgumentException.</summary>
+    private PickLists(PickLists source, IEnumerable<KeyValuePair<string, IReadOnlyList<string>>> extra)
+    {
+        Procs = source.Procs;
+        Drugs = source.Drugs;
+        Parts = source.Parts;
+        Plains = source.Plains;
+        Withs = source.Withs;
+        Pt = source.Pt;
+        Ds = source.Ds;
+        EswtHits = source.EswtHits;
+        EswtCounts = source.EswtCounts;
+        Trac = source.Trac;
+        (Extra, extraOrder) = ExtraOf(extra);
     }
 
     /// <summary>C-ARM 시술(목록 차례).</summary>
@@ -135,6 +168,19 @@ public sealed class PickLists
     /// <summary>견인 부위.</summary>
     public IReadOnlyList<string> Trac { get; }
 
+    /// <summary>더한 칸 목록: 열쇠(x1~x99) → 이름 0~8개(AC-5701.4). 옛 목록 파일·Defaults에는 없다(빈 사전).</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> Extra { get; }
+
+    /// <summary>
+    /// extra만 바꾼 사본(AC-5701.4). 열쇠가 x1~x99가 아니거나 이름이 PT 규칙(1~10글자·"|"·제어 글자 없음·겹침 없음)에 어긋나거나 9개 이상이면 ArgumentException.
+    /// 이 목록은 그대로다.
+    /// </summary>
+    public PickLists WithExtra(IEnumerable<KeyValuePair<string, IReadOnlyList<string>>> extra)
+    {
+        if (extra == null) throw new ArgumentNullException(nameof(extra));
+        return new PickLists(this, extra);
+    }
+
     /// <summary>
     /// 몸(POST /api/lists)이 { carm: { procs: [{ n, noDrug }], drugs }, sono: { parts, plains, withs }, pt, ds, eswt: { hits, counts }, trac }뿐인
     /// 바른 UTF-8 JSON이고(칸 차례 무관, 같은 칸 두 번·다른 칸·빠진 칸은 틀림) 목록 규칙을 지키나(AC-3501.2·AC-3603.2). 아니면 false이고 lists는 기본값이다. 던지지 않는다.
@@ -154,9 +200,35 @@ public sealed class PickLists
         try
         {
             using var document = JsonDocument.Parse(StrictUtf8.GetString(json), BodyJson);
-            var root = document.RootElement;
+            return TryRead(document.RootElement, oldOk, false, out lists);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            // 잘못된 UTF-8(DecoderFallbackException)
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 설정 문서 안의 picks(AC-5701.4): 지금 목록 모양 { carm, sono, pt, ds, eswt, trac } + extra { 열쇠: [이름…] }가 꼭 있다.
+    /// extra 열쇠가 더한 칸과 같은지는 부르는 쪽(ReceptionSettings)이 본다. 던지지 않는다.
+    /// </summary>
+    internal static bool TryReadWithExtra(JsonElement value, out PickLists lists) => TryRead(value, false, true, out lists);
+
+    private static bool TryRead(JsonElement root, bool oldOk, bool withExtra, out PickLists lists)
+    {
+        lists = Defaults;
+        try
+        {
             var old = oldOk && HasExactly(root, "carm", "sono");
-            if (!old && !HasExactly(root, "carm", "sono", "pt", "ds", "eswt", "trac")) return false;
+            var shape = withExtra
+                ? HasExactly(root, "carm", "sono", "pt", "ds", "eswt", "trac", "extra")
+                : HasExactly(root, "carm", "sono", "pt", "ds", "eswt", "trac");
+            if (!old && !shape) return false;
             var carm = root.GetProperty("carm");
             var sono = root.GetProperty("sono");
             if (!HasExactly(carm, "procs", "drugs") || !HasExactly(sono, "parts", "plains", "withs")) return false;
@@ -190,12 +262,11 @@ public sealed class PickLists
                 || !TryStrings(eswt.GetProperty("counts"), MaxEswtCounts, out var counts)
                 || !TryStrings(root.GetProperty("trac"), MaxTrac, out var trac)) return false;
 
-            lists = new PickLists(procs, drugs, parts, plains, withs, pt, ds, hits, counts, trac);
+            List<KeyValuePair<string, IReadOnlyList<string>>>? extra = null;
+            if (withExtra && !TryExtra(root.GetProperty("extra"), out extra)) return false;
+
+            lists = new PickLists(procs, drugs, parts, plains, withs, pt, ds, hits, counts, trac, extra);
             return true;
-        }
-        catch (JsonException)
-        {
-            return false;
         }
         catch (InvalidOperationException)
         {
@@ -204,13 +275,31 @@ public sealed class PickLists
         }
         catch (ArgumentException)
         {
-            // 잘못된 UTF-8(DecoderFallbackException) 또는 목록 규칙에 어긋남
+            // 목록 규칙에 어긋남
             return false;
         }
     }
 
+    /// <summary>extra 객체: 열쇠마다 글 배열(MaxExtra개까지). 같은 열쇠 두 번이면 false.</summary>
+    private static bool TryExtra(JsonElement value, out List<KeyValuePair<string, IReadOnlyList<string>>> extra)
+    {
+        extra = new List<KeyValuePair<string, IReadOnlyList<string>>>();
+        if (value.ValueKind != JsonValueKind.Object) return false;
+        foreach (var property in value.EnumerateObject())
+        {
+            var name = property.Name;
+            if (extra.Any(pair => string.Equals(pair.Key, name, StringComparison.Ordinal))) return false;
+            if (!TryStrings(property.Value, MaxExtra, out var names)) return false;
+            extra.Add(new KeyValuePair<string, IReadOnlyList<string>>(name, names));
+        }
+        return true;
+    }
+
     /// <summary>{ carm: { procs: [{ n, noDrug }], drugs }, sono: { parts, plains, withs }, pt, ds, eswt: { hits, counts }, trac }를 값 하나로 쓴다(판 맨 위 picks·목록 파일, AC-3603.2).</summary>
-    public void Write(Utf8JsonWriter writer)
+    public void Write(Utf8JsonWriter writer) => Write(writer, false);
+
+    /// <summary>withExtra면 trac 뒤에 extra { 열쇠: [이름…] }(받은 차례)를 더해 쓴다(설정 문서의 picks, AC-5701.4).</summary>
+    public void Write(Utf8JsonWriter writer, bool withExtra)
     {
         if (writer == null) throw new ArgumentNullException(nameof(writer));
         writer.WriteStartObject();
@@ -238,6 +327,12 @@ public sealed class PickLists
         WriteStrings(writer, "counts", EswtCounts);
         writer.WriteEndObject();
         WriteStrings(writer, "trac", Trac);
+        if (withExtra)
+        {
+            writer.WriteStartObject("extra");
+            foreach (var key in extraOrder) WriteStrings(writer, key, Extra[key]);
+            writer.WriteEndObject();
+        }
         writer.WriteEndObject();
     }
 
@@ -301,16 +396,38 @@ public sealed class PickLists
         if (names.Distinct(StringComparer.Ordinal).Count() != names.Length) throw new ArgumentException("목록 안에 같은 이름이 있다", what);
     }
 
+    /// <summary>extra 사전과 쓰는 차례. 열쇠 모양·이름 규칙에 어긋나면 ArgumentException.</summary>
+    private static (IReadOnlyDictionary<string, IReadOnlyList<string>>, string[]) ExtraOf(IEnumerable<KeyValuePair<string, IReadOnlyList<string>>>? extra)
+    {
+        if (extra == null) return (NoExtra, new string[0]);
+        var map = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        var order = new List<string>();
+        foreach (var pair in extra)
+        {
+            if (pair.Key == null || !ExtraKey.IsMatch(pair.Key)) throw new ArgumentException("더한 칸 열쇠 모양이 틀렸다", nameof(extra));
+            if (map.ContainsKey(pair.Key)) throw new ArgumentException("더한 칸 열쇠가 겹친다", nameof(extra));
+            map[pair.Key] = Group(pair.Value, 0, MaxExtra, nameof(extra));
+            order.Add(pair.Key);
+        }
+        return (new ReadOnlyDictionary<string, IReadOnlyList<string>>(map), order.ToArray());
+    }
+
     /// <summary>앞뒤 빈칸을 뺀 이름. 1~10글자가 아니거나 "|"·제어 글자·짝 없는 대리쌍이 있으면 ArgumentException.</summary>
-    private static string Clean(string name, string what)
+    private static string Clean(string name, string what) => CleanText(name, what, MaxName, false);
+
+    /// <summary>
+    /// 앞뒤 빈칸을 뺀 글(고르기 이름·칸 이름·로고 글, AC-3501.2·AC-5701.1·AC-5701.2). 1~max글자(UTF-16 단위)가 아니거나 제어 글자(C0·DEL·C1·U+2028·U+2029)·
+    /// 짝 없는 대리쌍이 있거나, joinerOk가 아닌데 "|"가 있으면 ArgumentException.
+    /// </summary>
+    internal static string CleanText(string name, string what, int max, bool joinerOk)
     {
         if (name == null) throw new ArgumentNullException(what);
         var trimmed = name.Trim();
-        if (trimmed.Length == 0 || trimmed.Length > MaxName) throw new ArgumentException("이름 길이가 한도 밖이다", what);
+        if (trimmed.Length == 0 || trimmed.Length > max) throw new ArgumentException("이름 길이가 한도 밖이다", what);
         for (var i = 0; i < trimmed.Length; i++)
         {
             var c = trimmed[i];
-            if (c == Joiner || char.IsControl(c) || c == '\u2028' || c == '\u2029') throw new ArgumentException("이름에 쓸 수 없는 글자가 있다", what);
+            if ((c == Joiner && !joinerOk) || char.IsControl(c) || c == '\u2028' || c == '\u2029') throw new ArgumentException("이름에 쓸 수 없는 글자가 있다", what);
             if (char.IsHighSurrogate(c) && i + 1 < trimmed.Length && char.IsLowSurrogate(trimmed[i + 1]))
             {
                 i++;
