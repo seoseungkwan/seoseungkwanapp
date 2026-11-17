@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PT 후 진료 종이 시안</title>
+<style>
+  :root {
+    --bg: #eef1f5; --win: #ffffff; --line: #c9d0da; --text: #1d2430; --sub: #5d6878;
+    --accent: #1f6feb; --accent-soft: #e5efff; --ok: #137a3a; --bad: #c62828; --bad-soft: #fdecec;
+    --title: #f6f7f9; --paper: #fbfbf7;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Malgun Gothic", "맑은 고딕", "Segoe UI", sans-serif; font-size: 14px; }
+  main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .lead { color: var(--sub); margin: 0 0 20px; line-height: 1.6; }
+  section { margin: 0 0 32px; }
+  section > h2 { font-size: 15px; margin: 0 0 10px; color: var(--sub); font-weight: 600; }
+  section > h2 b { color: var(--text); }
+  .note { color: var(--sub); font-size: 12.5px; margin: 8px 0 0; line-height: 1.6; }
+
+  /* 윈도우 창 */
+  .win { background: var(--win); border: 1px solid #9aa4b2; border-radius: 8px; box-shadow: 0 8px 28px rgba(20,30,50,.18); overflow: hidden; }
+  .titlebar { display: flex; align-items: center; height: 34px; background: var(--title); border-bottom: 1px solid var(--line); padding-left: 12px; font-size: 13px; }
+  .titlebar .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ctl { width: 44px; height: 34px; display: grid; place-items: center; color: #444; font-size: 13px; }
+  .ctl.x:hover { background: #e81123; color: #fff; }
+
+  /* 비트 창 그림 */
+  .bit { max-width: 860px; }
+  .bit .titlebar { background: #2b4d7a; color: #fff; border-bottom: 0; }
+  .bit .ctl { color: #fff; }
+  .ptbtn { height: 26px; margin-right: 8px; padding: 0 12px; border: 0; border-radius: 6px; background: #ffd23f; color: #1d2430; font-weight: 700; font-size: 13px; font-family: inherit; box-shadow: 0 1px 0 rgba(0,0,0,.25); white-space: nowrap; }
+  .bitbody { height: 220px; background: repeating-linear-gradient(0deg, #f4f6f9 0 26px, #ffffff 26px 52px); position: relative; }
+  .bitbody span { position: absolute; left: 16px; top: 14px; color: #8a94a3; font-size: 13px; }
+
+  /* 고르는 창 */
+  .pick { max-width: 860px; }
+  .pickbody { display: grid; grid-template-columns: 1fr 300px; gap: 20px; padding: 18px; }
+  .row { margin-bottom: 16px; }
+  .lbl { font-weight: 700; margin-bottom: 8px; display: block; }
+  .chart { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .chart input { width: 150px; height: 40px; font-size: 20px; padding: 0 10px; border: 2px solid var(--line); border-radius: 6px; font-family: inherit; letter-spacing: .5px; }
+  .chart input:focus { outline: none; border-color: var(--accent); }
+  .who { font-size: 20px; font-weight: 700; }
+  .who.ok { color: var(--ok); }
+  .who.hint { color: var(--sub); font-size: 14px; font-weight: 400; }
+  .who.bad { color: var(--bad); font-size: 14px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { min-width: 64px; height: 38px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: #fff; font-size: 14px; font-family: inherit; color: var(--text); }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+  .chip.side { min-width: 52px; }
+  .chip.side.on { background: #0f3d8a; border-color: #0f3d8a; }
+  .sep { width: 1px; background: var(--line); margin: 0 4px; }
+  .chosen { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 30px; }
+  .chosen .k { color: var(--sub); font-size: 13px; margin-right: 2px; }
+  .tag { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 6px 0 10px; border-radius: 14px; background: var(--accent-soft); color: #0f3d8a; font-weight: 700; font-size: 13px; }
+  .tag b { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; color: #0f3d8a; font-weight: 400; }
+  .help { color: var(--sub); font-size: 12.5px; margin-top: 6px; }
+  .side-col h3 { font-size: 13px; color: var(--sub); margin: 0 0 8px; font-weight: 600; }
+  .side-col .paper { --mm: 2.9px; }
+  .foot { display: flex; align-items: center; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); background: #fafbfc; }
+  .foot .sp { flex: 1; }
+  .btn { height: 38px; padding: 0 18px; border: 1px solid var(--line); border-radius: 6px; background: #fff; font-size: 14px; font-family: inherit; color: var(--text); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; min-width: 110px; font-size: 15px; }
+  .btn.primary[disabled] { background: #b8c3d3; border-color: #b8c3d3; }
+  .btn.ghost { border-color: transparent; color: var(--sub); }
+  .err { margin: 0 18px 12px; padding: 10px 12px; border-radius: 6px; background: var(--bad-soft); color: var(--bad); font-size: 13px; line-height: 1.5; }
+
+  /* 종이 (폭 100mm 기준) */
+  .paper { --mm: 3.2px; width: calc(100 * var(--mm)); height: calc(var(--len, 60) * var(--mm)); background: var(--paper); color: #111; border: 1px dashed #b8b8b0; padding: calc(4 * var(--mm)); box-shadow: 0 2px 8px rgba(0,0,0,.08); font-family: "Malgun Gothic", "맑은 고딕", sans-serif; }
+  .paper.big { --mm: 5px; }
+  .form { width: 100%; height: 100%; border: calc(.35 * var(--mm)) solid #111; display: grid; grid-template-rows: 26% 20% 20% 1fr; }
+  .form > div { border-top: calc(.3 * var(--mm)) solid #111; display: grid; grid-template-columns: 30% 1fr; }
+  .form > div:first-child { border-top: 0; grid-template-columns: 1fr; }
+  .head { display: flex; align-items: center; padding: 0 calc(3 * var(--mm)); font-size: calc(5.2 * var(--mm)); font-weight: 700; white-space: nowrap; overflow: hidden; }
+  .head .v { font-weight: 700; }
+  .k2 { border-right: calc(.3 * var(--mm)) solid #111; display: flex; align-items: center; justify-content: center; font-size: calc(3.6 * var(--mm)); letter-spacing: calc(1.4 * var(--mm)); }
+  .v2 { display: flex; align-items: center; padding: 0 calc(2.5 * var(--mm)); font-size: calc(4.2 * var(--mm)); font-weight: 700; line-height: 1.15; overflow: hidden; }
+  .v2.small { font-size: calc(3.3 * var(--mm)); }
+  .papers { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+  .papers figure { margin: 0; }
+  .papers figcaption { color: var(--sub); font-size: 12.5px; margin-top: 6px; }
+
+  /* 설정 창 */
+  .set { max-width: 620px; }
+  .setbody { padding: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; }
+  .setbody textarea { width: 100%; height: 190px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-family: inherit; font-size: 14px; line-height: 1.55; resize: none; }
+  .setbody .full { grid-column: 1 / -1; }
+  .field { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .select { height: 36px; min-width: 240px; border: 1px solid var(--line); border-radius: 6px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: space-between; gap: 12px; background: #fff; }
+  .num { width: 64px; height: 36px; border: 1px solid var(--line); border-radius: 6px; text-align: center; font-size: 15px; font-family: inherit; }
+  .small-btn { height: 36px; padding: 0 12px; }
+
+  [data-s] { display: none; }
+  body.all [data-s], [data-s].show { display: block; }
+
+  @media (max-width: 760px) {
+    .pickbody { grid-template-columns: 1fr; }
+    .paper { --mm: 2.9px; }
+    .paper.big { --mm: 3.2px; }
+    .setbody { grid-template-columns: 1fr; }
+    .bit .t { font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>PT 후 진료 종이 — 시안</h1>
+  <p class="lead">접수 PC에 까는 작은 프로그램입니다. 글과 숫자는 지어낸 예시예요. 비트 창은 실제 화면이 아니라 자리를 보여 주는 그림입니다.</p>
+
+  <section data-s="bit">
+    <h2><b>① 비트 창에 붙은 버튼</b> — 오른쪽 위, 최소화 단추 왼쪽. 비트 창을 옮기면 같이 따라가요.</h2>
+    <div class="win bit">
+      <div class="titlebar"><span class="t">U차트 - 접수</span><button class="ptbtn">PT 먼저</button><span class="ctl">—</span><span class="ctl">☐</span><span class="ctl x">✕</span></div>
+      <div class="bitbody"><span>(비트 화면)</span></div>
+    </div>
+    <p class="note">비트가 꺼져 있거나 최소화돼 있으면 버튼도 안 보여요. 비트 단추를 가리면 설정에서 버튼 자리를 옆으로 옮길 수 있어요.</p>
+  </section>
+
+  <section data-s="empty">
+    <h2><b>② 버튼을 누른 직후</b> — 차트번호 칸에 바로 칠 수 있어요.</h2>
+    <div class="win pick">
+      <div class="titlebar"><span class="t">PT 후 진료 종이</span><span class="ctl x">✕</span></div>
+      <div class="pickbody">
+        <div>
+          <div class="row"><span class="lbl">차트번호</span>
+            <div class="chart"><input value="" placeholder=""><span class="who hint">차트번호를 넣으면 이름이 나와요</span></div></div>
+          <div class="row"><span class="lbl">치료 항목</span>
+            <div class="chips"><button class="chip">HP</button><button class="chip">ICE</button><button class="chip">ICT</button><button class="chip">초음파</button><button class="chip">레이저</button><button class="chip">견인</button><button class="chip">도수</button><button class="chip">충격파</button></div></div>
+          <div class="row"><span class="lbl">치료 부위</span>
+            <div class="chips"><button class="chip side">오른</button><button class="chip side">왼</button><button class="chip side">양</button><span class="sep"></span><button class="chip">목</button><button class="chip">어깨</button><button class="chip">팔꿈치</button><button class="chip">손목</button><button class="chip">허리</button><button class="chip">골반</button><button class="chip">무릎</button><button class="chip">발목</button></div>
+            <div class="chosen"><span class="k">고른 부위:</span><span class="k">없음</span></div>
+            <div class="help">오른·왼·양을 먼저 누르고 부위를 누르면 '오른 어깨'처럼 들어가요.</div></div>
+        </div>
+        <div class="side-col"><h3>종이 미리보기</h3>
+          <div class="paper"><div class="form">
+            <div><div class="head">PT 후 진료 (&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</div></div>
+            <div><div class="k2">치료부위</div><div class="v2"></div></div>
+            <div><div class="k2">치료항목</div><div class="v2"></div></div>
+            <div><div class="k2">특이사항</div><div class="v2"></div></div>
+          </div></div></div>
+      </div>
+      <div class="foot"><button class="btn ghost">⚙ 설정</button><span class="sp"></span><button class="btn">닫기</button><button class="btn primary" disabled>뽑기</button></div>
+    </div>
+  </section>
+
+  <section data-s="pick">
+    <h2><b>③ 다 고른 모습</b> — 차트번호를 치면 이름이 바로 나와요. [뽑기]를 누르면 1장 나오고 창이 닫혀요.</h2>
+    <div class="win pick">
+      <div class="titlebar"><span class="t">PT 후 진료 종이</span><span class="ctl x">✕</span></div>
+      <div class="pickbody">
+        <div>
+          <div class="row"><span class="lbl">차트번호</span>
+            <div class="chart"><input value="12345"><span class="who ok">홍길동</span></div></div>
+          <div class="row"><span class="lbl">치료 항목</span>
+            <div class="chips"><button class="chip on">HP</button><button class="chip">ICE</button><button class="chip on">ICT</button><button class="chip">초음파</button><button class="chip">레이저</button><button class="chip on">견인</button><button class="chip">도수</button><button class="chip">충격파</button></div></div>
+          <div class="row"><span class="lbl">치료 부위</span>
+            <div class="chips"><button class="chip side">오른</button><button class="chip side">왼</button><button class="chip side">양</button><span class="sep"></span><button class="chip">목</button><button class="chip">어깨</button><button class="chip">팔꿈치</button><button class="chip">손목</button><button class="chip">허리</button><button class="chip">골반</button><button class="chip">무릎</button><button class="chip">발목</button></div>
+            <div class="chosen"><span class="k">고른 부위:</span><span class="tag">오른 어깨<b>✕</b></span><span class="tag">허리<b>✕</b></span></div>
+            <div class="help">오른·왼·양을 먼저 누르고 부위를 누르면 '오른 어깨'처럼 들어가요.</div></div>
+        </div>
+        <div class="side-col"><h3>종이 미리보기</h3>
+          <div class="paper"><div class="form">
+            <div><div class="head">PT 후 진료 (&nbsp;<span class="v">12345 / 홍길동</span>&nbsp;)</div></div>
+            <div><div class="k2">치료부위</div><div class="v2">오른 어깨, 허리</div></div>
+            <div><div class="k2">치료항목</div><div class="v2">HP, ICT, 견인</div></div>
+            <div><div class="k2">특이사항</div><div class="v2"></div></div>
+          </div></div></div>
+      </div>
+      <div class="foot"><button class="btn ghost">⚙ 설정</button><span class="sp"></span><button class="btn">닫기</button><button class="btn primary">뽑기</button></div>
+    </div>
+  </section>
+
+  <section data-s="notfound">
+    <h2><b>④ 없는 차트번호</b> — 이름 대신 빨간 글이 나오고 [뽑기]가 안 눌려요.</h2>
+    <div class="win pick" style="max-width:560px">
+      <div class="titlebar"><span class="t">PT 후 진료 종이</span><span class="ctl x">✕</span></div>
+      <div style="padding:18px"><span class="lbl">차트번호</span>
+        <div class="chart"><input value="99999"><span class="who bad">없는 차트번호예요</span></div></div>
+      <div class="foot"><button class="btn ghost">⚙ 설정</button><span class="sp"></span><button class="btn">닫기</button><button class="btn primary" disabled>뽑기</button></div>
+    </div>
+  </section>
+
+  <section data-s="printerr">
+    <h2><b>⑤ 프린터로 못 보냈을 때</b> — 창은 닫히지 않고, 고른 것이 그대로 남아요.</h2>
+    <div class="win pick" style="max-width:560px">
+      <div class="titlebar"><span class="t">PT 후 진료 종이</span><span class="ctl x">✕</span></div>
+      <div style="padding:18px 18px 12px"><span class="lbl">차트번호</span>
+        <div class="chart"><input value="12345"><span class="who ok">홍길동</span></div></div>
+      <div class="err">프린터로 보내지 못했어요(BIXOLON SLP-TX400). 프린터가 켜져 있고 종이가 있는지 보고 다시 눌러 주세요.</div>
+      <div class="foot"><button class="btn ghost">⚙ 설정</button><span class="sp"></span><button class="btn">닫기</button><button class="btn primary">뽑기</button></div>
+    </div>
+  </section>
+
+  <section data-s="slip">
+    <h2><b>⑥ 뽑힌 종이</b> — 폭 10cm 롤, 길이 6cm(설정에서 바꿈). 지금 쓰는 양식 그대로 칸을 채워요.</h2>
+    <div class="papers">
+      <figure>
+        <div class="paper big"><div class="form">
+          <div><div class="head">PT 후 진료 (&nbsp;<span class="v">12345 / 홍길동</span>&nbsp;)</div></div>
+          <div><div class="k2">치료부위</div><div class="v2">오른 어깨, 허리</div></div>
+          <div><div class="k2">치료항목</div><div class="v2">HP, ICT, 견인</div></div>
+          <div><div class="k2">특이사항</div><div class="v2"></div></div>
+        </div></div>
+        <figcaption>보통 — 특이사항은 늘 빈칸(손으로 씀)</figcaption>
+      </figure>
+      <figure>
+        <div class="paper big"><div class="form">
+          <div><div class="head">PT 후 진료 (&nbsp;<span class="v">1048213 / 남궁민수</span>&nbsp;)</div></div>
+          <div><div class="k2">치료부위</div><div class="v2 small">오른 어깨, 왼 무릎, 허리, 양 발목</div></div>
+          <div><div class="k2">치료항목</div><div class="v2 small">HP, ICT, 초음파, 견인, 충격파</div></div>
+          <div><div class="k2">특이사항</div><div class="v2"></div></div>
+        </div></div>
+        <figcaption>많이 고른 날 — 칸에 맞게 글씨가 작아져요(두 줄까지)</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section data-s="settings">
+    <h2><b>⑦ 설정</b> — 목록 고치기, 프린터, 종이 길이, 버튼 자리.</h2>
+    <div class="win set">
+      <div class="titlebar"><span class="t">설정</span><span class="ctl x">✕</span></div>
+      <div class="setbody">
+        <div><span class="lbl">치료 항목 (한 줄에 하나)</span><textarea>HP
+ICE
+ICT
+초음파
+레이저
+견인
+도수
+충격파</textarea></div>
+        <div><span class="lbl">치료 부위 (한 줄에 하나)</span><textarea>목
+어깨
+팔꿈치
+손목
+허리
+골반
+무릎
+발목</textarea></div>
+        <div class="full"><span class="lbl">프린터</span><div class="field"><span class="select">BIXOLON SLP-TX400 <span>▾</span></span><button class="btn small-btn">시험 1장</button></div></div>
+        <div><span class="lbl">종이 길이</span><div class="field"><input class="num" value="60"> mm</div></div>
+        <div><span class="lbl">버튼 자리</span><div class="field"><button class="btn small-btn">◀ 왼쪽으로</button><button class="btn small-btn">오른쪽으로 ▶</button></div></div>
+      </div>
+      <div class="foot"><span class="sp"></span><button class="btn">취소</button><button class="btn primary">저장</button></div>
+    </div>
+    <p class="note">오른·왼·양은 목록이 아니라 늘 있어요. [시험 1장]은 '홍길동' 같은 가짜 이름 없이 빈 양식만 뽑아서 종이 위치를 맞춰 볼 때 써요.</p>
+  </section>
+</main>
+<script>
+  const s = new URLSearchParams(location.search).get('s');
+  if (!s) document.body.classList.add('all');
+  else document.querySelectorAll('[data-s]').forEach((el) => { if (el.dataset.s === s) el.classList.add('show'); });
+</script>
+</body>
+</html>
