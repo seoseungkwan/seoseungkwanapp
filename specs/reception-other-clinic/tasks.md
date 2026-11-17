@@ -7,6 +7,7 @@
 > **Phase 2** — 일꾼 셋: TASK-2 칸 일반화(C#) · TASK-3 새 길 부품(C#) · TASK-6 어레인지 표·넣기 창(화면)
 > **Phase 3** — 일꾼 셋: TASK-7 설정 쪽(화면) · TASK-8 잇기·끝까지 시험(C#) · TASK-9 처음 값 표지(C#, 명세 고침 2026-11-17)
 > **Phase 4** — TASK-10 주소 보내기 화면 로고(C#, 명세 고침 2026-11-17 두 번째)
+> **Phase 5** — 일꾼 둘: TASK-11 폰 머리 이름(화면) · TASK-12 접수 현황 글(C#·설치 글) (명세 고침 2026-11-17 세 번째)
 > 끝: 합치기 → 전체 시험·lint → 화면 확인(가짜 판) → 전체 검토 한 번 → 접수 현황 새 설치 zip → [의원 PC] 확인
 > 화면 TASK는 가짜 판·설정·코드 목록을 `reception/tests/fixtures.ts`로 쓴다(서버 없이). C# TASK의 새 인자는 끝 선택 인자라 `Precheck.Reception/ReceptionServices.cs`는 TASK-8 전까지 그대로 컴파일된다.
 
@@ -99,3 +100,21 @@
 - Tests: helper/tests/reception-link-page.dotnet.test.ts, helper/tests/reception-other-clinic.dotnet.test.ts
 - TDD: required
 - 옛 시험 AC-1411.4의 '머리는 /logo-wordmark.png' 기대는 AC-5715.1로 바꾼다(제목·주소 카드·복사 단추·CSP 기대는 그대로). 글자 로고 모양은 `link.css`에 `.link-logo-text`(제목 글꼴, 토큰 색만). 사용자 결정 2026-11-17(명세 고침)
+
+## TASK-11: 폰 머리 병원 이름이 잘리지 않게 (화면)
+- Step: Phase 5 (A)
+- AC: AC-5716.1, AC-5716.2
+- REQ: REQ-5716
+- Files: reception/www/style.css, reception/tests/layout.test.ts, reception/tests/board.test.ts
+- Tests: reception/tests/layout.test.ts, reception/tests/board.test.ts
+- TDD: required
+- 승인된 시안 `docs/mockups/reception-other-clinic/header-name.png`·`header-name.css` 그대로. style.css는 CRLF를 지킨다. 사용자 결정 2026-11-17(명세 고침)
+
+## TASK-12: 접수 현황만 쓰는 병원에 맞는 글 (C#·설치 글)
+- Step: Phase 5 (B)
+- AC: AC-5717.1, AC-5717.2, AC-5717.3
+- REQ: REQ-5717
+- Files: helper/src/Precheck.Core/Registration/RegisterPrompt.cs, helper/src/Precheck.Core/Registration/RegisterFlow.cs, helper/src/Precheck.Reception/RegisterEntry.cs, helper/install/install-reception.ps1, helper/install/uninstall-reception.ps1, helper/tests/Precheck.Core.Tests/Registration/RegisterPrompt.test.cs, helper/tests/Precheck.Core.Tests/Registration/RegisterFlow.test.cs, helper/tests/Precheck.Core.Tests/Reception/ReceptionStart.test.cs, helper/tests/Precheck.Core.Tests/Reception/Http/OtherClinic.test.cs, helper/tests/reception-own-zip.test.ts, helper/tests/reception-install.test.ts, helper/tests/reception-host.dotnet.test.ts, helper/tests/bit-connect.dotnet.test.ts
+- Tests: helper/tests/reception-own-zip.test.ts, helper/tests/reception-host.dotnet.test.ts, helper/tests/reception-other-clinic.dotnet.test.ts, helper/tests/bit-connect.dotnet.test.ts
+- TDD: required
+- 도우미 쪽 확인 창 글·`install.ps1`·`uninstall.ps1`은 바꾸지 않는다(시험으로 그대로임을 본다). ps1은 UTF-8 BOM을 지킨다. 사용자 결정 2026-11-17(명세 고침)

@@ -1,0 +1,4 @@
+@media (max-width: 520px) {
+  .top-row:not(.with-memo):has(> .logo-text) { flex-wrap: wrap; row-gap: 6px; }
+  .top-row:not(.with-memo) > .logo-text { flex: 1 0 100%; }
+}

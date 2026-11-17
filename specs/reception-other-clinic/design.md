@@ -145,6 +145,9 @@ public sealed class SettingsStore {   // data\reception-settings.dat, ReceptionL
 
 - 주소 보내기 화면(AC-5715, 명세 고침 2026-11-17): `LinkPage.For(addresses, settings, logo)`(끝 선택 인자 둘: `Func<ReceptionSettings>`·`LogoStore`)가 그릴 때마다 설정 logo를 읽어 머리를 고른다. 그림은 `LogoStore.Read()` 바이트를 data: URL로 넣는다(CSP `img-src 'self' data:`라 따로 길이 필요 없다). 인자가 없으면 로고 없이 제목만. `ReceptionServices`가 같은 `SettingsStore`·`LogoStore`를 넘긴다. 탭 아이콘은 `/icon.png`.
 
+- 폰 머리 이름(AC-5716): `style.css` 520px 이하에서 `.top-row:not(.with-memo):has(> .logo-text)`만 줄바꿈하고 `.logo-text`가 한 줄을 다 쓴다(시안 `header-name.css`). `:has`를 모르는 옛 브라우저는 지금처럼 … 로 줄인다. 그림 로고 머리는 줄바꿈하지 않아 우리 의원은 그대로다.
+- 접수 현황 글(AC-5717): `RegisterPrompt.Build`·`RegisterFlow.Run`에 끝 선택 인자(읽기만 쓰는 프로그램이면 참)를 두고 `RegisterEntry`만 참을 넘긴다. 설치·지우기 끝 글은 ps1에서 고친다.
+
 ## 7. 아이콘 (AC-5709.4)
 - favicon·apple-touch-icon·manifest 아이콘은 병원과 상관없는 `icon.png`(512×512, 바탕 `--ink`, 가운데 흰 가로 막대 셋 = 목록 모양)를 쓴다. 그림은 `reception/tools/make-icon.py`(파이썬 표준 라이브러리 zlib·struct만)로 만들고 결과 PNG를 커밋한다.
 - `logo-mark.png`·`logo-wordmark.png` 파일은 그대로 품는다(옮기기에 wordmark를 쓰고, 지금 품기 시험이 두 파일을 본다). 화면은 더 부르지 않는다.
