@@ -1,0 +1,15 @@
+{
+  "status": "approved",
+  "feature": "sunap-sort",
+  "approved_at": "2026-11-17T01:17:07Z",
+  "approved_via": "user-prompt",
+  "session_id": "b0bacc8e-b4c1-48e0-aa1e-81ddd7dbbf9b",
+  "spec_sha256": "9f53fd9590404a6bfdedadd68002ae60b19d6a82b7bfe469c31e36820fe5a98a",
+  "scope": [
+    "src/components/sunap/rows/LedgerRows.test.tsx",
+    "src/components/sunap/rows/LedgerRows.tsx",
+    "src/components/sunap/rows/SortMenu.tsx",
+    "src/lib/sunap/ledgerSort.test.ts",
+    "src/lib/sunap/ledgerSort.ts"
+  ]
+}
