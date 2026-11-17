@@ -234,6 +234,20 @@ button:disabled {
   }
 }
 
+/* 폰 [접수 현황] 탭 머리: 병원 이름 글자가 한 줄을 다 쓰고 [⚙ 설정]·연결됨·새로 고침은 그 아래 줄 오른쪽
+   (reception-other-clinic AC-5716.1, 승인 시안 header-name.css). 로고 그림·없이·메모 줄(어레인지)·상세 머리는 그대로(AC-5716.2).
+   두 규칙 모두 :has를 써서 :has를 모르는 옛 브라우저는 함께 버리고 지금처럼 … 로 줄인다 */
+@media (max-width: 520px) {
+  .top:not(.is-detail) > .top-row:not(.with-memo):has(> .logo-text) {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .top:not(.is-detail) > .top-row:not(.with-memo):has(> .logo-text) > .logo-text {
+    flex: 1 0 100%;
+  }
+}
+
 /* 어레인지 머리의 메모 칸 (reception-memo-papers AC-3403.1, 시안 Mock.html). 폰·세로 화면은 로고 줄 아래 한 줄, 태블릿은 로고 옆.
    메모가 없으면 점선, 있으면 빨간 테두리·오른쪽 위 빨간 점 */
 .top-row.with-memo {

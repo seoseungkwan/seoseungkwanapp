@@ -62,6 +62,8 @@ interface BoardJs {
 }
 
 interface DetailJs {
+  /** 폰 상세 화면(머리 header.top.is-detail 포함). logo는 판 cfg.logo (reception-other-clinic AC-5709.1) */
+  renderDetail: (host: HTMLElement, row: FakeRow, history: FakeHistory, options?: { today?: Date; logo?: fx.FakeLogo; logoPic?: { ver: number; src: string } | null }) => HTMLElement
   detailPane: (row: FakeRow, history: FakeHistory, options?: { today?: Date }) => Node[]
   updateDetail: (host: ParentNode, row: FakeRow, options?: { today?: Date }) => boolean
   /** 지난 진료기록부 채우기 (reception-memo-papers AC-3404.3). 아직 없으면(RED) undefined */
@@ -919,3 +921,198 @@ describe('REQ-5710 어레인지 칸이 많을 때 (style.css)', () => {
 function cssValues(rules: CssRule[], selector: string, prop: string): string[] {
   return rules.filter((r) => r.selectors.includes(selector) && r.decls.has(prop)).map((r) => r.decls.get(prop)!)
 }
+
+// ---- 폰 머리 병원 이름 (reception-other-clinic REQ-5716, 승인 시안 header-name.png·header-name.css) ----------------------
+// 그린 머리(board.js·arrange.js·detail.js) 요소마다 style.css에서 그 기기 폭에 켜지는 규칙 가운데 이기는 값을 본다(jsdom의 matches로 고른 글을 맞춘다)
+
+/** 시안의 가장 긴 병원 이름(가상) */
+const LONG_NAME = '새봄정형외과의원 마취통증의학과'
+const TEXT_LOGO: fx.FakeLogo = { mode: 'text', text: LONG_NAME, ver: 0 }
+const PIC_LOGO: fx.FakeLogo = { mode: 'pic', text: null, ver: 3 }
+const NO_LOGO: fx.FakeLogo = { mode: 'none', text: null, ver: 0 }
+
+/** 기기: 폭(px)과 가로 화면인가 */
+interface Device {
+  width: number
+  landscape: boolean
+}
+
+const PHONES: Device[] = [320, 360, 390, 520].map((width) => ({ width, landscape: false }))
+const WIDER: Device[] = [
+  { width: 521, landscape: false },
+  { width: 768, landscape: false },
+  { width: 1194, landscape: true },
+]
+
+/** 질의가 그 기기에서 켜지는가. 이 파일의 질의 모양(max-width·min-width·orientation)만 읽고 모르는 것은 꺼짐 */
+function mediaOn(media: string, device: Device): boolean {
+  if (media === '') return true
+  const parts = [...media.matchAll(/\(\s*([\w-]+)\s*:\s*([^)]+?)\s*\)/g)]
+  if (parts.length === 0) return false
+  return parts.every(([, name, value]) => {
+    if (name === 'max-width') return device.width <= Number.parseFloat(value!)
+    if (name === 'min-width') return device.width >= Number.parseFloat(value!)
+    if (name === 'orientation') return value === (device.landscape ? 'landscape' : 'portrait')
+    return false
+  })
+}
+
+/** 고른 글 우선(id·class류·태그를 한 수로). :not()·:has()·:is()는 괄호 안 것을 센다(머리 고른 글은 괄호 안이 하나뿐) */
+function specificity(selector: string): number {
+  let rest = selector
+  let inner = 0
+  for (let m = /:(?:not|has|is)\(/.exec(rest); m; m = /:(?:not|has|is)\(/.exec(rest)) {
+    const from = m.index + m[0].length
+    let depth = 1
+    let j = from
+    for (; j < rest.length && depth > 0; j++) depth += rest[j] === '(' ? 1 : rest[j] === ')' ? -1 : 0
+    inner += specificity(rest.slice(from, j - 1).replace(/^\s*[>+~]\s*/, ''))
+    rest = rest.slice(0, m.index) + rest.slice(j)
+  }
+  const ids = rest.match(/#[\w-]+/g)?.length ?? 0
+  const classes = rest.match(/\.[\w-]+|\[[^\]]*\]|(?<!:):[\w-]+/g)?.length ?? 0
+  const tags = rest.replace(/\[[^\]]*\]/g, '').match(/(?:^|[\s>+~])[a-z][\w-]*|::[\w-]+/gi)?.length ?? 0
+  return inner + ids * 10000 + classes * 100 + tags
+}
+
+/** 그 기기에서 el의 prop 값과 이긴 고른 글: 켜진 규칙 가운데 맞는 고른 글의 우선이 가장 높고, 같으면 뒤의 것 */
+function cssWinner(rules: CssRule[], el: Element, prop: string, device: Device): { value: string; selector: string } | undefined {
+  let best: { weight: number; order: number; value: string; selector: string } | null = null
+  for (const rule of rules) {
+    const value = rule.decls.get(prop)
+    if (value === undefined || !mediaOn(rule.media, device)) continue
+    for (const selector of rule.selectors) {
+      let hit = false
+      try {
+        hit = el.matches(selector)
+      } catch {
+        // jsdom이 모르는 고른 글(가상 요소 등)은 이 요소 자체의 모양이 아니다
+      }
+      if (!hit) continue
+      const weight = specificity(selector)
+      if (!best || weight > best.weight || (weight === best.weight && rule.order >= best.order)) best = { weight, order: rule.order, value, selector }
+    }
+  }
+  return best ? { value: best.value, selector: best.selector } : undefined
+}
+
+function cssAt(rules: CssRule[], el: Element, prop: string, device: Device): string | undefined {
+  return cssWinner(rules, el, prop, device)?.value
+}
+
+/** 판의 cfg.logo만 바꾼 사본 */
+function withLogo(board: FakeBoard, logo: fx.FakeLogo): FakeBoard {
+  return fx.withCfg(board, { ...board.cfg, logo })
+}
+
+/** 그린 머리의 상표 줄 */
+function topRow(host: ParentNode): HTMLElement {
+  const row = host.querySelector<HTMLElement>('header.top > .top-row')
+  if (!row) throw new Error('머리 상표 줄이 없다')
+  return row
+}
+
+/** [접수 현황] 탭 머리 */
+function boardHeader(logo: fx.FakeLogo): HTMLElement {
+  document.body.replaceChildren()
+  const app = appHost()
+  boardJs.renderBoard(app, withLogo(fx.mockupBoard(), logo), { logoPic: { ver: 3, src: fx.fakeLogoUrl() } })
+  return topRow(app)
+}
+
+/** 어레인지 탭 머리(메모 줄) */
+async function arrangeHeader(logo: fx.FakeLogo): Promise<HTMLElement> {
+  const arrangeJs = (await import(/* @vite-ignore */ ARRANGE_JS)) as ArrangeJs
+  document.body.replaceChildren()
+  const app = appHost()
+  arrangeJs.renderArrange(app, withLogo(fx.arrangeMockupBoard(), logo), { logoPic: { ver: 3, src: fx.fakeLogoUrl() } })
+  return topRow(app)
+}
+
+/** 폰 상세 머리 */
+function detailHeader(logo: fx.FakeLogo): HTMLElement {
+  document.body.replaceChildren()
+  const app = appHost()
+  detailJs.renderDetail(app, fx.fakeRow({ lane: 'wait' }), history(), { today: TODAY, logo, logoPic: { ver: 3, src: fx.fakeLogoUrl() } })
+  return topRow(app)
+}
+
+describe('REQ-5716 폰 머리 병원 이름이 잘리지 않게 (style.css)', () => {
+  it('AC-5716.1: 폭 520px 이하(320·360·390·520)에서 [접수 현황] 탭 머리의 로고가 병원 이름 글자면 상표 줄이 줄을 바꾸고(flex-wrap wrap) 이름(.logo-text)이 한 줄을 다 쓰며(flex 1 0 100%), [⚙ 설정]·연결됨·새로 고침(.top-status)은 아래 줄 오른쪽(margin-left auto)이다. 이름은 줄 폭 안에서만 그린다(min-width 0 · overflow hidden, 가로 넘침 없음)', () => {
+    const rules = cssRules(readFileSync(STYLE_CSS, 'utf8'))
+    const row = boardHeader(TEXT_LOGO)
+    const name = row.querySelector(':scope > span.logo-text')!
+    const status = row.querySelector(':scope > .top-status')!
+    expect(name.textContent).toBe(LONG_NAME)
+    expect([...row.children].map((c) => c.className)).toEqual(['logo-text', 'top-status'])
+    for (const device of PHONES) {
+      const at = `폭 ${device.width}`
+      expect(cssAt(rules, row, 'display', device), at).toBe('flex')
+      expect(cssAt(rules, row, 'flex-wrap', device), at).toBe('wrap')
+      expect(cssAt(rules, name, 'flex', device), at).toBe('1 0 100%')
+      for (const prop of ['flex-basis', 'flex-grow', 'flex-shrink', 'width', 'max-width', 'order']) expect(cssAt(rules, name, prop, device), `${at} ${prop}`).toBeUndefined()
+      expect(cssAt(rules, name, 'min-width', device), at).toBe('0')
+      expect(cssAt(rules, name, 'overflow', device), at).toBe('hidden')
+      expect(cssAt(rules, name, 'font-size', device), at).toBe('20px')
+      expect(cssAt(rules, status, 'margin-left', device), at).toBe('auto')
+      expect(cssAt(rules, status, 'flex-shrink', device), at).toBe('0')
+      expect(cssAt(rules, status, 'order', device), at).toBeUndefined()
+      // :has를 모르는 옛 브라우저는 두 규칙을 함께 버려 지금처럼 … 로 줄인다(design.md '폰 머리 이름')
+      expect(cssWinner(rules, row, 'flex-wrap', device)?.selector, at).toContain(':has(')
+      expect(cssWinner(rules, name, 'flex', device)?.selector, at).toContain(':has(')
+    }
+  })
+
+  it('AC-5716.2: 로고 그림·로고 없이·어레인지 탭(메모 줄)·상세 머리는 폰(320~520)에서도 지금 그대로다(상표 줄을 새로 줄바꿈하지 않고, 메모 줄은 지금처럼 메모 칸만 아래 줄). 520px 넘는 폭(521·768·태블릿 가로 1194)에서는 병원 이름 글자 머리도 지금 그대로다', async () => {
+    const css = readFileSync(STYLE_CSS, 'utf8')
+    const rules = cssRules(css)
+    for (const device of PHONES) {
+      const at = `폭 ${device.width}`
+      const pic = boardHeader(PIC_LOGO)
+      expect([...pic.children].map((c) => c.className), at).toEqual(['logo', 'top-status'])
+      expect(cssAt(rules, pic, 'flex-wrap', device), `${at} 그림`).toBeUndefined()
+      expect(cssAt(rules, pic, 'row-gap', device), `${at} 그림`).toBeUndefined()
+      expect(cssAt(rules, pic.querySelector('img.logo')!, 'flex', device), `${at} 그림`).toBe('0 1 auto')
+      const none = boardHeader(NO_LOGO)
+      expect([...none.children].map((c) => c.className), at).toEqual(['top-status'])
+      expect(cssAt(rules, none, 'flex-wrap', device), `${at} 없이`).toBeUndefined()
+      expect(cssAt(rules, none, 'row-gap', device), `${at} 없이`).toBeUndefined()
+      for (const logo of [TEXT_LOGO, PIC_LOGO]) {
+        const memo = await arrangeHeader(logo)
+        const label = `${at} 어레인지 ${logo.mode}`
+        expect(memo.classList.contains('with-memo'), label).toBe(true)
+        expect(cssAt(rules, memo, 'flex-wrap', device), label).toBe('wrap')
+        expect(cssWinner(rules, memo, 'flex-wrap', device)?.selector, label).toBe('.top-row.with-memo')
+        expect(cssAt(rules, memo, 'row-gap', device), label).toBeUndefined()
+        const mark = memo.firstElementChild!
+        expect(cssAt(rules, mark, 'flex', device), label).toBe(logo.mode === 'text' ? '0 1 auto' : '1 1 0')
+        expect(cssAt(rules, memo.querySelector('.memo-box')!, 'flex', device), label).toBe('1 1 100%')
+      }
+      const detail = detailHeader(TEXT_LOGO)
+      expect([...detail.children].map((c) => c.className), at).toEqual(['back', 'logo-text'])
+      expect(cssAt(rules, detail, 'flex-wrap', device), `${at} 상세`).toBeUndefined()
+      expect(cssAt(rules, detail, 'row-gap', device), `${at} 상세`).toBeUndefined()
+      expect(cssAt(rules, detail.querySelector('.logo-text')!, 'flex', device), `${at} 상세`).toBe('0 1 auto')
+    }
+    for (const device of WIDER) {
+      const at = `폭 ${device.width}`
+      const row = boardHeader(TEXT_LOGO)
+      expect(cssAt(rules, row, 'flex-wrap', device), at).toBeUndefined()
+      expect(cssAt(rules, row, 'row-gap', device), at).toBeUndefined()
+      expect(cssAt(rules, row.querySelector('.logo-text')!, 'flex', device), at).toBe('0 1 auto')
+      expect(cssAt(rules, row.querySelector('.logo-text')!, 'font-size', device), at).toBe('28px')
+    }
+    // 상표 줄은 어느 폭에서도 늘 줄을 바꾸지 않고(메모 줄만), 그림 로고(.logo) 모양은 지금 그대로다
+    expect(cssValues(rules.filter((r) => r.media === ''), '.top-row', 'flex-wrap')).toEqual([])
+    expect(declsOf(css, '.logo')).toEqual([
+      ['display', 'block'],
+      ['height', '34px'],
+      ['width', 'auto'],
+      ['min-width', '0'],
+      ['max-width', '100%'],
+      ['flex', '0 1 auto'],
+      ['object-fit', 'contain'],
+      ['object-position', 'left center'],
+    ])
+  })
+})
