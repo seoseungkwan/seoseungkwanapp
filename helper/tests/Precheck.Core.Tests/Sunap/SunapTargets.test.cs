@@ -48,6 +48,19 @@ internal static class SunapData
     public static object?[] Paid(string? chart, string? name, string? at, object? total, object? cash, object? card, object? check) =>
         new object?[] { chart, name, at, total, cash, card, check };
 
+    /// <summary>
+    /// 건강생활유지비 SQL(spec sunap-health design.md 글 그대로, SunapSql.HealthSql): 그날 수납한 비트 OrcInf의 OrcCod='QCV' 줄 OrcNewAmt를 내원·차트별로 더한다.
+    /// 시험은 이 글자로 답을 정하므로 문장이 한 글자라도 달라지면 RED다.
+    /// </summary>
+    public const string HealthSqlText =
+        "SELECT o.OrcOcmNum,o.OrcChtNum,SUM(o.OrcNewAmt)\n"
+        + "FROM dbo.OrcInf o\n"
+        + "WHERE o.OrcCod='QCV' AND o.OrcAccDte>=@day AND o.OrcAccDte<@nextDay\n"
+        + "GROUP BY o.OrcOcmNum,o.OrcChtNum";
+
+    /// <summary>HealthSql 한 줄(내원 하나): 내원번호·차트번호·그 내원 QCV OrcNewAmt 합.</summary>
+    public static object?[] Health(string? visit, string? chart, object? amount) => new object?[] { visit, chart, amount };
+
     public static DateTime Date(string ymd) => DateTime.ParseExact(ymd, "yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     /// <summary>확인 필요 검사 셋(매출 revenue.days와 같은 문장·같은 차례).</summary>
@@ -124,7 +137,7 @@ public class SunapTargetsTests
 
     // ── AC-4902.1 하루 하나 · 모양 · 범위 ──────────────────────────────────────────
 
-    [Fact(DisplayName = "AC-4902.1 sunap: 등록 병원 확인 → 확인 필요 검사 셋 → 환자·처방·다음 예약·금액·미수 입금 SQL(그날 0시~다음 날 0시·병원 범위, 150초), 답은 {v:2, day, unsure, rows, paid, doctors}(sunap-doctors)")]
+    [Fact(DisplayName = "AC-4902.1 sunap: 등록 병원 확인 → 확인 필요 검사 셋 → 환자·처방·다음 예약·금액·건강생활유지비(sunap-health)·미수 입금 SQL(그날 0시~다음 날 0시·병원 범위, 150초), 답은 {v:2, day, unsure, rows, paid, doctors}(sunap-doctors)")]
     public void ReadsOneDayAfterHospitalCheck()
     {
         using var rig = new SunapRig();
@@ -142,13 +155,13 @@ public class SunapTargetsTests
         {
             Sql.ScopesSql, Sql.InstitutionSql,
             RevenueSql.UnsupportedFinance, RevenueSql.FinanceMultiplicity, RevenueSql.ReceivableMultiplicity,
-            SunapSql.PatientsSql, SunapSql.CodesSql, SunapSql.NextReservationSql, SunapSql.MoneySql, SunapSql.PaidSql,
+            SunapSql.PatientsSql, SunapSql.CodesSql, SunapSql.NextReservationSql, SunapSql.MoneySql, SunapData.HealthSqlText, SunapSql.PaidSql,
         }, rig.Db.Sqls);
 
         var visits = new Dictionary<string, object?> { ["@from"] = "202610300000", ["@to"] = "202610310000", ["@hospital"] = Synthetic.Scope };
         var money = new Dictionary<string, object?> { ["@day"] = "20261030", ["@nextDay"] = "20261031", ["@hospital"] = Synthetic.Scope };
         var unsupported = new Dictionary<string, object?>(money) { ["@from"] = "202610300000", ["@to"] = "202610310000" };
-        var expected = new[] { unsupported, money, money, visits, visits, visits, money, money };
+        var expected = new[] { unsupported, money, money, visits, visits, visits, money, money, money };
         for (var i = 0; i < expected.Length; i++)
         {
             var call = rig.Db.Calls[i + 2];
@@ -249,12 +262,12 @@ public class SunapTargetsTests
         }
     }
 
-    [Fact(DisplayName = "AC-4902.1 새 SQL 다섯은 매개변수를 받는 SELECT 하나(; · 주석 · 쓰기 낱말 없음)이고 Sql.IsAllowed·ReadOnlyGuard를 정해 둔 매개변수와 함께만 지난다(청구 Sql.All 밖)")]
+    [Fact(DisplayName = "AC-4902.1 새 SQL 다섯(+ sunap-health 건강생활유지비 하나)은 매개변수를 받는 SELECT 하나(; · 주석 · 쓰기 낱말 없음)이고 Sql.IsAllowed·ReadOnlyGuard를 정해 둔 매개변수와 함께만 지난다(청구 Sql.All 밖)")]
     public void NewSqlIsGuardedSelect()
     {
         var forbidden = new Regex(@"\b(INSERT|UPDATE|DELETE|MERGE|EXEC|EXECUTE|DROP|ALTER|CREATE|TRUNCATE|INTO|GRANT|REVOKE|DENY|OPENROWSET|OPENQUERY|BULK|SHUTDOWN|DBCC|BACKUP|RESTORE|WAITFOR)\b|xp_|sp_", RegexOptions.IgnoreCase);
         Assert.Equal(
-            new[] { SunapSql.PatientsSql, SunapSql.CodesSql, SunapSql.NextReservationSql, SunapSql.MoneySql, SunapSql.PaidSql }.OrderBy(s => s, StringComparer.Ordinal),
+            new[] { SunapSql.PatientsSql, SunapSql.CodesSql, SunapSql.NextReservationSql, SunapSql.MoneySql, SunapData.HealthSqlText, SunapSql.PaidSql }.OrderBy(s => s, StringComparer.Ordinal),
             SunapSql.All.OrderBy(s => s, StringComparer.Ordinal));
 
         foreach (var sql in SunapSql.All)
@@ -268,11 +281,13 @@ public class SunapTargetsTests
             Assert.True(SunapSql.IsAllowed(sql));
             Assert.DoesNotContain(sql, Sql.All);
 
-            var used = Regex.Matches(sql, @"@[A-Za-z][A-Za-z0-9]*").Cast<Match>().Select(m => m.Value).Distinct().OrderBy(n => n, StringComparer.Ordinal);
-            Assert.Equal(Sql.ParametersOf(sql).Select(p => p.Name).OrderBy(n => n, StringComparer.Ordinal), used);
+            var used = Regex.Matches(sql, @"@[A-Za-z][A-Za-z0-9]*").Cast<Match>().Select(m => m.Value).Distinct().OrderBy(n => n, StringComparer.Ordinal).ToArray();
+            // 건강생활유지비 SQL만 @hospital을 글에 쓰지 않고 같은 날 묶음을 받는다(sunap-health design.md). 병원은 MoneySql 내원 번호로 거른다
+            var declared = Sql.ParametersOf(sql).Select(p => p.Name).Where(n => sql != SunapData.HealthSqlText || n != "@hospital");
+            Assert.Equal(declared.OrderBy(n => n, StringComparer.Ordinal), used);
 
             Assert.False(Sql.IsAllowed(sql + " "));
-            Assert.False(SunapSql.IsAllowed(sql.Replace("@hospital", "'X'")));
+            Assert.False(SunapSql.IsAllowed(sql.Replace(used[0], "'X'")));
         }
         Assert.False(SunapSql.IsAllowed(null));
         Assert.False(SunapSql.IsAllowed(Sql.ScopesSql));
@@ -282,7 +297,7 @@ public class SunapTargetsTests
         {
             Assert.Equal("@from:Char(12) @to:Char(12) @hospital:VarChar(32)", Shape(sql));
         }
-        foreach (var sql in new[] { SunapSql.MoneySql, SunapSql.PaidSql })
+        foreach (var sql in new[] { SunapSql.MoneySql, SunapData.HealthSqlText, SunapSql.PaidSql })
         {
             Assert.Equal("@day:Char(8) @nextDay:Char(8) @hospital:VarChar(32)", Shape(sql));
         }
@@ -549,7 +564,7 @@ public class SunapTargetsTests
         Assert.True(json.GetProperty("unsure").GetBoolean());
         Assert.Single(SunapRig.Lines(json, "rows"));
         Assert.Equal(SunapData.Checks.Take(index + 1), rig.Db.Sqls.Skip(2).Take(index + 1));
-        Assert.Equal(new[] { SunapSql.PatientsSql, SunapSql.CodesSql, SunapSql.NextReservationSql, SunapSql.MoneySql, SunapSql.PaidSql }, rig.Db.Sqls.Skip(3 + index));
+        Assert.Equal(new[] { SunapSql.PatientsSql, SunapSql.CodesSql, SunapSql.NextReservationSql, SunapSql.MoneySql, SunapData.HealthSqlText, SunapSql.PaidSql }, rig.Db.Sqls.Skip(3 + index));
     }
 
     [Fact(DisplayName = "AC-4902.4 unsure: 매출처럼 그날 총진료비·현금·카드·계좌·미수입금 합이 음수여도 참. 음수 칸은 0으로 보낸다. 모두 0 이상이면 거짓")]
@@ -652,7 +667,7 @@ public class SunapTargetsTests
 
         Assert.Equal(new[]
         {
-            SunapSql.PatientsSql, SunapSql.CodesSql, SunapSql.NextReservationSql, SunapSql.MoneySql, SunapSql.PaidSql, StatsSql.DoctorNamesSql,
+            SunapSql.PatientsSql, SunapSql.CodesSql, SunapSql.NextReservationSql, SunapSql.MoneySql, SunapData.HealthSqlText, SunapSql.PaidSql, StatsSql.DoctorNamesSql,
         }, rig.Db.Sqls.Skip(5));
         var call = rig.Db.Calls.Last();
         Assert.Equal(50, call.Args.Count);
@@ -704,16 +719,171 @@ public class SunapTargetsTests
             Replies.Canon(json));
     }
 
-    [Fact(DisplayName = "AC-5002.3 도우미 판은 0.9.0이다(웹 LATEST_HELPER 0.9.0·MIN_HELPER·SUNAP_HELPER 그대로는 handshake.test.ts가 본다)")]
-    public void HelperVersionIsZeroNine() => Assert.Equal("0.9.0", HelperVersion.Value);
+    [Fact(DisplayName = "AC-5002.3 도우미 판은 0.9.1이다(웹 LATEST_HELPER 0.9.1·MIN_HELPER·SUNAP_HELPER 그대로는 handshake.test.ts가 본다)")]
+    public void HelperVersionIsZeroNine() => Assert.Equal("0.9.1", HelperVersion.Value);
 
     // ── AC-4902.6 판 ───────────────────────────────────────────────
 
-    [Fact(DisplayName = "AC-4902.6 도우미 판은 0.9.0이고 명령 이름 목록은 그대로다(명령 13개·protocol 1, contact.targets 칸은 kind·from·to)")]
+    [Fact(DisplayName = "AC-4902.6 도우미 판은 0.9.1이고 명령 이름 목록은 그대로다(명령 13개·protocol 1, contact.targets 칸은 kind·from·to)")]
     public void SunapVersionAndCommandNamesStay()
     {
-        Assert.Equal("0.9.0", HelperVersion.Value);
+        Assert.Equal("0.9.1", HelperVersion.Value);
+        CommandNamesStay();
+    }
 
+    // ── AC-5401 장부 미수에서 건강생활유지비(QCV)를 뺀다 (spec sunap-health) ─────────────
+
+    [Fact(DisplayName = "AC-5401.1 sunap 미수 = 본인부담 총액 − (현금 + 카드 + 계좌 + 그 내원들의 QCV OrcNewAmt 합), 0보다 작으면 0. 현금·카드·계좌 칸은 그대로다")]
+    public void UnpaidSubtractsHealthAllowance()
+    {
+        using var rig = new SunapRig();
+        rig.Answer(SunapSql.PatientsSql,
+            SunapData.Patient("900001", "가상환자01", "202610300902", "20240105", 0L),
+            SunapData.Patient("900002", "가상환자02", "202610300903", "20240105", 0L),
+            SunapData.Patient("900003", "가상환자03", "202610300904", "20240105", 0L),
+            SunapData.Patient("900004", "가상환자04", "202610300905", "20240105", 0L));
+        rig.Answer(SunapSql.MoneySql,
+            SunapData.Money("V1", "900001", 15000m, 0m, 0m, 0m, 1500m),             // 1,500원을 모두 건강생활잔액으로 → 미수 0
+            SunapData.Money("V2", "900002", 40000m, 3000m, 2000m, 1000m, 10000m),
+            SunapData.Money("V3", "900002", 10000m, 0m, 0m, 0m, 1000m),             // 두 내원의 QCV를 더한다
+            SunapData.Money("V4", "900003", 10000m, 600m, 0m, 0m, 1000m),           // 현금 + QCV가 더 많다 → 0
+            SunapData.Money("V5", "900004", 20000m, 0m, 0m, 0m, 5000m));            // QCV 없음 → 지금과 같다
+        rig.Answer(SunapData.HealthSqlText,
+            SunapData.Health("V1", "900001", 1500m),
+            SunapData.Health("V2", "900002", 1000m),
+            SunapData.Health("V3", "900002", 500L),
+            SunapData.Health("V4", "900003", 1000m));
+        var json = rig.Build();
+
+        Assert.Equal(new[]
+        {
+            "[\"900001\",\"가상환자01\",\"09:02\",\"re\",0,0,0,0,[],null,null]",
+            "[\"900002\",\"가상환자02\",\"09:03\",\"re\",3000,2000,1000,3500,[],null,null]",
+            "[\"900003\",\"가상환자03\",\"09:04\",\"re\",600,0,0,0,[],null,null]",
+            "[\"900004\",\"가상환자04\",\"09:05\",\"re\",0,0,0,5000,[],null,null]",
+        }, SunapRig.Lines(json, "rows"));
+        Assert.False(json.GetProperty("unsure").GetBoolean());
+    }
+
+    [Fact(DisplayName = "AC-5401.1 내원 하나의 QCV 합이 음수(취소)거나 NULL이면 0으로 보고 빼지 않는다(미수가 늘지 않음). 같은 환자의 다른 내원 QCV는 센다. unsure는 그대로")]
+    public void NegativeHealthCountsAsZero()
+    {
+        using var rig = new SunapRig();
+        rig.Answer(SunapSql.PatientsSql,
+            SunapData.Patient("900001", "가상환자01", "202610300902", "20240105", 0L),
+            SunapData.Patient("900002", "가상환자02", "202610300903", "20240105", 0L));
+        rig.Answer(SunapSql.MoneySql,
+            SunapData.Money("V1", "900001", 20000m, 1000m, 0m, 0m, 5000m),
+            SunapData.Money("V2", "900002", 10000m, 0m, 0m, 0m, 3000m),
+            SunapData.Money("V3", "900002", 10000m, 0m, 0m, 0m, 2000m),
+            SunapData.Money("V4", "900002", 10000m, 0m, 0m, 0m, 1000m));
+        rig.Answer(SunapData.HealthSqlText,
+            SunapData.Health("V1", "900001", -1500m),
+            SunapData.Health("V2", "900002", -1000m),
+            SunapData.Health("V3", "900002", 1500m),
+            SunapData.Health("V4", "900002", null));
+        var json = rig.Build();
+
+        Assert.Equal(new[]
+        {
+            "[\"900001\",\"가상환자01\",\"09:02\",\"re\",1000,0,0,4000,[],null,null]",
+            "[\"900002\",\"가상환자02\",\"09:03\",\"re\",0,0,0,4500,[],null,null]",
+        }, SunapRig.Lines(json, "rows"));
+        Assert.False(json.GetProperty("unsure").GetBoolean());
+    }
+
+    [Fact(DisplayName = "AC-5401.1 명령 contact.targets {kind:'sunap'}: 건강생활잔액으로 낸 1,500원은 미수 0으로 실리고 답 모양(v:2·rows 열한 칸·paid·doctors)은 그대로다")]
+    public void CommandSendsHealthAsNotUnpaid()
+    {
+        using var rig = new ContactRig();
+        SunapData.Defaults(rig.Db);
+        rig.Db.Answer(SunapSql.PatientsSql, _ => new[] { SunapData.Patient("900001", "가상환자01", "202610300902", "20240105", 0L) });
+        rig.Db.Answer(SunapSql.MoneySql, _ => new[] { SunapData.Money("V1", "900001", 15000m, 0m, 0m, 0m, 1500m) });
+        rig.Db.Answer(SunapData.HealthSqlText, _ => new[] { SunapData.Health("V1", "900001", 1500m) });
+
+        var json = Replies.Join(rig.Send("sunap", SunapData.Day, SunapData.Day));
+
+        Assert.Equal(
+            "{\"v\":2,\"day\":\"2026-10-30\",\"unsure\":false,\"rows\":[[\"900001\",\"가상환자01\",\"09:02\",\"re\",0,0,0,0,[],null,null]],\"paid\":[],\"doctors\":[]}",
+            Replies.Canon(json));
+        Assert.Equal(new (string?, string?)[] { ("contact.targets", null) }, rig.Log);
+    }
+
+    [Fact(DisplayName = "AC-5401.2 QCV는 그날 금액 SQL(MoneySql)에 나온 그 차트의 내원 번호 것만 뺀다(다른 날·다른 병원·센 내원이 아닌 내원·다른 차트의 같은 번호는 빼지 않음, 줄 없는 차트는 줄을 만들지 않음). 원 미만은 버리고, 숫자가 아니면 E-BIT-READ-FAILED")]
+    public void HealthCountsOnlyMoneyVisitsOfSameChart()
+    {
+        using (var rig = new SunapRig())
+        {
+            rig.Answer(SunapSql.PatientsSql,
+                SunapData.Patient("900001", "가상환자01", "202610300902", "20240105", 0L),
+                SunapData.Patient("900002", "가상환자02", "202610300910", "20240105", 0L));
+            rig.Answer(SunapSql.MoneySql,
+                SunapData.Money("V1", "900001", 30000m, 0m, 0m, 0m, 3000m),
+                SunapData.Money("V2", "900002", 20000m, 0m, 0m, 0m, 2000.5m),
+                SunapData.Money("V9", "900099", 5000m, 0m, 0m, 0m, 1500m));          // 그날 센 내원이 없는 차트
+            rig.Answer(SunapData.HealthSqlText,
+                SunapData.Health("V1", "900001", 1000m),
+                SunapData.Health("V7", "900001", 1500m),          // 금액 SQL에 없는 내원(다른 날·다른 병원·센 내원 아님)
+                SunapData.Health("V1", "900002", 700m),           // 같은 내원 번호, 다른 차트
+                SunapData.Health(" V2 ", "900002 ", 999.7m),      // 앞뒤 빈칸 뺌. 2000.5 − 999.7 = 1000.8 → 원 미만 버림
+                SunapData.Health("V9", "900099", 1500m));
+            var json = rig.Build();
+
+            Assert.Equal(new[]
+            {
+                "[\"900001\",\"가상환자01\",\"09:02\",\"re\",0,0,0,2000,[],null,null]",
+                "[\"900002\",\"가상환자02\",\"09:10\",\"re\",0,0,0,1000,[],null,null]",
+            }, SunapRig.Lines(json, "rows"));
+
+            var call = rig.Db.Calls.Single(c => c.Sql == SunapData.HealthSqlText);
+            var dayArgs = new Dictionary<string, object?> { ["@day"] = "20261030", ["@nextDay"] = "20261031", ["@hospital"] = Synthetic.Scope };
+            Assert.Equal(dayArgs.OrderBy(p => p.Key, StringComparer.Ordinal), call.Args.OrderBy(p => p.Key, StringComparer.Ordinal));
+            Assert.Equal(TimeSpan.FromSeconds(150), call.Timeout);
+        }
+
+        using (var rig = new SunapRig())
+        {
+            rig.Answer(SunapSql.PatientsSql, SunapData.Patient("900001", "가상환자01", "202610300902", "20240105", 0L))
+                .Answer(SunapSql.MoneySql, SunapData.Money("V1", "900001", 30000m, 0m, 0m, 0m, 3000m))
+                .Answer(SunapData.HealthSqlText, SunapData.Health("V1", "900001", "가상"));
+            Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => rig.Build()).Code);
+            Assert.Equal(1, rig.Db.Disposed);
+        }
+    }
+
+    [Fact(DisplayName = "AC-5401.2 건강생활유지비 SQL(SunapSql.HealthSql)은 design.md 글 그대로인 읽기 전용 SELECT 하나(OrcInf의 OrcCod='QCV'·OrcAccDte @day~@nextDay, 내원·차트별 OrcNewAmt 합)이고 허용 목록에 날 묶음 매개변수와 함께 든다")]
+    public void HealthSqlIsGuardedSelect()
+    {
+        var field = typeof(SunapSql).GetField("HealthSql", BindingFlags.Public | BindingFlags.Static);
+        Assert.Equal(SunapData.HealthSqlText, field?.GetValue(null));
+        Assert.Contains(SunapData.HealthSqlText, SunapSql.All);
+        Assert.True(SunapSql.IsAllowed(SunapData.HealthSqlText));
+        Assert.True(Sql.IsAllowed(SunapData.HealthSqlText));
+        Assert.DoesNotContain(SunapData.HealthSqlText, Sql.All);
+        Assert.False(SunapSql.IsAllowed(SunapData.HealthSqlText.Replace("'QCV'", "'RCV'")));
+        Assert.Equal("@day:Char(8) @nextDay:Char(8) @hospital:VarChar(32)", Shape(SunapData.HealthSqlText));
+
+        var dayArgs = new Dictionary<string, object?> { ["@day"] = "20261030", ["@nextDay"] = "20261031", ["@hospital"] = Synthetic.Scope };
+        ReadOnlyGuard.Require(SunapData.HealthSqlText, dayArgs);
+        var noHospital = new Dictionary<string, object?>(dayArgs);
+        noHospital.Remove("@hospital");
+        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Require(SunapData.HealthSqlText, noHospital)).Code);
+
+        // 비트 OrcInf에서 읽는 칸은 내원·차트·금액과 거르는 코드·수납일뿐이다
+        var columns = Regex.Matches(SunapData.HealthSqlText, @"\bOrc[A-Z][A-Za-z]*").Cast<Match>().Select(m => m.Value).Distinct().OrderBy(n => n, StringComparer.Ordinal);
+        Assert.Equal(new[] { "OrcAccDte", "OrcChtNum", "OrcCod", "OrcInf", "OrcNewAmt", "OrcOcmNum" }, columns);
+    }
+
+    [Fact(DisplayName = "AC-5401.3 도우미 판은 0.9.1이고 답 v:2·명령 이름 목록(명령 13개·protocol 1, contact.targets 칸 kind·from·to)은 그대로다(웹 LATEST_HELPER 0.9.1·MIN_HELPER·SUNAP_HELPER 그대로는 handshake.test.ts가 본다)")]
+    public void HealthVersionAndShapeStay()
+    {
+        Assert.Equal("0.9.1", HelperVersion.Value);
+        Assert.Equal(2, SunapTargets.Version);
+        CommandNamesStay();
+    }
+
+    private static void CommandNamesStay()
+    {
         using var table = JsonDocument.Parse(CommandTable.EmbeddedBytes());
         var commands = table.RootElement.GetProperty("commands");
         Assert.Equal(new[]

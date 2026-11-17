@@ -1,0 +1,20 @@
+{
+  "status": "approved",
+  "feature": "sunap-health",
+  "approved_at": "2026-11-17T01:25:14Z",
+  "approved_via": "user-prompt",
+  "session_id": "b0bacc8e-b4c1-48e0-aa1e-81ddd7dbbf9b",
+  "spec_sha256": "547c947513a37534de8abf5cf69a57a40a47b60ef94f0a72329a9e096e01eb5b",
+  "scope": [
+    "helper/Directory.Build.props",
+    "helper/src/Precheck.Core/Sunap/SunapSql.cs",
+    "helper/src/Precheck.Core/Sunap/SunapTargets.cs",
+    "helper/tests/Precheck.Core.Tests/Revenue/RevenueCommands.test.cs",
+    "helper/tests/Precheck.Core.Tests/Sunap/SunapTargets.test.cs",
+    "helper/tests/input-wiring.dotnet.test.ts",
+    "helper/tests/sunap-read.dotnet.test.ts",
+    "src/lib/bridge/client.test.ts",
+    "src/lib/bridge/handshake.test.ts",
+    "src/lib/bridge/versions.ts"
+  ]
+}

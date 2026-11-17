@@ -17,13 +17,14 @@ namespace Precheck.Core.Sunap;
 /// <summary>
 /// contact.targets {kind:'sunap', from:D, to:D}(spec sunap-ilji REQ-4902): 수납일지 하루 장부. 차례: 날 검사(from = to, 오늘−62일 ~ 오늘, 비트를 건드리지 않음)
 /// → 등록 병원 확인(HospitalGate) → 매출 확인 필요 검사 셋(revenue.days와 같은 차례, 하나라도 0이 아니면 unsure, 남은 검사는 돌리지 않음)
-/// → 환자·처방·다음 예약·금액·미수 입금 SQL(SunapSql) → 원장님 이름(통계 StatsExtra.DoctorNames, 코드가 있을 때만) → JSON 하나.
+/// → 환자·처방·다음 예약·금액·건강생활유지비·미수 입금 SQL(SunapSql) → 원장님 이름(통계 StatsExtra.DoctorNames, 코드가 있을 때만) → JSON 하나.
 /// 통계 화면·비트 로그인 창은 쓰지 않는다. 나누기(chunk … end)는 ContactCommands가 한다.
 /// 답 {v:2, day, unsure, rows, paid, doctors}(v:2 = spec sunap-doctors REQ-5002).
 /// rows 줄 = [차트, 이름, 첫 접수 HH:mm, 구분 new|d90|re, 현금, 카드, 계좌, 미수, [처방코드…], null|[다음 예약 yyyyMMddHHmm, 메모 앞 40자], 진료의 코드|null], 첫 접수 차례.
 /// paid 줄 = [차트, 이름, 수납 시각 HH:mm|"", 현금, 카드+계좌], 시각 차례. 금액은 원 미만 버림(항목마다).
 /// doctors 줄 = [진료의 코드, 이름|null], rows에 나온 코드마다 한 번, 코드 차례. 이름은 통계 원장님 이름과 같은 규칙이다.
-/// 미수 = 그 환자 그날 내원들의 본인부담 총액(OrpTotOwn) − (현금 + 카드 + 계좌), 0보다 작으면 0.
+/// 미수 = 그 환자 그날 내원들의 본인부담 총액(OrpTotOwn) − (현금 + 카드 + 계좌 + 건강생활유지비), 0보다 작으면 0.
+/// 건강생활유지비 = 그날 금액 SQL에 나온 그 차트 내원들의 QCV OrcNewAmt 합(spec sunap-health REQ-5401), 내원 하나의 합이 음수면 그 내원은 0.
 /// 환자 줄이 틀리면(차트번호 없음·두 줄·첫 접수가 그날 시각이 아님·숫자 아님·진료의 코드 40자 넘음) 일부만 보내지 않고 E-BIT-READ-FAILED다.
 /// </summary>
 public static class SunapTargets
@@ -68,6 +69,9 @@ public static class SunapTargets
         public decimal Card { get; set; }
         public decimal Check { get; set; }
         public decimal Own { get; set; }
+        public decimal Health { get; set; }
+        /// <summary>그날 금액 SQL에 나온 이 차트의 내원 번호(OrpOcmNum). 건강생활유지비는 이 내원 것만 센다.</summary>
+        public HashSet<string> Visits { get; } = new HashSet<string>(StringComparer.Ordinal);
         public SortedSet<string> Codes { get; } = new SortedSet<string>(StringComparer.Ordinal);
         public string? RsvAt { get; set; }
         public string RsvMemo { get; set; } = "";
@@ -176,6 +180,15 @@ public static class SunapTargets
                 row.Card = Add(row.Card, card);
                 row.Check = Add(row.Check, check);
                 row.Own = Add(row.Own, own);
+                row.Visits.Add(ClaimText.Cell(line, 0));
+            }
+
+            // 건강생활유지비(QCV)는 낸 돈으로 본다. 그 차트의 그날 센 내원 것만, 취소 등으로 내원 합이 음수면 빼지 않는다(미수가 늘지 않게)
+            foreach (var line in Read(db, SunapSql.HealthSql, values, 3))
+            {
+                var health = Amount(line[2]);
+                if (health <= 0 || !rows.TryGetValue(ClaimText.Cell(line, 1), out var row) || !row.Visits.Contains(ClaimText.Cell(line, 0))) continue;
+                row.Health = Add(row.Health, health);
             }
 
             var paidCharts = new HashSet<string>(StringComparer.Ordinal);
@@ -224,7 +237,7 @@ public static class SunapTargets
                 writer.WriteNumberValue(Math.Max(Won(row.Cash), 0));
                 writer.WriteNumberValue(Math.Max(Won(row.Card), 0));
                 writer.WriteNumberValue(Math.Max(Won(row.Check), 0));
-                writer.WriteNumberValue(Math.Max(Won(row.Own - (row.Cash + row.Card + row.Check)), 0));
+                writer.WriteNumberValue(Math.Max(Won(row.Own - (row.Cash + row.Card + row.Check + row.Health)), 0));
                 writer.WriteStartArray();
                 foreach (var code in row.Codes) writer.WriteStringValue(ClaimText.Safe(code));
                 writer.WriteEndArray();
