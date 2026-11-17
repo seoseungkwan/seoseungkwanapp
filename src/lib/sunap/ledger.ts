@@ -17,7 +17,7 @@ import {
   type SunapReply,
   type SunapReplyDoctor,
   type SunapReplyRow,
-  type SunapReplyRowV2,
+  type SunapReplyRowV3,
   type SunapTotalKey,
   type SunapTotals,
 } from '@/types/sunap'
@@ -49,10 +49,16 @@ function rsvOf(bit: SunapReplyRow[9], edit: SunapEdit, fixed: RsvKind | undefine
 // 비트 줄 + 고친 칸 → 장부 줄(AC-4901.3). 고친 칸은 그 값이 이기고, 비트 값과 다르면 edited에 그 칸 이름이 들어간다.
 // Block·물리치료는 고친 값이 없으면 그날 처방코드로 groupMatches(묶음을 안 골랐으면 빈 칸)
 // v2 답(도우미 0.9.0)이면 줄 끝 칸이 진료의 코드이고 맨 위 doctors가 이름 목록이다. v1 답이면 줄마다 null·빈 목록(spec sunap-doctors AC-5001.1)
+// v3 답(도우미 0.10.0)이면 그 뒤 칸이 건강생활유지비다. v1·v2 답이면 0(spec clinic-calendar AC-5908.2)
 export function buildLedger(reply: SunapReply, local: SunapLocalDay, settings: LedgerSettings): Ledger {
-  const lines: SunapReplyRowV2[] = reply.v === 2 ? reply.rows : reply.rows.map((line): SunapReplyRowV2 => [...line, null])
+  const lines: SunapReplyRowV3[] =
+    reply.v === 3
+      ? reply.rows
+      : reply.v === 2
+        ? reply.rows.map((line): SunapReplyRowV3 => [...line, 0])
+        : reply.rows.map((line): SunapReplyRowV3 => [...line, null, 0])
   const rows = lines.map((line): LedgerRow => {
-    const [chart, name, time, kind, cash, card, transfer, unpaid, codes, rsv, doctor] = line
+    const [chart, name, time, kind, cash, card, transfer, unpaid, codes, rsv, doctor, health] = line
     const edit = own(local.edits, chart) ?? {}
     const bit = {
       cash,
@@ -76,7 +82,9 @@ export function buildLedger(reply: SunapReply, local: SunapLocalDay, settings: L
       time,
       kind,
       ...value,
-      free: value.cash === 0 && value.card === 0 && value.transfer === 0 && value.unpaid === 0,
+      health,
+      // 건강생활유지비로 낸 줄은 FREE가 아니다(AC-5908.3)
+      free: value.cash === 0 && value.card === 0 && value.transfer === 0 && value.unpaid === 0 && health === 0,
       rsv: rsvOf(rsv, edit, own(local.fixed, chart), settings.kinds),
       note: edit.note ?? '',
       edited: LEDGER_EDITED_FIELDS.filter((field) => edit[field] !== undefined && edit[field] !== bit[field]),
@@ -90,7 +98,7 @@ export function buildLedger(reply: SunapReply, local: SunapLocalDay, settings: L
     paid: reply.paid.map(([chart, name, time, cash, card]) => ({ chart, name, time, cash, card })),
     closedAt: local.closedAt ?? null,
     late: local.late ?? false,
-    doctors: reply.v === 2 ? reply.doctors.map(([code, name]): SunapReplyDoctor => [code, name]) : [],
+    doctors: reply.v === 1 ? [] : reply.doctors.map(([code, name]): SunapReplyDoctor => [code, name]),
   }
 }
 
@@ -102,7 +110,7 @@ export function ledgerDoctors(ledger: Ledger, names: readonly SunapReplyDoctor[]
 
 // 서버에 올리는 숫자 24칸(AC-4901.5). 결제 건수는 그 칸이 0원이 아닌 줄 수, 금액은 그 칸의 합.
 // 초진·90일 예약은 종류 목록에서 counts가 참인 종류 예약만(AC-5502.3, 기본 목록이면 주사치료·진료(경과)),
-// 재진+Block = 재진 줄 중 Block, FREE = 네 칸 다 0원. 미수 입금은 paid 줄에서 현금·카드 따로 세고 내원 수에는 넣지 않는다
+// 재진+Block = 재진 줄 중 Block, FREE = 네 칸 다 0원이고 건강생활도 0원(row.free, AC-5908.4). 미수 입금은 paid 줄에서 현금·카드 따로 세고 내원 수에는 넣지 않는다
 export function dayTotals(ledger: Ledger, kinds: readonly RsvKindDef[] = DEFAULT_RSV_KINDS): SunapTotals {
   const counted = new Set(kinds.filter((kind) => kind.counts).map((kind) => kind.id))
   const totals = Object.fromEntries(SUNAP_TOTAL_KEYS.map((key) => [key, 0])) as SunapTotals

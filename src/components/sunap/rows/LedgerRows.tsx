@@ -444,8 +444,11 @@ export function LedgerRows({
           </thead>
           <tbody>
             {shown.map(({ row, no }) => {
-              // 고친 금액 칸이 있으면 FREE 줄도 네 칸으로 그린다(고친 칸 표시가 보이게)
-              const free = row.free && !row.edited.some((field) => AMOUNT_FIELDS.some((a) => a.field === field))
+              // 네 칸이 다 0원이면 한 칸에 칩: 건강생활유지비로 냈으면 '건강생활 · 금액'(spec clinic-calendar AC-5908.3), 아니면 FREE.
+              // 고친 금액 칸이 있으면 네 칸으로 그린다(고친 칸 표시가 보이게)
+              const oneCell =
+                AMOUNT_FIELDS.every(({ field }) => row[field] === 0) && !row.edited.some((field) => AMOUNT_FIELDS.some((a) => a.field === field))
+              const chip = row.free ? 'FREE · 0원' : `건강생활 · ${won(row.health)}원`
               return (
                 <tr key={row.chart} className={open?.chart === row.chart ? 'bg-accent-soft' : undefined}>
                   <td className={`${TD_MUTED} tabular-nums`}>{no}</td>
@@ -455,14 +458,14 @@ export function LedgerRows({
                   <td className={TD}>
                     <KindChip kind={row.kind} />
                   </td>
-                  {free ? (
+                  {oneCell ? (
                     <td colSpan={4} className={`${TD_MID} ${editable ? 'p-0!' : ''}`}>
                       {editable ? (
                         <button type="button" aria-label={`${row.name} 금액`} className={`${CELL_BUTTON} justify-center px-3`} onClick={openAt(row.chart, 'amount')}>
-                          <span className={ds.chip.neutral}>FREE · 0원</span>
+                          <span className={ds.chip.neutral}>{chip}</span>
                         </button>
                       ) : (
-                        <span className={ds.chip.neutral}>FREE · 0원</span>
+                        <span className={ds.chip.neutral}>{chip}</span>
                       )}
                     </td>
                   ) : (
@@ -535,6 +538,7 @@ export function LedgerRows({
           </span>
         )}
         <span>FREE = 그날 낸 돈 0원</span>
+        <span>건강생활 = 건강생활유지비로 낸 돈</span>
       </div>
       {openRow && open?.what === 'amount' && <AmountPop row={openRow} focus={open.field} anchor={open.anchor} onEdit={edit(openRow.chart)} onClose={close} />}
       {openRow && open?.what === 'note' && <NotePop row={openRow} anchor={open.anchor} onEdit={edit(openRow.chart)} onClose={close} />}

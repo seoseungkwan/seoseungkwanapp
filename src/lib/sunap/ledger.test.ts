@@ -13,6 +13,7 @@ import {
   type SunapReplyDoctor,
   type SunapReplyRow,
   type SunapReplyRowV2,
+  type SunapReplyRowV3,
   type SunapTotals,
 } from '@/types/sunap'
 import { buildLedger, closeLocal, dayTotals, ledgerDoctors, parseWon, reopenLocal } from './ledger'
@@ -748,5 +749,84 @@ describe('AC-5001.3 ledgerDoctors — 이름은 이름 → 코드 → 진료의 
       ['D02', 'D02', 1],
       ['D01', '최○○', 1],
     ])
+  })
+})
+
+// ── spec clinic-calendar REQ-5908 건강생활유지비(도우미 0.10.0, v3 답 줄 끝 칸) ─────────────
+
+// v3 답: v1 줄 열 칸 + 진료의 + 건강생활(원 정수)
+const v3Of = (rows: [SunapReplyRow, string | null, number][], doctors: SunapReplyDoctor[] = []): SunapReply => ({
+  v: 3,
+  day: DAY,
+  unsure: false,
+  rows: rows.map(([row, doctor, health]): SunapReplyRowV3 => [...row, doctor, health]),
+  paid: [],
+  doctors,
+})
+const replyOf3 = (rows: [SunapReplyRow, number][]): SunapReply => v3Of(rows.map(([row, health]) => [row, null, health]))
+
+describe('AC-5908.3 buildLedger — 건강생활 칸과 FREE', () => {
+  it('AC-5908.3: v3 답이면 줄마다 health는 끝 칸이다. v1·v2 답이면 0이다', () => {
+    const ledger = buildLedger(replyOf3([[line('1', { card: 0 }), 1500], [line('2'), 0]]), {}, SETTINGS)
+    expect(ledger.rows.map((row) => [row.chart, row.health, row.doctor])).toEqual([
+      ['1', 1500, null],
+      ['2', 0, null],
+    ])
+    expect(buildLedger(MOCK_REPLY, MOCK_LOCAL, SETTINGS).rows.every((row) => row.health === 0)).toBe(true)
+    expect(buildLedger(MOCK_V2, MOCK_LOCAL, SETTINGS).rows.every((row) => row.health === 0)).toBe(true)
+  })
+
+  it('AC-5908.3: 현금·카드·계좌·미수가 모두 0이고 건강생활이 0보다 크면 free는 거짓이다', () => {
+    const [row] = buildLedger(replyOf3([[line('1', { card: 0 }), 1500]]), {}, SETTINGS).rows
+    expect([row.cash, row.card, row.transfer, row.unpaid, row.health, row.free]).toEqual([0, 0, 0, 0, 1500, false])
+  })
+
+  it('AC-5908.3: 네 칸과 건강생활이 모두 0일 때만 free다(고친 값까지 넣은 네 칸)', () => {
+    const rows = buildLedger(
+      replyOf3([
+        [line('1', { card: 0 }), 0],
+        [line('2', { cash: 4700, card: 0 }), 1500],
+        [line('3', { cash: 4700, card: 0 }), 0],
+        [line('4', { card: 0 }), 1500],
+      ]),
+      { edits: { '2': { cash: 0 }, '3': { cash: 0 }, '4': { cash: 3000 } } },
+      SETTINGS,
+    ).rows
+    expect(rows.map((row) => [row.chart, row.free])).toEqual([
+      ['1', true],
+      ['2', false],
+      ['3', true],
+      ['4', false],
+    ])
+  })
+
+  it('AC-5908.3: v3 답도 건강생활 말고 다른 칸은 v2 답과 글자 그대로 같고, 받은 답을 바꾸지 않는다', () => {
+    const reply: SunapReply = {
+      ...v3Of(
+        MOCK_ROWS.map((row, at) => [row, DOCTOR_OF[at], 0]),
+        NAMES,
+      ),
+      paid: MOCK_REPLY.paid,
+    }
+    const kept = structuredClone(reply)
+    const ledger = buildLedger(reply, MOCK_LOCAL, SETTINGS)
+    expect(ledger.rows).toEqual(buildLedger(MOCK_V2, MOCK_LOCAL, SETTINGS).rows)
+    expect(ledger.doctors).toEqual(NAMES)
+    expect(reply).toEqual(kept)
+  })
+})
+
+describe('AC-5908.4 dayTotals — 건강생활 줄은 free_n에 들지 않는다', () => {
+  it('AC-5908.4: 네 칸이 0원이고 건강생활로 낸 줄은 FREE 수에 안 들고, 내원·다른 결제 수는 그대로다', () => {
+    const rows: [SunapReplyRow, number][] = [
+      [line('1', { card: 0 }), 0],
+      [line('2', { card: 0 }), 1500],
+      [line('3', { card: 0 }), 2000],
+      [line('4', { cash: 1000, card: 0 }), 500],
+    ]
+    const totals = dayTotals(buildLedger(replyOf3(rows), {}, SETTINGS))
+    expect(totals).toMatchObject({ visits: 4, free_n: 1, cash_n: 1, cash_won: 1000, card_n: 0, transfer_n: 0, unpaid_n: 0 })
+    // 서버 숫자는 24칸 그대로(건강생활 칸 없음)
+    expect(Object.keys(totals)).toEqual([...SUNAP_TOTAL_KEYS])
   })
 })

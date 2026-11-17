@@ -862,7 +862,7 @@ describe('AC-5003.1 도우미 답 v:1·v:2 → 장부 줄의 진료의', () => {
   })
 
   it.each([
-    ['v가 3', { ...REPLY2, v: 3 }],
+    ['v가 4', { ...REPLY2, v: 4 }],
     ['v:2인데 doctors 없음', { ...REPLY2, doctors: undefined }],
     ['doctors가 배열 아님', { ...REPLY2, doctors: { D01: '가상원장가' } }],
     ['v:2인데 줄 칸 10개', { ...REPLY2, rows: [REPLY.rows[0]] }],
@@ -949,5 +949,80 @@ describe('AC-5003.2 ledger 메시지에 원장님별 수(ledgerDoctors)가 함�
     expect(h.all('ledger')).toHaveLength(ledgers + 2)
     expect(h.last('ledger').closedAt).toBeNull()
     expect(h.last('ledger').doctors).toEqual(expected)
+  })
+})
+
+// ── spec clinic-calendar AC-5908.2 도우미 답 v3(줄 끝 건강생활유지비) ─────────────
+
+// 도우미 0.10.0(v3) 답: v2 줄 열한 칸 + 건강생활유지비(원 정수). 10233은 네 칸이 0원이고 건강생활 1,500원
+const REPLY3: SunapReply = {
+  v: 3,
+  day: DAY,
+  unsure: false,
+  rows: [
+    [...REPLY.rows[0], 'D01', 0],
+    [...REPLY.rows[1], 'D02', 0],
+    [...REPLY.rows[2], 'D01', 1500],
+  ],
+  paid: REPLY.paid,
+  doctors: REPLY2.doctors,
+}
+
+describe('AC-5908.2 도우미 답 v:1·v:2·v:3 → 장부 줄의 건강생활', () => {
+  // v3 줄 하나: v2 줄 열한 칸 + 건강생활
+  const line3 = (index: number, health: unknown) => [...REPLY2.rows[index], health]
+
+  it('AC-5908.2: v:1·v:2 답(옛 도우미)이면 줄마다 건강생활은 0이다', async () => {
+    for (const reply of [REPLY, REPLY2]) {
+      const h = harness()
+      await h.load({ reply })
+      expect(h.last('ledger').rows.map((row) => row.health)).toEqual([0, 0, 0])
+      // 네 칸이 0원인 10233은 FREE다
+      expect(h.last('ledger').rows.map((row) => row.free)).toEqual([false, false, true])
+      expect(h.last('ledger').totals.free_n).toBe(1)
+    }
+  })
+
+  it('AC-5908.2: v:3 답이면 줄 끝 칸이 건강생활이고 그 값으로 장부를 만든다(진료의·다른 칸은 v:2 그대로)', async () => {
+    const h = harness()
+    const out = await h.load({ reply: REPLY3 })
+    const ledger = buildLedger(REPLY3, {}, SETTINGS)
+    expect(out).toEqual({ type: 'ledger', ...ledger, totals: dayTotals(ledger), doctors: ledgerDoctors(ledger) })
+    const view = h.last('ledger')
+    expect(view.rows.map((row) => [row.chart, row.doctor, row.health, row.free])).toEqual([
+      ['10231', 'D01', 0, false],
+      ['10232', 'D02', 0, false],
+      ['10233', 'D01', 1500, false],
+    ])
+    expect(view.totals.free_n).toBe(0)
+    expect(view.doctors).toEqual(ledgerDoctors(buildLedger(REPLY2, {}, SETTINGS)))
+  })
+
+  it('AC-5908.2: v:3 건강생활이 0이면 네 칸이 0원인 줄은 FREE다', async () => {
+    const h = harness()
+    await h.load({ reply: { ...REPLY3, rows: [line3(0, 0), line3(1, 0), line3(2, 0)] } })
+    expect(h.last('ledger').rows.map((row) => [row.health, row.free])).toEqual([
+      [0, false],
+      [0, false],
+      [0, true],
+    ])
+  })
+
+  it.each([
+    ['v가 4', { ...REPLY3, v: 4 }],
+    ['v:3인데 줄 칸 11개(v2 줄)', { ...REPLY3, rows: [REPLY2.rows[0]] }],
+    ['v:3 줄 칸 13개', { ...REPLY3, rows: [[...line3(0, 0), 0]] }],
+    ['건강생활 음수', { ...REPLY3, rows: [line3(0, -1)] }],
+    ['건강생활 소수', { ...REPLY3, rows: [line3(0, 1500.5)] }],
+    ['건강생활 글자', { ...REPLY3, rows: [line3(0, '1500')] }],
+    ['건강생활 null', { ...REPLY3, rows: [line3(0, null)] }],
+    ['v:3인데 doctors 없음', { ...REPLY3, doctors: undefined }],
+    ['v:3 줄 코드가 doctors에 없음', { ...REPLY3, rows: [[...REPLY.rows[0], 'D09', 0]] }],
+    ['v:3 다른 칸 모양(음수 금액)', { ...REPLY3, rows: [[...REPLY.rows[0].slice(0, 4), -1, ...REPLY.rows[0].slice(5), 'D01', 0]] }],
+  ])('AC-5908.2: v:3 답 모양이 틀리면(%s) 장부 없이 E-BRIDGE-BAD-REPLY', async (_label, reply) => {
+    const h = harness()
+    const out = await h.load({ reply })
+    expect(out).toEqual({ type: 'error', op: 'load', code: 'E-BRIDGE-BAD-REPLY' })
+    expect(h.all('ledger')).toEqual([])
   })
 })
