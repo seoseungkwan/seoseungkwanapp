@@ -803,12 +803,23 @@ export interface FakeServer {
   prevs: Map<string, FakePrev | null>
   /** 지난 내원 수를 정해 둔 환자: 열쇠 → 수(없으면 신환 0, 재진 36). 지난 진료기록부 쪽(fakePapers)이 따른다 (reception-memo-papers) */
   pasts: Map<string, number>
-  /** 받은 목록 쓰기 몸들(POST /api/lists, reception-pick-lists AC-3501.3). 맞는 모양이면 판의 picks가 그것으로 바뀐다 */
-  lists: unknown[]
+  /**
+   * 설정 문서(GET·POST /api/settings, reception-other-clinic AC-5704.1·5704.2). POST는 rev가 같으면 rev+1로 저장하고(다르면 409,
+   * 모양이 틀리거나 nextX 줄이기·logo.ver 바꾸기·그림 파일 없는 pic이면 400) 판 cfg·picks도 그것으로 바꾼다. 저장된 setup.done이 참이면 참으로 둔다(AC-5701.8)
+   */
+  settings: FakeSettings
+  /** 받은 설정 쓰기 몸들(POST /api/settings) */
+  settingsWrites: unknown[]
+  /** 지난 30일 처방 목록(GET /api/codes, AC-5705.1). null이면 503 */
+  codes: FakeCode[] | null
+  /** 코드 사전 이름(GET /api/code/{c}, AC-5705.2): 여기에 없으면 지난 30일 목록의 이름, 그래도 없으면 null */
+  codeNames: Map<string, string>
+  /** 받은 로고 올리기(POST /api/logo, AC-5706.1)의 형식과 바이트 수 */
+  logoWrites: { type: string; size: number }[]
   /** 병원 로고 그림(GET /api/logo, reception-other-clinic AC-5706.2). null이면 404 */
   logo: { type: 'image/png' | 'image/jpeg'; bytes: Uint8Array<ArrayBuffer> } | null
-  /** 요청 하나에 답한다. url은 같은 곳 길('/api/board?fresh=1' 모양) */
-  answer: (method: string, url: string, body?: string | null) => FakeReply
+  /** 요청 하나에 답한다. url은 같은 곳 길('/api/board?fresh=1' 모양). raw는 JSON이 아닌 몸(로고 그림)과 그 Content-Type */
+  answer: (method: string, url: string, body?: string | null, raw?: { type: string; bytes: Uint8Array }) => FakeReply
 }
 
 /** 어레인지 쓰기 몸 (reception-arrange design.md 8절). t는 SONO·C-ARM add·part의 이름표를 "|"로 이은 글 (reception-pick-lists AC-3502.3) */
@@ -933,7 +944,8 @@ function rowsOfBoard(board: FakeBoard): FakeRow[] {
  * 가짜 도우미(design.md 7절의 길만): GET /api/board(?fresh=1) · GET /api/visit/{k}/history?from=N · POST /api/xray,
  * 그리고 어레인지(reception-arrange design.md 8·9절): POST /api/arrange(판의 arrange를 바꾸고 204) · GET /api/visit/{k}/prev,
  * 지난 진료기록부(reception-memo-papers design.md 4절): GET /api/visit/{k}/papers?from=N,
- * 고르기 목록(reception-pick-lists AC-3501.3): POST /api/lists(판 picks 모양이면 판의 picks를 바꾸고 204, 아니면 400),
+ * 설정(reception-other-clinic AC-5704·5705·5706): GET·POST /api/settings(server.settings, 409·400), GET /api/codes(server.codes, 없으면 503),
+ * GET /api/code/{c}, POST /api/logo(설정 logo pic·ver +1·setup.logo·rev +1). 옛 목록 길 POST /api/lists는 404다(AC-5704.4),
  * 병원 로고(reception-other-clinic AC-5706.2): GET /api/logo(server.logo가 있으면 그 형식·바이트, 없으면 404).
  * 다른 길·그날 판에 없는 열쇠·모양이 틀린 값은 404, 진료보류가 아닌 줄의 표시는 400이다
  */
@@ -950,9 +962,13 @@ export function fakeServer(board: FakeBoard = mockupBoard(), now = '13:43'): Fak
     papers: new Map<string, FakePaper>(),
     prevs: new Map<string, FakePrev | null>(),
     pasts: new Map<string, number>(),
-    lists: [],
+    settings: boardSettings(board),
+    settingsWrites: [],
+    codes: fakeCodes(),
+    codeNames: new Map<string, string>(),
+    logoWrites: [],
     logo: null,
-    answer(method, url, body) {
+    answer(method, url, body, raw) {
       const [path = '', query = ''] = url.split('?')
       const params = new URLSearchParams(query)
       if (method === 'GET' && path === '/api/board' && (query === '' || query === 'fresh=1')) {
@@ -973,16 +989,48 @@ export function fakeServer(board: FakeBoard = mockupBoard(), now = '13:43'): Fak
         if (!row || !/^from=\d+$/.test(query)) return { status: 404 }
         return { status: 200, body: fakePapers(server.pasts.get(row.k) ?? pastOf(row), Number(params.get('from'))) }
       }
-      if (method === 'POST' && path === '/api/lists') {
-        let picks: unknown
+      if (method === 'GET' && url === '/api/settings') return { status: 200, body: structuredClone(server.settings) }
+      if (method === 'POST' && url === '/api/settings') {
+        let doc: unknown
         try {
-          picks = JSON.parse(body ?? '')
+          doc = JSON.parse(body ?? '')
         } catch {
           return { status: 400 }
         }
-        server.lists.push(picks)
-        if (!isFakePicks(picks)) return { status: 400 }
-        server.board.picks = picks
+        server.settingsWrites.push(doc)
+        if (!isFakeSettings(doc)) return { status: 400 }
+        if (doc.rev !== server.settings.rev) return { status: 409 }
+        if (doc.nextX < server.settings.nextX || doc.logo.ver !== server.settings.logo.ver || (doc.logo.mode === 'pic' && doc.logo.ver === 0)) return { status: 400 }
+        const saved = structuredClone(doc)
+        saved.rev += 1
+        if (server.settings.setup.done) saved.setup.done = true
+        server.settings = saved
+        server.board = boardOfSettings(server.board, saved)
+        return { status: 204 }
+      }
+      if (method === 'GET' && url === '/api/codes') return server.codes ? { status: 200, body: { codes: structuredClone(server.codes) } } : { status: 503 }
+      const code = /^\/api\/code\/([^/?]+)$/.exec(url)
+      if (method === 'GET' && code) {
+        let c = ''
+        try {
+          c = decodeURIComponent(code[1]!)
+        } catch {
+          return { status: 404 }
+        }
+        if (!/^[0-9A-Za-z가-힣_]{1,16}$/.test(c)) return { status: 404 }
+        const upper = c.toUpperCase()
+        return { status: 200, body: { c: upper, n: server.codeNames.get(upper) ?? fakeCodes().find((r) => r.c === upper)?.n ?? null } }
+      }
+      if (method === 'POST' && url === '/api/logo') {
+        if (!raw || (raw.type !== 'image/png' && raw.type !== 'image/jpeg') || raw.bytes.length === 0) return { status: 400 }
+        server.logoWrites.push({ type: raw.type, size: raw.bytes.length })
+        server.logo = { type: raw.type, bytes: Uint8Array.from(raw.bytes) }
+        const saved = structuredClone(server.settings)
+        saved.logo = { mode: 'pic', text: saved.logo.text, ver: saved.logo.ver + 1 }
+        saved.setup.logo = true
+        saved.rev += 1
+        server.settings = saved
+        server.board = boardOfSettings(server.board, saved)
         return { status: 204 }
       }
       if (method === 'POST' && path === '/api/arrange') {
@@ -1018,6 +1066,62 @@ export function fakeServer(board: FakeBoard = mockupBoard(), now = '13:43'): Fak
     },
   }
   return server
+}
+
+/**
+ * 판에서 만든 가짜 도우미의 처음 설정 문서: 우리 의원 처음 값에 판의 로고·탭·고르기 목록(더한 칸 목록 없이).
+ * 더한 칸·새 병원 같은 설정이 드는 시험은 settingsServer로 설정과 판을 함께 맞춘다
+ */
+function boardSettings(board: FakeBoard): FakeSettings {
+  const settings = oursSettings()
+  settings.logo = { ...board.cfg.logo }
+  settings.tab = board.cfg.tab
+  if (board.picks) {
+    settings.picks = { ...structuredClone(board.picks), extra: {} }
+  }
+  return settings
+}
+
+/** 저장한 설정으로 판을 바꾼 사본: cfg(로고 포함)·picks·칸 (도우미 AC-5704.3: 다음 읽기부터 새 cfg) */
+function boardOfSettings(board: FakeBoard, settings: FakeSettings): FakeBoard {
+  const next = withSettings(board, settings)
+  return { ...next, cfg: { ...next.cfg, logo: { ...settings.logo } } }
+}
+
+/**
+ * 설정 문서 settings로 맞춘 가짜 도우미(reception-other-clinic TASK-7): 판의 cfg(로고 포함)·picks·칸이 그 설정이고 server.settings도 그것이다.
+ * 로고가 그림(ver 1 이상)이면 GET /api/logo가 가짜 PNG를 준다
+ */
+export function settingsServer(settings: FakeSettings, board: FakeBoard = arrangeMockupBoard(), now = '11:05'): FakeServer {
+  const server = fakeServer(boardOfSettings(board, settings), now)
+  server.settings = structuredClone(settings)
+  if (settings.logo.ver > 0) server.logo = { type: 'image/png', bytes: fakeLogoPng() }
+  return server
+}
+
+/** 가짜 도우미가 받는 설정 문서 모양(design.md 1절의 줄기: 처음 일곱 칸·더한 칸 열쇠 < nextX·extra 열쇠 = 더한 칸 열쇠) */
+function isFakeSettings(v: unknown): v is FakeSettings {
+  const d = v as FakeSettings | null
+  if (typeof d !== 'object' || d === null || !Number.isSafeInteger(d.rev) || !Number.isSafeInteger(d.nextX)) return false
+  if (typeof d.logo !== 'object' || d.logo === null || !['pic', 'text', 'none'].includes(d.logo.mode) || !Number.isSafeInteger(d.logo.ver)) return false
+  if (d.logo.mode === 'text' && typeof d.logo.text !== 'string') return false
+  if (typeof d.tab !== 'boolean' || typeof d.setup !== 'object' || d.setup === null) return false
+  if (!Array.isArray(d.cols) || d.cols.length > 12 || !d.cols.some((c) => c?.show === true)) return false
+  const keys = d.cols.map((c) => c?.k)
+  if (new Set(keys).size !== keys.length || !ARRANGE_COLS.every((k) => keys.includes(k))) return false
+  const names = d.cols.map((c) => (typeof c?.name === 'string' ? c.name.trim() : ''))
+  if (new Set(names).size !== names.length || names.some((n) => n === '' || [...n].length > 10 || n.includes('|'))) return false
+  for (const c of d.cols) {
+    if (!['rx', 'mn'].includes(c.kind) || ![2, 3].includes(c.steps) || typeof c.show !== 'boolean' || !Array.isArray(c.codes)) return false
+    if (c.added !== /^x[1-9][0-9]?$/.test(c.k)) return false
+    if (c.added && Number(c.k.slice(1)) >= d.nextX) return false
+    if ((c.k === 'xray') !== (typeof c.rule === 'boolean')) return false
+    if (c.codes.length > 40 || c.codes.some((code) => typeof code !== 'string' || !/^[0-9A-Z가-힣_]{1,16}$/.test(code))) return false
+  }
+  const extra = d.picks?.extra
+  if (!isFakePicks(d.picks) || typeof extra !== 'object' || extra === null) return false
+  const added = d.cols.filter((c) => c.added).map((c) => c.k)
+  return Object.keys(extra).length === added.length && added.every((k) => Array.isArray(extra[k]))
 }
 
 /** 판 picks 모양(이름·개수 규칙은 보지 않는다). PT·도수·충격파·견인 무리도 있어야 한다 (reception-arrange-tune AC-3603.2) */

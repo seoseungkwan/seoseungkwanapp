@@ -72,11 +72,33 @@
  *                         ; (.opt-label > span.opt-hint) + .opts.trio[data-g=side] ; .opt-label + .opts.four.parts[data-g=part]
  *                         ; .opt-label + .opts.trio[data-g=plain] ; .opt-label + .opts.duo[data-g=with] > button.opt.check(.on) > span.box ; .sheet-go ; button.pick-edit
  *            .toast[role=status] > span.toast-text + button.toast-undo
- *            목록 고치기 창 (reception-pick-lists). 머리의 [☰ 목록 고치기] 자리는 [⚙ 설정](button.set-open)이 되었다(reception-other-clinic AC-5709.2)
- *              .sheet-back.list-back > .sheet.list-sheet > .sheet-h ; .lt-tabs > button.lt-tab(.on) ; p.lt-fixed(SONO·충격파)
- *                ; .lt-groups > section.lt-group > h3(> span.sm) + (ul.lt-list > li.lt-row > button.lt-name + button.lt-flag(.on) + button.lt-btn ×2 + button.lt-btn.del | div.lt-empty)
+ *            칸 고치기 창 (넣기 창 [☰ 목록 고치기]·설정 [고치기], reception-other-clinic AC-5711.4·5713.1). 옛 목록 고치기 창(reception-pick-lists)이 이리 왔다
+ *              .sheet-back.list-back > .sheet.list-sheet.col-sheet[role=dialog] > .sheet-h > span.sheet-title + span.sheet-sub
+ *                ; .cf > span.cf-l + input.txt + span.cf-hint.hint(.is-bad) + span.cf-l + .seg(종류) + span.cf-l + .seg(단계)
+ *                ; (.lt-tabs > button.lt-tab(.on)) ; .col-body ; p.lt-foot-note ; .sheet-go > (button.del-col) + button.sheet-close + button.go(.short)
+ *              .col-body [고르기 목록] (picks.js): p.hint.lt-top + p.lt-fixed(SONO·충격파)
+ *                + .lt-groups > section.lt-group > h3(> span.sm) + (ul.lt-list > li.lt-row > button.lt-name + button.lt-flag(.on) + button.lt-btn ×2 + button.lt-btn.del | div.lt-empty)
  *                                                  (바꾸기 줄 li.lt-row.is-rename > input.lt-rename + button.lt-ok + button.lt-no + p.lt-hint(.is-bad), reception-arrange-tune)
- *                                                + form.lt-add > input + button ; p.lt-foot-note ; .sheet-go > button.sheet-close + button.go
+ *                                                + form.lt-add > input + button
+ *              .col-body [넣을 처방] (settings.js): (.rx-rule(.off)[role=checkbox] > span.box + span.rr-t + span.rr-d) + .rx-tools > input.txt + span.hint > b
+ *                + ul.rx-list > (li.rx-gh > span.sm | li.rx-row(.on)(.ruled)[role=checkbox] > span.box + code + span.rx-n(> span.also(.rec|.typed|.rule|.sono)) + span.rx-v | li.rx-none)
+ *                + form.rx-direct > label.rd-t + .rd-row > input.txt + button.btn-ink ; p.rd-msg(.bad)  + p.hint.rx-note   (탭이 없으면 p.hint)
+ *              칸 더하기 창: .sheet.list-sheet.col-sheet > .sheet-h ; .cf (종류는 .kind-cards > button > span.kc-t + span.kc-d) ; p.lt-foot-note ; .sheet-go
+ *   설정   .page.settings-page (reception-other-clinic REQ-5712, 승인 시안 settingsView)
+ *            header.top.set-top > .top-row > a.back + span.conn ; h1.set-title ; p.set-lead
+ *            main.set-main > (section.set-card.set-guide > .sg-head > h2 + span.sg-count ; p.set-sub
+ *                               ; ol.sg-steps > li.sg-step(.done) > span.sg-num + span.sg-t(> span.sg-ok) + span.sg-d + .sg-acts > button.btn-ink|btn-line)
+ *                          + .set-left > section.set-card.logo-card > h2 + p.set-sub + .seg > button[aria-pressed] ×3
+ *                                          + .logo-pane > (.logo-preview > img.lp-img ; .logo-acts > button.btn-line + span.hint
+ *                                                         | form.name-row > input.txt + button.btn-ink ; .hint.lp-hint(.is-bad) ; .logo-preview > span.logo-text
+ *                                                         | .logo-preview > span.lp-none ; .hint.lp-hint) + input.logo-file[hidden]
+ *                                      + section.set-card.tab-card > h2 + p.set-sub + .sw-row > .sw-text > .sw-name + .hint ; button.switch > span.knob
+ *                          + section.set-card.cols-card > h2 + p.set-sub + ul.col-list > li.col-row(.k-sono|.k-carm)(.is-off)
+ *                                > .col-main > .col-line > span.col-name + span.kind.rx|mn + span.kind.new ; .col-sum
+ *                                + button.switch.sm > span.knob + .col-move > button.lt-btn ×2 + button.col-edit
+ *                            + button.col-add
+ *              못 읽었으면 main.set-main > .set-fail > span.set-fail-t + button.btn-line
+ *            .toast[role=status] > span.toast-text + button.toast-undo   ; 창은 위 칸 고치기·칸 더하기 창
  */
 
 /* ---- 바탕 ---------------------------------------------------------------------------------------- */
@@ -3330,5 +3352,918 @@ button.lt-name:hover {
     font-size: 12px;
     color: var(--ink-3);
     text-align: center;
+  }
+}
+
+/* ---- 설정 쪽 (reception-other-clinic REQ-5712, 승인 시안 settingsView): 폰은 한 줄, 가로 태블릿은 왼쪽 로고·탭 | 오른쪽 칸 ---------- */
+
+.page.settings-page {
+  min-height: 100vh;
+  background: var(--ground);
+}
+
+.top.set-top {
+  gap: 4px;
+  padding: 8px 16px 14px;
+}
+
+.set-title {
+  margin: 0 0 0 8px;
+  font-family: var(--font-title), var(--font-body);
+  font-weight: var(--title-weight);
+  font-size: 28px;
+  line-height: 1.2;
+  color: var(--ink);
+}
+
+.set-lead {
+  margin: 0 0 0 8px;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+.set-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+  align-items: start;
+}
+
+.set-left {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+@media (min-width: 1000px) and (orientation: landscape) {
+  .set-main {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    padding: 16px 24px;
+    gap: 16px;
+  }
+
+  .set-main > .set-left {
+    gap: 16px;
+  }
+}
+
+.set-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.set-card h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.set-card .set-sub {
+  margin: 2px 0 12px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.set-card.logo-card, .set-card.tab-card, .set-card.cols-card {
+  overflow-wrap: anywhere;
+}
+
+/* 못 읽었을 때: 한 줄 + [다시 읽기] */
+.set-fail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.set-fail-t {
+  flex: 1 1 200px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* 셋 가운데 하나 고르기 (로고·종류·단계) */
+.seg {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+
+.seg > button {
+  min-height: 48px;
+  padding: 4px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--ground);
+  color: var(--ink-2);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.seg > button[aria-pressed="true"] {
+  border: 2px solid var(--ink);
+  background: var(--surface-picked);
+  color: var(--ink);
+}
+
+/* 병원 로고 (AC-5712.2·5712.3) */
+.logo-pane {
+  margin-top: 12px;
+}
+
+.logo-preview {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  min-height: 72px;
+  margin-top: 8px;
+  padding: 12px 16px;
+  border: 1.5px dashed var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.logo-pane > .logo-preview:first-child {
+  margin-top: 0;
+}
+
+.logo-preview .lp-img {
+  display: block;
+  height: 40px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.logo-preview .lp-none {
+  font-family: var(--font-title), var(--font-body);
+  font-weight: var(--title-weight);
+  font-size: 26px;
+  color: var(--ink);
+}
+
+.logo-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.hint.lp-hint {
+  display: block;
+  margin-top: 6px;
+}
+
+.logo-file {
+  display: none;
+}
+
+.name-row {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-line {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.btn-ink {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--radius-m);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.hint.is-bad {
+  color: var(--memo-red);
+  font-weight: 700;
+}
+
+.txt {
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 16px;
+}
+
+.txt:focus {
+  outline: 2px solid var(--ink);
+  outline-offset: 0;
+}
+
+/* 탭 켜기·끄기 (AC-5712.4) */
+.sw-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sw-row .sw-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.sw-row .sw-name {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+/* 어레인지 칸 목록 (AC-5712.5) */
+.col-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.col-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 60px;
+  padding: 6px 8px 6px 12px;
+  border: 1px solid var(--line);
+  border-left-width: 6px;
+  border-radius: var(--radius-m);
+  background: var(--surface);
+}
+
+.col-row.k-sono {
+  border-left-color: var(--sono-head);
+}
+
+.col-row.k-carm {
+  border-left-color: var(--carm-head);
+}
+
+.col-row.is-off {
+  background: var(--ground);
+}
+
+.col-row.is-off .col-name {
+  color: var(--ink-3);
+}
+
+.col-main {
+  min-width: 0;
+}
+
+.col-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.col-name {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.kind {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: var(--radius-s);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.kind.rx {
+  border: 1.5px solid var(--ink);
+  color: var(--ink);
+}
+
+.kind.mn {
+  border: 1.5px dashed var(--ink-3);
+  color: var(--ink-2);
+}
+
+.kind.new {
+  background: var(--ground);
+  color: var(--ink-3);
+}
+
+.col-sum {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--ink-3);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.col-move {
+  display: flex;
+  gap: 2px;
+}
+
+.col-row .lt-btn {
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+}
+
+.col-edit {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.col-add {
+  width: 100%;
+  min-height: 52px;
+  margin-top: 8px;
+  border: 1.5px dashed var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.col-add:disabled {
+  color: var(--ink-3);
+}
+
+@media (max-width: 600px) {
+  .col-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "main edit" "sw move";
+    row-gap: 6px;
+  }
+
+  .col-row > .col-main {
+    grid-area: main;
+  }
+
+  .col-row > .col-edit {
+    grid-area: edit;
+  }
+
+  .col-row > .switch {
+    grid-area: sw;
+    justify-self: start;
+  }
+
+  .col-row > .col-move {
+    grid-area: move;
+  }
+}
+
+/* 처음 설정 안내 (AC-5712.7): 설정 맨 위, 셋 다 하면 사라진다 */
+.set-card.set-guide {
+  grid-column: 1 / -1;
+  border-left: 6px solid var(--accent);
+}
+
+.sg-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sg-count {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.sg-steps {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 1000px) and (orientation: landscape) {
+  .sg-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.sg-step {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-content: start;
+  gap: 2px 10px;
+  padding: 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+}
+
+.sg-step.done {
+  border-color: var(--line);
+  background: var(--ground);
+}
+
+.sg-num {
+  grid-row: 1 / 3;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.sg-step.done .sg-num {
+  background: var(--ok);
+}
+
+.sg-t {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 28px;
+}
+
+.sg-ok {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: var(--radius-s);
+  background: var(--ok-soft);
+  color: var(--ok);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.sg-d {
+  grid-column: 2;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.sg-acts {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* ---- 칸 고치기·칸 더하기 창 (AC-5713.1~5713.9, 시안 colSheet·addSheet): [취소]·[저장]은 창 아래에 붙어 있다 ---------------- */
+
+.sheet.col-sheet {
+  width: min(760px, 100%);
+  max-height: 92vh;
+  padding: 20px;
+}
+
+.cf {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 14px;
+}
+
+.cf > .cf-l {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ink-2);
+}
+
+.cf > .cf-hint {
+  grid-column: 2;
+  margin-top: -4px;
+}
+
+.cf-hint.is-bad {
+  color: var(--memo-red);
+  font-weight: 700;
+}
+
+.col-sheet .seg > button {
+  min-height: 44px;
+}
+
+.col-sheet .col-body {
+  min-height: 80px;
+}
+
+.col-sheet .lt-groups {
+  margin-top: 8px;
+}
+
+.col-sheet .lt-foot-note {
+  margin-bottom: 0;
+}
+
+.lt-top {
+  margin: 12px 0 0;
+}
+
+.col-sheet .sheet-go {
+  position: sticky;
+  bottom: -20px;
+  margin: 14px -20px -20px;
+  padding: 12px 20px 20px;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+
+.sheet-go .del-col {
+  min-height: 48px;
+  margin-right: auto;
+  padding: 0 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  color: var(--memo-red);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.sheet-go .go.short {
+  flex: 0 1 220px;
+}
+
+/* 넣을 처방 (AC-5713.2~5713.6): 규칙 상자 · 찾기 · 무리 머리(직접 넣은 코드·추천·다른 처방) · 체크 줄 · 코드 직접 넣기 */
+.rx-rule {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 2px 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 2px solid var(--ink);
+  border-radius: var(--radius-m);
+  background: var(--surface-picked);
+  cursor: pointer;
+}
+
+.rx-rule .box {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--ink);
+  border-radius: 5px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 14px;
+}
+
+.rx-rule.off {
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+}
+
+.rx-rule.off .box {
+  border-color: var(--line-2);
+  background: var(--surface);
+}
+
+.rx-rule .rr-t {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.rx-rule .rr-d {
+  grid-column: 2;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.rx-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 12px 0 8px;
+}
+
+.rx-tools .txt {
+  flex: 1 1 220px;
+}
+
+.rx-tools .hint b {
+  color: var(--ink);
+}
+
+.rx-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 300px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+}
+
+.rx-gh {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--ground);
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink-2);
+}
+
+.rx-gh .sm {
+  margin-left: 8px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.rx-none {
+  padding: 14px 12px;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+.rx-row {
+  display: grid;
+  grid-template-columns: 30px 68px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 8px;
+  min-height: 50px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.rx-row:last-child {
+  border-bottom: 0;
+}
+
+.rx-row.on {
+  background: var(--surface-picked);
+}
+
+.rx-row .box {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--line-2);
+  border-radius: 5px;
+  background: var(--surface);
+  font-size: 14px;
+  color: var(--on-ink);
+}
+
+.rx-row.on .box {
+  border-color: var(--ink);
+  background: var(--ink);
+}
+
+.rx-row.ruled {
+  cursor: default;
+}
+
+.rx-row.ruled .box {
+  border-color: var(--line-2);
+  background: var(--line-2);
+}
+
+.rx-row code {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--ink-4);
+  overflow-wrap: anywhere;
+}
+
+.rx-n {
+  min-width: 0;
+  font-size: 15px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.rx-n .also {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: var(--radius-s);
+  background: var(--carm-col);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.rx-n .also.sono {
+  background: var(--sono-col);
+}
+
+.rx-n .also.rule {
+  background: var(--ground);
+  color: var(--ink-3);
+}
+
+.rx-n .also.rec {
+  border: 1px solid var(--ink-2);
+  background: var(--surface);
+  color: var(--ink);
+  line-height: 16px;
+}
+
+.rx-n .also.typed {
+  border: 1.5px dashed var(--ink-2);
+  background: var(--surface);
+  color: var(--ink);
+  line-height: 15px;
+}
+
+.rx-v {
+  font-size: 13px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.rx-direct {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1.5px dashed var(--line-2);
+  border-radius: var(--radius-m);
+}
+
+.rx-direct .rd-t {
+  display: block;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ink-2);
+}
+
+.rx-direct .rd-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.rx-direct .rd-row .txt {
+  font-family: var(--font-mono);
+}
+
+.rx-direct .rd-row .btn-ink {
+  min-height: 48px;
+}
+
+.rx-direct .rd-msg {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.rx-direct .rd-msg.bad {
+  color: var(--memo-red);
+  font-weight: 700;
+}
+
+.rx-note {
+  margin: 10px 0 0;
+}
+
+/* 칸 더하기: 종류 카드 둘 */
+.kind-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.kind-cards > button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 84px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--ground);
+  color: var(--ink);
+  text-align: left;
+}
+
+.kind-cards > button[aria-pressed="true"] {
+  border: 2px solid var(--ink);
+  background: var(--surface-picked);
+}
+
+.kind-cards .kc-t {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.kind-cards .kc-d {
+  font-size: 13px;
+  color: var(--ink-3);
+  line-height: 1.4;
+}
+
+@media (max-width: 520px) {
+  .cf {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cf > .cf-hint {
+    grid-column: 1;
+  }
+
+  .sheet.col-sheet {
+    padding: 16px;
+  }
+
+  .col-sheet .sheet-go {
+    bottom: -16px;
+    margin: 14px -16px -16px;
+    padding: 12px 16px 16px;
+  }
+
+  .rx-row {
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    padding: 6px 10px;
+  }
+
+  .rx-row code {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .rx-row .rx-n {
+    grid-column: 2 / 4;
+    grid-row: 2;
+  }
+
+  .rx-row .rx-v {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .rx-row .box {
+    grid-row: 1 / 3;
+  }
+
+  .kind-cards {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
