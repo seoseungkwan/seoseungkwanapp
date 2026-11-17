@@ -74,10 +74,12 @@ CROSS APPLY (SELECT TOP 1 w.OcmAcpDtm,LEFT(RTRIM(CONVERT(nvarchar(4000),r.RsvRef
     /// 건강생활유지비(spec sunap-health REQ-5401): 그날 수납한 비트 OrcInf의 OrcCod='QCV' 줄 OrcNewAmt를 내원·차트별로 더한다 [내원번호, 차트번호, QCV 합].
     /// 병원·센 내원은 이 글이 거르지 않는다. SunapTargets가 MoneySql에 나온 그 차트의 내원 번호 것만 센다. @hospital은 쓰지 않아도 같은 날 묶음(DayParameters)을 받는다.
     /// </summary>
-    public const string HealthSql = @"SELECT o.OrcOcmNum,o.OrcChtNum,SUM(o.OrcNewAmt)
-FROM dbo.OrcInf o
-WHERE o.OrcCod='QCV' AND o.OrcAccDte>=@day AND o.OrcAccDte<@nextDay
-GROUP BY o.OrcOcmNum,o.OrcChtNum";
+    // 줄바꿈은 \n으로 적는다: @"…" 여러 줄 글은 윈도우 받기(CRLF)에서 글이 달라져 GitHub 빌드 시험이 깨졌다(2026-11-17)
+    public const string HealthSql =
+        "SELECT o.OrcOcmNum,o.OrcChtNum,SUM(o.OrcNewAmt)\n"
+        + "FROM dbo.OrcInf o\n"
+        + "WHERE o.OrcCod='QCV' AND o.OrcAccDte>=@day AND o.OrcAccDte<@nextDay\n"
+        + "GROUP BY o.OrcOcmNum,o.OrcChtNum";
 
     /// <summary>
     /// 매출 FinanceReceivable(그날 예전 미수를 낸 것)의 NativeRows 줄 머리에 이름·수납 시각을 더하고 끝 SELECT만 환자(OrpChtNum)별로:
