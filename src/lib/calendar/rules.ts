@@ -104,6 +104,26 @@ export function ageOn(birth: string, today: string): number | null {
   return today.slice(5) < born.slice(5) ? years - 1 : years
 }
 
+// 쳐서 넣는 시작 시간 모양(spec calendar-colors design.md '시간 읽기'): 앞에서부터 처음 맞는 것
+const START_DIGITS = /^(\d{1,2})(\d{2})$/ // 930·1430
+const START_HOUR_MIN = /^(\d{1,2})(?::|\.|시\s*|\s+)(\d{1,2})\s*분?$/ // 14:30·9:30·14.30·14시30분·14 30
+const START_HOUR = /^(\d{1,2})\s*시?$/ // 14·14시
+const HALF_DAY = 720
+
+/** 쳐서 넣은 시작 시간 → 분(0~1430, 10분 단위). 못 읽으면 'format', 10분 단위가 아니면 'step'.
+ * 시가 12 미만이고 보이는 시작보다 앞인데 +12시간이 보이는 끝보다 앞이면 오후로 본다('230' → 14:30) */
+export function parseStart(text: string, openHour: number, closeHour: number): number | 'format' | 'step' {
+  const t = text.trim()
+  const m = START_DIGITS.exec(t) ?? START_HOUR_MIN.exec(t) ?? START_HOUR.exec(t)
+  if (!m) return 'format'
+  const hour = Number(m[1])
+  const minute = m[2] === undefined ? 0 : Number(m[2])
+  if (hour > 23 || minute > 59) return 'format'
+  if (minute % 10 !== 0) return 'step'
+  const at = hour * 60 + minute
+  return hour < 12 && at < openHour * 60 && at + HALF_DAY < closeHour * 60 ? at + HALF_DAY : at
+}
+
 /** 처음 자리 글: '11/18 (수) 15:00'(달·날은 앞 0 없이, 시각은 두 자리) */
 export function slotLabel(day: string, start: number): string {
   const weekday = WEEKDAY[weekdayOf(day) - 1]

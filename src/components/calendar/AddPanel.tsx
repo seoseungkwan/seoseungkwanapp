@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useId, type ReactNode } from 'react'
+import { useEffect, useId, useState, type ReactNode } from 'react'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { isYmd } from '@/lib/analytics/dates'
-import { slotLabel, warnings } from '@/lib/calendar/rules'
+import { parseStart, slotLabel, warnings } from '@/lib/calendar/rules'
 import { APPT_MEMO_MAX, APPT_NAME_MAX } from '@/lib/storage/calendar'
 import type { ApptDraft, CalAllDay, CalAppt, CalSettings } from '@/types/calendar'
 import { CalIcon, Swatch, dayLabel, hm } from './CalendarToolbar'
@@ -13,7 +13,9 @@ import { CalIcon, Swatch, dayLabel, hm } from './CalendarToolbar'
 // 판은 draft를 받아 onDraft로 돌려준다(화면이 쥔다 → 이름·차트번호가 바뀌면 화면이 비트에서 찾아 나머지 칸을 채운다).
 // 비트 찾기 자리는 화면이 넣는 lookup 칸이다: 이 판은 비트 자료를 쥐지 않는다. 경고(담당 겹침·휴무)는 lib/calendar warnings, 저장은 막지 않는다.
 // [저장]은 onSave로 칸만 넘긴다(이름·메모 앞뒤 빈칸 빼고, 빈 차트번호는 null). 서버에 넣는 일은 화면이 한다
+// 시작은 쳐서 넣는 글 칸이다(spec calendar-colors AC-6002.2~4): 읽히면 바로 draft.start, 못 읽는 동안은 저장을 막고 벗어나면 오류 글
 
+const START_ERROR = { format: '시간을 14:30처럼 적어 주세요', step: '10분 단위로 적어 주세요 (예: 14:30)' } as const
 const LEN_MIN = 5
 const LEN_MAX = 240
 const LEN_STEP = 5
@@ -184,10 +186,31 @@ export function AddPanel({
     .join(', ')
   const warned = found.overlap.length > 0 || found.off
 
-  const missing = [draft.name.trim() ? null : '이름', draft.staffId ? null : '담당', draft.kindId ? null : '종류'].filter((m) => m !== null)
+  // 시작 글: 지금 draft 시각 HH:MM 그대로면 그 시각(보이는 시간 밖 값이 오후로 바뀌지 않게), 아니면 parseStart
+  const [startText, setStartText] = useState(() => hm(draft.start))
+  const [startTouched, setStartTouched] = useState(false)
+  const readStart = (text: string) => (text.trim() === hm(draft.start) ? draft.start : parseStart(text, settings.openHour, settings.closeHour))
+  // 판 밖에서 draft 시각이 바뀌면(빈 칸을 다시 누름) 글도 그 시각으로, 오류는 지운다(AC-6002.4)
+  const [seenStart, setSeenStart] = useState(draft.start)
+  if (seenStart !== draft.start) {
+    setSeenStart(draft.start)
+    if (readStart(startText) !== draft.start) {
+      setStartText(hm(draft.start))
+      setStartTouched(false)
+    }
+  }
+  const startRead = readStart(startText)
+  const startError = startTouched && typeof startRead !== 'number' ? START_ERROR[startRead] : null
+
+  const missing = [
+    typeof startRead === 'number' ? null : '시작',
+    draft.name.trim() ? null : '이름',
+    draft.staffId ? null : '담당',
+    draft.kindId ? null : '종류',
+  ].filter((m) => m !== null)
   const ready = missing.length === 0
 
-  // 시작: 보이는 시간 안 10분 칸(지금 값이 칸 밖이면 그 값도 둔다)
+  // 시작 고르기 목록: 보이는 시간 안 10분 칸(지금 값이 칸 밖이면 그 값도 둔다)
   const starts: number[] = []
   for (let m = settings.openHour * 60; m < settings.closeHour * 60; m += 10) starts.push(m)
   if (!starts.includes(draft.start)) starts.push(draft.start)
@@ -262,14 +285,37 @@ export function AddPanel({
           <label htmlFor={`${ids}-start`} className={LABEL}>
             시작
           </label>
-          <select id={`${ids}-start`} value={draft.start} className={INPUT} onChange={(event) => set({ start: Number(event.target.value) })}>
+          <input
+            id={`${ids}-start`}
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="예: 1430"
+            list={`${ids}-starts`}
+            value={startText}
+            aria-invalid={startError ? true : undefined}
+            aria-describedby={`${ids}-start-hint`}
+            className={`${INPUT} tabular-nums aria-invalid:border-negative`}
+            onChange={(event) => {
+              const text = event.target.value
+              setStartText(text)
+              setStartTouched(false)
+              const read = readStart(text)
+              if (typeof read === 'number' && read !== draft.start) set({ start: read })
+            }}
+            onBlur={() => {
+              setStartTouched(true)
+              if (typeof startRead === 'number') setStartText(hm(startRead))
+            }}
+          />
+          <datalist id={`${ids}-starts`}>
             {starts.map((m) => (
-              <option key={m} value={m}>
-                {hm(m)}
-              </option>
+              <option key={m} value={hm(m)} />
             ))}
-          </select>
-          <span className={HINT}>10분 단위</span>
+          </datalist>
+          <span id={`${ids}-start-hint`} className={startError ? ds.fieldError : HINT}>
+            {startError ?? '1430처럼 쳐도 돼요 · 10분 단위'}
+          </span>
         </div>
         <div className="grid min-w-0 content-start gap-1.5">
           <label htmlFor={`${ids}-name`} className={LABEL}>

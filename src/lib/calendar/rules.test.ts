@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ageOn, arrivalOf, nextWeek, shownStatus, slotLabel, visibleGhosts, warnings } from './rules'
+import { ageOn, arrivalOf, nextWeek, parseStart, shownStatus, slotLabel, visibleGhosts, warnings } from './rules'
 import type { CalAllDay, CalAppt } from './shapes'
 
 // 지어낸 예약(이름 ○○, 차트번호 다섯 자리). 시각은 분(0시부터)
@@ -212,5 +212,69 @@ describe('AC-5906.2 (셈 도우미) slotLabel: 처음 자리 글', () => {
     expect(slotLabel('2026-11-18', at(15))).toBe('11/18 (수) 15:00')
     expect(slotLabel('2027-01-03', at(9, 5))).toBe('1/3 (일) 09:05')
     expect(slotLabel('2026-11-16', 0)).toBe('11/16 (월) 00:00')
+  })
+})
+
+describe("AC-6002.1 parseStart: 쳐서 넣은 시작 시간 읽기 (spec calendar-colors design.md '시간 읽기' 표)", () => {
+  // 보이는 시간 9~19시
+  const read = (text: string) => parseStart(text, 9, 19)
+
+  it('AC-6002.1: 1430 · 14:30 · 14시30분 · 14 30 → 870', () => {
+    for (const text of ['1430', '14:30', '14시30분', '14 30']) expect(read(text)).toBe(870)
+  })
+
+  it('AC-6002.1: 930 · 9:30 → 570', () => {
+    expect(read('930')).toBe(570)
+    expect(read('9:30')).toBe(570)
+  })
+
+  it('AC-6002.1: 14 · 14시 → 840', () => {
+    expect(read('14')).toBe(840)
+    expect(read('14시')).toBe(840)
+  })
+
+  it('AC-6002.1: 230 → 870 (진료 전 새벽은 오후로 본다)', () => {
+    expect(read('230')).toBe(870)
+  })
+
+  it('AC-6002.1: 830 → 510 (오후로 보면 20:30이 보이는 시간 밖이라 그대로)', () => {
+    expect(read('830')).toBe(510)
+  })
+
+  it("AC-6002.1: 1435 → 'step' (10분 단위가 아님)", () => {
+    expect(read('1435')).toBe('step')
+    expect(read('9:05')).toBe('step')
+  })
+
+  it("AC-6002.1: 25시 · 1460 · abc · 빈 글 → 'format'", () => {
+    for (const text of ['25시', '1460', 'abc', '', '   ']) expect(read(text)).toBe('format')
+  })
+
+  it("AC-6002.1: 앞뒤 빈칸은 빼고, 가름 '.'도 읽고, 앞 0이 있어도 된다", () => {
+    expect(read(' 1430 ')).toBe(870)
+    expect(read('14.30')).toBe(870)
+    expect(read('0930')).toBe(570)
+    expect(read('09:30')).toBe(570)
+  })
+
+  it("AC-6002.1: 시 0~23·분 0~59가 아니거나 모양이 다르면 'format'", () => {
+    for (const text of ['24', '24:00', '9:60', '12345', '14:300', '14-30', '오후 2시', '1430분']) expect(read(text)).toBe('format')
+  })
+
+  it('AC-6002.1: 오후로 보기는 시가 12 미만이고 보이는 시작보다 앞이며 +12시간이 보이는 끝보다 앞일 때만', () => {
+    expect(read('900')).toBe(540) // 보이는 시작과 같으면 그대로
+    expect(read('1130')).toBe(690) // 보이는 시간 안
+    expect(read('1210')).toBe(730) // 12시는 오후 그대로
+    expect(read('2330')).toBe(1410) // 보이는 끝 뒤도 시가 12 이상이면 그대로
+    expect(parseStart('130', 9, 14)).toBe(810) // 13:30 < 14:00
+    expect(parseStart('200', 9, 14)).toBe(120) // 14:00은 보이는 끝과 같아 그대로
+    expect(parseStart('230', 8, 20)).toBe(870)
+    expect(parseStart('730', 8, 20)).toBe(1170) // 19:30 < 20:00
+  })
+
+  it('AC-6002.1: 돌려주는 분은 0~1430, 10분 단위', () => {
+    expect(read('23:50')).toBe(1430)
+    expect(read('11:50')).toBe(710)
+    expect(parseStart('0', 0, 24)).toBe(0)
   })
 })

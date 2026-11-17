@@ -284,7 +284,7 @@ describe('AC-5905.2 예약 더하기', () => {
     await open()
     const panel = openAdd()
     expect((within(panel).getByLabelText('날짜') as HTMLInputElement).value).toBe(TODAY)
-    expect((within(panel).getByLabelText('시작') as HTMLSelectElement).value).toBe('650') // 10:40 다음 10분 = 10:50
+    expect((within(panel).getByLabelText('시작') as HTMLInputElement).value).toBe('10:50') // 10:40 다음 10분
     const save = within(panel).getByRole('button', { name: '저장' })
     expect((save as HTMLButtonElement).disabled).toBe(true)
     expect(panel.querySelector('output')?.textContent).toBe('30분')
@@ -321,7 +321,7 @@ describe('AC-5905.2 예약 더하기', () => {
   it('AC-5905.2: 같은 담당 겹침이면 경고 글과 [그래도 저장](?s=overlap-warn)이고, 눌러야 저장된다', async () => {
     await open()
     const panel = openAdd()
-    fireEvent.change(within(panel).getByLabelText('시작'), { target: { value: '580' } }) // 09:40, (가) 09:30–10:00과 겹침
+    fireEvent.change(within(panel).getByLabelText('시작'), { target: { value: '0940' } }) // 09:40, (가) 09:30–10:00과 겹침
     fillBasics(panel, '이○○', '(가) 한○○', /^도수/)
     expect(within(panel).getByRole('alert').textContent).toContain('담당에게 같은 시간 예약이 있어요: 09:30–10:00 10231 김○○ 도수')
     expect(addAppt).not.toHaveBeenCalled()
@@ -343,7 +343,56 @@ describe('AC-5905.2 예약 더하기', () => {
     fireEvent.click(document.querySelector('[data-slot-day="2026-11-20"]')!, { clientY: 0 })
     const panel = dialog('예약 더하기')
     expect((within(panel).getByLabelText('날짜') as HTMLInputElement).value).toBe('2026-11-20')
-    expect((within(panel).getByLabelText('시작') as HTMLSelectElement).value).toBe('480')
+    expect((within(panel).getByLabelText('시작') as HTMLInputElement).value).toBe('08:00')
+  })
+})
+
+describe('AC-6002 시작 시간 쳐서 넣기 (spec calendar-colors)', () => {
+  it("AC-6002.2: 시작에 1430을 치면 판 시간 줄과 예약표 '새 예약' 칸이 바로 14:30으로 가고, 저장하면 그 시각이다", async () => {
+    await open()
+    const panel = openAdd()
+    expect(screen.getByText('새 예약 10:50–11:20')).toBeTruthy()
+    const start = within(panel).getByLabelText('시작') as HTMLInputElement
+    fireEvent.change(start, { target: { value: '1430' } })
+    expect(within(panel).getByText('14:30 – 15:00')).toBeTruthy()
+    expect(screen.getByText('새 예약 14:30–15:00')).toBeTruthy()
+    fireEvent.blur(start)
+    expect(start.value).toBe('14:30')
+    fillBasics(panel)
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(addAppt).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(addAppt).mock.calls[0]![1]).toMatchObject({ day: TODAY, start: 870, len: 10 })
+  })
+
+  it("AC-6002.3: 못 읽는 글이면 '새 예약' 칸은 마지막 시각 그대로, 저장 줄 맨 앞이 '시작'이고 [저장]이 막힌다. 벗어나면 오류 글", async () => {
+    await open()
+    const panel = openAdd()
+    fillBasics(panel)
+    const start = within(panel).getByLabelText('시작') as HTMLInputElement
+    fireEvent.change(start, { target: { value: '1435' } })
+    expect(screen.getByText('새 예약 10:50–11:00')).toBeTruthy()
+    expect(panel.querySelector('[data-need]')?.textContent).toBe('시작 칸을 채우면 저장할 수 있어요')
+    expect((within(panel).getByRole('button', { name: '저장' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.blur(start)
+    expect(within(panel).getByText('10분 단위로 적어 주세요 (예: 14:30)')).toBeTruthy()
+    expect(start.getAttribute('aria-invalid')).toBe('true')
+    expect(addAppt).not.toHaveBeenCalled()
+  })
+
+  it('AC-6002.4: 판이 열린 채 예약표 빈 칸을 다시 누르면 시작 글이 그 시각 HH:MM으로 바뀌고 오류가 지워진다', async () => {
+    await open()
+    const panel = openAdd()
+    const start = within(panel).getByLabelText('시작') as HTMLInputElement
+    fireEvent.change(start, { target: { value: 'abc' } })
+    fireEvent.blur(start)
+    expect(within(panel).getByText('시간을 14:30처럼 적어 주세요')).toBeTruthy()
+    fireEvent.click(document.querySelector('[data-slot-day="2026-11-20"]')!, { clientY: 0 })
+    const again = dialog('예약 더하기')
+    const moved = within(again).getByLabelText('시작') as HTMLInputElement
+    expect(moved.value).toBe('08:00')
+    expect((within(again).getByLabelText('날짜') as HTMLInputElement).value).toBe('2026-11-20')
+    expect(within(again).queryByText('시간을 14:30처럼 적어 주세요')).toBeNull()
+    expect(moved.getAttribute('aria-invalid')).toBeNull()
   })
 })
 
@@ -444,7 +493,7 @@ describe('AC-5905.3 자세히 판', () => {
     fireEvent.click(within(dialog('예약')).getByRole('button', { name: '고치기' }))
     const panel = dialog('예약 고치기')
     expect((within(panel).getByLabelText('이름') as HTMLInputElement).value).toBe('김○○')
-    fireEvent.change(within(panel).getByLabelText('시작'), { target: { value: '600' } })
+    fireEvent.change(within(panel).getByLabelText('시작'), { target: { value: '1000' } })
     fireEvent.click(within(panel).getByRole('button', { name: '저장' }))
     await waitFor(() => expect(updateAppt).toHaveBeenCalledTimes(1))
     expect(vi.mocked(updateAppt).mock.calls[0]!.slice(1)).toEqual([
