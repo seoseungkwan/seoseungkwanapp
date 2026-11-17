@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>예약 색 20색 시안</title>
+<style>
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --r: 6px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, 'Malgun Gothic', sans-serif; }
+main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.lead { color: var(--ink-2); margin: 0 0 20px; }
+section { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+h2 { font-size: 16px; margin: 0 0 4px; }
+.sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+/* 설정 줄(실제 CalendarSettings 모양) */
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.in { height: 36px; border: 1px solid var(--line-strong); border-radius: var(--r); padding: 0 10px; background: var(--surface); font: inherit; color: var(--ink); width: 120px; }
+.cbtn { height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid var(--ink); border-radius: var(--r); background: var(--surface); font: inherit; color: var(--ink); }
+.sw { width: 14px; height: 14px; border-radius: 4px; background: var(--c); display: inline-block; }
+.sw.follow { background: conic-gradient(#2563EB 0 25%, #EA580C 0 50%, #65A30D 0 75%, #DB2777 0); }
+.pal { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px; background: var(--canvas); border-radius: var(--r); max-width: 420px; }
+.pc { width: 28px; height: 28px; border-radius: var(--r); border: 2px solid var(--surface); background: var(--c); box-shadow: 0 0 0 1px var(--line-strong); padding: 0; cursor: pointer; }
+.pc[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ink); }
+.pc.new { position: relative; }
+.pf { height: 28px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); font-size: 12px; display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
+.names { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; margin-top: 12px; font-size: 12px; color: var(--ink-2); }
+.names div { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+.names i { width: 28px; height: 28px; border-radius: var(--r); background: var(--c); display: block; }
+.names b { font-weight: 600; color: var(--ink); }
+.names .tag { font-size: 11px; color: var(--muted); }
+.cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.cmp h3 { font-size: 13px; margin: 0 0 6px; color: var(--ink-2); }
+/* 예약 칸(실제 ApptBlock: 13% 옅은 바탕 + 왼쪽 3px 띠 + 안쪽 1px 25% 테두리) */
+.grid { display: grid; grid-template-columns: 52px repeat(5, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.grid .hd { background: var(--canvas); font-size: 12px; font-weight: 600; padding: 6px; border-bottom: 1px solid var(--line); text-align: center; }
+.grid .tm { font-size: 11px; color: var(--muted); padding: 2px 6px; border-right: 1px solid var(--line); }
+.grid .cell { position: relative; border-left: 1px solid var(--line); border-bottom: 1px dashed var(--line); height: 64px; padding: 2px; display: flex; flex-direction: column; gap: 2px; }
+.ev { flex: 1; min-height: 0; border-left: 3px solid var(--c); background: color-mix(in srgb, var(--c) 13%, #fff); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 25%, transparent); border-radius: 4px; font-size: 12px; line-height: 14px; padding: 1px 2px 1px 4px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink); }
+.ev small { color: var(--muted); font-size: 12px; }
+/* 폰 목록(실제 PhoneWeekList: 진한 색 4px 띠) */
+.phone { max-width: 390px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.phone .day { background: var(--canvas); font-weight: 600; font-size: 13px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.phone .it { display: flex; gap: 10px; align-items: stretch; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.phone .bar { width: 4px; border-radius: 4px; background: var(--c); flex-shrink: 0; }
+.phone .t { font-variant-numeric: tabular-nums; color: var(--ink-2); width: 44px; flex-shrink: 0; }
+.note { font-size: 13px; color: var(--ink-2); margin: 8px 0 0; padding-left: 18px; }
+.note li { margin: 2px 0; }
+.tgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 220px)); gap: 12px; }
+.fld { display: grid; gap: 6px; }
+.fld label { font-size: 13px; font-weight: 600; }
+.in2 { height: 40px; border: 1px solid var(--line-strong); border-radius: var(--r); padding: 0 10px; font: inherit; color: var(--ink); background: var(--surface); width: 100%; font-variant-numeric: tabular-nums; }
+.in2.bad { border-color: #DC2626; box-shadow: inset 0 0 0 1px #DC2626; }
+.hint { font-size: 12px; color: var(--muted); }
+.err { font-size: 12px; color: #B91C1C; }
+.ex { border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+.ex th, .ex td { border-bottom: 1px solid var(--line); padding: 6px 12px 6px 0; text-align: left; }
+.ex th { color: var(--muted); font-weight: 600; }
+.col { position: relative; height: 150px; border: 1px solid var(--line); border-radius: 6px; max-width: 220px; background: repeating-linear-gradient(to bottom, var(--line) 0 1px, transparent 1px 60px); }
+.hr { position: absolute; left: -46px; font-size: 11px; color: var(--muted); }
+.cmp .col { margin-left: 46px; }
+.ev2 { position: absolute; left: 1px; border-left: 3px solid var(--c); background: color-mix(in srgb, var(--c) 13%, #fff); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 25%, transparent); border-radius: 4px; font-size: 12px; line-height: 14px; padding: 1px 2px 1px 4px; overflow: hidden; z-index: 1; }
+.ev2 small { color: var(--muted); font-size: 12px; }
+.hov { position: absolute; left: 2px; right: 2px; border: 1px dashed var(--accent); background: color-mix(in srgb, var(--accent) 10%, #fff); border-radius: 4px; font-size: 12px; font-weight: 600; color: #1D4ED8; padding: 1px 6px; text-align: right; }
+.gut { position: absolute; right: -2px; top: 64px; font-size: 11px; color: var(--accent); white-space: nowrap; transform: translateX(100%); padding-left: 4px; }
+@media (max-width: 767.98px) {
+  .gut { transform: none; right: 2px; top: 64px; }
+  .pc { width: 44px; height: 44px; }
+  .pf { height: 44px; }
+  .names { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .cmp { grid-template-columns: 1fr; }
+  .grid { grid-template-columns: 40px repeat(3, minmax(0, 1fr)); }
+  .grid .x { display: none; }
+}
+</style>
+</head>
+<body>
+<main>
+  <h1>예약 색 20색 (시안)</h1>
+  <p class="lead">설정에서 고를 수 있는 색을 10색에서 20색으로 늘립니다. 예약 칸·휴무 칩·폰 목록 띠가 모두 이 색을 씁니다. 숫자·이름은 지어낸 것입니다.</p>
+
+  <section>
+    <h2>① 설정 — 색 고르기</h2>
+    <p class="sub">[설정] → 시행자 줄의 색 단추를 누르면 열리는 색판입니다. 종류 색판은 맨 앞에 '시행자 색 따름'이 하나 더 있습니다.</p>
+    <div class="cmp">
+      <div>
+        <h3>지금 (10색)</h3>
+        <div class="row"><input class="in" value="김가나" aria-label="이름"><input class="in" value="가" style="width:48px" aria-label="표시"><button class="cbtn"><i class="sw" style="--c:#2563EB"></i>파랑 ▾</button></div>
+        <div class="pal" id="pal-old"></div>
+      </div>
+      <div>
+        <h3>바꾼 뒤 (20색)</h3>
+        <div class="row"><input class="in" value="김가나" aria-label="이름"><input class="in" value="가" style="width:48px" aria-label="표시"><button class="cbtn"><i class="sw" style="--c:#2563EB"></i>파랑 ▾</button></div>
+        <div class="pal" id="pal-new"></div>
+      </div>
+    </div>
+    <div style="margin-top:16px">
+      <h3 style="font-size:13px;margin:0 0 6px;color:var(--ink-2)">종류 색판 (바꾼 뒤)</h3>
+      <div class="pal" id="pal-kind"></div>
+    </div>
+    <div class="names" id="names"></div>
+  </section>
+
+  <section>
+    <h2>② 주 보기 — 예약 칸</h2>
+    <p class="sub">20색을 모두 칸에 칠해 본 모습입니다. 칸 글은 색과 상관없이 검정 글자이고, 시행자는 칸 끝 (가)·(나)처럼 글자로도 알려 줍니다.</p>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <section>
+    <h2>③ 폰 주 보기 — 목록 띠</h2>
+    <p class="sub">768px 미만 화면에서는 왼쪽 띠가 그 색입니다.</p>
+    <div class="phone" id="phone"></div>
+  </section>
+
+  <section>
+    <h2>④ 예약 더하기 판 — 시작 시간 쳐서 넣기</h2>
+    <p class="sub">고르기 칸이던 '시작'을 글 칸으로 바꿉니다. 숫자만 쳐도 되고(1430), 눌러서 목록에서 골라도 됩니다.</p>
+    <div class="tgrid">
+      <div class="fld"><label>날짜</label><input class="in2" value="2026-11-24"><span class="hint">11/24 (화)</span></div>
+      <div class="fld"><label>시작</label><input class="in2" value="1430" placeholder="예: 1430"><span class="hint">1430처럼 쳐도 돼요 · 10분 단위</span></div>
+    </div>
+    <table class="ex">
+      <thead><tr><th>이렇게 치면</th><th>들어가는 시간</th></tr></thead>
+      <tbody>
+        <tr><td>1430 · 14:30 · 14시30분 · 14 30</td><td>14:30</td></tr>
+        <tr><td>930 · 9:30</td><td>09:30</td></tr>
+        <tr><td>14 · 14시</td><td>14:00</td></tr>
+        <tr><td>230 (보이는 시간이 9시~19시일 때)</td><td>14:30 — 진료 전 새벽 시간이면 오후로 봐요</td></tr>
+      </tbody>
+    </table>
+    <div class="tgrid" style="margin-top:12px">
+      <div class="fld"><label>시작</label><input class="in2 bad" value="1435"><span class="err">10분 단위로 적어 주세요 (예: 14:30)</span></div>
+      <div class="fld"><label>시작</label><input class="in2 bad" value="25시"><span class="err">시간을 14:30처럼 적어 주세요</span></div>
+    </div>
+    <p class="sub" style="margin-top:8px">잘못 적으면 칸이 빨개지고, 아래 저장 줄은 '시작 칸을 채우면 저장할 수 있어요'가 됩니다. 칸을 벗어나면 14:30 모양으로 바뀝니다.</p>
+  </section>
+
+  <section>
+    <h2>⑤ 같은 시간에 하나 더 — 오른쪽 빈 줄</h2>
+    <p class="sub">예약 칸 폭을 조금 줄여 날 칸 오른쪽에 20px 빈 줄을 늘 남깁니다. 그 줄을 누르면 그 높이 시간으로 더하기 판이 열립니다(마우스를 올리면 그 줄에 점선 칸이 보임, 빈 곳에서는 지금처럼 '+ 10:00'). 예약 칸을 누르면 지금처럼 자세히 판입니다.</p>
+    <div class="cmp">
+      <div>
+        <h3>지금 — 칸이 꽉 차서 위 빈칸을 눌러야 함</h3>
+        <div class="col"><div class="hr" style="top:0">10:00</div><div class="hr" style="top:120px">11:00</div>
+          <div class="ev2" style="--c:#2563EB;top:2px;height:58px;right:1px">1001 김가나 도수 (가) <small>30분</small></div>
+        </div>
+      </div>
+      <div>
+        <h3>바꾼 뒤 — 오른쪽 줄을 누르면 10:00 더하기</h3>
+        <div class="col"><div class="hr" style="top:0">10:00</div><div class="hr" style="top:120px">11:00</div>
+          <div class="hov" style="top:0;height:58px;left:auto;width:16px"></div>
+          <div class="ev2" style="--c:#2563EB;top:2px;height:58px;right:21px">1001 김가나 도수 (가) <small>30분</small></div>
+          <div class="gut">↑ 누르는 곳</div>
+        </div>
+      </div>
+    </div>
+    <div class="cmp" style="margin-top:12px">
+      <div>
+        <h3>두 개가 같은 시간이면 — 나란히, 오른쪽 줄은 그대로</h3>
+        <div class="col"><div class="hr" style="top:0">10:00</div><div class="hr" style="top:120px">11:00</div>
+          <div class="ev2" style="--c:#2563EB;top:2px;height:58px;left:1px;width:calc((100% - 20px) / 2 - 2px)">1001 김가나 도수 (가)</div>
+          <div class="ev2" style="--c:#DC2626;top:2px;height:58px;left:calc((100% - 20px) / 2 + 1px);width:calc((100% - 20px) / 2 - 2px)">1002 이다라 충격파 (나)</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>바뀌는 것 · 그대로인 것</h2>
+    <ul class="note">
+      <li>새 10색: 빨강·노랑·초록·민트·자주·와인·진초록·연보라·산호·검정</li>
+      <li>회색은 맨 끝으로 옮깁니다(지운 종류·시행자의 예약도 회색이라 헷갈리지 않게). 시행자를 새로 더하면 아직 안 쓴 색이 앞에서부터 저절로 골라집니다</li>
+      <li>이미 고른 색은 그대로입니다. 서버 SQL은 필요 없습니다</li>
+      <li>칸 모양(옅은 바탕·왼쪽 띠·글자 색)은 그대로입니다</li>
+    </ul>
+  </section>
+</main>
+<script>
+const OLD = [['파랑','#2563EB'],['청록','#0F766E'],['보라','#7C3AED'],['주황','#EA580C'],['분홍','#DB2777'],['연두','#65A30D'],['남색','#1E3A8A'],['하늘','#0284C7'],['갈색','#92400E'],['회색','#6B7280']]
+const NEW = [['빨강','#DC2626'],['노랑','#CA8A04'],['초록','#22C55E'],['민트','#2DD4BF'],['자주','#D946EF'],['와인','#9F1239'],['진초록','#166534'],['연보라','#A78BFA'],['산호','#FB7185'],['검정','#1F2937']]
+const ALL = [...OLD.slice(0, 9), ...NEW, OLD[9]]
+const isNew = c => NEW.some(n => n[1] === c)
+const btn = ([n, c], on) => `<button class="pc" style="--c:${c}" aria-label="${n}" title="${n}" aria-pressed="${on}"></button>`
+document.getElementById('pal-old').innerHTML = OLD.map((p, i) => btn(p, i === 0)).join('')
+document.getElementById('pal-new').innerHTML = ALL.map((p, i) => btn(p, i === 0)).join('')
+document.getElementById('pal-kind').innerHTML = `<button class="pf" aria-pressed="false"><i class="sw follow"></i>시행자 색 따름</button>` + ALL.map(p => btn(p, false)).join('')
+document.getElementById('names').innerHTML = ALL.map(([n, c]) => `<div><i style="--c:${c}"></i><b>${n}</b>${isNew(c) ? '<span class="tag">새 색</span>' : '<span class="tag">&nbsp;</span>'}</div>`).join('')
+const DAYS = ['11/23 (월)', '11/24 (화)', '11/25 (수)', '11/26 (목)', '11/27 (금)']
+const KINDS = [['도수', 30], ['충격파', 15], ['주사', 10], ['진료', 10], ['자보도수', 30]]
+const MARKS = '가나다라마바사아자차카타파하거너더러머버'
+const NAMES = ['김가나', '이다라', '박마바', '최사아', '정자차', '강카타', '조파하', '윤가다', '장나라', '임마사']
+let g = `<div class="hd"></div>` + DAYS.map((d, i) => `<div class="hd ${i > 2 ? 'x' : ''}">${d}</div>`).join('')
+const TIMES = ['09:00', '10:00', '11:00', '14:00']
+let k = 0
+TIMES.forEach(t => {
+  g += `<div class="tm">${t}</div>`
+  DAYS.forEach((_, di) => {
+    let cell = ''
+    if (k < 20) {
+      const [n, c] = ALL[k], [kind, len] = KINDS[k % 5]
+      cell = `<div class="ev" style="--c:${c}" title="${n}">${1001 + k} ${NAMES[k % 10]} ${kind} (${MARKS[k]}) <small>${len}분</small></div>`
+      k++
+    }
+    g += `<div class="cell ${di > 2 ? 'x' : ''}">${cell}</div>`
+  })
+})
+document.getElementById('grid').innerHTML = g
+let ph = ''
+ALL.forEach(([n, c], i) => {
+  if (i % 5 === 0) ph += `<div class="day">${DAYS[i / 5]}</div>`
+  const [kind, len] = KINDS[i % 5]
+  ph += `<div class="it"><span class="bar" style="--c:${c}"></span><span class="t">${TIMES[i % 4]}</span><span>${1001 + i} ${NAMES[i % 10]} ${kind} (${MARKS[i]}) <span style="color:var(--muted)">${len}분 · ${n}</span></span></div>`
+})
+document.getElementById('phone').innerHTML = ph
+</script>
+</body>
+</html>
