@@ -22,6 +22,14 @@
 //   setLists(picks, { signal })      → POST /api/lists picks → 204 (reception-pick-lists AC-3501.3. 몸은 picks 모양 칸만 담는다)
 //   getPrev(k, { signal })           → GET /api/visit/{k}/prev 답의 prev(지난 내원이 없으면 null) (reception-arrange design.md 9절)
 //   getPapers(k, from, { signal })   → GET /api/visit/{k}/papers?from=N 답 { papers: [prev 모양…], total, next } (reception-memo-papers design.md 4절)
+//   다른 병원용 설정 (reception-other-clinic design.md 1·4절, AC-5708.2). 받은 값은 부른 쪽 메모리에만 둔다(저장소 없음, AC-5708.3)
+//   getSettings({ signal })          → GET /api/settings 답(설정 문서 { rev, logo, tab, setup, nextX, cols, picks })
+//   setSettings(doc, { signal })     → POST /api/settings 설정 문서(그 칸만 담음, 32768바이트까지) → 204면 'ok', 409(다른 기기가 먼저 바꿈)면 'conflict' 글
+//   getCodes({ signal })             → GET /api/codes 답의 codes [{ c, n, v }] (지난 30일 처방, n은 사전에 없으면 null)
+//   getCodeName(code, { signal })    → GET /api/code/{코드} 답의 n(사전 이름, 없으면 null). 코드는 대문자로 바꿔 묻는다
+//   setLogo(bytes, type, { signal }) → POST /api/logo 그림 바이트(Content-Type image/png·image/jpeg, 2097152바이트까지) → 204
+//   getLogo(ver, { signal })         → GET /api/logo 그림 → data: URL("data:image/png;base64,…"). ver(판 cfg.logo.ver)는 부른 쪽이 기억하는 판 번호다
+//   판(getBoard)의 cfg { logo, tab, guide, cols }(AC-5703.1)는 늘 있어야 하고, 어레인지 줄 cells의 열쇠는 cfg.cols 안, picks.extra는 더한 칸만이다(AC-5708.1)
 //   실패는 모두 ApiError이고 reason은 'network'·'timeout'·'status'·'shape'·'aborted'·'input'(묻지 않음) 중 하나다
 
 /** 답(몸까지)을 기다리는 가장 긴 시간 (AC-1407.4) */
@@ -50,14 +58,45 @@ const MARK_AT = /^\d\d:\d\d$/
 /** PC가 정한 저절로 다시 읽는 간격 every(초)가 들어야 할 범위 (AC-1407.4). 간격 자체는 PC 한 곳(ReceptionTiming)이 정한다 */
 const EVERY_RANGE = { min: 2, max: 60 }
 
-/** 어레인지 칸·칸 단계·쓰기 이름 (reception-arrange design.md 7·8절) */
+/** 처음 일곱 칸(reception-arrange design.md 7절)·칸 단계·쓰기 이름 (8절) */
 const ARRANGE_COLS = ['xray', 'sono', 'carm', 'pt', 'ds', 'eswt', 'trac']
 const ARRANGE_STEPS = ['todo', 'ready', 'done']
 const ARRANGE_OPS = ['step', 'set', 'add', 'remove', 'part', 'away', 'ptf', 'end']
 const PTF_STEPS = ['up', 'down']
 
-/** 쓰기 몸 한도: 길마다(도우미 라우터와 같다, reception-pick-lists AC-3502.4) */
-const BODY_MAX = { arrange: 1024, lists: 8192 }
+/** 설정에서 더한 칸 열쇠 x1…x99 (reception-other-clinic AC-5701.2) */
+const ADDED_KEY = /^x[1-9][0-9]?$/
+
+/** 칸은 모두 12개까지 (AC-5701.2) */
+const COLS_MAX = 12
+
+/** 로고 모양·칸 종류·칸 단계 (design.md 1절) */
+const LOGO_MODES = ['pic', 'text', 'none']
+const COL_KINDS = ['rx', 'mn']
+const COL_STEPS = [2, 3]
+
+/** 칸 이름 1~10글자, 로고 글 1~20글자(앞뒤 빈칸을 뺀 글자 수, AC-5701.1·5701.2) */
+const NAME_MAX = 10
+const LOGO_TEXT_MAX = 20
+
+/** 제어 글자 (AC-5701.1). 짝 없는 대리쌍은 wellFormed가 본다(뒤를 보는 정규식은 옛 아이패드 사파리가 읽지 못한다) */
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]/
+
+/** 처방 코드: 대문자로 바꾼 뒤 영문 대문자·숫자·한글·_ 1~16자, 칸마다 40개까지 (AC-5701.3) */
+const CODE = /^[0-9A-Z가-힣_]{1,16}$/
+const CODES_MAX = 40
+
+/** 지난 30일 처방 목록은 200줄까지 (design.md 4절 TOP 200) */
+const RECENT_MAX = 200
+
+/** 로고 그림 형식 → 첫 바이트(PNG 서명 · JPEG FF D8 FF, AC-5706.1) */
+const LOGO_TYPES = new Map([
+  ['image/png', [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
+  ['image/jpeg', [0xff, 0xd8, 0xff]],
+])
+
+/** 쓰기 몸 한도: 길마다(도우미 라우터와 같다, reception-pick-lists AC-3502.4 · reception-other-clinic design.md 4절) */
+const BODY_MAX = { arrange: 1024, lists: 8192, settings: 32768, logo: 2097152 }
 
 /** 직전 진료기록부 날짜 "yyyy-MM-dd" */
 const DAY = /^\d{4}-\d\d-\d\d$/
@@ -142,12 +181,13 @@ export function setXray(k, on, { signal } = {}) {
 /**
  * 어레인지 표시 하나를 쓴다(reception-arrange design.md 8절). 204면 끝난다. 글(v)·이름표(t)가 고르기 목록에 있는지는 도우미가 본다(400).
  * @param {string} k 화면용 열쇠 @param {string} op step·set·add·remove·part·away·ptf·end
- * @param {string} [col] 칸(xray·sono·carm·pt·ds·eswt·trac) @param {string} [v] 글(away는 on·off·clear)
+ * @param {string} [col] 칸(처음 일곱 칸 xray·sono·carm·pt·ds·eswt·trac 또는 더한 칸 x1…, reception-other-clinic AC-5703.4)
+ * @param {string} [v] 글(away는 on·off·clear)
  * @param {string} [t] SONO 같이 하는 것·C-ARM 약재를 "|"로 이은 글(reception-pick-lists AC-3502.3). 빈 글이면 보내지 않는다
  */
 export function setArrange(k, op, col, v, t, { signal } = {}) {
   if (!isKey(k) || !ARRANGE_OPS.includes(op)) return Promise.reject(new ApiError('input'))
-  if ((col !== undefined && !ARRANGE_COLS.includes(col)) || (v !== undefined && typeof v !== 'string')) return Promise.reject(new ApiError('input'))
+  if ((col !== undefined && !isColKey(col)) || (v !== undefined && typeof v !== 'string')) return Promise.reject(new ApiError('input'))
   if (t !== undefined && typeof t !== 'string') return Promise.reject(new ApiError('input'))
   const ask = { k, op }
   if (col !== undefined) ask.col = col
@@ -183,6 +223,144 @@ function write(body, max, signal, post) {
     const res = await post(writeRequest(inner, body))
     if (res.status !== 204) throw new ApiError('status')
   })
+}
+
+// ---- 다른 병원용 설정·처방 목록·로고 (reception-other-clinic design.md 1·4절, AC-5708.2) ------------------------------
+
+/**
+ * 설정 문서 전체를 읽는다(AC-5704.1).
+ * @returns {Promise<object>} { rev, logo, tab, setup, nextX, cols, picks }
+ */
+export function getSettings({ signal } = {}) {
+  return within(signal, async (inner) => {
+    const res = await fetch('/api/settings', request(inner))
+    if (res.status !== 200) throw new ApiError('status')
+    const body = await bodyOf(res)
+    if (!isSettings(body)) throw new ApiError('shape')
+    return body
+  })
+}
+
+/**
+ * 설정 문서 전체를 쓴다(AC-5704.2). 몸은 설정 문서 칸만 담는다(더 붙은 칸은 뺀다). 이름·개수·바꿀 수 없는 것은 도우미가 본다(400).
+ * @param {object} doc getSettings 모양의 문서(rev는 읽은 그대로)
+ * @returns {Promise<'ok' | 'conflict'>} 204면 'ok', 409(그 사이 다른 기기가 바꿈)면 'conflict'
+ */
+export function setSettings(doc, { signal } = {}) {
+  if (!isSettings(doc)) return Promise.reject(new ApiError('input'))
+  const body = JSON.stringify(settingsBody(doc))
+  if (new TextEncoder().encode(body).length > BODY_MAX.settings) return Promise.reject(new ApiError('input'))
+  return within(signal, async (inner) => {
+    const res = await fetch('/api/settings', writeRequest(inner, body))
+    if (res.status === 204) return 'ok'
+    if (res.status === 409) return 'conflict'
+    throw new ApiError('status')
+  })
+}
+
+/**
+ * 지난 30일 처방 목록을 읽는다(AC-5705.1, 내원 많은 순).
+ * @returns {Promise<{ c: string, n: string | null, v: number }[]>}
+ */
+export function getCodes({ signal } = {}) {
+  return within(signal, async (inner) => {
+    const res = await fetch('/api/codes', request(inner))
+    if (res.status !== 200) throw new ApiError('status')
+    const body = await bodyOf(res)
+    if (!isObject(body) || !Array.isArray(body.codes) || body.codes.length > RECENT_MAX || !body.codes.every(isRecentCode)) throw new ApiError('shape')
+    return body.codes
+  })
+}
+
+/**
+ * 직접 넣는 코드 하나의 사전 이름을 읽는다(AC-5705.3). 코드는 앞뒤 빈칸을 빼고 대문자로 바꿔 묻는다.
+ * @param {string} code
+ * @returns {Promise<string | null>} 사전에 없으면 null
+ */
+export function getCodeName(code, { signal } = {}) {
+  const c = typeof code === 'string' ? code.trim().toUpperCase() : ''
+  if (!CODE.test(c)) return Promise.reject(new ApiError('input'))
+  return within(signal, async (inner) => {
+    const res = await fetch(`/api/code/${encodeURIComponent(c)}`, request(inner))
+    if (res.status !== 200) throw new ApiError('status')
+    const body = await bodyOf(res)
+    if (!isObject(body) || typeof body.c !== 'string' || !(body.n === null || typeof body.n === 'string')) throw new ApiError('shape')
+    return body.n
+  })
+}
+
+/**
+ * 병원 로고 그림을 올린다(AC-5706.1). 줄이기는 부른 쪽(settings.js)이 이미 했다. 서명·그림 크기는 도우미가 본다(400).
+ * @param {ArrayBuffer | ArrayBufferView} bytes 그림 바이트(1~2097152바이트) @param {'image/png' | 'image/jpeg'} type
+ */
+export function setLogo(bytes, type, { signal } = {}) {
+  const body = bytesOf(bytes)
+  if (body === null || body.byteLength === 0 || body.byteLength > BODY_MAX.logo || !LOGO_TYPES.has(type)) return Promise.reject(new ApiError('input'))
+  return within(signal, async (inner) => {
+    const res = await fetch(
+      '/api/logo',
+      request(inner, { method: 'POST', headers: { 'Content-Type': type, 'X-Reception': '1' }, referrerPolicy: 'same-origin', body }),
+    )
+    if (res.status !== 204) throw new ApiError('status')
+  })
+}
+
+/**
+ * 병원 로고 그림을 읽어 data: URL로 돌려준다(AC-5706.2·5709.1). 부른 쪽이 ver별로 메모리에 하나 두고 ver가 바뀔 때만 다시 부른다.
+ * @param {number} ver 판 cfg.logo.ver(1 이상)
+ * @returns {Promise<string>} "data:image/png;base64,…" 또는 "data:image/jpeg;base64,…"
+ */
+export function getLogo(ver, { signal } = {}) {
+  if (!Number.isSafeInteger(ver) || ver < 1) return Promise.reject(new ApiError('input'))
+  return within(signal, async (inner) => {
+    const res = await fetch('/api/logo', request(inner))
+    if (res.status !== 200) throw new ApiError('status')
+    const type = (res.headers.get('Content-Type') ?? '').split(';')[0].trim().toLowerCase()
+    const head = LOGO_TYPES.get(type)
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    if (!head || bytes.length === 0 || bytes.length > BODY_MAX.logo || !head.every((b, i) => bytes[i] === b)) throw new ApiError('shape')
+    return `data:${type};base64,${base64Of(bytes)}`
+  })
+}
+
+/** 올릴 그림 바이트: ArrayBuffer·ArrayBufferView만(글·배열은 아님) */
+function bytesOf(bytes) {
+  if (bytes instanceof ArrayBuffer) return new Uint8Array(bytes)
+  if (ArrayBuffer.isView(bytes)) return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  return null
+}
+
+/** 바이트 → base64 (큰 그림도 한 번에 String.fromCharCode 인자가 넘치지 않게 나눠 바꾼다) */
+function base64Of(bytes) {
+  let text = ''
+  for (let at = 0; at < bytes.length; at += 0x8000) text += String.fromCharCode(...bytes.subarray(at, at + 0x8000))
+  return btoa(text)
+}
+
+/** 설정 문서 몸: 정해 둔 칸만 담는다(rule은 xray 칸에만) */
+function settingsBody(doc) {
+  const { rev, logo, tab, setup, nextX, cols, picks } = doc
+  return {
+    rev,
+    logo: { mode: logo.mode, text: logo.text, ver: logo.ver },
+    tab,
+    setup: { logo: setup.logo, tab: setup.tab, done: setup.done },
+    nextX,
+    cols: cols.map(({ k, name, kind, steps, show, added, rule, codes }) => ({ k, name, kind, steps, show, added, ...(k === 'xray' ? { rule } : {}), codes })),
+    picks: { ...picksBody(picks), extra: Object.fromEntries(Object.keys(picks.extra).map((k) => [k, picks.extra[k]])) },
+  }
+}
+
+/** 고르기 목록 몸: picks 모양 칸만 담는다 */
+function picksBody({ carm, sono, pt, ds, eswt, trac }) {
+  return {
+    carm: { procs: carm.procs.map(({ n, noDrug }) => ({ n, noDrug })), drugs: carm.drugs },
+    sono: { parts: sono.parts, plains: sono.plains, withs: sono.withs },
+    pt,
+    ds,
+    eswt: { hits: eswt.hits, counts: eswt.counts },
+    trac,
+  }
 }
 
 /**
@@ -268,25 +446,161 @@ function isKey(k) {
   return typeof k === 'string' && KEY.test(k)
 }
 
-/** GET /api/board 200 모양 (design.md 4절, BoardModel.cs ToJson) */
+/**
+ * GET /api/board 200 모양 (design.md 4절, BoardModel.cs ToJson). cfg는 늘 있어야 하고(reception-other-clinic AC-5708.1),
+ * 어레인지 줄 cells의 열쇠는 cfg.cols 안, picks.extra(없어도 됨)의 열쇠는 cfg의 더한 칸이다
+ */
 function isBoard(b) {
   if (!isObject(b) || b.state !== 'ok' || typeof b.at !== 'string' || !AT.test(b.at)) return false
   if (!isEvery(b.every)) return false
+  if (!isCfg(b.cfg)) return false
   if (!isObject(b.counts) || !isObject(b.lists)) return false
-  if (b.arrange !== undefined && !isArrange(b.arrange)) return false
-  if (b.picks !== undefined && !isPicks(b.picks)) return false
+  const keys = new Set(b.cfg.cols.map((col) => col.k))
+  if (b.arrange !== undefined && !isArrange(b.arrange, keys)) return false
+  if (b.picks !== undefined && !(isPicks(b.picks) && (b.picks.extra === undefined || isExtra(b.picks.extra, addedKeys(b.cfg.cols), false)))) return false
   return LISTS.every((name) => isCount(b.counts[name]) && Array.isArray(b.lists[name]) && b.lists[name].every(isRow))
 }
 
-/** 판의 arrange 모양 (reception-arrange design.md 7절, ArrangeBuilder) */
-function isArrange(a) {
+/** 판 cfg { logo, tab, guide, cols: [{ k, name, kind, steps, added, empty }] } (AC-5703.1): 보이는 칸 1~12개, 열쇠·이름은 겹치지 않는다 */
+function isCfg(c) {
+  return (
+    isObject(c) &&
+    isLogo(c.logo) &&
+    typeof c.tab === 'boolean' &&
+    typeof c.guide === 'boolean' &&
+    Array.isArray(c.cols) &&
+    c.cols.length >= 1 &&
+    c.cols.length <= COLS_MAX &&
+    c.cols.every((col) => isColBase(col) && typeof col.empty === 'boolean') &&
+    unique(c.cols.map((col) => col.k)) &&
+    unique(c.cols.map((col) => col.name.trim()))
+  )
+}
+
+/** 로고 { mode, text, ver } (AC-5701.1): text는 null 또는 1~20글자, mode가 text면 null이 아니다 */
+function isLogo(l) {
+  return (
+    isObject(l) &&
+    LOGO_MODES.includes(l.mode) &&
+    isCount(l.ver) &&
+    (l.text === null || isText(l.text, LOGO_TEXT_MAX)) &&
+    (l.mode !== 'text' || l.text !== null)
+  )
+}
+
+/** 판·설정 공통 칸 { k, name, kind, steps, added } (AC-5701.2): 처음 일곱 칸은 added 거짓, 더한 칸(x1…)은 참 */
+function isColBase(col) {
+  return (
+    isObject(col) &&
+    isColKey(col.k) &&
+    isText(col.name, NAME_MAX) &&
+    !col.name.includes('|') &&
+    COL_KINDS.includes(col.kind) &&
+    COL_STEPS.includes(col.steps) &&
+    col.added === ADDED_KEY.test(col.k)
+  )
+}
+
+/** 칸 열쇠: 처음 일곱 칸 또는 더한 칸 x1…x99 */
+function isColKey(k) {
+  return typeof k === 'string' && (ARRANGE_COLS.includes(k) || ADDED_KEY.test(k))
+}
+
+/** 글: 앞뒤 빈칸을 뺀 1~max글자(코드 포인트), 제어 글자·짝 없는 대리쌍 없음 */
+function isText(text, max) {
+  if (typeof text !== 'string' || CONTROL.test(text) || !wellFormed(text)) return false
+  const length = [...text.trim()].length
+  return length >= 1 && length <= max
+}
+
+/** 짝 없는 대리쌍(깨진 글자)이 없다 */
+function wellFormed(text) {
+  for (let i = 0; i < text.length; i += 1) {
+    const unit = text.charCodeAt(i)
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const next = text.charCodeAt(i + 1)
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return false
+      i += 1
+    } else if (unit >= 0xdc00 && unit <= 0xdfff) return false
+  }
+  return true
+}
+
+function unique(list) {
+  return new Set(list).size === list.length
+}
+
+/** 칸 목록의 더한 칸 열쇠 */
+function addedKeys(cols) {
+  return cols.filter((col) => col.added === true).map((col) => col.k)
+}
+
+/**
+ * picks.extra { 더한 칸 열쇠: 이름 목록 } (AC-5701.4·5703.6). 판은 보이는 더한 칸 안이면 되고(exact 거짓),
+ * 설정 문서는 더한 칸 열쇠와 정확히 같아야 한다(exact 참)
+ */
+function isExtra(extra, keys, exact) {
+  if (!isObject(extra)) return false
+  const names = Object.keys(extra)
+  if (!names.every((k) => keys.includes(k) && isTexts(extra[k]))) return false
+  return !exact || names.length === keys.length
+}
+
+/** 판의 arrange 모양 (reception-arrange design.md 7절, ArrangeBuilder). 줄 cells의 열쇠는 keys(cfg.cols) 안이다 */
+function isArrange(a, keys) {
   return (
     isObject(a) &&
     Array.isArray(a.rows) &&
-    a.rows.every(isArrangeRow) &&
+    a.rows.every((row) => isArrangeRow(row, keys)) &&
     Array.isArray(a.ended) &&
     a.ended.every(isEnded)
   )
+}
+
+/**
+ * 설정 문서 (design.md 1절, AC-5701.1~4): 처음 일곱 칸이 모두 한 번씩, 더한 칸 열쇠는 nextX보다 작고, 칸은 12개까지·보이는 칸 1개 이상,
+ * rule은 xray 칸에만, codes는 칸마다 40개까지(한 칸 안에서 겹치지 않음), picks.extra는 더한 칸 열쇠와 정확히 같다
+ */
+function isSettings(d) {
+  return (
+    isObject(d) &&
+    isCount(d.rev) &&
+    isLogo(d.logo) &&
+    typeof d.tab === 'boolean' &&
+    isObject(d.setup) &&
+    typeof d.setup.logo === 'boolean' &&
+    typeof d.setup.tab === 'boolean' &&
+    typeof d.setup.done === 'boolean' &&
+    isCount(d.nextX) &&
+    Array.isArray(d.cols) &&
+    d.cols.length <= COLS_MAX &&
+    d.cols.every((col) => isSettingsCol(col, d.nextX)) &&
+    unique(d.cols.map((col) => col.k)) &&
+    unique(d.cols.map((col) => col.name.trim())) &&
+    ARRANGE_COLS.every((k) => d.cols.some((col) => col.k === k)) &&
+    d.cols.some((col) => col.show) &&
+    isPicks(d.picks) &&
+    isExtra(d.picks.extra, addedKeys(d.cols), true)
+  )
+}
+
+/** 설정 칸 하나 { k, name, kind, steps, show, added, rule(xray만), codes } */
+function isSettingsCol(col, nextX) {
+  return (
+    isColBase(col) &&
+    typeof col.show === 'boolean' &&
+    (col.k === 'xray' ? typeof col.rule === 'boolean' : col.rule === undefined) &&
+    (!col.added || Number(col.k.slice(1)) < nextX) &&
+    Array.isArray(col.codes) &&
+    col.codes.length <= CODES_MAX &&
+    col.codes.every((code) => typeof code === 'string' && CODE.test(code)) &&
+    unique(col.codes)
+  )
+}
+
+/** 지난 30일 처방 한 줄 { c, n, v } */
+function isRecentCode(r) {
+  return isObject(r) && typeof r.c === 'string' && CODE.test(r.c) && (r.n === null || typeof r.n === 'string') && isCount(r.v)
 }
 
 /** 끝난 줄 { k, endedAt, paid }: paid는 참·거짓·없음, endedAt은 "HH:MM"이고 수납완료로 빠진 줄(paid)만 null도 된다(AC-3308.15) */
@@ -296,8 +610,11 @@ function isEnded(e) {
   return isMark(e.endedAt) || (e.paid === true && e.endedAt === null)
 }
 
-/** 어레인지 줄 { k, away, back, backWait, ptf, last, cells, allDone }: back은 돌아온 시:분, backWait는 "12분째" 같은 글 (reception-arrange-tune AC-3602.4) */
-function isArrangeRow(r) {
+/**
+ * 어레인지 줄 { k, away, back, backWait, ptf, last, cells, allDone }: back은 돌아온 시:분, backWait는 "12분째" 같은 글 (reception-arrange-tune AC-3602.4).
+ * cells의 열쇠는 keys(판 cfg.cols의 k) 안이다(숨긴 칸·지운 칸 열쇠 없음, reception-other-clinic AC-5703.2)
+ */
+function isArrangeRow(r, keys) {
   return (
     isObject(r) &&
     isKey(r.k) &&
@@ -307,7 +624,7 @@ function isArrangeRow(r) {
     (r.ptf === null || (isObject(r.ptf) && PTF_STEPS.includes(r.ptf.st) && isMark(r.ptf.at))) &&
     typeof r.last === 'string' &&
     isObject(r.cells) &&
-    ARRANGE_COLS.every((col) => r.cells[col] === undefined || r.cells[col] === null || isCell(r.cells[col])) &&
+    Object.keys(r.cells).every((col) => keys.has(col) && (r.cells[col] === null || isCell(r.cells[col]))) &&
     typeof r.allDone === 'boolean'
   )
 }

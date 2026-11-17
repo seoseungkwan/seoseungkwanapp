@@ -67,6 +67,9 @@ interface FakeHistory {
 interface DetailOptions {
   today?: Date
   onMore?: (next: number) => unknown
+  /** 판의 cfg.logo와 받아 둔 로고 그림 { ver, src } (reception-other-clinic AC-5709.1) */
+  logo?: unknown
+  logoPic?: unknown
 }
 
 /** 지난 진료기록부를 채울 때의 값: [더 보기]가 다음 쪽을 읽는 콜백 (reception-memo-papers) */
@@ -380,13 +383,11 @@ describe('detail.js 상세 그리기 (폰)', () => {
 
     const top = page.querySelector('header.top.is-detail')
     expect(shapeOf(top)).toEqual(['div.top-row', 'div.patient'])
-    expect(shapeOf(top?.querySelector('.top-row'))).toEqual(['a.back', 'img.logo-mark'])
+    // 로고를 넘기지 않으면(cfg.logo 없음) 작은 로고 자리가 없다. 로고 세 모양은 아래 REQ-5709 시험 (reception-other-clinic AC-5709.1)
+    expect(shapeOf(top?.querySelector('.top-row'))).toEqual(['a.back'])
     const back = top?.querySelector('.top-row > a.back')
     expect(back?.getAttribute('href')).toBe('#/')
     expect(back?.textContent?.trim()).toBe('접수 현황')
-    const logo = top?.querySelector('.top-row > img.logo-mark')
-    expect(logo?.getAttribute('src')).toBe('/logo-mark.png')
-    expect(logo?.getAttribute('alt')).toBe('양지바른정형외과')
 
     const patient = top?.querySelector('.patient')
     expect(shapeOf(patient)).toEqual(['div.name-line', 'div.status-line', 'div.memo'])
@@ -1215,5 +1216,63 @@ describe('REQ-1503 메모 크게 · 신환 눈에 띄게 (detail.js 머리, 승�
     expect(kvOf(paperOf(app))[1]).toEqual([KV_LABELS[1], '가상환자01 (M/37)'])
     expect(textsOf(paperOf(app), '.visit-line > span').at(-1)).toBe('국민건강보험(신환)')
     expect(paperOf(app)?.querySelector('.new-badge')).toBeNull()
+  })
+})
+
+describe('REQ-5709 상세 머리의 작은 로고 (detail.js, reception-other-clinic)', () => {
+  const PIC = { mode: 'pic', text: null, ver: 2 }
+
+  it('AC-5709.1: 상세 머리의 작은 로고도 cfg.logo 규칙이다: pic이고 그 ver 그림이 있으면 img.logo-mark(data: URL), text면 span.logo-text(글 마디), none·그림 없음이면 자리가 없다', () => {
+    const src = fx.fakeLogoUrl()
+    const cases: Array<[string, DetailOptions, string[]]> = [
+      ['pic', { logo: PIC, logoPic: { ver: 2, src } }, ['a.back', 'img.logo-mark']],
+      ['pic 다른 ver', { logo: PIC, logoPic: { ver: 1, src } }, ['a.back']],
+      ['pic 그림 없음', { logo: PIC }, ['a.back']],
+      ['pic 바깥 주소', { logo: PIC, logoPic: { ver: 2, src: 'https://example.invalid/a.png' } }, ['a.back']],
+      ['text', { logo: { mode: 'text', text: '가나다<i>의원</i>', ver: 0 } }, ['a.back', 'span.logo-text']],
+      ['none', { logo: { mode: 'none', text: '가나다의원', ver: 2 }, logoPic: { ver: 2, src } }, ['a.back']],
+    ]
+    for (const [name, options, shape] of cases) {
+      const app = appHost()
+      const page = view.renderDetail(app, mockupRow(), mockupHistory(), { today: TODAY, ...options })
+      const row = page.querySelector('header.top.is-detail > .top-row')
+      expect(shapeOf(row), name).toEqual(shape)
+      if (name === 'pic') {
+        const img = row!.querySelector('img.logo-mark')!
+        expect(img.getAttribute('src')).toBe(src)
+        expect(img.getAttribute('alt')).toBe('병원 로고')
+      }
+      if (name === 'text') expect([...row!.querySelector('span.logo-text')!.childNodes].map((n) => [n.nodeType, n.textContent])).toEqual([[Node.TEXT_NODE, '가나다<i>의원</i>']])
+      expect(page.innerHTML, name).not.toMatch(/logo-wordmark|logo-mark\.png/)
+      expect(page.textContent, name).not.toContain('양지바른정형외과')
+      app.remove()
+    }
+  })
+
+  it('AC-5709.1: 목록을 다시 읽어 updateDetail(host, row, { logo, logoPic })을 부르면 머리의 작은 로고도 그 값으로 바뀐다(그림이 늦게 오면 그때 보인다, 환자 머리·종이는 그대로 바꾸는 규칙)', () => {
+    const app = appHost()
+    const row = mockupRow()
+    view.renderDetail(app, row, mockupHistory(), { today: TODAY, logo: PIC })
+    expect(shapeOf(app.querySelector('.top-row'))).toEqual(['a.back'])
+    const back = app.querySelector('.top-row > a.back')
+    expect(view.updateDetail(app, row, { logo: PIC, logoPic: { ver: 2, src: fx.fakeLogoUrl('jpeg') } })).toBe(true)
+    expect(shapeOf(app.querySelector('.top-row'))).toEqual(['a.back', 'img.logo-mark'])
+    expect(app.querySelector('.top-row > a.back')).toBe(back)
+    expect(app.querySelector('img.logo-mark')?.getAttribute('src')).toBe(fx.fakeLogoUrl('jpeg'))
+    view.updateDetail(app, row, { logo: { mode: 'text', text: '가나다의원', ver: 2 } })
+    expect(shapeOf(app.querySelector('.top-row'))).toEqual(['a.back', 'span.logo-text'])
+    view.updateDetail(app, row, { logo: { mode: 'none', text: null, ver: 2 } })
+    expect(shapeOf(app.querySelector('.top-row'))).toEqual(['a.back'])
+    // 옵션 없이 부르면(옛 부름) 로고는 그대로 둔다
+    view.updateDetail(app, row, { logo: PIC, logoPic: { ver: 2, src: fx.fakeLogoUrl() } })
+    view.updateDetail(app, row)
+    expect(shapeOf(app.querySelector('.top-row'))).toEqual(['a.back', 'img.logo-mark'])
+  })
+
+  it('AC-5709.4: 태블릿 오른쪽 칸(detailPane)에는 로고가 없다(목록 머리에 있다)', () => {
+    const nodes = view.detailPane(mockupRow(), mockupHistory(), { today: TODAY, logo: PIC, logoPic: { ver: 2, src: fx.fakeLogoUrl() } })
+    const box = document.createElement('div')
+    box.append(...nodes)
+    expect(box.querySelector('img, .logo-text')).toBeNull()
   })
 })

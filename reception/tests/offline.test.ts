@@ -12,6 +12,8 @@ import * as fx from './fixtures'
 interface OfflineJs {
   renderOffline: (host: HTMLElement, options?: { lastAt?: string | null; every?: unknown }) => HTMLElement
   renderLoading: (host: HTMLElement) => HTMLElement
+  /** 끊김 화면에 그릴 앞 판의 로고(cfg.logo, 받아 둔 그림 { ver, src }). null이면 잊는다 (reception-other-clinic AC-5709.4) */
+  rememberLogo?: (logo: unknown, pic?: unknown) => void
 }
 
 interface BoardJs {
@@ -97,10 +99,8 @@ describe('offline.js 연결 끊김 화면', () => {
     expect(textOf(page, 'span.conn.is-off')).toBe('연결 끊김')
 
     const main = page.querySelector('main.off')
-    expect(shapeOf(main)).toEqual(['img.off-logo', 'h2.off-heading', 'p.off-lead', 'p.off-sub', 'div.off-status'])
-    const logo = main?.querySelector('img.off-logo')
-    expect(logo?.getAttribute('src')).toBe('/logo-wordmark.png')
-    expect(logo?.getAttribute('alt')).toBe('양지바른정형외과')
+    // 앞 판의 로고가 메모리에 없으면 로고 없이 시안 글만이다(우리 의원 로고 그림을 쓰지 않음, reception-other-clinic AC-5709.4)
+    expect(shapeOf(main)).toEqual(['h2.off-heading', 'p.off-lead', 'p.off-sub', 'div.off-status'])
     expect(textOf(page, 'h2.off-heading')).toBe('지금 볼 수 없어요')
     expect(textOf(page, 'p.off-lead')).toBe(LEAD)
     expect(textOf(page, 'p.off-sub')).toBe(SUB)
@@ -182,7 +182,7 @@ describe('offline.js 불러오는 중 화면', () => {
     expect(page.className).toBe('page off-page')
     expect(shapeOf(page)).toEqual(['header.top.is-offline', 'main.off'])
     expect(shapeOf(page.querySelector('header.top'))).toEqual(['h1.off-title'])
-    expect(shapeOf(page.querySelector('main.off'))).toEqual(['img.off-logo', 'p.off-lead'])
+    expect(shapeOf(page.querySelector('main.off'))).toEqual(['p.off-lead'])
     expect(textOf(page, 'h1.off-title')).toBe('접수 현황')
     expect(textOf(page, 'p.off-lead')).toBe('불러오는 중이에요')
     expect(app.querySelector('button, a')).toBeNull()
@@ -192,5 +192,68 @@ describe('offline.js 불러오는 중 화면', () => {
     const first = doc.querySelector('#app')
     expect(first).not.toBeNull()
     expect(squash(app.innerHTML)).toBe(squash(first!.innerHTML))
+  })
+})
+
+describe('offline.js 로고 (reception-other-clinic AC-5709.4)', () => {
+  const PIC = { mode: 'pic', text: null, ver: 5 }
+
+  it('AC-5709.4: 불러오는 중 화면·index.html 처음 화면에는 로고가 없고, 우리 의원 로고 그림과 "양지바른정형외과" 글이 없다', () => {
+    const app = appHost()
+    off.rememberLogo?.(PIC, { ver: 5, src: fx.fakeLogoUrl() })
+    const page = off.renderLoading(app)
+    expect(page.querySelector('img, .logo-text')).toBeNull()
+    const html = readFileSync(path.join(ROOT, 'reception', 'www', 'index.html'), 'utf8')
+    for (const text of [html, app.innerHTML, readFileSync(path.join(ROOT, 'reception', 'www', 'offline.js'), 'utf8')]) {
+      expect(text).not.toMatch(/logo-wordmark|logo-mark\.png/)
+      expect(text).not.toContain('양지바른정형외과')
+    }
+    expect(new DOMParser().parseFromString(html, 'text/html').querySelector('#app img')).toBeNull()
+    off.rememberLogo?.(null)
+  })
+
+  it('AC-5709.4: 끊김 화면은 앞 판의 로고가 메모리에 있으면 그것을 맨 위에 그린다(pic이고 그 ver 그림 → img.off-logo data: URL, text → span.logo-text). 없거나 none이면 로고 없이 시안 글만이다', () => {
+    expect(typeof off.rememberLogo).toBe('function')
+    const app = appHost()
+    const src = fx.fakeLogoUrl()
+    off.rememberLogo?.(PIC, { ver: 5, src })
+    let page = off.renderOffline(app, { lastAt: '13:42', every: 5 })
+    expect(shapeOf(page.querySelector('main.off'))).toEqual(['img.off-logo', 'h2.off-heading', 'p.off-lead', 'p.off-sub', 'div.off-status'])
+    expect(page.querySelector('img.off-logo')?.getAttribute('src')).toBe(src)
+    expect(page.querySelector('img.off-logo')?.getAttribute('alt')).toBe('병원 로고')
+
+    off.rememberLogo?.({ mode: 'text', text: '가나다<b>의원</b>', ver: 0 }, null)
+    page = off.renderOffline(app, { lastAt: '13:42', every: 5 })
+    expect(shapeOf(page.querySelector('main.off'))).toEqual(['span.logo-text', 'h2.off-heading', 'p.off-lead', 'p.off-sub', 'div.off-status'])
+    expect(textOf(page, 'main.off > span.logo-text')).toBe('가나다<b>의원</b>')
+    expect(page.querySelector('b')).toBeNull()
+
+    for (const [logo, pic] of [
+      [{ mode: 'none', text: null, ver: 5 }, { ver: 5, src }],
+      [PIC, { ver: 4, src }],
+      [PIC, { ver: 5, src: '/logo-wordmark.png' }],
+      [PIC, null],
+    ] as const) {
+      off.rememberLogo?.(logo, pic)
+      // 앞 화면이 끊김 화면이 아니어야 앞 로고를 이어 쓰지 않는다
+      off.renderLoading(app)
+      page = off.renderOffline(app, { lastAt: '13:42', every: 5 })
+      expect(shapeOf(page.querySelector('main.off')), JSON.stringify([logo, pic])).toEqual(['h2.off-heading', 'p.off-lead', 'p.off-sub', 'div.off-status'])
+    }
+    off.rememberLogo?.(null)
+  })
+
+  it('AC-5709.4 · AC-5708.3: 끊김 뒤 지우기(rememberLogo(null), app.js wipe)로 메모리를 비워도 그려 둔 끊김 화면을 다시 그리면(다시 확인 실패마다) 같은 로고를 이어 쓴다. 불러오는 중을 거치면 로고가 없다', () => {
+    const app = appHost()
+    const src = fx.fakeLogoUrl('jpeg')
+    off.rememberLogo?.(PIC, { ver: 5, src })
+    off.renderOffline(app, { lastAt: '13:42', every: 5 })
+    off.rememberLogo?.(null)
+    const again = off.renderOffline(app, { lastAt: '13:42', every: 5 })
+    expect(again.querySelector('main.off > img.off-logo')?.getAttribute('src')).toBe(src)
+    expect(app.querySelectorAll('.page').length).toBe(1)
+    off.renderLoading(app)
+    const later = off.renderOffline(app, { lastAt: '13:42', every: 5 })
+    expect(later.querySelector('img, .logo-text')).toBeNull()
   })
 })

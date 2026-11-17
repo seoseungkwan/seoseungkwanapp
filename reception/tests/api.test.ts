@@ -1018,3 +1018,490 @@ describe('api.js getPapers', () => {
     expect(calls).toEqual([])
   })
 })
+
+// ---- 다른 병원용: 판 cfg · 설정 · 처방 목록 · 로고 (reception-other-clinic REQ-5708, design.md 3·4절) ------------------------
+
+type SettingsResult = 'ok' | 'conflict'
+
+interface OtherApi {
+  getSettings?: (options?: { signal?: AbortSignal }) => Promise<unknown>
+  setSettings?: (doc: unknown, options?: { signal?: AbortSignal }) => Promise<SettingsResult>
+  getCodes?: (options?: { signal?: AbortSignal }) => Promise<unknown>
+  getCodeName?: (code: unknown, options?: { signal?: AbortSignal }) => Promise<unknown>
+  setLogo?: (bytes: unknown, type: unknown, options?: { signal?: AbortSignal }) => Promise<void>
+  getLogo?: (ver: unknown, options?: { signal?: AbortSignal }) => Promise<unknown>
+  setArrange?: (k: string, op: string, col?: string, v?: string, t?: string, options?: { signal?: AbortSignal }) => Promise<void>
+}
+
+/** 아직 없으면(RED) 늘 실패하는 대역 */
+function otherApi(): Required<OtherApi> {
+  const more = api as unknown as OtherApi
+  const fail = () => Promise.reject(new Error('없음'))
+  return {
+    getSettings: more.getSettings ?? fail,
+    setSettings: more.setSettings ?? fail,
+    getCodes: more.getCodes ?? fail,
+    getCodeName: more.getCodeName ?? fail,
+    setLogo: more.setLogo ?? fail,
+    getLogo: more.getLogo ?? fail,
+    setArrange: more.setArrange ?? fail,
+  }
+}
+
+/** 바이트 답(로고 그림) */
+function bytesReply(bytes: Uint8Array<ArrayBuffer>, type: string | null, status = 200): Promise<Response> {
+  return Promise.resolve(new Response(bytes, { status, headers: type === null ? {} : { 'Content-Type': type } }))
+}
+
+function base64Of(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString('base64')
+}
+
+type LooseCells = Record<string, fx.FakeCell | null>
+
+/** 더한 칸 IMS(x1, 직접 칸)를 맨 끝에 보이게 둔 판: cfg.cols·어레인지 줄 칸·picks.extra가 함께 있다 (AC-5703.1·5703.2·5703.6) */
+function boardWithAdded(): fx.FakeBoard {
+  const board = copyOf(fx.arrangeMockupBoard())
+  board.cfg.cols.push({ k: 'x1', name: 'IMS', kind: 'mn', steps: 2, added: true, empty: false })
+  for (const row of board.arrange!.rows) (row.cells as LooseCells).x1 = null
+  ;(board.arrange!.rows[0]!.cells as LooseCells).x1 = fx.fakeCell({ det: '목|허리', manual: true })
+  board.picks!.extra = { x1: ['목', '어깨', '허리', '무릎'] }
+  return board
+}
+
+describe('api.js getBoard의 판 cfg (reception-other-clinic AC-5708.1)', () => {
+  it('AC-5708.1: 판 맨 위 cfg { logo: { mode, text, ver }, tab, guide, cols: [{ k, name, kind, steps, added, empty }] }가 맞으면 판을 그대로 돌려준다(우리 의원 처음 값·새 병원 처음 값·더한 칸·로고 글자·어레인지 탭 꺼짐)', async () => {
+    const ours = fx.withCfg(fx.arrangeMockupBoard(), fx.oursCfg())
+    const fresh = fx.withCfg(fx.mockupBoard(), fx.freshCfg())
+    const text = fx.withCfg(fx.mockupBoard(), { ...fx.oursCfg(), logo: { mode: 'text', text: '가나다정형외과', ver: 0 } })
+    const tabOff = fx.withCfg(fx.mockupBoard(), { ...fx.freshCfg(), tab: false })
+    for (const board of [fx.mockupBoard(), fx.arrangeMockupBoard(), ours, fresh, text, tabOff, boardWithAdded()]) {
+      fakeFetch(() => json(board))
+      await expect(api.getBoard()).resolves.toEqual(board)
+    }
+    expect(fx.oursCfg().logo).toEqual({ mode: 'pic', text: null, ver: 1 })
+    expect(fx.oursCfg().cols.map((c) => [c.k, c.name, c.kind, c.steps, c.added, c.empty])).toEqual([
+      ['xray', 'X-RAY', 'rx', 2, false, false],
+      ['sono', 'SONO', 'rx', 3, false, false],
+      ['carm', 'C-ARM', 'rx', 3, false, false],
+      ['pt', 'PT', 'mn', 2, false, false],
+      ['ds', '도수', 'mn', 2, false, false],
+      ['eswt', '충격파', 'mn', 2, false, false],
+      ['trac', '견인', 'mn', 2, false, false],
+    ])
+    expect([fx.oursCfg().tab, fx.oursCfg().guide, fx.freshCfg().tab, fx.freshCfg().guide, fx.freshCfg().logo.mode]).toEqual([true, false, true, true, 'none'])
+    expect(fx.freshCfg().cols.filter((c) => c.empty).map((c) => c.k)).toEqual(['sono', 'carm'])
+    // 시험 판의 처음 값: 우리 의원 처음 값의 칸, 로고만 없이(로고 그림을 읽지 않는 판)
+    expect(fx.mockupBoard().cfg).toEqual({ ...fx.oursCfg(), logo: { mode: 'none', text: null, ver: 0 } })
+  })
+
+  it('AC-5708.1: cfg가 없거나 모양이 틀리면(로고 모드·글·판 번호, 탭·안내, 칸 열쇠·이름·종류·단계·더한 칸·빈 칸, 겹친 열쇠·이름, 칸 0개·13개) shape 실패다', async () => {
+    type Loose = Record<string, unknown>
+    const more = (n: number) => Array.from({ length: n }, (_, i) => ({ k: `x${i + 1}`, name: `칸${i + 1}`, kind: 'mn' as const, steps: 2 as const, added: true, empty: false }))
+    const bad: Array<[string, (b: fx.FakeBoard) => void]> = [
+      ['cfg 없음', (b) => delete (b as unknown as Loose).cfg],
+      ['cfg null', (b) => ((b as unknown as Loose).cfg = null)],
+      ['cfg 배열', (b) => ((b as unknown as Loose).cfg = [])],
+      ['logo 없음', (b) => delete (b.cfg as unknown as Loose).logo],
+      ['logo 모드', (b) => ((b.cfg.logo as unknown as Loose).mode = 'image')],
+      ['logo 글자 모드인데 글 없음', (b) => (b.cfg.logo = { mode: 'text', text: null, ver: 0 })],
+      ['logo 글 빈 글', (b) => (b.cfg.logo = { mode: 'text', text: '', ver: 0 })],
+      ['logo 글 빈칸만', (b) => (b.cfg.logo = { mode: 'text', text: '   ', ver: 0 })],
+      ['logo 글 21글자', (b) => (b.cfg.logo = { mode: 'text', text: '가'.repeat(21), ver: 0 })],
+      ['logo 글 제어 글자', (b) => (b.cfg.logo = { mode: 'text', text: '가나\u0007다', ver: 0 })],
+      ['logo 글 숫자', (b) => ((b.cfg.logo as unknown as Loose).text = 3)],
+      ['logo 판 번호 음수', (b) => (b.cfg.logo.ver = -1)],
+      ['logo 판 번호 글', (b) => ((b.cfg.logo as unknown as Loose).ver = '1')],
+      ['tab 없음', (b) => delete (b.cfg as unknown as Loose).tab],
+      ['tab 글', (b) => ((b.cfg as unknown as Loose).tab = 'true')],
+      ['guide 없음', (b) => delete (b.cfg as unknown as Loose).guide],
+      ['cols 없음', (b) => delete (b.cfg as unknown as Loose).cols],
+      ['cols 0개', (b) => (b.cfg.cols = [])],
+      ['cols 13개', (b) => (b.cfg.cols = [...b.cfg.cols, ...more(6)])],
+      ['열쇠 모양', (b) => (b.cfg.cols[0]!.k = 'mri')],
+      ['더한 칸 열쇠 x0', (b) => b.cfg.cols.push({ k: 'x0', name: 'IMS', kind: 'mn', steps: 2, added: true, empty: false })],
+      ['더한 칸 열쇠 x100', (b) => b.cfg.cols.push({ k: 'x100', name: 'IMS', kind: 'mn', steps: 2, added: true, empty: false })],
+      ['겹친 열쇠', (b) => (b.cfg.cols[1]!.k = 'xray')],
+      ['겹친 이름', (b) => (b.cfg.cols[1]!.name = 'X-RAY')],
+      ['이름 빈 글', (b) => (b.cfg.cols[0]!.name = '')],
+      ['이름 11글자', (b) => (b.cfg.cols[0]!.name = '가'.repeat(11))],
+      ['이름에 |', (b) => (b.cfg.cols[0]!.name = 'X|RAY')],
+      ['종류', (b) => ((b.cfg.cols[0] as unknown as Loose).kind = 'auto')],
+      ['단계 4', (b) => ((b.cfg.cols[0] as unknown as Loose).steps = 4)],
+      ['처음 칸인데 더한 칸', (b) => (b.cfg.cols[3]!.added = true)],
+      ['더한 칸인데 added 거짓', (b) => b.cfg.cols.push({ k: 'x1', name: 'IMS', kind: 'mn', steps: 2, added: false, empty: false })],
+      ['empty 없음', (b) => delete (b.cfg.cols[0] as unknown as Loose).empty],
+    ]
+    for (const [name, change] of bad) {
+      const board = copyOf(fx.arrangeMockupBoard())
+      change(board)
+      fakeFetch(() => json(board))
+      expect(await reasonOf(api.getBoard()), name).toBe('shape')
+    }
+    // 칸 12개(일곱 + 더한 칸 다섯)까지는 받는다
+    const twelve = copyOf(fx.mockupBoard())
+    twelve.cfg.cols.push(...more(5))
+    fakeFetch(() => json(twelve))
+    await expect(api.getBoard()).resolves.toEqual(twelve)
+  })
+
+  it('AC-5708.1 · AC-5703.2: 어레인지 줄 cells의 열쇠는 cfg.cols의 k 안이어야 한다(더한 칸 x1은 cfg에 있으면 받고, 숨긴 칸·없는 칸 열쇠면 shape 실패)', async () => {
+    fakeFetch(() => json(boardWithAdded()))
+    await expect(api.getBoard()).resolves.toEqual(boardWithAdded())
+    // 견인을 숨긴 판: cfg.cols에 trac이 없으면 cells에도 trac이 없어야 한다
+    const hidden = copyOf(fx.arrangeMockupBoard())
+    hidden.cfg.cols = hidden.cfg.cols.filter((c) => c.k !== 'trac')
+    for (const row of hidden.arrange!.rows) delete (row.cells as LooseCells).trac
+    fakeFetch(() => json(hidden))
+    await expect(api.getBoard()).resolves.toEqual(hidden)
+    const stale = copyOf(hidden)
+    ;(stale.arrange!.rows[1]!.cells as LooseCells).trac = fx.fakeCell({ det: '허리', manual: true })
+    fakeFetch(() => json(stale))
+    expect(await reasonOf(api.getBoard()), '숨긴 칸 열쇠').toBe('shape')
+    const unknown = copyOf(fx.arrangeMockupBoard())
+    ;(unknown.arrange!.rows[0]!.cells as LooseCells).x2 = null
+    fakeFetch(() => json(unknown))
+    expect(await reasonOf(api.getBoard()), 'cfg에 없는 더한 칸 열쇠').toBe('shape')
+  })
+
+  it('AC-5708.1 · AC-5703.6: picks.extra는 없어도 되고, 있으면 더한 칸 열쇠 → 글 목록이어야 한다(아니면 shape 실패)', async () => {
+    type Loose = Record<string, unknown>
+    const bad: Array<[string, (b: fx.FakeBoard) => void]> = [
+      ['extra null', (b) => ((b.picks as unknown as Loose).extra = null)],
+      ['extra 배열', (b) => ((b.picks as unknown as Loose).extra = [])],
+      ['extra 목록이 글', (b) => ((b.picks!.extra as unknown as Loose).x1 = '목')],
+      ['extra 이름이 숫자', (b) => (b.picks!.extra!.x1 = [1 as unknown as string])],
+      ['extra 열쇠가 처음 칸', (b) => (b.picks!.extra!.pt = ['ICE'])],
+      ['extra 열쇠가 cfg에 없음', (b) => (b.picks!.extra!.x2 = ['목'])],
+    ]
+    for (const [name, change] of bad) {
+      const board = boardWithAdded()
+      change(board)
+      fakeFetch(() => json(board))
+      expect(await reasonOf(api.getBoard()), name).toBe('shape')
+    }
+    const empty = boardWithAdded()
+    empty.picks!.extra = { x1: [] }
+    fakeFetch(() => json(empty))
+    await expect(api.getBoard()).resolves.toEqual(empty)
+  })
+
+  it('AC-5708.1 · AC-5703.4: setArrange는 더한 칸 열쇠(x1…)에도 쓴다(목록이 빈 더한 칸의 v "" 포함). 모르는 칸 이름은 보내지 않고 input이다', async () => {
+    fakeFetch(() => Promise.resolve(new Response(null, { status: 204 })))
+    const k = fx.fakeKey(23)
+    await expect(otherApi().setArrange(k, 'add', 'x1', '목|허리')).resolves.toBeUndefined()
+    await otherApi().setArrange(k, 'add', 'x12', '')
+    expect(calls.map((c) => JSON.parse(String(c.init.body)))).toEqual([
+      { k, op: 'add', col: 'x1', v: '목|허리' },
+      { k, op: 'add', col: 'x12', v: '' },
+    ])
+    for (const col of ['mri', 'x0', 'x100', 'X1', '']) expect(await reasonOf(otherApi().setArrange(k, 'add', col, '목')), col).toBe('input')
+    expect(calls.length).toBe(2)
+  })
+})
+
+describe('api.js 설정 읽고 쓰기 (reception-other-clinic AC-5708.2)', () => {
+  it('AC-5708.2: getSettings()는 GET /api/settings 하나(읽기 모양: 같은 곳·쿠키 없음·리퍼러 없음)를 묻고 설정 문서를 그대로 돌려준다(우리 의원·새 병원·더한 칸)', async () => {
+    const added = fx.oursSettings()
+    added.nextX = 2
+    added.cols.push({ k: 'x1', name: 'IMS', kind: 'mn', steps: 2, show: true, added: true, codes: [] })
+    added.picks.extra = { x1: ['목', '어깨'] }
+    for (const doc of [fx.oursSettings(), fx.freshSettings(), added]) {
+      calls = []
+      fakeFetch(() => json(doc))
+      await expect(otherApi().getSettings()).resolves.toEqual(doc)
+      expect(calls.map((c) => [c.url, c.init.method ?? 'GET', c.init.referrerPolicy, c.init.credentials, c.init.mode, c.init.redirect])).toEqual([
+        ['/api/settings', 'GET', 'no-referrer', 'omit', 'same-origin', 'error'],
+      ])
+    }
+    expect(fx.oursSettings().cols.find((c) => c.k === 'sono')?.codes).toEqual(['SONO1', 'SONO', 'EB422', 'EB466', 'HA280'])
+    expect(fx.oursSettings().cols.find((c) => c.k === 'carm')?.codes).toEqual(['CARM1', 'G0400'])
+    expect(fx.oursSettings().cols.find((c) => c.k === 'xray')?.rule).toBe(true)
+    expect(fx.oursSettings().setup).toEqual({ logo: true, tab: true, done: true })
+    expect(fx.freshSettings().setup).toEqual({ logo: false, tab: false, done: false })
+    expect(fx.freshSettings().cols.filter((c) => c.codes.length > 0)).toEqual([])
+  })
+
+  it('AC-5708.2: getSettings 답의 모양이 틀리면(칸 빠짐·처음 일곱 칸 빠짐·겹침·더한 칸 열쇠·rule 자리·codes·picks.extra 열쇠) shape, 200이 아니면 status, 5초 넘으면 timeout이다', async () => {
+    type Loose = Record<string, unknown>
+    const bad: Array<[string, (d: fx.FakeSettings) => void]> = [
+      ['rev 없음', (d) => delete (d as unknown as Loose).rev],
+      ['rev 음수', (d) => (d.rev = -1)],
+      ['logo 모드', (d) => ((d.logo as unknown as Loose).mode = 'big')],
+      ['tab 글', (d) => ((d as unknown as Loose).tab = 'on')],
+      ['setup 없음', (d) => delete (d as unknown as Loose).setup],
+      ['setup.done 없음', (d) => delete (d.setup as unknown as Loose).done],
+      ['nextX 글', (d) => ((d as unknown as Loose).nextX = '1')],
+      ['cols 없음', (d) => delete (d as unknown as Loose).cols],
+      ['처음 칸 빠짐', (d) => (d.cols = d.cols.filter((c) => c.k !== 'eswt'))],
+      ['겹친 열쇠', (d) => (d.cols[1]!.k = 'xray')],
+      ['모르는 열쇠', (d) => (d.cols[6]!.k = 'mri')],
+      ['더한 칸 열쇠가 nextX 이상', (d) => d.cols.push({ k: 'x1', name: 'IMS', kind: 'mn', steps: 2, show: true, added: true, codes: [] })],
+      ['show 없음', (d) => delete (d.cols[0] as unknown as Loose).show],
+      ['xray rule 없음', (d) => delete (d.cols[0] as unknown as Loose).rule],
+      ['다른 칸에 rule', (d) => ((d.cols[1] as unknown as Loose).rule = true)],
+      ['codes 글', (d) => ((d.cols[1] as unknown as Loose).codes = 'SONO1')],
+      ['codes 숫자', (d) => (d.cols[1]!.codes = [1 as unknown as string])],
+      ['picks 없음', (d) => delete (d as unknown as Loose).picks],
+      ['picks.extra 없음', (d) => delete (d.picks as unknown as Loose).extra],
+      ['picks.extra 열쇠가 더한 칸 아님', (d) => (d.picks.extra = { pt: ['ICE'] })],
+      ['picks.pt 글', (d) => ((d.picks as unknown as Loose).pt = 'ICE')],
+    ]
+    for (const [name, change] of bad) {
+      const doc = fx.oursSettings()
+      change(doc)
+      fakeFetch(() => json(doc))
+      expect(await reasonOf(otherApi().getSettings()), name).toBe('shape')
+    }
+    // 더한 칸이 있으면 extra에 그 칸 목록이 있어야 한다
+    const missing = fx.oursSettings()
+    missing.nextX = 2
+    missing.cols.push({ k: 'x1', name: 'IMS', kind: 'mn', steps: 2, show: true, added: true, codes: [] })
+    fakeFetch(() => json(missing))
+    expect(await reasonOf(otherApi().getSettings()), 'extra에 더한 칸 없음').toBe('shape')
+    for (const status of [404, 503]) {
+      fakeFetch(() => json(fx.oursSettings(), status))
+      expect(await reasonOf(otherApi().getSettings()), String(status)).toBe('status')
+    }
+    fakeFetch(never)
+    const late = watch(otherApi().getSettings())
+    await vi.advanceTimersByTimeAsync(5000)
+    expect((late.error as ApiErrorLike)?.reason).toBe('timeout')
+  })
+
+  it('AC-5708.2: setSettings(doc)는 POST /api/settings 하나를 쓰기 모양(X-Reception: 1·JSON·리퍼러 same-origin)으로, 몸은 설정 문서 칸만 담아 보낸다. 204면 ok, 409면 conflict다', async () => {
+    const doc = fx.oursSettings()
+    const loose = {
+      ...copyOf(doc),
+      extraField: 1,
+      logo: { ...doc.logo, big: true },
+      setup: { ...doc.setup, more: 1 },
+      cols: doc.cols.map((c) => ({ ...c, color: 'red' })),
+      picks: { ...copyOf(doc.picks), more: [] },
+    }
+    fakeFetch(() => Promise.resolve(new Response(null, { status: 204 })))
+    await expect(otherApi().setSettings(doc)).resolves.toBe('ok')
+    await expect(otherApi().setSettings(loose)).resolves.toBe('ok')
+    expect(calls.map((c) => c.url)).toEqual(['/api/settings', '/api/settings'])
+    for (const { init } of calls) {
+      expect(JSON.parse(String(init.body))).toEqual(doc)
+      expect(init.method).toBe('POST')
+      expect(new Headers(init.headers).get('X-Reception')).toBe('1')
+      expect(new Headers(init.headers).get('Content-Type')).toBe('application/json')
+      expect(init.referrerPolicy).toBe('same-origin')
+      expect(init.credentials).toBe('omit')
+      expect(init.mode).toBe('same-origin')
+      expect(init.redirect).toBe('error')
+    }
+    // 다른 기기가 먼저 바꿈
+    fakeFetch(() => Promise.resolve(new Response(null, { status: 409 })))
+    await expect(otherApi().setSettings(doc)).resolves.toBe('conflict')
+  })
+
+  it('AC-5708.2: setSettings는 그 밖의 답(200·400·403·413·503)이면 status, 연결 안 됨은 network, 5초 넘으면 timeout, 밖 signal이 끊기면 aborted다', async () => {
+    const doc = fx.freshSettings()
+    for (const status of [200, 400, 403, 413, 503]) {
+      fakeFetch(() => Promise.resolve(new Response(status === 200 ? '{}' : null, { status })))
+      expect(await reasonOf(otherApi().setSettings(doc)), String(status)).toBe('status')
+    }
+    fakeFetch(() => Promise.reject(new TypeError('Failed to fetch')))
+    expect(await reasonOf(otherApi().setSettings(doc))).toBe('network')
+    fakeFetch(never)
+    const late = watch(otherApi().setSettings(doc))
+    await vi.advanceTimersByTimeAsync(5000)
+    expect((late.error as ApiErrorLike)?.reason).toBe('timeout')
+    const controller = new AbortController()
+    const cut = watch(otherApi().setSettings(doc, { signal: controller.signal }))
+    await settle()
+    controller.abort()
+    await settle()
+    expect((cut.error as ApiErrorLike)?.reason).toBe('aborted')
+  })
+
+  it('AC-5708.2: setSettings는 몸이 32768바이트를 넘거나 문서 모양이 틀리면 보내지 않고 input 실패다(32768바이트까지는 보낸다)', async () => {
+    fakeFetch(() => Promise.resolve(new Response(null, { status: 204 })))
+    const fit = fx.oursSettings()
+    const base = new TextEncoder().encode(JSON.stringify(fit)).length
+    // 한글 한 글자 = 3바이트. 부위 이름 하나를 늘려 32768바이트에 딱 맞춘다(따옴표 안 글자만 는다)
+    const room = 32768 - base
+    fit.picks.sono.parts[0] = `${fit.picks.sono.parts[0]!}${'가'.repeat(Math.floor(room / 3))}${'a'.repeat(room % 3)}`
+    expect(new TextEncoder().encode(JSON.stringify(fit)).length).toBe(32768)
+    await expect(otherApi().setSettings(fit)).resolves.toBe('ok')
+    expect(calls.length).toBe(1)
+    const over = copyOf(fit)
+    over.picks.sono.parts[0] = `${over.picks.sono.parts[0]!}a`
+    expect(await reasonOf(otherApi().setSettings(over))).toBe('input')
+    const wrong: unknown[] = [
+      null,
+      [],
+      'doc',
+      { ...fx.oursSettings(), rev: -1 },
+      { ...fx.oursSettings(), cols: [] },
+      { ...fx.oursSettings(), picks: fx.defaultPicks() },
+    ]
+    for (const [i, doc] of wrong.entries()) expect(await reasonOf(otherApi().setSettings(doc)), String(i)).toBe('input')
+    expect(calls.length).toBe(1)
+  })
+})
+
+describe('api.js 지난 30일 처방 목록 (reception-other-clinic AC-5708.2)', () => {
+  it('AC-5708.2: getCodes()는 GET /api/codes 하나를 묻고 codes [{ c, n, v }](이름 없음 null 포함)를 돌려준다. 빈 목록도 맞는 모양이다', async () => {
+    fakeFetch(() => json({ codes: fx.fakeCodes() }))
+    await expect(otherApi().getCodes()).resolves.toEqual(fx.fakeCodes())
+    expect(fx.fakeCodes().find((c) => c.c === 'SONO')?.n).toBeNull()
+    expect(fx.fakeCodes().some((c) => c.c.startsWith('AA'))).toBe(false)
+    fakeFetch(() => json({ codes: [] }))
+    await expect(otherApi().getCodes()).resolves.toEqual([])
+    expect(calls.map((c) => [c.url, c.init.method ?? 'GET', c.init.referrerPolicy])).toEqual([
+      ['/api/codes', 'GET', 'no-referrer'],
+      ['/api/codes', 'GET', 'no-referrer'],
+    ])
+  })
+
+  it('AC-5708.2: getCodes 답의 모양이 틀리면(codes 없음·줄 모양·코드 모양·이름·내원 수·200줄 넘음) shape, 200이 아니면 status다', async () => {
+    const row = { c: 'SONO1', n: '초음파 검사', v: 96 }
+    const bad: Array<[string, unknown]> = [
+      ['배열', [row]],
+      ['codes 없음', {}],
+      ['codes 글', { codes: 'SONO1' }],
+      ['줄이 글', { codes: ['SONO1'] }],
+      ['코드 소문자', { codes: [{ ...row, c: 'sono1' }] }],
+      ['코드 17자', { codes: [{ ...row, c: 'A'.repeat(17) }] }],
+      ['코드 빈 글', { codes: [{ ...row, c: '' }] }],
+      ['이름 숫자', { codes: [{ ...row, n: 3 }] }],
+      ['내원 수 음수', { codes: [{ ...row, v: -1 }] }],
+      ['내원 수 글', { codes: [{ ...row, v: '96' }] }],
+      ['201줄', { codes: Array.from({ length: 201 }, (_, i) => ({ c: `C${i}`, n: null, v: 1 })) }],
+    ]
+    for (const [name, body] of bad) {
+      fakeFetch(() => json(body))
+      expect(await reasonOf(otherApi().getCodes()), name).toBe('shape')
+    }
+    fakeFetch(() => json({ codes: [] }, 503))
+    expect(await reasonOf(otherApi().getCodes())).toBe('status')
+  })
+
+  it('AC-5708.2: getCodeName(code)는 GET /api/code/{코드}(퍼센트 싸기) 하나를 묻고 사전 이름(없으면 null)을 돌려준다. 코드 모양이 틀리면 묻지 않고 input, 404는 status다', async () => {
+    fakeFetch((call) => json(call.url.endsWith('/EB470') ? { c: 'EB470', n: '가상 초음파 재검사' } : { c: '초음파_1', n: null }))
+    await expect(otherApi().getCodeName('EB470')).resolves.toBe('가상 초음파 재검사')
+    await expect(otherApi().getCodeName('초음파_1')).resolves.toBeNull()
+    expect(calls.map((c) => c.url)).toEqual(['/api/code/EB470', `/api/code/${encodeURIComponent('초음파_1')}`])
+    for (const code of ['', 'A'.repeat(17), 'EB 470', 'EB/470', '../board', 3, null])
+      expect(await reasonOf(otherApi().getCodeName(code)), String(code)).toBe('input')
+    expect(calls.length).toBe(2)
+    for (const body of [{ c: 'EB470' }, { c: 'EB470', n: 3 }, { n: '가상' }, null]) {
+      fakeFetch(() => json(body))
+      expect(await reasonOf(otherApi().getCodeName('EB470')), JSON.stringify(body)).toBe('shape')
+    }
+    fakeFetch(() => Promise.resolve(new Response(null, { status: 404 })))
+    expect(await reasonOf(otherApi().getCodeName('EB470'))).toBe('status')
+  })
+})
+
+describe('api.js 병원 로고 (reception-other-clinic AC-5708.2)', () => {
+  it('AC-5708.2: setLogo(bytes, type)는 POST /api/logo 하나를 X-Reception: 1·Content-Type 그 형식(image/png·image/jpeg)·리퍼러 same-origin으로, 몸은 그림 바이트 그대로 보내고 204면 끝난다', async () => {
+    fakeFetch(() => Promise.resolve(new Response(null, { status: 204 })))
+    const png = fx.fakeLogoPng()
+    const jpeg = fx.fakeLogoJpeg()
+    await expect(otherApi().setLogo(png, 'image/png')).resolves.toBeUndefined()
+    await expect(otherApi().setLogo(jpeg.buffer, 'image/jpeg')).resolves.toBeUndefined()
+    expect(calls.map((c) => c.url)).toEqual(['/api/logo', '/api/logo'])
+    expect(calls.map((c) => new Headers(c.init.headers).get('Content-Type'))).toEqual(['image/png', 'image/jpeg'])
+    const sent = await Promise.all(calls.map((c) => new Response(c.init.body).arrayBuffer()))
+    expect(sent.map((b) => [...new Uint8Array(b)])).toEqual([[...png], [...jpeg]])
+    for (const { init } of calls) {
+      expect(init.method).toBe('POST')
+      expect(new Headers(init.headers).get('X-Reception')).toBe('1')
+      expect(init.referrerPolicy).toBe('same-origin')
+      expect(init.credentials).toBe('omit')
+      expect(init.mode).toBe('same-origin')
+      expect(init.redirect).toBe('error')
+    }
+  })
+
+  it('AC-5708.2: setLogo는 2097152바이트까지 보내고, 넘거나 빈 그림·바이트가 아님·형식이 png·jpeg 밖이면 보내지 않고 input 실패다. 204가 아니면 status다', async () => {
+    fakeFetch(() => Promise.resolve(new Response(null, { status: 204 })))
+    const most = new Uint8Array(2097152)
+    most.set(fx.fakeLogoPng())
+    await expect(otherApi().setLogo(most, 'image/png')).resolves.toBeUndefined()
+    expect(calls.length).toBe(1)
+    const wrong: Array<[string, unknown, unknown]> = [
+      ['2097153바이트', new Uint8Array(2097153), 'image/png'],
+      ['빈 그림', new Uint8Array(0), 'image/png'],
+      ['글', 'iVBORw0KGgo', 'image/png'],
+      ['배열', [137, 80, 78, 71], 'image/png'],
+      ['gif', fx.fakeLogoPng(), 'image/gif'],
+      ['형식 없음', fx.fakeLogoPng(), undefined],
+      ['svg', fx.fakeLogoPng(), 'image/svg+xml'],
+    ]
+    for (const [name, bytes, type] of wrong) expect(await reasonOf(otherApi().setLogo(bytes, type)), name).toBe('input')
+    expect(calls.length).toBe(1)
+    for (const status of [200, 400, 403, 413, 503]) {
+      fakeFetch(() => Promise.resolve(new Response(status === 200 ? '{}' : null, { status })))
+      expect(await reasonOf(otherApi().setLogo(fx.fakeLogoPng(), 'image/png')), String(status)).toBe('status')
+    }
+  })
+
+  it('AC-5708.2: getLogo(ver)는 GET /api/logo 하나를 읽기 모양(저장하지 않음)으로 묻고 그림을 data: URL("data:image/png;base64,…"·JPEG)로 돌려준다', async () => {
+    const png = fx.fakeLogoPng()
+    const jpeg = fx.fakeLogoJpeg()
+    fakeFetch(() => (calls.length === 1 ? bytesReply(png, 'image/png') : bytesReply(jpeg, 'image/jpeg')))
+    await expect(otherApi().getLogo(1)).resolves.toBe(`data:image/png;base64,${base64Of(png)}`)
+    await expect(otherApi().getLogo(7)).resolves.toBe(`data:image/jpeg;base64,${base64Of(jpeg)}`)
+    expect(calls.map((c) => [c.url, c.init.method ?? 'GET', c.init.referrerPolicy, c.init.credentials, c.init.mode, c.init.cache])).toEqual([
+      ['/api/logo', 'GET', 'no-referrer', 'omit', 'same-origin', 'no-store'],
+      ['/api/logo', 'GET', 'no-referrer', 'omit', 'same-origin', 'no-store'],
+    ])
+  })
+
+  it('AC-5708.2: getLogo는 ver가 1 이상 정수가 아니면 묻지 않고 input, 404면 status, 형식(Content-Type)·첫 바이트가 png·jpeg가 아니거나 비었거나 2097152바이트를 넘으면 shape다', async () => {
+    fakeFetch(() => bytesReply(fx.fakeLogoPng(), 'image/png'))
+    for (const ver of [0, -1, 1.5, '1', null, undefined]) expect(await reasonOf(otherApi().getLogo(ver)), String(ver)).toBe('input')
+    expect(calls).toEqual([])
+    fakeFetch(() => Promise.resolve(new Response(null, { status: 404 })))
+    expect(await reasonOf(otherApi().getLogo(1))).toBe('status')
+    const big = new Uint8Array(2097153)
+    big.set(fx.fakeLogoPng())
+    const bad: Array<[string, () => Promise<Response>]> = [
+      ['형식 없음', () => bytesReply(fx.fakeLogoPng(), null)],
+      ['html', () => bytesReply(new TextEncoder().encode('<html></html>'), 'text/html')],
+      ['svg', () => bytesReply(new TextEncoder().encode('<svg/>'), 'image/svg+xml')],
+      ['png라면서 jpeg 바이트', () => bytesReply(fx.fakeLogoJpeg(), 'image/png')],
+      ['jpeg라면서 png 바이트', () => bytesReply(fx.fakeLogoPng(), 'image/jpeg')],
+      ['빈 몸', () => bytesReply(new Uint8Array(0), 'image/png')],
+      ['2097153바이트', () => bytesReply(big, 'image/png')],
+    ]
+    for (const [name, reply] of bad) {
+      fakeFetch(reply)
+      expect(await reasonOf(otherApi().getLogo(1)), name).toBe('shape')
+    }
+    // Content-Type에 덧붙은 값(; 뒤)이 있어도 형식은 앞 글이다
+    fakeFetch(() => bytesReply(fx.fakeLogoPng(), 'image/png; charset=binary'))
+    await expect(otherApi().getLogo(1)).resolves.toMatch(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/)
+  })
+
+  it('AC-5708.2 · AC-5714.1: 새 길 여섯(설정 둘·처방 목록 둘·로고 둘)도 같은 PC의 /api/…만 묻고, 5초가 넘으면 끊는다(timeout)', async () => {
+    fakeFetch(never)
+    const asks = [
+      () => otherApi().getSettings(),
+      () => otherApi().setSettings(fx.oursSettings()),
+      () => otherApi().getCodes(),
+      () => otherApi().getCodeName('EB470'),
+      () => otherApi().setLogo(fx.fakeLogoPng(), 'image/png'),
+      () => otherApi().getLogo(1),
+    ]
+    for (const ask of asks) {
+      const seen = watch(ask())
+      await vi.advanceTimersByTimeAsync(4999)
+      expect(seen.done).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      expect((seen.error as ApiErrorLike)?.reason).toBe('timeout')
+    }
+    expect(calls.length).toBe(6)
+    for (const { url, init } of calls) {
+      expect(url).toMatch(/^\/api\/(?:settings|codes|code\/[^/]+|logo)$/)
+      expect(url).not.toMatch(/^\/\/|:\/\/|\\/)
+      expect([init.mode, init.credentials, init.redirect]).toEqual(['same-origin', 'omit', 'error'])
+    }
+  })
+})

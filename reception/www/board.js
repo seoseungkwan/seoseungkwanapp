@@ -16,10 +16,15 @@
 //     view.xray(row)     엑스레이 칸이 있는 줄(진료보류)의 아래 띠 요소(xray.js). 없으면 띠 없음
 //     view.tab           고른 탭 'board'|'arrange'(기본 'board'). 머리의 탭 단추 [접수 현황]·[어레인지 N명] (reception-arrange AC-3308.1)
 //     view.onTab(tab)    탭 단추를 누름('board'|'arrange'). 해시 길은 app.js가 바꾼다
+//     view.onSettings()  두 탭 머리의 [⚙ 설정]을 누름. 없으면 꺼져 있다 (reception-other-clinic AC-5709.2)
+//     view.logoPic       받아 둔 로고 그림 { ver, src: data: URL } | null. 판 cfg.logo가 pic이고 ver가 같을 때만 그린다 (AC-5709.1)
 //   setReading(host, reading)  [새로 고침] 단추만 바꾼다(목록·어레인지 어느 머리든)
 //   fillPane(host, nodes)      태블릿 오른쪽 칸의 내용을 바꾼다(아래 글은 그대로). null이면 비운다
 //   topOf(board, view)         머리(header.top) 안 요소들: 상표 줄 · 탭 단추 · (접수 현황 탭만) 제목·기준 글. 어레인지 화면(arrange.js)이 함께 쓴다.
-//                              어레인지 탭이면 .top-status 맨 앞에 [목록 고치기](누르면 view.onPicks(), 없으면 꺼짐, reception-pick-lists AC-3505.1)
+//                              상표 줄 맨 앞은 판 cfg.logo의 로고(그림·병원 이름 글자·없음), 두 탭 모두 .top-status 맨 앞(연결됨 앞)에
+//                              [⚙ 설정](누르면 view.onSettings(), 없으면 꺼짐). 옛 [☰ 목록 고치기] 자리다 (reception-other-clinic AC-5709.1·5709.2).
+//                              cfg.tab이 거짓이면 탭 단추는 [접수 현황] 하나다(AC-5709.3)
+//   logoOf(logo, pic, imgClass) 로고 요소 하나 또는 null(상세·끊김 화면도 쓴다, AC-5709.1·5709.4)
 //   refreshText(every)         "N초마다 저절로 바뀌어요"(every가 양의 정수가 아니면 숫자 없이)
 
 import { clear, el, svg } from './dom.js'
@@ -41,6 +46,15 @@ const TABS = [
   ['board', '접수 현황'],
   ['arrange', '어레인지'],
 ]
+
+/** 로고 그림 주소: getLogo가 만든 PNG·JPEG data: URL만 (reception-other-clinic AC-5714.1, CSP img-src 'self' data:) */
+const LOGO_URL = /^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/
+
+/** 로고 그림의 대신 글(병원 이름은 그림 안에만 있다) */
+const LOGO_ALT = '병원 로고'
+
+/** [⚙ 설정] 단추 글 (승인 시안 reception-other-clinic notes.md 머리) */
+const SETTINGS_LABEL = '설정'
 
 /** 머리의 바뀜 글: every(초, 양의 정수)면 "N초마다 저절로 바뀌어요" (AC-1407.1) */
 export function refreshText(every) {
@@ -123,18 +137,19 @@ export function renderBoard(host, board, view = {}) {
  * 머리(header.top) 안 요소들: 상표 줄(로고 · 연결됨 + [새로 고침]), 그 아래 탭 단추 [접수 현황]·[어레인지 N명](AC-3308.1),
  * 접수 현황 탭이면 그 아래 제목 "접수 현황"·기준 글. 어레인지 탭은 기준 글을 표 위 줄에 따로 그린다(시안 Arrange.html).
  * N은 판의 arrange.rows 수(옛 도우미 답처럼 없으면 0)다. 고른 탭은 aria-pressed="true"이고 누르면 view.onTab(탭)만 부른다.
- * 어레인지 탭이면 로고 뒤에 이 기기 메모 칸(memo.js memoBox, reception-memo-papers AC-3403.1)을 넣고 상표 줄에 with-memo를 단다
- * @param {{ at: string, every?: number, arrange?: { rows?: object[] } }} board
- * @param {{ tab?: string, reading?: boolean, onRefresh?: Function, onTab?: Function }} [view]
+ * 어레인지 탭이면 로고 뒤에 이 기기 메모 칸(memo.js memoBox, reception-memo-papers AC-3403.1)을 넣고 상표 줄에 with-memo를 단다.
+ * 로고는 판 cfg.logo로 그린다(그림이 아직 없거나 없이면 자리 없음, reception-other-clinic AC-5709.1)
+ * @param {{ at: string, every?: number, cfg?: { logo?: object, tab?: boolean }, arrange?: { rows?: object[] } }} board
+ * @param {{ tab?: string, reading?: boolean, onRefresh?: Function, onTab?: Function, onSettings?: Function, logoPic?: object | null }} [view]
  * @returns {HTMLElement[]}
  */
 export function topOf(board, view = {}) {
   const tab = view.tab === 'arrange' ? 'arrange' : 'board'
   return [
     el('div', { class: tab === 'arrange' ? 'top-row with-memo' : 'top-row' }, [
-      el('img', { class: 'logo', src: '/logo-wordmark.png', alt: '양지바른정형외과' }),
+      logoOf(board?.cfg?.logo, view.logoPic, 'logo'),
       tab === 'arrange' ? memoBox() : null,
-      el('div', { class: 'top-status' }, [tab === 'arrange' ? listButton(view) : null, el('span', { class: 'conn' }, '연결됨'), refreshButton(view)]),
+      el('div', { class: 'top-status' }, [settingsButton(view), el('span', { class: 'conn' }, '연결됨'), refreshButton(view)]),
     ]),
     tabsOf(board, tab, view),
     tab === 'board'
@@ -146,14 +161,15 @@ export function topOf(board, view = {}) {
   ].filter(Boolean)
 }
 
-/** 탭 단추 둘. [어레인지]에는 표에 있는 사람 수 "N명" */
+/** 탭 단추 둘. [어레인지]에는 표에 있는 사람 수 "N명". 판 cfg.tab이 거짓이면 [접수 현황] 하나(reception-other-clinic AC-5709.3) */
 function tabsOf(board, tab, view) {
   const rows = board?.arrange?.rows
   const count = Array.isArray(rows) ? rows.length : 0
+  const shown = board?.cfg?.tab === false ? TABS.filter(([key]) => key === 'board') : TABS
   return el(
     'nav',
     { class: 'tabs' },
-    TABS.map(([key, label]) =>
+    shown.map(([key, label]) =>
       el(
         'button',
         {
@@ -168,29 +184,56 @@ function tabsOf(board, tab, view) {
   )
 }
 
-/** 어레인지 머리의 [☰ 목록 고치기] (reception-pick-lists AC-3505.1, 시안 listButton): 누르면 view.onPicks(). 없으면(판에 picks가 없음) 꺼져 있다 */
-function listButton(view) {
-  const open = typeof view.onPicks === 'function' ? view.onPicks : null
-  return el('button', { type: 'button', class: 'list-open', disabled: open === null, on: { click: () => open?.() } }, [listIcon(), '목록 고치기'])
+/**
+ * 로고 요소 하나 (reception-other-clinic AC-5709.1): cfg.logo가 pic이고 그 판 번호(ver)의 그림 data: URL(pic)이 있으면 img(imgClass),
+ * text면 그 글을 제목 글꼴 글(span.logo-text, 글 마디로만), 그 밖(none·그림을 아직 못 받음·다른 ver·모양이 틀린 주소)은 null.
+ * 그림 주소는 모양을 검사한 data: URL이라 el()의 같은 PC 주소 검사 대신 여기서 넣는다(memo.js 손글씨 그림과 같다)
+ * @param {{ mode?: string, text?: string | null, ver?: number } | undefined} logo 판 cfg.logo
+ * @param {{ ver?: number, src?: string } | null | undefined} pic 받아 둔 로고 그림
+ * @param {string} imgClass 그림 요소 class: 'logo'(목록·어레인지 머리) · 'logo-mark'(상세 머리) · 'off-logo'(끊김 화면)
+ * @returns {HTMLElement | null}
+ */
+export function logoOf(logo, pic, imgClass) {
+  if (logo?.mode === 'pic' && pic && pic.ver === logo.ver && typeof pic.src === 'string' && LOGO_URL.test(pic.src)) {
+    const img = el('img', { class: imgClass, alt: LOGO_ALT })
+    img.src = pic.src
+    return img
+  }
+  if (logo?.mode === 'text' && typeof logo.text === 'string' && logo.text.trim() !== '') return el('span', { class: 'logo-text' }, logo.text)
+  return null
 }
 
-/** [목록 고치기] 그림 ☰: 가로 선 셋. 글자(☰)는 기기 글꼴에 따라 작은 네모로 보일 수 있어 선 그림으로 그린다(색은 단추 글 색) */
-function listIcon() {
+/** 두 탭 머리의 [⚙ 설정] (reception-other-clinic AC-5709.2, 시안 setButton): 누르면 view.onSettings(). 없으면 꺼져 있다 */
+function settingsButton(view) {
+  const open = typeof view.onSettings === 'function' ? view.onSettings : null
+  return el('button', { type: 'button', class: 'set-open', disabled: open === null, on: { click: () => open?.() } }, [
+    el('span', { class: 'set-ic' }, gearIcon()),
+    SETTINGS_LABEL,
+  ])
+}
+
+/** [설정] 그림 톱니(시안 GEAR): 가운데 원과 바깥 톱니 선 그림. 색은 단추 글 색 */
+function gearIcon() {
   return svg(
     'svg',
     {
-      class: 'list-icon',
       viewBox: '0 0 24 24',
-      width: '16',
-      height: '16',
+      width: '18',
+      height: '18',
       fill: 'none',
       stroke: 'currentColor',
-      'stroke-width': '2.5',
+      'stroke-width': '2.2',
       'stroke-linecap': 'round',
+      'stroke-linejoin': 'round',
       'aria-hidden': 'true',
       focusable: 'false',
     },
-    svg('path', { d: 'M4 6h16M4 12h16M4 18h16' }),
+    [
+      svg('circle', { cx: '12', cy: '12', r: '3' }),
+      svg('path', {
+        d: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z',
+      }),
+    ],
   )
 }
 

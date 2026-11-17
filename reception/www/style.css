@@ -6,7 +6,9 @@
  * 화면 틀 (그리는 파일이 쓰는 class 이름)
  *   #app (index.html) 안에 화면 하나:
  *   목록   .page.board
- *            header.top > .top-row > img.logo + .top-status > span.conn + button.refresh > svg.refresh-icon + 글
+ *            header.top > .top-row > (img.logo | span.logo-text | 없음) + .top-status > button.set-open > span.set-ic > svg + 글
+ *                                                                          + span.conn + button.refresh > svg.refresh-icon + 글
+ *              로고는 판 cfg.logo: 그림 · 병원 이름 글자(제목 글꼴) · 없이 (reception-other-clinic AC-5709.1). [⚙ 설정]은 두 탭 모두(AC-5709.2)
  *                       > .title-block > h1.top-title + p.asof
  *            .picker > button.queue[aria-pressed] > span.queue-label + span.queue-count
  *                    > .tiles > button.tile[aria-pressed] > span.tile-count + span.tile-label
@@ -18,7 +20,7 @@
  *            aside.pane (태블릿 오른쪽, 아래 상세 내용 + p.pane-foot)
  *            footer.foot
  *   상세   .page.detail-page
- *            header.top.is-detail > .top-row > a.back + img.logo-mark
+ *            header.top.is-detail > .top-row > a.back + (img.logo-mark | span.logo-text | 없음)
  *                                 > .patient > .name-line > span.chart + h1.detail-name + span.info + span.new-badge
  *                                            > .status-line > span.status… + span   > .memo > span.memo-label + 글
  *            main.detail > h2.detail-heading + article.paper + h2.detail-heading + .past-list + p.end-note
@@ -35,13 +37,13 @@
  *            footer.foot
  *   끊김·불러오는 중  .page.off-page
  *            header.top.is-offline > h1.off-title + span.conn.is-off
- *            main.off > img.off-logo + h2.off-heading + p.off-lead + p.off-sub + .off-status
+ *            main.off > (img.off-logo | span.logo-text | 없음) + h2.off-heading + p.off-lead + p.off-sub + .off-status   (불러오는 중은 p.off-lead만)
  *            footer.foot
  *   머리 탭 (목록·어레인지 머리, reception-arrange AC-3308.1)
  *            header.top > .top-row + nav.tabs > button.tab[aria-pressed] (> span.tab-n) (+ 목록은 .title-block)
  *   어레인지  .page.arrange (reception-arrange, 승인 시안 Arrange.html)
  *            header.top > .top-row.with-memo + nav.tabs
- *              .top-row.with-memo > img.logo + .memo-box(.has) + .top-status   (메모 칸, reception-memo-papers)
+ *              .top-row.with-memo > (img.logo | span.logo-text | 없음) + .memo-box(.has) + .top-status   (메모 칸, reception-memo-papers)
  *                .memo-box > svg.memo-ic + span.memo-empty | span.memo-tag + span.memo-prev + img.memo-thumb + button.memo-x
  *            body > .sheet-back.memo-back > .sheet.memo-sheet > .sheet-h ; .memo-h ; textarea.memo-text ; .pen-tools > button(> span.pen-dot.ink|red) + button.clear-ink
  *                   ; canvas.memo-pad ; .memo-foot > button.memo-del + span.memo-note + button.sheet-x     body > .toast.memo-toast
@@ -64,7 +66,7 @@
  *                         ; (.opt-label > span.opt-hint) + .opts.trio[data-g=side] ; .opt-label + .opts.four.parts[data-g=part]
  *                         ; .opt-label + .opts.trio[data-g=plain] ; .opt-label + .opts.duo[data-g=with] > button.opt.check(.on) > span.box ; .sheet-go
  *            .toast[role=status] > span.toast-text + button.toast-undo
- *            목록 고치기 (reception-pick-lists): .top-status > button.list-open > svg.list-icon + 글 (어레인지 머리 맨 앞)
+ *            목록 고치기 창 (reception-pick-lists). 머리의 [☰ 목록 고치기] 자리는 [⚙ 설정](button.set-open)이 되었다(reception-other-clinic AC-5709.2)
  *              .sheet-back.list-back > .sheet.list-sheet > .sheet-h ; .lt-tabs > button.lt-tab(.on) ; p.lt-fixed(SONO·충격파)
  *                ; .lt-groups > section.lt-group > h3(> span.sm) + (ul.lt-list > li.lt-row > button.lt-name + button.lt-flag(.on) + button.lt-btn ×2 + button.lt-btn.del | div.lt-empty)
  *                                                  (바꾸기 줄 li.lt-row.is-rename > input.lt-rename + button.lt-ok + button.lt-no + p.lt-hint(.is-bad), reception-arrange-tune)
@@ -123,7 +125,8 @@ button:disabled {
 }
 
 /* 제목 글꼴은 머리 제목과 환자 이름 제목에만 (AC-1407.8). 없는 글자는 본문 글꼴로 떨어진다.
-   어레인지 시안(Arrange.html)의 머리 탭 단추와 표의 환자 이름도 제목 글꼴이다(reception-arrange) */
+   어레인지 시안(Arrange.html)의 머리 탭 단추와 표의 환자 이름도 제목 글꼴이다(reception-arrange).
+   병원 이름 글자 로고(.logo-text)도 제목 글꼴이다(reception-other-clinic, 아래 로고 칸) */
 .top-title, .off-title, .off-heading, .detail-name, .tab, .arr-name {
   margin: 0;
   font-family: var(--font-title), var(--font-body);
@@ -162,11 +165,45 @@ button:disabled {
   object-position: left center;
 }
 
+/* 로고가 없이여도(reception-other-clinic AC-5709.1) 연결됨·새로 고침 칸은 오른쪽 끝에 둔다 */
 .top-status {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* 로고: 병원 이름 글자 (reception-other-clinic AC-5709.1, 시안 .logo-text). 길면 끝을 … 로 줄인다. 글은 글 마디로만 들어간다 */
+.logo-text {
+  display: block;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-title), var(--font-body);
+  font-weight: var(--title-weight);
+  font-size: 28px;
+  line-height: 34px;
+  color: var(--ink);
+}
+
+.top-row.with-memo .logo-text {
+  flex: 0 1 auto;
+}
+
+/* 폰 상세 머리의 작은 로고 자리(.logo-mark와 같은 높이) */
+.is-detail .logo-text {
+  font-size: 20px;
+  line-height: 32px;
+  margin-right: 8px;
+}
+
+@media (max-width: 520px) {
+  .logo-text {
+    font-size: 20px;
+  }
 }
 
 /* 어레인지 머리의 메모 칸 (reception-memo-papers AC-3403.1, 시안 Mock.html). 폰·세로 화면은 로고 줄 아래 한 줄, 태블릿은 로고 옆.
@@ -1183,6 +1220,12 @@ button.row-main {
   width: 240px;
   max-width: 100%;
   height: auto;
+  margin-bottom: 12px;
+}
+
+/* 끊김 화면의 병원 이름 글자 로고 (reception-other-clinic AC-5709.4) */
+.off > .logo-text {
+  max-width: 100%;
   margin-bottom: 12px;
 }
 
@@ -2232,8 +2275,8 @@ button.row-main {
   color: var(--on-ink);
 }
 
-/* 어레인지 머리의 [☰ 목록 고치기] (reception-pick-lists AC-3505.1, 시안 .list-open) */
-.list-open {
+/* [☰ 목록 고치기] (reception-pick-lists AC-3505.1, 시안 .list-open)와 두 탭 머리의 [⚙ 설정] (reception-other-clinic AC-5709.2, 시안 .set-open) */
+.list-open, .set-open {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2248,8 +2291,17 @@ button.row-main {
   cursor: pointer;
 }
 
-.list-open:disabled {
+.list-open:disabled, .set-open:disabled {
   color: var(--ink-3);
+}
+
+/* [⚙ 설정]의 톱니 그림 (시안 .set-ic) */
+.set-open .set-ic {
+  display: inline-flex;
+}
+
+.set-open svg {
+  display: block;
 }
 
 .list-icon {
@@ -2855,6 +2907,11 @@ button.lt-name:hover {
     flex-shrink: 0;
   }
 
+  .board .logo-text {
+    order: 1;
+    flex-shrink: 0;
+  }
+
   .board .top-title {
     order: 2;
     font-size: 28px;
@@ -2946,6 +3003,11 @@ button.lt-name:hover {
     order: 0;
     flex: 0 1 440px;
     margin: 0 auto 0 20px;
+  }
+
+  /* 로고 없이면 메모 칸이 맨 앞 (reception-other-clinic, 시안 .no-logo) */
+  .top-row.with-memo > .memo-box:first-child {
+    margin-left: 0;
   }
 
   /* 기록부 화면 (AC-3309.2): 왼쪽 오늘 | 오른쪽 직전 */
