@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Precheck.Windows", "src\Pre
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Precheck.Windows.Tests", "tests\Precheck.Windows.Tests\Precheck.Windows.Tests.csproj", "{C12657C4-982F-458E-9EF6-59422C0F3075}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Precheck.PtSlip", "src\Precheck.PtSlip\Precheck.PtSlip.csproj", "{537D64EC-15A9-465B-9361-2139FF0EF7BD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -87,6 +89,18 @@ Global
 		{C12657C4-982F-458E-9EF6-59422C0F3075}.Release|x64.Build.0 = Release|Any CPU
 		{C12657C4-982F-458E-9EF6-59422C0F3075}.Release|x86.ActiveCfg = Release|Any CPU
 		{C12657C4-982F-458E-9EF6-59422C0F3075}.Release|x86.Build.0 = Release|Any CPU
+		{537D64EC-15A9-465B-9361-2139FF0EF7BD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{537D64EC-15A9-465B-9361-2139FF0EF7BD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{537D64EC-15A9-465B-9361-2139FF0EF7BD}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{537D64EC-15A9-465B-9361-2139FF0EF7BD}.Debug|x64.Build.0 = Debug|Any CPU
+		{537D64EC-15A9-465B-9361-2139FF0EF7BD}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{537D64EC-15A9-465B-9361-2139FF0EF7BD}.Debug|x86.Build.0 = Debug|Any CPU
+		{537D64EC-15A9-465B-9361-2139FF0EF7BD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{537D64EC-15A9-465B-9361-2139FF0EF7BD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{537D64EC-15A9-465B-9361-2139FF0EF7BD}.Release|x64.ActiveCfg = Release|Any CPU
+		{537D64EC-15A9-465B-9361-2139FF0EF7BD}.Release|x64.Build.0 = Release|Any CPU
+		{537D64EC-15A9-465B-9361-2139FF0EF7BD}.Release|x86.ActiveCfg = Release|Any CPU
+		{537D64EC-15A9-465B-9361-2139FF0EF7BD}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -97,5 +111,6 @@ Global
 		{6A43CF3C-A29D-475D-9D60-B746F06B829C} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{AF4A9161-0795-4201-9B76-DE7B3075AB7F} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{C12657C4-982F-458E-9EF6-59422C0F3075} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{537D64EC-15A9-465B-9361-2139FF0EF7BD} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal
