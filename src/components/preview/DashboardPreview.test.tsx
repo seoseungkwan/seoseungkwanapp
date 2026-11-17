@@ -81,7 +81,7 @@ describe('AC-206.2: 상자 하나 안에 위 줄 → 탭 줄 → KPI 줄 → 차
     expect(textOf(chip)).toBe('예시 숫자')
   })
 
-  it('AC-206.2·AC-421.2·AC-4110.1: 탭 줄 — 36px·아래 1px line·small 500·사이 20px, span 13개가 실제 탭 이름(MENU) 순서다(매출 없음, 수납일지 AC-4907.1)', () => {
+  it('AC-206.2·AC-421.2·AC-4110.1·AC-5801.4: 탭 줄 — 36px·아래 1px line·small 500·사이 20px, span 13개가 실제 탭 이름(MENU) 순서다(매출 없음, 수납일지 AC-4907.1)', () => {
     const { tabs } = parts()
     expectClasses(tabs, 'flex', 'h-9', 'border-b', 'border-line', 'text-small', 'font-medium', 'gap-x-5')
     const items = Array.from(tabs.children)
