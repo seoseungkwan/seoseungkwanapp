@@ -1,0 +1,14 @@
+{
+  "status": "approved",
+  "feature": "settings-tab-name",
+  "approved_at": "2026-11-17T00:24:52Z",
+  "approved_via": "user-prompt",
+  "session_id": "b0bacc8e-b4c1-48e0-aa1e-81ddd7dbbf9b",
+  "spec_sha256": "eb6d5e4e7062aec02e19a20bf7ec3c7fbb8a9ba86b4b06c7d45c81f541e3d7c2",
+  "scope": [
+    "src/app/(app)/settings/page.test.tsx",
+    "src/components/claim/setup/SetupScreen.test.tsx",
+    "src/components/claim/setup/SetupScreen.tsx",
+    "src/components/settings/SettingsPage.tsx"
+  ]
+}
