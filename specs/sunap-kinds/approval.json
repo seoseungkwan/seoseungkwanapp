@@ -1,14 +1,16 @@
 {
   "status": "approved",
   "feature": "sunap-kinds",
-  "approved_at": "2026-11-17T01:32:47Z",
+  "approved_at": "2026-11-17T02:29:29Z",
   "approved_via": "user-prompt",
   "session_id": "b0bacc8e-b4c1-48e0-aa1e-81ddd7dbbf9b",
-  "spec_sha256": "65deefe2e978f0a05743372c79a0c119660ac6ee970b609ca623f0ccfb5bb176",
+  "spec_sha256": "ba12cd694e1348d4a09f38a522fe48652c3f94ced3d87e34d309a79efd87f5fa",
   "scope": [
     "src/components/stats/StatsScreen.test.tsx",
     "src/components/stats/sections/SunapSection.test.tsx",
     "src/components/stats/sections/SunapSection.tsx",
+    "src/components/sunap/RemoteView.test.tsx",
+    "src/components/sunap/RemoteView.tsx",
     "src/components/sunap/SunapCards.tsx",
     "src/components/sunap/SunapScreen.test.tsx",
     "src/components/sunap/SunapScreen.tsx",
