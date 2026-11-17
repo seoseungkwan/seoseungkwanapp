@@ -14,6 +14,7 @@ const base: LedgerRow = {
   card: 0,
   transfer: 0,
   unpaid: 0,
+  health: 0,
   free: false,
   block: false,
   pt: false,
@@ -24,7 +25,7 @@ const base: LedgerRow = {
 }
 function row(over: Partial<LedgerRow>): LedgerRow {
   const r = { ...base, ...over }
-  return { ...r, free: r.cash + r.card + r.transfer + r.unpaid === 0 }
+  return { ...r, free: r.cash + r.card + r.transfer + r.unpaid === 0 && r.health === 0 }
 }
 /** 받은 차례대로 no 1, 2, 3 … */
 const items = (rows: LedgerRow[]) => rows.map((r, index) => ({ row: r, no: index + 1 }))

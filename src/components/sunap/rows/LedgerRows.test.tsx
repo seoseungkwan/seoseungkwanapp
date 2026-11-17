@@ -23,6 +23,7 @@ const base: LedgerRow = {
   card: 0,
   transfer: 0,
   unpaid: 0,
+  health: 0,
   free: false,
   block: false,
   pt: false,
@@ -33,7 +34,7 @@ const base: LedgerRow = {
 }
 function row(over: Partial<LedgerRow>): LedgerRow {
   const r = { ...base, ...over }
-  return { ...r, free: r.cash + r.card + r.transfer + r.unpaid === 0 }
+  return { ...r, free: r.cash + r.card + r.transfer + r.unpaid === 0 && r.health === 0 }
 }
 
 const ROWS: LedgerRow[] = [
@@ -677,5 +678,55 @@ describe('AC-5503.4 다음 예약 고르기 판(시안 ?s=pick)', () => {
       '기타예약률 ✕',
     ])
     expect([...pop.querySelectorAll('p')].map((p) => p.textContent)).toContain(TIP_2)
+  })
+})
+
+// ── spec clinic-calendar AC-5908.3 건강생활유지비로 낸 줄 ─────────────────────
+// 시험 줄 10줄 + 네 칸이 0원이고 건강생활유지비로 1,500원 낸 줄
+const HEALTH_ROWS: LedgerRow[] = [...ROWS, row({ chart: '30101', name: '문○○', time: '11:02', health: 1500, pt: true })]
+
+describe('AC-5908.3 건강생활 칩·범례', () => {
+  it('AC-5908.3: 네 칸이 0원이고 건강생활이 0보다 크면 금액 칸 자리에 한 칸으로 건강생활 · 1,500원 칩(FREE 아님)', () => {
+    renderRows(true, false, DEFAULT_RSV_KINDS, HEALTH_ROWS)
+    const moon = rowOf('문○○')
+    const chip = within(moon).getByText('건강생활 · 1,500원')
+    expect(chip.className).toBe(ds.chip.neutral)
+    expect(within(moon).queryByText('FREE · 0원')).toBeNull()
+    expect(within(moon).getAllByRole('cell')).toHaveLength(10)
+    // 네 칸과 건강생활이 모두 0인 줄만 FREE
+    expect(within(rowOf('강○○')).getByText('FREE · 0원')).toBeTruthy()
+    expect(screen.getAllByText('FREE · 0원')).toHaveLength(1)
+    expect(screen.getAllByText(/^건강생활 · /)).toHaveLength(1)
+  })
+
+  it('AC-5908.3: 건강생활 칸을 눌러도 네 금액 칸이 뜬다(FREE 칸과 같다)', async () => {
+    const { user, onEdit } = renderRows(true, false, DEFAULT_RSV_KINDS, HEALTH_ROWS)
+    await user.click(within(rowOf('문○○')).getByRole('button', { name: '문○○ 금액' }))
+    const pop = screen.getByRole('dialog', { name: '금액 · 문○○' })
+    await user.type(within(pop).getByRole('textbox', { name: '현금' }), '2000')
+    await user.click(within(pop).getByRole('button', { name: '저장' }))
+    expect(onEdit).toHaveBeenCalledWith('30101', { cash: 2000 })
+  })
+
+  it('AC-5908.3: 마감한 날에도 칩은 보이고 누를 수 없다', () => {
+    renderRows(false, true, DEFAULT_RSV_KINDS, HEALTH_ROWS)
+    const moon = rowOf('문○○')
+    expect(within(moon).getByText('건강생활 · 1,500원')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '문○○ 금액' })).toBeNull()
+  })
+
+  it('AC-5908.3: 고친 금액 칸이 있으면 건강생활 줄도 네 칸으로 그린다(고친 칸 표시가 보이게)', () => {
+    const edited = [...ROWS, row({ chart: '30101', name: '문○○', time: '11:02', health: 1500, edited: ['cash'] })]
+    renderRows(true, false, DEFAULT_RSV_KINDS, edited)
+    const moon = rowOf('문○○')
+    expect(within(moon).queryByText(/^건강생활 · /)).toBeNull()
+    expect(within(moon).getAllByRole('cell')).toHaveLength(13)
+    expect(within(moon).getAllByText('고친 칸')).toHaveLength(1)
+  })
+
+  it("AC-5908.3: 장부 아래 설명 줄에 '건강생활 = 건강생활유지비로 낸 돈'이 FREE 설명과 함께 있다", () => {
+    renderRows()
+    expect(screen.getByText('FREE = 그날 낸 돈 0원')).toBeTruthy()
+    expect(screen.getByText('건강생활 = 건강생활유지비로 낸 돈')).toBeTruthy()
   })
 })

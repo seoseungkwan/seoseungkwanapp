@@ -13,6 +13,7 @@ import type {
   SunapReplyPaid,
   SunapReplyRow,
   SunapReplyRowV2,
+  SunapReplyRowV3,
   VisitKind,
 } from '@/types/sunap'
 import { LEDGER_EDITED_FIELDS } from '@/types/sunap'
@@ -78,6 +79,12 @@ function readRowV2(line: unknown, codes: ReadonlySet<string>): SunapReplyRowV2 {
   return [...readRow(line.slice(0, 10)), doctor]
 }
 
+// 도우미 0.10.0(v3, spec clinic-calendar AC-5908.2): 줄 열두 칸 = v2 열한 칸 + 건강생활유지비(0 이상 원 정수)
+function readRowV3(line: unknown, codes: ReadonlySet<string>): SunapReplyRowV3 {
+  if (!Array.isArray(line) || line.length !== 12) fail(BAD_REPLY)
+  return [...readRowV2(line.slice(0, 11), codes), amount(line[11])]
+}
+
 // 맨 위 doctors: [코드 1~40자, 이름 null 또는 1~40자], 코드마다 한 번
 function readDoctors(list: unknown): SunapReplyDoctor[] {
   if (!Array.isArray(list)) fail(BAD_REPLY)
@@ -100,11 +107,11 @@ function readPaid(line: unknown): SunapReplyPaid {
 }
 
 /**
- * contact.targets {kind: 'sunap', from: day, to: day}의 답. v 1(도우미 0.8.x)·2(0.9.0, 줄 끝 진료의·맨 위 doctors)를 받는다.
- * 그날 답이 아니거나 칸 하나라도 틀리면 E-BRIDGE-BAD-REPLY(반쪽 장부를 만들지 않는다)
+ * contact.targets {kind: 'sunap', from: day, to: day}의 답. v 1(도우미 0.8.x)·2(0.9.0, 줄 끝 진료의·맨 위 doctors)·
+ * 3(0.10.0, 그 뒤에 건강생활유지비)을 받는다. 그날 답이 아니거나 칸 하나라도 틀리면 E-BRIDGE-BAD-REPLY(반쪽 장부를 만들지 않는다)
  */
 export function readReply(json: unknown, day: string): SunapReply {
-  if (!isRecord(json) || (json.v !== 1 && json.v !== 2) || json.day !== day || typeof json.unsure !== 'boolean') fail(BAD_REPLY)
+  if (!isRecord(json) || (json.v !== 1 && json.v !== 2 && json.v !== 3) || json.day !== day || typeof json.unsure !== 'boolean') fail(BAD_REPLY)
   if (!Array.isArray(json.rows) || !Array.isArray(json.paid)) fail(BAD_REPLY)
   const lines = json.rows as unknown[]
   const paid = (json.paid as unknown[]).map(readPaid)
@@ -119,9 +126,14 @@ export function readReply(json: unknown, day: string): SunapReply {
   }
   const doctors = readDoctors(json.doctors)
   const codes = new Set(doctors.map(([code]) => code))
-  const rows = lines.map((line) => readRowV2(line, codes))
+  if (json.v === 2) {
+    const rows = lines.map((line) => readRowV2(line, codes))
+    unique(rows.map((row) => row[0]))
+    return { v: 2, day, unsure: json.unsure, rows, paid, doctors }
+  }
+  const rows = lines.map((line) => readRowV3(line, codes))
   unique(rows.map((row) => row[0]))
-  return { v: 2, day, unsure: json.unsure, rows, paid, doctors }
+  return { v: 3, day, unsure: json.unsure, rows, paid, doctors }
 }
 
 // ── PC 저장 (design.md 'PC 저장') ─────────────────────────────────

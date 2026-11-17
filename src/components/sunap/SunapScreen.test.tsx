@@ -80,6 +80,7 @@ const base: LedgerRow = {
   card: 0,
   transfer: 0,
   unpaid: 0,
+  health: 0,
   free: false,
   block: false,
   pt: false,
@@ -90,7 +91,7 @@ const base: LedgerRow = {
 }
 const row = (over: Partial<LedgerRow>): LedgerRow => {
   const r = { ...base, ...over }
-  return { ...r, free: r.cash + r.card + r.transfer + r.unpaid === 0 }
+  return { ...r, free: r.cash + r.card + r.transfer + r.unpaid === 0 && r.health === 0 }
 }
 const ROWS: LedgerRow[] = [
   row({ chart: '10231', name: '김○○', time: '09:02', card: 15000, block: true, pt: true, rsv: { kind: 'inj', source: 'bit', at: '202611191030' } }),

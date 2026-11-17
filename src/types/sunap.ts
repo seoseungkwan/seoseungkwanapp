@@ -47,11 +47,14 @@ export type SunapReplyRow = [
 export type SunapReplyPaid = [chart: string, name: string, time: string, cash: number, card: number]
 // 도우미 0.9.0(v2, spec sunap-doctors): 줄 끝에 진료의 코드 한 칸(그날 그 환자 접수의 가장 작은 진료의, 없으면 null)
 export type SunapReplyRowV2 = [...SunapReplyRow, doctor: string | null]
+// 도우미 0.10.0(v3, spec clinic-calendar REQ-5908): 줄 끝에 건강생활유지비 한 칸(미수에서 빼는 Health와 같은 값, 원 정수 0 이상)
+export type SunapReplyRowV3 = [...SunapReplyRowV2, health: number]
 // 줄에 나온 진료의 코드마다 한 번: [코드, 이름(모르면 null)]
 export type SunapReplyDoctor = [code: string, name: string | null]
 export type SunapReply =
   | { v: 1; day: string; unsure: boolean; rows: SunapReplyRow[]; paid: SunapReplyPaid[] }
   | { v: 2; day: string; unsure: boolean; rows: SunapReplyRowV2[]; paid: SunapReplyPaid[]; doctors: SunapReplyDoctor[] }
+  | { v: 3; day: string; unsure: boolean; rows: SunapReplyRowV3[]; paid: SunapReplyPaid[]; doctors: SunapReplyDoctor[] }
 
 // ── PC 저장 (work-YYYY-MM.dat의 칸 sunap, design.md 'PC 저장') ──────────────
 export type SunapEdit = {
@@ -89,7 +92,8 @@ export type LedgerRow = {
   card: number
   transfer: number
   unpaid: number
-  free: boolean // 네 칸 다 0원
+  health: number // 건강생활유지비로 낸 돈(고칠 수 없음, v1·v2 답이면 0)
+  free: boolean // 네 칸 다 0원이고 건강생활도 0원
   block: boolean
   pt: boolean
   rsv: LedgerRsv
