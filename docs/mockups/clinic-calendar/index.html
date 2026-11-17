@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>예약 탭 시안</title>
+<!--
+  예약 탭(clinic-calendar) 시안. 의원 공용 구글 캘린더를 대신하는 예약표. 결정·기본값은 notes.md.
+  ?s=week(기본) · day · month · new · phone-new · overlap-warn · off-warn · detail · settings · phone-week · phone-day · empty
+  색은 앱 토큰(src/app/globals.css :root)과 예약 색판 10색만 쓴다. 이름은 ○○, 차트번호·담당 표시 (가)(나)(다)는 모두 지어낸 값이다.
+  지금 시각은 2026-11-17 (화) 10:40으로 고정. 어디로도 보내지 않는다.
+-->
+<style>
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB; --faint: #9CA3AF;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-strong: #1D4ED8; --accent-soft: #EAF1FE;
+  --positive: #15803D; --positive-soft: #ECF7EF; --negative: #C2410C; --negative-soft: #FDF0EA;
+  --warning: #B45309; --warning-soft: #FDF4E3; --r: 4px; --r-float: 8px;
+  --elev: 0 1px 2px rgb(17 24 39 / 6%), 0 6px 16px rgb(17 24 39 / 10%);
+  --ui: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  --slot: 20px; /* 10분 한 칸 */
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--canvas); color: var(--ink-2); font: 14px/22px var(--ui); word-break: keep-all; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+.num, .ch { font-variant-numeric: tabular-nums; }
+.mut { color: var(--muted); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* 시안 머리(앱 밖) */
+.mhead { background: #E9ECF0; border-bottom: 1px solid var(--line-strong); }
+.mhead-in { max-width: 1280px; margin: 0 auto; padding: 12px 24px; display: grid; gap: 6px; }
+.mhead b { color: var(--ink); font-size: 15px; }
+.mhead .ex { margin-left: 6px; padding: 1px 7px; border-radius: 4px; background: #FEF3C7; color: #92400E; font-size: 12px; font-weight: 600; }
+.mdesc { font-size: 13px; color: var(--muted); }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg a { padding: 3px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); font-size: 12px; color: var(--ink-2); text-decoration: none; white-space: nowrap; }
+.seg a[aria-current="true"] { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+.mnote { font-size: 12px; line-height: 18px; color: var(--ink-2); }
+.mnote b { font-size: 12px; }
+
+/* 앱 */
+.app { position: relative; background: var(--canvas); }
+.framed .app { width: 390px; max-width: 100%; margin: 16px auto 32px; border: 1px solid var(--line-strong); border-radius: 12px; overflow: clip; box-shadow: var(--elev); min-height: 800px; }
+.top { background: var(--surface); border-bottom: 1px solid var(--line); }
+.top-in { max-width: 1280px; margin: 0 auto; height: 56px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 16px; font-weight: 600; color: var(--ink); }
+.brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-r { display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--muted); }
+.acct { height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); display: inline-flex; align-items: center; color: var(--ink-2); font-weight: 500; white-space: nowrap; }
+.tabsbar { background: var(--surface); border-bottom: 1px solid var(--line); }
+.tabs { max-width: 1280px; margin: 0 auto; padding: 0 12px; display: flex; overflow-x: auto; scrollbar-width: none; }
+.tabs a { position: relative; height: 44px; padding: 0 12px; display: inline-flex; align-items: center; white-space: nowrap; color: var(--ink-2); font-weight: 500; text-decoration: none; flex: none; }
+.tabs a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+.tabs a[aria-current="page"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; background: var(--accent); }
+main { max-width: 1280px; margin: 0 auto; padding: 16px 24px 40px; display: grid; gap: 12px; }
+main > * { min-width: 0; }
+
+/* 단추 */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink); font-size: 14px; font-weight: 500; white-space: nowrap; }
+.btn:hover:not(:disabled) { background: var(--canvas); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.icon { width: 36px; padding: 0; }
+.btn.ghost { border-color: transparent; background: none; color: var(--ink-2); }
+.btn.primary { border-color: transparent; background: var(--accent); color: #fff; font-weight: 600; }
+.btn.primary:hover:not(:disabled) { background: var(--accent-strong); }
+.btn.accent { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.btn.accent:hover:not(:disabled) { background: var(--accent-soft); }
+.btn.danger { color: var(--negative); }
+.btn.dangerfill { border-color: transparent; background: var(--negative); color: #fff; font-weight: 600; }
+.btn.text { border: 0; background: none; padding: 0 4px; height: 28px; font-size: 13px; color: var(--accent); }
+.btn.text.danger { color: var(--negative); }
+.btn svg { flex: none; }
+.chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--r); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.chip.gray { background: var(--canvas); border-color: var(--line); color: var(--ink-2); }
+.chip.ok { background: var(--positive-soft); color: var(--positive); font-weight: 600; }
+.chip.ng { background: var(--negative-soft); color: var(--negative); font-weight: 600; }
+
+/* 도구 줄 */
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.tb1, .tb2 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tb2 { gap: 8px; }
+.toolbar h1 { margin: 0 0 0 6px; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; font-variant-numeric: tabular-nums; }
+.vseg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--r); overflow: clip; background: var(--surface); flex: none; }
+.vseg button { border: 0; margin: 0; background: none; height: 34px; padding: 0 16px; font-size: 14px; font-weight: 500; color: var(--ink-2); white-space: nowrap; }
+.vseg button + button { border-left: 1px solid var(--line-strong); }
+.vseg button:hover { background: var(--canvas); }
+.vseg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.vseg button:focus-visible { outline-offset: -2px; }
+.vseg.sm button { height: 30px; padding: 0 12px; font-size: 13px; }
+
+/* 표시 안내 */
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 20px; font-size: 12px; line-height: 18px; color: var(--muted); }
+.lg { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.lg > b { color: var(--ink-2); font-weight: 600; }
+.lg > span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+i.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--c); flex: none; }
+i.sw.follow { background: conic-gradient(#2563EB 0 25%, #0F766E 0 50%, #7C3AED 0 75%, #EA580C 0); border-radius: 50%; }
+i.gh { display: inline-block; width: 18px; height: 10px; border-radius: 2px; background: repeating-linear-gradient(135deg, #E5E7EB 0 3px, #F9FAFB 3px 6px); outline: 1px dashed var(--faint); outline-offset: -1px; }
+.bit { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: var(--r); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.bit.on { background: var(--positive-soft); color: var(--positive); }
+.bit.on::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.bit.off { background: var(--surface); border: 1px solid var(--line-strong); color: var(--muted); font-weight: 500; }
+details.legend-d summary { font-size: 13px; color: var(--ink-2); cursor: pointer; padding: 2px 0; }
+details.legend-d .legend { margin-top: 8px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+
+/* 도착 표시 */
+.mk { display: inline-grid; place-items: center; width: 13px; height: 13px; border-radius: 50%; color: #fff; font-size: 10px; line-height: 1; font-weight: 800; vertical-align: -2px; margin-right: 3px; flex: none; }
+.mk.came { background: var(--positive); }
+.mk.noshow { background: var(--negative); }
+.mk.cancel { width: auto; height: 14px; padding: 0 4px; border-radius: 3px; background: #E5E7EB; color: var(--ink-2); font-size: 10px; font-weight: 700; }
+
+/* 예약표(주·일) */
+.cal { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: clip; --gw: 52px; }
+.crow { display: grid; grid-template-columns: var(--gw) repeat(var(--days), minmax(0, 1fr)); }
+.chead { position: sticky; top: 0; z-index: 8; background: var(--surface); border-bottom: 1px solid var(--line); }
+.dh { border: 0; margin: 0; background: none; text-align: left; padding: 6px 8px; border-left: 1px solid var(--line); display: flex; align-items: center; gap: 6px; min-width: 0; color: inherit; }
+.dh:hover { background: var(--canvas); }
+.dh .n { font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.dh .w { font-size: 13px; color: var(--muted); font-weight: 500; }
+.dh.today .n { color: #fff; background: var(--accent); border-radius: 50%; width: 30px; height: 30px; display: inline-grid; place-items: center; font-size: 16px; line-height: 1; }
+.dh.today .w { color: var(--accent-strong); font-weight: 600; }
+.dh .c { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.allday { border-bottom: 1px solid var(--line-strong); }
+.gh { min-width: 0; }
+.adlb { font-size: 11px; color: var(--muted); padding: 7px 8px 0 0; text-align: right; white-space: nowrap; }
+.ad { position: relative; border-left: 1px solid var(--line); padding: 4px; min-height: 34px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; min-width: 0; }
+.ad:hover { background: var(--canvas); }
+.ad .adadd { font-size: 11px; color: var(--accent); opacity: 0; padding: 2px 4px; line-height: 16px; }
+.ad:hover .adadd { opacity: 1; }
+.ad.has .adadd { display: none; }
+.adc { border: 0; margin: 0; display: flex; align-items: center; gap: 4px; height: 22px; padding: 0 6px; border-radius: 3px; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; min-width: 0; text-align: left; }
+.adc.memo { background: #EEF0F4; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.adc.off { background: color-mix(in srgb, var(--c) 12%, white); color: var(--ink); box-shadow: inset 3px 0 0 var(--c); }
+.adc span { overflow: hidden; text-overflow: ellipsis; }
+.gut { position: relative; height: var(--h); }
+.hl { position: absolute; right: 6px; transform: translateY(-50%); font-size: 11px; line-height: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.hl.first { transform: none; top: 2px !important; }
+.col { position: relative; height: var(--h); border-left: 1px solid var(--line); min-width: 0;
+  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(#F1F2F5 1px, transparent 1px);
+  background-size: 100% calc(var(--slot) * 6), 100% calc(var(--slot) * 3); }
+.col.today { background-color: #FBFCFF; }
+
+/* 예약 칸 */
+.ev { position: absolute; z-index: 1; display: flex; flex-direction: column; justify-content: flex-start; align-items: stretch; margin: 0; border: 0; padding: 1px 3px 1px 6px; border-radius: 4px; text-align: left; overflow: hidden;
+  background: color-mix(in srgb, var(--c) 13%, white); color: var(--ink);
+  box-shadow: inset 3px 0 0 var(--c), inset 0 0 0 1px color-mix(in srgb, var(--c) 26%, white);
+  font-size: 11px; line-height: 13px; }
+.ev.day { font-size: 12.5px; line-height: 16px; padding: 2px 6px 2px 9px; }
+.ev:hover { z-index: 4; box-shadow: inset 3px 0 0 var(--c), inset 0 0 0 1px var(--c), 0 2px 8px rgb(17 24 39 / 16%); }
+.ev:focus-visible { z-index: 4; outline-offset: 1px; }
+.evt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lines, 1); overflow: hidden; }
+.tk { white-space: nowrap; }
+.tk.ch { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.tk.nm { font-weight: 700; }
+.tk.len, .tk.memo { color: var(--muted); }
+.tk.tm { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.ev.st-cancel { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--muted); }
+.ev.st-cancel .tk { text-decoration: line-through; color: var(--muted); }
+.ev.st-noshow { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--c) 13%, white) 0 6px, color-mix(in srgb, var(--c) 5%, white) 6px 12px); }
+.ev.ghost { background: repeating-linear-gradient(135deg, #EEF0F3 0 5px, #F9FAFB 5px 10px); box-shadow: none; outline: 1px dashed var(--faint); outline-offset: -1px; color: var(--muted); cursor: help; }
+.ev.ghost .gl { font-weight: 700; color: var(--ink-2); }
+.now { position: absolute; left: -1px; right: 0; height: 0; border-top: 2px solid var(--negative); z-index: 6; pointer-events: none; }
+.now::before { content: ""; position: absolute; left: -5px; top: -6px; width: 10px; height: 10px; border-radius: 50%; background: var(--negative); }
+.hov { position: absolute; left: 2px; right: 2px; height: calc(var(--slot) * 3 - 2px); border: 1px dashed var(--accent); border-radius: 4px; background: rgb(37 99 235 / 6%); color: var(--accent-strong); font-size: 11px; line-height: 14px; padding: 2px 6px; pointer-events: none; z-index: 3; font-weight: 600; }
+.draft { position: absolute; left: 2px; right: 2px; z-index: 7; border: 2px dashed var(--accent); border-radius: 4px; background: rgb(234 241 254 / 92%); color: var(--accent-strong); font-size: 12px; line-height: 15px; font-weight: 700; padding: 2px 6px; pointer-events: none; overflow: hidden; }
+.draft.warn { border-color: var(--warning); background: rgb(253 244 227 / 94%); color: var(--warning); }
+.emptycard { position: absolute; left: 50%; top: 150px; transform: translateX(-50%); z-index: 7; width: min(420px, calc(100% - 32px)); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-float); box-shadow: var(--elev); padding: 20px; display: grid; gap: 8px; justify-items: start; }
+.emptycard h2 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.emptycard p { margin: 0; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.emptycard .btn { margin-top: 4px; }
+
+/* 월 보기 */
+.mon { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: clip; }
+.mh { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+.mh span { padding: 8px 10px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.mg { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.mc { border: 0; margin: 0; background: none; text-align: left; color: inherit; min-height: 124px; padding: 6px 8px 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; }
+.mc:nth-child(7n) { border-right: 0; }
+.mc:hover { background: var(--canvas); }
+.mtop { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.mn { font-size: 13px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; min-width: 24px; height: 24px; display: inline-grid; place-items: center; }
+.mc.today .mn { background: var(--accent); color: #fff; border-radius: 50%; }
+.mc.out { background: #FBFBFC; }
+.mc.out .mn, .mc.out .cnt, .mc.out .kc { color: var(--faint); }
+.mc.sun .mn { color: var(--muted); }
+.cnt { font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.kc { font-size: 12px; line-height: 17px; color: var(--muted); }
+.ns { color: var(--negative); font-weight: 600; font-size: 12px; line-height: 17px; }
+.mchip { display: block; font-size: 11px; line-height: 18px; font-weight: 600; padding: 0 5px; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mchip.memo { background: #EEF0F4; color: var(--ink); }
+.mchip.off { background: color-mix(in srgb, var(--c) 12%, white); box-shadow: inset 3px 0 0 var(--c); color: var(--ink); }
+.mdot { display: none; }
+
+/* 폰 주 보기(날짜별 목록) */
+.wl { display: grid; gap: 8px; }
+.dcard { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: clip; }
+.dch { border: 0; margin: 0; background: none; width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 12px; min-height: 52px; text-align: left; color: inherit; }
+.dch .n { font-size: 17px; font-weight: 700; color: var(--ink); min-width: 28px; height: 28px; display: inline-grid; place-items: center; font-variant-numeric: tabular-nums; }
+.dcard.today .dch .n { background: var(--accent); color: #fff; border-radius: 50%; font-size: 15px; }
+.dch .w { font-size: 14px; color: var(--ink-2); font-weight: 500; }
+.dch .sum { margin-left: auto; font-size: 12px; line-height: 16px; color: var(--muted); text-align: right; }
+.dch .car { color: var(--faint); font-size: 11px; width: 12px; text-align: center; }
+.adl { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 0 12px 8px; }
+.adl .adc { height: 26px; }
+.adl .btn.text { height: 26px; font-size: 12px; }
+.alist { border-top: 1px solid var(--line); }
+.arow { border: 0; margin: 0; background: none; width: 100%; display: grid; grid-template-columns: 44px 4px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 7px 12px; min-height: 52px; border-bottom: 1px solid var(--line); text-align: left; color: inherit; }
+.arow:last-child { border-bottom: 0; }
+.arow:hover { background: var(--canvas); }
+.arow .at { font-size: 14px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 18px; }
+.arow .at small { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
+.arow .bar { align-self: stretch; border-radius: 2px; background: var(--c); }
+.arow .ab { min-width: 0; line-height: 18px; }
+.arow .ab b { display: block; font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arow .ab b .ch { font-weight: 500; color: var(--ink-2); margin-right: 4px; }
+.arow .ab small { display: block; font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arow.st-cancel .ab b, .arow.st-cancel .at { text-decoration: line-through; color: var(--muted); }
+.arow.ghost .bar { background: repeating-linear-gradient(180deg, var(--faint) 0 3px, transparent 3px 6px); }
+.arow.ghost .ab b { color: var(--muted); font-weight: 600; }
+.noappt { padding: 12px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); }
+
+/* 옆에서 나오는 판 */
+.scrim { position: fixed; inset: 0; z-index: 20; background: rgb(17 24 39 / 18%); }
+.drawer { position: fixed; z-index: 21; top: 0; right: 0; bottom: 0; width: 460px; max-width: 100%; background: var(--surface); border-left: 1px solid var(--line-strong); box-shadow: -8px 0 28px rgb(17 24 39 / 14%); display: flex; flex-direction: column; }
+.dwh { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 10px 20px; border-bottom: 1px solid var(--line); }
+.dwh h3 { margin: 0; font-size: 17px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.dwb { flex: 1; overflow-y: auto; padding: 16px 20px 20px; display: grid; align-content: start; gap: 16px; }
+.dwf { padding: 12px 20px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.dwf .need { flex: 1 1 140px; font-size: 12px; line-height: 18px; color: var(--muted); }
+.dwf .need.err { color: var(--negative); }
+.dwf .sp { flex: 1; }
+.narrow .drawer { width: 100%; border-left: 0; }
+.framed .scrim, .framed .drawer { position: absolute; }
+.framed .drawer { bottom: auto; min-height: 800px; }
+
+/* 예약 더하기 */
+.bithint { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 18px; color: #1E3A8A; background: var(--accent-soft); padding: 8px 10px; border-radius: var(--r); }
+.bithint svg, .phnote svg, .info svg, .wbox svg { flex: none; margin-top: 2px; }
+.phnote { display: flex; gap: 6px; align-items: flex-start; margin: -6px 0 0; font-size: 12px; line-height: 18px; color: var(--muted); }
+.fgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.field { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.field > label, .field > .lb { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; }
+.hint, .help { font-size: 12px; line-height: 18px; font-weight: 400; color: var(--muted); margin: 0; }
+.inp { height: 40px; width: 100%; min-width: 0; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font-size: 14px; color: var(--ink); }
+.inp::placeholder { color: var(--faint); }
+.inp:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+.inp.filled { background: var(--positive-soft); border-color: #A7D7B5; }
+textarea.inp { height: 60px; padding: 8px 10px; resize: vertical; line-height: 20px; }
+.lk { grid-column: 1 / -1; display: grid; gap: 6px; }
+.lk:empty { display: none; }
+.lk .ok { margin: 0; font-size: 12px; line-height: 18px; color: var(--positive); font-weight: 600; }
+.lk .no { margin: 0; font-size: 12px; line-height: 18px; color: var(--muted); }
+.picks { border: 1px solid var(--accent); border-radius: 6px; background: var(--surface); box-shadow: var(--elev); overflow: clip; }
+.picks .ph { padding: 7px 12px; background: var(--accent-soft); color: #1E3A8A; font-size: 12px; line-height: 18px; font-weight: 600; }
+.pr { border: 0; margin: 0; background: none; width: 100%; display: grid; grid-template-columns: 52px auto minmax(0, 1fr); align-items: baseline; gap: 10px; padding: 9px 12px; border-top: 1px solid var(--line); text-align: left; color: var(--ink); font-size: 14px; }
+.pr:hover, .pr:focus-visible { background: var(--accent-soft); outline-offset: -2px; }
+.pr b { font-variant-numeric: tabular-nums; }
+.pr small { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.opts2 { display: flex; flex-wrap: wrap; gap: 6px; }
+.ob { margin: 0; height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r); display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); background: var(--surface); white-space: nowrap; }
+.ob:hover { background: var(--canvas); }
+.ob[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; box-shadow: inset 0 0 0 1px var(--accent); }
+.ob i.sw { width: 10px; height: 10px; border-radius: 50%; }
+.ob small { font-size: 11px; color: var(--muted); font-weight: 400; }
+.ob .offt { font-size: 11px; color: var(--warning); font-weight: 600; background: var(--warning-soft); padding: 0 4px; border-radius: 3px; line-height: 16px; }
+.lenrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line-strong); border-radius: var(--r); overflow: clip; background: var(--surface); }
+.stepper button { border: 0; margin: 0; background: none; width: 36px; height: 36px; display: grid; place-items: center; font-size: 17px; color: var(--ink-2); }
+.stepper button:hover { background: var(--canvas); }
+.stepper output { min-width: 64px; height: 36px; display: grid; place-items: center; border-left: 1px solid var(--line); border-right: 1px solid var(--line); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.lenrow .tr { font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.wbox { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: var(--r); background: var(--warning-soft); border: 1px solid #F1D9A8; font-size: 13px; line-height: 20px; color: var(--ink); }
+.wbox b { color: var(--warning); }
+#warns { display: grid; gap: 8px; }
+#warns:empty { display: none; }
+
+/* 예약 자세히 */
+.dtop { display: grid; grid-template-columns: 6px minmax(0, 1fr); gap: 12px; }
+.dtop .bar { border-radius: 3px; background: var(--c); }
+.dname { font-size: 20px; line-height: 28px; font-weight: 700; color: var(--ink); }
+.dname .ch { font-weight: 600; color: var(--ink-2); margin-right: 8px; }
+.dsub { font-size: 14px; color: var(--ink-2); }
+.dl { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 6px 12px; margin: 0; font-size: 14px; }
+.dl dt { color: var(--muted); }
+.dl dd { margin: 0; color: var(--ink); }
+.fs { display: grid; gap: 8px; }
+.fs > h4 { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--ink); }
+.fs > p { margin: 0; font-size: 12px; line-height: 18px; color: var(--muted); }
+.arr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 14px; font-weight: 600; color: var(--ink); }
+.arr .mut { font-size: 12px; font-weight: 400; }
+.rep { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.meta { margin: 0; font-size: 12px; color: var(--muted); }
+.hr { height: 1px; background: var(--line); }
+
+/* 설정 */
+.klist { display: grid; gap: 6px; }
+.krow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "ord name del" "ord opts opts" "pal pal pal"; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); align-items: center; }
+.krow .ord { grid-area: ord; display: grid; gap: 4px; align-self: start; }
+.krow .nm { grid-area: name; }
+.krow .del { grid-area: del; }
+.krow .opts { grid-area: opts; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 12px; color: var(--muted); }
+.krow .opts label, .krow .opts .lbl { display: inline-flex; align-items: center; gap: 6px; }
+.krow .pal { grid-area: pal; }
+.srow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 8px; align-items: center; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r); }
+.srow .pal { grid-column: 1 / -1; }
+.srow .mk1 { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.tin { height: 32px; width: 100%; min-width: 0; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font-size: 13px; color: var(--ink); }
+.tin.one { width: 40px; text-align: center; font-weight: 700; }
+.tin.bad { border-color: var(--negative); background: var(--negative-soft); }
+.tin:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+.krow .nm.tin { font-weight: 600; }
+.sel { height: 32px; padding: 0 6px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font-size: 13px; color: var(--ink); }
+.mini { margin: 0; width: 28px; height: 28px; border: 1px solid var(--line-strong); border-radius: var(--r); display: grid; place-items: center; font-size: 10px; color: var(--ink-2); background: var(--surface); padding: 0; }
+.mini:disabled { opacity: .35; cursor: default; }
+.del { border: 0; margin: 0; background: none; height: 28px; padding: 0 6px; font-size: 12px; color: var(--negative); border-radius: var(--r); }
+.del:hover:not(:disabled) { background: var(--negative-soft); }
+.del:disabled { color: var(--faint); cursor: default; }
+.cbtn { margin: 0; height: 32px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r); display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); background: var(--surface); white-space: nowrap; }
+.cbtn i.sw { width: 14px; height: 14px; border-radius: 3px; }
+.cbtn i.sw.follow { border-radius: 50%; }
+.cbtn .car { font-size: 10px; color: var(--muted); }
+.cbtn[aria-expanded="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.pal { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; background: var(--canvas); border-radius: var(--r); align-items: center; }
+.pal .pc { margin: 0; width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--surface); background: var(--c); box-shadow: 0 0 0 1px var(--line-strong); padding: 0; }
+.pal .pc[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ink); }
+.pal .pf { margin: 0; height: 28px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); font-size: 12px; display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
+.pal .pf[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); font-weight: 600; }
+.addline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.rowx { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.info { padding: 10px 12px; border-radius: var(--r); background: var(--canvas); border: 1px solid var(--line); font-size: 12px; line-height: 18px; color: var(--ink-2); display: grid; gap: 6px; }
+.info p { margin: 0; display: flex; gap: 8px; align-items: flex-start; }
+
+/* 종일 떠 있는 판 */
+.popscrim { position: fixed; inset: 0; z-index: 30; }
+.pop { position: fixed; z-index: 31; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-float); box-shadow: var(--elev); padding: 14px; display: grid; gap: 10px; }
+.pop h4 { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.pop ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.pop li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--ink); padding: 2px 0; }
+.pop .foot { display: flex; justify-content: flex-end; gap: 8px; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 40; padding: 10px 16px; border-radius: var(--r-float); background: var(--ink); color: #fff; font-size: 13px; line-height: 20px; box-shadow: 0 8px 24px rgb(17 24 39 / 20%); max-width: calc(100vw - 32px); }
+.toast:empty { display: none; }
+
+/* 좁은 화면(폰). 폰 상태(?s=phone-*)는 넓은 화면에서도 390px 틀 안에 그린다 */
+/* 1024px 이상: 앱의 넓은 화면(data-wide-page)처럼 띠·탭 줄·본문이 같이 1280 제한을 푼다 */
+.wide .top-in, .wide .tabs, .wide main { max-width: none; }
+.narrow .mhead-in { padding-left: 16px; padding-right: 16px; }
+.narrow .top-in { height: 48px; padding: 0 12px 0 16px; }
+.narrow .top-r time { display: none; }
+.narrow .tabs { padding: 0 4px; }
+.narrow main { padding: 12px 12px 32px; gap: 10px; }
+.narrow .tb1, .narrow .tb2 { flex: 1 1 100%; }
+.narrow .toolbar h1 { font-size: 17px; flex: 1; margin-left: 2px; }
+.narrow .btn { height: 44px; }
+.narrow .btn.icon { width: 44px; }
+.narrow .btn.text { height: 32px; }
+.narrow .vseg { flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.narrow .vseg button { height: 42px; padding: 0 4px; }
+.narrow .cal { --gw: 40px; }
+.narrow .hl { right: 4px; font-size: 10px; }
+.narrow .dh .n { font-size: 17px; }
+.narrow .ev.day { font-size: 12px; line-height: 15px; padding: 2px 4px 2px 7px; }
+.narrow .mc { min-height: 64px; padding: 4px; gap: 2px; align-items: center; }
+.narrow .mc .kc, .narrow .mc .ns, .narrow .mc .mchip { display: none; }
+.narrow .mtop { flex-direction: column; gap: 2px; }
+.narrow .cnt { font-size: 11px; font-weight: 600; color: var(--ink-2); }
+.narrow .mdot { display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--warning); }
+.narrow .mh span { padding: 6px 4px; text-align: center; }
+.narrow .dwb { padding: 16px; }
+.narrow .dwf { padding: 10px 16px 14px; }
+.narrow .dwh { padding-left: 16px; }
+.narrow .fgrid { gap: 12px 10px; }
+.narrow .inp { height: 44px; font-size: 16px; }
+.narrow textarea.inp { height: 72px; }
+.narrow .ob { height: 40px; }
+.narrow .stepper button, .narrow .stepper output { height: 42px; }
+.narrow .stepper button { width: 44px; }
+.narrow .tin, .narrow .sel, .narrow .cbtn { height: 40px; }
+.narrow .mini { width: 36px; height: 36px; }
+.narrow .del { height: 36px; }
+.narrow .srow { grid-template-columns: minmax(0, 1fr) auto auto; }
+.narrow .srow .del { grid-column: 3; }
+.narrow .pr { grid-template-columns: 48px auto; }
+.narrow .pr small { grid-column: 1 / -1; }
+.narrow .dwf .need { flex-basis: 100%; }
+</style>
+</head>
+<body>
+<div class="mhead"><div class="mhead-in">
+  <div><b>예약 탭 시안</b><span class="ex">예시</span> <span class="mdesc">의원 공용 구글 캘린더 대신 쓰는 예약표예요. 이름은 ○○, 차트번호·담당 표시 (가)(나)(다)는 모두 지어낸 값이고, 지금 시각은 11월 17일 (화) 10:40으로 정해 두었어요.</span></div>
+  <div class="seg" id="seg"></div>
+  <div class="mnote" id="mnote"></div>
+</div></div>
+
+<div class="app" id="app">
+  <header class="top"><div class="top-in">
+    <div class="brand"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 30 30"><rect x="3" y="3" width="24" height="24" rx="6" fill="none" stroke="#14C8BA" stroke-width="2.4"/><path d="M13.5 8h3a1 1 0 0 1 1 1v3.5H21a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3.5V21a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3.5H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3.5V9a1 1 0 0 1 1-1z" fill="#6D5DF5"/></svg><span>샘플정형외과의원</span></div>
+    <div class="top-r"><time>2026년 11월 17일 (화) 10:40 (KST)</time><span class="acct">계정 ▾</span></div>
+  </div></header>
+  <nav class="tabsbar" aria-label="메뉴"><div class="tabs" id="tabs"></div></nav>
+  <main id="main"></main>
+  <div id="layer"></div>
+</div>
+<div id="pop"></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ───────── 상태 고르기 ───────── */
+const STATES = [
+  ['week', '주 보기 (기본)', '비트 PC(접수실) 화면이에요. 빈 칸을 누르면 그 시간으로 예약을 넣고, 예약을 누르면 자세히 봐요. 회색 빗금 칸이 비트 예약이에요(보기만 해요). 종일 줄을 누르면 학회 같은 메모나 시행자 휴무를 넣어요.'],
+  ['day', '일 보기', '하루를 넓게 봐요. 예약마다 시간·길이·메모까지 보여요.'],
+  ['month', '월 보기', '날마다 예약 수와 종류별 수만 보여요. 날짜를 누르면 그날 일 보기로 가요.'],
+  ['new', '예약 더하기 · 비트 자동', "이름 칸에 '김'을 적은 모습이에요. 비트에 같은 이름이 3명이라 고르는 목록이 떠요. 하나를 누르면 차트번호가 채워져요. 담당·종류·메모는 직접 골라요."],
+  ['phone-new', '폰 · 예약 더하기', '폰에는 비트가 없어 이름·차트번호를 손으로 적어요.'],
+  ['overlap-warn', '경고 · 담당 겹침', '같은 담당에게 겹치는 예약이 있으면 알려 줘요. 그래도 저장할 수 있어요.'],
+  ['off-warn', '경고 · 휴무인 담당', '그날 휴무로 표시한 담당을 고르면 알려 줘요. 그래도 저장할 수 있어요.'],
+  ['detail', '예약 자세히', '예약을 누르면 열려요. [다음 주에도]를 누르면 다음 주 같은 시간에 하나 더 넣어요.'],
+  ['settings', '설정', '종류(길이·색)·시행자(표시 한 글자·색)·보이는 시간을 정해요. 고쳐서 [저장]하면 예약표에 바로 보여요.'],
+  ['phone-week', '폰 · 주 보기', '폰에서는 주 보기를 날짜별 목록으로 보여요. 오늘만 펼쳐 두었어요. 날짜 줄을 누르면 펼치고 접어요.'],
+  ['phone-day', '폰 · 일 보기', '폰의 일 보기예요. 비트 예약 칸은 폰에는 안 보여요.'],
+  ['empty', '빈 화면', '예약이 하나도 없는 주예요.'],
+]
+const Q = new URLSearchParams(location.search)
+let S = Q.get('s'); if (!STATES.some(x => x[0] === S)) S = 'week'
+const PHONE = S.startsWith('phone-')
+const BIT = !PHONE
+const EMPTY = S === 'empty'
+const NOW = { date: '2026-11-17', min: 640 }
+const SLOT = 20
+
+document.getElementById('seg').innerHTML = STATES.map(([k, t]) => `<a href="?s=${k}" aria-current="${k === S}">${t}</a>`).join('')
+const cur = STATES.find(x => x[0] === S)
+document.getElementById('mnote').innerHTML = `<b>${cur[1]}</b> — ${cur[2]} <span class="mut">(${PHONE ? '폰 · 비트 없음' : '비트 PC · 접수실'})</span>`
+const TABS = ['대시보드', '통계', '청구', '환자', '업무일지', '수납일지', '예약', '더보기 ▾']
+document.getElementById('tabs').innerHTML = TABS.map(t => `<a href="#" ${t === '예약' ? 'aria-current="page" id="tab-cur"' : ''}>${t}</a>`).join('')
+
+/* ───────── 도움 ───────── */
+const $ = s => document.querySelector(s)
+const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const pad = n => String(n).padStart(2, '0')
+const hm = m => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`
+const DOW = ['일', '월', '화', '수', '목', '금', '토']
+const toD = s => { const [y, m, d] = s.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)) }
+const toS = d => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
+const addDays = (s, n) => { const d = toD(s); d.setUTCDate(d.getUTCDate() + n); return toS(d) }
+const dowOf = s => toD(s).getUTCDay()
+const mondayOf = s => addDays(s, -((dowOf(s) + 6) % 7))
+const md = s => { const d = toD(s); return `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일` }
+const mdw = s => `${md(s)} (${DOW[dowOf(s)]})`
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
+const ICON = {
+  left: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg>',
+  right: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg>',
+  plus: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>',
+  gear: '<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4"/></svg>',
+  close: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
+  warn: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 15 14H1z" fill="#B45309"/><path d="M8 6v3.6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.7" r=".9" fill="#fff"/></svg>',
+  info: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.2v4M8 4.8v.2"/></svg>',
+  lock: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>',
+  sync: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M13 6.5A5 5 0 0 0 3.6 5M3 9.5A5 5 0 0 0 12.4 11"/><path d="M3.3 2.5v2.8h2.8M12.7 13.5v-2.8H9.9"/></svg>',
+  bit: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2" y="3" width="12" height="8" rx="1.5"/><path d="M6 14h4M8 11v3"/></svg>',
+  repeat: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="1.5"/><path d="M2 6.5h12M5 1.8v2.4M11 1.8v2.4M7 10.2h4M9.3 8.4 11 10.2l-1.7 1.8"/></svg>',
+}
+const MK = {
+  came: '<span class="mk came" title="왔음"><svg viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M2.2 5.3 4.2 7.2 7.9 3" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>',
+  noshow: '<span class="mk noshow" title="안 옴">!</span>',
+  cancel: '<span class="mk cancel" title="취소">취소</span>',
+  wait: '',
+}
+
+/* ───────── 설정(지어낸 기본값) ───────── */
+const PALETTE = [['파랑', '#2563EB'], ['청록', '#0F766E'], ['보라', '#7C3AED'], ['주황', '#EA580C'], ['분홍', '#DB2777'], ['연두', '#65A30D'], ['남색', '#1E3A8A'], ['하늘', '#0284C7'], ['갈색', '#92400E'], ['회색', '#6B7280']]
+const palName = c => (PALETTE.find(p => p[1] === c) || ['색'])[0]
+let SET = {
+  kinds: [
+    { id: 'dosu', name: '도수', len: 30, color: null },
+    { id: 'jabo', name: '자보도수', len: 30, color: null },
+    { id: 'eswt', name: '충격파', len: 15, color: null },
+    { id: 'inj', name: '주사', len: 10, color: '#DB2777' },
+    { id: 'visit', name: '진료', len: 10, color: '#65A30D' },
+  ],
+  staff: [
+    { id: 'ga', name: '한○○', mark: '가', color: '#2563EB' },
+    { id: 'na', name: '윤○○', mark: '나', color: '#0F766E' },
+    { id: 'da', name: '조○○', mark: '다', color: '#7C3AED' },
+    { id: 'ra', name: '강○○', mark: '라', color: '#EA580C' },
+    { id: 'won', name: '원장님', mark: '원', color: '#6B7280' },
+  ],
+  open: 480, close: 1200, sunday: false,
+}
+const ARCH = { kinds: {}, staff: {} }
+const kindOf = id => SET.kinds.find(k => k.id === id) || ARCH.kinds[id] || { id, name: '(지운 종류)', len: 30, color: '#6B7280' }
+const staffOf = id => SET.staff.find(s => s.id === id) || ARCH.staff[id] || { id, name: '(지운 시행자)', mark: '?', color: '#6B7280' }
+const colorOf = a => kindOf(a.kind).color || staffOf(a.staff).color
+const staffIdx = id => { const i = SET.staff.findIndex(s => s.id === id); return i < 0 ? 99 : i }
+
+/* ───────── 지어낸 자료 ───────── */
+const ALLDAY = EMPTY ? {} : {
+  '2026-11-16': [{ type: 'memo', text: '주간 회의 13:00' }],
+  '2026-11-18': [{ type: 'off', staff: 'na' }],
+  '2026-11-19': [{ type: 'memo', text: '원장님 학회 (오후)' }],
+  '2026-11-20': [{ type: 'off', staff: 'da' }],
+  '2026-11-27': [{ type: 'off', staff: 'ga' }],
+  '2026-11-30': [{ type: 'memo', text: '물리치료실 소독' }],
+}
+const isOff = (date, staff) => (ALLDAY[date] || []).some(x => x.type === 'off' && x.staff === staff)
+// 비트 환자(같은 이름 고르기용, 지어낸 값)
+const BITPT = [
+  { chart: '10231', name: '김○○', sex: '여', age: 56, last: '11/12' },
+  { chart: '20785', name: '김○○', sex: '남', age: 34, last: '10/02' },
+  { chart: '31406', name: '김○○', sex: '여', age: 71, last: '2025/08/19' },
+  { chart: '10318', name: '이○○', sex: '남', age: 47, last: '11/14' },
+  { chart: '20944', name: '최○○', sex: '여', age: 29, last: '11/13' },
+  { chart: '10457', name: '박○○', sex: '남', age: 62, last: '11/16' },
+]
+const FIXED = EMPTY ? {} : {
+  '2026-11-16': [{ start: 900, len: 30, staff: 'ga', kind: 'dosu', chart: '27741', name: '홍○○', rcpt: null }],
+  '2026-11-17': [
+    { id: 'fix-detail', start: 570, len: 30, staff: 'ga', kind: 'dosu', chart: '10231', name: '김○○', memo: '허리 · 3회차', rcpt: 564, created: '11월 10일 (화) 16:05' },
+    { start: 540, len: 30, staff: 'na', kind: 'jabo', chart: '23580', name: '정○○', rcpt: null },
+    { start: 600, len: 30, staff: 'da', kind: 'dosu', chart: '18842', name: '문○○', cancel: true },
+    { start: 620, len: 10, staff: 'won', kind: 'inj', chart: '30117', name: '송○○', mode: 'came' },
+    { ghost: true, start: 660, len: 20, chart: '25190', name: '오○○' },
+    { ghost: true, start: 930, len: 20, chart: '11872', name: '배○○' },
+  ],
+  '2026-11-18': [
+    { start: 840, len: 30, staff: 'ga', kind: 'dosu', chart: '10457', name: '박○○', memo: '목·어깨' },
+    { block: true, staff: 'ga', start: 870, len: 30 },
+  ],
+  '2026-11-19': [{ block: true, staff: 'na', start: 600, len: 30 }],
+}
+function rng(str) {
+  let h = 2166136261
+  for (const c of str) h = Math.imul(h ^ c.charCodeAt(0), 16777619)
+  let a = h >>> 0
+  return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296 }
+}
+const SUR = '김이박최정강조윤장임한오신권황안송류전홍고문양손배백허남심노하곽성차주우구민진나엄채원천방공현'
+const MEMOS = ['', '', '', '', '', '허리', '목·어깨', '무릎', '2회차', '첫 도수', '자보 서류 확인', '발목']
+let seq = 0
+const began = a => a.date < NOW.date || (a.date === NOW.date && a.start <= NOW.min)
+const ended = a => a.date < NOW.date || (a.date === NOW.date && a.start + a.len <= NOW.min)
+function mkAppt(o) { return { id: o.id || 'a' + (++seq), date: o.date, start: o.start, len: o.len, staff: o.staff, kind: o.kind, chart: o.chart || '', name: o.name, memo: o.memo || '', mode: o.mode || 'auto', cancel: !!o.cancel, rcpt: o.rcpt ?? null, created: o.created || '' } }
+const DATA = {}
+function dayData(date) {
+  if (DATA[date]) return DATA[date]
+  const dd = { appts: [], ghosts: [] }
+  DATA[date] = dd
+  const w = dowOf(date)
+  if (EMPTY || w === 0) return dd
+  const r = rng('ssk-cal-' + date)
+  const pick = arr => arr[Math.floor(r() * arr.length)]
+  const pt = () => ({ chart: String(10000 + Math.floor(r() * 29000)), name: pick(SUR) + '○○' })
+  const sessions = w === 6 ? [[540, 780]] : [[540, 780], [840, 1110]]
+  const CFG = [
+    { st: 'ga', p: .5, kinds: ['dosu', 'dosu', 'dosu', 'jabo'] },
+    { st: 'na', p: .44, kinds: ['dosu', 'jabo', 'jabo', 'dosu'] },
+    { st: 'da', p: .32, kinds: ['dosu'], pmOnly: w !== 6 },
+    { st: 'ra', p: .2, kinds: ['eswt'] },
+    { st: 'won', p: .06, kinds: ['inj', 'inj', 'visit'] },
+  ]
+  for (const c of CFG) {
+    if (isOff(date, c.st)) continue
+    for (const [s0, s1] of sessions) {
+      if (c.pmOnly && s0 < 800) continue
+      if (c.st === 'won' && date === '2026-11-19' && s0 >= 840) continue
+      let t = s0
+      while (t < s1) {
+        const kind = pick(c.kinds)
+        let len = kindOf(kind).len
+        if (kind === 'dosu' && r() < .08) len = 60
+        if (t + len > s1) break
+        if (r() < c.p) {
+          const p = pt()
+          const a = mkAppt({ date, start: t, len, staff: c.st, kind, chart: p.chart, name: p.name, memo: pick(MEMOS) })
+          if (began(a)) a.rcpt = r() < .92 ? t - Math.floor(r() * 15) : null
+          if (r() < .025) { a.cancel = true; a.rcpt = null }
+          dd.appts.push(a)
+          t = Math.ceil((t + len) / 10) * 10
+        } else t += pick([10, 20, 30])
+      }
+    }
+  }
+  const fx = FIXED[date] || []
+  for (const f of fx) {
+    if (f.ghost) continue
+    dd.appts = dd.appts.filter(a => !(a.staff === f.staff && a.start < f.start + f.len && f.start < a.start + a.len))
+  }
+  for (const f of fx) {
+    if (f.block) continue
+    if (f.ghost) dd.ghosts.push({ ghost: true, id: 'g' + (++seq), date, start: f.start, len: f.len, chart: f.chart, name: f.name })
+    else dd.appts.push(mkAppt({ ...f, date }))
+  }
+  if (!fx.some(f => f.ghost)) {
+    const n = w === 6 ? 1 : 1 + (r() < .5 ? 1 : 0)
+    for (let i = 0; i < n; i++) {
+      const [s0, s1] = pick(sessions), p = pt()
+      dd.ghosts.push({ ghost: true, id: 'g' + (++seq), date, start: s0 + Math.floor(r() * ((s1 - s0 - 20) / 10)) * 10, len: 20, chart: p.chart, name: p.name })
+    }
+  }
+  // 같은 날 같은 차트번호 예약이 있으면 비트 예약 칸은 안 보인다
+  dd.ghosts = dd.ghosts.filter(g => !dd.appts.some(a => a.chart === g.chart))
+  return dd
+}
+function findAppt(id) { for (const d in DATA) { const a = DATA[d].appts.find(x => x.id === id); if (a) return a } return null }
+function status(a) {
+  if (a.cancel) return 'cancel'
+  if (a.mode !== 'auto') return a.mode
+  if (a.rcpt != null) return 'came'
+  if (ended(a)) return 'noshow'
+  return 'wait'
+}
+
+/* ───────── 화면 상태 ───────── */
+const UI = { view: 'week', anchor: NOW.date, layer: null, open: new Set([NOW.date]), pop: null }
+if (S === 'day' || S === 'phone-day') UI.view = 'day'
+if (S === 'month') UI.view = 'month'
+function draft(o) { return { mode: 'new', id: null, date: NOW.date, start: 540, len: 30, name: '', chart: '', staff: null, kind: null, memo: '', picks: null, filled: null, notFound: false, ...o } }
+const lookupName = q => q ? BITPT.filter(p => p.name === q || (q.length === 1 && p.name[0] === q)) : []
+if (S === 'new') UI.layer = { type: 'add', D: draft({ date: '2026-11-18', start: 900, name: '김', picks: lookupName('김') }) }
+if (S === 'phone-new') UI.layer = { type: 'add', D: draft({ date: '2026-11-19', start: 600, name: '박○○', chart: '10457', staff: 'na', kind: 'dosu', len: 30, memo: '목·어깨' }) }
+if (S === 'overlap-warn') UI.layer = { type: 'add', D: draft({ date: '2026-11-18', start: 860, name: '이○○', chart: '10318', staff: 'ga', kind: 'dosu', filled: 'chart' }) }
+if (S === 'off-warn') UI.layer = { type: 'add', D: draft({ date: '2026-11-18', start: 660, name: '최○○', chart: '20944', staff: 'na', kind: 'jabo', filled: 'chart' }) }
+if (S === 'detail') { dayData(NOW.date); UI.layer = { type: 'detail', id: 'fix-detail' } }
+if (S === 'settings') UI.layer = { type: 'settings', E: structuredClone(SET), menu: null }
+
+function setMode() {
+  const framed = PHONE && window.innerWidth >= 600
+  const narrow = framed || window.innerWidth < 768
+  const changed = document.body.classList.contains('narrow') !== narrow
+  document.body.classList.toggle('framed', framed)
+  document.body.classList.toggle('narrow', narrow)
+  document.body.classList.toggle('wide', !narrow && window.innerWidth >= 1024)
+  return changed
+}
+const isNarrow = () => document.body.classList.contains('narrow')
+
+/* ───────── 그리기: 도구 줄·안내 ───────── */
+function weekDays() { const m = mondayOf(UI.anchor); return Array.from({ length: SET.sunday ? 7 : 6 }, (_, i) => addDays(m, i)) }
+function rangeLabel(narrow) {
+  const a = toD(UI.anchor), y = narrow ? '' : `${a.getUTCFullYear()}년 `
+  if (UI.view === 'month') return `${a.getUTCFullYear()}년 ${a.getUTCMonth() + 1}월`
+  if (UI.view === 'day') return `${y}${mdw(UI.anchor)}`
+  const ds = weekDays(), f = toD(ds[0]), l = toD(ds[ds.length - 1])
+  return f.getUTCMonth() === l.getUTCMonth() ? `${y}${md(ds[0])} – ${l.getUTCDate()}일` : `${y}${md(ds[0])} – ${md(ds[ds.length - 1])}`
+}
+function toolbarHTML() {
+  const narrow = isNarrow()
+  const unit = UI.view === 'day' ? '날' : UI.view === 'week' ? '주' : '달'
+  return `<div class="toolbar">
+    <div class="tb1"><button class="btn" data-act="today">오늘</button><button class="btn icon ghost" data-act="prev" aria-label="이전 ${unit}">${ICON.left}</button><button class="btn icon ghost" data-act="next" aria-label="다음 ${unit}">${ICON.right}</button><h1>${rangeLabel(narrow)}</h1></div>
+    <div class="tb2"><div class="vseg" role="group" aria-label="보기">${[['day', '일'], ['week', '주'], ['month', '월']].map(([v, t]) => `<button data-act="view" data-v="${v}" aria-pressed="${UI.view === v}">${t}</button>`).join('')}</div>
+      <button class="btn icon" data-act="settings" aria-label="예약 설정" title="예약 설정">${ICON.gear}</button>
+      <button class="btn primary" data-act="add">${ICON.plus}${narrow ? '예약' : '예약 더하기'}</button></div>
+  </div>`
+}
+function legendHTML() {
+  const colors = SET.staff.map(s => `<span><i class="sw" style="--c:${s.color}"></i>(${esc(s.mark)}) ${esc(s.name)}</span>`).join('')
+    + SET.kinds.filter(k => k.color).map(k => `<span><i class="sw" style="--c:${k.color}"></i>${esc(k.name)}</span>`).join('')
+  const follow = SET.kinds.filter(k => !k.color).map(k => k.name).join('·')
+  const inner = `<span class="bit ${BIT ? 'on' : 'off'}">${BIT ? '비트 연결됨' : '비트 없는 기기'}</span>
+    <span class="lg"><b>색</b>${colors}${BIT ? '<span><i class="gh"></i>비트 예약</span>' : ''}${follow ? `<span class="mut">${esc(follow)}는 담당 색</span>` : ''}</span>
+    <span class="lg"><b>도착</b><span>${MK.came}왔음</span><span>${MK.noshow}안 옴</span><span>${MK.cancel}</span><span class="mut">표시 없음 = 아직</span><span class="mut">${BIT ? '비트 접수를 보고 저절로 표시해요' : '도착 표시는 비트 PC가 정해요'}</span></span>`
+  return isNarrow() ? `<details class="legend-d"><summary>색·도착 표시 보기</summary><div class="legend">${inner}</div></details>` : `<div class="legend">${inner}</div>`
+}
+
+/* ───────── 그리기: 주·일 예약표 ───────── */
+function lay(items) {
+  const ev = items.map(x => ({ x, s: x.start, e: x.start + Math.max(x.len, 10) }))
+    .sort((a, b) => a.s - b.s || b.e - a.e || staffIdx(a.x.staff) - staffIdx(b.x.staff))
+  const clusters = []; let cl = null, end = -1
+  for (const v of ev) { if (!cl || v.s >= end) { cl = []; clusters.push(cl); end = v.e } else end = Math.max(end, v.e); cl.push(v) }
+  for (const c of clusters) {
+    const cols = []
+    for (const v of c) { let i = cols.findIndex(t => t <= v.s); if (i < 0) { i = cols.length; cols.push(0) } cols[i] = v.e; v.col = i }
+    const n = cols.length
+    for (const v of c) {
+      let span = 1
+      while (v.col + span < n && !c.some(o => o.col === v.col + span && o.s < v.e && v.s < o.e)) span++
+      v.left = v.col / n; v.width = span / n
+    }
+  }
+  return ev
+}
+const yOf = m => (m - SET.open) / 10 * SLOT
+function evHTML(v, mode) {
+  const a = v.x, end = a.start + a.len
+  if (end <= SET.open || a.start >= SET.close) return ''
+  const top = Math.max(0, yOf(a.start)), bottom = Math.min(yOf(SET.close), yOf(end))
+  const h = Math.max(bottom - top - 1, 14)
+  const lh = mode === 'day' ? (isNarrow() ? 15 : 16) : 13
+  const lines = Math.max(1, Math.floor((h - 2) / lh))
+  const pos = `top:${top}px;height:${h}px;left:calc(${(v.left * 100).toFixed(3)}% + 1px);width:calc(${(v.width * 100).toFixed(3)}% - 2px);--lines:${lines}`
+  if (a.ghost) return `<button class="ev ghost ${mode}" data-act="ghost" style="${pos}" title="비트 예약 ${hm(a.start)} ${a.chart} ${a.name} · 보기만 해요"><span class="evt"><span class="tk gl">비트 예약</span> <span class="tk ch">${a.chart}</span> <span class="tk">${a.name}</span>${mode === 'day' ? ` <span class="tk tm">${hm(a.start)}</span>` : ''}</span></button>`
+  const st = status(a), k = kindOf(a.kind), s = staffOf(a.staff)
+  const kt = `${esc(k.name)}&nbsp;(${esc(s.mark)})`
+  const stText = { came: '왔음', noshow: '안 옴', cancel: '취소', wait: '' }[st]
+  const inner = mode === 'day'
+    ? `${MK[st]}<span class="tk ch">${a.chart}</span> <span class="tk nm">${a.name}</span> <span class="tk">${kt}</span>${lines < 2 ? ' ' : '<br>'}<span class="tk tm">${hm(a.start)}–${hm(end)}</span> <span class="tk len">· ${a.len}분</span>${a.memo ? ` <span class="tk memo">· ${esc(a.memo)}</span>` : ''}`
+    : `${MK[st]}<span class="tk ch">${a.chart}</span> <span class="tk nm">${a.name}</span> <span class="tk">${kt}</span> <span class="tk len">${a.len}분</span>`
+  const label = `${a.chart} ${a.name} ${k.name} (${s.mark}) ${hm(a.start)}–${hm(end)} ${a.len}분${stText ? ' · ' + stText : ''}`
+  return `<button class="ev ${mode} st-${st}" data-act="appt" data-id="${a.id}" style="${pos};--c:${colorOf(a)}" title="${esc(label)}" aria-label="${esc(label)}"><span class="evt">${inner}</span></button>`
+}
+function adChip(it, d, i) {
+  if (it.type === 'memo') return `<button class="adc memo" data-act="adchip" data-date="${d}" data-i="${i}" title="${esc(it.text)}"><span>${esc(it.text)}</span></button>`
+  const s = staffOf(it.staff)
+  return `<button class="adc off" data-act="adchip" data-date="${d}" data-i="${i}" style="--c:${s.color}"><span>(${esc(s.mark)}) ${esc(s.name)} 휴무</span></button>`
+}
+function gridHTML(days) {
+  const mode = days.length === 1 ? 'day' : 'week'
+  const H = yOf(SET.close)
+  const head = days.map(d => {
+    const n = dayData(d).appts.filter(a => !a.cancel).length
+    return `<button class="dh ${d === NOW.date ? 'today' : ''}" data-act="gotoday" data-date="${d}" ${mode === 'day' ? 'tabindex="-1"' : ''}><span class="n">${toD(d).getUTCDate()}</span><span class="w">${DOW[dowOf(d)]}${d === NOW.date ? ' · 오늘' : ''}</span>${n ? `<span class="c">예약 ${n}</span>` : ''}</button>`
+  }).join('')
+  const ad = days.map(d => {
+    const items = ALLDAY[d] || []
+    return `<div class="ad ${items.length ? 'has' : ''}" data-act="ad" data-date="${d}" title="눌러서 종일 메모·휴무 더하기">${items.map((it, i) => adChip(it, d, i)).join('')}<span class="adadd">+ 종일</span></div>`
+  }).join('')
+  let gut = ''
+  for (let m = SET.open; m < SET.close; m += 60) gut += `<span class="hl ${m === SET.open ? 'first' : ''}" style="top:${yOf(m)}px">${hm(m)}</span>`
+  const cols = days.map(d => {
+    const dd = dayData(d)
+    let h = lay([...dd.appts, ...(BIT ? dd.ghosts : [])]).map(v => evHTML(v, mode)).join('')
+    if (d === NOW.date && NOW.min >= SET.open && NOW.min <= SET.close) h += `<div class="now" style="top:${yOf(NOW.min)}px" title="지금 ${hm(NOW.min)}"></div>`
+    const L = UI.layer
+    if (L && L.type === 'add' && L.D.date === d) {
+      const D = L.D, w = warns(D).length
+      h += `<div class="draft ${w ? 'warn' : ''}" style="top:${yOf(D.start)}px;height:${Math.max(D.len / 10 * SLOT - 1, 18)}px">${D.mode === 'edit' ? '고치는 중' : '새 예약'} ${hm(D.start)}–${hm(D.start + D.len)}${w ? ' · 확인' : ''}</div>`
+    }
+    return `<div class="col ${d === NOW.date ? 'today' : ''}" data-act="slot" data-date="${d}">${h}</div>`
+  }).join('')
+  const empty = EMPTY ? `<div class="emptycard"><h2>이번 주 예약이 아직 없어요</h2><p>빈 칸을 누르면 그 시간으로 예약을 넣어요. 구글 캘린더에 있던 예약은 옮겨 오지 않아요.</p><button class="btn primary" data-act="add">${ICON.plus}예약 더하기</button></div>` : ''
+  return `<section class="cal ${mode}" style="--days:${days.length};--h:${H}px" aria-label="예약표">
+    <div class="crow chead"><div class="gh"></div>${head}</div>
+    <div class="crow allday"><div class="gh adlb">종일</div>${ad}</div>
+    <div class="crow cbody"><div class="gut">${gut}</div>${cols}</div>${empty}</section>`
+}
+
+/* ───────── 그리기: 폰 주 보기(날짜별 목록) ───────── */
+function stChip(st) { return { came: '<span class="chip ok">왔음</span>', noshow: '<span class="chip ng">안 옴</span>', cancel: '<span class="chip gray">취소</span>', wait: '' }[st] }
+function listHTML(days) {
+  return `<div class="wl">${days.map(d => {
+    const dd = dayData(d)
+    const rows = [...dd.appts, ...(BIT ? dd.ghosts : [])].sort((a, b) => a.start - b.start || staffIdx(a.staff) - staffIdx(b.staff))
+    const live = dd.appts.filter(a => !a.cancel)
+    const came = live.filter(a => status(a) === 'came').length, ns = live.filter(a => status(a) === 'noshow').length
+    const sum = live.length ? `예약 ${live.length}${d <= NOW.date ? `<br>왔음 ${came}${ns ? ` · <span class="ns">안 옴 ${ns}</span>` : ''}` : ''}` : '예약 없음'
+    const open = UI.open.has(d), items = ALLDAY[d] || []
+    const list = rows.map(a => {
+      if (a.ghost) return `<button class="arow ghost" data-act="ghost"><span class="at">${hm(a.start)}<small>비트</small></span><span class="bar"></span><span class="ab"><b>비트 예약 · ${a.chart} ${a.name}</b><small>보기만 해요</small></span></button>`
+      const st = status(a), k = kindOf(a.kind), s = staffOf(a.staff)
+      return `<button class="arow st-${st}" data-act="appt" data-id="${a.id}" style="--c:${colorOf(a)}"><span class="at">${hm(a.start)}<small>${a.len}분</small></span><span class="bar"></span><span class="ab"><b><span class="ch">${a.chart}</span>${a.name}</b><small>${esc(k.name)} (${esc(s.mark)}) ${esc(s.name)}${a.memo ? ' · ' + esc(a.memo) : ''}</small></span>${stChip(st)}</button>`
+    }).join('')
+    return `<div class="dcard ${d === NOW.date ? 'today' : ''}">
+      <button class="dch" data-act="lday" data-date="${d}" aria-expanded="${open}"><span class="n">${toD(d).getUTCDate()}</span><span class="w">${DOW[dowOf(d)]}${d === NOW.date ? ' · 오늘' : ''}</span><span class="sum">${sum}</span><span class="car">${open ? '▲' : '▼'}</span></button>
+      ${items.length || open ? `<div class="adl">${items.map((it, i) => adChip(it, d, i)).join('')}${open ? `<button class="btn text" data-act="ad" data-date="${d}">+ 종일</button>` : ''}</div>` : ''}
+      ${open ? (rows.length ? `<div class="alist">${list}</div>` : `<div class="noappt">예약이 없어요</div>`) : ''}
+    </div>`
+  }).join('')}</div>`
+}
+
+/* ───────── 그리기: 월 보기 ───────── */
+function monthHTML() {
+  const a = toD(UI.anchor), y = a.getUTCFullYear(), m = a.getUTCMonth()
+  const first = toS(new Date(Date.UTC(y, m, 1))), last = toS(new Date(Date.UTC(y, m + 1, 0)))
+  const cells = []
+  for (let d = mondayOf(first), e = addDays(mondayOf(last), 6); d <= e; d = addDays(d, 1)) cells.push(d)
+  const body = cells.map(d => {
+    const dd = dayData(d), live = dd.appts.filter(x => !x.cancel)
+    const kc = SET.kinds.map(k => [k, live.filter(x => x.kind === k.id).length]).filter(x => x[1])
+    const ns = d <= NOW.date ? live.filter(x => status(x) === 'noshow').length : 0
+    const items = ALLDAY[d] || []
+    const chips = items.map(it => it.type === 'memo' ? `<span class="mchip memo">${esc(it.text)}</span>` : `<span class="mchip off" style="--c:${staffOf(it.staff).color}">(${esc(staffOf(it.staff).mark)}) ${esc(staffOf(it.staff).name)} 휴무</span>`).join('')
+    const out = d < first || d > last
+    return `<button class="mc ${out ? 'out' : ''} ${d === NOW.date ? 'today' : ''} ${dowOf(d) === 0 ? 'sun' : ''}" data-act="mday" data-date="${d}" aria-label="${mdw(d)} 예약 ${live.length}">
+      <span class="mtop"><span class="mn">${toD(d).getUTCDate()}</span>${live.length ? `<span class="cnt">예약 ${live.length}</span>` : ''}</span>${items.length ? '<span class="mdot" aria-hidden="true"></span>' : ''}
+      ${chips}${kc.length ? `<span class="kc">${kc.map(([k, n]) => `<span class="tk">${esc(k.name)} ${n}</span>`).join(' · ')}</span>` : ''}${ns ? `<span class="ns">안 옴 ${ns}</span>` : ''}</button>`
+  }).join('')
+  return `<section class="mon" aria-label="월 보기"><div class="mh">${['월', '화', '수', '목', '금', '토', '일'].map(x => `<span>${x}</span>`).join('')}</div><div class="mg">${body}</div></section>`
+}
+
+/* ───────── 예약 더하기·고치기 판 ───────── */
+function warns(D) {
+  const out = []
+  if (!D.staff) return out
+  const s = staffOf(D.staff), end = D.start + D.len
+  const ov = dayData(D.date).appts.filter(a => a.id !== D.id && a.staff === D.staff && !a.cancel && a.start < end && D.start < a.start + a.len)
+  if (ov.length) out.push(`<b>(${esc(s.mark)}) ${esc(s.name)}</b> 담당에게 같은 시간 예약이 있어요: ${ov.map(a => `${hm(a.start)}–${hm(a.start + a.len)} ${a.chart} ${a.name} ${esc(kindOf(a.kind).name)}`).join(', ')}. 겹쳐도 저장할 수 있어요.`)
+  if (isOff(D.date, D.staff)) out.push(`<b>(${esc(s.mark)}) ${esc(s.name)}</b> 담당은 ${mdw(D.date)} 휴무예요. 그래도 저장할 수 있어요.`)
+  return out
+}
+const warnHTML = D => warns(D).map(w => `<div class="wbox" role="alert">${ICON.warn}<div>${w}</div></div>`).join('')
+const missing = D => [!D.name.trim() && '이름', !D.staff && '담당', !D.kind && '종류'].filter(Boolean)
+function lookupHTML(D) {
+  if (!BIT) return ''
+  if (D.picks && D.picks.length > 1) return `<div class="picks" role="listbox" aria-label="같은 이름 고르기"><div class="ph">비트에 같은 이름이 ${D.picks.length}명 있어요 · 골라 주세요</div>${D.picks.map(p => `<button class="pr" role="option" data-act="pick" data-chart="${p.chart}"><b>${p.chart}</b><span>${p.name}</span><small>${p.sex} · ${p.age}세 · 마지막 내원 ${p.last}</small></button>`).join('')}</div>`
+  if (D.filled) return `<p class="ok">✓ 비트에서 찾아 ${D.filled === 'chart' ? '차트번호를' : '이름을'} 채웠어요</p>`
+  if (D.notFound) return `<p class="no">비트에 없어요. 신환이면 차트번호는 비워 두세요.</p>`
+  return ''
+}
+function startOpts(v) { let s = ''; for (let m = SET.open; m < SET.close; m += 10) s += `<option value="${m}" ${m === v ? 'selected' : ''}>${hm(m)}</option>`; return s }
+function drawerHTML(title, body, foot) {
+  return `<div class="scrim" data-act="close"></div><aside class="drawer" role="dialog" aria-modal="true" aria-label="${title}"><div class="dwh"><h3>${title}</h3><button class="btn icon ghost" data-act="close" aria-label="닫기">${ICON.close}</button></div><div class="dwb">${body}</div><div class="dwf">${foot}</div></aside>`
+}
+function addFoot(D) {
+  const miss = missing(D), w = warns(D).length
+  return `<span class="need" id="need">${miss.length ? `${miss.join('·')} 칸을 채우면 저장할 수 있어요` : ''}</span><button class="btn" data-act="close">취소</button><button class="btn primary" data-act="save" id="savebtn" ${miss.length ? 'disabled' : ''}>${w ? '그래도 저장' : '저장'}</button>`
+}
+function addDrawer(D) {
+  const staffBtns = SET.staff.map(s => `<button class="ob" data-act="staff" data-id="${s.id}" aria-pressed="${D.staff === s.id}"><i class="sw" style="--c:${s.color}"></i>(${esc(s.mark)}) ${esc(s.name)}${isOff(D.date, s.id) ? '<span class="offt">휴무</span>' : ''}</button>`).join('')
+  const kindBtns = SET.kinds.map(k => `<button class="ob" data-act="kind" data-id="${k.id}" aria-pressed="${D.kind === k.id}"><i class="sw ${k.color ? '' : 'follow'}" style="--c:${k.color || ''}"></i>${esc(k.name)} <small>${k.len}분</small></button>`).join('')
+  const body = `
+    ${BIT ? `<div class="bithint">${ICON.bit}<span>비트 PC예요. 이름이나 차트번호를 적으면 비트에서 찾아 나머지 하나를 채워요.</span></div>` : ''}
+    <div class="fgrid">
+      <div class="field"><label for="f-date">날짜</label><input class="inp" id="f-date" type="date" data-f="date" value="${D.date}"><span class="hint">${mdw(D.date)}</span></div>
+      <div class="field"><label for="f-start">시작</label><select class="inp" id="f-start" data-f="start">${startOpts(D.start)}</select><span class="hint">10분 단위</span></div>
+      <div class="field"><label for="f-name">이름</label><input class="inp ${D.filled === 'name' ? 'filled' : ''}" id="f-name" data-f="name" value="${esc(D.name)}" placeholder="${BIT ? "예: 김 (시안: 성만 적어도 찾아요)" : '이름'}" autocomplete="off"></div>
+      <div class="field"><label for="f-chart">차트번호 <span class="hint">신환이면 비워요</span></label><input class="inp num ${D.filled === 'chart' ? 'filled' : ''}" id="f-chart" data-f="chart" inputmode="numeric" value="${esc(D.chart)}" placeholder="${BIT ? '이름을 고르면 채워져요' : '차트번호'}" autocomplete="off"></div>
+      <div class="lk" id="lk">${lookupHTML(D)}</div>
+    </div>
+    ${PHONE ? `<p class="phnote">${ICON.info}<span>비트 PC에서는 자동으로 채워져요</span></p>` : ''}
+    <div class="field"><span class="lb">담당 (시행자)</span><div class="opts2" role="group" aria-label="담당">${staffBtns}</div></div>
+    <div class="field"><span class="lb">종류</span><div class="opts2" role="group" aria-label="종류">${kindBtns}</div></div>
+    <div class="field"><span class="lb">길이 <span class="hint">종류를 고르면 그 종류의 기본 길이가 들어가요 · 5분씩 바꿔요</span></span>
+      <div class="lenrow"><div class="stepper"><button data-act="len" data-d="-5" aria-label="5분 줄이기">−</button><output>${D.len}분</output><button data-act="len" data-d="5" aria-label="5분 늘리기">+</button></div><span class="tr">${hm(D.start)} – ${hm(D.start + D.len)}</span></div></div>
+    <div class="field"><label for="f-memo">메모 <span class="hint">선택</span></label><textarea class="inp" id="f-memo" data-f="memo" placeholder="예: 허리, 3회차">${esc(D.memo)}</textarea></div>
+    <div id="warns">${warnHTML(D)}</div>`
+  return drawerHTML(D.mode === 'edit' ? '예약 고치기' : '예약 더하기', body, addFoot(D))
+}
+function refreshAdd(D) {
+  $('#lk').innerHTML = lookupHTML(D)
+  $('#warns').innerHTML = warnHTML(D)
+  // 단추를 갈아 끼우지 않고 그 자리에서 고친다(누르는 중에 바뀌면 눌림이 사라진다)
+  const miss = missing(D), need = $('#need'), btn = $('#savebtn')
+  need.textContent = miss.length ? `${miss.join('·')} 칸을 채우면 저장할 수 있어요` : ''
+  btn.disabled = miss.length > 0; btn.textContent = warns(D).length ? '그래도 저장' : '저장'
+  $('#f-name').classList.toggle('filled', D.filled === 'name')
+  $('#f-chart').classList.toggle('filled', D.filled === 'chart')
+}
+function onAddInput(D, f, el) {
+  if (f === 'name') {
+    D.name = el.value; D.filled = null; D.notFound = false; D.picks = null
+    const q = D.name.trim()
+    if (BIT && q) {
+      const m = lookupName(q)
+      if (m.length === 1) { D.name = m[0].name; el.value = D.name; D.chart = m[0].chart; $('#f-chart').value = D.chart; D.filled = 'chart' }
+      else if (m.length > 1) D.picks = m
+      else if (q.length >= 2) D.notFound = true
+    }
+  } else if (f === 'chart') {
+    D.chart = el.value.replace(/\D/g, '').slice(0, 8); el.value = D.chart; D.filled = null; D.notFound = false; D.picks = null
+    if (BIT && D.chart.length >= 5) {
+      const p = BITPT.find(x => x.chart === D.chart)
+      if (p) { D.name = p.name; $('#f-name').value = p.name; D.filled = 'name' } else D.notFound = true
+    }
+  } else if (f === 'memo') D.memo = el.value
+  refreshAdd(D)
+}
+function saveAdd(D) {
+  if (missing(D).length) return
+  const fields = { date: D.date, start: D.start, len: D.len, name: D.name.trim(), chart: D.chart, staff: D.staff, kind: D.kind, memo: D.memo.trim() }
+  if (D.mode === 'edit') {
+    const a = findAppt(D.id)
+    if (a.date !== D.date) { DATA[a.date].appts = DATA[a.date].appts.filter(x => x !== a); dayData(D.date).appts.push(a) }
+    Object.assign(a, fields)
+    toast('예약을 고쳤어요. 다른 PC에도 몇 초 안에 보여요.')
+  } else {
+    dayData(D.date).appts.push(mkAppt(fields))
+    toast(`${mdw(D.date)} ${hm(D.start)} 예약을 넣었어요. 다른 PC에도 몇 초 안에 보여요.`)
+  }
+  UI.anchor = D.date; UI.layer = null; render()
+}
+
+/* ───────── 예약 자세히 판 ───────── */
+function detailDrawer(L) {
+  const a = findAppt(L.id); if (!a) return ''
+  const k = kindOf(a.kind), s = staffOf(a.staff), st = status(a), end = a.start + a.len, nd = addDays(a.date, 7)
+  const now = { came: `${MK.came}왔음`, noshow: `${MK.noshow}안 옴`, cancel: `${MK.cancel} 취소한 예약`, wait: '아직 (예약 시간 전)' }[st]
+  const why = a.cancel ? '칸은 흐리게 남아요' : a.mode !== 'auto' ? '손으로 바꿈' : a.rcpt != null ? `비트 접수 ${hm(a.rcpt)} · 자동` : ended(a) ? '예약 시간이 끝나도 비트 접수가 없어요 · 자동' : '비트 접수가 생기면 저절로 왔음이 돼요'
+  const body = `
+    <div class="dtop" style="--c:${colorOf(a)}"><span class="bar"></span><div><div class="dname"><span class="ch">${a.chart || '차트번호 없음'}</span>${a.name}</div><div class="dsub">${esc(k.name)} · (${esc(s.mark)}) ${esc(s.name)}</div></div></div>
+    <dl class="dl"><dt>날짜</dt><dd>${mdw(a.date)}</dd><dt>시간</dt><dd class="num">${hm(a.start)} – ${hm(end)} · ${a.len}분</dd><dt>메모</dt><dd>${a.memo ? esc(a.memo) : '<span class="mut">없음</span>'}</dd></dl>
+    <div class="hr"></div>
+    <section class="fs"><h4>도착</h4><div class="arr">${now}<span class="mut">${why}</span></div>
+      ${a.cancel ? '' : `<div><div class="vseg sm" role="group" aria-label="도착 바꾸기">${[['auto', '자동 (비트 따라)'], ['came', '왔음'], ['noshow', '안 옴']].map(([m, t]) => `<button data-act="arr" data-m="${m}" aria-pressed="${a.mode === m}">${t}</button>`).join('')}</div></div>
+      <p>자동: 같은 날 같은 차트번호로 비트 접수가 있으면 왔음, 예약 시간이 끝나도 없으면 안 옴. 손으로 고르면 그 값이 먼저예요.</p>`}</section>
+    <section class="fs"><h4>되풀이</h4>
+      <div class="rep"><button class="btn accent" data-act="nextweek" ${L.copied ? 'disabled' : ''}>${ICON.repeat}다음 주에도</button><span class="hint">${L.copied ? `${mdw(nd)} ${hm(a.start)}에 넣었어요 ✓` : `${mdw(nd)} ${hm(a.start)}에 같은 담당·종류·길이로 하나 더 넣어요`}</span></div></section>
+    ${a.created ? `<p class="meta">${a.created}에 넣음</p>` : ''}`
+  const foot = L.confirmDel
+    ? `<span class="need err">이 예약을 지울까요? 되돌릴 수 없어요.</span><button class="btn" data-act="del-no">아니요</button><button class="btn dangerfill" data-act="del-yes">지우기</button>`
+    : `<button class="btn danger" data-act="del">지우기</button><span class="sp"></span><button class="btn" data-act="cancel-appt">${a.cancel ? '취소 되돌리기' : '예약 취소'}</button><button class="btn primary" data-act="edit">고치기</button>`
+  return drawerHTML('예약', body, foot)
+}
+
+/* ───────── 설정 판 ───────── */
+function palHTML(color, forKind) {
+  return `<div class="pal" role="group" aria-label="색 고르기">${forKind ? `<button class="pf" data-act="pal" data-c="" aria-pressed="${!color}"><i class="sw follow"></i>시행자 색 따름</button>` : ''}${PALETTE.map(([n, c]) => `<button class="pc" data-act="pal" data-c="${c}" style="--c:${c}" aria-label="${n}" title="${n}" aria-pressed="${color === c}"></button>`).join('')}</div>`
+}
+function setErrors(E) {
+  const kn = E.kinds.map(k => k.name.trim()), sn = E.staff.map(s => s.name.trim()), sm = E.staff.map(s => s.mark.trim())
+  if (kn.some(x => !x)) return '종류 이름을 적어 주세요'
+  if (new Set(kn).size !== kn.length) return '같은 종류 이름이 있어요'
+  if (sn.some(x => !x)) return '시행자 이름을 적어 주세요'
+  if (sm.some(x => [...x].length !== 1)) return '표시는 한 글자예요'
+  if (new Set(sm).size !== sm.length) return '같은 표시가 있어요'
+  if (E.open >= E.close) return '끝 시간이 시작 시간보다 늦어야 해요'
+  return ''
+}
+function updateSetFoot(E) { const e = setErrors(E), n = $('.dwf .need'), b = $('[data-act=set-save]'); n.textContent = e; n.classList.toggle('err', !!e); b.disabled = !!e }
+function setFoot(E) { const e = setErrors(E); return `<span class="need ${e ? 'err' : ''}">${e}</span><button class="btn" data-act="close">취소</button><button class="btn primary" data-act="set-save" ${e ? 'disabled' : ''}>저장</button>` }
+function settingsDrawer(L) {
+  const E = L.E, M = L.menu
+  const lens = v => { let s = ''; for (let m = 5; m <= 120; m += 5) s += `<option value="${m}" ${m === v ? 'selected' : ''}>${m}분</option>`; return s }
+  const hours = (v, a, b) => { let s = ''; for (let m = a; m <= b; m += 60) s += `<option value="${m}" ${m === v ? 'selected' : ''}>${hm(m)}</option>`; return s }
+  const kinds = E.kinds.map((k, i) => `<div class="krow">
+      <div class="ord"><button class="mini" data-act="k-up" data-i="${i}" ${i === 0 ? 'disabled' : ''} aria-label="${i + 1}번째 종류 위로">▲</button><button class="mini" data-act="k-down" data-i="${i}" ${i === E.kinds.length - 1 ? 'disabled' : ''} aria-label="${i + 1}번째 종류 아래로">▼</button></div>
+      <input class="tin nm ${k.name.trim() ? '' : 'bad'}" data-f="k-name" data-i="${i}" value="${esc(k.name)}" placeholder="이름 (예: 체외충격파)" maxlength="10" aria-label="종류 이름">
+      <button class="del" data-act="k-del" data-i="${i}" ${E.kinds.length < 2 ? 'disabled' : ''}>지우기</button>
+      <div class="opts"><label>기본 길이 <select class="sel" data-f="k-len" data-i="${i}">${lens(k.len)}</select></label><span class="lbl">색 <button class="cbtn" data-act="k-color" data-i="${i}" aria-expanded="${!!(M && M.t === 'k' && M.i === i)}">${k.color ? `<i class="sw" style="--c:${k.color}"></i>${palName(k.color)}` : '<i class="sw follow"></i>시행자 색 따름'}<span class="car">▼</span></button></span></div>
+      ${M && M.t === 'k' && M.i === i ? palHTML(k.color, true) : ''}</div>`).join('')
+  const staff = E.staff.map((s, i) => `<div class="srow">
+      <input class="tin" data-f="s-name" data-i="${i}" value="${esc(s.name)}" placeholder="이름" maxlength="10" aria-label="시행자 이름">
+      <label class="mk1">표시 <input class="tin one ${[...s.mark.trim()].length === 1 ? '' : 'bad'}" data-f="s-mark" data-i="${i}" value="${esc(s.mark)}" maxlength="2" aria-label="표시 한 글자"></label>
+      <button class="cbtn" data-act="s-color" data-i="${i}" aria-label="색 고르기" aria-expanded="${!!(M && M.t === 's' && M.i === i)}"><i class="sw" style="--c:${s.color}"></i><span class="car">▼</span></button>
+      <button class="del" data-act="s-del" data-i="${i}" ${E.staff.length < 2 ? 'disabled' : ''}>지우기</button>
+      ${M && M.t === 's' && M.i === i ? palHTML(s.color, false) : ''}</div>`).join('')
+  const body = `
+    <section class="fs"><h4>종류</h4><p>종류마다 기본 길이와 색을 정해요. 색은 고정 색이나 '시행자 색 따름' 중 하나예요. 위에 있을수록 예약 더하기에서 앞에 보여요.</p>
+      <div class="klist">${kinds}</div><div class="addline"><button class="btn" data-act="k-add">${ICON.plus}종류 더하기</button><span class="hint">지운 종류의 지난 예약은 그 이름 그대로 남아요</span></div></section>
+    <div class="hr"></div>
+    <section class="fs"><h4>시행자</h4><p>예약 칸 끝에 (가)처럼 한 글자로 보여요. 담당 색을 따르는 종류는 이 색으로 칠해요.</p>
+      <div class="klist">${staff}</div><div class="addline"><button class="btn" data-act="s-add">${ICON.plus}시행자 더하기</button></div></section>
+    <div class="hr"></div>
+    <section class="fs"><h4>보이는 시간</h4><p>예약표에 보이는 시간이에요. 칸은 10분 단위예요.</p>
+      <div class="rowx"><select class="sel" data-f="open" aria-label="시작 시간">${hours(E.open, 300, 720)}</select>부터<select class="sel" data-f="close" aria-label="끝 시간">${hours(E.close, 720, 1440)}</select>까지</div>
+      <div class="rowx">주 보기 요일 <div class="vseg sm" role="group" aria-label="주 보기 요일"><button data-act="sun" data-v="0" aria-pressed="${!E.sunday}">월~토</button><button data-act="sun" data-v="1" aria-pressed="${E.sunday}">월~일</button></div></div></section>
+    <div class="info">
+      <p>${ICON.info}<span>지난 예약은 1년 뒤 자동으로 지워져요.</span></p>
+      <p>${ICON.lock}<span>환자 이름과 차트번호는 서버에 저장되고, 의원 계정으로 로그인해야만 보여요.</span></p>
+      <p>${ICON.sync}<span>다른 PC에서 고친 것도 몇 초 안에 이 화면에 보여요.</span></p>
+    </div>`
+  return drawerHTML('예약 설정', body, setFoot(E))
+}
+
+/* ───────── 종일 떠 있는 판 ───────── */
+function popHTML(P) {
+  const items = ALLDAY[P.date] || []
+  return `<div class="popscrim" data-act="pop-close"></div><div class="pop" role="dialog" aria-label="종일" style="left:${P.x}px;top:${P.y}px;width:${P.w}px">
+    <h4>${mdw(P.date)} · 종일</h4>
+    ${items.length ? `<ul>${items.map((it, i) => `<li><span>${it.type === 'memo' ? esc(it.text) : `(${esc(staffOf(it.staff).mark)}) ${esc(staffOf(it.staff).name)} 휴무`}</span><button class="btn text danger" data-act="ad-del" data-i="${i}">지우기</button></li>`).join('')}</ul>` : ''}
+    <div><div class="vseg sm" role="group"><button data-act="ad-kind" data-v="memo" aria-pressed="${P.kind === 'memo'}">메모</button><button data-act="ad-kind" data-v="off" aria-pressed="${P.kind === 'off'}">시행자 휴무</button></div></div>
+    ${P.kind === 'memo' ? `<input class="inp" id="ad-text" placeholder="예: 학회, 소독, 회의" maxlength="20">` : `<select class="inp" id="ad-staff">${SET.staff.map(s => `<option value="${s.id}">(${esc(s.mark)}) ${esc(s.name)}</option>`).join('')}</select>`}
+    <p class="help">${P.kind === 'memo' ? '그날 맨 위 종일 줄에 글로 보여요.' : '그날 그 시행자를 휴무로 표시해요. 휴무인 담당으로 예약을 넣으면 알려 줘요.'}</p>
+    <div class="foot"><button class="btn" data-act="pop-close">닫기</button><button class="btn primary" data-act="ad-add">더하기</button></div></div>`
+}
+function openPop(el, date) {
+  const app = $('#app').getBoundingClientRect(), r = el.getBoundingClientRect()
+  const w = Math.min(320, app.width - 24)
+  const x = clamp(r.left, app.left + 12, app.right - w - 12)
+  const y = clamp(r.bottom + 4, 8, window.innerHeight - 300)
+  UI.pop = { date, x, y, w, kind: 'memo' }
+  renderPop()
+}
+function renderPop() { $('#pop').innerHTML = UI.pop ? popHTML(UI.pop) : ''; if (UI.pop) setTimeout(() => ($('#ad-text') || $('#ad-staff'))?.focus(), 0) }
+
+/* ───────── 전체 그리기 ───────── */
+function renderMain() {
+  let v
+  if (UI.view === 'month') v = monthHTML()
+  else if (UI.view === 'day') v = gridHTML([UI.anchor])
+  else v = isNarrow() ? listHTML(weekDays()) : gridHTML(weekDays())
+  $('#main').innerHTML = toolbarHTML() + legendHTML() + v
+}
+function renderLayer() {
+  const L = UI.layer, el = $('#layer')
+  const keep = el.dataset.k === (L && L.type) ? (el.querySelector('.dwb')?.scrollTop || 0) : 0
+  el.dataset.k = L ? L.type : ''
+  if (!L) { el.innerHTML = ''; return }
+  el.innerHTML = L.type === 'add' ? addDrawer(L.D) : L.type === 'detail' ? detailDrawer(L) : settingsDrawer(L)
+  const db = el.querySelector('.dwb'); if (db) db.scrollTop = keep
+}
+function render() { renderMain(); renderLayer() }
+let toastT
+function toast(msg) { const t = $('#toast'); t.textContent = msg; clearTimeout(toastT); toastT = setTimeout(() => { t.textContent = '' }, 3200) }
+
+/* ───────── 누르기 ───────── */
+function slotMin(col, y) { const r = col.getBoundingClientRect(); return SET.open + clamp(Math.floor((y - r.top) / SLOT), 0, (SET.close - SET.open) / 10 - 1) * 10 }
+function newAt(date, start) { UI.layer = { type: 'add', D: draft({ date, start }) }; render(); setTimeout(() => $('#f-name')?.focus(), 0) }
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-act]'); if (!t) return
+  const act = t.dataset.act, L = UI.layer
+  const step = UI.view === 'day' ? 1 : 7
+  switch (act) {
+    case 'today': UI.anchor = NOW.date; renderMain(); break
+    case 'prev': case 'next': {
+      const sg = act === 'prev' ? -1 : 1
+      if (UI.view === 'month') { const d = toD(UI.anchor); UI.anchor = toS(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + sg, 1))) }
+      else { UI.anchor = addDays(UI.anchor, sg * step); if (UI.view === 'day' && !SET.sunday && dowOf(UI.anchor) === 0) UI.anchor = addDays(UI.anchor, sg) }
+      renderMain(); break
+    }
+    case 'view': UI.view = t.dataset.v; renderMain(); break
+    case 'gotoday': case 'mday': UI.view = 'day'; UI.anchor = t.dataset.date; renderMain(); break
+    case 'lday': { const d = t.dataset.date; UI.open.has(d) ? UI.open.delete(d) : UI.open.add(d); renderMain(); break }
+    case 'add': { const d = UI.view === 'day' ? UI.anchor : weekDays().includes(NOW.date) ? NOW.date : weekDays()[0]; newAt(d, d === NOW.date ? Math.ceil((NOW.min + 1) / 10) * 10 : 540); break }
+    case 'slot': if (!e.target.closest('.ev')) newAt(t.dataset.date, slotMin(t, e.clientY)); break
+    case 'appt': UI.layer = { type: 'detail', id: t.dataset.id }; renderLayer(); break
+    case 'ghost': toast('비트에 있는 예약이에요. 여기서는 보기만 하고, 고치려면 비트에서 해요.'); break
+    case 'settings': UI.layer = { type: 'settings', E: structuredClone(SET), menu: null }; renderLayer(); break
+    case 'close': UI.layer = null; render(); break
+    // 예약 더하기
+    case 'pick': { const p = BITPT.find(x => x.chart === t.dataset.chart); Object.assign(L.D, { name: p.name, chart: p.chart, picks: null, filled: 'chart', notFound: false }); renderLayer(); break }
+    case 'staff': L.D.staff = t.dataset.id; render(); break
+    case 'kind': L.D.kind = t.dataset.id; L.D.len = kindOf(t.dataset.id).len; render(); break
+    case 'len': L.D.len = clamp(L.D.len + Number(t.dataset.d), 5, 240); render(); break
+    case 'save': saveAdd(L.D); break
+    // 자세히
+    case 'arr': findAppt(L.id).mode = t.dataset.m; render(); break
+    case 'nextweek': {
+      const a = findAppt(L.id), nd = addDays(a.date, 7)
+      const D = draft({ date: nd, start: a.start, len: a.len, staff: a.staff, kind: a.kind })
+      const w = warns(D)
+      dayData(nd).appts.push(mkAppt({ date: nd, start: a.start, len: a.len, staff: a.staff, kind: a.kind, chart: a.chart, name: a.name, memo: a.memo }))
+      L.copied = true; render()
+      toast(`${mdw(nd)} ${hm(a.start)}에 똑같이 넣었어요.${w.length ? ' 그 시간에 같은 담당 예약이 있거나 휴무예요 — 확인해 주세요.' : ''}`)
+      break
+    }
+    case 'edit': { const a = findAppt(L.id); UI.layer = { type: 'add', D: draft({ mode: 'edit', id: a.id, date: a.date, start: a.start, len: a.len, name: a.name, chart: a.chart, staff: a.staff, kind: a.kind, memo: a.memo }) }; render(); break }
+    case 'cancel-appt': { const a = findAppt(L.id); a.cancel = !a.cancel; render(); toast(a.cancel ? '예약을 취소했어요. 칸은 흐리게 남아요.' : '취소를 되돌렸어요.'); break }
+    case 'del': L.confirmDel = true; renderLayer(); break
+    case 'del-no': L.confirmDel = false; renderLayer(); break
+    case 'del-yes': { const a = findAppt(L.id); DATA[a.date].appts = DATA[a.date].appts.filter(x => x !== a); UI.layer = null; render(); toast('예약을 지웠어요.'); break }
+    // 설정
+    case 'k-up': case 'k-down': { const i = +t.dataset.i, j = act === 'k-up' ? i - 1 : i + 1; [L.E.kinds[i], L.E.kinds[j]] = [L.E.kinds[j], L.E.kinds[i]]; L.menu = null; renderLayer(); break }
+    case 'k-del': L.E.kinds.splice(+t.dataset.i, 1); L.menu = null; renderLayer(); break
+    case 'k-add': L.E.kinds.push({ id: 'k' + (++seq), name: '', len: 30, color: null }); L.menu = null; renderLayer(); setTimeout(() => { const ins = document.querySelectorAll('[data-f="k-name"]'); ins[ins.length - 1]?.focus() }, 0); break
+    case 'k-color': case 's-color': { const tt = act === 'k-color' ? 'k' : 's', i = +t.dataset.i; L.menu = L.menu && L.menu.t === tt && L.menu.i === i ? null : { t: tt, i }; renderLayer(); break }
+    case 'pal': { const c = t.dataset.c || null; if (L.menu.t === 'k') L.E.kinds[L.menu.i].color = c; else L.E.staff[L.menu.i].color = c || '#6B7280'; L.menu = null; renderLayer(); break }
+    case 's-del': L.E.staff.splice(+t.dataset.i, 1); L.menu = null; renderLayer(); break
+    case 's-add': { const used = new Set(L.E.staff.map(s => s.color)); L.E.staff.push({ id: 's' + (++seq), name: '', mark: '', color: (PALETTE.find(p => !used.has(p[1])) || PALETTE[9])[1] }); L.menu = null; renderLayer(); break }
+    case 'sun': L.E.sunday = t.dataset.v === '1'; renderLayer(); break
+    case 'set-save': {
+      if (setErrors(L.E)) break
+      for (const k of SET.kinds) if (!L.E.kinds.some(x => x.id === k.id)) ARCH.kinds[k.id] = k
+      for (const s of SET.staff) if (!L.E.staff.some(x => x.id === s.id)) ARCH.staff[s.id] = s
+      SET = L.E; UI.layer = null; render(); toast('설정을 저장했어요. 다른 PC에도 몇 초 안에 보여요.'); break
+    }
+    // 종일
+    case 'ad': case 'adchip': openPop(t, t.dataset.date); break
+    case 'pop-close': UI.pop = null; renderPop(); break
+    case 'ad-kind': UI.pop.kind = t.dataset.v; renderPop(); break
+    case 'ad-add': {
+      const P = UI.pop, list = ALLDAY[P.date] || (ALLDAY[P.date] = [])
+      if (P.kind === 'memo') { const v = $('#ad-text').value.trim(); if (!v) { $('#ad-text').focus(); break } list.push({ type: 'memo', text: v }) }
+      else { const s = $('#ad-staff').value; if (!isOff(P.date, s)) list.push({ type: 'off', staff: s }) }
+      UI.pop = null; renderPop(); renderMain(); break
+    }
+    case 'ad-del': { (ALLDAY[UI.pop.date] || []).splice(+t.dataset.i, 1); UI.pop = null; renderPop(); renderMain(); break }
+  }
+})
+document.addEventListener('input', e => {
+  const f = e.target.dataset && e.target.dataset.f, L = UI.layer; if (!f || !L) return
+  if (L.type === 'add' && ['name', 'chart', 'memo'].includes(f)) onAddInput(L.D, f, e.target)
+  if (L.type === 'settings') {
+    const i = +e.target.dataset.i
+    if (f === 'k-name') { L.E.kinds[i].name = e.target.value; e.target.classList.toggle('bad', !e.target.value.trim()) }
+    if (f === 's-name') L.E.staff[i].name = e.target.value
+    if (f === 's-mark') { L.E.staff[i].mark = e.target.value; e.target.classList.toggle('bad', [...e.target.value.trim()].length !== 1) }
+    updateSetFoot(L.E)
+  }
+})
+document.addEventListener('change', e => {
+  const f = e.target.dataset && e.target.dataset.f, L = UI.layer; if (!f || !L) return
+  if (L.type === 'add') {
+    if (f === 'date' && e.target.value) { L.D.date = e.target.value; UI.anchor = e.target.value; render() }
+    if (f === 'start') { L.D.start = +e.target.value; render() }
+  }
+  if (L.type === 'settings') {
+    const i = +e.target.dataset.i
+    if (f === 'k-len') L.E.kinds[i].len = +e.target.value
+    if (f === 'open') L.E.open = +e.target.value
+    if (f === 'close') L.E.close = +e.target.value
+    updateSetFoot(L.E)
+  }
+})
+document.addEventListener('mousemove', e => {
+  const hov = document.getElementById('hov')
+  const col = e.target.closest && e.target.closest('.col')
+  if (!col || e.target.closest('.ev') || UI.layer || isNarrow()) { hov?.remove(); return }
+  const m = slotMin(col, e.clientY)
+  let el = hov
+  if (!el || el.parentNode !== col) { el?.remove(); el = document.createElement('div'); el.id = 'hov'; el.className = 'hov'; col.appendChild(el) }
+  el.style.top = yOf(m) + 'px'; el.textContent = '+ ' + hm(m)
+})
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return
+  if (UI.pop) { UI.pop = null; renderPop() } else if (UI.layer) { UI.layer = null; render() }
+})
+window.addEventListener('resize', () => { if (setMode()) render() })
+
+setMode()
+render()
+if (isNarrow()) { const tabs = $('#tabs'), c = $('#tab-cur'); tabs.scrollLeft = c.offsetLeft - tabs.clientWidth / 2 + c.offsetWidth / 2 }
+</script>
+</body>
+</html>
