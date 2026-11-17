@@ -1,12 +1,16 @@
 {
   "status": "approved",
   "feature": "nav-worklog",
-  "approved_at": "2026-11-17T05:19:54Z",
+  "approved_at": "2026-11-17T05:27:44Z",
   "approved_via": "user-prompt",
   "session_id": "b0bacc8e-b4c1-48e0-aa1e-81ddd7dbbf9b",
-  "spec_sha256": "93746106d7348f24bb2446a148b3a3e9d26039ffae0988d319278328bb37d48d",
+  "spec_sha256": "ae14d1d06af913fae578d8e3ec01ca52c15ad9bcb8e245690fa3efc9f65602d6",
   "scope": [
     "src/app/(app)/tabFrame.test.tsx",
+    "src/components/dashboard/briefing/features.ts",
+    "src/components/preview/DashboardPreview.test.tsx",
+    "src/components/preview/sample.test.ts",
+    "src/components/preview/sample.ts",
     "src/components/shell/MoreMenu.tsx",
     "src/components/shell/TabBar.tsx",
     "src/components/shell/menu.ts",
