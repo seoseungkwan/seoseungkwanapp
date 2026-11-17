@@ -74,7 +74,10 @@ function squash(html: string): string {
   return html.replace(/>\s+</g, '><').replace(/\s+/g, ' ').trim()
 }
 
-const LEAD = '총괄 컴퓨터가 꺼져 있거나, 비트에 아직 로그인하지 않았어요.'
+/** 시안 Offline.dc.html의 첫 줄 */
+const MOCK_LEAD = '총괄 컴퓨터가 꺼져 있거나, 비트에 아직 로그인하지 않았어요.'
+/** 화면 첫 줄: 우리 의원 말투 '총괄 컴퓨터'를 '접수 현황 PC'로 (reception-other-clinic AC-5718.2) */
+const LEAD = '접수 현황 PC가 꺼져 있거나, 비트에 아직 로그인하지 않았어요.'
 const SUB = '컴퓨터가 켜지고 비트에 로그인하면 이 화면이 저절로 다시 바뀌어요. 따로 누를 건 없어요.'
 const FOOT = '연결이 끊기면 환자 정보는 화면에서 바로 지워져요'
 
@@ -108,7 +111,7 @@ describe('offline.js 연결 끊김 화면', () => {
     expect(textOf(page, 'footer.foot')).toBe(FOOT)
   })
 
-  it('AC-1407.4: 시안 Offline.dc.html의 글(머리·제목·두 줄·확인 글·아래 글)이 화면 글과 같다(확인 글의 N은 every: 시안의 숫자를 넘기면 시안 글 그대로)', () => {
+  it('AC-1407.4: 시안 Offline.dc.html의 글(머리·제목·두 줄·확인 글·아래 글)이 화면 글과 같다(확인 글의 N은 every: 시안의 숫자를 넘기면 시안 글 그대로). 첫 줄만 AC-5718.2: 시안 "총괄 컴퓨터가…" 대신 "접수 현황 PC가…"이고 화면에 "총괄 컴퓨터"가 없다', () => {
     const mock = readFileSync(path.join(ROOT, 'docs', 'mockups', 'reception-phone', 'Offline.dc.html'), 'utf8')
     const text = mock.replace(/<svg[\s\S]*?<\/svg>/g, '').replace(/<[^>]+>/g, '\n')
     const lines = text.split('\n').map((s) => s.trim()).filter(Boolean)
@@ -117,9 +120,10 @@ describe('offline.js 연결 끊김 화면', () => {
     const every = Number(/^\d+/.exec(status!)![0])
     const app = appHost()
     const page = off.renderOffline(app, { lastAt: '13:42', every })
-    for (const line of ['접수 현황', '연결 끊김', '지금 볼 수 없어요', LEAD, SUB, FOOT]) expect(lines, line).toContain(line)
+    for (const line of ['접수 현황', '연결 끊김', '지금 볼 수 없어요', MOCK_LEAD, SUB, FOOT]) expect(lines, line).toContain(line)
     for (const [selector, line] of [['h1.off-title', '접수 현황'], ['span.conn.is-off', '연결 끊김'], ['h2.off-heading', '지금 볼 수 없어요'], ['p.off-lead', LEAD], ['p.off-sub', SUB], ['.off-status', status], ['footer.foot', FOOT]] as const)
       expect(textOf(page, selector), selector).toBe(line)
+    expect(page.textContent).not.toContain('총괄 컴퓨터')
   })
 
   it('AC-1407.4: 확인 글 "N초마다 다시 확인하는 중"의 N은 받은 every(마지막으로 받은 간격, 처음 연결 전에는 poll.js 기본값)다', () => {

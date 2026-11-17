@@ -25,7 +25,7 @@ public static class LinkPage
     public const string Title = "접수 현황 주소 보내기";
     public const string CopyLabel = "주소 복사";
     public const string Safe = "이 주소는 병원 와이파이에서만 열려요. 밖에서는 열리지 않아 환자 정보가 보이지 않아요";
-    public const string NoLan = "이 PC가 의원 와이파이에 연결되어 있지 않아요";
+    public const string NoLan = "이 PC가 병원 와이파이에 연결되어 있지 않아요"; // AC-5718.3
     public const string NoLanSub = "와이파이에 연결한 뒤 이 창을 다시 열어 주세요";
 
     private const string ContentType = "text/html; charset=utf-8";
@@ -38,7 +38,7 @@ public static class LinkPage
     {
         ("1.", "직원 단톡방에 붙여 넣어 보내요"),
         ("2.", "직원은 병원 와이파이에서 주소를 눌러요"),
-        ("3.", "카톡 안에서 열리면 오른쪽 위 메뉴 → '다른 브라우저로 열기'"),
+        ("3.", "카카오톡 안에서 열리면 오른쪽 위 메뉴 → '다른 브라우저로 열기'"),
         ("4.", "홈 화면에 추가해요"),
     };
 

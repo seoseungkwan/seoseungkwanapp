@@ -57,7 +57,7 @@ export function renderOffline(host, { lastAt, every } = {}) {
       el('main', { class: 'off' }, [
         logo,
         el('h2', { class: 'off-heading' }, '지금 볼 수 없어요'),
-        el('p', { class: 'off-lead' }, '총괄 컴퓨터가 꺼져 있거나, 비트에 아직 로그인하지 않았어요.'),
+        el('p', { class: 'off-lead' }, '접수 현황 PC가 꺼져 있거나, 비트에 아직 로그인하지 않았어요.'),
         el('p', { class: 'off-sub' }, '컴퓨터가 켜지고 비트에 로그인하면 이 화면이 저절로 다시 바뀌어요. 따로 누를 건 없어요.'),
         el('div', { class: 'off-status' }, status),
       ]),

@@ -289,7 +289,10 @@ const HOWTO = [
   `치료 칸을 누르면 다음 단계로 넘어가요 (준비 → 준비완료 → 완료, 준비완료는 SONO·C-ARM만). X-RAY·SONO·C-ARM은 처방이 나오면 저절로 들어오고${HOWTO_PICK}, PT·도수·충격파·견인은 빈 칸을 눌러 골라 넣어요(여러 개 골라도 돼요).`,
   '접수 시각을 누르면 자리비움, 다시 누르면 돌아옴이에요(다음 치료 칸을 누를 때까지 돌아온 뒤 기다린 시간이 보여요). 성함이나 비고를 누르면 오늘·직전·그 전 진료기록부가 열려요. [PT 먼저]는 누를 때마다 ↑ 올라감 → ↓ 내려옴 → 지움.',
 ]
-const FOOT = '표시(준비완료·완료·자리비움·돌아옴·PT 먼저·치료 종료)는 의원 PC에만 남아요 · 비트 자료는 바뀌지 않아요'
+/** 돌아옴 승인 시안(reception-arrange-tune Mock.html)의 아래 글 */
+const TUNE_FOOT = '표시(준비완료·완료·자리비움·돌아옴·PT 먼저·치료 종료)는 의원 PC에만 남아요 · 비트 자료는 바뀌지 않아요'
+/** 아래 글: 우리 의원 말투 '의원 PC'를 '접수 현황 PC'로 (reception-other-clinic AC-5718.1) */
+const FOOT = '표시(준비완료·완료·자리비움·돌아옴·PT 먼저·치료 종료)는 접수 현황 PC에만 남아요 · 비트 자료는 바뀌지 않아요'
 /** 접수 머리 작은 글 (AC-3602.2): "·" 뒤에서만 줄을 바꾼다(시안 span.nw + wbr) */
 const T_SUB = '누르면 자리비움·돌아옴'
 const ACTIVE_NAMES = ['가상환자21', '가상환자22', '가상환자23', '가상환자24', '가상환자25', '가상환자26', '가상환자27', '가상환자28']
@@ -382,6 +385,12 @@ describe('REQ-3308 어레인지 표', () => {
     expect(page.querySelector<HTMLElement>('p.empty-note')!.hidden).toBe(true)
     expect(textOf(page, 'p.empty-note')).toBe('지금 안내할 환자가 없어요')
     expect(textOf(page, 'footer.foot')).toBe(FOOT)
+  })
+
+  it('AC-5718.1: 어레인지 아래 글은 "…접수 현황 PC에만 남아요 · 비트 자료는 바뀌지 않아요"이고 우리 의원 말투 "의원 PC"가 화면에 없다', () => {
+    const { page } = draw(fx.arrangeMockupBoard('11:04:15'))
+    expect(textOf(page, 'footer.foot')).toBe(FOOT)
+    expect(page.textContent).not.toContain('의원 PC')
   })
 
   it('AC-3308.2 · AC-3402.3 · AC-3503.4 · AC-3602.2 · AC-3604.4: 표 머리는 접수(누르면 자리비움·돌아옴)·성함·X-RAY·SONO(부위·준비·순서)·C-ARM(시술·약재·순서)·PT(ICE·HP)·도수(30분·50분)·충격파(타수·부위 수)·견인(목·허리)·비고(접수 메모 · 지난번 증상)·빈 머리다', () => {
@@ -2752,7 +2761,7 @@ describe('승인 시안', () => {
     const html = readFileSync(TUNE_MOCKUP, 'utf8')
     for (const text of [
       HOWTO[1]!,
-      FOOT,
+      TUNE_FOOT,
       "lg.className = 'lg rtn'",
       "lg.textContent = '돌아옴'",
       '누르면 <span class="nw">자리비움·</span><wbr>돌아옴',

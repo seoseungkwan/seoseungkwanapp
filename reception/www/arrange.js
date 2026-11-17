@@ -150,7 +150,7 @@ const HOWTO_SECOND =
 const NOTE_TAIL = ' 칸에 넣을 처방을 아직 안 골랐어요. 그동안은 빈 칸을 눌러 직접 넣어요.'
 const NOTE_GO = '설정에서 고르기'
 
-const FOOT = '표시(준비완료·완료·자리비움·돌아옴·PT 먼저·치료 종료)는 의원 PC에만 남아요 · 비트 자료는 바뀌지 않아요'
+const FOOT = '표시(준비완료·완료·자리비움·돌아옴·PT 먼저·치료 종료)는 접수 현황 PC에만 남아요 · 비트 자료는 바뀌지 않아요'
 /** 돌아옴 이름표 "돌아옴 HH:MM" (reception-arrange-tune AC-3602.1) */
 const BACK_LABEL = '돌아옴'
 /** 돌아온 바로 그때의 기다린 글(도우미가 0분부터 센다, AC-3601.4·AC-3602.3) */

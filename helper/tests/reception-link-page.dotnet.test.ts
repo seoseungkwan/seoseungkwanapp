@@ -39,6 +39,10 @@ describe('REQ-1411·REQ-1406 주소 보내기 화면 /link (C# Precheck.Core.Tes
 
 // spec reception-other-clinic TASK-10(명세 고침 2026-11-17): 머리 로고는 우리 의원 것을 박지 않고 그 병원 설정을 따른다
 describe('REQ-5715 주소 보내기 화면도 그 병원 로고 (C# Precheck.Core.Tests.Reception.Link)', () => {
+  it('AC-5718.3 주소 보내기 화면 글: 순서 3은 "카카오톡 안에서 열리면…", 주소가 없으면 "이 PC가 병원 와이파이에 연결되어 있지 않아요"이고 "카톡 "·"의원 와이파이"가 없다', () => {
+    expectAc('AC-5718.3')
+  })
+
   it('AC-5715.1 머리는 설정 logo를 따른다: pic + 읽히는 로고 파일은 data: URL 그림(img.link-logo, alt "병원 로고"), text는 span.link-logo-text(이스케이프), none·파일 없음·깨짐·잠김·설정 없음은 제목만, 어느 경우든 우리 의원 이름·/logo-wordmark.png 없음', () => {
     expectAc('AC-5715.1')
   })

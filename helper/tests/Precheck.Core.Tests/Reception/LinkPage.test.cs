@@ -24,7 +24,8 @@ namespace Precheck.Core.Tests.Reception.Link;
 /// <summary>
 /// 주소 보내기 화면(LinkPage, design.md 8절, TASK-25). QR 그림은 없다(휴대폰 첫 열기는 카카오톡 링크로만).
 /// AC-1411.4 이 PC의 사설 IPv4 주소마다 큰 글자의 전체 주소 링크 http://{주소}:47200 + [주소 복사] 단추, 순서 넷, 와이파이 안내가
-///           8절 글 그대로 나온다. 사설 주소가 없으면 "이 PC가 의원 와이파이에 연결되어 있지 않아요" 안내다.
+///           8절 글 그대로 나온다. 사설 주소가 없으면 "이 PC가 병원 와이파이에 연결되어 있지 않아요" 안내다.
+/// AC-5718.3 (reception-other-clinic) 우리 의원 말투를 바꾼다: 순서 3은 "카카오톡 안에서…", 주소 없음 제목은 "병원 와이파이".
 ///           CSP(AC-1406.6) 때문에 HTML에 style·인라인 스크립트·on…= 이 없고 /theme.css·/link.css·/link.js만 부른다. 글은 HTML 이스케이프한다.
 /// AC-1406.8 라우터에 이으면 이 PC 자신(루프백)의 GET /link만 이 화면이고, 다른 곳은 404다. /qr 길은 없다.
 /// 주소는 모두 가짜(사설) 주소다.
@@ -34,14 +35,14 @@ public class LinkPageTests
     private const string Title = "접수 현황 주소 보내기";
     private const string CopyLabel = "주소 복사";
     private const string Safe = "이 주소는 병원 와이파이에서만 열려요. 밖에서는 열리지 않아 환자 정보가 보이지 않아요";
-    private const string NoLan = "이 PC가 의원 와이파이에 연결되어 있지 않아요";
+    private const string NoLan = "이 PC가 병원 와이파이에 연결되어 있지 않아요"; // AC-5718.3 (앞 글 "의원 와이파이")
     private const string NoLanSub = "와이파이에 연결한 뒤 이 창을 다시 열어 주세요";
 
     private static readonly string[] Steps =
     {
         "1. 직원 단톡방에 붙여 넣어 보내요",
         "2. 직원은 병원 와이파이에서 주소를 눌러요",
-        "3. 카톡 안에서 열리면 오른쪽 위 메뉴 → '다른 브라우저로 열기'",
+        "3. 카카오톡 안에서 열리면 오른쪽 위 메뉴 → '다른 브라우저로 열기'", // AC-5718.3 (앞 글 "카톡")
         "4. 홈 화면에 추가해요",
     };
 
@@ -92,7 +93,7 @@ public class LinkPageTests
         Assert.True(text.IndexOf(Steps[3], StringComparison.Ordinal) < text.IndexOf(Safe, StringComparison.Ordinal));
     }
 
-    [Fact(DisplayName = "AC-1411.4 사설 주소가 없으면 주소 카드·복사 단추 없이 \"이 PC가 의원 와이파이에 연결되어 있지 않아요\" + \"와이파이에 연결한 뒤 이 창을 다시 열어 주세요\"이고 제목·순서·안내는 그대로다")]
+    [Fact(DisplayName = "AC-1411.4 · AC-5718.3 사설 주소가 없으면 주소 카드·복사 단추 없이 \"이 PC가 병원 와이파이에 연결되어 있지 않아요\" + \"와이파이에 연결한 뒤 이 창을 다시 열어 주세요\"이고 제목·순서·안내는 그대로다")]
     public void NoPrivateAddress()
     {
         var html = Html();
@@ -161,7 +162,20 @@ public class LinkPageTests
         }
     }
 
-    [Fact(DisplayName = "AC-1411.4 글은 HTML 이스케이프한다: & < > \" ' 를 바꾸고, 순서 3의 작은따옴표도 &#39;로 나가며 날 글자 '·<·> 가 글에 남지 않는다")]
+    [Fact(DisplayName = "AC-5718.3 주소 보내기 화면에 우리 의원 말투(\"카톡 \"·\"의원 와이파이\")가 없다: 주소가 있을 때도 없을 때도")]
+    public void NoClinicWords()
+    {
+        foreach (var html in new[] { Html(ThisPc), Html() })
+        {
+            var text = Text(html);
+            Assert.DoesNotContain("카톡 ", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("의원 와이파이", text, StringComparison.Ordinal);
+            Assert.Contains("카카오톡 안에서 열리면", text, StringComparison.Ordinal);
+        }
+        Assert.Contains("이 PC가 병원 와이파이에 연결되어 있지 않아요", Text(Html()), StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "AC-1411.4 · AC-5718.3 글은 HTML 이스케이프한다: & < > \" ' 를 바꾸고, 순서 3의 작은따옴표도 &#39;로 나가며 날 글자 '·<·> 가 글에 남지 않는다")]
     public void EscapesText()
     {
         Assert.Equal("&lt;b&gt; &amp; &quot;가&quot; &#39;나&#39;", Escape("<b> & \"가\" '나'"));
@@ -169,7 +183,7 @@ public class LinkPageTests
         Assert.Equal("접수 현황 → 1", Escape("접수 현황 → 1"));
 
         var html = Html(ThisPc);
-        Assert.Contains("<span class=\"link-step-no\">3.</span> 카톡 안에서 열리면 오른쪽 위 메뉴 → &#39;다른 브라우저로 열기&#39;</li>", html, StringComparison.Ordinal);
+        Assert.Contains("<span class=\"link-step-no\">3.</span> 카카오톡 안에서 열리면 오른쪽 위 메뉴 → &#39;다른 브라우저로 열기&#39;</li>", html, StringComparison.Ordinal);
         Assert.DoesNotContain("'", html, StringComparison.Ordinal);
         foreach (Match m in Regex.Matches(html, ">([^<]*)<")) Assert.DoesNotContain(">", m.Groups[1].Value, StringComparison.Ordinal);
     }
