@@ -80,3 +80,17 @@ describe('REQ-5401 도우미 0.9.1 — 장부 미수에서 건강생활유지비
     expectAc('AC-5401.3')
   })
 })
+
+// 2026-11-17 helper-v0.9.1 GitHub 윈도우 빌드에서 시험이 깨짐: 윈도우 받기(core.autocrlf=true)는 @"…" 여러 줄 글에 CRLF를 넣어
+// HealthSql이 시험 글(\n)·가짜 DB 열쇠와 달라졌다. 그래서 HealthSql은 줄바꿈을 "\n"으로 적는다(파일 줄바꿈과 상관없이 같은 글)
+describe('AC-5401.2 HealthSql 글은 파일 줄바꿈과 상관없다', () => {
+  it('AC-5401.2: SunapSql.cs의 HealthSql은 @"…" 여러 줄 글이 아니고 "\n"으로 줄을 바꾼다', async () => {
+    const { readFileSync } = await import('node:fs')
+    const source = readFileSync(new URL('../src/Precheck.Core/Sunap/SunapSql.cs', import.meta.url), 'utf8')
+    const start = source.indexOf('string HealthSql =')
+    expect(start).toBeGreaterThan(0)
+    const body = source.slice(start, source.indexOf(';', start))
+    expect(body).not.toMatch(/=\s*@"/)
+    expect(body).toContain('\n')
+  })
+})
