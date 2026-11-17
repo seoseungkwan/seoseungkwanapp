@@ -109,6 +109,12 @@ describe('REQ-5707 혼자 등록 --register (C# Precheck.Core.Tests.Reception.Ho
   })
 })
 
+describe('REQ-5717 접수 현황만 쓰는 병원에 맞는 글 (C# Precheck.Core.Tests.Reception.Host)', () => {
+  it('AC-5717.1 --register(RegisterEntry)만 RegisterFlow.Run에 readOnly: true를 넘겨 확인 창 끝 줄이 "…읽기를 멈춥니다."이고, 도우미 bit.register는 그대로다(글자 살피기, 글 자체는 bit-connect.dotnet.test.ts)', () => {
+    expectAc('AC-5717.1')
+  })
+})
+
 describe('REQ-1413 환자 자료는 의원 안에서만 (C# Precheck.Core.Tests.Reception.Host)', () => {
   it('AC-1413.1 Precheck.Reception/**·ReceptionStart에 바깥으로 나가는 연결 API가 없고, 브라우저로 여는 주소는 127.0.0.1의 /link 하나뿐이다', () => {
     expectAc('AC-1413.1')

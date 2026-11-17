@@ -84,9 +84,8 @@ try {
     if ($hasHelper) { $done += ' 도우미는 그대로 두었습니다.' }
     Write-Host ''
     Write-Host $done -ForegroundColor Green
-    Write-Host "설치한 곳: $installDir"
     Write-Host '앞으로 이 PC에 로그인하면 저절로 켜집니다.'
-    Write-Host "'Windows 보안 경고' 창이 뜨면 '개인 네트워크'에 체크하고 [허용]을 누르세요."
+    Write-Host "'Windows 보안 경고' 창이 뜨면 '개인 네트워크'에 체크하고 [액세스 허용]을 누르세요."
     Write-Host "네트워크가 '공용'으로 되어 있으면 윈도우 설정에서 '개인'으로 바꾸세요."
     Write-Host "직원 휴대폰에 주소를 보내려면 바탕 화면의 '접수 현황 주소'를 누르세요."
 }

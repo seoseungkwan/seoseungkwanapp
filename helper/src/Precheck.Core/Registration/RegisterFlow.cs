@@ -17,8 +17,11 @@ public static class RegisterFlow
     /// <summary>확인 창이 이 시간 동안 답이 없으면 취소로 본다(ADR-016, design.md 15절).</summary>
     public static readonly TimeSpan ConfirmTimeout = TimeSpan.FromMinutes(5);
 
-    /// <summary>저장했으면 true. 비트 로그인 취소·[취소]·창 닫기·시간 지남이면 false(저장하지 않음).</summary>
-    public static bool Run(BitServices services)
+    /// <summary>
+    /// 저장했으면 true. 비트 로그인 취소·[취소]·창 닫기·시간 지남이면 false(저장하지 않음).
+    /// readOnly는 읽기만 하는 접수 현황 프로그램(RegisterEntry)만 참으로 넘긴다: 확인 창 글만 바뀐다(AC-5717.1).
+    /// </summary>
+    public static bool Run(BitServices services, bool readOnly = false)
     {
         if (services == null) throw new ArgumentNullException(nameof(services));
         var root = services.Locator.Find();
@@ -52,7 +55,7 @@ public static class RegisterFlow
         if (!candidate.IsValid) throw new BitException(BitErrors.HospitalMismatch);
 
         // DB를 닫은 뒤 창을 띄운다(사람이 5분까지 생각하는 동안 DB 연결을 붙잡지 않는다)
-        if (!services.Confirm.Show(RegisterPrompt.Build(candidate, previous), ConfirmTimeout)) return false;
+        if (!services.Confirm.Show(RegisterPrompt.Build(candidate, previous, readOnly), ConfirmTimeout)) return false;
         services.Store.Save(candidate);
         return true;
     }
