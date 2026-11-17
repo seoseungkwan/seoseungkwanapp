@@ -19,12 +19,12 @@ namespace Precheck.Core.Sunap;
 /// → 등록 병원 확인(HospitalGate) → 매출 확인 필요 검사 셋(revenue.days와 같은 차례, 하나라도 0이 아니면 unsure, 남은 검사는 돌리지 않음)
 /// → 환자·처방·다음 예약·금액·건강생활유지비·미수 입금 SQL(SunapSql) → 원장님 이름(통계 StatsExtra.DoctorNames, 코드가 있을 때만) → JSON 하나.
 /// 통계 화면·비트 로그인 창은 쓰지 않는다. 나누기(chunk … end)는 ContactCommands가 한다.
-/// 답 {v:2, day, unsure, rows, paid, doctors}(v:2 = spec sunap-doctors REQ-5002).
-/// rows 줄 = [차트, 이름, 첫 접수 HH:mm, 구분 new|d90|re, 현금, 카드, 계좌, 미수, [처방코드…], null|[다음 예약 yyyyMMddHHmm, 메모 앞 40자], 진료의 코드|null], 첫 접수 차례.
+/// 답 {v:3, day, unsure, rows, paid, doctors}(v:2 = spec sunap-doctors REQ-5002, v:3 = spec clinic-calendar REQ-5908 줄 끝 건강생활유지비).
+/// rows 줄 = [차트, 이름, 첫 접수 HH:mm, 구분 new|d90|re, 현금, 카드, 계좌, 미수, [처방코드…], null|[다음 예약 yyyyMMddHHmm, 메모 앞 40자], 진료의 코드|null, 건강생활유지비], 첫 접수 차례.
 /// paid 줄 = [차트, 이름, 수납 시각 HH:mm|"", 현금, 카드+계좌], 시각 차례. 금액은 원 미만 버림(항목마다).
 /// doctors 줄 = [진료의 코드, 이름|null], rows에 나온 코드마다 한 번, 코드 차례. 이름은 통계 원장님 이름과 같은 규칙이다.
 /// 미수 = 그 환자 그날 내원들의 본인부담 총액(OrpTotOwn) − (현금 + 카드 + 계좌 + 건강생활유지비), 0보다 작으면 0.
-/// 건강생활유지비 = 그날 금액 SQL에 나온 그 차트 내원들의 QCV OrcNewAmt 합(spec sunap-health REQ-5401), 내원 하나의 합이 음수면 그 내원은 0.
+/// 건강생활유지비 = 그날 금액 SQL에 나온 그 차트 내원들의 QCV OrcNewAmt 합(spec sunap-health REQ-5401), 내원 하나의 합이 음수면 그 내원은 0. 줄 끝 칸은 그 값의 원 미만을 버린 0 이상 정수다.
 /// 환자 줄이 틀리면(차트번호 없음·두 줄·첫 접수가 그날 시각이 아님·숫자 아님·진료의 코드 40자 넘음) 일부만 보내지 않고 E-BIT-READ-FAILED다.
 /// </summary>
 public static class SunapTargets
@@ -37,7 +37,7 @@ public static class SunapTargets
     /// <summary>다음 예약 메모는 앞 40자만 싣는다(SQL도 40자로 자른다).</summary>
     public const int MemoLength = 40;
 
-    public const int Version = 2;
+    public const int Version = 3;
 
     /// <summary>진료의 코드 길이 한도(통계 StatsExtra·Worker와 같은 40자). 넘으면 E-BIT-READ-FAILED.</summary>
     private const int MaxDoctorLength = 40;
@@ -253,6 +253,8 @@ public static class SunapTargets
                     writer.WriteEndArray();
                 }
                 WriteOptional(writer, row.Doctor);
+                // 건강생활유지비(QCV, spec clinic-calendar REQ-5908): 미수에서 뺀 값 그대로. 웹은 현금·카드·계좌·미수가 0이어도 이 값이 있으면 FREE로 보지 않는다
+                writer.WriteNumberValue(Math.Max(Won(row.Health), 0));
                 writer.WriteEndArray();
             }
             writer.WriteEndArray();

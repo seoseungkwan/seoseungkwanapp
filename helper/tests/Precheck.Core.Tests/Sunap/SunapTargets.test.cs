@@ -137,14 +137,14 @@ public class SunapTargetsTests
 
     // ── AC-4902.1 하루 하나 · 모양 · 범위 ──────────────────────────────────────────
 
-    [Fact(DisplayName = "AC-4902.1 sunap: 등록 병원 확인 → 확인 필요 검사 셋 → 환자·처방·다음 예약·금액·건강생활유지비(sunap-health)·미수 입금 SQL(그날 0시~다음 날 0시·병원 범위, 150초), 답은 {v:2, day, unsure, rows, paid, doctors}(sunap-doctors)")]
+    [Fact(DisplayName = "AC-4902.1 sunap: 등록 병원 확인 → 확인 필요 검사 셋 → 환자·처방·다음 예약·금액·건강생활유지비(sunap-health)·미수 입금 SQL(그날 0시~다음 날 0시·병원 범위, 150초), 답은 {v:3, day, unsure, rows, paid, doctors}(sunap-doctors, v:3 = clinic-calendar 건강생활 칸)")]
     public void ReadsOneDayAfterHospitalCheck()
     {
         using var rig = new SunapRig();
         var json = rig.Build();
 
         Assert.Equal(new[] { "v", "day", "unsure", "rows", "paid", "doctors" }, Json.Keys(json));
-        Assert.Equal(2, json.GetProperty("v").GetInt32());
+        Assert.Equal(3, json.GetProperty("v").GetInt32());
         Assert.Equal("2026-10-30", json.GetProperty("day").GetString());
         Assert.False(json.GetProperty("unsure").GetBoolean());
         Assert.Empty(SunapRig.Lines(json, "rows"));
@@ -221,7 +221,7 @@ public class SunapTargetsTests
         var json = Replies.Join(rig.Send("sunap", SunapData.Day, SunapData.Day));
 
         Assert.Equal(
-            "{\"v\":2,\"day\":\"2026-10-30\",\"unsure\":false,\"rows\":[[\"900001\",\"가상환자01\",\"09:02\",\"re\",0,15000,0,0,[\"KK020\",\"MM110\"],[\"202611021030\",\"주사 오전\"],null]],"
+            "{\"v\":3,\"day\":\"2026-10-30\",\"unsure\":false,\"rows\":[[\"900001\",\"가상환자01\",\"09:02\",\"re\",0,15000,0,0,[\"KK020\",\"MM110\"],[\"202611021030\",\"주사 오전\"],null,0]],"
             + "\"paid\":[[\"900002\",\"가상환자02\",\"11:20\",10000,0]],\"doctors\":[]}",
             Replies.Canon(json));
         Assert.Empty(rig.Screens.Calls);
@@ -356,11 +356,11 @@ public class SunapTargetsTests
 
         Assert.Equal(new[]
         {
-            "[\"900005\",\"가상환자05\",\"08:50\",\"re\",0,0,0,0,[],null,null]",
-            "[\"900001\",\"가상환자01\",\"09:02\",\"re\",7001,8000,0,14998,[\"KK020\",\"KK030\",\"MM110\"],null,null]",
-            "[\"900002\",\"가상환자02\",\"09:15\",\"new\",0,0,25000,0,[],null,null]",
-            "[\"900003\",\"가상환자03\",\"09:30\",\"d90\",0,0,0,16300,[\"AA100\"],null,null]",
-            "[\"900004\",\"\",\"09:45\",\"new\",0,0,0,0,[],null,null]",
+            "[\"900005\",\"가상환자05\",\"08:50\",\"re\",0,0,0,0,[],null,null,0]",
+            "[\"900001\",\"가상환자01\",\"09:02\",\"re\",7001,8000,0,14998,[\"KK020\",\"KK030\",\"MM110\"],null,null,0]",
+            "[\"900002\",\"가상환자02\",\"09:15\",\"new\",0,0,25000,0,[],null,null,0]",
+            "[\"900003\",\"가상환자03\",\"09:30\",\"d90\",0,0,0,16300,[\"AA100\"],null,null,0]",
+            "[\"900004\",\"\",\"09:45\",\"new\",0,0,0,0,[],null,null,0]",
         }, SunapRig.Lines(json, "rows"));
         Assert.False(json.GetProperty("unsure").GetBoolean());
     }
@@ -377,8 +377,8 @@ public class SunapTargetsTests
             SunapData.Money("V2", "900002", 30000m, 9000m, 0m, 0m, 5000m));         // 더 냈다 → 미수 0
         Assert.Equal(new[]
         {
-            "[\"900001\",\"가상환자01\",\"09:02\",\"re\",1000,2000,3000,4000,[],null,null]",
-            "[\"900002\",\"가상환자02\",\"09:03\",\"re\",9000,0,0,0,[],null,null]",
+            "[\"900001\",\"가상환자01\",\"09:02\",\"re\",1000,2000,3000,4000,[],null,null,0]",
+            "[\"900002\",\"가상환자02\",\"09:03\",\"re\",9000,0,0,0,[],null,null,0]",
         }, SunapRig.Lines(rig.Build(), "rows"));
     }
 
@@ -599,7 +599,7 @@ public class SunapTargetsTests
 
     // ── AC-5002 장부 줄에 원장님 (spec sunap-doctors) ─────────────────────────
 
-    [Fact(DisplayName = "AC-5002.1 sunap v:2: rows 줄마다 끝에 진료의 코드 한 칸(그날 센 내원들의 OcmDtrCod 중 빈 값 뺀 가장 작은 것, 앞뒤 빈칸 뺌, 40자까지), 없으면 null")]
+    [Fact(DisplayName = "AC-5002.1 sunap v:2(0.10.0부터 v:3): rows 줄마다 끝에 진료의 코드 한 칸(그날 센 내원들의 OcmDtrCod 중 빈 값 뺀 가장 작은 것, 앞뒤 빈칸 뺌, 40자까지), 없으면 null")]
     public void RowsEndWithDoctorCode()
     {
         using var rig = new SunapRig();
@@ -612,10 +612,10 @@ public class SunapTargetsTests
             SunapData.Patient("900005", "가상환자05", "202610300950", "20240105", 0L, code40));
         var json = rig.Build();
 
-        Assert.Equal(2, json.GetProperty("v").GetInt32());
-        Assert.Equal(2, SunapTargets.Version);
+        Assert.Equal(3, json.GetProperty("v").GetInt32());
+        Assert.Equal(3, SunapTargets.Version);
         var rows = json.GetProperty("rows").EnumerateArray().ToArray();
-        Assert.All(rows, row => Assert.Equal(11, row.GetArrayLength()));
+        Assert.All(rows, row => Assert.Equal(12, row.GetArrayLength()));
         Assert.Equal(new[] { "\"D002\"", "\"D001\"", "null", "null", "\"" + code40 + "\"" }, rows.Select(row => Replies.Canon(row[10])).ToArray());
     }
 
@@ -697,7 +697,7 @@ public class SunapTargetsTests
         Assert.Equal(1, command.Db.Disposed);
     }
 
-    [Fact(DisplayName = "AC-5002.2 명령 contact.targets sunap 답 v:2: rows 끝 칸 코드와 맨 위 doctors [[코드, 이름|null]]가 한 JSON으로 chunk … end에 실린다")]
+    [Fact(DisplayName = "AC-5002.2 명령 contact.targets sunap 답 v:3: rows 끝 칸 코드와 맨 위 doctors [[코드, 이름|null]]가 한 JSON으로 chunk … end에 실린다")]
     public void CommandSendsDoctors()
     {
         using var rig = new ContactRig();
@@ -712,22 +712,22 @@ public class SunapTargetsTests
         var json = Replies.Join(rig.Send("sunap", SunapData.Day, SunapData.Day));
 
         Assert.Equal(
-            "{\"v\":2,\"day\":\"2026-10-30\",\"unsure\":false,\"rows\":["
-            + "[\"900001\",\"가상환자01\",\"09:02\",\"re\",0,0,0,0,[],null,\"D002\"],"
-            + "[\"900002\",\"가상환자02\",\"09:10\",\"new\",0,0,0,0,[],null,\"D001\"]],"
+            "{\"v\":3,\"day\":\"2026-10-30\",\"unsure\":false,\"rows\":["
+            + "[\"900001\",\"가상환자01\",\"09:02\",\"re\",0,0,0,0,[],null,\"D002\",0],"
+            + "[\"900002\",\"가상환자02\",\"09:10\",\"new\",0,0,0,0,[],null,\"D001\",0]],"
             + "\"paid\":[],\"doctors\":[[\"D001\",\"가짜원장 가\"],[\"D002\",null]]}",
             Replies.Canon(json));
     }
 
-    [Fact(DisplayName = "AC-5002.3 도우미 판은 0.9.1이다(웹 LATEST_HELPER 0.9.1·MIN_HELPER·SUNAP_HELPER 그대로는 handshake.test.ts가 본다)")]
-    public void HelperVersionIsZeroNine() => Assert.Equal("0.9.1", HelperVersion.Value);
+    [Fact(DisplayName = "AC-5002.3 도우미 판은 0.10.0이다(웹 LATEST_HELPER·CAL_HELPER 0.10.0·MIN_HELPER·SUNAP_HELPER 그대로는 handshake.test.ts가 본다)")]
+    public void HelperVersionIsZeroNine() => Assert.Equal("0.10.0", HelperVersion.Value);
 
     // ── AC-4902.6 판 ───────────────────────────────────────────────
 
-    [Fact(DisplayName = "AC-4902.6 도우미 판은 0.9.1이고 명령 이름 목록은 그대로다(명령 13개·protocol 1, contact.targets 칸은 kind·from·to)")]
+    [Fact(DisplayName = "AC-4902.6 도우미 판은 0.10.0이고 명령 이름 목록은 그대로다(명령 13개·protocol 1, contact.targets 칸은 kind·from·to + 선택 q(clinic-calendar))")]
     public void SunapVersionAndCommandNamesStay()
     {
-        Assert.Equal("0.9.1", HelperVersion.Value);
+        Assert.Equal("0.10.0", HelperVersion.Value);
         CommandNamesStay();
     }
 
@@ -757,10 +757,10 @@ public class SunapTargetsTests
 
         Assert.Equal(new[]
         {
-            "[\"900001\",\"가상환자01\",\"09:02\",\"re\",0,0,0,0,[],null,null]",
-            "[\"900002\",\"가상환자02\",\"09:03\",\"re\",3000,2000,1000,3500,[],null,null]",
-            "[\"900003\",\"가상환자03\",\"09:04\",\"re\",600,0,0,0,[],null,null]",
-            "[\"900004\",\"가상환자04\",\"09:05\",\"re\",0,0,0,5000,[],null,null]",
+            "[\"900001\",\"가상환자01\",\"09:02\",\"re\",0,0,0,0,[],null,null,1500]",
+            "[\"900002\",\"가상환자02\",\"09:03\",\"re\",3000,2000,1000,3500,[],null,null,1500]",
+            "[\"900003\",\"가상환자03\",\"09:04\",\"re\",600,0,0,0,[],null,null,1000]",
+            "[\"900004\",\"가상환자04\",\"09:05\",\"re\",0,0,0,5000,[],null,null,0]",
         }, SunapRig.Lines(json, "rows"));
         Assert.False(json.GetProperty("unsure").GetBoolean());
     }
@@ -786,13 +786,13 @@ public class SunapTargetsTests
 
         Assert.Equal(new[]
         {
-            "[\"900001\",\"가상환자01\",\"09:02\",\"re\",1000,0,0,4000,[],null,null]",
-            "[\"900002\",\"가상환자02\",\"09:03\",\"re\",0,0,0,4500,[],null,null]",
+            "[\"900001\",\"가상환자01\",\"09:02\",\"re\",1000,0,0,4000,[],null,null,0]",
+            "[\"900002\",\"가상환자02\",\"09:03\",\"re\",0,0,0,4500,[],null,null,1500]",
         }, SunapRig.Lines(json, "rows"));
         Assert.False(json.GetProperty("unsure").GetBoolean());
     }
 
-    [Fact(DisplayName = "AC-5401.1 명령 contact.targets {kind:'sunap'}: 건강생활잔액으로 낸 1,500원은 미수 0으로 실리고 답 모양(v:2·rows 열한 칸·paid·doctors)은 그대로다")]
+    [Fact(DisplayName = "AC-5401.1 AC-5908.1 명령 contact.targets {kind:'sunap'}: 건강생활잔액으로 낸 1,500원은 미수 0으로 실리고 답 모양은 v:3·rows 열두 칸(끝 칸 건강생활 1,500, AC-5908.1)·paid·doctors다")]
     public void CommandSendsHealthAsNotUnpaid()
     {
         using var rig = new ContactRig();
@@ -804,7 +804,7 @@ public class SunapTargetsTests
         var json = Replies.Join(rig.Send("sunap", SunapData.Day, SunapData.Day));
 
         Assert.Equal(
-            "{\"v\":2,\"day\":\"2026-10-30\",\"unsure\":false,\"rows\":[[\"900001\",\"가상환자01\",\"09:02\",\"re\",0,0,0,0,[],null,null]],\"paid\":[],\"doctors\":[]}",
+            "{\"v\":3,\"day\":\"2026-10-30\",\"unsure\":false,\"rows\":[[\"900001\",\"가상환자01\",\"09:02\",\"re\",0,0,0,0,[],null,null,1500]],\"paid\":[],\"doctors\":[]}",
             Replies.Canon(json));
         Assert.Equal(new (string?, string?)[] { ("contact.targets", null) }, rig.Log);
     }
@@ -831,8 +831,8 @@ public class SunapTargetsTests
 
             Assert.Equal(new[]
             {
-                "[\"900001\",\"가상환자01\",\"09:02\",\"re\",0,0,0,2000,[],null,null]",
-                "[\"900002\",\"가상환자02\",\"09:10\",\"re\",0,0,0,1000,[],null,null]",
+                "[\"900001\",\"가상환자01\",\"09:02\",\"re\",0,0,0,2000,[],null,null,1000]",
+                "[\"900002\",\"가상환자02\",\"09:10\",\"re\",0,0,0,1000,[],null,null,999]",
             }, SunapRig.Lines(json, "rows"));
 
             var call = rig.Db.Calls.Single(c => c.Sql == SunapData.HealthSqlText);
@@ -874,12 +874,57 @@ public class SunapTargetsTests
         Assert.Equal(new[] { "OrcAccDte", "OrcChtNum", "OrcCod", "OrcInf", "OrcNewAmt", "OrcOcmNum" }, columns);
     }
 
-    [Fact(DisplayName = "AC-5401.3 도우미 판은 0.9.1이고 답 v:2·명령 이름 목록(명령 13개·protocol 1, contact.targets 칸 kind·from·to)은 그대로다(웹 LATEST_HELPER 0.9.1·MIN_HELPER·SUNAP_HELPER 그대로는 handshake.test.ts가 본다)")]
+    [Fact(DisplayName = "AC-5401.3 도우미 판은 0.10.0이고 답 v:3(clinic-calendar)·명령 이름 목록(명령 13개·protocol 1, contact.targets 칸 kind·from·to + 선택 q)이다(웹 LATEST_HELPER·CAL_HELPER 0.10.0·MIN_HELPER·SUNAP_HELPER 그대로는 handshake.test.ts가 본다)")]
     public void HealthVersionAndShapeStay()
     {
-        Assert.Equal("0.9.1", HelperVersion.Value);
-        Assert.Equal(2, SunapTargets.Version);
+        Assert.Equal("0.10.0", HelperVersion.Value);
+        Assert.Equal(3, SunapTargets.Version);
         CommandNamesStay();
+    }
+
+    // ── AC-5908 장부 줄 끝에 건강생활유지비 (spec clinic-calendar) ─────────────
+
+    [Fact(DisplayName = "AC-5908.1 sunap 답 v:3: rows 줄마다 끝에 건강생활유지비 한 칸(미수에서 빼는 Health와 같은 값, 원 미만 버린 0 이상 정수)이 더해져 12칸이다. 미수 셈과 진료의 코드 등 다른 칸은 그대로다")]
+    public void RowsEndWithHealth()
+    {
+        using var rig = new SunapRig();
+        rig.Answer(SunapSql.PatientsSql,
+            SunapData.Patient("900001", "가상환자01", "202610300902", "20240105", 0L, "D001"),
+            SunapData.Patient("900002", "가상환자02", "202610300903", "20240105", 0L),
+            SunapData.Patient("900003", "가상환자03", "202610300904", "20240105", 0L),
+            SunapData.Patient("900004", "가상환자04", "202610300905", "20240105", 0L),
+            SunapData.Patient("900005", "가상환자05", "202610300906", "20240105", 0L));
+        rig.Answer(SunapSql.MoneySql,
+            SunapData.Money("V1", "900001", 15000m, 0m, 0m, 0m, 1500m),             // 모두 건강생활유지비로 → 미수 0, 건강생활 1,500
+            SunapData.Money("V2", "900002", 40000m, 1000m, 0m, 0m, 5000m),
+            SunapData.Money("V3", "900002", 10000m, 0m, 0m, 0m, 2000m),             // 두 내원 999.7 + 500 = 1,499.7 → 1,499
+            SunapData.Money("V4", "900003", 10000m, 0m, 0m, 0m, 1000m),             // 내원 합이 음수 → 0
+            SunapData.Money("V5", "900004", 20000m, 2000m, 0m, 0m, 2000m),          // QCV 없음 → 0
+            SunapData.Money("V6", "900005", 20000m, 0m, 0m, 0m, 3000m));            // 금액 SQL에 없는 내원의 QCV → 0
+        rig.Answer(SunapData.HealthSqlText,
+            SunapData.Health("V1", "900001", 1500m),
+            SunapData.Health("V2", "900002", 999.7m),
+            SunapData.Health("V3", "900002", 500L),
+            SunapData.Health("V4", "900003", -700m),
+            SunapData.Health("V9", "900005", 800m));
+        rig.Answer(StatsSql.DoctorNamesSql, SunapData.DoctorName("D001", "가짜원장 가", "99991231"));
+        var json = rig.Build();
+
+        Assert.Equal(3, json.GetProperty("v").GetInt32());
+        Assert.Equal(3, SunapTargets.Version);
+        Assert.Equal(new[] { "v", "day", "unsure", "rows", "paid", "doctors" }, Json.Keys(json));
+        Assert.All(json.GetProperty("rows").EnumerateArray(), row => Assert.Equal(12, row.GetArrayLength()));
+        Assert.Equal(new[]
+        {
+            "[\"900001\",\"가상환자01\",\"09:02\",\"re\",0,0,0,0,[],null,\"D001\",1500]",
+            "[\"900002\",\"가상환자02\",\"09:03\",\"re\",1000,0,0,4500,[],null,null,1499]",
+            "[\"900003\",\"가상환자03\",\"09:04\",\"re\",0,0,0,1000,[],null,null,0]",
+            "[\"900004\",\"가상환자04\",\"09:05\",\"re\",2000,0,0,0,[],null,null,0]",
+            "[\"900005\",\"가상환자05\",\"09:06\",\"re\",0,0,0,3000,[],null,null,0]",
+        }, SunapRig.Lines(json, "rows"));
+        Assert.All(json.GetProperty("rows").EnumerateArray(), row => Assert.Equal(JsonValueKind.Number, row[11].ValueKind));
+        Assert.Equal(new[] { "[\"D001\",\"가짜원장 가\"]" }, SunapRig.Lines(json, "doctors"));
+        Assert.False(json.GetProperty("unsure").GetBoolean());
     }
 
     private static void CommandNamesStay()
@@ -891,7 +936,7 @@ public class SunapTargetsTests
             "bit.check", "bit.input", "bit.register", "claim.dates", "claim.memos", "claim.month", "contact.targets", "hello", "revenue.days", "sam.latest",
             "stats.rows", "store.load", "store.save",
         }, commands.EnumerateObject().Select(p => p.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray());
-        Assert.Equal(new[] { "kind", "from", "to" }, Json.Keys(commands.GetProperty("contact.targets").GetProperty("args")));
+        Assert.Equal(new[] { "kind", "from", "to", "q" }, Json.Keys(commands.GetProperty("contact.targets").GetProperty("args")));
         Assert.Equal(1, table.RootElement.GetProperty("protocol").GetInt32());
     }
 }

@@ -1,5 +1,5 @@
 // 수납일지 도우미 하루 장부 읽기·달 파일 sunap 칸(spec sunap-ilji TASK-1, REQ-4902)과 장부 줄 원장님(spec sunap-doctors TASK-1, REQ-5002),
-// 장부 미수에서 건강생활유지비(QCV) 빼기·판 0.9.1(spec sunap-health TASK-1, REQ-5401)의 C# 시험을 감싼다
+// 장부 미수에서 건강생활유지비(QCV) 빼기(spec sunap-health TASK-1, REQ-5401), 장부 줄 끝 건강생활 칸·답 v3·판 0.10.0(spec clinic-calendar TASK-2, REQ-5908)의 C# 시험을 감싼다
 // (helper/tests/Precheck.Core.Tests/Sunap/*.test.cs·Store/WorkStoreSunap.test.cs·Protocol/CommandTable.test.cs의 Sunap 시험).
 // dotnet test를 한 번 돌리고, AC마다 그 AC ID가 붙은 C# 시험이 실제로 돌았고 하나도 실패하지 않았는지 본다.
 import { beforeAll, describe, expect, it } from 'vitest'
@@ -27,7 +27,7 @@ function expectAc(ac: string) {
   expect(lines('Passed', ac), `${ac} 시험이 돌지 않았다\n${tail(run.output)}`).toBeGreaterThan(0)
 }
 
-describe('REQ-4902 도우미 하루 장부 읽기와 PC 저장 · 판 0.9.1 (C# Precheck.Core.Tests Sunap)', () => {
+describe('REQ-4902 도우미 하루 장부 읽기와 PC 저장 · 판 0.10.0 (C# Precheck.Core.Tests Sunap)', () => {
   it('AC-4902.1 contact.targets {kind:sunap, from:D, to:D}는 {v, day, unsure, rows, paid} 하나를 조각으로, 하루가 아니거나 오늘−62일 ~ 오늘 밖이면 E-HELPER-BAD-MESSAGE, 새 SQL은 허용 목록의 SELECT', () => {
     expectAc('AC-4902.1')
   })
@@ -48,7 +48,7 @@ describe('REQ-4902 도우미 하루 장부 읽기와 PC 저장 · 판 0.9.1 (C# 
     expectAc('AC-4902.5')
   })
 
-  it('AC-4902.6 도우미 판 0.9.1, 명령 이름 목록은 그대로', () => {
+  it('AC-4902.6 도우미 판 0.10.0, 명령 이름 목록은 그대로', () => {
     expectAc('AC-4902.6')
   })
 })
@@ -62,12 +62,12 @@ describe('REQ-5002 도우미 0.9.0 — 장부 줄에 원장님 (C# Precheck.Core
     expectAc('AC-5002.2')
   })
 
-  it('AC-5002.3 도우미 판 0.9.1', () => {
+  it('AC-5002.3 도우미 판 0.10.0', () => {
     expectAc('AC-5002.3')
   })
 })
 
-describe('REQ-5401 도우미 0.9.1 — 장부 미수에서 건강생활유지비(QCV)를 뺀다 (C# Precheck.Core.Tests Sunap)', () => {
+describe('REQ-5401 도우미 0.9.1~ — 장부 미수에서 건강생활유지비(QCV)를 뺀다 (C# Precheck.Core.Tests Sunap)', () => {
   it('AC-5401.1 미수 = 본인부담 총액 − (현금 + 카드 + 계좌 + 그 내원들의 QCV OrcNewAmt 합), 0보다 작으면 0, 내원 QCV 합이 음수면 0으로 봄, 현금·카드·계좌 칸은 그대로', () => {
     expectAc('AC-5401.1')
   })
@@ -76,8 +76,14 @@ describe('REQ-5401 도우미 0.9.1 — 장부 미수에서 건강생활유지비
     expectAc('AC-5401.2')
   })
 
-  it('AC-5401.3 도우미 판 0.9.1, 답 v:2·명령 이름 목록은 그대로', () => {
+  it('AC-5401.3 도우미 판 0.10.0, 답 v:3·명령 이름 목록은 그대로', () => {
     expectAc('AC-5401.3')
+  })
+})
+
+describe('REQ-5908 도우미 0.10.0 — 수납일지 장부 줄 끝 건강생활유지비 (C# Precheck.Core.Tests Sunap)', () => {
+  it('AC-5908.1 답 v는 3이고 rows 줄마다 끝에 건강생활유지비 한 칸(미수에서 빼는 Health와 같은 값, 원 미만 버린 0 이상 정수)이 더해져 12칸, 미수 셈과 다른 칸은 그대로', () => {
+    expectAc('AC-5908.1')
   })
 })
 

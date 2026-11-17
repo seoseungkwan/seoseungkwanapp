@@ -106,9 +106,10 @@
       "patient": true,
       "maxDays": 1100,
       "args": {
-        "kind": { "type": "enum", "values": ["followup", "injection", "lapsed", "reservation", "sunap"] },
+        "kind": { "type": "enum", "values": ["followup", "injection", "lapsed", "reservation", "sunap", "calfind", "calday"] },
         "from": { "type": "date" },
-        "to": { "type": "date" }
+        "to": { "type": "date" },
+        "q": { "type": "string", "min": 1, "max": 20, "optional": true }
       }
     },
     "stats.rows": {
