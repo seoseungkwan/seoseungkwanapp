@@ -16,7 +16,7 @@ namespace Precheck.Core.Tests.Reception.ArrangeAutoEnd;
 
 /// <summary>
 /// 수납완료 줄 저절로 빼기(spec reception-arrange design.md 10-2, 2026-11-10 사용자 고침, AC-3304.5·AC-3305.10·AC-3306.7).
-/// 가짜 상태 표(QA 진료대기·QC 수납대기·QD 끝남)·가짜 지도(SONO1)·가짜 내원(V+숫자)·가짜 암호화(XorProtector)·임시 폴더만 쓴다.
+/// 가짜 상태 표(QA 진료대기·QC 수납대기·QD 끝남)·우리 의원 처음 값 칸(ArrangeLayout.Ours, SONO1 → sono)·가짜 내원(V+숫자)·가짜 암호화(XorProtector)·임시 폴더만 쓴다.
 /// </summary>
 public class ArrangeAutoEndTests : IDisposable
 {
@@ -27,8 +27,6 @@ public class ArrangeAutoEndTests : IDisposable
     {
         ["QA"] = Lane.Wait, ["QC"] = Lane.Pay, ["QD"] = Lane.Done,
     };
-
-    private static readonly IReadOnlyList<ArrangeRule> Map = new[] { ArrangeRule.Code("SONO1", ArrangeCol.Sono) };
 
     private readonly string folder = Path.Combine(Path.GetTempPath(), "precheck-autoend-" + Guid.NewGuid().ToString("N"));
     private readonly XorProtector protector = new XorProtector();
@@ -45,7 +43,7 @@ public class ArrangeAutoEndTests : IDisposable
 
     private Arrange Build(IEnumerable<VisitRow> visits, IReadOnlyDictionary<string, VisitMark>? marks = null) =>
         ArrangeBuilder.Build(
-            new BoardInput(Day, ReadAt, visits.ToArray(), new Dictionary<string, string>()), Statuses, new string[0], Map,
+            new BoardInput(Day, ReadAt, visits.ToArray(), new Dictionary<string, string>()), Statuses, new string[0], ArrangeLayout.Ours,
             marks ?? new Dictionary<string, VisitMark>(), new Dictionary<string, string>(), keys);
 
     private string Key(string visit) => keys.KeyOf(Day, visit);
@@ -55,7 +53,7 @@ public class ArrangeAutoEndTests : IDisposable
 
     private static ArrangeOp Op(string op, string v) => new ArrangeOp("0123456789abcdef", op, null, v);
 
-    private static readonly IReadOnlyDictionary<ArrangeCol, ArrangeCell> NoCells = new Dictionary<ArrangeCol, ArrangeCell>();
+    private static readonly IReadOnlyDictionary<string, ArrangeCell> NoCells = new Dictionary<string, ArrangeCell>();
 
     // ---- AC-3305.10 수납완료 줄은 저절로 ended ---------------------------------------------------------
 
@@ -113,7 +111,7 @@ public class ArrangeAutoEndTests : IDisposable
         var row = Assert.Single(Build(visits).Rows);
 
         Assert.Equal(Key("V2"), row.Key);
-        Assert.Equal(1, row.Cells[ArrangeCol.Sono].Ord);
+        Assert.Equal(1, row.Cells[ArrangeKeys.Sono].Ord);
     }
 
     [Fact(DisplayName = "AC-3305.10 판 JSON의 ended 줄은 { k, endedAt, paid }이고 수납 시각을 모르면 endedAt이 null이다")]
@@ -141,7 +139,7 @@ public class ArrangeAutoEndTests : IDisposable
     {
         var kept = new VisitMark(kept: true);
         Assert.False(kept.IsEmpty);
-        Assert.True(kept.WithAway("10:00").WithEnded("10:10").WithPtf(null).WithCell(ArrangeCol.Pt, null).Kept);
+        Assert.True(kept.WithAway("10:00").WithEnded("10:10").WithPtf(null).WithCell(ArrangeKeys.Pt, null).Kept);
 
         Open().Update("V1", _ => kept);
 
@@ -229,7 +227,7 @@ public class ArrangeAutoEndTests : IDisposable
         // 처방에서 온 X-RAY(G1234 09:40) step은 204·X-ray 완료 표시(줄을 못 만들면 404), 처방도 표시도 없는 SONO step은 404
         Assert.Equal(204, rig.Post(Body(paid, "add", "pt", "HP")).Status);
         Assert.Equal(400, rig.Post(Body(paid, "add", "pt", "ICE")).Status);
-        Assert.Equal("HP", rig.ArrangeMarks.Today()["V1002"].Cells[ArrangeCol.Pt].Det);
+        Assert.Equal("HP", rig.ArrangeMarks.Today()["V1002"].Cells[ArrangeKeys.Pt].Det);
         Assert.Equal(204, rig.Post(Body(paid, "step", "xray", null)).Status);
         Assert.True(rig.XrayMarks.Today().ContainsKey("V1002"));
         Assert.Equal(404, rig.Post(Body(paid, "step", "sono", null)).Status);

@@ -55,15 +55,15 @@ public class ArrangeBackTests : IDisposable
     private static string Visit(string extra) =>
         "{\"day\":\"20261116\",\"visits\":{\"V1\":{\"cells\":{},\"away\":null,\"ptf\":null,\"endedAt\":null" + extra + "}}}";
 
-    private static ArrangeOp Op(string op, ArrangeCol? col = null, string? v = null) => new ArrangeOp("0123456789abcdef", op, col, v);
+    private static ArrangeOp Op(string op, string? col = null, string? v = null) => new ArrangeOp("0123456789abcdef", op, col, v);
 
     private static ArrangeCell Cell(ArrangeStep st, bool manual = false, string det = "", string? part = null, string? at = "09:30") =>
         new ArrangeCell(st, det, part, at, null, manual);
 
-    private static IReadOnlyDictionary<ArrangeCol, ArrangeCell> Cells(params (ArrangeCol Col, ArrangeCell Cell)[] cells) =>
+    private static IReadOnlyDictionary<string, ArrangeCell> Cells(params (string Col, ArrangeCell Cell)[] cells) =>
         cells.ToDictionary(c => c.Col, c => c.Cell);
 
-    private static readonly IReadOnlyDictionary<ArrangeCol, ArrangeCell> NoCells = Cells();
+    private static readonly IReadOnlyDictionary<string, ArrangeCell> NoCells = Cells();
 
     // ---- AC-3601.1 표시 파일 -------------------------------------------------------------------------
 
@@ -160,7 +160,7 @@ public class ArrangeBackTests : IDisposable
         foreach (var changed in new[]
         {
             mark.WithAway("10:41"), mark.WithPtf(new PtFirst("up", "10:42")), mark.WithEnded("10:43"), mark.WithKept(true),
-            mark.WithCell(ArrangeCol.Ds, new CellMark(ArrangeStep.Todo, true, "30분", null, null, null, "10:44")),
+            mark.WithCell(ArrangeKeys.Ds, new CellMark(ArrangeStep.Todo, true, "30분", null, null, null, "10:44")),
         })
             Assert.Equal(("10:00", "10:05"), (changed.Back, changed.BackStop));
     }
@@ -184,10 +184,10 @@ public class ArrangeBackTests : IDisposable
         Assert.Equal(((string?)null, Now, (string?)null), (off.Next!.Away, off.Next.Back, off.Next.BackStop));
 
         var current = new VisitMark(away: "10:00", ptf: new PtFirst("up", "09:40"), back: "09:00", backStop: "09:10")
-            .WithCell(ArrangeCol.Ds, new CellMark(ArrangeStep.Todo, true, "30분", null, null, null, "09:41"));
+            .WithCell(ArrangeKeys.Ds, new CellMark(ArrangeStep.Todo, true, "30분", null, null, null, "09:41"));
         var again = ArrangeWrite.Apply(Op("away", v: "off"), current, NoCells, Now).Next!;
         Assert.Equal(((string?)null, Now, (string?)null, "up"), (again.Away, again.Back, again.BackStop, again.Ptf!.St));
-        Assert.Equal("30분", again.Cells[ArrangeCol.Ds].Det);
+        Assert.Equal("30분", again.Cells[ArrangeKeys.Ds].Det);
     }
 
     [Fact(DisplayName = "AC-3601.2 away clear(되돌리기)는 away·back·backStop을 모두 지운다(다른 표시가 없으면 그 내원 표시도 없어짐), 몸 v \"clear\"를 받는다")]
@@ -200,10 +200,10 @@ public class ArrangeBackTests : IDisposable
         Assert.Equal((204, true), (clear.Status, clear.ChangesMarks));
         Assert.Null(clear.Next);
 
-        var withCell = new VisitMark(back: "10:10").WithCell(ArrangeCol.Ds, new CellMark(ArrangeStep.Todo, true, "30분", null, null, null, "09:41"));
+        var withCell = new VisitMark(back: "10:10").WithCell(ArrangeKeys.Ds, new CellMark(ArrangeStep.Todo, true, "30분", null, null, null, "09:41"));
         var kept = ArrangeWrite.Apply(Op("away", v: "clear"), withCell, NoCells, Now).Next!;
         Assert.Equal(((string?)null, (string?)null, (string?)null), (kept.Away, kept.Back, kept.BackStop));
-        Assert.Equal("30분", kept.Cells[ArrangeCol.Ds].Det);
+        Assert.Equal("30분", kept.Cells[ArrangeKeys.Ds].Det);
     }
 
     [Theory(DisplayName = "AC-3601.2 away v는 on·off·clear만 받고 다른 글은 400")]
@@ -222,20 +222,20 @@ public class ArrangeBackTests : IDisposable
 
     public static IEnumerable<object[]> CellWrites() => new[]
     {
-        new object[] { "step pt", Op("step", ArrangeCol.Pt), Counting.WithCell(ArrangeCol.Pt, new CellMark(ArrangeStep.Todo, true, "ICE", null, null, null, "09:50")), Cells((ArrangeCol.Pt, Cell(ArrangeStep.Todo, true, "ICE"))), null! },
-        new object[] { "set sono", Op("set", ArrangeCol.Sono, "done"), Counting, Cells((ArrangeCol.Sono, Cell(ArrangeStep.Todo))), null! },
-        new object[] { "add ds", Op("add", ArrangeCol.Ds, "30분"), Counting, NoCells, null! },
-        new object[] { "remove ds", Op("remove", ArrangeCol.Ds), Counting.WithCell(ArrangeCol.Ds, new CellMark(ArrangeStep.Todo, true, "30분", null, null, null, "09:40")), Cells((ArrangeCol.Ds, Cell(ArrangeStep.Todo, true, "30분"))), null! },
-        new object[] { "part sono", Op("part", ArrangeCol.Sono, "목"), Counting, Cells((ArrangeCol.Sono, Cell(ArrangeStep.Todo))), null! },
-        new object[] { "step xray", Op("step", ArrangeCol.Xray), Counting, Cells((ArrangeCol.Xray, Cell(ArrangeStep.Todo))), true },
-        new object[] { "set xray todo", Op("set", ArrangeCol.Xray, "todo"), Counting, Cells((ArrangeCol.Xray, Cell(ArrangeStep.Done))), false },
-        new object[] { "add xray", Op("add", ArrangeCol.Xray, "X-ray 찍기"), Counting, NoCells, null! },
-        new object[] { "remove xray(표시 없는 직접 칸)", Op("remove", ArrangeCol.Xray), Counting, Cells((ArrangeCol.Xray, Cell(ArrangeStep.Done, manual: true))), false },
+        new object[] { "step pt", Op("step", ArrangeKeys.Pt), Counting.WithCell(ArrangeKeys.Pt, new CellMark(ArrangeStep.Todo, true, "ICE", null, null, null, "09:50")), Cells((ArrangeKeys.Pt, Cell(ArrangeStep.Todo, true, "ICE"))), null! },
+        new object[] { "set sono", Op("set", ArrangeKeys.Sono, "done"), Counting, Cells((ArrangeKeys.Sono, Cell(ArrangeStep.Todo))), null! },
+        new object[] { "add ds", Op("add", ArrangeKeys.Ds, "30분"), Counting, NoCells, null! },
+        new object[] { "remove ds", Op("remove", ArrangeKeys.Ds), Counting.WithCell(ArrangeKeys.Ds, new CellMark(ArrangeStep.Todo, true, "30분", null, null, null, "09:40")), Cells((ArrangeKeys.Ds, Cell(ArrangeStep.Todo, true, "30분"))), null! },
+        new object[] { "part sono", Op("part", ArrangeKeys.Sono, "목"), Counting, Cells((ArrangeKeys.Sono, Cell(ArrangeStep.Todo))), null! },
+        new object[] { "step xray", Op("step", ArrangeKeys.Xray), Counting, Cells((ArrangeKeys.Xray, Cell(ArrangeStep.Todo))), true },
+        new object[] { "set xray todo", Op("set", ArrangeKeys.Xray, "todo"), Counting, Cells((ArrangeKeys.Xray, Cell(ArrangeStep.Done))), false },
+        new object[] { "add xray", Op("add", ArrangeKeys.Xray, "X-ray 찍기"), Counting, NoCells, null! },
+        new object[] { "remove xray(표시 없는 직접 칸)", Op("remove", ArrangeKeys.Xray), Counting, Cells((ArrangeKeys.Xray, Cell(ArrangeStep.Done, manual: true))), false },
     };
 
     [Theory(DisplayName = "AC-3601.3 back이 있고 backStop이 없는 내원의 칸 쓰기(step·set·add·remove·part, X-RAY 칸 포함)가 받아지면 backStop = 지금이고, X-RAY 칸 쓰기는 X-ray 표시와 함께 낸다")]
     [MemberData(nameof(CellWrites))]
-    public void CellWriteStopsCounting(string why, ArrangeOp op, VisitMark current, IReadOnlyDictionary<ArrangeCol, ArrangeCell> cells, bool? xray)
+    public void CellWriteStopsCounting(string why, ArrangeOp op, VisitMark current, IReadOnlyDictionary<string, ArrangeCell> cells, bool? xray)
     {
         var result = ArrangeWrite.Apply(op, current, cells, Now);
 
@@ -249,26 +249,26 @@ public class ArrangeBackTests : IDisposable
     public void StopsOnce()
     {
         var stopped = new VisitMark(back: "10:00", backStop: "10:10");
-        var step = ArrangeWrite.Apply(Op("add", ArrangeCol.Ds, "30분"), stopped, NoCells, Now);
+        var step = ArrangeWrite.Apply(Op("add", ArrangeKeys.Ds, "30분"), stopped, NoCells, Now);
         Assert.Equal(("10:00", "10:10"), (step.Next!.Back, step.Next.BackStop));
 
-        var xray = ArrangeWrite.Apply(Op("step", ArrangeCol.Xray), stopped, Cells((ArrangeCol.Xray, Cell(ArrangeStep.Todo))), Now);
+        var xray = ArrangeWrite.Apply(Op("step", ArrangeKeys.Xray), stopped, Cells((ArrangeKeys.Xray, Cell(ArrangeStep.Todo))), Now);
         Assert.Equal((204, false, (bool?)true), (xray.Status, xray.ChangesMarks, xray.Xray));
 
-        var plain = ArrangeWrite.Apply(Op("step", ArrangeCol.Xray), null, Cells((ArrangeCol.Xray, Cell(ArrangeStep.Todo))), Now);
+        var plain = ArrangeWrite.Apply(Op("step", ArrangeKeys.Xray), null, Cells((ArrangeKeys.Xray, Cell(ArrangeStep.Todo))), Now);
         Assert.Equal((204, false, (bool?)true), (plain.Status, plain.ChangesMarks, plain.Xray));
-        var noBack = ArrangeWrite.Apply(Op("add", ArrangeCol.Ds, "30분"), new VisitMark(), NoCells, Now);
+        var noBack = ArrangeWrite.Apply(Op("add", ArrangeKeys.Ds, "30분"), new VisitMark(), NoCells, Now);
         Assert.Equal(((string?)null, (string?)null), (noBack.Next!.Back, noBack.Next.BackStop));
     }
 
     [Fact(DisplayName = "AC-3601.3 받지 않은 칸 쓰기(400·404)는 표시를 바꾸지 않는다")]
     public void RefusedWritesDoNotStop()
     {
-        var done = ArrangeWrite.Apply(Op("step", ArrangeCol.Sono), Counting, Cells((ArrangeCol.Sono, Cell(ArrangeStep.Done))), Now);
+        var done = ArrangeWrite.Apply(Op("step", ArrangeKeys.Sono), Counting, Cells((ArrangeKeys.Sono, Cell(ArrangeStep.Done))), Now);
         Assert.Equal((400, false), (done.Status, done.ChangesMarks));
-        var missing = ArrangeWrite.Apply(Op("step", ArrangeCol.Sono), Counting, NoCells, Now);
+        var missing = ArrangeWrite.Apply(Op("step", ArrangeKeys.Sono), Counting, NoCells, Now);
         Assert.Equal((404, false), (missing.Status, missing.ChangesMarks));
-        var offList = ArrangeWrite.Apply(Op("add", ArrangeCol.Pt, "도수"), Counting, NoCells, Now);
+        var offList = ArrangeWrite.Apply(Op("add", ArrangeKeys.Pt, "도수"), Counting, NoCells, Now);
         Assert.Equal((400, false), (offList.Status, offList.ChangesMarks));
     }
 
@@ -319,7 +319,7 @@ public class ArrangeBackTests : IDisposable
         if (mark != null) marks["V1"] = mark;
         var keys = new VisitKeys();
         var xray = new Dictionary<string, string>();
-        var arrange = ArrangeBuilder.Build(input, Statuses, new string[0], new ArrangeRule[0], marks, xray, keys);
+        var arrange = ArrangeBuilder.Build(input, Statuses, new string[0], ArrangeLayout.Ours, marks, xray, keys);
         var board = BoardBuilder.Build(input, Statuses, new string[0], xray, keys, readAt);
         return (board, arrange, keys);
     }

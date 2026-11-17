@@ -184,9 +184,37 @@ public sealed class Board
     /// <summary>
     /// ToJson()에 어레인지 자료를 끝에 더한 것(spec reception-arrange AC-3305.1): <c>"arrange": { "rows": [...], "ended": [...] }</c>,
     /// 그 뒤 맨 위 <c>"picks"</c> = 지금 고르기 목록(PickLists.Write, 없으면 기본값, spec reception-pick-lists AC-3501.4).
-    /// arrange가 null이면 picks도 쓰지 않고 ToJson()과 한 글자도 같다.
+    /// arrange가 null이면 picks도 쓰지 않고 ToJson()과 한 글자도 같다. cfg가 없는 옛 모양이다(라우터는 ToJson(layout, arrange)를 쓴다).
     /// </summary>
-    public string ToJson(Arrange? arrange, PickLists? picks = null)
+    public string ToJson(Arrange? arrange, PickLists? picks = null) =>
+        Write(writer =>
+        {
+            if (arrange == null) return;
+            WriteArrange(writer, arrange);
+            writer.WritePropertyName("picks");
+            (picks ?? PickLists.Defaults).Write(writer);
+        });
+
+    /// <summary>
+    /// 판 설정을 따르는 판 JSON(spec reception-other-clinic design.md 2절, AC-5703.1·AC-5703.6): ToJson()의 lists 뒤에 늘
+    /// <c>"cfg": { logo:{mode,text|null,ver}, tab, guide, cols:[{k,name,kind,steps,added,empty}] }</c>(보이는 칸만, 설정 차례),
+    /// tab이 참이고 arrange가 있으면 그 뒤 <c>"arrange"</c>(cells 열쇠 = cfg.cols의 k)와 <c>"picks"</c>(지금 목록 + extra: 보이는 더한 칸만).
+    /// </summary>
+    public string ToJson(ArrangeLayout layout, Arrange? arrange)
+    {
+        if (layout == null) throw new ArgumentNullException(nameof(layout));
+        return Write(writer =>
+        {
+            WriteCfg(writer, layout);
+            if (!layout.Tab || arrange == null) return;
+            WriteArrange(writer, arrange);
+            writer.WritePropertyName("picks");
+            layout.BoardPicks.Write(writer, true);
+        });
+    }
+
+    /// <summary>state·at·every·counts·lists를 쓰고, 그 뒤(tail)를 더해 맺는다.</summary>
+    private string Write(Action<Utf8JsonWriter> tail)
     {
         var lists = new (string Name, IReadOnlyList<BoardRow> Rows)[]
         {
@@ -210,19 +238,41 @@ public sealed class Board
                 writer.WriteEndArray();
             }
             writer.WriteEndObject();
-            if (arrange != null)
-            {
-                WriteArrange(writer, arrange);
-                writer.WritePropertyName("picks");
-                (picks ?? PickLists.Defaults).Write(writer);
-            }
+            tail(writer);
             writer.WriteEndObject();
         }
         return Encoding.UTF8.GetString(buffer.ToArray());
     }
 
+    /// <summary>판 설정 cfg(AC-5703.1). guide는 setup.done의 반대, empty는 처방이 들 수 없는 처방 칸(ArrangeLayout.IsEmpty).</summary>
+    private static void WriteCfg(Utf8JsonWriter writer, ArrangeLayout layout)
+    {
+        writer.WriteStartObject("cfg");
+        writer.WriteStartObject("logo");
+        writer.WriteString("mode", layout.Logo.Mode);
+        WriteTextOrNull(writer, "text", layout.Logo.Text);
+        writer.WriteNumber("ver", layout.Logo.Ver);
+        writer.WriteEndObject();
+        writer.WriteBoolean("tab", layout.Tab);
+        writer.WriteBoolean("guide", layout.Guide);
+        writer.WriteStartArray("cols");
+        foreach (var col in layout.Cols)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("k", col.K);
+            writer.WriteString("name", col.Name);
+            writer.WriteString("kind", col.Kind);
+            writer.WriteNumber("steps", col.Steps);
+            writer.WriteBoolean("added", col.Added);
+            writer.WriteBoolean("empty", layout.IsEmpty(col.K));
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+        writer.WriteEndObject();
+    }
+
     /// <summary>
-    /// arrange 칸(design.md 7절): 줄 { k, away, back, backWait, ptf{st,at}|null, last, cells{xray…trac: {st,det,part,tags,at,ord,manual}|null}, allDone }
+    /// arrange 칸(design.md 7절): 줄 { k, away, back, backWait, ptf{st,at}|null, last, cells{arrange.Cols 열쇠 차례: {st,det,part,tags,at,ord,manual}|null}, allDone }
     /// (tags는 늘 배열, spec reception-pick-lists AC-3502.2, back·backWait는 늘 있고 없으면 null, spec reception-arrange-tune AC-3601.4),
     /// 종료 줄 { k, endedAt("HH:MM", 수납완료로 빠졌고 시각을 모르면 null), paid }(AC-3305.9·AC-3305.10).
     /// </summary>
@@ -250,14 +300,14 @@ public sealed class Board
             }
             writer.WriteString("last", row.Last);
             writer.WriteStartObject("cells");
-            foreach (ArrangeCol col in Enum.GetValues(typeof(ArrangeCol)))
+            foreach (var col in arrange.Cols)
             {
                 if (!row.Cells.TryGetValue(col, out var cell))
                 {
-                    writer.WriteNull(ArrangeMap.KeyOf(col));
+                    writer.WriteNull(col);
                     continue;
                 }
-                writer.WriteStartObject(ArrangeMap.KeyOf(col));
+                writer.WriteStartObject(col);
                 writer.WriteString("st", StepWire(cell.St));
                 writer.WriteString("det", cell.Det);
                 WriteTextOrNull(writer, "part", cell.Part);

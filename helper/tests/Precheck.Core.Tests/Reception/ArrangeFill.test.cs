@@ -40,8 +40,8 @@ public class ArrangeFillTests
     [MemberData(nameof(XrayCodes))]
     public void XrayFromReport(string code, string name)
     {
-        Assert.Equal(ArrangeCol.Xray, ArrangeMap.Match(code, null));
-        Assert.Equal(ArrangeCol.Xray, ArrangeMap.Match(code, name));
+        Assert.Equal(ArrangeKeys.Xray, ArrangeMap.Match(code, null));
+        Assert.Equal(ArrangeKeys.Xray, ArrangeMap.Match(code, name));
     }
 
     [Theory(DisplayName = "AC-3311.2 초음파(SONO1·SONO·EB422·EB466)와 관절조영(HA280)은 SONO 칸이다(사용자 결정 2026-11-09)")]
@@ -52,7 +52,7 @@ public class ArrangeFillTests
     [InlineData("HA280", "관절조영")]
     public void SonoFromReport(string code, string? name)
     {
-        Assert.Equal(ArrangeCol.Sono, ArrangeMap.Match(code, name));
+        Assert.Equal(ArrangeKeys.Sono, ArrangeMap.Match(code, name));
     }
 
     [Theory(DisplayName = "AC-3311.2 CARM1(c-arm가이드)과 G0400(C-Arm형 영상증폭장치이용료)은 C-ARM 칸이다(G0400은 X-RAY가 아니다, 사용자 결정 2026-11-09)")]
@@ -60,7 +60,7 @@ public class ArrangeFillTests
     [InlineData("G0400", "C-Arm형 영상증폭장치이용료")]
     public void CarmFromReport(string code, string name)
     {
-        Assert.Equal(ArrangeCol.Carm, ArrangeMap.Match(code, name));
+        Assert.Equal(ArrangeKeys.Carm, ArrangeMap.Match(code, name));
     }
 
     [Theory(DisplayName = "AC-3311.2 보고서의 다른 처방(진찰·주사·차단술·물리치료·도수·충격파·견인·부목·검사·약)은 어느 칸에도 들지 않는다")]
@@ -106,7 +106,7 @@ public class ArrangeFillTests
     [InlineData("G4302A")]
     public void XrayPatternEdges(string code)
     {
-        Assert.NotEqual(ArrangeCol.Xray, ArrangeMap.Match(code, null));
+        Assert.NotEqual(ArrangeKeys.Xray, ArrangeMap.Match(code, null));
     }
 
     [Fact(DisplayName = "AC-3311.1 X-RAY 규칙을 보고서 근거로 채워 확인 안 된 칸(Unconfirmed)이 없고, 부위 칸(PartColumn)은 근거가 없어 null이다")]

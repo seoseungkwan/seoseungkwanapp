@@ -53,12 +53,12 @@ public class ArrangeMarksTests : IDisposable
 
     /// <summary>모든 칸을 쓴 표시 하나.</summary>
     private static VisitMark Full() => new VisitMark(
-        new Dictionary<ArrangeCol, CellMark>
+        new Dictionary<string, CellMark>
         {
-            [ArrangeCol.Sono] = Cell(ArrangeStep.Ready, part: "오른 어깨", readyAt: "10:20"),
-            [ArrangeCol.Xray] = Cell(ArrangeStep.Todo, manual: true, addedAt: "10:05"),
-            [ArrangeCol.Pt] = Cell(ArrangeStep.Done, manual: true, det: "HP", doneAt: "10:30", addedAt: "10:10"),
-            [ArrangeCol.Carm] = Cell(ArrangeStep.Gone),
+            [ArrangeKeys.Sono] = Cell(ArrangeStep.Ready, part: "오른 어깨", readyAt: "10:20"),
+            [ArrangeKeys.Xray] = Cell(ArrangeStep.Todo, manual: true, addedAt: "10:05"),
+            [ArrangeKeys.Pt] = Cell(ArrangeStep.Done, manual: true, det: "HP", doneAt: "10:30", addedAt: "10:10"),
+            [ArrangeKeys.Carm] = Cell(ArrangeStep.Gone),
         },
         away: "10:50", ptf: new PtFirst("up", "10:40"), endedAt: "11:00");
 
@@ -102,16 +102,16 @@ public class ArrangeMarksTests : IDisposable
             Assert.Equal("up", mark.Value.Ptf!.St);
             Assert.Equal("10:40", mark.Value.Ptf.At);
             Assert.Equal("11:00", mark.Value.EndedAt);
-            var sono = mark.Value.Cells[ArrangeCol.Sono];
+            var sono = mark.Value.Cells[ArrangeKeys.Sono];
             Assert.Equal(ArrangeStep.Ready, sono.St);
             Assert.False(sono.Manual);
             Assert.Equal("", sono.Det);
             Assert.Equal("오른 어깨", sono.Part);
             Assert.Equal("10:20", sono.ReadyAt);
             Assert.Null(sono.DoneAt);
-            var pt = mark.Value.Cells[ArrangeCol.Pt];
+            var pt = mark.Value.Cells[ArrangeKeys.Pt];
             Assert.Equal((ArrangeStep.Done, true, "HP", (string?)null, (string?)null, "10:30", "10:10"), (pt.St, pt.Manual, pt.Det, pt.Part, pt.ReadyAt, pt.DoneAt, pt.AddedAt));
-            Assert.Equal(ArrangeStep.Gone, mark.Value.Cells[ArrangeCol.Carm].St);
+            Assert.Equal(ArrangeStep.Gone, mark.Value.Cells[ArrangeKeys.Carm].St);
             Assert.Equal(4, mark.Value.Cells.Count);
         }
         Assert.Empty(reports);
@@ -227,9 +227,9 @@ public class ArrangeMarksTests : IDisposable
     public void MarkHelpers()
     {
         Assert.True(new VisitMark().IsEmpty);
-        var mark = new VisitMark().WithCell(ArrangeCol.Ds, Cell(ArrangeStep.Todo, manual: true, det: "30분", addedAt: "10:00"));
+        var mark = new VisitMark().WithCell(ArrangeKeys.Ds, Cell(ArrangeStep.Todo, manual: true, det: "30분", addedAt: "10:00"));
         Assert.False(mark.IsEmpty);
-        Assert.True(mark.WithCell(ArrangeCol.Ds, null).IsEmpty);
+        Assert.True(mark.WithCell(ArrangeKeys.Ds, null).IsEmpty);
         Assert.Equal("10:40", mark.WithPtf(new PtFirst("down", "10:40")).Ptf!.At);
         Assert.Null(mark.Ptf);
         Assert.Equal("10:41", mark.WithAway("10:41").Away);
@@ -280,16 +280,16 @@ public class ArrangeMarksTests : IDisposable
         Assert.Equal(new[] { "V1002" }, Open(other).Today().Keys);
     }
 
-    [Theory(DisplayName = "AC-3304.3 모양이 틀린 파일(칸 더함·틀린 단계·틀린 시각·모양이 틀린 글·JSON 아님)은 빈 표시, 기록에 E-STORE-BROKEN만")]
+    [Theory(DisplayName = "AC-3304.3 모양이 틀린 파일(칸 더함·틀린 단계·틀린 시각·모양이 틀린 글(빈 조각)·모양이 틀린 칸 열쇠(대문자, spec reception-other-clinic AC-5703.5)·JSON 아님)은 빈 표시, 기록에 E-STORE-BROKEN만")]
     [InlineData("not json")]
     [InlineData("{\"day\":\"20261109\",\"visits\":{},\"x\":1}")]
     [InlineData("{\"day\":\"2026-11-09\",\"visits\":{}}")]
     [InlineData("{\"day\":\"20261109\",\"visits\":{\"V1\":{\"cells\":{},\"away\":\"10:2\",\"ptf\":null,\"endedAt\":null}}}")]
     [InlineData("{\"day\":\"20261109\",\"visits\":{\"V1\":{\"cells\":{},\"away\":null,\"ptf\":null,\"endedAt\":null,\"name\":\"가상환자07\"}}}")]
-    [InlineData("{\"day\":\"20261109\",\"visits\":{\"V1\":{\"cells\":{\"pt\":{\"st\":\"done\",\"manual\":true,\"det\":\"가|상\",\"part\":null,\"readyAt\":null,\"doneAt\":null,\"addedAt\":null}},\"away\":null,\"ptf\":null,\"endedAt\":null}}}")]
+    [InlineData("{\"day\":\"20261109\",\"visits\":{\"V1\":{\"cells\":{\"pt\":{\"st\":\"done\",\"manual\":true,\"det\":\"가||상\",\"part\":null,\"readyAt\":null,\"doneAt\":null,\"addedAt\":null}},\"away\":null,\"ptf\":null,\"endedAt\":null}}}")]
     [InlineData("{\"day\":\"20261109\",\"visits\":{\"V1\":{\"cells\":{\"xray\":{\"st\":\"done\",\"manual\":true,\"det\":\"가상환자07\",\"part\":null,\"readyAt\":null,\"doneAt\":null,\"addedAt\":null}},\"away\":null,\"ptf\":null,\"endedAt\":null}}}")]
     [InlineData("{\"day\":\"20261109\",\"visits\":{\"V1\":{\"cells\":{\"sono\":{\"st\":\"later\",\"manual\":false,\"det\":\"\",\"part\":null,\"readyAt\":null,\"doneAt\":null,\"addedAt\":null}},\"away\":null,\"ptf\":null,\"endedAt\":null}}}")]
-    [InlineData("{\"day\":\"20261109\",\"visits\":{\"V1\":{\"cells\":{\"bed\":{\"st\":\"done\",\"manual\":true,\"det\":\"\",\"part\":null,\"readyAt\":null,\"doneAt\":null,\"addedAt\":null}},\"away\":null,\"ptf\":null,\"endedAt\":null}}}")]
+    [InlineData("{\"day\":\"20261109\",\"visits\":{\"V1\":{\"cells\":{\"Bed\":{\"st\":\"done\",\"manual\":true,\"det\":\"\",\"part\":null,\"readyAt\":null,\"doneAt\":null,\"addedAt\":null}},\"away\":null,\"ptf\":null,\"endedAt\":null}}}")]
     [InlineData("{\"day\":\"20261109\",\"visits\":{\"V1\":{\"cells\":{},\"away\":null,\"ptf\":{\"st\":\"left\",\"at\":\"10:00\"},\"endedAt\":null}}}")]
     public void MalformedIsBroken(string json)
     {
@@ -302,20 +302,37 @@ public class ArrangeMarksTests : IDisposable
 
     // ---- AC-3304.4 고르기 목록 --------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-3304.4 기본 고르기 목록(ArrangeChoices.AddOf(칸, PickLists.Defaults))은 design.md 4절 표 그대로다(X-ray 찍기, ICE·HP, 30분·50분, 1~4부위 + 타수×부위 수 16개(AC-3402.1), 목·허리). SONO·C-ARM은 고르기 목록(picks, spec reception-pick-lists)이라 빈 목록이다")]
-    public void ChoicesTable()
+    /// <summary>기본 목록에서 칸 하나에 하나씩 넣는 글(충격파는 부위 수 하나 또는 "타수|부위 수", spec reception-other-clinic AC-5703.4).</summary>
+    private static IEnumerable<string> SingleChoices(string col)
     {
         var lists = PickLists.Defaults;
-        Assert.Equal(new[] { "X-ray 찍기" }, ArrangeChoices.AddOf(ArrangeCol.Xray, lists));
-        Assert.Empty(ArrangeChoices.AddOf(ArrangeCol.Sono, lists));
-        Assert.Empty(ArrangeChoices.AddOf(ArrangeCol.Carm, lists));
-        Assert.Equal(new[] { "ICE", "HP" }, ArrangeChoices.AddOf(ArrangeCol.Pt, lists));
-        Assert.Equal(new[] { "30분", "50분" }, ArrangeChoices.AddOf(ArrangeCol.Ds, lists));
+        return col switch
+        {
+            ArrangeKeys.Pt => lists.Pt,
+            ArrangeKeys.Ds => lists.Ds,
+            ArrangeKeys.Eswt => lists.EswtCounts.Concat(lists.EswtHits.SelectMany(hit => lists.EswtCounts.Select(count => hit + "|" + count))),
+            ArrangeKeys.Trac => lists.Trac,
+            _ => new string[0],
+        };
+    }
+
+    [Fact(DisplayName = "AC-3304.4 기본 고르기 목록(PickLists.Defaults)으로 넣는 글은 design.md 4절 표 그대로다(X-ray 찍기, ICE·HP, 30분·50분, 1~4부위 + 타수|부위 수 16개(AC-3402.1, 이음은 spec reception-other-clinic AC-5703.4), 목·허리)이고 모두 그 칸 det 모양이다")]
+    public void ChoicesTable()
+    {
+        var layout = ArrangeLayout.Ours;
+        Assert.True(ArrangeChoices.IsAdd(layout, ArrangeKeys.Xray, "X-ray 찍기", null));
+        Assert.Equal(new[] { "ICE", "HP" }, SingleChoices(ArrangeKeys.Pt));
+        Assert.Equal(new[] { "30분", "50분" }, SingleChoices(ArrangeKeys.Ds));
         var counts = new[] { "1부위", "2부위", "3부위", "4부위" };
-        Assert.Equal(counts.Concat(new[] { "2000타", "3000타", "4000타", "6000타" }.SelectMany(hit => counts.Select(count => hit + " " + count))), ArrangeChoices.AddOf(ArrangeCol.Eswt, lists));
-        Assert.Equal(new[] { "목", "허리" }, ArrangeChoices.AddOf(ArrangeCol.Trac, lists));
-        foreach (var col in new[] { ArrangeCol.Xray, ArrangeCol.Sono, ArrangeCol.Carm }) Assert.True(ArrangeChoices.IsDetail(col, ""));
-        foreach (var col in ArrangeMap.ManualOnly) Assert.All(ArrangeChoices.AddOf(col, lists), det => Assert.True(ArrangeChoices.IsDetail(col, det), det));
+        Assert.Equal(counts.Concat(new[] { "2000타", "3000타", "4000타", "6000타" }.SelectMany(hit => counts.Select(count => hit + "|" + count))), SingleChoices(ArrangeKeys.Eswt));
+        Assert.Equal(new[] { "목", "허리" }, SingleChoices(ArrangeKeys.Trac));
+        foreach (var col in new[] { ArrangeKeys.Xray, ArrangeKeys.Sono, ArrangeKeys.Carm }) Assert.True(ArrangeChoices.IsDetail(col, ""));
+        foreach (var col in ArrangeMap.ManualOnly)
+            Assert.All(SingleChoices(col), det =>
+            {
+                Assert.True(ArrangeChoices.IsAdd(layout, col, det, null), det);
+                Assert.True(ArrangeChoices.IsDetail(col, det), det);
+            });
     }
 
     [Fact(DisplayName = "AC-3304.4 칸마다 목록의 글(직접 칸 det)·모양이 맞는 SONO·C-ARM part(spec reception-pick-lists AC-3502.1)와 빈 det(처방 칸)는 받는다")]
@@ -324,32 +341,32 @@ public class ArrangeMarksTests : IDisposable
         var marks = Open();
         var i = 0;
         foreach (var col in ArrangeMap.ManualOnly)
-            foreach (var det in ArrangeChoices.AddOf(col, PickLists.Defaults))
+            foreach (var det in SingleChoices(col))
                 marks.Update("V" + (3000 + i++), _ => new VisitMark().WithCell(col, Cell(ArrangeStep.Todo, manual: true, det: det, addedAt: "10:00")));
-        foreach (var col in new[] { ArrangeCol.Sono, ArrangeCol.Carm })
+        foreach (var col in new[] { ArrangeKeys.Sono, ArrangeKeys.Carm })
             foreach (var part in new[] { "목", "오른 어깨", "오른 어깨|왼 무릎", "소독|양 무릎", "리덕션", "1|2|3|4|5|6" })
                 marks.Update("V" + (3000 + i++), _ => new VisitMark().WithCell(col, Cell(ArrangeStep.Todo, part: part)));
-        marks.Update("V" + (3000 + i++), _ => new VisitMark().WithCell(ArrangeCol.Xray, Cell(ArrangeStep.Done, manual: true, doneAt: "10:01", addedAt: "10:00")));
+        marks.Update("V" + (3000 + i++), _ => new VisitMark().WithCell(ArrangeKeys.Xray, Cell(ArrangeStep.Done, manual: true, doneAt: "10:01", addedAt: "10:00")));
 
         Assert.Equal(i, Open().Today().Count);
     }
 
     public static IEnumerable<object[]> BadMarks() => new[]
     {
-        new object[] { "pt 빈 글", new VisitMark().WithCell(ArrangeCol.Pt, new CellMark(ArrangeStep.Todo, true, "", null, null, null, "10:00")) },
-        new object[] { "ds 22글자", new VisitMark().WithCell(ArrangeCol.Ds, new CellMark(ArrangeStep.Todo, true, "가나다라마바사아자차카타파하가나다라마바사아", null, null, null, "10:00")) },
-        new object[] { "xray에 글", new VisitMark().WithCell(ArrangeCol.Xray, new CellMark(ArrangeStep.Todo, true, "HP", null, null, null, "10:00")) },
-        new object[] { "sono 부위 7줄", new VisitMark().WithCell(ArrangeCol.Sono, new CellMark(ArrangeStep.Todo, false, "", "1|2|3|4|5|6|7", null, null, null)) },
-        new object[] { "carm 빈 부위", new VisitMark().WithCell(ArrangeCol.Carm, new CellMark(ArrangeStep.Todo, false, "", "", null, null, null)) },
-        new object[] { "pt에 부위", new VisitMark().WithCell(ArrangeCol.Pt, new CellMark(ArrangeStep.Todo, true, "HP", "목", null, null, "10:00")) },
-        new object[] { "틀린 시각", new VisitMark().WithCell(ArrangeCol.Sono, new CellMark(ArrangeStep.Ready, false, "", null, "9:5", null, null)) },
+        new object[] { "pt 빈 조각", new VisitMark().WithCell(ArrangeKeys.Pt, new CellMark(ArrangeStep.Todo, true, "HP|", null, null, null, "10:00")) },
+        new object[] { "ds 22글자", new VisitMark().WithCell(ArrangeKeys.Ds, new CellMark(ArrangeStep.Todo, true, "가나다라마바사아자차카타파하가나다라마바사아", null, null, null, "10:00")) },
+        new object[] { "xray에 글", new VisitMark().WithCell(ArrangeKeys.Xray, new CellMark(ArrangeStep.Todo, true, "HP", null, null, null, "10:00")) },
+        new object[] { "sono 부위 7줄", new VisitMark().WithCell(ArrangeKeys.Sono, new CellMark(ArrangeStep.Todo, false, "", "1|2|3|4|5|6|7", null, null, null)) },
+        new object[] { "carm 빈 부위", new VisitMark().WithCell(ArrangeKeys.Carm, new CellMark(ArrangeStep.Todo, false, "", "", null, null, null)) },
+        new object[] { "pt에 부위", new VisitMark().WithCell(ArrangeKeys.Pt, new CellMark(ArrangeStep.Todo, true, "HP", "목", null, null, "10:00")) },
+        new object[] { "틀린 시각", new VisitMark().WithCell(ArrangeKeys.Sono, new CellMark(ArrangeStep.Ready, false, "", null, "9:5", null, null)) },
         new object[] { "25시", new VisitMark(away: "25:00") },
         new object[] { "끝 시각 글", new VisitMark(endedAt: "곧") },
         new object[] { "PT 먼저 단계", new VisitMark(ptf: new PtFirst("left", "10:00")) },
         new object[] { "PT 먼저 시각", new VisitMark(ptf: new PtFirst("up", "10:0")) },
     };
 
-    [Theory(DisplayName = "AC-3304.4 모양이 틀린 글(빈 글·22글자)·칸에 맞지 않는 글·모양 틀린 시각·PT 먼저 값은 쓰지 않는다(ArgumentException, 파일 그대로)")]
+    [Theory(DisplayName = "AC-3304.4 모양이 틀린 글(빈 조각·22글자)·칸에 맞지 않는 글·모양 틀린 시각·PT 먼저 값은 쓰지 않는다(ArgumentException, 파일 그대로)")]
     [MemberData(nameof(BadMarks))]
     public void BadMarksRefused(string why, VisitMark bad)
     {
@@ -381,7 +398,7 @@ public class ArrangeMarksTests : IDisposable
 
         var allowed = new HashSet<string>(StringComparer.Ordinal) { "20261109", "todo", "ready", "done", "gone", "up", "down", "" };
         allowed.Add("오른 어깨");
-        foreach (var col in ArrangeMap.ManualOnly) allowed.UnionWith(ArrangeChoices.AddOf(col, PickLists.Defaults));
+        foreach (var col in ArrangeMap.ManualOnly) allowed.UnionWith(SingleChoices(col));
         var time = new System.Text.RegularExpressions.Regex(@"^\d{2}:\d{2}$");
 
         using var document = JsonDocument.Parse(Plain());
