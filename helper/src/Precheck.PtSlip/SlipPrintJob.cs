@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Printing;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Windows.Forms;
 
 namespace Precheck.PtSlip;
 
@@ -53,6 +54,22 @@ public static class SlipPrintJob
         public SystemTime Submitted;
     }
 
+    private const int DmInPrompt = 4;
+    private const int IdOk = 1;
+    private const uint GmemMoveable = 0x2;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalLock(IntPtr memory);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GlobalUnlock(IntPtr memory);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalFree(IntPtr memory);
+
     [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool OpenPrinter(string printerName, out IntPtr printer, IntPtr defaults);
 
@@ -90,6 +107,10 @@ public static class SlipPrintJob
         };
         document.PrinterSettings.PrinterName = printerName;
         if (!document.PrinterSettings.IsValid) throw new InvalidOperationException("설치되지 않은 프린터");
+        // [프린터 종이 설정]에서 이 프로그램용으로 저장한 드라이버 설정(예: 용지 유형 '연속')이 있으면 그것으로 시작한다.
+        // 프린터 기본 설정은 그대로 둔다(의원 PC: 기본은 '간극이 있는 라벨'이라 이어진 롤에서 틈을 찾느라 종이를 계속 밀어냈다)
+        var driverSettings = SettingsFile.ReadDriverSettings(printerName);
+        if (driverSettings != null) ApplyDriverSettings(document, driverSettings);
         document.PrinterSettings.Copies = 1;
         if (toFile != null)
         {
@@ -135,6 +156,64 @@ public static class SlipPrintJob
             RestoreDefaults(printerName, savedDefaults);
         }
         if (drawFailed != null) throw new InvalidOperationException("종이를 그리지 못했다", drawFailed);
+    }
+
+    /// <summary>
+    /// [프린터 종이 설정]: 프린터 드라이버의 설정 창을 이 프로그램 종이용으로 띄운다(프린터 기본 설정은 바꾸지 않는다).
+    /// [확인]을 누르면 그 설정을 저장하고 true. 처음이면 프린터 기본 설정에서, 저장한 것이 있으면 그것에서 시작한다.
+    /// </summary>
+    public static bool EditDriverSettings(IWin32Window owner, string printerName)
+    {
+        if (owner == null) throw new ArgumentNullException(nameof(owner));
+        if (string.IsNullOrWhiteSpace(printerName)) throw new ArgumentException("프린터 이름이 비었다", nameof(printerName));
+        if (!OpenPrinter(printerName, out var handle, IntPtr.Zero) || handle == IntPtr.Zero) throw new InvalidOperationException("프린터를 열지 못했다");
+        var defaults = ReadDefaults(printerName);
+        IntPtr input = IntPtr.Zero, output = IntPtr.Zero;
+        try
+        {
+            var size = DocumentProperties(owner.Handle, handle, printerName, IntPtr.Zero, IntPtr.Zero, 0);
+            if (size <= DmDriverExtraOffset + 2) throw new InvalidOperationException("드라이버 설정 크기를 못 읽었다");
+            var saved = SettingsFile.ReadDriverSettings(printerName);
+            input = Marshal.AllocHGlobal(Math.Max(size, saved?.Length ?? 0));
+            output = Marshal.AllocHGlobal(size);
+            if (saved != null) Marshal.Copy(saved, 0, input, saved.Length);
+            else if (DocumentProperties(owner.Handle, handle, printerName, input, IntPtr.Zero, DmOutBuffer) < 0) throw new InvalidOperationException("드라이버 설정을 못 읽었다");
+            var result = DocumentProperties(owner.Handle, handle, printerName, output, input, DmInBuffer | DmInPrompt | DmOutBuffer);
+            if (result != IdOk) return false;
+            var length = (Marshal.ReadInt16(output, DmSizeOffset) & 0xFFFF) + (Marshal.ReadInt16(output, DmDriverExtraOffset) & 0xFFFF);
+            if (length <= 0 || length > size) throw new InvalidOperationException("드라이버 설정 크기가 이상하다");
+            var bytes = new byte[length];
+            Marshal.Copy(output, bytes, 0, length);
+            SettingsFile.WriteDriverSettings(printerName, bytes);
+            return true;
+        }
+        finally
+        {
+            if (input != IntPtr.Zero) Marshal.FreeHGlobal(input);
+            if (output != IntPtr.Zero) Marshal.FreeHGlobal(output);
+            ClosePrinter(handle);
+            RestoreDefaults(printerName, defaults);
+        }
+    }
+
+    /// <summary>저장한 드라이버 설정(DEVMODE 바이트)을 이 문서의 프린터·쪽 설정에 넣는다. 드라이버 고유 칸(용지 유형 등)도 함께 간다</summary>
+    private static void ApplyDriverSettings(PrintDocument document, byte[] devmode)
+    {
+        var global = GlobalAlloc(GmemMoveable, (UIntPtr)devmode.Length);
+        if (global == IntPtr.Zero) throw new OutOfMemoryException();
+        try
+        {
+            var pointer = GlobalLock(global);
+            if (pointer == IntPtr.Zero) throw new InvalidOperationException("드라이버 설정을 담지 못했다");
+            Marshal.Copy(devmode, 0, pointer, devmode.Length);
+            GlobalUnlock(global);
+            document.PrinterSettings.SetHdevmode(global);
+            document.DefaultPageSettings.SetHdevmode(global);
+        }
+        finally
+        {
+            GlobalFree(global);
+        }
     }
 
     /// <summary>

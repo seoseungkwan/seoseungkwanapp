@@ -70,6 +70,35 @@ public static class SettingsFile
         }
     }
 
+    /// <summary>이 프로그램 종이에만 쓰는 프린터 드라이버 설정(DEVMODE) 파일. 첫 줄 프린터 이름, 둘째 줄 base64</summary>
+    public const string DriverFileName = "printer-driver.txt";
+
+    /// <summary>[프린터 종이 설정]에서 저장한 그 프린터의 드라이버 설정. 없거나 다른 프린터 것이거나 못 읽으면 null</summary>
+    public static byte[]? ReadDriverSettings(string printerName)
+    {
+        try
+        {
+            var path = Path.Combine(Folder, DriverFileName);
+            if (!File.Exists(path)) return null;
+            var lines = File.ReadAllLines(path, Encoding.UTF8);
+            if (lines.Length < 2 || lines[0] != printerName) return null;
+            return Convert.FromBase64String(lines[1].Trim());
+        }
+        catch (Exception e) when (IsFileError(e) || e is FormatException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>그 프린터의 드라이버 설정을 쓴다(한 프린터 것만 둔다). 쓰지 못하면 예외</summary>
+    public static void WriteDriverSettings(string printerName, byte[] devmode)
+    {
+        if (printerName == null) throw new ArgumentNullException(nameof(printerName));
+        if (devmode == null) throw new ArgumentNullException(nameof(devmode));
+        Directory.CreateDirectory(Folder);
+        File.WriteAllText(Path.Combine(Folder, DriverFileName), printerName + "\r\n" + Convert.ToBase64String(devmode) + "\r\n", Utf8NoBom);
+    }
+
     private static bool IsFileError(Exception e) =>
         e is IOException || e is UnauthorizedAccessException || e is SecurityException || e is NotSupportedException || e is ArgumentException;
 }

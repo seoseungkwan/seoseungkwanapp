@@ -63,6 +63,10 @@ public sealed class SettingsForm : Form
         FillPrinters(settings.PrinterName);
         var testButton = SlipUi.Plain("시험 1장", 36);
         testButton.Anchor = AnchorStyles.Left;
+        testButton.Margin = new Padding(0, 0, SlipUi.S(10), 0);
+        // 프린터 드라이버 설정 창(용지 유형 '연속' 등)을 이 프로그램 종이용으로. 프린터 기본 설정은 바꾸지 않는다
+        var driverButton = SlipUi.Plain("프린터 종이 설정", 36);
+        driverButton.Anchor = AnchorStyles.Left;
 
         lengthBox = new NumericUpDown
         {
@@ -96,7 +100,7 @@ public sealed class SettingsForm : Form
         body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, SlipUi.S(CellWidth)));
         body.Controls.Add(Cell("치료 항목 (한 줄에 하나)", itemsBox), 0, 0);
         body.Controls.Add(Cell("치료 부위 (한 줄에 하나)", partsBox), 1, 0);
-        var printerCell = Cell("프린터", Field(printerBox, testButton));
+        var printerCell = Cell("프린터", Field(printerBox, testButton, driverButton));
         body.Controls.Add(printerCell, 0, 1);
         body.SetColumnSpan(printerCell, 2);
         body.Controls.Add(Cell("종이 길이", Field(lengthBox, mm)), 0, 2);
@@ -125,6 +129,7 @@ public sealed class SettingsForm : Form
         Controls.Add(root);
 
         testButton.Click += (sender, e) => TestPrint();
+        driverButton.Click += (sender, e) => EditDriver();
         // 버튼 자리 값이 클수록 비트 창 오른쪽 끝에서 더 왼쪽(Core SlipButton.Place)
         leftButton.Click += (sender, e) => MoveButton(SlipSettingsRules.ButtonOffsetStep);
         rightButton.Click += (sender, e) => MoveButton(-SlipSettingsRules.ButtonOffsetStep);
@@ -209,6 +214,26 @@ public sealed class SettingsForm : Form
         finally
         {
             Cursor = Cursors.Default;
+        }
+    }
+
+    /// <summary>[프린터 종이 설정]: 고른 프린터의 드라이버 설정 창. [확인]하면 이 프로그램 종이에만 쓰도록 바로 저장된다.</summary>
+    private void EditDriver()
+    {
+        HideError();
+        var printer = printerBox.SelectedItem as string;
+        if (string.IsNullOrEmpty(printer))
+        {
+            ShowError(SlipUi.PrintFailed(null));
+            return;
+        }
+        try
+        {
+            SlipPrintJob.EditDriverSettings(this, printer!);
+        }
+        catch (Exception)
+        {
+            ShowError("프린터 종이 설정 창을 열지 못했어요(" + printer + "). 프린터가 켜져 있는지 보고 다시 눌러 주세요.");
         }
     }
 
