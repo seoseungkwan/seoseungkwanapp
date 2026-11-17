@@ -1,0 +1,638 @@
+// @vitest-environment jsdom
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useBridge } from '@/components/claim/useBridge'
+import {
+  addAllDay,
+  addAppt,
+  CalendarStorageError,
+  deleteAllDay,
+  deleteAppt,
+  listAllDay,
+  listAppts,
+  listCalendarCounts,
+  loadCalendarRev,
+  loadCalendarSettings,
+  saveCalendarSettings,
+  setApptAuto,
+  updateAppt,
+} from '@/lib/storage/calendar'
+import type { BridgeState } from '@/types/bridge'
+import { DEFAULT_CAL_SETTINGS, type ApptDraft, type CalAllDay, type CalAppt, type CalSettings } from '@/types/calendar'
+import type { CalendarWorkerMessage } from '@/workers/calendar/messages'
+import { CalendarScreen } from './CalendarScreen'
+import { GHOST_NOTE } from './rows/GhostBlock'
+
+// 예약 화면(spec clinic-calendar REQ-5905·REQ-5906·REQ-5907, 시안 docs/mockups/clinic-calendar ?s=week·day·month·new·phone-new·
+// overlap-warn·off-warn·detail·settings·summary·phone-week). 라우트 page가 <CalendarScreen initialToday={todayInKorea()} />로 그린다.
+// 저장 함수·Worker·통로(useBridge)·시계는 흉내 낸다(실제 Supabase·비트에 붙지 않는다). 이름은 ○○로 가린 가짜, 차트번호는 지어낸 값
+
+vi.mock('@/components/claim/useBridge', () => ({ useBridge: vi.fn() }))
+const CLIENT = vi.hoisted(() => ({ fake: 'client' }))
+vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: () => CLIENT }))
+vi.mock('@/lib/storage/calendar', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/storage/calendar')>()),
+  listAppts: vi.fn(),
+  listAllDay: vi.fn(),
+  listCalendarCounts: vi.fn(),
+  loadCalendarRev: vi.fn(),
+  loadCalendarSettings: vi.fn(),
+  saveCalendarSettings: vi.fn(),
+  addAppt: vi.fn(),
+  updateAppt: vi.fn(),
+  setApptAuto: vi.fn(),
+  deleteAppt: vi.fn(),
+  addAllDay: vi.fn(),
+  deleteAllDay: vi.fn(),
+}))
+
+// 가짜 Worker: 화면이 보낸 메시지를 모으고, 시험이 Worker 답을 넣는다
+const fake = vi.hoisted(() => {
+  type Listener = (event: Event) => void
+  const listeners = new Map<string, Set<Listener>>()
+  return {
+    posted: [] as unknown[],
+    listeners,
+    worker: {
+      postMessage(message: unknown) {
+        fake.posted.push(message)
+      },
+      addEventListener(type: string, listener: Listener) {
+        if (!listeners.has(type)) listeners.set(type, new Set())
+        listeners.get(type)!.add(listener)
+      },
+      removeEventListener(type: string, listener: Listener) {
+        listeners.get(type)?.delete(listener)
+      },
+      terminate() {},
+    },
+  }
+})
+vi.mock('./useCalendarWorker', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./useCalendarWorker')>()),
+  useCalendarWorkerObject: () => fake.worker,
+}))
+
+async function reply(message: CalendarWorkerMessage) {
+  await act(async () => {
+    for (const listener of [...(fake.listeners.get('message') ?? [])]) listener(new MessageEvent('message', { data: message }))
+  })
+}
+const postsOf = (type: string) => fake.posted.filter((m) => (m as { type: string }).type === type)
+
+const stream = vi.fn()
+function link(state: BridgeState, helperVersion?: string) {
+  vi.mocked(useBridge).mockReturnValue({
+    state,
+    hello: helperVersion ? ({ state, helperVersion } as never) : null,
+    helloError: null,
+    helperUpdateAvailable: false,
+    call: vi.fn(),
+    stream,
+    onProgress: vi.fn(),
+    close: vi.fn(),
+    retry: vi.fn(),
+  } as never)
+}
+
+const NOW = new Date('2026-11-17T01:40:00Z') // 한국 11/17 (화) 10:40
+const TODAY = '2026-11-17'
+const SETTINGS: CalSettings = {
+  ...DEFAULT_CAL_SETTINGS,
+  staff: [
+    { id: 'ga', name: '한○○', mark: '가', color: 'blue' },
+    { id: 'na', name: '윤○○', mark: '나', color: 'teal' },
+    { id: 'won', name: '원장님', mark: '원', color: 'gray' },
+  ],
+}
+
+const appt = (id: string, over: Partial<CalAppt>): CalAppt => ({
+  id,
+  day: TODAY,
+  start: 570,
+  len: 30,
+  name: '김○○',
+  chart: '10231',
+  staffId: 'ga',
+  staffName: '한○○',
+  staffMark: '가',
+  kindId: 'dosu',
+  kindName: '도수',
+  memo: '',
+  status: 'auto',
+  auto: null,
+  origDay: null,
+  origStart: null,
+  ...over,
+})
+const BASE_APPTS: CalAppt[] = [
+  appt('a1', {}),
+  appt('a2', { day: '2026-11-16', start: 900, chart: '23580', name: '정○○', staffId: 'na', staffName: '윤○○', staffMark: '나', kindId: 'jabo', kindName: '자보도수', auto: 'noshow' }),
+  appt('a3', { day: '2026-11-18', start: 600, chart: '18842', name: '문○○', status: 'cancel' }),
+  appt('a4', {
+    day: '2026-11-19',
+    start: 660,
+    len: 10,
+    chart: '30117',
+    name: '송○○',
+    staffId: 'won',
+    staffName: '원장님',
+    staffMark: '원',
+    kindId: 'inj',
+    kindName: '주사',
+    origDay: '2026-11-18',
+    origStart: 900,
+  }),
+]
+const BASE_ALLDAY: CalAllDay[] = [{ id: 'd1', day: '2026-11-18', type: 'off', memo: null, staffId: 'na', staffName: '윤○○' }]
+
+let db: { appts: CalAppt[]; allday: CalAllDay[]; settings: CalSettings }
+const inRange = (day: string, from: string, to: string) => day >= from && day <= to
+
+function savedOf(draft: ApptDraft, id: string): CalAppt {
+  return { ...draft, id, auto: null, origDay: null, origStart: null }
+}
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(NOW)
+  fake.posted.length = 0
+  fake.listeners.clear()
+  stream.mockReset()
+  let n = 0
+  stream.mockImplementation(async () => ({ id: `s${++n}`, count: 1 }))
+  link('no-extension')
+  db = { appts: [...BASE_APPTS], allday: [...BASE_ALLDAY], settings: SETTINGS }
+  vi.mocked(loadCalendarRev).mockReset().mockResolvedValue(1)
+  vi.mocked(loadCalendarSettings).mockReset().mockImplementation(async () => db.settings)
+  vi.mocked(listAppts)
+    .mockReset()
+    .mockImplementation(async (_c, from, to) => db.appts.filter((a) => inRange(a.day, from, to)))
+  vi.mocked(listAllDay)
+    .mockReset()
+    .mockImplementation(async (_c, from, to) => db.allday.filter((d) => inRange(d.day, from, to)))
+  vi.mocked(listCalendarCounts)
+    .mockReset()
+    .mockImplementation(async (_c, from, to) =>
+      db.appts
+        .filter((a) => inRange(a.day, from, to))
+        .map(({ day, staffId, staffName, kindId, kindName, status, auto, origDay }) => ({ day, staffId, staffName, kindId, kindName, status, auto, origDay })),
+    )
+  vi.mocked(addAppt).mockReset().mockImplementation(async (_c, draft) => savedOf(draft, `new-${draft.day}`))
+  vi.mocked(updateAppt)
+    .mockReset()
+    .mockImplementation(async (_c, id, patch) => ({ ...db.appts.find((a) => a.id === id)!, ...patch }))
+  vi.mocked(deleteAppt).mockReset().mockResolvedValue(undefined)
+  vi.mocked(setApptAuto).mockReset().mockResolvedValue(undefined)
+  vi.mocked(addAllDay).mockReset().mockImplementation(async (_c, item) => ({ ...item, id: 'd-new' }))
+  vi.mocked(deleteAllDay).mockReset().mockResolvedValue(undefined)
+  vi.mocked(saveCalendarSettings).mockReset().mockResolvedValue(undefined)
+})
+
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+  Reflect.deleteProperty(window, 'matchMedia')
+})
+
+async function open() {
+  const view = render(<CalendarScreen initialToday={TODAY} />)
+  await waitFor(() => expect(document.querySelector('[data-slot-day], [aria-label="월 보기"], [aria-expanded]')).not.toBeNull())
+  return view
+}
+const title = () => (screen.getByRole('heading', { level: 1 }).textContent ?? '').replace(/\s+/g, ' ').trim()
+const columns = () => Array.from(document.querySelectorAll<HTMLElement>('[data-slot-day]')).map((el) => el.dataset.slotDay)
+const block = (name: RegExp) => screen.getByRole('button', { name })
+const dialog = (name: string) => screen.getByRole('dialog', { name })
+const text = (el: Element) => (el.textContent ?? '').replace(/\s+/g, ' ').trim()
+const items = (el: Element) => Array.from(el.querySelectorAll('[data-item]')).map(text)
+
+function openAdd() {
+  fireEvent.click(screen.getByRole('button', { name: '예약 더하기' }))
+  return dialog('예약 더하기')
+}
+function fillBasics(panel: HTMLElement, name = '이○○', staff: string | RegExp = '(가) 한○○', kind = /^주사/) {
+  fireEvent.change(within(panel).getByLabelText('이름'), { target: { value: name } })
+  fireEvent.click(within(within(panel).getByRole('group', { name: '담당' })).getByRole('button', { name: staff }))
+  fireEvent.click(within(within(panel).getByRole('group', { name: '종류' })).getByRole('button', { name: kind }))
+}
+
+describe('AC-5905.1 예약표 보기', () => {
+  it('AC-5905.1: 열면 주 보기(월~토)가 기본이고 도구 줄([오늘]·◀▶·[일·주·월]·[설정]·[+ 예약 더하기])·안내 줄이 있다. 1024px 이상 넓은 화면(data-wide-page)이다', async () => {
+    await open()
+    expect(title()).toBe('2026년 11월 16일 – 21일')
+    expect(columns()).toEqual(['2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19', '2026-11-20', '2026-11-21'])
+    expect(listAppts).toHaveBeenCalledWith(CLIENT, '2026-11-16', '2026-11-22')
+    for (const name of ['오늘', '이전 주', '다음 주', '예약 설정', '예약 더하기']) expect(screen.getByRole('button', { name })).toBeTruthy()
+    const views = within(screen.getByRole('group', { name: '보기' })).getAllByRole('button')
+    expect(views.map((b) => [b.textContent, b.getAttribute('aria-pressed')])).toEqual([
+      ['일', 'false'],
+      ['주', 'true'],
+      ['월', 'false'],
+    ])
+    expect(screen.getAllByText('비트 없는 기기').length).toBeGreaterThan(0)
+    expect(document.querySelector('[data-wide-page]')).not.toBeNull()
+    expect(document.querySelector('[data-today="true"]')?.getAttribute('data-slot-day')).toBe(TODAY)
+  })
+
+  it('AC-5905.1: 칸 글은 `차트번호 이름 종류 (표시)` + 길이, 같은 날 예약이 그 날 칸에 있다', async () => {
+    await open()
+    const a1 = block(/^10231 김○○ 도수 \(가\) 09:30–10:00 30분/)
+    expect(a1.closest('[data-slot-day]')?.getAttribute('data-slot-day')).toBe(TODAY)
+    expect(text(a1)).toContain('10231 김○○ 도수 (가) 30분')
+  })
+
+  it('AC-5905.1: 설정이 일요일 보기를 켜면 주 보기는 월~일이다', async () => {
+    db.settings = { ...SETTINGS, sunday: true }
+    await open()
+    await waitFor(() => expect(columns()).toHaveLength(7))
+    expect(title()).toBe('2026년 11월 16일 – 22일')
+  })
+
+  it('AC-5905.1: [일]은 그날 일 보기, [월]은 수만 그린 월 보기(listCalendarCounts), 월 칸을 누르면 그날 일 보기다', async () => {
+    await open()
+    fireEvent.click(screen.getByRole('button', { name: '일' }))
+    await waitFor(() => expect(columns()).toEqual([TODAY]))
+    expect(title()).toBe('2026년 11월 17일 (화)')
+    expect(listAppts).toHaveBeenCalledWith(CLIENT, TODAY, TODAY)
+
+    fireEvent.click(screen.getByRole('button', { name: '월' }))
+    const month = await screen.findByRole('region', { name: '월 보기' })
+    expect(title()).toBe('2026년 11월')
+    expect(listCalendarCounts).toHaveBeenCalledWith(CLIENT, '2026-10-26', '2026-12-06')
+    expect(within(month).getByRole('button', { name: '11월 16일 (월) 예약 1' })).toBeTruthy()
+    fireEvent.click(within(month).getByRole('button', { name: '11월 19일 (목) 예약 1' }))
+    await waitFor(() => expect(columns()).toEqual(['2026-11-19']))
+    expect(title()).toBe('2026년 11월 19일 (목)')
+  })
+
+  it('AC-5905.1: ◀▶는 한 주씩 옮기고 [오늘]은 오늘이 든 주로 돌아온다. 날짜 머리를 누르면 그날 일 보기다', async () => {
+    await open()
+    fireEvent.click(screen.getByRole('button', { name: '다음 주' }))
+    await waitFor(() => expect(columns()[0]).toBe('2026-11-23'))
+    expect(title()).toBe('2026년 11월 23일 – 28일')
+    expect(listAppts).toHaveBeenCalledWith(CLIENT, '2026-11-23', '2026-11-29')
+    fireEvent.click(screen.getByRole('button', { name: '오늘' }))
+    await waitFor(() => expect(columns()[0]).toBe('2026-11-16'))
+    fireEvent.click(screen.getByRole('button', { name: /^11월 18일 \(수\) 예약/ }))
+    await waitFor(() => expect(columns()).toEqual(['2026-11-18']))
+  })
+})
+
+describe('AC-5905.2 예약 더하기', () => {
+  it('AC-5905.2: [+ 예약 더하기]는 오늘 지금 다음 10분 자리 판이고, 이름·담당·종류가 차야 저장할 수 있다. 종류를 고르면 길이가 그 종류 기본이 된다', async () => {
+    await open()
+    const panel = openAdd()
+    expect((within(panel).getByLabelText('날짜') as HTMLInputElement).value).toBe(TODAY)
+    expect((within(panel).getByLabelText('시작') as HTMLSelectElement).value).toBe('650') // 10:40 다음 10분 = 10:50
+    const save = within(panel).getByRole('button', { name: '저장' })
+    expect((save as HTMLButtonElement).disabled).toBe(true)
+    expect(panel.querySelector('output')?.textContent).toBe('30분')
+    fillBasics(panel)
+    expect(panel.querySelector('output')?.textContent).toBe('10분') // 주사 기본 길이
+    expect((save as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('AC-5905.2: 저장하면 addAppt(상태 auto)로 넣고 판이 닫히며 칸이 바로 보인다. 알림 글이 뜬다', async () => {
+    await open()
+    const panel = openAdd()
+    fillBasics(panel)
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(addAppt).toHaveBeenCalledTimes(1))
+    expect(addAppt).toHaveBeenCalledWith(CLIENT, {
+      day: TODAY,
+      start: 650,
+      len: 10,
+      name: '이○○',
+      chart: null,
+      staffId: 'ga',
+      staffName: '한○○',
+      staffMark: '가',
+      kindId: 'inj',
+      kindName: '주사',
+      memo: '',
+      status: 'auto',
+    })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '예약 더하기' })).toBeNull())
+    expect(block(/^이○○ 주사 \(가\) 10:50–11:00 10분/)).toBeTruthy()
+    expect(await screen.findByText('11월 17일 (화) 10:50 예약을 넣었어요. 다른 PC에도 몇 초 안에 보여요.')).toBeTruthy()
+  })
+
+  it('AC-5905.2: 같은 담당 겹침이면 경고 글과 [그래도 저장](?s=overlap-warn)이고, 눌러야 저장된다', async () => {
+    await open()
+    const panel = openAdd()
+    fireEvent.change(within(panel).getByLabelText('시작'), { target: { value: '580' } }) // 09:40, (가) 09:30–10:00과 겹침
+    fillBasics(panel, '이○○', '(가) 한○○', /^도수/)
+    expect(within(panel).getByRole('alert').textContent).toContain('담당에게 같은 시간 예약이 있어요: 09:30–10:00 10231 김○○ 도수')
+    expect(addAppt).not.toHaveBeenCalled()
+    fireEvent.click(within(panel).getByRole('button', { name: '그래도 저장' }))
+    await waitFor(() => expect(addAppt).toHaveBeenCalledTimes(1))
+  })
+
+  it('AC-5905.2: 그날 휴무인 시행자를 고르면 휴무 경고(?s=off-warn)다', async () => {
+    db.allday = [{ id: 'd9', day: TODAY, type: 'off', memo: null, staffId: 'na', staffName: '윤○○' }]
+    await open()
+    const panel = openAdd()
+    fillBasics(panel, '최○○', /^\(나\) 윤○○\s*휴무$/, /^자보도수/)
+    expect(within(panel).getByRole('alert').textContent).toContain('담당은 11월 17일 (화) 휴무예요')
+    expect(within(panel).getByRole('button', { name: '그래도 저장' })).toBeTruthy()
+  })
+
+  it('AC-5905.2: 빈 칸을 누르면 그 날짜·시각으로 더하기 판이 열린다', async () => {
+    await open()
+    fireEvent.click(document.querySelector('[data-slot-day="2026-11-20"]')!, { clientY: 0 })
+    const panel = dialog('예약 더하기')
+    expect((within(panel).getByLabelText('날짜') as HTMLInputElement).value).toBe('2026-11-20')
+    expect((within(panel).getByLabelText('시작') as HTMLSelectElement).value).toBe('480')
+  })
+})
+
+describe('AC-5905.9 저장 실패', () => {
+  it('AC-5905.9: 저장이 실패하면 판을 닫지 않고 값을 둔 채 오류 글을 보인다(끊김·실패·개인정보 모양)', async () => {
+    await open()
+    const panel = openAdd()
+    fillBasics(panel)
+    vi.mocked(addAppt).mockRejectedValueOnce(new CalendarStorageError('offline'))
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }))
+    expect(await within(panel).findByText('인터넷 연결이 끊겨 저장하지 못했어요. 연결을 확인하고 다시 눌러 주세요.')).toBeTruthy()
+    expect((within(panel).getByLabelText('이름') as HTMLInputElement).value).toBe('이○○')
+
+    vi.mocked(addAppt).mockRejectedValueOnce(new CalendarStorageError('failed'))
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }))
+    expect(await within(panel).findByText('저장하지 못했어요. 잠시 뒤 다시 눌러 주세요.')).toBeTruthy()
+
+    vi.mocked(addAppt).mockResolvedValueOnce('blocked')
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }))
+    expect(await within(panel).findByText('이름이나 메모에 전화번호·주민번호·메일 같은 글자가 있어 저장하지 않았어요.')).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: '예약 더하기' })).toBeTruthy()
+  })
+
+  it('AC-5905.9: 처음 읽기가 실패하면 오류 글과 [다시 불러오기]가 있고, 누르면 다시 읽는다', async () => {
+    vi.mocked(listAppts).mockRejectedValueOnce(new CalendarStorageError('failed'))
+    render(<CalendarScreen initialToday={TODAY} />)
+    expect(await screen.findByText('예약을 불러오지 못했어요. 인터넷 연결을 확인하고 [다시 불러오기]를 눌러 주세요.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '다시 불러오기' }))
+    await waitFor(() => expect(columns()).toHaveLength(6))
+  })
+})
+
+describe('AC-5905.3 자세히 판', () => {
+  it('AC-5905.3: 예약 칸을 누르면 자세히 판이고, 도착 [왔음]은 updateAppt(status came)로 저장되고 칸이 바뀐다', async () => {
+    await open()
+    fireEvent.click(block(/^10231 김○○ 도수 \(가\)/))
+    const panel = dialog('예약')
+    fireEvent.click(within(within(panel).getByRole('group', { name: '도착 바꾸기' })).getByRole('button', { name: '왔음' }))
+    await waitFor(() => expect(updateAppt).toHaveBeenCalledWith(CLIENT, 'a1', { status: 'came' }))
+    await waitFor(() => expect(block(/^10231 김○○ 도수 \(가\) 09:30–10:00 30분 · 왔음$/)).toBeTruthy())
+  })
+
+  it('AC-5905.3: [다음 주에도]는 7일 뒤 같은 칸으로 넣고(경고가 있어도) 알림으로 알리며 "넣었어요 ✓"로 바뀐다', async () => {
+    db.appts.push(appt('n1', { day: '2026-11-24', start: 570, name: '박○○', chart: '10457' })) // 다음 주 같은 담당 겹침
+    await open()
+    fireEvent.click(block(/^10231 김○○ 도수 \(가\)/))
+    const panel = dialog('예약')
+    fireEvent.click(within(panel).getByRole('button', { name: '다음 주에도' }))
+    await waitFor(() => expect(addAppt).toHaveBeenCalledTimes(1))
+    expect(addAppt).toHaveBeenCalledWith(CLIENT, {
+      day: '2026-11-24',
+      start: 570,
+      len: 30,
+      name: '김○○',
+      chart: '10231',
+      staffId: 'ga',
+      staffName: '한○○',
+      staffMark: '가',
+      kindId: 'dosu',
+      kindName: '도수',
+      memo: '',
+      status: 'auto',
+    })
+    expect(await within(panel).findByText('11월 24일 (화) 09:30에 넣었어요 ✓')).toBeTruthy()
+    expect((within(panel).getByRole('button', { name: '다음 주에도' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(await screen.findByText('11월 24일 (화) 09:30에 똑같이 넣었어요. 그 시간에 같은 담당 예약이 있거나 휴무예요 — 확인해 주세요.')).toBeTruthy()
+  })
+
+  it('AC-5905.3: [예약 취소]는 status cancel로 저장하고 [취소 되돌리기]가 된다. 되돌리면 auto다', async () => {
+    await open()
+    fireEvent.click(block(/^10231 김○○ 도수 \(가\)/))
+    fireEvent.click(within(dialog('예약')).getByRole('button', { name: '예약 취소' }))
+    await waitFor(() => expect(updateAppt).toHaveBeenCalledWith(CLIENT, 'a1', { status: 'cancel' }))
+    expect(await screen.findByText('예약을 취소했어요. 칸은 흐리게 남아요.')).toBeTruthy()
+    db.appts = db.appts.map((a) => (a.id === 'a1' ? { ...a, status: 'cancel' } : a))
+    fireEvent.click(await within(dialog('예약')).findByRole('button', { name: '취소 되돌리기' }))
+    await waitFor(() => expect(updateAppt).toHaveBeenCalledWith(CLIENT, 'a1', { status: 'auto' }))
+  })
+
+  it('AC-5905.3: [지우기]는 한 번 더 묻고 deleteAppt로 지운다. 칸이 없어진다', async () => {
+    await open()
+    fireEvent.click(block(/^10231 김○○ 도수 \(가\)/))
+    const panel = dialog('예약')
+    fireEvent.click(within(panel).getByRole('button', { name: '지우기' }))
+    expect(deleteAppt).not.toHaveBeenCalled()
+    expect(within(panel).getByText('이 예약을 지울까요? 되돌릴 수 없어요.')).toBeTruthy()
+    fireEvent.click(within(panel).getByRole('button', { name: '지우기' }))
+    await waitFor(() => expect(deleteAppt).toHaveBeenCalledWith(CLIENT, 'a1'))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '예약' })).toBeNull())
+    expect(screen.queryByRole('button', { name: /^10231 김○○/ })).toBeNull()
+    expect(await screen.findByText('예약을 지웠어요.')).toBeTruthy()
+  })
+
+  it('AC-5905.3·AC-5906.2: [고치기]는 그 예약 칸으로 고치기 판을 열고, 시작을 옮겨 저장하면 updateAppt이고 처음 자리를 알린다', async () => {
+    vi.mocked(updateAppt).mockImplementation(async (_c, id, patch) => ({ ...db.appts.find((a) => a.id === id)!, ...patch, origDay: TODAY, origStart: 570 }))
+    await open()
+    fireEvent.click(block(/^10231 김○○ 도수 \(가\)/))
+    fireEvent.click(within(dialog('예약')).getByRole('button', { name: '고치기' }))
+    const panel = dialog('예약 고치기')
+    expect((within(panel).getByLabelText('이름') as HTMLInputElement).value).toBe('김○○')
+    fireEvent.change(within(panel).getByLabelText('시작'), { target: { value: '600' } })
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(updateAppt).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(updateAppt).mock.calls[0]!.slice(1)).toEqual([
+      'a1',
+      { day: TODAY, start: 600, len: 30, name: '김○○', chart: '10231', staffId: 'ga', staffName: '한○○', staffMark: '가', kindId: 'dosu', kindName: '도수', memo: '' },
+    ])
+    expect(await screen.findByText("예약을 옮겼어요. '변경'으로 표시하고 원래 시간(11/17 (화) 09:30)을 남겼어요.")).toBeTruthy()
+    expect(block(/^10231 김○○ 도수 \(가\) 10:00–10:30 30분 · 변경 \(원래 11\/17 \(화\) 09:30\)$/)).toBeTruthy()
+  })
+
+  it('AC-5906.2: 옮긴 예약은 칸에 작은 "변경" 표시가 있고 자세히 판에 원래 자리가 있다', async () => {
+    await open()
+    const moved = block(/^30117 송○○ 주사 \(원\)/)
+    expect(within(moved).getByText('변경')).toBeTruthy()
+    expect(within(block(/^10231 김○○ 도수/)).queryByText('변경')).toBeNull()
+    fireEvent.click(moved)
+    expect(within(dialog('예약')).getByText('원래 11/18 (수) 15:00')).toBeTruthy()
+  })
+})
+
+describe('AC-5905.4 종일 줄', () => {
+  it('AC-5905.4: 종일 줄을 누르면 작은 판이고 메모를 넣으면 addAllDay로 저장되어 그날 칩이 보인다', async () => {
+    await open()
+    fireEvent.click(document.querySelector('[data-allday-day="2026-11-19"]')!)
+    const pop = dialog('11월 19일 (목) · 종일')
+    fireEvent.change(within(pop).getByLabelText('종일 메모'), { target: { value: '학회' } })
+    fireEvent.click(within(pop).getByRole('button', { name: '더하기' }))
+    await waitFor(() => expect(addAllDay).toHaveBeenCalledWith(CLIENT, { day: '2026-11-19', type: 'memo', memo: '학회', staffId: null, staffName: null }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '11월 19일 (목) · 종일' })).toBeNull())
+    expect(within(document.querySelector('[data-allday-day="2026-11-19"]')!).getByText('학회')).toBeTruthy()
+  })
+
+  it('AC-5905.4: 그날 항목을 지우면 deleteAllDay로 지운다. 휴무 칩은 그 시행자 색(청록)이다', async () => {
+    await open()
+    const cell = document.querySelector<HTMLElement>('[data-allday-day="2026-11-18"]')!
+    const chip = within(cell).getByRole('button', { name: '(나) 윤○○ 휴무' })
+    expect(chip.className).toContain('bg-cal-teal-soft')
+    fireEvent.click(chip)
+    const pop = dialog('11월 18일 (수) · 종일')
+    fireEvent.click(within(pop).getByRole('button', { name: '지우기' }))
+    await waitFor(() => expect(deleteAllDay).toHaveBeenCalledWith(CLIENT, 'd1'))
+    await waitFor(() => expect(within(cell).queryByText('(나) 윤○○ 휴무')).toBeNull())
+  })
+})
+
+describe('AC-5905.5 설정', () => {
+  it('AC-5905.5: [설정]에서 고쳐 [저장]하면 saveCalendarSettings로 저장되고 바로 반영된다(일요일 보기 → 7칸)', async () => {
+    await open()
+    fireEvent.click(screen.getByRole('button', { name: '예약 설정' }))
+    const panel = dialog('예약 설정')
+    fireEvent.click(within(within(panel).getByRole('group', { name: '주 보기 요일' })).getByRole('button', { name: '월~일' }))
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(saveCalendarSettings).toHaveBeenCalledWith(CLIENT, { ...SETTINGS, sunday: true }))
+    await waitFor(() => expect(columns()).toHaveLength(7))
+    expect(screen.queryByRole('dialog', { name: '예약 설정' })).toBeNull()
+    expect(await screen.findByText('설정을 저장했어요. 다른 PC에도 몇 초 안에 보여요.')).toBeTruthy()
+  })
+
+  it('AC-5905.5: 목록에서 지운 시행자의 예약은 저장된 이름 그대로 회색으로 보인다', async () => {
+    db.settings = { ...SETTINGS, staff: SETTINGS.staff.filter((s) => s.id !== 'na') }
+    await open()
+    const gone = block(/^23580 정○○ 자보도수 \(나\)/)
+    expect(gone.className).toContain('bg-cal-gray-soft')
+  })
+})
+
+describe('AC-5907.2 합계 줄', () => {
+  it('AC-5907.2: 도구 줄 아래에 보이는 기간 합계(취소 포함)가 있고, 누르면 시행자별·종류별 표가 열린다', async () => {
+    await open()
+    const line = screen.getByRole('button', { name: /이 주 합계/ })
+    expect(items(line)).toEqual(['예약 4', '취소 1 (25.0%)', '변경 1 (25.0%)', '안 옴 1 (25.0%)'])
+    fireEvent.click(line)
+    const panel = screen.getByRole('region', { name: '이 주 나눠 보기' })
+    expect(within(panel).getByText('시행자별')).toBeTruthy()
+    expect(within(panel).getByText('종류별')).toBeTruthy()
+  })
+
+  it('AC-5907.2: 월 보기 합계는 그 달 날짜의 예약만 센다(월 칸의 앞뒤 달 날짜는 빼고)', async () => {
+    db.appts.push(appt('oct', { day: '2026-10-28' }), appt('dec', { day: '2026-12-02' }))
+    await open()
+    fireEvent.click(screen.getByRole('button', { name: '월' }))
+    await screen.findByRole('region', { name: '월 보기' })
+    expect(items(screen.getByRole('button', { name: /이 달 합계/ }))[0]).toBe('예약 4')
+  })
+})
+
+describe('AC-5905.8 비트 없는 기기', () => {
+  it('AC-5905.8: 도우미가 없으면 비트 찾기·비트 예약 칸·도착 셈이 없고 더하기 판에 "비트 PC에서는 자동으로 채워져요"다', async () => {
+    await open()
+    const panel = openAdd()
+    expect(within(panel).getByText('비트 PC에서는 자동으로 채워져요')).toBeTruthy()
+    fireEvent.change(within(panel).getByLabelText('이름'), { target: { value: '김○○' } })
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 500))
+    })
+    expect(stream).not.toHaveBeenCalled()
+    expect(fake.posted.filter((m) => (m as { type: string }).type !== 'bridge-port')).toEqual([])
+    expect(setApptAuto).not.toHaveBeenCalled()
+  })
+
+  it('AC-5905.8: 도우미 0.10.0 미만이면 비트 없는 기기처럼 그린다', async () => {
+    link('ready', '0.9.1')
+    await open()
+    expect(screen.getAllByText('비트 없는 기기').length).toBeGreaterThan(0)
+    expect(stream).not.toHaveBeenCalled()
+  })
+
+  it('AC-5905.8: 768px 미만 주 보기는 날짜별 목록(?s=phone-week)이고 오늘만 펼친다', async () => {
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: (query: string) => ({ matches: query.includes('767'), media: query, addEventListener() {}, removeEventListener() {} }),
+    })
+    await open()
+    await waitFor(() => expect(document.querySelector('[data-slot-day]')).toBeNull())
+    const today = screen.getByRole('button', { name: '11월 17일 (화) 오늘 예약 1' })
+    expect(today.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByRole('button', { name: '11월 18일 (수) 예약 0' }).getAttribute('aria-expanded')).toBe('false')
+  })
+})
+
+describe('AC-5905.6·AC-5905.7 비트 PC', () => {
+  beforeEach(() => link('ready', '0.10.0'))
+
+  it('AC-5905.7: 기간을 그리면 Worker days를 부르고, 받은 auto는 setApptAuto로 적어 칸이 바뀐다. 비트 예약 칸을 그리고 누르면 안내 글이다', async () => {
+    await open()
+    expect(screen.getAllByText('비트 연결됨').length).toBeGreaterThan(0)
+    await waitFor(() => expect(postsOf('days')).toHaveLength(1))
+    expect(stream).toHaveBeenCalledWith('contact.targets', { kind: 'calday', from: '2026-11-16', to: '2026-11-22' })
+    const ghost = { key: 'bit-202611181030-0', day: '2026-11-18', start: 630, chart: '25190', name: '오○○' }
+    await reply({ type: 'days', from: '2026-11-16', to: '2026-11-22', auto: [['a1', 'came']], ghosts: [ghost] })
+    await waitFor(() => expect(setApptAuto).toHaveBeenCalledWith(CLIENT, 'a1', 'came'))
+    await waitFor(() => expect(block(/^10231 김○○ 도수 \(가\) 09:30–10:00 30분 · 왔음$/)).toBeTruthy())
+    fireEvent.click(block(/^비트 예약 10:30 25190 오○○/))
+    expect(await screen.findByText(GHOST_NOTE)).toBeTruthy()
+  })
+
+  it('AC-5905.7: 같은 날 같은 차트번호 예약이 있는 비트 예약 칸은 그리지 않는다', async () => {
+    await open()
+    await waitFor(() => expect(postsOf('days')).toHaveLength(1))
+    await reply({ type: 'days', from: '2026-11-16', to: '2026-11-22', auto: [], ghosts: [{ key: 'g', day: TODAY, start: 840, chart: '10231', name: '김○○' }] })
+    await act(async () => {})
+    expect(screen.queryByRole('button', { name: /^비트 예약/ })).toBeNull()
+  })
+
+  it('AC-5905.6: 이름을 적고 400ms 멈추면 Worker find로 찾고, 한 명이면 차트번호를 채운다(옅은 초록)', async () => {
+    await open()
+    const panel = openAdd()
+    expect(within(panel).queryByText('비트 PC에서는 자동으로 채워져요')).toBeNull()
+    fireEvent.change(within(panel).getByLabelText('이름'), { target: { value: '김○' } })
+    expect(postsOf('find')).toHaveLength(0)
+    await waitFor(() => expect(stream).toHaveBeenCalledWith('contact.targets', { kind: 'calfind', from: TODAY, to: TODAY, q: '김○' }), { timeout: 2000 })
+    await waitFor(() => expect(postsOf('find')).toHaveLength(1))
+    await reply({ type: 'found', rows: [{ chart: '10231', name: '김○○', sex: '여', age: 61, last: '2026-11-10' }], more: false })
+    const chart = within(panel).getByLabelText(/^차트번호/) as HTMLInputElement
+    await waitFor(() => expect(chart.value).toBe('10231'))
+    expect(chart.dataset.filled).toBe('true')
+    expect((within(panel).getByLabelText('이름') as HTMLInputElement).value).toBe('김○○')
+    expect(within(panel).getByText('✓ 비트에서 찾아 차트번호를 채웠어요')).toBeTruthy()
+  })
+
+  it('AC-5905.6: 여럿이면 고르기 목록(성별·나이·마지막 내원)이고, 고르면 이름·차트번호 두 칸만 들어간다', async () => {
+    await open()
+    const panel = openAdd()
+    fireEvent.change(within(panel).getByLabelText('이름'), { target: { value: '김○' } })
+    await waitFor(() => expect(postsOf('find')).toHaveLength(1), { timeout: 2000 })
+    await reply({
+      type: 'found',
+      rows: [
+        { chart: '10231', name: '김○○', sex: '여', age: 61, last: '2026-11-10' },
+        { chart: '20944', name: '김○○', sex: '남', age: 34, last: '2025-03-02' },
+      ],
+      more: false,
+    })
+    const list = await within(panel).findByRole('listbox', { name: '같은 이름 고르기' })
+    expect(text(list)).toContain('남 · 34세 · 마지막 내원 2025/03/02')
+    fireEvent.click(within(list).getByRole('option', { name: /20944/ }))
+    expect((within(panel).getByLabelText(/^차트번호/) as HTMLInputElement).value).toBe('20944')
+    expect((within(panel).getByLabelText('이름') as HTMLInputElement).value).toBe('김○○')
+    expect(within(panel).queryByRole('listbox')).toBeNull()
+  })
+
+  it('AC-5905.6: 없으면 "비트에 없어요. 신환이면 차트번호는 비워 두세요."다', async () => {
+    await open()
+    const panel = openAdd()
+    fireEvent.change(within(panel).getByLabelText(/^차트번호/), { target: { value: '99999' } })
+    await waitFor(() => expect(postsOf('find')).toHaveLength(1), { timeout: 2000 })
+    expect(stream).toHaveBeenCalledWith('contact.targets', { kind: 'calfind', from: TODAY, to: TODAY, q: '99999' })
+    await reply({ type: 'found', rows: [], more: false })
+    expect(await within(panel).findByText('비트에 없어요. 신환이면 차트번호는 비워 두세요.')).toBeTruthy()
+  })
+})

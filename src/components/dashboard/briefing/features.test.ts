@@ -15,6 +15,7 @@ const TABLE = [
   { name: '환자', desc: '다시 오실 환자 명단·정기 주사 문자 명단·문자 문구', href: '/patients', status: 'connect-first' },
   { name: '업무일지', desc: '엑셀 양식과 똑같은 업무일지', href: '/worklog', status: 'ready' }, // 수납일지 바로 앞(nav-worklog AC-5801.4)
   { name: '수납일지', desc: '비트에서 채우는 하루 수납 장부·예약률·Block 전환·마감', href: '/sunap', status: 'connect-first' }, // sunap-ilji AC-4907.1
+  { name: '예약', desc: '구글 캘린더 대신 쓰는 예약표·비트 도착 표시·취소와 변경 통계', href: '/calendar', status: 'ready' }, // clinic-calendar AC-5905.10
   { name: 'AI 리포트', desc: '지난달·작년 같은 달과 견준 월간 AI 보고', href: '/ai-report', status: 'ready' },
   { name: '서식', desc: '휴진 안내를 테마 그림으로 만들어 인쇄·그림 파일로', href: '/forms', status: 'ready' },
   { name: '직원', desc: '직원 명단·급여 계산과 명세서·연차와 휴가', href: '/staff', status: 'soon' },
