@@ -3,7 +3,16 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildLedger, dayTotals, ledgerDoctors } from '@/lib/sunap/ledger'
 import type { RxGroupDef } from '@/types/analysis'
-import { DEFAULT_RSV_WORDS, type Ledger, type LedgerSettings, type SunapLocalDay, type SunapLocalMonth, type SunapReply } from '@/types/sunap'
+import {
+  DEFAULT_RSV_KINDS,
+  DEFAULT_RSV_WORDS,
+  type Ledger,
+  type LedgerSettings,
+  type RsvKindDef,
+  type SunapLocalDay,
+  type SunapLocalMonth,
+  type SunapReply,
+} from '@/types/sunap'
 import { createHandler } from './handler'
 import type { SunapStreamRef, SunapWorkerMessage } from './messages'
 
@@ -15,7 +24,7 @@ const MONTH = '2026-11'
 const OTHER_DAY = '2026-11-15'
 const BLOCK: RxGroupDef = { id: 'g-block', codes: ['MM110'] }
 const PT: RxGroupDef = { id: 'g-pt', codes: ['MM301'] }
-const SETTINGS: LedgerSettings = { words: DEFAULT_RSV_WORDS, blockDef: BLOCK, ptDef: PT }
+const SETTINGS: LedgerSettings = { kinds: DEFAULT_RSV_KINDS, blockDef: BLOCK, ptDef: PT }
 
 const REPLY: SunapReply = {
   v: 1,
@@ -115,7 +124,7 @@ function harness() {
   const loadMessage = (targets: SunapStreamRef, store: SunapStreamRef, extra: Record<string, unknown> = {}) => ({
     type: 'load',
     day: DAY,
-    words: DEFAULT_RSV_WORDS,
+    kinds: DEFAULT_RSV_KINDS,
     blockDef: BLOCK,
     ptDef: PT,
     targets,
@@ -124,13 +133,13 @@ function harness() {
   })
 
   // 화면 흐름: 두 스트림이 끝난 뒤 그 id를 load에 실어 보낸다. 답 하나(ledger 또는 error)를 기다린다
-  async function load(options: { reply?: unknown; month?: unknown; store?: unknown } = {}) {
+  async function load(options: { reply?: unknown; month?: unknown; store?: unknown; extra?: Record<string, unknown> } = {}) {
     const targets = newId()
     const store = newId()
     deliver(targets, options.reply ?? REPLY)
     deliver(store, options.store ?? monthFile(options.month ?? {}))
     const before = posted.length
-    handler.onScreen(loadMessage({ id: targets }, { id: store }))
+    handler.onScreen(loadMessage({ id: targets }, { id: store }, options.extra))
     await until(() => posted.length > before, 'load 답')
     return posted[posted.length - 1]
   }
@@ -284,8 +293,8 @@ describe('AC-4904.1 load: 비트 하루 답 + 그 달 PC 저장 → 장부 보�
 
   it.each([
     ['날 모양', { day: '2026-11-31' }],
-    ['말 목록 없음', { words: undefined }],
-    ['말이 글자 아님', { words: { inj: [1], visit: [], etc: [] } }],
+    ['종류 목록 없음', { kinds: undefined }],
+    ['종류 목록이 옛 말 모양', { kinds: DEFAULT_RSV_WORDS }],
     ['묶음 모양', { blockDef: { id: 'g', codes: 'MM110' } }],
     ['스트림 표 없음', { targets: undefined }],
   ])('AC-4904.1 화면 load 모양이 틀리면(%s) E-BRIDGE-REJECTED', async (_label, extra) => {
@@ -676,6 +685,131 @@ describe('AC-4904.4 오류는 번호만, 환자 줄은 장부 보기에만', () 
     expect(h.posted).toEqual([])
     const out = await h.load()
     expect(out.type).toBe('ledger')
+  })
+})
+
+// ── spec sunap-kinds AC-5502.4 종류 목록 · 종류 id 모양 ─────────────────
+
+describe('AC-5502.4 load의 종류 목록(kinds)·직접 고른 값·고정값 모양', () => {
+  // 기본 셋(DEFAULT_RSV_KINDS와 같은 값)
+  const BASE: RsvKindDef[] = [
+    { id: 'inj', label: '주사치료', counts: true, words: ['주사', '블록'] },
+    { id: 'visit', label: '진료(경과)', counts: true, words: ['경과', '진료'] },
+    { id: 'etc', label: '기타', counts: false, words: ['기타'] },
+  ]
+  const DOSU: RsvKindDef = { id: 'kdosu01', label: '도수치료', counts: true, words: ['도수'] }
+  const KINDS2: RsvKindDef[] = [BASE[0], BASE[1], DOSU, BASE[2]]
+  const SETTINGS2: LedgerSettings = { ...SETTINGS, kinds: KINDS2 }
+  // 10233(90일초진)의 예약 메모가 도수
+  const DOSU_REPLY: SunapReply = {
+    ...REPLY,
+    rows: [REPLY.rows[0], REPLY.rows[1], ['10233', '가상환자03', '10:40', 'd90', 0, 0, 0, 0, [], ['202611201400', '도수 오후']]],
+  } as SunapReply
+  const withKinds = { extra: { kinds: KINDS2 } }
+
+  it('AC-5502.4: load가 실은 kinds로 장부를 만들고 마감 숫자도 그 목록의 counts로 센다', async () => {
+    const h = harness()
+    const out = await h.load({ reply: DOSU_REPLY, ...withKinds })
+    const ledger = buildLedger(DOSU_REPLY, {}, SETTINGS2)
+    expect(out).toEqual({ ...viewOf(ledger), totals: dayTotals(ledger, KINDS2) })
+    expect(h.last('ledger').rows[2].rsv).toEqual({ kind: 'kdosu01', source: 'bit', at: '202611201400' })
+    expect(h.last('ledger').totals.rsv_d90).toBe(1)
+  })
+
+  it('AC-5502.4: 마감(closed) 숫자도 load가 실은 kinds의 counts로 센다', async () => {
+    const h = harness()
+    await h.load({ reply: DOSU_REPLY, ...withKinds })
+    await h.screen({ type: 'close', now: kst('2026-11-16T18:30:00') })
+    expect(h.saved().sunap[DAY]).toMatchObject({ fixed: { '10231': 'inj', '10232': 'none', '10233': 'kdosu01' } })
+    await h.ack()
+    expect(h.last('closed').totals).toMatchObject({ rsv_first: 0, rsv_d90: 1 })
+  })
+
+  it('AC-5502.4: 기본 목록이면 도수 메모는 종류 모름이고 예약 수에 들지 않는다', async () => {
+    const h = harness()
+    await h.load({ reply: DOSU_REPLY })
+    expect(h.last('ledger').rows[2].rsv.kind).toBe('unknown')
+    expect(h.last('ledger').totals.rsv_d90).toBe(0)
+  })
+
+  it.each<[string, unknown]>([
+    ['kinds 대신 옛 words', undefined],
+    ['종류 2개', BASE.slice(0, 2)],
+    ['etc 없음', [BASE[0], BASE[1], DOSU]],
+    ['새 종류 id 5자', [...BASE, { ...DOSU, id: 'kdosu' }]],
+    ['이름이 종류 모름', [...BASE, { ...DOSU, label: '종류 모름' }]],
+    ['같은 이름', [...BASE, { ...DOSU, label: '기타' }]],
+    ['counts 글자', [...BASE, { ...DOSU, counts: 'true' }]],
+    ['말 21자', [...BASE, { ...DOSU, words: ['ㄱ'.repeat(21)] }]],
+    ['이은 말 41자', [...BASE, { ...DOSU, words: ['ㄱ'.repeat(20), 'ㄴ'.repeat(19)] }]],
+    ['종류 11개', [...BASE, ...Array.from({ length: 8 }, (_, i) => ({ ...DOSU, id: `kdosu0${i}`, label: `도수 ${i}` }))]],
+  ])('AC-5502.4: load의 kinds가 틀리면(%s) E-BRIDGE-REJECTED', async (label, kinds) => {
+    const h = harness()
+    const targets = h.newId()
+    const store = h.newId()
+    h.deliver(targets, REPLY)
+    h.deliver(store, monthFile({}))
+    const extra = label === 'kinds 대신 옛 words' ? { kinds: undefined, words: DEFAULT_RSV_WORDS } : { kinds }
+    await h.screen(h.loadMessage({ id: targets }, { id: store }, extra))
+    expect(h.posted).toEqual([{ type: 'error', op: 'load', code: 'E-BRIDGE-REJECTED' }])
+  })
+
+  it('AC-5502.4: PC 저장의 직접 고른 값은 종류 id 모양이면 받는다 — 목록에 있으면 직접, 없으면(지운 종류) 비트 따라가기', async () => {
+    const month = { [DAY]: { edits: { '10231': { rsv: 'kdosu01' }, '10233': { rsv: 'kzz9x00' } } } }
+    const h = harness()
+    expect((await h.load({ month, ...withKinds })).type).toBe('ledger')
+    expect(h.last('ledger').rows[0].rsv).toEqual({ kind: 'kdosu01', source: 'hand', at: '202611191030' })
+    expect(h.last('ledger').rows[2].rsv).toEqual({ kind: 'unknown', source: 'bit', at: '202611201400' })
+    const plain = harness()
+    await plain.load({ month })
+    expect(plain.last('ledger').rows[0].rsv).toEqual({ kind: 'inj', source: 'bit', at: '202611191030' })
+  })
+
+  it("AC-5502.4: PC 저장의 고정값은 'unknown'까지 받고, 목록에 없는 종류 id면 종류 모름이다", async () => {
+    const h = harness()
+    await h.load({ month: { [DAY]: { fixed: { '10231': 'kdosu01', '10232': 'unknown', '10233': 'etc' } } } })
+    expect(h.last('ledger').rows.map((row) => row.rsv.kind)).toEqual(['unknown', 'unknown', 'etc'])
+    const k = harness()
+    await k.load({ month: { [DAY]: { fixed: { '10231': 'kdosu01' } } }, ...withKinds })
+    expect(k.last('ledger').rows[0].rsv).toEqual({ kind: 'kdosu01', source: 'bit', at: '202611191030' })
+  })
+
+  it.each<[string, unknown]>([
+    ['직접 고른 값 5자 id', { edits: { '10231': { rsv: 'k12345' } } }],
+    ['직접 고른 값 대문자 id', { edits: { '10231': { rsv: 'kDOSU01' } } }],
+    ['직접 고른 값 Inj', { edits: { '10231': { rsv: 'Inj' } } }],
+    ['직접 고른 값 숫자', { edits: { '10231': { rsv: 1 } } }],
+    ['고정값 7자 id', { fixed: { '10231': 'k1234567' } }],
+    ['고정값 빈 글', { fixed: { '10231': '' } }],
+    ['고정값 NONE', { fixed: { '10231': 'NONE' } }],
+  ])('AC-5502.4: PC 저장의 예약 값이 종류 id 모양이 아니면(%s) E-STORE-BROKEN', async (_label, day) => {
+    const h = harness()
+    const out = await h.load({ month: { [DAY]: day }, ...withKinds })
+    expect(out).toEqual({ type: 'error', op: 'load', code: 'E-STORE-BROKEN' })
+  })
+
+  it('AC-5502.4: 화면이 보낸 고르기(edit rsv)는 종류 id 모양이면 저장하고 새 장부를 보낸다', async () => {
+    const h = harness()
+    await h.load(withKinds)
+    await h.screen({ type: 'edit', chart: '10232', patch: { rsv: 'kdosu01' } })
+    expect(h.saved().sunap[DAY]).toEqual({ edits: { '10232': { rsv: 'kdosu01' } } })
+    await h.ack()
+    expect(h.last('ledger').rows[1].rsv).toEqual({ kind: 'kdosu01', source: 'hand', at: null })
+    expect(h.last('ledger').totals.rsv_first).toBe(1)
+  })
+
+  it.each<[string, unknown]>([
+    ['unknown', 'unknown'],
+    ['5자 id', 'k12345'],
+    ['대문자 id', 'KDOSU01'],
+    ['빈 글', ''],
+    ['숫자', 3],
+  ])('AC-5502.4: 화면이 보낸 고르기가 종류 id 모양이 아니면(%s) 저장하지 않고 E-BRIDGE-REJECTED', async (_label, rsv) => {
+    const h = harness()
+    await h.load(withKinds)
+    await h.screen({ type: 'edit', chart: '10232', patch: { rsv } })
+    expect(h.last('error')).toEqual({ type: 'error', op: 'edit', code: 'E-BRIDGE-REJECTED' })
+    expect(h.sent).toEqual([])
   })
 })
 

@@ -1,12 +1,11 @@
 import { isMonth, isYmd } from '@/lib/analytics/dates'
 import { BridgeError, isErrorCode, isRecord } from '@/lib/bridge/protocol'
+import { isFixedKind, isHandKind, readKinds } from '@/lib/sunap/kinds'
 import { MAX_WON } from '@/lib/sunap/ledger'
 import type { RxGroupDef } from '@/types/analysis'
 import type {
-  HandRsvKind,
   LedgerRow,
-  RsvKind,
-  RsvWords,
+  RsvKindDef,
   SunapEdit,
   SunapLocalDay,
   SunapReply,
@@ -33,8 +32,6 @@ const STAMP = /^\d{12}$/
 // 진료의 코드·이름 글자 수 한도(도우미 SunapTargets와 같다)
 const DOCTOR_MAX = 40
 const VISIT_KINDS = new Set<unknown>(['new', 'd90', 're'] satisfies VisitKind[])
-const RSV_KINDS = new Set<unknown>(['none', 'inj', 'visit', 'etc', 'unknown'] satisfies RsvKind[])
-const HAND_KINDS = new Set<unknown>(['none', 'inj', 'visit', 'etc'] satisfies HandRsvKind[])
 const EDIT_FIELDS = new Set<unknown>(['cash', 'card', 'transfer', 'unpaid', 'block', 'pt', 'rsv', 'note'] satisfies (keyof SunapEdit)[])
 const DAY_FIELDS = new Set<string>(['edits', 'closedAt', 'late', 'fixed'] satisfies (keyof SunapLocalDay)[])
 
@@ -137,7 +134,10 @@ export function readStoreMonth(json: unknown, month: string): Rec {
   return file.sunap
 }
 
-/** 고친 칸 하나(저장된 것·화면이 보낸 것 같은 규칙). 금액은 0~99,999,999 정수, 직접 고른 예약은 unknown이 아님, 비고 100자까지. 틀리면 null */
+/**
+ * 고친 칸 하나(저장된 것·화면이 보낸 것 같은 규칙). 금액은 0~99,999,999 정수, 직접 고른 예약은 'none' 또는 종류 id 모양
+ * (지금 목록에 없는 id도 받는다: 장부가 비트 따라가기로 본다, spec sunap-kinds AC-5502.4), 비고 100자까지. 틀리면 null
+ */
 function readEdit(x: unknown): SunapEdit | null {
   if (!isRecord(x)) return null
   const edit: SunapEdit = {}
@@ -149,8 +149,8 @@ function readEdit(x: unknown): SunapEdit | null {
       if (typeof value !== 'boolean') return null
       edit[key] = value
     } else if (key === 'rsv') {
-      if (!HAND_KINDS.has(value)) return null
-      edit.rsv = value as HandRsvKind
+      if (!isHandKind(value)) return null
+      edit.rsv = value
     } else if (key === 'note') {
       if (!isText(value) || value.length > SUNAP_NOTE_MAX) return null
       edit.note = value
@@ -174,7 +174,7 @@ export function readLocalDay(x: unknown): SunapLocalDay {
   if (x.fixed !== undefined) {
     if (!isRecord(x.fixed)) fail(STORE_BROKEN)
     day.fixed = Object.fromEntries(
-      Object.entries(x.fixed).map(([chart, kind]) => [chart, RSV_KINDS.has(kind) ? (kind as RsvKind) : fail(STORE_BROKEN)]),
+      Object.entries(x.fixed).map(([chart, kind]) => [chart, isFixedKind(kind) ? kind : fail(STORE_BROKEN)]),
     )
   }
   return day
@@ -195,11 +195,6 @@ export function readStreamRef(x: unknown): SunapStreamRef | null {
   return null
 }
 
-function readWords(x: unknown): RsvWords | null {
-  if (!isRecord(x) || !isTexts(x.inj) || !isTexts(x.visit) || !isTexts(x.etc)) return null
-  return { inj: [...x.inj], visit: [...x.visit], etc: [...x.etc] }
-}
-
 function isGroupDef(x: unknown): x is RxGroupDef {
   if (!isRecord(x) || !isText(x.id) || !isTexts(x.codes)) return false
   if (x.out !== undefined && !isTexts(x.out)) return false
@@ -207,15 +202,15 @@ function isGroupDef(x: unknown): x is RxGroupDef {
   return Array.isArray(x.cond) && x.cond.every((item: unknown) => isRecord(item) && isText(item.code) && isTexts(item.unless))
 }
 
-export type LoadAsk = { day: string; month: string; words: RsvWords; blockDef: RxGroupDef | null; ptDef: RxGroupDef | null }
+export type LoadAsk = { day: string; month: string; kinds: RsvKindDef[]; blockDef: RxGroupDef | null; ptDef: RxGroupDef | null }
 
-/** load의 날·설정. 틀리면 null(스트림 표는 readStreamRef가 따로 본다) */
+/** load의 날·설정. 종류 목록은 readKinds(AC-5501.2)로 본다. 틀리면 null(스트림 표는 readStreamRef가 따로 본다) */
 export function readLoad(m: Rec): LoadAsk | null {
   const { day, blockDef, ptDef } = m
-  const words = readWords(m.words)
-  if (!isText(day) || !isYmd(day) || !isMonth(day.slice(0, 7)) || !words) return null
+  const kinds = readKinds(m.kinds)
+  if (!isText(day) || !isYmd(day) || !isMonth(day.slice(0, 7)) || !kinds) return null
   if ((blockDef !== null && !isGroupDef(blockDef)) || (ptDef !== null && !isGroupDef(ptDef))) return null
-  return { day, month: day.slice(0, 7), words, blockDef, ptDef }
+  return { day, month: day.slice(0, 7), kinds, blockDef, ptDef }
 }
 
 /** edit의 patch. 값 바꾸기는 칸 하나 이상, 되돌리기는 {revert: 칸 이름} 하나만. 틀리면 null */

@@ -1,5 +1,5 @@
 import type { RxGroupDef } from '@/types/analysis'
-import type { DoctorBreakdown, Ledger, RsvWords, SunapEdit, SunapTotals } from '@/types/sunap'
+import type { DoctorBreakdown, Ledger, RsvKindDef, SunapEdit, SunapTotals } from '@/types/sunap'
 
 // 수납일지 장부 Worker 메시지 약속 (spec sunap-ilji design.md 'Worker 메시지', REQ-4904) [환자 자료 구역].
 // 화면 훅(useSunapWorker)은 이 타입으로 주고받는다. 통로 포트는 기존 connectScreenBridge가 {type: 'bridge-port'}로 넘긴다.
@@ -17,7 +17,7 @@ export type SunapPatch = Partial<SunapEdit> | { revert: keyof SunapEdit }
 export type SunapLoadMessage = {
   type: 'load'
   day: string // YYYY-MM-DD
-  words: RsvWords
+  kinds: RsvKindDef[] // 설정의 다음 예약 종류 목록(spec sunap-kinds AC-5502.4). Worker가 readKinds로 다시 본다
   blockDef: RxGroupDef | null // 설정에서 고른 Block 묶음 정의(안 골랐으면 null)
   ptDef: RxGroupDef | null // 물리치료 묶음 정의
   targets: SunapStreamRef // contact.targets {kind: 'sunap', from: day, to: day}

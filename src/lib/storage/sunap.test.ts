@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_RSV_WORDS, SUNAP_TOTAL_KEYS, type SunapSettings, type SunapTotals } from '@/types/sunap'
+import { DEFAULT_RSV_KINDS, DEFAULT_RSV_WORDS, SUNAP_TOTAL_KEYS, type RsvKindDef, type SunapSettings, type SunapTotals } from '@/types/sunap'
 import {
   addSpend,
   closeSunapDay,
@@ -519,22 +519,72 @@ describe('deleteSpend', () => {
   })
 })
 
-describe('loadSunapSettings', () => {
-  const WORDS = { inj: ['주사'], visit: ['경과', '진료'], etc: [] }
+// 다음 예약 종류 목록(spec sunap-kinds): 도수치료(새 종류)를 진료(경과) 아래에 둔 목록. 이름·말은 지어낸 값
+const KINDS: RsvKindDef[] = [
+  { id: 'inj', label: '주사', counts: true, words: ['주사'] },
+  { id: 'visit', label: '진료(경과)', counts: true, words: ['경과', '진료'] },
+  { id: 'kdosu01', label: '도수치료', counts: true, words: ['도수', '수기'] },
+  { id: 'etc', label: '기타', counts: false, words: [] },
+]
+// 옛 모양 rsv_words(sunap-ilji)
+const LEGACY = { inj: ['주사'], visit: ['경과', '진료'], etc: [] }
+const FROM_LEGACY: RsvKindDef[] = [
+  { id: 'inj', label: '주사치료', counts: true, words: ['주사'] },
+  { id: 'visit', label: '진료(경과)', counts: true, words: ['경과', '진료'] },
+  { id: 'etc', label: '기타', counts: false, words: [] },
+]
 
-  it('AC-4903.4: sunap_settings에서 세 칸을 골라 한 줄을 읽고 camelCase 설정으로 바꾼다(병원으로 거르지 않는다)', async () => {
-    const { client, calls } = fakeClient(okWith({ block_group: GROUP, pt_group: GROUP2, rsv_words: WORDS }))
-    await expect(loadSunapSettings(client)).resolves.toEqual({ blockGroup: GROUP, ptGroup: GROUP2, words: WORDS })
+describe('loadSunapSettings', () => {
+  it('AC-5501.1: sunap_settings에서 세 칸을 골라 한 줄을 읽고, rsv_words.kinds가 맞으면 그 종류 목록이다(병원으로 거르지 않는다)', async () => {
+    const { client, calls } = fakeClient(okWith({ block_group: GROUP, pt_group: GROUP2, rsv_words: { kinds: KINDS } }))
+    await expect(loadSunapSettings(client)).resolves.toEqual({ blockGroup: GROUP, ptGroup: GROUP2, kinds: KINDS })
     expect(calls).toEqual([['from', 'sunap_settings'], ['select', SETTINGS_COLUMNS], ['maybeSingle']])
   })
 
-  it('AC-4903.4: 줄이 없으면 기본값(묶음 안 고름, 기본 예약 말)이고, 기본 말 목록은 새 배열이다', async () => {
+  it('AC-5501.1: kinds가 맞으면 옛 말 칸이 같이 있어도 kinds를 쓴다', async () => {
+    const { client } = fakeClient(okWith({ block_group: null, pt_group: null, rsv_words: { ...LEGACY, kinds: KINDS } }))
+    expect((await loadSunapSettings(client)).kinds).toEqual(KINDS)
+  })
+
+  it('AC-5501.1: kinds가 없고 옛 모양 {inj, visit, etc} 말 목록이면 기본 이름·예약률에 그 말이다', async () => {
+    const { client } = fakeClient(okWith({ block_group: GROUP, pt_group: null, rsv_words: LEGACY }))
+    await expect(loadSunapSettings(client)).resolves.toEqual({ blockGroup: GROUP, ptGroup: null, kinds: FROM_LEGACY })
+  })
+
+  it('AC-5501.1: DB 기본값(옛 모양 기본 말)이면 기본 종류 목록과 같다', async () => {
+    const { client } = fakeClient(okWith({ block_group: null, pt_group: null, rsv_words: DEFAULT_RSV_WORDS }))
+    expect((await loadSunapSettings(client)).kinds).toEqual(DEFAULT_RSV_KINDS)
+  })
+
+  it('AC-5501.1: kinds가 틀리고 옛 말이 맞으면 옛 말을 쓴다', async () => {
+    const { client } = fakeClient(okWith({ block_group: null, pt_group: null, rsv_words: { ...LEGACY, kinds: KINDS.slice(0, 2) } }))
+    expect((await loadSunapSettings(client)).kinds).toEqual(FROM_LEGACY)
+  })
+
+  it('AC-5501.1: 옛 말에 새 규칙에 안 맞는 말(빈 말·21자)이 있으면 빼고 읽는다(그대로 두면 Worker가 load를 거절한다)', async () => {
+    const legacy = { inj: ['주사', '', 'ㄱ'.repeat(21)], visit: ['경과'], etc: ['  기타 '] }
+    const { client } = fakeClient(okWith({ block_group: null, pt_group: null, rsv_words: legacy }))
+    expect((await loadSunapSettings(client)).kinds.map((kind) => kind.words)).toEqual([['주사'], ['경과'], ['기타']])
+  })
+
+  it('AC-5501.1: 줄이 없으면 기본값(묶음 안 고름, 기본 종류)이고, 기본 목록은 새 배열이다', async () => {
     const { client } = fakeClient(okWith(null))
     const settings = await loadSunapSettings(client)
-    expect(settings).toEqual({ blockGroup: null, ptGroup: null, words: DEFAULT_RSV_WORDS })
-    expect(settings.words.inj).not.toBe(DEFAULT_RSV_WORDS.inj)
-    settings.words.inj.push('바뀜')
-    expect(DEFAULT_RSV_WORDS.inj).toEqual(['주사', '블록'])
+    expect(settings).toEqual({ blockGroup: null, ptGroup: null, kinds: DEFAULT_RSV_KINDS })
+    expect(settings.kinds).not.toBe(DEFAULT_RSV_KINDS)
+    expect(settings.kinds[0]).not.toBe(DEFAULT_RSV_KINDS[0])
+    settings.kinds[0].words.push('바뀜')
+    settings.kinds[1].label = '바뀜'
+    expect(DEFAULT_RSV_KINDS[0].words).toEqual(['주사', '블록'])
+    expect(DEFAULT_RSV_KINDS[1].label).toBe('진료(경과)')
+  })
+
+  it('AC-5501.1: 읽은 kinds는 받은 줄과 같이 쓰지 않는 새 값이다', async () => {
+    const rsvWords = { kinds: structuredClone(KINDS) }
+    const { client } = fakeClient(okWith({ block_group: null, pt_group: null, rsv_words: rsvWords }))
+    const settings = await loadSunapSettings(client)
+    expect(settings.kinds).not.toBe(rsvWords.kinds)
+    expect(settings.kinds[2].words).not.toBe(rsvWords.kinds[2].words)
   })
 
   it.each<[string, unknown]>([
@@ -543,9 +593,13 @@ describe('loadSunapSettings', () => {
     ['inj 없음', { visit: [], etc: [] }],
     ['visit이 글자', { inj: [], visit: '경과', etc: [] }],
     ['말에 숫자', { inj: ['주사', 1], visit: [], etc: [] }],
-  ])('AC-4903.4: 예약 말 모양이 틀리면(%s) 기본 예약 말이고 묶음은 그대로 읽는다', async (_name, words) => {
-    const { client } = fakeClient(okWith({ block_group: GROUP, pt_group: null, rsv_words: words }))
-    await expect(loadSunapSettings(client)).resolves.toEqual({ blockGroup: GROUP, ptGroup: null, words: DEFAULT_RSV_WORDS })
+    ['kinds 2개 · 옛 말 없음', { kinds: KINDS.slice(0, 2) }],
+    ['kinds가 객체', { kinds: { inj: KINDS[0] } }],
+    ['kinds 이름이 종류 모름', { kinds: KINDS.map((kind, i) => (i === 2 ? { ...kind, label: '종류 모름' } : kind)) }],
+    ['kinds id 모양', { kinds: KINDS.map((kind, i) => (i === 2 ? { ...kind, id: 'dosu' } : kind)) }],
+  ])('AC-5501.1: 종류 칸 모양이 틀리면(%s) 기본 종류이고 묶음은 그대로 읽는다', async (_name, rsvWords) => {
+    const { client } = fakeClient(okWith({ block_group: GROUP, pt_group: null, rsv_words: rsvWords }))
+    await expect(loadSunapSettings(client)).resolves.toEqual({ blockGroup: GROUP, ptGroup: null, kinds: DEFAULT_RSV_KINDS })
   })
 
   it.each<[string, unknown]>([
@@ -553,19 +607,21 @@ describe('loadSunapSettings', () => {
     ['빈 글자', ''],
     ['객체', { id: GROUP }],
   ])('AC-4903.4: 묶음 칸 모양이 틀리면(%s) 안 고름(null)이다', async (_name, group) => {
-    const { client } = fakeClient(okWith({ block_group: group, pt_group: group, rsv_words: WORDS }))
-    await expect(loadSunapSettings(client)).resolves.toEqual({ blockGroup: null, ptGroup: null, words: WORDS })
+    const { client } = fakeClient(okWith({ block_group: group, pt_group: group, rsv_words: { kinds: KINDS } }))
+    await expect(loadSunapSettings(client)).resolves.toEqual({ blockGroup: null, ptGroup: null, kinds: KINDS })
   })
 
-  it('AC-4903.4: 읽은 예약 말의 다른 열쇠는 옮기지 않는다', async () => {
-    const { client } = fakeClient(okWith({ block_group: null, pt_group: null, rsv_words: { ...WORDS, extra: ['x'] } }))
+  it('AC-5501.1: 읽은 종류의 다른 열쇠는 옮기지 않는다', async () => {
+    const odd = { kinds: KINDS.map((kind) => ({ ...kind, color: 'red' })), extra: ['x'] }
+    const { client } = fakeClient(okWith({ block_group: null, pt_group: null, rsv_words: odd }))
     const settings = await loadSunapSettings(client)
-    expect(Object.keys(settings.words)).toEqual(['inj', 'visit', 'etc'])
+    expect(Object.keys(settings)).toEqual(['blockGroup', 'ptGroup', 'kinds'])
+    expect(settings.kinds.map((kind) => Object.keys(kind))).toEqual(KINDS.map(() => ['id', 'label', 'counts', 'words']))
   })
 
-  it('AC-4903.4: 진짜 클라이언트로도 세 칸만 묻고 거르기가 없으며, 줄이 없으면 기본값이다', async () => {
+  it('AC-5501.1: 진짜 클라이언트로도 세 칸만 묻고 거르기가 없으며, 줄이 없으면 기본값이다', async () => {
     const fakeFetch = fetchReturning([])
-    await expect(loadSunapSettings(realClient(fakeFetch))).resolves.toEqual({ blockGroup: null, ptGroup: null, words: DEFAULT_RSV_WORDS })
+    await expect(loadSunapSettings(realClient(fakeFetch))).resolves.toEqual({ blockGroup: null, ptGroup: null, kinds: DEFAULT_RSV_KINDS })
     const request = requestOf(fakeFetch)
     expect(request.url.pathname).toBe('/rest/v1/sunap_settings')
     expect([...request.url.searchParams.keys()]).toEqual(['select'])
@@ -574,39 +630,69 @@ describe('loadSunapSettings', () => {
 })
 
 describe('saveSunapSettings', () => {
-  const SETTINGS: SunapSettings = { blockGroup: GROUP, ptGroup: null, words: { inj: ['주사'], visit: ['경과'], etc: ['기타'] } }
+  const SETTINGS: SunapSettings = { blockGroup: GROUP, ptGroup: null, kinds: KINDS }
+  const kindAt = (at: number, over: Record<string, unknown>) => KINDS.map((kind, i) => (i === at ? { ...kind, ...over } : kind))
 
-  it('AC-4903.4: 세 칸(block_group·pt_group·rsv_words)만 onConflict hospital_id로 한 번 upsert한다', async () => {
+  it('AC-5501.1: 세 칸(block_group·pt_group·rsv_words)만 onConflict hospital_id로 한 번 upsert하고 rsv_words는 {kinds}다', async () => {
     const { client, calls } = fakeClient()
     await expect(saveSunapSettings(client, SETTINGS)).resolves.toBeUndefined()
     expect(calls).toEqual([
       ['from', 'sunap_settings'],
-      ['upsert', { block_group: GROUP, pt_group: null, rsv_words: { inj: ['주사'], visit: ['경과'], etc: ['기타'] } }, { onConflict: 'hospital_id' }],
+      ['upsert', { block_group: GROUP, pt_group: null, rsv_words: { kinds: KINDS } }, { onConflict: 'hospital_id' }],
     ])
   })
 
-  it('AC-4903.4: 설정·예약 말의 다른 열쇠는 보내지 않는다(열쇠를 골라 새로 만든다)', async () => {
+  it('AC-5501.1: 설정·종류의 다른 열쇠(옛 words 포함)는 보내지 않는다(열쇠를 골라 새로 만든다)', async () => {
     const { client, calls } = fakeClient()
-    const odd = { ...SETTINGS, hospital_id: 'x', words: { ...SETTINGS.words, extra: ['x'] } } as SunapSettings
+    const odd = { ...SETTINGS, hospital_id: 'x', words: LEGACY, kinds: KINDS.map((kind) => ({ ...kind, color: 'red' })) } as SunapSettings
     await saveSunapSettings(client, odd)
-    const row = calls[1]?.[1] as Record<string, unknown>
+    const row = calls[1]?.[1] as { rsv_words: { kinds: object[] } } & Record<string, unknown>
     expect(Object.keys(row)).toEqual(['block_group', 'pt_group', 'rsv_words'])
-    expect(Object.keys(row.rsv_words as object)).toEqual(['inj', 'visit', 'etc'])
+    expect(Object.keys(row.rsv_words)).toEqual(['kinds'])
+    expect(row.rsv_words.kinds.map((kind) => Object.keys(kind))).toEqual(KINDS.map(() => ['id', 'label', 'counts', 'words']))
+  })
+
+  it('AC-5501.2: 이름·말은 앞뒤 빈칸을 뺀 값을 보낸다', async () => {
+    const { client, calls } = fakeClient()
+    await saveSunapSettings(client, { ...SETTINGS, kinds: kindAt(2, { label: ' 도수치료 ', words: [' 도수 ', '수기  '] }) })
+    const row = calls[1]?.[1] as { rsv_words: { kinds: RsvKindDef[] } }
+    expect(row.rsv_words.kinds[2]).toEqual({ id: 'kdosu01', label: '도수치료', counts: true, words: ['도수', '수기'] })
   })
 
   it.each<[string, unknown]>([
     ['묶음이 숫자', { ...SETTINGS, blockGroup: 7 }],
     ['묶음이 빈 글자', { ...SETTINGS, ptGroup: '' }],
-    ['말 목록이 배열 아님', { ...SETTINGS, words: { ...SETTINGS.words, inj: '주사' } }],
-    ['말에 숫자', { ...SETTINGS, words: { ...SETTINGS.words, etc: [1] } }],
-    ['말 묶음 없음', { ...SETTINGS, words: null }],
   ])('AC-4903.4: %s이면 보내지 않고 failed다', async (_name, settings) => {
     const { client, calls } = fakeClient()
     expect((await caught(() => saveSunapSettings(client, settings as SunapSettings))).kind).toBe('failed')
     sentNothing(calls)
   })
 
-  it('AC-4903.4: 진짜 클라이언트로도 요청 한 번, 같은 줄 덮어쓰기, 세 칸만 보낸다', async () => {
+  it.each<[string, unknown]>([
+    ['종류 목록 없음', undefined],
+    ['옛 말 모양', LEGACY],
+    ['종류 2개', KINDS.slice(0, 2)],
+    ['etc 없음', KINDS.slice(0, 3)],
+    ['종류 11개', [...KINDS, ...Array.from({ length: 7 }, (_, i) => ({ id: `kmore0${i}`, label: `더 ${i}`, counts: false, words: [] }))]],
+    ['id 모양', kindAt(2, { id: 'kdosu' })],
+    ['id 겹침', [...KINDS, { ...KINDS[2], label: '도수 2' }]],
+    ['이름 빈칸', kindAt(2, { label: '  ' })],
+    ['이름 11자', kindAt(2, { label: '가'.repeat(11) })],
+    ['같은 이름', kindAt(2, { label: '기타' })],
+    ['이름이 예약 안 하고 가심', kindAt(2, { label: '예약 안 하고 가심' })],
+    ['counts 글자', kindAt(2, { counts: 'true' })],
+    ['말 목록이 배열 아님', kindAt(2, { words: '도수' })],
+    ['말에 숫자', kindAt(2, { words: [1] })],
+    ['빈 말', kindAt(2, { words: ['도수', ' '] })],
+    ['말 21자', kindAt(2, { words: ['ㄱ'.repeat(21)] })],
+    ['이은 말 41자', kindAt(2, { words: ['ㄱ'.repeat(20), 'ㄴ'.repeat(19)] })],
+  ])('AC-5501.2: 종류 목록이 틀리면(%s) 보내지 않고 failed다', async (_name, kinds) => {
+    const { client, calls } = fakeClient()
+    expect((await caught(() => saveSunapSettings(client, { ...SETTINGS, kinds } as SunapSettings))).kind).toBe('failed')
+    sentNothing(calls)
+  })
+
+  it('AC-5501.1: 진짜 클라이언트로도 요청 한 번, 같은 줄 덮어쓰기, 세 칸만 보낸다', async () => {
     const fakeFetch = fetchReturning(null, 201)
     await saveSunapSettings(realClient(fakeFetch), SETTINGS)
     const request = requestOf(fakeFetch)
@@ -614,7 +700,7 @@ describe('saveSunapSettings', () => {
     expect(request.url.searchParams.get('on_conflict')).toBe('hospital_id')
     expect(request.method).toBe('POST')
     expect(request.headers.get('Prefer')).toContain('resolution=merge-duplicates')
-    expect(request.body).toEqual({ block_group: GROUP, pt_group: null, rsv_words: SETTINGS.words })
+    expect(request.body).toEqual({ block_group: GROUP, pt_group: null, rsv_words: { kinds: KINDS } })
   })
 })
 
@@ -630,7 +716,7 @@ const ALL: [string, Run][] = [
   ['updateSpend', (c) => updateSpend(c, SPEND_ID, { amount: 1 })],
   ['deleteSpend', (c) => deleteSpend(c, SPEND_ID)],
   ['loadSunapSettings', (c) => loadSunapSettings(c)],
-  ['saveSunapSettings', (c) => saveSunapSettings(c, { blockGroup: null, ptGroup: null, words: DEFAULT_RSV_WORDS })],
+  ['saveSunapSettings', (c) => saveSunapSettings(c, { blockGroup: null, ptGroup: null, kinds: DEFAULT_RSV_KINDS })],
 ]
 
 describe.each(ALL)('%s 실패', (_name, run) => {

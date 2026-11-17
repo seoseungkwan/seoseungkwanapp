@@ -2,16 +2,16 @@ import { compareYmd, todayInKorea } from '@/lib/analytics/dates'
 import { groupMatches } from '@/lib/analytics/groupMatch'
 import { addVisit, doctorBreakdown } from '@/lib/analytics/sunapRates'
 import {
+  DEFAULT_RSV_KINDS,
   LEDGER_EDITED_FIELDS,
   SUNAP_TOTAL_KEYS,
   type DoctorBreakdown,
-  type HandRsvKind,
   type Ledger,
   type LedgerRow,
   type LedgerRsv,
   type LedgerSettings,
   type RsvKind,
-  type RsvWords,
+  type RsvKindDef,
   type SunapEdit,
   type SunapLocalDay,
   type SunapReply,
@@ -25,7 +25,6 @@ import { classifyMemo } from './memo'
 
 // 수납일지 장부 규칙 [환자 자료 구역] (spec sunap-ilji REQ-4901). 순수 함수만: 받은 답·PC 저장을 바꾸지 않고 새 값을 돌려준다
 
-const HAND_KINDS = new Set<unknown>(['none', 'inj', 'visit', 'etc'] satisfies HandRsvKind[])
 export const MAX_WON = 99_999_999
 const WON = /^([\d,]+)\s*원?$/
 
@@ -34,14 +33,16 @@ function own<T>(table: { [key: string]: T } | undefined, key: string): T | undef
   return table !== undefined && Object.hasOwn(table, key) ? table[key] : undefined
 }
 
-const isHandKind = (kind: unknown): kind is HandRsvKind => HAND_KINDS.has(kind)
-
 // 직접 고름(hand) → 그날 고정(fixed) → 비트 예약 없음(none) → 메모 말(AC-4901.4). 직접 고르기는 unknown을 받지 않는다.
+// 지운 종류(AC-5502.2): 직접 고른 값이 목록에 없는 id면 직접 고르지 않은 것처럼 보고, 고정값이 목록에 없는 id면 unknown이다.
 // 시각은 비트 예약 시각이고, 종류가 none이면 없다
-function rsvOf(bit: SunapReplyRow[9], edit: SunapEdit, fixed: RsvKind | undefined, words: RsvWords): LedgerRsv {
+function rsvOf(bit: SunapReplyRow[9], edit: SunapEdit, fixed: RsvKind | undefined, kinds: readonly RsvKindDef[]): LedgerRsv {
   const at = bit === null ? null : bit[0]
-  if (isHandKind(edit.rsv)) return { kind: edit.rsv, source: 'hand', at: edit.rsv === 'none' ? null : at }
-  const kind = fixed ?? (bit === null ? 'none' : classifyMemo(bit[1], words))
+  const ids = new Set(kinds.map((kind) => kind.id))
+  const hand = edit.rsv
+  if (hand !== undefined && (hand === 'none' || ids.has(hand))) return { kind: hand, source: 'hand', at: hand === 'none' ? null : at }
+  const kept = fixed === undefined || fixed === 'none' || fixed === 'unknown' || ids.has(fixed) ? fixed : 'unknown'
+  const kind = kept ?? (bit === null ? 'none' : classifyMemo(bit[1], kinds))
   return { kind, source: 'bit', at: kind === 'none' ? null : at }
 }
 
@@ -76,7 +77,7 @@ export function buildLedger(reply: SunapReply, local: SunapLocalDay, settings: L
       kind,
       ...value,
       free: value.cash === 0 && value.card === 0 && value.transfer === 0 && value.unpaid === 0,
-      rsv: rsvOf(rsv, edit, own(local.fixed, chart), settings.words),
+      rsv: rsvOf(rsv, edit, own(local.fixed, chart), settings.kinds),
       note: edit.note ?? '',
       edited: LEDGER_EDITED_FIELDS.filter((field) => edit[field] !== undefined && edit[field] !== bit[field]),
       doctor,
@@ -100,9 +101,10 @@ export function ledgerDoctors(ledger: Ledger, names: readonly SunapReplyDoctor[]
 }
 
 // 서버에 올리는 숫자 24칸(AC-4901.5). 결제 건수는 그 칸이 0원이 아닌 줄 수, 금액은 그 칸의 합.
-// 초진·90일 예약은 주사치료·진료(경과) 예약만, 재진+Block = 재진 줄 중 Block, FREE = 네 칸 다 0원.
-// 미수 입금은 paid 줄에서 현금·카드 따로 세고 내원 수에는 넣지 않는다
-export function dayTotals(ledger: Ledger): SunapTotals {
+// 초진·90일 예약은 종류 목록에서 counts가 참인 종류 예약만(AC-5502.3, 기본 목록이면 주사치료·진료(경과)),
+// 재진+Block = 재진 줄 중 Block, FREE = 네 칸 다 0원. 미수 입금은 paid 줄에서 현금·카드 따로 세고 내원 수에는 넣지 않는다
+export function dayTotals(ledger: Ledger, kinds: readonly RsvKindDef[] = DEFAULT_RSV_KINDS): SunapTotals {
+  const counted = new Set(kinds.filter((kind) => kind.counts).map((kind) => kind.id))
   const totals = Object.fromEntries(SUNAP_TOTAL_KEYS.map((key) => [key, 0])) as SunapTotals
   const add = (count: SunapTotalKey, sum: SunapTotalKey, won: number) => {
     if (won === 0) return
@@ -112,7 +114,7 @@ export function dayTotals(ledger: Ledger): SunapTotals {
   for (const row of ledger.rows) {
     // 구분·Block·물리치료 아홉 칸은 통계 Block 전환·원장님별 표와 같은 규칙(addVisit)
     addVisit(totals, row.kind, row.block, row.pt)
-    if (row.rsv.kind === 'inj' || row.rsv.kind === 'visit') {
+    if (counted.has(row.rsv.kind)) {
       if (row.kind === 'new') totals.rsv_first++
       else if (row.kind === 'd90') totals.rsv_d90++
     }

@@ -3,19 +3,29 @@ import type { RxGroupDef } from './analysis'
 // 수납일지(spec sunap-ilji). 환자 줄(이름·고친 칸·비고)은 도우미 답 → Worker → 장부 화면으로만 가고 그 PC에 암호화해 둔다.
 // 서버에는 마감할 때 SunapTotals(숫자 24칸)만 간다
 
-// 예약 종류: none = 예약 안 하고 가심, inj = 주사치료, visit = 진료(경과), etc = 기타, unknown = 비트 예약은 있는데 메모에 정해진 말 없음
-export type RsvKind = 'none' | 'inj' | 'visit' | 'etc' | 'unknown'
-// 직접 고르기는 unknown을 받지 않는다
-export type HandRsvKind = Exclude<RsvKind, 'unknown'>
+// 다음 예약 종류 하나(설정, spec sunap-kinds REQ-5501). id = inj·visit·etc(기본 셋, 지울 수 없음) 또는 k+영문 소문자·숫자 6자(새 종류).
+// counts = 초진·90일 예약률에 셈. words = 비트 예약 메모에 이 말이 있으면 이 종류(목록 차례로 먼저 맞는 종류)
+export type RsvKindDef = { id: string; label: string; counts: boolean; words: string[] }
+// 예약 종류: none = 예약 안 하고 가심, unknown = 비트 예약은 있는데 메모에 맞는 말 없음, 나머지는 종류 id.
+// 글자라 타입으로 못 좁히고 lib/sunap/kinds.ts의 검사(isHandKind·isFixedKind)로 지킨다
+export type RsvKind = string
+// 직접 고르기: none 또는 종류 id(unknown 아님)
+export type HandRsvKind = string
 // 내원 구분: new = 초진(첫 내원일이 그날), d90 = 90일초진, re = 재진. 초진이 90일초진보다 앞선다
 export type VisitKind = 'new' | 'd90' | 're'
 
-// 예약 메모 말(설정). 메모에 inj 말이 있으면 inj, 없고 visit 말이면 visit, 없고 etc 말이면 etc
+// 옛 예약 메모 말(sunap-ilji 설정 모양). 메모에 inj 말이 있으면 inj, 없고 visit 말이면 visit, 없고 etc 말이면 etc
 export type RsvWords = { inj: string[]; visit: string[]; etc: string[] }
 export const DEFAULT_RSV_WORDS: RsvWords = { inj: ['주사', '블록'], visit: ['경과', '진료'], etc: ['기타'] }
+// 위 말 목록은 옛 설정 줄(rsv_words = {inj, visit, etc}) 읽기와 DB 기본값 비교에만 쓴다. 지금 설정은 종류 목록이다
+export const DEFAULT_RSV_KINDS: RsvKindDef[] = [
+  { id: 'inj', label: '주사치료', counts: true, words: ['주사', '블록'] },
+  { id: 'visit', label: '진료(경과)', counts: true, words: ['경과', '진료'] },
+  { id: 'etc', label: '기타', counts: false, words: ['기타'] },
+]
 
 // 서버 설정 줄(sunap_settings). 묶음은 통계 처방 묶음의 id(없으면 아직 안 고름)
-export type SunapSettings = { blockGroup: string | null; ptGroup: string | null; words: RsvWords }
+export type SunapSettings = { blockGroup: string | null; ptGroup: string | null; kinds: RsvKindDef[] }
 
 // ── 도우미 답 (contact.targets kind 'sunap', design.md '도우미 답') ─────────────
 // 예약 = [yyyyMMddHHmm, 메모 앞 40자(없으면 '')]
@@ -58,13 +68,13 @@ export type SunapLocalDay = {
   edits?: { [chart: string]: SunapEdit }
   closedAt?: string // ISO, 마감 중일 때만
   late?: boolean // 처음 마감이 늦었음(한국 날짜로 그날 뒤)
-  fixed?: { [chart: string]: RsvKind } // 처음 마감 때 자동(직접 고르지 않은) 예약 종류
+  fixed?: { [chart: string]: RsvKind } // 처음 마감 때 자동(직접 고르지 않은) 예약 종류(none·unknown·종류 id)
 }
 export type SunapLocalMonth = { [day: string]: SunapLocalDay } // 열쇠 YYYY-MM-DD
 
 // ── 장부 (lib/sunap/ledger.ts buildLedger) ─────────────────────────────
-// 장부를 만들 때 쓰는 설정: 메모 말과 Block·물리치료 묶음 정의(안 골랐으면 null — 그 칸은 모두 빈 칸)
-export type LedgerSettings = { words: RsvWords; blockDef: RxGroupDef | null; ptDef: RxGroupDef | null }
+// 장부를 만들 때 쓰는 설정: 다음 예약 종류 목록과 Block·물리치료 묶음 정의(안 골랐으면 null — 그 칸은 모두 빈 칸)
+export type LedgerSettings = { kinds: RsvKindDef[]; blockDef: RxGroupDef | null; ptDef: RxGroupDef | null }
 // 비트 값이 있는 칸 중 직원이 비트 값과 다르게 고친 칸 이름(이 차례로)
 export const LEDGER_EDITED_FIELDS = ['cash', 'card', 'transfer', 'unpaid', 'block', 'pt'] as const
 export type LedgerEditedField = (typeof LEDGER_EDITED_FIELDS)[number]

@@ -1,7 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { isYmd } from '@/lib/analytics/dates'
+import { kindsFromLegacy, readKinds } from '@/lib/sunap/kinds'
 import { privacyProblem } from '@/lib/worklog/notes'
-import { DEFAULT_RSV_WORDS, SUNAP_TOTAL_KEYS, type RsvWords, type SunapSettings, type SunapTotals } from '@/types/sunap'
+import { DEFAULT_RSV_KINDS, SUNAP_TOTAL_KEYS, type RsvKindDef, type RsvWords, type SunapSettings, type SunapTotals } from '@/types/sunap'
 
 // 수납일지 서버 저장 (spec sunap-ilji REQ-4903 AC-4903.4, design.md '저장 함수'). 브라우저 → Supabase, 권한은 RLS가 막는다(ADR-004).
 // 표: 마감한 날 합계 숫자 sunap_days · 그날 지출 sunap_spends · 병원 설정 sunap_settings (migration 20261116000000_sunap.sql).
@@ -225,9 +226,9 @@ export async function deleteSpend(client: Client, id: string): Promise<void> {
 const isWordList = (value: unknown): value is string[] => Array.isArray(value) && value.every((word) => typeof word === 'string')
 const isGroup = (value: unknown): value is string | null => value === null || isFilled(value)
 
-const defaultWords = (): RsvWords => ({ inj: [...DEFAULT_RSV_WORDS.inj], visit: [...DEFAULT_RSV_WORDS.visit], etc: [...DEFAULT_RSV_WORDS.etc] })
+const defaultKinds = (): RsvKindDef[] => DEFAULT_RSV_KINDS.map((kind) => ({ ...kind, words: [...kind.words] }))
 
-/** 세 목록을 골라 새로 만든다. 하나라도 글자 목록이 아니면 null */
+/** 옛 모양(sunap-ilji) 세 목록을 골라 새로 만든다. 하나라도 글자 목록이 아니면 null */
 function pickWords(source: unknown): RsvWords | null {
   if (!isRecord(source)) return null
   const words = {} as RsvWords
@@ -239,18 +240,32 @@ function pickWords(source: unknown): RsvWords | null {
   return words
 }
 
-/** 병원 설정. 줄이 없으면 기본값(묶음 안 고름 · 기본 예약 말). 칸 모양이 틀리면 그 칸만 기본값 */
+/**
+ * rsv_words 칸 → 다음 예약 종류 목록(spec sunap-kinds AC-5501.1). 맞는 kinds가 있으면 그것, 없고 옛 모양 {inj, visit, etc}
+ * 말 목록이면 기본 이름·예약률에 그 말, 둘 다 아니면 기본값. 언제나 받은 줄과 같이 쓰지 않는 새 값
+ */
+function kindsOf(rsvWords: unknown): RsvKindDef[] {
+  const kinds = isRecord(rsvWords) ? readKinds(rsvWords.kinds) : null
+  if (kinds !== null) return kinds
+  const legacy = pickWords(rsvWords)
+  return legacy !== null ? kindsFromLegacy(legacy) : defaultKinds()
+}
+
+/** 병원 설정. 줄이 없으면 기본값(묶음 안 고름 · 기본 종류 목록). 칸 모양이 틀리면 그 칸만 기본값 */
 export async function loadSunapSettings(client: Client): Promise<SunapSettings> {
   const { data } = await send(() => client.from(SETTINGS).select(SETTINGS_COLUMNS).maybeSingle<ReadRow>())
   const row = isRecord(data) ? data : {}
   const groupOf = (value: unknown) => (isFilled(value) ? value : null)
-  return { blockGroup: groupOf(row.block_group), ptGroup: groupOf(row.pt_group), words: pickWords(row.rsv_words) ?? defaultWords() }
+  return { blockGroup: groupOf(row.block_group), ptGroup: groupOf(row.pt_group), kinds: kindsOf(row.rsv_words) }
 }
 
-/** 설정 세 칸을 내 병원 줄 하나에 덮어쓴다(onConflict hospital_id). 모양이 틀리면 보내지 않고 failed */
+/**
+ * 설정 세 칸을 내 병원 줄 하나에 덮어쓴다(onConflict hospital_id). 종류 목록은 rsv_words = {kinds}로 보낸다(AC-5501.1).
+ * 묶음 모양이 틀리거나 종류 목록이 readKinds(AC-5501.2)에 맞지 않으면 보내지 않고 failed
+ */
 export async function saveSunapSettings(client: Client, settings: SunapSettings): Promise<void> {
-  const words = pickWords(settings.words)
-  if (!isGroup(settings.blockGroup) || !isGroup(settings.ptGroup) || words === null) throw failed()
-  const row = { block_group: settings.blockGroup, pt_group: settings.ptGroup, rsv_words: words }
+  const kinds = readKinds(settings.kinds)
+  if (!isGroup(settings.blockGroup) || !isGroup(settings.ptGroup) || kinds === null) throw failed()
+  const row = { block_group: settings.blockGroup, pt_group: settings.ptGroup, rsv_words: { kinds } }
   await send(() => client.from(SETTINGS).upsert(row, { onConflict: 'hospital_id' }))
 }

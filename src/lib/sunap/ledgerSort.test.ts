@@ -188,3 +188,59 @@ describe('AC-5301.4 접수 순·받은 배열', () => {
     }
   })
 })
+
+// sunap-kinds: 종류 순은 설정 목록 차례(도수치료·기타를 옮긴 목록). no = 차례
+const ORDER = ['visit', 'kdosu01', 'inj', 'etc']
+const KIND_ROWS = items([
+  row({ rsv: rsv('inj', '202611201100') }), // 1
+  row({ rsv: rsv('kdosu01', '202611191000') }), // 2
+  row({ rsv: rsv('none', null) }), // 3
+  row({ rsv: rsv('unknown', '202611210930') }), // 4
+  row({ rsv: rsv('visit', '202611241400') }), // 5
+  row({ rsv: rsv('kdosu01', null, 'hand') }), // 6 직접 고름(날짜 없음)
+  row({ rsv: rsv('etc', '202611220900') }), // 7
+  row({ rsv: rsv('visit', '202611181000') }), // 8
+  row({ rsv: rsv('kdosu01', '202611181500') }), // 9
+  row({ rsv: rsv('none', null, 'hand') }), // 10
+])
+
+describe('AC-5502.5 다음 예약 종류 순 — 설정 목록 차례', () => {
+  it('AC-5502.5: asc 종류 목록 차례 → 종류 모름 → 예약 안 하고 가심(맨 뒤), 같은 종류 안은 가까운 날 먼저·날짜 없는 줄은 그 종류 맨 뒤', () => {
+    expect(nos(sortLedger(KIND_ROWS, { key: 'rsv', by: 'kind', dir: 'asc' }, ORDER))).toEqual([8, 5, 9, 2, 6, 1, 7, 4, 3, 10])
+  })
+
+  it('AC-5502.5: desc는 종류 목록·종류 모름 차례만 거꾸로이고 예약 안 하고 가심은 그래도 맨 뒤', () => {
+    expect(nos(sortLedger(KIND_ROWS, { key: 'rsv', by: 'kind', dir: 'desc' }, ORDER))).toEqual([4, 7, 1, 2, 9, 6, 5, 8, 3, 10])
+  })
+
+  it('AC-5502.5: 목록 차례를 주지 않으면 기본 셋 차례(주사치료 → 진료(경과) → 기타)다', () => {
+    const sort: LedgerSort = { key: 'rsv', by: 'kind', dir: 'asc' }
+    expect(nos(sortLedger(RSV_ROWS, sort, ['inj', 'visit', 'etc']))).toEqual(nos(sortLedger(RSV_ROWS, sort)))
+    expect(nos(sortLedger(RSV_ROWS, { ...sort, dir: 'desc' }, ['inj', 'visit', 'etc']))).toEqual(nos(sortLedger(RSV_ROWS, { ...sort, dir: 'desc' })))
+  })
+
+  it('AC-5502.5: 기본 셋도 목록 차례를 따른다(기타를 맨 위로)', () => {
+    expect(nos(sortLedger(RSV_ROWS, { key: 'rsv', by: 'kind', dir: 'asc' }, ['etc', 'inj', 'visit']))).toEqual([7, 5, 1, 4, 3, 10, 8, 6, 2, 9])
+  })
+
+  it('AC-5502.5: 목록에 없는 id 줄은 종류 모름 자리다(접수 차례·날짜 규칙 그대로)', () => {
+    const list = items([
+      row({ rsv: rsv('unknown', '202611211000') }),
+      row({ rsv: rsv('kold123', '202611200900') }),
+      row({ rsv: rsv('inj', '202611250900') }),
+    ])
+    expect(nos(sortLedger(list, { key: 'rsv', by: 'kind', dir: 'asc' }, ['inj', 'visit', 'etc']))).toEqual([3, 2, 1])
+  })
+
+  it('AC-5502.5: 날짜 순·다른 칸 세우기는 목록 차례와 상관없다', () => {
+    for (const sort of [
+      { key: 'rsv', by: 'date', dir: 'asc' },
+      { key: 'rsv', by: 'date', dir: 'desc' },
+      { key: 'name', dir: 'asc' },
+      { key: 'kind', dir: 'desc' },
+    ] satisfies LedgerSort[]) {
+      expect(nos(sortLedger(KIND_ROWS, sort, ORDER))).toEqual(nos(sortLedger(KIND_ROWS, sort)))
+    }
+    expect(nos(sortLedger(KIND_ROWS, { key: 'rsv', by: 'date', dir: 'asc' }, ORDER))).toEqual([8, 9, 2, 1, 4, 7, 5, 6, 3, 10])
+  })
+})

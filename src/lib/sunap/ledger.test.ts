@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { RxGroupDef } from '@/types/analysis'
 import {
+  DEFAULT_RSV_KINDS,
   SUNAP_TOTAL_KEYS,
   type Ledger,
   type LedgerRow,
   type LedgerSettings,
-  type RsvWords,
+  type RsvKindDef,
   type SunapLocalDay,
   type SunapRates,
   type SunapReply,
@@ -20,10 +21,15 @@ import { buildLedger, closeLocal, dayTotals, ledgerDoctors, parseWon, reopenLoca
 // 차트·이름·금액은 시안의 지어낸 값이다. 13번 Block·16번 현금은 직원이 고친 칸(비트 값은 Block 아님·현금 0원)
 
 const DAY = '2026-11-16'
-const WORDS: RsvWords = { inj: ['주사', '블록'], visit: ['경과', '진료'], etc: ['기타'] }
+// 설정 기본값과 같은 종류 목록(주사치료 ○ → 진료(경과) ○ → 기타 ✕)
+const KINDS: RsvKindDef[] = [
+  { id: 'inj', label: '주사치료', counts: true, words: ['주사', '블록'] },
+  { id: 'visit', label: '진료(경과)', counts: true, words: ['경과', '진료'] },
+  { id: 'etc', label: '기타', counts: false, words: ['기타'] },
+]
 const BLOCK: RxGroupDef = { id: 'g-block', codes: ['MM110'] }
 const PT: RxGroupDef = { id: 'g-pt', codes: ['MM010', 'MM015'], out: ['ESWT7'] }
-const SETTINGS: LedgerSettings = { words: WORDS, blockDef: BLOCK, ptDef: PT }
+const SETTINGS: LedgerSettings = { kinds: KINDS, blockDef: BLOCK, ptDef: PT }
 
 const MOCK_ROWS: SunapReplyRow[] = [
   ['10231', '김○○', '09:02', 're', 0, 15000, 0, 0, ['MM110', 'MM010'], ['202611191030', '주사 오전']],
@@ -163,7 +169,7 @@ describe('AC-4901.3 buildLedger — 고친 칸은 고친 값, Block·물리치�
   })
 
   it('AC-4901.3: 묶음 정의가 없으면(null) Block·물리치료는 모두 빈 칸이다', () => {
-    const settings: LedgerSettings = { words: WORDS, blockDef: null, ptDef: null }
+    const settings: LedgerSettings = { kinds: KINDS, blockDef: null, ptDef: null }
     const ledger = buildLedger(MOCK_REPLY, {}, settings)
     expect(ledger.rows.every((row) => !row.block && !row.pt)).toBe(true)
   })
@@ -247,7 +253,14 @@ describe('AC-4901.4 예약 — 직접 고름(hand) → 그날 고정(fixed) → 
     expect(one(line('1', { rsv: ['202611181400', '경과 보기'] })).rsv).toEqual({ kind: 'visit', source: 'bit', at: '202611181400' })
     expect(one(line('1', { rsv: ['202611181400', '기타'] })).rsv.kind).toBe('etc')
     expect(one(line('1', { rsv: ['202611181400', ''] })).rsv.kind).toBe('unknown')
-    const custom: LedgerSettings = { ...SETTINGS, words: { inj: ['INJ'], visit: [], etc: [] } }
+    const custom: LedgerSettings = {
+      ...SETTINGS,
+      kinds: [
+        { ...KINDS[0], words: ['INJ'] },
+        { ...KINDS[1], words: [] },
+        { ...KINDS[2], words: [] },
+      ],
+    }
     expect(one(line('1', { rsv: ['202611181400', 'inj 오전'] }), {}, custom).rsv.kind).toBe('inj')
   })
 
@@ -255,6 +268,131 @@ describe('AC-4901.4 예약 — 직접 고름(hand) → 그날 고정(fixed) → 
     const local = { edits: { '1': { rsv: 'unknown' } } } as unknown as SunapLocalDay
     expect(one(line('1', { rsv: RSV }), local).rsv).toEqual({ kind: 'inj', source: 'bit', at: '202611191030' })
     expect(one(line('1'), local).rsv).toEqual({ kind: 'none', source: 'bit', at: null })
+  })
+})
+
+// ── sunap-kinds: 종류 목록(새 종류·지운 종류) ─────────────────────────
+// 도수치료(새 종류, 예약률 ○)를 진료(경과) 아래에 둔 목록. 체외충격파(새 종류, 예약률 ✕)는 맨 아래
+const DOSU: RsvKindDef = { id: 'kdosu01', label: '도수치료', counts: true, words: ['도수'] }
+const ESWT: RsvKindDef = { id: 'keswt01', label: '체외충격파', counts: false, words: ['충격파'] }
+const KINDS2: RsvKindDef[] = [KINDS[0], KINDS[1], DOSU, KINDS[2], ESWT]
+const SETTINGS2: LedgerSettings = { ...SETTINGS, kinds: KINDS2 }
+
+describe('AC-5502.1 buildLedger — 비트 메모는 종류 목록 차례로 정한다', () => {
+  it('AC-5502.1: 새 종류의 말이 든 메모는 그 종류 id이고 출처는 bit다', () => {
+    expect(one(line('1', { rsv: ['202611201400', '도수 오후'] }), {}, SETTINGS2).rsv).toEqual({ kind: 'kdosu01', source: 'bit', at: '202611201400' })
+    expect(one(line('1', { rsv: ['202611201400', '충격파'] }), {}, SETTINGS2).rsv.kind).toBe('keswt01')
+    expect(one(line('1', { rsv: ['202611201400', '전화'] }), {}, SETTINGS2).rsv.kind).toBe('unknown')
+  })
+
+  it('AC-5502.1: 말이 둘 다 있으면 목록에서 위 종류다', () => {
+    expect(one(line('1', { rsv: ['202611201400', '도수 후 기타'] }), {}, SETTINGS2).rsv.kind).toBe('kdosu01')
+    expect(one(line('1', { rsv: ['202611201400', '도수 후 주사'] }), {}, SETTINGS2).rsv.kind).toBe('inj')
+    const dosuFirst: LedgerSettings = { ...SETTINGS, kinds: [DOSU, ...KINDS] }
+    expect(one(line('1', { rsv: ['202611201400', '도수 후 주사'] }), {}, dosuFirst).rsv.kind).toBe('kdosu01')
+  })
+
+  it('AC-5502.1: 종류를 지우면(목록에 없음) 그 말로는 정하지 않는다 — 비트 메모로 그 종류였던 줄은 종류 모름', () => {
+    expect(one(line('1', { rsv: ['202611201400', '도수 오후'] }), {}, SETTINGS).rsv).toEqual({ kind: 'unknown', source: 'bit', at: '202611201400' })
+  })
+})
+
+describe('AC-5502.2 예약 — 직접 고른 값·마감 고정값이 목록에 없는 종류면', () => {
+  const RSV: SunapReplyRow[9] = ['202611191030', '주사 오전']
+
+  it('AC-5502.2: 직접 고른 새 종류가 목록에 있으면 그 값이고 출처는 hand다', () => {
+    expect(one(line('1', { rsv: RSV }), { edits: { '1': { rsv: 'kdosu01' } } }, SETTINGS2).rsv).toEqual({
+      kind: 'kdosu01',
+      source: 'hand',
+      at: '202611191030',
+    })
+    expect(one(line('1'), { edits: { '1': { rsv: 'keswt01' } } }, SETTINGS2).rsv).toEqual({ kind: 'keswt01', source: 'hand', at: null })
+  })
+
+  it("AC-5502.2: 직접 고른 'none'은 목록과 상관없이 직접 고른 값이다", () => {
+    expect(one(line('1', { rsv: RSV }), { edits: { '1': { rsv: 'none' } } }, SETTINGS2).rsv).toEqual({ kind: 'none', source: 'hand', at: null })
+  })
+
+  it('AC-5502.2: 직접 고른 값이 목록에 없는 id(지운 종류)면 직접 고르지 않은 것처럼 비트를 따른다', () => {
+    const local: SunapLocalDay = { edits: { '1': { rsv: 'kdosu01', note: '메모' } } }
+    expect(one(line('1', { rsv: RSV }), local).rsv).toEqual({ kind: 'inj', source: 'bit', at: '202611191030' })
+    expect(one(line('1', { rsv: ['202611191030', '전화'] }), local).rsv).toEqual({ kind: 'unknown', source: 'bit', at: '202611191030' })
+    expect(one(line('1'), local).rsv).toEqual({ kind: 'none', source: 'bit', at: null })
+    // 비고는 그대로
+    expect(one(line('1'), local).note).toBe('메모')
+  })
+
+  it('AC-5502.2: 직접 고른 값이 지운 종류이고 마감 고정값이 있으면 고정값을 따른다', () => {
+    expect(one(line('1', { rsv: RSV }), { edits: { '1': { rsv: 'kdosu01' } }, fixed: { '1': 'visit' } }).rsv).toEqual({
+      kind: 'visit',
+      source: 'bit',
+      at: '202611191030',
+    })
+  })
+
+  it('AC-5502.2: 마감 고정값이 목록에 없는 id(지운 종류)면 unknown이다', () => {
+    expect(one(line('1', { rsv: RSV }), { fixed: { '1': 'kdosu01' } }).rsv).toEqual({ kind: 'unknown', source: 'bit', at: '202611191030' })
+    expect(one(line('1'), { fixed: { '1': 'kdosu01' } }).rsv).toEqual({ kind: 'unknown', source: 'bit', at: null })
+  })
+
+  it("AC-5502.2: 마감 고정값이 목록에 있는 id면 그 값, 'none'·'unknown'은 그대로다", () => {
+    expect(one(line('1', { rsv: RSV }), { fixed: { '1': 'kdosu01' } }, SETTINGS2).rsv).toEqual({ kind: 'kdosu01', source: 'bit', at: '202611191030' })
+    expect(one(line('1', { rsv: RSV }), { fixed: { '1': 'none' } }, SETTINGS2).rsv).toEqual({ kind: 'none', source: 'bit', at: null })
+    expect(one(line('1', { rsv: RSV }), { fixed: { '1': 'unknown' } }, SETTINGS2).rsv).toEqual({ kind: 'unknown', source: 'bit', at: '202611191030' })
+  })
+
+  it('AC-5502.2: 처음 마감하면 지운 종류를 직접 고른 줄도 비트를 따른 지금 값이 fixed에 들어간다', () => {
+    const local: SunapLocalDay = { edits: { '1': { rsv: 'kdosu01' }, '2': { rsv: 'visit' } } }
+    const ledger = buildLedger(replyOf([line('1', { rsv: RSV }), line('2', { rsv: RSV })]), local, SETTINGS)
+    expect(closeLocal(local, ledger, new Date('2026-11-16T09:52:00.000Z')).fixed).toEqual({ '1': 'inj' })
+  })
+})
+
+describe('AC-5502.3 dayTotals — 초진·90일 예약은 counts가 참인 종류만', () => {
+  const rows = [
+    line('1', { kind: 'new', rsv: ['202611181000', '주사'] }),
+    line('2', { kind: 'new', rsv: ['202611181000', '경과'] }),
+    line('3', { kind: 'new', rsv: ['202611181000', '도수'] }),
+    line('4', { kind: 'new', rsv: ['202611181000', '충격파'] }),
+    line('5', { kind: 'new', rsv: ['202611181000', '기타'] }),
+    line('6', { kind: 'new', rsv: ['202611181000', '전화'] }),
+    line('7', { kind: 'new' }),
+    line('8', { kind: 'd90', rsv: ['202611181000', '도수'] }),
+    line('9', { kind: 'd90', rsv: ['202611181000', '충격파'] }),
+    line('10', { kind: 're', rsv: ['202611181000', '도수'] }),
+  ]
+
+  it('AC-5502.3: 새 종류도 counts가 참이면 세고 거짓이면 안 센다(unknown·none은 늘 안 센다)', () => {
+    const ledger = buildLedger(replyOf(rows), {}, SETTINGS2)
+    expect(ledger.rows.map((row) => row.rsv.kind)).toEqual(['inj', 'visit', 'kdosu01', 'keswt01', 'etc', 'unknown', 'none', 'kdosu01', 'keswt01', 'kdosu01'])
+    expect(dayTotals(ledger, KINDS2)).toMatchObject({ first_n: 7, d90_n: 2, ret_n: 1, rsv_first: 3, rsv_d90: 1 })
+  })
+
+  it('AC-5502.3: 기본 종류도 counts를 따른다(주사치료·진료(경과) ✕·기타 ○로 바꾸면 기타만 센다)', () => {
+    const flipped: RsvKindDef[] = [
+      { ...KINDS[0], counts: false },
+      { ...KINDS[1], counts: false },
+      { ...KINDS[2], counts: true },
+    ]
+    const ledger = buildLedger(replyOf(rows), {}, { ...SETTINGS, kinds: flipped })
+    expect(dayTotals(ledger, flipped)).toMatchObject({ rsv_first: 1, rsv_d90: 0 })
+  })
+
+  it('AC-5502.3: counts인 종류가 하나도 없으면 0이다', () => {
+    const none = KINDS2.map((kind) => ({ ...kind, counts: false }))
+    expect(dayTotals(buildLedger(replyOf(rows), {}, { ...SETTINGS, kinds: none }), none)).toMatchObject({ rsv_first: 0, rsv_d90: 0 })
+  })
+
+  it('AC-5502.3: 종류 목록을 주지 않으면 기본 목록(주사치료·진료(경과))이다 — 지금 숫자와 같다', () => {
+    const ledger = buildLedger(replyOf(rows), {}, SETTINGS2)
+    expect(dayTotals(ledger)).toEqual(dayTotals(ledger, DEFAULT_RSV_KINDS))
+    expect(dayTotals(ledger)).toMatchObject({ rsv_first: 2, rsv_d90: 0 })
+    expect(dayTotals(buildLedger(MOCK_REPLY, MOCK_LOCAL, SETTINGS), KINDS)).toEqual(dayTotals(buildLedger(MOCK_REPLY, MOCK_LOCAL, SETTINGS)))
+  })
+
+  it('AC-5502.3: 직접 고른 새 종류도 counts로 센다', () => {
+    const local: SunapLocalDay = { edits: { '6': { rsv: 'kdosu01' }, '7': { rsv: 'keswt01' } } }
+    expect(dayTotals(buildLedger(replyOf(rows), local, SETTINGS2), KINDS2)).toMatchObject({ rsv_first: 4 })
   })
 })
 

@@ -76,7 +76,7 @@ export function createHandler(deps: { post(message: unknown): void }) {
   // 처음·고침·마감·풀기 모두 여기서 보낸다: 원장님별 수도 고친 값(Block·물리치료)이 든 장부로 센다(spec sunap-doctors AC-5003.2)
   function postLedger(current: Session): SunapLedgerView {
     const ledger = buildLedger(current.reply, current.local, current.settings)
-    const view: SunapLedgerView = { ...ledger, totals: dayTotals(ledger), doctors: ledgerDoctors(ledger) }
+    const view: SunapLedgerView = { ...ledger, totals: dayTotals(ledger, current.settings.kinds), doctors: ledgerDoctors(ledger) }
     post({ type: 'ledger', ...view })
     return view
   }
@@ -109,7 +109,7 @@ export function createHandler(deps: { post(message: unknown): void }) {
         const reply = readReply(bit.json, ask.day)
         const stored = readStoreMonth(saved.json, ask.month)
         const local = readLocalDay(own(stored, ask.day))
-        const settings: LedgerSettings = { words: ask.words, blockDef: ask.blockDef, ptDef: ask.ptDef }
+        const settings: LedgerSettings = { kinds: ask.kinds, blockDef: ask.blockDef, ptDef: ask.ptDef }
         const bitRows = buildLedger(reply, {}, settings).rows
         session = {
           epoch: asked,
