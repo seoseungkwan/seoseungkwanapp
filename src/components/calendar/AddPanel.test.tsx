@@ -84,19 +84,29 @@ function draw({ start = newDraft('2026-11-18', 900), ...over }: Drawn = {}) {
 
 const saveButton = () => screen.getByRole('button', { name: /저장$/ })
 const need = () => document.querySelector('[data-need]')?.textContent ?? ''
+const startInput = () => screen.getByLabelText('시작') as HTMLInputElement
+// '시작' 칸이 가리키는 고르기 목록(datalist)의 값들
+const startOptions = () => {
+  const id = startInput().getAttribute('list')
+  const list = id ? document.getElementById(id) : null
+  return list?.tagName === 'DATALIST' ? Array.from(list.querySelectorAll('option')).map((o) => o.value) : []
+}
+// 이름·담당·종류를 채운 판(시작만 보면 되게)
+const READY: AddDraft = { ...newDraft('2026-11-18', 900), name: '이○○', staffId: 'ga', staffName: '한○○', staffMark: '가', kindId: 'inj', kindName: '주사', len: 10 }
 
 describe('AC-5905.2: 예약 더하기 — 칸·꼭 채울 칸·저장', () => {
-  it('AC-5905.2: 판 제목·칸 이름이 시안 그대로이고 날짜 아래 요일, 시작은 10분 단위 고르기', () => {
+  it('AC-5905.2·AC-6002.2: 판 제목·칸 이름이 시안 그대로이고 날짜 아래 요일, 시작은 HH:MM 글 칸(10분 단위 고르기 목록)', () => {
     draw()
     expect(screen.getByRole('dialog', { name: '예약 더하기' })).toBeTruthy()
     expect((screen.getByLabelText('날짜') as HTMLInputElement).value).toBe('2026-11-18')
     expect(screen.getByText('11월 18일 (수)')).toBeTruthy()
-    const start = screen.getByLabelText('시작') as HTMLSelectElement
-    expect(start.value).toBe('900')
-    expect(start.options[0]!.textContent).toBe('08:00')
-    expect(start.options[1]!.textContent).toBe('08:10')
-    expect(start.options[start.options.length - 1]!.textContent).toBe('19:50')
-    expect(screen.getByText('10분 단위')).toBeTruthy()
+    const start = screen.getByLabelText('시작') as HTMLInputElement
+    expect(start.value).toBe('15:00')
+    const list = startOptions()
+    expect(list[0]).toBe('08:00')
+    expect(list[1]).toBe('08:10')
+    expect(list[list.length - 1]).toBe('19:50')
+    expect(screen.getByText('1430처럼 쳐도 돼요 · 10분 단위')).toBeTruthy()
     expect(screen.getByText('신환이면 비워요')).toBeTruthy()
     expect(screen.getByRole('group', { name: '담당' })).toBeTruthy()
     expect(screen.getByRole('group', { name: '종류' })).toBeTruthy()
@@ -175,7 +185,7 @@ describe('AC-5905.2: 예약 더하기 — 칸·꼭 채울 칸·저장', () => {
     draw()
     fireEvent.change(screen.getByLabelText('날짜'), { target: { value: '2026-11-19' } })
     expect(screen.getByText('11월 19일 (목)')).toBeTruthy()
-    fireEvent.change(screen.getByLabelText('시작'), { target: { value: '620' } })
+    fireEvent.change(screen.getByLabelText('시작'), { target: { value: '1020' } })
     expect(screen.getByText('10:20 – 10:50')).toBeTruthy()
   })
 
@@ -290,5 +300,135 @@ describe('AC-5905.2·AC-5906.2: 고치기', () => {
     draw({ mode: 'edit', editId: old.id, start: draftOf(old) })
     expect(within(screen.getByRole('group', { name: '담당' })).getByRole('button', { name: '(퇴) 퇴사○○' }).getAttribute('aria-pressed')).toBe('true')
     expect(within(screen.getByRole('group', { name: '종류' })).getByRole('button', { name: /^옛종류/ }).getAttribute('aria-pressed')).toBe('true')
+  })
+})
+
+describe('AC-6002: 시작 시간 쳐서 넣기 (spec calendar-colors, 시안 ④)', () => {
+  it('AC-6002.2: 시작은 글 칸 — 이름표 시작, placeholder "예: 1430", 숫자 자판, 자동 채움 끔, 고르기 목록은 보이는 시간 안 10분 칸 HH:MM', () => {
+    draw()
+    const start = startInput()
+    expect(start.tagName).toBe('INPUT')
+    expect(start.type).toBe('text')
+    expect(start.placeholder).toBe('예: 1430')
+    expect(start.getAttribute('inputmode')).toBe('numeric')
+    expect(start.getAttribute('autocomplete')).toBe('off')
+    expect(start.value).toBe('15:00')
+    const list = startOptions()
+    expect(list).toHaveLength(72) // 8시~20시, 10분 칸
+    expect(list.slice(0, 3)).toEqual(['08:00', '08:10', '08:20'])
+    expect(list).toContain('15:00')
+    expect(list.every((v) => /^\d{2}:\d{2}$/.test(v))).toBe(true)
+    expect(screen.getByText('1430처럼 쳐도 돼요 · 10분 단위')).toBeTruthy()
+    expect(start.getAttribute('aria-invalid')).toBeNull()
+  })
+
+  it('AC-6002.2: 지금 시각이 보이는 시간 밖이면 그 값도 고르기 목록에 있고, 칸을 들어갔다 나와도 시각이 바뀌지 않는다', () => {
+    const { onSave } = draw({ start: { ...READY, start: 430 } }) // 07:10 (보이는 시간 8~20시 밖)
+    expect(startInput().value).toBe('07:10')
+    expect(startOptions()[0]).toBe('07:10')
+    fireEvent.focus(startInput())
+    fireEvent.blur(startInput())
+    expect(startInput().value).toBe('07:10')
+    expect(screen.getByText('07:10 – 07:20')).toBeTruthy()
+    fireEvent.click(saveButton())
+    expect(onSave.mock.calls[0]![0].start).toBe(430)
+  })
+
+  it('AC-6002.2: 쳐서 읽히면 바로 판 시각(draft.start)이 바뀌고, 칸을 벗어나면 글이 HH:MM 모양이 된다', () => {
+    const onDraft = vi.fn()
+    render(<AddPanel mode="new" draft={READY} onDraft={onDraft} settings={SETTINGS} appts={[]} allday={[]} bit={false} onSave={vi.fn()} onClose={vi.fn()} />)
+    fireEvent.change(startInput(), { target: { value: '14시30분' } })
+    expect(onDraft).toHaveBeenLastCalledWith({ ...READY, start: 870 })
+    cleanup()
+
+    const { onSave } = draw({ start: READY })
+    fireEvent.change(startInput(), { target: { value: '1430' } })
+    expect(startInput().value).toBe('1430') // 치는 동안은 친 글 그대로
+    expect(screen.getByText('14:30 – 14:40')).toBeTruthy()
+    fireEvent.blur(startInput())
+    expect(startInput().value).toBe('14:30')
+    fireEvent.change(startInput(), { target: { value: '230' } }) // 보이는 8~20시에서 오후로 봄
+    fireEvent.blur(startInput())
+    expect(startInput().value).toBe('14:30')
+    fireEvent.change(startInput(), { target: { value: '09:30' } }) // 고르기 목록에서 고름
+    expect(screen.getByText('09:30 – 09:40')).toBeTruthy()
+    fireEvent.click(saveButton())
+    expect(onSave.mock.calls[0]![0].start).toBe(570)
+  })
+
+  it("AC-6002.3: 못 읽는 글이 있는 동안 판 시각은 그대로, 저장 줄은 '시작 칸을 채우면 저장할 수 있어요'이고 [저장]이 막힌다. 치는 동안에는 오류 글이 없다", () => {
+    const { onSave } = draw({ start: READY })
+    fireEvent.change(startInput(), { target: { value: '1435' } })
+    expect(screen.getByText('15:00 – 15:10')).toBeTruthy()
+    expect(need()).toBe('시작 칸을 채우면 저장할 수 있어요')
+    expect((saveButton() as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(saveButton())
+    expect(onSave).not.toHaveBeenCalled()
+    expect(document.body.textContent).not.toContain('10분 단위로 적어 주세요')
+    expect(startInput().getAttribute('aria-invalid')).toBeNull()
+    expect(screen.getByText('1430처럼 쳐도 돼요 · 10분 단위')).toBeTruthy()
+  })
+
+  it("AC-6002.3: 이름·담당·종류도 비었으면 '시작'이 맨 앞이다", () => {
+    draw()
+    fireEvent.change(startInput(), { target: { value: '' } })
+    expect(need()).toBe('시작·이름·담당·종류 칸을 채우면 저장할 수 있어요')
+  })
+
+  it('AC-6002.3: 못 읽는 글을 두고 칸을 벗어나면 칸 아래 오류 글과 aria-invalid, 바르게 고치면 오류가 사라지고 저장된다', () => {
+    const { onSave } = draw({ start: READY })
+    const start = startInput()
+    fireEvent.change(start, { target: { value: '1435' } })
+    fireEvent.blur(start)
+    expect(start.value).toBe('1435')
+    const step = screen.getByText('10분 단위로 적어 주세요 (예: 14:30)')
+    expect(step.className).toContain('text-negative')
+    expect(start.getAttribute('aria-invalid')).toBe('true')
+    expect(start.getAttribute('aria-describedby')).toBe(step.id)
+    expect(screen.queryByText('1430처럼 쳐도 돼요 · 10분 단위')).toBeNull()
+
+    fireEvent.change(start, { target: { value: '25시' } })
+    fireEvent.blur(start)
+    expect(screen.getByText('시간을 14:30처럼 적어 주세요')).toBeTruthy()
+    expect(start.getAttribute('aria-invalid')).toBe('true')
+    expect(need()).toBe('시작 칸을 채우면 저장할 수 있어요')
+
+    fireEvent.change(start, { target: { value: '1440' } })
+    expect(screen.queryByText('시간을 14:30처럼 적어 주세요')).toBeNull()
+    expect(start.getAttribute('aria-invalid')).toBeNull()
+    fireEvent.blur(start)
+    expect(start.value).toBe('14:40')
+    expect(screen.getByText('1430처럼 쳐도 돼요 · 10분 단위')).toBeTruthy()
+    expect(need()).toBe('')
+    fireEvent.click(saveButton())
+    expect(onSave.mock.calls[0]![0].start).toBe(880)
+  })
+
+  it('AC-6002.4: 판이 열린 채 판 밖에서 draft 시각이 바뀌면 시작 글도 그 시각 HH:MM이 되고 오류가 지워진다', () => {
+    function Outside() {
+      const [draft, setDraft] = useState(READY)
+      return (
+        <>
+          <button type="button" onClick={() => setDraft((d) => ({ ...d, start: 660 }))}>
+            빈 칸 11:00
+          </button>
+          <AddPanel mode="new" draft={draft} onDraft={setDraft} settings={SETTINGS} appts={[]} allday={[]} bit={false} onSave={vi.fn()} onClose={vi.fn()} />
+        </>
+      )
+    }
+    render(<Outside />)
+    fireEvent.change(startInput(), { target: { value: 'abc' } })
+    fireEvent.blur(startInput())
+    expect(screen.getByText('시간을 14:30처럼 적어 주세요')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '빈 칸 11:00' }))
+    expect(startInput().value).toBe('11:00')
+    expect(screen.queryByText('시간을 14:30처럼 적어 주세요')).toBeNull()
+    expect(startInput().getAttribute('aria-invalid')).toBeNull()
+    expect(need()).toBe('')
+
+    fireEvent.change(startInput(), { target: { value: '1430' } }) // 판이 친 글을 따라간 것은 바깥 바뀜이 아니다
+    expect(startInput().value).toBe('1430')
+    fireEvent.click(screen.getByRole('button', { name: '빈 칸 11:00' }))
+    expect(startInput().value).toBe('11:00')
   })
 })
