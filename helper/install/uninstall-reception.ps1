@@ -41,7 +41,7 @@ try {
 
     Write-Host ''
     Write-Host '접수 현황을 지웠습니다.' -ForegroundColor Green
-    Write-Host "시작 항목과 바탕 화면 '접수 현황 주소'도 지웠습니다. 도우미와 고치던 메모·완료 표시는 그대로입니다."
+    Write-Host "시작 항목과 바탕 화면 '접수 현황 주소'도 지웠습니다."
     Write-Host '설정과 등록은 남겨 두었습니다. 다시 설치하면 그대로 씁니다.'
 }
 catch {

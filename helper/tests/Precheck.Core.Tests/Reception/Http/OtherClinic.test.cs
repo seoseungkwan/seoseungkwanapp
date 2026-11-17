@@ -702,7 +702,7 @@ public class OtherClinicTests
     {
         var entry = App("RegisterEntry.cs");
         var services = App("ReceptionServices.cs");
-        Assert.Contains("RegisterFlow.Run(ReceptionServices.CreateBit(new DpapiProtector()))", Squash(entry), StringComparison.Ordinal);
+        Assert.Contains("RegisterFlow.Run(ReceptionServices.CreateBit(new DpapiProtector()), readOnly: true)", Squash(entry), StringComparison.Ordinal);
         foreach (var word in new[] { "new BitServices(", "new RegistrationStore(", "new InstallationLocator(", "new ConfirmWindow(", "ReceptionServer", "Listen(" })
         {
             Assert.DoesNotContain(word, entry, StringComparison.Ordinal);

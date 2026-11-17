@@ -18,6 +18,7 @@ const UNINSTALL_CMD = 'helper/install/uninstall-reception.cmd'
 const UNINSTALL_PS1 = 'helper/install/uninstall-reception.ps1'
 const OWN_FILES = [INSTALL_CMD, INSTALL_PS1, UNINSTALL_CMD, UNINSTALL_PS1]
 const HELPER_INSTALL_PS1 = 'helper/install/install.ps1'
+const HELPER_UNINSTALL_PS1 = 'helper/install/uninstall.ps1'
 const RECEPTION_CSPROJ = 'helper/src/Precheck.Reception/Precheck.Reception.csproj'
 const RECEPTION_SERVICES = 'helper/src/Precheck.Reception/ReceptionServices.cs'
 const RECEPTION_START = 'helper/src/Precheck.Core/Reception/ReceptionStart.cs'
@@ -39,6 +40,9 @@ const REGISTER_FAILED = '비트에 연결하지 못했습니다. 비트가 깔�
 const INSTALLED = '접수 현황을 설치하고 켰습니다.'
 const HELPER_KEPT = '도우미는 그대로 두었습니다.'
 const KEPT_ON_REMOVE = '설정과 등록은 남겨 두었습니다. 다시 설치하면 그대로 씁니다.'
+// 접수 현황만 쓰는 병원에 맞는 글(AC-5717.2·AC-5717.3 글자 그대로): 방화벽 단추는 [액세스 허용], 지운 글에 도우미 문장 없음
+const FIREWALL_LINE = "'Windows 보안 경고' 창이 뜨면 '개인 네트워크'에 체크하고 [액세스 허용]을 누르세요."
+const REMOVED_LINE = "시작 항목과 바탕 화면 '접수 현황 주소'도 지웠습니다."
 // 등록·설정·로고·표시·목록이 있는 공유 data\ 폴더: 설치는 없을 때 만들기만 한다(AC-5707.3)
 const DATA_DIR_MAKE = 'New-Item -ItemType Directory -Force -Path $dataDir | Out-Null'
 const UNBLOCK_SOURCE = 'Get-ChildItem -LiteralPath $appSource -File | Unblock-File'
@@ -278,11 +282,12 @@ describe('REQ-1412 따로 설치 파일 (helper/install/install-reception·unins
     ])
   })
 
-  it('AC-1411.6 설치 끝 글: "Windows 보안 경고" 창에서 "개인 네트워크"에 체크하고 [허용], 바탕 화면 "접수 현황 주소"로 주소 보내기', () => {
+  it('AC-1411.6 AC-5717.2 설치 끝 글: "Windows 보안 경고" 창에서 "개인 네트워크"에 체크하고 [액세스 허용](옛 [허용] 아님), 바탕 화면 "접수 현황 주소"로 주소 보내기', () => {
     const code = psCode(read(INSTALL_PS1))
     expect(code).toContain("'Windows 보안 경고'")
     expect(code).toContain("'개인 네트워크'")
-    expect(code).toContain('[허용]')
+    expect(code).toContain('[액세스 허용]')
+    expect(code).not.toContain('[허용]')
     expect(code).toContain(`'${SHORTCUT_NAME}'`)
   })
 
@@ -362,7 +367,7 @@ describe('REQ-5707 혼자 설치·등록 (helper/install/install-reception·unin
     expect(code.indexOf(DATA_DIR_MAKE)).toBeLessThan(code.search(/\bStop-Process\b/))
   })
 
-  it('AC-5707.3 끝 글: "접수 현황을 설치하고 켰습니다." 뒤에 지금 안내(설치한 곳·저절로 켜짐·방화벽·네트워크·주소 바로 가기), "도우미는 그대로 두었습니다."는 도우미가 있을 때만', () => {
+  it('AC-5707.3 AC-5717.2 끝 글: "접수 현황을 설치하고 켰습니다." 뒤에 저절로 켜짐·방화벽([액세스 허용])·네트워크·주소 바로 가기뿐("설치한 곳" 줄 없음, 설치 폴더 이름을 보이지 않음), "도우미는 그대로 두었습니다."는 도우미가 있을 때만', () => {
     const code = psCode(read(INSTALL_PS1))
     expect(assignment(code, 'done')).toBe(`$done = '${INSTALLED}'`)
     const lines = codeLines(code)
@@ -372,28 +377,54 @@ describe('REQ-5707 혼자 설치·등록 (helper/install/install-reception·unin
     expect(at, '끝 글 줄이 없다').toBeGreaterThan(lines.indexOf(FINAL_START))
     expect(lines.indexOf(`$done = '${INSTALLED}'`)).toBeLessThan(at)
     expect(lines.slice(at + 1, at + 6)).toEqual([
-      'Write-Host "설치한 곳: $installDir"',
       "Write-Host '앞으로 이 PC에 로그인하면 저절로 켜집니다.'",
-      `Write-Host "'Windows 보안 경고' 창이 뜨면 '개인 네트워크'에 체크하고 [허용]을 누르세요."`,
+      `Write-Host "${FIREWALL_LINE}"`,
       `Write-Host "네트워크가 '공용'으로 되어 있으면 윈도우 설정에서 '개인'으로 바꾸세요."`,
       `Write-Host "직원 휴대폰에 주소를 보내려면 바탕 화면의 '${SHORTCUT_NAME}'를 누르세요."`,
+      '}',
     ])
+    // 설치 폴더 이름은 어느 글에도 보이지 않는다
+    expect(code).not.toContain('설치한 곳')
+    expect(lines.filter((l) => /\bWrite-Host\b/.test(l) && /\$installDir|PrecheckReception|LOCALAPPDATA/.test(l))).toEqual([])
   })
 
-  it('AC-5707.4 uninstall-reception.ps1은 지금처럼 프로그램 폴더·시작 항목·바로 가기만 지우고 data\\는 둔다. 끝 글에 "설정과 등록은 남겨 두었습니다. 다시 설치하면 그대로 씁니다."가 더해진다', () => {
+  it('AC-5707.4 AC-5717.3 uninstall-reception.ps1은 지금처럼 프로그램 폴더·시작 항목·바로 가기만 지우고 data\\는 둔다. 끝 글은 "시작 항목과 바탕 화면 \'접수 현황 주소\'도 지웠습니다."(도우미 문장 없음) 다음 "설정과 등록은 남겨 두었습니다. 다시 설치하면 그대로 씁니다."', () => {
     const code = psCode(read(UNINSTALL_PS1))
     const lines = codeLines(code)
     const at = lines.indexOf("Write-Host '접수 현황을 지웠습니다.' -ForegroundColor Green")
     expect(at, '지운 끝 글 줄이 없다').toBeGreaterThan(0)
-    expect(lines.slice(at + 1, at + 3)).toEqual([
-      `Write-Host "시작 항목과 바탕 화면 '${SHORTCUT_NAME}'도 지웠습니다. 도우미와 고치던 메모·완료 표시는 그대로입니다."`,
-      `Write-Host '${KEPT_ON_REMOVE}'`,
-    ])
+    expect(REMOVED_LINE).toContain(`'${SHORTCUT_NAME}'`)
+    expect(lines.slice(at + 1, at + 4)).toEqual([`Write-Host "${REMOVED_LINE}"`, `Write-Host '${KEPT_ON_REMOVE}'`, '}'])
+    // 도우미를 깔지 않은 병원이 헷갈리지 않게 지운 글에 도우미·고치던 메모 이야기가 없다
+    expect(lines.filter((l) => /\bWrite-Host\b/.test(l) && /도우미|고치던 메모|완료 표시/.test(l))).toEqual([])
     expect(code).not.toMatch(/\$dataDir|\$helperDir|PrecheckHelper|registration|reception-settings/)
     expect(lines.filter((l) => /\bRemove-Item\b/.test(l))).toEqual([
       'if (Test-Path -LiteralPath $shortcutPath) { Remove-Item -LiteralPath $shortcutPath -Force }',
       'if (Test-Path -LiteralPath $installDir) { Remove-Item -LiteralPath $installDir -Recurse -Force }',
     ])
+  })
+
+  it('AC-5717.2 AC-5717.3 도우미와 함께 까는 install.ps1·uninstall.ps1의 끝 글은 그대로다(설치한 곳·[허용]·도우미 문장, 이 TASK는 접수 현황 따로 설치 글만 바꾼다)', () => {
+    const install = codeLines(psCode(read(HELPER_INSTALL_PS1)))
+    const done = install.indexOf("Write-Host '도우미를 설치했습니다.' -ForegroundColor Green")
+    expect(done, '도우미 설치 끝 글 줄이 없다').toBeGreaterThan(0)
+    expect(install.slice(done + 1, done + 8)).toEqual([
+      'Write-Host "설치한 곳: $installDir"',
+      "Write-Host '크롬을 다시 켤 필요는 없습니다. 열어 둔 청구 화면이 있으면 새로고침(F5)하세요.'",
+      "Write-Host ''",
+      "Write-Host '접수 현황도 켰습니다. 앞으로 이 PC에 로그인하면 저절로 켜집니다.' -ForegroundColor Green",
+      `Write-Host "'Windows 보안 경고' 창이 뜨면 '개인 네트워크'에 체크하고 [허용]을 누르세요."`,
+      `Write-Host "직원 휴대폰에 주소를 보내려면 바탕 화면의 '${SHORTCUT_NAME}'를 누르세요."`,
+      '}',
+    ])
+    expect(install.join('\n')).not.toContain('[액세스 허용]')
+
+    const uninstall = codeLines(psCode(read(HELPER_UNINSTALL_PS1)))
+    const removed = uninstall.indexOf("Write-Host '도우미 프로그램과 크롬 등록을 지웠습니다.'")
+    expect(removed, '도우미 지운 끝 글 줄이 없다').toBeGreaterThan(0)
+    expect(uninstall[removed + 1]).toBe(`Write-Host "접수 현황 시작 항목과 바탕 화면 '${SHORTCUT_NAME}'도 지웠습니다."`)
+    expect(uninstall).not.toContain(`Write-Host "${REMOVED_LINE}"`)
+    expect(uninstall).not.toContain(`Write-Host '${KEPT_ON_REMOVE}'`)
   })
 
   it('AC-5707.5 등록 전에 zip의 app\\ 파일 막힘(인터넷에서 받은 파일 표시)을 먼저 푼다: app\\ exe 확인 뒤, --register·끄기 전', () => {
@@ -425,7 +456,7 @@ describe('REQ-5707 잇기 — 설치 파일에서 등록 창·설정까지 (spec
     expect(codeLines(psCode(read(INSTALL_PS1)))).toContain(registerLine())
     expect(csCode(read(RECEPTION_PROGRAM))).toContain('RegisterEntry.Run')
     const entry = csCode(read(REGISTER_ENTRY)).replace(/\s+/g, ' ')
-    expect(entry).toContain('RegisterFlow.Run(ReceptionServices.CreateBit(new DpapiProtector()))')
+    expect(entry).toContain('RegisterFlow.Run(ReceptionServices.CreateBit(new DpapiProtector()), readOnly: true)')
     expect(entry).not.toContain('new BitServices(')
     const services = csCode(read(RECEPTION_SERVICES))
     expect(services).toMatch(/const string ConfirmTitle = "접수 현황";/)

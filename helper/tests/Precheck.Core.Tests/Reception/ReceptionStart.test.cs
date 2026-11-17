@@ -697,7 +697,7 @@ public class ReceptionStartTests
         var entry = Statements(App("RegisterEntry.cs"));
         var services = Statements(App("ReceptionServices.cs"));
         // 부품 만들기는 ReceptionServices.CreateBit 한 곳이고 RegisterEntry는 그것을 부른다
-        Assert.Contains("RegisterFlow.Run(ReceptionServices.CreateBit(new DpapiProtector()))", Regex.Replace(entry, @"\s+", " "), StringComparison.Ordinal);
+        Assert.Contains("RegisterFlow.Run(ReceptionServices.CreateBit(new DpapiProtector()), readOnly: true)", Regex.Replace(entry, @"\s+", " "), StringComparison.Ordinal);
         foreach (var part in new[]
         {
             "new InstallationLocator(AppDomain.CurrentDomain.BaseDirectory, () => RegisteredInstall(store))",
@@ -716,5 +716,21 @@ public class ReceptionStartTests
         {
             Assert.DoesNotContain(word, entry, StringComparison.Ordinal);
         }
+    }
+
+    [Fact(DisplayName = "AC-5717.1 접수 현황 --register(RegisterEntry)만 RegisterFlow.Run에 readOnly: true를 넘겨 확인 창 끝 줄이 \"…읽기를 멈춥니다.\"이고, 도우미 bit.register(BitCommands)는 넘기지 않아 \"…읽기와 입력을 멈춥니다.\" 그대로다")]
+    public void RegisterEntryReadOnlyText()
+    {
+        var entry = Regex.Replace(Statements(App("RegisterEntry.cs")), @"\s+", " ");
+        Assert.Contains("RegisterFlow.Run(ReceptionServices.CreateBit(new DpapiProtector()), readOnly: true)", entry, StringComparison.Ordinal);
+        Assert.Equal(1, Count(entry, "readOnly: true"));
+
+        var commands = Regex.Replace(Statements(Read("helper", "src", "Precheck.Core", "Bit", "BitCommands.cs")), @"\s+", " ");
+        Assert.Contains("RegisterFlow.Run(services)", commands, StringComparison.Ordinal);
+        Assert.DoesNotContain("readOnly", commands, StringComparison.Ordinal);
+
+        // 읽기만 쓰는 글을 고르는 곳은 RegisterFlow → RegisterPrompt 한 길이다
+        var flow = Regex.Replace(Statements(Read("helper", "src", "Precheck.Core", "Registration", "RegisterFlow.cs")), @"\s+", " ");
+        Assert.Contains("RegisterPrompt.Build(candidate, previous, readOnly)", flow, StringComparison.Ordinal);
     }
 }

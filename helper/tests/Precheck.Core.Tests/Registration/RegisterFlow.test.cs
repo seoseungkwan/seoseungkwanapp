@@ -187,6 +187,42 @@ public class RegisterFlowTests
         }
     }
 
+    [Fact(DisplayName = "AC-5717.1 RegisterFlow.Run(readOnly: true)(접수 현황 --register)는 확인 창 끝 줄이 \"…바뀌면 읽기를 멈춥니다.\"이고 [확인]이면 같은 값을 저장한다. 도우미 bit.register는 \"…읽기와 입력을 멈춥니다.\" 그대로")]
+    public void ReceptionRegisterShowsReadOnlyText()
+    {
+        using (var rig = new Rig())
+        {
+            Assert.True(RegisterFlow.Run(rig.Services, readOnly: true));
+            var saved = rig.Store.Load()!;
+            Assert.Equal(Synthetic.Institution, saved.InstitutionCode);
+            Assert.Equal(rig.IssuedIds.Single(), saved.ProfileId);
+            var shown = Assert.Single(rig.Confirm.Shown);
+            Assert.Equal(RegisterPrompt.Build(saved, readOnly: true), shown.Text);
+            Assert.EndsWith("등록한 뒤 비트의 병원·설치 위치·서버·DB가 바뀌면 읽기를 멈춥니다.", shown.Text);
+            Assert.Equal(TimeSpan.FromMinutes(5), shown.Timeout);
+        }
+        using (var rig = new Rig())
+        {
+            rig.Confirm.Answer = false;
+            Assert.False(RegisterFlow.Run(rig.Services, readOnly: true));
+            Assert.Null(rig.Store.Load());
+        }
+        using (var rig = new Rig())
+        {
+            Assert.True(Registered(Handle(rig)));
+            var text = Assert.Single(rig.Confirm.Shown).Text;
+            Assert.EndsWith("등록한 뒤 비트의 병원·설치 위치·서버·DB가 바뀌면 읽기와 입력을 멈춥니다.", text);
+            Assert.Equal(RegisterPrompt.Build(rig.Store.Load()!), text);
+        }
+        // 다시 등록 글은 접수 현황에서도 같다
+        using (var rig = new Rig().Registered(Synthetic.Registration(server: "192.168.0.10")))
+        {
+            var previous = rig.Store.Load()!;
+            Assert.True(RegisterFlow.Run(rig.Services, readOnly: true));
+            Assert.Equal(RegisterPrompt.Build(rig.Store.Load()!, previous), Assert.Single(rig.Confirm.Shown).Text);
+        }
+    }
+
     [Fact(DisplayName = "AC-005.5 웹이 글을 보내도 받지 않는다: bit.register에 칸이 있으면 E-HELPER-BAD-MESSAGE, 창을 띄우지 않음")]
     public void WebTextIsNeverShown()
     {

@@ -69,6 +69,12 @@ describe('REQ-005 비트 연결·기관기호 (C# Precheck.Core.Tests.Bit · Reg
   })
 })
 
+describe('REQ-5717 접수 현황만 쓰는 병원에 맞는 글 (C# Precheck.Core.Tests.Registration, spec reception-other-clinic)', () => {
+  it('AC-5717.1 접수 현황 프로그램(readOnly: true)의 처음 등록 확인 창 끝 줄은 "…바뀌면 읽기를 멈춥니다.", 도우미 글("…읽기와 입력을 멈춥니다.")과 다시 등록 글은 그대로', () => {
+    expectAc('AC-5717.1')
+  })
+})
+
 /** 주석(//·///·블록 주석)을 뺀 C# 글자. ReadOnlyConnection.cs의 문자열 안에는 //가 없다 */
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')

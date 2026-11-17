@@ -74,6 +74,41 @@ public class RegisterPromptTests
         Assert.DoesNotContain(lines, line => line.Contains(" · "));
     }
 
+    // ---- AC-5717.1 접수 현황 프로그램의 처음 등록 글(spec reception-other-clinic REQ-5717) -------------------
+
+    private const string HelperLastLine = "[확인]을 누르면 이 PC에 등록합니다. 등록한 뒤 비트의 병원·설치 위치·서버·DB가 바뀌면 읽기와 입력을 멈춥니다.";
+    private const string ReceptionLastLine = "[확인]을 누르면 이 PC에 등록합니다. 등록한 뒤 비트의 병원·설치 위치·서버·DB가 바뀌면 읽기를 멈춥니다.";
+
+    [Fact(DisplayName = "AC-5717.1 접수 현황 프로그램(readOnly: true)의 처음 등록 글 끝 줄은 \"…바뀌면 읽기를 멈춥니다.\"이고, 그 앞 줄(묻는 글·기관기호·범위·설치·DB)은 도우미 글과 같다")]
+    public void ReceptionFirstRegistrationLastLine()
+    {
+        var reception = Lines(RegisterPrompt.Build(Synthetic.Registration(), readOnly: true));
+        var helper = Lines(RegisterPrompt.Build(Synthetic.Registration()));
+
+        Assert.Equal(ReceptionLastLine, reception[reception.Length - 1]);
+        Assert.Equal(helper.Length, reception.Length);
+        Assert.Equal(helper.Take(helper.Length - 1).ToArray(), reception.Take(reception.Length - 1).ToArray());
+        Assert.DoesNotContain(reception, line => line.Contains("입력"));
+    }
+
+    [Fact(DisplayName = "AC-5717.1 도우미가 띄우는 처음 등록 글(readOnly 없음·false) 끝 줄은 \"…읽기와 입력을 멈춥니다.\" 그대로이고, 다시 등록 글은 readOnly와 상관없이 같다")]
+    public void HelperTextUnchanged()
+    {
+        var helper = RegisterPrompt.Build(Synthetic.Registration());
+        var lines = Lines(helper);
+        Assert.Equal(HelperLastLine, lines[lines.Length - 1]);
+        Assert.Equal("", lines[lines.Length - 2]);
+        Assert.Equal(helper, RegisterPrompt.Build(Synthetic.Registration(), null, readOnly: false));
+
+        foreach (var previous in new[] { Synthetic.Registration(institution: Synthetic.OtherInstitution), Synthetic.Registration(server: "192.168.0.10") })
+        {
+            var again = RegisterPrompt.Build(Synthetic.Registration(), previous);
+            Assert.Equal(again, RegisterPrompt.Build(Synthetic.Registration(), previous, readOnly: true));
+            Assert.EndsWith("[확인]을 누르면 지금 등록을 바꿔 씁니다.", again);
+            Assert.DoesNotContain("멈춥니다", again);
+        }
+    }
+
     [Fact(DisplayName = "AC-005.9 다시 등록 글: 전 값·새 값 모두 이름 줄 없이 기관기호(가림)·범위·설치·DB, 범위 값은 범위 줄에만")]
     public void ReRegistrationHasNoNameLine()
     {

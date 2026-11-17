@@ -7,12 +7,14 @@ namespace Precheck.Core.Registration;
 /// 처음 등록·다시 등록 PC 확인 창의 글(AC-005.5, design.md 9-1). 도우미가 비트에서 읽은 등록 값으로만 만든다
 /// (bit.register는 웹에서 받는 칸이 없다). 기관기호는 뒤 4자리를 가린다. 병원 이름 줄은 없다(AC-005.9):
 /// 첫 값 줄은 가린 기관기호, 그 뒤 범위·설치 위치·DB. 범위 값을 이름 자리에 넣지 않는다.
+/// readOnly는 읽기만 하는 접수 현황 프로그램(--register)이면 참이다: 처음 등록 끝 줄이 "…읽기를 멈춥니다."다(AC-5717.1).
+/// 도우미(읽기·입력)는 넘기지 않아 "…읽기와 입력을 멈춥니다." 그대로이고, 다시 등록 글은 둘이 같다.
 /// </summary>
 public static class RegisterPrompt
 {
     private const string NewLine = "\r\n";
 
-    public static string Build(HospitalRegistration registration, HospitalRegistration? previous = null)
+    public static string Build(HospitalRegistration registration, HospitalRegistration? previous = null, bool readOnly = false)
     {
         if (registration == null) throw new ArgumentNullException(nameof(registration));
         var text = new StringBuilder();
@@ -21,7 +23,8 @@ public static class RegisterPrompt
             text.Append("이 병원으로 등록할까요?").Append(NewLine).Append(NewLine);
             AppendHospital(text, registration, "");
             text.Append(NewLine)
-                .Append("[확인]을 누르면 이 PC에 등록합니다. 등록한 뒤 비트의 병원·설치 위치·서버·DB가 바뀌면 읽기와 입력을 멈춥니다.");
+                .Append("[확인]을 누르면 이 PC에 등록합니다. 등록한 뒤 비트의 병원·설치 위치·서버·DB가 바뀌면 ")
+                .Append(readOnly ? "읽기를 멈춥니다." : "읽기와 입력을 멈춥니다.");
             return text.ToString();
         }
 
