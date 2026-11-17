@@ -62,7 +62,8 @@ describe('AC-4905.1 장부 표(시안 ?s=open)', () => {
     renderRows()
     expect(screen.getByRole('heading', { name: '환자 장부' })).toBeTruthy()
     expect(screen.getByText('칸을 누르면 고칠 수 있어요')).toBeTruthy()
-    const heads = screen.getAllByRole('columnheader').map((th) => th.textContent)
+    // 세우기 화살표(▲·▼·↕·▾, spec sunap-sort AC-5302.1)는 빼고 본다
+    const heads = screen.getAllByRole('columnheader').map((th) => th.textContent?.replace(/[▲▼↕▾]/g, ''))
     expect(heads).toEqual(['NO', '접수', '차트', '이름', '구분', '현금', '카드', '계좌', '미수', 'Block', '물리치료', '다음 예약', '비고'])
     expect(screen.queryByText('원장님')).toBeNull()
   })
@@ -317,5 +318,252 @@ describe('AC-4905.1 미수 입금(예전 미수를 그날 낸 분)', () => {
   it('AC-4905.1: 없으면 한 줄로 알린다', () => {
     render(<PaidRows paid={[]} />)
     expect(screen.getByText('미수 입금이 없어요')).toBeTruthy()
+  })
+})
+
+// ── 줄 세우기(spec sunap-sort REQ-5302, 시안 docs/mockups/sunap-sort). NO는 접수 번호라 세운 차례를 NO로 본다 ─────────
+const shownNos = () => bodyRows().map((tr) => Number(within(tr).getAllByRole('cell')[0]!.textContent))
+const RECEIPT = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+const head = (name: string) => screen.getByRole('columnheader', { name })
+const headButton = (name: string) => within(head(name)).getByRole('button')
+const SORTABLE = ['이름', '구분', '현금', '카드', '계좌', '미수', 'Block', '물리치료']
+const rsvHead = () => screen.getByRole('columnheader', { name: /^다음 예약/ })
+const rsvButton = () => within(rsvHead()).getByRole('button')
+/** 표 위 한 줄(굵은 부분 포함 전체 글) */
+const noteIs = (text: string) => screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === text)
+const SORT_HINT = '제목(이름·구분·금액·Block·물리치료·다음 예약)을 누르면 줄을 세워요'
+
+// 시험 줄 10줄의 차례(ledgerSort 규칙 그대로): [제목, 오름차순 NO, 내림차순 NO, 숫자 칸(화살표가 글자 왼쪽)]
+const COLUMN_ORDERS: [string, number[], number[], boolean][] = [
+  ['이름', [6, 1, 3, 8, 7, 2, 10, 5, 4, 9], [9, 4, 5, 10, 2, 7, 8, 3, 1, 6], false],
+  ['구분', [3, 10, 5, 1, 2, 4, 6, 7, 8, 9], [1, 2, 4, 6, 7, 8, 9, 5, 3, 10], false],
+  ['현금', [1, 3, 4, 5, 6, 7, 8, 10, 2, 9], [9, 2, 1, 3, 4, 5, 6, 7, 8, 10], true],
+  ['카드', [2, 6, 10, 4, 9, 1, 5, 3, 7, 8], [8, 7, 3, 5, 1, 9, 4, 2, 6, 10], true],
+  ['계좌', RECEIPT, RECEIPT, true],
+  ['미수', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], [10, 1, 2, 3, 4, 5, 6, 7, 8, 9], true],
+  ['Block', [2, 4, 6, 9, 10, 1, 3, 5, 7, 8], [1, 3, 5, 7, 8, 2, 4, 6, 9, 10], false],
+  ['물리치료', [5, 7, 8, 1, 2, 3, 4, 6, 9, 10], [1, 2, 3, 4, 6, 9, 10, 5, 7, 8], false],
+]
+const RSV_ORDERS = {
+  kindAsc: [1, 5, 8, 4, 3, 9, 10, 7, 2, 6],
+  kindDesc: [7, 9, 3, 10, 8, 5, 1, 4, 2, 6],
+  dateAsc: [3, 1, 5, 7, 9, 8, 4, 10, 2, 6],
+  dateDesc: [8, 9, 7, 5, 1, 3, 4, 10, 2, 6],
+}
+
+describe('AC-5302.1 제목을 눌러 세우기', () => {
+  it.each(COLUMN_ORDERS)('AC-5302.1: [%s]를 누를 때마다 오름차순(▲) → 내림차순(▼) → 접수 순(↕)', async (label, asc, desc, num) => {
+    const { user } = renderRows()
+    const text = (arrow: string) => (num ? `${arrow}${label}` : `${label}${arrow}`)
+    expect(head(label).getAttribute('aria-sort')).toBe('none')
+    expect(head(label).textContent).toBe(text('↕'))
+    await user.click(headButton(label))
+    expect(head(label).getAttribute('aria-sort')).toBe('ascending')
+    expect(head(label).textContent).toBe(text('▲'))
+    expect(shownNos()).toEqual(asc)
+    await user.click(headButton(label))
+    expect(head(label).getAttribute('aria-sort')).toBe('descending')
+    expect(head(label).textContent).toBe(text('▼'))
+    expect(shownNos()).toEqual(desc)
+    await user.click(headButton(label))
+    expect(head(label).getAttribute('aria-sort')).toBe('none')
+    expect(head(label).textContent).toBe(text('↕'))
+    expect(shownNos()).toEqual(RECEIPT)
+  })
+
+  it('AC-5302.1: 다른 제목을 누르면 그 칸 오름차순부터이고, 세운 칸 밖의 제목은 aria-sort none(세우지 않는 칸에는 aria-sort가 없다)', async () => {
+    const { user } = renderRows()
+    await user.click(headButton('이름'))
+    await user.click(headButton('이름'))
+    expect(head('이름').getAttribute('aria-sort')).toBe('descending')
+    await user.click(headButton('카드'))
+    expect(head('카드').getAttribute('aria-sort')).toBe('ascending')
+    expect(shownNos()).toEqual(COLUMN_ORDERS[3]![1])
+    for (const label of SORTABLE.filter((l) => l !== '카드')) expect(head(label).getAttribute('aria-sort'), label).toBe('none')
+    expect(rsvHead().getAttribute('aria-sort')).toBe('none')
+    for (const label of ['NO', '접수', '차트', '비고']) expect(head(label).getAttribute('aria-sort'), label).toBeNull()
+  })
+})
+
+describe('AC-5302.2 다음 예약 세우는 기준 목록', () => {
+  const MENU_ITEMS: [string, string][] = [
+    ['종류 순 ▲', '주사치료 → 진료(경과) → 기타'],
+    ['종류 순 ▼', '거꾸로'],
+    ['날짜 순 ▲', '가까운 예약부터'],
+    ['날짜 순 ▼', '먼 예약부터'],
+    ['접수 순', '처음 순서로'],
+  ]
+  const item = (label: string) => within(screen.getByRole('menu')).getByRole('menuitemradio', { name: new RegExp(`^${label}`) })
+
+  it('AC-5302.2: [다음 예약]을 누르면 목록(role="menu")이 펼쳐지고 항목은 차례대로 다섯, 지금 기준(접수 순)이 골라져 초점을 받는다', async () => {
+    const { user } = renderRows()
+    expect(rsvButton().getAttribute('aria-haspopup')).toBe('menu')
+    expect(rsvButton().getAttribute('aria-expanded')).toBe('false')
+    expect(rsvHead().textContent).toBe('다음 예약↕▾')
+    await user.click(rsvButton())
+    expect(rsvButton().getAttribute('aria-expanded')).toBe('true')
+    const menu = screen.getByRole('menu')
+    const items = within(menu).getAllByRole('menuitemradio')
+    expect(items).toHaveLength(5)
+    items.forEach((el, index) => {
+      const [label, sub] = MENU_ITEMS[index]!
+      expect(within(el).getByText(label)).toBeTruthy()
+      expect(within(el).getByText(sub)).toBeTruthy()
+    })
+    expect(items.map((el) => el.getAttribute('aria-checked'))).toEqual(['false', 'false', 'false', 'false', 'true'])
+    expect(document.activeElement).toBe(item('접수 순'))
+    // 표가 옆으로 밀리는 칸 안이라 목록은 화면 기준(fixed)으로 누른 제목 아래에 뜬다. 바탕 흐림이 없다
+    expect(menu.className).toMatch(/(^|\s)fixed(\s|$)/)
+    expect(menu.style.top).not.toBe('')
+    expect(screen.getByRole('table').contains(menu)).toBe(false)
+  })
+
+  it.each([
+    ['종류 순 ▲', RSV_ORDERS.kindAsc, '다음 예약 · 종류▲▾', 'ascending'],
+    ['종류 순 ▼', RSV_ORDERS.kindDesc, '다음 예약 · 종류▼▾', 'descending'],
+    ['날짜 순 ▲', RSV_ORDERS.dateAsc, '다음 예약 · 날짜▲▾', 'ascending'],
+    ['날짜 순 ▼', RSV_ORDERS.dateDesc, '다음 예약 · 날짜▼▾', 'descending'],
+  ] as const)('AC-5302.2: [%s]를 고르면 목록이 닫히고 그 기준으로 세우며 제목이 바뀐다', async (label, order, title, sort) => {
+    const { user } = renderRows()
+    await user.click(rsvButton())
+    await user.click(item(label))
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(shownNos()).toEqual([...order])
+    expect(rsvHead().textContent).toBe(title)
+    expect(rsvHead().getAttribute('aria-sort')).toBe(sort)
+    expect(rsvButton().getAttribute('aria-expanded')).toBe('false')
+    expect(document.activeElement).toBe(rsvButton())
+    // 다시 열면 고른 기준이 골라져 초점을 받는다
+    await user.click(rsvButton())
+    expect(item(label).getAttribute('aria-checked')).toBe('true')
+    expect(document.activeElement).toBe(item(label))
+  })
+
+  it('AC-5302.2: [접수 순]을 고르면 처음 순서로 돌아가고 제목은 다음 예약 ↕', async () => {
+    const { user } = renderRows()
+    await user.click(rsvButton())
+    await user.click(item('날짜 순 ▲'))
+    await user.click(rsvButton())
+    await user.click(item('접수 순'))
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(shownNos()).toEqual(RECEIPT)
+    expect(rsvHead().textContent).toBe('다음 예약↕▾')
+    expect(rsvHead().getAttribute('aria-sort')).toBe('none')
+  })
+
+  it('AC-5302.2: 다음 예약으로 세운 뒤 다른 제목을 누르면 그 칸 오름차순이고 다음 예약 제목은 처음대로', async () => {
+    const { user } = renderRows()
+    await user.click(rsvButton())
+    await user.click(item('종류 순 ▼'))
+    await user.click(headButton('이름'))
+    expect(head('이름').getAttribute('aria-sort')).toBe('ascending')
+    expect(rsvHead().getAttribute('aria-sort')).toBe('none')
+    expect(rsvHead().textContent).toBe('다음 예약↕▾')
+    expect(shownNos()).toEqual(COLUMN_ORDERS[0]![1])
+  })
+
+  it('AC-5302.2: Esc를 누르면 목록이 닫히고(차례는 그대로) 초점은 제목 단추로', async () => {
+    const { user } = renderRows()
+    await user.click(rsvButton())
+    await user.click(item('종류 순 ▲'))
+    await user.click(rsvButton())
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(document.activeElement).toBe(rsvButton())
+    expect(shownNos()).toEqual(RSV_ORDERS.kindAsc)
+  })
+
+  it('AC-5302.2: 목록 바깥을 누르면 닫히고, 제목을 다시 눌러도 닫힌다', async () => {
+    const { user } = renderRows()
+    await user.click(rsvButton())
+    await user.click(screen.getByRole('heading', { name: '환자 장부' }))
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(shownNos()).toEqual(RECEIPT)
+    await user.click(rsvButton())
+    expect(screen.getByRole('menu')).toBeTruthy()
+    await user.click(rsvButton())
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+})
+
+describe('AC-5302.3 표 위 한 줄', () => {
+  it('AC-5302.3: 세우지 않았을 때 안내, 칸으로 세우면 오름차순·내림차순 글, 다시 접수 순이면 처음 안내', async () => {
+    const { user } = renderRows()
+    expect(noteIs(SORT_HINT)).toBeTruthy()
+    await user.click(headButton('이름'))
+    expect(noteIs('이름 오름차순 · 한 번 더 누르면 내림차순')).toBeTruthy()
+    // 굵은 부분
+    expect(screen.getByText('이름 오름차순').tagName).toBe('B')
+    await user.click(headButton('이름'))
+    expect(noteIs('이름 내림차순 · 한 번 더 누르면 접수 순')).toBeTruthy()
+    expect(screen.getByText('이름 내림차순').tagName).toBe('B')
+    await user.click(headButton('이름'))
+    expect(noteIs(SORT_HINT)).toBeTruthy()
+  })
+
+  it.each(SORTABLE)('AC-5302.3: [%s]로 세우면 그 칸 이름으로 적는다', async (label) => {
+    const { user } = renderRows()
+    await user.click(headButton(label))
+    expect(noteIs(`${label} 오름차순 · 한 번 더 누르면 내림차순`)).toBeTruthy()
+    await user.click(headButton(label))
+    expect(noteIs(`${label} 내림차순 · 한 번 더 누르면 접수 순`)).toBeTruthy()
+  })
+
+  it.each([
+    ['종류 순 ▲', '다음 예약 종류 순 ▲'],
+    ['종류 순 ▼', '다음 예약 종류 순 ▼'],
+    ['날짜 순 ▲', '다음 예약 날짜 순 ▲'],
+    ['날짜 순 ▼', '다음 예약 날짜 순 ▼'],
+  ])('AC-5302.3: 다음 예약 [%s]로 세우면 기준과 늘 맨 뒤 안내', async (label, strong) => {
+    const { user } = renderRows()
+    await user.click(rsvButton())
+    await user.click(within(screen.getByRole('menu')).getByRole('menuitemradio', { name: new RegExp(`^${label}`) }))
+    expect(noteIs(`${strong} · '예약 안 하고 가심'은 늘 맨 뒤 · 제목을 눌러 다른 기준·접수 순`)).toBeTruthy()
+    expect(screen.getByText(strong).tagName).toBe('B')
+  })
+})
+
+describe('AC-5302.4 세운 표', () => {
+  it('AC-5302.4: NO는 접수 번호 그대로, 합계 줄은 그대로', async () => {
+    const { user } = renderRows()
+    const foot = () => within(within(screen.getAllByRole('rowgroup')[2]!).getByRole('row')).getAllByRole('cell').map((td) => td.textContent)
+    const before = foot()
+    await user.click(headButton('카드'))
+    await user.click(headButton('카드'))
+    expect(within(bodyRows()[0]!).getAllByRole('cell').map((td) => td.textContent).slice(0, 4)).toEqual(['8', '10:25', '10344', '서○○'])
+    expect(foot()).toEqual(before)
+  })
+
+  it('AC-5302.4: 위 칩 거르기·이름 찾기와 함께 쓰인다', async () => {
+    const { user } = renderRows()
+    await user.click(headButton('카드'))
+    await user.click(headButton('카드'))
+    await user.click(screen.getByRole('button', { name: 'Block 5' }))
+    expect(shownNos()).toEqual([8, 7, 3, 5, 1])
+    await user.click(screen.getByRole('button', { name: '전체 10' }))
+    await user.type(screen.getByRole('searchbox', { name: '이름·차트번호 찾기' }), '10')
+    // 차트번호에 10이 든 줄: 10231·10877·21004·10552·10013·10344·21006 → 카드 내림차순(0원은 접수 차례)
+    expect(shownNos()).toEqual([8, 3, 1, 4, 2, 6, 10])
+    expect(head('카드').getAttribute('aria-sort')).toBe('descending')
+  })
+
+  it('AC-5302.4: 마감한 날(고칠 수 없는 날)에도 제목·다음 예약 목록으로 세울 수 있다', async () => {
+    const { user } = renderRows(false)
+    await user.click(headButton('이름'))
+    expect(shownNos()).toEqual(COLUMN_ORDERS[0]![1])
+    await user.click(rsvButton())
+    await user.click(within(screen.getByRole('menu')).getByRole('menuitemradio', { name: /^날짜 순 ▼/ }))
+    expect(shownNos()).toEqual(RSV_ORDERS.dateDesc)
+  })
+
+  it('AC-5302.4: 세운 상태는 저장하지 않는다(다시 열면 접수 순)', async () => {
+    const { user } = renderRows()
+    await user.click(headButton('구분'))
+    expect(shownNos()).toEqual(COLUMN_ORDERS[1]![1])
+    cleanup()
+    renderRows()
+    expect(shownNos()).toEqual(RECEIPT)
+    expect(head('구분').getAttribute('aria-sort')).toBe('none')
+    expect(noteIs(SORT_HINT)).toBeTruthy()
   })
 })
