@@ -5,7 +5,7 @@
 > 같은 Phase의 TASK는 서로 같은 파일을 고치지 않아 일꾼이 나란히 한다. 앞 Phase를 합친 뒤 다음 Phase를 시작한다.
 > **Phase 1** — 일꾼 셋: TASK-1 설정 파일(C#) · TASK-4 혼자 설치(C#·설치 파일) · TASK-5 화면 머리·로고·읽고 쓰기
 > **Phase 2** — 일꾼 셋: TASK-2 칸 일반화(C#) · TASK-3 새 길 부품(C#) · TASK-6 어레인지 표·넣기 창(화면)
-> **Phase 3** — 일꾼 둘: TASK-7 설정 쪽(화면) · TASK-8 잇기·끝까지 시험(C#)
+> **Phase 3** — 일꾼 셋: TASK-7 설정 쪽(화면) · TASK-8 잇기·끝까지 시험(C#) · TASK-9 처음 값 표지(C#, 명세 고침 2026-11-17)
 > 끝: 합치기 → 전체 시험·lint → 화면 확인(가짜 판) → 전체 검토 한 번 → 접수 현황 새 설치 zip → [의원 PC] 확인
 > 화면 TASK는 가짜 판·설정·코드 목록을 `reception/tests/fixtures.ts`로 쓴다(서버 없이). C# TASK의 새 인자는 끝 선택 인자라 `Precheck.Reception/ReceptionServices.cs`는 TASK-8 전까지 그대로 컴파일된다.
 
@@ -31,10 +31,10 @@
 - Step: Phase 2 (B)
 - AC: AC-5704.1, AC-5704.2, AC-5705.1, AC-5705.2, AC-5705.3, AC-5705.4, AC-5706.1, AC-5706.2, AC-5706.3, AC-5714.2
 - REQ: REQ-5704, REQ-5705, REQ-5706, REQ-5714
-- Files: helper/src/Precheck.Core/Reception/Http/SettingsRoutes.cs, helper/src/Precheck.Core/Reception/Http/BodyLimits.cs, helper/src/Precheck.Core/Reception/Http/HttpRequestReader.cs, helper/src/Precheck.Core/Reception/Http/ClientGuard.cs, helper/src/Precheck.Core/Reception/Http/ReceptionServer.cs, helper/src/Precheck.Core/Reception/CodesReader.cs, helper/src/Precheck.Core/Reception/ReceptionSql.cs, helper/src/Precheck.Core/Bit/Sql.cs, helper/tests/Precheck.Core.Tests/Reception/Http/SettingsRoutes.test.cs, helper/tests/Precheck.Core.Tests/Reception/Http/BodyLimits.test.cs, helper/tests/Precheck.Core.Tests/Reception/CodesReader.test.cs, helper/tests/Precheck.Core.Tests/Reception/Http/HttpRequestReader.test.cs, helper/tests/Precheck.Core.Tests/Reception/Http/ClientGuard.test.cs, helper/tests/Precheck.Core.Tests/Reception/Http/ReceptionServer.test.cs, helper/tests/Precheck.Core.Tests/Reception/ReceptionSql.test.cs, helper/tests/reception-settings-routes.dotnet.test.ts, helper/tests/reception-http.dotnet.test.ts
+- Files: helper/src/Precheck.Core/Reception/Http/SettingsRoutes.cs, helper/src/Precheck.Core/Reception/Http/BodyLimits.cs, helper/src/Precheck.Core/Reception/Http/HttpRequestReader.cs, helper/src/Precheck.Core/Reception/Http/ClientGuard.cs, helper/src/Precheck.Core/Reception/Http/ReceptionServer.cs, helper/src/Precheck.Core/Reception/Http/HttpResponse.cs, helper/src/Precheck.Core/Reception/CodesReader.cs, helper/src/Precheck.Core/Reception/ReceptionSql.cs, helper/src/Precheck.Core/Bit/Sql.cs, helper/tests/Precheck.Core.Tests/Reception/Http/SettingsRoutes.test.cs, helper/tests/Precheck.Core.Tests/Reception/Http/BodyLimits.test.cs, helper/tests/Precheck.Core.Tests/Reception/CodesReader.test.cs, helper/tests/Precheck.Core.Tests/Reception/Http/HttpRequestReader.test.cs, helper/tests/Precheck.Core.Tests/Reception/Http/ClientGuard.test.cs, helper/tests/Precheck.Core.Tests/Reception/Http/ReceptionServer.test.cs, helper/tests/Precheck.Core.Tests/Reception/ReceptionSql.test.cs, helper/tests/reception-settings-routes.dotnet.test.ts, helper/tests/reception-http.dotnet.test.ts
 - Tests: helper/tests/reception-settings-routes.dotnet.test.ts, helper/tests/reception-http.dotnet.test.ts, helper/tests/reception-server.dotnet.test.ts, helper/tests/reception-sql.dotnet.test.ts, helper/tests/reception-arrange-sql.dotnet.test.ts, helper/tests/reception-check-sql.dotnet.test.ts
 - TDD: required
-- `SettingsRoutes`는 `HttpRequest → HttpResponse` 부품 다섯(GET·POST settings, GET codes, GET code/{c}, POST·GET logo)이고 라우터에 잇는 것은 TASK-8이다(TASK-2와 같은 파일을 고치지 않게). 코드 목록 읽기는 가짜 `IBitDb`로 본다. 몸 한도 표(8192 기본·settings 32768·logo 2097152)는 `BodyLimits` 한 곳이고, 8192를 박아 둔 옛 시험은 그대로 통과해야 한다. 새 C# 시험 이름 공간 `Precheck.Core.Tests.Reception.SettingsRoutes`
+- `SettingsRoutes`는 `HttpRequest → HttpResponse` 부품 다섯(GET·POST settings, GET codes, GET code/{c}, POST·GET logo)이고 라우터에 잇는 것은 TASK-8이다(TASK-2와 같은 파일을 고치지 않게). 코드 목록 읽기는 가짜 `IBitDb`로 본다. 몸 한도 표(8192 기본·settings 32768·logo 2097152)는 `BodyLimits` 한 곳이고, 8192를 박아 둔 옛 시험은 그대로 통과해야 한다. 새 C# 시험 이름 공간 `Precheck.Core.Tests.Reception.SettingsRoutes`. 409 답을 위해 `HttpResponse.cs` 상태 표에 409 Conflict를 더한다(명세 고침 2026-11-17)
 
 ## TASK-4: 혼자 설치 — `--register`·설치·지우기 (C#·설치 파일)
 - Step: Phase 1 (B)
@@ -74,9 +74,18 @@
 
 ## TASK-8: 잇기 — 라우터에 새 길·옛 목록 길 닫기·서버 부품·끝까지 시험 (C#)
 - Step: Phase 3 (B)
-- AC: AC-5704.3, AC-5704.4, AC-5705.5, AC-5706.2, AC-5706.4, AC-5707.6, AC-5707.7
+- AC: AC-5704.3, AC-5704.4, AC-5705.5, AC-5706.2, AC-5706.4, AC-5707.6, AC-5707.7, AC-5707.8
 - REQ: REQ-5704, REQ-5705, REQ-5706, REQ-5707
-- Files: helper/src/Precheck.Core/Reception/Http/ReceptionRouter.cs, helper/src/Precheck.Reception/ReceptionServices.cs, helper/src/Precheck.Reception/RegisterEntry.cs, helper/tests/Precheck.Core.Tests/Reception/Http/OtherClinic.test.cs, helper/tests/Precheck.Core.Tests/Reception/Http/ListsRoute.test.cs, helper/tests/Precheck.Core.Tests/Reception/Http/ReceptionRouter.test.cs, helper/tests/Precheck.Core.Tests/Reception/StaticEmbed.test.cs, helper/tests/reception-other-clinic.dotnet.test.ts, helper/tests/reception-own-zip.test.ts
-- Tests: helper/tests/reception-other-clinic.dotnet.test.ts, helper/tests/reception-http.dotnet.test.ts, helper/tests/reception-server.dotnet.test.ts, helper/tests/reception-embed.dotnet.test.ts, helper/tests/reception-own-zip.test.ts
+- Files: helper/src/Precheck.Core/Reception/Http/ReceptionRouter.cs, helper/src/Precheck.Reception/ReceptionServices.cs, helper/src/Precheck.Reception/RegisterEntry.cs, helper/src/Precheck.Windows/ConfirmWindow.cs, helper/tests/Precheck.Core.Tests/Reception/ReceptionStart.test.cs, helper/tests/Precheck.Core.Tests/Reception/Http/OtherClinic.test.cs, helper/tests/Precheck.Core.Tests/Reception/Http/ListsRoute.test.cs, helper/tests/Precheck.Core.Tests/Reception/Http/ReceptionRouter.test.cs, helper/tests/Precheck.Core.Tests/Reception/StaticEmbed.test.cs, helper/tests/reception-other-clinic.dotnet.test.ts, helper/tests/reception-own-zip.test.ts
+- Tests: helper/tests/reception-other-clinic.dotnet.test.ts, helper/tests/reception-http.dotnet.test.ts, helper/tests/reception-server.dotnet.test.ts, helper/tests/reception-embed.dotnet.test.ts, helper/tests/reception-own-zip.test.ts, helper/tests/reception-host.dotnet.test.ts
 - TDD: required
 - 끝까지 시험(가짜 비트·임시 data 폴더): 새 병원 처음 켜기 → 판 cfg(로고 없이·SONO·C-ARM empty) → 설정 저장(SONO 코드) → 다음 판에서 그 처방이 SONO 칸에 듦 → 로고 올리기 → 판 logo.ver +1 → `GET /api/logo` 그림, 그리고 옛 표시 파일이 있는 data 폴더면 우리 의원 처음 값. `POST /api/lists` 404. `ReceptionServices`가 시작할 때 `SettingsStore.Current()`를 한 번 부르고, `RegisterEntry`와 부품 만들기를 하나로 모은다. 새 화면 파일(settings.js·icon.png)이 품기에 드는지 본다. [의원 PC] AC 넷은 합친 뒤 새 zip으로 사람이 본다(이 TASK의 시험은 그 길이 이어졌는지만). 새 C# 시험 이름 공간 `Precheck.Core.Tests.Reception.OtherClinic`
+
+## TASK-9: 처음 값 표지 — 깨진 설정을 그 병원 처음 값으로 (C#)
+- Step: Phase 3 (C)
+- AC: AC-5701.7, AC-5701.9
+- REQ: REQ-5701
+- Files: helper/src/Precheck.Core/Reception/Settings/*.cs, helper/tests/Precheck.Core.Tests/Reception/Settings/*.test.cs, helper/tests/reception-settings.dotnet.test.ts
+- Tests: helper/tests/reception-settings.dotnet.test.ts
+- TDD: required
+- TASK-1의 `SettingsStore`에 표지 파일 `reception-origin.dat`(같은 머리·IProtector·임시 파일 → 바꾸기)를 더한다. TASK-1의 옛 시험(AC-5701.1~5701.8)은 그대로 통과해야 한다(AC-5701.7 '다시 만들기' 기대만 AC-5701.9에 맞게). 사용자 결정 2026-11-17(명세 고침)

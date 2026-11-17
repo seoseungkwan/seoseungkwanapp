@@ -12,6 +12,7 @@ namespace Precheck.Core.Reception.Http;
 /// - <see cref="HostOk"/>: Host가 이 PC의 지금 사설 주소(이 PC 자신이면 127.0.0.1·localhost)인가(아니면 403, AC-1406.2).
 ///   다른 사이트가 자기 이름을 이 PC 주소로 바꿔 끼우는 공격(DNS 바꿔치기)을 막는다.
 /// - <see cref="WriteOk"/>: 쓰기 요청이 우리 화면에서 왔나(Origin·X-Reception·JSON·몸 크기, AC-1406.3).
+///   몸 크기는 길마다 <see cref="BodyLimits"/> 표를 본다. POST /api/logo는 몸이 그림이라 JSON 검사 대신 그 길이 그림 형식을 본다(틀리면 400, AC-5706.1).
 ///   다른 사이트가 이런 요청을 보내려면 사전 확인(OPTIONS)이 필요한데 서버는 405로 답한다.
 /// 모두 같음 검사만 한다(주소 글을 풀어 읽지 않는다). 그래서 0xc0.0xa8… 같은 다른 모양·두 번 온 머리는 떨어진다.
 /// </summary>
@@ -48,8 +49,8 @@ public static class ClientGuard
         if (string.IsNullOrEmpty(host)) return false;
         if (!string.Equals(r.Header("Origin"), "http://" + host, StringComparison.Ordinal)) return false;
         if (!string.Equals(r.Header("X-Reception"), "1", StringComparison.Ordinal)) return false;
-        if (!IsJson(r.Header("Content-Type"))) return false;
-        return r.Body.Length <= HttpRequestReader.MaxBody;
+        if (!string.Equals(r.Path, BodyLimits.LogoPath, StringComparison.Ordinal) && !IsJson(r.Header("Content-Type"))) return false;
+        return r.Body.Length <= BodyLimits.Of(r.Method, r.Path);
     }
 
     /// <summary>형식 본체(; 앞)가 application/json인가. charset 같은 덧붙임은 받는다(폼이 보낼 수 있는 형식이 아니다)</summary>

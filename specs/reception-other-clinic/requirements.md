@@ -25,8 +25,9 @@
 - AC-5701.4: Given picks, When 검사하면, Then 지금 고르기 목록 모양(reception-pick-lists·reception-arrange-tune 규칙)에 `extra`(더한 칸 열쇠 → 이름 0~8개, 이름 규칙은 PT와 같음)가 더해지고, extra의 열쇠는 더한 칸 열쇠와 정확히 같다
 - AC-5701.5: Given 설정 파일이 없고 그 PC `data\`에 `reception-lists.dat`·`reception-arrange.dat`·`reception-marks.dat` 가운데 하나라도 있음(지금까지 접수 현황을 쓴 PC = 우리 의원), When 처음 읽으면, Then '우리 의원 처음 값'을 만들어 바로 저장한다: 로고 `pic`(지금 `logo-wordmark.png`를 로고 파일로 옮김)·탭 켜짐·setup 셋 다 참·일곱 칸 이름 X-RAY·SONO·C-ARM·PT·도수·충격파·견인, 종류 xray·sono·carm은 rx·나머지 mn, 단계 sono·carm 3·나머지 2, 모두 보임, xray rule 참, sono codes `SONO1·SONO·EB422·EB466·HA280`, carm codes `CARM1·G0400`, picks는 그 `reception-lists.dat`를 읽은 값(없거나 깨졌으면 지금 기본 목록)에 extra `{}`
 - AC-5701.6: Given 설정 파일이 없고 위 세 파일도 없음(새 병원), When 처음 읽으면, Then '새 병원 처음 값'을 만들어 바로 저장한다: 로고 `none`·text null·탭 켜짐·setup 셋 다 거짓·일곱 칸은 AC-5701.5와 같되 sono·carm codes는 비어 있고 picks는 지금 기본 목록 + extra `{}`
-- AC-5701.7: Given 설정 저장, When 쓰면, Then `data\reception-settings.dat`(머리 `PRECHECK-STORE-1\n` + DPAPI, 날짜와 상관없음, 64KB까지)에 임시 파일 → 바꾸기로 쓰고 rev를 1 올린다. 읽을 때 깨졌으면 그 파일 이름을 바꿔 두고(지우지 않음) AC-5701.5·5701.6 규칙으로 다시 만들며 기록에 E-STORE-BROKEN 번호만 남긴다
+- AC-5701.7: Given 설정 저장, When 쓰면, Then `data\reception-settings.dat`(머리 `PRECHECK-STORE-1\n` + DPAPI, 날짜와 상관없음, 64KB까지)에 임시 파일 → 바꾸기로 쓰고 rev를 1 올린다. 읽을 때 깨졌으면 그 파일 이름을 바꿔 두고(지우지 않음) AC-5701.9 표지로 다시 만들며 기록에 E-STORE-BROKEN 번호만 남긴다
 - AC-5701.8: Given 처음 설정 안내, When 설정을 저장하면, Then setup.done은 한 번 참이 되면 다시 거짓이 되지 않는다. 받은 문서의 setup.done이 거짓이어도 저장된 것이 참이면 참으로 둔다
+- AC-5701.9: Given 처음 값(AC-5701.5·5701.6)을 만들어 저장할 때, When 쓰면, Then 같은 `data\` 폴더의 `reception-origin.dat`(머리 + DPAPI)에 어느 처음 값인지 표지(`ours`·`fresh`)를 쓴다(이미 읽을 수 있는 표지가 있으면 그대로). 설정 파일이 없거나 깨져 다시 만들 때 읽을 수 있는 표지가 있으면 그 표지의 처음 값으로 만든다(표시 파일이 있어도 `fresh`면 새 병원 처음 값). 설정 파일이 없고 표지도 없으면 AC-5701.5·5701.6 규칙으로 정한다. 설정 파일이 깨졌는데 표지가 없거나 깨졌으면 새 병원 처음 값으로 만들고 표지 `fresh`를 쓴다(다른 병원에 우리 의원 로고·코드가 나오지 않게, 사용자 결정 2026-11-17 명세 고침)
 
 ### REQ-5702: 처방 맞춤 (도우미)
 - AC-5702.1: Given 설정과 처방 코드, When 칸을 정하면, Then 처방 하나는 보이는 rx 칸 가운데 codes에 그 코드(앞뒤 공백 뺀 대문자)가 있는 칸 **모두**에 든다. xray 칸이 rx이고 rule이 참이면 `^G[1-8][0-9]{3}([0-9]{3})?$` 코드도 xray에 든다. mn 칸·숨긴 칸에는 들지 않는다
@@ -55,8 +56,8 @@
 - AC-5705.5: [의원 PC] Given 다른 병원(또는 우리 의원) 총괄 PC, When 설정 → 처방 칸 [고치기] → [넣을 처방]을 열면, Then 그 병원의 진짜 처방 코드·이름·내원 수가 진찰료 없이 보인다
 
 ### REQ-5706: 병원 로고 (도우미)
-- AC-5706.1: Given `POST /api/logo`, When 받으면, Then 쓰기 검사가 틀리면 403, 2097152바이트를 넘으면 413, Content-Type이 `image/png`·`image/jpeg`가 아니거나 그 형식의 첫 바이트(PNG 서명 · JPEG FF D8 FF)가 아니거나 그림 크기(PNG IHDR · JPEG SOF0~SOF3)가 가로 1~1200·세로 1~300이 아니면 400이다. 맞으면 `data\reception-logo.dat`(머리 + DPAPI, 형식 한 바이트 + 그림)에 쓰고, 설정 logo.mode = `pic`·logo.ver +1·setup.logo = 참·rev +1로 저장하고 204다
-- AC-5706.2: Given `GET /api/logo`, When 부르면, Then 로고 파일이 있으면 200 + 그 형식(Content-Type `image/png`·`image/jpeg`)과 그림, 없으면 404다. 보안 머리 다섯 개는 다른 답과 같다
+- AC-5706.1: Given `POST /api/logo`, When 받으면, Then 쓰기 검사(이 길만 JSON Content-Type 검사 대신 아래 그림 형식 검사를 한다, Origin·X-Reception 검사는 같다)가 틀리면 403, 2097152바이트를 넘으면 413, Content-Type이 `image/png`·`image/jpeg`가 아니거나 그 형식의 첫 바이트(PNG 서명 · JPEG FF D8 FF)가 아니거나 그림 크기(PNG IHDR · JPEG SOF0~SOF3)가 가로 1~1200·세로 1~300이 아니면 400이다. 맞으면 `data\reception-logo.dat`(머리 + DPAPI, 형식 한 바이트 + 그림)에 쓰고, 설정 logo.mode = `pic`·logo.ver +1·setup.logo = 참·rev +1로 저장하고 204다
+- AC-5706.2: Given `GET /api/logo`, When 부르면, Then 로고 파일이 있으면 200 + 그 형식(Content-Type `image/png`·`image/jpeg`)과 그림, 없으면 404, 로고 파일을 읽지 못하면 503이다. 보안 머리 다섯 개는 다른 답과 같다
 - AC-5706.3: Given 화면 파일 내주기, When `.jpg`·`.jpeg`를 보면, Then 지금처럼 내주지 않는다(로고는 /api/logo로만). CSP 글은 한 글자도 바뀌지 않는다(`img-src 'self' data:`)
 - AC-5706.4: [의원 PC] Given 폰으로 찍은 큰 간판 사진(수 MB), When 설정에서 [로고 그림]으로 고르면, Then 줄어든 그림이 모든 폰·태블릿 화면 맨 위에 보인다
 
@@ -68,6 +69,7 @@
 - AC-5707.5: Given 접수 현황 zip(`.github/workflows/helper.yml`의 precheck-reception), When 만들면, Then 구성은 지금 그대로(install-reception·uninstall-reception의 cmd·ps1 + app\ 접수 현황 exe·설정·DLL)이고 도우미 exe 없이 설치·등록이 끝난다(install-reception.ps1에 PrecheckHelper.exe가 없다고 멈추는 길이 없다). 등록 전에 zip의 app\ 파일 막힘(인터넷에서 받은 파일 표시)을 먼저 푼다
 - AC-5707.6: [의원 PC] Given 도우미·크롬 확장이 없는 비트 PC, When zip을 풀고 install-reception.cmd를 누르면, Then 비트 로그인 → 확인 → 설치가 끝나고 직원 폰에서 접수 현황이 보인다
 - AC-5707.7: [의원 PC] Given 우리 의원 총괄 PC(도우미·등록 있음, 지금 판 접수 현황), When 새 판을 깔면, Then 등록을 묻지 않고, 접수 현황·어레인지 화면이 지금과 같고(로고·칸·목록·처방 칸), 고친 목록도 그대로다
+- AC-5707.8: Given 접수 현황 프로그램(`PrecheckReception.exe`, `--register` 포함), When 비트 등록 확인 창을 띄우면, Then 창 제목은 "접수 현황"이다. 도우미(`PrecheckHelper.exe`)가 띄우는 확인·진행 창 제목은 "청구메모 도우미" 그대로다(사용자 결정 2026-11-17 명세 고침)
 
 ### REQ-5708: 판·설정 읽고 쓰기 (화면 api.js)
 - AC-5708.1: Given 판, When 읽으면, Then `cfg` 모양(AC-5703.1)이 틀리거나 없으면 shape 실패, 어레인지 줄 `cells`의 열쇠가 cfg.cols의 k 밖이면 shape 실패, picks `extra`가 틀리면 shape 실패다
@@ -90,7 +92,7 @@
 ### REQ-5711: 넣기 창 (화면)
 - AC-5711.1: Given 직접 칸(pt·ds·trac·더한 칸)의 빈 칸, When 누르면, Then 창 "{칸 이름} 직접 넣기"가 작은 글 "{이름} · 누르면 바로 들어가요"로 열리고, 단추 하나를 누르면 그것 하나로 `add`를 보내고 창이 닫힌다(지금과 같음). 목록이 빈 더한 칸은 창 없이 바로 v ""로 `add`를 보낸다
 - AC-5711.2: Given 고르기가 둘 이상인 넣기 창, When 그리면, Then 줄 이름 오른쪽에 [같이 고르기] 켜기 단추가 있고 창을 열 때마다 꺼져 있다. 켜면 작은 글 "{이름} · 여러 개 골라 [넣기]를 눌러요", 단추가 체크 상자 모양, 아래 [닫기] [넣기 · {고른 것을 ·로}](하나도 안 고르면 꺼짐)이고 [넣기]는 고른 것을 목록 차례로 "|"로 이어 보낸다. 고르기가 하나뿐이면 [같이 고르기]가 없다
-- AC-5711.3: Given 줄이 둘 이상인 창(충격파 타수·부위 수, SONO, C-ARM 시술·약재), When [같이 고르기]가 꺼져 있으면, Then 지금처럼 줄마다 하나씩 골라 [넣기]이고, 켜면 줄마다 여러 개를 고른다(AC-5703.4 규칙)
+- AC-5711.3: Given 줄이 둘 이상인 창(충격파 타수·부위 수, C-ARM 시술·약재), When [같이 고르기]가 꺼져 있으면, Then 지금처럼 줄마다 하나씩 골라 [넣기]이고, 켜면 줄마다 여러 개를 고른다(AC-5703.4 규칙). SONO 창은 지금도 여러 줄(1~6)과 같이 하는 것을 함께 고르는 창이라 [같이 고르기]가 없다(구현 중 확인, 명세 고침 2026-11-17)
 - AC-5711.4: Given 넣기 창 맨 아래, When [☰ 목록 고치기]를 누르면, Then 그 칸의 칸 고치기 창(REQ-5713)이 [고르기 목록] 탭으로 어레인지 표 위에 열리고 아래 글은 "저장하면 모든 폰·태블릿 화면이 바로 바뀌고, 고르기 창으로 돌아가요. 이미 표에 넣은 칸은 그대로예요."다. [취소]·[저장] 뒤 그 넣기 창으로 돌아가고 [저장]이면 바뀐 목록이다
 - AC-5711.5: Given 넣기 창, When 저절로 다시 그리면, Then [같이 고르기] 켜짐·고른 것이 남는다(지금 고른 값 남기기 규칙)
 
