@@ -1,6 +1,6 @@
 import type { CalAppt, CalColor, CalSettings, CalStaff } from '@/types/calendar'
 
-// 예약 색(spec clinic-calendar design.md '화면' colors.ts, 시안 colorOf·PALETTE, AC-5905.1).
+// 예약 색(spec clinic-calendar design.md '화면' colors.ts, 시안 colorOf·PALETTE, AC-5905.1 · 20색은 calendar-colors AC-6001.1).
 // 값은 globals.css :root의 --cal-* 토큰 한 곳이고(UI_GUIDE '예약 색판'), 여기에는 Tailwind 클래스 이름만 둔다.
 // Tailwind는 소스 글자에서 클래스를 찾으므로 이름을 늘 통째로 적는다(조각을 이어 붙이지 않는다)
 
@@ -17,6 +17,16 @@ export const CAL_TONES: Record<CalColor, CalTone> = {
   navy: { solid: 'bg-cal-navy', soft: 'bg-cal-navy-soft', edge: 'border-cal-navy', ring: 'ring-cal-navy/25' },
   sky: { solid: 'bg-cal-sky', soft: 'bg-cal-sky-soft', edge: 'border-cal-sky', ring: 'ring-cal-sky/25' },
   brown: { solid: 'bg-cal-brown', soft: 'bg-cal-brown-soft', edge: 'border-cal-brown', ring: 'ring-cal-brown/25' },
+  red: { solid: 'bg-cal-red', soft: 'bg-cal-red-soft', edge: 'border-cal-red', ring: 'ring-cal-red/25' },
+  yellow: { solid: 'bg-cal-yellow', soft: 'bg-cal-yellow-soft', edge: 'border-cal-yellow', ring: 'ring-cal-yellow/25' },
+  green: { solid: 'bg-cal-green', soft: 'bg-cal-green-soft', edge: 'border-cal-green', ring: 'ring-cal-green/25' },
+  mint: { solid: 'bg-cal-mint', soft: 'bg-cal-mint-soft', edge: 'border-cal-mint', ring: 'ring-cal-mint/25' },
+  magenta: { solid: 'bg-cal-magenta', soft: 'bg-cal-magenta-soft', edge: 'border-cal-magenta', ring: 'ring-cal-magenta/25' },
+  wine: { solid: 'bg-cal-wine', soft: 'bg-cal-wine-soft', edge: 'border-cal-wine', ring: 'ring-cal-wine/25' },
+  forest: { solid: 'bg-cal-forest', soft: 'bg-cal-forest-soft', edge: 'border-cal-forest', ring: 'ring-cal-forest/25' },
+  lavender: { solid: 'bg-cal-lavender', soft: 'bg-cal-lavender-soft', edge: 'border-cal-lavender', ring: 'ring-cal-lavender/25' },
+  coral: { solid: 'bg-cal-coral', soft: 'bg-cal-coral-soft', edge: 'border-cal-coral', ring: 'ring-cal-coral/25' },
+  black: { solid: 'bg-cal-black', soft: 'bg-cal-black-soft', edge: 'border-cal-black', ring: 'ring-cal-black/25' },
   gray: { solid: 'bg-cal-gray', soft: 'bg-cal-gray-soft', edge: 'border-cal-gray', ring: 'ring-cal-gray/25' },
 }
 
@@ -31,6 +41,16 @@ export const CAL_COLOR_LABEL: Record<CalColor, string> = {
   navy: '남색',
   sky: '하늘',
   brown: '갈색',
+  red: '빨강',
+  yellow: '노랑',
+  green: '초록',
+  mint: '민트',
+  magenta: '자주',
+  wine: '와인',
+  forest: '진초록',
+  lavender: '연보라',
+  coral: '산호',
+  black: '검정',
   gray: '회색',
 }
 

@@ -37,6 +37,31 @@ const kindNames = () => screen.getAllByRole('textbox', { name: '종류 이름' }
 const saveButton = () => screen.getByRole('button', { name: '저장' }) as HTMLButtonElement
 const problem = () => document.querySelector('[data-problem]')?.textContent ?? ''
 const saved = (calls: ReturnType<typeof draw>) => calls.save.mock.calls[0]![0] as CalSettings
+const paletteNames = (palette: HTMLElement) => within(palette).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent)
+
+// 20색 색판 차례(calendar-colors AC-6001.1): 옛 아홉(파랑~갈색) → 새 열 → 회색(맨 끝)
+const PALETTE_20 = [
+  '파랑',
+  '청록',
+  '보라',
+  '주황',
+  '분홍',
+  '연두',
+  '남색',
+  '하늘',
+  '갈색',
+  '빨강',
+  '노랑',
+  '초록',
+  '민트',
+  '자주',
+  '와인',
+  '진초록',
+  '연보라',
+  '산호',
+  '검정',
+  '회색',
+]
 
 describe('AC-5905.5: 설정 판 — 글', () => {
   it('AC-5905.5: 제목·세 칸 제목·설명·알아 둘 글 세 줄이 시안 그대로', () => {
@@ -92,7 +117,7 @@ describe('AC-5905.5: 종류', () => {
     expect(saved(calls).kinds[1]).toEqual({ id: 'jabo', name: '자보', len: 45, color: null })
   })
 
-  it('AC-5905.5: 색 단추를 누르면 색판 — 시행자 색 따름 또는 10색', () => {
+  it('AC-5905.5·AC-6001.3: 색 단추를 누르면 색판 — 시행자 색 따름 또는 20색', () => {
     const calls = draw()
     const injColor = within(kindRows()[2]!).getByRole('button', { name: /색/ })
     expect(injColor.textContent).toContain('분홍')
@@ -100,24 +125,22 @@ describe('AC-5905.5: 종류', () => {
     fireEvent.click(injColor)
     expect(injColor.getAttribute('aria-expanded')).toBe('true')
     const palette = within(kindRows()[2]!).getByRole('group', { name: '색 고르기' })
-    expect(within(palette).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual([
-      '시행자 색 따름',
-      '파랑',
-      '청록',
-      '보라',
-      '주황',
-      '분홍',
-      '연두',
-      '남색',
-      '하늘',
-      '갈색',
-      '회색',
-    ])
+    expect(paletteNames(palette)).toEqual(['시행자 색 따름', ...PALETTE_20])
     fireEvent.click(within(palette).getByRole('button', { name: '시행자 색 따름' }))
     fireEvent.click(within(kindRows()[0]!).getByRole('button', { name: /색/ }))
     fireEvent.click(within(within(kindRows()[0]!).getByRole('group', { name: '색 고르기' })).getByRole('button', { name: '하늘' }))
     fireEvent.click(saveButton())
     expect(saved(calls).kinds.map((k) => k.color)).toEqual(['sky', null, null])
+  })
+
+  it("AC-6001.3: 새 색(빨강)을 골라 [저장]하면 색 이름 'red'로 저장되고, 색 단추 글도 빨강이다", () => {
+    const calls = draw()
+    const dosuColor = within(kindRows()[0]!).getByRole('button', { name: /색/ })
+    fireEvent.click(dosuColor)
+    fireEvent.click(within(within(kindRows()[0]!).getByRole('group', { name: '색 고르기' })).getByRole('button', { name: '빨강' }))
+    expect(within(kindRows()[0]!).getByRole('button', { name: /색/ }).textContent).toContain('빨강')
+    fireEvent.click(saveButton())
+    expect(saved(calls).kinds.map((k) => k.color)).toEqual(['red', null, 'pink'])
   })
 
   it('AC-5905.5: 지우기는 종류가 하나 남으면 막히고, 더하기는 빈 이름 줄 → 이름을 적어야 저장된다', () => {
@@ -164,12 +187,47 @@ describe('AC-5905.5: 시행자', () => {
     ])
   })
 
-  it('AC-5905.5: 시행자 색판에는 시행자 색 따름이 없다', () => {
+  it('AC-5905.5·AC-6001.3: 시행자 색판에는 시행자 색 따름이 없고 20색만 있다', () => {
     draw()
     fireEvent.click(within(staffRows()[0]!).getByRole('button', { name: '색 고르기' }))
     const palette = within(staffRows()[0]!).getByRole('group', { name: '색 고르기' })
     expect(within(palette).queryByRole('button', { name: '시행자 색 따름' })).toBeNull()
-    expect(within(palette).getAllByRole('button')).toHaveLength(10)
+    expect(within(palette).getAllByRole('button')).toHaveLength(20)
+    expect(paletteNames(palette)).toEqual(PALETTE_20)
+  })
+
+  it("AC-6001.3: 시행자 색판에서 새 색(빨강)을 골라 [저장]하면 'red'로 저장된다", () => {
+    const calls = draw()
+    fireEvent.click(within(staffRows()[1]!).getByRole('button', { name: '색 고르기' }))
+    fireEvent.click(within(within(staffRows()[1]!).getByRole('group', { name: '색 고르기' })).getByRole('button', { name: '빨강' }))
+    fireEvent.click(saveButton())
+    expect(saved(calls).staff.map((s) => s.color)).toEqual(['blue', 'red'])
+  })
+
+  it('AC-6001.4: [+ 시행자 더하기]의 새 색은 안 쓴 색 가운데 20색 차례로 첫 색 — 파랑~갈색 아홉을 다 쓰면 빨강(회색 아님)', () => {
+    const nine = ['blue', 'teal', 'purple', 'orange', 'pink', 'lime', 'navy', 'sky', 'brown'] as const
+    const marks = ['가', '나', '다', '라', '마', '바', '사', '아', '자']
+    const staff = nine.map((color, i) => ({ id: `s${i}`, name: `시행자${i}`, mark: marks[i]!, color }))
+    const calls = draw({ ...SETTINGS, staff })
+    fireEvent.click(screen.getByRole('button', { name: '시행자 더하기' }))
+    const row = staffRows()[9]!
+    fireEvent.change(within(row).getByRole('textbox', { name: '시행자 이름' }), { target: { value: '새○○' } })
+    fireEvent.change(within(row).getByRole('textbox', { name: '표시 한 글자' }), { target: { value: '차' } })
+    fireEvent.click(saveButton())
+    expect(saved(calls).staff[9]!.color).toBe('red')
+  })
+
+  it('AC-6001.4: 회색은 맨 끝 — 회색 말고 열아홉 색을 다 쓰면 그때 새 시행자 색이 회색이다', () => {
+    const nineteen = ['blue', 'teal', 'purple', 'orange', 'pink', 'lime', 'navy', 'sky', 'brown', 'red', 'yellow', 'green', 'mint', 'magenta', 'wine', 'forest', 'lavender', 'coral', 'black'] as const
+    const marks = [...'가나다라마바사아자차카타파하ABCDE']
+    const staff = nineteen.map((color, i) => ({ id: `s${i}`, name: `시행자${i}`, mark: marks[i]!, color }))
+    const calls = draw({ ...SETTINGS, staff })
+    fireEvent.click(screen.getByRole('button', { name: '시행자 더하기' }))
+    const row = staffRows()[19]!
+    fireEvent.change(within(row).getByRole('textbox', { name: '시행자 이름' }), { target: { value: '새○○' } })
+    fireEvent.change(within(row).getByRole('textbox', { name: '표시 한 글자' }), { target: { value: 'F' } })
+    fireEvent.click(saveButton())
+    expect(saved(calls).staff[19]!.color).toBe('gray')
   })
 
   it('AC-5905.5: 한 글자 표시가 겹치거나 한 글자가 아니면 저장할 수 없다', () => {
