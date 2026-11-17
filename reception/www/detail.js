@@ -18,8 +18,9 @@
 // 쓰는 법 (app.js)
 //   renderDetail(host, row, history, options) → .page.detail-page   폰 상세(#/v/{열쇠}). host(#app) 안을 지우고 그린다
 //   detailPane(row, history, options) → 요소 배열                    태블릿 오른쪽 칸 내용. board.js fillPane(host, 이것) 뒤 fitSpecial(host)
-//   updateDetail(host, row) → true|false                             목록을 다시 읽을 때마다 부른다. 그린 상세가 row.k 환자면
-//                                                                    머리(상태·기다린 글·메모)와 종이 카드의 줄 몫(차트번호·수진자명·칸 규칙)만 바꾼다
+//   updateDetail(host, row, options) → true|false                    목록을 다시 읽을 때마다 부른다. 그린 상세가 row.k 환자면
+//                                                                    머리(상태·기다린 글·메모)와 종이 카드의 줄 몫(차트번호·수진자명·칸 규칙)만 바꾼다.
+//                                                                    options.logo가 있으면 폰 상세 머리의 작은 로고도 그 값으로 바꾼다
 //   updatePaper(host, k, paper) → true|false                         종이 다시 읽기(AC-1404.8)의 답. 그린 상세가 k 환자면 종이 카드의 paper 몫을
 //                                                                    새 paper로 바꾸고 특이사항을 펼쳐 둔 상태는 지킨다(AC-1502.4)
 //   fitSpecial(host)                                                 그린 특이사항 높이를 재어 [전부 보기]를 보이거나 숨긴다
@@ -37,7 +38,10 @@
 //     row                  지금 목록 줄(board.lists 안의 그 열쇠 줄)
 //     history              getHistory(k, 0) 답 { visits, next, more, first, total, todaySym, paper }
 //     options.today        오늘(Date). 없으면 지금 기기 날짜
+//     options.logo         판 cfg.logo, options.logoPic 받아 둔 로고 그림 { ver, src }: 폰 상세 머리의 작은 로고(board.js logoOf 규칙,
+//                          그림 · 병원 이름 글자 · 없음, reception-other-clinic AC-5709.1). 태블릿 오른쪽 칸에는 로고가 없다(목록 머리에 있다)
 
+import { logoOf } from './board.js'
 import { clear, el } from './dom.js'
 
 const FOOT = '보기만 할 수 있어요 · 비트 자료는 바뀌지 않아요'
@@ -116,17 +120,14 @@ const STATUS_CLASS = { wait: 'status-wait', hold: 'status-hold', pay: 'status-pa
  * @param {HTMLElement} host 화면 자리(#app)
  * @param {object} row 목록 줄
  * @param {object} history 상세 답 첫 쪽
- * @param {{ today?: Date }} [options]
+ * @param {{ today?: Date, logo?: object, logoPic?: object | null }} [options]
  * @returns {HTMLElement} .page.detail-page
  */
 export function renderDetail(host, row, history, options = {}) {
   clear(host)
   const page = el('div', { class: 'page detail-page' }, [
     el('header', { class: 'top is-detail' }, [
-      el('div', { class: 'top-row' }, [
-        el('a', { class: 'back', href: '#/' }, '접수 현황'),
-        el('img', { class: 'logo-mark', src: '/logo-mark.png', alt: '양지바른정형외과' }),
-      ]),
+      el('div', { class: 'top-row' }, [el('a', { class: 'back', href: '#/' }, '접수 현황'), logoOf(options.logo, options.logoPic, 'logo-mark')]),
       patientOf(row, 1),
     ]),
     el('main', { class: 'detail' }, historyOf(row, history, options, 2)),
@@ -135,6 +136,15 @@ export function renderDetail(host, row, history, options = {}) {
   host.appendChild(page)
   fitSpecial(page)
   return page
+}
+
+/** 폰 상세 머리의 작은 로고를 새 값으로 바꾼다(돌아가기 링크는 그대로) */
+function relogo(host, { logo, logoPic }) {
+  const row = host.querySelector('.page.detail-page > header.top > .top-row')
+  if (!row) return
+  for (const old of row.querySelectorAll(':scope > .logo-mark, :scope > .logo-text')) old.remove()
+  const next = logoOf(logo, logoPic, 'logo-mark')
+  if (next) row.appendChild(next)
 }
 
 /**
@@ -149,13 +159,16 @@ export function detailPane(row, history, options = {}) {
 /**
  * 그린 상세(폰 화면 또는 태블릿 오른쪽 칸)가 row.k 환자면 머리와 종이 카드의 줄 몫을 새 줄로 바꾼다(AC-1404.4·1502.3).
  * paper 몫(사람 칸 나머지·특이사항·내원내역·적힌 진료 칸)과 지난 종이 자리는 그대로다.
+ * options.logo가 있으면 폰 상세 머리의 작은 로고도 바꾼다(그림이 늦게 오거나 설정에서 바뀜, reception-other-clinic AC-5709.1)
  * @param {ParentNode} host 화면 자리(#app)
+ * @param {{ logo?: object, logoPic?: object | null }} [options]
  * @returns {boolean} 바꿨으면 true
  */
-export function updateDetail(host, row) {
+export function updateDetail(host, row, options) {
   const patient = host.querySelector('.patient')
   if (!patient || !row || patient.getAttribute('data-k') !== row.k) return false
   const level = patient.closest('.page.detail-page') ? 1 : 2
+  if (options && 'logo' in options) relogo(host, options)
   patient.replaceWith(patientOf(row, level))
   const card = host.querySelector(TODAY_CARD)
   if (card) followRow(card, row)

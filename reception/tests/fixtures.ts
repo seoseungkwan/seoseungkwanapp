@@ -32,6 +32,8 @@ export interface FakeBoard {
   at: string
   /** 화면이 저절로 다시 읽는 간격(초). 도우미 ReceptionTiming.PollSeconds (AC-1403.9) */
   every: number
+  /** 설정에서 만든 판 머리 값(로고·탭·안내·보이는 칸, reception-other-clinic AC-5703.1). 늘 있다 */
+  cfg: FakeCfg
   counts: Record<FakeList, number>
   lists: Record<FakeList, FakeRow[]>
   /** 어레인지 표 (reception-arrange design.md 7절). 옛 도우미 답에는 없다 */
@@ -53,6 +55,8 @@ export interface FakePicks {
   ds: string[]
   eswt: { hits: string[]; counts: string[] }
   trac: string[]
+  /** 보이는 더한 칸의 고르기 목록: 칸 열쇠(x1…) → 이름 0~8개 (reception-other-clinic AC-5703.6). 더한 칸이 없는 판에는 없어도 된다 */
+  extra?: Record<string, string[]>
 }
 
 /** 목록 파일이 없을 때의 기본 목록(AC-3501.1·AC-3603.1, 승인 시안 차례). 부를 때마다 새 사본이다 */
@@ -77,6 +81,207 @@ export function defaultPicks(): FakePicks {
     eswt: { hits: ['2000타', '3000타', '4000타', '6000타'], counts: ['1부위', '2부위', '3부위', '4부위'] },
     trac: ['목', '허리'],
   }
+}
+
+// ---- 다른 병원용 설정 (reception-other-clinic design.md 1절 · AC-5701.5·5701.6 · AC-5703.1) ---------------------------------
+// TASK-6(어레인지 표)·TASK-7(설정 쪽)도 쓴다. 병원 이름·로고는 가상이다
+
+/** 로고: pic 그림 · text 병원 이름 글자 · none 없이. ver는 로고 그림 판 번호(0이면 그림 파일 없음) */
+export interface FakeLogo {
+  mode: 'pic' | 'text' | 'none'
+  text: string | null
+  ver: number
+}
+
+/** 칸 종류: rx 처방 칸(처방으로 저절로 채움) · mn 직접 칸 */
+export type FakeColKind = 'rx' | 'mn'
+
+/** 판 cfg의 보이는 칸 하나: k 열쇠(처음 일곱 칸 또는 더한 칸 x1…), empty는 rx 칸인데 고른 처방이 없음(xray면 규칙도 꺼짐) */
+export interface FakeCfgCol {
+  k: string
+  name: string
+  kind: FakeColKind
+  steps: 2 | 3
+  added: boolean
+  empty: boolean
+}
+
+/** `GET /api/board` 맨 위 cfg (AC-5703.1): cols는 보이는 칸만 설정 차례대로, guide는 setup.done의 반대 */
+export interface FakeCfg {
+  logo: FakeLogo
+  tab: boolean
+  guide: boolean
+  cols: FakeCfgCol[]
+}
+
+/** 설정 문서의 칸 하나 (design.md 1절). rule은 xray 칸에만 있다 */
+export interface FakeSettingsCol {
+  k: string
+  name: string
+  kind: FakeColKind
+  steps: 2 | 3
+  show: boolean
+  added: boolean
+  rule?: boolean
+  codes: string[]
+}
+
+/** 설정 문서 = `GET /api/settings` 답 = `POST /api/settings` 몸 (design.md 1절). picks.extra는 늘 있다(더한 칸 열쇠와 정확히 같다) */
+export interface FakeSettings {
+  rev: number
+  logo: FakeLogo
+  tab: boolean
+  setup: { logo: boolean; tab: boolean; done: boolean }
+  nextX: number
+  cols: FakeSettingsCol[]
+  picks: FakePicks & { extra: Record<string, string[]> }
+}
+
+/** 지난 30일 처방 한 줄 (`GET /api/codes`): c 코드, n 이름(사전에 없으면 null), v 내원 수 */
+export interface FakeCode {
+  c: string
+  n: string | null
+  v: number
+}
+
+/** 처음 일곱 칸 [열쇠, 이름, 종류, 단계] (AC-5701.5) */
+const FIRST_COLS: Array<[string, string, FakeColKind, 2 | 3]> = [
+  ['xray', 'X-RAY', 'rx', 2],
+  ['sono', 'SONO', 'rx', 3],
+  ['carm', 'C-ARM', 'rx', 3],
+  ['pt', 'PT', 'mn', 2],
+  ['ds', '도수', 'mn', 2],
+  ['eswt', '충격파', 'mn', 2],
+  ['trac', '견인', 'mn', 2],
+]
+
+/** 우리 의원 처음 값의 SONO·C-ARM 처방 (AC-5701.5) */
+const OURS_CODES: Record<string, string[]> = { sono: ['SONO1', 'SONO', 'EB422', 'EB466', 'HA280'], carm: ['CARM1', 'G0400'] }
+
+function firstCols(codes: Record<string, string[]>): FakeSettingsCol[] {
+  return FIRST_COLS.map(([k, name, kind, steps]) => ({
+    k,
+    name,
+    kind,
+    steps,
+    show: true,
+    added: false,
+    ...(k === 'xray' ? { rule: true } : {}),
+    codes: [...(codes[k] ?? [])],
+  }))
+}
+
+/** '우리 의원 처음 값' 설정 문서(AC-5701.5): 로고 그림 ver 1 · 탭 켜짐 · 안내 끝남 · SONO·C-ARM 처방 있음. 부를 때마다 새 사본이다 */
+export function oursSettings(): FakeSettings {
+  return {
+    rev: 1,
+    logo: { mode: 'pic', text: null, ver: 1 },
+    tab: true,
+    setup: { logo: true, tab: true, done: true },
+    nextX: 1,
+    cols: firstCols(OURS_CODES),
+    picks: { ...defaultPicks(), extra: {} },
+  }
+}
+
+/** '새 병원 처음 값' 설정 문서(AC-5701.6): 로고 없이 · 탭 켜짐 · 안내 보임 · SONO·C-ARM 처방 없음. 부를 때마다 새 사본이다 */
+export function freshSettings(): FakeSettings {
+  return {
+    rev: 1,
+    logo: { mode: 'none', text: null, ver: 0 },
+    tab: true,
+    setup: { logo: false, tab: false, done: false },
+    nextX: 1,
+    cols: firstCols({}),
+    picks: { ...defaultPicks(), extra: {} },
+  }
+}
+
+/** 설정 문서로 판 cfg를 만든다(도우미 규칙 AC-5703.1과 같다: 보이는 칸만, empty는 rx인데 codes가 비고 xray면 rule도 거짓) */
+export function cfgOf(settings: FakeSettings): FakeCfg {
+  return {
+    logo: { ...settings.logo },
+    tab: settings.tab,
+    guide: !settings.setup.done,
+    cols: settings.cols
+      .filter((c) => c.show)
+      .map((c) => ({
+        k: c.k,
+        name: c.name,
+        kind: c.kind,
+        steps: c.steps,
+        added: c.added,
+        empty: c.kind === 'rx' && c.codes.length === 0 && !(c.k === 'xray' && c.rule === true),
+      })),
+  }
+}
+
+/** 우리 의원 처음 값의 판 cfg (로고 그림 ver 1) */
+export function oursCfg(): FakeCfg {
+  return cfgOf(oursSettings())
+}
+
+/** 새 병원 처음 값의 판 cfg (로고 없이 · 안내 보임 · SONO·C-ARM 빈 칸) */
+export function freshCfg(): FakeCfg {
+  return cfgOf(freshSettings())
+}
+
+/** 시험 판(boardOf·mockupBoard…)의 처음 cfg: 우리 의원 처음 값의 칸, 로고만 없이(GET /api/logo를 묻지 않는 판) */
+function boardCfg(): FakeCfg {
+  return { ...oursCfg(), logo: { mode: 'none', text: null, ver: 0 } }
+}
+
+/** 판의 cfg를 바꾼 사본 */
+export function withCfg(board: FakeBoard, cfg: FakeCfg): FakeBoard {
+  return { ...board, cfg }
+}
+
+/** 지난 30일 처방 목록(승인 시안 CODES 차례, 내원 많은 순). SONO는 사전에 이름이 없다(null). AA 진찰료는 도우미가 뺀다 */
+export function fakeCodes(): FakeCode[] {
+  return [
+    { c: 'MM015', n: '표층열치료', v: 412 },
+    { c: 'MM301', n: '간섭파전류치료', v: 398 },
+    { c: 'G7101', n: '가상 경추 촬영', v: 164 },
+    { c: 'MM110', n: '견인치료', v: 140 },
+    { c: 'G7301', n: '가상 요추 촬영', v: 131 },
+    { c: 'SONO1', n: '초음파 검사', v: 96 },
+    { c: 'MM105', n: '도수치료', v: 77 },
+    { c: 'CARM1', n: 'C-arm 시술', v: 58 },
+    { c: 'G0400', n: 'C-Arm형 영상증폭장치이용료', v: 55 },
+    { c: 'G5201', n: '가상 어깨 촬영', v: 47 },
+    { c: 'EB466', n: '초음파(견관절)', v: 31 },
+    { c: 'SONO2', n: '초음파 유도 주사', v: 21 },
+    { c: 'KK010', n: '가상 관절강내 주사', v: 18 },
+    { c: 'HA280', n: '관절조영', v: 12 },
+    { c: 'SONO', n: null, v: 9 },
+    { c: 'EB422', n: '초음파(흉부)', v: 4 },
+  ]
+}
+
+/** 가짜 로고 그림: 1×1 PNG(서명·IHDR·IDAT·IEND가 맞는 그림) */
+const FAKE_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+
+function bytesOf(base64: string): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+}
+
+function base64Of(bytes: Uint8Array): string {
+  return btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''))
+}
+
+/** 가짜 PNG 로고 바이트(부를 때마다 새 사본) */
+export function fakeLogoPng(): Uint8Array<ArrayBuffer> {
+  return bytesOf(FAKE_PNG_BASE64)
+}
+
+/** 가짜 JPEG 로고 바이트: FF D8 FF로 시작하고 FF D9로 끝나는 짧은 바이트(그림으로 풀지는 않는다) */
+export function fakeLogoJpeg(): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xff, 0xd9])
+}
+
+/** 가짜 로고의 data: URL(getLogo가 돌려주는 모양) */
+export function fakeLogoUrl(type: 'png' | 'jpeg' = 'png'): string {
+  return `data:image/${type};base64,${base64Of(type === 'png' ? fakeLogoPng() : fakeLogoJpeg())}`
 }
 
 // ---- 어레인지 표 (reception-arrange, design.md 7절 ArrangeBuilder 답 모양) ----------------------------------
@@ -298,6 +503,7 @@ export function boardOf(lanes: Partial<Record<FakeLane, FakeRow[]>> = {}, at = '
     state: 'ok',
     at,
     every: FAKE_EVERY,
+    cfg: boardCfg(),
     counts: { queue: queue.length, wait: wait.length, hold: hold.length, pay: pay.length, done: done.length },
     lists: { queue, wait, hold, pay, done },
   }
@@ -541,10 +747,11 @@ export function fakePapers(past: number, from = 0): FakePapers {
   return { papers, total: past, next: papers.length > 0 && end < past ? end : null }
 }
 
-/** 가짜 도우미의 답: 상태 번호와 JSON 몸(없으면 몸 없음) */
+/** 가짜 도우미의 답: 상태 번호와 JSON 몸(없으면 몸 없음). raw는 JSON이 아닌 몸(로고 그림)과 그 Content-Type */
 export interface FakeReply {
   status: number
   body?: unknown
+  raw?: { type: string; bytes: Uint8Array<ArrayBuffer> }
 }
 
 export interface FakeServer {
@@ -564,6 +771,8 @@ export interface FakeServer {
   pasts: Map<string, number>
   /** 받은 목록 쓰기 몸들(POST /api/lists, reception-pick-lists AC-3501.3). 맞는 모양이면 판의 picks가 그것으로 바뀐다 */
   lists: unknown[]
+  /** 병원 로고 그림(GET /api/logo, reception-other-clinic AC-5706.2). null이면 404 */
+  logo: { type: 'image/png' | 'image/jpeg'; bytes: Uint8Array<ArrayBuffer> } | null
   /** 요청 하나에 답한다. url은 같은 곳 길('/api/board?fresh=1' 모양) */
   answer: (method: string, url: string, body?: string | null) => FakeReply
 }
@@ -687,7 +896,8 @@ function rowsOfBoard(board: FakeBoard): FakeRow[] {
  * 가짜 도우미(design.md 7절의 길만): GET /api/board(?fresh=1) · GET /api/visit/{k}/history?from=N · POST /api/xray,
  * 그리고 어레인지(reception-arrange design.md 8·9절): POST /api/arrange(판의 arrange를 바꾸고 204) · GET /api/visit/{k}/prev,
  * 지난 진료기록부(reception-memo-papers design.md 4절): GET /api/visit/{k}/papers?from=N,
- * 고르기 목록(reception-pick-lists AC-3501.3): POST /api/lists(판 picks 모양이면 판의 picks를 바꾸고 204, 아니면 400).
+ * 고르기 목록(reception-pick-lists AC-3501.3): POST /api/lists(판 picks 모양이면 판의 picks를 바꾸고 204, 아니면 400),
+ * 병원 로고(reception-other-clinic AC-5706.2): GET /api/logo(server.logo가 있으면 그 형식·바이트, 없으면 404).
  * 다른 길·그날 판에 없는 열쇠·모양이 틀린 값은 404, 진료보류가 아닌 줄의 표시는 400이다
  */
 export function fakeServer(board: FakeBoard = mockupBoard(), now = '13:43'): FakeServer {
@@ -704,11 +914,15 @@ export function fakeServer(board: FakeBoard = mockupBoard(), now = '13:43'): Fak
     prevs: new Map<string, FakePrev | null>(),
     pasts: new Map<string, number>(),
     lists: [],
+    logo: null,
     answer(method, url, body) {
       const [path = '', query = ''] = url.split('?')
       const params = new URLSearchParams(query)
       if (method === 'GET' && path === '/api/board' && (query === '' || query === 'fresh=1')) {
         return { status: 200, body: withMarks(server.board, server.marks) }
+      }
+      if (method === 'GET' && url === '/api/logo') {
+        return server.logo ? { status: 200, raw: { type: server.logo.type, bytes: server.logo.bytes } } : { status: 404 }
       }
       const prev = /^\/api\/visit\/([0-9a-f]{16})\/prev$/.exec(path)
       if (method === 'GET' && prev && query === '') {

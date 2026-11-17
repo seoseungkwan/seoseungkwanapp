@@ -17,8 +17,12 @@ interface View {
   /** 고른 탭 'board'|'arrange' (reception-arrange AC-3308.1) */
   tab?: string
   onTab?: (tab: string) => void
-  /** 어레인지 머리의 [목록 고치기]를 누름 (reception-pick-lists AC-3505.1) */
+  /** 어레인지 화면(arrange.js)이 넘기는 옛 [목록 고치기] 누름. 머리에는 더 그리지 않는다 (reception-other-clinic AC-5709.2) */
   onPicks?: () => void
+  /** 두 탭 머리의 [⚙ 설정]을 누름 (reception-other-clinic AC-5709.2) */
+  onSettings?: () => void
+  /** 받아 둔 로고 그림 { ver, src: data: URL } (reception-other-clinic AC-5709.1) */
+  logoPic?: unknown
 }
 
 interface BoardJs {
@@ -140,10 +144,8 @@ describe('board.js 목록 그리기', () => {
     const top = page.querySelector('header.top')
     // 상표 줄 아래 탭 단추 [접수 현황]·[어레인지 N명] (reception-arrange AC-3308.1)
     expect(shapeOf(top)).toEqual(['div.top-row', 'nav.tabs', 'div.title-block'])
-    expect(shapeOf(top?.querySelector('.top-row'))).toEqual(['img.logo', 'div.top-status'])
-    const logo = top?.querySelector('.top-row > img.logo')
-    expect(logo?.getAttribute('src')).toBe('/logo-wordmark.png')
-    expect(logo?.getAttribute('alt')).toBe('양지바른정형외과')
+    // 시험 판의 cfg.logo는 없이(none)라 로고 자리가 없다. 로고 세 모양은 아래 REQ-5709 시험 (reception-other-clinic AC-5709.1)
+    expect(shapeOf(top?.querySelector('.top-row'))).toEqual(['div.top-status'])
     expect(textOf(page, '.top-status > span.conn')).toBe('연결됨')
     expect(shapeOf(top?.querySelector('.title-block'))).toEqual(['h1.top-title', 'p.asof'])
     expect(textOf(page, '.title-block > h1.top-title')).toBe('접수 현황')
@@ -477,7 +479,8 @@ describe('board.js 목록 그리기', () => {
     expect(button?.tagName).toBe('BUTTON')
     expect(button?.getAttribute('type')).toBe('button')
     expect(button?.parentElement?.className).toBe('top-status')
-    expect(shapeOf(button?.parentElement)).toEqual(['span.conn', 'button.refresh'])
+    // 연결됨 앞에는 [⚙ 설정] (reception-other-clinic AC-5709.2)
+    expect(shapeOf(button?.parentElement)).toEqual(['button.set-open', 'span.conn', 'button.refresh'])
     expect(labelOf(button)).toBe('새로 고침')
     expect(iconsOf(button)).toHaveLength(1)
     expect(button?.textContent).toBe('새로 고침')
@@ -563,41 +566,48 @@ describe('board.js 목록 그리기', () => {
     expect(document.title).toBe('')
   })
 
-  it('AC-3505.1: 어레인지 탭 머리(.top-status) 맨 앞에 [목록 고치기](☰ 그림은 aria-hidden 선 그림 svg.list-icon)가 있고 누르면 onPicks를 한 번 부른다. onPicks가 없으면 꺼져 있다. 접수 현황 탭 머리에는 없다', () => {
+  it('AC-5709.2: 두 탭 머리(.top-status) 모두 맨 앞(연결됨 앞)에 톱니 그림 + "설정" 단추가 있고 누르면 onSettings를 한 번 부른다. onSettings가 없으면 꺼져 있다. 옛 [목록 고치기] 단추는 없다', () => {
     expect(typeof view.topOf).toBe('function')
-    const onPicks = vi.fn()
-    const header = document.createElement('header')
-    header.className = 'top'
-    header.append(...(view.topOf?.(fx.arrangeMockupBoard(), { tab: 'arrange', onPicks }) ?? []))
-    document.body.appendChild(header)
-    const status = header.querySelector('.top-status')
-    expect(shapeOf(status)).toEqual(['button.list-open', 'span.conn', 'button.refresh'])
-    const button = status!.querySelector<HTMLButtonElement>('button.list-open')!
-    expect(button.getAttribute('type')).toBe('button')
-    expect(button.disabled).toBe(false)
-    expect(button.textContent).toBe('목록 고치기')
-    expect(labelOf(button)).toBe('목록 고치기')
-    const icon = button.firstElementChild!
-    expect([icon.namespaceURI, icon.tagName, icon.getAttribute('class'), icon.getAttribute('aria-hidden'), icon.getAttribute('focusable')]).toEqual([
-      'http://www.w3.org/2000/svg',
-      'svg',
-      'list-icon',
-      'true',
-      'false',
-    ])
-    expect([icon.getAttribute('fill'), icon.getAttribute('stroke')]).toEqual(['none', 'currentColor'])
-    expect(icon.querySelectorAll('path').length).toBeGreaterThan(0)
-    button.click()
-    expect(onPicks).toHaveBeenCalledTimes(1)
+    for (const tab of ['board', 'arrange']) {
+      const onSettings = vi.fn()
+      const onPicks = vi.fn()
+      const header = document.createElement('header')
+      header.className = 'top'
+      header.append(...(view.topOf?.(fx.arrangeMockupBoard(), { tab, onSettings, onPicks }) ?? []))
+      document.body.appendChild(header)
+      const status = header.querySelector('.top-status')
+      expect(shapeOf(status), tab).toEqual(['button.set-open', 'span.conn', 'button.refresh'])
+      const button = status!.querySelector<HTMLButtonElement>('button.set-open')!
+      expect(button.getAttribute('type')).toBe('button')
+      expect(button.disabled).toBe(false)
+      expect(button.textContent).toBe('설정')
+      expect(labelOf(button)).toBe('설정')
+      // 그림: span.set-ic 안의 aria-hidden 선 그림 톱니(시안 GEAR: 가운데 원 + 바깥 톱니 길)
+      expect(shapeOf(button)).toEqual(['span.set-ic'])
+      const icon = button.querySelector(':scope > span.set-ic > svg')!
+      expect([icon.namespaceURI, icon.getAttribute('aria-hidden'), icon.getAttribute('focusable')]).toEqual(['http://www.w3.org/2000/svg', 'true', 'false'])
+      expect([icon.getAttribute('viewBox'), icon.getAttribute('fill'), icon.getAttribute('stroke')]).toEqual(['0 0 24 24', 'none', 'currentColor'])
+      expect(icon.querySelectorAll('circle').length).toBe(1)
+      expect(icon.querySelectorAll('path').length).toBe(1)
+      expect(icon.textContent).toBe('')
+      button.click()
+      expect(onSettings, tab).toHaveBeenCalledTimes(1)
+      expect(onPicks, tab).not.toHaveBeenCalled()
+      expect(header.querySelector('.list-open, .list-icon'), tab).toBeNull()
+      expect(header.textContent, tab).not.toContain('목록 고치기')
 
-    const off = document.createElement('header')
-    off.append(...(view.topOf?.(fx.arrangeMockupBoard(), { tab: 'arrange' }) ?? []))
-    expect(off.querySelector<HTMLButtonElement>('.top-status > button.list-open')?.disabled).toBe(true)
-
+      const off = document.createElement('header')
+      off.append(...(view.topOf?.(fx.arrangeMockupBoard(), { tab }) ?? []))
+      expect(off.querySelector<HTMLButtonElement>('.top-status > button.set-open')?.disabled, tab).toBe(true)
+      header.remove()
+    }
+    // 접수 현황 목록 화면(renderBoard)도 같은 단추
+    const onSettings = vi.fn()
     const app = appHost()
-    view.renderBoard(app, fx.arrangeMockupBoard(), { onPicks })
-    expect(app.querySelector('.list-open')).toBeNull()
-    expect(shapeOf(app.querySelector('header.top .top-status'))).toEqual(['span.conn', 'button.refresh'])
+    view.renderBoard(app, fx.arrangeMockupBoard(), { onSettings })
+    expect(shapeOf(app.querySelector('header.top .top-status'))).toEqual(['button.set-open', 'span.conn', 'button.refresh'])
+    app.querySelector<HTMLButtonElement>('header.top button.set-open')!.click()
+    expect(onSettings).toHaveBeenCalledTimes(1)
   })
 
   it('AC-3403.1: 접수 현황 탭 머리에는 이 기기에 메모가 있어도 메모 칸이 없다(어레인지 탭에만 있다)', () => {
@@ -605,7 +615,7 @@ describe('board.js 목록 그리기', () => {
     const app = appHost()
     const page = view.renderBoard(app, fx.arrangeMockupBoard())
     expect(shapeOf(page.querySelector('header.top'))).toEqual(['div.top-row', 'nav.tabs', 'div.title-block'])
-    expect(shapeOf(page.querySelector('header.top > .top-row'))).toEqual(['img.logo', 'div.top-status'])
+    expect(shapeOf(page.querySelector('header.top > .top-row'))).toEqual(['div.top-status'])
     expect(document.querySelector('.memo-box')).toBeNull()
     expect(document.body.textContent).not.toContain('오후 3시 원장님 외출')
   })
@@ -701,5 +711,120 @@ describe('REQ-1503 메모 크게 · 신환 눈에 띄게 (board.js 목록 줄, �
       ['가상환자06', '62세 · 여 · 재진', null],
       ['가상환자07', '29세 · 남', '신환'],
     ])
+  })
+})
+
+// ---- 다른 병원용 머리: 로고 세 모양 · 어레인지 탭 끄기 (reception-other-clinic REQ-5709) ----------------------------------
+
+/** 판의 cfg.logo만 바꾼 사본 */
+function withLogo(board: FakeBoard, logo: fx.FakeLogo): FakeBoard {
+  return fx.withCfg(board, { ...board.cfg, logo })
+}
+
+const PIC_LOGO: fx.FakeLogo = { mode: 'pic', text: null, ver: 3 }
+
+/** 머리를 그린다(header.top 안) */
+function headerOf(board: FakeBoard, viewOptions: View & { logoPic?: unknown }): HTMLElement {
+  const header = document.createElement('header')
+  header.className = 'top'
+  header.append(...(view.topOf?.(board, viewOptions) ?? []))
+  document.body.appendChild(header)
+  return header
+}
+
+describe('REQ-5709 머리 로고·[⚙ 설정]·탭 끄기 (board.js, reception-other-clinic)', () => {
+  it('AC-5709.1: cfg.logo가 pic이고 그 판 번호(ver)의 그림(view.logoPic { ver, src: data: URL})이 있으면 상표 줄 맨 앞에 img.logo(그 data: URL)다. 두 탭 모두 같다', () => {
+    const src = fx.fakeLogoUrl()
+    const board = withLogo(fx.arrangeMockupBoard(), PIC_LOGO)
+    const onBoard = headerOf(board, { tab: 'board', logoPic: { ver: 3, src } })
+    expect(shapeOf(onBoard.querySelector('.top-row'))).toEqual(['img.logo', 'div.top-status'])
+    const img = onBoard.querySelector<HTMLImageElement>('.top-row > img.logo')!
+    expect(img.getAttribute('src')).toBe(src)
+    expect(img.getAttribute('alt')).toBe('병원 로고')
+    const onArrange = headerOf(board, { tab: 'arrange', logoPic: { ver: 3, src: fx.fakeLogoUrl('jpeg') } })
+    expect(shapeOf(onArrange.querySelector('.top-row'))).toEqual(['img.logo', 'div.memo-box', 'div.top-status'])
+    expect(onArrange.querySelector('img.logo')?.getAttribute('src')).toBe(fx.fakeLogoUrl('jpeg'))
+    // 목록 화면(renderBoard)도 view.logoPic을 머리에 넘긴다
+    const app = appHost()
+    view.renderBoard(app, board, { logoPic: { ver: 3, src } } as View)
+    expect(app.querySelector('header.top > .top-row > img.logo')?.getAttribute('src')).toBe(src)
+  })
+
+  it('AC-5709.1: pic인데 그 판 번호의 그림이 아직 없거나(받는 중·다른 ver) 그림 주소가 data:image/png·jpeg가 아니면 로고 자리가 없다(깨진 그림·바깥 주소 없음)', () => {
+    const board = withLogo(fx.mockupBoard(), PIC_LOGO)
+    const pics: unknown[] = [
+      undefined,
+      null,
+      { ver: 2, src: fx.fakeLogoUrl() },
+      { ver: 3, src: '/logo-wordmark.png' },
+      { ver: 3, src: 'https://example.invalid/logo.png' },
+      { ver: 3, src: 'data:image/svg+xml;base64,PHN2Zy8+' },
+      { ver: 3, src: 'data:text/html;base64,PGI+' },
+      { ver: 3, src: 'javascript:alert(1)' },
+      { ver: 3, src: `${fx.fakeLogoUrl()}"` },
+    ]
+    for (const logoPic of pics) {
+      const header = headerOf(board, { tab: 'board', logoPic })
+      expect(shapeOf(header.querySelector('.top-row')), JSON.stringify(logoPic)).toEqual(['div.top-status'])
+      expect(header.querySelector('img'), JSON.stringify(logoPic)).toBeNull()
+      header.remove()
+    }
+  })
+
+  it('AC-5709.1: cfg.logo가 text면 그 글을 제목 글꼴 글(span.logo-text, 글 마디로만)로, none이면 로고 자리가 없다(접수 현황 탭은 상표 줄에 연결됨만, 어레인지 탭은 메모 칸이 맨 앞)', () => {
+    const text = withLogo(fx.arrangeMockupBoard(), { mode: 'text', text: '가나다<b>정형외과</b>', ver: 0 })
+    for (const tab of ['board', 'arrange']) {
+      const header = headerOf(text, { tab, logoPic: { ver: 0, src: fx.fakeLogoUrl() } })
+      const row = header.querySelector('.top-row')
+      expect(shapeOf(row), tab).toEqual(tab === 'board' ? ['span.logo-text', 'div.top-status'] : ['span.logo-text', 'div.memo-box', 'div.top-status'])
+      const name = row!.querySelector('span.logo-text')!
+      expect(name.textContent).toBe('가나다<b>정형외과</b>')
+      expect([...name.childNodes].map((n) => n.nodeType)).toEqual([Node.TEXT_NODE])
+      expect(header.querySelector('img')).toBeNull()
+      header.remove()
+    }
+    const none = withLogo(fx.arrangeMockupBoard(), { mode: 'none', text: '가나다정형외과', ver: 4 })
+    const board = headerOf(none, { tab: 'board', logoPic: { ver: 4, src: fx.fakeLogoUrl() } })
+    expect(shapeOf(board.querySelector('.top-row'))).toEqual(['div.top-status'])
+    expect(board.textContent).not.toContain('가나다정형외과')
+    const arrange = headerOf(none, { tab: 'arrange', logoPic: { ver: 4, src: fx.fakeLogoUrl() } })
+    expect(shapeOf(arrange.querySelector('.top-row'))).toEqual(['div.memo-box', 'div.top-status'])
+  })
+
+  it('AC-5709.1 · AC-5709.4: 어느 로고 모양이든 머리에 우리 의원 로고 그림(/logo-wordmark.png·/logo-mark.png)과 "양지바른정형외과" 글이 없다', () => {
+    const logos: fx.FakeLogo[] = [PIC_LOGO, { mode: 'text', text: '가나다정형외과', ver: 0 }, { mode: 'none', text: null, ver: 0 }]
+    for (const logo of logos)
+      for (const tab of ['board', 'arrange']) {
+        const app = appHost()
+        const board = withLogo(fx.arrangeMockupBoard(), logo)
+        const header = headerOf(board, { tab })
+        view.renderBoard(app, board)
+        for (const root of [header, app]) {
+          expect(root.innerHTML, `${logo.mode} ${tab}`).not.toMatch(/logo-wordmark|logo-mark\.png/)
+          expect(root.textContent, `${logo.mode} ${tab}`).not.toContain('양지바른정형외과')
+        }
+        header.remove()
+        app.remove()
+      }
+  })
+
+  it('AC-5709.3: cfg.tab이 거짓이면 머리 탭에 [어레인지] 단추가 없고 [접수 현황] 하나뿐이다(참이면 둘)', () => {
+    const onTab = vi.fn()
+    const off = fx.withCfg(fx.mockupBoard(), { ...fx.freshCfg(), tab: false })
+    const app = appHost()
+    view.renderBoard(app, off, { onTab })
+    const tabs = [...app.querySelectorAll<HTMLButtonElement>('header.top > nav.tabs > button.tab')]
+    expect(tabs.map((t) => [t.textContent, t.getAttribute('aria-pressed')])).toEqual([['접수 현황', 'true']])
+    expect(app.querySelector('.tab-n')).toBeNull()
+    expect(app.textContent).not.toContain('어레인지')
+    tabs[0]!.click()
+    expect(onTab).toHaveBeenCalledWith('board')
+    // 머리만 그려도(어레인지 탭 값이 와도) [어레인지] 단추는 없다
+    const header = headerOf(off, { tab: 'arrange' })
+    expect([...header.querySelectorAll('nav.tabs > button.tab')].map((t) => t.textContent)).toEqual(['접수 현황'])
+    // 켜면 둘
+    const on = fx.withCfg(fx.mockupBoard(), { ...fx.freshCfg(), tab: true })
+    view.renderBoard(app, on)
+    expect(textsOf(app, 'header.top > nav.tabs > button.tab')).toEqual(['접수 현황', '어레인지0명'])
   })
 })

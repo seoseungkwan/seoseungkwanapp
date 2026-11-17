@@ -3,7 +3,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { brotliDecompressSync } from 'node:zlib'
+import { brotliDecompressSync, inflateSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -232,7 +232,7 @@ const BODY_FONT = '"Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", syste
  * 제목 글꼴을 쓰는 곳: 머리 제목(목록·연결 끊김)과 환자 이름 제목(상세·태블릿 오른쪽),
  * 그리고 어레인지 승인 시안(Arrange.html, reception-arrange)의 머리 탭 단추(.view-btn → .tab)와 표의 환자 이름(.nm → .arr-name)
  */
-const TITLE_CLASSES = ['.top-title', '.off-title', '.off-heading', '.detail-name', '.tab', '.arr-name']
+const TITLE_CLASSES = ['.top-title', '.off-title', '.off-heading', '.detail-name', '.tab', '.arr-name', '.logo-text']
 /** 어레인지 승인 시안(docs/mockups/reception-arrange/Arrange.html, 2026-11-09)이 더한 색 여섯 (reception-arrange AC-3308.12) */
 const ARRANGE_PAGE = path.join(ROOT, 'docs', 'mockups', 'reception-arrange', 'Arrange.html')
 const ARRANGE_TOKENS = ['--sono-head', '--sono-col', '--carm-head', '--carm-col', '--ptup-bg', '--ptup-fg']
@@ -260,6 +260,7 @@ describe('REQ-1407 접수 현황 화면 뼈대 (reception/www)', () => {
       'style.css',
       'dom.js',
       'manifest.webmanifest',
+      'icon.png',
       'logo-mark.png',
       'logo-wordmark.png',
       'fonts/title.woff2',
@@ -480,7 +481,7 @@ describe('REQ-1407 접수 현황 화면 뼈대 (reception/www)', () => {
     expect(style).toBeGreaterThan(theme)
     expect(html).toContain('<script type="module" src="/app.js"></script>')
     expect(html).toContain('<link rel="manifest" href="/manifest.webmanifest">')
-    expect(html).toContain('<link rel="apple-touch-icon" href="/logo-mark.png">')
+    expect(html).toContain('<link rel="apple-touch-icon" href="/icon.png">')
     expect(html).not.toMatch(/<style|\sstyle=|\son[a-z]+=/i)
     for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)) {
       expect(m[1], 'script는 파일만').toMatch(/\ssrc="/)
@@ -505,7 +506,7 @@ describe('REQ-1407 접수 현황 화면 뼈대 (reception/www)', () => {
       expect(icon.sizes).toBe(`${width}x${height}`)
       expect(icon.type).toBe('image/png')
     }
-    expect(icons.map((i) => i.src)).toContain('/logo-mark.png')
+    expect(icons.map((i) => i.src)).toContain('/icon.png')
     expect(m).not.toHaveProperty('serviceworker')
     for (const rel of wwwFiles()) expect(rel, '서비스 워커 파일').not.toMatch(/(^|\/)(sw|service-?worker)[\w.-]*\.js$/i)
     for (const rel of codeFiles()) expect(read(rel), rel).not.toMatch(/serviceWorker/)
@@ -541,6 +542,126 @@ describe('REQ-1407 접수 현황 화면 뼈대 (reception/www)', () => {
         .flatMap((r) => r.decls.filter(([p]) => p === 'min-height').map(([, v]) => px(v)))
       expect(heights.length, cls).toBeGreaterThan(0)
       for (const h of heights) expect(h, cls).toBeGreaterThanOrEqual(44)
+    }
+  })
+})
+
+// ---- 다른 병원용 (reception-other-clinic): 아이콘 · 우리 의원 상표 빼기 · 저장소·주소 울타리 -------------------------------
+
+/** 8비트 RGB·RGBA PNG를 풀어 점 하나의 [R, G, B]를 돌려주는 함수를 만든다(줄 거르개 0~4) */
+function pngPixels(file: string): { width: number; height: number; at: (x: number, y: number) => [number, number, number] } {
+  const b = readFileSync(file)
+  expect(b.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+  const width = b.readUInt32BE(16)
+  const height = b.readUInt32BE(20)
+  const depth = b[24]!
+  const color = b[25]!
+  expect(depth).toBe(8)
+  expect([2, 6]).toContain(color)
+  const channels = color === 6 ? 4 : 3
+  const idat: Buffer[] = []
+  for (let at = 8; at < b.length; ) {
+    const size = b.readUInt32BE(at)
+    const type = b.toString('latin1', at + 4, at + 8)
+    if (type === 'IDAT') idat.push(b.subarray(at + 8, at + 8 + size))
+    at += 12 + size
+  }
+  const raw = inflateSync(Buffer.concat(idat))
+  const stride = width * channels
+  const out = Buffer.alloc(stride * height)
+  for (let y = 0; y < height; y += 1) {
+    const filter = raw[y * (stride + 1)]!
+    expect([0, 1, 2, 3, 4], `거르개 ${filter}`).toContain(filter)
+    for (let i = 0; i < stride; i += 1) {
+      const x = raw[y * (stride + 1) + 1 + i]!
+      const a = i >= channels ? out[y * stride + i - channels]! : 0
+      const up = y > 0 ? out[(y - 1) * stride + i]! : 0
+      const c = y > 0 && i >= channels ? out[(y - 1) * stride + i - channels]! : 0
+      const p = a + up - c
+      const pa = Math.abs(p - a)
+      const pb = Math.abs(p - up)
+      const pc = Math.abs(p - c)
+      const paeth = pa <= pb && pa <= pc ? a : pb <= pc ? up : c
+      const add = [0, a, up, Math.floor((a + up) / 2), paeth][filter]!
+      out[y * stride + i] = (x + add) & 0xff
+    }
+  }
+  return { width, height, at: (x, y) => [out[y * stride + x * channels]!, out[y * stride + x * channels + 1]!, out[y * stride + x * channels + 2]!] }
+}
+
+/** theme.css :root 토큰 값(#RRGGBB) */
+function tokenHex(name: string): string {
+  const m = new RegExp(`${name}:\\s*(#[0-9A-Fa-f]{6})`).exec(read('theme.css'))
+  expect(m, name).not.toBeNull()
+  return normalHex(m![1]!)
+}
+
+function hexOf([r, g, b]: [number, number, number]): string {
+  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase()}`
+}
+
+describe('REQ-5709 아이콘·우리 의원 상표 빼기 (reception-other-clinic)', () => {
+  it('AC-5709.4: favicon·apple-touch-icon·매니페스트 아이콘은 병원과 상관없는 icon.png(512×512)다', () => {
+    const html = read('index.html')
+    expect(html).toContain('<link rel="apple-touch-icon" href="/icon.png">')
+    expect(html).toContain('<link rel="icon" href="/icon.png" type="image/png">')
+    expect([...html.matchAll(/<link rel="(?:icon|apple-touch-icon)" href="([^"]+)"/g)].map((m) => m[1])).toEqual(['/icon.png', '/icon.png'])
+    const m = JSON.parse(read('manifest.webmanifest')) as { icons: { src: string; sizes: string; type: string }[] }
+    expect(m.icons).toEqual([{ src: '/icon.png', sizes: '512x512', type: 'image/png', purpose: 'any' }])
+    expect(pngSize(path.join(WWW, 'icon.png'))).toEqual({ width: 512, height: 512 })
+  })
+
+  it('AC-5709.4: icon.png는 바탕 --ink(숯색)에 가운데 흰 가로 막대 셋(목록 모양)이고, 파이썬 표준 라이브러리(zlib·struct)만 쓰는 reception/tools/make-icon.py로 만든다', () => {
+    const icon = pngPixels(path.join(WWW, 'icon.png'))
+    const ink = tokenHex('--ink')
+    const white = tokenHex('--on-ink')
+    expect(white).toBe('#FFFFFF')
+    for (const [x, y] of [[0, 0], [511, 0], [0, 511], [511, 511], [256, 40], [256, 470], [40, 256], [470, 256]] as const) expect(hexOf(icon.at(x, y)), `${x},${y}`).toBe(ink)
+    // 가운데 세로줄을 위에서 아래로 따라가면 흰 막대 셋을 지난다(숯색 → 흰색 → 숯색 … 세 번)
+    const column = Array.from({ length: 512 }, (_, y) => hexOf(icon.at(256, y)))
+    const runs: string[] = []
+    for (const c of column) if (runs.at(-1) !== c && (c === ink || c === white)) runs.push(c)
+    expect(runs).toEqual([ink, white, ink, white, ink, white, ink])
+    // 막대는 가로로 길다: 가운데 막대 줄에서 흰 점이 가로 절반 넘게 이어진다
+    const middle = column.findIndex((c, y) => c === white && y > 200 && y < 312)
+    expect(middle).toBeGreaterThan(0)
+    const row = Array.from({ length: 512 }, (_, x) => hexOf(icon.at(x, middle + 4)))
+    expect(row.filter((c) => c === white).length).toBeGreaterThan(256)
+    const tool = path.join(ROOT, 'reception', 'tools', 'make-icon.py')
+    expect(existsSync(tool), 'reception/tools/make-icon.py').toBe(true)
+    const source = readFileSync(tool, 'utf8')
+    const imports = [...source.matchAll(/^\s*(?:import\s+([\w, ]+)|from\s+(\w+)\s+import)/gm)].flatMap((m) => (m[1] ?? m[2]!).split(',').map((s) => s.trim()))
+    expect(new Set(imports)).toEqual(new Set(['struct', 'zlib']))
+    expect(source).toContain('icon.png')
+  })
+
+  it('AC-5709.4: 화면 파일(글자)은 우리 의원 로고 그림(logo-mark.png·logo-wordmark.png)을 부르지 않고 "양지바른정형외과" 글이 없다. 두 그림 파일은 그대로 둔다(옮기기에 쓴다)', () => {
+    for (const rel of codeFiles()) {
+      const text = read(rel)
+      expect(text, rel).not.toMatch(/logo-wordmark|logo-mark\.png/)
+      expect(text, rel).not.toContain('양지바른')
+    }
+    for (const logo of ['logo-mark.png', 'logo-wordmark.png']) expect(wwwFiles(), logo).toContain(logo)
+  })
+
+  it('AC-5708.3: 화면 파일은 브라우저 저장소(localStorage·sessionStorage·IndexedDB·캐시)를 쓰지 않는다(이 기기 메모 memo.js 하나만 localStorage에 그 메모를 둔다)', () => {
+    for (const rel of codeFiles().filter((f) => path.extname(f) === '.js')) {
+      const text = read(rel)
+      if (rel === 'memo.js') expect([...text.matchAll(/localStorage\.(\w+)\(\s*(\w+)/g)].map((m) => m[2])).toEqual(['KEY', 'KEY', 'KEY'])
+      else expect(text, rel).not.toMatch(/localStorage|sessionStorage/)
+      expect(text, rel).not.toMatch(/indexedDB|IDBFactory|\bcaches\b|CacheStorage|document\.cookie/)
+    }
+  })
+
+  it('AC-5714.1: 묻기(fetch)는 api.js에만 있고 모두 같은 PC 길(/api/…)이다. img 주소를 직접 넣는 곳(.src =)은 모양을 검사한 data:image URL만 넣는 board.js(로고)·memo.js(손글씨)뿐이다', () => {
+    for (const rel of codeFiles().filter((f) => path.extname(f) === '.js')) {
+      const text = read(rel)
+      const fetches = [...text.matchAll(/\bfetch\(\s*([^,)]*)/g)].map((m) => m[1]!.trim())
+      if (rel !== 'api.js') expect(fetches, rel).toEqual([])
+      for (const target of fetches) expect(target, `${rel}: fetch(${target}`).toMatch(/^['`]\/api\/[a-z]/)
+      expect(text, rel).not.toMatch(/\bXMLHttpRequest\b|\bWebSocket\b|\bEventSource\b|sendBeacon|importScripts|\bimport\(/)
+      expect(text, rel).not.toMatch(/setAttribute\(\s*['"](?:src|href)['"]/)
+      if (!['board.js', 'memo.js'].includes(rel)) expect(text, rel).not.toMatch(/\.src\s*=[^=]/)
     }
   })
 })

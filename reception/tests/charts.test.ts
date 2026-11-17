@@ -468,3 +468,13 @@ describe('REQ-3309 기록부 모양 (style.css)', () => {
     for (const cls of classes) expect(css, `.${cls}`).toMatch(new RegExp(`\\.${cls}(?![\\w-])`))
   })
 })
+
+describe('REQ-5709 기록부 화면 머리 (charts.js, reception-other-clinic)', () => {
+  it('AC-5709.1 · AC-5709.4: 기록부 화면 머리는 지금처럼 [‹ 어레인지]·연결됨뿐이고(로고 자리 없음) 우리 의원 로고 그림과 "양지바른정형외과" 글이 없다', () => {
+    const { page } = draw(C(), TODAY_HISTORY(), fx.fakePrev())
+    expect(shapeOf(page.querySelector('header.top > .top-row'))).toEqual(['a.back', 'span.conn'])
+    expect(page.querySelector('header.top img, header.top .logo-text')).toBeNull()
+    expect(page.innerHTML).not.toMatch(/logo-wordmark|logo-mark\.png/)
+    expect(page.textContent).not.toContain('양지바른정형외과')
+  })
+})

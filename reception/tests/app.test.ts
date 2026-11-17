@@ -50,6 +50,8 @@ let running: AppJs['app'] = null
 
 function respond(call: Call): Promise<Response> {
   const r = server.answer(call.method, call.url, call.body)
+  // 로고 그림(GET /api/logo)은 JSON이 아닌 바이트 몸이다 (reception-other-clinic AC-5706.2)
+  if (r.raw) return Promise.resolve(new Response(r.raw.bytes, { status: r.status, headers: { 'Content-Type': r.raw.type } }))
   return Promise.resolve(new Response(r.body === undefined ? null : JSON.stringify(r.body), { status: r.status }))
 }
 
@@ -1093,5 +1095,214 @@ describe('app.js 같은 곳만 (끝까지)', () => {
       new Set(['/api/board', '/api/xray', '/api/visit/k/history', '/api/visit/k/papers']),
     )
     expect(titles).toEqual([TITLE, TITLE, TITLE, TITLE])
+  })
+})
+
+// ---- 다른 병원용 머리 (reception-other-clinic REQ-5708·5709) ---------------------------------------------------
+
+/** 로고 그림 읽기(GET /api/logo) */
+function logoReads(): string[] {
+  return urls().filter((u) => u === '/api/logo')
+}
+
+/** 판 cfg를 바꿔 끼운다(다음 읽기부터) */
+function useCfg(cfg: fx.FakeCfg) {
+  server.board = fx.withCfg(server.board, cfg)
+}
+
+/** 우리 의원 처음 값(로고 그림 ver 1)과 그 그림(PNG) */
+function usePicLogo(ver = 1) {
+  useCfg({ ...fx.oursCfg(), logo: { mode: 'pic', text: null, ver } })
+  server.logo = { type: 'image/png', bytes: fx.fakeLogoPng() }
+}
+
+/** 화면의 주소는 같은 PC 길('/…')·'#…'이고, 로고 그림(img.logo·img.logo-mark·img.off-logo)만 data:image/png·jpeg다 (AC-5714.1) */
+function expectSamePcOrLogo() {
+  for (const node of document.querySelectorAll('[src], [href]')) {
+    const value = node.getAttribute('src') ?? node.getAttribute('href') ?? ''
+    if (node.matches('img.logo, img.logo-mark, img.off-logo') && value.startsWith('data:'))
+      expect(value, node.outerHTML.slice(0, 80)).toMatch(/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/)
+    else expect(value, node.outerHTML.slice(0, 80)).toMatch(/^(?:\/(?![/\\])|#)/)
+  }
+}
+
+describe('app.js 로고 (reception-other-clinic AC-5709.1·AC-5708.3)', () => {
+  it('AC-5709.1: cfg.logo가 pic이면 GET /api/logo 하나로 받은 그림(data: URL)을 머리에 그리고, ver가 같으면 다시 받지 않는다(5초마다 그림을 받지 않음). ver가 바뀌면 한 번 다시 받는다', async () => {
+    usePicLogo(1)
+    const app = await open()
+    expect(urls()).toEqual(['/api/board', '/api/logo'])
+    const src = `data:image/png;base64,${Buffer.from(fx.fakeLogoPng()).toString('base64')}`
+    expect(app.querySelector('.page.board header.top > .top-row > img.logo')?.getAttribute('src')).toBe(src)
+    await wait(5000)
+    await wait(5000)
+    expect(boardReads().length).toBe(3)
+    expect(logoReads().length).toBe(1)
+    expect(app.querySelector('header.top img.logo')?.getAttribute('src')).toBe(src)
+    // 설정에서 새 그림을 올림: 판의 ver가 2가 된다
+    server.board.cfg.logo.ver = 2
+    server.logo = { type: 'image/jpeg', bytes: fx.fakeLogoJpeg() }
+    await wait(5000)
+    await settle()
+    expect(logoReads().length).toBe(2)
+    expect(app.querySelector('header.top img.logo')?.getAttribute('src')).toBe(`data:image/jpeg;base64,${Buffer.from(fx.fakeLogoJpeg()).toString('base64')}`)
+    await wait(5000)
+    expect(logoReads().length).toBe(2)
+    expectSamePcOrLogo()
+  })
+
+  it('AC-5709.1: 받은 그림은 폰 상세 머리의 작은 로고(img.logo-mark)와 어레인지 탭 머리에도 쓰고 다시 받지 않는다', async () => {
+    usePicLogo(1)
+    const app = await open()
+    window.location.hash = `#/v/${fx.fakeKey(2)}`
+    await settle()
+    const page = detailPage()!
+    expect(page.querySelector('header.top.is-detail > .top-row > img.logo-mark')?.getAttribute('src')).toMatch(/^data:image\/png;base64,/)
+    window.location.hash = '#/a'
+    await settle()
+    expect(app.querySelector('.page.arrange header.top > .top-row > img.logo')?.getAttribute('src')).toMatch(/^data:image\/png;base64,/)
+    await wait(5000)
+    expect(logoReads().length).toBe(1)
+  })
+
+  it('AC-5709.1: 그림 읽기가 실패하면(404·연결 안 됨) 로고 자리 없이 그리고, 같은 ver는 다음 읽기마다 다시 묻지 않는다', async () => {
+    usePicLogo(1)
+    server.logo = null
+    const app = await open()
+    expect(logoReads().length).toBe(1)
+    expect(app.querySelector('.page.board')).not.toBeNull()
+    expect(app.querySelector('header.top img, header.top .logo-text')).toBeNull()
+    await wait(5000)
+    await wait(5000)
+    expect(logoReads().length).toBe(1)
+  })
+
+  it('AC-5709.1: cfg.logo가 text면 그 글(span.logo-text)이고 none이면 로고 자리가 없다. 둘 다 GET /api/logo를 묻지 않는다', async () => {
+    useCfg({ ...fx.freshCfg(), logo: { mode: 'text', text: '가나다정형외과', ver: 0 } })
+    const app = await open()
+    expect(textOf(app, '.page.board header.top > .top-row > span.logo-text')).toBe('가나다정형외과')
+    server.board.cfg.logo = { mode: 'none', text: '가나다정형외과', ver: 0 }
+    await wait(5000)
+    expect(app.querySelector('header.top .logo-text, header.top img')).toBeNull()
+    expect(app.textContent).not.toContain('가나다정형외과')
+    expect(logoReads()).toEqual([])
+  })
+
+  it('AC-5708.3 · AC-5709.4: 로고 그림은 메모리에만 두고 숨김(wipe)이면 지워 다시 보일 때 한 번 다시 받는다. 브라우저 저장소에는 아무것도 남지 않는다', async () => {
+    usePicLogo(1)
+    localStorage.clear()
+    sessionStorage.clear()
+    await open()
+    expect(logoReads().length).toBe(1)
+    hide()
+    expect(appEl().querySelector('img')).toBeNull()
+    show()
+    await settle()
+    expect(logoReads().length).toBe(2)
+    expect(appEl().querySelector('header.top img.logo')).not.toBeNull()
+    expect(localStorage.length).toBe(0)
+    expect(sessionStorage.length).toBe(0)
+  })
+
+  it('AC-5709.4 · AC-5708.3: 끊기면 끊김 화면에 앞 판의 로고를 그리고(다시 확인 실패에도 그대로), 지우기(wipe)로 메모리의 그림은 비워 돌아온 뒤 한 번 다시 받는다', async () => {
+    usePicLogo(1)
+    const app = await open()
+    failNext()
+    await wait(5000)
+    expect(textOf(app, '.off-heading')).toBe(OFFLINE)
+    expect(app.querySelector('main.off > img.off-logo')?.getAttribute('src')).toMatch(/^data:image\/png;base64,/)
+    expectNoPatient()
+    failNext()
+    await wait(5000)
+    expect(textOf(app, '.off-heading')).toBe(OFFLINE)
+    expect(app.querySelector('main.off > img.off-logo')).not.toBeNull()
+    expect(logoReads().length).toBe(1)
+    await wait(5000)
+    await settle()
+    expect(app.querySelector('.page.board')).not.toBeNull()
+    expect(logoReads().length).toBe(2)
+    expect(app.querySelector('header.top img.logo')).not.toBeNull()
+    expectSamePcOrLogo()
+  })
+})
+
+describe('app.js [⚙ 설정]·어레인지 탭 끄기 (reception-other-clinic AC-5709.2·AC-5709.3)', () => {
+  it('AC-5709.2: 접수 현황·어레인지 두 탭 머리의 [⚙ 설정]을 누르면 설정 쪽(#/s)이 열린다(설정 쪽 그리기 전에는 빈 쪽). 저절로 읽기가 와도 설정 쪽 그대로이고 뒤로 가면 그 탭이다', async () => {
+    const app = await open()
+    app.querySelector<HTMLButtonElement>('.page.board header.top .top-status > button.set-open')!.click()
+    await settle()
+    expect(window.location.hash).toBe('#/s')
+    expect(app.children.length).toBe(1)
+    expect(app.querySelector('.page.settings-page')).not.toBeNull()
+    expect(app.querySelector('.page.board, .page.arrange, .page.detail-page')).toBeNull()
+    expectNoPatient()
+    await wait(5000)
+    expect(boardReads().length).toBe(2)
+    expect(app.querySelector('.page.settings-page')).not.toBeNull()
+    expect(app.querySelector('.page.board')).toBeNull()
+    expect(document.title).toBe(TITLE)
+    window.location.hash = '#/'
+    await settle()
+    expect(app.querySelector('.page.board')).not.toBeNull()
+    // 어레인지 탭에서도
+    window.location.hash = '#/a'
+    await settle()
+    app.querySelector<HTMLButtonElement>('.page.arrange header.top .top-status > button.set-open')!.click()
+    await settle()
+    expect(window.location.hash).toBe('#/s')
+    expect(app.querySelector('.page.settings-page')).not.toBeNull()
+    expect(app.querySelector('.page.arrange')).toBeNull()
+  })
+
+  it('AC-5709.2: 설정 주소(#/s)로 바로 열어도 설정 쪽이고, 태블릿·돌림에도 설정 쪽 그대로다', async () => {
+    const media = fakeMedia(true)
+    const app = await open({ hash: '#/s' })
+    expect(app.querySelector('.page.settings-page')).not.toBeNull()
+    expect(app.querySelector('.page.board')).toBeNull()
+    media.turn(false)
+    await settle()
+    expect(app.querySelector('.page.settings-page')).not.toBeNull()
+    expect(window.location.hash).toBe('#/s')
+    expect(historyReads()).toEqual([])
+  })
+
+  it('AC-5709.3: cfg.tab이 거짓이면 [어레인지] 탭 단추가 없고 #/a(·#/a/v/{열쇠}) 주소는 [접수 현황](#/)으로 간다', async () => {
+    useCfg({ ...fx.freshCfg(), tab: false })
+    const app = await open({ hash: '#/a' })
+    expect(window.location.hash).toBe('#/')
+    expect(app.querySelector('.page.board')).not.toBeNull()
+    expect(app.querySelector('.page.arrange')).toBeNull()
+    expect(textsOf(app, 'header.top > nav.tabs > button.tab')).toEqual(['접수 현황'])
+    window.location.hash = `#/a/v/${fx.fakeKey(2)}`
+    await settle()
+    expect(window.location.hash).toBe('#/')
+    expect(app.querySelector('.page.board')).not.toBeNull()
+    expect(historyReads()).toEqual([])
+    // 어레인지 탭을 보던 중에 꺼지면 다음 읽기에 [접수 현황]으로
+    server.board.cfg.tab = true
+    await wait(5000)
+    window.location.hash = '#/a'
+    await settle()
+    expect(app.querySelector('.page.arrange')).not.toBeNull()
+    server.board.cfg.tab = false
+    await wait(5000)
+    expect(window.location.hash).toBe('#/')
+    expect(app.querySelector('.page.board')).not.toBeNull()
+    expect(textsOf(app, 'header.top > nav.tabs > button.tab')).toEqual(['접수 현황'])
+  })
+
+  it('AC-5714.1: 로고 그림까지 요청은 모두 같은 PC의 /api/…이고, 화면 주소는 같은 PC 길과 로고 data:image URL뿐이다', async () => {
+    usePicLogo(1)
+    await open()
+    window.location.hash = `#/v/${fx.fakeKey(2)}`
+    await settle()
+    expectSamePcOrLogo()
+    window.location.hash = '#/a'
+    await settle()
+    expectSamePcOrLogo()
+    for (const c of calls) {
+      expect(c.url, c.url).toMatch(/^\/api\/(?:board(?:\?fresh=1)?|visit\/[0-9a-f]{16}\/(?:history|papers)\?from=\d+|logo)$/)
+      expect([c.init.credentials, c.init.mode]).toEqual(['omit', 'same-origin'])
+    }
+    expect(logoReads().length).toBe(1)
   })
 })

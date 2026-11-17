@@ -26,18 +26,27 @@
 //     그 전 진료기록부(papers?from=1)는 환자를 열 때 한 번만 읽고(실패하면 한 줄, 다시 읽지 않음) [더 보기]는 papers?from=next다.
 //     다른 환자·숨김·끊김 뒤 온 답은 버린다(reception-arrange-tune AC-3605.3·3605.4)
 //   · 숨김·끊김은 어레인지 상태를 모두 지운다. 숨김 뒤에는 주소(#/a·#/a/v/{열쇠})를 남겨 다시 읽고, 끊김 뒤에는 표(#/a)다(AC-3312.2)
+// - 다른 병원용 머리 (reception-other-clinic REQ-5708·5709)
+//   · 로고: 판 cfg.logo가 pic이면 getLogo(ver)로 그림을 한 번 받아 data: URL을 메모리에 하나({ ver, src }) 두고 다시 그리기마다 쓴다.
+//     ver가 같으면 다시 받지 않고(실패해도 같은 ver는 다시 묻지 않음), ver가 바뀌면 한 번 받는다. 받으면 그 자리에서 다시 그린다(AC-5709.1).
+//     목록·어레인지 머리(board.js topOf)와 폰 상세 머리의 작은 로고(detail.js)가 쓰고, 그리기마다 끊김 화면용으로 offline.js rememberLogo에 넣는다.
+//     숨김·끊김(wipe)은 그림도 지운다(AC-5708.3). 브라우저 저장소에는 두지 않는다
+//   · [⚙ 설정](두 탭 머리)은 설정 쪽 길 #/s를 연다(AC-5709.2). 설정 쪽 그리기는 settings.js(다음 일) 몫이라 지금은 빈 쪽이다
+//   · 판 cfg.tab이 거짓이면 #/a·#/a/v/{열쇠}는 [접수 현황](#/)으로 바꾼다(AC-5709.3)
 //
 // 쓰는 법
 //   index.html이 이 파일을 module로 부르면 바로 연다(맨 아래 app). 시험은 app.stop()으로 듣기를 그만둔다
 
 import { createAlert } from './alert.js'
-import { getHistory, getPapers, getPrev, setArrange, setLists, setXray } from './api.js'
+import { getHistory, getLogo, getPapers, getPrev, setArrange, setLists, setXray } from './api.js'
 import { planOf, renderArrange } from './arrange.js'
 import { fillPane, renderBoard, setReading } from './board.js'
 import { renderCharts } from './charts.js'
 import { detailPane, fillPast, fitSpecial, renderDetail, updateDetail, updatePaper } from './detail.js'
+import { clear, el } from './dom.js'
 import { createLayout, findRow } from './layout.js'
 import { closeMemo } from './memo.js'
+import { rememberLogo } from './offline.js'
 import { createPoll } from './poll.js'
 import { xrayBand } from './xray.js'
 
@@ -66,6 +75,9 @@ const DETAIL_ROUTE = /^#\/v\/([0-9a-f]{16})$/
 
 /** 폰 목록 길 */
 const LIST_ROUTE = '#/'
+
+/** 설정 쪽 길 (reception-other-clinic AC-5709.2) */
+const SETTINGS_ROUTE = '#/s'
 
 /** 종이 다시 읽기: 칸·오늘 처방이 그대로여도 마지막 상세 읽기에서 이만큼 지나면 다시 읽는다(AC-1404.8) */
 const PAPER_AGAIN_MS = 30_000
@@ -112,6 +124,15 @@ export function startApp() {
   /** 열린 기록부 { k, today, prev, mark, busyToday, busyPrev } | null */
   let chart = null
 
+  // ---- 로고 그림 (메모리에만, 숨김·끊김에 지운다, reception-other-clinic AC-5709.1·5708.3) ----
+  /** 받은 로고 그림 { ver, src: data: URL } | null */
+  let logoPic = null
+  /** 받는 중인 ver와 받지 못한 ver(같은 ver는 다시 묻지 않는다) */
+  let logoAsk = null
+  let logoFailed = null
+  /** 숨김·끊김마다 바뀐다. 앞 세대 그림 읽기의 답은 버린다 */
+  let logoGen = 0
+
   const notice = createAlert()
   const unlistenNotice = notice.listen(doc)
   const layout = createLayout({ onChange: reshape })
@@ -121,11 +142,24 @@ export function startApp() {
 
   /** 목록 그리기 값: 고른 칸·모양·고른 환자 + 누름 처리 */
   function viewOf(reading) {
-    return { ...layout.view(), reading: reading === true, onPick, onSelect, onRefresh: () => poll.refreshNow(), xray: band, tab: 'board', onTab }
+    return {
+      ...layout.view(),
+      reading: reading === true,
+      onPick,
+      onSelect,
+      onRefresh: () => poll.refreshNow(),
+      xray: band,
+      tab: 'board',
+      onTab,
+      onSettings: openSettings,
+      logoPic,
+    }
   }
 
   /** 읽기 성공마다 (poll.js) */
   function draw(board, info) {
+    closedTab(board)
+    readLogo(board)
     const rang = notice.check(board, info)
     const fresh = notice.checkRx(board, info, tabOf() === 'arrange', { quiet: rang })
     if (fresh.length > 0) {
@@ -136,13 +170,95 @@ export function startApp() {
     /* 204를 받은 쓰기는 이 판에 들어 있다 */
     writes = writes.filter((write) => !write.saved)
     try {
-      if (tabOf() === 'arrange') drawArrange(board, info.reading)
-      else if (layout.tablet()) drawTablet(board, info.reading)
-      else drawPhone(board, info.reading)
+      paint(board, info.reading)
     } finally {
       flash = []
     }
     keepTitle()
+  }
+
+  /** 지금 길의 화면을 판으로 그린다(설정 쪽 · 어레인지 탭 · 태블릿 · 폰). 끊김 화면용으로 그 판의 로고를 적어 둔다 */
+  function paint(board, reading) {
+    if (settingsOpen()) drawSettings()
+    else if (tabOf() === 'arrange') drawArrange(board, reading)
+    else if (layout.tablet()) drawTablet(board, reading)
+    else drawPhone(board, reading)
+    rememberLogo(board.cfg?.logo ?? null, logoPic)
+  }
+
+  /** 마지막 판으로 지금 화면을 다시 그린다(로고 그림이 온 뒤) */
+  function repaint() {
+    const board = poll.board()
+    if (!board) return
+    paint(board, poll.reading())
+    keepTitle()
+  }
+
+  /**
+   * 판 cfg.logo가 pic이면 그 ver의 그림을 한 번 받는다(AC-5709.1). 이미 받았거나 받는 중이거나 받지 못한 ver면 묻지 않는다.
+   * 받으면 다시 그린다. 숨김·끊김(logoGen이 바뀜) 뒤 온 답은 버린다
+   */
+  function readLogo(board) {
+    const logo = board?.cfg?.logo
+    if (logo?.mode !== 'pic' || !Number.isSafeInteger(logo.ver) || logo.ver < 1) return
+    const ver = logo.ver
+    if (logoPic?.ver === ver || logoAsk === ver || logoFailed === ver) return
+    const gen = logoGen
+    logoAsk = ver
+    getLogo(ver, { signal: poll.signal() }).then(
+      (src) => {
+        if (gen !== logoGen || logoAsk !== ver) return
+        logoAsk = null
+        logoPic = { ver, src }
+        repaint()
+      },
+      () => {
+        if (gen !== logoGen || logoAsk !== ver) return
+        logoAsk = null
+        logoFailed = ver
+      },
+    )
+  }
+
+  /** 숨김·끊김: 받은 로고 그림과 끊김 화면용 로고를 지운다(AC-5708.3) */
+  function forgetLogo() {
+    logoPic = null
+    logoAsk = null
+    logoFailed = null
+    logoGen += 1
+    rememberLogo(null)
+  }
+
+  /** 폰 상세 머리의 작은 로고 값 (detail.js) */
+  function detailLogo(board) {
+    return { logo: board?.cfg?.logo ?? null, logoPic }
+  }
+
+  /** 어레인지 탭이 꺼진 판(AC-5709.3): #/a·#/a/v/{열쇠}는 [접수 현황](#/)으로 바꾼다(방문 기록을 늘리지 않음) */
+  function closedTab(board) {
+    if (board?.cfg?.tab !== false || tabOf() !== 'arrange') return
+    replaceRoute(LIST_ROUTE)
+    leaveArrange()
+  }
+
+  // ---- 설정 쪽 (reception-other-clinic AC-5709.2) -------------------------------------------------------
+
+  /** [⚙ 설정] (board.js 머리): 설정 쪽 길로. 그리기는 hashchange(routed)가 한다 */
+  function openSettings() {
+    if (win.location.hash !== SETTINGS_ROUTE) win.location.hash = SETTINGS_ROUTE
+  }
+
+  /** 설정 쪽: 상세·어레인지 창을 내리고 빈 쪽을 그린다(설정 쪽 그리기는 settings.js, 다음 일) */
+  function drawSettings() {
+    if (detailK !== null) dropDetail()
+    leaveArrange()
+    if (host.querySelector(':scope > .page.settings-page')) return
+    clear(host)
+    host.appendChild(el('div', { class: 'page settings-page' }))
+  }
+
+  function settingsOpen() {
+    return win.location.hash === SETTINGS_ROUTE
   }
 
   /** 끊김·숨김 (poll.js가 화면을 지운 뒤): 앞 열쇠 모음·고른 환자·상세·어레인지 상태를 버린다. 열린 메모 창은 저장하고 닫는다(AC-3403.3) */
@@ -151,6 +267,7 @@ export function startApp() {
     layout.wipe()
     dropDetail()
     wipeArrange()
+    forgetLogo()
     closeMemo()
     /* 끊김에서 돌아오면 목록·어레인지 표다(AC-1407.4·3312.2). 숨김 뒤에는 상세·기록부 주소를 남겨 다시 읽는다(AC-1407.11·3312.2) */
     if (!hiding && routeKey() !== null) replaceRoute(LIST_ROUTE)
@@ -238,7 +355,7 @@ export function startApp() {
   function phoneDetail(k, row, board) {
     layout.select(k, board)
     if (detailK === k) {
-      updateDetail(host, row)
+      updateDetail(host, row, detailLogo(board))
       refreshPaper(k, row)
       return
     }
@@ -249,7 +366,7 @@ export function startApp() {
         if (mine !== ticket || layout.tablet() || routeKey() !== k) return
         const now = findRow(poll.board(), k)
         if (now) {
-          renderDetail(host, now, history)
+          renderDetail(host, now, history, detailLogo(poll.board()))
           markPaper(now)
           readPast(k, mine)
         }
@@ -273,7 +390,9 @@ export function startApp() {
   function routed() {
     const board = poll.board()
     if (!board) return
-    if (tabOf() === 'arrange') {
+    closedTab(board)
+    if (settingsOpen()) drawSettings()
+    else if (tabOf() === 'arrange') {
       const back = chart !== null && chartKey() === null
       drawArrange(board, poll.reading())
       if (back) scrollBack()
@@ -364,6 +483,8 @@ export function startApp() {
         endedOpen = open
       },
       onLists: saveLists,
+      onSettings: openSettings,
+      logoPic,
     }
   }
 
@@ -641,6 +762,12 @@ export function startApp() {
     dropDetail()
     const board = poll.board()
     if (!board) return
+    /* 설정 쪽은 그대로 둔다(모양은 style.css가 바꾼다) */
+    if (settingsOpen()) {
+      drawSettings()
+      keepTitle()
+      return
+    }
     /* 어레인지 탭은 같은 화면을 다시 그린다(모양은 style.css가 바꾼다) */
     if (tabOf() === 'arrange') {
       drawArrange(board, poll.reading())
