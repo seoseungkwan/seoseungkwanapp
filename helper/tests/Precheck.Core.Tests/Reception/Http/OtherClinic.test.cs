@@ -92,7 +92,7 @@ internal sealed class ClinicRig : IDisposable
 
     /// <summary>
     /// 접수 현황 프로그램을 (다시) 켠다. ReceptionServices.CreateRouter와 같은 차례: 로고·설정 저장 → 설정 한 번 읽기(표시 파일보다 먼저) → 캐시·표시 →
-    /// 라우터(설정은 요청마다 Settings.Current, 새 길은 SettingsRoutes, 옛 목록 저장소는 넘기지 않음).
+    /// 라우터(설정은 요청마다 Settings.Current, 새 길은 SettingsRoutes, 옛 목록 저장소는 넘기지 않음, 주소 보내기 화면은 같은 설정·로고 저장소, AC-5715).
     /// </summary>
     public void Start()
     {
@@ -114,10 +114,20 @@ internal sealed class ClinicRig : IDisposable
             Clock.Now,
             ServeRig.Statuses,
             new string[0],
+            linkPage: LinkPage.For(() => new[] { ServeRig.ThisPc }, Settings.Current, Logo),
             arrangeMarks: Arrange,
             arrangeMap: ArrangeMap.Rules,
             settings: Settings.Current,
             settingsRoutes: new Routes(Settings, Logo, new CodesReader(Bit.Services, Clock.Now), Log));
+    }
+
+    /// <summary>이 PC 자신(루프백)의 GET /link HTML(200이어야 한다).</summary>
+    public string LinkHtml()
+    {
+        var answer = Send("GET", "/link", client: IPAddress.Loopback, host: "127.0.0.1:" + ReceptionPorts.Http);
+        Assert.Equal(200, answer.Status);
+        Assert.Equal("text/html; charset=utf-8", answer.ContentType);
+        return Encoding.UTF8.GetString(answer.Body);
     }
 
     /// <summary>지금 판(설정 없음)처럼 이은 라우터: 같은 캐시·표시·열쇠에 옛 고르기 목록 저장소. 우리 화면이 같은지 견줄 때 쓴다.</summary>
@@ -556,6 +566,69 @@ public class OtherClinicTests
         Assert.Equal(1, rig.Board().GetProperty("cfg").GetProperty("logo").GetProperty("ver").GetInt32());
     }
 
+    // ---- 주소 보내기 화면 /link의 머리 로고(AC-5715, 명세 고침 2026-11-17) ------------------------------------------
+
+    private const string LinkTitleLine = "<h1 class=\"link-title\">접수 현황 주소 보내기</h1>\n";
+
+    /// <summary>header.link-top 안 HTML.</summary>
+    private static string LinkHead(string html)
+    {
+        var head = Regex.Match(html, "<header class=\"link-top\">\n([\\s\\S]*?)</header>");
+        Assert.True(head.Success, "header.link-top이 없다");
+        return head.Groups[1].Value;
+    }
+
+    private static string LinkPicture(string type, byte[] bytes) =>
+        "<img class=\"link-logo\" src=\"data:" + type + ";base64," + Convert.ToBase64String(bytes) + "\" alt=\"병원 로고\">\n";
+
+    private static void NotOurClinicName(string html)
+    {
+        Assert.DoesNotContain("양지바른정형외과", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("/logo-wordmark.png", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("/logo-mark.png", html, StringComparison.Ordinal);
+        Assert.Contains("<link rel=\"icon\" href=\"/icon.png\" type=\"image/png\">", html, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "AC-5715.3 [잇기] 우리 의원 data 폴더(옛 표시·목록 파일)면 이 PC의 GET /link 머리는 지금처럼 우리 로고 그림(옮긴 품은 logo-wordmark.png, data: URL)이고 탭 아이콘은 /icon.png다")]
+    public void OurClinicLinkShowsOurLogo()
+    {
+        using var rig = new ClinicRig(ours: true);
+        var html = rig.LinkHtml();
+        Assert.Equal(LinkPicture("image/png", Pictures.Wordmark()) + LinkTitleLine, LinkHead(html));
+        NotOurClinicName(html);
+    }
+
+    [Fact(DisplayName = "AC-5715.3 [잇기] 새 병원 처음 켜기면 이 PC의 GET /link는 로고 없이 제목만이고, 로고를 올리면 다음 /link부터 그 그림, 병원 이름 글자로 바꾸면 그 글자, 로고 없이로 바꾸면 다시 제목만이다(다시 켜도 같다)")]
+    public void FreshClinicLinkFollowsSettings()
+    {
+        using var rig = new ClinicRig();
+        var first = rig.LinkHtml();
+        Assert.Equal(LinkTitleLine, LinkHead(first));
+        Assert.DoesNotContain("<img", first, StringComparison.Ordinal);
+        NotOurClinicName(first);
+
+        var photo = Pictures.Jpeg(1200, 300);
+        Assert.Equal(204, rig.PostLogo(photo, "image/jpeg").Status);
+        var pic = rig.LinkHtml();
+        Assert.Equal(LinkPicture("image/jpeg", photo) + LinkTitleLine, LinkHead(pic));
+        NotOurClinicName(pic);
+
+        var doc = rig.SettingsDoc();
+        doc["logo"]!["mode"] = "text";
+        doc["logo"]!["text"] = "새봄의원";
+        Assert.Equal(204, rig.SaveSettings(doc).Status);
+        Assert.Equal("<span class=\"link-logo-text\">새봄의원</span>\n" + LinkTitleLine, LinkHead(rig.LinkHtml()));
+
+        rig.Start();
+        Assert.Equal("<span class=\"link-logo-text\">새봄의원</span>\n" + LinkTitleLine, LinkHead(rig.LinkHtml()));
+
+        doc = rig.SettingsDoc();
+        doc["logo"]!["mode"] = "none";
+        Assert.Equal(204, rig.SaveSettings(doc).Status);
+        Assert.Equal(LinkTitleLine, LinkHead(rig.LinkHtml()));
+        Assert.Equal(404, rig.Get("/link").Status);
+    }
+
     // ---- 접수 현황 프로그램 잇기(글자 살피기, net48 프로그램이라 이 서버에서 돌리지 못함) ----------------------------
 
     private static string Read(params string[] parts) => File.ReadAllText(Repo.PathOf(parts), Encoding.UTF8);
@@ -610,6 +683,18 @@ public class OtherClinicTests
         Assert.Contains("EmbeddedStaticSource.Core().Read(", services, StringComparison.Ordinal);
         Assert.DoesNotContain("new ReceptionLists(", services, StringComparison.Ordinal);
         Assert.DoesNotContain("lists:", services, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "AC-5715.3 ReceptionServices는 주소 보내기 화면(LinkPage.For)에 라우터와 같은 SettingsStore(settings.Current)·LogoStore(logo)를 넘긴다: 설정·로고 저장소는 하나씩만 만든다")]
+    public void ServicesWireLinkLogo()
+    {
+        var body = CreateRouterBody();
+        Assert.Contains("linkPage: LinkPage.For(() => lan.Current(), settings.Current, logo)", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("linkPage: LinkPage.For(() => lan.Current())", body, StringComparison.Ordinal);
+        Assert.Equal(1, Count(body, "new LogoStore("));
+        Assert.Equal(1, Count(body, "new SettingsStore("));
+        Assert.Equal(1, Count(body, "LinkPage.For("));
+        Assert.True(body.IndexOf("new SettingsStore(", StringComparison.Ordinal) < body.IndexOf("LinkPage.For(", StringComparison.Ordinal));
     }
 
     [Fact(DisplayName = "AC-5707.6 RegisterEntry는 ReceptionServices.CreateBit(부품 만들기 한 곳: data\\ 등록 파일·비트 찾기·로그인 창·확인 창)로 RegisterFlow를 돈다: Precheck.Reception 안에 BitServices를 만드는 곳은 하나다")]

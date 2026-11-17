@@ -58,7 +58,7 @@ internal static class ReceptionServices
     }
 
     /// <summary>
-    /// 길 나누기 한 벌: 비트 부품·접수 현황 캐시·엑스레이 표시·화면용 열쇠·품은 화면 파일·이 PC 주소·이 PC 자신만 여는 주소 보내기 화면(/link, 부를 때마다 lan.Current()의 주소),
+    /// 길 나누기 한 벌: 비트 부품·접수 현황 캐시·엑스레이 표시·화면용 열쇠·품은 화면 파일·이 PC 주소·이 PC 자신만 여는 주소 보내기 화면(/link, 부를 때마다 lan.Current()의 주소와 같은 설정·로고 파일의 머리 로고),
     /// 그리고 설정(요청마다 지금 설정)·설정·처방 코드·로고 길(spec reception-other-clinic design.md 4절).
     /// </summary>
     public static ReceptionRouter CreateRouter(ReceptionLog log)
@@ -83,7 +83,8 @@ internal static class ReceptionServices
             () => lan.Current(),
             log,
             Now,
-            linkPage: LinkPage.For(() => lan.Current()),
+            // 주소 보내기 화면의 머리 로고도 같은 설정·로고 파일을 따른다(spec reception-other-clinic AC-5715)
+            linkPage: LinkPage.For(() => lan.Current(), settings.Current, logo),
             arrangeMarks: arrange,
             // 옛 칸 지도. 라우터는 쓰지 않는다(칸은 설정으로 정한다)
             arrangeMap: ArrangeMap.Rules,

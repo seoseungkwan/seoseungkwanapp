@@ -4,11 +4,12 @@
  * 색·글꼴·둥글기는 theme.css 토큰을 var()로만 부른다(색 글자 없음). CSP가 인라인 스타일을 막으므로 모양은 모두 여기 있다.
  *
  * 화면 틀 (LinkPage.cs가 쓰는 class 이름)
- *   .link-page > header.link-top > img.link-logo + h1.link-title
+ *   .link-page > header.link-top > (img.link-logo | span.link-logo-text | 없음) + h1.link-title
  *              > main.link-main > section.link-none > h2.link-none-title + p.link-none-sub   (사설 주소가 없을 때만)
  *                               > section.link-card > a.link-url + button.link-copy + p.link-help   (주소마다)
  *                               > ol.link-steps > li.link-step > span.link-step-no + 글
  *                               > p.link-safe
+ *   머리 로고는 그 병원 설정 logo: 그림 · 병원 이름 글자(제목 글꼴) · 없이 (reception-other-clinic AC-5715.1)
  */
 
 body {
@@ -63,6 +64,21 @@ button {
   height: 40px;
   width: auto;
   max-width: 100%;
+}
+
+/* 병원 이름 글자 로고(설정 logo text): 폰 머리 .logo-text처럼 제목 글꼴, 그림 로고와 같은 높이 */
+.link-logo-text {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-title), var(--font-body);
+  font-weight: var(--title-weight);
+  font-size: 28px;
+  line-height: 40px;
+  color: var(--ink);
 }
 
 .link-title {

@@ -36,3 +36,18 @@ describe('REQ-1411·REQ-1406 주소 보내기 화면 /link (C# Precheck.Core.Tes
     expectAc('AC-1406.8')
   })
 })
+
+// spec reception-other-clinic TASK-10(명세 고침 2026-11-17): 머리 로고는 우리 의원 것을 박지 않고 그 병원 설정을 따른다
+describe('REQ-5715 주소 보내기 화면도 그 병원 로고 (C# Precheck.Core.Tests.Reception.Link)', () => {
+  it('AC-5715.1 머리는 설정 logo를 따른다: pic + 읽히는 로고 파일은 data: URL 그림(img.link-logo, alt "병원 로고"), text는 span.link-logo-text(이스케이프), none·파일 없음·깨짐·잠김·설정 없음은 제목만, 어느 경우든 우리 의원 이름·/logo-wordmark.png 없음', () => {
+    expectAc('AC-5715.1')
+  })
+
+  it('AC-5715.2 탭 아이콘은 /icon.png이고 /logo-mark.png를 부르지 않으며, 어느 로고 모양이든 CSP(style·인라인 스크립트·on…= 없음)를 지킨다', () => {
+    expectAc('AC-5715.2')
+  })
+
+  it('AC-5715.3 우리 의원 처음 값(품은 로고를 로고 파일로 옮김)이면 지금처럼 우리 로고 그림, 새 병원 처음 값(로고 none)이면 제목만', () => {
+    expectAc('AC-5715.3')
+  })
+})
