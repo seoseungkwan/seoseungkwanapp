@@ -1,5 +1,5 @@
 // 다른 병원용 설정 문서·저장·옮기기·로고 저장(ReceptionSettings·SettingsStore·LogoStore·LogoImage, PickLists.Extra,
-// reception-other-clinic TASK-1, REQ-5701·AC-5706.1)의 C# 시험
+// reception-other-clinic TASK-1, REQ-5701·AC-5706.1)와 처음 값 표지(reception-origin.dat, TASK-9, AC-5701.9)의 C# 시험
 // (helper/tests/Precheck.Core.Tests/Reception/Settings/*.test.cs)을 감싼다.
 import { beforeAll, describe, expect, it } from 'vitest'
 import { runDotnet } from './runDotnet'
@@ -52,12 +52,16 @@ describe('REQ-5701 설정 파일 (C# Precheck.Core.Tests.Reception.Settings)', (
     expectAc('AC-5701.6')
   })
 
-  it('AC-5701.7 저장은 data\\reception-settings.dat(머리 + DPAPI, 64KB까지)에 임시 파일 → 바꾸기로 쓰고 rev +1, 깨진 파일은 이름을 바꿔 두고 다시 만들며 E-STORE-BROKEN만 남긴다', () => {
+  it('AC-5701.7 저장은 data\\reception-settings.dat(머리 + DPAPI, 64KB까지)에 임시 파일 → 바꾸기로 쓰고 rev +1, 깨진 파일은 이름을 바꿔 두고 표지대로 다시 만들며 E-STORE-BROKEN만 남긴다', () => {
     expectAc('AC-5701.7')
   })
 
   it('AC-5701.8 setup.done은 한 번 참이 되면 받은 문서가 거짓이어도 참으로 둔다', () => {
     expectAc('AC-5701.8')
+  })
+
+  it('AC-5701.9 처음 값을 만들면 reception-origin.dat(머리 + DPAPI)에 표지 ours·fresh를 쓰고, 다시 만들 때는 표지를 따르며, 설정 파일이 깨졌는데 표지가 없거나 깨졌으면 새 병원 처음 값 + 표지 fresh', () => {
+    expectAc('AC-5701.9')
   })
 })
 
