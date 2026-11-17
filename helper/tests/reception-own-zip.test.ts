@@ -23,6 +23,8 @@ const RECEPTION_SERVICES = 'helper/src/Precheck.Reception/ReceptionServices.cs'
 const RECEPTION_START = 'helper/src/Precheck.Core/Reception/ReceptionStart.cs'
 const REGISTRATION_STORE = 'helper/src/Precheck.Core/Registration/RegistrationStore.cs'
 const HELPER_CSPROJ = 'helper/src/Precheck.Helper/Precheck.Helper.csproj'
+const RECEPTION_PROGRAM = 'helper/src/Precheck.Reception/Program.cs'
+const REGISTER_ENTRY = 'helper/src/Precheck.Reception/RegisterEntry.cs'
 
 const RUN_KEY = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'
 const SHORTCUT_NAME = '접수 현황 주소'
@@ -50,6 +52,11 @@ function readBytes(rel: string): Buffer {
 
 function read(rel: string): string {
   return readBytes(rel).toString('utf8').replace(/^﻿/, '')
+}
+
+/** // 주석(/// 문서 주석 포함)을 뺀 C# 코드 */
+function csCode(text: string): string {
+  return text.replace(/\/\/.*$/gm, '')
 }
 
 /** 주석(<# … #>, # 로 시작하는 줄)을 뺀 PowerShell 코드 */
@@ -410,6 +417,31 @@ describe('REQ-5707 혼자 설치·등록 (helper/install/install-reception·unin
       `Copy-Item -LiteralPath ${OWN_FILES.map((f) => `'${f}'`).join(', ')} -Destination $receptionStage`,
     ])
     expect(lines.filter((l) => /\$receptionApp|\$receptionStage/.test(l) && /PrecheckHelper/.test(l))).toEqual([])
+  })
+})
+
+describe('REQ-5707 잇기 — 설치 파일에서 등록 창·설정까지 (spec reception-other-clinic TASK-8)', () => {
+  it('AC-5707.6 [의원 PC] install-reception.ps1의 app\\PrecheckReception.exe --register → Program(RegisterEntry.Run) → RegisterEntry → ReceptionServices.CreateBit(부품 한 곳, 확인 창 제목 "접수 현황")로 이어진다(진짜 로그인·확인 창은 의원 PC)', () => {
+    expect(codeLines(psCode(read(INSTALL_PS1)))).toContain(registerLine())
+    expect(csCode(read(RECEPTION_PROGRAM))).toContain('RegisterEntry.Run')
+    const entry = csCode(read(REGISTER_ENTRY)).replace(/\s+/g, ' ')
+    expect(entry).toContain('RegisterFlow.Run(ReceptionServices.CreateBit(new DpapiProtector()))')
+    expect(entry).not.toContain('new BitServices(')
+    const services = csCode(read(RECEPTION_SERVICES))
+    expect(services).toMatch(/const string ConfirmTitle = "접수 현황";/)
+    expect(services.match(/new BitServices\(/g) ?? []).toHaveLength(1)
+    expect(services).toContain('new ConfirmWindow(ConfirmTitle)')
+  })
+
+  it('AC-5707.7 [의원 PC] 새 판을 덮어 깔아도 설정·로고·등록이 그대로: 프로그램은 그것들을 설치가 만들기만 하는 공유 data\\(DataDirectory)에 두고, zip(app\\)에는 data 파일이 없으며 옛 목록 파일(reception-lists.dat)을 열지 않는다', () => {
+    const services = csCode(read(RECEPTION_SERVICES))
+    expect(services).toContain('new SettingsStore(new StoreFolder(DataDirectory()), protector,')
+    expect(services).toContain('new LogoStore(new StoreFolder(DataDirectory()), protector,')
+    expect(services).toContain('new RegistrationStore(DataDirectory(), protector)')
+    expect(services).not.toContain('ReceptionLists')
+    const run = packRun()
+    expect(run).not.toMatch(/reception-(settings|logo|lists|arrange|marks)\.dat|registration\.dat/)
+    expect(codeLines(psCode(read(INSTALL_PS1))).filter((l) => /\$dataDir/.test(l) && /\b(New-Item|Copy-Item|Remove-Item)\b/.test(l))).toEqual([DATA_DIR_MAKE])
   })
 })
 

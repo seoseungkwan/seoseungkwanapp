@@ -14,7 +14,8 @@ namespace Precheck.Core.Reception.Http;
 
 /// <summary>
 /// 길 나누기(design.md 7절·데이터 흐름, AC-1406.5). 서버가 요청 하나마다 부르고, 답 하나를 돌려준다. 던지지 않는다(뜻밖의 오류는 500).
-/// 차례: 보낸 쪽이 사설 주소인가 → Host가 이 PC 주소:문인가(아니면 403) → OPTIONS는 405 → 정해 둔 길.
+/// 차례: 보낸 쪽이 사설 주소인가 → Host가 이 PC 주소:문인가(아니면 403) → OPTIONS는 405 → 설정·처방 코드·로고 길(SettingsRoutes를 넘겼을 때,
+/// spec reception-other-clinic design.md 4절: /api/settings·/api/codes·/api/code/{c}·/api/logo) → 정해 둔 길.
 /// - GET /api/board → BoardCache.Get() → BoardBuilder 판 JSON(200). GET /api/board?fresh=1만 fresh로 넘긴다(AC-1403.8). 다른 질의 글은 404.
 ///   판에는 늘 cfg(판 설정: 로고·탭·안내·보이는 칸, spec reception-other-clinic AC-5703.1)가 있다. 칸은 요청마다 지금 설정(ArrangeLayout)으로 정한다.
 /// - GET /api/visit/{k}/history?from=N → HistoryReader.Get(200·404·503). 틀린 열쇠·시작 위치는 비트를 읽지 않고 404(AC-1404.5).
@@ -25,7 +26,8 @@ namespace Precheck.Core.Reception.Http;
 /// - POST /api/arrange {k, op, col?, v?, t?}(어레인지 표시를 넘겼을 때만) → 쓰기 검사·몸 모양·그날 네 칸 줄 → ArrangeWrite → 204(spec reception-arrange AC-3306.1).
 ///   이때 GET /api/board 답에는 (설정의 tab이 참이면) arrange 칸과 맨 위 picks(지금 고르기 목록 + 보이는 더한 칸 extra, spec reception-pick-lists AC-3501.4·
 ///   spec reception-other-clinic AC-5703.6)가 더 있다(AC-3305.1). 보이는 칸이 아닌 col은 400(AC-5703.3).
-/// - POST /api/lists(고르기 목록 저장소를 넘겼을 때만) → 쓰기 검사(403) → 목록 모양(400) → ReceptionLists.Save → 204(spec reception-pick-lists AC-3501.3).
+/// - POST /api/lists(설정 없이 옛 고르기 목록 저장소만 넘긴 옛 잇기일 때만) → 쓰기 검사(403) → 목록 모양(400) → ReceptionLists.Save → 204(spec reception-pick-lists AC-3501.3).
+///   설정을 넘긴 라우터(접수 현황 프로그램)에는 이 길이 없다(404, 목록은 설정 문서의 picks, spec reception-other-clinic AC-5704.4).
 /// - 쓰기 길은 쓰기 검사 전에 몸 크기를 본다: /api/xray 256·/api/arrange 1024·/api/lists 8192바이트를 넘으면 413(AC-3502.4·spec reception-arrange-tune AC-3603.5).
 /// - GET /link(주소 보내기 화면, LinkPage)는 이 PC 자신(루프백)만. 다른 곳에는 없는 길이다(404, AC-1406.8). /qr 길은 없다(QR 없음).
 /// - 그 밖은 화면 파일(StaticFiles, 질의 글 없이 GET만). 어디에도 없으면 404, 있는 길에 다른 방법이면 405(Allow).
@@ -70,6 +72,7 @@ public sealed class ReceptionRouter
     private readonly ArrangeMarks? arrangeMarks;
     private readonly ReceptionLists? lists;
     private readonly Func<ReceptionSettings>? settings;
+    private readonly SettingsRoutes? settingsRoutes;
 
     /// <param name="services">상세 읽기의 등록 확인·비트 연결(HistoryReader).</param>
     /// <param name="board">접수 현황 캐시(같은 시계로 만든 것).</param>
@@ -84,9 +87,15 @@ public sealed class ReceptionRouter
     /// <param name="linkPage">이 PC 자신의 GET /link 답(LinkPage.For). 없으면 /link는 404.</param>
     /// <param name="arrangeMarks">어레인지 표시(spec reception-arrange). 없으면 /api/arrange는 404이고 판에 arrange 칸이 없다.</param>
     /// <param name="arrangeMap">옛 처방 → 어레인지 칸 지도. 쓰지 않는다(칸은 settings로 정한다, spec reception-other-clinic). 부르는 곳을 바꿀 때 뺀다.</param>
-    /// <param name="lists">SONO·C-ARM 고르기 목록 저장소(spec reception-pick-lists). 없으면 /api/lists는 404이고 목록은 기본값이다.</param>
+    /// <param name="lists">
+    /// 옛 고르기 목록 저장소(spec reception-pick-lists). settings가 없을 때만 쓴다(우리 의원 처음 값의 목록·POST /api/lists). 없으면 목록은 기본값이고 /api/lists는 404다.
+    /// settings를 넘기면 쓰지 않고 /api/lists는 404다(spec reception-other-clinic AC-5704.4).
+    /// </param>
     /// <param name="settings">
     /// 지금 접수 현황 설정(spec reception-other-clinic, 요청마다 부른다). 없으면 우리 의원 처음 값(ReceptionSettings.Ours)에 lists의 지금 목록(없으면 기본값)이다.
+    /// </param>
+    /// <param name="settingsRoutes">
+    /// 설정·처방 코드·로고 길(spec reception-other-clinic design.md 4절). Host 검사·OPTIONS 뒤에 먼저 묻고, 그 길이 아니면(null) 아래 길로 나눈다. 없으면 그 길들은 404다.
     /// </param>
     public ReceptionRouter(
         BitServices services,
@@ -103,7 +112,8 @@ public sealed class ReceptionRouter
         ArrangeMarks? arrangeMarks = null,
         IReadOnlyList<ArrangeRule>? arrangeMap = null,
         ReceptionLists? lists = null,
-        Func<ReceptionSettings>? settings = null)
+        Func<ReceptionSettings>? settings = null,
+        SettingsRoutes? settingsRoutes = null)
     {
         this.services = services ?? throw new ArgumentNullException(nameof(services));
         this.board = board ?? throw new ArgumentNullException(nameof(board));
@@ -119,6 +129,7 @@ public sealed class ReceptionRouter
         this.arrangeMarks = arrangeMarks;
         this.lists = lists;
         this.settings = settings;
+        this.settingsRoutes = settingsRoutes;
     }
 
     /// <summary>이 요청의 칸 모양: 넘긴 설정, 없으면 우리 의원 처음 값 + 목록 저장소의 지금 목록(없으면 기본값).</summary>
@@ -140,6 +151,8 @@ public sealed class ReceptionRouter
                 return HttpResponse.Empty(403);
             }
             if (r.Method == "OPTIONS") return HttpResponse.NotAllowed(Get, Post);
+            var mine = settingsRoutes?.Route(r);
+            if (mine != null) return mine;
             return Route(r, client);
         }
         catch (Exception)
@@ -167,7 +180,8 @@ public sealed class ReceptionRouter
             if (r.Method != Post) return HttpResponse.NotAllowed(Post);
             return r.Query == null ? Arrange(r, arrangeMarks) : NotFound();
         }
-        if (r.Path == ListsPath && lists != null)
+        // 옛 목록 길은 설정이 없는 옛 잇기에만 있다. 설정을 넘긴 라우터에는 없는 길(404, AC-5704.4)
+        if (r.Path == ListsPath && lists != null && settings == null)
         {
             if (r.Method != Post) return HttpResponse.NotAllowed(Post);
             return r.Query == null ? Lists(r, lists) : NotFound();
