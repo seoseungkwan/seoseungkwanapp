@@ -47,7 +47,7 @@ public sealed class ReceptionSettings {
 }
 public sealed class SettingsStore {   // data\reception-settings.dat, ReceptionLists와 같은 머리·IProtector·잠금·임시 파일 → File.Replace
     public SettingsStore(IStoreFolder folder, IProtector protector, Func<byte[]?> embeddedWordmark, LogoStore logo, Action<string>? report);
-    public ReceptionSettings Current();                  // 없으면 Ours/Fresh를 정해 바로 저장(AC-5701.5·6), 깨졌으면 이름 바꾸고 다시 만듦(AC-5701.7)
+    public ReceptionSettings Current();                  // 없으면 Ours/Fresh를 정해 바로 저장(AC-5701.5·6), 깨졌으면 이름 바꾸고 표지 `reception-origin.dat`(ours·fresh)로 다시 만듦(AC-5701.7·5701.9)
     public SaveResult Save(ReceptionSettings next);      // rev 비교(409)·바꿀 수 없는 것(400)·setup.done 참 지키기(AC-5701.8)·rev+1
     public ReceptionSettings Update(Func<ReceptionSettings, ReceptionSettings> change); // 로고 올리기처럼 서버가 바꿀 때(rev+1)
 }
@@ -140,6 +140,8 @@ public sealed class SettingsStore {   // data\reception-settings.dat, ReceptionL
 - zip(`helper.yml`의 precheck-reception): 구성은 그대로다(AC-5707.5). 판 번호·만들기·올리기는 합친 뒤 부모 세션이 ssk-clinic-pc-files로 한다.
 - 확인 명령은 접수 현황 zip에 넣지 않는다. `ReceptionCheckEntry`는 콘솔 프로그램(PrecheckHelper.exe) 전제라 창 없는 접수 현황 exe에 붙이려면 콘솔 만들기가 따로 든다. 문제가 생긴 병원에는 지금 도우미 zip을 보내 reception-check.cmd만 누르게 한다(설치 없이 돌고, 등록 파일 자리 `PrecheckHelper\dataegistration.dat`가 같다).
 - 비트 찾기(`InstallationLocator`)는 등록 없이도 폴더·레지스트리·실행 중인 비트에서 찾는다(도우미 [처음 등록]과 같은 길). 비트 로그인 창을 접수 현황 exe가 띄우는 것은 이 판이 처음이라 [의원 PC] AC-5707.6으로 확인한다.
+
+- 확인 창 제목(AC-5707.8): `Precheck.Windows/ConfirmWindow`에 제목 인자(기본 "청구메모 도우미", 도우미 쪽 부르는 곳은 그대로)를 두고, 접수 현황 프로그램(`RegisterEntry`·`ReceptionServices`)은 "접수 현황"을 넘긴다.
 
 ## 7. 아이콘 (AC-5709.4)
 - favicon·apple-touch-icon·manifest 아이콘은 병원과 상관없는 `icon.png`(512×512, 바탕 `--ink`, 가운데 흰 가로 막대 셋 = 목록 모양)를 쓴다. 그림은 `reception/tools/make-icon.py`(파이썬 표준 라이브러리 zlib·struct만)로 만들고 결과 PNG를 커밋한다.
