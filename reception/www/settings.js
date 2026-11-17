@@ -477,9 +477,9 @@ function pickLogo(page, st, mode, file) {
   saveNow(st, next, LOGO_TOAST)
 }
 
+/** 로고 글 규칙 (AC-5712.2·5701.1): 1~20글자. 글자 수는 PC(C#)처럼 UTF-16 단위(글의 length, maxlength와 같다)로 센다 */
 function logoTextOk(text) {
-  const n = [...text].length
-  return n >= 1 && n <= LOGO_TEXT_MAX && !CONTROL.test(text)
+  return text.length >= 1 && text.length <= LOGO_TEXT_MAX && !CONTROL.test(text)
 }
 
 // ---- 탭 (AC-5712.4) ----
@@ -1042,11 +1042,13 @@ function recWords(col, key) {
   return words
 }
 
-/** 칸 이름 규칙 (AC-5713.1): 앞뒤 빈칸을 뺀 1~10글자, "|"·제어 글자 없음, 다른 칸 이름과 겹침 없음(자기 이름은 된다) */
+/**
+ * 칸 이름 규칙 (AC-5713.1): 앞뒤 빈칸을 뺀 1~10글자, "|"·제어 글자 없음, 다른 칸 이름과 겹침 없음(자기 이름은 된다).
+ * 글자 수는 PC(C#, PickLists.CleanText)처럼 UTF-16 단위(글의 length, maxlength와 같다)로 센다
+ */
 function nameOk(raw, ctx, key) {
   const name = typeof raw === 'string' ? raw.trim() : ''
-  const n = [...name].length
-  if (n < 1 || n > NAME_MAX || name.includes('|') || CONTROL.test(name)) return false
+  if (name.length < 1 || name.length > NAME_MAX || name.includes('|') || CONTROL.test(name)) return false
   const latest = ctx.doc()
   return !(isDoc(latest) ? latest.cols : []).some((c) => c.k !== key && typeof c.name === 'string' && c.name.trim() === name)
 }

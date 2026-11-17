@@ -2548,18 +2548,19 @@ describe('REQ-5711 넣기 창 두 모드 (reception-other-clinic)', () => {
     expect(textOf(sheetOf(solo), '.sheet-sub')).toBe('가상환자28 · 누르면 바로 들어가요')
   })
 
-  it('AC-5711.3 · AC-5703.4: 충격파 창의 [같이 고르기](줄 이름 "타수" 오른쪽)를 켜면 타수·부위 수 줄마다 여러 개를 체크해 [넣기 · 2000타·3000타 1부위·2부위]이고 add v는 타수들 먼저 목록 차례로 "|"로 이은 글이다. 부위 수가 없으면 [넣기]가 꺼져 있다', () => {
+  it('AC-5711.2 · AC-5711.3 · AC-5703.4: 충격파 창의 [같이 고르기](줄 이름 "타수" 오른쪽)를 켜면 작은 글이 "{이름} · 여러 개 골라 [넣기]를 눌러요"이고 타수·부위 수 줄마다 여러 개를 체크해 [넣기 · 2000타·3000타 1부위·2부위]이고 add v는 타수들 먼저 목록 차례로 "|"로 이은 글이다. 부위 수가 없으면 [넣기]가 꺼져 있다', () => {
     const onAdd = vi.fn()
     const onSheet = vi.fn()
     const { page } = draw(fx.arrangeMockupBoard(), { onAdd, onSheet })
     cellOf(page, '가상환자28', 'eswt').click()
     expect(textOf(sheetOf(page), '.pick-mode > .opt-label')).toBe('타수')
     expect(switchOf(page)!.getAttribute('aria-pressed')).toBe('false')
+    expect(textOf(sheetOf(page), '.sheet-sub')).toBe('가상환자28 · 타수와 부위 수를 골라요')
     switchOf(page)!.click()
     expect(onSheet).toHaveBeenLastCalledWith({ k: K.h, col: 'eswt', kind: 'add', multi: true, hits: [], counts: [] })
     const sheet = sheetOf(page)!
     expect(shapeOf(sheet)).toEqual(['div.sheet-h', 'div.pick-mode', 'div.opts.four', 'div.opt-label', 'div.opts.four', 'div.sheet-go', 'button.pick-edit'])
-    expect(textOf(sheet, '.sheet-sub')).toBe('가상환자28 · 타수와 부위 수를 골라요')
+    expect(textOf(sheet, '.sheet-sub')).toBe('가상환자28 · 여러 개 골라 [넣기]를 눌러요')
     for (const b of [...groupButtons(page, 'hit'), ...groupButtons(page, 'count')]) expect(b.className).toBe('opt check')
     choose(page, 'hit', '3000타')
     choose(page, 'hit', '2000타')
@@ -2582,15 +2583,17 @@ describe('REQ-5711 넣기 창 두 모드 (reception-other-clinic)', () => {
     expect(switchOf(draw(board, { sheet: { k: K.h, col: 'eswt', kind: 'add' } }).page)).toBeNull()
   })
 
-  it('AC-5711.3 · AC-5703.4: C-ARM 창의 [같이 고르기](줄 이름 "시술" 오른쪽)를 켜면 시술·약재를 여러 개 체크해 [넣기 · 목·허리·리덕션 TP·기본]이고 v는 시술들·t는 약재들을 목록 차례로 "|"로 잇는다. 고른 시술이 모두 약재 없음이면 약재 줄이 흐리고 약재를 보내지 않는다. [시술 고르기]면 onPart다', () => {
+  it('AC-5711.2 · AC-5711.3 · AC-5703.4: C-ARM 창의 [같이 고르기](줄 이름 "시술" 오른쪽)를 켜면 작은 글이 "{이름} · 여러 개 골라 [넣기]를 눌러요"이고 시술·약재를 여러 개 체크해 [넣기 · 목·허리·리덕션 TP·기본]이고 v는 시술들·t는 약재들을 목록 차례로 "|"로 잇는다. 고른 시술이 모두 약재 없음이면 약재 줄이 흐리고 약재를 보내지 않는다. [시술 고르기]면 onPart다', () => {
     const onAdd = vi.fn()
     const onPart = vi.fn()
     const onSheet = vi.fn()
     const { page } = draw(fx.arrangeMockupBoard(), { onAdd, onSheet })
     cellOf(page, '가상환자28', 'carm').click()
     expect(textOf(sheetOf(page), '.pick-mode > .opt-label')).toBe('시술')
+    expect(textOf(sheetOf(page), '.sheet-sub')).toBe('가상환자28 · 시술과 약재를 골라요')
     switchOf(page)!.click()
     expect(onSheet).toHaveBeenLastCalledWith({ k: K.h, col: 'carm', kind: 'add', multi: true, procs: [], drugs: [] })
+    expect(textOf(sheetOf(page), '.sheet-sub')).toBe('가상환자28 · 여러 개 골라 [넣기]를 눌러요')
     for (const b of [...groupButtons(page, 'proc'), ...groupButtons(page, 'drug')]) expect(b.className).toBe('opt check')
     choose(page, 'proc', '리덕션')
     expect(sheetOf(page)!.querySelector('.opts[data-g="drug"]')!.className).toBe('opts trio no-drug')
