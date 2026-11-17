@@ -1,20 +1,26 @@
 'use client'
 
-import { useId, useState, type MouseEvent, type ReactNode } from 'react'
+import { useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { ds } from '@/components/ui/classes'
 import { parseWon } from '@/lib/sunap/ledger'
+import { sortLedger, type LedgerSort } from '@/lib/sunap/ledgerSort'
 import type { LedgerEditedField, LedgerRow, SunapTotals } from '@/types/sunap'
 import { RSV_LABEL, VISIT_LABEL, WON_PROBLEM, cellWon, chipLine, chipTeal, rsvDay, won, type LedgerPatch } from '../labels'
 import { Pop, PopHead, anchorOf, type Anchor } from './Pop'
 import { RsvPicker } from './RsvPicker'
+import { SortMenu } from './SortMenu'
 import { PanelHead, TABLE, TD, TD_INK, TD_MID, TD_MUTED, TD_NUM, TF, TF_MID, TF_NUM, TH, TH_MID, TH_NUM } from './parts'
 
 // 수납일지 환자 장부(spec sunap-ilji AC-4905.1·4905.2·4905.3, 시안 ledgerPanel) [장부 줄 화면 울타리 안].
 // 줄(이름·차트번호·금액·고친 칸)은 props로만 받고, 고친 값은 onEdit(차트, 바꾼 칸)으로만 넘긴다. 네트워크·저장소·통로는 쓰지 않는다(eslint).
 // 시안과 다른 곳(design.md): 원장님 칸이 없다. 금액 칸을 누르면 네 금액 칸 판이 뜬다(FREE 한 칸도 같다) — 고친 칸 옆에 [비트 값으로 되돌리기].
-// Block·물리치료는 누르면 바로 바뀐다(다시 누르면 비트 값과 같아져 고친 칸에서 빠진다). 마감한 날(editable 거짓)은 값만 보인다
+// Block·물리치료는 누르면 바로 바뀐다(다시 누르면 비트 값과 같아져 고친 칸에서 빠진다). 마감한 날(editable 거짓)은 값만 보인다.
+// 줄 세우기(spec sunap-sort REQ-5302, 시안 docs/mockups/sunap-sort): 거르기·찾기 뒤의 줄을 sortLedger로 세운다(NO는 접수 번호 그대로).
+// 세운 상태는 이 화면 안에만 있다(저장하지 않음 — 다시 열면 접수 순). 마감한 날에도 세울 수 있다
 
 type Filter = 'all' | 'new' | 'd90' | 'block' | 'unknown' | 'edited'
+type Dir = 'asc' | 'desc'
+type ColumnKey = Exclude<LedgerSort['key'], 'rsv'>
 type AmountField = Extract<LedgerEditedField, 'cash' | 'card' | 'transfer' | 'unpaid'>
 type Open = { chart: string; what: 'amount' | 'note' | 'rsv'; field: AmountField; anchor: Anchor }
 
@@ -33,6 +39,18 @@ const FILTERS: { key: Filter; label: string; test(row: LedgerRow): boolean }[] =
   { key: 'edited', label: '고친 칸 있는 줄', test: (row) => row.edited.length > 0 },
 ]
 const NOTE_MAX = 100
+// 세우는 칸 이름(제목·표 위 한 줄)
+const SORT_COLUMNS: Record<ColumnKey, string> = {
+  name: '이름',
+  kind: '구분',
+  cash: '현금',
+  card: '카드',
+  transfer: '계좌',
+  unpaid: '미수',
+  block: 'Block',
+  pt: '물리치료',
+}
+const SORT_HINT = '제목(이름·구분·금액·Block·물리치료·다음 예약)을 누르면 줄을 세워요'
 
 // 누를 수 있는 칸 안의 단추: 칸 전체를 채우고 올림에 accent-soft(시안 td.cell:hover)
 const CELL_BUTTON = `flex h-10 w-full cursor-pointer items-center ${ds.focusRing} hover:bg-accent-soft`
@@ -110,6 +128,52 @@ function CheckBox({ on, teal, label, editable, onToggle }: { on: boolean; teal?:
         </svg>
       )}
     </button>
+  )
+}
+
+// 제목 단추(시안 th button.sort): 글자 + 화살표(▲ 오름차순 · ▼ 내림차순 · ↕ 접수 순). 세운 칸은 글자 ink·화살표 accent, 올림 ink
+const SORT_BUTTON = `inline-flex cursor-pointer items-center gap-1 rounded-control hover:text-ink ${ds.focusRing}`
+const arrowOf = (dir: Dir | null) => (dir === null ? '↕' : dir === 'asc' ? '▲' : '▼')
+const ariaSort = (dir: Dir | null) => (dir === null ? 'none' : dir === 'asc' ? 'ascending' : 'descending')
+
+function SortMark({ dir, children }: { dir: Dir | null; children: string }) {
+  return (
+    <span aria-hidden="true" className={`w-3 text-center text-caption ${dir === null ? 'text-muted' : 'text-accent'}`}>
+      {children}
+    </span>
+  )
+}
+
+/** 누를 때마다 오름차순 → 내림차순 → 접수 순인 제목 칸. 숫자 칸은 화살표가 글자 왼쪽(시안) */
+function SortHead({ label, dir, className, markFirst, onClick }: { label: string; dir: Dir | null; className: string; markFirst?: boolean; onClick(): void }) {
+  const mark = <SortMark dir={dir}>{arrowOf(dir)}</SortMark>
+  return (
+    <th className={className} aria-sort={ariaSort(dir)}>
+      <button type="button" className={`${SORT_BUTTON} ${dir === null ? '' : 'text-ink'}`} onClick={onClick}>
+        {markFirst && mark}
+        {label}
+        {!markFirst && mark}
+      </button>
+    </th>
+  )
+}
+
+/** 표 위 한 줄(시안 .sortnote): 지금 세운 기준과 다음에 누르면 어떻게 되는지 */
+function SortNote({ sort }: { sort: LedgerSort | null }) {
+  let strong = ''
+  let rest = SORT_HINT
+  if (sort !== null && sort.key === 'rsv') {
+    strong = `다음 예약 ${sort.by === 'date' ? '날짜' : '종류'} 순 ${arrowOf(sort.dir)}`
+    rest = " · '예약 안 하고 가심'은 늘 맨 뒤 · 제목을 눌러 다른 기준·접수 순"
+  } else if (sort !== null) {
+    strong = `${SORT_COLUMNS[sort.key]} ${sort.dir === 'asc' ? '오름차순' : '내림차순'}`
+    rest = ` · 한 번 더 누르면 ${sort.dir === 'asc' ? '내림차순' : '접수 순'}`
+  }
+  return (
+    <p aria-live="polite" className="px-5 py-2 text-caption text-muted max-md:px-4">
+      {strong !== '' && <b className="font-semibold text-ink">{strong}</b>}
+      {rest}
+    </p>
   )
 }
 
@@ -249,12 +313,31 @@ export function LedgerRows({
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState<Open | null>(null)
+  const [sort, setSort] = useState<LedgerSort | null>(null)
+  // 다음 예약 세우는 기준 목록이 뜬 자리(닫혀 있으면 null)
+  const [menu, setMenu] = useState<Anchor | null>(null)
+  const rsvHead = useRef<HTMLButtonElement>(null)
+  const rsvHeadId = useId()
+  const menuId = useId()
 
   const test = FILTERS.find(({ key }) => key === filter)!.test
   const words = query.trim()
-  const shown = rows
-    .map((row, index) => ({ row, no: index + 1 }))
-    .filter(({ row }) => test(row) && (words === '' || row.name.includes(words) || row.chart.includes(words)))
+  const shown = sortLedger(
+    rows
+      .map((row, index) => ({ row, no: index + 1 }))
+      .filter(({ row }) => test(row) && (words === '' || row.name.includes(words) || row.chart.includes(words))),
+    sort,
+  )
+  const dirOf = (key: LedgerSort['key']): Dir | null => (sort !== null && sort.key === key ? sort.dir : null)
+  const rsvSort = sort !== null && sort.key === 'rsv' ? sort : null
+  // 다른 칸 → 오름차순, 오름차순 → 내림차순, 내림차순 → 접수 순
+  const cycle = (key: ColumnKey) => {
+    const dir = dirOf(key)
+    setSort(dir === null ? { key, dir: 'asc' } : dir === 'asc' ? { key, dir: 'desc' } : null)
+  }
+  const column = (key: ColumnKey, className: string, markFirst = false) => (
+    <SortHead label={SORT_COLUMNS[key]} dir={dirOf(key)} className={className} markFirst={markFirst} onClick={() => cycle(key)} />
+  )
   const openRow = editable && open !== null ? rows.find((row) => row.chart === open.chart) : undefined
   const booked = rows.filter((row) => row.rsv.kind !== 'none').length
 
@@ -311,6 +394,7 @@ export function LedgerRows({
           className={`${ds.input} h-8! w-45 text-small! max-md:w-full`}
         />
       </PanelHead>
+      <SortNote sort={sort} />
       <div className="overflow-x-auto">
         <table className={`${TABLE} min-w-260`}>
           <thead>
@@ -318,15 +402,31 @@ export function LedgerRows({
               <th className={TH}>NO</th>
               <th className={TH}>접수</th>
               <th className={TH}>차트</th>
-              <th className={TH}>이름</th>
-              <th className={TH}>구분</th>
-              <th className={TH_NUM}>현금</th>
-              <th className={TH_NUM}>카드</th>
-              <th className={TH_NUM}>계좌</th>
-              <th className={TH_NUM}>미수</th>
-              <th className={TH_MID}>Block</th>
-              <th className={TH_MID}>물리치료</th>
-              <th className={TH}>다음 예약</th>
+              {column('name', TH)}
+              {column('kind', TH)}
+              {column('cash', TH_NUM, true)}
+              {column('card', TH_NUM, true)}
+              {column('transfer', TH_NUM, true)}
+              {column('unpaid', TH_NUM, true)}
+              {column('block', TH_MID)}
+              {column('pt', TH_MID)}
+              <th className={TH} aria-sort={ariaSort(dirOf('rsv'))}>
+                {/* 누르면 세우는 기준 목록(SortMenu)이 열리고 닫힌다 */}
+                <button
+                  ref={rsvHead}
+                  id={rsvHeadId}
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={menu !== null}
+                  aria-controls={menu !== null ? menuId : undefined}
+                  className={`${SORT_BUTTON} ${rsvSort === null ? '' : 'text-ink'}`}
+                  onClick={(event) => setMenu(menu === null ? anchorOf(event.currentTarget) : null)}
+                >
+                  {rsvSort === null ? '다음 예약' : `다음 예약 · ${rsvSort.by === 'date' ? '날짜' : '종류'}`}
+                  <SortMark dir={dirOf('rsv')}>{arrowOf(dirOf('rsv'))}</SortMark>
+                  <SortMark dir={dirOf('rsv')}>▾</SortMark>
+                </button>
+              </th>
               <th className={TH}>비고</th>
             </tr>
           </thead>
@@ -421,6 +521,20 @@ export function LedgerRows({
       {openRow && open?.what === 'amount' && <AmountPop row={openRow} focus={open.field} anchor={open.anchor} onEdit={edit(openRow.chart)} onClose={close} />}
       {openRow && open?.what === 'note' && <NotePop row={openRow} anchor={open.anchor} onEdit={edit(openRow.chart)} onClose={close} />}
       {openRow && open?.what === 'rsv' && <RsvPicker row={openRow} anchor={open.anchor} onPick={edit(openRow.chart)} onClose={close} />}
+      {menu !== null && (
+        <SortMenu
+          id={menuId}
+          labelledBy={rsvHeadId}
+          anchor={menu}
+          current={rsvSort === null ? null : { by: rsvSort.by, dir: rsvSort.dir }}
+          trigger={rsvHead}
+          onPick={(pick) => {
+            setSort(pick === null ? null : { key: 'rsv', ...pick })
+            setMenu(null)
+          }}
+          onClose={() => setMenu(null)}
+        />
+      )}
     </section>
   )
 }
