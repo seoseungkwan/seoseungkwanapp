@@ -16,6 +16,7 @@ import { dayNumber, longDate, monthNumber, PERIOD_NAME } from './sections/parts'
 import type { ReportData } from './sections/ReportSection'
 import { StatsSections, StatsWaiting } from './sections/StatsSections'
 import { readFiles, SourcePicker, type FileFailure, type FileIncomplete, type StatsJob } from './SourcePicker'
+import { useStatsCalendar } from './useStatsCalendar'
 import { useStatsData, type SavedLatest, type StatsData } from './useStatsData'
 import { StatsToc } from './StatsToc'
 import { useStatsRevenue, type RevenueFailure } from './useStatsRevenue'
@@ -29,6 +30,7 @@ import { DEFAULT_STATS_PERIOD, rangeOf, type CompareRange, type StatsPeriod, typ
 // 기간은 빠른 단추 넷 또는 기간 골라 보기(stats-period REQ-1703)다. 고른 것은 상태에만 두고(처음은 최근 30일) range = rangeOf(today, choice, todayDone)
 // 처방별 추세 묶음 훅은 여기서 한 번 부른다: 불러오기(묶음으로 셈)와 칸(보기·고치기)이 같은 묶음을 쓴다(treatment-trend design.md '잇기')
 // 예약·전환(sunap-ilji REQ-4906): 마감한 날·수납일지 Block·물리치료 묶음은 useStatsSunap이 읽고, 묶음 정의는 세 칸 묻기에 실어 Block 전환 수를 함께 받는다
+// 예약(clinic-calendar AC-5907.3): 예약 탭 예약은 useStatsCalendar가 오늘 기준 최근 12달을 읽는다(통계 기간·불러오기와 상관없음)
 // 매출(stats-revenue REQ-4108, design.md '화면 잇기'): 저장된 매출은 열 때 읽어 기간 요약 둘째 줄·매출 칸에 그린다(useStatsRevenue). 비트 매출은 [비트에서 불러오기]가
 // 통계 조각을 모두 저장한 뒤에만 같은 일 안에서 통계가 쥔 같은 비트 연결(useStatsWorker.revenueDays)로 읽는다. 열기만 해서는 비트에서 읽지 않는다
 
@@ -226,6 +228,7 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   const groups = useStatsRxGroups(data.input?.days ?? NO_DAYS)
   const sunap = useStatsSunap(range, groups)
   const sunapDefs = sunap.defs
+  const calendar = useStatsCalendar(today)
   // 비트 PC가 아니면(확장 없음·휴대폰·연결 전) call이 없어 저장된 매출만 읽는다(AC-4108.7)
   const revenue = useStatsRevenue({ range, today, lastDay, call: state === 'ready' ? revenueDays : null, helperVersion })
 
@@ -539,6 +542,7 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
               onReread: revenue.reread,
             }}
             sunap={{ closed: sunap.closed, groups: sunap.groups, onReread: sunap.reread }}
+            calendar={calendar}
           />
         </div>
       )}

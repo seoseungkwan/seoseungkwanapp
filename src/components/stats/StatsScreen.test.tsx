@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { addDays, compareYmd, eachDay } from '@/lib/analytics/dates'
 import { MIN_HELPER } from '@/lib/bridge/versions'
+import { listCalendarCounts, loadCalendarSettings } from '@/lib/storage/calendar'
 import { readRxPicks } from '@/lib/storage/rxPicks'
 import { readCoverage, readDays, readMonths, saveStats } from '@/lib/storage/stats'
 import { listStatsRxGroups, saveStatsRxGroups } from '@/lib/storage/statsRxGroups'
@@ -14,6 +15,7 @@ import { toMonthPayload } from '@/lib/payload/toMonthPayload'
 import { nestedBoxes } from '@/testing/boxes'
 import type { AnalysisResult, FileReport } from '@/types/analyze'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
+import { DEFAULT_CAL_SETTINGS, type CalCountRow } from '@/types/calendar'
 import type { ClinicReportNumbers } from '@/types/clinicReport'
 import type { DateRange } from '@/types/dates'
 import type { DayPayload, MonthSections } from '@/types/payload'
@@ -25,6 +27,7 @@ import { runAnalysis } from '@/workers/runAnalysis'
 import { createStatsWorker } from '@/workers/statsClient'
 import { planLoad, revenueProgressText } from './loadPlan'
 import { StatsScreen } from './StatsScreen'
+import { CALENDAR_DESC } from './sections/CalendarSection'
 import { StatsSections } from './sections/StatsSections'
 import { useStatsRevenue } from './useStatsRevenue'
 import { groupKey } from './treatmentView'
@@ -81,6 +84,11 @@ vi.mock('@/lib/storage/sunap', async (importOriginal) => ({
   loadSunapSettings: vi.fn(),
   listSunapDays: vi.fn(),
 }))
+// 예약 탭 서버 저장 가짜(clinic-calendar TASK-9). 기본은 최근 12달 예약 없음 · 기본 설정(beforeEach)
+vi.mock('@/lib/storage/calendar', () => ({
+  listCalendarCounts: vi.fn(),
+  loadCalendarSettings: vi.fn(),
+}))
 
 const TODAY = '2026-11-13' // 금요일
 const HOSPITAL = '가짜정형외과의원'
@@ -96,11 +104,12 @@ const BIT_AT = { at: '2026-11-13T09:42:00Z', source: 'bit' as const } // 18:42
 const FILE_AT = { at: '2026-11-12T09:30:00Z', source: 'file' as const } // 11월 12일 18:30
 // 처방 카드의 탭 셋(stats-pc-ux AC-4003.1)
 const RX_TABS = ['묶음별 추세', '처방별 신환·재진', '처방 골라 보기'] as const
-// 큰 카드 여섯(first90 AC-4411.1·AC-4411.3, 예약·전환은 sunap-ilji AC-4906.1): [바로가기 자리 id, 카드 h2]. 카드 안 작은 칸(h3)의 이름·글은 각 칸 시험이 본다
+// 큰 카드 일곱(first90 AC-4411.1·AC-4411.3, 예약·전환은 sunap-ilji AC-4906.1, 예약은 clinic-calendar AC-5907.3): [바로가기 자리 id, 카드 h2]. 카드 안 작은 칸(h3)의 이름·글은 각 칸 시험이 본다
 const CARDS = [
   ['stats-patients', '환자'],
   ['stats-revenue', '매출'],
   ['stats-sunap', '예약·전환'],
+  ['stats-calendar', '예약'],
   ['stats-rx', '처방'],
   ['stats-ops', '진료 운영'],
   ['stats-report', '원장님 보고 문장'],
@@ -115,6 +124,7 @@ const TOC = [
   ['환자', 'stats-patients'],
   ['매출', 'stats-revenue'],
   ['예약·전환', 'stats-sunap'],
+  ['예약', 'stats-calendar'],
   ['처방', 'stats-rx'],
   ['진료 운영', 'stats-ops'],
   ['보고', 'stats-report'],
@@ -451,6 +461,10 @@ beforeEach(() => {
   vi.mocked(listSunapDays).mockReset()
   vi.mocked(loadSunapSettings).mockResolvedValue({ blockGroup: null, ptGroup: null, kinds: DEFAULT_RSV_KINDS })
   vi.mocked(listSunapDays).mockResolvedValue([])
+  vi.mocked(listCalendarCounts).mockReset()
+  vi.mocked(loadCalendarSettings).mockReset()
+  vi.mocked(listCalendarCounts).mockResolvedValue([])
+  vi.mocked(loadCalendarSettings).mockResolvedValue(DEFAULT_CAL_SETTINGS)
   vi.mocked(readCoverage).mockResolvedValue([{ from: '2026-09-01', to: '2026-11-12' }])
   vi.mocked(saveStats).mockResolvedValue({ saved: 1 })
   for (const fn of Object.values(revenueStore)) fn.mockReset()
@@ -3431,7 +3445,7 @@ describe('stats-revenue: 매출 카드 · 바로가기 여섯 · 불러오기 �
     vi.mocked(readDays).mockImplementation(() => new Promise(() => undefined))
     const first = draw()
     expect(screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual(WAITING_TITLES)
-    expect(WAITING_TITLES.slice(2, 6)).toEqual(['환자', '매출', '예약·전환', '처방'])
+    expect(WAITING_TITLES.slice(2, 7)).toEqual(['환자', '매출', '예약·전환', '예약', '처방'])
     expect(screen.getAllByText('불러오는 중')).toHaveLength(WAITING_TITLES.length)
     expect(waitingCard('매출').id).toBe('')
     first.unmount()
@@ -3440,14 +3454,14 @@ describe('stats-revenue: 매출 카드 · 바로가기 여섯 · 불러오기 �
     draw()
     await sectionsShown()
     expect(placesShown()).toEqual(PLACES)
-    expect(placesShown().slice(1, 5).map(([id]) => id)).toEqual(['stats-patients', 'stats-revenue', 'stats-sunap', 'stats-rx'])
+    expect(placesShown().slice(1, 6).map(([id]) => id)).toEqual(['stats-patients', 'stats-revenue', 'stats-sunap', 'stats-calendar', 'stats-rx'])
   })
 
-  it('AC-4109.1·AC-4411.2·AC-4906.1: 바로가기 링크는 일곱이고 `매출` 링크 href는 #stats-revenue = 매출 카드 section id다', async () => {
+  it('AC-4109.1·AC-4411.2·AC-4906.1·AC-5907.3: 바로가기 링크는 여덟이고 `매출` 링크 href는 #stats-revenue = 매출 카드 section id다', async () => {
     draw()
     await sectionsShown()
     const links = within(screen.getByRole('navigation', { name: TOC_NAME })).getAllByRole('link')
-    expect(links.map((link) => link.textContent)).toEqual(['요약', '환자', '매출', '예약·전환', '처방', '진료 운영', '보고'])
+    expect(links.map((link) => link.textContent)).toEqual(['요약', '환자', '매출', '예약·전환', '예약', '처방', '진료 운영', '보고'])
     const revenueLink = within(screen.getByRole('navigation', { name: TOC_NAME })).getByRole('link', { name: '매출' })
     expect(revenueLink.getAttribute('href')).toBe('#stats-revenue')
     expect(card('stats-revenue').tagName).toBe('SECTION')
@@ -3818,6 +3832,7 @@ describe('REQ-4411 first90: 큰 카드 · 바탕', () => {
         groups={GROUPS_VIEW}
         bit={null}
         sunap={{ closed: [], groups: 'none', onReread: () => undefined }}
+        calendar={{ rows: [], today: TODAY, onReread: () => undefined }}
       />,
     )
     expect(placesShown()).toEqual(PLACES.filter(([id]) => id !== 'stats-revenue'))
@@ -3859,7 +3874,7 @@ describe('REQ-4906 sunap-ilji: 예약·전환 카드', () => {
     expect(links[at + 1]!.getAttribute('href')).toBe('#stats-sunap')
     expect(titleOf(card(SUNAP_CARD))).toBe('예약·전환')
     expect(card(SUNAP_CARD).previousElementSibling).toBe(card('stats-revenue'))
-    expect(card(SUNAP_CARD).nextElementSibling).toBe(card('stats-rx'))
+    expect(card(SUNAP_CARD).nextElementSibling).toBe(card('stats-calendar'))
   })
 
   it('AC-4906.2 열면 고른 기간(첫날 ~ 기간 끝과 오늘 가운데 이른 날)의 마감한 날을 읽어 합으로 예약률을 그리고, 기간을 바꾸면 다시 읽는다', async () => {
@@ -3935,5 +3950,116 @@ describe('REQ-4906 sunap-ilji: 예약·전환 카드', () => {
     await waitFor(() => expect(sunapText()).toContain(NO_GROUPS))
     expect(sectionsSent(fake.sent).every((message) => !('sunap' in message))).toBe(true)
     expect(rowsIn('Block 전환')).toEqual([])
+  })
+})
+
+// ── 통계 '예약' 칸 (spec clinic-calendar REQ-5907 TASK-9, 시안 docs/mockups/clinic-calendar ?s=stats). 예약 줄·시행자 이름은 지어낸 것이다 ──
+describe('REQ-5907 clinic-calendar: 예약 카드', () => {
+  const CAL_CARD = 'stats-calendar'
+  const EMPTY = '예약 탭에 적은 예약이 없어요'
+  const calRow = (day: string, over: Partial<CalCountRow> = {}): CalCountRow => ({
+    day,
+    staffId: 'ga',
+    staffName: '가짜○○',
+    kindId: 'dosu',
+    kindName: '도수',
+    status: 'auto',
+    auto: null,
+    origDay: null,
+    ...over,
+  })
+  // 10월: 4줄(취소 1 · 변경 1 · 안 옴 1). 설정의 시행자 'ga'는 표시 '(가)'
+  const OCTOBER = [calRow('2026-10-02', { status: 'cancel' }), calRow('2026-10-06', { origDay: '2026-10-01' }), calRow('2026-10-07', { auto: 'noshow' }), calRow('2026-10-08')]
+  const WITH_STAFF = { ...DEFAULT_CAL_SETTINGS, staff: [{ id: 'ga', name: '가짜○○', mark: '가', color: 'blue' as const }] }
+  const calCard = () => within(card(CAL_CARD))
+  const cellsOf = (tr: HTMLElement) => [...tr.querySelectorAll('th, td')].map((cell) => (cell.querySelector('[data-n]') ?? cell).textContent?.trim())
+  const monthRow = (label: string) => {
+    const table = calCard().getByRole('heading', { name: '월별 숫자' }).closest('section')!.querySelector('table')!
+    return within(table)
+      .getAllByRole('row')
+      .map(cellsOf)
+      .find((cells) => cells[0] === label)
+  }
+  const staffRows = () => {
+    const part = calCard().getByRole('heading', { name: '2026년 10월 나눠 보기' }).closest('section')!
+    return within(within(part).getAllByRole('table')[0]!)
+      .getAllByRole('row')
+      .map((tr) => cellsOf(tr).slice(0, 2))
+  }
+
+  it('AC-5907.3 바로가기 띠의 "예약·전환" 다음이 "예약"(#stats-calendar)이고 그 자리는 h2 "예약" 카드다(예약·전환 카드와 처방 카드 사이). 비트 PC가 아니어도 카드가 있다', async () => {
+    draw()
+    await sectionsShown()
+    const links = within(screen.getByRole('navigation', { name: TOC_NAME })).getAllByRole('link')
+    const at = links.findIndex((link) => link.textContent === '예약·전환')
+    expect(links[at + 1]!.textContent).toBe('예약')
+    expect(links[at + 1]!.getAttribute('href')).toBe('#stats-calendar')
+    expect(titleOf(card(CAL_CARD))).toBe('예약')
+    expect(card(CAL_CARD).previousElementSibling).toBe(card('stats-sunap'))
+    expect(card(CAL_CARD).nextElementSibling).toBe(card('stats-rx'))
+    await waitFor(() => expect(within(cardHead(CAL_CARD)).getByText(CALENDAR_DESC)).toBeTruthy())
+  })
+
+  it('AC-5907.3 열면 이번 달을 넣은 최근 12달(지난해 12월 1일 ~ 오늘)의 예약을 한 번 읽어 달마다 예약 수·세 비율과 고른 달 나눠 보기(설정 차례·표시 이름)를 그리고, 통계 기간을 바꿔도 다시 읽지 않는다', async () => {
+    vi.mocked(listCalendarCounts).mockResolvedValue(OCTOBER)
+    vi.mocked(loadCalendarSettings).mockResolvedValue(WITH_STAFF)
+    draw()
+    await sectionsShown()
+    await waitFor(() => expect(monthRow('2026년 10월')).toEqual(['2026년 10월', '4', '1', '25.0%', '1', '25.0%', '1', '25.0%']))
+    expect(listCalendarCounts).toHaveBeenCalledTimes(1)
+    expect(listCalendarCounts).toHaveBeenCalledWith(expect.anything(), '2025-12-01', TODAY)
+    expect(monthRow('2025년 12월')).toEqual(['2025년 12월', '0', '0', '–', '0', '–', '0', '–'])
+    expect(staffRows()).toEqual([
+      ['시행자', '예약'],
+      ['(가) 가짜○○', '4'],
+      ['합계', '4'],
+    ])
+
+    pressPeriod('최근 12개월')
+    await sectionsShown()
+    pressPeriod('최근 7일')
+    await sectionsShown()
+    expect(listCalendarCounts).toHaveBeenCalledTimes(1)
+    expect(monthRow('2026년 10월')?.[1]).toBe('4')
+  })
+
+  it("AC-5907.3 최근 12달에 예약이 없으면 '예약 탭에 적은 예약이 없어요'다", async () => {
+    draw()
+    await sectionsShown()
+    await waitFor(() => expect(calCard().getByText(EMPTY)).toBeTruthy())
+    expect(calCard().queryByRole('table')).toBeNull()
+  })
+
+  it('AC-5907.3 설정을 읽지 못해도 예약 수는 그리고, 나눠 보기는 예약에 적힌 이름이다', async () => {
+    vi.mocked(listCalendarCounts).mockResolvedValue(OCTOBER)
+    vi.mocked(loadCalendarSettings).mockRejectedValue(new Error('가짜 실패'))
+    draw()
+    await sectionsShown()
+    await waitFor(() => expect(monthRow('2026년 10월')?.[1]).toBe('4'))
+    expect(staffRows()[1]).toEqual(['가짜○○', '4'])
+    expect(calCard().queryByRole('alert')).toBeNull()
+  })
+
+  it('AC-5907.3 예약을 읽지 못하면 카드 안 오류 카드와 [다시 읽기]이고, 누르면 다시 읽는다', async () => {
+    vi.mocked(listCalendarCounts).mockRejectedValueOnce(new Error('가짜 실패'))
+    draw()
+    await sectionsShown()
+    const alert = await calCard().findByRole('alert')
+    expect(alert.textContent).toContain('오류 번호 E-STATS-READ-FAILED')
+    vi.mocked(listCalendarCounts).mockResolvedValueOnce(OCTOBER)
+    fireEvent.click(calCard().getByRole('button', { name: '다시 읽기' }))
+    await waitFor(() => expect(monthRow('2026년 10월')?.[1]).toBe('4'))
+    expect(calCard().queryByRole('alert')).toBeNull()
+    expect(listCalendarCounts).toHaveBeenCalledTimes(2)
+    expect(listCalendarCounts).toHaveBeenLastCalledWith(expect.anything(), '2025-12-01', TODAY)
+  })
+
+  it('AC-5907.3 화면은 예약 줄을 useStatsCalendar(통계 기간과 따로, 오늘 기준)로만 읽는다 — 이름·차트번호를 읽는 listAppts는 쓰지 않는다', () => {
+    const ROOT = process.cwd()
+    for (const name of ['StatsScreen.tsx', 'sections/StatsSections.tsx', 'useStatsCalendar.ts']) {
+      const text = readFileSync(join(ROOT, 'src/components/stats', name), 'utf8')
+      expect(text, name).not.toContain('listAppts')
+    }
+    expect(readFileSync(join(ROOT, 'src/components/stats/StatsScreen.tsx'), 'utf8')).toContain('useStatsCalendar(today)')
   })
 })

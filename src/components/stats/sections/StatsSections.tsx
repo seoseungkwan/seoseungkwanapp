@@ -11,6 +11,7 @@ import { addDays } from '@/lib/analytics/dates'
 import type { RevenueCodeTotal, RevenueMonthCode, SavedRevenueDay } from '@/types/revenue'
 import type { RxGroup } from '@/types/rxGroups'
 import type { RxSplitView } from '@/types/stats'
+import { CalendarSection, type StatsCalendarShown } from './CalendarSection'
 import { DoctorsSection } from './DoctorsSection'
 import { PatientMixSection, type BitSectionsShown } from './PatientMixSection'
 import { PatientTrendSection } from './PatientTrendSection'
@@ -33,6 +34,7 @@ import { WeekdaySection } from './WeekdaySection'
 //   환자(stats-patients): 환자 수 추이 · 신환 재방문율 · 환자 구성(비트)
 //   매출(stats-revenue): 매출 칸(탭 넷). revenue를 받을 때만(stats-revenue AC-4107.1, 통계 화면은 늘 준다)
 //   예약·전환(stats-sunap, spec sunap-ilji AC-4906.1): 초진·90일 예약률 · Block 전환 칸 셋. sunap을 받을 때만(통계 화면은 늘 준다)
+//   예약(stats-calendar, spec clinic-calendar AC-5907.3): 예약 탭 예약의 최근 12달(통계 기간과 상관없음). calendar를 받을 때만(통계 화면은 늘 준다)
 //   처방(stats-rx): 처방 칸 + 탭 셋(stats-pc-ux AC-4003.1). 탭 안 칸은 지금 칸 그대로(props도 그대로)이고 Section 탭 패널 모드로 그려진다
 //   진료 운영(stats-ops): 요일별 · 시간대별(비트)은 1200px 이상 한 줄 30% · 70%, 좁으면 쌓는다. 원장님별(비트)은 그 아래 전체 폭
 //   보고(stats-report): 원장님 보고 문장 칸
@@ -46,7 +48,7 @@ const REPORT_RX = 2
 // 바로가기 띠 바로 아래 첫 자리(환자 요약)의 위 여백: 칸 위 48px(휴대폰 32px) 대신 24px(휴대폰 20px) (stats-pc-ux 기본값 14)
 const FIRST_GAP = '[&>:first-child]:mt-6 max-md:[&>:first-child]:mt-5'
 // 자리 id는 바로가기 띠 링크와 같은 차례다(AC-4411.2)
-const [SUMMARY_ID, PATIENTS_ID, REVENUE_ID, SUNAP_ID, RX_ID, OPS_ID, REPORT_ID] = TOC_LINKS.map((link) => link.id)
+const [SUMMARY_ID, PATIENTS_ID, REVENUE_ID, SUNAP_ID, CALENDAR_ID, RX_ID, OPS_ID, REPORT_ID] = TOC_LINKS.map((link) => link.id)
 // 카드 다섯의 h2·옆 글(AC-4411.3). 환자 카드 옆 글은 기간에 따라 cardRangeText가 만든다. 매출 카드 옆 글은 매출 칸 설명 글이다(같은 제목 칸 규칙)
 const SUMMARY = '환자 요약'
 const REVENUE_SUMMARY = '매출 요약'
@@ -54,6 +56,7 @@ const REVENUE_SUMMARY_DESC = '총진료비 · 수납한 날 기준'
 const PATIENTS = '환자'
 const REVENUE = '매출'
 const SUNAP = '예약·전환'
+const CALENDAR = '예약' // 옆 글은 CalendarSection이 같은 제목 칸 규칙으로 카드 머리에 놓는다
 const RX = '처방'
 const RX_DESC = '만들어 둔 묶음마다 건수와 총환자 대비 · 같은 날 같은 환자는 1건'
 const OPS = '진료 운영'
@@ -101,12 +104,13 @@ type Props = {
   bit?: BitSectionsShown // 비트 전용 세 칸 보기. null = 이 기기에서 불러오지 않음, 'waiting' = 이 기간 답을 기다림. 주지 않으면 세 칸이 없다
   revenue?: StatsRevenueShown // 매출 카드·매출 요약 카드. 주지 않으면 둘 다 없다
   sunap?: StatsSunapShown // 예약·전환 카드(마감한 날·수납일지 묶음 상태). 주지 않으면 없다. Block 전환 수는 bit 답에 있다
+  calendar?: StatsCalendarShown // 예약 카드(최근 12달 예약 줄·설정, useStatsCalendar). 주지 않으면 없다
 }
 
 // 마지막 끝난 날: 통계 화면은 매출 값에 오늘 진료 끝을 반영한 날을 준다. 매출을 주지 않으면 어제다
 const lastDayOf = (range: StatsRange, revenue: StatsRevenueShown | undefined) => revenue?.lastDay ?? addDays(todayOf(range), -1)
 
-export function StatsSections({ input, saved, split, report, hospitalName, groups, revision = 0, bit, revenue, sunap }: Props) {
+export function StatsSections({ input, saved, split, report, hospitalName, groups, revision = 0, bit, revenue, sunap, calendar }: Props) {
   const pick = useMemo(() => pickReport(input, groups.groups), [input, groups.groups])
   // 예약·전환의 '진료한 날': 마감한 날을 읽는 기간과 같은 기간의 저장된 날 숫자에서 센다
   const worked = useMemo(() => workedDays(input.days, sunapSpan(input.range)), [input.days, input.range])
@@ -158,6 +162,11 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
           <SunapSection closed={sunap.closed} groups={sunap.groups} onReread={sunap.onReread} bit={bit ?? null} worked={worked} />
         </StatsCard>
       )}
+      {calendar !== undefined && (
+        <StatsCard id={CALENDAR_ID} title={CALENDAR}>
+          <CalendarSection {...calendar} />
+        </StatsCard>
+      )}
       <StatsCard id={RX_ID} title={RX} desc={RX_DESC}>
         <RxSection
           tabs={[
@@ -186,7 +195,7 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
   )
 }
 
-// 읽는 동안의 기다리는 자리(stats AC-514.1, first90 AC-4411.1·AC-4408.2): 그린 화면과 같은 차례의 환자 요약 · 매출 요약 + 카드 여섯(예약·전환 포함), 자리마다 "불러오는 중" 한 줄.
+// 읽는 동안의 기다리는 자리(stats AC-514.1, first90 AC-4411.1·AC-4408.2): 그린 화면과 같은 차례의 환자 요약 · 매출 요약 + 카드 일곱(예약·전환·예약 포함), 자리마다 "불러오는 중" 한 줄.
 // 바로가기 id는 없다(stats-pc-ux AC-4002.6: 숨은 칸 묶음만 id를 가진다). 카드 안 작은 칸 이름은 그리지 않는다
 export function StatsWaiting({ range, lastDay }: { range: StatsRange; lastDay: string }) {
   return (
@@ -204,6 +213,9 @@ export function StatsWaiting({ range, lastDay }: { range: StatsRange; lastDay: s
         <WaitingLine />
       </StatsCard>
       <StatsCard title={SUNAP}>
+        <WaitingLine />
+      </StatsCard>
+      <StatsCard title={CALENDAR}>
         <WaitingLine />
       </StatsCard>
       <StatsCard title={RX} desc={RX_DESC}>
