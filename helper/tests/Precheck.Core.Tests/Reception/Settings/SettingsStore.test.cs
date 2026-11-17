@@ -609,6 +609,43 @@ public class SettingsStoreTests : IDisposable
         Assert.True(Directory.Exists(FilePath));
     }
 
+    [Fact(DisplayName = "AC-5701.9 첫 쓰기 실패 뒤 표시 파일이 생겨도 다시 해 볼 때 새 병원 처음 값과 표지 fresh다(처음 켜기 판단은 한 번만)")]
+    public void FirstRunDecidedOnceFresh()
+    {
+        Directory.CreateDirectory(OriginPath);
+        var store = Open();
+        Assert.Equal(Docs.Json(ReceptionSettings.Fresh()), Docs.Json(store.Current()));
+        Assert.Contains(BitErrors.StoreFailed, reports);
+        Trace("reception-marks.dat");
+        Trace("reception-arrange.dat");
+        Assert.Equal(Docs.Json(ReceptionSettings.Fresh()), Docs.Json(store.Current()));
+        Directory.Delete(OriginPath);
+        Assert.Equal(Docs.Json(ReceptionSettings.Fresh()), Docs.Json(store.Current()));
+        Assert.Equal("fresh", OriginText());
+        Assert.True(File.Exists(FilePath));
+        Assert.Equal(0, wordmarkCalls);
+        Assert.False(File.Exists(Path.Combine(folder, LogoFile)));
+        Assert.Equal(Docs.Json(ReceptionSettings.Fresh()), Docs.Json(Open().Current()));
+    }
+
+    [Fact(DisplayName = "AC-5701.9 우리 의원도 첫 판단 그대로다: 첫 쓰기 실패 뒤 흔적 파일이 없어져도 다시 해 볼 때 우리 의원 처음 값과 표지 ours")]
+    public void FirstRunDecidedOnceOurs()
+    {
+        Trace("reception-marks.dat");
+        Directory.CreateDirectory(OriginPath);
+        var store = Open();
+        Assert.Equal(Docs.Json(ReceptionSettings.Ours(PickLists.Defaults)), Docs.Json(store.Current()));
+        Assert.Contains(BitErrors.StoreFailed, reports);
+        Assert.Equal(0, wordmarkCalls);
+        File.Delete(Path.Combine(folder, "reception-marks.dat"));
+        Assert.Equal(Docs.Json(ReceptionSettings.Ours(PickLists.Defaults)), Docs.Json(store.Current()));
+        Directory.Delete(OriginPath);
+        Assert.Equal(Docs.Json(ReceptionSettings.Ours(PickLists.Defaults)), Docs.Json(store.Current()));
+        Assert.Equal("ours", OriginText());
+        Assert.Equal(wordmark, Logo().Read()!.Bytes);
+        Assert.Equal(1, wordmarkCalls);
+    }
+
     // ---- AC-5701.8 setup.done ------------------------------------------------------------------------
 
     [Fact(DisplayName = "AC-5701.8 저장된 setup.done이 참이면 받은 문서의 done이 거짓이어도 참으로 저장한다")]

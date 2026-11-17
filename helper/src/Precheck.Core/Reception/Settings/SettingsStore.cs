@@ -68,6 +68,12 @@ public sealed class SettingsStore
     /// <summary>읽은(또는 저장한) 문서. 아직 읽지 않았거나 읽기·처음 저장이 실패했으면 null.</summary>
     private ReceptionSettings? current;
 
+    /// <summary>
+    /// 처음 켜기의 흔적 파일 판단(AC-5701.5·6). 처음 필요할 때(쓰기 전) 한 번만 보고, 쓰기가 실패해 다시 해 볼 때·저장하지 않은 처음 값으로 답할 때도 이 값을 쓴다.
+    /// 그 사이 이 프로그램이 만든 표시 파일(reception-marks.dat·reception-arrange.dat)로 새 병원을 우리 의원으로 바꾸지 않게(AC-5701.9). 아직 보지 않았으면 null.
+    /// </summary>
+    private bool? firstRunOurs;
+
     /// <summary>표지 파일을 읽은 결과(AC-5701.9).</summary>
     private enum Origin
     {
@@ -200,14 +206,14 @@ public sealed class SettingsStore
     }
 
     /// <summary>
-    /// 어느 처음 값인가(AC-5701.9). 읽히는 표지가 있으면 그 표지. 표지도 설정 파일도 없으면(처음 켜기) 흔적 파일 규칙(AC-5701.5·6).
+    /// 어느 처음 값인가(AC-5701.9). 읽히는 표지가 있으면 그 표지. 표지도 설정 파일도 없으면(처음 켜기) 흔적 파일 규칙(AC-5701.5·6) — 이 판단은 한 번만 하고 기억한다(firstRunOurs).
     /// 그 밖(설정 파일이 깨졌는데 표지가 없음·표지가 깨짐)은 새 병원: 처음 켜기가 아니고, 표시 파일은 새 병원에도 쌓여 우리 의원의 증거가 되지 못한다.
     /// </summary>
     private bool ChooseOurs(Origin origin, bool settingsExists)
     {
         if (origin == Origin.Ours) return true;
         if (origin == Origin.Fresh) return false;
-        return origin == Origin.Missing && !settingsExists && IsOurs();
+        return origin == Origin.Missing && !settingsExists && (firstRunOurs ??= IsOurs());
     }
 
     /// <summary>쓰지 못해 저장하지 않은 처음 값으로 답할 때도 같은 규칙이다. 표지마저 읽지 못하면(잠김) 새 병원(우리 의원 로고·코드가 다른 병원에 나오지 않게).</summary>
