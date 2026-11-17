@@ -177,7 +177,10 @@ public class ReceptionSqlTests
     /// <summary>매개변수 표에 함께 있는 지난 종이 문장 넷(spec reception-memo-papers AC-3404.2, 시험은 PastPaperSql.test.cs).</summary>
     private static readonly string[] PastPaperStatements = { PastPaperVisits, PastPaperSymptoms, PastPaperDx, PastPaperOrders };
 
-    [Fact(DisplayName = "AC-1403.1 문장은 설계 표의 11개(확인 칸 문장 넷 포함)이고 매개변수 표는 이 11개와 종이 기록부 문장 다섯(spec reception-paper)·어레인지 문장 다섯(spec reception-arrange)·지난 종이 문장 넷(spec reception-memo-papers)뿐이며, 모두 읽기 문장 하나다(SELECT·WITH 시작, ;·주석·쓰기 낱말 없음)")]
+    /// <summary>매개변수 표에 함께 있는 설정 화면 문장 둘(spec reception-other-clinic AC-5705.4, 시험은 CodesReader.test.cs).</summary>
+    private static readonly string[] CodesStatements = { RecentCodes, CodeName };
+
+    [Fact(DisplayName = "AC-1403.1 문장은 설계 표의 11개(확인 칸 문장 넷 포함)이고 매개변수 표는 이 11개와 종이 기록부 문장 다섯(spec reception-paper)·어레인지 문장 다섯(spec reception-arrange)·지난 종이 문장 넷(spec reception-memo-papers)·설정 화면 문장 둘(spec reception-other-clinic AC-5705.4)뿐이며, 모두 읽기 문장 하나다(SELECT·WITH 시작, ;·주석·쓰기 낱말 없음)")]
     public void StatementsAreSingleReads()
     {
         var forbidden = new Regex(@"\b(INSERT|UPDATE|DELETE|MERGE|EXEC|EXECUTE|DROP|ALTER|CREATE|TRUNCATE|INTO|GRANT|REVOKE|DENY|OPENROWSET|OPENQUERY|OPENDATASOURCE|BULK|SHUTDOWN|DBCC|BACKUP|RESTORE|WAITFOR|DECLARE|SET)\b|xp_|sp_", RegexOptions.IgnoreCase);
@@ -188,8 +191,10 @@ public class ReceptionSqlTests
         Assert.Equal(5, ArrangeStatements.Distinct(StringComparer.Ordinal).Count());
         Assert.Empty(PastPaperStatements.Intersect(all.Values.Concat(PaperStatements).Concat(ArrangeStatements), StringComparer.Ordinal));
         Assert.Equal(4, PastPaperStatements.Distinct(StringComparer.Ordinal).Count());
+        Assert.Empty(CodesStatements.Intersect(all.Values.Concat(PaperStatements).Concat(ArrangeStatements).Concat(PastPaperStatements), StringComparer.Ordinal));
+        Assert.Equal(2, CodesStatements.Distinct(StringComparer.Ordinal).Count());
         Assert.Equal(
-            all.Values.Concat(PaperStatements).Concat(ArrangeStatements).Concat(PastPaperStatements).OrderBy(sql => sql, StringComparer.Ordinal),
+            all.Values.Concat(PaperStatements).Concat(ArrangeStatements).Concat(PastPaperStatements).Concat(CodesStatements).OrderBy(sql => sql, StringComparer.Ordinal),
             Parameters.Keys.OrderBy(sql => sql, StringComparer.Ordinal));
         foreach (var sql in all.Values)
         {

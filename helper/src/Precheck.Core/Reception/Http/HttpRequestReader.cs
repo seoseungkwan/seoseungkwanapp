@@ -24,7 +24,9 @@ public sealed class HttpReadException : Exception
 /// 연결 하나에서 HTTP/1.x 요청 하나를 아주 좁게 읽는다(design.md 7절, AC-1406.4).
 /// - 요청 줄(줄 끝 빼고) 1024바이트, 머리(줄 끝 포함, 끝 빈 줄 뺌) 8192바이트를 넘으면 줄 끝을 기다리지 않고 431.
 /// - 시간은 요청 전체에 걸린다: 조금씩 계속 와도 timeout 안에 다 오지 않으면 408. 아무것도 오지 않았으면 답 없이 끊는다(null).
-/// - 몸은 Content-Length만(8192바이트 넘으면 413, 길마다 더 좁은 한도는 라우터가 본다, spec reception-arrange-tune AC-3603.5), Transfer-Encoding은 400.
+/// - 몸은 Content-Length만, Transfer-Encoding은 400. 한도는 요청 줄의 방법·길로 <see cref="BodyLimits"/>에서 정한다
+///   (기본 8192, POST /api/settings 32768, POST /api/logo 2097152, spec reception-other-clinic design.md 4절). 넘으면 몸을 읽지 않고 413.
+///   길마다 더 좁은 한도는 라우터가 본다(spec reception-arrange-tune AC-3603.5). 담는 곳은 기본 크기로 시작해 Content-Length가 더 크면 그만큼만 늘린다.
 ///   몸 뒤에 더 온 바이트는 버린다(Connection: close).
 /// - 요청 줄은 "대문자 방법 SP /로 시작하는 ASCII 경로 SP HTTP/1.1|HTTP/1.0", 머리 줄은 "이름: 값"만. 그 밖은 400.
 /// - 끝까지 오기 전에 연결이 끊기거나 읽다 오류가 나면 null(답할 상대가 없다).
@@ -35,7 +37,9 @@ public static class HttpRequestReader
 {
     public const int MaxRequestLine = 1024;
     public const int MaxHeaderBytes = 8192;
-    public const int MaxBody = 8192;
+
+    /// <summary>기본 몸 한도(= <see cref="BodyLimits.Default"/>). 더 큰 한도는 정해 둔 길에만 있다</summary>
+    public const int MaxBody = BodyLimits.Default;
 
     /// <summary>요청 하나를 다 받기까지 기다리는 기본 시간(AC-1406.4)</summary>
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(5);
@@ -45,8 +49,11 @@ public static class HttpRequestReader
     private const int MaxMethod = 16;
     private const int TimedOut = -1;
 
-    // 줄 끝 CRLF 두 번 + 몸까지 한 번에 담는 크기. 줄·머리 검사가 먼저 걸려서 넘칠 일이 없다
+    // 줄 끝 CRLF 두 번 + 기본 몸까지 한 번에 담는 크기. 줄·머리 검사가 먼저 걸려서 넘칠 일이 없다(더 큰 몸은 그만큼 늘린다)
     private const int Capacity = MaxRequestLine + 2 + MaxHeaderBytes + 2 + MaxBody;
+
+    // Content-Length 숫자(앞 0 뺌) 자리 수 한도. 가장 큰 한도(2097152)보다 넉넉하고 int를 넘지 않는다
+    private const int MaxLengthDigits = 9;
 
     public static HttpRequest? Read(Stream s, TimeSpan timeout)
     {
@@ -61,9 +68,10 @@ public static class HttpRequestReader
         {
             var request = scan.Advance(buf, len);
             if (request != null) return request;
+            if (scan.Needed > buf.Length) Array.Resize(ref buf, scan.Needed);
 
             var remaining = timeout - watch.Elapsed;
-            var n = remaining > TimeSpan.Zero ? ReadWithin(s, buf, len, Capacity - len, remaining) : TimedOut;
+            var n = remaining > TimeSpan.Zero ? ReadWithin(s, buf, len, buf.Length - len, remaining) : TimedOut;
             if (n == TimedOut)
             {
                 if (len == 0) return null;
@@ -117,6 +125,9 @@ public static class HttpRequestReader
         private Dictionary<string, string>? _combined;
         private int _bodyLength;
 
+        /// <summary>머리를 다 읽었으면 몸 끝까지의 바이트 수, 아니면 0</summary>
+        public int Needed => _bodyStart < 0 ? 0 : _bodyStart + _bodyLength;
+
         public HttpRequest? Advance(byte[] buf, int len)
         {
             if (!_lineDone && !RequestLine(buf, len)) return null;
@@ -163,7 +174,7 @@ public static class HttpRequestReader
                 {
                     _bodyStart = lf + 1;
                     _combined = HttpRequest.Combine(_headers);
-                    _bodyLength = BodyLength(_combined);
+                    _bodyLength = BodyLength(_combined, BodyLimits.Of(_method, BodyLimits.PathOf(_target)));
                     return true;
                 }
                 if (lf + 1 - _headerStart > MaxHeaderBytes) throw new HttpReadException(431);
@@ -213,7 +224,7 @@ public static class HttpRequestReader
             return new KeyValuePair<string, string>(Latin1(buf, start, colon), Latin1(buf, from, to));
         }
 
-        private static int BodyLength(Dictionary<string, string> headers)
+        private static int BodyLength(Dictionary<string, string> headers, int limit)
         {
             if (headers.ContainsKey("Transfer-Encoding")) throw new HttpReadException(400);
             if (!headers.TryGetValue("Content-Length", out var text)) return 0;
@@ -223,9 +234,9 @@ public static class HttpRequestReader
                 if (c < '0' || c > '9') throw new HttpReadException(400);
             }
             var digits = text.TrimStart('0');
-            if (digits.Length > 4) throw new HttpReadException(413);
+            if (digits.Length > MaxLengthDigits) throw new HttpReadException(413);
             var length = digits.Length == 0 ? 0 : int.Parse(digits, System.Globalization.CultureInfo.InvariantCulture);
-            if (length > MaxBody) throw new HttpReadException(413);
+            if (length > limit) throw new HttpReadException(413);
             return length;
         }
 

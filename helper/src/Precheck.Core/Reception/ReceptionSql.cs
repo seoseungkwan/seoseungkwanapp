@@ -256,6 +256,31 @@ SELECT H.OcmNum VisitId,RTRIM(o.OdrCod) Code,RTRIM(o.OdrCodNam) Name,o.OdrQty Qt
 WHERE H.Seq BETWEEN @first AND @last AND " + RxRow + @"
 ORDER BY H.Seq,o.OdrSeq";
 
+    // ---- 설정 화면 처방 코드(spec reception-other-clinic design.md 4절, AC-5705.1·AC-5705.2·AC-5705.4, TASK-3) ----------------------
+    // 칸 설정에서 고르는 코드 목록과 코드 하나의 이름. 코드·이름·내원 수만 읽고 환자·내원·차트 번호·날짜·메모 칸은 읽지 않는다
+
+    /// <summary>
+    /// 지난 30일 처방 코드(CodesReader): 범위(@from~@to) 이 병원 외래 접수의 살아 있는 처방 줄(RxRow)을 코드(대문자)마다 내원 수로 세어
+    /// 내원 수 많은 순(같으면 코드 순) 200줄까지. 확인 명령 CheckSql.ArrangeCodes와 같은 셈에 처방 줄 수 칸을 빼고 AA로 시작하는 코드(진찰료)를 뺐다.
+    /// 칸: Code, Visits. 이름은 같은 실행에서 RxNames로 붙인다.
+    /// </summary>
+    public const string RecentCodes = @"SELECT TOP 200 UPPER(RTRIM(o.OdrCod)) Code,COUNT_BIG(DISTINCT o.OdrOcmNum) Visits
+FROM dbo.OdrInf o JOIN dbo.OcmInf c ON c.OcmNum=o.OdrOcmNum
+WHERE c.OcmAcpDtm>=@from AND c.OcmAcpDtm<@to AND c.OcmPatTyp='O'
+   AND " + InHospital + @"
+  AND " + RxRow + @"
+  AND UPPER(LTRIM(RTRIM(o.OdrCod))) NOT LIKE 'AA%'
+GROUP BY UPPER(RTRIM(o.OdrCod))
+ORDER BY Visits DESC,Code";
+
+    /// <summary>
+    /// 코드 하나의 이름(GET /api/code/{c}): 코드 사전(SeeMst)에서 UPPER(RTRIM(코드)) = @code(대문자)인 줄 가운데 RxNames와 같은 차례
+    /// (적용일이 가장 늦은 것, 같으면 끝일이 늦은 것, 그다음 이름 순)의 첫 줄. 칸: Name. 없으면 줄이 없다.
+    /// </summary>
+    public const string CodeName = @"SELECT TOP 1 RTRIM(s.SeeKorNam) Name FROM dbo.SeeMst s
+WHERE UPPER(RTRIM(s.SeeOdrCod))=@code
+ORDER BY s.SeeAdpDte DESC,s.SeeExpDte DESC,s.SeeKorNam";
+
     private static readonly SqlParam From = new SqlParam("@from", SqlParamKind.Char, 12);
     private static readonly SqlParam To = new SqlParam("@to", SqlParamKind.Char, 12);
     private static readonly SqlParam Hospital = new SqlParam("@hospital", SqlParamKind.VarChar, 32);
@@ -266,6 +291,9 @@ ORDER BY H.Seq,o.OdrSeq";
 
     // 지난 내원번호(목록 줄의 LastVisitId 글). OcmNum 칸 형을 몰라도 SQL Server가 칸 형으로 바꿔 견준다(숫자 칸이면 글 → 숫자)
     private static readonly SqlParam VisitNumber = new SqlParam("@visit", SqlParamKind.VarChar, 20);
+
+    // 처방 코드(설정 코드 모양 ^[0-9A-Z가-힣_]{1,16}$, 대문자로 바꾼 글)
+    private static readonly SqlParam Code = new SqlParam("@code", SqlParamKind.VarChar, 16);
 
     private static readonly SqlParam[] Today = { From, To, Hospital };
     private static readonly SqlParam[] Visit = { Chart, Before, Hospital };
@@ -300,5 +328,7 @@ ORDER BY H.Seq,o.OdrSeq";
         [PastPaperSymptoms] = Past,
         [PastPaperDx] = Past,
         [PastPaperOrders] = Past,
+        [RecentCodes] = Today,
+        [CodeName] = new[] { Code },
     };
 }
