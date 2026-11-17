@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Text.Json;
 using Precheck.Core.Bit;
+using Precheck.Core.Calendar;
 using Precheck.Core.Claim;
 using Precheck.Core.Protocol;
 using Precheck.Core.Registration;
@@ -78,7 +79,9 @@ public static class ContactCommands
     /// contact.targets {kind, from, to}(REQ-605). 명령 표가 kind·날짜 모양·1,100일을 이미 검사했다. kind로 처리기를 나눈다(spec patients-bit-lists AC-2801.5):
     /// followup·injection → 31일·오늘 이하를 다시 보고 등록 병원 확인 → 83·47 표(ContactTargets.Build). 비트 로그인은 도우미가 켜진 동안 기억한다
     /// (등록 하나에 StatsLogin 하나, claim.month와 같은 방식). reservation → ReservationTargets.Build, lapsed → LapsedTargets.Build(기간을 다시 보고
-    /// 등록 병원 확인 → SQL 하나, 통계 화면·로그인 없음), sunap → SunapTargets.Build(수납일지 하루 장부, spec sunap-ilji). 모두 다 만든 JSON을 chunk … end로 보낸다. 막히면 오류 번호 하나로 error(Dispatcher).
+    /// 등록 병원 확인 → SQL 하나, 통계 화면·로그인 없음), sunap → SunapTargets.Build(수납일지 하루 장부, spec sunap-ilji),
+    /// calfind·calday → CalendarTargets.Find·Day(예약 탭 비트 찾기·접수와 비트 예약, spec clinic-calendar). 선택 칸 q는 calfind만 받는다(다른 kind에 오면 비트를 건드리지 않고 E-HELPER-BAD-MESSAGE).
+    /// 모두 다 만든 JSON을 chunk … end로 보낸다. 막히면 오류 번호 하나로 error(Dispatcher).
     /// 명령 이름은 그대로라 크롬 확장은 다시 올리지 않는다(확장은 명령 이름만 본다).
     /// </summary>
     public static void RegisterTargets(Dispatcher dispatcher, BitServices services)
@@ -89,21 +92,28 @@ public static class ContactCommands
 
         dispatcher.Register(TargetsName, (request, sink) =>
         {
-            var (kind, from, to) = TargetsArgs(request);
-            Chunker.Send(sink, request.Id, BuildTargets(services, login, kind, from, to));
+            var (kind, from, to, q) = TargetsArgs(request);
+            Chunker.Send(sink, request.Id, BuildTargets(services, login, kind, from, to, q));
         });
     }
 
     /// <summary>kind마다 처리기. 모르는 kind는 ContactTargets가 E-HELPER-BAD-MESSAGE로 막는다(명령 표가 먼저 막는다).</summary>
-    private static string BuildTargets(BitServices services, StatsLogin login, string kind, DateTime from, DateTime to) => kind switch
+    private static string BuildTargets(BitServices services, StatsLogin login, string kind, DateTime from, DateTime to, string? q)
     {
-        ReservationTargets.Kind => ReservationTargets.Build(services, from, to),
-        LapsedTargets.Kind => LapsedTargets.Build(services, from, to),
-        SunapTargets.Kind => SunapTargets.Build(services, from, to),
-        _ => ContactTargets.Build(services, login, kind, from, to),
-    };
+        if (q != null && kind != CalendarTargets.FindKind) throw new ProtocolException(ErrorCodes.BadMessage);
+        return kind switch
+        {
+            ReservationTargets.Kind => ReservationTargets.Build(services, from, to),
+            LapsedTargets.Kind => LapsedTargets.Build(services, from, to),
+            SunapTargets.Kind => SunapTargets.Build(services, from, to),
+            CalendarTargets.FindKind => CalendarTargets.Find(services, from, to, q),
+            CalendarTargets.DayKind => CalendarTargets.Day(services, from, to),
+            _ => ContactTargets.Build(services, login, kind, from, to),
+        };
+    }
 
-    private static (string Kind, DateTime From, DateTime To) TargetsArgs(Request request)
+    /// <summary>kind·from·to와 선택 칸 q(명령 표가 글자 1~20자를 이미 검사했다, 없으면 null).</summary>
+    private static (string Kind, DateTime From, DateTime To, string? Q) TargetsArgs(Request request)
     {
         if (request.Args.ValueKind != JsonValueKind.Object
             || !request.Args.TryGetProperty("kind", out var kindValue) || !Envelope.TryGetString(kindValue, out var kind)
@@ -112,6 +122,12 @@ public static class ContactCommands
         {
             throw new ProtocolException(ErrorCodes.BadMessage, request.Id);
         }
-        return (kind, from, to);
+        string? q = null;
+        if (request.Args.TryGetProperty("q", out var qValue))
+        {
+            if (!Envelope.TryGetString(qValue, out var qText)) throw new ProtocolException(ErrorCodes.BadMessage, request.Id);
+            q = qText;
+        }
+        return (kind, from, to, q);
     }
 }

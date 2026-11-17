@@ -219,15 +219,15 @@ public class CommandTableTests
         Assert.Equal(expected, Check("contact.targets", args));
     }
 
-    [Fact(DisplayName = "AC-2801.5 AC-4902.1 commands.json의 contact.targets kind 값은 followup·injection·lapsed·reservation·sunap 다섯이고 명령 이름·칸은 그대로다")]
+    [Fact(DisplayName = "AC-2801.5 AC-4902.1 AC-5903.4 commands.json의 contact.targets kind 값은 followup·injection·lapsed·reservation·sunap·calfind·calday 일곱이고 명령 이름은 그대로, 칸은 kind·from·to + 선택 q다")]
     public void ContactTargetsKindValues()
     {
         using var doc = JsonDocument.Parse(File.ReadAllBytes(Repo.PathOf("src", "lib", "bridge", "commands.json")));
         var targets = doc.RootElement.GetProperty("commands").GetProperty("contact.targets");
         var args = targets.GetProperty("args");
-        Assert.Equal(new[] { "kind", "from", "to" }, args.EnumerateObject().Select(p => p.Name).ToArray());
+        Assert.Equal(new[] { "kind", "from", "to", "q" }, args.EnumerateObject().Select(p => p.Name).ToArray());
         Assert.Equal("enum", args.GetProperty("kind").GetProperty("type").GetString());
-        Assert.Equal(new[] { "followup", "injection", "lapsed", "reservation", "sunap" }, args.GetProperty("kind").GetProperty("values").EnumerateArray().Select(v => v.GetString()).ToArray());
+        Assert.Equal(new[] { "followup", "injection", "lapsed", "reservation", "sunap", "calfind", "calday" }, args.GetProperty("kind").GetProperty("values").EnumerateArray().Select(v => v.GetString()).ToArray());
         Assert.True(targets.GetProperty("patient").GetBoolean());
         Assert.Equal(1100, targets.GetProperty("maxDays").GetInt32());
         Assert.True(Table.Has("contact.targets"));
@@ -244,6 +244,24 @@ public class CommandTableTests
     public void ContactTargetsSunapKind(string kind, string from, string to, string? expected)
     {
         var args = "{\"kind\":\"" + kind + "\",\"from\":\"" + from + "\",\"to\":\"" + to + "\"}";
+        Assert.Equal(expected, Check("contact.targets", args));
+    }
+
+    [Theory(DisplayName = "AC-5903.4 contact.targets kind에 calfind·calday를 더했고 선택 칸 q는 글자 1~20자만 받는다(1,100일 한도 그대로, 글자가 다르면 E-HELPER-BAD-MESSAGE)")]
+    [InlineData("{\"kind\":\"calfind\",\"from\":\"2026-10-30\",\"to\":\"2026-10-30\",\"q\":\"가상\"}", null)]
+    [InlineData("{\"kind\":\"calfind\",\"from\":\"2026-10-30\",\"to\":\"2026-10-30\",\"q\":\"가상가상가상가상가상가상가상가상가상가상\"}", null)]   // 20자
+    [InlineData("{\"kind\":\"calfind\",\"from\":\"2026-10-30\",\"to\":\"2026-10-30\",\"q\":\"가상가상가상가상가상가상가상가상가상가상가\"}", "E-HELPER-BAD-MESSAGE")]   // 21자
+    [InlineData("{\"kind\":\"calfind\",\"from\":\"2026-10-30\",\"to\":\"2026-10-30\",\"q\":\"\"}", "E-HELPER-BAD-MESSAGE")]
+    [InlineData("{\"kind\":\"calfind\",\"from\":\"2026-10-30\",\"to\":\"2026-10-30\",\"q\":12}", "E-HELPER-BAD-MESSAGE")]
+    [InlineData("{\"kind\":\"calfind\",\"from\":\"2026-10-30\",\"to\":\"2026-10-30\",\"q\":null}", "E-HELPER-BAD-MESSAGE")]
+    [InlineData("{\"kind\":\"calfind\",\"from\":\"2026-10-30\",\"to\":\"2026-10-30\"}", null)]          // q가 있어야 하는지는 처리기가 본다
+    [InlineData("{\"kind\":\"calday\",\"from\":\"2026-10-26\",\"to\":\"2026-11-30\"}", null)]
+    [InlineData("{\"kind\":\"calday\",\"from\":\"2026-10-26\",\"to\":\"2026-10-31\",\"q\":\"가상\"}", null)]   // q가 없어야 하는지는 처리기가 본다
+    [InlineData("{\"kind\":\"Calfind\",\"from\":\"2026-10-30\",\"to\":\"2026-10-30\",\"q\":\"가상\"}", "E-HELPER-BAD-MESSAGE")]
+    [InlineData("{\"kind\":\"calday \",\"from\":\"2026-10-26\",\"to\":\"2026-10-31\"}", "E-HELPER-BAD-MESSAGE")]
+    [InlineData("{\"kind\":\"calday\",\"from\":\"2026-10-26\",\"to\":\"2026-10-31\",\"Q\":\"가상\"}", "E-HELPER-BAD-MESSAGE")]
+    public void ContactTargetsCalendarArgs(string args, string? expected)
+    {
         Assert.Equal(expected, Check("contact.targets", args));
     }
 

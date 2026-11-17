@@ -96,10 +96,12 @@ describe('AC-004.5·AC-004.6·AC-004.9 명령 표 읽기', () => {
   })
 
   // spec patients-bit-lists: 새 명단 둘은 명령 이름을 더하지 않고 contact.targets의 kind 값만 더한다(크롬 확장은 명령 이름만 본다)
-  it('AC-2801.5·AC-4902.1 contact.targets kind 값은 followup·injection·lapsed·reservation·sunap이고 명령 이름은 그대로(환자 자료 조각 명령)다', () => {
+  // spec clinic-calendar: 예약 탭 비트 찾기·접수와 비트 예약도 kind 값(calfind·calday)과 선택 칸 q만 더한다(확장 새 판 없음)
+  it('AC-2801.5·AC-4902.1·AC-5903.4 contact.targets kind 값은 followup·injection·lapsed·reservation·sunap·calfind·calday이고 칸은 kind·from·to + 선택 q(글자 1~20), 명령 이름은 그대로(환자 자료 조각 명령)다', () => {
     const targets = commands.commands['contact.targets']
-    expect(targets.args.kind).toEqual({ type: 'enum', values: ['followup', 'injection', 'lapsed', 'reservation', 'sunap'] })
-    expect(Object.keys(targets.args)).toEqual(['kind', 'from', 'to'])
+    expect(targets.args.kind).toEqual({ type: 'enum', values: ['followup', 'injection', 'lapsed', 'reservation', 'sunap', 'calfind', 'calday'] })
+    expect(Object.keys(targets.args)).toEqual(['kind', 'from', 'to', 'q'])
+    expect((targets.args as Record<string, unknown>).q).toEqual({ type: 'string', min: 1, max: 20, optional: true })
     expect(targets.maxDays).toBe(1100)
     expect(COMMANDS).toContain('contact.targets')
     expect(PATIENT_COMMANDS).toContain('contact.targets')
