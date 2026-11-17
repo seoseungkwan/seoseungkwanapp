@@ -16,10 +16,18 @@ export type BlockMode = 'week' | 'day'
 const LINE = { week: 14, day: 16 } as const
 const PAD = { week: 'py-px pr-0.5 pl-1 leading-3.5', day: 'py-0.5 pr-1.5 pl-1.5 leading-4' } as const
 
-/** 열 자리 → 왼쪽·폭(이웃 칸과 2px 띄움) */
+/** 날 칸 오른쪽에 늘 비워 두는 줄 폭(px). 그 줄을 누르면 예약이 있는 시간에도 더하기(spec calendar-colors AC-6003.1·AC-6003.2) */
+export const BLOCK_GUTTER_PX = 20
+
+/** 열 자리 → 왼쪽·폭. 오른쪽 빈 줄을 뺀 (100% - 20px) 안에서 나누고, 이웃 칸과 2px 띄운다 */
 export function placeStyle(place: BlockPlace, top: number, height: number) {
-  const pct = (n: number) => ((n / place.cols) * 100).toFixed(3)
-  return { top, height, left: `calc(${pct(place.col)}% + 1px)`, width: `calc(${pct(place.span)}% - 2px)` }
+  const part = (n: number) => (n / place.cols).toFixed(4)
+  return {
+    top,
+    height,
+    left: `calc((100% - ${BLOCK_GUTTER_PX}px) * ${part(place.col)} + 1px)`,
+    width: `calc((100% - ${BLOCK_GUTTER_PX}px) * ${part(place.span)} - 2px)`,
+  }
 }
 /** 칸 높이에 들어가는 줄 수(1 이상) */
 export const linesFor = (height: number, mode: BlockMode) => Math.max(1, Math.floor((height - 2) / LINE[mode]))

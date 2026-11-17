@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CAL_SETTINGS, type CalAllDay, type CalAppt, type CalStaff } from '@/types/calendar'
+import { BLOCK_GUTTER_PX, placeStyle } from './ApptBlock'
 import { GHOST_NOTE } from './GhostBlock'
 import { TimeGrid, type TimeGridProps } from './TimeGrid'
 
@@ -79,6 +80,35 @@ function renderGrid(over: Partial<TimeGridProps> = {}) {
 const block = (name: RegExp) => screen.getByRole('button', { name })
 const text = (el: Element) => (el.textContent ?? '').replace(/\s+/g, ' ').trim()
 const column = (container: HTMLElement, day: string) => container.querySelector<HTMLElement>(`[data-slot-day="${day}"]`)!
+
+// jsdom은 자리를 셈하지 않아(모두 0) 날 칸 자리를 시험에서 정한다: 왼쪽 0 · 위 0 · 폭 200px → 오른쪽 빈 줄은 x 180~200
+const COL_W = 200
+function placed(el: HTMLElement) {
+  vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    right: COL_W,
+    bottom: 1440,
+    width: COL_W,
+    height: 1440,
+    toJSON: () => ({}),
+  } as DOMRect)
+  return el
+}
+// jsdom은 calc 글을 제 모양으로 다시 적는다(예: `calc(1px + 0.5 * (100% - 20px))`) — 명세 글을 같은 길로 돌려 견준다
+function css(value: string) {
+  const probe = document.createElement('div')
+  probe.style.left = value
+  expect(probe.style.left).not.toBe('')
+  return probe.style.left
+}
+const box = (el: HTMLElement) => [el.style.left, el.style.width]
+const ONE = [css('calc((100% - 20px) * 0.0000 + 1px)'), css('calc((100% - 20px) * 1.0000 - 2px)')]
+const HALF_L = [css('calc((100% - 20px) * 0.0000 + 1px)'), css('calc((100% - 20px) * 0.5000 - 2px)')]
+const HALF_R = [css('calc((100% - 20px) * 0.5000 + 1px)'), css('calc((100% - 20px) * 0.5000 - 2px)')]
+const hoverBox = (container: HTMLElement, kind: 'edge' | 'full') => container.querySelector<HTMLElement>(`[data-hover="${kind}"]`)
 
 describe('AC-5905.1: 주 보기 시간 표(10분 = 20px, 보이는 시간, 오늘 칸·지금 선)', () => {
   it('AC-5905.1: 날짜 머리는 설정이 준 날(월~토)마다 하나이고, 오늘은 "· 오늘"과 취소를 뺀 예약 수(보이는 시간 밖 예약 포함)다', () => {
@@ -197,7 +227,7 @@ describe('AC-5905.1: 주 보기 시간 표(10분 = 20px, 보이는 시간, 오�
 
   it('AC-5905.1: 빈 칸에 마우스를 올리면 그 시각(+ 09:00)이 보이고, 나가면 없어진다', () => {
     const { container } = renderGrid()
-    fireEvent.mouseMove(column(container, '2026-11-19'), { clientY: 130 })
+    fireEvent.mouseMove(placed(column(container, '2026-11-19')), { clientY: 130 })
     expect(screen.getByText('+ 09:00')).toBeTruthy()
     fireEvent.mouseLeave(column(container, '2026-11-19'))
     expect(screen.queryByText('+ 09:00')).toBeNull()
@@ -331,5 +361,134 @@ describe('AC-5906.2: 일정 변경 표시', () => {
     renderGrid()
     expect(within(block(/^10231 김○○/)).getByTitle('날짜나 시작 시간을 옮김').textContent).toBe('변경')
     for (const name of [/^27741 홍○○/, /^23580 정○○/, /^30117 송○○/]) expect(within(block(name)).queryByText('변경')).toBeNull()
+  })
+})
+
+describe('AC-6003.1: 예약 칸은 날 칸 오른쪽 20px를 비우고 그 안에서 나란히 놓인다(spec calendar-colors REQ-6003, 시안 ⑤)', () => {
+  it('AC-6003.1: placeStyle은 (100% - 20px) 안에서 왼쪽 = 자리 × 열/열 수 + 1px, 폭 = 넓힘/열 수 − 2px이다(위·높이는 그대로)', () => {
+    expect(BLOCK_GUTTER_PX).toBe(20)
+    expect(placeStyle({ col: 0, cols: 1, span: 1 }, 180, 59)).toEqual({
+      top: 180,
+      height: 59,
+      left: 'calc((100% - 20px) * 0.0000 + 1px)',
+      width: 'calc((100% - 20px) * 1.0000 - 2px)',
+    })
+    expect(placeStyle({ col: 1, cols: 2, span: 1 }, 280, 19)).toEqual({
+      top: 280,
+      height: 19,
+      left: 'calc((100% - 20px) * 0.5000 + 1px)',
+      width: 'calc((100% - 20px) * 0.5000 - 2px)',
+    })
+    expect(placeStyle({ col: 1, cols: 3, span: 2 }, 0, 14)).toMatchObject({
+      left: 'calc((100% - 20px) * 0.3333 + 1px)',
+      width: 'calc((100% - 20px) * 0.6667 - 2px)',
+    })
+  })
+
+  it('AC-6003.1: 주 보기 — 혼자인 칸은 (100% - 20px) 폭 전체, 같은 시간 두 칸(10:00 문○○·10:20 송○○)은 그 안에서 반씩 나란히', () => {
+    renderGrid()
+    expect(box(block(/^27741 홍○○/))).toEqual(ONE)
+    expect(box(block(/^10231 김○○/))).toEqual(ONE)
+    expect(box(block(/^18842 문○○/))).toEqual(HALF_L)
+    expect(box(block(/^30117 송○○/))).toEqual(HALF_R)
+  })
+
+  it('AC-6003.1: 일 보기도 같은 값이고, 비트 예약 칸도 같은 자리 규칙을 따른다', () => {
+    renderGrid({ days: [TODAY], ghosts: GHOSTS })
+    expect(box(block(/^10231 김○○/))).toEqual(ONE)
+    expect(box(block(/^18842 문○○/))).toEqual(HALF_L)
+    expect(box(block(/^30117 송○○/))).toEqual(HALF_R)
+    expect(box(block(/^비트 예약 11:00/))).toEqual(ONE)
+  })
+})
+
+describe('AC-6003.2: 예약이 있는 시간의 오른쪽 빈 줄을 누르면 그 시각으로 더하기', () => {
+  it('AC-6003.2: 예약(09:30 김○○)이 있는 높이의 오른쪽 줄(예약 칸 밖)을 누르면 onSlot(그날, 09:30)이고 onAppt는 안 불린다', () => {
+    const { container, props } = renderGrid()
+    fireEvent.click(placed(column(container, TODAY)), { clientX: 190, clientY: 185 })
+    expect(props.onSlot).toHaveBeenLastCalledWith(TODAY, 570)
+    expect(props.onAppt).not.toHaveBeenCalled()
+  })
+
+  it('AC-6003.2: 두 칸이 나란한 시간(10:20 송○○)에서도 오른쪽 줄을 누르면 onSlot(그날, 10:20)이다(일 보기도 같다)', () => {
+    const { container, props } = renderGrid()
+    fireEvent.click(placed(column(container, TODAY)), { clientX: 195, clientY: 285 })
+    expect(props.onSlot).toHaveBeenLastCalledWith(TODAY, 620)
+    cleanup()
+    const day = renderGrid({ days: [TODAY] })
+    fireEvent.click(placed(column(day.container, TODAY)), { clientX: 185, clientY: 185 })
+    expect(day.props.onSlot).toHaveBeenLastCalledWith(TODAY, 570)
+    expect(day.props.onAppt).not.toHaveBeenCalled()
+  })
+
+  it('AC-6003.2: 예약 칸(또는 칸 안 글)을 누르면 지금처럼 onAppt(id)만 부르고 onSlot은 안 부른다', () => {
+    const { container, props } = renderGrid()
+    placed(column(container, TODAY))
+    fireEvent.click(within(block(/^10231 김○○/)).getByText('김○○'))
+    expect(props.onAppt).toHaveBeenLastCalledWith('a-moved')
+    fireEvent.click(block(/^30117 송○○/))
+    expect(props.onAppt).toHaveBeenLastCalledWith('a-inj')
+    expect(props.onSlot).not.toHaveBeenCalled()
+  })
+})
+
+describe('AC-6003.3: 오른쪽 줄 위 마우스 → 글 없는 좁은 점선 칸, 나머지 빈 곳 → + HH:MM', () => {
+  it('AC-6003.3: 날 칸 오른쪽 20px 위(09:30 높이)면 그 10분 칸 높이에 글 없는 좁은 점선 칸(data-hover="edge")만 보인다', () => {
+    const { container } = renderGrid()
+    fireEvent.mouseMove(placed(column(container, TODAY)), { clientX: 195, clientY: 185 })
+    const edge = hoverBox(container, 'edge')!
+    expect(edge).not.toBeNull()
+    expect(edge.textContent).toBe('')
+    expect(edge.getAttribute('aria-hidden')).toBe('true')
+    expect([edge.style.top, edge.style.height]).toEqual(['180px', '18px'])
+    for (const c of ['pointer-events-none', 'right-0.5', 'w-4', 'border-dashed', 'border-accent', 'max-md:hidden']) expect(edge.className).toContain(c)
+    expect(edge.closest('[data-slot-day]')?.getAttribute('data-slot-day')).toBe(TODAY)
+    expect(hoverBox(container, 'full')).toBeNull()
+    expect(screen.queryByText(/^\+ \d\d:\d\d$/)).toBeNull()
+  })
+
+  it('AC-6003.3: 오른쪽 줄은 날 칸 오른쪽 끝 − 20px(x 180)부터다 — 179는 지금처럼 + HH:MM', () => {
+    const { container } = renderGrid()
+    const col = placed(column(container, '2026-11-19'))
+    fireEvent.mouseMove(col, { clientX: 180, clientY: 130 })
+    expect(hoverBox(container, 'edge')).not.toBeNull()
+    fireEvent.mouseMove(col, { clientX: 179, clientY: 130 })
+    expect(hoverBox(container, 'edge')).toBeNull()
+    expect(text(hoverBox(container, 'full')!)).toBe('+ 09:00')
+  })
+
+  it('AC-6003.3: 나머지 빈 곳은 + HH:MM(data-hover="full", 30분 높이)이고, 같은 10분 칸에서 오른쪽 줄로 옮기면 좁은 칸으로 바뀐다', () => {
+    const { container } = renderGrid()
+    const col = placed(column(container, '2026-11-19'))
+    fireEvent.mouseMove(col, { clientX: 50, clientY: 130 })
+    const full = hoverBox(container, 'full')!
+    expect(text(full)).toBe('+ 09:00')
+    expect(full.getAttribute('aria-hidden')).toBe('true')
+    expect([full.style.top, full.style.height]).toEqual(['120px', '58px'])
+    expect(hoverBox(container, 'edge')).toBeNull()
+    fireEvent.mouseMove(col, { clientX: 195, clientY: 135 })
+    expect(hoverBox(container, 'full')).toBeNull()
+    expect(hoverBox(container, 'edge')!.style.top).toBe('120px')
+  })
+
+  it('AC-6003.3: 예약 칸 위에서는 둘 다 없다(오른쪽 줄에 있다가 칸 위로 가도 사라진다)', () => {
+    const { container } = renderGrid()
+    placed(column(container, TODAY))
+    fireEvent.mouseMove(column(container, TODAY), { clientX: 195, clientY: 185 })
+    expect(hoverBox(container, 'edge')).not.toBeNull()
+    fireEvent.mouseMove(block(/^10231 김○○/), { clientX: 100, clientY: 185 })
+    expect(hoverBox(container, 'edge')).toBeNull()
+    expect(hoverBox(container, 'full')).toBeNull()
+  })
+
+  it('AC-6003.3: 일 보기에서도 오른쪽 줄 위면 좁은 칸, 더하기 판이 열려 있으면(draft) 미리 보기가 없다', () => {
+    const { container } = renderGrid({ days: [TODAY] })
+    fireEvent.mouseMove(placed(column(container, TODAY)), { clientX: 190, clientY: 405 })
+    expect(hoverBox(container, 'edge')!.style.top).toBe('400px')
+    cleanup()
+    const open = renderGrid({ days: [TODAY], draft: { day: TODAY, start: 860, len: 30, editing: false, warn: false } })
+    fireEvent.mouseMove(placed(column(open.container, TODAY)), { clientX: 190, clientY: 405 })
+    expect(hoverBox(open.container, 'edge')).toBeNull()
+    expect(hoverBox(open.container, 'full')).toBeNull()
   })
 })

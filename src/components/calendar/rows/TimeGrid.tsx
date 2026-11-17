@@ -6,7 +6,7 @@ import { layoutDay } from '@/lib/calendar/layout'
 import type { BitGhost } from '@/lib/calendar/shapes'
 import type { CalAllDay, CalAppt, CalSettings } from '@/types/calendar'
 import { apptColor } from '../colors'
-import { ApptBlock } from './ApptBlock'
+import { ApptBlock, BLOCK_GUTTER_PX } from './ApptBlock'
 import { GHOST_LEN, GhostBlock } from './GhostBlock'
 import { allDayChipClass, allDayText, dateNum, dayLabel, hm, SLOT_PX, weekdayName } from './parts'
 
@@ -61,7 +61,8 @@ export function TimeGrid({
   onDay,
   onAdd,
 }: TimeGridProps) {
-  const [hover, setHover] = useState<{ day: string; start: number } | null>(null)
+  // edge = 날 칸 오른쪽 빈 줄(BLOCK_GUTTER_PX) 위(spec calendar-colors AC-6003.3)
+  const [hover, setHover] = useState<{ day: string; start: number; edge: boolean } | null>(null)
   const mode = days.length === 1 ? 'day' : 'week'
   const open = settings.openHour * 60
   const close = settings.closeHour * 60
@@ -99,7 +100,7 @@ export function TimeGrid({
       return { top, height: Math.max(Math.min(yOf(close), yOf(end)) - top - 1, 14) }
     }
     const isToday = day === today
-    const hovered = hover?.day === day ? hover.start : null
+    const hovered = hover?.day === day ? hover : null
     const draftHere = draft?.day === day ? draft : null
     return (
       <div
@@ -111,9 +112,14 @@ export function TimeGrid({
           if (!onBlock(e)) onSlot(day, slotAt(e))
         }}
         onMouseMove={(e) => {
-          // 같은 칸이면 그대로 둔다(움직일 때마다 표 전체를 다시 그리지 않게)
-          const start = onBlock(e) ? null : slotAt(e)
-          setHover((prev) => (start === null ? null : prev?.day === day && prev.start === start ? prev : { day, start }))
+          // 같은 칸·같은 줄이면 그대로 둔다(움직일 때마다 표 전체를 다시 그리지 않게)
+          if (onBlock(e)) {
+            setHover(null)
+            return
+          }
+          const start = slotAt(e)
+          const edge = e.clientX >= e.currentTarget.getBoundingClientRect().right - BLOCK_GUTTER_PX
+          setHover((prev) => (prev?.day === day && prev.start === start && prev.edge === edge ? prev : { day, start, edge }))
         }}
         onMouseLeave={() => setHover(null)}
       >
@@ -141,13 +147,24 @@ export function TimeGrid({
           </div>
         ) : null}
         {hovered !== null && draftHere === null ? (
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0.5 z-3 rounded-control border border-dashed border-accent bg-accent-soft/60 px-1.5 py-0.5 text-caption font-semibold text-accent-strong max-md:hidden"
-            style={{ top: yOf(hovered), height: SLOT_PX * 3 - 2 }}
-          >
-            + {hm(hovered)}
-          </div>
+          hovered.edge ? (
+            // 오른쪽 빈 줄 안에만 글 없는 좁은 점선 칸(10분 높이) — 예약이 있는 시간에도 그 시각으로 더하기(AC-6003.3)
+            <div
+              aria-hidden="true"
+              data-hover="edge"
+              className="pointer-events-none absolute right-0.5 z-3 w-4 rounded-control border border-dashed border-accent bg-accent-soft/60 max-md:hidden"
+              style={{ top: yOf(hovered.start), height: SLOT_PX - 2 }}
+            />
+          ) : (
+            <div
+              aria-hidden="true"
+              data-hover="full"
+              className="pointer-events-none absolute inset-x-0.5 z-3 rounded-control border border-dashed border-accent bg-accent-soft/60 px-1.5 py-0.5 text-caption font-semibold text-accent-strong max-md:hidden"
+              style={{ top: yOf(hovered.start), height: SLOT_PX * 3 - 2 }}
+            >
+              + {hm(hovered.start)}
+            </div>
+          )
         ) : null}
         {draftHere ? (
           <div
