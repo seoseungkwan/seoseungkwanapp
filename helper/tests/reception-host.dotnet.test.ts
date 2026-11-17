@@ -103,6 +103,12 @@ describe('REQ-1411 늘 켜 두기와 처음 열기 (C# Precheck.Core.Tests.Recep
   })
 })
 
+describe('REQ-5707 혼자 등록 --register (C# Precheck.Core.Tests.Reception.Host)', () => {
+  it('AC-5707.1 PrecheckReception.exe --register(인자가 정확히 이 하나): 서버·뮤텍스 없이 RegisterFlow(RegisterEntry)를 돌아 저장 0 · 취소 3 · 실패 1, 기록에는 오류 번호만(진짜 비트 로그인·확인 창은 의원 PC AC-5707.6)', () => {
+    expectAc('AC-5707.1')
+  })
+})
+
 describe('REQ-1413 환자 자료는 의원 안에서만 (C# Precheck.Core.Tests.Reception.Host)', () => {
   it('AC-1413.1 Precheck.Reception/**·ReceptionStart에 바깥으로 나가는 연결 API가 없고, 브라우저로 여는 주소는 127.0.0.1의 /link 하나뿐이다', () => {
     expectAc('AC-1413.1')

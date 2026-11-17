@@ -1,7 +1,9 @@
-﻿# 접수 현황 따로 설치 (specs/reception-phone/design.md 11절 '따로 설치', TASK-35)
-# - 공식 도우미는 그대로 두고 접수 현황 PrecheckReception.exe만 자기 폴더 %LOCALAPPDATA%\Seoseungkwan\PrecheckReception\에 둔다
-#   도우미(PrecheckHelper)는 끄지도·덮어쓰지도·크롬 등록하지도 않는다. 도우미를 다시 설치해도 이 폴더는 그대로다
-# - 도우미가 설치되고 이 PC에 의원 등록이 되어 있어야 한다(접수 현황은 도우미 data\의 등록 파일로 비트를 연다). 없으면 알리고 멈춘다
+﻿# 접수 현황 따로 설치 (specs/reception-phone/design.md 11절 '따로 설치', TASK-35 · 혼자 설치 specs/reception-other-clinic/design.md 6절, REQ-5707)
+# - 접수 현황 PrecheckReception.exe만 자기 폴더 %LOCALAPPDATA%\Seoseungkwan\PrecheckReception\에 둔다
+#   도우미(PrecheckHelper)가 있으면 끄지도·덮어쓰지도·크롬 등록하지도 않는다. 도우미를 다시 설치해도 이 폴더는 그대로다
+# - 도우미가 없어도 된다. 등록·설정·로고·표시는 도우미와 같은 data\ 폴더(%LOCALAPPDATA%\Seoseungkwan\PrecheckHelper\data\)에 있고, 설치는 그 안을 건드리지 않는다
+# - 이 PC에 병원 등록(data\registration.dat)이 없으면 zip의 app\PrecheckReception.exe --register로 비트 로그인 → 이 병원 확인 창을 먼저 돈다
+#   취소·실패면 아무것도 바꾸지 않고 멈춘다(등록은 켜져 있던 접수 현황 끄기보다 앞이다)
 # - 관리자 권한이 필요 없다. 이 윈도우 사용자의 폴더(%LOCALAPPDATA%)·사용자 레지스트리(HKCU)·이 사용자의 바탕 화면만 쓴다
 #   방화벽 규칙은 만들지 않는다(관리자 권한이 필요하다). 처음 켤 때 윈도우가 묻는 창에서 사용자가 [허용]을 누른다
 # - 윈도우 PowerShell 5.1(윈도우 10·11 기본)에서 돈다. 한글 문구가 깨지지 않게 이 파일은 UTF-8 BOM으로 저장한다
@@ -11,6 +13,7 @@ Set-StrictMode -Version 3.0
 
 $receptionName = 'PrecheckReception'
 $appSource = Join-Path $PSScriptRoot 'app'
+$sourceExe = Join-Path $appSource "$receptionName.exe"
 # 로그인 때 접수 현황을 켜는 사용자 레지스트리 시작 항목(도우미와 함께 까는 install.ps1과 같은 이름)과 바탕 화면 바로 가기
 $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $runName = 'Seoseungkwan.PrecheckReception'
@@ -21,14 +24,27 @@ try {
     if (-not $env:LOCALAPPDATA) { throw '이 윈도우 사용자의 LOCALAPPDATA 폴더를 찾지 못했습니다.' }
     $installDir = Join-Path $env:LOCALAPPDATA 'Seoseungkwan\PrecheckReception'
     $helperDir = Join-Path $env:LOCALAPPDATA 'Seoseungkwan\PrecheckHelper'
-    if (-not (Test-Path -LiteralPath (Join-Path $appSource "$receptionName.exe"))) {
+    # 접수 현황이 읽고 쓰는 data\ 폴더(도우미와 같은 자리, 도우미가 없어도 여기)
+    $dataDir = Join-Path $helperDir 'data'
+    # 도우미가 있는지는 끝 글을 고르려고 보기만 한다(없어도 멈추지 않는다)
+    $hasHelper = Test-Path -LiteralPath (Join-Path $helperDir 'PrecheckHelper.exe')
+    if (-not (Test-Path -LiteralPath $sourceExe)) {
         throw "설치할 파일이 없습니다. 받은 zip을 오른쪽 클릭 → '모두 압축 풀기'를 한 뒤, 푼 폴더에서 install-reception.cmd를 누르세요."
     }
 
-    # 0. 도우미와 이 PC의 의원 등록이 먼저 있어야 한다. 없으면 아무것도 바꾸지 않고 멈춘다
-    if (-not (Test-Path -LiteralPath (Join-Path $helperDir 'PrecheckHelper.exe')) -or -not (Test-Path -LiteralPath (Join-Path $helperDir 'data\registration.dat'))) {
-        throw '도우미가 없거나 이 PC에 등록한 의원이 없습니다. 도우미를 먼저 설치하고, 사이트의 비트 PC 연결 화면에서 [처음 등록]을 마친 뒤 다시 눌러 주세요.'
+    # 0. 푼 zip의 app\ 파일에서 인터넷에서 받은 파일 표시를 먼저 지운다(등록하려고 켤 때 윈도우가 막지 않게)
+    Get-ChildItem -LiteralPath $appSource -File | Unblock-File
+
+    # 이 PC에 병원 등록이 없으면 비트 로그인 → 이 병원 확인 창을 돈다. 끝 번호(ReceptionStart): 0 저장 · 3 취소 · 그 밖 실패
+    # 취소·실패면 아무것도 바꾸지 않고 멈춘다(아래 catch가 글을 보인다)
+    if (-not (Test-Path -LiteralPath (Join-Path $dataDir 'registration.dat'))) {
+        Write-Host '비트에 이 병원을 등록합니다. 비트 로그인 창이 뜨면 평소처럼 로그인하고, 확인 창에서 [확인]을 누르세요.'
+        $register = Start-Process -FilePath $sourceExe -ArgumentList '--register' -WorkingDirectory $appSource -Wait -PassThru
+        if ($register.ExitCode -eq 3) { throw '등록을 취소했습니다. 다시 하려면 install-reception.cmd를 다시 누르세요.' }
+        if ($register.ExitCode -ne 0) { throw '비트에 연결하지 못했습니다. 비트가 깔린 PC인지 확인하고 다시 눌러 주세요.' }
     }
+    # data\ 폴더가 없으면 만든다(있으면 그대로, 안의 등록·설정·로고·표시·목록은 건드리지 않는다)
+    New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
 
     # 1. 돌던 접수 현황을 끝낸다(켜져 있으면 덮어쓸 수 없다). 이 윈도우 로그인의 것만 끈다. 도우미는 끄지 않는다
     $session = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
@@ -64,8 +80,10 @@ try {
     # 5. 접수 현황을 지금 켠다(창 없이 돈다). 처음 한 번 윈도우 방화벽이 묻는 창이 뜬다
     Start-Process -FilePath $receptionExe -WorkingDirectory $installDir
 
+    $done = '접수 현황을 설치하고 켰습니다.'
+    if ($hasHelper) { $done += ' 도우미는 그대로 두었습니다.' }
     Write-Host ''
-    Write-Host '접수 현황을 설치하고 켰습니다. 도우미는 그대로 두었습니다.' -ForegroundColor Green
+    Write-Host $done -ForegroundColor Green
     Write-Host "설치한 곳: $installDir"
     Write-Host '앞으로 이 PC에 로그인하면 저절로 켜집니다.'
     Write-Host "'Windows 보안 경고' 창이 뜨면 '개인 네트워크'에 체크하고 [허용]을 누르세요."
