@@ -8,6 +8,7 @@
 > **Phase 3** — 일꾼 셋: TASK-7 설정 쪽(화면) · TASK-8 잇기·끝까지 시험(C#) · TASK-9 처음 값 표지(C#, 명세 고침 2026-11-17)
 > **Phase 4** — TASK-10 주소 보내기 화면 로고(C#, 명세 고침 2026-11-17 두 번째)
 > **Phase 5** — 일꾼 둘: TASK-11 폰 머리 이름(화면) · TASK-12 접수 현황 글(C#·설치 글) (명세 고침 2026-11-17 세 번째)
+> **Phase 6** — TASK-13 화면에 남은 우리 의원 말투(화면 글·주소 보내기 화면, 명세 고침 2026-11-17 네 번째)
 > 끝: 합치기 → 전체 시험·lint → 화면 확인(가짜 판) → 전체 검토 한 번 → 접수 현황 새 설치 zip → [의원 PC] 확인
 > 화면 TASK는 가짜 판·설정·코드 목록을 `reception/tests/fixtures.ts`로 쓴다(서버 없이). C# TASK의 새 인자는 끝 선택 인자라 `Precheck.Reception/ReceptionServices.cs`는 TASK-8 전까지 그대로 컴파일된다.
 
@@ -118,3 +119,12 @@
 - Tests: helper/tests/reception-own-zip.test.ts, helper/tests/reception-host.dotnet.test.ts, helper/tests/reception-other-clinic.dotnet.test.ts, helper/tests/bit-connect.dotnet.test.ts
 - TDD: required
 - 도우미 쪽 확인 창 글·`install.ps1`·`uninstall.ps1`은 바꾸지 않는다(시험으로 그대로임을 본다). ps1은 UTF-8 BOM을 지킨다. 사용자 결정 2026-11-17(명세 고침)
+
+## TASK-13: 화면에 남은 우리 의원 말투 (화면 글·주소 보내기 화면)
+- Step: Phase 6
+- AC: AC-5718.1, AC-5718.2, AC-5718.3
+- REQ: REQ-5718
+- Files: reception/www/arrange.js, reception/www/offline.js, reception/tests/arrange.test.ts, reception/tests/offline.test.ts, helper/src/Precheck.Core/Reception/LinkPage.cs, helper/tests/Precheck.Core.Tests/Reception/LinkPage.test.cs, helper/tests/reception-link-page.dotnet.test.ts
+- Tests: reception/tests/arrange.test.ts, reception/tests/offline.test.ts, helper/tests/reception-link-page.dotnet.test.ts
+- TDD: required
+- 글만 바꾼다(모양·자리 그대로). 사용자 결정 2026-11-17(명세 고침)
