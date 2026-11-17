@@ -475,6 +475,25 @@ describe('REQ-5712 병원 로고', () => {
     expect(onSave.mock.calls[0]!.slice(1)).toEqual([LOGO_TOAST, { undo: true }])
   })
 
+  it('AC-5712.2 · AC-5701.1: [바꾸기]의 1~20글자는 PC(C#)처럼 UTF-16 단위(글의 length)로 센다. 그림 글자(😀)는 2글자라 19글자 + 😀는 저장하지 않고 18글자 + 😀는 저장한다', () => {
+    const settings = fx.freshSettings()
+    const { page, onSave } = drawPage(settings)
+    button(page, '.logo-card > .seg > button', '병원 이름 글자').click()
+    const input = () => page.querySelector<HTMLInputElement>('.logo-card form.name-row > input.txt')!
+    const long = `${'가'.repeat(19)}😀`
+    expect([[...long].length, long.length]).toEqual([20, 21])
+    typeIn(input(), long)
+    input().form!.requestSubmit()
+    expect(onSave).not.toHaveBeenCalled()
+    expect(page.querySelector('.logo-card .lp-hint')!.classList.contains('is-bad')).toBe(true)
+    const fit = `${'가'.repeat(18)}😀`
+    expect(fit.length).toBe(20)
+    typeIn(input(), fit)
+    input().form!.requestSubmit()
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave.mock.calls[0]![0].logo).toEqual({ mode: 'text', text: fit, ver: 0 })
+  })
+
   it('AC-5712.2 · AC-5712.3: 그림 파일이 없으면(ver 0) [로고 그림]은 저장하지 않고 그림 고르기를 열고, [다른 그림 고르기]도 그림 고르기다. 고른 파일은 view.onLogoFile로 넘긴다', () => {
     const onLogoFile = vi.fn()
     const { page, onSave } = drawPage(fx.freshSettings(), { onLogoFile })
@@ -863,16 +882,16 @@ describe('REQ-5713 칸 고치기 창', () => {
     expect(colOf(next, 'ds').name).toBe('도수치료')
   })
 
-  it('AC-5713.1: 이름이 규칙(앞뒤 빈칸을 뺀 1~10글자·"|"·제어 글자 없음·다른 칸과 겹침 없음)에 맞지 않으면 [저장]이 꺼지고 안내 글이 빨갛다', async () => {
+  it('AC-5713.1: 이름이 규칙(앞뒤 빈칸을 뺀 1~10글자·"|"·제어 글자 없음·다른 칸과 겹침 없음)에 맞지 않으면 [저장]이 꺼지고 안내 글이 빨갛다. 글자 수는 PC(C#)처럼 UTF-16 단위로 센다(😀는 2글자)', async () => {
     const { page, ctx } = await openEditor(fx.imsSettings(), 'x1')
-    for (const bad of ['', '   ', '가'.repeat(11), 'I|MS', '벨\u0007', 'SONO', ' 견인 ']) {
+    for (const bad of ['', '   ', '가'.repeat(11), `${'가'.repeat(9)}😀`, 'I|MS', '벨\u0007', 'SONO', ' 견인 ']) {
       typeIn(nameInput(page), bad)
       expect(goButton(page).disabled, JSON.stringify(bad)).toBe(true)
       expect(sheetOf(page)!.querySelector('.cf-hint')!.classList.contains('is-bad'), JSON.stringify(bad)).toBe(true)
       goButton(page).click()
     }
     expect(ctx.onSave).not.toHaveBeenCalled()
-    for (const ok of [' IMS ', '가'.repeat(10), '주사']) {
+    for (const ok of [' IMS ', '가'.repeat(10), `${'가'.repeat(8)}😀`, '주사']) {
       typeIn(nameInput(page), ok)
       expect(goButton(page).disabled, ok).toBe(false)
       expect(sheetOf(page)!.querySelector('.cf-hint')!.classList.contains('is-bad'), ok).toBe(false)
@@ -1266,12 +1285,12 @@ describe('REQ-5713 칸 더하기', () => {
     expect(document.activeElement).toBe(segButton(page, '종류', '직접 칸'))
   })
 
-  it('AC-5713.9: [더하기]는 열쇠 x{nextX}(nextX +1)·added·show 참·codes 빈 칸을 맨 끝에, picks.extra에 빈 목록을 더해 저장하고(띠 "{칸} 칸을 더했어요") 창을 닫는다. 이름이 규칙에 맞지 않으면 꺼진다', async () => {
+  it('AC-5713.9 · AC-5713.1: [더하기]는 열쇠 x{nextX}(nextX +1)·added·show 참·codes 빈 칸을 맨 끝에, picks.extra에 빈 목록을 더해 저장하고(띠 "{칸} 칸을 더했어요") 창을 닫는다. 이름이 규칙(글자 수는 UTF-16 단위, 😀는 2글자)에 맞지 않으면 꺼진다', async () => {
     const settings = fx.imsSettings()
     settings.nextX = 4
     const { page, onSave } = drawPage(settings)
     page.querySelector<HTMLButtonElement>('button.col-add')!.click()
-    for (const bad of ['   ', 'IMS', 'a|b', '가'.repeat(11)]) {
+    for (const bad of ['   ', 'IMS', 'a|b', '가'.repeat(11), `${'가'.repeat(9)}😀`]) {
       typeIn(nameInput(page), bad)
       expect(goButton(page).disabled, bad).toBe(true)
       expect(sheetOf(page)!.querySelector('.cf-hint')!.classList.contains('is-bad'), bad).toBe(true)

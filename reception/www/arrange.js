@@ -82,7 +82,7 @@ const PICKED_EMPTY = '아직 없어요 · 아래에서 부위를 눌러요'
 const SIDE_HINT = '안 고르면 부위만 담겨요'
 const PLAIN_HINT = '쪽·부위 없이 그대로 담겨요'
 
-/** X-RAY 넣기 창과 직접 칸 넣기 창 두 모드의 작은 글 (reception-other-clinic AC-5711.1·5711.2, 시안 pickView) */
+/** X-RAY 넣기 창과 직접 칸 넣기 창 두 모드의 작은 글 (reception-other-clinic AC-5711.1·5711.2, 시안 pickView). MULTI_SUB는 충격파·C-ARM 창의 [같이 고르기] 켜짐에도 쓴다 */
 const XRAY_SUB = '처방에 없어도 넣을 수 있어요'
 const ONE_SUB = '누르면 바로 들어가요'
 const MULTI_SUB = '여러 개 골라 [넣기]를 눌러요'
@@ -877,7 +877,7 @@ function eswtSheetOf(sheet, col, name, picks, act) {
       ? [modeOf('타수', can, chosen.multi, sheet, act), opts('hit', '타수', hits, chosen.hits), el('div', { class: 'opt-label' }, '부위 수'), opts('count', '부위 수', counts, chosen.counts)]
       : [modeOf('부위 수', can, chosen.multi, sheet, act), opts('count', '부위 수', counts, chosen.counts)]
   return sheetBack(title, act, [
-    headSheet(title, `${name} · ${ESWT_SUB}`),
+    headSheet(title, `${name} · ${chosen.multi ? MULTI_SUB : ESWT_SUB}`),
     rows,
     goOf(value, () => act.put(sheet, [...chosen.hits, ...chosen.counts].join(JOIN)), act),
     editButton(col, act),
@@ -901,7 +901,7 @@ function carmSheetOf(sheet, col, name, picks, act) {
     chosen.multi ? checkOpts(cls, group, label, items, on, sheet, col, act, off) : pickOpts(cls, group, label, items, on, sheet, col, act, off)
   const lead = chosen.procs.join(DOT)
   return sheetBack(title, act, [
-    headSheet(title, `${name} · ${CARM_SUB}`),
+    headSheet(title, `${name} · ${chosen.multi ? MULTI_SUB : CARM_SUB}`),
     modeOf('시술', can, chosen.multi, sheet, act),
     opts('opts four', 'proc', '시술', names, chosen.procs, false),
     picks.carm.drugs.length > 0 ? [el('div', { class: 'opt-label' }, '약재'), opts(noDrug ? 'opts trio no-drug' : 'opts trio', 'drug', '약재', picks.carm.drugs, drugs, noDrug)] : null,
