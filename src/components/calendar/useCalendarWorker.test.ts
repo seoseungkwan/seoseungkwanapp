@@ -200,8 +200,10 @@ describe('AC-5905.6 비트 찾기', () => {
 
 describe('AC-5905.7 도착 auto·비트 예약 칸', () => {
   it('AC-5905.7: 기간을 그리면 contact.targets {kind: calday, 그 기간}을 열어 days에 그 기간 예약(셈에 쓰는 일곱 칸만)과 now를 싣는다', async () => {
+    vi.mocked(listAppts).mockResolvedValue(APPTS)
     const { worker } = setup()
     await settle()
+    expect(listAppts).toHaveBeenCalledWith(CLIENT, '2026-11-16', '2026-11-22')
     expect(streamsOf('calday')).toEqual([['contact.targets', { kind: 'calday', from: '2026-11-16', to: '2026-11-22' }]])
     const [sent] = daysPosts(worker) as { now: number; appts: object[]; targets: unknown }[]
     expect(sent.now).toBe(Date.parse('2026-11-17T01:40:00Z'))
@@ -213,21 +215,44 @@ describe('AC-5905.7 도착 auto·비트 예약 칸', () => {
     expect(JSON.stringify(sent)).not.toMatch(/김○○|허리|한○○/)
   })
 
-  it('AC-5905.7: 받은 auto는 하나씩 setApptAuto(id, auto)로 서버에 적고, 적힌 것만 onAuto로 알린다. 비트 예약 칸은 ghosts다', async () => {
+  it('AC-5905.7: 받은 auto는 하나씩 setApptAuto(id, auto, 셈한 자리)로 서버에 적고, 적힌 것만 onAuto로 알린다. 비트 예약 칸은 ghosts다', async () => {
+    vi.mocked(listAppts).mockResolvedValue(APPTS)
     vi.mocked(setApptAuto).mockImplementation(async (_c, id) => {
-      if (id === 'bad') throw new Error('failed')
+      if (id === 'a2') throw new Error('failed')
     })
     const { worker, hook, onAuto } = setup()
     await settle()
     const auto: [string, ApptAuto][] = [
       ['a1', 'came'],
-      ['bad', 'noshow'],
+      ['a2', 'noshow'],
+      ['gone', 'noshow'], // 보낸 목록에 없는 id: 자리를 모르니 적지 않는다
     ]
     await worker.reply({ type: 'days', from: '2026-11-16', to: '2026-11-22', auto, ghosts: [GHOST] })
-    expect(setApptAuto).toHaveBeenCalledWith(CLIENT, 'a1', 'came')
-    expect(setApptAuto).toHaveBeenCalledWith(CLIENT, 'bad', 'noshow')
+    expect(setApptAuto).toHaveBeenCalledWith(CLIENT, 'a1', 'came', { day: '2026-11-17', start: 570 })
+    expect(setApptAuto).toHaveBeenCalledWith(CLIENT, 'a2', 'noshow', { day: '2026-11-18', start: 570 })
+    expect(setApptAuto).toHaveBeenCalledTimes(2)
     expect(onAuto).toHaveBeenCalledWith([['a1', 'came']])
     expect(hook.result.current.ghosts).toEqual([GHOST])
+  })
+
+  it('AC-5905.7: 일·주 보기도 days 직전에 서버에서 새로 읽는다 — 화면이 숨어 있는 동안 다른 PC가 옮긴 예약을 옛 자리로 셈하지 않는다(검토 고침)', async () => {
+    // 화면 목록(opts.appts)은 a1이 오늘 09:30인 옛 것, 서버는 금요일 14:00으로 옮겨진 것
+    vi.mocked(listAppts).mockResolvedValue([appt('a1', { day: '2026-11-20', start: 840, origDay: '2026-11-17', origStart: 570 })])
+    const { worker } = setup()
+    await settle()
+    const [sent] = daysPosts(worker) as { appts: { id: string; day: string; start: number }[] }[]
+    expect(sent.appts).toEqual([{ id: 'a1', day: '2026-11-20', start: 840, len: 30, chart: '10231', status: 'auto', auto: null }])
+    await worker.reply({ type: 'days', from: '2026-11-16', to: '2026-11-22', auto: [['a1', 'noshow']], ghosts: [] })
+    expect(setApptAuto).toHaveBeenCalledWith(CLIENT, 'a1', 'noshow', { day: '2026-11-20', start: 840 })
+  })
+
+  it('AC-5905.7: 60초마다 부를 때도 매번 새로 읽는다', async () => {
+    const { worker } = setup()
+    await settle()
+    const first = vi.mocked(listAppts).mock.calls.length
+    await settle(DAYS_POLL_MS)
+    expect(vi.mocked(listAppts).mock.calls.length).toBe(first + 1)
+    expect(daysPosts(worker)).toHaveLength(2)
   })
 
   it('AC-5905.7: 오늘이 든 기간을 보는 동안 60초마다 다시 부른다', async () => {

@@ -52,7 +52,7 @@ export type CalendarWorkerOpts = {
   view: CalView
   from: string
   to: string
-  /** 그 기간 예약(일·주). 아직 못 읽었으면 null. 월 보기는 쓰지 않는다(도착 셈에 쓸 예약을 따로 읽는다) */
+  /** 그 기간 예약(일·주). 아직 못 읽었으면 null(읽은 뒤에 days를 부른다). 도착 셈에 쓸 예약은 부를 때마다 서버에서 새로 읽는다 */
   appts: readonly CalAppt[] | null
   /** 서버에 적은 도착 auto(화면이 칸을 바로 바꾼다) */
   onAuto(pairs: [string, ApptAuto][]): void
@@ -117,15 +117,18 @@ export function useCalendarWorker(worker: CalendarWorkerHandle, opts: CalendarWo
   const asked = useRef<string | null>(null) // Worker에 보낸 찾기의 q(지웠으면 null)
   const daysFlow = useRef(0)
   const sentKey = useRef<string | null>(null) // Worker에 보낸 days의 기간
+  const sentSlots = useRef(new Map<string, { day: string; start: number }>()) // Worker에 보낸 예약의 자리(id → 날짜·시작)
 
   const send = useCallback((message: CalendarScreenMessage) => worker.postMessage(message, []), [worker])
 
   useEffect(() => {
     const applyDays = async (message: Extract<CalendarWorkerMessage, { type: 'days' }>) => {
       if (sentKey.current !== null) setGhostView({ key: sentKey.current, ghosts: message.ghosts })
+      const slots = sentSlots.current
+      const known = message.auto.filter(([id]) => slots.has(id)) // 보낸 목록에 없는 id는 자리를 모르니 적지 않는다
       const written = await Promise.all(
-        message.auto.map(([id, auto]) =>
-          setApptAuto(client, id, auto).then(
+        known.map(([id, auto]) =>
+          setApptAuto(client, id, auto, slots.get(id)!).then(
             () => [id, auto] as [string, ApptAuto],
             () => null, // 다음 60초에 Worker가 다시 준다(서버 값이 그대로라)
           ),
@@ -182,13 +185,14 @@ export function useCalendarWorker(worker: CalendarWorkerHandle, opts: CalendarWo
   )
 
   const runDays = useCallback(async () => {
-    const { view, from, to, appts } = latest.current
+    const { view, from, to } = latest.current
     const range = daysRange(view, from, to, todayInKorea())
     if (range === null) return
     const mine = ++daysFlow.current
     let list: readonly CalendarDayAppt[]
     try {
-      list = view === 'month' ? await listAppts(client, range.from, range.to) : (appts ?? [])
+      // 일·주·월 모두 부를 때마다 서버에서 새로 읽는다: 화면이 숨어 5초 다시 읽기가 멈춘 동안 다른 PC가 옮긴 예약을 옛 자리로 셈하지 않으려고(검토 고침)
+      list = await listAppts(client, range.from, range.to)
     } catch {
       return // 다음 60초(또는 다음 기간)에 다시
     }
@@ -196,6 +200,7 @@ export function useCalendarWorker(worker: CalendarWorkerHandle, opts: CalendarWo
     const targets = await opened(stream('contact.targets', { kind: 'calday', from: range.from, to: range.to }))
     if (mine !== daysFlow.current) return
     sentKey.current = `${view}|${from}|${to}`
+    sentSlots.current = new Map(list.map((a) => [a.id, { day: a.day, start: a.start }]))
     send({ type: 'days', targets, now: Date.now(), appts: list.map(dayAppt) })
   }, [client, send, stream])
 

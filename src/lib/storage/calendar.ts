@@ -260,11 +260,11 @@ export async function updateAppt(client: Client, id: string, patch: Partial<Appt
   return savedAppt(data)
 }
 
-/** 비트 PC가 정한 도착 표시(auto) 한 칸만 그 id 줄에 적는다 */
-export async function setApptAuto(client: Client, id: string, auto: ApptAuto): Promise<void> {
+/** 비트 PC가 정한 도착 표시(auto) 한 칸만 그 id 줄에 적는다. 셈한 자리(날짜·시작)가 그대로일 때만 — 그새 다른 PC가 옮긴 예약에는 옛 자리의 도착을 적지 않는다(옮기면 DB가 auto를 비운다) */
+export async function setApptAuto(client: Client, id: string, auto: ApptAuto, slot: { day: string; start: number }): Promise<void> {
   const target = requireId(id)
-  if (!isAuto(auto)) throw failed()
-  await send(() => client.from(APPTS).update({ auto }).eq('id', target))
+  if (!isAuto(auto) || !isDay(slot?.day) || !isStart(slot?.start)) throw failed()
+  await send(() => client.from(APPTS).update({ auto }).eq('id', target).eq('day', slot.day).eq('start_min', slot.start))
 }
 
 /** 예약 한 줄 지우기. id가 비면 보내지 않는다(조건 없는 지우기를 보내지 않으려고) */

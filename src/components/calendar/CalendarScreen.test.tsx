@@ -575,7 +575,7 @@ describe('AC-5905.6·AC-5905.7 비트 PC', () => {
     expect(stream).toHaveBeenCalledWith('contact.targets', { kind: 'calday', from: '2026-11-16', to: '2026-11-22' })
     const ghost = { key: 'bit-202611181030-0', day: '2026-11-18', start: 630, chart: '25190', name: '오○○' }
     await reply({ type: 'days', from: '2026-11-16', to: '2026-11-22', auto: [['a1', 'came']], ghosts: [ghost] })
-    await waitFor(() => expect(setApptAuto).toHaveBeenCalledWith(CLIENT, 'a1', 'came'))
+    await waitFor(() => expect(setApptAuto).toHaveBeenCalledWith(CLIENT, 'a1', 'came', expect.objectContaining({ day: expect.any(String), start: expect.any(Number) })))
     await waitFor(() => expect(block(/^10231 김○○ 도수 \(가\) 09:30–10:00 30분 · 왔음$/)).toBeTruthy())
     fireEvent.click(block(/^비트 예약 10:30 25190 오○○/))
     expect(await screen.findByText(GHOST_NOTE)).toBeTruthy()

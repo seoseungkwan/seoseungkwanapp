@@ -535,10 +535,21 @@ describe('updateAppt', () => {
 })
 
 describe('setApptAuto', () => {
-  it.each(['came', 'noshow', null] as const)('AC-5901.6: 도착 auto 칸 하나(%j)만 그 id 줄에 고친다', async (auto) => {
+  const SLOT = { day: '2026-11-17', start: 570 }
+  it.each(['came', 'noshow', null] as const)('AC-5901.6: 도착 auto 칸 하나(%j)만 그 id 줄에, 셈한 자리(날짜·시작)가 그대로일 때만 고친다', async (auto) => {
     const { client, calls } = fakeClient()
-    await expect(setApptAuto(client, ID, auto)).resolves.toBeUndefined()
-    expect(calls).toEqual([['from', 'calendar_appts'], ['update', { auto }], ['eq', 'id', ID]])
+    await expect(setApptAuto(client, ID, auto, SLOT)).resolves.toBeUndefined()
+    expect(calls).toEqual([['from', 'calendar_appts'], ['update', { auto }], ['eq', 'id', ID], ['eq', 'day', '2026-11-17'], ['eq', 'start_min', 570]])
+  })
+
+  it.each<[string, unknown]>([
+    ['날짜가 날짜 모양이 아님', { day: '2026-13-01', start: 570 }],
+    ['시작이 10분 단위가 아님', { day: '2026-11-17', start: 575 }],
+    ['자리 없음', undefined],
+  ])('AC-5901.6: 자리가 %s이면 보내지 않고 failed다(옮긴 예약에 옛 자리의 도착을 적지 않으려고)', async (_name, slot) => {
+    const { client, calls } = fakeClient()
+    expect((await caught(() => setApptAuto(client, ID, 'came', slot as typeof SLOT))).kind).toBe('failed')
+    sentNothing(calls)
   })
 
   it.each<[string, string, unknown]>([
@@ -548,16 +559,18 @@ describe('setApptAuto', () => {
     ['id 빈 글자', '', 'came'],
   ])('AC-5901.6: %s이면 보내지 않고 failed다', async (_name, id, auto) => {
     const { client, calls } = fakeClient()
-    expect((await caught(() => setApptAuto(client, id, auto as 'came'))).kind).toBe('failed')
+    expect((await caught(() => setApptAuto(client, id, auto as 'came', SLOT))).kind).toBe('failed')
     sentNothing(calls)
   })
 
   it('AC-5901.6: 진짜 클라이언트로도 PATCH 몸통은 auto 하나다', async () => {
     const fakeFetch = fetchReturning(null)
-    await setApptAuto(realClient(fakeFetch), ID, 'noshow')
+    await setApptAuto(realClient(fakeFetch), ID, 'noshow', SLOT)
     const request = requestOf(fakeFetch)
     expect(request.method).toBe('PATCH')
     expect(request.url.searchParams.get('id')).toBe(`eq.${ID}`)
+    expect(request.url.searchParams.get('day')).toBe('eq.2026-11-17')
+    expect(request.url.searchParams.get('start_min')).toBe('eq.570')
     expect(request.body).toEqual({ auto: 'noshow' })
   })
 })
@@ -823,7 +836,7 @@ const ALL: [string, Run][] = [
   ['listCalendarCounts', (c) => listCalendarCounts(c, DAY, DAY2)],
   ['addAppt', (c) => addAppt(c, DRAFT)],
   ['updateAppt', (c) => updateAppt(c, ID, { memo: '가' })],
-  ['setApptAuto', (c) => setApptAuto(c, ID, 'came')],
+  ['setApptAuto', (c) => setApptAuto(c, ID, 'came', { day: '2026-11-17', start: 570 })],
   ['deleteAppt', (c) => deleteAppt(c, ID)],
   ['listAllDay', (c) => listAllDay(c, DAY, DAY2)],
   ['addAllDay', (c) => addAllDay(c, { day: DAY, type: 'memo', memo: '가', staffId: null, staffName: null })],
