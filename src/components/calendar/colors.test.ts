@@ -40,16 +40,69 @@ describe('AC-5905.1: 예약 칸 색은 종류 색 또는 시행자 색이다', (
   })
 })
 
-describe('AC-5905.1: 10색 모양 묶음은 globals.css --cal-* 토큰 클래스만 쓴다', () => {
+describe('AC-5905.1·AC-6001.1: 20색 모양 묶음은 globals.css --cal-* 토큰 클래스만 쓴다', () => {
   const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
 
-  it('AC-5905.1: CAL_TONES·CAL_COLOR_LABEL은 CAL_COLORS 10색을 같은 차례로 덮고, 이름은 시안 색판 글이다', () => {
-    expect(Object.keys(CAL_TONES)).toEqual([...CAL_COLORS])
-    expect(Object.keys(CAL_COLOR_LABEL)).toEqual([...CAL_COLORS])
-    expect(Object.values(CAL_COLOR_LABEL)).toEqual(['파랑', '청록', '보라', '주황', '분홍', '연두', '남색', '하늘', '갈색', '회색'])
+  it('AC-6001.1: CAL_COLORS는 20색이고 옛 아홉(파랑~갈색) → 새 열 → 회색(맨 끝) 차례다', () => {
+    expect([...CAL_COLORS]).toEqual([
+      'blue',
+      'teal',
+      'purple',
+      'orange',
+      'pink',
+      'lime',
+      'navy',
+      'sky',
+      'brown',
+      'red',
+      'yellow',
+      'green',
+      'mint',
+      'magenta',
+      'wine',
+      'forest',
+      'lavender',
+      'coral',
+      'black',
+      'gray',
+    ])
   })
 
-  it.each(CAL_COLORS)('AC-5905.1: %s 묶음은 진한 바탕·옅은 바탕·띠·테두리 클래스를 통째로 적고, 그 토큰이 @theme inline에 있다', (color) => {
+  it('AC-5905.1·AC-6001.1: CAL_TONES·CAL_COLOR_LABEL은 CAL_COLORS 20색을 같은 차례로 덮고, 이름은 시안 색판 글이다', () => {
+    expect(Object.keys(CAL_TONES)).toEqual([...CAL_COLORS])
+    expect(Object.keys(CAL_COLOR_LABEL)).toEqual([...CAL_COLORS])
+    expect(Object.values(CAL_COLOR_LABEL)).toEqual([
+      '파랑',
+      '청록',
+      '보라',
+      '주황',
+      '분홍',
+      '연두',
+      '남색',
+      '하늘',
+      '갈색',
+      '빨강',
+      '노랑',
+      '초록',
+      '민트',
+      '자주',
+      '와인',
+      '진초록',
+      '연보라',
+      '산호',
+      '검정',
+      '회색',
+    ])
+  })
+
+  it('AC-6001.1: CAL_TONES의 클래스 이름은 colors.ts 소스 글자에 통째로 있다(Tailwind가 소스 글자에서 찾는다)', () => {
+    const source = readFileSync(join(process.cwd(), 'src/components/calendar/colors.ts'), 'utf8')
+    for (const color of CAL_COLORS) {
+      for (const name of [`'bg-cal-${color}'`, `'bg-cal-${color}-soft'`, `'border-cal-${color}'`, `'ring-cal-${color}/25'`]) expect(source, name).toContain(name)
+    }
+  })
+
+  it.each(CAL_COLORS)('AC-5905.1·AC-6001.1: %s 묶음은 진한 바탕·옅은 바탕·띠·테두리 클래스를 통째로 적고, 그 토큰이 @theme inline에 있다', (color) => {
     const tone = CAL_TONES[color]
     expect(tone).toEqual({
       solid: `bg-cal-${color}`,

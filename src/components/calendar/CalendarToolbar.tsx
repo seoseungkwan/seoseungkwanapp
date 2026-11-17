@@ -41,7 +41,7 @@ export function periodLabel(view: CalView, from: string, to: string): string {
 
 // ── 색(--cal-* 토큰) ─────────────────────────────────────────
 
-/** 예약 색 10색의 화면 값. 토큰 이름만 쓰고 값은 globals.css :root에 있다 */
+/** 예약 색 20색의 화면 값. 토큰 이름만 쓰고 값은 globals.css :root에 있다 */
 export const calVar = (color: CalColor) => `var(--cal-${color})`
 // '시행자 색 따름' 표시의 네 조각(시안 i.sw.follow의 파랑·청록·보라·주황, 그라데이션 대신 네 칸)
 const FOLLOW: readonly CalColor[] = ['blue', 'teal', 'purple', 'orange']

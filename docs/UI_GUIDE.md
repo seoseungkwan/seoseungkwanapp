@@ -80,8 +80,10 @@
 | `chart-prev` | `#9CA3AF` | 지난 기간(비교 대상) |
 | `cat-1`~`cat-5` | `#2563EB` · `#0F766E` · `#B45309` · `#6D28D9` · `#6B7280` | 서로 다른 항목(선·계열)을 색으로 나눌 때 차례대로 쓴다. 이번 개편 부품에는 쓰는 곳이 없다(다음 대시보드 명세) |
 
-### 예약 색판 (`--cal-*`, clinic-calendar)
+### 예약 색판 (`--cal-*`, clinic-calendar · calendar-colors)
 예약 탭(`components/calendar`)만 쓴다. 이름은 `types/calendar.ts`의 `CAL_COLORS`, 색 고르는 차례는 `components/calendar/colors.ts`(종류 색 → 종류가 '시행자 색 따름'이면 시행자 색 → 목록에 없는 종류·시행자는 회색). 클래스는 `colors.ts`의 `CAL_TONES`에서만 꺼낸다
+
+20색이고 아래 표 차례가 `CAL_COLORS`·설정 색판 차례다. 회색은 지운 종류·시행자의 색이라 맨 끝에 두어, 새 시행자 자동 색(안 쓴 색 가운데 첫 색)에서 가장 늦게 나온다
 
 | 토큰 | 값 | 이름 |
 |------|------|------|
@@ -94,6 +96,16 @@
 | `cal-navy` | `#1E3A8A` | 남색 |
 | `cal-sky` | `#0284C7` | 하늘 |
 | `cal-brown` | `#92400E` | 갈색 |
+| `cal-red` | `#DC2626` | 빨강 |
+| `cal-yellow` | `#CA8A04` | 노랑 |
+| `cal-green` | `#22C55E` | 초록 |
+| `cal-mint` | `#2DD4BF` | 민트 |
+| `cal-magenta` | `#D946EF` | 자주 |
+| `cal-wine` | `#9F1239` | 와인 |
+| `cal-forest` | `#166534` | 진초록 |
+| `cal-lavender` | `#A78BFA` | 연보라 |
+| `cal-coral` | `#FB7185` | 산호 |
+| `cal-black` | `#1F2937` | 검정 |
 | `cal-gray` | `#6B7280` | 회색 |
 
 - 진한 색(`bg-cal-*`·`border-cal-*`)은 예약 칸 왼쪽 3px 띠·폰 목록 띠·설정의 색 표시에, 옅은 바탕 `cal-*-soft`(그 색 13% + `surface`, `color-mix`는 `:root` 안에서만)는 예약 칸·휴무 칩 바탕에 쓴다. 칸 안쪽 1px 테두리는 진한 색 25%(`ring-cal-*/25`)

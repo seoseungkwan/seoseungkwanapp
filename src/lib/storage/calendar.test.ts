@@ -135,6 +135,24 @@ const SETTINGS_ROW = {
   close_hour: 19,
   sunday: true,
 }
+// calendar-colors AC-6001.5: 새 10색(빨강~검정)을 종류 다섯·시행자 다섯에 하나씩
+const NEW_COLOR_SETTINGS: CalSettings = {
+  ...SETTINGS,
+  kinds: [
+    { id: 'dosu', name: '도수', len: 30, color: 'red' },
+    { id: 'jabo', name: '자보도수', len: 30, color: 'yellow' },
+    { id: 'shock', name: '충격파', len: 15, color: 'green' },
+    { id: 'inj', name: '주사', len: 10, color: 'mint' },
+    { id: 'visit', name: '진료', len: 10, color: 'magenta' },
+  ],
+  staff: [
+    { id: 'st-ga', name: '가나다', mark: '가', color: 'wine' },
+    { id: 'st-na', name: '나라', mark: '나', color: 'forest' },
+    { id: 'st-da', name: '다마', mark: '다', color: 'lavender' },
+    { id: 'st-ra', name: '라바', mark: '라', color: 'coral' },
+    { id: 'st-ma', name: '마사', mark: '마', color: 'black' },
+  ],
+}
 
 type Reply = { data: unknown; error: unknown; status: number }
 const OK: Reply = { data: null, error: null, status: 200 }
@@ -699,7 +717,8 @@ describe('loadCalendarSettings', () => {
 
   it.each<[string, Record<string, unknown>, Partial<CalSettings>]>([
     ['종류 빈 목록', { kinds: [] }, { kinds: DEFAULT_CAL_SETTINGS.kinds }],
-    ['종류 색 밖', { kinds: [{ id: 'dosu', name: '도수', len: 30, color: 'red' }] }, { kinds: DEFAULT_CAL_SETTINGS.kinds }],
+    ['종류 색 밖', { kinds: [{ id: 'dosu', name: '도수', len: 30, color: 'gold' }] }, { kinds: DEFAULT_CAL_SETTINGS.kinds }],
+    ['시행자 색 밖', { staff: [{ ...SETTINGS.staff[0], color: 'gold' }] }, { staff: [] }],
     ['종류가 배열 아님', { kinds: { a: 1 } }, { kinds: DEFAULT_CAL_SETTINGS.kinds }],
     ['한 글자 표시 겹침', { staff: [SETTINGS.staff[0], { ...SETTINGS.staff[1], mark: '가' }] }, { staff: [] }],
     ['시행자 색 없음', { staff: [{ ...SETTINGS.staff[0], color: null }] }, { staff: [] }],
@@ -709,6 +728,18 @@ describe('loadCalendarSettings', () => {
   ])('AC-5901.6: 칸 모양이 틀리면(%s) 그 칸만 기본값이다', async (_name, patch, expected) => {
     const { client } = fakeClient(okWith({ ...SETTINGS_ROW, ...patch }))
     await expect(loadCalendarSettings(client)).resolves.toEqual({ ...SETTINGS, ...expected })
+  })
+
+  it('AC-6001.5: 새 10색이 든 종류·시행자는 그 색 그대로 돌려준다', async () => {
+    const { client } = fakeClient(okWith({ ...SETTINGS_ROW, kinds: NEW_COLOR_SETTINGS.kinds, staff: NEW_COLOR_SETTINGS.staff }))
+    await expect(loadCalendarSettings(client)).resolves.toEqual(NEW_COLOR_SETTINGS)
+  })
+
+  it("AC-6001.5: 표에 없는 색 이름(gold)은 종류는 처음 값, 시행자는 빈 목록이다", async () => {
+    const goldKind = { ...SETTINGS_ROW, kinds: [{ id: 'dosu', name: '도수', len: 30, color: 'gold' }] }
+    await expect(loadCalendarSettings(fakeClient(okWith(goldKind)).client)).resolves.toEqual({ ...SETTINGS, kinds: DEFAULT_CAL_SETTINGS.kinds })
+    const goldStaff = { ...SETTINGS_ROW, staff: [{ ...SETTINGS.staff[0], color: 'gold' }] }
+    await expect(loadCalendarSettings(fakeClient(okWith(goldStaff)).client)).resolves.toEqual({ ...SETTINGS, staff: [] })
   })
 
   it('AC-5901.6: 줄이 객체가 아니면 기본값이다. 종류·시행자의 다른 열쇠는 옮기지 않는다', async () => {
@@ -738,7 +769,7 @@ describe('checkCalendarSettings', () => {
     ['종류 길이 125', kindAt({ len: 125 }), 'kind-len'],
     ['종류 id 겹침', kindAt({ id: 'inj' }), 'kind-id'],
     ['종류 id 빈 글자', kindAt({ id: '' }), 'kind-id'],
-    ['종류 색 밖', kindAt({ color: 'red' }), 'kind-color'],
+    ['종류 색 밖', kindAt({ color: 'gold' }), 'kind-color'],
     ['시행자 이름 빈칸', staffAt({ name: '' }), 'staff-name'],
     ['시행자 이름 11자', staffAt({ name: '가'.repeat(11) }), 'staff-name'],
     ['한 글자 표시 두 글자', staffAt({ mark: '가나' }), 'staff-mark'],
@@ -746,6 +777,7 @@ describe('checkCalendarSettings', () => {
     ['한 글자 표시 겹침', staffAt({ mark: '나' }), 'staff-mark-dup'],
     ['시행자 id 겹침', staffAt({ id: 'st-na' }), 'staff-id'],
     ['시행자 색 없음', staffAt({ color: null }), 'staff-color'],
+    ['시행자 색 밖', staffAt({ color: 'gold' }), 'staff-color'],
     ['여는 시간 4', { ...SETTINGS, openHour: 4 }, 'hours'],
     ['닫는 시간 25', { ...SETTINGS, closeHour: 25 }, 'hours'],
     ['여는 시간 = 닫는 시간', { ...SETTINGS, openHour: 12, closeHour: 12 }, 'hours'],
@@ -753,6 +785,15 @@ describe('checkCalendarSettings', () => {
     ['일요일 글자', { ...SETTINGS, sunday: 'yes' }, 'sunday'],
   ])('AC-5901.6: %s이면 문제 목록에 %s가 있다', (_name, settings, problem) => {
     expect(checkCalendarSettings(settings as CalSettings)).toContain(problem)
+  })
+
+  it('AC-6001.5: 새 10색(빨강~검정)이 든 종류·시행자는 문제가 없다', () => {
+    expect(checkCalendarSettings(NEW_COLOR_SETTINGS)).toEqual([])
+  })
+
+  it("AC-6001.5: 표에 없는 이름(gold)은 종류는 kind-color, 시행자는 staff-color 문제다", () => {
+    expect(checkCalendarSettings(kindAt({ color: 'gold' }) as CalSettings)).toEqual(['kind-color'])
+    expect(checkCalendarSettings(staffAt({ color: 'gold' }) as CalSettings)).toEqual(['staff-color'])
   })
 
   it('AC-5901.6: 길이 5·120, 이름 10자, 시간 5~24는 문제가 아니다', () => {
@@ -782,6 +823,22 @@ describe('saveCalendarSettings', () => {
     expect(Object.keys(row)).toEqual(SETTINGS_KEYS)
     expect(row.kinds).toEqual(SETTINGS.kinds)
     expect(row.staff).toEqual(SETTINGS.staff)
+  })
+
+  it('AC-6001.5: 새 10색이 든 종류·시행자도 그 색 이름 그대로 보낸다', async () => {
+    const { client, calls } = fakeClient()
+    await expect(saveCalendarSettings(client, NEW_COLOR_SETTINGS)).resolves.toBeUndefined()
+    const row = calls[1]?.[1] as { kinds: object[]; staff: object[] }
+    expect(row.kinds).toEqual(NEW_COLOR_SETTINGS.kinds)
+    expect(row.staff).toEqual(NEW_COLOR_SETTINGS.staff)
+  })
+
+  it("AC-6001.5: 표에 없는 색(gold)이 든 설정은 보내지 않고 invalid다", async () => {
+    for (const bad of [{ ...SETTINGS, kinds: [{ ...SETTINGS.kinds[0], color: 'gold' }] }, { ...SETTINGS, staff: [{ ...SETTINGS.staff[0], color: 'gold' }] }]) {
+      const { client, calls } = fakeClient()
+      await expect(saveCalendarSettings(client, bad as CalSettings)).resolves.toBe('invalid')
+      sentNothing(calls)
+    }
   })
 
   it('AC-5901.6: checkCalendarSettings를 못 지나면 보내지 않고 invalid다', async () => {

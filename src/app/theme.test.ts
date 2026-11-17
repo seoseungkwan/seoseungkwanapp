@@ -213,9 +213,9 @@ const ST_TOKENS: Record<string, string> = {
 const ST_PHONE_HEAD = '@media (max-width: 767.98px)'
 const ST_PHONE: Record<string, string> = { '--st-r': '12px', '--fs-st-34': '28px', '--fs-st-40': '34px' }
 
-// ---------- 예약 색판 (clinic-calendar AC-5905.1, design.md '화면', UI_GUIDE '예약 색판') ----------
-// 시안 docs/mockups/clinic-calendar의 PALETTE 10색 그대로(이름은 src/types/calendar.ts CAL_COLORS).
-// 옅은 바탕(-soft)은 :root 안에서만 흰 바탕(--surface)에 13% 섞는다(시안 예약 칸 바탕). 지금 토큰 값은 그대로다
+// ---------- 예약 색판 (clinic-calendar AC-5905.1·calendar-colors AC-6001.2, design.md '색 값', UI_GUIDE '예약 색판') ----------
+// 20색(이름·차례는 src/types/calendar.ts CAL_COLORS): 옛 아홉(clinic-calendar 시안 PALETTE) → 새 열(calendar-colors 시안) → 회색(맨 끝).
+// 옅은 바탕(-soft)은 :root 안에서만 흰 바탕(--surface)에 13% 섞는다(시안 예약 칸 바탕). 옛 10색 값은 그대로다
 const CAL_COLOR_TOKENS: Record<string, string> = {
   'cal-blue': '#2563EB',
   'cal-teal': '#0F766E',
@@ -226,6 +226,16 @@ const CAL_COLOR_TOKENS: Record<string, string> = {
   'cal-navy': '#1E3A8A',
   'cal-sky': '#0284C7',
   'cal-brown': '#92400E',
+  'cal-red': '#DC2626',
+  'cal-yellow': '#CA8A04',
+  'cal-green': '#22C55E',
+  'cal-mint': '#2DD4BF',
+  'cal-magenta': '#D946EF',
+  'cal-wine': '#9F1239',
+  'cal-forest': '#166534',
+  'cal-lavender': '#A78BFA',
+  'cal-coral': '#FB7185',
+  'cal-black': '#1F2937',
   'cal-gray': '#6B7280',
 }
 const CAL_SOFT_TOKENS: Record<string, string> = Object.fromEntries(
@@ -391,7 +401,7 @@ describe('AC-202.2: @theme inline은 토큰을 var()로만 가리킨다', () => 
     }
   })
 
-  it('AC-202.2·AC-4416.1·AC-5905.1: 색은 :root 색 토큰 전부(차트·항목 색, 통계 화면 st-* 17색, 예약 색판 cal-* 10색과 옅은 바탕 포함)를 같은 이름으로 가리키고, 옛 색 별칭(ok·danger·warn)은 남지 않는다', () => {
+  it('AC-202.2·AC-4416.1·AC-5905.1·AC-6001.2: 색은 :root 색 토큰 전부(차트·항목 색, 통계 화면 st-* 17색, 예약 색판 cal-* 20색과 옅은 바탕 포함)를 같은 이름으로 가리키고, 옛 색 별칭(ok·danger·warn)은 남지 않는다', () => {
     const colors = themeDecls().filter(([name]) => name.startsWith('--color-') && name !== '--color-*')
     const names = colors.map(([name]) => name)
     expect(names.length, '같은 색 이름을 두 번 선언했다').toBe(new Set(names).size)
@@ -521,23 +531,24 @@ describe('AC-202.2: @theme inline은 토큰을 var()로만 가리킨다', () => 
   }, 30_000)
 })
 
-// ---------- clinic-calendar AC-5905.1: 예약 색판 10색 (시안 PALETTE, design.md '화면') ----------
-describe('AC-5905.1: 예약 색판 --cal-* 10색과 옅은 바탕은 :root에 있고 Tailwind 색 이름이 된다', () => {
-  it('AC-5905.1: 색 이름은 types/calendar.ts CAL_COLORS 10개와 같은 차례다', () => {
+// ---------- clinic-calendar AC-5905.1 · calendar-colors AC-6001.2: 예약 색판 20색 (시안 PALETTE, design.md '색 값') ----------
+describe('AC-5905.1·AC-6001.2: 예약 색판 --cal-* 20색과 옅은 바탕은 :root에 있고 Tailwind 색 이름이 된다', () => {
+  it('AC-5905.1·AC-6001.2: 색 이름은 types/calendar.ts CAL_COLORS 20개와 같은 차례다', () => {
+    expect(Object.keys(CAL_COLOR_TOKENS)).toHaveLength(20)
     expect(Object.keys(CAL_COLOR_TOKENS)).toEqual(CAL_COLORS.map((color) => `cal-${color}`))
   })
 
-  it('AC-5905.1: :root에 시안 10색이 값 그대로, 옅은 바탕(-soft)은 그 색을 흰 바탕에 13% 섞은 값으로 한 번씩 있다', () => {
+  it('AC-5905.1·AC-6001.2: :root에 20색이 값 그대로(새 10색은 design.md 색 값 표), 옅은 바탕(-soft)은 그 색을 흰 바탕에 13% 섞은 값으로 한 번씩 있다', () => {
     const root = Object.fromEntries(declarations(rootBodies().join('\n')).map(([name, value]) => [name, upperHex(value)]))
     for (const [name, value] of Object.entries(CAL_TOKENS)) expect(root[name], name).toBe(upperHex(value))
     // 섞는 값은 :root 토큰만 가리킨다(16진수를 다시 쓰지 않는다)
     for (const name of Object.keys(CAL_SOFT_TOKENS)) expect(root[`--${name}`], name).not.toMatch(/#/)
   })
 
-  it('AC-5905.1: 실제 Tailwind로 돌리면 bg-cal-*·bg-cal-*-soft·border-cal-*는 var(토큰)을 쓰고, 표에 없는 이름(bg-cal-red·bg-cal-blue-strong)은 만들어지지 않는다', async () => {
+  it('AC-5905.1·AC-6001.2: 실제 Tailwind로 돌리면 20색의 bg-cal-*·bg-cal-*-soft·border-cal-*는 var(토큰)을 쓰고, 표에 없는 이름(bg-cal-gold·bg-cal-blue-strong)은 만들어지지 않는다', async () => {
     const css = await tailwindCss([
       ...CAL_COLORS.flatMap((color) => [`bg-cal-${color}`, `bg-cal-${color}-soft`, `border-cal-${color}`]),
-      'bg-cal-red',
+      'bg-cal-gold',
       'bg-cal-blue-strong',
     ])
     for (const color of CAL_COLORS) {
@@ -545,7 +556,7 @@ describe('AC-5905.1: 예약 색판 --cal-* 10색과 옅은 바탕은 :root에 �
       expect(utility(css, `.bg-cal-${color}-soft`), color).toContain(`background-color: var(--cal-${color}-soft)`)
       expect(utility(css, `.border-cal-${color}`), color).toContain(`border-color: var(--cal-${color})`)
     }
-    for (const gone of ['.bg-cal-red', '.bg-cal-blue-strong']) expect(utility(css, gone), gone).toBeNull()
+    for (const gone of ['.bg-cal-gold', '.bg-cal-blue-strong']) expect(utility(css, gone), gone).toBeNull()
   }, 30_000)
 })
 

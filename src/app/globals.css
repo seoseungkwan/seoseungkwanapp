@@ -141,6 +141,26 @@
   --color-cal-sky-soft: var(--cal-sky-soft);
   --color-cal-brown: var(--cal-brown);
   --color-cal-brown-soft: var(--cal-brown-soft);
+  --color-cal-red: var(--cal-red);
+  --color-cal-red-soft: var(--cal-red-soft);
+  --color-cal-yellow: var(--cal-yellow);
+  --color-cal-yellow-soft: var(--cal-yellow-soft);
+  --color-cal-green: var(--cal-green);
+  --color-cal-green-soft: var(--cal-green-soft);
+  --color-cal-mint: var(--cal-mint);
+  --color-cal-mint-soft: var(--cal-mint-soft);
+  --color-cal-magenta: var(--cal-magenta);
+  --color-cal-magenta-soft: var(--cal-magenta-soft);
+  --color-cal-wine: var(--cal-wine);
+  --color-cal-wine-soft: var(--cal-wine-soft);
+  --color-cal-forest: var(--cal-forest);
+  --color-cal-forest-soft: var(--cal-forest-soft);
+  --color-cal-lavender: var(--cal-lavender);
+  --color-cal-lavender-soft: var(--cal-lavender-soft);
+  --color-cal-coral: var(--cal-coral);
+  --color-cal-coral-soft: var(--cal-coral-soft);
+  --color-cal-black: var(--cal-black);
+  --color-cal-black-soft: var(--cal-black-soft);
   --color-cal-gray: var(--cal-gray);
   --color-cal-gray-soft: var(--cal-gray-soft);
 }
@@ -291,7 +311,7 @@
   --st-t-period: 300ms;
   --st-t-first: 450ms;
 
-  /* 예약 색판 10색 — clinic-calendar 시안 PALETTE 그대로(이름은 types/calendar.ts CAL_COLORS), UI_GUIDE '예약 색판'.
+  /* 예약 색판 20색 — 옛 아홉(clinic-calendar 시안 PALETTE) → 새 열(calendar-colors 시안) → 회색(맨 끝). 이름은 types/calendar.ts CAL_COLORS, UI_GUIDE '예약 색판'.
      옅은 바탕(-soft)은 그 색을 흰 바탕에 13% 섞는다(시안 예약 칸 바탕). 섞기는 이 블록 안에서만 한다 */
   --cal-blue: #2563EB;
   --cal-teal: #0F766E;
@@ -302,6 +322,16 @@
   --cal-navy: #1E3A8A;
   --cal-sky: #0284C7;
   --cal-brown: #92400E;
+  --cal-red: #DC2626;
+  --cal-yellow: #CA8A04;
+  --cal-green: #22C55E;
+  --cal-mint: #2DD4BF;
+  --cal-magenta: #D946EF;
+  --cal-wine: #9F1239;
+  --cal-forest: #166534;
+  --cal-lavender: #A78BFA;
+  --cal-coral: #FB7185;
+  --cal-black: #1F2937;
   --cal-gray: #6B7280;
   --cal-blue-soft: color-mix(in srgb, var(--cal-blue) 13%, var(--surface));
   --cal-teal-soft: color-mix(in srgb, var(--cal-teal) 13%, var(--surface));
@@ -312,6 +342,16 @@
   --cal-navy-soft: color-mix(in srgb, var(--cal-navy) 13%, var(--surface));
   --cal-sky-soft: color-mix(in srgb, var(--cal-sky) 13%, var(--surface));
   --cal-brown-soft: color-mix(in srgb, var(--cal-brown) 13%, var(--surface));
+  --cal-red-soft: color-mix(in srgb, var(--cal-red) 13%, var(--surface));
+  --cal-yellow-soft: color-mix(in srgb, var(--cal-yellow) 13%, var(--surface));
+  --cal-green-soft: color-mix(in srgb, var(--cal-green) 13%, var(--surface));
+  --cal-mint-soft: color-mix(in srgb, var(--cal-mint) 13%, var(--surface));
+  --cal-magenta-soft: color-mix(in srgb, var(--cal-magenta) 13%, var(--surface));
+  --cal-wine-soft: color-mix(in srgb, var(--cal-wine) 13%, var(--surface));
+  --cal-forest-soft: color-mix(in srgb, var(--cal-forest) 13%, var(--surface));
+  --cal-lavender-soft: color-mix(in srgb, var(--cal-lavender) 13%, var(--surface));
+  --cal-coral-soft: color-mix(in srgb, var(--cal-coral) 13%, var(--surface));
+  --cal-black-soft: color-mix(in srgb, var(--cal-black) 13%, var(--surface));
   --cal-gray-soft: color-mix(in srgb, var(--cal-gray) 13%, var(--surface));
 }
 

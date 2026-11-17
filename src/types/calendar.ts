@@ -1,8 +1,29 @@
 // 예약 탭(spec clinic-calendar, design.md '모양'). 예약 줄의 환자 이름·차트번호는 서버(calendar_appts, RLS 내 병원)에 둔다(ADR-030).
 // 전화·성별·나이·생일·마지막 내원·비트 접수 목록·비트 예약은 이 모양에 없다(비트 찾기 결과는 Worker → 화면으로만, 고른 이름·차트번호만 예약에)
 
-// 시안 10색 이름(화면 토큰 --cal-*)
-export const CAL_COLORS = ['blue', 'teal', 'purple', 'orange', 'pink', 'lime', 'navy', 'sky', 'brown', 'gray'] as const
+// 시안 20색 이름(화면 토큰 --cal-*, spec calendar-colors AC-6001.1). 차례: 옛 아홉(파랑~갈색) → 새 열 → 회색(지운 종류·시행자 색이라 맨 끝)
+export const CAL_COLORS = [
+  'blue',
+  'teal',
+  'purple',
+  'orange',
+  'pink',
+  'lime',
+  'navy',
+  'sky',
+  'brown',
+  'red',
+  'yellow',
+  'green',
+  'mint',
+  'magenta',
+  'wine',
+  'forest',
+  'lavender',
+  'coral',
+  'black',
+  'gray',
+] as const
 export type CalColor = (typeof CAL_COLORS)[number]
 export type CalKind = { id: string; name: string; len: number; color: CalColor | null } // null = 시행자 색 따름
 export type CalStaff = { id: string; name: string; mark: string; color: CalColor }

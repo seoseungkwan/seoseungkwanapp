@@ -8,11 +8,11 @@ import { Drawer } from './AddPanel'
 import { CalIcon, Swatch, calVar, hm } from './CalendarToolbar'
 
 // 예약 설정 판 (spec clinic-calendar AC-5905.5, 시안 ?s=settings).
-// 종류: ▲▼ 차례·이름(10자)·기본 길이(5~120분)·색(고정 10색 또는 시행자 색 따름)·지우기(하나는 남긴다) / 시행자: 이름·한 글자 표시·색·지우기 /
+// 종류: ▲▼ 차례·이름(10자)·기본 길이(5~120분)·색(고정 20색 또는 시행자 색 따름)·지우기(하나는 남긴다) / 시행자: 이름·한 글자 표시·색·지우기 /
 // 보이는 시간(1시간 단위)·주 보기 요일. 검사는 lib/storage checkCalendarSettings(+ 같은 종류 이름은 이 판이 본다).
 // 판 안에서 고친 사본을 쥐고 [저장]은 onSave로 고친 설정을 넘긴다(저장은 화면이 한다)
 
-/** 색 이름(시안 PALETTE 차례 = CAL_COLORS 차례) */
+/** 색 이름(시안 PALETTE 차례 = CAL_COLORS 차례, 회색은 맨 끝) */
 export const COLOR_NAMES: Record<CalColor, string> = {
   blue: '파랑',
   teal: '청록',
@@ -23,6 +23,16 @@ export const COLOR_NAMES: Record<CalColor, string> = {
   navy: '남색',
   sky: '하늘',
   brown: '갈색',
+  red: '빨강',
+  yellow: '노랑',
+  green: '초록',
+  mint: '민트',
+  magenta: '자주',
+  wine: '와인',
+  forest: '진초록',
+  lavender: '연보라',
+  coral: '산호',
+  black: '검정',
   gray: '회색',
 }
 
@@ -73,7 +83,7 @@ function colorButton(open: boolean) {
   }`
 }
 
-/** 색판(시안 .pal): 종류는 '시행자 색 따름'이 맨 앞. 동그라미 10색 */
+/** 색판(시안 .pal): 종류는 '시행자 색 따름'이 맨 앞. 동그라미 20색(calendar-colors AC-6001.3) */
 function Palette({ color, forKind, onPick }: { color: CalColor | null; forKind: boolean; onPick(color: CalColor | null): void }) {
   return (
     <div role="group" aria-label="색 고르기" className="flex flex-wrap items-center gap-1.5 rounded-control bg-canvas p-2">
