@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>업무일지 탭 자리 시안</title>
+<!--
+  업무일지를 [더보기]에서 주요 탭 줄로, 수납일지 바로 왼쪽에 옮기는 시안(nav-worklog). 결정은 notes.md.
+  색·크기는 앱 토큰과 탭 줄(src/components/shell/TabBar.tsx) 그대로. 어디로도 보내지 않는다.
+-->
+<style>
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB; --faint: #9CA3AF;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-soft: #EAF1FE;
+  --r: 4px; --r-float: 8px;
+  --ui: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { overflow-x: hidden; }
+body { margin: 0; background: var(--canvas); color: var(--ink-2); font: 14px/22px var(--ui); word-break: keep-all; }
+.mhead { background: #E9ECF0; border-bottom: 1px solid var(--line-strong); }
+.mhead-in { max-width: 1280px; margin: 0 auto; padding: 12px 24px; }
+.mhead b { color: var(--ink); font-size: 15px; }
+.mhead p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+main { max-width: 1280px; margin: 0 auto; padding: 20px 24px 48px; display: grid; gap: 28px; }
+h2 { margin: 0 0 8px; font-size: 15px; color: var(--ink); }
+h2 small { margin-left: 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.frame { border: 1px solid var(--line-strong); border-radius: var(--r-float); overflow: hidden; background: var(--surface); }
+.top { background: var(--surface); border-bottom: 1px solid var(--line); }
+.top-in { height: 56px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 16px; font-weight: 600; color: var(--ink); }
+.brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct { height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); display: inline-flex; align-items: center; font-size: 13px; color: var(--ink-2); font-weight: 500; white-space: nowrap; }
+nav { display: flex; align-items: stretch; justify-content: space-between; background: var(--surface); border-bottom: 1px solid var(--line); }
+.tabs { display: flex; overflow-x: auto; scrollbar-width: thin; padding: 0 12px; min-width: 0; }
+.tabs a, .more { position: relative; height: 44px; padding: 0 12px; display: inline-flex; align-items: center; white-space: nowrap; color: var(--ink-2); font-weight: 500; text-decoration: none; }
+.tabs a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+.tabs a[aria-current="page"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; background: var(--accent); }
+.tabs a.new { background: var(--accent-soft); border-radius: var(--r); }
+.more { flex: none; padding-right: 24px; }
+.panel { margin: 0; padding: 12px 24px 16px; display: flex; flex-wrap: wrap; gap: 8px; border-top: 1px dashed var(--line); background: #FBFBFC; }
+.panel span { padding: 4px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); font-size: 13px; white-space: nowrap; }
+.panel span.gone { text-decoration: line-through; color: var(--faint); }
+.panel em { margin-left: 4px; font-style: normal; font-size: 11px; color: var(--muted); }
+.panel b { font-size: 12px; color: var(--muted); font-weight: 600; width: 100%; }
+.phone { width: 390px; max-width: 100%; }
+.phone .top-in { height: 48px; padding: 0 16px; }
+.phone .tabs { padding: 0 4px; }
+.phone .more { padding-right: 16px; }
+.phone .panel { padding: 12px 16px 16px; }
+.note { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="mhead"><div class="mhead-in">
+  <b>탭 줄 시안 · 업무일지를 수납일지 왼쪽으로</b>
+  <p>바뀌는 곳: 업무일지가 [더보기]에서 빠져 주요 탭 줄의 수납일지 바로 왼쪽에 생겨요(파란 바탕은 시안에서만 보이는 표시). 다른 탭과 주소(/worklog)는 그대로예요.</p>
+</div></div>
+<main>
+  <section>
+    <h2>지금<small>PC</small></h2>
+    <div class="frame" id="before"></div>
+  </section>
+  <section>
+    <h2>바꾼 뒤<small>PC</small></h2>
+    <div class="frame" id="after"></div>
+  </section>
+  <section>
+    <h2>바꾼 뒤<small>폰 390px — 탭 줄은 옆으로 밀어서 봐요(지금과 같은 방식)</small></h2>
+    <div class="frame phone" id="phone"></div>
+    <p class="note">나중에 '예약' 탭이 생기면 수납일지 오른쪽(맨 끝)에 들어가요.</p>
+  </section>
+</main>
+<script>
+const LOGO = '<svg aria-hidden="true" width="24" height="24" viewBox="0 0 30 30"><rect x="3" y="3" width="24" height="24" rx="6" fill="none" stroke="#14C8BA" stroke-width="2.4"/><path d="M13.5 8h3a1 1 0 0 1 1 1v3.5H21a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3.5V21a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3.5H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3.5V9a1 1 0 0 1 1-1z" fill="#6D5DF5"/></svg>'
+const NOT_READY = ['고시·공지', '직원', '재고', '주소록']
+function frame(tabs, more, opts = {}) {
+  const tabHtml = tabs.map(t => `<a href="#" ${t === opts.current ? 'aria-current="page"' : ''} ${t === opts.mark ? 'class="new"' : ''}>${t}</a>`).join('')
+  const moreHtml = more.map(t => {
+    if (t === opts.gone) return `<span class="gone">${t}</span>`
+    return `<span>${t}${NOT_READY.includes(t) ? '<em>준비 중</em>' : ''}</span>`
+  }).join('')
+  return `<header class="top"><div class="top-in"><div class="brand">${LOGO}<span>샘플정형외과의원</span></div><span class="acct">계정 ▾</span></div></header>
+    <nav><div class="tabs">${tabHtml}</div><span class="more">더보기 ▾</span></nav>
+    <div class="panel"><b>[더보기]를 누르면</b>${moreHtml}</div>`
+}
+const BEFORE_TABS = ['대시보드', '통계', '청구', '환자', '수납일지']
+const BEFORE_MORE = ['고시·공지', 'AI 리포트', '서식', '직원', '업무일지', '재고', '주소록', '설정']
+const AFTER_TABS = ['대시보드', '통계', '청구', '환자', '업무일지', '수납일지']
+const AFTER_MORE = ['고시·공지', 'AI 리포트', '서식', '직원', '재고', '주소록', '설정']
+document.getElementById('before').innerHTML = frame(BEFORE_TABS, BEFORE_MORE, { current: '수납일지', mark: null })
+document.getElementById('after').innerHTML = frame(AFTER_TABS, AFTER_MORE, { current: '업무일지', mark: '업무일지' })
+document.getElementById('phone').innerHTML = frame(AFTER_TABS, AFTER_MORE, { current: '업무일지', mark: '업무일지' })
+</script>
+</body>
+</html>
