@@ -99,7 +99,7 @@ const panel = () => {
   const id = moreButton().getAttribute('aria-controls')
   return id ? document.getElementById(id) : null
 }
-// 화면이 있는 탭(MENU ready: true) — 대시보드·통계·청구·환자·AI 리포트·서식·업무일지·설정
+// 화면이 있는 탭(MENU ready: true) — 대시보드·통계·청구·환자·업무일지·수납일지·AI 리포트·서식·설정(MENU 차례)
 const READY_TABS = ['대시보드', '통계', '청구', '환자', '업무일지', '수납일지', 'AI 리포트', '서식', '설정']
 // 준비 중 탭(MENU ready: false). 수는 NOT_READY_FEATURES에서 센다
 const NOT_READY_TABS = LABELS.filter((l) => !READY_TABS.includes(l))
