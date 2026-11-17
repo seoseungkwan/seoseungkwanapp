@@ -7,7 +7,7 @@ import { ds } from '@/components/ui/classes'
 import { MORE_MENU, type MenuLabel } from './menu'
 
 // [더보기] (dashboard-ux REQ-2702 AC-2702.1~2702.5, design.md §3, 시안 docs/mockups/dashboard-ux .more·.morewrap·.morepanel).
-// 탭 띠 오른쪽(띠 밖)에 모든 폭에서 보이는 단추. 누르면 주요 메뉴 다섯 밖의 나머지(MORE_MENU, MENU 차례)를 판으로 펼친다.
+// 탭 띠 오른쪽(띠 밖)에 모든 폭에서 보이는 단추. 누르면 주요 메뉴 여섯 밖의 나머지(MORE_MENU, MENU 차례)를 판으로 펼친다.
 // 지금 경로(또는 방금 누른 주소)가 판 안 항목이면 단추가 지금 탭 모양이고 글자가 "더보기 · {이름}"이다. 판 안 링크를 누르면 단추에 data-pending.
 // 판 자리: 768px 이상은 판 오른쪽 끝을 본문 오른쪽 정렬선에 맞춘 320px 떠 있는 판(화면 폭 − 좌우 24px을 넘지 않는다, AC-2702.4 2026-11-08).
 // 감싸개를 오른쪽 12px 띄워(md:mr-3) 단추 글자 끝(단추 안쪽 12px)이 그 선에 오고, 판은 감싸개 끝에서 12px 안쪽(md:right-3)이다.

@@ -44,17 +44,17 @@ const PATHS: readonly (readonly [string, string])[] = [
   ['청구', '/claim'],
   ['고시·공지', '/notices'],
   ['환자', '/patients'],
+  ['업무일지', '/worklog'],
   ['수납일지', '/sunap'],
   ['AI 리포트', '/ai-report'],
   ['서식', '/forms'],
   ['직원', '/staff'],
-  ['업무일지', '/worklog'],
   ['재고', '/inventory'],
   ['주소록', '/contacts'],
   ['설정', '/settings'],
 ]
 const LABELS = PATHS.map(([label]) => label)
-const READY = ['대시보드', '통계', '청구', '환자', '수납일지', 'AI 리포트', '서식', '업무일지']
+const READY = ['대시보드', '통계', '청구', '환자', '업무일지', '수납일지', 'AI 리포트', '서식']
 // 준비 중 화면 주소(설정 빼고 화면이 없는 탭)
 const NOT_READY_PATHS = PATHS.filter(([label]) => !READY.includes(label) && label !== '설정')
 const EMAIL = 'manager@example.com'
@@ -79,8 +79,8 @@ afterEach(() => {
   delete (Element.prototype as Partial<Element>).scrollIntoView
 })
 
-// 주요 메뉴 다섯(탭 띠)과 나머지 여덟([더보기] 판). 둘 다 MENU 차례 그대로다(dashboard-ux AC-2702.1, 매출이 빠짐 stats-revenue AC-4110.1, 수납일지가 다섯째 sunap-ilji AC-4907.1)
-const PRIMARY = ['대시보드', '통계', '청구', '환자', '수납일지']
+// 주요 메뉴 여섯(탭 띠)과 나머지 일곱([더보기] 판). 둘 다 MENU 차례 그대로다(dashboard-ux AC-2702.1, 매출이 빠짐 stats-revenue AC-4110.1, 수납일지 sunap-ilji AC-4907.1, 업무일지가 수납일지 바로 왼쪽 nav-worklog AC-5801.2)
+const PRIMARY = ['대시보드', '통계', '청구', '환자', '업무일지', '수납일지']
 const PRIMARY_PATHS = PATHS.filter(([label]) => PRIMARY.includes(label))
 const MORE_PATHS = PATHS.filter(([label]) => !PRIMARY.includes(label))
 
@@ -100,7 +100,7 @@ const panel = () => {
   return id ? document.getElementById(id) : null
 }
 // 화면이 있는 탭(MENU ready: true) — 대시보드·통계·청구·환자·AI 리포트·서식·업무일지·설정
-const READY_TABS = ['대시보드', '통계', '청구', '환자', '수납일지', 'AI 리포트', '서식', '업무일지', '설정']
+const READY_TABS = ['대시보드', '통계', '청구', '환자', '업무일지', '수납일지', 'AI 리포트', '서식', '설정']
 // 준비 중 탭(MENU ready: false). 수는 NOT_READY_FEATURES에서 센다
 const NOT_READY_TABS = LABELS.filter((l) => !READY_TABS.includes(l))
 // 지금 탭 모양(ink 600 + 아래 2px accent 밑줄)과 기본 모양(ink-2 500)
@@ -113,9 +113,9 @@ const motionOf = (el: Element) =>
   classesOf(el).filter((c) => /(?:^|:)(?:animate-|transition|duration-|delay-|ease-|-?translate-|-?rotate-|-?scale-|opacity-)/.test(c))
 
 describe('menu', () => {
-  it('AC-302.1·AC-4110.1·AC-4907.1: 탭은 13개 — 대시보드 · 통계 · 청구 · 고시·공지 · 환자 · 수납일지 · AI 리포트 · 서식 · 직원 · 업무일지 · 재고 · 주소록 · 설정. 매출·급여·일일마감·보고·월간 PDF·관리자는 없다', () => {
+  it('AC-302.1·AC-4110.1·AC-4907.1·AC-5801.1: 탭은 13개 — 대시보드 · 통계 · 청구 · 고시·공지 · 환자 · 업무일지 · 수납일지 · AI 리포트 · 서식 · 직원 · 재고 · 주소록 · 설정. 매출·급여·일일마감·보고·월간 PDF·관리자는 없다', () => {
     expect(MENU.map((m) => m.label)).toEqual([
-      '대시보드', '통계', '청구', '고시·공지', '환자', '수납일지', 'AI 리포트', '서식', '직원', '업무일지', '재고', '주소록', '설정',
+      '대시보드', '통계', '청구', '고시·공지', '환자', '업무일지', '수납일지', 'AI 리포트', '서식', '직원', '재고', '주소록', '설정',
     ])
     expect(MENU).toHaveLength(13)
     expect(MENU).toHaveLength(PATHS.length)
@@ -142,10 +142,10 @@ describe('menu', () => {
       { label: '통계', href: '/stats' },
       { label: '청구', href: '/claim' },
       { label: '환자', href: '/patients' },
+      { label: '업무일지', href: '/worklog' },
       { label: '수납일지', href: '/sunap' },
       { label: 'AI 리포트', href: '/ai-report' },
       { label: '서식', href: '/forms' },
-      { label: '업무일지', href: '/worklog' },
       { label: '설정', href: '/settings' },
     ])
     expect(MENU.filter((m) => m.href === null).map((m) => m.label)).toEqual(NOT_READY_TABS)
@@ -202,21 +202,22 @@ describe('menu', () => {
     expect(NOT_READY_TABS).not.toContain('매출')
   })
 
-  it('AC-2702.1·AC-4110.1·AC-4907.1: primary는 대시보드·통계·청구·환자·수납일지만 true다 — PRIMARY_MENU는 그 다섯, MORE_MENU는 나머지 여덟(둘 다 MENU 차례·같은 항목). 이름·주소·ready는 MENU 그대로다', () => {
+  it('AC-2702.1·AC-4110.1·AC-4907.1·AC-5801.2: primary는 대시보드·통계·청구·환자·업무일지·수납일지만 true다 — PRIMARY_MENU는 그 여섯, MORE_MENU는 나머지 일곱(업무일지 없음, 둘 다 MENU 차례·같은 항목). 이름·주소·ready는 MENU 그대로다', () => {
     for (const item of MENU) expect(typeof item.primary, item.label).toBe('boolean')
     expect(MENU.filter((m) => m.primary).map((m) => m.label)).toEqual(PRIMARY)
     expect(PRIMARY_MENU).toEqual(MENU.filter((m) => m.primary))
     expect(MORE_MENU).toEqual(MENU.filter((m) => !m.primary))
     expect(PRIMARY_MENU.map((m) => [m.label, m.path])).toEqual(PRIMARY_PATHS)
     expect(MORE_MENU.map((m) => [m.label, m.path])).toEqual(MORE_PATHS)
-    expect(PRIMARY_MENU).toHaveLength(5)
-    expect(MORE_MENU).toHaveLength(8)
+    expect(PRIMARY_MENU).toHaveLength(6)
+    expect(MORE_MENU).toHaveLength(7)
+    expect(MORE_MENU.map((m) => m.label)).toEqual(['고시·공지', 'AI 리포트', '서식', '직원', '재고', '주소록', '설정'])
     for (const item of [...PRIMARY_MENU, ...MORE_MENU]) expect(MENU, item.label).toContain(item)
   })
 })
 
 describe('TabBar', () => {
-  it('AC-2702.1·AC-4110.1: nav "메뉴"의 탭 띠 안에는 주요 메뉴 넷(대시보드·통계·청구·환자) 링크만 이 차례로 있고 href는 MENU.path다. 대시보드가 지금 화면이라 aria-current="page"', () => {
+  it('AC-2702.1·AC-4110.1·AC-5801.2: nav "메뉴"의 탭 띠 안에는 주요 메뉴 여섯(대시보드·통계·청구·환자·업무일지·수납일지) 링크만 이 차례로 있고 href는 MENU.path다. 대시보드가 지금 화면이라 aria-current="page"', () => {
     render(<TabBar />)
     expect(nav().tagName).toBe('NAV')
     expect(tabItems().map((el) => el.textContent)).toEqual(PRIMARY)
@@ -477,7 +478,7 @@ describe('MoreMenu', () => {
     expect(svg.innerHTML).toBe(iconInner('chev'))
   })
 
-  it('AC-2702.2: 열면 판 머리 "다른 메뉴 8개"·"준비 중 N개"(N = 판 안 ready=false 수), 목록(ul) 링크가 MORE_MENU 차례·MENU.path·44px이고 준비 중 항목만 링크 글자 안에 "준비 중" 칩이 있다(화면 읽기가 이름과 함께 읽는다)', async () => {
+  it('AC-2702.2·AC-5801.2: 열면 판 머리 "다른 메뉴 7개"·"준비 중 N개"(N = 판 안 ready=false 수), 목록(ul) 링크가 MORE_MENU 차례·MENU.path·44px이고 준비 중 항목만 링크 글자 안에 "준비 중" 칩이 있다(화면 읽기가 이름과 함께 읽는다)', async () => {
     const user = userEvent.setup()
     render(<TabBar />)
     await user.click(moreButton())
@@ -488,7 +489,7 @@ describe('MoreMenu', () => {
     expect(strip().contains(p)).toBe(false)
     const head = p.firstElementChild as HTMLElement
     expect(Array.from(head.children).map((s) => s.textContent)).toEqual([`다른 메뉴 ${MORE_PATHS.length}개`, `준비 중 ${NOT_READY_FEATURES.length}개`])
-    expect(head.textContent).toContain('다른 메뉴 8개')
+    expect(head.textContent).toContain('다른 메뉴 7개')
     const list = within(p).getByRole('list')
     expect(list.tagName).toBe('UL')
     expect(head.nextElementSibling).toBe(list)
@@ -525,7 +526,6 @@ describe('MoreMenu', () => {
   })
 
   it.each([
-    ['/worklog', '업무일지'],
     ['/settings', '설정'],
     ['/claim/setup', '설정'],
     ['/contacts', '주소록'],
@@ -556,7 +556,8 @@ describe('MoreMenu', () => {
     ['/dashboard', '대시보드'],
     ['/stats/x', '통계'],
     ['/claim', '청구'],
-  ])('AC-2702.3: %s에서는 탭 띠의 [%s]이 지금 탭이고 [더보기] 단추는 "더보기"·기본 모양(ink-2 500)이며 판에는 지금 항목이 없다', async (path, label) => {
+    ['/worklog', '업무일지'],
+  ])('AC-2702.3·AC-5801.3: %s에서는 탭 띠의 [%s]이 지금 탭이고 [더보기] 단추는 "더보기"·기본 모양(ink-2 500)이며 판에는 지금 항목이 없다', async (path, label) => {
     pathname.mockReturnValue(path)
     const user = userEvent.setup()
     render(<TabBar />)
@@ -589,14 +590,16 @@ describe('MoreMenu', () => {
     expect(within(panel() as HTMLElement).queryByRole('link', { name: /통계/ })).toBeNull()
   })
 
-  it('AC-012.2·AC-714.1·AC-2702.2: 업무일지(/worklog)·AI 리포트(/ai-report)는 ready이고 [더보기] 판에 있으며 그 칸에 "준비 중" 칩이 없다', async () => {
-    expect(MENU.find((m) => m.label === '업무일지')).toEqual({ label: '업무일지', path: '/worklog', href: '/worklog', ready: true, primary: false })
+  it('AC-012.2·AC-714.1·AC-2702.2·AC-5801.1·AC-5801.2: 업무일지(/worklog)는 ready·primary라 탭 띠에 있고 [더보기] 판에는 없다. AI 리포트(/ai-report)는 ready이고 [더보기] 판에 있으며 그 칸에 "준비 중" 칩이 없다', async () => {
+    expect(MENU.find((m) => m.label === '업무일지')).toEqual({ label: '업무일지', path: '/worklog', href: '/worklog', ready: true, primary: true })
     expect(MENU.find((m) => m.label === 'AI 리포트')).toEqual({ label: 'AI 리포트', path: '/ai-report', href: '/ai-report', ready: true, primary: false })
     const user = userEvent.setup()
     render(<TabBar />)
-    expect(within(strip()).queryByRole('link', { name: /업무일지|AI 리포트/ })).toBeNull()
+    expect(within(strip()).getByRole('link', { name: '업무일지' }).getAttribute('href')).toBe('/worklog')
+    expect(within(strip()).queryByRole('link', { name: /AI 리포트/ })).toBeNull()
     await user.click(moreButton())
-    for (const [label, href] of [['업무일지', '/worklog'], ['AI 리포트', '/ai-report']]) {
+    expect(within(panel() as HTMLElement).queryByRole('link', { name: /업무일지/ })).toBeNull()
+    for (const [label, href] of [['AI 리포트', '/ai-report']]) {
       const link = within(panel() as HTMLElement).getByRole('link', { name: label })
       expect(link.getAttribute('href'), label).toBe(href)
       expect(link.children, label).toHaveLength(1)
@@ -846,20 +849,21 @@ describe('TabBar 누른 탭 · 불러오기 줄', () => {
   })
 
   it('AC-2702.5: 판 밖 지금 탭(더보기 항목)에서 띠의 탭을 누르면 그 탭이 누른 탭이 되고 [더보기]는 "더보기"·기본 모양이 된다. 판 안 지금 항목을 누르면 판만 닫히고 누른 탭·줄이 거둬진다', async () => {
-    pathname.mockReturnValue('/worklog')
+    // 업무일지는 탭 띠로 옮겨 갔다(nav-worklog AC-5801.2) → 판 안 ready 항목은 AI 리포트로 본다
+    pathname.mockReturnValue('/ai-report')
     const user = userEvent.setup()
     render(<TabBar />)
-    expect(moreButton().textContent).toBe('더보기 · 업무일지')
+    expect(moreButton().textContent).toBe('더보기 · AI 리포트')
     await user.click(stripLink('통계'))
     expect(pendings()).toEqual([stripLink('통계')])
     expect(moreButton().textContent).toBe('더보기')
     hasAll(moreButton(), IDLE_LOOK)
     expect(moreButton().hasAttribute('data-pending')).toBe(false)
     await user.click(moreButton())
-    await user.click(within(panel() as HTMLElement).getByRole('link', { name: '업무일지' }))
+    await user.click(within(panel() as HTMLElement).getByRole('link', { name: 'AI 리포트' }))
     expect(panel()).toBeNull()
     expect(pendings()).toEqual([])
-    expect(moreButton().textContent).toBe('더보기 · 업무일지')
+    expect(moreButton().textContent).toBe('더보기 · AI 리포트')
     hasAll(moreButton(), CURRENT_LOOK)
     hasAll(loadBar(), 'opacity-0')
   })
