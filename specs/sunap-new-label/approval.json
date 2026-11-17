@@ -1,0 +1,23 @@
+{
+  "status": "approved",
+  "feature": "sunap-new-label",
+  "approved_at": "2026-11-17T02:13:44Z",
+  "approved_via": "user-prompt",
+  "session_id": "b0bacc8e-b4c1-48e0-aa1e-81ddd7dbbf9b",
+  "spec_sha256": "156e7ec00666749dd7106f89005f7d4034b827b4156745c83b66b90066f14d22",
+  "scope": [
+    "src/components/stats/StatsScreen.test.tsx",
+    "src/components/stats/sections/SunapSection.test.tsx",
+    "src/components/stats/sections/SunapSection.tsx",
+    "src/components/sunap/DoctorTable.test.tsx",
+    "src/components/sunap/DoctorTable.tsx",
+    "src/components/sunap/RemoteView.test.tsx",
+    "src/components/sunap/SunapCards.tsx",
+    "src/components/sunap/SunapScreen.test.tsx",
+    "src/components/sunap/SunapSettings.test.tsx",
+    "src/components/sunap/SunapSettings.tsx",
+    "src/components/sunap/labels.ts",
+    "src/components/sunap/rows/LedgerRows.test.tsx",
+    "src/components/sunap/rows/LedgerRows.tsx"
+  ]
+}
