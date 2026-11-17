@@ -17,7 +17,7 @@
 - 기본 시행자 목록은 비어 있다(시안의 (가)~(원)은 지어낸 이름). 시행자가 없으면 더하기 판에 '설정에서 시행자를 먼저 더해 주세요'와 [설정]
 - 이름은 1~20자, 메모 100자까지. 둘 다 전화·주민번호·메일 모양이면 저장하지 않는다(`privacyProblem`, 이유 글)
 - 차트번호 없는 예약(신환)은 도착이 저절로 바뀌지 않는다(늘 '아직', 손으로 고름)
-- 비트 찾기는 똑같은 이름(성만 적으면 안 찾음) 또는 똑같은 차트번호, 20명까지. 더 있으면 '같은 이름이 많아요. 차트번호로 찾아 주세요'
+- 비트 찾기는 이름 앞부분(두 글자 이상, 사용자 11-17 "이름 앞부분만 쳐도 찾기") 또는 똑같은 차트번호, 20명까지. 더 있으면 '찾은 환자가 많아요. 이름을 더 적거나 차트번호로 찾아 주세요'
 - 처음 자리로 되돌리면 '변경' 표시가 없어진다. 날짜·시작을 옮기면 도착 자동 값이 비워진다(새 자리에서 다시 셈)
 - 월 칸 `변경 N`은 취소를 뺀다(월 칸이 취소를 안 세므로). 요약 줄·통계는 취소도 센다
 - 비트 읽기 범위: calday는 오늘−62일 ~ 오늘+92일, 42일까지. 화면이 그 안으로 잘라 부른다(더 지난 날은 도착을 다시 셈하지 않고 서버 값 그대로)
@@ -90,7 +90,7 @@ export type CalAllDay = { id: string; day: string; type: 'memo' | 'off'; memo: s
 { "v": 1, "kind": "calday", "from": "2026-11-16", "to": "2026-11-21", "today": "2026-11-17",
   "came": [["20261116", "10231"]], "rsv": [["10231", "김○○", "202611181030"], [null, "이○○", "202611191400"]] }
 ```
-- calfind rows: 차트번호, 이름, 성별(`PbsSexTyp`를 'M'|'F'|null로, 실제 값 모양은 TASK-2가 비트에서 개수로 확인), 생일(`PbsBirDte`, `StatsRows.Birth`와 같은 검사, 아니면 null), 마지막 내원(센 접수 중 가장 늦은 날 YYYYMMDD|null). 찾기: q가 숫자면 `RTRIM(b.PbsChtNum)=@q`, 아니면 `RTRIM(b.PbsPatNam)=@q`. 이 병원 접수(상태 무관)가 있는 환자만. `TOP 21`로 읽어 21째가 있으면 `more`. 차례: 마지막 내원 늦은 차례, 같으면 차트번호
+- calfind rows: 차트번호, 이름, 성별(`PbsSexTyp`를 'M'|'F'|null로, 실제 값 모양은 TASK-2가 비트에서 개수로 확인), 생일(`PbsBirDte`, `StatsRows.Birth`와 같은 검사, 아니면 null), 마지막 내원(센 접수 중 가장 늦은 날 YYYYMMDD|null). 찾기: q가 숫자면 `RTRIM(b.PbsChtNum)=@q`, 아니면 이름 앞부분 `b.PbsPatNam LIKE @q + '%'`(q는 앞뒤 빈칸을 빼고 두 글자 이상, `%`·`_`·`[` 글자는 도우미가 거부해 LIKE 특수 글자가 들어가지 않는다). 무거운 글자 처리는 하지 않는다(memory bit-db-heavy-sql). 이 병원 접수(상태 무관)가 있는 환자만. `TOP 21`로 읽어 21째가 있으면 `more`. 차례: 마지막 내원 늦은 차례, 같으면 차트번호
 - calday came: 기간(@from ≤ OcmAcpDtm < @to+1일) 센 접수(`StatsSql` Visits 조건: 외래·WN/HN/TN/PN·`OcmRsuYon<>'O'`·이 병원)의 [날, 차트번호] 중복 없음, 빈 차트번호 뺌. rsv: 같은 기간 외래·이 병원·(`RsvInf` 'R'·'' 줄 있음 또는 WR·NR·CR)·CN 아님인 접수의 [차트번호|null, 이름|null, OcmAcpDtm 12자리], 시각이 틀린 줄은 건너뜀(`SunapSql.NextReservationSql` 조건과 같게)
 - 새 SQL 상수는 `helper/src/Precheck.Core/Calendar/CalendarSql.cs`(`FindSql`·`CameSql`·`RsvSql`), 처리기 `Calendar/CalendarTargets.cs`(`FindKind = "calfind"`, `DayKind = "calday"`), `Bit/Sql.cs` 허용 사슬에 `Calendar.CalendarSql.IsAllowed`·`ParametersOf`
 - `ContactCommands`: `TargetsArgs`가 선택 칸 q를 읽고 `BuildTargets`에 넘긴다. calfind는 q가 있어야 하고 다른 kind는 q가 없어야 한다. calfind는 from = to = 오늘

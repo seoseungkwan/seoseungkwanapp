@@ -42,7 +42,7 @@
 - AC-5902.8: Given `src/lib/calendar/**`, When eslint로 네트워크·브라우저 저장소·console·React·supabase·`lib/storage` import를 넣어 보면, Then 오류다(환자 자료 구역 울타리, guardrails 시험)
 
 ### REQ-5903: 도우미 0.10.0 — 비트 찾기·접수·비트 예약
-- AC-5903.1: Given `contact.targets {kind: 'calfind', from: T, to: T, q}`(T = 오늘), When q가 숫자 1~10자리면 차트번호가 같은 환자, 아니면 앞뒤 빈칸을 뺀 이름이 똑같은 환자를 찾으면, Then design.md '도우미 답' calfind 모양으로 마지막 내원이 늦은 차례 20명까지 보내고 더 있으면 `more`가 참이다. 이 병원 접수가 한 번도 없는 환자는 없다. 전화·주소·주민번호·메모는 읽지 않는다
+- AC-5903.1: Given `contact.targets {kind: 'calfind', from: T, to: T, q}`(T = 오늘), When q가 숫자 1~10자리면 차트번호가 같은 환자, 아니면 앞뒤 빈칸을 뺀 q(두 글자 이상, `%`·`_`·`[` 없음)로 이름이 시작하는 환자를 찾으면, Then design.md '도우미 답' calfind 모양으로 마지막 내원이 늦은 차례 20명까지 보내고 더 있으면 `more`가 참이다. 이 병원 접수가 한 번도 없는 환자는 없다. 전화·주소·주민번호·메모는 읽지 않는다
 - AC-5903.2: Given calfind, When from·to가 오늘이 아니거나 q가 없거나 21자 이상이거나 숫자와 다른 글자가 섞였으면, Then `E-HELPER-BAD-MESSAGE`다. calfind 밖의 kind에 q가 오면 `E-HELPER-BAD-MESSAGE`다
 - AC-5903.3: Given `contact.targets {kind: 'calday', from, to}`, When 42일 안이고 오늘−62일 ≤ from, to ≤ 오늘+92일이면, Then `came`(그 기간 센 접수(통계 Visits 조건)가 있는 [날, 차트번호], 중복 없음)과 `rsv`(수납일지 다음 예약과 같은 조건의 비트 예약 [차트번호|null, 이름|null, 시각])를 보낸다. 범위 밖은 `E-HELPER-BAD-MESSAGE`다. 전화·메모는 읽지 않는다
 - AC-5903.4: Given 명령 표 `commands.json`, When 보면, Then `contact.targets`의 kind 값에 `calfind`·`calday`, args에 선택 칸 `q`(글자 1~20)만 더해졌고 명령 이름 목록은 그대로다(확장 새 판 없음). 새 SQL은 읽기 전용 SELECT이고 허용 목록(`Bit/Sql.cs` 사슬)에 든다
