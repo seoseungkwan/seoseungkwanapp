@@ -1082,3 +1082,60 @@ describe('AC-4905.8 components/sunap/rows/**(수납일지 장부 줄): JSX는 �
     expect(results.flatMap((r) => r.messages.map((m) => `${r.filePath}:${m.line} ${m.ruleId}`))).toEqual([])
   })
 })
+
+describe('AC-5902.8 src/lib/calendar/**(예약 셈: 환자 이름·차트번호 줄)도 환자 자료 구역 규칙 전부 아래 있다', SLOW, () => {
+  const CALENDAR = 'src/lib/calendar/probe.ts'
+
+  it.each([
+    ["fetch('x')", 'no-restricted-globals'],
+    ["window.fetch('x')", 'no-restricted-properties'],
+    ['new XMLHttpRequest()', 'no-restricted-globals'],
+    ["new WebSocket('x')", 'no-restricted-globals'],
+    ["navigator.sendBeacon('x')", 'no-restricted-properties'],
+    ['console.log(1)', 'no-console'],
+    ['const c = console; c.log(1)', 'no-restricted-globals'],
+    ["localStorage.setItem('k', 'v')", 'no-restricted-globals'],
+    ["sessionStorage.getItem('k')", 'no-restricted-globals'],
+    ["indexedDB.open('x')", 'no-restricted-globals'],
+    ["window.localStorage.setItem('k', 'v')", 'no-restricted-properties'],
+    ["import React from 'react'", 'no-restricted-imports'],
+    ["import { useState } from 'react'", 'no-restricted-imports'],
+    ["import { NextResponse } from 'next/server'", 'no-restricted-imports'],
+    ["import { createClient } from '@supabase/supabase-js'", 'no-restricted-imports'],
+    ["import { supabaseBrowser } from '@/lib/supabase/browser'", 'no-restricted-imports'],
+    ["import { gate } from '@/lib/auth/gate'", 'no-restricted-imports'],
+    ["import { listAppts } from '@/lib/storage/calendar'", 'no-restricted-imports'],
+    ["import x from '../storage/calendar'", 'no-restricted-imports'],
+    ["import { connectBridge } from '@/lib/bridge/client'", 'no-restricted-imports'],
+    ["export const load = async () => await import('react')", 'no-restricted-syntax'],
+    ["export const load = async () => await import('@/lib/storage/calendar')", 'no-restricted-syntax'],
+    ['export const load = async (name: string) => await import(name)', 'no-restricted-syntax'],
+  ])('AC-5902.8: %s → %s', async (code, rule) => {
+    expect(await errorRules(code, CALENDAR)).toContain(rule)
+  })
+
+  it('AC-5902.8: JSX가 막히고(.tsx), 하위 폴더·시험 파일도 같은 규칙 아래 있다', async () => {
+    expect(await errorRules('export const A = () => <div />', 'src/lib/calendar/probe.tsx')).toContain('no-restricted-syntax')
+    expect(await errorRules("fetch('x')", 'src/lib/calendar/sub/probe.ts')).toContain('no-restricted-globals')
+    expect(await errorRules('console.log(1)', 'src/lib/calendar/probe.test.ts')).toContain('no-console')
+    expect(await errorRules("localStorage.getItem('k')", 'src/lib/calendar/probe.test.ts')).toContain('no-restricted-globals')
+  })
+
+  it('AC-5902.8: 날짜 계산(@/lib/analytics/dates)·같은 폴더 모양 import는 된다, 안내는 lib/calendar를 환자 자료 구역으로 말한다', async () => {
+    const code = [
+      "import { addDays } from '@/lib/analytics/dates'",
+      "import type { CalAppt } from './shapes'",
+      'export const next = (a: CalAppt) => addDays(a.day, 7)',
+    ].join('\n')
+    expect(await lint(code, CALENDAR)).toEqual([])
+    const messages = (await lint("fetch('x')", CALENDAR)).map((m) => m.message).join('\n')
+    expect(messages).toContain('lib/calendar')
+  })
+
+  it('AC-5902.8: 실제 예약 셈 소스(lib/calendar)는 울타리에 걸리는 것이 없다', async () => {
+    const files = ['src/lib/calendar/shapes.ts', 'src/lib/calendar/layout.ts', 'src/lib/calendar/rules.ts', 'src/lib/calendar/counts.ts']
+    const results = await eslint.lintFiles(files)
+    expect(results.map((r) => r.filePath.replace(/\\/g, '/').replace(/^.*\/src\//, 'src/')).sort()).toEqual([...files].sort())
+    expect(results.flatMap((r) => r.messages.map((m) => `${r.filePath}:${m.line} ${m.ruleId}`))).toEqual([])
+  })
+})
