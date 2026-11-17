@@ -3871,8 +3871,8 @@ describe('REQ-4906 sunap-ilji: 예약·전환 카드', () => {
     await sectionsShown()
     await waitFor(() => expect(sunapText()).toContain('50.0%'))
     expect(listSunapDays).toHaveBeenLastCalledWith(expect.anything(), R30.current.from, R30.current.to)
-    expect(rowsIn('초진 예약률')).toEqual([
-      ['초진', '', '10명'],
+    expect(rowsIn('신환 예약률')).toEqual([
+      ['신환', '', '10명'],
       ['예약률 ○ 종류 예약', '', '5명'],
       ['마감한 날', '진료한 날 2일 중', '2일'],
       ['늦은 마감 섞임', '', '1일'],
@@ -3920,7 +3920,7 @@ describe('REQ-4906 sunap-ilji: 예약·전환 카드', () => {
     })
     expect(JSON.stringify(asked)).not.toContain('가짜 물리치료')
     expect(rowsIn('Block 전환')).toEqual([
-      ['초진+Block', '1/4', '25.0%'],
+      ['신환+Block', '1/4', '25.0%'],
       ['90일+Block', '1/2', '50.0%'],
       ['재진+Block (Block 중)', '3/5', '60.0%'],
       ['Block', '5/20', '25.0%'],

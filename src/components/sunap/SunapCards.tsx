@@ -73,7 +73,7 @@ function Rate({ name, a, b, note, teal }: { name: string; a: number; b: number; 
 // 예약률 ○인 종류 이름을 받지 않을 때(다른 기기 화면은 설정을 읽지 않는다): 기본 목록 그대로
 const DEFAULT_RESERVED = DEFAULT_RSV_KINDS.filter((kind) => kind.counts).map((kind) => kind.label)
 
-/** 초진 예약률 아래 글 뒤쪽(spec sunap-kinds AC-5503.7): 예약률 ○인 종류 이름을 ·로 이어 '예약만', 없으면 안내 */
+/** 신환 예약률 아래 글 뒤쪽(spec sunap-kinds AC-5503.7): 예약률 ○인 종류 이름을 ·로 이어 '예약만', 없으면 안내 */
 const reservedText = (names: readonly string[]) => (names.length > 0 ? `${names.join('·')} 예약만` : '예약률에 넣는 종류가 없어요')
 
 export function SunapCards({
@@ -122,7 +122,7 @@ export function SunapCards({
         <Big value={won(t.visits)} unit="명" />
         <Kv
           lines={[
-            { name: '초진', mid: pct(t.first_n, t.visits), value: `${won(t.first_n)}명` },
+            { name: '신환', mid: pct(t.first_n, t.visits), value: `${won(t.first_n)}명` },
             { name: '90일초진', mid: pct(t.d90_n, t.visits), value: `${won(t.d90_n)}명` },
             { name: '재진', mid: pct(t.ret_n, t.visits), value: `${won(t.ret_n)}명` },
             'hr',
@@ -132,12 +132,12 @@ export function SunapCards({
         />
       </Card>
       <Card title="예약 · Block 전환">
-        <Rate name="초진 예약률" a={t.rsv_first} b={t.first_n} note={`초진 ${won(t.first_n)}명 중 ${won(t.rsv_first)}명 · ${reservedText(reserved)}`} />
+        <Rate name="신환 예약률" a={t.rsv_first} b={t.first_n} note={`신환 ${won(t.first_n)}명 중 ${won(t.rsv_first)}명 · ${reservedText(reserved)}`} />
         <Rate name="90일 예약률" a={t.rsv_d90} b={t.d90_n} note={`90일초진 ${won(t.d90_n)}명 중 ${won(t.rsv_d90)}명`} teal />
         <Kv
           lines={[
             'hr',
-            { name: '초진+Block', mid: `${t.first_block}/${t.first_n}`, value: pct(t.first_block, t.first_n) },
+            { name: '신환+Block', mid: `${t.first_block}/${t.first_n}`, value: pct(t.first_block, t.first_n) },
             { name: '90일+Block', mid: `${t.d90_block}/${t.d90_n}`, value: pct(t.d90_block, t.d90_n) },
             {
               name: (

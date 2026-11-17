@@ -18,7 +18,7 @@ import { SunapSection, type SunapClosed, type SunapGroupsState } from './SunapSe
 const TODAY = '2026-11-16'
 const ZERO = Object.fromEntries(SUNAP_TOTAL_KEYS.map((key) => [key, 0])) as SunapTotals
 const closedDay = (day: string, over: Partial<SunapTotals>, late = false): SunapDay => ({ day, closedAt: `${day}T09:52:00Z`, late, totals: { ...ZERO, ...over } })
-// 진료한 날 14일(11월 2일 ~ 15일) 중 마감한 날 12일, 그중 늦은 마감 1일. 합 = 초진 112명 중 예약 71명 · 90일초진 82명 중 예약 42명
+// 진료한 날 14일(11월 2일 ~ 15일) 중 마감한 날 12일, 그중 늦은 마감 1일. 합 = 신환 112명 중 예약 71명 · 90일초진 82명 중 예약 42명
 const DATES = Array.from({ length: 14 }, (_, i) => `2026-11-${String(i + 2).padStart(2, '0')}`)
 const CLOSED: SunapDay[] = DATES.slice(0, 12).map((day, i) =>
   i < 11 ? closedDay(day, { first_n: 9, rsv_first: 6, d90_n: 7, rsv_d90: 3 }) : closedDay(day, { first_n: 13, rsv_first: 5, d90_n: 5, rsv_d90: 9 }, true),
@@ -44,7 +44,7 @@ const DOCTORS: DoctorBreakdown = {
 }
 const DOCTOR_HINT = '비트에서 바로 · 수납일지에서 고친 체크는 안 들어가요'
 
-const RSV_FIRST = '초진 예약률'
+const RSV_FIRST = '신환 예약률'
 const RSV_D90 = '90일 예약률'
 const BLOCK = 'Block 전환'
 const NO_CLOSED = '수납일지를 마감한 날이 없어요'
@@ -67,13 +67,13 @@ afterEach(() => {
   cleanup()
 })
 
-describe('AC-4906.2 초진·90일 예약률(수납일지 마감한 날만)', () => {
+describe('AC-4906.2 신환·90일 예약률(수납일지 마감한 날만)', () => {
   it('AC-4906.2: 마감한 날 합으로 센 비율과 시안 글 그대로의 줄이다(마감한 날 n일 · 늦은 마감 섞임 n일)', () => {
     draw()
     expect(within(cell(RSV_FIRST)).getByText('수납일지 마감한 날만')).toBeTruthy()
     expect(within(cell(RSV_FIRST)).getByText('63.4%')).toBeTruthy()
     expect(rowsOf(RSV_FIRST)).toEqual([
-      ['초진', '', '112명'],
+      ['신환', '', '112명'],
       ['예약률 ○ 종류 예약', '', '71명'],
       ['마감한 날', '진료한 날 14일 중', '12일'],
       ['늦은 마감 섞임', '', '1일'],
@@ -109,7 +109,7 @@ describe('AC-4906.2 초진·90일 예약률(수납일지 마감한 날만)', () 
     draw({ closed: [closedDay('2026-11-02', { rsv_first: 0, first_n: 0, d90_n: 0, rsv_d90: 0 })], worked: ['2026-11-02'] })
     expect(within(cell(RSV_FIRST)).getByText('–')).toBeTruthy()
     expect(within(cell(RSV_D90)).getByText('–')).toBeTruthy()
-    expect(rowsOf(RSV_FIRST)[0]).toEqual(['초진', '', '0명'])
+    expect(rowsOf(RSV_FIRST)[0]).toEqual(['신환', '', '0명'])
   })
 
   it('AC-4906.2: 진료한 날을 모르면(이 기간 저장된 날 숫자 없음) "진료한 날 n일 중"과 마감 안 한 날 줄이 없다. 모두 마감했으면 마감 안 한 날 줄이 없다', () => {
@@ -128,7 +128,7 @@ describe('AC-4906.3 Block 전환(비트에서 바로 · 기간 전체)', () => {
     draw()
     expect(within(cell(BLOCK)).getByText('비트에서 바로 · 기간 전체')).toBeTruthy()
     expect(rowsOf(BLOCK)).toEqual([
-      ['초진+Block', '58/131', '44.3%'],
+      ['신환+Block', '58/131', '44.3%'],
       ['90일+Block', '31/95', '32.6%'],
       ['재진+Block (Block 중)', '213/302', '70.5%'],
       ['Block', '302/1,388', '21.8%'],
@@ -211,7 +211,7 @@ describe('AC-4906.2·AC-4906.3 읽는 중 · 읽기 실패', () => {
 })
 
 describe('AC-4906.2·AC-4906.3 칸 모양 · 시안과 다른 곳', () => {
-  it('AC-4906.2·AC-4906.3: 칸 셋(초진 예약률 · 90일 예약률 · Block 전환)이 h3 차례로 넓은 화면 세 열, 휴대폰 한 열이다', () => {
+  it('AC-4906.2·AC-4906.3: 칸 셋(신환 예약률 · 90일 예약률 · Block 전환)이 h3 차례로 넓은 화면 세 열, 휴대폰 한 열이다', () => {
     draw()
     expect(screen.getAllByRole('heading', { level: 3 }).map((node) => node.textContent)).toEqual([RSV_FIRST, RSV_D90, BLOCK])
     const grid = cell(RSV_FIRST).parentElement!
@@ -232,7 +232,7 @@ describe('AC-4906.2·AC-4906.3 칸 모양 · 시안과 다른 곳', () => {
     expect(body.hidden).toBe(true)
     fireEvent.click(button)
     expect(body.hidden).toBe(false)
-    expect(body.textContent).toContain('초진+Block % = 초진 중 · 90일+Block % = 90일초진 중 · 재진+Block % = Block 받은 사람 중(엑셀과 같음)')
+    expect(body.textContent).toContain('신환+Block % = 신환 중 · 90일+Block % = 90일초진 중 · 재진+Block % = Block 받은 사람 중(엑셀과 같음)')
     expect(body.textContent).toContain('비트에서 바로 · 수납일지에서 고친 체크는 안 들어가요')
     expect(body.textContent).toContain('마감할 때 예약률 ○였던 종류만')
   })
@@ -284,7 +284,7 @@ describe('AC-5004.2 원장님별 표(세 칸 아래, 비트에서 바로)', () =
     const how = screen.getByRole('button', { name: '어떻게 세나요?' })
     expect(table.compareDocumentPosition(how) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     // 세 칸 글은 그대로다
-    expect(rowsOf(BLOCK)[0]).toEqual(['초진+Block', '58/131', '44.3%'])
+    expect(rowsOf(BLOCK)[0]).toEqual(['신환+Block', '58/131', '44.3%'])
   })
 
   it('AC-5004.2: sunapDoctors가 null(원장님 한 분 이하)이거나 없으면 표가 없다', () => {
@@ -315,7 +315,7 @@ describe('AC-5004.2 원장님별 표(세 칸 아래, 비트에서 바로)', () =
 describe('AC-5503.8 설정을 따르는 예약률 글(spec sunap-kinds)', () => {
   const HOW_FIRST = '예약률 = 수납일지 마감한 날의 합 · 마감할 때 예약률 ○였던 종류만(예약 안 하고 가심·종류 모름은 빼요)'
 
-  it('AC-5503.8: 초진·90일 예약률 칸의 예약 줄 이름은 "예약률 ○ 종류 예약"이고 종류 이름을 늘어놓지 않는다', () => {
+  it('AC-5503.8: 신환·90일 예약률 칸의 예약 줄 이름은 "예약률 ○ 종류 예약"이고 종류 이름을 늘어놓지 않는다', () => {
     draw()
     expect(rowsOf(RSV_FIRST)[1]).toEqual(['예약률 ○ 종류 예약', '', '71명'])
     expect(rowsOf(RSV_D90)[1]).toEqual(['예약률 ○ 종류 예약', '', '42명'])
@@ -330,5 +330,23 @@ describe('AC-5503.8 설정을 따르는 예약률 글(spec sunap-kinds)', () => 
     const lines = [...body.querySelectorAll('p')].map((p) => p.textContent)
     expect(lines[0]).toBe(HOW_FIRST)
     expect(body.textContent).not.toContain('기타·종류 모름')
+  })
+})
+
+// ── '초진' 글을 '신환'으로(spec sunap-new-label REQ-5601). '90일초진'은 그대로 ─────────
+describe("AC-5601.3 통계 탭 수납일지 칸의 '초진'은 '신환'", () => {
+  it('AC-5601.3: 칸 제목 신환 예약률, 첫 줄 신환, Block 전환 첫 줄 신환+Block이다', () => {
+    draw()
+    expect(screen.getByRole('heading', { level: 3, name: '신환 예약률' })).toBeTruthy()
+    expect(rowsOf('신환 예약률')[0]).toEqual(['신환', '', '112명'])
+    expect(rowsOf(BLOCK)[0]).toEqual(['신환+Block', '58/131', '44.3%'])
+  })
+
+  it('AC-5601.3: [어떻게 세나요?] Block 줄은 신환으로 쓰고, 원장님별 표까지 90일초진이 아닌 초진 글자가 없다', () => {
+    draw({ bit: ready(RATES, 1388, DOCTORS) })
+    const button = screen.getByRole('button', { name: '어떻게 세나요?' })
+    const body = document.getElementById(button.getAttribute('aria-controls')!)!
+    expect(body.textContent).toContain('신환+Block % = 신환 중 · 90일+Block % = 90일초진 중 · 재진+Block % = Block 받은 사람 중(엑셀과 같음)')
+    expect(document.body.textContent).not.toMatch(/(?<!90일)초진/)
   })
 })

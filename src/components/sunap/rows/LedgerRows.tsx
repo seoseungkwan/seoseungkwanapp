@@ -33,7 +33,7 @@ const AMOUNT_FIELDS: { field: AmountField; label: string }[] = [
 ]
 const FILTERS: { key: Filter; label: string; test(row: LedgerRow): boolean }[] = [
   { key: 'all', label: '전체', test: () => true },
-  { key: 'new', label: '초진', test: (row) => row.kind === 'new' },
+  { key: 'new', label: '신환', test: (row) => row.kind === 'new' },
   { key: 'd90', label: '90일초진', test: (row) => row.kind === 'd90' },
   { key: 'block', label: 'Block', test: (row) => row.block },
   { key: 'unknown', label: '예약 종류 모름', test: (row) => row.rsv.kind === 'unknown' },

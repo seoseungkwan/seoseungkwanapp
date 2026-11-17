@@ -25,7 +25,7 @@ const GROUPS: StatsRxGroup[] = [
 const SETTINGS: Settings = { blockGroup: 'g-block', ptGroup: 'g-pt', kinds: KINDS }
 
 const DESC_1 = '비트 예약 메모에 이 말이 있으면 그 종류로 정해요. 위에 있을수록 먼저 맞춰 봐요(메모에 말이 둘 다 있으면 위 종류). 말은 쉼표(,)로 나눠 적어요.'
-const DESC_2 = '예약률 ○ 넣음인 종류만 초진·90일 예약률에 세요. 주사치료·진료(경과)·기타는 기본 종류라 이름은 바꿀 수 있지만 지울 수는 없어요.'
+const DESC_2 = '예약률 ○ 넣음인 종류만 신환·90일 예약률에 세요. 주사치료·진료(경과)·기타는 기본 종류라 이름은 바꿀 수 있지만 지울 수는 없어요.'
 const AFTER = '예약률 ○·✕를 바꾸면 아직 마감 안 한 날부터 새로 세요. 마감한 날 숫자는 그대로예요(마감을 풀고 다시 마감하면 새 설정으로 세요).'
 const WORDS = '메모에 이 말이 있으면'
 
@@ -226,5 +226,16 @@ describe('AC-5503.3 저장', () => {
     await user.clear(wordsBox(3))
     await user.click(button('저장'))
     expect(onSave.mock.calls[0]![0].kinds[2]).toEqual({ id: 'kdosu01', label: '도수치료', counts: true, words: [] })
+  })
+})
+
+// ── '초진' 글을 '신환'으로(spec sunap-new-label REQ-5601) ─────────
+describe("AC-5601.4 설정 판 설명의 '초진'은 '신환'", () => {
+  it('AC-5601.4: 다음 예약 종류 설명 둘째 줄은 신환·90일 예약률이다', () => {
+    open()
+    expect(
+      screen.getByText('예약률 ○ 넣음인 종류만 신환·90일 예약률에 세요. 주사치료·진료(경과)·기타는 기본 종류라 이름은 바꿀 수 있지만 지울 수는 없어요.'),
+    ).toBeTruthy()
+    expect(document.body.textContent).not.toMatch(/(?<!90일)초진/)
   })
 })

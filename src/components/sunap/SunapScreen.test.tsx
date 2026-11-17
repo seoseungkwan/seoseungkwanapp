@@ -111,7 +111,7 @@ const PAID = [
 const ledgerOf = (day: string, closedAt: string | null = null, late = false): Ledger => ({ day, unsure: false, rows: ROWS, paid: PAID, closedAt, late, doctors: [] })
 const TOTALS = dayTotals(ledgerOf(TODAY))
 
-// 원장님별 수(spec sunap-doctors AC-5003.3). 이름·숫자는 지어낸 값. [내원, 초진, 90일초진, Block, 물리치료, 초진+Block, 90일+Block, 재진+Block]
+// 원장님별 수(spec sunap-doctors AC-5003.3). 이름·숫자는 지어낸 값. [내원, 신환, 90일초진, Block, 물리치료, 신환+Block, 90일+Block, 재진+Block]
 const rates = (visits: number, first: number, d90: number, block: number, pt: number, firstBlock: number, d90Block: number, retBlock: number): SunapRates => ({
   visits,
   first_n: first,
@@ -487,7 +487,7 @@ describe('AC-4905.5 설정(시안 ?s=settings)', () => {
     expect(screen.getByText('설정에서 Block·물리치료 묶음을 골라 주세요')).toBeTruthy()
     // 저장한 이름·예약률이 장부·카드에 바로 쓰인다(AC-5503.5·5503.7). '설정을 저장했어요' 알림은 없다(범위 밖)
     expect(within(screen.getByRole('row', { name: /김○○/ })).getByText('신경주사')).toBeTruthy()
-    expect(region(/^예약 · Block 전환/).getByText(`초진 ${TOTALS.first_n}명 중 ${TOTALS.rsv_first}명 · 신경주사 예약만`)).toBeTruthy()
+    expect(region(/^예약 · Block 전환/).getByText(`신환 ${TOTALS.first_n}명 중 ${TOTALS.rsv_first}명 · 신경주사 예약만`)).toBeTruthy()
     expect(screen.queryByText('설정을 저장했어요')).toBeNull()
   })
 
@@ -714,16 +714,16 @@ describe('AC-5503.4·AC-5503.5·AC-5503.7 설정 종류 목록을 쓰는 곳', (
   ]
   const rateNote = () => region(/^예약 · Block 전환/)
 
-  it('AC-5503.7: 초진 예약률 아래 글은 예약률 ○인 종류 이름을 목록 차례로 ·로 이어 예약만', async () => {
+  it('AC-5503.7: 신환 예약률 아래 글은 예약률 ○인 종류 이름을 목록 차례로 ·로 이어 예약만', async () => {
     vi.mocked(loadSunapSettings).mockResolvedValue({ ...SETTINGS, kinds: MY_KINDS })
     await open()
-    expect(rateNote().getByText(`초진 ${TOTALS.first_n}명 중 ${TOTALS.rsv_first}명 · 주사치료·진료(경과)·도수치료 예약만`)).toBeTruthy()
+    expect(rateNote().getByText(`신환 ${TOTALS.first_n}명 중 ${TOTALS.rsv_first}명 · 주사치료·진료(경과)·도수치료 예약만`)).toBeTruthy()
   })
 
   it('AC-5503.7: 예약률 ○인 종류가 하나도 없으면 "예약률에 넣는 종류가 없어요"', async () => {
     vi.mocked(loadSunapSettings).mockResolvedValue({ ...SETTINGS, kinds: DEFAULT_RSV_KINDS.map((kind) => ({ ...kind, counts: false })) })
     await open()
-    expect(rateNote().getByText(`초진 ${TOTALS.first_n}명 중 ${TOTALS.rsv_first}명 · 예약률에 넣는 종류가 없어요`)).toBeTruthy()
+    expect(rateNote().getByText(`신환 ${TOTALS.first_n}명 중 ${TOTALS.rsv_first}명 · 예약률에 넣는 종류가 없어요`)).toBeTruthy()
   })
 
   it('AC-5503.4·AC-5503.5: 장부 칩·설명 줄과 고르기 판 선택지는 설정 목록(이름·차례·예약률)이다', async () => {
@@ -745,5 +745,27 @@ describe('AC-5503.4·AC-5503.5·AC-5503.7 설정 종류 목록을 쓰는 곳', (
     await user.click(within(pop).getByRole('radio', { name: /^체외충격파/ }))
     await user.click(within(pop).getByRole('button', { name: '고르기' }))
     expect(fake.edit).toHaveBeenCalledWith('15220', { rsv: 'kshock1' })
+  })
+})
+
+// ── '초진' 글을 '신환'으로(spec sunap-new-label REQ-5601). '90일초진'은 그대로 ─────────
+describe("AC-5601.1·AC-5601.4 수납일지 화면의 '초진'은 '신환'", () => {
+  it('AC-5601.1: 장부 구분 칩·거르기 칩·내원 카드·예약 카드가 신환이다', async () => {
+    doctorsNow = DOCTORS
+    await open()
+    expect(within(screen.getByRole('row', { name: /박○○/ })).getByText('신환')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^신환 \d+$/ })).toBeTruthy()
+    const rate = region(/^예약 · Block 전환/)
+    expect(rate.getByText('신환 예약률')).toBeTruthy()
+    expect(rate.getByText(`신환 ${TOTALS.first_n}명 중 ${TOTALS.rsv_first}명 · 주사치료·진료(경과) 예약만`)).toBeTruthy()
+    expect(rate.getByText('신환+Block')).toBeTruthy()
+    expect(region(/^내원/).getByText('신환')).toBeTruthy()
+  })
+
+  it("AC-5601.4: 수납일지 화면(원장님별 표 포함) 어디에도 '90일초진'이 아닌 '초진' 글자가 없다", async () => {
+    doctorsNow = DOCTORS
+    await open()
+    expect(document.body.textContent).not.toMatch(/(?<!90일)초진/)
+    expect(document.body.textContent).toContain('90일초진')
   })
 })

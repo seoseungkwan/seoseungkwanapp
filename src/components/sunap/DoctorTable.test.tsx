@@ -8,7 +8,7 @@ import { DoctorTable } from './DoctorTable'
 
 afterEach(cleanup)
 
-// [내원, 초진, 90일초진, Block, 물리치료, 초진+Block, 90일+Block, 재진+Block] — 재진은 내원 − 초진 − 90일초진
+// [내원, 신환, 90일초진, Block, 물리치료, 신환+Block, 90일+Block, 재진+Block] — 재진은 내원 − 신환 − 90일초진
 const rates = (visits: number, first: number, d90: number, block: number, pt: number, firstBlock: number, d90Block: number, retBlock: number): SunapRates => ({
   visits,
   first_n: first,
@@ -49,22 +49,22 @@ describe('AC-5001.5 DoctorTable — 제목·hint·머리·줄마다 수와 비�
     expect(panel.getByText(HINT)).toBeTruthy()
   })
 
-  it('AC-5001.5: 머리는 원장님·내원·초진·90일초진·Block·물리치료·초진+Block·90일+Block·재진+Block이다', () => {
+  it('AC-5001.5: 머리는 원장님·내원·신환·90일초진·Block·물리치료·신환+Block·90일+Block·재진+Block이다', () => {
     const panel = show()
     expect(panel.getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
       '원장님',
       '내원',
-      '초진',
+      '신환',
       '90일초진',
       'Block',
       '물리치료',
-      '초진+Block',
+      '신환+Block',
       '90일+Block',
       '재진+Block',
     ])
   })
 
-  it('AC-5001.5: 줄마다 수와 비율 — 초진·90일초진·Block·물리치료는 내원 중, 초진+Block은 초진 중, 90일+Block은 90일초진 중, 재진+Block은 Block 중', () => {
+  it('AC-5001.5: 줄마다 수와 비율 — 신환·90일초진·Block·물리치료는 내원 중, 신환+Block은 신환 중, 90일+Block은 90일초진 중, 재진+Block은 Block 중', () => {
     const panel = show()
     const rows = panel.getAllByRole('row').slice(1)
     expect(rows).toHaveLength(4)
@@ -96,5 +96,31 @@ describe('AC-5001.5 DoctorTable — 제목·hint·머리·줄마다 수와 비�
       ['김○○', '5명', '0|0.0%'],
       ['합계', '1,239명', '0|0.0%'],
     ])
+  })
+})
+
+// ── '초진' 글을 '신환'으로(spec sunap-new-label REQ-5601). '90일초진'은 그대로 ─────────
+describe("AC-5601.2 원장님별 표의 '초진'은 '신환'", () => {
+  it('AC-5601.2: 머리는 원장님·내원·신환·90일초진·Block·물리치료·신환+Block·90일+Block·재진+Block이다', () => {
+    const panel = show()
+    expect(panel.getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
+      '원장님',
+      '내원',
+      '신환',
+      '90일초진',
+      'Block',
+      '물리치료',
+      '신환+Block',
+      '90일+Block',
+      '재진+Block',
+    ])
+  })
+
+  it('AC-5601.2: 아래 글은 신환으로 쓰고 90일초진이 아닌 초진 글자가 없다', () => {
+    show()
+    const text = document.body.textContent ?? ''
+    expect(text).toContain('신환·90일초진·Block·물리치료 % = 그 원장님 내원 중')
+    expect(text).toContain('신환+Block % = 신환 중 · 90일+Block % = 90일초진 중 · 재진+Block % = Block 받은 사람 중(엑셀과 같음)')
+    expect(text).not.toMatch(/(?<!90일)초진/)
   })
 })

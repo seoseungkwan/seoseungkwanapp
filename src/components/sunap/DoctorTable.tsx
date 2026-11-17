@@ -6,14 +6,14 @@ import { PanelHead, TABLE, TD, TD_INK, TF, TF_NUM, TH, TH_NUM } from './rows/par
 
 // 원장님별 표 (spec sunap-doctors AC-5001.5, 시안 docs/mockups/sunap-ilji/index.html doctorPanel).
 // 수납일지 하루 화면(장부 아래)과 통계 '예약·전환' 칸이 같이 쓴다. 원장님 이름과 수만 받는다(환자 정보 없음).
-// 칸마다 수 옆에 작은 비율(sunapPct, 분모가 0이면 '–'): 초진·90일초진·Block·물리치료 = 내원 중, 초진+Block = 초진 중,
+// 칸마다 수 옆에 작은 비율(sunapPct, 분모가 0이면 '–'): 신환·90일초진·Block·물리치료 = 내원 중, 신환+Block = 신환 중,
 // 90일+Block = 90일초진 중, 재진+Block = Block 중. 가로 스크롤 안 최소 너비 860px, 끝 줄 합계, 아래 설명 한 줄(시안 그대로)
 
 const TITLE = '원장님별'
-const COLUMNS = ['원장님', '내원', '초진', '90일초진', 'Block', '물리치료', '초진+Block', '90일+Block', '재진+Block'] as const
+const COLUMNS = ['원장님', '내원', '신환', '90일초진', 'Block', '물리치료', '신환+Block', '90일+Block', '재진+Block'] as const
 const LEGEND = [
-  '초진·90일초진·Block·물리치료 % = 그 원장님 내원 중',
-  '초진+Block % = 초진 중 · 90일+Block % = 90일초진 중 · 재진+Block % = Block 받은 사람 중(엑셀과 같음)',
+  '신환·90일초진·Block·물리치료 % = 그 원장님 내원 중',
+  '신환+Block % = 신환 중 · 90일+Block % = 90일초진 중 · 재진+Block % = Block 받은 사람 중(엑셀과 같음)',
 ]
 
 // 몸 줄: 원장님 이름은 진하게, 숫자는 오른쪽(시안 .dr td). 합계 줄은 TF 모양

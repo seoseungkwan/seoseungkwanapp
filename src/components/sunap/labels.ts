@@ -7,7 +7,7 @@ import type { RsvKind, RsvKindDef, SunapEdit, VisitKind } from '@/types/sunap'
 /** 장부 칸 하나 고치기 또는 되돌리기([비트 값으로 되돌리기]·예약 '비트 따라가기'). Worker 메시지 SunapPatch와 같은 모양 */
 export type LedgerPatch = Partial<SunapEdit> | { revert: keyof SunapEdit }
 
-export const VISIT_LABEL: Record<VisitKind, string> = { new: '초진', d90: '90일초진', re: '재진' }
+export const VISIT_LABEL: Record<VisitKind, string> = { new: '신환', d90: '90일초진', re: '재진' }
 /** 늘 있는 두 줄의 글(설정 판의 '늘 있는 줄'과 같다) */
 export const RSV_NONE = '예약 안 하고 가심'
 export const RSV_UNKNOWN = '종류 모름'

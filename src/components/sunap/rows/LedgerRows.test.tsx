@@ -76,7 +76,7 @@ describe('AC-4905.1 장부 표(시안 ?s=open)', () => {
     const cells = within(first).getAllByRole('cell').map((td) => td.textContent)
     expect(cells.slice(0, 9)).toEqual(['1', '09:02', '10231', '김○○', '재진', '', '15,000', '', ''])
     expect(cells[12]).toBe('–')
-    expect(within(rowOf('박○○')).getByText('초진')).toBeTruthy()
+    expect(within(rowOf('박○○')).getByText('신환')).toBeTruthy()
     expect(within(rowOf('정○○')).getByText('90일초진')).toBeTruthy()
     expect(within(rowOf('박○○')).getByText('허리 MRI 결과 보러 오심')).toBeTruthy()
     expect(within(rowOf('임○○')).getAllByRole('cell')[8]!.textContent).toBe('16,300')
@@ -114,10 +114,10 @@ describe('AC-4905.1 장부 표(시안 ?s=open)', () => {
     expect(screen.getByText('FREE = 그날 낸 돈 0원')).toBeTruthy()
   })
 
-  it('AC-4905.1: 거르기 칩(전체·초진·90일초진·Block·예약 종류 모름·고친 칸 있는 줄)과 이름·차트번호 찾기', async () => {
+  it('AC-4905.1: 거르기 칩(전체·신환·90일초진·Block·예약 종류 모름·고친 칸 있는 줄)과 이름·차트번호 찾기', async () => {
     const { user } = renderRows()
     expect(screen.getByRole('button', { name: '전체 10' }).getAttribute('aria-pressed')).toBe('true')
-    await user.click(screen.getByRole('button', { name: '초진 2' }))
+    await user.click(screen.getByRole('button', { name: '신환 2' }))
     expect(bodyRows().map((tr) => within(tr).getAllByRole('cell')[3]!.textContent)).toEqual(['박○○', '임○○'])
     // 번호는 전체 줄의 번호 그대로
     expect(within(bodyRows()[0]!).getAllByRole('cell')[0]!.textContent).toBe('3')

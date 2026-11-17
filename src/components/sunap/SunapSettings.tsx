@@ -21,7 +21,7 @@ const SELECT = `h-9 min-w-55 cursor-pointer rounded-control border border-line-s
 
 const KINDS_HELP = [
   '비트 예약 메모에 이 말이 있으면 그 종류로 정해요. 위에 있을수록 먼저 맞춰 봐요(메모에 말이 둘 다 있으면 위 종류). 말은 쉼표(,)로 나눠 적어요.',
-  '예약률 ○ 넣음인 종류만 초진·90일 예약률에 세요. 주사치료·진료(경과)·기타는 기본 종류라 이름은 바꿀 수 있지만 지울 수는 없어요.',
+  '예약률 ○ 넣음인 종류만 신환·90일 예약률에 세요. 주사치료·진료(경과)·기타는 기본 종류라 이름은 바꿀 수 있지만 지울 수는 없어요.',
 ]
 const FIXED_ROWS: readonly [string, string][] = [
   [FIXED_LABELS[0], '비트에 다음 예약이 없을 때'],
