@@ -1,7 +1,12 @@
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Drawing.Printing;
+using System.Drawing.Text;
+using System.IO;
 using System.Linq;
+using System.Text;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -54,6 +59,35 @@ public static class SlipPrintJob
         public SystemTime Submitted;
     }
 
+    /// <summary>SRP-770II 203dpi = 8점/mm</summary>
+    private const int DotsPerMm = 8;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private sealed class DocInfo1
+    {
+        public string? DocName;
+        public string? OutputFile;
+        public string? DataType;
+    }
+
+    [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int StartDocPrinter(IntPtr printer, int level, [In] DocInfo1 info);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    private static extern bool EndDocPrinter(IntPtr printer);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    private static extern bool StartPagePrinter(IntPtr printer);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    private static extern bool EndPagePrinter(IntPtr printer);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    private static extern bool AbortPrinter(IntPtr printer);
+
+    [DllImport("winspool.drv", SetLastError = true)]
+    private static extern bool WritePrinter(IntPtr printer, byte[] bytes, int count, out int written);
+
     private const int DmInPrompt = 4;
     private const int IdOk = 1;
     private const uint GmemMoveable = 0x2;
@@ -92,12 +126,20 @@ public static class SlipPrintJob
     /// printerName으로 폭 widthMm·길이 lengthMm 종이 1장. draw는 mm 단위 Graphics(왼쪽 위 = 종이 왼쪽 위)에 그린다.
     /// toFile이 있으면 그 파일로 쓴다(Microsoft Print to PDF 확인용, 대화상자 없이). 프린터가 없거나 보내지 못하면 예외.
     /// </summary>
-    public static void Send(string printerName, int widthMm, int lengthMm, Action<Graphics> draw, string? toFile = null)
+    /// <param name="direct">빅솔론에 직접 보내기(SLCS). null이면 설정 파일의 켬·끔을 따른다. toFile이 있으면 쓰지 않는다</param>
+    public static void Send(string printerName, int widthMm, int lengthMm, Action<Graphics> draw, string? toFile = null, bool? direct = null)
     {
         if (string.IsNullOrWhiteSpace(printerName)) throw new ArgumentException("프린터 이름이 비었다", nameof(printerName));
         if (widthMm <= 0) throw new ArgumentOutOfRangeException(nameof(widthMm));
         if (lengthMm <= 0) throw new ArgumentOutOfRangeException(nameof(lengthMm));
         if (draw == null) throw new ArgumentNullException(nameof(draw));
+
+        if (toFile == null && (direct ?? SettingsFile.ReadDirectMode()))
+        {
+            CheckReady(printerName);
+            WriteRaw(printerName, BuildDirect(widthMm, lengthMm, draw));
+            return;
+        }
 
         using var document = new PrintDocument
         {
@@ -156,6 +198,94 @@ public static class SlipPrintJob
             RestoreDefaults(printerName, savedDefaults);
         }
         if (drawFailed != null) throw new InvalidOperationException("종이를 그리지 못했다", drawFailed);
+    }
+
+    /// <summary>
+    /// '빅솔론에 직접 보내기': 종이를 1비트 그림(8점/mm)으로 그려 SLCS 명령으로 만든다. 드라이버를 거치지 않으므로
+    /// 드라이버의 용지 유형(간극이 있는 라벨)과 상관없이 이 작업에만 '연속 용지, 이 길이'를 알려 준다.
+    /// 명령(BIXOLON SLCS Programming Manual Rev.1.22, SRP-770II): CB 버퍼 비우기, SW 폭(점), SL 길이,틈,C(연속),
+    /// LD x y 한줄바이트 줄수(작은 바이트 먼저) + 그림(1=검정, 앞 비트가 왼쪽), P1 한 장. 줄 끝 CR LF.
+    /// SL 값은 프린터 임시 기억에만 남는다(전원을 끄면 처음 값).
+    /// </summary>
+    private static byte[] BuildDirect(int widthMm, int lengthMm, Action<Graphics> draw)
+    {
+        var width = (widthMm * DotsPerMm + 7) / 8 * 8;
+        var height = lengthMm * DotsPerMm;
+        var rowBytes = width / 8;
+        var data = new byte[rowBytes * height];
+        using (var bitmap = new Bitmap(width, height, PixelFormat.Format24bppRgb))
+        {
+            bitmap.SetResolution(DotsPerMm * 25.4f, DotsPerMm * 25.4f);
+            using (var g = Graphics.FromImage(bitmap))
+            {
+                g.Clear(Color.White);
+                g.PageUnit = GraphicsUnit.Millimeter;
+                g.SmoothingMode = SmoothingMode.None;
+                g.TextRenderingHint = TextRenderingHint.SingleBitPerPixelGridFit;
+                draw(g);
+            }
+            var bits = bitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+            try
+            {
+                var row = new byte[bits.Stride];
+                for (var y = 0; y < height; y++)
+                {
+                    Marshal.Copy(IntPtr.Add(bits.Scan0, y * bits.Stride), row, 0, bits.Stride);
+                    for (var x = 0; x < width; x++)
+                    {
+                        var i = x * 3; // B, G, R
+                        var light = (row[i] * 114 + row[i + 1] * 587 + row[i + 2] * 299) / 1000;
+                        if (light < 128) data[y * rowBytes + x / 8] |= (byte)(0x80 >> (x % 8));
+                    }
+                }
+            }
+            finally
+            {
+                bitmap.UnlockBits(bits);
+            }
+        }
+
+        using var stream = new MemoryStream();
+        WriteLine(stream, "CB");
+        WriteLine(stream, "SW" + width);
+        WriteLine(stream, "SL" + height + ",10,C");
+        stream.Write(new[] { (byte)'L', (byte)'D', (byte)0, (byte)0, (byte)0, (byte)0, (byte)(rowBytes & 0xFF), (byte)(rowBytes >> 8), (byte)(height & 0xFF), (byte)(height >> 8) }, 0, 10);
+        stream.Write(data, 0, data.Length);
+        WriteLine(stream, "");
+        WriteLine(stream, "P1");
+        return stream.ToArray();
+    }
+
+    private static void WriteLine(Stream stream, string line)
+    {
+        var bytes = Encoding.ASCII.GetBytes(line + "\r\n");
+        stream.Write(bytes, 0, bytes.Length);
+    }
+
+    /// <summary>명령 바이트를 드라이버를 거치지 않고(RAW) 프린터로 보낸다. 실패하면 보내던 일을 버리고 예외</summary>
+    private static void WriteRaw(string printerName, byte[] bytes)
+    {
+        if (!OpenPrinter(printerName, out var handle, IntPtr.Zero) || handle == IntPtr.Zero) throw new InvalidOperationException("프린터를 열지 못했다");
+        try
+        {
+            if (StartDocPrinter(handle, 1, new DocInfo1 { DocName = DocumentName, DataType = "RAW" }) == 0) throw new InvalidOperationException("보내기를 시작하지 못했다");
+            try
+            {
+                if (!StartPagePrinter(handle)) throw new InvalidOperationException("쪽을 시작하지 못했다");
+                if (!WritePrinter(handle, bytes, bytes.Length, out var written) || written != bytes.Length) throw new InvalidOperationException("명령을 다 보내지 못했다");
+                EndPagePrinter(handle);
+            }
+            catch
+            {
+                AbortPrinter(handle);
+                throw;
+            }
+            EndDocPrinter(handle);
+        }
+        finally
+        {
+            ClosePrinter(handle);
+        }
     }
 
     /// <summary>

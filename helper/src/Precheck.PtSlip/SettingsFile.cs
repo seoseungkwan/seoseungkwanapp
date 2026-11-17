@@ -99,6 +99,37 @@ public static class SettingsFile
         File.WriteAllText(Path.Combine(Folder, DriverFileName), printerName + "\r\n" + Convert.ToBase64String(devmode) + "\r\n", Utf8NoBom);
     }
 
+    /// <summary>'빅솔론에 직접 보내기'를 켰다는 표시 파일(있으면 켬)</summary>
+    public const string DirectFileName = "direct-slcs.txt";
+
+    /// <summary>'빅솔론에 직접 보내기'가 켜져 있나. 못 읽으면 꺼짐</summary>
+    public static bool ReadDirectMode()
+    {
+        try
+        {
+            return File.Exists(Path.Combine(Folder, DirectFileName));
+        }
+        catch (Exception e) when (IsFileError(e))
+        {
+            return false;
+        }
+    }
+
+    /// <summary>'빅솔론에 직접 보내기' 켜기·끄기. 쓰지 못하면 예외</summary>
+    public static void WriteDirectMode(bool on)
+    {
+        var path = Path.Combine(Folder, DirectFileName);
+        if (on)
+        {
+            Directory.CreateDirectory(Folder);
+            File.WriteAllText(path, "on", Utf8NoBom);
+        }
+        else if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
+    }
+
     private static bool IsFileError(Exception e) =>
         e is IOException || e is UnauthorizedAccessException || e is SecurityException || e is NotSupportedException || e is ArgumentException;
 }

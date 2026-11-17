@@ -25,6 +25,7 @@ public sealed class SettingsForm : Form
     private readonly TextBox partsBox;
     private readonly ComboBox printerBox;
     private readonly NumericUpDown lengthBox;
+    private readonly CheckBox directBox;
     private readonly Label errorLabel;
     private int offset;
 
@@ -92,7 +93,7 @@ public sealed class SettingsForm : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 2,
-            RowCount = 3,
+            RowCount = 4,
             Padding = new Padding(SlipUi.S(18), SlipUi.S(18), SlipUi.S(18), SlipUi.S(2)),
             Margin = Padding.Empty,
         };
@@ -105,6 +106,17 @@ public sealed class SettingsForm : Form
         body.SetColumnSpan(printerCell, 2);
         body.Controls.Add(Cell("종이 길이", Field(lengthBox, mm)), 0, 2);
         body.Controls.Add(Cell("버튼 자리", Field(leftButton, rightButton)), 1, 2);
+        // 드라이버를 거치지 않고 빅솔론 명령(SLCS)으로 '연속 용지, 이 길이'를 알려 주며 보낸다. [저장]하면 바뀐다([시험 1장]은 바로 따른다)
+        directBox = new CheckBox
+        {
+            Text = "빅솔론에 직접 보내기 (종이가 길게 계속 나오면 켜세요)",
+            AutoSize = true,
+            Checked = SettingsFile.ReadDirectMode(),
+            Font = SlipUi.Body,
+            Margin = new Padding(0, SlipUi.S(6), 0, SlipUi.S(4)),
+        };
+        body.Controls.Add(directBox, 0, 3);
+        body.SetColumnSpan(directBox, 2);
 
         errorLabel = SlipUi.ErrorBox(FormWidth);
 
@@ -180,6 +192,7 @@ public sealed class SettingsForm : Form
         try
         {
             SettingsFile.WriteText(SlipSettingsRules.ToJson(next));
+            SettingsFile.WriteDirectMode(directBox.Checked);
         }
         catch (Exception)
         {
@@ -205,7 +218,7 @@ public sealed class SettingsForm : Form
                 ShowError(SlipUi.PrintFailed(null));
                 return;
             }
-            SlipPrintJob.Send(printer!, SlipDrawer.PaperWidthMm, length, g => SlipDrawer.Draw(g, SlipText.Blank, SlipDrawer.PaperWidthMm, length));
+            SlipPrintJob.Send(printer!, SlipDrawer.PaperWidthMm, length, g => SlipDrawer.Draw(g, SlipText.Blank, SlipDrawer.PaperWidthMm, length), direct: directBox.Checked);
         }
         catch (Exception)
         {
