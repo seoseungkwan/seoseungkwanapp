@@ -4,6 +4,7 @@
 - `src/components/shell/menu.ts`의 `MENU` 배열에서 업무일지 줄을 수납일지 줄 바로 앞으로 옮기고 `primary: true`로 바꾼다.
   `PRIMARY_MENU`·`MORE_MENU`는 `MENU.filter`라 차례가 저절로 따라온다. 탭 줄(TabBar)·[더보기](MoreMenu)·지금 탭 찾기(currentMenuLabel)는 고치지 않는다.
 - 주석의 '주요 메뉴 다섯'을 '여섯'으로 고친다(menu.ts·TabBar.tsx·MoreMenu.tsx 주석만).
+- 탭 차례를 따르는 두 목록도 업무일지를 수납일지 앞으로: `components/dashboard/briefing/features.ts`의 DASHBOARD_FEATURES(대시보드 기능 목록, AC-307.1), `components/preview/sample.ts`의 PREVIEW_TABS(랜딩 미리보기, AC-421.2). 글자는 그대로.
 
 ## 화면
 - 1024px 이상: 탭 여섯이 한 줄에 다 들어간다(시안 1280 사진).

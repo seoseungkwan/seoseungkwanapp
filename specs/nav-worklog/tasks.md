@@ -5,8 +5,8 @@
 
 ## TASK-1: MENU 차례와 primary
 - Phase: 1
-- AC: AC-5801.1, AC-5801.2, AC-5801.3
+- AC: AC-5801.1, AC-5801.2, AC-5801.3, AC-5801.4
 - REQ: REQ-5801
-- Files: src/components/shell/menu.ts, src/components/shell/TabBar.tsx, src/components/shell/MoreMenu.tsx, src/components/shell/shell.test.tsx, src/app/(app)/tabFrame.test.tsx
-- Tests: src/components/shell/shell.test.tsx
+- Files: src/components/shell/menu.ts, src/components/shell/TabBar.tsx, src/components/shell/MoreMenu.tsx, src/components/shell/shell.test.tsx, src/app/(app)/tabFrame.test.tsx, src/components/dashboard/briefing/features.ts, src/components/preview/sample.ts, src/components/preview/sample.test.ts, src/components/preview/DashboardPreview.test.tsx
+- Tests: src/components/shell/shell.test.tsx, src/app/(app)/tabFrame.test.tsx, src/components/preview/sample.test.ts
 - TDD: required
