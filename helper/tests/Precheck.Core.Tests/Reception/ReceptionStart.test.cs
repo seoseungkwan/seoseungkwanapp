@@ -299,11 +299,14 @@ public class ReceptionStartTests
         {
             "new RegistrationStore(DataDirectory(), protector)",
             "new InstallationLocator(AppDomain.CurrentDomain.BaseDirectory, () => RegisteredInstall(store))",
-            "new BitServices(locator, new SqlBitConnector(), new VendorLogin(), new ConfirmWindow(), store)",
+            // 확인 창 제목은 접수 현황 프로그램 것(spec reception-other-clinic AC-5707.8)
+            "new BitServices(locator, new SqlBitConnector(), new VendorLogin(), new ConfirmWindow(ConfirmTitle), store)",
             "new DpapiProtector()",
             "new BoardCache(bit, Now)",
             "new XrayMarks(new StoreFolder(DataDirectory()), protector, Now, log.Note)",
-            "new ReceptionLists(new StoreFolder(DataDirectory()), protector, log.Note)",
+            // 고르기 목록은 설정 문서 안(spec reception-other-clinic AC-5704.4): 설정·로고도 같은 data\ 폴더·같은 DPAPI
+            "new LogoStore(new StoreFolder(DataDirectory()), protector, log.Note)",
+            "new SettingsStore(new StoreFolder(DataDirectory()), protector, EmbeddedWordmark, logo, log.Note)",
             "new VisitKeys()",
             "new StaticFiles(EmbeddedStaticSource.Core())",
             "new LanAddressWatch(LanAddresses.ReadSystem, () => DateTime.UtcNow)",
@@ -684,7 +687,7 @@ public class ReceptionStartTests
         Assert.Equal(new[] { "claim", "start", "wait", "stop", "release" }, two.Events);
     }
 
-    [Fact(DisplayName = "AC-5707.1 Program은 RegisterEntry.Run을 ReceptionStart에 넘기고, RegisterEntry는 ReceptionServices와 같은 부품(data\\·DPAPI·비트 찾기·로그인 창·확인 창)으로 RegisterFlow를 돈다(서버·뮤텍스 없음)")]
+    [Fact(DisplayName = "AC-5707.1 Program은 RegisterEntry.Run을 ReceptionStart에 넘기고, RegisterEntry는 ReceptionServices.CreateBit(같은 부품 한 곳: data\\·DPAPI·비트 찾기·로그인 창·확인 창, spec reception-other-clinic TASK-8)로 RegisterFlow를 돈다(서버·뮤텍스 없음)")]
     public void RegisterEntryWiring()
     {
         var program = Statements(App("Program.cs"));
@@ -693,21 +696,23 @@ public class ReceptionStartTests
 
         var entry = Statements(App("RegisterEntry.cs"));
         var services = Statements(App("ReceptionServices.cs"));
+        // 부품 만들기는 ReceptionServices.CreateBit 한 곳이고 RegisterEntry는 그것을 부른다
+        Assert.Contains("RegisterFlow.Run(ReceptionServices.CreateBit(new DpapiProtector()))", Regex.Replace(entry, @"\s+", " "), StringComparison.Ordinal);
         foreach (var part in new[]
         {
-            "new DpapiProtector()",
             "new InstallationLocator(AppDomain.CurrentDomain.BaseDirectory, () => RegisteredInstall(store))",
-            "new BitServices(locator, new SqlBitConnector(), new VendorLogin(), new ConfirmWindow(), store)",
+            "new BitServices(locator, new SqlBitConnector(), new VendorLogin(), new ConfirmWindow(ConfirmTitle), store)",
+            // 등록 파일은 접수 현황 서버가 읽는 바로 그 data\ 폴더에 쓴다
+            "new RegistrationStore(DataDirectory(), protector)",
         })
         {
-            Assert.Contains(part, entry, StringComparison.Ordinal);
             Assert.Contains(part, services, StringComparison.Ordinal);
+            Assert.DoesNotContain(part, entry, StringComparison.Ordinal);
         }
-        // 등록 파일은 접수 현황 서버가 읽는 바로 그 data\ 폴더에 쓴다
-        Assert.Contains("new RegistrationStore(ReceptionServices.DataDirectory(), protector)", entry, StringComparison.Ordinal);
+        Assert.Equal(1, Count(services, "new BitServices("));
         Assert.Contains("RegisterFlow.Run(", entry, StringComparison.Ordinal);
         Assert.Equal(1, Count(entry, "RegisterFlow.Run("));
-        foreach (var word in new[] { "ReceptionServer", "Listen(", "Mutex", "SingleInstance", "MessageBox", "Console.", "Process.Start(" })
+        foreach (var word in new[] { "ReceptionServer", "Listen(", "CreateRouter(", "Mutex", "SingleInstance", "MessageBox", "Console.", "Process.Start(" })
         {
             Assert.DoesNotContain(word, entry, StringComparison.Ordinal);
         }

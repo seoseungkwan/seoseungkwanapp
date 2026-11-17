@@ -7,6 +7,7 @@ using System.Text.Json;
 using Precheck.Core.Bit;
 using Precheck.Core.Reception;
 using Precheck.Core.Reception.Http;
+using Precheck.Core.Reception.Settings;
 using Precheck.Core.Store;
 using Precheck.Core.Tests.Protocol;
 using Precheck.Core.Tests.Reception.ArrangeWriting;
@@ -19,6 +20,8 @@ namespace Precheck.Core.Tests.Reception.PickChoices;
 /// <summary>
 /// 목록 쓰기 길 POST /api/lists(AC-3501.3)·판의 picks(AC-3501.4)·몸 한도(AC-3502.4).
 /// ArrangeRig(가짜 비트·가짜 지도·임시 폴더의 진짜 ArrangeMarks·XrayMarks·ReceptionLists·주입한 시계)만 쓴다.
+/// 설정(spec reception-other-clinic)이 생긴 뒤 POST /api/lists는 설정 없이 옛 목록 저장소만 넘긴 라우터(옛 잇기, 아래 옛 시험)에만 남고,
+/// 설정을 넘긴 라우터·접수 현황 프로그램(ReceptionServices)에는 없다(404, AC-5704.4). 목록은 설정 문서의 picks로 옮겼다.
 /// </summary>
 public class ListsRouteTests
 {
@@ -124,12 +127,27 @@ public class ListsRouteTests
         foreach (var leak in new[] { "꼬리뼈", "새약", "lists", "reception-lists" }) Assert.DoesNotContain(leak, string.Join("\n", lines));
     }
 
-    [Fact(DisplayName = "AC-3501.3 접수 현황 프로그램(ReceptionServices)은 같은 data\\ 폴더·같은 DPAPI의 ReceptionLists를 라우터에 넘긴다")]
-    public void ServicesWireLists()
+    [Fact(DisplayName = "AC-5704.4 접수 현황 프로그램(ReceptionServices)은 옛 목록 저장소(ReceptionLists)를 만들지도 라우터에 넘기지도 않는다(reception-lists.dat를 쓰지도 지우지도 않음)")]
+    public void ServicesNoLongerWireLists()
     {
-        var source = File.ReadAllText(Repo.PathOf("helper", "src", "Precheck.Reception", "ReceptionServices.cs"));
-        Assert.Contains("new ReceptionLists(new StoreFolder(DataDirectory()), protector, log.Note)", source);
-        Assert.Contains("lists: lists", source);
+        var source = System.Text.RegularExpressions.Regex.Replace(
+            File.ReadAllText(Repo.PathOf("helper", "src", "Precheck.Reception", "ReceptionServices.cs")), @"//.*$", "", System.Text.RegularExpressions.RegexOptions.Multiline);
+        Assert.DoesNotContain("ReceptionLists", source);
+        Assert.DoesNotContain("lists:", source);
+        Assert.Contains("settings: settings.Current", source);
+    }
+
+    [Fact(DisplayName = "AC-5704.4 설정을 넘긴 라우터는 옛 목록 저장소를 함께 받아도 POST /api/lists가 없다(404·목록 파일 없음), 판 picks는 설정 문서의 picks다")]
+    public void ListsRouteClosedWithSettings()
+    {
+        var settings = ReceptionSettings.Ours(Parse(NewLists()));
+        using var rig = new ArrangeRig(lists: true, settings: () => settings);
+        var answer = PostLists(rig, NewLists());
+        Assert.Equal(404, answer.Status);
+        Assert.Empty(answer.Body);
+        Assert.Equal(404, rig.Send("GET", "/api/lists").Status);
+        Assert.False(File.Exists(ListsFile(rig)));
+        Assert.Equal(Columns.Layouts.PicksJson(Parse(NewLists())), rig.Board().GetProperty("picks").GetRawText());
     }
 
     // ---- AC-3501.4 판의 picks ---------------------------------------------------------------------------------
