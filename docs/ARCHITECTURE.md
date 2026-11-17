@@ -52,6 +52,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 - 서식(휴진 안내): `components/forms/`(화면·안내문 SVG) · `lib/forms/`(순수 함수) · `lib/storage/formNotices.ts`(저장) · `public/poster/`(테마 그림·글꼴) · `app/api/ai/forms/`(AI 정리, ADR-028) — `specs/forms/design.md` 1절. 서식 두 폴더는 환자 자료 구역·브라우저 저장소를 쓰지 않는다(`src/lib/forms/rules.test.ts`)
 - 서식(환자 안내문): 같은 두 폴더 · `lib/storage/formGuides.ts`(저장, `form_guides`) · `app/api/ai/forms/guide/`(AI 정리, 그 아래 `picture/`는 AI 그림, ADR-028 덧붙임) — `specs/forms-guide/design.md` 1절. 휴진 안내 표·경로(`form_notices`·`app/api/ai/forms/route.ts`)는 그대로다
 - 서식(휴진 안내 AI 배경·내 배경): 같은 두 폴더 · `app/api/ai/forms/background/`(AI 배경, OpenAI 그림 AI, ADR-029) · `lib/storage/formBackgrounds.ts`(저장, `form_backgrounds` 표 + Storage `form-backgrounds`) · migration `supabase/migrations/20261115020000_form_backgrounds.sql` — `specs/forms-themes/design.md` 1절. 고른 그림은 `form_notices.theme` 한 칸에 담는다(테마·그림 2·`bg-<id>`)
+- 예약 탭(구글 캘린더 대신): `components/calendar/`(화면, 그 아래 `rows/`는 예약표 울타리) · `lib/calendar/`(환자 구역, 칸 놓기·경고·도착·수 세기 순수 함수) · `workers/calendar.worker.ts`(비트 찾기·도착·비트 예약 칸) · `lib/storage/calendar.ts`(저장, 표 넷) · migration `supabase/migrations/20261117010000_calendar.sql` — 환자 이름·차트번호를 서버에 두는 예외(ADR-030), `specs/clinic-calendar/design.md`
 
 ## 패턴
 - 서버 코드는 `app/api/ai/` 하나. 나머지는 브라우저 + Supabase RLS (§0). 예외: 인증(콜백·middleware·페이지 guard)은 세션과 내 줄만 읽는다 (ADR-004)
@@ -112,6 +113,10 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 | `sunap_days` | 수납일지 마감한 날 한 줄: `work_date`·`closed_at`·`late`(늦은 마감)와 합계 숫자 24칸(내원·구분·Block·물리치료·예약·결제별 건수·금액, 0~10억 정수). 환자 줄은 없다(장부는 접수 PC 도우미 저장). 다시 마감하면 덮어쓰고 마감 풀기는 지운다. 저장은 `lib/storage/sunap.ts` (specs/sunap-ilji) |
 | `sunap_spends` | 수납일지 그날 지출 한 줄: 종류(`cash`·`card`·`etc`·`parking`)·내용(1~50자, 개인정보 모양은 앱이 안 보냄)·금액(0~1억). 넣기·읽기·고치기(종류·내용·금액)·지우기 (specs/sunap-ilji) |
 | `sunap_settings` | 병원 수납일지 설정 한 줄: Block·물리치료 묶음 id(`block_group`·`pt_group`, 통계 처방 묶음, 바깥 키 없음 = 지워지면 안 고름)·예약 메모 말 `rsv_words`(jsonb 객체, 4,000바이트 미만). 지우기 없음 (specs/sunap-ilji) |
+| `calendar_settings` | 병원 예약 탭 설정 한 줄: 종류 `kinds`·시행자 `staff`(jsonb 배열, 8,000바이트 미만, 안 모양은 앱이 `checkCalendarSettings`로 봄)·보이는 시간 `open_hour`(5~12)·`close_hour`(12~24)·`sunday`. 지우기 없음 (specs/clinic-calendar) |
+| `calendar_appts` | 예약 한 줄: 날짜·시작(분, 10분 칸)·길이(5~240분)·환자 이름(1~20자)·차트번호(숫자 10자리까지, 신환은 비움)·시행자·종류(id와 그때 이름)·메모(100자)·상태(`auto`·`came`·`noshow`·`cancel`)·도착 자동 `auto`(비트 PC가 정함)·처음 자리 `orig_day`·`orig_start`(트리거만 적음). 전화·성별·나이·생일 칸 없음. 넣을 때마다 한국 오늘 − 1년보다 이른 예약·종일 줄을 트리거가 지운다 (ADR-030, specs/clinic-calendar) |
+| `calendar_allday` | 예약 탭 종일 한 줄: 메모(1~20자) 또는 시행자 휴무(같은 날 같은 시행자 하나). 고치기 없음(지우고 다시 넣음) (specs/clinic-calendar) |
+| `calendar_rev` | 병원마다 예약 바뀜 숫자 한 줄. 위 세 표가 바뀔 때마다 트리거(`calendar_bump`)만 늘리고 사용자는 읽기만 한다. 화면이 5초마다 읽어 바뀌면 다시 읽는다 (specs/clinic-calendar) |
 | `ai_usage` | 달별 토큰·비용 |
 | `ai_reports` | 달별 AI 리포트(병원·달마다 하나, 다시 분석하면 덮어씀)·만들 때 쓴 숫자의 지문. 쓰기는 DB 함수로만 (ADR-024) |
 | `form_notices` | 서식 휴진 안내 한 줄: 연·월·카드(1~4장, jsonb)·테마. 대충 적은 글은 두지 않는다. 칸은 specs/forms design.md 8절 (ADR-028). 테마 칸은 고른 그림 값(null·`auto-2`·`<열쇠>`·`<열쇠>-2`·`bg-<내 배경 id>`, 40자까지)이다 (specs/forms-themes design.md 2절). 글자 색 칸 `accent`는 null(자동) 또는 `#` + 소문자 16진수 6자리다 (specs/forms-accent design.md 2절) |
