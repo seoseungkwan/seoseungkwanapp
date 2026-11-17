@@ -1139,3 +1139,105 @@ describe('AC-5902.8 src/lib/calendar/**(예약 셈: 환자 이름·차트번호 
     expect(results.flatMap((r) => r.messages.map((m) => `${r.filePath}:${m.line} ${m.ruleId}`))).toEqual([])
   })
 })
+
+describe('AC-5905.11 components/calendar/rows/**(예약표 그리기 부품: 시간 표·비트 예약 칸·고르기 목록·폰 목록): JSX는 되고 네트워크·console·저장소·supabase·lib/storage·lib/auth·통로(lib/bridge)·workers는 막힌다', SLOW, () => {
+  const ROWS = 'src/components/calendar/rows/Probe.tsx'
+
+  it.each([
+    ["fetch('x')", 'no-restricted-globals'],
+    ["window.fetch('x')", 'no-restricted-properties'],
+    ['new XMLHttpRequest()', 'no-restricted-globals'],
+    ["new WebSocket('x')", 'no-restricted-globals'],
+    ["new EventSource('x')", 'no-restricted-globals'],
+    ["navigator.sendBeacon('x')", 'no-restricted-properties'],
+    ['console.log(1)', 'no-console'],
+    ['const c = console; c.log(1)', 'no-restricted-globals'],
+    ['globalThis.console.log(1)', 'no-restricted-properties'],
+    ["localStorage.setItem('k', 'v')", 'no-restricted-globals'],
+    ["sessionStorage.getItem('k')", 'no-restricted-globals'],
+    ["indexedDB.open('x')", 'no-restricted-globals'],
+    ["window.localStorage.setItem('k', 'v')", 'no-restricted-properties'],
+    ["import { supabaseBrowser } from '@/lib/supabase/browser'", 'no-restricted-imports'],
+    ["import { createClient } from '@supabase/supabase-js'", 'no-restricted-imports'],
+    ["import { listAppts } from '@/lib/storage/calendar'", 'no-restricted-imports'],
+    ["import x from '../../../lib/storage/calendar'", 'no-restricted-imports'],
+    ["import { gate } from '@/lib/auth/gate'", 'no-restricted-imports'],
+    ["import { connectScreenBridge } from '@/lib/bridge/workerSink'", 'no-restricted-imports'],
+    ["import { connectBridge } from '@/lib/bridge/client'", 'no-restricted-imports'],
+    ["import x from '../../../lib/bridge/protocol'", 'no-restricted-imports'],
+    ["import type { Found } from '@/workers/calendar/messages'", 'no-restricted-imports'],
+    ["import x from '../../../workers/calendar/handler'", 'no-restricted-imports'],
+    ["import * as Sentry from '@sentry/nextjs'", 'no-restricted-imports'],
+    ["export const load = async () => await import('@/lib/supabase/browser')", 'no-restricted-syntax'],
+    ["export const load = async () => await import('@/lib/storage/calendar')", 'no-restricted-syntax'],
+    ["export const load = async () => await import('@/lib/bridge/workerSink')", 'no-restricted-syntax'],
+    ["export const load = async () => await import('@/workers/calendar/handler')", 'no-restricted-syntax'],
+    ['export const load = async (name: string) => await import(name)', 'no-restricted-syntax'],
+  ])('AC-5905.11: %s → %s', async (code, rule) => {
+    expect(await errorRules(code, ROWS)).toContain(rule)
+  })
+
+  it('AC-5905.11: JSX·react·예약 셈(lib/calendar)·날짜 계산·예약 타입·같은 폴더 부품·색·공통 모양 import는 된다(props로 받은 예약을 그린다)', async () => {
+    const code = [
+      "import { useState } from 'react'",
+      "import { layoutDay } from '@/lib/calendar/layout'",
+      "import { shownStatus } from '@/lib/calendar/rules'",
+      "import { addDays } from '@/lib/analytics/dates'",
+      "import type { CalAppt } from '@/types/calendar'",
+      "import { apptColor } from '../colors'",
+      "import { hm } from './parts'",
+      "import { ds } from '@/components/ui/classes'",
+      'export function Rows({ appts }: { appts: CalAppt[] }) {',
+      '  const [open] = useState(false)',
+      '  const places = layoutDay(appts.map((a) => ({ key: a.id, start: a.start, len: a.len })))',
+      '  return <div className={ds.panel}>{open ? appts.map((a) => <p key={a.id} title={hm(a.start)} className={apptColor(a, { kinds: [], staff: [] })}>{a.name}{shownStatus(a)}{addDays(a.day, 7)}{places.size}</p>) : null}</div>',
+      '}',
+    ].join('\n')
+    expect(await lint(code, ROWS)).toEqual([])
+  })
+
+  it('AC-5905.11: 하위 폴더·시험 파일도 같은 울타리 아래 있다', async () => {
+    expect(await errorRules("fetch('x')", 'src/components/calendar/rows/sub/Probe.tsx')).toContain('no-restricted-globals')
+    expect(await errorRules('console.log(1)', 'src/components/calendar/rows/Probe.test.tsx')).toContain('no-console')
+    expect(await errorRules("localStorage.getItem('k')", 'src/components/calendar/rows/Probe.test.tsx')).toContain('no-restricted-globals')
+    expect(await errorRules("import x from '@/workers/calendar/messages'", 'src/components/calendar/rows/Probe.test.tsx')).toContain('no-restricted-imports')
+  })
+
+  it('AC-5905.11: 안내는 예약표 그리기 부품(components/calendar/rows)을 말하고, 수납일지 장부 줄 안내는 그대로다', async () => {
+    const messages = (await lint("fetch('x')", ROWS)).map((m) => m.message).join('\n')
+    expect(messages).toContain('components/calendar/rows')
+    const bridge = (await lint("import x from '@/lib/bridge/protocol'", ROWS)).map((m) => m.message).join('\n')
+    expect(bridge).toContain('components/calendar/rows')
+    const sunap = (await lint("import x from '@/lib/bridge/protocol'", 'src/components/sunap/rows/Probe.tsx')).map((m) => m.message).join('\n')
+    expect(sunap).toContain('components/sunap/rows')
+    expect(sunap).not.toContain('components/calendar/rows')
+  })
+
+  it('AC-5905.11: components/calendar(rows 밖)은 서버 저장·통로 입구를 import할 수 있고, client.ts는 그대로 막힌다', async () => {
+    const code = [
+      "import { listAppts } from '@/lib/storage/calendar'",
+      "import { supabaseBrowser } from '@/lib/supabase/browser'",
+      "import type { ScreenBridge } from '@/lib/bridge/workerSink'",
+      'export const parts = [listAppts, supabaseBrowser] as const',
+      'export type Bridge = ScreenBridge',
+    ].join('\n')
+    expect(await lint(code, 'src/components/calendar/Probe.tsx')).toEqual([])
+    expect(await errorRules("import { connectBridge } from '@/lib/bridge/client'", 'src/components/calendar/Probe.tsx')).toContain(
+      'no-restricted-imports',
+    )
+  })
+
+  it('AC-5905.11: 실제 예약표 그리기 소스(rows/TimeGrid·ApptBlock·GhostBlock·PhoneWeekList·BitPicks·parts)는 울타리에 걸리는 것이 없다', async () => {
+    const files = [
+      'src/components/calendar/rows/TimeGrid.tsx',
+      'src/components/calendar/rows/ApptBlock.tsx',
+      'src/components/calendar/rows/GhostBlock.tsx',
+      'src/components/calendar/rows/PhoneWeekList.tsx',
+      'src/components/calendar/rows/BitPicks.tsx',
+      'src/components/calendar/rows/parts.tsx',
+    ]
+    const results = await eslint.lintFiles(files)
+    expect(results.map((r) => r.filePath.replace(/\\/g, '/').replace(/^.*\/src\//, 'src/')).sort()).toEqual([...files].sort())
+    expect(results.flatMap((r) => r.messages.map((m) => `${r.filePath}:${m.line} ${m.ruleId}`))).toEqual([])
+  })
+})

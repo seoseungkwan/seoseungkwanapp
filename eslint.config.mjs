@@ -290,25 +290,31 @@ function patientRowsRules() {
 // 수납일지 장부 줄 화면(components/sunap/rows, spec sunap-ilji AC-4905.8): 환자 줄 화면 규칙 전부 + 비트 통로(lib/bridge 전체)·workers import 금지.
 // 줄(이름·차트번호·고친 칸)은 props로만 받고 고친 값은 콜백으로만 넘긴다. 안내 글이 이 폴더를 말하게 네트워크·console·저장소 글은 바꿔 넣는다
 const SUNAP_ROWS_WHERE = '수납일지 장부 줄 화면(components/sunap/rows)'
-const SUNAP_ROWS_BRIDGE_MESSAGE = `${SUNAP_ROWS_WHERE}은 비트 통로(lib/bridge)·workers를 import할 수 없다(줄은 props로만 받는다)`
-const SUNAP_ROWS_BRIDGE_IMPORT = {
-  group: ['@/lib/bridge', '@/lib/bridge/*', '@/workers', '@/workers/*', '**/bridge', '**/bridge/**', '**/workers', '**/workers/**'],
-  message: SUNAP_ROWS_BRIDGE_MESSAGE,
-}
-const SUNAP_ROWS_BRIDGE_SYNTAX = { selector: 'ImportExpression[source.value=/(^|\\/)(bridge|workers)(\\/|$)/]', message: SUNAP_ROWS_BRIDGE_MESSAGE }
-function sunapRowsRules() {
-  const name = (message) => message.replace('환자 줄 화면(components/patients/rows)', SUNAP_ROWS_WHERE).replace('환자 줄 화면', SUNAP_ROWS_WHERE)
+// 예약표 그리기 부품(components/calendar/rows, spec clinic-calendar AC-5905.11): 시간 표·비트 예약 칸·고르기 목록·폰 목록. 수납일지 장부 줄과 같은 울타리.
+// 예약 줄(이름·차트번호)·비트 찾기 결과·비트 예약 칸은 props로만 받고 누름은 콜백으로만 넘긴다
+const CALENDAR_ROWS_WHERE = '예약표 그리기 부품(components/calendar/rows)'
+// 환자 줄 화면 규칙 전부 + 비트 통로(lib/bridge 전체)·workers import 금지. where = 안내 글이 말하는 폴더
+function fencedRowsRules(where) {
+  const bridgeMessage = `${where}은 비트 통로(lib/bridge)·workers를 import할 수 없다(줄은 props로만 받는다)`
+  const bridgeImport = {
+    group: ['@/lib/bridge', '@/lib/bridge/*', '@/workers', '@/workers/*', '**/bridge', '**/bridge/**', '**/workers', '**/workers/**'],
+    message: bridgeMessage,
+  }
+  const bridgeSyntax = { selector: 'ImportExpression[source.value=/(^|\\/)(bridge|workers)(\\/|$)/]', message: bridgeMessage }
+  const name = (message) => message.replace('환자 줄 화면(components/patients/rows)', where).replace('환자 줄 화면', where)
   const renamed = (entries) => entries.map((entry) => (typeof entry === 'object' && entry.message ? { ...entry, message: name(entry.message) } : entry))
   const rules = patientRowsRules()
   const [, imports] = rules['no-restricted-imports']
   return {
     ...rules,
-    'no-restricted-imports': ['error', { patterns: [...renamed(imports.patterns), SUNAP_ROWS_BRIDGE_IMPORT] }],
-    'no-restricted-syntax': ['error', ...renamed(rules['no-restricted-syntax'].slice(1)), SUNAP_ROWS_BRIDGE_SYNTAX],
+    'no-restricted-imports': ['error', { patterns: [...renamed(imports.patterns), bridgeImport] }],
+    'no-restricted-syntax': ['error', ...renamed(rules['no-restricted-syntax'].slice(1)), bridgeSyntax],
     'no-restricted-globals': ['error', ...renamed(rules['no-restricted-globals'].slice(1))],
     'no-restricted-properties': ['error', ...renamed(rules['no-restricted-properties'].slice(1))],
   }
 }
+const sunapRowsRules = () => fencedRowsRules(SUNAP_ROWS_WHERE)
+const calendarRowsRules = () => fencedRowsRules(CALENDAR_ROWS_WHERE)
 
 
 // 통로 코드만: 확장에 말을 거는 곳(connect·sendMessage)은 첫 인자가 EXTENSION_ID일 때만. 주입받은 runtime도 같다
@@ -482,6 +488,11 @@ const eslintConfig = [
     // 수납일지 장부 줄 화면(AC-4905.8): 위 블록 다음에 두어 rows 파일은 이 블록이 이긴다
     files: ['src/components/sunap/rows/**'],
     rules: sunapRowsRules(),
+  },
+  {
+    // 예약표 그리기 부품(spec clinic-calendar AC-5905.11): 네트워크·console·저장소·supabase·lib/storage·lib/auth·통로·workers 금지. JSX는 된다
+    files: ['src/components/calendar/rows/**'],
+    rules: calendarRowsRules(),
   },
 ]
 

@@ -80,6 +80,26 @@
 | `chart-prev` | `#9CA3AF` | 지난 기간(비교 대상) |
 | `cat-1`~`cat-5` | `#2563EB` · `#0F766E` · `#B45309` · `#6D28D9` · `#6B7280` | 서로 다른 항목(선·계열)을 색으로 나눌 때 차례대로 쓴다. 이번 개편 부품에는 쓰는 곳이 없다(다음 대시보드 명세) |
 
+### 예약 색판 (`--cal-*`, clinic-calendar)
+예약 탭(`components/calendar`)만 쓴다. 이름은 `types/calendar.ts`의 `CAL_COLORS`, 색 고르는 차례는 `components/calendar/colors.ts`(종류 색 → 종류가 '시행자 색 따름'이면 시행자 색 → 목록에 없는 종류·시행자는 회색). 클래스는 `colors.ts`의 `CAL_TONES`에서만 꺼낸다
+
+| 토큰 | 값 | 이름 |
+|------|------|------|
+| `cal-blue` | `#2563EB` | 파랑 |
+| `cal-teal` | `#0F766E` | 청록 |
+| `cal-purple` | `#7C3AED` | 보라 |
+| `cal-orange` | `#EA580C` | 주황 |
+| `cal-pink` | `#DB2777` | 분홍 |
+| `cal-lime` | `#65A30D` | 연두 |
+| `cal-navy` | `#1E3A8A` | 남색 |
+| `cal-sky` | `#0284C7` | 하늘 |
+| `cal-brown` | `#92400E` | 갈색 |
+| `cal-gray` | `#6B7280` | 회색 |
+
+- 진한 색(`bg-cal-*`·`border-cal-*`)은 예약 칸 왼쪽 3px 띠·폰 목록 띠·설정의 색 표시에, 옅은 바탕 `cal-*-soft`(그 색 13% + `surface`, `color-mix`는 `:root` 안에서만)는 예약 칸·휴무 칩 바탕에 쓴다. 칸 안쪽 1px 테두리는 진한 색 25%(`ring-cal-*/25`)
+- 칸 글은 색과 상관없이 `ink`·`ink-2`·`muted`다(옅은 바탕 위 4.5:1 이상). 색만으로 뜻을 주지 않는다: 시행자는 칸 글의 `(표시)`, 도착은 ✓·!·'취소' 표시가 함께 말한다
+- 빗금(안 옴·비트 예약 칸)은 그라데이션이 아니라 SVG 45° 선이다(차트 빗금과 같은 방식)
+
 ### 대비 (흰 바탕)
 - 글자 색 ink·ink-2·muted·accent·negative·warning은 4.5:1 이상이다. positive는 옅은 바탕 위에서 4.58:1로 겨우 넘는다 → 칩 글자는 500 이상
 - `chart-3`(재진 막대)·`chart-prev`·`faint`는 3:1이 안 된다. 차트 값은 늘 글자와 화면 읽기 표로도 준다

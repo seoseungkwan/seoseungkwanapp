@@ -121,6 +121,28 @@
   --text-st-22: var(--fs-st-22);
   --text-st-34: var(--fs-st-34);
   --text-st-40: var(--fs-st-40);
+
+  /* 예약 색판(clinic-calendar AC-5905.1, UI_GUIDE '예약 색판'). 진한 색(띠·폰 목록 띠·색 표시)과 옅은 바탕(예약 칸·휴무 칩). 예약 탭(components/calendar)만 쓴다 */
+  --color-cal-blue: var(--cal-blue);
+  --color-cal-blue-soft: var(--cal-blue-soft);
+  --color-cal-teal: var(--cal-teal);
+  --color-cal-teal-soft: var(--cal-teal-soft);
+  --color-cal-purple: var(--cal-purple);
+  --color-cal-purple-soft: var(--cal-purple-soft);
+  --color-cal-orange: var(--cal-orange);
+  --color-cal-orange-soft: var(--cal-orange-soft);
+  --color-cal-pink: var(--cal-pink);
+  --color-cal-pink-soft: var(--cal-pink-soft);
+  --color-cal-lime: var(--cal-lime);
+  --color-cal-lime-soft: var(--cal-lime-soft);
+  --color-cal-navy: var(--cal-navy);
+  --color-cal-navy-soft: var(--cal-navy-soft);
+  --color-cal-sky: var(--cal-sky);
+  --color-cal-sky-soft: var(--cal-sky-soft);
+  --color-cal-brown: var(--cal-brown);
+  --color-cal-brown-soft: var(--cal-brown-soft);
+  --color-cal-gray: var(--cal-gray);
+  --color-cal-gray-soft: var(--cal-gray-soft);
 }
 
 /* 앱 초기화: 앱 화면 뿌리(.app-ui) 안에만. 랜딩에는 닿지 않는다 */
@@ -268,6 +290,29 @@
   --st-t-toggle: 200ms;
   --st-t-period: 300ms;
   --st-t-first: 450ms;
+
+  /* 예약 색판 10색 — clinic-calendar 시안 PALETTE 그대로(이름은 types/calendar.ts CAL_COLORS), UI_GUIDE '예약 색판'.
+     옅은 바탕(-soft)은 그 색을 흰 바탕에 13% 섞는다(시안 예약 칸 바탕). 섞기는 이 블록 안에서만 한다 */
+  --cal-blue: #2563EB;
+  --cal-teal: #0F766E;
+  --cal-purple: #7C3AED;
+  --cal-orange: #EA580C;
+  --cal-pink: #DB2777;
+  --cal-lime: #65A30D;
+  --cal-navy: #1E3A8A;
+  --cal-sky: #0284C7;
+  --cal-brown: #92400E;
+  --cal-gray: #6B7280;
+  --cal-blue-soft: color-mix(in srgb, var(--cal-blue) 13%, var(--surface));
+  --cal-teal-soft: color-mix(in srgb, var(--cal-teal) 13%, var(--surface));
+  --cal-purple-soft: color-mix(in srgb, var(--cal-purple) 13%, var(--surface));
+  --cal-orange-soft: color-mix(in srgb, var(--cal-orange) 13%, var(--surface));
+  --cal-pink-soft: color-mix(in srgb, var(--cal-pink) 13%, var(--surface));
+  --cal-lime-soft: color-mix(in srgb, var(--cal-lime) 13%, var(--surface));
+  --cal-navy-soft: color-mix(in srgb, var(--cal-navy) 13%, var(--surface));
+  --cal-sky-soft: color-mix(in srgb, var(--cal-sky) 13%, var(--surface));
+  --cal-brown-soft: color-mix(in srgb, var(--cal-brown) 13%, var(--surface));
+  --cal-gray-soft: color-mix(in srgb, var(--cal-gray) 13%, var(--surface));
 }
 
 /* 통계 화면 휴대폰(768px 미만) 값: 카드 모서리와 큰 숫자만 줄인다. 다른 토큰은 바꾸지 않는다 */
