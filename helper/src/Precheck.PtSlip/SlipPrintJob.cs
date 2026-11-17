@@ -19,6 +19,8 @@ public static class SlipPrintJob
     public const string DocumentName = "PT 후 진료 종이";
 
     private const double MmPerHundredthInch = 0.254;
+    /// <summary>DEVMODE dmPaperSize의 '사용자 정의 크기'(DMPAPER_USER)</summary>
+    private const int DmPaperUser = 256;
 
     private const int DmOutBuffer = 2;
     private const int DmInBuffer = 8;
@@ -96,7 +98,9 @@ public static class SlipPrintJob
         }
 
         var page = document.DefaultPageSettings;
-        page.PaperSize = new PaperSize("PtSlip", HundredthsOfInch(widthMm), HundredthsOfInch(lengthMm));
+        // RawKind를 DMPAPER_USER(256)로: 기본값(0)은 정해지지 않은 종이 번호라 빅솔론 라벨 드라이버(종이가 256 'Custom' 하나뿐)가 무시했다(의원 PC 첫 시험).
+        // Kind는 그대로 Custom이라 .NET이 길이·폭(dmPaperLength/Width)도 같이 넣는다
+        page.PaperSize = new PaperSize("PtSlip", HundredthsOfInch(widthMm), HundredthsOfInch(lengthMm)) { RawKind = DmPaperUser };
         page.Landscape = false;
         page.Margins = new Margins(0, 0, 0, 0);
 
