@@ -41,7 +41,9 @@ internal static class Program
 
         try
         {
-            // TASK-3: 여기에 [PT 먼저] 버튼 창(ButtonForm)을 넣는다. 지금은 빈 메시지 고리만 돈다
+            // [PT 먼저] 버튼 창은 비트 창이 맨 앞일 때만 스스로 뜬다(처음부터 띄우지 않게 주 창으로 넘기지 않는다).
+            // 오른쪽 클릭 [끝내기]가 Application.Exit로 이 고리를 끝낸다
+            using var button = new ButtonForm();
             Application.Run(new ApplicationContext());
         }
         catch (Exception)
