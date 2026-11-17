@@ -9,3 +9,7 @@
 | `e2e/lib/envFile.test.ts`·`e2e/lib/session.test.ts` | e2e 권한 |
 
 - `npm run build` 성공(`/sunap` 16.7 kB, `/stats` 75 kB). tsc 통과, lint 오류 0(경고 2는 전부터 있던 것).
+
+## 합친 판(feat-helper-download 합침 57238aa) 다시 검사 — 2026-11-17
+- tsc 0·lint 오류 0·build 성공. 전체 27,757 통과, 실패 16(6파일): 위 넷 + `helper/tests/stats-report.dotnet.test.ts`·`helper/tests/store.dotnet.test.ts`.
+- 두 dotnet 감싸개는 따로 다시 돌리면 17개 모두 통과 → 전체 실행 중 dotnet 동시 실행 탓(이 PC에서 원래 나는 lock·WorkLock 흔들림). 합침은 helper를 건드리지 않았다.
