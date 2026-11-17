@@ -2,7 +2,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { BridgeError } from '@/lib/bridge/protocol'
-import { SUNAP_TOTAL_KEYS, DEFAULT_RSV_WORDS, type DoctorBreakdown, type SunapRates, type SunapTotals } from '@/types/sunap'
+import { SUNAP_TOTAL_KEYS, DEFAULT_RSV_KINDS, type DoctorBreakdown, type SunapRates, type SunapTotals } from '@/types/sunap'
 import type { SunapWorkerMessage } from '@/workers/sunap/messages'
 import { useSunapWorker, type SunapWorkerHandle } from './useSunapWorker'
 
@@ -34,7 +34,7 @@ class FakeWorker implements SunapWorkerHandle {
 }
 
 const TOTALS = Object.fromEntries(SUNAP_TOTAL_KEYS.map((key) => [key, 0])) as SunapTotals
-const ASK = { day: '2026-11-16', words: DEFAULT_RSV_WORDS, blockDef: { id: 'b', codes: ['MM110'] }, ptDef: null }
+const ASK = { day: '2026-11-16', kinds: DEFAULT_RSV_KINDS, blockDef: { id: 'b', codes: ['MM110'] }, ptDef: null }
 const ledger = (day = '2026-11-16', closedAt: string | null = null, doctors: DoctorBreakdown | null = null): SunapWorkerMessage => ({
   type: 'ledger',
   day,
@@ -188,5 +188,16 @@ describe('AC-5003.2 원장님별 수', () => {
     expect(hook.result.current.view?.doctors).toEqual(doctors)
     worker.reply(ledger())
     expect(hook.result.current.view?.doctors).toBeNull()
+  })
+})
+
+describe('AC-5503.1 설정 종류 목록을 Worker로', () => {
+  it('AC-5503.1: load 메시지는 words 대신 설정의 다음 예약 종류 목록(kinds)을 그대로 싣는다(spec sunap-kinds AC-5502.4)', async () => {
+    const kinds = [...DEFAULT_RSV_KINDS, { id: 'kdosu01', label: '도수치료', counts: true, words: ['도수'] }]
+    const { worker, hook } = setup()
+    act(() => hook.result.current.load({ ...ASK, kinds }))
+    await waitFor(() => expect(worker.posted).toHaveLength(1))
+    expect(worker.posted[0]).toMatchObject({ type: 'load', kinds })
+    expect(worker.posted[0]).not.toHaveProperty('words')
   })
 })

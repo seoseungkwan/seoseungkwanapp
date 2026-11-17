@@ -74,7 +74,7 @@ describe('AC-4906.2 초진·90일 예약률(수납일지 마감한 날만)', () 
     expect(within(cell(RSV_FIRST)).getByText('63.4%')).toBeTruthy()
     expect(rowsOf(RSV_FIRST)).toEqual([
       ['초진', '', '112명'],
-      ['주사치료·진료(경과) 예약', '', '71명'],
+      ['예약률 ○ 종류 예약', '', '71명'],
       ['마감한 날', '진료한 날 14일 중', '12일'],
       ['늦은 마감 섞임', '', '1일'],
     ])
@@ -82,7 +82,7 @@ describe('AC-4906.2 초진·90일 예약률(수납일지 마감한 날만)', () 
     expect(within(cell(RSV_D90)).getByText('51.2%')).toBeTruthy()
     expect(rowsOf(RSV_D90)).toEqual([
       ['90일초진', '', '82명'],
-      ['주사치료·진료(경과) 예약', '', '42명'],
+      ['예약률 ○ 종류 예약', '', '42명'],
       ['마감 안 한 날 2일은 빼고 셈', '', ''],
     ])
   })
@@ -234,7 +234,7 @@ describe('AC-4906.2·AC-4906.3 칸 모양 · 시안과 다른 곳', () => {
     expect(body.hidden).toBe(false)
     expect(body.textContent).toContain('초진+Block % = 초진 중 · 90일+Block % = 90일초진 중 · 재진+Block % = Block 받은 사람 중(엑셀과 같음)')
     expect(body.textContent).toContain('비트에서 바로 · 수납일지에서 고친 체크는 안 들어가요')
-    expect(body.textContent).toContain('주사치료·진료(경과) 예약만')
+    expect(body.textContent).toContain('마감할 때 예약률 ○였던 종류만')
   })
 })
 
@@ -309,5 +309,26 @@ describe('AC-5004.2 원장님별 표(세 칸 아래, 비트에서 바로)', () =
       expect(panel()).toBeNull()
       unmount()
     }
+  })
+})
+
+describe('AC-5503.8 설정을 따르는 예약률 글(spec sunap-kinds)', () => {
+  const HOW_FIRST = '예약률 = 수납일지 마감한 날의 합 · 마감할 때 예약률 ○였던 종류만(예약 안 하고 가심·종류 모름은 빼요)'
+
+  it('AC-5503.8: 초진·90일 예약률 칸의 예약 줄 이름은 "예약률 ○ 종류 예약"이고 종류 이름을 늘어놓지 않는다', () => {
+    draw()
+    expect(rowsOf(RSV_FIRST)[1]).toEqual(['예약률 ○ 종류 예약', '', '71명'])
+    expect(rowsOf(RSV_D90)[1]).toEqual(['예약률 ○ 종류 예약', '', '42명'])
+    for (const word of ['주사치료', '진료(경과)']) expect(document.body.textContent, word).not.toContain(word)
+  })
+
+  it('AC-5503.8: [어떻게 세나요?] 첫 줄은 마감할 때 예약률 ○였던 종류만 센다는 글이다', () => {
+    draw()
+    const button = screen.getByRole('button', { name: '어떻게 세나요?' })
+    fireEvent.click(button)
+    const body = document.getElementById(button.getAttribute('aria-controls')!)!
+    const lines = [...body.querySelectorAll('p')].map((p) => p.textContent)
+    expect(lines[0]).toBe(HOW_FIRST)
+    expect(body.textContent).not.toContain('기타·종류 모름')
   })
 })

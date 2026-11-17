@@ -20,7 +20,7 @@ import type { DayPayload, MonthSections } from '@/types/payload'
 import type { RevenueDayRow, RevenueDaysResult, SavedRevenueDay } from '@/types/revenue'
 import type { RxGroup } from '@/types/rxGroups'
 import type { BitSectionsView, PatientMix, RxSplitView, StatsLoaded, StatsLoadRequest, StatsSectionsRequest, StatsWorkerMessage, StatsWorkerRequest } from '@/types/stats'
-import { DEFAULT_RSV_WORDS, SUNAP_TOTAL_KEYS, type SunapRates, type SunapTotals } from '@/types/sunap'
+import { DEFAULT_RSV_KINDS, SUNAP_TOTAL_KEYS, type SunapRates, type SunapTotals } from '@/types/sunap'
 import { runAnalysis } from '@/workers/runAnalysis'
 import { createStatsWorker } from '@/workers/statsClient'
 import { planLoad, revenueProgressText } from './loadPlan'
@@ -449,7 +449,7 @@ beforeEach(() => {
   vi.mocked(readRxPicks).mockResolvedValue([])
   vi.mocked(loadSunapSettings).mockReset()
   vi.mocked(listSunapDays).mockReset()
-  vi.mocked(loadSunapSettings).mockResolvedValue({ blockGroup: null, ptGroup: null, words: DEFAULT_RSV_WORDS })
+  vi.mocked(loadSunapSettings).mockResolvedValue({ blockGroup: null, ptGroup: null, kinds: DEFAULT_RSV_KINDS })
   vi.mocked(listSunapDays).mockResolvedValue([])
   vi.mocked(readCoverage).mockResolvedValue([{ from: '2026-09-01', to: '2026-11-12' }])
   vi.mocked(saveStats).mockResolvedValue({ saved: 1 })
@@ -3842,7 +3842,7 @@ describe('REQ-4906 sunap-ilji: 예약·전환 카드', () => {
     )
   const chooseGroups = (blockGroup: string, ptGroup: string) => {
     vi.mocked(listStatsRxGroups).mockResolvedValue([SAVED_GROUP, PT_GROUP])
-    vi.mocked(loadSunapSettings).mockResolvedValue({ blockGroup, ptGroup, words: DEFAULT_RSV_WORDS })
+    vi.mocked(loadSunapSettings).mockResolvedValue({ blockGroup, ptGroup, kinds: DEFAULT_RSV_KINDS })
   }
   const answerWithRates = (message: StatsSectionsRequest): StatsWorkerMessage => ({
     type: 'sections-result',
@@ -3873,14 +3873,14 @@ describe('REQ-4906 sunap-ilji: 예약·전환 카드', () => {
     expect(listSunapDays).toHaveBeenLastCalledWith(expect.anything(), R30.current.from, R30.current.to)
     expect(rowsIn('초진 예약률')).toEqual([
       ['초진', '', '10명'],
-      ['주사치료·진료(경과) 예약', '', '5명'],
+      ['예약률 ○ 종류 예약', '', '5명'],
       ['마감한 날', '진료한 날 2일 중', '2일'],
       ['늦은 마감 섞임', '', '1일'],
     ])
     expect(sunapText()).toContain('80.0%')
     expect(rowsIn('90일 예약률')).toEqual([
       ['90일초진', '', '5명'],
-      ['주사치료·진료(경과) 예약', '', '4명'],
+      ['예약률 ○ 종류 예약', '', '4명'],
     ])
 
     pressPeriod('최근 12개월')

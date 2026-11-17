@@ -2,8 +2,10 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ds } from '@/components/ui/classes'
 import { dayTotals } from '@/lib/sunap/ledger'
-import type { LedgerRow, PaidRow } from '@/types/sunap'
+import { DEFAULT_RSV_KINDS, type LedgerRow, type PaidRow, type RsvKindDef } from '@/types/sunap'
+import { chipTeal } from '../labels'
 import { LedgerRows } from './LedgerRows'
 import { PaidRows } from './PaidRows'
 
@@ -48,9 +50,9 @@ const ROWS: LedgerRow[] = [
 ]
 const TOTALS = dayTotals({ day: '2026-11-16', unsure: false, rows: ROWS, paid: [], closedAt: null, late: false, doctors: [] })
 
-function renderRows(editable = true, closed = !editable) {
+function renderRows(editable = true, closed = !editable, kinds: readonly RsvKindDef[] = DEFAULT_RSV_KINDS, rows: readonly LedgerRow[] = ROWS) {
   const onEdit = vi.fn()
-  render(<LedgerRows rows={ROWS} totals={TOTALS} editable={editable} closed={closed} onEdit={onEdit} />)
+  render(<LedgerRows rows={rows} totals={TOTALS} kinds={kinds} editable={editable} closed={closed} onEdit={onEdit} />)
   return { onEdit, user: userEvent.setup() }
 }
 
@@ -387,7 +389,7 @@ describe('AC-5302.1 제목을 눌러 세우기', () => {
 
 describe('AC-5302.2 다음 예약 세우는 기준 목록', () => {
   const MENU_ITEMS: [string, string][] = [
-    ['종류 순 ▲', '주사치료 → 진료(경과) → 기타'],
+    ['종류 순 ▲', '설정에 둔 종류 순서대로'],
     ['종류 순 ▼', '거꾸로'],
     ['날짜 순 ▲', '가까운 예약부터'],
     ['날짜 순 ▼', '먼 예약부터'],
@@ -565,5 +567,115 @@ describe('AC-5302.4 세운 표', () => {
     expect(shownNos()).toEqual(RECEIPT)
     expect(head('구분').getAttribute('aria-sort')).toBe('none')
     expect(noteIs(SORT_HINT)).toBeTruthy()
+  })
+})
+
+// ── 다음 예약 종류 목록(spec sunap-kinds REQ-5503, 시안 docs/mockups/sunap-kinds ?s=open·pick). 설정 목록 차례·이름·예약률을 따른다 ─────────
+// 경과 보기(visit) → 도수치료(새) → 신경주사(inj, 이름 바꿈) → 기타 → 체외충격파(새)
+const MY_KINDS: RsvKindDef[] = [
+  { id: 'visit', label: '경과 보기', counts: true, words: ['경과'] },
+  { id: 'kdosu01', label: '도수치료', counts: true, words: ['도수'] },
+  { id: 'inj', label: '신경주사', counts: true, words: ['주사'] },
+  { id: 'etc', label: '기타', counts: false, words: ['기타'] },
+  { id: 'kshock1', label: '체외충격파', counts: false, words: ['충격파'] },
+]
+// 시험 줄 10줄 + 새 종류·기타 줄
+const MORE_ROWS: LedgerRow[] = [
+  ...ROWS,
+  row({ chart: '21007', name: '신○○', time: '10:33', kind: 'new', card: 19700, rsv: { kind: 'kdosu01', source: 'bit', at: '202611191000' } }),
+  row({ chart: '10498', name: '장○○', time: '10:50', transfer: 25000, rsv: { kind: 'etc', source: 'bit', at: '202611231000' } }),
+]
+const chipOf = (name: string, text: string) => within(rowOf(name)).getByText(text)
+
+describe('AC-5503.5 장부 칩·설명 줄·종류 순', () => {
+  it('AC-5503.5: 다음 예약 칩 글은 설정 이름이고 색은 주사치료 파랑·진료(경과) 청록·종류 모름 노랑·기타와 새 종류 회색이다', () => {
+    renderRows(true, false, MY_KINDS, MORE_ROWS)
+    expect(chipOf('김○○', '신경주사').className).toBe(ds.chip.accent)
+    expect(chipOf('박○○', '경과 보기').className).toBe(chipTeal)
+    expect(chipOf('윤○○', '종류 모름').className).toBe(ds.chip.warning)
+    expect(chipOf('신○○', '도수치료').className).toBe(ds.chip.neutral)
+    expect(chipOf('장○○', '기타').className).toBe(ds.chip.neutral)
+    expect(within(rowOf('이○○')).getByText('예약 안 하고 가심')).toBeTruthy()
+    expect(screen.queryByText('주사치료')).toBeNull()
+    expect(screen.queryByText('진료(경과)')).toBeNull()
+  })
+
+  it('AC-5503.5: 장부 아래 설명 줄에 회색 칩(목록에서 inj·visit 아닌 첫 종류 이름)과 "설정에서 더한 종류·기타는 회색"', () => {
+    renderRows(true, false, MY_KINDS, MORE_ROWS)
+    const said = screen.getByText('설정에서 더한 종류·기타는 회색')
+    const legend = said.parentElement!
+    expect(legend.textContent).toBe('도수치료설정에서 더한 종류·기타는 회색')
+    expect(within(legend).getByText('도수치료').className).toBe(ds.chip.neutral)
+    // 기본 목록이면 기타
+    cleanup()
+    renderRows()
+    expect(screen.getByText('설정에서 더한 종류·기타는 회색').parentElement!.textContent).toBe('기타설정에서 더한 종류·기타는 회색')
+  })
+
+  it('AC-5503.5: 줄 세우기 메뉴 [종류 순 ▲] 아래 글은 "설정에 둔 종류 순서대로"이고, 종류 순은 설정 목록 차례 → 종류 모름 → 예약 안 하고 가심이다', async () => {
+    const { user } = renderRows(true, false, MY_KINDS)
+    await user.click(rsvButton())
+    const first = within(screen.getByRole('menu')).getAllByRole('menuitemradio')[0]!
+    expect(first.textContent).toBe('종류 순 ▲설정에 둔 종류 순서대로')
+    await user.click(first)
+    // 경과 보기(3·9·10) → 신경주사(1·5·8·4) → 종류 모름(7) → 예약 안 하고 가심(2·6)
+    expect(shownNos()).toEqual([3, 9, 10, 1, 5, 8, 4, 7, 2, 6])
+    await user.click(rsvButton())
+    await user.click(within(screen.getByRole('menu')).getByRole('menuitemradio', { name: /^종류 순 ▼/ }))
+    expect(shownNos()).toEqual([7, 8, 5, 1, 4, 9, 3, 10, 2, 6])
+  })
+})
+
+describe('AC-5503.4 다음 예약 고르기 판(시안 ?s=pick)', () => {
+  const TIP_2 = '종류를 더하거나 예약률 ○·✕를 바꾸려면 [설정] → 다음 예약 종류에서 해요.'
+
+  it('AC-5503.4: 선택지는 비트 따라가기 · 예약 안 하고 가심(예약률 ✕) · 가는 선 · 설정 목록 차례대로 모든 종류(예약률 ○·✕)이고 팁 아래에 설정 안내가 있다', async () => {
+    const { user } = renderRows(true, false, MY_KINDS, MORE_ROWS)
+    await user.click(screen.getByRole('button', { name: '윤○○ 다음 예약' }))
+    const pop = screen.getByRole('dialog', { name: '다음 예약 · 윤○○' })
+    const radios = within(pop).getAllByRole('radio')
+    expect(radios.map((radio) => radio.closest('label')!.textContent)).toEqual([
+      '비트 따라가기지금: 11/21 (토) 예약 있음 · 종류 모름—',
+      '예약 안 하고 가심예약률 ✕',
+      '경과 보기예약률 ○',
+      '도수치료예약률 ○',
+      '신경주사예약률 ○',
+      '기타예약률 ✕',
+      '체외충격파예약률 ✕',
+    ])
+    // 예약 안 하고 가심과 종류 사이 가는 선
+    const line = radios[1]!.closest('label')!.nextElementSibling!
+    expect(line.tagName).not.toBe('LABEL')
+    expect(line.getAttribute('aria-hidden')).toBe('true')
+    // 판 머리 글(차트 · 구분) 다음의 두 팁
+    const tips = [...pop.querySelectorAll('p')].map((p) => p.textContent)
+    expect(tips.slice(1)).toEqual([
+      '직접 고르면 비트 예약보다 이 값을 써요. 비트에 없는 예약(전화·종이 예약)도 여기서 고르면 돼요. 마감을 풀었다 다시 해도 직접 고른 값은 그대로예요.',
+      TIP_2,
+    ])
+  })
+
+  it('AC-5503.4: 비트 따라가기 아래 글의 종류 이름도 설정 이름이고, 새 종류를 고르면 그 id를 넘긴다', async () => {
+    const { user, onEdit } = renderRows(true, false, MY_KINDS, MORE_ROWS)
+    await user.click(screen.getByRole('button', { name: '김○○ 다음 예약' }))
+    const pop = screen.getByRole('dialog', { name: '다음 예약 · 김○○' })
+    expect(within(pop).getByText('지금: 11/19 (목) 예약 있음 · 신경주사')).toBeTruthy()
+    await user.click(within(pop).getByRole('radio', { name: /^도수치료/ }))
+    await user.click(within(pop).getByRole('button', { name: '고르기' }))
+    expect(onEdit).toHaveBeenCalledWith('10231', { rsv: 'kdosu01' })
+  })
+
+  it('AC-5503.4: 기본 목록이면 지금처럼 다섯 선택지이고 설정 안내 팁이 있다', async () => {
+    const { user } = renderRows()
+    await user.click(screen.getByRole('button', { name: '윤○○ 다음 예약' }))
+    const pop = screen.getByRole('dialog', { name: '다음 예약 · 윤○○' })
+    expect(within(pop).getAllByRole('radio').map((radio) => radio.closest('label')!.textContent)).toEqual([
+      '비트 따라가기지금: 11/21 (토) 예약 있음 · 종류 모름—',
+      '예약 안 하고 가심예약률 ✕',
+      '주사치료예약률 ○',
+      '진료(경과)예약률 ○',
+      '기타예약률 ✕',
+    ])
+    expect([...pop.querySelectorAll('p')].map((p) => p.textContent)).toContain(TIP_2)
   })
 })

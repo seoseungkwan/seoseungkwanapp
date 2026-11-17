@@ -22,7 +22,7 @@ import {
 import { listStatsRxGroups } from '@/lib/storage/statsRxGroups'
 import type { BridgeState } from '@/types/bridge'
 import type { StatsRxGroup } from '@/types/rxGroups'
-import { DEFAULT_RSV_WORDS, type DoctorBreakdown, type Ledger, type LedgerRow, type SunapRates, type SunapSettings } from '@/types/sunap'
+import { DEFAULT_RSV_KINDS, type DoctorBreakdown, type Ledger, type LedgerRow, type RsvKindDef, type SunapRates, type SunapSettings } from '@/types/sunap'
 import type { SunapLedgerView } from '@/workers/sunap/messages'
 import { screenMode, SunapScreen } from './SunapScreen'
 
@@ -139,7 +139,7 @@ const GROUPS: StatsRxGroup[] = [
   { id: 'g-block', name: '신경차단술', codes: ['MM110', 'MM120'], sortOrder: 0 },
   { id: 'g-pt', name: '기본 물리치료', codes: ['MM301', 'MM302', 'MM303'], sortOrder: 1 },
 ]
-const SETTINGS: SunapSettings = { blockGroup: 'g-block', ptGroup: 'g-pt', words: DEFAULT_RSV_WORDS }
+const SETTINGS: SunapSettings = { blockGroup: 'g-block', ptGroup: 'g-pt', kinds: DEFAULT_RSV_KINDS }
 const SPENDS: SunapSpend[] = [
   { id: 's1', kind: 'cash', memo: '택배비', amount: 5000 },
   { id: 's2', kind: 'card', memo: '사무용품', amount: 48000 },
@@ -217,6 +217,9 @@ const fullText = (text: string) =>
 const chip = () => screen.getByTestId('sunap-state')
 const region = (name: RegExp | string) => within(screen.getByRole('region', { name }))
 
+const UNKNOWN_BANNER =
+  '예약 종류 모름 1줄 — 비트 예약은 있는데 메모에 설정한 말이 하나도 없어요. 다음 예약 칸을 눌러 직접 고르거나, [설정] → 다음 예약 종류에서 종류나 말을 더해 주세요.'
+
 describe('AC-4905.1 도우미 0.8.0 이상이 연결된 PC(시안 ?s=open)', () => {
   it('AC-4905.1: 날짜 이동·상태 칩·[비트에서 다시 불러오기]·[설정]·[마감하기], 불러온 시각', async () => {
     await open()
@@ -245,12 +248,12 @@ describe('AC-4905.1 도우미 0.8.0 이상이 연결된 PC(시안 ?s=open)', () 
     expect(screen.queryByText(/원장님/)).toBeNull()
   })
 
-  it('AC-4905.1: 장부는 설정의 묶음 정의·메모 말로 그 날을 불러온다', async () => {
+  it('AC-4905.1: 장부는 설정의 묶음 정의·다음 예약 종류 목록으로 그 날을 불러온다', async () => {
     await open()
     expect(fake.load).toHaveBeenCalledTimes(1)
     expect(fake.load).toHaveBeenCalledWith({
       day: TODAY,
-      words: DEFAULT_RSV_WORDS,
+      kinds: DEFAULT_RSV_KINDS,
       blockDef: expect.objectContaining({ codes: ['MM110', 'MM120'] }),
       ptDef: expect.objectContaining({ codes: ['MM301', 'MM302', 'MM303'] }),
     })
@@ -258,11 +261,19 @@ describe('AC-4905.1 도우미 0.8.0 이상이 연결된 PC(시안 ?s=open)', () 
     expect(listSpends).toHaveBeenCalledWith(CLIENT, TODAY)
   })
 
-  it("AC-4905.1: 예약 종류 모름 줄이 있으면 안내 한 줄(메모 말은 설정 값)", async () => {
+  it('AC-5503.6: 예약 종류 모름 줄이 있는 마감 전 날은 알림 띠가 설정 안내 글이다', async () => {
     await open()
-    expect(
-      fullText("예약 종류 모름 1줄 — 비트 예약은 있는데 메모에 정해진 말('주사', '경과')이 없어요. 다음 예약 칸을 눌러 직접 고르거나 비트 메모를 고쳐 주세요."),
-    ).toBeTruthy()
+    expect(fullText(UNKNOWN_BANNER)).toBeTruthy()
+    expect(screen.queryByText(/정해진 말/)).toBeNull()
+  })
+
+  it('AC-5503.6: 종류 모름 줄이 없으면 알림 띠가 없다', async () => {
+    fake.load.mockImplementation((ask: { day: string }) => {
+      const ledger = { ...ledgerOf(ask.day), rows: ROWS.filter((r) => r.rsv.kind !== 'unknown') }
+      fake.set!((() => ({ view: viewOf(ledger), loading: false, loadedAt: new Date('2026-11-16T09:40:00.000Z'), error: null })) as never)
+    })
+    await open()
+    expect(screen.queryByText(/^예약 종류 모름 \d줄$/)).toBeNull()
   })
 
   it('AC-4905.1: [전날]·[오늘]로 날짜를 옮기면 그 날을 불러온다. 오늘 뒤로는 못 간다', async () => {
@@ -446,36 +457,38 @@ describe('AC-4905.5 설정(시안 ?s=settings)', () => {
     expect(drawer.getByText('통계 탭에 만들어 둔 처방 묶음 중 하나를 골라요. 묶음 안 코드를 바꾸면 수납일지·통계가 같이 바뀌어요.')).toBeTruthy()
     expect(drawer.getByText('같은 방법으로 처방 묶음 하나를 골라요.')).toBeTruthy()
     expect(drawer.getByRole('link', { name: '처방 묶음 고치러 가기 →' }).getAttribute('href')).toBe('/stats')
-    expect(drawer.getByText('비트 예약 메모에 이 말이 들어 있으면 예약 종류를 자동으로 정해요. 여러 말이 겹치면 위 줄이 이겨요.')).toBeTruthy()
-    for (const word of ['주사', '블록', '경과', '진료', '기타']) expect(drawer.getByRole('button', { name: `${word} 지우기` })).toBeTruthy()
-    for (const lab of ['주사치료', '진료(경과)', '기타']) expect(drawer.getByRole('button', { name: `${lab} 말 더하기` })).toBeTruthy()
+    // 예약 메모 말 세 줄은 다음 예약 종류 목록으로 바뀌었다(spec sunap-kinds AC-5503.1, 자세한 것은 SunapSettings.test.tsx)
+    expect(drawer.queryByText('예약 메모 말')).toBeNull()
+    expect(within(drawer.getByRole('list', { name: '다음 예약 종류' })).getAllByRole('listitem')).toHaveLength(3)
     // 지출 종류 이름 바꾸기는 뺐다(design.md '시안과 다른 곳')
     expect(drawer.queryByText('지출 종류')).toBeNull()
     expect(drawer.getByRole('button', { name: '취소' })).toBeTruthy()
   })
 
-  it('AC-4905.5: [저장]은 saveSunapSettings이고, 새 설정으로 장부를 다시 불러온다. 묶음을 안 고르면 안내 한 줄', async () => {
+  it('AC-5503.3: [저장]은 saveSunapSettings(다음 예약 종류 목록)이고, 판이 닫히고 새 설정으로 장부를 다시 불러온다. 묶음을 안 고르면 안내 한 줄', async () => {
     const user = await open()
     await user.click(screen.getByRole('button', { name: '설정' }))
     const drawer = within(screen.getByRole('dialog', { name: '수납일지 설정' }))
     await user.selectOptions(drawer.getByRole('combobox', { name: 'Block으로 셀 처방' }), '')
-    await user.click(drawer.getByRole('button', { name: '블록 지우기' }))
-    await user.click(drawer.getByRole('button', { name: '주사치료 말 더하기' }))
-    await user.type(drawer.getByRole('textbox', { name: '주사치료 새 말' }), ' 시술 {Enter}')
+    await user.clear(drawer.getByRole('textbox', { name: '1번째 종류 이름' }))
+    await user.type(drawer.getByRole('textbox', { name: '1번째 종류 이름' }), '신경주사')
+    const second = within(drawer.getByRole('list', { name: '다음 예약 종류' })).getAllByRole('listitem')[1]!
+    await user.click(within(second).getByRole('button', { name: '✕ 뺌' }))
     await user.click(drawer.getByRole('button', { name: '저장' }))
-    await waitFor(() =>
-      expect(saveSunapSettings).toHaveBeenCalledWith(CLIENT, {
-        blockGroup: null,
-        ptGroup: 'g-pt',
-        words: { inj: ['주사', '시술'], visit: ['경과', '진료'], etc: ['기타'] },
-      }),
-    )
+    const kinds: RsvKindDef[] = [
+      { id: 'inj', label: '신경주사', counts: true, words: ['주사', '블록'] },
+      { id: 'visit', label: '진료(경과)', counts: false, words: ['경과', '진료'] },
+      { id: 'etc', label: '기타', counts: false, words: ['기타'] },
+    ]
+    await waitFor(() => expect(saveSunapSettings).toHaveBeenCalledWith(CLIENT, { blockGroup: null, ptGroup: 'g-pt', kinds }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     await waitFor(() => expect(fake.load).toHaveBeenCalledTimes(2))
-    expect(fake.load).toHaveBeenLastCalledWith(
-      expect.objectContaining({ blockDef: null, words: { inj: ['주사', '시술'], visit: ['경과', '진료'], etc: ['기타'] } }),
-    )
+    expect(fake.load).toHaveBeenLastCalledWith(expect.objectContaining({ blockDef: null, kinds }))
     expect(screen.getByText('설정에서 Block·물리치료 묶음을 골라 주세요')).toBeTruthy()
+    // 저장한 이름·예약률이 장부·카드에 바로 쓰인다(AC-5503.5·5503.7). '설정을 저장했어요' 알림은 없다(범위 밖)
+    expect(within(screen.getByRole('row', { name: /김○○/ })).getByText('신경주사')).toBeTruthy()
+    expect(region(/^예약 · Block 전환/).getByText(`초진 ${TOTALS.first_n}명 중 ${TOTALS.rsv_first}명 · 신경주사 예약만`)).toBeTruthy()
+    expect(screen.queryByText('설정을 저장했어요')).toBeNull()
   })
 
   it('AC-4905.5: [취소]는 저장하지 않는다', async () => {
@@ -497,7 +510,7 @@ describe('AC-4905.5 설정(시안 ?s=settings)', () => {
   })
 
   it('AC-4905.5: 묶음을 아직 안 골랐거나 지운 묶음이면 정의 없이 불러오고 안내 한 줄이 보인다', async () => {
-    vi.mocked(loadSunapSettings).mockResolvedValue({ blockGroup: null, ptGroup: 'gone', words: DEFAULT_RSV_WORDS })
+    vi.mocked(loadSunapSettings).mockResolvedValue({ blockGroup: null, ptGroup: 'gone', kinds: DEFAULT_RSV_KINDS })
     await open()
     expect(fake.load).toHaveBeenCalledWith(expect.objectContaining({ blockDef: null, ptDef: null }))
     expect(screen.getByText('설정에서 Block·물리치료 묶음을 골라 주세요')).toBeTruthy()
@@ -686,5 +699,51 @@ describe('AC-5003.3 원장님별 표(spec sunap-doctors, 시안 doctorPanel)', (
     setFake((prev) => ({ ...prev, view: { ...ledgerOf(TODAY), totals: TOTALS, doctors: DOCTORS } }))
     expect(screen.queryByRole('region', { name: '원장님별' })).toBeNull()
     expect(screen.queryByText(DOCTOR_HINT)).toBeNull()
+  })
+})
+
+// ── 다음 예약 종류(spec sunap-kinds REQ-5503, 시안 docs/mockups/sunap-kinds ?s=open). 설정 목록이 장부·고르기 판·카드로 간다 ─────────
+describe('AC-5503.4·AC-5503.5·AC-5503.7 설정 종류 목록을 쓰는 곳', () => {
+  // 주사치료 → 진료(경과) → 도수치료(새, 예약률 ○) → 체외충격파(새, ✕) → 기타
+  const MY_KINDS: RsvKindDef[] = [
+    DEFAULT_RSV_KINDS[0]!,
+    DEFAULT_RSV_KINDS[1]!,
+    { id: 'kdosu01', label: '도수치료', counts: true, words: ['도수'] },
+    { id: 'kshock1', label: '체외충격파', counts: false, words: ['충격파'] },
+    DEFAULT_RSV_KINDS[2]!,
+  ]
+  const rateNote = () => region(/^예약 · Block 전환/)
+
+  it('AC-5503.7: 초진 예약률 아래 글은 예약률 ○인 종류 이름을 목록 차례로 ·로 이어 예약만', async () => {
+    vi.mocked(loadSunapSettings).mockResolvedValue({ ...SETTINGS, kinds: MY_KINDS })
+    await open()
+    expect(rateNote().getByText(`초진 ${TOTALS.first_n}명 중 ${TOTALS.rsv_first}명 · 주사치료·진료(경과)·도수치료 예약만`)).toBeTruthy()
+  })
+
+  it('AC-5503.7: 예약률 ○인 종류가 하나도 없으면 "예약률에 넣는 종류가 없어요"', async () => {
+    vi.mocked(loadSunapSettings).mockResolvedValue({ ...SETTINGS, kinds: DEFAULT_RSV_KINDS.map((kind) => ({ ...kind, counts: false })) })
+    await open()
+    expect(rateNote().getByText(`초진 ${TOTALS.first_n}명 중 ${TOTALS.rsv_first}명 · 예약률에 넣는 종류가 없어요`)).toBeTruthy()
+  })
+
+  it('AC-5503.4·AC-5503.5: 장부 칩·설명 줄과 고르기 판 선택지는 설정 목록(이름·차례·예약률)이다', async () => {
+    vi.mocked(loadSunapSettings).mockResolvedValue({ ...SETTINGS, kinds: [{ ...MY_KINDS[0]!, label: '신경주사' }, ...MY_KINDS.slice(1)] })
+    const user = await open()
+    expect(within(screen.getByRole('row', { name: /김○○/ })).getByText('신경주사')).toBeTruthy()
+    expect(screen.getByText('설정에서 더한 종류·기타는 회색').parentElement!.textContent).toBe('도수치료설정에서 더한 종류·기타는 회색')
+    await user.click(screen.getByRole('button', { name: '윤○○ 다음 예약' }))
+    const pop = screen.getByRole('dialog', { name: '다음 예약 · 윤○○' })
+    expect(within(pop).getAllByRole('radio').map((radio) => radio.closest('label')!.textContent)).toEqual([
+      '비트 따라가기지금: 11/21 (토) 예약 있음 · 종류 모름—',
+      '예약 안 하고 가심예약률 ✕',
+      '신경주사예약률 ○',
+      '진료(경과)예약률 ○',
+      '도수치료예약률 ○',
+      '체외충격파예약률 ✕',
+      '기타예약률 ✕',
+    ])
+    await user.click(within(pop).getByRole('radio', { name: /^체외충격파/ }))
+    await user.click(within(pop).getByRole('button', { name: '고르기' }))
+    expect(fake.edit).toHaveBeenCalledWith('15220', { rsv: 'kshock1' })
   })
 })

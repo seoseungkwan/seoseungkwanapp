@@ -1,6 +1,6 @@
 import { Fragment, useId, type ReactNode } from 'react'
 import { SPEND_KINDS, type SpendKind, type SunapSpend } from '@/lib/storage/sunap'
-import type { SunapTotals } from '@/types/sunap'
+import { DEFAULT_RSV_KINDS, type SunapTotals } from '@/types/sunap'
 import { pct, won } from './labels'
 
 // 수납일지 요약 네 칸(spec sunap-ilji AC-4905.1·4905.7, 시안 summaryCards): 수납·지출·내원·예약 · Block 전환.
@@ -70,7 +70,22 @@ function Rate({ name, a, b, note, teal }: { name: string; a: number; b: number; 
   )
 }
 
-export function SunapCards({ totals: t, spends }: { totals: SunapTotals; spends: readonly SunapSpend[] }) {
+// 예약률 ○인 종류 이름을 받지 않을 때(다른 기기 화면은 설정을 읽지 않는다): 기본 목록 그대로
+const DEFAULT_RESERVED = DEFAULT_RSV_KINDS.filter((kind) => kind.counts).map((kind) => kind.label)
+
+/** 초진 예약률 아래 글 뒤쪽(spec sunap-kinds AC-5503.7): 예약률 ○인 종류 이름을 ·로 이어 '예약만', 없으면 안내 */
+const reservedText = (names: readonly string[]) => (names.length > 0 ? `${names.join('·')} 예약만` : '예약률에 넣는 종류가 없어요')
+
+export function SunapCards({
+  totals: t,
+  spends,
+  reserved = DEFAULT_RESERVED,
+}: {
+  totals: SunapTotals
+  spends: readonly SunapSpend[]
+  /** 설정 목록 차례로 예약률 ○인 종류 이름 */
+  reserved?: readonly string[]
+}) {
   const pay: [string, number, number][] = [
     ['현금', t.cash_n, t.cash_won],
     ['카드', t.card_n, t.card_won],
@@ -117,7 +132,7 @@ export function SunapCards({ totals: t, spends }: { totals: SunapTotals; spends:
         />
       </Card>
       <Card title="예약 · Block 전환">
-        <Rate name="초진 예약률" a={t.rsv_first} b={t.first_n} note={`초진 ${won(t.first_n)}명 중 ${won(t.rsv_first)}명 · 주사치료·진료(경과) 예약만`} />
+        <Rate name="초진 예약률" a={t.rsv_first} b={t.first_n} note={`초진 ${won(t.first_n)}명 중 ${won(t.rsv_first)}명 · ${reservedText(reserved)}`} />
         <Rate name="90일 예약률" a={t.rsv_d90} b={t.d90_n} note={`90일초진 ${won(t.d90_n)}명 중 ${won(t.rsv_d90)}명`} teal />
         <Kv
           lines={[

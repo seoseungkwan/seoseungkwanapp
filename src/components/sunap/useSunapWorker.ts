@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { BridgeError } from '@/lib/bridge/protocol'
 import type { ScreenBridge, WorkerLike } from '@/lib/bridge/workerSink'
 import type { RxGroupDef } from '@/types/analysis'
-import type { RsvWords, SunapTotals } from '@/types/sunap'
+import type { RsvKindDef, SunapTotals } from '@/types/sunap'
 import type { SunapLedgerView, SunapOp, SunapPatch, SunapScreenMessage, SunapStreamRef, SunapWorkerMessage } from '@/workers/sunap/messages'
 
 // 수납일지 장부 Worker 흐름(spec sunap-ilji design.md 'Worker 메시지', 본보기 patients/usePatientsWorker).
@@ -20,8 +20,8 @@ export type SunapWorkerHandle = WorkerLike & {
 }
 export type SunapBridge = Pick<ScreenBridge, 'stream'>
 
-/** 불러올 날과 장부 설정(메모 말·Block·물리치료 묶음 정의, 안 골랐으면 null) */
-export type SunapAsk = { day: string; words: RsvWords; blockDef: RxGroupDef | null; ptDef: RxGroupDef | null }
+/** 불러올 날과 장부 설정(다음 예약 종류 목록·Block·물리치료 묶음 정의, 안 골랐으면 null) */
+export type SunapAsk = { day: string; kinds: RsvKindDef[]; blockDef: RxGroupDef | null; ptDef: RxGroupDef | null }
 export type SunapClosed = { day: string; totals: SunapTotals; late: boolean }
 export type SunapFailure = { code: string }
 
@@ -152,7 +152,7 @@ export function useSunapWorker(bridge: SunapBridge, worker: SunapWorkerHandle): 
         opened(stream('store.load', { months: [ask.day.slice(0, 7)] })),
       ]).then(([targets, store]) => {
         if (mine !== flow.current) return
-        send({ type: 'load', day: ask.day, words: ask.words, blockDef: ask.blockDef, ptDef: ask.ptDef, targets, store })
+        send({ type: 'load', day: ask.day, kinds: ask.kinds, blockDef: ask.blockDef, ptDef: ask.ptDef, targets, store })
       })
     },
     [send, settleAll, stream],

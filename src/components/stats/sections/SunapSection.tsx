@@ -15,7 +15,8 @@ import { EmptyNote, Note, Section } from './parts'
 // 큰 카드 '예약·전환'(StatsSections) 안의 칸 셋: 초진 예약률 · 90일 예약률(수납일지 마감한 날의 합) · Block 전환(비트에서 바로 센 기간 전체).
 // 넓은 화면은 세 열, 휴대폰은 한 열이다. 글은 시안 그대로이고 시안 꼬리표 '새 칸'은 없다(design.md '시안과 다른 곳').
 // 세 칸 아래 원장님별 표(spec sunap-doctors AC-5004.2)는 답에 sunapDoctors가 있을 때만(원장님 두 분 이상) 보인다.
-// 비율은 sunapView(sunapPct)가 만들고 분모가 0이면 '–'다. 숫자는 props로만 받는다(저장소·Worker는 StatsScreen이 잇는다)
+// 비율은 sunapView(sunapPct)가 만들고 분모가 0이면 '–'다. 숫자는 props로만 받는다(저장소·Worker는 StatsScreen이 잇는다).
+// 예약 줄 이름·[어떻게 세나요?] 첫 줄(spec sunap-kinds AC-5503.8)은 종류 이름을 늘어놓지 않는다: 달 중간에 설정을 바꾸면 마감한 날마다 기준이 다르다
 
 /** 마감한 날 한 줄에서 이 칸이 쓰는 것(listSunapDays의 SunapDay가 그대로 들어온다. 섹션은 저장소를 부르지 않는다) */
 export type SunapClosedDay = { day: string; late: boolean; totals: Pick<SunapTotals, 'first_n' | 'rsv_first' | 'd90_n' | 'rsv_d90'> }
@@ -37,13 +38,13 @@ const RSV_DESC = '수납일지 마감한 날만'
 const BLOCK = 'Block 전환'
 const BLOCK_DESC = '비트에서 바로 · 기간 전체'
 const DOCTOR_HINT = '비트에서 바로 · 수납일지에서 고친 체크는 안 들어가요'
-const RESERVED = '주사치료·진료(경과) 예약'
+const RESERVED = '예약률 ○ 종류 예약'
 const NO_CLOSED = '수납일지를 마감한 날이 없어요'
 const NO_GROUPS = '수납일지 설정에서 Block·물리치료 묶음을 고르면 보여요'
 const RETRY = '다시 읽기'
 // [어떻게 세나요?] 안 글. 시안의 원장님별 표 아래 글·옆 글을 원장님 말만 빼고 옮겼다
 const HOW = [
-  '예약률 = 수납일지 마감한 날의 합 · 주사치료·진료(경과) 예약만(예약 안 하고 가심·기타·종류 모름은 빼요)',
+  '예약률 = 수납일지 마감한 날의 합 · 마감할 때 예약률 ○였던 종류만(예약 안 하고 가심·종류 모름은 빼요)',
   'Block 전환은 비트에서 바로 · 수납일지에서 고친 체크는 안 들어가요',
   '초진+Block % = 초진 중 · 90일+Block % = 90일초진 중 · 재진+Block % = Block 받은 사람 중(엑셀과 같음)',
   'Block·물리치료 % = 내원 중',

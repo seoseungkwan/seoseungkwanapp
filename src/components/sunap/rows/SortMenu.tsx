@@ -12,7 +12,8 @@ import type { Anchor } from './Pop'
 export type RsvSortPick = { by: 'kind' | 'date'; dir: 'asc' | 'desc' } | null
 
 const ITEMS: { pick: RsvSortPick; label: string; sub: string }[] = [
-  { pick: { by: 'kind', dir: 'asc' }, label: '종류 순 ▲', sub: '주사치료 → 진료(경과) → 기타' },
+  // 종류 순은 설정 목록 차례(spec sunap-kinds AC-5503.5) — 장부 줄 화면이 sortLedger에 그 차례를 넘긴다
+  { pick: { by: 'kind', dir: 'asc' }, label: '종류 순 ▲', sub: '설정에 둔 종류 순서대로' },
   { pick: { by: 'kind', dir: 'desc' }, label: '종류 순 ▼', sub: '거꾸로' },
   { pick: { by: 'date', dir: 'asc' }, label: '날짜 순 ▲', sub: '가까운 예약부터' },
   { pick: { by: 'date', dir: 'desc' }, label: '날짜 순 ▼', sub: '먼 예약부터' },

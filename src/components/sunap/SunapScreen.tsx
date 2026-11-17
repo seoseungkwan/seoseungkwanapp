@@ -18,7 +18,7 @@ import type { RxGroupDef } from '@/types/analysis'
 import type { BridgeState } from '@/types/bridge'
 import type { ErrorCode } from '@/types/errors'
 import type { StatsRxGroup } from '@/types/rxGroups'
-import type { SunapSettings as Settings } from '@/types/sunap'
+import { DEFAULT_RSV_KINDS, type SunapSettings as Settings } from '@/types/sunap'
 import { DoctorTable } from './DoctorTable'
 import { dayTitle, monthDay, stateText, type LedgerPatch } from './labels'
 import { LockLine, RemoteView, type RemoteReason, type ServerDayView } from './RemoteView'
@@ -34,7 +34,8 @@ import { useSunapWorker, useSunapWorkerObject, type SunapWorkerApi } from './use
 // 서버에는 마감할 때 합계 숫자(closeSunapDay)·지출만 간다. 다른 기기·옛 도우미·62일 넘은 날은 서버 숫자만(RemoteView).
 // 마감하기 = Worker close(PC에 고정) → closeSunapDay. 마감 풀기 = reopenSunapDay → Worker reopen(서버가 먼저 풀려야 PC도 푼다).
 // 원장님별 표(spec sunap-doctors AC-5003.3)는 장부 아래·미수 입금/지출 위에, 원장님(미지정 빼고)이 두 분 이상일 때만(Worker가 doctors를 보낼 때만) 그린다. 서버 숫자 화면(RemoteView)에는 없다.
-// 시안과 다른 곳(design.md): 원장님별 hint는 '접수할 때 정한 진료의 기준'. 시안에 없는 글(읽는 중·오류·묶음 안 고름·서버에 아직 안 올라간 마감)은 더했다
+// 시안과 다른 곳(design.md): 원장님별 hint는 '접수할 때 정한 진료의 기준'. 시안에 없는 글(읽는 중·오류·묶음 안 고름·서버에 아직 안 올라간 마감)은 더했다.
+// 다음 예약 종류(spec sunap-kinds REQ-5503): 설정의 종류 목록을 Worker load·장부 칩·고르기 판·카드(예약률 ○인 이름)·알림 띠에 쓴다
 
 export type SunapMode = 'ledger' | 'connecting' | 'device' | 'old-helper' | 'old-day'
 type BridgeLink = { state: BridgeState; helperVersion?: string; helloError: string | null }
@@ -167,7 +168,7 @@ function Problem({ children }: { children: ReactNode }) {
 
 const codeOf = (code: string, fallback: ErrorCode): ErrorCode => (isErrorCode(code) ? code : fallback)
 
-// ── 설정(묶음·메모 말) ────────────────────────────────
+// ── 설정(묶음·다음 예약 종류) ────────────────────────────────
 
 type Prep = { round: number; ok: true; settings: Settings; groups: StatsRxGroup[] } | { round: number; ok: false }
 
@@ -216,11 +217,12 @@ function LedgerView({
   const groups = prep?.ok ? prep.groups : null
   const blockDef = settings && groups ? defOf(groups, settings.blockGroup) : null
   const ptDef = settings && groups ? defOf(groups, settings.ptGroup) : null
+  const kinds = settings?.kinds ?? DEFAULT_RSV_KINDS
 
   const { load } = api
   useEffect(() => {
     if (!settings || !groups) return
-    load({ day, words: settings.words, blockDef: defOf(groups, settings.blockGroup), ptDef: defOf(groups, settings.ptGroup) })
+    load({ day, kinds: settings.kinds, blockDef: defOf(groups, settings.blockGroup), ptDef: defOf(groups, settings.ptGroup) })
   }, [day, settings, groups, reload, load])
 
   const view = api.view?.day === day ? api.view : null
@@ -356,7 +358,7 @@ function LedgerView({
           <b className="font-semibold text-ink">확인 필요한 날</b> — 환불·변경수납·예치금이 있거나 수납 연결이 겹쳐서 장부 금액이 비트와 다를 수 있어요. 마감 전에 비트 수납 화면과 맞춰 보세요.
         </Banner>
       )}
-      {!closed && unknown > 0 && settings && <UnknownBanner count={unknown} inj={settings.words.inj[0]} visit={settings.words.visit[0]} />}
+      {!closed && unknown > 0 && <UnknownBanner count={unknown} />}
       {settings && (blockDef === null || ptDef === null) && <p className="text-small text-muted">설정에서 Block·물리치료 묶음을 골라 주세요</p>}
 
       {view === null ? (
@@ -368,8 +370,8 @@ function LedgerView({
         )
       ) : (
         <>
-          <SunapCards totals={view.totals} spends={server.spends} />
-          <LedgerRows rows={view.rows} totals={view.totals} editable={editable} closed={closed} onEdit={edit} />
+          <SunapCards totals={view.totals} spends={server.spends} reserved={kinds.filter((kind) => kind.counts).map((kind) => kind.label)} />
+          <LedgerRows rows={view.rows} totals={view.totals} kinds={kinds} editable={editable} closed={closed} onEdit={edit} />
           {view.doctors !== null && <DoctorTable data={view.doctors} hint={DOCTOR_HINT} />}
           <div className="grid grid-cols-2 gap-3 max-lg:grid-cols-1">
             <PaidRows paid={view.paid} />
@@ -388,13 +390,12 @@ function LedgerView({
   )
 }
 
-function UnknownBanner({ count, inj, visit }: { count: number; inj?: string; visit?: string }) {
-  const words = [inj, visit].filter((word): word is string => word !== undefined && word !== '')
-  const said = words.length > 0 ? `(${words.map((word) => `'${word}'`).join(', ')})` : ''
+/** 마감 전 날의 종류 모름 줄 알림 띠(spec sunap-kinds AC-5503.6) */
+function UnknownBanner({ count }: { count: number }) {
   return (
     <Banner tone="info">
       <b className="font-semibold text-ink">{`예약 종류 모름 ${count}줄`}</b>
-      {` — 비트 예약은 있는데 메모에 정해진 말${said}이 없어요. 다음 예약 칸을 눌러 직접 고르거나 비트 메모를 고쳐 주세요.`}
+      {' — 비트 예약은 있는데 메모에 설정한 말이 하나도 없어요. 다음 예약 칸을 눌러 직접 고르거나, [설정] → 다음 예약 종류에서 종류나 말을 더해 주세요.'}
     </Banner>
   )
 }

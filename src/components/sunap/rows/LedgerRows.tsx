@@ -4,8 +4,8 @@ import { useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { ds } from '@/components/ui/classes'
 import { parseWon } from '@/lib/sunap/ledger'
 import { sortLedger, type LedgerSort } from '@/lib/sunap/ledgerSort'
-import type { LedgerEditedField, LedgerRow, SunapTotals } from '@/types/sunap'
-import { RSV_LABEL, VISIT_LABEL, WON_PROBLEM, cellWon, chipLine, chipTeal, rsvDay, won, type LedgerPatch } from '../labels'
+import type { LedgerEditedField, LedgerRow, RsvKind, RsvKindDef, SunapTotals } from '@/types/sunap'
+import { RSV_NONE, VISIT_LABEL, WON_PROBLEM, cellWon, chipLine, chipTeal, rsvDay, rsvLabel, won, type LedgerPatch } from '../labels'
 import { Pop, PopHead, anchorOf, type Anchor } from './Pop'
 import { RsvPicker } from './RsvPicker'
 import { SortMenu } from './SortMenu'
@@ -16,7 +16,8 @@ import { PanelHead, TABLE, TD, TD_INK, TD_MID, TD_MUTED, TD_NUM, TF, TF_MID, TF_
 // 시안과 다른 곳(design.md): 원장님 칸이 없다. 금액 칸을 누르면 네 금액 칸 판이 뜬다(FREE 한 칸도 같다) — 고친 칸 옆에 [비트 값으로 되돌리기].
 // Block·물리치료는 누르면 바로 바뀐다(다시 누르면 비트 값과 같아져 고친 칸에서 빠진다). 마감한 날(editable 거짓)은 값만 보인다.
 // 줄 세우기(spec sunap-sort REQ-5302, 시안 docs/mockups/sunap-sort): 거르기·찾기 뒤의 줄을 sortLedger로 세운다(NO는 접수 번호 그대로).
-// 세운 상태는 이 화면 안에만 있다(저장하지 않음 — 다시 열면 접수 순). 마감한 날에도 세울 수 있다
+// 세운 상태는 이 화면 안에만 있다(저장하지 않음 — 다시 열면 접수 순). 마감한 날에도 세울 수 있다.
+// 다음 예약 종류(spec sunap-kinds AC-5503.5): 칩 글은 설정 이름, 색은 주사치료 파랑·진료(경과) 청록·종류 모름 노랑·기타와 새 종류 회색. 종류 순은 설정 목록 차례
 
 type Filter = 'all' | 'new' | 'd90' | 'block' | 'unknown' | 'edited'
 type Dir = 'asc' | 'desc'
@@ -74,8 +75,14 @@ function KindChip({ kind }: { kind: LedgerRow['kind'] }) {
 
 const SRC = 'rounded-control px-1 text-caption font-semibold'
 
+/** 다음 예약 칩 색: 주사치료 파랑 · 진료(경과) 청록 · 종류 모름(목록에 없는 id 포함) 노랑 · 기타와 새 종류 회색 */
+function rsvChip(kind: RsvKind, kinds: readonly RsvKindDef[]): string {
+  if (!kinds.some((item) => item.id === kind)) return ds.chip.warning
+  return kind === 'inj' ? ds.chip.accent : kind === 'visit' ? chipTeal : ds.chip.neutral
+}
+
 /** 다음 예약 칸 안(시안 rsvCell). 마감한 날은 ▾가 없다 */
-function RsvView({ row, caret }: { row: LedgerRow; caret: boolean }) {
+function RsvView({ row, kinds, caret }: { row: LedgerRow; kinds: readonly RsvKindDef[]; caret: boolean }) {
   const { kind, source, at } = row.rsv
   const day = rsvDay(at)
   const src =
@@ -84,15 +91,14 @@ function RsvView({ row, caret }: { row: LedgerRow; caret: boolean }) {
   if (kind === 'none') {
     body = (
       <>
-        <span className="text-muted">{RSV_LABEL.none}</span>
+        <span className="text-muted">{RSV_NONE}</span>
         {source === 'hand' && src}
       </>
     )
   } else {
-    const chip = kind === 'unknown' ? ds.chip.warning : kind === 'inj' ? ds.chip.accent : kind === 'visit' ? chipTeal : ds.chip.neutral
     body = (
       <>
-        <span className={chip}>{RSV_LABEL[kind]}</span>
+        <span className={rsvChip(kind, kinds)}>{rsvLabel(kind, kinds)}</span>
         {day !== '' && <span className="text-caption text-muted tabular-nums">{day}</span>}
         {src}
       </>
@@ -299,12 +305,15 @@ function NotePop({ row, anchor, onEdit, onClose }: { row: LedgerRow; anchor: Anc
 export function LedgerRows({
   rows,
   totals,
+  kinds,
   editable,
   closed,
   onEdit,
 }: {
   rows: readonly LedgerRow[]
   totals: SunapTotals
+  /** 설정의 다음 예약 종류 목록(이름·차례·예약률) */
+  kinds: readonly RsvKindDef[]
   editable: boolean
   /** 마감한 날(못 고치는 까닭이 마감일 때만 마감 안내를 띄운다. 불러오는 중·마감하는 중은 잠깐 막기만) */
   closed: boolean
@@ -327,7 +336,10 @@ export function LedgerRows({
       .map((row, index) => ({ row, no: index + 1 }))
       .filter(({ row }) => test(row) && (words === '' || row.name.includes(words) || row.chart.includes(words))),
     sort,
+    kinds.map((kind) => kind.id),
   )
+  // 설명 줄의 회색 칩: 목록에서 주사치료·진료(경과) 아닌 첫 종류(기타는 늘 있다)
+  const gray = kinds.find((kind) => kind.id !== 'inj' && kind.id !== 'visit')
   const dirOf = (key: LedgerSort['key']): Dir | null => (sort !== null && sort.key === key ? sort.dir : null)
   const rsvSort = sort !== null && sort.key === 'rsv' ? sort : null
   // 다른 칸 → 오름차순, 오름차순 → 내림차순, 내림차순 → 접수 순
@@ -467,10 +479,10 @@ export function LedgerRows({
                   <td className={`${TD} min-w-52 ${editable ? 'p-0!' : ''}`}>
                     {editable ? (
                       <button type="button" aria-label={`${row.name} 다음 예약`} className={`${CELL_BUTTON} px-3`} onClick={openAt(row.chart, 'rsv')}>
-                        <RsvView row={row} caret />
+                        <RsvView row={row} kinds={kinds} caret />
                       </button>
                     ) : (
-                      <RsvView row={row} caret={false} />
+                      <RsvView row={row} kinds={kinds} caret={false} />
                     )}
                   </td>
                   <td className={`${TD} ${editable ? 'p-0!' : ''}`}>
@@ -516,11 +528,17 @@ export function LedgerRows({
           <span className={`${SRC} bg-accent text-surface`}>직접</span>
           <span>직원이 고른 예약</span>
         </span>
+        {gray !== undefined && (
+          <span className="inline-flex items-center gap-1">
+            <span className={ds.chip.neutral}>{gray.label}</span>
+            <span>설정에서 더한 종류·기타는 회색</span>
+          </span>
+        )}
         <span>FREE = 그날 낸 돈 0원</span>
       </div>
       {openRow && open?.what === 'amount' && <AmountPop row={openRow} focus={open.field} anchor={open.anchor} onEdit={edit(openRow.chart)} onClose={close} />}
       {openRow && open?.what === 'note' && <NotePop row={openRow} anchor={open.anchor} onEdit={edit(openRow.chart)} onClose={close} />}
-      {openRow && open?.what === 'rsv' && <RsvPicker row={openRow} anchor={open.anchor} onPick={edit(openRow.chart)} onClose={close} />}
+      {openRow && open?.what === 'rsv' && <RsvPicker row={openRow} kinds={kinds} anchor={open.anchor} onPick={edit(openRow.chart)} onClose={close} />}
       {menu !== null && (
         <SortMenu
           id={menuId}

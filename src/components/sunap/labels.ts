@@ -1,6 +1,6 @@
 import { todayInKorea, weekdayOf } from '@/lib/analytics/dates'
 import { savedTimeText } from '@/lib/worklog/days'
-import type { RsvKind, SunapEdit, VisitKind } from '@/types/sunap'
+import type { RsvKind, RsvKindDef, SunapEdit, VisitKind } from '@/types/sunap'
 
 // 수납일지 화면 글자·숫자 모양 한 곳(spec sunap-ilji, 시안 docs/mockups/sunap-ilji). 환자 값을 받지 않는 순수 함수만 둔다 → 장부 줄 화면(rows)도 쓴다
 
@@ -8,12 +8,14 @@ import type { RsvKind, SunapEdit, VisitKind } from '@/types/sunap'
 export type LedgerPatch = Partial<SunapEdit> | { revert: keyof SunapEdit }
 
 export const VISIT_LABEL: Record<VisitKind, string> = { new: '초진', d90: '90일초진', re: '재진' }
-export const RSV_LABEL: Record<RsvKind, string> = {
-  none: '예약 안 하고 가심',
-  inj: '주사치료',
-  visit: '진료(경과)',
-  etc: '기타',
-  unknown: '종류 모름',
+/** 늘 있는 두 줄의 글(설정 판의 '늘 있는 줄'과 같다) */
+export const RSV_NONE = '예약 안 하고 가심'
+export const RSV_UNKNOWN = '종류 모름'
+
+/** 다음 예약 종류 글(spec sunap-kinds design.md rsvLabel): none·unknown은 늘 있는 줄 글, 나머지는 설정 목록 이름(목록에 없으면 종류 모름) */
+export function rsvLabel(kind: RsvKind, kinds: readonly RsvKindDef[]): string {
+  if (kind === 'none') return RSV_NONE
+  return kinds.find((item) => item.id === kind)?.label ?? RSV_UNKNOWN
 }
 
 const WEEKDAYS = ['월', '화', '수', '목', '금', '토', '일']
