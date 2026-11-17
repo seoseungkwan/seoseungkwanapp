@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- PT 후 진료 종이(접수 PC의 작은 윈도우 프로그램, .NET Framework 4.8, specs/pt-slip/design.md).
+       비트 창 옆 [PT 먼저] 버튼·고르기 창·빅솔론 인쇄만 두고, 판단은 Precheck.Core/PtSlip이 한다 -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <RootNamespace>Precheck.PtSlip</RootNamespace>
+    <AssemblyName>PtSlip</AssemblyName>
+    <!-- 비트 DLL이 32비트라 exe도 32비트로 돈다(Precheck.Helper와 같다). 출력 자리는 bin/Release/net48 그대로 -->
+    <PlatformTarget>x86</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 리눅스·Actions에서 net48을 빌드하려고(빌드에만 쓰고 결과물에는 들어가지 않는다) -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 윈도우 기본 탑재 .NET Framework 어셈블리: 창(WinForms)·그리기와 인쇄(System.Drawing.Printing) -->
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Precheck.Core/Precheck.Core.csproj" />
+    <ProjectReference Include="../Precheck.Windows/Precheck.Windows.csproj" />
+  </ItemGroup>
+
+  <!-- PtSlip.exe.config의 <startup>: Precheck.Helper와 같다. 이름을 찾을 때 비트 DLL(옛 런타임 v2용 혼합 어셈블리일 수 있다)을
+       불러도 4.x 런타임에서 돌게 한다. App.config 파일을 따로 두지 않고 빌드 때 obj/에 쓰고, 빌드가 바인딩 리디렉트를 더한다 -->
+  <PropertyGroup>
+    <StartupAppConfigXml><![CDATA[<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <startup useLegacyV2RuntimeActivationPolicy="true">
+    <supportedRuntime version="v4.0" sku=".NETFramework,Version=v4.8" />
+  </startup>
+</configuration>]]></StartupAppConfigXml>
+  </PropertyGroup>
+
+  <!-- PrepareForBuild가 $(AppConfig)를 읽기 전에 쓴다 -->
+  <Target Name="WriteStartupAppConfig" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <AppConfig>$(IntermediateOutputPath)startup.App.config</AppConfig>
+    </PropertyGroup>
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <WriteLinesToFile File="$(AppConfig)" Lines="$(StartupAppConfigXml)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <FileWrites Include="$(AppConfig)" />
+    </ItemGroup>
+  </Target>
+</Project>
