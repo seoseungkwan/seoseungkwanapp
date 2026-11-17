@@ -181,11 +181,12 @@ public sealed class ButtonForm : Form
 
     private void OpenPick()
     {
+        // 옛 창(앞 환자 번호·이름·고른 것이 남은 창)은 다시 띄우지 않고 닫는다. 늘 빈 새 창으로 시작해야 다른 환자 종이가 나가지 않는다(검토 지적)
         if (pick != null && !pick.IsDisposed)
         {
-            if (pick.WindowState == FormWindowState.Minimized) pick.WindowState = FormWindowState.Normal;
-            pick.Activate();
-            return;
+            var old = pick;
+            pick = null;
+            old.Close();
         }
         var form = new PickForm(settings, names.Find, OpenSettings);
         form.FormClosed += (sender, e) =>
