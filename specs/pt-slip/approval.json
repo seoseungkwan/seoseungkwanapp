@@ -1,0 +1,28 @@
+{
+  "status": "approved",
+  "feature": "pt-slip",
+  "approved_at": "2026-11-17T08:45:59Z",
+  "approved_via": "user-prompt",
+  "session_id": "8d42288c-b3c0-46f8-b0ef-123e5d5dc3d8",
+  "spec_sha256": "c45bde62cfb01e1394b4d5ab2318280ca8f8a90267dbd821b5dd7c0f5a62686c",
+  "scope": [
+    "(없음)",
+    "helper/Precheck.sln",
+    "helper/install/ptslip/**",
+    "helper/src/Precheck.Core/Bit/Sql.cs",
+    "helper/src/Precheck.Core/PtSlip/**",
+    "helper/src/Precheck.PtSlip/BitWindows.cs",
+    "helper/src/Precheck.PtSlip/ButtonForm.cs",
+    "helper/src/Precheck.PtSlip/NameSource.cs",
+    "helper/src/Precheck.PtSlip/PickForm.cs",
+    "helper/src/Precheck.PtSlip/Precheck.PtSlip.csproj",
+    "helper/src/Precheck.PtSlip/Printers.cs",
+    "helper/src/Precheck.PtSlip/Program.cs",
+    "helper/src/Precheck.PtSlip/SettingsFile.cs",
+    "helper/src/Precheck.PtSlip/SettingsForm.cs",
+    "helper/src/Precheck.PtSlip/SlipDrawer.cs",
+    "helper/src/Precheck.PtSlip/SlipPrintJob.cs",
+    "helper/tests/Precheck.Core.Tests/PtSlip/**",
+    "helper/tests/pt-slip.dotnet.test.ts"
+  ]
+}
