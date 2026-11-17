@@ -25,9 +25,10 @@ const NAMES = Array.from({ length: 10 }, (_, i) => `가상환자${21 + i}`)
 
 /**
  * 같은 곳 길만: 판·상세·직전·지난 종이(그 전 진료기록부, reception-arrange-tune)·찍음·어레인지 표시 (AC-1413.2).
- * 옛 목록 길(/api/lists)은 어레인지 화면이 더 부르지 않는다(목록 고치기는 설정의 칸 고치기로 옮김, reception-other-clinic AC-5709.2·5711.4)
+ * 옛 목록 길(/api/lists)은 어레인지 화면이 더 부르지 않는다(목록 고치기는 설정의 칸 고치기로 옮김, reception-other-clinic AC-5709.2·5711.4).
+ * 넣기 창 [☰ 목록 고치기]가 여는 칸 고치기 창은 설정(GET·POST /api/settings)·지난 30일 처방(/api/codes)·코드 이름(/api/code/{코드})을 묻는다
  */
-const SAME_PC_API = /^\/api\/(?:board(?:\?fresh=1)?|visit\/[0-9a-f]{16}\/(?:history\?from=\d+|prev|papers\?from=\d+)|xray|arrange)$/
+const SAME_PC_API = /^\/api\/(?:board(?:\?fresh=1)?|visit\/[0-9a-f]{16}\/(?:history\?from=\d+|prev|papers\?from=\d+)|xray|arrange|settings|codes|code\/[0-9A-Z가-힣_%]{1,64})$/
 
 // ---- 가짜 도우미 ------------------------------------------------------------------------------------
 
@@ -714,6 +715,143 @@ describe('app.js 넣기 창 두 모드·설정 칸', () => {
     await settle()
     expect(window.location.hash).toBe('#/s')
     expect(arrangePage()).toBeNull()
+  })
+})
+
+// ---- 넣기 창 [☰ 목록 고치기] → 칸 고치기 창 (AC-5711.4, 옛 목록 고치기 잇기 시험 c2356b53을 옮김) ----------------------
+
+describe('app.js 넣기 창 [☰ 목록 고치기]', () => {
+  const FOOT_SHEET = '저장하면 모든 폰·태블릿 화면이 바로 바뀌고, 고르기 창으로 돌아가요. 이미 표에 넣은 칸은 그대로예요.'
+
+  /** 넣기 창(그 아래 창) */
+  function pickSheet(): HTMLElement | null {
+    return appEl().querySelector<HTMLElement>('.page.arrange > .sheet-back:not(.list-back) > .sheet')
+  }
+
+  /** 칸 고치기 창 */
+  function editor(): HTMLElement | null {
+    return appEl().querySelector<HTMLElement>('.page.arrange > .sheet-back.list-back > .sheet.list-sheet')
+  }
+
+  function editorGroup(label: string): HTMLElement {
+    const found = [...editor()!.querySelectorAll<HTMLElement>(':scope > .col-body > .lt-groups > section.lt-group')].find(
+      (g) => g.querySelector(':scope > h3')?.firstChild?.textContent === label,
+    )
+    if (!found) throw new Error(`무리 ${label} 없음`)
+    return found
+  }
+
+  function editorNames(label: string): string[] {
+    return [...editorGroup(label).querySelectorAll(':scope > ul.lt-list > li.lt-row > .lt-name')].map((n) => n.textContent ?? '')
+  }
+
+  function addTo(label: string, text: string) {
+    const form = editorGroup(label).querySelector('form.lt-add')!
+    const input = form.querySelector('input')!
+    input.value = text
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    form.querySelector<HTMLButtonElement>('button[type="submit"]')!.click()
+  }
+
+  function typeAdd(label: string, text: string): HTMLInputElement {
+    const input = editorGroup(label).querySelector<HTMLInputElement>('form.lt-add > input')!
+    input.focus()
+    input.value = text
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    return input
+  }
+
+  function settingsWrites(): { rev: number; picks: { pt: string[] } }[] {
+    return calls.filter((c) => c.url === '/api/settings' && c.method === 'POST').map((c) => JSON.parse(c.body ?? 'null'))
+  }
+
+  /** PT 칸을 눌러 넣기 창을 열고 [☰ 목록 고치기]로 칸 고치기 창을 연다(설정을 한 번 읽는다) */
+  async function openEditor() {
+    await open({ hash: '#/a' })
+    cellOf('가상환자28', 'pt').click()
+    pickSheet()!.querySelector<HTMLButtonElement>('button.pick-edit')!.click()
+    await settle()
+    expect(editor()).not.toBeNull()
+  }
+
+  it('AC-5711.4 · AC-3505.3: [☰ 목록 고치기]는 GET /api/settings로 읽어 그 칸 고치기 창을 [고르기 목록] 탭으로 넣기 창 위에 연다. [저장]은 설정 문서(rev 그대로)를 POST /api/settings(X-Reception: 1)로 보내고 204면 창을 닫고 띠 "PT 칸을 저장했어요"(되돌리기 없음) 뒤 판을 한 번 다시 읽어 넣기 창에 바뀐 목록이 보인다', async () => {
+    await openEditor()
+    expect(urls().filter((u) => u === '/api/settings')).toHaveLength(1)
+    expect(editor()!.getAttribute('aria-label')).toBe('PT 칸 고치기')
+    expect(textOf(editor(), ':scope > .lt-tabs > button.lt-tab.on')).toBe('고르기 목록')
+    expect(textOf(editor(), ':scope > p.lt-foot-note')).toBe(FOOT_SHEET)
+    expect(pickSheet()).not.toBeNull()
+    expect(editorNames('종류')).toEqual(['ICE', 'HP'])
+    addTo('종류', 'TENS')
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+    const before = boardReads()
+    editor()!.querySelector<HTMLButtonElement>(':scope > .sheet-go > button.go')!.click()
+    await settle()
+    const sent = calls.filter((c) => c.url === '/api/settings' && c.method === 'POST')
+    expect(sent).toHaveLength(1)
+    expect(new Headers(sent[0]!.init.headers).get('X-Reception')).toBe('1')
+    expect(settingsWrites()[0]!.rev).toBe(1)
+    expect(settingsWrites()[0]!.picks.pt).toEqual(['ICE', 'HP', 'TENS'])
+    expect(server.board.picks!.pt).toEqual(['ICE', 'HP', 'TENS'])
+    expect(editor()).toBeNull()
+    expect(toastText()).toBe('PT 칸을 저장했어요')
+    expect(undoButton()).toBeNull()
+    expect(boardReads()).toBe(before + 1)
+    // 넣기 창으로 돌아와 바뀐 목록이 보인다
+    expect(pickSheet()).not.toBeNull()
+    expect([...pickSheet()!.querySelectorAll('.opts[data-g="pick"] > button.opt')].map(labelOf)).toEqual(['ICE', 'HP', 'TENS'])
+    expect(document.activeElement).toBe(pickSheet()!.querySelector('button.pick-edit'))
+    pickIn('pick', 'TENS')
+    await settle()
+    expect(writes()).toEqual([{ k: K.h, op: 'add', col: 'pt', v: 'TENS' }])
+    for (const u of urls()) expect(u).toMatch(SAME_PC_API)
+  })
+
+  it('AC-3505.3 · AC-5713.10: [저장]이 403이거나 연결이 안 되면 창·초안·적던 글이 남고 띠 "설정을 저장하지 못했어요"다. 저절로 다시 읽기(5초)에도 창은 그대로이고 도우미 설정은 바뀌지 않는다', async () => {
+    await openEditor()
+    addTo('종류', 'TENS')
+    for (const fail of [() => statusNext('/api/settings', 403), () => failNext('/api/settings')]) {
+      const typed = typeAdd('종류', '적던')
+      fail()
+      editor()!.querySelector<HTMLButtonElement>(':scope > .sheet-go > button.go')!.click()
+      await settle()
+      expect(editor()).not.toBeNull()
+      expect(toastText()).toBe('설정을 저장하지 못했어요')
+      typed.focus()
+      await wait(5000)
+      expect(editor()).not.toBeNull()
+      expect(editorNames('종류')).toEqual(['ICE', 'HP', 'TENS'])
+      expect(typed.isConnected).toBe(true)
+      expect(typed.value).toBe('적던')
+      expect(document.activeElement).toBe(typed)
+      expect(pickSheet()).not.toBeNull()
+    }
+    expect(server.settings.rev).toBe(1)
+    expect(server.settings.picks.pt).toEqual(['ICE', 'HP'])
+    for (const u of urls()) expect(u).toMatch(SAME_PC_API)
+  })
+
+  it('AC-5711.4 · AC-3312.2: [취소]는 보내지 않고 넣기 창으로 돌아간다. 칸 고치기 창이 열린 채 숨기면 모두 지우고(보내지 않음) 다시 보이면 창 없이 표다', async () => {
+    await openEditor()
+    addTo('종류', 'TENS')
+    editor()!.querySelector<HTMLButtonElement>(':scope > .sheet-go > button.sheet-close')!.click()
+    expect(editor()).toBeNull()
+    expect(pickSheet()).not.toBeNull()
+    expect([...pickSheet()!.querySelectorAll('.opts[data-g="pick"] > button.opt')].map(labelOf)).toEqual(['ICE', 'HP'])
+    expect(document.activeElement).toBe(pickSheet()!.querySelector('button.pick-edit'))
+    pickSheet()!.querySelector<HTMLButtonElement>('button.pick-edit')!.click()
+    await settle()
+    expect(editorNames('종류')).toEqual(['ICE', 'HP'])
+    addTo('종류', 'TENS')
+    hide()
+    await settle()
+    expectNoPatient()
+    show()
+    await settle()
+    expect(arrangePage()).not.toBeNull()
+    expect(appEl().querySelector('.sheet-back')).toBeNull()
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([])
+    expect(server.settings.picks.pt).toEqual(['ICE', 'HP'])
   })
 })
 

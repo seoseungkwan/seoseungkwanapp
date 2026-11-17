@@ -18,8 +18,8 @@
 //     버려 판의 값으로 되그리고 띠 "저장하지 못했어요…"(AC-3308.9). 같은 칸(줄 표시는 그 표시)에 나가 있는 쓰기가 있으면 누름을 버린다.
 //     답을 기다리는 동안 다시 읽은 판에도 미리 얹은 것을 그대로 얹는다. 204 뒤 다음 판이 오면 내린다
 //   · 되돌리기 띠는 5초. [되돌리기]는 planOf가 준 반대 쓰기를 보낸다(앞 쓰기가 아직 나가 있으면 그 쓰기가 끝난 뒤)
-//   · 목록 고치기 [저장](reception-pick-lists AC-3505.3): POST /api/lists. 204면 띠 "목록을 저장했어요" 뒤 판을 다시 읽고 창을 닫는다.
-//     아니면 띠 "목록을 저장하지 못했어요"이고 창은 그대로다(picks.js). 숨김·끊김 뒤 온 답은 버린다
+//   · 넣기 창 [☰ 목록 고치기](reception-other-clinic AC-5711.4): GET /api/settings로 읽어 그 칸 고치기 창(settings.js)을 [고르기 목록] 탭으로
+//     넣기 창 위에 연다. [저장]은 아래 설정 저장과 같다(204면 띠 "{칸} 칸을 저장했어요" 뒤 판을 다시 읽고 창을 닫아 넣기 창으로 돌아간다)
 //   · '처방 나옴' 열쇠와 끝 시각(60초), 고른 창, [오늘 치료 종료] 펼침, 기록부 자료, 표의 세로 위치는 메모리에만 둔다(AC-3308.11·3310.2)
 //   · 기록부: 오늘 종이(history?from=0)는 상세와 같은 조건(칸·오늘 처방이 바뀌거나 30초)으로만 다시 읽고 직전 종이(prev)는 한 번만 읽는다.
 //     실패한 칸은 다음 저절로 읽기에 다시 본다(AC-3309.3·3309.5). 그 환자가 판에서 사라지면 표(#/a)로 돌아간다
@@ -31,23 +31,32 @@
 //     ver가 같으면 다시 받지 않고(실패해도 같은 ver는 다시 묻지 않음), ver가 바뀌면 한 번 받는다. 받으면 그 자리에서 다시 그린다(AC-5709.1).
 //     목록·어레인지 머리(board.js topOf)와 폰 상세 머리의 작은 로고(detail.js)가 쓰고, 그리기마다 끊김 화면용으로 offline.js rememberLogo에 넣는다.
 //     숨김·끊김(wipe)은 그림도 지운다(AC-5708.3). 브라우저 저장소에는 두지 않는다
-//   · [⚙ 설정](두 탭 머리)은 설정 쪽 길 #/s를 연다(AC-5709.2). 설정 쪽 그리기는 settings.js(다음 일) 몫이라 지금은 빈 쪽이다
+//   · [⚙ 설정](두 탭 머리)은 설정 쪽 길 #/s를 연다(AC-5709.2)
 //   · 판 cfg.tab이 거짓이면 #/a·#/a/v/{열쇠}는 [접수 현황](#/)으로 바꾼다(AC-5709.3)
+// - 설정 쪽 #/s (reception-other-clinic REQ-5712·5713, design.md 3절): 들어올 때마다 GET /api/settings를 한 번 읽어 settings.js가 그린다.
+//   저절로 읽기에는 다시 읽지 않는다(판만 읽는다). 못 읽으면 한 줄 + [다시 읽기]. 머리는 들어오기 전 탭으로 돌아가는 [‹ 어레인지]·[‹ 접수 현황]이다
+//   · 저장(바로 저장·칸 고치기 [저장]·칸 더하기·이 칸 빼기): 한 번에 하나. 그 자리에서 새 문서로 그리고 POST /api/settings(rev 그대로).
+//     204면 rev +1로 두고 띠(바로 저장·빼기는 [되돌리기] 5초 한 번) 뒤 판을 다시 읽는다. 409면 설정을 다시 읽어 그리고 띠 "다른 기기에서…",
+//     그 밖의 실패면 앞 문서로 되그리고 띠 "설정을 저장하지 못했어요"다. 칸 고치기 창은 'ok'일 때만 닫는다(AC-5712.6·5713.1)
+//   · [되돌리기]는 앞 문서를 지금 rev로 다시 저장한다(nextX·로고 ver는 줄지 않게, 처음 설정 끝은 그대로). 설정 되돌리기는 메모리에만 있다
+//   · 로고 그림: settings.js shrinkLogo로 이 기기에서 줄여 POST /api/logo, 204면 설정을 다시 읽고 줄인 그림을 로고 그림({ ver, src })으로 둔다(AC-5712.3)
+//   · 셋 다 했어요가 되는 저장에는 setup.done 참을 넣는다(settings.js finishSetup, AC-5712.7)
+//   · 숨김·끊김은 설정 문서·창·띠를 지우고 늦은 답을 버린다. 다시 보이면 판과 설정을 다시 읽는다
 //
 // 쓰는 법
 //   index.html이 이 파일을 module로 부르면 바로 연다(맨 아래 app). 시험은 app.stop()으로 듣기를 그만둔다
 
 import { createAlert } from './alert.js'
-import { getHistory, getLogo, getPapers, getPrev, setArrange, setLists, setXray } from './api.js'
+import { getCodeName, getCodes, getHistory, getLogo, getPapers, getPrev, getSettings, setArrange, setLogo, setSettings, setXray } from './api.js'
 import { planOf, renderArrange } from './arrange.js'
 import { fillPane, renderBoard, setReading } from './board.js'
 import { renderCharts } from './charts.js'
 import { detailPane, fillPast, fitSpecial, renderDetail, updateDetail, updatePaper } from './detail.js'
-import { clear, el } from './dom.js'
 import { createLayout, findRow } from './layout.js'
 import { closeMemo } from './memo.js'
 import { rememberLogo } from './offline.js'
 import { createPoll } from './poll.js'
+import { finishSetup, openColEditor, renderSettings, shrinkLogo } from './settings.js'
 import { xrayBand } from './xray.js'
 
 const TITLE = '접수 현황'
@@ -63,9 +72,13 @@ const RX_NEW_MS = 60_000
 /** 쓰기 실패 띠 (AC-3308.9) */
 const SAVE_FAILED = '저장하지 못했어요. 다시 눌러 주세요'
 
-/** 목록 고치기 저장 띠 (reception-pick-lists AC-3505.3, requirements 기본값) */
-const LISTS_SAVED = '목록을 저장했어요'
-const LISTS_FAILED = '목록을 저장하지 못했어요'
+/** 설정 띠 (reception-other-clinic AC-5712.3·5712.6, 승인 시안 notes.md) */
+const SETTINGS_CONFLICT = '다른 기기에서 설정을 바꿨어요 · 다시 해 주세요'
+const SETTINGS_FAILED = '설정을 저장하지 못했어요'
+const SETTINGS_READ_FAILED = '설정을 읽지 못했어요'
+const LOGO_TOAST = '로고를 바꿨어요 · 모든 폰·태블릿에 바로 보여요'
+const LOGO_BIG = '그림 파일이 너무 커요 · 20MB보다 작은 그림을 골라요'
+const LOGO_FAILED = '로고를 올리지 못했어요'
 
 /** 칸 하나를 쓰는 op(같은 칸 쓰기가 나가 있으면 누름을 버린다). 나머지(away·ptf·end)는 줄의 그 표시 하나다 */
 const CELL_OPS = new Set(['step', 'set', 'add', 'remove', 'part'])
@@ -108,7 +121,7 @@ export function startApp() {
   let sheet = null
   /** [오늘 치료 종료] 펼침 */
   let endedOpen = false
-  /** 되돌리기 띠 { text, undo: 쓰기 | null } | null 과 그 5초 */
+  /** 되돌리기 띠 { text, undo: 어레인지 쓰기 | null, undoDoc?: 설정 앞 문서 | null } | null 과 그 5초 */
   let toast = null
   let toastTimer = null
   /** '처방 나옴' 줄: 열쇠 → 이름표를 내릴 시각(ms) */
@@ -123,6 +136,20 @@ export function startApp() {
   let backY = 0
   /** 열린 기록부 { k, today, prev, mark, busyToday, busyPrev } | null */
   let chart = null
+
+  // ---- 설정 (메모리에만, 숨김·끊김에 지운다, reception-other-clinic REQ-5712·5713) ----
+  /** 마지막으로 읽었거나 저장한 설정 문서 | null */
+  let settings = null
+  /** 설정 쪽 읽기: 'idle'(아직 안 읽음) · 'reading' · 'error' · 'ok' */
+  let settingsState = 'idle'
+  /** 설정 쪽을 그리고 있는가(들어올 때 한 번 읽는다), 돌아갈 탭, 들어오기 전 탭 */
+  let settingsShown = false
+  let settingsBack = 'arrange'
+  let lastTab = 'arrange'
+  /** 나가 있는 설정 저장(한 번에 하나) */
+  let settingsBusy = false
+  /** 숨김·끊김·설정 쪽을 떠날 때마다 바뀐다. 앞 세대 설정 읽기·저장의 답은 버린다 */
+  let settingsGen = 0
 
   // ---- 로고 그림 (메모리에만, 숨김·끊김에 지운다, reception-other-clinic AC-5709.1·5708.3) ----
   /** 받은 로고 그림 { ver, src: data: URL } | null */
@@ -180,9 +207,13 @@ export function startApp() {
   /** 지금 길의 화면을 판으로 그린다(설정 쪽 · 어레인지 탭 · 태블릿 · 폰). 끊김 화면용으로 그 판의 로고를 적어 둔다 */
   function paint(board, reading) {
     if (settingsOpen()) drawSettings()
-    else if (tabOf() === 'arrange') drawArrange(board, reading)
-    else if (layout.tablet()) drawTablet(board, reading)
-    else drawPhone(board, reading)
+    else {
+      leaveSettings()
+      lastTab = tabOf()
+      if (tabOf() === 'arrange') drawArrange(board, reading)
+      else if (layout.tablet()) drawTablet(board, reading)
+      else drawPhone(board, reading)
+    }
     rememberLogo(board.cfg?.logo ?? null, logoPic)
   }
 
@@ -241,24 +272,212 @@ export function startApp() {
     leaveArrange()
   }
 
-  // ---- 설정 쪽 (reception-other-clinic AC-5709.2) -------------------------------------------------------
+  // ---- 설정 쪽 (reception-other-clinic AC-5709.2 · REQ-5712·5713) -----------------------------------------
 
-  /** [⚙ 설정] (board.js 머리): 설정 쪽 길로. 그리기는 hashchange(routed)가 한다 */
+  /** [⚙ 설정] (board.js·arrange.js 머리, 안내 줄 [설정에서 고르기]): 설정 쪽 길로. 그리기는 hashchange(routed)가 한다 */
   function openSettings() {
     if (win.location.hash !== SETTINGS_ROUTE) win.location.hash = SETTINGS_ROUTE
   }
 
-  /** 설정 쪽: 상세·어레인지 창을 내리고 빈 쪽을 그린다(설정 쪽 그리기는 settings.js, 다음 일) */
+  /** 설정 쪽: 들어올 때 상세·어레인지 창·띠를 내리고 설정을 한 번 읽는다. 그 뒤로는 메모리의 설정 문서로만 그린다(AC-5712.1) */
   function drawSettings() {
-    if (detailK !== null) dropDetail()
-    leaveArrange()
-    if (host.querySelector(':scope > .page.settings-page')) return
-    clear(host)
-    host.appendChild(el('div', { class: 'page settings-page' }))
+    if (!settingsShown) {
+      settingsShown = true
+      if (detailK !== null) dropDetail()
+      leaveArrange()
+      settingsBack = lastTab
+      settingsState = 'idle'
+    }
+    if (settingsState === 'idle') readSettings()
+    renderSettings(host, settingsState === 'ok' ? settings : null, settingsView())
+  }
+
+  /** 설정 쪽이 보이면 다시 그린다(답·띠 끝남) */
+  function redrawSettings() {
+    if (settingsShown && settingsOpen()) drawSettings()
+  }
+
+  /** 설정 쪽이면 설정 쪽, 아니면 어레인지 표를 다시 그린다 */
+  function redrawNow() {
+    if (settingsShown && settingsOpen()) drawSettings()
+    else redrawTable()
+  }
+
+  /** 설정 쪽을 떠남: 다음에 들어오면 다시 읽는다. 나가 있던 읽기·저장의 답은 버린다(판은 저절로 다시 읽는다) */
+  function leaveSettings() {
+    if (!settingsShown) return
+    settingsShown = false
+    settingsState = 'idle'
+    settingsBusy = false
+    settingsGen += 1
+    setToast(null)
   }
 
   function settingsOpen() {
     return win.location.hash === SETTINGS_ROUTE
+  }
+
+  function settingsView() {
+    return {
+      state: settingsState === 'ok' || settingsState === 'error' ? settingsState : 'reading',
+      back: settingsBack === 'board' || settings?.tab === false ? 'board' : 'arrange',
+      toast: toastView(),
+      logoPic,
+      onSave: saveSettings,
+      onUndo: undo,
+      onReread: () => {
+        if (settingsState !== 'error') return
+        settingsState = 'idle'
+        drawSettings()
+      },
+      onLogoFile: uploadLogo,
+      getCodes: () => getCodes({ signal: poll.signal() }),
+      getCodeName: (code) => getCodeName(code, { signal: poll.signal() }),
+    }
+  }
+
+  /** GET /api/settings 한 번. 못 읽으면 'error'(저절로 다시 읽지 않는다, [다시 읽기]만) */
+  function readSettings() {
+    const gen = settingsGen
+    settingsState = 'reading'
+    getSettings({ signal: poll.signal() }).then(
+      (doc) => {
+        if (gen !== settingsGen) return
+        settings = doc
+        settingsState = 'ok'
+        redrawSettings()
+      },
+      () => {
+        if (gen !== settingsGen) return
+        settingsState = 'error'
+        redrawSettings()
+      },
+    )
+  }
+
+  /**
+   * 설정 저장 하나 (AC-5712.6·5713.1): 그 자리에서 새 문서로 그리고 POST /api/settings. 한 번에 하나만 보낸다(나가 있으면 'fail').
+   * 204면 rev +1로 두고 띠(text, undo면 [되돌리기]) 뒤 판을 다시 읽는다('ok'). 409면 설정을 다시 읽어 그리고 띠 "다른 기기에서…"('conflict'),
+   * 그 밖의 실패면 앞 문서로 되그리고 띠 "설정을 저장하지 못했어요"('fail'). 숨김·끊김·떠난 뒤 온 답은 버린다('fail').
+   * 셋 다 했어요가 되는 저장에는 setup.done 참을 넣는다(AC-5712.7)
+   * @param {object} next 보낼 문서(rev는 읽은 그대로)
+   * @param {string | null} text 204 띠 글. null이면 띠 없이(되돌리기)
+   * @param {{ undo?: boolean }} [opts]
+   * @returns {Promise<'ok' | 'conflict' | 'fail'>}
+   */
+  function saveSettings(next, text, { undo: undoable = false } = {}) {
+    if (settingsBusy || settings === null) return Promise.resolve('fail')
+    const before = settings
+    const sent = finishSetup(next)
+    const gen = settingsGen
+    const stale = () => gen !== settingsGen
+    settingsBusy = true
+    settings = sent
+    redrawSettings()
+    return setSettings(sent, { signal: poll.signal() }).then(
+      (result) => {
+        if (stale()) return 'fail'
+        if (result === 'conflict') {
+          const done = (doc) => {
+            if (stale()) return 'fail'
+            settingsBusy = false
+            settings = doc
+            setToast({ text: SETTINGS_CONFLICT, undo: null })
+            redrawNow()
+            return 'conflict'
+          }
+          return getSettings({ signal: poll.signal() }).then(done, () => done(before))
+        }
+        settingsBusy = false
+        settings = { ...sent, rev: sent.rev + 1 }
+        setToast(text === null ? null : { text, undo: null, undoDoc: undoable ? before : null })
+        redrawNow()
+        poll.readNow()
+        return 'ok'
+      },
+      () => {
+        if (stale()) return 'fail'
+        settingsBusy = false
+        settings = before
+        setToast({ text: SETTINGS_FAILED, undo: null })
+        redrawNow()
+        return 'fail'
+      },
+    )
+  }
+
+  /** [되돌리기]의 문서: 앞 문서를 지금 rev로. nextX·로고 ver는 줄이지 않고(도우미가 받지 않음) 처음 설정 끝은 되돌리지 않는다 */
+  function restoreOf(before, now) {
+    return {
+      ...structuredClone(before),
+      rev: now.rev,
+      nextX: Math.max(before.nextX, now.nextX),
+      logo: { ...before.logo, ver: now.logo.ver },
+      setup: { ...before.setup, done: before.setup.done || now.setup.done },
+    }
+  }
+
+  /** 로고 그림 고름 (AC-5712.3): 이 기기에서 줄여 POST /api/logo, 204면 설정을 다시 읽고 줄인 그림을 로고 그림으로 둔다(띠, 되돌리기 없음) */
+  function uploadLogo(file) {
+    const gen = settingsGen
+    const stale = () => gen !== settingsGen
+    const fail = (text) => {
+      if (stale()) return
+      setToast({ text, undo: null })
+      redrawNow()
+    }
+    const done = (doc, made) => {
+      if (stale()) return
+      if (doc) {
+        settings = doc
+        settingsState = 'ok'
+        logoPic = { ver: doc.logo.ver, src: made.url }
+        logoFailed = null
+      }
+      setToast({ text: LOGO_TOAST, undo: null })
+      redrawNow()
+      poll.readNow()
+    }
+    shrinkLogo(file).then(
+      (made) =>
+        setLogo(made.bytes, made.type, { signal: poll.signal() }).then(
+          () => {
+            if (stale()) return undefined
+            return getSettings({ signal: poll.signal() }).then(
+              (doc) => done(doc, made),
+              () => done(null, made),
+            )
+          },
+          () => fail(LOGO_FAILED),
+        ),
+      (error) => fail(error instanceof Error && error.message === 'big' ? LOGO_BIG : LOGO_FAILED),
+    )
+  }
+
+  /** 넣기 창 [☰ 목록 고치기] (AC-5711.4): 설정을 읽어 그 칸 고치기 창을 넣기 창 위에 연다. 못 읽으면 띠 "설정을 읽지 못했어요" */
+  function editCol(key, tab, back) {
+    const gen = settingsGen
+    const page = () => (tabOf() === 'arrange' && chartKey() === null ? host.querySelector(':scope > .page.arrange') : null)
+    getSettings({ signal: poll.signal() }).then(
+      (doc) => {
+        const at = page()
+        if (gen !== settingsGen || !at) return
+        settings = doc
+        openColEditor(at, key, {
+          tab,
+          back,
+          doc: () => settings,
+          onSave: saveSettings,
+          getCodes: () => getCodes({ signal: poll.signal() }),
+          getCodeName: (code) => getCodeName(code, { signal: poll.signal() }),
+        })
+      },
+      () => {
+        if (gen !== settingsGen || !page()) return
+        setToast({ text: SETTINGS_READ_FAILED, undo: null })
+        redrawTable()
+      },
+    )
   }
 
   /** 끊김·숨김 (poll.js가 화면을 지운 뒤): 앞 열쇠 모음·고른 환자·상세·어레인지 상태를 버린다. 열린 메모 창은 저장하고 닫는다(AC-3403.3) */
@@ -269,9 +488,19 @@ export function startApp() {
     wipeArrange()
     forgetLogo()
     closeMemo()
+    forgetSettings()
     /* 끊김에서 돌아오면 목록·어레인지 표다(AC-1407.4·3312.2). 숨김 뒤에는 상세·기록부 주소를 남겨 다시 읽는다(AC-1407.11·3312.2) */
     if (!hiding && routeKey() !== null) replaceRoute(LIST_ROUTE)
     if (!hiding && chartKey() !== null) replaceRoute(ARRANGE_ROUTE)
+  }
+
+  /** 숨김·끊김: 설정 문서·되돌리기 문서를 버리고 나가 있던 설정 읽기·저장의 답도 버린다 */
+  function forgetSettings() {
+    settings = null
+    settingsState = 'idle'
+    settingsShown = false
+    settingsBusy = false
+    settingsGen += 1
   }
 
   /** 앞서 나간 상세 읽기를 버린다. 새 차례 번호를 돌려준다 */
@@ -392,14 +621,18 @@ export function startApp() {
     if (!board) return
     closedTab(board)
     if (settingsOpen()) drawSettings()
-    else if (tabOf() === 'arrange') {
-      const back = chart !== null && chartKey() === null
-      drawArrange(board, poll.reading())
-      if (back) scrollBack()
-    } else {
-      leaveArrange()
-      if (!layout.tablet()) drawPhone(board, poll.reading())
-      else if (!host.querySelector('.page.board')) drawTablet(board, poll.reading())
+    else {
+      leaveSettings()
+      lastTab = tabOf()
+      if (tabOf() === 'arrange') {
+        const back = chart !== null && chartKey() === null
+        drawArrange(board, poll.reading())
+        if (back) scrollBack()
+      } else {
+        leaveArrange()
+        if (!layout.tablet()) drawPhone(board, poll.reading())
+        else if (!host.querySelector('.page.board')) drawTablet(board, poll.reading())
+      }
     }
     keepTitle()
   }
@@ -432,12 +665,18 @@ export function startApp() {
     drawTable(board, reading)
   }
 
-  /** 표: 나가 있는 쓰기를 얹은 판으로 그린다. 그 줄이 판에서 사라져 그리지 못한 창은 닫는다(AC-3308.11) */
+  /**
+   * 표: 나가 있는 쓰기를 얹은 판으로 그린다. 그 줄이 판에서 사라져 그리지 못한 창은 닫는다(AC-3308.11).
+   * 칸 고치기 창에서 넣기 창으로 돌아와 [☰ 목록 고치기]에 초점이 있으면 새로 그린 넣기 창의 그 단추에 초점을 둔다(AC-5711.4)
+   */
   function drawTable(board, reading) {
     const now = Date.now()
     for (const [k, until] of rxNew) if (until <= now) rxNew.delete(k)
+    const edit = ':scope > .page.arrange > .sheet-back:not(.list-back) button.pick-edit'
+    const keepEdit = doc.activeElement !== null && doc.activeElement === host.querySelector(edit)
     renderArrange(host, shownOf(board), arrangeView(reading))
     if (sheet !== null && !host.querySelector('.sheet-back')) sheet = null
+    if (keepEdit) host.querySelector(edit)?.focus({ preventScroll: true })
   }
 
   /** 표가 보이면 마지막 판으로 다시 그린다(누름·띠 끝남) */
@@ -460,7 +699,7 @@ export function startApp() {
       onTab,
       sheet,
       endedOpen,
-      toast: toast ? { text: toast.text, undo: toast.undo !== null } : null,
+      toast: toastView(),
       rxNew: [...rxNew.keys()],
       flash,
       onCell: (k, col) => press(k, { k, op: 'step', col }),
@@ -482,29 +721,15 @@ export function startApp() {
       onEnded: (open) => {
         endedOpen = open
       },
-      onLists: saveLists,
+      onEditCol: (key, tab, opts) => editCol(key, tab, opts?.back === 'sheet' ? 'sheet' : null),
       onSettings: openSettings,
       logoPic,
     }
   }
 
-  /**
-   * 목록 고치기 [저장] (reception-pick-lists AC-3505.3): 초안 전체를 보내 204면 띠 "목록을 저장했어요" 뒤 판을 다시 읽고 참,
-   * 아니면 띠 "목록을 저장하지 못했어요"이고 거짓(창은 그대로). 숨김·끊김 뒤 온 답은 버린다(거짓)
-   */
-  function saveLists(picks) {
-    const gen = writeGen
-    const settle = (ok) => {
-      if (gen !== writeGen) return false
-      setToast({ text: ok ? LISTS_SAVED : LISTS_FAILED, undo: null })
-      redrawTable()
-      if (ok) poll.readNow()
-      return ok
-    }
-    return setLists(picks, { signal: poll.signal() }).then(
-      () => settle(true),
-      () => settle(false),
-    )
+  /** 띠 그리기 값: 글과 [되돌리기] 있음(어레인지 쓰기 또는 설정 앞 문서) */
+  function toastView() {
+    return toast ? { text: toast.text, undo: Boolean(toast.undo || toast.undoDoc) } : null
   }
 
   /** 그 줄의 칸을 누름: '처방 나옴'을 내리고 보낸다(AC-3310.2) */
@@ -554,12 +779,13 @@ export function startApp() {
     )
   }
 
-  /** 띠의 [되돌리기]: 띠를 내리고 반대 쓰기를 보낸다 */
+  /** 띠의 [되돌리기]: 띠를 내리고 반대 쓰기(어레인지) 또는 앞 설정 문서(설정, 띠 없이)를 보낸다. 5초 안에 한 번 */
   function undo() {
     const last = toast
     setToast(null)
-    if (last?.undo) send(last.undo, { quiet: true })
-    redrawTable()
+    if (last?.undoDoc && settings !== null) saveSettings(restoreOf(last.undoDoc, settings), null)
+    else if (last?.undo) send(last.undo, { quiet: true })
+    redrawNow()
   }
 
   /** 되돌리기 띠를 바꾼다. 5초 뒤 내린다 */
@@ -571,7 +797,7 @@ export function startApp() {
       toastTimer = setTimeout(() => {
         toastTimer = null
         toast = null
-        redrawTable()
+        redrawNow()
       }, TOAST_MS)
   }
 

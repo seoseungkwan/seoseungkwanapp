@@ -1226,13 +1226,15 @@ describe('app.js 로고 (reception-other-clinic AC-5709.1·AC-5708.3)', () => {
 })
 
 describe('app.js [⚙ 설정]·어레인지 탭 끄기 (reception-other-clinic AC-5709.2·AC-5709.3)', () => {
-  it('AC-5709.2: 접수 현황·어레인지 두 탭 머리의 [⚙ 설정]을 누르면 설정 쪽(#/s)이 열린다(설정 쪽 그리기 전에는 빈 쪽). 저절로 읽기가 와도 설정 쪽 그대로이고 뒤로 가면 그 탭이다', async () => {
+  it('AC-5709.2 · AC-5712.1: 접수 현황·어레인지 두 탭 머리의 [⚙ 설정]을 누르면 설정 쪽(#/s)이 열린다(GET /api/settings로 읽어 제목 "설정"인 설정 쪽을 그림). 저절로 읽기가 와도 설정 쪽 그대로이고 뒤로 가면 그 탭이다', async () => {
     const app = await open()
     app.querySelector<HTMLButtonElement>('.page.board header.top .top-status > button.set-open')!.click()
     await settle()
     expect(window.location.hash).toBe('#/s')
     expect(app.children.length).toBe(1)
     expect(app.querySelector('.page.settings-page')).not.toBeNull()
+    expect(urls().filter((u) => u === '/api/settings')).toHaveLength(1)
+    expect(textOf(app, '.page.settings-page h1.set-title')).toBe('설정')
     expect(app.querySelector('.page.board, .page.arrange, .page.detail-page')).toBeNull()
     expectNoPatient()
     await wait(5000)

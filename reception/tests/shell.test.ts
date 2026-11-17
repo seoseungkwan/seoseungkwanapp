@@ -230,9 +230,10 @@ const ALNUM = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 const BODY_FONT = '"Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif'
 /**
  * 제목 글꼴을 쓰는 곳: 머리 제목(목록·연결 끊김)과 환자 이름 제목(상세·태블릿 오른쪽),
- * 그리고 어레인지 승인 시안(Arrange.html, reception-arrange)의 머리 탭 단추(.view-btn → .tab)와 표의 환자 이름(.nm → .arr-name)
+ * 그리고 어레인지 승인 시안(Arrange.html, reception-arrange)의 머리 탭 단추(.view-btn → .tab)와 표의 환자 이름(.nm → .arr-name),
+ * 다른 병원용 승인 시안(reception-other-clinic)의 설정 쪽 제목(.set-title)과 로고 없이 미리 보기 제목(.lp-none)
  */
-const TITLE_CLASSES = ['.top-title', '.off-title', '.off-heading', '.detail-name', '.tab', '.arr-name', '.logo-text']
+const TITLE_CLASSES = ['.top-title', '.off-title', '.off-heading', '.detail-name', '.tab', '.arr-name', '.logo-text', '.set-title', '.lp-none']
 /** 어레인지 승인 시안(docs/mockups/reception-arrange/Arrange.html, 2026-11-09)이 더한 색 여섯 (reception-arrange AC-3308.12) */
 const ARRANGE_PAGE = path.join(ROOT, 'docs', 'mockups', 'reception-arrange', 'Arrange.html')
 const ARRANGE_TOKENS = ['--sono-head', '--sono-col', '--carm-head', '--carm-col', '--ptup-bg', '--ptup-fg']
@@ -653,7 +654,8 @@ describe('REQ-5709 아이콘·우리 의원 상표 빼기 (reception-other-clini
     }
   })
 
-  it('AC-5714.1: 묻기(fetch)는 api.js에만 있고 모두 같은 PC 길(/api/…)이다. img 주소를 직접 넣는 곳(.src =)은 모양을 검사한 data:image URL만 넣는 board.js(로고)·memo.js(손글씨)뿐이다', () => {
+  it('AC-5714.1: 묻기(fetch)는 api.js에만 있고 모두 같은 PC 길(/api/…)이다. img 주소를 직접 넣는 곳(.src =)은 모양을 검사한 data:image URL만 넣는 board.js(로고)·memo.js(손글씨)뿐이다. 새 설정 쪽 settings.js도 이 울타리 안이다', () => {
+    expect(codeFiles()).toContain('settings.js')
     for (const rel of codeFiles().filter((f) => path.extname(f) === '.js')) {
       const text = read(rel)
       const fetches = [...text.matchAll(/\bfetch\(\s*([^,)]*)/g)].map((m) => m[1]!.trim())
