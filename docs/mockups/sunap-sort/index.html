@@ -133,6 +133,12 @@ tfoot td { background: var(--canvas); font-weight: 600; color: var(--ink); borde
 .ledger th button.sort.on .ar { color: var(--accent); }
 .sortnote { font-size: 12px; color: var(--muted); }
 .sortnote b { color: var(--ink); font-weight: 600; }
+.ledger th.menuwrap { position: relative; }
+.ledger th .smenu { position: absolute; top: calc(100% + 4px); left: 8px; z-index: 30; min-width: 220px; display: grid; gap: 2px; padding: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(15,23,42,.12); font-weight: 400; }
+.ledger th .smenu button { all: unset; cursor: pointer; display: flex; justify-content: space-between; gap: 12px; padding: 7px 10px; border-radius: 4px; color: var(--ink); font-size: 13px; }
+.ledger th .smenu button:hover { background: var(--accent-soft); }
+.ledger th .smenu button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.ledger th .smenu small { color: var(--muted); font-size: 12px; }
 .ledger td.cell:hover { background: var(--accent-soft); }
 .ledger td.edited { position: relative; background: #FFFBEB; }
 .ledger td.edited::after { content: ""; position: absolute; top: 0; right: 0; border-style: solid; border-width: 0 8px 8px 0; border-color: transparent var(--warning) transparent transparent; }
@@ -325,7 +331,8 @@ function rsvCell(r, pick) {
 }
 /* ── 줄 세우기(시안 sunap-sort): 제목을 누를 때마다 오름차순 → 내림차순 → 접수 순 ── */
 const Q = new URLSearchParams(location.search)
-let SORT = { key: Q.get('k'), dir: Q.get('d') === 'desc' ? 'desc' : 'asc' }
+let SORT = { key: Q.get('k'), dir: Q.get('d') === 'desc' ? 'desc' : 'asc', by: Q.get('by') === 'date' ? 'date' : 'kind' }
+let MENU = Q.get('menu') === '1'
 const SORT_COLS = { name: '이름', kind: '구분', cash: '현금', card: '카드', acct: '계좌', un: '미수', rsv: '다음 예약' }
 const KIND_ORDER = { '초진': 0, '90일초진': 1, '재진': 2 }
 const RSV_ORDER = { '주사치료': 0, '진료(경과)': 1, '기타': 2 }
@@ -344,7 +351,7 @@ function sortKey(r, key) {
   if (key === 'card') return card
   if (key === 'acct') return acct
   if (key === 'un') return un
-  if (key === 'rsv') return rsvRank(rsv) * 10000 + Number(rsvDate(rsv))
+  if (key === 'rsv') return SORT.by === 'date' ? Number(rsvDate(rsv)) * 10 + Math.min(rsvRank(rsv), 8) : rsvRank(rsv) * 10000 + Number(rsvDate(rsv))
 }
 function ordered() {
   const list = ROWS.map((r, i) => ({ r, i }))
@@ -361,7 +368,25 @@ function ordered() {
     return c !== 0 ? sign * c : a.i - b.i   // 같으면 접수 순
   })
 }
+const RSV_MENU = [
+  ['kind', 'asc', '종류 순 ▲', '주사치료 → 진료(경과) → 기타'],
+  ['kind', 'desc', '종류 순 ▼', '거꾸로'],
+  ['date', 'asc', '날짜 순 ▲', '가까운 예약부터'],
+  ['date', 'desc', '날짜 순 ▼', '먼 예약부터'],
+  [null, 'asc', '접수 순', '처음 순서로'],
+]
+function rsvTh() {
+  const on = SORT.key === 'rsv'
+  const ar = on ? (SORT.dir === 'asc' ? '▲' : '▼') : '↕'
+  const label = on ? `다음 예약 · ${SORT.by === 'date' ? '날짜' : '종류'}` : '다음 예약'
+  const menu = MENU ? `<div class="smenu" role="menu">${RSV_MENU.map(([by, dir, t, sub]) => {
+    const cur = by === null ? !on : on && SORT.by === by && SORT.dir === dir
+    return `<button role="menuitemradio" aria-checked="${cur}" class="${cur ? 'on' : ''}" data-by="${by ?? ''}" data-dir="${dir}"><span>${t}</span><small>${sub}</small></button>`
+  }).join('')}</div>` : ''
+  return `<th class="menuwrap" aria-sort="${on ? (SORT.dir === 'asc' ? 'ascending' : 'descending') : 'none'}"><button class="sort${on ? ' on' : ''}" data-menu="rsv" aria-haspopup="menu" aria-expanded="${MENU}">${label}<span class="ar" aria-hidden="true">${ar}</span><span class="ar" aria-hidden="true">▾</span></button>${menu}</th>`
+}
 function th(key, label, cls = '') {
+  if (key === 'rsv') return rsvTh()
   if (!SORT_COLS[key]) return `<th${cls ? ` class="${cls}"` : ''}>${label}</th>`
   const on = SORT.key === key
   const ar = on ? (SORT.dir === 'asc' ? '▲' : '▼') : '↕'
@@ -370,6 +395,7 @@ function th(key, label, cls = '') {
 }
 function sortNote() {
   if (!SORT.key) return '<span class="sortnote">제목(이름·구분·금액·다음 예약)을 누르면 줄을 세워요</span>'
+  if (SORT.key === 'rsv') return `<span class="sortnote"><b>다음 예약 ${SORT.by === 'date' ? '날짜' : '종류'} 순 ${SORT.dir === 'asc' ? '▲' : '▼'}</b> · '예약 안 하고 가심'은 늘 맨 뒤 · 제목을 눌러 다른 기준·접수 순</span>`
   return `<span class="sortnote"><b>${SORT_COLS[SORT.key]} ${SORT.dir === 'asc' ? '오름차순' : '내림차순'}</b> · 한 번 더 누르면 ${SORT.dir === 'asc' ? '내림차순' : '접수 순'}</span>`
 }
 function ledgerRows(pickRow) {
@@ -513,9 +539,19 @@ if (S === 'stats') app.innerHTML = statsPage()
 else if (S === 'remote') app.innerHTML = remotePage()
 else app.innerHTML = ledgerPage(S === 'settings' ? 'open' : S)
 app.addEventListener('click', (e) => {
+  const rerender = (focusSel) => { app.innerHTML = ledgerPage(S === 'settings' ? 'open' : S); if (focusSel) app.querySelector(focusSel)?.focus() }
+  const item = e.target.closest('.smenu button')
+  if (item) {
+    const by = item.dataset.by
+    SORT = by ? { key: 'rsv', by, dir: item.dataset.dir } : { key: null, dir: 'asc', by: 'kind' }
+    MENU = false; return rerender('button.sort[data-menu="rsv"]')
+  }
+  const m = e.target.closest('button.sort[data-menu]')
+  if (m) { MENU = !MENU; return rerender(MENU ? '.smenu button.on, .smenu button' : 'button.sort[data-menu="rsv"]') }
+  if (MENU && !e.target.closest('.smenu')) { MENU = false; rerender() }
   const b = e.target.closest('button.sort'); if (!b) return
   const k = b.dataset.k
-  SORT = SORT.key !== k ? { key: k, dir: 'asc' } : SORT.dir === 'asc' ? { key: k, dir: 'desc' } : { key: null, dir: 'asc' }
+  SORT = SORT.key !== k ? { key: k, dir: 'asc', by: 'kind' } : SORT.dir === 'asc' ? { key: k, dir: 'desc', by: 'kind' } : { key: null, dir: 'asc', by: 'kind' }
   app.innerHTML = ledgerPage(S === 'settings' ? 'open' : S)
   app.querySelector(`button.sort[data-k="${k}"]`)?.focus()
 })
