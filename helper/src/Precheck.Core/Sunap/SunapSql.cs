@@ -8,7 +8,7 @@ namespace Precheck.Core.Sunap;
 
 /// <summary>
 /// 수납일지 하루 장부(contact.targets kind 'sunap', spec sunap-ilji REQ-4902)가 읽는 SQL. 모두 읽기 전용 SELECT 하나이고 ReadOnlyGuard 허용 목록에 든다(Sql.IsAllowed).
-/// 새로 지은 조건은 다음 예약 하나뿐이다. 나머지는 이미 쓰는 문장을 글자 바꾸기로 잘라 쓴다: 센 내원·첫 내원은 통계 VisitRowsSql의 Visits 글,
+/// 새로 지은 조건은 다음 예약과 건강생활유지비(QCV, spec sunap-health) 둘이다. 나머지는 이미 쓰는 문장을 글자 바꾸기로 잘라 쓴다: 센 내원·첫 내원은 통계 VisitRowsSql의 Visits 글,
 /// 처방은 그 Orders 줄, 금액은 매출 FinanceNormal(내원별로), 미수 입금은 매출 FinanceReceivable(환자별로).
 /// 원본 글이 바뀌어 바꿀 자리가 정확히 한 군데가 아니면 도우미가 뜨자마자 멈춘다(조용히 다른 뜻의 SQL이 되지 않게).
 /// 날 매개변수: @from·@to = 그날 0시·다음 날 0시(yyyyMMddHHmm), @day·@nextDay = 그날·다음 날(yyyyMMdd), @hospital = 등록 병원 범위.
@@ -71,6 +71,15 @@ CROSS APPLY (SELECT TOP 1 w.OcmAcpDtm,LEFT(RTRIM(CONVERT(nvarchar(4000),r.RsvRef
         "SELECT OrpOcmNum,OrpChtNum,SUM(OrpTotAmt),SUM(CashAmt),SUM(CardAmt),SUM(CheckAmt),MAX(OrpTotOwn) FROM NativeRows GROUP BY OrpOcmNum,OrpChtNum");
 
     /// <summary>
+    /// 건강생활유지비(spec sunap-health REQ-5401): 그날 수납한 비트 OrcInf의 OrcCod='QCV' 줄 OrcNewAmt를 내원·차트별로 더한다 [내원번호, 차트번호, QCV 합].
+    /// 병원·센 내원은 이 글이 거르지 않는다. SunapTargets가 MoneySql에 나온 그 차트의 내원 번호 것만 센다. @hospital은 쓰지 않아도 같은 날 묶음(DayParameters)을 받는다.
+    /// </summary>
+    public const string HealthSql = @"SELECT o.OrcOcmNum,o.OrcChtNum,SUM(o.OrcNewAmt)
+FROM dbo.OrcInf o
+WHERE o.OrcCod='QCV' AND o.OrcAccDte>=@day AND o.OrcAccDte<@nextDay
+GROUP BY o.OrcOcmNum,o.OrcChtNum";
+
+    /// <summary>
     /// 매출 FinanceReceivable(그날 예전 미수를 낸 것)의 NativeRows 줄 머리에 이름·수납 시각을 더하고 끝 SELECT만 환자(OrpChtNum)별로:
     /// [차트번호, 이름, 가장 이른 수납 시각 OrpAccDte, 총진료비, 미수입금 현금 CorAmt, 카드 CorCrdAmt, 계좌 CorChkAmt].
     /// </summary>
@@ -97,6 +106,7 @@ CROSS APPLY (SELECT TOP 1 w.OcmAcpDtm,LEFT(RTRIM(CONVERT(nvarchar(4000),r.RsvRef
         [CodesSql] = VisitParameters,
         [NextReservationSql] = VisitParameters,
         [MoneySql] = DayParameters,
+        [HealthSql] = DayParameters,
         [PaidSql] = DayParameters,
     };
 
