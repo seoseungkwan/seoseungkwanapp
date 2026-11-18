@@ -293,6 +293,9 @@ const SUNAP_ROWS_WHERE = '수납일지 장부 줄 화면(components/sunap/rows)'
 // 예약표 그리기 부품(components/calendar/rows, spec clinic-calendar AC-5905.11): 시간 표·비트 예약 칸·고르기 목록·폰 목록. 수납일지 장부 줄과 같은 울타리.
 // 예약 줄(이름·차트번호)·비트 찾기 결과·비트 예약 칸은 props로만 받고 누름은 콜백으로만 넘긴다
 const CALENDAR_ROWS_WHERE = '예약표 그리기 부품(components/calendar/rows)'
+// 처음 질문 붙여 넣기 칸(components/settings/firstRun/paste, spec clinic-profile AC-6614.2·design.md 16절): 붙인 예전 메모(환자 이름이 섞일 수 있다)가 닿는 유일한 곳.
+// 글은 그 칸의 상태에만 두고 readMemo 결과만 콜백으로 올린다. 수납일지 장부 줄과 같은 울타리
+const FIRST_RUN_PASTE_WHERE = '처음 질문 붙여 넣기 칸(components/settings/firstRun/paste)'
 // 환자 줄 화면 규칙 전부 + 비트 통로(lib/bridge 전체)·workers import 금지. where = 안내 글이 말하는 폴더
 function fencedRowsRules(where) {
   const bridgeMessage = `${where}은 비트 통로(lib/bridge)·workers를 import할 수 없다(줄은 props로만 받는다)`
@@ -315,6 +318,7 @@ function fencedRowsRules(where) {
 }
 const sunapRowsRules = () => fencedRowsRules(SUNAP_ROWS_WHERE)
 const calendarRowsRules = () => fencedRowsRules(CALENDAR_ROWS_WHERE)
+const firstRunPasteRules = () => fencedRowsRules(FIRST_RUN_PASTE_WHERE)
 
 
 // 통로 코드만: 확장에 말을 거는 곳(connect·sendMessage)은 첫 인자가 EXTENSION_ID일 때만. 주입받은 runtime도 같다
@@ -493,6 +497,11 @@ const eslintConfig = [
     // 예약표 그리기 부품(spec clinic-calendar AC-5905.11): 네트워크·console·저장소·supabase·lib/storage·lib/auth·통로·workers 금지. JSX는 된다
     files: ['src/components/calendar/rows/**'],
     rules: calendarRowsRules(),
+  },
+  {
+    // 처음 질문 붙여 넣기 칸(spec clinic-profile AC-6614.2): 네트워크·console·저장소·supabase·lib/storage·lib/auth·통로·workers 금지. JSX는 된다
+    files: ['src/components/settings/firstRun/paste/**'],
+    rules: firstRunPasteRules(),
   },
 ]
 
