@@ -570,7 +570,7 @@ public class ReceptionSqlTests
         Assert.Contains("SELECT c.OcmNum,c.OcmChtNum,c.OcmAcpDtm,c.OcmComStt,c.OcmRsuYon,c.OcmDgsNfs FROM dbo.OcmInf c", today, StringComparison.Ordinal);
         Assert.EndsWith(",RTRIM(T.OcmRsuYon) Rsu,RTRIM(T.OcmDgsNfs) Nfs FROM T", today, StringComparison.Ordinal);
         Assert.Equal("Nfs", OuterColumns(TodayVisits).Last());
-        Assert.Contains(RevenueSql.Parameters.Keys.Concat(StatsSql.All), sql => sql.Contains("c.OcmDgsNfs", StringComparison.Ordinal));
+        Assert.Contains(RevenueSql.Parameters.Keys.Concat(StatsSql.All), sql => sql.IndexOf("c.OcmDgsNfs", StringComparison.Ordinal) >= 0);
         foreach (var sql in new[] { TodayRx, PriorVisits, PriorSymptoms, TodayPeople, TodayPaid, TodayOrderTimes })
         {
             Assert.DoesNotContain(" Nfs", Squash(sql), StringComparison.Ordinal);
