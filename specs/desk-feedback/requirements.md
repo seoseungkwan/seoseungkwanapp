@@ -34,6 +34,7 @@
 - AC-6302.2: Given 하루 숫자 줄들과 열쇠, When `ptCount(day, days, key)`를 부르면, Then 그날 줄(`todayView`가 쓰는 줄, 같은 날은 뒤의 것)의 `groups`에서 그 열쇠 줄의 `patients`이고, 열쇠 줄이 없으면 0, 그날 줄이 없으면 null이다.
 - AC-6302.3: Given 대시보드 하루 분석, When 숫자 칸을 그리면, Then 칸은 여섯이다: '환자 수'(오늘이면 '오늘 환자 수') · '신환' · '90일초진' · '재진' · '물리치료' · '지난주 같은 요일보다'. 물리치료 값은 ptCount `{n}명`이다. 묶음을 안 골랐으면(pt null) 값 대신 '수납일지 설정에서 묶음을 고르면 나와요', 설정·묶음을 못 읽었거나(pt 없음) 그날 줄이 없으면 '자료 없음', 숫자가 아직 없을 때(연결 전·읽는 중)는 다른 칸과 같은 글이다. 물리치료 칸 아래 작은 글은 없다. 기준일 묶음의 글은 '숫자 6개와 보고 문장에 적용'이고, 보고 문장은 바뀌지 않는다(물리치료를 넣지 않는다).
 - AC-6302.4: Given 768px 미만 화면, When 숫자 칸을 그리면, Then 두 칸씩 세 줄이다(셋째 줄 = 물리치료 · 지난주 같은 요일보다). 읽는 동안의 뼈대(`DashboardSkeleton`) 숫자 줄도 768px 이상에서 여섯 칸이다.
+- AC-6302.5: Given 수납일지 설정 읽기가 늦거나 실패하면, When 대시보드가 묶음을 읽으면, Then 처방 묶음(처방 상위 등)은 설정 읽기를 기다리지 않고 그대로 보이고(설정 읽기는 따로 짧은 시간 제한), 물리치료 칸만 '자료 없음'이다(2026-11-18 검토 고침).
 
 ### REQ-6303: 데스크 계정 — 서버 표·권한 (`supabase/migrations/20261118100000_desk_accounts.sql`)
 - AC-6303.1: Given 앞 migration들(auth·precheck_settings·worklog 넷·stats_rx_groups 둘·sunap·calendar) 다음, When 이 SQL을 실행하면, Then 표 `hospital_members`(id·hospital_id·email·role·created_at)가 생기고 RLS가 켜지며 anon·authenticated의 표 권한은 하나도 없다(읽기·더하기·빼기는 정의자 함수로만). email은 앞뒤 빈칸 없는 소문자 메일 모양 3~254자이고 표 전체에서 하나뿐이다. role은 'desk'뿐이다. 새 함수는 public·anon에서 실행 권한을 거두고 authenticated에만 준다. `my_hospital_id()`는 다시 만들지 않고 글자도 바꾸지 않는다. 두 번 실행해도 그대로다.

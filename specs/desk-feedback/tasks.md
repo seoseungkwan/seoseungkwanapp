@@ -66,3 +66,11 @@
 - Files: src/types/desk.ts, src/lib/storage/desk.ts, src/lib/storage/desk.test.ts, src/components/settings/DeskAccounts.tsx, src/components/settings/DeskAccounts.test.tsx, src/components/settings/SettingsPage.tsx, src/app/(app)/settings/page.test.tsx, src/lib/errors.ts, src/lib/errors.test.ts, src/types/errors.ts, src/components/settings/InstallFilesCard.test.tsx
 - Tests: src/lib/storage/desk.test.ts, src/components/settings/DeskAccounts.test.tsx, src/lib/errors.test.ts
 - TDD: required — design.md '③ 설정 데스크 계정 칸'. 저장 시험은 부르는 함수 이름·인자가 정해 둔 것뿐인지, 틀린 답·오류에서 Supabase 문구·메일이 새지 않는지 본다. 화면 시험은 저장 함수를 흉내 내 다섯 답·5줄 꺼짐·[빼기]·읽기 실패를 본다. 오류 여섯은 design.md 표 글 그대로. 설정 페이지 시험은 새 칸이 맨 아래에 있는지만 더하고 저장은 흉내 낸다
+
+## TASK-7: 검토 고침 (설정 읽기 따로 기다리기·메일 예시 빼기·계획 문서 표 차례)
+- Phase: 4
+- AC: AC-6302.5, AC-6304.3
+- REQ: REQ-6302, REQ-6304
+- Files: src/components/dashboard/live/rxGroups.ts, src/components/dashboard/live/rxGroups.test.ts, src/lib/errors.ts, src/lib/errors.test.ts, src/components/settings/DeskAccounts.test.tsx, plan.md
+- Tests: src/components/dashboard/live/rxGroups.test.ts, src/lib/errors.test.ts
+- TDD: required — 마지막 검토(2026-11-18 오후)에서 나온 것. 오류 문구의 메일 예시는 '코드 속 메일 모양 글자는 관리자 연락처 하나'(AC-409.3) 규칙 때문에 뺀다. plan.md DB 표의 데스크 줄(`hospital_members`)은 rx-picker·treatment-trend 문서 시험이 차례를 보는 줄들(`rx_groups`·`stats_rx_picks`·`sales_days`) 아래로 옮긴다.

@@ -70,7 +70,7 @@ export function rsvKeyPatch(row: LedgerRow, kinds: readonly RsvKindDef[], key: s
 |---|---|---|
 | E-DESK-READ-FAILED | 데스크 계정 목록을 불러오지 못했어요 | 인터넷 연결을 확인하고 [다시 불러오기]를 눌러 주세요. |
 | E-DESK-SAVE-FAILED | 데스크 계정을 바꾸지 못했어요 | 인터넷 연결을 확인하고 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요. |
-| E-DESK-EMAIL-BAD | 메일 주소 모양이 아니에요 | 데스크가 로그인할 구글 메일을 그대로 적어 주세요(예: desk@gmail.com). |
+| E-DESK-EMAIL-BAD | 메일 주소 모양이 아니에요 | 데스크가 로그인할 구글 메일 주소를 그대로 적어 주세요. |
 | E-DESK-EMAIL-TAKEN | 이미 병원 계정으로 가입된 메일이에요 | 병원 계정은 데스크가 될 수 없어요. 데스크용 다른 구글 메일을 적어 주세요. |
 | E-DESK-EMAIL-USED | 이미 데스크 계정으로 더한 메일이에요 | 목록을 확인해 주세요. 다른 병원의 데스크 메일이면 그 병원에서 먼저 빼야 해요. |
 | E-DESK-LIMIT | 데스크 계정은 5개까지예요 | 쓰지 않는 계정을 [빼기]한 뒤 더해 주세요. |
