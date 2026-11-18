@@ -14,8 +14,12 @@ export const metadata: Metadata = { title: '통계' }
 
 export default async function StatsPage() {
   // 병원 이름은 문지기가 이미 읽은 내 병원 줄에서 꺼낸다(요청 안에서 한 번만 읽는다)
-  const { hospital } = await currentMe()
-  // 문지기는 승인된 병원 줄이 있을 때만 앱 경로를 연다 → 아니면 여기 올 수 없다. 던지면 오류 화면(app/error.tsx)이 내용 없이 안내한다
-  if (hospital === null) throw new Error('승인된 병원 줄이 없어요')
+  const { hospital, desk } = await currentMe()
+  if (hospital === null) {
+    // 데스크(desk-feedback AC-6305.4): 막힌 화면은 앱 틀(DeskGate)이 그린다. 던지면 앱 틀 대신 오류 화면이 뜬다 → 아무것도 그리지 않는다
+    if (desk) return null
+    // 문지기는 승인된 병원 줄이 있을 때만 앱 경로를 연다 → 아니면 여기 올 수 없다. 던지면 오류 화면(app/error.tsx)이 내용 없이 안내한다
+    throw new Error('승인된 병원 줄이 없어요')
+  }
   return <StatsScreen hospitalName={hospital.name} today={todayInKorea()} />
 }
