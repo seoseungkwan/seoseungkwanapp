@@ -33,6 +33,14 @@
 - `jobs.ts`: `memory.days`의 `newPatients`는 v5면 그날 신환 날인 접수 줄 수로 바꿔 넣는다(VisitDaysSql 값 대신). v2~v4는 지금 그대로.
 - aggregate·dashboard·화면은 고치지 않는다(이미 `firstVisit`·`first90`만 본다).
 
+## 접수현황 (TASK-4, 접수현황 갈래)
+- 코드는 운영 웹 갈래(feat-dashboard-saved)에 없고 접수현황 갈래(2026-11-18 가장 새것 `feat-reception-other-clinic`)의 `helper/src/Precheck.Core/Reception/`에 있다.
+  묶어서 할 때 그 갈래 위에서 하고 접수현황 설치 zip을 새로 만든다(웹 배포와 따로).
+- `ReceptionSql`: 오늘 접수 CTE(T)에 `c.OcmDgsNfs`를 더하고 `TodayVisits`가 `RTRIM(T.OcmDgsNfs) Nfs`를 낸다.
+- `BoardReader`가 읽어 `VisitRow.Nfs`에 둔다. `BoardBuilder.InfoOf`의 끝 조각 = `Nfs == "1" ? "신환" : "재진"`.
+  `hasPrior`는 처방 칸(지난번 증상 / 첫 처방, RxOf)에만 남긴다.
+- 화면(reception/www)은 고치지 않는다 — 이미 정보 글 끝 조각 "신환"으로 신환 표시를 붙인다.
+
 ## 순서와 배포
 1. 도우미 새 판(0.11.0)과 웹을 같이 낸다. 옛 웹은 v5를 받지 못하므로 **웹 배포 → 도우미 릴리스·설치 파일 올리기** 순서다.
    새 웹은 옛 도우미(v4)도 받으므로 두 병원이 새 도우미를 깔기 전에도 지금처럼 돈다.

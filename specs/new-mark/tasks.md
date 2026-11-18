@@ -18,6 +18,13 @@
 - Tests: src/workers/stats/helperData.test.ts, src/workers/stats/jobs.test.ts
 - TDD: required
 
+## TASK-4: 접수현황 도우미 — 신환 표시로 정보 글
+- REQ: REQ-005
+- Files: helper/src/Precheck.Core/Reception/ReceptionSql.cs, helper/src/Precheck.Core/Reception/BoardReader.cs, helper/src/Precheck.Core/Reception/BoardBuilder.cs, helper/tests/Precheck.Core.Tests/Reception/*.test.cs
+- Tests: helper/tests/Precheck.Core.Tests/Reception/BoardBuilder.test.cs
+- TDD: required
+- 메모: 접수현황 갈래(feat-reception-other-clinic 또는 묶을 때의 가장 새 접수현황 갈래) 위에서 한다. TASK-1·2와 파일이 겹치지 않아 같은 Phase에서 동시에 한다.
+
 # Phase 2
 
 ## TASK-3: 도우미 판 0.11.0
