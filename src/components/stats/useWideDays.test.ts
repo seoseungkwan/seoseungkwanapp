@@ -139,6 +139,54 @@ describe('AC-6101.5·AC-6107.3 오늘 앞 12달을 한 번 읽는다', () => {
     expect(readDays).toHaveBeenCalledTimes(1)
   })
 
+  it('AC-6101.6: 저장·[다시 읽기]로 revision이 늘어 다시 읽는 동안 앞서 읽은 숫자(ready)를 그대로 주고, 다 읽으면 새 숫자로 바꾼다', async () => {
+    const view = draw()
+    await waitFor(() => expect(view.result.current.state).toBe('ready'))
+    const again = deferred<Read>()
+    vi.mocked(readDays).mockReturnValueOnce(again.promise)
+    view.rerender({ today: TODAY, revision: 1 })
+    // 다시 그린 바로 그때부터(읽기가 끝나기 전) 앞 숫자다 — 칸이 사라지거나 비지 않는다
+    expect(view.result.current.state).toBe('ready')
+    expect(view.result.current.days).toEqual(ROWS)
+    await settle()
+    expect(reads()).toHaveLength(2)
+    expect(view.result.current.state).toBe('ready')
+    expect(view.result.current.days).toEqual(ROWS)
+    const fresh = [day('2026-11-16', 40), day('2026-11-17', 50)]
+    await act(async () => again.resolve(read(fresh)))
+    expect(view.result.current.state).toBe('ready')
+    expect(view.result.current.days).toEqual(fresh)
+  })
+
+  it('AC-6101.6: 다시 읽는 동안 revision이 또 늘면 늦게 온 앞 답은 버리고, 그동안에도 처음 읽은 숫자를 준다', async () => {
+    const view = draw()
+    await waitFor(() => expect(view.result.current.state).toBe('ready'))
+    const second = deferred<Read>()
+    const third = deferred<Read>()
+    vi.mocked(readDays).mockReturnValueOnce(second.promise).mockReturnValueOnce(third.promise)
+    view.rerender({ today: TODAY, revision: 1 })
+    view.rerender({ today: TODAY, revision: 2 })
+    await settle()
+    expect(reads()).toHaveLength(3)
+    expect(view.result.current.days).toEqual(ROWS)
+    await act(async () => third.resolve(read([day('2026-11-17', 70)])))
+    await act(async () => second.resolve(read([day('2026-11-17', 60)])))
+    expect(view.result.current.state).toBe('ready')
+    expect(view.result.current.days.map((row) => row.totals.patients)).toEqual([70])
+  })
+
+  it('AC-6101.6: 다시 읽기가 실패하면 failed(빈 줄)이고 retry()로 다시 읽는다', async () => {
+    const view = draw()
+    await waitFor(() => expect(view.result.current.state).toBe('ready'))
+    vi.mocked(readDays).mockRejectedValueOnce(new Error('E-STATS-READ-FAILED'))
+    view.rerender({ today: TODAY, revision: 1 })
+    await waitFor(() => expect(view.result.current.state).toBe('failed'))
+    expect(view.result.current.days).toEqual([])
+    act(() => view.result.current.retry())
+    await waitFor(() => expect(view.result.current.state).toBe('ready'))
+    expect(readDays).toHaveBeenCalledTimes(3)
+  })
+
   it('AC-6101.5·AC-6107.3: useWideDays.ts는 브라우저 저장소·fetch·lib/bridge를 쓰지 않는다(받은 줄은 React 상태에만)', () => {
     const src = readFileSync(join(process.cwd(), 'src/components/stats/useWideDays.ts'), 'utf8')
     expect(src).not.toMatch(/localStorage|sessionStorage|indexedDB|fetch\(|@\/lib\/bridge/)

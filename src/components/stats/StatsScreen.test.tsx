@@ -4233,6 +4233,36 @@ describe('stats-insights TASK-7: 요약 자리 알림·목표 · 진료 운영 �
     expect(revenueStore.loadDays).toHaveBeenCalledWith({ from: addDays(TODAY, -56), to: YESTERDAY })
   })
 
+  it('AC-6102.6: [비트에서 불러오기]가 통계 저장·매출 읽기를 마치면 이번 달 목표와 하루 매출을 다시 읽어 매출 줄이 새 총액이다', async () => {
+    vi.mocked(loadGoal).mockResolvedValue({ visits: null, newPatients: null, revenue: 10_000_000 })
+    revenueDb.set('2026-11-02', { ...workDay('2026-11-02'), dayCodes: true })
+    const port = fakeChrome()
+    fakeWorker()
+    draw()
+    sayHello(port)
+    await sectionsShown()
+    const sales = () => linesOf(within(goalCard()).getByRole('group', { name: '매출' }))[0]
+    await within(goalCard()).findByRole('group', { name: '매출' })
+    expect(sales()).toBe('매출300만 원 / 목표 1,000만 원 · 30%')
+    // 이번 달 목표 읽기·이번 달 칸의 하루 매출 읽기만 센다(보고 카드 '월간 보고서'는 지난달을 따로 읽는다, AC-6108.2)
+    const goalSpan = { from: addDays(TODAY, -56), to: YESTERDAY }
+    const goalReads = () => vi.mocked(loadGoal).mock.calls.filter(([, month]) => month === '2026-11').length
+    const salesReads = () => revenueStore.loadDays.mock.calls.filter(([range]) => range.from === goalSpan.from && range.to === goalSpan.to).length
+    const before = { goal: goalReads(), sales: salesReads() }
+
+    // 비트 매출 읽기가 어제(11월 12일) 하루를 진료한 날 300만 원으로 저장한다
+    port.revenueReply = (range) => ({ type: 'result', data: revenueAnswer(range, workDay) })
+    pressLoad(port)
+    await waitFor(() => expect(revenueStore.saveRange).toHaveBeenCalledTimes(1))
+    await loadIsFree()
+    await waitFor(() => expect(sales()).toBe('매출600만 원 / 목표 1,000만 원 · 60%'))
+    expect(goalReads()).toBeGreaterThan(before.goal)
+    expect(salesReads()).toBeGreaterThan(before.sales)
+    // 매출을 저장한 뒤의 읽기가 마지막이다(통계 저장 직후 읽기만으로는 새 매출을 못 본다)
+    const lastSales = revenueStore.loadDays.mock.calls.map(([range]) => range).findLastIndex((range) => range.from === goalSpan.from && range.to === goalSpan.to)
+    expect(revenueStore.loadDays.mock.invocationCallOrder[lastSales]!).toBeGreaterThan(revenueStore.saveRange.mock.invocationCallOrder[0]!)
+  })
+
   it('AC-6102.4: 목표가 있는데 넓은 하루를 읽지 못하면 목표 카드도 오류 카드와 [다시 읽기]이고, 누르면 목표와 넓은 하루를 함께 다시 읽는다', async () => {
     vi.mocked(loadGoal).mockResolvedValue({ visits: 400, newPatients: null, revenue: null })
     const state = wideAnswers(TENS, { fails: true })
@@ -4333,6 +4363,71 @@ describe('stats-insights TASK-8: 보고 카드 월간 보고서', () => {
     expect(titles).not.toContain('몇 번까지 받나')
     expect(titles).not.toContain('신환 1명당 매출')
     expect(titles.slice(0, 2)).toEqual(['한 달 요약', '달라진 것'])
+  })
+
+  // 보고서 종이 '한 달 요약'의 매출 칸 값
+  const paperSales = () => {
+    const name = [...document.querySelectorAll('[data-print-report] dt')].find((dt) => dt.textContent === '매출')
+    return name?.nextElementSibling?.textContent ?? null
+  }
+
+  it('AC-6108.5·AC-6108.4: 이번 달 보고서의 매출(어제까지)은 [비트에서 불러오기]가 매출을 저장한 뒤 다시 읽어 새 총액이다', async () => {
+    wideRows(ROWS)
+    revenueDb.set('2026-11-02', { ...workDay('2026-11-02'), dayCodes: true })
+    const port = fakeChrome()
+    fakeWorker()
+    draw()
+    sayHello(port)
+    await sectionsShown()
+    const part = (await waitFor(() => monthly()!)).closest('section')!
+    fireEvent.click(within(within(part).getByRole('group', { name: '달' })).getByRole('button', { name: '2026년 11월' }))
+    await waitFor(() => expect(paperSales()).toBe('300만 원'))
+    expect(revenueStore.loadDays).toHaveBeenCalledWith({ from: '2026-10-01', to: YESTERDAY })
+
+    // 비트 매출 읽기가 어제(11월 12일) 하루를 진료한 날 300만 원으로 저장한다
+    port.revenueReply = (range) => ({ type: 'result', data: revenueAnswer(range, workDay) })
+    pressLoad(port)
+    await waitFor(() => expect(revenueStore.saveRange).toHaveBeenCalledTimes(1))
+    await loadIsFree()
+    await waitFor(() => expect(paperSales()).toBe('600만 원'))
+    expect(revenueStore.loadDays).not.toHaveBeenCalledWith({ from: '2026-10-01', to: '2026-11-30' })
+  })
+
+  it('AC-6108.5: 통계는 저장되고 매출만 실패한 뒤 [매출만 다시 읽기]가 매출을 저장하면 이번 달 보고서도 매출을 다시 읽어 새 총액이고, 그동안 매출 칸은 앞 값 그대로다', async () => {
+    wideRows(ROWS)
+    revenueDb.set('2026-11-02', { ...workDay('2026-11-02'), dayCodes: true })
+    const port = fakeChrome()
+    fakeWorker()
+    draw()
+    sayHello(port)
+    await sectionsShown()
+    const part = (await waitFor(() => monthly()!)).closest('section')!
+    fireEvent.click(within(within(part).getByRole('group', { name: '달' })).getByRole('button', { name: '2026년 11월' }))
+    await waitFor(() => expect(paperSales()).toBe('300만 원'))
+
+    // 통계 조각은 저장되고 매출 읽기만 실패한다 → 매출은 그대로 300만 원
+    port.revenueReply = () => ({ type: 'error', code: 'E-BIT-READ-FAILED' })
+    pressLoad(port)
+    const failBox = () => (screen.queryByText('매출은 읽지 못했어요')?.closest('[role="status"]') ?? null) as HTMLElement | null
+    await waitFor(() => expect(failBox()).not.toBeNull())
+    await loadIsFree()
+    expect(revenueStore.saveRange).not.toHaveBeenCalled()
+    await waitFor(() => expect(paperSales()).toBe('300만 원'))
+
+    // [매출만 다시 읽기]: 통계는 다시 저장하지 않고(data.revision 그대로) 매출만 어제(11월 12일) 진료한 날 300만 원으로 저장한다
+    const saves = vi.mocked(saveStats).mock.calls.length
+    port.revenueReply = (range) => ({ type: 'result', data: revenueAnswer(range, workDay) })
+    fireEvent.click(within(failBox()!).getByRole('button', { name: '매출만 다시 읽기' }))
+    // 화면이 바뀔 때마다 매출 칸 값을 적어 둔다 — 다시 읽는 동안 칸이 사라지면 null이 남는다
+    const seen: (string | null)[] = []
+    await waitFor(() => {
+      seen.push(paperSales())
+      expect(paperSales()).toBe('600만 원')
+    })
+    await loadIsFree()
+    expect(revenueStore.saveRange).toHaveBeenCalledTimes(1)
+    expect(seen.every((value) => value === '300만 원' || value === '600만 원')).toBe(true)
+    expect(vi.mocked(saveStats).mock.calls.length).toBe(saves)
   })
 
   const wideCallsOf = (span: DateRange) => vi.mocked(readDays).mock.calls.filter(([range]) => range.from === span.from && range.to === span.to).length

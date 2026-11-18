@@ -526,12 +526,23 @@ describe('AC-6108.1·AC-6108.2·AC-6108.3: 월간 보고서 칸', () => {
   }
   const printSpy = vi.fn()
 
-  const drawMonthly = (over: { wide?: WideDays; goal?: GoalRead<Goal> } = {}) =>
-    render(
-      <StatsCard title="원장님 보고 문장">
-        <MonthlyReportSection today={TODAY} hospitalName={HOSPITAL} wide={over.wide ?? wideOf()} groups={[G_DOSU]} calendar={CALENDAR} bit={null} goal={over.goal} />
-      </StatsCard>,
-    )
+  const monthlyEl = (over: { wide?: WideDays; goal?: GoalRead<Goal>; revision?: number } = {}) => (
+    <StatsCard title="원장님 보고 문장">
+      <MonthlyReportSection
+        today={TODAY}
+        hospitalName={HOSPITAL}
+        wide={over.wide ?? wideOf()}
+        groups={[G_DOSU]}
+        calendar={CALENDAR}
+        bit={null}
+        goal={over.goal}
+        revision={over.revision ?? 0}
+      />
+    </StatsCard>
+  )
+  const drawMonthly = (over: { wide?: WideDays; goal?: GoalRead<Goal>; revision?: number } = {}) => render(monthlyEl(over))
+  const settle = () => act(async () => void (await new Promise((done) => setTimeout(done))))
+  const goalReadsOf = (month: string) => vi.mocked(loadGoal).mock.calls.filter(([, asked]) => asked === month).length
   const monthGroup = () => screen.getByRole('group', { name: '달' })
   const paperTitle = () => screen.getByRole('heading', { level: 4 })
   const paperEl = () => document.querySelector('[data-print-report]') as HTMLElement
@@ -581,8 +592,53 @@ describe('AC-6108.1·AC-6108.2·AC-6108.3: 월간 보고서 칸', () => {
     fireEvent.click(within(monthGroup()).getByRole('button', { name: '2026년 11월' }))
     expect(paperTitle().textContent).toContain('2026년 11월 통계 보고')
     expect(screen.getByText('내원 100명 / 목표 200명 · 50%')).toBeTruthy()
-    await waitFor(() => expect(revenueStore.loadDays).toHaveBeenCalledWith({ from: '2026-10-01', to: '2026-11-30' }))
+    await waitFor(() => expect(revenueStore.loadDays).toHaveBeenCalledWith({ from: '2026-10-01', to: '2026-11-12' }))
     expect(loadGoal).not.toHaveBeenCalledWith(expect.anything(), '2026-11')
+  })
+
+  it('AC-6108.4: 이번 달 하루 매출은 어제(11월 12일)까지만 읽는다 — 넓은 하루·목표 칸과 같은 끝이다. 지난 달은 그 달 끝까지다', async () => {
+    drawMonthly()
+    await waitFor(() => expect(revenueStore.loadDays).toHaveBeenCalledWith({ from: '2026-09-01', to: '2026-10-31' }))
+    fireEvent.click(within(monthGroup()).getByRole('button', { name: '2026년 11월' }))
+    await waitFor(() => expect(revenueStore.loadDays).toHaveBeenCalledWith({ from: '2026-10-01', to: '2026-11-12' }))
+    expect(revenueStore.loadDays).not.toHaveBeenCalledWith({ from: '2026-10-01', to: '2026-11-30' })
+    expect(revenueStore.loadDays).not.toHaveBeenCalledWith({ from: '2026-10-01', to: TODAY })
+  })
+
+  it('AC-6108.5·AC-6102.6: revision이 늘면(비트에서 불러오기·저장·매출 읽기가 끝남) 고른 달 매출·목표를 다시 읽고, 다시 읽는 동안 앞 값(매출 칸·목표 줄)을 그대로 둔다', async () => {
+    const view = drawMonthly()
+    await waitFor(() => expect(screen.getByText('1억 1,000만 원')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('내원 700명 / 목표 1,000명 · 70%')).toBeTruthy())
+    let finishSales!: (rows: SavedRevenueDay[]) => void
+    let finishGoal!: (goal: Goal) => void
+    revenueStore.loadDays.mockImplementationOnce(() => new Promise((resolve) => (finishSales = resolve)))
+    vi.mocked(loadGoal).mockImplementationOnce(() => new Promise((resolve) => (finishGoal = resolve)))
+    view.rerender(monthlyEl({ revision: 1 }))
+    // 다시 그린 바로 그때부터 앞 값 — 매출 칸·목표 줄이 사라지지 않는다
+    expect(screen.getByText('1억 1,000만 원')).toBeTruthy()
+    expect(screen.getByText('내원 700명 / 목표 1,000명 · 70%')).toBeTruthy()
+    await settle()
+    expect(revenueStore.loadDays).toHaveBeenCalledTimes(2)
+    expect(goalReadsOf('2026-10')).toBe(2)
+    expect(screen.getByText('1억 1,000만 원')).toBeTruthy()
+    expect(screen.getByText('내원 700명 / 목표 1,000명 · 70%')).toBeTruthy()
+    await act(async () => finishSales([salesDay('2026-09-07', 50_000_000), salesDay('2026-10-05', 130_000_000)]))
+    expect(screen.getByText('1억 3,000만 원')).toBeTruthy()
+    expect(screen.getByText('내원 700명 / 목표 1,000명 · 70%')).toBeTruthy()
+    await act(async () => finishGoal({ visits: 1400, newPatients: null, revenue: null }))
+    expect(screen.getByText('내원 700명 / 목표 1,400명 · 50%')).toBeTruthy()
+    expect(screen.queryByText('1억 1,000만 원')).toBeNull()
+  })
+
+  it('AC-6108.5: 다른 달을 고르면 앞 달 매출을 새 달 칸에 보이지 않는다(새 달은 읽는 중)', async () => {
+    drawMonthly()
+    await waitFor(() => expect(screen.getByText('1억 1,000만 원')).toBeTruthy())
+    revenueStore.loadDays.mockImplementationOnce(() => new Promise(() => undefined))
+    fireEvent.click(within(monthGroup()).getByRole('button', { name: '9월' }))
+    await settle()
+    expect(paperTitle().textContent).toContain('2026년 9월 통계 보고')
+    expect(screen.queryByText('1억 1,000만 원')).toBeNull()
+    expect(within(paperEl()).queryByText('매출')).toBeNull()
   })
 
   it('AC-6108.2: 매출·목표 읽기가 실패하면 종이 밖에 오류 카드 + [다시 읽기]이고 그 칸만 빼고 그린다. [다시 읽기]는 다시 읽는다', async () => {

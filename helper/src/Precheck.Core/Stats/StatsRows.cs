@@ -541,6 +541,7 @@ public static class StatsExtra
     /// 환자·날 금액(spec stats-insights AC-6106.1): 날·원장님 금액과 같은 달 나누기로 달마다 정상수납 → 미수입금을 읽는다(같은 기준 줄의 OrpTotAmt).
     /// 같은 (차트번호, 수납일)은 decimal로 다 더한 뒤 원 미만을 버리고(반올림하지 않음, 0 쪽으로) 0원 줄은 뺀다. 환불이 더 큰 날의 음수는 그대로 둔다.
     /// 차트번호가 비어 있으면 환자가 없어 뺀다. 차트번호·수납일 차례.
+    /// 싣는 줄이 다른 줄과 같은 상한(StatsRows.MaxRows)을 넘으면 같은 E-STATS-TOO-BIG이다(AC-6106.6 — 웹이 답 전체를 모양 오류로 거절하지 않게).
     /// </summary>
     private static List<StatsPatientPay> PatientPays(IBitDb db, string hospitalScope, DateTime first, DateTime last)
     {
@@ -566,6 +567,7 @@ public static class StatsExtra
             var won = Won(pair.Value);
             if (won != 0) pays.Add(new StatsPatientPay(pair.Key.Chart, pair.Key.Day, won));
         }
+        if (pays.Count > StatsRows.MaxRows) throw new BitException(StatsErrors.TooBig);
         return pays;
     }
 

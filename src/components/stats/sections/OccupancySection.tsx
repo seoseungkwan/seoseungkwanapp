@@ -16,10 +16,10 @@ import { Note, Section } from './parts'
 const TITLE = '예약 빈자리'
 const EMPTY = '예약이 쌓이면 보여요'
 const RETRY = '다시 읽기'
-const FOOT = '최근 8주. 찬 정도 = 그 시간에 잡힌 예약 분 ÷ (일하는 시행자 수 × 60분). 휴무인 시행자와 취소된 예약은 빼요.'
+const FOOT = '최근 8주. 찬 정도 = 그 시간에 잡힌 예약 분 ÷ (일하는 시행자 수 × 60분). 휴무인 시행자와 취소된 예약은 빼요. 8주 동안 예약이 없던 시간은 비워 둬요.'
 const SCROLL_NAME = '예약 빈자리 표, 옆으로 밀어 볼 수 있어요'
 const WEEKDAYS = '월화수목금토일'
-// 색 네 단계(45 미만·65 미만·85 미만·85 이상, 시안 heat 색). 자리 0 칸은 빈 바탕
+// 색 네 단계(45 미만·65 미만·85 미만·85 이상, 시안 heat 색). 빈 칸(자리 0 · 8주 동안 예약이 없던 시간, AC-6105.1)은 빈 바탕
 const LEVEL_TONE = ['bg-st-h1 text-st-ink', 'bg-st-h2 text-st-ink', 'bg-st-h3 text-st-ink', 'bg-st-h5 text-surface'] as const
 const NONE_TONE = 'bg-st-canvas'
 const CELL = 'st-move-heat h-7.5 rounded-control text-center text-small font-semibold tabular-nums'

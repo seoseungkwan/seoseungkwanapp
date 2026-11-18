@@ -1,22 +1,25 @@
 import { formatCount } from '@/components/charts/format'
 import { formatManWon } from '@/components/revenue/money'
 import { groupKey, keyedIn } from '@/components/stats/treatmentView'
-import { addMonths, compareYmd, monthOf, monthRange } from '@/lib/analytics/dates'
+import { addDays, addMonths, compareYmd, monthOf, monthRange, sameDayLastMonth } from '@/lib/analytics/dates'
 import type { DayValue } from '@/lib/analytics/goalPace'
 import { ratePct, rateSummary } from '@/lib/calendar/counts'
 import { occupancy, occupancyLists } from '@/lib/calendar/occupancy'
 import type { CalAllDay, CalCountRow, CalSettings, CalSlotRow } from '@/types/calendar'
+import type { DateRange } from '@/types/dates'
 import { GOAL_KEYS, type Goal, type GoalKey } from '@/types/goals'
 import type { DayPayload } from '@/types/payload'
 import type { StatsRxGroup } from '@/types/rxGroups'
 import type { BitSectionsView } from '@/types/stats'
 
-// 월간 보고서 자료 (stats-insights REQ-6108 AC-6108.1~AC-6108.3, design.md '월간 보고서'). 순수 함수: 여러 자료 → 보고서 칸 목록.
+// 월간 보고서 자료 (stats-insights REQ-6108 AC-6108.1~AC-6108.4, design.md '월간 보고서'). 순수 함수: 여러 자료 → 보고서 칸 목록.
 // 내원·신환·묶음 건수는 넓은 하루 읽기(오늘 앞 12달 stats_days, 달 칸은 일 숫자의 합 — 통계 화면 규칙)에서, 매출은 고른 달·앞 달 하루 매출,
 // 예약·시행자·빈자리는 예약 칸이 읽은 줄, 몇 번까지 받나·1명당 매출은 비트 칸 답(불러온 범위 전체)에서 온다.
 // 자료가 없는 칸은 제목까지 뺀다(AC-6108.3). 결과에는 숫자·묶음 이름·시행자 이름만 있다(차트번호·환자 칸 없음).
 // '달라진 것'은 앞 달을 다 읽은 지표만 견준다: 내원·신환·묶음은 넓은 읽기가 앞 달 1일부터 덮고 그 달에 저장된 날이 있을 때, 매출은 두 달 다 하루 매출이 있을 때.
-// 견줄 것이 하나도 없으면 그 칸이 없고, 견줬는데 10% 넘게 달라진 것이 없으면 빈 목록이다(화면은 SAME_AS_BEFORE)
+// 견줄 것이 하나도 없으면 그 칸이 없고, 견줬는데 10% 넘게 달라진 것이 없으면 빈 목록이다(화면은 SAME_AS_BEFORE).
+// 이번 달 보고서(AC-6108.4)는 한 달 숫자가 1일~어제의 합(오늘은 진료 중이라 세지 않는다)이고, '달라진 것'은 지난달 1일~같은 날짜(없으면 지난달 말일)와 견준다.
+// 다 지난 달은 두 달 전체를 견준다
 
 export const REPORT_MONTHS = 12
 export const SAME_AS_BEFORE = '지난달과 비슷해요'
@@ -67,7 +70,7 @@ export type ReportInput = {
 
 const PEOPLE = '명'
 const COUNT = '건'
-const CHANGE_FROM = 10 // '달라진 것' = 반올림 정수 %가 이 이상
+const CHANGE_FROM = 10 // '달라진 것' = 반올림하기 전 달라진 %가 이 이상(글의 %만 반올림 정수)
 
 const monthLabel = (month: string) => `${Number(month.slice(5, 7))}월`
 const longToday = (ymd: string) => `${Number(ymd.slice(5, 7))}월 ${Number(ymd.slice(8, 10))}일`
@@ -88,16 +91,28 @@ export function firstReportMonth(months: readonly string[], today: string): stri
   return months.includes(last) ? last : (months[0] ?? null)
 }
 
-// 그 달의 저장된 날 줄(같은 날은 뒤의 것)
-function daysIn(days: readonly DayPayload[], month: string): DayPayload[] {
+const within = (ymd: string, range: DateRange) => compareYmd(ymd, range.from) >= 0 && compareYmd(ymd, range.to) <= 0
+
+// 고른 달·지난달에서 세는 기간(AC-6108.4): 다 지난 달은 두 달 전체, 이번 달은 1일~어제와 지난달 1일~같은 날짜(그 날짜가 없으면 지난달 말일).
+// 오늘이 1일이면 어제는 지난달이라 두 기간 모두 끝이 처음보다 앞이다(빈 기간 — 세는 날이 없어 견주지 않는다)
+function spansOf(month: string, today: string): { now: DateRange; before: DateRange } {
+  const now = monthRange(month)
+  const before = monthRange(addMonths(month, -1))
+  if (month !== monthOf(today)) return { now, before }
+  const yesterday = addDays(today, -1)
+  return { now: { from: now.from, to: yesterday }, before: { from: before.from, to: sameDayLastMonth(yesterday) } }
+}
+
+// 기간의 저장된 날 줄(같은 날은 뒤의 것)
+function daysIn(days: readonly DayPayload[], range: DateRange): DayPayload[] {
   const byDay = new Map<string, DayPayload>()
-  for (const row of days) if (monthOf(row.day) === month) byDay.set(row.day, row)
+  for (const row of days) if (within(row.day, range)) byDay.set(row.day, row)
   return [...byDay.values()]
 }
 
-// 그 달 하루 매출의 합. 그 달 줄이 하나도 없으면 null
-function salesIn(sales: readonly DayValue[] | null, month: string): number | null {
-  const rows = (sales ?? []).filter((row) => monthOf(row.day) === month)
+// 기간 하루 매출의 합. 기간 줄이 하나도 없으면 null
+function salesIn(sales: readonly DayValue[] | null, range: DateRange): number | null {
+  const rows = (sales ?? []).filter((row) => within(row.day, range))
   return rows.length === 0 ? null : sumOf(rows, (row) => row.value)
 }
 
@@ -115,9 +130,9 @@ function namedKeys(groups: readonly StatsRxGroup[]): { key: string; name: string
     })
 }
 
-// 그 달 묶음 건수(같은 날 같은 환자는 1건 — 날 줄 묶음 숫자의 합). 그 달 어느 날이라도 그 열쇠로 세지 않았으면 null
-function groupCount(days: readonly DayPayload[], rows: readonly DayPayload[], month: string, key: string): number | null {
-  if (rows.length === 0 || !keyedIn(days, monthRange(month), key)) return null
+// 기간 묶음 건수(같은 날 같은 환자는 1건 — 날 줄 묶음 숫자의 합). 기간 어느 날이라도 그 열쇠로 세지 않았으면 null
+function groupCount(days: readonly DayPayload[], rows: readonly DayPayload[], range: DateRange, key: string): number | null {
+  if (rows.length === 0 || !keyedIn(days, range, key)) return null
   return sumOf(rows, (row) => row.groups.find((line) => line.id === key)?.patients ?? 0)
 }
 
@@ -126,8 +141,9 @@ type Metric = { name: string; now: number; before: number; text: (n: number) => 
 function changesOf(metrics: readonly Metric[], before: string): ReportChange[] {
   return metrics.flatMap(({ name, now, before: was, text }) => {
     if (was <= 0) return []
+    // 문턱은 반올림하기 전 값으로 본다(9.5%가 반올림해 10%로 들지 않게). 정수끼리 곱해 견줘 소수 오차가 없다
+    if (Math.abs(now - was) * 100 < CHANGE_FROM * was) return []
     const pct = Math.round((Math.abs(now - was) * 100) / was)
-    if (pct < CHANGE_FROM) return []
     const up = now > was
     return [{ dir: up ? 'up' : 'down', text: `${name} · ${monthLabel(before)}보다 ${pct}% ${up ? '많아요' : '적어요'} (${text(was)} → ${text(now)})` }]
   })
@@ -139,13 +155,14 @@ export function monthlyReport(input: ReportInput): MonthlyReportData {
   const { month, today, days, groups, calendar, bit } = input
   const thisMonth = monthOf(today)
   const prev = addMonths(month, -1)
-  const rows = daysIn(days, month)
-  const prevRows = daysIn(days, prev)
-  // 앞 달을 다 읽었음: 넓은 읽기가 앞 달 1일부터 덮고 그 달에 저장된 날이 있다
-  const prevRead = compareYmd(monthRange(prev).from, input.daysFrom) >= 0 && prevRows.length > 0
+  const spans = spansOf(month, today)
+  const rows = daysIn(days, spans.now)
+  const prevRows = daysIn(days, spans.before)
+  // 앞 달을 다 읽었음: 넓은 읽기가 앞 달 1일부터 덮고 견주는 기간에 저장된 날이 있다
+  const prevRead = compareYmd(spans.before.from, input.daysFrom) >= 0 && prevRows.length > 0
   const visits = sumOf(rows, (row) => row.totals.patients)
   const newPatients = sumOf(rows, (row) => row.totals.newPatients)
-  const revenue = salesIn(input.sales, month)
+  const revenue = salesIn(input.sales, spans.now)
   const keys = namedKeys(groups)
   const calRows = calendar === null ? [] : calendar.rows.filter((row) => monthOf(row.day) === month)
   const booked = rateSummary(calRows)
@@ -182,7 +199,7 @@ export function monthlyReport(input: ReportInput): MonthlyReportData {
   if (goalItems.length > 0) blocks.push({ key: 'goal', title: REPORT_TITLES.goal, items: goalItems })
 
   // 달라진 것(지난달보다)
-  const prevRevenue = salesIn(input.sales, prev)
+  const prevRevenue = salesIn(input.sales, spans.before)
   const metrics: Metric[] = [
     ...(prevRead
       ? [
@@ -193,8 +210,8 @@ export function monthlyReport(input: ReportInput): MonthlyReportData {
     ...(revenue !== null && prevRevenue !== null ? [{ name: '매출', now: revenue, before: prevRevenue, text: formatManWon }] : []),
     ...(prevRead
       ? keys.flatMap(({ key, name }) => {
-          const now = groupCount(days, rows, month, key)
-          const before = groupCount(days, prevRows, prev, key)
+          const now = groupCount(days, rows, spans.now, key)
+          const before = groupCount(days, prevRows, spans.before, key)
           return now === null || before === null ? [] : [{ name, now, before, text: cases }]
         })
       : []),
@@ -206,14 +223,14 @@ export function monthlyReport(input: ReportInput): MonthlyReportData {
     key: 'trend',
     title: REPORT_TITLES.trend,
     bars: Array.from({ length: REPORT_MONTHS }, (_, i) => addMonths(thisMonth, i - (REPORT_MONTHS - 1))).map((at) => {
-      const inMonth = daysIn(days, at)
+      const inMonth = daysIn(days, monthRange(at))
       return { month: at, label: monthLabel(at), value: inMonth.length === 0 ? null : sumOf(inMonth, (row) => row.totals.patients), picked: at === month }
     }),
   })
 
   // 치료별(묶음 건수, 묶음 차례)
   const treatments = keys.flatMap(({ key, name }) => {
-    const count = groupCount(days, rows, month, key)
+    const count = groupCount(days, rows, spans.now, key)
     return count === null ? [] : [`${name} ${cases(count)}`]
   })
   if (treatments.length > 0) blocks.push({ key: 'treatments', title: REPORT_TITLES.treatments, items: treatments })

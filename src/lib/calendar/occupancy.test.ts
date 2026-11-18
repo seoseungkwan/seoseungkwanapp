@@ -3,7 +3,8 @@ import { DEFAULT_CAL_SETTINGS, type ApptStatus, type CalAllDay, type CalSettings
 import { occupancy, occupancyLevel, occupancyLists, occupancySpan, type Occupancy } from './occupancy'
 
 // 예약 빈자리 (spec stats-insights REQ-6105 AC-6105.1·AC-6105.2, design.md '빈자리').
-// 예약 줄은 listCalendarSlots 모양이고 시행자·차트번호는 모두 지어낸 것이다
+// 예약 줄은 listCalendarSlots 모양이고 시행자·차트번호는 모두 지어낸 것이다.
+// 2026-11-18 검토 고침: 찬 분이 0인 칸(기간 동안 그 요일·시와 겹친 예약이 한 번도 없음)은 안 여는 시간으로 보고 빈 칸(null)이다
 
 const TODAY = '2026-11-18' // 수요일. 기간 = 9월 23일(수) ~ 11월 17일(화), 요일마다 꼭 8일
 const SETTINGS: CalSettings = {
@@ -69,16 +70,16 @@ describe('AC-6105.1 occupancy: 요일 × 시 찬 정도', () => {
     expect(wide.hours).toEqual([8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19])
   })
 
-  it('AC-6105.1: 찬 분 = 취소 아닌 예약이 그 시와 겹친 분, 자리 = 그 요일 날마다 (휴무 아닌 시행자 수 × 60), 찬 정도는 반올림 정수 %', () => {
+  it('AC-6105.1: 찬 분 = 취소 아닌 예약이 그 시와 겹친 분, 자리 = 그 요일 날마다 (휴무 아닌 시행자 수 × 60), 찬 정도는 반올림 정수 %, 찬 분이 0인 칸은 null', () => {
     // 월 자리 = (8일 × 2명 − 휴무 1) × 60 = 900분, 다른 요일 = 8 × 2 × 60 = 960분
     const view = run()
     expect(view.cells).toEqual([
       [3, 8, 1], // 월: 30/900 · 70/900 · 10/900
-      [3, 0, 0], // 화: 30/960
-      [6, 0, 0], // 수: 60/960(첫날)
-      [0, 0, 0],
-      [0, 0, 0],
-      [0, 0, 3], // 토: 30/960
+      [3, null, null], // 화: 30/960, 10시·11시는 예약이 한 번도 없음
+      [6, null, null], // 수: 60/960(첫날)
+      [null, null, null], // 목·금: 예약 없음
+      [null, null, null],
+      [null, null, 3], // 토: 30/960
     ])
     expect(view.booked).toBe(6) // 기간 안·취소 아님·보이는 요일의 예약 수
   })
@@ -87,31 +88,50 @@ describe('AC-6105.1 occupancy: 요일 × 시 찬 정도', () => {
     // 한○○: 월 자리 = 7일 × 60 = 420분(11월 16일 휴무), 다른 요일 480분
     const ga = run({ staffId: 'ga' })
     expect(ga.cells[0]).toEqual([7, 10, 2]) // 30/420 · 40/420 · 10/420
-    expect(ga.cells.slice(1).flat().every((pct) => pct === 0)).toBe(true)
+    expect(ga.cells.slice(1).flat().every((pct) => pct === null)).toBe(true) // 한○○ 예약이 없는 칸
     expect(ga.booked).toBe(2)
     // 윤○○: 휴무 없음 → 모든 요일 480분
     const na = run({ staffId: 'na' })
     expect(na.cells).toEqual([
-      [0, 6, 0],
-      [6, 0, 0],
-      [13, 0, 0], // 60/480 = 12.5 → 13
-      [0, 0, 0],
-      [0, 0, 0],
-      [0, 0, 6],
+      [null, 6, null],
+      [6, null, null],
+      [13, null, null], // 60/480 = 12.5 → 13
+      [null, null, null],
+      [null, null, null],
+      [null, null, 6],
     ])
     expect(na.booked).toBe(4)
   })
 
   it('AC-6105.1: 일요일을 쓰면 일요일 예약도 센다', () => {
     const view = run({ settings: { ...SETTINGS, sunday: true } })
-    expect(view.cells[6]).toEqual([6, 0, 0]) // 60/960
+    expect(view.cells[6]).toEqual([6, null, null]) // 60/960
     expect(view.booked).toBe(7)
   })
 
   it('AC-6105.1: 100을 넘으면 100이다(겹쳐 잡은 예약)', () => {
     const crowd = Array.from({ length: 9 }, () => slot('2026-11-12', 'ga', 540, 60)) // 목 9시 540분 / 480분
     const view = run({ rows: crowd, staffId: 'ga' })
-    expect(view.cells[3]).toEqual([100, 0, 0])
+    expect(view.cells[3]).toEqual([100, null, null])
+  })
+
+  it('AC-6105.1: 찬 분이 조금이라도 있으면 반올림해 0%여도 빈 칸이 아니라 0이다(찬 분 0만 null)', () => {
+    const view = run({ rows: [slot('2026-11-12', 'ga', 540, 2)] }) // 목 9시 2분 / 960분 = 0.2% → 0
+    expect(view.cells[3]).toEqual([0, null, null])
+    expect(view.cells.filter((_, at) => at !== 3).flat().every((pct) => pct === null)).toBe(true)
+    expect(view.booked).toBe(1)
+  })
+
+  it('AC-6105.1: 취소된 예약·고르지 않은 시행자 예약만 있는 칸도 찬 분 0이라 null이다', () => {
+    const rows = [slot('2026-11-12', 'na', 540, 60, 'cancel'), slot('2026-11-13', 'na', 600, 60)]
+    expect(run({ rows }).cells[3]).toEqual([null, null, null]) // 목: 취소뿐
+    expect(run({ rows, staffId: 'ga' }).cells[4]).toEqual([null, null, null]) // 금: 윤○○ 예약뿐
+    expect(run({ rows, staffId: 'na' }).cells[4]).toEqual([null, 13, null]) // 60/480 = 12.5 → 13
+  })
+
+  it("AC-6105.1·AC-6105.2: 목록은 빈 칸(null)을 건너뛰어 '늘 비는 시간'에 예약 없던 시간이 0%로 들어가지 않는다", () => {
+    // 칸: 월 3·8·1 · 화 3 · 수 6 · 토 11시 3 (나머지는 예약 없음 → null)
+    expect(occupancyLists(run())).toEqual({ empty: '월 11시 1% · 월 9시 3% · 화 9시 3%', full: null })
   })
 
   it('AC-6105.1: 자리가 0이면 빈 칸(null) — 그 요일 날마다 휴무인 시행자, 시행자가 없는 설정', () => {

@@ -20,6 +20,8 @@ export type ErrorCode =
   | 'E-STATS-PICK-READ-FAILED' | 'E-STATS-PICK-SAVE-FAILED'
   // 통계 처방별 추세 묶음 읽기·저장(lib/storage/statsRxGroups.ts, spec treatment-trend)
   | 'E-STATS-GROUP-READ-FAILED' | 'E-STATS-GROUP-SAVE-FAILED'
+  // 통계 요약 '이번 달 목표' 저장(components/stats/sections/GoalSection.tsx, spec stats-insights AC-6102.5)
+  | 'E-STATS-GOAL-SAVE-FAILED'
   // 점검 표 불러오기(Worker의 import(), TASK-7)
   | 'E-RULES-LOAD-FAILED'
   // 한 달 자료(claim.month): 도우미가 비트 통계 화면 표를 꺼내지 못함 · Worker가 조각·모양이 다 맞지 않아 멈춤(TASK-9)

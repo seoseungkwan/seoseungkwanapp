@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nestedBoxes } from '@/testing/boxes'
 import { MonthlyReport } from './MonthlyReport'
 import type { MonthlyReportData, ReportBar } from './reportData'
@@ -48,6 +48,18 @@ const block = (title: string) => screen.getByRole('heading', { level: 5, name: t
 afterEach(cleanup)
 
 describe('AC-6108.2: 보고서 종이', () => {
+  it('AC-6108.2: 같은 글자 줄이 둘이어도(이름·숫자가 같은 시행자) 둘 다 그리고 React 열쇠가 겹치지 않는다', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const same = '김선생 3건 · 안 옴 33.3%'
+      draw({ ...DATA, blocks: [{ key: 'staff', title: '시행자별', items: [same, same, '박선생 1건 · 안 옴 0.0%'] }] })
+      expect([...block('시행자별').querySelectorAll('li')].map((li) => li.textContent)).toEqual([same, same, '박선생 1건 · 안 옴 0.0%'])
+      expect(errors.mock.calls.flat().some((arg) => String(arg).includes('same key'))).toBe(false)
+    } finally {
+      errors.mockRestore()
+    }
+  })
+
   it('AC-6108.2: 종이 하나(인쇄 표시)에 제목 h4 · 병원 이름과 뽑은 날 줄 · 칸 제목 h5가 받은 차례대로다', () => {
     draw()
     expect(paper().hasAttribute('data-print-report')).toBe(true)

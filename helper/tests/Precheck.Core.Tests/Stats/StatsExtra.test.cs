@@ -53,6 +53,15 @@ internal static class StatsExtraFake
         var row = new object?[] { StatsFake.Chart(1), "20260901", "0905", "가짜보험 가", "D001" };
         for (var i = 0; i < n; i++) yield return row;
     }
+
+    /// <summary>
+    /// 환자·날 금액 줄 n개(차트번호가 모두 다른 지어낸 7자리 번호, 그 달 첫 수납일, 1,000원). 큰 자료 시험용(spec stats-insights AC-6106.6).
+    /// 기본 가짜 차트번호(StatsFake.Chart, 6자리)와 겹치지 않는다.
+    /// </summary>
+    public static IEnumerable<object?[]> ManyPays(int n, string? day)
+    {
+        for (var i = 0; i < n; i++) yield return new object?[] { (1_000_000 + i).ToString(System.Globalization.CultureInfo.InvariantCulture), day, 1000m };
+    }
 }
 
 /// <summary>
@@ -604,6 +613,43 @@ public class StatsExtraReadTests
         Assert.Equal("E-BIT-READ-FAILED", error.Message);
     }
 
+    // ---- AC-6106.6 환자·날 금액 줄 수 상한(spec stats-insights, 2026-11-18 검토 고침) -------------------
+
+    [Fact(DisplayName = "AC-6106.6 환자·날 금액 줄이 다른 줄과 같은 상한(StatsRows.MaxRows 700,000줄)이면 다 싣는다(한도 안)")]
+    public void PaysUpToTheLimit()
+    {
+        var db = Db();
+        db.Answer(StatsPayFake.NormalSql, args => StatsExtraFake.ManyPays(StatsRows.MaxRows, (string?)args["@day"]));
+        db.Answer(StatsPayFake.ReceivableSql, _ => StatsExtraFake.None());
+        Assert.Equal(700_000, Read(db).Pays.Count);
+    }
+
+    [Fact(DisplayName = "AC-6106.6 정상수납·미수입금을 묶은 환자·날 금액 줄이 700,001줄이면 다른 줄과 같은 E-STATS-TOO-BIG(번호뿐)이다")]
+    public void TooManyPays()
+    {
+        var db = Db();
+        // 정상수납 700,000줄 + 미수입금 기본 가짜 자료(다른 차트번호 한 줄) = 묶은 줄 700,001줄
+        db.Answer(StatsPayFake.NormalSql, args => StatsExtraFake.ManyPays(StatsRows.MaxRows, (string?)args["@day"]));
+        var error = Assert.Throws<BitException>(() => Read(db));
+        Assert.Equal("E-STATS-TOO-BIG", error.Code);
+        Assert.Equal("E-STATS-TOO-BIG", error.Message);
+        Assert.Equal(StatsErrors.TooBig, error.Code);
+    }
+
+    [Fact(DisplayName = "AC-6106.6 0원이라 싣지 않는 환자·날 금액 줄은 상한에 세지 않는다")]
+    public void ZeroPaysDoNotCount()
+    {
+        var db = Db();
+        db.Answer(StatsPayFake.NormalSql, args => StatsExtraFake.ManyPays(StatsRows.MaxRows, (string?)args["@day"]));
+        // 미수입금이 기본 차트 2의 2,000원을 지우는(−2,000원) 줄 → 그 환자·날은 0원이라 싣지 않는다
+        db.Answer(StatsPayFake.ReceivableSql, args => new[]
+        {
+            new object?[] { StatsFake.Chart(2), (string?)args["@day"], 2000m },
+            new object?[] { StatsFake.Chart(2), (string?)args["@day"], -2000m },
+        });
+        Assert.Equal(700_000, Read(db).Pays.Count);
+    }
+
     // ---- AC-2701.6 읽는 차례·시간 제한 ------------------------------------------------------------
 
     private static readonly string[] Order =
@@ -925,6 +971,15 @@ public class StatsExtraPayloadTests
         rig.Session.Answer(StatsSql.VisitLinesSql, _ => StatsExtraFake.ManyLines(StatsRows.MaxRows + 1));
         StatsRowsTests.AssertOnlyError(StatsRowsTests.Handle(rig, September), "E-STATS-TOO-BIG");
         Assert.DoesNotContain(StatsSql.PeopleSql, rig.Session.Sqls);
+        Assert.Equal(1, rig.Session.Disposed);
+    }
+
+    [Fact(DisplayName = "AC-6106.6 환자·날 금액 줄(pays)이 700,000줄을 넘으면 다른 줄과 같이 E-STATS-TOO-BIG만 보낸다(chunk 없음 — 웹이 답 전체를 모양 오류로 거절하지 않게)")]
+    public void TooManyPays()
+    {
+        using var rig = StatsFake.Clinic();
+        rig.Session.Answer(StatsPayFake.NormalSql, args => StatsExtraFake.ManyPays(StatsRows.MaxRows + 1, (string?)args["@day"]));
+        StatsRowsTests.AssertOnlyError(StatsRowsTests.Handle(rig, September), "E-STATS-TOO-BIG");
         Assert.Equal(1, rig.Session.Disposed);
     }
 }

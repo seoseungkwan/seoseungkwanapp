@@ -287,7 +287,7 @@ export type MonthlyReportProps = {
   calendar?: StatsCalendarShown // 예약 칸 값. 주지 않으면 예약·시행자별·빈자리 칸이 없다
   bit?: BitSectionsShown // 비트 칸 답. 주지 않거나 null·'waiting'이면 몇 번까지 받나·1명당 매출 칸이 없다
   goal?: GoalRead<Goal> // 이번 달 목표(useStatsGoals). 주지 않으면 이번 달도 따로 읽는다
-  revision?: number // 저장·[다시 읽기]마다 는다(고른 달의 매출·목표를 다시 읽는다)
+  revision?: number // 저장·[다시 읽기]·비트 매출 읽기가 끝날 때마다 는다(고른 달의 매출·목표를 다시 읽는다, AC-6108.5)
 }
 
 export function MonthlyReportSection({ today, hospitalName, wide, groups, calendar, bit, goal, revision = 0 }: MonthlyReportProps) {
@@ -295,7 +295,7 @@ export function MonthlyReportSection({ today, hospitalName, wide, groups, calend
   const months = wide.state === 'ready' ? reportMonths(wide.days, today) : []
   const month = picked !== null && months.includes(picked) ? picked : firstReportMonth(months, today)
   const given = month === monthOf(today) && goal !== undefined ? goal : null
-  const reads = useReportReads(month, { revision, withGoal: given === null })
+  const reads = useReportReads(month, today, { revision, withGoal: given === null })
 
   if (wide.state === 'reading') return <Section title={MONTHLY_TITLE}>{null}</Section>
   if (wide.state === 'failed') {

@@ -34,7 +34,8 @@ import { DEFAULT_STATS_PERIOD, rangeOf, type CompareRange, type StatsPeriod, typ
 // 예약·전환(sunap-ilji REQ-4906): 마감한 날·수납일지 Block·물리치료 묶음은 useStatsSunap이 읽고, 묶음 정의는 세 칸 묻기에 실어 Block 전환 수를 함께 받는다
 // 예약(clinic-calendar AC-5907.3): 예약 탭 예약은 useStatsCalendar가 오늘 기준 최근 12달을 읽는다(통계 기간·불러오기와 상관없음)
 // 알림·휴일·목표(stats-insights design.md '자료 흐름'): useWideDays가 오늘 앞 12달 저장된 하루 숫자를 기간 고르기와 따로 읽고(저장에 성공하거나 [다시 읽기]를 누르면
-// data.revision이 늘어 다시 읽는다), useStatsGoals가 이번 달 목표와 오늘 앞 56일 하루 매출을 읽는다. 하나가 실패해도 그 칸만 오류 카드다
+// data.revision이 늘어 다시 읽는다), useStatsGoals가 이번 달 목표와 오늘 앞 56일 하루 매출을 읽는다. 하나가 실패해도 그 칸만 오류 카드다.
+// 목표 칸·월간 보고서는 data.revision과 비트 매출 읽기(sync)가 끝난 횟수가 늘 때마다 다시 읽는다: 매출은 통계 저장 뒤에 저장되므로 그 뒤 읽어야 새 총액이다(AC-6102.6·AC-6108.5)
 // 매출(stats-revenue REQ-4108, design.md '화면 잇기'): 저장된 매출은 열 때 읽어 기간 요약 둘째 줄·매출 칸에 그린다(useStatsRevenue). 비트 매출은 [비트에서 불러오기]가
 // 통계 조각을 모두 저장한 뒤에만 같은 일 안에서 통계가 쥔 같은 비트 연결(useStatsWorker.revenueDays)로 읽는다. 열기만 해서는 비트에서 읽지 않는다
 
@@ -234,7 +235,9 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   const sunapDefs = sunap.defs
   const calendar = useStatsCalendar(today)
   const wide = useWideDays(today, data.revision)
-  const goals = useStatsGoals(today)
+  const [revenueSyncs, setRevenueSyncs] = useState(0) // 비트 매출 읽기(sync)가 끝난 횟수(AC-6102.6)
+  const salesRevision = data.revision + revenueSyncs // 목표 칸·월간 보고서가 하루 매출을 다시 읽는 때(AC-6102.6·AC-6108.5)
+  const goals = useStatsGoals(today, salesRevision)
   // 비트 PC가 아니면(확장 없음·휴대폰·연결 전) call이 없어 저장된 매출만 읽는다(AC-4108.7)
   const revenue = useStatsRevenue({ range, today, lastDay, call: state === 'ready' ? revenueDays : null, helperVersion })
 
@@ -374,7 +377,13 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   // 이 불러올 기간·'오늘 진료 끝'은 [매출만 다시 읽기]가 같은 값으로 쓴다
   async function syncRevenue(whole: DateRange, closeToday: boolean) {
     setRevenueRun({ whole, closeToday })
-    await revenue.sync({ whole, closeToday })
+    await syncAndCount({ whole, closeToday })
+  }
+
+  // 매출 읽기가 끝나면 이번 달 목표 칸·월간 보고서가 하루 매출을 다시 읽는다(AC-6102.6·AC-6108.5)
+  async function syncAndCount(args: { whole: DateRange; closeToday: boolean }) {
+    await revenue.sync(args)
+    setRevenueSyncs((n) => n + 1)
   }
 
   const loadFromBit = (closeToday: boolean, span: LoadSpan) => {
@@ -395,7 +404,7 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   // [매출만 다시 읽기](AC-4108.5): 통계 조각은 다시 읽지 않고 다른 안내도 지우지 않는다. 그동안 일은 'bit'라 다른 불러오기 단추가 막힌다
   const rereadRevenue = () => {
     if (revenueRun === null) return
-    void runJob('bit', () => revenue.sync(revenueRun), { keep: true })
+    void runJob('bit', () => syncAndCount(revenueRun), { keep: true })
   }
 
   const takeFiles = (files: File[]) =>
@@ -551,6 +560,7 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
             calendar={calendar}
             wide={wide}
             goals={goals}
+            salesRevision={salesRevision}
           />
         </div>
       )}

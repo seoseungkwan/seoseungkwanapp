@@ -123,6 +123,7 @@ type Props = {
   calendar?: StatsCalendarShown // 예약 카드(최근 12달 예약 줄·설정, useStatsCalendar). 주지 않으면 없다
   wide?: WideDays // 넓은 하루 읽기(오늘 앞 12달, useWideDays). 주지 않으면 '평소와 다른 것'·'휴일에 따라'·'이번 달 목표'가 없다
   goals?: StatsGoalsShown // 이번 달 목표·하루 매출(useStatsGoals). 내원·신환 하루 숫자는 wide에서 온다. 주지 않으면 '이번 달 목표'가 없다
+  salesRevision?: number // revision + 비트 매출 읽기가 끝난 횟수. 월간 보고서가 고른 달 매출·목표를 다시 읽는 때다(AC-6108.5). 주지 않으면 revision
 }
 
 // 마지막 끝난 날: 통계 화면은 매출 값에 오늘 진료 끝을 반영한 날을 준다. 매출을 주지 않으면 어제다
@@ -135,7 +136,7 @@ function alertsShown(today: string, wide: Pick<WideDays, 'state' | 'days'>, cal:
   return wide.state === 'ready' && buildAlerts({ today, days: wide.days, cal }) !== null
 }
 
-export function StatsSections({ input, saved, split, report, hospitalName, groups, revision = 0, bit, revenue, sunap, calendar, wide, goals }: Props) {
+export function StatsSections({ input, saved, split, report, hospitalName, groups, revision = 0, bit, revenue, sunap, calendar, wide, goals, salesRevision = revision }: Props) {
   const pick = useMemo(() => pickReport(input, groups.groups), [input, groups.groups])
   // 예약·전환의 '진료한 날': 마감한 날을 읽는 기간과 같은 기간의 저장된 날 숫자에서 센다
   const worked = useMemo(() => workedDays(input.days, sunapSpan(input.range)), [input.days, input.range])
@@ -262,7 +263,7 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
             calendar={calendar}
             bit={bit}
             goal={goals?.goal}
-            revision={revision}
+            revision={salesRevision}
           />
         )}
       </StatsCard>

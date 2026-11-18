@@ -8,6 +8,8 @@ import type { DayPayload } from '@/types/payload'
 // 넓은 하루 읽기 (stats-insights design.md '넓은 하루 읽기', REQ-6101 AC-6101.5 · REQ-6107 AC-6107.3).
 // 기간 고르기와 상관없이 오늘 앞 12달 stats_days를 한 번 읽는다(useAgainDays와 같은 길). 알림·휴일·목표(내원·신환)가 함께 쓴다.
 // 열쇠 = 오늘|revision: 저장에 성공하거나 [다시 읽기]를 누르면 revision이 늘어 다시 읽는다. 마지막 읽기가 아닌 답은 늦게 온 앞 답이라 버린다.
+// 다시 읽는 동안은 앞서 다 읽은 숫자(ready)를 그대로 주고 다 읽으면 바꾼다 — 알림·목표·휴일 칸이 사라졌다 다시 나와 화면이 뛰지 않게(AC-6101.6).
+// 앞 읽기가 실패였거나 처음 읽기면 reading(빈 줄)이다. 다시 읽기가 실패하면 failed(빈 줄, 그 칸만 오류 카드)다.
 // 받은 줄은 React 상태에만 둔다. 실패 번호는 readDays가 던지는 E-STATS-READ-FAILED 그대로다(화면은 정해 둔 문구만 보인다)
 
 export type WideDaysState = 'reading' | 'ready' | 'failed'
@@ -29,7 +31,9 @@ export function useWideDays(today: string, revision = 0): WideDays {
   const latest = useRef<Held | null>(null)
 
   const read = useCallback(() => {
-    const mine: Held = { key, state: 'reading', days: NO_DAYS }
+    // 앞서 다 읽은 숫자(또는 그것을 그대로 주며 읽는 중)가 있으면 이 읽기가 끝날 때까지 그것을 준다
+    const before = latest.current
+    const mine: Held = before?.state === 'ready' ? { key, state: 'ready', days: before.days } : { key, state: 'reading', days: NO_DAYS }
     const finish = (next: Held) => {
       if (latest.current !== mine) return
       latest.current = next
@@ -52,6 +56,7 @@ export function useWideDays(today: string, revision = 0): WideDays {
     if (latest.current?.key === key && latest.current.state === 'failed') read()
   }, [key, read])
 
-  const current = held?.key === key ? held : null
+  // 열쇠가 바뀐 뒤 읽기를 시작하기 전 한 번 그릴 때도 앞서 다 읽은 숫자를 준다(AC-6101.6)
+  const current = held?.key === key || held?.state === 'ready' ? held : null
   return { state: current?.state ?? 'reading', days: current?.days ?? NO_DAYS, retry }
 }

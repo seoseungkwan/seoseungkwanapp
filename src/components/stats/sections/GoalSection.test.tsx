@@ -223,7 +223,7 @@ describe('AC-6102.5 GoalSection: 목표 없는 달과 목표 적기', () => {
     expect(screen.queryByRole('button', { name: '저장' })).toBeNull()
   })
 
-  it('AC-6102.5: 저장이 실패하면 lib/errors.ts의 저장 실패 문구를 보이고 적은 값은 그대로 둔다', async () => {
+  it('AC-6102.5: 저장이 실패하면 lib/errors.ts의 목표 전용 번호 E-STATS-GOAL-SAVE-FAILED 문구를 보이고 적은 값은 그대로 둔다', async () => {
     const onSave = vi.fn(async () => {
       throw new Error('가짜 실패')
     })
@@ -232,8 +232,11 @@ describe('AC-6102.5 GoalSection: 목표 없는 달과 목표 적기', () => {
     fireEvent.change(input('내원 (명)'), { target: { value: '3,200' } })
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '저장' })))
     const alert = screen.getByRole('alert')
-    expect(within(alert).getByText(errorInfo('E-STATS-SAVE-FAILED').what)).toBeTruthy()
-    expect(within(alert).getByText(errorInfo('E-STATS-SAVE-FAILED').fix)).toBeTruthy()
+    expect(within(alert).getByText('이번 달 목표를 저장하지 못했어요')).toBeTruthy()
+    expect(within(alert).getByText('인터넷 연결을 확인하고 [저장]을 다시 눌러 주세요.')).toBeTruthy()
+    expect(within(alert).getByText('오류 번호 E-STATS-GOAL-SAVE-FAILED')).toBeTruthy()
+    expect(alert.textContent).not.toContain('E-STATS-SAVE-FAILED')
+    expect(within(alert).getByText(errorInfo('E-STATS-GOAL-SAVE-FAILED').what)).toBeTruthy()
     expect(['내원 (명)', '신환 (명)', '매출 (만 원)'].map((label) => input(label).value)).toEqual(['3,200', '25', '13000'])
     expect(screen.getByRole('button', { name: '저장' }).getAttribute('aria-busy')).not.toBe('true')
   })

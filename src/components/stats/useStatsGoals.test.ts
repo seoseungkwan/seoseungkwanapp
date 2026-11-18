@@ -8,7 +8,7 @@ import type { Goal } from '@/types/goals'
 import type { SavedRevenueDay } from '@/types/revenue'
 import { useStatsGoals } from './useStatsGoals'
 
-// 통계 요약 '이번 달 목표'의 서버 읽기·저장 훅 (stats-insights REQ-6102 AC-6102.2·AC-6102.4·AC-6102.5, design.md '목표', TASK-1).
+// 통계 요약 '이번 달 목표'의 서버 읽기·저장 훅 (stats-insights REQ-6102 AC-6102.2·AC-6102.4·AC-6102.5·AC-6102.6, design.md '목표', TASK-1·TASK-9).
 // 저장 코드는 가짜다. 숫자는 지어낸 값이다. 내원·신환 하루 숫자는 넓은 하루 읽기(TASK-2)가 주므로 이 훅은 목표와 하루 매출만 읽는다
 
 vi.mock('@/lib/storage/goals', () => ({ loadGoal: vi.fn(), saveGoal: vi.fn() }))
@@ -120,6 +120,80 @@ describe('AC-6102.2·AC-6102.4 useStatsGoals: 이번 달 목표·하루 매출 �
     expect(loadDays).toHaveBeenLastCalledWith({ from: '2026-10-06', to: '2026-11-30' })
     await act(async () => finishOld(GOAL))
     expect(result.current.goal).toEqual(next)
+  })
+})
+
+describe('AC-6102.6·AC-6101.6 useStatsGoals: [비트에서 불러오기]·저장이 끝나면(revision) 다시 읽기', () => {
+  type Props = { today: string; revision: number }
+  const drawAt = (props: Partial<Props> = {}) =>
+    renderHook((p: Props) => useStatsGoals(p.today, p.revision), { initialProps: { today: TODAY, revision: 0, ...props } })
+
+  it('AC-6102.6: revision이 늘면 목표와 하루 매출을 다시 읽어 새 숫자를 보인다', async () => {
+    const view = drawAt()
+    await waitFor(() => expect(view.result.current.goal).toEqual(GOAL))
+    await waitFor(() => expect(Array.isArray(view.result.current.revenue)).toBe(true))
+    const next: Goal = { visits: 3300, newPatients: 190, revenue: 125_000_000 }
+    vi.mocked(loadGoal).mockResolvedValueOnce(next)
+    loadDays.mockResolvedValueOnce([salesDay('2026-11-16', 5_000_000), salesDay('2026-11-17', 7_000_000)])
+    view.rerender({ today: TODAY, revision: 1 })
+    await waitFor(() => expect(view.result.current.goal).toEqual(next))
+    await waitFor(() =>
+      expect(view.result.current.revenue).toEqual([
+        { day: '2026-11-16', value: 5_000_000 },
+        { day: '2026-11-17', value: 7_000_000 },
+      ]),
+    )
+    expect(loadGoal).toHaveBeenCalledTimes(2)
+    expect(loadGoal).toHaveBeenLastCalledWith(CLIENT, '2026-11')
+    expect(loadDays).toHaveBeenCalledTimes(2)
+    expect(loadDays).toHaveBeenLastCalledWith({ from: '2026-09-23', to: '2026-11-17' })
+  })
+
+  it('AC-6102.6: revision이 같으면 다시 그려도 다시 읽지 않는다', async () => {
+    const view = drawAt()
+    await waitFor(() => expect(view.result.current.goal).toEqual(GOAL))
+    view.rerender({ today: TODAY, revision: 0 })
+    await act(async () => void (await new Promise((done) => setTimeout(done))))
+    expect(loadGoal).toHaveBeenCalledTimes(1)
+    expect(loadDays).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-6101.6·AC-6102.6: 다시 읽는 동안에는 앞서 읽은 목표·하루 매출을 그대로 보이고(칸이 비지 않는다), 다 읽으면 바꾼다', async () => {
+    const view = drawAt()
+    await waitFor(() => expect(view.result.current.goal).toEqual(GOAL))
+    await waitFor(() => expect(Array.isArray(view.result.current.revenue)).toBe(true))
+    const before = view.result.current.revenue
+    let finishGoal!: (goal: Goal) => void
+    let finishDays!: (days: SavedRevenueDay[]) => void
+    vi.mocked(loadGoal).mockImplementationOnce(() => new Promise((resolve) => (finishGoal = resolve)))
+    loadDays.mockImplementationOnce(() => new Promise((resolve) => (finishDays = resolve)))
+    view.rerender({ today: TODAY, revision: 1 })
+    expect(view.result.current.goal).toEqual(GOAL)
+    expect(view.result.current.revenue).toEqual(before)
+    await act(async () => void (await new Promise((done) => setTimeout(done))))
+    expect(loadGoal).toHaveBeenCalledTimes(2)
+    expect(loadDays).toHaveBeenCalledTimes(2)
+    expect(view.result.current.goal).toEqual(GOAL)
+    expect(view.result.current.revenue).toEqual(before)
+    const next: Goal = { visits: 3500, newPatients: null, revenue: null }
+    await act(async () => finishGoal(next))
+    expect(view.result.current.goal).toEqual(next)
+    expect(view.result.current.revenue).toEqual(before)
+    await act(async () => finishDays([salesDay('2026-11-17', 9_000_000)]))
+    expect(view.result.current.revenue).toEqual([{ day: '2026-11-17', value: 9_000_000 }])
+  })
+
+  it('AC-6102.6: 다른 달로 바뀌면 앞 달 목표를 이번 달 목표로 보이지 않는다(새 달은 읽는 중)', async () => {
+    let finishNext!: (goal: Goal) => void
+    const view = drawAt({ today: '2026-11-30' })
+    await waitFor(() => expect(view.result.current.goal).toEqual(GOAL))
+    vi.mocked(loadGoal).mockImplementationOnce(() => new Promise((resolve) => (finishNext = resolve)))
+    view.rerender({ today: '2026-12-01', revision: 0 })
+    expect(view.result.current.goal).toBe('reading')
+    await act(async () => void (await new Promise((done) => setTimeout(done))))
+    expect(view.result.current.goal).toBe('reading')
+    await act(async () => finishNext(EMPTY))
+    expect(view.result.current.goal).toEqual(EMPTY)
   })
 })
 

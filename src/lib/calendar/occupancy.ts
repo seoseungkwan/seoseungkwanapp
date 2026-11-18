@@ -4,7 +4,9 @@ import type { CalAllDay, CalSettings, CalSlotRow } from '@/types/calendar'
 // 예약 빈자리 (spec stats-insights REQ-6105 AC-6105.1·AC-6105.2). 순수 함수다.
 // 기간 = 오늘 앞 56일(어제까지), 칸 = 요일(월~토, 설정이 일요일을 쓰면 일도) × 시(여는 시 ~ 닫는 시 − 1).
 // 찬 분 = 취소 아닌 예약이 그 시와 겹친 분의 합, 자리 = 그 요일 날짜마다 (그날 휴무 아닌 시행자 수 × 60)의 합,
-// 찬 정도 = 찬 분 ÷ 자리(반올림 정수 %, 100 넘으면 100), 자리가 0이면 null. 시행자를 고르면 그 시행자 예약만·그 시행자 자리만
+// 찬 정도 = 찬 분 ÷ 자리(반올림 정수 %, 100 넘으면 100), 자리가 0이면 null. 시행자를 고르면 그 시행자 예약만·그 시행자 자리만.
+// 찬 분이 0인 칸(기간 동안 그 요일·시와 겹친 예약이 한 번도 없음)은 안 여는 시간으로 보고 null이다(2026-11-18 사용자 결정 — 점심·토요일 오후가
+// 늘 0%로 '늘 비는 시간'을 채웠다). 찬 분이 조금이라도 있으면 반올림해 0이어도 0이다
 
 export const OCCUPANCY_DAYS = 56
 const HOUR_MIN = 60
@@ -22,7 +24,7 @@ type OccupancyInput = {
   today: string
   staffId: string | null // null = 모두
 }
-/** cells[요일 차례][시 차례] = 찬 정도 %(자리 0이면 null). booked = 기간·보이는 요일·고른 시행자의 취소 아닌 예약 수 */
+/** cells[요일 차례][시 차례] = 찬 정도 %(자리 0이거나 찬 분 0이면 null). booked = 기간·보이는 요일·고른 시행자의 취소 아닌 예약 수 */
 export type Occupancy = { weekdays: number[]; hours: number[]; cells: (number | null)[][]; booked: number }
 
 /** 기간: 오늘 − 56일 ~ 어제 */
@@ -59,7 +61,7 @@ export function occupancy({ rows, offs, settings, today, staffId }: OccupancyInp
     })
   }
 
-  const cells = filled.map((minutes, at) => minutes.map((n) => (seats[at] === 0 ? null : Math.min(100, Math.round((n / seats[at]!) * 100)))))
+  const cells = filled.map((minutes, at) => minutes.map((n) => (seats[at] === 0 || n === 0 ? null : Math.min(100, Math.round((n / seats[at]!) * 100)))))
   return { weekdays, hours, cells, booked }
 }
 

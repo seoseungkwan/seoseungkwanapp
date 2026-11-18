@@ -45,7 +45,7 @@ const ROWS: CalSlotRow[] = [
   slot('2026-11-11', 'na', 600, 'cancel'), // 취소 — 뺀다
 ]
 const OFFS: CalAllDay[] = []
-const FOOT = '최근 8주. 찬 정도 = 그 시간에 잡힌 예약 분 ÷ (일하는 시행자 수 × 60분). 휴무인 시행자와 취소된 예약은 빼요.'
+const FOOT = '최근 8주. 찬 정도 = 그 시간에 잡힌 예약 분 ÷ (일하는 시행자 수 × 60분). 휴무인 시행자와 취소된 예약은 빼요. 8주 동안 예약이 없던 시간은 비워 둬요.'
 const EMPTY = '예약이 쌓이면 보여요'
 
 function draw({ slots = { rows: ROWS, offs: OFFS }, settings = SETTINGS, onReread = vi.fn() }: { slots?: CalendarSlots; settings?: CalSettings | null; onReread?: () => void } = {}) {
@@ -63,8 +63,9 @@ const levels = (tr: HTMLElement) => [...tr.querySelectorAll('td')].map((cell) =>
 const part = () => screen.getByRole('heading', { name: '예약 빈자리' }).closest('section')!
 
 describe('AC-6105.3: 예약 빈자리 칸', () => {
-  it("AC-6105.3: 제목 '예약 빈자리' 아래 고르기 '모두'·시행자 이름들, 요일×시 표(칸에 숫자), 범례, 두 목록, 맨 아래 글", () => {
-    draw()
+  it("AC-6105.3: 제목 '예약 빈자리' 아래 고르기 '모두'·시행자 이름들, 요일×시 표(칸에 숫자, 예약 없던 칸은 비움), 범례, 두 목록, 맨 아래 글", () => {
+    // 수 9시 윤○○ 한 번 → 60/960 = 6%
+    draw({ slots: { rows: [...ROWS, slot('2026-11-11', 'na', 540)], offs: OFFS } })
     expect(screen.getByRole('heading', { name: '예약 빈자리' })).toBeTruthy()
     const pick = within(part()).getByRole('group', { name: '시행자' })
     expect(within(pick).getAllByRole('button').map((b) => [b.textContent, b.getAttribute('aria-pressed')])).toEqual([
@@ -76,22 +77,23 @@ describe('AC-6105.3: 예약 빈자리 칸', () => {
     expect(rows.map(texts)).toEqual([
       ['요일', '9시', '10시'],
       ['월', '100', '50'],
-      ['화', '88', '0'],
-      ['수', '0', '0'],
-      ['목', '0', '0'],
-      ['금', '0', '0'],
-      ['토', '0', '0'],
+      ['화', '88', ''],
+      ['수', '6', ''],
+      ['목', '', ''],
+      ['금', '', ''],
+      ['토', '', ''],
     ])
     expect(within(part()).getByText('비어 있음')).toBeTruthy()
     expect(within(part()).getByText('꽉 참')).toBeTruthy()
+    // 예약 없던 칸(빈 칸)은 '늘 비는 시간'에 들지 않는다
     expect([...part().querySelectorAll('li')].map((li) => li.textContent)).toEqual([
-      '늘 비는 시간: 화 10시 0% · 수 9시 0% · 수 10시 0%',
+      '늘 비는 시간: 수 9시 6%',
       '꽉 차는 시간: 월 9시 100% · 화 9시 88%',
     ])
     expect(within(part()).getByText(FOOT)).toBeTruthy()
   })
 
-  it('AC-6105.3: 칸 색은 네 단계(45 미만·65 미만·85 미만·85 이상)이고 숫자로도 읽힌다. 자리가 0인 칸은 비어 있다', () => {
+  it('AC-6105.1·AC-6105.3: 칸 색은 네 단계(45 미만·65 미만·85 미만·85 이상)이고 숫자로도 읽힌다. 자리가 0이거나 8주 동안 예약이 없던 칸은 비어 있다', () => {
     // 한○○은 화요일마다 휴무 → 한○○ 화 칸은 자리 0
     const offs: CalAllDay[] = weekly('2026-09-29', 8).map((day) => ({ id: `off-${day}`, day, type: 'off', memo: null, staffId: 'ga', staffName: '한○○' }))
     // 수 9시 6일 × 60 = 360/960 = 38%(0) · 목 9시 10일 → 600/960 = 63%(1) · 금 9시 13일 → 780/960 = 81%(2)
@@ -106,17 +108,17 @@ describe('AC-6105.3: 예약 빈자리 칸', () => {
     const rows = within(heat()).getAllByRole('row').slice(1)
     expect(rows.map(texts).slice(0, 5)).toEqual([
       ['월', '100', '50'],
-      ['화', '100', '0'], // 화 자리 = 8 × 1명(윤○○) × 60 = 480분, 찬 분 840 → 100
-      ['수', '38', '0'],
-      ['목', '63', '0'],
-      ['금', '81', '0'],
+      ['화', '100', ''], // 화 자리 = 8 × 1명(윤○○) × 60 = 480분, 찬 분 840 → 100. 10시는 예약이 없어 비움
+      ['수', '38', ''],
+      ['목', '63', ''],
+      ['금', '81', ''],
     ])
     expect(rows.map(levels).slice(0, 5)).toEqual([
       ['3', '1'],
-      ['3', '0'],
-      ['0', '0'],
-      ['1', '0'],
-      ['2', '0'],
+      ['3', 'none'],
+      ['0', 'none'],
+      ['1', 'none'],
+      ['2', 'none'],
     ])
     fireEvent.click(within(part()).getByRole('button', { name: '한○○' }))
     const ga = within(heat()).getAllByRole('row').slice(1)
@@ -132,7 +134,7 @@ describe('AC-6105.3: 예약 빈자리 칸', () => {
     // 한○○ 자리 = 8 × 60 = 480분: 월 9시·10시 480/480, 화 9시 420/480 = 88%
     expect(within(heat()).getAllByRole('row').slice(1, 3).map(texts)).toEqual([
       ['월', '100', '100'],
-      ['화', '88', '0'],
+      ['화', '88', ''],
     ])
     expect(within(part()).getByText(/^꽉 차는 시간/).closest('li')!.textContent).toBe('꽉 차는 시간: 월 9시 100% · 월 10시 100%')
     fireEvent.click(within(part()).getByRole('button', { name: '모두' }))
@@ -140,8 +142,22 @@ describe('AC-6105.3: 예약 빈자리 칸', () => {
   })
 
   it("AC-6105.2: 85 이상인 칸이 없으면 '꽉 차는 시간' 줄을 그리지 않는다", () => {
+    // 월 10시 한○○ 8일 → 480/960 = 50%(비는 시간 아님), 화 9시 윤○○ 한 번 → 60/960 = 6%
+    draw({ slots: { rows: [...MONDAYS.map((day) => slot(day, 'ga', 600)), slot('2026-11-17', 'na', 540)], offs: OFFS } })
+    expect([...part().querySelectorAll('li')].map((li) => li.textContent)).toEqual(['늘 비는 시간: 화 9시 6%'])
+  })
+
+  it("AC-6105.2·AC-6105.3: 예약 없던 칸만 낮으면(다른 칸은 50 이상) '늘 비는 시간' 줄도 그리지 않는다", () => {
     draw({ slots: { rows: MONDAYS.map((day) => slot(day, 'ga', 600)), offs: OFFS } })
-    expect([...part().querySelectorAll('li')].map((li) => li.textContent)).toEqual(['늘 비는 시간: 월 9시 0% · 화 9시 0% · 화 10시 0%'])
+    expect(part().querySelectorAll('li')).toHaveLength(0)
+    expect(within(heat()).getAllByRole('row').slice(1).map(texts)).toEqual([
+      ['월', '', '50'],
+      ['화', '', ''],
+      ['수', '', ''],
+      ['목', '', ''],
+      ['금', '', ''],
+      ['토', '', ''],
+    ])
   })
 
   it("AC-6105.3: 폰 폭에서 표는 가로로 밀어 보는 칸 안이다(화면 전체는 넘치지 않는다)", () => {

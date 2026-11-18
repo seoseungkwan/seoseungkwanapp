@@ -12,7 +12,7 @@ import { Section } from './parts'
 // 통계 요약 '이번 달 목표' 칸 (stats-insights REQ-6102 AC-6102.4·AC-6102.5, 시안 docs/mockups/stats-insights ②).
 // 목표가 있는 지표만 내원 → 신환 → 매출 줄: 지금까지 / 목표 · 달성률, 막대(달성률, 100%까지) + 오늘 세로줄(지나간 만큼), 이 속도면 월말 예상 · 예상률 · 모자람/넘김.
 // 셈은 goalPace(순수)가 한다. 내원·신환은 넓은 하루 읽기의 저장된 하루 숫자, 매출은 useStatsGoals의 하루 매출(sales_days 총액)이다.
-// 목표 적기·고치기: 숫자 칸 셋(매출은 만 원), 빈 칸 = 목표 없음. 저장 실패는 lib/errors.ts 문구(E-STATS-SAVE-FAILED)를 보이고 적은 값은 그대로 둔다.
+// 목표 적기·고치기: 숫자 칸 셋(매출은 만 원), 빈 칸 = 목표 없음. 저장 실패는 lib/errors.ts의 목표 전용 문구(E-STATS-GOAL-SAVE-FAILED)를 보이고 적은 값은 그대로 둔다.
 // props만 받는다(읽기·저장은 부르는 쪽). 오늘 기준이고 위 기간 고르기와 상관없다
 
 /** 'reading' = 읽는 중(비움), 'failed' = 읽기 실패 */
@@ -165,7 +165,7 @@ function GoalForm({ goal, onSave, onClose }: { goal: Goal; onSave(goal: Goal): P
       </div>
       {failed && (
         <div className="mt-3">
-          <ErrorCard code="E-STATS-SAVE-FAILED" />
+          <ErrorCard code="E-STATS-GOAL-SAVE-FAILED" />
         </div>
       )}
       <div className="mt-3 flex flex-wrap gap-2">

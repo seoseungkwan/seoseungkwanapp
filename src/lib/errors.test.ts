@@ -50,6 +50,7 @@ const ALL_CODES = [
   'E-STATS-PICK-SAVE-FAILED',
   'E-STATS-GROUP-READ-FAILED',
   'E-STATS-GROUP-SAVE-FAILED',
+  'E-STATS-GOAL-SAVE-FAILED',
   'E-RULES-LOAD-FAILED',
   'E-SETTINGS-FAILED',
   'E-MEMO-NO-SETTINGS',
@@ -534,6 +535,27 @@ describe('REQ-505 통계 오류 번호(도우미가 stats.rows를 거절할 때)
       what: '불러오는 사이에 접수가 바뀌었어요',
       fix: '다시 시도해 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
     })
+  })
+})
+
+describe('AC-6102.5 이번 달 목표 저장 실패 번호(stats-insights, 2026-11-18 검토 고침)', () => {
+  it("AC-6102.5: E-STATS-GOAL-SAVE-FAILED는 무엇이 '이번 달 목표를 저장하지 못했어요', 어떻게 고치나 '인터넷 연결을 확인하고 [저장]을 다시 눌러 주세요.'다", () => {
+    expect(isErrorCode('E-STATS-GOAL-SAVE-FAILED')).toBe(true)
+    expect(errorInfo('E-STATS-GOAL-SAVE-FAILED')).toEqual({
+      what: '이번 달 목표를 저장하지 못했어요',
+      fix: '인터넷 연결을 확인하고 [저장]을 다시 눌러 주세요.',
+    })
+  })
+
+  it('AC-6102.5: 목표 칸 단추는 [저장]이라 통계 저장 문구의 [다시 저장]을 가리키지 않는다', () => {
+    expect(errorInfo('E-STATS-GOAL-SAVE-FAILED').fix).not.toContain('[다시 저장]')
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-6304.3과 같은 방법)
+  it('AC-6102.5: 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    expect(union).toContain("'E-STATS-GOAL-SAVE-FAILED'")
   })
 })
 

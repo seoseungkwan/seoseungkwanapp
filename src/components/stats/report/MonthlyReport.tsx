@@ -50,8 +50,9 @@ function Cells({ cells }: { cells: readonly ReportCell[] }) {
 function Items({ items }: { items: readonly string[] }) {
   return (
     <ul className={ITEMS}>
-      {items.map((item) => (
-        <li key={item}>{item}</li>
+      {/* 같은 글자 줄이 둘일 수 있다(이름·숫자가 같은 시행자) — 차례를 열쇠에 넣는다 */}
+      {items.map((item, i) => (
+        <li key={`${i}-${item}`}>{item}</li>
       ))}
     </ul>
   )

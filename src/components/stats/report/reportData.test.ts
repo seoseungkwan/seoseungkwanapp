@@ -176,6 +176,78 @@ describe('AC-6108.2: 보고서 칸', () => {
     ])
   })
 
+  it('AC-6108.4: 10% 이상은 반올림하기 전 값으로 본다 — 9.5%는 빼고(반올림하면 10%여도), 꼭 10%는 넣는다. 글의 %만 반올림 정수다', () => {
+    const changes = (before: number, now: number) =>
+      blockOf(monthlyReport(input({ days: [day('2026-09-07', before, 0), day('2026-10-05', now, 0)], sales: null, groups: [] })).blocks, 'changes')?.changes
+    expect(changes(200, 219)).toEqual([]) // 9.5% 많음
+    expect(changes(200, 181)).toEqual([]) // 9.5% 적음
+    expect(changes(200, 220)).toEqual([{ dir: 'up', text: '내원 · 9월보다 10% 많아요 (200명 → 220명)' }])
+    expect(changes(200, 180)).toEqual([{ dir: 'down', text: '내원 · 9월보다 10% 적어요 (200명 → 180명)' }])
+    expect(changes(1000, 1104)).toEqual([{ dir: 'up', text: '내원 · 9월보다 10% 많아요 (1,000명 → 1,104명)' }]) // 10.4% → 글은 10%
+  })
+
+  // 이번 달 보고서(오늘 11월 13일 → 어제 11월 12일): 10월은 1일~12일만 견준다. 오늘(11월 13일) 줄은 받아도 세지 않는다
+  const SAME_DAY_DAYS: DayPayload[] = [
+    day('2026-10-05', 300, 20, [line(DOSU, 10)]),
+    day('2026-10-12', 100, 10, [line(DOSU, 10)]), // 같은 날짜 — 든다
+    day('2026-10-13', 900, 50, [line(DOSU, 30)]), // 같은 날짜 뒤 — 이번 달 보고서에서는 빠진다
+    day('2026-10-31', 500, 40, [line(DOSU, 20)]),
+    day('2026-11-02', 250, 15, [line(DOSU, 11)]),
+    day('2026-11-12', 190, 15, [line(DOSU, 10)]),
+    day(TODAY, 999, 99, [line(DOSU, 50)]), // 오늘(진료 중) — 빠진다
+  ]
+  const SAME_DAY_SALES: DayValue[] = [
+    { day: '2026-10-05', value: 10_000_000 },
+    { day: '2026-10-12', value: 10_000_000 },
+    { day: '2026-10-13', value: 80_000_000 },
+    { day: '2026-11-02', value: 9_000_000 },
+    { day: '2026-11-12', value: 9_000_000 },
+    { day: TODAY, value: 50_000_000 },
+  ]
+  const sameDay = (over: Partial<ReportInput> = {}) =>
+    monthlyReport(input({ month: '2026-11', days: SAME_DAY_DAYS, sales: SAME_DAY_SALES, groups: [G_DOSU], calendar: null, bit: null, ...over })).blocks
+
+  it('AC-6108.4: 이번 달 보고서의 한 달 숫자는 1일~어제의 합(매출도 어제까지)이고 목표 달성률도 그 값이다 — 오늘 줄은 받아도 세지 않는다', () => {
+    const blocks = sameDay({ goal: { visits: 880, newPatients: null, revenue: 36_000_000 } })
+    expect(blockOf(blocks, 'summary')?.cells).toEqual([
+      { name: '내원', value: '440' },
+      { name: '신환', value: '30' },
+      { name: '매출', value: '1,800만 원' },
+    ])
+    expect(blockOf(blocks, 'goal')?.items).toEqual(['내원 440명 / 목표 880명 · 50%', '매출 1,800만 원 / 목표 3,600만 원 · 50%'])
+    expect(blockOf(blocks, 'treatments')?.items).toEqual(['도수 21건'])
+  })
+
+  it("AC-6108.4: 이번 달 보고서의 '달라진 것'은 지난달 1일~같은 날짜(10월 1일~12일)와 견준다 — 같은 날짜 뒤(10월 13일·31일)는 견주지 않는다", () => {
+    // 내원 440 vs 400(+10%) · 신환 30 vs 30 · 매출 1,800만 vs 2,000만(-10%) · 도수 21 vs 20(+5%)
+    expect(blockOf(sameDay(), 'changes')?.changes).toEqual([
+      { dir: 'up', text: '내원 · 10월보다 10% 많아요 (400명 → 440명)' },
+      { dir: 'down', text: '매출 · 10월보다 10% 적어요 (2,000만 원 → 1,800만 원)' },
+    ])
+  })
+
+  it("AC-6108.4: 지난달에 같은 날짜가 없으면 지난달 말일까지와 견준다(오늘 3월 31일 → 3월 1일~30일 vs 2월 1일~28일)", () => {
+    const days = [day('2026-02-27', 100, 0), day('2026-02-28', 100, 0), day('2026-03-30', 220, 0), day('2026-03-31', 999, 0)]
+    const blocks = monthlyReport(input({ month: '2026-03', today: '2026-03-31', daysFrom: '2025-03-31', days, sales: null, groups: [], calendar: null, bit: null, goal: null })).blocks
+    expect(blockOf(blocks, 'summary')?.cells).toEqual([
+      { name: '내원', value: '220' },
+      { name: '신환', value: '0' },
+    ])
+    expect(blockOf(blocks, 'changes')?.changes).toEqual([{ dir: 'up', text: '내원 · 2월보다 10% 많아요 (200명 → 220명)' }])
+  })
+
+  it("AC-6108.4: 다 지난 달(10월)을 고르면 지금처럼 두 달 전체를 견준다 — 10월 13일·31일도 든다", () => {
+    const blocks = sameDay({ month: '2026-10', days: [day('2026-09-10', 1600, 100, [line(DOSU, 70)]), ...SAME_DAY_DAYS], sales: null })
+    expect(blockOf(blocks, 'summary')?.cells.slice(0, 2)).toEqual([
+      { name: '내원', value: '1,800' },
+      { name: '신환', value: '120' },
+    ])
+    expect(blockOf(blocks, 'changes')?.changes).toEqual([
+      { dir: 'up', text: '내원 · 9월보다 13% 많아요 (1,600명 → 1,800명)' },
+      { dir: 'up', text: '신환 · 9월보다 20% 많아요 (100명 → 120명)' },
+    ])
+  })
+
   it(`AC-6108.2: 견줄 수 있는데 10% 넘게 달라진 것이 없으면 줄이 없고 화면은 '${SAME_AS_BEFORE}'를 쓴다`, () => {
     const same = [day('2026-09-07', 1450, 98, [line(DOSU, 35), line(SHOCK, 18)]), day('2026-10-05', 1500, 100, [line(DOSU, 36), line(SHOCK, 18)])]
     const block = blockOf(monthlyReport(input({ days: same, sales: null })).blocks, 'changes')
@@ -226,8 +298,9 @@ describe('AC-6108.2: 보고서 칸', () => {
     ])
   })
 
-  it('AC-6108.2: 예약 빈자리 = 최근 8주 늘 비는 시간·꽉 차는 시간(있는 것만)', () => {
-    expect(blockOf(monthlyReport(input()).blocks, 'occupancy')?.items).toEqual(['늘 비는 시간: 월 10시 0% · 월 11시 0% · 월 12시 0%'])
+  it('AC-6108.2·AC-6105.1: 예약 빈자리 = 최근 8주 늘 비는 시간·꽉 차는 시간(있는 것만). 8주 동안 예약이 없던 시간(빈 칸)은 들지 않는다', () => {
+    // 10월 5일(월) 9시 예약 하나 → 60분 ÷ (8일 × 1명 × 60분) = 12.5% → 13%. 다른 칸은 예약이 없어 빈 칸
+    expect(blockOf(monthlyReport(input()).blocks, 'occupancy')?.items).toEqual(['늘 비는 시간: 월 9시 13%'])
   })
 })
 
