@@ -369,7 +369,7 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
   },
   'E-DESK-EMAIL-BAD': {
     what: '메일 주소 모양이 아니에요',
-    fix: '데스크가 로그인할 구글 메일을 그대로 적어 주세요(예: desk@gmail.com).',
+    fix: '데스크가 로그인할 구글 메일 주소를 그대로 적어 주세요.',
   },
   'E-DESK-EMAIL-TAKEN': {
     what: '이미 병원 계정으로 가입된 메일이에요',

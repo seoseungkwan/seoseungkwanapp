@@ -998,7 +998,7 @@ const DESK = {
   },
   'E-DESK-EMAIL-BAD': {
     what: '메일 주소 모양이 아니에요',
-    fix: '데스크가 로그인할 구글 메일을 그대로 적어 주세요(예: desk@gmail.com).',
+    fix: '데스크가 로그인할 구글 메일 주소를 그대로 적어 주세요.',
   },
   'E-DESK-EMAIL-TAKEN': {
     what: '이미 병원 계정으로 가입된 메일이에요',
@@ -1019,6 +1019,14 @@ describe('AC-6304.3 데스크 계정 오류 번호', () => {
     expect(isErrorCode(code), code).toBe(true)
     expect(ALL_CODES, code).toContain(code)
     expect(errorInfo(code)).toEqual(DESK[code])
+  })
+
+  // 코드 속 메일 모양 글자는 관리자 연락처 하나뿐이다(ui-90 AC-409.3) → 오류 글에 메일 예시를 넣지 않는다(2026-11-18 검토 고침)
+  it('AC-6304.3·AC-409.3: 데스크 오류 글에는 메일 모양 글자(@)가 없다', () => {
+    for (const code of Object.keys(DESK) as Array<keyof typeof DESK>) {
+      const { what, fix } = errorInfo(code)
+      expect(`${what} ${fix}`, code).not.toContain('@')
+    }
   })
 
   it("AC-6304.3: E-DESK-EMAIL-TAKEN의 '무엇이' 글은 '이미 병원 계정으로 가입된 메일이에요'다", () => {

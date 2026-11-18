@@ -7,7 +7,8 @@ import { loadSunapSettings, saveSunapSettings, SunapStorageError } from '@/lib/s
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { RxCond, RxGroup, StatsRxGroup } from '@/types/rxGroups'
 import { DEFAULT_RSV_KINDS, type SunapSettings } from '@/types/sunap'
-import { readDashboardGroups, toDashboardGroups } from './rxGroups'
+import { SAVED_READ_TIMEOUT_MS } from '@/components/dashboard/summary/LiveDashboard'
+import { PT_SETTINGS_TIMEOUT_MS, readDashboardGroups, toDashboardGroups, type DashboardGroups } from './rxGroups'
 
 // 대시보드 '처방 상위'의 묶음 읽기 (spec bit-dashboard REQ-606, design.md '처방 상위 = 통계 탭 묶음').
 // 통계 탭 묶음 읽기(listStatsRxGroups)만 가짜로 바꾸고, 열쇠·정의는 통계 탭의 진짜 groupKey·groupDefs와 견준다. 묶음·코드는 모두 지어낸 값이다
@@ -330,6 +331,102 @@ describe('AC-6302.1 readDashboardGroups — 묶음과 수납일지 설정을 함
     await readDashboardGroups()
     expect(save).not.toHaveBeenCalled()
     expect(saveSettings).not.toHaveBeenCalled()
+  })
+})
+
+// 수납일지 설정 읽기가 늦을 때 (spec desk-feedback AC-6302.5, 2026-11-18 검토 고침). 대시보드 한도(10초)는 LiveDashboard가 묶음 읽기 전체에 건다.
+// 설정 읽기는 따로 짧은 한도와 겨뤄 늦으면 '모름'(pt 없음 → 물리치료 칸 '자료 없음')이 되고, 묶음은 그 한도를 넘겨 기다리지 않는다. 시계는 가짜 시계다
+describe('AC-6302.5 readDashboardGroups — 수납일지 설정 읽기는 따로 짧은 한도', () => {
+  const rows = () => ROWS.map((row) => ({ ...row, codes: [...row.codes] }))
+  const never = () => new Promise<never>(() => {})
+  const after = <T,>(ms: number, value: T) => new Promise<T>((resolve) => setTimeout(() => resolve(value), ms))
+
+  /** 읽기를 시작하고 끝났는지 지켜본다(가짜 시계를 돌리며 끝난 때를 본다) */
+  function watch() {
+    const state: { done: boolean; value: DashboardGroups | null | undefined } = { done: false, value: undefined }
+    const promise = readDashboardGroups().then((value) => {
+      state.done = true
+      state.value = value
+      return value
+    })
+    return { state, promise }
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('AC-6302.5: 설정 읽기 한도는 대시보드 묶음 한도(10초)보다 짧다(절반 이하)', () => {
+    expect(PT_SETTINGS_TIMEOUT_MS).toBeGreaterThan(0)
+    expect(PT_SETTINGS_TIMEOUT_MS * 2).toBeLessThanOrEqual(SAVED_READ_TIMEOUT_MS)
+  })
+
+  it('AC-6302.5: 설정 읽기가 끝나지 않아도 묶음은 설정 한도가 지나면 pt 없이(물리치료 칸 자료 없음) 그대로 온다', async () => {
+    list.mockResolvedValueOnce(rows())
+    settings.mockReturnValueOnce(never())
+    const { state, promise } = watch()
+    await vi.advanceTimersByTimeAsync(PT_SETTINGS_TIMEOUT_MS - 1)
+    expect(state.done).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(state.done).toBe(true)
+    const groups = await promise
+    expect(groups).toStrictEqual(toDashboardGroups(ROWS))
+    expect(groups !== null && 'pt' in groups).toBe(false)
+  })
+
+  it('AC-6302.5: 묶음 읽기가 설정 한도보다 오래 걸려도 묶음이 오는 그때 끝난다(설정 읽기를 더 기다리지 않는다)', async () => {
+    const slow = SAVED_READ_TIMEOUT_MS - 2_000
+    list.mockReturnValueOnce(after(slow, rows()))
+    settings.mockReturnValueOnce(never())
+    const { state, promise } = watch()
+    await vi.advanceTimersByTimeAsync(slow - 1)
+    expect(state.done).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(state.done).toBe(true)
+    await expect(promise).resolves.toStrictEqual(toDashboardGroups(ROWS))
+  })
+
+  it('AC-6302.5: 설정 답이 한도 안에 오면 pt가 있다(묶음은 그 답까지만 기다린다)', async () => {
+    list.mockResolvedValueOnce(rows())
+    settings.mockReturnValueOnce(after(PT_SETTINGS_TIMEOUT_MS - 1, sunapSettings('fake-3')))
+    const { state, promise } = watch()
+    await vi.advanceTimersByTimeAsync(PT_SETTINGS_TIMEOUT_MS - 1)
+    expect(state.done).toBe(true)
+    await expect(promise).resolves.toStrictEqual(toDashboardGroups(ROWS, 'fake-3'))
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('AC-6302.5: 한도가 지난 뒤 온 설정 답은 버린다(pt 없음 그대로)', async () => {
+    list.mockResolvedValueOnce(rows())
+    settings.mockReturnValueOnce(after(PT_SETTINGS_TIMEOUT_MS + 1, sunapSettings('fake-3')))
+    const { state, promise } = watch()
+    await vi.advanceTimersByTimeAsync(PT_SETTINGS_TIMEOUT_MS)
+    expect(state.done).toBe(true)
+    await vi.advanceTimersByTimeAsync(1)
+    await expect(promise).resolves.toStrictEqual(toDashboardGroups(ROWS))
+    expect(state.value).toStrictEqual(toDashboardGroups(ROWS))
+  })
+
+  it('AC-6302.5: 한도가 지난 뒤 설정 읽기가 실패해도 결과는 그대로다(묶음 그대로, pt 없음)', async () => {
+    list.mockResolvedValueOnce(rows())
+    settings.mockReturnValueOnce(
+      new Promise<SunapSettings>((_, reject) => setTimeout(() => reject(new SunapStorageError('offline')), PT_SETTINGS_TIMEOUT_MS + 1)),
+    )
+    const { promise } = watch()
+    await vi.advanceTimersByTimeAsync(PT_SETTINGS_TIMEOUT_MS + 1)
+    await expect(promise).resolves.toStrictEqual(toDashboardGroups(ROWS))
+  })
+
+  it('AC-6302.5: 설정 읽기가 늦어도 묶음 읽기가 실패하면 지금처럼 null이다', async () => {
+    list.mockRejectedValueOnce(new StatsRxGroupStoreError('E-STATS-GROUP-READ-FAILED'))
+    settings.mockReturnValueOnce(never())
+    const { promise } = watch()
+    await vi.advanceTimersByTimeAsync(PT_SETTINGS_TIMEOUT_MS)
+    await expect(promise).resolves.toBeNull()
   })
 })
 
