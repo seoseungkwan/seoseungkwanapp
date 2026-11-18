@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "clinic-profile",
-  "approved_at": "2026-11-18T13:32:57Z",
+  "approved_at": "2026-11-18T13:40:36Z",
   "approved_via": "user-prompt",
   "session_id": "d8c599c5-f70a-49d3-a279-5c381ed7a718",
-  "spec_sha256": "0e1f32c8b6074517cca19fbc12af581fe39f21996543bbbdda50730213810eeb",
+  "spec_sha256": "3cbe4a52aa4b786127a64c50104eff324ef4cbb6b58510c6bff8c05414f7c546",
   "scope": [
     "CLAUDE.md",
     "docs/ADR.md",
@@ -210,6 +210,8 @@
     "src/lib/storage/claimSettings.ts",
     "src/lib/storage/clinicProfile.test.ts",
     "src/lib/storage/clinicProfile.ts",
+    "src/lib/storage/formGuides.test.ts",
+    "src/lib/storage/formGuides.ts",
     "src/types/calendar.ts",
     "src/types/clinicProfile.ts",
     "src/types/errors.ts",
