@@ -282,7 +282,7 @@ describe('AC-6614.6 보기 메모 칸', () => {
     expect(memosIn(aside())).toEqual([
       'C-arm guide 하에 MBB L4,5,S1 both 시행함\nC-arm guide 하에 SNB Rt 시행함',
       'Sono guide 하에 IA injection of - Rt shoulder 시행함',
-      'C-arm guide 하에 Rt 슬관절 강내 연골주사 2회차 시행함\nK-L grade (3)/(3)',
+      'Rt 슬관절 강내 연골주사 2회차 시행함\nK-L grade (3)/(3)',
     ])
     for (const label of SAMPLE_LABELS) expect(within(aside()).getByText(label)).toBeTruthy()
     await user.click(radio('우측·좌측·양측'))
