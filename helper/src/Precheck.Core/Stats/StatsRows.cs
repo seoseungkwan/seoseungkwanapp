@@ -91,18 +91,20 @@ public sealed class StatsVisitRow
 }
 
 /// <summary>
-/// 접수 줄 [차트번호, 진료일, 접수 건수, 첫 내원일, 90일초진 접수 수], 환자·날마다 한 줄. 글자는 앞뒤 공백만 없앤 원본 값, 첫 내원일이 없으면 null.
+/// 접수 줄 [차트번호, 진료일, 접수 건수, 첫 내원일, 90일초진 접수 수, 신환 표시 접수 수], 환자·날마다 한 줄. 글자는 앞뒤 공백만 없앤 원본 값, 첫 내원일이 없으면 null.
 /// 90일초진 접수 수(spec first90 AC-4401.1)는 그 환자·날 접수 가운데 내원 구분 '3'인 수이고, 첫 내원일인 날도 고치지 않는다(AC-4401.3).
+/// 신환 표시 접수 수(spec new-mark AC-6201.1)는 그 환자·날 접수 가운데 내원 구분 '1'인 수다(신환인지는 웹이 정한다).
 /// </summary>
 public sealed class StatsPatientDay
 {
-    public StatsPatientDay(string? chart, string? day, long visits, string? firstDay, long first90)
+    public StatsPatientDay(string? chart, string? day, long visits, string? firstDay, long first90, long newMark)
     {
         Chart = chart;
         Day = day;
         Visits = visits;
         FirstDay = firstDay;
         First90 = first90;
+        NewMark = newMark;
     }
 
     public string? Chart { get; }
@@ -115,6 +117,9 @@ public sealed class StatsPatientDay
 
     /// <summary>그 환자·날의 90일초진('3') 접수 수.</summary>
     public long First90 { get; }
+
+    /// <summary>그 환자·날의 신환 표시('1') 접수 수.</summary>
+    public long NewMark { get; }
 }
 
 /// <summary>stats.rows가 비트에서 읽은 통계 줄 전부(보고 숫자는 StatsReport).</summary>
@@ -197,7 +202,7 @@ public static class StatsRows
         var patientDays = new List<StatsPatientDay>(patientRows.Count);
         foreach (var row in patientRows)
         {
-            patientDays.Add(new StatsPatientDay(Text(Cell(row, 0)), Text(Cell(row, 1)), Number(Cell(row, 2)), FirstDay(Cell(row, 3)), Number(Cell(row, 4))));
+            patientDays.Add(new StatsPatientDay(Text(Cell(row, 0)), Text(Cell(row, 1)), Number(Cell(row, 2)), FirstDay(Cell(row, 3)), Number(Cell(row, 4)), Number(Cell(row, 5))));
         }
 
         var total = Single(ReadOnlyGuard.Query(db, StatsSql.VisitSummarySql, visitArgs, StatsSql.DataTimeout));

@@ -87,6 +87,12 @@ describe('REQ-5908 도우미 0.10.0 — 수납일지 장부 줄 끝 건강생활
   })
 })
 
+describe('REQ-6204 수납일지 신환은 비트 신환 표시로 (spec new-mark, C# Precheck.Core.Tests Sunap)', () => {
+  it('AC-6204.1 환자 줄 종류는 그날 신환 표시(OcmDgsNfs = 1) 센 접수가 있으면 new, 아니면 90일초진 접수가 있으면 d90, 아니면 re(첫 내원일은 읽기만 하고 종류에 쓰지 않음)', () => {
+    expectAc('AC-6204.1')
+  })
+})
+
 // 2026-11-17 helper-v0.9.1 GitHub 윈도우 빌드에서 시험이 깨짐: 윈도우 받기(core.autocrlf=true)는 @"…" 여러 줄 글에 CRLF를 넣어
 // HealthSql이 시험 글(\n)·가짜 DB 열쇠와 달라졌다. 그래서 HealthSql은 줄바꿈을 "\n"으로 적는다(파일 줄바꿈과 상관없이 같은 글)
 describe('AC-5401.2 HealthSql 글은 파일 줄바꿈과 상관없다', () => {

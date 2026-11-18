@@ -27,9 +27,12 @@ internal static class SunapData
 {
     public const string Day = "2026-10-30";
 
-    /// <summary>PatientsSql 한 줄: 차트번호·이름·그날 첫 접수 시각(yyyyMMddHHmm)·첫 내원일(yyyyMMdd)·그날 90일초진 접수 수·진료의 코드(sunap-doctors).</summary>
-    public static object?[] Patient(string? chart, string? name, string? firstAcp, string? firstDay, object? first90, string? doctor = null) =>
-        new object?[] { chart, name, firstAcp, firstDay, first90, doctor };
+    /// <summary>
+    /// PatientsSql 한 줄: 차트번호·이름·그날 첫 접수 시각(yyyyMMddHHmm)·첫 내원일(yyyyMMdd)·그날 90일초진 접수 수·진료의 코드(sunap-doctors)·
+    /// 그날 신환 표시('1') 접수 수(spec new-mark AC-6204.1, 안 주면 0).
+    /// </summary>
+    public static object?[] Patient(string? chart, string? name, string? firstAcp, string? firstDay, object? first90, string? doctor = null, object? newMark = null) =>
+        new object?[] { chart, name, firstAcp, firstDay, first90, doctor, newMark ?? 0L };
 
     /// <summary>원장님 이름 SQL(StatsSql.DoctorNamesSql) 한 줄: 코드·이름·UidExpDte. SQL이 코드·UidExpDte 차례로 준다.</summary>
     public static object?[] DoctorName(string? code, string? name, string? expires) => new object?[] { code, name, expires };
@@ -331,16 +334,16 @@ public class SunapTargetsTests
 
     // ── AC-4902.2 환자마다 한 줄 ─────────────────────────────────────────────
 
-    [Fact(DisplayName = "AC-4902.2 rows: 환자마다 [차트, 이름, 첫 접수 HH:mm, 구분, 현금, 카드, 계좌, 미수, 처방코드, 예약], 첫 접수 차례. 구분은 첫 내원일이 그날이면 new, 아니고 90일초진 접수가 있으면 d90, 아니면 re")]
+    [Fact(DisplayName = "AC-4902.2 AC-6204.1 rows: 환자마다 [차트, 이름, 첫 접수 HH:mm, 구분, 현금, 카드, 계좌, 미수, 처방코드, 예약], 첫 접수 차례. 구분은 그날 신환 표시 접수가 있으면 new, 아니고 90일초진 접수가 있으면 d90, 아니면 re")]
     public void RowsPerPatient()
     {
         using var rig = new SunapRig();
         rig.Answer(SunapSql.PatientsSql,
             SunapData.Patient("900001 ", " 가상환자01 ", "202610300902", "20240105", 0L),
-            SunapData.Patient("900002", "가상환자02", "202610300915", "20261030", 0),
+            SunapData.Patient("900002", "가상환자02", "202610300915", "20261030", 0, newMark: 1),
             SunapData.Patient("900003", "가상환자03", "202610300930", "20250101", 2L),
-            SunapData.Patient("900004", null, "202610300945", "20261030", 1),          // 신환이 90일초진보다 앞선다
-            SunapData.Patient("900005", "가상환자05", "202610300850", null, null));    // 첫 내원을 못 찾음 → 재진
+            SunapData.Patient("900004", null, "202610300945", "20261030", 1, newMark: 1L),  // 신환이 90일초진보다 앞선다
+            SunapData.Patient("900005", "가상환자05", "202610300850", null, null));       // 첫 내원을 못 찾음 → 재진
         rig.Answer(SunapSql.CodesSql,
             SunapData.Code("900001", "MM110"), SunapData.Code("900001", "KK020"), SunapData.Code("900001 ", "MM110"),
             SunapData.Code("900001", " kk030 "), SunapData.Code("900001", ""), SunapData.Code("900001", null),
@@ -397,6 +400,7 @@ public class SunapTargetsTests
             new[] { SunapData.Patient("900001", "가상환자01", "202610290902", "20240105", 0L) },
             new[] { SunapData.Patient("900001", "가상환자01", null, "20240105", 0L) },
             new[] { SunapData.Patient("900001", "가상환자01", "202610300902", "20240105", "가상") },
+            new[] { SunapData.Patient("900001", "가상환자01", "202610300902", "20240105", "가상", newMark: 1L) },    // 신환이어도 90일초진 칸을 본다
             new[] { good.Take(4).ToArray() },
         };
         foreach (var rows in cases)
@@ -419,7 +423,7 @@ public class SunapTargetsTests
         }
     }
 
-    [Fact(DisplayName = "AC-4902.2 AC-5002.1 환자 SQL: 통계 Visits 글(외래·WN/HN/TN/PN·OcmRsuYon<>'O'·이 병원, 첫 내원 FirstVisits) 그대로 + 환자마다 이름·첫 접수·첫 내원일·OcmDgsNfs='3' 접수 수·빈 값 뺀 가장 작은 진료의 코드")]
+    [Fact(DisplayName = "AC-4902.2 AC-5002.1 AC-6204.1 환자 SQL: 통계 Visits 글(외래·WN/HN/TN/PN·OcmRsuYon<>'O'·이 병원, 첫 내원 FirstVisits) 그대로 + 환자마다 이름·첫 접수·첫 내원일·OcmDgsNfs='3' 접수 수·빈 값 뺀 가장 작은 진료의 코드·OcmDgsNfs='1'(신환 표시) 접수 수")]
     public void PatientsSqlUsesStatsVisits()
     {
         var visits = Squash(StatsVisits);
@@ -428,10 +432,51 @@ public class SunapTargetsTests
 
         Assert.Equal(
             "SELECT v.PatientId,MAX(b.PbsPatNam) PatName,MIN(c.OcmAcpDtm) FirstAcp,LEFT(MIN(f.FirstDtm),8) FirstDay, "
-            + "SUM(CASE WHEN c.OcmDgsNfs='3' THEN 1 ELSE 0 END) First90,MIN(NULLIF(RTRIM(c.OcmDtrCod),'')) DoctorId "
+            + "SUM(CASE WHEN c.OcmDgsNfs='3' THEN 1 ELSE 0 END) First90,MIN(NULLIF(RTRIM(c.OcmDtrCod),'')) DoctorId,"
+            + "SUM(CASE WHEN c.OcmDgsNfs='1' THEN 1 ELSE 0 END) NewMark "
             + "FROM PeriodVisits v JOIN dbo.OcmInf c ON c.OcmNum=v.VisitId LEFT JOIN FirstVisits f ON f.PatientId=v.PatientId "
             + "LEFT JOIN dbo.PbsInf b ON b.PbsChtNum=v.PatientId WHERE v.PatientId IS NOT NULL GROUP BY v.PatientId",
             Rest(SunapSql.PatientsSql, StatsVisits));
+    }
+
+    // ── AC-6204.1 수납일지 신환은 비트 신환 표시로 (spec new-mark) ─────────────────────────
+
+    [Fact(DisplayName = "AC-6204.1 구분은 그날 신환 표시('1') 센 접수가 있으면 new, 아니면 90일초진 접수가 있으면 d90, 아니면 re다(첫 내원일이 그날이어도 신환 표시가 없으면 new가 아니다)")]
+    public void KindFollowsNewMark()
+    {
+        using var rig = new SunapRig();
+        rig.Answer(SunapSql.PatientsSql,
+            SunapData.Patient("900001", "가상환자01", "202610300901", "20240105", 0L, newMark: 1L),   // 예전 접수가 있어도 신환 표시 → new
+            SunapData.Patient("900002", "가상환자02", "202610300902", "20261030", 0L),                // 첫 내원일이 그날이지만 표시 없음 → re
+            SunapData.Patient("900003", "가상환자03", "202610300903", "20261030", 1),                 // 첫 내원일이 그날, 90일초진 → d90
+            SunapData.Patient("900004", "가상환자04", "202610300904", "20250101", 2L, newMark: 1),    // 신환 표시가 90일초진보다 앞선다 → new
+            SunapData.Patient("900005", "가상환자05", "202610300905", null, 0L, newMark: 2L),          // 첫 내원을 못 찾아도 표시 두 건 → new
+            SunapData.Patient("900006", "가상환자06", "202610300906", "20250101", 0L, "D001", 0L));   // 아무 표시 없음 → re
+        var kinds = rig.Build().GetProperty("rows").EnumerateArray().Select(row => row[0].GetString() + ":" + row[3].GetString()).ToArray();
+
+        Assert.Equal(new[]
+        {
+            "900001:new", "900002:re", "900003:d90", "900004:new", "900005:new", "900006:re",
+        }, kinds);
+    }
+
+    [Fact(DisplayName = "AC-6204.1 환자 줄에 신환 표시 칸(일곱째)이 없거나(옛 여섯 칸) 숫자가 아니면 일부만 보내지 않고 E-BIT-READ-FAILED, DB NULL은 0이다")]
+    public void NewMarkCellMustBeANumber()
+    {
+        var good = SunapData.Patient("900001", "가상환자01", "202610300902", "20240105", 0L, "D001");
+        foreach (var row in new[] { good.Take(6).ToArray(), SunapData.Patient("900001", "가상환자01", "202610300902", "20240105", 0L, "D001", "가상") })
+        {
+            using var rig = new SunapRig();
+            rig.Answer(SunapSql.PatientsSql, row);
+            Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => rig.Build()).Code);
+            Assert.Equal(1, rig.Db.Disposed);
+        }
+
+        using (var rig = new SunapRig())
+        {
+            rig.Answer(SunapSql.PatientsSql, good.Take(6).Append(null).ToArray());
+            Assert.Equal(new[] { "900001:re" }, rig.Build().GetProperty("rows").EnumerateArray().Select(row => row[0].GetString() + ":" + row[3].GetString()).ToArray());
+        }
     }
 
     [Fact(DisplayName = "AC-4902.2 처방 SQL: 통계 VisitRowsSql의 Orders 줄(그날 센 내원의 처방, 삭제·취소·원외 99 뺌) 그대로이고 끝 SELECT만 [차트번호, 처방코드]다")]
@@ -705,7 +750,7 @@ public class SunapTargetsTests
         rig.Db.Answer(SunapSql.PatientsSql, _ => new[]
         {
             SunapData.Patient("900001", "가상환자01", "202610300902", "20240105", 0L, "D002"),
-            SunapData.Patient("900002", "가상환자02", "202610300910", "20261030", 0L, "D001"),
+            SunapData.Patient("900002", "가상환자02", "202610300910", "20261030", 0L, "D001", 1L),
         });
         rig.Db.Answer(StatsSql.DoctorNamesSql, _ => new[] { SunapData.DoctorName("D001", "가짜원장 가", "99991231") });
 

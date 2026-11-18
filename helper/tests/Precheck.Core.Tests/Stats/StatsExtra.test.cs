@@ -591,14 +591,14 @@ public class StatsExtraPayloadTests
 
     private static string[][] Table(JsonElement array) => array.EnumerateArray().Select(Strings).ToArray();
 
-    [Fact(DisplayName = "AC-2701.1 AC-4401.1 stats.rows 답은 v 4(v3 열쇠 그대로, patientDays만 다섯 칸)이고 v2 열쇠 뒤에 visits·people·doctors·doctorDays를 이 차례로 싣는다")]
+    [Fact(DisplayName = "AC-2701.1 AC-4401.1 AC-6201.1 stats.rows 답은 v 5(v3 열쇠 그대로, patientDays만 여섯 칸)이고 v2 열쇠 뒤에 visits·people·doctors·doctorDays를 이 차례로 싣는다")]
     public void VersionAndKeys()
     {
         using var rig = StatsFake.Clinic();
         var root = Json.Parse(Reply(rig));
 
-        Assert.Equal(4, root.GetProperty("v").GetInt32());
-        Assert.Equal(4, StatsPayload.Version);
+        Assert.Equal(5, root.GetProperty("v").GetInt32());
+        Assert.Equal(5, StatsPayload.Version);
         Assert.Equal(V2Keys.Concat(new[] { "visits", "people", "doctors", "doctorDays" }), Json.Keys(root));
         Assert.Equal(1, rig.Session.Disposed);
     }

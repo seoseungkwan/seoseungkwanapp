@@ -13,6 +13,8 @@ namespace Precheck.Core.Stats;
 /// 예외 하나: 첫 내원 연결 조건만 색인을 쓸 수 있는 c.OcmChtNum=p.PatientId로 바꿨다(spec bit-read-speed, AC-1001.3).
 /// 예외 둘: 접수 줄·기간 합계·날짜별 세 문장은 첫 내원 잇기만 LEFT HASH JOIN이다. 힌트 없이는 긴 기간에서 FirstVisits를
 /// 접수 줄마다 다시 계산해 시간 제한을 넘었다(spec helper-stats-speed, AC-3401.3). 결과의 뜻은 같고 차례만 정한다.
+/// 예외 셋: 보고 PatientsSql 둘째 칸(신환)만 '기간 안 센 접수에 신환 표시(OcmDgsNfs='1')가 하나라도 있는 서로 다른 환자 수'다(spec new-mark AC-6203.1).
+/// 매출 RevenueSql.Patients와 글자가 같다. 시험은 사본에 이 한 칸 바꿈(NewMarkPatients)을 더해 견준다.
 /// PatientDaysSql만 원본에 없는 새 문장이다(Visits 글은 위 예외 말고 원본 그대로, 뒤의 SELECT만 새로 씀, AC-503.5).
 /// 모두 매개변수를 받는 SELECT 하나다. Bit/Sql.cs의 IsAllowed·ParametersOf가 이 목록도 보므로 ReadOnlyGuard를 지난다.
 /// 청구 목록 Sql.All에는 넣지 않는다. 비트 전용 세 칸(stats-bit-sections) 새 문장 다섯은 All이 아니라 Sections 목록에 있다.
@@ -56,14 +58,15 @@ FROM Orders o LEFT JOIN FirstVisits f ON f.PatientId=o.PatientId
 ORDER BY o.PatientId,o.VisitDay,o.Code";
 
     /// <summary>
-    /// 접수 줄 [차트번호, 진료일, 접수 건수, 첫 내원일, 90일초진 접수 수], 환자·날마다 한 줄(AC-503.5). 원본에 없는 새 문장이다: 원본 Visits 글 뒤에 이 SELECT를 이었다.
+    /// 접수 줄 [차트번호, 진료일, 접수 건수, 첫 내원일, 90일초진 접수 수, 신환 표시 접수 수], 환자·날마다 한 줄(AC-503.5). 원본에 없는 새 문장이다: 원본 Visits 글 뒤에 이 SELECT를 이었다.
     /// 처방 표를 잇지 않아 처방 없는 접수도 나오고, Visits 조건을 지나지 못한 접수(취소 등)와 차트번호 없는 접수는 나오지 않는다.
     /// 다섯째 칸(spec first90 AC-4401.1·AC-4401.2): 이 SELECT에서만 OcmInf를 접수 번호로 이어(기본 키 잇기라 힌트 없음) 그 환자·날 접수 가운데
     /// 내원 구분 OcmDgsNfs = '3'(90일초진)인 수를 센다. 공유 Visits 글과 HASH 힌트(첫 내원 잇기 한 번)는 그대로다. 첫 내원일인 날도 그대로 센다(AC-4401.3, 신환 우선은 웹).
+    /// 여섯째 칸(spec new-mark AC-6201.1): 같은 잇기로 그 환자·날 접수 가운데 내원 구분 '1'(신환 표시)인 수. 첫 내원일과 상관없이 그대로 센다.
     /// </summary>
     public const string PatientDaysSql = Visits + @"
 SELECT v.PatientId,v.VisitDay,COUNT_BIG(*) Visits,LEFT(f.FirstDtm,8) FirstDay,
- SUM(CASE WHEN o.OcmDgsNfs='3' THEN 1 ELSE 0 END) First90
+ SUM(CASE WHEN o.OcmDgsNfs='3' THEN 1 ELSE 0 END) First90,SUM(CASE WHEN o.OcmDgsNfs='1' THEN 1 ELSE 0 END) NewMark
 FROM PeriodVisits v LEFT HASH JOIN FirstVisits f ON f.PatientId=v.PatientId
 JOIN dbo.OcmInf o ON o.OcmNum=v.VisitId
 WHERE v.PatientId IS NOT NULL
@@ -121,7 +124,10 @@ ORDER BY SeeOdrCod,
     OR (IrcRetDtm>=@from AND IrcRetDtm<@to)
 ) q";
 
-    /// <summary>원본 Patients: 총환, 신환, 차트번호 없는 내원, 중복 내원, 첫 내원을 찾지 못한 환자.</summary>
+    /// <summary>
+    /// 원본 Patients: 총환, 신환, 차트번호 없는 내원, 중복 내원, 첫 내원을 찾지 못한 환자.
+    /// 신환(둘째 칸)만 기간 안 센 접수에 신환 표시('1')가 하나라도 있는 서로 다른 환자 수다(spec new-mark AC-6203.1). 매출 RevenueSql.Patients와 글자가 같다.
+    /// </summary>
     public const string PatientsSql = @"WITH PeriodVisits AS (
  SELECT c.OcmNum VisitId,NULLIF(RTRIM(c.OcmChtNum),'') PatientId
  FROM dbo.OcmInf c
@@ -141,7 +147,7 @@ ORDER BY SeeOdrCod,
  GROUP BY p.PatientId
 )
 SELECT (SELECT COUNT_BIG(*) FROM PeriodVisits),
-       (SELECT COUNT_BIG(*) FROM FirstVisits WHERE FirstDtm>=@from),
+       (SELECT COUNT_BIG(DISTINCT v.PatientId) FROM PeriodVisits v JOIN dbo.OcmInf o ON o.OcmNum=v.VisitId WHERE v.PatientId IS NOT NULL AND o.OcmDgsNfs='1'),
        (SELECT COUNT_BIG(*) FROM PeriodVisits WHERE PatientId IS NULL),
        (SELECT COUNT_BIG(*)-COUNT(DISTINCT VisitId) FROM PeriodVisits),
        (SELECT COUNT_BIG(*) FROM Patients p LEFT JOIN FirstVisits f ON f.PatientId=p.PatientId WHERE f.PatientId IS NULL)";

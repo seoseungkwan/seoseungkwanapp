@@ -20,11 +20,13 @@ namespace Precheck.Core.Stats;
 ///   doctors[[코드, 이름|null]], doctorDays[[수납일, 진료의 코드, 총진료비]].
 /// v4(spec first90 AC-4401.1, 도우미 0.7.0)는 v3과 열쇠·차례가 같고 patientDays 줄만 다섯 칸이다:
 ///   patientDays[[차트번호, 진료일, 접수 건수, 첫 내원일|null, 90일초진 접수 수]].
+/// v5(spec new-mark AC-6201.1)는 v4와 열쇠·차례가 같고 patientDays 줄만 여섯 칸이다:
+///   patientDays[[차트번호, 진료일, 접수 건수, 첫 내원일|null, 90일초진 접수 수, 신환 표시 접수 수]].
 /// 줄은 객체보다 작은 배열이다. 다 만든 글자를 Chunker가 나눠 보낸다.
 /// </summary>
 public static class StatsPayload
 {
-    public const int Version = 4;
+    public const int Version = 5;
 
     public static string Build(string from, string to, StatsRowsResult rows, StatsReportResult report, StatsExtraResult extra)
     {
@@ -73,6 +75,7 @@ public static class StatsPayload
                 writer.WriteNumberValue(day.Visits);
                 WriteText(writer, day.FirstDay);
                 writer.WriteNumberValue(day.First90);
+                writer.WriteNumberValue(day.NewMark);
                 writer.WriteEndArray();
             }
             writer.WriteEndArray();

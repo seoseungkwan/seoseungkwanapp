@@ -12,6 +12,31 @@ using Xunit;
 namespace Precheck.Core.Tests.Stats;
 
 /// <summary>
+/// AC-6203.1(spec new-mark) 원본 사본과 상수 사이에 허용하는 바꿈 하나: 보고 Patients(report-patients.sql)·매출 Patients(Revenue patients.sql)의
+/// 둘째 칸(신환)만 '첫 내원일이 기간 안인 환자 수'에서 '기간 안 센 접수에 신환 표시(OcmDgsNfs='1')가 하나라도 있는 서로 다른 환자 수'로 바꿨다.
+/// 사본은 고치지 않고, 견주기 전에 이 바꿈만 더한다(첫 내원 연결 조건 FirstVisitJoin과 같은 방식). 바꿀 사본에 옛 글이 정확히 한 번 있는지도 본다.
+/// 기간 합계 사본(rx-visit-split-summary.sql)에도 같은 옛 글이 있지만 그 문장(VisitSummarySql)은 바꾸지 않는다.
+/// </summary>
+internal static class NewMarkPatients
+{
+    public const string OldColumn = "(SELECT COUNT_BIG(*) FROM FirstVisits WHERE FirstDtm>=@from)";
+    public const string NewColumn = "(SELECT COUNT_BIG(DISTINCT v.PatientId) FROM PeriodVisits v JOIN dbo.OcmInf o ON o.OcmNum=v.VisitId WHERE v.PatientId IS NOT NULL AND o.OcmDgsNfs='1')";
+
+    private static readonly HashSet<string> ChangedCopies = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "report-patients.sql",
+        "patients.sql",
+    };
+
+    public static string ApplyTo(string file, string original)
+    {
+        if (!ChangedCopies.Contains(file)) return original;
+        Assert.Equal(1, FirstVisitJoin.Count(original, OldColumn));
+        return original.Replace(OldColumn, NewColumn);
+    }
+}
+
+/// <summary>
 /// AC-1001.3 사본은 고치지 않는다. 첫 내원 연결 조건 글 하나(FirstVisitJoin)만 바꾼 사본과 견주고, 아래 "공백만 다르다"는 그 바꾼 사본 기준이다.
 /// AC-3401.3 기간 합계·날짜별 사본은 그 위에 첫 내원 잇기 글 하나(FirstVisitHash)를 해시 잇기로 더 바꾼 글과 견주고, 접수 줄 SELECT도 해시 잇기다.
 /// AC-503.2 통계 SQL(StatsSql)은 원본 문장 사본(original-sql/*.sql)과 공백만 다르다. 진료 줄 SQL만 원본 RowsSql에서
@@ -52,8 +77,9 @@ public class StatsSqlTests
     // 사본에서 Visits 부분이 끝나고 처방 쪽이 시작하는 자리(공백을 한 칸으로 줄인 글 기준)
     private const string OrdersStart = ", Orders AS (";
 
-    // AC-503.5의 SELECT 글(공백을 한 칸으로 줄인 글 기준). AC-4401.2 다섯째 칸(그 환자·날 '3' 접수 수)과 OcmInf 접수 번호 잇기만 더했다(first90 design.md 2-1)
-    private const string PatientDaysSelect = "SELECT v.PatientId,v.VisitDay,COUNT_BIG(*) Visits,LEFT(f.FirstDtm,8) FirstDay, SUM(CASE WHEN o.OcmDgsNfs='3' THEN 1 ELSE 0 END) First90 FROM PeriodVisits v LEFT HASH JOIN FirstVisits f ON f.PatientId=v.PatientId JOIN dbo.OcmInf o ON o.OcmNum=v.VisitId WHERE v.PatientId IS NOT NULL GROUP BY v.PatientId,v.VisitDay,f.FirstDtm ORDER BY v.PatientId,v.VisitDay";
+    // AC-503.5의 SELECT 글(공백을 한 칸으로 줄인 글 기준). AC-4401.2 다섯째 칸(그 환자·날 '3' 접수 수)과 OcmInf 접수 번호 잇기만 더했다(first90 design.md 2-1).
+    // AC-6201.1(spec new-mark) 그 뒤에 여섯째 칸(그 환자·날 신환 표시 '1' 접수 수) 한 칸만 더했다
+    private const string PatientDaysSelect = "SELECT v.PatientId,v.VisitDay,COUNT_BIG(*) Visits,LEFT(f.FirstDtm,8) FirstDay, SUM(CASE WHEN o.OcmDgsNfs='3' THEN 1 ELSE 0 END) First90,SUM(CASE WHEN o.OcmDgsNfs='1' THEN 1 ELSE 0 END) NewMark FROM PeriodVisits v LEFT HASH JOIN FirstVisits f ON f.PatientId=v.PatientId JOIN dbo.OcmInf o ON o.OcmNum=v.VisitId WHERE v.PatientId IS NOT NULL GROUP BY v.PatientId,v.VisitDay,f.FirstDtm ORDER BY v.PatientId,v.VisitDay";
 
     private static readonly string[] Constants =
     {
@@ -170,8 +196,8 @@ public class StatsSqlTests
         Assert.Equal(0, Count(visits, "OcmDgsNfs"));
         Assert.Equal(0, Count(visits, "First90"));
 
-        // 다섯째 칸: 그 환자·날 접수 가운데 OcmDgsNfs = '3'인 수(넷째 칸 FirstDay 바로 뒤, 마지막 칸)
-        Assert.Contains("LEFT(f.FirstDtm,8) FirstDay, SUM(CASE WHEN o.OcmDgsNfs='3' THEN 1 ELSE 0 END) First90 FROM PeriodVisits v", select, StringComparison.Ordinal);
+        // 다섯째 칸: 그 환자·날 접수 가운데 OcmDgsNfs = '3'인 수(넷째 칸 FirstDay 바로 뒤. 그 뒤 여섯째 칸은 AC-6201.1 신환 표시)
+        Assert.Contains("LEFT(f.FirstDtm,8) FirstDay, SUM(CASE WHEN o.OcmDgsNfs='3' THEN 1 ELSE 0 END) First90,", select, StringComparison.Ordinal);
         Assert.Equal(1, Count(select, "JOIN dbo.OcmInf o ON o.OcmNum=v.VisitId"));
         Assert.Equal(0, Count(select, "HASH JOIN dbo.OcmInf"));
 
@@ -182,6 +208,48 @@ public class StatsSqlTests
         // 다섯째 칸 글이 든 통계 문장은 접수 줄 하나뿐이다(다른 문장은 한 글자도 바뀌지 않음, 위의 원본 사본 대조 시험들)
         Assert.Single(StatsSql.All.Concat(StatsSql.Sections), statement => statement.Contains("First90"));
         ReadOnlyGuard.Require(StatsSql.PatientDaysSql, VisitArgs());
+    }
+
+    [Fact(DisplayName = "AC-6201.1 접수 줄 SQL 여섯째 칸 NewMark는 다섯째 칸 First90 바로 뒤(마지막 칸)에서 같은 OcmInf 잇기로 그 환자·날 신환 표시('1') 접수 수를 센다, 공유 Visits 글·잇기·HASH 한 번은 그대로다")]
+    public void PatientDaysCountsNewMark()
+    {
+        var visits = VisitsOfCopy();
+        var sql = Squash(StatsSql.PatientDaysSql);
+
+        Assert.StartsWith(visits + " SELECT ", sql, StringComparison.Ordinal);
+        var select = sql.Substring(visits.Length + 1);
+        Assert.Equal(0, Count(visits, "NewMark"));
+
+        // 여섯째 칸: 다섯째 칸 바로 뒤, FROM 앞(마지막 칸)
+        Assert.Contains("SUM(CASE WHEN o.OcmDgsNfs='3' THEN 1 ELSE 0 END) First90,SUM(CASE WHEN o.OcmDgsNfs='1' THEN 1 ELSE 0 END) NewMark FROM PeriodVisits v", select, StringComparison.Ordinal);
+        Assert.Equal(1, Count(select, "NewMark"));
+
+        // 새 잇기를 더하지 않는다: OcmInf 잇기는 다섯째 칸과 같은 한 번, 해시 힌트도 첫 내원 잇기 한 번
+        Assert.Equal(1, Count(select, "JOIN dbo.OcmInf o ON o.OcmNum=v.VisitId"));
+        Assert.Single(Regex.Matches(sql, @"\bHASH\b", RegexOptions.IgnoreCase));
+        Assert.Equal("@from:Char(12) @to:Char(12) @hospital:VarChar(32)", string.Join(" ", StatsSql.ParametersOf(StatsSql.PatientDaysSql).Select(p => p.Name + ":" + p.Kind + "(" + p.Size + ")")));
+        ReadOnlyGuard.Require(StatsSql.PatientDaysSql, VisitArgs());
+    }
+
+    [Fact(DisplayName = "AC-6203.1 보고 Patients 둘째 칸(신환)은 기간 안 센 접수(PeriodVisits)에 신환 표시('1')가 하나라도 있는 서로 다른 환자 수이고, 나머지 칸(내원·차트번호 없음·중복·첫 내원 못 찾음)은 그대로, 매출 Patients와 글자가 같다")]
+    public void ReportPatientsCountsNewMarkPatients()
+    {
+        var sql = Squash(StatsSql.PatientsSql);
+
+        Assert.Contains(") SELECT (SELECT COUNT_BIG(*) FROM PeriodVisits), " + NewMarkPatients.NewColumn + ", (SELECT COUNT_BIG(*) FROM PeriodVisits WHERE PatientId IS NULL),"
+            + " (SELECT COUNT_BIG(*)-COUNT(DISTINCT VisitId) FROM PeriodVisits),"
+            + " (SELECT COUNT_BIG(*) FROM Patients p LEFT JOIN FirstVisits f ON f.PatientId=p.PatientId WHERE f.PatientId IS NULL)", sql, StringComparison.Ordinal);
+        Assert.EndsWith("WHERE f.PatientId IS NULL)", sql, StringComparison.Ordinal);
+        Assert.Equal(0, Count(sql, NewMarkPatients.OldColumn));
+        Assert.Equal(1, Count(sql, "OcmDgsNfs"));
+
+        // 매출 하루 숫자와 같은 글(AC-1001.4). 기간 합계 문장(VisitSummarySql)의 신환 칸은 바꾸지 않는다
+        Assert.Equal(Precheck.Core.Revenue.RevenueSql.Patients, StatsSql.PatientsSql);
+        Assert.Equal(1, Count(Squash(StatsSql.VisitSummarySql), NewMarkPatients.OldColumn));
+        Assert.DoesNotContain("OcmDgsNfs", StatsSql.VisitSummarySql, StringComparison.Ordinal);
+
+        Assert.Equal("@from:Char(12) @to:Char(12) @hospital:VarChar(32)", string.Join(" ", StatsSql.ParametersOf(StatsSql.PatientsSql).Select(p => p.Name + ":" + p.Kind + "(" + p.Size + ")")));
+        ReadOnlyGuard.Require(StatsSql.PatientsSql, VisitArgs());
     }
 
     [Fact(DisplayName = "AC-503.5 접수 줄 SQL은 매개변수를 받는 SELECT로 ReadOnlyGuard를 지나고(@from·@to Char(12)·@hospital VarChar(32)) 청구 Sql.All에는 없다")]
@@ -224,10 +292,10 @@ public class StatsSqlTests
         Assert.DoesNotMatch(forbidden, body);
     }
 
-    [Fact(DisplayName = "AC-504.4 AC-1001.3 보고 SQL은 연결 조건 한 가지만 바꾼 원본 사본과 공백만 다르다(끝의 ;와 원본 주석도 그대로)")]
+    [Fact(DisplayName = "AC-504.4 AC-1001.3 AC-6203.1 보고 SQL은 연결 조건 한 가지(Patients는 신환 칸 NewMarkPatients까지 두 가지)만 바꾼 원본 사본과 공백만 다르다(끝의 ;와 원본 주석도 그대로)")]
     public void ReportConstantsMatchOriginalCopies()
     {
-        foreach (var pair in ReportOriginals) Assert.Equal(Squash(FirstVisitJoin.ApplyTo(pair.Key, ReadOriginal(pair.Key))), Squash(pair.Value));
+        foreach (var pair in ReportOriginals) Assert.Equal(Squash(NewMarkPatients.ApplyTo(pair.Key, FirstVisitJoin.ApplyTo(pair.Key, ReadOriginal(pair.Key)))), Squash(pair.Value));
         // 원본 주석 줄은 뒤 줄을 먹지 않게 줄바꿈을 그대로 둔다
         Assert.Contains("projection's\n", StatsSql.FinanceMultiplicitySql.Replace("\r\n", "\n"));
         Assert.Contains("selected period.\n", StatsSql.FinanceMultiplicitySql.Replace("\r\n", "\n"));

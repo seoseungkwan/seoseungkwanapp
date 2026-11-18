@@ -7,12 +7,14 @@ using Precheck.Core.Bit;
 using Precheck.Core.Revenue;
 using Precheck.Core.Tests.Bit;
 using Precheck.Core.Tests.BitReadSpeed;
+using Precheck.Core.Tests.Stats;
 using Xunit;
 
 namespace Precheck.Core.Tests.Revenue;
 
 /// <summary>
 /// AC-1001.3 사본은 고치지 않는다. 첫 내원 연결 조건 글 하나(FirstVisitJoin)만 바꾼 사본과 견준다.
+/// AC-6203.1(spec new-mark) Patients 사본은 그 위에 신환 칸 바꿈 하나(NewMarkPatients, 보고 Patients와 같은 상수)를 더한 글과 견준다.
 /// AC-003.1 원본 문장은 사본과 공백·끝 ;·-- 줄만 다르고, Extra 둘은 원본과 정해 둔 줄만 다르다.
 /// AC-003.8 ReadOnlyGuard는 매출 문장 11개(AC-4101.2 날 단위 CodeAmountsByDay 포함)를 정해 둔 매개변수와 함께만 통과시킨다. 기존 Sql 상수·시험은 그대로.
 /// </summary>
@@ -65,12 +67,12 @@ public class RevenueSqlTests
 
     // ---- AC-003.1 사본 비교 -------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-003.1 AC-1001.3 원본 일곱 문장은 연결 조건 한 가지만 바꾼 사본(original-sql/*.sql)과 공백·끝 ;·-- 줄만 다르다")]
+    [Fact(DisplayName = "AC-003.1 AC-1001.3 AC-6203.1 원본 일곱 문장은 연결 조건 한 가지(Patients는 신환 칸 NewMarkPatients까지 두 가지)만 바꾼 사본(original-sql/*.sql)과 공백·끝 ;·-- 줄만 다르다")]
     public void OriginalsMatchCopies()
     {
         var files = Directory.GetFiles(OriginalDirectory(), "*.sql").Select(Path.GetFileName).OrderBy(name => name, StringComparer.Ordinal).ToArray();
         Assert.Equal(Originals.Keys.OrderBy(name => name, StringComparer.Ordinal).ToArray(), files);
-        foreach (var pair in Originals) Assert.Equal(Squash(FirstVisitJoin.ApplyTo(pair.Key, ReadOriginal(pair.Key))), Squash(pair.Value));
+        foreach (var pair in Originals) Assert.Equal(Squash(NewMarkPatients.ApplyTo(pair.Key, FirstVisitJoin.ApplyTo(pair.Key, ReadOriginal(pair.Key)))), Squash(pair.Value));
     }
 
     [Fact(DisplayName = "AC-003.1 사본 맨 위에 출처 한 줄이 있다(원본 커밋 c66488e)")]
@@ -134,7 +136,27 @@ public class RevenueSqlTests
     public void FirstColumnCountsPeriodVisitRows()
     {
         var sql = Squash(RevenueSql.Patients);
-        Assert.Contains(") SELECT (SELECT COUNT_BIG(*) FROM PeriodVisits), (SELECT COUNT_BIG(*) FROM FirstVisits WHERE FirstDtm>=@from),", sql, StringComparison.Ordinal);
+        Assert.Contains(") SELECT (SELECT COUNT_BIG(*) FROM PeriodVisits), (SELECT COUNT_BIG(", sql, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "AC-6203.1 RevenueSql.Patients 둘째 칸(신환)은 기간 안 센 접수(PeriodVisits)에 신환 표시('1')가 하나라도 있는 서로 다른 환자 수이고, 나머지 네 칸은 그대로, 보고 Patients와 글자가 같다")]
+    public void SecondColumnCountsNewMarkPatients()
+    {
+        var sql = Squash(RevenueSql.Patients);
+        Assert.Contains(") SELECT (SELECT COUNT_BIG(*) FROM PeriodVisits), " + NewMarkPatients.NewColumn + ", (SELECT COUNT_BIG(*) FROM PeriodVisits WHERE PatientId IS NULL),"
+            + " (SELECT COUNT_BIG(*)-COUNT(DISTINCT VisitId) FROM PeriodVisits),"
+            + " (SELECT COUNT_BIG(*) FROM Patients p LEFT JOIN FirstVisits f ON f.PatientId=p.PatientId WHERE f.PatientId IS NULL)", sql, StringComparison.Ordinal);
+        Assert.EndsWith("WHERE f.PatientId IS NULL)", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain(NewMarkPatients.OldColumn, sql, StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(sql, "OcmDgsNfs").Cast<Match>());
+
+        // 첫 내원(FirstVisits)은 지우지 않는다: 다섯째 칸(첫 내원 못 찾음)이 그대로 쓴다
+        Assert.Contains("), FirstVisits AS (", sql, StringComparison.Ordinal);
+        Assert.Equal(Precheck.Core.Stats.StatsSql.PatientsSql, RevenueSql.Patients);
+
+        Assert.True(Sql.IsAllowed(RevenueSql.Patients));
+        ReadOnlyGuard.Require(RevenueSql.Patients, ValidArgs(RevenueSql.Patients));
+        Assert.Equal(new[] { "@from:Char:12", "@to:Char:12", "@hospital:VarChar:32" }, RevenueSql.Parameters[RevenueSql.Patients].Select(p => p.Name + ":" + p.Kind + ":" + p.Size));
     }
 
     [Fact(DisplayName = "AC-003.5 CodeAmounts는 원본 TrendDataSource 금액 식(일수 × 수량 × 단가, MissingValues)과 SeeMst 이름을 쓴다")]
