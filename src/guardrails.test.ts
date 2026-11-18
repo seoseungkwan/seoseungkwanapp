@@ -1241,3 +1241,87 @@ describe('AC-5905.11 components/calendar/rows/**(예약표 그리기 부품: 시
     expect(results.flatMap((r) => r.messages.map((m) => `${r.filePath}:${m.line} ${m.ruleId}`))).toEqual([])
   })
 })
+
+describe('AC-6614.2 components/settings/firstRun/paste/**(처음 질문 붙여 넣기 칸: 붙인 예전 메모가 닿는 곳): JSX는 되고 네트워크·console·저장소·supabase·lib/storage·lib/auth·통로(lib/bridge)·workers는 막힌다', SLOW, () => {
+  const PASTE = 'src/components/settings/firstRun/paste/Probe.tsx'
+
+  it.each([
+    ["fetch('x')", 'no-restricted-globals'],
+    ["window.fetch('x')", 'no-restricted-properties'],
+    ['new XMLHttpRequest()', 'no-restricted-globals'],
+    ["new WebSocket('x')", 'no-restricted-globals'],
+    ["new EventSource('x')", 'no-restricted-globals'],
+    ["navigator.sendBeacon('x')", 'no-restricted-properties'],
+    ['console.log(1)', 'no-console'],
+    ['const c = console; c.log(1)', 'no-restricted-globals'],
+    ['globalThis.console.log(1)', 'no-restricted-properties'],
+    ["localStorage.setItem('k', 'v')", 'no-restricted-globals'],
+    ["sessionStorage.setItem('k', 'v')", 'no-restricted-globals'],
+    ["indexedDB.open('x')", 'no-restricted-globals'],
+    ["window.localStorage.setItem('k', 'v')", 'no-restricted-properties'],
+    ["window.sessionStorage.setItem('k', 'v')", 'no-restricted-properties'],
+    ["import { supabaseBrowser } from '@/lib/supabase/browser'", 'no-restricted-imports'],
+    ["import { createClient } from '@supabase/supabase-js'", 'no-restricted-imports'],
+    ["import { writeHospitalSettings } from '@/lib/storage/claimSettings'", 'no-restricted-imports'],
+    ["import x from '../../../../lib/storage/claimSettings'", 'no-restricted-imports'],
+    ["import { gate } from '@/lib/auth/gate'", 'no-restricted-imports'],
+    ["import { connectScreenBridge } from '@/lib/bridge/workerSink'", 'no-restricted-imports'],
+    ["import { connectBridge } from '@/lib/bridge/client'", 'no-restricted-imports'],
+    ["import x from '@/workers/precheck/handler'", 'no-restricted-imports'],
+    ["import * as Sentry from '@sentry/nextjs'", 'no-restricted-imports'],
+    ["export const load = async () => await import('@/lib/supabase/browser')", 'no-restricted-syntax'],
+    ["export const load = async () => await import('@/lib/storage/claimSettings')", 'no-restricted-syntax'],
+    ["export const load = async () => await import('@/lib/bridge/workerSink')", 'no-restricted-syntax'],
+    ['export const load = async (name: string) => await import(name)', 'no-restricted-syntax'],
+  ])('AC-6614.2: %s → %s', async (code, rule) => {
+    expect(await errorRules(code, PASTE)).toContain(rule)
+  })
+
+  it('AC-6614.2: JSX·react·붙인 메모 읽기(readMemo)·고르는 글 이름·공통 모양 import는 된다(읽은 결과만 콜백으로 올린다)', async () => {
+    const code = [
+      "import { useState } from 'react'",
+      "import { readMemo, READ_KEYS, type MemoReading } from '@/lib/precheck/memo/onboarding/readMemo'",
+      "import { ITEM_LABELS } from '../QuestionPage'",
+      "import { ds } from '@/components/ui/classes'",
+      'export function Box({ onStart }: { onStart(reading: MemoReading): void }) {',
+      "  const [text, setText] = useState('')",
+      '  return <div className={ds.panel}><textarea value={text} onChange={(e) => setText(e.target.value)} /><button onClick={() => onStart(readMemo(text))}>{READ_KEYS.map((key) => ITEM_LABELS[key]).join()}</button></div>',
+      '}',
+    ].join('\n')
+    expect(await lint(code, PASTE)).toEqual([])
+  })
+
+  it('AC-6614.2: 하위 폴더·시험 파일도 같은 울타리 아래 있다', async () => {
+    expect(await errorRules("fetch('x')", 'src/components/settings/firstRun/paste/sub/Probe.tsx')).toContain('no-restricted-globals')
+    expect(await errorRules('console.log(1)', 'src/components/settings/firstRun/paste/Probe.test.tsx')).toContain('no-console')
+    expect(await errorRules("localStorage.setItem('k', 'v')", 'src/components/settings/firstRun/paste/Probe.test.tsx')).toContain('no-restricted-globals')
+    expect(await errorRules("import x from '@/lib/supabase/browser'", 'src/components/settings/firstRun/paste/Probe.test.tsx')).toContain('no-restricted-imports')
+  })
+
+  it('AC-6614.2: 안내는 처음 질문 붙여 넣기 칸(components/settings/firstRun/paste)을 말하고, 다른 줄 화면 안내는 그대로다', async () => {
+    const messages = (await lint("fetch('x')", PASTE)).map((m) => m.message).join('\n')
+    expect(messages).toContain('components/settings/firstRun/paste')
+    const bridge = (await lint("import x from '@/lib/bridge/protocol'", PASTE)).map((m) => m.message).join('\n')
+    expect(bridge).toContain('components/settings/firstRun/paste')
+    const calendar = (await lint("import x from '@/lib/bridge/protocol'", 'src/components/calendar/rows/Probe.tsx')).map((m) => m.message).join('\n')
+    expect(calendar).toContain('components/calendar/rows')
+    expect(calendar).not.toContain('components/settings/firstRun/paste')
+  })
+
+  it('AC-6614.2: 처음 질문 화면(paste 밖)은 병원 문구 저장(lib/storage·supabase)을 쓸 수 있고, client.ts는 그대로 막힌다', async () => {
+    const code = [
+      "import { readHospitalSettings, writeHospitalSettings } from '@/lib/storage/claimSettings'",
+      "import { supabaseBrowser } from '@/lib/supabase/browser'",
+      'export const parts = [readHospitalSettings, writeHospitalSettings, supabaseBrowser] as const',
+    ].join('\n')
+    expect(await lint(code, 'src/components/settings/firstRun/Probe.tsx')).toEqual([])
+    expect(await errorRules("import { connectBridge } from '@/lib/bridge/client'", 'src/components/settings/firstRun/Probe.tsx')).toContain('no-restricted-imports')
+  })
+
+  it('AC-6614.2: 실제 붙여 넣기 칸 소스(paste/PasteBox·그 시험)는 울타리에 걸리는 것이 없다', async () => {
+    const files = ['src/components/settings/firstRun/paste/PasteBox.tsx', 'src/components/settings/firstRun/paste/PasteBox.test.tsx']
+    const results = await eslint.lintFiles(files)
+    expect(results.map((r) => r.filePath.replace(/\\/g, '/').replace(/^.*\/src\//, 'src/')).sort()).toEqual([...files].sort())
+    expect(results.flatMap((r) => r.messages.map((m) => `${r.filePath}:${m.line} ${m.ruleId}`))).toEqual([])
+  })
+})
