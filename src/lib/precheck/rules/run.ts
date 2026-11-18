@@ -1,13 +1,17 @@
-import type { CatalogCode, ClaimMonth, CodeEntry, DrugInfoEntry, Grade, RuleDef, RxLine, Tables, Visit } from '@/types/precheck'
+import type { CatalogCode, ClaimMonth, CodeEntry, DrugInfo, DrugInfoEntry, Grade, RuleDef, RxLine, Tables, Visit } from '@/types/precheck'
+import { drugRole, type DrugRole } from '../drugRoles'
 import { compiled, INJECTION_CLASSES, up, type Compiled, type DrugClass } from './compile'
 import type { Context, Dx, Hit, Line, LineBase, PastDay, Target } from './types'
 
 // 점검 한 번의 자료(원본의 캐시·전역 값 RXDATA·HIST·CODEMAP·DRUGINFO를 month·tables로 바꾼 것) [환자 자료 구역].
 // 원본 baseOf·lineOf·matchTarget·contextOf·pastOf·nameOf를 옮겼다. 점검마다 새로 만들고 Worker 밖으로 내보내지 않는다
 
-// 원본 STEROID · TPL_DEF.lidoCodes: 약 역할을 코드로 정한 기본값. 병원 설정으로 바꾸는 자리는 아직 없다
-const STEROID = ['A21', 'A19']
-const LIDO_CODES = new Set(['A15'])
+/** 처방코드(대문자) → 약 역할. 처방코드 탭에서 고른 역할과 처방 목록 보험코드의 성분 역할(drugRoles) */
+export type RoleMap = ReadonlyMap<string, DrugRole | 'none'>
+/** 연골주사 분류 묶음(hyaluronate·PN·콜라겐) */
+const CARTILAGE_CLASS = /^(hyaluronate|pn|collagen)/
+/** [아님]이면 빼는 분류: 스테로이드 주사·국소마취제·연골주사 묶음과 그 하위 분류 */
+const ROLE_CLASS = /^(steroid_injection|local_anesthetic|hyaluronate|pn|collagen)/
 
 const text = (value: unknown) => String(value ?? '').trim()
 
@@ -17,34 +21,23 @@ type Entry = Partial<CodeEntry> & {
   edi?: string
   ediCode?: string
   displayName?: string
-  steroid?: boolean
-  localAnesthetic?: boolean
-  cartilage?: boolean
+  /** 처방 목록 보험코드의 성분 역할(REQ-6608) */
+  role?: DrugRole
 }
 
 /** 원본 hospital-update-model base: 보험코드에서 기본 시술 코드(LA·KK 세 자리)를 꺼낸다 */
 const procedureBase = (value: string) => (/^(?:LA\d{3}|KK\d{3})$/i.test(value) ? value.toUpperCase() : /^LA\d{6}$/i.test(value) ? value.slice(0, 5).toUpperCase() : '')
 
-/**
- * 원본 hospital-code-rules drugNameDefaults·drugNameRoles: 병원이 약 이름을 고치지 않았을 때의 목록(차례가 줄 이름을 정한다)과 역할.
- * 점검이 읽는 역할만 옮겼다. 원본의 injectionDrug는 메모 문구용이라 점검이 읽지 않는다
- */
-const DEFAULT_DRUG_NAMES: readonly { name: string; role: 'localAnesthetic' | 'steroid' | 'cartilage' }[] = [
-  { name: '리도카인', role: 'localAnesthetic' },
-  { name: '트리암', role: 'steroid' },
-  { name: '덱사', role: 'steroid' },
-  { name: '아라간', role: 'cartilage' },
-  { name: '히알', role: 'cartilage' },
-]
 /** 원본 fresh pendingReview의 종류. 이름 없는 줄은 종류와 상관없이 대기 줄이다 */
 const AWAITING_KINDS: readonly CatalogCode['kind'][] = ['drug', 'procedure', 'lab', 'unknown']
 
 /**
  * 처방 목록 한 줄 → 사전 한 줄(점검이 읽는 칸만). 원본 hospital-update-model fresh + 병원 모드 cm을 합쳤다.
- * 보험코드가 확인된 시술은 기본 사전의 이름을 쓴다. 나머지 대기 줄은 이름(이름 없으면 코드 글자)에 기본 약 이름이 들면 그 역할을 얻고 줄 이름도 목록의 이름이 된다.
+ * 보험코드가 확인된 시술은 기본 사전의 이름을 쓴다. 나머지 대기 줄은 보험코드의 약제급여목록 성분으로 역할을 얻는다(REQ-6608, drugRole).
+ * 원본은 이름에 든 약 상품 이름으로 역할과 줄 이름을 정했지만 병원마다 이름이 달라 쓰지 않는다.
  * 원본 cm이 함께 바꾸는 k·pendingReview·add·memo 등은 점검이 읽지 않아 옮기지 않았다
  */
-function catalogEntry(row: CatalogCode, defaults: Tables['codeMap']): Entry {
+function catalogEntry(row: CatalogCode, defaults: Tables['codeMap'], drugInfo: DrugInfo): Entry {
   const item: Entry = { n: row.name || row.code, displayName: row.name, standardCode: row.standardCode }
   const standard = procedureBase(row.standardCode)
   const compact = row.name.replace(/\s/g, '')
@@ -55,10 +48,8 @@ function catalogEntry(row: CatalogCode, defaults: Tables['codeMap']): Entry {
     return item
   }
   if (row.name && !AWAITING_KINDS.includes(row.kind)) return item
-  const label = (row.name || row.code).toUpperCase()
-  const matched = DEFAULT_DRUG_NAMES.filter(({ name }) => label.includes(name))
-  if (matched.length) item.n = matched[0].name
-  for (const { role } of matched) item[role] = true
+  const role = Object.hasOwn(drugInfo.map, row.standardCode) ? drugRole(drugInfo.map[row.standardCode]) : null
+  if (role) item.role = role
   return item
 }
 
@@ -77,7 +68,8 @@ const classHit = (cls: DrugClass, base: LineBase) => cls.codes.has(base.code) ||
 
 export type Run = ReturnType<typeof createRun>
 
-export function createRun(month: ClaimMonth, tables: Tables) {
+/** roles: 처방코드 탭에서 고른 역할이 든 역할 표(drugRoles). 없으면 처방 목록 대기 줄의 성분 역할만 본다 */
+export function createRun(month: ClaimMonth, tables: Tables, roles: RoleMap = new Map()) {
   const C: Compiled = compiled(tables.rules)
   const lineBases = new Map<string, LineBase>()
   const matchMemo = new WeakMap<Target, Map<string, boolean>>()
@@ -90,7 +82,7 @@ export function createRun(month: ClaimMonth, tables: Tables) {
   // 열쇠는 대문자로 접는다. 원본 hospital-code-rules importedRow가 글자 그대로 → 대소문자를 접어 하나뿐인 줄 차례로 찾기 때문이다.
   // 처방 줄·이력 코드는 대문자로 오므로 대소문자가 섞인 코드(예: Zm1)도 찾는다. 대소문자만 다른 코드 둘은 도우미가 막아(CatalogRead) 열쇠는 코드마다 하나다
   const catalog = new Map<string, Entry>()
-  for (const row of month.catalog.codes) catalog.set(row.code.toUpperCase(), catalogEntry(row, tables.codeMap))
+  for (const row of month.catalog.codes) catalog.set(row.code.toUpperCase(), catalogEntry(row, tables.codeMap, tables.drugInfo))
   /** 원본 cm: 목록이 있으면 위처럼 찾고 없는 코드는 없는 것으로 둔다. 목록이 없으면 기본 사전에서 그대로 → 대문자 → 소문자 차례로 찾는다 */
   function cm(code: string): Entry | null {
     if (!code) return null
@@ -134,14 +126,13 @@ export function createRun(month: ClaimMonth, tables: Tables) {
       }
       if (found) out.add(name)
     }
-    // 병원 문구 설정의 약 역할(병원 코드 방식)과 기본 표시
-    if (entry) {
-      if (entry.steroid === true) out.add('steroid_injection')
-      if (entry.localAnesthetic === true) out.add('local_anesthetic')
-      if (entry.cartilage === true && ![...out].some((x) => /^(hyaluronate|pn|collagen)/.test(x))) out.add('hyaluronate_20mg')
-    }
-    if (STEROID.includes(base.code)) out.add('steroid_injection')
-    if (LIDO_CODES.has(base.code)) out.add('local_anesthetic')
+    // 약 역할(REQ-6608): 처방코드 탭에서 고른 역할 → 처방 목록 보험코드의 성분 역할. [아님]은 낱말로 붙은 분류도 뺀다
+    const role = roles.get(base.code) ?? entry?.role
+    if (role === 'none') {
+      for (const name of [...out]) if (ROLE_CLASS.test(name)) out.delete(name)
+    } else if (role === 'steroid') out.add('steroid_injection')
+    else if (role === 'localAnesthetic') out.add('local_anesthetic')
+    else if (role === 'cartilage' && ![...out].some((x) => CARTILAGE_CLASS.test(x))) out.add('hyaluronate_20mg')
     // 먹는 약·바르는 약은 주사 분류에서 뺀다(덱사메타손정 ≠ 스테로이드 주사)
     if (base.route === 'A' || base.route === 'C') for (const name of [...out]) if (INJECTION_CLASSES.has(name)) out.delete(name)
     if (base.route === 'B' || base.route === 'C') out.delete('oral_corticosteroid')

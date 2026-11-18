@@ -143,7 +143,7 @@ function compile(file: RulesFile) {
       (Array.isArray(target?.drug_classes) && target.drug_classes.length > 0) ||
       Boolean(target?.name_regex))
 
-  // ── 약 분류(성분명 정규식 + 병원 코드 + 대표 상품명) ──
+  // ── 약 분류(성분명 정규식 + 보험코드 + 대표 상품명). 병원마다 다른 처방코드는 묶지 않는다(약 역할은 run.ts가 성분으로 정한다, REQ-6608) ──
   function compileClass(name: string, specRaw: unknown): DrugClass {
     const spec = isRecord(specRaw) ? specRaw : null
     const out: DrugClass = { regex: null, codes: new Set(), sub: new Map(), union: (spec?.union_of as string[] | undefined) ?? null }
@@ -157,7 +157,6 @@ function compile(file: RulesFile) {
     if (Object.hasOwn(EXTRA, name)) parts.push(EXTRA[name])
     const joined = parts.filter(Boolean).join('|')
     if (joined) out.regex = rx(joined)
-    if (isRecord(spec.clinic_codes)) Object.keys(spec.clinic_codes).forEach((code) => out.codes.add(up(code)))
     for (const item of (spec.edi_codes as unknown[] | undefined) ?? []) out.codes.add(up(typeof item === 'string' ? item : isRecord(item) ? item.code : ''))
     if (isRecord(spec.subgroups)) {
       for (const [sub, subSpec] of Object.entries(spec.subgroups)) out.sub.set(sub, compileClass(`${name}.${sub}`, subSpec))
