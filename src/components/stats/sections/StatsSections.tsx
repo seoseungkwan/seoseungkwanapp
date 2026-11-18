@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useClinicProfile } from '@/components/clinic/useClinicProfile'
 import { Icon } from '@/components/common/Icon'
 import { pickReportText, type ReportRx } from '@/components/stats/periodPick'
 import { revenueCells, revenueTabs, roughInfo, type RevenueInput, type RevenueMode } from '@/components/stats/revenueView'
@@ -23,7 +24,7 @@ import { HolidaySection } from './HolidaySection'
 import { PatientMixSection, type BitSectionsShown } from './PatientMixSection'
 import { PatientTrendSection } from './PatientTrendSection'
 import { PeriodSummary } from './PeriodSummary'
-import { MonthlyReportSection, ReportSection, type PickReport, type ReportData } from './ReportSection'
+import { MonthlyReportSection, ReportSection, reportTitle, type PickReport, type ReportData } from './ReportSection'
 import { RevenueSection } from './RevenueSection'
 import { RevenueSummary } from './RevenueSummary'
 import { RevisitSection } from './RevisitSection'
@@ -56,6 +57,9 @@ import { WeekdaySection } from './WeekdaySection'
 // 매출(stats-revenue): revenue를 받으면 매출 요약 카드(칸 셋)도 넣는다. 숫자는 revenueView(순수)가 통계 기간·처방 칸 묶음으로 센다.
 // 참고 금액 포함 스위치(first90 AC-4408.1): 상태 하나를 여기서 갖고(저장하지 않음, 처음 꺼짐) 매출 요약·매출 카드 두 스위치에 같은 값을 준다.
 // 보는 기간에 참고 금액이 있는 날이 없으면 켤 수 없고 셈은 꺼짐 그대로다. 매출 카드 탭 넷의 셈은 아직 꺼짐 그대로다
+// 병원 정보(clinic-profile REQ-6606, design.md 8절): 여기서 useClinicProfile을 한 번 불러 칸마다 값으로 넘긴다 — 호칭은 보고 카드·보고 칸 제목과
+// 매출 칸 [어떻게 세나요?] 글(AC-6606.3), 저장된 진료시간은 시간대별 접수(AC-6606.1), 휴진일은 휴일에 따라(AC-6606.2).
+// 읽는 중·실패·줄 없음이면 호칭은 기본값 '원장님'이고 진료시간은 넘기지 않아(null) 지금처럼 그린다
 
 const REPORT_RX = 2
 // 바로가기 띠 바로 아래 첫 자리(환자 요약)의 위 여백: 칸 위 48px(휴대폰 32px) 대신 24px(휴대폰 20px) (stats-pc-ux 기본값 14)
@@ -77,7 +81,6 @@ const OPS_DESC = '언제 붐비는지 · 원장님마다'
 // 요약 자리 카드 둘(stats-insights). 칸(AlertsSection·GoalSection) 제목과 같아 칸 머리 없이 카드 h2 하나다(parts.tsx 같은 제목 칸 규칙)
 const ALERTS = '평소와 다른 것'
 const GOAL = '이번 달 목표'
-const REPORT = '원장님 보고 문장'
 const REPORT_DESC = '비트 PC에서 불러온 숫자로 만든 보고 글 · 환자 이름은 쓰지 않아요'
 const STACK = `flex flex-col gap-4 ${FIRST_GAP}`
 // 진료 운영 카드 윗줄(요일별 30% · 시간대별 70%, 시안 .s-row-ops). 칸은 min-w-0이라 줄어든다
@@ -138,6 +141,10 @@ function alertsShown(today: string, wide: Pick<WideDays, 'state' | 'days'>, cal:
 
 export function StatsSections({ input, saved, split, report, hospitalName, groups, revision = 0, bit, revenue, sunap, calendar, wide, goals, salesRevision = revision }: Props) {
   const pick = useMemo(() => pickReport(input, groups.groups), [input, groups.groups])
+  const clinic = useClinicProfile()
+  const honorific = clinic.profile.honorific
+  const clinicHours = clinic.saved ? clinic.profile.hours : null
+  const closedDates = clinic.profile.closedDates
   // 예약·전환의 '진료한 날': 마감한 날을 읽는 기간과 같은 기간의 저장된 날 숫자에서 센다
   const worked = useMemo(() => workedDays(input.days, sunapSpan(input.range)), [input.days, input.range])
   const name = input.range.period === null ? input.range.name : null
@@ -166,7 +173,7 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
   // 참고 금액이 있는 날이 없는 기간으로 바뀌면 켜 둔 값이 있어도 꺼짐으로 센다(스위치도 꺼짐으로 보인다)
   const shownMode: RevenueMode = rough !== null && rough.roughDays > 0 ? mode : 'out'
   const summaryRevenue = useMemo(() => (revenueIn === null ? undefined : revenueCells(revenueIn, shownMode)), [revenueIn, shownMode])
-  const tabs = useMemo(() => (revenueIn === null || typeof revenueIn === 'string' ? revenueIn : revenueTabs(revenueIn)), [revenueIn])
+  const tabs = useMemo(() => (revenueIn === null || typeof revenueIn === 'string' ? revenueIn : revenueTabs(revenueIn, honorific)), [revenueIn, honorific])
   // 알림·휴일·목표(stats-insights)는 오늘 기준이다. 예약 알림은 예약 칸이 읽은 수 세기 줄(읽는 중·실패면 없이 센다)
   const today = todayOf(input.range)
   const calRows = calendar?.rows
@@ -245,15 +252,23 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
         ) : (
           <div className={OPS_ROW}>
             <WeekdaySection days={input.days} range={input.range} saved={saved} className="min-[1200px]:basis-3/10" />
-            <VisitHoursSection view={bit} range={input.range} className="min-[1200px]:basis-7/10" />
+            <VisitHoursSection view={bit} range={input.range} className="min-[1200px]:basis-7/10" hours={clinicHours} />
           </div>
         )}
         {bit !== undefined && <DoctorsSection view={bit} range={input.range} hospitalName={hospitalName} />}
-        {wide !== undefined && <HolidaySection today={today} wide={wide} />}
+        {wide !== undefined && <HolidaySection today={today} wide={wide} closedDates={closedDates} />}
       </StatsCard>
       {/* 고르기에 들어오고 나갈 때 다시 그린다: [고른 기간 보고]가 처음 눌리고, 나가면 [오늘 일일보고]다 */}
-      <StatsCard id={REPORT_ID} title={REPORT} desc={REPORT_DESC}>
-        <ReportSection key={pick === null ? 'quick' : 'pick'} report={report} hospitalName={hospitalName} today={todayOf(input.range)} saved={saved} pick={pick} />
+      <StatsCard id={REPORT_ID} title={reportTitle(honorific)} desc={REPORT_DESC}>
+        <ReportSection
+          key={pick === null ? 'quick' : 'pick'}
+          report={report}
+          hospitalName={hospitalName}
+          today={todayOf(input.range)}
+          saved={saved}
+          pick={pick}
+          honorific={honorific}
+        />
         {wide !== undefined && (
           <MonthlyReportSection
             today={today}
@@ -300,7 +315,8 @@ export function StatsWaiting({ range, lastDay }: { range: StatsRange; lastDay: s
       <StatsCard title={OPS} desc={OPS_DESC}>
         <WaitingLine />
       </StatsCard>
-      <StatsCard title={REPORT} desc={REPORT_DESC}>
+      {/* 기다리는 자리는 병원 정보를 읽지 않는다(기본 호칭). 숫자가 오면 StatsSections가 호칭 제목으로 그린다 */}
+      <StatsCard title={reportTitle()} desc={REPORT_DESC}>
         <WaitingLine />
       </StatsCard>
     </div>

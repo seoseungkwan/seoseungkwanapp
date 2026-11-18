@@ -9,6 +9,7 @@ import { addDays, addMonths, compareYmd, diffDays, eachDay, monthOf, monthRange,
 import { compare, isWorkDay, perVisit, sumPeriod, type PeriodSum } from '@/lib/revenue/summary'
 import { groupTreatments } from '@/lib/revenue/treatments'
 import type { BucketState } from '@/types/analysis'
+import { DEFAULT_HONORIFIC, type Honorific } from '@/types/clinicProfile'
 import type { DateRange } from '@/types/dates'
 import type { RevenueCodeRow, RevenueDayRow } from '@/types/revenue'
 import type { RxGroup } from '@/types/rxGroups'
@@ -128,19 +129,23 @@ const TABLE_HEAD: Record<Unit, string> = { day: '날짜', week: '주', month: '�
 
 const LABELS: Record<RevenueCell['key'], string> = { total: '총매출', perVisit: '건당 진료비', unchecked: '확인 필요한 날' }
 
-const TREND_HOW = [
+// '…보고 문장'의 받는 사람은 병원 호칭이다(clinic-profile AC-6606.3). '원장님별'(표 이름)은 그대로다
+const trendHow = (honorific: Honorific) => [
   '매출은 수납한 날(회계일)의 총진료비예요. 총진료비 = 공단부담 + 본인부담 + 비급여 + 기타이고, 그날 정상 수납한 것과 미수금으로 들어온 것을 더해요.',
   "환불·변경수납·예치금이 있거나 수납 연결이 겹친 날은 '확인 필요한 날'로 두고 그날 금액을 매출에 넣지 않아요. 비트 외래환자경영통계에서 그날을 직접 확인해 주세요.",
-  "그래서 아래 '원장님별'의 매출 합계(그런 날도 더해요)나 '원장님 보고 문장'의 총진료비(그런 날이 든 날·달은 '확인 필요')와 다를 수 있어요.",
+  `그래서 아래 '원장님별'의 매출 합계(그런 날도 더해요)나 '${honorific} 보고 문장'의 총진료비(그런 날이 든 날·달은 '확인 필요')와 다를 수 있어요.`,
   '막대 칸은 환자 수 추이와 같아요: 최근 7일·30일·90일은 하루씩, 최근 12개월은 한 달씩, 기간 골라 보기는 고른 단위(일별·주별·월별)예요.',
 ]
 // 켜짐 둘째 문단(first90 AC-4408.3, 2026-11-15 검토 보완). 다른 문단은 꺼짐 그대로다
-const TREND_HOW_ROUGH = [
-  TREND_HOW[0]!,
-  "환불·변경수납·예치금이 있거나 수납 연결이 겹친 날은 '확인 필요한 날'로 둬요. '참고 금액 포함'을 켜면 참고 금액이 있는 날은 그 금액을 더하고, 없는 날은 빼요. 비트 외래환자경영통계에서 그날을 직접 확인해 주세요.",
-  TREND_HOW[2]!,
-  TREND_HOW[3]!,
-]
+const trendHowRough = (honorific: Honorific) => {
+  const off = trendHow(honorific)
+  return [
+    off[0]!,
+    "환불·변경수납·예치금이 있거나 수납 연결이 겹친 날은 '확인 필요한 날'로 둬요. '참고 금액 포함'을 켜면 참고 금액이 있는 날은 그 금액을 더하고, 없는 날은 빼요. 비트 외래환자경영통계에서 그날을 직접 확인해 주세요.",
+    off[2]!,
+    off[3]!,
+  ]
+}
 const CLOSED_NOTE = '휴진한 날은 칸이 없어요.'
 const CLOSED_OR_UNSAVED_NOTE = '휴진한 날과 아직 불러오지 않은 날은 칸이 없어요.'
 // 확인 필요한 날 막대(first90 AC-4408.3): 꺼짐 점선 칸 · 켜짐 빗금 막대의 아래 글과 범례
@@ -191,13 +196,15 @@ const NO_CODES_REST = '은 치료별로 나눠 저장하지 않아 이 표에서
 const REST_DETAIL = '진찰료·약·검사 등'
 
 const PER_VISIT_DESC = '접수 한 건 기준 · 접수취소는 세지 않아요'
-const PER_VISIT_HOW = [
-  '매출을 그 기간의 접수 건수로 나눠요. 같은 분이 다섯 번 오면 다섯 건으로 세요. 원장님 보고 문장의 건당진료비와 같은 식이고, 원 아래는 버려요.',
+const perVisitFirst = (honorific: Honorific) =>
+  `매출을 그 기간의 접수 건수로 나눠요. 같은 분이 다섯 번 오면 다섯 건으로 세요. ${honorific} 보고 문장의 건당진료비와 같은 식이고, 원 아래는 버려요.`
+const perVisitHow = (honorific: Honorific) => [
+  perVisitFirst(honorific),
   "확인 필요한 날은 금액을 알 수 없어서 그날 접수 건수도 함께 빼고 나눠요. 그래서 '원장님별'의 건당 진료비(그런 날도 더해요)와 조금 다를 수 있어요.",
 ]
 // 켜짐 둘째 문단(first90 AC-4408.3). 첫 문단은 꺼짐 그대로다
-const PER_VISIT_HOW_ROUGH = [
-  PER_VISIT_HOW[0]!,
+const perVisitHowRough = (honorific: Honorific) => [
+  perVisitFirst(honorific),
   '참고 금액 포함을 켜면 참고 금액이 있는 확인 필요한 날은 그 참고 금액과 그날 접수 건수를 더해 나눠요. 참고 금액이 없는 날은 금액과 접수 건수를 함께 빼요.',
 ]
 const ROUGH_SUB = ' · 참고 금액 포함'
@@ -633,14 +640,14 @@ export function roughInfo(input: RevenueInput | 'reading' | 'read-failed'): Roug
 // ── 탭 넷 ────────────────────────────────────────────────
 
 // withRough(켜짐): ctx가 참고 금액을 더해 센 것이고, 머리 글 금액·비교 금액도 그 셈이다(first90 AC-4408.3)
-function trendTab(ctx: Ctx, withRough = false): TrendTab {
+function trendTab(ctx: Ctx, honorific: Honorific, withRough = false): TrendTab {
   const { sum, main, name, unit } = ctx
   return {
     desc: `매출 = 총진료비 · 수납한 날 기준, ${EACH[unit]}`,
     lead: { text: '이 기간 매출', amount: sum.workDays === 0 ? DASH : formatManWon(sum.total), rest: main === null ? null : `· ${name} ${formatManWon(main.before.total)}` },
     tag: withRough,
     ...barsView(ctx, TREND_KIND, withRough),
-    how: withRough ? TREND_HOW_ROUGH : TREND_HOW,
+    how: withRough ? trendHowRough(honorific) : trendHow(honorific),
   }
 }
 
@@ -776,7 +783,7 @@ function treatmentsTab(ctx: Ctx): TreatmentsTab {
 }
 
 // withRough(켜짐): ctx가 참고 금액을 더해 센 것이라 숫자 칸 셋·안내 줄이 매출 요약 켜짐 건당 진료비와 같은 셈이다(first90 AC-4408.3)
-function perVisitTab(ctx: Ctx, withRough = false): PerVisitTab {
+function perVisitTab(ctx: Ctx, honorific: Honorific, withRough = false): PerVisitTab {
   const { sum, main, name, input } = ctx
   const now = input.range.name
   const value = perVisit(sum)
@@ -803,7 +810,7 @@ function perVisitTab(ctx: Ctx, withRough = false): PerVisitTab {
     ],
     ...barsView(ctx, PER_VISIT_KIND, withRough),
     notice: dayNotice(sum.noVisitDays, NO_VISIT_REST),
-    how: withRough ? PER_VISIT_HOW_ROUGH : PER_VISIT_HOW,
+    how: withRough ? perVisitHowRough(honorific) : perVisitHow(honorific),
   }
 }
 
@@ -812,18 +819,19 @@ function perVisitTab(ctx: Ctx, withRough = false): PerVisitTab {
  * 참고 금액 포함 스위치(first90 AC-4408.3): 보는 기간에 참고 금액이 있는 확인 필요한 날이 있으면 rough에 켜짐 두 탭(매출 추이·건당 진료비)을 더 센다.
  * 켜짐 건당 진료비 탭은 막대·숫자 칸 셋·안내 줄 모두 켜짐 셈이라 매출 요약 켜짐 건당 진료비와 같다(설명 줄·첫 문단은 꺼짐 그대로). 급여·비급여·기타·치료별 매출은 켜짐에도 이 하나다(AC-4408.4).
  * 켜짐이면 그 두 탭 맨 위에 rough.outside(보는 기간 참고 금액 합·날 수, 그 탭에는 넣지 않음)를 그린다
+ * honorific: [어떻게 세나요?] 글의 '{호칭} 보고 문장'(clinic-profile AC-6606.3, 통계 틀이 병원 정보에서 읽어 넘김). 주지 않으면 '원장님'
  */
-export function revenueTabs(input: RevenueInput): RevenueTabs {
+export function revenueTabs(input: RevenueInput, honorific: Honorific = DEFAULT_HONORIFIC): RevenueTabs {
   const ctx = contextOf(input)
   if (ctx === null) return { kind: 'empty' }
   const found = roughOf(ctx.byDay, ctx.sum.uncheckedDays)
   const roughCtx = found.dates.length > 0 ? contextOf(input, true) : null
   return {
     kind: 'ready',
-    trend: trendTab(ctx),
+    trend: trendTab(ctx, honorific),
     split: splitTab(ctx),
     treatments: treatmentsTab(ctx),
-    perVisit: perVisitTab(ctx),
-    rough: roughCtx === null ? null : { trend: trendTab(roughCtx, true), perVisit: perVisitTab(roughCtx, true), outside: outsideNote(found.sum, found.dates.length) },
+    perVisit: perVisitTab(ctx, honorific),
+    rough: roughCtx === null ? null : { trend: trendTab(roughCtx, honorific, true), perVisit: perVisitTab(roughCtx, honorific, true), outside: outsideNote(found.sum, found.dates.length) },
   }
 }

@@ -40,19 +40,61 @@ export function visitHours(visits: readonly Pick<VisitLine, 'd' | 'h'>[], from: 
     }
     rows[weekday - 1].cells[Math.min(LAST_HOUR, Math.max(FIRST_HOUR, h)) - FIRST_HOUR]++
   }
-  return { hours: [...VISIT_HOURS], rows, unknown, peak: peakOf(rows) }
+  return { hours: [...VISIT_HOURS], rows, unknown, peak: peakOf(rows, VISIT_HOURS) }
 }
 
 // 하루 평균이 가장 큰 칸. 여럿이면 앞 요일·이른 시(같은 분수는 같은 부동소수라 그대로 견준다, AC-2704.3)
-function peakOf(rows: readonly VisitHourRow[]): VisitPeak | null {
+function peakOf(rows: readonly VisitHourRow[], hours: readonly number[]): VisitPeak | null {
   let peak: VisitPeak | null = null
   for (const row of rows) {
     for (let i = 0; i < row.cells.length; i++) {
       const average = cellAverage(row.cells[i], row.openDays)
-      if (average > 0 && (peak === null || average > peak.average)) peak = { weekday: row.weekday, hour: VISIT_HOURS[i], average }
+      if (average > 0 && (peak === null || average > peak.average)) peak = { weekday: row.weekday, hour: hours[i], average }
     }
   }
   return peak
+}
+
+// ── 병원 진료시간으로 접기·휴진 요일 줄 빼기 (clinic-profile REQ-6606 AC-6606.1, design.md 8절) ──
+// 진료시간은 화면 부품이 병원 정보에서 읽어 시·요일 번호로만 넘긴다(이 파일은 병원 정보를 읽지 않는다). Worker·저장 모양(13칸)·AI 입력은 그대로다
+
+const clampHour = (hour: number, low: number, high: number) => Math.min(high, Math.max(low, hour))
+
+/**
+ * 진료시간 시 범위(lib/clinic/format calendarRange 값) → 보일 첫 칸·끝 칸.
+ * closeHour는 끝 경계(그 시각에 줄이 끝난다)라 끝 칸은 closeHour − 1시 칸이다: 18:00에 닫으면 17시 칸(17:00–17:59)이 끝,
+ * 18:30에 닫으면 closeHour가 19라 18시 칸(그 안에 문 연 30분이 있다)이 끝. 8~20 밖은 foldHours가 자른다
+ */
+export function foldWindow(range: { openHour: number; closeHour: number }): { from: number; to: number } {
+  return { from: range.openHour, to: range.closeHour - 1 }
+}
+
+/** from 앞 칸은 from 칸에, to 뒤 칸은 to 칸에 더한다(8 ≤ from ≤ to ≤ 20으로 자름). 칸 합·문 연 날·시각 모름은 그대로이고 가장 붐비는 칸은 접은 칸으로 다시 찾는다 */
+export function foldHours(view: VisitHours, window: { from: number; to: number }): VisitHours {
+  const from = clampHour(window.from, FIRST_HOUR, LAST_HOUR)
+  const to = clampHour(window.to, from, LAST_HOUR)
+  const hours = Array.from({ length: to - from + 1 }, (_, i) => from + i)
+  const rows = view.rows.map((row): VisitHourRow => {
+    const cells = hours.map(() => 0)
+    row.cells.forEach((sum, i) => {
+      cells[clampHour(view.hours[i] ?? from, from, to) - from] += sum
+    })
+    return { weekday: row.weekday, openDays: row.openDays, cells }
+  })
+  return { hours, rows, unknown: view.unknown, peak: peakOf(rows, hours) }
+}
+
+/** 휴진 요일(1 = 월 … 7 = 일) 줄을 뺀다. 가장 붐비는 칸은 남은 줄로 다시 찾는다 */
+export function withoutWeekdays(view: VisitHours, weekdays: readonly number[]): VisitHours {
+  const rows = view.rows.filter((row) => !weekdays.includes(row.weekday))
+  return { hours: view.hours, rows, unknown: view.unknown, peak: peakOf(rows, view.hours) }
+}
+
+/** 접은 표 아래 글(AC-6606.1): '{첫 칸}시~{끝 칸}시, 그 밖의 접수는 맨 앞·맨 뒤 칸에 더했어요' */
+export function foldNote(view: VisitHours): string {
+  const first = view.hours[0] ?? FIRST_HOUR
+  const last = view.hours[view.hours.length - 1] ?? LAST_HOUR
+  return `${first}시~${last}시, 그 밖의 접수는 맨 앞·맨 뒤 칸에 더했어요`
 }
 
 // 칸 하나의 하루 평균. 문 연 날이 없으면 0

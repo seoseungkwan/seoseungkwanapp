@@ -9,10 +9,29 @@ import type { AiErrorCode, CardTag, ShownReport } from '@/types/aiReport'
 import type { ErrorCode } from '@/types/errors'
 import { ReportBody, type ReportBodyState } from './ReportBody'
 
+// 병원 정보 훅(clinic-profile AC-6606.3): 본문이 호칭 하나만 읽는다. 이 파일 안에서만 가짜이고 처음은 읽는 중(기본값 '원장님')
+const clinic = vi.hoisted(() => ({ state: 'loading' as 'loading' | 'ready' | 'failed', honorific: '원장님' as '원장님' | '대표원장님' | '선생님' }))
+vi.mock('@/components/clinic/useClinicProfile', () => ({
+  useClinicProfile: () => ({
+    state: clinic.state,
+    profile: { displayName: null, phone: null, address: null, honorific: clinic.honorific, hours: [], closedDates: [], staff: [], logoPath: null },
+    saved: clinic.state === 'ready',
+    signupName: '',
+    signupPhone: null,
+    name: '',
+    logoDataUrl: null,
+    reload: () => undefined,
+  }),
+}))
+
 // AI 리포트 본문(spec ai-report-screen REQ-708~711의 그리는 부분, 시안 docs/mockups/ai-report/index.html reportView·main).
 // 부품은 props만 받아 그린다. 숫자는 이 파일 안에서만 지어낸다. jsdom은 CSS를 계산하지 않아 모양은 클래스로 본다
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  clinic.state = 'loading'
+  clinic.honorific = '원장님'
+})
 
 const TODAY = '2026-11-18'
 const NOW = new Date('2026-11-18T05:20:00.000Z')
@@ -410,5 +429,27 @@ describe('AC-711.3·AC-711.4·AC-709.4·AC-709.5: 안내 묶음의 차례', () =
     const { container } = draw(reportState())
     expect(container.querySelectorAll('div:empty')).toHaveLength(0)
     expect(container.textContent?.startsWith('2026년 10월 보고')).toBe(true)
+  })
+})
+
+// ── clinic-profile: 보고 받는 사람 글의 호칭 (REQ-6606 AC-6606.3, design.md 8절) ──
+describe('AC-6606.3: 리포트 없는 달 설명의 호칭', () => {
+  it("AC-6606.3: 병원 호칭이 '대표원장님'이면 '… 대표원장님께 드릴 보고를 1분쯤 걸려 써 드려요.'다", () => {
+    clinic.state = 'ready'
+    clinic.honorific = '대표원장님'
+    draw({ kind: 'empty', error: null })
+    screen.getByText('[AI 분석]을 누르면 9월, 작년 10월과 견줘 대표원장님께 드릴 보고를 1분쯤 걸려 써 드려요.')
+  })
+
+  it("AC-6606.3: '선생님'이면 '선생님께', 읽는 중·읽기 실패면 '원장님께'다", () => {
+    clinic.state = 'ready'
+    clinic.honorific = '선생님'
+    draw({ kind: 'empty', error: null })
+    screen.getByText('[AI 분석]을 누르면 9월, 작년 10월과 견줘 선생님께 드릴 보고를 1분쯤 걸려 써 드려요.')
+    cleanup()
+    clinic.state = 'failed'
+    clinic.honorific = '원장님'
+    draw({ kind: 'empty', error: null })
+    screen.getByText('[AI 분석]을 누르면 9월, 작년 10월과 견줘 원장님께 드릴 보고를 1분쯤 걸려 써 드려요.')
   })
 })

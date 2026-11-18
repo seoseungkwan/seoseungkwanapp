@@ -672,3 +672,52 @@ describe('Claude 요청 몸에 환자 정보가 없다 (AC-2906.2)', () => {
     }
   })
 })
+
+// ── clinic-profile: AI 시스템 글의 호칭 (REQ-6606 AC-6606.4, design.md 8절). 호칭은 deps.loadHonorific(서버가 RLS 세션으로 DB에서 읽음)에서만 온다 ──
+describe('시스템 글의 호칭 (AC-6606.4)', () => {
+  const withHonorific = (load: () => Promise<unknown>, opts: Parameters<typeof setup>[0] = {}) => {
+    const made = setup(opts)
+    const loadHonorific = vi.fn(async () => {
+      made.order.push('loadHonorific')
+      return load()
+    })
+    return { ...made, deps: Object.assign(made.deps, { loadHonorific }), loadHonorific }
+  }
+
+  it.each(['대표원장님', '선생님', '원장님'] as const)("AC-6606.4: DB에서 읽은 호칭 '%s'로 시스템 글을 만들고, 차례는 loadMonths → loadHonorific → callClaude다", async (honorific) => {
+    const { deps, order } = withHonorific(async () => honorific)
+    const res = await generateReport(MONTH, deps)
+    expect(res.ok).toBe(true)
+    expect(order).toEqual(['loadMonths', 'loadHonorific', 'callClaude', 'saveReport', 'addUsage'])
+    expect(deps.callClaude.mock.calls[0][0].system).toBe(systemPrompt(honorific))
+  })
+
+  it("AC-6606.4: 세 가지 밖의 값·읽기가 던짐·loadHonorific 없음이면 '원장님'이고 리포트는 그대로 만든다", async () => {
+    for (const load of [async () => '관리자님', async () => null, async () => Promise.reject(new Error('db SECRET'))]) {
+      const { deps } = withHonorific(load)
+      const res = await generateReport(MONTH, deps)
+      expect(res.ok).toBe(true)
+      expect(deps.callClaude.mock.calls[0][0].system).toBe(systemPrompt('원장님'))
+    }
+    const { deps } = setup()
+    await generateReport(MONTH, deps)
+    expect(deps.callClaude.mock.calls[0][0].system).toBe(systemPrompt('원장님'))
+  })
+
+  it('AC-6606.4: 호칭은 사용자 메시지·입력 지문에 들어가지 않는다(지문이 호칭으로 바뀌지 않는다)', async () => {
+    const a = withHonorific(async () => '선생님')
+    const b = withHonorific(async () => '원장님')
+    const ra = await generateReport(MONTH, a.deps)
+    const rb = await generateReport(MONTH, b.deps)
+    if (!ra.ok || !rb.ok) throw new Error('성공이어야 한다')
+    expect(ra.report.inputHash).toBe(rb.report.inputHash)
+    expect(a.deps.callClaude.mock.calls[0][0].user).toBe(b.deps.callClaude.mock.calls[0][0].user)
+    expect(a.deps.callClaude.mock.calls[0][0].user).not.toContain('선생님')
+  })
+
+  it('AC-6606.4: 고른 달 숫자가 없으면 호칭을 읽지 않는다(Claude도 부르지 않는다)', async () => {
+    const { deps, loadHonorific } = withHonorific(async () => '선생님', { months: { ...fixtureMonths(), selected: null } })
+    expect(await generateReport(MONTH, deps)).toEqual({ ok: false, code: 'E-AI-NO-DATA' })
+    expect(loadHonorific).not.toHaveBeenCalled()
+  })
+})

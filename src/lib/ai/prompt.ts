@@ -1,12 +1,16 @@
 // AI 월간 리포트 지시문(spec ai-report design.md '지시문'). 순수 함수만 — 네트워크·SDK·node: 모듈을 쓰지 않는다
-// 지시문은 고정 글자다(날짜·병원 이름·숫자·사용자 정보를 넣지 않는다). 숫자는 userMessage의 <data> 안 입력으로만 간다
+// 지시문은 고정 글자다(날짜·병원 이름·숫자·사용자 정보를 넣지 않는다). 숫자는 userMessage의 <data> 안 입력으로만 간다.
+// 바뀌는 곳은 첫 줄의 받는 사람 하나다: 정해 둔 세 호칭 가운데 하나(clinic-profile AC-6606.4, 서버가 DB에서 읽어 넘김). 원장님 매출·이름 같은 지표 설명은 그대로다
 import type { ReportInput } from '@/types/aiReport'
+import { DEFAULT_HONORIFIC, HONORIFICS, type Honorific } from '@/types/clinicProfile'
 
 // 지시문 판. 입력·지문·저장 칸에 넣지 않는다 — 지시문을 고쳐도 '숫자가 바뀌었어요'가 뜨지 않게
-export const PROMPT_VERSION = 'ai-report-3'
+export const PROMPT_VERSION = 'ai-report-4'
 
-const SYSTEM_PROMPT = [
-  '당신은 정형외과 의원 총괄입니다. 원장님께 드리는 월간 환자 통계 보고를 씁니다.',
+// 첫 줄(받는 사람). 나머지 줄은 SYSTEM_REST 그대로
+const firstLine = (honorific: Honorific) => `당신은 정형외과 의원 총괄입니다. ${honorific}께 드리는 월간 환자 통계 보고를 씁니다.`
+
+const SYSTEM_REST = [
   '말투는 합니다체 존댓말로, 짧고 분명하게 씁니다.',
   '',
   '[입력]',
@@ -49,8 +53,10 @@ const SYSTEM_PROMPT = [
   '- 의학적 판단이나 진료 권고를 하지 않습니다. 숫자 흐름과 운영상 살펴볼 점만 말합니다.',
 ].join('\n')
 
-export function systemPrompt(): string {
-  return SYSTEM_PROMPT
+/** 시스템 글. honorific이 정해 둔 세 호칭 밖이면(주지 않음 포함) '원장님' — 받은 값을 그대로 글에 넣지 않는다 */
+export function systemPrompt(honorific: Honorific = DEFAULT_HONORIFIC): string {
+  const to = (HONORIFICS as readonly string[]).includes(honorific) ? honorific : DEFAULT_HONORIFIC
+  return [firstLine(to), SYSTEM_REST].join('\n')
 }
 
 // 자료 안 글자가 감싸개를 닫지 못하게 <·>를 JSON 유니코드 이스케이프(6글자 \u003c·\u003e)로 바꾼다.

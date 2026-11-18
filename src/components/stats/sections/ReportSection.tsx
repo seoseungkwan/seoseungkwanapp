@@ -10,6 +10,7 @@ import { wideSpan, type WideDays } from '@/components/stats/useWideDays'
 import { ds } from '@/components/ui/classes'
 import { addDays, addMonths, monthOf, monthRange } from '@/lib/analytics/dates'
 import { formatClinicReport } from '@/lib/clinicReport/reportText'
+import { DEFAULT_HONORIFIC, type Honorific } from '@/types/clinicProfile'
 import type { ClinicReportMode, ClinicReportNumbers, ClinicReportResult } from '@/types/clinicReport'
 import type { Goal } from '@/types/goals'
 import type { StatsRxGroup } from '@/types/rxGroups'
@@ -27,6 +28,7 @@ import { EmptyNote, longDate, monthNumber, Section, weekdayName } from './parts'
 // 보고 글 아래 · 글들은 "어떻게 세나요?" 안에 접는다(stats-pc-ux AC-4004.2 ⑤, 글이 있을 때만). 날짜 줄·확정 못 함·개인정보 줄은 그대로 보인다(AC-4004.3)
 // 보고 카드(first90 REQ-4415, 시안 redesign.html .s-rep): 글은 처음 네 줄만 보이고, 그 아래 [전체 보기]·[접기]와 [복사]가 있다. [복사]는 늘 글 전체다.
 // 네 줄 셈은 글의 줄바꿈으로 나눈 줄 수(빈 줄도 한 줄)다. 네 줄 이하면 [전체 보기]도 줄 수 제한도 없다(AC-4415.2). 흐림 덧칠·움직임은 없다(design.md 5-2·5-3)
+// 제목의 받는 사람은 병원 호칭이다(clinic-profile AC-6606.3, 통계 틀이 병원 정보에서 읽어 넘김, 주지 않으면 '원장님'). 보고 글(formatClinicReport)은 그대로다
 
 export type ReportData = {
   numbers: StatsLoaded['report']
@@ -48,7 +50,8 @@ const PICKS: Pick[] = [
   { key: 'lastMonth', name: '지난달 월말보고', mode: 'monthly' },
 ]
 
-const TITLE = '원장님 보고 문장'
+/** 보고 칸·보고 카드 제목 '{호칭} 보고 문장'(AC-6606.3). 통계 틀의 카드 제목도 이것을 써서 같은 제목 칸 규칙이 그대로다 */
+export const reportTitle = (honorific: Honorific = DEFAULT_HONORIFIC) => `${honorific} 보고 문장`
 const DESC = '비트 PC에서 불러온 숫자로 만든 보고 글'
 const BIT_ONLY = '비트 PC에서 불러오면 보여요'
 const BIT_REASON = '금액은 서버에 저장하지 않아서, 비트 PC에서 불러온 화면에서만 볼 수 있어요.'
@@ -201,15 +204,16 @@ function PickBody({ pick }: { pick: PickReport }) {
   )
 }
 
-type Props = { report: ReportData | null; hospitalName: string; today: string; saved: boolean; pick?: PickReport | null; className?: string }
+type Props = { report: ReportData | null; hospitalName: string; today: string; saved: boolean; pick?: PickReport | null; className?: string; honorific?: Honorific }
 
-export function ReportSection({ report, hospitalName, today, saved, pick = null, className }: Props) {
+export function ReportSection({ report, hospitalName, today, saved, pick = null, className, honorific }: Props) {
+  const title = reportTitle(honorific)
   const [chosen, setKey] = useState<PickKey>(pick === null ? 'today' : 'pick')
   // 고른 기간 보고가 없어지면(빠른 단추로 돌아옴) 오늘 일일보고다. 화면은 들어오고 나갈 때 이 칸을 다시 그린다
   const key: PickKey = chosen === 'pick' && pick === null ? 'today' : chosen
   if (report === null && pick === null) {
     return (
-      <Section title={TITLE} desc={saved ? DESC : undefined} className={className}>
+      <Section title={title} desc={saved ? DESC : undefined} className={className}>
         <EmptyNote title={BIT_ONLY}>{BIT_REASON}</EmptyNote>
       </Section>
     )
@@ -218,7 +222,7 @@ export function ReportSection({ report, hospitalName, today, saved, pick = null,
   const bit = key === 'pick' || report === null ? null : bitReport(key, report, hospitalName, today)
   // 고르기 묶음 줄은 지금 그대로다(AC-4415.1). [복사]는 글 아래 줄로 옮겼다
   return (
-    <Section title={TITLE} desc={DESC} className={className}>
+    <Section title={title} desc={DESC} className={className}>
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
         <div role="group" aria-label="보고 고르기" className={GROUP}>
           {buttons.map((item) => (

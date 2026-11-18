@@ -6,7 +6,7 @@ import { GROUP_KEY, groupKey } from '@/components/stats/treatmentView'
 import { validateMonthPayload } from '@/lib/payload/validate'
 import type { ReportInput, SavedReport } from '@/types/aiReport'
 import { generateReport, isReportStale, type GenerateDeps } from './generate'
-import { addUsage, loadReportMonths, readSavedReport, readUsage, saveReport, takeAiImage } from './store'
+import { addUsage, loadHonorific, loadReportMonths, readSavedReport, readUsage, saveReport, takeAiImage } from './store'
 
 // 실제 Supabase에 붙지 않는다. 쓰기 시험의 가짜 클라이언트는 rpc 하나만 있고, 그 밖의 이름(from·auth·storage …)을 꺼내면
 // touched에 남기고 부르면 던진다 — 쓰기를 직접(from('ai_reports').insert 등) 하면 시험이 실패한다. 읽기 시험의 가짜는 아래 fakeReadClient다
@@ -141,14 +141,14 @@ describe('saveReport · addUsage 저장 쪽 (AC-511.2)', () => {
     expect(touched).toEqual(['rpc'])
   })
 
-  it('AC-511.2 store.ts는 첫 줄이 server-only이고, 직접 쓰기·service role·console이 없다', () => {
+  it('AC-511.2·AC-6606.4 store.ts는 첫 줄이 server-only이고, 직접 쓰기·service role·console이 없다', () => {
     const source = readFileSync(fileURLToPath(new URL('./store.ts', import.meta.url)), 'utf8')
     expect(source.split(/\r?\n/)[0]).toBe("import 'server-only'")
     expect(source).not.toMatch(/\.insert\s*\(|\.upsert\s*\(|\.update\s*\(|\.delete\s*\(/)
-    // from은 읽기 넷만 쓴다: 호출이 정확히 4개이고, 표 이름은 글자 그대로 ai_reports·ai_usage·stats_months·stats_rx_groups다
+    // from은 읽기 다섯만 쓴다: 호출이 정확히 5개이고, 표 이름은 글자 그대로 ai_reports·ai_usage·clinic_profiles(호칭 한 칸, clinic-profile AC-6606.4)·stats_months·stats_rx_groups다
     const fromCalls = source.match(/\.from\s*\([^)]*\)?/g) ?? []
-    expect(fromCalls).toHaveLength(4)
-    expect([...fromCalls].sort()).toEqual([".from('ai_reports')", ".from('ai_usage')", ".from('stats_months')", ".from('stats_rx_groups')"])
+    expect(fromCalls).toHaveLength(5)
+    expect([...fromCalls].sort()).toEqual([".from('ai_reports')", ".from('ai_usage')", ".from('clinic_profiles')", ".from('stats_months')", ".from('stats_rx_groups')"])
     expect(source).not.toMatch(/service[_-]?role|SERVICE_ROLE|createClient|createServerClient|supabaseServer/)
     expect(source).not.toMatch(/console\./)
     expect(source).not.toMatch(/fixtures|fake-ai/)
@@ -855,5 +855,36 @@ describe('takeAiImage 하루 한도 부르기 (AC-4607.2)', () => {
   it('AC-4607.2 store.ts는 take_ai_image를 rpc 글자 하나로만 부른다(병원 칸·인자 없음)', () => {
     const calls = storeSource().match(/\.rpc\(\s*'take_ai_image'[^)]*\)/g) ?? []
     expect(calls).toEqual([".rpc('take_ai_image')"])
+  })
+})
+
+// ── clinic-profile: AI 시스템 글의 호칭을 서버가 DB에서 읽는다 (REQ-6606 AC-6606.4, design.md 8절) ──
+describe('loadHonorific — 병원 정보 호칭 한 칸 (AC-6606.4)', () => {
+  it.each(['원장님', '대표원장님', '선생님'] as const)("AC-6606.4: clinic_profiles에서 honorific 한 칸만 읽어(병원 조건 없이, RLS 세션) '%s'를 돌려준다", async (honorific) => {
+    const fake = rowClient({ honorific })
+    await expect(loadHonorific(fake.client)).resolves.toBe(honorific)
+    expect(fake.from).toEqual([['clinic_profiles']])
+    expect(fake.select).toEqual([['honorific']])
+    expect(fake.eq).toEqual([])
+    expect([...new Set(fake.touched)].sort()).toEqual(['from', 'maybeSingle', 'select'])
+    expectNoConsole()
+  })
+
+  it.each<[string, () => RpcResult | Promise<RpcResult>]>([
+    ['줄 없음', async () => ({ data: null, error: null })],
+    ['세 가지 밖의 값', async () => ({ data: { honorific: '관리자님' }, error: null })],
+    ['값이 글자가 아님', async () => ({ data: { honorific: 3 }, error: null })],
+    ['칸 없음', async () => ({ data: {}, error: null })],
+    ['답이 객체가 아님', async () => ({ data: '선생님', error: null })],
+    ['읽기 오류(표가 아직 없음 등)', async () => ({ data: null, error: READ_ERROR })],
+    ['거절', async () => boom()],
+    ['바로 던짐', () => boom()],
+  ])("AC-6606.4: %s이면 '원장님'이고 던지지 않으며 아무것도 남기지 않는다", async (_name, reply) => {
+    await expect(loadHonorific(fakeReadClient(reply).client)).resolves.toBe('원장님')
+    expectNoConsole()
+  })
+
+  it("AC-6606.4: from에서 던져도 '원장님'이다", async () => {
+    await expect(loadHonorific(fakeClient().client)).resolves.toBe('원장님')
   })
 })

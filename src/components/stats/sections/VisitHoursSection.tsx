@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { formatCount, percentOf } from '@/components/charts/format'
 import type { StatsRange } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
-import { cellAverage, heatLevel, heatText, heatTip, peakParts, unknownHoursNote } from '@/lib/analytics/visitHours'
+import { calendarRange } from '@/lib/clinic/format'
+import { cellAverage, foldHours, foldNote, foldWindow, heatLevel, heatText, heatTip, peakParts, unknownHoursNote, withoutWeekdays } from '@/lib/analytics/visitHours'
+import type { DayHours } from '@/types/clinicProfile'
 import type { VisitHourRow, VisitHours } from '@/types/stats'
 import { DetailToggle, type DetailTable } from './DetailToggle'
 import { HowCounted } from './HowCounted'
@@ -16,12 +18,17 @@ import { Note, Section } from './parts'
 // 칸 색은 하루 평균 여섯 구간(bg-st-h0~h5)이고 기간을 바꾸면 200ms 옮긴다(st-move-heat). 문 연 날이 없는 요일 줄은 한 칸 안내다.
 // 칸을 누르면(PC는 올리기도) 아래 줄(role="status")에 그 칸 숫자가 나온다. 고른 칸·고른 요일·전체 표 보기는 이 칸의 React 상태뿐이다.
 // 768px 미만은 요일 단추 + 시간마다 가로 막대이고, [전체 표 보기]를 누르면 같은 히트맵(요일 칸 고정)이다.
-// [자세히]는 같은 모양의 합계 표(건수)를 연다(DetailToggle). 옛 긴 설명은 "어떻게 세나요?" 안이다
+// [자세히]는 같은 모양의 합계 표(건수)를 연다(DetailToggle). 옛 긴 설명은 "어떻게 세나요?" 안이다.
+// 병원 진료시간(clinic-profile AC-6606.1)을 받으면 문 여는 가장 이른 시~가장 늦은 시 칸으로 접고(밖 접수는 끝 칸에 더함) 휴진 요일 줄을 뺀다.
+// 표·요일 단추·머리 줄·합계 표가 모두 접은 값 하나를 쓴다. 진료시간이 없으면(병원 정보 줄 없음·읽는 중·실패) 지금처럼 8시~20시 일곱 줄이다
 
 const TITLE = '시간대별 접수'
 const DESC = '요일·시간마다 하루 평균 접수'
 const WEEKDAYS = '월화수목금토일'
-const FOOT = '병원 접수 시간(8시~20시) 기준이에요. 8시 전 접수는 8시 칸, 20시 넘은 접수는 20시 칸에 넣어요. 예약 대기·취소한 접수는 세지 않아요. 문을 연 날만 평균에 넣어요.'
+const FOOT_REST = '예약 대기·취소한 접수는 세지 않아요. 문을 연 날만 평균에 넣어요.'
+const FOOT = `병원 접수 시간(8시~20시) 기준이에요. 8시 전 접수는 8시 칸, 20시 넘은 접수는 20시 칸에 넣어요. ${FOOT_REST}`
+// 진료시간으로 접었을 때(AC-6606.1): 칸 범위 글은 표 아래 접지 않는 줄(foldNote)이 맡는다
+const FOOT_CLINIC = `설정 → 병원 정보의 진료시간 기준이에요. 휴진 요일은 줄을 빼요. ${FOOT_REST}`
 const FOOT_NOW = '접수 시각 기준이에요. 대기 시간이나 필요한 직원 수를 뜻하지는 않아요. 0건 = 진료한 날이지만 그 시간 접수가 없었음.'
 const PICK_NOTE = '칸을 누르면 그 시간의 자세한 숫자가 나와요.'
 const NO_DAYS = '진료한 날 없음'
@@ -211,7 +218,15 @@ function DayBars({ view, shown, onDay }: { view: VisitHours; shown: VisitHourRow
   )
 }
 
-function HoursReady({ hours, desc, className }: { hours: VisitHours; desc: string; className?: string }) {
+// 병원 진료시간으로 접은 보기(AC-6606.1). 진료시간이 없거나 문 여는 요일이 하루도 없으면 null(지금처럼 그린다).
+// DayHours 칸 차례 월(0)~일(6) = 요일 줄 번호 − 1
+function clinicView(view: VisitHours, hours: readonly DayHours[] | null | undefined): VisitHours | null {
+  if (hours == null || !hours.some((day) => day !== null)) return null
+  const closed = hours.flatMap((day, index) => (day === null ? [index + 1] : []))
+  return withoutWeekdays(foldHours(view, foldWindow(calendarRange(hours))), closed)
+}
+
+function HoursReady({ hours, folded, desc, className }: { hours: VisitHours; folded: boolean; desc: string; className?: string }) {
   const [picked, setPicked] = useState<Pick | null>(null)
   const [day, setDay] = useState<number | null>(null)
   const [full, setFull] = useState(false)
@@ -244,11 +259,12 @@ function HoursReady({ hours, desc, className }: { hours: VisitHours; desc: strin
             {tip ?? PICK_NOTE}
           </p>
           <p className="mt-2 text-small text-st-muted">{FOOT_NOW}</p>
+          {folded && <p className="mt-1 text-small text-st-muted">{foldNote(hours)}</p>}
           {unknown !== null && <Note>{unknown}</Note>}
           {panel}
           {/* 옛 긴 설명은 "어떻게 세나요?" 안에 접는다(stats-pc-ux AC-4004.2 ⑦). 범례·접수 시각 모름은 그대로 보인다(AC-4004.3) */}
           <HowCounted>
-            <Note>{FOOT}</Note>
+            <Note>{folded ? FOOT_CLINIC : FOOT}</Note>
           </HowCounted>
         </Section>
       )}
@@ -260,10 +276,13 @@ type Props = {
   view: BitSectionsShown
   range: StatsRange // 설명의 기간 이름(name)
   className?: string // 놓는 자리(진료 운영 카드 윗줄 70%). 모든 모습의 바깥 section에 붙는다
+  hours?: readonly DayHours[] | null // 병원 진료시간(통계 틀이 병원 정보에서 읽어 넘김, AC-6606.1). 주지 않거나 null이면 8시~20시 그대로
 }
 
-export function VisitHoursSection({ view, range, className }: Props) {
+export function VisitHoursSection({ view, range, className, hours }: Props) {
   const state = bitState(view)
+  const counted = state.kind === 'ready' ? state.hours : null
+  const folded = useMemo(() => (counted === null ? null : clinicView(counted, hours)), [counted, hours])
   if (state.kind === 'note') return <BitNoteSection title={TITLE} note={state.note} className={className} />
   const desc = `${DESC} · ${range.name}`
   if (state.kind === 'waiting') {
@@ -273,5 +292,5 @@ export function VisitHoursSection({ view, range, className }: Props) {
       </Section>
     )
   }
-  return <HoursReady hours={state.hours} desc={desc} className={className} />
+  return <HoursReady hours={folded ?? state.hours} folded={folded !== null} desc={desc} className={className} />
 }

@@ -118,3 +118,28 @@ describe('AC-6107.3 휴일에 따라 칸', () => {
     expect(retry).toHaveBeenCalledTimes(1)
   })
 })
+
+// ── clinic-profile: 병원 휴진일도 연휴로 (REQ-6606 AC-6606.2). 휴진일은 통계 틀(StatsSections)이 병원 정보에서 읽어 넘긴다 ──
+describe('AC-6606.2 휴일에 따라 칸이 병원 휴진일을 더해 센다', () => {
+  // 2026-11-02(월) ~ 11-14(토) 공휴일 없음. 11/11(수)에 병원이 쉬었다. 11/10(화) 60 · 11/12(목) 120 · 나머지 90
+  const CLOSED = '2026-11-11'
+  const NOV = openDays('2026-11-02', '2026-11-14', (ymd) => (ymd === '2026-11-10' ? 60 : ymd === '2026-11-12' ? 120 : 90)).filter((row) => row.day !== CLOSED)
+
+  it('AC-6606.2: 휴진일을 넘기면 그 앞뒤 날이 연휴 전날·다음 날 줄에 든다', () => {
+    render(<HolidaySection today={TODAY} wide={wide(NOV)} closedDates={[CLOSED]} />)
+    expect(cells()).toEqual([
+      ['평소', '9일', '90명', '—'],
+      ['연휴 전날', '1일', '60명', '아직 적어요'],
+      ['연휴 다음 날', '1일', '120명', '아직 적어요'],
+    ])
+  })
+
+  it('AC-6606.2: 휴진일을 주지 않으면 지금처럼 공휴일만 본다', () => {
+    render(<HolidaySection today={TODAY} wide={wide(NOV)} />)
+    expect(cells().map((row) => row.slice(0, 2))).toEqual([
+      ['평소', '11일'],
+      ['연휴 전날', '0일'],
+      ['연휴 다음 날', '0일'],
+    ])
+  })
+})

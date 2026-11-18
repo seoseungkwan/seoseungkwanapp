@@ -15,12 +15,25 @@ import type { StatsCalendarShown } from './CalendarSection'
 import type { GoalRead } from './GoalSection'
 import { StatsCard } from './parts'
 import { MonthlyReportSection, ReportSection, type PickReport, type ReportData } from './ReportSection'
+import { StatsSections } from './StatsSections'
+import type { ClinicProfileView } from '@/components/clinic/useClinicProfile'
+import type { StatsRxGroupsView } from '@/components/stats/useStatsRxGroups'
+import { statsRange } from '@/components/stats/view'
+import { VISIT_HOURS } from '@/lib/analytics/visitHours'
+import { DEFAULT_HOURS, type Honorific } from '@/types/clinicProfile'
+import type { BitSectionsView, PatientMix } from '@/types/stats'
 
 // 월간 보고서(stats-insights REQ-6108)가 읽는 서버 자리: 고른 달 목표 · 고른 달과 앞 달 하루 매출. 이 파일 안에서만 가짜다
 vi.mock('@/lib/storage/goals', () => ({ loadGoal: vi.fn() }))
 const revenueStore = vi.hoisted(() => ({ loadDays: vi.fn() }))
 vi.mock('@/lib/storage/revenue', () => ({ createRevenueStore: vi.fn(() => revenueStore) }))
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: vi.fn(() => ({})) }))
+// 병원 정보 훅(clinic-profile AC-6606.1~3): 통계 틀(StatsSections)이 한 번 읽어 칸마다 넘긴다. 이 파일 안에서만 가짜다
+const clinic = vi.hoisted(() => ({ view: null as unknown }))
+vi.mock('@/components/clinic/useClinicProfile', () => ({ useClinicProfile: () => clinic.view }))
+// 통계 틀을 그릴 때 처방 골라 보기·처방별 추세 칸이 읽는 저장 코드(읽는 중에 머문다)
+vi.mock('@/lib/storage/rxPicks', () => ({ readRxPicks: vi.fn(() => new Promise(() => undefined)), addRxPick: vi.fn(), removeRxPick: vi.fn(), clearRxPicks: vi.fn() }))
+vi.mock('@/lib/storage/statsRxGroups', () => ({ listStatsRxGroups: vi.fn(() => new Promise(() => undefined)), saveStatsRxGroups: vi.fn(), StatsRxGroupStoreError: class extends Error {} }))
 
 // 원장님 보고 문장 (stats REQ-513 AC-513.6·513.8, 시안 notes.md §3). 숫자·병원 이름은 시험 안에서 지은 가짜다
 
@@ -684,5 +697,125 @@ describe('AC-6108.1·AC-6108.2·AC-6108.3: 월간 보고서 칸', () => {
     expect(titles).not.toContain('몇 번까지 받나')
     expect(titles).not.toContain('신환 1명당 매출')
     expect(container.textContent).not.toContain(CHART)
+  })
+})
+
+// ── clinic-profile: 보고 받는 사람 글의 호칭·통계 틀이 병원 정보를 칸마다 넘김 (REQ-6606 AC-6606.1~6606.3, design.md 8절) ──
+describe('AC-6606.3: 보고 문장 칸 제목의 호칭', () => {
+  it("AC-6606.3: 호칭을 주면 제목이 '{호칭} 보고 문장'이고, 주지 않으면 '원장님 보고 문장'이다", () => {
+    render(<ReportSection report={data()} hospitalName={HOSPITAL} today={TODAY} saved honorific="대표원장님" />)
+    expect(screen.getByRole('heading', { level: 2, name: '대표원장님 보고 문장' })).toBeTruthy()
+    expect(screen.queryByText('원장님 보고 문장')).toBeNull()
+    cleanup()
+    draw(data())
+    expect(screen.getByRole('heading', { level: 2, name: '원장님 보고 문장' })).toBeTruthy()
+  })
+
+  it('AC-6606.3: 저장된 숫자가 없을 때 제목도 호칭이다', () => {
+    render(<ReportSection report={null} hospitalName={HOSPITAL} today={TODAY} saved={false} honorific="선생님" />)
+    expect(screen.getByRole('heading', { level: 2, name: '선생님 보고 문장' })).toBeTruthy()
+  })
+})
+
+describe('AC-6606.1·AC-6606.2·AC-6606.3: 통계 틀이 병원 정보(useClinicProfile)를 한 번 읽어 칸마다 넘긴다', () => {
+  const GROUPS: StatsRxGroupsView = { state: 'ready', groups: [], suggested: false, saving: false, saveFailed: false, reread: () => undefined, save: async () => true, forLoad: async () => [] }
+  const MIX: PatientMix = { total: { people: 10, visits: 12 }, compared: false, age: [], insurance: [], city: [], town: [] }
+  const filled = (...values: number[]) => [...values, ...Array<number>(VISIT_HOURS.length - values.length).fill(0)]
+  const BIT: BitSectionsView = {
+    kind: 'ready',
+    mix: { all: MIX, new: MIX },
+    hours: {
+      hours: [...VISIT_HOURS],
+      rows: [1, 2, 3, 4, 5, 6, 7].map((weekday) => ({ weekday, openDays: 1, cells: filled(2, 3) })),
+      unknown: 0,
+      peak: { weekday: 1, hour: 9, average: 3 },
+    },
+    doctors: { kind: 'single' },
+  }
+  const profileView = (over: { state?: ClinicProfileView['state']; saved?: boolean; honorific?: Honorific; closedDates?: string[] } = {}): ClinicProfileView => ({
+    state: over.state ?? 'ready',
+    profile: { displayName: null, phone: null, address: null, honorific: over.honorific ?? '원장님', hours: [...DEFAULT_HOURS], closedDates: over.closedDates ?? [], staff: [], logoPath: null },
+    saved: over.saved ?? true,
+    signupName: HOSPITAL,
+    signupPhone: null,
+    name: HOSPITAL,
+    logoDataUrl: null,
+    reload: () => undefined,
+  })
+  // 2026-11-02(월) ~ 11-12(목) 문 연 날(일요일 빼고), 11/11(수)은 병원 휴진일이라 줄이 없다
+  const holidayDay = (ymd: string, patients: number): DayPayload => ({
+    schemaVersion: 2,
+    quality: 'valid',
+    day: ymd,
+    partial: false,
+    totals: { patients, newPatients: 0, returning: patients, unknown: 0 },
+    rx: [],
+    groups: [],
+    revisit: { cohort: 0, within7: null, within14: null },
+  })
+  const WIDE_DAYS = ['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07', '2026-11-09', '2026-11-10', '2026-11-12'].map((ymd) =>
+    holidayDay(ymd, 90),
+  )
+  const drawStats = () =>
+    render(
+      <StatsSections
+        input={{ days: [], covered: [], range: statsRange(TODAY, '30d') }}
+        saved={false}
+        split={null}
+        report={null}
+        hospitalName={HOSPITAL}
+        groups={GROUPS}
+        bit={BIT}
+        wide={{ state: 'ready', days: WIDE_DAYS, retry: vi.fn() }}
+      />,
+    )
+  const reportCard = () => document.getElementById('stats-report')!
+  const holidayCells = () =>
+    within(screen.getByRole('table', { name: '휴일에 따라 하루 평균 내원' }))
+      .getAllByRole('row')
+      .slice(1)
+      .map((tr) => within(tr).getAllByRole('cell')[1]!.textContent)
+  const hoursHead = () =>
+    within(screen.getByRole('table', { name: '요일·시간마다 하루 평균 접수 (건)' }))
+      .getAllByRole('columnheader')
+      .slice(1)
+      .map((th) => th.textContent)
+
+  beforeEach(() => {
+    vi.mocked(loadGoal).mockReset()
+    vi.mocked(loadGoal).mockResolvedValue({ visits: null, newPatients: null, revenue: null })
+    revenueStore.loadDays.mockReset()
+    revenueStore.loadDays.mockResolvedValue([])
+  })
+
+  it("AC-6606.3: 보고 카드 제목(h2)이 '{호칭} 보고 문장' 하나다(같은 제목 칸 규칙 그대로)", () => {
+    clinic.view = profileView({ honorific: '선생님' })
+    drawStats()
+    expect(within(reportCard()).getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['선생님 보고 문장'])
+    expect(within(reportCard()).queryByRole('heading', { level: 3, name: '선생님 보고 문장' })).toBeNull()
+  })
+
+  it('AC-6606.1: 저장된 진료시간으로 시간대별 접수를 접고 휴진 요일 줄을 뺀다', () => {
+    clinic.view = profileView()
+    drawStats()
+    expect(hoursHead()).toEqual(['9시', '10시', '11시', '12시', '13시', '14시', '15시', '16시', '17시'])
+    expect(screen.getByText('9시~17시, 그 밖의 접수는 맨 앞·맨 뒤 칸에 더했어요')).toBeTruthy()
+  })
+
+  it('AC-6606.2: 병원 휴진일을 휴일에 따라 칸에 넘긴다', () => {
+    clinic.view = profileView({ closedDates: ['2026-11-11'] })
+    drawStats()
+    expect(holidayCells()).toEqual(['7일', '1일', '1일'])
+  })
+
+  it.each<[string, ClinicProfileView]>([
+    ['읽는 중', profileView({ state: 'loading', saved: false })],
+    ['읽기 실패', profileView({ state: 'failed', saved: false })],
+    ['병원 정보 줄 없음', profileView({ saved: false })],
+  ])('AC-6606.1·AC-6606.3: %s이면 지금처럼 원장님 · 8시~20시 칸이다', (_name, view) => {
+    clinic.view = view
+    drawStats()
+    expect(within(reportCard()).getByRole('heading', { level: 2, name: '원장님 보고 문장' })).toBeTruthy()
+    expect(hoursHead()).toEqual(VISIT_HOURS.map((hour) => `${hour}시`))
   })
 })

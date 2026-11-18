@@ -11,7 +11,8 @@ import { Note, Section } from './parts'
 // 휴일에 따라 (stats-insights REQ-6107 AC-6107.3, 시안 docs/mockups/stats-insights ⑦ — 사용자 결정 '휴일만': 날씨 줄 없음 · 진료 운영 칸).
 // 최근 12달 저장된 하루 내원 수로 평소 · 연휴 전날 · 연휴 다음 날을 같은 요일끼리 견준 표(lib/analytics/holidayEffect)를 그대로 그린다.
 // 평소 줄의 평소보다는 '—', 날 수가 5보다 적은 줄은 그 자리에 '아직 적어요'(흐림). 적으면 빨강·많으면 초록이고 부호(−·+)로도 읽힌다.
-// 넓은 하루를 읽는 중이거나 저장된 날이 없으면 칸을 그리지 않는다. 읽기에 실패하면 오류 카드 + [다시 읽기]
+// 넓은 하루를 읽는 중이거나 저장된 날이 없으면 칸을 그리지 않는다. 읽기에 실패하면 오류 카드 + [다시 읽기].
+// 병원 휴진일(clinic-profile AC-6606.2)은 통계 틀이 병원 정보에서 읽어 closedDates로 넘기고, 셈(holidayEffect)이 공휴일과 함께 본다
 
 const TITLE = '휴일에 따라'
 const NOTE = '최근 12달, 같은 요일끼리 견줘요. 공휴일은 2025~2027년 것이 들어 있어요.'
@@ -34,9 +35,11 @@ function VsUsual({ row }: { row: HolidayRow }) {
   return <span className={`font-semibold ${more ? 'text-positive' : 'text-negative'}`}>{`${more ? '+' : MINUS}${Math.abs(row.vsUsual)}%`}</span>
 }
 
-export function HolidaySection({ today, wide }: { today: string; wide: WideDays }) {
+const NO_CLOSED: readonly string[] = []
+
+export function HolidaySection({ today, wide, closedDates = NO_CLOSED }: { today: string; wide: WideDays; closedDates?: readonly string[] }) {
   const ready = wide.state === 'ready'
-  const rows = useMemo(() => (ready ? holidayEffect({ today, days: wide.days }) : null), [ready, today, wide.days])
+  const rows = useMemo(() => (ready ? holidayEffect({ today, days: wide.days, closedDates }) : null), [ready, today, wide.days, closedDates])
 
   if (wide.state === 'failed') {
     return (
