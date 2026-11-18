@@ -68,9 +68,9 @@ function month(seeds: VisitSeed[], history: HistorySeed[], catalog: Partial<Cata
 }
 
 /** 진료마다 결과(규칙:등급:세부) */
-const results = (m: ClaimMonth) => {
+const results = (m: ClaimMonth, roles?: Map<string, DrugRole | 'none'>) => {
   const out: Record<string, string[]> = {}
-  for (const [key, visit] of runRules(m, tables, NO_SETTINGS).perVisit) out[key] = visit.hits.map((h) => `${h.ruleId}:${h.grade}:${h.detail}`)
+  for (const [key, visit] of runRules(m, tables, NO_SETTINGS, roles).perVisit) out[key] = visit.hits.map((h) => `${h.ruleId}:${h.grade}:${h.detail}`)
   return out
 }
 
@@ -258,5 +258,24 @@ describe('AC-6608.2 처방코드 탭에서 고른 역할로 점검한다', () =>
 
   it('AC-6608.2: 역할이 없는 코드는 그대로다(넘긴 역할이 비어 있으면 처방 목록 성분만 본다)', () => {
     expect(run(chosenMonth(), []).q).toEqual(classes(chosenMonth()).q)
+  })
+})
+
+describe('AC-6608.2 runRules가 넘겨받은 역할로 점검한다', () => {
+  const ruleIds = (list: string[]) => list.map((x) => x.split(':')[0])
+
+  it("AC-6608.2: 넷째 값에서 [아님]('none')인 스테로이드는 빠져 국소마취제만 남은 관절강 주사(IJ-05)가 걸린다", () => {
+    expect(ruleIds(results(ourMonth())['lido-a21'])).not.toContain('IJ-05')
+    expect(ruleIds(results(ourMonth(), new Map([['A21', 'none']]))['lido-a21'])).toContain('IJ-05')
+  })
+
+  it('AC-6608.2: 넷째 값에서 연골주사로 고른 코드는 히알루론산으로 읽혀 무릎이 아닌 상병이면 HY-01·HY-12가 걸린다', () => {
+    const m = month([{ key: 'q', chart: '900501', lines: ['Rt knee'], rx: [['Q9', '가상주사']], dx: [['M5456', true]] }], [], [{ code: 'Q9', name: '가상주사' }])
+    expect(ruleIds(results(m).q)).not.toContain('HY-01')
+    expect(ruleIds(results(m, new Map([['Q9', 'cartilage']])).q)).toEqual(expect.arrayContaining(['HY-01', 'HY-12']))
+  })
+
+  it('AC-6608.2: 넷째 값을 주지 않으면 빈 역할 표와 같다(지금 부르는 곳이 그대로 돈다)', () => {
+    expect(results(ourMonth())).toEqual(results(ourMonth(), new Map()))
   })
 })
