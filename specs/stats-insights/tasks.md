@@ -40,7 +40,7 @@
 - Phase: 1
 - AC: AC-6106.1
 - REQ: REQ-6106
-- Files: helper/Directory.Build.props, helper/src/Precheck.Core/Stats/**, helper/tests/Precheck.Core.Tests/Stats/**, helper/tests/Precheck.Core.Tests/HelperStatsSpeed/**, helper/tests/stats-rows.dotnet.test.ts, helper/tests/helper-stats-speed.dotnet.test.ts, helper/tests/build.test.ts, helper/README.md, src/lib/bridge/versions.ts, src/lib/bridge/*.test.ts
+- Files: helper/Directory.Build.props, helper/src/Precheck.Core/Stats/**, helper/tests/Precheck.Core.Tests/Stats/**, helper/tests/Precheck.Core.Tests/HelperStatsSpeed/**, helper/tests/stats-rows.dotnet.test.ts, helper/tests/helper-stats-speed.dotnet.test.ts, helper/tests/build.test.ts, helper/README.md, src/lib/bridge/versions.ts, src/lib/bridge/*.test.ts, helper/tests/input-wiring.dotnet.test.ts, helper/tests/Precheck.Core.Tests/Calendar/CalendarTargets.test.cs, helper/tests/Precheck.Core.Tests/Revenue/RevenueCommands.test.cs, helper/tests/Precheck.Core.Tests/Sunap/SunapTargets.test.cs
 - Tests: helper/tests/stats-rows.dotnet.test.ts, src/lib/bridge/handshake.test.ts
 - TDD: required
 
