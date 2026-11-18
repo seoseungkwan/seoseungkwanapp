@@ -1,11 +1,14 @@
 'use client'
 
 import { useEffect, useReducer, useRef, useState } from 'react'
+import { useClinicProfile } from '@/components/clinic/useClinicProfile'
 import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { memoProblem } from '@/lib/forms/ai'
+import type { PosterLogo } from '@/lib/forms/layout'
+import { logoPalette, type GuideColors } from '@/lib/forms/logoColors'
 import { fileNameOf, noticeTitle } from '@/lib/forms/notice'
-import { downloadPosterPng } from '@/lib/forms/png'
+import { downloadPosterPng, readLogoPixels } from '@/lib/forms/png'
 import { themeOf } from '@/lib/forms/themes'
 import { deleteNotice, insertNotice, listNotices, updateNotice } from '@/lib/storage/formNotices'
 import {
@@ -29,7 +32,10 @@ import { useBackgrounds } from './useBackgrounds'
 // 도구 줄 [휴진 안내]·[환자 안내문](spec forms-guide REQ-4501, design.md 9절): 고른 도구 한 벌만 보인다. 환자 안내문(GuideWorkspace)은
 // 처음 누를 때 만들고 그 뒤로는 숨기기만 해, 두 도구 모두 오가도 고치던 값이 남는다(버릴지 묻지 않는다). 인쇄 사본은 보이는 도구의 것 하나뿐이다.
 // 상태는 이 한 곳(useReducer, formsState.ts). 대충 적은 글은 [정리하기] 때만 /api/ai/forms로 보내고 저장하지 않는다(ADR-028).
-// 저장은 브라우저 Supabase + RLS(lib/storage/formNotices). 인쇄는 window.print — 인쇄 면에는 A4 한 장의 안내문만 나온다(AC-3506.1)
+// 저장은 브라우저 Supabase + RLS(lib/storage/formNotices). 인쇄는 window.print — 인쇄 면에는 A4 한 장의 안내문만 나온다(AC-3506.1).
+// 로고 자리(spec clinic-profile REQ-6604, design.md 6절): 병원 정보를 로고까지 한 번 읽어(useClinicProfile) 두 안내문에 같이 넘긴다.
+// 로고 그림이 있으면 그 그림을 한 번 작게 읽어 환자 안내문 [자동] 색을 뽑고, 로고가 없거나 못 읽으면 병원 이름 글자로 그린다.
+// 읽는 동안에는 로고 자리를 비우고 [인쇄·PDF]·[그림 파일]을 막는다(AC-6604.2)
 
 const TIDY_PATH = '/api/ai/forms'
 const DELETE_CONFIRM = '이 안내문을 지울까요?'
@@ -60,8 +66,36 @@ async function askTidy(text: string): Promise<TidyAnswer> {
   }
 }
 
+type FormLogo = { logo: PosterLogo | null; logoColors: GuideColors | null } // logo null = 읽는 중
+type LogoRead = { href: string; ok: boolean; colors: GuideColors | null }
+const READING: FormLogo = { logo: null, logoColors: null }
+
+// 병원 정보 로고 → 로고 자리 값과 로고 색. 로고 그림은 바뀔 때마다 한 번만 읽는다
+function useFormLogo(): FormLogo {
+  const clinic = useClinicProfile({ logo: true })
+  const href = clinic.state === 'loading' ? null : clinic.logoDataUrl
+  const [read, setRead] = useState<LogoRead | null>(null)
+  useEffect(() => {
+    if (href === null) return
+    let live = true
+    void readLogoPixels(href).then((pixels) => {
+      if (!live) return
+      setRead({ href, ok: pixels !== null, colors: pixels === null ? null : logoPalette(pixels.data, pixels.width, pixels.height) })
+    })
+    return () => {
+      live = false
+    }
+  }, [href])
+  if (clinic.state === 'loading') return READING
+  const name: FormLogo = { logo: { kind: 'text', text: clinic.name }, logoColors: null }
+  if (href === null) return name
+  if (read === null || read.href !== href) return READING
+  return read.ok ? { logo: { kind: 'image', href }, logoColors: read.colors } : name
+}
+
 export function FormsScreen({ today }: { today?: string }) {
   const [state, dispatch] = useReducer(formsReducer, today, (given) => initialState(given ?? todayInKorea()))
+  const { logo, logoColors } = useFormLogo()
   const [imaging, setImaging] = useState(false)
   const [tool, setTool] = useState<Tool>('closure')
   const [guideSeen, setGuideSeen] = useState(false) // 환자 안내문을 한 번이라도 눌렀다(그때 만들고 목록을 읽는다)
@@ -170,7 +204,7 @@ export function FormsScreen({ today }: { today?: string }) {
 
   async function image() {
     const svg = posterRef.current?.querySelector('svg')
-    if (ready === null || !svg || working.current.image) return
+    if (ready === null || logo === null || !svg || working.current.image) return
     working.current.image = true
     setImaging(true)
     const ok = await downloadPosterPng(svg, fileNameOf(ready))
@@ -224,10 +258,11 @@ export function FormsScreen({ today }: { today?: string }) {
               onAccent={(accent) => dispatch({ type: 'accent', accent })}
             />
             <PreviewPanel
-              poster={<Poster notice={preview} theme={look.theme} art={look.art} background={look.background} />}
+              poster={<Poster notice={preview} theme={look.theme} art={look.art} background={look.background} logo={logo} />}
               empty={preview.cards.length === 0}
               posterRef={posterRef}
               ready={ready !== null}
+              logoReady={logo !== null}
               canDelete={state.id !== null}
               saveMark={dirty ? 'dirty' : state.id !== null ? 'saved' : null}
               saving={state.store === 'saving'}
@@ -236,7 +271,9 @@ export function FormsScreen({ today }: { today?: string }) {
               storeError={state.storeError}
               imageFailed={state.imageFailed}
               onSave={() => void save()}
-              onPrint={() => window.print()}
+              onPrint={() => {
+                if (logo !== null) window.print()
+              }}
               onImage={() => void image()}
               onDelete={() => void remove()}
             />
@@ -247,11 +284,11 @@ export function FormsScreen({ today }: { today?: string }) {
       {tool === 'closure' && (
         <div data-print-copy="" aria-hidden="true" className="hidden print:block">
           <div className="h-[297mm] w-[210mm] *:block *:size-full">
-            <Poster notice={preview} theme={look.theme} art={look.art} background={look.background} />
+            <Poster notice={preview} theme={look.theme} art={look.art} background={look.background} logo={logo} />
           </div>
         </div>
       )}
-      {guideSeen && <GuideWorkspace hidden={tool !== 'guide'} />}
+      {guideSeen && <GuideWorkspace hidden={tool !== 'guide'} logo={logo} logoColors={logoColors} />}
     </>
   )
 }

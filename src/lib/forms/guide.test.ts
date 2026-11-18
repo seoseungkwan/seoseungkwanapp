@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { GUIDE_LIMITS, PICTURE_IDS, type DrawKind, type DrawShape, type GuideContent, type GuideDrawing, type GuideField, type GuideLine } from '@/types/formGuide'
-import { BLANK_GUIDE, checkGuide, checkGuideValue, guideFileName, guideProblems, guideTitle, savableGuide } from './guide'
+import { DRAWING_LIMITS, GUIDE_LIMITS, PICTURE_IDS, type DrawKind, type DrawShape, type GuideContent, type GuideDrawing, type GuideField, type GuideLine } from '@/types/formGuide'
+import {
+  BLANK_GUIDE,
+  checkGuide,
+  checkGuideColors,
+  checkGuideValue,
+  guideColorsOf,
+  guideFileName,
+  guideProblems,
+  guideTitle,
+  savableGuide,
+  type GuideValue,
+} from './guide'
 import { layoutGuide } from './guideLayout'
+import type { GuideColors } from './logoColors'
 
 // 서식 탭 환자 안내문의 칸 규칙: 칸 검사·저장 값 검사·목록 제목·파일 이름 (specs/forms-guide REQ-4502, design.md 3절, TASK-3).
 // 배치 넘침 까닭(칸 넘침·띠 넘침 band)은 guideLayout.ts 몫이고, 여기서는 guideProblems가 둘을 합친다(칸 검사 까닭이 이긴다)
@@ -465,5 +477,98 @@ describe('AC-4502.1: BLANK_GUIDE — 새 안내문', () => {
     expect(Object.isFrozen(BLANK_GUIDE)).toBe(true)
     expect(Object.isFrozen(BLANK_GUIDE.lines)).toBe(true)
     expect(Object.isFrozen(BLANK_GUIDE.lines[0])).toBe(true)
+  })
+})
+
+// ---------- 안내문 색 (spec clinic-profile REQ-6604 AC-6604.5·AC-6604.6, design.md 6절) ----------
+
+describe('AC-6604.6: 안내문 색(colors) — 저장 값 검사 checkGuideValue', () => {
+  const COLORS: GuideColors = { main: '#3366cc', dark: '#102040' }
+  const colored = (colors: unknown = { ...COLORS }): Record<string, unknown> => ({ ...example(1), colors })
+
+  it('AC-6604.6: colors 열쇠가 없는 옛 안내문(지금 저장된 것)도 읽히고, 색 열쇠 없이 [자동](guideColorsOf → null)이다', () => {
+    const out = checkGuideValue(example(1))
+    expect(out).toEqual(example(1))
+    expect(Object.keys(out!).sort()).toEqual([...KEYS].sort())
+    expect(guideColorsOf(out!)).toBeNull()
+  })
+
+  it("AC-6604.6: colors가 { main, dark }('#' + 소문자 6자리)이면 그 색이 함께 남는다(새 객체)", () => {
+    const input = colored()
+    const out = checkGuideValue(input)
+    expect(out).toEqual({ ...example(1), colors: COLORS })
+    expect(Object.keys(out!).sort()).toEqual([...KEYS, 'colors'].sort())
+    expect(out!.colors).not.toBe(input.colors)
+    expect(guideColorsOf(out!)).toEqual(COLORS)
+  })
+
+  it('AC-6604.6: colors가 null이면 [자동]으로 읽고, 열쇠를 남기지 않는다(옛 안내문과 같은 모양)', () => {
+    const out = checkGuideValue(colored(null))
+    expect(out).toEqual(example(1))
+    expect('colors' in out!).toBe(false)
+  })
+
+  it('AC-6604.6: 틀린 색 값이면 안내문 전체가 null이다(대문자·3자리·# 없음·한쪽 빠짐·다른 열쇠·객체 아님)', () => {
+    for (const bad of [
+      { main: '#3366CC', dark: '#102040' },
+      { main: '#36c', dark: '#102040' },
+      { main: '3366cc', dark: '#102040' },
+      { main: '#3366cc' },
+      { dark: '#102040' },
+      { main: '#3366cc', dark: '#102040', note: '#d6d6d6' },
+      { main: 1, dark: '#102040' },
+      '#3366cc',
+      ['#3366cc', '#102040'],
+      1,
+      true,
+    ]) {
+      expect(checkGuideValue(colored(bad)), JSON.stringify(bad)).toBeNull()
+    }
+  })
+
+  it('AC-6604.6: 더할 수 있는 열쇠는 colors 하나뿐이다(다른 열쇠가 섞이면 여전히 null)', () => {
+    expect(checkGuideValue({ ...colored(), memo: '대충 적은 글' })).toBeNull()
+    expect(checkGuideValue({ ...colored(), palette: COLORS })).toBeNull()
+  })
+
+  it('AC-6604.6: savableGuide는 색을 그대로 두고, checkGuideValue(savableGuide(c))도 색을 남긴다', () => {
+    const c: GuideValue = { ...example(1), picture: 'document', drawing: wheelchair(), colors: { ...COLORS } }
+    expect(savableGuide(c)).toEqual({ ...example(1), drawing: null, colors: COLORS })
+    expect(checkGuideValue(savableGuide(c))).toEqual({ ...example(1), colors: COLORS })
+  })
+
+  it('AC-6604.6: 색을 더해도 저장 크기 제약(16,000바이트) 안이다 — 모든 글 칸 한도·AI 그림 바이트 한도와 함께', () => {
+    const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length
+    // AI 그림은 JSON 글 DRAWING_LIMITS.bytes(8,000)까지라 그 한도를 채운 그림으로 본다
+    const shapes = Array.from({ length: 21 }, () => SH('path', [], 'yellow', 'dark', 12, `M${'1 '.repeat(149)}`.slice(0, 300)))
+    const drawing = { subject: 가(DRAWING_LIMITS.subject), shapes }
+    expect(bytes(drawing)).toBeLessThanOrEqual(DRAWING_LIMITS.bytes)
+    const text = (key: keyof typeof GUIDE_LIMITS) => 가(GUIDE_LIMITS[key])
+    const big = {
+      ...example(1),
+      tag: text('tag'), subtitle: text('subtitle'), big1: text('big1'), big2: text('big2'), boxTop: text('boxTop'), boxBottom: text('boxBottom'),
+      bandTitle: text('bandTitle'), note: text('note'), lines: Array.from({ length: GUIDE_LIMITS.lines }, () => L(가(GUIDE_LIMITS.line), 가(GUIDE_LIMITS.line))),
+      picture: 'custom', drawing, colors: COLORS,
+    }
+    expect(bytes(big)).toBeLessThan(16_000)
+    expect(bytes(big) - bytes({ ...big, colors: undefined })).toBeLessThan(60)
+  })
+})
+
+describe('AC-6604.6: checkGuideColors · guideColorsOf', () => {
+  it("AC-6604.6: checkGuideColors는 { main, dark }('#' + 소문자 6자리)만 새 객체로, 아니면 null", () => {
+    const colors = { main: '#e6e006', dark: '#2e2e2e' }
+    expect(checkGuideColors(colors)).toEqual(colors)
+    expect(checkGuideColors(colors)).not.toBe(colors)
+    for (const bad of [null, undefined, {}, { main: '#E6E006', dark: '#2e2e2e' }, { main: '#e6e006', dark: '#2e2e2e', x: 1 }]) {
+      expect(checkGuideColors(bad), JSON.stringify(bad)).toBeNull()
+    }
+  })
+
+  it('AC-6604.6: guideColorsOf는 안내문의 직접 고른 색, 없거나 null이거나 틀리면 null([자동])', () => {
+    expect(guideColorsOf({ ...example(1), colors: { main: '#3366cc', dark: '#102040' } } as GuideValue)).toEqual({ main: '#3366cc', dark: '#102040' })
+    expect(guideColorsOf(example(1))).toBeNull()
+    expect(guideColorsOf({ ...example(1), colors: null } as GuideValue)).toBeNull()
+    expect(guideColorsOf({ ...example(1), colors: { main: 'red', dark: '#102040' } } as unknown as GuideValue)).toBeNull()
   })
 })

@@ -2,13 +2,18 @@ import { useId, type Dispatch } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
+import { guideColorsOf } from '@/lib/forms/guide'
+import { readableColors, type GuideColors } from '@/lib/forms/logoColors'
 import { DRAWING_LIMITS, GUIDE_LIMITS, PICTURES, PICTURE_IDS, type GuideField, type GuideMark, type GuideProblems, type PictureId } from '@/types/formGuide'
 import { MAX_MEMO } from '@/types/forms'
+import { guidePalette } from './guideColors'
 import type { GuideAction, GuideState } from './guideState'
 
 // 서식 화면 가운데(환자 안내문): 대충 적기 → [정리하기], '노란 윗단'·'진회색 띠' 칸, 그림 고르기와 AI로 그림 그리기
 // (spec forms-guide REQ-4502·4506·4513, design.md 9절, 시안 docs/mockups/forms-guide ?s=screen · go=draw). 색·글자는 토큰과 ds만 쓴다.
-// 칸 아래 까닭은 부르는 쪽이 준 visibleProblems다. 부르기(정리·그리기)는 부르는 쪽(GuideWorkspace)이 하고, 칸 고치기는 동작(dispatch)으로 보낸다
+// 칸 아래 까닭은 부르는 쪽이 준 visibleProblems다. 부르기(정리·그리기)는 부르는 쪽(GuideWorkspace)이 하고, 칸 고치기는 동작(dispatch)으로 보낸다.
+// '진회색 띠' 아래 '색' 칸(spec clinic-profile AC-6604.5): [자동](로고 색 또는 지금 색)·[직접 고르기]('바탕색'·'띠 색' 색 고르기).
+// 고른 색이 잘 안 읽히면(대비 4.5 미만) 경고만 하고 막지 않는다. 사용자가 고른 색 값은 색 칸 value로만 쓴다
 
 const MEMO_NOTE = '전화번호·주민번호·메일 주소는 적지 마세요. 적은 글은 정리할 때만 AI로 보내고 저장하지 않아요. AI는 적은 글에 없는 숫자를 넣지 않아요'
 const MEMO_PLACEHOLDER = '예) 보험 서류 필요하면 수납할 때 말해 달라고. 진단서, 영수증, 세부내역서, 통원확인서. 보험사마다 다름'
@@ -21,6 +26,9 @@ const SECTION_TITLE = 'text-body font-semibold text-ink'
 const GROUP = 'mt-3 min-w-0 rounded-float border border-line px-3 pt-1 pb-3'
 const LEGEND = 'px-1 text-caption text-muted'
 const TWO = 'grid grid-cols-2 gap-2 max-md:grid-cols-1'
+const COLOR_WARN = '글자가 잘 안 보일 수 있어요'
+// 색 칸: 44×32px·안쪽 2px·1px line-strong(휴진 안내 글자 색 칸과 같다)
+const COLOR_INPUT = `h-8 w-11 shrink-0 cursor-pointer rounded-control border border-line-strong bg-surface p-0.5 ${ds.focusRing}`
 const MARKS: readonly [GuideMark, string][] = [
   ['check', '✓ 체크'],
   ['number', '1·2·3 번호'],
@@ -34,6 +42,7 @@ type Props = {
   dispatch: Dispatch<GuideAction>
   onTidy: () => void
   onDraw: () => void
+  logoColors: GuideColors | null // 병원 로고에서 뽑은 두 색([자동]일 때 쓰인다)
 }
 
 type FieldProps = {
@@ -76,7 +85,66 @@ function TextField({ id, label, hint, max, value, error, onChange }: FieldProps)
   )
 }
 
-export function GuideEditor({ state, problems, dispatch, onTidy, onDraw }: Props) {
+type ColorsProps = { colors: GuideColors | null; logoColors: GuideColors | null; onColors: (colors: GuideColors | null) => void }
+
+// '색' 칸: [자동]이면 지금 쓰이는 색이 어디서 왔는지, [직접 고르기]면 두 색 고르기와 대비 경고
+function ColorsField({ colors, logoColors, onColors }: ColorsProps) {
+  const own = colors !== null
+  // [자동]일 때 쓰이는 두 색 — [직접 고르기]가 이 색에서 시작한다
+  const auto = guidePalette(null, logoColors)
+  const start: GuideColors = { main: auto.yellow.toLowerCase(), dark: auto.dark.toLowerCase() }
+  const pick = (patch: Partial<GuideColors>) => {
+    if (colors) onColors({ ...colors, ...patch })
+  }
+  const items: readonly [boolean, string, () => void][] = [
+    [false, '자동', () => onColors(null)],
+    [true, '직접 고르기', () => {
+      if (!own) onColors(start)
+    }],
+  ]
+  return (
+    <fieldset className={GROUP}>
+      <legend className={LEGEND}>색</legend>
+      <div className="mt-1 flex flex-wrap items-center gap-3">
+        <div role="group" aria-label="색 정하기" className={`${ds.segment.group} max-md:grid-cols-2`}>
+          {items.map(([on, name, onClick]) => (
+            <button
+              key={name}
+              type="button"
+              aria-pressed={own === on}
+              className={`${ds.segment.button} ${own === on ? ds.segment.on : ds.segment.off}`}
+              onClick={onClick}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+        {colors &&
+          ([
+            ['main', '바탕색'],
+            ['dark', '띠 색'],
+          ] as const).map(([key, name]) => (
+            <label key={key} className="inline-flex cursor-pointer items-center gap-2">
+              <span className={ds.label}>{name}</span>
+              <input
+                type="color"
+                className={COLOR_INPUT}
+                value={colors[key]}
+                onChange={(e) => pick({ [key]: e.target.value.toLowerCase() })}
+              />
+            </label>
+          ))}
+      </div>
+      {colors ? (
+        !readableColors(colors) && <p className="mt-1.5 text-small text-warning">{COLOR_WARN}</p>
+      ) : (
+        <p className={`${ds.help} mt-1.5`}>{logoColors ? '병원 로고 색이에요' : '기본 색이에요'}</p>
+      )}
+    </fieldset>
+  )
+}
+
+export function GuideEditor({ state, problems, dispatch, onTidy, onDraw, logoColors }: Props) {
   const id = useId()
   const { content } = state
   const memoLength = Array.from(state.memo).length
@@ -320,6 +388,8 @@ export function GuideEditor({ state, problems, dispatch, onTidy, onDraw }: Props
         )}
         <div className="mt-2">{field('note', '아래 작은 글', true, '앞에 ※가 붙어요')}</div>
       </fieldset>
+
+      <ColorsField colors={guideColorsOf(content)} logoColors={logoColors} onColors={(colors) => dispatch({ type: 'colors', colors })} />
     </section>
   )
 }

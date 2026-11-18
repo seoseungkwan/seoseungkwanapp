@@ -12,6 +12,7 @@ import {
 } from '@/types/formGuide'
 import { checkDrawing } from './guideDrawing'
 import { layoutGuide } from './guideLayout'
+import type { GuideColors } from './logoColors'
 
 // 서식 탭 환자 안내문의 칸 규칙: 칸 검사·저장 값 검사·목록 제목·파일 이름 (specs/forms-guide REQ-4502, design.md 3절).
 // 배치 넘침 까닭(칸 넘침·띠 넘침 band)은 guideLayout.ts가 붙이고, 빈 칸·글자 수·개인정보·윗줄만·강조·줄 수는 여기서 붙인다.
@@ -24,6 +25,8 @@ const FILE_UNSAFE = /[\\/:*?"<>|]/g
 // 저장 값의 열쇠 13개(GuideContent)와 줄의 열쇠 둘
 const GUIDE_KEYS = ['tag', 'subtitle', 'big1', 'big2', 'firstSmall', 'boxTop', 'boxBottom', 'picture', 'drawing', 'bandTitle', 'mark', 'lines', 'note'] as const
 const LINE_KEYS = ['text', 'em'] as const
+const COLOR_KEYS = ['main', 'dark'] as const
+const COLOR_HEX = /^#[0-9a-f]{6}$/
 const TEXT_FIELDS: readonly GuideField[] = ['tag', 'subtitle', 'big1', 'big2', 'boxTop', 'boxBottom', 'bandTitle', 'note']
 // 꼭 적어야 하는 칸과 비었을 때 까닭(그 밖의 글 칸은 비워도 된다)
 const REQUIRED: Partial<Record<GuideField, string>> = {
@@ -95,10 +98,34 @@ export function guideProblems(c: GuideContent): GuideProblems {
   return { ...layoutGuide(c).problems, ...checkGuide(c) }
 }
 
-// 저장한 줄·저장 직전 값(AC-4502.5): 모양이 정확하고 guideProblems가 빈 값만, 글 칸의 앞뒤 공백을 뗀 새 객체로. 아니면 null
-export function checkGuideValue(value: unknown): GuideContent | null {
-  const v = exactly(value, GUIDE_KEYS)
+// 안내문 값: 칸 13개 + 직접 고른 두 색(spec clinic-profile REQ-6604 AC-6604.5·AC-6604.6, design.md 6절).
+// 색은 [직접 고르기]일 때만 colors 열쇠로 둔다. 열쇠가 없거나 null이면 [자동](로고 색 또는 지금 색)이다 — 색을 저장하지 않은 옛 안내문도 [자동]
+export type GuideValue = GuideContent & { colors?: GuideColors | null }
+
+// 직접 고른 두 색: { main, dark }('#' + 소문자 16진수 6자리)만 새 객체로. 아니면 null
+export function checkGuideColors(value: unknown): GuideColors | null {
+  const v = exactly(value, COLOR_KEYS)
   if (v === null) return null
+  const { main, dark } = v
+  return typeof main === 'string' && typeof dark === 'string' && COLOR_HEX.test(main) && COLOR_HEX.test(dark) ? { main, dark } : null
+}
+
+// 안내문의 직접 고른 색. 없거나 null이거나 모양이 틀리면 null([자동])
+export function guideColorsOf(c: GuideValue): GuideColors | null {
+  return checkGuideColors(c.colors)
+}
+
+// 저장한 줄·저장 직전 값(AC-4502.5): 모양이 정확하고 guideProblems가 빈 값만, 글 칸의 앞뒤 공백을 뗀 새 객체로. 아니면 null.
+// 더할 수 있는 열쇠는 colors 하나뿐이다(AC-6604.6): 맞는 두 색이면 함께 남기고, null이면 열쇠 없이([자동]), 틀리면 null
+export function checkGuideValue(value: unknown): GuideValue | null {
+  const withColors = typeof value === 'object' && value !== null && !Array.isArray(value) && Object.hasOwn(value, 'colors')
+  const v = exactly(value, withColors ? [...GUIDE_KEYS, 'colors'] : GUIDE_KEYS)
+  if (v === null) return null
+  let colors: GuideColors | null = null
+  if (withColors && v.colors !== null) {
+    colors = checkGuideColors(v.colors)
+    if (colors === null) return null
+  }
 
   const texts = {} as Record<GuideField, string>
   for (const key of TEXT_FIELDS) {
@@ -139,12 +166,13 @@ export function checkGuideValue(value: unknown): GuideContent | null {
     lines,
     note: texts.note,
   }
-  return Object.keys(guideProblems(content)).length === 0 ? content : null
+  if (Object.keys(guideProblems(content)).length !== 0) return null
+  return colors ? { ...content, colors } : content
 }
 
 // 저장할 값: 고른 그림이 custom이 아니면 drawing을 null로 바꾼 새 객체(받은 객체는 고치지 않는다).
 // 화면은 다른 그림을 골라도 AI 그림을 남겨 두므로, 저장·readyGuide는 checkGuideValue(savableGuide(content))를 쓴다
-export function savableGuide(c: GuideContent): GuideContent {
+export function savableGuide(c: GuideValue): GuideValue {
   return { ...c, drawing: c.picture === 'custom' ? c.drawing : null }
 }
 

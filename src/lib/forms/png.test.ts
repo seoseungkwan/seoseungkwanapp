@@ -9,7 +9,8 @@ import { Poster } from '@/components/forms/Poster'
 import type { GuideContent } from '@/types/formGuide'
 import type { ClosureNotice } from '@/types/forms'
 import { guideFileName } from './guide'
-import { downloadGuidePng, downloadPosterPng, svgForImage } from './png'
+import type { PosterLogo } from './layout'
+import { LOGO_SAMPLE_MAX, downloadGuidePng, downloadPosterPng, readLogoPixels, svgForImage } from './png'
 
 // 서식 탭 휴진 안내 그림 파일(spec forms REQ-3506 AC-3506.2·3506.3, design.md 7절 '그림 파일').
 // svgForImage는 순수 함수라 글만 본다. downloadPosterPng는 fetch·Image·canvas·URL·<a>를 흉내 내 성공(true)·실패(false)만 본다.
@@ -499,6 +500,165 @@ describe('AC-4509.2: downloadGuidePng — 글꼴 둘·로고만 읽어 1588×224
     })
     await expect(downloadGuidePng(guideElement(), GUIDE_FILE)).resolves.toBe(false)
     expect(env.clicks).toHaveLength(0)
+    for (const spy of env.quiet) expect(spy).not.toHaveBeenCalled()
+  })
+})
+
+// ---------- 병원 정보 로고 (spec clinic-profile REQ-6604 AC-6604.1·AC-6604.3, design.md 6절) ----------
+
+const LOGO_B64 = Buffer.from(LOGO_PNG).toString('base64')
+const LOGO_DATA = `data:image/png;base64,${LOGO_B64}`
+function posterWith(logo: PosterLogo | null): SVGSVGElement {
+  const { container } = render(createElement(Poster, { notice: NOTICE, theme: 'children', logo }))
+  const svg = container.querySelector('svg')
+  if (!svg) throw new Error('svg가 없다')
+  return svg
+}
+function guideWith(logo: PosterLogo | null, content: GuideContent = GUIDE): SVGSVGElement {
+  const { container } = render(createElement(GuidePoster, { content, logo }))
+  const svg = container.querySelector('svg')
+  if (!svg) throw new Error('svg가 없다')
+  return svg
+}
+const serialize = (svg: SVGSVGElement) => new XMLSerializer().serializeToString(svg)
+const FONT_PATHS = ['/poster/fonts/Pretendard-Black.subset.woff2', '/poster/fonts/Pretendard-Bold.subset.woff2']
+const IMAGE_LOGO: PosterLogo = { kind: 'image', href: LOGO_DATA }
+const TEXT_LOGO: PosterLogo = { kind: 'text', text: '서승관정형외과의원' }
+
+describe('AC-6604.3: svgForImage — 병원 정보 로고(data: 주소)는 그대로 둔다', () => {
+  it('AC-6604.3: 휴진 안내 SVG의 로고가 data: 그림이면 로고 자산 없이 불러도 그 주소가 그대로 남고 /poster/가 남지 않는다', () => {
+    const svg = serialize(posterWith(IMAGE_LOGO))
+    expect(svg).not.toContain('/poster/logo.png')
+    const out = svgForImage(svg, { theme: THEME, bold: BOLD, black: BLACK })
+    expect(out).not.toContain('/poster/')
+    expect(dataUrls(out, 'data:image/png;base64,')).toEqual([LOGO_B64])
+  })
+
+  it('AC-6604.3: 환자 안내문 SVG도 같다(글꼴 둘만 바꾸고 data: 로고는 그대로)', () => {
+    const out = svgForImage(serialize(guideWith(IMAGE_LOGO)), { bold: BOLD, black: BLACK })
+    expect(out).not.toContain('/poster/')
+    expect(dataUrls(out, 'data:image/png;base64,')).toEqual([LOGO_B64])
+    expect(dataUrls(out, 'data:font/woff2;base64,')).toHaveLength(2)
+  })
+
+  it('AC-6604.1·AC-6604.3: 이름 글자 로고면 그림 파일 SVG에 image 로고가 없고 이름 글자가 들어 있다', () => {
+    const out = svgForImage(serialize(guideWith(TEXT_LOGO)), { bold: BOLD, black: BLACK })
+    expect(out).not.toContain('/poster/')
+    expect(out).not.toMatch(/<image\b/)
+    expect(out).toContain('>서승관정형외과의원</text>')
+  })
+})
+
+describe('AC-6604.3: 그림 파일 내려받기 — 병원 정보 로고', () => {
+  it('AC-6604.3: 휴진 안내 — /poster/logo.png를 읽지 않고(테마·글꼴 둘만) PNG를 만들며, 그린 SVG 안에 그 로고 그림이 있다', async () => {
+    const env = setup()
+    await expect(downloadPosterPng(posterWith(IMAGE_LOGO), FILE)).resolves.toBe(true)
+    expect([...env.fetchCalls].sort()).toEqual([...FONT_PATHS, '/poster/themes/children.svg'])
+    const text = await env.blobs[0].text()
+    expect(text).not.toContain('/poster/')
+    expect(dataUrls(text, 'data:image/png;base64,')).toEqual([LOGO_B64])
+    expect(env.clicks).toEqual([{ download: FILE, href: 'blob:poster-2', connected: true }])
+    for (const spy of env.quiet) expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('AC-6604.3: 환자 안내문 — 글꼴 둘만 읽고, 그린 SVG 안에 그 로고 그림이 있다', async () => {
+    const env = setup()
+    await expect(downloadGuidePng(guideWith(IMAGE_LOGO), GUIDE_FILE)).resolves.toBe(true)
+    expect([...env.fetchCalls].sort()).toEqual(FONT_PATHS)
+    const text = await env.blobs[0].text()
+    expect(text).not.toContain('/poster/')
+    expect(dataUrls(text, 'data:image/png;base64,')).toEqual([LOGO_B64])
+  })
+
+  it.each([
+    ['로고 그림', IMAGE_LOGO],
+    ['이름 글자', TEXT_LOGO],
+  ] as const)('AC-6604.3: 옛 로고 파일(/poster/logo.png)을 못 읽는 곳이어도 병원 정보 %s 그림 파일은 만들어진다', async (_, logo) => {
+    const env = setup({ fetchFails: 'logo' })
+    await expect(downloadGuidePng(guideWith(logo), GUIDE_FILE)).resolves.toBe(true)
+    await expect(downloadPosterPng(posterWith(logo), FILE)).resolves.toBe(true)
+    expect(env.fetchCalls).not.toContain('/poster/logo.png')
+  })
+
+  it('AC-6604.1·AC-6604.3: 이름 글자 로고면 그림 파일에 image가 없고 이름 글자가 들어 있다', async () => {
+    const env = setup()
+    await expect(downloadGuidePng(guideWith(TEXT_LOGO), GUIDE_FILE)).resolves.toBe(true)
+    expect([...env.fetchCalls].sort()).toEqual(FONT_PATHS)
+    const text = await env.blobs[0].text()
+    expect(text).not.toMatch(/<image\b/)
+    expect(text).toContain('서승관정형외과의원')
+  })
+})
+
+describe('AC-6604.4: readLogoPixels — 로고 그림을 긴 변 64px 안으로 줄여 점(RGBA)을 읽는다', () => {
+  function pixelsSetup({ width = 1033, height = 175, fail = false, noContext = false } = {}) {
+    const loaded: string[] = []
+    class FakeImage {
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      naturalWidth = width
+      naturalHeight = height
+      private current = ''
+      get src() {
+        return this.current
+      }
+      set src(value: string) {
+        this.current = value
+        loaded.push(value)
+        queueMicrotask(() => (fail ? this.onerror?.() : this.onload?.()))
+      }
+    }
+    vi.stubGlobal('Image', FakeImage)
+    const drawImage = vi.fn()
+    const getImageData = vi.fn((_x: number, _y: number, w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4).fill(200), width: w, height: h }))
+    const canvases: HTMLCanvasElement[] = []
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (this: HTMLCanvasElement) {
+      canvases.push(this)
+      return noContext ? null : ({ drawImage, getImageData } as unknown as CanvasRenderingContext2D)
+    } as HTMLCanvasElement['getContext'])
+    const quiet = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) => vi.spyOn(console, m))
+    return { loaded, drawImage, getImageData, canvases, quiet }
+  }
+
+  it('AC-6604.4: 가로형 로고(1033×175)는 64×11로 줄여 그 점을 준다(비율 유지, 한 번만 읽는다)', async () => {
+    const env = pixelsSetup()
+    const result = await readLogoPixels(LOGO_DATA)
+    expect(LOGO_SAMPLE_MAX).toBe(64)
+    expect(env.loaded).toEqual([LOGO_DATA])
+    expect(env.canvases).toHaveLength(1)
+    expect([env.canvases[0].width, env.canvases[0].height]).toEqual([64, 11])
+    expect(env.drawImage.mock.calls[0].slice(1)).toEqual([0, 0, 64, 11])
+    expect(env.getImageData).toHaveBeenCalledWith(0, 0, 64, 11)
+    expect([result?.width, result?.height]).toEqual([64, 11])
+    expect(result?.data).toHaveLength(64 * 11 * 4)
+    for (const spy of env.quiet) expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('AC-6604.4: 64px보다 작은 그림은 키우지 않는다(40×20 그대로)', async () => {
+    const env = pixelsSetup({ width: 40, height: 20 })
+    const result = await readLogoPixels(LOGO_DATA)
+    expect([env.canvases[0].width, env.canvases[0].height]).toEqual([40, 20])
+    expect([result?.width, result?.height]).toEqual([40, 20])
+  })
+
+  it.each([
+    ['옛 로고 주소', '/poster/logo.png'],
+    ['바깥 주소', 'https://example.com/logo.png'],
+    ['SVG data: 주소', 'data:image/svg+xml;base64,PHN2Zz4='],
+    ['빈 글', ''],
+  ])('AC-6604.4: PNG data: 주소가 아니면(%s) 읽지 않고 null', async (_, href) => {
+    const env = pixelsSetup()
+    await expect(readLogoPixels(href)).resolves.toBeNull()
+    expect(env.loaded).toEqual([])
+  })
+
+  it.each([
+    ['그림을 못 읽음(Image error)', { fail: true }],
+    ['그림 크기가 0', { width: 0, height: 0 }],
+    ['canvas 2d를 못 얻음', { noContext: true }],
+  ] as const)('AC-6604.4: %s이면 null이고 던지지·로그를 남기지 않는다', async (_, options) => {
+    const env = pixelsSetup(options)
+    await expect(readLogoPixels(LOGO_DATA)).resolves.toBeNull()
     for (const spy of env.quiet) expect(spy).not.toHaveBeenCalled()
   })
 })

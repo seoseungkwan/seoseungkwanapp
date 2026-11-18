@@ -4,6 +4,8 @@ import { useEffect, useReducer, useRef, useState } from 'react'
 import { memoProblem } from '@/lib/forms/ai'
 import { guideFileName, guideTitle } from '@/lib/forms/guide'
 import { subjectProblem } from '@/lib/forms/guideDrawing'
+import type { PosterLogo } from '@/lib/forms/layout'
+import type { GuideColors } from '@/lib/forms/logoColors'
 import { downloadGuidePng } from '@/lib/forms/png'
 import { deleteGuide, insertGuide, listGuides, updateGuide } from '@/lib/storage/formGuides'
 import { LEAVE_CONFIRM } from './formsState'
@@ -28,7 +30,8 @@ import { PreviewPanel } from './PreviewPanel'
 // 서식 화면(FormsScreen)이 [환자 안내문]을 처음 누를 때 만들고, 그 뒤로는 숨기기만 한다(hidden) — 고치던 값이 남는다(AC-4501.3).
 // 목록은 만들어질 때 한 번 읽는다(AC-4501.2). 숨은 동안은 인쇄 사본을 그리지 않는다(인쇄 면에는 보이는 도구의 사본 하나, AC-4501.4).
 // 대충 적은 글은 [정리하기] 때만 /api/ai/forms/guide로, 그릴 것은 [AI로 그림 그리기] 때만 /api/ai/forms/guide/picture로 보내고 저장하지 않는다(ADR-028).
-// 저장은 브라우저 Supabase + RLS(lib/storage/formGuides)
+// 저장은 브라우저 Supabase + RLS(lib/storage/formGuides).
+// 로고 자리·로고 색은 서식 화면이 병원 정보에서 읽어 넘긴다(spec clinic-profile REQ-6604). 로고를 읽는 동안(logo null) [인쇄·PDF]·[그림 파일]은 막힌다
 
 const TIDY_PATH = '/api/ai/forms/guide'
 const DRAW_PATH = '/api/ai/forms/guide/picture'
@@ -56,7 +59,13 @@ async function ask<T>(path: string, text: string, answerOf: (status: number, bod
 const askTidy = (text: string) => ask<GuideTidyAnswer>(TIDY_PATH, text, guideAnswerOf, BUSY)
 const askDrawing = (text: string) => ask<GuideDrawingAnswer>(DRAW_PATH, text, drawingAnswerOf, BUSY)
 
-export function GuideWorkspace({ hidden }: { hidden: boolean }) {
+type Props = {
+  hidden: boolean
+  logo: PosterLogo | null // 로고 자리 값. null = 병원 정보·로고를 읽는 중
+  logoColors: GuideColors | null // 로고에서 뽑은 두 색([자동]일 때)
+}
+
+export function GuideWorkspace({ hidden, logo, logoColors }: Props) {
   const [state, dispatch] = useReducer(guideReducer, undefined, initialGuideState)
   const [imaging, setImaging] = useState(false)
   const posterRef = useRef<HTMLDivElement>(null)
@@ -174,7 +183,7 @@ export function GuideWorkspace({ hidden }: { hidden: boolean }) {
 
   async function image() {
     const svg = posterRef.current?.querySelector('svg')
-    if (ready === null || !svg || working.current.image) return
+    if (ready === null || logo === null || !svg || working.current.image) return
     working.current.image = true
     setImaging(true)
     const ok = await downloadGuidePng(svg, guideFileName(ready))
@@ -198,12 +207,20 @@ export function GuideWorkspace({ hidden }: { hidden: boolean }) {
             onOpen={openGuide}
             onRetry={retryList}
           />
-          <GuideEditor state={state} problems={problems} dispatch={dispatch} onTidy={() => void tidy()} onDraw={() => void draw()} />
+          <GuideEditor
+            state={state}
+            problems={problems}
+            dispatch={dispatch}
+            onTidy={() => void tidy()}
+            onDraw={() => void draw()}
+            logoColors={logoColors}
+          />
           <PreviewPanel
-            poster={<GuidePoster content={state.content} />}
+            poster={<GuidePoster content={state.content} logo={logo} logoColors={logoColors} />}
             empty={false}
             posterRef={posterRef}
             ready={ready !== null}
+            logoReady={logo !== null}
             canDelete={state.id !== null}
             saveMark={dirty ? 'dirty' : state.id !== null ? 'saved' : null}
             saving={state.store === 'saving'}
@@ -212,7 +229,9 @@ export function GuideWorkspace({ hidden }: { hidden: boolean }) {
             storeError={state.storeError}
             imageFailed={state.imageFailed}
             onSave={() => void save()}
-            onPrint={() => window.print()}
+            onPrint={() => {
+              if (logo !== null) window.print()
+            }}
             onImage={() => void image()}
             onDelete={() => void remove()}
           />
@@ -222,7 +241,7 @@ export function GuideWorkspace({ hidden }: { hidden: boolean }) {
       {!hidden && (
         <div data-print-copy="" aria-hidden="true" className="hidden print:block">
           <div className="h-[297mm] w-[210mm] *:block *:size-full">
-            <GuidePoster content={state.content} />
+            <GuidePoster content={state.content} logo={logo} logoColors={logoColors} />
           </div>
         </div>
       )}

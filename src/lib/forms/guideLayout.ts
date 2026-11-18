@@ -1,5 +1,4 @@
 import type { GuideContent, GuideProblems } from '@/types/formGuide'
-import { LOGO } from './layout'
 
 // 서식 탭 환자 안내문 그림(A4 세로 794×1123)의 배치 (specs/forms-guide design.md 4절, AC-4503).
 // 값은 승인 시안 docs/mockups/forms-guide/index.html의 emOf()·measure()·fit()·layout()과 같다.
@@ -9,7 +8,7 @@ import { LOGO } from './layout'
 // 세 구역: 노랑 0~bandY, 진회색 띠 bandY~logoY(288), 흰 로고 칸 logoY~height(169). 글자는 x부터 안쪽 폭 inner. 띠 안 글은 bandEnd(logoY − 16)까지
 export const GUIDE_PAGE = { width: 794, height: 1123, x: 51, inner: 692, bandY: 666, logoY: 954, bandEnd: 938 } as const
 // 병원 로고(가로형 1033×175)를 400 폭으로, 로고 칸 가운데
-export const GUIDE_LOGO = { href: LOGO.href, x: 197, y: 1005, width: 400, height: 68 } as const
+export const GUIDE_LOGO = { x: 197, y: 1005, width: 400, height: 68 } as const
 // 그림 170×170: 오른쪽 여백 58, 윗단 바닥에서 28 위
 const PICTURE = { x: 566, y: 468, size: 170 } as const
 

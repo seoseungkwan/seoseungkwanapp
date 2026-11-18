@@ -14,6 +14,7 @@ type Props = {
   empty: boolean // 빈 카드 자리 안내를 보인다(휴진 안내: 시작 날짜 있는 카드가 없을 때)
   posterRef: Ref<HTMLDivElement> // 그림 파일이 이 안의 <svg>를 쓴다
   ready: boolean // 검사를 넘어 저장·뽑기를 할 수 있다
+  logoReady?: boolean // 병원 정보 로고를 다 읽었다(아니면 [인쇄·PDF]·[그림 파일]을 막는다, spec clinic-profile AC-6604.2). 기본 참
   canDelete: boolean
   saveMark: SaveMark
   saving: boolean
@@ -29,6 +30,7 @@ type Props = {
 
 export function PreviewPanel(props: Props) {
   const { poster, empty, posterRef, ready, canDelete, saveMark, saving, deleting, imaging, storeError, imageFailed } = props
+  const canOutput = ready && props.logoReady !== false
   return (
     <section aria-label="미리보기" className={`${ds.panel} p-4`}>
       <h2 className="text-body font-semibold text-ink">
@@ -50,10 +52,10 @@ export function PreviewPanel(props: Props) {
         <button type="button" className={ds.button.primary} disabled={!ready} aria-busy={saving || undefined} onClick={props.onSave}>
           저장
         </button>
-        <button type="button" className={ds.button.secondary} disabled={!ready} onClick={props.onPrint}>
+        <button type="button" className={ds.button.secondary} disabled={!canOutput} onClick={props.onPrint}>
           인쇄·PDF
         </button>
-        <button type="button" className={ds.button.secondary} disabled={!ready} aria-busy={imaging || undefined} onClick={props.onImage}>
+        <button type="button" className={ds.button.secondary} disabled={!canOutput} aria-busy={imaging || undefined} onClick={props.onImage}>
           그림 파일
         </button>
         {canDelete && (

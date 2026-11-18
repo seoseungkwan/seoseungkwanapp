@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ClosureNotice, NoticeCard } from '@/types/forms'
-import { LOGO, MIN_FONT, POSTER, TEXT_AREA, fitSize, layoutPoster, textWidth } from './layout'
+import { LOGO, LOGO_TEXT_SHARE, MIN_FONT, POSTER, TEXT_AREA, fitSize, layoutPoster, logoTextFit, textWidth } from './layout'
 
 // 서식 탭 휴진 안내 그림의 배치와 글자 크기 맞추기 (specs/forms REQ-3505, design.md 5절, TASK-3).
 // 자리 값은 승인 시안(794×1123)을 브라우저에서 잰 값(design.md 5절 표)
@@ -133,5 +133,33 @@ describe('AC-3602.2: 병원 로고 자리 (specs/forms-logo design.md 3절)', ()
       expect(bottom, `${n}장`).toBeLessThan(LOGO.y)
       expect(LOGO.y + LOGO.height, `${n}장`).toBeLessThanOrEqual(POSTER.height)
     }
+  })
+})
+
+describe('AC-6604.1: 로고가 없을 때 로고 자리의 병원 이름 글자 크기 (spec clinic-profile design.md 6절)', () => {
+  const BOX = { width: LOGO.width, height: LOGO.height }
+
+  it('AC-6604.1: 글자 크기는 상자 높이의 80%(LOGO_TEXT_SHARE)에서 시작한다 — 짧은 이름은 그 크기 그대로(58 × 0.8 → 46)', () => {
+    expect(LOGO_TEXT_SHARE).toBe(0.8)
+    expect(logoTextFit('서승관', BOX)).toEqual({ size: 46, squeeze: false })
+  })
+
+  it('AC-6604.1: 긴 이름은 상자 폭(340)에 들 때까지 1px씩 줄인 가장 큰 크기다(fitSize와 같다)', () => {
+    const name = '서승관정형외과의원'
+    const { size, squeeze } = logoTextFit(name, BOX)
+    expect(size).toBe(fitSize(name, 46, 340))
+    expect(size).toBeLessThan(46)
+    expect(textWidth(name, size)).toBeLessThanOrEqual(340)
+    expect(textWidth(name, size + 1)).toBeGreaterThan(340)
+    expect(squeeze).toBe(false)
+  })
+
+  it('AC-6604.1: 가장 작은 크기(MIN_FONT)로도 넘치면 squeeze가 참이다(그리는 쪽이 상자 폭으로 눌러 그린다)', () => {
+    const long = '가'.repeat(50)
+    expect(logoTextFit(long, BOX)).toEqual({ size: MIN_FONT, squeeze: true })
+  })
+
+  it('AC-6604.1: 다른 상자(환자 안내문 400×68)면 그 높이·폭으로 맞춘다(68 × 0.8 → 54)', () => {
+    expect(logoTextFit('서승관', { width: 400, height: 68 })).toEqual({ size: 54, squeeze: false })
   })
 })
