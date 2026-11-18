@@ -82,7 +82,28 @@ public class MemoCompareTests
         throw new InvalidOperationException("Claim/memo-compare-cases.test.json을 찾지 못했다");
     }
 
-    private sealed record SharedCase(string Name, string Ours, string? InBit, string Helper, string Web, string? WebRecord, string? Ac);
+    // net48에도 돌아야 하므로 record(init 접근자) 대신 읽기 전용 속성 클래스로 둔다(IsExternalInit 없음)
+    private sealed class SharedCase
+    {
+        public SharedCase(string name, string ours, string? inBit, string helper, string web, string? webRecord, string? ac)
+        {
+            Name = name;
+            Ours = ours;
+            InBit = inBit;
+            Helper = helper;
+            Web = web;
+            WebRecord = webRecord;
+            Ac = ac;
+        }
+
+        public string Name { get; }
+        public string Ours { get; }
+        public string? InBit { get; }
+        public string Helper { get; }
+        public string Web { get; }
+        public string? WebRecord { get; }
+        public string? Ac { get; }
+    }
 
     private static List<SharedCase> SharedCases()
     {
