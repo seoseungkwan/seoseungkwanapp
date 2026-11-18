@@ -53,6 +53,11 @@ describe('REQ-001 도우미 메시지 틀 (C# Precheck.Core.Tests.Protocol)', ()
     expectAc('AC-001.6')
   })
 
+  // spec new-address: 명령 표의 주 주소만 새 주소로 바꾼다(열쇠 모양·검사 규칙은 그대로)
+  it('AC-6402.1 commands.json origin은 https://n-medi.vercel.app이고 CommandTable이 지금 규칙(https·소문자·와일드카드 금지) 그대로 받아들인다', () => {
+    expectAc('AC-6402.1')
+  })
+
   // spec patients-bit-lists: 명령 이름은 그대로, contact.targets kind 값만 더한다
   it('AC-2801.5 contact.targets kind는 followup·injection·lapsed·reservation(1,100일 한도 그대로), 그 밖은 E-HELPER-BAD-MESSAGE', () => {
     expectAc('AC-2801.5')

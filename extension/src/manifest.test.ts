@@ -1,5 +1,5 @@
 // 확장 manifest(AC-003.1·AC-038.3)와 빌드(AC-003.8)를 파일로 검사한다 (TASK-3 REQ-003, TASK-38 REQ-038)
-import { execFileSync } from 'node:child_process'
+import { execSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import path from 'node:path'
@@ -59,16 +59,24 @@ describe('AC-003.1 extension/manifest.json', () => {
     expect(readJson(MANIFEST).background).toEqual({ service_worker: 'background.js', type: 'module' })
   })
 
-  it('externally_connectable.matches는 commands.json origin 하나(경로 /*만)이고 와일드카드 도메인·다른 확장 ids가 없다', () => {
+  it('AC-6401.2: externally_connectable.matches는 새 주소(commands.json origin)·옛 주소 두 줄(경로 /*만)이고 와일드카드 도메인·다른 확장 ids가 없다', () => {
     const ec = readJson(MANIFEST).externally_connectable as Record<string, unknown>
     expect(Object.keys(ec)).toEqual(['matches'])
-    expect(ec.matches).toEqual([`${commands.origin}/*`])
-    const [match] = ec.matches as string[]
-    const url = new URL(match.slice(0, -1))
-    expect(url.protocol).toBe('https:')
-    expect(url.host).toBe(new URL(commands.origin).host)
-    expect(url.host).not.toContain('*')
-    expect(match).not.toMatch(/localhost|\*\.vercel\.app|^http:/)
+    expect(ec.matches).toEqual(['https://n-medi.vercel.app/*', 'https://seoseungkwanapp.vercel.app/*'])
+    expect(ec.matches).toEqual([`${commands.origin}/*`, 'https://seoseungkwanapp.vercel.app/*'])
+    for (const match of ec.matches as string[]) {
+      expect(match.endsWith('/*'), match).toBe(true)
+      const url = new URL(match.slice(0, -1))
+      expect(url.protocol, match).toBe('https:')
+      expect(url.port, match).toBe('')
+      expect(url.host, match).not.toContain('*')
+      expect(url.host, match).toBe(url.host.toLowerCase())
+      expect(match).not.toMatch(/localhost|\*\.vercel\.app|^http:/)
+    }
+  })
+
+  it('AC-6401.2: manifest.version은 0.4.0이다', () => {
+    expect(readJson(MANIFEST).version).toBe('0.4.0')
   })
 
   it('key는 commands.json extensionKey이고, 그 key로 계산한 ID가 commands.json extensionId와 같다', () => {
@@ -147,7 +155,8 @@ describe('AC-003.8 npm run ext:build', { timeout: 120_000 }, () => {
 
   beforeAll(() => {
     rmSync(DIST, { recursive: true, force: true })
-    execFileSync('npm', ['run', 'ext:build'], { cwd: ROOT, stdio: 'pipe' })
+    // 셸로 부른다: 윈도우의 npm은 npm.cmd라 셸 없이는 못 띄운다(spawnSync npm ENOENT)
+    execSync('npm run ext:build', { cwd: ROOT, stdio: 'pipe' })
   }, 120_000)
 
   afterAll(() => {
