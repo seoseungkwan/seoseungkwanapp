@@ -7,11 +7,13 @@ import type { DayPayload } from '@/types/payload'
 import { buildCodeRows, type CodeRow } from '../codeCatalog'
 import { KINDS, REGIONS } from './constants'
 import { ErrorList, errorsUnder, withRule, type TabProps } from './fields'
+import { ROLE_OPTIONS, roleOf, withRole, type RoleChoice } from './saveDiffRows'
 import { TemplateField } from './TemplateField'
 
 // '처방코드' 묶음(memo-settings AC-3004.2~3004.5, 시안 #codes): 통계에 저장된 날별 처방과 코드 사전으로 만든 목록에서 코드마다
 // 메모 이름(n)·구분(k)·부위(rg)·코드별 메모 문구(memo)·줄 순서(memoRules.order)를 고친다. '새 코드'는 저장된 사전(saved)에 없는 코드라
-// 고치는 동안 표시와 자리가 그대로다. 통계 자료는 집계뿐이라 환자 자료가 아니다
+// 고치는 동안 표시와 자리가 그대로다. 통계 자료는 집계뿐이라 환자 자료가 아니다.
+// 약 줄(구분이 약이거나 비트 종류가 약)에는 '역할' 고르기가 있고 CODEMAP 줄 깃발(steroid·localAnesthetic·cartilage)로 쓴다(clinic-profile AC-6608.5, design.md 10절)
 
 export type CatalogState = 'idle' | 'reading' | 'ready' | 'failed'
 
@@ -20,6 +22,9 @@ const td = 'border-b border-line px-2 py-2 align-top first:pl-0 last:pr-0 text-i
 
 /** 마지막 처방일: 올해면 월-일, 아니면 연-월-일 */
 const dayShown = (day: string | null, today: string) => (day === null ? '—' : day.slice(0, 4) === today.slice(0, 4) ? day.slice(5) : day)
+
+/** 약 줄: 구분이 약이거나 비트 종류가 약인 코드 */
+const isDrugRow = (row: CodeRow, entry: MemoCode | undefined) => entry?.k === 'drug' || row.type === '약' || entry?.bitKind === '약'
 
 /** 저장된 사전에 없고 고치는 값(draft)에도 아직 없는 새 코드: 메모에 [코드 확인]이 남는다 */
 export const undecidedCodes = (rows: readonly CodeRow[], draft: Pick<Phrases, 'CODEMAP'>) => rows.filter((row) => row.isNew && !Object.hasOwn(draft.CODEMAP, row.code))
@@ -62,6 +67,12 @@ export function CodesTab({
       return
     }
     edit(row, { k })
+  }
+  /** 역할 고르기. 사전에 없는 새 약 코드는 약 구분으로 줄을 만든다([자동]이면 만들지 않는다) */
+  function setRole(row: CodeRow, role: RoleChoice) {
+    const entry = entryOf(row.code)
+    if (!entry && role === 'auto') return
+    withCodemap({ ...draft.CODEMAP, [row.code]: withRole(entry ?? { n: row.bitName || row.code, k: 'drug', rg: null }, role) })
   }
   function setOrder(code: string, text: string) {
     const key = code.toUpperCase()
@@ -127,6 +138,7 @@ export function CodesTab({
               <th className={th}>마지막 처방</th>
               <th className={th}>메모에 쓸 이름</th>
               <th className={th}>구분</th>
+              <th className={th}>역할</th>
               <th className={th}>부위</th>
               <th className={th}>코드별 메모 문구</th>
               <th className={th}>순서</th>
@@ -138,6 +150,7 @@ export function CodesTab({
               const key = row.code.toUpperCase()
               const rank = order[key]
               const open = editing === row.code
+              const role = roleOf(entry)
               return (
                 <Fragment key={row.code}>
                   <tr className={row.isNew ? 'bg-warning-soft' : undefined}>
@@ -163,6 +176,20 @@ export function CodesTab({
                           </option>
                         ))}
                       </select>
+                    </td>
+                    <td className={td}>
+                      {isDrugRow(row, entry) && (
+                        <span className="flex flex-wrap items-center gap-2">
+                          <select aria-label={`${row.code} 역할`} className={`${ds.input} min-w-28`} value={role} onChange={(event) => setRole(row, event.target.value as RoleChoice)}>
+                            {ROLE_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                          {role === 'auto' && <span className={`${ds.help} whitespace-nowrap`}>보험코드 성분으로 정해요</span>}
+                        </span>
+                      )}
                     </td>
                     <td className={td}>
                       <select aria-label={`${row.code} 부위`} className={`${ds.input} min-w-32`} value={entry?.rg ?? ''} onChange={(event) => edit(row, { rg: event.target.value || null })}>
@@ -197,7 +224,7 @@ export function CodesTab({
                   </tr>
                   {open && (
                     <tr>
-                      <td colSpan={8} className={td}>
+                      <td colSpan={9} className={td}>
                         <TemplateField label={`${row.code} 코드별 메모 문구`} path={`CODEMAP.${row.code}.memo`} value={entry?.memo ?? ''} draft={draft} onChange={(memo) => edit(row, { memo })} />
                       </td>
                     </tr>

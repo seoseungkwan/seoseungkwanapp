@@ -3,10 +3,10 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ourClinicPhrases, type Phrases } from '@/lib/precheck/memo'
+import { DEFAULT_MAIN_CENTRAL_CODES, ourClinicPhrases, type Phrases } from '@/lib/precheck/memo'
 import { ProcTab } from './ProcTab'
 
-// 설정 '시술별 문구와 약' 묶음(memo-settings AC-3007.3, AC-3002.6)
+// 설정 '시술별 문구와 약' 묶음(memo-settings AC-3007.3, AC-3002.6, clinic-profile AC-6613.2 Central 시술 처방코드)
 
 afterEach(cleanup)
 
@@ -109,5 +109,37 @@ describe('AC-3007.3 시술별 문구와 약', () => {
     render(<ProcTab draft={ourClinicPhrases()} errors={[{ path: 'TPL.iaEtc', message: '일반 IA 오류' }, { path: 'TPL.fixedPhrases.0', message: '멘트 오류' }]} onChange={() => {}} />)
     expect(screen.getByText('일반 IA 오류')).toBeTruthy()
     expect(screen.getByText('멘트 오류')).toBeTruthy()
+  })
+})
+
+describe('AC-6613.2 Central 시술 처방코드', () => {
+  const follows = (a: HTMLElement, b: HTMLElement) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+
+  it("AC-6613.2: 'Central 시술 문구' 칸 바로 아래에 'Central 시술 처방코드' 칸이 있고, 엔진이 읽지 않는 리도카인·Peripheral 코드 칸은 없다", () => {
+    render(<Harness />)
+    const codes = screen.getByLabelText('Central 시술 처방코드') as HTMLInputElement
+    expect(codes.value).toBe('LA321, LA323, LA326, LA354, LA356, LA357, LA358, LA359')
+    expect(follows(screen.getByLabelText('Central 시술 문구'), codes)).toBe(true)
+    expect(follows(codes, screen.getByLabelText('Peripheral 시술 문구'))).toBe(true)
+    expect(screen.queryByLabelText('리도카인(국소마취제) 처방코드')).toBeNull()
+    expect(screen.queryByLabelText('Peripheral 시술 처방코드')).toBeNull()
+  })
+
+  it('AC-6613.2: 고치면 TPL.mainCentralCodes에 들어가고, 비우면 칸을 지워 엔진 기본값이 흐린 글로 보인다', async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+    const codes = screen.getByLabelText('Central 시술 처방코드') as HTMLInputElement
+    await user.clear(codes)
+    expect(Object.hasOwn(latest.TPL, 'mainCentralCodes')).toBe(false)
+    expect(codes.placeholder).toBe(DEFAULT_MAIN_CENTRAL_CODES)
+    await user.type(codes, 'LA321, LA358')
+    expect(latest.TPL.mainCentralCodes).toBe('LA321, LA358')
+  })
+
+  it('AC-6613.3: 틀린 값의 까닭을 그 칸 아래에 보인다', () => {
+    render(<ProcTab draft={ourClinicPhrases()} errors={[{ path: 'TPL.mainCentralCodes', message: 'Central 코드 오류' }]} onChange={() => {}} />)
+    const codes = screen.getByLabelText('Central 시술 처방코드')
+    expect(codes.getAttribute('aria-invalid')).toBe('true')
+    expect(follows(codes, screen.getByText('Central 코드 오류'))).toBe(true)
   })
 })

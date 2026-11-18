@@ -1,21 +1,40 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { ds } from '@/components/ui/classes'
+import { errorInfo } from '@/lib/errors'
 import { validatePhrases } from '@/lib/precheck/memo'
 import { readHospitalSettings, writeHospitalSettings } from '@/lib/storage/claimSettings'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { DxLink } from '@/types/precheck'
 
 // 설정의 '상병 연결표' 칸(AC-018.7·AC-018.18). 줄: 처방코드 · 상병코드 · 상병명 · 배제상병으로 · 출처(이 칸에서 더한 줄은 직접 추가 's'). 환자 자료가 아니다.
-// 저장은 NOT NULL phrases를 함께 쓴다(design.md 19-3): 문구 줄이 없거나 틀린 병원은 저장 단추가 없다. 빈 문구 줄이 생기면 실패하거나 메모 막음이 풀린다
+// 저장은 NOT NULL phrases를 함께 쓴다(design.md 19-3): 문구 줄이 없거나 틀린 병원은 저장 단추가 없다. 빈 문구 줄이 생기면 실패하거나 메모 막음이 풀린다.
+// 그때 잠금 글은 E-MEMO-NO-SETTINGS 글(lib/errors)과 [설정으로 가기]다(clinic-profile AC-6607.4: precheck AC-018.18의 '처음 질문을 먼저' 글을 대신한다)
 
 type Load = 'loading' | 'failed' | 'blocked' | 'ready'
 
 const th = 'h-10 whitespace-nowrap border-b border-line px-2 text-left font-medium text-muted first:pl-0 last:pr-0'
 const td = 'border-b border-line px-2 py-1.5 first:pl-0 last:pr-0'
 const FIELD_TEXT: Record<1 | 2 | 3, string> = { 1: '처방코드', 2: '상병코드', 3: '상병명' }
+
+/** 잠금 글(AC-6607.4): 오류처럼 빨갛게 하지 않고 파란 안내이고 오류 번호가 없다. 병원 문구 칸이 같은 설정 화면에 있다 */
+function NoPhrases() {
+  const info = errorInfo('E-MEMO-NO-SETTINGS')
+  return (
+    <div role="status" aria-label="병원 문구 없음" className="flex flex-col items-start gap-2 rounded-control bg-accent-soft px-4 py-3">
+      <div className="flex flex-col gap-0.5">
+        <p className="text-small font-semibold text-accent-strong">{info.what}</p>
+        <p className="text-small text-ink-2">{info.fix}</p>
+      </div>
+      <Link href="/settings" className={ds.button.secondarySmall}>
+        설정으로 가기
+      </Link>
+    </div>
+  )
+}
 
 export function DxLinks() {
   const [load, setLoad] = useState<Load>('loading')
@@ -157,7 +176,7 @@ export function DxLinks() {
               </tbody>
             </table>
           </div>
-          {load === 'blocked' && <p className={ds.help}>처음 질문을 먼저 하면 저장할 수 있어요.</p>}
+          {load === 'blocked' && <NoPhrases />}
           {load === 'ready' && (
             <>
               {blank && <p className={ds.fieldError}>처방코드와 상병코드를 넣어 주세요.</p>}
