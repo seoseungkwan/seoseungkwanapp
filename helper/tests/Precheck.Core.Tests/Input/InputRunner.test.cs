@@ -1974,8 +1974,8 @@ public class InputRunnerTests
         Assert.Equal(1, rig.Ui.Saves);
     }
 
-    [Fact(DisplayName = "AC-6611.3 붙인 뒤 다음 묶음에서 다시 견주면 같은 메모라 쓰지 않고 완료(이미 입력됨): appends가 없어도, 묻는 글이 남아 있어도 앞 글을 덮어쓰지 않는다")]
-    public void AppendedIsSameNextTime()
+    [Fact(DisplayName = "AC-6611.3 붙인 뒤 다음 묶음에서 도우미는 정확히 같을 때만 같음: 합친 글은 '이미 입력됨'이 아니고, appends 없는 사람은 '이미 있음', 옛 appends·replaces는 칸 글이 달라 '바뀜'이라 앞 글을 덮어쓰지 않는다")]
+    public void AppendedIsNotSameNextTime()
     {
         var rig = AppendRig();
         rig.Ui.Bit["900001"] = "직원이 쓴 메모";
@@ -1986,12 +1986,26 @@ public class InputRunnerTests
         var again = rig.Run(new[] { Appending(1, "직원이 쓴 메모") });
         var replaced = rig.Run(new[] { Sample.Item(1, replaces: "직원이 쓴 메모") });
 
-        foreach (var outcome in new[] { plain, again, replaced })
+        Assert.Equal((InputResults.Skipped, "이미 있음"), (Of(plain, "v1").Result, Of(plain, "v1").Reason));
+        foreach (var outcome in new[] { again, replaced })
         {
-            Assert.Equal((InputResults.Done, "이미 입력됨"), (Of(outcome, "v1").Result, Of(outcome, "v1").Reason));
+            Assert.Equal((InputResults.Skipped, ChangedBefore), (Of(outcome, "v1").Result, Of(outcome, "v1").Reason));
         }
         Assert.Equal(writes, rig.Ui.Writes);
         Assert.Equal("직원이 쓴 메모\r\n가짜 메모 1", rig.Ui.Bit["900001"]);
+    }
+
+    [Fact(DisplayName = "AC-6611.3 붙인 글(앞 줄 + 줄바꿈 + 우리 메모)을 사람이 [이 메모로 바꾸기]로 고르면(replaces = 지금 칸 글) 우리 메모로 바꾸고 previousMemo는 합친 글이다: 처방이 바뀌어 빠진 앞 줄을 지울 수 있다")]
+    public void AppendedCanBeReplaced()
+    {
+        var rig = AppendRig();
+        rig.Ui.Bit["900001"] = "◈가상 옛 줄\r\n가짜 메모 1";
+
+        var outcome = rig.Run(new[] { Sample.Item(1, replaces: "◈가상 옛 줄\n가짜 메모 1") });
+
+        Assert.Equal((InputResults.Done, "바꿈(기존 메모 덮어씀)"), (Of(outcome, "v1").Result, Of(outcome, "v1").Reason));
+        Assert.Equal("◈가상 옛 줄\r\n가짜 메모 1", Of(outcome, "v1").PreviousMemo);
+        Assert.Equal("가짜 메모 1", rig.Ui.Bit["900001"]);
     }
 
     [Fact(DisplayName = "AC-6611.4 합친 글(윈도우 줄바꿈)이 3,000바이트면 넣고, 3,001바이트면 쓰지도 원본을 남기지도 않고 '길이 넘음(비트 메모 칸 3,000바이트)'으로 건너뛴다")]

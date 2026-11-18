@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx'
 import type { Outcome } from '@/types/parse'
 import type { CatalogCode, CheckSettings, ClaimMemosJson, ClaimMonth, ClaimView, DxLink, InputSelection, MemoRowRaw, MemoScreenView, MemoState, MemoStateOptions, PrecheckFromScreen, PrecheckToPort, PrecheckToScreen, StoreLoadJson, StoreMonthJson, Tables, Visit } from '@/types/precheck'
 import { defaultPhrases, neutralPhrases, ourClinicPhrases, validatePhrases, type MemoCode, type Phrases } from '@/lib/precheck/memo'
-import { checkMonth, loadMonth, createPrecheckJobs, dxViews, memoViews, ruleList } from './jobs'
+import { checkMonth, loadMonth, loadStore, createPrecheckJobs, dxViews, memoViews, ruleList } from './jobs'
 import { loadTables } from './tables'
 
 // 검사 함수는 그대로 돌리고 몇 번 불렸는지만 본다(코드 사전을 사람마다 다시 검사하지 않는다)
@@ -2846,6 +2846,107 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
       const edited = await viewOf(made)
       expect(rowOf(edited, A.key)).toMatchObject({ compare: '다름', inBit: `다른 메모\n${ours}` })
       expect(rowOf(edited, A.key)).not.toHaveProperty('appended')
+    })
+
+    // 사용자 결정 '좁히기'(2026-11-18): '앞 글 + 줄바꿈 + 우리 메모'는 그 진료의 붙임 기록이 있고 앞 글이 같을 때만 같음이다
+    describe('AC-6611.3 붙임 기록은 그 달 done 칸에 남아 [자료 불러오기]를 다시 해도 산다', () => {
+      /** 붙임 기록의 done 키. 내원번호는 앞뒤 공백을 뗀 글이라(shape.ts) 공백으로 시작하는 이 키와 겹치지 않는다 */
+      const recordKey = (key: string) => ` appendedFrom:${key}`
+      type MonthSave = { month: string; drafts: Record<string, string>; done: Record<string, string | boolean> }
+      const monthSaves = (made: Made) => sends(made, 'store.save').map((m) => JSON.parse(m.payload) as Partial<MonthSave>).filter((p): p is MonthSave => p.month === '2026-10')
+      /** A에게 '다른 메모  \n'을 보고 [뒤에 붙이기]로 넣어 '붙임'으로 끝났다 */
+      async function appendedA() {
+        const made = await ready({ bit: [memoRow(A, '다른 메모  \n')] })
+        await appendFromDiff(made, A.key)
+        const ours = rowOf(await viewOf(made), A.key).text
+        const sent = await press(made)
+        await finish(made, sent.ticket, { status: 'finished', results: [line(A, '완료', '붙임(기존 메모 뒤에)')] })
+        const done = monthSaves(made).at(-1)?.done
+        if (!done) throw new Error('달 칸 저장이 없다')
+        return { made, ours, done }
+      }
+
+      it('AC-6611.3: 붙이기가 끝나면 붙일 때 본 앞 글(끝 공백 뺌)을 그 달 done 칸에 붙임 기록으로 보낸다. 값은 글자라 옛 판 웹이 읽는 모양(글자·참거짓)이고 키는 내원번호와 겹치지 않는다', async () => {
+        const { made, ours, done } = await appendedA()
+        expect(done).toMatchObject({ [A.key]: ours, [recordKey(A.key)]: '다른 메모' })
+        expect(Object.values(done).every((value) => typeof value === 'string' || typeof value === 'boolean')).toBe(true)
+        expect(recordKey(A.key).trim()).not.toBe(recordKey(A.key))
+        // 같은 화면의 비트 사본은 붙이기 전 글이다: 그 글로 기록을 지우지 않는다
+        made.sent.length = 0
+        await viewOf(made)
+        expect(monthSaves(made)).toEqual([])
+        // 비트 메모를 다시 불러오면 합친 글이 기록의 앞 글 + 줄바꿈 + 우리 메모라 같음이다
+        await made.jobs.fromScreen({ type: 'memoReloadStart', run: 1 } satisfies PrecheckFromScreen)
+        await stream(made.jobs, 'r1', memosJson([memoRow(A, `다른 메모\r\n${ours}`)]))
+        await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'r1', load: 1, run: 1 } satisfies PrecheckFromScreen)
+        expect(rowOf(await viewOf(made), A.key)).toMatchObject({ compare: '같음', done: true })
+        expect(monthSaves(made)).toEqual([])
+      })
+
+      it('AC-6611.3: [자료 불러오기]를 다시 해도(보낸 달 칸을 store.load로 되받음) 붙인 메모는 같음이고 기록이 남는다. 기록만 뺀 같은 달 칸이면 다름이다', async () => {
+        const { ours, done } = await appendedA()
+        const bit = [memoRow(A, `다른 메모\n${ours}`)]
+        const again = await ready({ bit, store: { done } })
+        const view = await viewOf(again)
+        expect(rowOf(view, A.key)).toMatchObject({ compare: '같음', done: true })
+        expect(keysIn(view, 'done')).toContain(A.key)
+        expect(monthSaves(again)).toEqual([])
+        const bare = await ready({ bit, store: { done: Object.fromEntries(Object.entries(done).filter(([key]) => key !== recordKey(A.key))) } })
+        expect(rowOf(await viewOf(bare), A.key)).toMatchObject({ compare: '다름', inBit: `다른 메모\n${ours}` })
+      })
+
+      it("AC-6611.3: 붙임 기록 없이 비트 메모가 '옛 줄 + 줄바꿈 + 우리 메모'면 다름이다(처방이 바뀌어 우리 메모의 앞 줄이 빠진 때)", async () => {
+        const plain = await ready()
+        const ours = rowOf(await viewOf(plain), A.key).text
+        const made = await ready({ bit: [memoRow(A, `◈가상 옛 줄\n${ours}`)] })
+        const view = await viewOf(made)
+        expect(rowOf(view, A.key)).toMatchObject({ compare: '다름', inBit: `◈가상 옛 줄\n${ours}` })
+        expect(batchRow(view, A.key)).toMatchObject({ replaces: `◈가상 옛 줄\n${ours}`, chip: '메모 바꿈' })
+      })
+
+      it('AC-6611.3: 붙임 기록의 앞 글이 비트 앞 글과 다르면 다름이고, 다시 읽은 비트 글이 기록의 합친 글이 아니면 기록을 지워 저장한다. 글이 돌아와도 되살아나지 않는다', async () => {
+        const { ours, done } = await appendedA()
+        const other = await ready({ bit: [memoRow(A, `◈가상 옛 줄\n${ours}`)], store: { done } })
+        expect(rowOf(await viewOf(other), A.key).compare).toBe('다름')
+
+        const made = await ready({ bit: [memoRow(A, `다른 메모\n${ours}`)], store: { done } })
+        expect(rowOf(await viewOf(made), A.key).compare).toBe('같음')
+        const reloadTo = async (run: number, text: string) => {
+          await made.jobs.fromScreen({ type: 'memoReloadStart', run } satisfies PrecheckFromScreen)
+          await stream(made.jobs, `r${run}`, memosJson([memoRow(A, text)]))
+          await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: `r${run}`, load: 1, run } satisfies PrecheckFromScreen)
+        }
+        await reloadTo(1, `◈가상 옛 줄\n${ours}`)
+        expect(rowOf(await viewOf(made), A.key).compare).toBe('다름')
+        const saved = monthSaves(made).at(-1)
+        expect(saved?.done).not.toHaveProperty(recordKey(A.key))
+        expect(saved?.done[A.key]).toBe(ours)
+        await reloadTo(2, `다른 메모\n${ours}`)
+        expect(rowOf(await viewOf(made), A.key).compare).toBe('다름')
+      })
+
+      it.each([
+        ['[바꾸지 않기]', false],
+        ['[이 메모로 바꾸기]', true],
+      ] as const)('AC-6611.3: %s를 누르면 붙임 기록을 지워 저장하고 그 뒤로는 다름이다', async (_, approved) => {
+        const { ours, done } = await appendedA()
+        const made = await ready({ bit: [memoRow(A, `다른 메모\n${ours}`)], store: { done } })
+        await choose(made, A.key, approved)
+        const saved = monthSaves(made).at(-1)
+        expect(saved?.done).not.toHaveProperty(recordKey(A.key))
+        expect(saved?.done[A.key]).toBe(ours)
+        expect(rowOf(await viewOf(made), A.key).compare).toBe('다름')
+      })
+
+      it('AC-6611.3: loadStore는 붙임 기록 키를 완료 표시·고친 메모로 보지 않고 기록으로 읽으며, 달 칸에는 그대로 두어 다시 보낼 때 남는다', () => {
+        const read = loadStore(JSON.stringify({ months: { '2026-10': { drafts: {}, done: { v1: '우리 메모', [recordKey('v1')]: '앞 글', [recordKey('v2')]: true }, journal: {} } } } satisfies StoreLoadJson))
+        if (!read.ok || !read.value.work) throw new Error('읽지 못했다')
+        const { work } = read.value
+        expect([...work.done]).toEqual(['v1'])
+        expect([...work.saved]).toEqual([['v1', '우리 메모']])
+        expect([...work.appendedFrom]).toEqual([['v1', '앞 글']])
+        expect(Object.fromEntries(work.months.get('2026-10')!.done)).toEqual({ v1: '우리 메모', [recordKey('v1')]: '앞 글', [recordKey('v2')]: true })
+      })
     })
   })
 

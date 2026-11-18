@@ -215,6 +215,7 @@ export type ClaimMemosJson = { version: 1; period: DateRange; truncated: boolean
 /**
  * store.load의 달 하나(helper Store/WorkStore.Load). 도우미는 안쪽을 보지 않고 웹이 정한다.
  * drafts: 내원번호 → 사람이 고친 글. done: 내원번호 → 완료 때의 글(글이 아니면 표시일 뿐 메모로 쓰지 않는다). 같은 진료에 둘 다 있으면 drafts가 앞선다.
+ * done에는 붙임 기록도 있다(clinic-profile AC-6611.3): 키 ' appendedFrom:' + 내원번호(공백으로 시작해 내원번호와 겹치지 않는다) → [뒤에 붙이기]로 넣을 때 본 앞 글(끝 공백 뺌, 글자)
  * journal: 내원번호 → 입력 기록의 마지막 상태(writing·done·skipped·skippedByHand·check·writeUnconfirmed, 도우미만 쓴다)
  */
 export type StoreMonthJson = { drafts: Record<string, string>; done: Record<string, string | boolean>; journal: Record<string, string> }

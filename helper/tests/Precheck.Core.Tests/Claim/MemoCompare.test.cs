@@ -57,7 +57,8 @@ public class MemoCompareTests
     }
 
     /// <summary>
-    /// 웹 compareMemo(src/lib/precheck/memoCompare.test.ts)가 같은 파일을 읽어 같은 답을 내는지 본다(AC-016.2·AC-035.3).
+    /// 웹 compareMemo(src/lib/precheck/memoCompare.test.ts)가 같은 파일을 읽어 줄마다 쪽별 기대값을 본다(AC-016.2·AC-035.3·AC-6611.3).
+    /// 도우미는 expected.helper만 본다: 붙임 기록을 모르고 정확히 같을 때만 같음이다. 웹은 기록 없음(expected.web)·있음·앞 글 다름을 본다.
     /// 쓰기 직전 비교의 진짜 구현(MemoMatcher)을 부른다: 사본을 두면 진짜가 달라져도 이 시험은 통과한다.
     /// </summary>
     private static string Compare(string ours, string? inBit) => new MemoMatcher().Compare(ours, inBit) switch
@@ -81,16 +82,24 @@ public class MemoCompareTests
         throw new InvalidOperationException("Claim/memo-compare-cases.test.json을 찾지 못했다");
     }
 
-    private static List<(string Name, string Ours, string? InBit, string Expected, string? Ac)> SharedCases()
+    private sealed record SharedCase(string Name, string Ours, string? InBit, string Helper, string Web, string? WebRecord, string? Ac);
+
+    private static List<SharedCase> SharedCases()
     {
         using var document = JsonDocument.Parse(File.ReadAllText(CasesFile()));
         return document.RootElement.EnumerateArray()
-            .Select(item => (
-                item.GetProperty("name").GetString()!,
-                item.GetProperty("ours").GetString()!,
-                item.GetProperty("inBit").ValueKind == JsonValueKind.Null ? null : item.GetProperty("inBit").GetString(),
-                item.GetProperty("expected").GetString()!,
-                item.TryGetProperty("ac", out var ac) ? ac.GetString() : null))
+            .Select(item =>
+            {
+                var expected = item.GetProperty("expected");
+                return new SharedCase(
+                    item.GetProperty("name").GetString()!,
+                    item.GetProperty("ours").GetString()!,
+                    item.GetProperty("inBit").ValueKind == JsonValueKind.Null ? null : item.GetProperty("inBit").GetString(),
+                    expected.GetProperty("helper").GetString()!,
+                    expected.GetProperty("web").GetString()!,
+                    expected.TryGetProperty("webRecord", out var webRecord) ? webRecord.GetString() : null,
+                    item.TryGetProperty("ac", out var ac) ? ac.GetString() : null);
+            })
             .ToList();
     }
 
@@ -98,52 +107,49 @@ public class MemoCompareTests
 
     public static IEnumerable<object[]> AppendedCaseNames() => SharedCases().Where(item => item.Ac == "AC-6611.3").Select(item => new object[] { item.Name });
 
-    [Theory(DisplayName = "AC-016.2 공유 사례: 웹 compareMemo와 같은 파일로 같은 답을 낸다")]
+    [Theory(DisplayName = "AC-016.2 공유 사례: 웹 compareMemo와 같은 파일의 도우미 기대값과 같은 답을 낸다")]
     [MemberData(nameof(SharedCaseNames))]
     public void SharedCasesMatchWeb(string name)
     {
         var item = SharedCases().Single(row => row.Name == name);
-        Assert.Equal(item.Expected, Compare(item.Ours, item.InBit));
+        Assert.Equal(item.Helper, Compare(item.Ours, item.InBit));
     }
 
     // ------------------------------------------------------------------
-    // AC-6611.3 뒤에 붙인 메모(clinic-profile, 도우미 0.12.0)
+    // AC-6611.3 뒤에 붙인 메모(clinic-profile, 사용자 결정 '좁히기'): 도우미는 정확히 같을 때만 같음
     // ------------------------------------------------------------------
 
-    [Theory(DisplayName = "AC-6611.3 공유 사례 중 붙인 메모: 앞 글 + 줄바꿈 + 우리 메모로 끝나면 같음, 웹 compareMemo와 같은 줄로 같은 답")]
+    [Theory(DisplayName = "AC-6611.3 공유 사례 중 붙인 메모: 도우미 비교기는 붙임 꼬리로 같음을 치지 않는다(앞 글 + 줄바꿈 + 우리 메모도 다름), 웹과 같은 줄의 도우미 기대값")]
     [MemberData(nameof(AppendedCaseNames))]
     public void AppendedCasesMatchWeb(string name)
     {
         var item = SharedCases().Single(row => row.Name == name);
-        Assert.Equal(item.Expected, Compare(item.Ours, item.InBit));
+        Assert.Equal(item.Helper, Compare(item.Ours, item.InBit));
     }
 
-    [Fact(DisplayName = "AC-6611.3 공유 사례 파일에 붙인 메모 줄이 같음·다름 둘 다 있다")]
-    public void AppendedCasesCoverBoth()
+    [Fact(DisplayName = "AC-6611.3 공유 사례 표: 줄마다 도우미 기대값은 웹의 붙임 기록 없음과 같고(둘 다 정확히 같을 때만 같음), 웹이 기록으로 같음인 붙인 줄은 도우미에서 다름이다")]
+    public void AppendedCasesAreExactOnly()
     {
-        var appended = SharedCases().Where(item => item.Ac == "AC-6611.3").Select(item => item.Expected).Distinct().OrderBy(text => text, StringComparer.Ordinal);
-        Assert.Equal(new[] { "다름", "같음" }.OrderBy(text => text, StringComparer.Ordinal), appended);
+        var cases = SharedCases();
+        Assert.All(cases, item => Assert.Equal(item.Web, item.Helper));
+        var appended = cases.Where(item => item.Ac == "AC-6611.3" && item.WebRecord == "같음" && item.Ours != item.InBit).ToList();
+        Assert.NotEmpty(appended);
+        Assert.All(appended, item => Assert.Equal("다름", item.Helper));
+        Assert.Contains(cases, item => item.Ac == "AC-6611.3" && item.WebRecord == "다름");
     }
 
-    [Fact(DisplayName = "AC-6611.3 MemoCompare.IsAppended: 줄바꿈(CRLF→LF)을 맞춘 뒤 '줄바꿈 + 우리 메모'로 끝나고 앞이 공백뿐이 아니면 참, 값이 없으면 거짓")]
-    public void IsAppended()
+    [Fact(DisplayName = "AC-6611.3 MemoCompare에 붙임 꼬리 규칙(IsAppended)이 없다: 쓰는 곳이 없어져 지웠다")]
+    public void NoSuffixRule()
     {
-        Assert.True(MemoCompare.IsAppended("직원이 쓴 메모\r\n우리\r\n메모", "우리\n메모"));
-        Assert.True(MemoCompare.IsAppended("직원이 쓴 메모\n우리 메모", "우리 메모"));
-        Assert.False(MemoCompare.IsAppended("우리 메모", "우리 메모"));
-        Assert.False(MemoCompare.IsAppended("\n우리 메모", "우리 메모"));
-        Assert.False(MemoCompare.IsAppended(" \t\r\n우리 메모", "우리 메모"));
-        Assert.False(MemoCompare.IsAppended("직원이 쓴 메모\n", ""));
-        Assert.False(MemoCompare.IsAppended(null, "우리 메모"));
-        Assert.False(MemoCompare.IsAppended("직원이 쓴 메모\n우리 메모", null));
+        Assert.Null(typeof(MemoCompare).GetMethod("IsAppended"));
     }
 
-    [Fact(DisplayName = "AC-6611.3 MemoCompare.Join: 앞 글의 끝 공백·줄바꿈을 떼고 줄바꿈 하나 + 우리 메모, 그 글은 붙인 메모로 같음이다")]
-    public void JoinIsAppended()
+    [Fact(DisplayName = "AC-6611.3 MemoCompare.Join: 앞 글의 끝 공백·줄바꿈을 떼고 줄바꿈 하나 + 우리 메모, 그 글도 도우미 비교기는 다름이다(정확히 같을 때만 같음)")]
+    public void JoinIsNotSame()
     {
         Assert.Equal("직원이 쓴 메모\n우리 메모", MemoCompare.Join("직원이 쓴 메모 \r\n\t", "우리 메모"));
         Assert.Equal(" 앞 공백\r\n둘째 줄\n우리 메모", MemoCompare.Join(" 앞 공백\r\n둘째 줄", "우리 메모"));
-        Assert.True(MemoCompare.IsAppended(MemoCompare.Join("직원이 쓴 메모 \r\n", "우리 메모"), "우리 메모"));
-        Assert.Equal("같음", Compare("우리 메모", MemoCompare.Join("직원이 쓴 메모", "우리 메모")));
+        Assert.Equal("다름", Compare("우리 메모", MemoCompare.Join("직원이 쓴 메모", "우리 메모")));
+        Assert.Equal("같음", Compare("직원이 쓴 메모\n우리 메모", MemoCompare.Join("직원이 쓴 메모", "우리 메모")));
     }
 }
