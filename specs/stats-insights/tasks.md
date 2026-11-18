@@ -2,6 +2,7 @@
 
 > 형식: `## TASK-n: 제목` 아래에 `- Phase:`, `- AC:`, `- REQ:`, `- Files:`(수정 범위, glob 허용), `- Tests:`, `- TDD: required|exempt`.
 > Phase 1의 다섯 TASK는 파일이 겹치지 않는다(일꾼 2~3명씩). Phase 2·3·4는 차례로. 검토는 마지막 한 번.
+> 2026-11-18 한 판으로 묶음: 같은 갈래의 new-mark Phase 1(helper Stats·helperData·jobs를 만짐)을 먼저 끝내고 합친 뒤 이 명세 Phase 1을 시작한다. TASK-5는 이미 v5인 답에 `extra.pays`를 더한다.
 
 ## TASK-1: 이번 달 목표 (표·저장·셈·칸)
 - Phase: 1

@@ -25,10 +25,4 @@
 - TDD: required
 - 메모: 접수현황 갈래(feat-reception-other-clinic 또는 묶을 때의 가장 새 접수현황 갈래) 위에서 한다. TASK-1·2와 파일이 겹치지 않아 같은 Phase에서 동시에 한다.
 
-# Phase 2
-
-## TASK-3: 도우미 판 0.11.0
-- REQ: REQ-001
-- Files: helper/Directory.Build.props, helper/tests/Precheck.Core.Tests/Revenue/RevenueCommands.test.cs, src/lib/bridge/versions.ts, src/lib/bridge/handshake.test.ts
-- Tests: helper/tests/Precheck.Core.Tests/Revenue/RevenueCommands.test.cs, src/lib/bridge/handshake.test.ts
-- TDD: exempt (판 숫자만 올리는 설정. 판을 못 박은 지금 시험 두 곳의 숫자만 같이 바꾼다)
+> 판 숫자(0.11.0)는 stats-insights TASK-5가 올린다(한 판으로 묶음, design.md '한 판으로 묶기'). 이 명세의 Phase 1은 stats-insights Phase 1보다 먼저 끝내고 합친다.
