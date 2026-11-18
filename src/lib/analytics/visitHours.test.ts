@@ -5,6 +5,9 @@ import {
   averageText,
   cellAverage,
   cellLevel,
+  foldHours,
+  foldNote,
+  foldWindow,
   heatLevel,
   heatText,
   heatTip,
@@ -14,6 +17,7 @@ import {
   unknownHoursNote,
   visitHours,
   visitHoursHeadline,
+  withoutWeekdays,
 } from './visitHours'
 
 // 지어낸 접수 줄. 2026-11-02는 월요일, 2026-11-15는 일요일이다
@@ -228,5 +232,75 @@ describe('AC-4414.3 시간대별 접수 칸 글자·색 구간·아래 줄 글',
 
   it('AC-4414.3: 센 접수가 없으면 머리 줄이 없다', () => {
     expect(peakParts(visitHours([at('2026-11-02', null)], FROM, TO))).toBeNull()
+  })
+})
+
+// ── clinic-profile: 병원 진료시간으로 접기·휴진 요일 줄 빼기 (REQ-6606 AC-6606.1, design.md 8절) ──
+// 진료시간은 화면 부품이 병원 정보에서 읽어 값(시·요일 번호)으로만 넘긴다(lib/analytics는 병원 정보를 읽지 않는다)
+describe('AC-6606.1 진료시간 밖 칸은 끝 칸에 더하고 휴진 요일 줄은 뺀다', () => {
+  // 월 8시 2건 · 9시 3건 · 17시 1건 · 18시 4건 · 20시 5건, 일요일 10시 7건(문 연 날 하루씩)
+  const FULL = visitHours(
+    [
+      ...times(2, '2026-11-02', 8),
+      ...times(3, '2026-11-02', 9),
+      at('2026-11-02', 17),
+      ...times(4, '2026-11-02', 18),
+      ...times(5, '2026-11-02', 20),
+      ...times(7, '2026-11-08', 10),
+      at('2026-11-03', null),
+    ],
+    FROM,
+    TO,
+  )
+
+  it.each<[string, { openHour: number; closeHour: number }, { from: number; to: number }]>([
+    ['09:00~18:00 → 18시는 끝 경계라 마지막 칸은 17시', { openHour: 9, closeHour: 18 }, { from: 9, to: 17 }],
+    ['09:00~18:30 → 끝 경계 19시 → 마지막 칸 18시(18:00–18:59 안에 문 연 30분이 있다)', { openHour: 9, closeHour: 19 }, { from: 9, to: 18 }],
+    ['문 여는 날 없음(8~20) → 8시~19시 칸', { openHour: 8, closeHour: 20 }, { from: 8, to: 19 }],
+  ])('AC-6606.1: calendarRange 값 %s', (_name, range, window) => {
+    expect(foldWindow(range)).toEqual(window)
+  })
+
+  it('AC-6606.1: from 앞 칸은 from 칸에, to 뒤 칸은 to 칸에 더하고 칸은 from~to 시뿐이다(합·문 연 날·시각 모름은 그대로)', () => {
+    const view = foldHours(FULL, { from: 9, to: 17 })
+    expect(view.hours).toEqual([9, 10, 11, 12, 13, 14, 15, 16, 17])
+    expect(view.rows.map((row) => row.cells.length)).toEqual([9, 9, 9, 9, 9, 9, 9])
+    expect(cellOf(view, 1, 9)).toBe(5) // 8시 2 + 9시 3
+    expect(cellOf(view, 1, 17)).toBe(10) // 17시 1 + 18시 4 + 20시 5
+    expect(rowOf(view, 1).cells.reduce((a, b) => a + b, 0)).toBe(15)
+    expect(rowOf(view, 1).openDays).toBe(1)
+    expect(cellOf(view, 7, 10)).toBe(7)
+    expect(view.unknown).toBe(1)
+  })
+
+  it('AC-6606.1: 가장 붐비는 칸은 접은 칸으로 다시 찾는다', () => {
+    expect(FULL.peak).toEqual({ weekday: 7, hour: 10, average: 7 })
+    const view = foldHours(FULL, { from: 9, to: 17 })
+    expect(view.peak).toEqual({ weekday: 1, hour: 17, average: 10 })
+    expect(peakParts(view)).toEqual({ when: '월요일 17:00–17:59', average: '10.0건', detail: '(월요일 1일 동안 10건)' })
+  })
+
+  it.each<[string, { from: number; to: number }, number[]]>([
+    ['8시 전·20시 뒤는 8~20으로 자른다', { from: 6, to: 23 }, VISIT_HOURS as number[]],
+    ['from이 20 넘으면 20시 한 칸', { from: 21, to: 22 }, [20]],
+    ['to가 from보다 앞이면 from 한 칸', { from: 12, to: 10 }, [12]],
+  ])('AC-6606.1: 8 ≤ from ≤ to ≤ 20 — %s', (_name, window, hours) => {
+    const view = foldHours(FULL, window)
+    expect(view.hours).toEqual(hours)
+    expect(rowOf(view, 1).cells.reduce((a, b) => a + b, 0)).toBe(15)
+  })
+
+  it('AC-6606.1: 휴진 요일(1 = 월 … 7 = 일) 줄을 빼고 가장 붐비는 칸은 남은 줄로 다시 찾는다', () => {
+    const view = withoutWeekdays(FULL, [7])
+    expect(view.rows.map((row) => row.weekday)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(view.hours).toEqual(FULL.hours)
+    expect(view.peak).toEqual({ weekday: 1, hour: 20, average: 5 })
+    expect(view.unknown).toBe(1)
+    expect(withoutWeekdays(FULL, []).rows).toHaveLength(7)
+  })
+
+  it("AC-6606.1: 아래 글은 '{시작}시~{끝}시, 그 밖의 접수는 맨 앞·맨 뒤 칸에 더했어요'(접은 첫 칸·끝 칸)", () => {
+    expect(foldNote(foldHours(FULL, { from: 9, to: 17 }))).toBe('9시~17시, 그 밖의 접수는 맨 앞·맨 뒤 칸에 더했어요')
+    expect(foldNote(foldHours(FULL, foldWindow({ openHour: 8, closeHour: 20 })))).toBe('8시~19시, 그 밖의 접수는 맨 앞·맨 뒤 칸에 더했어요')
   })
 })

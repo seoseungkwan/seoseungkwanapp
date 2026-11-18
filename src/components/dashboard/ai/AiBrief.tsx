@@ -9,12 +9,14 @@ import { TAG_LABEL } from '@/lib/ai/markdown'
 import { briefGroups, compareMonths, longMonth, madeAtText, modelBasis, partialNotice, shortMonth } from '@/lib/ai/reportScreen'
 import { errorInfo } from '@/lib/errors'
 import type { CardTag, ReportCard, ShownReport } from '@/types/aiReport'
+import { DEFAULT_HONORIFIC, type Honorific } from '@/types/clinicProfile'
 import { useAiBrief, type AiBriefState, type BriefFailCode } from './useAiBrief'
 
 // 대시보드 AI 경영 리포트 요약(dashboard-ux REQ-2704·AC-2707.3, design.md §5, 시안 docs/mockups/dashboard-ux/index.html ai()). 글자는 명세가 이긴다(사용자 반영 ③).
 // 상태와 부르기는 useAiBrief가 맡고 여기서는 그리기만 한다. AI 글(summary·text·basis)은 JSX 글자로만 그린다(HTML로 넣지 않는다).
 // 오류 글·번호는 lib/errors.ts에서만 가져온다. 대시보드에서는 리포트가 없을 때만 만든다 — 다시 만들기는 AI 리포트 화면에서만(범위 밖).
 // 상자는 토큰만 쓴다: canvas 바탕 · 8px 모서리 · 안쪽 24px(폰 16px), 그라데이션·그림자·장식 없음(AC-2707.3)
+// 만들기 안내의 받는 사람은 병원 호칭이다(clinic-profile AC-6606.3). BitDashboard가 병원 정보에서 읽어 넘기고, 주지 않으면 '원장님'
 
 const SENDS_ONLY = '병원 집계 숫자만 보내요. 환자 이름·차트번호는 보내지 않아요.'
 const NUMBERS_NOTE = '근거 줄의 숫자는 앱이 저장된 통계에서 붙였어요. AI 문장에는 숫자가 없어요.'
@@ -117,11 +119,13 @@ function MakeBlock({
   month,
   seconds,
   code,
+  honorific,
   onCreate,
 }: {
   month: string
   seconds: number | null // 숫자면 만드는 중
   code: BriefFailCode | null
+  honorific: Honorific
   onCreate: () => void
 }) {
   const name = shortMonth(month)
@@ -139,7 +143,7 @@ function MakeBlock({
           1분쯤 걸려요. 다 되면 이 자리에 요약이 나와요.
         </p>
       ) : (
-        <p className={STATE_LINE}>{`${name} 숫자를 ${compareMonths(month)}과 견줘, 원장님께 드릴 짧은 보고를 써 드려요. 1분쯤 걸려요.`}</p>
+        <p className={STATE_LINE}>{`${name} 숫자를 ${compareMonths(month)}과 견줘, ${honorific}께 드릴 짧은 보고를 써 드려요. 1분쯤 걸려요.`}</p>
       )}
       {!busy && (
         <ul className="mt-3 grid list-none gap-3 md:grid-cols-3">
@@ -167,7 +171,21 @@ function MakeBlock({
   )
 }
 
-function Body({ state, month, today, onCreate, onRetryRead }: { state: AiBriefState; month: string; today: string; onCreate: () => void; onRetryRead: () => void }) {
+function Body({
+  state,
+  month,
+  today,
+  honorific,
+  onCreate,
+  onRetryRead,
+}: {
+  state: AiBriefState
+  month: string
+  today: string
+  honorific: Honorific
+  onCreate: () => void
+  onRetryRead: () => void
+}) {
   switch (state.kind) {
     case 'loading':
       return (
@@ -231,16 +249,19 @@ function Body({ state, month, today, onCreate, onRetryRead }: { state: AiBriefSt
           </>
         )
       }
-      return <MakeBlock month={month} seconds={null} code={state.code} onCreate={onCreate} />
+      return <MakeBlock month={month} seconds={null} code={state.code} honorific={honorific} onCreate={onCreate} />
     case 'busy':
-      return <MakeBlock month={month} seconds={state.seconds} code={null} onCreate={onCreate} />
+      return <MakeBlock month={month} seconds={state.seconds} code={null} honorific={honorific} onCreate={onCreate} />
     case 'none':
-      return <MakeBlock month={month} seconds={null} code={null} onCreate={onCreate} />
+      return <MakeBlock month={month} seconds={null} code={null} honorific={honorific} onCreate={onCreate} />
   }
 }
 
-/** 대시보드 AI 경영 리포트 요약. today: 오늘 한국 날짜(YYYY-MM-DD) — 위 기준일(고른 날)과 상관없이 지난달(firstMonth(today))을 보인다 */
-export function AiBrief({ today }: { today: string }) {
+/**
+ * 대시보드 AI 경영 리포트 요약. today: 오늘 한국 날짜(YYYY-MM-DD) — 위 기준일(고른 날)과 상관없이 지난달(firstMonth(today))을 보인다.
+ * honorific: 만들기 안내의 받는 사람(병원 호칭, AC-6606.3). 주지 않으면 '원장님'
+ */
+export function AiBrief({ today, honorific = DEFAULT_HONORIFIC }: { today: string; honorific?: Honorific }) {
   const { month, state, create, retryRead } = useAiBrief(today)
   const titleId = useId()
   const report = state.kind === 'report' || state.kind === 'failed' ? state.report : null
@@ -264,7 +285,7 @@ export function AiBrief({ today }: { today: string }) {
           </Link>
         )}
       </div>
-      <Body state={state} month={month} today={today} onCreate={create} onRetryRead={retryRead} />
+      <Body state={state} month={month} today={today} honorific={honorific} onCreate={create} onRetryRead={retryRead} />
     </section>
   )
 }

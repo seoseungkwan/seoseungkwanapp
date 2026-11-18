@@ -1060,3 +1060,27 @@ describe('AC-4105.6 소스 규칙', () => {
     expect(types).not.toMatch(/^(?:import|export (?:const|function|class))/m)
   })
 })
+
+// ── clinic-profile: 보고 받는 사람 글의 호칭 (REQ-6606 AC-6606.3). 호칭은 통계 틀(StatsSections)이 병원 정보에서 읽어 넘긴다 ──
+describe("AC-6606.3 매출 칸 [어떻게 세나요?]의 '원장님 보고 문장'은 호칭을 쓰고 '원장님별'은 그대로다", () => {
+  const tabsOf = (honorific?: '원장님' | '대표원장님' | '선생님') => {
+    const tabs = revenueTabs(inputOf({ days: roughMockupDays() }), honorific)
+    if (tabs.kind !== 'ready') throw new Error('ready여야 한다')
+    return tabs
+  }
+
+  it("AC-6606.3: 호칭 '대표원장님'이면 매출 추이·건당 진료비(꺼짐·켜짐) 글이 '대표원장님 보고 문장'이다", () => {
+    const tabs = tabsOf('대표원장님')
+    expect(tabs.trend.how[2]).toBe("그래서 아래 '원장님별'의 매출 합계(그런 날도 더해요)나 '대표원장님 보고 문장'의 총진료비(그런 날이 든 날·달은 '확인 필요')와 다를 수 있어요.")
+    expect(tabs.rough!.trend.how[2]).toBe(tabs.trend.how[2])
+    expect(tabs.perVisit.how[0]).toBe('매출을 그 기간의 접수 건수로 나눠요. 같은 분이 다섯 번 오면 다섯 건으로 세요. 대표원장님 보고 문장의 건당진료비와 같은 식이고, 원 아래는 버려요.')
+    expect(tabs.rough!.perVisit.how[0]).toBe(tabs.perVisit.how[0])
+    expect(tabs.perVisit.how[1]).toContain("'원장님별'의 건당 진료비")
+  })
+
+  it("AC-6606.3: 호칭 '선생님'이면 '선생님 보고 문장'이고, 주지 않으면 지금처럼 '원장님 보고 문장'이다", () => {
+    expect(tabsOf('선생님').perVisit.how[0]).toContain('선생님 보고 문장의 건당진료비')
+    expect(tabsOf().perVisit.how[0]).toContain('원장님 보고 문장의 건당진료비')
+    expect(tabsOf().trend.how).toEqual(tabsOf('원장님').trend.how)
+  })
+})

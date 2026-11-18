@@ -152,3 +152,38 @@ describe('AC-6107.2 최근 12달 · 저장된 날', () => {
     expect(holidayEffect({ today: TODAY, days: [day('2026-11-16', 0), day('2026-11-18', 50), day('2024-01-02', 50)] })).toBeNull()
   })
 })
+
+// ── clinic-profile: 병원 휴진일도 연휴로 본다 (REQ-6606 AC-6606.2, design.md 8절). 휴진일은 화면 부품이 병원 정보에서 읽어 넘긴다 ──
+describe('AC-6606.2 공휴일 목록에 병원 휴진일을 더해 본다', () => {
+  // 2026-10-12(월) ~ 10-23(금) 공휴일 없음. 10/14(수)에 병원이 쉬었다(내원 줄 없음). 10/13(화) 60 · 10/15(목) 120 · 나머지 평소
+  const CLOSED = '2026-10-14'
+  const AROUND_CLOSED = openDays('2026-10-12', '2026-10-23', (ymd) => (ymd === '2026-10-13' ? 60 : ymd === '2026-10-15' ? 120 : usual(ymd))).filter(
+    (row) => row.day !== CLOSED,
+  )
+
+  it('AC-6606.2: 휴진일을 주지 않으면 공휴일 없는 쉰 날은 연휴가 아니다(지금과 같다)', () => {
+    const rows = holidayEffect({ today: TODAY, days: AROUND_CLOSED })
+    expect(rowOf(rows, 'before').days).toBe(0)
+    expect(rowOf(rows, 'after').days).toBe(0)
+    expect(holidayEffect({ today: TODAY, days: AROUND_CLOSED, closedDates: [] })).toEqual(rows)
+  })
+
+  it('AC-6606.2: 휴진일이 든 연 날 없는 이어진 날들도 연휴라 그 앞뒤 날이 연휴 전날·다음 날이다', () => {
+    const rows = holidayEffect({ today: TODAY, days: AROUND_CLOSED, closedDates: [CLOSED] })
+    // 10/13(화) 60 ÷ 평소 화요일 80 − 1 = −25%, 10/15(목) 120 ÷ 평소 목요일 80 − 1 = +50%
+    expect(rowOf(rows, 'before')).toMatchObject({ days: 1, average: 60, vsUsual: -25 })
+    expect(rowOf(rows, 'after')).toMatchObject({ days: 1, average: 120, vsUsual: 50 })
+    expect(rowOf(rows, 'usual').days).toBe(8) // 연 날 10일 − 전날·다음 날(10/18 일요일만 쉰 앞뒤는 평소)
+  })
+
+  it('AC-6606.2: 공휴일은 휴진일을 줘도 그대로 연휴다(합집합)', () => {
+    const chuseok = openDays('2026-09-14', '2026-10-02', usual)
+    expect(holidayEffect({ today: TODAY, days: chuseok, closedDates: [CLOSED] })).toEqual(holidayEffect({ today: TODAY, days: chuseok }))
+  })
+
+  it('AC-6606.2: 휴진일로 적은 날에 문을 열었으면(내원 1 이상) 연 날이라 연휴가 아니다', () => {
+    const rows = holidayEffect({ today: TODAY, days: [...AROUND_CLOSED, day(CLOSED, 80)], closedDates: [CLOSED] })
+    expect(rowOf(rows, 'before').days).toBe(0)
+    expect(rowOf(rows, 'after').days).toBe(0)
+  })
+})

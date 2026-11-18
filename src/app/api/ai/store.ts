@@ -5,6 +5,7 @@ import { parseSavedReport } from '@/lib/ai/savedReport'
 import { addMonths } from '@/lib/analytics/dates'
 import { isText } from '@/lib/payload/validate'
 import type { AiUsage, AiUsageView, SavedReport } from '@/types/aiReport'
+import { DEFAULT_HONORIFIC, HONORIFICS, type Honorific } from '@/types/clinicProfile'
 import type { RxCond } from '@/types/rxGroups'
 
 // AI 리포트의 DB 쪽(spec ai-report design.md '저장', spec ai-report-screen design.md '서버', spec ai-report-stats). 숫자 읽는 자리·리포트 저장·사용량 기록·저장된 값 읽기.
@@ -110,6 +111,22 @@ function groupNamesOf(rows: unknown): Record<string, string> {
     if (!Object.hasOwn(names, key)) names[key] = group.name
   }
   return names
+}
+
+const isHonorific = (value: unknown): value is Honorific => typeof value === 'string' && (HONORIFICS as readonly string[]).includes(value)
+
+// AI 시스템 글의 받는 사람(spec clinic-profile AC-6606.4, design.md 8절). 사용자 세션(RLS 내 병원 줄)으로 clinic_profiles의 honorific 한 칸만 읽는다.
+// 브라우저가 보낸 값은 쓰지 않는다(POST 몸통은 { month } 그대로). 줄 없음·세 가지 밖·읽기 오류(표가 아직 없음 등)·던짐은 모두 '원장님'이고
+// 던지지 않는다 — 호칭을 못 읽어도 리포트는 만든다. 오류 내용은 버린다(로그도 남기지 않는다)
+export async function loadHonorific(supabase: SupabaseClient): Promise<Honorific> {
+  try {
+    const { data, error } = await supabase.from('clinic_profiles').select('honorific').maybeSingle()
+    if (error || typeof data !== 'object' || data === null) return DEFAULT_HONORIFIC
+    const { honorific } = data as Record<string, unknown>
+    return isHonorific(honorific) ? honorific : DEFAULT_HONORIFIC
+  } catch {
+    return DEFAULT_HONORIFIC
+  }
 }
 
 // 그 달 리포트 저장(같은 달은 DB가 덮어쓴다). 넣는 JSON은 { partial, summary, cards }만 —

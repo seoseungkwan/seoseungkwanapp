@@ -277,3 +277,22 @@ describe('글자로만 그리기·요청·불러오기 (AC-2704.8)', () => {
     }
   })
 })
+
+// ── clinic-profile: 보고 받는 사람 글의 호칭 (REQ-6606 AC-6606.3). 호칭은 BitDashboard가 병원 정보에서 읽어 넘긴다 ──
+describe('AC-6606.3: 만들기 안내 글의 호칭', () => {
+  it("AC-6606.3: 호칭을 주면 '… {호칭}께 드릴 짧은 보고를 써 드려요.'이고 다른 글은 그대로다", async () => {
+    render(<AiBrief today={TODAY} honorific="대표원장님" />)
+    await settle()
+    within(box()).getByText('10월 숫자를 9월, 작년 10월과 견줘, 대표원장님께 드릴 짧은 보고를 써 드려요. 1분쯤 걸려요.')
+    expect(within(box()).queryByText(/ 원장님께/)).toBeNull()
+    within(box()).getByText('병원 집계 숫자만 보내요. 환자 이름·차트번호는 보내지 않아요.')
+  })
+
+  it("AC-6606.3: 만들기 실패 뒤 다시 만들기 안내에도 호칭이 들어간다('선생님')", async () => {
+    answerPost.mockImplementation(() => codeAnswer('E-AI-BUSY'))
+    render(<AiBrief today={TODAY} honorific="선생님" />)
+    await settle()
+    await press(button('AI 리포트 만들기'))
+    within(box()).getByText('10월 숫자를 9월, 작년 10월과 견줘, 선생님께 드릴 짧은 보고를 써 드려요. 1분쯤 걸려요.')
+  })
+})

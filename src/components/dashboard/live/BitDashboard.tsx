@@ -1,14 +1,16 @@
 'use client'
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useClinicProfile } from '@/components/clinic/useClinicProfile'
 import { AiBrief } from '@/components/dashboard/ai/AiBrief'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
-import { DailySection } from '@/components/dashboard/summary/DailySection'
+import { DailySection, sentenceNote } from '@/components/dashboard/summary/DailySection'
 import { DashboardAnalysis, type DashboardAnalysisProps } from '@/components/dashboard/summary/DashboardAnalysis'
 import { FlowSection } from '@/components/dashboard/summary/FlowSection'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
 import { isConnected, type OlderDays, type SummarySource } from '@/components/dashboard/summary/source'
 import type { ChromeRuntimeLike } from '@/types/bridge'
+import type { Honorific } from '@/types/clinicProfile'
 import type { ErrorCode } from '@/types/errors'
 import type { DayPayload } from '@/types/payload'
 import { createStatsWorker } from '@/workers/statsClient'
@@ -24,6 +26,8 @@ import type { DashboardGroups } from './rxGroups'
 // 묶음을 아직 읽는 중('pending')이면 저장 숫자로 먼저 그리고 비트 읽기만 묶음이 끝날 때까지 미룬다(dashboard-ux AC-2701.2).
 // 숫자가 있으면 머리 줄(StatusHeader)이 상태 표시·시각 글·읽기 단추([저장된 숫자 새로고침]·[비트에서 다시 읽기] 또는 연결 안내)를 맡는다(AC-2701.3·AC-2701.7).
 // 저장 숫자 새로고침은 LiveDashboard가 읽고(savedRefresh), 새 처음 자료가 오면 다시 놓지 않고 화면 숫자만 바꾼다(AC-2701.8). 화면 차례는 머리 줄 → 일별 현황(기준일·숫자 칸·보고 문장) → AI 요약 → 기간별 흐름이다(AC-2707.2)
+// 병원 호칭(clinic-profile AC-6606.3)은 여기서 useClinicProfile을 한 번 불러 보고 받는 사람 글(숫자 줄 아래 안내 줄·AI 요약 만들기 안내)에 넘긴다.
+// 읽는 중·실패면 기본값 '원장님'이다(서버 그림도 '원장님'이라 첫 그림이 어긋나지 않는다)
 
 /** 묶음을 주지 않으면 묶음 없음 */
 const NO_GROUPS: DashboardGroups = { lines: [], defs: [] }
@@ -79,21 +83,22 @@ const GAINS_OF_READING: EmptyLook = {
   gainsNote: '읽기가 끝나면 이 자리에 그래프 4개가 그려지고, 기간 단추로 7일·30일·90일을 바꿔 볼 수 있어요.',
   gainsRevisitDesc: '처음 온 환자가 7·14일 안에 다시 온 비율이에요.', // 30일 줄은 아직 값이 없다(시안 '바뀌는 곳')
 }
-const READING_LOOK: EmptyLook = {
+const readingLook = (honorific: Honorific): EmptyLook => ({
   ...GAINS_OF_READING,
   emptyChip: '읽는 중',
   emptyText: '읽는 중',
-  emptyNote: '읽기가 끝나면 이 숫자로 원장님 보고 문장을 만들어 숫자 칸 아래에 보여 드려요.',
-}
+  emptyNote: sentenceNote('읽기가 끝나면', honorific),
+})
 const FAILED_LOOK: EmptyLook = { ...GAINS_OF_READING, emptyChip: '읽지 못함', emptyText: '읽지 못했어요', emptyNote: null }
 const IN_USE_LOOK: EmptyLook = { ...GAINS_OF_READING, emptyChip: '기다리는 중', emptyText: '아직 못 읽었어요', emptyNote: null }
 // 읽기는 성공했는데 일 숫자가 없음(AC-601.11): 연결 전 모양으로 돌아가지 않는다
 const NO_DAYS_LOOK: EmptyLook = { emptyChip: '자료 없음', emptyText: '자료 없음', emptyNote: null, emptyCharts: true }
 
-function emptyLook(status: Status): EmptyLook {
-  if (status.kind === 'reading') return READING_LOOK
+// 연결 전(idle)은 DailySection 기본 글('연결하면 …')과 같은 글에 호칭만 넣는다
+function emptyLook(status: Status, honorific: Honorific): EmptyLook {
+  if (status.kind === 'reading') return readingLook(honorific)
   if (status.kind === 'failed') return status.code === BIT_IN_USE ? IN_USE_LOOK : FAILED_LOOK
-  return status.kind === 'data' ? NO_DAYS_LOOK : {}
+  return status.kind === 'data' ? NO_DAYS_LOOK : { emptyNote: sentenceNote('연결하면', honorific) }
 }
 
 /**
@@ -131,6 +136,7 @@ export function BitDashboard({
     setStatus((current) => adoptSaved(current, initial))
   }
   const bitReadable = useSyncExternalStore(noSubscribe, hasRuntime, serverHasRuntime)
+  const honorific = useClinicProfile().profile.honorific
   const [attempt, setAttempt] = useState(0)
   const [picked, setPicked] = useState<string | null>(null) // 고른 지난 날. null이면 오늘이라, 연 채 날짜가 바뀌어도 오늘을 따라간다
   const pressedNow = useRef(false) // 직접 눌렀다는 표시: 다음 읽기 하나에만 쓴다
@@ -177,7 +183,7 @@ export function BitDashboard({
 
   // 숫자가 있는 화면(dashboard-ux AC-2707.2): 머리 줄 → 일별 현황(기준일·숫자 칸·보고 문장) → AI 경영 리포트 요약 → 기간별 흐름.
   // AI 요약은 일 숫자가 하나라도 있을 때만 놓는다(AC-2704.1: 연결 전·뼈대·읽는 중에는 읽지 않는다)
-  const look = emptyLook(status)
+  const look = emptyLook(status, honorific)
   const { emptyChip, emptyText, emptyNote, ...flowLook } = look
   const analysis =
     status.kind === 'data' ? (
@@ -196,7 +202,7 @@ export function BitDashboard({
         />
         {status.days.length > 0 && (
           <div className="mt-12 max-md:mt-8">
-            <AiBrief today={today} />
+            <AiBrief today={today} honorific={honorific} />
           </div>
         )}
         <FlowSection today={today} source={source} {...flowLook} />

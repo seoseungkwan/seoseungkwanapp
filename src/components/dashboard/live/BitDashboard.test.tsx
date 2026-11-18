@@ -38,6 +38,22 @@ vi.mock('@/workers/statsClient', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/workers/statsClient')>()
   return { ...real, createStatsWorker: vi.fn() }
 })
+// 병원 정보 훅(clinic-profile AC-6606.3): 대시보드가 한 번 읽어 보고 받는 사람 글(안내 줄·AI 요약)에 호칭을 넣는다. 처음은 읽는 중(기본값 '원장님')
+const clinic = vi.hoisted(() => ({ honorific: '원장님' as '원장님' | '대표원장님' | '선생님' }))
+vi.mock('@/components/clinic/useClinicProfile', () => ({
+  useClinicProfile: () => {
+    return {
+      state: 'ready',
+      profile: { displayName: null, phone: null, address: null, honorific: clinic.honorific, hours: [], closedDates: [], staff: [], logoPath: null },
+      saved: true,
+      signupName: '',
+      signupPhone: null,
+      name: '',
+      logoDataUrl: null,
+      reload: () => undefined,
+    }
+  },
+}))
 
 const TODAY = '2026-11-02' // 월요일
 const AT_342 = new Date('2026-11-02T06:42:00Z') // 한국 오후 3시 42분
@@ -212,6 +228,7 @@ const expectOnlyAiRead = () => {
 }
 
 beforeEach(() => {
+  clinic.honorific = '원장님'
   reads.length = 0
   vi.mocked(readBitDays).mockReset()
   vi.mocked(readBitDays).mockImplementation(
@@ -2286,5 +2303,32 @@ describe('dashboard-ux 화면 통합 (TASK-5)', () => {
     expect(box.className).toMatch(/\bbg-canvas\b/)
     expect(box.className).toMatch(/\brounded-float\b/)
     expect(box.outerHTML).not.toMatch(/gradient|shadow|bg-\[|from-|via-/)
+  })
+})
+
+// ── clinic-profile: 보고 받는 사람 글의 호칭 (REQ-6606 AC-6606.3, design.md 8절) ──
+describe('AC-6606.3: 대시보드 보고 받는 사람 글에 병원 호칭이 들어간다', () => {
+  it("AC-6606.3: 연결 전 안내 줄은 '연결하면 이 숫자로 {호칭} 보고 문장을 만들어 숫자 칸 아래에 보여 드려요.'다", () => {
+    notBitPc()
+    clinic.honorific = '대표원장님'
+    draw()
+    expect(within(todaySection()).getByText('연결하면 이 숫자로 대표원장님 보고 문장을 만들어 숫자 칸 아래에 보여 드려요.')).toBeTruthy()
+  })
+
+  it("AC-6606.3: 읽는 중 안내 줄은 '읽기가 끝나면 이 숫자로 {호칭} 보고 문장을 …'이다", () => {
+    onBitPc()
+    clinic.honorific = '선생님'
+    draw()
+    expect(within(todaySection()).getByText('읽기가 끝나면 이 숫자로 선생님 보고 문장을 만들어 숫자 칸 아래에 보여 드려요.')).toBeTruthy()
+  })
+
+  it("AC-6606.3: 숫자가 있으면 AI 요약의 만들기 안내가 '… {호칭}께 드릴 짧은 보고를 써 드려요.'다", async () => {
+    notBitPc()
+    clinic.honorific = '선생님'
+    draw(SAVED)
+    await act(async () => {}) // AI 요약의 저장 리포트 읽기(GET) 한 번 — 리포트 없음
+    const brief = screen.getByRole('region', { name: /^우리 병원 AI 경영 리포트/ })
+    expect(within(brief).getByText(/선생님께 드릴 짧은 보고를 써 드려요/)).toBeTruthy()
+    expect(within(brief).queryByText(/원장님께/)).toBeNull()
   })
 })

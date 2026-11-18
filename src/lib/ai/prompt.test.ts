@@ -161,8 +161,8 @@ describe('systemPrompt', () => {
     expect(lines.slice(header + 1, index).some((line) => line.startsWith('['))).toBe(false)
   })
 
-  it("AC-508.4·AC-2004.3 지시문 판은 'ai-report-3'이고 지시문 글자에 들어가지 않는다", () => {
-    expect(PROMPT_VERSION).toBe('ai-report-3')
+  it("AC-508.4·AC-2004.3·AC-6606.4 지시문 판은 'ai-report-4'(clinic-profile 호칭으로 하나 올림)이고 지시문 글자에 들어가지 않는다", () => {
+    expect(PROMPT_VERSION).toBe('ai-report-4')
     expect(systemPrompt()).not.toContain(PROMPT_VERSION)
   })
 })
@@ -347,7 +347,38 @@ describe('systemPrompt — 통계 비트 세 칸 지표 (spec stats-bit-ai)', ()
     for (const word of ['처방명', '그룹명', '동네 이름', '연령대', '보험 이름', '시간대', '원장님 이름']) expect(rule).toContain(word)
   })
 
-  it('AC-2905.2 지시문 판은 그대로 ai-report-3이다(지시문을 고쳐도 지문이 바뀌지 않는다)', () => {
-    expect(PROMPT_VERSION).toBe('ai-report-3')
+  it('AC-2905.2·AC-6606.4 지시문 판은 ai-report-4다(clinic-profile 호칭으로 하나 올림 — 지시문을 고쳐도 지문이 바뀌지 않는다)', () => {
+    expect(PROMPT_VERSION).toBe('ai-report-4')
+  })
+})
+
+// ── clinic-profile: 시스템 글의 받는 사람 호칭 (REQ-6606 AC-6606.4, design.md 8절). 호칭은 서버가 DB에서 읽어 넘긴다(generate.ts) ──
+describe('AC-6606.4 systemPrompt(honorific)', () => {
+  const FIRST = (honorific: string) => `당신은 정형외과 의원 총괄입니다. ${honorific}께 드리는 월간 환자 통계 보고를 씁니다.`
+  const lines = (text: string) => text.split('\n')
+
+  it.each(['원장님', '대표원장님', '선생님'] as const)("AC-6606.4: 호칭 '%s'이면 첫 줄이 '… %s께 드리는 월간 환자 통계 보고를 씁니다.'다", (honorific) => {
+    expect(lines(systemPrompt(honorific))[0]).toBe(FIRST(honorific))
+  })
+
+  it('AC-6606.4: 바뀌는 것은 첫 줄의 받는 사람뿐이다 — 원장님 매출·원장님 이름·원장님 실환자 지표 설명은 그대로다', () => {
+    const base = lines(systemPrompt('원장님'))
+    const other = lines(systemPrompt('대표원장님'))
+    expect(other.slice(1)).toEqual(base.slice(1))
+    expect(other.length).toBe(base.length)
+    const rest = other.slice(1).join('\n')
+    for (const word of ['원장님 매출', '원장님 이름', '[원장님·보험·동네·하루 평균 지표]', '원장님 실환자']) expect(rest).toContain(word)
+    expect(rest).not.toContain('대표원장님')
+  })
+
+  it("AC-6606.4: 주지 않거나 세 가지 밖의 값이면 '원장님'이다(지금 지시문과 같다)", () => {
+    expect(systemPrompt()).toBe(systemPrompt('원장님'))
+    expect(lines(systemPrompt('관리자님' as never))[0]).toBe(FIRST('원장님'))
+    expect(lines(systemPrompt('' as never))[0]).toBe(FIRST('원장님'))
+  })
+
+  it('AC-6606.4: 프롬프트 판 번호가 하나 오른다(ai-report-3 → ai-report-4)', () => {
+    expect(PROMPT_VERSION).toBe('ai-report-4')
+    expect(systemPrompt('선생님')).not.toContain(PROMPT_VERSION)
   })
 })

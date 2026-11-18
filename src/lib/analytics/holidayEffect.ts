@@ -8,13 +8,13 @@ import { HOLIDAYS } from './holidays'
 // 첫 연 날 앞·마지막 연 날 뒤는 저장되지 않은 날일 수 있어 연휴로 보지 않는다(첫 연 날 ~ 마지막 연 날 안에서만 찾는다).
 // 연휴 바로 앞 날이 연휴 전날, 바로 뒤 날이 연휴 다음 날(둘 다면 두 줄에 모두 든다), 나머지 연 날이 평소다.
 // 평소보다 = (그 날들 내원 합 ÷ 그 날들 요일의 평소 평균 합 − 1). 평소 날이 없는 요일의 날은 양쪽에서 뺀다
+// 병원 휴진일(clinic-profile AC-6606.2, 화면 부품이 병원 정보에서 읽어 closedDates로 넘김)도 공휴일과 같이 본다(합집합)
 
 export type HolidayRowKey = 'usual' | 'before' | 'after'
 // days = 날 수, average = 하루 평균 내원(반올림 정수, 날이 없으면 null), vsUsual = 평소보다(반올림 정수 %, 평소 줄·셀 수 없으면 null)
 export type HolidayRow = { key: HolidayRowKey; name: string; days: number; average: number | null; vsUsual: number | null }
 
 const NAMES: Record<HolidayRowKey, string> = { usual: '평소', before: '연휴 전날', after: '연휴 다음 날' }
-const HOLIDAY = new Set(HOLIDAYS)
 
 // 0에서 먼 쪽으로 반올림(−7.5 → −8). Math.round는 음수에서 0 쪽으로 간다
 const roundAway = (n: number) => Math.sign(n) * Math.round(Math.abs(n))
@@ -38,7 +38,7 @@ function openDays(days: readonly DayPayload[], today: string): Map<string, numbe
 }
 
 // 연휴 앞뒤 날. 첫 연 날 ~ 마지막 연 날 안의 연 날 없는 이어진 날들(run)마다 공휴일이 들었으면 앞뒤 연 날을 적는다
-function aroundHolidays(open: ReadonlyMap<string, number>): { before: Set<string>; after: Set<string> } {
+function aroundHolidays(open: ReadonlyMap<string, number>, holiday: ReadonlySet<string>): { before: Set<string>; after: Set<string> } {
   const sorted = [...open.keys()].sort(compareYmd)
   const before = new Set<string>()
   const after = new Set<string>()
@@ -46,7 +46,7 @@ function aroundHolidays(open: ReadonlyMap<string, number>): { before: Set<string
     const prev = sorted[i - 1]!
     const next = sorted[i]!
     const gap = eachDay({ from: addDays(prev, 1), to: addDays(next, -1) })
-    if (gap.some((ymd) => HOLIDAY.has(ymd))) {
+    if (gap.some((ymd) => holiday.has(ymd))) {
       before.add(prev)
       after.add(next)
     }
@@ -65,11 +65,11 @@ function rowOf(key: HolidayRowKey, days: readonly string[], open: ReadonlyMap<st
   return { key, name: NAMES[key], days: days.length, average, vsUsual }
 }
 
-/** 평소 · 연휴 전날 · 연휴 다음 날 세 줄. 최근 12달에 연 날이 하루도 없으면 null(칸을 그리지 않는다) */
-export function holidayEffect({ today, days }: { today: string; days: readonly DayPayload[] }): HolidayRow[] | null {
+/** 평소 · 연휴 전날 · 연휴 다음 날 세 줄. 최근 12달에 연 날이 하루도 없으면 null(칸을 그리지 않는다). closedDates = 병원 휴진일(YYYY-MM-DD, 없으면 공휴일만) */
+export function holidayEffect({ today, days, closedDates = [] }: { today: string; days: readonly DayPayload[]; closedDates?: readonly string[] }): HolidayRow[] | null {
   const open = openDays(days, today)
   if (open.size === 0) return null
-  const { before, after } = aroundHolidays(open)
+  const { before, after } = aroundHolidays(open, new Set([...HOLIDAYS, ...closedDates]))
   const sorted = [...open.keys()].sort(compareYmd)
   const usual = sorted.filter((ymd) => !before.has(ymd) && !after.has(ymd))
 

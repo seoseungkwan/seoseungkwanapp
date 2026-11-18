@@ -19,6 +19,12 @@ export const SECTION_TITLE = 'text-title font-semibold text-ink'
 // 보조 글(안내 줄, ui-90 AC-414.6): small(13px) muted + 시안 최대 40em(520px)에 가장 가까운 4px 단위 폭 단계
 export const NOTE = 'text-small text-muted max-w-130'
 export const NO_DATA = '자료 없음'
+/**
+ * 숫자 줄 아래 안내 줄의 보고 문장 글. when = '연결하면'·'읽기가 끝나면'.
+ * 받는 사람은 병원 호칭이다(clinic-profile AC-6606.3). 호칭은 BitDashboard가 병원 정보에서 읽어(세 가지 가운데 하나) emptyNote로 넘긴다(기본 '원장님').
+ * 이 폴더는 정해 둔 곳만 불러와서(DashboardAnalysis.test AC-311.8) 호칭 타입 대신 글자로 받는다
+ */
+export const sentenceNote = (when: string, honorific: string = '원장님') => `${when} 이 숫자로 ${honorific} 보고 문장을 만들어 숫자 칸 아래에 보여 드려요.`
 
 const LAST_WEEK_LABEL = '지난주 같은 요일보다'
 // 90일초진 칸 (first90 AC-4404.1, 첫 시안 docs/mockups/first90/index.html). 칸 아래 글은 지금처럼 없고, 그날 90일초진을 모를 때만 두 글이다(design.md 8)
@@ -72,7 +78,7 @@ export function DailySection({
   day = today,
   emptyChip = '비트 PC 연결 전',
   emptyText = '연결하면 보여요',
-  emptyNote = '연결하면 이 숫자로 원장님 보고 문장을 만들어 숫자 칸 아래에 보여 드려요.',
+  emptyNote = sentenceNote('연결하면'),
   dateLine,
   sentence,
   ptKey,

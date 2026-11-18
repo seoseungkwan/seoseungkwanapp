@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { statsRange } from '@/components/stats/view'
 import { VISIT_HOURS } from '@/lib/analytics/visitHours'
 import type { BitSectionsView, PatientMix, VisitHours } from '@/types/stats'
+import { DEFAULT_HOURS, type DayHours } from '@/types/clinicProfile'
 import { StatsCard } from './parts'
 import type { BitSectionsShown } from './PatientMixSection'
 import { VisitHoursSection } from './VisitHoursSection'
@@ -383,5 +384,71 @@ describe('AC-2706.5·AC-2706.6 숫자가 없을 때', () => {
   it('AC-2706.1: 이 기간 답을 기다리는 동안은 제목·설명만이다', () => {
     draw('waiting')
     expect(section().textContent).toBe('시간대별 접수요일·시간마다 하루 평균 접수 · 최근 30일')
+  })
+})
+
+// ── clinic-profile: 병원 진료시간으로 접기·휴진 요일 줄 빼기 (REQ-6606 AC-6606.1, design.md 8절) ──
+// 진료시간은 통계 틀(StatsSections)이 병원 정보(useClinicProfile)에서 읽어 hours로 넘긴다. 병원 정보 줄이 없으면 null(지금처럼)
+describe('AC-6606.1: 시간대별 접수가 병원 진료시간을 쓴다', () => {
+  // 월~금 09:00~18:00(점심 13~14), 토 09:00~13:00, 일 휴진 → 칸 9시~17시, 일요일 줄 없음
+  const CLINIC: DayHours[] = [...DEFAULT_HOURS]
+  const FOLDED_HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17]
+  const CAPTION = '9시~17시, 그 밖의 접수는 맨 앞·맨 뒤 칸에 더했어요'
+  const OLD_FOOT = '병원 접수 시간(8시~20시) 기준이에요. 8시 전 접수는 8시 칸, 20시 넘은 접수는 20시 칸에 넣어요. 예약 대기·취소한 접수는 세지 않아요. 문을 연 날만 평균에 넣어요.'
+  const drawWith = (hours: readonly DayHours[] | null, view: BitSectionsShown = ready()) => render(<VisitHoursSection view={view} range={R30} hours={hours} />)
+  const howBody = () => document.getElementById(screen.getByRole('button', { name: '어떻게 세나요?' }).getAttribute('aria-controls')!)!
+
+  it('AC-6606.1: 칸은 문 여는 가장 이른 시~가장 늦은 시(9시~17시)이고 8시 칸 접수는 9시 칸에 더해 보인다', () => {
+    drawWith(CLINIC)
+    expect(within(heat()).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['요일', ...FOLDED_HOURS.map((hour) => `${hour}시`)])
+    // 월 8시 26 + 9시 57 = 83 ÷ 4일 = 20.75 → 20.8, 10시 51 ÷ 4 = 12.8
+    expect(cellsOf(1).slice(0, 3).map((td) => td.textContent)).toEqual(['20.8', '12.8', '0'])
+    expect(cellsOf(1)).toHaveLength(9)
+  })
+
+  it('AC-6606.1: 휴진 요일(일) 줄은 빠지고, 768px 미만 요일 단추에도 없다', () => {
+    drawWith(CLINIC)
+    expect(bodyRows().map((tr) => within(tr).getByRole('rowheader').textContent)).toEqual(['월', '화', '수', '목', '금', '토'])
+    expect(within(dayGroup()).getAllByRole('button').map((b) => b.textContent)).toEqual(['월', '화', '수', '목', '금', '토'])
+  })
+
+  it("AC-6606.1: 표 아래 글 '{시작}시~{끝}시, 그 밖의 접수는 맨 앞·맨 뒤 칸에 더했어요'가 접지 않고 보이고, 옛 8시~20시 글은 없다", () => {
+    drawWith(CLINIC)
+    expect(screen.getByText(CAPTION).closest('[hidden]')).toBeNull()
+    expect(screen.queryByText(OLD_FOOT)).toBeNull()
+    expect(howBody().textContent).not.toContain('8시~20시')
+  })
+
+  it('AC-6606.1: 가장 붐비는 때·합계 표도 접은 칸으로 센다', () => {
+    drawWith(CLINIC)
+    // 토 8시 40 + 9시 66 = 106 ÷ 5일 = 21.2 (월 9시 20.75보다 크다)
+    const headline = screen.getByText((_, node) => node?.tagName === 'P' && (node.textContent ?? '').startsWith('가장 붐비는 때'))
+    expect(headline.textContent).toBe('가장 붐비는 때 토요일 09:00–09:59 · 하루 평균 21.2건 (토요일 5일 동안 106건)')
+    fireEvent.click(screen.getByRole('button', { name: '자세히' }))
+    const totals = screen.getByRole('table', { name: '시간대별 접수 합계 (건)' })
+    expect(within(totals).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['요일 (문을 연 날)', ...FOLDED_HOURS.map((hour) => `${hour}시`)])
+    const rows = within(totals).getAllByRole('row').slice(1)
+    expect(rows.map((tr) => within(tr).getAllByRole('cell')[0]!.textContent)).toEqual(['월 (4일)', '화 (4일)', '수 (4일)', '목 (4일)', '금 (4일)', '토 (5일)'])
+    expect(within(rows[0]!).getAllByRole('cell').slice(1, 3).map((td) => td.textContent)).toEqual(['83', '51'])
+  })
+
+  it('AC-6606.1: 18:30에 닫는 날이 있으면 끝 칸은 18시(그 칸 안에 문 연 30분이 있다)이고, 20시 넘은 접수는 18시 칸에 더한다', () => {
+    const late: DayHours[] = CLINIC.map((day, i) => (i === 0 ? { open: 540, close: 1110, lunchFrom: null, lunchTo: null } : day))
+    drawWith(late, ready(withRow(2, { cells: cells(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 2, 1) })))
+    expect(within(heat()).getAllByRole('columnheader').at(-1)!.textContent).toBe('18시')
+    // 화 18·19·20시 3 + 2 + 1 = 6 ÷ 4일 = 1.5
+    expect(cellsOf(2).at(-1)!.textContent).toBe('1.5')
+    expect(screen.getByText('9시~18시, 그 밖의 접수는 맨 앞·맨 뒤 칸에 더했어요')).toBeTruthy()
+  })
+
+  it.each<[string, readonly DayHours[] | null]>([
+    ['병원 정보 줄이 없음(null)', null],
+    ['문 여는 날이 하루도 없음', [null, null, null, null, null, null, null]],
+  ])('AC-6606.1: %s이면 지금처럼 8시~20시 열세 칸·일곱 줄·옛 글이다', (_name, hours) => {
+    drawWith(hours)
+    expect(within(heat()).getAllByRole('columnheader')).toHaveLength(14)
+    expect(bodyRows()).toHaveLength(7)
+    expect(screen.getByText(OLD_FOOT)).toBeTruthy()
+    expect(screen.queryByText(/그 밖의 접수는 맨 앞·맨 뒤 칸에 더했어요/)).toBeNull()
   })
 })

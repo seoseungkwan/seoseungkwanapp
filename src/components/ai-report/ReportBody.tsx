@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import type { ReactNode } from 'react'
+import { useClinicProfile } from '@/components/clinic/useClinicProfile'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
@@ -12,6 +13,7 @@ import type { AiErrorCode, CardTag, ShownReport } from '@/types/aiReport'
 
 // AI 리포트 머리 아래 본문(spec ai-report-screen REQ-708~711의 그리는 부분, design.md '화면 상태', 시안 reportView·main).
 // props만 받아 그린다: 부르기·타이머·지금 시각 읽기는 화면(AiReportScreen)이 맡는다. AI 답은 JSX 글자로만 그린다.
+// 예외 하나: 리포트 없는 달 설명의 받는 사람(병원 호칭, clinic-profile AC-6606.3)만 병원 정보 훅으로 읽는다(읽는 중·실패면 '원장님')
 // 시안의 em 폭은 그 글자 크기로 px을 구해 쓴다: 제목 24em × 24px = 576px → max-w-144, 요약 34em × 24px = 816px → max-w-204, 설명 34em × 16px = 544px → max-w-136
 
 export type ReportBodyState =
@@ -149,6 +151,7 @@ export function ReportBody({
   onCopy: () => void
 }) {
   const name = shortMonth(month)
+  const honorific = useClinicProfile().profile.honorific
   switch (state.kind) {
     case 'loading':
       return (
@@ -208,7 +211,7 @@ export function ReportBody({
             </Notes>
           )}
           <h2 className={EMPTY_TITLE}>{`${name} 리포트를 아직 만들지 않았어요`}</h2>
-          <p className={EMPTY_LINE}>{`[AI 분석]을 누르면 ${compareMonths(month)}과 견줘 원장님께 드릴 보고를 1분쯤 걸려 써 드려요.`}</p>
+          <p className={EMPTY_LINE}>{`[AI 분석]을 누르면 ${compareMonths(month)}과 견줘 ${honorific}께 드릴 보고를 1분쯤 걸려 써 드려요.`}</p>
           <div className={EMPTY_ACTIONS}>
             <button type="button" onClick={onAnalyze} className={`${ds.button.primaryLarge} max-md:w-full`}>
               AI 분석

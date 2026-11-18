@@ -6,6 +6,7 @@ import { reportJsonSchema, systemPrompt, userMessage } from '@/lib/ai/prompt'
 import { addMonths } from '@/lib/analytics/dates'
 import { validateMonthPayload, validateMonthSections } from '@/lib/payload/validate'
 import type { AiErrorCode, AiUsage, SavedReport } from '@/types/aiReport'
+import { DEFAULT_HONORIFIC, HONORIFICS, type Honorific } from '@/types/clinicProfile'
 import type { callClaude } from './claude'
 import type { ReportMonths } from './store'
 
@@ -14,6 +15,11 @@ import type { ReportMonths } from './store'
 
 export type GenerateDeps = {
   loadMonths(month: string): Promise<ReportMonths>
+  /**
+   * 시스템 글의 받는 사람(spec clinic-profile AC-6606.4): 서버가 사용자 세션으로 DB에서 읽은 호칭(store.ts loadHonorific).
+   * 정해 둔 세 가지 밖·던짐·주지 않음이면 '원장님'. 브라우저가 보낸 값은 넣지 않는다
+   */
+  loadHonorific?(): Promise<unknown>
   callClaude: typeof callClaude
   saveReport(r: SavedReport): Promise<boolean>
   addUsage(u: AiUsage & { costMicroUsd: number }): Promise<boolean>
@@ -23,6 +29,16 @@ export type GenerateDeps = {
 export type GenerateResult = { ok: true; report: SavedReport; usage: AiUsage } | { ok: false; code: AiErrorCode }
 
 const FAILED: GenerateResult = { ok: false, code: 'E-AI-FAILED' }
+
+// 받는 사람 호칭. 못 읽거나(던짐) 세 가지 밖이면 '원장님' — 호칭 때문에 리포트 만들기가 실패하지 않는다. 호칭은 입력·지문에 들어가지 않는다
+async function honorificOf(deps: GenerateDeps): Promise<Honorific> {
+  try {
+    const value = await deps.loadHonorific?.()
+    return typeof value === 'string' && (HONORIFICS as readonly string[]).includes(value) ? (value as Honorific) : DEFAULT_HONORIFIC
+  } catch {
+    return DEFAULT_HONORIFIC
+  }
+}
 
 // deps 호출이 던지면 false(실패)로 본다
 async function attempt(run: () => Promise<boolean>): Promise<boolean> {
@@ -93,7 +109,8 @@ export async function generateReport(month: string, deps: GenerateDeps): Promise
   try {
     current = await currentInput(month, (m) => deps.loadMonths(m))
     if (current === null) return { ok: false, code: 'E-AI-NO-DATA' }
-    res = await deps.callClaude({ system: systemPrompt(), user: userMessage(current.input), schema: reportJsonSchema() })
+    const honorific = await honorificOf(deps)
+    res = await deps.callClaude({ system: systemPrompt(honorific), user: userMessage(current.input), schema: reportJsonSchema() })
   } catch {
     return FAILED
   }
