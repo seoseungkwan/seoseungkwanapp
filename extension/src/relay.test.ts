@@ -4,32 +4,52 @@ import commands from '../../src/lib/bridge/commands.json'
 import { checkRequest, INPUT_KEEP_MS, isOurOrigin, withExtensionInfo } from './relay'
 
 const ORIGIN = commands.origin
+/** 옛 주소: 옛 주소 → 새 주소 넘기기가 끝날 때까지 함께 받는다(REQ-6401) */
+const OLD_ORIGIN = 'https://seoseungkwanapp.vercel.app'
 const ID = '0f8fad5b-d9cb-469f-a165-70867728950e'
 
 function request(over: Record<string, unknown> = {}) {
   return { v: commands.protocol, id: ID, cmd: 'hello', args: {}, ...over }
 }
 
-describe('AC-003.2 우리 사이트 origin만 받는다', () => {
-  it('commands.json origin과 글자까지 같으면 받는다', () => {
-    expect(ORIGIN).toBe('https://seoseungkwanapp.vercel.app')
+describe('AC-003.2 AC-6401.1 우리 사이트 origin(새 주소·옛 주소)만 받는다', () => {
+  it('AC-6401.1: commands.json origin은 새 주소 https://n-medi.vercel.app이고, 글자까지 같으면 받는다', () => {
+    expect(ORIGIN).toBe('https://n-medi.vercel.app')
     expect(isOurOrigin(ORIGIN)).toBe(true)
+  })
+
+  it('AC-6401.1: 옛 주소 https://seoseungkwanapp.vercel.app도 글자까지 같으면 받는다', () => {
+    expect(isOurOrigin(OLD_ORIGIN)).toBe(true)
   })
 
   it.each([
     undefined,
     '',
     'null',
+    // 옛 주소의 비슷한 꼴
     'http://seoseungkwanapp.vercel.app',
     'https://seoseungkwanapp.vercel.app/',
     'https://seoseungkwanapp.vercel.app:443',
     'https://SEOSEUNGKWANAPP.vercel.app',
     'https://evil.seoseungkwanapp.vercel.app',
     'https://seoseungkwanapp.vercel.app.evil.com',
+    // 새 주소의 비슷한 꼴
+    'http://n-medi.vercel.app',
+    'https://n-medi.vercel.app/',
+    'https://n-medi.vercel.app:443',
+    'https://N-MEDI.vercel.app',
+    'https://N-medi.vercel.app',
+    'https://evil.n-medi.vercel.app',
+    'https://n-medi.vercel.app.evil.com',
+    'https://n-medi.vercel.app/dashboard',
+    ' https://n-medi.vercel.app',
+    // 다른 vercel.app·그 밖
+    'https://nmedi.vercel.app',
     'https://other-app.vercel.app',
+    'https://vercel.app',
     'http://localhost:3000',
     `chrome-extension://${commands.extensionId}`,
-  ])('%s 는 거절한다', (origin) => {
+  ])('AC-6401.1: %s 는 거절한다', (origin) => {
     expect(isOurOrigin(origin)).toBe(false)
   })
 })

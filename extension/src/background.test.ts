@@ -209,9 +209,32 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('AC-003.2 남의 origin', () => {
-  it.each([undefined, 'https://evil.example', 'http://seoseungkwanapp.vercel.app', 'https://other-app.vercel.app'])(
-    '%s 에서 온 연결은 바로 끊고 아무것도 보내지 않으며 도우미를 켜지 않는다',
+describe('AC-6401.1 새 주소·옛 주소 연결', () => {
+  it.each([
+    ['새 주소', 'https://n-medi.vercel.app'],
+    ['옛 주소', 'https://seoseungkwanapp.vercel.app'],
+  ])('AC-6401.1: %s(%s)에서 온 연결은 받아 첫 정상 메시지를 도우미로 넘긴다', (_name, origin) => {
+    const t = setup()
+    const web = t.connectWeb(origin)
+    expect(web.disconnected).toBe(false)
+    const hello = req('hello')
+    web.emit(hello)
+    expect(t.runtime.connectNative).toHaveBeenCalledTimes(1)
+    expect(t.natives[0].posted).toEqual([hello])
+  })
+})
+
+describe('AC-003.2 AC-6401.1 남의 origin', () => {
+  it.each([
+    undefined,
+    'https://evil.example',
+    'http://seoseungkwanapp.vercel.app',
+    'http://n-medi.vercel.app',
+    'https://n-medi.vercel.app/',
+    'https://evil.n-medi.vercel.app',
+    'https://other-app.vercel.app',
+  ])(
+    'AC-6401.1: %s 에서 온 연결은 바로 끊고 아무것도 보내지 않으며 도우미를 켜지 않는다',
     (origin) => {
       const t = setup()
       const web = t.connectWeb(origin)

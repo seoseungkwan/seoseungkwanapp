@@ -89,9 +89,20 @@ public class CommandTableTests
     {
         Assert.Equal(1, Table.Protocol);
         Assert.Equal("com.seoseungkwan.precheck", Table.HostName);
-        Assert.Equal("https://seoseungkwanapp.vercel.app", Table.Origin);
+        Assert.Equal("https://n-medi.vercel.app", Table.Origin);
         Assert.Matches("^[a-p]{32}$", Table.ExtensionId);
         Assert.DoesNotContain("*", Encoding.UTF8.GetString(CommandTable.EmbeddedBytes()));
+    }
+
+    [Fact(DisplayName = "AC-6402.1 commands.json origin은 새 주소 https://n-medi.vercel.app이고 지금 규칙(https·소문자·와일드카드 금지) 그대로 싣는다")]
+    public void TableOriginIsNewAddress()
+    {
+        var table = CommandTable.Parse(CommandTable.EmbeddedBytes());
+
+        Assert.Equal("https://n-medi.vercel.app", table.Origin);
+        Assert.StartsWith("https://", table.Origin);
+        Assert.Equal(table.Origin.ToLowerInvariant(), table.Origin);
+        Assert.DoesNotContain("*", table.Origin);
     }
 
     [Fact(DisplayName = "AC-001.3 extensionId는 extensionKey(공개키 DER)의 SHA-256 앞 32자를 a~p로 바꾼 것이다")]

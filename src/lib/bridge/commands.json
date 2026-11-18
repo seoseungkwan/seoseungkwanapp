@@ -1,7 +1,7 @@
 {
   "protocol": 1,
   "hostName": "com.seoseungkwan.precheck",
-  "origin": "https://seoseungkwanapp.vercel.app",
+  "origin": "https://n-medi.vercel.app",
   "extensionId": "cmnefbmfclmjkfbnjnbfnlndlpjnihka",
   "extensionKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsde3indftzSwo5qkcGVOYFfINl0XQ1CGelIRN3hwIcGPWlEo5OkOJvcIqkAb9N/dY9ZmGCeCfDtt4vvkJmauaVWM1d5JYPcimVa8GArJCCF4qnMORIr4Z9pdwLUgd4iNcyruxVTfuTKrDDPmiIe20aU7fFVb2cxqNyUKwA8OTdo/RjSaG89S6++JGLukHBzmiibv4dXqbk4KRuD7BEjGetKvoKrLx3nE6uy6fOz5R91K4iOLN8jwNZZ0N6epjpPSAzqKYT5Lxa6jKwwCJU2TIvPbKHa63Si9Gq/AwGBp9ANLiU+XtJqZUM3L7wgsGq/msTm2iGhnD16L/3K8KpSzEwIDAQAB",
   "commands": {

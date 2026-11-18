@@ -24,9 +24,12 @@ function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null && !Array.isArray(x)
 }
 
-/** 크롬이 준 sender.origin이 우리 사이트와 글자까지 같은가(AC-003.2) */
+/** 옛 주소(REQ-6401). 옛 주소 → 새 주소 넘기기가 끝나면 지운다(manifest externally_connectable에서도) */
+export const OLD_ORIGIN = 'https://seoseungkwanapp.vercel.app'
+
+/** 크롬이 준 sender.origin이 우리 사이트(새 주소 commands.origin 또는 옛 주소)와 글자까지 같은가(AC-003.2·AC-6401.1) */
 export function isOurOrigin(origin: string | undefined): boolean {
-  return origin === commands.origin
+  return origin === commands.origin || origin === OLD_ORIGIN
 }
 
 /** id는 모를 때 빈 글자 */
