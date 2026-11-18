@@ -466,3 +466,46 @@ describe('AC-4507.2 오류 내용을 밖에 내지 않는다', () => {
     for (const spy of spies) expect(spy).not.toHaveBeenCalled()
   })
 })
+
+// 환자 안내문 색(spec clinic-profile REQ-6604 AC-6604.6): [직접 고르기]로 고른 두 색은 content 안 colors 열쇠로 함께 저장한다.
+// [자동]은 열쇠 없이(옛 안내문과 같은 모양) 보내고, 모양이 틀린 색은 보내지 않는다
+describe('AC-6604.6 안내문 색 저장·읽기', () => {
+  const PICKED = { main: '#3b82c4', dark: '#16324a' }
+
+  it('AC-6604.6: 직접 고른 색이 있으면 열쇠 13개에 colors를 더해 보내고, 돌려받은 줄도 색을 그대로 갖는다', async () => {
+    const calls = fakeClient(echoRow)
+    const saved = await insertGuide({ ...INSURANCE, colors: PICKED } as GuideContent)
+    expect(calls[0].body).toEqual({ content: { ...INSURANCE, colors: PICKED } })
+    expect(Object.keys((calls[0].body as { content: object }).content).sort()).toEqual([...CONTENT_KEYS, 'colors'].sort())
+    expect((saved as SavedGuide).content).toEqual({ ...INSURANCE, colors: PICKED })
+  })
+
+  it('AC-6604.6: 고치기(updateGuide)도 같은 몸통으로 색을 함께 보낸다', async () => {
+    const calls = fakeClient(echoRow)
+    await updateGuide(ID, { ...INSURANCE, colors: PICKED } as GuideContent)
+    expect(calls[0]).toMatchObject({ table: TABLE, op: 'update', filters: [['id', ID]] })
+    expect(calls[0].body).toEqual({ content: { ...INSURANCE, colors: PICKED } })
+  })
+
+  it('AC-6604.6: [자동](colors 없음·null)은 열쇠 13개만 보낸다 — 색을 저장하지 않은 옛 안내문과 같은 모양', async () => {
+    const calls = fakeClient(echoRow)
+    await insertGuide(INSURANCE)
+    await insertGuide({ ...INSURANCE, colors: null } as GuideContent)
+    for (const call of calls) expect(Object.keys((call.body as { content: object }).content).sort()).toEqual(CONTENT_KEYS)
+  })
+
+  it("AC-6604.6: 모양이 틀린 색(색 이름 글·한 색만·다른 열쇠가 섞임)은 보내지 않고 'failed'다", async () => {
+    for (const bad of [{ main: 'red', dark: '#16324a' }, { main: '#3b82c4' }, { ...PICKED, memo: 'x' }]) {
+      const calls = fakeClient(echoRow)
+      expect(await insertGuide({ ...INSURANCE, colors: bad } as unknown as GuideContent)).toBe('failed')
+      expect(calls).toHaveLength(0)
+    }
+  })
+
+  it('AC-6604.6: 색이 저장된 줄을 읽으면 색이 그대로 남고, 색이 없는 옛 줄은 colors 없이([자동]) 읽는다', async () => {
+    fakeClient(() => ({ data: [dbRow(ID, UPDATED, { ...INSURANCE, colors: PICKED }), dbRow('old-1', UPDATED)] }))
+    const list = (await listGuides()) as SavedGuide[]
+    expect(list[0].content).toEqual({ ...INSURANCE, colors: PICKED })
+    expect(Object.keys(list[1].content).sort()).toEqual(CONTENT_KEYS)
+  })
+})
