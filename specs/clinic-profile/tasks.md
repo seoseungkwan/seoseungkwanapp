@@ -55,7 +55,7 @@
 - Phase: 1
 - AC: AC-6611.2, AC-6611.3, AC-6611.4, AC-6611.5
 - REQ: REQ-6611
-- Files: src/lib/bridge/commands.json, src/lib/bridge/versions.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts, src/lib/bridge/protocol.test.ts, helper/tests/input-wiring.dotnet.test.ts, helper/tests/Precheck.Core.Tests/Calendar/CalendarTargets.test.cs, helper/tests/Precheck.Core.Tests/Revenue/RevenueCommands.test.cs, helper/tests/Precheck.Core.Tests/Stats/StatsExtra.test.cs, helper/tests/Precheck.Core.Tests/Sunap/SunapTargets.test.cs, src/lib/precheck/memoCompare.ts, src/lib/precheck/memoCompare.test.ts, src/lib/precheck/bitBytes.ts, src/lib/precheck/bitBytes.test.ts, helper/Directory.Build.props, helper/src/Precheck.Core/Input/InputCommands.cs, helper/src/Precheck.Core/Input/BatchCheck.cs, helper/src/Precheck.Core/Input/InputRunner.cs, helper/src/Precheck.Core/Input/InputPrompt.cs, helper/src/Precheck.Core/Input/MemoMatcher.cs, helper/src/Precheck.Core/Input/BitBytes.cs, helper/src/Precheck.Core/Claim/MemoCompare.cs, helper/tests/Precheck.Core.Tests/Input/InputCommands.test.cs, helper/tests/Precheck.Core.Tests/Input/BatchCheck.test.cs, helper/tests/Precheck.Core.Tests/Input/InputRunner.test.cs, helper/tests/Precheck.Core.Tests/Input/InputPrompt.test.cs, helper/tests/Precheck.Core.Tests/Claim/MemoCompare.test.cs, helper/tests/Precheck.Core.Tests/Claim/memo-compare-cases.test.json, helper/tests/input.dotnet.test.ts, helper/tests/input-replace.dotnet.test.ts, helper/tests/memo-compare.dotnet.test.ts
+- Files: helper/tests/Precheck.Core.Tests/Input/InputWiring.test.cs, src/lib/bridge/commands.json, src/lib/bridge/versions.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts, src/lib/bridge/protocol.test.ts, helper/tests/input-wiring.dotnet.test.ts, helper/tests/Precheck.Core.Tests/Calendar/CalendarTargets.test.cs, helper/tests/Precheck.Core.Tests/Revenue/RevenueCommands.test.cs, helper/tests/Precheck.Core.Tests/Stats/StatsExtra.test.cs, helper/tests/Precheck.Core.Tests/Sunap/SunapTargets.test.cs, src/lib/precheck/memoCompare.ts, src/lib/precheck/memoCompare.test.ts, src/lib/precheck/bitBytes.ts, src/lib/precheck/bitBytes.test.ts, helper/Directory.Build.props, helper/src/Precheck.Core/Input/InputCommands.cs, helper/src/Precheck.Core/Input/BatchCheck.cs, helper/src/Precheck.Core/Input/InputRunner.cs, helper/src/Precheck.Core/Input/InputPrompt.cs, helper/src/Precheck.Core/Input/MemoMatcher.cs, helper/src/Precheck.Core/Input/BitBytes.cs, helper/src/Precheck.Core/Claim/MemoCompare.cs, helper/tests/Precheck.Core.Tests/Input/InputCommands.test.cs, helper/tests/Precheck.Core.Tests/Input/BatchCheck.test.cs, helper/tests/Precheck.Core.Tests/Input/InputRunner.test.cs, helper/tests/Precheck.Core.Tests/Input/InputPrompt.test.cs, helper/tests/Precheck.Core.Tests/Claim/MemoCompare.test.cs, helper/tests/Precheck.Core.Tests/Claim/memo-compare-cases.test.json, helper/tests/input.dotnet.test.ts, helper/tests/input-replace.dotnet.test.ts, helper/tests/memo-compare.dotnet.test.ts
 - Tests: src/lib/precheck/memoCompare.test.ts, src/lib/precheck/bitBytes.test.ts, src/lib/bridge/handshake.test.ts, helper/tests/input.dotnet.test.ts, helper/tests/input-replace.dotnet.test.ts, helper/tests/memo-compare.dotnet.test.ts
 - TDD: required — design.md 13절. `appends`는 `replaces`와 함께 오면 거절, '묻지 않기'로 붙이지 않음, 붙이기 전 다시 읽어 같을 때만, `SaveOriginal`·`SaveAndConfirm(합친 글)`, 되살리기, 3,000바이트(ASCII 1·나머지 2, 웹 `bitBytes.ts`와 C# `BitBytes.cs`가 같은 사례), 묻는 창 줄. 판 0.12.0(`Directory.Build.props`·`LATEST_HELPER`·`APPEND_HELPER`, `MIN_HELPER` 그대로). C# 시험은 감싸개 `*.dotnet.test.ts`로 부르고 net10으로 돌린다
 
@@ -79,7 +79,7 @@
 - Phase: 2
 - AC: AC-6602.1, AC-6602.2, AC-6602.3, AC-6602.4, AC-6602.5, AC-6602.6, AC-6602.7, AC-6602.8, AC-6606.5
 - REQ: REQ-6602, REQ-6606
-- Files: src/components/claim/setup/SetupScreen.tsx, src/components/claim/setup/SetupScreen.test.tsx, src/components/settings/ClinicProfileCard.tsx, src/components/settings/ClinicProfileCard.test.tsx, src/components/settings/SettingsPage.tsx, src/app/(app)/settings/page.test.tsx, src/lib/auth/hospital.server.ts, src/lib/auth/hospital.server.test.ts
+- Files: src/components/settings/InstallFilesCard.test.tsx, src/components/claim/setup/SetupScreen.tsx, src/components/claim/setup/SetupScreen.test.tsx, src/components/settings/ClinicProfileCard.tsx, src/components/settings/ClinicProfileCard.test.tsx, src/components/settings/SettingsPage.tsx, src/app/(app)/settings/page.test.tsx, src/lib/auth/hospital.server.ts, src/lib/auth/hospital.server.test.ts
 - Tests: src/components/settings/ClinicProfileCard.test.tsx, src/app/(app)/settings/page.test.tsx, src/lib/auth/hospital.server.test.ts
 - TDD: required — design.md 3절·4절. 칸 차례·기본값·요일 검사·휴진일·직원(30명·표시 겹침·20색)·로고(줄이기·크기·빼기·바꾸기)·저장 실패/읽기 실패·데스크에게 없음. `readMe`는 원장이면 `display_name` 한 칸만 읽고 실패·없음이면 가입 이름(쓰지 않음)
 
@@ -117,9 +117,9 @@
 
 ## TASK-12: 청구 Worker 잇기
 - Phase: 2
-- AC: AC-6608.2, AC-6608.3, AC-6609.1, AC-6611.2
+- AC: AC-6608.2, AC-6608.3, AC-6609.1, AC-6611.2, AC-6611.3
 - REQ: REQ-6608, REQ-6609, REQ-6611
-- Files: src/workers/precheck/jobs.ts, src/workers/precheck/jobs.test.ts, src/types/precheck.ts
+- Files: src/workers/precheck/jobs.ts, src/workers/precheck/jobs.test.ts, src/types/precheck.ts, src/lib/precheck/memoCompare.ts, src/lib/precheck/memoCompare.test.ts
 - Tests: src/workers/precheck/jobs.test.ts
 - TDD: required — design.md 10절(`drugRoles(month.catalog, tables.drugInfo, phrases.CODEMAP)`를 `runRules` 넷째 값과 `memoViews`의 `tables.roles`로), 11절(`tables.cartilageNames` = 처방 목록에서 역할 cartilage인 줄 이름), 13절(승인 값 'append' → 항목 `appends` = 화면에서 본 비트 메모, `replaces`와 함께 보내지 않음)
 

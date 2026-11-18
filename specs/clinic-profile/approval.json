@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "clinic-profile",
-  "approved_at": "2026-11-18T13:56:03Z",
+  "approved_at": "2026-11-18T14:26:33Z",
   "approved_via": "auto",
   "session_id": "d8c599c5-f70a-49d3-a279-5c381ed7a718",
-  "spec_sha256": "df09bd78bcb3b5c2e43738ed0f2b40ce8960c09123c8434851c80d582900524a",
+  "spec_sha256": "d52f6b32d86c1a4cf1c53d6bc2511adeeb79331bad49fdd178632dfecf39925b",
   "scope": [
     "CLAUDE.md",
     "docs/ADR.md",
@@ -32,6 +32,7 @@
     "helper/tests/Precheck.Core.Tests/Input/InputCommands.test.cs",
     "helper/tests/Precheck.Core.Tests/Input/InputPrompt.test.cs",
     "helper/tests/Precheck.Core.Tests/Input/InputRunner.test.cs",
+    "helper/tests/Precheck.Core.Tests/Input/InputWiring.test.cs",
     "helper/tests/Precheck.Core.Tests/Revenue/RevenueCommands.test.cs",
     "helper/tests/Precheck.Core.Tests/Stats/StatsExtra.test.cs",
     "helper/tests/Precheck.Core.Tests/Sunap/SunapTargets.test.cs",
@@ -115,6 +116,7 @@
     "src/components/settings/DxLinks.tsx",
     "src/components/settings/HospitalPhrases.test.tsx",
     "src/components/settings/HospitalPhrases.tsx",
+    "src/components/settings/InstallFilesCard.test.tsx",
     "src/components/settings/SettingsPage.tsx",
     "src/components/settings/firstRun/ConfirmPage.tsx",
     "src/components/settings/firstRun/ExampleAside.tsx",
