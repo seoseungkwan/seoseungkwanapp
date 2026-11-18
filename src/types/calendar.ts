@@ -52,6 +52,8 @@ export type CalAppt = {
 export type ApptDraft = Omit<CalAppt, 'id' | 'auto' | 'origDay' | 'origStart'>
 // 통계·월 보기 수 세기용(이름·차트번호·메모 없음)
 export type CalCountRow = Pick<CalAppt, 'day' | 'staffId' | 'staffName' | 'kindId' | 'kindName' | 'status' | 'auto' | 'origDay'>
+// 통계 다시 예약·예약 빈자리용(spec stats-insights AC-6104.1). 이름·메모 없음. 차트번호는 lib/calendar 다시 예약 셈 안에서만 쓴다
+export type CalSlotRow = Pick<CalAppt, 'day' | 'staffId' | 'staffName' | 'kindId' | 'kindName' | 'status' | 'auto' | 'start' | 'len' | 'chart'>
 export type CalAllDay = { id: string; day: string; type: 'memo' | 'off'; memo: string | null; staffId: string | null; staffName: string | null }
 
 // 설정 줄이 없을 때(DB 기본값과 같다). 시행자는 비어 있다(설정에서 더한다)

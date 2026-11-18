@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { listCalendarCounts, loadCalendarSettings } from '@/lib/storage/calendar'
-import { DEFAULT_CAL_SETTINGS, type CalCountRow, type CalSettings } from '@/types/calendar'
+import { listAllDay, listCalendarCounts, listCalendarSlots, loadCalendarSettings } from '@/lib/storage/calendar'
+import { DEFAULT_CAL_SETTINGS, type CalAllDay, type CalCountRow, type CalSettings, type CalSlotRow } from '@/types/calendar'
 import { useStatsCalendar } from './useStatsCalendar'
 
 // 통계 '예약' 칸 읽기 훅 (spec clinic-calendar REQ-5907 AC-5907.3, design.md '화면' 통계 칸, tasks.md TASK-9).
@@ -12,6 +12,8 @@ import { useStatsCalendar } from './useStatsCalendar'
 
 vi.mock('@/lib/storage/calendar', () => ({
   listCalendarCounts: vi.fn(),
+  listCalendarSlots: vi.fn(),
+  listAllDay: vi.fn(),
   loadCalendarSettings: vi.fn(),
 }))
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: vi.fn(() => ({})) }))
@@ -31,6 +33,11 @@ const row = (day: string, over: Partial<CalCountRow> = {}): CalCountRow => ({
 const ROWS_A = [row('2026-10-02'), row('2026-11-03', { status: 'cancel' })]
 const ROWS_B = [row('2026-09-10')]
 const SETTINGS: CalSettings = { ...DEFAULT_CAL_SETTINGS, staff: [{ id: 'ga', name: '가짜○○', mark: '가', color: 'blue' }] }
+// 다시 예약·빈자리 줄(stats-insights AC-6104.1·AC-6105.1, 이름·메모 칸 없음)과 휴무
+const SLOTS: CalSlotRow[] = [
+  { day: '2026-10-02', staffId: 'ga', staffName: '가짜○○', kindId: 'dosu', kindName: '도수', status: 'came', auto: null, start: 600, len: 30, chart: '90001' },
+]
+const OFFS: CalAllDay[] = [{ id: 'off-1', day: '2026-11-02', type: 'off', memo: null, staffId: 'ga', staffName: '가짜○○' }]
 
 // 다음 예약 줄 읽기의 답을 잡아 둔다(열 때까지 끝나지 않음)
 type Gate = { resolve(rows: CalCountRow[]): void; reject(): void }
@@ -47,8 +54,12 @@ function hold(): Gate {
 
 beforeEach(() => {
   vi.mocked(listCalendarCounts).mockReset()
+  vi.mocked(listCalendarSlots).mockReset()
+  vi.mocked(listAllDay).mockReset()
   vi.mocked(loadCalendarSettings).mockReset()
   vi.mocked(listCalendarCounts).mockResolvedValue(ROWS_A)
+  vi.mocked(listCalendarSlots).mockResolvedValue(SLOTS)
+  vi.mocked(listAllDay).mockResolvedValue(OFFS)
   vi.mocked(loadCalendarSettings).mockResolvedValue(SETTINGS)
 })
 
@@ -147,5 +158,56 @@ describe('AC-5907.3: 통계 예약 칸 읽기 useStatsCalendar', () => {
     for (const word of ['localStorage', 'sessionStorage', 'indexedDB', 'document.cookie', 'history.', 'location.', 'fetch(', 'console.', 'listAppts']) {
       expect(text, word).not.toContain(word)
     }
+  })
+})
+
+describe('AC-6104.1·AC-6105.1: 다시 예약·빈자리 줄 읽기', () => {
+  it('AC-6104.1·AC-6105.1: 같은 12달을 listCalendarSlots로, 휴무를 오늘 앞 56일(어제까지) listAllDay로 읽어 slots로 준다. 읽는 동안은 reading', async () => {
+    const { result } = renderHook(() => useStatsCalendar(TODAY))
+    expect(result.current.slots).toBe('reading')
+    await waitFor(() => expect(result.current.slots).toEqual({ rows: SLOTS, offs: OFFS }))
+    expect(listCalendarSlots).toHaveBeenCalledTimes(1)
+    expect(listCalendarSlots).toHaveBeenCalledWith(expect.anything(), '2025-12-01', TODAY)
+    expect(listAllDay).toHaveBeenCalledTimes(1)
+    expect(listAllDay).toHaveBeenCalledWith(expect.anything(), '2026-09-22', '2026-11-16')
+    expect(result.current.rows).toEqual(ROWS_A)
+  })
+
+  it.each<[string, () => void]>([
+    ['예약 줄', () => vi.mocked(listCalendarSlots).mockRejectedValueOnce(new Error('가짜 실패'))],
+    ['휴무', () => vi.mocked(listAllDay).mockRejectedValueOnce(new Error('가짜 실패'))],
+    [
+      '없는 읽기(던짐)',
+      () =>
+        vi.mocked(listCalendarSlots).mockImplementationOnce(() => {
+          throw new Error('가짜 던짐')
+        }),
+    ],
+  ])('AC-6104.1·AC-6105.1: %s를 읽지 못하면 slots만 failed이고 예약 수 줄·설정은 그대로다', async (_name, fail) => {
+    fail()
+    const { result } = renderHook(() => useStatsCalendar(TODAY))
+    await waitFor(() => expect(result.current.slots).toBe('failed'))
+    expect(result.current.rows).toEqual(ROWS_A)
+    expect(result.current.settings).toEqual(SETTINGS)
+  })
+
+  it('AC-6104.1·AC-6105.1: [다시 읽기]는 slots도 다시 읽고, 예약 수 줄을 읽지 못하면 slots도 failed다', async () => {
+    vi.mocked(listCalendarCounts).mockRejectedValueOnce(new Error('가짜 실패'))
+    const { result } = renderHook(() => useStatsCalendar(TODAY))
+    await waitFor(() => expect(result.current.rows).toBe('failed'))
+    expect(result.current.slots).toBe('failed')
+    act(() => result.current.onReread())
+    expect(result.current.slots).toBe('reading')
+    await waitFor(() => expect(result.current.slots).toEqual({ rows: SLOTS, offs: OFFS }))
+    expect(listCalendarSlots).toHaveBeenCalledTimes(2)
+    expect(listAllDay).toHaveBeenCalledTimes(2)
+  })
+
+  it('AC-6105.1: 오늘이 바뀌면 휴무 기간도 새 오늘 앞 56일이다', async () => {
+    const { rerender } = renderHook(({ today }) => useStatsCalendar(today), { initialProps: { today: TODAY } })
+    await waitFor(() => expect(listAllDay).toHaveBeenCalledTimes(1))
+    rerender({ today: '2027-01-01' })
+    await waitFor(() => expect(listAllDay).toHaveBeenLastCalledWith(expect.anything(), '2026-11-06', '2026-12-31'))
+    expect(listCalendarSlots).toHaveBeenLastCalledWith(expect.anything(), '2026-02-01', '2027-01-01')
   })
 })
