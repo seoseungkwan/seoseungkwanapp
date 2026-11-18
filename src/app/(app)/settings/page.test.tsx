@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { RoleProvider } from '@/components/shell/role'
 import type { RuleSummary } from '@/types/precheck'
 import SettingsRoute, { metadata } from './page'
 
@@ -19,6 +20,21 @@ vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser }))
 // 데스크 계정 칸(desk-feedback AC-6304.2)의 저장 함수는 흉내 낸다(실제 rpc 없음). 목록은 빈 것
 const desk = vi.hoisted(() => ({ list: vi.fn(async () => []), add: vi.fn(), remove: vi.fn() }))
 vi.mock('@/lib/storage/desk', () => ({ listDeskMembers: desk.list, addDeskMember: desk.add, removeDeskMember: desk.remove }))
+// 병원 정보 칸(clinic-profile AC-6602.1)의 읽기는 흉내 낸다: 저장한 적 없는 병원(줄 없음) + 지어낸 가입 이름. 저장 뒤 router.refresh는 가짜 라우터
+const clinic = vi.hoisted(() => ({
+  load: vi.fn(async () => null),
+  signup: vi.fn(async () => ({ name: '가짜정형외과의원', phone: '0212345678' })),
+}))
+vi.mock('@/lib/storage/clinicProfile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/storage/clinicProfile')>()),
+  loadClinicProfile: clinic.load,
+  loadSignup: clinic.signup,
+  downloadLogo: vi.fn(async () => null),
+  saveClinicProfile: vi.fn(),
+  uploadLogo: vi.fn(),
+  removeLogo: vi.fn(),
+}))
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }) }))
 
 const RULE: RuleSummary = {
   id: 'LA-01',
@@ -39,7 +55,11 @@ class FakeWorker {
   terminate() {}
 }
 
-beforeEach(() => vi.stubGlobal('Worker', FakeWorker))
+beforeEach(() => {
+  vi.stubGlobal('Worker', FakeWorker)
+  clinic.load.mockClear()
+  clinic.signup.mockClear()
+})
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -50,12 +70,13 @@ describe('/settings 페이지', () => {
     expect(metadata.title).toBe('설정')
   })
 
-  it('AC-012.6·AC-5201.1: 제목 "설정"과 안쪽 메뉴 — [청구]는 지금 화면, [비트 PC 연결]은 /claim/setup 링크, 옛 이름 청구·연락 글자 없음', async () => {
+  it('AC-012.6·AC-5201.1·AC-6602.1: 제목 "설정"과 안쪽 메뉴 — [설정](옛 [청구])은 지금 화면, [비트 PC 연결]은 /claim/setup 링크, 옛 이름 청구·연락 글자 없음', async () => {
     render(<SettingsRoute />)
     expect(screen.getByRole('heading', { level: 1, name: '설정' })).toBeTruthy()
     const sub = screen.getByRole('navigation', { name: '설정 안 메뉴' })
-    expect(within(sub).getAllByRole('link').map((a) => a.textContent)).toEqual(['청구', '비트 PC 연결'])
-    const here = within(sub).getByRole('link', { name: '청구' })
+    expect(within(sub).getAllByRole('link').map((a) => a.textContent)).toEqual(['설정', '비트 PC 연결'])
+    expect(within(sub).queryByRole('link', { name: '청구' })).toBeNull()
+    const here = within(sub).getByRole('link', { name: '설정' })
     expect(here.getAttribute('href')).toBe('/settings')
     expect(here.getAttribute('aria-current')).toBe('page')
     const setup = within(sub).getByRole('link', { name: '비트 PC 연결' })
@@ -79,6 +100,28 @@ describe('/settings 페이지', () => {
     await screen.findByRole('textbox', { name: '데스크 구글 메일' })
     expect(desk.list).toHaveBeenCalled()
     expect(desk.add).not.toHaveBeenCalled()
+  })
+
+  it("AC-6602.1: 원장에게는 맨 위(설치 파일 칸 앞) 첫 칸이 '병원 정보'다", async () => {
+    render(<SettingsRoute />)
+    const titles = (await screen.findAllByRole('heading', { level: 2 })).map((h) => h.textContent)
+    expect(titles[0]).toBe('병원 정보')
+    expect(titles.filter((t) => t === '병원 정보')).toHaveLength(1)
+    await screen.findByRole('textbox', { name: '병원 이름' })
+    expect(clinic.load).toHaveBeenCalled()
+  })
+
+  it("AC-6602.7: 데스크에게는 '병원 정보' 칸이 없고 병원 정보를 읽지도 않는다", async () => {
+    render(
+      <RoleProvider desk>
+        <SettingsRoute />
+      </RoleProvider>,
+    )
+    await screen.findByText('LA-01')
+    const titles = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
+    expect(titles).not.toContain('병원 정보')
+    expect(screen.queryByRole('textbox', { name: '병원 이름' })).toBeNull()
+    expect(clinic.load).not.toHaveBeenCalled()
   })
 
   it('AC-012.6: 새 서버 경로 없음 — 페이지는 화면을 그리기만 한다(문지기는 레이아웃, DB는 브라우저 + RLS)', () => {

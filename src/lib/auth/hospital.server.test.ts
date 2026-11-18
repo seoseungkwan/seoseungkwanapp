@@ -3,7 +3,8 @@ import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { HospitalReadError, NotSignedInError, readMe } from './hospital.server'
 
-// 실제 Supabase에 붙지 않는다. 사용자 확인 → hospitals·admins에서 내 줄 읽기 → (병원 줄이 없을 때만) my_desk() 읽기를 흉내 낸다.
+// 실제 Supabase에 붙지 않는다. 사용자 확인 → hospitals·admins에서 내 줄 읽기 → (승인된 원장이면) clinic_profiles의 이름 한 칸 읽기 →
+// (병원 줄이 없을 때만) my_desk() 읽기를 흉내 낸다.
 // 쓰기 메서드(insert·update·delete·upsert)도 흉내 내 두고, 하나도 부르지 않는지 본다. rpc는 읽기 함수 my_desk 하나만 부른다(desk-feedback AC-6305.1)
 const { getUser, from, rpc, tables } = vi.hoisted(() => {
   function table() {
@@ -13,7 +14,7 @@ const { getUser, from, rpc, tables } = vi.hoisted(() => {
     const writes = { insert: vi.fn(), update: vi.fn(), delete: vi.fn(), upsert: vi.fn() }
     return { select, eq, maybeSingle, writes }
   }
-  const tables = { hospitals: table(), admins: table() }
+  const tables = { hospitals: table(), admins: table(), clinic_profiles: table() }
   const from = vi.fn((name: string) => {
     const t = tables[name as keyof typeof tables]
     if (!t) throw new Error(`읽으면 안 되는 표: ${name}`)
@@ -40,6 +41,9 @@ function hospitalRow(row: object | null) {
 function adminRow(row: object | null) {
   tables.admins.maybeSingle.mockResolvedValue({ data: row, error: null })
 }
+function profileRow(row: object | null, error: unknown = null) {
+  tables.clinic_profiles.maybeSingle.mockResolvedValue({ data: row, error })
+}
 function deskRows(data: unknown, error: unknown = null) {
   rpc.mockResolvedValue({ data, error })
 }
@@ -61,6 +65,7 @@ beforeEach(() => {
   }
   hospitalRow(null)
   adminRow(null)
+  profileRow(null)
   deskRows([])
 })
 
@@ -123,11 +128,11 @@ describe('readMe(): 화면을 그리기 전(서버) 내 사용자·병원 줄·�
     await expect(readMe()).resolves.toMatchObject({ isAdmin: false })
   })
 
-  it('AC-002.2: 세션과 hospitals·admins의 내 줄만 읽고, 아무것도 쓰지 않는다', async () => {
+  it('AC-002.2·AC-6606.5: 세션과 hospitals·admins의 내 줄(승인된 원장은 병원 정보 이름 한 칸까지)만 읽고, 아무것도 쓰지 않는다', async () => {
     hospitalRow(ROW)
     adminRow({ user_id: 'user-1' })
     await readMe()
-    expect(from.mock.calls.map(([name]) => name).sort()).toEqual(['admins', 'hospitals'])
+    expect(from.mock.calls.map(([name]) => name).sort()).toEqual(['admins', 'clinic_profiles', 'hospitals'])
     for (const t of Object.values(tables)) {
       for (const w of Object.values(t.writes)) expect(w).not.toHaveBeenCalled()
     }
@@ -260,5 +265,86 @@ describe('readMe(): 데스크 줄 읽기 (desk-feedback AC-6305.1)', () => {
     deskRows([DESK_ROW])
     await expect(readMe()).rejects.toBeInstanceOf(HospitalReadError)
     expect(rpc).not.toHaveBeenCalled()
+  })
+})
+
+// clinic-profile REQ-6606 AC-6606.5·AC-6602.8 (design.md 4절, ADR-033): 승인된 원장이면 clinic_profiles에서 display_name 한 칸만 읽어
+// 헤더·탭 제목의 병원 이름(hospital.name)으로 쓴다. 줄이 없거나·비었거나·읽지 못하면 가입 이름 그대로다. 쓰지 않는다. 데스크는 my_desk()가 이미 바꾼 이름이다
+describe('readMe(): 병원 정보 이름 (clinic-profile AC-6606.5·AC-6602.8)', () => {
+  it('AC-6606.5: 승인된 원장이고 병원 정보 이름이 있으면 hospital.name은 그 이름이다(가입 이름·다른 칸은 그대로)', async () => {
+    hospitalRow(ROW)
+    profileRow({ display_name: '새이름정형외과' })
+    const me = await readMe()
+    expect(me.hospital).toEqual({
+      id: 'hospital-1',
+      name: '새이름정형외과',
+      applicantName: '김가나',
+      phone: '0212345678',
+      email: 'me@example.com',
+      status: 'approved',
+      createdAt: '2026-10-28T01:00:00+00:00',
+    })
+  })
+
+  it('AC-6606.5: clinic_profiles에서는 display_name 한 칸만, 내 병원 줄(hospital_id = 내 병원 id)만 maybeSingle로 읽는다', async () => {
+    hospitalRow(ROW)
+    profileRow({ display_name: '새이름정형외과' })
+    await readMe()
+    expect(from).toHaveBeenCalledWith('clinic_profiles')
+    expect(tables.clinic_profiles.select).toHaveBeenCalledExactlyOnceWith('display_name')
+    expect(tables.clinic_profiles.eq).toHaveBeenCalledExactlyOnceWith('hospital_id', 'hospital-1')
+    expect(tables.clinic_profiles.maybeSingle).toHaveBeenCalledTimes(1)
+    for (const t of Object.values(tables)) {
+      for (const w of Object.values(t.writes)) expect(w).not.toHaveBeenCalled()
+    }
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('AC-6606.5: 병원 정보 줄이 없으면 가입 이름이다', async () => {
+    hospitalRow(ROW)
+    profileRow(null)
+    await expect(readMe()).resolves.toMatchObject({ hospital: { name: '가나정형외과의원' } })
+  })
+
+  it.each([
+    ['null', null],
+    ['빈 글자', ''],
+    ['빈칸만', '   '],
+    ['글자 아님', 7],
+  ])('AC-6606.5: 병원 정보 이름이 비었거나 글자가 아니면(%s) 가입 이름이다', async (_, displayName) => {
+    hospitalRow(ROW)
+    profileRow({ display_name: displayName })
+    await expect(readMe()).resolves.toMatchObject({ hospital: { name: '가나정형외과의원' } })
+  })
+
+  it.each([
+    ['표 없음(SQL을 붙여 넣기 전)', 'PGRST205'],
+    ['권한 없음', '42501'],
+  ])('AC-6606.5: 병원 정보 이름 읽기가 오류를 돌려주면(%s) 던지지 않고 가입 이름이다(오류 화면으로 보내지 않는다)', async (_, code) => {
+    hospitalRow(ROW)
+    profileRow(null, { code, message: 'db error' })
+    await expect(readMe()).resolves.toMatchObject({ hospital: { name: '가나정형외과의원', status: 'approved' } })
+  })
+
+  it('AC-6606.5: 병원 정보 이름 읽기가 던져도 가입 이름이다', async () => {
+    hospitalRow(ROW)
+    tables.clinic_profiles.maybeSingle.mockRejectedValue(new Error('network'))
+    await expect(readMe()).resolves.toMatchObject({ hospital: { name: '가나정형외과의원' } })
+  })
+
+  it.each(['pending', 'rejected'] as const)('AC-6606.5: 승인 전 원장(%s)은 병원 정보를 읽지 않고 가입 이름이다', async (status) => {
+    hospitalRow({ ...ROW, status })
+    profileRow({ display_name: '새이름정형외과' })
+    const me = await readMe()
+    expect(me.hospital?.name).toBe('가나정형외과의원')
+    expect(from.mock.calls.map(([name]) => name).sort()).toEqual(['admins', 'hospitals'])
+  })
+
+  it('AC-6606.5: 데스크는 병원 정보를 따로 읽지 않는다 — 이름은 my_desk()가 준 이름 그대로다', async () => {
+    deskRows([{ hospital_id: 'hospital-a', hospital_name: '새이름정형외과' }])
+    profileRow({ display_name: '다른 이름' })
+    const me = await readMe()
+    expect(me.desk).toEqual({ hospitalId: 'hospital-a', hospitalName: '새이름정형외과' })
+    expect(from.mock.calls.map(([name]) => name).sort()).toEqual(['admins', 'hospitals'])
   })
 })

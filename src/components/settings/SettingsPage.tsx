@@ -1,12 +1,14 @@
 import Link from 'next/link'
 import { CashFloatSetting } from './CashFloatSetting'
+import { ClinicProfileCard } from './ClinicProfileCard'
 import { DeskAccounts } from './DeskAccounts'
 import { DxLinks } from './DxLinks'
 import { HospitalPhrases } from './HospitalPhrases'
 import { InstallFilesCard } from './InstallFilesCard'
 import { RuleSettings } from './RuleSettings'
 
-// 설정 화면 (precheck REQ-012 AC-012.6, 목업 화면 10). 제목 '설정' → 안쪽 메뉴 [청구 | 비트 PC 연결] → 맨 위 '비트 PC 연결 · 설치 파일' 칸
+// 설정 화면 (precheck REQ-012 AC-012.6, 목업 화면 10). 제목 '설정' → 안쪽 메뉴 [설정 | 비트 PC 연결](옛 [청구], clinic-profile AC-6602.1) →
+// 맨 위 '병원 정보' 칸(clinic-profile AC-6602.1, 원장만 — 데스크에게는 칸이 스스로 그리지 않는다) → '비트 PC 연결 · 설치 파일' 칸
 // (helper-download AC-5103.2) → '청구'의 패널들(이름은 settings-tab-name AC-5201.1) → 맨 아래 '데스크 계정'(desk-feedback AC-6304.2, 원장만).
 // 안쪽 메뉴의 모양은 비트 PC 연결 화면(SetupScreen의 SettingsSubnav, AC-034.2)과 같다. 페이지 이동 링크라 tablist가 아니고 aria-current를 쓴다
 const subBase =
@@ -21,13 +23,14 @@ export function SettingsPage() {
         <h1 className="text-title font-semibold text-ink">설정</h1>
         <nav aria-label="설정 안 메뉴" className="flex border-b border-line">
           <Link href="/settings" aria-current="page" className={subCurrent}>
-            청구
+            설정
           </Link>
           <Link href="/claim/setup" className={subIdle}>
             비트 PC 연결
           </Link>
         </nav>
       </div>
+      <ClinicProfileCard />
       <InstallFilesCard />
       <RuleSettings />
       <HospitalPhrases />
