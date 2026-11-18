@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react'
 import { LogoMark } from '@/components/common/LogoMark'
 import { AccountMenu } from './AccountMenu'
+import { DeskGate } from './DeskGate'
 import { KstClock } from './KstClock'
+import { RoleProvider } from './role'
 import { TabBar } from './TabBar'
 
 // 건너뛰기 링크 모양(ui-90 AC-403.1, UI_GUIDE '앱 틀' 건너뛰기 링크): 44px·surface·1px line·rounded-float·shadow-float·body 600·2px accent 초점 고리
@@ -17,17 +19,29 @@ const SKIP_LINK =
 // 넓힘(claim-memo-fit REQ-4801): 뿌리는 이름 붙은 묶음 group/app(이름 없는 group은 안쪽 group-hover를 앱 전체에 걸어 쓰지 않는다).
 // 1024px 이상에서 앱 안에 [data-wide-page](메모 칸)가 있으면 감싸개 넷(띠 안쪽·탭 줄 둘·본문 안쪽)이 같이 1280 제한을 풀어 왼쪽 끝이 맞는다.
 // 관리자 여부는 계정 메뉴([가입 승인])에만 넘긴다(탭 줄에는 관리자 탭이 없다, tab-frame REQ-303·304)
+// 데스크 계정(desk 참, desk-feedback REQ-6306): 탭 셋·계정 칩 '데스크', 본문은 RoleProvider desk(useDesk 참) + DeskGate(주소마다 본문·막힌 화면·수납일지로 바꾸기).
+// desk가 없거나 거짓이면 지금 그대로다(감싸개 없음)
 export function AppShell({
   hospitalName,
   email,
   isAdmin,
+  desk = false,
   children,
 }: {
   hospitalName: string
   email: string
   isAdmin: boolean
+  /** 데스크 계정(desk-feedback). 없으면 거짓 */
+  desk?: boolean
   children: ReactNode
 }) {
+  const body = desk ? (
+    <RoleProvider desk>
+      <DeskGate>{children}</DeskGate>
+    </RoleProvider>
+  ) : (
+    children
+  )
   return (
     <div className="group/app app-ui flex min-h-dvh flex-col bg-surface text-ink">
       {/* 평소에는 화면 읽기에만. 키보드 초점이면 왼쪽 위 띠 위에 뜬다(시안 .skip: 위 6px·왼쪽 8px·붙는 묶음 z 10 위).
@@ -46,11 +60,11 @@ export function AppShell({
             </div>
             <div className="flex shrink-0 items-center gap-4">
               <KstClock />
-              <AccountMenu email={email} hospitalName={hospitalName} isAdmin={isAdmin} />
+              <AccountMenu email={email} hospitalName={hospitalName} isAdmin={isAdmin} desk={desk} />
             </div>
           </div>
         </header>
-        <TabBar />
+        <TabBar desk={desk} />
       </div>
       {/* 건너뛰기 링크가 가리키는 본문. 초점을 받을 수 있게 tabIndex -1(Tab 차례에는 들지 않는다).
           옮겨도 첫 줄이 붙는 묶음에 가리지 않게 scroll-margin = 묶음 높이: 띠 57(56 + 아래 선 1) + 탭 줄 45(44 + 아래 선 1) = 102px,
@@ -60,7 +74,7 @@ export function AppShell({
         tabIndex={-1}
         className="flex-1 scroll-mt-25.5 bg-surface focus:outline-none max-md:scroll-mt-23.5"
       >
-        <div className="mx-auto w-full max-w-7xl px-6 pt-6 lg:group-has-[[data-wide-page]]/app:max-w-none pb-12 max-md:px-4 max-md:pt-4 max-md:pb-8 print:p-0">{children}</div>
+        <div className="mx-auto w-full max-w-7xl px-6 pt-6 lg:group-has-[[data-wide-page]]/app:max-w-none pb-12 max-md:px-4 max-md:pt-4 max-md:pb-8 print:p-0">{body}</div>
       </main>
     </div>
   )

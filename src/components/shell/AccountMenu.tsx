@@ -11,15 +11,32 @@ import { ADMIN_LINK } from './menu'
 // 단추에는 로그인한 구글 이메일(plan.md §6-4, design.md '계정 단추에는 이메일'). 폰은 44×44 아이콘만, 이메일은 aria-label.
 // 메뉴: 머리(이메일·병원 이름·관리자면 "관리자 계정" 칩) + 항목([가입 승인]은 관리자만, tab-frame REQ-304, 숫자·칩 없음 ui-90 AC-417.2 → [로그아웃], 꾸밈 Icon logout ui-90 AC-416.7).
 // 열면 첫 항목에 초점, ↓·↑로 항목 사이를 돈다. 바깥 누름·Esc·Tab으로 닫힌다
+// 데스크 계정(desk 참, desk-feedback AC-6306.2): 단추 안 메일 앞(폰에서도)과 메뉴 머리에 warning 칩 '데스크'. [가입 승인]·'관리자 계정'은 없다
 
 // PC: 보조 작은 단추(32px·1px line-strong·4px·small 500) 안에 사람 아이콘 16 · 이메일 · 아래 화살표.
 // 폰: 44×44 아이콘 단추·테두리 없음·아이콘 ink-2. 올림과 열린 동안 바탕 canvas(색 150ms, UI_GUIDE '짧은 반응 허용')
-const buttonClass = `${ds.button.secondarySmall} transition aria-expanded:bg-canvas max-md:size-11 max-md:justify-center max-md:border-transparent max-md:px-0 max-md:text-ink-2`
+const buttonBase = `${ds.button.secondarySmall} transition aria-expanded:bg-canvas max-md:justify-center max-md:border-transparent max-md:text-ink-2`
+const buttonClass = `${buttonBase} max-md:size-11 max-md:px-0`
+// 데스크: 폰에서도 칩이 보이게 폭을 고정하지 않는다(44px 높이·좌우 8px, 아이콘 + 칩)
+const deskButtonClass = `${buttonBase} max-md:h-11 max-md:px-2`
+const DESK_CHIP = '데스크'
 // 메뉴 항목: 36px(폰 44px), 올림 canvas(150ms), 누름 아래 1px. 초점 고리는 떠 있는 층 안쪽에
 const itemClass =
   'flex h-9 w-full cursor-pointer items-center gap-2 rounded-control px-3 text-left text-body text-ink no-underline transition hover:bg-canvas active:translate-y-px focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-11'
 
-export function AccountMenu({ email, hospitalName, isAdmin }: { email: string; hospitalName: string; isAdmin: boolean }) {
+export function AccountMenu({
+  email,
+  hospitalName,
+  isAdmin,
+  desk = false,
+}: {
+  email: string
+  hospitalName: string
+  isAdmin: boolean
+  desk?: boolean
+}) {
+  // 데스크는 관리자 메뉴를 보이지 않는다(데스크의 관리자 값은 늘 거짓이지만, 받은 값과 상관없이)
+  const admin = isAdmin && !desk
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -68,14 +85,15 @@ export function AccountMenu({ email, hospitalName, isAdmin }: { email: string; h
       <button
         ref={buttonRef}
         type="button"
-        aria-label={`${email} 계정 메뉴`}
+        aria-label={desk ? `${email} 데스크 계정 메뉴` : `${email} 계정 메뉴`}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         onClick={() => setOpen((v) => !v)}
-        className={buttonClass}
+        className={desk ? deskButtonClass : buttonClass}
       >
         <Icon name="user" className="shrink-0" />
+        {desk && <span className={ds.chip.warning}>{DESK_CHIP}</span>}
         {/* 768px 이상은 최대 240px이고 그보다 길 때만 말줄임이다(ui-90 AC-416.6, 이름은 aria-label에 전체). 768px 미만은 아이콘만 */}
         <span className="max-w-32 truncate max-md:hidden md:max-w-60">{email}</span>
         <Icon name="chev" className="shrink-0 max-md:hidden" />
@@ -88,10 +106,11 @@ export function AccountMenu({ email, hospitalName, isAdmin }: { email: string; h
           <div id={headId} className="flex flex-col gap-0.5 px-3 pt-2 pb-3">
             <span className="truncate text-small font-medium text-ink">{email}</span>
             <span className="truncate text-caption text-muted">{hospitalName}</span>
-            {isAdmin && <span className={`${ds.chip.neutral} mt-1.5 self-start`}>관리자 계정</span>}
+            {admin && <span className={`${ds.chip.neutral} mt-1.5 self-start`}>관리자 계정</span>}
+            {desk && <span className={`${ds.chip.warning} mt-1.5 self-start`}>{DESK_CHIP}</span>}
           </div>
           <div ref={menuRef} id={menuId} role="menu" aria-label="계정" aria-describedby={headId} className="border-t border-line pt-1">
-            {isAdmin && (
+            {admin && (
               // 관리자만: 가입 승인 화면(/admin). 누르면 메뉴를 닫고 링크로 간다
               <Link href={ADMIN_LINK.href} role="menuitem" className={itemClass} onClick={() => setOpen(false)}>
                 <Icon name="userCheck" className="shrink-0 text-ink-2" />

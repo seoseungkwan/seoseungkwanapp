@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { RoleProvider } from '@/components/shell/role'
 import { ds } from '@/components/ui/classes'
 import type { BitDiffer } from '@/lib/worklog/bitFill'
 import { emptyWorklogDay, type WorklogDay, type WorklogNumberKey } from '@/types/worklog'
@@ -180,5 +181,43 @@ describe('AC-017.3 비트 숫자와 다른 칸 목록', () => {
     notes({ bitFields: ['cashIn'] })
     expect(screen.queryByText('비트 숫자와 다른 칸이 있어요')).toBeNull()
     expect(screen.queryByRole('list')).toBeNull()
+  })
+})
+
+// desk-feedback AC-6306.4: 데스크는 비트 PC 연결 화면(/claim/setup)을 못 연다 → 그리로 가는 링크만 숨기고 나머지는 그대로
+describe('AC-6306.4 데스크 — 연결 링크 숨김', () => {
+  const deskLine = (status: BitFillStatus, desk = true) => {
+    const onReload = vi.fn()
+    render(
+      <RoleProvider desk={desk}>
+        <BitNotice status={status} lastReadAt={AT_1420} onReload={onReload} />
+      </RoleProvider>,
+    )
+    return { onReload }
+  }
+
+  it('AC-6306.4: 데스크면 setup-needed 안내 글은 그대로이고 "연결하러 가기"(/claim/setup) 링크가 없다', () => {
+    deskLine('setup-needed')
+    expect(screen.getByText(TEXT.setup)).toBeTruthy()
+    expect(screen.queryByRole('link')).toBeNull()
+    expect(screen.queryByText('연결하러 가기')).toBeNull()
+    expect(document.querySelector('a[href="/claim/setup"]')).toBeNull()
+    expect(loadButton()).toBeNull()
+  })
+
+  it.each([
+    ['ready', '비트 숫자를 14:20에 불러왔어요'],
+    ['failed', TEXT.failed],
+    ['unconfirmed', TEXT.unconfirmed],
+  ] as const)('AC-6306.4: 데스크도 %s의 글과 [지금 불러오기]는 그대로다', (status, text) => {
+    const { onReload } = deskLine(status)
+    expect(screen.getByText(text)).toBeTruthy()
+    fireEvent.click(loadButton()!)
+    expect(onReload).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-6306.4: 원장(RoleProvider desk={false})은 지금처럼 "연결하러 가기"(/claim/setup) 링크가 있다', () => {
+    deskLine('setup-needed', false)
+    expect(screen.getByRole('link', { name: '연결하러 가기' }).getAttribute('href')).toBe('/claim/setup')
   })
 })

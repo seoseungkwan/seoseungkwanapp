@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState, type FocusEvent, type MouseEvent } from 'react'
 import { LoadBar } from './LoadBar'
-import { MENU, PRIMARY_MENU, currentMenuLabel } from './menu'
+import { DESK_MENU, MENU, PRIMARY_MENU, currentMenuLabel } from './menu'
 import { MoreMenu } from './MoreMenu'
 
 // 탭 줄 (tab-frame REQ-303, AC-008.7, b2b-redesign AC-218.2, ui-90 REQ-405, dashboard-ux REQ-2702, UI_GUIDE '앱 화면' 탭 줄·누른 탭 먼저).
@@ -14,6 +14,7 @@ import { MoreMenu } from './MoreMenu'
 // 감싸개는 자리 기준(position)이 아니어서 768px 미만 판은 그대로 nav 기준 전체 폭이다.
 // 모두 자기 주소로 가는 링크다. 화면이 아직 없는 기능은 [더보기] 판에 있고, 준비 중임은 판의 칩과 그 주소의 준비 중 화면이 알린다.
 // 1024px 미만은 탭 띠만 옆으로 밀린다(얇은 스크롤바·줄바꿈 없음, [더보기] 글자가 길어 넘칠 때). 띠 끝 흐림은 넣지 않는다(UI_GUIDE '탭 줄', 시안의 끝 흐림과 다르다)
+// 데스크 계정(desk 참, desk-feedback AC-6306.2): 탭 띠 = 업무일지·수납일지·예약(DESK_MENU)뿐이고 [더보기]가 없다. 관리자 여부는 여전히 받지 않는다
 
 // 탭 공통: 모든 폭 44px·좌우 12px·body, 키보드 초점은 탭 안쪽 2px accent 고리(4px 모서리). 올림 글자색은 짧게 바뀐다(transition 150ms, UI_GUIDE '짧은 반응 허용').
 // 굵기·글자색은 종류마다 하나씩 준다. 전역 a 규칙·브라우저 기본 밑줄에 기대지 않게 글자색·no-underline을 직접 준다
@@ -83,8 +84,9 @@ function revealInStrip(strip: HTMLElement | null, item: Element | null | undefin
 // 새 탭·새 창으로 여는 누름(보조키·왼쪽 아닌 단추)은 이 창의 경로를 바꾸지 않는다 → 누른 탭으로 정하지 않는다
 const opensElsewhere = (e: MouseEvent) => e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey
 
-export function TabBar() {
+export function TabBar({ desk = false }: { desk?: boolean } = {}) {
   const pathname = usePathname()
+  const tabs = desk ? DESK_MENU : PRIMARY_MENU
   const stripRef = useRef<HTMLDivElement>(null)
   // 지금 탭: 탭의 path·owns 중 가장 길게 맞는 자리(menu.ts, /claim/setup은 청구가 아니라 설정 자리). /admin에는 지금 탭이 없다
   const current = currentMenuLabel(pathname)
@@ -126,7 +128,7 @@ export function TabBar() {
           {/* 탭 줄 하나(감싸개를 더하지 않는다). 1024px 이상은 위쪽 띠 안쪽과 같은 1280 폭·좌우 24px로 가운데에 놓인다.
               첫 탭은 왼쪽으로 12px 당겨 글자가 로고 왼쪽 끝과 맞는다(모든 폭, 시안의 폰 줄도 글자 16px로 맞음) */}
           <div className="flex w-max min-w-full items-stretch px-6 max-md:px-4 lg:mx-auto lg:w-full lg:min-w-0 lg:max-w-7xl lg:group-has-[[data-wide-page]]/app:max-w-none [&>:first-child]:-ml-3">
-            {PRIMARY_MENU.map((item) => (
+            {tabs.map((item) => (
               <TabLink
                 key={item.label}
                 label={item.label}
@@ -140,7 +142,7 @@ export function TabBar() {
             ))}
           </div>
         </div>
-        <MoreMenu pathname={pathname} current={current} shown={shownLabel} pending={pendingLabel} onPress={press} />
+        {!desk && <MoreMenu pathname={pathname} current={current} shown={shownLabel} pending={pendingLabel} onPress={press} />}
       </div>
       <LoadBar key={presses} active={pending !== null} />
     </nav>

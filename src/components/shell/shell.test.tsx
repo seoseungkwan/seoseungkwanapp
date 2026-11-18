@@ -13,7 +13,8 @@ import { AccountMenu } from './AccountMenu'
 import { AppShell } from './AppShell'
 import { KstClock } from './KstClock'
 import * as menuModule from './menu'
-import { ADMIN_LINK, MENU, MORE_MENU, PRIMARY_MENU, currentMenuLabel } from './menu'
+import { ADMIN_LINK, DESK_HOME, DESK_MENU, MENU, MORE_MENU, PRIMARY_MENU, currentMenuLabel, isDeskPath } from './menu'
+import { useDesk } from './role'
 import { TabBar } from './TabBar'
 
 // 시험 내용과 상관없이, PC가 바쁠 때 기본 5초를 넘겨 실패하는 일만 막는다
@@ -22,9 +23,10 @@ vi.setConfig({ testTimeout: 60_000 })
 // 앱 틀 (REQ-008, b2b-redesign REQ-218, design.md '앱 틀·대시보드·관리자', UI_GUIDE '앱 화면' 앱 틀·탭·폰).
 // jsdom은 CSS를 계산하지 않는다 → 동작·역할은 Testing Library로, 모양은 정해 둔 클래스가 있는지로 본다(보이는 모양은 TASK-18 스크린샷)
 
-const { signOut, pathname } = vi.hoisted(() => ({ signOut: vi.fn(), pathname: vi.fn(() => '/dashboard') }))
+// 데스크 문지기(DeskGate, desk-feedback AC-6306.3)가 쓰는 useRouter도 흉내 낸다(같은 router를 늘 돌려준다 — Next처럼)
+const { signOut, pathname, router } = vi.hoisted(() => ({ signOut: vi.fn(), pathname: vi.fn(() => '/dashboard'), router: { replace: vi.fn() } }))
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: () => ({ auth: { signOut } }) }))
-vi.mock('next/navigation', () => ({ usePathname: pathname }))
+vi.mock('next/navigation', () => ({ usePathname: pathname, useRouter: () => router }))
 
 const tokens = (classes: string) => classes.split(/\s+/).filter(Boolean)
 // 공통 아이콘 그림(svg 안쪽 글자)
@@ -66,6 +68,7 @@ const scrollIntoView = vi.fn()
 
 beforeEach(() => {
   pathname.mockReturnValue('/dashboard')
+  router.replace.mockReset()
   signOut.mockReset()
   signOut.mockResolvedValue({ error: null })
   scrollIntoView.mockReset()
@@ -216,6 +219,46 @@ describe('menu', () => {
     expect(MORE_MENU).toHaveLength(7)
     expect(MORE_MENU.map((m) => m.label)).toEqual(['고시·공지', 'AI 리포트', '서식', '직원', '재고', '주소록', '설정'])
     for (const item of [...PRIMARY_MENU, ...MORE_MENU]) expect(MENU, item.label).toContain(item)
+  })
+
+  // desk-feedback REQ-6306: 데스크 계정은 업무일지·수납일지·예약 세 탭만 쓴다. 첫 화면은 수납일지
+  it('AC-6306.1: DESK_MENU는 업무일지·수납일지·예약(MENU 차례, MENU 항목 그대로)이고 데스크 첫 화면 DESK_HOME은 /sunap이다', () => {
+    expect(DESK_MENU.map((m) => [m.label, m.path])).toEqual([
+      ['업무일지', '/worklog'],
+      ['수납일지', '/sunap'],
+      ['예약', '/calendar'],
+    ])
+    for (const item of DESK_MENU) expect(MENU, item.label).toContain(item)
+    expect(DESK_MENU).toEqual(MENU.filter((m) => DESK_MENU.includes(m)))
+    expect(DESK_HOME).toBe('/sunap')
+    expect(DESK_MENU.map((m) => m.path)).toContain(DESK_HOME)
+  })
+
+  it.each(['/worklog', '/worklog/x', '/sunap', '/sunap/2026-11-18', '/calendar', '/calendar/x/y'])('AC-6306.1: isDeskPath(%s)는 참이다(세 탭 주소와 그 아래)', (path) => {
+    expect(isDeskPath(path)).toBe(true)
+  })
+
+  it.each([
+    '/',
+    '/dashboard',
+    '/stats',
+    '/stats/x',
+    '/claim',
+    '/claim/setup',
+    '/patients',
+    '/ai-report',
+    '/forms',
+    '/notices',
+    '/settings',
+    '/admin',
+    '/login',
+    '/signup',
+    '/pending',
+    '/worklogs',
+    '/sunapx',
+    '/calendarx',
+  ])('AC-6306.1: isDeskPath(%s)는 거짓이다', (path) => {
+    expect(isDeskPath(path)).toBe(false)
   })
 })
 
@@ -450,6 +493,45 @@ describe('TabBar', () => {
     expect(nav().scrollLeft).toBe(0)
     expect(scrollIntoView).not.toHaveBeenCalled()
     expect(scrollTo).not.toHaveBeenCalled()
+  })
+
+  // desk-feedback AC-6306.2: 데스크는 세 탭만, [더보기] 없음
+  const DESK_PATHS = [
+    ['업무일지', '/worklog'],
+    ['수납일지', '/sunap'],
+    ['예약', '/calendar'],
+  ]
+
+  it('AC-6306.2: desk면 탭 띠에 업무일지·수납일지·예약 세 링크(MENU.path)만 이 차례로 있고 [더보기] 단추·판이 없다. 지금 주소(/sunap)의 탭이 지금 탭이다', () => {
+    pathname.mockReturnValue('/sunap')
+    render(<TabBar desk />)
+    expect(tabItems().map((el) => el.textContent)).toEqual(['업무일지', '수납일지', '예약'])
+    const links = within(strip()).getAllByRole('link')
+    expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual(DESK_PATHS)
+    expect(within(nav()).getAllByRole('link')).toEqual(links)
+    expect(within(nav()).queryAllByRole('button')).toEqual([])
+    expect(within(nav()).queryByText(/더보기/)).toBeNull()
+    // 탭 줄 감싸개 안에는 탭 띠 하나뿐이다([더보기] 감싸개 없음). 불러오기 줄은 그대로 nav 끝
+    expect(Array.from(line().children)).toEqual([strip()])
+    expect(Array.from(nav().children)).toEqual([line(), loadBar()])
+    expect(within(strip()).getByRole('link', { name: '수납일지' }).getAttribute('aria-current')).toBe('page')
+    expect(nav().querySelectorAll('[aria-current]')).toHaveLength(1)
+    hasAll(within(strip()).getByRole('link', { name: '업무일지' }), IDLE_LOOK)
+  })
+
+  it('AC-6306.2: desk가 막힌 주소(/stats)에 있으면 탭 띠에 지금 탭이 없다(통계 탭이 없다)', () => {
+    pathname.mockReturnValue('/stats')
+    render(<TabBar desk />)
+    expect(tabItems().map((el) => el.textContent)).toEqual(['업무일지', '수납일지', '예약'])
+    expect(nav().querySelectorAll('[aria-current]')).toHaveLength(0)
+    expect(within(nav()).queryByRole('link', { name: '통계' })).toBeNull()
+  })
+
+  it('AC-6306.2: desk={false}면 지금과 같다 — 주요 메뉴 일곱과 [더보기]', () => {
+    render(<TabBar desk={false} />)
+    expect(tabItems().map((el) => el.textContent)).toEqual(PRIMARY)
+    expect(moreButton().textContent).toBe('더보기')
+    expect(Array.from(line().children)).toEqual([strip(), moreWrap()])
   })
 })
 
@@ -1191,6 +1273,53 @@ describe('AccountMenu', () => {
     expect(screen.queryByRole('menu')).toBeNull()
     expect(document.querySelector('[class*="starting:opacity-0"]')).toBeNull()
   })
+
+  // desk-feedback AC-6306.2: 데스크 계정은 계정 단추(메일 앞)와 메뉴 머리에 warning 칩 '데스크'. [가입 승인]은 없다
+  const menuHead = () => document.getElementById(screen.getByRole('menu').getAttribute('aria-describedby') as string) as HTMLElement
+
+  it('AC-6306.2: desk면 계정 단추 안 메일 앞에 warning 칩 "데스크"가 있고 768px 미만에서도 보인다(단추는 44px 높이, 폭은 칩이 들어가게 고정하지 않는다)', () => {
+    render(<AccountMenu email={EMAIL} hospitalName={HOSPITAL} isAdmin={false} desk />)
+    const chip = within(button()).getByText('데스크')
+    expect(chip.tagName).toBe('SPAN')
+    hasAll(chip, ds.chip.warning)
+    expect(classesOf(chip).filter((c) => /(?:^|:)(?:hidden|sr-only)$/.test(c))).toEqual([])
+    const mail = within(button()).getByText(EMAIL)
+    expect(chip.compareDocumentPosition(mail) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(button().textContent).toBe(`데스크${EMAIL}`)
+    // 사람 아이콘 · 칩 · 이메일 · 아래 화살표
+    expect(Array.from(button().children).map((el) => el.tagName.toLowerCase())).toEqual(['svg', 'span', 'span', 'svg'])
+    hasAll(button(), `${ds.button.secondarySmall} max-md:h-11 max-md:border-transparent`)
+    hasNone(button(), 'max-md:size-11')
+    // 화면 읽기 이름은 이메일로 시작한다
+    expect(button().getAttribute('aria-label')?.startsWith(EMAIL)).toBe(true)
+  })
+
+  it('AC-6306.2: desk면 메뉴 머리(이메일·병원 이름)에도 warning 칩 "데스크"가 있고, 관리자 값이 참이어도 [가입 승인]·"관리자 계정"이 없다(항목은 [로그아웃] 하나)', async () => {
+    const user = userEvent.setup()
+    render(<AccountMenu email={EMAIL} hospitalName={HOSPITAL} isAdmin desk />)
+    await user.click(button())
+    const head = menuHead()
+    expect(within(head).getByText(EMAIL)).toBeTruthy()
+    expect(within(head).getByText(HOSPITAL)).toBeTruthy()
+    hasAll(within(head).getByText('데스크'), ds.chip.warning)
+    expect(within(head).queryByText('관리자 계정')).toBeNull()
+    expect(menuItems().map((i) => i.textContent)).toEqual(['로그아웃'])
+    expect(screen.queryByText('가입 승인')).toBeNull()
+    expect(screen.queryByRole('link')).toBeNull()
+  })
+
+  it('AC-6306.2: desk가 없거나 거짓이면 계정 단추·메뉴 머리에 "데스크" 칩이 없고 단추는 지금 모양(폰 44×44)이다', async () => {
+    for (const desk of [undefined, false]) {
+      const user = userEvent.setup()
+      render(<AccountMenu email={EMAIL} hospitalName={HOSPITAL} isAdmin desk={desk} />)
+      expect(button().textContent).toBe(EMAIL)
+      hasAll(button(), 'max-md:size-11')
+      await user.click(button())
+      expect(within(menuHead()).queryByText('데스크')).toBeNull()
+      expect(menuItems().map((i) => i.textContent)).toEqual(['가입 승인', '로그아웃'])
+      cleanup()
+    }
+  })
 })
 
 describe('KstClock', () => {
@@ -1490,6 +1619,64 @@ describe('AppShell', () => {
     hasNone(within(banner).getByText(HOSPITAL), 'max-md:hidden')
     hasNone(banner.querySelector('svg') as SVGElement, 'max-md:hidden')
     expect(screen.queryByRole('button', { name: /메뉴 열기/ })).toBeNull()
+  })
+
+  // desk-feedback AC-6306.2·AC-6306.3: AppShell desk → 세 탭·칩, 본문은 RoleProvider desk + DeskGate 안
+  function DeskProbe() {
+    return <p>{useDesk() ? '데스크 본문' : '원장 본문'}</p>
+  }
+  const deskShell = (desk?: boolean) => (
+    <AppShell hospitalName={HOSPITAL} email={EMAIL} isAdmin={false} desk={desk}>
+      <DeskProbe />
+    </AppShell>
+  )
+  const BLOCKED = '데스크 계정은 볼 수 없는 화면이에요'
+
+  it('AC-6306.2·AC-6306.3: desk면 탭은 업무일지·수납일지·예약 셋([더보기] 없음)이고 계정 단추에 칩 "데스크"가 있다. 세 탭 주소(/sunap)에서는 본문을 그대로 그리고 본문 안 useDesk()가 참이다', () => {
+    pathname.mockReturnValue('/sunap')
+    render(deskShell(true))
+    expect(within(nav()).getAllByRole('link').map((a) => a.textContent)).toEqual(['업무일지', '수납일지', '예약'])
+    expect(within(nav()).queryAllByRole('button')).toEqual([])
+    const account = within(screen.getByRole('banner')).getByRole('button', { name: new RegExp(EMAIL) })
+    hasAll(within(account).getByText('데스크'), ds.chip.warning)
+    const main = screen.getByRole('main')
+    expect(within(main).getByText('데스크 본문')).toBeTruthy()
+    expect(within(main).queryByText(BLOCKED)).toBeNull()
+    expect(router.replace).not.toHaveBeenCalled()
+    // 감싸개(RoleProvider·DeskGate)는 마크업을 더하지 않는다 — 본문 감싸개 바로 안이 페이지다
+    expect(main.children).toHaveLength(1)
+    expect((main.firstElementChild as HTMLElement).firstElementChild?.textContent).toBe('데스크 본문')
+  })
+
+  it('AC-6306.3: desk면 막힌 주소(/stats)는 본문 대신 막힌 화면이고, /dashboard는 /sunap으로 바꾸며(router.replace) 그동안 본문이 비어 있다. 옆 화면으로 옮겨 가면 주소에 따라 바로 바뀐다', () => {
+    pathname.mockReturnValue('/stats')
+    const { rerender } = render(deskShell(true))
+    const inner = () => screen.getByRole('main').firstElementChild as HTMLElement
+    expect(within(inner()).getByRole('heading', { level: 1 }).textContent).toBe(BLOCKED)
+    expect(within(inner()).queryByText('데스크 본문')).toBeNull()
+    expect(within(inner()).getByRole('link', { name: '수납일지로 가기' }).getAttribute('href')).toBe('/sunap')
+    pathname.mockReturnValue('/dashboard')
+    rerender(deskShell(true))
+    expect(inner().children).toHaveLength(0)
+    expect(router.replace).toHaveBeenCalledExactlyOnceWith('/sunap')
+    pathname.mockReturnValue('/worklog')
+    rerender(deskShell(true))
+    expect(within(inner()).getByText('데스크 본문')).toBeTruthy()
+    expect(within(inner()).queryByText(BLOCKED)).toBeNull()
+  })
+
+  it('AC-6306.2·AC-6306.3: desk가 없거나 거짓이면 지금과 같다 — 막힌 주소(/stats)에서도 본문을 그리고 useDesk()는 거짓, 탭은 주요 메뉴 일곱과 [더보기], "데스크" 칩 없음', () => {
+    pathname.mockReturnValue('/stats')
+    for (const desk of [undefined, false]) {
+      render(deskShell(desk))
+      expect(within(screen.getByRole('main')).getByText('원장 본문')).toBeTruthy()
+      expect(screen.queryByText(BLOCKED)).toBeNull()
+      expect(tabItems().map((el) => el.textContent)).toEqual(PRIMARY)
+      expect(moreButton().textContent).toBe('더보기')
+      expect(within(screen.getByRole('banner')).queryByText('데스크')).toBeNull()
+      expect(router.replace).not.toHaveBeenCalled()
+      cleanup()
+    }
   })
 })
 
