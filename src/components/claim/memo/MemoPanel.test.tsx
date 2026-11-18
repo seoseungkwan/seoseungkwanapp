@@ -136,10 +136,10 @@ function bridge(over: { memos?: () => Promise<{ id: string; count: number }>; st
 const refusedStore = () => bridge({ store: (args) => (args.months ? Promise.reject(new BridgeError('E-BIT-HOSPITAL-MISMATCH')) : Promise.resolve({ id: 'copy', count: 1 })) })
 const memoCalls = (link: ReturnType<typeof bridge>) => link.stream.mock.calls.filter(([cmd]) => cmd === 'claim.memos').length
 
-async function toMemo(view: ScreenView | MemoScreenView = memoView(), link = bridge(), claim: ClaimView = VIEW) {
+async function toMemo(view: ScreenView | MemoScreenView = memoView(), link = bridge(), claim: ClaimView = VIEW, extra: { helperVersion?: string } = {}) {
   const worker = fakeWorker(typeof view === 'function' ? view : () => view, claim)
   const channel = claimChannel(worker)
-  const made = render(<ClaimScreen channel={channel} call={link.call as never} stream={link.stream as never} onProgress={link.onProgress as never} />)
+  const made = render(<ClaimScreen channel={channel} call={link.call as never} stream={link.stream as never} onProgress={link.onProgress as never} {...extra} />)
   const user = userEvent.setup()
   await user.click(await screen.findByRole('button', { name: '자료 불러오기' }))
   await user.click(await screen.findByRole('button', { name: '다음: 메모 확인' }))
@@ -1432,7 +1432,7 @@ describe('AC-018.17 기관기호 안내', () => {
   })
 })
 
-describe('AC-018.18 처음 질문', () => {
+describe('AC-018.18·AC-6607.4 병원 문구 없음', () => {
   it('AC-018.18·AC-6607.4: 메모·[비트에 입력]이 없고 파란 안내에 번호가 없다. 점검 결과는 그대로다', async () => {
     const view = memoView({ memoBlocked: 'E-MEMO-NO-SETTINGS', table: [] })
     view.targets = { ...view.targets, batch: [] }
@@ -1442,7 +1442,7 @@ describe('AC-018.18 처음 질문', () => {
     const user = userEvent.setup()
     await user.click(await screen.findByRole('button', { name: '자료 불러오기' }))
     await user.click(await screen.findByRole('button', { name: '다음: 메모 확인' }))
-    const info = await screen.findByRole('status', { name: '처음 질문' })
+    const info = await screen.findByRole('status', { name: '병원 문구 없음' })
     expect(info.textContent).toContain('병원 문구가 아직 없어요')
     expect(info.textContent).toContain('설정 → 병원 문구에서 처음 질문을 하거나 기본 문구로 바로 시작해 주세요.')
     expect(info.textContent).not.toContain('오류 번호')
@@ -1452,6 +1452,73 @@ describe('AC-018.18 처음 질문', () => {
     expect(screen.queryByRole('region', { name: '환자 목록' })).toBeNull()
     await user.click(screen.getByRole('button', { name: /점검 결과/ }))
     expect(screen.getByRole('heading', { level: 2, name: '환자' })).toBeTruthy()
+  })
+})
+
+describe('AC-6607.4 잠금 칸 [설정으로 가기]', () => {
+  it("AC-6607.4: 병원 문구가 없는 병원의 메모 칸 잠금 글은 E-MEMO-NO-SETTINGS 글 그대로이고 [설정으로 가기] 링크(/settings)가 있다. '처음 질문을 먼저' 글은 없다", async () => {
+    const view = memoView({ memoBlocked: 'E-MEMO-NO-SETTINGS', table: [] })
+    view.targets = { ...view.targets, batch: [] }
+    const worker = fakeWorker(() => view, { ...VIEW, memoBlocked: 'E-MEMO-NO-SETTINGS' })
+    const link = bridge()
+    render(<ClaimScreen channel={claimChannel(worker)} call={link.call as never} stream={link.stream as never} onProgress={link.onProgress as never} />)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: '자료 불러오기' }))
+    await user.click(await screen.findByRole('button', { name: '다음: 메모 확인' }))
+    const info = await screen.findByRole('status', { name: '병원 문구 없음' })
+    expect(within(info).getByText('병원 문구가 아직 없어요')).toBeTruthy()
+    expect(within(info).getByText('설정 → 병원 문구에서 처음 질문을 하거나 기본 문구로 바로 시작해 주세요.')).toBeTruthy()
+    const go = within(info).getByRole('link', { name: '설정으로 가기' })
+    expect(go.getAttribute('href')).toBe('/settings')
+    expect(info.textContent).not.toMatch(/처음 질문을 먼저|오류 번호/)
+    expect(screen.queryByRole('region', { name: '입력 방식' })).toBeNull()
+  })
+})
+
+describe('AC-6611.1 뒤에 붙이기', () => {
+  const diffRow = row('d', { compare: '다름', inBit: '비트 글 d', declined: true, chip: null })
+  /** 가짜 Worker: [뒤에 붙이기](memoApprove 'append')를 받으면 그 사람을 입력할 사람으로 옮기고 appended(본 비트 메모)를 싣는다. [바꾸지 않기]면 다시 다른 메모 있음이다 */
+  const appendView = (): ScreenView => (posted) => {
+    const last = posted.filter((m): m is Extract<PrecheckFromScreen, { type: 'memoApprove' }> => m.type === 'memoApprove' && m.visitKey === 'd').at(-1)
+    const base = memoView()
+    if (last?.approved === 'append') {
+      const moved: TargetRow = { ...diffRow, chip: '메모 바꿈', appended: '비트 글 d' }
+      delete moved.declined
+      return { ...base, targets: { ...base.targets, batch: [...base.targets.batch, moved], left: [] } }
+    }
+    return { ...base, targets: { ...base.targets, left: [{ reason: 'diff', rows: [diffRow] }] } }
+  }
+  const inDetail = (name: string) => within(detail()).queryByRole('button', { name }) as HTMLButtonElement | null
+
+  it('AC-6611.1: 도우미가 0.12.0이면 [이 메모로 바꾸기] 옆에 [뒤에 붙이기]가 있고, 누르면 그 환자는 입력할 사람으로 가 표시는 메모 뒤에 붙임·단추는 [바꾸지 않기]다', async () => {
+    const { user, worker } = await toMemo(appendView(), bridge(), VIEW, { helperVersion: '0.12.0' })
+    await user.click(rowOf('가상환자d'))
+    await waitFor(() => expect(inDetail('뒤에 붙이기')?.disabled).toBe(false))
+    expect(inDetail('이 메모로 바꾸기')!.nextElementSibling).toBe(inDetail('뒤에 붙이기'))
+    await user.click(inDetail('뒤에 붙이기')!)
+    expect(worker.of('memoApprove').at(-1)).toEqual({ type: 'memoApprove', visitKey: 'd', approved: 'append' })
+    await screen.findByRole('button', { name: '비트에 입력 (3명)' })
+    await waitFor(() => expect(within(detail()).getByText('입력할 사람 3 / 3')).toBeTruthy())
+    expect(shown()).toBe('가상환자d')
+    expect(within(detail()).getByText('메모 뒤에 붙임')).toBeTruthy()
+    expect(inDetail('뒤에 붙이기')).toBeNull()
+    expect(inDetail('이 메모로 바꾸기')).toBeNull()
+    await user.click(inDetail('바꾸지 않기')!)
+    expect(worker.of('memoApprove').at(-1)).toEqual({ type: 'memoApprove', visitKey: 'd', approved: false })
+    await screen.findByRole('button', { name: '비트에 입력 (2명)' })
+  })
+
+  it.each([['0.11.0'], ['0.12'], [undefined]])('AC-6611.1: 도우미 판이 %s(0.12.0보다 옛 판·모름)이면 [뒤에 붙이기]가 없고 [이 메모로 바꾸기]는 그대로다', async (helperVersion) => {
+    const { user } = await toMemo(appendView(), bridge(), VIEW, helperVersion === undefined ? {} : { helperVersion })
+    await user.click(rowOf('가상환자d'))
+    await waitFor(() => expect(inDetail('이 메모로 바꾸기')?.disabled).toBe(false))
+    expect(inDetail('뒤에 붙이기')).toBeNull()
+  })
+
+  it('AC-6611.1: 도우미가 0.12.0보다 새 판이어도 [뒤에 붙이기]가 있다', async () => {
+    const { user } = await toMemo(appendView(), bridge(), VIEW, { helperVersion: '0.13.2' })
+    await user.click(rowOf('가상환자d'))
+    expect(await within(detail()).findByRole('button', { name: '뒤에 붙이기' })).toBeTruthy()
   })
 })
 

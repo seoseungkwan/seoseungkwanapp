@@ -19,3 +19,6 @@ export const LIST_ORDER: readonly LeftReason[] = ['mark', 'diff', 'manual', 'hel
 
 /** 입력할 사람 묶음의 이름(목록 머리·상세 머리의 '{묶음 이름} i / n') */
 export const BATCH_NAME = '입력할 사람'
+
+/** [뒤에 붙이기]를 고른 사람의 상태 표(clinic-profile AC-6611.1). 입력할 사람 묶음에 들고 줄의 chip은 '메모 바꿈' 그대로지만 비트 메모를 덮지 않으므로 '메모 바꿈' 대신 이 글을 보인다 */
+export const APPEND_NAME = '메모 뒤에 붙임'

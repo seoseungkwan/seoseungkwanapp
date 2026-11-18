@@ -8,7 +8,7 @@ import { errorInfo } from '@/lib/errors'
 import { settingsChanged, type SettingsBundle } from '@/lib/precheck/settingsChanged'
 import { readDayCounts, type ClaimDayCount } from '@/lib/storage/claimCounts'
 import { closeDays, readClosedDays, reopenDays } from '@/lib/storage/claimDayCloses'
-import { readHospitalSettings, readRuleSettings } from '@/lib/storage/claimSettings'
+import { readHospitalSettings, readInputMode, readRuleSettings, saveInputMode, type SavedInputMode } from '@/lib/storage/claimSettings'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { DateRange } from '@/types/dates'
 import type { CheckSettings } from '@/types/precheck'
@@ -30,6 +30,8 @@ import { useCountsUpload } from './useCountsUpload'
 // 결과 없이 떠나면(불러오는 중 포함) Worker의 달을 버린다. 로그아웃은 전체 페이지 이동이라 메모리와 Worker가 함께 사라진다.
 // 메모 칸(REQ-018)은 Flow의 3~5단계로 memo/MemoPanel이 맡는다. 설정 변경 띠와 기관기호 안내는 어느 단계든 화면 맨 위에 둔다(design.md 6-5, AC-018.17). settingsStale이 참이면 [비트에 입력]을 막는다.
 // 고친 글·승인·입력 기록은 Worker 메모리에 있어 다녀와도 그대로이고, 입력하는 동안 떠나면 결과가 이 화면에 오지 않으므로 맡긴 결과를 버린다(결과는 도우미 작업 저장에 있어 [자료 불러오기]로 읽는다, AC-018.5·AC-017.9)
+// 입력 방식(처방코드별·날짜별)은 병원 설정 줄의 input_mode에 기억한다(clinic-profile REQ-6610): 화면을 열 때 한 번 읽어 메모 칸의 처음 값으로 넘기고, 메모 칸에서 바꾸면 그 칸만 저장한다.
+// 병원 문구는 보내지 않아 설정 바뀜 띠와 상관없고, 읽기·저장이 안 돼도 알리지 않는다(고른 방식은 이 화면에서 그대로 쓴다). [뒤에 붙이기]를 보일지는 메모 칸이 연결된 도우미 판(helperVersion)으로 정한다(AC-6611.1)
 // 날짜별 건수(REQ-019)는 Worker가 끝날 때마다 보내고 useCountsUpload가 올린다. 날짜 목록은 날짜 칸으로 돌아올 때·날짜 칸에서 창 초점이 올 때·건수를 올린 뒤에 다시 묻는다(AC-013.1): 그래야 오후에 온 환자가 보이고 [입력 안 된 날짜 모두]가 끝난 날을 건너뛴다. 불러오는 중·입력 중에는 묻지 않고, 묻지 못하면 보던 목록을 둔다. 고른 기간은 바꾸지 않는다
 
 const NO_TEMPLATES: SettingsBundle['templates'] = [] // 문자 문구는 TASK-25가 잇는다
@@ -126,7 +128,20 @@ function readCountsAndClosed(today: string) {
   ])
 }
 
-export function ClaimScreen({ channel, call, stream, onProgress }: { channel: ClaimChannel; call: UseBridge['call']; stream: UseBridge['stream']; onProgress?: UseBridge['onProgress'] }) {
+export function ClaimScreen({
+  channel,
+  call,
+  stream,
+  onProgress,
+  helperVersion,
+}: {
+  channel: ClaimChannel
+  call: UseBridge['call']
+  stream: UseBridge['stream']
+  onProgress?: UseBridge['onProgress']
+  /** 연결된 도우미 판(hello.helperVersion). 메모 칸의 [뒤에 붙이기]가 본다(AC-6611.1). 없으면 모르는 판이다 */
+  helperVersion?: string
+}) {
   const [dates, setDates] = useState<DatesState>({ kind: 'loading' })
   const [period, setPeriod] = useState<DateRange>({ from: '', to: '' })
   const [page, setPage] = useState<ClaimPage>('dates')
@@ -208,6 +223,37 @@ export function ClaimScreen({ channel, call, stream, onProgress }: { channel: Cl
   useEffect(() => {
     void loadDates()
   }, [loadDates])
+
+  // 입력 방식 기억(AC-6610.1·AC-6610.2): 화면을 열 때 내 병원 줄의 input_mode를 한 번 읽는다. 줄이 없거나 읽지 못하면 날짜별(null)이고 저장할 곳도 없다
+  const [savedMode, setSavedMode] = useState<SavedInputMode | null>(null)
+  const modeHospital = useRef<string | null>(null)
+  const modeChosen = useRef(false)
+  useEffect(() => {
+    let alive = true
+    void Promise.resolve()
+      .then(() => readInputMode(supabaseBrowser()))
+      .then(
+        (read) => {
+          if (!alive || read === null) return
+          modeHospital.current = read.hospitalId
+          if (!modeChosen.current) setSavedMode(read.mode) // 읽는 사이에 사람이 먼저 골랐으면 그 방식이 이긴다
+        },
+        () => undefined,
+      )
+    return () => {
+      alive = false
+    }
+  }, [])
+  /** 메모 칸에서 입력 방식을 바꿨다: 이 화면에서 기억하고(메모 칸을 다시 열 때 처음 값) 그 칸만 저장한다. 실패해도 알리지 않는다 */
+  const onModeChange = useCallback((mode: SavedInputMode) => {
+    modeChosen.current = true
+    setSavedMode(mode)
+    const hospitalId = modeHospital.current
+    if (hospitalId === null) return
+    void Promise.resolve()
+      .then(() => saveInputMode(supabaseBrowser(), hospitalId, mode))
+      .catch(() => undefined)
+  }, [])
 
   // 고른 기간의 날짜를 완료로 저장·되돌리기(claim-day-done-pc). 성공하면 목록을 다시 읽어 줄이 묶음을 옮긴다
   const [close, setClose] = useState<Omit<CloseState, 'blocked'>>({ saving: false, reopening: new Set(), justSaved: [], failed: false })
@@ -541,6 +587,9 @@ export function ClaimScreen({ channel, call, stream, onProgress }: { channel: Cl
           onStage={setMemoStage}
           flushRef={flushDrafts}
           focusKey={focusMemo}
+          savedMode={savedMode}
+          onModeChange={onModeChange}
+          helperVersion={helperVersion}
         />
       )}
     </div>

@@ -144,3 +144,21 @@ describe('AC-3106.2 입력 방식 한 줄', () => {
     expect(screen.getByText(/기간 안에서 코드 하나가 있는 사람/)).toBeTruthy()
   })
 })
+
+describe('AC-6610.1 저장된 입력 방식', () => {
+  it("AC-6610.1: defaultSelection(visible, savedMode)는 저장된 방식이 'code'면 처방코드별로, 'date'·null·없음이면 지금처럼 날짜별로 시작하고 다른 칸은 같다", () => {
+    const dateFirst = defaultSelection(VISIBLE)
+    expect(defaultSelection(VISIBLE, 'code')).toEqual({ ...dateFirst, mode: 'code' })
+    expect(defaultSelection(VISIBLE, 'date')).toEqual(dateFirst)
+    expect(defaultSelection(VISIBLE, null)).toEqual(dateFirst)
+    expect(defaultSelection(VISIBLE, undefined)).toEqual(dateFirst)
+  })
+
+  it("AC-6610.1: 저장된 방식이 'code'인 처음 값이면 처방코드별이 골라져 있고 그 기간 전체다", () => {
+    render(<Harness initial={defaultSelection(VISIBLE, 'code')} />)
+    expect((screen.getByRole('radio', { name: '처방코드별' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('radio', { name: '날짜별' }) as HTMLInputElement).checked).toBe(false)
+    expect((screen.getByLabelText('시작') as HTMLInputElement).value).toBe(VISIBLE.from)
+    expect((screen.getByLabelText('끝') as HTMLInputElement).value).toBe(VISIBLE.to)
+  })
+})
