@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CAL_SETTINGS, type CalAllDay, type CalAppt, type CalStaff } from '@/types/calendar'
+import type { DayHours } from '@/types/clinicProfile'
 import { BLOCK_GUTTER_PX, placeStyle } from './ApptBlock'
 import { GHOST_NOTE } from './GhostBlock'
 import { TimeGrid, type TimeGridProps } from './TimeGrid'
@@ -490,5 +491,96 @@ describe('AC-6003.3: 오른쪽 줄 위 마우스 → 글 없는 좁은 점선 �
     fireEvent.mouseMove(placed(column(open.container, TODAY)), { clientX: 190, clientY: 405 })
     expect(hoverBox(open.container, 'edge')).toBeNull()
     expect(hoverBox(open.container, 'full')).toBeNull()
+  })
+})
+
+// 병원 정보 진료시간·휴진일(spec clinic-profile REQ-6603, design.md 5절): 받은 days(월~일 진료시간)·closedDates만 그린다
+const LUNCH_DAY: DayHours = { open: 540, close: 1080, lunchFrom: 780, lunchTo: 840 } // 09:00~18:00, 점심 13:00~14:00
+const CLINIC_DAYS: DayHours[] = [
+  LUNCH_DAY, // 월
+  LUNCH_DAY, // 화
+  { open: 540, close: 1080, lunchFrom: null, lunchTo: null }, // 수 점심 없음
+  LUNCH_DAY, // 목
+  { open: 510, close: 1110, lunchFrom: 750, lunchTo: 810 }, // 금 08:30~18:30, 점심 12:30~13:30
+  { open: 540, close: 780, lunchFrom: null, lunchTo: null }, // 토 09:00~13:00
+  null, // 일 휴진
+]
+// 표는 08:00~19:00 → 1분 = 2px
+const CLINIC = { ...SETTINGS, openHour: 8, closeHour: 19, days: CLINIC_DAYS, closedDates: ['2026-11-19'] }
+const bands = (container: HTMLElement, day: string) =>
+  Array.from(column(container, day).querySelectorAll<HTMLElement>('[data-off]')).map((el) => [el.dataset.off, el.style.top, el.style.height])
+
+describe('AC-6603.2: 요일마다 진료시간 밖·점심은 회색, 점심 칸에 "점심"', () => {
+  it('AC-6603.2: 월요일 — 08:00~09:00·18:00~19:00 회색, 13:00~14:00 점심 회색', () => {
+    const { container } = renderGrid({ settings: CLINIC })
+    expect(bands(container, '2026-11-16')).toEqual([
+      ['before', '0px', '120px'],
+      ['after', '1200px', '120px'],
+      ['lunch', '600px', '120px'],
+    ])
+    const lunch = column(container, '2026-11-16').querySelector<HTMLElement>('[data-off="lunch"]')!
+    expect(text(lunch)).toBe('점심')
+    expect(lunch.className).toContain('bg-canvas')
+    expect(within(lunch).getByText('점심').className).toContain('text-caption')
+  })
+
+  it('AC-6603.2: 요일마다 다르다 — 금요일 08:30~18:30·점심 12:30~13:30, 토요일 13:00부터 회색(점심 없음), 수요일 점심 없음', () => {
+    const { container } = renderGrid({ settings: CLINIC })
+    expect(bands(container, '2026-11-20')).toEqual([
+      ['before', '0px', '60px'],
+      ['after', '1260px', '60px'],
+      ['lunch', '540px', '120px'],
+    ])
+    expect(bands(container, '2026-11-21')).toEqual([
+      ['before', '0px', '120px'],
+      ['after', '600px', '720px'],
+    ])
+    expect(bands(container, '2026-11-18').map((b) => b[0])).toEqual(['before', 'after'])
+  })
+
+  it('AC-6603.2: 진료시간이 표 시간과 같으면 회색이 없고, days를 받지 않으면 회색을 그리지 않는다(지금 표 그대로)', () => {
+    const full: DayHours = { open: 480, close: 1140, lunchFrom: null, lunchTo: null }
+    const { container } = renderGrid({ settings: { ...CLINIC, days: [full, full, full, full, full, full, null], closedDates: [] } })
+    expect(bands(container, '2026-11-16')).toEqual([])
+    cleanup()
+    const plain = renderGrid()
+    expect(plain.container.querySelectorAll('[data-off]')).toHaveLength(0)
+  })
+
+  it('AC-6603.2: 회색 칸 위를 눌러도 그 시각으로 예약을 더한다(onSlot)', () => {
+    const { container, props } = renderGrid({ settings: CLINIC })
+    fireEvent.click(placed(column(container, '2026-11-16')), { clientY: 610 })
+    expect(props.onSlot).toHaveBeenCalledWith('2026-11-16', 780)
+    expect(column(container, '2026-11-16').querySelector<HTMLElement>('[data-off="lunch"]')!.className).toContain('pointer-events-none')
+  })
+
+  it('AC-6603.2: 일 보기로 휴진 요일(일요일)을 열면 열 전체가 회색이고 머리에 "휴진"이 보인다', () => {
+    const { container } = renderGrid({ days: ['2026-11-22'], settings: CLINIC })
+    expect(bands(container, '2026-11-22')).toEqual([['closed', '0px', '1320px']])
+    expect(screen.getByRole('button', { name: '11월 22일 (일) 휴진 예약 0' })).toBeTruthy()
+  })
+})
+
+describe('AC-6603.3: 휴진일은 머리에 "휴진", 열이 회색, 예약은 넣을 수 있다', () => {
+  it('AC-6603.3: 휴진일(11/19) 머리에 "휴진"이 보이고 열 전체가 회색이다(진료시간·점심 띠 대신)', () => {
+    const { container } = renderGrid({ settings: CLINIC })
+    const head = screen.getByRole('button', { name: '11월 19일 (목) 휴진 예약 1' })
+    expect(within(head).getByText('휴진')).toBeTruthy()
+    expect(column(container, '2026-11-19').dataset.closed).toBe('true')
+    expect(bands(container, '2026-11-19')).toEqual([['closed', '0px', '1320px']])
+    expect(column(container, '2026-11-18').dataset.closed).toBeUndefined()
+    expect(screen.getByRole('button', { name: '11월 18일 (수) 예약 1' })).toBeTruthy()
+  })
+
+  it('AC-6603.3: 휴진일 칸을 눌러도 onSlot이고, 그날 예약 칸도 그대로 그린다', () => {
+    const { container, props } = renderGrid({ settings: CLINIC })
+    expect(block(/^신○○/).closest('[data-slot-day]')?.getAttribute('data-slot-day')).toBe('2026-11-19')
+    fireEvent.click(placed(column(container, '2026-11-19')), { clientY: 405 })
+    expect(props.onSlot).toHaveBeenCalledWith('2026-11-19', 680)
+  })
+
+  it('AC-6603.3: 일 보기 휴진일도 머리에 "휴진"이다', () => {
+    renderGrid({ days: ['2026-11-19'], settings: CLINIC })
+    expect(screen.getByRole('button', { name: '11월 19일 (목) 휴진 예약 1' })).toBeTruthy()
   })
 })

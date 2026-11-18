@@ -1,14 +1,20 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { mergeClinic } from '@/lib/calendar/clinic'
 import { listAllDay, listAppts, listCalendarCounts, loadCalendarRev, loadCalendarSettings } from '@/lib/storage/calendar'
+import { loadClinicProfile } from '@/lib/storage/clinicProfile'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { CalAllDay, CalAppt, CalCountRow, CalSettings } from '@/types/calendar'
+import type { ClinicProfile } from '@/types/clinicProfile'
 import type { CalView } from './CalendarToolbar'
 
 // 예약 탭 자료 읽기(spec clinic-calendar AC-5905.9, design.md '다시 읽기'). 모든 기기가 같은 길이다: 브라우저 → Supabase(RLS 내 병원).
 // 보이는 동안(visibilityState 'visible') 5초마다 calendar_rev 숫자 하나만 읽고, 바뀌었을 때만 보이는 기간
 // (일·주: listAppts + listAllDay, 월: 이름·차트번호 없는 listCalendarCounts + listAllDay)과 설정을 다시 읽는다.
+// 설정은 예약 설정(종류 등)과 병원 정보(시행자·진료시간·휴진일, spec clinic-profile REQ-6603)를 함께 읽어 mergeClinic으로 합친다.
+// 병원 정보가 없거나 읽지 못하면 예약 설정 값을 쓴다(처음 읽기). 앞서 읽은 병원 정보가 있으면 한 번의 읽기 실패로는 그것을 그대로 둔다.
+// 병원 정보를 저장하면 DB가 calendar_rev를 올린다 → 다른 PC도 5초 안에 다시 읽는다.
 // 숨은 탭은 읽지 않고 다시 보이면 바로 읽는다. 내가 저장한 뒤에는 refresh()로 바로 읽는다(5초를 기다리지 않는다).
 // rev를 먼저 읽고 자료를 읽는다: 그 사이 바뀐 것은 다음 rev가 다르게 나와 다시 읽는다. 늦게 온 앞 읽기 답은 버린다.
 // 실시간 연결(Realtime)은 쓰지 않는다 → CSP connect-src는 그대로다(ADR-030)
@@ -26,7 +32,7 @@ export type CalendarData = {
   status: 'loading' | 'ready' | 'failed'
   /** 지금 기간의 자료(아직 없으면 null) */
   snapshot: CalendarSnapshot | null
-  /** 마지막으로 읽은 설정(기간을 옮겨도 남는다) */
+  /** 마지막으로 읽은 설정(기간을 옮겨도 남는다). 병원 정보와 합친 값(mergeClinic) */
   settings: CalSettings | null
   /** rev를 바로 읽어 바뀌었으면 다시 읽는다(내가 저장한 뒤) */
   refresh(): void
@@ -34,7 +40,7 @@ export type CalendarData = {
   reload(): void
   /** 저장한 값을 지금 기간 자료에 바로 넣는다(서버를 다시 읽기 전에 칸이 보이게) */
   update(change: (snapshot: CalendarSnapshot) => CalendarSnapshot): void
-  /** 저장한 설정을 바로 쓴다 */
+  /** 저장한 설정을 바로 쓴다(병원 정보와 다시 합친다: 병원 정보가 있으면 종류만 바뀐다) */
   setSettings(next: CalSettings): void
 }
 
@@ -42,12 +48,17 @@ export const periodKey = (period: CalendarPeriod) => `${period.view}|${period.fr
 
 const isVisible = () => typeof document === 'undefined' || document.visibilityState !== 'hidden'
 
+/** 읽은 두 설정. profile null = 병원 정보 없음(예약 설정 값을 쓴다) */
+type Base = { cal: CalSettings; profile: ClinicProfile | null }
+
 export function useCalendarData(period: CalendarPeriod): CalendarData {
   const client = useMemo(() => supabaseBrowser(), [])
   const key = periodKey(period)
   const [snapshot, setSnapshot] = useState<CalendarSnapshot | null>(null)
-  const [settings, setSettingsState] = useState<CalSettings | null>(null)
+  const [base, setBase] = useState<Base | null>(null)
   const [failedKey, setFailedKey] = useState<string | null>(null)
+  // 마지막으로 읽은 병원 정보(다시 읽기 한 번의 실패로 예약 설정 시행자로 바뀌지 않게)
+  const lastProfile = useRef<ClinicProfile | null>(null)
   const periodNow = useRef(period)
   periodNow.current = period
   // 읽기마다 늘린다. 지금 번호가 아닌 답은 버린다(기간을 옮겼거나 새로 읽기 시작함)
@@ -65,8 +76,9 @@ export function useCalendarData(period: CalendarPeriod): CalendarData {
       loading.current = true
       try {
         const rev = knownRev ?? (await loadCalendarRev(client))
-        const [nextSettings, rows, allday] = await Promise.all([
+        const [cal, profile, rows, allday] = await Promise.all([
           loadCalendarSettings(client),
+          loadClinicProfile(client).catch(() => 'failed' as const), // 병원 정보 실패는 예약표 읽기를 막지 않는다
           target.view === 'month'
             ? listCalendarCounts(client, target.from, target.to).then((counts) => ({ appts: [] as CalAppt[], counts }))
             : listAppts(client, target.from, target.to).then((appts) => ({ appts, counts: null })),
@@ -74,7 +86,8 @@ export function useCalendarData(period: CalendarPeriod): CalendarData {
         ])
         if (mine !== flow.current) return
         lastRev.current = rev
-        setSettingsState(nextSettings)
+        if (profile !== 'failed') lastProfile.current = profile
+        setBase({ cal, profile: lastProfile.current })
         setSnapshot({ key: targetKey, ...rows, allday })
         setFailedKey(null)
       } catch {
@@ -123,7 +136,8 @@ export function useCalendarData(period: CalendarPeriod): CalendarData {
   const update = useCallback((change: (snap: CalendarSnapshot) => CalendarSnapshot) => {
     setSnapshot((prev) => (prev !== null && prev.key === periodKey(periodNow.current) ? change(prev) : prev))
   }, [])
-  const setSettings = useCallback((next: CalSettings) => setSettingsState(next), [])
+  const setSettings = useCallback((next: CalSettings) => setBase((prev) => ({ cal: next, profile: prev?.profile ?? null })), [])
+  const settings = useMemo(() => (base === null ? null : mergeClinic(base.cal, base.profile)), [base])
 
   const current = snapshot?.key === key ? snapshot : null
   const status = current ? 'ready' : failedKey === key ? 'failed' : 'loading'

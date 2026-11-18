@@ -4,10 +4,13 @@ import { join } from 'node:path'
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { listAllDay, listCalendarCounts, listCalendarSlots, loadCalendarSettings } from '@/lib/storage/calendar'
+import { loadClinicProfile } from '@/lib/storage/clinicProfile'
 import { DEFAULT_CAL_SETTINGS, type CalAllDay, type CalCountRow, type CalSettings, type CalSlotRow } from '@/types/calendar'
+import type { ClinicProfile, DayHours } from '@/types/clinicProfile'
 import { useStatsCalendar } from './useStatsCalendar'
 
 // 통계 '예약' 칸 읽기 훅 (spec clinic-calendar REQ-5907 AC-5907.3, design.md '화면' 통계 칸, tasks.md TASK-9).
+// 설정은 예약 화면과 같이 병원 정보와 합친다(spec clinic-profile AC-6603.5, mergeClinic).
 // 저장 코드는 가짜다. 예약 줄·시행자 이름은 모두 지어낸 값이다(이름·차트번호·메모 칸은 원래 없다)
 
 vi.mock('@/lib/storage/calendar', () => ({
@@ -16,6 +19,7 @@ vi.mock('@/lib/storage/calendar', () => ({
   listAllDay: vi.fn(),
   loadCalendarSettings: vi.fn(),
 }))
+vi.mock('@/lib/storage/clinicProfile', () => ({ loadClinicProfile: vi.fn() }))
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: vi.fn(() => ({})) }))
 
 const TODAY = '2026-11-17'
@@ -33,6 +37,24 @@ const row = (day: string, over: Partial<CalCountRow> = {}): CalCountRow => ({
 const ROWS_A = [row('2026-10-02'), row('2026-11-03', { status: 'cancel' })]
 const ROWS_B = [row('2026-09-10')]
 const SETTINGS: CalSettings = { ...DEFAULT_CAL_SETTINGS, staff: [{ id: 'ga', name: '가짜○○', mark: '가', color: 'blue' }] }
+// 병원 정보가 없을 때 합친 설정: 예약 설정 그대로 + 월~토 08:00~20:00·휴진일 없음
+const EIGHT_TO_EIGHT: DayHours = { open: 480, close: 1200, lunchFrom: null, lunchTo: null }
+const MERGED: CalSettings = { ...SETTINGS, days: [...Array<DayHours>(6).fill(EIGHT_TO_EIGHT), null], closedDates: [] }
+const WEEKDAY: DayHours = { open: 540, close: 1080, lunchFrom: 780, lunchTo: 840 }
+const PROFILE: ClinicProfile = {
+  displayName: null,
+  phone: null,
+  address: null,
+  honorific: '원장님',
+  hours: [WEEKDAY, WEEKDAY, WEEKDAY, WEEKDAY, WEEKDAY, null, { open: 600, close: 780, lunchFrom: null, lunchTo: null }],
+  closedDates: ['2026-11-20'],
+  staff: [
+    { id: 'na', name: '윤○○', role: 'staff', mark: '나', color: 'teal', calendar: true },
+    { id: 'won', name: '원장님', role: 'doctor', mark: '원', color: 'gray', calendar: false },
+    { id: 'ga', name: '가짜○○', role: 'staff', mark: '가', color: 'navy', calendar: true },
+  ],
+  logoPath: null,
+}
 // 다시 예약·빈자리 줄(stats-insights AC-6104.1·AC-6105.1, 이름·메모 칸 없음)과 휴무
 const SLOTS: CalSlotRow[] = [
   { day: '2026-10-02', staffId: 'ga', staffName: '가짜○○', kindId: 'dosu', kindName: '도수', status: 'came', auto: null, start: 600, len: 30, chart: '90001' },
@@ -61,9 +83,49 @@ beforeEach(() => {
   vi.mocked(listCalendarSlots).mockResolvedValue(SLOTS)
   vi.mocked(listAllDay).mockResolvedValue(OFFS)
   vi.mocked(loadCalendarSettings).mockResolvedValue(SETTINGS)
+  vi.mocked(loadClinicProfile).mockReset().mockResolvedValue(null)
 })
 
 afterEach(cleanup)
+
+describe('AC-6603.5: 통계 예약 칸의 시행자 목록·차례는 예약 화면과 같다(병원 정보)', () => {
+  it('AC-6603.5: 병원 정보가 있으면 설정의 시행자는 예약에 보이기인 사람(병원 정보 차례)이고 시간·요일·휴진일도 병원 정보다', async () => {
+    vi.mocked(loadClinicProfile).mockResolvedValue(PROFILE)
+    const { result } = renderHook(() => useStatsCalendar(TODAY))
+    await waitFor(() => expect(result.current.settings).toBeDefined())
+    expect(loadClinicProfile).toHaveBeenCalledTimes(1)
+    expect(result.current.settings).toEqual({
+      kinds: SETTINGS.kinds,
+      staff: [
+        { id: 'na', name: '윤○○', mark: '나', color: 'teal' },
+        { id: 'ga', name: '가짜○○', mark: '가', color: 'navy' },
+      ],
+      openHour: 9,
+      closeHour: 18,
+      sunday: true,
+      days: PROFILE.hours,
+      closedDates: ['2026-11-20'],
+    })
+  })
+
+  it.each<[string, () => void]>([
+    ['줄 없음', () => vi.mocked(loadClinicProfile).mockResolvedValue(null)],
+    ['읽기 실패', () => vi.mocked(loadClinicProfile).mockResolvedValue('failed')],
+    ['던짐', () => vi.mocked(loadClinicProfile).mockRejectedValue(new Error('가짜 실패'))],
+  ])('AC-6603.5: 병원 정보가 %s이면 예약 설정 시행자 그대로이고 예약 줄은 그대로 그린다', async (_name, arrange) => {
+    arrange()
+    const { result } = renderHook(() => useStatsCalendar(TODAY))
+    await waitFor(() => expect(result.current.rows).toEqual(ROWS_A))
+    expect(result.current.settings).toEqual(MERGED)
+  })
+
+  it('AC-6603.5: [다시 읽기]는 병원 정보도 다시 읽는다', async () => {
+    const { result } = renderHook(() => useStatsCalendar(TODAY))
+    await waitFor(() => expect(result.current.rows).toEqual(ROWS_A))
+    act(() => result.current.onReread())
+    await waitFor(() => expect(loadClinicProfile).toHaveBeenCalledTimes(2))
+  })
+})
 
 describe('AC-5907.3: 통계 예약 칸 읽기 useStatsCalendar', () => {
   it('AC-5907.3: 이번 달 1일 −11달 ~ 오늘을 listCalendarCounts로 읽고, 읽는 동안은 reading, 다 읽으면 줄·오늘·설정을 준다', async () => {
@@ -73,7 +135,7 @@ describe('AC-5907.3: 통계 예약 칸 읽기 useStatsCalendar', () => {
     await waitFor(() => expect(result.current.rows).toEqual(ROWS_A))
     expect(listCalendarCounts).toHaveBeenCalledTimes(1)
     expect(listCalendarCounts).toHaveBeenCalledWith(expect.anything(), '2025-12-01', TODAY)
-    expect(result.current.settings).toEqual(SETTINGS)
+    expect(result.current.settings).toEqual(MERGED)
     expect(result.current.today).toBe(TODAY)
   })
 
@@ -188,7 +250,7 @@ describe('AC-6104.1·AC-6105.1: 다시 예약·빈자리 줄 읽기', () => {
     const { result } = renderHook(() => useStatsCalendar(TODAY))
     await waitFor(() => expect(result.current.slots).toBe('failed'))
     expect(result.current.rows).toEqual(ROWS_A)
-    expect(result.current.settings).toEqual(SETTINGS)
+    expect(result.current.settings).toEqual(MERGED)
   })
 
   it('AC-6104.1·AC-6105.1: [다시 읽기]는 slots도 다시 읽고, 예약 수 줄을 읽지 못하면 slots도 failed다', async () => {

@@ -1,3 +1,5 @@
+import type { DayHours } from '@/types/clinicProfile'
+
 // 예약 탭(spec clinic-calendar, design.md '모양'). 예약 줄의 환자 이름·차트번호는 서버(calendar_appts, RLS 내 병원)에 둔다(ADR-030).
 // 전화·성별·나이·생일·마지막 내원·비트 접수 목록·비트 예약은 이 모양에 없다(비트 찾기 결과는 Worker → 화면으로만, 고른 이름·차트번호만 예약에)
 
@@ -27,7 +29,20 @@ export const CAL_COLORS = [
 export type CalColor = (typeof CAL_COLORS)[number]
 export type CalKind = { id: string; name: string; len: number; color: CalColor | null } // null = 시행자 색 따름
 export type CalStaff = { id: string; name: string; mark: string; color: CalColor }
-export type CalSettings = { kinds: CalKind[]; staff: CalStaff[]; openHour: number; closeHour: number; sunday: boolean }
+/**
+ * 예약 설정. kinds는 예약 설정 줄(calendar_settings) 값이고, staff·openHour·closeHour·sunday·days·closedDates는
+ * 화면에서 병원 정보와 합친 값이다(spec clinic-profile REQ-6603, lib/calendar/clinic mergeClinic).
+ * days = 요일 진료시간(월~일, null = 휴진 요일)·closedDates = 휴진일(YYYY-MM-DD). mergeClinic이 늘 채운다 — 없으면 시간 표는 회색·휴진 없이 그린다
+ */
+export type CalSettings = {
+  kinds: CalKind[]
+  staff: CalStaff[]
+  openHour: number
+  closeHour: number
+  sunday: boolean
+  days?: DayHours[]
+  closedDates?: string[]
+}
 export type ApptStatus = 'auto' | 'came' | 'noshow' | 'cancel'
 export type ApptAuto = 'came' | 'noshow' | null
 // day = YYYY-MM-DD, start = 그날 0시부터 분(10분 칸), len = 분(5분씩). origDay·origStart = 처음 자리(DB 트리거만 적음)

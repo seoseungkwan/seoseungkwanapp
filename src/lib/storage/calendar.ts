@@ -426,7 +426,17 @@ function checkStaff(value: unknown, found: Set<CalSettingsProblem>): void {
   }
 }
 
-const ordered = (found: Set<CalSettingsProblem>) => PROBLEM_ORDER.filter((problem) => found.has(problem))
+const ordered = <P extends CalSettingsProblem>(found: Set<P>): P[] => PROBLEM_ORDER.filter((problem): problem is P => found.has(problem as P))
+
+/** 종류 칸 문제(예약 설정 서랍이 고치는 것은 종류뿐이다, spec clinic-profile AC-6603.4) */
+export type CalKindProblem = Extract<CalSettingsProblem, 'kinds-empty' | 'kind-id' | 'kind-name' | 'kind-len' | 'kind-color'>
+
+/** 종류 검사: 문제 목록(없으면 빈 목록, checkCalendarSettings와 같은 차례). 이름은 앞뒤 빈칸을 뺀 값으로 본다 */
+export function checkCalendarKinds(kinds: unknown): CalKindProblem[] {
+  const found = new Set<CalSettingsProblem>()
+  checkKinds(kinds, found)
+  return ordered(found as Set<CalKindProblem>)
+}
 
 /** 설정 검사: 문제 목록(없으면 빈 목록). 이름·한 글자 표시는 앞뒤 빈칸을 뺀 값으로 본다 */
 export function checkCalendarSettings(settings: CalSettings): CalSettingsProblem[] {
@@ -469,16 +479,14 @@ export async function loadCalendarSettings(client: Client): Promise<CalSettings>
   }
 }
 
-/** 설정 다섯 칸을 내 병원 줄 하나에 덮어쓴다(onConflict hospital_id). checkCalendarSettings를 못 지나면 보내지 않고 'invalid' */
-export async function saveCalendarSettings(client: Client, settings: CalSettings): Promise<void | 'invalid'> {
-  if (checkCalendarSettings(settings).length > 0) return 'invalid'
-  const row = {
-    kinds: settings.kinds.map(cleanKind),
-    staff: settings.staff.map(cleanStaff),
-    open_hour: settings.openHour,
-    close_hour: settings.closeHour,
-    sunday: settings.sunday,
-  }
+/**
+ * 종류(kinds) 한 칸만 내 병원 줄 하나에 덮어쓴다(onConflict hospital_id). checkCalendarKinds를 못 지나면 보내지 않고 'invalid'.
+ * 시행자·보이는 시간·일요일은 병원 정보에서 온다(spec clinic-profile AC-6603.4) → staff·open_hour·close_hour·sunday 칸은 보내지 않고
+ * DB에 남겨 둔다(병원 정보가 없을 때 읽는 값, 되돌리기 쉽게). 받은 설정의 다른 칸(병원 정보와 합친 값)은 보지 않는다
+ */
+export async function saveCalendarSettings(client: Client, settings: Pick<CalSettings, 'kinds'>): Promise<void | 'invalid'> {
+  if (checkCalendarKinds(settings.kinds).length > 0) return 'invalid'
+  const row = { kinds: settings.kinds.map(cleanKind) }
   await send(() => client.from(SETTINGS).upsert(row, { onConflict: 'hospital_id' }))
 }
 
