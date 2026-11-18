@@ -246,3 +246,68 @@ describe('AC-3008.1 allowedTokens: 칸마다 쓸 수 있는 {항목}은 검사�
     expect(allowedTokens('TPL.byRegion.knee', our)).not.toContain('초음파')
   })
 })
+
+// ── clinic-profile TASK-5: 차트 줄임말(chartWords) 검사·비교 이름표(design.md 14절) ─────────────
+
+const withWords = (chartWords: unknown) => ({ ...ourClinicPhrases(), chartWords }) as Phrases
+
+describe('AC-6612.1 AC-6612.2 chartWords 검사', () => {
+  it.each([
+    ['줄 하나', [{ term: '무주', target: 'IA' }]],
+    ['빈 표', []],
+    ['100줄', Array.from({ length: 100 }, (_, i) => ({ term: `말${i}`, target: 'IA' }))],
+    ['40자', [{ term: '가'.repeat(40), target: 'x'.repeat(40) }]],
+    ['한 글자', [{ term: '무', target: 'A' }]],
+    ['가운데 빈칸', [{ term: '무 주', target: 'IA injection' }]],
+  ])('AC-6612.1: 받는 값: %s', (_name, rows) => {
+    const result = validatePhrases(withWords(rows))
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value.chartWords).toEqual(rows)
+  })
+
+  it('AC-6612.1: 칸이 없어도 지난다(없으면 빈 표)', () => {
+    const result = validatePhrases(ourClinicPhrases())
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(Object.hasOwn(result.value, 'chartWords')).toBe(false)
+  })
+
+  it.each([
+    ['배열이 아님', { term: '무주', target: 'IA' }, 'chartWords'],
+    ['글자', 'x', 'chartWords'],
+    ['null', null, 'chartWords'],
+    ['101줄', Array.from({ length: 101 }, (_, i) => ({ term: `말${i}`, target: 'IA' })), 'chartWords'],
+    ['줄이 글자', ['무주 = IA'], 'chartWords.0'],
+    ['모르는 칸', [{ term: '무주', target: 'IA', extra: 1 }], 'chartWords.0'],
+    ['적으면 칸 없음', [{ target: 'IA' }], 'chartWords.0.term'],
+    ['읽어요 칸이 숫자', [{ term: '무주', target: 1 }], 'chartWords.0.target'],
+    ['빈 적으면', [{ term: '', target: 'IA' }], 'chartWords.0.term'],
+    ['빈 읽어요', [{ term: '무주', target: '' }], 'chartWords.0.target'],
+    ['앞 빈칸', [{ term: ' 무주', target: 'IA' }], 'chartWords.0.term'],
+    ['뒤 빈칸', [{ term: '무주', target: 'IA ' }], 'chartWords.0.target'],
+    ['41자', [{ term: '가'.repeat(41), target: 'IA' }], 'chartWords.0.term'],
+    ['줄바꿈', [{ term: '무\n주', target: 'IA' }], 'chartWords.0.term'],
+    ['같은 적으면(대소문자만 다름)', [{ term: 'ia', target: 'IA' }, { term: 'IA', target: 'SSNB' }], 'chartWords.1.term'],
+  ])('AC-6612.1: 거절하는 값: %s', (_name, rows, path) => {
+    const result = validatePhrases(withWords(rows))
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.errors.map((e) => e.path)).toContain(path)
+  })
+
+  it('AC-6612.1: 위험한 칸 이름을 거절한다', () => {
+    expect(validatePhrases(withWords(JSON.parse('[{"term":"무주","target":"IA","__proto__":{}}]'))).ok).toBe(false)
+  })
+
+  it('AC-6612.1: chartWords가 있어도 원본 칸 검사 결과는 그대로다', () => {
+    const value = withWords([{ term: '무주', target: 'IA' }])
+    value.TPL.main = '{없는말}'
+    expect(validatePhrases(value)).toEqual({ ok: false, errors: [{ path: 'TPL.main', message: '지원하지 않는 항목 {없는말}입니다. 이 항목의 삽입 버튼을 사용해 주세요.' }] })
+  })
+
+  it("AC-6612.1: diffPhrases는 '차트 줄임말' 한 줄로 '적으면 = 읽어요'를 보인다(없음과 빈 표는 같다)", () => {
+    expect(diffPhrases(ourClinicPhrases(), withWords([{ term: '무주', target: 'IA' }, { term: '내측', target: 'MBB' }]))).toEqual([
+      { path: 'chartWords', label: '차트 줄임말', before: '(없음)', after: '무주 = IA, 내측 = MBB' },
+    ])
+    expect(diffPhrases(withWords([{ term: '무주', target: 'IA' }]), withWords([]))).toEqual([{ path: 'chartWords', label: '차트 줄임말', before: '무주 = IA', after: '(없음)' }])
+    expect(diffPhrases(ourClinicPhrases(), withWords([]))).toEqual([])
+  })
+})
