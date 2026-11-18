@@ -15,8 +15,10 @@ export async function guardPage(path: string): Promise<Me> {
     if (error instanceof NotSignedInError) redirect('/login')
     throw error
   }
+  // 상태 = 내 병원 줄 상태(원장 판정이 먼저) → 없으면 데스크 줄이 있을 때 'desk'(desk-feedback) → 아니면 'none'
+  const hospital = me.hospital?.status ?? (me.desk ? 'desk' : 'none')
   // redirect()는 던져서 멈춘다 → try 밖에서 부른다
-  const to = decideRoute({ path, signedIn: true, hospital: me.hospital?.status ?? 'none', isAdmin: me.isAdmin })
+  const to = decideRoute({ path, signedIn: true, hospital, isAdmin: me.isAdmin })
   if (to !== null) redirect(to)
   return me
 }

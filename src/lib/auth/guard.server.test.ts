@@ -37,6 +37,11 @@ function hospital(status: Hospital['status']): Hospital {
 function me(status: Hospital['status'] | null, isAdmin = false): Me {
   return { email: 'me@example.com', hospital: status === null ? null : hospital(status), isAdmin }
 }
+// 데스크(desk-feedback): 내 병원 줄 없음 + readMe가 my_desk로 읽은 데스크 줄
+const DESK = { hospitalId: 'hospital-a', hospitalName: '가나정형외과의원' }
+function deskMe(isAdmin = false): Me {
+  return { email: 'desk@example.com', hospital: null, isAdmin, desk: DESK }
+}
 
 beforeEach(() => {
   read.mockReset()
@@ -159,5 +164,44 @@ describe('guardPage(): 화면을 그리기 전 병원 상태 확인', () => {
     read.mockRejectedValue(dynamic)
     await expect(guardPage('/dashboard')).rejects.toBe(dynamic)
     expect(redirect).not.toHaveBeenCalled()
+  })
+})
+
+// desk-feedback REQ-6305: 상태 = 내 병원 줄 상태 → 없으면 데스크 줄이 있을 때 'desk' → 아니면 'none'
+describe('guardPage(): 데스크 (desk-feedback AC-6305.2)', () => {
+  it.each(['/dashboard', '/claim/setup', '/sunap', '/stats'])(
+    'AC-6305.2: 내 병원 줄이 없고 데스크 줄이 있으면 %s를 그대로 열고 Me를 돌려준다(/signup으로 보내지 않는다)',
+    async (path) => {
+      const value = deskMe()
+      read.mockResolvedValue(value)
+      await expect(guardPage(path)).resolves.toBe(value)
+      expect(redirect).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(['/login', '/signup', '/pending', '/admin'])('AC-6305.2: 데스크로 %s → /sunap', async (path) => {
+    read.mockResolvedValue(deskMe())
+    await expect(guardPage(path)).rejects.toThrow('NEXT_REDIRECT /sunap')
+    expect(redirect).toHaveBeenCalledExactlyOnceWith('/sunap')
+  })
+
+  it('AC-6305.2: admins에 있는 데스크도 /admin → /sunap(데스크는 관리자 화면을 열지 않는다)', async () => {
+    read.mockResolvedValue(deskMe(true))
+    await expect(guardPage('/admin')).rejects.toThrow('NEXT_REDIRECT /sunap')
+  })
+
+  it.each([
+    ['pending', '/dashboard', '/pending'],
+    ['rejected', '/dashboard', '/pending'],
+    ['approved', '/login', '/dashboard'],
+  ] as const)('AC-6305.2: 내 병원 줄(%s)이 있으면 데스크 칸이 있어도 병원 상태로 정한다(%s → %s)', async (status, path, to) => {
+    read.mockResolvedValue({ ...me(status), desk: DESK })
+    await expect(guardPage(path)).rejects.toThrow(`NEXT_REDIRECT ${to}`)
+    expect(redirect).toHaveBeenCalledExactlyOnceWith(to)
+  })
+
+  it('AC-6305.2: 내 병원 줄도 데스크 줄도 없으면 지금처럼 /signup', async () => {
+    read.mockResolvedValue(me(null))
+    await expect(guardPage('/dashboard')).rejects.toThrow('NEXT_REDIRECT /signup')
   })
 })

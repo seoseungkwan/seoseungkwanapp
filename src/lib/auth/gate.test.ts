@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { decideRoute, isPublicPath, type GateInput, type HospitalState } from './gate'
 
-const ALL_STATES: HospitalState[] = ['none', 'pending', 'approved', 'rejected', 'unknown']
+const ALL_STATES: HospitalState[] = ['none', 'pending', 'approved', 'rejected', 'unknown', 'desk']
 
 function signedIn(path: string, hospital: HospitalState, isAdmin = false): GateInput {
   return { path, signedIn: true, hospital, isAdmin }
@@ -118,4 +118,35 @@ describe("decideRoute() — 병원 상태 'unknown'(middleware)", () => {
       expect(decideRoute(signedIn(path, 'unknown'))).toBeNull()
     },
   )
+})
+
+// desk-feedback REQ-6305: 데스크(내 병원 줄 없음 + 데스크 줄)는 가입·대기·관리자 화면 대신 수납일지로. 앱 경로는 연다 —
+// '/dashboard'도 연다: (app) 레이아웃이 경로와 상관없이 '/dashboard'로 판정하므로 여기서 돌리면 모든 화면이 수납일지로 간다(화면 쪽 DeskGate가 바꾼다)
+describe("decideRoute() — 데스크 'desk' (desk-feedback AC-6305.2)", () => {
+  it.each(['/login', '/signup', '/pending', '/admin', '/admin/x'])('AC-6305.2: %s는 /sunap으로 보낸다(관리자 값과 상관없이)', (path) => {
+    expect(decideRoute(signedIn(path, 'desk'))).toBe('/sunap')
+    expect(decideRoute(signedIn(path, 'desk', true))).toBe('/sunap')
+  })
+
+  it.each(['/dashboard', '/sunap', '/worklog', '/calendar', '/calendar/x', '/stats', '/claim/setup', '/settings', '/administrator'])(
+    'AC-6305.2: %s는 그대로 연다(null — 막힌 화면·첫 화면 바꾸기는 DeskGate 몫)',
+    (path) => {
+      expect(decideRoute(signedIn(path, 'desk'))).toBeNull()
+      expect(decideRoute(signedIn(path, 'desk', true))).toBeNull()
+    },
+  )
+
+  it('AC-6305.2: 로그인 안 했으면 데스크 상태여도 지금과 같다(/login), 랜딩·콜백은 연다', () => {
+    expect(decideRoute({ path: '/sunap', signedIn: false, hospital: 'desk', isAdmin: false })).toBe('/login')
+    expect(decideRoute({ path: '/login', signedIn: false, hospital: 'desk', isAdmin: false })).toBeNull()
+    expect(decideRoute(signedIn('/', 'desk'))).toBeNull()
+    expect(decideRoute(signedIn('/auth/callback', 'desk'))).toBeNull()
+  })
+
+  it('AC-6305.2: 데스크가 보내지는 곳은 같은 origin의 고정 경로 /sunap 하나뿐이다(받은 경로로 만들지 않는다)', () => {
+    for (const path of ['/login', '/signup', '/pending', '/admin', '/admin//evil.example', '//evil.example', 'https://evil.example/']) {
+      const to = decideRoute(signedIn(path, 'desk'))
+      expect([null, '/sunap'], path).toContain(to)
+    }
+  })
 })
