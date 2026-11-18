@@ -3725,6 +3725,18 @@ describe('stats-revenue: 매출 카드 · 바로가기 여섯 · 불러오기 �
     expect(fake.sent.some((message) => JSON.stringify(message).includes('revenue'))).toBe(false)
     expect(Object.keys(vi.mocked(saveStats).mock.calls[0]![0]).sort()).toEqual(['covered', 'days', 'months', 'source'])
   })
+
+  it('AC-6106.4·AC-6106.5: 매출 카드의 다섯째 탭 `신환 1명당`은 이 기기에서 불러오기 전이면 `비트에서 불러오면 볼 수 있어요`뿐이고 금액이 없다', async () => {
+    revenueDb.set('2026-11-02', { ...workDay('2026-11-02'), dayCodes: true })
+    draw()
+    await sectionsShown()
+    await waitFor(() => expect(within(card('stats-revenue')).getByRole('tablist', { name: '매출 보기' })).toBeTruthy())
+    const revenueTabs = within(card('stats-revenue')).getAllByRole('tab')
+    expect(revenueTabs.map((tab) => tab.textContent)).toEqual(['매출 추이', '급여·비급여·기타', '치료별 매출', '건당 진료비', '신환 1명당'])
+    fireEvent.click(within(card('stats-revenue')).getByRole('tab', { name: '신환 1명당' }))
+    const panel = within(card('stats-revenue')).getByRole('tabpanel')
+    expect(panel.textContent).toBe('비트에서 불러오면 볼 수 있어요')
+  })
 })
 
 describe('first90 AC-4407.1: 연결된 도우미 판을 매출 훅에 넘긴다', () => {

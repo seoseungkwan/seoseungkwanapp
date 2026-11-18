@@ -1,6 +1,7 @@
 import { addDays, addMonths, isYmd, monthOf } from '@/lib/analytics/dates'
 import type { DoctorDay } from '@/lib/analytics/doctorStats'
 import type { Person, VisitLine } from '@/lib/analytics/patientMix'
+import type { ValuePay } from '@/lib/analytics/patientValue'
 import type { PatientDay } from '@/types/analysis'
 import type { ClinicReportNumbers } from '@/types/clinicReport'
 import type { ConsumptionRow, PatientIds } from '@/types/consumption'
@@ -26,8 +27,10 @@ const TREATMENTS = ['manual', 'eswt', 'carm', 'sono', 'cryo'] as const
 const SUMMARY_KEYS = ['visits', 'patients', 'newPatients', 'noChart', 'duplicate', 'noFirst'] as const
 const TOP_KEYS = ['v', 'from', 'to', 'summary', 'days', 'patientDays', 'codes', 'rows', 'report']
 // v3(stats-bit-sections AC-2701.1)는 v2 열쇠를 그대로 두고 이 넷을 더한다. v4(first90 AC-4402.1)는 v3과 같은 열쇠이고 접수 줄만 다섯 칸이다.
-// v5(new-mark AC-6201.1)도 v3과 같은 열쇠이고 접수 줄만 여섯 칸이다
+// v5(new-mark AC-6201.1)도 v3과 같은 열쇠이고 접수 줄만 여섯 칸이다. 도우미 0.11.0의 v5(stats-insights AC-6106.1)는 맨 끝에 pays를 더한다:
+// v5에서만 받는 열쇠이고 없어도 된다(0.11.0 전 v5 답). v2~v4 답에 있으면 모르는 열쇠다
 const V3_KEYS = ['visits', 'people', 'doctors', 'doctorDays']
+const V5_OPTIONAL = ['pays']
 const MAX_DOCTORS = 1_000
 const MAX_INSURANCE = 100 // 보험 이름 한도(비트 InsCodNam보다 넉넉하게)
 const MAX_AREA = 80 // 주소 앞부분은 도우미가 80자에서 자른다(AC-2701.3)
@@ -42,6 +45,8 @@ export type StatsRowsExtra = {
   people: [chart: string, birth: string | null, area: string | null][]
   doctors: [code: string, name: string | null][]
   doctorDays: [day: string, doctor: string, amount: number][]
+  // 도우미 0.11.0의 v5 답에만(stats-insights AC-6106.2): 환자·날 진료비 총액. 금액은 원 단위 정수이고 환불이 더 큰 날은 음수다. 없으면 열쇠가 없다
+  pays?: [chart: string, day: string, amount: number][]
 }
 export type StatsRowsData = {
   v: 2 | 3 | 4 | 5
@@ -55,7 +60,7 @@ export type StatsRowsData = {
   codes: [code: string, name: string][]
   rows: [chart: string, day: string, code: string, first: string | null][] // 날짜는 YYYYMMDD
   report: { daily: ClinicReportNumbers[]; monthly: ClinicReportNumbers[] }
-  extra?: StatsRowsExtra // v3·v4에만
+  extra?: StatsRowsExtra // v3~v5에만
 }
 
 // 비트 전용 세 칸의 Worker 메모리 모양(design.md). p는 진료 줄과 같은 PatientIds 번호, 날짜는 YYYY-MM-DD
@@ -291,12 +296,25 @@ function checkDoctorDays(list: unknown, rules: DayRules, doctors: Set<string>): 
   }
 }
 
+// 환자·날 금액(stats-insights AC-6106.2): 차트번호는 빈 글자가 아니면 된다(접수 줄·사람 줄에 없는 환자도 미수입금을 낼 수 있다),
+// 수납일은 불러온 기간 안, 금액은 지금 보고 금액과 같은 한도의 정수(음수 = 환불이 더 큰 날). 줄 수 한도는 다른 줄과 같다
+function checkPays(list: unknown, rules: DayRules): void {
+  for (const line of listOf(list, MAX_STATS_ROWS)) {
+    const [chart, day, amount] = cellsOf(line, 3)
+    if (typeof chart !== 'string' || chart.trim() === '') bad()
+    if (!rules.isDay(day) || !inRange(day, rules) || !isAmount(amount)) bad()
+  }
+}
+
 function checkExtra(value: Fields, rules: DayRules): StatsRowsExtra {
   const doctors = checkDoctors(value.doctors)
   const charts = checkPeople(value.people, rules)
   checkVisitLines(value.visits, rules, charts, doctors)
   checkDoctorDays(value.doctorDays, rules, doctors)
-  return { visits: value.visits, people: value.people, doctors: value.doctors, doctorDays: value.doctorDays } as StatsRowsExtra
+  const extra = { visits: value.visits, people: value.people, doctors: value.doctors, doctorDays: value.doctorDays } as StatsRowsExtra
+  if (!Object.hasOwn(value, 'pays')) return extra
+  checkPays(value.pays, rules)
+  return { ...extra, pays: value.pays as StatsRowsExtra['pays'] }
 }
 
 export function parseStatsRows(text: string, req: { from: string; to: string }): StatsRowsData {
@@ -307,7 +325,7 @@ export function parseStatsRows(text: string, req: { from: string; to: string }):
     bad() // 파서 예외 글에는 자료 조각이 들어 있다
   }
   if (!isRecord(value) || (value.v !== 2 && value.v !== 3 && value.v !== 4 && value.v !== 5)) bad()
-  if (!hasExactly(value, value.v === 2 ? TOP_KEYS : [...TOP_KEYS, ...V3_KEYS])) bad()
+  if (!hasExactly(value, value.v === 2 ? TOP_KEYS : [...TOP_KEYS, ...V3_KEYS], value.v === 5 ? V5_OPTIONAL : [])) bad()
   if (value.from !== req.from || value.to !== req.to) bad()
 
   const { summary, days, codes } = value
@@ -414,6 +432,15 @@ export function toStatsExtra(data: StatsRowsData, ids: PatientIds): StatsExtra |
     doctors: new Map(extra.doctors),
     doctorDays: extra.doctorDays.map(([day, doc, amount]) => ({ d: dateOf(day), doc, amount })),
   }
+}
+
+// v5 답의 환자·날 금액 → Worker 메모리 모양(stats-insights AC-6106.2). ids는 진료 줄·접수 줄과 같은 것을 넘긴다(같은 환자 = 같은 번호).
+// 금액 줄이 없는 답(v2~v4, 도우미 0.11.0 전 v5)이면 null. 이 줄은 Worker 밖으로 나가지 않는다(patientValue가 1명당 숫자로만 바꾼다)
+export function toPatientPays(data: StatsRowsData, ids: PatientIds): ValuePay[] | null {
+  const pays = data.extra?.pays
+  if (pays === undefined) return null
+  const dateOf = dashedMemo()
+  return pays.map(([chart, day, amount]) => ({ p: ids.idOf(chart), d: dateOf(day), amount }))
 }
 
 // 환자 → 첫 내원일(YYYY-MM-DD, 접수 줄 patientDays의 것). 첫 내원을 못 찾은 환자는 넣지 않는다(신환이 아니다).

@@ -12,8 +12,11 @@ import { SplitTable } from '@/components/revenue/RevenueSplit'
 import { TreatmentBars } from '@/components/revenue/TreatmentBars'
 import type { BarsView, Lead, PerVisitTab, RevenueMode, RevenueTabs, RoughInfo, SplitTab, TreatmentsTab, TrendTab } from '@/components/stats/revenueView'
 import { ds } from '@/components/ui/classes'
+import type { StatsRxGroup } from '@/types/rxGroups'
 import { HowCounted } from './HowCounted'
 import { CHART_NO_SIDE_SCROLL, EmptyNote, Section, thinTotals } from './parts'
+import type { BitSectionsShown } from './PatientMixSection'
+import { PatientValueSection } from './PatientValueSection'
 import { RoughSwitch } from './RoughSwitch'
 import { RxSection } from './RxSection'
 
@@ -26,6 +29,8 @@ import { RxSection } from './RxSection'
 //   막대는 기간을 바꾸면 높이가 움직이고(st-move-period) 빗금 조각은 붙을 때 솟는다(st-rise), 머리 글 "참고 포함" 꼬리표는 붙을 때 나타난다(st-tag-in).
 //   급여·비급여·기타·치료별 매출은 mode와 상관없다(AC-4408.4). 다만 켜짐이고 켜짐 셈(tabs.rough)이 있으면 그 두 탭 맨 위(설명 줄 아래)에
 //   tabs.rough.outside(참고 금액은 이 탭에 넣지 않아 합이 총매출과 다르다)를 막대 아래 글과 같은 모양으로 둔다(2026-11-15 검토 보완)
+// stats-insights(REQ-6106 AC-6106.4·AC-6106.5): bit(비트 칸 보기)를 주면 탭 넷 뒤에 다섯째 탭 '신환 1명당'(PatientValueSection)을 더한다.
+//   비트 칸이라 bit를 줄 때만이고, 탭이 있는 때(매출이 읽혔고 자료가 있음)만이다 — 읽는 중·읽기 실패·자료 없음 칸은 지금 모양 그대로다
 
 const TITLE = '매출'
 const TABLIST_LABEL = '매출 보기'
@@ -58,6 +63,9 @@ type Props = {
   mode?: RevenueMode
   onMode?(mode: RevenueMode): void
   rough?: RoughInfo | null
+  // 신환 1명당 탭(stats-insights AC-6106.4): 비트 칸 보기와 처방 칸 묶음(이름을 붙인다). bit를 주지 않으면 탭이 없다
+  bit?: BitSectionsShown
+  groups?: readonly StatsRxGroup[]
 }
 
 function How({ paragraphs }: { paragraphs: readonly string[] }) {
@@ -229,7 +237,9 @@ function OldHelperNote() {
   )
 }
 
-export function RevenueSection({ tabs, noDayCodes, onReread, className, mode = 'out', onMode, rough = null }: Props) {
+const NO_GROUPS: readonly StatsRxGroup[] = []
+
+export function RevenueSection({ tabs, noDayCodes, onReread, className, mode = 'out', onMode, rough = null, bit, groups = NO_GROUPS }: Props) {
   if (tabs === 'reading') {
     return (
       <Section title={TITLE} className={className}>
@@ -277,6 +287,7 @@ export function RevenueSection({ tabs, noDayCodes, onReread, className, mode = '
           { name: '급여·비급여·기타', panel: <SplitPanel tab={tabs.split} outside={outside} /> },
           { name: '치료별 매출', panel: <TreatmentsPanel tab={tabs.treatments} outside={outside} /> },
           { name: '건당 진료비', panel: <PerVisitPanel tab={perVisit} /> },
+          ...(bit === undefined ? [] : [{ name: '신환 1명당', panel: <PatientValueSection view={bit} groups={groups} /> }]),
         ]}
       />
     </>

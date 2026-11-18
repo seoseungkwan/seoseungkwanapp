@@ -2002,3 +2002,101 @@ describe('AC-6103.1 sectionsJob·sections: 묶음을 실어 불러왔으면 세 
     expect(valuesIn(dropoff).every((text) => text === HEAT.id || text === BLOOD.id)).toBe(true)
   })
 })
+
+// ── 신환 1명당 매출(stats-insights REQ-6106): 도우미 0.11.0의 v5 답(pays)이면 불러온 범위 전체(고른 기간과 상관없이)로 센다 ──
+// 불러온 범위 6/1~11/1 → 대상 = 첫 내원일(v5면 가장 이른 신환 날)이 6/1~8/4(8/4 + 89일 = 11/1)인 환자. 금액·날은 모두 지어낸 값이다.
+// 1번: 6/1 신환 표시 · 6/1 MM042 · 6/15 B4001 · 9/10 MM042(90일 = 8/29까지라 밖). 금액 3만 · −5천(환불) · 7만(밖)
+// 2번: 8/4 신환 표시(끝 경계) · MM042 · 12,345원 · 3번: 8/5 신환 표시 → 90일이 다 안 지나 뺌 · 4번: 6/2가 첫 내원일인데 신환 표시 없음 → v5에선 신환이 아님
+// 10~14번: 7/1 신환 표시 · MM042 · 10만 원씩(접수 줄·사람 줄에 없어도 된다)
+describe('AC-6106.2·AC-6106.3 sectionsJob·sections: 금액 줄이 있는 답이면 세 칸 보기와 함께 신환 1명당 매출(value)', () => {
+  const HEAT = { id: 't00000000000000c1', codes: ['MM042'] }
+  const BLOOD = { id: 't00000000000000c2', codes: ['B4001'] }
+  const VALUE_FROM = '2026-06-01'
+  const VALUE_OPTS = { ...OPTS, from: VALUE_FROM, groups: [HEAT, BLOOD] }
+  const VALUE_WHOLE = { from: VALUE_FROM, to: TODAY }
+  const FIVE = [10, 11, 12, 13, 14].map(chart)
+  const VALUE_ROWS = [
+    [CHARTS[0], '20260601', 'MM042', '20260601'],
+    [CHARTS[0], '20260615', 'B4001', '20260601'],
+    [CHARTS[0], '20260910', 'MM042', '20260601'],
+    [CHARTS[1], '20260804', 'MM042', '20260804'],
+    [CHARTS[2], '20260805', 'MM042', '20260805'],
+    [CHARTS[3], '20260602', 'MM042', '20260602'],
+    ...FIVE.map((person) => [person, '20260701', 'MM042', '20260701']),
+  ]
+  const MARKED = new Set([`${CHARTS[0]}|20260601`, `${CHARTS[1]}|20260804`, `${CHARTS[2]}|20260805`, ...FIVE.map((person) => `${person}|20260701`)])
+  const VALUE_DAYS = receptionsOf(VALUE_ROWS).map(([person, day, receptions, first]) => [person, day, receptions, first, 0, MARKED.has(`${person}|${day}`) ? 1 : 0])
+  const VALUE_PAYS = [
+    [CHARTS[0], '20260601', 30_000],
+    [CHARTS[0], '20260615', -5_000],
+    [CHARTS[0], '20260910', 70_000],
+    [CHARTS[1], '20260804', 12_345],
+    [CHARTS[2], '20260805', 1_000_000],
+    [CHARTS[3], '20260602', 500_000],
+    ...FIVE.map((person) => [person, '20260701', 100_000]),
+  ]
+  const valueJson = (over: Record<string, unknown> = {}) =>
+    v3Json({ v: 5, from: VALUE_FROM, rows: VALUE_ROWS, patientDays: VALUE_DAYS, pays: VALUE_PAYS, ...over })
+  // 대상 1·2·10~14번 = 7명. 금액 2만 5천 + 12,345 + 50만 = 537,345원, 내원 2 + 1 + 5 = 8날
+  const VALUE = {
+    n: 7,
+    average: 76_763, // 537,345 ÷ 7 = 76,763.6 → 버림
+    times: 1.1, // 8 ÷ 7 = 1.14
+    perVisit: 67_168, // 537,345 ÷ 8 = 67,168.1
+    lines: [
+      { groups: [HEAT.id], n: 6, average: 85_390 }, // 2번 + 10~14번: 512,345 ÷ 6
+      { groups: null, n: 1, average: 25_000 }, // 1번(MM042 + B4001)은 5명이 안 돼 그 밖
+    ],
+  }
+
+  it('AC-6106.3: v5 답 + 금액 줄 — 첫 내원일은 신환 날(toFirstVisits)이고 90일이 다 지난 신환만 1명당 평균·내원 횟수·한 번 올 때·받은 치료별로 센다', () => {
+    expect(readyIn(sectionsJob(loadJob(valueJson(), VALUE_OPTS).bit, VALUE_WHOLE)).value).toEqual(VALUE)
+  })
+
+  it('AC-6106.3: 고른 기간·견줄 기간과 상관없이 불러온 범위 전체로 센다', () => {
+    const { bit } = loadJob(valueJson(), VALUE_OPTS)
+    expect(readyIn(sectionsJob(bit, { ...OCTOBER_ON, previous: SEPTEMBER })).value).toEqual(VALUE)
+    expect(readyIn(sectionsJob(bit, { from: '2026-09-01', to: '2026-09-01' })).value).toEqual(VALUE)
+  })
+
+  it('AC-6106.3: 묶음 없이 불러왔어도 센다(받은 치료는 모두 진료만)', () => {
+    const { lines, ...rest } = readyIn(sectionsJob(loadJob(valueJson(), { ...VALUE_OPTS, groups: [] }).bit, VALUE_WHOLE)).value!
+    expect(rest).toEqual({ n: 7, average: 76_763, times: 1.1, perVisit: 67_168 })
+    expect(lines).toEqual([{ groups: [], n: 7, average: 76_763 }])
+  })
+
+  it('AC-6106.2: 금액 줄이 없는 답(pays 없는 v5·v3·v4)이면 value 열쇠가 없고(지금 모양 그대로), v2 답은 old-helper다', () => {
+    expect('value' in readyIn(sectionsJob(loadJob(valueJson({ pays: undefined }), VALUE_OPTS).bit, VALUE_WHOLE))).toBe(false)
+    expect('value' in readyIn(sectionsJob(loadJob(v3Json(), OPTS).bit, WHOLE))).toBe(false)
+    expect('value' in readyIn(sectionsJob(loadJob(v4Json(), OPTS).bit, WHOLE))).toBe(false)
+    expect('value' in readyIn(sectionsJob(loadJob(v5Json(), OPTS).bit, WHOLE))).toBe(false)
+    expect(sectionsJob(loadJob(helperJson(), OPTS).bit, WHOLE)).toEqual({ kind: 'old-helper' })
+  })
+
+  it('AC-6106.3: 대상이 없으면 n 0이다(열쇠는 있다)', () => {
+    const value = readyIn(sectionsJob(loadJob(v5Json({ pays: [[CHARTS[0], '20260901', 1_000]] }), OPTS).bit, WHOLE)).value
+    expect(value).toEqual({ n: 0, average: 0, times: 0, perVisit: 0, lines: [] })
+  })
+
+  it('AC-6106.2: Worker 일 — 금액은 메모리에만 남고 화면에는 1명당 숫자와 묶음 열쇠만 간다(loaded에 금액 줄·차트번호가 없다)', async () => {
+    const { host, sent } = hostUnderTest()
+    bridgeMessages('s1', valueJson()).forEach((m) => host.fromBridge(m))
+    await host.load(loadRequest('s1', VALUE_OPTS))
+    const [loaded] = sent
+    if (loaded?.type !== 'loaded') throw new Error('loaded가 아니다')
+    // 달 줄의 원장님별 매출(amount)은 지금 그대로 있다. 환자·날 금액 줄과 그 금액(2번의 12,345원)은 없다
+    expect(keysIn(loaded.view)).not.toContain('pays')
+    expect(JSON.stringify(loaded.view)).not.toContain('12345')
+    sent.length = 0
+    host.sections(sectionsRequest('b1', OCTOBER_ON))
+    const [reply] = sent
+    if (reply?.type !== 'sections-result') throw new Error('sections-result가 아니다')
+    const { value } = readyIn(reply.view)
+    expect(value).toEqual(VALUE)
+    const json = JSON.stringify(reply)
+    for (const id of [...CHARTS, ...FIVE]) expect(json).not.toContain(id)
+    expect(json).not.toContain('pays')
+    for (const key of [...SECTIONS_FORBIDDEN_KEYS, ...FORBIDDEN_KEYS, 'amount']) expect(keysIn(value)).not.toContain(key)
+    expect(valuesIn(value).every((text) => text === HEAT.id || text === BLOOD.id)).toBe(true)
+  })
+})

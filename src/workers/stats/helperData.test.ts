@@ -17,6 +17,7 @@ import {
   toConsumptionRows,
   toFirstVisits,
   toPatientDays,
+  toPatientPays,
   toStatsExtra,
   toVisitRows,
 } from './helperData'
@@ -1276,5 +1277,131 @@ describe('AC-6202.6 v2·v3·v4 답(옛 도우미)은 지금처럼 첫 내원일 
         [four, '2026-09-03'],
       ]),
     )
+  })
+})
+
+// ── 도우미 0.11.0의 v5 답(stats-insights AC-6106.1): goodV5() + 맨 끝 열쇠 pays[[차트번호, 수납일, 총진료비]] ──
+// 환자·날마다 진료비 총액(원 단위 정수, 환불이 더 큰 날은 음수). 0원 줄은 도우미가 보내지 않는다. 금액은 모두 지어낸 값이다.
+// 1번은 9/1·9/2 금액, 8번은 접수 줄·사람 줄에 없는 환자(미수입금만 낸 날 같은 것)다
+const PAYS = [
+  [chart(1), '20260901', 35_000],
+  [chart(1), '20260902', -2_000],
+  [chart(8), '20261101', 12_345],
+]
+const goodPays = () => ({ ...goodV5(), pays: PAYS.map((line) => [...line]) }) // 줄마다 새 배열(changedPays가 고쳐도 PAYS는 그대로)
+
+// goodPays()의 한 자리만 바꾼 JSON 글자
+function changedPays(path: ReadonlyArray<string | number>, value: unknown): string {
+  const draft = goodPays() as unknown
+  let at = draft as Record<string | number, unknown>
+  for (const key of path.slice(0, -1)) at = at[key] as Record<string | number, unknown>
+  const last = path[path.length - 1]
+  if (value === DROP) Reflect.deleteProperty(at, last)
+  else at[last] = value
+  return JSON.stringify(draft)
+}
+
+describe('AC-6106.2 parseStatsRows: v3·v4·v5 답을 모두 받고 v5의 pays(환자·날 금액)만 메모리에 둔다', () => {
+  it('AC-6106.2: pays가 있는 v5 답을 받고, pays 말고는 pays 없는 v5 답과 같게 읽힌다', () => {
+    const data = parseStatsRows(JSON.stringify(goodPays()), REQ)
+    expect(data.v).toBe(5)
+    expect(data.extra?.pays).toEqual(PAYS)
+    const without = parseStatsRows(JSON.stringify(goodV5()), REQ)
+    const { extra, ...rest } = data
+    const { extra: plainExtra, ...plainRest } = without
+    expect(rest).toEqual(plainRest)
+    const { pays, ...sameExtra } = extra!
+    expect(pays).toBeDefined()
+    expect(sameExtra).toEqual(plainExtra)
+    expect(toStatsExtra(data, createPatientIds())).toEqual(toStatsExtra(without, createPatientIds()))
+  })
+
+  it('AC-6106.2: pays 없는 v5 답(도우미 0.11.0 전)과 v3·v4 답은 지금처럼 받고 금액 줄이 없다(toPatientPays = null)', () => {
+    for (const reply of [goodV5(), goodV4(), goodV3()]) {
+      const data = parseStatsRows(JSON.stringify(reply), REQ)
+      expect(data.extra?.pays).toBeUndefined()
+      expect(toPatientPays(data, createPatientIds())).toBeNull()
+    }
+    expect(toPatientPays(parseStatsRows(JSON.stringify(good()), REQ), createPatientIds())).toBeNull()
+  })
+
+  it('AC-6106.2: toPatientPays — 진료 줄·접수 줄과 같은 메모리 번호(차트번호 앞뒤 공백은 같은 환자)·YYYY-MM-DD·금액 그대로, 차트번호 글자는 남지 않는다', () => {
+    const draft = goodPays()
+    draft.pays = [[` ${chart(1)} `, '20260901', 35_000], ...PAYS.slice(1)]
+    const data = parseStatsRows(JSON.stringify(draft), REQ)
+    const ids = createPatientIds()
+    const patient = toPatientDays(data, ids)[0]!.patient
+    const pays = toPatientPays(data, ids)
+    expect(pays).toEqual([
+      { p: patient, d: '2026-09-01', amount: 35_000 },
+      { p: patient, d: '2026-09-02', amount: -2_000 },
+      { p: ids.idOf(chart(8)), d: '2026-11-01', amount: 12_345 },
+    ])
+    expect(JSON.stringify(pays)).not.toContain(chart(1))
+    expect(JSON.stringify(pays)).not.toContain(chart(8))
+  })
+
+  it.each<[string, ReadonlyArray<string | number>, unknown]>([
+    ['금액 줄 없음', ['pays'], []],
+    ['환불이 더 큰 날(음수)', ['pays', 0, 2], -35_000],
+    ['금액 0', ['pays', 0, 2], 0],
+    ['금액 10^14', ['pays', 0, 2], AMOUNT_LIMIT],
+    ['금액 −10^14', ['pays', 0, 2], -AMOUNT_LIMIT],
+    ['기간 첫날·끝날', ['pays'], [[chart(1), '20260901', 1], [chart(1), '20261101', 1]]],
+    ['접수 줄·사람 줄에 없는 차트번호', ['pays', 0, 0], chart(9)],
+  ])('AC-6106.2: 받는다: %s', (_name, path, value) => {
+    expect(() => parseStatsRows(changedPays(path, value), REQ)).not.toThrow()
+  })
+
+  it.each<[string, ReadonlyArray<string | number>, unknown]>([
+    ['pays가 배열이 아님', ['pays'], { a: 1 }],
+    ['pays가 null', ['pays'], null],
+    ['줄이 배열이 아님', ['pays', 0], 'x'],
+    ['줄이 두 칸', ['pays', 0], [chart(1), '20260901']],
+    ['줄이 네 칸', ['pays', 0], [chart(1), '20260901', 1, 0]],
+    ['차트번호가 숫자', ['pays', 0, 0], 900001],
+    ['차트번호가 null', ['pays', 0, 0], null],
+    ['차트번호가 빈 글자', ['pays', 0, 0], '  '],
+    ['수납일 모양이 틀림', ['pays', 0, 1], '2026-09-01'],
+    ['없는 날짜', ['pays', 0, 1], '20260231'],
+    ['수납일이 기간 앞', ['pays', 0, 1], '20260831'],
+    ['수납일이 기간 뒤', ['pays', 0, 1], '20261102'],
+    ['금액이 소수', ['pays', 0, 2], 0.5],
+    ['금액이 글자', ['pays', 0, 2], '35000'],
+    ['금액이 null', ['pays', 0, 2], null],
+    ['금액이 10^14를 넘음', ['pays', 0, 2], AMOUNT_LIMIT + 1],
+    ['금액이 −10^14 아래', ['pays', 0, 2], -(AMOUNT_LIMIT + 1)],
+  ])('AC-6106.2: E-BRIDGE-BAD-REPLY: %s', (_name, path, value) => {
+    expect(codeOf(() => parseStatsRows(changedPays(path, value), REQ))).toBe(BAD_REPLY)
+  })
+
+  it('AC-6106.2: pays는 v5 답에만 있다 — v2·v3·v4 답에 pays가 있으면 모르는 열쇠라 거절한다', () => {
+    expect(codeOf(() => parseStatsRows(JSON.stringify({ ...good(), pays: PAYS }), REQ))).toBe(BAD_REPLY)
+    expect(codeOf(() => parseStatsRows(JSON.stringify({ ...goodV3(), pays: PAYS }), REQ))).toBe(BAD_REPLY)
+    expect(codeOf(() => parseStatsRows(JSON.stringify({ ...goodV4(), pays: PAYS }), REQ))).toBe(BAD_REPLY)
+  })
+
+  it('AC-6106.2: pays 모양이 틀린 데다 두 배열이 어긋나도 모양을 먼저 봐서 E-BRIDGE-BAD-REPLY, 모양이 맞고 어긋나면 E-STATS-CHANGED다', () => {
+    expect(codeOf(() => parseStatsRows(JSON.stringify({ ...goodPays(), patientDays: [], pays: [[chart(1), '20260901', 0.5]] }), REQ))).toBe(BAD_REPLY)
+    expect(codeOf(() => parseStatsRows(JSON.stringify({ ...goodPays(), patientDays: [] }), REQ))).toBe(CHANGED)
+  })
+
+  it('AC-6106.2: 금액 줄 수는 다른 줄과 같이 700,000까지 받고 하나 넘으면 거절한다', SLOW, () => {
+    const line = [chart(1), '20260901', 1_000]
+    const full = parseStatsRows(changedPays(['pays'], Array(MAX_STATS_ROWS).fill(line)), REQ)
+    expect(toPatientPays(full, createPatientIds())).toHaveLength(MAX_STATS_ROWS)
+    expect(codeOf(() => parseStatsRows(changedPays(['pays'], Array(MAX_STATS_ROWS + 1).fill(line)), REQ))).toBe(BAD_REPLY)
+  })
+
+  it('AC-6106.2: 오류에 자료가 섞이지 않는다', () => {
+    let error: unknown
+    try {
+      parseStatsRows(changedPays(['pays', 0, 2], `${chart(7)}원`), REQ)
+    } catch (e) {
+      error = e
+    }
+    expect(error).toBeInstanceOf(StatsDataError)
+    expect((error as Error).message).toBe(BAD_REPLY)
+    expect(String((error as Error).stack)).not.toContain(chart(7))
   })
 })

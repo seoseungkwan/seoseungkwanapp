@@ -33,7 +33,8 @@ import { WeekdaySection } from './WeekdaySection'
 // 통계 틀 (first90 REQ-4411 AC-4411.1·AC-4411.3, design.md 5-5, 시안 docs/mockups/first90/redesign.html): 요약 자리 → 큰 카드 다섯을 한 줄씩 쌓는다(사이 16px).
 //   요약 자리(stats-summary): 환자 요약 카드(이 카드가 id를 갖는다) + 바로 뒤 매출 요약 카드(revenue를 받을 때만, first90 AC-4408.2)
 //   환자(stats-patients): 환자 수 추이 · 신환 재방문율 · 환자 구성(비트)
-//   매출(stats-revenue): 매출 칸(탭 넷). revenue를 받을 때만(stats-revenue AC-4107.1, 통계 화면은 늘 준다)
+//   매출(stats-revenue): 매출 칸(탭 넷). revenue를 받을 때만(stats-revenue AC-4107.1, 통계 화면은 늘 준다).
+//     bit를 받으면 다섯째 탭 '신환 1명당'(stats-insights AC-6106.4, 비트 칸이라 bit를 줄 때만)이 더해진다
 //   예약·전환(stats-sunap, spec sunap-ilji AC-4906.1): 초진·90일 예약률 · Block 전환 칸 셋. sunap을 받을 때만(통계 화면은 늘 준다)
 //   예약(stats-calendar, spec clinic-calendar AC-5907.3): 예약 탭 예약의 최근 12달(통계 기간과 상관없음). calendar를 받을 때만(통계 화면은 늘 준다)
 //   처방(stats-rx): 처방 칸 + 탭 셋(stats-pc-ux AC-4003.1). 탭 안 칸은 지금 칸 그대로(props도 그대로)이고 Section 탭 패널 모드로 그려진다.
@@ -156,7 +157,16 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
       </StatsCard>
       {revenue !== undefined && tabs !== null && (
         <StatsCard id={REVENUE_ID} title={REVENUE}>
-          <RevenueSection tabs={tabs} noDayCodes={noDayCodes} onReread={revenue.onReread} mode={shownMode} onMode={setMode} rough={rough} />
+          <RevenueSection
+            tabs={tabs}
+            noDayCodes={noDayCodes}
+            onReread={revenue.onReread}
+            mode={shownMode}
+            onMode={setMode}
+            rough={rough}
+            bit={bit}
+            groups={groups.groups}
+          />
         </StatsCard>
       )}
       {sunap !== undefined && (
