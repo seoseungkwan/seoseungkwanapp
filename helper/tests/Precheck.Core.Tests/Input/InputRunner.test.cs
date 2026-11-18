@@ -1801,4 +1801,241 @@ public class InputRunnerTests
         rig.Run(new[] { Sample.Item(1) });
         Assert.Empty(rig.Ui.Written);
     }
+
+    // ------------------------------------------------------------------
+    // AC-6611.2 · AC-6611.3 · AC-6611.4 뒤에 붙이기(clinic-profile, 도우미 0.12.0). 비교는 진짜 MemoMatcher다
+    // ------------------------------------------------------------------
+
+    private const string Appended = "붙임(기존 메모 뒤에)";
+    private const string TooLong = "길이 넘음(비트 메모 칸 3,000바이트)";
+    private const string ChangedBefore = "입력 직전 기존 청구메모가 변경되었습니다. 현재 내용을 다시 비교해 주세요.";
+
+    private static InputItem Appending(int n, string appends, string? memo = null, bool checkedByHand = false)
+    {
+        var item = Sample.Item(n, memo: memo, checkedByHand: checkedByHand);
+        return new InputItem(item.VisitKey, item.Chart, item.Name, item.Date, item.Memo, item.CheckedByHand, null, appends);
+    }
+
+    private static RunnerRig AppendRig() => new RunnerRig { Matcher = new MemoMatcher() };
+
+    [Fact(DisplayName = "AC-6611.2 칸 글이 appends와 같으면(줄바꿈만 맞춤) 앞 글.TrimEnd() + 줄바꿈 + 우리 메모를 윈도우 줄바꿈으로 쓰고 저장해 다시 읽는다: 완료·'붙임(기존 메모 뒤에)'·previousMemo 없음")]
+    public void AppendsWhenSame()
+    {
+        var rig = AppendRig();
+        rig.Ui.Bit["900001"] = "직원이 쓴 메모 \r\n둘째 줄\r\n";
+        var outcome = rig.Run(new[] { Appending(1, "직원이 쓴 메모 \n둘째 줄\n", memo: "우리 첫 줄\n우리 둘째 줄") });
+
+        Assert.Equal(InputStatus.Finished, outcome.Status);
+        var result = Of(outcome, "v1");
+        Assert.Equal((InputResults.Done, Appended), (result.Result, result.Reason));
+        Assert.Null(result.PreviousMemo);
+        const string joined = "직원이 쓴 메모 \r\n둘째 줄\r\n우리 첫 줄\r\n우리 둘째 줄";
+        Assert.Equal(joined, Assert.Single(rig.Ui.Written));
+        Assert.Equal(joined, rig.Ui.Bit["900001"]);
+        Assert.Equal(1, rig.Ui.Saves);
+        Assert.Equal(new[] { JournalState.Writing, JournalState.Done }, rig.Journal.Of("v1"));
+    }
+
+    [Fact(DisplayName = "AC-6611.2 차례: 원래 메모를 먼저 남기고(SaveOriginal) → writing → 칸에 합친 글 → 저장 → 저장 뒤 다시 읽기는 합친 글과 견준다")]
+    public void AppendOrder()
+    {
+        var rig = AppendRig();
+        rig.Ui.Bit["900001"] = "직원이 쓴 메모";
+        var seen = 0;
+        rig.Ui.OnCall = (call, _) =>
+        {
+            if (call != "replace") return;
+            seen++;
+            Assert.Equal(new[] { "직원이 쓴 메모" }, rig.Journal.Originals["v1"]);
+            Assert.Equal(new[] { JournalState.Writing }, rig.Journal.Of("v1"));
+        };
+        var outcome = rig.Run(new[] { Appending(1, "직원이 쓴 메모") });
+
+        Assert.Equal(1, seen);
+        Assert.Equal(Appended, Of(outcome, "v1").Reason);
+        var after = rig.Ui.Calls.Skip(rig.Ui.Calls.LastIndexOf("replace")).Where(call => call != "unsaved").ToArray();
+        Assert.Equal(new[] { "replace", "read", "target", "save", "read" }, after);
+    }
+
+    [Fact(DisplayName = "AC-6611.2 저장 뒤 다시 읽은 글이 합친 글과 다르면 완료로 치지 않고 원본 문구로 멈춘다(우리 메모만 있는지로 견주지 않는다)")]
+    public void AppendSaveDiffers()
+    {
+        var rig = AppendRig();
+        rig.Ui.Bit["900001"] = "직원이 쓴 메모";
+        rig.Ui.AfterSave = () => rig.Ui.Editor = "가짜 메모 1";
+        var outcome = rig.Run(new[] { Appending(1, "직원이 쓴 메모"), Sample.Item(2) });
+
+        Assert.Equal(InputStatus.Stopped, outcome.Status);
+        Assert.Equal((InputResults.Check, "임시저장을 눌렀지만 메모 칸 내용이 달라 보입니다. U차트 화면을 확인해 주세요."), (Of(outcome, "v1").Result, Of(outcome, "v1").Reason));
+        Assert.Equal(JournalState.WriteUnconfirmed, rig.Journal.Last("v1"));
+        Assert.Equal(1, rig.Ui.Opens);
+    }
+
+    [Theory(DisplayName = "AC-6611.2 칸 글이 appends와 다르면(그새 바뀜·지워짐) 쓰지 않고 '바뀜'(원본 문구)으로 건너뛰고 3번 실패에 세지 않는다")]
+    [InlineData("직원이 고친 메모")]
+    [InlineData("직원이 쓴 메모 ")]
+    [InlineData("")]
+    [InlineData("  \r\n")]
+    public void AppendSkippedWhenChanged(string box)
+    {
+        var rig = AppendRig();
+        var items = Enumerable.Range(1, 4).Select(n => Appending(n, "직원이 쓴 메모")).ToList();
+        foreach (var item in items) rig.Ui.Bit[item.Chart] = box;
+        var outcome = rig.Run(items);
+
+        Assert.Equal(InputStatus.Finished, outcome.Status);
+        foreach (var item in items)
+        {
+            Assert.Equal((InputResults.Skipped, ChangedBefore), (Of(outcome, item.VisitKey).Result, Of(outcome, item.VisitKey).Reason));
+            Assert.Equal(box, rig.Ui.Bit[item.Chart]);
+        }
+        Assert.Equal(0, rig.Ui.Writes);
+        Assert.Equal(0, rig.Ui.Saves);
+        Assert.Empty(rig.Journal.Originals);
+        Assert.Equal(4, rig.Ui.Opens);
+    }
+
+    [Fact(DisplayName = "AC-6611.2 직접 확인으로 온 환자는 appends가 함께 와도 붙이지 않는다('이미 있음')")]
+    public void HandCheckedIsNotAppended()
+    {
+        var rig = AppendRig();
+        rig.Ui.Bit["900001"] = "직원이 쓴 메모";
+        var outcome = rig.Run(new[] { Appending(1, "직원이 쓴 메모", checkedByHand: true) });
+
+        Assert.Equal((InputResults.Skipped, "이미 있음"), (Of(outcome, "v1").Result, Of(outcome, "v1").Reason));
+        Assert.Equal(0, rig.Ui.Writes);
+        Assert.Equal("직원이 쓴 메모", rig.Ui.Bit["900001"]);
+    }
+
+    [Fact(DisplayName = "AC-6611.2 appends 없는 사람은 그대로다: 다른 메모면 '이미 있음'이고 붙이지 않는다(묻지 않기 없이)")]
+    public void NoAppendsNoAppend()
+    {
+        var rig = AppendRig();
+        rig.Ui.Bit["900001"] = "직원이 쓴 메모";
+        var outcome = rig.Run(new[] { Sample.Item(1) });
+
+        Assert.Equal((InputResults.Skipped, "이미 있음"), (Of(outcome, "v1").Result, Of(outcome, "v1").Reason));
+        Assert.Equal(0, rig.Ui.Writes);
+    }
+
+    [Fact(DisplayName = "AC-6611.2 끊긴 붙이기 되살리기: 쓰다 멈춘 사람의 칸이 '마지막 원본 + 줄바꿈 + 우리 메모'면 다시 쓰지 않고 저장을 눌러 확인한다(붙임, previousMemo 없음)")]
+    public void EarlierAppendIsFinished()
+    {
+        var rig = AppendRig();
+        var item = Sample.Item(1);
+        rig.Journal.Mark(item, JournalState.Writing);
+        rig.Journal.SaveOriginal(item, "직원이 쓴 메모 \r\n");
+        rig.Ui.Bit[item.Chart] = "직원이 쓴 메모\r\n가짜 메모 1";
+
+        var outcome = rig.Run(new[] { item });
+
+        Assert.Equal(InputStatus.Finished, outcome.Status);
+        Assert.Equal((InputResults.Done, Appended), (Of(outcome, "v1").Result, Of(outcome, "v1").Reason));
+        Assert.Null(Of(outcome, "v1").PreviousMemo);
+        Assert.Equal(0, rig.Ui.Writes);
+        Assert.Equal(1, rig.Ui.Saves);
+        Assert.Equal(JournalState.Done, rig.Journal.Last("v1"));
+    }
+
+    [Fact(DisplayName = "AC-6611.2 끊긴 쓰기 되살리기: 칸 끝이 우리 메모여도 앞 글이 마지막 원본이 아니면(원본이 없어도) 저장을 누르지 않고 멈춘다")]
+    public void EarlierWriteWithOtherPrefixStops()
+    {
+        foreach (var original in new[] { "원래 메모", null })
+        {
+            var rig = AppendRig();
+            var item = Sample.Item(1);
+            rig.Journal.Mark(item, JournalState.Writing);
+            if (original != null) rig.Journal.SaveOriginal(item, original);
+            rig.Ui.Bit[item.Chart] = "누가 쓴 다른 글\r\n가짜 메모 1";
+
+            var outcome = rig.Run(new[] { item, Sample.Item(2) });
+
+            Assert.Equal(InputStatus.Stopped, outcome.Status);
+            Assert.Equal((InputResults.Check, CheckMemoBox), (Of(outcome, "v1").Result, Of(outcome, "v1").Reason));
+            Assert.Equal(0, rig.Ui.Saves);
+            Assert.Equal(0, rig.Ui.Writes);
+            Assert.Equal(1, rig.Ui.Opens);
+        }
+    }
+
+    [Fact(DisplayName = "AC-6611.2 끊긴 바꾸기 되살리기는 그대로다: 칸이 우리 메모와 같으면 저장을 눌러 확인하고 바꿈·previousMemo")]
+    public void EarlierReplaceStillFinished()
+    {
+        var rig = AppendRig();
+        var item = Sample.Item(1);
+        rig.Journal.Mark(item, JournalState.Writing);
+        rig.Journal.SaveOriginal(item, "원래 메모");
+        rig.Ui.Bit[item.Chart] = item.Memo;
+
+        var outcome = rig.Run(new[] { item });
+
+        Assert.Equal((InputResults.Done, "바꿈(기존 메모 덮어씀)"), (Of(outcome, "v1").Result, Of(outcome, "v1").Reason));
+        Assert.Equal("원래 메모", Of(outcome, "v1").PreviousMemo);
+        Assert.Equal(1, rig.Ui.Saves);
+    }
+
+    [Fact(DisplayName = "AC-6611.3 붙인 뒤 다음 묶음에서 다시 견주면 같은 메모라 쓰지 않고 완료(이미 입력됨): appends가 없어도, 묻는 글이 남아 있어도 앞 글을 덮어쓰지 않는다")]
+    public void AppendedIsSameNextTime()
+    {
+        var rig = AppendRig();
+        rig.Ui.Bit["900001"] = "직원이 쓴 메모";
+        rig.Run(new[] { Appending(1, "직원이 쓴 메모") });
+        var writes = rig.Ui.Writes;
+
+        var plain = rig.Run(new[] { Sample.Item(1) });
+        var again = rig.Run(new[] { Appending(1, "직원이 쓴 메모") });
+        var replaced = rig.Run(new[] { Sample.Item(1, replaces: "직원이 쓴 메모") });
+
+        foreach (var outcome in new[] { plain, again, replaced })
+        {
+            Assert.Equal((InputResults.Done, "이미 입력됨"), (Of(outcome, "v1").Result, Of(outcome, "v1").Reason));
+        }
+        Assert.Equal(writes, rig.Ui.Writes);
+        Assert.Equal("직원이 쓴 메모\r\n가짜 메모 1", rig.Ui.Bit["900001"]);
+    }
+
+    [Fact(DisplayName = "AC-6611.4 합친 글(윈도우 줄바꿈)이 3,000바이트면 넣고, 3,001바이트면 쓰지도 원본을 남기지도 않고 '길이 넘음(비트 메모 칸 3,000바이트)'으로 건너뛴다")]
+    public void AppendByteLimit()
+    {
+        // 우리 메모 '가짜 메모 N' = 11바이트, 줄바꿈 CRLF = 2바이트
+        var rig = AppendRig();
+        var fits = Appending(1, new string('a', 2987));
+        var over = Appending(2, new string('a', 2988));
+        var korean = Appending(3, new string('가', 1494));
+        rig.Ui.Bit[fits.Chart] = fits.Appends!;
+        rig.Ui.Bit[over.Chart] = over.Appends!;
+        rig.Ui.Bit[korean.Chart] = korean.Appends!;
+
+        var outcome = rig.Run(new[] { fits, over, korean });
+
+        Assert.Equal(InputStatus.Finished, outcome.Status);
+        Assert.Equal((InputResults.Done, Appended), (Of(outcome, "v1").Result, Of(outcome, "v1").Reason));
+        Assert.Equal(3000, BitBytes.Of(rig.Ui.Bit[fits.Chart]));
+        Assert.Equal((InputResults.Skipped, TooLong), (Of(outcome, "v2").Result, Of(outcome, "v2").Reason));
+        Assert.Equal((InputResults.Skipped, TooLong), (Of(outcome, "v3").Result, Of(outcome, "v3").Reason));
+        Assert.Equal(over.Appends, rig.Ui.Bit[over.Chart]);
+        Assert.Equal(korean.Appends, rig.Ui.Bit[korean.Chart]);
+        Assert.Equal(1, rig.Ui.Writes);
+        Assert.Equal(new[] { "v1" }, rig.Journal.Originals.Keys.ToArray());
+        Assert.Equal(new[] { JournalState.Skipped }, rig.Journal.Of("v2"));
+    }
+
+    [Fact(DisplayName = "AC-6611.4 길이 넘음은 그 환자만의 사정이라 3번 실패에 세지 않는다: 넷이 길이 넘음이고 다섯째가 열기 실패여도 멈추지 않는다")]
+    public void TooLongDoesNotStopBatch()
+    {
+        var rig = AppendRig();
+        var items = Enumerable.Range(1, 4).Select(n => Appending(n, new string('가', 1500))).ToList();
+        foreach (var item in items) rig.Ui.Bit[item.Chart] = item.Appends!;
+        var failing = Sample.Item(5);
+        items.Add(failing);
+        items.Add(Sample.Item(6));
+        rig.Ui.OpenOverride = (chart, _, __) => chart == failing.Chart ? ChartOpenResult.Failed("가짜로 환자를 열지 못했습니다.") : null;
+
+        var outcome = rig.Run(items);
+
+        Assert.Equal(InputStatus.Finished, outcome.Status);
+        Assert.All(items.Take(4), item => Assert.Equal((InputResults.Skipped, TooLong), (Of(outcome, item.VisitKey).Result, Of(outcome, item.VisitKey).Reason)));
+        Assert.Equal(InputResults.Skipped, Of(outcome, "v5").Result);
+        Assert.Equal((InputResults.Done, "입력"), (Of(outcome, "v6").Result, Of(outcome, "v6").Reason));
+    }
 }

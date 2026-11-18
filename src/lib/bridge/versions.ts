@@ -5,7 +5,7 @@ import { PROTOCOL } from './protocol'
 /** 이보다 낮은 도우미는 막는다(update-helper) */
 export const MIN_HELPER = '0.3.0'
 /** 이보다 낮은 도우미는 쓰게 두되 "새 도우미가 있어요"를 보인다 */
-export const LATEST_HELPER = '0.11.0'
+export const LATEST_HELPER = '0.12.0'
 /** 이보다 낮은 확장은 막는다(update-extension) */
 export const MIN_EXTENSION = '0.1.0'
 /**
@@ -28,6 +28,11 @@ export const CAL_HELPER = '0.10.0'
  * 다른 도구는 막지 않는다(MIN_HELPER는 그대로)
  */
 export const VALUE_HELPER = '0.11.0'
+/**
+ * bit.input 항목 appends(비트 메모 뒤에 붙이기, spec clinic-profile REQ-6611)를 아는 도우미. 옛 도우미는 appends를 모르는 칸으로 묶음 전체를 거절하므로
+ * 이보다 낮으면 청구 화면이 [뒤에 붙이기]를 보이지 않는다(AC-6611.1). 다른 도구는 막지 않는다(MIN_HELPER는 그대로)
+ */
+export const APPEND_HELPER = '0.12.0'
 
 export type WebVersions = { protocol: number; minHelper: string; latestHelper: string; minExtension: string }
 

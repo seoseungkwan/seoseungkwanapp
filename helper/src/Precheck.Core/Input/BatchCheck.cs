@@ -9,10 +9,11 @@ namespace Precheck.Core.Input;
 /// <summary>입력 묶음의 진료 하나(commands.json의 bit.input payload).</summary>
 public sealed class InputItem
 {
-    public InputItem(string visitKey, string chart, string name, string date, string memo, bool checkedByHand = false, string? replaces = null)
+    public InputItem(string visitKey, string chart, string name, string date, string memo, bool checkedByHand = false, string? replaces = null, string? appends = null)
     {
         CheckedByHand = checkedByHand;
         Replaces = replaces;
+        Appends = appends;
         VisitKey = visitKey ?? "";
         Chart = chart ?? "";
         Name = name ?? "";
@@ -34,6 +35,12 @@ public sealed class InputItem
 
     /// <summary>사람이 화면에서 승인한 비트 메모(AC-037.1). 칸 글이 이것과 같을 때만 바꾼다. 없으면 null.</summary>
     public string? Replaces { get; }
+
+    /// <summary>
+    /// 사람이 [뒤에 붙이기]를 고른 때 화면에서 본 비트 메모(clinic-profile AC-6611.2). 칸 글이 이것과 같을 때만 그 뒤에 줄바꿈 + 우리 메모를 붙인다.
+    /// Replaces와 함께 오지 않는다(BatchCheck). 묻지 않기로는 붙이지 않는다: 이 칸이 있는 사람만 붙인다. 없으면 null.
+    /// </summary>
+    public string? Appends { get; }
 }
 
 /// <summary>
@@ -49,6 +56,9 @@ public static class BatchCheck
 
     /// <summary>승인한 비트 메모의 한도(AC-037.1): 비트에서 읽는 메모 한도(AC-016.1)와 같다.</summary>
     public const int MaxReplaces = 4000;
+
+    /// <summary>뒤에 붙일 비트 메모의 한도(AC-6611.2): replaces와 같다.</summary>
+    public const int MaxAppends = 4000;
 
     private static readonly Regex ChartShape = new Regex(@"^[0-9]{1,20}\z", RegexOptions.CultureInvariant);
 
@@ -82,7 +92,9 @@ public static class BatchCheck
         && ValidName(item.Name)
         && FieldSpec.TryParseDate(item.Date, out _)
         && ValidMemo(item.Memo)
-        && ValidReplaces(item.Replaces);
+        && ValidSeen(item.Replaces, MaxReplaces)
+        && ValidSeen(item.Appends, MaxAppends)
+        && (item.Replaces == null || item.Appends == null);
 
     // 원본: 1 <= len(name.strip()) <= 100, 제어 문자(32 미만, 127~159) 없음
     private static bool ValidName(string name) =>
@@ -92,9 +104,10 @@ public static class BatchCheck
     private static bool ValidMemo(string memo) =>
         memo.Length >= 1 && memo.Length <= MaxMemo && memo.All(c => !IsControl(c) || c == '\r' || c == '\n' || c == '\t');
 
-    // 비트에서 읽은 글을 그대로 견주기만 한다: 창에 보이거나 칸에 쓰이지 않으므로 글자를 가리지 않는다
-    private static bool ValidReplaces(string? replaces) =>
-        replaces == null || (replaces.Length >= 1 && replaces.Length <= MaxReplaces);
+    // 화면에서 본 비트 글(replaces·appends)은 칸 글과 견주기만 한다: 창에 보이거나 그대로 칸에 쓰이지 않으므로 글자를 가리지 않는다.
+    // 붙일 때 칸에 다시 쓰는 앞 글은 appends가 아니라 바로 앞에 칸에서 읽은 글이다(AC-6611.2). 바꾸기와 붙이기는 한 사람에 하나만이다
+    private static bool ValidSeen(string? text, int max) =>
+        text == null || (text.Length >= 1 && text.Length <= max);
 
     private static bool IsControl(char c) => c < 32 || (c >= 127 && c <= 159);
 

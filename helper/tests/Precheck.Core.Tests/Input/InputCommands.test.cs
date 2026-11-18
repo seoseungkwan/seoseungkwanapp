@@ -379,4 +379,139 @@ public class InputCommandsTests
         thread.Join();
         return result;
     }
+
+    // ------------------------------------------------------------------
+    // AC-6611.2 뒤에 붙이기(clinic-profile, 도우미 0.12.0): 명령 표 → 처리기 → 진짜 MemoMatcher·WorkStoreJournal(WiringRig)
+    // ------------------------------------------------------------------
+
+    private const string Box = "직원이 쓴 다른 메모";
+    private const string AppendedReason = "붙임(기존 메모 뒤에)";
+
+    /// <summary>WiringRig 묶음의 그 진료 줄에 appends 칸을 넣는다(WiringRig.Request는 replaces까지만 쓴다).</summary>
+    private static Action<Dictionary<string, object?>> AppendsFor(params (string VisitKey, string Text)[] rows) => fields =>
+    {
+        foreach (var row in (List<Dictionary<string, object>>)fields["items"]!)
+        {
+            foreach (var (visitKey, text) in rows)
+            {
+                if ((string)row["visitKey"] == visitKey) row["appends"] = text;
+            }
+        }
+    };
+
+    private static JsonElement LineOf(JsonElement result, string visitKey) =>
+        result.GetProperty("results").EnumerateArray().Single(line => line.GetProperty("visitKey").GetString() == visitKey);
+
+    private static string[] OriginalsOf(WiringRig rig, string visitKey)
+    {
+        if (!rig.Files.Inside(Precheck.Core.Tests.Store.StoreRig.MonthFile).TryGetProperty("originals", out var originals) || !originals.TryGetProperty(visitKey, out var list)) return new string[0];
+        return list.EnumerateArray().Select(text => text.GetString()!).ToArray();
+    }
+
+    private static List<JsonElement> SendRaw(WiringRig rig, string itemJson)
+    {
+        var dispatcher = new Dispatcher(Table);
+        rig.Register(dispatcher);
+        var inner = "{\"items\":[{\"visitKey\":\"v1\",\"chart\":\"900001\",\"name\":\"가상환자01\",\"date\":\"2026-10-27\",\"memo\":\"가짜\"" + itemJson + "}]}";
+        var sink = new ListSink();
+        dispatcher.Handle(Encoding.UTF8.GetBytes(Requests.Envelope("bit.input", JsonSerializer.Serialize(new { payload = inner }))), sink);
+        return sink.Replies;
+    }
+
+    public static IEnumerable<object[]> BadAppends => new[]
+    {
+        new object[] { ",\"appends\":1" },
+        new object[] { ",\"appends\":true" },
+        new object[] { ",\"appends\":null" },
+        new object[] { ",\"appends\":\"\"" },
+        new object[] { ",\"appends\":\"" + new string('글', 4001) + "\"" },
+        new object[] { ",\"appends\":\"직원 메모\",\"replaces\":\"직원 메모\"" },
+    };
+
+    [Theory(DisplayName = "AC-6611.2 명령 표·묶음 검사: appends가 글자가 아니거나 비었거나 4,000자를 넘거나 replaces와 함께 오면 창이 불리기 전에 E-HELPER-BAD-MESSAGE")]
+    [MemberData(nameof(BadAppends))]
+    public void AppendsShape(string itemJson)
+    {
+        using var rig = new WiringRig();
+        var replies = SendRaw(rig, itemJson);
+        Assert.Equal(ErrorCodes.BadMessage, Assert.Single(replies).GetProperty("code").GetString());
+        Assert.Empty(rig.Confirm.Shown);
+        Assert.Equal(0, rig.Ui.Writes);
+    }
+
+    [Fact(DisplayName = "AC-6611.2 명령 표를 지나 끝까지: 칸 글이 appends와 같으면 붙여 넣고 완료·'붙임(기존 메모 뒤에)', previousMemo 없음, 원래 메모가 달 파일에 남고 기록은 Done")]
+    public void AppendsEndToEnd()
+    {
+        using var rig = new WiringRig();
+        var item = Sample.Item(1);
+        rig.Ui.Bit[item.Chart] = Box;
+        rig.EditPayload = AppendsFor((item.VisitKey, Box));
+
+        var (_, result) = rig.Run(item);
+
+        Assert.Equal("finished", result.GetProperty("status").GetString());
+        Assert.Equal(("완료", AppendedReason), WiringRig.Row(result, item.VisitKey));
+        Assert.False(LineOf(result, item.VisitKey).TryGetProperty("previousMemo", out _));
+        Assert.Equal(Box + "\r\n" + item.Memo, rig.Ui.Bit[item.Chart]);
+        Assert.Equal(new[] { Box }, OriginalsOf(rig, item.VisitKey));
+        Assert.Equal(JournalState.Done, rig.Reopen().LastState(item));
+        Assert.Contains("다른 메모 뒤에 붙이는 환자 1명", Assert.Single(rig.Confirm.Shown).Text, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "AC-6611.2 묻지 않기가 켜져 있어도 붙이는 것은 appends가 온 사람뿐이다: 없는 사람은 지금처럼 바꾸고, appends인데 칸이 바뀌었으면 바꾸지도 붙이지도 않고 건너뛴다")]
+    public void NoAskNeverAppendsByItself()
+    {
+        using var rig = new WiringRig();
+        rig.NoAsk.TurnOn();
+        var appended = Sample.Item(1);
+        var replaced = Sample.Item(2);
+        var changed = Sample.Item(3);
+        rig.Ui.Bit[appended.Chart] = Box;
+        rig.Ui.Bit[replaced.Chart] = Box;
+        rig.Ui.Bit[changed.Chart] = "그새 고친 메모";
+        rig.EditPayload = AppendsFor((appended.VisitKey, Box), (changed.VisitKey, Box));
+
+        var (_, result) = rig.Run(appended, replaced, changed);
+
+        Assert.Equal(("완료", AppendedReason), WiringRig.Row(result, appended.VisitKey));
+        Assert.Equal(Box + "\r\n" + appended.Memo, rig.Ui.Bit[appended.Chart]);
+        Assert.Equal(("완료", "바꿈(기존 메모 덮어씀)"), WiringRig.Row(result, replaced.VisitKey));
+        Assert.Equal(replaced.Memo, rig.Ui.Bit[replaced.Chart]);
+        Assert.Equal(("건너뜀", "입력 직전 기존 청구메모가 변경되었습니다. 현재 내용을 다시 비교해 주세요."), WiringRig.Row(result, changed.VisitKey));
+        Assert.Equal("그새 고친 메모", rig.Ui.Bit[changed.Chart]);
+    }
+
+    [Fact(DisplayName = "AC-6611.2 AC-017.7 붙여 쓴 바로 뒤 도우미가 죽어도(SaveResults 없이) 다음 묶음은 칸 글이 '마지막 원본 + 줄바꿈 + 우리 메모'라 다시 쓰지 않고 저장을 눌러 붙임으로 끝낸다")]
+    public void SurvivesDeathAfterAppending()
+    {
+        using var rig = new WiringRig();
+        var item = Sample.Item(1);
+        rig.Ui.Bit[item.Chart] = Box;
+        rig.EditPayload = AppendsFor((item.VisitKey, Box));
+        byte[]? disk = null;
+        rig.Ui.OnCall = (call, _) =>
+        {
+            if (call == "replace") disk = rig.Files.Bytes(Precheck.Core.Tests.Store.StoreRig.MonthFile);
+        };
+        rig.Run(item);
+
+        // 그 순간으로 되돌린다: 칸에는 합친 글이 저장 안 된 채 있고 비트에는 원래 메모, 디스크는 쓰던 때 그대로다
+        rig.Ui.OnCall = null;
+        rig.Files.Plant(Precheck.Core.Tests.Store.StoreRig.MonthFile, disk!);
+        Assert.Equal(JournalState.Writing, rig.Reopen().LastState(item));
+        rig.Ui.KeepsOpenVisit = true;
+        rig.Ui.Bit[item.Chart] = Box;
+        rig.EditPayload = null;
+        var writes = rig.Ui.Writes;
+        var saves = rig.Ui.Saves;
+
+        var (_, next) = rig.Run(Sample.Item(1));
+
+        Assert.Equal(("완료", AppendedReason), WiringRig.Row(next, item.VisitKey));
+        Assert.False(LineOf(next, item.VisitKey).TryGetProperty("previousMemo", out _));
+        Assert.Equal(writes, rig.Ui.Writes);
+        Assert.Equal(saves + 1, rig.Ui.Saves);
+        Assert.Equal(Box + "\r\n" + item.Memo, rig.Ui.Bit[item.Chart]);
+        Assert.Equal(JournalState.Done, rig.Reopen().LastState(item));
+    }
 }

@@ -118,4 +118,66 @@ public class BatchCheckTests
 
     [Fact(DisplayName = "AC-017.1 null 항목이 섞이면 E-HELPER-BAD-MESSAGE")]
     public void NullItem() => Rejected(new InputItem[] { null! });
+
+    // ------------------------------------------------------------------
+    // AC-6611.2 · AC-6611.4 뒤에 붙이기(clinic-profile, 도우미 0.12.0)
+    // ------------------------------------------------------------------
+
+    private static InputItem Appending(string? appends, string? replaces = null)
+    {
+        var item = Sample.Item(1);
+        return new InputItem(item.VisitKey, item.Chart, item.Name, item.Date, item.Memo, item.CheckedByHand, replaces, appends);
+    }
+
+    [Theory(DisplayName = "AC-6611.2 BatchCheck: appends는 1~4,000자(replaces와 같은 한도), 틀리면 E-HELPER-BAD-MESSAGE")]
+    [InlineData(0, false)]
+    [InlineData(1, true)]
+    [InlineData(4000, true)]
+    [InlineData(4001, false)]
+    public void AppendsLength(int length, bool ok)
+    {
+        var items = new[] { Appending(new string('글', length)) };
+        Assert.Equal(4000, BatchCheck.MaxAppends);
+        if (ok)
+        {
+            BatchCheck.Validate(items);
+            Assert.Equal(new string('글', length), items[0].Appends);
+            return;
+        }
+        Rejected(items);
+    }
+
+    [Fact(DisplayName = "AC-6611.2 BatchCheck: appends와 replaces가 한 항목에 함께 오면 E-HELPER-BAD-MESSAGE(바꾸기와 붙이기는 하나만)")]
+    public void AppendsWithReplacesRejected()
+    {
+        Rejected(Appending("직원이 쓴 메모", replaces: "직원이 쓴 메모"));
+        Rejected(Sample.Item(2), Appending("가", replaces: "나"));
+        BatchCheck.Validate(new[] { Appending(null, replaces: "직원이 쓴 메모") });
+        BatchCheck.Validate(new[] { Appending("직원이 쓴 메모") });
+        Assert.Null(Sample.Item(1).Appends);
+    }
+
+    [Theory(DisplayName = "AC-6611.4 BitBytes.Of: 글자마다 ASCII 1·나머지 2(웹 bitBytes.ts와 같은 사례)")]
+    [InlineData("", 0)]
+    [InlineData("abc", 3)]
+    [InlineData("가", 2)]
+    [InlineData("가나다", 6)]
+    [InlineData("IA rt knee 시행함", 17)]
+    [InlineData("첫 줄\r\n둘째", 11)]
+    [InlineData("\u007f", 1)]
+    [InlineData("\u0080", 2)]
+    [InlineData("\u00e9", 2)]
+    [InlineData("\u3000", 2)]
+    [InlineData("\ud83d\ude00", 4)]
+    public void BitBytesOf(string text, int bytes) => Assert.Equal(bytes, BitBytes.Of(text));
+
+    [Fact(DisplayName = "AC-6611.4 BitBytes: 비트 메모 칸 한도는 3,000바이트(OcmBilCmt varchar(3000)), ASCII 3,000자·한글 1,500자가 딱 한도")]
+    public void BitBytesLimit()
+    {
+        Assert.Equal(3000, BitBytes.MaxMemo);
+        Assert.Equal(BitBytes.MaxMemo, BitBytes.Of(new string('a', 3000)));
+        Assert.Equal(BitBytes.MaxMemo, BitBytes.Of(new string('가', 1500)));
+        Assert.Equal(BitBytes.MaxMemo + 1, BitBytes.Of(new string('가', 1500) + "a"));
+        Assert.Throws<ArgumentNullException>(() => BitBytes.Of(null!));
+    }
 }
