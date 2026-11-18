@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "stats-insights",
-  "approved_at": "2026-11-18T05:08:09Z",
+  "approved_at": "2026-11-18T06:46:19Z",
   "approved_via": "user-prompt",
   "session_id": "d8c599c5-f70a-49d3-a279-5c381ed7a718",
-  "spec_sha256": "4754c285605f3121fbfcdc6fcb045424881cbc15f7a31c07c979005071486d2b",
+  "spec_sha256": "c1e032a7cca50e2a95c1de2b7feed9132b2d1f28d82d0a950d62e436e28014c9",
   "scope": [
     "docs/ADR.md",
     "docs/UI_GUIDE.md",
@@ -79,6 +79,7 @@
     "src/lib/storage/goals.test.ts",
     "src/lib/storage/goals.ts",
     "src/types/calendar.ts",
+    "src/types/errors.ts",
     "src/types/goals.ts",
     "src/types/stats.ts",
     "src/workers/stats/helperData.test.ts",
