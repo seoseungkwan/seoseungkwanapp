@@ -550,6 +550,8 @@ describe('AC-6607 잠금 풀기', () => {
     expect(info.getAttribute('class')).toContain('bg-accent-soft')
     expect(info.textContent).not.toContain('오류 번호')
     expect(screen.getByRole('link', { name: '처음 질문 하기' }).getAttribute('href')).toBe('/settings/first-run')
+    // 단추 모양 링크라 밑줄이 없다(다른 단추 모양 링크와 같다)
+    expect(screen.getByRole('link', { name: '처음 질문 하기' }).className).toContain('no-underline')
     expect(screen.getByRole('button', { name: '기본 문구로 바로 시작' })).toBeTruthy()
     expect(screen.queryByText('처음 질문을 먼저 해 주세요')).toBeNull()
     expect(screen.queryByRole('link', { name: '처음 질문 다시 하기' })).toBeNull()

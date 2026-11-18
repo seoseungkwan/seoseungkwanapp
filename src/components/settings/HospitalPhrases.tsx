@@ -90,7 +90,7 @@ function StartChoice({ busy, failed, onStart }: { busy: boolean; failed: boolean
         아직 병원 문구가 없어요. 처음 질문으로 우리 병원 메모 모양을 맞추거나, 기본 문구로 바로 시작할 수 있어요.
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Link href={FIRST_RUN_HREF} className={ds.button.primary}>
+        <Link href={FIRST_RUN_HREF} className={`${ds.button.primary} no-underline`}>
           처음 질문 하기
         </Link>
         <button type="button" className={ds.button.secondary} aria-busy={busy || undefined} onClick={onStart}>

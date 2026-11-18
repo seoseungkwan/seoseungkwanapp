@@ -154,12 +154,14 @@ describe('AC-5103.2 설정 탭의 설치 파일 칸', () => {
     expect(within(rowOf('도우미')).queryByText(NONE)).toBeNull()
   })
 
-  it("AC-5103.2: 설정 화면(SettingsPage)은 제목·안쪽 메뉴 바로 아래 맨 위에 이 칸을 두고, 지금 칸들은 그 아래 그대로다", async () => {
+  // clinic-profile AC-6602.1: 맨 위는 '병원 정보' 칸이 되고, 이 칸은 그 바로 다음이다
+  it("AC-5103.2·AC-6602.1: 설정 화면(SettingsPage)은 제목·안쪽 메뉴 아래 맨 위 '병원 정보' 칸 바로 다음에 이 칸을 두고, 지금 칸들은 그 아래 그대로다", async () => {
     render(<SettingsPage />)
     const install = await screen.findByRole('region', { name: TITLE })
     const nav = screen.getByRole('navigation', { name: '설정 안 메뉴' })
     const sections = Array.from(document.body.querySelectorAll('section'))
     expect(sections.map((s) => s.getAttribute('aria-label') ?? s.querySelector('h2')?.textContent)).toEqual([
+      '병원 정보',
       TITLE,
       '처방 규칙 칸',
       '병원 문구 칸',
@@ -167,10 +169,11 @@ describe('AC-5103.2 설정 탭의 설치 파일 칸', () => {
       '시재금 칸',
       '데스크 계정 칸',
     ])
-    expect(sections[0]).toBe(install)
+    expect(sections[1]).toBe(install)
     expect(isBefore(nav, install)).toBe(true)
-    // 안쪽 메뉴를 감싼 머리 다음 형제가 이 칸이다
-    expect(nav.parentElement?.nextElementSibling).toBe(install)
+    // 안쪽 메뉴를 감싼 머리 다음 형제가 병원 정보 칸이고, 그다음 형제가 이 칸이다
+    expect(nav.parentElement?.nextElementSibling).toBe(sections[0])
+    expect(sections[0].nextElementSibling).toBe(install)
   })
 })
 
