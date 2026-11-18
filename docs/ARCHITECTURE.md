@@ -98,6 +98,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 |---|---|
 | `hospitals` | 병원 이름·신청자 이름·연락처·이메일·상태(가입 신청 줄). 요양기관번호는 받지 않는다(2026-10-28 사용자) |
 | `admins` | 운영자(나) 1줄. 처음에 SQL로 넣는다 |
+| `hospital_members` | 병원의 데스크 메일 한 줄: `id`·`hospital_id`·`email`(소문자·앞뒤 빈칸 없는 메일 모양 3~254자, 표 전체에서 하나)·`role`('desk'뿐)·`created_at`. 표 권한·정책이 없고 정의자 함수(`add_desk_member`·`desk_members`·`remove_desk_member`·`my_desk`)로만 다룬다. 데스크는 `my_desk_hospital_id()`와 '데스크 …' 정책이 연 표(`worklog_days`·`sunap_*`·`calendar_*` 표 권한대로, `worklog_settings`·`stats_rx_groups`·`calendar_rev` 읽기)만 쓴다. 그 일곱 표의 `hospital_id` 기본값·예약 트리거 둘은 `my_clinic_hospital_id()` (ADR-031, specs/desk-feedback) |
 | `stats_months` · `stats_days` · `stats_coverage` | 통계 월 숫자 · 일 숫자(폰에서 '어제' 보기용. 칸: `month` 또는 `day`·`partial`·`source`·`payload`·`updated_at`, 완전한 줄은 덜 덮인 줄로 안 바뀌는 트리거) · 불러온 기간 한 줄씩(칸: `from_day`·`to_day`·`source`·`created_at`, 넣기만) |
 | `rx_groups` | 치료 묶음. 칸: 이름·코드 목록·순서. 즐겨찾기는 아직 없음. 매출 탭 묶음. 통계 처방별 추세는 따로 `stats_rx_groups`를 쓴다 (specs/revenue) |
 | `stats_rx_picks` | 통계 처방 골라 보기에서 고른 처방 한 줄씩. 칸: `hospital_id`·`code`·`name`·`pick_order`. 낱개 처방이라 묶음 표(`rx_groups`)와 따로 둔다. 넣기·읽기·지우기만, 고치기 없음 (specs/rx-picker) |
@@ -134,7 +135,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 랜딩 → [구글로 시작하기] → (처음만) 가입 신청 → 승인 대기 → 관리자 승인 → 대시보드
                                                     └→ 거절(되돌릴 수 있음)
 ```
-- 계정 1개 = 병원 1개
+- 계정 1개 = 병원 1개. 예외는 데스크 계정(ADR-031): 원장이 설정에서 더한 데스크 구글 메일(병원마다 5개까지)로 로그인하면 가입 승인 없이 그 병원의 데스크다. 로그인 메일(JWT의 email)로 맞추고 사용자 id는 적지 않는다. 이미 병원 가입 신청이 있는 메일은 데스크가 될 수 없고, 데스크 메일은 가입 신청을 못 한다. 페이지 문지기는 내 병원 줄이 없을 때 `my_desk()`만 읽는다(쓰지 않음)
 - 승인·거절은 DB 함수 하나가 한다. `admins` 표에 있는 사람만 상태를 바꿀 수 있다. service role 키는 없다
 - AI 경로도 '승인된 사용자'인지 다시 확인한다
 - 30분 동안 움직임이 없으면 자동 로그아웃. 화면 위쪽 띠에 로그인한 구글 계정을 보인다
