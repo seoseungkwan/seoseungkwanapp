@@ -7,7 +7,7 @@ import { ourClinicPhrases, type Phrases } from '@/lib/precheck/memo'
 import type { DayPayload } from '@/types/payload'
 import { CodesTab } from './CodesTab'
 
-// '처방코드' 묶음(memo-settings AC-3004.2~3004.5, 시안 #codes). 코드·이름은 가짜다
+// '처방코드' 묶음(memo-settings AC-3004.2~3004.5, 시안 #codes, clinic-profile AC-6608.5 약 역할). 코드·이름은 가짜다
 
 afterEach(cleanup)
 
@@ -35,9 +35,9 @@ const DAYS = [
 const DICTIONARY = Object.keys(ourClinicPhrases().CODEMAP).length
 
 let latest: Phrases
-function Harness({ days = DAYS, state = 'ready', onRetry = () => {} }: { days?: DayPayload[]; state?: 'idle' | 'reading' | 'ready' | 'failed'; onRetry?: () => void }) {
-  const [saved] = useState(ourClinicPhrases)
-  const [draft, setDraft] = useState(ourClinicPhrases)
+function Harness({ days = DAYS, state = 'ready', onRetry = () => {}, start = ourClinicPhrases }: { days?: DayPayload[]; state?: 'idle' | 'reading' | 'ready' | 'failed'; onRetry?: () => void; start?: () => Phrases }) {
+  const [saved] = useState(start)
+  const [draft, setDraft] = useState(start)
   latest = draft
   return <CodesTab draft={draft} saved={saved} errors={[]} onChange={setDraft} days={days} state={state} today={TODAY} onRetry={onRetry} />
 }
@@ -175,5 +175,65 @@ describe('AC-3004.5 통계를 못 읽음', () => {
     render(<Harness days={DAYS} state="reading" />)
     expect(codes()).toHaveLength(DICTIONARY)
     expect(screen.getByText('통계를 읽는 중이에요…')).toBeTruthy()
+  })
+})
+
+describe('AC-6608.5 약 역할 고르기', () => {
+  const roleOf = (code: string) => within(rowOf(code)).getByLabelText(`${code} 역할`) as HTMLSelectElement
+  const optionLabels = (select: HTMLSelectElement) => [...select.options].map((option) => option.textContent)
+
+  it("AC-6608.5: 약 줄마다 '역할' 고르기 [자동]·[스테로이드]·[마취약]·[연골주사]·[아님]이 있고 처음은 [자동]이며 그 옆에 '보험코드 성분으로 정해요'가 보인다", () => {
+    render(<Harness />)
+    expect([...table().querySelectorAll('thead th')].map((th) => th.textContent)).toContain('역할')
+    for (const code of ['A15', 'A19', 'A21', 'A41', 'A49']) {
+      expect(roleOf(code).value).toBe('auto')
+      expect(optionLabels(roleOf(code))).toEqual(['자동', '스테로이드', '마취약', '연골주사', '아님'])
+      expect(within(rowOf(code)).getByText('보험코드 성분으로 정해요')).toBeTruthy()
+    }
+    // 비트 종류가 약인 새 코드도 약 줄이다. 약이 아닌 줄에는 없다
+    expect(roleOf('A55').value).toBe('auto')
+    expect(within(rowOf('KK090')).queryByLabelText('KK090 역할')).toBeNull()
+    expect(within(rowOf('AA254')).queryByLabelText('AA254 역할')).toBeNull()
+  })
+
+  it('AC-6608.5: 고른 역할은 CODEMAP 줄 깃발로 들어간다: 하나만 true, [아님]은 셋 다 false, [자동]은 셋 다 지운다', async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+    const before = ourClinicPhrases().CODEMAP.A15
+    await user.selectOptions(roleOf('A15'), 'steroid')
+    expect(latest.CODEMAP.A15).toEqual({ ...before, steroid: true })
+    expect(within(rowOf('A15')).queryByText('보험코드 성분으로 정해요')).toBeNull()
+    await user.selectOptions(roleOf('A15'), 'localAnesthetic')
+    expect(latest.CODEMAP.A15).toEqual({ ...before, localAnesthetic: true })
+    await user.selectOptions(roleOf('A15'), 'cartilage')
+    expect(latest.CODEMAP.A15).toEqual({ ...before, cartilage: true })
+    await user.selectOptions(roleOf('A15'), 'none')
+    expect(latest.CODEMAP.A15).toEqual({ ...before, steroid: false, localAnesthetic: false, cartilage: false })
+    expect(roleOf('A15').value).toBe('none')
+    await user.selectOptions(roleOf('A15'), 'auto')
+    expect(latest.CODEMAP.A15).toEqual(before)
+    expect(within(rowOf('A15')).getByText('보험코드 성분으로 정해요')).toBeTruthy()
+  })
+
+  it('AC-6608.5: 저장된 깃발이 있으면 그 역할이 골라져 보인다', () => {
+    const start = () => {
+      const phrases = ourClinicPhrases()
+      phrases.CODEMAP.A49 = { ...phrases.CODEMAP.A49, cartilage: true }
+      phrases.CODEMAP.A19 = { ...phrases.CODEMAP.A19, steroid: false, localAnesthetic: false, cartilage: false }
+      phrases.CODEMAP.A21 = { ...phrases.CODEMAP.A21, steroid: true }
+      return phrases
+    }
+    render(<Harness start={start} />)
+    expect(roleOf('A49').value).toBe('cartilage')
+    expect(roleOf('A19').value).toBe('none')
+    expect(roleOf('A21').value).toBe('steroid')
+    expect(roleOf('A15').value).toBe('auto')
+  })
+
+  it('AC-6608.5: 사전에 없는 새 약 코드에 역할을 고르면 약 구분으로 사전에 들어간다', async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+    await user.selectOptions(roleOf('A55'), 'steroid')
+    expect(latest.CODEMAP.A55).toEqual({ n: '소론도정', k: 'drug', rg: null, steroid: true })
   })
 })

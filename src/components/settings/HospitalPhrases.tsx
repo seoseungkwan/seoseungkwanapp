@@ -1,12 +1,13 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { useRxCatalog } from '@/components/stats/useRxCatalog'
 import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
-import { validatePhrases, type PhraseDiffRow, type PhraseError, type Phrases } from '@/lib/precheck/memo'
-import { readHospitalSettings, writeHospitalSettings } from '@/lib/storage/claimSettings'
+import { neutralPhrases, validatePhrases, type PhraseDiffRow, type PhraseError, type Phrases } from '@/lib/precheck/memo'
+import { readHospitalSettings, startHospitalSettings, writeHospitalSettings } from '@/lib/storage/claimSettings'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import { buildCodeRows } from './codeCatalog'
 import { BasicTab } from './phrases/BasicTab'
@@ -20,15 +21,18 @@ import { SaveDiff } from './phrases/SaveDiff'
 import { saveDiffRows } from './phrases/saveDiffRows'
 import { TryTab } from './phrases/TryTab'
 import { TRY_CHART, TRY_RX, type TryText } from './phrases/tryVisit'
+import { WordsTab } from './phrases/WordsTab'
 
 // 설정의 '병원 문구' 칸(AC-018.7·AC-018.18·AC-018.19, memo-settings REQ-3007·시안 docs/mockups/memo-settings). 저장하는 값의 모양은 AC-014.3 + memoRules 그대로다(묶음은 화면 배치일 뿐이다).
 // 묶음 단추 여섯 개(기본 · 시술별 문구와 약 · 처방코드 · 표기 규칙 · 사유 문장 · 메모 시험)와 아래 저장 줄 하나. 고치는 값(draft)·읽은 값(opened)·저장·비교 상태는 여기 하나에 둔다.
 // [저장]은 바로 쓰지 않고 바뀐 부분 표를 보인 뒤 [이대로 저장]에 쓴다(AC-3007.5). 쓸 때는 고친 칸만 그때 읽은 값에 얹는다(AC-3007.6).
 // 처방코드 묶음의 목록은 통계에 저장된 날별 처방(집계)을 찾기 목록과 같은 길(useRxCatalog)로 한 번 읽어 만든다. 메모 시험 글은 화면 상태에만 둔다(AC-3007.4).
-// 병원 설정 줄이 없거나 검사를 지나지 못하면 파란 안내뿐이고 저장 단추가 없다(AC-018.18): 기본값으로 대신 저장하면 막음이 풀린다. Worker 답 없이 같은 판단을 한다. 환자 자료가 오지 않는다
+// 병원 설정 줄이 없거나 검사를 지나지 못하면 잠금 칸이고 저장 단추가 없다(AC-018.18). 잠금 칸은 파란 안내 + [처음 질문 하기](/settings/first-run)·[기본 문구로 바로 시작](중립 기본 문구로
+// 줄을 만들고 다시 읽는다)이다(clinic-profile AC-6607.1·AC-6607.2, design.md 9절). Worker 답 없이 같은 판단을 한다. 환자 자료가 오지 않는다.
+// 묶음 '차트 줄임말'(chartWords, AC-6612.1)은 '메모 시험' 앞에 있다. 숨어 있던 칸(AC-6613)은 사유 문장·시술별 문구와 약 묶음에 있다
 
 type Load = { kind: 'loading' } | { kind: 'failed' } | { kind: 'blocked' } | { kind: 'ready' }
-type Tab = 'basic' | 'proc' | 'codes' | 'rules' | 'reason' | 'try'
+type Tab = 'basic' | 'proc' | 'codes' | 'rules' | 'reason' | 'words' | 'try'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'basic', label: '기본' },
@@ -36,13 +40,16 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'codes', label: '처방코드' },
   { key: 'rules', label: '표기 규칙' },
   { key: 'reason', label: '사유 문장' },
+  { key: 'words', label: '차트 줄임말' },
   { key: 'try', label: '메모 시험' },
 ]
 
 const BASIC_KEYS = ['mark', 'sideStyle', 'cartilageSideLang', 'levelSep', 'lineJoin', 'drugWrap', 'drugUnit', 'drugQty']
-const PROC_KEYS = ['main', 'mainCentral', 'mainPeripheral', 'cpb', 'snb', 'icnb', 'ara', 'klg', 'iaAra', 'iaEtc', 'ts', 'byProc', 'byRegion', 'fixedPhrases']
+const PROC_KEYS = ['main', 'mainCentral', 'mainCentralCodes', 'mainPeripheral', 'cpb', 'snb', 'icnb', 'ara', 'klg', 'iaAra', 'iaEtc', 'ts', 'byProc', 'byRegion', 'fixedPhrases']
 const RULE_KEYS = ['sideMode', 'sideSpread', 'splitCpb', 'splitSnb', 'splitEach', 'kneeSetSkipIa', 'rename', 'sideByCode', 'siteNames']
-const REASON_KEYS = ['itv', 'ia2', 'intervalDays']
+const REASON_KEYS = ['itv', 'ia2', 'intervalDays', 'intervalCodes', 'twoSiteRules', 'reasonPriority']
+/** 처음 질문 화면(spec clinic-profile design.md 16절) */
+const FIRST_RUN_HREF = '/settings/first-run'
 
 /** 틀린 칸이 있는 묶음. 화면에 칸이 없는 경로면 null(아래 요약에 글로 보인다) */
 function tabOf(path: string): Tab | null {
@@ -57,7 +64,16 @@ function tabOf(path: string): Tab | null {
   if (head === 'procedureDrugs' || path === 'memoRules.singleOwnerDrug') return 'proc'
   if (head === 'CODEMAP' || head === 'CODEMAP_DEL' || key === 'order') return 'codes'
   if (head === 'memoRules') return 'rules'
+  if (head === 'chartWords') return 'words'
   return null
+}
+
+const sameWords = (a: Phrases['chartWords'], b: Phrases['chartWords']) => JSON.stringify(a ?? []) === JSON.stringify(b ?? [])
+
+/** withPhraseChanges(원래 칸만 얹는다)에 차트 줄임말 표를 더한다: before → after로 고쳤으면 내 표, 아니면 now의 표 그대로(다른 PC가 적은 줄이 남는다) */
+function withAllChanges(now: Phrases, before: Phrases, after: Phrases): Phrases {
+  const merged = withPhraseChanges(now, before, after)
+  return sameWords(before.chartWords, after.chartWords) ? merged : { ...merged, chartWords: after.chartWords ?? [] }
 }
 
 // 화면 안 탭(관리자 화면과 같은 모양): 40px·body(휴대폰 44px), 탭 줄 아래 1px line. 지금 탭은 ink 600 + 아래 2px accent 밑줄
@@ -66,11 +82,22 @@ const tabBase =
 const tabIdle = `${tabBase} font-medium text-ink-2 hover:text-ink`
 const tabCurrent = `${tabBase} font-semibold text-ink after:absolute after:inset-x-3 after:-bottom-px after:h-0.5 after:bg-accent`
 
-/** 처음 질문 안내(AC-018.18): 파란 안내이고 오류 번호가 없다. 설정의 칸은 목업대로 둘째 줄이 없다 */
-function FirstQuestion({ label }: { label: string }) {
+/** 잠금 칸(AC-018.18·AC-6607.1): 파란 안내이고 오류 번호가 없다. 시작에 실패하면 저장 실패와 같은 오류 칸이 아래에 뜬다 */
+function StartChoice({ busy, failed, onStart }: { busy: boolean; failed: boolean; onStart(): void }) {
   return (
-    <div role="status" aria-label={label} className="rounded-control bg-accent-soft px-4 py-3 text-small font-semibold text-accent-strong">
-      처음 질문을 먼저 해 주세요
+    <div className="flex flex-col items-start gap-3">
+      <div role="status" aria-label="처음 질문" className="rounded-control bg-accent-soft px-4 py-3 text-small font-semibold text-accent-strong">
+        아직 병원 문구가 없어요. 처음 질문으로 우리 병원 메모 모양을 맞추거나, 기본 문구로 바로 시작할 수 있어요.
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Link href={FIRST_RUN_HREF} className={ds.button.primary}>
+          처음 질문 하기
+        </Link>
+        <button type="button" className={ds.button.secondary} aria-busy={busy || undefined} onClick={onStart}>
+          기본 문구로 바로 시작
+        </button>
+      </div>
+      {failed && <ErrorCard code="E-SETTINGS-FAILED" />}
     </div>
   )
 }
@@ -85,6 +112,8 @@ export function HospitalPhrases() {
   const [saving, setSaving] = useState(false)
   const [saveFailed, setSaveFailed] = useState(false)
   const [savedNote, setSavedNote] = useState(false)
+  const [starting, setStarting] = useState(false)
+  const [startFailed, setStartFailed] = useState(false)
   const [tryText, setTryText] = useState<TryText>({ chart: TRY_CHART, rx: TRY_RX })
   /** 마지막으로 서버와 맞춘 값: 열 때 읽은 값, 저장한 뒤에는 저장한 값. 무엇을 고쳤는지 이것과 견준다 */
   const opened = useRef<Phrases | null>(null)
@@ -146,6 +175,21 @@ export function HospitalPhrases() {
     tabRefs.current[key]?.focus()
   }
 
+  /** [기본 문구로 바로 시작](AC-6607.2): 중립 기본 문구로 줄을 만들거나(있으면 문구만 바꾼다) 다른 창이 만든 줄을 쓰고, 다시 읽어 '기본' 묶음을 연다 */
+  async function start() {
+    if (starting) return
+    setStarting(true)
+    setStartFailed(false)
+    const result = await startHospitalSettings(supabaseBrowser(), neutralPhrases())
+    setStarting(false)
+    if (result !== 'ok') {
+      setStartFailed(true)
+      return
+    }
+    setTab('basic')
+    await read()
+  }
+
   /** [저장]: 검사하고, 바뀐 칸이 있으면 비교 표를 연다(AC-3007.5) */
   function askSave() {
     if (!draft || !opened.current || saving) return
@@ -185,7 +229,7 @@ export function HospitalPhrases() {
         setLoad({ kind: 'blocked' }) // 그사이 줄이 없어졌거나 틀려졌다: 이 값으로 쓰면 막음이 풀린다(AC-018.18)
         return
       }
-      const merged = validatePhrases(withPhraseChanges(latest.value, opened.current, checked.value))
+      const merged = validatePhrases(withAllChanges(latest.value, opened.current, checked.value))
       if (!merged.ok) {
         setErrors(merged.errors)
         return
@@ -194,7 +238,7 @@ export function HospitalPhrases() {
       opened.current = merged.value
       setSaved(merged.value)
       // 저장하는 동안 더 고친 것은 남긴다
-      setDraft((current) => (current ? withPhraseChanges(merged.value, sent, current) : current))
+      setDraft((current) => (current ? withAllChanges(merged.value, sent, current) : current))
       setSavedNote(true)
     } catch {
       setSaveFailed(true)
@@ -207,11 +251,18 @@ export function HospitalPhrases() {
 
   return (
     <section aria-labelledby="hospital-phrases-title" className={`${ds.panel} flex flex-col gap-4 p-5 max-md:p-4`}>
-      <div className="flex flex-col gap-1">
-        <h2 id="hospital-phrases-title" className={ds.panelTitle}>
-          병원 문구
-        </h2>
-        <p className="text-small text-ink-2">청구메모에 들어가는 말을 우리 병원에 맞게 고쳐요. 저장하기 전까지 실제 메모는 바뀌지 않아요.</p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex flex-col gap-1">
+          <h2 id="hospital-phrases-title" className={ds.panelTitle}>
+            병원 문구
+          </h2>
+          <p className="text-small text-ink-2">청구메모에 들어가는 말을 우리 병원에 맞게 고쳐요. 저장하기 전까지 실제 메모는 바뀌지 않아요.</p>
+        </div>
+        {load.kind === 'ready' && (
+          <Link href={FIRST_RUN_HREF} className={ds.button.secondarySmall}>
+            처음 질문 다시 하기
+          </Link>
+        )}
       </div>
       {load.kind === 'loading' && <p className="text-small text-muted">병원 문구를 읽는 중이에요…</p>}
       {load.kind === 'failed' && (
@@ -222,13 +273,7 @@ export function HospitalPhrases() {
           </button>
         </div>
       )}
-      {load.kind === 'blocked' && (
-        <>
-          <FirstQuestion label="처음 질문" />
-          <h3 className="text-body font-semibold text-ink">시술별 약</h3>
-          <FirstQuestion label="처음 질문(시술별 약)" />
-        </>
-      )}
+      {load.kind === 'blocked' && <StartChoice busy={starting} failed={startFailed} onStart={() => void start()} />}
       {load.kind === 'ready' && draft && (
         <>
           <div role="tablist" aria-label="병원 문구 묶음" onKeyDown={onTabKeyDown} className="flex flex-wrap border-b border-line">
@@ -269,6 +314,7 @@ export function HospitalPhrases() {
             {tab === 'codes' && <CodesTab draft={draft} saved={saved ?? draft} errors={errors} onChange={update} days={catalog.days} state={catalog.state} today={today} onRetry={catalog.retry} />}
             {tab === 'rules' && <RulesTab draft={draft} errors={errors} onChange={update} />}
             {tab === 'reason' && <ReasonTab draft={draft} errors={errors} onChange={update} />}
+            {tab === 'words' && <WordsTab draft={draft} errors={errors} onChange={update} />}
             {tab === 'try' && <TryTab draft={draft} text={tryText} onText={setTryText} />}
           </div>
           {confirm && <SaveDiff rows={confirm.rows} busy={saving} onConfirm={() => void save(confirm.value)} onCancel={() => setConfirm(null)} />}

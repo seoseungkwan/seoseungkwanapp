@@ -2,14 +2,16 @@
 
 import { useId, useState } from 'react'
 import { ds } from '@/components/ui/classes'
-import type { PhraseTemplates } from '@/lib/precheck/memo'
+import { DEFAULT_MAIN_CENTRAL_CODES, type PhraseTemplates } from '@/lib/precheck/memo'
 import { ProcedureDrugs } from '../ProcedureDrugs'
 import { FIXED_MAX, fixedOf, REGIONS } from './constants'
 import { ErrorList, errorOf, errorsUnder, Group, withRule, withTpl, type TabProps } from './fields'
+import { DefaultedField, withTplOrDefault } from './ReasonTab'
 import { TemplateField } from './TemplateField'
 
 // '시술별 문구와 약' 묶음(memo-settings AC-3007.3, 시안 #proc): 시술 문구 11칸·시술 이름별 문구(byProc)·부위별 문구(byRegion 12칸)·고정 멘트(fixedPhrases, 30개까지)·시술별 약.
-// 틀 글 칸은 모두 TemplateField다. 고정 멘트를 고치면 draft가 바뀌어 모든 칸의 '자동 채움 넣기' 단추가 바로 바뀐다
+// 틀 글 칸은 모두 TemplateField다. 고정 멘트를 고치면 draft가 바뀌어 모든 칸의 '자동 채움 넣기' 단추가 바로 바뀐다.
+// 'Central 시술 문구' 바로 아래에 숨어 있던 'Central 시술 처방코드'(mainCentralCodes, clinic-profile AC-6613.2). 엔진이 읽지 않는 lidoCodes·mainPeripheralCodes는 꺼내지 않는다
 
 type Key = keyof PhraseTemplates
 type Fixed = NonNullable<PhraseTemplates['fixedPhrases']>
@@ -172,9 +174,23 @@ export function ProcTab({ draft, errors, onChange }: TabProps) {
     <div className="flex flex-col gap-4">
       <Group title="시술 문구">
         <div className="grid gap-4 md:grid-cols-2">
-          {PROC_TEXTS.map(({ key, label }) => (
-            <TemplateField key={key} label={label} path={`TPL.${key}`} value={String(draft.TPL[key] ?? '')} draft={draft} error={errorOf(errors, `TPL.${key}`)} onChange={(text) => onChange(withTpl(draft, key, text))} />
-          ))}
+          {PROC_TEXTS.map(({ key, label }) => {
+            const text = <TemplateField key={key} label={label} path={`TPL.${key}`} value={String(draft.TPL[key] ?? '')} draft={draft} error={errorOf(errors, `TPL.${key}`)} onChange={(value) => onChange(withTpl(draft, key, value))} />
+            if (key !== 'mainCentral') return text
+            return (
+              <div key={key} className="flex flex-col gap-3">
+                {text}
+                <DefaultedField
+                  label="Central 시술 처방코드"
+                  help="쉼표로 나눠 적어요. 비워 두면 흐린 글의 기본값을 써요."
+                  value={String(draft.TPL.mainCentralCodes ?? '')}
+                  placeholder={DEFAULT_MAIN_CENTRAL_CODES}
+                  error={errorOf(errors, 'TPL.mainCentralCodes')}
+                  onChange={(value) => onChange(withTplOrDefault(draft, 'mainCentralCodes', value))}
+                />
+              </div>
+            )
+          })}
         </div>
         <p className={ds.help}>글을 직접 고쳐도 되고, 단추를 누르면 글쓰기 표시가 있는 자리에 들어가요. ◀ ▶로 {'{항목}'} 자리를 바꿔요.</p>
       </Group>

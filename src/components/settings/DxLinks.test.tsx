@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ourClinicPhrases } from '@/lib/precheck/memo'
 import { DxLinks } from './DxLinks'
 
-// 설정의 '상병 연결표' 칸(AC-018.7·AC-018.18). 저장은 phrases(NOT NULL)를 함께 쓰므로 문구 없는 병원은 저장 단추가 없다
+// 설정의 '상병 연결표' 칸(AC-018.7·AC-018.18·clinic-profile AC-6607.4). 저장은 phrases(NOT NULL)를 함께 쓰므로 문구 없는 병원은 저장 단추가 없다
 
 const db = vi.hoisted(() => ({ row: null as { phrases: unknown; dx_links: unknown[] } | null, upserts: [] as unknown[], failWrite: false }))
 vi.mock('@/lib/supabase/browser', () => ({
@@ -32,12 +32,24 @@ describe('AC-018.18 상병 연결표', () => {
   it.each([
     ['줄 없음', null],
     ['빈 {}', { phrases: {}, dx_links: [] }],
-  ])('AC-018.18: %s면 저장 단추가 없고 아래 글이 있으며 쓰지 않는다', async (_, row) => {
+  ])('AC-018.18·AC-6607.4: %s면 저장 단추가 없고 잠금 글(E-MEMO-NO-SETTINGS)과 [설정으로 가기] 링크가 있으며 쓰지 않는다', async (_, row) => {
     db.row = row
     render(<DxLinks />)
-    expect(await screen.findByText('처음 질문을 먼저 하면 저장할 수 있어요.')).toBeTruthy()
+    const info = await screen.findByRole('status', { name: '병원 문구 없음' })
+    expect(info.textContent).toContain('병원 문구가 아직 없어요')
+    expect(info.textContent).toContain('설정 → 병원 문구에서 처음 질문을 하거나 기본 문구로 바로 시작해 주세요.')
+    expect(info.textContent).not.toContain('오류 번호')
+    expect(within(info).getByRole('link', { name: '설정으로 가기' }).getAttribute('href')).toBe('/settings')
+    expect(screen.queryByText('처음 질문을 먼저 하면 저장할 수 있어요.')).toBeNull()
     expect(screen.queryByRole('button', { name: '저장' })).toBeNull()
     expect(db.upserts).toEqual([])
+  })
+
+  it('AC-6607.4: 문구가 있으면 잠금 글이 없다', async () => {
+    render(<DxLinks />)
+    await screen.findByLabelText('1번 줄 상병코드')
+    expect(screen.queryByRole('status', { name: '병원 문구 없음' })).toBeNull()
+    expect(screen.queryByRole('link', { name: '설정으로 가기' })).toBeNull()
   })
 
   it('AC-018.7: 줄을 고쳐 저장하면 문구는 그대로이고 연결표만 바뀐다', async () => {

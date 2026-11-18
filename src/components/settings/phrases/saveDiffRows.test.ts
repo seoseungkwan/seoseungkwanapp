@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ourClinicPhrases, type Phrases } from '@/lib/precheck/memo'
 import { saveDiffRows } from './saveDiffRows'
 
-// 저장 전 비교 표의 줄(memo-settings AC-3007.5). diffPhrases 위에 코드 칸·시술별 약·부위 칸을 쉬운 이름표로 바꾼다(AC-3006.2: 골든이 diffPhrases의 코드 칸 이름표를 원본 그대로 보므로 화면에서 바꾼다)
+// 저장 전 비교 표의 줄(memo-settings AC-3007.5, clinic-profile AC-6608.5·AC-6612.1·AC-6613.3). diffPhrases 위에 코드 칸·시술별 약·부위 칸·약 역할을 쉬운 이름표로 바꾼다(AC-3006.2: 골든이 diffPhrases의 코드 칸 이름표를 원본 그대로 보므로 화면에서 바꾼다)
 
 const our = ourClinicPhrases
 const changed = (edit: (p: Phrases) => void) => {
@@ -88,5 +88,42 @@ describe('AC-3007.5 비교 표 줄', () => {
 
   it('AC-3007.5: 바뀐 것이 없으면 빈 목록이다', () => {
     expect(saveDiffRows(our(), our())).toEqual([])
+  })
+})
+
+describe('AC-6608.5 약 역할 줄', () => {
+  it('AC-6608.5: 약 역할 깃발은 칸마다가 아니라 "코드 · 역할" 한 줄로 고른 이름이 보인다', () => {
+    expect(rowsOf((p) => (p.CODEMAP.A15 = { ...p.CODEMAP.A15, steroid: true }))).toEqual([{ label: 'A15 · 역할', before: '자동', after: '스테로이드' }])
+    expect(rowsOf((p) => (p.CODEMAP.A19 = { ...p.CODEMAP.A19, steroid: false, localAnesthetic: false, cartilage: false }))).toEqual([{ label: 'A19 · 역할', before: '자동', after: '아님' }])
+    const steroid = changed((p) => (p.CODEMAP.A15 = { ...p.CODEMAP.A15, steroid: true }))
+    const local = changed((p) => (p.CODEMAP.A15 = { ...p.CODEMAP.A15, localAnesthetic: true }))
+    expect(saveDiffRows(steroid, local).map(({ label, before, after }) => ({ label, before, after }))).toEqual([{ label: 'A15 · 역할', before: '스테로이드', after: '마취약' }])
+  })
+
+  it('AC-6608.5: 새 코드에 역할을 고르면 다른 칸과 함께 역할 줄이 보인다', () => {
+    expect(rowsOf((p) => (p.CODEMAP.A55 = { n: '소론도정', k: 'drug', rg: null, cartilage: true }))).toEqual([
+      { label: 'A55 · 역할', before: '자동', after: '연골주사' },
+      { label: 'A55 · 구분', before: '(없음)', after: '약' },
+      { label: 'A55 · 메모 이름', before: '(없음)', after: '소론도정' },
+      { label: 'A55 · 부위', before: '(없음)', after: '자동' },
+    ])
+  })
+})
+
+describe('AC-6612.1·AC-6613 새 칸 줄', () => {
+  it("AC-6612.1: 차트 줄임말은 '차트 줄임말' 한 줄로 '적으면 = 읽어요'가 보인다", () => {
+    expect(rowsOf((p) => (p.chartWords = [{ term: '무주', target: 'IA' }, { term: '묵', target: 'MBB' }]))).toEqual([{ label: '차트 줄임말', before: '(없음)', after: '무주 = IA, 묵 = MBB' }])
+  })
+
+  it("AC-6613.1·AC-6613.3: '두 사유가 겹칠 때'는 고르기 이름으로 보이고, 값 없음과 'twoSite'는 같은 '2부위 사유 먼저'다", () => {
+    expect(rowsOf((p) => (p.TPL.reasonPriority = 'interval'))).toEqual([{ label: '두 사유가 겹칠 때', before: '2부위 사유 먼저', after: '주사 간격 사유 먼저' }])
+    expect(rowsOf((p) => (p.TPL.reasonPriority = 'both'))).toEqual([{ label: '두 사유가 겹칠 때', before: '2부위 사유 먼저', after: '둘 다' }])
+    expect(rowsOf((p) => delete p.TPL.reasonPriority)).toEqual([])
+  })
+
+  it('AC-6613.1·AC-6613.3: 비운 코드 칸은 엔진 기본값을 쓴다고 보이고, 고친 칸은 phrases.ts 이름표로 보인다', () => {
+    expect(rowsOf((p) => delete p.TPL.intervalCodes)).toEqual([{ label: '주사 간격을 볼 처방코드', before: 'LA358, KK090', after: '기본값: LA358, KK090' }])
+    expect(rowsOf((p) => (p.TPL.mainCentralCodes = 'LA321'))).toEqual([{ label: 'Central 시술 처방코드', before: 'LA321, LA323, LA326, LA354, LA356, LA357, LA358, LA359', after: 'LA321' }])
+    expect(rowsOf((p) => (p.TPL.twoSiteRules = 'KK090'))).toEqual([{ label: '2부위로 보는 처방', before: 'KK090 = LA274, LA272\nKK061\nKK062', after: 'KK090' }])
   })
 })
