@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>데스크·번호 고르기 시안</title>
+<style>
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-soft: #EFF4FF;
+  --pos: #047857; --neg: #B91C1C; --warn: #B45309; --r: 6px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, 'Malgun Gothic', sans-serif; }
+main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.lead { color: var(--ink-2); margin: 0 0 20px; }
+section.s { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+h2 { font-size: 16px; margin: 0 0 2px; }
+h3 { font-size: 14px; margin: 14px 0 6px; }
+.sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+.note { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
+.two > * { min-width: 0; }
+.two { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 360px); align-items: start; }
+/* 장부 줄 */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+th { color: var(--muted); font-weight: 500; }
+.scroll { overflow-x: auto; }
+.chip { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+.c-inj { background: #DBEAFE; color: #1E40AF; } .c-visit { background: #CCFBF1; color: #115E59; } .c-etc { background: #F3F4F6; color: #374151; } .c-none { color: var(--muted); font-weight: 400; }
+.cell { display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent; border-radius: 4px; padding: 2px 4px; }
+.cell.focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 4px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 4px; background: var(--surface); font: 600 12px/1 system-ui, sans-serif; color: var(--ink-2); }
+/* 고르기 판 */
+.pop { border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); box-shadow: 0 8px 24px rgba(0,0,0,.12); padding: 14px; display: grid; gap: 8px; }
+.pop .t { font-weight: 700; } .pop .who { color: var(--muted); font-size: 12px; margin-top: -6px; }
+.opt { display: grid; grid-template-columns: 22px 18px minmax(0, 1fr) auto; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: var(--r); padding: 7px 10px; }
+.opt.on { border-color: var(--accent); background: var(--accent-soft); }
+.opt small { display: block; color: var(--muted); font-size: 12px; }
+.opt .rate { font-size: 12px; font-weight: 600; color: var(--muted); } .opt .rate.ok { color: var(--pos); }
+.sep { height: 1px; background: var(--line); margin: 2px 0; }
+.btns { display: flex; justify-content: flex-end; gap: 8px; }
+.btn { height: 32px; display: inline-flex; align-items: center; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font: inherit; font-size: 13px; color: var(--ink); }
+.btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tip { color: var(--muted); font-size: 12px; margin: 0; }
+/* 대시보드 칸 */
+.kpi { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.kpi div { padding: 12px 14px; border-right: 1px solid var(--line); }
+.kpi div:last-child { border-right: 0; }
+.kpi span { display: block; font-size: 12px; color: var(--muted); }
+.kpi b { font-size: 22px; } .kpi b small { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 2px; }
+.kpi em { display: block; font-style: normal; font-size: 12px; color: var(--muted); }
+.kpi .new { background: var(--accent-soft); }
+/* 설정 */
+.field { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.in { height: 36px; border: 1px solid var(--line-strong); border-radius: var(--r); padding: 0 10px; font: inherit; width: 280px; max-width: 100%; }
+.list { border: 1px solid var(--line); border-radius: var(--r); margin-top: 10px; }
+.list div { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.list div:last-child { border-bottom: 0; }
+.list .st { font-size: 12px; color: var(--muted); }
+.list .st.ok { color: var(--pos); font-weight: 600; }
+.list .btn { margin-left: auto; height: 28px; }
+/* 데스크 화면 */
+.app { border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: var(--canvas); }
+.bar { display: flex; align-items: center; gap: 4px; background: var(--surface); border-bottom: 1px solid var(--line); padding: 0 12px; height: 48px; overflow-x: auto; }
+.bar .logo { font-weight: 700; margin-right: 12px; white-space: nowrap; }
+.bar a { padding: 0 10px; height: 48px; display: inline-flex; align-items: center; color: var(--ink-2); text-decoration: none; border-bottom: 2px solid transparent; white-space: nowrap; }
+.bar a.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
+.bar .who { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; padding-left: 12px; }
+.badge { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 999px; background: #FEF3C7; color: #92400E; font-size: 11px; font-weight: 600; margin-right: 6px; }
+.body { padding: 16px; color: var(--muted); font-size: 13px; min-height: 80px; }
+.blocked { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 24px; text-align: center; margin: 8px 0 0; }
+.blocked b { display: block; color: var(--ink); font-size: 15px; margin-bottom: 4px; }
+ul { margin: 6px 0 0; padding-left: 18px; }
+@media (max-width: 760px) {
+  .two { grid-template-columns: 1fr; }
+  .kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi div { border-bottom: 1px solid var(--line); }
+}
+</style>
+</head>
+<body>
+<main>
+<h1>데스크·번호 고르기 시안</h1>
+<p class="lead">부장님 채팅에서 나온 고칠 것들입니다. 이름·숫자는 지어낸 것입니다.</p>
+
+<section class="s">
+<h2>① 수납일지 다음 예약 — 번호로 고르기</h2>
+<p class="sub">다음 예약 칸을 누르고(또는 Tab으로 옮겨 가서) 숫자 키를 치면 바로 바뀝니다. 고르기 판을 열 필요가 없습니다.</p>
+<div class="two">
+<div>
+<div class="scroll"><table>
+<tr><th>접수</th><th>이름</th><th>구분</th><th>카드</th><th>다음 예약</th></tr>
+<tr><td>09:04</td><td>김○○</td><td>재진</td><td>89,600</td><td><span class="cell"><span class="chip c-inj">주사치료</span> 11/21 (금)</span></td></tr>
+<tr><td>09:22</td><td>이○○</td><td>재진</td><td>40,000</td><td><span class="cell focus"><span class="chip c-visit">진료(경과)</span> 11/20 (목)</span> <span style="color:var(--accent);font-size:12px">← 3을 침</span></td></tr>
+<tr><td>09:40</td><td>박○○</td><td>신환</td><td>140,700</td><td><span class="cell"><span class="chip c-none">예약 안 하고 가심</span></span></td></tr>
+<tr><td>09:51</td><td>최○○</td><td>재진</td><td>36,000</td><td><span class="cell"><span class="chip c-etc">기타</span></span></td></tr>
+</table></div>
+<h3>번호표 (장부 위 '다음 예약' 제목 옆에 늘 보임)</h3>
+<p style="margin:0;display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:13px">
+<span><kbd>1</kbd> 예약 안 하고 가심</span><span><kbd>2</kbd> 주사치료</span><span><kbd>3</kbd> 진료(경과)</span><span><kbd>4</kbd> 기타</span><span><kbd>0</kbd> 비트 따라가기</span>
+</p>
+<ul>
+<li>번호는 설정의 '다음 예약 종류' 목록 차례를 따라갑니다. 종류를 더하면 5, 6…이 붙습니다(9까지).</li>
+<li>4 '기타'는 이름을 [설정] → 다음 예약 종류에서 고칠 수 있습니다(예: '기타' → '물리치료 예약').</li>
+<li>숫자로 고른 뒤 ↓ 키를 누르면 아랫줄 다음 예약 칸으로 옮겨 가서 이어서 칠 수 있습니다.</li>
+<li>마감한 날은 지금처럼 바뀌지 않습니다.</li>
+</ul>
+</div>
+<div class="pop">
+<div class="t">다음 예약 · 이○○</div><div class="who">10818 · 재진</div>
+<div class="opt"><kbd>0</kbd><input type="radio" name="p"><span>비트 따라가기<small>지금: 11/20 예약 있음 · 진료(경과)</small></span><span class="rate">—</span></div>
+<div class="opt"><kbd>1</kbd><input type="radio" name="p"><span>예약 안 하고 가심</span><span class="rate">예약률 ✕</span></div>
+<div class="sep"></div>
+<div class="opt"><kbd>2</kbd><input type="radio" name="p"><span>주사치료</span><span class="rate ok">예약률 ○</span></div>
+<div class="opt on"><kbd>3</kbd><input type="radio" name="p" checked><span>진료(경과)</span><span class="rate ok">예약률 ○</span></div>
+<div class="opt"><kbd>4</kbd><input type="radio" name="p"><span>기타</span><span class="rate">예약률 ✕</span></div>
+<p class="tip">판이 열려 있을 때도 숫자 키를 치면 바로 고르고 닫힙니다.</p>
+<div class="btns"><button class="btn">닫기</button><button class="btn pri">고르기</button></div>
+</div>
+</div>
+</section>
+
+<section class="s">
+<h2>② 대시보드 하루 칸 — 물리치료 더하기</h2>
+<p class="sub">환자 수 · 신환 · 90일초진 · 재진 다음에 '물리치료' 칸이 생깁니다(파란 바탕은 새 칸 표시, 실제로는 다른 칸과 같은 모양).</p>
+<div class="kpi">
+<div><span>환자 수</span><b>34<small>명</small></b></div>
+<div><span>신환</span><b>4<small>명</small></b></div>
+<div><span>90일초진</span><b>0<small>명</small></b></div>
+<div><span>재진</span><b>19<small>명</small></b></div>
+<div class="new"><span>물리치료</span><b>11<small>명</small></b><em>재진 중</em></div>
+<div><span>지난주 같은 요일</span><b>31<small>명</small></b></div>
+</div>
+<p class="note">물리치료 = 그날 물리치료 처방이 있는 환자 수(수납일지 '물리치료' 칸과 같은 기준). 재진 숫자가 비트 '과별초재진'과 다른 까닭은 확인 중이며, 맞추는 방법은 명세에 적습니다.</p>
+</section>
+
+<section class="s">
+<h2>③ 설정 — 데스크 계정</h2>
+<p class="sub">[설정] 맨 아래에 새 칸. 원장님(병원) 계정에서만 보입니다.</p>
+<div style="border:1px solid var(--line);border-radius:8px;padding:14px">
+<b>데스크 계정</b>
+<p class="sub" style="margin:2px 0 10px">데스크 계정은 <b>업무일지 · 수납일지 · 예약</b>만 볼 수 있어요. 통계·매출·청구·환자·설정은 서버가 보여 주지 않아요.</p>
+<div class="field"><input class="in" placeholder="데스크가 로그인할 구글 메일" value="desk1@example.com"><button class="btn pri">더하기</button></div>
+<div class="list">
+<div><span>desk1@example.com</span><span class="st ok">로그인함 · 11/18</span><button class="btn">빼기</button></div>
+<div><span>desk2@example.com</span><span class="st">아직 로그인 안 함</span><button class="btn">빼기</button></div>
+</div>
+<p class="note">데스크 PC에서 이 구글 메일로 로그인하면 바로 이 병원의 데스크 계정이 됩니다(가입 승인 없음). [빼기]를 누르면 그 PC는 다음 화면부터 아무것도 볼 수 없어요. 데스크 계정은 5개까지.</p>
+</div>
+</section>
+
+<section class="s">
+<h2>④ 데스크 계정으로 로그인한 화면</h2>
+<p class="sub">메뉴에 세 탭만 보이고, 처음 열면 수납일지로 갑니다.</p>
+<div class="app">
+<div class="bar"><span class="logo">양지바른정형외과</span><a>업무일지</a><a class="on">수납일지</a><a>예약</a><span class="who"><span class="badge">데스크</span>desk1@example.com</span></div>
+<div class="body">(수납일지 화면 그대로)</div>
+</div>
+<h3>막힌 주소로 들어오면 (예: 주소창에 /stats)</h3>
+<div class="blocked"><b>데스크 계정은 볼 수 없는 화면이에요</b>업무일지 · 수납일지 · 예약만 쓸 수 있어요.<div style="margin-top:12px"><button class="btn pri">수납일지로 가기</button></div></div>
+<ul>
+<li>수납일지·예약에서 비트를 읽는 도우미는 데스크 PC에서도 지금처럼 씁니다.</li>
+<li>예약 탭의 [예약 설정](시행자·종류)은 데스크에서도 고칠 수 있습니다. 막아야 하면 말씀해 주세요.</li>
+<li>수납일지의 [설정](다음 예약 종류)은 데스크에서 고칠 수 있습니다(① 번호 목록이 여기서 정해짐).</li>
+</ul>
+</section>
+</main>
+</body>
+</html>
