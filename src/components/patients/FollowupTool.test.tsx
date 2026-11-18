@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { errorInfo } from '@/lib/errors'
 import { DEFAULT_TEMPLATES } from '@/lib/patientMessages/defaults'
-import { fillTemplate } from '@/lib/patientMessages/fill'
+import { fillClinic, fillTemplate, NO_CLINIC_INFO, type ClinicInfo } from '@/lib/patientMessages/fill'
 import type { FollowupFilters, FollowupRow, FollowupView } from '@/types/patients'
 import { filterFollowup } from '@/workers/patients/jobs'
 import { FollowupTool } from './FollowupTool'
@@ -89,7 +89,7 @@ const flush = () =>
     await new Promise((resolve) => setTimeout(resolve, 0))
   })
 
-type SetupOptions = { view?: FollowupView; storeCode?: string; active?: boolean; manualFilter?: boolean }
+type SetupOptions = { view?: FollowupView; storeCode?: string; active?: boolean; manualFilter?: boolean; clinic?: ClinicInfo }
 
 function setup(options: SetupOptions = {}) {
   let view = options.view ?? VIEW
@@ -111,7 +111,16 @@ function setup(options: SetupOptions = {}) {
   }
   const reload = vi.fn()
   const element = (active: boolean) => (
-    <FollowupTool view={view} storeCode={options.storeCode} active={active} post={post} listen={listen} reload={reload} head={(summary) => <div data-testid="head">{summary}</div>} />
+    <FollowupTool
+      view={view}
+      storeCode={options.storeCode}
+      clinic={options.clinic ?? NO_CLINIC_INFO}
+      active={active}
+      post={post}
+      listen={listen}
+      reload={reload}
+      head={(summary) => <div data-testid="head">{summary}</div>}
+    />
   )
   const utils = render(element(options.active ?? true))
   const filters = () => posted.flatMap((m) => (m.type === 'filter' && m.tool === 'followup' ? [m.filters as FollowupFilters] : []))
@@ -757,6 +766,38 @@ describe('AC-611.4 [명단 복사]', () => {
 })
 
 describe('AC-611.4 [문구 복사]', () => {
+  it('AC-6605.1 병원 정보를 받으면 복사 글의 병원 이름·전화·진료시간 자리에 넣는다(주사·진료 안내 모두)', async () => {
+    // 병원 이름·번호는 지어낸 것이다
+    const clinic: ClinicInfo = { name: '튼튼정형외과', phone: '02-123-4567', hoursText: '평일 09:00~18:00, 일·공휴일 휴진' }
+    const { user, writeText } = setupUser()
+    sb.result = { data: [], error: null }
+    setup({ clinic })
+    await flush()
+    for (const kind of ['injection', 'followup'] as const) {
+      if (kind === 'followup') await user.click(group('복사할 문구').getByRole('button', { name: '진료 안내' }))
+      await user.click(button('문구 복사'))
+      const body = DEFAULT_TEMPLATES.find((t) => t.kind === kind)!.body
+      const copied = writeText.mock.lastCall?.[0] ?? ''
+      expect(copied).not.toContain('설정 필요')
+      expect(copied.startsWith('튼튼정형외과\n')).toBe(true)
+      expect(copied).toContain('튼튼정형외과입니다.')
+      expect(copied).toContain('문의: 02-123-4567')
+      expect(copied).toContain('진료시간: 평일 09:00~18:00, 일·공휴일 휴진')
+      expect(copied).toContain('* 11월 5일 목요일 *')
+      expect(copied).toBe(fillClinic(fillTemplate(body, TOMORROW), clinic))
+    }
+  })
+
+  it('AC-6605.1 빈 병원 정보면 복사 글은 그대로다', async () => {
+    const { user, writeText } = setupUser()
+    sb.result = { data: [], error: null }
+    setup({ clinic: NO_CLINIC_INFO })
+    await flush()
+    await user.click(button('문구 복사'))
+    const body = DEFAULT_TEMPLATES.find((t) => t.kind === 'injection')!.body
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(fillTemplate(body, TOMORROW))
+  })
+
   it('AC-611.4 처음은 주사 안내의 첫 문구를 기간 시작일로 채워 복사한다', async () => {
     const { user, writeText } = setupUser()
     setup()

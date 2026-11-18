@@ -5,7 +5,7 @@ import { formatCount } from '@/components/charts/format'
 import { ds } from '@/components/ui/classes'
 import { addDays, isYmd } from '@/lib/analytics/dates'
 import { DEFAULT_TEMPLATES } from '@/lib/patientMessages/defaults'
-import { defaultSendDate, fillTemplate } from '@/lib/patientMessages/fill'
+import { defaultSendDate, fillClinic, fillTemplate, type ClinicInfo } from '@/lib/patientMessages/fill'
 import { readTemplates, type MessageTemplate } from '@/lib/storage/messageTemplates'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { FilteredRecall, RecallCoverage, RecallFilters, RecallView } from '@/types/patients'
@@ -126,6 +126,7 @@ export function RecallTool({
   view,
   storeCode,
   today,
+  clinic,
   active,
   post,
   listen,
@@ -137,6 +138,8 @@ export function RecallTool({
   storeCode?: string
   /** 이 명단을 읽은 날. 처음 기간·연락한 날·문구 날짜의 기준이다 */
   today: string
+  /** [문구 복사] 글에 넣을 병원 정보(AC-6605.1). PatientsScreen이 한 번 읽어 넘긴다 */
+  clinic: ClinicInfo
   /** 지금 보이는 도구인가. 다른 도구로 가도 살아 있어 고른 값·저장 답을 잃지 않는다 */
   active: boolean
   post(message: ToolRequest): void
@@ -288,7 +291,7 @@ export function RecallTool({
           ) : (
             <>
               <CopyButton
-                text={() => fillTemplate(template?.body ?? '', sendDate)}
+                text={() => fillClinic(fillTemplate(template?.body ?? '', sendDate), clinic)}
                 label="문구 복사"
                 disabled={!template}
                 doneText={`복사했어요 · ${template?.name ?? ''} · ${dayLabel(sendDate)}`}

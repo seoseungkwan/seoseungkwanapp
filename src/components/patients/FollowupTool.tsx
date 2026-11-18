@@ -5,7 +5,7 @@ import { ds } from '@/components/ui/classes'
 import { addDays, isYmd } from '@/lib/analytics/dates'
 import { errorInfo, isErrorCode } from '@/lib/errors'
 import { DEFAULT_TEMPLATES, type TemplateKind } from '@/lib/patientMessages/defaults'
-import { fillTemplate } from '@/lib/patientMessages/fill'
+import { fillClinic, fillTemplate, type ClinicInfo } from '@/lib/patientMessages/fill'
 import { readTemplates, type MessageTemplate } from '@/lib/storage/messageTemplates'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { FilteredFollowup, FollowupFilters, FollowupView, VisitKind } from '@/types/patients'
@@ -148,6 +148,7 @@ function useTemplates(active: boolean) {
 export function FollowupTool({
   view,
   storeCode,
+  clinic,
   active,
   post,
   listen,
@@ -157,6 +158,8 @@ export function FollowupTool({
   view: FollowupView
   /** store.load 실패 번호: 연락 표시를 못 불러오면(marksLoaded 거짓) Worker가 views.codes.recall에 싣는다 */
   storeCode?: string
+  /** [문구 복사] 글에 넣을 병원 정보(AC-6605.1). PatientsScreen이 한 번 읽어 넘긴다 */
+  clinic: ClinicInfo
   /** 지금 보이는 도구인가. 다른 도구로 가도 살아 있어 고른 값·저장 답을 잃지 않는다 */
   active: boolean
   post(message: ToolRequest): void
@@ -325,7 +328,7 @@ export function FollowupTool({
           ) : (
             <>
               <CopyButton
-                text={() => fillTemplate(template?.body ?? '', from)}
+                text={() => fillClinic(fillTemplate(template?.body ?? '', from), clinic)}
                 label="문구 복사"
                 disabled={templates.state === 'loading'}
                 doneText={`복사했어요 · ${template?.name ?? ''} · ${dayLabel(from)}`}

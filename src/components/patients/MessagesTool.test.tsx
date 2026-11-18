@@ -4,6 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ds } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
 import { isYmd } from '@/lib/analytics/dates'
+import type { ClinicProfileView } from '@/components/clinic/useClinicProfile'
+import { DEFAULT_TEMPLATES } from '@/lib/patientMessages/defaults'
+import { defaultProfile } from '@/lib/storage/clinicProfile'
 import type { MessageTemplate } from '@/lib/storage/messageTemplates'
 import { MessagesTool } from './MessagesTool'
 
@@ -12,6 +15,24 @@ import { MessagesTool } from './MessagesTool'
 
 const db = vi.hoisted(() => ({ client: null as unknown }))
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: () => db.client }))
+// 병원 정보(AC-6605.1). 시험마다 정한다. 처음은 불러오는 중(글을 그대로 둔다)
+const clinic = vi.hoisted(() => ({ view: null as unknown }))
+vi.mock('@/components/clinic/useClinicProfile', () => ({ useClinicProfile: () => clinic.view }))
+
+function clinicView(state: ClinicProfileView['state'], over: { saved?: boolean; name?: string; phone?: string | null } = {}): ClinicProfileView {
+  const saved = over.saved ?? state === 'ready'
+  const name = over.name ?? '튼튼정형외과'
+  return {
+    state,
+    profile: { ...defaultProfile(), displayName: saved ? name : null, phone: over.phone === undefined ? '021234567' : over.phone },
+    saved,
+    signupName: name,
+    signupPhone: null,
+    name,
+    logoDataUrl: null,
+    reload: () => {},
+  }
+}
 
 const TODAY = '2026-11-04' // 수요일
 const FAILURE = { message: 'down' }
@@ -120,6 +141,7 @@ const dateBox = () => screen.getByLabelText('내원 날짜') as HTMLInputElement
 let writeText = vi.fn<(text: string) => Promise<void>>()
 
 beforeEach(() => {
+  clinic.view = clinicView('loading')
   writeText = vi.fn(async () => {})
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
 })
@@ -172,10 +194,12 @@ describe('MessagesTool: 처음 열기 (AC-613.1)', () => {
     expect(screen.getByRole('option', { name: '1번 · 이름 없음' })).toBeTruthy()
   })
 
-  it('AC-613.1 AC-2805.2: [*1*]·[*2*](예약 안내는 예약 시각)와 날짜 줄 설명이 있다', async () => {
+  it('AC-613.1 AC-2805.2 AC-6605.2: [*1*]·[*2*](예약 안내는 예약 시각)와 날짜 줄 설명, 병원 정보 안내가 있다', async () => {
     await open()
     expect(
-      screen.getByText('[*1*] 자리는 받는 분 이름, [*2*] 자리는 부위(정기 주사는 주사 종류, 예약 안내는 예약 시각)로 문자 프로그램이 바꿔요. ‘* 11월 5일 목요일 *’처럼 별표로 감싼 날짜 줄은 고른 내원 날짜로 바뀌어요.'),
+      screen.getByText(
+        '[*1*] 자리는 받는 분 이름, [*2*] 자리는 부위(정기 주사는 주사 종류, 예약 안내는 예약 시각)로 문자 프로그램이 바꿔요. ‘* 11월 5일 목요일 *’처럼 별표로 감싼 날짜 줄은 고른 내원 날짜로 바뀌어요. 병원 이름·전화·진료시간은 설정 → 병원 정보 값이 들어가요.',
+      ),
     ).toBeTruthy()
   })
 
@@ -459,6 +483,72 @@ describe('MessagesTool: 복사 (AC-613.3)', () => {
     rerender(<MessagesTool today={TODAY} active={false} />)
     await flush()
     expect(screen.queryByText(/^복사했어요/)).toBeNull()
+  })
+})
+
+describe('MessagesTool: 병원 정보 넣기 (AC-6605.1·AC-6605.2)', () => {
+  const HOURS = '평일 09:00~18:00(점심 13:00~14:00), 토 09:00~13:00, 일·공휴일 휴진'
+  const SLOTS: MessageTemplate = {
+    id: 's',
+    kind: 'injection',
+    name: '병원 알림',
+    body: '[병원명 설정 필요]\n[*1*]님, 병원명 설정 필요입니다.\n<<DATE>>\n문의: 전화번호 설정 필요\n진료시간: 병원 진료시간 설정 필요',
+    sort_order: 0,
+  }
+  const FILLED = `튼튼정형외과\n[*1*]님, 튼튼정형외과입니다.\n* 11월 5일 목요일 *\n문의: 02-123-4567\n진료시간: ${HOURS}`
+  const UNFILLED = '[병원명 설정 필요]\n[*1*]님, 병원명 설정 필요입니다.\n* 11월 5일 목요일 *\n문의: 전화번호 설정 필요\n진료시간: 병원 진료시간 설정 필요'
+
+  it('AC-6605.1: 병원 정보를 읽었으면 미리 보기와 [문구 복사]에 병원 이름·전화·진료시간이 들어가고, 고치는 칸 글은 그대로다', async () => {
+    clinic.view = clinicView('ready')
+    await open(fakeServer([SLOTS]))
+    expect(preview()).toBe(FILLED)
+    expect(bodies()[0]?.value).toBe(SLOTS.body)
+    await press('문구 복사')
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(FILLED)
+  })
+
+  it('AC-6605.1: 고친 글도 미리 보기에서 바로 채운다', async () => {
+    clinic.view = clinicView('ready')
+    await open()
+    type(bodies()[0]!, '병원명 설정 필요 안내\n<<DATE>>\n전화번호 설정 필요')
+    expect(preview()).toBe('튼튼정형외과 안내\n* 11월 5일 목요일 *\n02-123-4567')
+  })
+
+  it.each(['loading', 'failed'] as const)('AC-6605.1: 병원 정보가 %s이면 미리 보기·복사 글은 그대로다', async (state) => {
+    clinic.view = clinicView(state)
+    await open(fakeServer([SLOTS]))
+    expect(preview()).toBe(UNFILLED)
+    await press('문구 복사')
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(UNFILLED)
+  })
+
+  it('AC-6605.1: 저장한 적 없는 병원이면 이름(가입 이름)만 넣고 전화·진료시간 자리는 그대로 둔다', async () => {
+    clinic.view = clinicView('ready', { saved: false, name: '가입정형외과', phone: null })
+    await open(fakeServer([SLOTS]))
+    expect(preview()).toBe('가입정형외과\n[*1*]님, 가입정형외과입니다.\n* 11월 5일 목요일 *\n문의: 전화번호 설정 필요\n진료시간: 병원 진료시간 설정 필요')
+  })
+
+  it('AC-6605.1: 이름이 비었으면 이름 자리는 그대로 둔다', async () => {
+    clinic.view = clinicView('ready', { name: '' })
+    await open(fakeServer([SLOTS]))
+    expect(preview()).toBe(`[병원명 설정 필요]\n[*1*]님, 병원명 설정 필요입니다.\n* 11월 5일 목요일 *\n문의: 02-123-4567\n진료시간: ${HOURS}`)
+  })
+
+  it('AC-6605.1: 기본 문구를 [저장]해도 저장하는 글은 병원 정보를 넣기 전 글 그대로다', async () => {
+    clinic.view = clinicView('ready')
+    const { server } = await open(fakeServer([]))
+    expect(preview()).not.toContain('설정 필요')
+    expect(preview()?.startsWith('튼튼정형외과\n')).toBe(true)
+    await press(/^저장/)
+    expect(server.inserts).toHaveLength(1)
+    expect(server.inserts[0]?.map((row) => row.body)).toEqual(DEFAULT_TEMPLATES.map((tpl) => tpl.body))
+    expect(bodies().map((box) => box.value)).toEqual(DEFAULT_TEMPLATES.map((tpl) => tpl.body))
+  })
+
+  it('AC-6605.2: 문구 고치는 곳의 안내 글 끝에 병원 정보 안내가 더해진다', async () => {
+    await open()
+    const help = screen.getByText(/^\[\*1\*\] 자리는 받는 분 이름/)
+    expect(help.textContent?.endsWith(' 병원 이름·전화·진료시간은 설정 → 병원 정보 값이 들어가요.')).toBe(true)
   })
 })
 

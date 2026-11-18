@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { isYmd } from '@/lib/analytics/dates'
-import { DATE_LINE, dateLine, defaultSendDate, fillTemplate } from './fill'
+import { DEFAULT_HOURS } from '@/types/clinicProfile'
+import { DEFAULT_TEMPLATES } from './defaults'
+import { clinicInfoOf, DATE_LINE, dateLine, defaultSendDate, fillClinic, fillTemplate, NO_CLINIC_INFO, type ClinicInfo } from './fill'
 
 // 골든 시험: 같은 문구·날짜를 원본(seoseungkwan/shared@2a1069b)에 넣은 결과(fixtures/patients/golden/messages-fill.json)와
 // 우리 함수의 결과를 순서까지 깊게 견준다. 원본 결과는 scripts/patients/golden/messages.mjs가 만든다(원본은 저장소 밖).
@@ -191,5 +193,93 @@ describe('AC-608.3 defaultSendDate: 내일 (골든)', () => {
 
   it('AC-608.3 없는 날짜는 RangeError', () => {
     expect(() => defaultSendDate('2026-02-30')).toThrow(RangeError)
+  })
+})
+
+// ── 병원 정보 채우기(spec clinic-profile REQ-6605, design.md 7절) ─────────────────
+// 병원 이름·번호는 지어낸 것이다
+const INFO: ClinicInfo = {
+  name: '튼튼정형외과',
+  phone: '02-123-4567',
+  hoursText: '평일 09:00~18:00(점심 13:00~14:00), 토 09:00~13:00, 일·공휴일 휴진',
+}
+const SLOTS = '[병원명 설정 필요]\n병원명 설정 필요입니다.\n문의: 전화번호 설정 필요\n진료시간: 병원 진료시간 설정 필요'
+
+describe('AC-6605.1 fillClinic: 병원 정보를 넣는다', () => {
+  it('AC-6605.1 네 자리를 병원 이름·전화·진료시간으로 바꾼다([병원명 설정 필요]는 괄호까지)', () => {
+    expect(fillClinic(SLOTS, INFO)).toBe(
+      '튼튼정형외과\n튼튼정형외과입니다.\n문의: 02-123-4567\n진료시간: 평일 09:00~18:00(점심 13:00~14:00), 토 09:00~13:00, 일·공휴일 휴진',
+    )
+  })
+
+  it('AC-6605.1 휴대폰 모양 전화도 그대로 넣는다', () => {
+    expect(fillClinic('문의: 전화번호 설정 필요', { ...INFO, phone: '010-1234-5678' })).toBe('문의: 010-1234-5678')
+  })
+
+  it('AC-6605.1 같은 자리가 여러 번 있으면 모두 바꾼다', () => {
+    expect(fillClinic('병원명 설정 필요 · 병원명 설정 필요\n전화번호 설정 필요 / 전화번호 설정 필요', INFO)).toBe('튼튼정형외과 · 튼튼정형외과\n02-123-4567 / 02-123-4567')
+  })
+
+  it.each([
+    ['이름', { ...INFO, name: '' }, '[병원명 설정 필요]\n병원명 설정 필요입니다.\n문의: 02-123-4567\n진료시간: 평일 09:00~18:00(점심 13:00~14:00), 토 09:00~13:00, 일·공휴일 휴진'],
+    ['전화', { ...INFO, phone: '' }, '튼튼정형외과\n튼튼정형외과입니다.\n문의: 전화번호 설정 필요\n진료시간: 평일 09:00~18:00(점심 13:00~14:00), 토 09:00~13:00, 일·공휴일 휴진'],
+    ['진료시간', { ...INFO, hoursText: '' }, '튼튼정형외과\n튼튼정형외과입니다.\n문의: 02-123-4567\n진료시간: 병원 진료시간 설정 필요'],
+  ])('AC-6605.1 %s 값이 비었으면 그 자리는 그대로 둔다', (_name, info, expected) => {
+    expect(fillClinic(SLOTS, info)).toBe(expected)
+  })
+
+  it('AC-6605.1 빈 정보면 글이 그대로다', () => {
+    expect(NO_CLINIC_INFO).toEqual({ name: '', phone: '', hoursText: '' })
+    expect(fillClinic(SLOTS, NO_CLINIC_INFO)).toBe(SLOTS)
+  })
+
+  it('AC-6605.1 값 안의 $ 글자는 바꾸기 규칙으로 읽지 않고 그대로 넣는다', () => {
+    expect(fillClinic('[병원명 설정 필요] · 병원명 설정 필요', { ...INFO, name: "$& $' $1 $$" })).toBe("$& $' $1 $$ · $& $' $1 $$")
+  })
+
+  it('AC-6605.1 다른 글·[*1*]·[*2*]·날짜 줄은 건드리지 않고, 다시 채워도 같다', () => {
+    const body = fillTemplate('[*1*]님\n<<DATE>>\n[*2*] 안내\n' + SLOTS, '2026-11-02')
+    const once = fillClinic(body, INFO)
+    expect(once.startsWith('[*1*]님\n* 11월 2일 월요일 *\n[*2*] 안내\n튼튼정형외과\n')).toBe(true)
+    expect(fillClinic(once, INFO)).toBe(once)
+  })
+
+  it('AC-6605.1 기본 문구 셋에 설정 필요 글자가 남지 않고, 기본 문구(DEFAULT_TEMPLATES)는 그대로다', () => {
+    const before = JSON.stringify(DEFAULT_TEMPLATES)
+    for (const { body } of DEFAULT_TEMPLATES) {
+      expect(body).toContain('설정 필요')
+      const filled = fillClinic(fillTemplate(body, '2026-11-02'), INFO)
+      expect(filled).not.toContain('설정 필요')
+      expect(filled.startsWith('튼튼정형외과\n')).toBe(true)
+      expect(filled).toContain('문의: 02-123-4567')
+    }
+    expect(JSON.stringify(DEFAULT_TEMPLATES)).toBe(before)
+  })
+})
+
+describe('AC-6605.1 clinicInfoOf: 화면이 읽은 병원 정보 → 넣을 값', () => {
+  const view = (over: Partial<Parameters<typeof clinicInfoOf>[0]> = {}): Parameters<typeof clinicInfoOf>[0] => ({
+    state: 'ready',
+    saved: true,
+    name: '튼튼정형외과',
+    profile: { phone: '021234567', hours: [...DEFAULT_HOURS] },
+    ...over,
+  })
+
+  it('AC-6605.1 읽었으면 이름, 전화(02-123-4567·010-1234-5678 모양), 진료시간 글이다', () => {
+    expect(clinicInfoOf(view())).toEqual(INFO)
+    expect(clinicInfoOf(view({ profile: { phone: '01012345678', hours: [...DEFAULT_HOURS] } })).phone).toBe('010-1234-5678')
+  })
+
+  it.each(['loading', 'failed'] as const)('AC-6605.1 %s이면 빈 정보다(글을 그대로 둔다)', (state) => {
+    expect(clinicInfoOf(view({ state }))).toEqual(NO_CLINIC_INFO)
+  })
+
+  it('AC-6605.1 저장한 적 없는 병원은 이름(가입 이름)만 넣는다. 전화·진료시간(기본값)은 넣지 않는다', () => {
+    expect(clinicInfoOf(view({ saved: false, name: '가입정형외과', profile: { phone: null, hours: [...DEFAULT_HOURS] } }))).toEqual({ name: '가입정형외과', phone: '', hoursText: '' })
+  })
+
+  it('AC-6605.1 전화가 없거나 문 여는 날이 없으면 그 값은 빈 글이다', () => {
+    expect(clinicInfoOf(view({ profile: { phone: null, hours: [null, null, null, null, null, null, null] } }))).toEqual({ name: '튼튼정형외과', phone: '', hoursText: '' })
   })
 })

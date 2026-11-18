@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_TEMPLATES } from '@/lib/patientMessages/defaults'
-import { fillTemplate } from '@/lib/patientMessages/fill'
+import { fillClinic, fillTemplate, NO_CLINIC_INFO, type ClinicInfo } from '@/lib/patientMessages/fill'
 import type { RecallCoverage, RecallFilters, RecallRow, RecallView } from '@/types/patients'
 import { filterRecall } from '@/workers/patients/jobs'
 import { RecallTool } from './RecallTool'
@@ -85,7 +85,7 @@ const flush = () =>
     await new Promise((resolve) => setTimeout(resolve, 0))
   })
 
-type SetupOptions = { view?: RecallView; storeCode?: string; active?: boolean; manualFilter?: boolean }
+type SetupOptions = { view?: RecallView; storeCode?: string; active?: boolean; manualFilter?: boolean; clinic?: ClinicInfo }
 
 function setup(options: SetupOptions = {}) {
   let view = options.view ?? VIEW
@@ -108,7 +108,17 @@ function setup(options: SetupOptions = {}) {
   }
   const reload = vi.fn()
   const element = (active: boolean) => (
-    <RecallTool view={view} storeCode={storeCode} today={TODAY} active={active} post={post} listen={listen} reload={reload} head={(summary) => <div data-testid="head">{summary}</div>} />
+    <RecallTool
+      view={view}
+      storeCode={storeCode}
+      today={TODAY}
+      clinic={options.clinic ?? NO_CLINIC_INFO}
+      active={active}
+      post={post}
+      listen={listen}
+      reload={reload}
+      head={(summary) => <div data-testid="head">{summary}</div>}
+    />
   )
   const utils = render(element(options.active ?? true))
   const filters = () => posted.flatMap((m) => (m.type === 'filter' && m.tool === 'recall' ? [m.filters as RecallFilters] : []))
@@ -458,6 +468,35 @@ describe('AC-612.3 복사', () => {
 })
 
 describe('AC-612.3 [문구 복사]', () => {
+  it('AC-6605.1 병원 정보를 받으면 복사 글의 병원 이름·전화·진료시간 자리에 넣는다', async () => {
+    // 병원 이름·번호는 지어낸 것이다
+    const clinic: ClinicInfo = { name: '튼튼정형외과', phone: '010-1234-5678', hoursText: '평일 09:00~18:00, 일·공휴일 휴진' }
+    sb.result = { data: [], error: null }
+    const { user, writeText } = setupUser()
+    setup({ clinic })
+    await flush()
+    await user.click(button('문구 복사'))
+    const body = DEFAULT_TEMPLATES.find((tpl) => tpl.kind === 'injection')!.body
+    const copied = writeText.mock.lastCall?.[0] ?? ''
+    expect(copied).not.toContain('설정 필요')
+    expect(copied.startsWith('튼튼정형외과\n')).toBe(true)
+    expect(copied).toContain('튼튼정형외과입니다.')
+    expect(copied).toContain('문의: 010-1234-5678')
+    expect(copied).toContain('진료시간: 평일 09:00~18:00, 일·공휴일 휴진')
+    expect(copied).toContain('* 11월 5일 목요일 *')
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(fillClinic(fillTemplate(body, '2026-11-05'), clinic))
+  })
+
+  it('AC-6605.1 빈 병원 정보면 복사 글은 그대로다', async () => {
+    sb.result = { data: [], error: null }
+    const { user, writeText } = setupUser()
+    setup({ clinic: NO_CLINIC_INFO })
+    await flush()
+    await user.click(button('문구 복사'))
+    const body = DEFAULT_TEMPLATES.find((tpl) => tpl.kind === 'injection')!.body
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(fillTemplate(body, '2026-11-05'))
+  })
+
   it('AC-612.3 주사 안내 첫 문구를 내일 날짜로 채워 넣고, 이름·날짜를 알린다', async () => {
     const { user, writeText } = setupUser()
     setup()

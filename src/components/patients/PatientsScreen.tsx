@@ -1,12 +1,14 @@
 'use client'
 
 import Link from 'next/link'
-import type { ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
+import { useClinicProfile } from '@/components/clinic/useClinicProfile'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { isErrorCode } from '@/lib/errors'
+import { clinicInfoOf } from '@/lib/patientMessages/fill'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { BitListTool } from '@/types/patients'
 import { FollowupTool } from './FollowupTool'
@@ -24,6 +26,7 @@ import { usePatientsWorker, type PatientsBridge, type PatientsWorkerApi, type Pa
 // 남은 건수는 usePatientsWorker의 counts(views·marked 중 나중에 온 것)를 올린다(AC-614). 다시 읽는 동안 늦게 온 marked가 남아 있을 수 있어 두 명단의 보기 모양이 다 있을 때만 넘긴다.
 // 비트 명단 두 도구(예약 문자 명단 · 장기 미방문 명단, spec patients-bit-lists)는 들어올 때 읽지 않고 처음 열 때 그 도구만 읽는다(useBitList, AC-2802.2).
 // 읽는 중·도우미 업데이트 안내·오류는 여기서 그리고, 다 읽은 뒤에는 다시 읽는 동안·실패한 뒤에도 도구를 숨겨 두기만 해 고른 것을 잃지 않는다(AC-2802.4)
+// 병원 정보(이름·전화·진료시간)는 여기서 한 번 읽어 명단 세 도구의 [문구 복사]에 넘긴다(AC-6605.1). 읽는 중·실패면 빈 정보라 문구 글이 그대로다
 
 type ListTool = Exclude<PatientsTool, 'messages'>
 // 들어올 때 함께 읽는 두 도구(usePatientsWorker)
@@ -227,6 +230,8 @@ export function PatientsScreen({
   const followup = views && !views.codes.followup ? views.followup : null
   const recall = views && !views.codes.recall ? views.recall : null
   const upload = useCountsUpload(supabaseBrowser(), followup && recall ? load.counts : null)
+  const clinicView = useClinicProfile()
+  const clinic = useMemo(() => clinicInfoOf(clinicView), [clinicView])
   return (
     <>
       {upload.error && <CountsFailedLine code={upload.error} onRetry={upload.retry} />}
@@ -236,6 +241,7 @@ export function PatientsScreen({
           <FollowupTool
             view={followup}
             storeCode={views?.codes.recall}
+            clinic={clinic}
             active={tool === 'followup'}
             post={load.post}
             listen={load.listen}
@@ -251,6 +257,7 @@ export function PatientsScreen({
             storeCode={views?.codes.store}
             // 정기 주사 보기 모양에는 날짜가 없어 F/U 보기 모양의 읽은 날을 쓴다. F/U가 실패했으면 오늘이다
             today={views?.followup?.read.to ?? todayInKorea()}
+            clinic={clinic}
             active={tool === 'recall'}
             post={load.post}
             listen={load.listen}
@@ -264,6 +271,7 @@ export function PatientsScreen({
           <ReservationTool
             read={reservations.ready}
             storeCode={bits.storeCode}
+            clinic={clinic}
             active={tool === 'reservations' && reservations.phase === 'ready'}
             post={load.post}
             listen={load.listen}
