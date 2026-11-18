@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "stats-insights",
-  "approved_at": "2026-11-18T06:46:19Z",
+  "approved_at": "2026-11-18T07:26:25Z",
   "approved_via": "user-prompt",
   "session_id": "d8c599c5-f70a-49d3-a279-5c381ed7a718",
-  "spec_sha256": "c1e032a7cca50e2a95c1de2b7feed9132b2d1f28d82d0a950d62e436e28014c9",
+  "spec_sha256": "702e14396b696e07c341d1d18b419ff9ac1666d4c3c5b4cc43f106a4ee4e5057",
   "scope": [
     "docs/ADR.md",
     "docs/UI_GUIDE.md",
