@@ -1,14 +1,24 @@
 'use client'
 
 import { useId, useState, type ReactNode } from 'react'
+import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
+import { MonthlyReport } from '@/components/stats/report/MonthlyReport'
+import { firstReportMonth, monthlyReport, reportMonths, type ReportCalendar } from '@/components/stats/report/reportData'
+import { useReportReads } from '@/components/stats/report/useReportReads'
+import { wideSpan, type WideDays } from '@/components/stats/useWideDays'
 import { ds } from '@/components/ui/classes'
 import { addDays, addMonths, monthOf, monthRange } from '@/lib/analytics/dates'
 import { formatClinicReport } from '@/lib/clinicReport/reportText'
 import type { ClinicReportMode, ClinicReportNumbers, ClinicReportResult } from '@/types/clinicReport'
+import type { Goal } from '@/types/goals'
+import type { StatsRxGroup } from '@/types/rxGroups'
 import type { StatsLoaded } from '@/types/stats'
+import type { StatsCalendarShown } from './CalendarSection'
 import { CopyButton } from './CopyButton'
+import type { GoalRead } from './GoalSection'
 import { HowCounted } from './HowCounted'
+import type { BitSectionsShown } from './PatientMixSection'
 import { EmptyNote, longDate, monthNumber, Section, weekdayName } from './parts'
 
 // 원장님 보고 문장 (stats REQ-513 AC-513.6·513.8, 시안 notes.md §3). 글은 formatClinicReport가 정하고(TASK-10) 여기서는 글자로만 그린다.
@@ -236,6 +246,124 @@ export function ReportSection({ report, hospitalName, today, saved, pick = null,
         <Icon name="shield" size={14} className="mt-px shrink-0 text-positive" />
         <span>보고 문장은 숫자만 쓰고 환자 이름은 쓰지 않아요.</span>
       </p>
+    </Section>
+  )
+}
+
+// ── 월간 보고서 (stats-insights REQ-6108 AC-6108.1~AC-6108.3, 시안 docs/mockups/stats-insights ⑧) ─────────────
+// 보고 카드 안 '원장님 보고 문장' 다음 h3 칸. 달 고르기(이번 달을 넣은 최근 12달 가운데 저장된 달, 처음은 지난달) + [인쇄] + 고른 달 보고서 종이.
+// 내원·신환·묶음 숫자는 넓은 하루 읽기(wide), 매출·목표는 고른 달마다 useReportReads가 읽는다(이번 달 목표는 요약 칸 목표 훅 값 goal).
+// 예약·빈자리는 예약 칸 값(calendar), 몇 번까지 받나·1명당 매출은 비트 칸 답(bit)이다. 셈은 reportData(순수), 그림은 MonthlyReport.
+// [인쇄]는 window.print — 인쇄에는 종이만 나오고(MonthlyReport의 인쇄 규칙) 달 고르기·[인쇄]·오류 카드는 종이 밖이라 나오지 않는다.
+// 넓은 읽기가 읽는 중이면 제목뿐, 실패면 오류 카드 + [다시 읽기], 저장된 달이 없으면 칸이 없다. 고른 달은 이 칸의 React 상태뿐이다
+
+const MONTHLY_TITLE = '월간 보고서'
+const PRINT = '인쇄'
+const RETRY = '다시 읽기'
+// 달 단추(예약 빈자리 시행자 고르기와 같은 모양). 넘치면 다음 줄, 휴대폰 44px
+const MONTH_PICK = `h-8 cursor-pointer rounded-control border px-3 text-small whitespace-nowrap max-md:h-11 ${ds.focusRing}`
+const MONTH_ON = 'border-st-ink bg-surface font-semibold text-st-ink'
+const MONTH_OFF = 'border-line-strong bg-surface font-medium text-st-ink-2 hover:bg-canvas'
+
+// 달 단추 글: 맨 앞 단추와 해가 바뀌는 단추는 'YYYY년 M월', 나머지는 'M월'(시안 '2026년 10월 · 9월 · 8월')
+const monthNames = (months: readonly string[]) =>
+  months.map((month, i) => {
+    const name = `${Number(month.slice(5, 7))}월`
+    return i === 0 || months[i - 1]!.slice(0, 4) !== month.slice(0, 4) ? `${Number(month.slice(0, 4))}년 ${name}` : name
+  })
+
+// 예약 칸 값 → 보고서 입력. 예약 줄을 읽는 중·실패면 null, 빈자리 줄을 읽는 중·실패면 slots null
+function reportCalendar(calendar: StatsCalendarShown | undefined): ReportCalendar | null {
+  if (calendar === undefined || typeof calendar.rows === 'string') return null
+  const slots = typeof calendar.slots === 'object' ? calendar.slots : null
+  return calendar.settings === undefined ? { rows: calendar.rows, slots } : { rows: calendar.rows, settings: calendar.settings, slots }
+}
+
+export type MonthlyReportProps = {
+  today: string
+  hospitalName: string
+  wide: WideDays // 넓은 하루 읽기(오늘 앞 12달, useWideDays)
+  groups: readonly StatsRxGroup[] // 처방별 추세 묶음
+  calendar?: StatsCalendarShown // 예약 칸 값. 주지 않으면 예약·시행자별·빈자리 칸이 없다
+  bit?: BitSectionsShown // 비트 칸 답. 주지 않거나 null·'waiting'이면 몇 번까지 받나·1명당 매출 칸이 없다
+  goal?: GoalRead<Goal> // 이번 달 목표(useStatsGoals). 주지 않으면 이번 달도 따로 읽는다
+  revision?: number // 저장·[다시 읽기]마다 는다(고른 달의 매출·목표를 다시 읽는다)
+}
+
+export function MonthlyReportSection({ today, hospitalName, wide, groups, calendar, bit, goal, revision = 0 }: MonthlyReportProps) {
+  const [picked, setPicked] = useState<string | null>(null)
+  const months = wide.state === 'ready' ? reportMonths(wide.days, today) : []
+  const month = picked !== null && months.includes(picked) ? picked : firstReportMonth(months, today)
+  const given = month === monthOf(today) && goal !== undefined ? goal : null
+  const reads = useReportReads(month, { revision, withGoal: given === null })
+
+  if (wide.state === 'reading') return <Section title={MONTHLY_TITLE}>{null}</Section>
+  if (wide.state === 'failed') {
+    return (
+      <Section title={MONTHLY_TITLE}>
+        <div className="mt-3">
+          <ErrorCard code="E-STATS-READ-FAILED" />
+        </div>
+        <div className="mt-2">
+          <button type="button" onClick={wide.retry} className={`${ds.button.secondarySmall} max-md:w-full`}>
+            {RETRY}
+          </button>
+        </div>
+      </Section>
+    )
+  }
+  if (month === null) return null
+
+  const goalShown = given ?? reads.goal
+  const data = monthlyReport({
+    month,
+    today,
+    hospitalName,
+    days: wide.days,
+    daysFrom: wideSpan(today).from,
+    groups,
+    sales: typeof reads.sales === 'object' ? reads.sales : null,
+    goal: typeof goalShown === 'object' ? goalShown : null,
+    calendar: reportCalendar(calendar),
+    bit: bit === undefined || bit === null || bit === 'waiting' ? null : bit,
+  })
+  // 이번 달 목표(요약 칸 값)의 실패는 목표 칸이 알린다. 여기서는 이 칸이 읽은 것만
+  const failed = reads.sales === 'failed' || (given === null && reads.goal === 'failed')
+  const names = monthNames(months)
+
+  return (
+    <Section title={MONTHLY_TITLE}>
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div role="group" aria-label="달" className="flex flex-wrap gap-1.5">
+          {months.map((item, i) => (
+            <button
+              key={item}
+              type="button"
+              aria-pressed={item === month}
+              onClick={() => setPicked(item)}
+              className={`${MONTH_PICK} ${item === month ? MONTH_ON : MONTH_OFF}`}
+            >
+              {names[i]}
+            </button>
+          ))}
+        </div>
+        <button type="button" onClick={() => window.print()} className={`${ds.button.primarySmall} max-md:w-full`}>
+          {PRINT}
+        </button>
+      </div>
+      {failed && (
+        <>
+          <div className="mt-3">
+            <ErrorCard code="E-STATS-READ-FAILED" />
+          </div>
+          <div className="mt-2">
+            <button type="button" onClick={reads.retry} className={`${ds.button.secondarySmall} max-md:w-full`}>
+              {RETRY}
+            </button>
+          </div>
+        </>
+      )}
+      <MonthlyReport data={data} />
     </Section>
   )
 }

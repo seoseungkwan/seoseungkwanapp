@@ -4243,7 +4243,8 @@ describe('stats-insights TASK-7: 요약 자리 알림·목표 · 진료 운영 �
     fireEvent.click(within(goalCard()).getByRole('button', { name: '다시 읽기' }))
     const visits = await within(goalCard()).findByRole('group', { name: '내원' })
     expect(linesOf(visits)[0]).toBe('내원120명 / 목표 400명 · 30%')
-    expect(loadGoal).toHaveBeenCalledTimes(2)
+    // 이번 달 목표 읽기만 센다(넓은 하루를 읽은 뒤 보고 카드 '월간 보고서'가 지난달 목표를 따로 읽는다, AC-6108.2)
+    expect(vi.mocked(loadGoal).mock.calls.filter(([, month]) => month === '2026-11')).toHaveLength(2)
     expect(wideCalls()).toBe(2)
   })
 
@@ -4267,4 +4268,72 @@ describe('stats-insights TASK-7: 요약 자리 알림·목표 · 진료 운영 �
     expect(within(part).getByText(HOLIDAY_NOTE)).toBeTruthy()
     expect(ops.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual(['진료 운영'])
   })
+})
+
+// ── 월간 보고서 인쇄(stats-insights TASK-8): 보고 카드 안 '원장님 보고 문장' 다음 '월간 보고서'. 숫자는 모두 지어낸 것이다 ──
+describe('stats-insights TASK-8: 보고 카드 월간 보고서', () => {
+  const WIDE = { from: '2025-11-13', to: YESTERDAY }
+  const MONTHLY = '월간 보고서'
+  // 넓은 하루 읽기의 답: 9월 7일 · 10월 5일 · 11월 2일 내원 10명씩(나머지 읽기는 SAVED_NOW)
+  function wideRows(rows: DayPayload[]) {
+    vi.mocked(readDays).mockImplementation(async (range) => (range.from === WIDE.from && range.to === WIDE.to ? read(rows) : (SAVED_NOW[range.from] ?? read())))
+  }
+  const ROWS = [day('2026-09-07'), day('2026-10-05'), day('2026-11-02')]
+  const monthly = () => within(card('stats-report')).queryByRole('heading', { level: 3, name: MONTHLY })
+
+  it("AC-6108.1: 보고 카드에서 '원장님 보고 문장' 다음 h3 '월간 보고서' 칸에 달 고르기(저장된 달, 처음은 지난달)·[인쇄]·10월 보고서가 있다", async () => {
+    wideRows(ROWS)
+    draw()
+    await sectionsShown()
+    const part = (await waitFor(() => monthly()!)).closest('section')!
+    // 바로 앞은 원장님 보고 문장 칸(이 기기에서 불러오지 않아 안내 한 줄)
+    expect(part.previousElementSibling?.textContent).toContain('비트 PC에서 불러오면 보여요')
+    expect(part.parentElement!.lastElementChild).toBe(part)
+    expect(within(within(part).getByRole('group', { name: '달' })).getAllByRole('button').map((b) => b.textContent)).toEqual(['2026년 11월', '10월', '9월'])
+    expect(within(part).getByRole('heading', { level: 4 }).textContent).toBe('2026년 10월 통계 보고')
+    expect(within(part).getByText(`${HOSPITAL} · 11월 13일 뽑음`)).toBeTruthy()
+    await waitFor(() => expect(loadGoal).toHaveBeenCalledWith(expect.anything(), '2026-10'))
+    expect(revenueStore.loadDays).toHaveBeenCalledWith({ from: '2026-09-01', to: '2026-10-31' })
+    expect(within(card('stats-report')).getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual(['원장님 보고 문장'])
+  })
+
+  it('AC-6108.1: [인쇄]는 window.print()를 부르고, 인쇄 표시(data-print-report)는 그 보고서 종이 하나뿐이며 바로가기 띠·다른 카드·단추는 종이 밖이다', async () => {
+    const print = vi.fn()
+    window.print = print
+    wideRows(ROWS)
+    draw()
+    await sectionsShown()
+    await waitFor(() => expect(monthly()).toBeTruthy())
+    fireEvent.click(within(card('stats-report')).getByRole('button', { name: '인쇄' }))
+    expect(print).toHaveBeenCalledTimes(1)
+    const papers = document.querySelectorAll('[data-print-report]')
+    expect(papers).toHaveLength(1)
+    const paper = papers[0]!
+    expect(card('stats-report').contains(paper)).toBe(true)
+    for (const id of ['stats-summary', 'stats-patients', 'stats-rx', 'stats-ops']) expect(paper.contains(card(id))).toBe(false)
+    expect(paper.contains(screen.getByRole('navigation', { name: TOC_NAME }))).toBe(false)
+    expect(paper.querySelectorAll('button')).toHaveLength(0)
+  })
+
+  it('AC-6108.1: 최근 12달에 저장된 날이 없으면 월간 보고서 칸이 없고 보고 카드는 원장님 보고 문장뿐이다', async () => {
+    wideRows([])
+    draw()
+    await sectionsShown()
+    await waitFor(() => expect(wideCallsOf(WIDE)).toBeGreaterThan(0))
+    expect(monthly()).toBeNull()
+    expect(document.querySelector('[data-print-report]')).toBeNull()
+  })
+
+  it('AC-6108.3: 보고서 종이에는 차트번호·환자 이름 칸이 없다(비트에서 불러오지 않은 기기는 몇 번까지 받나·1명당 매출 칸도 없다)', async () => {
+    wideRows(ROWS)
+    draw()
+    await sectionsShown()
+    await waitFor(() => expect(monthly()).toBeTruthy())
+    const titles = [...document.querySelectorAll('[data-print-report] h5')].map((h) => h.textContent)
+    expect(titles).not.toContain('몇 번까지 받나')
+    expect(titles).not.toContain('신환 1명당 매출')
+    expect(titles.slice(0, 2)).toEqual(['한 달 요약', '달라진 것'])
+  })
+
+  const wideCallsOf = (span: DateRange) => vi.mocked(readDays).mock.calls.filter(([range]) => range.from === span.from && range.to === span.to).length
 })
