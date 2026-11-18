@@ -4,8 +4,12 @@ import { join } from 'node:path'
 import { cleanup, render } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { layoutGuide } from '@/lib/forms/guideLayout'
+import type { GuideValue } from '@/lib/forms/guide'
+import { GUIDE_LOGO, layoutGuide } from '@/lib/forms/guideLayout'
+import { logoTextFit, type PosterLogo } from '@/lib/forms/layout'
+import type { GuideColors } from '@/lib/forms/logoColors'
 import { DRAW_COLORS, PICTURE_IDS, type DrawKind, type DrawShape, type GuideContent, type GuideDrawing, type GuideLine } from '@/types/formGuide'
+import { DRAW_COLOR_VALUES, GUIDE_COLORS, drawColorValues, guidePalette } from './guideColors'
 import { GuidePoster } from './GuidePoster'
 import { GuideDrawingPicture, GuidePicture } from './guidePictures'
 import { Poster } from './Poster'
@@ -706,5 +710,136 @@ describe('AC-4504.5: 로고 image 하나, 읽는 이름, 병원 정보 글자 �
     const words = texts(svg).map((t) => t.textContent).join(' ')
     for (const word of ['의원', '병원', '전화', '주소', '원장', 'Tel', 'TEL']) expect(words, word).not.toContain(word)
     expect(words).not.toMatch(/\d{2,4}-\d{3,4}-\d{4}/)
+  })
+})
+
+// ---------- 병원 정보 로고·안내문 색 (spec clinic-profile REQ-6604, design.md 6절) ----------
+
+const LOGO_URL = `data:image/png;base64,iVBORw0KGgo${'B'.repeat(24)}`
+type DrawProps = { logo?: PosterLogo | null; logoColors?: GuideColors | null }
+function drawWith(content: GuideValue, props: DrawProps = {}) {
+  const { container } = render(<GuidePoster content={content} {...props} />)
+  const svg = container.querySelector('svg')
+  if (!svg) throw new Error('svg가 없다')
+  return svg
+}
+// 그릴 때마다 달라지는 자르는 원 이름을 하나로 맞춘 SVG 글
+const plainSvg = (svg: Element) => svg.outerHTML.replace(/guide-draw-[A-Za-z0-9-]+/g, 'guide-draw-ID')
+// 지금 색(노랑·진회색) 그림에서 두 색만 바꾼 글
+const recolored = (html: string, colors: GuideColors) => html.split(Y).join(colors.main).split(D).join(colors.dark)
+
+describe('AC-6604.1·AC-6604.2: 환자 안내문 로고 자리 — 병원 정보 로고 그림 또는 병원 이름 글자', () => {
+  it('AC-6604.1: 로고가 그림이면 마지막 자식은 그 data: 주소를 로고 상자(197,1005 · 400×68)에 비율을 지켜(xMidYMid meet) 그린 image 하나다', () => {
+    for (const content of [example(1), example(5), drawn()]) {
+      const svg = drawWith(content, { logo: { kind: 'image', href: LOGO_URL } })
+      const logo = svg.lastElementChild!
+      expect(logo.localName).toBe('image')
+      expect(attrsOf(logo)).toEqual({ href: LOGO_URL, x: '197', y: '1005', width: '400', height: '68', preserveAspectRatio: 'xMidYMid meet' })
+      expect(all(svg, 'image')).toHaveLength(1)
+      expect(svg.outerHTML).not.toContain('/poster/logo.png')
+      cleanup()
+    }
+  })
+
+  it('AC-6604.1: 로고가 없으면 마지막 자식은 흰 로고 칸 가운데(397, 1039)의 병원 이름 — 900·띠 색(진회색)·상자 폭에 맞춘 크기', () => {
+    const name = '서승관정형외과의원'
+    const svg = drawWith(example(1), { logo: { kind: 'text', text: name } })
+    const logo = svg.lastElementChild!
+    expect(logo.localName).toBe('text')
+    expect(logo.textContent).toBe(name)
+    expect(attrsOf(logo)).toMatchObject({ ...TEXT_BASE, x: '397', y: '1039', 'font-weight': '900', fill: D, 'text-anchor': 'middle' })
+    expect(num(logo, 'font-size')).toBe(logoTextFit(name, GUIDE_LOGO).size)
+    expect(num(logo, 'font-size')).toBeLessThanOrEqual(68 * 0.8)
+    expect(all(svg, 'image')).toHaveLength(0)
+    expect(svg.outerHTML).not.toContain('/poster/logo.png')
+  })
+
+  it('AC-6604.1: 병원 이름 글자는 고른 띠 색으로 칠한다', () => {
+    const colors = { main: '#9fc3ff', dark: '#1b2740' }
+    const logo = drawWith({ ...example(1), colors }, { logo: { kind: 'text', text: '서승관의원' } }).lastElementChild!
+    expect(logo.getAttribute('fill')).toBe(colors.dark)
+  })
+
+  it('AC-6604.2: 로고를 읽는 중(null)이면 로고 자리를 비운다(image도 이름 글자도 없다)', () => {
+    const content = example(1)
+    const svg = drawWith(content, { logo: null })
+    expect(all(svg, 'image')).toHaveLength(0)
+    expect(svg.lastElementChild?.localName).toBe('text')
+    expect(svg.lastElementChild?.textContent).toBe(`※ ${content.note}`)
+  })
+
+  it('AC-6604.1: 로고 말고는 옛 그림과 글자 하나까지 같다', () => {
+    const base = plainSvg(drawWith(example(1), { logo: null }))
+    expect(plainSvg(drawWith(example(1))).replace(/<image href="\/poster\/logo\.png"[^>]*><\/image>/, '')).toBe(base)
+    cleanup()
+    expect(plainSvg(drawWith(example(1), { logo: { kind: 'image', href: LOGO_URL } })).replace(/<image href="data:[^>]*><\/image>/, '')).toBe(base)
+  })
+})
+
+describe('AC-6604.5·AC-6604.6: 안내문 색 — 직접 고른 색 > 로고 색 > 지금 색', () => {
+  const OWN: GuideColors = { main: '#9fc3ff', dark: '#1b2740' }
+  const FROM_LOGO: GuideColors = { main: '#f2b8c6', dark: '#3a1520' }
+
+  it('AC-6604.5: guidePalette — 직접 고른 색이 있으면 그것, 없으면 로고 색, 둘 다 없으면 지금 색(노랑·진회색)이고 흰색·옅은 회색·그림자는 그대로다', () => {
+    const rest = { white: W, note: NOTE, shadow: SHADOW }
+    expect(guidePalette(OWN, FROM_LOGO)).toEqual({ yellow: OWN.main, dark: OWN.dark, ...rest })
+    expect(guidePalette(null, FROM_LOGO)).toEqual({ yellow: FROM_LOGO.main, dark: FROM_LOGO.dark, ...rest })
+    expect(guidePalette(null, null)).toEqual({ yellow: Y, dark: D, ...rest })
+    expect(GUIDE_COLORS).toEqual({ yellow: Y, dark: D, ...rest })
+  })
+
+  it('AC-6604.6: AI 그림 색 이름은 고른 두 색으로 바뀐다(drawColorValues), 지금 표 DRAW_COLOR_VALUES는 지금 색이다', () => {
+    expect(drawColorValues(guidePalette(OWN, null))).toEqual({ yellow: OWN.main, dark: OWN.dark, white: W, none: 'none' })
+    expect(DRAW_COLOR_VALUES).toEqual({ yellow: Y, dark: D, white: W, none: 'none' })
+  })
+
+  it.each(EXAMPLES.map((_, i) => [i + 1] as const))('AC-6604.5: 예시 %i — 직접 고른 색이면 그림은 노랑→바탕색·진회색→띠 색만 바뀌고 나머지는 글자 하나까지 같다', (n) => {
+    const now = plainSvg(drawWith(example(n)))
+    cleanup()
+    const own = plainSvg(drawWith({ ...example(n), colors: OWN }))
+    expect(own).toBe(recolored(now, OWN))
+    expect(own).not.toContain(Y)
+    expect(own).not.toContain(D)
+  })
+
+  it('AC-6604.6: 미리 그린 그림 16개와 AI 그림도 같은 두 색으로 칠한다(노랑·진회색이 남지 않는다)', () => {
+    for (const content of [...PICTURE_IDS.map((picture) => withEx1({ picture })), drawn()]) {
+      const now = plainSvg(drawWith(content))
+      cleanup()
+      const svg = drawWith({ ...content, colors: OWN })
+      const own = plainSvg(svg)
+      expect(own, String(content.picture)).toBe(recolored(now, OWN))
+      const group = pictureGroup(svg)
+      const paints = [...group.querySelectorAll('*')].flatMap((el) => ['fill', 'stroke'].map((name) => el.getAttribute(name)).filter((v): v is string => v !== null))
+      expect(paints, String(content.picture)).toContain(OWN.main)
+      expect(paints, String(content.picture)).toContain(OWN.dark)
+      for (const paint of paints) expect([OWN.main, OWN.dark, W, SHADOW, 'none'], String(content.picture)).toContain(paint)
+      cleanup()
+    }
+  })
+
+  it('AC-6604.5: [자동](색 없음)이고 로고 색이 있으면 로고 색으로 그린다', () => {
+    const now = plainSvg(drawWith(example(1)))
+    cleanup()
+    expect(plainSvg(drawWith(example(1), { logoColors: FROM_LOGO }))).toBe(recolored(now, FROM_LOGO))
+  })
+
+  it('AC-6604.5: 직접 고른 색이 로고 색보다 먼저다', () => {
+    const now = plainSvg(drawWith(example(1)))
+    cleanup()
+    expect(plainSvg(drawWith({ ...example(1), colors: OWN }, { logoColors: FROM_LOGO }))).toBe(recolored(now, OWN))
+  })
+
+  it('AC-6604.5: 색을 저장하지 않은 안내문(colors 없음·null)·로고 색 없음이면 지금 색 그대로다(시안과 같다)', () => {
+    const now = plainSvg(drawWith(example(1)))
+    cleanup()
+    expect(plainSvg(drawWith({ ...example(1), colors: null }, { logoColors: null }))).toBe(now)
+  })
+
+  it('AC-6604.5: 받침 그림자 원·흰 원은 그대로(그림자 #000 18%·흰색), 테두리만 띠 색이다', () => {
+    const group = pictureGroup(drawWith({ ...withEx1({ picture: 'knee' }), colors: OWN }))
+    const [shadow, base] = [...group.children]
+    expect(attrsOf(shadow!)).toEqual({ cx: '90', cy: '91', r: '82', fill: SHADOW, 'fill-opacity': '.18' })
+    expect(attrsOf(base!)).toEqual({ cx: '85', cy: '85', r: '80', fill: W, stroke: OWN.dark, 'stroke-width': '5' })
   })
 })

@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { downloadPosterPng } from '@/lib/forms/png'
+import { useClinicProfile, type ClinicProfileView } from '@/components/clinic/useClinicProfile'
+import { downloadPosterPng, readLogoPixels } from '@/lib/forms/png'
+import { defaultProfile } from '@/lib/storage/clinicProfile'
 import { deleteNotice, insertNotice, listNotices, updateNotice } from '@/lib/storage/formNotices'
 import { errorInfo } from '@/lib/errors'
 import type { ErrorCode } from '@/types/errors'
@@ -10,8 +12,8 @@ import type { NoticeCard, SavedNotice } from '@/types/forms'
 import { FormsScreen } from './FormsScreen'
 
 // 서식 화면(spec forms TASK-12, REQ-3501~3507, design.md 10절, 승인 시안 docs/mockups/forms/screen.html).
-// 가짜: fetch(AI 경로)·저장 모듈·window.print·downloadPosterPng·confirm. 나머지(검사·테마·배치·안내문 그림)는 진짜를 지난다.
-// 오늘은 prop으로 2026-11-10(한국 날짜)을 준다
+// 가짜: fetch(AI 경로)·저장 모듈·window.print·downloadPosterPng·confirm·병원 정보 훅(useClinicProfile)·로고 점 읽기(readLogoPixels).
+// 나머지(검사·테마·배치·안내문 그림)는 진짜를 지난다. 오늘은 prop으로 2026-11-10(한국 날짜)을 준다
 
 vi.mock('@/lib/storage/formNotices', () => ({
   listNotices: vi.fn(),
@@ -22,7 +24,26 @@ vi.mock('@/lib/storage/formNotices', () => ({
 vi.mock('@/lib/forms/png', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/forms/png')>()),
   downloadPosterPng: vi.fn(),
+  readLogoPixels: vi.fn(),
 }))
+vi.mock('@/components/clinic/useClinicProfile', () => ({ useClinicProfile: vi.fn() }))
+
+// 병원 정보(지어낸 값): 로고는 PNG data: 주소, 이름은 병원 정보 이름
+const LOGO_URL = `data:image/png;base64,iVBORw0KGgo${'C'.repeat(40)}`
+const CLINIC_NAME = '서승관정형외과의원'
+const clinicView = (patch: Partial<ClinicProfileView> = {}): ClinicProfileView => ({
+  state: 'ready',
+  profile: defaultProfile(),
+  saved: true,
+  signupName: '가입한 의원',
+  signupPhone: null,
+  name: CLINIC_NAME,
+  logoDataUrl: LOGO_URL,
+  reload: vi.fn(),
+  ...patch,
+})
+// 로고 점: 회색뿐(색이 없다)
+const GRAY_PIXELS = { data: new Uint8ClampedArray(16 * 4).fill(128), width: 16, height: 1 }
 
 const TODAY = '2026-11-10'
 const CHILDREN: NoticeCard = { start: '2027-05-05', end: null, name: '어린이날', status: '휴진' }
@@ -52,6 +73,8 @@ beforeEach(() => {
   vi.mocked(updateNotice).mockImplementation(async (id, n) => ({ ...n, id, updatedAt: '2026-11-10T06:00:00.000Z' }))
   vi.mocked(deleteNotice).mockResolvedValue(true)
   vi.mocked(downloadPosterPng).mockResolvedValue(true)
+  vi.mocked(useClinicProfile).mockReturnValue(clinicView())
+  vi.mocked(readLogoPixels).mockResolvedValue(GRAY_PIXELS)
   fetchSpy.mockResolvedValue(tidyAnswer([CHILDREN]))
   vi.stubGlobal('fetch', fetchSpy)
   window.print = printSpy
@@ -303,14 +326,14 @@ describe('AC-3506.1·AC-3506.2·AC-3506.3: 뽑기', () => {
     expect(screen.getByRole('heading', { level: 1, name: '서식' }).closest('.print\\:hidden')).not.toBeNull()
   })
 
-  it('AC-3603.3: 인쇄 면(인쇄 사본)에도 미리보기와 같은 병원 로고 image가 맨 위에 있다', async () => {
+  it('AC-3603.3·AC-6604.1: 인쇄 면(인쇄 사본)에도 미리보기와 같은 병원 로고 image(병원 정보 로고)가 맨 위에 있다', async () => {
     await readyScreen()
     const logoOf = (svg: Element | null | undefined) => {
       const last = svg?.lastElementChild
       return last?.localName === 'image' ? ['href', 'x', 'y', 'width', 'height'].map((n) => last.getAttribute(n)) : null
     }
     const copy = document.querySelector('[data-print-copy]')?.querySelector('svg')
-    expect(logoOf(poster())).toEqual(['/poster/logo.png', '227', '1011', '340', '58'])
+    await waitFor(() => expect(logoOf(poster())).toEqual([LOGO_URL, '227', '1011', '340', '58']))
     expect(logoOf(copy)).toEqual(logoOf(poster()))
   })
 
@@ -457,5 +480,90 @@ describe('AC-3507.1~AC-3507.5: 저장·목록', () => {
     await screen.findByRole('button', { name: /2026년 8월 · 광복절·대체공휴일/ })
     expect(listNotices).toHaveBeenCalledTimes(2)
     expect(screen.queryByText(/E-FORMS-READ-FAILED/)).toBeNull()
+  })
+})
+
+// ── 병원 정보 로고 (spec clinic-profile REQ-6604 AC-6604.1·AC-6604.2, design.md 6절) ──
+
+describe('AC-6604.1·AC-6604.2: 휴진 안내 로고 자리 — 병원 정보 로고', () => {
+  const printCopy = () => document.querySelector('[data-print-copy]')?.querySelector('svg') ?? null
+  const outputs = () => OUTPUTS.map((name) => (button(name) as HTMLButtonElement).disabled)
+  // 마지막 자식(로고 자리)의 모양: 그림이면 [image, 주소, 맞춤], 글자면 [text, 글, 굵기]
+  const logoSlot = (svg: Element | null) => {
+    const last = svg?.lastElementChild
+    if (last?.localName === 'image') return ['image', last.getAttribute('href'), last.getAttribute('preserveAspectRatio')]
+    if (last?.localName === 'text' && last.textContent === CLINIC_NAME) return ['text', last.textContent, last.getAttribute('font-weight')]
+    return null
+  }
+  async function readyNotice() {
+    const user = await open()
+    setCard(1, { '시작 날짜': '2027-05-05', 이름: '어린이날' })
+    return user
+  }
+
+  it('AC-6604.1: 병원 정보를 로고까지 받아 읽고(useClinicProfile({ logo: true })), 미리보기·인쇄 사본의 로고 자리에 그 로고 그림을 비율을 지켜 그린다', async () => {
+    await readyNotice()
+    expect(useClinicProfile).toHaveBeenCalledWith({ logo: true })
+    await waitFor(() => expect(logoSlot(poster())).toEqual(['image', LOGO_URL, 'xMidYMid meet']))
+    expect(logoSlot(printCopy())).toEqual(logoSlot(poster()))
+    expect(readLogoPixels).toHaveBeenCalledWith(LOGO_URL)
+    expect(document.body.innerHTML).not.toContain('/poster/logo.png')
+  })
+
+  it('AC-6604.1: 로고가 없으면 로고 자리에 병원 이름이 굵은(900) 글자로 들어가고 로고 점은 읽지 않는다', async () => {
+    vi.mocked(useClinicProfile).mockReturnValue(clinicView({ logoDataUrl: null }))
+    await readyNotice()
+    expect(logoSlot(poster())).toEqual(['text', CLINIC_NAME, '900'])
+    expect(logoSlot(printCopy())).toEqual(logoSlot(poster()))
+    expect(readLogoPixels).not.toHaveBeenCalled()
+    expect(document.body.innerHTML).not.toContain('/poster/logo.png')
+    expect(outputs()).toEqual([false, false, false])
+  })
+
+  it('AC-6604.2: 병원 정보·로고를 읽는 중에는 [인쇄·PDF]·[그림 파일]을 누를 수 없고([저장]은 된다) 로고 자리가 비며, 다 읽으면 된다', async () => {
+    vi.mocked(useClinicProfile).mockReturnValue(clinicView({ state: 'loading', logoDataUrl: null, name: '' }))
+    await readyNotice()
+    expect(outputs()).toEqual([false, true, true])
+    expect(logoSlot(poster())).toBeNull()
+    await userEvent.setup().click(button('그림 파일'))
+    expect(downloadPosterPng).not.toHaveBeenCalled()
+
+    vi.mocked(useClinicProfile).mockReturnValue(clinicView())
+    setCard(1, { 이름: '어린이 날' }) // 다시 그리게 한다(훅이 새 값을 준다)
+    await waitFor(() => expect(logoSlot(poster())).toEqual(['image', LOGO_URL, 'xMidYMid meet']))
+    expect(outputs()).toEqual([false, false, false])
+  })
+
+  it('AC-6604.2: 로고 그림의 점을 읽는 동안에도 막혀 있고, 다 읽으면 풀린다', async () => {
+    let finish: (value: Awaited<ReturnType<typeof readLogoPixels>>) => void = () => {}
+    vi.mocked(readLogoPixels).mockReturnValue(new Promise((resolve) => (finish = resolve)))
+    await readyNotice()
+    expect(outputs()).toEqual([false, true, true])
+    expect(logoSlot(poster())).toBeNull()
+    await act(async () => finish(GRAY_PIXELS))
+    expect(outputs()).toEqual([false, false, false])
+    expect(logoSlot(poster())).toEqual(['image', LOGO_URL, 'xMidYMid meet'])
+  })
+
+  it('AC-6604.2: 로고 그림을 못 읽으면(그림이 깨짐) 병원 이름 글자로 그리고 뽑기가 된다', async () => {
+    vi.mocked(readLogoPixels).mockResolvedValue(null)
+    await readyNotice()
+    await waitFor(() => expect(logoSlot(poster())).toEqual(['text', CLINIC_NAME, '900']))
+    expect(outputs()).toEqual([false, false, false])
+  })
+
+  it('AC-6604.2: 병원 정보 읽기가 실패해도(failed) 가입 이름 글자로 그리고 뽑기가 된다', async () => {
+    vi.mocked(useClinicProfile).mockReturnValue(clinicView({ state: 'failed', saved: false, logoDataUrl: null, name: CLINIC_NAME }))
+    await readyNotice()
+    expect(logoSlot(poster())).toEqual(['text', CLINIC_NAME, '900'])
+    expect(outputs()).toEqual([false, false, false])
+  })
+
+  it('AC-6604.1·AC-6604.3: [그림 파일]에 넘기는 그림에도 병원 정보 로고가 들어 있다', async () => {
+    const user = await readyNotice()
+    await waitFor(() => expect(logoSlot(poster())).toEqual(['image', LOGO_URL, 'xMidYMid meet']))
+    await user.click(button('그림 파일'))
+    const [svg] = vi.mocked(downloadPosterPng).mock.calls[0]
+    expect(logoSlot(svg)).toEqual(['image', LOGO_URL, 'xMidYMid meet'])
   })
 })

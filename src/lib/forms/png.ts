@@ -2,7 +2,9 @@ import { LOGO } from './layout'
 
 // 서식 탭 안내문 그림 파일(PNG) 만들기 — 휴진 안내(specs/forms design.md 7절 '그림 파일', AC-3506.2·3506.3; 로고는 specs/forms-logo 5절)와
 // 환자 안내문(specs/forms-guide design.md 6절, AC-4509.2·4509.3).
-// SVG를 그림(Image)으로 그리면 바깥 주소(/poster/…)를 읽지 않으므로, 테마 그림(휴진 안내만)·글꼴 두 개·병원 로고를 data: 주소로 넣은 SVG 글을 쓴다.
+// SVG를 그림(Image)으로 그리면 바깥 주소(/poster/…)를 읽지 않으므로, 테마 그림(휴진 안내만)·글꼴 두 개를 data: 주소로 넣은 SVG 글을 쓴다.
+// 병원 로고는 병원 정보 로고(PNG data: 주소)라 그대로 둔다(spec clinic-profile AC-6604.3). 옛 로고 주소(/poster/logo.png)는 로고를 넘기지 않은
+// 옛 부르기의 SVG에 남아 있을 때만 읽어 넣는다 — 서식 화면은 늘 병원 정보 로고를 넘기므로 읽지 않는다.
 // 그림은 blob: 주소라 CSP(img-src 'self' data: blob:)를 바꾸지 않는다. 실패는 false — 화면이 E-FORMS-IMAGE-FAILED를 보인다
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -48,21 +50,22 @@ function sizeRoot(svg: string): string {
   })
 }
 
-// 순수: 안내문 SVG 글에서 글꼴·로고 주소(와 theme를 주면 테마 그림 주소)를 data: 주소로 바꾸고 width/height를 1588×2246으로 둔다.
-// 환자 안내문은 테마 그림이 없어 theme를 주지 않는다 — 그때는 테마 주소를 건드리지 않는다(남으면 내려받기가 false로 막는다)
-export function svgForImage(svg: string, assets: { theme?: string; bold: Uint8Array; black: Uint8Array; logo: Uint8Array }): string {
+// 순수: 안내문 SVG 글에서 글꼴 주소(와 theme를 주면 테마 그림 주소, logo를 주면 옛 로고 주소)를 data: 주소로 바꾸고 width/height를 1588×2246으로 둔다.
+// 환자 안내문은 테마 그림이 없어 theme를 주지 않는다 — 그때는 테마 주소를 건드리지 않는다(남으면 내려받기가 false로 막는다).
+// 이미 data: 주소인 그림(병원 정보 로고·내 배경)은 그대로 둔다
+export function svgForImage(svg: string, assets: { theme?: string; bold: Uint8Array; black: Uint8Array; logo?: Uint8Array }): string {
   const bold = `url(data:font/woff2;base64,${base64(assets.bold)})`
   const black = `url(data:font/woff2;base64,${base64(assets.black)})`
-  const logo = `data:image/png;base64,${base64(assets.logo)}`
   let out = sizeRoot(svg)
   if (assets.theme !== undefined) {
     const theme = `data:image/svg+xml;base64,${base64(new TextEncoder().encode(assets.theme))}`
     out = out.replace(THEME_HREF, (_, attr: string, quote: string) => `${attr}${quote}${theme}${quote}`)
   }
-  return out
-    .replace(LOGO_HREF, (_, attr: string, quote: string) => `${attr}${quote}${logo}${quote}`)
-    .replace(fontUrl(FONT_URLS.bold), () => bold)
-    .replace(fontUrl(FONT_URLS.black), () => black)
+  if (assets.logo !== undefined) {
+    const logo = `data:image/png;base64,${base64(assets.logo)}`
+    out = out.replace(LOGO_HREF, (_, attr: string, quote: string) => `${attr}${quote}${logo}${quote}`)
+  }
+  return out.replace(fontUrl(FONT_URLS.bold), () => bold).replace(fontUrl(FONT_URLS.black), () => black)
 }
 
 async function readText(url: string): Promise<string | null> {
@@ -81,6 +84,34 @@ function loadImage(url: string): Promise<HTMLImageElement | null> {
     image.onerror = () => resolve(null)
     image.src = url
   })
+}
+
+// ---------- 로고 그림의 점 읽기 (spec clinic-profile AC-6604.4, design.md 6절) ----------
+
+export const LOGO_SAMPLE_MAX = 64 // 긴 변을 이 안으로 줄여 읽는다(키우지 않는다)
+const LOGO_DATA = 'data:image/png;base64,'
+export type LogoPixels = { data: Uint8ClampedArray; width: number; height: number }
+
+// 병원 정보 로고(PNG data: 주소)를 그림으로 읽어 작게 줄인 canvas에서 점(RGBA)을 뽑는다. data: 주소라 fetch·바깥 읽기가 없다.
+// PNG data: 주소가 아니거나 그림을 못 읽으면 null(던지지 않고 로그를 남기지 않는다)
+export async function readLogoPixels(href: string): Promise<LogoPixels | null> {
+  if (typeof href !== 'string' || !href.startsWith(LOGO_DATA)) return null
+  try {
+    const image = await loadImage(href)
+    if (!image || image.naturalWidth <= 0 || image.naturalHeight <= 0) return null
+    const scale = Math.min(1, LOGO_SAMPLE_MAX / Math.max(image.naturalWidth, image.naturalHeight))
+    const width = Math.max(1, Math.round(image.naturalWidth * scale))
+    const height = Math.max(1, Math.round(image.naturalHeight * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const context = canvas.getContext('2d', { willReadFrequently: true })
+    if (!context) return null
+    context.drawImage(image, 0, 0, width, height)
+    return { data: context.getImageData(0, 0, width, height).data, width, height }
+  } catch {
+    return null
+  }
 }
 
 const toPng = (canvas: HTMLCanvasElement) => new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
@@ -129,14 +160,17 @@ async function downloadPng(svg: SVGSVGElement, fileName: string, withTheme: bool
       if (THEME_PATH.test(href)) themePath = href
       else if (!href.startsWith(BACKGROUND_DATA)) return false
     }
+    const source = new XMLSerializer().serializeToString(svg)
+    // 옛 로고 주소가 남은 SVG(로고를 넘기지 않은 옛 부르기)만 그 파일을 읽는다
+    const oldLogo = new RegExp(LOGO_HREF.source).test(source)
     const [theme, bold, black, logo] = await Promise.all([
       themePath === null ? undefined : readText(themePath),
       readBytes(FONT_URLS.bold),
       readBytes(FONT_URLS.black),
-      readBytes(LOGO.href),
+      oldLogo ? readBytes(LOGO.href) : undefined,
     ])
-    if (theme === null || !bold || !black || !logo) return false
-    const text = svgForImage(new XMLSerializer().serializeToString(svg), { theme, bold, black, logo })
+    if (theme === null || !bold || !black || logo === null) return false
+    const text = svgForImage(source, { theme, bold, black, logo })
     if (text.includes('/poster/')) return false // 바깥 주소가 남으면 그림에 테마·글꼴·로고가 빠진다
     const png = await drawPng(text)
     if (!png) return false
@@ -147,12 +181,12 @@ async function downloadPng(svg: SVGSVGElement, fileName: string, withTheme: bool
   }
 }
 
-// 휴진 안내 그림 파일: 테마 그림·글꼴 둘·로고를 읽는다
+// 휴진 안내 그림 파일: 테마 그림·글꼴 둘을 읽는다(병원 정보 로고는 이미 SVG 안에 있다)
 export function downloadPosterPng(svg: SVGSVGElement, fileName: string): Promise<boolean> {
   return downloadPng(svg, fileName, true)
 }
 
-// 환자 안내문 그림 파일(AC-4509.2): 글꼴 둘·로고만 읽는다(테마 그림이 없다). 파일 이름은 guideFileName(환자안내문_<머리표>.png)
+// 환자 안내문 그림 파일(AC-4509.2): 글꼴 둘만 읽는다(테마 그림이 없다). 파일 이름은 guideFileName(환자안내문_<머리표>.png)
 export function downloadGuidePng(svg: SVGSVGElement, fileName: string): Promise<boolean> {
   return downloadPng(svg, fileName, false)
 }

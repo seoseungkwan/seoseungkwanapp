@@ -134,7 +134,13 @@ describe('AC-4503.1: 세 구역과 글자 자리', () => {
     expect(GUIDE_PAGE.logoY - GUIDE_PAGE.bandY).toBe(288)
     expect(GUIDE_PAGE.height - GUIDE_PAGE.logoY).toBe(169)
     expect(GUIDE_PAGE.x * 2 + GUIDE_PAGE.inner).toBe(GUIDE_PAGE.width)
-    expect(GUIDE_LOGO).toEqual({ href: '/poster/logo.png', x: 197, y: 1005, width: 400, height: 68 })
+    // 로고 자리는 상자뿐이다(그림 주소는 병원 정보 로고가 정한다 — spec clinic-profile AC-6604.1)
+    expect(GUIDE_LOGO).toEqual({ x: 197, y: 1005, width: 400, height: 68 })
+  })
+
+  it('AC-6604.1: 로고 자리 상자에는 그림 주소(href)가 없다 — /poster/logo.png를 가리키지 않는다', () => {
+    expect('href' in GUIDE_LOGO).toBe(false)
+    expect(JSON.stringify(GUIDE_LOGO)).not.toContain('/poster/')
   })
 
   it('AC-4503.1: 예시 1의 머리표 알약(x 51·y 41·높이 65·폭 = 글 폭 + 58)·작은 제목(y 161.5)·큰 문구(y 260·382)는 x 51에서 시작한다', () => {

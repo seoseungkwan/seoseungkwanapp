@@ -1,9 +1,14 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useClinicProfile, type ClinicProfileView } from '@/components/clinic/useClinicProfile'
 import { errorInfo } from '@/lib/errors'
-import { downloadGuidePng, downloadPosterPng } from '@/lib/forms/png'
+import type { GuideValue } from '@/lib/forms/guide'
+import { logoPalette, type GuideColors } from '@/lib/forms/logoColors'
+import { downloadGuidePng, downloadPosterPng, readLogoPixels } from '@/lib/forms/png'
+import { contrastRatio } from '@/lib/forms/themes'
+import { defaultProfile } from '@/lib/storage/clinicProfile'
 import { deleteGuide, insertGuide, listGuides, updateGuide } from '@/lib/storage/formGuides'
 import { listNotices } from '@/lib/storage/formNotices'
 import type { ErrorCode } from '@/types/errors'
@@ -32,7 +37,26 @@ vi.mock('@/lib/forms/png', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/forms/png')>()),
   downloadPosterPng: vi.fn(),
   downloadGuidePng: vi.fn(),
+  readLogoPixels: vi.fn(),
 }))
+vi.mock('@/components/clinic/useClinicProfile', () => ({ useClinicProfile: vi.fn() }))
+
+// 병원 정보(지어낸 값, spec clinic-profile REQ-6604): 로고는 PNG data: 주소. 로고 점은 기본으로 회색뿐(색 없음 → 지금 색)
+const LOGO_URL = `data:image/png;base64,iVBORw0KGgo${'D'.repeat(40)}`
+const clinicView = (patch: Partial<ClinicProfileView> = {}): ClinicProfileView => ({
+  state: 'ready',
+  profile: defaultProfile(),
+  saved: true,
+  signupName: '가입한 의원',
+  signupPhone: null,
+  name: '서승관정형외과의원',
+  logoDataUrl: LOGO_URL,
+  reload: vi.fn(),
+  ...patch,
+})
+const pixelsOf = (rgba: [number, number, number, number], n = 16) => ({ data: Uint8ClampedArray.from(Array.from({ length: n }, () => rgba).flat()), width: n, height: 1 })
+const GRAY_PIXELS = pixelsOf([128, 128, 128, 255])
+const BLUE_PIXELS = pixelsOf([31, 95, 191, 255]) // 파란 로고
 
 const TODAY = '2026-11-10'
 const L = (text: string, em = ''): GuideLine => ({ text, em })
@@ -107,6 +131,8 @@ beforeEach(() => {
   vi.mocked(deleteGuide).mockResolvedValue(true)
   vi.mocked(downloadGuidePng).mockResolvedValue(true)
   vi.mocked(downloadPosterPng).mockResolvedValue(true)
+  vi.mocked(useClinicProfile).mockReturnValue(clinicView())
+  vi.mocked(readLogoPixels).mockResolvedValue(GRAY_PIXELS)
   fetchSpy.mockResolvedValue(tidyAnswer(INSURANCE))
   vi.stubGlobal('fetch', fetchSpy)
   window.print = printSpy
@@ -210,9 +236,9 @@ describe('AC-4501.1~AC-4501.4: 도구 단추와 서식 종류 나누기', () => 
     expect(screen.getAllByRole('region', { name: '미리보기' })).toHaveLength(1)
     expect(within(editor()).getByRole('group', { name: '노란 윗단' })).toBeTruthy()
     expect(within(editor()).getByRole('group', { name: '진회색 띠' })).toBeTruthy()
-    // 미리보기는 환자 안내문 그림(로고 400×68이 x 197에)이다
+    // 미리보기는 환자 안내문 그림(병원 정보 로고 400×68이 x 197에)이다
     const logo = poster().lastElementChild
-    expect(['href', 'x', 'y', 'width', 'height'].map((n) => logo?.getAttribute(n))).toEqual(['/poster/logo.png', '197', '1005', '400', '68'])
+    expect(['href', 'x', 'y', 'width', 'height'].map((n) => logo?.getAttribute(n))).toEqual([LOGO_URL, '197', '1005', '400', '68'])
 
     await user.click(tool('휴진 안내'))
     expect(screen.getByRole('region', { name: '저장한 안내문' })).toBeTruthy()
@@ -778,5 +804,170 @@ describe('AC-4513.1~AC-4513.3: AI로 그림 그리기', () => {
     fireEvent.change(pictureBox(), { target: { value: '' } })
     expect(poster().querySelector('g[transform="translate(566 468)"]')).toBeNull()
     expect(within(editor()).getByRole('option', { name: 'AI로 그린 그림: 휠체어' })).toBeTruthy()
+  })
+})
+
+// ── 병원 정보 로고·안내문 색 (spec clinic-profile REQ-6604 AC-6604.1·AC-6604.2·AC-6604.5·AC-6604.6, design.md 6절) ──
+
+// 목록의 보험 서류 안내(색이 없는 옛 안내문)를 연다
+async function openInsurance(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(listItem(INS_ITEM))
+  await within(editor()).findByDisplayValue('보험 서류 안내')
+}
+
+describe('AC-6604.1·AC-6604.2: 환자 안내문 로고 자리 — 병원 정보 로고', () => {
+  const outputs = () => OUTPUTS.map((name) => output(name).disabled)
+
+  it('AC-6604.1: 미리보기·인쇄 사본의 로고 자리에 병원 정보 로고 그림을 비율을 지켜 그린다(옛 로고 주소 없음)', async () => {
+    await openGuide()
+    await waitFor(() => expect(poster().lastElementChild?.getAttribute('href')).toBe(LOGO_URL))
+    expect(poster().lastElementChild?.getAttribute('preserveAspectRatio')).toBe('xMidYMid meet')
+    const copy = printCopies()[0]?.querySelector('svg')
+    expect(copy?.lastElementChild?.getAttribute('href')).toBe(LOGO_URL)
+    expect(document.body.innerHTML).not.toContain('/poster/logo.png')
+  })
+
+  it('AC-6604.1: 로고가 없으면 로고 자리에 병원 이름이 띠 색(진회색) 900 글자로 들어간다', async () => {
+    vi.mocked(useClinicProfile).mockReturnValue(clinicView({ logoDataUrl: null }))
+    await openGuide()
+    const last = poster().lastElementChild
+    expect(last?.localName).toBe('text')
+    expect(last?.textContent).toBe('서승관정형외과의원')
+    expect(last?.getAttribute('font-weight')).toBe('900')
+    expect(last?.getAttribute('fill')).toBe('#2e2e2e')
+    expect(poster().querySelectorAll('image')).toHaveLength(0)
+  })
+
+  it('AC-6604.2: 로고를 읽는 동안 [인쇄·PDF]·[그림 파일]이 막히고, 다 읽으면 풀린다(그림 파일에도 그 로고)', async () => {
+    let finish: (value: Awaited<ReturnType<typeof readLogoPixels>>) => void = () => {}
+    vi.mocked(readLogoPixels).mockReturnValue(new Promise((resolve) => (finish = resolve)))
+    const user = await openGuide()
+    await openInsurance(user)
+    expect(outputs()).toEqual([false, true, true]) // [저장]은 된다
+    await user.click(output('그림 파일'))
+    expect(downloadGuidePng).not.toHaveBeenCalled()
+    await act(async () => finish(GRAY_PIXELS))
+    expect(outputs()).toEqual([false, false, false])
+    await user.click(output('그림 파일'))
+    expect(downloadGuidePng).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(downloadGuidePng).mock.calls[0]![0].lastElementChild?.getAttribute('href')).toBe(LOGO_URL)
+  })
+})
+
+describe('AC-6604.5·AC-6604.6: 환자 안내문 색 칸 — [자동]·[직접 고르기]', () => {
+  const colorGroup = () => within(editor()).getByRole('group', { name: '색' })
+  const colorButton = (name: '자동' | '직접 고르기') => within(colorGroup()).getByRole('button', { name })
+  const colorInput = (label: '바탕색' | '띠 색') => within(colorGroup()).queryByLabelText(label) as HTMLInputElement | null
+  const html = () => poster().outerHTML
+  const WARN = '글자가 잘 안 보일 수 있어요'
+  const fromLogo = () => logoPalette(BLUE_PIXELS.data, BLUE_PIXELS.width, BLUE_PIXELS.height)
+
+  it("AC-6604.5: 만들기에 '진회색 띠' 다음 '색' 칸이 있고, 처음엔 [자동]이 눌려 있으며 색 고르기 칸은 없다", async () => {
+    await openGuide()
+    const legends = [...editor().querySelectorAll('fieldset')].map((el) => el.querySelector('legend')?.textContent)
+    expect(legends).toEqual(['노란 윗단', '진회색 띠', '색'])
+    expect(colorButton('자동').getAttribute('aria-pressed')).toBe('true')
+    expect(colorButton('직접 고르기').getAttribute('aria-pressed')).toBe('false')
+    expect(colorInput('바탕색')).toBeNull()
+    expect(colorInput('띠 색')).toBeNull()
+  })
+
+  it("AC-6604.5: [자동]이고 로고에 색이 없으면 '기본 색이에요'와 지금 색(노랑·진회색)으로 그린다", async () => {
+    const user = await openGuide()
+    await openInsurance(user)
+    await waitFor(() => expect(within(colorGroup()).getByText('기본 색이에요')).toBeTruthy())
+    expect(html()).toContain('#E6E006')
+    expect(html()).toContain('#2e2e2e')
+  })
+
+  it("AC-6604.5: [자동]이고 로고에 색이 있으면 '병원 로고 색이에요'와 로고 색으로 그린다", async () => {
+    vi.mocked(readLogoPixels).mockResolvedValue(BLUE_PIXELS)
+    const colors = fromLogo()!
+    expect(colors).not.toBeNull()
+    const user = await openGuide()
+    await openInsurance(user)
+    await waitFor(() => expect(within(colorGroup()).getByText('병원 로고 색이에요')).toBeTruthy())
+    expect(html()).toContain(colors.main)
+    expect(html()).toContain(colors.dark)
+    expect(html()).not.toContain('#E6E006')
+    expect(html()).not.toContain('#2e2e2e')
+  })
+
+  it("AC-6604.5: [직접 고르기]를 누르면 '바탕색'·'띠 색' 고르기가 지금 색에서 시작하고, 고른 색으로 미리보기가 바로 바뀐다", async () => {
+    const user = await openGuide()
+    await openInsurance(user)
+    await user.click(colorButton('직접 고르기'))
+    expect(colorButton('직접 고르기').getAttribute('aria-pressed')).toBe('true')
+    expect(colorInput('바탕색')?.type).toBe('color')
+    expect(colorInput('바탕색')?.value).toBe('#e6e006')
+    expect(colorInput('띠 색')?.value).toBe('#2e2e2e')
+    change(colorInput('바탕색')!, '#9fc3ff')
+    change(colorInput('띠 색')!, '#1b2740')
+    expect(html()).toContain('#9fc3ff')
+    expect(html()).toContain('#1b2740')
+    expect(html()).not.toContain('#E6E006')
+    expect(within(colorGroup()).queryByText(WARN)).toBeNull()
+    expect(within(preview()).getByText('저장하지 않은 내용이 있어요')).toBeTruthy()
+    // [자동]으로 돌리면 지금 색이고 바뀐 내용이 없다
+    await user.click(colorButton('자동'))
+    expect(colorInput('바탕색')).toBeNull()
+    expect(html()).toContain('#E6E006')
+    expect(within(preview()).queryByText('저장하지 않은 내용이 있어요')).toBeNull()
+  })
+
+  it('AC-6604.5: 로고 색이 있을 때 [직접 고르기]는 그 로고 색에서 시작한다', async () => {
+    vi.mocked(readLogoPixels).mockResolvedValue(BLUE_PIXELS)
+    const colors = fromLogo()!
+    const user = await openGuide()
+    await openInsurance(user)
+    await waitFor(() => expect(within(colorGroup()).getByText('병원 로고 색이에요')).toBeTruthy())
+    await user.click(colorButton('직접 고르기'))
+    expect([colorInput('바탕색')?.value, colorInput('띠 색')?.value]).toEqual([colors.main, colors.dark])
+  })
+
+  it("AC-6604.5·AC-6604.6: 대비가 4.5 미만이면 '글자가 잘 안 보일 수 있어요'가 보이지만 [저장]은 되고 색이 함께 저장된다", async () => {
+    const user = await openGuide()
+    await openInsurance(user)
+    await user.click(colorButton('직접 고르기'))
+    change(colorInput('바탕색')!, '#555555')
+    expect(contrastRatio('#555555', '#2e2e2e')).toBeLessThan(4.5)
+    expect(within(colorGroup()).getByText(WARN)).toBeTruthy()
+    expect(output('저장').disabled).toBe(false)
+    await user.click(output('저장'))
+    const colors: GuideColors = { main: '#555555', dark: '#2e2e2e' }
+    expect(updateGuide).toHaveBeenCalledWith('ins', { ...INSURANCE, colors })
+    await within(preview()).findByText('저장됨')
+    // 바탕색이 밝으면 경고가 사라지고, 띠 색이 밝으면(흰 글자가 묻힘) 다시 보인다
+    change(colorInput('바탕색')!, '#ffffff')
+    expect(within(colorGroup()).queryByText(WARN)).toBeNull()
+    change(colorInput('띠 색')!, '#999999')
+    expect(within(colorGroup()).getByText(WARN)).toBeTruthy()
+  })
+
+  it('AC-6604.6: 색이 저장된 안내문을 열면 [직접 고르기]와 그 색 그대로이고, 옛 안내문(색 없음)은 [자동]이다', async () => {
+    const colors: GuideColors = { main: '#9fc3ff', dark: '#1b2740' }
+    const content: GuideValue = { ...INSURANCE, colors }
+    vi.mocked(listGuides).mockResolvedValue([{ ...SAVED_INS, content }, SAVED_CLOCK])
+    const user = await openGuide()
+    await user.click(listItem(INS_ITEM))
+    await within(editor()).findByDisplayValue('보험 서류 안내')
+    expect(colorButton('직접 고르기').getAttribute('aria-pressed')).toBe('true')
+    expect([colorInput('바탕색')?.value, colorInput('띠 색')?.value]).toEqual([colors.main, colors.dark])
+    expect(html()).toContain(colors.main)
+    expect(within(preview()).queryByText('저장하지 않은 내용이 있어요')).toBeNull()
+    await user.click(listItem(CLOCK_ITEM))
+    await within(editor()).findByDisplayValue(CLOCK.tag)
+    expect(colorButton('자동').getAttribute('aria-pressed')).toBe('true')
+    expect(colorInput('바탕색')).toBeNull()
+  })
+
+  it('AC-6604.6: [자동]으로 저장하면 색 열쇠 없이(열쇠 13개) 저장한다', async () => {
+    const user = await openGuide()
+    await openInsurance(user)
+    change(input('띠 제목'), '이런 서류를 주세요')
+    await user.click(output('저장'))
+    const [, saved] = vi.mocked(updateGuide).mock.calls[0]!
+    expect(Object.keys(saved)).toHaveLength(13)
+    expect('colors' in saved).toBe(false)
   })
 })

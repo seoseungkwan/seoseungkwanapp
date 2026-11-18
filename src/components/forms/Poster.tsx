@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import { LOGO, POSTER, layoutPoster } from '@/lib/forms/layout'
+import { LOGO, POSTER, layoutPoster, logoTextFit, type PosterLogo } from '@/lib/forms/layout'
 import { isAccentHex, themeHref, themeOf } from '@/lib/forms/themes'
 import type { BackgroundLook } from '@/types/formBackground'
 import type { ClosureNotice, ThemeArt, ThemeId } from '@/types/forms'
@@ -10,7 +10,8 @@ import type { ClosureNotice, ThemeArt, ThemeId } from '@/types/forms'
 // 승인 시안 docs/mockups/forms-themes/ai-backgrounds.html 그대로다.
 // 안내문 그림 안의 색(강조색·글자색·흰색·그림자)과 글꼴(PosterPretendard 700·900)은 인쇄물이라 앱 토큰·굵기 규칙의 예외다(ADR-028).
 // 그 값은 이 파일 안에서만 쓴다. 앱 화면 쪽은 토큰만 쓴다.
-// 글자로 된 병원 정보(이름·전화·주소)는 넣지 않는다 — 병원 로고 그림 하나만 맨 아래에 둔다(specs/forms-logo).
+// 글자로 된 병원 정보(이름·전화·주소)는 넣지 않는다 — 병원 로고 하나만 맨 아래에 둔다(specs/forms-logo).
+// 로고는 병원 정보 로고 그림, 로고가 없으면 병원 이름 굵은 글자다(spec clinic-profile AC-6604.1, LogoSlot).
 // 글자는 React가 이스케이프하고 HTML을 넣지 않는다
 
 const FONT = 'PosterPretendard' // 이 이름은 src/components/forms 안에서만 쓴다(AC-3510.2)
@@ -52,14 +53,54 @@ function PosterText({ x, y, size, weight, fill, spacing, children }: TextProps) 
   )
 }
 
+// 로고 그림으로 쓸 수 있는 주소: 병원 정보 로고의 PNG data: 주소만(바깥 주소를 그림에 넣지 않는다)
+const LOGO_IMAGE = 'data:image/png;base64,'
+type LogoBox = { x: number; y: number; width: number; height: number }
+
+type LogoSlotProps = {
+  logo: PosterLogo | null | undefined // undefined = 로고를 넘기지 않은 옛 부르기(옛 로고 그림), null = 읽는 중(비운다)
+  box: LogoBox
+  fill: string // 이름 글자 색
+}
+// 로고 자리 하나(spec clinic-profile design.md 6절): 그림이면 상자 안에 비율을 지켜(xMidYMid meet), 글자면 상자 가운데 900 글자를
+// 상자 높이 80%에서 상자 폭에 맞춘 크기로. 가장 작은 크기로도 넘치면 상자 폭으로 눌러 그린다. 환자 안내문(GuidePoster)도 같이 쓴다
+export function LogoSlot({ logo, box, fill }: LogoSlotProps) {
+  if (logo === undefined) return <image href={LOGO.href} x={box.x} y={box.y} width={box.width} height={box.height} />
+  if (logo === null) return null
+  if (logo.kind === 'image') {
+    if (typeof logo.href !== 'string' || !logo.href.startsWith(LOGO_IMAGE)) return null
+    return <image href={logo.href} x={box.x} y={box.y} width={box.width} height={box.height} preserveAspectRatio="xMidYMid meet" />
+  }
+  const text = typeof logo.text === 'string' ? logo.text.trim() : ''
+  if (!text) return null
+  const { size, squeeze } = logoTextFit(text, box)
+  return (
+    <text
+      x={box.x + box.width / 2}
+      y={box.y + box.height / 2}
+      textAnchor="middle"
+      dominantBaseline="central"
+      fontFamily={FONT}
+      fontSize={size}
+      fontWeight={900}
+      fill={fill}
+      textLength={squeeze ? box.width : undefined}
+      lengthAdjust={squeeze ? 'spacingAndGlyphs' : undefined}
+    >
+      {text}
+    </text>
+  )
+}
+
 type PosterProps = {
   notice: ClosureNotice
   theme: ThemeId
   art?: ThemeArt // 테마 그림 번호(기본 1)
   background?: BackgroundLook | null // 내 배경(AI 배경). 쓸 수 없는 값이면 테마로 그린다
+  logo?: PosterLogo | null // 병원 정보 로고(서식 화면이 늘 넘긴다). null = 읽는 중
 }
 
-export function Poster({ notice, theme, art = 1, background = null }: PosterProps) {
+export function Poster({ notice, theme, art = 1, background = null, logo }: PosterProps) {
   // 미리보기와 인쇄 사본이 한 화면에 있어도 그림자·흐림 이름이 겹치지 않게 한다(숨긴 쪽 필터를 가리키면 그림자가 사라질 수 있다)
   const uid = useId().replace(/[^\w-]/g, '')
   const shadowId = `poster-shadow-${uid}`
@@ -137,8 +178,8 @@ export function Poster({ notice, theme, art = 1, background = null }: PosterProp
           </PosterText>,
         ]
       })}
-      {/* 병원 로고: 카드 다음 맨 위에, 받침·필터 없이 그대로(사용자 선택 ①) */}
-      <image href={LOGO.href} x={LOGO.x} y={LOGO.y} width={LOGO.width} height={LOGO.height} />
+      {/* 병원 로고: 카드 다음 맨 위에, 받침·필터 없이 그대로(사용자 선택 ①). 이름 글자는 진한 글자색 */}
+      <LogoSlot logo={logo} box={LOGO} fill={INK} />
     </svg>
   )
 }

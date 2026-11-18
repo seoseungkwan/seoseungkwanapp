@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { layoutPoster } from '@/lib/forms/layout'
+import { LOGO, layoutPoster, logoTextFit, type PosterLogo } from '@/lib/forms/layout'
 import { themeOf } from '@/lib/forms/themes'
 import type { ClosureNotice, NoticeCard, ThemeId } from '@/types/forms'
 import { Poster } from './Poster'
@@ -326,5 +326,89 @@ describe('AC-3510.2: 안내문 글꼴 — PosterPretendard 700·900', () => {
   it('AC-3510.2: <style>에는 @font-face 두 규칙 밖의 다른 규칙이 없다(화면 글자를 건드리지 않는다)', () => {
     const css = draw(CHILDREN).firstElementChild?.textContent ?? ''
     expect(css.replace(/@font-face\s*\{[^}]*\}/g, '').trim()).toBe('')
+  })
+})
+
+// ---------- 병원 정보 로고 (spec clinic-profile REQ-6604 AC-6604.1·AC-6604.2, design.md 6절) ----------
+
+describe('AC-6604.1·AC-6604.2: 로고 자리 — 병원 정보 로고 그림 또는 병원 이름 글자', () => {
+  const LOGO_URL = `data:image/png;base64,iVBORw0KGgo${'A'.repeat(24)}`
+  const BOX = { x: '227', y: '1011', width: '340', height: '58' }
+  function drawWith(logo: PosterLogo | null, notice: ClosureNotice = CHILDREN) {
+    const { container } = render(<Poster notice={notice} theme="children" logo={logo} />)
+    const svg = container.querySelector('svg')
+    if (!svg) throw new Error('svg가 없다')
+    return svg
+  }
+
+  it('AC-6604.1: 로고가 그림이면 마지막 자식은 그 data: 주소를 로고 상자(227,1011 · 340×58)에 비율을 지켜(xMidYMid meet) 그린 image다', () => {
+    for (const n of [1, 4]) {
+      const cards = Array.from({ length: n }, (_, i) => card(`2027-05-${String(10 + i).padStart(2, '0')}`, `학회${i + 1}`))
+      const svg = drawWith({ kind: 'image', href: LOGO_URL }, { ...CHILDREN, cards })
+      const last = svg.lastElementChild!
+      expect(last.localName, `${n}장`).toBe('image')
+      expect(attrs(last, ['href', 'x', 'y', 'width', 'height', 'preserveAspectRatio'])).toEqual({ href: LOGO_URL, ...BOX, preserveAspectRatio: 'xMidYMid meet' })
+      expect(all(svg, 'image').map((el) => el.getAttribute('href'))).toEqual(['/poster/themes/children.svg', LOGO_URL])
+      expect(svg.outerHTML).not.toContain('/poster/logo.png')
+      cleanup()
+    }
+  })
+
+  it('AC-6604.1: 로고가 없으면 마지막 자식은 병원 이름 글자 — 로고 상자 가운데(397, 1040)·900·진한 글자색(#262626)·PosterPretendard', () => {
+    const name = '서승관정형외과의원'
+    const svg = drawWith({ kind: 'text', text: name })
+    const last = svg.lastElementChild!
+    expect(last.localName).toBe('text')
+    expect(last.textContent).toBe(name)
+    expect(attrs(last, ['x', 'y', 'font-weight', 'fill', 'font-family', 'text-anchor', 'dominant-baseline', 'textLength'])).toEqual({
+      x: '397',
+      y: '1040',
+      'font-weight': '900',
+      fill: '#262626',
+      'font-family': 'PosterPretendard',
+      'text-anchor': 'middle',
+      'dominant-baseline': 'central',
+      textLength: null,
+    })
+    expect(num(last, 'font-size')).toBe(logoTextFit(name, LOGO).size)
+    expect(num(last, 'font-size')).toBeLessThanOrEqual(58 * 0.8)
+    // 그림은 테마 그림 하나뿐이고 옛 로고 주소가 없다
+    expect(all(svg, 'image').map((el) => el.getAttribute('href'))).toEqual(['/poster/themes/children.svg'])
+    expect(svg.outerHTML).not.toContain('/poster/logo.png')
+  })
+
+  it('AC-6604.1: 가장 작은 글자로도 넘치는 긴 이름은 상자 폭(340)으로 눌러 그린다(textLength·spacingAndGlyphs)', () => {
+    const last = drawWith({ kind: 'text', text: '가'.repeat(50) }).lastElementChild!
+    expect(attrs(last, ['textLength', 'lengthAdjust'])).toEqual({ textLength: '340', lengthAdjust: 'spacingAndGlyphs' })
+    expect(num(last, 'font-size')).toBe(18)
+  })
+
+  it('AC-6604.1: 병원 이름 글자는 글자로만 그린다(꺾쇠·&가 요소가 되지 않는다)', () => {
+    const svg = drawWith({ kind: 'text', text: '<b>A&B</b>의원' })
+    expect(svg.lastElementChild?.textContent).toBe('<b>A&B</b>의원')
+    expect(all(svg, 'b')).toHaveLength(0)
+  })
+
+  it('AC-6604.2: 로고를 읽는 중(null)이면 로고 자리에 아무것도 그리지 않는다(그림은 테마 그림뿐, 병원 이름 글자 없음)', () => {
+    const svg = drawWith(null)
+    expect(all(svg, 'image').map((el) => el.getAttribute('href'))).toEqual(['/poster/themes/children.svg'])
+    expect(svg.lastElementChild?.localName).not.toBe('image')
+    expect(svg.outerHTML).not.toContain('/poster/logo.png')
+  })
+
+  it('AC-6604.1: 이름이 비었으면(가입 이름도 못 읽음) 로고 자리를 비운다', () => {
+    const svg = drawWith({ kind: 'text', text: '  ' })
+    expect(texts(svg).map((t) => t.textContent)).toEqual(texts(drawWith(null)).map((t) => t.textContent))
+  })
+
+  it('AC-6604.1: 로고 말고는 옛 그림과 글자 하나까지 같다(그림·글자·이름 글자 셋 모두)', () => {
+    const plain = (svg: Element) => svg.outerHTML.replace(/poster-shadow-[\w-]+/g, 'poster-shadow-ID')
+    const base = plain(drawWith(null))
+    const legacy = plain(draw(CHILDREN))
+    expect(legacy.replace(/<image href="\/poster\/logo\.png"[^>]*><\/image>/, '')).toBe(base)
+    cleanup()
+    expect(plain(drawWith({ kind: 'image', href: LOGO_URL })).replace(/<image href="data:[^>]*><\/image>/, '')).toBe(base)
+    cleanup()
+    expect(plain(drawWith({ kind: 'text', text: '서승관의원' })).replace(/<text[^>]*>서승관의원<\/text>/, '')).toBe(base)
   })
 })

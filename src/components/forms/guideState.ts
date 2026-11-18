@@ -1,5 +1,6 @@
-import { BLANK_GUIDE, checkGuideValue, guideProblems, savableGuide } from '@/lib/forms/guide'
+import { BLANK_GUIDE, checkGuideColors, checkGuideValue, guideColorsOf, guideProblems, savableGuide, type GuideValue } from '@/lib/forms/guide'
 import { checkDrawing } from '@/lib/forms/guideDrawing'
+import type { GuideColors } from '@/lib/forms/logoColors'
 import { MAX_MEMO } from '@/types/forms'
 import {
   DRAWING_LIMITS,
@@ -18,7 +19,8 @@ import {
 // 서식 화면(환자 안내문)의 상태 한 곳과 순수 reducer (spec forms-guide design.md 9절, 시안 docs/mockups/forms-guide ?s=screen).
 // 휴진 안내 formsState.ts와 같은 모양이다. 화면(GuideWorkspace)이 useReducer로 쓰고, 부르기·저장·그림은 화면이 하고 결과만 여기로 보낸다.
 // 대충 적은 글(memo)·그릴 것(subject)은 AI로 보낼 때만 쓰고 저장하지 않는다 — 저장 값과 '바뀐 내용' 비교에 들지 않는다.
-// AI로 그린 그림(content.drawing)은 다른 그림을 골라도 칸에 남겨 두고, 저장·뽑기 값(readyGuide)은 savableGuide로 고른 그림만 담는다
+// AI로 그린 그림(content.drawing)은 다른 그림을 골라도 칸에 남겨 두고, 저장·뽑기 값(readyGuide)은 savableGuide로 고른 그림만 담는다.
+// 색 칸(spec clinic-profile AC-6604.5·AC-6604.6): [직접 고르기]면 content.colors에 두 색, [자동]이면 colors 열쇠가 없다. 색도 저장 값·'바뀐 내용'에 든다
 
 export type GuideAiCode = 'E-FORMS-PRIVATE' | 'E-AI-BUSY' | 'E-AI-LIMIT' | 'E-AI-FAILED'
 export type GuideListState = { kind: 'loading' } | { kind: 'ok'; items: SavedGuide[] } | { kind: 'failed' }
@@ -34,7 +36,7 @@ export type GuideState = {
   drawingBusy: boolean
   drawError: GuideAiCode | null
   id: string | null // 연(저장한) 안내문
-  content: GuideContent // 고치는 중인 값(빈 칸·한도 넘는 칸 허용)
+  content: GuideValue // 고치는 중인 값(빈 칸·한도 넘는 칸 허용)
   baseline: string | null // 마지막으로 저장하거나 연 값(snapshotOf). 새 안내문은 null
   list: GuideListState
   store: StoreWork | null
@@ -58,6 +60,7 @@ export type GuideAction =
   | { type: 'line'; index: number; field: keyof GuideLine; value: string }
   | { type: 'addLine' }
   | { type: 'removeLine'; index: number }
+  | { type: 'colors'; colors: GuideColors | null } // null = [자동]
   | { type: 'new' }
   | { type: 'open'; guide: SavedGuide }
   | { type: 'listLoading' }
@@ -80,7 +83,14 @@ export const blankLine = (): GuideLine => ({ text: '', em: '' })
 const copyLines = (lines: readonly GuideLine[]): GuideLine[] => lines.map((line) => ({ text: line.text, em: line.em }))
 // 얼린 BLANK_GUIDE를 고칠 수 있는 새 객체로
 const blankGuide = (): GuideContent => ({ ...BLANK_GUIDE, lines: copyLines(BLANK_GUIDE.lines) })
-const copyContent = (c: GuideContent): GuideContent => ({ ...c, lines: copyLines(c.lines) })
+// 색은 맞는 모양일 때만 새 객체로 담고, 아니면 열쇠를 두지 않는다([자동])
+function withColors(c: GuideValue, colors: GuideColors | null): GuideValue {
+  const next: GuideValue = { ...c }
+  delete next.colors
+  if (colors) next.colors = { ...colors }
+  return next
+}
+const copyContent = (c: GuideValue): GuideValue => withColors({ ...c, lines: copyLines(c.lines) }, guideColorsOf(c))
 const cut = (text: string, max: number) => Array.from(text).slice(0, max).join('')
 
 export function initialGuideState(): GuideState {
@@ -102,8 +112,9 @@ export function initialGuideState(): GuideState {
   }
 }
 
-// 저장 값 비교용 글. 저장할 때처럼 글 칸·줄은 앞뒤 공백을 떼고, 그린 그림은 고른 그림이 custom일 때만 넣는다(savableGuide와 같다)
-function snapshotOf(c: GuideContent): string {
+// 저장 값 비교용 글. 저장할 때처럼 글 칸·줄은 앞뒤 공백을 떼고, 그린 그림은 고른 그림이 custom일 때만 넣는다(savableGuide와 같다).
+// 직접 고른 색은 맨 뒤에([자동]이면 null)
+function snapshotOf(c: GuideValue): string {
   const drawing = c.picture === 'custom' && c.drawing !== null
     ? [c.drawing.subject.trim(), c.drawing.shapes.map((s) => [s.kind, s.nums, s.d, s.fill, s.stroke, s.width])]
     : null
@@ -114,11 +125,12 @@ function snapshotOf(c: GuideContent): string {
     drawing,
     c.mark,
     c.lines.map((line) => [line.text.trim(), line.em.trim()]),
+    guideColorsOf(c),
   ])
 }
 const BLANK_SNAPSHOT = snapshotOf(BLANK_GUIDE)
 
-const withContent = (state: GuideState, patch: Partial<GuideContent>): GuideState => ({ ...state, content: { ...state.content, ...patch } })
+const withContent = (state: GuideState, patch: Partial<GuideValue>): GuideState => ({ ...state, content: { ...state.content, ...patch } })
 
 export function guideReducer(state: GuideState, action: GuideAction): GuideState {
   switch (action.type) {
@@ -127,20 +139,21 @@ export function guideReducer(state: GuideState, action: GuideAction): GuideState
     case 'tidyStart':
       return { ...state, tidying: true, tidyError: null, truncated: false }
     case 'tidyDone': {
-      // 칸 12개를 답으로 바꾼다. 그린 그림(drawing)은 그대로 두고, 지금 그림이 custom이면 그림도 그대로(AC-4506.2)
+      // 칸 12개를 답으로 바꾼다. 그린 그림(drawing)은 그대로 두고, 지금 그림이 custom이면 그림도 그대로(AC-4506.2). 고른 색도 그대로(AC-6604.5)
       const { guide } = action
       const keepPicture = state.content.picture === 'custom'
+      const content: GuideContent = {
+        ...guide,
+        picture: keepPicture ? 'custom' : guide.picture,
+        drawing: state.content.drawing,
+        lines: copyLines(guide.lines.slice(0, GUIDE_LIMITS.lines)),
+      }
       return {
         ...state,
         tidying: false,
         tidyError: null,
         truncated: action.truncated,
-        content: {
-          ...guide,
-          picture: keepPicture ? 'custom' : guide.picture,
-          drawing: state.content.drawing,
-          lines: copyLines(guide.lines.slice(0, GUIDE_LIMITS.lines)),
-        },
+        content: withColors(content, guideColorsOf(state.content)),
       }
     }
     case 'tidyFailed':
@@ -174,6 +187,12 @@ export function guideReducer(state: GuideState, action: GuideAction): GuideState
     case 'removeLine':
       if (state.content.lines.length <= 1 || !state.content.lines[action.index]) return state
       return withContent(state, { lines: state.content.lines.filter((_, i) => i !== action.index) })
+    case 'colors': {
+      // 모양이 틀린 색은 받지 않는다(색 고르기 칸은 '#' + 소문자 6자리를 보낸다)
+      const colors = action.colors === null ? null : checkGuideColors(action.colors)
+      if (action.colors !== null && colors === null) return state
+      return { ...state, content: withColors(state.content, colors) }
+    }
     case 'new':
       return { ...initialGuideState(), list: state.list }
     case 'open': {
@@ -210,7 +229,7 @@ export function guideReducer(state: GuideState, action: GuideAction): GuideState
 // ── 끌어내는 값 ─────────────────────────────────────────
 
 // 저장·인쇄·그림 파일에 쓰는 검사를 넘은 안내문(고른 그림이 custom일 때만 drawing). 하나라도 어긋나면 null
-export function readyGuide(state: GuideState): GuideContent | null {
+export function readyGuide(state: GuideState): GuideValue | null {
   return checkGuideValue(savableGuide(state.content))
 }
 

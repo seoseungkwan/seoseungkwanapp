@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { BLANK_GUIDE, checkGuideValue, guideProblems, savableGuide } from '@/lib/forms/guide'
+import { BLANK_GUIDE, checkGuideValue, guideColorsOf, guideProblems, savableGuide, type GuideValue } from '@/lib/forms/guide'
 import { checkDrawing } from '@/lib/forms/guideDrawing'
+import type { GuideColors } from '@/lib/forms/logoColors'
 import type { GuideContent, GuideDrawing, GuideField, GuideLine, SavedGuide } from '@/types/formGuide'
 import {
   blankLine,
@@ -458,5 +459,75 @@ describe('AC-4513.2: 그림 답 읽기 drawingAnswerOf', () => {
     ['모르는 번호', 500, { code: 'E-SOMETHING' }],
   ])('AC-4513.2: %s는 E-AI-FAILED다', (_label, status, body) => {
     expect(drawingAnswerOf(status, body)).toEqual({ kind: 'error', code: 'E-AI-FAILED' })
+  })
+})
+
+// ── 안내문 색 (spec clinic-profile REQ-6604 AC-6604.5·AC-6604.6, design.md 6절) ──
+
+describe('AC-6604.5·AC-6604.6: 색 칸 — [자동]·[직접 고르기]', () => {
+  const OWN: GuideColors = frozen({ main: '#3366cc', dark: '#102040' })
+  const colorsOf = (s: GuideState) => guideColorsOf(s.content)
+  const withOwn = (content: GuideContent): GuideValue => ({ ...structuredClone(content), colors: { ...OWN } })
+  const D: SavedGuide = frozen({ id: 'd', updatedAt: '2026-11-12T01:00:00.000Z', content: withOwn(INSURANCE) })
+
+  it('AC-6604.5: 새 안내문은 [자동](색 없음)이다', () => {
+    expect(colorsOf(start())).toBeNull()
+    expect('colors' in start().content).toBe(false)
+  })
+
+  it('AC-6604.5: colors 동작은 직접 고른 두 색을 칸에 넣고, null이면 [자동]으로 돌린다', () => {
+    const own = run(start(), { type: 'colors', colors: OWN })
+    expect(colorsOf(own)).toEqual(OWN)
+    expect(own.content.colors).not.toBe(OWN)
+    expect(colorsOf(run(own, { type: 'colors', colors: null }))).toBeNull()
+  })
+
+  it('AC-6604.5: 모양이 틀린 색(대문자·3자리·한쪽 빠짐)은 받지 않는다(상태 그대로)', () => {
+    const own = run(start(), { type: 'colors', colors: OWN })
+    for (const bad of [{ main: '#3366CC', dark: '#102040' }, { main: '#36c', dark: '#102040' }, { main: '#3366cc' }]) {
+      expect(run(own, { type: 'colors', colors: bad as GuideColors })).toBe(own)
+    }
+  })
+
+  it('AC-6604.5: 색을 바꾸면 바뀐 내용이 있고, 되돌리면 없다(새 안내문 기준)', () => {
+    const own = run(start(), { type: 'colors', colors: OWN })
+    expect(isDirty(own)).toBe(true)
+    expect(isDirty(run(own, { type: 'colors', colors: null }))).toBe(false)
+  })
+
+  it('AC-6604.6: 저장 값(readyGuide)에 직접 고른 색이 함께 들고, [자동]이면 색 열쇠가 없다(열쇠 13개)', () => {
+    const filled = run(start(), { type: 'tidyDone', guide: INSURANCE, truncated: false })
+    expect(readyGuide(run(filled, { type: 'colors', colors: OWN }))).toEqual({ ...INSURANCE, colors: OWN })
+    const auto = readyGuide(filled)
+    expect(auto).toEqual(INSURANCE)
+    expect(Object.keys(auto!)).toHaveLength(13)
+  })
+
+  it('AC-6604.6: 색이 저장된 안내문을 열면 그 색 그대로이고 바뀐 내용이 없다. 저장한 뒤에도 바뀐 내용이 없다', () => {
+    const opened = run(start(), { type: 'open', guide: D })
+    expect(colorsOf(opened)).toEqual(OWN)
+    expect(isDirty(opened)).toBe(false)
+    expect(isDirty(run(opened, { type: 'colors', colors: null }))).toBe(true)
+    const saved = run(start(), { type: 'tidyDone', guide: INSURANCE, truncated: false }, { type: 'colors', colors: OWN }, { type: 'saveStart' }, { type: 'saved', guide: D })
+    expect(isDirty(saved)).toBe(false)
+  })
+
+  it('AC-6604.6: 색을 저장하지 않은 옛 안내문은 [자동]으로 열린다', () => {
+    const opened = run(start(), { type: 'colors', colors: OWN }, { type: 'open', guide: A })
+    expect(colorsOf(opened)).toBeNull()
+    expect(isDirty(opened)).toBe(false)
+  })
+
+  it('AC-6604.5: AI 정리 답으로 칸을 바꿔도 고른 색은 그대로다([자동]이면 [자동] 그대로)', () => {
+    const own = run(start(), { type: 'colors', colors: OWN }, { type: 'tidyDone', guide: WAITING, truncated: false })
+    expect(own.content).toEqual({ ...WAITING, colors: OWN })
+    const auto = run(start(), { type: 'tidyDone', guide: WAITING, truncated: false })
+    expect('colors' in auto.content).toBe(false)
+  })
+
+  it('AC-6604.5: [새로 만들기]·지우기 뒤에는 [자동]이다', () => {
+    const own = run(start(), { type: 'open', guide: D })
+    expect(colorsOf(run(own, { type: 'new' }))).toBeNull()
+    expect(colorsOf(run(own, { type: 'deleteStart' }, { type: 'deleted', id: 'd' }))).toBeNull()
   })
 })
