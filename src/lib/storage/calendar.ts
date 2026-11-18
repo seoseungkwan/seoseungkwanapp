@@ -13,6 +13,7 @@ import {
   type CalCountRow,
   type CalKind,
   type CalSettings,
+  type CalSlotRow,
   type CalStaff,
 } from '@/types/calendar'
 
@@ -54,6 +55,7 @@ const SETTINGS = 'calendar_settings'
 const REV = 'calendar_rev'
 const APPT_COLUMNS = 'id,day,start_min,len_min,name,chart,staff_id,staff_name,staff_mark,kind_id,kind_name,memo,status,auto,orig_day,orig_start'
 const COUNT_COLUMNS = 'day,staff_id,staff_name,kind_id,kind_name,status,auto,orig_day' // 이름·차트번호·메모 없음
+const SLOT_COLUMNS = 'day,staff_id,staff_name,kind_id,kind_name,status,auto,start_min,len_min,chart' // 이름·메모 없음(stats-insights AC-6104.1)
 const ALLDAY_COLUMNS = 'id,day,type,memo,staff_id,staff_name'
 const SETTINGS_COLUMNS = 'kinds,staff,open_hour,close_hour,sunday'
 const PAGE_ROWS = 1000
@@ -185,6 +187,26 @@ function toCount(row: unknown): CalCountRow | null {
   return { day, staffId, staffName, kindId, kindName, status, auto, origDay }
 }
 
+function toSlot(row: unknown): CalSlotRow | null {
+  if (!isRecord(row)) return null
+  const { day, staff_id: staffId, staff_name: staffName, kind_id: kindId, kind_name: kindName, status, auto, start_min: start, len_min: len, chart } = row
+  if (
+    !isDay(day) ||
+    !isText(staffId, 1, CAL_ID_MAX) ||
+    !isText(staffName, 1, CAL_LABEL_MAX) ||
+    !isText(kindId, 1, CAL_ID_MAX) ||
+    !isText(kindName, 1, CAL_LABEL_MAX) ||
+    !isStatus(status) ||
+    !isAuto(auto) ||
+    !isStart(start) ||
+    !isLen(len) ||
+    !(chart === null || isChart(chart))
+  ) {
+    return null
+  }
+  return { day, staffId, staffName, kindId, kindName, status, auto, start, len, chart: chart as string | null }
+}
+
 function savedAppt(data: unknown): CalAppt {
   const appt = toAppt(data)
   if (appt === null) throw failed()
@@ -239,6 +261,15 @@ export async function listCalendarCounts(client: Client, from: string, to: strin
     client.from(APPTS).select(COUNT_COLUMNS).gte('day', start).lte('day', end).order('day', ASC).order('id', ASC).range(first, last),
   )
   return found.flatMap((row) => toCount(row) ?? [])
+}
+
+/** 통계 다시 예약·예약 빈자리(stats-insights AC-6104.1): from~to 예약의 날·시행자·종류·상태·도착 표시·시작·길이·차트번호만(이름·메모 없음) */
+export async function listCalendarSlots(client: Client, from: string, to: string): Promise<CalSlotRow[]> {
+  const [start, end] = requirePeriod(from, to)
+  const found = await readPages((first, last) =>
+    client.from(APPTS).select(SLOT_COLUMNS).gte('day', start).lte('day', end).order('day', ASC).order('id', ASC).range(first, last),
+  )
+  return found.flatMap((row) => toSlot(row) ?? [])
 }
 
 /** 예약 한 줄 넣기. DB가 준 줄(새 id, 상태 그대로)을 돌려준다 */

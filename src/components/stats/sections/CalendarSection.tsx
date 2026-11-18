@@ -1,20 +1,27 @@
 'use client'
 
 import { useId, useState } from 'react'
-import { RateBreakdown, RateTable, type RateTableRow } from '@/components/calendar/RateTable'
+import { Swatch } from '@/components/calendar/CalendarToolbar'
+import { RateTable, type RateTableRow } from '@/components/calendar/RateTable'
+import { formatCount } from '@/components/charts/format'
 import { niceScale } from '@/components/charts/scale'
 import { StackedBarChart, type BarBucket, type BarSeries } from '@/components/charts/StackedBarChart'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { ds } from '@/components/ui/classes'
 import { addMonths, monthOf } from '@/lib/analytics/dates'
 import { monthTrend, ratePct, rateSummary } from '@/lib/calendar/counts'
-import type { MonthRate, RateCounts } from '@/lib/calendar/shapes'
-import type { CalCountRow, CalSettings } from '@/types/calendar'
+import { rebookRates } from '@/lib/calendar/rebook'
+import type { MonthRate, RateCounts, RateRow } from '@/lib/calendar/shapes'
+import type { CalAllDay, CalColor, CalCountRow, CalSettings, CalSlotRow } from '@/types/calendar'
+import { OccupancySection } from './OccupancySection'
 import { CHART_NO_SIDE_SCROLL, Note, SECTION_HEAD, Section, dayNumber } from './parts'
 
 // 통계 탭 '예약' 칸 (spec clinic-calendar AC-5907.3, 시안 docs/mockups/clinic-calendar ?s=stats).
 // 이번 달을 넣은 최근 12달(위 기간 고르기와 상관없음): 달마다 예약 수 막대 + 취소율·변경율·안 옴율 세 선 + 월별 표, 고른 달의 시행자별·종류별 표, 세는 법.
 // 숫자는 받은 줄(listCalendarCounts — 이름·차트번호·메모 없음)을 lib/calendar monthTrend·rateSummary로 센다. 저장소는 부르지 않는다(읽기·다시 읽기는 화면이 한다)
+// stats-insights(시안 docs/mockups/stats-insights ④⑤): 나눠 보기 시행자 표 기존 칸 뒤에 '다시 예약'(slots를 lib/calendar rebookRates로, 최근 12달)·
+// '12달 예약 수'(시행자마다 달마다 예약 수 작은 막대) 두 칸을 더하고(AC-6104.3), 나눠 보기 뒤에 '예약 빈자리'(OccupancySection, AC-6105.3)를 그린다.
+// 시행자 표는 예약 탭과 같이 쓰는 RateTable을 바꾸지 않으려고 같은 모양으로 여기서 그린다(종류별 표는 RateTable 그대로)
 
 export const CALENDAR_DESC = '최근 12개월 · 예약 탭에 넣은 예약으로 세요(비트에서 불러오지 않아도 돼요) · 위 기간과 상관없이 늘 12개월 · 예약은 1년만 남아요'
 const TITLE = '예약'
@@ -31,14 +38,19 @@ const HOW: readonly [string, string][] = [
   ['안 옴', ": 예약 시간이 끝났는데 비트 접수가 없거나 손으로 '안 옴'을 고른 예약. 취소한 예약은 빼요."],
 ]
 const HOW_LAST = '비율은 소수 첫째 자리까지(반올림). 시행자·종류는 예약에 적힌 담당·종류로 나눠요.'
+const REBOOK_NOTE = '다시 예약 = 와서 치료받은 환자 가운데 14일 안에 같은 시행자 예약이 또 잡힌 비율(최근 12달)'
+const NO_REBOOK = '—'
 
 /** 'reading' = 읽는 중(비움), 'failed' = 읽기 실패 */
 export type CalendarRows = readonly CalCountRow[] | 'reading' | 'failed'
+/** 다시 예약·빈자리 줄(listCalendarSlots 12달, 이름·메모 없음)과 빈자리 기간 휴무(listAllDay). 'reading'·'failed'는 위와 같다 */
+export type CalendarSlots = { rows: readonly CalSlotRow[]; offs: readonly CalAllDay[] } | 'reading' | 'failed'
 export type StatsCalendarShown = {
   rows: CalendarRows // 이번 달을 넣은 최근 12달 줄(그 밖 줄은 세지 않는다)
   today: string // 한국 날짜
   onReread(): void
   settings?: CalSettings // 주면 나눠 보기가 설정 차례·(표시) 이름
+  slots?: CalendarSlots // 주지 않으면 다시 예약은 '—'이고 예약 빈자리 칸이 없다
 }
 
 const monthLabel = (month: string) => `${Number(month.slice(0, 4))}년 ${Number(month.slice(5, 7))}월`
@@ -167,8 +179,137 @@ function RateLines({ trend, current, selected, onPick }: { trend: readonly Month
   )
 }
 
+// ── 나눠 보기 표(RateTable·RateBreakdown과 같은 모양, stats-insights AC-6104.3) ─────
+const CELL = 'h-8.5 border-b border-line px-2 text-right whitespace-nowrap text-ink tabular-nums first:pl-0 first:text-left last:pr-0'
+const HEAD = 'h-7.5 border-b border-line px-2 text-right text-caption font-semibold whitespace-nowrap text-muted first:pl-0 first:text-left last:pr-0'
+const RATE = 'max-md:hidden'
+const FOOT = 'h-8.5 border-t border-line-strong px-2 text-right font-semibold whitespace-nowrap text-ink tabular-nums first:pl-0 first:text-left last:pr-0'
+const STAFF_HEAD = ['예약', '취소', '취소율', '변경', '변경율', '안 옴', '안 옴율', '다시 예약', '12달 예약 수'] as const
+const RATE_HEAD = new Set<string>(['취소율', '변경율', '안 옴율'])
+
+type Line = RateTableRow & { name: string } // name = 표시 없는 이름(막대 접근성 이름)
+type StaffLine = Line & { rebook: number | null; months: number[] }
+type Listed = { id: string; name: string; mark?: string; color: CalColor | null }
+
+// 설정 차례로 줄을 세운다(예약 0도 보임). 설정에 없는(지운) 줄은 아래에 저장된 이름으로. 설정이 없으면 rateSummary 차례(RateBreakdown과 같다)
+function ordered(found: readonly RateRow[], listed: readonly Listed[] | undefined): Line[] {
+  const plain = (row: RateRow): Line => ({ ...row, name: row.label })
+  if (!listed) return found.map(plain)
+  const byId = new Map(found.map((row) => [row.id, row]))
+  const ids = new Set(listed.map((item) => item.id))
+  const known = listed.map((item): Line => {
+    const counts = byId.get(item.id) ?? { total: 0, cancel: 0, moved: 0, noshow: 0 }
+    return {
+      id: item.id,
+      name: item.name,
+      label: (
+        <>
+          <Swatch color={item.color} />
+          {item.mark === undefined ? item.name : `(${item.mark}) ${item.name}`}
+        </>
+      ),
+      total: counts.total,
+      cancel: counts.cancel,
+      moved: counts.moved,
+      noshow: counts.noshow,
+    }
+  })
+  return [...known, ...found.filter((row) => !ids.has(row.id)).map(plain)]
+}
+
+// 수 칸(폰은 아래에 비율) + 비율 칸(폰은 숨김)
+function CountCells({ n, of, cell }: { n: number; of: number; cell: string }) {
+  const rate = ratePct(n, of)
+  return (
+    <>
+      <td className={cell}>
+        <span data-n>{formatCount(n)}</span>
+        <span aria-hidden="true" className="block text-caption font-normal text-muted md:hidden">
+          {rate}
+        </span>
+      </td>
+      <td className={`${cell} ${RATE} text-ink-2`}>{rate}</td>
+    </>
+  )
+}
+
+function Counts({ counts, cell }: { counts: RateCounts; cell: string }) {
+  return (
+    <>
+      <td className={cell}>
+        <span data-n>{formatCount(counts.total)}</span>
+      </td>
+      <CountCells n={counts.cancel} of={counts.total} cell={cell} />
+      <CountCells n={counts.moved} of={counts.total} cell={cell} />
+      <CountCells n={counts.noshow} of={counts.total} cell={cell} />
+    </>
+  )
+}
+
+// 달마다 예약 수 작은 막대 12개. 높이는 표 안 가장 많은 달 대비
+function Spark({ name, months, labels, top }: { name: string; months: readonly number[]; labels: readonly string[]; top: number }) {
+  return (
+    <span
+      role="img"
+      aria-label={`${name} 12달 예약 수`}
+      title={months.map((n, i) => `${labels[i]} ${formatCount(n)}`).join(' · ')}
+      className="inline-flex h-4.5 items-end gap-px align-middle"
+    >
+      {months.map((n, i) => (
+        <span key={labels[i]} className={`w-1 bg-st-line-2 ${n > 0 ? 'min-h-px' : ''}`} style={{ height: `${top > 0 ? Math.round((n / top) * 100) : 0}%` }} />
+      ))}
+    </span>
+  )
+}
+
+function StaffTable({ lines, total, labels }: { lines: readonly StaffLine[]; total: RateCounts; labels: readonly string[] }) {
+  const top = Math.max(0, ...lines.flatMap((line) => line.months))
+  return (
+    <div className={ds.table.wrap}>
+      <table className="w-full border-collapse text-small">
+        <thead>
+          <tr>
+            <th scope="col" className={HEAD}>
+              시행자
+            </th>
+            {STAFF_HEAD.map((head) => (
+              <th key={head} scope="col" className={RATE_HEAD.has(head) ? `${HEAD} ${RATE}` : HEAD}>
+                {head}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((line) => (
+            <tr key={line.id}>
+              <th scope="row" className={`${CELL} font-normal`}>
+                <span className="inline-flex items-center gap-1.5">{line.label}</span>
+              </th>
+              <Counts counts={line} cell={CELL} />
+              <td className={CELL}>{line.rebook === null ? NO_REBOOK : `${line.rebook}%`}</td>
+              <td className={CELL}>
+                <Spark name={line.name} months={line.months} labels={labels} top={top} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr>
+            <th scope="row" className={FOOT}>
+              합계
+            </th>
+            <Counts counts={total} cell={FOOT} />
+            <td className={FOOT} />
+            <td className={FOOT} />
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  )
+}
+
 /** 통계 탭 '예약' 칸 */
-export function CalendarSection({ rows, today, onReread, settings }: StatsCalendarShown) {
+export function CalendarSection({ rows, today, onReread, settings, slots }: StatsCalendarShown) {
   const current = monthOf(today)
   const months = Array.from({ length: 12 }, (_, i) => addMonths(current, i - 11))
   const [picked, setPicked] = useState(() => addMonths(current, -1))
@@ -236,6 +377,19 @@ export function CalendarSection({ rows, today, onReread, settings }: StatsCalend
   }))
   const foot = `막대나 달 칸에 마우스를 올리면 숫자가 나오고, 누르면 아래 표가 그 달로 바뀌어요. ${shortMonth(current)}은 아직 진행 중이라(${dayNumber(today)}일부터는 앞으로 올 예약) 안 옴율이 낮게 나와요.`
 
+  // 나눠 보기: 고른 달 네 수 + 시행자마다 다시 예약(최근 12달)·12달 예약 수
+  const summary = rateSummary(rows.filter((row) => row.day.startsWith(`${selected}-`)))
+  const rebook = new Map(typeof slots === 'object' ? rebookRates(slots.rows, today).map((rate) => [rate.staffId, rate.pct]) : [])
+  const staffLines: StaffLine[] = ordered(summary.byStaff, settings?.staff).map((line) => ({
+    ...line,
+    rebook: rebook.get(line.id) ?? null,
+    months: monthTrend(
+      rows.filter((row) => row.staffId === line.id),
+      months,
+    ).map((m) => m.total),
+  }))
+  const kindLines = ordered(summary.byKind, settings?.kinds)
+
   return (
     <>
       <Section title={TITLE} desc={CALENDAR_DESC}>
@@ -298,10 +452,20 @@ export function CalendarSection({ rows, today, onReread, settings }: StatsCalend
             </button>
           </div>
         </div>
-        <div className="mt-3">
-          <RateBreakdown summary={rateSummary(rows.filter((row) => row.day.startsWith(`${selected}-`)))} settings={settings} />
+        <div className="mt-3 grid gap-y-4">
+          <div className="min-w-0">
+            <h4 className="mb-0.5 text-small font-semibold text-ink-2">시행자별</h4>
+            <StaffTable lines={staffLines} total={summary} labels={months.map(shortMonth)} />
+            <Note>{REBOOK_NOTE}</Note>
+          </div>
+          <div className="min-w-0">
+            <h4 className="mb-0.5 text-small font-semibold text-ink-2">종류별</h4>
+            <RateTable head="종류" rows={kindLines} total={summary} />
+          </div>
         </div>
       </section>
+
+      {slots !== undefined && <OccupancySection slots={slots} today={today} onReread={onReread} {...(settings ? { settings } : {})} />}
 
       <details open className="text-small text-st-ink-2">
         <summary className="cursor-pointer font-semibold text-st-ink">세는 법</summary>

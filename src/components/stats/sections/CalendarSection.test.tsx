@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { CalCountRow } from '@/types/calendar'
-import { CalendarSection, CALENDAR_DESC, type CalendarRows } from './CalendarSection'
+import { DEFAULT_CAL_SETTINGS, type ApptStatus, type CalCountRow, type CalSettings, type CalSlotRow } from '@/types/calendar'
+import { CalendarSection, CALENDAR_DESC, type CalendarRows, type StatsCalendarShown } from './CalendarSection'
 import { StatsCard } from './parts'
 
 // 통계 탭 '예약' 칸 (spec clinic-calendar AC-5907.3, 시안 ?s=stats).
@@ -38,10 +38,10 @@ const ROWS: CalCountRow[] = [
 
 const values = (tr: HTMLElement) => [...tr.querySelectorAll('th, td')].map((cell) => (cell.querySelector('[data-n]') ?? cell).textContent?.trim())
 
-function draw(rows: CalendarRows = ROWS, onReread = vi.fn()) {
+function draw(rows: CalendarRows = ROWS, onReread = vi.fn(), extra: Partial<StatsCalendarShown> = {}) {
   render(
     <StatsCard id="stats-calendar" title="예약">
-      <CalendarSection rows={rows} today={TODAY} onReread={onReread} />
+      <CalendarSection rows={rows} today={TODAY} onReread={onReread} {...extra} />
     </StatsCard>,
   )
   return onReread
@@ -114,11 +114,12 @@ describe('AC-5907.3: 고른 달 나눠 보기', () => {
     draw()
     const part = screen.getByRole('heading', { name: '2026년 10월 나눠 보기' }).closest('section')!
     const [staff, kinds] = within(part).getAllByRole('table')
+    // stats-insights AC-6104.3: 기존 칸 뒤에 '다시 예약'·'12달 예약 수'(slots를 주지 않으면 다시 예약은 '—')
     expect(within(staff!).getAllByRole('row').map(values)).toEqual([
-      ['시행자', '예약', '취소', '취소율', '변경', '변경율', '안 옴', '안 옴율'],
-      ['한○○', '9', '1', '11.1%', '1', '11.1%', '1', '11.1%'],
-      ['윤○○', '1', '1', '100.0%', '0', '0.0%', '0', '0.0%'],
-      ['합계', '10', '2', '20.0%', '1', '10.0%', '1', '10.0%'],
+      ['시행자', '예약', '취소', '취소율', '변경', '변경율', '안 옴', '안 옴율', '다시 예약', '12달 예약 수'],
+      ['한○○', '9', '1', '11.1%', '1', '11.1%', '1', '11.1%', '—', ''],
+      ['윤○○', '1', '1', '100.0%', '0', '0.0%', '0', '0.0%', '—', ''],
+      ['합계', '10', '2', '20.0%', '1', '10.0%', '1', '10.0%', '', ''],
     ])
     expect(within(kinds!).getAllByRole('row').map((r) => values(r).slice(0, 2))).toEqual([
       ['종류', '예약'],
@@ -174,5 +175,108 @@ describe('AC-5907.3: 빈 상태·읽는 중·실패', () => {
     expect(screen.getByRole('alert')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '다시 읽기' }))
     expect(onReread).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ── stats-insights REQ-6104·REQ-6105: 시행자 표 두 칸 더함 · 예약 빈자리 (시안 docs/mockups/stats-insights ④⑤). 차트번호·시행자는 지어낸 것이다 ──
+const slot = (day: string, chart: string, staffId = 'ga', status: ApptStatus = 'came'): CalSlotRow => ({
+  day,
+  staffId,
+  staffName: staffId === 'ga' ? '한○○' : '윤○○',
+  kindId: 'dosu',
+  kindName: '도수',
+  status,
+  auto: null,
+  start: 600,
+  len: 30,
+  chart,
+})
+// 한○○: 다섯 명이 와서 셋이 14일 안에 같은 시행자 예약을 또 잡음 → 60%. 윤○○: 둘만 와서 대상이 5보다 적음 → '—'
+const SLOTS: CalSlotRow[] = [
+  slot('2026-10-01', '91001'),
+  slot('2026-10-05', '91001', 'ga', 'auto'),
+  slot('2026-10-02', '91002'),
+  slot('2026-10-09', '91002', 'ga', 'auto'),
+  slot('2026-10-03', '91003'),
+  slot('2026-10-10', '91003', 'ga', 'auto'),
+  slot('2026-10-04', '91004'),
+  slot('2026-10-06', '91005'),
+  slot('2026-10-01', '92001', 'na'),
+  slot('2026-10-02', '92002', 'na'),
+]
+const WITH_STAFF: CalSettings = {
+  ...DEFAULT_CAL_SETTINGS,
+  staff: [
+    { id: 'ga', name: '한○○', mark: '한', color: 'blue' },
+    { id: 'na', name: '윤○○', mark: '윤', color: 'teal' },
+  ],
+}
+const REBOOK_NOTE = '다시 예약 = 와서 치료받은 환자 가운데 14일 안에 같은 시행자 예약이 또 잡힌 비율(최근 12달)'
+const staffTable = () => within(screen.getByRole('heading', { name: '2026년 10월 나눠 보기' }).closest('section')!).getAllByRole('table')[0]!
+
+describe('AC-6104.3: 시행자 표 — 다시 예약 · 12달 예약 수', () => {
+  it("AC-6104.3: 기존 칸 뒤에 '다시 예약'({p}%, 대상이 5보다 적으면 '—')과 '12달 예약 수'가 더해진다", () => {
+    draw(ROWS, vi.fn(), { slots: { rows: SLOTS, offs: [] } })
+    const rows = within(staffTable()).getAllByRole('row').map(values)
+    expect(rows[0]!.slice(-3)).toEqual(['안 옴율', '다시 예약', '12달 예약 수'])
+    expect(rows.slice(1).map((r) => [r[0], r[8]])).toEqual([
+      ['한○○', '60%'],
+      ['윤○○', '—'],
+      ['합계', ''],
+    ])
+  })
+
+  it('AC-6104.3: 12달 예약 수는 달마다 예약 수 작은 막대 12개(이번 달을 넣은 12달, 취소 포함)이고 접근성 이름은 {시행자} 12달 예약 수', () => {
+    draw()
+    const ga = within(staffTable()).getByRole('img', { name: '한○○ 12달 예약 수' })
+    const na = within(staffTable()).getByRole('img', { name: '윤○○ 12달 예약 수' })
+    // 한○○: 9월 1 · 10월 9 · 11월 3, 윤○○: 9월 3 · 10월 1. 높이는 두 사람 가운데 가장 많은 달(9건) 대비
+    const heights = (spark: HTMLElement) => [...spark.querySelectorAll('span')].map((bar) => bar.style.height)
+    expect(heights(ga)).toEqual(['0%', '0%', '0%', '0%', '0%', '0%', '0%', '0%', '0%', '11%', '100%', '33%'])
+    expect(heights(na)).toEqual(['0%', '0%', '0%', '0%', '0%', '0%', '0%', '0%', '0%', '33%', '11%', '0%'])
+  })
+
+  it('AC-6104.3: 설정이 있으면 줄 이름은 (표시) 이름이고 막대 이름은 시행자 이름이다. 예약 없는 시행자도 줄이 있다', () => {
+    const settings: CalSettings = { ...WITH_STAFF, staff: [...WITH_STAFF.staff, { id: 'da', name: '조○○', mark: '조', color: 'purple' }] }
+    draw(ROWS, vi.fn(), { settings, slots: { rows: SLOTS, offs: [] } })
+    const rows = within(staffTable()).getAllByRole('row').map(values)
+    expect(rows.slice(1).map((r) => [r[0], r[1], r[8]])).toEqual([
+      ['(한) 한○○', '9', '60%'],
+      ['(윤) 윤○○', '1', '—'],
+      ['(조) 조○○', '0', '—'],
+      ['합계', '10', ''],
+    ])
+    expect(within(staffTable()).getByRole('img', { name: '조○○ 12달 예약 수' })).toBeTruthy()
+  })
+
+  it("AC-6104.3: 표 아래 '다시 예약 = … 비율(최근 12달)'이 보인다", () => {
+    draw()
+    expect(screen.getByText(REBOOK_NOTE)).toBeTruthy()
+  })
+
+  it("AC-6104.3: 다시 예약 줄을 읽지 못하면(failed) 다시 예약은 '—'이고 표는 그대로다", () => {
+    draw(ROWS, vi.fn(), { slots: 'failed' })
+    expect(within(staffTable()).getAllByRole('row').map((r) => values(r)[8])).toEqual(['다시 예약', '—', '—', ''])
+  })
+})
+
+describe('AC-6105.3: 예약 칸 안 예약 빈자리', () => {
+  it("AC-6105.3: slots를 주면 나눠 보기 뒤에 '예약 빈자리' 칸이 있고, 주지 않으면 없다", () => {
+    draw(ROWS, vi.fn(), { settings: WITH_STAFF, slots: { rows: SLOTS, offs: [] } })
+    const occupancy = screen.getByRole('heading', { name: '예약 빈자리' }).closest('section')!
+    const split = screen.getByRole('heading', { name: '2026년 10월 나눠 보기' }).closest('section')!
+    expect(split.compareDocumentPosition(occupancy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(occupancy).getByRole('group', { name: '시행자' })).toBeTruthy()
+    cleanup()
+    draw()
+    expect(screen.queryByRole('heading', { name: '예약 빈자리' })).toBeNull()
+  })
+
+  it('AC-6105.3: 예약 빈자리 읽기만 실패하면 그 칸만 오류 카드이고 위 표·그림은 그대로다', () => {
+    draw(ROWS, vi.fn(), { slots: 'failed' })
+    const occupancy = screen.getByRole('heading', { name: '예약 빈자리' }).closest('section')!
+    expect(within(occupancy).getByRole('alert')).toBeTruthy()
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+    expect(screen.getByRole('heading', { name: '월별 숫자' })).toBeTruthy()
   })
 })

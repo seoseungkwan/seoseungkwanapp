@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_CAL_SETTINGS, type ApptDraft, type CalAllDay, type CalAppt, type CalSettings } from '@/types/calendar'
+import { DEFAULT_CAL_SETTINGS, type ApptDraft, type CalAllDay, type CalAppt, type CalSettings, type CalSlotRow } from '@/types/calendar'
 import {
   addAllDay,
   addAppt,
@@ -11,6 +11,7 @@ import {
   listAllDay,
   listAppts,
   listCalendarCounts,
+  listCalendarSlots,
   loadCalendarRev,
   loadCalendarSettings,
   saveCalendarSettings,
@@ -31,6 +32,8 @@ const SECRET = 'secret detail'
 // 보내는 칸·읽는 칸(design.md 'DB'·'저장 함수'). 전화·성별·나이·생일·마지막 내원 칸은 어디에도 없다
 const APPT_COLUMNS = 'id,day,start_min,len_min,name,chart,staff_id,staff_name,staff_mark,kind_id,kind_name,memo,status,auto,orig_day,orig_start'
 const COUNT_COLUMNS = 'day,staff_id,staff_name,kind_id,kind_name,status,auto,orig_day'
+// 통계 다시 예약·빈자리(stats-insights AC-6104.1): 날·시행자·종류·상태·도착 표시·시작 분·길이 분·차트번호. 이름·메모 없음
+const SLOT_COLUMNS = 'day,staff_id,staff_name,kind_id,kind_name,status,auto,start_min,len_min,chart'
 const ALLDAY_COLUMNS = 'id,day,type,memo,staff_id,staff_name'
 const SETTINGS_COLUMNS = 'kinds,staff,open_hour,close_hour,sunday'
 const APPT_INSERT_KEYS = ['day', 'start_min', 'len_min', 'name', 'chart', 'staff_id', 'staff_name', 'staff_mark', 'kind_id', 'kind_name', 'memo', 'status']
@@ -109,6 +112,8 @@ const MOVED: CalAppt = { ...SAVED, id: ID2, day: DAY2, start: 600, auto: 'came',
 
 const COUNT_ROW = { day: DAY, staff_id: 'st-ga', staff_name: '가', kind_id: 'dosu', kind_name: '도수', status: 'cancel', auto: null, orig_day: DAY2 }
 const COUNTED = { day: DAY, staffId: 'st-ga', staffName: '가', kindId: 'dosu', kindName: '도수', status: 'cancel', auto: null, origDay: DAY2 }
+const SLOT_ROW = { day: DAY, staff_id: 'st-ga', staff_name: '가', kind_id: 'dosu', kind_name: '도수', status: 'came', auto: null, start_min: 900, len_min: 30, chart: '10231' }
+const SLOTTED: CalSlotRow = { day: DAY, staffId: 'st-ga', staffName: '가', kindId: 'dosu', kindName: '도수', status: 'came', auto: null, start: 900, len: 30, chart: '10231' }
 
 const MEMO_ROW = { id: ID, day: DAY, type: 'memo', memo: '원장님 학회', staff_id: null, staff_name: null }
 const MEMO_DAY: CalAllDay = { id: ID, day: DAY, type: 'memo', memo: '원장님 학회', staffId: null, staffName: null }
@@ -394,6 +399,74 @@ describe('listCalendarCounts', () => {
     const { client, calls } = fakeClient()
     expect((await caught(() => listCalendarCounts(client, DAY2, DAY))).kind).toBe('failed')
     sentNothing(calls)
+  })
+})
+
+describe('listCalendarSlots', () => {
+  it('AC-6104.1: 날·시행자·종류·상태·도착 표시·시작 분·길이 분·차트번호만 날 차례로 나눠 읽어 CalSlotRow로 바꾼다', async () => {
+    const { client, calls } = fakeClient(okWith([SLOT_ROW, { ...SLOT_ROW, status: 'auto', auto: 'came', chart: null }]))
+    await expect(listCalendarSlots(client, DAY, DAY2)).resolves.toEqual([SLOTTED, { ...SLOTTED, status: 'auto', auto: 'came', chart: null }])
+    expect(calls).toEqual([
+      ['from', 'calendar_appts'],
+      ['select', SLOT_COLUMNS],
+      ['gte', 'day', DAY],
+      ['lte', 'day', DAY2],
+      ['order', 'day', { ascending: true }],
+      ['order', 'id', { ascending: true }],
+      ['range', 0, 999],
+    ])
+  })
+
+  it('AC-6104.1: 읽는 칸에 이름·메모·전화·성별·나이·생일·hospital_id가 없다', () => {
+    for (const key of ['name', 'memo', 'staff_mark', 'orig_day', 'orig_start', ...NEVER_READ]) expect(SLOT_COLUMNS.split(','), key).not.toContain(key)
+  })
+
+  it('AC-6104.1: 1,000줄이 넘으면 나눠 읽어 모두 돌려준다', async () => {
+    const { client, calls } = fakeClient(okWith(many(1000, () => SLOT_ROW)), okWith([SLOT_ROW]))
+    expect(await listCalendarSlots(client, DAY, DAY2)).toHaveLength(1001)
+    expect(calls.filter((call) => call[0] === 'range').map((call) => call.slice(1))).toEqual([
+      [0, 999],
+      [1000, 1999],
+    ])
+  })
+
+  it('AC-6104.1: 읽은 줄에 이름·메모·전화가 와도 옮기지 않는다', async () => {
+    const { client } = fakeClient(okWith([{ ...SLOT_ROW, name: '가짜환자', memo: '가', phone: PHONE, hospital_id: 'x' }]))
+    const found = await listCalendarSlots(client, DAY, DAY2)
+    expect(found).toEqual([SLOTTED])
+    expect(Object.keys(found[0] ?? {}).sort()).toEqual(['auto', 'chart', 'day', 'kindId', 'kindName', 'len', 'staffId', 'staffName', 'start', 'status'])
+  })
+
+  it.each<[string, Record<string, unknown>]>([
+    ['날짜 틀림', { day: '2026/11/18' }],
+    ['시작 10의 배수 아님', { start_min: 905 }],
+    ['길이 7', { len_min: 7 }],
+    ['차트번호 글자', { chart: 'a1' }],
+    ['시행자 없음', { staff_id: null }],
+    ['종류 이름 없음', { kind_name: null }],
+    ['상태 틀림', { status: 'x' }],
+    ['도착 틀림', { auto: 'cancel' }],
+  ])('AC-6104.1: 모양이 틀린 줄(%s)은 뺀다', async (_name, patch) => {
+    const { client } = fakeClient(okWith([{ ...SLOT_ROW, ...patch }, SLOT_ROW, null]))
+    await expect(listCalendarSlots(client, DAY, DAY2)).resolves.toEqual([SLOTTED])
+  })
+
+  it('AC-6104.1: 기간이 틀리면 보내지 않고 failed다', async () => {
+    const { client, calls } = fakeClient()
+    expect((await caught(() => listCalendarSlots(client, DAY2, DAY))).kind).toBe('failed')
+    sentNothing(calls)
+  })
+
+  it('AC-6104.1: 진짜 클라이언트로도 select·day gte·lte·차례·offset/limit만 묻는다', async () => {
+    const fakeFetch = fetchReturning([SLOT_ROW])
+    expect(await listCalendarSlots(realClient(fakeFetch), DAY, DAY2)).toEqual([SLOTTED])
+    const request = requestOf(fakeFetch)
+    expect(request.url.pathname).toBe('/rest/v1/calendar_appts')
+    expect(request.method).toBe('GET')
+    expect(request.url.searchParams.get('select')).toBe(SLOT_COLUMNS)
+    expect(request.url.searchParams.getAll('day')).toEqual([`gte.${DAY}`, `lte.${DAY2}`])
+    expect(request.url.searchParams.get('order')).toBe('day.asc,id.asc')
+    expect([request.url.searchParams.get('offset'), request.url.searchParams.get('limit')]).toEqual(['0', '1000'])
   })
 })
 
@@ -891,6 +964,7 @@ type Run = (client: Pick<SupabaseClient, 'from'>) => Promise<unknown>
 const ALL: [string, Run][] = [
   ['listAppts', (c) => listAppts(c, DAY, DAY2)],
   ['listCalendarCounts', (c) => listCalendarCounts(c, DAY, DAY2)],
+  ['listCalendarSlots', (c) => listCalendarSlots(c, DAY, DAY2)],
   ['addAppt', (c) => addAppt(c, DRAFT)],
   ['updateAppt', (c) => updateAppt(c, ID, { memo: '가' })],
   ['setApptAuto', (c) => setApptAuto(c, ID, 'came', { day: '2026-11-17', start: 570 })],
