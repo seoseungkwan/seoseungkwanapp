@@ -13,6 +13,7 @@ import type { RxGroup } from '@/types/rxGroups'
 import type { RxSplitView } from '@/types/stats'
 import { CalendarSection, type StatsCalendarShown } from './CalendarSection'
 import { DoctorsSection } from './DoctorsSection'
+import { DropoffSection } from './DropoffSection'
 import { PatientMixSection, type BitSectionsShown } from './PatientMixSection'
 import { PatientTrendSection } from './PatientTrendSection'
 import { PeriodSummary } from './PeriodSummary'
@@ -35,7 +36,8 @@ import { WeekdaySection } from './WeekdaySection'
 //   매출(stats-revenue): 매출 칸(탭 넷). revenue를 받을 때만(stats-revenue AC-4107.1, 통계 화면은 늘 준다)
 //   예약·전환(stats-sunap, spec sunap-ilji AC-4906.1): 초진·90일 예약률 · Block 전환 칸 셋. sunap을 받을 때만(통계 화면은 늘 준다)
 //   예약(stats-calendar, spec clinic-calendar AC-5907.3): 예약 탭 예약의 최근 12달(통계 기간과 상관없음). calendar를 받을 때만(통계 화면은 늘 준다)
-//   처방(stats-rx): 처방 칸 + 탭 셋(stats-pc-ux AC-4003.1). 탭 안 칸은 지금 칸 그대로(props도 그대로)이고 Section 탭 패널 모드로 그려진다
+//   처방(stats-rx): 처방 칸 + 탭 셋(stats-pc-ux AC-4003.1). 탭 안 칸은 지금 칸 그대로(props도 그대로)이고 Section 탭 패널 모드로 그려진다.
+//     bit를 받으면 넷째 탭 '몇 번까지 받나'(stats-insights AC-6103.2, 비트 칸이라 bit를 줄 때만)가 더해진다
 //   진료 운영(stats-ops): 요일별 · 시간대별(비트)은 1200px 이상 한 줄 30% · 70%, 좁으면 쌓는다. 원장님별(비트)은 그 아래 전체 폭
 //   보고(stats-report): 원장님 보고 문장 칸
 // 카드 안 칸은 h3 작은 칸이고 칸 사이는 얇은 선뿐이다(parts.tsx StatsCard). 비트 칸은 bit를 받을 때만 그린다(stats-bit-sections AC-2706.1, 통계 화면은 늘 준다).
@@ -173,6 +175,7 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
             { name: '묶음별 추세', panel: <TreatmentTrendSection input={input} saved={saved} groups={groups} revision={revision} /> },
             { name: '처방별 신환·재진', panel: <RxSplitSection view={split} hospitalName={hospitalName} saved={saved} name={name} /> },
             { name: '처방 골라 보기', panel: <RxPickerSection input={input} saved={saved} hospitalName={hospitalName} revision={revision} /> },
+            ...(bit === undefined ? [] : [{ name: '몇 번까지 받나', panel: <DropoffSection view={bit} groups={groups.groups} /> }]),
           ]}
         />
       </StatsCard>

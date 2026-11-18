@@ -11,6 +11,7 @@ import {
   type RxSplitTotals,
 } from '@/lib/analytics/rxVisitSplit'
 import { doctorStats } from '@/lib/analytics/doctorStats'
+import { dropoff } from '@/lib/analytics/dropoff'
 import { patientMix } from '@/lib/analytics/patientMix'
 import { sunapDoctors, sunapRates } from '@/lib/analytics/sunapRates'
 import { visitHours } from '@/lib/analytics/visitHours'
@@ -25,6 +26,7 @@ import type { ConsumptionRow } from '@/types/consumption'
 import type { DateRange } from '@/types/dates'
 import type {
   BitSectionsView,
+  DropoffLine,
   RxSplitLine,
   RxSplitView,
   StatsChecks,
@@ -69,7 +71,8 @@ export type StatsMemory = {
 // v = 답의 판(4·5면 날 숫자에 90일초진 first90이 있다, spec first90. 5면 신환은 비트 신환 표시 날이다, spec new-mark),
 // extra = v3~v5 접수 줄·사람 표·원장님 표·날·원장님 금액(v2 답이면 null),
 // first = 환자 → 첫 내원일(v5면 가장 이른 신환 날, v2면 비어 있다).
-// patientDays·consumption = 통계 '예약·전환' Block 전환(spec sunap-ilji AC-4906.3)이 세는 접수 줄(환자·날)과 진료 줄. aggregate에 넣은 것과 같은 배열이다
+// patientDays·consumption = 통계 '예약·전환' Block 전환(spec sunap-ilji AC-4906.3)이 세는 접수 줄(환자·날)과 진료 줄. aggregate에 넣은 것과 같은 배열이다.
+// groups = 이 load가 실은 묶음 정의(열쇠·코드만). 몇 번까지 받나(stats-insights AC-6103.1)가 메모리 전체를 이것으로 센다
 export type BitMemory = {
   v: StatsRowsData['v']
   range: DateRange
@@ -77,9 +80,21 @@ export type BitMemory = {
   first: ReadonlyMap<number, string>
   patientDays: readonly PatientDay[]
   consumption: readonly ConsumptionRow[]
+  groups: readonly RxGroupDef[]
 }
 
 const earlier = (a: string, b: string) => (compareYmd(a, b) <= 0 ? a : b)
+
+// 몇 번까지 받나는 고른 기간과 상관없어 메모리(BitMemory)마다 한 번만 센다. 다음 load가 메모리를 바꾸면 새로 센다
+const dropoffs = new WeakMap<BitMemory, DropoffLine[]>()
+function dropoffOf(bit: BitMemory): DropoffLine[] {
+  let lines = dropoffs.get(bit)
+  if (lines === undefined) {
+    lines = dropoff({ rows: bit.consumption, first: bit.first, groups: bit.groups, range: bit.range })
+    dropoffs.set(bit, lines)
+  }
+  return lines
+}
 
 // 날(YYYY-MM-DD) → 그날 신환인 접수 줄 수. v5 접수 줄의 firstVisit은 신환 날이다(toPatientDays)
 function newLinesByDay(patientDays: readonly PatientDay[]): Map<string, number> {
@@ -147,7 +162,7 @@ export function loadJob(
   }
   // 같은 ids로 바꾼다: 진료 줄·접수 줄·사람 표에서 같은 환자 = 같은 번호. view는 v2 답과 같다(AC-2708.1)
   const extra = toStatsExtra(data, ids)
-  const bit: BitMemory = { v: data.v, range: { from, to }, extra, first: extra === null ? new Map() : toFirstVisits(data, ids), patientDays, consumption }
+  const bit: BitMemory = { v: data.v, range: { from, to }, extra, first: extra === null ? new Map() : toFirstVisits(data, ids), patientDays, consumption, groups }
   // v3 답이면 달 줄마다 같은 달의 세 칸 합계를 싣는다(묶음 이름과 수만, spec stats-bit-ai AC-2901.1). 달 줄이 없으면(incomplete) null.
   // v2 답이면 열쇠를 두지 않는다(AC-2901.6) — 화면 값이 지금과 글자 그대로 같다
   if (extra !== null) {
@@ -217,7 +232,9 @@ export function splitJob(memory: StatsMemory | null, { from, to }: { from: strin
 // 화면이 고른 기간과 견줄 기간을 주면 메모리의 접수 줄로 세 칸 보기를 낸다. 결과에는 묶음 이름과 수만 있다(AC-2702.3·AC-2702.4).
 // 견줄 기간은 불러온 범위 안에 다 들어갈 때만 센다(일부만 걸치면 견주지 않는다, AC-2703.9). 시간대별·원장님별은 견주지 않는다(범위 밖).
 // 묻기에 Block·물리치료 묶음(sunap)이 있으면 같은 기간의 sunapRates(숫자 아홉 칸)를 함께 싣는다(spec sunap-ilji AC-4906.3). 없으면 열쇠가 없다.
-// 같은 때 같은 입력 + 접수 줄 진료의로 원장님별 표(sunapDoctors, 원장님 한 분 이하면 null)도 싣는다(spec sunap-doctors AC-5004.1)
+// 같은 때 같은 입력 + 접수 줄 진료의로 원장님별 표(sunapDoctors, 원장님 한 분 이하면 null)도 싣는다(spec sunap-doctors AC-5004.1).
+// 불러올 때 묶음을 실었으면 몇 번까지 받나(dropoff)도 싣는다(stats-insights AC-6103.1): 고른 기간과 상관없이 불러온 범위 전체, 자료 끝 날 = 불러온 끝.
+// 첫 내원일은 세 칸과 같은 first(toFirstVisits)라 v5 답이면 신환 날을 따른다(spec new-mark). 묶음이 없으면 열쇠가 없다
 export function sectionsJob(
   bit: BitMemory | null,
   request: { from: string; to: string; previous?: DateRange | null; sunap?: StatsSunapGroups },
@@ -242,6 +259,7 @@ export function sectionsJob(
     hours: visitHours(extra.visits, from, to),
     doctors: doctorStats({ from, to, visits: extra.visits, first, doctors: extra.doctors, doctorDays: extra.doctorDays }),
   }
+  if (bit.groups.length > 0) view.dropoff = dropoffOf(bit)
   const { sunap } = request
   if (sunap === undefined) return view
   const counted = { from, to, days: bit.patientDays, rows: bit.consumption, block: sunap.block, pt: sunap.pt }

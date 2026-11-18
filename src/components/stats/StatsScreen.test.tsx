@@ -88,6 +88,8 @@ vi.mock('@/lib/storage/sunap', async (importOriginal) => ({
 vi.mock('@/lib/storage/calendar', () => ({
   listCalendarCounts: vi.fn(),
   loadCalendarSettings: vi.fn(),
+  listCalendarSlots: vi.fn(async () => []),
+  listAllDay: vi.fn(async () => []),
 }))
 
 const TODAY = '2026-11-13' // 금요일
@@ -102,8 +104,8 @@ const SETTINGS = '불러오기 설정' // 불러오기 띠의 접는 단추(stat
 const PRIVACY_LINE = '환자 개인정보는 의원 PC 밖으로 나가지 않아요. 서버에는 숫자만 저장해요.'
 const BIT_AT = { at: '2026-11-13T09:42:00Z', source: 'bit' as const } // 18:42
 const FILE_AT = { at: '2026-11-12T09:30:00Z', source: 'file' as const } // 11월 12일 18:30
-// 처방 카드의 탭 셋(stats-pc-ux AC-4003.1)
-const RX_TABS = ['묶음별 추세', '처방별 신환·재진', '처방 골라 보기'] as const
+// 처방 카드의 탭(stats-pc-ux AC-4003.1). 넷째 '몇 번까지 받나'는 비트 칸이다(stats-insights AC-6103.2, 통계 화면은 늘 bit를 준다)
+const RX_TABS = ['묶음별 추세', '처방별 신환·재진', '처방 골라 보기', '몇 번까지 받나'] as const
 // 큰 카드 일곱(first90 AC-4411.1·AC-4411.3, 예약·전환은 sunap-ilji AC-4906.1, 예약은 clinic-calendar AC-5907.3): [바로가기 자리 id, 카드 h2]. 카드 안 작은 칸(h3)의 이름·글은 각 칸 시험이 본다
 const CARDS = [
   ['stats-patients', '환자'],
@@ -3294,7 +3296,7 @@ describe('REQ-4002·REQ-4003·REQ-4411: 바로가기 띠 · 처방 탭', () => {
     expect(within(card('stats-rx')).getByRole('tablist', { name: '처방 보기' })).toBeTruthy()
     expect(tabsOf().map((tab) => tab.textContent)).toEqual(RX_TABS)
     expect(selectedTab()).toBe('묶음별 추세')
-    expect(within(card('stats-rx')).getAllByRole('tabpanel', { hidden: true })).toHaveLength(3)
+    expect(within(card('stats-rx')).getAllByRole('tabpanel', { hidden: true })).toHaveLength(RX_TABS.length)
 
     // 첫 탭: 묶음별 추세 칸(저장된 묶음 줄) + [묶음 고치기]
     await waitFor(() => expect(within(rxPanel('묶음별 추세')).getByText(SAVED_GROUP.name)).toBeTruthy())
@@ -3307,11 +3309,19 @@ describe('REQ-4002·REQ-4003·REQ-4411: 바로가기 띠 · 처방 탭', () => {
     expect(within(rxPanel('처방 골라 보기')).getByRole('combobox', { name: '처방 찾기' })).toBeTruthy()
   })
 
+  it('AC-6103.5: 넷째 탭 몇 번까지 받나는 이 기기에서 불러오기 전이면 `비트에서 불러오면 볼 수 있어요`뿐이고 숫자가 없다', async () => {
+    draw()
+    await sectionsShown()
+    const panel = rxPanel('몇 번까지 받나')
+    expect(within(panel).getByText('비트에서 불러오면 볼 수 있어요')).toBeTruthy()
+    expect(panel.textContent).not.toMatch(/\d/)
+  })
+
   it('AC-4003.5: 저장된 숫자가 없으면 탭마다 지금 칸의 빈 상태다', async () => {
     answers({})
     draw()
     await screen.findByText('아직 저장된 통계가 없어요')
-    for (const name of RX_TABS) expect(rxPanel(name).textContent, name).toMatch(/자료 없음|비트 PC에서 불러오면 보여요/)
+    for (const name of RX_TABS) expect(rxPanel(name).textContent, name).toMatch(/자료 없음|비트 PC에서 불러오면 보여요|비트에서 불러오면 볼 수 있어요/)
   })
 
   it('AC-4003.5: 묶음별 추세 줄을 연 채 둘째 탭에 갔다 오면 열린 채이고, 처방 골라 보기의 고른 날 수도 그대로다', async () => {
@@ -3375,7 +3385,7 @@ describe('REQ-4002·REQ-4003·REQ-4411: 바로가기 띠 · 처방 탭', () => {
     draw()
     await sectionsShown()
     expect(selectedTab()).toBe('묶음별 추세')
-    expect(tabsOf().map((tab) => tab.tabIndex)).toEqual([0, -1, -1])
+    expect(tabsOf().map((tab) => tab.tabIndex)).toEqual([0, -1, -1, -1])
     expect(setItem).not.toHaveBeenCalled()
     expect(pushState).not.toHaveBeenCalled()
     expect(replaceState).not.toHaveBeenCalled()

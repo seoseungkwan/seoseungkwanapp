@@ -2,6 +2,10 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
+import { groupKey } from '@/components/stats/treatmentView'
+import type { StatsRxGroup } from '@/types/rxGroups'
+import type { BitSectionsView, PatientMix } from '@/types/stats'
+import { DropoffSection } from './DropoffSection'
 import { Section, SectionAnchor, StatsCard, TOC_SCROLL } from './parts'
 import { RxSection, useTabDesc, type RxTab } from './RxSection'
 
@@ -438,5 +442,57 @@ describe('AC-4413.1: 카드 안 처방 칸 — 카드 h2 하나 · 탭 셋 그�
     fireEvent.click(tabNamed('처방별 신환·재진'))
     expect(head().textContent).toBe('처방둘째 탭 설명')
     expect(panelOf(tabNamed('처방별 신환·재진')).firstElementChild!.textContent).toBe('둘째 내용')
+  })
+})
+
+// ── stats-insights: 처방 칸 넷째 탭 '몇 번까지 받나'(REQ-6103 AC-6103.2·AC-6103.5, 시안 docs/mockups/stats-insights ③). 묶음·숫자는 지어낸 값이다 ─────────
+describe('AC-6103.2·AC-6103.5: 처방 칸 탭 `몇 번까지 받나`', () => {
+  const DROP_TAB = '몇 번까지 받나'
+  const DROP_DESC = '신환이 그 치료를 몇 번까지 받고 그만 오는지 봐요'
+  const MANUAL: StatsRxGroup = { id: 'g1', name: '도수', codes: ['MAN1'], sortOrder: 0 }
+  const MIX: PatientMix = { total: { people: 3, visits: 3 }, compared: false, age: [], insurance: [], city: [], town: [] }
+  const READY: BitSectionsView = {
+    kind: 'ready',
+    mix: { all: MIX, new: MIX },
+    hours: { hours: [9], rows: [], unknown: 0, peak: null },
+    doctors: { kind: 'single' },
+    dropoff: [{ group: groupKey(MANUAL.codes), n: 214, atLeast: [214, 152, 133, 109, 94, 79], ten: 39, once: 62, average: 4.6, drop: 1 }],
+  }
+  const withDropoff = (view: BitSectionsView | null): RxTab[] => [...TABS, { name: DROP_TAB, panel: <DropoffSection view={view} groups={[MANUAL]} /> }]
+
+  it('AC-6103.2: 넷째 탭을 누르면 그 패널에 묶음 고르기와 세 칸이 보이고, 탭 설명은 처방 칸 머리 줄에 간다. 탭 이름은 제목이 아니다', () => {
+    draw(withDropoff(READY))
+    expect(tabs().map((t) => t.textContent)).toEqual(['묶음별 추세', '처방별 신환·재진', '처방 골라 보기', DROP_TAB])
+    const panel = panelOf(tabNamed(DROP_TAB))
+    expect(panel.hidden).toBe(true)
+    fireEvent.click(tabNamed(DROP_TAB))
+    expect(panel.hidden).toBe(false)
+    expect(within(panel).getByRole('group', { name: '치료 묶음' })).toBeTruthy()
+    expect(within(panel).getByText('29%')).toBeTruthy()
+    expect(within(panel).getByText('1회만 받고 끝난 환자 (214명 중 62명)')).toBeTruthy()
+    expect(within(panel).getByText('4.6회')).toBeTruthy()
+    expect(within(panel).getByText('1회 → 2회')).toBeTruthy()
+    expect(head().textContent).toBe(`처방${DROP_DESC}`)
+    expect(screen.queryByRole('heading', { name: DROP_TAB, hidden: true })).toBeNull()
+  })
+
+  it('AC-6103.2: 처방 카드(옆 글 있음) 안이면 탭 설명은 패널 맨 위 한 줄이고 카드 머리는 카드 글 그대로다', () => {
+    render(
+      <StatsCard id="stats-rx" title="처방" desc="가짜 카드 설명">
+        <RxSection tabs={withDropoff(READY)} />
+      </StatsCard>,
+    )
+    fireEvent.click(tabNamed(DROP_TAB))
+    const panel = panelOf(tabNamed(DROP_TAB))
+    expect(panel.firstElementChild!.textContent).toBe(DROP_DESC)
+    expect(head().textContent).toBe('처방가짜 카드 설명')
+  })
+
+  it('AC-6103.5: 비트에서 불러오지 않은 기기면 그 탭은 `비트에서 불러오면 볼 수 있어요`뿐이고 숫자가 없다', () => {
+    draw(withDropoff(null))
+    fireEvent.click(tabNamed(DROP_TAB))
+    const panel = panelOf(tabNamed(DROP_TAB))
+    expect(within(panel).getByText('비트에서 불러오면 볼 수 있어요')).toBeTruthy()
+    expect(panel.textContent).not.toMatch(/\d/)
   })
 })
