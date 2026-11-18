@@ -137,7 +137,7 @@ export const DEFAULT_HOURS: DayHours[] // 월~금 540~1080 점심 780~840, 토 5
 
 - 순수 함수 `src/lib/precheck/memo/onboarding/`(환자 자료 구역 규칙 그대로):
   - `sampleVisits.ts`: 가짜 진료 3건 `Visit`(차트 줄·처방 코드는 `neutralPhrases()` CODEMAP에 있는 표준 코드: 허리 MBB L4,5,S1 both + SNB Rt / 어깨 관절 주사 Rt / 무릎 연골주사 Rt 2회차 + K-L 3/3). 이름·차트번호는 '가짜' 글자.
-  - `answers.ts`: `type Answers = { sideStyle; cartilageSideLang; sideMode; sideSpread; carm: string | null; sono: string | null; ending: string | null; levelSep; klg: 'paren' | 'plain' | 'ko'; mark: string; lineJoin }`(null = 안 씀). `applyAnswers(base: Phrases, a: Answers): Phrases` — AC-6614.7 칸만. 문구 토큰은 지우고 다시 붙인다: 앞 `{C-arm} `·`{Sono} `, 끝 ` {시행함}`이 이미 있으면 떼고, 켜진 답이면 정한 문구에 한 번 붙인다. 고정 멘트(`fixedPhrases`)의 C-arm·Sono·시행함 줄은 `text`를 답으로, `on`을 켜짐으로. `answersOf(phrases): Answers`(다시 할 때 지금 값으로 시작).
+  - `answers.ts`: `type Answers = { sideStyle; cartilageSideLang; sideMode; sideSpread; carm: string | null; sono: string | null; ending: string | null; levelSep; klg: 'paren' | 'plain' | 'ko'; mark: string; lineJoin }`(null = 안 씀). `applyAnswers(base: Phrases, a: Answers): Phrases` — AC-6614.7 칸만. 문구 토큰은 지우고 다시 붙인다: 앞 `{C-arm} `·`{Sono} `, 끝 ` {시행함}`이 이미 있으면 떼고, 켜진 답이면 정한 문구에 한 번 붙인다(붙이는 문구 목록은 AC-6614.7 — `{C-arm}`은 mainPeripheral 빼고, icnb·ara 안 건드림, ts는 끝맺음 빼고). 고정 멘트(`fixedPhrases`)의 C-arm·Sono·시행함 줄은 `text`를 답으로, `on`을 켜짐으로. `answersOf(phrases): Answers`(다시 할 때 지금 값으로 시작).
   - `presets.ts`: 보기 4개의 `Answers`와 이름. `NONE_PRESET = 1`(보기 2, 0부터 셈).
   - `readMemo.ts`: `readMemo(text): Record<keyof Answers, { value } | 'mixed' | null>` — AC-6614.3 규칙만. 결과에 메모 글을 담지 않는다(값 목록 안 값만).
   - `preview.ts`: `previewMemos(phrases): string[]` — 가짜 3건 `fullText`.
