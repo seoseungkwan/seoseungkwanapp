@@ -1947,3 +1947,58 @@ describe('AC-6202.3 sectionsJob: v5 답이면 원장님별·환자 구성의 신
     }
   })
 })
+
+// ── 몇 번까지 받나(stats-insights REQ-6103): 불러올 때 실은 묶음으로 메모리 전체(고른 기간과 상관없이)를 센다 ──
+// 자료 끝 날 11/1 − 30일 = 10/2. 1번은 10/5에도 MM042를 받아 아직 다니는 중이고, 6번은 첫 내원이 2025년이라 대상 밖이다(v3·v4).
+// v5 답이면 첫 내원일 = 가장 이른 신환 날이라 표시 없는 2번·5번은 대상이 아니다(new-mark와 같은 첫 내원일, toFirstVisits)
+describe('AC-6103.1 sectionsJob·sections: 묶음을 실어 불러왔으면 세 칸 보기와 함께 dropoff', () => {
+  const HEAT = { id: 't00000000000000b1', codes: ['MM042'] }
+  const BLOOD = { id: 't00000000000000b2', codes: ['B4001'] }
+  const WITH_GROUPS = { ...OPTS, groups: [HEAT, BLOOD] }
+  const onlyOnce = (group: string, n: number) => ({ group, n, atLeast: [n, 0, 0, 0, 0, 0], ten: 0, once: n, average: 1, drop: 1 })
+
+  it('AC-6103.1: v3·v4 답 — 첫 내원일이 불러온 기간 안이고 끝난 환자만 묶음마다 센다(묶음 차례)', () => {
+    for (const text of [v3Json(), v4Json()]) {
+      const view = readyIn(sectionsJob(loadJob(text, WITH_GROUPS).bit, WHOLE))
+      expect(view.dropoff).toEqual([onlyOnce(HEAT.id, 3), onlyOnce(BLOOD.id, 1)])
+    }
+  })
+
+  it('AC-6103.1: v5 답 — 첫 내원일은 신환 날(toFirstVisits)이다: 신환 표시가 없는 환자는 대상이 아니다', () => {
+    const view = readyIn(sectionsJob(loadJob(v5Json(), WITH_GROUPS).bit, WHOLE))
+    expect(view.dropoff).toEqual([onlyOnce(HEAT.id, 1), onlyOnce(BLOOD.id, 1)])
+  })
+
+  it('AC-6103.1: 고른 기간·견줄 기간과 상관없이 불러온 범위 전체로 센다', () => {
+    const { bit } = loadJob(v3Json(), WITH_GROUPS)
+    const whole = readyIn(sectionsJob(bit, WHOLE)).dropoff
+    expect(readyIn(sectionsJob(bit, { ...OCTOBER_ON, previous: SEPTEMBER })).dropoff).toEqual(whole)
+    expect(readyIn(sectionsJob(bit, { from: '2026-09-01', to: '2026-09-01' })).dropoff).toEqual(whole)
+  })
+
+  it('AC-6103.1: 묶음 없이 불러왔으면 dropoff 열쇠가 없고(지금 모양 그대로), v2 답은 묶음이 있어도 old-helper다', () => {
+    expect('dropoff' in readyIn(sectionsJob(loadJob(v3Json(), OPTS).bit, WHOLE))).toBe(false)
+    expect('dropoff' in readyIn(sectionsJob(loadJob(v3Json(), { ...OPTS, groups: [] }).bit, WHOLE))).toBe(false)
+    expect(sectionsJob(loadJob(helperJson(), WITH_GROUPS).bit, WHOLE)).toEqual({ kind: 'old-helper' })
+    // 대상이 없는 묶음뿐이면 빈 목록이다(열쇠는 있다)
+    const nobody = { id: 't00000000000000b3', codes: ['ZZ999'] }
+    expect(readyIn(sectionsJob(loadJob(v3Json(), { ...OPTS, groups: [nobody] }).bit, WHOLE)).dropoff).toEqual([])
+  })
+
+  it('AC-6103.1: Worker 일 — load에 실은 묶음으로 sections-result에 dropoff가 실리고, 묶음 열쇠와 숫자뿐 차트번호·환자 번호가 없다', async () => {
+    const { host, sent } = hostUnderTest()
+    bridgeMessages('s1', v3Json()).forEach((m) => host.fromBridge(m))
+    await host.load(loadRequest('s1', { groups: [HEAT, BLOOD] }))
+    sent.length = 0
+    host.sections(sectionsRequest('b1', OCTOBER_ON))
+    expect(sent.map((m) => m.type)).toEqual(['sections-result'])
+    const [reply] = sent
+    if (reply?.type !== 'sections-result') throw new Error('sections-result가 아니다')
+    const { dropoff } = readyIn(reply.view)
+    expect(dropoff).toEqual([onlyOnce(HEAT.id, 3), onlyOnce(BLOOD.id, 1)])
+    const json = JSON.stringify(dropoff)
+    for (const id of CHARTS) expect(json).not.toContain(id)
+    for (const key of [...SECTIONS_FORBIDDEN_KEYS, ...FORBIDDEN_KEYS]) expect(keysIn(dropoff)).not.toContain(key)
+    expect(valuesIn(dropoff).every((text) => text === HEAT.id || text === BLOOD.id)).toBe(true)
+  })
+})

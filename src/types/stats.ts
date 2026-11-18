@@ -78,10 +78,26 @@ export type DoctorRow = {
 export type DoctorTable = { kind: 'table'; rows: DoctorRow[]; total: DoctorRow }
 export type DoctorsView = { kind: 'single' } | DoctorTable
 
+// 몇 번까지 받나(stats-insights AC-6103.1) 묶음 한 줄. group = 묶음 열쇠(불러올 때 실은 RxGroupDef.id, 이름은 화면이 붙인다). 환자 번호는 없다.
+// n = 대상(첫 내원일이 불러온 기간 안이고 그 묶음을 받았고, 마지막으로 받은 날이 자료 끝 날 − 30일보다 앞이거나 같은 환자),
+// atLeast = 1·2·3·4·5·6회 이상 인원, ten = 10회 이상, once = 1회만(= atLeast[0] − atLeast[1]), average = 평균 횟수(소수 1자리 반올림),
+// drop = 가장 많이 빠지는 곳 k(1~5, k회 이상 − (k+1)회 이상이 가장 큰 k, 같으면 작은 k). 횟수 = 그 묶음을 받은 서로 다른 날 수
+export type DropoffLine = {
+  group: string
+  n: number
+  atLeast: [number, number, number, number, number, number]
+  ten: number
+  once: number
+  average: number
+  drop: number
+}
+
 // 고른 기간의 세 칸 보기(AC-2702.1·AC-2702.3). none = 불러온 적 없음·고른 기간이 불러온 범위 밖, old-helper = 옛 도우미(v2) 답.
 // mix는 [전체]·[신환] 둘 다, 동네는 [구·시]·[동] 둘 다 싣는다: 단추를 눌러도 Worker에 다시 묻지 않는다.
 // sunap = 통계 '예약·전환'의 Block 전환 수(spec sunap-ilji AC-4906.3, 숫자 아홉 칸). 묻기에 묶음 정의(sunap)가 있었을 때만 있다.
-// sunapDoctors = 같은 셈의 원장님별 표(spec sunap-doctors AC-5004.1, 원장님 이름과 수만). sunap과 함께만 있고, 원장님이 한 분 이하면 null
+// sunapDoctors = 같은 셈의 원장님별 표(spec sunap-doctors AC-5004.1, 원장님 이름과 수만). sunap과 함께만 있고, 원장님이 한 분 이하면 null.
+// dropoff = 몇 번까지 받나(stats-insights AC-6103.1). 고른 기간과 상관없이 불러온 범위 전체를 센 묶음마다 한 줄(대상 0인 묶음은 없다).
+// 불러올 때 묶음을 실었을 때만 있다(없으면 열쇠가 없다)
 export type BitSectionsView =
   | { kind: 'none' }
   | { kind: 'old-helper' }
@@ -92,6 +108,7 @@ export type BitSectionsView =
       doctors: DoctorsView
       sunap?: SunapRates
       sunapDoctors?: DoctorBreakdown | null
+      dropoff?: DropoffLine[]
     }
 
 // 수납일지 설정에서 고른 Block·물리치료 묶음의 정의(열쇠·코드·빼는 처방·조건만, 이름은 안 감). 둘 다 골랐을 때만 화면이 싣는다(AC-4906.3)
