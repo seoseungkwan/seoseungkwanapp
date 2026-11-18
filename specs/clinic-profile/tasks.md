@@ -127,9 +127,9 @@
 - Phase: 3
 - AC: AC-6607.4, AC-6610.1, AC-6610.2, AC-6611.1
 - REQ: REQ-6607, REQ-6610, REQ-6611
-- Files: src/components/claim/ClaimScreen.tsx, src/components/claim/ClaimScreen.test.tsx, src/components/claim/memo/MemoPanel.tsx, src/components/claim/memo/MemoPanel.test.tsx, src/components/claim/memo/InputMode.tsx, src/components/claim/memo/InputMode.test.tsx, src/components/claim/rows/MemoDetail.tsx, src/components/claim/rows/MemoDetail.test.tsx, src/components/claim/rows/leftGroups.ts
-- Tests: src/components/claim/ClaimScreen.test.tsx, src/components/claim/memo/MemoPanel.test.tsx, src/components/claim/memo/InputMode.test.tsx, src/components/claim/rows/MemoDetail.test.tsx
-- TDD: required — design.md 9절(잠금 칸 [설정으로 가기]), 12절(ClaimScreen이 읽고 저장, `defaultSelection(visible, savedMode?)`), 13절([뒤에 붙이기]·'메모 뒤에 붙임'·`APPEND_HELPER` 미만이면 감춤). `components/claim/rows`는 네트워크·저장소를 쓰지 않는다
+- Files: src/components/claim/setup/ClaimEntry.tsx, src/components/claim/setup/ClaimEntry.test.tsx, src/components/claim/rows/MemoList.tsx, src/components/claim/rows/MemoList.test.tsx, src/components/claim/ClaimScreen.tsx, src/components/claim/ClaimScreen.test.tsx, src/components/claim/memo/MemoPanel.tsx, src/components/claim/memo/MemoPanel.test.tsx, src/components/claim/memo/InputMode.tsx, src/components/claim/memo/InputMode.test.tsx, src/components/claim/rows/MemoDetail.tsx, src/components/claim/rows/MemoDetail.test.tsx, src/components/claim/rows/leftGroups.ts
+- Tests: src/components/claim/ClaimScreen.test.tsx, src/components/claim/memo/MemoPanel.test.tsx, src/components/claim/memo/InputMode.test.tsx, src/components/claim/rows/MemoDetail.test.tsx, src/components/claim/setup/ClaimEntry.test.tsx, src/components/claim/rows/MemoList.test.tsx
+- TDD: required — design.md 9절(잠금 칸 [설정으로 가기]), 12절(ClaimScreen이 읽고 저장, `defaultSelection(visible, savedMode?)`), 13절([뒤에 붙이기]·'메모 뒤에 붙임'·`APPEND_HELPER` 미만이면 감춤). 도우미 판은 ClaimEntry가 `useBridge().hello.helperVersion`을 ClaimScreen에 넘기고, 왼쪽 목록 줄(MemoList RowTags)도 붙이는 환자는 '메모 뒤에 붙임'이다. `components/claim/rows`는 네트워크·저장소를 쓰지 않는다
 
 ## TASK-14: 설정 병원 문구 화면 — 잠금 풀기·역할·차트 줄임말·숨은 칸
 - Phase: 3
