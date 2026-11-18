@@ -2,6 +2,7 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { RoleProvider } from '@/components/shell/role'
 import type { StatsRxGroup } from '@/types/rxGroups'
 import type { RsvKindDef, SunapSettings as Settings } from '@/types/sunap'
 import { SunapSettings } from './SunapSettings'
@@ -263,5 +264,42 @@ describe('AC-5503.3 검토 고침 — 긴 말 저장·이름 오류 자리', () 
     const wordsError = item(2).getByText('말 하나는 20자까지 적을 수 있어요')
     expect(wordsBox(2).compareDocumentPosition(wordsError) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(nameBox(2).nextElementSibling).not.toBe(wordsError)
+  })
+})
+
+// desk-feedback AC-6306.4: 데스크는 통계 탭(/stats)을 못 연다 → '처방 묶음 고치러 가기 →' 링크만 숨긴다.
+// 데스크도 수납일지 [설정]을 고쳐 저장한다(사용자 결정 2026-11-18)
+describe('AC-6306.4 데스크 — 처방 묶음 링크 숨김', () => {
+  const LINK = '처방 묶음 고치러 가기 →'
+
+  it('AC-6306.4: 원장은 지금처럼 Block 칸 옆에 "처방 묶음 고치러 가기 →"(/stats) 링크가 있다', () => {
+    open()
+    const link = screen.getByRole('link', { name: LINK })
+    expect(link.getAttribute('href')).toBe('/stats')
+  })
+
+  it('AC-6306.4: 데스크면 그 링크가 없고, 묶음 고르기 둘·설명·다음 예약 종류·[취소]·[저장]은 그대로이며 고친 값을 저장한다', async () => {
+    const onSave = vi.fn(async (next: Settings) => void next)
+    const user = userEvent.setup()
+    render(
+      <RoleProvider desk>
+        <SunapSettings settings={SETTINGS} groups={GROUPS} onSave={onSave} onClose={vi.fn()} />
+      </RoleProvider>,
+    )
+    expect(screen.queryByRole('link')).toBeNull()
+    expect(screen.queryByText(LINK)).toBeNull()
+    expect(document.querySelector('a[href="/stats"]')).toBeNull()
+    const block = screen.getByRole('combobox', { name: 'Block으로 셀 처방' }) as HTMLSelectElement
+    const pt = screen.getByRole('combobox', { name: '물리치료로 셀 처방' }) as HTMLSelectElement
+    expect([block.value, pt.value]).toEqual(['g-block', 'g-pt'])
+    expect(screen.getByText('통계 탭에 만들어 둔 처방 묶음 중 하나를 골라요. 묶음 안 코드를 바꾸면 수납일지·통계가 같이 바뀌어요.')).toBeTruthy()
+    expect(screen.getByText(DESC_1)).toBeTruthy()
+    expect(items()).toHaveLength(5)
+    expect(button('취소')).toBeTruthy()
+    await user.selectOptions(pt, '')
+    await user.click(button('저장'))
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ blockGroup: 'g-block', ptGroup: null }))
+    expect(onSave.mock.calls[0]?.[0].kinds.map((kind) => kind.label)).toEqual(['주사치료', '진료(경과)', '도수치료', '체외충격파', '기타'])
   })
 })

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
+import { useDesk } from '@/components/shell/role'
 import { ds } from '@/components/ui/classes'
 import { BASE_KIND_IDS, FIXED_LABELS, KIND_MAX, LABEL_MAX, WORDS_TEXT_MAX, WORD_MAX, newKindId, splitWords } from '@/lib/sunap/kinds'
 import type { StatsRxGroup } from '@/types/rxGroups'
@@ -13,6 +14,7 @@ import type { RsvKindDef, SunapSettings as Settings } from '@/types/sunap'
 // Block·물리치료 = 통계 탭 처방 묶음 하나씩 고르기. 저장은 부르는 쪽이 한다(onSave가 실패하면 판을 닫지 않는다).
 // 시안과 다른 곳: '지출 종류' 이름 바꾸기 칸을 뺐다(design.md). 시안의 '처방 묶음 고치러 가기' 글자 단추는 통계 탭으로 가는 링크다.
 // 지운 묶음을 가리키는 설정은 '고르지 않음'으로 보인다.
+// 데스크 계정은 통계 탭(/stats)을 못 연다 → 그 링크만 그리지 않는다. 고르기·[저장]은 그대로(데스크도 고친다, desk-feedback AC-6306.4).
 // 다음 예약 종류(spec sunap-kinds AC-5503.1~5503.3, 시안 docs/mockups/sunap-kinds ?s=kinds): 종류마다 이름 · 예약률 ○·✕ · 순서 · 지우기(기본 셋은 못 지움) · 메모 말.
 // [저장] 때 이름 빔·같은 이름·20자 넘는 말을 보고, 맞으면 이름·말을 다듬어(splitWords) 목록 차례대로 넘긴다. 저장 뒤 알림 없이 판이 닫힌다(지금처럼).
 // PC는 한 칸이 두 줄(이름·예약률·순서 / 메모 말), 휴대폰은 세 줄(이름·순서 / 예약률 / 메모 말). 시안의 동그란 차례 번호는 토큰 모서리(4px)로 그린다
@@ -222,6 +224,7 @@ export function SunapSettings({
 }) {
   const titleId = useId()
   const kindsId = useId()
+  const desk = useDesk()
   // 서버에 저장된 묶음(id 있음)만 고를 수 있다
   const sorted = groups.filter((group) => group.id !== null).sort((a, b) => a.sortOrder - b.sortOrder)
   const known = (id: string | null) => (id !== null && groups.some((group) => group.id === id) ? id : null)
@@ -330,9 +333,11 @@ export function SunapSettings({
             value={blockGroup}
             onChange={setBlockGroup}
           >
-            <Link href="/stats" className={`${ds.textButton} text-small!`}>
-              처방 묶음 고치러 가기 →
-            </Link>
+            {!desk && (
+              <Link href="/stats" className={`${ds.textButton} text-small!`}>
+                처방 묶음 고치러 가기 →
+              </Link>
+            )}
           </GroupPick>
           <GroupPick label="물리치료로 셀 처방" help="같은 방법으로 처방 묶음 하나를 골라요." groups={sorted} value={ptGroup} onChange={setPtGroup} />
           <div className="grid min-w-0 gap-2">
