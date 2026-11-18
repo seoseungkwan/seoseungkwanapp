@@ -1,9 +1,26 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { groupKey } from '@/components/stats/treatmentView'
+import type { WideDays } from '@/components/stats/useWideDays'
 import { formatClinicReport } from '@/lib/clinicReport/reportText'
+import { loadGoal } from '@/lib/storage/goals'
+import type { CalSlotRow } from '@/types/calendar'
 import type { ClinicReportMode, ClinicReportNumbers } from '@/types/clinicReport'
-import { ReportSection, type PickReport, type ReportData } from './ReportSection'
+import type { Goal } from '@/types/goals'
+import type { DayPayload } from '@/types/payload'
+import type { StatsRxGroup } from '@/types/rxGroups'
+import type { SavedRevenueDay } from '@/types/revenue'
+import type { StatsCalendarShown } from './CalendarSection'
+import type { GoalRead } from './GoalSection'
+import { StatsCard } from './parts'
+import { MonthlyReportSection, ReportSection, type PickReport, type ReportData } from './ReportSection'
+
+// 월간 보고서(stats-insights REQ-6108)가 읽는 서버 자리: 고른 달 목표 · 고른 달과 앞 달 하루 매출. 이 파일 안에서만 가짜다
+vi.mock('@/lib/storage/goals', () => ({ loadGoal: vi.fn() }))
+const revenueStore = vi.hoisted(() => ({ loadDays: vi.fn() }))
+vi.mock('@/lib/storage/revenue', () => ({ createRevenueStore: vi.fn(() => revenueStore) }))
+vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: vi.fn(() => ({})) }))
 
 // 원장님 보고 문장 (stats REQ-513 AC-513.6·513.8, 시안 notes.md §3). 숫자·병원 이름은 시험 안에서 지은 가짜다
 
@@ -477,5 +494,139 @@ describe('AC-1707.1·AC-1707.3·AC-1707.4: [고른 기간 보고]', () => {
     drawPick(null, null)
     expect(screen.queryByRole('group', { name: '보고 고르기' })).toBeNull()
     expect(screen.getByText('비트 PC에서 불러오면 보여요')).toBeTruthy()
+  })
+})
+
+// ── 월간 보고서 (stats-insights REQ-6108 AC-6108.1~AC-6108.3, 시안 docs/mockups/stats-insights ⑧) ─────────────
+// 오늘 2026-11-13 → 고를 수 있는 달 = 2025-12 ~ 2026-11. 저장된 날: 11월·10월·9월·2025년 12월. 숫자·이름·차트번호는 지어낸 가짜다
+describe('AC-6108.1·AC-6108.2·AC-6108.3: 월간 보고서 칸', () => {
+  const G_DOSU: StatsRxGroup = { id: 'g1', name: '도수', codes: ['MM01'], sortOrder: 0 }
+  const DOSU = groupKey(G_DOSU.codes, G_DOSU)
+  const day = (ymd: string, patients: number, newPatients: number): DayPayload => ({
+    schemaVersion: 2,
+    quality: 'valid',
+    day: ymd,
+    partial: false,
+    totals: { patients, newPatients, returning: patients - newPatients, unknown: 0 },
+    rx: [],
+    groups: [{ id: DOSU, patients: 10, newPatients: 0, returning: 10 }],
+    revisit: { cohort: newPatients, within7: null, within14: null },
+  })
+  const DAYS = [day('2025-12-01', 400, 20), day('2026-09-07', 600, 50), day('2026-10-05', 700, 40), day('2026-11-02', 100, 5)]
+  const wideOf = (over: Partial<WideDays> = {}): WideDays => ({ state: 'ready', days: DAYS, retry: vi.fn(), ...over })
+  const salesDay = (date: string, total: number) => ({ date, total, dayCodes: false }) as unknown as SavedRevenueDay
+  const CHART = '99001' // 가짜 차트번호
+  const SLOT: CalSlotRow = { day: '2026-10-05', staffId: 's1', staffName: '김시행', kindId: 'dosu', kindName: '도수', status: 'came', auto: null, start: 540, len: 60, chart: CHART }
+  const CALENDAR: StatsCalendarShown = {
+    rows: [{ day: '2026-10-05', staffId: 's1', staffName: '김시행', kindId: 'dosu', kindName: '도수', status: 'came', auto: null, origDay: null }],
+    today: TODAY,
+    onReread: vi.fn(),
+    slots: { rows: [SLOT], offs: [] },
+    settings: { kinds: [{ id: 'dosu', name: '도수', len: 30, color: null }], staff: [{ id: 's1', name: '김선생', mark: '김', color: 'blue' }], openHour: 9, closeHour: 18, sunday: false },
+  }
+  const printSpy = vi.fn()
+
+  const drawMonthly = (over: { wide?: WideDays; goal?: GoalRead<Goal> } = {}) =>
+    render(
+      <StatsCard title="원장님 보고 문장">
+        <MonthlyReportSection today={TODAY} hospitalName={HOSPITAL} wide={over.wide ?? wideOf()} groups={[G_DOSU]} calendar={CALENDAR} bit={null} goal={over.goal} />
+      </StatsCard>,
+    )
+  const monthGroup = () => screen.getByRole('group', { name: '달' })
+  const paperTitle = () => screen.getByRole('heading', { level: 4 })
+  const paperEl = () => document.querySelector('[data-print-report]') as HTMLElement
+
+  beforeEach(() => {
+    vi.mocked(loadGoal).mockReset()
+    vi.mocked(loadGoal).mockResolvedValue({ visits: 1000, newPatients: null, revenue: null })
+    revenueStore.loadDays.mockReset()
+    revenueStore.loadDays.mockResolvedValue([salesDay('2026-09-07', 50_000_000), salesDay('2026-10-05', 110_000_000)])
+    printSpy.mockReset()
+    window.print = printSpy
+  })
+
+  it("AC-6108.1: 제목 '월간 보고서'(카드 안 h3) 아래 달 고르기 = 최근 12달 가운데 저장된 달(새 달부터)이고 처음은 지난달이다", async () => {
+    drawMonthly()
+    expect(screen.getByRole('heading', { level: 3, name: '월간 보고서' })).toBeTruthy()
+    expect(within(monthGroup()).getAllByRole('button').map((b) => b.textContent)).toEqual(['2026년 11월', '10월', '9월', '2025년 12월'])
+    expect(within(monthGroup()).getByRole('button', { name: '10월' }).getAttribute('aria-pressed')).toBe('true')
+    expect(within(monthGroup()).getByRole('button', { name: '9월' }).getAttribute('aria-pressed')).toBe('false')
+    expect(paperTitle().textContent).toContain('2026년 10월 통계 보고')
+    expect(screen.getByText('튼튼의원 · 11월 13일 뽑음')).toBeTruthy()
+    await waitFor(() => expect(screen.getByText('내원 700명 / 목표 1,000명 · 70%')).toBeTruthy())
+  })
+
+  it('AC-6108.1: [인쇄]를 누르면 window.print()를 부르고, 달 고르기·[인쇄]는 보고서 종이 밖이다(인쇄에 나오지 않는다)', () => {
+    drawMonthly()
+    fireEvent.click(screen.getByRole('button', { name: '인쇄' }))
+    expect(printSpy).toHaveBeenCalledTimes(1)
+    expect(paperEl().contains(monthGroup())).toBe(false)
+    expect(paperEl().contains(screen.getByRole('button', { name: '인쇄' }))).toBe(false)
+  })
+
+  it('AC-6108.2: 고른 달의 목표(loadGoal)와 그 달·앞 달 하루 매출을 읽고, 다른 달을 고르면 그 달 보고서로 바뀐다', async () => {
+    drawMonthly()
+    await waitFor(() => expect(screen.getByText('1억 1,000만 원')).toBeTruthy())
+    expect(loadGoal).toHaveBeenCalledWith(expect.anything(), '2026-10')
+    expect(revenueStore.loadDays).toHaveBeenCalledWith({ from: '2026-09-01', to: '2026-10-31' })
+    fireEvent.click(within(monthGroup()).getByRole('button', { name: '9월' }))
+    expect(within(monthGroup()).getByRole('button', { name: '9월' }).getAttribute('aria-pressed')).toBe('true')
+    expect(paperTitle().textContent).toContain('2026년 9월 통계 보고')
+    await waitFor(() => expect(loadGoal).toHaveBeenCalledWith(expect.anything(), '2026-09'))
+    expect(revenueStore.loadDays).toHaveBeenCalledWith({ from: '2026-08-01', to: '2026-09-30' })
+  })
+
+  it('AC-6108.2: 이번 달은 요약 칸 목표 훅이 읽은 이번 달 목표를 쓰고 따로 읽지 않는다', async () => {
+    drawMonthly({ goal: { visits: 200, newPatients: null, revenue: null } })
+    fireEvent.click(within(monthGroup()).getByRole('button', { name: '2026년 11월' }))
+    expect(paperTitle().textContent).toContain('2026년 11월 통계 보고')
+    expect(screen.getByText('내원 100명 / 목표 200명 · 50%')).toBeTruthy()
+    await waitFor(() => expect(revenueStore.loadDays).toHaveBeenCalledWith({ from: '2026-10-01', to: '2026-11-30' }))
+    expect(loadGoal).not.toHaveBeenCalledWith(expect.anything(), '2026-11')
+  })
+
+  it('AC-6108.2: 매출·목표 읽기가 실패하면 종이 밖에 오류 카드 + [다시 읽기]이고 그 칸만 빼고 그린다. [다시 읽기]는 다시 읽는다', async () => {
+    revenueStore.loadDays.mockRejectedValueOnce(new Error('가짜 실패'))
+    drawMonthly()
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('E-STATS-READ-FAILED')
+    expect(paperEl().contains(alert)).toBe(false)
+    expect(within(paperEl()).queryByText('매출')).toBeNull()
+    expect(paperTitle().textContent).toContain('2026년 10월 통계 보고')
+    fireEvent.click(screen.getByRole('button', { name: '다시 읽기' }))
+    await waitFor(() => expect(screen.getByText('1억 1,000만 원')).toBeTruthy())
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('AC-6108.1: 넓은 하루 읽기가 읽는 중이면 제목뿐이고, 실패면 오류 카드 + [다시 읽기](넓은 읽기를 다시)다', () => {
+    drawMonthly({ wide: wideOf({ state: 'reading', days: [] }) })
+    expect(screen.getByRole('heading', { level: 3, name: '월간 보고서' })).toBeTruthy()
+    expect(screen.queryByRole('group', { name: '달' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '인쇄' })).toBeNull()
+    cleanup()
+    const retry = vi.fn()
+    drawMonthly({ wide: wideOf({ state: 'failed', days: [], retry }) })
+    expect(screen.getByRole('alert').textContent).toContain('E-STATS-READ-FAILED')
+    fireEvent.click(screen.getByRole('button', { name: '다시 읽기' }))
+    expect(retry).toHaveBeenCalledTimes(1)
+    expect(paperEl()).toBeNull()
+  })
+
+  it('AC-6108.1: 최근 12달에 저장된 달이 하나도 없으면 칸을 그리지 않는다', () => {
+    drawMonthly({ wide: wideOf({ days: [day('2025-11-20', 300, 10)] }) })
+    expect(screen.queryByRole('heading', { name: '월간 보고서' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '인쇄' })).toBeNull()
+  })
+
+  it('AC-6108.3: 비트에서 안 불러온 기기는 몇 번까지 받나·신환 1명당 매출 칸이 제목까지 없고, 차트번호는 화면 어디에도 없다', async () => {
+    const { container } = drawMonthly()
+    await waitFor(() => expect(screen.getByText('1억 1,000만 원')).toBeTruthy())
+    const titles = within(paperEl())
+      .getAllByRole('heading', { level: 5 })
+      .map((h) => h.textContent)
+    expect(titles).toContain('예약 빈자리 (최근 8주)')
+    expect(titles).not.toContain('몇 번까지 받나')
+    expect(titles).not.toContain('신환 1명당 매출')
+    expect(container.textContent).not.toContain(CHART)
   })
 })

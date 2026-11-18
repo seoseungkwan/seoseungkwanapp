@@ -23,7 +23,7 @@ import { HolidaySection } from './HolidaySection'
 import { PatientMixSection, type BitSectionsShown } from './PatientMixSection'
 import { PatientTrendSection } from './PatientTrendSection'
 import { PeriodSummary } from './PeriodSummary'
-import { ReportSection, type PickReport, type ReportData } from './ReportSection'
+import { MonthlyReportSection, ReportSection, type PickReport, type ReportData } from './ReportSection'
 import { RevenueSection } from './RevenueSection'
 import { RevenueSummary } from './RevenueSummary'
 import { RevisitSection } from './RevisitSection'
@@ -49,7 +49,8 @@ import { WeekdaySection } from './WeekdaySection'
 //     bit를 받으면 넷째 탭 '몇 번까지 받나'(stats-insights AC-6103.2, 비트 칸이라 bit를 줄 때만)가 더해진다
 //   진료 운영(stats-ops): 요일별 · 시간대별(비트)은 1200px 이상 한 줄 30% · 70%, 좁으면 쌓는다. 원장님별(비트)은 그 아래 전체 폭.
 //     wide를 받으면 맨 끝에 '휴일에 따라'(stats-insights AC-6107.3, 저장된 날이 없으면 없다)
-//   보고(stats-report): 원장님 보고 문장 칸
+//   보고(stats-report): 원장님 보고 문장 칸. wide를 받으면 그 아래 '월간 보고서'(stats-insights AC-6108.1, 최근 12달에 저장된 달이 없으면 없다).
+//     인쇄([인쇄])에는 그 보고서 종이만 나온다 — 종이 밖(다른 카드·카드 머리·단추·앱 틀)은 MonthlyReport의 인쇄 규칙이 가린다
 // 카드 안 칸은 h3 작은 칸이고 칸 사이는 얇은 선뿐이다(parts.tsx StatsCard). 비트 칸은 bit를 받을 때만 그린다(stats-bit-sections AC-2706.1, 통계 화면은 늘 준다).
 // 고른 기간(stats-period)이면 보고 칸에 [고른 기간 보고](저장된 숫자로 만든 글)를 넣고, 처방별 신환·재진 설명 끝에 기간 이름을 붙인다.
 // 매출(stats-revenue): revenue를 받으면 매출 요약 카드(칸 셋)도 넣는다. 숫자는 revenueView(순수)가 통계 기간·처방 칸 묶음으로 센다.
@@ -252,6 +253,18 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
       {/* 고르기에 들어오고 나갈 때 다시 그린다: [고른 기간 보고]가 처음 눌리고, 나가면 [오늘 일일보고]다 */}
       <StatsCard id={REPORT_ID} title={REPORT} desc={REPORT_DESC}>
         <ReportSection key={pick === null ? 'quick' : 'pick'} report={report} hospitalName={hospitalName} today={todayOf(input.range)} saved={saved} pick={pick} />
+        {wide !== undefined && (
+          <MonthlyReportSection
+            today={today}
+            hospitalName={hospitalName}
+            wide={wide}
+            groups={groups.groups}
+            calendar={calendar}
+            bit={bit}
+            goal={goals?.goal}
+            revision={revision}
+          />
+        )}
       </StatsCard>
     </div>
   )
