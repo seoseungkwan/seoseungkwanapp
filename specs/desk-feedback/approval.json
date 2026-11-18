@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "desk-feedback",
-  "approved_at": "2026-11-18T06:14:07Z",
+  "approved_at": "2026-11-18T06:45:28Z",
   "approved_via": "user-prompt",
   "session_id": "d8c599c5-f70a-49d3-a279-5c381ed7a718",
-  "spec_sha256": "78161ac12703edaaf13c5f310fc2f35835cb06e16d204fe6d2e3fa05cc2bb392",
+  "spec_sha256": "b5eed3b30d329a64637d4788604aa3c5222586189e4ad5871f7a4f4924c12b11",
   "scope": [
     "CLAUDE.md",
     "docs/ADR.md",
