@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>통계 더 보기 시안</title>
+<style>
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-soft: #EFF4FF;
+  --pos: #047857; --neg: #B91C1C; --warn: #B45309; --r: 6px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, 'Malgun Gothic', sans-serif; }
+main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.lead { color: var(--ink-2); margin: 0 0 20px; }
+section { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+h2 { font-size: 16px; margin: 0 0 2px; }
+h3 { font-size: 14px; margin: 16px 0 6px; }
+.where { display: inline-block; font-size: 12px; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; margin-left: 6px; font-weight: 400; }
+.sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+.note { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
+.need { color: var(--warn); font-size: 12px; margin: 6px 0 0; }
+.grid { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.kpi { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; }
+.kpi b { display: block; font-size: 20px; }
+.kpi span { color: var(--muted); font-size: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.chip { height: 32px; display: inline-flex; align-items: center; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font-size: 13px; }
+.chip.on { border-color: var(--ink); font-weight: 600; }
+.btn { height: 36px; display: inline-flex; align-items: center; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font: inherit; }
+.btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* 알림 */
+.alert { display: flex; gap: 8px; align-items: baseline; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); margin-bottom: 6px; }
+.alert i { font-style: normal; font-weight: 700; width: 16px; }
+.alert.down i { color: var(--neg); } .alert.up i { color: var(--pos); } .alert.warn i { color: var(--warn); }
+.alert small { color: var(--muted); margin-left: auto; white-space: nowrap; }
+/* 목표 */
+.goal { margin-bottom: 12px; }
+.goal .top { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.track { position: relative; height: 12px; background: var(--canvas); border: 1px solid var(--line); border-radius: 999px; margin: 4px 0; }
+.track .fill { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 999px; }
+.track .today { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); }
+.goal .pace { font-size: 13px; color: var(--ink-2); }
+.ok { color: var(--pos); font-weight: 600; } .bad { color: var(--neg); font-weight: 600; }
+/* 이탈 */
+.fun { display: grid; grid-template-columns: 72px 1fr 92px; gap: 6px 8px; align-items: center; font-size: 13px; }
+.fun .bar { height: 18px; background: var(--accent); border-radius: 4px; }
+.fun .drop { color: var(--neg); font-size: 12px; text-align: right; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--muted); font-weight: 500; }
+.scroll { overflow-x: auto; }
+.spark { display: inline-flex; align-items: flex-end; gap: 1px; height: 18px; vertical-align: middle; }
+.spark i { width: 4px; background: var(--line-strong); }
+/* 빈자리 */
+.heat { display: grid; grid-template-columns: 36px repeat(10, minmax(28px, 1fr)); gap: 2px; font-size: 12px; min-width: 420px; }
+.heat div { height: 30px; display: grid; place-items: center; border-radius: 4px; }
+.heat .h { color: var(--muted); height: 20px; }
+.heat .d { color: var(--ink-2); }
+.legend { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-top: 8px; }
+.legend i { width: 18px; height: 12px; border-radius: 3px; display: inline-block; }
+/* 1명당 매출 */
+.hb { display: grid; grid-template-columns: 110px 1fr 150px; gap: 6px 8px; align-items: center; font-size: 13px; }
+.hb .bar { height: 18px; background: #0F766E; border-radius: 4px; }
+.hb .v { text-align: right; }
+/* 보고서 */
+.paper { width: 100%; max-width: 420px; aspect-ratio: 210 / 297; border: 1px solid var(--line-strong); background: #fff; padding: 18px; font-size: 10px; line-height: 1.4; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+.paper h4 { font-size: 14px; margin: 0 0 2px; } .paper h5 { font-size: 10px; margin: 8px 0 3px; border-bottom: 1px solid var(--line); padding-bottom: 2px; }
+.paper .g { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.paper .g div { border: 1px solid var(--line); border-radius: 3px; padding: 3px 4px; } .paper .g b { display: block; font-size: 12px; }
+.paper .bars { display: flex; align-items: flex-end; gap: 2px; height: 34px; } .paper .bars i { flex: 1; background: var(--accent); }
+.two { display: grid; gap: 16px; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); }
+ul { margin: 6px 0 0; padding-left: 18px; }
+@media (max-width: 720px) {
+  .grid { grid-template-columns: 1fr; } .two { grid-template-columns: 1fr; }
+  .alert { flex-wrap: wrap; } .alert small { margin-left: 24px; }
+  .hb { grid-template-columns: 84px 1fr; } .hb .v { grid-column: 2; text-align: left; color: var(--ink-2); }
+  .fun { grid-template-columns: 60px 1fr 76px; }
+}
+</style>
+</head>
+<body>
+<main>
+<h1>통계 더 보기 시안</h1>
+<p class="lead">통계 탭에 더하는 8가지입니다. 숫자와 이름은 모두 지어낸 것입니다. 파란 표시는 통계 탭의 어느 칸에 들어가는지입니다.</p>
+
+<section>
+<h2>① 평소와 다른 것 <span class="where">요약 칸 맨 위</span></h2>
+<p class="sub">평소와 많이 달라진 것만 몇 줄로 알려 줍니다. 달라진 게 없으면 "평소와 비슷해요" 한 줄만 보입니다.</p>
+<div class="alert down"><i>▼</i><span><b>신환</b>이 이번 주 31명이에요. 지난 4주 평균 39명보다 21% 적어요</span><small>11/9~11/14</small></div>
+<div class="alert warn"><i>!</i><span><b>도수 예약 안 옴</b>이 9%예요. 지난 4주 평균 5%보다 높아요</span><small>11/9~11/14</small></div>
+<div class="alert up"><i>▲</i><span><b>충격파</b>가 이번 주 112건이에요. 지난 4주 평균 95건보다 18% 많아요</span><small>11/9~11/14</small></div>
+<p class="note">이번 주(월~어제)를 지난 4주의 같은 요일들과 견줍니다. 15% 넘게 달라지고 평소 수가 10 이상일 때만 보입니다. 많아야 5줄.</p>
+</section>
+
+<section>
+<h2>② 이번 달 목표 <span class="where">요약 칸</span></h2>
+<p class="sub">목표를 적어 두면 오늘까지 얼마나 왔는지, 이 속도면 월말에 얼마가 될지 보여 줍니다. 검은 세로줄은 이번 달이 지나간 만큼(오늘)입니다.</p>
+<div class="goal"><div class="top"><b>내원</b><span>1,870명 / 목표 3,200명 · 58%</span></div>
+<div class="track"><div class="fill" style="width:58%"></div><div class="today" style="left:60%"></div></div>
+<div class="pace">이 속도면 월말 <b>3,110명</b> · 목표의 97% <span class="bad">90명 모자라요</span></div></div>
+<div class="goal"><div class="top"><b>신환</b><span>118명 / 목표 180명 · 66%</span></div>
+<div class="track"><div class="fill" style="width:66%"></div><div class="today" style="left:60%"></div></div>
+<div class="pace">이 속도면 월말 <b>196명</b> · 목표의 109% <span class="ok">넘길 것 같아요</span></div></div>
+<div class="goal"><div class="top"><b>매출</b><span>7,140만 원 / 목표 1억 2,000만 원 · 60%</span></div>
+<div class="track"><div class="fill" style="width:60%"></div><div class="today" style="left:60%"></div></div>
+<div class="pace">이 속도면 월말 <b>1억 1,900만 원</b> · 목표의 99% <span class="bad">100만 원 모자라요</span></div></div>
+<button class="btn">목표 고치기</button>
+<p class="note">목표는 달마다 내원·신환·매출 세 칸(비워 둬도 됨). 월말 예상은 남은 진료일 수 × 요일별 하루 평균으로 셉니다. 일요일·쉬는 날은 뺍니다.</p>
+<p class="need">필요한 것: 목표 숫자를 넣어 둘 자리가 서버에 없어서 SQL을 한 번 붙여 넣으셔야 합니다.</p>
+</section>
+
+<section>
+<h2>③ 몇 번까지 받나 (이탈) <span class="where">처방 칸 · 새 탭</span></h2>
+<p class="sub">신환이 그 치료를 몇 번까지 받고 그만 오는지 봅니다.</p>
+<div class="chips"><span class="chip on">도수</span><span class="chip">충격파</span><span class="chip">주사</span><span class="chip">물리치료</span></div>
+<div class="grid">
+<div class="kpi"><b>29%</b><span>1회만 받고 끝난 환자 (214명 중 62명)</span></div>
+<div class="kpi"><b>4.6회</b><span>한 사람이 받은 횟수 평균</span></div>
+<div class="kpi"><b>1회 → 2회</b><span>가장 많이 빠지는 곳</span></div>
+</div>
+<h3>도수를 처음 받은 신환 214명</h3>
+<div class="fun">
+<span>1회 이상</span><div><div class="bar" style="width:100%"></div></div><span>214명</span>
+<span>2회 이상</span><div><div class="bar" style="width:71%"></div></div><span>152명 <span class="drop">−29%</span></span>
+<span>3회 이상</span><div><div class="bar" style="width:62%"></div></div><span>133명 <span class="drop">−9%</span></span>
+<span>4회 이상</span><div><div class="bar" style="width:51%"></div></div><span>109명 <span class="drop">−11%</span></span>
+<span>5회 이상</span><div><div class="bar" style="width:44%"></div></div><span>94명 <span class="drop">−7%</span></span>
+<span>6회 이상</span><div><div class="bar" style="width:37%"></div></div><span>79명 <span class="drop">−7%</span></span>
+<span>10회 이상</span><div><div class="bar" style="width:18%"></div></div><span>39명</span>
+</div>
+<h3>치료별로 견주기</h3>
+<div class="scroll"><table>
+<tr><th>치료</th><th>처음 받은 신환</th><th>1회만</th><th>3회 이상</th><th>6회 이상</th><th>평균</th></tr>
+<tr><td>도수</td><td>214명</td><td>29%</td><td>62%</td><td>37%</td><td>4.6회</td></tr>
+<tr><td>충격파</td><td>168명</td><td>34%</td><td>48%</td><td>21%</td><td>3.2회</td></tr>
+<tr><td>주사</td><td>121명</td><td>52%</td><td>23%</td><td>6%</td><td>1.9회</td></tr>
+<tr><td>물리치료</td><td>402명</td><td>41%</td><td>39%</td><td>18%</td><td>3.0회</td></tr>
+</table></div>
+<p class="note">마지막으로 받은 뒤 30일 넘게 안 오면 끝난 것으로 봅니다. 아직 다니는 중인 환자(마지막이 30일 안)는 뺍니다. 치료 묶음은 처방 칸에서 쓰는 묶음 그대로입니다. 비트에서 불러온 PC에서만 보입니다.</p>
+</section>
+
+<section>
+<h2>④ 시행자별 <span class="where">예약 칸</span></h2>
+<p class="sub">예약 탭에 적힌 시행자별로 봅니다. 지금은 고른 달 한 달만 보이는데, 12달 흐름과 '다시 예약'을 더합니다.</p>
+<div class="scroll"><table>
+<tr><th>시행자</th><th>예약</th><th>왔음</th><th>안 옴</th><th>취소</th><th>변경</th><th>다시 예약</th><th>12달 예약 수</th></tr>
+<tr><td>김○○</td><td>312</td><td>281</td><td>4%</td><td>6%</td><td>8%</td><td>78%</td><td><span class="spark"><i style="height:8px"></i><i style="height:9px"></i><i style="height:11px"></i><i style="height:10px"></i><i style="height:12px"></i><i style="height:13px"></i><i style="height:12px"></i><i style="height:14px"></i><i style="height:15px"></i><i style="height:16px"></i><i style="height:17px"></i><i style="height:18px"></i></span></td></tr>
+<tr><td>박○○</td><td>268</td><td>229</td><td>9%</td><td>5%</td><td>11%</td><td>64%</td><td><span class="spark"><i style="height:14px"></i><i style="height:15px"></i><i style="height:14px"></i><i style="height:16px"></i><i style="height:15px"></i><i style="height:14px"></i><i style="height:15px"></i><i style="height:14px"></i><i style="height:13px"></i><i style="height:14px"></i><i style="height:13px"></i><i style="height:14px"></i></span></td></tr>
+<tr><td>이○○</td><td>194</td><td>176</td><td>3%</td><td>6%</td><td>7%</td><td>81%</td><td><span class="spark"><i style="height:5px"></i><i style="height:6px"></i><i style="height:7px"></i><i style="height:7px"></i><i style="height:8px"></i><i style="height:9px"></i><i style="height:9px"></i><i style="height:10px"></i><i style="height:10px"></i><i style="height:11px"></i><i style="height:11px"></i><i style="height:12px"></i></span></td></tr>
+</table></div>
+<p class="note">다시 예약 = 와서 치료받은 환자 가운데 그날부터 14일 안에 같은 시행자 예약이 또 잡힌 비율. 예약 탭을 쓰기 시작한 날부터 쌓입니다.</p>
+</section>
+
+<section>
+<h2>⑤ 예약 빈자리 <span class="where">예약 칸</span></h2>
+<p class="sub">요일·시간마다 예약이 얼마나 차는지 봅니다. 진할수록 꽉 찬 시간입니다.</p>
+<div class="chips"><span class="chip on">모두</span><span class="chip">김○○</span><span class="chip">박○○</span><span class="chip">이○○</span></div>
+<div class="scroll"><div class="heat" id="heat"></div></div>
+<div class="legend">비어 있음 <i style="background:#EFF4FF"></i><i style="background:#BFD3FB"></i><i style="background:#7FA6F6"></i><i style="background:#2563EB"></i> 꽉 참</div>
+<ul>
+<li><b>늘 비는 시간</b>: 화 14시 32% · 토 9시 38% · 목 13시 41%</li>
+<li><b>꽉 차는 시간</b>: 월 10시 96% · 금 17시 93%</li>
+</ul>
+<p class="note">최근 8주. 찬 정도 = 그 시간에 잡힌 예약 분 ÷ (일하는 시행자 수 × 60분). 휴무로 적힌 날의 시행자와 취소된 예약은 뺍니다.</p>
+</section>
+
+<section>
+<h2>⑥ 신환 1명당 매출 <span class="where">매출 칸 · 새 탭</span></h2>
+<p class="sub">신환 한 명이 처음 온 날부터 90일 동안 만든 진료비입니다. 어떤 치료를 받았는지에 따라 나눠 봅니다.</p>
+<div class="grid">
+<div class="kpi"><b>41만 2,000원</b><span>신환 1명당 평균 (90일)</span></div>
+<div class="kpi"><b>5.1회</b><span>신환 1명당 내원 횟수 (90일)</span></div>
+<div class="kpi"><b>8만 800원</b><span>한 번 올 때 평균</span></div>
+</div>
+<h3>받은 치료별</h3>
+<div class="hb">
+<span>진료만</span><div><div class="bar" style="width:8%"></div></div><span class="v">6만 8,000원 · 212명</span>
+<span>진료 + 물리치료</span><div><div class="bar" style="width:16%"></div></div><span class="v">14만 2,000원 · 318명</span>
+<span>진료 + 충격파</span><div><div class="bar" style="width:43%"></div></div><span class="v">38만 8,000원 · 96명</span>
+<span>진료 + 도수</span><div><div class="bar" style="width:69%"></div></div><span class="v">61만 8,000원 · 141명</span>
+<span>도수 + 충격파</span><div><div class="bar" style="width:100%"></div></div><span class="v">90만 2,000원 · 58명</span>
+</div>
+<p class="note">진료비 = 공단 부담까지 합친 총액. 처음 온 지 90일이 다 지난 신환만 셉니다. 환자별 금액은 PC 안에서만 계산하고, 서버에는 평균과 인원만 갑니다.</p>
+<p class="need">필요한 것: 비트에서 환자별 금액을 읽어야 해서 도우미 새 판(0.11.0)을 비트 PC에 설치하셔야 합니다.</p>
+</section>
+
+<section>
+<h2>⑦ 날씨·휴일에 따라 <span class="where">진료 운영 칸</span></h2>
+<p class="sub">날씨와 연휴가 내원 수를 얼마나 바꾸는지 봅니다. 같은 요일끼리 견줍니다.</p>
+<div class="scroll"><table>
+<tr><th>날</th><th>날 수</th><th>하루 평균 내원</th><th>평소보다</th></tr>
+<tr><td>평소 (맑거나 흐림)</td><td>187일</td><td>142명</td><td>—</td></tr>
+<tr><td>비 (하루 5mm 이상)</td><td>38일</td><td>121명</td><td class="bad">−15%</td></tr>
+<tr><td>눈</td><td>6일</td><td>104명</td><td class="bad">−27%</td></tr>
+<tr><td>더운 날 (33도 이상)</td><td>14일</td><td>133명</td><td class="bad">−6%</td></tr>
+<tr><td>추운 날 (영하 5도 이하)</td><td>11일</td><td>129명</td><td class="bad">−9%</td></tr>
+<tr><td>연휴 전날</td><td>7일</td><td>131명</td><td class="bad">−8%</td></tr>
+<tr><td>연휴 다음 날</td><td>7일</td><td>173명</td><td class="ok">+22%</td></tr>
+</table></div>
+<p class="note">최근 12달. 날 수가 5일보다 적은 줄은 "아직 적어요"로 흐리게 보입니다. 날씨는 의원이 있는 시·군의 지난 날씨를 날씨 서비스(Open-Meteo)에서 받아 옵니다.</p>
+<p class="need">필요한 것: 날씨를 받으려면 사이트 보안 설정에 날씨 서비스 주소 하나를 더해야 합니다. 보내는 것은 날짜와 지역뿐이고 환자 정보는 가지 않습니다. 휴일 줄만 쓰고 날씨는 뺄 수도 있습니다.</p>
+</section>
+
+<section>
+<h2>⑧ 월간 보고서 인쇄 <span class="where">보고 칸</span></h2>
+<p class="sub">달을 고르고 [인쇄]를 누르면 A4 두 장으로 나옵니다. 인쇄 창에서 'PDF로 저장'을 고르면 파일이 됩니다.</p>
+<div class="two">
+<div class="paper">
+<h4>2026년 10월 통계 보고</h4><div style="color:var(--muted)">양지바른정형외과 · 11월 2일 뽑음</div>
+<h5>한 달 요약</h5>
+<div class="g"><div><b>3,184</b>내원</div><div><b>176</b>신환</div><div><b>1억 1,820만</b>매출</div><div><b>5.2%</b>예약 안 옴</div></div>
+<h5>목표</h5><div>내원 99% · 신환 98% · 매출 99%</div>
+<h5>달라진 것</h5><div>▼ 신환 9월보다 8% 적음 · ▲ 충격파 14% 많음 · ! 도수 안 옴 높아짐</div>
+<h5>내원 흐름 (최근 12달)</h5><div class="bars"><i style="height:60%"></i><i style="height:64%"></i><i style="height:58%"></i><i style="height:70%"></i><i style="height:74%"></i><i style="height:72%"></i><i style="height:80%"></i><i style="height:78%"></i><i style="height:84%"></i><i style="height:90%"></i><i style="height:96%"></i><i style="height:94%"></i></div>
+<h5>치료별</h5><div>도수 612건 · 충격파 448건 · 주사 203건 · 물리치료 2,410건</div>
+<h5>몇 번까지 받나</h5><div>도수 1회만 29% · 평균 4.6회 / 충격파 1회만 34% · 평균 3.2회</div>
+<h5>시행자별</h5><div>김○○ 312건 안 옴 4% · 박○○ 268건 안 옴 9% · 이○○ 194건 안 옴 3%</div>
+</div>
+<div>
+<div class="chips"><span class="chip on">2026년 10월</span><span class="chip">9월</span><span class="chip">8월</span></div>
+<button class="btn pri">인쇄</button>
+<h3>들어가는 것</h3>
+<ul>
+<li>1쪽: 한 달 요약 · 목표 · 달라진 것 · 내원 흐름 · 매출 · 치료별</li>
+<li>2쪽: 예약(취소·변경·안 옴) · 시행자별 · 몇 번까지 받나 · 신환 1명당 매출 · 빈자리</li>
+<li>환자 이름·차트번호는 한 줄도 들어가지 않습니다(숫자만).</li>
+<li>자료가 없는 칸은 빼고 뽑습니다(예: 비트에서 안 불러온 폰).</li>
+</ul>
+</div>
+</div>
+</section>
+
+<section>
+<h2>필요한 것 모아 보기</h2>
+<ul>
+<li><b>SQL 한 번</b>: ② 목표를 넣어 둘 자리</li>
+<li><b>도우미 새 판 0.11.0 설치</b>: ⑥ 신환 1명당 매출만. 설치 전에도 나머지 7가지는 됩니다.</li>
+<li><b>날씨 서비스 주소 하나 허용</b>: ⑦의 날씨 줄만</li>
+<li>①③④⑤⑧은 지금 자료로 됩니다.</li>
+</ul>
+</section>
+</main>
+<script>
+// 지어낸 찬 정도(%). 월~토 × 9~18시
+const fill = [
+  [72,96,88,64,40,58,74,82,90,70],
+  [60,78,70,52,44,32,56,68,74,62],
+  [66,84,80,60,46,54,62,78,86,72],
+  [58,74,72,56,41,48,60,70,80,66],
+  [70,88,84,62,48,56,72,84,93,78],
+  [38,62,70,58,0,0,0,0,0,0],
+]
+const days = ['월','화','수','목','금','토']
+const el = document.getElementById('heat')
+const color = (v) => v === 0 ? '#F7F8FA' : v < 45 ? '#EFF4FF' : v < 65 ? '#BFD3FB' : v < 85 ? '#7FA6F6' : '#2563EB'
+let html = '<div class="h"></div>' + [9,10,11,12,13,14,15,16,17,18].map((h) => `<div class="h">${h}시</div>`).join('')
+fill.forEach((row, i) => {
+  html += `<div class="d">${days[i]}</div>` + row.map((v) => `<div style="background:${color(v)};color:${v >= 85 ? '#fff' : '#111827'}">${v === 0 ? '' : v}</div>`).join('')
+})
+el.innerHTML = html
+</script>
+</body>
+</html>
