@@ -1,6 +1,6 @@
 import type { ClaimMonth, Finding, Grade, RuleDef, RuleSettings, Tables, Visit } from '@/types/precheck'
 import { PAST_HANDLERS } from './past'
-import { createRun, hit, type Run } from './run'
+import { createRun, hit, type RoleMap, type Run } from './run'
 import { SAME_DAY_HANDLERS, type Handler } from './sameDay'
 import { statusesOf } from './status'
 import type { Hit, Outcome } from './types'
@@ -89,9 +89,12 @@ function evaluate(v: Visit, run: Run, settings: Settings, statuses: Map<string, 
   }
 }
 
-/** 한 달 자료를 점검한다. 원본 collect처럼 진료 차례대로 돌고 규칙별로 묶는다 */
-export function runRules(month: ClaimMonth, tables: Tables, settings: RuleSettings): RunResult {
-  const run = createRun(month, tables)
+/**
+ * 한 달 자료를 점검한다. 원본 collect처럼 진료 차례대로 돌고 규칙별로 묶는다.
+ * roles: 처방코드별 약 역할(drugRoles, REQ-6608). 없으면 처방 목록 대기 줄의 성분 역할만 본다
+ */
+export function runRules(month: ClaimMonth, tables: Tables, settings: RuleSettings, roles: RoleMap = new Map()): RunResult {
+  const run = createRun(month, tables, roles)
   const current = readSettings(settings)
   const statuses = statusesOf(tables.rules)
   const perVisit = new Map<string, VisitResult>()

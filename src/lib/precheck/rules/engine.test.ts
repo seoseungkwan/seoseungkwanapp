@@ -204,90 +204,63 @@ describe('AC-010.1 결과 모양', () => {
     expect(ids(m('2026-09-25'), 'a', NO_SETTINGS, t)).toContain('HY-08')
   })
 
-  it('AC-010.2: 코드로 정한 약 역할은 규칙 표의 코드 목록 없이도 남는다(오늘 표에 같은 코드가 있어 드러나지 않는다)', () => {
-    const rules = structuredClone(tables.rules)
-    const classes = rules.drug_classes as Record<string, Record<string, unknown>>
-    delete classes.steroid_injection.clinic_codes
-    delete classes.local_anesthetic.clinic_codes
-    const t: Tables = { ...tables, rules }
-    const codes = ['KK090', 'A15', 'A21', 'A19', 'A99']
-    const m = (drugs: string[]) =>
+  it('AC-6608.3: 코드만으로는 약 역할이 없다 — 규칙 표의 병원 코드(clinic_codes) 없이 처방 목록 보험코드의 성분으로 정한다', () => {
+    const insurance: Record<string, string> = { A15: '670603485', A21: '645903001', A19: '650500301', A99: '645100741' }
+    const m = (drugs: string[], standard: (code: string) => string) =>
       listed(
         month([{ key: 'a', lines: ['Rt knee IA'], rx: [['KK090', '가상시술'], ...drugs.map((code): RxSeed => [code, '가상주사'])] }]),
-        codes.map((code) => ({ code, name: '가상주사', kind: 'drug' as const, standardCode: code })),
+        ['KK090', ...Object.keys(insurance)].map((code) => ({ code, name: '가상주사', kind: 'drug' as const, standardCode: standard(code) })),
       )
-    expect(ids(m(['A15']), 'a', NO_SETTINGS, t)).toContain('IJ-05')
-    expect(ids(m(['A15', 'A21']), 'a', NO_SETTINGS, t)).not.toContain('IJ-05')
-    expect(ids(m(['A15', 'A19']), 'a', NO_SETTINGS, t)).not.toContain('IJ-05')
-    expect(ids(m(['A99']), 'a', NO_SETTINGS, t)).not.toContain('IJ-05')
+    const byCode = (code: string) => code
+    expect(ids(m(['A15'], byCode), 'a')).not.toContain('IJ-05')
+    const byInsurance = (code: string) => insurance[code] ?? code
+    expect(ids(m(['A15'], byInsurance), 'a')).toContain('IJ-05')
+    expect(ids(m(['A15', 'A21'], byInsurance), 'a')).not.toContain('IJ-05')
+    expect(ids(m(['A15', 'A19'], byInsurance), 'a')).not.toContain('IJ-05')
+    expect(ids(m(['A99'], byInsurance), 'a')).not.toContain('IJ-05')
   })
-
 })
 
-describe('AC-010.7 처방 목록 이름으로 약 역할 정하기(원본 병원 모드 cm)', () => {
-  // 히알·아라간은 약 분류 낱말에 없어 역할이 있어야만 HY-01이 걸린다. 무릎이 아닌 상병이라 걸리면 약값 상병 규칙이 나온다
+describe('AC-6608.2·AC-6608.3 처방 목록 보험코드 성분으로 약 역할 정하기', () => {
+  // 무릎이 아닌 상병이라 연골주사로 읽히면 약값 상병 규칙(HY-01)이 걸린다
   const cartilageVisit = (code: string, name: string): ClaimMonth => month([{ key: 'a', lines: ['Rt knee'], rx: [[code, name]], dx: [['M5456', true]] }])
   const cartilageHit = (row: Partial<CatalogCode>) => ids(listed(cartilageVisit(row.code ?? '', row.name ?? ''), [row]), 'a').includes('HY-01')
-  // 이력에만 있는 코드는 줄 이름이 곧 처방 이름이다. 지난 내원의 스테로이드 주사로 읽히면 IJ-01이 걸린다
+  // 이력에만 있는 코드는 약 표에 묻지 않아 성분 이름이 줄 이름표에 없다. 지난 내원의 스테로이드 주사로 읽히면 IJ-01이 걸린다
   const pastShotGrade = (row: Partial<CatalogCode>, code = row.code ?? '') => {
     const seed: VisitSeed = { key: 'a', lines: ['Rt knee'], rx: [['KK090', '관절강내주사'], ['A21', '트리암주']] }
     const past: HistorySeed[] = [['900001', '2026-09-28', ['KK090', code], 'Rt knee']]
     return gradeOf(listed(month([seed], past), [row]), 'a', 'IJ-01')
   }
+  const TRIAMCINOLONE = '645903001'
 
-  it("AC-010.7: 코드가 정해져 있지 않은 종류 drug의 급여 '히알주' + 증상 글 + 무릎이 아닌 상병이면 HY-01 확인필요와 HY-12 알림이 나온다", () => {
-    const m = listed(cartilageVisit('Z701', '히알주'), [{ code: 'Z701', name: '히알주', kind: 'drug' }])
-    expect(gradeOf(m, 'a', 'HY-01')).toBe('확인필요')
-    expect(gradeOf(m, 'a', 'HY-12')).toBe('알림')
+  it.each(['drug', 'lab', 'unknown', 'procedure', 'other'] as const)("AC-6608.3: 이름으로 역할을 추측하지 않는다 — 종류 %s의 '히알주'·'아라간주'·'덱사히알주'·이름 없는 '히알01'은 연골주사가 아니다", (kind) => {
+    for (const [code, name] of [['Z701', '히알주'], ['Z702', '아라간주'], ['Z715', '덱사히알주'], ['히알01', '']]) expect(cartilageHit({ code, name, kind }), `${code} ${name}`).toBe(false)
   })
 
-  it.each(['drug', 'lab', 'unknown', 'procedure'] as const)('AC-010.7: 대기 줄 종류 %s는 이름에 기본 이름이 들면 그 역할로 점검한다', (kind) => {
-    expect(cartilageHit({ code: 'Z701', name: '히알주', kind })).toBe(true)
-    expect(cartilageHit({ code: 'Z702', name: '아라간주', kind })).toBe(true)
+  it("AC-6608.3: 줄 이름을 기본 약 이름으로 바꾸지 않는다 — 이력의 '덱사메타손정'·'트리암패치'는 먹는 약·바르는 약으로 읽혀 주사 분류에서 빠진다", () => {
+    expect(pastShotGrade({ code: 'Z730', name: '덱사메타손정', kind: 'drug' })).toBeUndefined()
+    expect(pastShotGrade({ code: 'Z731', name: '트리암패치', kind: 'drug' })).toBeUndefined()
   })
 
-  it('AC-010.7: 시술 줄은 보험코드로 확인되지 않으면 대기 줄이다(LA는 이름에 신경·차단이 함께 있어야, KK는 정해 둔 셋만 확인된다)', () => {
-    expect(cartilageHit({ code: 'Z701', name: '히알시술', kind: 'procedure', standardCode: 'KK020' })).toBe(true)
-    expect(cartilageHit({ code: 'Z701', name: '히알시술', kind: 'procedure', standardCode: 'LA358' })).toBe(true)
+  it.each(['drug', 'lab', 'unknown', 'procedure'] as const)('AC-6608.2: 대기 줄 종류 %s는 보험코드 성분이 스테로이드 주사면 이력에만 있어도 그 역할로 점검한다', (kind) => {
+    expect(pastShotGrade({ code: 'Z730', name: '가상약', kind, standardCode: TRIAMCINOLONE })).toBe('확인필요')
   })
 
-  it('AC-010.7: 이름 있는 other와 보험코드로 확인된 시술은 이름이 맞아도 역할이 없다', () => {
-    expect(cartilageHit({ code: 'Z701', name: '히알주', kind: 'other' })).toBe(false)
-    for (const standardCode of ['KK061', 'KK062', 'KK090']) expect(cartilageHit({ code: 'Z701', name: '히알주', kind: 'procedure', standardCode }), standardCode).toBe(false)
-    expect(cartilageHit({ code: 'Z701', name: '히알 신경 차단', kind: 'procedure', standardCode: 'LA358' })).toBe(false)
+  it('AC-6608.2: 이름 없는 줄은 종류와 상관없이 보험코드 성분을 보고, 이름 있는 other 줄은 처방코드 탭 역할 없이는 보지 않는다(원본 대기 줄)', () => {
+    expect(pastShotGrade({ code: 'Z732', name: '', kind: 'other', standardCode: TRIAMCINOLONE })).toBe('확인필요')
+    expect(pastShotGrade({ code: 'Z733', name: '가상약', kind: 'other', standardCode: TRIAMCINOLONE })).toBeUndefined()
   })
 
-  it('AC-010.7: 기본 이름이 없는 대기 줄은 역할이 없다', () => {
-    for (const kind of ['drug', 'lab', 'unknown', 'procedure'] as const) expect(cartilageHit({ code: 'Z701', name: '가상주', kind }), kind).toBe(false)
+  it('AC-6608.2: 보험코드 성분이 역할이 아니면(에피네프린 245) 역할이 없다', () => {
+    expect(pastShotGrade({ code: 'Z734', name: '가상약', kind: 'drug', standardCode: '645100741' })).toBeUndefined()
   })
 
-  it('AC-010.7: 이름 없는 줄은 종류와 상관없이 코드 글자로 맞춰 보고, 이름이 있으면 코드 글자를 보지 않는다', () => {
-    expect(cartilageHit({ code: '히알01', name: '', kind: 'drug' })).toBe(true)
-    expect(cartilageHit({ code: '히알02', name: '', kind: 'other' })).toBe(true)
-    expect(cartilageHit({ code: 'Z714', name: '', kind: 'drug' })).toBe(false)
-    expect(cartilageHit({ code: '히알03', name: '가상주', kind: 'drug' })).toBe(false)
+  it('AC-6608.2: 대소문자가 섞인 코드도 찾아 성분 역할을 정한다', () => {
+    expect(pastShotGrade({ code: 'Zm6', name: '가상약', kind: 'drug', standardCode: TRIAMCINOLONE }, 'ZM6')).toBe('확인필요')
   })
 
-  it('AC-010.7: 대소문자가 섞인 코드도 찾아 이름으로 역할을 정한다', () => {
-    expect(cartilageHit({ code: 'Zm5', name: '히알주', kind: 'drug' })).toBe(true)
-  })
-
-  it('AC-010.7: 기본 이름이 둘 걸리면 역할을 합친다(첫 이름 덱사만 보면 연골주사 역할이 빠진다)', () => {
-    expect(cartilageHit({ code: 'Z715', name: '덱사히알주', kind: 'drug' })).toBe(true)
-  })
-
-  it('AC-010.7: 처방 목록이 없는 달은 이름으로 역할을 정하지 않는다(원본도 병원 모드가 아니다)', () => {
+  it('AC-6608.2: 처방 목록이 없는 달은 성분 역할이 없다(줄 이름표의 분류 낱말만 본다)', () => {
     expect(ids(cartilageVisit('Z701', '히알주'), 'a')).not.toContain('HY-01')
-  })
-
-  it('AC-010.7: 줄 이름이 목록의 이름으로 바뀌어, 이력에만 있는 먹는 약·바르는 약도 주사 분류로 남는다', () => {
-    expect(pastShotGrade({ code: 'Z730', name: '덱사메타손정', kind: 'drug' })).toBe('확인필요')
-    expect(pastShotGrade({ code: 'Z731', name: '트리암패치', kind: 'drug' })).toBe('확인필요')
-    expect(pastShotGrade({ code: 'Zm6', name: '덱사메타손정', kind: 'drug' }, 'ZM6')).toBe('확인필요')
-    expect(pastShotGrade({ code: '트리암01', name: '', kind: 'drug' })).toBe('확인필요')
-    // 이름이 안 바뀌는 줄은 먹는 약으로 읽혀 빠진다
-    expect(pastShotGrade({ code: 'Z733', name: '덱사메타손정', kind: 'other' })).toBeUndefined()
-    expect(pastShotGrade({ code: 'Z735', name: '가상주', kind: 'drug' })).toBeUndefined()
   })
 })
 

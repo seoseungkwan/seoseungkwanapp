@@ -472,21 +472,21 @@
         "name": "가상주사",
         "kind": "drug",
         "active": true,
-        "standardCode": "A15"
+        "standardCode": "670603485"
       },
       {
         "code": "A21",
         "name": "가상주사",
         "kind": "drug",
         "active": true,
-        "standardCode": "A21"
+        "standardCode": "645903001"
       },
       {
         "code": "A19",
         "name": "가상주사",
         "kind": "drug",
         "active": true,
-        "standardCode": "A19"
+        "standardCode": "650500301"
       },
       {
         "code": "A99",
@@ -500,14 +500,14 @@
         "name": "가상주사",
         "kind": "drug",
         "active": true,
-        "standardCode": "A49"
+        "standardCode": "645902041"
       },
       {
         "code": "A41",
         "name": "가상주사",
         "kind": "drug",
         "active": true,
-        "standardCode": "A41"
+        "standardCode": "650100641"
       },
       {
         "code": "HA280",

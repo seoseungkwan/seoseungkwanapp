@@ -83,7 +83,7 @@
       "기록날짜": "20261012"
     },
     {
-      "내원번호": "HY-01.hit-name-procedure-la-without-nerve-block",
+      "내원번호": "HY-01.miss-name-procedure-la-without-nerve-block",
       "차트번호": "900010",
       "환자명": "가상환자10",
       "증상": "Rt knee",
@@ -216,21 +216,21 @@
       "기록날짜": "20261012"
     },
     {
-      "내원번호": "IJ-01.hit-name-tablet-history-only",
+      "내원번호": "IJ-01.miss-name-tablet-history-only",
       "차트번호": "900029",
       "환자명": "가상환자29",
       "증상": "Rt knee",
       "기록날짜": "20261012"
     },
     {
-      "내원번호": "IJ-01.hit-name-patch-history-only",
+      "내원번호": "IJ-01.miss-name-patch-history-only",
       "차트번호": "900030",
       "환자명": "가상환자30",
       "증상": "Rt knee",
       "기록날짜": "20261012"
     },
     {
-      "내원번호": "IJ-01.hit-name-mixed-case-history-only",
+      "내원번호": "IJ-01.miss-name-mixed-case-history-only",
       "차트번호": "900031",
       "환자명": "가상환자31",
       "증상": "Rt knee",
@@ -244,7 +244,7 @@
       "기록날짜": "20261012"
     },
     {
-      "내원번호": "IJ-01.hit-two-names-history-only",
+      "내원번호": "IJ-01.miss-two-names-history-only",
       "차트번호": "900033",
       "환자명": "가상환자33",
       "증상": "Rt knee",
@@ -286,21 +286,21 @@
       "기록날짜": "20261012"
     },
     {
-      "내원번호": "HY-01.miss-two-names-first-name-span",
+      "내원번호": "HY-01.hit-list-name-20mg-span",
       "차트번호": "900039",
       "환자명": "가상환자39",
       "증상": "Rt knee",
       "기록날짜": "20261012"
     },
     {
-      "내원번호": "IJ-01.hit-nameless-route-word-history-only",
+      "내원번호": "IJ-01.miss-nameless-route-word-history-only",
       "차트번호": "900040",
       "환자명": "가상환자40",
       "증상": "Rt knee",
       "기록날짜": "20261012"
     },
     {
-      "내원번호": "HY-01.hit-nameless-procedure-fee-code",
+      "내원번호": "HY-01.miss-nameless-procedure-fee-code",
       "차트번호": "900041",
       "환자명": "가상환자41",
       "증상": "Rt knee",
@@ -413,7 +413,7 @@
       "진단일자": "20261012"
     },
     {
-      "내원번호": "HY-01.hit-name-procedure-la-without-nerve-block",
+      "내원번호": "HY-01.miss-name-procedure-la-without-nerve-block",
       "차트번호": "900010",
       "상병청구코드": "M5456",
       "상병명칭": "상병 M5456",
@@ -603,7 +603,7 @@
       "진단일자": "20261012"
     },
     {
-      "내원번호": "IJ-01.hit-name-tablet-history-only",
+      "내원번호": "IJ-01.miss-name-tablet-history-only",
       "차트번호": "900029",
       "상병청구코드": "M1706",
       "상병명칭": "상병 M1706",
@@ -613,7 +613,7 @@
       "진단일자": "20261012"
     },
     {
-      "내원번호": "IJ-01.hit-name-patch-history-only",
+      "내원번호": "IJ-01.miss-name-patch-history-only",
       "차트번호": "900030",
       "상병청구코드": "M1706",
       "상병명칭": "상병 M1706",
@@ -623,7 +623,7 @@
       "진단일자": "20261012"
     },
     {
-      "내원번호": "IJ-01.hit-name-mixed-case-history-only",
+      "내원번호": "IJ-01.miss-name-mixed-case-history-only",
       "차트번호": "900031",
       "상병청구코드": "M1706",
       "상병명칭": "상병 M1706",
@@ -643,7 +643,7 @@
       "진단일자": "20261012"
     },
     {
-      "내원번호": "IJ-01.hit-two-names-history-only",
+      "내원번호": "IJ-01.miss-two-names-history-only",
       "차트번호": "900033",
       "상병청구코드": "M1706",
       "상병명칭": "상병 M1706",
@@ -703,7 +703,7 @@
       "진단일자": "20261012"
     },
     {
-      "내원번호": "HY-01.miss-two-names-first-name-span",
+      "내원번호": "HY-01.hit-list-name-20mg-span",
       "차트번호": "900039",
       "상병청구코드": "M5456",
       "상병명칭": "상병 M5456",
@@ -713,7 +713,7 @@
       "진단일자": "20261012"
     },
     {
-      "내원번호": "IJ-01.hit-nameless-route-word-history-only",
+      "내원번호": "IJ-01.miss-nameless-route-word-history-only",
       "차트번호": "900040",
       "상병청구코드": "M1706",
       "상병명칭": "상병 M1706",
@@ -723,7 +723,7 @@
       "진단일자": "20261012"
     },
     {
-      "내원번호": "HY-01.hit-nameless-procedure-fee-code",
+      "내원번호": "HY-01.miss-nameless-procedure-fee-code",
       "차트번호": "900041",
       "상병청구코드": "M5456",
       "상병명칭": "상병 M5456",
@@ -1348,7 +1348,7 @@
       "m": ""
     },
     {
-      "v": "HY-01.hit-name-procedure-la-without-nerve-block",
+      "v": "HY-01.miss-name-procedure-la-without-nerve-block",
       "p": "900010",
       "d": "2026-10-12",
       "c": [
@@ -1541,7 +1541,7 @@
       "m": ""
     },
     {
-      "v": "h-IJ-01.hit-name-tablet-history-only-0",
+      "v": "h-IJ-01.miss-name-tablet-history-only-0",
       "p": "900029",
       "d": "2026-10-05",
       "c": [
@@ -1551,7 +1551,7 @@
       "m": "Rt knee"
     },
     {
-      "v": "IJ-01.hit-name-tablet-history-only",
+      "v": "IJ-01.miss-name-tablet-history-only",
       "p": "900029",
       "d": "2026-10-12",
       "c": [
@@ -1561,7 +1561,7 @@
       "m": ""
     },
     {
-      "v": "h-IJ-01.hit-name-patch-history-only-0",
+      "v": "h-IJ-01.miss-name-patch-history-only-0",
       "p": "900030",
       "d": "2026-10-05",
       "c": [
@@ -1571,7 +1571,7 @@
       "m": "Rt knee"
     },
     {
-      "v": "IJ-01.hit-name-patch-history-only",
+      "v": "IJ-01.miss-name-patch-history-only",
       "p": "900030",
       "d": "2026-10-12",
       "c": [
@@ -1581,7 +1581,7 @@
       "m": ""
     },
     {
-      "v": "h-IJ-01.hit-name-mixed-case-history-only-0",
+      "v": "h-IJ-01.miss-name-mixed-case-history-only-0",
       "p": "900031",
       "d": "2026-10-05",
       "c": [
@@ -1591,7 +1591,7 @@
       "m": "Rt knee"
     },
     {
-      "v": "IJ-01.hit-name-mixed-case-history-only",
+      "v": "IJ-01.miss-name-mixed-case-history-only",
       "p": "900031",
       "d": "2026-10-12",
       "c": [
@@ -1621,7 +1621,7 @@
       "m": ""
     },
     {
-      "v": "h-IJ-01.hit-two-names-history-only-0",
+      "v": "h-IJ-01.miss-two-names-history-only-0",
       "p": "900033",
       "d": "2026-10-05",
       "c": [
@@ -1631,7 +1631,7 @@
       "m": "Rt knee"
     },
     {
-      "v": "IJ-01.hit-two-names-history-only",
+      "v": "IJ-01.miss-two-names-history-only",
       "p": "900033",
       "d": "2026-10-12",
       "c": [
@@ -1730,7 +1730,7 @@
       "m": ""
     },
     {
-      "v": "HY-01.miss-two-names-first-name-span",
+      "v": "HY-01.hit-list-name-20mg-span",
       "p": "900039",
       "d": "2026-10-12",
       "c": [
@@ -1739,7 +1739,7 @@
       "m": ""
     },
     {
-      "v": "h-IJ-01.hit-nameless-route-word-history-only-0",
+      "v": "h-IJ-01.miss-nameless-route-word-history-only-0",
       "p": "900040",
       "d": "2026-10-05",
       "c": [
@@ -1749,7 +1749,7 @@
       "m": "Rt knee"
     },
     {
-      "v": "IJ-01.hit-nameless-route-word-history-only",
+      "v": "IJ-01.miss-nameless-route-word-history-only",
       "p": "900040",
       "d": "2026-10-12",
       "c": [
@@ -1759,7 +1759,7 @@
       "m": ""
     },
     {
-      "v": "HY-01.hit-nameless-procedure-fee-code",
+      "v": "HY-01.miss-nameless-procedure-fee-code",
       "p": "900041",
       "d": "2026-10-12",
       "c": [
@@ -1953,56 +1953,56 @@
         "name": "히알주",
         "kind": "drug",
         "active": true,
-        "standardCode": ""
+        "standardCode": "645902041"
       },
       {
         "code": "Z702",
         "name": "아라간주",
         "kind": "drug",
         "active": true,
-        "standardCode": ""
+        "standardCode": "645902041"
       },
       {
         "code": "Zm5",
         "name": "히알주",
         "kind": "drug",
         "active": true,
-        "standardCode": ""
+        "standardCode": "645902041"
       },
       {
         "code": "hy7",
         "name": "히알주",
         "kind": "drug",
         "active": true,
-        "standardCode": ""
+        "standardCode": "645902041"
       },
       {
         "code": "Z703",
         "name": "히알주",
         "kind": "unknown",
         "active": true,
-        "standardCode": ""
+        "standardCode": "645902041"
       },
       {
         "code": "Z704",
         "name": "히알검사",
         "kind": "lab",
         "active": true,
-        "standardCode": ""
+        "standardCode": "645902041"
       },
       {
         "code": "Z705",
         "name": "히알시술",
         "kind": "procedure",
         "active": true,
-        "standardCode": ""
+        "standardCode": "645902041"
       },
       {
         "code": "Z706",
         "name": "히알시술",
         "kind": "procedure",
         "active": true,
-        "standardCode": "KK020"
+        "standardCode": "642904921"
       },
       {
         "code": "Z707",
@@ -2065,14 +2065,14 @@
         "name": "",
         "kind": "drug",
         "active": true,
-        "standardCode": ""
+        "standardCode": "645902041"
       },
       {
         "code": "히알02",
         "name": "",
         "kind": "other",
         "active": true,
-        "standardCode": ""
+        "standardCode": "645902041"
       },
       {
         "code": "히알03",
@@ -2086,7 +2086,7 @@
         "name": "덱사히알주",
         "kind": "drug",
         "active": true,
-        "standardCode": ""
+        "standardCode": "645902041"
       },
       {
         "code": "리도카인덱사히알01",

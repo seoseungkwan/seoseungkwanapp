@@ -44,6 +44,22 @@ const goldenNames = () =>
 const readGolden = (name: string) => JSON.parse(readFileSync(`${GOLDEN_DIR}${name}`, 'utf-8')) as Golden
 const NAMES = goldenNames()
 
+// 원본과 결과가 다르다고 적어 둔 사례(knownDiffs)는 파일마다 이 목록과 같아야 한다. 다른 골든 파일은 빈 목록이다.
+// REQ-6608(약 역할을 성분으로)이 일부러 없앤 원본 동작(약 이름 짐작으로 줄 이름 바꾸기·역할 정하기)을 고정했던 사례다.
+// 같은 파일의 나머지 사례는 가짜 처방 목록에 성분 보험코드를 넣어 원본과 같은 결과를 성분으로 낸다(AC-6608.4)
+const KNOWN_DIFFS: Record<string, string[]> = {
+  'rules-drug-names.json': [
+    'HY-01.miss-name-procedure-la-without-nerve-block',
+    'IJ-01.miss-name-tablet-history-only',
+    'IJ-01.miss-name-patch-history-only',
+    'IJ-01.miss-name-mixed-case-history-only',
+    'IJ-01.miss-two-names-history-only',
+    'HY-01.hit-list-name-20mg-span',
+    'IJ-01.miss-nameless-route-word-history-only',
+    'HY-01.miss-nameless-procedure-fee-code',
+  ],
+}
+
 let tables: Tables
 beforeAll(async () => {
   const loaded = await loadTables()
@@ -84,9 +100,14 @@ describe('AC-010.1 원본 evaluate·collect와 순서까지 같다', () => {
       file: 'assets/mx999_v22.html',
       entry: 'new-medicore-precheck evaluate/collect',
     })
-    // 적어 둔 차이만 허용한다. 지금은 없다. 더할 때는 이 목록과 engine.test.ts의 시험을 함께 고친다(design.md 10절)
-    expect(golden.knownDiffs.map((diff) => diff.id)).toEqual([])
-    for (const diff of golden.knownDiffs) expect(diff.reason.trim().length, diff.id).toBeGreaterThan(20)
+    // 적어 둔 차이만 허용한다(KNOWN_DIFFS). 더할 때는 이 목록과 engine.test.ts의 시험을 함께 고친다(design.md 10절)
+    expect(golden.knownDiffs.map((diff) => diff.id)).toEqual(KNOWN_DIFFS[name] ?? [])
+    for (const diff of golden.knownDiffs) {
+      expect(diff.reason.trim().length, diff.id).toBeGreaterThan(20)
+      expect(diff.where.trim().length, diff.id).toBeGreaterThan(0)
+      expect(diff.rules.length, diff.id).toBeGreaterThan(0)
+      expect(golden.visits.some((v) => v.id === diff.id), diff.id).toBe(true)
+    }
 
     const month = shapeClaimMonth(JSON.parse(readFileSync(`${FAKE_DIR}${golden.fake}`, 'utf-8')))
     const result = runRules(month, tables, golden.settings ?? NO_SETTINGS)
@@ -168,8 +189,8 @@ describe('AC-010.7 처방 목록 찾기는 원본 병원 모드 cm과 같다', (
       'HY-01.miss-no-default-name-drug', // 기본 이름이 없는 대기 줄
       'HY-01.hit-nameless-code-holds-name', // 이름이 없고 코드에 기본 이름이 든 줄
       'HY-01.hit-two-names-merged', // 기본 이름이 둘 걸리는 줄
-      'IJ-01.hit-name-tablet-history-only', // 이력에만 있는 먹는 약
-      'IJ-01.hit-name-patch-history-only', // 이력에만 있는 바르는 약
+      'IJ-01.miss-name-tablet-history-only', // 이력에만 있는 먹는 약(REQ-6608부터 먹는 약으로 읽힌다)
+      'IJ-01.miss-name-patch-history-only', // 이력에만 있는 바르는 약(REQ-6608부터 바르는 약으로 읽힌다)
     ]
     expect(samples.filter((id) => !visit(id))).toEqual([])
   })
@@ -184,7 +205,7 @@ describe('AC-010.7 처방 목록 찾기는 원본 병원 모드 cm과 같다', (
 })
 
 describe('AC-010.1 고쳐 온 사례는 이름으로 골든과 비교한다', () => {
-  // 파일 전체 비교(위)가 실패해도 어느 사례인지 시험 이름으로 보이게 한다. 기대값은 모두 골든(원본 결과)이다
+  // 파일 전체 비교(위)가 실패해도 어느 사례인지 시험 이름으로 보이게 한다. 기대값은 골든이다(원본 결과, knownDiffs에 적은 사례만 바뀐 결과)
   const NAMED: [file: string, id: string][] = [
     ['rules-drug-info-history-only.json', 'IJ-01.miss-nine-digit-history-only'],
     ['rules-drug-info-history-only.json', 'IJ-01.miss-catalog-fee-code-history-only'],
@@ -196,9 +217,13 @@ describe('AC-010.1 고쳐 온 사례는 이름으로 골든과 비교한다', ()
     ['rules-drug-info-this-month.json', 'IJ-01.miss-other-nine-digit-history-only'],
     ['rules-drug-info-not-found.json', 'IJ-01.miss-asked-code-not-in-table'],
     ['rules-drug-info-not-found.json', 'IJ-01.miss-nine-digit-history-only-empty-answer'],
-    ['rules-drug-names.json', 'HY-01.miss-two-names-first-name-span'],
-    ['rules-drug-names.json', 'IJ-01.hit-nameless-route-word-history-only'],
-    ['rules-drug-names.json', 'HY-01.hit-nameless-procedure-fee-code'],
+    ['rules-drug-names.json', 'HY-01.hit-list-name-20mg-span'],
+    ['rules-drug-names.json', 'IJ-01.miss-nameless-route-word-history-only'],
+    ['rules-drug-names.json', 'HY-01.miss-nameless-procedure-fee-code'],
+    ['rules-drug-names.json', 'HY-01.hit-name-procedure-other-fee-code'],
+    ['rules-drug-roles.json', 'IJ-05.hit-lido-by-code'],
+    ['rules-drug-roles.json', 'HY-01.hit-a49-by-code'],
+    ['rules-found.json', 'IJ-13.hit-standard-code-drug-role'],
     ['rules-drug-names.json', 'HY-01.miss-name-confirmed-procedure-lower-fee-code'],
   ]
 
