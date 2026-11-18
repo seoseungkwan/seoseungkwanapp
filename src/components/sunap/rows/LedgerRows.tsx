@@ -1,13 +1,14 @@
 'use client'
 
-import { useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { useId, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { ds } from '@/components/ui/classes'
 import { parseWon } from '@/lib/sunap/ledger'
 import { sortLedger, type LedgerSort } from '@/lib/sunap/ledgerSort'
 import type { LedgerEditedField, LedgerRow, RsvKind, RsvKindDef, SunapTotals } from '@/types/sunap'
 import { RSV_NONE, VISIT_LABEL, WON_PROBLEM, cellWon, chipLine, chipTeal, rsvDay, rsvLabel, won, type LedgerPatch } from '../labels'
+import { rsvKeyChoices, rsvKeyPatch } from '../rsvKeys'
 import { Pop, PopHead, anchorOf, type Anchor } from './Pop'
-import { RsvPicker } from './RsvPicker'
+import { KBD, RsvPicker } from './RsvPicker'
 import { SortMenu } from './SortMenu'
 import { PanelHead, TABLE, TD, TD_INK, TD_MID, TD_MUTED, TD_NUM, TF, TF_MID, TF_NUM, TH, TH_MID, TH_NUM } from './parts'
 
@@ -18,6 +19,8 @@ import { PanelHead, TABLE, TD, TD_INK, TD_MID, TD_MUTED, TD_NUM, TF, TF_MID, TF_
 // 줄 세우기(spec sunap-sort REQ-5302, 시안 docs/mockups/sunap-sort): 거르기·찾기 뒤의 줄을 sortLedger로 세운다(NO는 접수 번호 그대로).
 // 세운 상태는 이 화면 안에만 있다(저장하지 않음 — 다시 열면 접수 순). 마감한 날에도 세울 수 있다.
 // 다음 예약 종류(spec sunap-kinds AC-5503.5): 칩 글은 설정 이름, 색은 주사치료 파랑·진료(경과) 청록·종류 모름 노랑·기타와 새 종류 회색. 종류 순은 설정 목록 차례
+// 다음 예약 번호 고르기(spec desk-feedback REQ-6301, 시안 docs/mockups/desk-feedback ①): 다음 예약 칸에서 번호 키 = 판 없이 고침(onEdit), ↓ = 아랫줄(세운 차례) 칸.
+// 표 바로 위 번호표 한 줄(고칠 수 있고 줄이 있을 때만). 마감한 날은 칸이 단추가 아니라 키·번호표가 없다
 
 type Filter = 'all' | 'new' | 'd90' | 'block' | 'unknown' | 'edited'
 type Dir = 'asc' | 'desc'
@@ -183,6 +186,20 @@ function SortNote({ sort }: { sort: LedgerSort | null }) {
   )
 }
 
+/** 장부 위 번호표(시안 ① 번호표): 1 예약 안 하고 가심 · 2~9 설정 종류 · 0 비트 따라가기(맨 끝). 다음 예약 칸이 설명으로 가리킨다 */
+function RsvKeyLegend({ id, kinds }: { id: string; kinds: readonly RsvKindDef[] }) {
+  const choices = rsvKeyChoices(kinds)
+  return (
+    <p id={id} className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-5 pb-2 text-small text-ink-2 max-md:px-4">
+      {[...choices.slice(1), choices[0]!].map(({ key, label }) => (
+        <span key={key} className="inline-flex items-center gap-1">
+          <kbd className={KBD}>{key}</kbd> {label}
+        </span>
+      ))}
+    </p>
+  )
+}
+
 /** 금액 네 칸 판. 바꾼 칸만 넘긴다. 틀린 금액이 있으면 넘기지 않는다 */
 function AmountPop({ row, focus, anchor, onEdit, onClose }: { row: LedgerRow; focus: AmountField; anchor: Anchor; onEdit(patch: LedgerPatch): void; onClose(): void }) {
   const titleId = useId()
@@ -328,6 +345,8 @@ export function LedgerRows({
   const rsvHead = useRef<HTMLButtonElement>(null)
   const rsvHeadId = useId()
   const menuId = useId()
+  const tableRef = useRef<HTMLTableElement>(null)
+  const legendId = useId()
 
   const test = FILTERS.find(({ key }) => key === filter)!.test
   const words = query.trim()
@@ -355,8 +374,29 @@ export function LedgerRows({
 
   const openAt = (chart: string, what: Open['what'], field: AmountField = 'cash') => (event: MouseEvent<HTMLElement>) =>
     setOpen({ chart, what, field, anchor: anchorOf(event.currentTarget) })
-  const close = () => setOpen(null)
+  // 다음 예약 칸 단추들(화면 차례 = 세운 차례)
+  const rsvCells = () => [...(tableRef.current?.querySelectorAll<HTMLButtonElement>('[data-rsv-cell]') ?? [])]
+  const close = () => {
+    // 다음 예약 판은 어떻게 닫히든(번호·[고르기]·[닫기]·Esc) 초점을 그 줄 칸으로 돌린다(AC-6301.4)
+    if (open?.what === 'rsv') rsvCells().find((cell) => cell.dataset.rsvCell === open.chart)?.focus()
+    setOpen(null)
+  }
   const edit = (chart: string) => (patch: LedgerPatch) => onEdit(chart, patch)
+  // 다음 예약 칸 키(AC-6301.2·6301.3). Ctrl·Alt·Meta와 함께 누른 키는 그냥 둔다(브라우저 단축키)
+  const rsvKeyDown = (row: LedgerRow) => (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.ctrlKey || event.altKey || event.metaKey) return
+    if (event.key === 'ArrowDown') {
+      // 화면이 밀리지 않게 막고, 맨 아랫줄이면 그대로
+      event.preventDefault()
+      const cells = rsvCells()
+      cells[cells.indexOf(event.currentTarget) + 1]?.focus()
+      return
+    }
+    const patch = rsvKeyPatch(row, kinds, event.key)
+    if (patch === null) return
+    event.preventDefault()
+    onEdit(row.chart, patch)
+  }
 
   function moneyCell(row: LedgerRow, field: AmountField, label: string) {
     const edited = row.edited.includes(field)
@@ -407,8 +447,9 @@ export function LedgerRows({
         />
       </PanelHead>
       <SortNote sort={sort} />
+      {editable && rows.length > 0 && <RsvKeyLegend id={legendId} kinds={kinds} />}
       <div className="overflow-x-auto">
-        <table className={`${TABLE} min-w-260`}>
+        <table ref={tableRef} className={`${TABLE} min-w-260`}>
           <thead>
             <tr>
               <th className={TH}>NO</th>
@@ -481,7 +522,15 @@ export function LedgerRows({
                   </td>
                   <td className={`${TD} min-w-52 ${editable ? 'p-0!' : ''}`}>
                     {editable ? (
-                      <button type="button" aria-label={`${row.name} 다음 예약`} className={`${CELL_BUTTON} px-3`} onClick={openAt(row.chart, 'rsv')}>
+                      <button
+                        type="button"
+                        aria-label={`${row.name} 다음 예약`}
+                        aria-describedby={legendId}
+                        data-rsv-cell={row.chart}
+                        className={`${CELL_BUTTON} px-3`}
+                        onClick={openAt(row.chart, 'rsv')}
+                        onKeyDown={rsvKeyDown(row)}
+                      >
                         <RsvView row={row} kinds={kinds} caret />
                       </button>
                     ) : (

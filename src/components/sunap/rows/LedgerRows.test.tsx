@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ds } from '@/components/ui/classes'
@@ -635,24 +635,26 @@ describe('AC-5503.4 다음 예약 고르기 판(시안 ?s=pick)', () => {
     await user.click(screen.getByRole('button', { name: '윤○○ 다음 예약' }))
     const pop = screen.getByRole('dialog', { name: '다음 예약 · 윤○○' })
     const radios = within(pop).getAllByRole('radio')
+    // 줄 앞 번호(spec desk-feedback AC-6301.4)
     expect(radios.map((radio) => radio.closest('label')!.textContent)).toEqual([
-      '비트 따라가기지금: 11/21 (토) 예약 있음 · 종류 모름—',
-      '예약 안 하고 가심예약률 ✕',
-      '경과 보기예약률 ○',
-      '도수치료예약률 ○',
-      '신경주사예약률 ○',
-      '기타예약률 ✕',
-      '체외충격파예약률 ✕',
+      '0비트 따라가기지금: 11/21 (토) 예약 있음 · 종류 모름—',
+      '1예약 안 하고 가심예약률 ✕',
+      '2경과 보기예약률 ○',
+      '3도수치료예약률 ○',
+      '4신경주사예약률 ○',
+      '5기타예약률 ✕',
+      '6체외충격파예약률 ✕',
     ])
     // 예약 안 하고 가심과 종류 사이 가는 선
     const line = radios[1]!.closest('label')!.nextElementSibling!
     expect(line.tagName).not.toBe('LABEL')
     expect(line.getAttribute('aria-hidden')).toBe('true')
-    // 판 머리 글(차트 · 구분) 다음의 두 팁
+    // 판 머리 글(차트 · 구분) 다음의 두 팁 + 번호 키 안내(spec desk-feedback AC-6301.4)
     const tips = [...pop.querySelectorAll('p')].map((p) => p.textContent)
     expect(tips.slice(1)).toEqual([
       '직접 고르면 비트 예약보다 이 값을 써요. 비트에 없는 예약(전화·종이 예약)도 여기서 고르면 돼요. 마감을 풀었다 다시 해도 직접 고른 값은 그대로예요.',
       TIP_2,
+      '판이 열려 있을 때도 숫자 키를 치면 바로 고르고 닫혀요.',
     ])
   })
 
@@ -671,11 +673,11 @@ describe('AC-5503.4 다음 예약 고르기 판(시안 ?s=pick)', () => {
     await user.click(screen.getByRole('button', { name: '윤○○ 다음 예약' }))
     const pop = screen.getByRole('dialog', { name: '다음 예약 · 윤○○' })
     expect(within(pop).getAllByRole('radio').map((radio) => radio.closest('label')!.textContent)).toEqual([
-      '비트 따라가기지금: 11/21 (토) 예약 있음 · 종류 모름—',
-      '예약 안 하고 가심예약률 ✕',
-      '주사치료예약률 ○',
-      '진료(경과)예약률 ○',
-      '기타예약률 ✕',
+      '0비트 따라가기지금: 11/21 (토) 예약 있음 · 종류 모름—',
+      '1예약 안 하고 가심예약률 ✕',
+      '2주사치료예약률 ○',
+      '3진료(경과)예약률 ○',
+      '4기타예약률 ✕',
     ])
     expect([...pop.querySelectorAll('p')].map((p) => p.textContent)).toContain(TIP_2)
   })
@@ -728,5 +730,225 @@ describe('AC-5908.3 건강생활 칩·범례', () => {
     renderRows()
     expect(screen.getByText('FREE = 그날 낸 돈 0원')).toBeTruthy()
     expect(screen.getByText('건강생활 = 건강생활유지비로 낸 돈')).toBeTruthy()
+  })
+})
+
+// ── 다음 예약 번호 고르기(spec desk-feedback REQ-6301, 시안 docs/mockups/desk-feedback ①) ─────────
+// 0 = 비트 따라가기 · 1 = 예약 안 하고 가심 · 2~9 = 설정 목록 첫째~여덟째 종류. 키는 onEdit(지금의 고치기 길)으로만 간다
+const rsvCell = (name: string) => screen.getByRole('button', { name: `${name} 다음 예약` })
+// 종류 10개: 기본 셋 + 새 종류 일곱. 9 = 여덟째(새 종류 5), 아홉째·열째(새 종류 6·7)는 번호 없음
+const TEN_KINDS: RsvKindDef[] = [
+  ...DEFAULT_RSV_KINDS,
+  ...Array.from({ length: 7 }, (_, i) => ({ id: `kmore0${i}`, label: `새 종류 ${i + 1}`, counts: false, words: [`말${i}`] })),
+]
+const RSV_KEY_TIP = '판이 열려 있을 때도 숫자 키를 치면 바로 고르고 닫혀요.'
+/** 다음 예약 칸이 설명으로 가리키는 번호표 */
+const legendOf = () => {
+  const id = rsvCell('김○○').getAttribute('aria-describedby')
+  expect(id).toBeTruthy()
+  return document.getElementById(id!)!
+}
+const legendItems = () => [...legendOf().children].map((item) => item.textContent)
+
+describe('AC-6301.2 다음 예약 칸에서 번호 키', () => {
+  it('AC-6301.2: 번호 키를 치면 판을 열지 않고 그 값으로 고친다(2 = 첫째 종류, 1 = 예약 안 하고 가심)', async () => {
+    const { user, onEdit } = renderRows()
+    rsvCell('윤○○').focus()
+    await user.keyboard('2')
+    expect(onEdit).toHaveBeenLastCalledWith('15220', { rsv: 'inj' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    rsvCell('김○○').focus()
+    await user.keyboard('1')
+    expect(onEdit).toHaveBeenLastCalledWith('10231', { rsv: 'none' })
+    await user.keyboard('4')
+    expect(onEdit).toHaveBeenLastCalledWith('10231', { rsv: 'etc' })
+    expect(onEdit).toHaveBeenCalledTimes(3)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(document.activeElement).toBe(rsvCell('김○○'))
+  })
+
+  it('AC-6301.2: 0은 비트 따라가기(직접 고른 값을 지움)이고, 지금 값과 같은 번호는 아무것도 하지 않는다', async () => {
+    const { user, onEdit } = renderRows()
+    // 최○○ = 직접 고른 주사치료
+    rsvCell('최○○').focus()
+    await user.keyboard('2')
+    expect(onEdit).not.toHaveBeenCalled()
+    await user.keyboard('0')
+    expect(onEdit).toHaveBeenCalledWith('10552', { revert: 'rsv' })
+    onEdit.mockClear()
+    // 김○○ = 비트 따라가는 줄
+    rsvCell('김○○').focus()
+    await user.keyboard('0')
+    expect(onEdit).not.toHaveBeenCalled()
+  })
+
+  it('AC-6301.2: 숫자판 키도 같고, 번호로 고친 키는 브라우저 기본 동작을 막는다', () => {
+    const { onEdit } = renderRows()
+    const cell = rsvCell('윤○○')
+    cell.focus()
+    expect(fireEvent.keyDown(cell, { key: '3', code: 'Numpad3' })).toBe(false)
+    expect(onEdit).toHaveBeenCalledWith('15220', { rsv: 'visit' })
+    expect(fireEvent.keyDown(cell, { key: '1', code: 'Digit1' })).toBe(false)
+    expect(onEdit).toHaveBeenLastCalledWith('15220', { rsv: 'none' })
+  })
+
+  it('AC-6301.2: Ctrl·Alt·Meta를 함께 누른 키와 번호가 없는 키는 아무것도 하지 않는다(브라우저 단축키도 막지 않는다)', async () => {
+    const { user, onEdit } = renderRows()
+    const cell = rsvCell('윤○○')
+    cell.focus()
+    await user.keyboard('{Control>}2{/Control}{Alt>}3{/Alt}{Meta>}4{/Meta}')
+    await user.keyboard('5')
+    await user.keyboard('9')
+    await user.keyboard('a')
+    expect(fireEvent.keyDown(cell, { key: '2', ctrlKey: true })).toBe(true)
+    expect(fireEvent.keyDown(cell, { key: '2', altKey: true })).toBe(true)
+    expect(fireEvent.keyDown(cell, { key: '2', metaKey: true })).toBe(true)
+    expect(onEdit).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('AC-6301.2: 종류가 10개면 9가 여덟째 종류다', async () => {
+    const { user, onEdit } = renderRows(true, false, TEN_KINDS)
+    rsvCell('윤○○').focus()
+    await user.keyboard('9')
+    expect(onEdit).toHaveBeenCalledWith('15220', { rsv: 'kmore04' })
+  })
+})
+
+describe('AC-6301.3 ↓로 아랫줄 다음 예약 칸', () => {
+  it('AC-6301.3: ↓를 치면 아랫줄 다음 예약 칸으로 초점이 가고 이어서 번호를 칠 수 있다', async () => {
+    const { user, onEdit } = renderRows()
+    rsvCell('김○○').focus()
+    await user.keyboard('2{ArrowDown}3')
+    expect(document.activeElement).toBe(rsvCell('이○○'))
+    expect(onEdit.mock.calls).toEqual([
+      ['10231', { rsv: 'inj' }],
+      ['10877', { rsv: 'visit' }],
+    ])
+  })
+
+  it('AC-6301.3: 세운 차례 그대로의 아랫줄이고, 맨 아랫줄이면 그대로다. 화면이 밀리지 않게 기본 동작을 막는다', async () => {
+    const { user } = renderRows()
+    // 이름 오름차순: 강(6) → 김(1) → … → 황(9)
+    await user.click(headButton('이름'))
+    const kang = rsvCell('강○○')
+    kang.focus()
+    expect(fireEvent.keyDown(kang, { key: 'ArrowDown' })).toBe(false)
+    expect(document.activeElement).toBe(rsvCell('김○○'))
+    const last = rsvCell('황○○')
+    last.focus()
+    expect(fireEvent.keyDown(last, { key: 'ArrowDown' })).toBe(false)
+    expect(document.activeElement).toBe(last)
+  })
+})
+
+describe('AC-6301.4 고르기 판에서 번호 키', () => {
+  it('AC-6301.4: 판이 열려 있을 때 번호 키를 치면 그 값으로 고르고 판이 닫히며 초점은 그 줄 다음 예약 칸으로 간다', async () => {
+    const { user, onEdit } = renderRows()
+    await user.click(rsvCell('윤○○'))
+    expect(screen.getByRole('dialog', { name: '다음 예약 · 윤○○' })).toBeTruthy()
+    await user.keyboard('3')
+    expect(onEdit).toHaveBeenCalledTimes(1)
+    expect(onEdit).toHaveBeenCalledWith('15220', { rsv: 'visit' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(document.activeElement).toBe(rsvCell('윤○○'))
+  })
+
+  it('AC-6301.4: 판 안 어디에 초점이 있든 받고, 값이 지금과 같으면 고치지 않고 닫기만 한다', async () => {
+    const { user, onEdit } = renderRows()
+    await user.click(rsvCell('최○○'))
+    within(screen.getByRole('dialog')).getByRole('button', { name: '닫기' }).focus()
+    // 최○○ = 직접 고른 주사치료(2)
+    await user.keyboard('2')
+    expect(onEdit).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(document.activeElement).toBe(rsvCell('최○○'))
+    await user.click(rsvCell('최○○'))
+    within(screen.getByRole('dialog')).getByRole('button', { name: '고르기' }).focus()
+    await user.keyboard('0')
+    expect(onEdit).toHaveBeenCalledWith('10552', { revert: 'rsv' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('AC-6301.4: 번호가 없는 키와 Ctrl을 함께 누른 키는 판을 닫지 않는다', async () => {
+    const { user, onEdit } = renderRows()
+    await user.click(rsvCell('윤○○'))
+    await user.keyboard('7{Control>}2{/Control}')
+    expect(screen.getByRole('dialog', { name: '다음 예약 · 윤○○' })).toBeTruthy()
+    expect(onEdit).not.toHaveBeenCalled()
+  })
+
+  it('AC-6301.4: 선택지마다 왼쪽에 번호(kbd)가 보이고 번호가 없는 종류는 그 자리가 비어 있다. 번호 키 안내가 더해진다', async () => {
+    const { user } = renderRows(true, false, TEN_KINDS)
+    await user.click(rsvCell('윤○○'))
+    const pop = screen.getByRole('dialog', { name: '다음 예약 · 윤○○' })
+    const labels = within(pop)
+      .getAllByRole('radio')
+      .map((radio) => radio.closest('label')!)
+    expect(labels.map((label) => label.querySelector('kbd')?.textContent ?? null)).toEqual(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', null, null])
+    // 번호 칸은 줄 맨 앞(번호 없는 줄도 그 자리가 있다)
+    for (const label of labels) expect(label.firstElementChild!.tagName === 'KBD' || label.firstElementChild!.textContent === '').toBe(true)
+    expect(labels[0]!.firstElementChild!.tagName).toBe('KBD')
+    expect(labels[10]!.textContent).toBe('새 종류 6예약률 ✕')
+    expect([...pop.querySelectorAll('p')].map((p) => p.textContent)).toContain(RSV_KEY_TIP)
+  })
+
+  it.each(['고르기', '닫기', 'Esc'])('AC-6301.4: [%s]로 닫아도 초점은 그 줄 다음 예약 칸으로 돌아간다', async (how) => {
+    const { user } = renderRows()
+    await user.click(rsvCell('박○○'))
+    const pop = screen.getByRole('dialog', { name: '다음 예약 · 박○○' })
+    if (how === 'Esc') await user.keyboard('{Escape}')
+    else await user.click(within(pop).getByRole('button', { name: how }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(document.activeElement).toBe(rsvCell('박○○'))
+  })
+})
+
+describe('AC-6301.5 장부 위 번호표', () => {
+  it('AC-6301.5: 고칠 수 있는 날이면 장부 표 바로 위에 번호표 한 줄(1 · 2~ 설정 종류 · 0이 맨 끝)이고 다음 예약 칸은 모두 이 줄을 설명으로 가리킨다', () => {
+    renderRows()
+    const legend = legendOf()
+    expect(legend.tagName).toBe('P')
+    expect([...legend.querySelectorAll('kbd')].map((kbd) => kbd.textContent)).toEqual(['1', '2', '3', '4', '0'])
+    expect(legendItems()).toEqual(['1 예약 안 하고 가심', '2 주사치료', '3 진료(경과)', '4 기타', '0 비트 따라가기'])
+    // 표 바로 위
+    expect(legend.nextElementSibling!.querySelector('table')).toBe(screen.getByRole('table'))
+    for (const tr of bodyRows()) {
+      const name = within(tr).getAllByRole('cell')[3]!.textContent!
+      expect(rsvCell(name).getAttribute('aria-describedby'), name).toBe(legend.id)
+    }
+  })
+
+  it('AC-6301.5: 이름은 설정 이름이고 설정 목록 차례를 따른다. 9까지만 적는다', () => {
+    renderRows(true, false, MY_KINDS, MORE_ROWS)
+    expect(legendItems()).toEqual(['1 예약 안 하고 가심', '2 경과 보기', '3 도수치료', '4 신경주사', '5 기타', '6 체외충격파', '0 비트 따라가기'])
+    cleanup()
+    renderRows(true, false, TEN_KINDS)
+    expect(legendItems()).toEqual([
+      '1 예약 안 하고 가심',
+      '2 주사치료',
+      '3 진료(경과)',
+      '4 기타',
+      '5 새 종류 1',
+      '6 새 종류 2',
+      '7 새 종류 3',
+      '8 새 종류 4',
+      '9 새 종류 5',
+      '0 비트 따라가기',
+    ])
+  })
+
+  it('AC-6301.5: 마감한 날은 번호표가 없고 지금처럼 값만 보인다(번호 키 없음)', () => {
+    renderRows(false)
+    expect(document.querySelectorAll('kbd')).toHaveLength(0)
+    expect(screen.queryByText('비트 따라가기')).toBeNull()
+    expect(screen.queryByRole('button', { name: '김○○ 다음 예약' })).toBeNull()
+    expect(within(rowOf('김○○')).getByText('주사치료')).toBeTruthy()
+  })
+
+  it('AC-6301.5: 장부 줄이 없으면 번호표도 없다', () => {
+    renderRows(true, false, DEFAULT_RSV_KINDS, [])
+    expect(document.querySelectorAll('kbd')).toHaveLength(0)
+    expect(screen.queryByText('비트 따라가기')).toBeNull()
   })
 })

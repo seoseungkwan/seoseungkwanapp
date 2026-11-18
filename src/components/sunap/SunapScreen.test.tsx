@@ -734,14 +734,15 @@ describe('AC-5503.4·AC-5503.5·AC-5503.7 설정 종류 목록을 쓰는 곳', (
     expect(screen.getByText('설정에서 더한 종류·기타는 회색').parentElement!.textContent).toBe('도수치료설정에서 더한 종류·기타는 회색')
     await user.click(screen.getByRole('button', { name: '윤○○ 다음 예약' }))
     const pop = screen.getByRole('dialog', { name: '다음 예약 · 윤○○' })
+    // 줄 앞 번호(spec desk-feedback AC-6301.4)
     expect(within(pop).getAllByRole('radio').map((radio) => radio.closest('label')!.textContent)).toEqual([
-      '비트 따라가기지금: 11/21 (토) 예약 있음 · 종류 모름—',
-      '예약 안 하고 가심예약률 ✕',
-      '신경주사예약률 ○',
-      '진료(경과)예약률 ○',
-      '도수치료예약률 ○',
-      '체외충격파예약률 ✕',
-      '기타예약률 ✕',
+      '0비트 따라가기지금: 11/21 (토) 예약 있음 · 종류 모름—',
+      '1예약 안 하고 가심예약률 ✕',
+      '2신경주사예약률 ○',
+      '3진료(경과)예약률 ○',
+      '4도수치료예약률 ○',
+      '5체외충격파예약률 ✕',
+      '6기타예약률 ✕',
     ])
     await user.click(within(pop).getByRole('radio', { name: /^체외충격파/ }))
     await user.click(within(pop).getByRole('button', { name: '고르기' }))
