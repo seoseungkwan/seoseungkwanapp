@@ -151,7 +151,9 @@ public static class InputCommands
         {
             var checkedByHand = element.TryGetProperty("checkedByHand", out var hand) && hand.ValueKind == JsonValueKind.True;
             var replaces = element.TryGetProperty("replaces", out _) ? Text(element, "replaces", request) : null;
-            items.Add(new InputItem(Text(element, "visitKey", request), Text(element, "chart", request), Text(element, "name", request), Text(element, "date", request), Text(element, "memo", request), checkedByHand, replaces));
+            // 뒤에 붙이기(AC-6611.2). replaces와 함께 오면 BatchCheck가 거절한다
+            var appends = element.TryGetProperty("appends", out _) ? Text(element, "appends", request) : null;
+            items.Add(new InputItem(Text(element, "visitKey", request), Text(element, "chart", request), Text(element, "name", request), Text(element, "date", request), Text(element, "memo", request), checkedByHand, replaces, appends));
         }
         return items;
     }

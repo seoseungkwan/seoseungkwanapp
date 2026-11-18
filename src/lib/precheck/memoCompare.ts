@@ -20,11 +20,26 @@ export const isBlankMemo = (text: string): boolean => BLANK.test(text)
 /** 원본 MemoApproval.Matches: 윈도우 줄바꿈 CRLF만 LF로 맞춘다. 홀로 있는 CR·앞뒤 공백·유니코드 조합은 그대로다 */
 const lf = (text: string) => text.replaceAll('\r\n', '\n')
 
-/** 우리 메모와 비트 메모 비교(AC-016.2). inBit이 null·undefined면 읽지 못한 것이고 빈칸으로 보지 않는다(C#의 null과 같다). 읽었는데 없으면 빈 글자를 넘긴다 */
+/**
+ * 뒤에 붙인 메모인가(AC-6611.3): 줄바꿈을 맞춘 비트 메모가 '줄바꿈 + 우리 메모'로 끝나고 그 앞이 공백뿐이 아니다. 우리 메모가 공백뿐이면 아니다.
+ * 도우미 0.12.0이 '비트 메모 + 줄바꿈 + 우리 메모'로 넣은 글이다. C# MemoCompare.IsAppended와 같은 규칙이다
+ */
+function isAppended(bit: string, ours: string): boolean {
+  if (isBlankMemo(ours)) return false
+  const tail = `\n${ours}`
+  return bit.length > tail.length && bit.endsWith(tail) && !isBlankMemo(bit.slice(0, bit.length - tail.length))
+}
+
+/**
+ * 우리 메모와 비트 메모 비교(AC-016.2). inBit이 null·undefined면 읽지 못한 것이고 빈칸으로 보지 않는다(C#의 null과 같다). 읽었는데 없으면 빈 글자를 넘긴다.
+ * 비트 메모가 앞 글 + 줄바꿈 + 우리 메모(뒤에 붙인 메모)여도 같음이다: 다음 입력에서 앞 글을 덮어쓰지 않는다(AC-6611.3)
+ */
 export function compareMemo(ours: string, inBit: string | null | undefined): MemoCompare {
   if (inBit === null || inBit === undefined) return '조회 못함'
   if (isBlankMemo(inBit)) return '비트에 없음'
-  return lf(ours) === lf(inBit) ? '같음' : '다름'
+  const bit = lf(inBit)
+  const mine = lf(ours)
+  return bit === mine || isAppended(bit, mine) ? '같음' : '다름'
 }
 
 type Rec = Record<string, unknown>

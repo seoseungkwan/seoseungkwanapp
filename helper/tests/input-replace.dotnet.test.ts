@@ -96,7 +96,31 @@ describe('TASK-35 리뷰에서 온 일 (C# Precheck.Core.Tests.Input)', () => {
   })
 })
 
+describe('REQ-6611 비트 메모 뒤에 붙이기 — 도우미 0.12.0 (spec clinic-profile, C# Precheck.Core.Tests.Input)', () => {
+  it('AC-6611.2 칸 글이 appends와 같을 때만 앞 글.TrimEnd() + 줄바꿈 + 우리 메모를 원래 메모 저장 → writing → 쓰기 → 저장 뒤 다시 읽기로 넣고 붙임(기존 메모 뒤에), 바뀌었으면 건너뜀, replaces와 함께면 거절, 묻지 않기로는 붙이지 않음, 끊긴 붙이기 되살리기', () => {
+    expectAc('AC-6611.2')
+  })
+
+  it('AC-6611.3 붙인 뒤 다시 견주면 같은 메모라 다음 입력에서 앞 글을 덮어쓰지 않는다(이미 입력됨)', () => {
+    expectAc('AC-6611.3')
+  })
+
+  it('AC-6611.4 합친 글이 비트 메모 칸 3,000바이트(ASCII 1·나머지 2, 윈도우 줄바꿈 기준)를 넘으면 쓰지 않고 길이 넘음(비트 메모 칸 3,000바이트)으로 건너뛴다. BitBytes는 웹 bitBytes.ts와 같은 사례', () => {
+    expectAc('AC-6611.4')
+  })
+
+  it('AC-6611.5 PC 확인 창에 다른 메모 뒤에 붙이는 환자 {N}명 줄, 0명이면 없음, 메모 글은 없음', () => {
+    expectAc('AC-6611.5')
+  })
+})
+
 describe('REQ-037 명령 표·윈도우 코드 (글자, 실행은 Actions 윈도우)', () => {
+  it('AC-6611.2 appends는 고르는 글자 칸이고 1~4,000자다(replaces와 같은 한도). BatchCheck도 같은 한도를 본다', () => {
+    const fields = commands.commands['bit.input'].args.payload.fields.items.items.fields as Record<string, unknown>
+    expect(fields.appends).toEqual({ type: 'string', min: 1, max: 4000, optional: true })
+    expect(code(path.join(CORE_DIR, 'Input', 'BatchCheck.cs'))).toMatch(/MaxAppends = 4000/)
+  })
+
   it('AC-037.1 replaces는 고르는 글자 칸이고 1~4,000자다. BatchCheck도 같은 한도를 본다', () => {
     const fields = commands.commands['bit.input'].args.payload.fields.items.items.fields as Record<string, unknown>
     expect(fields.replaces).toEqual({ type: 'string', min: 1, max: 4000, optional: true })

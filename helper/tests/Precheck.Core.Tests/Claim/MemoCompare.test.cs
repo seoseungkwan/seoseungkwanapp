@@ -81,7 +81,7 @@ public class MemoCompareTests
         throw new InvalidOperationException("Claim/memo-compare-cases.test.json을 찾지 못했다");
     }
 
-    private static List<(string Name, string Ours, string? InBit, string Expected)> SharedCases()
+    private static List<(string Name, string Ours, string? InBit, string Expected, string? Ac)> SharedCases()
     {
         using var document = JsonDocument.Parse(File.ReadAllText(CasesFile()));
         return document.RootElement.EnumerateArray()
@@ -89,11 +89,14 @@ public class MemoCompareTests
                 item.GetProperty("name").GetString()!,
                 item.GetProperty("ours").GetString()!,
                 item.GetProperty("inBit").ValueKind == JsonValueKind.Null ? null : item.GetProperty("inBit").GetString(),
-                item.GetProperty("expected").GetString()!))
+                item.GetProperty("expected").GetString()!,
+                item.TryGetProperty("ac", out var ac) ? ac.GetString() : null))
             .ToList();
     }
 
     public static IEnumerable<object[]> SharedCaseNames() => SharedCases().Select(item => new object[] { item.Name });
+
+    public static IEnumerable<object[]> AppendedCaseNames() => SharedCases().Where(item => item.Ac == "AC-6611.3").Select(item => new object[] { item.Name });
 
     [Theory(DisplayName = "AC-016.2 공유 사례: 웹 compareMemo와 같은 파일로 같은 답을 낸다")]
     [MemberData(nameof(SharedCaseNames))]
@@ -101,5 +104,46 @@ public class MemoCompareTests
     {
         var item = SharedCases().Single(row => row.Name == name);
         Assert.Equal(item.Expected, Compare(item.Ours, item.InBit));
+    }
+
+    // ------------------------------------------------------------------
+    // AC-6611.3 뒤에 붙인 메모(clinic-profile, 도우미 0.12.0)
+    // ------------------------------------------------------------------
+
+    [Theory(DisplayName = "AC-6611.3 공유 사례 중 붙인 메모: 앞 글 + 줄바꿈 + 우리 메모로 끝나면 같음, 웹 compareMemo와 같은 줄로 같은 답")]
+    [MemberData(nameof(AppendedCaseNames))]
+    public void AppendedCasesMatchWeb(string name)
+    {
+        var item = SharedCases().Single(row => row.Name == name);
+        Assert.Equal(item.Expected, Compare(item.Ours, item.InBit));
+    }
+
+    [Fact(DisplayName = "AC-6611.3 공유 사례 파일에 붙인 메모 줄이 같음·다름 둘 다 있다")]
+    public void AppendedCasesCoverBoth()
+    {
+        var appended = SharedCases().Where(item => item.Ac == "AC-6611.3").Select(item => item.Expected).Distinct().OrderBy(text => text, StringComparer.Ordinal);
+        Assert.Equal(new[] { "다름", "같음" }.OrderBy(text => text, StringComparer.Ordinal), appended);
+    }
+
+    [Fact(DisplayName = "AC-6611.3 MemoCompare.IsAppended: 줄바꿈(CRLF→LF)을 맞춘 뒤 '줄바꿈 + 우리 메모'로 끝나고 앞이 공백뿐이 아니면 참, 값이 없으면 거짓")]
+    public void IsAppended()
+    {
+        Assert.True(MemoCompare.IsAppended("직원이 쓴 메모\r\n우리\r\n메모", "우리\n메모"));
+        Assert.True(MemoCompare.IsAppended("직원이 쓴 메모\n우리 메모", "우리 메모"));
+        Assert.False(MemoCompare.IsAppended("우리 메모", "우리 메모"));
+        Assert.False(MemoCompare.IsAppended("\n우리 메모", "우리 메모"));
+        Assert.False(MemoCompare.IsAppended(" \t\r\n우리 메모", "우리 메모"));
+        Assert.False(MemoCompare.IsAppended("직원이 쓴 메모\n", ""));
+        Assert.False(MemoCompare.IsAppended(null, "우리 메모"));
+        Assert.False(MemoCompare.IsAppended("직원이 쓴 메모\n우리 메모", null));
+    }
+
+    [Fact(DisplayName = "AC-6611.3 MemoCompare.Join: 앞 글의 끝 공백·줄바꿈을 떼고 줄바꿈 하나 + 우리 메모, 그 글은 붙인 메모로 같음이다")]
+    public void JoinIsAppended()
+    {
+        Assert.Equal("직원이 쓴 메모\n우리 메모", MemoCompare.Join("직원이 쓴 메모 \r\n\t", "우리 메모"));
+        Assert.Equal(" 앞 공백\r\n둘째 줄\n우리 메모", MemoCompare.Join(" 앞 공백\r\n둘째 줄", "우리 메모"));
+        Assert.True(MemoCompare.IsAppended(MemoCompare.Join("직원이 쓴 메모 \r\n", "우리 메모"), "우리 메모"));
+        Assert.Equal("같음", Compare("우리 메모", MemoCompare.Join("직원이 쓴 메모", "우리 메모")));
     }
 }

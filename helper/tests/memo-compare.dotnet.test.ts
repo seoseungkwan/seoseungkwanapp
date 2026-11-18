@@ -36,3 +36,9 @@ describe('REQ-016 비트 메모 비교, 도우미 쪽 (C# Precheck.Core.Tests.Cl
     expectAc('AC-016.2')
   })
 })
+
+describe('REQ-6611 뒤에 붙인 메모 견주기, 도우미 쪽 (spec clinic-profile, C# Precheck.Core.Tests.Claim)', () => {
+  it('AC-6611.3 MemoMatcher·MemoCompare: 비트 메모가 앞 글(공백뿐이 아님) + 줄바꿈 + 우리 메모로 끝나면 같음, 웹 compareMemo와 같은 공유 사례 표로 같은 답', () => {
+    expectAc('AC-6611.3')
+  })
+})

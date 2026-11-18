@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Precheck.Core.Claim;
 using Precheck.Core.Protocol;
 using Precheck.Core.Registration;
 
@@ -11,6 +12,8 @@ namespace Precheck.Core.Input;
 /// 지문 → 묶음 검사 → PC 확인 창(묻지 않기가 켜져 있으면 물을 일이 있는 묶음만) → 해시 저장 → 입력 기록 읽기 → 풀 사람 기록 → 내원내역 기간 확인 → 사람마다(열기 → 검사 → 메모 다시 읽기 → 쓰기 → 다시 읽기 → 검사 → 저장 → 다시 읽기).
 /// 사람 하나의 안전한 자리는 '쓰기 전'과 '저장 뒤 다시 읽기까지'다(AC-017.9). 뜻밖의 일이면 짐작하지 않고 멈춘다.
 /// 다른 메모는 사람이 승인했거나(item.Replaces) 묶음을 시작할 때 묻지 않기가 켜져 있을 때만 바꾼다(design.md 19-6 표). 바꾸는 사람은 원래 메모가 디스크에 남은 뒤에야 writing을 남기고 칸에 쓴다(AC-037.1).
+/// 뒤에 붙이기(item.Appends, clinic-profile AC-6611.2)는 사람이 고른 진료에만, 칸 글이 그 글일 때만 '앞 글.TrimEnd() + 줄바꿈 + 우리 메모'를 같은 쓰기 길로 넣는다. 묻지 않기로는 붙이지 않는다.
+/// 합친 글이 비트 메모 칸 3,000바이트(BitBytes)를 넘으면 쓰지 않는다(AC-6611.4).
 /// 예외 글은 어디에도 남기지 않는다(AC-001.6).
 /// 전에 쓰다 멈춘 사람(입력 기록의 마지막이 Writing·WriteUnconfirmed)은 칸 글을 그대로 믿지 않는다. 칸이 우리 글과 같아도 저장됐는지 모르고, 다르면 쓰다 만 글일 수 있다.
 /// 그 기록은 저장을 확인해야만(또는 칸이 비어 처음처럼 입력해 확인해야만) 풀린다. 그 전에는 건너뛰지 않고 묶음을 멈춘다.
@@ -28,6 +31,8 @@ public sealed class InputRunner
     public const string AlreadyOther = "이미 있음";
     public const string Written = "입력";
     public const string ReplacedOther = "바꿈(기존 메모 덮어씀)";
+    public const string Appended = "붙임(기존 메모 뒤에)";
+    public const string TooLong = "길이 넘음(비트 메모 칸 3,000바이트)";
 
     private const int MaxFailureRun = 3;
 
@@ -180,8 +185,8 @@ public sealed class InputRunner
                     failureRun = 0;
                     continue;
                 }
-                // 승인한 뒤 누가 메모를 고친 것은 설정 문제가 아니다: 3번 잇따른 실패에 세지 않는다(AC-037.2)
-                if (!ChartRules.IsPatientSkip(result.Reason) && !string.Equals(result.Reason, ChangedBefore, StringComparison.Ordinal)) failureRun++;
+                // 승인한 뒤 누가 메모를 고친 것·붙인 글이 길이를 넘는 것은 설정 문제가 아니다: 3번 잇따른 실패에 세지 않는다(AC-037.2·AC-6611.4)
+                if (!ChartRules.IsPatientSkip(result.Reason) && !string.Equals(result.Reason, ChangedBefore, StringComparison.Ordinal) && !string.Equals(result.Reason, TooLong, StringComparison.Ordinal)) failureRun++;
                 if (failureRun >= MaxFailureRun && !person.Review)
                 {
                     stop = new BatchStop(InputErrors.Stopped, "연속 3명 실패 — 설정 문제일 수 있어 멈췄습니다. 마지막 사유: " + result.Reason);
@@ -395,7 +400,7 @@ public sealed class InputRunner
         var match = matcher.Compare(item.Memo, existing);
         if (person.EarlierWrite)
         {
-            if (match == MemoMatch.Same) return FinishEarlierWrite(item);
+            if (match == MemoMatch.Same) return FinishEarlierWrite(item, existing ?? throw Stop(InputErrors.Stopped, MemoUnreadable));
             if (match == MemoMatch.Different) throw StopAfterWrite(item, CheckMemoBox);
         }
         switch (match)
@@ -410,36 +415,53 @@ public sealed class InputRunner
                     person.Review = true;
                     return Skip(item, refused);
                 }
-                person.Replacing = true;
+                if (item.Appends != null) person.Appending = true;
+                else person.Replacing = true;
                 break;
             case MemoMatch.Absent:
+                // 붙일 앞 글이 그새 지워졌다: 화면에서 본 글과 다르니 우리 메모만 넣지 않고 '바뀜'이다(AC-6611.2). 직접 확인으로 온 사람은 붙이지 않으므로 지금처럼 쓴다
+                if (item.Appends != null && !person.CheckedByHand)
+                {
+                    person.Review = true;
+                    return SkipUnlessEarlierWrite(item, ChangedBefore, person);
+                }
                 break;
             default:
                 throw Stop(InputErrors.Stopped, MemoUnreadable);
         }
         if (existing == null) throw Stop(InputErrors.Stopped, MemoUnreadable);
 
-        return WriteMemo(item, existing, person);
+        // 칸에 넣을 글: 붙이는 사람은 칸에서 막 읽은 앞 글 뒤에 줄바꿈 + 우리 메모(AC-6611.2). 비트에 들어가는 윈도우 줄바꿈 모양으로 바이트를 센다(AC-6611.4)
+        var text = ChartRules.ToWin(person.Appending ? MemoCompare.Join(existing, item.Memo) : item.Memo);
+        if (person.Appending && BitBytes.Of(text) > BitBytes.MaxMemo)
+        {
+            person.Review = true;
+            return SkipUnlessEarlierWrite(item, TooLong, person);
+        }
+
+        return WriteMemo(item, existing, text, person);
     }
 
     /// <summary>
-    /// 칸에 다른 메모가 있을 때 바꾸지 않는 까닭(design.md 19-6 표). 바꿔도 되면 null이다. 차례가 곧 우선순위다: 직접 확인으로 온 사람은 replaces가 함께 와도 바꾸지 않고(AC-035.5),
-    /// 승인이 있으면 칸 글이 그 글일 때만 바꾸며(AC-037.1·AC-037.2), 승인이 없으면 묶음 시작 때 묻지 않기가 켜져 있고 직접 확인 기록이 없을 때만 바꾼다(AC-037.6).
+    /// 칸에 다른 메모가 있을 때 바꾸거나 붙이지 않는 까닭(design.md 19-6 표). 바꾸거나 붙여도 되면 null이다. 차례가 곧 우선순위다: 직접 확인으로 온 사람은 replaces·appends가 함께 와도 손대지 않고(AC-035.5),
+    /// 승인이 있으면 칸 글이 그 글일 때만 바꾸며(AC-037.1·AC-037.2), [뒤에 붙이기]를 고른 사람은 칸 글이 그때 본 글일 때만 붙이고(AC-6611.2, 묻지 않기와 상관없다),
+    /// 둘 다 없으면 묶음 시작 때 묻지 않기가 켜져 있고 직접 확인 기록이 없을 때만 바꾼다(AC-037.6). 묻지 않기는 붙이지 않는다.
     /// </summary>
     private static string? WhyNotReplace(InputItem item, string existing, Person person)
     {
         if (person.CheckedByHand) return AlreadyOther;
         if (item.Replaces != null) return MemoApproval.Matches(existing, item.Replaces) ? null : ChangedBefore;
+        if (item.Appends != null) return MemoApproval.Matches(existing, item.Appends) ? null : ChangedBefore;
         return person.NoAsk && !person.HandRecord ? null : AlreadyOther;
     }
 
     /// <summary>
-    /// 쓰기부터 저장 뒤 다시 읽기까지. existing은 쓰기 바로 앞에 칸에 있어야 할 글이다(빈칸, 또는 바꾸는 사람이면 원래 메모).
-    /// 바꾸는 사람은 원래 메모를 먼저 달 파일에 남긴다(AC-037.1): 못 남기면 번호 있는 예외로 멈추고 writing도 쓰기도 없다.
+    /// 쓰기부터 저장 뒤 다시 읽기까지. existing은 쓰기 바로 앞에 칸에 있어야 할 글이다(빈칸, 또는 바꾸거나 붙이는 사람이면 원래 메모). text는 칸에 넣을 윈도우 줄바꿈 글이다(붙이는 사람은 합친 글).
+    /// 바꾸거나 붙이는 사람은 원래 메모를 먼저 달 파일에 남긴다(AC-037.1·AC-6611.2): 못 남기면 번호 있는 예외로 멈추고 writing도 쓰기도 없다. 저장 뒤 다시 읽기도 text와 견준다.
     /// writing을 남긴 뒤로는 멈춤 신호를 보지 않는다: 시작한 사람은 끝까지 한다(AC-017.9).
     /// 쓰기 바로 앞에 저장 안 한 처방 창을 눌렀으면 칸을 다시 찾아 아래 확인을 처음부터 다시 한다(AC-017.12): 옛 환자로 확인을 통과한 뒤 화면이 바뀌면 메모가 다른 환자에게 간다.
     /// </summary>
-    private InputResult WriteMemo(InputItem item, string existing, Person person)
+    private InputResult WriteMemo(InputItem item, string existing, string text, Person person)
     {
         var presses = 0;
         for (;;)
@@ -466,11 +488,10 @@ public sealed class InputRunner
         }
         if (stopRequested()) throw Stop(InputErrors.Stopped, null);
 
-        if (person.Replacing) journal.SaveOriginal(item, existing);
+        if (person.Replacing || person.Appending) journal.SaveOriginal(item, existing);
         journal.Mark(item, JournalState.Writing);
         person.WriteStarted = true;
 
-        var text = ChartRules.ToWin(item.Memo);
         switch (MemoWriter.Write(ui, text, existing, () => CheckTarget(item) == null))
         {
             case MemoWrite.NotWritten:
@@ -488,7 +509,9 @@ public sealed class InputRunner
         }
 
         var saved = SaveAndConfirm(item, text);
-        return person.Replacing ? new InputResult(item.VisitKey, InputResults.Done, ReplacedOther, existing) : saved;
+        if (person.Replacing) return new InputResult(item.VisitKey, InputResults.Done, ReplacedOther, existing);
+        // 앞 글은 칸에 그대로 남았다: previousMemo(덮어쓴 메모)를 싣지 않는다
+        return person.Appending ? new InputResult(item.VisitKey, InputResults.Done, Appended) : saved;
     }
 
     /// <summary>
@@ -497,14 +520,22 @@ public sealed class InputRunner
     /// 칸이 편집 불가면 저장을 눌러도 저장됐다고 볼 수 없어 누르지 않고 멈춘다(AC-036.5). 조회 모드 표시를 함께 보지 않는다:
     /// 조회 모드로 멈춘 뒤 다시 실행하면 내원이 이미 열려 있어 안내창이 없고 표시도 없다.
     /// 바꾸다 멈춘 사람이면 남겨 둔 원래 메모를 결과에 준다(AC-037.1). 저장을 누르기 전에 읽는다: 못 읽으면 기록이 쓰다 멈춤 그대로 남는다.
+    /// 붙이다 멈춘 사람(AC-6611.2)은 칸 글이 '마지막 원본 + 줄바꿈 + 우리 메모'일 때만 그 글로 저장을 확인한다(붙임, previousMemo 없음).
+    /// 칸 끝이 우리 메모여도 앞 글이 마지막 원본이 아니면 우리가 쓴 글인지 모르니 저장을 누르지 않고 멈춘다(칸 글이 다를 때와 같다).
     /// </summary>
-    private InputResult FinishEarlierWrite(InputItem item)
+    private InputResult FinishEarlierWrite(InputItem item, string existing)
     {
         if (!ui.IsMemoEditable()) throw StopAfterWrite(item, WriteUnknown);
         if (ui.HasUnsavedRxDialog()) throw Stop(InputErrors.UnsavedRx, null);
         var original = journal.LastOriginal(item);
-        var saved = SaveAndConfirm(item, ChartRules.ToWin(item.Memo));
-        return original == null ? saved : new InputResult(item.VisitKey, InputResults.Done, ReplacedOther, original);
+        if (MemoCompare.Matches(existing, item.Memo))
+        {
+            var saved = SaveAndConfirm(item, ChartRules.ToWin(item.Memo));
+            return original == null ? saved : new InputResult(item.VisitKey, InputResults.Done, ReplacedOther, original);
+        }
+        if (original == null || !MemoCompare.Matches(existing, MemoCompare.Join(original, item.Memo))) throw StopAfterWrite(item, CheckMemoBox);
+        SaveAndConfirm(item, ChartRules.ToWin(MemoCompare.Join(original, item.Memo)));
+        return new InputResult(item.VisitKey, InputResults.Done, Appended);
     }
 
     private InputResult SaveAndConfirm(InputItem item, string text)
@@ -590,6 +621,9 @@ public sealed class InputRunner
 
         /// <summary>칸의 다른 메모를 바꾸는 중이다: 원래 메모를 먼저 남기고 결과에 준다(AC-037.1).</summary>
         public bool Replacing;
+
+        /// <summary>칸의 다른 메모 뒤에 붙이는 중이다: 원래 메모를 먼저 남기고(되살리기용) 결과에는 주지 않는다(AC-6611.2).</summary>
+        public bool Appending;
 
         /// <summary>이번 실행에서 writing을 남겼다.</summary>
         public bool WriteStarted;

@@ -59,6 +59,9 @@ public static class InputPrompt
         // 수만 센다(AC-037.3). 직접 확인으로 온 사람은 replaces가 함께 와도 바꾸지 않으므로 세지 않는다(AC-035.5)
         var replacing = items.Count(item => item.Replaces != null && !item.CheckedByHand);
         if (replacing > 0) text.Append("다른 메모를 바꾸는 환자 ").Append(replacing).Append("명").Append(NewLine);
+        // 뒤에 붙이기(AC-6611.5): 바꾸기와 같이 수만 세고, 직접 확인으로 온 사람은 appends가 함께 와도 붙이지 않으므로 세지 않는다
+        var appending = items.Count(item => item.Appends != null && !item.CheckedByHand);
+        if (appending > 0) text.Append("다른 메모 뒤에 붙이는 환자 ").Append(appending).Append("명").Append(NewLine);
         var byHand = items.Count(item => item.CheckedByHand) + released;
         if (byHand > 0) text.Append("직접 확인한 환자 ").Append(byHand).Append("명").Append(NewLine);
         if (released > 0) text.Append("이 가운데 ").Append(released).Append("명은 메모를 넣지 않고 입력 멈춤만 풉니다").Append(NewLine);

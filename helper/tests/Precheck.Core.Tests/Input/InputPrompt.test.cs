@@ -59,4 +59,53 @@ public class InputPromptTests
         Assert.DoesNotContain("빼는 환자", plain, StringComparison.Ordinal);
         Assert.Contains("빼는 환자 3명", InputPrompt.Build(Sample.Items(1), Sample.Registration, 3), StringComparison.Ordinal);
     }
+
+    // AC-6611.5 뒤에 붙이기(clinic-profile, 도우미 0.12.0)
+
+    private const string AppendLine = "다른 메모 뒤에 붙이는 환자 ";
+
+    private static InputItem Appending(int n, string appends, bool checkedByHand = false)
+    {
+        var item = Sample.Item(n, checkedByHand: checkedByHand);
+        return new InputItem(item.VisitKey, item.Chart, item.Name, item.Date, item.Memo, item.CheckedByHand, null, appends);
+    }
+
+    [Fact(DisplayName = "AC-6611.5 appends가 있는 환자 수만큼 '다른 메모 뒤에 붙이는 환자 {N}명' 줄, 바꾸는 환자 줄 바로 다음이고 0명이면 줄이 없다")]
+    public void AppendCountLine()
+    {
+        var items = new List<InputItem>
+        {
+            Appending(1, "직원이 쓴 첫 메모"),
+            Sample.Item(2, replaces: "직원이 쓴 다른 메모"),
+            Appending(3, "직원이 쓴 셋째 메모"),
+            Sample.Item(4),
+        };
+
+        var text = InputPrompt.Build(items, Sample.Registration);
+
+        Assert.Contains("다른 메모를 바꾸는 환자 1명\r\n다른 메모 뒤에 붙이는 환자 2명\r\n", text, StringComparison.Ordinal);
+        Assert.Contains("\r\n다른 메모 뒤에 붙이는 환자 1명\r\n", InputPrompt.Build(new[] { Appending(1, "직원 메모"), Sample.Item(2) }, Sample.Registration), StringComparison.Ordinal);
+        Assert.DoesNotContain(AppendLine, InputPrompt.Build(Sample.Items(3), Sample.Registration), StringComparison.Ordinal);
+        Assert.DoesNotContain(AppendLine, InputPrompt.Build(new[] { Sample.Item(1, replaces: "직원 메모") }, Sample.Registration), StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "AC-6611.5 직접 확인으로 온 환자는 appends가 함께 와도 붙이지 않으므로 세지 않는다")]
+    public void HandCheckedNotCounted()
+    {
+        var text = InputPrompt.Build(new[] { Appending(1, "직원 메모", checkedByHand: true), Appending(2, "직원 메모") }, Sample.Registration);
+        Assert.Contains("다른 메모 뒤에 붙이는 환자 1명", text, StringComparison.Ordinal);
+        Assert.Contains("직접 확인한 환자 1명", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(AppendLine, InputPrompt.Build(new[] { Appending(1, "직원 메모", checkedByHand: true) }, Sample.Registration), StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "AC-6611.5 창 글에 붙일 앞 글(appends)·우리 메모·이름·차트번호가 없다")]
+    public void NoAppendText()
+    {
+        var item = Appending(1, "직원이 쓴 비밀 메모");
+        var text = InputPrompt.Build(new[] { item }, Sample.Registration);
+        foreach (var forbidden in new[] { item.Appends!, item.Memo, item.Name, item.Chart })
+        {
+            Assert.DoesNotContain(forbidden, text, StringComparison.Ordinal);
+        }
+    }
 }
