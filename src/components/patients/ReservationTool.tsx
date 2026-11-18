@@ -7,7 +7,7 @@ import { ds } from '@/components/ui/classes'
 import { addDays } from '@/lib/analytics/dates'
 import { errorInfo, isErrorCode } from '@/lib/errors'
 import { DEFAULT_TEMPLATES } from '@/lib/patientMessages/defaults'
-import { fillTemplate } from '@/lib/patientMessages/fill'
+import { fillClinic, fillTemplate, type ClinicInfo } from '@/lib/patientMessages/fill'
 import { inPickRange, missedRange, RESERVATION_AHEAD_DAYS, shortDay } from '@/lib/patients/reservations'
 import { readTemplates, type MessageTemplate } from '@/lib/storage/messageTemplates'
 import { supabaseBrowser } from '@/lib/supabase/browser'
@@ -238,6 +238,7 @@ const MISSED_PERIODS: readonly (readonly [MissedDays, string])[] = [
 export function ReservationTool({
   read,
   storeCode,
+  clinic,
   active,
   post,
   listen,
@@ -250,6 +251,8 @@ export function ReservationTool({
   read: ReservationsRead
   /** 표시 저장을 못 불러온 번호. 모르면(아직 불러오는 중) 없다 */
   storeCode?: string | null
+  /** [문구 복사] 글에 넣을 병원 정보(AC-6605.1). PatientsScreen이 한 번 읽어 넘긴다 */
+  clinic: ClinicInfo
   /** 지금 보이는 도구인가. 다른 도구로 가도 살아 있어 고른 값·저장 답을 잃지 않는다 */
   active: boolean
   post(message: ToolRequest): void
@@ -470,7 +473,7 @@ export function ReservationTool({
           ) : (
             <>
               <CopyButton
-                text={() => fillTemplate(template?.body ?? '', day)}
+                text={() => fillClinic(fillTemplate(template?.body ?? '', day), clinic)}
                 label="문구 복사"
                 disabled={!template || rows.length === 0}
                 doneText={`복사했어요 · ${template?.name ?? ''} · ${dayLabel(day)}`}

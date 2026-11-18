@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { errorInfo } from '@/lib/errors'
 import { DEFAULT_TEMPLATES } from '@/lib/patientMessages/defaults'
-import { fillTemplate } from '@/lib/patientMessages/fill'
+import { fillClinic, fillTemplate, NO_CLINIC_INFO, type ClinicInfo } from '@/lib/patientMessages/fill'
 import { readReservations } from '@/lib/patients/reservations'
 import type { ReservationData, ReservationFilters } from '@/types/patients'
 import { reservationsHead, reservationsListView } from '@/workers/patients/jobs'
@@ -69,7 +69,7 @@ const KEY_CHOI = 's|C-1004|202611071430'
 
 const readOf = (d: ReservationData, today: string, readAt = READ_AT): ReservationsRead => ({ today, readAt, total: d.rows.length, ...reservationsHead(d, today) })
 
-type SetupOptions = { today?: string; data?: ReservationData; marks?: Record<string, string> | null; storeCode?: string | null; active?: boolean }
+type SetupOptions = { today?: string; data?: ReservationData; marks?: Record<string, string> | null; storeCode?: string | null; active?: boolean; clinic?: ClinicInfo }
 
 function setup(options: SetupOptions = {}) {
   const today = options.today ?? TODAY
@@ -99,6 +99,7 @@ function setup(options: SetupOptions = {}) {
     <ReservationTool
       read={read}
       storeCode={options.storeCode ?? undefined}
+      clinic={options.clinic ?? NO_CLINIC_INFO}
       active={active}
       post={post}
       listen={listen}
@@ -427,6 +428,33 @@ describe('AC-2803.9 번호 없는 분', () => {
 })
 
 describe('AC-2803.3 문구 복사', () => {
+  it('AC-6605.1: 병원 정보를 받으면 복사 글의 병원 이름·전화 자리에 넣는다', async () => {
+    // 병원 이름·번호는 지어낸 것이다
+    const clinic: ClinicInfo = { name: '튼튼정형외과', phone: '02-123-4567', hoursText: '평일 09:00~18:00, 일·공휴일 휴진' }
+    sb.result = { data: [], error: null }
+    const { user, writeText } = setupUser()
+    setup({ clinic })
+    await flush()
+    await user.click(button('문구 복사'))
+    const body = DEFAULT_TEMPLATES.find((tpl) => tpl.kind === 'reservation')!.body
+    const copied = writeText.mock.lastCall?.[0] ?? ''
+    expect(copied).not.toContain('설정 필요')
+    expect(copied.startsWith('튼튼정형외과\n')).toBe(true)
+    expect(copied).toContain('문의: 02-123-4567')
+    expect(copied).toContain('* 11월 7일 토요일 *')
+    expect(writeText).toHaveBeenCalledWith(fillClinic(fillTemplate(body, TOMORROW), clinic))
+  })
+
+  it('AC-6605.1: 빈 병원 정보면 복사 글은 그대로다', async () => {
+    sb.result = { data: [], error: null }
+    const { user, writeText } = setupUser()
+    setup({ clinic: NO_CLINIC_INFO })
+    await flush()
+    await user.click(button('문구 복사'))
+    const body = DEFAULT_TEMPLATES.find((tpl) => tpl.kind === 'reservation')!.body
+    expect(writeText).toHaveBeenCalledWith(fillTemplate(body, TOMORROW))
+  })
+
   it('AC-2803.3: 예약 안내 첫 문구를 고른 날로 채워 복사하고, 알림은 복사했어요 · 문구 이름 · M월 D일 (요일), 옆에 문구 날짜, 아래 안내 글', async () => {
     const { user, writeText } = setupUser()
     setup()

@@ -2,10 +2,12 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useClinicProfile, type ClinicProfileView } from '@/components/clinic/useClinicProfile'
 import { BridgeError } from '@/lib/bridge/protocol'
 import { LIST_HELPER } from '@/lib/bridge/versions'
 import { errorInfo } from '@/lib/errors'
 import { readReservations } from '@/lib/patients/reservations'
+import { defaultProfile } from '@/lib/storage/clinicProfile'
 import type { ContactCount, FollowupRow, FollowupView, PatientsWorkerMessage, RecallRow, RecallView, ReservationFilters, ViewReasons } from '@/types/patients'
 import { reservationsHead, reservationsListView } from '@/workers/patients/jobs'
 import { PatientsScreen } from './PatientsScreen'
@@ -40,11 +42,45 @@ vi.mock('@/lib/supabase/browser', () => ({
   }),
 }))
 
+// 병원 정보(AC-6605.1). 시험마다 정한다. 처음은 불러오는 중(문구 글을 그대로 둔다). 병원 이름·번호는 지어낸 것이다
+vi.mock('@/components/clinic/useClinicProfile', () => ({ useClinicProfile: vi.fn() }))
+const CLINIC_NAME = '튼튼정형외과'
+const CLINIC_HOURS = '평일 09:00~18:00(점심 13:00~14:00), 토 09:00~13:00, 일·공휴일 휴진'
+function clinicView(state: ClinicProfileView['state']): ClinicProfileView {
+  const ready = state === 'ready'
+  return {
+    state,
+    profile: { ...defaultProfile(), displayName: ready ? CLINIC_NAME : null, phone: ready ? '021234567' : null },
+    saved: ready,
+    signupName: CLINIC_NAME,
+    signupPhone: null,
+    name: CLINIC_NAME,
+    logoDataUrl: null,
+    reload: () => {},
+  }
+}
+/** [문구 복사]가 클립보드에 쓴 글을 모은다 */
+function clipboard() {
+  const writeText = vi.fn<(text: string) => Promise<void>>(async () => {})
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+  return writeText
+}
+/** 병원 정보가 들어간 복사 글인가 */
+function expectClinicFilled(text: string | undefined, hours = true) {
+  expect(text).toBeDefined()
+  expect(text).not.toContain('설정 필요')
+  expect(text?.startsWith(`${CLINIC_NAME}\n`)).toBe(true)
+  expect(text).toContain('문의: 02-123-4567')
+  if (hours) expect(text).toContain(`진료시간: ${CLINIC_HOURS}`)
+}
+
 beforeEach(() => {
   sb.reads = 0
   sb.upserts = []
   sb.saveFails = false
   sb.hold = null
+  vi.mocked(useClinicProfile).mockReset()
+  vi.mocked(useClinicProfile).mockReturnValue(clinicView('loading'))
 })
 afterEach(cleanup)
 
@@ -707,6 +743,39 @@ describe('PatientsScreen: 정기 주사 도구 자리 (AC-612)', () => {
   })
 })
 
+describe('PatientsScreen: 병원 정보를 도구에 넘긴다 (AC-6605.1)', () => {
+  const copyIn = async (t: ReturnType<typeof setup>, tool: PatientsTool) => {
+    fireEvent.click(within(t.slot(tool)!).getByRole('button', { name: '문구 복사' }))
+    await flush()
+  }
+
+  it('AC-6605.1: 화면이 읽은 병원 정보로 F/U·정기 주사 [문구 복사] 글에 병원 이름·전화·진료시간을 넣는다(로고는 받지 않는다)', async () => {
+    vi.mocked(useClinicProfile).mockReturnValue(clinicView('ready'))
+    const writeText = clipboard()
+    const t = setup('followup')
+    await t.toViews({ followup: FOLLOWUP_VIEW, recall: RECALL_VIEW, counts: null, codes: {} })
+    await copyIn(t, 'followup')
+    t.show('recall')
+    await flush()
+    await copyIn(t, 'recall')
+    expect(writeText).toHaveBeenCalledTimes(2)
+    expectClinicFilled(writeText.mock.calls[0]?.[0])
+    expectClinicFilled(writeText.mock.calls[1]?.[0])
+    expect(vi.mocked(useClinicProfile)).toHaveBeenCalled()
+    for (const args of vi.mocked(useClinicProfile).mock.calls) expect(args).toEqual([])
+  })
+
+  it.each(['loading', 'failed'] as const)('AC-6605.1: 병원 정보가 %s이면 복사 글은 그대로다', async (state) => {
+    vi.mocked(useClinicProfile).mockReturnValue(clinicView(state))
+    const writeText = clipboard()
+    const t = setup('followup')
+    await t.toViews({ followup: FOLLOWUP_VIEW, recall: RECALL_VIEW, counts: null, codes: {} })
+    await copyIn(t, 'followup')
+    expect(writeText.mock.lastCall?.[0]).toContain('[병원명 설정 필요]')
+    expect(writeText.mock.lastCall?.[0]).toContain('문의: 전화번호 설정 필요')
+  })
+})
+
 describe('PatientsScreen: 문자 문구 도구 (AC-613.5)', () => {
   it('AC-613.5: 이 화면은 문자 문구 도구를 그리지 않고 문구도 읽지 않는다(연결이 바뀌어도 도구가 다시 만들어지지 않게 PatientsEntry가 둔다)', async () => {
     const t = setup('messages')
@@ -1120,6 +1189,19 @@ describe('PatientsScreen: 비트 명단 두 도구 (AC-2802)', () => {
     expect(screen.getByText(RSV_DESC)).toBeTruthy()
     expect(statusLines()).toEqual([RSV_LOADING, KEEP_OPEN])
     expect(screen.queryByText(FU_LOADING)).toBeNull()
+  })
+
+  it('AC-6605.1: 예약 문자 명단 [문구 복사] 글에도 화면이 읽은 병원 이름·전화를 넣는다', async () => {
+    vi.mocked(useClinicProfile).mockReturnValue(clinicView('ready'))
+    const writeText = clipboard()
+    const t = setup('reservations', { helperVersion: LIST_HELPER })
+    await toTool(t)
+    await flush()
+    fireEvent.click(within(t.slot('reservations')!).getByRole('button', { name: '문구 복사' }))
+    await flush()
+    expect(writeText).toHaveBeenCalledTimes(1)
+    // 기본 예약 안내 문구에는 진료시간 자리가 없다
+    expectClinicFilled(writeText.mock.lastCall?.[0], false)
   })
 
   it('AC-2802.3: 장기 미방문 명단 — 24달 전 다음 날 ~ 1달 전을 읽고, 읽는 중 글이다', () => {

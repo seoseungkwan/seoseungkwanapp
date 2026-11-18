@@ -1,13 +1,14 @@
 'use client'
 
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { formatCount } from '@/components/charts/format'
+import { useClinicProfile } from '@/components/clinic/useClinicProfile'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { isYmd, todayInKorea } from '@/lib/analytics/dates'
 import { DEFAULT_TEMPLATE_NOTE, DEFAULT_TEMPLATES, type TemplateKind } from '@/lib/patientMessages/defaults'
-import { dateLine, defaultSendDate, fillTemplate } from '@/lib/patientMessages/fill'
+import { clinicInfoOf, dateLine, defaultSendDate, fillClinic, fillTemplate } from '@/lib/patientMessages/fill'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import { CopyButton, CopyNoticeLine, type CopyNotice } from './CopyButton'
 import { dayLabel } from './periods'
@@ -16,11 +17,12 @@ import { TEMPLATE_KIND_LABEL, useTemplates, type DraftRow, type TemplateField } 
 // 문자 문구 도구(AC-613.1~613.4·613.6, 목업 messagesTool). 문구만 다룬다: 환자 값이 없고 통로·Worker·store.load를 쓰지 않아 연결·기기와 상관없이 같은 화면이다(AC-613.5).
 // 미리 보기는 문구의 [*1*]·[*2*] 자리를 그대로 보인다(문자 프로그램이 채운다). 채운 글은 화면과 [문구 복사]로 클립보드에만 가고 console·주소·브라우저 저장소에 두지 않는다.
 // 읽기가 될 때까지는 고칠 것을 그리지 않는다(AC-613.6). 고르기 칸·단추 묶음은 F/U·정기 주사 도구 안의 것과 같은 모양이다(그 파일을 고치는 TASK가 아니라 여기 따로 둔다)
+// 미리 보기·복사 글에는 병원 정보(이름·전화·진료시간)도 넣는다(AC-6605.1). 고치는 칸과 저장하는 글은 그대로다. 이 도구는 PatientsScreen 밖(PatientsEntry)에 있어 병원 정보를 스스로 읽는다
 
 const TITLE = '문자 문구'
 const DESC = '명단과 함께 문자 프로그램에 붙여 넣을 안내 글이에요. 여기서 고치면 다른 PC와 휴대폰에서도 같은 글을 써요.'
 const HELP =
-  '[*1*] 자리는 받는 분 이름, [*2*] 자리는 부위(정기 주사는 주사 종류, 예약 안내는 예약 시각)로 문자 프로그램이 바꿔요. ‘* 11월 5일 목요일 *’처럼 별표로 감싼 날짜 줄은 고른 내원 날짜로 바뀌어요.'
+  '[*1*] 자리는 받는 분 이름, [*2*] 자리는 부위(정기 주사는 주사 종류, 예약 안내는 예약 시각)로 문자 프로그램이 바꿔요. ‘* 11월 5일 목요일 *’처럼 별표로 감싼 날짜 줄은 고른 내원 날짜로 바뀌어요. 병원 이름·전화·진료시간은 설정 → 병원 정보 값이 들어가요.'
 const COPY_BLOCKED = '복사하지 못했어요. 미리 보기 글을 골라 두었어요. 골라 둔 글을 오른쪽 클릭해 [복사]를 눌러 주세요.'
 const FIELD_ERROR: Record<TemplateField, string> = { name: '이름을 1~30자로 적어 주세요.', body: '내용을 1~2000자로 적어 주세요.' }
 const ADD_KINDS: readonly (readonly [TemplateKind, string])[] = [
@@ -186,6 +188,8 @@ export function MessagesTool({
 }) {
   const templates = useTemplates(supabaseBrowser)
   const { state, draft, saving, changed, tried, invalid, justSaved, usingDefaults, saveError } = templates
+  const clinicView = useClinicProfile()
+  const clinic = useMemo(() => clinicInfoOf(clinicView), [clinicView])
 
   const date = useDayField(today)
   const base = useId()
@@ -425,11 +429,11 @@ export function MessagesTool({
             미리 보기
           </p>
           <div ref={previewBox} role="region" aria-labelledby={`${base}-preview`} className={`mt-1.5 whitespace-pre-wrap break-words rounded-control bg-canvas p-4 text-body ${selected ? 'text-ink' : 'text-muted'}`}>
-            {selected ? fillTemplate(selected.body, date.valid) : '미리 볼 문구가 없어요.'}
+            {selected ? fillClinic(fillTemplate(selected.body, date.valid), clinic) : '미리 볼 문구가 없어요.'}
           </div>
           <div className="mt-3">
             <CopyButton
-              text={() => fillTemplate(selected?.body ?? '', date.valid)}
+              text={() => fillClinic(fillTemplate(selected?.body ?? '', date.valid), clinic)}
               label="문구 복사"
               disabled={!selected}
               doneText={`복사했어요 · ${selected?.name ?? ''} · ${dayLabel(date.valid)}`}
