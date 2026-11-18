@@ -83,6 +83,14 @@ export function todayView(today: string, days: readonly DayPayload[]): TodayView
   }
 }
 
+// 물리치료 칸(spec desk-feedback AC-6302.2): 그날 줄(todayView와 같은 rowOn — 같은 날은 뒤의 것)에서 물리치료 묶음 열쇠 줄의 환자 수.
+// 열쇠 줄이 없으면 그날 묶음 처방이 없는 것이라 0, 그날 줄이 없으면 null이다
+export function ptCount(day: string, days: readonly DayPayload[], key: string): number | null {
+  const row = rowOn(days, day)
+  if (row === null) return null
+  return row.groups.find((group) => group.id === key)?.patients ?? 0
+}
+
 // ── 기간별 흐름 ──────────────────────────────────────────
 
 // 어제까지 N일. 오늘은 숫자 줄과 보고 문장이 맡는다

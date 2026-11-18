@@ -12,6 +12,7 @@ import {
   longDate,
   PERIODS,
   periodRange,
+  ptCount,
   reportSentence,
   revisitCohortCaption,
   revisitSkipped,
@@ -466,6 +467,50 @@ describe('groupRank — 처방 상위 = 통계 탭 묶음 (REQ-606)', () => {
     }
     // 두 판단이 모두 참·거짓인 경우가 실제로 있다(한쪽으로만 맞는 시험이 아니다)
     expect(keys.map((k) => keyedIn(days, MONTH, k))).toEqual([true, false, true, false, false])
+  })
+})
+
+// 대시보드 물리치료 칸의 숫자 (spec desk-feedback REQ-6302, design.md '② 대시보드 물리치료 칸').
+// 그날 줄(todayView가 쓰는 줄 — 같은 날은 뒤의 것)의 groups에서 물리치료 묶음 열쇠 줄의 patients다. 열쇠·숫자는 지어낸 값이다
+describe('ptCount — 물리치료 칸 (AC-6302.2)', () => {
+  const PT = 'key-pt'
+
+  it('AC-6302.2: 그날 줄 groups에서 열쇠 줄의 patients다(다른 묶음 줄은 보지 않는다)', () => {
+    const days = [day(TODAY, { groups: [g('key-other', 4), g(PT, 7)] }), day(LAST_WEEK, { groups: [g(PT, 30)] })]
+    expect(ptCount(TODAY, days, PT)).toBe(7)
+    expect(ptCount(LAST_WEEK, days, PT)).toBe(30)
+  })
+
+  it('AC-6302.2: 그날 줄에 열쇠 줄이 없으면 0이다(그날 묶음 처방이 없음)', () => {
+    expect(ptCount(TODAY, [day(TODAY, { groups: [g('key-other', 4)] })], PT)).toBe(0)
+    expect(ptCount(TODAY, [day(TODAY)], PT)).toBe(0)
+  })
+
+  it('AC-6302.2: 열쇠 줄이 0명이면 0이다', () => {
+    expect(ptCount(TODAY, [day(TODAY, { groups: [g(PT, 0)] })], PT)).toBe(0)
+  })
+
+  it('AC-6302.2: 그날 줄이 없으면 null이다(다른 날 줄에 열쇠 줄이 있어도)', () => {
+    expect(ptCount(TODAY, [], PT)).toBeNull()
+    expect(ptCount(TODAY, [day(LAST_WEEK, { groups: [g(PT, 5)] })], PT)).toBeNull()
+  })
+
+  it('AC-6302.2: 같은 날 줄이 둘이면 뒤의 것이다 — todayView가 쓰는 줄과 같다', () => {
+    const days = [day(TODAY, { returning: 3, groups: [g(PT, 2)] }), day(TODAY, { returning: 9, groups: [g(PT, 6)] })]
+    expect(ptCount(TODAY, days, PT)).toBe(6)
+    expect(todayView(TODAY, days).counts?.returning).toBe(9)
+    expect(ptCount(TODAY, [day(TODAY, { groups: [g(PT, 2)] }), day(TODAY)], PT)).toBe(0)
+  })
+
+  it('AC-6302.2: 덜 끝난 날(partial)도 그날 줄 숫자 그대로다', () => {
+    expect(ptCount(TODAY, [day(TODAY, { partial: true, groups: [g(PT, 3)] })], PT)).toBe(3)
+  })
+
+  it('AC-6302.2: 받은 줄을 바꾸지 않는다', () => {
+    const days = [day(TODAY, { groups: [g('key-other', 4), g(PT, 7)] })]
+    const before = structuredClone(days)
+    ptCount(TODAY, days, PT)
+    expect(days).toEqual(before)
   })
 })
 

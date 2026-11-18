@@ -31,6 +31,9 @@ const NO_GROUPS: DashboardGroups = { lines: [], defs: [] }
 /** 비트 읽기에 실을 묶음 정의. 읽지 못함(null)·읽는 중은 빈 목록이다(읽는 중에는 읽기를 시작하지 않는다) */
 const defsOf = (groups: DashboardGroups | null | 'pending') => (groups === null || groups === 'pending' ? [] : groups.defs)
 
+/** 물리치료 칸 열쇠(desk-feedback AC-6302.3). 묶음을 읽지 못함·읽는 중이면 모름(undefined → '자료 없음'), 아니면 groups.pt 그대로(null = 안 고름) */
+const ptKeyOf = (groups: DashboardGroups | null | 'pending') => (groups === null || groups === 'pending' ? undefined : groups.pt)
+
 type Status =
   | { kind: 'idle' } // 숫자 없음, 읽지도 않음: 연결 전 모양
   | { kind: 'reading' } // 숫자 없이 처음 읽는 중
@@ -186,6 +189,7 @@ export function BitDashboard({
           emptyChip={emptyChip}
           emptyText={emptyText}
           emptyNote={emptyNote}
+          ptKey={ptKeyOf(groups)}
           dateLine={<DateControl today={today} selected={selected} onChange={(day) => setPicked(day === today ? null : day)} />}
           // key: 날짜를 바꾸면 복사 결과 표시가 다른 날 문장에 남지 않는다
           sentence={<ReportBlock key={selected} today={today} days={status.days} selected={selected} />}

@@ -9,7 +9,7 @@ import { DashboardSkeleton } from './DashboardSkeleton'
 afterEach(cleanup)
 
 describe('AC-2701.1: 저장 숫자를 읽는 동안의 뼈대', () => {
-  it('AC-2701.1·AC-4404.1: 실제 배치와 같은 차례(머리 줄 · 숫자 칸 5 · AI 요약 자리 · 그래프 자리)의 꾸밈은 모두 aria-hidden이고, 화면 읽기는 role=status 글 하나만 읽는다 — 숫자 글자·연결 전 화면·h1·단추·링크가 없다', () => {
+  it('AC-2701.1·AC-4404.1·AC-6302.4: 실제 배치와 같은 차례(머리 줄 · 숫자 칸 6 · AI 요약 자리 · 그래프 자리)의 꾸밈은 모두 aria-hidden이고, 화면 읽기는 role=status 글 하나만 읽는다 — 숫자 글자·연결 전 화면·h1·단추·링크가 없다', () => {
     const { container } = render(<DashboardSkeleton />)
     const status = screen.getByRole('status')
     expect(status.textContent).toBe('대시보드 숫자를 불러오고 있어요')
@@ -19,8 +19,10 @@ describe('AC-2701.1: 저장 숫자를 읽는 동안의 뼈대', () => {
     const parts = Array.from(container.querySelectorAll('[data-part]'))
     expect(parts.map((part) => part.getAttribute('data-part'))).toEqual(['header', 'numbers', 'ai', 'charts'])
     for (const part of parts) expect(part.closest('[aria-hidden="true"]'), part.getAttribute('data-part')!).not.toBeNull()
-    expect(parts[1]!.children).toHaveLength(5)
-    expect(parts[1]!.className.split(' ')).toEqual(expect.arrayContaining(['grid-cols-2', 'md:grid-cols-5']))
+    // 숫자 칸은 물리치료까지 여섯(spec desk-feedback AC-6302.4): 768px 이상 여섯 칸 한 줄, 미만 두 칸씩
+    expect(parts[1]!.children).toHaveLength(6)
+    expect(parts[1]!.className.split(' ')).toEqual(expect.arrayContaining(['grid-cols-2', 'md:grid-cols-6']))
+    expect(parts[1]!.className).not.toContain('md:grid-cols-5')
     expect(parts[1]!.className).not.toContain('md:grid-cols-4')
 
     // 보이는 글자는 status 글뿐이고 숫자가 없다(지어낸 숫자 없음)
