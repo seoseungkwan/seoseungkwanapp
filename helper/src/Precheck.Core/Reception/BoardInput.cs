@@ -82,7 +82,8 @@ public sealed class VisitRow
         string? sex = null,
         string? memo = null,
         string? paidAt = null,
-        IReadOnlyList<OrderItem>? orders = null)
+        IReadOnlyList<OrderItem>? orders = null,
+        string? nfs = null)
     {
         if (string.IsNullOrEmpty(visitId)) throw new ArgumentException("내원번호가 비었다", nameof(visitId));
         if (earlierCount < 0) throw new ArgumentOutOfRangeException(nameof(earlierCount));
@@ -102,6 +103,7 @@ public sealed class VisitRow
         Memo = memo;
         PaidAt = paidAt;
         Orders = orders ?? NoOrders;
+        Nfs = nfs;
     }
 
     /// <summary>내원번호(OcmNum). 휴대폰에는 가지 않고 VisitKeys 열쇠로 바뀐다(AC-1402.9).</summary>
@@ -122,7 +124,7 @@ public sealed class VisitRow
     /// <summary>오늘 처방(코드 순). 없으면 빈 목록.</summary>
     public IReadOnlyList<RxItem> TodayRx { get; }
 
-    /// <summary>이 접수보다 앞선 이 병원 완료 외래 내원 수. 0이면 신환·첫 방문.</summary>
+    /// <summary>이 접수보다 앞선 이 병원 완료 외래 내원 수. 0이면 첫 방문(처방 칸 글, 신환 표시는 Nfs가 정한다).</summary>
     public long EarlierCount { get; }
 
     /// <summary>가장 최근 지난 완료 내원의 내원번호(오른쪽 공백만 뺀 원값, 앞 공백은 그대로 — 직전 기록부가 @visit으로 다시 넘긴다). 없으면 null.</summary>
@@ -148,6 +150,11 @@ public sealed class VisitRow
 
     /// <summary>오늘 처방마다 가장 이른 처방 시각(시각·코드 순, AC-3303.3). 없으면 빈 목록.</summary>
     public IReadOnlyList<OrderItem> Orders { get; }
+
+    /// <summary>
+    /// 이 접수의 비트 내원 구분(OcmInf.OcmDgsNfs, 앞뒤 공백 뺌). "1"이면 신환(spec new-mark AC-6205.1), 그 밖의 값·빈 값·모르면 null은 재진(AC-6205.2).
+    /// </summary>
+    public string? Nfs { get; }
 }
 
 /// <summary>

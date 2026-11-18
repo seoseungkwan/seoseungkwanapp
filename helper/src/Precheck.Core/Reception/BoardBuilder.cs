@@ -81,6 +81,7 @@ public static class BoardBuilder
     {
         var accepted = AcceptedMinute(visit.AcceptedAt);
         int? minutes = accepted == null ? (int?)null : Math.Max(1, (int)Math.Floor((now - accepted.Value).TotalMinutes));
+        // 예전 접수가 있는지는 처방 칸(지난번 증상 / 첫 처방)만 정한다. 신환·재진은 내원 구분(InfoOf, spec new-mark AC-6205.3)
         var hasPrior = visit.EarlierCount > 0 || visit.LastVisitId != null;
         var (rxLabel, rx) = RxOf(visit, hasPrior, input.RxNames);
 
@@ -90,7 +91,7 @@ public static class BoardBuilder
             null,
             visit.PatientId.Trim(),
             Clean(visit.Name) ?? "",
-            InfoOf(visit, hasPrior, now.Date),
+            InfoOf(visit, now.Date),
             accepted == null ? "" : accepted.Value.ToString("HH:mm", CultureInfo.InvariantCulture) + " 접수",
             WaitedOf(lane, minutes, visit.PaidAt),
             (lane == Lane.Wait || lane == Lane.Hold) && minutes >= LongWaitMinutes,
@@ -155,7 +156,11 @@ public static class BoardBuilder
 
     // ---- 정보 글 (AC-1402.5) --------------------------------------------------------------------
 
-    private static string InfoOf(VisitRow visit, bool hasPrior, DateTime today)
+    /// <summary>비트 내원 구분(OcmDgsNfs)의 신환 값(DtlMst FTDNFS '신환', spec new-mark).</summary>
+    private const string NewMark = "1";
+
+    /// <summary>"54세 · 여 · 재진": 만 나이·성별(모르면 뺀다)과 끝 조각. 끝 조각은 내원 구분이 '1'이면 신환, 아니면 재진이다(예전 접수와 상관없이, AC-6205.1·6205.2).</summary>
+    private static string InfoOf(VisitRow visit, DateTime today)
     {
         var parts = new List<string>(3);
         var birth = BirthOf(visit.BirthDate);
@@ -166,7 +171,7 @@ public static class BoardBuilder
         }
         var sex = SexOf(visit.Sex) ?? birth?.Sex;
         if (sex != null) parts.Add(sex);
-        parts.Add(hasPrior ? "재진" : "신환");
+        parts.Add(visit.Nfs == NewMark ? "신환" : "재진");
         return string.Join(Joiner, parts);
     }
 

@@ -83,7 +83,8 @@ public static class BoardReader
                 sex: columns?.Sex != null ? Id(person?[3]) : null,
                 memo: memos.TryGetValue(visit.Id, out var memo) ? Id(memo[1]) : null,
                 paidAt: paid.TryGetValue(visit.Id, out var paidRow) ? Id(paidRow[1]) : null,
-                orders: orders.TryGetValue(visit.Id, out var visitOrders) ? visitOrders : null);
+                orders: orders.TryGetValue(visit.Id, out var visitOrders) ? visitOrders : null,
+                nfs: visit.Nfs);
         }).ToArray();
 
         return new BoardInput(Key(day), now, rows, table);
@@ -91,13 +92,14 @@ public static class BoardReader
 
     private sealed class TodayLine
     {
-        public TodayLine(string id, string chart, string acceptedAt, string? status, string? rsu)
+        public TodayLine(string id, string chart, string acceptedAt, string? status, string? rsu, string? nfs)
         {
             Id = id;
             Chart = chart;
             AcceptedAt = acceptedAt;
             Status = status;
             Rsu = rsu;
+            Nfs = nfs;
         }
 
         public string Id { get; }
@@ -105,6 +107,7 @@ public static class BoardReader
         public string AcceptedAt { get; }
         public string? Status { get; }
         public string? Rsu { get; }
+        public string? Nfs { get; }
     }
 
     private sealed class PriorLine
@@ -135,8 +138,9 @@ public static class BoardReader
     }
 
     /// <summary>
-    /// 오늘 접수 줄(VisitId, PatientId, AcceptedAt, Status, Rsu). 내원번호가 빈 줄은 빼고 같은 내원은 처음 줄만.
+    /// 오늘 접수 줄(VisitId, PatientId, AcceptedAt, Status, Rsu, Nfs). 내원번호가 빈 줄은 빼고 같은 내원은 처음 줄만.
     /// 차트번호는 SQL RTRIM처럼 오른쪽 공백만 뺀다: char(14) 칸이 앞을 공백으로 채운 번호면 앞 공백까지 지운 글로는 상세의 c.OcmChtNum=@chart가 그 환자를 못 찾는다.
+    /// 내원 구분(Nfs, spec new-mark AC-6205.1)은 앞뒤 공백을 뺀 글이고, 비었거나 여섯째 칸이 없는 줄(옛 모양)이면 null(재진, AC-6205.2)이다.
     /// </summary>
     private static List<TodayLine> Visits(IReadOnlyList<IReadOnlyList<object?>> rows)
     {
@@ -146,7 +150,7 @@ public static class BoardReader
         {
             var id = Id(row[0]);
             if (id == null || !seen.Add(id)) continue;
-            visits.Add(new TodayLine(id, Chart(row[1]), Text(row[2]) ?? "", Text(row[3]), Text(row[4])));
+            visits.Add(new TodayLine(id, Chart(row[1]), Text(row[2]) ?? "", Text(row[3]), Text(row[4]), row.Count > 5 ? Id(row[5]) : null));
         }
         return visits;
     }

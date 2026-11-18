@@ -42,7 +42,7 @@ public class ReceptionSqlTests
     /// <summary>문장 이름 → 결과 칸(순서대로).</summary>
     private static readonly Dictionary<string, string[]> Columns = new Dictionary<string, string[]>(StringComparer.Ordinal)
     {
-        ["TodayVisits"] = new[] { "VisitId", "PatientId", "AcceptedAt", "Status", "Rsu" },
+        ["TodayVisits"] = new[] { "VisitId", "PatientId", "AcceptedAt", "Status", "Rsu", "Nfs" },
         ["TodayRx"] = new[] { "VisitId", "RxCode" },
         ["PriorVisits"] = new[] { "TodayVisitId", "EarlierCount", "LastVisitId", "LastDay" },
         ["PriorSymptoms"] = new[] { "LastVisitId", "Line" },
@@ -559,5 +559,21 @@ public class ReceptionSqlTests
         // 시험이 빈 곳을 보지 않는지: 씌운 글은 잡는다
         Assert.Matches(WrappedChart, "WHERE NULLIF(RTRIM(c.OcmChtNum),'')=@chart");
         Assert.Matches(WrappedChart, Squash(TodayVisits));
+    }
+
+    // ---- spec new-mark REQ-6205 신환 표시 ---------------------------------------------------------------------
+
+    [Fact(DisplayName = "AC-6205.1 오늘 접수 T는 내원 구분 c.OcmDgsNfs(매출·통계 문장이 이미 읽는 칸)도 읽고, TodayVisits는 끝 칸으로 RTRIM(T.OcmDgsNfs) Nfs를 낸다(다른 오늘 문장의 결과 칸은 그대로)")]
+    public void TodayVisitsGivesVisitMark()
+    {
+        var today = Squash(TodayVisits);
+        Assert.Contains("SELECT c.OcmNum,c.OcmChtNum,c.OcmAcpDtm,c.OcmComStt,c.OcmRsuYon,c.OcmDgsNfs FROM dbo.OcmInf c", today, StringComparison.Ordinal);
+        Assert.EndsWith(",RTRIM(T.OcmRsuYon) Rsu,RTRIM(T.OcmDgsNfs) Nfs FROM T", today, StringComparison.Ordinal);
+        Assert.Equal("Nfs", OuterColumns(TodayVisits).Last());
+        Assert.Contains(RevenueSql.Parameters.Keys.Concat(StatsSql.All), sql => sql.Contains("c.OcmDgsNfs", StringComparison.Ordinal));
+        foreach (var sql in new[] { TodayRx, PriorVisits, PriorSymptoms, TodayPeople, TodayPaid, TodayOrderTimes })
+        {
+            Assert.DoesNotContain(" Nfs", Squash(sql), StringComparison.Ordinal);
+        }
     }
 }

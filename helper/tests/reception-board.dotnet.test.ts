@@ -43,7 +43,7 @@ describe('REQ-1402 접수 현황 줄 만들기 BoardBuilder (C# Precheck.Core.Te
     expectAc('AC-1402.4')
   })
 
-  it('AC-1402.5 정보 글 "54세 · 여 · 재진": 오늘 기준 만 나이, 지난 완료 내원이 없으면 신환, 모르는 값은 뺀다', () => {
+  it('AC-1402.5 정보 글 "54세 · 여 · 재진": 오늘 기준 만 나이, 모르는 값은 뺀다(끝 조각 신환·재진은 REQ-6205)', () => {
     expectAc('AC-1402.5')
   })
 
@@ -61,5 +61,19 @@ describe('REQ-1402 접수 현황 줄 만들기 BoardBuilder (C# Precheck.Core.Te
 
   it('AC-1402.9 줄마다 그날 화면용 열쇠, 내원번호·상태 코드·생년월일 원값 없음, design.md 4절 JSON 모양', () => {
     expectAc('AC-1402.9')
+  })
+})
+
+describe('REQ-6205 접수현황 신환 표시 (spec new-mark, C# Precheck.Core.Tests.Reception.BoardRows)', () => {
+  it('AC-6205.1 오늘 접수의 내원 구분이 "1"이면 예전 접수가 있어도 정보 글 끝 조각은 신환', () => {
+    expectAc('AC-6205.1')
+  })
+
+  it('AC-6205.2 내원 구분이 "1"이 아니면(빈 값·칸 없음 포함) 예전 접수가 없어도 재진', () => {
+    expectAc('AC-6205.2')
+  })
+
+  it('AC-6205.3 처방 칸(지난번 증상 / 첫 처방)은 지금처럼 예전 접수가 있는지로 정한다', () => {
+    expectAc('AC-6205.3')
   })
 })

@@ -5,6 +5,10 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Precheck.Core.Reception;
 using Xunit;
+using BoardFake = Precheck.Core.Tests.Reception.Cache.BoardFake;
+using CacheClock = Precheck.Core.Tests.Reception.Cache.CacheClock;
+using FakeDb = Precheck.Core.Tests.Bit.FakeDb;
+using Synthetic = Precheck.Core.Tests.Bit.Synthetic;
 
 // 이 TASK의 시험만 한 거르기로 돌리려고 BoardRows 이름 공간에 둔다
 namespace Precheck.Core.Tests.Reception.BoardRows;
@@ -14,6 +18,8 @@ namespace Precheck.Core.Tests.Reception.BoardRows;
 /// AC-1402.1 칸 나누기·숨긴 줄 건수. AC-1402.2 순서·순서 번호·건수. AC-1402.3 기다린 글. AC-1402.4 오래 기다림.
 /// AC-1402.5 정보 글(만 나이·성별·신환/재진). AC-1402.6 처방·지난번 증상 글. AC-1402.7 빈 칸. AC-1402.8 엑스레이 칸.
 /// AC-1402.9 화면용 열쇠·원값 없음·JSON 모양.
+/// spec new-mark REQ-6205: 정보 글 끝 조각은 오늘 접수의 비트 내원 구분(OcmDgsNfs)이 '1'이면 신환, 아니면 재진(AC-6205.1·6205.2),
+/// 처방 칸은 지금처럼 예전 접수가 있는지(hasPrior)로 정한다(AC-6205.3).
 /// 이름은 '가상환자NN', 차트번호는 9로 시작하는 6자리, 내원번호는 V+숫자, 상태 코드는 지어낸 것(QA…)이다.
 /// </summary>
 public class BoardBuilderTests
@@ -65,8 +71,9 @@ public class BoardBuilderTests
         string? sex = null,
         string? memo = null,
         string? paidAt = null,
-        string? acceptedAt = null)
-        => new VisitRow(id, chart, acceptedAt ?? Day + hhmm + "00", status, rsu, todayRx, earlier, lastId, lastDay, lastSymptom, name, birth, sex, memo, paidAt);
+        string? acceptedAt = null,
+        string? nfs = null)
+        => new VisitRow(id, chart, acceptedAt ?? Day + hhmm + "00", status, rsu, todayRx, earlier, lastId, lastDay, lastSymptom, name, birth, sex, memo, paidAt, nfs: nfs);
 
     /// <summary>한 번 만들기에 쓰는 것들. 기본: 가짜 지도, 오늘, 읽은 때 + 5초.</summary>
     private sealed class Scene
@@ -359,8 +366,8 @@ public class BoardBuilderTests
 
     // ---- AC-1402.5 정보 글 ---------------------------------------------------------------------------------
 
-    private static string Info(string? birth, string? sex, long earlier, DateTime? now = null) =>
-        Text(One(Visit("V1001", "QA", "0900", "901001", birth: birth, sex: sex, earlier: earlier, lastId: earlier > 0 ? "V1000" : null), "wait", now), "info");
+    private static string Info(string? birth, string? sex, long earlier, DateTime? now = null, string? nfs = null) =>
+        Text(One(Visit("V1001", "QA", "0900", "901001", birth: birth, sex: sex, earlier: earlier, lastId: earlier > 0 ? "V1000" : null, nfs: nfs), "wait", now), "info");
 
     [Fact(DisplayName = "AC-1402.5 생년월일·성별·지난 완료 내원이 있으면 54세 · 여 · 재진 모양이다")]
     public void InfoFull()
@@ -378,7 +385,8 @@ public class BoardBuilderTests
         Assert.Equal("54세 · 재진", Info("19721105", null, 1));
         Assert.Equal("25세 · 재진", Info("20000229", null, 1, new DateTime(2026, 2, 28, 9, 0, 0)));
         Assert.Equal("26세 · 재진", Info("20000229", null, 1, new DateTime(2026, 3, 1, 9, 0, 0)));
-        Assert.Equal("0세 · 신환", Info("20261105", null, 0));
+        Assert.Equal("0세 · 재진", Info("20261105", null, 1));
+        Assert.Equal("0세 · 신환", Info("20261105", null, 0, nfs: "1"));
     }
 
     [Fact(DisplayName = "AC-1402.5 주민번호 앞 7글자면 생년·성별을 거기서 얻는다")]
@@ -387,20 +395,32 @@ public class BoardBuilderTests
         Assert.Equal("54세 · 여 · 재진", Info("7203122", null, 1));
         Assert.Equal("54세 · 남 · 재진", Info("7203121", null, 1));
         Assert.Equal("54세 · 여 · 재진", Info("720312-2", null, 1));
-        Assert.Equal("21세 · 남 · 신환", Info("0503123", null, 0));
-        Assert.Equal("21세 · 여 · 신환", Info("0503124", null, 0));
+        Assert.Equal("21세 · 남 · 재진", Info("0503123", null, 1));
+        Assert.Equal("21세 · 여 · 재진", Info("0503124", null, 1));
+        Assert.Equal("21세 · 남 · 신환", Info("0503123", null, 0, nfs: "1"));
+        Assert.Equal("21세 · 여 · 신환", Info("0503124", null, 0, nfs: "1"));
     }
 
-    [Fact(DisplayName = "AC-1402.5 지난 완료 내원이 없으면 신환이다")]
-    public void InfoNewPatient()
+    [Fact(DisplayName = "AC-6205.1 내원 구분(VisitRow.Nfs)이 '1'이면 지난 완료 내원이 있어도 끝 조각은 신환이다")]
+    public void InfoWithMarkIsNewEvenWithPrior()
     {
-        Assert.Equal("54세 · 여 · 신환", Info("19720312", "F", 0));
+        Assert.Equal("54세 · 여 · 신환", Info("19720312", "F", 3, nfs: "1"));
+        Assert.Equal("54세 · 여 · 신환", Info("19720312", "F", 0, nfs: "1"));
+    }
+
+    [Fact(DisplayName = "AC-6205.2 내원 구분 표시가 없으면 지난 완료 내원이 없어도 재진이다(지난 내원 유무로 신환을 정하지 않는다)")]
+    public void InfoWithoutMarkIsReturnEvenWithoutPrior()
+    {
+        Assert.Equal("54세 · 여 · 재진", Info("19720312", "F", 0));
+        Assert.Equal("54세 · 여 · 재진", Info("19720312", "F", 0, nfs: "3"));
+        Assert.Equal("54세 · 여 · 재진", Info("19720312", "F", 0, nfs: ""));
     }
 
     [Fact(DisplayName = "AC-1402.5 모르는 값은 빼고 나머지만 · 로 잇는다")]
     public void InfoDropsUnknown()
     {
-        Assert.Equal("신환", Info(null, null, 0));
+        Assert.Equal("재진", Info(null, null, 0));
+        Assert.Equal("신환", Info(null, null, 4, nfs: "1"));
         Assert.Equal("재진", Info(null, null, 4));
         Assert.Equal("남 · 재진", Info(null, "M", 2));
         Assert.Equal("54세 · 재진", Info("19720312", null, 2));
@@ -408,6 +428,63 @@ public class BoardBuilderTests
         Assert.Equal("재진", Info("19721399", "", 2));
         Assert.Equal("재진", Info("720312-", null, 2));
         Assert.Equal("재진", Info("20271105", null, 2));
+    }
+
+    // ---- AC-6205 신환 표시(spec new-mark REQ-6205): 가짜 비트에서 읽은 오늘 접수의 내원 구분(Nfs 칸) ------------------------
+
+    /// <summary>
+    /// 가짜 비트(BoardFake)의 오늘 접수를 이 한 줄(V2001, 차트 902001, 54세 여)로 바꾸고, prior면 지난 완료 내원 2번(가장 최근 V1900, 증상 '무릎 통증')을
+    /// 붙여 BoardReader로 읽은 뒤 BoardBuilder로 만든 대기 칸 줄. sixCells가 false면 오늘 접수 줄을 내원 구분 칸 없는 다섯 칸(옛 모양)으로 준다.
+    /// </summary>
+    private static BoardRow ReadRow(string? nfs, bool prior, bool sixCells = true)
+    {
+        var today = sixCells
+            ? new object?[] { "V2001", "902001", "20261105091230", "S1", "N", nfs }
+            : new object?[] { "V2001", "902001", "20261105091230", "S1", "N" };
+        var db = BoardFake.Quiet(new FakeDb());
+        db.Answer(ReceptionSql.TodayVisits, _ => new[] { today });
+        db.Answer(ReceptionSql.TodayRx, _ => new object?[0][]);
+        db.Answer(ReceptionSql.TodayOrderTimes, _ => new object?[0][]);
+        db.Answer(ReceptionSql.PriorVisits, _ => prior ? new[] { new object?[] { "V2001", 2L, "V1900", "20261020" } } : new object?[0][]);
+        db.Answer(ReceptionSql.PriorSymptoms, _ => prior ? new[] { new object?[] { "V1900", "무릎 통증" } } : new object?[0][]);
+        db.Answer(ReceptionSql.TodayPeople, _ => new[] { new object?[] { "V2001", "가상환자21", "19720312", "F" } });
+
+        var input = BoardReader.Read(db, Synthetic.Scope, BoardFake.Morning, new CacheClock(BoardFake.Morning).Now);
+        var map = new Dictionary<string, Lane>(StringComparer.Ordinal) { ["S1"] = Lane.Wait };
+        var board = BoardBuilder.Build(input, map, new string[0], new Dictionary<string, string>(StringComparer.Ordinal), new VisitKeys(), BoardFake.Morning);
+        return Assert.Single(board.Wait);
+    }
+
+    [Fact(DisplayName = "AC-6205.1 오늘 접수의 내원 구분이 '1'이면 예전 접수가 있어도 정보 글 끝 조각은 신환이다")]
+    public void MarkedNewIsNewEvenWithPrior()
+    {
+        Assert.Equal("54세 · 여 · 신환", ReadRow("1", prior: true).Info);
+        Assert.Equal("54세 · 여 · 신환", ReadRow("1 ", prior: true).Info);
+        Assert.Equal("54세 · 여 · 신환", ReadRow("1", prior: false).Info);
+    }
+
+    [Fact(DisplayName = "AC-6205.2 오늘 접수의 내원 구분이 '1'이 아니면(빈 값·NULL·공백·90일초진 3·과초진 2·물리치료 7·산정안함 0·칸 없음) 예전 접수가 없어도 재진이다")]
+    public void NotMarkedIsReturnEvenWithoutPrior()
+    {
+        foreach (var nfs in new[] { null, "", "  ", "3", "2", "7", "0", "11" })
+        {
+            Assert.Equal("54세 · 여 · 재진", ReadRow(nfs, prior: false).Info);
+            Assert.Equal("54세 · 여 · 재진", ReadRow(nfs, prior: true).Info);
+        }
+        Assert.Equal("54세 · 여 · 재진", ReadRow(null, prior: false, sixCells: false).Info);
+        Assert.Equal("54세 · 여 · 재진", ReadRow(null, prior: true, sixCells: false).Info);
+    }
+
+    [Fact(DisplayName = "AC-6205.3 처방 칸(지난번 증상 / 첫 처방)은 내원 구분과 상관없이 지금처럼 예전 접수가 있는지로 정한다")]
+    public void RxColumnStillFollowsPrior()
+    {
+        foreach (var nfs in new[] { "1", null, "3" })
+        {
+            var withPrior = ReadRow(nfs, prior: true);
+            Assert.Equal(("지난번", "무릎 통증"), (withPrior.RxLabel, withPrior.Rx));
+            var firstVisit = ReadRow(nfs, prior: false);
+            Assert.Equal(("처방", "첫 방문이라 지난 처방이 없어요"), (firstVisit.RxLabel, firstVisit.Rx));
+        }
     }
 
     // ---- AC-1402.6 처방·지난번 증상 글 ------------------------------------------------------------------------

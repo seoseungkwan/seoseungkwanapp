@@ -27,9 +27,10 @@ public static class ReceptionSql
     // 살아 있는 처방 줄(o). Sql.HistoryCodeSql과 같은 조건
     private const string RxRow = @"o.OdrDelFlg='N' AND o.OdrCanYon='N' AND o.OdrOutCod<>'99' AND RTRIM(ISNULL(o.OdrCod,''))<>''";
 
-    // T: 오늘(@from~@to) 이 병원 외래 접수 전부. 상태로 거르지 않는다(칸 나누기·숨기기는 ReceptionMap이 한다)
+    // T: 오늘(@from~@to) 이 병원 외래 접수 전부. 상태로 거르지 않는다(칸 나누기·숨기기는 ReceptionMap이 한다).
+    // OcmDgsNfs는 내원 구분(DtlMst FTDNFS, '1'이 신환, spec new-mark REQ-6205). 매출·통계 문장이 이미 읽는 칸이다
     private const string TodayCte = @"WITH T AS (
- SELECT c.OcmNum,c.OcmChtNum,c.OcmAcpDtm,c.OcmComStt,c.OcmRsuYon FROM dbo.OcmInf c
+ SELECT c.OcmNum,c.OcmChtNum,c.OcmAcpDtm,c.OcmComStt,c.OcmRsuYon,c.OcmDgsNfs FROM dbo.OcmInf c
  WHERE c.OcmAcpDtm>=@from AND c.OcmAcpDtm<@to AND c.OcmPatTyp='O'
    AND " + InHospital + @"
 )";
@@ -51,9 +52,9 @@ public static class ReceptionSql
    AND " + InHospital + @"
 )";
 
-    /// <summary>오늘 외래 접수 전부: 내원번호·차트번호·접수 시각(OcmAcpDtm 원값)·상태 코드·OcmRsuYon.</summary>
+    /// <summary>오늘 외래 접수 전부: 내원번호·차트번호·접수 시각(OcmAcpDtm 원값)·상태 코드·OcmRsuYon·내원 구분(OcmDgsNfs, '1'이면 신환, AC-6205.1).</summary>
     public const string TodayVisits = TodayCte + @"
-SELECT T.OcmNum VisitId,RTRIM(T.OcmChtNum) PatientId,T.OcmAcpDtm AcceptedAt,RTRIM(T.OcmComStt) Status,RTRIM(T.OcmRsuYon) Rsu FROM T";
+SELECT T.OcmNum VisitId,RTRIM(T.OcmChtNum) PatientId,T.OcmAcpDtm AcceptedAt,RTRIM(T.OcmComStt) Status,RTRIM(T.OcmRsuYon) Rsu,RTRIM(T.OcmDgsNfs) Nfs FROM T";
 
     /// <summary>오늘 접수의 처방 코드(내원마다 한 번씩).</summary>
     public const string TodayRx = TodayCte + @"

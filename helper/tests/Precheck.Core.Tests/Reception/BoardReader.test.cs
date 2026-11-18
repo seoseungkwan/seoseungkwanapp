@@ -91,6 +91,7 @@ public class BoardReaderTests
         Assert.Equal("V0901", first.LastVisitId);
         Assert.Equal("20261029", first.LastDay);
         Assert.Equal("허리 통증 조금 줄었음 밤에 아픔", first.LastSymptom);
+        Assert.Null(first.Nfs);
 
         var second = input.Visits[1];
         Assert.Empty(second.TodayRx);
@@ -101,10 +102,29 @@ public class BoardReaderTests
 
         var third = input.Visits[2];
         Assert.Equal("20261105101500 ", third.AcceptedAt);
+        Assert.Equal("1", third.Nfs);
         Assert.Equal(0L, third.EarlierCount);
         Assert.Null(third.LastVisitId);
         Assert.Null(third.LastDay);
         Assert.Null(third.LastSymptom);
+    }
+
+    [Fact(DisplayName = "AC-6205.1 오늘 접수 여섯째 칸(내원 구분 Nfs)은 앞뒤 공백을 뺀 글로 VisitRow.Nfs에 두고, 빈 값·공백·NULL·칸 없는 옛 다섯 칸 줄은 null이다(AC-6205.2)")]
+    public void ReadsVisitMark()
+    {
+        var db = BoardFake.Quiet(new FakeDb());
+        db.Answer(ReceptionSql.TodayVisits, _ => new[]
+        {
+            BoardFake.Visit("V1001", "900101", "202611050912", "PN", nfs: " 1 "),
+            BoardFake.Visit("V1002", "900102", "202611050930", "PN", nfs: "3"),
+            BoardFake.Visit("V1003", "900103", "202611051015", "WN", nfs: "  "),
+            BoardFake.Visit("V1004", "900104", "202611051016", "WN"),
+            new object?[] { "V1005", "900105", "202611051017", "WN", "N" },
+        });
+
+        var input = BoardReader.Read(db, Synthetic.Scope, Morning, new CacheClock(Morning).Now);
+
+        Assert.Equal(new[] { "1", "3", null, null, null }, input.Visits.Select(row => row.Nfs));
     }
 
     [Fact(DisplayName = "AC-1403.6 차트번호는 비트 칸(char 14) 그대로 오른쪽 공백만 뺀다: 앞이 공백으로 채워진 번호도 앞 공백을 지우지 않는다(상세 @chart가 같은 줄을 찾게)")]
@@ -233,7 +253,7 @@ public class BoardReaderTests
         Assert.Equal(("지난번", "오른쪽 어깨 통증 조금 줄었음"), (Row(withSymptom, "900102").RxLabel, Row(withSymptom, "900102").Rx));
     }
 
-    [Fact(DisplayName = "AC-1402.5 읽은 생년월일(yyyyMMdd)·성별(F/M)·지난 완료 내원 수로 정보 글이 '54세 · 여 · 재진' 모양이고, 모르는 값은 빼며 지난 내원이 없으면 신환이다")]
+    [Fact(DisplayName = "AC-1402.5 읽은 생년월일(yyyyMMdd)·성별(F/M)·내원 구분으로 정보 글이 '54세 · 여 · 재진' 모양이고, 모르는 값은 빼며 내원 구분이 '1'이면 신환이다(AC-6205.1)")]
     public void InfoFromReadColumns()
     {
         var board = BuildBoard();
@@ -402,10 +422,11 @@ internal static class BoardFake
 {
     public static readonly DateTime Morning = new DateTime(2026, 11, 5, 10, 0, 0);
 
-    public static object?[] Visit(string? id, string chart, string acceptedAt, string status, string rsu = "N") =>
-        new object?[] { id, chart, acceptedAt, status, rsu };
+    /// <summary>오늘 접수 한 줄(TodayVisits 칸 차례): 내원번호·차트번호·접수 시각 원값·상태·OcmRsuYon·내원 구분(OcmDgsNfs, '1'이면 신환, spec new-mark).</summary>
+    public static object?[] Visit(string? id, string chart, string acceptedAt, string status, string rsu = "N", string? nfs = null) =>
+        new object?[] { id, chart, acceptedAt, status, rsu, nfs };
 
-    /// <summary>오늘 접수 셋: V1001(오늘 처방 둘, 지난 내원 3번·그 증상 두 줄, 메모), V1002(오늘 처방 없음, 지난 내원 1번·증상 없음, 수납 09:45), V1003(첫 방문, 이름 없는 코드, 사람 줄 없음).</summary>
+    /// <summary>오늘 접수 셋: V1001(오늘 처방 둘, 지난 내원 3번·그 증상 두 줄, 메모), V1002(오늘 처방 없음, 지난 내원 1번·증상 없음, 수납 09:45), V1003(첫 방문·내원 구분 신환, 이름 없는 코드, 사람 줄 없음).</summary>
     public static T Quiet<T>(T db) where T : FakeDb
     {
         db.Answer(ReceptionSql.RxNames, _ => new[]
@@ -458,7 +479,7 @@ internal static class BoardFake
     {
         Visit("V1001", "900101", "20261105091230", "S1"),
         Visit("V1002", "900102", "20261105093005", "S2"),
-        Visit("V1003", "900103", "20261105101500 ", "S1"),
+        Visit("V1003", "900103", "20261105101500 ", "S1", nfs: "1"),
     };
 
     /// <summary>이 문장이 돌 때 시계를 took만큼 보낸다(오래 걸린 읽기 흉내). 답은 그대로.</summary>
