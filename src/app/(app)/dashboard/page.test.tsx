@@ -250,10 +250,10 @@ describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', ()
     expect(h1Texts(await drawBeforeConnect(AT_TODAY))).toEqual([H1])
   })
 
-  it('AC-307.5·AC-414.3·AC-414.4·AC-2701.1·AC-4404.1: 분석 칸은 모두 연결 전 모양이다 — 숫자 칸 다섯 "연결하면 보여요", 연결 전 칩, "연결하면 생기는 것 4가지"(빈 그래프 틀·차트 부품 없음)', async () => {
+  it('AC-307.5·AC-414.3·AC-414.4·AC-2701.1·AC-4404.1·AC-6302.3: 분석 칸은 모두 연결 전 모양이다 — 숫자 칸 여섯(물리치료 포함) "연결하면 보여요", 연결 전 칩, "연결하면 생기는 것 4가지"(빈 그래프 틀·차트 부품 없음)', async () => {
     const html = await drawBeforeConnect(AT_TODAY)
     const text = plain(html)
-    expect(countOf(text, '연결하면 보여요')).toBe(5)
+    expect(countOf(text, '연결하면 보여요')).toBe(6)
     expect(text).toContain('비트 PC 연결 전')
     expect(text).toContain('연결하면 이 숫자로 원장님 보고 문장을 만들어 숫자 칸 아래에 보여 드려요.')
     expect(text).toContain(GAINS_TITLE)

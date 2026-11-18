@@ -1,9 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { groupDefs, groupKey } from '@/components/stats/treatmentView'
 import { listStatsRxGroups, saveStatsRxGroups, StatsRxGroupStoreError } from '@/lib/storage/statsRxGroups'
+import { loadSunapSettings, saveSunapSettings, SunapStorageError } from '@/lib/storage/sunap'
+import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { RxCond, RxGroup, StatsRxGroup } from '@/types/rxGroups'
+import { DEFAULT_RSV_KINDS, type SunapSettings } from '@/types/sunap'
 import { readDashboardGroups, toDashboardGroups } from './rxGroups'
 
 // 대시보드 '처방 상위'의 묶음 읽기 (spec bit-dashboard REQ-606, design.md '처방 상위 = 통계 탭 묶음').
@@ -14,9 +17,27 @@ vi.mock('@/lib/storage/statsRxGroups', async (importOriginal) => ({
   listStatsRxGroups: vi.fn(),
   saveStatsRxGroups: vi.fn(),
 }))
+// 수납일지 설정 읽기(물리치료 묶음 id, spec desk-feedback AC-6302.1)와 브라우저 Supabase 클라이언트도 가짜다. 진짜 Supabase에 붙지 않는다
+vi.mock('@/lib/storage/sunap', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/storage/sunap')>()),
+  loadSunapSettings: vi.fn(),
+  saveSunapSettings: vi.fn(),
+}))
+vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: vi.fn() }))
 
 const list = vi.mocked(listStatsRxGroups)
 const save = vi.mocked(saveStatsRxGroups)
+const settings = vi.mocked(loadSunapSettings)
+const saveSettings = vi.mocked(saveSunapSettings)
+const browser = vi.mocked(supabaseBrowser)
+const FAKE_CLIENT = { fake: 'supabase' } as unknown as ReturnType<typeof supabaseBrowser>
+const sunapSettings = (ptGroup: string | null): SunapSettings => ({ blockGroup: 'fake-1', ptGroup, kinds: DEFAULT_RSV_KINDS.map((kind) => ({ ...kind })) })
+
+// 기본은 수납일지 설정 읽기 실패(pt 없음) — 묶음만 보는 지금 시험은 그대로다. AC-6302.1 시험이 답을 바꾼다
+beforeEach(() => {
+  browser.mockReturnValue(FAKE_CLIENT)
+  settings.mockRejectedValue(new SunapStorageError('failed'))
+})
 
 // sortOrder가 뒤섞인 차례. 빈 묶음은 처방이 없고, '같은 처방 묶음'은 '주사 묶음'과 코드 모음이 같다(대소문자만 다름)
 const ROWS: readonly RxGroup[] = [
@@ -176,19 +197,155 @@ describe('readDashboardGroups', () => {
   })
 })
 
+// 대시보드 물리치료 칸의 열쇠 (spec desk-feedback REQ-6302, design.md '② 대시보드 물리치료 칸').
+// pt = 수납일지 설정 ptGroup(통계 처방 묶음 id)의 묶음 열쇠 — 수납일지와 같은 식 groupDefs([묶음])[0].id. 묶음·코드·id는 모두 지어낸 값이다
+describe('AC-6302.1 물리치료 묶음 열쇠 (toDashboardGroups 둘째 인자)', () => {
+  it('AC-6302.1: ptGroup이 목록의 처방 든 묶음 id면 pt = groupDefs([그 묶음])[0].id이고, 그 묶음 줄 열쇠와 같다', () => {
+    const groups = toDashboardGroups(ROWS, 'fake-3')
+    expect(groups.pt).toBe(groupDefs([ROWS[0]!])[0]!.id)
+    expect(groups.pt).toBe(groupKey(['ZX300', 'ZX301']))
+    expect(groups.lines.find((line) => line.name === '가짜 도수 묶음')?.key).toBe(groups.pt)
+  })
+
+  it('AC-6302.1: 빼는 처방·조건 든 묶음이면 pt는 그것까지 담은 열쇠다(defs의 같은 묶음 id와 같다)', () => {
+    const OUT = ['ZX900']
+    const COND: RxCond[] = [{ code: 'ZX310', unless: ['ZX320'] }]
+    const rows: StatsRxGroup[] = [
+      { id: 'fake-0', name: '가짜 도수 묶음', codes: ['ZX310', 'ZX311'], out: [], cond: [], sortOrder: 0 },
+      { id: 'fake-1', name: '가짜 물리 조건 묶음', codes: ['ZX310', 'ZX311'], out: OUT, cond: COND, sortOrder: 1 },
+    ]
+    const groups = toDashboardGroups(rows, 'fake-1')
+    expect(groups.pt).toBe(groupKey(['ZX310', 'ZX311'], { out: OUT, cond: COND }))
+    expect(groups.pt).not.toBe(groupKey(['ZX310', 'ZX311']))
+    expect(groups.defs.map((def) => def.id)).toContain(groups.pt)
+  })
+
+  it('AC-6302.1: ptGroup이 null이면(안 고름) pt = null이다', () => {
+    expect(toDashboardGroups(ROWS, null).pt).toBeNull()
+  })
+
+  it('AC-6302.1: ptGroup이 목록에 없으면(지워진 묶음) pt = null이다', () => {
+    expect(toDashboardGroups(ROWS, 'fake-gone').pt).toBeNull()
+    expect(toDashboardGroups([], 'fake-3').pt).toBeNull()
+  })
+
+  it('AC-6302.1: ptGroup이 코드 없는 묶음이면 pt = null이다', () => {
+    expect(toDashboardGroups(ROWS, 'fake-2').pt).toBeNull()
+  })
+
+  it('AC-6302.1: 둘째 인자를 주지 않으면 pt 칸이 없다(지금 호출 그대로)', () => {
+    const groups = toDashboardGroups(ROWS)
+    expect('pt' in groups).toBe(false)
+    expect(groups).toStrictEqual({ lines: groups.lines, defs: groupDefs(ROWS) })
+  })
+
+  it('AC-6302.1: 둘째 인자는 lines·defs를 바꾸지 않는다', () => {
+    const plain = toDashboardGroups(ROWS)
+    for (const ptGroup of ['fake-3', 'fake-2', 'fake-gone', null]) {
+      const { lines, defs } = toDashboardGroups(ROWS, ptGroup)
+      expect({ lines, defs }, String(ptGroup)).toStrictEqual(plain)
+    }
+  })
+
+  it('AC-6302.1: 받은 목록의 차례와 내용을 바꾸지 않는다', () => {
+    const rows = ROWS.map((row) => ({ ...row, codes: [...row.codes] }))
+    const before = structuredClone(rows)
+    toDashboardGroups(rows, 'fake-3')
+    expect(rows).toEqual(before)
+  })
+})
+
+describe('AC-6302.1 readDashboardGroups — 묶음과 수납일지 설정을 함께 읽는다', () => {
+  const rows = () => ROWS.map((row) => ({ ...row, codes: [...row.codes] }))
+
+  it('AC-6302.1: 묶음과 수납일지 설정(브라우저 클라이언트)을 한 번씩 읽어 toDashboardGroups(묶음, ptGroup)로 바꾼다', async () => {
+    list.mockResolvedValueOnce(rows())
+    settings.mockResolvedValueOnce(sunapSettings('fake-3'))
+    const groups = await readDashboardGroups()
+    expect(groups).toStrictEqual(toDashboardGroups(ROWS, 'fake-3'))
+    expect(groups?.pt).toBe(groupKey(['ZX300', 'ZX301']))
+    expect(list).toHaveBeenCalledTimes(1)
+    expect(settings).toHaveBeenCalledTimes(1)
+    expect(settings).toHaveBeenCalledWith(FAKE_CLIENT)
+  })
+
+  it('AC-6302.1: 수납일지 설정에서 물리치료 묶음을 안 골랐으면 pt = null이고 묶음은 그대로다', async () => {
+    list.mockResolvedValueOnce(rows())
+    settings.mockResolvedValueOnce(sunapSettings(null))
+    await expect(readDashboardGroups()).resolves.toStrictEqual({ ...toDashboardGroups(ROWS), pt: null })
+  })
+
+  it('AC-6302.1: 고른 물리치료 묶음이 목록에 없으면 pt = null이다', async () => {
+    list.mockResolvedValueOnce(rows())
+    settings.mockResolvedValueOnce(sunapSettings('fake-gone'))
+    await expect(readDashboardGroups()).resolves.toStrictEqual({ ...toDashboardGroups(ROWS), pt: null })
+  })
+
+  it('AC-6302.1: 수납일지 설정 읽기만 실패하면(거절) pt가 없고 묶음은 그대로다', async () => {
+    list.mockResolvedValueOnce(rows())
+    settings.mockRejectedValueOnce(new SunapStorageError('offline'))
+    const groups = await readDashboardGroups()
+    expect(groups).toStrictEqual(toDashboardGroups(ROWS))
+    expect(groups !== null && 'pt' in groups).toBe(false)
+  })
+
+  it('AC-6302.1: 수납일지 설정 읽기가 바로 던져도 pt만 없고 묶음은 그대로다', async () => {
+    list.mockResolvedValueOnce(rows())
+    settings.mockImplementationOnce(() => {
+      throw new Error('가짜 실패')
+    })
+    await expect(readDashboardGroups()).resolves.toStrictEqual(toDashboardGroups(ROWS))
+  })
+
+  it('AC-6302.1: 브라우저 클라이언트를 만들다 던져도(설정 없는 환경) pt만 없고 묶음은 그대로다', async () => {
+    list.mockResolvedValueOnce(rows())
+    browser.mockImplementationOnce(() => {
+      throw new Error('가짜 환경 없음')
+    })
+    // 설정 읽기는 불리지 않는다(Once로 쌓으면 다음 시험으로 넘어가므로 기본 답만 바꾼다. beforeEach가 되돌린다)
+    settings.mockResolvedValue(sunapSettings('fake-3'))
+    await expect(readDashboardGroups()).resolves.toStrictEqual(toDashboardGroups(ROWS))
+    expect(settings).not.toHaveBeenCalled()
+  })
+
+  it('AC-6302.1: 수납일지 설정 답이 설정 모양이 아니어도 pt만 없고 묶음은 그대로다', async () => {
+    list.mockResolvedValueOnce(rows())
+    settings.mockResolvedValueOnce(undefined as unknown as SunapSettings)
+    await expect(readDashboardGroups()).resolves.toStrictEqual(toDashboardGroups(ROWS))
+  })
+
+  it('AC-6302.1: 묶음 읽기가 실패하면(거절·던짐) 설정을 읽어도 지금처럼 null이다', async () => {
+    list.mockRejectedValueOnce(new StatsRxGroupStoreError('E-STATS-GROUP-READ-FAILED'))
+    settings.mockResolvedValueOnce(sunapSettings('fake-3'))
+    await expect(readDashboardGroups()).resolves.toBeNull()
+    list.mockImplementationOnce(() => {
+      throw new Error('가짜 실패')
+    })
+    await expect(readDashboardGroups()).resolves.toBeNull()
+  })
+
+  it('AC-6302.1: 읽기만 한다(묶음 저장·수납일지 설정 저장을 부르지 않는다)', async () => {
+    list.mockResolvedValueOnce(rows())
+    settings.mockResolvedValueOnce(sunapSettings('fake-3'))
+    await readDashboardGroups()
+    expect(save).not.toHaveBeenCalled()
+    expect(saveSettings).not.toHaveBeenCalled()
+  })
+})
+
 describe('AC-606.8 소스', () => {
   const source = readFileSync(join(process.cwd(), 'src/components/dashboard/live/rxGroups.ts'), 'utf8')
 
-  it('AC-606.8: 네트워크·브라우저 저장소·console·묶음 저장을 쓰지 않는다', () => {
-    for (const banned of ['fetch(', 'XMLHttpRequest', 'localStorage', 'sessionStorage', 'indexedDB', 'console.', 'saveStatsRxGroups']) {
+  it('AC-606.8·AC-6302.1: 네트워크·브라우저 저장소·console·묶음 저장·수납일지 설정 저장을 쓰지 않는다', () => {
+    for (const banned of ['fetch(', 'XMLHttpRequest', 'localStorage', 'sessionStorage', 'indexedDB', 'console.', 'saveStatsRxGroups', 'saveSunapSettings']) {
       expect(source, banned).not.toContain(banned)
     }
   })
 
-  it('AC-606.8: 통계 탭 열쇠·정의(treatmentView)와 묶음 읽기(statsRxGroups)와 타입만 불러온다', () => {
+  it('AC-606.8·AC-6302.1: 통계 탭 열쇠·정의(treatmentView)와 묶음 읽기(statsRxGroups)·수납일지 설정 읽기(sunap·브라우저 클라이언트)와 타입만 불러온다', () => {
     const modules = [...source.matchAll(/^import\s+(type\s+)?[^'"]*from\s+'([^']+)'/gm)].map((m) => ({ type: Boolean(m[1]), from: m[2] }))
     const values = modules.filter((m) => !m.type).map((m) => m.from)
-    expect(values.sort()).toEqual(['@/components/stats/treatmentView', '@/lib/storage/statsRxGroups'])
+    expect(values.sort()).toEqual(['@/components/stats/treatmentView', '@/lib/storage/statsRxGroups', '@/lib/storage/sunap', '@/lib/supabase/browser'])
     expect(source).not.toMatch(/import\s*\(/)
   })
 })
