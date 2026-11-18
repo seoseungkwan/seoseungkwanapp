@@ -589,6 +589,7 @@
   - `InlineBar`: `motion`이면 막대에 `st-move-period`
   - `DonutChart({ slices: { name, value, tone: 'accent' | 'f90' | 'ret' }[], center: [윗줄,아랫줄], motion })`: 둘레 100 원 조각(위부터 시계 방향, 조각 사이 0.6), 가운데 두 줄, PC 160px·휴대폰 124px. 그림은 `aria-hidden`이고 값은 부르는 쪽 범례 글이 준다
   - `stats/trendSeries.ts`의 `trendSeries(known)`: 앎이면 신환(`accent`)·90일초진(`f90`)·재진(`ret`), 모름이면 신환·"재진(90일초진 포함)"(`ret`). 처방 자세히 차트의 `TREND_SERIES`는 그대로다
+- **통계 더 보기 자리**(stats-insights, 시안 `docs/mockups/stats-insights`, 사용자 2026-11-18 승인): 새 바로가기 칸은 없다. 요약 자리는 '평소와 다른 것' 카드(맨 위, 견줄 날이 하루도 없으면 없고 있으면 이 카드가 바로가기 '요약' 자리) → 환자 요약 → 매출 요약 → '이번 달 목표' 카드 차례다. 두 카드는 칸 제목이 카드 h2라 h3가 없고, 기간 고르기와 상관없이 오늘 기준이다. 알림 줄 표시(▼ 적음 `negative` · ▲ 많음 `positive` · ! 주의 `warning`)는 색과 함께 문장이 뜻을 말한다. '휴일에 따라'는 진료 운영 카드 맨 끝(원장님별 다음) h3 칸이고 저장된 날이 없으면 없다. 넓은 하루를 읽지 못하면 그 칸마다 오류 카드 + [다시 읽기]
 - **규칙 시험**: `ui/classes.test.ts`(파일 × 클래스 예외, 굵기·그라데이션은 예외 파일에서도), `app/theme.test.ts`(토큰·`@theme inline` 이름·휴대폰 값), `app/globals.test.ts`(움직임 이름·키프레임·모션 줄이기), `charts/rules.test.ts`(`st-*`는 차트 셋만)
 
 ## 업무일지 양식 (엑셀 예외)

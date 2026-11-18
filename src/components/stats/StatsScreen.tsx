@@ -18,11 +18,13 @@ import { StatsSections, StatsWaiting } from './sections/StatsSections'
 import { readFiles, SourcePicker, type FileFailure, type FileIncomplete, type StatsJob } from './SourcePicker'
 import { useStatsCalendar } from './useStatsCalendar'
 import { useStatsData, type SavedLatest, type StatsData } from './useStatsData'
+import { useStatsGoals } from './useStatsGoals'
 import { StatsToc } from './StatsToc'
 import { useStatsRevenue, type RevenueFailure } from './useStatsRevenue'
 import { useStatsRxGroups } from './useStatsRxGroups'
 import { useStatsSunap } from './useStatsSunap'
 import { errorCodeOf, useStatsWorker } from './useStatsWorker'
+import { useWideDays } from './useWideDays'
 import { DEFAULT_STATS_PERIOD, rangeOf, type CompareRange, type StatsPeriod, type StatsRange } from './view'
 
 // 통계 화면 (stats REQ-514, 시안 docs/mockups/stats/notes.md §2·§3). 숫자·처방 이름·보고 글은 React 상태와 Worker 메모리에만 둔다(AC-514.9).
@@ -31,6 +33,8 @@ import { DEFAULT_STATS_PERIOD, rangeOf, type CompareRange, type StatsPeriod, typ
 // 처방별 추세 묶음 훅은 여기서 한 번 부른다: 불러오기(묶음으로 셈)와 칸(보기·고치기)이 같은 묶음을 쓴다(treatment-trend design.md '잇기')
 // 예약·전환(sunap-ilji REQ-4906): 마감한 날·수납일지 Block·물리치료 묶음은 useStatsSunap이 읽고, 묶음 정의는 세 칸 묻기에 실어 Block 전환 수를 함께 받는다
 // 예약(clinic-calendar AC-5907.3): 예약 탭 예약은 useStatsCalendar가 오늘 기준 최근 12달을 읽는다(통계 기간·불러오기와 상관없음)
+// 알림·휴일·목표(stats-insights design.md '자료 흐름'): useWideDays가 오늘 앞 12달 저장된 하루 숫자를 기간 고르기와 따로 읽고(저장에 성공하거나 [다시 읽기]를 누르면
+// data.revision이 늘어 다시 읽는다), useStatsGoals가 이번 달 목표와 오늘 앞 56일 하루 매출을 읽는다. 하나가 실패해도 그 칸만 오류 카드다
 // 매출(stats-revenue REQ-4108, design.md '화면 잇기'): 저장된 매출은 열 때 읽어 기간 요약 둘째 줄·매출 칸에 그린다(useStatsRevenue). 비트 매출은 [비트에서 불러오기]가
 // 통계 조각을 모두 저장한 뒤에만 같은 일 안에서 통계가 쥔 같은 비트 연결(useStatsWorker.revenueDays)로 읽는다. 열기만 해서는 비트에서 읽지 않는다
 
@@ -229,6 +233,8 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
   const sunap = useStatsSunap(range, groups)
   const sunapDefs = sunap.defs
   const calendar = useStatsCalendar(today)
+  const wide = useWideDays(today, data.revision)
+  const goals = useStatsGoals(today)
   // 비트 PC가 아니면(확장 없음·휴대폰·연결 전) call이 없어 저장된 매출만 읽는다(AC-4108.7)
   const revenue = useStatsRevenue({ range, today, lastDay, call: state === 'ready' ? revenueDays : null, helperVersion })
 
@@ -543,6 +549,8 @@ export function StatsScreen({ hospitalName, today }: { hospitalName: string; tod
             }}
             sunap={{ closed: sunap.closed, groups: sunap.groups, onReread: sunap.reread }}
             calendar={calendar}
+            wide={wide}
+            goals={goals}
           />
         </div>
       )}
