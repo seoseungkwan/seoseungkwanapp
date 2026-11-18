@@ -1,15 +1,32 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 // 청구 설정 표 세 개와 건수 표 세 개의 RLS·권한·제약 (precheck REQ-012·REQ-019, design.md 8-1·8-2·8-3).
 // rls.test.ts와 같은 방법: 진짜 Postgres(PGlite, WASM)에서 운영자가 SQL 편집기에 붙일 마이그레이션 파일을 차례로 그대로 돌린다.
-// 실제 Supabase에는 붙지 않는다. Supabase가 미리 갖춘 것(역할·auth 스키마·auth.uid()·auth.jwt()·새 표와 함수의 기본 권한)만 아래에서 흉내 낸다
+// 실제 Supabase에는 붙지 않는다. Supabase가 미리 갖춘 것(역할·auth 스키마·auth.uid()·auth.jwt()·새 표와 함수의 기본 권한·storage)만 아래에서 흉내 낸다
 const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf-8')
 const AUTH_MIGRATION = read('./migrations/20261028000000_auth.sql')
 const SETTINGS_MIGRATION = read('./migrations/20261030000000_precheck_settings.sql')
 const COUNTS_MIGRATION = read('./migrations/20261030000100_precheck_counts.sql')
+// 병원 정보 SQL(clinic-profile REQ-6610)이 claim_hospital_settings에 입력 방식 칸 input_mode를 더한다(고치기 칸 권한만).
+// 그 파일이 기대는 앞 migration(업무일지 넷·통계 묶음 둘·수납일지·예약·데스크)도 차례로 돌린다. 파일이 아직 없으면 빈 글자다
+const PROFILE_PATH = fileURLToPath(new URL('./migrations/20261119000000_clinic_profile.sql', import.meta.url))
+const PROFILE_CHAIN = [
+  ...[
+    '20261101000100_worklog.sql',
+    '20261101000110_worklog_bit_fields.sql',
+    '20261105000200_worklog_memo_font.sql',
+    '20261105000300_worklog_cash_float.sql',
+    '20261105000100_stats_rx_groups.sql',
+    '20261112000000_stats_rx_groups_exclude.sql',
+    '20261116000000_sunap.sql',
+    '20261117010000_calendar.sql',
+    '20261118100000_desk_accounts.sql',
+  ].map((name) => read(`./migrations/${name}`)),
+  existsSync(PROFILE_PATH) ? readFileSync(PROFILE_PATH, 'utf-8') : '',
+]
 
 const SUPABASE_MOCK = `
   create role anon nologin;
@@ -21,11 +38,27 @@ const SUPABASE_MOCK = `
 
   create schema auth;
   grant usage on schema auth to anon, authenticated;
-  create table auth.users (id uuid primary key, email text);
+  create table auth.users (id uuid primary key, email text, last_sign_in_at timestamptz);
   create function auth.jwt() returns jsonb language sql stable
     as $$ select nullif(current_setting('request.jwt.claims', true), '')::jsonb $$;
   create function auth.uid() returns uuid language sql stable
     as $$ select nullif(auth.jwt() ->> 'sub', '')::uuid $$;
+`
+
+// Supabase Storage가 갖춘 것(병원 정보 SQL이 로고 바구니와 그 정책을 만든다). 모양은 formBackgrounds.rls.test.ts와 같다
+const STORAGE_MOCK = `
+  create schema storage;
+  grant usage on schema storage to anon, authenticated;
+  create table storage.buckets (id text primary key, name text not null, public boolean default false, file_size_limit bigint, allowed_mime_types text[]);
+  create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text references storage.buckets (id), name text not null, owner uuid default auth.uid(), unique (bucket_id, name));
+  alter table storage.buckets enable row level security;
+  alter table storage.objects enable row level security;
+  create function storage.foldername(name text) returns text[] language plpgsql as $$
+  declare _parts text[];
+  begin
+    select string_to_array(name, '/') into _parts;
+    return _parts[1:array_length(_parts, 1) - 1];
+  end $$;
 `
 
 const A = '00000000-0000-4000-8000-00000000000a'
@@ -56,10 +89,12 @@ let db: PGlite
 beforeAll(async () => {
   db = await PGlite.create()
   await db.exec(SUPABASE_MOCK)
+  await db.exec(STORAGE_MOCK)
   await db.exec(AUTH_MIGRATION)
   await db.exec(SETTINGS_MIGRATION)
   await db.exec(COUNTS_MIGRATION)
-}, 120_000)
+  for (const sql of PROFILE_CHAIN) await db.exec(sql)
+}, 180_000)
 
 // 시험마다 빈 표에서 시작한다(병원·설정 줄은 auth.users를 따라 함께 비워진다). 운영자(superuser)는 RLS를 건너뛴다
 beforeEach(async () => {
@@ -163,7 +198,7 @@ describe('AC-012.1 세 표의 RLS·권한, 두 함수의 속성', SLOW, () => {
     ])
   })
 
-  it('AC-012.1: 넣기·고치기는 칸 단위이고 hospital_id·updated_at·id 칸이 빠졌다', async () => {
+  it('AC-012.1·AC-6610.1: 넣기·고치기는 칸 단위이고 hospital_id·updated_at·id 칸이 빠졌다(병원 문구 고치기에는 입력 방식 input_mode가 더해진다)', async () => {
     const found = await rows(
       `select table_name, column_name, privilege_type from information_schema.column_privileges
        where grantee = 'authenticated' and table_schema = 'public' and table_name = any($1)
@@ -177,9 +212,10 @@ describe('AC-012.1 세 표의 RLS·권한, 두 함수의 속성', SLOW, () => {
         .sort()
     for (const privilege of ['INSERT', 'UPDATE']) {
       expect(columnsOf('claim_rule_settings', privilege), privilege).toEqual(['enabled', 'grade', 'rule_id'])
-      expect(columnsOf('claim_hospital_settings', privilege), privilege).toEqual(['dx_links', 'phrases'])
       expect(columnsOf('message_templates', privilege), privilege).toEqual(['body', 'kind', 'name', 'sort_order'])
     }
+    expect(columnsOf('claim_hospital_settings', 'INSERT'), 'INSERT').toEqual(['dx_links', 'phrases'])
+    expect(columnsOf('claim_hospital_settings', 'UPDATE'), 'UPDATE').toEqual(['dx_links', 'input_mode', 'phrases'])
   })
 
   it.each(['my_hospital_id', 'touch_updated_at'])('AC-012.1: %s()는 security definer·search_path 빈칸이고 authenticated만 부를 수 있다', async (name) => {

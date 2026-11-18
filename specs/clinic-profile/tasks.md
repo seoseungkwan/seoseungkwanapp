@@ -47,9 +47,9 @@
 - Phase: 1
 - AC: AC-6608.1, AC-6608.2, AC-6608.3, AC-6608.4
 - REQ: REQ-6608
-- Files: src/lib/precheck/drugRoles.ts, src/lib/precheck/drugRoles.test.ts, src/lib/precheck/rules/run.ts, src/lib/precheck/rules/compile.ts, src/lib/precheck/rules/roles.test.ts, src/lib/precheck/rules/engine.test.ts, src/lib/precheck/rules/coverage.test.ts
+- Files: src/lib/precheck/drugRoles.ts, src/lib/precheck/drugRoles.test.ts, src/lib/precheck/rules/run.ts, src/lib/precheck/rules/engine.ts, src/lib/precheck/rules/compile.ts, src/lib/precheck/rules/roles.test.ts, src/lib/precheck/rules/engine.test.ts, src/lib/precheck/rules/coverage.test.ts, src/lib/precheck/rules/golden.test.ts, fixtures/precheck/fake/claim-month-rules-drug-names.json, fixtures/precheck/fake/claim-month-rules-drug-roles.json, fixtures/precheck/fake/claim-month-rules-found.json, fixtures/precheck/golden/rules-drug-names.json, fixtures/precheck/golden/rules-drug-roles.json, fixtures/precheck/golden/rules-found.json
 - Tests: src/lib/precheck/drugRoles.test.ts, src/lib/precheck/rules/roles.test.ts, src/lib/precheck/rules/engine.test.ts, src/lib/precheck/rules/coverage.test.ts, src/lib/precheck/rules/golden.test.ts
-- TDD: required — design.md 10절. `runRules(month, tables, settings, roles = new Map())`로 넷째 값을 받아 지금 부르는 곳(`jobs.ts`)이 그대로 돈다(잇기는 TASK-12). `STEROID`·`LIDO_CODES`·`DEFAULT_DRUG_NAMES`·`clinic_codes` 더하기를 지운다. `roles.test.ts`는 가짜 달로 다른 병원(A15가 리도카인 아님, X7 히알루론산) AC-6608.3과 우리 의원 다섯 코드·보험코드(AC-6608.4: 고치기 전 결과를 먼저 시험에 적어 두고 같음을 본다). `golden.test.ts`는 고치지 않고 통과해야 한다
+- TDD: required — design.md 10절. `runRules`(자리는 `rules/engine.ts`)가 `runRules(month, tables, settings, roles = new Map())`로 넷째 값을 받아 `createRun`에 넘기고, 지금 부르는 곳(`jobs.ts`)이 그대로 돈다(잇기는 TASK-12). `STEROID`·`LIDO_CODES`·`DEFAULT_DRUG_NAMES`·`clinic_codes` 더하기를 지운다. `roles.test.ts`는 가짜 달로 다른 병원(A15가 리도카인 아님, X7 히알루론산) AC-6608.3과 우리 의원 다섯 코드·보험코드(AC-6608.4: 고치기 전 결과를 먼저 시험에 적어 두고 같음을 본다). 점검 골든 22건(`rules-drug-names` 19 · `rules-drug-roles` 2 · `rules-found` 1)은 이 기능이 일부러 없앤 동작(약 이름 짐작·우리 코드로만 역할)을 원본 결과로 고정한 사례다: 먼저 가짜 처방 목록 줄에 성분표(`drugInfo.json`)에 있는 보험코드를 넣어 같은 걸림·안 걸림이 성분으로 나오게 가짜 파일을 고치고, 그래도 결과가 바뀌는 사례만 골든 기대값을 새 결과로 바꾸고 `knownDiffs`에 까닭(20자 넘게)과 함께 적는다. `golden.test.ts`는 `knownDiffs`를 이 명세가 적은 사례 번호 목록과 같을 때만 통과시킨다(다른 골든 파일은 지금처럼 빈 목록)
 
 ## TASK-4: 도우미 0.12.0 — 뒤에 붙이기
 - Phase: 1

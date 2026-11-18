@@ -364,6 +364,36 @@ function validateMemoRules(value: unknown): PhraseError[] {
   return errors
 }
 
+const CHART_WORD_KEYS = ['term', 'target']
+const CHART_WORD_MAX = 100
+
+/** 차트 줄임말 칸 검사(원본에 없는 칸. clinic-profile design.md 14절): 100줄까지, 칸마다 앞뒤 빈칸 없는 1~40자, 적으면 칸은 대소문자 무시하고 한 번만. 칸이 없으면 지난다 */
+function validateChartWords(value: unknown): PhraseError[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value)) return [{ path: 'chartWords', message: '차트 줄임말 형식을 확인해 주세요.' }]
+  if (value.length > CHART_WORD_MAX) return [{ path: 'chartWords', message: `차트 줄임말은 ${CHART_WORD_MAX}줄까지 적어 주세요.` }]
+  const errors: PhraseError[] = []
+  const seen = new Set<string>()
+  value.forEach((row: unknown, index: number) => {
+    const path = `chartWords.${index}`
+    if (!plain(row) || Object.keys(row).some((key) => !CHART_WORD_KEYS.includes(key))) {
+      errors.push({ path, message: '차트 줄임말 형식을 확인해 주세요.' })
+      return
+    }
+    for (const key of CHART_WORD_KEYS) {
+      const cell = row[key]
+      if (typeof cell !== 'string' || !cell || cell.length > 40 || cell !== cell.trim() || hasControl(cell) || /[\n\r\t]/.test(cell)) {
+        errors.push({ path: `${path}.${key}`, message: '차트 줄임말은 칸마다 앞뒤 빈칸 없이 1~40자로 적어 주세요.' })
+      }
+    }
+    if (typeof row.term !== 'string' || !row.term) return
+    const key = row.term.toLowerCase()
+    if (seen.has(key)) errors.push({ path: `${path}.term`, message: `같은 줄임말이 이미 있습니다: ${row.term}` })
+    seen.add(key)
+  })
+  return errors
+}
+
 /**
  * 메모에 쓸 수 있는 문구 값인지 본다. 옛 좌우 규칙은 먼저 2로 바꾼다(원본 apply·preview 흐름). 틀리면 어느 칸인지 돌려준다.
  * 줄이 없거나 빈 {}이거나 약 칸이 없으면 ok가 거짓이고, 부르는 쪽은 메모를 만들지 않는다(AC-014.8)
@@ -375,10 +405,10 @@ export function validatePhrases(input: unknown): PhraseCheck {
   } catch (error) {
     return { ok: false, errors: [{ path: '설정', message: (error as Error).message }] }
   }
-  const { procedureDrugs, memoRules, ...original } = migrated as Rec
+  const { procedureDrugs, memoRules, chartWords, ...original } = migrated as Rec
   const errors = validateOriginal(original)
   if (errors.length === 1 && errors[0].path === '설정' && errors[0].message === '설정 형식을 확인해 주세요.') return { ok: false, errors }
-  errors.push(...validateDrugs(procedureDrugs), ...validateMemoRules(memoRules))
+  errors.push(...validateDrugs(procedureDrugs), ...validateMemoRules(memoRules), ...validateChartWords(chartWords))
   return errors.length ? { ok: false, errors } : { ok: true, value: migrated as Phrases }
 }
 
@@ -422,6 +452,13 @@ function memoRuleRow(path: string, a: unknown, b: unknown): PhraseDiffRow | null
   return row.before === row.after ? null : row
 }
 
+/** 차트 줄임말 칸의 보이는 값: '적으면 = 읽어요'를 쉼표로. 없음과 빈 표는 같다(clinic-profile design.md 14절) */
+function chartWordsShown(value: unknown): string {
+  if (value === undefined || (Array.isArray(value) && !value.length)) return '(없음)'
+  if (!Array.isArray(value)) return JSON.stringify(value)
+  return value.map((row) => (plain(row) ? `${String(row.term ?? '')} = ${String(row.target ?? '')}` : JSON.stringify(row))).join(', ')
+}
+
 /** 원본 diff: 두 값의 다른 칸을 이름표와 함께. 약 칸도 같은 길로 보인다(이름표가 없어 경로로 보인다). 메모 규칙 칸은 쉬운 이름표로 칸마다(줄 순서는 코드마다) 보인다 */
 export function diffPhrases(before: Phrases, after: Phrases): PhraseDiff {
   const result: PhraseDiff = []
@@ -438,6 +475,11 @@ export function diffPhrases(before: Phrases, after: Phrases): PhraseDiff {
     if (path.startsWith('memoRules.')) {
       const row = memoRuleRow(path, a, b)
       if (row) result.push(row)
+      return
+    }
+    if (path === 'chartWords') {
+      const row = { path, label: '차트 줄임말', before: chartWordsShown(a), after: chartWordsShown(b) }
+      if (row.before !== row.after) result.push(row)
       return
     }
     const sideCode = path.startsWith('TPL.sideByCode.')
@@ -473,6 +515,25 @@ export function defaultPhrases(): Phrases {
 /** 우리 병원 설정: 원본 기본 문구 + 원본 결과가 나오는 시술별 약(design.md 19-3). 서버 줄로 넣는 길은 scripts/precheck/our-clinic-settings.mjs다 */
 export function ourClinicPhrases(): Phrases {
   return { ...defaultPhrases(), procedureDrugs: clone(ourClinic.procedureDrugs) as ProcedureDrugs }
+}
+
+/**
+ * 원본 기본값 가운데 우리 의원이 붙인 코드의 줄(clinic-profile design.md 9절의 7개): 약 줄(병원이 붙인 약 코드)과 소문자가 든 병원 안 코드(C-arm·Sono).
+ * 보험 시술·검사 코드 줄은 병원마다 같아 남긴다. 병원 값은 defaults.json에만 두므로(AC-014.7) 코드를 적지 않고 줄 모양으로 고른다. 7개가 맞는지는 clinicMemo.test.ts가 본다
+ */
+const clinicOwnRow = (code: string, row: MemoCode) => row.k === 'drug' || code !== code.toUpperCase()
+
+/**
+ * 중립 기본 문구(clinic-profile AC-6607.3): 다른 병원이 처음 질문 없이 바로 시작하는 값. 원본 기본 문구에서 우리 의원 코드를 빼고,
+ * 리도카인 코드 칸은 비우며, 시술별 약은 고른 적이 없어 비어 있고 메모 규칙은 없다. defaultPhrases()·ourClinicPhrases()는 그대로다
+ */
+export function neutralPhrases(): Phrases {
+  const value = defaultPhrases()
+  value.CODEMAP = Object.fromEntries(Object.entries(value.CODEMAP).filter(([code, row]) => !clinicOwnRow(code, row)))
+  value.TPL.lidoCodes = ''
+  value.procedureDrugs = {}
+  delete value.memoRules
+  return value
 }
 
 /** 원본 TPL_DEF.ara. 원본 cartilageLine이 고치지 않은 기본 문구를 알아볼 때 쓴다 */

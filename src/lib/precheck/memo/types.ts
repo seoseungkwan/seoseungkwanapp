@@ -101,8 +101,11 @@ export type MemoRules = {
   order?: Record<string, number>
 }
 
-/** 병원 문구 값(claim_hospital_settings.phrases): 원본 설정 모양 + 시술별 약 + 메모 규칙 */
-export type Phrases = { TPL: PhraseTemplates; CODEMAP: Record<string, MemoCode>; CODEMAP_DEL: string[]; procedureDrugs: ProcedureDrugs; memoRules?: MemoRules }
+/** 차트 줄임말 한 줄(clinic-profile REQ-6612): 차트에 term으로 적으면 target으로 읽는다. 앞뒤 빈칸 없는 1~40자 */
+export type ChartWord = { term: string; target: string }
+
+/** 병원 문구 값(claim_hospital_settings.phrases): 원본 설정 모양 + 시술별 약 + 메모 규칙 + 차트 줄임말(100줄까지, 없으면 빈 표) */
+export type Phrases = { TPL: PhraseTemplates; CODEMAP: Record<string, MemoCode>; CODEMAP_DEL: string[]; procedureDrugs: ProcedureDrugs; memoRules?: MemoRules; chartWords?: ChartWord[] }
 
 export type PhraseError = { path: string; message: string }
 export type PhraseCheck = { ok: true; value: Phrases } | { ok: false; errors: PhraseError[] }
@@ -116,8 +119,14 @@ export type MemoDictionary = {
   omissions: { dropRootEpi: boolean; dropShoulderAnbWithCervicalMbb: boolean }
 }
 
-/** 메모가 읽는 표: 점검 표(Worker의 Tables)를 그대로 받고, 그중 메모가 읽는 것은 문구 사전뿐이다. 없으면 빈 사전(원본 defaults)이다 */
-export type MemoTables = Partial<Tables> & { dictionary?: MemoDictionary }
+/** 약 역할(clinic-profile design.md 10절, drugRoles.ts의 DrugRole + 'none'). 메모는 연골주사 역할만 읽는다 */
+export type MemoDrugRole = 'steroid' | 'localAnesthetic' | 'cartilage' | 'none'
+
+/**
+ * 메모가 읽는 표: 점검 표(Worker의 Tables)를 그대로 받고, 그중 메모가 읽는 것은 문구 사전·약 역할·연골주사 약 이름뿐이다. 없으면 빈 사전(원본 defaults)이다.
+ * roles: 대문자 처방코드 → 역할(처방코드 탭 깃발 → 보험코드 성분, design.md 10절). cartilageNames: 처방 목록에서 역할이 연골주사인 줄의 이름(design.md 11절)
+ */
+export type MemoTables = Partial<Tables> & { dictionary?: MemoDictionary; roles?: ReadonlyMap<string, MemoDrugRole>; cartilageNames?: string[] }
 
 export type Region = 'shoulder' | 'cervical' | 'lumbar' | 'knee' | 'ankle' | 'elbow' | 'wrist' | 'hand' | 'hip' | 'chest' | 'foot' | 'upper'
 

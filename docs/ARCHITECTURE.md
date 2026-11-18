@@ -118,6 +118,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 | `calendar_appts` | 예약 한 줄: 날짜·시작(분, 10분 칸)·길이(5~240분)·환자 이름(1~20자)·차트번호(숫자 10자리까지, 신환은 비움)·시행자·종류(id와 그때 이름)·메모(100자)·상태(`auto`·`came`·`noshow`·`cancel`)·도착 자동 `auto`(비트 PC가 정함)·처음 자리 `orig_day`·`orig_start`(트리거만 적음). 전화·성별·나이·생일 칸 없음. 넣을 때마다 한국 오늘 − 1년보다 이른 예약·종일 줄을 트리거가 지운다 (ADR-030, specs/clinic-calendar) |
 | `calendar_allday` | 예약 탭 종일 한 줄: 메모(1~20자) 또는 시행자 휴무(같은 날 같은 시행자 하나). 고치기 없음(지우고 다시 넣음) (specs/clinic-calendar) |
 | `calendar_rev` | 병원마다 예약 바뀜 숫자 한 줄. 위 세 표가 바뀔 때마다 트리거(`calendar_bump`)만 늘리고 사용자는 읽기만 한다. 화면이 5초마다 읽어 바뀌면 다시 읽는다 (specs/clinic-calendar) |
+| `clinic_profiles` | 병원 정보 한 줄: `display_name`(1~50자)·`phone`(숫자 9~11자)·`address`(100자)·`honorific`(원장님·대표원장님·선생님)·`hours`(월~일 7칸, 분)·`closed_dates`·`staff`(원장님·직원, 예약 시행자를 합침, 12,000바이트까지)·`logo_path`·`updated_at`. 원장만 넣고 고치고 데스크는 읽기만, 지우기 없음. 넣고 고치면 `calendar_bump`로 rev가 오른다. 처음 실행 때 예약 설정 시행자를 옮긴다. `claim_hospital_settings.input_mode`(null·code·date, 원장만 고침)도 같은 SQL `20261119000000_clinic_profile.sql` (ADR-033, specs/clinic-profile) |
 | `ai_usage` | 달별 토큰·비용 |
 | `ai_reports` | 달별 AI 리포트(병원·달마다 하나, 다시 분석하면 덮어씀)·만들 때 쓴 숫자의 지문. 쓰기는 DB 함수로만 (ADR-024) |
 | `form_notices` | 서식 휴진 안내 한 줄: 연·월·카드(1~4장, jsonb)·테마. 대충 적은 글은 두지 않는다. 칸은 specs/forms design.md 8절 (ADR-028). 테마 칸은 고른 그림 값(null·`auto-2`·`<열쇠>`·`<열쇠>-2`·`bg-<내 배경 id>`, 40자까지)이다 (specs/forms-themes design.md 2절). 글자 색 칸 `accent`는 null(자동) 또는 `#` + 소문자 16진수 6자리다 (specs/forms-accent design.md 2절) |
@@ -126,6 +127,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 | `ai_image_days` | 병원·한국 날짜마다 AI 배경 장 수(0~20). 표 권한·정책이 없고 DB 함수 `take_ai_image()`로만 센다(하루 20장, 보내기 전에) (ADR-029) |
 
 - Storage 버킷은 `form-backgrounds` 하나다(내 배경 큰 그림, 공개 아님, 한 파일 3,000,000바이트·`image/jpeg`만). `storage.objects` 정책은 첫 폴더가 내 병원 id인 것만 읽기·지우기, 올리기는 거기에 더해 이름이 내 `form_backgrounds` 줄의 `path`와 같을 때만이다(고치기 없음). 버킷과 정책은 migration `20261115020000_form_backgrounds.sql`이 만든다 (ADR-029)
+- Storage 버킷 `clinic-logos`(병원 로고, 공개 아님, 한 파일 1,000,000바이트·`image/png`만): 첫 폴더가 내 병원 id인 것만 원장이 읽기·지우기, 올리기는 거기에 더해 이름이 내 `clinic_profiles.logo_path`와 같을 때만(고치기 없음, 데스크·다른 병원 못 함). migration `20261119000000_clinic_profile.sql` (ADR-033)
 - 금액은 원 단위 정수. 반올림하지 않고 원 미만은 항목마다 버린다. 합계는 항목 합. %는 소수 둘째 자리까지
 - 퇴사자는 지우지 않고 숨긴다(임금대장 3년 보존, §6-3). 주민번호·계좌번호는 저장하지 않는다
 - 백업 목록(`lib/backup/tables.ts`)에 `sales_days`·`sales_codes`·`rx_groups`를 넣는다(`rx_groups`는 총괄이 손으로 만든 유일한 자료). `stats_rx_picks`: `lib/backup/tables.ts`가 생기면 이 표도 넣는다. `stats_rx_groups`(손으로 만든 자료, 통계 처방별 추세 묶음, specs/treatment-trend)도 넣는다

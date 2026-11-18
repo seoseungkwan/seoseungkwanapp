@@ -127,3 +127,65 @@ export async function readHospitalSettings(sb: SupabaseClient): Promise<Hospital
 export async function writeHospitalSettings(sb: SupabaseClient, value: HospitalSettings): Promise<void> {
   await run(() => sb.from(HOSPITAL_TABLE).upsert({ phrases: value.phrases, dx_links: value.dxLinks }, { onConflict: 'hospital_id' }))
 }
+
+// ── 병원 문구 시작·입력 방식 (spec clinic-profile design.md 9절·12절) ─────────────────────
+// 아래 셋은 던지지 않고 값으로 답한다(부르는 화면이 오류 칸·조용한 무시를 고른다). hospital_id는 몸통에 넣지 않는다 — 읽은 내 줄을 고를 때만 쓴다
+
+const DUPLICATE_ROW = '23505' // hospital_id 기본 키: 다른 창이 먼저 줄을 만들었다
+
+const hospitalIdOf = (data: unknown): string | null => {
+  if (typeof data !== 'object' || data === null) return null
+  const id = (data as Record<string, unknown>).hospital_id
+  return typeof id === 'string' && id !== '' ? id : null
+}
+
+/**
+ * [기본 문구로 바로 시작](AC-6607.2): 병원 문구 줄이 없으면 문구만 넣고(상병 연결표는 DB 기본값 []), 있으면 문구만 바꾼다(상병 연결표 그대로).
+ * 다른 창이 먼저 줄을 만들었으면(23505) 덮어쓰지 않고 다시 읽어 그 줄이 있으면 'ok' — 부르는 쪽이 다시 읽어 그 줄을 쓴다
+ */
+export async function startHospitalSettings(sb: SupabaseClient, phrases: object): Promise<'ok' | 'failed'> {
+  try {
+    const found = await sb.from(HOSPITAL_TABLE).select('hospital_id').maybeSingle()
+    if (found.error) return 'failed'
+    const id = hospitalIdOf(found.data)
+    if (id !== null) {
+      const changed = await sb.from(HOSPITAL_TABLE).update({ phrases }).eq('hospital_id', id)
+      return changed.error ? 'failed' : 'ok'
+    }
+    if (found.data !== null) return 'failed' // 줄은 있는데 모양이 틀림
+    const made = await sb.from(HOSPITAL_TABLE).insert({ phrases })
+    if (!made.error) return 'ok'
+    if (made.error.code !== DUPLICATE_ROW) return 'failed'
+    const again = await sb.from(HOSPITAL_TABLE).select('hospital_id').maybeSingle()
+    return !again.error && hospitalIdOf(again.data) !== null ? 'ok' : 'failed'
+  } catch {
+    return 'failed'
+  }
+}
+
+/** 비트 입력 방식(AC-6610.1): 'code' = 처방코드별, 'date' = 날짜별 */
+export type SavedInputMode = 'code' | 'date'
+
+/** 저장된 입력 방식과 내 줄의 병원 id. 모르는 값은 mode null(지금처럼 날짜별). 줄이 없거나 읽지 못하면 null. readHospitalSettings와 따로 읽는다(설정 바뀜 띠와 상관없게) */
+export async function readInputMode(sb: SupabaseClient): Promise<{ hospitalId: string; mode: SavedInputMode | null } | null> {
+  try {
+    const { data, error } = await sb.from(HOSPITAL_TABLE).select('hospital_id, input_mode').maybeSingle()
+    if (error) return null
+    const hospitalId = hospitalIdOf(data)
+    if (hospitalId === null) return null
+    const mode = (data as Record<string, unknown>).input_mode
+    return { hospitalId, mode: mode === 'code' || mode === 'date' ? mode : null }
+  } catch {
+    return null
+  }
+}
+
+/** 고른 입력 방식만 내 병원 줄에 적는다(AC-6610.2, 병원 문구는 보내지 않는다). 실패해도 던지지 않고 알리지 않는다(고른 방식은 화면에서 그대로 쓴다) */
+export async function saveInputMode(sb: SupabaseClient, hospitalId: string, mode: SavedInputMode): Promise<void> {
+  if (typeof hospitalId !== 'string' || hospitalId === '' || (mode !== 'code' && mode !== 'date')) return
+  try {
+    await sb.from(HOSPITAL_TABLE).update({ input_mode: mode }).eq('hospital_id', hospitalId)
+  } catch {
+    // 알리지 않는다
+  }
+}

@@ -122,6 +122,7 @@
 | `sales_days` | 일 매출 집계. 칸은 specs/revenue design.md 6절 |
 | `stats_rx_groups` | 통계 처방별 추세의 묶음(이름·코드 목록·차례). 매출 탭 묶음(`rx_groups`)과 따로 둔다. specs/treatment-trend **(사용자, 2026-11-05)** |
 | `hospital_members` | 병원의 데스크 메일(소문자, 표 전체에서 하나)·역할 'desk'. 병원마다 5개까지, 사용자 표 권한 없이 정의자 함수로만 더하고 읽고 뺀다. ADR-031, specs/desk-feedback **(사용자, 2026-11-18)** |
+| `clinic_profiles` | 병원 정보 한 줄: 이름·전화·주소·호칭·요일별 진료시간·휴진일·원장님·직원(예약 시행자를 합침)·로고 자리. 고치기는 원장만, 데스크는 읽기만, 지우기 없음. 로고 그림은 비공개 Storage `clinic-logos`(PNG, 1,000,000바이트). ADR-033, specs/clinic-profile **(사용자, 2026-11-18)** |
 | `inventory_items` · `inventory_moves` | 품목(단위·최소 수량) · 입고·사용·실사 |
 | `employees` · `incentive_rules` | 직원(세후 기본급·재직 여부) · 인센티브 항목(방식·금액·%) |
 | `payroll_months` | 달마다 입력값·결과(jsonb), 상태 `draft`·`final`. `final`은 RLS로 수정 불가 |
