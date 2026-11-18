@@ -1,15 +1,16 @@
 import { addDays, compareYmd, diffDays, isMonth, isYmd, monthOf, monthRange } from '@/lib/analytics/dates'
 import { dayCounts } from '@/lib/precheck/counts'
+import { drugRoles, type DrugRole } from '@/lib/precheck/drugRoles'
 import { dxContext, visitDxView } from '@/lib/precheck/dx/recommend'
 import { inputTargets, isPlainExclusion, isWriteStuck, NOT_ACCEPTED, NOT_DONE, reasonKind } from '@/lib/precheck/inputTargets'
-import { createMemoEngine, unfinished, validatePhrases, type Phrases } from '@/lib/precheck/memo'
+import { createMemoEngine, unfinished, validatePhrases, type PhraseCheck, type Phrases } from '@/lib/precheck/memo'
 import { bitMemoOf, compareMemo, dayMemoCounts, inputPlan, isBlankMemo, readBitMemos, replacesOf, visitMemos } from '@/lib/precheck/memoCompare'
 import { runRules } from '@/lib/precheck/rules/engine'
 import { PrecheckError, shapeClaimMonth } from '@/lib/precheck/shape'
 import type { DateRange } from '@/types/dates'
 import type { ErrorCode } from '@/types/errors'
 import type { Outcome } from '@/types/parse'
-import type { BitMemos, ChartLine, ChartLineKind, CheckGroup, CheckSettings, CheckView, ClaimMonth, ClaimView, ClaimVisitView, DxLink, Grade, InputResultLine, InputResultView, InputSelection, InputTargets, InputWhat, LeftReason, MemoInput, MemoScreenView, MemoState, MemoStateOptions, MemoViews, PrecheckToPort, PrecheckToScreen, RuleSettings, RuleSummary, RxRow, SavedRuleSettings, StuckPerson, StuckView, TargetVisit, Tables, Visit, VisitDxView, VisitMemo } from '@/types/precheck'
+import type { BitMemos, ChartLine, ChartLineKind, CheckGroup, CheckSettings, CheckView, ClaimMonth, ClaimView, ClaimVisitView, DxLink, Grade, InputResultLine, InputResultView, InputSelection, InputTargets, InputWhat, LeftReason, MemoInput, MemoScreenView, MemoState, MemoStateOptions, MemoViews, PrecheckToPort, PrecheckToScreen, RuleSettings, RuleSummary, RxRow, SavedRuleSettings, StuckPerson, StuckView, TargetRow, TargetVisit, Tables, Visit, VisitDxView, VisitMemo } from '@/types/precheck'
 import { createAssembler } from './assemble'
 import { loadTables as defaultLoadTables } from './tables'
 
@@ -129,15 +130,35 @@ export function ruleList(tables: Tables): RuleSummary[] {
  * 사람이 고쳤거나 완료한 메모는 그대로 두고 빠진 문장만 알린다(AC-014.4). 손대지 않은 메모는 저장하지 않으므로 늘 지금 설정으로 새로 만든다(AC-014.11, 원본 protectWork)
  */
 export function memoViews(month: ClaimMonth, tables: Tables, input: MemoInput, kinds?: Map<string, readonly string[]>): MemoViews {
-  const checked = validatePhrases(input.phrases)
+  return memoViewsOf(month, tables, validatePhrases(input.phrases), input.saved, kinds)
+}
+
+/** 약 역할 표와 처방 목록의 연골주사 약 이름(clinic-profile design.md 10·11절). 점검(runRules 넷째 값)과 메모(tables.roles·cartilageNames)가 같은 표를 쓴다 */
+type DrugTables = { roles: Map<string, DrugRole | 'none'>; cartilageNames: string[] }
+
+/**
+ * 처방코드(대문자) → 역할: 처방코드 탭에서 고른 역할 → 처방 목록 보험코드의 성분(AC-6608.2). 병원 문구가 검사를 지나지 못하면 고른 역할 없이 성분만 본다.
+ * 지운 코드(CODEMAP_DEL)의 역할은 쓰지 않는다(메모 엔진처럼 사전에 없는 코드다). 연골주사 약 이름은 처방 목록에서 역할이 연골주사인 줄의 이름이고 쓰는 약(유효)이 먼저다(AC-6609.1)
+ */
+function drugTablesOf(month: ClaimMonth, tables: Tables, phrases: Phrases | null): DrugTables {
+  const deleted = new Set(phrases?.CODEMAP_DEL ?? [])
+  const codemap = Object.fromEntries(Object.entries(phrases?.CODEMAP ?? {}).filter(([code]) => !deleted.has(code)))
+  const roles = drugRoles(month.catalog, tables.drugInfo ?? { map: {} }, codemap)
+  const cartilage = month.catalog.codes.filter((row) => roles.get(row.code.toUpperCase()) === 'cartilage')
+  return { roles, cartilageNames: [...cartilage.filter((row) => row.active), ...cartilage.filter((row) => !row.active)].map((row) => row.name) }
+}
+
+/** memoViews의 몸. 점검은 병원 문구 검사와 약 역할 표를 규칙과 나눠 쓴다(checkMonth) */
+function memoViewsOf(month: ClaimMonth, tables: Tables, checked: PhraseCheck, savedMemos: ReadonlyMap<string, string> | undefined, kinds?: Map<string, readonly string[]>, drugs?: DrugTables): MemoViews {
   if (!checked.ok) return { memoBlocked: 'E-MEMO-NO-SETTINGS', memos: [] }
-  const engine = createMemoEngine(checked.value, tables)
+  const { roles, cartilageNames } = drugs ?? drugTablesOf(month, tables, checked.value)
+  const engine = createMemoEngine(checked.value, { ...tables, roles, cartilageNames })
   return {
     memoBlocked: null,
     memos: engine.analyzeMonth(month).map((visit) => {
       // 증상 줄마다 메모 분석이 본 종류(AC-2601.1). 메모 목록의 열린 줄에 보인다
       kinds?.set(visit.key, visit.items.map((item) => item.k))
-      const saved = input.saved?.get(visit.key)
+      const saved = savedMemos?.get(visit.key)
       const text = saved ?? engine.fullText(visit)
       return { visitKey: visit.key, text, edited: saved !== undefined, missing: engine.savedMemoMissing(saved, visit), hasMemo: visit.memos.length > 0, unfinished: unfinished(text) }
     }),
@@ -154,10 +175,15 @@ export function dxViews(month: ClaimMonth, links: readonly DxLink[], memos?: Mem
   return month.visits.map((visit) => visitDxView(visit, ctx))
 }
 
-/** 규칙 엔진을 돌려 보기 모양으로 바꾼다(TASK-10). 메모 재료를 함께 받아 진료마다 메모를 싣는다(TASK-14). 메모를 못 만들어도 규칙 결과는 그대로다(AC-014.8). 화면으로 보내는 모양은 claimView다 */
+/**
+ * 규칙 엔진을 돌려 보기 모양으로 바꾼다(TASK-10). 메모 재료를 함께 받아 진료마다 메모를 싣는다(TASK-14). 메모를 못 만들어도 규칙 결과는 그대로다(AC-014.8). 화면으로 보내는 모양은 claimView다.
+ * 약 역할 표는 달마다 한 번 만들어 규칙과 메모가 함께 쓴다(clinic-profile AC-6608.2·AC-6608.3·AC-6609.1)
+ */
 export function checkMonth(month: ClaimMonth, tables: Tables, settings: RuleSettings, memo: MemoInput = { phrases: null }): CheckView {
-  const { perVisit, groups, totals } = runRules(month, tables, settings)
-  const memos = memoViews(month, tables, memo)
+  const checked = validatePhrases(memo.phrases)
+  const drugs = drugTablesOf(month, tables, checked.ok ? checked.value : null)
+  const { perVisit, groups, totals } = runRules(month, tables, settings, drugs.roles)
+  const memos = memoViewsOf(month, tables, checked, memo.saved, undefined, drugs)
   const memoOf = new Map(memos.memos.map((view) => [view.visitKey, view]))
   return {
     visits: month.visits.map(({ key, chart, date, name }) => {
@@ -250,8 +276,17 @@ const PRE_LEFT_REASON: Partial<Record<LeftReason, string>> = {
   held: '지난번에 건너뛴 뒤 메모가 그대로예요',
 }
 
-/** 묶음 한 사람(명령 표 bit.input의 items). 화면을 지나지 않는다 */
-type InputItem = { visitKey: string; chart: string; name: string; date: string; memo: string; replaces?: string; checkedByHand?: true }
+/** 묶음 한 사람(명령 표 bit.input의 items). 화면을 지나지 않는다. replaces와 appends는 함께 싣지 않는다(도우미가 묶음을 거절한다, AC-6611.2) */
+type InputItem = { visitKey: string; chart: string; name: string; date: string; memo: string; replaces?: string; appends?: string; checkedByHand?: true }
+
+/** 원본 MemoApproval.Matches처럼 윈도우 줄바꿈만 맞춰 같은 글인가 */
+const sameText = (a: string, b: string) => a.replaceAll('\r\n', '\n') === b.replaceAll('\r\n', '\n')
+/** 도우미가 뒤에 붙여 칸에 넣은 글(helper MemoCompare.Join): 앞 글 끝의 공백(C# char.IsWhiteSpace, isBlankMemo와 같은 글자)을 지우고 줄바꿈 + 우리 메모 */
+function joinedMemo(before: string, ours: string): string {
+  let end = before.length
+  while (end > 0 && isBlankMemo(before[end - 1])) end--
+  return `${before.slice(0, end)}\n${ours}`
+}
 type EndLine = { visitKey: string; result: string; reason: string; previousMemo?: string }
 type InputEnd = { status: 'finished' | 'cancelled' | 'stopped'; code: string | null; reason: string | null; fields: string[]; results: EndLine[]; unconfirmed?: { visitKey: string; date: string }[]; noAsk: boolean }
 
@@ -330,6 +365,11 @@ export function createPrecheckJobs(deps: {
   const approved = new Map<string, string>()
   /** [바꾸지 않기]를 누른 사람과 [직접 확인했어요]로 보낸 사람(AC-018.14·AC-016.3). 글이 달라져도 풀지 않고 새 [자료 불러오기]만 지운다 */
   const declined = new Set<string>()
+  /**
+   * [뒤에 붙이기]를 고른 사람: 내원번호 → 그때 화면에서 본 비트 메모(AC-6611.1·AC-6611.2). 묶음 항목의 appends가 된다. 사람이 고를 때만 생기고 저절로 생기지 않는다.
+   * [바꾸지 않기]·[이 메모로 바꾸기]·[직접 확인했어요]·완료·새 [자료 불러오기]가 지우고, 다시 불러온 비트 메모가 그 글이 아니면 지우고 [바꾸지 않기]로 둔다
+   */
+  const appended = new Map<string, string>()
   /** 묻지 않기(AC-018.22): PC 창만 생략하고 묶음은 이 값과 상관없다. 끝 JSON으로만 바뀌고 오류 봉투로는 바뀌지 않는다. 새 통로에서 거짓으로 돌아간다 */
   let noAsk = false
   /** 지난번 건너뛴 사람: 내원번호 → 그때 글(AC-018.20). 원본 nmAutoHeld처럼 메모리에만 둔다 */
@@ -487,7 +527,19 @@ export function createPrecheckJobs(deps: {
     const views = currentViews()
     const visible = memoContext?.visible
     const inside = visible ? (current?.visits ?? []).filter((visit) => inRange(visit.date, visible)) : []
-    return { views, rows: visitMemos(inside, views.memos, { atLoad: memosAtLoad, latest: bitMemos, journal: work.journal, approved, declined, entered: enteredReleased() }), visitOf: new Map(inside.map((visit) => [visit.key, visit])) }
+    const rows = visitMemos(inside, views.memos, { atLoad: memosAtLoad, latest: bitMemos, journal: work.journal, approved, declined, entered: enteredReleased() }).map(withAppend)
+    return { views, rows, visitOf: new Map(inside.map((visit) => [visit.key, visit])) }
+  }
+
+  /**
+   * [뒤에 붙이기]를 고른 사람(AC-6611.1): 비교가 다름이고 지금 비트 메모가 그때 본 글이면 appended를 싣는다. 입력할 사람에 들게 직접 확인 기록이 있으면 그 글을 승인으로도 친다(replacesOf).
+   * 본 글이 아니면 [바꾸지 않기]로 본다: 붙이려던 사람의 다른 메모를 저절로 바꾸지 않는다
+   */
+  function withAppend(row: VisitMemo): VisitMemo {
+    const seen = appended.get(row.key)
+    if (seen === undefined || row.compare !== '다름' || row.inBit === undefined) return row
+    if (!sameText(seen, row.inBit)) return { ...row, declined: true }
+    return row.lastJournal === 'skippedByHand' ? { ...row, appended: seen, approved: seen } : { ...row, appended: seen }
   }
 
   /** 완료를 푼 사람 가운데 이 화면에서 비트 메모를 읽은 뒤 넣은 사람: 내원번호 → 넣은 글(AC-2202.3). 고치지 않은 완료 줄은 지금처럼 받은 사본으로 견준다 */
@@ -546,7 +598,16 @@ export function createPrecheckJobs(deps: {
 
   /** keep은 메모 보기에만 넘긴다(복사로 완료한 사람의 자리, AC-3104.4). 입력 묶음은 keep 없이 불러 완료한 사람이 '이미 입력됨'으로 빠진다(AC-3104.5) */
   function targetsFor(selection: InputSelection, rows: readonly VisitMemo[], visitOf: ReadonlyMap<string, Visit>, visible: DateRange, keep?: ReadonlySet<string>): InputTargets {
-    return inputTargets(targetVisits(rows, visitOf), selection, { visible, done: finishedKeys(), held, foundByPc, codeInfo, keep })
+    const targets = inputTargets(targetVisits(rows, visitOf), selection, { visible, done: finishedKeys(), held, foundByPc, codeInfo, keep })
+    if (!targets.batch.some((row) => row.appended !== undefined)) return targets
+    // 붙이는 사람(AC-6611.1)은 다른 메모를 바꾸지 않는다: inputTargets는 비교가 다름이면 바꾸는 사람으로 보므로 replaces를 떼고 바꾸는 수에서 뺀다
+    const batch = targets.batch.map((row) => {
+      if (row.appended === undefined) return row
+      const copy: TargetRow = { ...row }
+      delete copy.replaces
+      return copy
+    })
+    return { ...targets, batch, replacing: targets.replacing - batch.filter((row) => !row.done && row.appended !== undefined).length }
   }
 
   /** 지금 쓰다 멈춘 사람인가(AC-018.16): 입력 기록 사본의 writing·writeUnconfirmed이거나 마지막 답의 unconfirmed·이번 답의 줄로 안 사람 */
@@ -638,11 +699,18 @@ export function createPrecheckJobs(deps: {
   /** replaces 없는 줄: 쓰다 멈춘 사람의 [이어서 입력](AC-018.16). 도우미는 그 사람의 칸이 다르면 replaces와 상관없이 쓰지 않고 멈춘다(AC-017.7) */
   const bareItem = (row: VisitMemo, visit: Visit): InputItem => ({ visitKey: row.key, chart: visit.chart, name: visit.name, date: visit.date, memo: row.text })
 
-  /** 메모가 있는 보통 줄. 비교가 다름이면 지금 쥔 비트 글을 replaces로 싣는다(AC-016.3·AC-037.1) */
-  function itemOf(row: VisitMemo, visit: Visit): InputItem {
+  /**
+   * 도우미가 칸 글과 견줄 글: [뒤에 붙이기]를 고른 사람이면 그때 본 비트 글을 appends로(AC-6611.2), 아니면 비교가 다름일 때 지금 쥔 비트 글을 replaces로(AC-016.3·AC-037.1).
+   * 둘을 함께 싣지 않는다. 확인 표시가 남은 메모에는 어느 것도 없다(replacesOf와 같다)
+   */
+  function seenOf(row: VisitMemo): Pick<InputItem, 'replaces' | 'appends'> {
+    if (row.appended !== undefined && !row.unfinished) return { appends: row.appended }
     const replaces = replacesOf(row)
-    return replaces === undefined ? bareItem(row, visit) : { ...bareItem(row, visit), replaces }
+    return replaces === undefined ? {} : { replaces }
   }
+
+  /** 메모가 있는 보통 줄 */
+  const itemOf = (row: VisitMemo, visit: Visit): InputItem => ({ ...bareItem(row, visit), ...seenOf(row) })
 
   function buildBatch(what: InputWhat, selection: InputSelection): { items: InputItem[]; code: string | null; placeholders: Map<string, { date: string | null; month: string }>; preLeft: { reason: LeftReason; row: { key: string; date: string; month: string; name: string; chart: string; text: string; inBit?: string } }[]; uncounted: number } | null {
     if (!memoContext || !current || storeBlocked) return null
@@ -687,19 +755,22 @@ export function createPrecheckJobs(deps: {
         .filter((item) => {
           if (!resume.has(item.visitKey)) return false
           const row = rowOf.get(item.visitKey)
-          // 줄이 없으면(고른 기간이 바뀜) 비교를 모른다. 옛 replaces를 실은 사람이 [바꾸지 않기]였으면 빼는 쪽으로 틀린다
-          const out = row ? row.declined === true : item.replaces !== undefined && declined.has(item.visitKey)
+          // 줄이 없으면(고른 기간이 바뀜) 비교를 모른다. 옛 replaces·appends를 실은 사람이 [바꾸지 않기]였으면 빼는 쪽으로 틀린다
+          const out = row ? row.declined === true : (item.replaces !== undefined || item.appends !== undefined) && declined.has(item.visitKey)
           return !out || isStuckNow(item.visitKey)
         })
         .map((item) => {
           const row = rowOf.get(item.visitKey)
           const stuckNow = isStuckNow(item.visitKey)
           const next: InputItem = { visitKey: item.visitKey, chart: item.chart, name: item.name, date: item.date, memo: item.memo }
+          // 쓰다 멈춘 사람에게는 appends도 싣지 않는다: 도우미가 칸 글을 '마지막 원본 + 줄바꿈 + 우리 메모'로 확인한다(AC-6611.2)
           if (row && !isBlankMemo(item.memo)) {
             next.memo = isBlankMemo(row.text) ? ' ' : row.text
-            const replaces = stuckNow ? undefined : replacesOf(row)
-            if (replaces !== undefined) next.replaces = replaces
-          } else if (item.replaces !== undefined && !stuckNow) next.replaces = item.replaces
+            if (!stuckNow) Object.assign(next, seenOf(row))
+          } else if (!stuckNow) {
+            if (item.replaces !== undefined) next.replaces = item.replaces
+            else if (item.appends !== undefined) next.appends = item.appends
+          }
           return next
         })
       // 자리 채움 값도 보낸 그대로이므로 그 표시를 잇는다: 잃으면 결과 줄과 엑셀에 그 값이 보인다(AC-018.15)
@@ -724,8 +795,9 @@ export function createPrecheckJobs(deps: {
     let order = 0
     const fill = () => String(++order).padStart(20, '0')
     const items: InputItem[] = stuck.people.map((person) => {
-      // 도우미는 replaces를 새 승인으로 본다: 남기면 손으로 다루던 메모가 바뀐다(AC-018.14·AC-037.6). 사본을 적지 못한 답 뒤에도 보내지 않게 [바꾸지 않기]로 적는다(AC-016.3)
+      // 도우미는 replaces를 새 승인으로 본다: 남기면 손으로 다루던 메모가 바뀐다(AC-018.14·AC-037.6). 사본을 적지 못한 답 뒤에도 보내지 않게 [바꾸지 않기]로 적는다(AC-016.3). 붙이기도 푼다
       approved.delete(person.key)
+      appended.delete(person.key)
       declined.add(person.key)
       const row = rowOf.get(person.key)
       const visit = visitOf.get(person.key)
@@ -766,8 +838,10 @@ export function createPrecheckJobs(deps: {
       const notDone = line.result === '확인 필요' && line.reason.startsWith(NOT_DONE)
       if (line.result === '완료') {
         approved.delete(key)
+        appended.delete(key)
         held.delete(key)
-        afterEntry.set(key, item?.memo ?? null)
+        // 붙인 사람의 칸 글은 '본 글 + 줄바꿈 + 우리 메모'다: 고쳐 완료를 풀면 그 글과 견준다(AC-2202.3·AC-6611.2)
+        afterEntry.set(key, item ? (item.appends === undefined ? item.memo : joinedMemo(item.appends, item.memo)) : null)
         resolved.add(key)
         work.done.add(key)
         work.released.delete(key) // 다시 넣었으니 다시 완료다(AC-2202.6)
@@ -991,6 +1065,7 @@ export function createPrecheckJobs(deps: {
         viewsCache = null
         approved.clear()
         declined.clear()
+        appended.clear() // 새 불러오기에서 저절로 붙이지 않는다(AC-6611.2)
         held.clear()
         foundByPc.clear()
         afterEntry.clear()
@@ -1050,6 +1125,15 @@ export function createPrecheckJobs(deps: {
                 const visit = current?.visits.find((row) => row.key === key)
                 const inBit = visit ? bitMemoOf(memos.value, visit) : undefined
                 if (inBit === undefined || compareMemo(text, inBit) !== '같음') approved.delete(key)
+              }
+              // 붙이려고 본 비트 글이 그새 바뀐 사람은 붙이기를 풀고 [바꾸지 않기]로 둔다: 글이 돌아와도 되살아나지 않고(X→Y→X) 저절로 바꾸지도 않는다(AC-6611.2)
+              for (const [key, seen] of appended) {
+                const visit = current?.visits.find((row) => row.key === key)
+                const inBit = visit ? bitMemoOf(memos.value, visit) : undefined
+                if (inBit === undefined || !sameText(seen, inBit)) {
+                  appended.delete(key)
+                  declined.add(key)
+                }
               }
               afterEntry.clear()
               postDayCounts()
@@ -1127,11 +1211,20 @@ export function createPrecheckJobs(deps: {
       } else if (m.type === 'memoApprove' && typeof m.visitKey === 'string') {
         // 메모를 만들지 않은 병원은 줄이 없다
         const row = memoRows().rows.find((item) => item.key === m.visitKey)
-        if (m.approved !== true) {
+        if (m.approved === 'append') {
+          // [뒤에 붙이기](AC-6611.1): 비트에 다른 메모가 있는 사람만. 화면에서 본 비트 메모를 묶음 항목의 appends로 보낸다(AC-6611.2). 바꾸기 승인과 [바꾸지 않기]는 푼다
+          if (row?.compare === '다름' && row.inBit !== undefined) {
+            approved.delete(row.key)
+            declined.delete(row.key)
+            appended.set(row.key, row.inBit)
+          }
+        } else if (m.approved !== true) {
           approved.delete(m.visitKey)
+          appended.delete(m.visitKey) // [바꾸지 않기]는 붙이기도 푼다
           if (row?.compare === '다름') declined.add(m.visitKey)
         } else {
           declined.delete(m.visitKey)
+          appended.delete(m.visitKey) // [이 메모로 바꾸기]는 붙이지 않고 바꾼다
           // 직접 확인 기록이 남은 사람만 승인이 있어야 든다: 보인 비트 메모를 담는다(AC-018.14)
           if (row?.compare === '다름' && row.lastJournal === 'skippedByHand' && row.inBit !== undefined) approved.set(row.key, row.inBit)
         }

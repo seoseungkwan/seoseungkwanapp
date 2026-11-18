@@ -225,7 +225,11 @@ export type StoreLoadJson = { months?: Record<string, StoreMonthJson>; contact?:
 export type MemoCompare = '같음' | '다름' | '비트에 없음' | '조회 못함'
 /** 받아 둔 claim.memos: 읽은 기간과 내원번호 → 줄(chart는 앞 0을 뺀 차트번호) */
 export type BitMemos = { period: DateRange; rows: Map<string, { chart: string; memo: string }> }
-/** 진료 하나의 비교 상태. inBit은 같음·다름일 때만, approved는 지금 비트 메모와 같은 승인일 때만, declined는 비교가 다름이고 [바꾸지 않기]를 눌렀을 때만, lastJournal은 입력 기록이 있을 때만 칸이 있다 */
+/**
+ * 진료 하나의 비교 상태. inBit은 같음·다름일 때만, approved는 지금 비트 메모와 같은 승인일 때만, declined는 비교가 다름이고 [바꾸지 않기]를 눌렀을 때만, lastJournal은 입력 기록이 있을 때만 칸이 있다.
+ * appended는 [뒤에 붙이기]를 고른 사람(clinic-profile AC-6611.1)의 그때 본 비트 메모이고, 비교가 다름이고 지금 비트 메모가 그 글일 때만 있다(Worker가 붙인다).
+ * 이 사람은 입력할 사람에 들고(줄의 chip은 '메모 바꿈' 그대로, 화면이 '메모 뒤에 붙임'으로 보인다) 묶음 항목은 replaces 없이 appends다
+ */
 export type VisitMemo = {
   key: string
   date: string
@@ -236,6 +240,7 @@ export type VisitMemo = {
   inBit?: string
   approved?: string
   declined?: true
+  appended?: string
   lastJournal?: string
 }
 /** 입력 묶음 줄. replaces는 지금 쥔 비트 메모이고 비교가 다름이 아니면 칸이 없다(AC-016.3·AC-037.1) */
@@ -362,7 +367,7 @@ export type CheckSettings = { rules: SavedRuleSettings; phrases: object | null; 
  *     store.load {months}와 {settings}는 따로 부른다(한 호출에 섞으면 파일 하나만 막혀도 호출 전체가 같은 번호로 거절된다). 설정 쪽 거절이 E-BIT-HOSPITAL-MISMATCH면 사본 없이 계속한다.
  * 13. excel은 답을 받은 점검의 check 번호로 묻는다. Worker는 그 점검 결과로만 만들고, 번호가 다르거나 새 loadStart로 결과를 버렸으면 E-CLAIM-PARTIAL이다.
  * 14. 메모 칸(TASK-18). memoView는 번호 ask로 묻고 마지막 번호의 답만 쓴다. 목록·묶음은 Worker의 inputTargets가 같은 판단으로 정한다(AC-018.26). 답에는 환자 글자가 있어 환자 줄 화면(components/claim/rows)에만 넘긴다.
- *     editMemo·memoApprove는 답이 없고, 저장 결과는 memoSave로 온다. memoSaveRetry는 저장하지 못한 달을 다시 보낸다. storeBlock은 달 칸 저장이 막혔다고 알린다(AC-018.17): 그 뒤로 Worker는 달 칸 store.save를 보내지 않고 달 칸 store.load가 성공하면 풀린다.
+ *     editMemo·memoApprove는 답이 없고, 저장 결과는 memoSave로 온다. memoApprove의 approved는 true [이 메모로 바꾸기] · false [바꾸지 않기](붙이기도 푼다) · 'append' [뒤에 붙이기](비교가 다름인 사람만, 도우미 0.12.0부터, AC-6611.1)다. memoSaveRetry는 저장하지 못한 달을 다시 보낸다. storeBlock은 달 칸 저장이 막혔다고 알린다(AC-018.17): 그 뒤로 Worker는 달 칸 store.save를 보내지 않고 달 칸 store.load가 성공하면 풀린다.
  *     buildInputBatch는 묶음을 Worker가 만들어 통로 포트로 보낸다(AC-004.11. 화면은 글자를 쥐지 않는다). 답은 inputStart 하나, 끝나면 inputDone 하나이고 번호 run은 물을 때 보낸 그대로다.
  *     통로가 바뀌면(화면을 떠나면) 진행 중인 묶음의 답은 오지 않는다. 결과는 도우미 작업 저장에 있어 다음 store.load로 읽는다(AC-018.5·AC-017.9).
  */
@@ -377,7 +382,7 @@ export type PrecheckFromScreen =
   | { type: 'excel'; check: number }
   | { type: 'memoView'; ask: number; selection: InputSelection }
   | { type: 'editMemo'; visitKey: string; text: string }
-  | { type: 'memoApprove'; visitKey: string; approved: boolean }
+  | { type: 'memoApprove'; visitKey: string; approved: boolean | 'append' }
   | { type: 'memoSaveRetry' }
   /** 우리 메모를 클립보드에 복사했다: 그 글이 지금 우리 메모와 같으면 완료로 둔다(AC-3104.1) */
   | { type: 'memoCopied'; visitKey: string; text: string }

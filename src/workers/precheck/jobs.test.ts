@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as XLSX from 'xlsx'
 import type { Outcome } from '@/types/parse'
-import type { CheckSettings, ClaimMemosJson, ClaimView, DxLink, InputSelection, MemoRowRaw, MemoScreenView, MemoState, MemoStateOptions, PrecheckFromScreen, PrecheckToPort, PrecheckToScreen, StoreLoadJson, StoreMonthJson, Tables } from '@/types/precheck'
-import { defaultPhrases, ourClinicPhrases, validatePhrases, type Phrases } from '@/lib/precheck/memo'
+import type { CatalogCode, CheckSettings, ClaimMemosJson, ClaimMonth, ClaimView, DxLink, InputSelection, MemoRowRaw, MemoScreenView, MemoState, MemoStateOptions, PrecheckFromScreen, PrecheckToPort, PrecheckToScreen, StoreLoadJson, StoreMonthJson, Tables, Visit } from '@/types/precheck'
+import { defaultPhrases, neutralPhrases, ourClinicPhrases, validatePhrases, type MemoCode, type Phrases } from '@/lib/precheck/memo'
 import { checkMonth, loadMonth, createPrecheckJobs, dxViews, memoViews, ruleList } from './jobs'
 import { loadTables } from './tables'
 
@@ -1111,6 +1111,131 @@ describe('AC-014 메모 초안이 점검 보기 모양에 들어간다', { timeo
 
 // ── 비트 메모 비교의 Worker 쪽(TASK-16). 조각은 진짜 assemble로 모은다. 메모 글자는 모두 지어낸 것이다 ──────────
 
+describe('clinic-profile 약 역할·연골주사 이름을 점검과 메모에 잇는다', { timeout: 30_000 }, () => {
+  const tablesValue = async () => {
+    const loaded = await loadTables()
+    if (!loaded.ok) throw new Error(loaded.code)
+    return loaded.value
+  }
+  const NO_SETTINGS = { off: [], on: [], grade: {} }
+  type Seed = { key: string; chart: string; lines: string[]; rx: [code: string, name: string][]; dx?: string }
+  /** 도우미 표를 거치지 않고 점검용 모양을 바로 만든다(진료는 모두 2026-10-12) */
+  function fakeMonth(seeds: Seed[], catalog: Partial<CatalogCode>[]): ClaimMonth {
+    const date = '2026-10-12'
+    const rxByDay: ClaimMonth['rxByDay'] = new Map()
+    const rxDayOrder: ClaimMonth['rxDayOrder'] = []
+    const visits = seeds.map((seed): Visit => {
+      const rx = seed.rx.map(([code, name]) => ({ code, name, qty: 1, benefit: true, pay: '급여' }))
+      rxByDay.set(seed.chart, new Map([[date, rx]]))
+      rxDayOrder.push(rx)
+      const dx = [{ c: seed.dx ?? 'M1706', n: '', m: true as const, s: '', d: '', t: '' }]
+      return { key: seed.key, chart: seed.chart, date, month: '2026-10', name: '가상환자01', lines: seed.lines, hints: seed.lines.map(() => null), rx, dx, memosInBit: [] }
+    })
+    return {
+      period: { from: '2026-10-01', to: '2026-10-31' },
+      visits,
+      history: new Map(),
+      historyRange: { from: '2025-10-01', to: '2026-10-31' },
+      rxByDay,
+      rxDayOrder,
+      dxTrend: { from: '2025-11-01', to: '2026-11-01', visits: 0, codes: new Map(), suggestions: [] },
+      catalog: { codes: catalog.map((row) => ({ code: '', name: '', kind: 'drug' as const, active: true, standardCode: '', ...row })), la: [] },
+      hasDx: true,
+    }
+  }
+  /** 다른 병원 처방 목록: 'A15'는 보험코드 성분이 에피네프린 주사(리도카인 아님), 'X7'은 히알루론산나트륨 주사. 이름으로는 역할을 알 수 없다 */
+  const OTHER_CATALOG: Partial<CatalogCode>[] = [
+    { code: 'KK090', name: '관절강내주사', kind: 'procedure', standardCode: 'KK090' },
+    { code: 'A15', name: '가상주사', standardCode: '645100741' },
+    { code: 'X7', name: '시노비안', standardCode: '642904921' },
+  ]
+  const RULES_MONTH = () =>
+    fakeMonth(
+      [
+        { key: 'a15-alone', chart: '900301', lines: ['Rt knee IA'], rx: [['KK090', '관절강내주사'], ['A15', '가상주사']] },
+        { key: 'x7-hip-dx', chart: '900302', lines: ['Rt knee'], rx: [['KK090', '관절강내주사'], ['X7', '가상주사']], dx: 'M5456' },
+      ],
+      OTHER_CATALOG,
+    )
+  /** 중립 기본 문구 + 그 병원 처방코드 탭 줄 */
+  const clinicPhrases = (rows: Record<string, MemoCode>, edit?: (value: Phrases) => void): Phrases => {
+    const value = neutralPhrases()
+    Object.assign(value.CODEMAP, rows)
+    edit?.(value)
+    expect(validatePhrases(value).ok).toBe(true)
+    return value
+  }
+  const ruleHits = (view: ReturnType<typeof checkMonth>, key: string) => view.visits.find((visit) => visit.key === key)!.findings.map((hit) => `${hit.ruleId}:${hit.detail}`)
+  const ids = (hits: string[]) => hits.map((hit) => hit.split(':')[0])
+
+  it("AC-6608.3: 다른 병원은 보험코드 성분으로 점검한다 — 'A15'는 마취약이 아니고(IJ-05 없음) 'X7'은 연골주사다(무릎이 아닌 상병이면 HY-01). 병원 문구가 없어도 같다", async () => {
+    const tables = await tablesValue()
+    for (const phrases of [null, clinicPhrases({})]) {
+      const view = checkMonth(RULES_MONTH(), tables, NO_SETTINGS, { phrases })
+      expect(ruleHits(view, 'a15-alone')).toEqual([])
+      expect(ids(ruleHits(view, 'x7-hip-dx'))).toEqual(expect.arrayContaining(['HY-01', 'HY-12']))
+    }
+  })
+
+  it('AC-6608.2: 처방코드 탭에서 고른 역할(CODEMAP 깃발)이 보험코드 성분보다 먼저 점검에 간다 — 마취약으로 고른 A15는 IJ-05, [아님]으로 고른 X7은 연골주사 규칙이 없다', async () => {
+    const tables = await tablesValue()
+    const phrases = clinicPhrases({
+      A15: { n: '가상주사', k: 'drug', rg: null, localAnesthetic: true },
+      X7: { n: '시노비안', k: 'drug', rg: null, steroid: false, localAnesthetic: false, cartilage: false },
+    })
+    const view = checkMonth(RULES_MONTH(), tables, NO_SETTINGS, { phrases })
+    expect(ruleHits(view, 'a15-alone')).toContain('IJ-05:KK090 + A15')
+    expect(ids(ruleHits(view, 'x7-hip-dx'))).not.toContain('HY-01')
+    expect(ids(ruleHits(view, 'x7-hip-dx'))).not.toContain('HY-12')
+  })
+
+  it('AC-6608.2: 지운 코드(CODEMAP_DEL)의 깃발은 쓰지 않는다(사전에 없는 코드다)', async () => {
+    const phrases = clinicPhrases({ A15: { n: '가상주사', k: 'drug', rg: null, localAnesthetic: true } }, (value) => {
+      value.CODEMAP_DEL = [...value.CODEMAP_DEL, 'A15']
+    })
+    expect(ruleHits(checkMonth(RULES_MONTH(), await tablesValue(), NO_SETTINGS, { phrases }), 'a15-alone')).toEqual([])
+  })
+
+  /** 차트에 그 병원 연골주사 약 이름을 적은 날(관절강내주사 + 그 약) */
+  const chartedMonth = (name: string, line: string) => fakeMonth([{ key: 'x7-chart', chart: '900311', lines: ['Rt knee OA', line], rx: [['KK090', '관절강내주사'], ['X7', `${name}주`]] }], [OTHER_CATALOG[0], { code: 'X7', name, standardCode: '642904921' }])
+  /** 처방코드 탭에 그 약 줄(이름만, 역할 깃발 없음)과 관절강내주사 날 그 약 넣기 */
+  const drugPhrases = (name: string, row: Partial<MemoCode> = {}) =>
+    clinicPhrases({ X7: { n: name, k: 'drug', rg: null, ...row } }, (value) => {
+      value.procedureDrugs = { KK090: { [name]: { use: 'include', place: 'afterEnding' } } }
+    })
+  const memoOf = (views: ReturnType<typeof memoViews>, key: string) => views.memos.find((memo) => memo.visitKey === key)!.text
+
+  it("AC-6609.1: 보험코드 성분으로 연골주사인 약을 차트에 적은 날 연골주사 줄이 만들어지고 약 이름은 그 병원 이름이며 '아라간'이 없다(이름으로 짐작할 수 없는 약 포함)", async () => {
+    const tables = await tablesValue()
+    const cases: [name: string, line: string, memo: string][] = [
+      ['하이알플러스', '하이알플러스 rt knee 2차', '◈우측 슬관절 강내 연골주사 2회차 (하이알플러스)'],
+      ['시노비안', '시노비안 Lt knee 3차', '◈좌측 슬관절 강내 연골주사 3회차 (시노비안)'],
+    ]
+    for (const [name, line, memo] of cases) {
+      const text = memoOf(memoViews(chartedMonth(name, line), tables, { phrases: drugPhrases(name) }), 'x7-chart')
+      expect(text, name).toBe(memo)
+      expect(text, name).not.toContain('아라간')
+    }
+  })
+
+  it("AC-6608.2: 처방코드 탭 [아님]은 보험코드 성분이 연골주사여도 연골주사 약이 아니다(메모)", async () => {
+    const none = drugPhrases('시노비안', { steroid: false, localAnesthetic: false, cartilage: false })
+    const text = memoOf(memoViews(chartedMonth('시노비안', '시노비안 Lt knee 3차'), await tablesValue(), { phrases: none }), 'x7-chart')
+    expect(text).not.toContain('연골주사')
+  })
+
+  it('AC-6609.1: 처방코드 탭에 없는 연골주사 약도 처방 목록 이름으로 차트를 읽고, 그날 처방이 없으면 약 이름 자리는 쓰는 약(유효) 이름이 먼저다', async () => {
+    const phrases = clinicPhrases({}, (value) => {
+      value.TPL.ara = '{좌우} 슬관절 강내 {약제} {회차}회차'
+    })
+    const catalog: Partial<CatalogCode>[] = [OTHER_CATALOG[0], { code: 'X9', name: '옛연골약', active: false, standardCode: '645902041' }, { code: 'X7', name: '시노비안', standardCode: '642904921' }]
+    const month = fakeMonth([{ key: 'chart-only', chart: '900312', lines: ['시노비안 Rt knee 3차'], rx: [['KK090', '관절강내주사']] }], catalog)
+    const text = memoOf(memoViews(month, await tablesValue(), { phrases }), 'chart-only')
+    expect(text).toBe('◈우측 슬관절 강내 시노비안 3회차')
+    expect(text).not.toContain('아라간')
+  })
+})
+
 describe('AC-016 비트 메모 자료를 받아 비교한다', { timeout: 30_000 }, () => {
   const MEMO_MONTH = FAKE('claim-month-memo.json')
   const DAY = { from: '2026-10-12', to: '2026-10-12' }
@@ -1780,7 +1905,7 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
   const batchKeys = (view: MemoScreenView) => view.targets.batch.map((row) => row.key)
   const rowOf = (view: MemoScreenView, key: string) => view.table.find((row) => row.key === key)!
   const sends = (made: Made, cmd: string) => made.sent.filter((m) => m.cmd === cmd)
-  type Item = { visitKey: string; chart: string; name: string; date: string; memo: string; replaces?: string; checkedByHand?: boolean }
+  type Item = { visitKey: string; chart: string; name: string; date: string; memo: string; replaces?: string; appends?: string; checkedByHand?: boolean }
   /** 단추 하나를 누른다. 보낸 묶음을 돌려준다 */
   const press = async (made: Made, what: Extract<PrecheckFromScreen, { type: 'buildInputBatch' }>['what'] = 'selection', selection: InputSelection = SELECT) => {
     const run = ++made.runs
@@ -2549,6 +2674,178 @@ describe('AC-018 메모 화면: Worker가 정하고 보낸다', { timeout: 60_00
       await finish(made, ticket, { status: 'finished', results: [{ ...line(A, '완료', '바꿈(기존 메모 덮어씀)'), previousMemo: '처음 메모' }] })
       const view = await viewOf(made)
       expect(keysIn(view, 'done')).toContain(A.key)
+    })
+  })
+
+  describe('AC-6611.2 [뒤에 붙이기]는 고른 사람만 appends(화면에서 본 비트 메모)로 보낸다', () => {
+    const OTHER = [memoRow(A, '다른 메모')]
+    const choose = (made: Made, key: string, approved: boolean | 'append') => made.jobs.fromScreen({ type: 'memoApprove', visitKey: key, approved } satisfies PrecheckFromScreen)
+    /** '다른 메모 있음'에서 [뒤에 붙이기]: 화면은 [바꾸지 않기]로 옮긴 뒤에 이 단추를 보인다 */
+    const appendFromDiff = async (made: Made, key: string) => {
+      await decline(made, key)
+      await choose(made, key, 'append')
+    }
+    const reload = async (made: Made, run: number, text: string) => {
+      await made.jobs.fromScreen({ type: 'memoReloadStart', run } satisfies PrecheckFromScreen)
+      await stream(made.jobs, `r${run}`, text)
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: `r${run}`, load: 1, run } satisfies PrecheckFromScreen)
+    }
+    const batchRow = (view: MemoScreenView, key: string) => view.targets.batch.find((row) => row.key === key)
+    /** 보낸 묶음을 도우미가 받지 못했다: 다음 단추를 누를 수 있다 */
+    const refuse = (made: Made, ticket: number) => made.jobs.fromPort({ type: 'sent', ticket, ok: false, code: 'E-BIT-READ-FAILED' })
+
+    it("AC-6611.2: '다른 메모 있음'에서 [뒤에 붙이기]를 고르면 입력할 사람에 들고 그 줄은 appended(본 비트 메모)이며, 묶음 항목은 appends이고 replaces가 없다", async () => {
+      const made = await ready({ bit: OTHER })
+      await decline(made, A.key)
+      expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
+      await choose(made, A.key, 'append')
+      const view = await viewOf(made)
+      expect(keysIn(view, 'diff')).toEqual([])
+      expect(batchRow(view, A.key)).toMatchObject({ compare: '다름', appended: '다른 메모' })
+      expect(batchRow(view, A.key)).not.toHaveProperty('replaces')
+      expect(rowOf(view, A.key).appended).toBe('다른 메모')
+      expect(view.targets.replacing).toBe(0) // 붙이는 사람은 다른 메모를 바꾸지 않는다
+      const sent = await press(made)
+      expect(itemIn(sent, A.key)).toMatchObject({ memo: rowOf(view, A.key).text, appends: '다른 메모' })
+      expect(itemIn(sent, A.key)).not.toHaveProperty('replaces')
+    })
+
+    it('AC-6611.2: [바꾸지 않기]는 붙이기를 풀어 묶음에 없고, [이 메모로 바꾸기]는 붙이기 대신 replaces로 든다', async () => {
+      const made = await ready({ bit: OTHER })
+      await appendFromDiff(made, A.key)
+      await decline(made, A.key)
+      const off = await viewOf(made)
+      expect(keysIn(off, 'diff')).toEqual([A.key])
+      expect(rowOf(off, A.key)).not.toHaveProperty('appended')
+      const declined = await press(made)
+      expect(declined.payload).not.toBeNull()
+      expect(itemIn(declined, A.key)).toBeUndefined()
+      await refuse(made, declined.ticket)
+      await choose(made, A.key, 'append')
+      await choose(made, A.key, true)
+      const swapped = await viewOf(made)
+      expect(batchRow(swapped, A.key)).toMatchObject({ replaces: '다른 메모', chip: '메모 바꿈' })
+      expect(batchRow(swapped, A.key)).not.toHaveProperty('appended')
+      expect(swapped.targets.replacing).toBe(1)
+      const sent = await press(made)
+      expect(itemIn(sent, A.key)).toMatchObject({ replaces: '다른 메모' })
+      expect(itemIn(sent, A.key)).not.toHaveProperty('appends')
+    })
+
+    it("AC-6611.2: 묻지 않기가 켜져 있어도 붙이기는 사람이 고른 사람에게만 한다: 고르지 않은 다른 메모는 지금처럼 replaces이고 appends가 없다", async () => {
+      const made = await ready({ bit: [memoRow(A, '다른 메모'), memoRow(B, '또 다른 메모')] })
+      await turnNoAskOn(made)
+      await appendFromDiff(made, A.key)
+      const view = await viewOf(made)
+      expect(view.noAsk).toBe(true)
+      expect(view.targets.replacing).toBe(1)
+      const sent = await press(made)
+      expect(itemIn(sent, A.key)).toMatchObject({ appends: '다른 메모' })
+      expect(itemIn(sent, B.key)).toMatchObject({ replaces: '또 다른 메모' })
+      expect(sent.payload?.items.filter((item) => item.appends !== undefined).map((item) => item.visitKey)).toEqual([A.key])
+    })
+
+    it('AC-6611.2: 비트에 다른 메모가 없는 사람에게 [뒤에 붙이기]는 아무것도 바꾸지 않는다', async () => {
+      const made = await ready()
+      await choose(made, A.key, 'append')
+      const view = await viewOf(made)
+      expect(batchRow(view, A.key)).toMatchObject({ chip: '새 메모' })
+      expect(rowOf(view, A.key)).not.toHaveProperty('appended')
+      expect(itemIn(await press(made), A.key)).not.toHaveProperty('appends')
+    })
+
+    it('AC-6611.2: 직접 확인 기록이 남은 사람도 [뒤에 붙이기]를 고르면 입력할 사람에 들고 appends로 간다', async () => {
+      const made = await ready({ bit: OTHER, store: { journal: { [A.key]: 'skippedByHand' } } })
+      expect(keysIn(await viewOf(made), 'diff')).toEqual([A.key])
+      await choose(made, A.key, 'append')
+      expect(batchRow(await viewOf(made), A.key)).toMatchObject({ appended: '다른 메모' })
+      const sent = await press(made)
+      expect(itemIn(sent, A.key)).toMatchObject({ appends: '다른 메모' })
+      expect(itemIn(sent, A.key)).not.toHaveProperty('replaces')
+      expect(itemIn(sent, A.key)).not.toHaveProperty('checkedByHand')
+    })
+
+    it("AC-6611.2: 다시 불러온 비트 메모가 본 글과 다르면 붙이기가 풀려 '다른 메모 있음'으로 간다(바꾸기로 가지 않는다). 글이 돌아와도 되살아나지 않는다", async () => {
+      const made = await ready({ bit: OTHER })
+      await appendFromDiff(made, A.key)
+      await reload(made, 1, memosJson([memoRow(A, '그새 바뀐 메모')]))
+      const changed = await viewOf(made)
+      expect(keysIn(changed, 'diff')).toEqual([A.key])
+      expect(rowOf(changed, A.key)).not.toHaveProperty('appended')
+      await reload(made, 2, memosJson(OTHER))
+      const back = await viewOf(made)
+      expect(keysIn(back, 'diff')).toEqual([A.key])
+      expect(rowOf(back, A.key)).not.toHaveProperty('appended')
+      // 줄바꿈 모양만 다르면 같은 글이라 붙이기가 남는다
+      const kept = await ready({ bit: [memoRow(A, '첫 줄\n둘째 줄')] })
+      await appendFromDiff(kept, A.key)
+      await reload(kept, 1, memosJson([memoRow(A, '첫 줄\r\n둘째 줄')]))
+      expect(batchRow(await viewOf(kept), A.key)).toMatchObject({ appended: '첫 줄\n둘째 줄' })
+    })
+
+    it('AC-6611.2: 새 [자료 불러오기]는 붙이기를 지운다(저절로 붙이지 않는다)', async () => {
+      const made = await ready({ bit: OTHER })
+      await appendFromDiff(made, A.key)
+      await loadInto(made.jobs, 'month2', MEMO_MONTH, 2)
+      await stream(made.jobs, 'memos2', memosJson(OTHER))
+      await made.jobs.fromScreen({ type: 'loadPart', part: 'memos', id: 'memos2', load: 2 } satisfies PrecheckFromScreen)
+      await made.jobs.fromScreen({ type: 'check', check: 2, load: 2, visible: DAY, settings: SETTINGS } satisfies PrecheckFromScreen)
+      const view = await viewOf(made)
+      expect(batchRow(view, A.key)).toMatchObject({ chip: '메모 바꿈', replaces: '다른 메모' })
+      expect(batchRow(view, A.key)).not.toHaveProperty('appended')
+    })
+
+    it('AC-6611.2: [직접 확인했어요]로 보내면 붙이기가 풀린다(appends 없이 보내고 뒤에 다시 들지 않는다)', async () => {
+      const made = await ready({ bit: OTHER, store: { journal: { [A.key]: 'writing' } } })
+      await choose(made, A.key, 'append')
+      const hand = await press(made, 'byHand')
+      expect(hand.payload?.items).toEqual([expect.objectContaining({ visitKey: A.key, checkedByHand: true })])
+      expect(hand.payload?.items[0]).not.toHaveProperty('appends')
+      await finish(made, hand.ticket, { status: 'finished', results: [line(A, '건너뜀', '이미 있음')] })
+      const view = await viewOf(made)
+      expect(keysIn(view, 'diff')).toContain(A.key)
+      expect(rowOf(view, A.key)).not.toHaveProperty('appended')
+    })
+
+    it("AC-6611.2: [이어서 하기]·[다시 하기]도 붙이는 사람은 appends이고, 쓰다 멈춘 사람에게는 싣지 않는다", async () => {
+      const made = await threeOnly([memoRow(A, '다른 메모'), memoRow(B, '또 다른 메모')])
+      await appendFromDiff(made, A.key)
+      await appendFromDiff(made, B.key)
+      const first = await press(made)
+      expect(itemIn(first, A.key)).toMatchObject({ appends: '다른 메모' })
+      expect(itemIn(first, B.key)).toMatchObject({ appends: '또 다른 메모' })
+      await finish(made, first.ticket, { status: 'stopped', code: 'E-INPUT-STOPPED', reason: WRITE_STUCK, results: [line(A, '확인 필요', WRITE_STUCK), line(B, '확인 필요', '미처리')] })
+      const resume = await press(made, 'resume')
+      expect(resume.payload?.items.map((item) => item.visitKey)).toEqual([A.key, B.key, C.key])
+      expect(itemIn(resume, A.key)).not.toHaveProperty('appends') // 쓰다 멈춘 사람은 도우미가 '마지막 원본 + 줄바꿈 + 우리 메모'로 확인한다
+      expect(itemIn(resume, B.key)).toMatchObject({ appends: '또 다른 메모' })
+      expect(itemIn(resume, B.key)).not.toHaveProperty('replaces')
+
+      const again = await ready({ bit: OTHER })
+      await appendFromDiff(again, A.key)
+      const sent = await press(again)
+      await finish(again, sent.ticket, { status: 'finished', results: [line(A, '건너뜀', '길이 넘음(비트 메모 칸 3,000바이트)')] })
+      const retry = await press(again, 'retry')
+      expect(retry.payload?.items.map((item) => item.visitKey)).toEqual([A.key])
+      expect(itemIn(retry, A.key)).toMatchObject({ appends: '다른 메모' })
+      expect(itemIn(retry, A.key)).not.toHaveProperty('replaces')
+    })
+
+    it("AC-6611.2: '붙임'으로 끝나면 완료로 가고 붙이기가 남지 않는다. 비트 메모를 받은 뒤 넣은 글은 '본 글(끝 공백 뺌) + 줄바꿈 + 우리 메모'다", async () => {
+      const made = await ready({ bit: [memoRow(A, '다른 메모  \n')] })
+      await appendFromDiff(made, A.key)
+      const ours = rowOf(await viewOf(made), A.key).text
+      const sent = await press(made)
+      expect(itemIn(sent, A.key)).toMatchObject({ appends: '다른 메모  \n' })
+      await finish(made, sent.ticket, { status: 'finished', results: [line(A, '완료', '붙임(기존 메모 뒤에)')] })
+      const view = await viewOf(made)
+      expect(keysIn(view, 'done')).toContain(A.key)
+      expect(rowOf(view, A.key)).not.toHaveProperty('appended')
+      // 고쳐 완료를 풀면 비트 칸의 합친 글과 견준다(AC-2202.3)
+      await made.jobs.fromScreen({ type: 'editMemo', visitKey: A.key, text: '고친 글' } satisfies PrecheckFromScreen)
+      const edited = await viewOf(made)
+      expect(rowOf(edited, A.key)).toMatchObject({ compare: '다름', inBit: `다른 메모\n${ours}` })
+      expect(rowOf(edited, A.key)).not.toHaveProperty('appended')
     })
   })
 
