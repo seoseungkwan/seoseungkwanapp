@@ -21,6 +21,7 @@ vi.mock('./RuleSettings', () => ({ RuleSettings: () => <section aria-label="처�
 vi.mock('./HospitalPhrases', () => ({ HospitalPhrases: () => <section aria-label="병원 문구 칸" /> }))
 vi.mock('./DxLinks', () => ({ DxLinks: () => <section aria-label="상병 연결표 칸" /> }))
 vi.mock('./CashFloatSetting', () => ({ CashFloatSetting: () => <section aria-label="시재금 칸" /> }))
+vi.mock('./DeskAccounts', () => ({ DeskAccounts: () => <section aria-label="데스크 계정 칸" /> }))
 
 const CREATED = '2026-11-17T01:00:00.000Z' // 한국 11월 17일 10시
 const HELPER: InstallFile = { kind: 'helper', version: [0, 9, 0], name: 'precheck-helper-0.9.0.zip', path: 'helper/precheck-helper-0.9.0.zip', size: 889_612, uploadedAt: CREATED }
@@ -164,6 +165,7 @@ describe('AC-5103.2 설정 탭의 설치 파일 칸', () => {
       '병원 문구 칸',
       '상병 연결표 칸',
       '시재금 칸',
+      '데스크 계정 칸',
     ])
     expect(sections[0]).toBe(install)
     expect(isBefore(nav, install)).toBe(true)
