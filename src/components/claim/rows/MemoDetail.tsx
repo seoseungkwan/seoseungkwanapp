@@ -3,7 +3,7 @@ import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import type { ChartLine, ChartLineKind, MemoTableRow, RxRow, TargetRow } from '@/types/precheck'
 import { dayLabel } from '../dateList'
-import { LEFT_GROUPS } from './leftGroups'
+import { APPEND_NAME, LEFT_GROUPS } from './leftGroups'
 import { RowTags, type ListGroup } from './MemoList'
 
 // 오른쪽 고른 환자 상세(memo-split REQ-3105, 승인 시안 4의 .detail). 머리 → 단추 줄(초록 복사·상태 줄) → 우리 메모 | 비트 메모 두 칸 → 증상·처방 표.
@@ -210,20 +210,25 @@ export function MemoDetail(props: {
   heldCount: number
   /** 오른쪽 비트 메모 칸(BitMemoCard). 화면이 그려 넘긴다 */
   card: ReactNode
+  /** 연결된 도우미가 뒤에 붙이기를 안다(APPEND_HELPER 이상, clinic-profile AC-6611.1). 화면이 정한다. 없으면 거짓 */
+  canAppend?: boolean
   onCopy(): void
   onUndone(): void
   onEdit(): void
   onEditDone(text: string): void
-  onApprove(approved: boolean): void
+  /** true [이 메모로 바꾸기] · false [바꾸지 않기](붙이기도 푼다) · 'append' [뒤에 붙이기](AC-6611.1) */
+  onApprove(approved: boolean | 'append'): void
   onHeldRetry(): void
 }) {
   const { row, group, groupName, position, tableRow, canPrev, canNext, onPrev, onNext, status, copying, failed, copyDisabled, undoDisabled } = props
-  const { editing, locked, reading, startBlocked, showUnsaved, heldCount, card, onCopy, onUndone, onEdit, onEditDone, onApprove, onHeldRetry } = props
+  const { editing, locked, reading, startBlocked, showUnsaved, heldCount, card, canAppend = false, onCopy, onUndone, onEdit, onEditDone, onApprove, onHeldRetry } = props
   // 우리 메모가 있는 사람이면 고칠 수 있다. 글을 다 지워 '메모 없음'으로 간 사람도 다시 쓸 수 있다(AC-3105.2). 복사는 화면이 빈 글이면 막는다(canCopy)
   const editable = row.hasMemo
   const label = copying ? '복사 중…' : row.done ? '다시 복사' : '복사(완료)'
   const journal = !row.done && tableRow?.lastJournal !== undefined ? JOURNAL_TEXT[tableRow.lastJournal] : undefined
   const hasText = row.text.trim() !== ''
+  // [뒤에 붙이기]를 고른 사람(AC-6611.1): 입력할 사람에 들고 chip은 '메모 바꿈' 그대로지만 덮지 않으므로 표는 '메모 뒤에 붙임'이다
+  const appending = group === 'batch' && row.appended !== undefined && !row.unfinished
 
   // lg(1024px) 이상은 머리 한 줄 + 아래 세 칸(① 단추 상자·메모 ② 증상 ③ 처방, claim-memo-fit AC-4803.1~AC-4803.6).
   // DOM 차례는 그대로 두고 lg: class(contents·order·grid)로만 모양을 바꾼다. lg 미만은 지금 모양 그대로다
@@ -236,7 +241,8 @@ export function MemoDetail(props: {
           </p>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <h3 className="text-title font-semibold text-ink">{row.name}</h3>
-            <RowTags row={row} group={group} failed={failed} />
+            <RowTags row={appending ? { ...row, chip: null } : row} group={group} failed={failed} />
+            {appending && <span className={ds.chip.accent}>{APPEND_NAME}</span>}
           </div>
           <p className="text-body text-ink-2">
             <span className="text-muted">진료일</span> {dayLabel(row.date)} <span className="text-line-strong">|</span> <span className="text-muted">차트</span> {row.chart}
@@ -292,6 +298,12 @@ export function MemoDetail(props: {
             {group === 'diff' && (
               <button type="button" className={sideButton} disabled={locked || reading} onClick={() => onApprove(true)}>
                 이 메모로 바꾸기
+              </button>
+            )}
+            {/* 비트 메모를 그대로 두고 그 뒤에 줄을 바꿔 우리 메모를 붙인다(AC-6611.1). 0.12.0보다 옛 도우미는 appends를 몰라 묶음 전체를 거절하므로 화면이 canAppend를 끈다 */}
+            {group === 'diff' && canAppend && (
+              <button type="button" className={sideButton} disabled={locked || reading} onClick={() => onApprove('append')}>
+                뒤에 붙이기
               </button>
             )}
             {group === 'held' && (

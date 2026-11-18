@@ -1,8 +1,11 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
+import { compareVersions } from '@/lib/bridge/handshake'
+import { APPEND_HELPER } from '@/lib/bridge/versions'
 import { errorInfo } from '@/lib/errors'
 import type { DateRange } from '@/types/dates'
 import type { InputResultView, InputSelection, InputWhat, MemoScreenView, TargetRow } from '@/types/precheck'
@@ -64,17 +67,31 @@ export type MemoPanelProps = {
   flushRef?: MutableRefObject<(() => void) | null>
   /** [메모 확인에서 고치기]로 온 사람: 골라 두고 고치는 칸을 연다(AC-3105.6) */
   focusKey?: string | null
+  /** 병원 설정 줄에 기억한 입력 방식(clinic-profile AC-6610.1). ClaimScreen이 읽어 넘긴다. 없으면 날짜별로 시작한다 */
+  savedMode?: InputSelection['mode'] | null
+  /** 사람이 입력 방식을 바꿨다(AC-6610.2). ClaimScreen이 저장한다: 이 칸은 저장소를 부르지 않는다 */
+  onModeChange?(mode: InputSelection['mode']): void
+  /** 연결된 도우미 판(hello.helperVersion). APPEND_HELPER보다 낮거나 모르면 [뒤에 붙이기]를 보이지 않는다(AC-6611.1) */
+  helperVersion?: string
 }
 
-/** 처음 질문(AC-018.18): 오류처럼 빨갛게 하지 않고 파란 안내이고 오류 번호가 없다. 그 화면이 아직 없어 가는 단추도 없다 */
-function FirstQuestion() {
+/**
+ * 병원 문구가 없는 병원의 잠금 칸(AC-018.18, clinic-profile AC-6607.4): 오류처럼 빨갛게 하지 않고 파란 안내이고 오류 번호가 없다.
+ * 글은 E-MEMO-NO-SETTINGS 글 그대로이고 설정(병원 문구 칸이 있는 곳)으로 가는 [설정으로 가기]가 있다(설정의 상병 연결표 잠금 칸과 같은 모양)
+ */
+function NoPhrases() {
   const info = errorInfo('E-MEMO-NO-SETTINGS')
   return (
     <section className={`${ds.panel} flex flex-col gap-2 p-4`}>
       <h3 className={ds.panelTitle}>메모</h3>
-      <div role="status" aria-label="처음 질문" className="flex flex-col gap-0.5 rounded-control bg-accent-soft px-4 py-3">
-        <p className="text-small font-semibold text-accent-strong">{info.what}</p>
-        <p className="text-small text-ink-2">{info.fix}</p>
+      <div role="status" aria-label="병원 문구 없음" className="flex flex-col items-start gap-2 rounded-control bg-accent-soft px-4 py-3">
+        <div className="flex flex-col gap-0.5">
+          <p className="text-small font-semibold text-accent-strong">{info.what}</p>
+          <p className="text-small text-ink-2">{info.fix}</p>
+        </div>
+        <Link href="/settings" className={ds.button.secondarySmall}>
+          설정으로 가기
+        </Link>
       </div>
     </section>
   )
@@ -97,13 +114,13 @@ const without = (set: ReadonlySet<string>, key: string): ReadonlySet<string> => 
 }
 
 export function MemoPanel(props: MemoPanelProps) {
-  if (props.memoBlocked) return <FirstQuestion />
+  if (props.memoBlocked) return <NoPhrases />
   return <Panel {...props} />
 }
 
-function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, settingsStale, storeStuck, onStoreStuck, checkFresh, onLoadRange, onReload, onStage, flushRef, focusKey }: MemoPanelProps) {
+function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, settingsStale, storeStuck, onStoreStuck, checkFresh, onLoadRange, onReload, onStage, flushRef, focusKey, savedMode, onModeChange, helperVersion }: MemoPanelProps) {
   const kept = useRef(channel.keptMemo())
-  const [selection, setSelection] = useState<InputSelection>(() => defaultSelection(visible))
+  const [selection, setSelection] = useState<InputSelection>(() => defaultSelection(visible, savedMode))
   const [view, setView] = useState<MemoScreenView | null>(null)
   const [viewError, setViewError] = useState<string | null>(null)
   const [stage, setStage] = useState<InputStage>(kept.current?.result ? 'result' : 'pick')
@@ -135,6 +152,25 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
   const fitHeight = useFitHeight(splitRef, view !== null && stage !== 'result')
   const selectionRef = useRef(selection)
   selectionRef.current = selection
+  /** 사람이 이 칸에서 입력 방식을 골랐나: 그 뒤로는 늦게 온 저장된 방식으로 바꾸지 않는다 */
+  const modeTouched = useRef(false)
+  /** [뒤에 붙이기]는 도우미가 appends를 알 때만(APPEND_HELPER 이상, AC-6611.1). 판을 모르거나 읽을 수 없으면 옛 판으로 본다 */
+  const canAppend = helperVersion !== undefined && compareVersions(helperVersion, APPEND_HELPER) >= 0
+
+  // 저장된 방식이 이 칸이 열린 뒤에 왔으면(읽기가 늦음) 아직 고르지 않았을 때만 그 방식으로 바꾼다(AC-6610.1)
+  useEffect(() => {
+    if (modeTouched.current || (savedMode !== 'code' && savedMode !== 'date')) return
+    setSelection((now) => (now.mode === savedMode ? now : { ...now, mode: savedMode }))
+  }, [savedMode])
+
+  /** 고른 조건을 바꾼다. 입력 방식이 바뀌었을 때만 ClaimScreen에 알려 저장하게 한다(AC-6610.2) */
+  const changeSelection = (next: InputSelection) => {
+    if (next.mode !== selectionRef.current.mode) {
+      modeTouched.current = true
+      onModeChange?.(next.mode)
+    }
+    setSelection(next)
+  }
   const latestAsk = useRef(0)
   const mounted = useRef(true)
   const asked = useRef(false)
@@ -456,6 +492,7 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
         showUnsaved={storeStuck || saveError !== null}
         heldCount={targets.left.find((group) => group.reason === 'held')?.rows.length ?? 0}
         card={<BitMemoCard row={row} state={bit.state} afterEntry={tableRow?.afterEntry ?? false} locked={locked} />}
+        canAppend={canAppend}
         onCopy={() => void copy()}
         onUndone={() => {
           if (locked || storeStuck) return
@@ -582,7 +619,7 @@ function Panel({ channel, stream, onProgress, load, check, visible, loadedAt, se
                 {targets.problem}
               </p>
             )}
-            <InputMode visible={visible} selection={selection} onSelection={setSelection} problem={targets.problem} chips={targets.chips} typedOverChip={targets.typedOverChip} locked={locked} />
+            <InputMode visible={visible} selection={selection} onSelection={changeSelection} problem={targets.problem} chips={targets.chips} typedOverChip={targets.typedOverChip} locked={locked} />
           </section>
           {/* 두 칸(AC-3101.1): lg(64rem) 이상 나란히(왼쪽 272px, claim-memo-fit AC-4802.1)이고 잰 높이(없으면 class의 예전 높이), 좁으면 위아래(목록 화면 높이 40%까지). 각자 스크롤된다 */}
           <div ref={splitRef} className={SPLIT} style={fitHeight === undefined ? undefined : { height: fitHeight }}>

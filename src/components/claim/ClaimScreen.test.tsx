@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BridgeError } from '@/lib/bridge/protocol'
 import { ERRORS, EXCEL_FAILED, errorInfo } from '@/lib/errors'
 import type { DayCount } from '@/types/bridge'
-import type { CheckSettings, ClaimView, ClaimVisitView, Finding, Grade, PrecheckFromScreen, PrecheckToScreen } from '@/types/precheck'
+import type { CheckSettings, ClaimView, ClaimVisitView, Finding, Grade, MemoScreenView, PrecheckFromScreen, PrecheckToScreen } from '@/types/precheck'
 import { claimChannel } from './claimLoad'
 import { SETUP_CODES } from './ClaimError'
 import { ClaimScreen } from './ClaimScreen'
@@ -75,6 +75,8 @@ vi.mock('@/lib/supabase/browser', () => ({
         select: () => query,
         upsert: (rows: unknown, options: unknown) => write('upsert', rows, options, []),
         delete: () => ({ in: (column: string, values: unknown) => write('delete', null, null, [['in', column, values]]) }),
+        // 입력 방식 저장(clinic-profile AC-6610.2): update(값).eq(칸, 값)
+        update: (payload: unknown) => ({ eq: (column: string, value: unknown) => write('update', payload, null, [['eq', column, value]]) }),
       }
     },
   }),
@@ -1821,5 +1823,112 @@ describe('AC-013.2 불러오기 앞에 묻는 claim.dates', () => {
       expect(made.worker.of('loadStart')).toHaveLength(loads) // 떠났으므로 불러오기는 시작하지 않는다
       expect(made.channel.kept()?.result.check).toBe(made.asked.check)
     })
+  })
+})
+
+describe('AC-6610 입력 방식 기억', () => {
+  const MEMO_VIEW: MemoScreenView = {
+    period: VIEW.period,
+    memoBlocked: null,
+    noAsk: false,
+    targets: { problem: null, range: VIEW.period, code: null, batch: [], left: [], chips: [], typedOverChip: false, replacing: 0 },
+    table: [],
+    stuck: null,
+    bit: { has: false, count: 0, period: null },
+  }
+  const memoWorker = () => fakeWorker({ memoView: (m) => ({ type: 'memoView', ask: m.ask, ok: true, view: MEMO_VIEW }) })
+  async function toInputMode(worker: Fake = memoWorker()) {
+    const made = await toResult(worker)
+    await made.user.click(screen.getByRole('button', { name: '다음: 메모 확인' }))
+    await screen.findByRole('region', { name: '입력 방식' })
+    return made
+  }
+  const radio = (name: '처방코드별' | '날짜별') => screen.getByRole('radio', { name }) as HTMLInputElement
+  const modeWrites = () => db.writes.filter((w) => w.table === 'claim_hospital_settings')
+  const settle = () => act(async () => new Promise<void>((resolve) => setTimeout(resolve, 0)))
+
+  it("AC-6610.1: 저장된 방식이 'code'면 비트 입력 칸을 열 때 처방코드별이 처음 골라져 있고 Worker에도 처음부터 그 방식으로 묻는다", async () => {
+    db.hospital = { hospital_id: 'h-1', input_mode: 'code', phrases: {}, dx_links: [] }
+    const { worker } = await toInputMode()
+    expect(radio('처방코드별').checked).toBe(true)
+    expect(worker.of('memoView').length).toBeGreaterThan(0)
+    expect(worker.of('memoView').map((m) => m.selection.mode)).toEqual(worker.of('memoView').map(() => 'code'))
+    expect(modeWrites()).toEqual([])
+  })
+
+  it.each([
+    ['병원 설정 줄이 없음', null],
+    ['input_mode가 비었음', { hospital_id: 'h-1', input_mode: null, phrases: {}, dx_links: [] }],
+    ["input_mode가 'date'", { hospital_id: 'h-1', input_mode: 'date', phrases: {}, dx_links: [] }],
+    ['모르는 값', { hospital_id: 'h-1', input_mode: 'week', phrases: {}, dx_links: [] }],
+  ])('AC-6610.1: %s이면 지금처럼 날짜별이 골라져 있다', async (_, hospital) => {
+    db.hospital = hospital
+    const { worker } = await toInputMode()
+    expect(radio('날짜별').checked).toBe(true)
+    expect(worker.of('memoView').at(-1)!.selection.mode).toBe('date')
+  })
+
+  it('AC-6610.1: 저장된 방식을 읽지 못해도 날짜별로 열리고 따로 알리지 않는다', async () => {
+    db.failSettings = true
+    await toInputMode()
+    expect(radio('날짜별').checked).toBe(true)
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it("AC-6610.2: 입력 방식을 고르면 그 값만 내 병원 줄에 저장하고(병원 문구는 보내지 않는다) '설정이 바뀌었어요' 띠가 뜨지 않는다", async () => {
+    db.hospital = { hospital_id: 'h-1', input_mode: null, phrases: { a: 1 }, dx_links: [] }
+    const { user, worker } = await toInputMode()
+    expect(radio('날짜별').checked).toBe(true)
+    await user.click(radio('처방코드별'))
+    await waitFor(() => expect(modeWrites()).toHaveLength(1))
+    expect(modeWrites()[0]).toMatchObject({ method: 'update', payload: { input_mode: 'code' }, filters: [['eq', 'hospital_id', 'h-1']] })
+    expect(Object.keys(modeWrites()[0].payload as object)).toEqual(['input_mode'])
+    expect(worker.of('memoView').at(-1)!.selection.mode).toBe('code')
+    // 서버 줄에 저장된 뒤 창 초점이 돌아와 설정을 다시 견주어도 병원 문구는 그대로라 띠가 없다
+    db.hospital = { hospital_id: 'h-1', input_mode: 'code', phrases: { a: 1 }, dx_links: [] }
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'))
+    })
+    await settle()
+    expect(screen.queryByText('설정이 바뀌었어요, 다시 점검하세요')).toBeNull()
+    await user.click(radio('날짜별'))
+    await waitFor(() => expect(modeWrites()).toHaveLength(2))
+    expect(modeWrites()[1].payload).toEqual({ input_mode: 'date' })
+    // 방식이 아닌 칸(날짜 고르는 법)을 바꾸면 저장하지 않는다
+    await user.click(screen.getByRole('radio', { name: '하루' }))
+    await settle()
+    expect(modeWrites()).toHaveLength(2)
+  })
+
+  it('AC-6610.1·AC-6610.2: 고른 방식은 메모 칸을 다시 열어도 처음 골라져 있다', async () => {
+    db.hospital = { hospital_id: 'h-1', input_mode: 'date', phrases: {}, dx_links: [] }
+    const { user } = await toInputMode()
+    await user.click(radio('처방코드별'))
+    await waitFor(() => expect(modeWrites()).toHaveLength(1))
+    await user.click(screen.getByRole('button', { name: /점검 결과/ }))
+    await user.click(await screen.findByRole('button', { name: '다음: 메모 확인' }))
+    await screen.findByRole('region', { name: '입력 방식' })
+    expect(radio('처방코드별').checked).toBe(true)
+  })
+
+  it('AC-6610.2: 저장이 실패해도 고른 방식을 그대로 쓰고 따로 알리지 않는다', async () => {
+    db.hospital = { hospital_id: 'h-1', input_mode: 'date', phrases: {}, dx_links: [] }
+    db.writeFail = true
+    const { user, worker } = await toInputMode()
+    await user.click(radio('처방코드별'))
+    await waitFor(() => expect(modeWrites()).toHaveLength(1))
+    await settle()
+    expect(radio('처방코드별').checked).toBe(true)
+    expect(worker.of('memoView').at(-1)!.selection.mode).toBe('code')
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('status', { name: /저장/ })).toBeNull()
+  })
+
+  it('AC-6610.2: 병원 설정 줄이 없으면 고른 방식은 화면에서만 쓰고 저장하지 않는다', async () => {
+    const { user, worker } = await toInputMode()
+    await user.click(radio('처방코드별'))
+    await settle()
+    expect(modeWrites()).toEqual([])
+    expect(worker.of('memoView').at(-1)!.selection.mode).toBe('code')
   })
 })

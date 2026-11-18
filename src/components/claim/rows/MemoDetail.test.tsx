@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Icon } from '@/components/common/Icon'
 import type { MemoTableRow, TargetRow } from '@/types/precheck'
-import { LEFT_GROUPS, LIST_ORDER } from './leftGroups'
+import { APPEND_NAME, LEFT_GROUPS, LIST_ORDER } from './leftGroups'
 import { MemoDetail, type CopyStatus } from './MemoDetail'
 
 // 오른쪽 고른 환자 상세(memo-split REQ-3105·REQ-3103의 상태 줄, 시안 4의 .detail). 줄은 props로만 받는다. 이름·차트·글은 모두 지어낸 것이다
@@ -731,6 +731,70 @@ describe('REQ-4803 lg 이상: 머리 한 줄 · 아래 세 칸', () => {
     expect(names.map((td) => td.textContent)).toEqual(['가상진찰료', '가상관리료 ', '가상주사_(20mL) 가상약', '가상물리치료'])
     for (const index of [0, 1, 3]) expect(names[index].querySelector('.text-muted')).toBeNull()
     expect(within(names[2]).getByText('가상약').className).toContain('text-muted')
+  })
+})
+
+describe('AC-6611.1 뒤에 붙이기', () => {
+  const diff = { group: 'diff', groupName: '다른 메모 있음', row: row({ chip: null, compare: '다름', inBit: '◈가상 비트 글', declined: true }) } as const
+  const tagsOf = () => [...screen.getByRole('heading', { name: '가상환자A' }).parentElement!.children].slice(1).map((tag) => tag.textContent)
+
+  it("AC-6611.1: 다른 메모 있음 묶음에서 도우미가 붙이기를 알면(canAppend) [이 메모로 바꾸기] 바로 옆에 [뒤에 붙이기]가 있고 누르면 onApprove('append'), 입력 중·비트 메모 읽는 중이면 막힌다", async () => {
+    const { on } = show({ ...diff, canAppend: true })
+    const replace = button('이 메모로 바꾸기')
+    const append = button('뒤에 붙이기')
+    expect(replace.nextElementSibling).toBe(append)
+    expect(append.disabled).toBe(false)
+    expect(append.getAttribute('class')).toContain('lg:flex-1')
+    await userEvent.setup().click(append)
+    expect(on.onApprove).toHaveBeenCalledWith('append')
+    expect(on.onApprove).toHaveBeenCalledTimes(1)
+    for (const over of [{ locked: true }, { reading: true }]) {
+      cleanup()
+      show({ ...diff, canAppend: true, ...over })
+      expect(button('뒤에 붙이기').disabled).toBe(true)
+    }
+  })
+
+  it('AC-6611.1: 도우미가 0.12.0보다 옛 판이면(canAppend 거짓·없음) [뒤에 붙이기]가 없고 [이 메모로 바꾸기]는 그대로다', () => {
+    for (const canAppend of [false, undefined]) {
+      show({ ...diff, canAppend })
+      expect(button('이 메모로 바꾸기').disabled).toBe(false)
+      expect(screen.queryByRole('button', { name: '뒤에 붙이기' })).toBeNull()
+      cleanup()
+    }
+  })
+
+  it('AC-6611.1: 다른 메모 있음 밖의 묶음(입력할 사람의 메모 바꿈·지난번 건너뜀)에는 [뒤에 붙이기]가 없다', () => {
+    show({ row: row({ chip: '메모 바꿈', compare: '다름', inBit: '◈가상 비트 글' }), canAppend: true })
+    expect(screen.queryByRole('button', { name: '뒤에 붙이기' })).toBeNull()
+    cleanup()
+    show({ group: 'held', groupName: '지난번 건너뜀', row: row({ chip: null }), heldCount: 1, canAppend: true })
+    expect(screen.queryByRole('button', { name: '뒤에 붙이기' })).toBeNull()
+  })
+
+  it("AC-6611.1: [뒤에 붙이기]를 고른 사람(appended)은 입력할 사람에서 상태 표가 '메모 뒤에 붙임'이고 '메모 바꿈'이 아니며, 단추는 [바꾸지 않기](onApprove(false))다", async () => {
+    expect(APPEND_NAME).toBe('메모 뒤에 붙임')
+    const appending = row({ chip: '메모 바꿈', compare: '다름', inBit: '◈가상 비트 글', appended: '◈가상 비트 글' })
+    const { on } = show({ row: appending, canAppend: true })
+    expect(tagsOf()).toEqual(['메모 뒤에 붙임'])
+    expect(screen.queryByText('! 메모 바꿈')).toBeNull()
+    expect(screen.queryByRole('button', { name: '뒤에 붙이기' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '이 메모로 바꾸기' })).toBeNull()
+    const keep = button('바꾸지 않기')
+    expect(keep.disabled).toBe(false)
+    await userEvent.setup().click(keep)
+    expect(on.onApprove).toHaveBeenCalledWith(false)
+    cleanup()
+    show({ row: appending, locked: true })
+    expect(button('바꾸지 않기').disabled).toBe(true)
+  })
+
+  it("AC-6611.1: 붙이는 사람도 복사 못 함 → 완료 표가 지금 차례대로 앞에 오고, 붙이지 않는 메모 바꿈은 '! 메모 바꿈' 그대로다", () => {
+    show({ row: row({ chip: '메모 바꿈', compare: '다름', inBit: '◈가상 비트 글', appended: '◈가상 비트 글', done: true }), failed: true })
+    expect(tagsOf()).toEqual(['복사 못 함', '완료', '메모 뒤에 붙임'])
+    cleanup()
+    show({ row: row({ chip: '메모 바꿈', compare: '다름', inBit: '◈가상 비트 글' }) })
+    expect(tagsOf()).toEqual(['! 메모 바꿈'])
   })
 })
 
