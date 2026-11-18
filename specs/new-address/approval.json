@@ -1,0 +1,18 @@
+{
+  "status": "approved",
+  "feature": "new-address",
+  "approved_at": "2026-11-18T05:06:23Z",
+  "approved_via": "user-prompt",
+  "session_id": "d8c599c5-f70a-49d3-a279-5c381ed7a718",
+  "spec_sha256": "5f00b4b6e348cc5ec865dda4198114e2baabae37db2189927087965e3c4669aa",
+  "scope": [
+    "extension/manifest.json",
+    "extension/src/background.test.ts",
+    "extension/src/manifest.test.ts",
+    "extension/src/relay.test.ts",
+    "extension/src/relay.ts",
+    "helper/tests/Precheck.Core.Tests/Protocol/CommandTable.test.cs",
+    "helper/tests/protocol.dotnet.test.ts",
+    "src/lib/bridge/commands.json"
+  ]
+}
