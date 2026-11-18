@@ -995,7 +995,7 @@ describe('AC-4402.1 parseStatsRows: v2·v3 접수 줄은 네 칸, v4는 다섯 �
     expect(codeOf(() => parseStatsRows(changed(['patientDays'], goodV4().patientDays), REQ))).toBe(BAD_REPLY)
   })
 
-  it('AC-4402.1: 판이 5면 거절한다', () => {
+  it('AC-4402.1·AC-6202.5: 판이 5인데 접수 줄이 다섯 칸이면 거절한다(v5는 여섯 칸)', () => {
     expect(codeOf(() => parseStatsRows(changedV4(['v'], 5), REQ))).toBe(BAD_REPLY)
   })
 
@@ -1045,5 +1045,236 @@ describe('AC-4402.2 v4 답 → aggregate: 첫 내원일이 아닌 줄의 90일�
       { patients: 1, newPatients: 0, first90: 1, returning: 0, unknown: 0 },
     ])
     expect(month.map((bucket) => bucket.totals)).toEqual([{ patients: 2, newPatients: 1, first90: 1, returning: 0, unknown: 0 }])
+  })
+})
+
+// ── v5 답(new-mark): v4 열쇠·접수 줄 그대로 + 접수 줄 여섯째 칸(그 환자·날 센 접수 가운데 비트 내원 구분 '1' 신환 표시 수) ──
+// 신환 날 = 여섯째 칸이 1 이상인 환자·날이다(첫 내원일 칸과 상관없다). 숫자는 모두 지어낸 값이다.
+// goodV5()는 신환 표시가 첫 내원일(9/1)과 같은 날이라 v4 답(goodV4)과 같게 읽혀야 한다
+
+const goodV5 = () => ({
+  ...goodV3(),
+  v: 5,
+  patientDays: [
+    [chart(1), '20260901', 1, '20260901', 0, 1],
+    [chart(1), '20260902', 1, '20260901', 1, 0],
+  ],
+})
+
+// goodV5()의 한 자리만 바꾼 JSON 글자
+function changedV5(path: ReadonlyArray<string | number>, value: unknown): string {
+  const draft = goodV5() as unknown
+  let at = draft as Record<string | number, unknown>
+  for (const key of path.slice(0, -1)) at = at[key] as Record<string | number, unknown>
+  const last = path[path.length - 1]
+  if (value === DROP) Reflect.deleteProperty(at, last)
+  else at[last] = value
+  return JSON.stringify(draft)
+}
+
+describe('AC-6202.5 parseStatsRows: v5 접수 줄은 여섯 칸', () => {
+  it('AC-6202.5: 맞는 v5 답(v3 열쇠 그대로, 접수 줄 여섯 칸)을 받는다', () => {
+    const data = parseStatsRows(JSON.stringify(goodV5()), REQ)
+    expect(data.v).toBe(5)
+    expect(data.patientDays).toEqual(goodV5().patientDays)
+    expect(data.extra).toBeDefined()
+  })
+
+  it.each<[string, ReadonlyArray<string | number>, unknown]>([
+    ['여섯째 칸 0', ['patientDays', 0, 5], 0],
+    ['여섯째 칸 = 접수 수', ['patientDays', 1], [chart(1), '20260902', 2, '20260901', 0, 2]],
+    ['첫 내원일이 아닌 날의 신환 표시', ['patientDays', 1, 5], 1],
+    ['처방 없는 접수뿐인 환자의 신환 표시', ['patientDays', 2], [chart(2), '20260903', 1, '20260903', 0, 1]],
+  ])('AC-6202.5: 받는다: %s', (_name, path, value) => {
+    expect(() => parseStatsRows(changedV5(path, value), REQ)).not.toThrow()
+  })
+
+  it.each<[string, ReadonlyArray<string | number>, unknown]>([
+    ['v5인데 접수 줄이 다섯 칸', ['patientDays', 1], [chart(1), '20260902', 1, '20260901', 1]],
+    ['v5인데 접수 줄이 네 칸', ['patientDays', 1], [chart(1), '20260902', 1, '20260901']],
+    ['v5인데 접수 줄이 일곱 칸', ['patientDays', 1], [chart(1), '20260902', 1, '20260901', 1, 0, 0]],
+    ['여섯째 칸이 음수', ['patientDays', 1, 5], -1],
+    ['여섯째 칸이 소수', ['patientDays', 1, 5], 0.5],
+    ['여섯째 칸이 글자', ['patientDays', 1, 5], '1'],
+    ['여섯째 칸이 null', ['patientDays', 1, 5], null],
+    ['여섯째 칸이 참거짓', ['patientDays', 1, 5], true],
+    ['여섯째 칸이 접수 수보다 큼', ['patientDays', 1, 5], 2],
+    ['다섯째 칸이 접수 수보다 큼', ['patientDays', 1, 4], 2],
+    ['v5인데 v3 새 열쇠가 없음', ['visits'], DROP],
+    ['모르는 열쇠가 더 있음', ['extra'], 1],
+  ])('AC-6202.5: E-BRIDGE-BAD-REPLY: %s', (_name, path, value) => {
+    expect(codeOf(() => parseStatsRows(changedV5(path, value), REQ))).toBe(BAD_REPLY)
+  })
+
+  it('AC-6202.5: v2·v3·v4 답에 여섯 칸 접수 줄이 있으면 거절한다', () => {
+    const six = goodV5().patientDays
+    expect(codeOf(() => parseStatsRows(changed(['patientDays'], six), REQ))).toBe(BAD_REPLY)
+    expect(codeOf(() => parseStatsRows(changedV3(['patientDays'], six), REQ))).toBe(BAD_REPLY)
+    expect(codeOf(() => parseStatsRows(changedV4(['patientDays'], six), REQ))).toBe(BAD_REPLY)
+  })
+
+  it('AC-6202.5: 판이 6이면 거절한다', () => {
+    expect(codeOf(() => parseStatsRows(changedV5(['v'], 6), REQ))).toBe(BAD_REPLY)
+  })
+
+  it('AC-6202.5: 모양이 맞고 두 배열이 어긋나면 지금처럼 E-STATS-CHANGED다', () => {
+    expect(codeOf(() => parseStatsRows(JSON.stringify({ ...goodV5(), patientDays: [] }), REQ))).toBe(CHANGED)
+  })
+
+  it('AC-6202.5: 오류에 자료가 섞이지 않는다', () => {
+    let error: unknown
+    try {
+      parseStatsRows(changedV5(['patientDays', 1, 5], chart(7)), REQ)
+    } catch (e) {
+      error = e
+    }
+    expect(error).toBeInstanceOf(StatsDataError)
+    expect((error as Error).message).toBe(BAD_REPLY)
+    expect(String((error as Error).stack)).not.toContain(chart(7))
+  })
+})
+
+// 네 환자(모두 지어낸 값):
+// 1번 — 9/1이 첫 내원일인데 신환 표시가 없고, 9/2(첫 내원일 아님)에 신환 표시 1건
+// 2번 — 옛 환자(첫 내원 2025년)인데 9/2·9/3 두 날 다 신환 표시. 9/2에는 90일초진 접수도 1건 있다(신환 우선). 9/3 접수 줄 차트번호에는 앞뒤 공백
+// 3번 — 첫 내원을 못 찾았고 신환 표시 없음
+// 4번 — 처방 없는 접수뿐. 9/3이 첫 내원일인데 신환 표시 없이 90일초진 1건
+const MARKED_ROWS: HelperRow[] = [
+  [chart(1), '20260901', 'MM042', '20260901'],
+  [chart(1), '20260902', 'MM042', '20260901'],
+  [chart(2), '20260902', 'MM042', '20250101'],
+  [chart(2), '20260903', 'B4001', '20250101'],
+  [chart(3), '20260903', 'MM042', null],
+]
+const MARKED_DAYS = [
+  [chart(1), '20260901', 1, '20260901', 0, 0],
+  [chart(1), '20260902', 1, '20260901', 0, 1],
+  [chart(2), '20260902', 2, '20250101', 1, 1],
+  [` ${chart(2)} `, '20260903', 1, '20250101', 0, 1],
+  [chart(3), '20260903', 1, null, 0, 0],
+  [chart(4), '20260903', 2, '20260903', 1, 0],
+]
+const markedReply = (v: 4 | 5) => ({
+  ...goodV3(),
+  v,
+  summary: { ...good().summary, noFirst: 1 },
+  codes: [
+    ['MM042', '표층열치료'],
+    ['B4001', '일반혈액검사'],
+  ],
+  rows: MARKED_ROWS,
+  patientDays: v === 5 ? MARKED_DAYS : MARKED_DAYS.map((line) => line.slice(0, 5)),
+})
+const marked = (v: 4 | 5 = 5) => parseStatsRows(JSON.stringify(markedReply(v)), REQ)
+
+// 네 환자의 메모리 번호를 1~4번 차례로 먼저 정해 둔다
+function fourIds() {
+  const ids = createPatientIds()
+  const [one, two, three, four] = [1, 2, 3, 4].map((n) => ids.idOf(chart(n)))
+  return { ids, one, two, three, four }
+}
+
+describe('AC-6202.1·AC-6202.2·AC-6202.3·AC-6202.4 v5 답이면 신환 = 신환 날(첫 내원일과 상관없다)', () => {
+  it('AC-6202.1: toPatientDays — v5면 firstVisit = 여섯째 칸이 1 이상, first90은 다섯째 칸 그대로(newMark 열쇠는 싣지 않는다)', () => {
+    const { ids, one, two, three, four } = fourIds()
+    expect(toPatientDays(marked(), ids)).toEqual([
+      { patient: one, date: '2026-09-01', receptions: 1, firstVisit: false, first90: 0 },
+      { patient: one, date: '2026-09-02', receptions: 1, firstVisit: true, first90: 0 },
+      { patient: two, date: '2026-09-02', receptions: 2, firstVisit: true, first90: 1 },
+      { patient: two, date: '2026-09-03', receptions: 1, firstVisit: true, first90: 0 },
+      { patient: three, date: '2026-09-03', receptions: 1, firstVisit: false, first90: 0 },
+      { patient: four, date: '2026-09-03', receptions: 2, firstVisit: false, first90: 1 },
+    ])
+  })
+
+  it('AC-6202.1: aggregate 일 칸 — 신환 = 표시 줄 수, 90일초진 = 표시 없는 줄의 다섯째 칸 합, 재진 = 접수 − 신환 − 90일초진', () => {
+    const data = marked()
+    const ids = createPatientIds()
+    const { day, month } = aggregate(toConsumptionRows(data, ids), [], toPatientDays(data, ids))
+    expect(day.map((bucket) => [bucket.key, bucket.totals])).toEqual([
+      ['2026-09-01', { patients: 1, newPatients: 0, first90: 0, returning: 1, unknown: 0 }],
+      ['2026-09-02', { patients: 3, newPatients: 2, first90: 0, returning: 1, unknown: 0 }], // 2번의 90일초진 접수는 신환 쪽
+      ['2026-09-03', { patients: 4, newPatients: 1, first90: 1, returning: 2, unknown: 0 }],
+    ])
+    expect(month.map((bucket) => bucket.totals)).toEqual([{ patients: 8, newPatients: 3, first90: 1, returning: 4, unknown: 0 }])
+  })
+
+  it('AC-6202.2: toConsumptionRows — 그 환자·날이 신환 날이면 신환, 아니면 재진(차트번호 앞뒤 공백은 같은 환자)', () => {
+    const { ids } = fourIds()
+    expect(toConsumptionRows(marked(), ids).map((row) => [row.date, row.rxCode, row.firstVisit])).toEqual([
+      ['2026-09-01', 'MM042', false],
+      ['2026-09-02', 'MM042', true],
+      ['2026-09-02', 'MM042', true],
+      ['2026-09-03', 'B4001', true],
+      ['2026-09-03', 'MM042', false],
+    ])
+  })
+
+  it('AC-6202.2·AC-6202.4: toVisitRows — 신환 날이면 f = 그날, 아니면 빈 글자(rxVisitSplit은 f = d만 신환으로 본다)', () => {
+    const { ids, one, two, three } = fourIds()
+    const rows = toVisitRows(marked(), ids)
+    expect(rows).toEqual([
+      { p: one, d: '2026-09-01', c: 'MM042', f: '' },
+      { p: one, d: '2026-09-02', c: 'MM042', f: '2026-09-02' },
+      { p: two, d: '2026-09-02', c: 'MM042', f: '2026-09-02' },
+      { p: two, d: '2026-09-03', c: 'B4001', f: '2026-09-03' },
+      { p: three, d: '2026-09-03', c: 'MM042', f: '' },
+    ])
+    expect(JSON.stringify(rows)).not.toContain(chart(1))
+  })
+
+  it('AC-6202.3: toFirstVisits — 환자 → 불러온 기간 안 가장 이른 신환 날, 신환 날이 없는 환자는 표에 없다', () => {
+    const { ids, one, two } = fourIds()
+    expect([...toFirstVisits(marked(), ids)]).toEqual([
+      [one, '2026-09-02'],
+      [two, '2026-09-02'],
+    ])
+  })
+
+  it('AC-6202.3: toFirstVisits — 접수 줄 차례가 늦은 날부터여도 가장 이른 신환 날이다', () => {
+    const reply = { ...markedReply(5), patientDays: [...MARKED_DAYS].reverse() }
+    const { ids, one, two } = fourIds()
+    expect(new Map(toFirstVisits(parseStatsRows(JSON.stringify(reply), REQ), ids))).toEqual(
+      new Map([
+        [one, '2026-09-02'],
+        [two, '2026-09-02'],
+      ]),
+    )
+  })
+
+  it('AC-6202.1·AC-6202.2: 신환 표시가 첫 내원일과 같은 날뿐이면 v4 답과 같게 읽힌다', () => {
+    const v4 = parseStatsRows(JSON.stringify(goodV4()), REQ)
+    const v5 = parseStatsRows(JSON.stringify(goodV5()), REQ)
+    expect(toPatientDays(v5, createPatientIds())).toEqual(toPatientDays(v4, createPatientIds()))
+    expect(toConsumptionRows(v5, createPatientIds())).toEqual(toConsumptionRows(v4, createPatientIds()))
+    // 진료 줄의 f는 v5에서 신환 날이 아니면 ''라 글자는 다르고, rxVisitSplit이 보는 'f = d'(신환 줄)만 같다
+    const newRows = (rows: ReturnType<typeof toVisitRows>) => rows.map(({ p, d, c, f }) => ({ p, d, c, isNew: f === d }))
+    expect(newRows(toVisitRows(v5, createPatientIds()))).toEqual(newRows(toVisitRows(v4, createPatientIds())))
+    expect(toFirstVisits(v5, createPatientIds())).toEqual(toFirstVisits(v4, createPatientIds()))
+    expect(toStatsExtra(v5, createPatientIds())).toEqual(toStatsExtra(v4, createPatientIds()))
+  })
+})
+
+describe('AC-6202.6 v2·v3·v4 답(옛 도우미)은 지금처럼 첫 내원일 = 그날이 신환', () => {
+  it('AC-6202.6: 같은 접수의 v4 답(여섯째 칸 없음)은 첫 내원일로 신환·첫 내원일 표를 정한다', () => {
+    const { ids, one, two, three, four } = fourIds()
+    const data = marked(4)
+    expect(toPatientDays(data, ids).map((line) => [line.patient, line.date, line.firstVisit])).toEqual([
+      [one, '2026-09-01', true],
+      [one, '2026-09-02', false],
+      [two, '2026-09-02', false],
+      [two, '2026-09-03', false],
+      [three, '2026-09-03', false],
+      [four, '2026-09-03', true],
+    ])
+    expect(toConsumptionRows(data, ids).map((row) => row.firstVisit)).toEqual([true, false, false, false, false])
+    expect(toVisitRows(data, ids).map((row) => row.f)).toEqual(['2026-09-01', '2026-09-01', '2025-01-01', '2025-01-01', ''])
+    expect(new Map(toFirstVisits(data, ids))).toEqual(
+      new Map([
+        [one, '2026-09-01'],
+        [two, '2025-01-01'],
+        [four, '2026-09-03'],
+      ]),
+    )
   })
 })

@@ -66,8 +66,9 @@ export type StatsMemory = {
 }
 
 // 비트 전용 세 칸(sections 일)이 쓰는 값. Worker 밖으로 나가지 않고 저장하지 않는다. 다음 load가 memory와 함께 덮어쓴다.
-// v = 답의 판(4면 날 숫자에 90일초진 first90이 있다, spec first90), extra = v3·v4 접수 줄·사람 표·원장님 표·날·원장님 금액(v2 답이면 null),
-// first = 환자 → 첫 내원일(v2면 비어 있다).
+// v = 답의 판(4·5면 날 숫자에 90일초진 first90이 있다, spec first90. 5면 신환은 비트 신환 표시 날이다, spec new-mark),
+// extra = v3~v5 접수 줄·사람 표·원장님 표·날·원장님 금액(v2 답이면 null),
+// first = 환자 → 첫 내원일(v5면 가장 이른 신환 날, v2면 비어 있다).
 // patientDays·consumption = 통계 '예약·전환' Block 전환(spec sunap-ilji AC-4906.3)이 세는 접수 줄(환자·날)과 진료 줄. aggregate에 넣은 것과 같은 배열이다
 export type BitMemory = {
   v: StatsRowsData['v']
@@ -79,6 +80,15 @@ export type BitMemory = {
 }
 
 const earlier = (a: string, b: string) => (compareYmd(a, b) <= 0 ? a : b)
+
+// 날(YYYY-MM-DD) → 그날 신환인 접수 줄 수. v5 접수 줄의 firstVisit은 신환 날이다(toPatientDays)
+function newLinesByDay(patientDays: readonly PatientDay[]): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const { date, firstVisit } of patientDays) {
+    if (firstVisit) counts.set(date, (counts.get(date) ?? 0) + 1)
+  }
+  return counts
+}
 
 // groups = 화면이 준 묶음 열쇠·코드(없으면 []). 일 줄에는 열쇠마다 한 줄을 채우고(그날 없으면 0줄, treatment-trend AC-1205.4),
 // 달 줄은 aggregate가 준 그대로 둔다
@@ -123,16 +133,16 @@ export function loadJob(
     days: days === null ? null : fillGroupCounts(days, groups.map((group) => group.id)),
     report: data.report,
   }
+  // v5 답이면 날 합계의 신환은 도우미 날 숫자(VisitDaysSql) 대신 그날 신환 날인 접수 줄 수다(AC-6202.4). v2~v4는 도우미 숫자 그대로
+  const newOn = data.v === 5 ? newLinesByDay(patientDays) : null
   const memory: StatsMemory = {
     range: { from, to },
     rows: toVisitRows(data, ids),
     summary: data.summary,
-    days: data.days.map(([day, visits, patients, newPatients]) => ({
-      date: dashed(day),
-      visits,
-      patients,
-      newPatients,
-    })),
+    days: data.days.map(([day, visits, patients, newPatients]) => {
+      const date = dashed(day)
+      return { date, visits, patients, newPatients: newOn === null ? newPatients : (newOn.get(date) ?? 0) }
+    }),
     names: new Map(data.codes),
   }
   // 같은 ids로 바꾼다: 진료 줄·접수 줄·사람 표에서 같은 환자 = 같은 번호. view는 v2 답과 같다(AC-2708.1)
