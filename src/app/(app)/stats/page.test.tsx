@@ -83,6 +83,23 @@ describe('/stats 페이지 (AC-515.4)', () => {
     expect(StatsScreen).not.toHaveBeenCalled()
   })
 
+  // desk-feedback AC-6305.4: 데스크는 앱 틀(DeskGate)이 막힌 화면을 그린다. 페이지가 던지면 앱 틀 대신 오류 화면이 뜬다 → 아무것도 그리지 않는다
+  it('AC-6305.4: 데스크(병원 줄 없음 + desk)면 던지지 않고 아무것도 그리지 않는다 — StatsScreen을 부르지 않는다', async () => {
+    currentMe.mockResolvedValue({
+      email: 'desk@example.com',
+      isAdmin: false,
+      hospital: null,
+      desk: { hospitalId: 'h1', hospitalName: '가나 정형외과의원' },
+    })
+    await expect(StatsPage()).resolves.toBeNull()
+    expect(StatsScreen).not.toHaveBeenCalled()
+  })
+
+  it('AC-6305.4: 원장은 지금과 같다 — 병원 이름과 오늘로 StatsScreen을 그린다', async () => {
+    const { props } = await renderAt('2026-11-18T03:00:00Z')
+    expect(props).toEqual({ hospitalName: '가나 정형외과의원', today: '2026-11-18' })
+  })
+
   it('AC-515.4: 페이지는 통계 표를 읽지 않고 새 서버 경로를 만들지 않는다 — 화면을 놓기만 한다(ADR-004)', () => {
     expect(SOURCE).toMatch(/from '@\/components\/stats\/StatsScreen'/)
     expect(SOURCE).not.toMatch(/['"]use client['"]|['"]use server['"]|supabase|guard\.server|stats_days|stats_months|readDays|\bfetch\s*\(/)

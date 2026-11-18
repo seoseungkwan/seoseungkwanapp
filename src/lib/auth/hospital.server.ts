@@ -2,7 +2,8 @@ import 'server-only'
 import { supabaseServer } from '@/lib/supabase/server'
 import type { HospitalRow } from '@/types/db'
 
-// 화면을 그리기 전(서버) 내 사용자·병원 줄·관리자 여부 읽기. 세션과 hospitals·admins의 내 줄만 읽고 쓰지 않는다(ADR-004 인증 예외).
+// 화면을 그리기 전(서버) 내 사용자·병원 줄·관리자 여부·데스크 줄 읽기. 세션과 hospitals·admins의 내 줄,
+// (내 병원 줄이 없을 때만) 읽기 함수 my_desk()만 읽고 쓰지 않는다(ADR-004 인증 예외, ADR-031).
 // 어디로 보낼지는 정하지 않는다(guard.server.ts → gate.ts)
 
 export type Hospital = {
@@ -15,7 +16,11 @@ export type Hospital = {
   createdAt: string
 }
 
-export type Me = { email: string; hospital: Hospital | null; isAdmin: boolean }
+// 데스크 계정(desk-feedback, ADR-031): 내 병원 줄이 없고 로그인 메일이 어느 승인된 병원의 데스크 메일일 때 그 병원
+export type Desk = { hospitalId: string; hospitalName: string }
+
+// desk는 데스크일 때만 있다(선택 칸 — 원장·가입 전 사용자에게는 없다)
+export type Me = { email: string; hospital: Hospital | null; isAdmin: boolean; desk?: Desk }
 
 // 로그인이 풀림(세션 만료 등). middleware도 같은 getUser()로 '로그인 안 함'을 본다 → /login으로 보내도 되돌아오지 않는다
 export class NotSignedInError extends Error {}
@@ -38,6 +43,16 @@ function toHospital(row: HospitalPick): Hospital {
   }
 }
 
+// my_desk() 답(한 줄 또는 빈 목록)에서 그 병원 id·이름. 정해 둔 모양이 아니면 데스크로 보지 않는다(막는 쪽)
+function toDesk(data: unknown): Desk | null {
+  if (!Array.isArray(data)) return null
+  const row: unknown = data[0]
+  if (typeof row !== 'object' || row === null) return null
+  const { hospital_id: hospitalId, hospital_name: hospitalName } = row as Record<string, unknown>
+  if (typeof hospitalId !== 'string' || typeof hospitalName !== 'string') return null
+  return { hospitalId, hospitalName }
+}
+
 export async function readMe(): Promise<Me> {
   const supabase = await supabaseServer()
   // getUser()는 Supabase 서버에 물어 확인한다(서버에서 getSession()은 믿지 않는다)
@@ -53,9 +68,16 @@ export async function readMe(): Promise<Me> {
   if (hospital.error) throw new HospitalReadError('내 병원을 읽지 못했어요', { cause: hospital.error })
   if (admin.error) throw new HospitalReadError('관리자 여부를 읽지 못했어요', { cause: admin.error })
 
-  return {
+  const me: Me = {
     email: auth.user.email ?? '',
     hospital: hospital.data === null ? null : toHospital(hospital.data),
     isAdmin: admin.data !== null,
   }
+  // 원장 판정이 먼저다: 내 병원 줄(어느 상태든)이 있으면 데스크 줄을 읽지 않는다. 없을 때만 읽기 함수 my_desk()를 한 번 부른다(쓰기 없음)
+  if (me.hospital !== null) return me
+  const desk = await supabase.rpc('my_desk')
+  // 읽지 못했으면 '데스크 아님'(→ 가입 신청 화면)으로 넘기지 않고 던진다 → 오류 화면 (AC-002.8과 같은 길)
+  if (desk.error) throw new HospitalReadError('데스크 계정을 읽지 못했어요', { cause: desk.error })
+  const found = toDesk(desk.data)
+  return found === null ? me : { ...me, desk: found }
 }

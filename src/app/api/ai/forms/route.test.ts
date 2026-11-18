@@ -117,6 +117,21 @@ describe('AC-3509.1 경로 설정·몸통·로그인', () => {
     expect(errorSpy).not.toHaveBeenCalled()
   })
 
+  // desk-feedback AC-6305.5: AI 경로는 원장(승인된 내 병원 줄)만 연다. 데스크는 내 병원 줄이 없어 코드 그대로 403이다
+  it.each([
+    ['데스크', { email: 'desk@b.c', isAdmin: false, hospital: null, desk: { hospitalId: 'h1', hospitalName: '가나정형외과의원' } }],
+    ['admins에도 있는 데스크', { email: 'desk@b.c', isAdmin: true, hospital: null, desk: { hospitalId: 'h1', hospitalName: '가나정형외과의원' } }],
+  ])('AC-6305.5 %s이면 403, 몸통 없음, Claude·supabaseServer·사용량을 부르지 않는다', async (_, me) => {
+    mocks.readMe.mockResolvedValue(me)
+    const res = await POST(post({ text: MEMO }))
+    expect(res.status).toBe(403)
+    expect(await bodyOf(res)).toBeNull()
+    expect(mocks.callClaude).not.toHaveBeenCalled()
+    expect(mocks.supabaseServer).not.toHaveBeenCalled()
+    expect(mocks.addUsage).not.toHaveBeenCalled()
+    expect(errorSpy).not.toHaveBeenCalled()
+  })
+
   it('AC-3509.7 로그인 정보를 읽지 못하면 502 E-AI-FAILED', async () => {
     mocks.readMe.mockRejectedValue(new HospitalReadError('db down'))
     const res = await POST(post({ text: MEMO }))

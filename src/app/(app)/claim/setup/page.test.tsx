@@ -102,6 +102,20 @@ describe('/claim/setup 페이지', () => {
     await expect(open()).rejects.toThrow(`NEXT_REDIRECT ${to}`)
   })
 
+  // desk-feedback AC-6305.4: 데스크는 앱 틀(DeskGate)이 막힌 화면을 그린다. 페이지가 던지면 앱 틀 대신 오류 화면이 뜬다 → 아무것도 그리지 않는다
+  it('AC-6305.4: 데스크(병원 줄 없음 + desk)면 문지기가 보내지 않고, 페이지는 던지지 않고 아무것도 그리지 않는다', async () => {
+    read.mockResolvedValue({ email: 'desk@example.com', hospital: null, isAdmin: false, desk: { hospitalId: 'h1', hospitalName: '가나 정형외과의원' } })
+    await expect(open('dashboard')).resolves.toBeNull()
+    expect(guard).toHaveBeenCalledExactlyOnceWith('/claim/setup')
+    expect(redirect).not.toHaveBeenCalled()
+  })
+
+  it('AC-6305.4: 원장은 지금과 같다 — 비트 PC 연결 화면에 병원 이름을 넘긴다', async () => {
+    const page = await open()
+    expect(page.type).toBe(SetupScreen)
+    expect(page.props.clinicName).toBe('가나 정형외과의원')
+  })
+
   it('AC-006.4: 요청의 로그인 세션으로만 그린다(빌드 때 미리 그리지 않는다)', () => {
     expect(dynamic).toBe('force-dynamic')
   })
