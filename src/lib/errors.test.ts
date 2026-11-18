@@ -88,7 +88,16 @@ const ALL_CODES = [
   'E-INSTALL-FILE-SIZE',
   'E-INSTALL-FILE-EXISTS',
   'E-INSTALL-UPLOAD-FAILED',
+  'E-DESK-READ-FAILED',
+  'E-DESK-SAVE-FAILED',
+  'E-DESK-EMAIL-BAD',
+  'E-DESK-EMAIL-TAKEN',
+  'E-DESK-EMAIL-USED',
+  'E-DESK-LIMIT',
 ] as const satisfies readonly ErrorCode[]
+
+// '병원' 낱말 예외(AC-409.1): 명세가 글자를 정한 데스크 메일 번호 둘만. '병원 계정'·'다른 병원'이라고 말해야 뜻이 산다(desk-feedback design.md 표, AC-6304.3)
+const HOSPITAL_WORD_OK: ReadonlySet<ErrorCode> = new Set(['E-DESK-EMAIL-TAKEN', 'E-DESK-EMAIL-USED'])
 
 // 청구 사전점검 연결 번호(design.md 4-5 중 확장·도우미·통로 것). 비트 접속 번호는 TASK-6이 더한다
 const BRIDGE_CODES = [
@@ -211,13 +220,13 @@ describe('AC-409.1 공용 오류 문구', () => {
     )
   })
 
-  it.each(ALL_CODES)('AC-409.1: %s의 what·fix에 "병원"·"설치·연결 확인"이 없고 "니다."로 끝나는 문장이 없다', (code) => {
+  it.each(ALL_CODES)('AC-409.1: %s의 what·fix에 "병원"(AC-6304.3 예외 둘 빼고)·"설치·연결 확인"이 없고 "니다."로 끝나는 문장이 없다', (code) => {
     const info = errorInfo(code)
     for (const [part, text] of [
       ['what', info.what],
       ['fix', info.fix],
     ] as const) {
-      expect(text, `${code}.${part}`).not.toContain('병원')
+      if (!HOSPITAL_WORD_OK.has(code)) expect(text, `${code}.${part}`).not.toContain('병원')
       expect(text, `${code}.${part}`).not.toContain('설치·연결 확인')
       expect(text, `${code}.${part}`).not.toMatch(/니다\./)
     }
@@ -974,5 +983,62 @@ describe('AC-5102.2·AC-5102.3·AC-5102.4 설치 파일 오류 번호', () => {
     const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
     const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
     for (const code of Object.keys(INSTALL)) expect(union).toContain(`'${code}'`)
+  })
+})
+
+// 데스크 계정 칸(specs/desk-feedback design.md '③ 설정 데스크 계정 칸' 표). 문구는 표의 글자 그대로
+const DESK = {
+  'E-DESK-READ-FAILED': {
+    what: '데스크 계정 목록을 불러오지 못했어요',
+    fix: '인터넷 연결을 확인하고 [다시 불러오기]를 눌러 주세요.',
+  },
+  'E-DESK-SAVE-FAILED': {
+    what: '데스크 계정을 바꾸지 못했어요',
+    fix: '인터넷 연결을 확인하고 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
+  'E-DESK-EMAIL-BAD': {
+    what: '메일 주소 모양이 아니에요',
+    fix: '데스크가 로그인할 구글 메일을 그대로 적어 주세요(예: desk@gmail.com).',
+  },
+  'E-DESK-EMAIL-TAKEN': {
+    what: '이미 병원 계정으로 가입된 메일이에요',
+    fix: '병원 계정은 데스크가 될 수 없어요. 데스크용 다른 구글 메일을 적어 주세요.',
+  },
+  'E-DESK-EMAIL-USED': {
+    what: '이미 데스크 계정으로 더한 메일이에요',
+    fix: '목록을 확인해 주세요. 다른 병원의 데스크 메일이면 그 병원에서 먼저 빼야 해요.',
+  },
+  'E-DESK-LIMIT': {
+    what: '데스크 계정은 5개까지예요',
+    fix: '쓰지 않는 계정을 [빼기]한 뒤 더해 주세요.',
+  },
+} as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
+
+describe('AC-6304.3 데스크 계정 오류 번호', () => {
+  it.each(Object.keys(DESK) as Array<keyof typeof DESK>)('AC-6304.3: %s는 번호가 있고 무엇이·어떻게 고치나가 표 글자 그대로다', (code) => {
+    expect(isErrorCode(code), code).toBe(true)
+    expect(ALL_CODES, code).toContain(code)
+    expect(errorInfo(code)).toEqual(DESK[code])
+  })
+
+  it("AC-6304.3: E-DESK-EMAIL-TAKEN의 '무엇이' 글은 '이미 병원 계정으로 가입된 메일이에요'다", () => {
+    expect(errorInfo('E-DESK-EMAIL-TAKEN').what).toBe('이미 병원 계정으로 가입된 메일이에요')
+  })
+
+  it('AC-6304.3: 이 명세가 더하는 E-DESK- 번호는 표의 여섯뿐이다', () => {
+    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-DESK-')).sort()).toEqual(Object.keys(DESK).sort())
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
+  it('AC-6304.3: 여섯 번호가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    for (const code of Object.keys(DESK)) expect(union).toContain(`'${code}'`)
+  })
+
+  it("AC-409.1·AC-6304.3: '병원' 낱말 예외는 E-DESK-EMAIL-TAKEN·E-DESK-EMAIL-USED 둘뿐이다(다른 번호는 그대로 잡는다)", () => {
+    expect([...HOSPITAL_WORD_OK].sort()).toEqual(['E-DESK-EMAIL-TAKEN', 'E-DESK-EMAIL-USED'])
+    const withWord = ALL_CODES.filter((code) => `${errorInfo(code).what} ${errorInfo(code).fix}`.includes('병원'))
+    expect(withWord.sort()).toEqual(['E-DESK-EMAIL-TAKEN', 'E-DESK-EMAIL-USED'])
   })
 })

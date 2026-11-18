@@ -16,6 +16,9 @@ const { supabaseBrowser } = vi.hoisted(() => {
   return { supabaseBrowser: () => client }
 })
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser }))
+// 데스크 계정 칸(desk-feedback AC-6304.2)의 저장 함수는 흉내 낸다(실제 rpc 없음). 목록은 빈 것
+const desk = vi.hoisted(() => ({ list: vi.fn(async () => []), add: vi.fn(), remove: vi.fn() }))
+vi.mock('@/lib/storage/desk', () => ({ listDeskMembers: desk.list, addDeskMember: desk.add, removeDeskMember: desk.remove }))
 
 const RULE: RuleSummary = {
   id: 'LA-01',
@@ -66,6 +69,16 @@ describe('/settings 페이지', () => {
     render(<SettingsRoute />)
     expect(screen.getByRole('heading', { level: 2, name: '점검 규칙' })).toBeTruthy()
     expect(await screen.findByText('신경차단술 12개월 횟수')).toBeTruthy()
+  })
+
+  it("AC-6304.2: 맨 아래 칸은 '데스크 계정'이다(현금 시재 다음)", async () => {
+    render(<SettingsRoute />)
+    const titles = (await screen.findAllByRole('heading', { level: 2 })).map((h) => h.textContent)
+    expect(titles.at(-1)).toBe('데스크 계정')
+    expect(titles.at(-2)).toBe('현금 시재')
+    await screen.findByRole('textbox', { name: '데스크 구글 메일' })
+    expect(desk.list).toHaveBeenCalled()
+    expect(desk.add).not.toHaveBeenCalled()
   })
 
   it('AC-012.6: 새 서버 경로 없음 — 페이지는 화면을 그리기만 한다(문지기는 레이아웃, DB는 브라우저 + RLS)', () => {

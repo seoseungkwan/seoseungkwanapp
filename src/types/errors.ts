@@ -50,5 +50,7 @@ export type ErrorCode =
   | 'E-FORMS-BG-LIMIT' | 'E-FORMS-BG-QUOTA' | 'E-FORMS-BG-FAILED' | 'E-FORMS-BG-STORE-FAILED'
   // 도우미·확장 설치 파일 보관함(specs/helper-download design.md '오류'): 목록 읽기 · 받기 · 이름 · 크기 · 같은 판 · 올리기 실패
   | 'E-INSTALL-READ-FAILED' | 'E-INSTALL-DOWNLOAD-FAILED' | 'E-INSTALL-FILE-NAME' | 'E-INSTALL-FILE-SIZE' | 'E-INSTALL-FILE-EXISTS' | 'E-INSTALL-UPLOAD-FAILED'
+  // 설정 '데스크 계정' 칸(specs/desk-feedback design.md '③ 설정 데스크 계정 칸'): 목록 읽기 · 더하기·빼기 실패 · 메일 모양 · 병원 계정 메일 · 이미 데스크 메일 · 5개
+  | 'E-DESK-READ-FAILED' | 'E-DESK-SAVE-FAILED' | 'E-DESK-EMAIL-BAD' | 'E-DESK-EMAIL-TAKEN' | 'E-DESK-EMAIL-USED' | 'E-DESK-LIMIT'
 
 export type ErrorInfo = { what: string; fix: string }

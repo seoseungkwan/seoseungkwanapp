@@ -1,12 +1,13 @@
 import Link from 'next/link'
 import { CashFloatSetting } from './CashFloatSetting'
+import { DeskAccounts } from './DeskAccounts'
 import { DxLinks } from './DxLinks'
 import { HospitalPhrases } from './HospitalPhrases'
 import { InstallFilesCard } from './InstallFilesCard'
 import { RuleSettings } from './RuleSettings'
 
 // 설정 화면 (precheck REQ-012 AC-012.6, 목업 화면 10). 제목 '설정' → 안쪽 메뉴 [청구 | 비트 PC 연결] → 맨 위 '비트 PC 연결 · 설치 파일' 칸
-// (helper-download AC-5103.2) → '청구'의 패널들(이름은 settings-tab-name AC-5201.1).
+// (helper-download AC-5103.2) → '청구'의 패널들(이름은 settings-tab-name AC-5201.1) → 맨 아래 '데스크 계정'(desk-feedback AC-6304.2, 원장만).
 // 안쪽 메뉴의 모양은 비트 PC 연결 화면(SetupScreen의 SettingsSubnav, AC-034.2)과 같다. 페이지 이동 링크라 tablist가 아니고 aria-current를 쓴다
 const subBase =
   'relative inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control px-3 text-body no-underline first:-ml-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent max-md:h-11'
@@ -32,6 +33,7 @@ export function SettingsPage() {
       <HospitalPhrases />
       <DxLinks />
       <CashFloatSetting />
+      <DeskAccounts />
       {/* 뒤 TASK가 이 아래에 차례로 더한다: 문자 문구(TASK-25) · 백업(TASK-32) */}
     </div>
   )
