@@ -3,7 +3,7 @@ import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import type { ChartLine, ChartLineKind, MemoTableRow, RxRow, TargetRow } from '@/types/precheck'
 import { dayLabel } from '../dateList'
-import { APPEND_NAME, LEFT_GROUPS } from './leftGroups'
+import { LEFT_GROUPS } from './leftGroups'
 import { RowTags, type ListGroup } from './MemoList'
 
 // 오른쪽 고른 환자 상세(memo-split REQ-3105, 승인 시안 4의 .detail). 머리 → 단추 줄(초록 복사·상태 줄) → 우리 메모 | 비트 메모 두 칸 → 증상·처방 표.
@@ -227,8 +227,6 @@ export function MemoDetail(props: {
   const label = copying ? '복사 중…' : row.done ? '다시 복사' : '복사(완료)'
   const journal = !row.done && tableRow?.lastJournal !== undefined ? JOURNAL_TEXT[tableRow.lastJournal] : undefined
   const hasText = row.text.trim() !== ''
-  // [뒤에 붙이기]를 고른 사람(AC-6611.1): 입력할 사람에 들고 chip은 '메모 바꿈' 그대로지만 덮지 않으므로 표는 '메모 뒤에 붙임'이다
-  const appending = group === 'batch' && row.appended !== undefined && !row.unfinished
 
   // lg(1024px) 이상은 머리 한 줄 + 아래 세 칸(① 단추 상자·메모 ② 증상 ③ 처방, claim-memo-fit AC-4803.1~AC-4803.6).
   // DOM 차례는 그대로 두고 lg: class(contents·order·grid)로만 모양을 바꾼다. lg 미만은 지금 모양 그대로다
@@ -241,8 +239,8 @@ export function MemoDetail(props: {
           </p>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <h3 className="text-title font-semibold text-ink">{row.name}</h3>
-            <RowTags row={appending ? { ...row, chip: null } : row} group={group} failed={failed} />
-            {appending && <span className={ds.chip.accent}>{APPEND_NAME}</span>}
+            {/* 붙이는 사람의 '메모 뒤에 붙임'도 RowTags가 목록 줄과 같은 조건으로 그린다(AC-6611.1) */}
+            <RowTags row={row} group={group} failed={failed} />
           </div>
           <p className="text-body text-ink-2">
             <span className="text-muted">진료일</span> {dayLabel(row.date)} <span className="text-line-strong">|</span> <span className="text-muted">차트</span> {row.chart}

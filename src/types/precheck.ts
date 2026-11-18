@@ -279,7 +279,7 @@ export type ClaimView = Omit<CheckView, 'visits'> & { visits: ClaimVisitView[]; 
 
 // ── 메모 칸(TASK-18, REQ-018). 대상 고르기는 lib/precheck/inputTargets.ts ──────────
 
-/** 입력 방식(AC-018.8). 고르는 칸을 그대로 들고 있어 방식을 바꿔도 적은 값이 남는다. 어디에도 저장하지 않는다 */
+/** 입력 방식(AC-018.8). 고르는 칸을 그대로 들고 있어 방식을 바꿔도 적은 값이 남는다. 고른 방식(mode)만 병원 설정 input_mode에 기억하고(clinic-profile AC-6610.1), 적은 값은 저장하지 않는다 */
 export type InputSelection = { mode: 'code' | 'date'; from: string; to: string; typed: string; chip: string; kind: 'day' | 'range'; day: string; rangeFrom: string; rangeTo: string }
 /** 빠지는 까닭(AC-018.26): 이미 입력됨 · 메모 없음 · 확인 표시 · 직접 입력 · 다른 메모 · 읽지 못함 · 지난번 건너뜀 */
 export type LeftReason = 'done' | 'nomemo' | 'mark' | 'manual' | 'diff' | 'unread' | 'held'

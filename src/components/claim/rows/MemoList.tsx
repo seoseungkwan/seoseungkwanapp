@@ -3,6 +3,7 @@ import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import type { LeftReason, TargetRow } from '@/types/precheck'
 import { dayLabel } from '../dateList'
+import { APPEND_NAME } from './leftGroups'
 
 // 왼쪽 환자 목록(memo-split REQ-3101, 승인 시안 4의 .listpane). 묶음·차례·보기 거르기는 화면(memoSplit)이 정하고 여기는 props로만 그린다.
 // 줄에는 환자 정보만(번호·이름·진료일·차트번호·상태 표) 있다. 차트 원문·처방·메모 글은 오른쪽 상세(MemoDetail)에만 있다(AC-3101.3).
@@ -23,7 +24,7 @@ const SHOWS: readonly (readonly [Show, string])[] = [
 
 /**
  * 목록 줄과 상세 머리에 같이 쓰는 상태 표(AC-3101.3·AC-3105.1). 차례: 복사 못 함 → 완료 → (확인 필요 | 메모 바꿈 | 새 메모 가운데 하나).
- * 메모 바꿈·새 메모는 입력할 사람 묶음에만 붙는다
+ * 메모 바꿈·새 메모는 입력할 사람 묶음에만 붙는다. [뒤에 붙이기]를 고른 사람은 메모 바꿈 대신 '메모 뒤에 붙임'이다(clinic-profile AC-6611.1, 상세 머리와 같은 조건)
  */
 export function RowTags({ row, group, failed }: { row: TargetRow; group: ListGroup['id']; failed: boolean }) {
   const batch = group === 'batch'
@@ -43,6 +44,8 @@ export function RowTags({ row, group, failed }: { row: TargetRow; group: ListGro
       )}
       {row.unfinished ? (
         <span className={ds.chip.warning}>! 확인 필요</span>
+      ) : batch && row.appended !== undefined ? (
+        <span className={ds.chip.accent}>{APPEND_NAME}</span>
       ) : batch && row.chip === '메모 바꿈' ? (
         <span className={ds.chip.warning}>! 메모 바꿈</span>
       ) : batch && row.chip === '새 메모' ? (

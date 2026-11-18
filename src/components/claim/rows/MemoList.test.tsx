@@ -320,7 +320,8 @@ describe('AC-3107.3 환자 줄 울타리', () => {
   it('AC-3107.3: 목록 두 파일은 정한 것만 불러오고 네트워크·저장소·console·supabase·클립보드가 없다(줄은 props로만 받는다)', () => {
     const list = source('MemoList.tsx')
     const groups = source('leftGroups.ts')
-    expect(imports(list)).toEqual(['react', '@/components/common/Icon', '@/components/ui/classes', '@/types/precheck', '../dateList'])
+    // './leftGroups'는 이 시험이 같이 막는 옆 파일이다(붙임 이름 APPEND_NAME, clinic-profile AC-6611.1)
+    expect(imports(list)).toEqual(['react', '@/components/common/Icon', '@/components/ui/classes', '@/types/precheck', '../dateList', './leftGroups'])
     expect(imports(groups)).toEqual(['@/types/precheck'])
     for (const text of [list, groups]) {
       expect(text).not.toMatch(/\b(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|localStorage|sessionStorage|indexedDB|console|supabase|navigator|clipboard|execCommand)\b/)
@@ -340,5 +341,31 @@ describe('AC-3107.3 환자 줄 울타리', () => {
     const first = render(<MemoList {...props} />).container.innerHTML
     cleanup()
     expect(render(<MemoList {...props} />).container.innerHTML).toBe(first)
+  })
+})
+
+// [뒤에 붙이기]를 고른 사람(clinic-profile AC-6611.1): 입력할 사람이고 chip은 '메모 바꿈' 그대로지만 덮지 않으므로
+// 목록 줄도 상세 머리(MemoDetail)와 같은 이름·조건으로 '메모 뒤에 붙임'이다. 비트 글 자체는 목록에 나오지 않는다
+describe('AC-6611.1 목록 줄의 붙임 표시', () => {
+  const tagsOf = (value: ListRow, id: ListGroup['id']) => {
+    render(
+      <span data-testid="tags">
+        <RowTags row={value} group={id} failed={false} />
+      </span>,
+    )
+    return [...screen.getByTestId('tags').children] as HTMLElement[]
+  }
+
+  it("AC-6611.1: 입력할 사람에서 붙이기를 고른 줄은 '! 메모 바꿈' 대신 '메모 뒤에 붙임'(accent)이다", () => {
+    const tags = tagsOf(row('A', { chip: '메모 바꿈', appended: '◈가상 비트 글' }), 'batch')
+    expect(tags.map((tag) => tag.textContent)).toEqual(['메모 뒤에 붙임'])
+    expect(tags[0].className).toBe(ds.chip.accent)
+    expect(screen.getByTestId('tags').textContent).not.toContain('가상 비트 글')
+  })
+
+  it("AC-6611.1: 붙이기를 골랐어도 확인 필요가 앞서고, 빠지는 묶음에는 표가 없다(상세 머리와 같은 조건)", () => {
+    expect(tagsOf(row('A', { chip: '메모 바꿈', appended: '◈가상 비트 글', unfinished: true }), 'batch').map((tag) => tag.textContent)).toEqual(['! 확인 필요'])
+    cleanup()
+    expect(tagsOf(row('A', { chip: '메모 바꿈', appended: '◈가상 비트 글' }), 'diff')).toEqual([])
   })
 })
