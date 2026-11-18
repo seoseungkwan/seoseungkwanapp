@@ -1848,3 +1848,102 @@ describe('AC-5004.1 sectionsJob·sections: 묶음을 실어 물으면 원장님�
     expectOnlyLabelsAndNumbers(sent)
   })
 })
+
+// ── v5 답(new-mark): v4 답(위 V4_LINES) + 접수 줄 여섯째 칸(그 환자·날 센 접수 가운데 비트 내원 구분 '1' 신환 표시 수) ──
+// 신환 날 = 1번 9/1 · 3번 9/2 · 4번 9/2 · 6번 11/1(첫 내원 2025년인 옛 환자인데 표시). 2번 9/1 · 5번 9/3은 첫 내원일인데 표시가 없다
+// (2번 9/1은 V4_LINES 그대로 90일초진 1건). 1번 10/5는 90일초진. 숫자는 모두 지어낸 값이다
+const V5_MARKED = new Set([`${CHARTS[0]}|20260901`, `${CHARTS[2]}|20260902`, `${CHARTS[3]}|20260902`, `${CHARTS[5]}|20261101`])
+const V5_LINES = V4_LINES.map((line) => [...line, V5_MARKED.has(`${line[0]}|${line[1]}`) ? 1 : 0])
+const v5Json = (over: Record<string, unknown> = {}) => v3Json({ v: 5, patientDays: V5_LINES, ...over })
+
+describe('AC-6202.1 loadJob: v5 답이면 날·달 저장 줄의 신환은 신환 날', () => {
+  it('AC-6202.1: 날 줄 — 신환 = 표시 줄 수, 90일초진 = 표시 없는 줄의 다섯째 칸 합, 재진 = 접수 − 신환 − 90일초진', () => {
+    const { view } = loadJob(v5Json(), OPTS)
+    expect(totalsOn(view, '2026-09-01')).toEqual({ patients: 2, newPatients: 1, first90: 1, returning: 0, unknown: 0 })
+    expect(totalsOn(view, '2026-09-02')).toEqual({ patients: 2, newPatients: 2, first90: 0, returning: 0, unknown: 0 })
+    expect(totalsOn(view, '2026-09-03')).toEqual({ patients: 1, newPatients: 0, first90: 0, returning: 1, unknown: 0 })
+    expect(totalsOn(view, '2026-10-05')).toEqual({ patients: 1, newPatients: 0, first90: 1, returning: 0, unknown: 0 })
+    expect(totalsOn(view, TODAY)).toEqual({ patients: 1, newPatients: 1, first90: 0, returning: 0, unknown: 0 })
+  })
+
+  it('AC-6202.1: 달 줄 totals는 날 줄의 합이고, 날·달 줄 모두 저장 검사를 지나며 환자 자료가 없다', () => {
+    const { view } = loadJob(v5Json(), OPTS)
+    expect(monthIn(view, '2026-09')?.totals).toEqual({ patients: 5, newPatients: 3, first90: 1, returning: 1, unknown: 0 })
+    expect(monthIn(view, '2026-10')?.totals).toEqual({ patients: 1, newPatients: 0, first90: 1, returning: 0, unknown: 0 })
+    expect(monthIn(view, '2026-11')?.totals).toEqual({ patients: 1, newPatients: 1, first90: 0, returning: 0, unknown: 0 })
+    for (const month of view.months ?? []) expect(validateMonthPayload(JSON.parse(JSON.stringify(month)))).toEqual(month)
+    for (const day of view.days ?? []) expect(validateDayPayload(JSON.parse(JSON.stringify(day)))).toEqual(day)
+    expectNoPatientData(view)
+  })
+
+  it('AC-6202.1: Worker 메모리(BitMemory)에 답의 판 5가 남는다', () => {
+    expect(loadJob(v5Json(), OPTS).bit.v).toBe(5)
+  })
+})
+
+describe('AC-6202.2·AC-6202.4 loadJob·splitJob: v5 답이면 처방별 신환·재진도 신환 날', () => {
+  const MM042 = (newPatients: number, returning: number) => ({ code: 'MM042', label: '표층열치료', newPatients, returning, total: newPatients + returning })
+  const NO_B4001 = { code: 'B4001', label: '일반혈액검사', newPatients: 0, returning: 0, total: 0 }
+
+  it('AC-6202.4: memory.days의 신환은 도우미 날 숫자 대신 그날 신환 날인 접수 줄 수다(없는 날은 0)', () => {
+    const { memory } = loadJob(v5Json({ days: SPLIT_DAYS }), OPTS)
+    expect(memory.days).toEqual([
+      { date: '2026-09-01', visits: 2, patients: 2, newPatients: 1 },
+      { date: '2026-09-02', visits: 2, patients: 2, newPatients: 2 },
+      { date: '2026-09-03', visits: 1, patients: 1, newPatients: 0 },
+      { date: '2026-10-05', visits: 1, patients: 1, newPatients: 0 },
+      { date: '2026-11-01', visits: 1, patients: 1, newPatients: 1 },
+    ])
+  })
+
+  it('AC-6202.2·AC-6202.4: splitJob — 처방 줄은 신환 날이면 신환(첫 내원일과 상관없다), 날 합계 신환은 그날 신환 날인 접수 줄 수', () => {
+    const view = splitIn(splitJob(loadJob(v5Json({ days: SPLIT_DAYS }), OPTS).memory, WHOLE))
+    expect(view.split).toMatchObject({ visits: 7, patients: 7, newPatients: 4, returning: 3 })
+    expect(view.split.lines).toEqual([MM042(3, 2), { code: 'B4001', label: '일반혈액검사', newPatients: 1, returning: 0, total: 1 }])
+    const on = (date: string) => view.days.find((day) => day.date === date)
+    expect(on('2026-09-01')).toEqual({ date: '2026-09-01', visits: 2, patients: 2, newPatients: 1, returning: 1, lines: [MM042(1, 1), NO_B4001] })
+    expect(on('2026-09-03')).toEqual({ date: '2026-09-03', visits: 1, patients: 1, newPatients: 0, returning: 1, lines: [MM042(0, 1), NO_B4001] })
+    expect(on(TODAY)).toEqual({ date: TODAY, visits: 1, patients: 1, newPatients: 1, returning: 0, lines: [MM042(1, 0), NO_B4001] })
+    expectNoPatientInSplit(view)
+  })
+
+  it('AC-6202.6: v2·v3·v4 답의 memory.days 신환은 지금처럼 도우미 날 숫자이고, 처방 줄은 첫 내원일 = 그날이 신환이다', () => {
+    const olds = [helperJson({ days: SPLIT_DAYS }), v3Json({ days: SPLIT_DAYS }), v3Json({ v: 4, patientDays: V4_LINES, days: SPLIT_DAYS })]
+    for (const text of olds) {
+      const { memory } = loadJob(text, OPTS)
+      expect(memory.days.map((day) => day.newPatients)).toEqual([2, 2, 1, 0, 0])
+      expect(memory.rows.filter((row) => row.f === row.d)).toHaveLength(5) // 9월 다섯 환자의 첫 내원일 줄
+    }
+  })
+})
+
+describe('AC-6202.3 sectionsJob: v5 답이면 원장님별·환자 구성의 신환은 그 환자의 가장 이른 신환 날', () => {
+  it('AC-6202.3: 신환 날이 없는 환자(2번·5번)는 신환이 아니고, 옛 환자라도 신환 날이면(6번 11/1) 신환이다', () => {
+    const { mix, doctors } = readyIn(sectionsJob(loadJob(v5Json(), OPTS).bit, WHOLE))
+    expect(mix.all.total).toEqual({ people: 6, visits: 8 })
+    expect(mix.new.total).toEqual({ people: 4, visits: 4 })
+    if (doctors.kind !== 'table') throw new Error('원장님 표가 없다')
+    expect(doctors.total).toMatchObject({ patients: 6, newPatients: 4, visits: 8 })
+    expect(rowOf(doctors.rows, '김가상')).toMatchObject({ newPatients: 2 }) // 1번 9/1 · 3번 9/2 (5번 9/3은 표시 없음)
+    expect(rowOf(doctors.rows, '이가상')).toMatchObject({ newPatients: 2 }) // 4번 9/2 · 6번 11/1 (2번 9/1은 표시 없음)
+    expect(mix.new.total.people).toBe(doctors.total.newPatients)
+  })
+
+  it('AC-6202.3: 한 환자가 두 날 신환 표시면 가장 이른 날 하나만 신환 날로 본다(원장님별 신환은 한 번)', () => {
+    // 1번 10/5 접수를 90일초진 대신 신환 표시로 바꾼다
+    const lines = V5_LINES.map((line) => (line[0] === CHARTS[0] && line[1] === '20261005' ? [...line.slice(0, 4), 0, 1] : line))
+    const { mix, doctors } = readyIn(sectionsJob(loadJob(v5Json({ patientDays: lines }), OPTS).bit, WHOLE))
+    expect(mix.new.total).toEqual({ people: 4, visits: 4 }) // 1번은 9/1 접수 하나만
+    if (doctors.kind !== 'table') throw new Error('원장님 표가 없다')
+    expect(rowOf(doctors.rows, '김가상')).toMatchObject({ newPatients: 2 })
+  })
+
+  it('AC-6202.6: v3·v4 답은 지금처럼 첫 내원일로 센다(9월 신환 5명)', () => {
+    for (const text of [v3Json(), v4Json()]) {
+      const { mix, doctors } = readyIn(sectionsJob(loadJob(text, OPTS).bit, WHOLE))
+      expect(mix.new.total).toEqual({ people: 5, visits: 5 })
+      if (doctors.kind !== 'table') throw new Error('원장님 표가 없다')
+      expect(doctors.total).toMatchObject({ newPatients: 5 })
+    }
+  })
+})
