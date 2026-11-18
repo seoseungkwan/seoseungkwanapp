@@ -43,6 +43,8 @@ internal static class StatsExtraFake
             new object?[] { "D001", " 가짜원장 가 ", "99991231" },
             new object?[] { "D002", "가짜원장 나", "99991231" },
         });
+        db.Answer(StatsPayFake.NormalSql, args => new[] { new object?[] { StatsFake.Chart(1) + " ", (string?)args["@day"], 30000m } });
+        db.Answer(StatsPayFake.ReceivableSql, args => new[] { new object?[] { StatsFake.Chart(2), (string?)args["@day"], 2000m } });
     }
 
     /// <summary>접수 줄 n개(모두 같은 가짜 값). 큰 자료 시험용.</summary>
@@ -50,6 +52,28 @@ internal static class StatsExtraFake
     {
         var row = new object?[] { StatsFake.Chart(1), "20260901", "0905", "가짜보험 가", "D001" };
         for (var i = 0; i < n; i++) yield return row;
+    }
+}
+
+/// <summary>
+/// 환자·날 금액 SQL 둘(spec stats-insights AC-6106.1)의 글. 보고 금액 SQL(정상수납·미수입금)에서 원장님별 금액(ByDoctorDay)과 같은 두 곳만 바꾼다:
+/// NativeRows 줄 머리에 수납일(OrpAccDte 앞 8자) 칸을 더하고, 끝 SELECT를 차트번호·수납일로 묶은 OrpTotAmt 합으로. 원본 사본과의 대조는 StatsSql.test.cs가 한다.
+/// 기본 가짜 금액(StatsExtraFake.Answer)은 달마다 그 달 첫 수납일에 정상수납 차트 1 30,000원, 미수입금 차트 2 2,000원이다.
+/// </summary>
+internal static class StatsPayFake
+{
+    public const string RowStart = "SELECT p.OrpOcmNum,p.OrpChtNum,p.OrpTotAmt";
+    public const string RowStartByPatientDay = "SELECT p.OrpOcmNum,p.OrpChtNum,LEFT(p.OrpAccDte,8) PaidDay,p.OrpTotAmt";
+    public const string Tail = "SELECT OrpChtNum,PaidDay,SUM(OrpTotAmt) FROM NativeRows GROUP BY OrpChtNum,PaidDay";
+
+    public static readonly string NormalSql = ByPatientDay(StatsSql.FinanceNormalSql);
+
+    public static readonly string ReceivableSql = ByPatientDay(StatsSql.FinanceReceivableSql);
+
+    private static string ByPatientDay(string sql)
+    {
+        var text = sql.Replace(RowStart, RowStartByPatientDay);
+        return text.Substring(0, text.LastIndexOf("SELECT SUM(", StringComparison.Ordinal)) + Tail;
     }
 }
 
@@ -521,14 +545,74 @@ public class StatsExtraReadTests
         Assert.Equal("E-BIT-READ-FAILED", error.Message);
     }
 
+    // ---- AC-6106.1 환자·날 금액(spec stats-insights) ------------------------------------------------
+
+    [Theory(DisplayName = "AC-6106.1 환자·날 금액은 원장님별 금액과 같은 달 나누기로(첫 달은 시작일부터, 끝 달은 끝 날까지) 원장님 이름을 읽은 뒤 달마다 정상수납 → 미수입금 차례로 @day·@nextDay·@hospital을 넣어 150초 제한으로 읽는다")]
+    [MemberData(nameof(MonthWindows))]
+    public void PaysByMonth(string from, string to, string[] windows)
+    {
+        var db = Db();
+        Read(db, from, to);
+
+        Assert.Equal(windows, Windows(db, StatsPayFake.NormalSql, "@day", "@nextDay"));
+        Assert.Equal(windows, Windows(db, StatsPayFake.ReceivableSql, "@day", "@nextDay"));
+        var sqls = db.Sqls.ToList();
+        Assert.Equal(
+            Enumerable.Range(0, windows.Length).SelectMany(_ => new[] { StatsPayFake.NormalSql, StatsPayFake.ReceivableSql }),
+            sqls.Skip(sqls.LastIndexOf(StatsSql.DoctorNamesSql) + 1));
+        var pays = db.Calls.Where(c => c.Sql == StatsPayFake.NormalSql || c.Sql == StatsPayFake.ReceivableSql).ToArray();
+        Assert.All(pays, call =>
+        {
+            Assert.Equal(3, call.Args.Count);
+            Assert.Equal(Synthetic.Scope, call.Args["@hospital"]);
+            Assert.Equal(TimeSpan.FromSeconds(150), call.Timeout);
+            ReadOnlyGuard.Require(call.Sql, call.Args);
+        });
+    }
+
+    [Fact(DisplayName = "AC-6106.1 진료의 코드가 하나도 없어 원장님 이름을 읽지 않아도 환자·날 금액은 달마다 금액 둘 뒤에 읽는다")]
+    public void PaysWithoutDoctorNames()
+    {
+        var db = Db();
+        db.Answer(StatsSql.VisitLinesSql, _ => new[] { new object?[] { StatsFake.Chart(1), "20260901", "0905", null, null } });
+        db.Answer(StatsSql.DoctorMoneyNormalSql, _ => StatsExtraFake.None());
+        db.Answer(StatsSql.DoctorMoneyReceivableSql, _ => StatsExtraFake.None());
+        Read(db);
+
+        Assert.Equal(new[]
+        {
+            StatsSql.VisitLinesSql, StatsSql.PeopleSql, StatsSql.DoctorMoneyNormalSql, StatsSql.DoctorMoneyReceivableSql, StatsPayFake.NormalSql, StatsPayFake.ReceivableSql,
+        }, db.Sqls);
+    }
+
+    public static IEnumerable<object[]> MalformedPays() => new[]
+    {
+        new object[] { StatsPayFake.NormalSql, new object?[] { StatsFake.Chart(1), "20260901", "x" } },
+        new object[] { StatsPayFake.NormalSql, new object?[] { StatsFake.Chart(1), "20260901" } },
+        new object[] { StatsPayFake.NormalSql, new object?[] { StatsFake.Chart(1), null, 1000m } },
+        new object[] { StatsPayFake.ReceivableSql, new object?[] { StatsFake.Chart(1), "20260901", 100000000000000000000m } }, // long에 안 들어감
+    };
+
+    [Theory(DisplayName = "AC-6106.1 환자·날 금액 값 모양이 틀리면(숫자가 아님·칸이 모자람·없는 수납일·long에 안 들어감) 도우미를 멈추지 않고 번호뿐인 E-BIT-READ-FAILED다")]
+    [MemberData(nameof(MalformedPays))]
+    public void MalformedPay(string sql, object?[] row)
+    {
+        var db = Db();
+        db.Answer(sql, _ => new[] { row });
+        var error = Assert.Throws<BitException>(() => Read(db));
+        Assert.Equal("E-BIT-READ-FAILED", error.Code);
+        Assert.Equal("E-BIT-READ-FAILED", error.Message);
+    }
+
     // ---- AC-2701.6 읽는 차례·시간 제한 ------------------------------------------------------------
 
     private static readonly string[] Order =
     {
         StatsSql.VisitLinesSql, StatsSql.PeopleSql, StatsSql.DoctorMoneyNormalSql, StatsSql.DoctorMoneyReceivableSql, StatsSql.DoctorNamesSql,
+        StatsPayFake.NormalSql, StatsPayFake.ReceivableSql,
     };
 
-    [Fact(DisplayName = "AC-2701.6 새 읽기는 접수 줄 → 사람 줄 → 달마다 금액 둘 → 원장님 이름 차례이고 모두 관문을 지나 150초 제한으로 돈다")]
+    [Fact(DisplayName = "AC-2701.6 AC-6106.1 새 읽기는 접수 줄 → 사람 줄 → 달마다 금액 둘 → 원장님 이름 → 달마다 환자·날 금액 둘 차례이고 모두 관문을 지나 150초 제한으로 돈다")]
     public void ReadOrderAndTimeout()
     {
         var db = Db();
@@ -542,9 +626,9 @@ public class StatsExtraReadTests
         });
     }
 
-    public static IEnumerable<object[]> EachSql() => Enumerable.Range(0, 5).Select(i => new object[] { i });
+    public static IEnumerable<object[]> EachSql() => Enumerable.Range(0, 7).Select(i => new object[] { i });
 
-    [Theory(DisplayName = "AC-2701.6 새 읽기 SQL 하나라도 실패하면 반쪽 자료 없이 그 번호로 멈춘다")]
+    [Theory(DisplayName = "AC-2701.6 AC-6106.1 새 읽기 SQL 하나라도 실패하면(환자·날 금액 둘 포함) 반쪽 자료 없이 그 번호로 멈춘다")]
     [MemberData(nameof(EachSql))]
     public void AnySqlFails(int index)
     {
@@ -583,6 +667,7 @@ public class StatsExtraPayloadTests
     private static readonly string[] SectionOrder =
     {
         StatsSql.VisitLinesSql, StatsSql.PeopleSql, StatsSql.DoctorMoneyNormalSql, StatsSql.DoctorMoneyReceivableSql, StatsSql.DoctorNamesSql,
+        StatsPayFake.NormalSql, StatsPayFake.ReceivableSql,
     };
 
     private static string Reply(Rig rig) => StatsRowsTests.Assemble(StatsRowsTests.Handle(rig, September));
@@ -591,7 +676,7 @@ public class StatsExtraPayloadTests
 
     private static string[][] Table(JsonElement array) => array.EnumerateArray().Select(Strings).ToArray();
 
-    [Fact(DisplayName = "AC-2701.1 AC-4401.1 AC-6201.1 stats.rows 답은 v 5(v3 열쇠 그대로, patientDays만 여섯 칸)이고 v2 열쇠 뒤에 visits·people·doctors·doctorDays를 이 차례로 싣는다")]
+    [Fact(DisplayName = "AC-2701.1 AC-4401.1 AC-6201.1 AC-6106.1 stats.rows 답은 v 5(v3 열쇠 그대로, patientDays만 여섯 칸)이고 v2 열쇠 뒤에 visits·people·doctors·doctorDays·pays를 이 차례로 싣는다")]
     public void VersionAndKeys()
     {
         using var rig = StatsFake.Clinic();
@@ -599,9 +684,103 @@ public class StatsExtraPayloadTests
 
         Assert.Equal(5, root.GetProperty("v").GetInt32());
         Assert.Equal(5, StatsPayload.Version);
-        Assert.Equal(V2Keys.Concat(new[] { "visits", "people", "doctors", "doctorDays" }), Json.Keys(root));
+        Assert.Equal(V2Keys.Concat(new[] { "visits", "people", "doctors", "doctorDays", "pays" }), Json.Keys(root));
         Assert.Equal(1, rig.Session.Disposed);
     }
+
+    // ---- AC-6106.1 환자·날 금액 줄 pays(spec stats-insights) -----------------------------------------
+
+    [Fact(DisplayName = "AC-6106.1 stats.rows 답 v는 5 그대로이고 doctorDays 바로 뒤 마지막 열쇠 pays에 환자·날 금액 줄을 더한다, 그 밖의 열쇠·값은 그대로다")]
+    public void PaysIsLastKeyOfV5()
+    {
+        using var rig = StatsFake.Clinic();
+        var root = Json.Parse(Reply(rig));
+
+        Assert.Equal(5, root.GetProperty("v").GetInt32());
+        var keys = Json.Keys(root).ToArray();
+        Assert.Equal("pays", keys[keys.Length - 1]);
+        Assert.Equal("doctorDays", keys[keys.Length - 2]);
+        Assert.Equal(new[] { new[] { "20260901", "D001", "50000" }, new[] { "20260901", "D002", "1000" } }, Table(root.GetProperty("doctorDays")));
+    }
+
+    [Fact(DisplayName = "AC-6106.1 pays 줄은 세 칸 [차트번호, 수납일, 금액(원 단위 정수)]이고 기본 가짜 자료는 정상수납 차트 1·미수입금 차트 2 한 줄씩(차트번호 앞뒤 빈칸 뺌)이다")]
+    public void PaysJson()
+    {
+        using var rig = StatsFake.Clinic();
+        var pays = Json.Parse(Reply(rig)).GetProperty("pays");
+
+        Assert.Equal(new[]
+        {
+            new[] { StatsFake.Chart(1), "20260901", "30000" },
+            new[] { StatsFake.Chart(2), "20260901", "2000" },
+        }, Table(pays));
+        Assert.All(pays.EnumerateArray(), pay =>
+        {
+            Assert.Equal(3, pay.GetArrayLength());
+            Assert.Equal(JsonValueKind.String, pay[0].ValueKind);
+            Assert.Equal(JsonValueKind.String, pay[1].ValueKind);
+            Assert.Equal(JsonValueKind.Number, pay[2].ValueKind);
+            Assert.True(pay[2].TryGetInt64(out _));
+        });
+    }
+
+    [Fact(DisplayName = "AC-6106.1 같은 (차트번호, 수납일)은 정상수납과 미수입금을 더한 뒤 원 미만을 버리고(반올림하지 않음) 0원 줄은 싣지 않으며 음수(환불이 더 큰 날)는 그대로, 차트번호·수납일 차례다")]
+    public void PaysAreSummedAndTruncated()
+    {
+        using var rig = StatsFake.Clinic();
+        rig.Session.Answer(StatsPayFake.NormalSql, _ => new[]
+        {
+            new object?[] { StatsFake.Chart(2), "20260905", -300.9m },      // 환불이 더 큰 날: 0 쪽으로 버리고 음수 그대로
+            new object?[] { StatsFake.Chart(1) + " ", "20260901", 1000.7m },
+            new object?[] { StatsFake.Chart(1), "20260902", 0.4m },         // 원 미만뿐: 0원 줄은 뺀다
+            new object?[] { StatsFake.Chart(3), "20260903", null },         // DB NULL은 0
+            new object?[] { StatsFake.Chart(1), "20260904", 25000L },
+        });
+        rig.Session.Answer(StatsPayFake.ReceivableSql, _ => new[]
+        {
+            new object?[] { " " + StatsFake.Chart(1), "20260901", 0.6m },   // 같은 (차트번호, 수납일): 더한 뒤 버린다
+            new object?[] { StatsFake.Chart(1), "20260904", -25000m },      // 더해서 0원
+            new object?[] { StatsFake.Chart(2), "20260906", -0.5m },        // 0 쪽으로 버려 0원
+        });
+        var pays = Json.Parse(Reply(rig)).GetProperty("pays");
+
+        Assert.Equal(new[]
+        {
+            new[] { StatsFake.Chart(1), "20260901", "1001" },
+            new[] { StatsFake.Chart(2), "20260905", "-300" },
+        }, Table(pays));
+    }
+
+    [Fact(DisplayName = "AC-6106.1 차트번호가 비었거나 공백뿐이거나 없는 금액 줄은 환자가 없어 싣지 않는다")]
+    public void PaysWithoutChartAreSkipped()
+    {
+        using var rig = StatsFake.Clinic();
+        rig.Session.Answer(StatsPayFake.NormalSql, _ => new[]
+        {
+            new object?[] { "   ", "20260901", 5000m },
+            new object?[] { "", "20260901", 6000m },
+            new object?[] { null, "20260901", 7000m },
+            new object?[] { StatsFake.Chart(1), "20260901", 3000m },
+        });
+        rig.Session.Answer(StatsPayFake.ReceivableSql, _ => StatsExtraFake.None());
+
+        Assert.Equal(new[] { new[] { StatsFake.Chart(1), "20260901", "3000" } }, Table(Json.Parse(Reply(rig)).GetProperty("pays")));
+    }
+
+    [Fact(DisplayName = "AC-6106.1 금액 줄이 하나도 없으면 pays는 빈 배열이다")]
+    public void NoPaysIsEmptyArray()
+    {
+        using var rig = StatsFake.Clinic();
+        rig.Session.Answer(StatsPayFake.NormalSql, _ => StatsExtraFake.None());
+        rig.Session.Answer(StatsPayFake.ReceivableSql, _ => StatsExtraFake.None());
+        var pays = Json.Parse(Reply(rig)).GetProperty("pays");
+
+        Assert.Equal(JsonValueKind.Array, pays.ValueKind);
+        Assert.Equal(0, pays.GetArrayLength());
+    }
+
+    [Fact(DisplayName = "AC-6106.1 도우미 판은 0.11.0이다(웹 LATEST_HELPER·VALUE_HELPER 0.11.0, MIN_HELPER 0.3.0 그대로는 handshake.test.ts가 본다)")]
+    public void HelperVersionIsZeroEleven() => Assert.Equal("0.11.0", HelperVersion.Value);
 
     [Fact(DisplayName = "AC-2701.1 visits 줄은 다섯 칸 [차트번호|null, 진료일, 접수 시각|null, 보험 이름|null, 진료의 코드|null]이고 빈 칸은 JSON null이다")]
     public void VisitsJson()
@@ -727,9 +906,9 @@ public class StatsExtraPayloadTests
         Assert.Equal(1, rig.Session.Disposed);
     }
 
-    public static IEnumerable<object[]> EachSql() => Enumerable.Range(0, 5).Select(i => new object[] { i });
+    public static IEnumerable<object[]> EachSql() => Enumerable.Range(0, 7).Select(i => new object[] { i });
 
-    [Theory(DisplayName = "AC-2701.1 새 자료 SQL이 하나라도 실패하면 반쪽 자료 없이 E-BIT-READ-FAILED만 보낸다")]
+    [Theory(DisplayName = "AC-2701.1 AC-6106.1 새 자료 SQL이 하나라도 실패하면(환자·날 금액 둘 포함) 반쪽 자료 없이 E-BIT-READ-FAILED만 보낸다")]
     [MemberData(nameof(EachSql))]
     public void AnySectionSqlFails(int index)
     {

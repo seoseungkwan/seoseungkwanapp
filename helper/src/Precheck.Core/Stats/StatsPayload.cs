@@ -22,6 +22,8 @@ namespace Precheck.Core.Stats;
 ///   patientDays[[차트번호, 진료일, 접수 건수, 첫 내원일|null, 90일초진 접수 수]].
 /// v5(spec new-mark AC-6201.1)는 v4와 열쇠·차례가 같고 patientDays 줄만 여섯 칸이다:
 ///   patientDays[[차트번호, 진료일, 접수 건수, 첫 내원일|null, 90일초진 접수 수, 신환 표시 접수 수]].
+/// 도우미 0.11.0의 v5(spec stats-insights AC-6106.1)는 doctorDays 뒤 마지막에 열쇠 하나를 더한다(v는 그대로 5):
+///   pays[[차트번호, 수납일, 총진료비(원 단위 정수, 음수일 수 있음)]].
 /// 줄은 객체보다 작은 배열이다. 다 만든 글자를 Chunker가 나눠 보낸다.
 /// </summary>
 public static class StatsPayload
@@ -158,6 +160,18 @@ public static class StatsPayload
             writer.WriteStringValue(day.Day);
             writer.WriteStringValue(day.Doctor);
             writer.WriteNumberValue(day.Amount);
+            writer.WriteEndArray();
+        }
+        writer.WriteEndArray();
+
+        // 도우미 0.11.0의 v5(spec stats-insights AC-6106.1): 환자·날 금액 줄
+        writer.WriteStartArray("pays");
+        foreach (var pay in extra.Pays)
+        {
+            writer.WriteStartArray();
+            writer.WriteStringValue(pay.Chart);
+            writer.WriteStringValue(pay.Day);
+            writer.WriteNumberValue(pay.Amount);
             writer.WriteEndArray();
         }
         writer.WriteEndArray();

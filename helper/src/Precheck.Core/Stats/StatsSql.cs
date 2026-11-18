@@ -412,24 +412,37 @@ ORDER BY Code,u.UidExpDte";
     private const string FinanceTotalEnd = "FROM NativeRows;";
     private const string FinanceByDoctorDay = "SELECT PaidDay,DoctorId,SUM(OrpTotAmt) FROM NativeRows GROUP BY PaidDay,DoctorId";
 
+    // 환자·날 금액(spec stats-insights AC-6106.1): 같은 두 자리를 차트번호·수납일 묶음으로. 차트번호 칸(OrpChtNum)은 줄에 이미 있어 수납일 칸만 더한다
+    private const string FinanceRowStartByPatientDay = "SELECT p.OrpOcmNum,p.OrpChtNum,LEFT(p.OrpAccDte,8) PaidDay,p.OrpTotAmt";
+    private const string FinanceByPatientDay = "SELECT OrpChtNum,PaidDay,SUM(OrpTotAmt) FROM NativeRows GROUP BY OrpChtNum,PaidDay";
+
     /// <summary>
     /// 정상수납 날·원장님 금액 [수납일, 진료의 코드, 총진료비](AC-2701.5). FinanceNormalSql 글에서 원래 도구 BusinessStats.ByDoctor와 같은 두 곳만 바꿨다:
     /// NativeRows 줄에 진료의(OrpDtrCod)·수납일(OrpAccDte 앞 8자) 칸을 더하고, 끝 SELECT를 수납일·진료의로 묶은 OrpTotAmt 합으로.
     /// </summary>
-    public static readonly string DoctorMoneyNormalSql = ByDoctorDay(FinanceNormalSql);
+    public static readonly string DoctorMoneyNormalSql = Regroup(FinanceNormalSql, FinanceRowStartByDoctorDay, FinanceByDoctorDay);
 
     /// <summary>미수입금 날·원장님 금액: FinanceReceivableSql 글에서 DoctorMoneyNormalSql과 같은 두 곳만 바꿨다.</summary>
-    public static readonly string DoctorMoneyReceivableSql = ByDoctorDay(FinanceReceivableSql);
+    public static readonly string DoctorMoneyReceivableSql = Regroup(FinanceReceivableSql, FinanceRowStartByDoctorDay, FinanceByDoctorDay);
 
-    /// <summary>보고 금액 SQL 글을 날·원장님 묶음으로 바꾼다. 바꿀 자리가 정확히 한 군데씩이 아니면(원본 글이 바뀜) 멈춘다.</summary>
-    private static string ByDoctorDay(string sql)
+    /// <summary>
+    /// 정상수납 환자·날 금액 [차트번호, 수납일, 총진료비](spec stats-insights AC-6106.1). 원장님별 금액과 같은 기준 줄(NativeRows)에서 같은 두 곳만 바꿨다:
+    /// NativeRows 줄에 수납일(OrpAccDte 앞 8자) 칸을 더하고, 끝 SELECT를 차트번호·수납일로 묶은 OrpTotAmt 합으로. 글자 처리 없는 SUM/GROUP BY다.
+    /// </summary>
+    public static readonly string PatientPayNormalSql = Regroup(FinanceNormalSql, FinanceRowStartByPatientDay, FinanceByPatientDay);
+
+    /// <summary>미수입금 환자·날 금액: FinanceReceivableSql 글에서 PatientPayNormalSql과 같은 두 곳만 바꿨다.</summary>
+    public static readonly string PatientPayReceivableSql = Regroup(FinanceReceivableSql, FinanceRowStartByPatientDay, FinanceByPatientDay);
+
+    /// <summary>보고 금액 SQL 글의 NativeRows 줄 머리와 끝 SELECT를 바꿔 묶음 합으로 만든다. 바꿀 자리가 정확히 한 군데씩이 아니면(원본 글이 바뀜) 멈춘다.</summary>
+    private static string Regroup(string sql, string rowStart, string grouped)
     {
         var row = sql.IndexOf(FinanceRowStart, StringComparison.Ordinal);
         if (row < 0 || sql.IndexOf(FinanceRowStart, row + 1, StringComparison.Ordinal) >= 0) throw new InvalidOperationException("finance SQL row list changed");
-        var text = sql.Replace(FinanceRowStart, FinanceRowStartByDoctorDay);
+        var text = sql.Replace(FinanceRowStart, rowStart);
         var total = text.LastIndexOf(FinanceTotal, StringComparison.Ordinal);
         if (total < 0 || !text.Substring(total).TrimEnd().EndsWith(FinanceTotalEnd, StringComparison.Ordinal)) throw new InvalidOperationException("finance SQL total changed");
-        return text.Substring(0, total) + FinanceByDoctorDay;
+        return text.Substring(0, total) + grouped;
     }
 
     // 원본 RxVisitSplit.Command: @from·@to Char(12) yyyyMMdd0000(끝은 다음 날 0시), @hospital VarChar(32)
@@ -487,12 +500,14 @@ ORDER BY Code,u.UidExpDte";
         [DoctorNamesSql] = DoctorCodeParams,
         [DoctorMoneyNormalSql] = new[] { ReportDay, ReportNextDay, ReportHospital },
         [DoctorMoneyReceivableSql] = new[] { ReportDay, ReportNextDay, ReportHospital },
+        [PatientPayNormalSql] = new[] { ReportDay, ReportNextDay, ReportHospital },
+        [PatientPayReceivableSql] = new[] { ReportDay, ReportNextDay, ReportHospital },
     };
 
     /// <summary>지금 통계 SQL 목록(stats.rows v2까지의 문장, 원본 사본과 견주는 것들). 비트 전용 세 칸 문장은 Sections.</summary>
     public static IReadOnlyCollection<string> All => Allowed.Keys;
 
-    /// <summary>비트 전용 세 칸 문장 목록(REQ-2701). All과 겹치지 않는다.</summary>
+    /// <summary>비트 전용 세 칸 문장 목록(REQ-2701)과 환자·날 금액 둘(spec stats-insights AC-6106.1). All과 겹치지 않는다.</summary>
     public static IReadOnlyCollection<string> Sections => SectionsAllowed.Keys;
 
     /// <summary>글자가 통계 SQL(All 또는 Sections)과 똑같은가(대소문자·공백까지).</summary>

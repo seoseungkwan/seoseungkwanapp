@@ -5,7 +5,7 @@ import { PROTOCOL } from './protocol'
 /** 이보다 낮은 도우미는 막는다(update-helper) */
 export const MIN_HELPER = '0.3.0'
 /** 이보다 낮은 도우미는 쓰게 두되 "새 도우미가 있어요"를 보인다 */
-export const LATEST_HELPER = '0.10.0'
+export const LATEST_HELPER = '0.11.0'
 /** 이보다 낮은 확장은 막는다(update-extension) */
 export const MIN_EXTENSION = '0.1.0'
 /**
@@ -23,6 +23,11 @@ export const SUNAP_HELPER = '0.8.0'
  * 비트 없는 기기처럼 그린다(찾기·비트 예약 칸·도착 셈 없음). 다른 도구는 막지 않는다(MIN_HELPER는 그대로)
  */
 export const CAL_HELPER = '0.10.0'
+/**
+ * 통계 답 v5의 환자·날 금액 줄 extra.pays(spec stats-insights)를 보내는 도우미. 이보다 낮으면 매출 칸 '신환 1명당' 탭은 업데이트 안내만 보인다(AC-6106.5).
+ * 다른 도구는 막지 않는다(MIN_HELPER는 그대로)
+ */
+export const VALUE_HELPER = '0.11.0'
 
 export type WebVersions = { protocol: number; minHelper: string; latestHelper: string; minExtension: string }
 

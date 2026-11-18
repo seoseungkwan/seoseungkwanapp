@@ -435,6 +435,10 @@ public class StatsSqlTests
     private const string MoneyRowStartByDoctorDay = "SELECT p.OrpOcmNum,p.OrpChtNum,RTRIM(p.OrpDtrCod) DoctorId,LEFT(p.OrpAccDte,8) PaidDay,p.OrpTotAmt";
     private const string MoneyTail = "SELECT PaidDay,DoctorId,SUM(OrpTotAmt) FROM NativeRows GROUP BY PaidDay,DoctorId";
 
+    // 환자·날 금액(spec stats-insights AC-6106.1): 같은 두 곳을 차트번호·수납일 묶음으로. 줄 머리에는 수납일 칸만 더한다(차트번호 칸은 원본에 이미 있다)
+    private const string MoneyRowStartByPatientDay = "SELECT p.OrpOcmNum,p.OrpChtNum,LEFT(p.OrpAccDte,8) PaidDay,p.OrpTotAmt";
+    private const string PayTail = "SELECT OrpChtNum,PaidDay,SUM(OrpTotAmt) FROM NativeRows GROUP BY OrpChtNum,PaidDay";
+
     /// <summary>원본 사본의 Visits 부분(연결 조건 한 가지만 바꾼 글, 공백을 한 칸으로 줄인 글).</summary>
     private static string VisitsOfCopy()
     {
@@ -505,14 +509,38 @@ public class StatsSqlTests
         Assert.Equal(1, Count(Squash(sql), MoneyRowStartByDoctorDay));
     }
 
-    [Fact(DisplayName = "AC-2701.6 새 문장 다섯은 모두 매개변수를 받는 SELECT 하나(; · 주석 · 쓰기·실행 낱말 없음)이고 Sql.IsAllowed·ReadOnlyGuard를 지나며 청구 Sql.All에는 없다")]
+    [Theory(DisplayName = "AC-6106.1 환자·날 금액 SQL은 원본 FinanceNormal·FinanceReceivable 사본에서 NativeRows 줄에 수납일 칸을 더하고 끝 SELECT를 차트번호·수납일로 묶은 OrpTotAmt 합으로 바꾼 두 곳만 다르고(원장님별 금액과 같은 기준 줄) StatsSql.Sections에 있다")]
+    [MemberData(nameof(MoneyPairs))]
+    public void PaysAreFinanceByPatientDay(string file, string kind)
+    {
+        var sql = kind == "normal" ? StatsPayFake.NormalSql : StatsPayFake.ReceivableSql;
+        var original = Squash(FirstVisitJoin.ApplyTo(file, ReadOriginal(file)));
+        Assert.Equal(1, Count(original, MoneyRowStart));
+        Assert.EndsWith("FROM NativeRows;", original);
+
+        var expected = original.Substring(0, original.LastIndexOf("SELECT SUM(", StringComparison.Ordinal)).Replace(MoneyRowStart, MoneyRowStartByPatientDay) + PayTail;
+        Assert.Equal(expected, Squash(sql));
+        Assert.Contains(sql, StatsSql.Sections);
+        Assert.DoesNotContain(sql, StatsSql.All);
+        Assert.Equal(kind == "normal" ? StatsSql.PatientPayNormalSql : StatsSql.PatientPayReceivableSql, sql);
+
+        // 원장님별 금액 SQL과는 줄 머리와 끝 SELECT만 다르다(같은 NativeRows 기준 줄)
+        var doctor = kind == "normal" ? StatsSql.DoctorMoneyNormalSql : StatsSql.DoctorMoneyReceivableSql;
+        Assert.Equal(Squash(doctor).Replace(MoneyRowStartByDoctorDay, MoneyRowStartByPatientDay).Replace(MoneyTail, PayTail), Squash(sql));
+    }
+
+    [Fact(DisplayName = "AC-2701.6 AC-6106.1 새 문장 일곱(비트 전용 세 칸 다섯 + 환자·날 금액 둘)은 모두 매개변수를 받는 SELECT 하나(; · 주석 · 쓰기·실행 낱말 없음)이고 Sql.IsAllowed·ReadOnlyGuard를 지나며 청구 Sql.All에는 없다")]
     public void SectionStatementsAreGuardedSelects()
     {
         var readable = new HashSet<string>(StringComparer.Ordinal)
         {
             "dbo.OcmInf", "dbo.DepMst", "dbo.InsMst", "dbo.PbsInf", "dbo.UidMst", "dbo.OrcInf", "dbo.OrpInf", "dbo.IrcInf", "dbo.DtlMst",
         };
-        var sections = new[] { StatsSql.VisitLinesSql, StatsSql.PeopleSql, StatsSql.DoctorNamesSql, StatsSql.DoctorMoneyNormalSql, StatsSql.DoctorMoneyReceivableSql };
+        var sections = new[]
+        {
+            StatsSql.VisitLinesSql, StatsSql.PeopleSql, StatsSql.DoctorNamesSql, StatsSql.DoctorMoneyNormalSql, StatsSql.DoctorMoneyReceivableSql,
+            StatsPayFake.NormalSql, StatsPayFake.ReceivableSql,
+        };
         Assert.Equal(sections.OrderBy(sql => sql, StringComparer.Ordinal), StatsSql.Sections.OrderBy(sql => sql, StringComparer.Ordinal));
 
         foreach (var sql in StatsSql.Sections)
@@ -537,9 +565,11 @@ public class StatsSqlTests
         ReadOnlyGuard.Require(StatsSql.DoctorMoneyNormalSql, MoneyArgs());
         ReadOnlyGuard.Require(StatsSql.DoctorMoneyReceivableSql, MoneyArgs());
         ReadOnlyGuard.Require(StatsSql.DoctorNamesSql, NameArgs("D001"));
+        ReadOnlyGuard.Require(StatsPayFake.NormalSql, MoneyArgs());
+        ReadOnlyGuard.Require(StatsPayFake.ReceivableSql, MoneyArgs());
     }
 
-    [Fact(DisplayName = "AC-2701.6 새 문장 매개변수 표: 접수·사람 줄은 @from·@to Char(12)·@hospital VarChar(32), 금액은 @day·@nextDay Char(8)·@hospital VarChar(32), 이름은 @d0~@d49 VarChar(40)")]
+    [Fact(DisplayName = "AC-2701.6 AC-6106.1 새 문장 매개변수 표: 접수·사람 줄은 @from·@to Char(12)·@hospital VarChar(32), 금액(원장님별·환자·날)은 @day·@nextDay Char(8)·@hospital VarChar(32), 이름은 @d0~@d49 VarChar(40)")]
     public void SectionParameterTables()
     {
         string Shape(string sql) => string.Join(" ", StatsSql.ParametersOf(sql).Select(p => p.Name + ":" + p.Kind + "(" + p.Size + ")"));
@@ -548,6 +578,8 @@ public class StatsSqlTests
         Assert.Equal("@from:Char(12) @to:Char(12) @hospital:VarChar(32)", Shape(StatsSql.PeopleSql));
         Assert.Equal("@day:Char(8) @nextDay:Char(8) @hospital:VarChar(32)", Shape(StatsSql.DoctorMoneyNormalSql));
         Assert.Equal("@day:Char(8) @nextDay:Char(8) @hospital:VarChar(32)", Shape(StatsSql.DoctorMoneyReceivableSql));
+        Assert.Equal("@day:Char(8) @nextDay:Char(8) @hospital:VarChar(32)", Shape(StatsPayFake.NormalSql));
+        Assert.Equal("@day:Char(8) @nextDay:Char(8) @hospital:VarChar(32)", Shape(StatsPayFake.ReceivableSql));
         Assert.Equal(string.Join(" ", Enumerable.Range(0, 50).Select(i => "@d" + i + ":VarChar(40)")), Shape(StatsSql.DoctorNamesSql));
 
         // 이름 SQL: 빈 자리 NULL·41자 코드·모자란 자리는 관문이 막는다
@@ -564,12 +596,13 @@ public class StatsSqlTests
         var withFrom = MoneyArgs();
         withFrom["@from"] = "202609010000";
         Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Require(StatsSql.DoctorMoneyNormalSql, withFrom)).Code);
+        Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => ReadOnlyGuard.Require(StatsPayFake.NormalSql, withFrom)).Code);
     }
 
-    [Fact(DisplayName = "AC-2701.7 새 문장은 StatsSql.Sections에만 있고 지금 통계 SQL 목록(StatsSql.All)과 그 문장 글은 그대로다")]
+    [Fact(DisplayName = "AC-2701.7 AC-6106.1 새 문장(환자·날 금액 둘 포함 일곱)은 StatsSql.Sections에만 있고 지금 통계 SQL 목록(StatsSql.All)과 그 문장 글은 그대로다")]
     public void SectionsAreSeparateFromAll()
     {
-        Assert.Equal(5, StatsSql.Sections.Count);
+        Assert.Equal(7, StatsSql.Sections.Count);
         Assert.Empty(StatsSql.Sections.Intersect(StatsSql.All));
         Assert.Equal(14, StatsSql.All.Count);
         // 금액 SQL은 보고 금액 SQL 글을 고치지 않고 따로 만든 글이다

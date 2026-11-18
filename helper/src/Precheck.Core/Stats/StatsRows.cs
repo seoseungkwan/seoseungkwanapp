@@ -363,15 +363,33 @@ public sealed class StatsDoctorDay
     public long Amount { get; }
 }
 
-/// <summary>비트 전용 세 칸 자료 전부(stats.rows v3의 visits·people·doctors·doctorDays).</summary>
+/// <summary>환자·날 금액 [차트번호, 수납일 YYYYMMDD, 총진료비(원, 환불이 더 큰 날은 음수)](spec stats-insights AC-6106.1).</summary>
+public sealed class StatsPatientPay
+{
+    public StatsPatientPay(string chart, string day, long amount)
+    {
+        Chart = chart;
+        Day = day;
+        Amount = amount;
+    }
+
+    public string Chart { get; }
+
+    public string Day { get; }
+
+    public long Amount { get; }
+}
+
+/// <summary>비트 전용 세 칸 자료 전부(stats.rows v3의 visits·people·doctors·doctorDays)와 v5의 환자·날 금액 pays.</summary>
 public sealed class StatsExtraResult
 {
-    public StatsExtraResult(IReadOnlyList<StatsVisitLine> visits, IReadOnlyList<StatsPerson> people, IReadOnlyList<StatsDoctor> doctors, IReadOnlyList<StatsDoctorDay> doctorDays)
+    public StatsExtraResult(IReadOnlyList<StatsVisitLine> visits, IReadOnlyList<StatsPerson> people, IReadOnlyList<StatsDoctor> doctors, IReadOnlyList<StatsDoctorDay> doctorDays, IReadOnlyList<StatsPatientPay> pays)
     {
         Visits = visits ?? throw new ArgumentNullException(nameof(visits));
         People = people ?? throw new ArgumentNullException(nameof(people));
         Doctors = doctors ?? throw new ArgumentNullException(nameof(doctors));
         DoctorDays = doctorDays ?? throw new ArgumentNullException(nameof(doctorDays));
+        Pays = pays ?? throw new ArgumentNullException(nameof(pays));
     }
 
     public IReadOnlyList<StatsVisitLine> Visits { get; }
@@ -381,10 +399,13 @@ public sealed class StatsExtraResult
     public IReadOnlyList<StatsDoctor> Doctors { get; }
 
     public IReadOnlyList<StatsDoctorDay> DoctorDays { get; }
+
+    public IReadOnlyList<StatsPatientPay> Pays { get; }
 }
 
 /// <summary>
-/// 비트 전용 세 칸 자료 읽기(REQ-2701). 등록 확인을 마친 세션으로 접수 줄 → 사람 줄 → 달마다 날·원장님 금액(정상수납 → 미수입금) → 원장님 이름 차례로 읽는다.
+/// 비트 전용 세 칸 자료 읽기(REQ-2701). 등록 확인을 마친 세션으로 접수 줄 → 사람 줄 → 달마다 날·원장님 금액(정상수납 → 미수입금) → 원장님 이름
+/// → 달마다 환자·날 금액(정상수납 → 미수입금, spec stats-insights AC-6106.1) 차례로 읽는다.
 /// SQL은 StatsSql.Sections 문장만 ReadOnlyGuard로, 시간 제한은 지금 통계 자료 SQL과 같은 150초다.
 /// 하나라도 막히면 BitException(번호만)으로 멈춘다: 반쪽 자료를 돌려주지 않는다. 값 모양이 틀리면 E-BIT-READ-FAILED다.
 /// 환자 표에서는 차트번호·생년월일·주소만 읽고, 주소는 앞부분(AddressHead)만 남긴다.
@@ -461,8 +482,10 @@ public static class StatsExtra
             if (visit.Doctor != null) codes.Add(visit.Doctor);
         }
         foreach (var day in doctorDays) codes.Add(day.Doctor);
+        var doctors = DoctorNames(db, codes);
 
-        return new StatsExtraResult(visits, people, DoctorNames(db, codes), doctorDays);
+        // 지금 읽기 차례를 바꾸지 않으려고 환자·날 금액은 맨 끝에 읽는다
+        return new StatsExtraResult(visits, people, doctors, doctorDays, PatientPays(db, hospitalScope, first, last));
     }
 
     /// <summary>
@@ -490,17 +513,8 @@ public static class StatsExtra
     private static List<StatsDoctorDay> DoctorMoney(IBitDb db, string hospitalScope, DateTime first, DateTime last)
     {
         var sums = new Dictionary<(string Day, string Doctor), decimal>();
-        var start = first;
-        while (start <= last)
+        foreach (var args in MonthArgs(hospitalScope, first, last))
         {
-            var monthEnd = start.AddDays(DateTime.DaysInMonth(start.Year, start.Month) - start.Day);
-            var end = monthEnd < last ? monthEnd : last;
-            var args = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["@day"] = StatsRows.Key(start),
-                ["@nextDay"] = StatsRows.Key(end.AddDays(1)),
-                ["@hospital"] = hospitalScope,
-            };
             foreach (var sql in new[] { StatsSql.DoctorMoneyNormalSql, StatsSql.DoctorMoneyReceivableSql })
             {
                 foreach (var row in ReadOnlyGuard.Query(db, sql, args, StatsSql.DataTimeout))
@@ -509,19 +523,9 @@ public static class StatsExtra
                     var doctor = Code(StatsRows.Cell(row, 1));
                     var amount = Amount(StatsRows.Cell(row, 2));
                     if (doctor == null) continue;
-                    var key = (day, doctor);
-                    sums.TryGetValue(key, out var sum);
-                    try
-                    {
-                        sums[key] = sum + amount;
-                    }
-                    catch (OverflowException)
-                    {
-                        throw new BitException(BitErrors.ReadFailed);
-                    }
+                    AddTo(sums, (day, doctor), amount);
                 }
             }
-            start = end.AddDays(1);
         }
 
         var days = new List<StatsDoctorDay>(sums.Count);
@@ -531,6 +535,69 @@ public static class StatsExtra
             if (won != 0) days.Add(new StatsDoctorDay(pair.Key.Day, pair.Key.Doctor, won));
         }
         return days;
+    }
+
+    /// <summary>
+    /// 환자·날 금액(spec stats-insights AC-6106.1): 날·원장님 금액과 같은 달 나누기로 달마다 정상수납 → 미수입금을 읽는다(같은 기준 줄의 OrpTotAmt).
+    /// 같은 (차트번호, 수납일)은 decimal로 다 더한 뒤 원 미만을 버리고(반올림하지 않음, 0 쪽으로) 0원 줄은 뺀다. 환불이 더 큰 날의 음수는 그대로 둔다.
+    /// 차트번호가 비어 있으면 환자가 없어 뺀다. 차트번호·수납일 차례.
+    /// </summary>
+    private static List<StatsPatientPay> PatientPays(IBitDb db, string hospitalScope, DateTime first, DateTime last)
+    {
+        var sums = new Dictionary<(string Chart, string Day), decimal>();
+        foreach (var args in MonthArgs(hospitalScope, first, last))
+        {
+            foreach (var sql in new[] { StatsSql.PatientPayNormalSql, StatsSql.PatientPayReceivableSql })
+            {
+                foreach (var row in ReadOnlyGuard.Query(db, sql, args, StatsSql.DataTimeout))
+                {
+                    var chart = OrNull(Text(StatsRows.Cell(row, 0)));
+                    var day = Text(StatsRows.Cell(row, 1)) ?? throw new BitException(BitErrors.ReadFailed);
+                    var amount = Amount(StatsRows.Cell(row, 2));
+                    if (chart == null) continue;
+                    AddTo(sums, (chart, day), amount);
+                }
+            }
+        }
+
+        var pays = new List<StatsPatientPay>(sums.Count);
+        foreach (var pair in sums.OrderBy(p => p.Key.Chart, StringComparer.Ordinal).ThenBy(p => p.Key.Day, StringComparer.Ordinal))
+        {
+            var won = Won(pair.Value);
+            if (won != 0) pays.Add(new StatsPatientPay(pair.Key.Chart, pair.Key.Day, won));
+        }
+        return pays;
+    }
+
+    /// <summary>원래 도구 경영 통계처럼 기간을 달로 나눈 금액 SQL 매개변수(첫 달은 시작일부터, 끝 달은 끝 날까지, @nextDay는 그 다음 날).</summary>
+    private static IEnumerable<Dictionary<string, object?>> MonthArgs(string hospitalScope, DateTime first, DateTime last)
+    {
+        var start = first;
+        while (start <= last)
+        {
+            var monthEnd = start.AddDays(DateTime.DaysInMonth(start.Year, start.Month) - start.Day);
+            var end = monthEnd < last ? monthEnd : last;
+            yield return new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["@day"] = StatsRows.Key(start),
+                ["@nextDay"] = StatsRows.Key(end.AddDays(1)),
+                ["@hospital"] = hospitalScope,
+            };
+            start = end.AddDays(1);
+        }
+    }
+
+    private static void AddTo<TKey>(Dictionary<TKey, decimal> sums, TKey key, decimal amount)
+    {
+        sums.TryGetValue(key, out var sum);
+        try
+        {
+            sums[key] = sum + amount;
+        }
+        catch (OverflowException)
+        {
+            throw new BitException(BitErrors.ReadFailed);
+        }
     }
 
     /// <summary>

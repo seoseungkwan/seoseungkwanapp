@@ -117,3 +117,9 @@ describe('REQ-6201 도우미 통계 접수 줄에 신환 표시 수 · 답 v5 (s
     expectAc('AC-6201.2')
   })
 })
+
+describe('REQ-6106 도우미 0.11.0이 stats.rows 답 v5에 환자·날 금액 줄을 더한다 (spec stats-insights, C# Precheck.Core.Tests.Stats)', () => {
+  it('AC-6106.1 pays 줄은 [차트번호, 수납일, 금액]이고 환자·날마다 정상수납 + 미수입금 OrpTotAmt 합(원장님별 금액과 같은 기준 줄, 원 단위 정수, 0원 줄 없음, 음수 그대로), 답 v는 5, 도우미 판 0.11.0', () => {
+    expectAc('AC-6106.1')
+  })
+})
