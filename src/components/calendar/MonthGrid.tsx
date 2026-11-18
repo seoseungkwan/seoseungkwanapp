@@ -7,13 +7,14 @@ import { allDayChipClass, allDayText, dateNum, dayLabel } from './rows/parts'
 // 월 보기(spec clinic-calendar AC-5905.1·AC-5906.3, 시안 ?s=month·기본값 6번). 목록이 아니라 날마다 수만 그린다(monthCells):
 // `예약 N`(취소 뺌) · 종일 칩 · 종류별 수(설정 차례, 지운 종류는 뒤) · `안 옴 N`(오늘 전 날만) · `변경 N`.
 // 월~일 7칸으로 그 달을 덮는 주 전부. 날을 누르면 그날 일 보기(onDay). 이름·차트번호 없는 수 세기 줄만 받는다.
-// 달 밖 날은 옅은 바탕 + muted 글(시안은 faint 글이지만 UI_GUIDE '대비': 글자는 muted 이상)
+// 달 밖 날은 옅은 바탕 + muted 글(시안은 faint 글이지만 UI_GUIDE '대비': 글자는 muted 이상).
+// 병원 정보 휴진일(closedDates, spec clinic-profile AC-6603.3)은 칸에 '휴진' + 회색 바탕. 수는 그대로 세고 누르면 그날 일 보기다
 
 export type MonthGridProps = {
   month: string // 'YYYY-MM'
   rows: readonly CalCountRow[]
   allday: readonly CalAllDay[]
-  settings: Pick<CalSettings, 'kinds' | 'staff'>
+  settings: Pick<CalSettings, 'kinds' | 'staff' | 'closedDates'>
   today: string
   onDay: (day: string) => void
 }
@@ -34,6 +35,7 @@ export function MonthGrid({ month, rows, allday, settings, today, onDay }: Month
     const i = settings.kinds.findIndex((k) => k.id === id)
     return i < 0 ? settings.kinds.length : i
   }
+  const closedDates = new Set(settings.closedDates ?? [])
   return (
     <section aria-label="월 보기" className="min-w-0 overflow-clip rounded-control border border-line bg-surface">
       <div className="grid grid-cols-7 border-b border-line-strong bg-canvas">
@@ -47,18 +49,21 @@ export function MonthGrid({ month, rows, allday, settings, today, onDay }: Month
         {cells.map((cell, i) => {
           const out = compareYmd(cell.day, first) < 0 || compareYmd(cell.day, last) > 0
           const isToday = cell.day === today
+          const closed = closedDates.has(cell.day)
           // 설정 차례로(같으면 monthCells 차례), 지운 종류는 뒤
           const kinds = cell.kinds.map((k, at) => ({ ...k, at })).sort((x, y) => kindOrder(x.kindId) - kindOrder(y.kindId) || x.at - y.at)
           const dim = out ? 'text-muted' : ''
+          const shade = closed ? 'bg-canvas' : out ? 'bg-canvas/60' : ''
           return (
             <button
               key={cell.day}
               type="button"
               data-out={out ? 'true' : undefined}
-              aria-label={`${dayLabel(cell.day)} 예약 ${cell.total}`}
+              data-closed={closed ? 'true' : undefined}
+              aria-label={`${dayLabel(cell.day)}${closed ? ' 휴진' : ''} 예약 ${cell.total}`}
               aria-current={isToday ? 'date' : undefined}
               onClick={() => onDay(cell.day)}
-              className={`relative flex min-h-31 min-w-0 cursor-pointer flex-col gap-1 border-b border-line px-2 pt-1.5 pb-2 text-left hover:bg-canvas max-md:min-h-16 max-md:items-center max-md:gap-0.5 max-md:p-1 ${out ? 'bg-canvas/60' : ''} ${(i + 1) % 7 ? 'border-r' : ''} ${ds.focusRing}`}
+              className={`relative flex min-h-31 min-w-0 cursor-pointer flex-col gap-1 border-b border-line px-2 pt-1.5 pb-2 text-left hover:bg-canvas max-md:min-h-16 max-md:items-center max-md:gap-0.5 max-md:p-1 ${shade} ${(i + 1) % 7 ? 'border-r' : ''} ${ds.focusRing}`}
             >
               <span className="flex items-center justify-between gap-1">
                 <span
@@ -70,7 +75,8 @@ export function MonthGrid({ month, rows, allday, settings, today, onDay }: Month
                 >
                   {dateNum(cell.day)}
                 </span>
-                {cell.total ? <span className={`whitespace-nowrap text-small font-semibold max-md:hidden ${out ? 'text-muted' : 'text-ink'}`}>예약 {cell.total}</span> : null}
+                {closed ? <span className="text-caption font-semibold whitespace-nowrap text-muted">휴진</span> : null}
+                {cell.total ?<span className={`whitespace-nowrap text-small font-semibold max-md:hidden ${out ? 'text-muted' : 'text-ink'}`}>예약 {cell.total}</span> : null}
               </span>
               {cell.allday.length ? <span aria-hidden="true" className="hidden size-1.5 rounded-full bg-muted max-md:block" /> : null}
               {cell.allday.map((it) => (

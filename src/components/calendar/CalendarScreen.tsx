@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { ds } from '@/components/ui/classes'
 import { addDays, addMonths, compareYmd, monthOf, todayInKorea, weekdayOf, weekStartOf } from '@/lib/analytics/dates'
+import { opensOn } from '@/lib/calendar/clinic'
 import { nextWeek, slotLabel, visibleGhosts, warnings } from '@/lib/calendar/rules'
 import {
   addAllDay,
@@ -101,17 +102,23 @@ function readPeriod(view: CalView, anchor: string): CalendarPeriod {
   return { view, from: weekStartOf(`${month}-01`), to: addDays(weekStartOf(lastOfMonth(month)), 6) }
 }
 
-/** 보이는 날(일·주). 주는 월~토, 설정이 켜면 일요일까지 */
-function shownDays(view: CalView, anchor: string, sunday: boolean): string[] {
+/**
+ * 보이는 날(일·주). 주는 문 여는 요일만(병원 정보 진료시간, spec clinic-profile AC-6603.2 — 병원 정보가 없으면 월~토, 설정이 켜면 일요일까지).
+ * 문 여는 요일이 하나도 없으면 월~토
+ */
+function shownDays(view: CalView, anchor: string, settings: Pick<CalSettings, 'sunday' | 'days'>): string[] {
   if (view === 'day') return [anchor]
   const from = weekStartOf(anchor)
-  return Array.from({ length: sunday ? 7 : 6 }, (_, i) => addDays(from, i))
+  const week = Array.from({ length: 7 }, (_, i) => addDays(from, i))
+  const open = week.filter((day) => opensOn(settings, weekdayOf(day)))
+  return open.length > 0 ? open : week.slice(0, 6)
 }
 
-// 일 보기 ◀▶: 일요일을 안 보면 건너뛴다
-function stepDay(day: string, by: 1 | -1, sunday: boolean): string {
-  const next = addDays(day, by)
-  return !sunday && weekdayOf(next) === 7 ? addDays(next, by) : next
+// 일 보기 ◀▶: 휴진 요일(병원 정보가 없으면 안 보는 일요일)은 건너뛴다. 문 여는 요일이 없으면 하루씩
+function stepDay(day: string, by: 1 | -1, settings: Pick<CalSettings, 'sunday' | 'days'>): string {
+  let next = addDays(day, by)
+  for (let i = 0; i < 6 && !opensOn(settings, weekdayOf(next)); i++) next = addDays(next, by)
+  return opensOn(settings, weekdayOf(next)) ? next : addDays(day, by)
 }
 
 // ── 판 ──────────────────────────────────────────────────────
@@ -163,7 +170,7 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
   const data = useCalendarData(period)
   const settings: CalSettings = data.settings ?? DEFAULT_CAL_SETTINGS
   const snap = data.snapshot
-  const days = shownDays(view, anchor, settings.sunday)
+  const days = shownDays(view, anchor, settings)
   const month = monthOf(anchor)
   // 도구 줄·합계 줄의 기간: 일·주는 보이는 날, 월은 그 달
   const [shownFrom, shownTo] = view === 'month' ? [`${month}-01`, lastOfMonth(month)] : [days[0]!, days[days.length - 1]!]
@@ -404,7 +411,7 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
 
   // ── 도구 줄 ──
   function step(by: 1 | -1) {
-    if (view === 'day') setAnchor(stepDay(anchor, by, settings.sunday))
+    if (view === 'day') setAnchor(stepDay(anchor, by, settings))
     else if (view === 'week') setAnchor(addDays(anchor, 7 * by))
     else setAnchor(`${addMonths(month, by)}-01`)
   }

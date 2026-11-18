@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { RoleProvider } from '@/components/shell/role'
 import type { CalSettings } from '@/types/calendar'
 import { CalendarSettings } from './CalendarSettings'
 
 // 예약 설정 판 (spec clinic-calendar AC-5905.5, 시안 ?s=settings).
-// 종류(▲▼·이름·기본 길이·색 또는 시행자 색 따름·지우기, 하나 이상)·시행자(이름·한 글자·색, 한 글자 겹침 막음)·보이는 시간(1시간 단위)·일요일 보기.
-// 검사는 lib/storage checkCalendarSettings. [저장]은 onSave로 고친 설정만 넘긴다(저장은 화면이 한다)
+// 종류(▲▼·이름·기본 길이·색 또는 시행자 색 따름·지우기, 하나 이상). 검사는 lib/storage checkCalendarKinds. [저장]은 onSave로 고친 설정만 넘긴다(저장은 화면이 한다).
+// 시행자·보이는 시간·주 보기 요일은 설정 → 병원 정보에서 고친다(spec clinic-profile AC-6603.4): 서랍에는 안내 글 + 원장만 [병원 정보로 가기]
 
 afterEach(cleanup)
 
@@ -32,7 +33,6 @@ function draw(settings: CalSettings = SETTINGS) {
 }
 
 const kindRows = () => within(screen.getByRole('list', { name: '종류' })).getAllByRole('listitem')
-const staffRows = () => within(screen.getByRole('list', { name: '시행자' })).getAllByRole('listitem')
 const kindNames = () => screen.getAllByRole('textbox', { name: '종류 이름' }).map((input) => (input as HTMLInputElement).value)
 const saveButton = () => screen.getByRole('button', { name: '저장' }) as HTMLButtonElement
 const problem = () => document.querySelector('[data-problem]')?.textContent ?? ''
@@ -64,13 +64,13 @@ const PALETTE_20 = [
 ]
 
 describe('AC-5905.5: 설정 판 — 글', () => {
-  it('AC-5905.5: 제목·세 칸 제목·설명·알아 둘 글 세 줄이 시안 그대로', () => {
+  it('AC-5905.5·AC-6603.4: 제목·종류 칸 제목·설명·알아 둘 글 세 줄이 시안 그대로(시행자·보이는 시간 칸은 병원 정보로 옮김)', () => {
     draw()
     expect(screen.getByRole('dialog', { name: '예약 설정' })).toBeTruthy()
-    for (const name of ['종류', '시행자', '보이는 시간']) expect(screen.getByRole('heading', { name })).toBeTruthy()
+    expect(screen.getAllByRole('heading').map((h) => h.textContent)).toEqual(['예약 설정', '종류'])
     expect(screen.getByText("종류마다 기본 길이와 색을 정해요. 색은 고정 색이나 '시행자 색 따름' 중 하나예요. 위에 있을수록 예약 더하기에서 앞에 보여요.")).toBeTruthy()
-    expect(screen.getByText('예약 칸 끝에 (가)처럼 한 글자로 보여요. 담당 색을 따르는 종류는 이 색으로 칠해요.')).toBeTruthy()
-    expect(screen.getByText('예약표에 보이는 시간이에요. 칸은 10분 단위예요.')).toBeTruthy()
+    expect(screen.queryByText('예약 칸 끝에 (가)처럼 한 글자로 보여요. 담당 색을 따르는 종류는 이 색으로 칠해요.')).toBeNull()
+    expect(screen.queryByText('예약표에 보이는 시간이에요. 칸은 10분 단위예요.')).toBeNull()
     expect(screen.getByText('지운 종류의 지난 예약은 그 이름 그대로 남아요')).toBeTruthy()
     for (const line of [
       '지난 예약은 1년 뒤 자동으로 지워져요.',
@@ -169,118 +169,67 @@ describe('AC-5905.5: 종류', () => {
   })
 })
 
-describe('AC-5905.5: 시행자', () => {
-  it('AC-5905.5: 이름·한 글자·색을 고치고 더한다(새 시행자는 아직 안 쓴 색)', () => {
-    const calls = draw()
-    fireEvent.click(screen.getByRole('button', { name: '시행자 더하기' }))
-    const row = staffRows()[2]!
-    fireEvent.change(within(row).getByRole('textbox', { name: '시행자 이름' }), { target: { value: '조○○' } })
-    fireEvent.change(within(row).getByRole('textbox', { name: '표시 한 글자' }), { target: { value: '다' } })
-    fireEvent.click(within(staffRows()[0]!).getByRole('button', { name: '색 고르기' }))
-    fireEvent.click(within(within(staffRows()[0]!).getByRole('group', { name: '색 고르기' })).getByRole('button', { name: '남색' }))
-    fireEvent.click(saveButton())
-    const staff = saved(calls).staff
-    expect(staff.map((s) => [s.name, s.mark, s.color])).toEqual([
-      ['한○○', '가', 'navy'],
-      ['윤○○', '나', 'teal'],
-      ['조○○', '다', 'purple'],
-    ])
-  })
+describe('AC-6603.4: 시행자·보이는 시간은 설정 → 병원 정보에서 고친다', () => {
+  // 병원 정보를 합친 설정(useCalendarData → mergeClinic): 오후 진료 병원이라 시간 줄이 13~21시여도 서랍은 막지 않는다
+  const MERGED: CalSettings = {
+    ...SETTINGS,
+    openHour: 13,
+    closeHour: 21,
+    sunday: true,
+    days: [
+      { open: 780, close: 1260, lunchFrom: null, lunchTo: null },
+      { open: 780, close: 1260, lunchFrom: null, lunchTo: null },
+      null,
+      { open: 780, close: 1260, lunchFrom: null, lunchTo: null },
+      { open: 780, close: 1260, lunchFrom: null, lunchTo: null },
+      { open: 780, close: 1080, lunchFrom: null, lunchTo: null },
+      { open: 780, close: 1080, lunchFrom: null, lunchTo: null },
+    ],
+    closedDates: ['2026-11-20'],
+  }
 
-  it('AC-5905.5·AC-6001.3: 시행자 색판에는 시행자 색 따름이 없고 20색만 있다', () => {
+  it("AC-6603.4: '시행자'·'보이는 시간' 구역 대신 안내 글이 보이고, 시행자·시간 칸이 없다", () => {
     draw()
-    fireEvent.click(within(staffRows()[0]!).getByRole('button', { name: '색 고르기' }))
-    const palette = within(staffRows()[0]!).getByRole('group', { name: '색 고르기' })
-    expect(within(palette).queryByRole('button', { name: '시행자 색 따름' })).toBeNull()
-    expect(within(palette).getAllByRole('button')).toHaveLength(20)
-    expect(paletteNames(palette)).toEqual(PALETTE_20)
+    expect(screen.getByText('시행자와 진료시간은 설정 → 병원 정보에서 고쳐요.')).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: '시행자' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: '보이는 시간' })).toBeNull()
+    expect(screen.queryByRole('list', { name: '시행자' })).toBeNull()
+    for (const name of ['시행자 이름', '표시 한 글자']) expect(screen.queryByRole('textbox', { name })).toBeNull()
+    for (const name of ['시작 시간', '끝 시간']) expect(screen.queryByRole('combobox', { name })).toBeNull()
+    expect(screen.queryByRole('group', { name: '주 보기 요일' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '시행자 더하기' })).toBeNull()
   })
 
-  it("AC-6001.3: 시행자 색판에서 새 색(빨강)을 골라 [저장]하면 'red'로 저장된다", () => {
-    const calls = draw()
-    fireEvent.click(within(staffRows()[1]!).getByRole('button', { name: '색 고르기' }))
-    fireEvent.click(within(within(staffRows()[1]!).getByRole('group', { name: '색 고르기' })).getByRole('button', { name: '빨강' }))
-    fireEvent.click(saveButton())
-    expect(saved(calls).staff.map((s) => s.color)).toEqual(['blue', 'red'])
-  })
-
-  it('AC-6001.4: [+ 시행자 더하기]의 새 색은 안 쓴 색 가운데 20색 차례로 첫 색 — 파랑~갈색 아홉을 다 쓰면 빨강(회색 아님)', () => {
-    const nine = ['blue', 'teal', 'purple', 'orange', 'pink', 'lime', 'navy', 'sky', 'brown'] as const
-    const marks = ['가', '나', '다', '라', '마', '바', '사', '아', '자']
-    const staff = nine.map((color, i) => ({ id: `s${i}`, name: `시행자${i}`, mark: marks[i]!, color }))
-    const calls = draw({ ...SETTINGS, staff })
-    fireEvent.click(screen.getByRole('button', { name: '시행자 더하기' }))
-    const row = staffRows()[9]!
-    fireEvent.change(within(row).getByRole('textbox', { name: '시행자 이름' }), { target: { value: '새○○' } })
-    fireEvent.change(within(row).getByRole('textbox', { name: '표시 한 글자' }), { target: { value: '차' } })
-    fireEvent.click(saveButton())
-    expect(saved(calls).staff[9]!.color).toBe('red')
-  })
-
-  it('AC-6001.4: 회색은 맨 끝 — 회색 말고 열아홉 색을 다 쓰면 그때 새 시행자 색이 회색이다', () => {
-    const nineteen = ['blue', 'teal', 'purple', 'orange', 'pink', 'lime', 'navy', 'sky', 'brown', 'red', 'yellow', 'green', 'mint', 'magenta', 'wine', 'forest', 'lavender', 'coral', 'black'] as const
-    const marks = [...'가나다라마바사아자차카타파하ABCDE']
-    const staff = nineteen.map((color, i) => ({ id: `s${i}`, name: `시행자${i}`, mark: marks[i]!, color }))
-    const calls = draw({ ...SETTINGS, staff })
-    fireEvent.click(screen.getByRole('button', { name: '시행자 더하기' }))
-    const row = staffRows()[19]!
-    fireEvent.change(within(row).getByRole('textbox', { name: '시행자 이름' }), { target: { value: '새○○' } })
-    fireEvent.change(within(row).getByRole('textbox', { name: '표시 한 글자' }), { target: { value: 'F' } })
-    fireEvent.click(saveButton())
-    expect(saved(calls).staff[19]!.color).toBe('gray')
-  })
-
-  it('AC-5905.5: 한 글자 표시가 겹치거나 한 글자가 아니면 저장할 수 없다', () => {
+  it('AC-6603.4: 원장에게는 [병원 정보로 가기] 링크(/settings)가 있다', () => {
     draw()
-    const mark = within(staffRows()[1]!).getByRole('textbox', { name: '표시 한 글자' })
-    fireEvent.change(mark, { target: { value: '가' } })
-    expect(problem()).toBe('같은 표시가 있어요')
-    expect(saveButton().disabled).toBe(true)
-    fireEvent.change(mark, { target: { value: '나다' } })
-    expect(problem()).toBe('표시는 한 글자예요')
-    fireEvent.change(mark, { target: { value: '나' } })
+    const link = screen.getByRole('link', { name: '병원 정보로 가기' })
+    expect(link.getAttribute('href')).toBe('/settings')
+  })
+
+  it('AC-6603.4: 데스크 계정에는 링크가 없고 안내 글만 있다(병원 정보는 원장만 고친다)', () => {
+    render(
+      <RoleProvider desk>
+        <CalendarSettings settings={SETTINGS} onSave={vi.fn()} onClose={vi.fn()} />
+      </RoleProvider>,
+    )
+    expect(screen.getByText('시행자와 진료시간은 설정 → 병원 정보에서 고쳐요.')).toBeTruthy()
+    expect(screen.queryByRole('link', { name: '병원 정보로 가기' })).toBeNull()
+    expect(screen.getByRole('list', { name: '종류' })).toBeTruthy()
+  })
+
+  it('AC-6603.4: 종류만 고쳐 저장한다 — 받은 시행자·시간·요일 진료시간·휴진일은 그대로 넘긴다', () => {
+    const calls = draw(MERGED)
+    fireEvent.change(screen.getAllByRole('textbox', { name: '종류 이름' })[0]!, { target: { value: '도수치료' } })
+    fireEvent.click(saveButton())
+    expect(saved(calls)).toEqual({ ...MERGED, kinds: [{ ...MERGED.kinds[0]!, name: '도수치료' }, ...MERGED.kinds.slice(1)] })
+  })
+
+  it('AC-6603.4: 옛 보이는 시간 검사(5~12시 시작) 밖이거나 시행자 표시가 겹쳐도 종류가 맞으면 저장할 수 있다', () => {
+    const calls = draw({ ...MERGED, staff: [SETTINGS.staff[0]!, { ...SETTINGS.staff[1]!, mark: '가' }] })
     expect(problem()).toBe('')
     expect(saveButton().disabled).toBe(false)
-  })
-
-  it('AC-5905.5: 이름이 빈 시행자는 저장할 수 없고, 시행자를 모두 지울 수 있다', () => {
-    const calls = draw()
-    fireEvent.change(within(staffRows()[0]!).getByRole('textbox', { name: '시행자 이름' }), { target: { value: ' ' } })
-    expect(problem()).toBe('시행자 이름을 적어 주세요')
-    fireEvent.click(within(staffRows()[1]!).getByRole('button', { name: '지우기' }))
-    fireEvent.click(within(staffRows()[0]!).getByRole('button', { name: '지우기' }))
-    expect(screen.queryAllByRole('textbox', { name: '시행자 이름' })).toHaveLength(0)
     fireEvent.click(saveButton())
-    expect(saved(calls).staff).toEqual([])
-  })
-})
-
-describe('AC-5905.5: 보이는 시간·일요일', () => {
-  it('AC-5905.5: 보이는 시간은 1시간 단위(시작 05:00~12:00, 끝 12:00~24:00)', () => {
-    const calls = draw()
-    const open = screen.getByRole('combobox', { name: '시작 시간' }) as HTMLSelectElement
-    const close = screen.getByRole('combobox', { name: '끝 시간' }) as HTMLSelectElement
-    expect([...open.options].map((o) => o.textContent)).toEqual(['05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '11:00', '12:00'])
-    expect(close.options[0]!.textContent).toBe('12:00')
-    expect(close.options[close.options.length - 1]!.textContent).toBe('24:00')
-    fireEvent.change(open, { target: { value: '12' } })
-    fireEvent.change(close, { target: { value: '12' } })
-    expect(problem()).toBe('끝 시간이 시작 시간보다 늦어야 해요')
-    expect(saveButton().disabled).toBe(true)
-    fireEvent.change(open, { target: { value: '9' } })
-    fireEvent.change(close, { target: { value: '21' } })
-    fireEvent.click(saveButton())
-    expect(saved(calls)).toMatchObject({ openHour: 9, closeHour: 21 })
-  })
-
-  it('AC-5905.5: 주 보기 요일 [월~토]·[월~일]', () => {
-    const calls = draw()
-    const group = screen.getByRole('group', { name: '주 보기 요일' })
-    expect(within(group).getByRole('button', { name: '월~토' }).getAttribute('aria-pressed')).toBe('true')
-    fireEvent.click(within(group).getByRole('button', { name: '월~일' }))
-    expect(within(group).getByRole('button', { name: '월~일' }).getAttribute('aria-pressed')).toBe('true')
-    fireEvent.click(saveButton())
-    expect(saved(calls).sunday).toBe(true)
+    expect(calls.save).toHaveBeenCalledTimes(1)
   })
 
   it('AC-5905.5: 저장 실패 글은 판 아래에 보인다', () => {

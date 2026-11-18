@@ -174,3 +174,28 @@ describe('AC-5906.2: 폰 목록의 변경 표시', () => {
     expect(within(row(/^23580 정○○/)).queryByText('변경')).toBeNull()
   })
 })
+
+describe('AC-6603.3: 폰 주 보기 — 휴진일(병원 정보)은 날짜 줄에 "휴진", 회색', () => {
+  it('AC-6603.3: 휴진일 날짜 줄에 "휴진"이 보이고 이름표에도 든다. 카드는 회색(data-closed)이다', () => {
+    renderList({ settings: { ...SETTINGS, closedDates: ['2026-11-18'] } })
+    const closed = head('2026-11-18')
+    expect(closed.getAttribute('aria-label')).toBe('11월 18일 (수) 휴진 예약 1')
+    expect(within(closed).getByText('휴진')).toBeTruthy()
+    const card = closed.closest<HTMLElement>('[data-closed]')!
+    expect(card.dataset.closed).toBe('true')
+    expect(card.className).toContain('bg-canvas')
+    expect(within(head('2026-11-17')).queryByText('휴진')).toBeNull()
+  })
+
+  it('AC-6603.3: 휴진일도 펼치면 그날 예약 줄과 + 종일이 그대로 있다', () => {
+    const { props } = renderList({ settings: { ...SETTINGS, closedDates: ['2026-11-18'] } })
+    fireEvent.click(head('2026-11-18'))
+    fireEvent.click(row(/^10457 박○○/))
+    expect(props.onAppt).toHaveBeenCalledWith('a-18')
+  })
+
+  it('AC-6603.3: 휴진일을 받지 않으면 "휴진"이 없다', () => {
+    renderList()
+    expect(screen.queryByText('휴진')).toBeNull()
+  })
+})

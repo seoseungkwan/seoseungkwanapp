@@ -10,11 +10,12 @@ import { apptColor, CAL_TONES } from '../colors'
 import { allDayChipClass, allDayText, apptLabel, dateNum, dayLabel, ghostLabel, hm, MovedMark, weekdayName } from './parts'
 
 // 폰 주 보기(768px 미만, spec clinic-calendar AC-5905.8·AC-5906.2, 시안 ?s=phone-week·기본값 7번).
-// 날짜별 목록: 날짜 줄(요약) + 종일 칩 + 펼치면 그날 예약 줄. 처음에는 오늘만 펼친다. 울타리 안 부품: props로만 받고 누름은 콜백으로만 넘긴다
+// 날짜별 목록: 날짜 줄(요약) + 종일 칩 + 펼치면 그날 예약 줄. 처음에는 오늘만 펼친다. 울타리 안 부품: props로만 받고 누름은 콜백으로만 넘긴다.
+// 받은 휴진일(closedDates, spec clinic-profile AC-6603.3)은 날짜 줄에 '휴진' + 카드 회색. 펼치기·예약 줄·+ 종일은 그대로다
 
 export type PhoneWeekListProps = {
   days: readonly string[]
-  settings: Pick<CalSettings, 'kinds' | 'staff'>
+  settings: Pick<CalSettings, 'kinds' | 'staff' | 'closedDates'>
   appts: readonly CalAppt[]
   ghosts?: readonly BitGhost[] // 좁은 창의 비트 PC만. 폰은 주지 않는다
   allday: readonly CalAllDay[]
@@ -49,11 +50,14 @@ export function PhoneWeekList({ days, settings, appts, ghosts = [], allday, toda
     return i < 0 ? settings.staff.length : i
   }
 
+  const closedDates = new Set(settings.closedDates ?? [])
+
   return (
     <div className="flex flex-col gap-2">
       {days.map((day) => {
         const isOpen = open.has(day)
         const isToday = day === today
+        const closed = closedDates.has(day)
         const dayAppts = appts.filter((a) => a.day === day)
         const live = dayAppts.filter((a) => a.status !== 'cancel')
         const came = live.filter((a) => shownStatus(a) === 'came').length
@@ -65,11 +69,15 @@ export function PhoneWeekList({ days, settings, appts, ghosts = [], allday, toda
           ...ghosts.filter((g) => g.day === day).map((g) => ({ at: g.start, order: settings.staff.length + 1, appt: null, ghost: g })),
         ].sort((x, y) => x.at - y.at || x.order - y.order)
         return (
-          <div key={day} className={`overflow-clip rounded-control border bg-surface ${isToday ? 'border-accent' : 'border-line'}`}>
+          <div
+            key={day}
+            data-closed={closed ? 'true' : undefined}
+            className={`overflow-clip rounded-control border ${closed ? 'bg-canvas' : 'bg-surface'} ${isToday ? 'border-accent' : 'border-line'}`}
+          >
             <button
               type="button"
               aria-expanded={isOpen}
-              aria-label={`${dayLabel(day)}${isToday ? ' 오늘' : ''} 예약 ${live.length}`}
+              aria-label={`${dayLabel(day)}${isToday ? ' 오늘' : ''}${closed ? ' 휴진' : ''} 예약 ${live.length}`}
               onClick={() => toggle(day)}
               className={`flex min-h-13 w-full cursor-pointer items-center gap-2.5 px-3 py-2 text-left hover:bg-canvas ${ds.focusRing}`}
             >
@@ -86,6 +94,11 @@ export function PhoneWeekList({ days, settings, appts, ghosts = [], allday, toda
                 {weekdayName(day)}
                 {isToday ? ' · 오늘' : ''}
               </span>{' '}
+              {closed ? (
+                <>
+                  <span className="rounded-control bg-surface px-1.5 text-caption font-semibold text-muted">휴진</span>{' '}
+                </>
+              ) : null}
               <span className="ml-auto text-right text-caption text-muted">
                 {live.length ? (
                   <>

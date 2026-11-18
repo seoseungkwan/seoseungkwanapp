@@ -2,6 +2,7 @@
 
 import { useState, type MouseEvent } from 'react'
 import { ds } from '@/components/ui/classes'
+import { hoursOn, isClosedOn } from '@/lib/calendar/clinic'
 import { layoutDay } from '@/lib/calendar/layout'
 import type { BitGhost } from '@/lib/calendar/shapes'
 import type { CalAllDay, CalAppt, CalSettings } from '@/types/calendar'
@@ -13,13 +14,17 @@ import { allDayChipClass, allDayText, dateNum, dayLabel, hm, SLOT_PX, weekdayNam
 // 예약표 일·주 시간 표(spec clinic-calendar AC-5905.1·AC-5905.7·AC-5905.8·AC-5906.2, design.md '화면' rows/TimeGrid, 시안 ?s=week·day·empty).
 // 울타리 안 부품(components/calendar/rows): 예약·종일 줄·비트 예약 칸을 props로만 받아 그리고, 누름은 콜백으로만 넘긴다. 읽기·저장 없음.
 // 10분 = 20px, 보이는 시간은 설정(openHour~closeHour) — 그 밖 예약은 칸이 없다(날짜 머리 수·월 수·요약에는 든다).
-// 같은 날 칸은 layoutDay로 옆으로 나란히(비트 예약·취소 칸 포함). 날이 하나면 일 보기(칸마다 시간·길이·메모)
+// 같은 날 칸은 layoutDay로 옆으로 나란히(비트 예약·취소 칸 포함). 날이 하나면 일 보기(칸마다 시간·길이·메모).
+// 병원 정보(spec clinic-profile AC-6603.2·AC-6603.3): 받은 days(요일 진료시간)로 그 요일 진료시간 밖·점심을 회색 띠(점심 띠에 '점심'),
+// 받은 closedDates(휴진일)·휴진 요일은 머리에 '휴진' + 열 전체 회색. 띠는 누름을 막지 않는다(예약은 지금처럼 넣는다). days가 없으면 띠가 없다
 
 export type GridDraft = { day: string; start: number; len: number; editing: boolean; warn: boolean }
 
+type OffBand = { kind: 'before' | 'after' | 'lunch' | 'closed'; from: number; to: number }
+
 export type TimeGridProps = {
   days: readonly string[] // 주 보기 월~토(설정이 켜면 일요일까지), 일 보기는 하루
-  settings: Pick<CalSettings, 'kinds' | 'staff' | 'openHour' | 'closeHour'>
+  settings: Pick<CalSettings, 'kinds' | 'staff' | 'openHour' | 'closeHour' | 'days' | 'closedDates'>
   appts: readonly CalAppt[]
   ghosts?: readonly BitGhost[] // 비트 PC만(화면이 visibleGhosts 결과를 준다). 없으면 그리지 않는다
   allday: readonly CalAllDay[]
@@ -84,6 +89,21 @@ export function TimeGrid({
   const hours: number[] = []
   for (let m = open; m < close; m += 60) hours.push(m)
 
+  // 그날 회색 띠(표 시간 안으로 자른다): 휴진이면 열 전체, 아니면 여는 시각 전·닫는 시각 뒤·점심
+  function offBands(day: string): OffBand[] {
+    if (isClosedOn(settings, day)) return [{ kind: 'closed', from: open, to: close }]
+    const dayHours = hoursOn(settings, day)
+    if (!dayHours) return []
+    const bands: OffBand[] = [
+      { kind: 'before', from: open, to: Math.min(dayHours.open, close) },
+      { kind: 'after', from: Math.max(dayHours.close, open), to: close },
+    ]
+    if (dayHours.lunchFrom !== null && dayHours.lunchTo !== null) {
+      bands.push({ kind: 'lunch', from: Math.max(dayHours.lunchFrom, open), to: Math.min(dayHours.lunchTo, close) })
+    }
+    return bands.filter((band) => band.from < band.to)
+  }
+
   function column(day: string) {
     // 같은 시각·같은 길이면 시행자 차례(시안 lay), 비트 예약 칸은 뒤
     const list = appts.filter((a) => a.day === day).sort((a, b) => staffOrder(a.staffId) - staffOrder(b.staffId))
@@ -107,6 +127,7 @@ export function TimeGrid({
         key={day}
         data-slot-day={day}
         data-today={isToday ? 'true' : undefined}
+        data-closed={isClosedOn(settings, day) ? 'true' : undefined}
         className={`relative min-w-0 flex-1 cursor-pointer border-l border-line ${isToday ? 'bg-accent-soft/40' : ''}`}
         onClick={(e) => {
           if (!onBlock(e)) onSlot(day, slotAt(e))
@@ -123,6 +144,16 @@ export function TimeGrid({
         }}
         onMouseLeave={() => setHover(null)}
       >
+        {offBands(day).map((band) => (
+          <div
+            key={band.kind}
+            data-off={band.kind}
+            className="pointer-events-none absolute inset-x-0 bg-canvas"
+            style={{ top: yOf(band.from), height: yOf(band.to) - yOf(band.from) }}
+          >
+            {band.kind === 'lunch' ? <span className="absolute top-0.5 left-1.5 text-caption text-muted">점심</span> : null}
+          </div>
+        ))}
         {hours.map((m) => (
           <div key={m} aria-hidden="true" className="pointer-events-none absolute inset-x-0" style={{ top: yOf(m), height: SLOT_PX * 6 }}>
             <div className="h-1/2 border-t border-line" />
@@ -187,12 +218,13 @@ export function TimeGrid({
         <div className={GUTTER} />
         {days.map((day) => {
           const isToday = day === today
+          const closed = isClosedOn(settings, day)
           const count = appts.filter((a) => a.day === day && a.status !== 'cancel').length
           return (
             <button
               key={day}
               type="button"
-              aria-label={`${dayLabel(day)}${isToday ? ' 오늘' : ''} 예약 ${count}`}
+              aria-label={`${dayLabel(day)}${isToday ? ' 오늘' : ''}${closed ? ' 휴진' : ''} 예약 ${count}`}
               tabIndex={mode === 'day' ? -1 : undefined}
               onClick={() => onDay(day)}
               className={`flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 border-l border-line px-2 py-1.5 text-left hover:bg-canvas ${ds.focusRing}`}
@@ -210,6 +242,12 @@ export function TimeGrid({
                 {weekdayName(day)}
                 {isToday ? ' · 오늘' : ''}
               </span>
+              {closed ? (
+                <>
+                  {' '}
+                  <span className="rounded-control bg-canvas px-1 text-caption font-semibold whitespace-nowrap text-muted">휴진</span>
+                </>
+              ) : null}
               {count > 0 ? (
                 <>
                   {' '}

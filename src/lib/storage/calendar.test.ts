@@ -5,6 +5,7 @@ import {
   addAllDay,
   addAppt,
   CalendarStorageError,
+  checkCalendarKinds,
   checkCalendarSettings,
   deleteAllDay,
   deleteAppt,
@@ -38,7 +39,6 @@ const ALLDAY_COLUMNS = 'id,day,type,memo,staff_id,staff_name'
 const SETTINGS_COLUMNS = 'kinds,staff,open_hour,close_hour,sunday'
 const APPT_INSERT_KEYS = ['day', 'start_min', 'len_min', 'name', 'chart', 'staff_id', 'staff_name', 'staff_mark', 'kind_id', 'kind_name', 'memo', 'status']
 const ALLDAY_INSERT_KEYS = ['day', 'type', 'memo', 'staff_id', 'staff_name']
-const SETTINGS_KEYS = ['kinds', 'staff', 'open_hour', 'close_hour', 'sunday']
 // 비트 찾기 결과에 있어도 서버로 가면 안 되는 칸(과 DB가 정하는 칸)
 const NEVER_SENT = ['phone', 'tel', 'sex', 'gender', 'age', 'birth', 'birthday', 'last', 'lastVisit', 'hospital_id', 'id', 'auto', 'orig_day', 'orig_start']
 const NEVER_READ = ['phone', 'tel', 'sex', 'gender', 'age', 'birth', 'hospital_id']
@@ -876,14 +876,31 @@ describe('checkCalendarSettings', () => {
 })
 
 describe('saveCalendarSettings', () => {
-  it('AC-5901.6: 다섯 칸을 내 병원 줄 하나에 덮어쓴다(onConflict hospital_id)', async () => {
+  // 시행자·진료시간은 병원 정보에서 온다(spec clinic-profile AC-6603.4) → 종류 한 칸만 보낸다. staff·open_hour·close_hour·sunday 칸은 DB에 그대로 남는다
+  const KINDS_ROW = { kinds: SETTINGS.kinds }
+
+  it('AC-6603.4: 종류(kinds) 한 칸만 내 병원 줄 하나에 덮어쓴다(onConflict hospital_id). 시행자·시간 칸은 보내지 않는다', async () => {
     const { client, calls } = fakeClient()
     await expect(saveCalendarSettings(client, SETTINGS)).resolves.toBeUndefined()
-    expect(calls).toEqual([['from', 'calendar_settings'], ['upsert', SETTINGS_ROW, { onConflict: 'hospital_id' }]])
-    expect(Object.keys(calls[1]?.[1] as object)).toEqual(SETTINGS_KEYS)
+    expect(calls).toEqual([['from', 'calendar_settings'], ['upsert', KINDS_ROW, { onConflict: 'hospital_id' }]])
+    expect(Object.keys(calls[1]?.[1] as object)).toEqual(['kinds'])
   })
 
-  it('AC-5901.6: 종류·시행자는 정해 둔 열쇠만 골라 새로 만들고, 이름·한 글자는 앞뒤 빈칸을 뺀다', async () => {
+  it('AC-6603.4: 병원 정보를 합친 설정(days·closedDates·병원 정보 시행자)을 받아도 종류 한 칸만 보낸다', async () => {
+    const { client, calls } = fakeClient()
+    const merged: CalSettings = {
+      ...SETTINGS,
+      staff: [{ id: 'p1', name: '새○○', mark: '새', color: 'navy' }],
+      openHour: 13, // 오후 진료 병원: 옛 보이는 시간 검사(5~12시) 밖이어도 막지 않는다
+      closeHour: 21,
+      days: [null, null, null, null, null, null, null],
+      closedDates: ['2026-11-20'],
+    }
+    await expect(saveCalendarSettings(client, merged)).resolves.toBeUndefined()
+    expect(calls[1]?.[1]).toEqual(KINDS_ROW)
+  })
+
+  it('AC-5901.6: 종류는 정해 둔 열쇠만 골라 새로 만들고, 이름은 앞뒤 빈칸을 뺀다', async () => {
     const { client, calls } = fakeClient()
     const odd = {
       ...SETTINGS,
@@ -892,37 +909,46 @@ describe('saveCalendarSettings', () => {
       staff: [{ ...SETTINGS.staff[0], mark: ' 가 ', phone: PHONE }, SETTINGS.staff[1]],
     } as CalSettings
     await saveCalendarSettings(client, odd)
-    const row = calls[1]?.[1] as { kinds: object[]; staff: object[] } & Record<string, unknown>
-    expect(Object.keys(row)).toEqual(SETTINGS_KEYS)
+    const row = calls[1]?.[1] as Record<string, unknown>
+    expect(Object.keys(row)).toEqual(['kinds'])
     expect(row.kinds).toEqual(SETTINGS.kinds)
-    expect(row.staff).toEqual(SETTINGS.staff)
   })
 
-  it('AC-6001.5: 새 10색이 든 종류·시행자도 그 색 이름 그대로 보낸다', async () => {
+  it('AC-6001.5: 새 10색이 든 종류도 그 색 이름 그대로 보낸다', async () => {
     const { client, calls } = fakeClient()
     await expect(saveCalendarSettings(client, NEW_COLOR_SETTINGS)).resolves.toBeUndefined()
-    const row = calls[1]?.[1] as { kinds: object[]; staff: object[] }
+    const row = calls[1]?.[1] as { kinds: object[] }
     expect(row.kinds).toEqual(NEW_COLOR_SETTINGS.kinds)
-    expect(row.staff).toEqual(NEW_COLOR_SETTINGS.staff)
   })
 
-  it("AC-6001.5: 표에 없는 색(gold)이 든 설정은 보내지 않고 invalid다", async () => {
-    for (const bad of [{ ...SETTINGS, kinds: [{ ...SETTINGS.kinds[0], color: 'gold' }] }, { ...SETTINGS, staff: [{ ...SETTINGS.staff[0], color: 'gold' }] }]) {
+  it("AC-6001.5: 표에 없는 색(gold)이 든 종류는 보내지 않고 invalid다", async () => {
+    const { client, calls } = fakeClient()
+    const gold = { ...SETTINGS, kinds: [{ ...SETTINGS.kinds[0], color: 'gold' }] }
+    await expect(saveCalendarSettings(client, gold as unknown as CalSettings)).resolves.toBe('invalid')
+    sentNothing(calls)
+  })
+
+  it('AC-6603.4: 종류 검사(checkCalendarKinds)를 못 지나면 보내지 않고 invalid다. 시행자·시간 문제는 막지 않는다', async () => {
+    for (const bad of [{ ...SETTINGS, kinds: [] }, { ...SETTINGS, kinds: [{ ...SETTINGS.kinds[0], len: 7 }] }]) {
       const { client, calls } = fakeClient()
       await expect(saveCalendarSettings(client, bad as CalSettings)).resolves.toBe('invalid')
       sentNothing(calls)
     }
-  })
-
-  it('AC-5901.6: checkCalendarSettings를 못 지나면 보내지 않고 invalid다', async () => {
-    for (const bad of [{ ...SETTINGS, kinds: [] }, { ...SETTINGS, openHour: 4 }, { ...SETTINGS, staff: [SETTINGS.staff[0], { ...SETTINGS.staff[1], mark: '가' }] }]) {
+    for (const fine of [{ ...SETTINGS, openHour: 4 }, { ...SETTINGS, staff: [SETTINGS.staff[0], { ...SETTINGS.staff[1], mark: '가' }] }]) {
       const { client, calls } = fakeClient()
-      await expect(saveCalendarSettings(client, bad as CalSettings)).resolves.toBe('invalid')
-      sentNothing(calls)
+      await expect(saveCalendarSettings(client, fine as CalSettings)).resolves.toBeUndefined()
+      expect(calls[1]?.[1]).toEqual(KINDS_ROW)
     }
   })
 
-  it('AC-5901.6: 진짜 클라이언트로도 요청 한 번, 같은 줄 덮어쓰기, 다섯 칸만 보낸다', async () => {
+  it('AC-6603.4: checkCalendarKinds는 종류 문제만 본다(종류 문제 차례 그대로)', () => {
+    expect(checkCalendarKinds(SETTINGS.kinds)).toEqual([])
+    expect(checkCalendarKinds([])).toEqual(['kinds-empty'])
+    expect(checkCalendarKinds([{ ...SETTINGS.kinds[0]!, name: ' ', len: 7, color: 'gold' as never }])).toEqual(['kind-name', 'kind-len', 'kind-color'])
+    expect(checkCalendarKinds([SETTINGS.kinds[0]!, { ...SETTINGS.kinds[1]!, id: 'dosu' }])).toEqual(['kind-id'])
+  })
+
+  it('AC-6603.4: 진짜 클라이언트로도 요청 한 번, 같은 줄 덮어쓰기, 종류 한 칸만 보낸다', async () => {
     const fakeFetch = fetchReturning(null)
     await saveCalendarSettings(realClient(fakeFetch), SETTINGS)
     const request = requestOf(fakeFetch)
@@ -930,7 +956,7 @@ describe('saveCalendarSettings', () => {
     expect(request.url.searchParams.get('on_conflict')).toBe('hospital_id')
     expect(request.method).toBe('POST')
     expect(request.headers.get('Prefer')).toContain('resolution=merge-duplicates')
-    expect(request.body).toEqual(SETTINGS_ROW)
+    expect(request.body).toEqual(KINDS_ROW)
   })
 })
 

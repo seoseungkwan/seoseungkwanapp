@@ -133,3 +133,31 @@ describe('AC-5906.3: 월 칸의 변경 수', () => {
     expect(within(cell(/^11월 18일/)).queryByText(/안 옴/)).toBeNull()
   })
 })
+
+describe('AC-6603.3: 휴진일(병원 정보)은 월 칸에 "휴진", 칸이 회색', () => {
+  it('AC-6603.3: 휴진일 칸에 "휴진"이 보이고 회색(data-closed)이며, 이름표에도 휴진이 든다. 그날 수는 그대로 센다', () => {
+    renderMonth({ settings: { ...SETTINGS, closedDates: ['2026-11-19', '2026-11-20'] } })
+    const closed = cell(/^11월 19일/)
+    expect(closed.getAttribute('aria-label')).toBe('11월 19일 (목) 휴진 예약 6')
+    expect(within(closed).getByText('휴진')).toBeTruthy()
+    expect(closed.dataset.closed).toBe('true')
+    expect(closed.className).toContain('bg-canvas')
+    expect(kinds(closed)).toBe('도수 1 · 진료 2 · 옛종류 3')
+    expect(within(cell(/^11월 20일/)).getByText('휴진')).toBeTruthy()
+    const open = cell(/^11월 18일/)
+    expect(open.dataset.closed).toBeUndefined()
+    expect(within(open).queryByText('휴진')).toBeNull()
+  })
+
+  it('AC-6603.3: 휴진일 칸을 눌러도 그날 일 보기로 간다(예약은 지금처럼 넣을 수 있다)', () => {
+    const { props } = renderMonth({ settings: { ...SETTINGS, closedDates: ['2026-11-19'] } })
+    fireEvent.click(cell(/^11월 19일/))
+    expect(props.onDay).toHaveBeenCalledWith('2026-11-19')
+  })
+
+  it('AC-6603.3: 휴진일을 받지 않으면 "휴진"이 없다(지금 월 보기 그대로)', () => {
+    renderMonth()
+    expect(screen.queryByText('휴진')).toBeNull()
+    expect(document.querySelector('[data-closed]')).toBeNull()
+  })
+})

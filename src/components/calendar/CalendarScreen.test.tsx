@@ -17,8 +17,10 @@ import {
   setApptAuto,
   updateAppt,
 } from '@/lib/storage/calendar'
+import { loadClinicProfile } from '@/lib/storage/clinicProfile'
 import type { BridgeState } from '@/types/bridge'
 import { DEFAULT_CAL_SETTINGS, type ApptDraft, type CalAllDay, type CalAppt, type CalSettings } from '@/types/calendar'
+import type { ClinicProfile, DayHours } from '@/types/clinicProfile'
 import type { CalendarWorkerMessage } from '@/workers/calendar/messages'
 import { CalendarScreen } from './CalendarScreen'
 import { GHOST_NOTE } from './rows/GhostBlock'
@@ -44,6 +46,11 @@ vi.mock('@/lib/storage/calendar', async (importOriginal) => ({
   deleteAppt: vi.fn(),
   addAllDay: vi.fn(),
   deleteAllDay: vi.fn(),
+}))
+// 병원 정보(spec clinic-profile REQ-6603). 기본은 줄 없음(null) → 지금처럼 예약 설정 시행자·시간
+vi.mock('@/lib/storage/clinicProfile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/storage/clinicProfile')>()),
+  loadClinicProfile: vi.fn(),
 }))
 
 // 가짜 Worker: 화면이 보낸 메시지를 모으고, 시험이 Worker 답을 넣는다
@@ -187,6 +194,7 @@ beforeEach(() => {
   vi.mocked(addAllDay).mockReset().mockImplementation(async (_c, item) => ({ ...item, id: 'd-new' }))
   vi.mocked(deleteAllDay).mockReset().mockResolvedValue(undefined)
   vi.mocked(saveCalendarSettings).mockReset().mockResolvedValue(undefined)
+  vi.mocked(loadClinicProfile).mockReset().mockResolvedValue(null)
 })
 
 afterEach(() => {
@@ -540,16 +548,29 @@ describe('AC-5905.4 종일 줄', () => {
 })
 
 describe('AC-5905.5 설정', () => {
-  it('AC-5905.5: [설정]에서 고쳐 [저장]하면 saveCalendarSettings로 저장되고 바로 반영된다(일요일 보기 → 7칸)', async () => {
+  it('AC-5905.5·AC-6603.4: [설정]에서 종류를 고쳐 [저장]하면 saveCalendarSettings로 저장되고 바로 반영된다(더하기 판 종류)', async () => {
     await open()
     fireEvent.click(screen.getByRole('button', { name: '예약 설정' }))
     const panel = dialog('예약 설정')
-    fireEvent.click(within(within(panel).getByRole('group', { name: '주 보기 요일' })).getByRole('button', { name: '월~일' }))
+    fireEvent.change(within(panel).getAllByRole('textbox', { name: '종류 이름' })[0]!, { target: { value: '도수치료' } })
     fireEvent.click(within(panel).getByRole('button', { name: '저장' }))
-    await waitFor(() => expect(saveCalendarSettings).toHaveBeenCalledWith(CLIENT, { ...SETTINGS, sunday: true }))
-    await waitFor(() => expect(columns()).toHaveLength(7))
+    await waitFor(() => expect(saveCalendarSettings).toHaveBeenCalledTimes(1))
+    const [client, sent] = vi.mocked(saveCalendarSettings).mock.calls[0]!
+    expect(client).toBe(CLIENT)
+    expect(sent.kinds.map((k) => k.name)).toEqual(['도수치료', '자보도수', '충격파', '주사', '진료'])
     expect(screen.queryByRole('dialog', { name: '예약 설정' })).toBeNull()
     expect(await screen.findByText('설정을 저장했어요. 다른 PC에도 몇 초 안에 보여요.')).toBeTruthy()
+    const add = openAdd()
+    expect(within(within(add).getByRole('group', { name: '종류' })).getByRole('button', { name: /^도수치료/ })).toBeTruthy()
+  })
+
+  it("AC-6603.4: 설정 서랍에는 시행자·보이는 시간 칸 대신 '설정 → 병원 정보' 안내와 [병원 정보로 가기](원장)가 있다", async () => {
+    await open()
+    fireEvent.click(screen.getByRole('button', { name: '예약 설정' }))
+    const panel = dialog('예약 설정')
+    expect(within(panel).getByText('시행자와 진료시간은 설정 → 병원 정보에서 고쳐요.')).toBeTruthy()
+    expect(within(panel).getByRole('link', { name: '병원 정보로 가기' }).getAttribute('href')).toBe('/settings')
+    expect(within(panel).queryByRole('group', { name: '주 보기 요일' })).toBeNull()
   })
 
   it('AC-5905.5: 목록에서 지운 시행자의 예약은 저장된 이름 그대로 회색으로 보인다', async () => {
@@ -683,5 +704,107 @@ describe('AC-5905.6·AC-5905.7 비트 PC', () => {
     expect(stream).toHaveBeenCalledWith('contact.targets', { kind: 'calfind', from: TODAY, to: TODAY, q: '99999' })
     await reply({ type: 'found', rows: [], more: false })
     expect(await within(panel).findByText('비트에 없어요. 신환이면 차트번호는 비워 두세요.')).toBeTruthy()
+  })
+})
+
+describe('AC-6603 예약이 병원 정보를 쓴다 (spec clinic-profile)', () => {
+  const W: DayHours = { open: 540, close: 1110, lunchFrom: 780, lunchTo: 840 } // 09:00~18:30, 점심 13:00~14:00
+  const PROFILE: ClinicProfile = {
+    displayName: null,
+    phone: null,
+    address: null,
+    honorific: '원장님',
+    hours: [W, W, null, W, W, { open: 540, close: 780, lunchFrom: null, lunchTo: null }, null], // 수·일 휴진
+    closedDates: ['2026-11-19'],
+    staff: [
+      { id: 'won', name: '원장님', role: 'doctor', mark: '원', color: 'gray', calendar: true },
+      { id: 'ga', name: '한○○', role: 'staff', mark: '가', color: 'blue', calendar: true },
+      { id: 'na', name: '윤○○', role: 'staff', mark: '나', color: 'teal', calendar: false },
+    ],
+    logoPath: null,
+  }
+  beforeEach(() => {
+    vi.mocked(loadClinicProfile).mockResolvedValue(PROFILE)
+  })
+  const staffButtons = (panel: HTMLElement) => within(within(panel).getByRole('group', { name: '담당' })).getAllByRole('button').map(text)
+
+  it('AC-6603.1: 담당 목록은 병원 정보의 예약에 보이기인 사람들(병원 정보 차례)이다', async () => {
+    await open()
+    await waitFor(() => expect(columns()).not.toContain('2026-11-18'))
+    expect(staffButtons(openAdd())).toEqual(['(원) 원장님', '(가) 한○○'])
+  })
+
+  it('AC-6603.1: 병원 정보를 읽지 못하면 지금처럼 예약 설정 시행자다', async () => {
+    vi.mocked(loadClinicProfile).mockResolvedValue('failed')
+    await open()
+    expect(staffButtons(openAdd())).toEqual(['(가) 한○○', '(나) 윤○○', '(원) 원장님'])
+    expect(columns()).toHaveLength(6)
+  })
+
+  it('AC-6603.2: 휴진 요일(수·일)은 주 보기 열에서 빠지고, 시간 줄은 09:00~19:00(18:30 올림)이다', async () => {
+    await open()
+    await waitFor(() => expect(columns()).toEqual(['2026-11-16', '2026-11-17', '2026-11-19', '2026-11-20', '2026-11-21']))
+    expect(title()).toBe('2026년 11월 16일 – 21일')
+    expect(screen.queryByText('08:00')).toBeNull()
+    expect(screen.getByText('09:00')).toBeTruthy()
+    expect(screen.getByText('18:00')).toBeTruthy()
+    expect(screen.queryByText('19:00')).toBeNull()
+    expect(document.querySelector('[data-slot-day="2026-11-16"] [data-off="lunch"]')?.textContent).toBe('점심')
+  })
+
+  it('AC-6603.2: 일요일이 문 여는 날이면 주 보기에 일요일이 든다', async () => {
+    vi.mocked(loadClinicProfile).mockResolvedValue({ ...PROFILE, hours: [...PROFILE.hours.slice(0, 6), W] })
+    await open()
+    await waitFor(() => expect(columns()).toContain('2026-11-22'))
+    expect(columns()).not.toContain('2026-11-18')
+  })
+
+  it('AC-6603.2: 일 보기 ◀▶는 휴진 요일을 건너뛴다(화 → 목, 토 → 다음 월)', async () => {
+    await open()
+    fireEvent.click(screen.getByRole('button', { name: '일' }))
+    await waitFor(() => expect(columns()).toEqual([TODAY]))
+    fireEvent.click(screen.getByRole('button', { name: '다음 날' }))
+    await waitFor(() => expect(columns()).toEqual(['2026-11-19']))
+    fireEvent.click(screen.getByRole('button', { name: '이전 날' }))
+    await waitFor(() => expect(columns()).toEqual([TODAY]))
+    fireEvent.click(screen.getByRole('button', { name: '다음 날' }))
+    fireEvent.click(screen.getByRole('button', { name: '다음 날' }))
+    fireEvent.click(screen.getByRole('button', { name: '다음 날' }))
+    await waitFor(() => expect(columns()).toEqual(['2026-11-21']))
+    fireEvent.click(screen.getByRole('button', { name: '다음 날' }))
+    await waitFor(() => expect(columns()).toEqual(['2026-11-23']))
+  })
+
+  it('AC-6603.3: 휴진일(11/19)은 주 보기 머리에 "휴진"이고 열이 회색이며, 빈 칸을 누르면 지금처럼 예약을 넣는다', async () => {
+    await open()
+    const head = await screen.findByRole('button', { name: '11월 19일 (목) 휴진 예약 1' })
+    expect(within(head).getByText('휴진')).toBeTruthy()
+    const col = document.querySelector<HTMLElement>('[data-slot-day="2026-11-19"]')!
+    expect(col.dataset.closed).toBe('true')
+    fireEvent.click(col, { clientY: 0 })
+    const panel = dialog('예약 더하기')
+    expect((within(panel).getByLabelText('날짜') as HTMLInputElement).value).toBe('2026-11-19')
+    expect((within(panel).getByLabelText('시작') as HTMLInputElement).value).toBe('09:00')
+  })
+
+  it('AC-6603.3: 월 보기에서도 휴진일 칸에 "휴진"이다', async () => {
+    await open()
+    fireEvent.click(screen.getByRole('button', { name: '월' }))
+    const month = await screen.findByRole('region', { name: '월 보기' })
+    const cell = within(month).getByRole('button', { name: '11월 19일 (목) 휴진 예약 1' })
+    expect(within(cell).getByText('휴진')).toBeTruthy()
+  })
+
+  it('AC-6603.4: 종류를 저장해도 담당·진료시간은 병원 정보 그대로다', async () => {
+    await open()
+    await waitFor(() => expect(columns()).not.toContain('2026-11-18'))
+    fireEvent.click(screen.getByRole('button', { name: '예약 설정' }))
+    const panel = dialog('예약 설정')
+    fireEvent.change(within(panel).getAllByRole('textbox', { name: '종류 이름' })[0]!, { target: { value: '도수치료' } })
+    fireEvent.click(within(panel).getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(saveCalendarSettings).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '예약 설정' })).toBeNull())
+    expect(columns()).toEqual(['2026-11-16', '2026-11-17', '2026-11-19', '2026-11-20', '2026-11-21'])
+    expect(staffButtons(openAdd())).toEqual(['(원) 원장님', '(가) 한○○'])
   })
 })
