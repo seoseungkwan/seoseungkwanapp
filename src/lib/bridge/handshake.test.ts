@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { checkVersions, compareVersions } from './handshake'
 import { PROTOCOL } from './protocol'
-import { CAL_HELPER, LATEST_HELPER, LIST_HELPER, MIN_EXTENSION, MIN_HELPER, SUNAP_HELPER, WEB_VERSIONS } from './versions'
+import { CAL_HELPER, LATEST_HELPER, LIST_HELPER, MIN_EXTENSION, MIN_HELPER, SUNAP_HELPER, VALUE_HELPER, WEB_VERSIONS } from './versions'
 
 // 시험용 웹 기준: 도우미 0.2.0 이상(0.3.0이 최신), 확장 0.2.0 이상
 const WEB = { protocol: 1, minHelper: '0.2.0', latestHelper: '0.3.0', minExtension: '0.2.0' }
@@ -79,9 +79,10 @@ describe('AC-004.4 웹 versions.ts 값', () => {
   // 도우미 0.9.0 = 0.8.0 + 수납일지 장부 줄에 원장님(contact.targets sunap 답 v:2, spec sunap-doctors). 새 명령 없음, MIN·SUNAP은 그대로
   // 도우미 0.9.1 = 0.9.0 + 수납일지 장부 미수에서 건강생활유지비(QCV) 뺌(spec sunap-health). 새 명령·새 답 모양 없음(v:2), MIN·SUNAP은 그대로
   // 도우미 0.10.0 = 0.9.1 + 예약 탭 비트 찾기·접수·비트 예약(contact.targets kind calfind·calday, 선택 칸 q)·수납일지 답 v:3 건강생활 칸(spec clinic-calendar). 새 명령 없음, MIN·SUNAP·LIST는 그대로
-  it('AC-004.4·AC-012.1·AC-604.1·AC-3402.1·AC-4101.5·AC-4405.3·AC-4902.6·AC-5002.3·AC-5401.3·AC-5903.5 지금 값은 도우미 최소 0.3.0·최신 0.10.0, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
+  // 도우미 0.11.0 = 0.10.0 + stats.rows v5(접수 줄 신환 표시 칸, spec new-mark)·v5 extra.pays 환자·날 금액 줄(spec stats-insights). 새 명령 없음, MIN·SUNAP·LIST·CAL은 그대로
+  it('AC-004.4·AC-012.1·AC-604.1·AC-3402.1·AC-4101.5·AC-4405.3·AC-4902.6·AC-5002.3·AC-5401.3·AC-5903.5·AC-6106.1 지금 값은 도우미 최소 0.3.0·최신 0.11.0, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
     expect(MIN_HELPER).toBe('0.3.0')
-    expect(LATEST_HELPER).toBe('0.10.0')
+    expect(LATEST_HELPER).toBe('0.11.0')
     expect(MIN_EXTENSION).toBe('0.1.0')
     expect(compareVersions(MIN_HELPER, LATEST_HELPER)).toBeLessThanOrEqual(0)
     expect(WEB_VERSIONS).toEqual({
@@ -104,16 +105,27 @@ describe('AC-004.4 웹 versions.ts 값', () => {
     expect(compareVersions(LIST_HELPER, SUNAP_HELPER)).toBeLessThan(0)
   })
 
-  it('AC-5903.5 예약 탭이 보는 CAL_HELPER는 0.10.0이고 LATEST_HELPER와 같다. MIN_HELPER 0.3.0·SUNAP_HELPER 0.8.0·LIST_HELPER 0.5.0은 그대로다(예약 탭만 0.10.0 미만을 비트 없는 기기처럼 그린다)', () => {
+  // 0.10.0을 내보낼 때는 CAL = LATEST였다. 0.11.0부터는 CAL(0.10.0)이 LATEST 이하인지만 본다(stats-insights TASK-5)
+  it('AC-5903.5 예약 탭이 보는 CAL_HELPER는 0.10.0 그대로이고 LATEST_HELPER 이하다. MIN_HELPER 0.3.0·SUNAP_HELPER 0.8.0·LIST_HELPER 0.5.0은 그대로다(예약 탭만 0.10.0 미만을 비트 없는 기기처럼 그린다)', () => {
     expect(CAL_HELPER).toBe('0.10.0')
-    expect(compareVersions(CAL_HELPER, LATEST_HELPER)).toBe(0)
+    expect(compareVersions(CAL_HELPER, LATEST_HELPER)).toBeLessThanOrEqual(0)
     expect(compareVersions(SUNAP_HELPER, CAL_HELPER)).toBeLessThan(0)
     expect(MIN_HELPER).toBe('0.3.0')
     expect(SUNAP_HELPER).toBe('0.8.0')
     expect(LIST_HELPER).toBe('0.5.0')
   })
 
-  it('AC-004.4·AC-3402.1·AC-4902.6·AC-5002.3·AC-5401.3·AC-5903.5 LATEST_HELPER는 helper/Directory.Build.props의 도우미 버전과 같다(같은 커밋에서 올린다)', () => {
+  it('AC-6106.1 1명당 매출이 보는 VALUE_HELPER는 0.11.0이고 LATEST_HELPER와 같다. MIN_HELPER 0.3.0·CAL_HELPER 0.10.0·SUNAP_HELPER 0.8.0·LIST_HELPER 0.5.0은 그대로다(금액 줄 pays는 0.11.0부터 온다)', () => {
+    expect(VALUE_HELPER).toBe('0.11.0')
+    expect(compareVersions(VALUE_HELPER, LATEST_HELPER)).toBe(0)
+    expect(compareVersions(CAL_HELPER, VALUE_HELPER)).toBeLessThan(0)
+    expect(MIN_HELPER).toBe('0.3.0')
+    expect(CAL_HELPER).toBe('0.10.0')
+    expect(SUNAP_HELPER).toBe('0.8.0')
+    expect(LIST_HELPER).toBe('0.5.0')
+  })
+
+  it('AC-004.4·AC-3402.1·AC-4902.6·AC-5002.3·AC-5401.3·AC-5903.5·AC-6106.1 LATEST_HELPER는 helper/Directory.Build.props의 도우미 버전과 같다(같은 커밋에서 올린다)', () => {
     const props = readFileSync(new URL('../../../helper/Directory.Build.props', import.meta.url), 'utf8')
     expect(props.match(/<Version>([^<]+)<\/Version>/)?.[1]).toBe(LATEST_HELPER)
   })

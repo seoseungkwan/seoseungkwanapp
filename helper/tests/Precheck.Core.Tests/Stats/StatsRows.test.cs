@@ -173,7 +173,7 @@ public class StatsRowsTests
 
     // ---- AC-503.1 -------------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-503.1 AC-4401.1 AC-6201.1 등록 확인 뒤 진료 줄·접수 줄·기간 합계·날짜별·처방 이름을 정해 둔 열쇠의 JSON 하나로 chunk … end에 보낸다")]
+    [Fact(DisplayName = "AC-503.1 AC-4401.1 AC-6201.1 AC-6106.1 등록 확인 뒤 진료 줄·접수 줄·기간 합계·날짜별·처방 이름을 정해 둔 열쇠의 JSON 하나로 chunk … end에 보낸다")]
     public void SendsOneJsonInChunks()
     {
         using var rig = StatsFake.Clinic();
@@ -182,8 +182,8 @@ public class StatsRowsTests
         var root = Json.Parse(json);
 
         // v3(AC-2701.1): v2 열쇠 뒤에 비트 전용 세 칸 열쇠 넷이 붙는다. v2 열쇠의 값은 아래 그대로다. v4(AC-4401.1)는 열쇠가 같고 patientDays만 다섯 칸,
-        // v5(AC-6201.1)도 열쇠가 같고 patientDays만 여섯 칸이다
-        Assert.Equal(new[] { "v", "from", "to", "summary", "days", "patientDays", "codes", "rows", "report", "visits", "people", "doctors", "doctorDays" }, Json.Keys(root));
+        // v5(AC-6201.1)도 열쇠가 같고 patientDays만 여섯 칸이다. 도우미 0.11.0의 v5(spec stats-insights AC-6106.1)는 끝에 pays 열쇠 하나를 더한다
+        Assert.Equal(new[] { "v", "from", "to", "summary", "days", "patientDays", "codes", "rows", "report", "visits", "people", "doctors", "doctorDays", "pays" }, Json.Keys(root));
         Assert.Equal(5, root.GetProperty("v").GetInt32());
         Assert.Equal("2026-09-01", root.GetProperty("from").GetString());
         Assert.Equal("2026-09-30", root.GetProperty("to").GetString());
@@ -299,7 +299,7 @@ public class StatsRowsTests
         Assert.Equal(TimeSpan.FromSeconds(150), call.Timeout);
     }
 
-    [Fact(DisplayName = "AC-503.5 AC-2701.1 AC-6201.1 열쇠 차례는 v·from·to·summary·days·patientDays·codes·rows·report 그대로이고 그 뒤에 v3 열쇠 넷이 붙는다(v는 5)")]
+    [Fact(DisplayName = "AC-503.5 AC-2701.1 AC-6201.1 AC-6106.1 열쇠 차례는 v·from·to·summary·days·patientDays·codes·rows·report 그대로이고 그 뒤에 v3 열쇠 넷과 pays가 붙는다(v는 5)")]
     public void PayloadVersionAndKeyOrder()
     {
         using var rig = StatsFake.Clinic();
@@ -308,7 +308,7 @@ public class StatsRowsTests
         Assert.Equal(5, root.GetProperty("v").GetInt32());
         Assert.Equal(5, StatsPayload.Version);
         Assert.Equal(new[] { "v", "from", "to", "summary", "days", "patientDays", "codes", "rows", "report" }, Json.Keys(root).Take(9));
-        Assert.Equal(new[] { "visits", "people", "doctors", "doctorDays" }, Json.Keys(root).Skip(9));
+        Assert.Equal(new[] { "visits", "people", "doctors", "doctorDays", "pays" }, Json.Keys(root).Skip(9));
     }
 
     [Fact(DisplayName = "AC-503.5 AC-4401.1 AC-6201.1 접수 줄은 [차트번호, 진료일, 건수(숫자), 첫 내원일|null, 90일초진 접수 수(숫자), 신환 표시 접수 수(숫자)]이고 처방 없는 접수도 싣고 코드 목록은 건드리지 않는다")]
