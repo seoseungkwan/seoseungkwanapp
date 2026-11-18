@@ -6,8 +6,9 @@ import type { MemoParts, MemoTables, MemoVisit, Phrases, Region } from './types'
 
 export * from './types'
 export { createMemoEngine, FIXED_FALLBACK, SITE_FALLBACK, unfinished, type MemoEngine } from './engine'
-export { allowedTokens, defaultPhrases, diffPhrases, migratePhrases, ourClinicPhrases, validatePhrases } from './phrases'
+export { allowedTokens, defaultPhrases, diffPhrases, migratePhrases, neutralPhrases, ourClinicPhrases, validatePhrases } from './phrases'
 export { defaultDictionary, dictionaryTerms, normalizeDictionary } from './dictionary'
+export { DEFAULT_INTERVAL_CODES, DEFAULT_INTERVAL_DAYS, DEFAULT_MAIN_CENTRAL_CODES, DEFAULT_TWO_SITE_RULES } from './engineDefaults'
 
 /** 한 달 진료를 분석한다(원본 analyze·applyRx·computeIntervals). 내원 간격은 여기서만 계산된다 */
 export const analyzeMonth = (month: Pick<ClaimMonth, 'visits' | 'rxByDay'>, phrases: Phrases, tables: MemoTables): MemoVisit[] => createMemoEngine(phrases, tables).analyzeMonth(month)

@@ -4,6 +4,7 @@ import {
   cleanKo, codeSet, dayDiff, distSide, durOf, dxKo, expandAek, filterByRxOriginal, fxOf, imgKo, imgSrc, klOf, lineKindOf, normLine, reEsc, regionOf, segProcNames, sideKey, sideOf, splitProc, stripNonBen,
 } from './chart'
 import { defaultDictionary, dictionaryTerms, normalizeDictionary } from './dictionary'
+import { DEFAULT_INTERVAL_CODES, DEFAULT_INTERVAL_DAYS, DEFAULT_MAIN_CENTRAL_CODES, DEFAULT_TWO_SITE_RULES } from './engineDefaults'
 import { DEFAULT_ARA } from './phrases'
 import type { DrugChoice, DrugPlace, MemoCode, MemoDictionary, MemoItem, MemoParts, MemoSegment, MemoTables, MemoVisit, Phrases, QuantityMap, Region, RxAddition } from './types'
 
@@ -16,7 +17,15 @@ const SIDE_WORD = '(?:\\b(?:both|Rt|Lt|right|left)\\b|양측|양쪽|우측|좌�
 const MISS_SITE = '[부위 확인]'
 const TEMPLATE_TOKENS = ['좌우', '한글방향', '영문방향', '레벨', '부위', '시술', '약제', 'KLG', '검사', '기간', '진단', '영상']
 const LEVEL_CODES = new Set(['LA248', 'LA354', 'LA355', 'LA356', 'LA358', 'LA359'])
+/** 역할도 깃발도 없는 약의 연골주사 짐작(이름). 병원 약 이름은 createMemoEngine의 cartilageNames가 더한다 */
 const CARTILAGE_NAME = /아라간|히알|하이알|hyal|연골\s*주사/i
+/**
+ * 연골주사 줄의 안쪽 표시(chart.ts 사전 '연골주사 = 아라간' 등). 차트의 그 병원 연골주사 약 이름도 이 글자로 읽는다(clinic-profile design.md 11절).
+ * 메모 글에 이 글자를 쓰지 않는다: 약 이름 자리는 그날 처방한 연골주사 약 이름 → cartilageNames[0] → CARTILAGE_UNKNOWN 차례다
+ */
+const CARTILAGE_TOKEN = '아라간'
+/** 연골주사 약 이름을 모르는 날의 약 이름 자리(AC-6609.2) */
+const CARTILAGE_UNKNOWN = '연골주사약'
 const IA_SET_CODES = /^(LA274|LA272)$/i
 /** IA 줄 부위로 읽는 관절(AC-3001.1). 척추·늑골·상지는 IA 부위가 아니다 */
 const IA_REGIONS = ['shoulder', 'knee', 'ankle', 'elbow', 'wrist', 'hip', 'hand', 'foot']
@@ -124,7 +133,6 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
   // 원본 applyCfg: 지운 코드는 사전에 없는 코드다
   const deleted = new Set(phrases.CODEMAP_DEL)
   const CODEMAP = Object.fromEntries(Object.entries(phrases.CODEMAP).filter(([code]) => !deleted.has(code)))
-  const dictionary: MemoDictionary = tables.dictionary ?? defaultDictionary()
   const entries = Object.entries(CODEMAP)
   const hasCode = (key: string) => Object.hasOwn(CODEMAP, key)
 
@@ -136,6 +144,39 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     return null
   }
   const entry = cm
+
+  /**
+   * 그 병원 연골주사 약 이름(design.md 11절): 연골주사 약인 CODEMAP 줄(isCartilageDrug: 깃발 → 역할 → 이름 짐작)의 n·displayName·bitName,
+   * 그다음 처방 목록에서 넘어온 이름(tables.cartilageNames). 겹치지 않게(대소문자 무시) 이 차례로 둔다
+   */
+  const cartilageNames: string[] = (() => {
+    const names = new Map<string, string>()
+    const add = (value: unknown) => {
+      const name = text(value).trim()
+      if (name && !names.has(name.toLowerCase())) names.set(name.toLowerCase(), name)
+    }
+    for (const [code, row] of entries) if (row.k === 'drug' && isCartilageDrug({ code, name: '' })) [row.n, row.displayName, row.bitName].forEach(add)
+    ;(tables.cartilageNames ?? []).forEach(add)
+    return [...names.values()]
+  })()
+  /** 차트에서 찾는 연골주사 약 이름. 한 글자 이름은 차트의 다른 글자를 잘못 잡을 수 있어 뺀다 */
+  const cartilageTerms = cartilageNames.filter((name) => name.length > 1)
+  /** 약 이름 하나의 정규식. 영문·숫자로 시작·끝나는 이름은 낱말 경계를 지킨다(normalizeDictionary와 같다) */
+  const termSource = (name: string) => `${/^[a-z0-9]/i.test(name) ? '(?<![A-Za-z0-9_])' : ''}${codeEscape(name)}${/[a-z0-9]$/i.test(name) ? '(?![A-Za-z0-9_])' : ''}`
+  const CARTILAGE_OWN = cartilageTerms.length ? new RegExp(cartilageTerms.map(termSource).join('|'), 'i') : null
+  /** 차트 글 사전(design.md 14절): 문구 사전 줄 + 차트 줄임말(kind 'proc') + 연골주사 약 이름 → 안쪽 표시. 긴 말부터 한 번만 바꾼다(normalizeDictionary) */
+  const dictionary: MemoDictionary = (() => {
+    const base = tables.dictionary ?? defaultDictionary()
+    // 빈 줄임말은 바꿀 글자가 없어 끝나지 않으므로 넣지 않는다(검사가 이미 막는다)
+    const words = (phrases.chartWords ?? []).filter((row) => typeof row?.term === 'string' && row.term && typeof row.target === 'string').map(({ term, target }) => ({ kind: 'proc', term, target }))
+    // 안쪽 표시와 같은 이름(우리 의원 A49)은 바꿀 것이 없다
+    const cartilage = cartilageTerms.filter((name) => name !== CARTILAGE_TOKEN).map((term) => ({ kind: 'proc', term, target: CARTILAGE_TOKEN }))
+    return words.length || cartilage.length ? { ...base, aliases: [...base.aliases, ...words, ...cartilage] } : base
+  })()
+  /** 차트 줄이 연골주사 약을 말하나: 이름 짐작(CARTILAGE_NAME) 또는 그 병원 연골주사 약 이름 */
+  const cartilageNamed = (value: unknown) => CARTILAGE_NAME.test(text(value)) || !!CARTILAGE_OWN?.test(text(value))
+  /** 연골주사 부위 찾기 낱말: 원본 낱말 + 그 병원 연골주사 약 이름 */
+  const CARTILAGE_SITE_WORD = new RegExp([/아라간|히알|하이알|hyal|연골\s*주사|\bIA\b|관절강|관절내/.source, ...cartilageTerms.map(termSource)].join('|'), 'i')
 
   // 원본 catalogCache: 코드표에서 얻는 계산은 다시 하지 않는다
   const patterns = new Map<string, RegExp>()
@@ -538,7 +579,7 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     return pool.length ? pool : Object.keys(CODEMAP)
   }
   function isCentralProc(p: unknown, qmap: QuantityMap | null | undefined): boolean {
-    const central = codeSet(TPL.mainCentralCodes ?? 'LA321, LA323, LA326, LA354, LA356, LA357, LA358, LA359')
+    const central = codeSet(TPL.mainCentralCodes ?? DEFAULT_MAIN_CENTRAL_CODES)
     if (!central.size) return false
     const up = String(p || '').toUpperCase()
     return procPool(qmap).some((code) => {
@@ -770,10 +811,16 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
 
   // ── 처방(원본 applyRx·iaKind) ──────────────────────────────
 
+  /**
+   * 연골주사 약인가(design.md 10절): 처방코드 탭 깃발 → 약 역할(tables.roles, 대문자 코드. 연골주사가 아닌 역할·'아님'이면 아니다) → 이름 짐작.
+   * 엔진을 만들 때(cartilageNames) 부르므로 이 함수가 읽는 값은 그보다 먼저 정해져 있어야 한다
+   */
   function isCartilageDrug(row: Pick<RxLine, 'code' | 'name'>): boolean {
     const registered = cm(row.code)
     if (registered && registered.k !== 'drug') return false
     if (registered && typeof registered.cartilage === 'boolean') return registered.cartilage
+    const role = tables.roles?.get(upper(row.code))
+    if (role) return role === 'cartilage'
     return CARTILAGE_NAME.test(String((registered && registered.n) || '')) || CARTILAGE_NAME.test(String(row.name || ''))
   }
   const rxHasAra = (v: Pick<Visit, 'rx'>) => v.rx.some(isCartilageDrug)
@@ -859,8 +906,8 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
 
   /** 원본 computeIntervals(hospital-code-rules가 덮어쓴 판, AC-014.6): 읽은 기간 전체의 급여 처방으로 본다. 12개월 이력은 보지 않는다 */
   function computeIntervals(month: Pick<ClaimMonth, 'rxByDay'>, visits: MemoVisit[]) {
-    const intervalCodes = String(TPL.intervalCodes ?? 'LA358, KK090').toUpperCase().split(/[\s,]+/).filter(Boolean)
-    const limit = Number.isInteger(TPL.intervalDays) && TPL.intervalDays! > 0 ? TPL.intervalDays! : 7
+    const intervalCodes = String(TPL.intervalCodes ?? DEFAULT_INTERVAL_CODES).toUpperCase().split(/[\s,]+/).filter(Boolean)
+    const limit = Number.isInteger(TPL.intervalDays) && TPL.intervalDays! > 0 ? TPL.intervalDays! : DEFAULT_INTERVAL_DAYS
     const sites = new Map<string, Set<string>>()
     for (const visit of visits) {
       visit.shortItv = null
@@ -1113,9 +1160,9 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     if (drug && drugs.length > 1 && !matched.length) {
       return { 좌우: '[좌우 확인]', 회차: '[회차 확인]', 부위: MISS_SITE, 약제: String(registered!.n || drug.name || drug.code), 코드: upper(drug.code) }
     }
-    const relevant = matched.length ? matched : (v.items || []).filter((i) => CARTILAGE_NAME.test(i.raw || i.t || ''))
+    const relevant = matched.length ? matched : (v.items || []).filter((i) => cartilageNamed(i.raw || i.t || ''))
     const rounds = [...new Set(relevant.flatMap((i) => [...String(i.raw || i.t).matchAll(/(\d+)\s*(?:회차|차)/g)].map((m) => m[1])))]
-    const site = siteOf(matched.length ? { ...v, items: matched, ...(drugs.length > 1 ? { memos: [] } : {}) } : v, matched.length ? null : /아라간|히알|하이알|hyal|연골\s*주사|\bIA\b|관절강|관절내/i, null, false)
+    const site = siteOf(matched.length ? { ...v, items: matched, ...(drugs.length > 1 ? { memos: [] } : {}) } : v, matched.length ? null : CARTILAGE_SITE_WORD, null, false)
     const sides = [...new Set(site.match(/\b(?:Rt|Lt|Both)\b/g) || [])]
     const evidence = [...new Set((matched.length ? matched : relevant).map((i) => sideOf(i.raw || i.t || '')).filter(Boolean))]
     const side = sides.length === 1 && evidence.length < 2 ? ({ Rt: '우측', Lt: '좌측', Both: '양측' } as Record<string, string>)[sides[0]] : '[좌우 확인]'
@@ -1123,10 +1170,17 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
       좌우: side,
       회차: rounds.length === 1 ? rounds[0] : '[회차 확인]',
       부위: site.replace(/\b(?:Rt|Lt|Both)\s*/g, '').trim() || MISS_SITE,
-      약제: drug ? String(registered!.n || drug.name || drug.code) : '',
+      약제: drug ? String(registered!.n || drug.name || drug.code) : knownCartilageName(),
       코드: drug ? upper(drug.code) : '',
     }
   }
+  /** 그날 처방한 연골주사 약이 없을 때의 약 이름(AC-6609.2): 그 병원 연골주사 약 이름의 첫째 → '연골주사약' */
+  const knownCartilageName = () => cartilageNames[0] ?? CARTILAGE_UNKNOWN
+  /**
+   * 차트 글로 만든 연골주사 줄의 {약제}. 그날 연골주사 약을 처방했으면 비운다: 그 약은 약 규칙(시술별 약)이 놓고, 이 자리에 원본이 넣던 일반 약은 일반 IA 줄에만 놓인다(AC-3001.3, 골든 cartilage-words).
+   * 처방한 연골주사 약이 없는 날만 약 이름 자리를 채운다(AC-6609.2)
+   */
+  const chartCartilageDrug = (v: Pick<Visit, 'rx'>) => (cartilageDrugs(v).length ? '' : knownCartilageName())
   function cartilageLine(v: MemoVisit, raw: boolean): string[] {
     const drugs = cartilageDrugs(v)
     const custom = drugs.some((row) => !!ownTemplate(row))
@@ -1221,9 +1275,9 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     return units
   }
 
-  /** cartilage: 차트의 아라간 글로 만든 연골주사 줄 */
+  /** cartilage: 차트의 아라간 글로 만든 연골주사 줄. cartilageDrug: 그 줄의 {약제}(chartCartilageDrug) */
   type ProcText = { t: string; cartilage: boolean }
-  function procLines(list: string[] | undefined, qmap: QuantityMap | null | undefined, icSide: string | undefined, regionName: string): ProcText[] {
+  function procLines(list: string[] | undefined, qmap: QuantityMap | null | undefined, icSide: string | undefined, regionName: string, cartilageDrug = ''): ProcText[] {
     const out: ProcText[] = []
     const push = (t: string, cartilage = false) => out.push({ t, cartilage })
     ;(list || []).forEach((t) => {
@@ -1232,17 +1286,17 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
         const ara = ps.filter((x) => /아라간/.test(x))
         const rest = ps.filter((x) => !/아라간/.test(x))
         if (ara.length && rest.length) {
-          out.push(...procLines([ara.join(' ')], qmap, icSide, regionName))
-          rest.forEach((r) => out.push(...procLines([r], qmap, icSide, regionName)))
+          out.push(...procLines([ara.join(' ')], qmap, icSide, regionName, cartilageDrug))
+          rest.forEach((r) => out.push(...procLines([r], qmap, icSide, regionName, cartilageDrug)))
           return
         }
       }
       if (/아라간/.test(t)) {
         const sd = /양|both/i.test(t) ? '양측' : /\bRt\b/i.test(t) ? '우측' : /\bLt\b/i.test(t) ? '좌측' : ''
         const cha = (t.match(/(\d+)\s*차/) || [])[1]
-        // {약제}는 비운다: 원본은 이 자리에 연골주사 날 afterProc 약(연골주사약은 빠짐)을 넣었는데, 그 일반 약은 이제 일반 IA 줄에만 놓이거나
-        // [약 확인]으로 남는다(AC-3001.3). 일반 약이 없는 날은 원본과 같다(골든 cartilage-words)
-        push(renderQuantityProcedure('IA', TPL.ara, { 좌우: sd, 회차: cha || '', 부위: regionName || MISS_SITE, 약제: '' }, qmap), true)
+        // {약제}에 일반 약을 넣지 않는다: 원본은 이 자리에 연골주사 날 afterProc 약(연골주사약은 빠짐)을 넣었는데, 그 일반 약은 이제 일반 IA 줄에만 놓이거나
+        // [약 확인]으로 남는다(AC-3001.3). 일반 약이 없는 날은 원본과 같다(골든 cartilage-words). 연골주사 약을 처방하지 않은 날만 약 이름 자리를 채운다(AC-6609.2)
+        push(renderQuantityProcedure('IA', TPL.ara, { 좌우: sd, 회차: cha || '', 부위: regionName || MISS_SITE, 약제: cartilageDrug }, qmap), true)
         return
       }
       const units = splitProcs(t)
@@ -1258,9 +1312,9 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
   }
 
   /** 원본 compose(규칙 단계 CL은 늘 0이다: 상세 모드는 옮기지 않는다) */
-  function compose(m: MemoParts): string {
+  function compose(m: MemoParts, cartilageDrug = ''): string {
     if (m.rxOnly) return ''
-    if (m.sub) return [compose(m.sub[0]), compose(m.sub[1])].join('\n')
+    if (m.sub) return [compose(m.sub[0], cartilageDrug), compose(m.sub[1], cartilageDrug)].join('\n')
     const isCerv = m.rg === 'cervical'
     const vars: Record<string, unknown> = {
       좌우: isCerv ? '' : m.side || '',
@@ -1272,7 +1326,7 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
       진단: '',
       영상: '',
     }
-    const mains = procLines(m.procList, m.rxQty, m.icnbSide, m.ko).map(({ t: p, cartilage }) => ({
+    const mains = procLines(m.procList, m.rxQty, m.icnbSide, m.ko, cartilageDrug).map(({ t: p, cartilage }) => ({
       line: renderQuantityProcedure(p, tplForProc(p, m.rg, m.rxQty), { ...vars, 시술: p }, m.rxQty),
       codes: cartilage ? IA_TAGS : lineCodes(p, m.rxQty),
       cartilage,
@@ -1294,11 +1348,11 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
   }
 
   function memoText(v: MemoVisit, m: MemoParts): string {
-    return compose(iaKind(v) === 'ara' && usesOwnTemplate(v) ? withoutLegacyCartilage(m) : m)
+    return compose(iaKind(v) === 'ara' && usesOwnTemplate(v) ? withoutLegacyCartilage(m) : m, chartCartilageDrug(v))
   }
   /** fullText의 부위 메모: 원본 memoText + 연골주사약을 아직 안 정한 날은 차트의 연골주사 줄도 뺀다(AC-014.9·AC-014.10) */
   function memoTextForFull(v: MemoVisit, m: MemoParts): string {
-    return compose(iaKind(v) === 'ara' && (usesOwnTemplate(v) || cartilageHeld(v)) ? withoutLegacyCartilage(m) : m)
+    return compose(iaKind(v) === 'ara' && (usesOwnTemplate(v) || cartilageHeld(v)) ? withoutLegacyCartilage(m) : m, chartCartilageDrug(v))
   }
 
   /** 이번 글에서 자리에 넣은 약. 놓을 줄이 없던 약은 [약 확인]으로 돌린다(AC-3001.3) */
@@ -1321,7 +1375,7 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
     const tpl = TPL.iaEtc
     const plan = drugPlan(v)
     if (!tpl || !iaBound(plan).length || kneeSetSkips(v, false)) return []
-    const chart = (v.items || []).filter((i) => i.k === 'proc' && IA_LINE_WORD.test(i.raw || i.t) && !CARTILAGE_NAME.test(i.raw || i.t))
+    const chart = (v.items || []).filter((i) => i.k === 'proc' && IA_LINE_WORD.test(i.raw || i.t) && !cartilageNamed(i.raw || i.t))
     if (!chart.length) return []
     const ia = v.rx.find((x) => upper(x.code) === 'KK090')!
     const name = cm(ia.code)?.n || 'IA'
@@ -1408,7 +1462,7 @@ export function createMemoEngine(phrases: Phrases, tables: MemoTables) {
 
   // 2부위 규칙: 기준코드가 처방되고 그 밖의 시술이 함께 있으면 2부위다
   function twoSiteRules() {
-    return text(TPL.twoSiteRules ?? 'KK090 = LA274, LA272\nKK061\nKK062')
+    return text(TPL.twoSiteRules ?? DEFAULT_TWO_SITE_RULES)
       .split('\n')
       .map((line) => line.split('='))
       .map(([code, also = '']) => ({ code: code.trim().toUpperCase(), also: also.toUpperCase().split(/[\s,]+/).filter(Boolean) }))
