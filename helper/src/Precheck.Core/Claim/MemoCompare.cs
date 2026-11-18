@@ -16,20 +16,6 @@ public static class MemoCompare
         current != null && expected != null &&
         string.Equals(NormalizeNewlines(current), NormalizeNewlines(expected), StringComparison.Ordinal);
 
-    /// <summary>
-    /// 뒤에 붙인 메모인가(clinic-profile AC-6611.3): CRLF→LF 뒤 칸 글이 '줄바꿈 + 우리 메모'로 끝나고 그 앞이 공백뿐이 아니면 true.
-    /// 우리 메모가 공백뿐이거나 어느 쪽이든 null이면 false다. 웹 memoCompare.ts의 같은 규칙과 같은 사례 표(memo-compare-cases.test.json)로 본다.
-    /// </summary>
-    public static bool IsAppended(string? current, string? ours)
-    {
-        if (current == null || ours == null || string.IsNullOrWhiteSpace(ours)) return false;
-        var bit = NormalizeNewlines(current);
-        var tail = "\n" + NormalizeNewlines(ours);
-        return bit.Length > tail.Length
-            && bit.EndsWith(tail, StringComparison.Ordinal)
-            && !string.IsNullOrWhiteSpace(bit.Substring(0, bit.Length - tail.Length));
-    }
-
     /// <summary>뒤에 붙인 글(AC-6611.2): 앞 글의 끝 공백·줄바꿈을 떼고 줄바꿈 하나 + 우리 메모. 줄바꿈 모양은 바꾸지 않는다(쓸 때 ToWin으로 맞춘다).</summary>
     public static string Join(string existing, string ours)
     {

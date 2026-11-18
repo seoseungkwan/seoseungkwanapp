@@ -2,23 +2,27 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { BitMemos, ClaimMemosJson, MemoCompare, Visit, VisitMemo, VisitMemoView } from '@/types/precheck'
-import { bitMemoOf, compareMemo, dayMemoCounts, inputPlan, readBitMemos, replacesOf, visitMemos } from './memoCompare'
+import { bitMemoOf, compareMemo, dayMemoCounts, inputPlan, joinedMemo, readBitMemos, replacesOf, visitMemos } from './memoCompare'
 
 // 비트 메모 비교(REQ-016). 메모는 모두 지어낸 것이다.
 // 비교 사례는 도우미 시험(helper/tests/Precheck.Core.Tests/Claim/MemoCompare.test.cs)과 같은 파일을 읽는다: 두 쪽이 같은 답을 내야 두 번 입력을 막는다(AC-016.2·AC-035.3)
 
-type SharedCase = { name: string; ours: string; inBit: string | null; expected: MemoCompare; ac?: string }
+type Expected = { helper: MemoCompare; web: MemoCompare; webRecord?: MemoCompare; webOtherRecord?: MemoCompare }
+/** 줄마다 쪽별 기대값(AC-6611.3): helper = 도우미(정확히 같을 때만 같음), web = 붙임 기록 없음, webRecord = record가 붙임 기록, webOtherRecord = 앞 글이 다른 붙임 기록 */
+type SharedCase = { name: string; ours: string; inBit: string | null; expected: Expected; record?: string; ac?: string }
 const SHARED: SharedCase[] = JSON.parse(
   readFileSync(fileURLToPath(new URL('../../../helper/tests/Precheck.Core.Tests/Claim/memo-compare-cases.test.json', import.meta.url)), 'utf-8'),
 )
+/** 앞 글이 다른 붙임 기록: 어느 줄의 비트 앞 글과도 같지 않다 */
+const OTHER_RECORD = '◈다른 앞 글'
 
 describe('AC-016.2 compareMemo: 줄바꿈만 맞추고 글자 그대로', () => {
   it('AC-016.2: 공유 사례 파일이 네 갈래를 모두 담는다', () => {
-    expect(new Set(SHARED.map((c) => c.expected))).toEqual(new Set(['같음', '다름', '비트에 없음', '조회 못함']))
+    expect(new Set(SHARED.map((c) => c.expected.web))).toEqual(new Set(['같음', '다름', '비트에 없음', '조회 못함']))
   })
 
   it.each(SHARED.map((c) => [c.name, c] as const))('AC-016.2: 공유 사례 %s', (_, c) => {
-    expect(compareMemo(c.ours, c.inBit)).toBe(c.expected)
+    expect(compareMemo(c.ours, c.inBit)).toBe(c.expected.web)
   })
 
   it.each([
@@ -27,23 +31,56 @@ describe('AC-016.2 compareMemo: 줄바꿈만 맞추고 글자 그대로', () => 
   ])('AC-016.2: %s는 읽지 못한 것이고 빈칸으로 보지 않는다', (_, inBit) => {
     expect(compareMemo('합성 메모', inBit)).toBe('조회 못함')
     expect(compareMemo('', inBit)).toBe('조회 못함')
+    expect(compareMemo('합성 메모', inBit, '앞 글')).toBe('조회 못함')
   })
 })
 
-// 뒤에 붙인 메모(clinic-profile REQ-6611): 도우미 0.12.0은 '비트 메모 + 줄바꿈 + 우리 메모'로 넣는다. 다음 견주기에서 앞 글을 덮어쓰지 않게 같은 메모로 본다
-describe('AC-6611.3 compareMemo: 앞 글 + 줄바꿈 + 우리 메모로 끝나면 같음', () => {
+// 뒤에 붙인 메모(clinic-profile REQ-6611, 사용자 결정 '좁히기'): '앞 글 + 줄바꿈 + 우리 메모'는 그 진료의 붙임 기록(붙일 때 본 앞 글)이 있고 앞 글이 그것과 같을 때만 같음이다.
+// 기록이 없으면 다름이다: 처방이 바뀌어 우리 메모의 앞 줄이 빠졌을 때 비트에 남은 옛 줄을 알려 주려고
+describe('AC-6611.3 compareMemo: 붙임 기록이 있고 앞 글이 같을 때만 앞 글 + 줄바꿈 + 우리 메모가 같음', () => {
   const APPENDED = SHARED.filter((c) => c.ac === 'AC-6611.3')
+  const RECORDED = SHARED.filter((c) => c.record !== undefined)
 
-  it('AC-6611.3: 공유 사례 파일에 붙인 메모 사례가 같음·다름 둘 다 있다(도우미 MemoCompare.test.cs가 같은 줄을 본다)', () => {
-    expect(new Set(APPENDED.map((c) => c.expected))).toEqual(new Set(['같음', '다름']))
+  it('AC-6611.3: 공유 사례 표는 줄마다 쪽별 기대값을 둔다: 웹의 기록 없음은 도우미와 같고(둘 다 정확히 같을 때만), 붙인 줄은 기록 있음에서만 같음이 있다', () => {
+    for (const c of SHARED) expect(c.expected.web, c.name).toBe(c.expected.helper)
+    for (const c of RECORDED) {
+      expect(c.expected.webRecord, c.name).toBeDefined()
+      expect(c.expected.webOtherRecord, c.name).toBe(c.expected.web)
+    }
+    const joined = APPENDED.filter((c) => c.ours !== c.inBit)
+    expect(new Set(joined.map((c) => c.expected.webRecord))).toEqual(new Set(['같음', '다름']))
+    expect(joined.filter((c) => c.expected.web === '같음')).toEqual([])
   })
 
-  it.each(APPENDED.map((c) => [c.name, c] as const))('AC-6611.3: 공유 사례 %s', (_, c) => {
-    expect(compareMemo(c.ours, c.inBit)).toBe(c.expected)
+  it.each(RECORDED.map((c) => [c.name, c] as const))('AC-6611.3: 공유 사례 %s — 붙임 기록이 있으면', (_, c) => {
+    expect(compareMemo(c.ours, c.inBit, c.record)).toBe(c.expected.webRecord)
   })
 
-  it('AC-6611.3: 붙인 메모는 묶음에 들지 않고 이미 입력됨이다(replaces를 보내 앞 글을 덮어쓰지 않는다)', () => {
-    const plan = inputPlan([row({ key: 'v1', compare: compareMemo('우리 메모', '직원이 쓴 메모\r\n우리 메모'), inBit: '직원이 쓴 메모\r\n우리 메모' })])
+  it.each(SHARED.map((c) => [c.name, c] as const))('AC-6611.3: 공유 사례 %s — 앞 글이 다른 붙임 기록이면 기록이 없을 때와 같다', (_, c) => {
+    expect(compareMemo(c.ours, c.inBit, OTHER_RECORD)).toBe(c.expected.webOtherRecord ?? c.expected.web)
+  })
+
+  it('AC-6611.3: 붙임 기록이 없으면 비트 메모가 옛 줄 + 줄바꿈 + 우리 메모여도 다름이고, 지금 비트 글을 replaces로 묶음에 넣어 옛 줄을 알린다(처방이 바뀌어 우리 메모의 앞 줄이 빠진 때)', () => {
+    const inBit = '◈가상 옛 줄\n우리 메모'
+    expect(compareMemo('우리 메모', inBit)).toBe('다름')
+    const plan = inputPlan([row({ key: 'v1', compare: compareMemo('우리 메모', inBit), inBit })])
+    expect(plan.batch.map((r) => [r.key, r.replaces])).toEqual([['v1', inBit]])
+    expect(plan.done).toEqual([])
+  })
+
+  it('AC-6611.3: 붙임 기록이 있고 앞 글이 같으면 같음, 앞 글이 다르면 다름이다', () => {
+    expect(compareMemo('우리 메모', '◈가상 옛 줄\n우리 메모', '◈가상 옛 줄')).toBe('같음')
+    expect(compareMemo('우리 메모', '◈가상 옛 줄\n우리 메모', '◈가상 다른 줄')).toBe('다름')
+  })
+
+  it('AC-6611.3: 붙임 기록의 앞 글은 끝 공백·줄바꿈을 떼고 견준다(도우미 MemoCompare.Join이 그렇게 붙인다)', () => {
+    expect(compareMemo('우리 메모', '직원이 쓴 메모\r\n우리 메모', '직원이 쓴 메모 \r\n\t')).toBe('같음')
+    expect(joinedMemo('직원이 쓴 메모 \r\n\u3000', '우리 메모')).toBe('직원이 쓴 메모\n우리 메모')
+    expect(joinedMemo(' 앞 공백\r\n둘째 줄', '우리 메모')).toBe(' 앞 공백\r\n둘째 줄\n우리 메모')
+  })
+
+  it('AC-6611.3: 붙임 기록으로 같음인 메모는 묶음에 들지 않고 이미 입력됨이다(replaces를 보내 앞 글을 덮어쓰지 않는다)', () => {
+    const plan = inputPlan([row({ key: 'v1', compare: compareMemo('우리 메모', '직원이 쓴 메모\r\n우리 메모', '직원이 쓴 메모'), inBit: '직원이 쓴 메모\r\n우리 메모' })])
     expect(plan.batch).toEqual([])
     expect(plan.done).toEqual([{ key: 'v1', reason: '이미 입력됨' }])
   })
@@ -422,5 +459,26 @@ describe('AC-016.6·AC-016.7 visitMemos: 진료마다 비교 상태', () => {
     const rows = visitMemos([visit('v1', '1'), visit('v2', '2')], [view('v1', '고친 글'), view('v2')], { atLoad: null, latest: null, journal: none, entered })
     expect(rows.map((r) => r.compare)).toEqual(['다름', '조회 못함'])
     expect(rows[0].inBit).toBe('넣은 글')
+  })
+
+  it('AC-6611.3: appendedFrom(붙임 기록)이 있는 진료만 앞 글 + 줄바꿈 + 우리 메모가 같음이다. 기록이 없거나 앞 글이 다르면 다름이고 inBit은 지금 비트 글이다', () => {
+    const memos = memosOf([
+      { v: 'v1', p: '1', m: '직원이 쓴 메모\n우리 메모' },
+      { v: 'v2', p: '2', m: '◈가상 옛 줄\n우리 메모' },
+      { v: 'v3', p: '3', m: '◈가상 옛 줄\n우리 메모' },
+    ])
+    const appendedFrom = new Map([
+      ['v1', '직원이 쓴 메모'],
+      ['v3', '◈가상 다른 줄'],
+    ])
+    const rows = visitMemos([visit('v1', '1'), visit('v2', '2'), visit('v3', '3')], [view('v1'), view('v2'), view('v3')], { atLoad: memos, latest: memos, journal: none, appendedFrom })
+    expect(rows.map((r) => r.compare)).toEqual(['같음', '다름', '다름'])
+    expect(rows.map((r) => r.inBit)).toEqual(['직원이 쓴 메모\n우리 메모', '◈가상 옛 줄\n우리 메모', '◈가상 옛 줄\n우리 메모'])
+    const plan = inputPlan(rows)
+    expect(plan.done).toEqual([{ key: 'v1', reason: '이미 입력됨' }])
+    expect(plan.batch.map((r) => [r.key, r.replaces])).toEqual([
+      ['v2', '◈가상 옛 줄\n우리 메모'],
+      ['v3', '◈가상 옛 줄\n우리 메모'],
+    ])
   })
 })

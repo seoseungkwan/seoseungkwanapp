@@ -434,6 +434,15 @@ public class InputWiringMatcherTests
         Assert.Equal(expected, new MemoMatcher().Compare(ours, inBit));
     }
 
+    [Theory(DisplayName = "AC-6611.3 쓰기 전 비교기는 붙임 꼬리로 같음을 치지 않는다: 앞 글 + 줄바꿈 + 우리 메모(도우미가 붙인 글 포함)는 Different")]
+    [InlineData("우리 글", "직원이 쓴 메모\n우리 글")]
+    [InlineData("우리 글", "직원이 쓴 메모\r\n우리 글")]
+    [InlineData("우리\n글", "◈가상 옛 줄\r\n우리\r\n글")]
+    public void AppendedIsDifferent(string ours, string inBit)
+    {
+        Assert.Equal(MemoMatch.Different, new MemoMatcher().Compare(ours, inBit));
+    }
+
     [Fact(DisplayName = "AC-035.3 진짜 비교기로 끝까지: 칸이 윈도우 줄바꿈만 다르면 쓰지 않고 완료(이미 입력됨)")]
     public void SameThroughHandler()
     {

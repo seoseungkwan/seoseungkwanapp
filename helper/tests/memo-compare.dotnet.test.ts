@@ -1,6 +1,6 @@
 // 비트 메모 비교의 도우미 쪽(TASK-16, REQ-016)의 C# 시험을 감싼다.
 // - Precheck.Core.Tests.Claim.MemoRowsTests: claim.memos(원본 RowsSql, {v, p, d, m} 줄, 줄 300,000·메모 4,000자 → truncated, 실패하면 error만)
-// - Precheck.Core.Tests.Claim.MemoCompareTests: 원본 MemoApproval.Matches(CRLF→LF만 맞추고 글자 그대로)
+// - Precheck.Core.Tests.Claim.MemoCompareTests: 원본 MemoApproval.Matches(CRLF→LF만 맞추고 글자 그대로). 붙인 메모도 정확히 같을 때만 같음(AC-6611.3 '좁히기')
 // 윈도우 전용 시험은 없다. 웹 쪽(compareMemo·inputPlan·dayMemoCounts·E-CLAIM-PARTIAL)은 src/lib/precheck/memoCompare.test.ts·src/workers/precheck/jobs.test.ts가 본다.
 import { beforeAll, describe, expect, it } from 'vitest'
 import { runDotnet } from './runDotnet'
@@ -38,7 +38,7 @@ describe('REQ-016 비트 메모 비교, 도우미 쪽 (C# Precheck.Core.Tests.Cl
 })
 
 describe('REQ-6611 뒤에 붙인 메모 견주기, 도우미 쪽 (spec clinic-profile, C# Precheck.Core.Tests.Claim)', () => {
-  it('AC-6611.3 MemoMatcher·MemoCompare: 비트 메모가 앞 글(공백뿐이 아님) + 줄바꿈 + 우리 메모로 끝나면 같음, 웹 compareMemo와 같은 공유 사례 표로 같은 답', () => {
+  it('AC-6611.3 MemoMatcher·MemoCompare: 도우미는 붙임 기록을 모르므로 정확히 같을 때만 같음(앞 글 + 줄바꿈 + 우리 메모도 다름), 웹 compareMemo와 같은 공유 사례 표의 도우미 기대값, IsAppended 없음', () => {
     expectAc('AC-6611.3')
   })
 })

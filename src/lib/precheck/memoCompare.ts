@@ -3,7 +3,7 @@ import type { Outcome } from '@/types/parse'
 import type { BitMemos, DayMemoCount, InputPlan, MemoCompare, Visit, VisitMemo, VisitMemoView } from '@/types/precheck'
 
 // 비트 메모 비교(REQ-016, 두 번 입력 막기) [환자 자료 구역]. 순수 함수만 있다. 부르는 곳은 Worker(jobs.ts)다.
-// 비교는 도우미의 쓰기 직전 비교(C# MemoMatcher + MemoCompare, AC-035.3)와 같은 답을 내야 한다.
+// 비교는 도우미의 쓰기 직전 비교(C# MemoMatcher + MemoCompare, AC-035.3)와 같은 답을 내야 한다. 다른 것은 붙임 기록이 있는 진료뿐이다(AC-6611.3: 웹만 같음, 웹이 보내지 않는다).
 // 사례는 두 쪽 시험이 같은 파일(helper/tests/Precheck.Core.Tests/Claim/memo-compare-cases.test.json)로 본다
 
 const PARTIAL = { ok: false, code: 'E-CLAIM-PARTIAL' } as const
@@ -20,26 +20,30 @@ export const isBlankMemo = (text: string): boolean => BLANK.test(text)
 /** 원본 MemoApproval.Matches: 윈도우 줄바꿈 CRLF만 LF로 맞춘다. 홀로 있는 CR·앞뒤 공백·유니코드 조합은 그대로다 */
 const lf = (text: string) => text.replaceAll('\r\n', '\n')
 
-/**
- * 뒤에 붙인 메모인가(AC-6611.3): 줄바꿈을 맞춘 비트 메모가 '줄바꿈 + 우리 메모'로 끝나고 그 앞이 공백뿐이 아니다. 우리 메모가 공백뿐이면 아니다.
- * 도우미 0.12.0이 '비트 메모 + 줄바꿈 + 우리 메모'로 넣은 글이다. C# MemoCompare.IsAppended와 같은 규칙이다
- */
-function isAppended(bit: string, ours: string): boolean {
-  if (isBlankMemo(ours)) return false
-  const tail = `\n${ours}`
-  return bit.length > tail.length && bit.endsWith(tail) && !isBlankMemo(bit.slice(0, bit.length - tail.length))
+/** 끝의 공백·줄바꿈을 뗀 글. C# string.TrimEnd()(char.IsWhiteSpace)와 같은 글자만 뗀다(isBlankMemo와 같은 글자) */
+export function trimMemoEnd(text: string): string {
+  let end = text.length
+  while (end > 0 && isBlankMemo(text[end - 1])) end--
+  return text.slice(0, end)
 }
+
+/** 도우미가 뒤에 붙여 칸에 넣은 글(helper MemoCompare.Join, AC-6611.2): 앞 글의 끝 공백을 떼고 줄바꿈 하나 + 우리 메모. 줄바꿈 모양은 바꾸지 않는다 */
+export const joinedMemo = (before: string, ours: string): string => `${trimMemoEnd(before)}\n${ours}`
 
 /**
  * 우리 메모와 비트 메모 비교(AC-016.2). inBit이 null·undefined면 읽지 못한 것이고 빈칸으로 보지 않는다(C#의 null과 같다). 읽었는데 없으면 빈 글자를 넘긴다.
- * 비트 메모가 앞 글 + 줄바꿈 + 우리 메모(뒤에 붙인 메모)여도 같음이다: 다음 입력에서 앞 글을 덮어쓰지 않는다(AC-6611.3)
+ * 비트 메모가 앞 글 + 줄바꿈 + 우리 메모(뒤에 붙인 메모)인 것은 그 진료의 붙임 기록(appendedFrom: [뒤에 붙이기]로 넣을 때 본 앞 글)이 있고
+ * 비트 글이 그 앞 글로 붙인 글(joinedMemo)과 같을 때만 같음이다(AC-6611.3, 사용자 결정 '좁히기'). 앞 글이나 우리 메모가 공백뿐이면 붙인 글로 보지 않는다.
+ * 기록이 없으면 다름이다: 처방이 바뀌어 우리 메모의 앞 줄이 빠졌을 때 비트에 남은 옛 줄을 알려 준다. 도우미 MemoMatcher는 기록을 모르고 정확히 같을 때만 같음이다
  */
-export function compareMemo(ours: string, inBit: string | null | undefined): MemoCompare {
+export function compareMemo(ours: string, inBit: string | null | undefined, appendedFrom?: string): MemoCompare {
   if (inBit === null || inBit === undefined) return '조회 못함'
   if (isBlankMemo(inBit)) return '비트에 없음'
   const bit = lf(inBit)
   const mine = lf(ours)
-  return bit === mine || isAppended(bit, mine) ? '같음' : '다름'
+  if (bit === mine) return '같음'
+  const appended = appendedFrom !== undefined && !isBlankMemo(appendedFrom) && !isBlankMemo(mine) && bit === lf(joinedMemo(appendedFrom, mine))
+  return appended ? '같음' : '다름'
 }
 
 type Rec = Record<string, unknown>
@@ -91,6 +95,8 @@ export type MemoSource = {
    * 도우미가 저장 뒤 다시 읽어 확인한 글이고, 그새 바뀌었으면 replaces가 칸 글과 달라 도우미가 바꾸지 않는다(AC-037.1). 4,000자를 넘으면 읽지 못한 것이다(bitMemoOf와 같은 한도)
    */
   entered?: ReadonlyMap<string, string>
+  /** 붙임 기록(AC-6611.3): 내원번호 → [뒤에 붙이기]로 넣을 때 본 앞 글(끝 공백 뺌). 이 진료만 앞 글 + 줄바꿈 + 우리 메모가 같음이다 */
+  appendedFrom?: ReadonlyMap<string, string>
 }
 
 /** 그 진료를 견줄 비트 글. undefined면 읽지 못한 것이다(AC-016.6·AC-016.7·AC-2202.3) */
@@ -111,7 +117,7 @@ export function visitMemos(visits: readonly Visit[], views: readonly VisitMemoVi
     const view = viewOf.get(visit.key)
     if (!view) continue
     const inBit = inBitOf(visit, source)
-    const compare = compareMemo(view.text, inBit)
+    const compare = compareMemo(view.text, inBit, source.appendedFrom?.get(visit.key))
     const row: VisitMemo = { key: visit.key, date: visit.date, text: view.text, hasMemo: view.hasMemo, unfinished: view.unfinished, compare }
     if (inBit !== undefined && (compare === '같음' || compare === '다름')) row.inBit = inBit
     const approved = source.approved?.get(visit.key)

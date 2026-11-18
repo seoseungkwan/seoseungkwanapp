@@ -4,7 +4,7 @@ import { drugRoles, type DrugRole } from '@/lib/precheck/drugRoles'
 import { dxContext, visitDxView } from '@/lib/precheck/dx/recommend'
 import { inputTargets, isPlainExclusion, isWriteStuck, NOT_ACCEPTED, NOT_DONE, reasonKind } from '@/lib/precheck/inputTargets'
 import { createMemoEngine, unfinished, validatePhrases, type PhraseCheck, type Phrases } from '@/lib/precheck/memo'
-import { bitMemoOf, compareMemo, dayMemoCounts, inputPlan, isBlankMemo, readBitMemos, replacesOf, visitMemos } from '@/lib/precheck/memoCompare'
+import { bitMemoOf, compareMemo, dayMemoCounts, inputPlan, isBlankMemo, joinedMemo, readBitMemos, replacesOf, trimMemoEnd, visitMemos } from '@/lib/precheck/memoCompare'
 import { runRules } from '@/lib/precheck/rules/engine'
 import { PrecheckError, shapeClaimMonth } from '@/lib/precheck/shape'
 import type { DateRange } from '@/types/dates'
@@ -56,12 +56,21 @@ const allStrings = (x: Rec) => Object.values(x).every((value) => typeof value ==
 /** 달 파일 하나의 칸. store.save가 칸 전체를 바꾸므로 받은 그대로(이번 기간 밖 진료 것까지) 들고 있다가 함께 보낸다 */
 type MonthWork = { drafts: Map<string, string>; done: Map<string, string | boolean> }
 /**
- * 받아 둔 작업 저장: 고친·완료한 메모(내원번호 → 글) · 입력 기록(내원번호 → 마지막 상태) · 완료 표시(글 없는 표시 포함, AC-018.3) · 달 파일별 칸 · 입력 기록의 달.
+ * 붙임 기록(clinic-profile AC-6611.3)의 done 칸 키 머리: 키는 머리 + 내원번호, 값은 붙일 때 본 앞 글(끝 공백 뺌)이다. 그 달 완료 표시와 함께 도우미가 암호화해 그 PC에 둔다.
+ * 내원번호는 앞뒤 공백을 뗀 글이라(shape.ts) 공백으로 시작하는 이 키와 겹치지 않는다. 값은 글자라 옛 판 웹도 거절하지 않는다(done 값은 글자·참거짓):
+ * 옛 판은 이 키를 없는 진료의 완료 표시로 읽고 지나가며, 달 칸을 받은 그대로 다시 보내 기록이 남는다
+ */
+const APPEND_RECORD = ' appendedFrom:'
+const recordKey = (visitKey: string) => APPEND_RECORD + visitKey
+/** 붙이기가 끝난 줄의 이유(helper InputRunner.Appended) */
+const APPENDED_REASON = '붙임(기존 메모 뒤에)'
+/**
+ * 받아 둔 작업 저장: 고친·완료한 메모(내원번호 → 글) · 입력 기록(내원번호 → 마지막 상태) · 완료 표시(글 없는 표시 포함, AC-018.3) · 달 파일별 칸 · 입력 기록의 달 · 붙임 기록(내원번호 → 앞 글, AC-6611.3).
  * saved는 메모를 얼리는 글이다: 글 없는 완료 표시는 얼리지 않는다(AC-014.11). journal은 도우미가 쓰고 Worker에는 사본이다(design.md 19-6).
  * released는 done 값이 false인 사람, 곧 완료한 뒤 고쳐 완료를 푼 사람이다(AC-2202.1·AC-2202.5). 웹은 journal을 지울 수 없으므로 이것이 journal의 done보다 앞선다
  */
-type StoredWork = { saved: Map<string, string>; journal: Map<string, string>; done: Set<string>; released: Set<string>; months: Map<string, MonthWork>; journalMonths: Map<string, string> }
-const noWork = (): StoredWork => ({ saved: new Map(), journal: new Map(), done: new Set(), released: new Set(), months: new Map(), journalMonths: new Map() })
+type StoredWork = { saved: Map<string, string>; journal: Map<string, string>; done: Set<string>; released: Set<string>; months: Map<string, MonthWork>; journalMonths: Map<string, string>; appendedFrom: Map<string, string> }
+const noWork = (): StoredWork => ({ saved: new Map(), journal: new Map(), done: new Set(), released: new Set(), months: new Map(), journalMonths: new Map(), appendedFrom: new Map() })
 
 const isStrings = (x: unknown) => Array.isArray(x) && x.every((value) => typeof value === 'string')
 
@@ -98,6 +107,11 @@ export function loadStore(text: string): Outcome<{ work: StoredWork | null; sett
     if (!isRecord(drafts) || !isRecord(done) || !isRecord(journal) || !allStrings(drafts) || !allStrings(journal)) return PARTIAL
     if (!Object.values(done).every((value) => typeof value === 'string' || typeof value === 'boolean')) return PARTIAL
     for (const [key, value] of Object.entries(done)) {
+      // 붙임 기록은 완료 표시·고친 메모가 아니다(AC-6611.3). 달 칸에는 그대로 두어 다시 보낼 때 남는다. 글자가 아닌 값은 기록으로 보지 않는다
+      if (key.startsWith(APPEND_RECORD)) {
+        if (typeof value === 'string') work.appendedFrom.set(key.slice(APPEND_RECORD.length), value)
+        continue
+      }
       // false는 완료 표시가 아니다: 완료한 뒤 고쳐 푼 사람이다(AC-2202.5). 달 칸에는 그대로 두어 다시 보낼 때 남는다
       if (value === false) work.released.add(key)
       else work.done.add(key)
@@ -281,12 +295,6 @@ type InputItem = { visitKey: string; chart: string; name: string; date: string; 
 
 /** 원본 MemoApproval.Matches처럼 윈도우 줄바꿈만 맞춰 같은 글인가 */
 const sameText = (a: string, b: string) => a.replaceAll('\r\n', '\n') === b.replaceAll('\r\n', '\n')
-/** 도우미가 뒤에 붙여 칸에 넣은 글(helper MemoCompare.Join): 앞 글 끝의 공백(C# char.IsWhiteSpace, isBlankMemo와 같은 글자)을 지우고 줄바꿈 + 우리 메모 */
-function joinedMemo(before: string, ours: string): string {
-  let end = before.length
-  while (end > 0 && isBlankMemo(before[end - 1])) end--
-  return `${before.slice(0, end)}\n${ours}`
-}
 type EndLine = { visitKey: string; result: string; reason: string; previousMemo?: string }
 type InputEnd = { status: 'finished' | 'cancelled' | 'stopped'; code: string | null; reason: string | null; fields: string[]; results: EndLine[]; unconfirmed?: { visitKey: string; date: string }[]; noAsk: boolean }
 
@@ -527,8 +535,35 @@ export function createPrecheckJobs(deps: {
     const views = currentViews()
     const visible = memoContext?.visible
     const inside = visible ? (current?.visits ?? []).filter((visit) => inRange(visit.date, visible)) : []
-    const rows = visitMemos(inside, views.memos, { atLoad: memosAtLoad, latest: bitMemos, journal: work.journal, approved, declined, entered: enteredReleased() }).map(withAppend)
+    const rows = visitMemos(inside, views.memos, { atLoad: memosAtLoad, latest: bitMemos, journal: work.journal, approved, declined, entered: enteredReleased(), appendedFrom: work.appendedFrom }).map(withAppend)
+    dropStaleRecords(rows)
     return { views, rows, visitOf: new Map(inside.map((visit) => [visit.key, visit])) }
+  }
+
+  /**
+   * 붙임 기록을 지운다(AC-6611.3). 기록이 없으면 아무것도 하지 않는다. 기록은 그 진료의 달 칸에 있지만 어느 달이든 찾아 지우고 저장할 달로 적는다.
+   * save가 거짓이면 바로 보내지 않는다(뒤에 saveDirtyMonths가 보내는 곳)
+   */
+  function dropRecord(key: string, save = true) {
+    if (!work.appendedFrom.delete(key)) return
+    for (const [month, file] of work.months) {
+      if (!file.done.delete(recordKey(key))) continue
+      markMonth(month)
+      if (save) saveMonth(month)
+    }
+  }
+
+  /**
+   * 비트 글이 붙임 기록의 합친 글(앞 글 + 줄바꿈 + 우리 메모)이 아니게 된 사람의 기록을 지운다(AC-6611.3): 글이 돌아와도 되살아나지 않는다.
+   * 읽지 못한 사람과 이 화면에서 입력을 마친 뒤 비트 메모를 다시 읽지 않은 사람(afterEntry)은 보지 않는다: 받은 사본은 입력 전 글이다
+   */
+  function dropStaleRecords(rows: readonly VisitMemo[]) {
+    for (const row of rows) {
+      const before = work.appendedFrom.get(row.key)
+      if (before === undefined || row.compare === '조회 못함' || afterEntry.has(row.key)) continue
+      if (row.inBit !== undefined && sameText(row.inBit, joinedMemo(before, row.text))) continue
+      dropRecord(row.key)
+    }
   }
 
   /**
@@ -837,11 +872,13 @@ export function createPrecheckJobs(deps: {
       const byHand = item?.checkedByHand === true
       const notDone = line.result === '확인 필요' && line.reason.startsWith(NOT_DONE)
       if (line.result === '완료') {
+        // 붙여 끝난 사람의 본 글: 묶음의 appends, 쓰다 멈춘 뒤 되살린 사람은(appends를 싣지 않는다) 고를 때 본 글이다(AC-6611.2·AC-6611.3)
+        const before = line.reason === APPENDED_REASON ? (item?.appends ?? appended.get(key)) : undefined
         approved.delete(key)
         appended.delete(key)
         held.delete(key)
         // 붙인 사람의 칸 글은 '본 글 + 줄바꿈 + 우리 메모'다: 고쳐 완료를 풀면 그 글과 견준다(AC-2202.3·AC-6611.2)
-        afterEntry.set(key, item ? (item.appends === undefined ? item.memo : joinedMemo(item.appends, item.memo)) : null)
+        afterEntry.set(key, item ? (before === undefined ? item.memo : joinedMemo(before, item.memo)) : null)
         resolved.add(key)
         work.done.add(key)
         work.released.delete(key) // 다시 넣었으니 다시 완료다(AC-2202.6)
@@ -851,6 +888,13 @@ export function createPrecheckJobs(deps: {
         if (item && visit) {
           work.saved.set(key, work.saved.get(key) ?? item.memo)
           work.months.get(visit.month)?.done.set(key, item.memo)
+          // 붙임 기록(AC-6611.3): 본 앞 글(끝 공백 뺌)을 완료 표시와 같은 달 칸에 남긴다. 붙이지 않고 끝났으면 칸 글이 바뀌었으니 옛 기록을 지운다
+          if (before === undefined) dropRecord(key, false)
+          else {
+            const from = trimMemoEnd(before)
+            work.appendedFrom.set(key, from)
+            work.months.get(visit.month)?.done.set(recordKey(key), from)
+          }
           markMonth(visit.month)
         }
         if (!quiet) work.journal.set(key, 'done')
@@ -1209,6 +1253,8 @@ export function createPrecheckJobs(deps: {
         markMonth(visit.month)
         saveMonth(visit.month)
       } else if (m.type === 'memoApprove' && typeof m.visitKey === 'string') {
+        // [이 메모로 바꾸기]·[바꾸지 않기]는 붙임 기록을 지운다(AC-6611.3). 줄을 만들기 전에 지워 그 뒤의 비교(다름)로 고른 것을 친다
+        if (m.approved !== 'append') dropRecord(m.visitKey)
         // 메모를 만들지 않은 병원은 줄이 없다
         const row = memoRows().rows.find((item) => item.key === m.visitKey)
         if (m.approved === 'append') {
@@ -1272,7 +1318,7 @@ export function createPrecheckJobs(deps: {
       const views: MemoViews = current ? memoViews(current, tables, { phrases, saved: work.saved }) : { memoBlocked: null, memos: [] }
       const { from, to } = options.visible
       const inside = (current?.visits ?? []).filter((visit) => compareYmd(visit.date, from) >= 0 && compareYmd(visit.date, to) <= 0)
-      const rows = visitMemos(inside, views.memos, { atLoad: memosAtLoad, latest: bitMemos, journal: work.journal, approved: options.approved, declined: options.declined })
+      const rows = visitMemos(inside, views.memos, { atLoad: memosAtLoad, latest: bitMemos, journal: work.journal, approved: options.approved, declined: options.declined, appendedFrom: work.appendedFrom })
       return { memoBlocked: views.memoBlocked, rows, plan: inputPlan(rows), days: dayMemoCounts(rows) }
     },
   }

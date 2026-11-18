@@ -400,7 +400,8 @@ public sealed class InputRunner
         var match = matcher.Compare(item.Memo, existing);
         if (person.EarlierWrite)
         {
-            if (match == MemoMatch.Same) return FinishEarlierWrite(item, existing ?? throw Stop(InputErrors.Stopped, MemoUnreadable));
+            // 비교기는 정확히 같을 때만 같음이다(AC-6611.3). 붙이다 멈춘 사람은 칸 글이 '마지막 원본 + 줄바꿈 + 우리 메모'일 때만 되살린다(자기 입력 기록의 앞 글, AC-6611.2)
+            if (match == MemoMatch.Same || (match == MemoMatch.Different && IsOwnAppend(item, existing))) return FinishEarlierWrite(item, existing ?? throw Stop(InputErrors.Stopped, MemoUnreadable));
             if (match == MemoMatch.Different) throw StopAfterWrite(item, CheckMemoBox);
         }
         switch (match)
@@ -512,6 +513,13 @@ public sealed class InputRunner
         if (person.Replacing) return new InputResult(item.VisitKey, InputResults.Done, ReplacedOther, existing);
         // 앞 글은 칸에 그대로 남았다: previousMemo(덮어쓴 메모)를 싣지 않는다
         return person.Appending ? new InputResult(item.VisitKey, InputResults.Done, Appended) : saved;
+    }
+
+    /// <summary>칸 글이 이 진료의 마지막 원본(입력 기록이 남긴 쓰기 전 글)으로 붙인 글인가(AC-6611.2). 원본이 없거나 칸을 못 읽었으면 아니다.</summary>
+    private bool IsOwnAppend(InputItem item, string? existing)
+    {
+        var original = journal.LastOriginal(item);
+        return original != null && MemoCompare.Matches(existing, MemoCompare.Join(original, item.Memo));
     }
 
     /// <summary>
