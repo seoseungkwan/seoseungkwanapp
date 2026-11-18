@@ -5,15 +5,21 @@ import { revenueCells, revenueTabs, roughInfo, type RevenueInput, type RevenueMo
 import { TOC_LINKS } from '@/components/stats/StatsToc'
 import { treatmentRows } from '@/components/stats/treatmentView'
 import type { StatsRxGroupsView } from '@/components/stats/useStatsRxGroups'
+import type { WideDays } from '@/components/stats/useWideDays'
 import { sunapSpan, workedDays } from '@/components/stats/sunapView'
 import { summaryCells, summaryDesc, type StatsInput, type StatsRange } from '@/components/stats/view'
+import { buildAlerts } from '@/lib/analytics/alerts'
 import { addDays } from '@/lib/analytics/dates'
+import type { CalCountRow } from '@/types/calendar'
 import type { RevenueCodeTotal, RevenueMonthCode, SavedRevenueDay } from '@/types/revenue'
 import type { RxGroup } from '@/types/rxGroups'
 import type { RxSplitView } from '@/types/stats'
+import { AlertsSection } from './AlertsSection'
 import { CalendarSection, type StatsCalendarShown } from './CalendarSection'
 import { DoctorsSection } from './DoctorsSection'
 import { DropoffSection } from './DropoffSection'
+import { GoalSection, type StatsGoalsShown } from './GoalSection'
+import { HolidaySection } from './HolidaySection'
 import { PatientMixSection, type BitSectionsShown } from './PatientMixSection'
 import { PatientTrendSection } from './PatientTrendSection'
 import { PeriodSummary } from './PeriodSummary'
@@ -25,13 +31,15 @@ import { RxPickerSection } from './RxPickerSection'
 import { RxSection } from './RxSection'
 import { RxSplitSection } from './RxSplitSection'
 import { SunapSection, type StatsSunapShown } from './SunapSection'
-import { cardRangeText, SectionAnchor, StatsCard, todayOf } from './parts'
+import { cardRangeText, NoAnchor, SectionAnchor, StatsCard, todayOf } from './parts'
 import { TreatmentTrendSection } from './TreatmentTrendSection'
 import { VisitHoursSection } from './VisitHoursSection'
 import { WeekdaySection } from './WeekdaySection'
 
 // 통계 틀 (first90 REQ-4411 AC-4411.1·AC-4411.3, design.md 5-5, 시안 docs/mockups/first90/redesign.html): 요약 자리 → 큰 카드 다섯을 한 줄씩 쌓는다(사이 16px).
-//   요약 자리(stats-summary): 환자 요약 카드(이 카드가 id를 갖는다) + 바로 뒤 매출 요약 카드(revenue를 받을 때만, first90 AC-4408.2)
+//   요약 자리(stats-summary): 환자 요약 카드(맨 위 '평소와 다른 것' 카드가 없으면 이 카드가 id를 갖는다) + 바로 뒤 매출 요약 카드(revenue를 받을 때만, first90 AC-4408.2).
+//     wide를 받으면 맨 위에 '평소와 다른 것' 카드(stats-insights AC-6101.5, 견줄 날이 하루도 없으면 없다 — 있으면 이 카드가 요약 자리 id를 갖는다: 바로가기가 맨 위로 간다),
+//     goals도 받으면 매출 요약 뒤에 '이번 달 목표' 카드(AC-6102.4·AC-6102.5). 둘 다 오늘 기준이고 기간 고르기와 상관없다(새 바로가기 칸은 없다, design.md '원칙')
 //   환자(stats-patients): 환자 수 추이 · 신환 재방문율 · 환자 구성(비트)
 //   매출(stats-revenue): 매출 칸(탭 넷). revenue를 받을 때만(stats-revenue AC-4107.1, 통계 화면은 늘 준다).
 //     bit를 받으면 다섯째 탭 '신환 1명당'(stats-insights AC-6106.4, 비트 칸이라 bit를 줄 때만)이 더해진다
@@ -39,7 +47,8 @@ import { WeekdaySection } from './WeekdaySection'
 //   예약(stats-calendar, spec clinic-calendar AC-5907.3): 예약 탭 예약의 최근 12달(통계 기간과 상관없음). calendar를 받을 때만(통계 화면은 늘 준다)
 //   처방(stats-rx): 처방 칸 + 탭 셋(stats-pc-ux AC-4003.1). 탭 안 칸은 지금 칸 그대로(props도 그대로)이고 Section 탭 패널 모드로 그려진다.
 //     bit를 받으면 넷째 탭 '몇 번까지 받나'(stats-insights AC-6103.2, 비트 칸이라 bit를 줄 때만)가 더해진다
-//   진료 운영(stats-ops): 요일별 · 시간대별(비트)은 1200px 이상 한 줄 30% · 70%, 좁으면 쌓는다. 원장님별(비트)은 그 아래 전체 폭
+//   진료 운영(stats-ops): 요일별 · 시간대별(비트)은 1200px 이상 한 줄 30% · 70%, 좁으면 쌓는다. 원장님별(비트)은 그 아래 전체 폭.
+//     wide를 받으면 맨 끝에 '휴일에 따라'(stats-insights AC-6107.3, 저장된 날이 없으면 없다)
 //   보고(stats-report): 원장님 보고 문장 칸
 // 카드 안 칸은 h3 작은 칸이고 칸 사이는 얇은 선뿐이다(parts.tsx StatsCard). 비트 칸은 bit를 받을 때만 그린다(stats-bit-sections AC-2706.1, 통계 화면은 늘 준다).
 // 고른 기간(stats-period)이면 보고 칸에 [고른 기간 보고](저장된 숫자로 만든 글)를 넣고, 처방별 신환·재진 설명 끝에 기간 이름을 붙인다.
@@ -64,6 +73,9 @@ const RX = '처방'
 const RX_DESC = '만들어 둔 묶음마다 건수와 총환자 대비 · 같은 날 같은 환자는 1건'
 const OPS = '진료 운영'
 const OPS_DESC = '언제 붐비는지 · 원장님마다'
+// 요약 자리 카드 둘(stats-insights). 칸(AlertsSection·GoalSection) 제목과 같아 칸 머리 없이 카드 h2 하나다(parts.tsx 같은 제목 칸 규칙)
+const ALERTS = '평소와 다른 것'
+const GOAL = '이번 달 목표'
 const REPORT = '원장님 보고 문장'
 const REPORT_DESC = '비트 PC에서 불러온 숫자로 만든 보고 글 · 환자 이름은 쓰지 않아요'
 const STACK = `flex flex-col gap-4 ${FIRST_GAP}`
@@ -108,12 +120,21 @@ type Props = {
   revenue?: StatsRevenueShown // 매출 카드·매출 요약 카드. 주지 않으면 둘 다 없다
   sunap?: StatsSunapShown // 예약·전환 카드(마감한 날·수납일지 묶음 상태). 주지 않으면 없다. Block 전환 수는 bit 답에 있다
   calendar?: StatsCalendarShown // 예약 카드(최근 12달 예약 줄·설정, useStatsCalendar). 주지 않으면 없다
+  wide?: WideDays // 넓은 하루 읽기(오늘 앞 12달, useWideDays). 주지 않으면 '평소와 다른 것'·'휴일에 따라'·'이번 달 목표'가 없다
+  goals?: StatsGoalsShown // 이번 달 목표·하루 매출(useStatsGoals). 내원·신환 하루 숫자는 wide에서 온다. 주지 않으면 '이번 달 목표'가 없다
 }
 
 // 마지막 끝난 날: 통계 화면은 매출 값에 오늘 진료 끝을 반영한 날을 준다. 매출을 주지 않으면 어제다
 const lastDayOf = (range: StatsRange, revenue: StatsRevenueShown | undefined) => revenue?.lastDay ?? addDays(todayOf(range), -1)
 
-export function StatsSections({ input, saved, split, report, hospitalName, groups, revision = 0, bit, revenue, sunap, calendar }: Props) {
+// '평소와 다른 것' 카드를 그리는지: 읽기 실패(오류 카드) · 견줄 날이나 알림이 있음. 읽는 중·견줄 날이 하루도 없으면 칸이 비므로 카드도 없다.
+// 묶음 지표는 내원을 견줄 수 있는 날에만 견줄 수 있어 묶음 없이 물어도 AlertsSection과 답(그리는지)이 같다
+function alertsShown(today: string, wide: Pick<WideDays, 'state' | 'days'>, cal: readonly CalCountRow[] | null): boolean {
+  if (wide.state === 'failed') return true
+  return wide.state === 'ready' && buildAlerts({ today, days: wide.days, cal }) !== null
+}
+
+export function StatsSections({ input, saved, split, report, hospitalName, groups, revision = 0, bit, revenue, sunap, calendar, wide, goals }: Props) {
   const pick = useMemo(() => pickReport(input, groups.groups), [input, groups.groups])
   // 예약·전환의 '진료한 날': 마감한 날을 읽는 기간과 같은 기간의 저장된 날 숫자에서 센다
   const worked = useMemo(() => workedDays(input.days, sunapSpan(input.range)), [input.days, input.range])
@@ -144,12 +165,39 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
   const shownMode: RevenueMode = rough !== null && rough.roughDays > 0 ? mode : 'out'
   const summaryRevenue = useMemo(() => (revenueIn === null ? undefined : revenueCells(revenueIn, shownMode)), [revenueIn, shownMode])
   const tabs = useMemo(() => (revenueIn === null || typeof revenueIn === 'string' ? revenueIn : revenueTabs(revenueIn)), [revenueIn])
+  // 알림·휴일·목표(stats-insights)는 오늘 기준이다. 예약 알림은 예약 칸이 읽은 수 세기 줄(읽는 중·실패면 없이 센다)
+  const today = todayOf(input.range)
+  const calRows = calendar?.rows
+  const cal = calRows === undefined || typeof calRows === 'string' ? null : calRows
+  // 넓은 하루 값은 그릴 때마다 새 객체라 상태·줄로 묻는다
+  const wideState = wide?.state
+  const wideDays = wide?.days
+  const alertsFirst = useMemo(
+    () => wideState !== undefined && wideDays !== undefined && alertsShown(today, { state: wideState, days: wideDays }, cal),
+    [today, wideState, wideDays, cal],
+  )
+  const summary = <PeriodSummary input={input} saved={saved} />
   return (
     <div className={STACK}>
-      <SectionAnchor id={SUMMARY_ID!}>
-        <PeriodSummary input={input} saved={saved} />
-      </SectionAnchor>
+      {wide !== undefined && alertsFirst && (
+        <StatsCard id={SUMMARY_ID} title={ALERTS}>
+          <AlertsSection today={today} wide={wide} groups={groups.groups} cal={cal} />
+        </StatsCard>
+      )}
+      {alertsFirst ? <NoAnchor>{summary}</NoAnchor> : <SectionAnchor id={SUMMARY_ID!}>{summary}</SectionAnchor>}
       {summaryRevenue && <RevenueSummary cells={summaryRevenue} mode={shownMode} onMode={setMode} rough={rough} />}
+      {wide !== undefined && goals !== undefined && (
+        <StatsCard title={GOAL}>
+          <GoalSection
+            {...goals}
+            days={wide.state === 'ready' ? wide.days : wide.state}
+            onReread={() => {
+              goals.onReread()
+              wide.retry()
+            }}
+          />
+        </StatsCard>
+      )}
       <StatsCard id={PATIENTS_ID} title={PATIENTS} desc={cardRangeText(input.range, lastDayOf(input.range, revenue))}>
         <PatientTrendSection input={input} saved={saved} />
         <RevisitSection input={input} saved={saved} />
@@ -199,6 +247,7 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
           </div>
         )}
         {bit !== undefined && <DoctorsSection view={bit} range={input.range} hospitalName={hospitalName} />}
+        {wide !== undefined && <HolidaySection today={today} wide={wide} />}
       </StatsCard>
       {/* 고르기에 들어오고 나갈 때 다시 그린다: [고른 기간 보고]가 처음 눌리고, 나가면 [오늘 일일보고]다 */}
       <StatsCard id={REPORT_ID} title={REPORT} desc={REPORT_DESC}>

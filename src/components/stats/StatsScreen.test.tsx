@@ -3,9 +3,10 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { addDays, compareYmd, eachDay } from '@/lib/analytics/dates'
+import { addDays, compareYmd, eachDay, weekdayOf } from '@/lib/analytics/dates'
 import { MIN_HELPER } from '@/lib/bridge/versions'
 import { listCalendarCounts, loadCalendarSettings } from '@/lib/storage/calendar'
+import { loadGoal, saveGoal } from '@/lib/storage/goals'
 import { readRxPicks } from '@/lib/storage/rxPicks'
 import { readCoverage, readDays, readMonths, saveStats } from '@/lib/storage/stats'
 import { listStatsRxGroups, saveStatsRxGroups } from '@/lib/storage/statsRxGroups'
@@ -91,6 +92,8 @@ vi.mock('@/lib/storage/calendar', () => ({
   listCalendarSlots: vi.fn(async () => []),
   listAllDay: vi.fn(async () => []),
 }))
+// 이번 달 목표 서버 저장 가짜(stats-insights TASK-7). 기본은 목표 없음 · 저장 성공(beforeEach)
+vi.mock('@/lib/storage/goals', () => ({ loadGoal: vi.fn(), saveGoal: vi.fn() }))
 
 const TODAY = '2026-11-13' // 금요일
 const HOSPITAL = '가짜정형외과의원'
@@ -467,6 +470,10 @@ beforeEach(() => {
   vi.mocked(loadCalendarSettings).mockReset()
   vi.mocked(listCalendarCounts).mockResolvedValue([])
   vi.mocked(loadCalendarSettings).mockResolvedValue(DEFAULT_CAL_SETTINGS)
+  vi.mocked(loadGoal).mockReset()
+  vi.mocked(saveGoal).mockReset()
+  vi.mocked(loadGoal).mockResolvedValue({ visits: null, newPatients: null, revenue: null })
+  vi.mocked(saveGoal).mockResolvedValue(undefined)
   vi.mocked(readCoverage).mockResolvedValue([{ from: '2026-09-01', to: '2026-11-12' }])
   vi.mocked(saveStats).mockResolvedValue({ saved: 1 })
   for (const fn of Object.values(revenueStore)) fn.mockReset()
@@ -3502,7 +3509,11 @@ describe('stats-revenue: 매출 카드 · 바로가기 여섯 · 불러오기 �
     await waitFor(() => expect(revenueCellsText()).toEqual(WORK_CELLS))
     await flush()
     expect(revenueStore.saveRange).not.toHaveBeenCalled()
-    expect(revenueStore.loadDays.mock.calls.map(([range]) => range)).toEqual(revenueStore.loadDays.mock.calls.map(() => readSpan(R30)))
+    // 이번 달 목표 칸의 하루 매출 읽기(오늘 앞 56일 ~ 어제, stats-insights AC-6102.4)는 같은 저장된 매출 읽기라 빼고 본다
+    const goalSpan = { from: addDays(TODAY, -56), to: YESTERDAY }
+    const spans = revenueStore.loadDays.mock.calls.map(([range]) => range).filter((range) => range.from !== goalSpan.from || range.to !== goalSpan.to)
+    expect(spans.length).toBeGreaterThan(0)
+    expect(spans).toEqual(spans.map(() => readSpan(R30)))
   })
 
   it('AC-4108.2·AC-4108.6·AC-4408.2: [비트에서 불러오기]는 통계 조각 저장이 끝난 뒤에만 같은 통로로 revenue.days를 묻고(두 번째 연결 없음), 저장한 뒤 다시 읽은 숫자로 둘째 줄과 매출 칸을 그린다', async () => {
@@ -4083,5 +4094,177 @@ describe('REQ-5907 clinic-calendar: 예약 카드', () => {
       expect(text, name).not.toContain('listAppts')
     }
     expect(readFileSync(join(ROOT, 'src/components/stats/StatsScreen.tsx'), 'utf8')).toContain('useStatsCalendar(today)')
+  })
+})
+
+// ── 통계 더 보기(stats-insights TASK-7): 요약 자리의 '평소와 다른 것'·'이번 달 목표' 카드와 진료 운영 카드의 '휴일에 따라'. 숫자는 모두 지어낸 것이다 ──
+describe('stats-insights TASK-7: 요약 자리 알림·목표 · 진료 운영 휴일', () => {
+  const WIDE = { from: '2025-11-13', to: YESTERDAY } // 넓은 하루 읽기 = 오늘 12달 전 같은 날 ~ 어제(기간 고르기와 상관없음)
+  const ALERTS = '평소와 다른 것'
+  const GOAL = '이번 달 목표'
+  const HOLIDAY = '휴일에 따라'
+  const ALERT_NOTE = '이번 주(월~어제)를 지난 4주의 같은 요일과 견줘요. 15% 넘게 달라지고 평소 수가 10 이상일 때만 보여요.'
+  const HOLIDAY_NOTE = '최근 12달, 같은 요일끼리 견줘요. 공휴일은 2025~2027년 것이 들어 있어요.'
+  const NO_GOAL_LINE = '이번 달 목표를 적어 두면 달성률을 보여 줘요'
+  const CARD_TITLES = CARDS.map(([, title]) => title)
+  // 9월 1일 ~ 어제 월~토(추석·개천절·대체공휴일·한글날은 쉼) 내원 100명, 이번 주(11월 9일 월 ~ 12일 목)만 50명
+  const CLOSED = new Set(['2026-09-24', '2026-09-25', '2026-09-26', '2026-10-03', '2026-10-05', '2026-10-09'])
+  const OPEN_ROWS = eachDay({ from: '2026-09-01', to: YESTERDAY })
+    .filter((ymd) => weekdayOf(ymd) !== 7 && !CLOSED.has(ymd))
+    .map((ymd) => day(ymd, compareYmd(ymd, '2026-11-09') >= 0 ? 50 : 100))
+  // 오늘 앞 56일 ~ 어제 날마다 내원 10명(요일마다 하루 평균 10명)
+  const TENS = eachDay({ from: addDays(TODAY, -56), to: YESTERDAY }).map((ymd) => day(ymd, 10))
+
+  const wideCalls = () => vi.mocked(readDays).mock.calls.filter(([range]) => range.from === WIDE.from && range.to === WIDE.to).length
+  const shownTitles = () => screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)
+  const alertRows = () =>
+    within(card('stats-summary'))
+      .getAllByRole('listitem')
+      .map((li) => [...li.children].map((el) => el.textContent))
+  const goalCard = () => sectionOf(GOAL)
+  const linesOf = (group: HTMLElement) => [...group.querySelectorAll('p')].map((p) => p.textContent)
+  // 넓은 하루 읽기의 답(나머지 읽기는 SAVED_NOW). state.fails가 참이면 넓은 하루만 거절한다
+  function wideAnswers(rows: DayPayload[], state = { fails: false }) {
+    vi.mocked(readDays).mockImplementation(async (range) => {
+      if (range.from === WIDE.from && range.to === WIDE.to) {
+        if (state.fails) throw new Error('가짜 실패')
+        return read(rows)
+      }
+      return SAVED_NOW[range.from] ?? read()
+    })
+    return state
+  }
+
+  it('AC-6101.5: 요약 자리 맨 위가 "평소와 다른 것" 카드(바로가기 요약 자리)이고, 넓은 하루로 센 알림 줄과 안내 글이 보인다. 차례는 평소와 다른 것 → 환자 요약 → 매출 요약 → 이번 달 목표 → 카드 일곱', async () => {
+    wideAnswers(OPEN_ROWS)
+    draw()
+    await sectionsShown()
+    await waitFor(() => expect(titleOf(card('stats-summary'))).toBe(ALERTS))
+    expect(alertRows()).toEqual([['▼', '내원 · 이번 주 200명, 지난 4주 평균 400명보다 50% 적어요', '11/9~11/12']])
+    expect(within(card('stats-summary')).getByText(ALERT_NOTE)).toBeTruthy()
+    // 카드 제목이 칸 제목이라 h2 하나뿐이다(h3 '평소와 다른 것' 없음)
+    expect(within(card('stats-summary')).getAllByRole('heading').map((node) => node.textContent)).toEqual([ALERTS])
+    expect(placesShown()).toEqual([['stats-summary', ALERTS], ...CARDS])
+    expect(shownTitles()).toEqual([ALERTS, '환자 요약', '매출 요약', GOAL, ...CARD_TITLES])
+    expect(sectionOf('환자 요약').id).toBe('')
+  })
+
+  it('AC-6101.5: 알림은 기간 고르기와 상관없이 오늘 기준이다 — 기간을 바꿔도 넓은 하루를 다시 읽지 않고 같은 줄이다', async () => {
+    wideAnswers(OPEN_ROWS)
+    draw()
+    await sectionsShown()
+    await waitFor(() => expect(alertRows()).toHaveLength(1))
+    const rows = alertRows()
+    pressPeriod('최근 7일')
+    await sectionsShown()
+    pressPeriod('최근 12개월')
+    await sectionsShown()
+    expect(alertRows()).toEqual(rows)
+    expect(wideCalls()).toBe(1)
+  })
+
+  it('AC-6101.5·AC-6107.3: 넓은 하루에 저장된 날이 없으면 "평소와 다른 것" 카드와 "휴일에 따라" 칸이 없고, 요약 자리는 환자 요약 카드 그대로다', async () => {
+    draw()
+    await sectionsShown()
+    await waitFor(() => expect(wideCalls()).toBe(1))
+    await flush()
+    expect(heading(ALERTS)).toBeNull()
+    expect(within(card('stats-ops')).queryByRole('heading', { name: HOLIDAY })).toBeNull()
+    expect(placesShown()).toEqual(PLACES)
+    expect(shownTitles()).toEqual(['환자 요약', '매출 요약', GOAL, ...CARD_TITLES])
+  })
+
+  it('AC-6101.5: 넓은 하루를 읽지 못하면 맨 위 카드에 오류 카드와 [다시 읽기]이고, 누르면 넓은 하루만 다시 읽어 알림 줄을 그린다. 저장에 성공하면 넓은 하루를 다시 읽는다', async () => {
+    const state = wideAnswers(OPEN_ROWS, { fails: true })
+    const port = fakeChrome()
+    fakeWorker()
+    draw()
+    sayHello(port)
+    await sectionsShown()
+    await waitFor(() => expect(titleOf(card('stats-summary'))).toBe(ALERTS))
+    expect(within(card('stats-summary')).getByRole('alert').textContent).toContain('오류 번호 E-STATS-READ-FAILED')
+    state.fails = false
+    const reads = vi.mocked(readDays).mock.calls.length
+    fireEvent.click(within(card('stats-summary')).getByRole('button', { name: '다시 읽기' }))
+    await waitFor(() => expect(alertRows()).toHaveLength(1))
+    expect(within(card('stats-summary')).queryByRole('alert')).toBeNull()
+    expect(vi.mocked(readDays).mock.calls.length).toBe(reads + 1)
+    expect(wideCalls()).toBe(2)
+
+    pressLoad(port)
+    await waitFor(() => expect(saveStats).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(wideCalls()).toBe(3))
+    await loadIsFree()
+  })
+
+  it('AC-6102.5·AC-6102.4: 목표가 없으면 매출 요약 바로 뒤 "이번 달 목표" 카드에 안내와 [목표 적기]이고, 내원 400명을 저장하면 이번 달(2026-11)로 보내고 넓은 하루 숫자로 센 줄과 [목표 고치기]가 보인다', async () => {
+    wideAnswers(TENS)
+    draw()
+    await sectionsShown()
+    await waitFor(() => expect(within(goalCard()).getByText(NO_GOAL_LINE)).toBeTruthy())
+    expect(goalCard().previousElementSibling).toBe(sectionOf('매출 요약'))
+    expect(goalCard().nextElementSibling).toBe(card('stats-patients'))
+    expect(within(goalCard()).getAllByRole('heading').map((node) => node.textContent)).toEqual([GOAL])
+    expect(loadGoal).toHaveBeenCalledWith(expect.anything(), '2026-11')
+
+    fireEvent.click(within(goalCard()).getByRole('button', { name: '목표 적기' }))
+    fireEvent.change(within(goalCard()).getByLabelText('내원 (명)'), { target: { value: '400' } })
+    fireEvent.click(within(goalCard()).getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(saveGoal).toHaveBeenCalledWith(expect.anything(), '2026-11', { visits: 400, newPatients: null, revenue: null }))
+    // 지금까지 = 11월 1일 ~ 어제 12일 × 10명, 월말 예상 = 120명 + 오늘 ~ 30일 18일 × 10명
+    const visits = await within(goalCard()).findByRole('group', { name: '내원' })
+    expect(linesOf(visits)).toEqual(['내원120명 / 목표 400명 · 30%', '이 속도면 월말 300명 · 목표의 75% 100명 모자라요'])
+    expect(within(goalCard()).getByRole('button', { name: '목표 고치기' })).toBeTruthy()
+    // 견줄 날은 있는데 달라진 것이 없으면 맨 위 카드는 '평소와 비슷해요'
+    expect(within(card('stats-summary')).getByText('평소와 비슷해요')).toBeTruthy()
+  })
+
+  it('AC-6102.4: 매출 목표 줄은 저장된 하루 매출(오늘 앞 56일 ~ 어제, 총액)로 센다', async () => {
+    vi.mocked(loadGoal).mockResolvedValue({ visits: null, newPatients: null, revenue: 10_000_000 })
+    revenueDb.set('2026-11-02', { ...workDay('2026-11-02'), dayCodes: true })
+    revenueDb.set('2026-11-03', { ...workDay('2026-11-03'), dayCodes: true })
+    draw()
+    await sectionsShown()
+    const sales = await within(goalCard()).findByRole('group', { name: '매출' })
+    // 지금까지 300만 원 × 2일, 월말 예상 = 600만 원 + 남은 월요일 셋·화요일 둘 × (300만 원 ÷ 8주) = 787만 5,000원 → 78%
+    const [top, pace] = linesOf(sales)
+    expect(top).toBe('매출600만 원 / 목표 1,000만 원 · 60%')
+    expect(pace).toContain('· 목표의 78%')
+    expect(revenueStore.loadDays).toHaveBeenCalledWith({ from: addDays(TODAY, -56), to: YESTERDAY })
+  })
+
+  it('AC-6102.4: 목표가 있는데 넓은 하루를 읽지 못하면 목표 카드도 오류 카드와 [다시 읽기]이고, 누르면 목표와 넓은 하루를 함께 다시 읽는다', async () => {
+    vi.mocked(loadGoal).mockResolvedValue({ visits: 400, newPatients: null, revenue: null })
+    const state = wideAnswers(TENS, { fails: true })
+    draw()
+    await sectionsShown()
+    await waitFor(() => expect(within(goalCard()).getByRole('alert').textContent).toContain('오류 번호 E-STATS-READ-FAILED'))
+    state.fails = false
+    fireEvent.click(within(goalCard()).getByRole('button', { name: '다시 읽기' }))
+    const visits = await within(goalCard()).findByRole('group', { name: '내원' })
+    expect(linesOf(visits)[0]).toBe('내원120명 / 목표 400명 · 30%')
+    expect(loadGoal).toHaveBeenCalledTimes(2)
+    expect(wideCalls()).toBe(2)
+  })
+
+  it('AC-6107.3: 진료 운영 카드 맨 끝(원장님별 다음)에 h3 "휴일에 따라" 표(평소 · 연휴 전날 · 연휴 다음 날)와 안내 글이 보인다', async () => {
+    wideAnswers(OPEN_ROWS)
+    draw()
+    await sectionsShown()
+    const ops = within(card('stats-ops'))
+    const part = (await ops.findByRole('heading', { name: HOLIDAY, level: 3 })).closest('section')!
+    expect(part.parentElement!.lastElementChild).toBe(part)
+    expect(part.previousElementSibling).toBe(ops.getByRole('heading', { name: '원장님별', level: 3 }).closest('section'))
+    const rows = within(part)
+      .getAllByRole('row')
+      .map((tr) => [...tr.children].map((cell) => cell.textContent))
+    expect(rows[0]).toEqual(['날', '날 수', '하루 평균 내원', '평소보다'])
+    expect(rows.slice(1).map((cells) => cells[0])).toEqual(['평소', '연휴 전날', '연휴 다음 날'])
+    expect(rows[1]![3]).toBe('—')
+    // 연휴 전날 = 9월 23일 · 10월 2일 · 10월 8일, 다음 날 = 9월 28일 · 10월 6일 · 10월 10일(5일보다 적다)
+    expect(rows[2]!.slice(1)).toEqual(['3일', '100명', '아직 적어요'])
+    expect(rows[3]!.slice(1)).toEqual(['3일', '100명', '아직 적어요'])
+    expect(within(part).getByText(HOLIDAY_NOTE)).toBeTruthy()
+    expect(ops.getAllByRole('heading', { level: 2 }).map((node) => node.textContent)).toEqual(['진료 운영'])
   })
 })
