@@ -737,9 +737,8 @@ const HISTORY_BRANCH_SEEDS: (CaseSeed | CaseSeed[])[] = [
 ]
 
 /** 그날 자료: 8자리 코드, 비급여 줄, 수량 빈칸, 좌우·레벨별 상한의 바로 위아래 */
-// 줄 이름과 목록 이름 어디에도 약 성분이 없는 달: 코드만으로 약 역할을 정하는 길을 본다.
-// 오늘은 규칙 표(clinic_codes)와 원본 상수(STEROID · lidoCodes) 두 곳에 같은 코드가 있어 한쪽만 고장 나면 여기서 드러나지 않는다.
-// 상수만 남긴 경우는 engine.test.ts가 규칙 표 사본으로 본다
+// 줄 이름과 목록 이름 어디에도 약 성분이 없는 달: 처방 목록 보험코드의 성분으로 약 역할을 정하는 길을 본다(REQ-6608).
+// 보험코드는 우리 의원 처방 목록 값(2026-11-18 비트 DB 확인). 원본은 코드(clinic_codes · STEROID · lidoCodes)로 정해 결과가 같다
 const DRUG_ROLE_SEEDS: readonly CaseSeed[] = [
   ['IJ-05.hit-lido-by-code', 'Rt knee IA', 'KK090 A15:가상주사', 'M1706'],
   ['IJ-05.miss-steroid-by-code-a21', 'Rt knee IA', 'KK090 A15:가상주사 A21:가상주사', 'M1706'],
@@ -749,19 +748,21 @@ const DRUG_ROLE_SEEDS: readonly CaseSeed[] = [
   ['AG-06.hit-a41-by-code', 'Rt shoulder', 'HA280:가상주사 A41:가상주사', 'M750'],
 ]
 
-// 이름으로 약 역할을 정하는 길(AC-010.7): 분류 확인 대기 줄은 이름(이름 없으면 코드 글자)에 기본 약 이름이 들면 그 역할로 점검하고 줄 이름도 목록의 이름이 된다.
+// 이름으로 약 역할을 정하는 길(AC-010.7): 원본은 분류 확인 대기 줄의 이름(이름 없으면 코드 글자)에 기본 약 이름이 들면 그 역할로 점검하고 줄 이름도 목록의 이름이 된다.
+// REQ-6608부터는 이름으로 짐작하지 않고 보험코드 성분으로 정한다: 걸리던 대기 줄에는 성분 보험코드(히알루론산 645902041·642904921)를 넣어 같은 결과를 낸다.
+// 그래도 결과가 바뀌는 사례(이력의 먹는 약·바르는 약, 시술 수가 코드만 있는 줄, 줄 이름 글자 길이)는 이름을 바꾸고 골든 knownDiffs에 적었다.
 // 대기 줄이 아닌 것은 이름 있는 other와 보험코드로 확인된 시술이다. 결과로 드러나는 곳은 둘이다.
 // 연골주사 역할: 히알·아라간은 약 분류 낱말에 없어(아라간플러스만 있다) 역할이 있어야만 HY-01이 걸린다. 트리암·덱사·리도카인은 분류 낱말에 있어 역할이 없어도 그 약으로 읽힌다.
 // 줄 이름: 이력에만 있는 코드는 줄 이름이 곧 처방 이름이라, 이름이 바뀌면 먹는 약·바르는 약으로 읽히지 않아 주사 분류가 남는다(덱사메타손정 → 덱사)
 const DRUG_NAME_CODES: NonNullable<FakeMonth['codes']> = [
-  ['Z701', '히알주', 'drug', ''],
-  ['Z702', '아라간주', 'drug', ''],
-  ['Zm5', '히알주', 'drug', ''],
-  ['hy7', '히알주', 'drug', ''],
-  ['Z703', '히알주', 'unknown', ''],
-  ['Z704', '히알검사', 'lab', ''],
-  ['Z705', '히알시술', 'procedure', ''],
-  ['Z706', '히알시술', 'procedure', 'KK020'],
+  ['Z701', '히알주', 'drug', '645902041'],
+  ['Z702', '아라간주', 'drug', '645902041'],
+  ['Zm5', '히알주', 'drug', '645902041'],
+  ['hy7', '히알주', 'drug', '645902041'],
+  ['Z703', '히알주', 'unknown', '645902041'],
+  ['Z704', '히알검사', 'lab', '645902041'],
+  ['Z705', '히알시술', 'procedure', '645902041'],
+  ['Z706', '히알시술', 'procedure', '642904921'],
   ['Z707', '히알시술', 'procedure', 'LA358'],
   ['Z708', '히알주', 'other', ''],
   ['Z709', '히알관절주사', 'procedure', 'KK090'],
@@ -770,10 +771,10 @@ const DRUG_NAME_CODES: NonNullable<FakeMonth['codes']> = [
   ['Z712', '가상주', 'unknown', ''],
   ['Z713', '가상시술', 'procedure', ''],
   ['Z714', '', 'drug', ''],
-  ['히알01', '', 'drug', ''],
-  ['히알02', '', 'other', ''],
+  ['히알01', '', 'drug', '645902041'],
+  ['히알02', '', 'other', '645902041'],
   ['히알03', '가상주', 'drug', ''],
-  ['Z715', '덱사히알주', 'drug', ''],
+  ['Z715', '덱사히알주', 'drug', '645902041'],
   ['리도카인덱사히알01', '', 'drug', ''],
   ['Z716', '트리암주', 'drug', ''],
   ['Z717', '덱사주', 'unknown', ''],
@@ -810,7 +811,7 @@ const DRUG_NAME_SEEDS: readonly CaseSeed[] = [
   ['HY-01.hit-name-lab-row', KNEE_MEMO, 'Z704:히알검사', 'M5456'],
   ['HY-01.hit-name-procedure-no-fee-code', KNEE_MEMO, 'Z705:히알시술', 'M5456'],
   ['HY-01.hit-name-procedure-other-fee-code', KNEE_MEMO, 'Z706:히알시술', 'M5456'],
-  ['HY-01.hit-name-procedure-la-without-nerve-block', KNEE_MEMO, 'Z707:히알시술', 'M5456'],
+  ['HY-01.miss-name-procedure-la-without-nerve-block', KNEE_MEMO, 'Z707:히알시술', 'M5456'],
   // 대기 줄이 아니면 이름이 맞아도 역할이 없다
   ['HY-01.miss-name-other-row', KNEE_MEMO, 'Z708:히알주', 'M5456'],
   ['HY-01.miss-name-confirmed-procedure-kk090', KNEE_MEMO, 'Z709:히알관절주사', 'M5456'],
@@ -835,12 +836,12 @@ const DRUG_NAME_SEEDS: readonly CaseSeed[] = [
   ['IJ-05.miss-name-other-row-table-word', 'Rt knee IA', 'KK090 A15 Z718:트리암주', 'M1706'],
   ['IJ-05.hit-no-default-name-no-steroid-role', 'Rt knee IA', 'KK090 A15 Z711:가상주', 'M1706'],
   ['IJ-05.hit-name-tablet-this-month-not-injection', 'Rt knee IA', 'KK090 A15 Z720:트리암정', 'M1706'],
-  // 이력에만 있는 기본 이름 약: 줄 이름이 목록의 이름으로 바뀌어 먹는 약·바르는 약으로 읽히지 않는다
-  ['IJ-01.hit-name-tablet-history-only', KNEE_MEMO, 'KK090 A21', 'M1706', kneeShotPast('Z730')],
-  ['IJ-01.hit-name-patch-history-only', KNEE_MEMO, 'KK090 A21', 'M1706', kneeShotPast('Z731')],
-  ['IJ-01.hit-name-mixed-case-history-only', KNEE_MEMO, 'KK090 A21', 'M1706', kneeShotPast('ZM6')],
+  // 이력에만 있는 기본 이름 약: 원본은 줄 이름이 목록의 이름으로 바뀌어 먹는 약·바르는 약으로 읽히지 않았다. REQ-6608부터는 이름이 그대로라 빠진다(knownDiffs)
+  ['IJ-01.miss-name-tablet-history-only', KNEE_MEMO, 'KK090 A21', 'M1706', kneeShotPast('Z730')],
+  ['IJ-01.miss-name-patch-history-only', KNEE_MEMO, 'KK090 A21', 'M1706', kneeShotPast('Z731')],
+  ['IJ-01.miss-name-mixed-case-history-only', KNEE_MEMO, 'KK090 A21', 'M1706', kneeShotPast('ZM6')],
   ['IJ-01.hit-nameless-code-holds-name-history-only', KNEE_MEMO, 'KK090 A21', 'M1706', kneeShotPast('트리암01')],
-  ['IJ-01.hit-two-names-history-only', KNEE_MEMO, 'KK090 A21', 'M1706', kneeShotPast('Z737')],
+  ['IJ-01.miss-two-names-history-only', KNEE_MEMO, 'KK090 A21', 'M1706', kneeShotPast('Z737')],
   // 이번 달 처방에 나오면 그 이름을 쓴다(먹는 약으로 읽혀 주사 분류가 빠진다)
   ['z732-this-month', 'S) pain', 'Z732:덱사메타손정', 'M5456'],
   ['IJ-01.miss-name-tablet-named-this-month', KNEE_MEMO, 'KK090 A21', 'M1706', kneeShotPast('Z732')],
@@ -849,11 +850,11 @@ const DRUG_NAME_SEEDS: readonly CaseSeed[] = [
   // 확인된 시술은 역할이 없고 줄 이름은 기본 사전의 이름(MBB)이지만, 목록 이름의 '덱사'를 분류 낱말이 읽는다
   ['IJ-01.hit-confirmed-procedure-list-name-table-word', KNEE_MEMO, 'KK090 A21', 'M1706', kneeShotPast('Z736')],
   // 이름 둘이 걸려도 줄 이름은 첫 이름(리도카인)이다. 마지막 이름(덱사)이면 글자가 짧아져 히알루론산~20mg 분류 낱말의 20자 안에 든다
-  ['HY-01.miss-two-names-first-name-span', KNEE_MEMO, 'Z738:히알루론산', 'M5456'],
+  ['HY-01.hit-list-name-20mg-span', KNEE_MEMO, 'Z738:히알루론산', 'M5456'],
   // 이름 없는 줄도 줄 이름이 바뀐다. 코드 글자로 남으면 '정01'이 먹는 약으로 읽혀 주사 분류가 빠진다
-  ['IJ-01.hit-nameless-route-word-history-only', KNEE_MEMO, 'KK090 A21', 'M1706', kneeShotPast('트리암정01')],
+  ['IJ-01.miss-nameless-route-word-history-only', KNEE_MEMO, 'KK090 A21', 'M1706', kneeShotPast('트리암정01')],
   // 이름 없는 시술은 보험코드가 있어도 확인된 시술이 아니라 대기 줄이다(코드 글자로 역할을 얻는다)
-  ['HY-01.hit-nameless-procedure-fee-code', KNEE_MEMO, '히알05:', 'M5456'],
+  ['HY-01.miss-nameless-procedure-fee-code', KNEE_MEMO, '히알05:', 'M5456'],
   // 보험코드는 대소문자를 접어 읽는다. 도우미는 소문자 보험코드를 막지도 접지도 않는다
   ['HY-01.miss-name-confirmed-procedure-lower-fee-code', KNEE_MEMO, 'Z739:히알신경차단', 'M5456'],
 ]
@@ -1481,7 +1482,7 @@ export const FAKE_CLAIM_CASES: readonly FakeClaimCase[] = [
     note: '무작위 비교로 찾아 줄인 사례: 약 정보표, 긴 코드, 기간의 경계, 수량 0, 처방 목록 코드의 대소문자, 겹치는 상병 앞자리',
     month: ruleMonth(OCT_FROM, OCT_TO, FOUND_SEEDS, [
       ['Z109', '시프로플록사신정', 'unknown', 'MY143'],
-      ['Z108', '건초내 주사', 'unknown', 'A21'],
+      ['Z108', '건초내 주사', 'unknown', '645903001'],
       ['KK062', '가상시술', 'procedure', 'ZZ999'],
       ['Zm1', '병원주사', 'procedure', 'KK090'],
       ['zm2', '병원주사', 'procedure', 'KK090'],
@@ -1505,12 +1506,12 @@ export const FAKE_CLAIM_CASES: readonly FakeClaimCase[] = [
     file: 'claim-month-rules-drug-roles.json',
     note: '이름에 성분이 없는 약: 코드로 정한 약 역할만으로 판정',
     month: ruleMonth(OCT_FROM, OCT_TO, DRUG_ROLE_SEEDS, [
-      ['A15', '가상주사', 'drug', 'A15'],
-      ['A21', '가상주사', 'drug', 'A21'],
-      ['A19', '가상주사', 'drug', 'A19'],
+      ['A15', '가상주사', 'drug', '670603485'],
+      ['A21', '가상주사', 'drug', '645903001'],
+      ['A19', '가상주사', 'drug', '650500301'],
       ['A99', '가상주사', 'drug', 'A99'],
-      ['A49', '가상주사', 'drug', 'A49'],
-      ['A41', '가상주사', 'drug', 'A41'],
+      ['A49', '가상주사', 'drug', '645902041'],
+      ['A41', '가상주사', 'drug', '650100641'],
       ['HA280', '가상주사', 'procedure', 'HA280'],
     ]),
   },

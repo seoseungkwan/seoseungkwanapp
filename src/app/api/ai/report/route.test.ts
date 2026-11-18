@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   supabaseServer: vi.fn(),
   generateReport: vi.fn(),
   loadReportMonths: vi.fn(),
+  loadHonorific: vi.fn(),
   saveReport: vi.fn(),
   addUsage: vi.fn(),
   callClaude: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock('../generate', () => ({ generateReport: mocks.generateReport, isReportSt
 vi.mock('../claude', () => ({ callClaude: mocks.callClaude }))
 vi.mock('../store', () => ({
   loadReportMonths: mocks.loadReportMonths,
+  loadHonorific: mocks.loadHonorific,
   saveReport: mocks.saveReport,
   addUsage: mocks.addUsage,
   readSavedReport: mocks.readSavedReport,
@@ -208,7 +210,7 @@ describe('AC-512.2 몸통 검사', () => {
 })
 
 describe('AC-512.3 흐름 부르기와 응답', () => {
-  it('AC-512.3 성공이면 200 { report }뿐이고 usage는 싣지 않으며, 흐름에 달과 정해진 deps를 넘긴다', async () => {
+  it('AC-512.3·AC-6606.4 성공이면 200 { report }뿐이고 usage는 싣지 않으며, 흐름에 달과 정해진 deps(호칭 읽기 포함)를 넘긴다', async () => {
     const res = await POST(post({ month: '2026-10' }))
     expect(res.status).toBe(200)
     expect(await bodyOf(res)).toEqual({ report: REPORT })
@@ -218,11 +220,11 @@ describe('AC-512.3 흐름 부르기와 응답', () => {
     expect(mocks.generateReport).toHaveBeenCalledTimes(1)
     const [month, deps] = mocks.generateReport.mock.calls[0] as [string, GenerateDeps]
     expect(month).toBe('2026-10')
-    expect(Object.keys(deps).sort()).toEqual(['addUsage', 'callClaude', 'loadMonths', 'now', 'saveReport'])
+    expect(Object.keys(deps).sort()).toEqual(['addUsage', 'callClaude', 'loadHonorific', 'loadMonths', 'now', 'saveReport'])
     expect(deps.callClaude).toBe(mocks.callClaude)
   })
 
-  it('AC-512.3 deps는 사용자 세션 클라이언트와 정확한 인자로 store를 부른다', async () => {
+  it('AC-512.3·AC-6606.4 deps는 사용자 세션 클라이언트와 정확한 인자로 store를 부른다(호칭도 같은 세션으로 서버가 읽는다)', async () => {
     await POST(post({ month: '2026-10' }))
     const deps = mocks.generateReport.mock.calls[0][1] as GenerateDeps
 
@@ -239,6 +241,10 @@ describe('AC-512.3 흐름 부르기와 응답', () => {
     const usage = { ...USAGE, costMicroUsd: 77 }
     expect(await deps.addUsage(usage)).toBe(true)
     expect(mocks.addUsage).toHaveBeenCalledWith(SB, usage)
+
+    mocks.loadHonorific.mockResolvedValue('대표원장님')
+    expect(await deps.loadHonorific?.()).toBe('대표원장님')
+    expect(mocks.loadHonorific).toHaveBeenCalledWith(SB)
 
     expect(deps.now()).toEqual(new Date('2026-11-15T03:00:00Z'))
   })

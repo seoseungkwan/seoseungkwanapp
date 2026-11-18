@@ -4,7 +4,7 @@ import { supabaseServer } from '@/lib/supabase/server'
 import type { AiErrorCode, ReportView, SavedReport, ShownReport } from '@/types/aiReport'
 import { callClaude } from '../claude'
 import { generateReport, isReportStale } from '../generate'
-import { addUsage, loadReportMonths, readSavedReport, readUsage, saveReport } from '../store'
+import { addUsage, loadHonorific, loadReportMonths, readSavedReport, readUsage, saveReport } from '../store'
 
 // POST /api/ai/report (spec ai-report REQ-512). 몸통은 { month } 하나뿐 — 숫자는 서버가 DB에서 읽는다.
 // GET /api/ai/report?month= (spec ai-report-screen REQ-706). 저장된 리포트·숫자 바뀜·이번 달 사용량을 한 번에 답한다.
@@ -113,6 +113,8 @@ export async function POST(request: Request): Promise<Response> {
     const sb = await supabaseServer()
     const result = await generateReport(month, {
       loadMonths: (m) => loadReportMonths(sb, m),
+      // 시스템 글의 받는 사람: 같은 사용자 세션으로 서버가 병원 정보 호칭을 읽는다(clinic-profile AC-6606.4)
+      loadHonorific: () => loadHonorific(sb),
       callClaude,
       saveReport: (r) => saveReport(sb, r),
       addUsage: (u) => addUsage(sb, u),
