@@ -1433,7 +1433,7 @@ describe('AC-018.17 기관기호 안내', () => {
 })
 
 describe('AC-018.18 처음 질문', () => {
-  it('AC-018.18: 메모·[비트에 입력]이 없고 파란 안내에 번호가 없다. 점검 결과는 그대로다', async () => {
+  it('AC-018.18·AC-6607.4: 메모·[비트에 입력]이 없고 파란 안내에 번호가 없다. 점검 결과는 그대로다', async () => {
     const view = memoView({ memoBlocked: 'E-MEMO-NO-SETTINGS', table: [] })
     view.targets = { ...view.targets, batch: [] }
     const worker = fakeWorker(() => view, { ...VIEW, memoBlocked: 'E-MEMO-NO-SETTINGS' })
@@ -1443,8 +1443,8 @@ describe('AC-018.18 처음 질문', () => {
     await user.click(await screen.findByRole('button', { name: '자료 불러오기' }))
     await user.click(await screen.findByRole('button', { name: '다음: 메모 확인' }))
     const info = await screen.findByRole('status', { name: '처음 질문' })
-    expect(info.textContent).toContain('처음 질문을 먼저 해 주세요')
-    expect(info.textContent).toContain('처음 질문 화면은 아직 준비 중이에요')
+    expect(info.textContent).toContain('병원 문구가 아직 없어요')
+    expect(info.textContent).toContain('설정 → 병원 문구에서 처음 질문을 하거나 기본 문구로 바로 시작해 주세요.')
     expect(info.textContent).not.toContain('오류 번호')
     expect(info.getAttribute('class')).toContain('bg-accent-soft')
     expect(screen.queryByRole('button', { name: /비트에 입력 \(/ })).toBeNull()
