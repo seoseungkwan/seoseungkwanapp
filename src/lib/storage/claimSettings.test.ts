@@ -8,7 +8,10 @@ import {
   withRulesFrom,
   readHospitalSettings,
   readRuleRows,
+  readInputMode,
   readRuleSettings,
+  saveInputMode,
+  startHospitalSettings,
   toRuleChoices,
   toRuleSettings,
   writeHospitalSettings,
@@ -260,5 +263,136 @@ describe('AC-012.5 병원 문구·상병 연결표', () => {
   ] as const)('AC-012.5: 읽기·쓰기 실패(%s)는 E-SETTINGS-FAILED', async (_name, answer) => {
     expectSettingsFailed(await failure(readHospitalSettings(fakeSb({ select: answer }).sb)))
     expectSettingsFailed(await failure(writeHospitalSettings(fakeSb({ upsert: answer }).sb, { phrases: PHRASES, dxLinks: [] })))
+  })
+})
+
+// ── 병원 문구 시작·입력 방식 (spec clinic-profile design.md 9절·12절, TASK-2) ──────────────
+// 부름마다 차례로 정해 둔 답을 주는 가짜 클라이언트. 'throw' = 네트워크 실패처럼 약속이 거절된다
+type Step = { data?: unknown; error?: { code?: string; message?: string } | null } | 'throw'
+type Sent = { table: string; op: string; columns?: string; body?: unknown; filters: [string, unknown][] }
+
+function scriptedSb(steps: Step[]) {
+  const sent: Sent[] = []
+  const next = () => {
+    const step = steps.shift() ?? { data: null }
+    if (step === 'throw') return Promise.reject(new Error(SECRET_MESSAGE))
+    return Promise.resolve({ data: step.data ?? null, error: step.error ?? null })
+  }
+  const sb = {
+    from: (table: string) => {
+      const call: Sent = { table, op: '', filters: [] }
+      const builder = {
+        select(columns: string) {
+          call.op = 'select'
+          call.columns = columns
+          sent.push(call)
+          return builder
+        },
+        insert(body: unknown) {
+          call.op = 'insert'
+          call.body = body
+          sent.push(call)
+          return builder
+        },
+        update(body: unknown) {
+          call.op = 'update'
+          call.body = body
+          sent.push(call)
+          return builder
+        },
+        eq(column: string, value: unknown) {
+          call.filters.push([column, value])
+          return builder
+        },
+        maybeSingle: () => next(),
+        then: (ok: (value: unknown) => unknown, no: (reason: unknown) => unknown) => next().then(ok, no),
+      }
+      return builder
+    },
+  }
+  return { sb: sb as unknown as SupabaseClient, sent }
+}
+
+const HOSPITAL_ID = '11111111-2222-4333-8444-555555555555'
+const NEUTRAL = { TPL: { main: '{부위} 중립' }, CODEMAP: {}, CODEMAP_DEL: [] }
+
+describe('AC-6607.2 [기본 문구로 바로 시작] startHospitalSettings', () => {
+  it('AC-6607.2: 줄이 없으면 문구만 넣는다(상병 연결표는 DB 기본값, hospital_id는 보내지 않는다)', async () => {
+    const { sb, sent } = scriptedSb([{ data: null }, { data: null }])
+    expect(await startHospitalSettings(sb, NEUTRAL)).toBe('ok')
+    expect(sent).toEqual([
+      { table: 'claim_hospital_settings', op: 'select', columns: 'hospital_id', filters: [] },
+      { table: 'claim_hospital_settings', op: 'insert', body: { phrases: NEUTRAL }, filters: [] },
+    ])
+  })
+
+  it('AC-6607.2: 줄이 있으면 문구만 바꾼다(상병 연결표 그대로)', async () => {
+    const { sb, sent } = scriptedSb([{ data: { hospital_id: HOSPITAL_ID } }, { data: null }])
+    expect(await startHospitalSettings(sb, NEUTRAL)).toBe('ok')
+    expect(sent[1]).toEqual({ table: 'claim_hospital_settings', op: 'update', body: { phrases: NEUTRAL }, filters: [['hospital_id', HOSPITAL_ID]] })
+    expect(sent).toHaveLength(2)
+  })
+
+  it('AC-6607.2: 다른 창이 먼저 줄을 만들었으면(23505) 덮어쓰지 않고 다시 읽어 그 줄을 쓴다', async () => {
+    const { sb, sent } = scriptedSb([{ data: null }, { error: { code: '23505', message: SECRET_MESSAGE } }, { data: { hospital_id: HOSPITAL_ID } }])
+    expect(await startHospitalSettings(sb, NEUTRAL)).toBe('ok')
+    expect(sent.map((s) => s.op)).toEqual(['select', 'insert', 'select'])
+  })
+
+  it.each([
+    ['처음 읽기 오류', [{ error: { message: SECRET_MESSAGE } }]],
+    ['처음 읽기 네트워크 실패', ['throw']],
+    ['넣기 오류(23505 아님)', [{ data: null }, { error: { code: '42501', message: SECRET_MESSAGE } }]],
+    ['넣기 네트워크 실패', [{ data: null }, 'throw']],
+    ['23505 뒤 다시 읽기 실패', [{ data: null }, { error: { code: '23505' } }, { error: { message: SECRET_MESSAGE } }]],
+    ['23505 뒤에도 줄 없음', [{ data: null }, { error: { code: '23505' } }, { data: null }]],
+    ['바꾸기 오류', [{ data: { hospital_id: HOSPITAL_ID } }, { error: { message: SECRET_MESSAGE } }]],
+    ['읽은 줄 모양이 틀림', [{ data: { hospital_id: 7 } }]],
+  ] as [string, Step[]][])('AC-6607.2: %s면 failed이고 던지지 않는다', async (_name, steps) => {
+    expect(await startHospitalSettings(scriptedSb(steps).sb, NEUTRAL)).toBe('failed')
+  })
+})
+
+describe('AC-6610.1 입력 방식 읽기 readInputMode', () => {
+  it.each([
+    ['code', 'code'],
+    ['date', 'date'],
+    [null, null],
+    ['week', null],
+  ] as const)('AC-6610.1: 저장된 값 %s → 방식 %s(모르는 값은 null = 날짜별)', async (saved, mode) => {
+    const { sb, sent } = scriptedSb([{ data: { hospital_id: HOSPITAL_ID, input_mode: saved } }])
+    expect(await readInputMode(sb)).toEqual({ hospitalId: HOSPITAL_ID, mode })
+    expect(sent).toEqual([{ table: 'claim_hospital_settings', op: 'select', columns: 'hospital_id, input_mode', filters: [] }])
+  })
+
+  it.each([
+    ['줄 없음', { data: null }],
+    ['오류', { error: { message: SECRET_MESSAGE } }],
+    ['네트워크 실패', 'throw'],
+    ['병원 id 모양이 틀림', { data: { hospital_id: '', input_mode: 'code' } }],
+  ] as [string, Step][])('AC-6610.1: %s면 null(지금처럼 날짜별)이고 던지지 않는다', async (_name, step) => {
+    expect(await readInputMode(scriptedSb([step]).sb)).toBeNull()
+  })
+})
+
+describe('AC-6610.2 입력 방식 저장 saveInputMode', () => {
+  it('AC-6610.2: input_mode 한 칸만 내 병원 줄에 고친다(병원 문구는 보내지 않는다)', async () => {
+    const { sb, sent } = scriptedSb([{ data: null }])
+    await saveInputMode(sb, HOSPITAL_ID, 'code')
+    expect(sent).toEqual([{ table: 'claim_hospital_settings', op: 'update', body: { input_mode: 'code' }, filters: [['hospital_id', HOSPITAL_ID]] }])
+  })
+
+  it.each([
+    ['오류', { error: { message: SECRET_MESSAGE } }],
+    ['네트워크 실패', 'throw'],
+  ] as [string, Step][])('AC-6610.2: 저장이 실패(%s)해도 던지지 않는다(따로 알리지 않는다)', async (_name, step) => {
+    await expect(saveInputMode(scriptedSb([step]).sb, HOSPITAL_ID, 'date')).resolves.toBeUndefined()
+  })
+
+  it('AC-6610.2: 병원 id가 비었거나 방식이 둘 밖이면 보내지 않는다', async () => {
+    const { sb, sent } = scriptedSb([])
+    await saveInputMode(sb, '', 'code')
+    await saveInputMode(sb, HOSPITAL_ID, 'week' as never)
+    expect(sent).toEqual([])
   })
 })

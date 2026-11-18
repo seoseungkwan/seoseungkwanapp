@@ -95,10 +95,15 @@ const ALL_CODES = [
   'E-DESK-EMAIL-TAKEN',
   'E-DESK-EMAIL-USED',
   'E-DESK-LIMIT',
+  'E-CLINIC-READ-FAILED',
+  'E-CLINIC-SAVE-FAILED',
+  'E-CLINIC-LOGO-FAILED',
+  'E-FIRST-RUN-SAVE-FAILED',
 ] as const satisfies readonly ErrorCode[]
 
-// '병원' 낱말 예외(AC-409.1): 명세가 글자를 정한 데스크 메일 번호 둘만. '병원 계정'·'다른 병원'이라고 말해야 뜻이 산다(desk-feedback design.md 표, AC-6304.3)
-const HOSPITAL_WORD_OK: ReadonlySet<ErrorCode> = new Set(['E-DESK-EMAIL-TAKEN', 'E-DESK-EMAIL-USED'])
+// '병원' 낱말 예외(AC-409.1): 명세가 글자를 정한 번호만. 데스크 메일 둘은 '병원 계정'·'다른 병원'이라고 말해야 뜻이 산다(desk-feedback design.md 표, AC-6304.3).
+// 메모 잠금 글은 설정 칸 이름 '병원 문구'를 가리켜야 갈 곳이 보인다(clinic-profile AC-6607.4가 글자를 정함)
+const HOSPITAL_WORD_OK: ReadonlySet<ErrorCode> = new Set(['E-DESK-EMAIL-TAKEN', 'E-DESK-EMAIL-USED', 'E-MEMO-NO-SETTINGS'])
 
 // 청구 사전점검 연결 번호(design.md 4-5 중 확장·도우미·통로 것). 비트 접속 번호는 TASK-6이 더한다
 const BRIDGE_CODES = [
@@ -604,13 +609,14 @@ describe('AC-007.5 점검 표 불러오기 오류 문구', () => {
 })
 
 // 청구메모(precheck TASK-14): 병원 설정이 없거나 틀린 병원은 메모를 만들지 않는다
-describe('AC-014.8 메모 설정 없음 오류 문구', () => {
-  it('AC-014.8: E-MEMO-NO-SETTINGS는 처음 질문을 먼저 하라고 알리고 무엇을 고칠지 있다', () => {
+// 잠금 글은 clinic-profile AC-6607.4가 precheck AC-014.8·AC-018.18의 '처음 질문을 먼저' 글을 대신한다(번호는 그대로)
+describe('AC-014.8·AC-6607.4 메모 설정 없음 오류 문구', () => {
+  it('AC-014.8·AC-6607.4: E-MEMO-NO-SETTINGS는 병원 문구가 아직 없다고 알리고, 설정 → 병원 문구에서 처음 질문이나 기본 문구로 시작하라고 한다', () => {
     expect(isErrorCode('E-MEMO-NO-SETTINGS')).toBe(true)
-    const info = errorInfo('E-MEMO-NO-SETTINGS')
-    expect(info.what).toBe('처음 질문을 먼저 해 주세요')
-    expect(info.fix.length).toBeGreaterThan(0)
-    expect(info.fix).toContain('점검 결과')
+    expect(errorInfo('E-MEMO-NO-SETTINGS')).toEqual({
+      what: '병원 문구가 아직 없어요',
+      fix: '설정 → 병원 문구에서 처음 질문을 하거나 기본 문구로 바로 시작해 주세요.',
+    })
   })
 })
 
@@ -740,8 +746,11 @@ describe('AC-018.21·AC-018.18 입력 쪽 오류 글', () => {
     expect(errorInfo(code as ErrorCode)).toEqual({ what, fix })
   })
 
-  it('AC-018.18: E-MEMO-NO-SETTINGS의 fix는 갈 곳을 말한다(처음 질문 화면은 아직 없다)', () => {
-    expect(errorInfo('E-MEMO-NO-SETTINGS').fix).toBe('메모를 만들려면 문구 설정이 먼저 있어야 해요. 처음 질문 화면은 아직 준비 중이에요. 그 전에 메모가 필요하면 개발자에게 문의해 주세요. 점검 결과는 그대로 볼 수 있어요.')
+  it("AC-018.18·AC-6607.4: E-MEMO-NO-SETTINGS의 fix는 갈 곳(설정 → 병원 문구)을 말하고 '준비 중'·'개발자'가 없다", () => {
+    const { what, fix } = errorInfo('E-MEMO-NO-SETTINGS')
+    expect(`${what}. ${fix}`).toBe('병원 문구가 아직 없어요. 설정 → 병원 문구에서 처음 질문을 하거나 기본 문구로 바로 시작해 주세요.')
+    expect(fix).not.toContain('준비 중')
+    expect(fix).not.toContain('개발자')
   })
 })
 
@@ -1066,9 +1075,46 @@ describe('AC-6304.3 데스크 계정 오류 번호', () => {
     for (const code of Object.keys(DESK)) expect(union).toContain(`'${code}'`)
   })
 
-  it("AC-409.1·AC-6304.3: '병원' 낱말 예외는 E-DESK-EMAIL-TAKEN·E-DESK-EMAIL-USED 둘뿐이다(다른 번호는 그대로 잡는다)", () => {
-    expect([...HOSPITAL_WORD_OK].sort()).toEqual(['E-DESK-EMAIL-TAKEN', 'E-DESK-EMAIL-USED'])
+  it("AC-409.1·AC-6304.3·AC-6607.4: '병원' 낱말 예외는 E-DESK-EMAIL-TAKEN·E-DESK-EMAIL-USED·E-MEMO-NO-SETTINGS 셋뿐이다(다른 번호는 그대로 잡는다)", () => {
+    expect([...HOSPITAL_WORD_OK].sort()).toEqual(['E-DESK-EMAIL-TAKEN', 'E-DESK-EMAIL-USED', 'E-MEMO-NO-SETTINGS'])
     const withWord = ALL_CODES.filter((code) => `${errorInfo(code).what} ${errorInfo(code).fix}`.includes('병원'))
-    expect(withWord.sort()).toEqual(['E-DESK-EMAIL-TAKEN', 'E-DESK-EMAIL-USED'])
+    expect(withWord.sort()).toEqual(['E-DESK-EMAIL-TAKEN', 'E-DESK-EMAIL-USED', 'E-MEMO-NO-SETTINGS'])
+  })
+})
+
+// 병원 정보 칸·처음 질문 저장(spec clinic-profile design.md 2절·3절·16절, TASK-2). 읽기 실패는 [다시 불러오기], 저장·로고 실패는 [다시 저장](AC-6602.7·AC-6614.8)
+const CLINIC = {
+  'E-CLINIC-READ-FAILED': '[다시 불러오기]',
+  'E-CLINIC-SAVE-FAILED': '[다시 저장]',
+  'E-CLINIC-LOGO-FAILED': '[다시 저장]',
+  'E-FIRST-RUN-SAVE-FAILED': '[다시 저장]',
+} as const satisfies Partial<Record<ErrorCode, string>>
+
+describe('AC-6602.7·AC-6614.8 병원 정보·처음 질문 오류 번호', () => {
+  it.each(Object.keys(CLINIC) as Array<keyof typeof CLINIC>)('AC-6602.7·AC-6614.8: %s는 번호가 있고 무엇이·어떻게 고치나가 있으며 곁의 단추를 말한다', (code) => {
+    expect(isErrorCode(code), code).toBe(true)
+    expect(ALL_CODES, code).toContain(code)
+    const { what, fix } = errorInfo(code)
+    expect(what.trim(), code).not.toBe('')
+    expect(fix, code).toContain(CLINIC[code])
+    expect(`${what} ${fix}`, code).not.toContain('병원')
+    expect(`${what} ${fix}`, code).not.toMatch(/니다\./)
+  })
+
+  it('AC-6602.7: 저장 실패 둘은 적은 값이 화면에 그대로 있다고 알리고, 로고 실패는 로고를 말한다', () => {
+    expect(errorInfo('E-CLINIC-SAVE-FAILED').fix).toContain('그대로')
+    expect(errorInfo('E-CLINIC-LOGO-FAILED').what).toContain('로고')
+    expect(errorInfo('E-CLINIC-LOGO-FAILED').fix).toContain('그대로')
+  })
+
+  it('AC-6614.8: 처음 질문 저장 실패는 고른 답이 그대로 있다고 알린다', () => {
+    expect(errorInfo('E-FIRST-RUN-SAVE-FAILED').fix).toContain('고른 답은 그대로')
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
+  it('AC-6602.7·AC-6614.8: 네 번호가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    for (const code of Object.keys(CLINIC)) expect(union).toContain(`'${code}'`)
   })
 })
