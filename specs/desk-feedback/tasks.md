@@ -63,6 +63,6 @@
 - Phase: 3
 - AC: AC-6304.1, AC-6304.2, AC-6304.3
 - REQ: REQ-6304
-- Files: src/types/desk.ts, src/lib/storage/desk.ts, src/lib/storage/desk.test.ts, src/components/settings/DeskAccounts.tsx, src/components/settings/DeskAccounts.test.tsx, src/components/settings/SettingsPage.tsx, src/app/(app)/settings/page.test.tsx, src/lib/errors.ts, src/lib/errors.test.ts, src/types/errors.ts
+- Files: src/types/desk.ts, src/lib/storage/desk.ts, src/lib/storage/desk.test.ts, src/components/settings/DeskAccounts.tsx, src/components/settings/DeskAccounts.test.tsx, src/components/settings/SettingsPage.tsx, src/app/(app)/settings/page.test.tsx, src/lib/errors.ts, src/lib/errors.test.ts, src/types/errors.ts, src/components/settings/InstallFilesCard.test.tsx
 - Tests: src/lib/storage/desk.test.ts, src/components/settings/DeskAccounts.test.tsx, src/lib/errors.test.ts
 - TDD: required — design.md '③ 설정 데스크 계정 칸'. 저장 시험은 부르는 함수 이름·인자가 정해 둔 것뿐인지, 틀린 답·오류에서 Supabase 문구·메일이 새지 않는지 본다. 화면 시험은 저장 함수를 흉내 내 다섯 답·5줄 꺼짐·[빼기]·읽기 실패를 본다. 오류 여섯은 design.md 표 글 그대로. 설정 페이지 시험은 새 칸이 맨 아래에 있는지만 더하고 저장은 흉내 낸다
