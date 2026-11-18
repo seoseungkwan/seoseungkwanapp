@@ -1,8 +1,8 @@
 import { FIXED_FALLBACK, type Phrases, type PhraseTemplates } from '../index'
 
 // 처음 질문의 답(clinic-profile REQ-6614, design.md 16절): 답 ↔ 병원 문구. 순수 함수만 있다 [환자 자료 구역]
-// 엔진에서 다른 시술 문구 안에 들어가 그려지는 icnb(ICNB 글자를 바꾸는 틀)와 ara(차트로 만든 연골주사 줄)는 바깥 문구(mainPeripheral 등)의
-// 가이드·끝맺음을 그대로 받으므로 토큰을 붙이지 않는다(붙이면 두 번 나온다)
+// 엔진에서 바깥 문구(mainPeripheral 등) 안에 들어가 그려지는 icnb(ICNB 글자를 바꾸는 틀)와 ara(차트로 만든 연골주사 줄)는 바깥 문구의
+// 끝맺음을 그대로 받으므로 건드리지 않는다(붙이면 두 번 나온다)
 
 export const SIDE_STYLES = ['Rt', 'upper', 'dot', 'bil', 'ko', 'koShort'] as const
 export type SideStyle = (typeof SIDE_STYLES)[number]
@@ -32,32 +32,43 @@ export const ENDING_CHOICES = ['시행함', '시행', '시행하였음'] as cons
 export const MARK_CHOICES = ['◈', '◆', '▶', '→', '-', '·', '*', '※', '□'] as const
 export const KLG_TEMPLATES: Readonly<Record<KlgStyle, string>> = { paren: 'K-L grade ({KL1})/({KL2})', plain: 'K-L grade {KL1}/{KL2}', ko: 'K-L 등급 {KL1}/{KL2}' }
 
-/** 앞에 {C-arm}을 붙이는 신경차단술 문구 */
-export const CARM_KEYS = ['main', 'mainCentral', 'mainPeripheral', 'cpb', 'snb'] as const
+/**
+ * 앞에 {C-arm}을 붙이는 신경차단술 문구. 말초 문구(mainPeripheral)에는 붙이지 않고 옛 값에 있던 {C-arm}만 뗀다:
+ * 말초 신경차단은 보통 초음파이고, 차트에서 읽은 연골주사 줄·ICNB 줄도 이 문구로 그려진다
+ */
+export const CARM_KEYS = ['main', 'mainCentral', 'cpb', 'snb'] as const
 /** 앞에 {Sono}를 붙이는 관절 주사 문구 */
 export const SONO_KEYS = ['iaEtc', 'iaAra', 'ts'] as const
-/** 끝에 {시행함}을 붙이는 시술 문구. 문구 글에 이미 '시행'이 있으면(건초내주사 기본 문구) 더 붙이지 않는다 */
-export const ENDING_KEYS = [...CARM_KEYS, ...SONO_KEYS] as const
+/** 끝에 {시행함}을 붙이는 시술 문구. 이미 '시행'으로 끝나는 건초내주사(ts)는 끝을 건드리지 않는다 */
+export const ENDING_KEYS = ['main', 'mainCentral', 'mainPeripheral', 'cpb', 'snb', 'iaEtc', 'iaAra'] as const
 
 /** 칸이 없을 때 엔진이 쓰는 값(engine.ts: 좌우 모양 없음 = Rt, mark 없음 = ◈ 등) */
 const ENGINE_DEFAULTS = { sideStyle: 'Rt', cartilageSideLang: 'ko', sideMode: 'quantity', sideSpread: 'all', levelSep: 'comma', mark: '◈', lineJoin: 'lines' } as const
 const PLAIN_KEYS = Object.keys(ENGINE_DEFAULTS) as (keyof typeof ENGINE_DEFAULTS)[]
 
-type TemplateKey = (typeof ENDING_KEYS)[number]
+/** 앞뒤 토큰을 다루는 문구와 그 문구의 앞 토큰 */
+const TEMPLATE_GUIDE = { main: 'C-arm', mainCentral: 'C-arm', mainPeripheral: 'C-arm', cpb: 'C-arm', snb: 'C-arm', iaEtc: 'Sono', iaAra: 'Sono', ts: 'Sono' } as const
+type TemplateKey = keyof typeof TEMPLATE_GUIDE
+type Guide = (typeof TEMPLATE_GUIDE)[TemplateKey]
 type FixedRow = NonNullable<PhraseTemplates['fixedPhrases']>[number]
 
-const PREFIX: Record<'C-arm' | 'Sono', RegExp> = { 'C-arm': /^(?:\s*\{C-arm\})+\s*/, Sono: /^(?:\s*\{Sono\})+\s*/ }
+const PREFIX: Record<Guide, RegExp> = { 'C-arm': /^(?:\s*\{C-arm\})+\s*/, Sono: /^(?:\s*\{Sono\})+\s*/ }
 const SUFFIX = /(?:\s*\{시행함\})+\s*$/
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 const used = (value: string | null): value is string => value !== null && value.trim() !== ''
 const pick = <V extends string>(value: unknown, list: readonly V[], fallback: V): V => (list.includes(value as V) ? (value as V) : fallback)
-const ownEnding = (body: string) => /시행/.test(body.replace(/\{[^{}]*\}/g, ''))
 
-/** 문구 하나: 관리하는 앞·끝 토큰을 떼고, 켜진 답이면 한 번씩 다시 붙인다. 빈 문구는 엔진이 '안 씀'으로 읽어 비운 채 둔다 */
-function shape(template: string, token: 'C-arm' | 'Sono', guide: boolean, ending: boolean): string {
-  const body = template.replace(PREFIX[token], '').replace(SUFFIX, '')
+const listed = (keys: readonly string[], key: string) => keys.includes(key)
+
+/**
+ * 문구 하나: 앞 토큰과(ending이 null이 아니면) 끝 토큰을 떼고, 켜진 답이면 한 번씩 다시 붙인다. ending null은 끝을 건드리지 않음이다.
+ * 빈 문구는 엔진이 '안 씀'으로 읽어 비운 채 둔다
+ */
+function shape(template: string, token: Guide, guide: boolean, ending: boolean | null): string {
+  let body = template.replace(PREFIX[token], '')
+  if (ending !== null) body = body.replace(SUFFIX, '')
   if (!body.trim()) return body
-  return `${guide ? `{${token}} ` : ''}${body}${ending && !ownEnding(body) ? ' {시행함}' : ''}`
+  return `${guide ? `{${token}} ` : ''}${body}${ending ? ' {시행함}' : ''}`
 }
 
 /** 고정 멘트 C-arm·Sono·시행함 줄: 켜진 답이면 글과 켜짐, '안 씀'이면 끔(글은 둔다). 다른 줄은 그대로, 없는 줄은 기본 줄로 더한다 */
@@ -84,15 +95,14 @@ export function applyAnswers(base: Phrases, answers: Answers): Phrases {
     if (T[key] !== undefined || answers[key] !== ENGINE_DEFAULTS[key]) T[key] = answers[key]
   }
   T.klg = KLG_TEMPLATES[answers.klg]
+  const on: Record<Guide, boolean> = { 'C-arm': used(answers.carm), Sono: used(answers.sono) }
   const ending = used(answers.ending)
-  const reshape = (keys: readonly TemplateKey[], token: 'C-arm' | 'Sono', guide: boolean) => {
-    for (const key of keys) {
-      const value = T[key]
-      if (typeof value === 'string') T[key] = shape(value, token, guide, ending)
-    }
+  for (const [key, token] of Object.entries(TEMPLATE_GUIDE) as [TemplateKey, Guide][]) {
+    const value = T[key]
+    if (typeof value !== 'string') continue
+    const guide = on[token] && listed(token === 'C-arm' ? CARM_KEYS : SONO_KEYS, key)
+    T[key] = shape(value, token, guide, listed(ENDING_KEYS, key) ? ending : null)
   }
-  reshape(CARM_KEYS, 'C-arm', used(answers.carm))
-  reshape(SONO_KEYS, 'Sono', used(answers.sono))
   T.fixedPhrases = fixedRows(T.fixedPhrases, { 'C-arm': answers.carm, Sono: answers.sono, 시행함: answers.ending })
   return next
 }

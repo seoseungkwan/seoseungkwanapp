@@ -10,6 +10,8 @@ import { PRESETS } from './presets'
 function edited(): Phrases {
   const value = neutralPhrases()
   value.TPL.main = '{C-arm} {C-arm} {시술} {시행함}'
+  // 옛 처음 질문이 말초 신경차단 문구에도 붙였던 {C-arm}
+  value.TPL.mainPeripheral = '{C-arm} {시술} {시행함}'
   value.TPL.fixedPhrases = [{ token: '투시', text: '투시 하에', on: true }, { token: 'C-arm', text: '영상 하에', on: true }]
   value.TPL.byProc = { SSNB: '{투시} {시술}' }
   value.TPL.rename = 'C-MBB > MBB C'
@@ -29,8 +31,10 @@ const OWN: Answers = { sideStyle: 'dot', cartilageSideLang: 'en', sideMode: 'qua
 const ANSWERS: [string, Answers][] = [...PRESETS.map((preset, at): [string, Answers] => [`보기 ${at + 1}`, { ...preset.answers }]), ['직접 고른 답', OWN]]
 const CASES = BASES.flatMap(([base, make]) => ANSWERS.map(([name, answers]): [string, string, () => Phrases, Answers] => [base, name, make, answers]))
 
+/** 답이 앞뒤 토큰을 붙이거나 떼는 시술 문구(AC-6614.7) */
+const TOUCHED = ['main', 'mainCentral', 'mainPeripheral', 'cpb', 'snb', 'iaEtc', 'iaAra', 'ts'] as const
 /** 답이 바꾸는 TPL 칸 */
-const CHANGED = ['sideStyle', 'cartilageSideLang', 'sideMode', 'sideSpread', 'levelSep', 'klg', 'mark', 'lineJoin', 'fixedPhrases', ...ENDING_KEYS] as const
+const CHANGED = ['sideStyle', 'cartilageSideLang', 'sideMode', 'sideSpread', 'levelSep', 'klg', 'mark', 'lineJoin', 'fixedPhrases', ...TOUCHED] as const
 const FIXED = ['C-arm', 'Sono', '시행함']
 
 function others(value: Phrases) {
@@ -49,7 +53,7 @@ describe('AC-6614.7 답을 문구에 넣기(applyAnswers)', () => {
     const before = make()
     const after = applyAnswers(before, answers)
     expect(others(after)).toEqual(others(before))
-    for (const key of ENDING_KEYS) expect(bare(after.TPL[key]), key).toBe(bare(before.TPL[key]))
+    for (const key of TOUCHED) expect(bare(after.TPL[key]), key).toBe(bare(before.TPL[key]))
     const rest = (rows: PhraseTemplates['fixedPhrases']) => (rows ?? []).filter((row) => !FIXED.includes(row.token))
     expect(rest(after.TPL.fixedPhrases)).toEqual(rest(before.TPL.fixedPhrases))
   })
@@ -58,6 +62,7 @@ describe('AC-6614.7 답을 문구에 넣기(applyAnswers)', () => {
     const once = applyAnswers(make(), answers)
     expect(applyAnswers(once, answers)).toEqual(once)
     for (const key of CARM_KEYS) expect(count(once.TPL[key], '{C-arm}'), key).toBeLessThanOrEqual(1)
+    expect(count(once.TPL.mainPeripheral, '{C-arm}')).toBe(0)
     for (const key of SONO_KEYS) expect(count(once.TPL[key], '{Sono}'), key).toBeLessThanOrEqual(1)
     for (const key of ENDING_KEYS) expect(count(once.TPL[key], '{시행함}'), key).toBeLessThanOrEqual(1)
     for (const token of FIXED) expect(once.TPL.fixedPhrases?.filter((row) => row.token === token)).toHaveLength(1)
@@ -82,9 +87,16 @@ describe('AC-6614.7 답을 문구에 넣기(applyAnswers)', () => {
     expect(JSON.stringify(base)).toBe(before)
   })
 
+  it('AC-6614.7: 붙이는 문구 — {C-arm}은 main·mainCentral·cpb·snb, {Sono}는 iaEtc·iaAra·ts, {시행함}은 main·mainCentral·mainPeripheral·cpb·snb·iaEtc·iaAra', () => {
+    expect(CARM_KEYS).toEqual(['main', 'mainCentral', 'cpb', 'snb'])
+    expect(SONO_KEYS).toEqual(['iaEtc', 'iaAra', 'ts'])
+    expect(ENDING_KEYS).toEqual(['main', 'mainCentral', 'mainPeripheral', 'cpb', 'snb', 'iaEtc', 'iaAra'])
+  })
+
   it('AC-6614.7: 켜진 답은 신경차단술 문구 앞 {C-arm}, 관절 주사 문구 앞 {Sono}, 시술 문구 끝 {시행함}과 고정 멘트 글·켜짐이다', () => {
     const T = applyAnswers(neutralPhrases(), PRESETS[1].answers).TPL
-    for (const key of ['main', 'mainCentral', 'mainPeripheral', 'cpb', 'snb'] as const) expect(T[key], key).toBe('{C-arm} {시술} {시행함}')
+    for (const key of ['main', 'mainCentral', 'cpb', 'snb'] as const) expect(T[key], key).toBe('{C-arm} {시술} {시행함}')
+    expect(T.mainPeripheral).toBe('{시술} {시행함}')
     expect(T.iaEtc).toBe('{Sono} IA injection of - {부위}{약제} {시행함}')
     expect(T.fixedPhrases).toEqual([
       { token: 'C-arm', text: 'C-arm guide 하에', on: true },
@@ -99,6 +111,7 @@ describe('AC-6614.7 답을 문구에 넣기(applyAnswers)', () => {
   it("AC-6614.7: '안 씀'은 토큰을 떼고 고정 멘트를 끈다(글은 둔다). 다른 고정 멘트는 그대로다", () => {
     const T = applyAnswers(edited(), PRESETS[0].answers).TPL
     expect(T.main).toBe('{시술}')
+    expect(T.mainPeripheral).toBe('{시술}')
     expect(T.fixedPhrases).toEqual([
       { token: '투시', text: '투시 하에', on: true },
       { token: 'C-arm', text: '영상 하에', on: false },
@@ -108,13 +121,21 @@ describe('AC-6614.7 답을 문구에 넣기(applyAnswers)', () => {
     expect(T.byProc).toEqual({ SSNB: '{투시} {시술}' })
   })
 
-  it("AC-6614.7: 이미 '시행'이 적힌 건초내주사 문구와 빈 문구(iaAra)에는 끝맺음을 더 붙이지 않는다", () => {
+  it("AC-6614.7: 이미 '시행'으로 끝나는 건초내주사 문구(ts)는 끝맺음을 건드리지 않고, 빈 문구(iaAra)는 빈 채다", () => {
     const T = applyAnswers(neutralPhrases(), PRESETS[1].answers).TPL
     expect(T.ts).toBe('{Sono} {부위} 건초내주사 시행{약제}')
     expect(T.iaAra).toBe('')
+    const own = neutralPhrases()
+    own.TPL.ts = '{부위} 건초내주사 {시행함}'
+    expect(applyAnswers(own, PRESETS[0].answers).TPL.ts).toBe('{부위} 건초내주사 {시행함}')
+    expect(applyAnswers(own, PRESETS[1].answers).TPL.ts).toBe('{Sono} {부위} 건초내주사 {시행함}')
   })
 
-  it('AC-6614.7: 다른 시술 문구 안에 그려지는 icnb·ara는 그대로라 가이드·끝맺음이 줄마다 한 번이다', () => {
+  it('AC-6614.7: 옛 문구의 말초 신경차단 문구(mainPeripheral) 앞 {C-arm}은 어느 답이든 뗀다', () => {
+    for (const [, answers] of ANSWERS) expect(applyAnswers(edited(), answers).TPL.mainPeripheral).toMatch(/^\{시술\}/)
+  })
+
+  it('AC-6614.7: 바깥 문구가 감싸 그리는 icnb·ara는 그대로라 끝맺음이 한 번이고, 말초 문구로 그려지는 ICNB·차트 연골주사 줄에는 C-arm 글자가 없다', () => {
     const base = neutralPhrases()
     const phrases = applyAnswers(base, PRESETS[1].answers)
     expect(phrases.TPL.icnb).toBe(base.TPL.icnb)
@@ -124,8 +145,9 @@ describe('AC-6614.7 답을 문구에 넣기(applyAnswers)', () => {
       rx: [{ code, name: code, qty: 1, benefit: true, pay: '급여' }], dx: [], memosInBit: [],
     })
     const engine = createMemoEngine(phrases, {})
-    expect(engine.fullText(visit(['Rt chest wall pain', 'ICNB Rt'], 'LA248'))).toBe('C-arm guide 하에 ICNB Rt 3 level 시행함')
-    expect(engine.fullText(visit(['Rt knee OA', '연골주사 Rt knee 2차'], 'KK090'))).toBe('C-arm guide 하에 Rt 슬관절 강내 연골주사 2회차 시행함')
+    expect(engine.fullText(visit(['Rt chest wall pain', 'ICNB Rt'], 'LA248'))).toBe('ICNB Rt 3 level 시행함')
+    expect(engine.fullText(visit(['Rt knee OA', '연골주사 Rt knee 2차'], 'KK090'))).toBe('Rt 슬관절 강내 연골주사 2회차 시행함')
+    expect(engine.fullText(visit(['LBP', 'MBB L4,5 both'], 'LA358'))).toBe('C-arm guide 하에 MBB L4,5 both 시행함')
   })
 
   it("AC-6614.7: 칸이 없을 때 엔진이 쓰는 값과 같은 답은 칸을 새로 만들지 않는다(확인 쪽 '바뀌는 것'에 안 바뀐 줄이 없다)", () => {

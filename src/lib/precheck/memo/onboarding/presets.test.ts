@@ -17,17 +17,17 @@ const EXPECTED: string[][] = [
   [
     'C-arm guide 하에 MBB L4,5,S1 both 시행함\nC-arm guide 하에 SNB Rt 시행함',
     'Sono guide 하에 IA injection of - Rt shoulder 시행함',
-    'C-arm guide 하에 Rt 슬관절 강내 연골주사 2회차 시행함\nK-L grade (3)/(3)',
+    'Rt 슬관절 강내 연골주사 2회차 시행함\nK-L grade (3)/(3)',
   ],
   [
     'C-arm 가이드 하에 MBB L4-5-S1 양측 시행함\nC-arm 가이드 하에 SNB 우측 시행함',
     '초음파 가이드 하에 IA injection of - 우측 shoulder 시행함',
-    'C-arm 가이드 하에 우측 슬관절 강내 연골주사 2회차 시행함\nK-L 등급 3/3',
+    '우측 슬관절 강내 연골주사 2회차 시행함\nK-L 등급 3/3',
   ],
   [
     'C-arm 가이드하에 MBB L4-5-S1 both 시행함, C-arm 가이드하에 SNB Rt 시행함',
     'Sono 가이드하에 IA injection of - Rt shoulder 시행함',
-    'C-arm 가이드하에 Rt 슬관절 강내 연골주사 2회차 시행함, K-L grade 3/3',
+    'Rt 슬관절 강내 연골주사 2회차 시행함, K-L grade 3/3',
   ],
 ]
 
@@ -84,6 +84,12 @@ describe('AC-6614.9 보기 4개(presets)', () => {
     for (const memo of memos(3)) expect(memo).not.toContain('\n')
     expect(memos(3)[0]).toMatch(/L4-5-S1 .*, .*SNB/)
     expect(memos(3)[2]).toMatch(/K-L grade \d\/\d$/)
+  })
+
+  it.each(PRESETS.map((preset, at) => [at + 1, at] as const))('AC-6614.7·AC-6614.9: 보기 %i의 무릎 연골주사 줄(차트에서 읽어 말초 문구로 그림)은 가이드 글자 없이 시작한다', (_, at) => {
+    const cartilage = linesOf(at).filter((line) => line.includes('연골주사'))
+    expect(cartilage).toHaveLength(1)
+    expect(cartilage[0]).not.toMatch(/C-arm|Sono|초음파|가이드|guide/)
   })
 
   it.each(PRESETS.map((preset, at) => [at + 1, at] as const))('AC-6614.9: 보기 %i 값을 넣은 문구는 검사(validatePhrases)를 지나고 메모에 확인 표시·남은 토큰이 없다', (_, at) => {
