@@ -34,15 +34,26 @@ export function toDashboardGroups(rows: readonly StatsRxGroup[], ptGroup?: strin
   return ptGroup === undefined ? groups : { ...groups, pt: ptKeyOf(rows, ptGroup) }
 }
 
-/** 수납일지 설정의 물리치료 묶음 id. 클라이언트 만들기·읽기·답 모양의 어떤 실패(바로 던짐 포함)도 undefined(모름)다 */
+/** 수납일지 설정 읽기 한도(AC-6302.5). 대시보드 묶음 한도(10초, LiveDashboard)의 절반 이하라 묶음이 설정 읽기를 기다리다 그 한도에 걸리지 않는다 */
+export const PT_SETTINGS_TIMEOUT_MS = 3_000
+
+/** 수납일지 설정의 물리치료 묶음 id. 클라이언트 만들기·읽기·답 모양의 어떤 실패(바로 던짐 포함)도 undefined(모름)다.
+ * 한도(PT_SETTINGS_TIMEOUT_MS) 안에 답이 없어도 undefined이고, 늦게 온 답·실패는 버린다(AC-6302.5) */
 const readPtGroup = (): Promise<string | null | undefined> =>
-  Promise.resolve()
-    .then(() => loadSunapSettings(supabaseBrowser()))
-    .then((settings) => settings.ptGroup)
-    .catch(() => undefined)
+  new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(undefined), PT_SETTINGS_TIMEOUT_MS)
+    const settle = (ptGroup: string | null | undefined) => {
+      clearTimeout(timer)
+      resolve(ptGroup)
+    }
+    Promise.resolve()
+      .then(() => loadSunapSettings(supabaseBrowser()))
+      .then((settings) => settings.ptGroup)
+      .then(settle, () => settle(undefined))
+  })
 
 /** 이 계정의 통계 탭 묶음과 수납일지 설정을 함께 한 번 읽는다. 묶음 읽기가 어디서 실패하든 null(AC-606.5).
- * 수납일지 설정 읽기만 실패하면 pt 칸 없이 묶음은 그대로다(AC-6302.1) */
+ * 수납일지 설정 읽기만 실패하거나 늦으면 pt 칸 없이 묶음은 그대로다(AC-6302.1·AC-6302.5) */
 export async function readDashboardGroups(): Promise<DashboardGroups | null> {
   const ptGroup = readPtGroup()
   try {

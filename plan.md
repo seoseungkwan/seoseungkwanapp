@@ -116,12 +116,12 @@
 |---|---|
 | `hospitals` | 병원 이름·신청자 이름·연락처·이메일·상태. 요양기관번호는 받지 않는다 **(사용자, 2026-10-28)** |
 | `admins` | 운영자(나) 1줄. 처음에 SQL로 넣는다 |
-| `hospital_members` | 병원의 데스크 메일(소문자, 표 전체에서 하나)·역할 'desk'. 병원마다 5개까지, 사용자 표 권한 없이 정의자 함수로만 더하고 읽고 뺀다. ADR-031, specs/desk-feedback **(사용자, 2026-11-18)** |
 | `months` · `days` | 통계 월 숫자(파일럿 그대로) · 일 숫자 |
 | `rx_groups` | 그룹 이름·코드 목록·즐겨찾기 |
 | `stats_rx_picks` | 처방 골라 보기에서 고른 처방(코드·이름·차례). 낱개 처방이라 묶음 표(`rx_groups`)와 따로 둔다. specs/rx-picker **(Claude 판단, 2026-11-03)** |
 | `sales_days` | 일 매출 집계. 칸은 specs/revenue design.md 6절 |
 | `stats_rx_groups` | 통계 처방별 추세의 묶음(이름·코드 목록·차례). 매출 탭 묶음(`rx_groups`)과 따로 둔다. specs/treatment-trend **(사용자, 2026-11-05)** |
+| `hospital_members` | 병원의 데스크 메일(소문자, 표 전체에서 하나)·역할 'desk'. 병원마다 5개까지, 사용자 표 권한 없이 정의자 함수로만 더하고 읽고 뺀다. ADR-031, specs/desk-feedback **(사용자, 2026-11-18)** |
 | `inventory_items` · `inventory_moves` | 품목(단위·최소 수량) · 입고·사용·실사 |
 | `employees` · `incentive_rules` | 직원(세후 기본급·재직 여부) · 인센티브 항목(방식·금액·%) |
 | `payroll_months` | 달마다 입력값·결과(jsonb), 상태 `draft`·`final`. `final`은 RLS로 수정 불가 |
