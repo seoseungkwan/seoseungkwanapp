@@ -118,9 +118,9 @@ describe('AC-004.4 웹 versions.ts 값', () => {
     expect(props.match(/<Version>([^<]+)<\/Version>/)?.[1]).toBe(LATEST_HELPER)
   })
 
-  it('AC-012.2·AC-038.3 확장 manifest의 version은 새 판 0.3.0이다(두 갈래의 0.2.0·0.1.1보다 높다)', () => {
+  it('AC-012.2·AC-038.3·AC-6401.2 확장 manifest의 version은 새 판 0.4.0이다(새 주소 n-medi, 옛 0.3.0보다 높다)', () => {
     const manifest = JSON.parse(readFileSync(new URL('../../../extension/manifest.json', import.meta.url), 'utf8'))
-    expect(manifest.version).toBe('0.3.0')
+    expect(manifest.version).toBe('0.4.0')
   })
 
   it('AC-004.4 지금 확장(manifest)·도우미는 웹 기준으로 ok다', () => {
