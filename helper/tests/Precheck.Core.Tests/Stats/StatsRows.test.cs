@@ -20,8 +20,9 @@ internal static class StatsFake
     public static string Chart(int n) => "9" + n.ToString("D5", CultureInfo.InvariantCulture);
 
     /// <summary>
-    /// 등록한 가짜 병원 + 통계 SQL 답. 진료 줄 다섯째 칸·접수 줄 여섯째 칸에 가짜 이름·전화를 일부러 넣는다(보내지 않아야 한다).
+    /// 등록한 가짜 병원 + 통계 SQL 답. 진료 줄 다섯째 칸·접수 줄 일곱째 칸에 가짜 이름·전화를 일부러 넣는다(보내지 않아야 한다).
     /// 접수 줄 다섯째 칸은 90일초진('3') 접수 수다(AC-4401.1): 9000003은 그날 접수 두 건이 모두 '3'(SQL Server SUM은 int).
+    /// 접수 줄 여섯째 칸은 신환 표시('1') 접수 수다(spec new-mark AC-6201.1): 900002는 첫 내원일인 그날 접수 하나가 '1'.
     /// 처방 목록: MM042는 이름이 둘(원본 정렬의 첫 이름), eswt1은 소문자(대소문자 무시), XR01은 이름이 비었음(코드로),
     /// ZZ999는 진료 줄에 없음(빠짐). 진료 줄의 NOCAT1은 처방 목록에 없음(이름 없음).
     /// </summary>
@@ -40,9 +41,9 @@ internal static class StatsFake
         });
         db.Answer(StatsSql.PatientDaysSql, _ => new[]
         {
-            new object?[] { Chart(1), "20260901", 1L, "20260115", 0, Fake.Name },
-            new object?[] { Chart(2) + " ", "20260902", 1L, "20260902", 0, Fake.Phone },
-            new object?[] { Chart(3), "20260903", 2L, null, 2, null },
+            new object?[] { Chart(1), "20260901", 1L, "20260115", 0, 0, Fake.Name },
+            new object?[] { Chart(2) + " ", "20260902", 1L, "20260902", 0, 1, Fake.Phone },
+            new object?[] { Chart(3), "20260903", 2L, null, 2, 0, null },
         });
         db.Answer(StatsSql.VisitSummarySql, _ => new[] { new object?[] { 4L, 3L, 1L, 0L, 0L, 1L } });
         db.Answer(StatsSql.VisitDaysSql, _ => new[]
@@ -91,10 +92,10 @@ internal static class StatsFake
         for (var i = 0; i < n; i++) yield return row;
     }
 
-    /// <summary>접수 줄 n개(모두 같은 가짜 값, 다섯째 칸 90일초진 0). 큰 자료 시험용.</summary>
+    /// <summary>접수 줄 n개(모두 같은 가짜 값, 다섯째 칸 90일초진 0·여섯째 칸 신환 표시 0). 큰 자료 시험용.</summary>
     public static IEnumerable<object?[]> ManyPatientDays(int n)
     {
-        var row = new object?[] { Chart(1), "20260901", 1L, "20260115", 0 };
+        var row = new object?[] { Chart(1), "20260901", 1L, "20260115", 0, 0 };
         for (var i = 0; i < n; i++) yield return row;
     }
 }
@@ -103,8 +104,9 @@ internal static class StatsFake
 /// AC-503.1 stats.rows: 등록 확인(HospitalGate.Open) → 과거 자료 확인 → 진료 줄 → 접수 줄 → 기간 합계 → 날짜별 → 처방 이름을
 /// JSON 하나로 만든 뒤 chunk … end로 보낸다. AC-503.3 반쪽 자료 없이 error만. AC-503.4 기록에는 시각·명령 이름·오류 번호만.
 /// AC-503.5 접수 줄은 진료 줄 바로 다음에 읽고, patientDays는 days 바로 뒤다. v3 열쇠 넷은 report 뒤다(AC-2701.1, StatsExtra.test.cs).
-/// AC-4401.1 답의 v는 4이고 patientDays 줄은 다섯 칸 [차트번호, 진료일, 접수 건수, 첫 내원일|null, 90일초진 접수 수]다.
-/// AC-4401.3 첫 내원일인 줄의 '3' 접수 수도 고치지 않고 그대로 보낸다(신환 우선은 웹이 한다).
+/// AC-4401.1 patientDays 다섯째 칸은 90일초진 접수 수다. AC-4401.3 첫 내원일인 줄의 '3' 접수 수도 고치지 않고 그대로 보낸다(신환 우선은 웹이 한다).
+/// AC-6201.1 (spec new-mark) 답의 v는 5이고 patientDays 줄은 여섯 칸 [차트번호, 진료일, 접수 건수, 첫 내원일|null, 90일초진 접수 수, 신환 표시 접수 수]다.
+/// AC-6201.2 신환 표시가 없는 줄은 여섯째 칸이 0이고 넷째·다섯째 칸은 지금과 같다.
 /// </summary>
 public class StatsRowsTests
 {
@@ -171,7 +173,7 @@ public class StatsRowsTests
 
     // ---- AC-503.1 -------------------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-503.1 AC-4401.1 등록 확인 뒤 진료 줄·접수 줄·기간 합계·날짜별·처방 이름을 정해 둔 열쇠의 JSON 하나로 chunk … end에 보낸다")]
+    [Fact(DisplayName = "AC-503.1 AC-4401.1 AC-6201.1 등록 확인 뒤 진료 줄·접수 줄·기간 합계·날짜별·처방 이름을 정해 둔 열쇠의 JSON 하나로 chunk … end에 보낸다")]
     public void SendsOneJsonInChunks()
     {
         using var rig = StatsFake.Clinic();
@@ -179,9 +181,10 @@ public class StatsRowsTests
         var json = Assemble(sink);
         var root = Json.Parse(json);
 
-        // v3(AC-2701.1): v2 열쇠 뒤에 비트 전용 세 칸 열쇠 넷이 붙는다. v2 열쇠의 값은 아래 그대로다. v4(AC-4401.1)는 열쇠가 같고 patientDays만 다섯 칸이다
+        // v3(AC-2701.1): v2 열쇠 뒤에 비트 전용 세 칸 열쇠 넷이 붙는다. v2 열쇠의 값은 아래 그대로다. v4(AC-4401.1)는 열쇠가 같고 patientDays만 다섯 칸,
+        // v5(AC-6201.1)도 열쇠가 같고 patientDays만 여섯 칸이다
         Assert.Equal(new[] { "v", "from", "to", "summary", "days", "patientDays", "codes", "rows", "report", "visits", "people", "doctors", "doctorDays" }, Json.Keys(root));
-        Assert.Equal(4, root.GetProperty("v").GetInt32());
+        Assert.Equal(5, root.GetProperty("v").GetInt32());
         Assert.Equal("2026-09-01", root.GetProperty("from").GetString());
         Assert.Equal("2026-09-30", root.GetProperty("to").GetString());
 
@@ -201,12 +204,12 @@ public class StatsRowsTests
             for (var i = 1; i < 4; i++) Assert.Equal(JsonValueKind.Number, day[i].ValueKind);
         });
 
-        // [차트번호, 진료일, 접수 건수, 첫 내원일(없으면 null), 90일초진 접수 수] — 환자·날마다 한 줄, 앞뒤 공백만 없앰
+        // [차트번호, 진료일, 접수 건수, 첫 내원일(없으면 null), 90일초진 접수 수, 신환 표시 접수 수] — 환자·날마다 한 줄, 앞뒤 공백만 없앰
         Assert.Equal(new[]
         {
-            new[] { StatsFake.Chart(1), "20260901", "1", "20260115", "0" },
-            new[] { StatsFake.Chart(2), "20260902", "1", "20260902", "0" },
-            new[] { StatsFake.Chart(3), "20260903", "2", "null", "2" },
+            new[] { StatsFake.Chart(1), "20260901", "1", "20260115", "0", "0" },
+            new[] { StatsFake.Chart(2), "20260902", "1", "20260902", "0", "1" },
+            new[] { StatsFake.Chart(3), "20260903", "2", "null", "2", "0" },
         }, Table2(root.GetProperty("patientDays")));
 
         // 진료 줄에 나온 코드만, 코드마다 원본 정렬의 첫 이름(대소문자 무시, 이름이 비면 코드)
@@ -296,28 +299,28 @@ public class StatsRowsTests
         Assert.Equal(TimeSpan.FromSeconds(150), call.Timeout);
     }
 
-    [Fact(DisplayName = "AC-503.5 AC-2701.1 AC-4401.1 열쇠 차례는 v·from·to·summary·days·patientDays·codes·rows·report 그대로이고 그 뒤에 v3 열쇠 넷이 붙는다(v는 4)")]
+    [Fact(DisplayName = "AC-503.5 AC-2701.1 AC-6201.1 열쇠 차례는 v·from·to·summary·days·patientDays·codes·rows·report 그대로이고 그 뒤에 v3 열쇠 넷이 붙는다(v는 5)")]
     public void PayloadVersionAndKeyOrder()
     {
         using var rig = StatsFake.Clinic();
         var root = Json.Parse(Assemble(Handle(rig, September)));
 
-        Assert.Equal(4, root.GetProperty("v").GetInt32());
-        Assert.Equal(4, StatsPayload.Version);
+        Assert.Equal(5, root.GetProperty("v").GetInt32());
+        Assert.Equal(5, StatsPayload.Version);
         Assert.Equal(new[] { "v", "from", "to", "summary", "days", "patientDays", "codes", "rows", "report" }, Json.Keys(root).Take(9));
         Assert.Equal(new[] { "visits", "people", "doctors", "doctorDays" }, Json.Keys(root).Skip(9));
     }
 
-    [Fact(DisplayName = "AC-503.5 AC-4401.1 접수 줄은 [차트번호, 진료일, 건수(숫자), 첫 내원일|null, 90일초진 접수 수(숫자)]이고 처방 없는 접수도 싣고 코드 목록은 건드리지 않는다")]
+    [Fact(DisplayName = "AC-503.5 AC-4401.1 AC-6201.1 접수 줄은 [차트번호, 진료일, 건수(숫자), 첫 내원일|null, 90일초진 접수 수(숫자), 신환 표시 접수 수(숫자)]이고 처방 없는 접수도 싣고 코드 목록은 건드리지 않는다")]
     public void PatientDaysShape()
     {
         using var rig = StatsFake.Clinic();
         rig.Session.Answer(StatsSql.PatientDaysSql, _ => new[]
         {
-            new object?[] { StatsFake.Chart(1) + "  ", "20260901", 2L, "20260115", 1, Fake.Name },
-            new object?[] { StatsFake.Chart(4), "20260905", 1, "", 0, Fake.Phone },    // 처방 없는 접수, 첫 내원일 빈 글자
-            new object?[] { StatsFake.Chart(5), "20260906", 1, null, 0L, null },       // 첫 내원일 없음
-            new object?[] { StatsFake.Chart(5), "20260907", 3, "   ", 3, null },       // 공백뿐인 첫 내원일
+            new object?[] { StatsFake.Chart(1) + "  ", "20260901", 2L, "20260115", 1, 0, Fake.Name },
+            new object?[] { StatsFake.Chart(4), "20260905", 1, "", 0, 1L, Fake.Phone },    // 처방 없는 접수, 첫 내원일 빈 글자
+            new object?[] { StatsFake.Chart(5), "20260906", 1, null, 0L, 0, null },        // 첫 내원일 없음
+            new object?[] { StatsFake.Chart(5), "20260907", 3, "   ", 3, 0, null },        // 공백뿐인 첫 내원일
         });
         var json = Assemble(Handle(rig, September));
         var root = Json.Parse(json);
@@ -325,18 +328,19 @@ public class StatsRowsTests
 
         Assert.Equal(new[]
         {
-            new[] { StatsFake.Chart(1), "20260901", "2", "20260115", "1" },
-            new[] { StatsFake.Chart(4), "20260905", "1", "null", "0" },
-            new[] { StatsFake.Chart(5), "20260906", "1", "null", "0" },
-            new[] { StatsFake.Chart(5), "20260907", "3", "null", "3" },
+            new[] { StatsFake.Chart(1), "20260901", "2", "20260115", "1", "0" },
+            new[] { StatsFake.Chart(4), "20260905", "1", "null", "0", "1" },
+            new[] { StatsFake.Chart(5), "20260906", "1", "null", "0", "0" },
+            new[] { StatsFake.Chart(5), "20260907", "3", "null", "3", "0" },
         }, Table2(days));
         Assert.All(days.EnumerateArray(), day =>
         {
-            Assert.Equal(5, day.GetArrayLength());
+            Assert.Equal(6, day.GetArrayLength());
             Assert.Equal(JsonValueKind.String, day[0].ValueKind);
             Assert.Equal(JsonValueKind.String, day[1].ValueKind);
             Assert.Equal(JsonValueKind.Number, day[2].ValueKind);
             Assert.Equal(JsonValueKind.Number, day[4].ValueKind);
+            Assert.Equal(JsonValueKind.Number, day[5].ValueKind);
         });
         Assert.Equal(JsonValueKind.Null, days[1][3].ValueKind);
         Assert.Equal(JsonValueKind.Null, days[2][3].ValueKind);
@@ -352,25 +356,25 @@ public class StatsRowsTests
 
     // ---- AC-4401 90일초진 접수 수 ------------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-4401.1 그날 '3' 접수가 두 건인 환자·날은 다섯째 칸이 2이고 '3'이 없는 줄은 0이다, 답의 v는 4")]
+    [Fact(DisplayName = "AC-4401.1 그날 '3' 접수가 두 건인 환자·날은 다섯째 칸이 2이고 '3'이 없는 줄은 0이다(답의 v는 5, AC-6201.1)")]
     public void First90CountsTravel()
     {
         using var rig = StatsFake.Clinic();
         rig.Session.Answer(StatsSql.PatientDaysSql, _ => new[]
         {
-            new object?[] { StatsFake.Chart(6), "20260910", 3L, "20250102", 2 },     // 접수 셋 가운데 '3' 두 건
-            new object?[] { StatsFake.Chart(7), "20260910", 1L, "20260301", 0 },     // '3' 없음
-            new object?[] { StatsFake.Chart(8), "20260911", 1L, null, null },        // DB NULL은 0(원본 Number)
+            new object?[] { StatsFake.Chart(6), "20260910", 3L, "20250102", 2, 0 },     // 접수 셋 가운데 '3' 두 건
+            new object?[] { StatsFake.Chart(7), "20260910", 1L, "20260301", 0, 0 },     // '3' 없음
+            new object?[] { StatsFake.Chart(8), "20260911", 1L, null, null, 0 },        // DB NULL은 0(원본 Number)
         });
         var root = Json.Parse(Assemble(Handle(rig, September)));
 
-        Assert.Equal(4, root.GetProperty("v").GetInt32());
+        Assert.Equal(5, root.GetProperty("v").GetInt32());
         var days = root.GetProperty("patientDays");
         Assert.Equal(new[]
         {
-            new[] { StatsFake.Chart(6), "20260910", "3", "20250102", "2" },
-            new[] { StatsFake.Chart(7), "20260910", "1", "20260301", "0" },
-            new[] { StatsFake.Chart(8), "20260911", "1", "null", "0" },
+            new[] { StatsFake.Chart(6), "20260910", "3", "20250102", "2", "0" },
+            new[] { StatsFake.Chart(7), "20260910", "1", "20260301", "0", "0" },
+            new[] { StatsFake.Chart(8), "20260911", "1", "null", "0", "0" },
         }, Table2(days));
         Assert.Equal(2, days[0][4].GetInt64());
     }
@@ -386,7 +390,7 @@ public class StatsRowsTests
         }
         using (var rig = StatsFake.Clinic())
         {
-            rig.Session.Answer(StatsSql.PatientDaysSql, _ => new[] { new object?[] { StatsFake.Chart(1), "20260901", 1L, "20260115", "x" } });
+            rig.Session.Answer(StatsSql.PatientDaysSql, _ => new[] { new object?[] { StatsFake.Chart(1), "20260901", 1L, "20260115", "x", 0 } });
             AssertOnlyError(Handle(rig, September), "E-BIT-READ-FAILED");
         }
     }
@@ -397,16 +401,84 @@ public class StatsRowsTests
         using var rig = StatsFake.Clinic();
         rig.Session.Answer(StatsSql.PatientDaysSql, _ => new[]
         {
-            new object?[] { StatsFake.Chart(2), "20260902", 2L, "20260902", 1 },     // 첫 내원일 줄의 '3' 한 건
-            new object?[] { StatsFake.Chart(9), "20260903", 1L, "20260903", 1 },     // 첫 내원일 줄, 접수 하나가 '3'
+            new object?[] { StatsFake.Chart(2), "20260902", 2L, "20260902", 1, 1 },     // 첫 내원일 줄의 '3' 한 건(다른 접수 하나는 '1')
+            new object?[] { StatsFake.Chart(9), "20260903", 1L, "20260903", 1, 0 },     // 첫 내원일 줄, 접수 하나가 '3'
         });
         var days = Json.Parse(Assemble(Handle(rig, September))).GetProperty("patientDays");
 
         Assert.Equal(new[]
         {
-            new[] { StatsFake.Chart(2), "20260902", "2", "20260902", "1" },
-            new[] { StatsFake.Chart(9), "20260903", "1", "20260903", "1" },
+            new[] { StatsFake.Chart(2), "20260902", "2", "20260902", "1", "1" },
+            new[] { StatsFake.Chart(9), "20260903", "1", "20260903", "1", "0" },
         }, Table2(days));
+    }
+
+    // ---- AC-6201 신환 표시 접수 수 (spec new-mark) ----------------------------------------------------
+
+    [Fact(DisplayName = "AC-6201.1 접수 줄 여섯째 칸은 그 환자·날 센 접수 가운데 신환 표시('1')인 수다(첫 내원일과 상관없이 그대로), 줄은 여섯 칸이고 답의 v는 5")]
+    public void NewMarkCountsTravel()
+    {
+        using var rig = StatsFake.Clinic();
+        rig.Session.Answer(StatsSql.PatientDaysSql, _ => new[]
+        {
+            new object?[] { StatsFake.Chart(6), "20260910", 2L, "20250102", 0, 1 },      // 예전 접수가 있어도 그날 '1' 한 건
+            new object?[] { StatsFake.Chart(7), "20260911", 3L, "20260911", 1, 2L },     // 접수 셋 가운데 '1' 두 건, '3' 한 건
+            new object?[] { StatsFake.Chart(8), "20260912", 1L, null, 0, 1 },            // 첫 내원을 못 찾아도 '1'이면 그대로 센다
+        });
+        var root = Json.Parse(Assemble(Handle(rig, September)));
+
+        Assert.Equal(5, root.GetProperty("v").GetInt32());
+        Assert.Equal(5, StatsPayload.Version);
+        var days = root.GetProperty("patientDays");
+        Assert.Equal(new[]
+        {
+            new[] { StatsFake.Chart(6), "20260910", "2", "20250102", "0", "1" },
+            new[] { StatsFake.Chart(7), "20260911", "3", "20260911", "1", "2" },
+            new[] { StatsFake.Chart(8), "20260912", "1", "null", "0", "1" },
+        }, Table2(days));
+        Assert.All(days.EnumerateArray(), day =>
+        {
+            Assert.Equal(6, day.GetArrayLength());
+            Assert.Equal(JsonValueKind.Number, day[5].ValueKind);
+        });
+        Assert.Equal(2, days[1][5].GetInt64());
+    }
+
+    [Fact(DisplayName = "AC-6201.1 여섯째 칸이 없거나(다섯 칸 줄) 숫자가 아니면 반쪽 자료 없이 E-BIT-READ-FAILED만")]
+    public void NewMarkCellMustBeANumber()
+    {
+        using (var rig = StatsFake.Clinic())
+        {
+            rig.Session.Answer(StatsSql.PatientDaysSql, _ => new[] { new object?[] { StatsFake.Chart(1), "20260901", 1L, "20260115", 0 } });
+            AssertOnlyError(Handle(rig, September), "E-BIT-READ-FAILED");
+            Assert.DoesNotContain(StatsSql.VisitSummarySql, rig.Session.Sqls);
+        }
+        using (var rig = StatsFake.Clinic())
+        {
+            rig.Session.Answer(StatsSql.PatientDaysSql, _ => new[] { new object?[] { StatsFake.Chart(1), "20260901", 1L, "20260115", 0, "x" } });
+            AssertOnlyError(Handle(rig, September), "E-BIT-READ-FAILED");
+        }
+    }
+
+    [Fact(DisplayName = "AC-6201.2 신환 표시가 없는 환자·날은 여섯째 칸이 0(DB NULL도 0)이고 넷째 칸(첫 내원일)·다섯째 칸은 지금과 같다")]
+    public void NoNewMarkLeavesOtherCellsAlone()
+    {
+        using var rig = StatsFake.Clinic();
+        rig.Session.Answer(StatsSql.PatientDaysSql, _ => new[]
+        {
+            new object?[] { StatsFake.Chart(2), "20260902", 1L, "20260902", 0, 0 },      // 첫 내원일인 날이어도 '1'이 없으면 0
+            new object?[] { StatsFake.Chart(6), "20260910", 2L, "20250102", 2, 0L },     // 90일초진 두 건, 신환 표시 없음
+            new object?[] { StatsFake.Chart(8), "20260911", 1L, " ", 0, null },          // 빈 첫 내원일·DB NULL
+        });
+        var days = Json.Parse(Assemble(Handle(rig, September))).GetProperty("patientDays");
+
+        Assert.Equal(new[]
+        {
+            new[] { StatsFake.Chart(2), "20260902", "1", "20260902", "0", "0" },
+            new[] { StatsFake.Chart(6), "20260910", "2", "20250102", "2", "0" },
+            new[] { StatsFake.Chart(8), "20260911", "1", "null", "0", "0" },
+        }, Table2(days));
+        Assert.Equal(JsonValueKind.Null, days[2][3].ValueKind);
     }
 
     [Fact(DisplayName = "AC-503.5 접수 줄이 700,000줄이면 다 싣는다(한도 안)")]
@@ -519,8 +591,8 @@ public class StatsRowsTests
         });
         rig.Session.Answer(StatsSql.PatientDaysSql, _ => new[]
         {
-            new object?[] { StatsFake.Chart(1), "20260901", 1L, "20260115", 0 },
-            new object?[] { StatsFake.Chart(2), "20260902", 2L, "20260902", 0 },
+            new object?[] { StatsFake.Chart(1), "20260901", 1L, "20260115", 0, 0 },
+            new object?[] { StatsFake.Chart(2), "20260902", 2L, "20260902", 0, 1 },
         });
         rig.Session.Answer(StatsSql.VisitSummarySql, _ => new[] { new object?[] { 3L, 2L, 1L, 0L, 0L, 0L } });
         rig.Session.Answer(StatsSql.VisitDaysSql, _ => new[]
@@ -532,8 +604,8 @@ public class StatsRowsTests
 
         Assert.Equal(new[]
         {
-            new[] { StatsFake.Chart(1), "20260901", "1", "20260115", "0" },
-            new[] { StatsFake.Chart(2), "20260902", "2", "20260902", "0" },
+            new[] { StatsFake.Chart(1), "20260901", "1", "20260115", "0", "0" },
+            new[] { StatsFake.Chart(2), "20260902", "2", "20260902", "0", "1" },
         }, Table2(root.GetProperty("patientDays")));
         var summary = root.GetProperty("summary");
         Assert.Equal(new long[] { 3, 2, 1, 0, 0, 0 }, Json.Keys(summary).Select(key => summary.GetProperty(key).GetInt64()).ToArray());
@@ -636,7 +708,7 @@ public class StatsRowsTests
         }
         using (var rig = StatsFake.Clinic())
         {
-            rig.Session.Answer(StatsSql.PatientDaysSql, _ => new[] { new object?[] { StatsFake.Chart(1), "20260901", "x", "20260115", 0 } });
+            rig.Session.Answer(StatsSql.PatientDaysSql, _ => new[] { new object?[] { StatsFake.Chart(1), "20260901", "x", "20260115", 0, 0 } });
             AssertOnlyError(Handle(rig, September), "E-BIT-READ-FAILED");
         }
         using (var rig = StatsFake.Clinic())
@@ -712,7 +784,7 @@ public class StatsRowsTests
         Assert.Equal(new (string?, string?)[] { ("stats.rows", "E-STATS-TOO-BIG") }, log);
 
         // 건수 칸의 글자(차트번호를 닮은 값)가 예외 글에 실리지 않는다
-        rig.Session.Answer(StatsSql.PatientDaysSql, _ => new[] { new object?[] { StatsFake.Chart(1), "20260901", StatsFake.Chart(2) + "x", "20260115", 0 } });
+        rig.Session.Answer(StatsSql.PatientDaysSql, _ => new[] { new object?[] { StatsFake.Chart(1), "20260901", StatsFake.Chart(2) + "x", "20260115", 0, 0 } });
         var malformed = Assert.Throws<BitException>(() => StatsRows.Read(rig.Session, Synthetic.Scope, "2026-09-01", "2026-09-30"));
         Assert.Equal("E-BIT-READ-FAILED", malformed.Code);
         Assert.Equal("E-BIT-READ-FAILED", malformed.Message);

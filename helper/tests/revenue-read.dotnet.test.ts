@@ -95,3 +95,9 @@ describe('REQ-4405 도우미가 확인 필요한 날의 참고 금액을 보낸�
     expectAc('AC-4405.3')
   })
 })
+
+describe('REQ-6203 매출 하루 숫자의 신환 수 (spec new-mark, C# Precheck.Core.Tests.Revenue)', () => {
+  it('AC-6203.1 RevenueSql.Patients 신환 칸은 기간 안 신환 표시 접수가 하나라도 있는 서로 다른 환자 수, 나머지 칸은 그대로, 원본 사본과는 이 한 칸 바꿈(시험 상수 NewMarkPatients)만 다르고 보고 Patients와 글자가 같다', () => {
+    expectAc('AC-6203.1')
+  })
+})

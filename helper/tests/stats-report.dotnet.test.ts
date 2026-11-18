@@ -43,3 +43,9 @@ describe('REQ-504 도우미 보고 숫자 읽기 (C# Precheck.Core.Tests.Stats)'
     expectAc('AC-504.4')
   })
 })
+
+describe('REQ-6203 보고의 신환 수 (spec new-mark, C# Precheck.Core.Tests.Stats)', () => {
+  it('AC-6203.1 보고 Patients 신환 칸은 기간 안 신환 표시 접수가 하나라도 있는 서로 다른 환자 수, 나머지 칸은 그대로, 원본 사본과는 이 한 칸 바꿈(시험 상수 NewMarkPatients)만 다르고 매출 Patients와 글자가 같다', () => {
+    expectAc('AC-6203.1')
+  })
+})

@@ -8,6 +8,7 @@ namespace Precheck.Core.Revenue;
 /// revenue.days가 비트 DB에 돌리는 문장 전부(spec revenue design.md 4-2, AC-003.1·AC-003.8). 원본 일곱 개는 양지바른
 /// OperationalReportSql.cs에서 옮겼고 사본(helper/tests/Precheck.Core.Tests/Revenue/original-sql/*.sql)과 공백·끝 ;·-- 줄만 다르다(시험이 비교).
 /// 예외 하나: Patients의 첫 내원 연결 조건만 색인을 쓸 수 있는 c.OcmChtNum=p.PatientId로 바꿨다(spec bit-read-speed, AC-1001.3).
+/// 예외 둘: Patients 둘째 칸(신환)만 비트 신환 표시(OcmDgsNfs='1') 환자 수로 바꿨다(spec new-mark AC-6203.1, 시험 상수 NewMarkPatients).
 /// 그 밖의 조건·칸 순서를 고치지 않는다: 의원이 쓰는 일일 보고와 같은 숫자가 나와야 한다. ReadOnlyGuard는 이 표의 문장을 표의 매개변수와 함께만 통과시킨다.
 /// 확인 필요한 날의 참고 금액(spec first90 AC-4405.1)은 이 표에 새 문장을 더하지 않고 통계 원장님별 금액 문장 둘
 /// (StatsSql.DoctorMoneyNormalSql·DoctorMoneyReceivableSql)을 그대로 쓴다. 그 둘은 StatsSql 표로 관문을 지난다.
@@ -208,7 +209,10 @@ SELECT SUM(OrpTotAmt),SUM(OrpCorAmt),SUM(OrpNonAmt),SUM(CashAmt),SUM(CardAmt),SU
 )
 SELECT SUM(OrpTotAmt),SUM(OrpCorAmt),SUM(OrpNonAmt),SUM(CorAmt),SUM(CorCrdAmt),SUM(CorChkAmt) FROM NativeRows";
 
-    /// <summary>내원·신환과 검사 칸 셋(차트번호 없음·중복·첫 내원 못 찾음).</summary>
+    /// <summary>
+    /// 내원·신환과 검사 칸 셋(차트번호 없음·중복·첫 내원 못 찾음). 신환(둘째 칸)만 원본과 달리 기간 안 센 접수에 신환 표시(OcmDgsNfs='1')가
+    /// 하나라도 있는 서로 다른 환자 수다(spec new-mark AC-6203.1). 통계 보고 StatsSql.PatientsSql과 글자가 같다.
+    /// </summary>
     public const string Patients = @"WITH PeriodVisits AS (
  SELECT c.OcmNum VisitId,NULLIF(RTRIM(c.OcmChtNum),'') PatientId
  FROM dbo.OcmInf c
@@ -228,7 +232,7 @@ SELECT SUM(OrpTotAmt),SUM(OrpCorAmt),SUM(OrpNonAmt),SUM(CorAmt),SUM(CorCrdAmt),S
  GROUP BY p.PatientId
 )
 SELECT (SELECT COUNT_BIG(*) FROM PeriodVisits),
-       (SELECT COUNT_BIG(*) FROM FirstVisits WHERE FirstDtm>=@from),
+       (SELECT COUNT_BIG(DISTINCT v.PatientId) FROM PeriodVisits v JOIN dbo.OcmInf o ON o.OcmNum=v.VisitId WHERE v.PatientId IS NOT NULL AND o.OcmDgsNfs='1'),
        (SELECT COUNT_BIG(*) FROM PeriodVisits WHERE PatientId IS NULL),
        (SELECT COUNT_BIG(*)-COUNT(DISTINCT VisitId) FROM PeriodVisits),
        (SELECT COUNT_BIG(*) FROM Patients p LEFT JOIN FirstVisits f ON f.PatientId=p.PatientId WHERE f.PatientId IS NULL)";

@@ -21,6 +21,7 @@ namespace Precheck.Core.Sunap;
 /// 통계 화면·비트 로그인 창은 쓰지 않는다. 나누기(chunk … end)는 ContactCommands가 한다.
 /// 답 {v:3, day, unsure, rows, paid, doctors}(v:2 = spec sunap-doctors REQ-5002, v:3 = spec clinic-calendar REQ-5908 줄 끝 건강생활유지비).
 /// rows 줄 = [차트, 이름, 첫 접수 HH:mm, 구분 new|d90|re, 현금, 카드, 계좌, 미수, [처방코드…], null|[다음 예약 yyyyMMddHHmm, 메모 앞 40자], 진료의 코드|null, 건강생활유지비], 첫 접수 차례.
+/// 구분 new는 그날 비트 신환 표시(OcmDgsNfs='1') 접수가 있는 환자다(spec new-mark AC-6204.1, 첫 내원일과 상관없음).
 /// paid 줄 = [차트, 이름, 수납 시각 HH:mm|"", 현금, 카드+계좌], 시각 차례. 금액은 원 미만 버림(항목마다).
 /// doctors 줄 = [진료의 코드, 이름|null], rows에 나온 코드마다 한 번, 코드 차례. 이름은 통계 원장님 이름과 같은 규칙이다.
 /// 미수 = 그 환자 그날 내원들의 본인부담 총액(OrpTotOwn) − (현금 + 카드 + 계좌 + 건강생활유지비), 0보다 작으면 0.
@@ -134,14 +135,17 @@ public static class SunapTargets
                 }
             }
 
-            foreach (var line in Read(db, SunapSql.PatientsSql, values, 6))
+            foreach (var line in Read(db, SunapSql.PatientsSql, values, 7))
             {
                 var chart = ClaimText.Cell(line, 0);
                 if (chart.Length == 0 || rows.ContainsKey(chart)) throw ReadFailed();
                 var firstAcp = ClaimText.Cell(line, 2);
                 if (!IsStamp(firstAcp) || !firstAcp.StartsWith(dayKey, StringComparison.Ordinal)) throw ReadFailed();
-                var firstDay = ClaimText.Cell(line, 3);
-                var kind = firstDay == dayKey ? "new" : Number(line[4]) > 0 ? "d90" : "re";
+                // 구분(spec new-mark AC-6204.1): 그날 신환 표시('1') 접수가 있으면 new, 아니고 90일초진('3')이 있으면 d90, 아니면 re.
+                // 넷째 칸(첫 내원일)은 SQL이 그대로 주지만 구분에 쓰지 않는다. 두 수는 늘 읽어 숫자가 아니면 E-BIT-READ-FAILED다
+                var first90 = Number(line[4]);
+                var newMark = Number(line[6]);
+                var kind = newMark > 0 ? "new" : first90 > 0 ? "d90" : "re";
                 var doctor = ClaimText.Cell(line, 5);
                 if (doctor.Length > MaxDoctorLength) throw ReadFailed();
                 rows.Add(chart, new Row(chart, ClaimText.Cell(line, 1), firstAcp, kind, doctor.Length == 0 ? null : doctor));
