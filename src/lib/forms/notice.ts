@@ -1,6 +1,7 @@
 import { compareYmd, diffDays, isYmd, weekdayOf } from '@/lib/analytics/dates'
 import { hasPrivateShape } from '@/lib/payload/validate'
 import { MAX_CARDS, MAX_NAME, MAX_RANGE_DAYS, MAX_STATUS, type ClosureNotice, type DraftCard, type NoticeCard } from '@/types/forms'
+import { checkStyle, isDefaultStyle, type FormStyle } from './style'
 // themes.ts도 이 파일(sortCards)을 부른다. 서로 부르는 것은 함수 안에서만이라 불러오는 차례와 상관없다
 import { isAccentHex, isThemePick } from './themes'
 
@@ -15,7 +16,8 @@ const PAST_DAYS = 30 // 이보다 더 지난 날짜는 다음 해로 본다
 const CONTROL = /\p{Cc}/u
 const WEEKDAYS = '일월화수목금토'
 const NOTICE_KEYS = ['year', 'month', 'cards', 'theme']
-const NOTICE_KEYS_WITH_ACCENT = [...NOTICE_KEYS, 'accent'] // 글자 색 열쇠는 있어도 되고 없어도 된다(specs/forms-accent design.md 3절)
+// 있어도 되고 없어도 되는 열쇠: 글자 색(specs/forms-accent design.md 3절)·글씨·로고 값(specs/form-style design.md 2절)
+const OPTIONAL_KEYS = ['accent', 'style']
 const CARD_KEYS = ['start', 'end', 'name', 'status']
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -76,13 +78,19 @@ function storedCard(value: unknown): NoticeCard | null {
 }
 
 export function checkNotice(value: unknown): ClosureNotice | null {
-  const withAccent = exactly(value, NOTICE_KEYS_WITH_ACCENT)
-  const o = withAccent ?? exactly(value, NOTICE_KEYS)
+  const own = typeof value === 'object' && value !== null ? Object.keys(value) : []
+  const o = exactly(value, [...NOTICE_KEYS, ...OPTIONAL_KEYS.filter((key) => own.includes(key))])
   if (o === null) return null
   const { year, month, cards, theme } = o
   // 열쇠가 없으면 자동(null). 열쇠가 있으면 null(자동) 또는 '#' + 소문자 16진수 6자리, undefined도 틀린 값 (specs/forms-accent AC-4703.3)
-  const accent = withAccent === null ? null : withAccent.accent
+  const accent = own.includes('accent') ? o.accent : null
   if (accent !== null && !isAccentHex(accent)) return null
+  // 열쇠가 없으면 처음대로. 열쇠가 있으면 정확히 여섯 열쇠·범위·색 모양이어야 한다(null도 틀린 값) (specs/form-style AC-6806.3)
+  let style: FormStyle | null = null
+  if (own.includes('style')) {
+    style = checkStyle(o.style)
+    if (style === null) return null
+  }
   if (!isInteger(year, MIN_YEAR, MAX_YEAR) || !isInteger(month, 1, 12)) return null
   // null(저절로·그림 1) 또는 고른 그림 값(테마 열쇠·<열쇠>-2·auto-2·bg-<uuid>) (specs/forms-themes AC-4602.4)
   if (theme !== null && !isThemePick(theme)) return null
@@ -93,8 +101,11 @@ export function checkNotice(value: unknown): ClosureNotice | null {
     if (card === null) return null
     checked.push(card)
   }
-  // 자동(null)이면 accent 열쇠를 넣지 않는다(글자 색 없는 지금 값과 똑같이 돌려준다)
-  return accent === null ? { year, month, cards: checked, theme } : { year, month, cards: checked, theme, accent }
+  // 자동(null)이면 accent 열쇠를, 처음대로면 style 열쇠를 넣지 않는다(두 값 없는 지금 값과 똑같이 돌려준다)
+  const notice: ClosureNotice = { year, month, cards: checked, theme }
+  if (accent !== null) notice.accent = accent
+  if (style !== null && !isDefaultStyle(style)) notice.style = style
+  return notice
 }
 
 const monthDay = (date: string) => `${Number(date.slice(5, 7))}월 ${Number(date.slice(8, 10))}일`

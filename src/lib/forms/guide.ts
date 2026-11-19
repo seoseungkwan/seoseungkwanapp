@@ -13,6 +13,7 @@ import {
 import { checkDrawing } from './guideDrawing'
 import { layoutGuide } from './guideLayout'
 import type { GuideColors } from './logoColors'
+import { checkStyle, isDefaultStyle, type FormStyle } from './style'
 
 // 서식 탭 환자 안내문의 칸 규칙: 칸 검사·저장 값 검사·목록 제목·파일 이름 (specs/forms-guide REQ-4502, design.md 3절).
 // 배치 넘침 까닭(칸 넘침·띠 넘침 band)은 guideLayout.ts가 붙이고, 빈 칸·글자 수·개인정보·윗줄만·강조·줄 수는 여기서 붙인다.
@@ -25,6 +26,8 @@ const FILE_UNSAFE = /[\\/:*?"<>|]/g
 // 저장 값의 열쇠 13개(GuideContent)와 줄의 열쇠 둘
 const GUIDE_KEYS = ['tag', 'subtitle', 'big1', 'big2', 'firstSmall', 'boxTop', 'boxBottom', 'picture', 'drawing', 'bandTitle', 'mark', 'lines', 'note'] as const
 const LINE_KEYS = ['text', 'em'] as const
+// 있어도 되고 없어도 되는 열쇠: 직접 고른 두 색(clinic-profile AC-6604.6)·글씨·로고 값(form-style AC-6806.3)
+const OPTIONAL_KEYS = ['colors', 'style'] as const
 const COLOR_KEYS = ['main', 'dark'] as const
 const COLOR_HEX = /^#[0-9a-f]{6}$/
 const TEXT_FIELDS: readonly GuideField[] = ['tag', 'subtitle', 'big1', 'big2', 'boxTop', 'boxBottom', 'bandTitle', 'note']
@@ -99,8 +102,9 @@ export function guideProblems(c: GuideContent): GuideProblems {
 }
 
 // 안내문 값: 칸 13개 + 직접 고른 두 색(spec clinic-profile REQ-6604 AC-6604.5·AC-6604.6, design.md 6절).
-// 색은 [직접 고르기]일 때만 colors 열쇠로 둔다. 열쇠가 없거나 null이면 [자동](로고 색 또는 지금 색)이다 — 색을 저장하지 않은 옛 안내문도 [자동]
-export type GuideValue = GuideContent & { colors?: GuideColors | null }
+// 색은 [직접 고르기]일 때만 colors 열쇠로 둔다. 열쇠가 없거나 null이면 [자동](로고 색 또는 지금 색)이다 — 색을 저장하지 않은 옛 안내문도 [자동].
+// 글씨·로고 값(spec form-style design.md 2절)은 처음대로가 아닐 때만 style 열쇠로 둔다. 열쇠가 없으면 처음대로
+export type GuideValue = GuideContent & { colors?: GuideColors | null; style?: FormStyle }
 
 // 직접 고른 두 색: { main, dark }('#' + 소문자 16진수 6자리)만 새 객체로. 아니면 null
 export function checkGuideColors(value: unknown): GuideColors | null {
@@ -116,15 +120,22 @@ export function guideColorsOf(c: GuideValue): GuideColors | null {
 }
 
 // 저장한 줄·저장 직전 값(AC-4502.5): 모양이 정확하고 guideProblems가 빈 값만, 글 칸의 앞뒤 공백을 뗀 새 객체로. 아니면 null.
-// 더할 수 있는 열쇠는 colors 하나뿐이다(AC-6604.6): 맞는 두 색이면 함께 남기고, null이면 열쇠 없이([자동]), 틀리면 null
+// 더할 수 있는 열쇠는 colors·style 둘뿐이다. colors(AC-6604.6): 맞는 두 색이면 함께 남기고, null이면 열쇠 없이([자동]), 틀리면 null.
+// style(form-style AC-6806.3): 정확히 여섯 열쇠·범위·색 모양이면 함께 남기고, 처음대로면 열쇠 없이, 틀리면(null 포함) null
 export function checkGuideValue(value: unknown): GuideValue | null {
-  const withColors = typeof value === 'object' && value !== null && !Array.isArray(value) && Object.hasOwn(value, 'colors')
-  const v = exactly(value, withColors ? [...GUIDE_KEYS, 'colors'] : GUIDE_KEYS)
+  const isObject = typeof value === 'object' && value !== null && !Array.isArray(value)
+  const extra = isObject ? OPTIONAL_KEYS.filter((key) => Object.hasOwn(value, key)) : []
+  const v = exactly(value, [...GUIDE_KEYS, ...extra])
   if (v === null) return null
   let colors: GuideColors | null = null
-  if (withColors && v.colors !== null) {
+  if (extra.includes('colors') && v.colors !== null) {
     colors = checkGuideColors(v.colors)
     if (colors === null) return null
+  }
+  let style: FormStyle | null = null
+  if (extra.includes('style')) {
+    style = checkStyle(v.style)
+    if (style === null) return null
   }
 
   const texts = {} as Record<GuideField, string>
@@ -167,7 +178,9 @@ export function checkGuideValue(value: unknown): GuideValue | null {
     note: texts.note,
   }
   if (Object.keys(guideProblems(content)).length !== 0) return null
-  return colors ? { ...content, colors } : content
+  const out: GuideValue = colors ? { ...content, colors } : content
+  if (style !== null && !isDefaultStyle(style)) out.style = style
+  return out
 }
 
 // 저장할 값: 고른 그림이 custom이 아니면 drawing을 null로 바꾼 새 객체(받은 객체는 고치지 않는다).

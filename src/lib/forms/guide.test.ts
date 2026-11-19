@@ -572,3 +572,77 @@ describe('AC-6604.6: checkGuideColors · guideColorsOf', () => {
     expect(guideColorsOf({ ...example(1), colors: { main: 'red', dark: '#102040' } } as unknown as GuideValue)).toBeNull()
   })
 })
+
+// ---------- 글씨·로고 값 (spec form-style REQ-6806 AC-6806.3, design.md 2절, TASK-3) ----------
+
+describe('AC-6806.3: 안내문 글씨·로고 값(content.style) — 저장 값 검사 checkGuideValue', () => {
+  const DEFAULT = { titleScale: 100, bodyScale: 100, logoScale: 100, titleColor: null, bodyColor: null, logoColor: null }
+  // 예시 1의 짧은 줄이 어느 크기에서도 넘치지 않을 만큼만 바꾼 값
+  const STYLE = { titleScale: 105, bodyScale: 95, logoScale: 120, titleColor: '#7c3aed', bodyColor: '#111111', logoColor: null }
+  const COLORS: GuideColors = { main: '#3366cc', dark: '#102040' }
+  const styled = (style: unknown = { ...STYLE }): Record<string, unknown> => ({ ...example(1), style })
+
+  it('AC-6806.3: style 열쇠가 없는 옛 안내문은 지금처럼 읽히고 열쇠가 늘지 않는다', () => {
+    const out = checkGuideValue(example(1))
+    expect(out).toEqual(example(1))
+    expect(Object.keys(out!).sort()).toEqual([...KEYS].sort())
+    expect(Object.keys(checkGuideValue({ ...example(1), colors: COLORS })!).sort()).toEqual([...KEYS, 'colors'].sort())
+  })
+
+  it('AC-6806.3: 처음대로인 style은 받되 열쇠 없이 돌려준다(색과 함께여도)', () => {
+    const out = checkGuideValue(styled({ ...DEFAULT }))
+    expect(out).toEqual(example(1))
+    expect('style' in out!).toBe(false)
+    const both = checkGuideValue({ ...styled({ ...DEFAULT }), colors: COLORS })
+    expect(both).toEqual({ ...example(1), colors: COLORS })
+    expect(Object.keys(both!).sort()).toEqual([...KEYS, 'colors'].sort())
+  })
+
+  it('AC-6806.3: 바꾼 style은 새 객체로 함께 남는다(색 colors와 함께여도, colors null이어도)', () => {
+    const input = styled()
+    const out = checkGuideValue(input)
+    expect(out).toEqual({ ...example(1), style: STYLE })
+    expect(out!.style).not.toBe(input.style)
+    expect(Object.keys(out!).sort()).toEqual([...KEYS, 'style'].sort())
+
+    expect(checkGuideValue({ ...styled(), colors: COLORS })).toEqual({ ...example(1), colors: COLORS, style: STYLE })
+    expect(checkGuideValue({ ...styled(), colors: null })).toEqual({ ...example(1), style: STYLE })
+  })
+
+  it('AC-6806.3: 틀린 style이면 안내문 전체가 null이다(범위 밖·5의 배수 아님·대문자 색·열쇠 하나 더/덜·null·객체 아님)', () => {
+    const five = Object.fromEntries(Object.entries(DEFAULT).filter(([key]) => key !== 'bodyColor'))
+    for (const bad of [
+      { ...DEFAULT, titleScale: 135 },
+      { ...DEFAULT, bodyScale: 75 },
+      { ...DEFAULT, bodyScale: 102 },
+      { ...DEFAULT, logoScale: 155 },
+      { ...DEFAULT, logoColor: '#FFFFFF' },
+      { ...DEFAULT, titleColor: '' },
+      five,
+      { ...DEFAULT, accent: null },
+      null,
+      undefined,
+      '#ffffff',
+      [],
+    ]) {
+      expect(checkGuideValue({ ...example(1), style: bad }), String(JSON.stringify(bad))).toBeNull()
+    }
+  })
+
+  it('AC-6806.3: 더할 수 있는 열쇠는 colors·style뿐이다(다른 열쇠가 섞이면 여전히 null)', () => {
+    expect(checkGuideValue({ ...styled(), memo: '대충 적은 글' })).toBeNull()
+    expect(checkGuideValue({ ...styled(), colors: COLORS, accent: '#c62f2f' })).toBeNull()
+    expect(checkGuideValue({ ...styled(), colors: { main: '#3366CC', dark: '#102040' } })).toBeNull()
+  })
+
+  it('AC-6806.3: style이 맞아도 안내문 칸 규칙은 그대로 본다', () => {
+    expect(checkGuideValue({ ...example(1), tag: '', style: STYLE })).toBeNull()
+    expect(checkGuideValue({ ...example(1), lines: [], style: STYLE })).toBeNull()
+  })
+
+  it('AC-6806.3: savableGuide는 style을 그대로 두고, checkGuideValue(savableGuide(c))도 style을 남긴다', () => {
+    const c: GuideValue = { ...example(1), picture: 'document', drawing: wheelchair(), style: { ...STYLE } }
+    expect(savableGuide(c)).toEqual({ ...example(1), drawing: null, style: STYLE })
+    expect(checkGuideValue(savableGuide(c))).toEqual({ ...example(1), style: STYLE })
+  })
+})

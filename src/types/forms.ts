@@ -1,3 +1,6 @@
+// 서버 경로(app/api/ai/forms)도 이 파일을 불러오므로 글씨·로고 값은 형만 가져온다(style.ts를 묶음에 끌어들이지 않는다)
+import type { FormStyle } from '@/lib/forms/style'
+
 // 서식 탭 휴진 안내 (specs/forms design.md 2절). 안내문 한 장 = 연·월(제목의 'N월') + 날짜 카드 1~4장 + 테마
 export const MAX_CARDS = 4
 export const MAX_NAME = 10 // 카드 이름 글자 수
@@ -20,8 +23,16 @@ export type ThemePick = ThemeId | `${ThemeId}-2` | 'auto-2' | `bg-${string}`
 
 export type NoticeCard = { start: string; end: string | null; name: string; status: string } // 날짜는 'YYYY-MM-DD'
 // theme null = 저절로·그림 1. accent = 'N월'·날짜 띠·카드 아래 글의 색(form_notices.accent): 없음·null = 자동,
-// 있으면 '#' + 소문자 16진수 6자리(specs/forms-accent design.md 2절). 선택 칸이라 글자 색 없는 지금 값도 그대로 맞는다
-export type ClosureNotice = { year: number; month: number; cards: NoticeCard[]; theme: ThemePick | null; accent?: string | null }
+// 있으면 '#' + 소문자 16진수 6자리(specs/forms-accent design.md 2절). 선택 칸이라 글자 색 없는 지금 값도 그대로 맞는다.
+// style = 글씨·로고 크기·색(specs/form-style design.md 2절): 없으면 처음대로. checkNotice는 처음대로면 열쇠 없이 돌려준다
+export type ClosureNotice = {
+  year: number
+  month: number
+  cards: NoticeCard[]
+  theme: ThemePick | null
+  accent?: string | null
+  style?: FormStyle
+}
 export type SavedNotice = ClosureNotice & { id: string; updatedAt: string }
 // 화면이 고치는 중인 카드(빈 칸 허용). 검사를 넘으면 NoticeCard가 된다
 export type DraftCard = { start: string; end: string; name: string; status: string }

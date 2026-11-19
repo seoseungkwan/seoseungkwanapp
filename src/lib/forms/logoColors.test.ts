@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { logoPalette, readableColors, type GuideColors } from './logoColors'
-import { contrastRatio } from './themes'
+import { logoPalette, logoSwatches, onWhite, readableColors, type GuideColors } from './logoColors'
+import { contrastRatio, contrastWithWhite } from './themes'
 
 // 병원 로고 그림의 점에서 환자 안내문 두 색(바탕색 main·띠 색 dark) 뽑기 (spec clinic-profile REQ-6604 AC-6604.4, design.md 6절).
 // 순수 함수라 점 배열만 넣어 본다. 점은 지어낸 값이다(실제 로고 그림이 아니다)
@@ -155,5 +155,151 @@ describe('AC-6604.5: readableColors — 직접 고른 두 색의 대비 검사',
       { main: '#e6e006', dark: '#e6e006' },
     ]
     for (const colors of bad) expect(readableColors(colors), JSON.stringify(colors)).toBe(false)
+  })
+})
+
+// ---------- 로고 색 칩 (spec form-style REQ-6802 AC-6802.1·AC-6802.2, design.md 3절, TASK-3) ----------
+
+const swatchesOf = (pixels: Px[]) => logoSwatches(Uint8ClampedArray.from(pixels.flat()), pixels.length, 1)
+const RED: Px = [220, 30, 30, 255] // 묶음 번호 13<<8 | 1<<4 | 1 = 3345
+const BLUE2: Px = [30, 60, 200, 255] // 1<<8 | 3<<4 | 12 = 316
+const GREEN: Px = [30, 160, 60, 255] // 1<<8 | 10<<4 | 3 = 419
+
+describe('AC-6802.1: logoSwatches — 투명한 점·옅은 점은 뺀다', () => {
+  it('AC-6802.1: 불투명도 128 미만인 점과 R·G·B 가장 작은 값이 200 이상인 점만 있으면 빈 목록이다', () => {
+    expect(
+      swatchesOf([
+        ...many([31, 95, 191, 0], 5),
+        ...many([31, 95, 191, 127], 5),
+        ...many(WHITE_PX, 5),
+        ...many([200, 200, 200, 255], 5),
+        ...many([210, 220, 250, 255], 5),
+      ]),
+    ).toEqual([])
+  })
+
+  it('AC-6802.1: 불투명도 128은 들고, 가장 작은 값 199는 든다(회색·검정도 옅지만 않으면 칩이 된다)', () => {
+    expect(swatchesOf([[31, 95, 191, 128]])).toEqual(['#1f5fbf'])
+    expect(swatchesOf([[199, 255, 255, 255]])).toEqual(['#c7ffff'])
+    expect(swatchesOf([[128, 128, 128, 255]])).toEqual(['#808080'])
+    expect(swatchesOf([[10, 10, 10, 255]])).toEqual(['#0a0a0a'])
+  })
+})
+
+describe('AC-6802.1: logoSwatches — 위 4비트 묶음, 점이 많은 묶음부터, 평균색(반올림)', () => {
+  it('AC-6802.1: 같은 묶음(R·G·B 각 위 4비트가 같은) 점들은 평균색 하나가 된다(반올림)', () => {
+    // (16, 32, 48)과 (31, 47, 63)은 같은 묶음(1, 2, 3) → 평균 (23.5, 39.5, 55.5) → (24, 40, 56)
+    expect(swatchesOf([[16, 32, 48, 255], [31, 47, 63, 255]])).toEqual(['#182838'])
+    // (32, 32, 48)은 다른 묶음(2, 2, 3)이지만 첫 칩과 거리가 60 미만이라 칩이 되지 않는다
+    expect(swatchesOf([[16, 32, 48, 255], [16, 32, 48, 255], [32, 32, 48, 255]])).toEqual(['#102030'])
+  })
+
+  it('AC-6802.1: 점이 많은 묶음부터 낸다(파랑 5 · 초록 4 · 빨강 3)', () => {
+    expect(swatchesOf([...many(RED, 3), ...many(BLUE2, 5), ...many(GREEN, 4)])).toEqual(['#1e3cc8', '#1ea03c', '#dc1e1e'])
+    expect(swatchesOf([...many(BLUE2, 1), ...many(RED, 6), ...many(GREEN, 2)])).toEqual(['#dc1e1e', '#1ea03c', '#1e3cc8'])
+  })
+
+  it('AC-6802.1: 점 수가 같으면 묶음 번호가 작은 차례다(파랑 316 → 초록 419 → 빨강 3345, 넣은 차례와 상관없다)', () => {
+    expect(swatchesOf([...many(RED, 2), ...many(GREEN, 2), ...many(BLUE2, 2)])).toEqual(['#1e3cc8', '#1ea03c', '#dc1e1e'])
+    expect(swatchesOf([GREEN, RED, BLUE2])).toEqual(['#1e3cc8', '#1ea03c', '#dc1e1e'])
+  })
+})
+
+describe('AC-6802.1: logoSwatches — 이미 고른 색 모두와 거리 60 이상, 4개까지', () => {
+  const A: Px = [100, 100, 100, 255]
+
+  it('AC-6802.1: 거리가 정확히 60이면 고르고, 59면 건너뛴다', () => {
+    expect(swatchesOf([...many(A, 5), ...many([160, 100, 100, 255], 4)])).toEqual(['#646464', '#a06464'])
+    expect(swatchesOf([...many(A, 5), ...many([159, 100, 100, 255], 4)])).toEqual(['#646464'])
+  })
+
+  it('AC-6802.1: 첫째와는 멀어도 이미 고른 다른 색과 가까우면 건너뛴다', () => {
+    // (200, 100, 130)은 A와 거리 104지만 (160, 100, 100)과는 50
+    expect(swatchesOf([...many(A, 5), ...many([160, 100, 100, 255], 4), ...many([200, 100, 130, 255], 3)])).toEqual(['#646464', '#a06464'])
+  })
+
+  it('AC-6802.1: 칩은 4개까지다(다섯째 묶음은 내지 않는다)', () => {
+    const out = swatchesOf([...many([10, 10, 10, 255], 9), ...many(RED, 8), ...many(BLUE2, 7), ...many(GREEN, 6), ...many([190, 190, 10, 255], 5)])
+    expect(out).toEqual(['#0a0a0a', '#dc1e1e', '#1e3cc8', '#1ea03c'])
+  })
+
+  it("AC-6802.1: 칩은 '#' + 소문자 16진수 6자리이고, 같은 점이면 늘 같은 결과이며 받은 점을 고치지 않는다", () => {
+    const pixels = Uint8ClampedArray.from([...many(RED, 3), ...many(BLUE2, 2), ...many([250, 170, 10, 255], 4), ...many(WHITE_PX, 9)].flat())
+    const before = Uint8ClampedArray.from(pixels)
+    const a = logoSwatches(pixels, 18, 1)
+    expect(a).toEqual(logoSwatches(pixels, 18, 1))
+    expect(a).toHaveLength(3)
+    for (const hex of a) expect(hex).toMatch(/^#[0-9a-f]{6}$/)
+    expect(pixels).toEqual(before)
+  })
+
+  it('AC-6802.1: 가로·세로가 점 수를 정한다(넘치는 점은 보지 않는다)', () => {
+    const data = Uint8ClampedArray.from([...RED, ...BLUE2, ...BLUE2])
+    expect(logoSwatches(data, 1, 1)).toEqual(['#dc1e1e'])
+    expect(logoSwatches(data, 3, 1)).toEqual(['#1e3cc8', '#dc1e1e'])
+  })
+})
+
+describe('AC-6802.2: logoSwatches — 남는 점이 없으면 빈 목록', () => {
+  it('AC-6802.2: 빈 그림·모두 투명·모두 옅은 그림은 빈 목록이다', () => {
+    expect(logoSwatches(new Uint8ClampedArray(0), 0, 0)).toEqual([])
+    expect(swatchesOf(many([0, 0, 0, 0], 20))).toEqual([])
+    expect(swatchesOf(many(WHITE_PX, 20))).toEqual([])
+  })
+})
+
+// ---------- 흰 바탕 위 색 (spec form-style REQ-6803 AC-6803.3, design.md 3절, TASK-3) ----------
+
+// 시험 쪽 HSL → '#rrggbb'
+function hexOfHsl(h: number, s: number, l: number): string {
+  const c = (1 - Math.abs(2 * l - 1)) * s
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
+  const m = l - c / 2
+  const [r, g, b] = [[c, x, 0], [x, c, 0], [0, c, x], [0, x, c], [x, 0, c], [c, 0, x]][Math.floor(h / 60) % 6]
+  return `#${[r, g, b].map((v) => Math.round((v + m) * 255).toString(16).padStart(2, '0')).join('')}`
+}
+
+describe('AC-6803.3: onWhite — 흰색과 대비 3 이상이 되게 어둡게', () => {
+  it('AC-6803.3: 이미 흰색과 대비가 3 이상이면 그대로다', () => {
+    for (const hex of ['#1f2a44', '#dc2626', '#000000', '#2563eb', '#7c3aed']) {
+      expect(contrastWithWhite(hex), hex).toBeGreaterThanOrEqual(3)
+      expect(onWhite(hex), hex).toBe(hex)
+    }
+  })
+
+  it('AC-6803.3: 옅은 색(노랑·하늘·주황)은 색상·채도는 두고 밝기만 낮춰 대비 3 이상이 되는 첫 색이다', () => {
+    for (const hex of ['#eab308', '#e6e006', '#ffff00', '#0ea5e9', '#f97316', '#9fc3ff']) {
+      expect(contrastWithWhite(hex), hex).toBeLessThan(3)
+      const out = onWhite(hex)
+      expect(out, hex).toMatch(/^#[0-9a-f]{6}$/)
+      expect(contrastWithWhite(out), hex).toBeGreaterThanOrEqual(3)
+      const before = hslOf(hex)
+      const after = hslOf(out)
+      expect(after.l, hex).toBeLessThan(before.l)
+      expect(hueGap(after.h, before.h), hex).toBeLessThan(3)
+      expect(after.s, hex).toBeCloseTo(before.s, 1)
+      // 첫 색: 한 걸음(0.02)보다 조금 더 밝으면 대비가 3에 못 미친다
+      expect(contrastWithWhite(hexOfHsl(before.h, before.s, after.l + 0.03)), hex).toBeLessThan(3)
+    }
+  })
+
+  it('AC-6803.3: 흰색은 대비 3 이상이 되는 첫 회색이다', () => {
+    const out = onWhite('#ffffff')
+    expect(out).toMatch(/^#([0-9a-f]{2})\1\1$/)
+    expect(contrastWithWhite(out)).toBeGreaterThanOrEqual(3)
+    expect(contrastWithWhite(hexOfHsl(0, 0, hslOf(out).l + 0.03))).toBeLessThan(3)
+  })
+
+  it('AC-6803.3: 대비 기준을 줄 수 있다(기본 3)', () => {
+    expect(onWhite('#eab308')).toBe(onWhite('#eab308', 3))
+    const strict = onWhite('#2563eb', 7)
+    expect(contrastWithWhite('#2563eb')).toBeLessThan(7)
+    expect(contrastWithWhite(strict)).toBeGreaterThanOrEqual(7)
+    expect(hueGap(hslOf(strict).h, hslOf('#2563eb').h)).toBeLessThan(3)
+    expect(onWhite('#2563eb', 4.5)).toBe('#2563eb')
+  })
+
+  it('AC-6803.3: 같은 색이면 늘 같은 결과다', () => {
+    expect(onWhite('#eab308')).toBe(onWhite('#eab308'))
   })
 })

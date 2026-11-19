@@ -238,6 +238,88 @@ describe('AC-4703.1·AC-4703.3: checkNotice의 글자 색(accent) 열쇠', () =>
   })
 })
 
+// ---------- 글씨·로고 값 (spec form-style REQ-6806 AC-6806.3, design.md 2절, TASK-3) ----------
+
+describe('AC-6806.3: checkNotice의 글씨·로고 값(style) 열쇠', () => {
+  const NOTICE_KEYS = ['cards', 'month', 'theme', 'year']
+  const DEFAULT = { titleScale: 100, bodyScale: 100, logoScale: 100, titleColor: null, bodyColor: null, logoColor: null }
+  const STYLE = { titleScale: 115, bodyScale: 90, logoScale: 150, titleColor: '#dc2626', bodyColor: null, logoColor: '#ffffff' }
+
+  it('AC-6806.3: style 열쇠가 없는 옛 값은 지금처럼 받고, 돌려준 값에도 style 열쇠가 없다', () => {
+    const checked = checkNotice(notice({ theme: 'children' }))
+    expect(checked).toEqual(notice({ theme: 'children' }))
+    expect(Object.keys(checked ?? {}).sort()).toEqual(NOTICE_KEYS)
+    expect(Object.keys(checkNotice(notice({ accent: '#c62f2f' })) ?? {}).sort()).toEqual(['accent', ...NOTICE_KEYS])
+  })
+
+  it('AC-6806.3: 처음대로인 style은 받되, 돌려준 값에는 style 열쇠를 넣지 않는다', () => {
+    const checked = checkNotice(notice({ theme: 'children', style: { ...DEFAULT } }))
+    expect(checked).toEqual(notice({ theme: 'children' }))
+    expect(Object.keys(checked ?? {}).sort()).toEqual(NOTICE_KEYS)
+    const withAccent = checkNotice(notice({ accent: null, style: { ...DEFAULT } }))
+    expect(Object.keys(withAccent ?? {}).sort()).toEqual(NOTICE_KEYS)
+  })
+
+  it('AC-6806.3: 바꾼 style은 그 값을 담은 새 객체로 돌려준다(글자 색 accent와 함께여도)', () => {
+    const input = { ...STYLE }
+    const value = notice({ theme: 'christmas', style: input })
+    const checked = checkNotice(value)
+    expect(checked).toEqual(value)
+    expect(checked?.style).toEqual(STYLE)
+    expect(checked?.style).not.toBe(input)
+    expect(Object.keys(checked ?? {}).sort()).toEqual([...NOTICE_KEYS, 'style'].sort())
+
+    const both = notice({ accent: '#c62f2f', style: { ...STYLE } })
+    expect(checkNotice(both)).toEqual(both)
+    expect(Object.keys(checkNotice(both) ?? {}).sort()).toEqual(['accent', ...NOTICE_KEYS, 'style'].sort())
+    // accent가 null(자동)이면 accent 열쇠만 빠진다
+    expect(checkNotice(notice({ accent: null, style: { ...STYLE } }))).toEqual(notice({ style: STYLE }))
+  })
+
+  it('AC-6806.3: 크기 하나·색 하나만 바꿔도 바꾼 것으로 본다', () => {
+    for (const over of [{ titleScale: 80 }, { bodyScale: 130 }, { logoScale: 60 }, { titleColor: '#111111' }, { bodyColor: '#ffffff' }, { logoColor: '#7c3aed' }]) {
+      const style = { ...DEFAULT, ...over }
+      expect(checkNotice(notice({ style }))?.style, JSON.stringify(over)).toEqual(style)
+    }
+  })
+
+  it('AC-6806.3: 틀린 style이면 null — 범위 밖·5의 배수 아님·색 모양 틀림·null·객체 아님', () => {
+    for (const bad of [
+      { ...DEFAULT, titleScale: 79 },
+      { ...DEFAULT, bodyScale: 131 },
+      { ...DEFAULT, titleScale: 82 },
+      { ...DEFAULT, logoScale: 55 },
+      { ...DEFAULT, logoScale: 155 },
+      { ...DEFAULT, logoScale: 83 },
+      { ...DEFAULT, titleColor: '#DC2626' },
+      { ...DEFAULT, bodyColor: 'red' },
+      { ...DEFAULT, logoColor: '#fff' },
+      null,
+      undefined,
+      'style',
+      [],
+    ]) {
+      expect(checkNotice(notice({ style: bad })), String(JSON.stringify(bad))).toBeNull()
+    }
+  })
+
+  it('AC-6806.3: style 열쇠는 정확히 여섯 — 하나 빠지거나 하나 더 있으면 null', () => {
+    const five = Object.fromEntries(Object.entries(DEFAULT).filter(([key]) => key !== 'logoColor'))
+    expect(checkNotice(notice({ style: five }))).toBeNull()
+    expect(checkNotice(notice({ style: { ...DEFAULT, accent: null } }))).toBeNull()
+  })
+
+  it('AC-6806.3: style을 더해도 다른 열쇠·칸 규칙은 그대로 본다', () => {
+    expect(checkNotice(notice({ style: STYLE, id: 'x' }))).toBeNull()
+    expect(checkNotice(notice({ accent: '#c62f2f', style: STYLE, memo: '메모' }))).toBeNull()
+    expect(checkNotice(notice({ style: STYLE, accent: '#C62F2F' }))).toBeNull()
+    expect(checkNotice(notice({ style: STYLE, year: 2019 }))).toBeNull()
+    expect(checkNotice(notice({ style: STYLE, cards: [] }))).toBeNull()
+    const without = (o: Record<string, unknown>, key: string) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== key))
+    expect(checkNotice(without(notice({ style: STYLE }), 'theme'))).toBeNull()
+  })
+})
+
 describe('AC-3509.4: 연도 정하기(글에 연도가 없을 때, 오늘 2026-11-10)', () => {
   const today = '2026-11-10'
 
