@@ -2,12 +2,14 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useId, useState, type ReactNode } from 'react'
+import { useClinicProfile } from '@/components/clinic/useClinicProfile'
 import { Icon } from '@/components/common/Icon'
 import { DownloadButton } from '@/components/install/DownloadButton'
 import { MENU } from '@/components/shell/menu'
 import { useDesk } from '@/components/shell/role'
 import { ds } from '@/components/ui/classes'
 import { BridgeError } from '@/lib/bridge/protocol'
+import { EMR_WITH_RO, emrWaitTitle, type NonBitEmr } from '@/lib/clinic/emrText'
 import type { ResultOf } from '@/types/bridge'
 import { maskInstitution } from '../maskInstitution'
 import { useBridge } from '../useBridge'
@@ -26,6 +28,8 @@ import { isRealProblem, setupSteps, type StepView } from './steps'
 // 기관기호는 뒤 4자리를 가리고, 옆 의원 이름은 사이트가 가진 로그인한 의원 이름(clinicName)이다(도우미는 의원 이름을 주지 않는다, AC-006.4).
 // 연결 상태·결과는 화면 메모리에만 둔다(브라우저 저장소 없음).
 // 데스크(desk-setup REQ-7002, 앱 틀의 useDesk): 제목 '비트 PC 연결' 하나(안쪽 메뉴 없음), '준비됨' 줄은 [수납일지로 가기], busy 카드에 [건수만 보기] 없음. 나머지는 원장과 같다
+// 비트가 아닌 병원(emr-choice REQ-7104, 시안 docs/mockups/emr-choice ③): 병원 정보를 읽었고 쓰는 EMR이 'bit'가 아니면 머리 아래 안내 상자 하나만.
+// 읽는 중·읽기 실패·줄 없음은 'bit'처럼 지금 화면이다(AC-7104.2). 도우미 연결은 그대로 돌지만 화면에 쓰지 않는다
 
 type Checked = { result: ResultOf<'bit.check'> | null; error: string | null; at: Date | null }
 const NOT_CHECKED: Checked = { result: null, error: null, at: null }
@@ -68,6 +72,34 @@ function Head({ desk }: { desk: boolean }) {
       <h1 className="text-title font-semibold text-ink">설정</h1>
       <SettingsSubnav />
     </div>
+  )
+}
+
+/**
+ * 비트가 아닌 병원의 안내 상자(AC-7104.1, 시안 '.wait'): 패널 안쪽 20px(폰 16px)·사이 10px, 제목(h2) → 글 둘 → 원장 [쓰는 EMR 바꾸기](보조, /settings).
+ * 데스크는 설정 탭을 못 열어 단추 대신 한 줄. 글자는 emrText.ts 한 곳(대시보드와 같이 쓴다)
+ */
+function EmrWaitBox({ emr, desk }: { emr: NonBitEmr; desk: boolean }) {
+  const titleId = useId()
+  return (
+    <section aria-labelledby={titleId} className={`${ds.panel} flex flex-col gap-2.5 p-5 max-md:p-4`}>
+      <h2 id={titleId} className={ds.panelTitle}>
+        {emrWaitTitle(emr)}
+      </h2>
+      <p className="text-body text-ink-2">
+        {`우리 병원은 쓰는 EMR이 ${EMR_WITH_RO[emr]} 되어 있어요. 이 화면은 비트를 쓰는 PC를 연결하는 곳이라, 지금은 쓸 일이 없어요.`}
+      </p>
+      <p className="text-body text-ink-2">비트를 쓰고 있다면 설정 → 병원 정보에서 쓰는 EMR을 비트로 바꿔 주세요.</p>
+      {desk ? (
+        <p className="text-body text-ink-2">원장님 계정에서 바꿀 수 있어요.</p>
+      ) : (
+        <div>
+          <Link href={SETTINGS_HREF} className={`${ds.button.secondary} no-underline`}>
+            쓰는 EMR 바꾸기
+          </Link>
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -158,6 +190,9 @@ export function SetupScreen({
   const stepsTitleId = useId()
   const pcTitleId = useId()
   const keepTitleId = useId()
+  // 쓰는 EMR(emr-choice design.md 5절): 읽었을 때만 그 값, 읽는 중·실패는 'bit'(줄 없음은 기본값 'bit')
+  const clinic = useClinicProfile()
+  const emr = clinic.state === 'ready' ? clinic.profile.emr : 'bit'
 
   const runCheck = useCallback(async () => {
     setWorking('check')
@@ -215,6 +250,16 @@ export function SetupScreen({
   const alertCode = (awaitingRegister ? registerError : null) ?? problem?.code ?? null
   const actions = { storeUrl: extensionStoreUrl, disabled, onRetry: recheck, onRegister: () => void register() }
   const institution = state === 'ready' ? checked.result?.institutionCode : undefined
+
+  // 비트가 아닌 병원: 머리 아래 안내 상자 하나(AC-7104.1). 모든 훅을 부른 뒤, 다른 창 카드보다 먼저
+  if (emr !== 'bit') {
+    return (
+      <div className="flex flex-col gap-4 max-md:gap-3">
+        <Head desk={desk} />
+        <EmrWaitBox emr={emr} desk={desk} />
+      </div>
+    )
+  }
 
   // 다른 창에서 작업 중: 목업 화면 6처럼 카드 하나, 제목 아래 왼쪽 정렬(이 창은 확장과 이야기할 수 없다).
   // 데스크는 청구 화면을 못 열어 [건수만 보기]가 없다(desk-setup AC-7002.1)
