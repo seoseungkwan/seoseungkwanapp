@@ -28,6 +28,7 @@ import type { DashboardGroups } from './rxGroups'
 // 저장 숫자 새로고침은 LiveDashboard가 읽고(savedRefresh), 새 처음 자료가 오면 다시 놓지 않고 화면 숫자만 바꾼다(AC-2701.8). 화면 차례는 머리 줄 → 일별 현황(기준일·숫자 칸·보고 문장) → AI 요약 → 기간별 흐름이다(AC-2707.2)
 // 병원 호칭(clinic-profile AC-6606.3)은 여기서 useClinicProfile을 한 번 불러 보고 받는 사람 글(숫자 줄 아래 안내 줄·AI 요약 만들기 안내)에 넘긴다.
 // 읽는 중·실패면 기본값 '원장님'이다(서버 그림도 '원장님'이라 첫 그림이 어긋나지 않는다)
+// 쓰는 EMR(emr-choice AC-7103.1·AC-7103.2, design.md 4절)도 같은 결과에서 받아 DashboardHome에 넘긴다. 병원 정보를 읽었을 때만 그 값이고, 읽는 중·실패는 'bit'(지금 그대로)
 
 /** 묶음을 주지 않으면 묶음 없음 */
 const NO_GROUPS: DashboardGroups = { lines: [], defs: [] }
@@ -136,7 +137,9 @@ export function BitDashboard({
     setStatus((current) => adoptSaved(current, initial))
   }
   const bitReadable = useSyncExternalStore(noSubscribe, hasRuntime, serverHasRuntime)
-  const honorific = useClinicProfile().profile.honorific
+  const clinic = useClinicProfile()
+  const honorific = clinic.profile.honorific
+  const emr = clinic.state === 'ready' ? clinic.profile.emr : 'bit'
   const [attempt, setAttempt] = useState(0)
   const [picked, setPicked] = useState<string | null>(null) // 고른 지난 날. null이면 오늘이라, 연 채 날짜가 바뀌어도 오늘을 따라간다
   const pressedNow = useRef(false) // 직접 눌렀다는 표시: 다음 읽기 하나에만 쓴다
@@ -214,6 +217,7 @@ export function BitDashboard({
   return (
     <DashboardHome
       today={today}
+      emr={emr}
       // 숫자가 있으면 날짜 고르기는 일별 현황 기준일 묶음 안이다(AC-2703.1) — 맨 위 날짜 줄을 그리지 않는다
       dateLine={status.kind === 'data' ? null : undefined}
       report={

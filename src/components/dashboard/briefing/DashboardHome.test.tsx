@@ -7,7 +7,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Icon, type IconName } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
+import type { NonBitEmr } from '@/lib/clinic/emrText'
 import { nestedBoxes } from '@/testing/boxes'
+import type { EmrKind } from '@/types/clinicProfile'
 import { DashboardHome } from './DashboardHome'
 import { DASHBOARD_FEATURES, type FeatureStatus } from './features'
 
@@ -853,5 +855,101 @@ describe('DashboardHome: 보조 글 · 연결 판정 (AC-414.6)', () => {
       expect(source.text).toMatch(/\breport != null\b/)
       expect(source.text).not.toMatch(/report !== null/)
     }
+  })
+})
+
+// ── emr-choice: 쓰는 EMR이 비트가 아닌 병원의 연결 전 첫 화면 (REQ-7103, design.md 4절, 시안 docs/mockups/emr-choice/index.html ②) ──
+describe('DashboardHome: 비트가 아닌 병원의 연결 전 (emr-choice AC-7103.1·AC-7103.2)', () => {
+  const WAIT_TITLES = [
+    ['uisarang', '의사랑 연결은 준비하고 있어요'],
+    ['egis', '이지스 연결은 준비하고 있어요'],
+    ['other', '우리 병원 EMR은 아직 연결할 수 없어요'],
+  ] as const
+  const WAIT_LEAD = '지금은 비트만 연결돼요. 연결이 생기면 이 화면에 오늘 숫자와 보고 문장이 채워져요. 그동안 업무일지·예약·서식은 그대로 쓸 수 있어요.'
+  const CHANGE = '쓰는 EMR 바꾸기'
+  const renderWait = (emr: NonBitEmr) => render(<DashboardHome today={TODAY} report={null} analysis={analysis} emr={emr} />).container
+  const markupOf = (emr: EmrKind | undefined, node: ReactNode | null = null) =>
+    renderToStaticMarkup(<DashboardHome today={TODAY} report={node} analysis={analysis} emr={emr} />)
+  // 그린 글(서버 그림)의 뿌리 아래 덩어리들
+  const partsOf = (html: string) => {
+    const holder = document.createElement('div')
+    holder.innerHTML = html
+    return Array.from(holder.firstElementChild?.children ?? []).map((el) => el.outerHTML)
+  }
+
+  it.each(WAIT_TITLES)('AC-7103.1: %s — 화면의 h1은 안내 제목 "%s" 하나다(큰 문장과 같은 글 모양)', (emr, title) => {
+    const container = renderWait(emr)
+    const h1s = container.querySelectorAll('h1')
+    expect(h1s).toHaveLength(1)
+    expect(textOf(h1s[0])).toBe(title)
+    hasAll(h1s[0], 'text-display-m font-semibold text-ink text-balance max-md:text-heading-m mt-3 max-md:mt-2')
+    noText(container, H1)
+  })
+
+  it.each(WAIT_TITLES)('AC-7103.1: %s — 날짜 줄 → h1 → 안내 글(lead ink-2, 글자 그대로) → [쓰는 EMR 바꾸기](/settings, 보조 단추) 차례', (emr) => {
+    renderWait(emr)
+    const left = briefLeft()
+    const lead = byText(left, WAIT_LEAD, 'p')
+    hasAll(lead, 'mt-4 text-lead text-ink-2')
+    const change = screen.getByRole('link', { name: CHANGE })
+    expect(change.getAttribute('href')).toBe('/settings')
+    expect(textOf(change)).toBe(CHANGE)
+    hasAll(change, `${ds.button.secondary} ${REACT_PRESS}`)
+    expect(left.contains(change)).toBe(true)
+    expectOrder(dateLineEl(), left.querySelector('h1'), lead, change)
+  })
+
+  it.each(WAIT_TITLES)('AC-7103.1: %s — [비트 PC 연결 시작] · 연결 순서 칸 · 폰 아래 연결 단추 · 안심 줄이 없다', (emr) => {
+    const container = renderWait(emr)
+    expect(screen.queryByRole('link', { name: '비트 PC 연결 시작' })).toBeNull()
+    expect(container.querySelector('#dashboard-connect-start')).toBeNull()
+    expect(container.querySelector('a[href="/claim/setup?next=dashboard"]')).toBeNull()
+    for (const text of ['연결 순서', '5단계', '크롬 확장 프로그램 설치', '도우미 설치', '요양기관기호 확인', PC_STEPS_NOTE, TRUST, '비트 자료는 읽기만 해요']) {
+      noText(container, text)
+    }
+    expect(container.querySelector('ol, details')).toBeNull()
+    expect(container.querySelector('.sticky')).toBeNull()
+    // 브리핑에는 왼쪽 칸 하나뿐이다(연결 순서 자리 없음)
+    expect(brief().children).toHaveLength(1)
+  })
+
+  it.each(WAIT_TITLES)("AC-7103.1: %s — 그 아래 '연결하면 바로 쓸 수 있어요' 줄([비트 PC 연결부터])·analysis·기능 목차('연결 먼저')는 비트 병원 연결 전과 같다", (emr) => {
+    const container = renderWait(emr)
+    const root = rootOf(container)
+    const analysisNode = screen.getByTestId('analysis')
+    expect(analysisNode.parentElement).toBe(root)
+    expectOrder(brief(), sectionNamed(ROW_TITLE), analysisNode, sectionNamed('기능 목차'))
+    expect(Array.from(root.children).map((el) => el.tagName.toLowerCase())).toEqual(['section', 'section', 'section', 'section'])
+    expect(screen.getByRole('link', { name: '비트 PC 연결부터' }).getAttribute('href')).toBe('/claim/setup')
+    expect(within(sectionNamed('기능 목차')).getAllByText('연결 먼저')).toHaveLength(featureCount('connect-first'))
+    // 브리핑 아래 덩어리는 비트 병원 연결 전 그림과 글자 하나까지 같다(폰 아래 단추만 빠진다)
+    expect(partsOf(markupOf(emr)).slice(1)).toEqual(partsOf(markupOf('bit')).slice(1, 4))
+  })
+
+  it('AC-7103.1·AC-306.8: 상자 안 상자가 없고, 앱 틀을 다시 그리지 않는다', () => {
+    for (const [emr] of WAIT_TITLES) {
+      const container = renderWait(emr)
+      expect(nestedBoxes(container), emr).toEqual([])
+      expect(container.querySelector('main, header, nav, .app-ui'), emr).toBeNull()
+      cleanup()
+    }
+  })
+
+  it("AC-7103.2: emr이 'bit'이거나 주지 않으면 연결 전은 지금과 같다 — 큰 문장 · [비트 PC 연결 시작] · 연결 순서 · 폰 아래 단추", () => {
+    expect(markupOf('bit')).toBe(markupOf(undefined))
+    const { container } = render(<DashboardHome today={TODAY} report={null} analysis={analysis} emr="bit" />)
+    expect(textOf(container.querySelector('h1'))).toBe(H1)
+    expect(mainLink().getAttribute('href')).toBe('/claim/setup?next=dashboard')
+    expect(container.querySelector('details')).not.toBeNull()
+    expect(container.querySelector('.sticky')).not.toBeNull()
+    expect(screen.queryByRole('link', { name: CHANGE })).toBeNull()
+    noText(container, WAIT_LEAD)
+  })
+
+  it.each(['bit', 'uisarang', 'egis', 'other'] as const)('AC-7103.2: 연결 뒤(report 있음)는 emr이 %s이어도 지금과 같다', (emr) => {
+    expect(markupOf(emr, report)).toBe(markupOf(undefined, report))
+    const { container } = render(<DashboardHome today={TODAY} report={report} analysis={analysis} emr={emr} />)
+    expect(screen.queryByRole('link', { name: CHANGE })).toBeNull()
+    noText(container, WAIT_LEAD)
   })
 })
