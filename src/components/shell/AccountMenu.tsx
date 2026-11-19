@@ -11,7 +11,8 @@ import { ADMIN_LINK } from './menu'
 // 단추에는 로그인한 구글 이메일(plan.md §6-4, design.md '계정 단추에는 이메일'). 폰은 44×44 아이콘만, 이메일은 aria-label.
 // 메뉴: 머리(이메일·병원 이름·관리자면 "관리자 계정" 칩) + 항목([가입 승인]은 관리자만, tab-frame REQ-304, 숫자·칩 없음 ui-90 AC-417.2 → [로그아웃], 꾸밈 Icon logout ui-90 AC-416.7).
 // 열면 첫 항목에 초점, ↓·↑로 항목 사이를 돈다. 바깥 누름·Esc·Tab으로 닫힌다
-// 데스크 계정(desk 참, desk-feedback AC-6306.2): 단추 안 메일 앞(폰에서도)과 메뉴 머리에 warning 칩 '데스크'. [가입 승인]·'관리자 계정'은 없다
+// 데스크 계정(desk 참, desk-feedback AC-6306.2): 단추 안 메일 앞(폰에서도)과 메뉴 머리에 warning 칩 '데스크'. [가입 승인]·'관리자 계정'은 없다.
+// 데스크 메뉴 항목은 [비트 PC 연결](/claim/setup, 꾸밈 Icon monitor, desk-setup AC-7003.1) → [로그아웃]
 
 // PC: 보조 작은 단추(32px·1px line-strong·4px·small 500) 안에 사람 아이콘 16 · 이메일 · 아래 화살표.
 // 폰: 44×44 아이콘 단추·테두리 없음·아이콘 ink-2. 올림과 열린 동안 바탕 canvas(색 150ms, UI_GUIDE '짧은 반응 허용')
@@ -115,6 +116,13 @@ export function AccountMenu({
               <Link href={ADMIN_LINK.href} role="menuitem" className={itemClass} onClick={() => setOpen(false)}>
                 <Icon name="userCheck" className="shrink-0 text-ink-2" />
                 {ADMIN_LINK.label}
+              </Link>
+            )}
+            {desk && (
+              // 데스크만: 비트 PC 연결 화면(/claim/setup, desk-setup AC-7003.1 — 탭에는 없다). 누르면 메뉴를 닫고 링크로 간다
+              <Link href="/claim/setup" role="menuitem" className={itemClass} onClick={() => setOpen(false)}>
+                <Icon name="monitor" className="shrink-0 text-ink-2" />
+                비트 PC 연결
               </Link>
             )}
             <SignOutButton className={itemClass}>

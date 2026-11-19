@@ -1302,7 +1302,8 @@ describe('AccountMenu', () => {
     expect(button().getAttribute('aria-label')?.startsWith(EMAIL)).toBe(true)
   })
 
-  it('AC-6306.2: desk면 메뉴 머리(이메일·병원 이름)에도 warning 칩 "데스크"가 있고, 관리자 값이 참이어도 [가입 승인]·"관리자 계정"이 없다(항목은 [로그아웃] 하나)', async () => {
+  // 항목은 desk-setup AC-7003.1부터 [비트 PC 연결]·[로그아웃](옛: [로그아웃] 하나·링크 없음)
+  it('AC-6306.2·AC-7003.1: desk면 메뉴 머리(이메일·병원 이름)에도 warning 칩 "데스크"가 있고, 관리자 값이 참이어도 [가입 승인]·"관리자 계정"이 없다(항목은 [비트 PC 연결]·[로그아웃], 링크는 /claim/setup 하나)', async () => {
     const user = userEvent.setup()
     render(<AccountMenu email={EMAIL} hospitalName={HOSPITAL} isAdmin desk />)
     await user.click(button())
@@ -1311,9 +1312,72 @@ describe('AccountMenu', () => {
     expect(within(head).getByText(HOSPITAL)).toBeTruthy()
     hasAll(within(head).getByText('데스크'), ds.chip.warning)
     expect(within(head).queryByText('관리자 계정')).toBeNull()
-    expect(menuItems().map((i) => i.textContent)).toEqual(['로그아웃'])
+    expect(menuItems().map((i) => i.textContent)).toEqual(['비트 PC 연결', '로그아웃'])
     expect(screen.queryByText('가입 승인')).toBeNull()
-    expect(screen.queryByRole('link')).toBeNull()
+    // 메뉴 항목 링크는 role이 menuitem이라 link 역할로 잡히지 않는다 → a 요소로 본다
+    expect(Array.from(document.querySelectorAll('a')).map((a) => a.getAttribute('href'))).toEqual(['/claim/setup'])
+  })
+
+  // desk-setup REQ-7003: 데스크 계정 메뉴의 [비트 PC 연결](시안 docs/mockups/desk-setup ②). 원장·관리자 메뉴는 그대로
+  it('AC-7003.1: desk면 [로그아웃] 위에 메뉴 항목 링크 [비트 PC 연결](/claim/setup, menuitem, 왼쪽 꾸밈 아이콘 monitor 16)이 있고 [로그아웃]과 같은 항목 모양이다', async () => {
+    const user = userEvent.setup()
+    render(<AccountMenu email={EMAIL} hospitalName={HOSPITAL} isAdmin={false} desk />)
+    await user.click(button())
+    const [setup, logout] = menuItems()
+    expect(setup.tagName).toBe('A')
+    expect(setup.textContent).toBe('비트 PC 연결')
+    expect(setup.getAttribute('href')).toBe('/claim/setup')
+    expect(setup.getAttribute('role')).toBe('menuitem')
+    expect(logout.textContent).toBe('로그아웃')
+    expect(classesOf(setup)).toEqual(classesOf(logout))
+    // 열면 첫 항목([비트 PC 연결])에 초점
+    expect(document.activeElement).toBe(setup)
+    const svg = setup.firstElementChild as SVGElement
+    expect(svg.tagName.toLowerCase()).toBe('svg')
+    expect(setup.querySelectorAll('svg')).toHaveLength(1)
+    expect([svg.getAttribute('width'), svg.getAttribute('height'), svg.getAttribute('viewBox')]).toEqual(['16', '16', '0 0 16 16'])
+    expect(svg.getAttribute('aria-hidden')).toBe('true')
+    expect(svg.innerHTML).toBe(iconInner('monitor'))
+    hasAll(svg, 'shrink-0 text-ink-2')
+  })
+
+  it('AC-7003.1: [비트 PC 연결]을 누르면 메뉴가 닫히고 /claim/setup으로 간다(링크 이동을 막지 않는다)', async () => {
+    const user = userEvent.setup()
+    render(<AccountMenu email={EMAIL} hospitalName={HOSPITAL} isAdmin={false} desk />)
+    await user.click(button())
+    // jsdom은 페이지 이동을 하지 않는다 → 문서까지 올라온 누름이 /claim/setup 링크이고 막히지 않았는지 본다
+    const clicks: { href: string | null; blocked: boolean }[] = []
+    const onClick = (e: MouseEvent) => {
+      clicks.push({ href: (e.target as Element).closest('a')?.getAttribute('href') ?? null, blocked: e.defaultPrevented })
+      e.preventDefault()
+    }
+    document.addEventListener('click', onClick)
+    try {
+      await user.click(screen.getByRole('menuitem', { name: '비트 PC 연결' }))
+    } finally {
+      document.removeEventListener('click', onClick)
+    }
+    expect(clicks).toEqual([{ href: '/claim/setup', blocked: false }])
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(button().getAttribute('aria-expanded')).toBe('false')
+    expect(signOut).not.toHaveBeenCalled()
+  })
+
+  it('AC-7003.2: 원장·관리자 메뉴에는 [비트 PC 연결]이 없다 — 관리자는 [가입 승인]·[로그아웃], 원장은 [로그아웃]', async () => {
+    for (const [isAdmin, items] of [
+      [true, ['가입 승인', '로그아웃']],
+      [false, ['로그아웃']],
+    ] as const) {
+      for (const desk of [undefined, false]) {
+        const user = userEvent.setup()
+        render(<AccountMenu email={EMAIL} hospitalName={HOSPITAL} isAdmin={isAdmin} desk={desk} />)
+        await user.click(button())
+        expect(menuItems().map((i) => i.textContent)).toEqual(items)
+        expect(screen.queryByText('비트 PC 연결')).toBeNull()
+        expect(Array.from(document.querySelectorAll('a')).map((a) => a.getAttribute('href'))).toEqual(isAdmin ? ['/admin'] : [])
+        cleanup()
+      }
+    }
   })
 
   it('AC-6306.2: desk가 없거나 거짓이면 계정 단추·메뉴 머리에 "데스크" 칩이 없고 단추는 지금 모양(폰 44×44)이다', async () => {
