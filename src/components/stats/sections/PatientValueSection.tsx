@@ -5,23 +5,26 @@ import { formatCount, percentOf } from '@/components/charts/format'
 import { formatManWon, formatWon } from '@/components/revenue/money'
 import { groupKey } from '@/components/stats/treatmentView'
 import type { StatsRxGroup } from '@/types/rxGroups'
-import type { PatientValue, PatientValueLine } from '@/types/stats'
+import type { MonthValue, PatientValueLine } from '@/types/stats'
 import type { BitSectionsShown } from './PatientMixSection'
 import { Section } from './parts'
 import { useTabDesc } from './RxSection'
 
-// 신환 1명당 매출 (stats-insights REQ-6106 AC-6106.4·AC-6106.5, 시안 docs/mockups/stats-insights/index.html ⑥). 매출 칸 다섯째 탭이다.
-// 숫자는 Worker가 불러온 범위 전체로 센 1명당 값(BitSectionsView.value)이고, 받은 치료 이름은 지금 묶음의 열쇠(groupKey)로 찾아 붙인다.
+// 신환 1명당 매출 = 그 달 신환 (bit-total REQ-6911 AC-6911.4, 시안 docs/mockups/bit-total/index.html ⑤ · 처음 모양 stats-insights ⑥). 매출 칸 다섯째 탭이다.
+// 숫자는 Worker가 불러온 범위 전체를 달마다 센 1명당 값(BitSectionsView.values)의 마지막 달(보통 이번 달, 자료 끝 날까지)이고,
+// 받은 치료 이름은 지금 묶음의 열쇠(groupKey)로 찾아 붙인다.
 // 지금 묶음에 없는 열쇠가 든 줄(불러온 뒤 묶음을 바꿈)은 그리지 않는다. 줄 차례는 Worker가 준 그대로다(평균이 작은 순, '그 밖'은 맨 끝).
 // 금액은 시안처럼 만 원 아래까지 쓴다("41만 2,000원"). 환자별 금액은 Worker 밖으로 나오지 않는다(이 칸은 1명당 숫자만 받는다)
 
 const TITLE = '신환 1명당 매출'
-const DESC = '신환이 처음 온 날부터 90일 동안 낸 진료비를 받은 치료별로 봐요'
+const DESC = '그 달 신환이 그 달에 낸 진료비를 받은 치료별로 봐요'
 const NOT_HERE = '비트에서 불러오면 볼 수 있어요'
 const OLD_HELPER = '도우미를 0.11.0으로 올리면 볼 수 있어요'
 const NOBODY = '아직 셀 환자가 없어요'
+const NO_FIRST_DAY = '그 달 1일부터 불러오면 볼 수 있어요'
 const BY_CARE = '받은 치료별'
-const FOOT = '진료비 = 공단 부담까지 합친 총액. 처음 온 지 90일이 다 지난 신환만 세요. 환자별 금액은 이 PC 안에서만 계산하고 서버에 저장하지 않아요.'
+const FOOT =
+  '진료비 = 공단 부담까지 합친 총액. 그 달에 비트 신환 표시가 있는 환자를 그 달 신환으로 보고, 그 달 안에 낸 진료비와 내원만 세요. 두 달에 신환 표시가 있으면 두 달 모두에 들어가요. 환자별 금액은 이 PC 안에서만 계산하고 서버에 저장하지 않아요.'
 const CARE_ONLY = '진료만'
 const REST = '그 밖'
 const JOIN = ' + '
@@ -57,6 +60,9 @@ function wonText(n: number): string {
 
 const people = (count: number) => `${formatCount(count)}명`
 const times = (value: number) => `${value.toFixed(1)}회`
+const monthName = (month: string) => `${Number(month.slice(5, 7))}월`
+// 칸 위 줄: `{Y}년 {M}월 신환 {n}명 · {M}월 1일–{D}일`(D = 센 끝 날)
+const monthLine = ({ month, to, n }: MonthValue) => `${Number(month.slice(0, 4))}년 ${monthName(month)} 신환 ${people(n)} · ${monthName(month)} 1일–${Number(to.slice(8, 10))}일`
 
 // 지금 묶음의 열쇠 → 이름(sortOrder 차례, 같은 열쇠는 앞 묶음). 처방 없는 묶음은 불러오기에 실리지 않는다(groupDefs, 몇 번까지 받나와 같은 규칙)
 function namesOf(groups: readonly StatsRxGroup[]): Map<string, string> {
@@ -85,10 +91,11 @@ function shownLines(lines: readonly PatientValueLine[], groups: readonly StatsRx
   })
 }
 
-function Cells({ value }: { value: PatientValue }) {
+function Cells({ value }: { value: MonthValue }) {
+  const name = monthName(value.month)
   const cells: [string, string, string][] = [
-    [wonText(value.average), '신환 1명당 평균 (90일)', CELL_FIRST],
-    [times(value.times), '신환 1명당 내원 횟수 (90일)', CELL_NEXT],
+    [wonText(value.average), `${name} 신환 1명당 평균`, CELL_FIRST],
+    [times(value.times), `${name} 신환 1명당 내원 횟수`, CELL_NEXT],
     [wonText(value.perVisit), '한 번 올 때 평균', CELL_LAST],
   ]
   return (
@@ -132,7 +139,8 @@ function CareBars({ lines }: { lines: readonly Shown[] }) {
 export function PatientValueSection({ view, groups }: { view: BitSectionsShown; groups: readonly StatsRxGroup[] }) {
   // 카드가 옆 글을 가졌으면 설명은 패널 맨 위 한 줄(lead)이다(매출 카드는 옆 글이 없어 카드 머리 줄로 간다)
   const { head, lead } = useTabDesc(DESC)
-  const value = view !== null && view !== 'waiting' && view.kind === 'ready' ? view.value : undefined
+  const values = view !== null && view !== 'waiting' && view.kind === 'ready' ? view.values : undefined
+  const value = values?.at(-1)
   const lines = useMemo(() => (value === undefined ? [] : shownLines(value.lines, groups)), [value, groups])
 
   if (view === 'waiting') {
@@ -142,8 +150,17 @@ export function PatientValueSection({ view, groups }: { view: BitSectionsShown; 
       </Section>
     )
   }
-  // 금액 줄이 없는 답: 옛 도우미(v2 답·0.11.0 전 v3~v5 답)
-  const note = view === null || view.kind === 'none' ? NOT_HERE : value === undefined ? OLD_HELPER : value.n === 0 ? NOBODY : null
+  // 금액 줄이 없는 답: 옛 도우미(v2 답·0.11.0 전 v3~v5 답). 달 줄이 없음 = 불러온 범위에 어느 달 1일도 없음
+  const note =
+    view === null || view.kind === 'none'
+      ? NOT_HERE
+      : values === undefined
+        ? OLD_HELPER
+        : value === undefined
+          ? NO_FIRST_DAY
+          : value.n === 0
+            ? NOBODY
+            : null
   if (note !== null || value === undefined) {
     return (
       <Section title={TITLE} desc={head}>
@@ -155,6 +172,7 @@ export function PatientValueSection({ view, groups }: { view: BitSectionsShown; 
   return (
     <Section title={TITLE} desc={head}>
       {lead}
+      <p className={LINE}>{monthLine(value)}</p>
       <Cells value={value} />
       {lines.length > 0 && <CareBars lines={lines} />}
       <p className={FOOT_LINE}>{FOOT}</p>

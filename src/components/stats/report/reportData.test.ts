@@ -95,7 +95,12 @@ const BIT: BitSectionsView = {
     { group: 't0000000000000000', n: 500, atLeast: [500, 1, 1, 1, 1, 1], ten: 0, once: 499, average: 1.1, drop: 1 }, // 지금 묶음에 없는 열쇠
     { group: DOSU, n: 100, atLeast: [100, 71, 50, 40, 30, 20], ten: 5, once: 29, average: 4.6, drop: 1 },
   ],
-  value: { n: 40, average: 412_000, times: 5.2, perVisit: 79_230, lines: [] },
+  // 신환 1명당 매출 = 달마다 그 달 신환(bit-total AC-6911.5). 9월 · 10월 · 11월(12일까지, 0명)
+  values: [
+    { month: '2026-09', to: '2026-09-30', n: 30, average: 150_000, times: 2.1, perVisit: 71_428, lines: [] },
+    { month: '2026-10', to: '2026-10-31', n: 40, average: 412_000, times: 5.2, perVisit: 79_230, lines: [] },
+    { month: '2026-11', to: '2026-11-12', n: 0, average: 0, times: 0, perVisit: 0, lines: [] },
+  ],
 }
 
 const input = (over: Partial<ReportInput> = {}): ReportInput => ({
@@ -290,12 +295,30 @@ describe('AC-6108.2: 보고서 칸', () => {
     expect(blockOf(monthlyReport(input()).blocks, 'dropoff')?.items).toEqual(['도수 1회만 29% · 평균 4.6회 (100명)', '충격파 1회만 34% · 평균 3.2회 (50명)'])
   })
 
-  it('AC-6108.2: 신환 1명당 매출 = 세 칸(평균 · 내원 횟수 · 한 번 올 때)', () => {
+  it('AC-6108.2·AC-6911.5: 신환 1명당 매출 = 고른 달 줄의 세 칸(평균 · 내원 횟수 · 한 번 올 때), 금액은 만 원 글', () => {
     expect(blockOf(monthlyReport(input()).blocks, 'value')?.cells).toEqual([
-      { name: '신환 1명당 평균 (90일)', value: '41만 원' },
-      { name: '신환 1명당 내원 횟수 (90일)', value: '5.2회' },
+      { name: '신환 1명당 평균', value: '41만 원' },
+      { name: '신환 1명당 내원 횟수', value: '5.2회' },
       { name: '한 번 올 때 평균', value: '7만 원' },
     ])
+  })
+
+  it('AC-6911.5: 다른 달을 고르면 그 달 줄의 값이다(9월 → 9월 신환 값)', () => {
+    expect(blockOf(monthlyReport(input({ month: '2026-09' })).blocks, 'value')?.cells).toEqual([
+      { name: '신환 1명당 평균', value: '15만 원' },
+      { name: '신환 1명당 내원 횟수', value: '2.1회' },
+      { name: '한 번 올 때 평균', value: '7만 원' },
+    ])
+  })
+
+  it('AC-6911.5: 고른 달 줄이 없거나(8월) n이 0이면(11월) 신환 1명당 매출 칸이 제목까지 없다', () => {
+    expect(keysOf({ month: '2026-08', sales: null })).not.toContain('value')
+    expect(keysOf({ month: '2026-11' })).not.toContain('value')
+    expect(keysOf({ bit: { ...BIT, values: [] } })).not.toContain('value')
+  })
+
+  it("AC-6911.5: 보고서 어디에도 '(90일)'이 없다", () => {
+    for (const month of ['2026-09', '2026-10', '2026-11']) expect(JSON.stringify(monthlyReport(input({ month })))).not.toContain('(90일)')
   })
 
   it('AC-6108.2·AC-6105.1: 예약 빈자리 = 최근 8주 늘 비는 시간·꽉 차는 시간(있는 것만). 8주 동안 예약이 없던 시간(빈 칸)은 들지 않는다', () => {
@@ -313,7 +336,7 @@ describe('AC-6108.3: 자료가 없는 칸은 제목까지 뺀다', () => {
     const bare: BitSectionsView = { kind: 'ready', mix: { all: MIX, new: MIX }, hours: { hours: [], rows: [], unknown: 0, peak: null }, doctors: { kind: 'single' } }
     expect(keysOf({ bit: bare })).not.toContain('dropoff')
     expect(keysOf({ bit: bare })).not.toContain('value')
-    const nobody = keysOf({ bit: { ...BIT, dropoff: [], value: { n: 0, average: 0, times: 0, perVisit: 0, lines: [] } } })
+    const nobody = keysOf({ bit: { ...BIT, dropoff: [], values: [{ month: '2026-10', to: '2026-10-31', n: 0, average: 0, times: 0, perVisit: 0, lines: [] }] } })
     expect(nobody).not.toContain('dropoff')
     expect(nobody).not.toContain('value')
     expect(keysOf({ bit: { kind: 'old-helper' } })).not.toContain('dropoff')

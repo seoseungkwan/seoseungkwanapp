@@ -13,7 +13,7 @@ import {
 import { doctorStats } from '@/lib/analytics/doctorStats'
 import { dropoff } from '@/lib/analytics/dropoff'
 import { patientMix } from '@/lib/analytics/patientMix'
-import { patientValue, type ValuePay } from '@/lib/analytics/patientValue'
+import { monthValues, type ValuePay } from '@/lib/analytics/patientValue'
 import { sunapDoctors, sunapRates } from '@/lib/analytics/sunapRates'
 import { visitHours } from '@/lib/analytics/visitHours'
 import { createPatientIds } from '@/lib/parsers/bit'
@@ -28,7 +28,7 @@ import type { DateRange } from '@/types/dates'
 import type {
   BitSectionsView,
   DropoffLine,
-  PatientValue,
+  MonthValue,
   RxSplitLine,
   RxSplitView,
   StatsChecks,
@@ -76,7 +76,8 @@ export type StatsMemory = {
 // first = 환자 → 첫 내원일(v5면 가장 이른 신환 날, v2면 비어 있다).
 // patientDays·consumption = 통계 '예약·전환' Block 전환(spec sunap-ilji AC-4906.3)이 세는 접수 줄(환자·날)과 진료 줄. aggregate에 넣은 것과 같은 배열이다.
 // groups = 이 load가 실은 묶음 정의(열쇠·코드만). 몇 번까지 받나(stats-insights AC-6103.1)가 메모리 전체를 이것으로 센다.
-// pays = 도우미 0.11.0의 v5 답의 환자·날 금액(stats-insights AC-6106.2, 금액 줄이 없는 답이면 null). 신환 1명당 매출만 쓰고 Worker 밖으로 나가지 않는다
+// pays = 도우미 0.11.0의 v5 답의 환자·날 금액(stats-insights AC-6106.2, 금액 줄이 없는 답이면 null). 신환 1명당 매출(그 달 신환, bit-total AC-6911.1)만 쓰고
+// Worker 밖으로 나가지 않는다
 export type BitMemory = {
   v: StatsRowsData['v']
   range: DateRange
@@ -101,15 +102,16 @@ function dropoffOf(bit: BitMemory): DropoffLine[] {
   return lines
 }
 
-// 신환 1명당 매출도 고른 기간과 상관없어 메모리마다 한 번만 센다(금액 줄이 있을 때만 부른다)
-const values = new WeakMap<BitMemory, PatientValue>()
-function valueOf(bit: BitMemory, pays: readonly ValuePay[]): PatientValue {
-  let value = values.get(bit)
-  if (value === undefined) {
-    value = patientValue({ days: bit.patientDays, rows: bit.consumption, pays, first: bit.first, groups: bit.groups, range: bit.range })
-    values.set(bit, value)
+// 신환 1명당 매출(달마다 그 달 신환)도 고른 기간과 상관없어 메모리마다 한 번만 센다(금액 줄이 있을 때만 부른다).
+// 그 달 신환 = 접수 줄 firstVisit(v5 답 = 비트 신환 표시, toPatientDays) — 금액 줄은 v5 답에만 있어 늘 그 표시다
+const monthly = new WeakMap<BitMemory, MonthValue[]>()
+function valuesOf(bit: BitMemory, pays: readonly ValuePay[]): MonthValue[] {
+  let values = monthly.get(bit)
+  if (values === undefined) {
+    values = monthValues({ days: bit.patientDays, rows: bit.consumption, pays, groups: bit.groups, range: bit.range })
+    monthly.set(bit, values)
   }
-  return value
+  return values
 }
 
 // 날(YYYY-MM-DD) → 그날 신환인 접수 줄 수. v5 접수 줄의 firstVisit은 신환 날이다(toPatientDays)
@@ -260,8 +262,8 @@ export function splitJob(memory: StatsMemory | null, { from, to }: { from: strin
 // 같은 때 같은 입력 + 접수 줄 진료의로 원장님별 표(sunapDoctors, 원장님 한 분 이하면 null)도 싣는다(spec sunap-doctors AC-5004.1).
 // 불러올 때 묶음을 실었으면 몇 번까지 받나(dropoff)도 싣는다(stats-insights AC-6103.1): 고른 기간과 상관없이 불러온 범위 전체, 자료 끝 날 = 불러온 끝.
 // 첫 내원일은 세 칸과 같은 first(toFirstVisits)라 v5 답이면 신환 날을 따른다(spec new-mark). 묶음이 없으면 열쇠가 없다.
-// 답에 금액 줄(도우미 0.11.0의 v5 pays)이 있었으면 신환 1명당 매출(value)도 싣는다(stats-insights AC-6106.3): dropoff와 같은 범위·첫 내원일·묶음이고
-// 묶음이 없어도 센다(받은 치료는 모두 진료만). 금액 줄이 없으면 열쇠가 없다
+// 답에 금액 줄(도우미 0.11.0의 v5 pays)이 있었으면 신환 1명당 매출을 달마다(values) 싣는다(bit-total AC-6911.3): 고른 기간과 상관없이 불러온 범위 전체,
+// 대상은 그 달 신환 표시가 있는 환자, 묶음은 dropoff와 같고 묶음이 없어도 센다(받은 치료는 모두 진료만). 금액 줄이 없으면 열쇠가 없다
 export function sectionsJob(
   bit: BitMemory | null,
   request: { from: string; to: string; previous?: DateRange | null; sunap?: StatsSunapGroups },
@@ -287,7 +289,7 @@ export function sectionsJob(
     doctors: doctorStats({ from, to, visits: extra.visits, first, doctors: extra.doctors, doctorDays: extra.doctorDays }),
   }
   if (bit.groups.length > 0) view.dropoff = dropoffOf(bit)
-  if (bit.pays !== null) view.value = valueOf(bit, bit.pays)
+  if (bit.pays !== null) view.values = valuesOf(bit, bit.pays)
   const { sunap } = request
   if (sunap === undefined) return view
   const counted = { from, to, days: bit.patientDays, rows: bit.consumption, block: sunap.block, pt: sunap.pt }
