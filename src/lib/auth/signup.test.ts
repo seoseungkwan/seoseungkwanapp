@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { EMR_KINDS, type EmrKind } from '@/types/clinicProfile'
 import { validateSignup, type SignupInput, type SignupValue } from './signup'
 
 const MESSAGES = {
@@ -12,9 +13,10 @@ const MESSAGES = {
   applicantLong: '신청자 이름은 30자까지 적을 수 있어요.',
   phone: '연락처는 숫자 9~11자리로 적어 주세요.',
   agreed: '가입 신청을 보내려면 동의에 체크해 주세요.',
+  emr: '쓰는 EMR을 골라 주세요.', // emr-signup AC-7302.1
 }
 
-const VALID: SignupInput = { name: '가나 정형외과의원', applicantName: '홍길동', phone: '010-1234-5678', agreed: true }
+const VALID: SignupInput = { name: '가나 정형외과의원', applicantName: '홍길동', phone: '010-1234-5678', agreed: true, emr: 'bit' }
 const input = (patch: Partial<SignupInput>): SignupInput => ({ ...VALID, ...patch })
 
 function okValue(i: SignupInput): SignupValue {
@@ -36,7 +38,7 @@ describe('validateSignup(): 가입 신청 값 검사', () => {
   it('AC-004.1: 맞는 값이면 ok + DB에 넣을 값(의원 이름·신청자 이름·숫자만 남긴 연락처)', () => {
     expect(validateSignup(VALID)).toEqual({
       ok: true,
-      value: { name: '가나 정형외과의원', applicant_name: '홍길동', phone: '01012345678' },
+      value: { name: '가나 정형외과의원', applicant_name: '홍길동', phone: '01012345678', emr: 'bit' },
     })
   })
 
@@ -118,7 +120,7 @@ describe('validateSignup(): 가입 신청 값 검사', () => {
   })
 
   it('AC-004.1·AC-419.3: 틀린 칸마다 그 칸의 문구를 돌려준다(맞는 칸은 없다)', () => {
-    expect(errorsOf({ name: ' ', applicantName: '', phone: '123', agreed: false })).toEqual({
+    expect(errorsOf({ name: ' ', applicantName: '', phone: '123', agreed: false, emr: 'bit' })).toEqual({
       name: MESSAGES.nameEmpty,
       applicantName: MESSAGES.applicantEmpty,
       phone: MESSAGES.phone,
@@ -139,7 +141,7 @@ describe('validateSignup(): 가입 신청 값 검사', () => {
 
   it('AC-419.3·AC-419.6: 칸 오류 글의 이름표는 "의원 이름"이고 어떤 문구에도 "병원 이름"·"니다."가 없다(신청자·연락처·동의 문구는 그대로)', () => {
     const all = Object.values({
-      ...errorsOf({ name: '', applicantName: '', phone: '1', agreed: false }),
+      ...errorsOf({ name: '', applicantName: '', phone: '1', agreed: false, emr: 'bit' }),
       ...errorsOf(input({ name: '가'.repeat(51), applicantName: '가'.repeat(31) })),
     })
     expect(all).toEqual([MESSAGES.nameLong, MESSAGES.applicantLong, MESSAGES.phone, MESSAGES.agreed])
@@ -148,6 +150,40 @@ describe('validateSignup(): 가입 신청 값 검사', () => {
       expect(message).not.toContain('병원 이름')
       expect(message).not.toContain('니다.')
     }
+  })
+})
+
+describe('validateSignup(): 쓰는 EMR (emr-signup REQ-7302)', () => {
+  it('AC-7302.1: emr이 null이면 errors.emr = "쓰는 EMR을 골라 주세요."이고 ok가 아니다(다른 칸이 맞아도)', () => {
+    expect(validateSignup(input({ emr: null }))).toEqual({ ok: false, errors: { emr: MESSAGES.emr } })
+  })
+
+  it.each(EMR_KINDS)('AC-7302.1: emr이 %s(넷 중 하나)이면 통과한 값에 emr이 그대로 실린다', (emr) => {
+    expect(validateSignup(input({ emr }))).toEqual({
+      ok: true,
+      value: { name: '가나 정형외과의원', applicant_name: '홍길동', phone: '01012345678', emr },
+    })
+  })
+
+  it('AC-7302.1: 넷 밖 값이 섞여 와도 통과시키지 않는다(고르지 않은 것과 같은 문구)', () => {
+    for (const emr of ['', 'BIT', 'ubcare', undefined] as unknown as EmrKind[]) {
+      expect(errorsOf(input({ emr })), String(emr)).toEqual({ emr: MESSAGES.emr })
+    }
+  })
+
+  it('AC-7302.1: 여러 칸이 틀리면 emr 오류도 함께 돌려주고 다른 칸 검사·문구는 그대로다', () => {
+    expect(errorsOf({ name: '', applicantName: '', phone: '1', agreed: false, emr: null })).toEqual({
+      name: MESSAGES.nameEmpty,
+      applicantName: MESSAGES.applicantEmpty,
+      phone: MESSAGES.phone,
+      agreed: MESSAGES.agreed,
+      emr: MESSAGES.emr,
+    })
+    expect(errorsOf(input({ name: '가'.repeat(51), emr: null }))).toEqual({ name: MESSAGES.nameLong, emr: MESSAGES.emr })
+  })
+
+  it('AC-7302.1: emr 문구에도 "니다."가 없다', () => {
+    expect(MESSAGES.emr).not.toContain('니다.')
   })
 })
 
@@ -215,12 +251,12 @@ describe('validateSignup(): DB 검사 제약과 같은 결과', () => {
     const applicants = ['김', '김'.repeat(30), '김'.repeat(31), EMOJI.repeat(30), EMOJI.repeat(31)]
     const phones = ['123456789', '12345678', '12345678901', '123456789012', '０１２３４５６７８９', '٠١٢٣٤٥٦٧٨٩']
     const cases: SignupValue[] = [
-      ...names.map((name) => ({ name, applicant_name: '김', phone: null })),
-      ...applicants.map((applicant_name) => ({ name: '가', applicant_name, phone: null })),
-      ...phones.map((phone) => ({ name: '가', applicant_name: '김', phone })),
+      ...names.map((name) => ({ name, applicant_name: '김', phone: null, emr: 'bit' as const })),
+      ...applicants.map((applicant_name) => ({ name: '가', applicant_name, phone: null, emr: 'bit' as const })),
+      ...phones.map((phone) => ({ name: '가', applicant_name: '김', phone, emr: 'bit' as const })),
     ]
     for (const v of cases) {
-      const result = validateSignup({ name: v.name, applicantName: v.applicant_name, phone: v.phone ?? '', agreed: true })
+      const result = validateSignup({ name: v.name, applicantName: v.applicant_name, phone: v.phone ?? '', agreed: true, emr: v.emr })
       expect(result.ok, JSON.stringify(v)).toBe(await dbAccepts(v))
       if (result.ok) expect(result.value).toEqual(v)
     }

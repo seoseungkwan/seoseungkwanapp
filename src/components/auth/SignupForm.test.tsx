@@ -3,8 +3,10 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ds } from '@/components/ui/classes'
+import { EMR_LABEL } from '@/lib/clinic/emrText'
 import { errorInfo } from '@/lib/errors'
 import { nestedBoxes } from '@/testing/boxes'
+import { EMR_KINDS, type EmrKind } from '@/types/clinicProfile'
 import { SignupForm } from './SignupForm'
 import { Stepper } from './Stepper'
 
@@ -27,11 +29,15 @@ const MESSAGES = {
   applicantEmpty: '신청자 이름을 적어 주세요.',
   phone: '연락처는 숫자 9~11자리로 적어 주세요.',
   agreed: '가입 신청을 보내려면 동의에 체크해 주세요.',
+  emr: '쓰는 EMR을 골라 주세요.', // emr-signup AC-7303.2
 }
 // 문구는 ui-90 시안 docs/mockups/ui-90/entry/screens.mjs signupBody 글자 그대로(AC-419.3)
 const CONSENT = '가입 확인을 위해 이메일·이름·연락처를 저장하는 데 동의해요. 필수'
 const EMAIL_HELP = '로그인한 계정이라 바꿀 수 없어요.'
 const PHONE_HELP = '승인 관련해 연락이 필요할 때만 써요.'
+// emr-signup 시안 docs/mockups/emr-signup/index.html ① 글자 그대로(AC-7303.1)
+const EMR_HELP = '진료 자료를 읽어 오는 연결은 지금 비트만 돼요. 승인 뒤 설정 → 병원 정보에서 바꿀 수 있어요.'
+const EMR_TEXTS = ['비트', '의사랑', '이지스', '그 밖의 EMR']
 const SENDING = '보내는 중…'
 const RAW = 'new row violates check constraint "hospitals_phone_check" secret-detail'
 
@@ -40,6 +46,11 @@ const nameInput = () => screen.getByRole<HTMLInputElement>('textbox', { name: '�
 const applicantInput = () => screen.getByRole<HTMLInputElement>('textbox', { name: '신청자 이름 필수' })
 const phoneInput = () => screen.getByRole<HTMLInputElement>('textbox', { name: '연락처 선택' })
 const consent = () => screen.getByRole<HTMLInputElement>('checkbox', { name: CONSENT })
+// 쓰는 EMR 묶음(칸 이름으로 이름 붙은 group)과 그 안 단추 넷
+const emrGroup = () => screen.getByRole<HTMLDivElement>('group', { name: '쓰는 EMR 필수' })
+const emrButtons = () => within(emrGroup()).getAllByRole<HTMLButtonElement>('button')
+const emrButton = (text: string) => within(emrGroup()).getByRole<HTMLButtonElement>('button', { name: text })
+const pressedOf = () => emrButtons().map((b) => b.getAttribute('aria-pressed'))
 const submit = () => screen.getByRole<HTMLButtonElement>('button', { name: '가입 신청' })
 // 보내는 동안의 [가입 신청](글자가 "보내는 중…"으로 바뀐다)
 const sending = () => screen.getByRole<HTMLButtonElement>('button', { name: SENDING })
@@ -88,8 +99,10 @@ const noArbitraryColor = () => {
   }
 }
 
-async function fillValid(user: ReturnType<typeof userEvent.setup>, phone = '010-1234-5678') {
+// emr: 누를 단추 글자(''이면 고르지 않는다)
+async function fillValid(user: ReturnType<typeof userEvent.setup>, phone = '010-1234-5678', emr = '비트') {
   await user.type(nameInput(), '  가나 정형외과의원 ')
+  if (emr !== '') await user.click(emrButton(emr))
   await user.type(applicantInput(), '홍길동')
   if (phone !== '') await user.type(phoneInput(), phone)
   await user.click(consent())
@@ -146,9 +159,9 @@ describe('SignupForm: 목업 가입 신청(Signup.dc.html)', () => {
     expect(isBefore(lead, form())).toBe(true)
   })
 
-  it('AC-004.2·AC-419.3: 목업 순서 — 구글 계정 · 의원 이름 · 신청자 이름 · 연락처 · 동의 · [가입 신청], 폼 밖 아래에 [다른 계정으로 로그인]', () => {
+  it('AC-004.2·AC-419.3·AC-7303.1: 목업 순서 — 구글 계정 · 의원 이름 · 쓰는 EMR(단추 넷) · 신청자 이름 · 연락처 · 동의 · [가입 신청], 폼 밖 아래에 [다른 계정으로 로그인]', () => {
     render(<SignupForm email={EMAIL} />)
-    const inForm = [emailInput(), nameInput(), applicantInput(), phoneInput(), consent(), submit()]
+    const inForm = [emailInput(), nameInput(), ...emrButtons(), applicantInput(), phoneInput(), consent(), submit()]
     for (const el of inForm) expect(form().contains(el)).toBe(true)
     for (let i = 1; i < inForm.length; i++) expect(isBefore(inForm[i - 1], inForm[i])).toBe(true)
     expect(form().contains(otherAccount())).toBe(false)
@@ -156,7 +169,7 @@ describe('SignupForm: 목업 가입 신청(Signup.dc.html)', () => {
     // 칸은 이것뿐(목업에 없는 칸을 더하지 않는다)
     expect(within(form()).getAllByRole('textbox')).toHaveLength(4)
     expect(within(form()).getAllByRole('checkbox')).toHaveLength(1)
-    expect(within(form()).getAllByRole('button')).toHaveLength(1)
+    expect(within(form()).getAllByRole('button')).toHaveLength(5) // 쓰는 EMR 넷 + [가입 신청]
   })
 
   it('AC-004.2·AC-419.3: 구글 계정 칸은 로그인한 이메일을 바꿀 수 없게 보인다', async () => {
@@ -246,11 +259,11 @@ describe('SignupForm: 목업 가입 신청(Signup.dc.html)', () => {
     expect(frameClasses(form())).toEqual([])
     // 480 칸은 AuthFrame이 정한다(폼이 따로 폭을 정하지 않는다)
     expect(classesOf(root).filter((c) => /^max-w-/.test(c))).toEqual([])
-    // 네 변 테두리 상자는 구글 계정 읽기 전용 칸 하나뿐이다(오류 카드·입력란·체크 상자는 상자가 아니다)
+    // 네 변 테두리 상자는 구글 계정 읽기 전용 칸과 쓰는 EMR 묶음(ds.segment.group, AC-7303.1)뿐이다(오류 카드·입력란·체크 상자는 상자가 아니다)
     const boxes = [root, ...root.querySelectorAll('div, section, article, ul, ol, li, dl, table, aside, form')].filter((el) =>
       classesOf(el).includes('border'),
     )
-    expect(boxes).toEqual([emailInput().parentElement])
+    expect(boxes).toEqual([emailInput().parentElement, emrGroup()])
   })
 
   it('AC-215.1: 간격 — 단계 위 24px, h1 위 24px, 안내 위 8px, 폼 위 24px·칸 사이 20px, [다른 계정으로 로그인] 위 16px', () => {
@@ -305,8 +318,8 @@ describe('SignupForm: 목업 가입 신청(Signup.dc.html)', () => {
       expect(descriptionsOf(input)).toContain(text)
       expect(isBefore(input, help)).toBe(true)
     }
-    // 다른 칸에는 도움말이 없다
-    expect(document.querySelectorAll('form p')).toHaveLength(2)
+    // 다른 칸에는 도움말이 없다(쓰는 EMR 도움말은 AC-7303.1 시험이 본다)
+    expect(document.querySelectorAll('form p')).toHaveLength(3)
   })
 
   it('AC-215.1: 구글 계정 칸 — ds.readonly 안에 자물쇠 14px(aria-hidden) + 이메일', () => {
@@ -362,7 +375,7 @@ describe('AC-419.3·AC-419.6: 가입 신청 문구는 시안 글자 그대로', 
       CONSENT,
     ])
     expect(nameInput().placeholder).toBe('예: 가나 정형외과의원')
-    expect([...form().querySelectorAll('p')].map((p) => p.textContent)).toEqual([EMAIL_HELP, PHONE_HELP])
+    expect([...form().querySelectorAll('p')].map((p) => p.textContent)).toEqual([EMAIL_HELP, EMR_HELP, PHONE_HELP])
     expect(submit().textContent).toBe('가입 신청')
     expect(otherAccount().textContent).toBe('다른 계정으로 로그인')
   })
@@ -489,13 +502,13 @@ describe('SignupForm: 값 검사', () => {
 })
 
 describe('SignupForm: 보내기', () => {
-  it('AC-004.3: 맞는 값이면 다듬은 세 칸만 hospitals에 넣고 /pending으로 바꾼다', async () => {
+  it('AC-004.3·AC-7303.3: 맞는 값이면 다듬은 세 칸 + 고른 EMR만 hospitals에 넣고 /pending으로 바꾼다', async () => {
     const user = userEvent.setup()
     render(<SignupForm email={EMAIL} />)
     await fillValid(user)
     await user.click(submit())
     expect(from).toHaveBeenCalledExactlyOnceWith('hospitals')
-    expect(insert).toHaveBeenCalledExactlyOnceWith({ name: '가나 정형외과의원', applicant_name: '홍길동', phone: '01012345678' })
+    expect(insert).toHaveBeenCalledExactlyOnceWith({ name: '가나 정형외과의원', applicant_name: '홍길동', phone: '01012345678', emr: 'bit' })
     await waitFor(() => expect(router.replace).toHaveBeenCalledExactlyOnceWith('/pending'))
     expect(router.push).not.toHaveBeenCalled()
     expect(screen.queryByRole('alert')).toBeNull()
@@ -506,7 +519,7 @@ describe('SignupForm: 보내기', () => {
     render(<SignupForm email={EMAIL} />)
     await fillValid(user, '')
     await user.click(submit())
-    expect(insert).toHaveBeenCalledExactlyOnceWith({ name: '가나 정형외과의원', applicant_name: '홍길동', phone: null })
+    expect(insert).toHaveBeenCalledExactlyOnceWith({ name: '가나 정형외과의원', applicant_name: '홍길동', phone: null, emr: 'bit' })
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/pending'))
   })
 
@@ -622,8 +635,218 @@ describe('SignupForm: 저장 실패', () => {
     await user.click(submit())
     await waitFor(() => expect(router.replace).toHaveBeenCalledExactlyOnceWith('/pending'))
     expect(insert).toHaveBeenCalledTimes(2)
-    expect(insert.mock.calls[1][0]).toEqual({ name: '가나 정형외과의원', applicant_name: '홍길동', phone: '01012345678' })
+    expect(insert.mock.calls[1][0]).toEqual({ name: '가나 정형외과의원', applicant_name: '홍길동', phone: '01012345678', emr: 'bit' })
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
+
+// 쓰는 EMR 칸 (emr-signup REQ-7303, design.md 3절, 시안 docs/mockups/emr-signup/index.html ①)
+const segmentBase = (classes: string) => tokens(classes).filter((t) => !t.includes(':'))
+describe('SignupForm: 쓰는 EMR 칸 (emr-signup AC-7303.1)', () => {
+  it('AC-7303.1: 의원 이름 다음·신청자 이름 앞에 칸 이름 "쓰는 EMR" + "필수"(ds.label·ds.labelHint, label이 아닌 span#su-emr-label)', () => {
+    render(<SignupForm email={EMAIL} />)
+    const name = document.getElementById('su-emr-label') as HTMLElement
+    expect(name).not.toBeNull()
+    expect(name.tagName).toBe('SPAN')
+    expect(name.textContent).toBe('쓰는 EMR 필수')
+    hasAll(name, ds.label)
+    const hint = name.querySelector('span') as HTMLElement
+    expect(hint.textContent).toBe('필수')
+    hasAll(hint, ds.labelHint)
+    // 칸 묶음(ds.field) 하나 안에 칸 이름 → 단추 묶음 → 도움말
+    const field = name.parentElement as HTMLElement
+    hasAll(field, ds.field)
+    expect(field.contains(emrGroup())).toBe(true)
+    expect(isBefore(nameInput(), field)).toBe(true)
+    expect(isBefore(field, applicantInput())).toBe(true)
+    expect(field.contains(nameInput())).toBe(false)
+    expect(field.contains(applicantInput())).toBe(false)
+  })
+
+  it('AC-7303.1: 묶음은 칸 이름으로 이름 붙은 group이고 단추 넷은 비트·의사랑·이지스·그 밖의 EMR(EMR_KINDS 차례·EMR_LABEL 글), type="button"·aria-pressed 처음엔 모두 false', () => {
+    render(<SignupForm email={EMAIL} />)
+    const group = emrGroup()
+    expect(group.getAttribute('role')).toBe('group')
+    expect(group.getAttribute('aria-labelledby')).toBe('su-emr-label')
+    expect(emrButtons().map((b) => b.textContent)).toEqual(EMR_TEXTS)
+    expect(EMR_KINDS.map((k) => EMR_LABEL[k])).toEqual(EMR_TEXTS)
+    for (const b of emrButtons()) {
+      expect(b.type).toBe('button')
+      expect(b.getAttribute('aria-pressed')).toBe('false')
+    }
+    // 처음엔 아무것도 고르지 않는다(비트로 미리 골라 두지 않는다, design.md 5절)
+    expect(pressedOf()).toEqual(['false', 'false', 'false', 'false'])
+  })
+
+  it('AC-7303.1: id — su-emr는 첫 단추("비트")에만, 묶음 div에는 id가 없다', () => {
+    render(<SignupForm email={EMAIL} />)
+    expect(document.querySelectorAll('#su-emr')).toHaveLength(1)
+    expect(document.getElementById('su-emr')).toBe(emrButton('비트'))
+    expect(emrGroup().hasAttribute('id')).toBe(false)
+  })
+
+  it('AC-7303.1: 도움말 — 시안 글자 그대로, ds.help p#su-emr-help가 묶음 아래에 있고 묶음이 aria-describedby로 그것만 가리킨다', () => {
+    render(<SignupForm email={EMAIL} />)
+    const help = screen.getByText(EMR_HELP)
+    expect(help.tagName).toBe('P')
+    expect(help.id).toBe('su-emr-help')
+    hasAll(help, ds.help)
+    expect(isBefore(emrGroup(), help)).toBe(true)
+    expect(isBefore(help, applicantInput())).toBe(true)
+    expect(emrGroup().getAttribute('aria-describedby')).toBe('su-emr-help')
+    expect(descriptionsOf(emrGroup())).toEqual([EMR_HELP])
+  })
+
+  it('AC-7303.1: 모양 — ds.segment 묶음·단추, 넓은 화면은 한 줄 넷(md:grid md:w-full md:grid-cols-4)·높이 44px(md:h-11), 폰은 두 줄 둘씩(max-md:grid-cols-2)', () => {
+    render(<SignupForm email={EMAIL} />)
+    const group = emrGroup()
+    hasAll(group, ds.segment.group)
+    expectClasses(group, 'md:grid', 'md:w-full', 'md:grid-cols-4', 'max-md:grid-cols-2')
+    // 접두사 없는 클래스는 ds.segment.group 그대로다(같은 속성을 접두사 없이 겹치지 않는다)
+    expect(segmentBase(group.getAttribute('class') ?? '').sort()).toEqual(segmentBase(ds.segment.group).sort())
+    for (const b of emrButtons()) {
+      hasAll(b, ds.segment.button)
+      hasAll(b, ds.segment.off)
+      expectClasses(b, 'md:h-11')
+      expect(segmentBase(b.getAttribute('class') ?? '').sort()).toEqual(segmentBase(`${ds.segment.button} ${ds.segment.off}`).sort())
+    }
+    noArbitraryColor()
+  })
+
+  it('AC-7303.1: 단추를 누르면 그 단추만 pressed(ds.segment.on)이고, 다른 것을 누르면 옮겨 간다', async () => {
+    const user = userEvent.setup()
+    render(<SignupForm email={EMAIL} />)
+    await user.click(emrButton('의사랑'))
+    expect(pressedOf()).toEqual(['false', 'true', 'false', 'false'])
+    hasAll(emrButton('의사랑'), ds.segment.on)
+    for (const text of ['비트', '이지스', '그 밖의 EMR']) hasAll(emrButton(text), ds.segment.off)
+    await user.click(emrButton('그 밖의 EMR'))
+    expect(pressedOf()).toEqual(['false', 'false', 'false', 'true'])
+    hasAll(emrButton('그 밖의 EMR'), ds.segment.on)
+    hasAll(emrButton('의사랑'), ds.segment.off)
+    // 고르기만으로는 보내지 않는다
+    expect(insert).not.toHaveBeenCalled()
+  })
+
+  it('AC-7303.1·AC-204.7: 쓰는 EMR 칸이 있어도 상자 안 상자가 없다(처음·고름)', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<SignupForm email={EMAIL} />)
+    expect(nestedBoxes(container)).toEqual([])
+    await user.click(emrButton('이지스'))
+    expect(nestedBoxes(container)).toEqual([])
+  })
+})
+
+describe('SignupForm: 쓰는 EMR을 안 고르고 보냄 (emr-signup AC-7303.2)', () => {
+  it('AC-7303.2: 다른 칸이 맞아도 EMR을 고르지 않으면 보내지 않고, 칸 아래 "쓰는 EMR을 골라 주세요."(ds.fieldError p#su-emr-error)를 보이며 첫 단추에 초점', async () => {
+    const user = userEvent.setup()
+    render(<SignupForm email={EMAIL} />)
+    await fillValid(user, '010-1234-5678', '')
+    await user.click(submit())
+    expect(insert).not.toHaveBeenCalled()
+    expect(router.replace).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alert')).toBeNull()
+    const error = screen.getByText(MESSAGES.emr)
+    expect(error.tagName).toBe('P')
+    expect(error.id).toBe('su-emr-error')
+    hasAll(error, ds.fieldError)
+    // 묶음 아래, 도움말 위(연락처 칸과 같은 차례)
+    expect(isBefore(emrGroup(), error)).toBe(true)
+    expect(isBefore(error, screen.getByText(EMR_HELP))).toBe(true)
+    expect(errorOf(emrGroup())).toBe(error)
+    expect(document.activeElement).toBe(emrButton('비트'))
+  })
+
+  it('AC-7303.2: 오류면 묶음 aria-describedby는 "오류 도움말" 차례이고, 묶음 테두리가 오류 색(data-invalid + data-invalid:border-negative, 입력란 오류와 같은 토큰)이다', async () => {
+    const user = userEvent.setup()
+    render(<SignupForm email={EMAIL} />)
+    expect(emrGroup().hasAttribute('data-invalid')).toBe(false)
+    await user.click(submit())
+    const group = emrGroup()
+    expect(group.getAttribute('aria-describedby')).toBe('su-emr-error su-emr-help')
+    expect(descriptionsOf(group)).toEqual([MESSAGES.emr, EMR_HELP])
+    expect(group.hasAttribute('data-invalid')).toBe(true)
+    expectClasses(group, 'data-invalid:border-negative')
+    expect(tokens(ds.input)).toContain('aria-invalid:border-negative') // 같은 오류 색 토큰
+    // 접두사 없는 border-negative를 덧붙이지 않는다(ds.segment.group의 border-line-strong과 겹치지 않게)
+    expect(classesOf(group)).not.toContain('border-negative')
+    noArbitraryColor()
+  })
+
+  it('AC-7303.2: 틀린 칸이 여럿이면 화면 차례(의원 이름 → 쓰는 EMR → 신청자 이름 → 연락처 → 동의)로 첫 칸에 초점', async () => {
+    const user = userEvent.setup()
+    render(<SignupForm email={EMAIL} />)
+    // 모두 비움 → 의원 이름
+    await user.click(submit())
+    expect(screen.getByText(MESSAGES.emr)).toBeTruthy()
+    expect(document.activeElement).toBe(nameInput())
+    // 의원 이름만 채움 → 쓰는 EMR(신청자 이름·동의보다 앞)
+    await user.type(nameInput(), '가나의원')
+    await user.click(submit())
+    expect(screen.getByText(MESSAGES.applicantEmpty)).toBeTruthy()
+    expect(document.activeElement).toBe(emrButton('비트'))
+    // EMR까지 고름 → 신청자 이름
+    await user.click(emrButton('이지스'))
+    await user.click(submit())
+    expect(document.activeElement).toBe(applicantInput())
+    expect(insert).not.toHaveBeenCalled()
+  })
+
+  it('AC-7303.2: 단추를 고르면 쓰는 EMR 오류 글·오류 테두리만 사라지고 다른 칸 오류는 그대로다', async () => {
+    const user = userEvent.setup()
+    render(<SignupForm email={EMAIL} />)
+    await user.click(submit())
+    expect(screen.getByText(MESSAGES.emr)).toBeTruthy()
+    await user.click(emrButton('의사랑'))
+    expect(screen.queryByText(MESSAGES.emr)).toBeNull()
+    expect(document.getElementById('su-emr-error')).toBeNull()
+    expect(emrGroup().hasAttribute('data-invalid')).toBe(false)
+    expect(emrGroup().getAttribute('aria-describedby')).toBe('su-emr-help')
+    // 다른 칸 오류는 남는다
+    expect(errorOf(nameInput())?.textContent).toBe(MESSAGES.nameEmpty)
+    expect(errorOf(applicantInput())?.textContent).toBe(MESSAGES.applicantEmpty)
+    expect(errorOf(consent())?.textContent).toBe(MESSAGES.agreed)
+  })
+
+  it('AC-7303.2·AC-204.7: EMR 오류가 보이는 상태에도 상자 안 상자가 없다', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<SignupForm email={EMAIL} />)
+    await user.click(submit())
+    expect(screen.getByText(MESSAGES.emr)).toBeTruthy()
+    expect(nestedBoxes(container)).toEqual([])
+  })
+})
+
+describe('SignupForm: 고른 EMR을 보냄 (emr-signup AC-7303.3)', () => {
+  it.each(EMR_KINDS.map((kind) => [EMR_LABEL[kind], kind] as [string, EmrKind]))(
+    'AC-7303.3: "%s"를 고르고 다른 칸이 맞으면 submitSignup에 emr %s가 실려 간다',
+    async (text, kind) => {
+      const user = userEvent.setup()
+      render(<SignupForm email={EMAIL} />)
+      await fillValid(user, '010-1234-5678', text)
+      await user.click(submit())
+      expect(insert).toHaveBeenCalledExactlyOnceWith({ name: '가나 정형외과의원', applicant_name: '홍길동', phone: '01012345678', emr: kind })
+      await waitFor(() => expect(router.replace).toHaveBeenCalledExactlyOnceWith('/pending'))
+    },
+  )
+
+  it('AC-7303.3: 골랐다가 바꾸면 마지막에 고른 것이 간다', async () => {
+    const user = userEvent.setup()
+    render(<SignupForm email={EMAIL} />)
+    await fillValid(user)
+    await user.click(emrButton('이지스'))
+    await user.click(submit())
+    expect(insert).toHaveBeenCalledExactlyOnceWith({ name: '가나 정형외과의원', applicant_name: '홍길동', phone: '01012345678', emr: 'egis' })
+  })
+
+  it('AC-7303.3: 저장이 실패해도 고른 EMR은 그대로 골라져 있다', async () => {
+    insert.mockResolvedValue({ data: null, error: { code: '23514', message: RAW }, status: 400 })
+    const user = userEvent.setup()
+    render(<SignupForm email={EMAIL} />)
+    await fillValid(user, '010-1234-5678', '의사랑')
+    await user.click(submit())
+    await screen.findByRole('alert')
+    expect(pressedOf()).toEqual(['false', 'true', 'false', 'false'])
   })
 })
 

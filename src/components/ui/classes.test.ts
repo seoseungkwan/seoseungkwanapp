@@ -1552,6 +1552,7 @@ describe('AC-221.2·AC-204.7: 틀째 그린 앱 화면 전부에 상자 안 상�
     expect(nameFields).toHaveLength(2) // 의원 이름 · 신청자 이름
     for (const [i, field] of nameFields.entries()) await user.type(field, i === 0 ? HOSPITAL : '홍길동')
     await user.click(screen.getByRole('checkbox'))
+    await user.click(screen.getByRole('button', { name: '비트' }))
     await user.click(screen.getByRole('button', { name: '가입 신청' }))
     await screen.findByRole('alert')
     noNested('저장 실패')

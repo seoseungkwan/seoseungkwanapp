@@ -11,7 +11,7 @@ const { from, insert, supabaseBrowser } = vi.hoisted(() => {
 })
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser }))
 
-const VALUE: SignupValue = { name: '가나 정형외과의원', applicant_name: '홍길동', phone: '01012345678' }
+const VALUE: SignupValue = { name: '가나 정형외과의원', applicant_name: '홍길동', phone: '01012345678', emr: 'egis' }
 const RAW = 'new row violates check constraint "hospitals_name_check" (secret detail)'
 
 beforeEach(() => {
@@ -22,22 +22,27 @@ beforeEach(() => {
 })
 
 describe('submitSignup(): 가입 신청 넣기(브라우저 → RLS)', () => {
-  it('AC-004.3: hospitals에 name·applicant_name·phone만 한 번 넣는다', async () => {
+  it('AC-004.3·AC-7302.1: hospitals에 name·applicant_name·phone·emr만 한 번 넣는다', async () => {
     await expect(submitSignup(VALUE)).resolves.toBeUndefined()
     expect(from).toHaveBeenCalledExactlyOnceWith('hospitals')
-    expect(insert).toHaveBeenCalledExactlyOnceWith({ name: '가나 정형외과의원', applicant_name: '홍길동', phone: '01012345678' })
+    expect(insert).toHaveBeenCalledExactlyOnceWith({ name: '가나 정형외과의원', applicant_name: '홍길동', phone: '01012345678', emr: 'egis' })
   })
 
   it('AC-004.3: 연락처가 없으면 phone은 null로 넣는다', async () => {
     await submitSignup({ ...VALUE, phone: null })
-    expect(insert).toHaveBeenCalledExactlyOnceWith({ name: '가나 정형외과의원', applicant_name: '홍길동', phone: null })
+    expect(insert).toHaveBeenCalledExactlyOnceWith({ name: '가나 정형외과의원', applicant_name: '홍길동', phone: null, emr: 'egis' })
   })
 
-  it('AC-004.3: 값에 다른 칸이 섞여 와도 세 칸만 보낸다(소유자·이메일·상태는 DB 기본값)', async () => {
-    const tampered = { ...VALUE, status: 'approved', owner_id: 'someone', email: 'x@evil.test' } as SignupValue
+  it.each(['bit', 'uisarang', 'egis', 'other'] as const)('AC-7302.1: 고른 emr(%s)을 그대로 넣는다', async (emr) => {
+    await submitSignup({ ...VALUE, emr })
+    expect(insert).toHaveBeenCalledExactlyOnceWith({ name: '가나 정형외과의원', applicant_name: '홍길동', phone: '01012345678', emr })
+  })
+
+  it('AC-004.3·AC-7302.1: 값에 다른 칸이 섞여 와도 네 칸만 보낸다(소유자·이메일·상태는 DB 기본값)', async () => {
+    const tampered = { ...VALUE, status: 'approved', owner_id: 'someone', email: 'x@evil.test', agreed_at: 'now' } as SignupValue
     await submitSignup(tampered)
     const sent = insert.mock.calls[0][0] as Record<string, unknown>
-    expect(Object.keys(sent).sort()).toEqual(['applicant_name', 'name', 'phone'])
+    expect(Object.keys(sent).sort()).toEqual(['applicant_name', 'emr', 'name', 'phone'])
   })
 
   it('AC-004.3: 넣은 줄을 다시 읽지 않는다(select를 붙이지 않는다)', async () => {
