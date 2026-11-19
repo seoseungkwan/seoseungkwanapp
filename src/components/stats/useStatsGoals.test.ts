@@ -9,6 +9,7 @@ import type { SavedRevenueDay } from '@/types/revenue'
 import { useStatsGoals } from './useStatsGoals'
 
 // 통계 요약 '이번 달 목표'의 서버 읽기·저장 훅 (stats-insights REQ-6102 AC-6102.2·AC-6102.4·AC-6102.5·AC-6102.6, design.md '목표', TASK-1·TASK-9).
+// 하루 매출은 bit-total 규칙(REQ-6903·AC-6906.2, revenueDayValues)이다: 총액이 없고 참고 금액(roughTotal)이 있는 날은 그 금액, 둘 다 없는 날은 뺀다.
 // 저장 코드는 가짜다. 숫자는 지어낸 값이다. 내원·신환 하루 숫자는 넓은 하루 읽기(TASK-2)가 주므로 이 훅은 목표와 하루 매출만 읽는다
 
 vi.mock('@/lib/storage/goals', () => ({ loadGoal: vi.fn(), saveGoal: vi.fn() }))
@@ -20,7 +21,8 @@ const TODAY = '2026-11-18'
 const GOAL: Goal = { visits: 3200, newPatients: 180, revenue: 120_000_000 }
 const EMPTY: Goal = { visits: null, newPatients: null, revenue: null }
 
-const salesDay = (date: string, total: number | null): SavedRevenueDay => ({
+// roughTotal = 총액이 없는(확인 필요로 저장된) 날의 참고 금액(bit-total)
+const salesDay = (date: string, total: number | null, roughTotal: number | null = null): SavedRevenueDay => ({
   date,
   visits: 0,
   newPatients: 0,
@@ -37,9 +39,9 @@ const salesDay = (date: string, total: number | null): SavedRevenueDay => ({
   unconfirmed: total === null,
   splitUnconfirmed: false,
   dayCodes: true,
-  roughTotal: null,
+  roughTotal: total === null ? roughTotal : null,
 })
-// 확인 필요한 날(총액 null)은 하루 매출 값에서 뺀다
+// 총액도 참고 금액도 없는 날(금액을 모르는 옛 날)은 하루 매출 값에서 뺀다
 const SALES = [salesDay('2026-11-16', 5_000_000), salesDay('2026-11-17', null), salesDay('2026-10-20', 3_000_000)]
 
 const loadDays = vi.fn<RevenueRangeStore['loadDays']>()
@@ -70,7 +72,7 @@ describe('AC-6102.2·AC-6102.4 useStatsGoals: 이번 달 목표·하루 매출 �
     expect(loadGoal).toHaveBeenCalledWith(CLIENT, '2026-11')
   })
 
-  it('AC-6102.4: 하루 매출은 오늘 앞 56일 ~ 어제의 sales_days 총액이고, 총액이 빈 날(확인 필요)은 뺀다', async () => {
+  it('AC-6102.4·AC-6906.2: 하루 매출은 오늘 앞 56일 ~ 어제의 sales_days 줄이고, 총액도 참고 금액도 없는 날(금액을 모르는 옛 날)은 뺀다', async () => {
     const { result } = renderHook(() => useStatsGoals(TODAY))
     await waitFor(() => expect(result.current.revenue).not.toBe('reading'))
     expect(createRevenueStore).toHaveBeenCalledWith(CLIENT)
@@ -78,6 +80,24 @@ describe('AC-6102.2·AC-6102.4 useStatsGoals: 이번 달 목표·하루 매출 �
     expect(result.current.revenue).toEqual([
       { day: '2026-11-16', value: 5_000_000 },
       { day: '2026-10-20', value: 3_000_000 },
+    ])
+  })
+
+  it('AC-6903.1: 확인 필요로 저장되고 참고 금액(roughTotal)이 있는 날은 그 금액으로 든다(0·음수도 그대로), 받은 차례 그대로다', async () => {
+    loadDays.mockResolvedValueOnce([
+      salesDay('2026-11-02', 4_000_000),
+      salesDay('2026-11-03', null, 2_345_670),
+      salesDay('2026-11-04', null, 0),
+      salesDay('2026-11-05', null, -120_000),
+      salesDay('2026-11-06', null),
+    ])
+    const { result } = renderHook(() => useStatsGoals(TODAY))
+    await waitFor(() => expect(result.current.revenue).not.toBe('reading'))
+    expect(result.current.revenue).toEqual([
+      { day: '2026-11-02', value: 4_000_000 },
+      { day: '2026-11-03', value: 2_345_670 },
+      { day: '2026-11-04', value: 0 },
+      { day: '2026-11-05', value: -120_000 },
     ])
   })
 

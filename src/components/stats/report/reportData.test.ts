@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { groupKey } from '@/components/stats/treatmentView'
 import type { DayValue } from '@/lib/analytics/goalPace'
+import { revenueDayValues } from '@/lib/revenue/summary'
 import type { CalCountRow, CalSettings, CalSlotRow } from '@/types/calendar'
 import type { DayPayload } from '@/types/payload'
 import type { StatsRxGroup } from '@/types/rxGroups'
@@ -8,6 +9,7 @@ import type { BitSectionsView, PatientMix } from '@/types/stats'
 import { firstReportMonth, monthlyReport, REPORT_TITLES, reportMonths, SAME_AS_BEFORE, type ReportBlock, type ReportInput } from './reportData'
 
 // 월간 보고서 자료 (stats-insights REQ-6108 AC-6108.1~AC-6108.3). 숫자·이름·차트번호는 모두 시험 안에서 지은 가짜다.
+// 매출 글 세 곳(한 달 요약·목표·달라진 것)은 원 단위(bit-total REQ-6902, formatWon), 신환 1명당 칸 금액은 만 원 글 그대로(AC-6902.4).
 // 오늘 2026-11-13 → 고를 수 있는 달 = 2025-12 ~ 2026-11, 넓은 하루 읽기 = 2025-11-13 ~ 2026-11-12
 
 const TODAY = '2026-11-13'
@@ -48,7 +50,7 @@ const DAYS: DayPayload[] = [
   day('2026-11-02', 100, 5, [line(DOSU, 2), line(SHOCK, 1)]),
 ]
 
-// 10월 매출 1억 1,820만 원 · 9월 1억 원
+// 10월 매출 118,200,000원 · 9월 100,000,000원
 const SALES: DayValue[] = [
   { day: '2026-09-07', value: 50_000_000 },
   { day: '2026-09-08', value: 50_000_000 },
@@ -158,24 +160,24 @@ describe('AC-6108.2: 보고서 칸', () => {
     expect(blocks.map((block) => block.title)).toEqual(blocks.map((block) => REPORT_TITLES[block.key]))
   })
 
-  it('AC-6108.2: 한 달 요약 = 그 달 저장된 하루 내원·신환의 합 · 매출(하루 매출 합) · 예약 안 옴(안 옴 ÷ 예약, 예약 칸과 같은 비율 글)', () => {
+  it('AC-6108.2·AC-6902.1: 한 달 요약 = 그 달 저장된 하루 내원·신환의 합 · 매출(하루 매출 합, 원 단위) · 예약 안 옴(안 옴 ÷ 예약, 예약 칸과 같은 비율 글)', () => {
     expect(blockOf(monthlyReport(input()).blocks, 'summary')?.cells).toEqual([
       { name: '내원', value: '1,500' },
       { name: '신환', value: '100' },
-      { name: '매출', value: '1억 1,820만 원' },
+      { name: '매출', value: '118,200,000원' },
       { name: '예약 안 옴', value: '25.0%' },
     ])
   })
 
-  it('AC-6108.2: 목표 = 목표가 있는 지표만 `{이름} {그 달 값} / 목표 {목표} · {달성률}%`(버림 정수)', () => {
-    expect(blockOf(monthlyReport(input()).blocks, 'goal')?.items).toEqual(['내원 1,500명 / 목표 2,000명 · 75%', '매출 1억 1,820만 원 / 목표 1억 2,000만 원 · 98%'])
+  it('AC-6108.2·AC-6902.2: 목표 = 목표가 있는 지표만 `{이름} {그 달 값} / 목표 {목표} · {달성률}%`(버림 정수, 매출은 원 단위)', () => {
+    expect(blockOf(monthlyReport(input()).blocks, 'goal')?.items).toEqual(['내원 1,500명 / 목표 2,000명 · 75%', '매출 118,200,000원 / 목표 120,000,000원 · 98%'])
     expect(blockOf(monthlyReport(input({ goal: { visits: null, newPatients: 80, revenue: null } })).blocks, 'goal')?.items).toEqual(['신환 100명 / 목표 80명 · 125%'])
   })
 
-  it('AC-6108.2: 달라진 것 = 지난달보다 10% 이상 달라진 내원·신환·매출·묶음 건수(반올림 정수 %), ▲ 많아요 · ▼ 적어요', () => {
+  it('AC-6108.2·AC-6902.3: 달라진 것 = 지난달보다 10% 이상 달라진 내원·신환·매출·묶음 건수(반올림 정수 %, 매출은 원 단위), ▲ 많아요 · ▼ 적어요', () => {
     expect(blockOf(monthlyReport(input()).blocks, 'changes')?.changes).toEqual([
       { dir: 'up', text: '내원 · 9월보다 20% 많아요 (1,250명 → 1,500명)' },
-      { dir: 'up', text: '매출 · 9월보다 18% 많아요 (1억 원 → 1억 1,820만 원)' },
+      { dir: 'up', text: '매출 · 9월보다 18% 많아요 (100,000,000원 → 118,200,000원)' },
       { dir: 'down', text: '도수 · 9월보다 10% 적어요 (40건 → 36건)' },
       { dir: 'down', text: '충격파 · 9월보다 28% 적어요 (25건 → 18건)' },
     ])
@@ -217,9 +219,9 @@ describe('AC-6108.2: 보고서 칸', () => {
     expect(blockOf(blocks, 'summary')?.cells).toEqual([
       { name: '내원', value: '440' },
       { name: '신환', value: '30' },
-      { name: '매출', value: '1,800만 원' },
+      { name: '매출', value: '18,000,000원' },
     ])
-    expect(blockOf(blocks, 'goal')?.items).toEqual(['내원 440명 / 목표 880명 · 50%', '매출 1,800만 원 / 목표 3,600만 원 · 50%'])
+    expect(blockOf(blocks, 'goal')?.items).toEqual(['내원 440명 / 목표 880명 · 50%', '매출 18,000,000원 / 목표 36,000,000원 · 50%'])
     expect(blockOf(blocks, 'treatments')?.items).toEqual(['도수 21건'])
   })
 
@@ -227,7 +229,7 @@ describe('AC-6108.2: 보고서 칸', () => {
     // 내원 440 vs 400(+10%) · 신환 30 vs 30 · 매출 1,800만 vs 2,000만(-10%) · 도수 21 vs 20(+5%)
     expect(blockOf(sameDay(), 'changes')?.changes).toEqual([
       { dir: 'up', text: '내원 · 10월보다 10% 많아요 (400명 → 440명)' },
-      { dir: 'down', text: '매출 · 10월보다 10% 적어요 (2,000만 원 → 1,800만 원)' },
+      { dir: 'down', text: '매출 · 10월보다 10% 적어요 (20,000,000원 → 18,000,000원)' },
     ])
   })
 
@@ -295,7 +297,7 @@ describe('AC-6108.2: 보고서 칸', () => {
     expect(blockOf(monthlyReport(input()).blocks, 'dropoff')?.items).toEqual(['도수 1회만 29% · 평균 4.6회 (100명)', '충격파 1회만 34% · 평균 3.2회 (50명)'])
   })
 
-  it('AC-6108.2·AC-6911.5: 신환 1명당 매출 = 고른 달 줄의 세 칸(평균 · 내원 횟수 · 한 번 올 때), 금액은 만 원 글', () => {
+  it('AC-6108.2·AC-6911.5·AC-6902.4: 신환 1명당 매출 = 고른 달 줄의 세 칸(평균 · 내원 횟수 · 한 번 올 때), 금액은 만 원 글 그대로(평균이라 원 단위로 바꾸지 않는다)', () => {
     expect(blockOf(monthlyReport(input()).blocks, 'value')?.cells).toEqual([
       { name: '신환 1명당 평균', value: '41만 원' },
       { name: '신환 1명당 내원 횟수', value: '5.2회' },
@@ -324,6 +326,44 @@ describe('AC-6108.2: 보고서 칸', () => {
   it('AC-6108.2·AC-6105.1: 예약 빈자리 = 최근 8주 늘 비는 시간·꽉 차는 시간(있는 것만). 8주 동안 예약이 없던 시간(빈 칸)은 들지 않는다', () => {
     // 10월 5일(월) 9시 예약 하나 → 60분 ÷ (8일 × 1명 × 60분) = 12.5% → 13%. 다른 칸은 예약이 없어 빈 칸
     expect(blockOf(monthlyReport(input()).blocks, 'occupancy')?.items).toEqual(['늘 비는 시간: 월 9시 13%'])
+  })
+})
+
+describe('AC-6901.3·AC-6902·AC-6906.2: 보고서 매출 = 하루 매출(revenueDayValues)의 합, 원 단위까지', () => {
+  // 저장된 날 줄 → revenueDayValues(useReportReads가 읽은 줄로 하는 것과 같다).
+  // 10월 28일 = 확인 필요로 저장되고 참고 금액(roughTotal)이 있는 날 → 든다. 10월 29일 = 총액도 참고 금액도 없는 옛 날 → 빠진다
+  const row = (date: string, total: number | null, roughTotal: number | null = null) => ({ date, total, roughTotal })
+  const ROWS = [
+    row('2026-09-07', 60_000_000),
+    row('2026-09-08', 56_230_000),
+    row('2026-10-05', 70_000_000),
+    row('2026-10-06', 59_021_450),
+    row('2026-10-28', null, 4_980_000),
+    row('2026-10-29', null),
+  ]
+  const report = (rows = ROWS) =>
+    monthlyReport(input({ sales: revenueDayValues(rows), goal: { visits: null, newPatients: null, revenue: 130_000_000 } })).blocks
+
+  it("AC-6901.3·AC-6902.1: '한 달 요약' 매출 = 참고 금액 날까지 더한 합을 원 단위(formatWon)로 쓴다(만 원 아래를 버리지 않는다)", () => {
+    expect(blockOf(report(), 'summary')?.cells).toEqual([
+      { name: '내원', value: '1,500' },
+      { name: '신환', value: '100' },
+      { name: '매출', value: '134,001,450원' },
+      { name: '예약 안 옴', value: '25.0%' },
+    ])
+  })
+
+  it("AC-6901.3·AC-6902.2: '목표' 줄은 `매출 {formatWon(값)} / 목표 {formatWon(목표)} · {달성률}%`다(달성률은 같은 합으로 버림 정수)", () => {
+    expect(blockOf(report(), 'goal')?.items).toEqual(['매출 134,001,450원 / 목표 130,000,000원 · 103%'])
+  })
+
+  it("AC-6901.3·AC-6902.3: '달라진 것' 매출 줄은 `매출 · {M}월보다 {p}% 많아요 ({formatWon(앞 달)} → {formatWon(이번 달)})`다", () => {
+    expect(blockOf(report(), 'changes')?.changes).toContainEqual({ dir: 'up', text: '매출 · 9월보다 15% 많아요 (116,230,000원 → 134,001,450원)' })
+  })
+
+  it("AC-6906.2·AC-6901.3: 앞 달 날이 모두 금액을 모르는 날이면 앞 달 하루 매출이 없어 매출은 견주지 않는다(지금 조건 그대로)", () => {
+    const changes = blockOf(report([row('2026-09-07', null), row('2026-09-08', null), ...ROWS.slice(2)]), 'changes')?.changes ?? []
+    expect(changes.map((change) => change.text.split(' · ')[0])).toEqual(['내원', '도수', '충격파'])
   })
 })
 
@@ -381,7 +421,7 @@ describe('AC-6108.3: 자료가 없는 칸은 제목까지 뺀다', () => {
     expect(keysOf({ month: '2026-08', sales: null })).not.toContain('changes')
     // 매출은 두 달 다 있으면 견준다
     const sales = [...SALES, { day: '2026-07-01', value: 10_000_000 }, { day: '2026-08-03', value: 30_000_000 }]
-    expect(blockOf(monthlyReport(input({ month: '2026-08', sales })).blocks, 'changes')?.changes).toEqual([{ dir: 'up', text: '매출 · 7월보다 200% 많아요 (1,000만 원 → 3,000만 원)' }])
+    expect(blockOf(monthlyReport(input({ month: '2026-08', sales })).blocks, 'changes')?.changes).toEqual([{ dir: 'up', text: '매출 · 7월보다 200% 많아요 (10,000,000원 → 30,000,000원)' }])
   })
 
   it('AC-6108.3: 그 달 묶음 줄이 없으면(저장된 날에 묶음을 세지 않음) 치료별 칸이 없다', () => {

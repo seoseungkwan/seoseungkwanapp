@@ -3422,7 +3422,7 @@ describe('stats-revenue: 매출 카드 · 바로가기 여섯 · 불러오기 �
 
   const revenueSent = (port: FakePort) => port.sent.filter((message) => message.cmd === 'revenue.days')
   const rowsSent = (port: FakePort) => port.sent.filter((message) => message.cmd === 'stats.rows')
-  // 매출 요약 칸 셋 = 매출 요약 카드 안 격자(first90 AC-4408.2)
+  // 매출 요약 칸 = 매출 요약 카드 안 격자(first90 AC-4408.2, bit-total AC-6904.1)
   const revenueRow = () => (heading('매출 요약')?.closest('section')?.querySelector('.grid') ?? undefined) as HTMLElement | undefined
   const revenueCellsText = () => [...(revenueRow()?.children ?? [])].map((cell) => cell.textContent)
   const failBox = () => (screen.queryByText(FAIL_TITLE)?.closest('[role="status"]') ?? null) as HTMLElement | null
@@ -4365,13 +4365,13 @@ describe('stats-insights TASK-8: 보고 카드 월간 보고서', () => {
     expect(titles.slice(0, 2)).toEqual(['한 달 요약', '달라진 것'])
   })
 
-  // 보고서 종이 '한 달 요약'의 매출 칸 값
+  // 보고서 종이 '한 달 요약'의 매출 칸 값(원 단위, bit-total AC-6902.1)
   const paperSales = () => {
     const name = [...document.querySelectorAll('[data-print-report] dt')].find((dt) => dt.textContent === '매출')
     return name?.nextElementSibling?.textContent ?? null
   }
 
-  it('AC-6108.5·AC-6108.4: 이번 달 보고서의 매출(어제까지)은 [비트에서 불러오기]가 매출을 저장한 뒤 다시 읽어 새 총액이다', async () => {
+  it('AC-6108.5·AC-6108.4·AC-6902.1: 이번 달 보고서의 매출(어제까지)은 [비트에서 불러오기]가 매출을 저장한 뒤 다시 읽어 새 총액이다', async () => {
     wideRows(ROWS)
     revenueDb.set('2026-11-02', { ...workDay('2026-11-02'), dayCodes: true })
     const port = fakeChrome()
@@ -4381,7 +4381,7 @@ describe('stats-insights TASK-8: 보고 카드 월간 보고서', () => {
     await sectionsShown()
     const part = (await waitFor(() => monthly()!)).closest('section')!
     fireEvent.click(within(within(part).getByRole('group', { name: '달' })).getByRole('button', { name: '2026년 11월' }))
-    await waitFor(() => expect(paperSales()).toBe('300만 원'))
+    await waitFor(() => expect(paperSales()).toBe('3,000,000원'))
     expect(revenueStore.loadDays).toHaveBeenCalledWith({ from: '2026-10-01', to: YESTERDAY })
 
     // 비트 매출 읽기가 어제(11월 12일) 하루를 진료한 날 300만 원으로 저장한다
@@ -4389,11 +4389,11 @@ describe('stats-insights TASK-8: 보고 카드 월간 보고서', () => {
     pressLoad(port)
     await waitFor(() => expect(revenueStore.saveRange).toHaveBeenCalledTimes(1))
     await loadIsFree()
-    await waitFor(() => expect(paperSales()).toBe('600만 원'))
+    await waitFor(() => expect(paperSales()).toBe('6,000,000원'))
     expect(revenueStore.loadDays).not.toHaveBeenCalledWith({ from: '2026-10-01', to: '2026-11-30' })
   })
 
-  it('AC-6108.5: 통계는 저장되고 매출만 실패한 뒤 [매출만 다시 읽기]가 매출을 저장하면 이번 달 보고서도 매출을 다시 읽어 새 총액이고, 그동안 매출 칸은 앞 값 그대로다', async () => {
+  it('AC-6108.5·AC-6902.1: 통계는 저장되고 매출만 실패한 뒤 [매출만 다시 읽기]가 매출을 저장하면 이번 달 보고서도 매출을 다시 읽어 새 총액이고, 그동안 매출 칸은 앞 값 그대로다', async () => {
     wideRows(ROWS)
     revenueDb.set('2026-11-02', { ...workDay('2026-11-02'), dayCodes: true })
     const port = fakeChrome()
@@ -4403,7 +4403,7 @@ describe('stats-insights TASK-8: 보고 카드 월간 보고서', () => {
     await sectionsShown()
     const part = (await waitFor(() => monthly()!)).closest('section')!
     fireEvent.click(within(within(part).getByRole('group', { name: '달' })).getByRole('button', { name: '2026년 11월' }))
-    await waitFor(() => expect(paperSales()).toBe('300만 원'))
+    await waitFor(() => expect(paperSales()).toBe('3,000,000원'))
 
     // 통계 조각은 저장되고 매출 읽기만 실패한다 → 매출은 그대로 300만 원
     port.revenueReply = () => ({ type: 'error', code: 'E-BIT-READ-FAILED' })
@@ -4412,7 +4412,7 @@ describe('stats-insights TASK-8: 보고 카드 월간 보고서', () => {
     await waitFor(() => expect(failBox()).not.toBeNull())
     await loadIsFree()
     expect(revenueStore.saveRange).not.toHaveBeenCalled()
-    await waitFor(() => expect(paperSales()).toBe('300만 원'))
+    await waitFor(() => expect(paperSales()).toBe('3,000,000원'))
 
     // [매출만 다시 읽기]: 통계는 다시 저장하지 않고(data.revision 그대로) 매출만 어제(11월 12일) 진료한 날 300만 원으로 저장한다
     const saves = vi.mocked(saveStats).mock.calls.length
@@ -4422,11 +4422,11 @@ describe('stats-insights TASK-8: 보고 카드 월간 보고서', () => {
     const seen: (string | null)[] = []
     await waitFor(() => {
       seen.push(paperSales())
-      expect(paperSales()).toBe('600만 원')
+      expect(paperSales()).toBe('6,000,000원')
     })
     await loadIsFree()
     expect(revenueStore.saveRange).toHaveBeenCalledTimes(1)
-    expect(seen.every((value) => value === '300만 원' || value === '600만 원')).toBe(true)
+    expect(seen.every((value) => value === '3,000,000원' || value === '6,000,000원')).toBe(true)
     expect(vi.mocked(saveStats).mock.calls.length).toBe(saves)
   })
 

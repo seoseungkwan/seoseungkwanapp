@@ -1,5 +1,5 @@
 import { formatCount } from '@/components/charts/format'
-import { formatManWon } from '@/components/revenue/money'
+import { formatManWon, formatWon } from '@/components/revenue/money'
 import { groupKey, keyedIn } from '@/components/stats/treatmentView'
 import { addDays, addMonths, compareYmd, monthOf, monthRange, sameDayLastMonth } from '@/lib/analytics/dates'
 import type { DayValue } from '@/lib/analytics/goalPace'
@@ -18,6 +18,7 @@ import type { BitSectionsView } from '@/types/stats'
 // 자료가 없는 칸은 제목까지 뺀다(AC-6108.3). 결과에는 숫자·묶음 이름·시행자 이름만 있다(차트번호·환자 칸 없음).
 // '달라진 것'은 앞 달을 다 읽은 지표만 견준다: 내원·신환·묶음은 넓은 읽기가 앞 달 1일부터 덮고 그 달에 저장된 날이 있을 때, 매출은 두 달 다 하루 매출이 있을 때.
 // 견줄 것이 하나도 없으면 그 칸이 없고, 견줬는데 10% 넘게 달라진 것이 없으면 빈 목록이다(화면은 SAME_AS_BEFORE).
+// 매출 글 세 곳(한 달 요약·목표·달라진 것)은 원 단위(formatWon, bit-total REQ-6902)다. 신환 1명당 칸 금액은 평균이라 만 원 글(formatManWon) 그대로다(AC-6902.4).
 // 이번 달 보고서(AC-6108.4)는 한 달 숫자가 1일~어제의 합(오늘은 진료 중이라 세지 않는다)이고, '달라진 것'은 지난달 1일~같은 날짜(없으면 지난달 말일)와 견준다.
 // 다 지난 달은 두 달 전체를 견준다
 
@@ -177,7 +178,7 @@ export function monthlyReport(input: ReportInput): MonthlyReportData {
     cells: [
       { name: '내원', value: formatCount(visits) },
       { name: '신환', value: formatCount(newPatients) },
-      ...(revenue === null ? [] : [{ name: '매출', value: formatManWon(revenue) }]),
+      ...(revenue === null ? [] : [{ name: '매출', value: formatWon(revenue) }]),
       ...(booked.total === 0 ? [] : [{ name: '예약 안 옴', value: ratePct(booked.noshow, booked.total) }]),
     ],
   })
@@ -192,7 +193,7 @@ export function monthlyReport(input: ReportInput): MonthlyReportData {
           const target = goal[key]
           const value = actual[key]
           if (target === null || value === null) return []
-          const text = key === 'revenue' ? formatManWon : people
+          const text = key === 'revenue' ? formatWon : people
           const pct = target > 0 ? Math.floor((value * 100) / target) : 100
           return [`${GOAL_NAMES[key]} ${text(value)} / 목표 ${text(target)} · ${pct}%`]
         })
@@ -207,7 +208,7 @@ export function monthlyReport(input: ReportInput): MonthlyReportData {
           { name: '신환', now: newPatients, before: sumOf(prevRows, (row) => row.totals.newPatients), text: people },
         ]
       : []),
-    ...(revenue !== null && prevRevenue !== null ? [{ name: '매출', now: revenue, before: prevRevenue, text: formatManWon }] : []),
+    ...(revenue !== null && prevRevenue !== null ? [{ name: '매출', now: revenue, before: prevRevenue, text: formatWon }] : []),
     ...(prevRead
       ? keys.flatMap(({ key, name }) => {
           const now = groupCount(days, rows, spans.now, key)

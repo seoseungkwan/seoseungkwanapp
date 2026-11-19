@@ -3,13 +3,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { addDays, addMonths, compareYmd, monthRange } from '@/lib/analytics/dates'
 import type { DayValue } from '@/lib/analytics/goalPace'
+import { revenueDayValues } from '@/lib/revenue/summary'
 import { loadGoal } from '@/lib/storage/goals'
 import { createRevenueStore } from '@/lib/storage/revenue'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { Goal } from '@/types/goals'
 
 // 월간 보고서의 서버 읽기 (stats-insights REQ-6108 AC-6108.2, design.md '월간 보고서'). 고른 달마다 둘을 함께 읽는다:
-// 고른 달·앞 달의 하루 매출(sales_days 총액, 총액이 빈 날은 뺀다 — 목표 칸과 같다) · 고른 달 목표(loadGoal, withGoal이 거짓이면 읽지 않는다 —
+// 고른 달·앞 달의 하루 매출(sales_days 줄의 revenueDayValues — 참고 금액만 있는 날도 들고 금액을 모르는 날은 뺀다, 목표 칸과 같다, bit-total AC-6901.3·AC-6906.2)
+// · 고른 달 목표(loadGoal, withGoal이 거짓이면 읽지 않는다 —
 // 이번 달 목표는 요약 칸 목표 훅이 이미 읽어 저장 뒤 값까지 갖고 있다). 내원·신환·묶음 숫자는 넓은 하루 읽기가 따로 준다.
 // 하루 매출은 앞 달 1일 ~ 고른 달 끝, 이번 달이면 어제까지다(넓은 하루 읽기·목표 칸과 같은 끝 — 오늘은 진료 중이라 세지 않는다).
 // 달·revision이 바뀔 때·[다시 읽기]에 다시 읽고 늦게 온 앞 답은 버린다(useStatsGoals와 같은 방식). revision은 통계 화면이 [비트에서 불러오기]·저장·
@@ -25,7 +27,7 @@ type Held = { key: string; month: string | null; sales: ReportRead<readonly DayV
 const readSales = (from: string, to: string) =>
   Promise.resolve()
     .then(() => createRevenueStore(supabaseBrowser()).loadDays({ from, to }))
-    .then((days) => days.flatMap((row): DayValue[] => (row.total === null ? [] : [{ day: row.date, value: row.total }])))
+    .then((days): DayValue[] => revenueDayValues(days))
 const readGoal = (month: string) => Promise.resolve().then(() => loadGoal(supabaseBrowser(), month))
 
 // 새 열쇠로 읽기 시작할 때 보일 것: 같은 달이면 앞서 읽은 값(실패는 읽는 중으로), 다른 달이면 둘 다 읽는 중

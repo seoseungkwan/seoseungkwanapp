@@ -552,7 +552,8 @@ describe('AC-6108.1·AC-6108.2·AC-6108.3: 월간 보고서 칸', () => {
   })
   const DAYS = [day('2025-12-01', 400, 20), day('2026-09-07', 600, 50), day('2026-10-05', 700, 40), day('2026-11-02', 100, 5)]
   const wideOf = (over: Partial<WideDays> = {}): WideDays => ({ state: 'ready', days: DAYS, retry: vi.fn(), ...over })
-  const salesDay = (date: string, total: number) => ({ date, total, dayCodes: false }) as unknown as SavedRevenueDay
+  // roughTotal = 총액이 없는(확인 필요로 저장된) 날의 참고 금액(bit-total AC-6901.3). 둘 다 null이면 금액을 모르는 옛 날
+  const salesDay = (date: string, total: number | null, roughTotal: number | null = null) => ({ date, total, roughTotal, dayCodes: false }) as unknown as SavedRevenueDay
   const CHART = '99001' // 가짜 차트번호
   const SLOT: CalSlotRow = { day: '2026-10-05', staffId: 's1', staffName: '김시행', kindId: 'dosu', kindName: '도수', status: 'came', auto: null, start: 540, len: 60, chart: CHART }
   const CALENDAR: StatsCalendarShown = {
@@ -615,7 +616,7 @@ describe('AC-6108.1·AC-6108.2·AC-6108.3: 월간 보고서 칸', () => {
 
   it('AC-6108.2: 고른 달의 목표(loadGoal)와 그 달·앞 달 하루 매출을 읽고, 다른 달을 고르면 그 달 보고서로 바뀐다', async () => {
     drawMonthly()
-    await waitFor(() => expect(screen.getByText('1억 1,000만 원')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('110,000,000원')).toBeTruthy())
     expect(loadGoal).toHaveBeenCalledWith(expect.anything(), '2026-10')
     expect(revenueStore.loadDays).toHaveBeenCalledWith({ from: '2026-09-01', to: '2026-10-31' })
     fireEvent.click(within(monthGroup()).getByRole('button', { name: '9월' }))
@@ -623,6 +624,22 @@ describe('AC-6108.1·AC-6108.2·AC-6108.3: 월간 보고서 칸', () => {
     expect(paperTitle().textContent).toContain('2026년 9월 통계 보고')
     await waitFor(() => expect(loadGoal).toHaveBeenCalledWith(expect.anything(), '2026-09'))
     expect(revenueStore.loadDays).toHaveBeenCalledWith({ from: '2026-08-01', to: '2026-09-30' })
+  })
+
+  it('AC-6901.3·AC-6906.2·AC-6902.1~AC-6902.3: 확인 필요로 저장된 날도 참고 금액(roughTotal)으로 더하고 금액을 모르는 날은 빼며, 매출 글 세 곳은 원 단위다', async () => {
+    vi.mocked(loadGoal).mockResolvedValue({ visits: 1000, newPatients: null, revenue: 100_000_000 })
+    revenueStore.loadDays.mockResolvedValue([
+      salesDay('2026-09-07', 50_000_000),
+      salesDay('2026-09-08', null),
+      salesDay('2026-10-05', 110_000_000),
+      salesDay('2026-10-06', null, 4_980_450),
+      salesDay('2026-10-07', null),
+    ])
+    drawMonthly()
+    await waitFor(() => expect(within(paperEl()).getByText('114,980,450원')).toBeTruthy())
+    expect(within(paperEl()).getByText('매출 114,980,450원 / 목표 100,000,000원 · 114%')).toBeTruthy()
+    expect(within(paperEl()).getByText('매출 · 9월보다 130% 많아요 (50,000,000원 → 114,980,450원)')).toBeTruthy()
+    expect(paperEl().textContent).not.toContain('만 원')
   })
 
   it('AC-6108.2: 이번 달은 요약 칸 목표 훅이 읽은 이번 달 목표를 쓰고 따로 읽지 않는다', async () => {
@@ -645,7 +662,7 @@ describe('AC-6108.1·AC-6108.2·AC-6108.3: 월간 보고서 칸', () => {
 
   it('AC-6108.5·AC-6102.6: revision이 늘면(비트에서 불러오기·저장·매출 읽기가 끝남) 고른 달 매출·목표를 다시 읽고, 다시 읽는 동안 앞 값(매출 칸·목표 줄)을 그대로 둔다', async () => {
     const view = drawMonthly()
-    await waitFor(() => expect(screen.getByText('1억 1,000만 원')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('110,000,000원')).toBeTruthy())
     await waitFor(() => expect(screen.getByText('내원 700명 / 목표 1,000명 · 70%')).toBeTruthy())
     let finishSales!: (rows: SavedRevenueDay[]) => void
     let finishGoal!: (goal: Goal) => void
@@ -653,29 +670,29 @@ describe('AC-6108.1·AC-6108.2·AC-6108.3: 월간 보고서 칸', () => {
     vi.mocked(loadGoal).mockImplementationOnce(() => new Promise((resolve) => (finishGoal = resolve)))
     view.rerender(monthlyEl({ revision: 1 }))
     // 다시 그린 바로 그때부터 앞 값 — 매출 칸·목표 줄이 사라지지 않는다
-    expect(screen.getByText('1억 1,000만 원')).toBeTruthy()
+    expect(screen.getByText('110,000,000원')).toBeTruthy()
     expect(screen.getByText('내원 700명 / 목표 1,000명 · 70%')).toBeTruthy()
     await settle()
     expect(revenueStore.loadDays).toHaveBeenCalledTimes(2)
     expect(goalReadsOf('2026-10')).toBe(2)
-    expect(screen.getByText('1억 1,000만 원')).toBeTruthy()
+    expect(screen.getByText('110,000,000원')).toBeTruthy()
     expect(screen.getByText('내원 700명 / 목표 1,000명 · 70%')).toBeTruthy()
     await act(async () => finishSales([salesDay('2026-09-07', 50_000_000), salesDay('2026-10-05', 130_000_000)]))
-    expect(screen.getByText('1억 3,000만 원')).toBeTruthy()
+    expect(screen.getByText('130,000,000원')).toBeTruthy()
     expect(screen.getByText('내원 700명 / 목표 1,000명 · 70%')).toBeTruthy()
     await act(async () => finishGoal({ visits: 1400, newPatients: null, revenue: null }))
     expect(screen.getByText('내원 700명 / 목표 1,400명 · 50%')).toBeTruthy()
-    expect(screen.queryByText('1억 1,000만 원')).toBeNull()
+    expect(screen.queryByText('110,000,000원')).toBeNull()
   })
 
   it('AC-6108.5: 다른 달을 고르면 앞 달 매출을 새 달 칸에 보이지 않는다(새 달은 읽는 중)', async () => {
     drawMonthly()
-    await waitFor(() => expect(screen.getByText('1억 1,000만 원')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('110,000,000원')).toBeTruthy())
     revenueStore.loadDays.mockImplementationOnce(() => new Promise(() => undefined))
     fireEvent.click(within(monthGroup()).getByRole('button', { name: '9월' }))
     await settle()
     expect(paperTitle().textContent).toContain('2026년 9월 통계 보고')
-    expect(screen.queryByText('1억 1,000만 원')).toBeNull()
+    expect(screen.queryByText('110,000,000원')).toBeNull()
     expect(within(paperEl()).queryByText('매출')).toBeNull()
   })
 
@@ -688,7 +705,7 @@ describe('AC-6108.1·AC-6108.2·AC-6108.3: 월간 보고서 칸', () => {
     expect(within(paperEl()).queryByText('매출')).toBeNull()
     expect(paperTitle().textContent).toContain('2026년 10월 통계 보고')
     fireEvent.click(screen.getByRole('button', { name: '다시 읽기' }))
-    await waitFor(() => expect(screen.getByText('1억 1,000만 원')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('110,000,000원')).toBeTruthy())
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
@@ -714,7 +731,7 @@ describe('AC-6108.1·AC-6108.2·AC-6108.3: 월간 보고서 칸', () => {
 
   it('AC-6108.3: 비트에서 안 불러온 기기는 몇 번까지 받나·신환 1명당 매출 칸이 제목까지 없고, 차트번호는 화면 어디에도 없다', async () => {
     const { container } = drawMonthly()
-    await waitFor(() => expect(screen.getByText('1억 1,000만 원')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('110,000,000원')).toBeTruthy())
     const titles = within(paperEl())
       .getAllByRole('heading', { level: 5 })
       .map((h) => h.textContent)
