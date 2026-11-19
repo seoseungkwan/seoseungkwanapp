@@ -2126,4 +2126,68 @@ describe('AC-6911.1·AC-6911.3 sectionsJob·sections: 금액 줄이 있는 답�
     for (const key of [...SECTIONS_FORBIDDEN_KEYS, ...FORBIDDEN_KEYS, 'amount', 'sum']) expect(keysIn(values)).not.toContain(key)
     expect(valuesIn(values).every((text) => text === HEAT.id || text === BLOOD.id || DATE_TEXT.test(text))).toBe(true)
   })
+
+  // ── 고른 기간 그대로(pv-month REQ-7201): 묻기 from~to로 센 period ──
+  // 6/1~9/30: 대상 1번(6/1·9/10 표시, 한 명) · 2·3번 · 10~14번 = 8명. 금액 9만 5천 + 12,345 + 100만 + 50만 = 1,607,345원
+  // 내원 1번 3날(6/1·6/15·9/10) + 1 + 1 + 5 = 10날. 받은 치료 HEAT만 7명(1,512,345 ÷ 7 = 216,049.2 → 버림), 1번(HEAT + BLOOD)은 그 밖
+  const SUMMER = { from: '2026-06-01', to: '2026-09-30' }
+  const SUMMER_VALUE = {
+    ...SUMMER,
+    n: 8,
+    average: 200_918,
+    times: 1.2,
+    perVisit: 160_734,
+    lines: [
+      { groups: [HEAT.id], n: 7, average: 216_049 },
+      { groups: null, n: 1, average: 95_000 },
+    ],
+  }
+
+  it('AC-7201.2: 금액 줄이 있는 답이면 ready 답에 period = 묻기 from~to로 센 고른 기간 숫자가 실리고 values는 그대로다', () => {
+    const view = readyIn(sectionsJob(loadJob(valueJson(), VALUE_OPTS).bit, SUMMER))
+    expect(view.period).toEqual(SUMMER_VALUE)
+    expect(view.values).toEqual(VALUES)
+  })
+
+  it('AC-7201.2: 기간을 바꿔 다시 물으면 그 기간 숫자다(7월 한 달 = values 7월 줄과 같은 숫자, 신환 없는 10월은 0)', () => {
+    const { bit } = loadJob(valueJson(), VALUE_OPTS)
+    expect(readyIn(sectionsJob(bit, { from: '2026-07-01', to: '2026-07-31' })).period).toEqual({
+      from: '2026-07-01',
+      to: '2026-07-31',
+      n: 5,
+      average: 100_000,
+      times: 1,
+      perVisit: 100_000,
+      lines: [{ groups: [HEAT.id], n: 5, average: 100_000 }],
+    })
+    expect(readyIn(sectionsJob(bit, OCTOBER_ON)).period).toEqual({ ...OCTOBER_ON, n: 0, average: 0, times: 0, perVisit: 0, lines: [] })
+    expect(readyIn(sectionsJob(bit, SUMMER)).period).toEqual(SUMMER_VALUE)
+  })
+
+  it('AC-7201.2: 금액 줄이 없는 답(pays 없는 v5·v3·v4)이면 period 열쇠가 없다', () => {
+    for (const view of [
+      sectionsJob(loadJob(valueJson({ pays: undefined }), VALUE_OPTS).bit, VALUE_WHOLE),
+      sectionsJob(loadJob(v3Json(), OPTS).bit, WHOLE),
+      sectionsJob(loadJob(v4Json(), OPTS).bit, WHOLE),
+      sectionsJob(loadJob(v5Json(), OPTS).bit, WHOLE),
+    ]) {
+      expect('period' in readyIn(view)).toBe(false)
+    }
+  })
+
+  it('AC-7201.2: Worker 일 — period에는 기간·1명당 숫자와 묶음 열쇠만 간다(환자 번호·환자별 금액 없음)', async () => {
+    const { host, sent } = hostUnderTest()
+    bridgeMessages('s1', valueJson()).forEach((m) => host.fromBridge(m))
+    await host.load(loadRequest('s1', VALUE_OPTS))
+    sent.length = 0
+    host.sections(sectionsRequest('b1', SUMMER))
+    const [reply] = sent
+    if (reply?.type !== 'sections-result') throw new Error('sections-result가 아니다')
+    const { period } = readyIn(reply.view)
+    expect(period).toEqual(SUMMER_VALUE)
+    const json = JSON.stringify(period)
+    for (const id of [...CHARTS, ...FIVE]) expect(json).not.toContain(id)
+    for (const key of [...SECTIONS_FORBIDDEN_KEYS, ...FORBIDDEN_KEYS, 'amount', 'sum', 'pays']) expect(keysIn(period)).not.toContain(key)
+    expect(valuesIn(period).every((text) => text === HEAT.id || DATE_TEXT.test(text))).toBe(true)
+  })
 })

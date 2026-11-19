@@ -13,7 +13,7 @@ import {
 import { doctorStats } from '@/lib/analytics/doctorStats'
 import { dropoff } from '@/lib/analytics/dropoff'
 import { patientMix } from '@/lib/analytics/patientMix'
-import { monthValues, type ValuePay } from '@/lib/analytics/patientValue'
+import { monthValues, periodValue, type ValuePay } from '@/lib/analytics/patientValue'
 import { sunapDoctors, sunapRates } from '@/lib/analytics/sunapRates'
 import { visitHours } from '@/lib/analytics/visitHours'
 import { createPatientIds } from '@/lib/parsers/bit'
@@ -289,7 +289,11 @@ export function sectionsJob(
     doctors: doctorStats({ from, to, visits: extra.visits, first, doctors: extra.doctors, doctorDays: extra.doctorDays }),
   }
   if (bit.groups.length > 0) view.dropoff = dropoffOf(bit)
-  if (bit.pays !== null) view.values = valuesOf(bit, bit.pays)
+  if (bit.pays !== null) {
+    view.values = valuesOf(bit, bit.pays)
+    // 고른 기간 그대로(pv-month AC-7201.2): 기간마다 새로 센다(메모리 한 번 훑기)
+    view.period = periodValue({ days: bit.patientDays, rows: bit.consumption, pays: bit.pays, groups: bit.groups, span: { from, to } })
+  }
   const { sunap } = request
   if (sunap === undefined) return view
   const counted = { from, to, days: bit.patientDays, rows: bit.consumption, block: sunap.block, pt: sunap.pt }

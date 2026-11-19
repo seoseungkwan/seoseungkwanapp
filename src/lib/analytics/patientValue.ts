@@ -1,12 +1,14 @@
 import type { RxGroupDef } from '@/types/analysis'
 import type { DateRange } from '@/types/dates'
-import type { MonthValue, PatientValueLine } from '@/types/stats'
+import type { MonthValue, PatientValue, PatientValueLine, PeriodValue } from '@/types/stats'
 import { addMonths, compareYmd, monthOf, monthRange } from './dates'
 import { groupMatches } from './groupMatch'
 
 // 신환 1명당 매출 = 그 달 신환이 그 달에 낸 돈 [환자 자료 구역] (bit-total REQ-6911 AC-6911.1·AC-6911.2). Worker 메모리의 접수 줄(환자·날·신환 날 표시)·
 // 진료 줄(환자·날·처방)·금액 줄(환자·수납일·금액)로 달마다 센다. 대상 = 그 달 센 기간에 신환 날 표시가 있는 접수 줄의 환자(두 달에 표시가 있으면 두 달 모두),
 // 금액·내원·받은 치료는 그 달 센 기간 안 줄만 센다. 결과에는 달·날·묶음 열쇠와 숫자뿐이다(환자 번호·환자별 금액 없음).
+// 고른 기간 그대로(pv-month REQ-7201 AC-7201.1): periodValue는 셈 칸 하나(span)로 같은 규칙을 쓴다 — 대상 = span 안에 신환 날 표시가 있는 환자(여러 날·여러 달이어도 한 명),
+// 금액·내원·받은 치료 = 대상의 span 안 줄(표시 날 앞 줄도, 달 안에서 세는 monthValues와 같은 규칙).
 // 신환 날 표시는 Worker의 toPatientDays firstVisit(v5 답 = 비트 신환 표시, 통계 탭 '신환'과 같은 표시). 묶음 규칙은 groupMatches(빼는 처방·조건). 금액은 원 단위 정수다
 
 /** 접수 줄 한 칸에서 쓰는 것(PatientDay가 그대로 들어온다). 한 줄 = 그 환자가 그날 내원, firstVisit = 그 줄에 신환 날 표시가 있음 */
@@ -29,8 +31,11 @@ const MAX_LINES = 5 // 따로 두는 조합 수
 
 type Person = { sum: number; days: Set<string>; codes: Map<string, string[]> }
 type Combo = { picks: number[]; n: number; sum: number }
-// 한 달의 셈 칸: to = 센 끝 날, people = 그 달 대상 → 셈 칸
-type Month = { month: string; to: string; people: Map<number, Person> }
+// 셈 칸: people = 대상 → 셈. 한 달 칸은 month(그 달)·to(센 끝 날)를 더 든다
+type Span = { people: Map<number, Person> }
+type Month = Span & { month: string; to: string }
+// 날 → 그날이 든 셈 칸(없으면 null)
+type SpanOn = (date: string) => Span | null
 
 // 금액·횟수 ÷ 사람·날 수. 원 미만·소수 1자리 아래는 0 쪽으로 버린다(plan.md §5). 정수끼리 나눈 값이라 오차로 다음 수가 되지 않는다
 const per = (sum: number, count: number) => (count === 0 ? 0 : Math.trunc(sum / count))
@@ -55,10 +60,6 @@ function monthOn(months: ReadonlyMap<string, Month>, date: string): Month | null
   return month === undefined || compareYmd(date, month.to) > 0 ? null : month
 }
 
-// 그 환자가 그날이 든 달의 대상이면 셈 칸
-function within(months: ReadonlyMap<string, Month>, patient: number, date: string): Person | null {
-  return monthOn(months, date)?.people.get(patient) ?? null
-}
 
 // 묶음 차례(번호)가 앞선 조합이 먼저: [] < [0] < [0, 3] < [1] …
 function byPicks(a: readonly number[], b: readonly number[]): number {
@@ -81,8 +82,8 @@ function linesOf(combos: readonly Combo[], groups: readonly RxGroupDef[]): Patie
   return [...lines, { groups: null, n, average: per(sum, n) }]
 }
 
-// 한 달 셈 칸 → 달 줄. 받은 치료 = 그 달 안에 그 묶음으로 센 날이 하루라도 있는 묶음들(묶음 차례)
-function valueOf({ month, to, people }: Month, groups: readonly RxGroupDef[]): MonthValue {
+// 셈 칸 → 1명당 숫자. 받은 치료 = 그 칸 안에 그 묶음으로 센 날이 하루라도 있는 묶음들(묶음 차례)
+function valueOf({ people }: Span, groups: readonly RxGroupDef[]): PatientValue {
   const combos = new Map<string, Combo>()
   let sum = 0
   let visits = 0
@@ -100,27 +101,40 @@ function valueOf({ month, to, people }: Month, groups: readonly RxGroupDef[]): M
     }
   }
   const n = people.size
-  return { month, to, n, average: per(sum, n), times: perOne(visits, n), perVisit: per(sum, visits), lines: linesOf([...combos.values()], groups) }
+  return { n, average: per(sum, n), times: perOne(visits, n), perVisit: per(sum, visits), lines: linesOf([...combos.values()], groups) }
 }
 
-export function monthValues(input: MonthValueInput): MonthValue[] {
-  const months = monthsOf(input.range)
-  // 대상: 그 달 센 기간에 신환 날 표시가 있는 환자(같은 달 두 날이면 한 명)
+// 셈 칸마다 대상(그 칸 안에 신환 날 표시가 있는 환자, 두 날이어도 한 명)을 세운 뒤, 대상의 그 칸 안 내원·금액·진료 줄을 센다
+function countInto(spanOn: SpanOn, input: Omit<MonthValueInput, 'range'>): void {
+  const within = (patient: number, date: string) => spanOn(date)?.people.get(patient) ?? null
   for (const { patient, date, firstVisit } of input.days) {
-    const people = firstVisit ? monthOn(months, date)?.people : undefined
+    const people = firstVisit ? spanOn(date)?.people : undefined
     if (people !== undefined && !people.has(patient)) people.set(patient, { sum: 0, days: new Set(), codes: new Map() })
   }
-  for (const { patient, date } of input.days) within(months, patient, date)?.days.add(date)
+  for (const { patient, date } of input.days) within(patient, date)?.days.add(date)
   for (const { p, d, amount } of input.pays) {
-    const person = within(months, p, d)
+    const person = within(p, d)
     if (person !== null) person.sum += amount
   }
   for (const { patient, date, rxCode } of input.rows) {
-    const person = within(months, patient, date)
+    const person = within(patient, date)
     if (person === null) continue
     const codes = person.codes.get(date)
     if (codes === undefined) person.codes.set(date, [rxCode])
     else codes.push(rxCode)
   }
-  return [...months.values()].map((month) => valueOf(month, input.groups))
+}
+
+export function monthValues(input: MonthValueInput): MonthValue[] {
+  const months = monthsOf(input.range)
+  countInto((date) => monthOn(months, date), input)
+  return [...months.values()].map((month) => ({ month: month.month, to: month.to, ...valueOf(month, input.groups) }))
+}
+
+/** 고른 기간 span(from~to) 그대로 센 신환 1명당 매출(pv-month AC-7201.1). 답 = 기간·1명당 숫자·묶음 열쇠뿐 */
+export function periodValue(input: Omit<MonthValueInput, 'range'> & { span: DateRange }): PeriodValue {
+  const { from, to } = input.span
+  const span: Span = { people: new Map() }
+  countInto((date) => (compareYmd(date, from) >= 0 && compareYmd(date, to) <= 0 ? span : null), input)
+  return { from, to, ...valueOf(span, input.groups) }
 }

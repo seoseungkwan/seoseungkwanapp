@@ -101,6 +101,8 @@ export type PatientValueLine = { groups: string[] | null; n: number; average: nu
 export type PatientValue = { n: number; average: number; times: number; perVisit: number; lines: PatientValueLine[] }
 // 그 달 신환 1명당 매출 한 줄(bit-total AC-6911.1). month = 'YYYY-MM', to = 센 끝 날(그 달 말일과 메모리 끝 날 가운데 이른 날, 센 기간 = 그 달 1일 ~ to)
 export type MonthValue = PatientValue & { month: string; to: string }
+// 고른 기간 그대로 센 신환 1명당 매출(pv-month AC-7201.1). from·to = 묻기의 고른 기간(센 기간 그대로)
+export type PeriodValue = PatientValue & { from: string; to: string }
 
 // 고른 기간의 세 칸 보기(AC-2702.1·AC-2702.3). none = 불러온 적 없음·고른 기간이 불러온 범위 밖, old-helper = 옛 도우미(v2) 답.
 // mix는 [전체]·[신환] 둘 다, 동네는 [구·시]·[동] 둘 다 싣는다: 단추를 눌러도 Worker에 다시 묻지 않는다.
@@ -109,7 +111,8 @@ export type MonthValue = PatientValue & { month: string; to: string }
 // dropoff = 몇 번까지 받나(stats-insights AC-6103.1). 고른 기간과 상관없이 불러온 범위 전체를 센 묶음마다 한 줄(대상 0인 묶음은 없다).
 // 불러올 때 묶음을 실었을 때만 있다(없으면 열쇠가 없다).
 // values = 신환 1명당 매출을 달마다(bit-total AC-6911.1·AC-6911.3). 고른 기간과 상관없이 불러온 범위 전체에서 1일이 든 달마다 한 줄(옛 → 새 차례).
-// 답에 환자·날 금액 줄(도우미 0.11.0의 v5 pays)이 있었을 때만 있다(없으면 열쇠가 없다 — 화면은 '도우미를 0.11.0으로 올리면 볼 수 있어요')
+// 답에 환자·날 금액 줄(도우미 0.11.0의 v5 pays)이 있었을 때만 있다(없으면 열쇠가 없다 — 화면은 '도우미를 0.11.0으로 올리면 볼 수 있어요').
+// period = 신환 1명당 매출을 묻기의 고른 기간 그대로(pv-month AC-7201.2, 통계 탭이 쓴다). values와 같은 때만 있다
 export type BitSectionsView =
   | { kind: 'none' }
   | { kind: 'old-helper' }
@@ -122,6 +125,7 @@ export type BitSectionsView =
       sunapDoctors?: DoctorBreakdown | null
       dropoff?: DropoffLine[]
       values?: MonthValue[]
+      period?: PeriodValue
     }
 
 // 수납일지 설정에서 고른 Block·물리치료 묶음의 정의(열쇠·코드·빼는 처방·조건만, 이름은 안 감). 둘 다 골랐을 때만 화면이 싣는다(AC-4906.3)

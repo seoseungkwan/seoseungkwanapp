@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RxGroupDef } from '@/types/analysis'
-import { monthValues, type ValueDay, type ValuePay, type ValueRow } from './patientValue'
+import { monthValues, periodValue, type ValueDay, type ValuePay, type ValueRow } from './patientValue'
 
 // 신환 1명당 매출 = 그 달 신환이 그 달에 낸 돈 (bit-total REQ-6911 AC-6911.1·AC-6911.2). 환자 번호·날·처방 코드·금액은 모두 지어낸 값이다.
 // 메모리 기간 1/1~3/18(자료 끝 날 3/18) → 달 줄 = 1월(1/1~1/31) · 2월(2/1~2/28) · 3월(3/1~3/18). 대상 = 그 달 신환 날 표시가 있는 접수 줄의 환자
@@ -232,5 +232,64 @@ describe('AC-6911.2 monthValues: 두 달에 신환 표시 · 같은 달 두 날'
     expect(monthIn(only3, '2026-02')).toMatchObject({ n: 1, average: 20_000, times: 2, perVisit: 10_000 })
     // 1/20 내원은 표시가 없어 1월 대상이 아니다
     expect(monthIn(only3, '2026-01')).toMatchObject({ n: 0 })
+  })
+})
+
+// ── 고른 기간 그대로(pv-month REQ-7201): span 안 신환 표시 환자의 span 안 금액·내원·받은 치료 ──
+describe('AC-7201.1 periodValue: 고른 기간 신환이 그 기간에 낸 돈', () => {
+  const runSpan = (span: { from: string; to: string }, over: Partial<Input> = {}) =>
+    periodValue({ days: DAYS, rows: ROWS, pays: PAYS, groups: GROUPS, ...over, span })
+
+  it('AC-7201.1: 두 달 기간(2/1~3/18) — 두 달에 표시가 있는 2번은 한 명, 금액·내원은 기간 안 줄만(3/19·1/20은 밖)', () => {
+    // 대상 2·3·5번. 2번 2만 − 5천 + 1만 5천 + 7천 = 3만 7천, 3번 2만, 5번 12,345 + 5만(3/1) = 62,345 → 119,345원 ÷ 3명
+    // 내원 2번 4날(2/10·2/20·3/2·3/18) + 3번 2날 + 5번 1날 = 7날 → 7 ÷ 3 = 2.33 → 2.3, 한 번 올 때 119,345 ÷ 7 = 17,049.2 → 버림
+    expect(runSpan({ from: '2026-02-01', to: '2026-03-18' })).toEqual({
+      from: '2026-02-01',
+      to: '2026-03-18',
+      n: 3,
+      average: 39_781,
+      times: 2.3,
+      perVisit: 17_049,
+      lines: [{ groups: null, n: 3, average: 39_781 }],
+    })
+  })
+
+  it('AC-7201.1: 한 달 1일~말일이면 monthValues의 그 달 줄과 숫자가 같다', () => {
+    for (const [month, from, to] of [
+      ['2026-01', '2026-01-01', '2026-01-31'],
+      ['2026-02', '2026-02-01', '2026-02-28'],
+    ] as const) {
+      const { month: _month, to: _to, ...numbers } = monthIn({}, month)!
+      expect(runSpan({ from, to })).toEqual({ from, to, ...numbers })
+    }
+  })
+
+  it('AC-7201.1: 표시 날 앞의 기간 안 줄도 센다 — 3번은 1/20 표시 없이 오고 2/3 표시, 기간 1/1~2/28이면 1/20 내원·금액·처방까지 든다', () => {
+    const value = runSpan({ from: '2026-01-01', to: '2026-02-28' }, { groups: [PT] })
+    // 대상 1·2·3·5번. 3번 = 8,888 + 1만 + 1만 = 28,888원 · 내원 1/20·2/3·2/17 = 3날 · 받은 치료 물리치료(1/20 PT1)
+    // 1번 12만 3원(1월) + 99,999(2/1) = 220,002 · 2번 1만 5천 · 5번 12,345 → 합 276,235원 ÷ 4명 = 69,058.75 → 69,058
+    // 내원 1번 4날(1/1·1/15·1/31·2/1) + 2번 2날 + 3번 3날 + 5번 1날 = 10날
+    expect(value).toMatchObject({ n: 4, average: 69_058, times: 2.5, perVisit: 27_623 })
+    expect(value.lines).toEqual([{ groups: null, n: 4, average: 69_058 }])
+    const onlyThree = runSpan({ from: '2026-01-01', to: '2026-02-28' }, { days: DAYS.filter((d) => d.patient === 3), groups: [PT] })
+    expect(onlyThree).toMatchObject({ n: 1, average: 28_888, times: 3, perVisit: 9_629 })
+  })
+
+  it('AC-7201.1: 받은 치료 줄 규칙은 monthValues와 같다(5명 이상 조합은 따로, 나머지는 그 밖 맨 끝)', () => {
+    const parts = together(people(100, 5, ['MAN1'], 10_000), { days: DAYS, rows: ROWS, pays: PAYS })
+    expect(runSpan({ from: '2026-01-01', to: '2026-01-31' }, parts).lines).toEqual([
+      { groups: [MANUAL.id], n: 5, average: 10_000 },
+      { groups: null, n: 1, average: 120_003 },
+    ])
+  })
+
+  it('AC-7201.1: 기간 안에 신환 표시가 없으면 n 0·숫자 0·빈 줄이다', () => {
+    expect(runSpan({ from: '2026-03-03', to: '2026-03-17' })).toEqual({ from: '2026-03-03', to: '2026-03-17', n: 0, average: 0, times: 0, perVisit: 0, lines: [] })
+  })
+
+  it('AC-7201.1: 결과에는 기간·묶음 열쇠와 숫자뿐 환자 번호·환자별 금액이 없다', () => {
+    const value = runSpan({ from: '2026-01-01', to: '2026-03-18' })
+    expect(Object.keys(value).sort()).toEqual(['from', 'lines', 'n', 'average', 'perVisit', 'times', 'to'].sort())
+    for (const line of value.lines) expect(Object.keys(line).sort()).toEqual(['average', 'groups', 'n'])
   })
 })
