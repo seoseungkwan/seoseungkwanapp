@@ -1,5 +1,6 @@
 // Supabase 표 줄 모양(손으로 씀, supabase CLI 타입 생성은 쓰지 않는다).
 // 기준은 supabase/migrations/20261028000000_auth.sql, 청구 설정 표는 20261030000000_precheck_settings.sql
+import type { EmrKind } from '@/types/clinicProfile'
 import type { DxLink, Grade } from '@/types/precheck'
 
 export type HospitalStatus = 'pending' | 'approved' | 'rejected'
@@ -15,6 +16,7 @@ export type HospitalRow = {
   agreed_at: string
   reviewed_at: string | null
   created_at: string
+  emr: EmrKind // 가입 신청 때 고른 쓰는 EMR(기본 'bit', migration 20261119400000_hospital_emr.sql)
 }
 
 export type AdminRow = {

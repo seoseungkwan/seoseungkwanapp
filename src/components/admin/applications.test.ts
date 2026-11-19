@@ -13,6 +13,7 @@ const row = (id: string, name: string, status: Application['status'], createdAt:
   email: `${id}@example.com`,
   status,
   createdAt,
+  emr: 'bit',
 })
 // DB가 신청일 내림차순으로 준 순서
 const ROWS: Application[] = [

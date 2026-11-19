@@ -24,6 +24,7 @@ const DB_ROWS = [
     email: 'manager@example.com',
     status: 'pending',
     created_at: '2026-10-28T01:00:00+00:00',
+    emr: 'uisarang',
   },
   {
     id: 'r3',
@@ -33,6 +34,7 @@ const DB_ROWS = [
     email: 'younghee@example.com',
     status: 'approved',
     created_at: '2026-10-20T03:00:00+00:00',
+    emr: 'bit',
   },
 ]
 
@@ -47,7 +49,7 @@ beforeEach(() => {
 })
 
 describe('listApplications(): 가입 신청 목록 읽기(브라우저 → RLS, 관리자는 전체)', () => {
-  it('AC-007.1: hospitals 표에서 표에 그릴 칸만 한 번 읽고, 신청일(created_at) 내림차순으로 받는다', async () => {
+  it('AC-007.1·AC-7302.4: hospitals 표에서 표에 그릴 칸(쓰는 EMR 포함)만 한 번 읽고, 신청일(created_at) 내림차순으로 받는다', async () => {
     await listApplications()
     expect(from).toHaveBeenCalledExactlyOnceWith('hospitals')
     expect(select).toHaveBeenCalledTimes(1)
@@ -55,11 +57,11 @@ describe('listApplications(): 가입 신청 목록 읽기(브라우저 → RLS, 
       .split(',')
       .map((c) => c.trim())
       .sort()
-    expect(columns).toEqual(['applicant_name', 'created_at', 'email', 'id', 'name', 'phone', 'status'])
+    expect(columns).toEqual(['applicant_name', 'created_at', 'email', 'emr', 'id', 'name', 'phone', 'status'])
     expect(order).toHaveBeenCalledExactlyOnceWith('created_at', { ascending: false })
   })
 
-  it('AC-007.1: 받은 줄을 화면 모양(Application)으로 바꾸고 순서는 그대로 둔다', async () => {
+  it('AC-007.1·AC-7302.4: 받은 줄을 화면 모양(Application, 쓰는 EMR 포함)으로 바꾸고 순서는 그대로 둔다', async () => {
     const expected: Application[] = [
       {
         id: 'r1',
@@ -69,6 +71,7 @@ describe('listApplications(): 가입 신청 목록 읽기(브라우저 → RLS, 
         email: 'manager@example.com',
         status: 'pending',
         createdAt: '2026-10-28T01:00:00+00:00',
+        emr: 'uisarang',
       },
       {
         id: 'r3',
@@ -78,9 +81,31 @@ describe('listApplications(): 가입 신청 목록 읽기(브라우저 → RLS, 
         email: 'younghee@example.com',
         status: 'approved',
         createdAt: '2026-10-20T03:00:00+00:00',
+        emr: 'bit',
       },
     ]
     await expect(listApplications()).resolves.toEqual(expected)
+  })
+
+  it.each(['bit', 'uisarang', 'egis', 'other'] as const)("AC-7302.4: 줄의 emr '%s'는 그대로 싣는다", async (emr) => {
+    order.mockResolvedValue({ data: [{ ...DB_ROWS[0], emr }], error: null, status: 200 })
+    const [row] = await listApplications()
+    expect(row.emr).toBe(emr)
+  })
+
+  it.each([
+    ['칸 없음', undefined],
+    ['null', null],
+    ['넷 밖의 값', 'ubcare'],
+    ['대문자', 'EGIS'],
+    ['숫자', 2],
+  ] as const)("AC-7302.4: 줄의 emr이 %s이면 'bit'로 싣고 다른 칸은 그대로다", async (_name, emr) => {
+    const raw: Record<string, unknown> = { ...DB_ROWS[0], emr }
+    if (emr === undefined) delete raw.emr
+    order.mockResolvedValue({ data: [raw], error: null, status: 200 })
+    const [row] = await listApplications()
+    expect(row.emr).toBe('bit')
+    expect(row).toMatchObject({ id: 'r1', name: '가나 정형외과의원', applicantName: '홍길동', status: 'pending' })
   })
 
   it('AC-007.5: 신청이 하나도 없으면 빈 목록', async () => {
