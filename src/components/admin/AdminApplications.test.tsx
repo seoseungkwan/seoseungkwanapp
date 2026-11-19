@@ -23,12 +23,12 @@ vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: () => ({ from, rpc }
 const RAW = 'permission denied for function set_hospital_status secret-detail'
 // DB가 신청일 내림차순으로 준다(order는 listApplications가 건다)
 const DB_ROWS = [
-  { id: 'r1', name: '가나 정형외과의원', applicant_name: '홍길동', phone: '01000001234', email: 'manager@example.com', status: 'pending', created_at: '2026-10-28T01:00:00+00:00' },
-  { id: 'r2', name: '다라 통증의학과의원', applicant_name: '김철수', phone: null, email: 'chulsoo@example.com', status: 'pending', created_at: '2026-10-26T16:30:00+00:00' },
-  { id: 'r4', name: '사아 의원', applicant_name: '박민수', phone: null, email: 'minsu@example.com', status: 'rejected', created_at: '2026-10-22T03:00:00+00:00' },
+  { id: 'r1', name: '가나 정형외과의원', applicant_name: '홍길동', phone: '01000001234', email: 'manager@example.com', status: 'pending', emr: 'uisarang', created_at: '2026-10-28T01:00:00+00:00' },
+  { id: 'r2', name: '다라 통증의학과의원', applicant_name: '김철수', phone: null, email: 'chulsoo@example.com', status: 'pending', emr: 'egis', created_at: '2026-10-26T16:30:00+00:00' },
+  { id: 'r4', name: '사아 의원', applicant_name: '박민수', phone: null, email: 'minsu@example.com', status: 'rejected', emr: 'other', created_at: '2026-10-22T03:00:00+00:00' },
   { id: 'r3', name: '마바 정형외과의원', applicant_name: '이영희', phone: '0212345678', email: 'younghee@example.com', status: 'approved', created_at: '2026-10-20T03:00:00+00:00' },
 ]
-const COLUMNS = ['신청일', '의원 이름', '신청자', '이메일', '연락처', '동작']
+const COLUMNS = ['신청일', '의원 이름', 'EMR', '신청자', '이메일', '연락처', '동작']
 const INTRO = '승인하면 그 계정은 바로 대시보드를 쓸 수 있어요. 거절한 신청은 거절 탭에서 되돌릴 수 있어요.'
 // 시안에 없는 거절 확인 창 문구는 말끝만 "~요"로 바꾼다(design.md '시안과 다른 점' 11)
 const CONFIRM_BODY = '거절하면 이 계정은 대시보드를 쓸 수 없어요. 거절 탭에서 언제든 되돌릴 수 있어요.'
@@ -51,7 +51,7 @@ const rowOf = (clinic: string) => {
   return tr
 }
 const cellTexts = (tr: HTMLElement) => within(tr).getAllByRole('cell').map((c) => c.textContent)
-const actionCell = (tr: HTMLElement) => within(tr).getAllByRole('cell')[5]
+const actionCell = (tr: HTMLElement) => within(tr).getAllByRole('cell')[6]
 const dialog = () => screen.getByRole('dialog', { name: '이 신청을 거절할까요?' })
 const status = () => screen.getByRole('status')
 
@@ -87,13 +87,13 @@ describe('AdminApplications: 처음 그리기', () => {
     expect(tabNamed('거절').getAttribute('aria-selected')).toBe('false')
   })
 
-  it('AC-007.1·AC-417.1: 표 칸은 신청일·의원 이름·신청자·이메일·연락처·동작, 대기 줄만 받은 순서(신청일 내림차순)로', async () => {
+  it('AC-007.1·AC-417.1·AC-7304.1: 표 칸은 신청일·의원 이름·EMR·신청자·이메일·연락처·동작, 대기 줄만 받은 순서(신청일 내림차순)로', async () => {
     await renderLoaded()
     expect(within(table()).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(COLUMNS)
     expect(table().getAttribute('aria-label')).toBe('대기 신청')
-    expect(bodyRows().map((tr) => cellTexts(tr).slice(0, 5))).toEqual([
-      ['2026-10-28', '가나 정형외과의원', '홍길동', 'manager@example.com', '010-0000-1234'],
-      ['2026-10-27', '다라 통증의학과의원', '김철수', 'chulsoo@example.com', '—'], // 신청일은 한국 날짜, 빈 연락처는 "—"
+    expect(bodyRows().map((tr) => cellTexts(tr).slice(0, 6))).toEqual([
+      ['2026-10-28', '가나 정형외과의원', '의사랑', '홍길동', 'manager@example.com', '010-0000-1234'],
+      ['2026-10-27', '다라 통증의학과의원', '이지스', '김철수', 'chulsoo@example.com', '—'], // 신청일은 한국 날짜, 빈 연락처는 "—"
     ])
   })
 
@@ -153,8 +153,8 @@ describe('AdminApplications: 처음 그리기', () => {
     expect(tabNamed('승인').getAttribute('aria-selected')).toBe('true')
     expect(tabNamed('대기').getAttribute('aria-selected')).toBe('false')
     expect(table().getAttribute('aria-label')).toBe('승인 신청')
-    expect(bodyRows().map((tr) => cellTexts(tr).slice(0, 5))).toEqual([
-      ['2026-10-20', '마바 정형외과의원', '이영희', 'younghee@example.com', '02-1234-5678'],
+    expect(bodyRows().map((tr) => cellTexts(tr).slice(0, 6))).toEqual([
+      ['2026-10-20', '마바 정형외과의원', '비트', '이영희', 'younghee@example.com', '02-1234-5678'],
     ])
     await user.click(tabNamed('거절'))
     expect(bodyRows().map((tr) => cellTexts(tr)[1])).toEqual(['사아 의원'])
@@ -389,7 +389,7 @@ describe('AdminApplications: 빈 탭', () => {
     expect(rows).toHaveLength(1)
     const cells = within(rows[0]).getAllByRole('cell')
     expect(cells).toHaveLength(1)
-    expect(cells[0].getAttribute('colspan')).toBe('6')
+    expect(cells[0].getAttribute('colspan')).toBe('7')
     expect(cells[0].textContent).toContain(title)
     expect(cells[0].textContent).toContain(body)
     // 제목과 설명은 한 문장으로 이어지지 않게 따로 줄(블록)로 — 목업처럼 <p> 둘
@@ -475,27 +475,28 @@ describe('AdminApplications: 폰(768px 미만)', () => {
     }
   })
 
-  it('AC-220.2: 줄 안 순서 — 의원 이름(600, 말줄임) + 오른쪽 신청일(caption muted) → 신청자 · 이메일(small ink-2) → 연락처(small muted) + 오른쪽 단추', async () => {
+  it('AC-220.2·AC-7304.1: 줄 안 순서 — 의원 이름(600, 말줄임) + 오른쪽 신청일(caption muted) → EMR(small ink-2) → 신청자 · 이메일(small ink-2) → 연락처(small muted) + 오른쪽 단추', async () => {
     await renderLoaded()
     const tr = rowOf('가나 정형외과의원')
-    const [date, clinic, applicant, email, phone, action] = within(tr).getAllByRole('cell')
-    // DOM은 PC 칸 순서(신청일 먼저). 폰은 세 줄 격자에 놓는다
+    const [date, clinic, emr, applicant, email, phone, action] = within(tr).getAllByRole('cell')
+    // DOM은 PC 칸 순서(신청일 먼저). 폰은 네 줄 격자에 놓는다
     hasAll(clinic, 'max-md:row-start-1 max-md:col-start-1 max-md:col-end-3 truncate text-body font-semibold')
     hasAll(date, 'max-md:row-start-1 max-md:col-start-3 max-md:justify-self-end max-md:text-caption')
     hasAll(date.firstElementChild as Element, 'text-muted tabular-nums')
-    hasAll(applicant, 'max-md:row-start-2 max-md:col-start-1 max-md:text-ink-2')
+    hasAll(emr, 'max-md:row-start-2 max-md:col-start-1 max-md:col-end-4 text-ink-2')
+    hasAll(applicant, 'max-md:row-start-3 max-md:col-start-1 max-md:text-ink-2')
     // 긴 이름(DB는 30자까지)도 줄을 넓히지 않는다: 신청자·이메일은 휴대폰에서 줄바꿈하고, 첫 칸은 줄 폭의 반까지만 자란다
     // → 신청일·단추 칸(셋째 칸)이 늘 화면 안에 남는다
     hasAll(applicant, 'max-md:whitespace-normal max-md:break-all')
     hasAll(email, 'max-md:whitespace-normal wrap-anywhere') // 이메일은 "@" 뒤에서만 줄바꿈(아래 TASK-19 시험)
     hasAll(tr, 'max-md:grid-cols-[fit-content(50%)_1fr_auto]')
     expect(classesOf(tr).filter((t) => t.startsWith('max-md:grid-cols-'))).toEqual(['max-md:grid-cols-[fit-content(50%)_1fr_auto]'])
-    hasAll(email, 'max-md:row-start-2 max-md:col-start-2 max-md:col-end-4 max-md:whitespace-normal')
+    hasAll(email, 'max-md:row-start-3 max-md:col-start-2 max-md:col-end-4 max-md:whitespace-normal')
     hasAll(email, "max-md:before:content-['·']") // 신청자 · 이메일
-    hasAll(phone, 'max-md:row-start-3 max-md:col-start-1 max-md:col-end-3 max-md:text-muted')
-    hasAll(action, 'max-md:row-start-3 max-md:col-start-3 max-md:justify-self-end')
+    hasAll(phone, 'max-md:row-start-4 max-md:col-start-1 max-md:col-end-3 max-md:text-muted')
+    hasAll(action, 'max-md:row-start-4 max-md:col-start-3 max-md:justify-self-end')
     // 칸 이름(data-label)은 보이지 않는다
-    for (const c of [date, applicant, email, phone]) {
+    for (const c of [date, emr, applicant, email, phone]) {
       expect(c.getAttribute('data-label')).toBeNull()
       hasNone(c, 'max-md:before:content-[attr(data-label)]')
     }
@@ -503,7 +504,7 @@ describe('AdminApplications: 폰(768px 미만)', () => {
 
   it('AC-220.2: 빈 연락처는 지금처럼 "—"(시안의 "연락처 없음"은 쓰지 않는다)', async () => {
     await renderLoaded()
-    expect(within(rowOf('다라 통증의학과의원')).getAllByRole('cell')[4].textContent).toBe('—')
+    expect(within(rowOf('다라 통증의학과의원')).getAllByRole('cell')[5].textContent).toBe('—')
     expect(screen.queryByText('연락처 없음')).toBeNull()
   })
 
@@ -595,8 +596,8 @@ describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
     hasAll(table(), `${ds.table.table} border-y border-line bg-surface`)
     expect(classesOf(table()).filter((t) => /(?:^|:)rounded/.test(t))).toEqual([])
     for (const th of within(table()).getAllByRole('columnheader')) hasAll(th, ds.table.th)
-    const [date, clinic, applicant, email, phone, action] = within(rowOf('가나 정형외과의원')).getAllByRole('cell')
-    for (const c of [date, email, phone]) hasAll(c, ds.table.tdSub)
+    const [date, clinic, emr, applicant, email, phone, action] = within(rowOf('가나 정형외과의원')).getAllByRole('cell')
+    for (const c of [date, emr, email, phone]) hasAll(c, ds.table.tdSub)
     for (const c of [clinic, applicant, action]) hasAll(c, ds.table.td)
     hasAll(rowOf('가나 정형외과의원'), `${ds.table.row} md:h-14`)
     // 패널 틀(흰 상자·선·안쪽 여백)이 없다: 탭 패널과 표 감싸개에 테두리·바탕·안쪽 여백이 없다
@@ -607,13 +608,13 @@ describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
 
   it('AC-220.1: 칸 — 신청일(muted 고정폭) · 의원 이름(600) · 신청자 · 이메일(ink-2) · 연락처(ink-2 고정폭) · 동작(오른쪽)', async () => {
     const user = await renderLoaded()
-    const [date, clinic, , email, phone, action] = within(rowOf('가나 정형외과의원')).getAllByRole('cell')
+    const [date, clinic, , , email, phone, action] = within(rowOf('가나 정형외과의원')).getAllByRole('cell')
     hasAll(date.firstElementChild as Element, 'text-muted tabular-nums')
     expect(date.firstElementChild?.textContent).toBe('2026-10-28')
     hasAll(clinic, 'font-semibold')
     hasAll(email, 'text-ink-2')
     hasAll(phone, 'text-ink-2 tabular-nums')
-    hasAll(within(table()).getAllByRole('columnheader')[5], 'md:text-right')
+    hasAll(within(table()).getAllByRole('columnheader')[6], 'md:text-right')
     hasAll(within(action).getByRole('button', { name: '승인' }).parentElement as Element, 'flex justify-end')
     await user.click(tabNamed('승인'))
     hasAll(within(actionCell(rowOf('마바 정형외과의원'))).getByText('승인됨').parentElement as Element, 'flex justify-end')
@@ -629,25 +630,25 @@ describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
     const user = await renderLoaded()
     const widths = () =>
       within(table()).getAllByRole('columnheader').map((th) => classesOf(th).filter((t) => /^(max-|md:)?w-/.test(t)))
-    // 신청일·신청자 120px, 연락처·동작 150px, 의원 이름·이메일은 남은 폭을 반씩
-    const FIXED = [['w-30'], [], ['w-30'], [], ['w-37.5'], ['w-37.5']]
+    // 신청일·신청자 120px, EMR 112px, 연락처·동작 150px, 의원 이름·이메일은 남은 폭을 반씩
+    const FIXED = [['w-30'], [], ['w-28'], ['w-30'], [], ['w-37.5'], ['w-37.5']]
     hasAll(table(), 'md:table-fixed')
     expect(widths()).toEqual(FIXED)
     // AC-222.1(TASK-24): 768~1023px(본문 720~975px)에서도 모든 칸·단추가 옆으로 밀지 않고 보인다 —
-    // 표에 최소 폭이 없고, 정한 칸은 글자 폭에 맞춰 줄인다(신청일 116 · 신청자 80 · 연락처 136 · 동작 140)
+    // 표에 최소 폭이 없고, 정한 칸은 글자 폭에 맞춰 줄인다(신청일 116 · EMR 96 · 신청자 80 · 연락처 136 · 동작 140)
     expect(classesOf(table()).filter((t) => /min-w-/.test(t))).toEqual([])
     const tabletWidths = within(table())
       .getAllByRole('columnheader')
       .map((th) => classesOf(th).filter((t) => /^max-lg:w-/.test(t)))
-    expect(tabletWidths).toEqual([['max-lg:w-29'], [], ['max-lg:w-20'], [], ['max-lg:w-34'], ['max-lg:w-35']])
+    expect(tabletWidths).toEqual([['max-lg:w-29'], [], ['max-lg:w-24'], ['max-lg:w-20'], [], ['max-lg:w-34'], ['max-lg:w-35']])
     // 정한 폭이 없는 두 칸은 PC에서 넘치면 말줄임(옆 칸을 덮지 않는다). 폰은 줄바꿈 그대로
     const cells = within(rowOf('가나 정형외과의원')).getAllByRole('cell')
-    for (const c of [cells[1], cells[2], cells[3]]) expect(classesOf(c).some((t) => t === 'truncate' || t === 'md:truncate')).toBe(true)
+    for (const c of [cells[1], cells[3], cells[4]]) expect(classesOf(c).some((t) => t === 'truncate' || t === 'md:truncate')).toBe(true)
     // 768~1023px(글 칸이 좁다)에서는 말줄임 대신 줄바꿈 — 터치·키보드로도 전체 의원 이름·신청자·이메일을 보고 [승인]을 누른다(1024px 이상은 말줄임 그대로)
-    for (const c of [cells[1], cells[2]]) hasAll(c, 'md:max-lg:whitespace-normal md:max-lg:break-all')
-    hasAll(cells[3], 'md:max-lg:whitespace-normal wrap-anywhere') // 이메일은 "@" 뒤에서만(아래 TASK-19 시험)
+    for (const c of [cells[1], cells[3]]) hasAll(c, 'md:max-lg:whitespace-normal md:max-lg:break-all')
+    hasAll(cells[4], 'md:max-lg:whitespace-normal wrap-anywhere') // 이메일은 "@" 뒤에서만(아래 TASK-19 시험)
     // 말줄임으로 잘려도 전체 값은 마우스를 올리면 보인다(title)
-    expect([cells[1], cells[2], cells[3]].map((c) => c.getAttribute('title'))).toEqual(['가나 정형외과의원', '홍길동', 'manager@example.com'])
+    expect([cells[1], cells[3], cells[4]].map((c) => c.getAttribute('title'))).toEqual(['가나 정형외과의원', '홍길동', 'manager@example.com'])
     // 빈 탭에서도 머리 폭은 같다
     await user.click(within(rowOf('가나 정형외과의원')).getByRole('button', { name: '승인' }))
     await user.click(within(rowOf('다라 통증의학과의원')).getByRole('button', { name: '승인' }))
@@ -659,7 +660,7 @@ describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
   // ui-90 TASK-19 채점: 768px 표가 이메일을 낱말 중간(barun@exampl / e.com)에서 잘랐다 → "@" 바로 뒤에만 줄을 바꿀 자리를 둔다
   it('AC-220.1·ui-90 TASK-19: 이메일은 "@" 바로 뒤(<wbr>)에서만 줄을 바꾼다 — break-all 없음, 도메인이 칸보다 길 때만 그 안에서(wrap-anywhere)', async () => {
     await renderLoaded()
-    const email = within(rowOf('가나 정형외과의원')).getAllByRole('cell')[3]
+    const email = within(rowOf('가나 정형외과의원')).getAllByRole('cell')[4]
     // 글자·title은 그대로, 줄 바꿀 자리는 "@" 뒤 하나뿐
     expect(email.textContent).toBe('manager@example.com')
     expect(email.getAttribute('title')).toBe('manager@example.com')
@@ -865,5 +866,34 @@ describe('AC-5104.3 제목 아래 top 자리', () => {
     render(<AdminApplications />)
     await screen.findByRole('tablist', { name: '신청 상태' })
     expect(screen.queryByRole('region', { name: '위 칸' })).toBeNull()
+  })
+})
+
+describe('AC-7304.1 가입 신청 EMR 칸 (emr-signup)', () => {
+  const emrOf = (clinic: string) => within(rowOf(clinic)).getAllByRole('cell')[2]
+
+  it("AC-7304.1: 머리 줄 '의원 이름' 다음에 'EMR' 칸이 있다", async () => {
+    await renderLoaded()
+    const heads = within(table()).getAllByRole('columnheader').map((th) => th.textContent)
+    expect(heads.slice(1, 3)).toEqual(['의원 이름', 'EMR'])
+  })
+
+  it("AC-7304.1: 대기·승인·거절 탭 모두 줄마다 그 신청의 EMR 글('의사랑'·'이지스'·'그 밖의 EMR', emr 없는 옛 줄은 '비트')이 보인다", async () => {
+    const user = await renderLoaded()
+    expect(emrOf('가나 정형외과의원').textContent).toBe('의사랑')
+    expect(emrOf('다라 통증의학과의원').textContent).toBe('이지스')
+    await user.click(tabNamed('승인'))
+    expect(emrOf('마바 정형외과의원').textContent).toBe('비트')
+    await user.click(tabNamed('거절'))
+    expect(emrOf('사아 의원').textContent).toBe('그 밖의 EMR')
+  })
+
+  it('AC-7304.1: EMR 칸은 보조 칸 색(ds.table.tdSub)·PC body 글자이고, 다른 칸·단추는 그대로다(동작 칸은 맨 끝)', async () => {
+    await renderLoaded()
+    const tr = rowOf('가나 정형외과의원')
+    const cells = within(tr).getAllByRole('cell')
+    expect(cells).toHaveLength(7)
+    hasAll(cells[2], `${ds.table.tdSub} md:text-body`)
+    expect(within(cells[6]).getAllByRole('button').map((b) => b.textContent)).toEqual(['승인', '거절'])
   })
 })

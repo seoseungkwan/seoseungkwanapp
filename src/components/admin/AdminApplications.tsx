@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, ty
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
+import { EMR_LABEL } from '@/lib/clinic/emrText'
 import { listApplications, setHospitalStatus, type Application } from '@/lib/auth/admin'
 import { appliedOn, countByTab, doneMessage, EMPTY, phoneText, rowsOf, TABS, withStatus, type Tab } from './applications'
 
@@ -25,7 +26,7 @@ const tabIdle = `${tabBase} font-medium text-ink-2 hover:text-ink`
 const tabCurrent = `${tabBase} font-semibold text-ink after:absolute after:inset-x-3 after:-bottom-px after:h-0.5 after:bg-accent`
 
 // 표는 패널 틀 없이 본문 위에 바로 둔다: surface 띠 + 위아래 1px line(모서리 없음). PC 몸 줄 56px·body 글자.
-// 휴대폰(768px 미만): 표 머리를 숨기고 줄마다 세 줄 격자로 쌓는다. 띠는 본문 좌우 여백(16px)만큼 밖으로 나가 화면 끝까지 닿고,
+// 휴대폰(768px 미만): 표 머리를 숨기고 줄마다 네 줄 격자로 쌓는다. 띠는 본문 좌우 여백(16px)만큼 밖으로 나가 화면 끝까지 닿고,
 // 줄 사이는 1px line(마지막 줄 없음), 줄 안쪽 12px 16px
 const rowClass = `${ds.table.row} md:h-14 max-md:grid max-md:grid-cols-[fit-content(50%)_1fr_auto] max-md:items-center max-md:gap-y-0.5 max-md:border-b max-md:border-line max-md:px-4 max-md:py-3 max-md:last:border-b-0`
 // 휴대폰 칸: 높이·칸 선·여백을 지운다(ds 칸의 첫 칸 왼쪽·끝 칸 오른쪽 20px도)
@@ -33,8 +34,9 @@ const cellPhone = 'max-md:h-auto max-md:border-b-0 max-md:p-0 max-md:first:pl-0 
 // DOM은 PC 칸 순서(신청일 먼저). 휴대폰 격자(칸 3개: 신청자 글자 폭(줄 폭의 반까지) · 남은 폭 · 글자 폭).
 // 긴 이름(DB는 30자까지)은 첫 칸 안에서 줄바꿈한다 → 셋째 칸(신청일·단추)은 늘 화면 안에 남는다:
 //   1줄 의원 이름(600, 말줄임) · 오른쪽 신청일(caption muted)
-//   2줄 신청자 · 이메일(small ink-2)
-//   3줄 연락처(small muted) · 오른쪽 동작 단추(44px)
+//   2줄 쓰는 EMR(small ink-2, emr-signup AC-7304.1)
+//   3줄 신청자 · 이메일(small ink-2)
+//   4줄 연락처(small muted) · 오른쪽 동작 단추(44px)
 // 768~1023px(태블릿)은 글 칸(의원 이름·신청자·이메일)이 좁아 말줄임 대신 줄바꿈한다 — title은 마우스로만 보이니 터치·키보드로도
 // 전체 값을 보고 [승인]을 누르게(1024px 이상은 말줄임 그대로, 휴대폰 의원 이름도 말줄임 그대로)
 const wrapTablet = 'md:max-lg:whitespace-normal md:max-lg:break-all'
@@ -44,20 +46,23 @@ const wrapEmail = 'md:max-lg:whitespace-normal wrap-anywhere'
 const cell = {
   date: `${ds.table.tdSub} ${cellPhone} md:text-body max-md:col-start-3 max-md:row-start-1 max-md:ml-3 max-md:justify-self-end max-md:text-caption`,
   clinic: `${ds.table.td} ${cellPhone} truncate ${wrapTablet} text-body font-semibold max-md:col-start-1 max-md:col-end-3 max-md:row-start-1`,
-  applicant: `${ds.table.td} ${cellPhone} md:truncate ${wrapTablet} md:text-body max-md:col-start-1 max-md:row-start-2 max-md:self-start max-md:whitespace-normal max-md:break-all max-md:text-ink-2`,
-  email: `${ds.table.tdSub} ${cellPhone} md:truncate ${wrapEmail} md:text-body max-md:col-start-2 max-md:col-end-4 max-md:row-start-2 max-md:self-start max-md:whitespace-normal max-md:before:px-1 max-md:before:content-['·']`,
-  phone: `${ds.table.tdSub} ${cellPhone} tabular-nums md:text-body max-md:col-start-1 max-md:col-end-3 max-md:row-start-3 max-md:mt-1.5 max-md:text-muted`,
-  action: `${ds.table.td} ${cellPhone} max-md:col-start-3 max-md:row-start-3 max-md:mt-1.5 max-md:ml-3 max-md:justify-self-end`,
+  emr: `${ds.table.tdSub} ${cellPhone} md:text-body max-md:col-start-1 max-md:col-end-4 max-md:row-start-2`,
+  applicant: `${ds.table.td} ${cellPhone} md:truncate ${wrapTablet} md:text-body max-md:col-start-1 max-md:row-start-3 max-md:self-start max-md:whitespace-normal max-md:break-all max-md:text-ink-2`,
+  email: `${ds.table.tdSub} ${cellPhone} md:truncate ${wrapEmail} md:text-body max-md:col-start-2 max-md:col-end-4 max-md:row-start-3 max-md:self-start max-md:whitespace-normal max-md:before:px-1 max-md:before:content-['·']`,
+  phone: `${ds.table.tdSub} ${cellPhone} tabular-nums md:text-body max-md:col-start-1 max-md:col-end-3 max-md:row-start-4 max-md:mt-1.5 max-md:text-muted`,
+  action: `${ds.table.td} ${cellPhone} max-md:col-start-3 max-md:row-start-4 max-md:mt-1.5 max-md:ml-3 max-md:justify-self-end`,
 }
 // 빈 탭 안내: 제목과 설명을 따로 줄로(목업 <p> 둘). 두 줄이라 위아래 여백을 둔다
 const emptyClass = `${ds.table.emptyRow} py-3 max-md:block max-md:h-auto max-md:px-4`
 // PC 칸 폭은 정해 둔다(table-fixed): 줄이 다른 탭으로 옮겨 가거나 탭이 비어도 칸 자리가 움직이지 않는다.
-// 신청일·신청자 120px, 연락처·동작 150px, 의원 이름·이메일은 남은 폭을 반씩. 글 칸(의원 이름·신청자·이메일)은 넘치면 말줄임 + title로 전체 값.
-// 표에는 최소 폭이 없다: 768~1023px(본문 720~975px)에서는 정한 칸을 글자 폭에 맞춰 줄여(신청일 116 · 신청자 80 · 연락처 136 · 동작 140)
-// 옆으로 밀지 않고도 모든 칸과 [승인]·[거절]이 보인다. 동작 칸 머리는 오른쪽(ds.table.th의 왼쪽 정렬을 md:로 덮는다, 휴대폰은 머리가 없다)
+// 신청일·신청자 120px, EMR 112px('그 밖의 EMR'이 칸 여백 빼고도 들어간다), 연락처·동작 150px, 의원 이름·이메일은 남은 폭을 반씩.
+// 글 칸(의원 이름·신청자·이메일)은 넘치면 말줄임 + title로 전체 값.
+// 표에는 최소 폭이 없다: 768~1023px(본문 720~975px)에서는 정한 칸을 글자 폭에 맞춰 줄여(신청일 116 · EMR 96 · 신청자 80 · 연락처 136 · 동작 140, 합 568px)
+// 옆으로 밀지 않고도 모든 칸과 [승인]·[거절]이 보인다(768px에서는 의원 이름·이메일 칸이 좁아 여러 줄로 바뀐다). 동작 칸 머리는 오른쪽(ds.table.th의 왼쪽 정렬을 md:로 덮는다, 휴대폰은 머리가 없다)
 const COLUMNS = [
   { label: '신청일', width: 'w-30 max-lg:w-29' },
   { label: '의원 이름', width: '' },
+  { label: 'EMR', width: 'w-28 max-lg:w-24' },
   { label: '신청자', width: 'w-30 max-lg:w-20' },
   { label: '이메일', width: '' },
   { label: '연락처', width: 'w-37.5 max-lg:w-34' },
@@ -351,6 +356,7 @@ export function AdminApplications({ top }: { top?: ReactNode } = {}) {
                         <td className={cell.clinic} title={row.name}>
                           {row.name}
                         </td>
+                        <td className={cell.emr}>{EMR_LABEL[row.emr]}</td>
                         <td className={cell.applicant} title={row.applicantName}>
                           {row.applicantName}
                         </td>
