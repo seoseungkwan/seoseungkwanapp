@@ -43,7 +43,7 @@ const LOGO_PATH = '11111111-2222-4333-8444-555555555555/aaaaaaaa-bbbb-4ccc-8ddd-
 const NEW_LOGO_PATH = '11111111-2222-4333-8444-555555555555/bbbbbbbb-cccc-4ddd-8eee-ffffffffffff.png'
 const SAVED_LOGO = 'data:image/png;base64,iVBORw0KGgoAAAA='
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
-const FIELDS = ['병원 이름', '로고', '전화', '주소', '호칭', '진료시간', '휴진일', '원장님·직원']
+const FIELDS = ['병원 이름', '로고', '전화', '주소', '호칭', '쓰는 EMR', '진료시간', '휴진일', '원장님·직원'] // '쓰는 EMR'은 spec emr-choice AC-7102.2
 const DAYS = ['월', '화', '수', '목', '금', '토', '일']
 
 const person = (n: number, extra: Partial<ClinicStaff> = {}): ClinicStaff => ({
@@ -79,6 +79,8 @@ const shown = (name: string) => select(name).selectedOptions[0]?.textContent
 const check = (name: string) => screen.getByRole('checkbox', { name }) as HTMLInputElement
 const saveButton = () => screen.getByRole('button', { name: '저장' }) as HTMLButtonElement
 const honorific = () => within(screen.getByRole('group', { name: '호칭' }))
+const emrGroup = () => within(screen.getByRole('group', { name: '쓰는 EMR' }))
+const emrPressed = () => emrGroup().getAllByRole('button').map((b) => [b.textContent, b.getAttribute('aria-pressed')])
 const staffRows = () => within(screen.getByRole('list', { name: '원장님·직원 목록' })).getAllByRole('listitem')
 const staffNames = () => staffRows().map((row) => (within(row).getByRole('textbox', { name: '이름' }) as HTMLInputElement).value)
 const closedChips = () =>
@@ -120,7 +122,7 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('AC-6602.1 칸 차례', () => {
-  it("AC-6602.1: 제목 '병원 정보' 아래 칸 차례는 병원 이름·로고·전화·주소·호칭·진료시간·휴진일·원장님·직원이고 [저장]이 있다", async () => {
+  it("AC-6602.1·AC-7102.2: 제목 '병원 정보' 아래 칸 차례는 병원 이름·로고·전화·주소·호칭·쓰는 EMR·진료시간·휴진일·원장님·직원이고 [저장]이 있다", async () => {
     await renderReady()
     expect(within(card()).getByRole('heading', { level: 2, name: '병원 정보' })).toBeTruthy()
     expect(within(card()).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(FIELDS)
@@ -622,5 +624,53 @@ describe('AC-7102.1 쓰는 EMR 들고 가기(spec emr-choice TASK-3 — 고르�
     await user.click(saveButton())
     await screen.findByText('저장했어요')
     expect(lastSaved().emr).toBe('bit')
+  })
+})
+
+describe('AC-7102.2 쓰는 EMR 고르기(spec emr-choice TASK-4, design.md 3절)', () => {
+  it("AC-7102.2: '호칭' 바로 아래 '쓰는 EMR' 칸에 단추 넷 '비트'·'의사랑'·'이지스'·'그 밖의 EMR'과 도움말이 있다. 저장한 적 없으면 '비트'가 눌려 있다", async () => {
+    await renderReady(null)
+    const titles = within(card()).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+    expect(titles[titles.indexOf('호칭') + 1]).toBe('쓰는 EMR')
+    expect(emrPressed()).toEqual([
+      ['비트', 'true'],
+      ['의사랑', 'false'],
+      ['이지스', 'false'],
+      ['그 밖의 EMR', 'false'],
+    ])
+    const field = screen.getByRole('heading', { level: 3, name: '쓰는 EMR' }).parentElement!
+    expect(within(field).getByText('진료 자료를 읽어 오는 연결은 지금 비트만 돼요. 의사랑·이지스는 준비하고 있어요.').tagName).toBe('P')
+  })
+
+  it.each([
+    ['uisarang', '의사랑'],
+    ['egis', '이지스'],
+    ['other', '그 밖의 EMR'],
+  ] as const)("AC-7102.2: 저장한 쓰는 EMR('%s')이면 '%s'만 눌려 있다", async (emr, label) => {
+    await renderReady({ ...SAVED, emr })
+    expect(emrPressed().filter(([, pressed]) => pressed === 'true')).toEqual([[label, 'true']])
+  })
+
+  it('AC-7102.2: 단추를 누르면 고른 값이 바뀌고(누르기만 해서는 저장하지 않음), [저장]을 누르면 고른 값으로 저장한다', async () => {
+    const user = await renderReady(SAVED)
+    await user.click(emrGroup().getByRole('button', { name: '이지스' }))
+    expect(emrPressed().filter(([, pressed]) => pressed === 'true')).toEqual([['이지스', 'true']])
+    expect(saveClinicProfile).not.toHaveBeenCalled()
+    await user.click(emrGroup().getByRole('button', { name: '그 밖의 EMR' }))
+    expect(emrPressed().filter(([, pressed]) => pressed === 'true')).toEqual([['그 밖의 EMR', 'true']])
+    await user.click(saveButton())
+    await screen.findByText('저장했어요')
+    expect(saveClinicProfile).toHaveBeenCalledTimes(1)
+    expect(lastSaved()).toMatchObject({ emr: 'other', displayName: '바뀐정형외과', honorific: '대표원장님' })
+  })
+
+  it("AC-7102.2: 비트가 아닌 병원도 '비트'를 누르고 [저장]하면 'bit'로 저장하고, 저장한 뒤 고르면 '저장했어요'가 사라진다", async () => {
+    const user = await renderReady({ ...SAVED, emr: 'uisarang' })
+    await user.click(emrGroup().getByRole('button', { name: '비트' }))
+    await user.click(saveButton())
+    await screen.findByText('저장했어요')
+    expect(lastSaved().emr).toBe('bit')
+    await user.click(emrGroup().getByRole('button', { name: '의사랑' }))
+    expect(screen.queryByText('저장했어요')).toBeNull()
   })
 })

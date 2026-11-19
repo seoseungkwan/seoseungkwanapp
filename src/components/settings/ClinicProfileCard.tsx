@@ -10,6 +10,7 @@ import { Icon } from '@/components/common/Icon'
 import { useDesk } from '@/components/shell/role'
 import { ds } from '@/components/ui/classes'
 import { isYmd, weekdayOf } from '@/lib/analytics/dates'
+import { EMR_LABEL } from '@/lib/clinic/emrText'
 import { clockText, phoneText } from '@/lib/clinic/format'
 import { checkProfile, dayProblem, normalizeLogo, removeLogo, saveClinicProfile, uploadLogo } from '@/lib/storage/clinicProfile'
 import { supabaseBrowser } from '@/lib/supabase/browser'
@@ -18,6 +19,7 @@ import {
   CLINIC_ADDRESS_MAX,
   CLINIC_NAME_MAX,
   CLOSED_DATES_MAX,
+  EMR_KINDS,
   HONORIFICS,
   HOURS_STEP,
   LOGO_MAX_BYTES,
@@ -35,7 +37,7 @@ import {
 
 // 설정 '병원 정보' 칸 (spec clinic-profile REQ-6602 AC-6602.1~AC-6602.8, design.md 3절, ADR-033). 시안 없음(사용자 결정) —
 // 지금 설정 칸 모양(CashFloatSetting·DeskAccounts의 읽기 상태·ds.panel·결과 줄)과 ds 클래스를 따른다.
-// 칸 차례: 병원 이름 · 로고 · 전화 · 주소 · 호칭 · 진료시간 · 휴진일 · 원장님·직원. 읽기는 공용 훅(useClinicProfile, 로고까지),
+// 칸 차례: 병원 이름 · 로고 · 전화 · 주소 · 호칭 · 쓰는 EMR(spec emr-choice AC-7102.2) · 진료시간 · 휴진일 · 원장님·직원. 읽기는 공용 훅(useClinicProfile, 로고까지),
 // 검사는 저장 층 checkProfile·dayProblem 한 곳이다. 열기만 해서는 저장하지 않고 [저장]이 표(saveClinicProfile)를 먼저 저장한 뒤
 // 로고가 바뀌었으면 올리거나(uploadLogo — 줄이 있어야 올라가고, 옛 파일은 그 함수가 지운다) 뺀다(removeLogo).
 // 실패하면 적은 값·고른 로고를 그대로 두고 오류 칸 + [다시 저장]. 표가 저장되면 router.refresh()로 헤더·탭 제목 이름을 다시 읽는다(readMe).
@@ -46,7 +48,7 @@ type Draft = {
   phone: string
   address: string
   honorific: Honorific
-  emr: EmrKind // 읽은 값을 그대로 들고 가 저장에 실어 보낸다(spec emr-choice TASK-3)
+  emr: EmrKind // 읽은 값을 들고 가 '쓰는 EMR' 칸에서 고르고 저장에 실어 보낸다(spec emr-choice TASK-3·TASK-4)
   hours: HourRow[]
   closedDates: string[]
   staff: StaffRow[]
@@ -274,6 +276,7 @@ function ProfileForm({ view }: { view: ClinicProfileView }) {
     phone: useId(),
     address: useId(),
     honorific: useId(),
+    emr: useId(),
     hours: useId(),
     closed: useId(),
     staff: useId(),
@@ -502,6 +505,22 @@ function ProfileForm({ view }: { view: ClinicProfileView }) {
                 onClick={() => edit((d) => ({ ...d, honorific: word }))}
               >
                 {word}
+              </button>
+            ))}
+          </div>
+        </Field>
+
+        <Field titleId={ids.emr} title="쓰는 EMR" help="진료 자료를 읽어 오는 연결은 지금 비트만 돼요. 의사랑·이지스는 준비하고 있어요.">
+          <div role="group" aria-labelledby={ids.emr} className={`${ds.segment.group} self-start max-md:grid-cols-2`}>
+            {EMR_KINDS.map((emr) => (
+              <button
+                key={emr}
+                type="button"
+                aria-pressed={draft.emr === emr}
+                className={`${ds.segment.button} ${draft.emr === emr ? ds.segment.on : ds.segment.off}`}
+                onClick={() => edit((d) => ({ ...d, emr }))}
+              >
+                {EMR_LABEL[emr]}
               </button>
             ))}
           </div>
