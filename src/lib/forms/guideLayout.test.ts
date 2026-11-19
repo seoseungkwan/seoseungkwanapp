@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { GUIDE_LIMITS, PICTURE_IDS, type GuideContent, type GuideLine } from '@/types/formGuide'
-import { GUIDE_LOGO, GUIDE_LOGO_AREA, GUIDE_PAGE, fitGuide, guideTextWidth, layoutGuide, type Fitted, type GuideLayout } from './guideLayout'
-import { logoRect } from './layout'
+import { GUIDE_LOGO, GUIDE_LOGO_AREA, GUIDE_LOGO_MAX, GUIDE_PAGE, fitGuide, guideTextWidth, layoutGuide, type Fitted, type GuideLayout } from './guideLayout'
+import { logoRect, logoTextFit, logoTextWidth, scaleLogoRect } from './layout'
+import { DEFAULT_STYLE, type FormStyle } from './style'
 
 // 서식 탭 환자 안내문 그림(A4 세로 794×1123)의 배치 (specs/forms-guide REQ-4503, design.md 4절, TASK-1).
 // 값은 승인 시안 docs/mockups/forms-guide/index.html의 emOf()·measure()·fit()·layout()과 같다
@@ -506,5 +507,142 @@ describe('AC-6703.2: 환자 안내문 로고 자리 400×110 (spec logo-fit desi
     // 배율 = min(400/1080, 110/501) = 110/501 → 폭 237.12…
     expect(logoRect(GUIDE_LOGO_AREA, { width: 1080, height: 501 })).toEqual({ x: 278.4, y: 984, width: 237.1, height: 110 })
     expect(logoRect(GUIDE_LOGO_AREA, { width: 64, height: 64 })).toEqual({ x: 342, y: 984, width: 110, height: 110 })
+  })
+})
+
+// ---------- 글씨·로고 크기 (spec form-style REQ-6804 AC-6804.3·AC-6804.4·AC-6804.5·AC-6804.6, design.md 5-2절, TASK-4) ----------
+
+const styleOf = (patch: Partial<FormStyle>): FormStyle => ({ ...DEFAULT_STYLE, ...patch })
+const styled = (c: GuideContent, patch: Partial<FormStyle>): GuideContent & { style: FormStyle } => ({ ...c, style: styleOf(patch) })
+const bigSizes = (g: GuideLayout) => g.big.map((b) => b.size)
+const rowSizes = (g: GuideLayout) => g.rows.map((r) => r.text.size)
+const markSizes = (g: GuideLayout) => g.rows.map((r) => r.markSize)
+
+describe('AC-6804.3: 큰 문구 크기 — 보통 min(round(109 × t / 100), 120), 윗줄 작게 min(round(80t/100), 88)·min(round(150t/100), 165)', () => {
+  it('AC-6804.3: 보통(예시 1)은 80·100·130%에서 두 줄 87·109·120(한도 120)이다', () => {
+    expect(bigSizes(layoutGuide(styled(example(1), { titleScale: 80 })))).toEqual([87, 87])
+    expect(bigSizes(layoutGuide(styled(example(1), { titleScale: 100 })))).toEqual([109, 109])
+    expect(bigSizes(layoutGuide(styled(example(1), { titleScale: 110 })))).toEqual([120, 120])
+    expect(bigSizes(layoutGuide(styled(example(1), { titleScale: 130 })))).toEqual([120, 120])
+  })
+
+  it('AC-6804.3: 두 줄 같은 크기 규칙(둘 중 작은 쪽)과 폭 맞추기는 그대로다', () => {
+    const c = withEx1({ big1: '수납할 때', big2: 가(9) })
+    expect(bigSizes(layoutGuide(styled(c, { titleScale: 130 })))).toEqual([91, 91])
+    expect(bigSizes(layoutGuide(styled(c, { titleScale: 80 })))).toEqual([87, 87])
+  })
+
+  it("AC-6804.3: '윗줄 작게'(예시 6)는 80·100·130%에서 윗줄 64·80·88, 아랫줄 120·150·153(165에서 692 폭에 맞춤)이다", () => {
+    expect(bigSizes(layoutGuide(styled(example(6), { titleScale: 80 })))).toEqual([64, 120])
+    expect(bigSizes(layoutGuide(styled(example(6), { titleScale: 100 })))).toEqual([80, 150])
+    expect(bigSizes(layoutGuide(styled(example(6), { titleScale: 130 })))).toEqual([88, 153])
+    expect(layoutGuide(styled(example(6), { titleScale: 130 })).big.map((b) => b.y)).toEqual([252, 381])
+  })
+
+  it("AC-6804.3: 가장 작은 크기(72·56·72)와 '한 줄에 들어가지 않아요' 까닭 규칙은 어느 크기에서도 그대로다", () => {
+    for (const t of [80, 130]) {
+      expect(layoutGuide(styled(withEx1({ big1: 가(11) }), { titleScale: t })).problems, `${t}%`).toEqual({})
+      const over = layoutGuide(styled(withEx1({ big1: 가(12) }), { titleScale: t }))
+      expect(over.problems, `${t}%`).toEqual({ big1: TOO_LONG })
+      expect(bigSizes(over), `${t}%`).toEqual([72, 72])
+      expect(bigSizes(layoutGuide(styled({ ...example(6), big1: 가(14) }, { titleScale: t })))[0], `${t}%`).toBe(58)
+      expect(layoutGuide(styled({ ...example(6), big1: 가(15) }, { titleScale: t })).problems, `${t}%`).toEqual({ big1: TOO_LONG })
+      expect(layoutGuide(styled({ ...example(6), big2: 가(12) }, { titleScale: t })).problems, `${t}%`).toEqual({ big2: TOO_LONG })
+    }
+  })
+
+  it('AC-6804.3: 제목 크기는 작은 제목·머리표·상자·띠를 바꾸지 않는다', () => {
+    const now = layoutGuide(example(1))
+    const big = layoutGuide(styled(example(1), { titleScale: 130 }))
+    expect({ ...big, big: now.big }).toEqual(now)
+  })
+})
+
+describe('AC-6804.4: 띠 줄 글 크기 — 체크 min(round(34b/100), floor(줄 높이 / 1.35)), 번호 round(35b/100)(b > 100이면 max(35, floor(줄 높이 / 1.35)) 한도)', () => {
+  it('AC-6804.4: 체크(예시 4, 줄 높이 59.5)는 80·100·130%에서 27·34·44, 체크 표시는 글자 + 2', () => {
+    for (const [b, size] of [[80, 27], [100, 34], [130, 44]] as const) {
+      const g = layoutGuide(styled(example(4), { bodyScale: b }))
+      expect(rowSizes(g), `${b}%`).toEqual([size, size])
+      expect(markSizes(g), `${b}%`).toEqual([size + 2, size + 2])
+      expect(g.problems, `${b}%`).toEqual({})
+    }
+  })
+
+  it('AC-6804.4: 체크 글자는 줄 높이 / 1.35를 넘지 않는다(줄 높이 48.375 → 130%에도 35)', () => {
+    const c = withEx1({ note: '', lines: [L(가(11)), L(가(11)), L(가(11)), L(가(11))] })
+    for (const [b, size] of [[80, 27], [100, 34], [130, 35]] as const) {
+      const g = layoutGuide(styled(c, { bodyScale: b }))
+      expect(g.twoCols).toBe(false)
+      expect(rowSizes(g), `${b}%`).toEqual([size, size, size, size])
+      expect(markSizes(g), `${b}%`).toEqual([size + 2, size + 2, size + 2, size + 2])
+    }
+  })
+
+  it('AC-6804.4: 번호(예시 5, 줄 높이 67)는 80·100·130%에서 28·35·46이고 번호 원·숫자는 그대로다', () => {
+    for (const [b, size] of [[80, 28], [100, 35], [130, 46]] as const) {
+      const g = layoutGuide(styled(example(5), { bodyScale: b }))
+      expect(rowSizes(g), `${b}%`).toEqual([size, size, size])
+      for (const r of g.rows) {
+        expect(r.circle).toBe(49)
+        expect(r.markSize).toBe(31)
+        expect(r.text.x).toBe(117)
+      }
+    }
+  })
+
+  it('AC-6804.4: 번호는 b > 100일 때만 줄 높이 한도를 쓴다(띠 넘침으로 줄 높이 54 → 한도 40)', () => {
+    const c = withEx1({ mark: 'number', lines: [L(가(11)), L(가(11)), L(가(11))] })
+    const limit = Math.max(35, Math.floor(54 / 1.35))
+    for (const b of [80, 90, 100, 105, 110, 120, 130]) {
+      const want = b <= 100 ? Math.round((35 * b) / 100) : Math.min(Math.round((35 * b) / 100), limit)
+      expect(rowSizes(layoutGuide(styled(c, { bodyScale: b }))), `${b}%`).toEqual([want, want, want])
+    }
+    expect(rowSizes(layoutGuide(styled(c, { bodyScale: 130 })))).toEqual([40, 40, 40])
+  })
+
+  it('AC-6804.4: 폭 맞추기(가장 작게 26)는 그대로 — 체크 표시가 커져 글자 자리가 줄면 100%에 들던 줄도 130%에선 까닭이 붙는다', () => {
+    const LONG = `WWWW${가(24)}` // 28자, 26px 폭 641.68 — 100% 자리 649.22에는 들고 130% 자리 640.67에는 안 든다
+    expect(Array.from(LONG).length).toBe(GUIDE_LIMITS.line)
+    const c = { ...example(4), lines: [L(LONG), example(4).lines[1]!] }
+    const now = layoutGuide(c)
+    expect(now.problems).toEqual({})
+    expect(rowSizes(now)[0]).toBe(26)
+    expect(layoutGuide(styled(c, { bodyScale: 80 })).problems).toEqual({})
+    const big = layoutGuide(styled(c, { bodyScale: 130 }))
+    expect(big.problems).toEqual({ line0: TOO_LONG })
+    expect(rowSizes(big)).toEqual([26, 44])
+  })
+
+  it('AC-6804.4: 본문 크기는 큰 문구·머리표·줄 자리(줄 높이·y)를 바꾸지 않는다', () => {
+    const now = layoutGuide(example(1))
+    const big = layoutGuide(styled(example(1), { bodyScale: 130 }))
+    expect(big.big).toEqual(now.big)
+    expect(big.pill).toEqual(now.pill)
+    expect(big.rows.map((r) => r.text.y)).toEqual(now.rows.map((r) => r.text.y))
+  })
+})
+
+describe('AC-6804.6: 처음대로면 안내문 배치가 지금과 한 값도 다르지 않다', () => {
+  it.each(EXAMPLES.map((_, i) => [i + 1] as const))('AC-6804.6: 예시 %i — style 없음·처음대로 style의 배치가 같다', (n) => {
+    expect(layoutGuide({ ...example(n), style: { ...DEFAULT_STYLE } })).toEqual(layoutGuide(example(n)))
+  })
+})
+
+describe('AC-6804.5: 환자 안내문 로고 크기 — 최대 692×140', () => {
+  it('AC-6804.5: GUIDE_LOGO_MAX는 692×140이다', () => {
+    expect(GUIDE_LOGO_MAX).toEqual({ width: 692, height: 140 })
+  })
+
+  it('AC-6804.5: 150%면 원래 상자는 97, 988 · 600×102, 가로형은 97, 988.2 · 600×101.7, 세로로 긴 쪽은 높이 140에 묶인다', () => {
+    expect(scaleLogoRect(GUIDE_LOGO, 150, GUIDE_LOGO_MAX)).toEqual({ x: 97, y: 988, width: 600, height: 102 })
+    expect(scaleLogoRect(logoRect(GUIDE_LOGO_AREA, { width: 1033, height: 175 }), 150, GUIDE_LOGO_MAX)).toEqual({ x: 97, y: 988.2, width: 600, height: 101.7 })
+    expect(scaleLogoRect(logoRect(GUIDE_LOGO_AREA, { width: 1080, height: 501 }), 150, GUIDE_LOGO_MAX)).toEqual({ x: 246.1, y: 969, width: 301.8, height: 140 })
+    expect(scaleLogoRect(GUIDE_LOGO, 100, GUIDE_LOGO_MAX)).toEqual({ x: 197, y: 1005, width: 400, height: 68 })
+  })
+
+  it('AC-6804.5: 이름 글자는 150%면 68 × 0.8 × 1.5 → 81에서 600 폭에 맞춘다', () => {
+    expect(logoTextWidth(GUIDE_LOGO, 150, GUIDE_LOGO_MAX)).toBe(600)
+    expect(logoTextFit('서승관', GUIDE_LOGO, 150, GUIDE_LOGO_MAX)).toEqual({ size: 81, squeeze: false })
+    expect(logoTextFit('서승관', GUIDE_LOGO, 100, GUIDE_LOGO_MAX)).toEqual(logoTextFit('서승관', GUIDE_LOGO))
   })
 })

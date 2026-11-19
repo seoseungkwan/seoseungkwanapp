@@ -4,16 +4,19 @@ import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { guideColorsOf } from '@/lib/forms/guide'
 import { readableColors, type GuideColors } from '@/lib/forms/logoColors'
+import { DEFAULT_STYLE } from '@/lib/forms/style'
 import { DRAWING_LIMITS, GUIDE_LIMITS, PICTURES, PICTURE_IDS, type GuideField, type GuideMark, type GuideProblems, type PictureId } from '@/types/formGuide'
 import { MAX_MEMO } from '@/types/forms'
 import { guidePalette } from './guideColors'
 import type { GuideAction, GuideState } from './guideState'
+import { StyleControls } from './StyleControls'
 
 // 서식 화면 가운데(환자 안내문): 대충 적기 → [정리하기], '노란 윗단'·'진회색 띠' 칸, 그림 고르기와 AI로 그림 그리기
 // (spec forms-guide REQ-4502·4506·4513, design.md 9절, 시안 docs/mockups/forms-guide ?s=screen · go=draw). 색·글자는 토큰과 ds만 쓴다.
 // 칸 아래 까닭은 부르는 쪽이 준 visibleProblems다. 부르기(정리·그리기)는 부르는 쪽(GuideWorkspace)이 하고, 칸 고치기는 동작(dispatch)으로 보낸다.
 // '진회색 띠' 아래 '색' 칸(spec clinic-profile AC-6604.5): [자동](로고 색 또는 지금 색)·[직접 고르기]('바탕색'·'띠 색' 색 고르기).
-// 고른 색이 잘 안 읽히면(대비 4.5 미만) 경고만 하고 막지 않는다. 사용자가 고른 색 값은 색 칸 value로만 쓴다
+// 고른 색이 잘 안 읽히면(대비 4.5 미만) 경고만 하고 막지 않는다. 사용자가 고른 색 값은 색 칸 value로만 쓴다.
+// 맨 아래('색' 칸 다음) '글씨·로고' 칸(spec form-style AC-6801.1, StyleControls): 제목·본문 글씨와 로고의 크기·색. 값은 content.style(없으면 처음대로)
 
 const MEMO_NOTE = '전화번호·주민번호·메일 주소는 적지 마세요. 적은 글은 정리할 때만 AI로 보내고 저장하지 않아요. AI는 적은 글에 없는 숫자를 넣지 않아요'
 const MEMO_PLACEHOLDER = '예) 보험 서류 필요하면 수납할 때 말해 달라고. 진단서, 영수증, 세부내역서, 통원확인서. 보험사마다 다름'
@@ -43,6 +46,9 @@ type Props = {
   onTidy: () => void
   onDraw: () => void
   logoColors: GuideColors | null // 병원 로고에서 뽑은 두 색([자동]일 때 쓰인다)
+  logoSwatches: readonly string[] // 로고에서 뽑은 색 칩(글씨·로고 칸 색 고르기)
+  starts: { title: string; body: string; logo: string } // 색이 없을 때 직접 고르기 색 칸의 처음 값
+  logoTintable: boolean // 로고에 색을 칠할 수 있다(아니면 로고 색 고르기를 막는다)
 }
 
 type FieldProps = {
@@ -144,7 +150,7 @@ function ColorsField({ colors, logoColors, onColors }: ColorsProps) {
   )
 }
 
-export function GuideEditor({ state, problems, dispatch, onTidy, onDraw, logoColors }: Props) {
+export function GuideEditor({ state, problems, dispatch, onTidy, onDraw, logoColors, logoSwatches, starts, logoTintable }: Props) {
   const id = useId()
   const { content } = state
   const memoLength = Array.from(state.memo).length
@@ -390,6 +396,16 @@ export function GuideEditor({ state, problems, dispatch, onTidy, onDraw, logoCol
       </fieldset>
 
       <ColorsField colors={guideColorsOf(content)} logoColors={logoColors} onColors={(colors) => dispatch({ type: 'colors', colors })} />
+
+      <StyleControls
+        tool="guide"
+        style={content.style ?? DEFAULT_STYLE}
+        logoSwatches={logoSwatches}
+        starts={starts}
+        logoTintable={logoTintable}
+        onStyle={(style) => dispatch({ type: 'style', style })}
+        onReset={() => dispatch({ type: 'style', style: DEFAULT_STYLE })}
+      />
     </section>
   )
 }

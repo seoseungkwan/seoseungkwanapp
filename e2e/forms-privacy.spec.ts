@@ -1,7 +1,8 @@
 // 서식 탭 휴진 안내 개인정보 E2E(spec forms TASK-15, AC-3502.1·AC-3502.3·AC-3507.1·AC-3507.4·AC-3507.7,
-// 글자 색 accent는 spec forms-accent AC-4703.1): 실제 Supabase 시험 계정.
-// 본 시험은 사용자가 20261110000000_form_notices.sql과 글자 색 칸 20261115030000_form_notices_accent.sql을
-// 운영 Supabase에 먼저 붙이고 시험 계정(.env.local)이 있어야 돈다(글자 색 칸이 없으면 저장·읽기가 실패한다).
+// 글자 색 accent는 spec forms-accent AC-4703.1, 글씨·로고 여섯 칸은 spec form-style AC-6806.2): 실제 Supabase 시험 계정.
+// 본 시험은 사용자가 20261110000000_form_notices.sql과 글자 색 칸 20261115030000_form_notices_accent.sql,
+// 글씨·로고 칸 20261119100000_form_notices_style.sql을 운영 Supabase에 먼저 붙이고 시험 계정(.env.local)이 있어야 돈다
+// (글자 색·글씨·로고 칸이 없으면 저장·읽기가 실패한다).
 // 돌리는 법: `npm run e2e -- e2e/forms-privacy.spec.ts` (next build가 먼저 돈다: 다른 일이 없을 때)
 // /api/ai/forms는 이 시험이 가짜 답으로 막는다 — 실제 AI를 부르지 않고, 적은 글은 우리 서버에도 닿지 않는다.
 // CRITICAL: 요청 머리(authorization·apikey·cookie)와 응답 내용은 읽지도 찍지도 않는다. 실패 글에는 걸린 종류와 가린 경로만 싣는다
@@ -26,6 +27,9 @@ const MEMO = `5/5 어린이날 휴진 ${MEMO_MARK}`
 const PRIVATE_MEMO = '5/5 어린이날 휴진, 문의 010-1234-5678'
 const PHONE_SHAPE = /01[016789]-?\d{3,4}-?\d{4}/
 const CHILDREN = { start: '2027-05-05', end: null, name: '어린이날', status: '휴진' }
+// 글씨·로고 여섯 칸(spec form-style AC-6806.2): 처음대로면 모두 null로 간다
+const STYLE_COLUMNS = ['title_scale', 'body_scale', 'logo_scale', 'title_color', 'body_color', 'logo_color'] as const
+const BODY_KEYS = ['accent', 'cards', 'month', 'theme', 'year', ...STYLE_COLUMNS].sort()
 
 type Hit = { kind: 'memo' | 'phone'; path: string }
 type Watch = { hits: Hit[]; unread: string[]; seen: string[]; saves: string[] }
@@ -94,9 +98,25 @@ function failIf(error: { code?: unknown } | null, doing: string): void {
   throw new Error(`${doing} 못했어요(${code}) — 운영 SQL(form_notices)을 붙였는지 확인해 주세요`)
 }
 
-type Row = { id: string; year: number; month: number; cards: unknown; theme: string | null; accent: string | null }
+type Row = {
+  id: string
+  year: number
+  month: number
+  cards: unknown
+  theme: string | null
+  accent: string | null
+  title_scale: number | null
+  body_scale: number | null
+  logo_scale: number | null
+  title_color: string | null
+  body_color: string | null
+  logo_color: string | null
+}
 async function readRows(sb: SupabaseClient): Promise<Row[]> {
-  const { data, error } = await sb.from(TABLE).select('id, year, month, cards, theme, accent').order('updated_at', { ascending: false })
+  const { data, error } = await sb
+    .from(TABLE)
+    .select('id, year, month, cards, theme, accent, title_scale, body_scale, logo_scale, title_color, body_color, logo_color')
+    .order('updated_at', { ascending: false })
   failIf(error, '저장한 안내문을 읽지')
   return (data ?? []) as Row[]
 }
@@ -130,7 +150,7 @@ test.describe('서식 휴진 안내 개인정보(실제 Supabase)', () => {
     expect(left, '시험이 저장한 안내문이 남지 않았다').toEqual([])
   })
 
-  test('AC-3502.1 AC-3502.3 AC-3507.1 AC-3507.4 AC-3507.7 AC-4703.1: 정리·저장·지우기에서 적은 글과 전화번호가 나가지 않고, 저장 몸통은 열쇠 다섯뿐이다(글자 색 자동은 null)', async ({ page, context, accounts }) => {
+  test('AC-3502.1 AC-3502.3 AC-3507.1 AC-3507.4 AC-3507.7 AC-4703.1 AC-6806.2: 정리·저장·지우기에서 적은 글과 전화번호가 나가지 않고, 저장 몸통은 열쇠 다섯과 글씨·로고 여섯 칸뿐이다(글자 색 자동·글씨·로고 처음대로는 null)', async ({ page, context, accounts }) => {
     const sb = await accounts.client('approved')
     await accounts.signIn(context, 'approved')
     const watch = watchOutgoing(context)
@@ -164,7 +184,7 @@ test.describe('서식 휴진 안내 개인정보(실제 Supabase)', () => {
     await expect(page.getByText('저장됨')).toBeVisible(SLOW)
     await expect(page.getByRole('button', { name: /2027년 5월 · 어린이날/ })).toBeVisible(SLOW)
     expect(watch.saves.length).toBe(1)
-    expect(bodyShape(watch.saves[0])).toEqual({ keys: ['accent', 'cards', 'month', 'theme', 'year'], cardKeys: ['end', 'name', 'start', 'status'] })
+    expect(bodyShape(watch.saves[0])).toEqual({ keys: BODY_KEYS, cardKeys: ['end', 'name', 'start', 'status'] })
     // AC-4703.1: 글자 색을 고르지 않았으니(자동) accent는 빠지지 않고 null로 간다
     expect(sentAccents(watch.saves[0]), '자동 글자 색은 null로 보낸다').toEqual([null])
 
@@ -173,6 +193,7 @@ test.describe('서식 휴진 안내 개인정보(실제 Supabase)', () => {
     expect(added.length).toBe(1)
     const stored = checkNotice({ year: added[0].year, month: added[0].month, cards: added[0].cards, theme: added[0].theme, accent: added[0].accent })
     expect(stored, '저장된 줄이 checkNotice를 지난다').toEqual({ year: 2027, month: 5, cards: [CHILDREN], theme: null })
+    expect(STYLE_COLUMNS.map((column) => added[0][column]), '처음대로 글씨·로고 값은 여섯 칸 모두 null').toEqual([null, null, null, null, null, null])
     expect(JSON.stringify(added[0])).not.toContain(MEMO_MARK)
 
     // AC-3507.4: 새 페이지로 다시 열어 지운다

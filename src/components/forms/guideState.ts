@@ -1,6 +1,7 @@
 import { BLANK_GUIDE, checkGuideColors, checkGuideValue, guideColorsOf, guideProblems, savableGuide, type GuideValue } from '@/lib/forms/guide'
 import { checkDrawing } from '@/lib/forms/guideDrawing'
 import type { GuideColors } from '@/lib/forms/logoColors'
+import { STYLE_KEYS, checkStyle, isDefaultStyle, type FormStyle } from '@/lib/forms/style'
 import { MAX_MEMO } from '@/types/forms'
 import {
   DRAWING_LIMITS,
@@ -21,6 +22,7 @@ import {
 // 대충 적은 글(memo)·그릴 것(subject)은 AI로 보낼 때만 쓰고 저장하지 않는다 — 저장 값과 '바뀐 내용' 비교에 들지 않는다.
 // AI로 그린 그림(content.drawing)은 다른 그림을 골라도 칸에 남겨 두고, 저장·뽑기 값(readyGuide)은 savableGuide로 고른 그림만 담는다.
 // 색 칸(spec clinic-profile AC-6604.5·AC-6604.6): [직접 고르기]면 content.colors에 두 색, [자동]이면 colors 열쇠가 없다. 색도 저장 값·'바뀐 내용'에 든다
+// 글씨·로고 값(spec form-style design.md 8절): 처음대로가 아니면 content.style, 처음대로면 style 열쇠가 없다. 색처럼 저장 값·'바뀐 내용'에 들고 [정리하기] 뒤에도 남는다
 
 export type GuideAiCode = 'E-FORMS-PRIVATE' | 'E-AI-BUSY' | 'E-AI-LIMIT' | 'E-AI-FAILED'
 export type GuideListState = { kind: 'loading' } | { kind: 'ok'; items: SavedGuide[] } | { kind: 'failed' }
@@ -61,6 +63,7 @@ export type GuideAction =
   | { type: 'addLine' }
   | { type: 'removeLine'; index: number }
   | { type: 'colors'; colors: GuideColors | null } // null = [자동]
+  | { type: 'style'; style: FormStyle } // 글씨·로고 값 전체(처음대로로 되돌리기는 DEFAULT_STYLE). 틀린 값은 무시한다
   | { type: 'new' }
   | { type: 'open'; guide: SavedGuide }
   | { type: 'listLoading' }
@@ -90,7 +93,16 @@ function withColors(c: GuideValue, colors: GuideColors | null): GuideValue {
   if (colors) next.colors = { ...colors }
   return next
 }
-const copyContent = (c: GuideValue): GuideValue => withColors({ ...c, lines: copyLines(c.lines) }, guideColorsOf(c))
+// 글씨·로고 값은 맞는 모양이고 처음대로가 아닐 때만 새 객체로 담고, 아니면 열쇠를 두지 않는다(처음대로)
+function withStyle(c: GuideValue, style: FormStyle | null): GuideValue {
+  const next: GuideValue = { ...c }
+  delete next.style
+  const checked = style === null ? null : checkStyle(style)
+  if (checked !== null && !isDefaultStyle(checked)) next.style = checked
+  return next
+}
+const styleOf = (c: GuideValue): FormStyle | null => c.style ?? null
+const copyContent = (c: GuideValue): GuideValue => withStyle(withColors({ ...c, lines: copyLines(c.lines) }, guideColorsOf(c)), styleOf(c))
 const cut = (text: string, max: number) => Array.from(text).slice(0, max).join('')
 
 export function initialGuideState(): GuideState {
@@ -113,12 +125,13 @@ export function initialGuideState(): GuideState {
 }
 
 // 저장 값 비교용 글. 저장할 때처럼 글 칸·줄은 앞뒤 공백을 떼고, 그린 그림은 고른 그림이 custom일 때만 넣는다(savableGuide와 같다).
-// 직접 고른 색은 맨 뒤에([자동]이면 null)
+// 직접 고른 색은 맨 뒤에([자동]이면 null). 글씨·로고 값은 처음대로가 아닐 때만 그 뒤에 여섯 값을 더한다 —
+// 처음대로면 이 기능 전과 글자 그대로 같다(BLANK_SNAPSHOT도 그대로, spec form-style AC-6806.4)
 function snapshotOf(c: GuideValue): string {
   const drawing = c.picture === 'custom' && c.drawing !== null
     ? [c.drawing.subject.trim(), c.drawing.shapes.map((s) => [s.kind, s.nums, s.d, s.fill, s.stroke, s.width])]
     : null
-  return JSON.stringify([
+  const parts: unknown[] = [
     TEXT_FIELDS.map((key) => c[key].trim()),
     c.firstSmall,
     c.picture,
@@ -126,7 +139,10 @@ function snapshotOf(c: GuideValue): string {
     c.mark,
     c.lines.map((line) => [line.text.trim(), line.em.trim()]),
     guideColorsOf(c),
-  ])
+  ]
+  const style = styleOf(c)
+  if (style !== null && !isDefaultStyle(style)) parts.push(...STYLE_KEYS.map((key) => style[key]))
+  return JSON.stringify(parts)
 }
 const BLANK_SNAPSHOT = snapshotOf(BLANK_GUIDE)
 
@@ -139,7 +155,8 @@ export function guideReducer(state: GuideState, action: GuideAction): GuideState
     case 'tidyStart':
       return { ...state, tidying: true, tidyError: null, truncated: false }
     case 'tidyDone': {
-      // 칸 12개를 답으로 바꾼다. 그린 그림(drawing)은 그대로 두고, 지금 그림이 custom이면 그림도 그대로(AC-4506.2). 고른 색도 그대로(AC-6604.5)
+      // 칸 12개를 답으로 바꾼다. 그린 그림(drawing)은 그대로 두고, 지금 그림이 custom이면 그림도 그대로(AC-4506.2).
+      // 고른 색(AC-6604.5)·글씨·로고 값(form-style AC-6806.5)도 그대로
       const { guide } = action
       const keepPicture = state.content.picture === 'custom'
       const content: GuideContent = {
@@ -153,7 +170,7 @@ export function guideReducer(state: GuideState, action: GuideAction): GuideState
         tidying: false,
         tidyError: null,
         truncated: action.truncated,
-        content: withColors(content, guideColorsOf(state.content)),
+        content: withStyle(withColors(content, guideColorsOf(state.content)), styleOf(state.content)),
       }
     }
     case 'tidyFailed':
@@ -192,6 +209,11 @@ export function guideReducer(state: GuideState, action: GuideAction): GuideState
       const colors = action.colors === null ? null : checkGuideColors(action.colors)
       if (action.colors !== null && colors === null) return state
       return { ...state, content: withColors(state.content, colors) }
+    }
+    case 'style': {
+      // 정확히 여섯 열쇠·범위·5의 배수·색 모양일 때만 받는다(밀대·색 칩은 맞는 값만 보낸다). 처음대로면 열쇠를 지운다
+      if (checkStyle(action.style) === null) return state
+      return { ...state, content: withStyle(state.content, action.style) }
     }
     case 'new':
       return { ...initialGuideState(), list: state.list }

@@ -2,13 +2,15 @@
 
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { memoProblem } from '@/lib/forms/ai'
-import { guideFileName, guideTitle } from '@/lib/forms/guide'
+import { guideColorsOf, guideFileName, guideTitle } from '@/lib/forms/guide'
 import { subjectProblem } from '@/lib/forms/guideDrawing'
 import type { PosterLogo } from '@/lib/forms/layout'
 import type { GuideColors } from '@/lib/forms/logoColors'
 import { downloadGuidePng } from '@/lib/forms/png'
 import { deleteGuide, insertGuide, listGuides, updateGuide } from '@/lib/storage/formGuides'
+import { BASIC_COLORS } from './colorChoices'
 import { LEAVE_CONFIRM } from './formsState'
+import { guidePalette } from './guideColors'
 import { GuideEditor } from './GuideEditor'
 import { GuidePoster } from './GuidePoster'
 import {
@@ -31,7 +33,8 @@ import { PreviewPanel } from './PreviewPanel'
 // 목록은 만들어질 때 한 번 읽는다(AC-4501.2). 숨은 동안은 인쇄 사본을 그리지 않는다(인쇄 면에는 보이는 도구의 사본 하나, AC-4501.4).
 // 대충 적은 글은 [정리하기] 때만 /api/ai/forms/guide로, 그릴 것은 [AI로 그림 그리기] 때만 /api/ai/forms/guide/picture로 보내고 저장하지 않는다(ADR-028).
 // 저장은 브라우저 Supabase + RLS(lib/storage/formGuides).
-// 로고 자리·로고 색은 서식 화면이 병원 정보에서 읽어 넘긴다(spec clinic-profile REQ-6604). 로고를 읽는 동안(logo null) [인쇄·PDF]·[그림 파일]은 막힌다
+// 로고 자리·로고 색은 서식 화면이 병원 정보에서 읽어 넘긴다(spec clinic-profile REQ-6604). 로고를 읽는 동안(logo null) [인쇄·PDF]·[그림 파일]은 막힌다.
+// '글씨·로고' 칸(spec form-style design.md 8절): 로고 색 칩·칠할 수 있는지도 서식 화면이 넘기고, 직접 고르기 시작 색은 여기서 정한다(AC-6801.3)
 
 const TIDY_PATH = '/api/ai/forms/guide'
 const DRAW_PATH = '/api/ai/forms/guide/picture'
@@ -59,13 +62,20 @@ async function ask<T>(path: string, text: string, answerOf: (status: number, bod
 const askTidy = (text: string) => ask<GuideTidyAnswer>(TIDY_PATH, text, guideAnswerOf, BUSY)
 const askDrawing = (text: string) => ask<GuideDrawingAnswer>(DRAW_PATH, text, drawingAnswerOf, BUSY)
 
+// 직접 고르기 시작 색에 쓰는 기본 색(이름으로 찾는다): 본문 흰색, 로고 색 칩이 없을 때 로고 검정
+const basic = (name: string) => BASIC_COLORS.find((c) => c.name === name)?.hex ?? BASIC_COLORS[0].hex
+const WHITE = basic('흰색')
+const BLACK = basic('검정')
+
 type Props = {
   hidden: boolean
   logo: PosterLogo | null // 로고 자리 값. null = 병원 정보·로고를 읽는 중
   logoColors: GuideColors | null // 로고에서 뽑은 두 색([자동]일 때)
+  logoSwatches: readonly string[] // 로고에서 뽑은 색 칩(휴진 안내와 같은 표본)
+  logoTintable: boolean // 로고에 색을 칠할 수 있다
 }
 
-export function GuideWorkspace({ hidden, logo, logoColors }: Props) {
+export function GuideWorkspace({ hidden, logo, logoColors, logoSwatches, logoTintable }: Props) {
   const [state, dispatch] = useReducer(guideReducer, undefined, initialGuideState)
   const [imaging, setImaging] = useState(false)
   const posterRef = useRef<HTMLDivElement>(null)
@@ -79,6 +89,12 @@ export function GuideWorkspace({ hidden, logo, logoColors }: Props) {
   const ready = readyGuide(state)
   const dirty = isDirty(state)
   const problems = visibleProblems(state)
+  // 직접 고르기 시작 색(AC-6801.3): 제목은 띠 색('색' 칸 > 로고 색 > 지금 색), 본문은 흰색, 로고는 로고 색 칩 첫째(없으면 검정)
+  const starts = {
+    title: guidePalette(guideColorsOf(state.content), logoColors).dark.toLowerCase(),
+    body: WHITE,
+    logo: logoSwatches[0] ?? BLACK,
+  }
   const list: SavedList =
     state.list.kind === 'ok'
       ? { kind: 'ok', items: state.list.items.map((g) => ({ id: g.id, title: guideTitle(g.content), updatedAt: g.updatedAt })) }
@@ -214,6 +230,9 @@ export function GuideWorkspace({ hidden, logo, logoColors }: Props) {
             onTidy={() => void tidy()}
             onDraw={() => void draw()}
             logoColors={logoColors}
+            logoSwatches={logoSwatches}
+            starts={starts}
+            logoTintable={logoTintable}
           />
           <PreviewPanel
             poster={<GuidePoster content={state.content} logo={logo} logoColors={logoColors} />}

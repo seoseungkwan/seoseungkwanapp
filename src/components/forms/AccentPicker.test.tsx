@@ -12,8 +12,10 @@ import type { SavedBackground } from '@/types/formBackground'
 import type { SavedNotice } from '@/types/forms'
 import { FormsScreen } from './FormsScreen'
 
-// 휴진 안내 '글자 색' 칸(AccentPicker)과 서식 화면 잇기 (spec forms-accent TASK-5, REQ-4701~4703, design.md 7절,
-// 승인 시안 docs/mockups/forms-accent/screen.html). FormsScreen을 통째로 그려 본다(ThemePicker.test.tsx 본뜸).
+// 휴진 안내 '강조 색' 줄(AccentPicker)과 서식 화면 잇기 (spec forms-accent TASK-5, REQ-4701~4703, design.md 7절).
+// spec form-style AC-6801.5(TASK-6)로 '배경' 칸 아래 '글자 색' 칸이 '글씨·로고' 묶음의 '강조 색' 줄이 됐다 — 이름·자리·고르기 모양(ColorChips:
+// [자동] · 로고 색 칩 · 기본 색 16가지 · 직접 고르기)을 바꾸고 forms-accent AC-4701~4703의 뜻은 그대로 본다(승인 시안 docs/mockups/form-style).
+// FormsScreen을 통째로 그려 본다(ThemePicker.test.tsx 본뜸).
 // 가짜: fetch(AI 배경 경로)·안내문 저장(formNotices)·내 배경 저장(formBackgrounds)·readBackground·downloadPosterPng·confirm·print.
 // [저장] 몸통 시험 하나만 진짜 저장 모듈을 가짜 Supabase 클라이언트로 돌려 보낸 몸통을 본다. 오늘은 prop으로 2026-11-10(한국 날짜)
 
@@ -50,7 +52,8 @@ const OTHER = '#0b7a5c'
 const LIGHT = '#f6d365'
 const WARN = '옅은 색이라 흰 글자·흰 카드 위 글이 잘 안 보일 수 있어요'
 const DIRTY = '저장하지 않은 내용이 있어요'
-const helpOf = (month: number) => `'${month}월'·날짜 띠·카드 아래 글이 이 색이에요. 자동은 테마·배경에 맞춰 골라요`
+const helpOf = (month: number) => `'${month}월'·날짜 띠·카드 아래 글이 이 색이에요. 자동은 로고가 있으면 로고 색, 없으면 테마·배경에 맞춰 골라요`
+const RED = '#dc2626' // 기본 색 '빨강'
 
 const saved = (id: string, words: string, accent: string, thumb: string, createdAt: string): SavedBackground => ({
   id,
@@ -105,11 +108,6 @@ const fetchSpy = vi.fn<typeof fetch>()
 const confirmSpy = vi.fn<(message?: string) => boolean>()
 const printSpy = vi.fn()
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status })
-const SHOW_PICKER = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'showPicker')
-
-function setShowPicker(value: unknown) {
-  Object.defineProperty(HTMLInputElement.prototype, 'showPicker', { value, configurable: true, writable: true })
-}
 
 beforeEach(() => {
   vi.mocked(listNotices).mockResolvedValue([AUG])
@@ -132,8 +130,6 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   vi.unstubAllGlobals()
-  if (SHOW_PICKER) Object.defineProperty(HTMLInputElement.prototype, 'showPicker', SHOW_PICKER)
-  else delete (HTMLInputElement.prototype as { showPicker?: unknown }).showPicker
 })
 
 async function open(notices: SavedNotice[] = [AUG]) {
@@ -153,25 +149,22 @@ async function readyScreen(notices: SavedNotice[] = [AUG]) {
   return user
 }
 
-const accentBox = () => screen.getByRole('group', { name: '글자 색' })
-const accentButton = (name: '자동' | '직접 고르기') => within(accentBox()).getByRole('button', { name })
-const pressed = () => within(accentBox()).getAllByRole('button').map((b) => [b.textContent, b.getAttribute('aria-pressed')])
-const AUTO_ON = [
-  ['자동', 'true'],
-  ['직접 고르기', 'false'],
-]
-const OWN_ON = [
-  ['자동', 'false'],
-  ['직접 고르기', 'true'],
-]
-const colorInput = () => screen.getByLabelText('글자 색 고르기') as HTMLInputElement
-const swatch = () => {
-  const label = colorInput().closest('label')
-  if (!label) throw new Error('색 칸을 감싼 label이 없다')
-  return label
-}
-const shownText = () => swatch().textContent
-const dimmed = () => swatch().classList.contains('opacity-50')
+const styleBox = () => screen.getByRole('group', { name: '글씨·로고' })
+const accentBox = () => screen.getByRole('group', { name: '강조 색' })
+const autoButton = () => within(accentBox()).getByRole('button', { name: '자동' })
+const chip = (name: string) => within(accentBox()).getByRole('button', { name: `강조 색 ${name}` })
+// 눌린 단추(첫 단추 '자동' 또는 칩 이름)
+const pressed = () =>
+  within(accentBox())
+    .getAllByRole('button')
+    .filter((b) => b.getAttribute('aria-pressed') === 'true')
+    .map((b) => b.getAttribute('aria-label') ?? b.textContent)
+const AUTO_ON = ['자동']
+const colorInput = () => screen.getByLabelText('강조 색 직접 고르기') as HTMLInputElement
+// 직접 고른 색(어느 칩과도 다름)이면 색 칸에 눌린 표시(data-own)
+const own = () => colorInput().getAttribute('data-own') === 'true'
+// 지금 색 글: 고른 색이면 그 값, 자동이면 '자동 <색>'
+const shownText = () => within(styleBox()).getByText(/^(?:자동 )?#[0-9a-f]{6}$/).textContent
 const pickColor = (value: string) => fireEvent.input(colorInput(), { target: { value } })
 
 const bgBox = () => screen.getByRole('region', { name: '배경' })
@@ -240,30 +233,33 @@ async function realStorage() {
   return sent
 }
 
-describe('AC-4701.1: 글자 색 칸', () => {
-  it("AC-4701.1: '배경' 칸 맨 아래에 제목 '글자 색', 묶음 [자동]·[직접 고르기](읽는 이름 '글자 색'), 색 고르기 칸, 지금 색 글, 도움말이 있다", async () => {
+describe('AC-4701.1·AC-6801.5: 강조 색 줄', () => {
+  it("AC-4701.1·AC-6801.5: '배경' 칸 아래 '글자 색' 칸은 없고, '글씨·로고' 묶음 안 '본문 글씨'와 '로고' 사이에 '강조 색' 줄(고르기 묶음 이름 '강조 색')·지금 색 글·도움말이 있다", async () => {
     await open()
+    expect(screen.queryByRole('group', { name: '글자 색' })).toBeNull()
+    expect(screen.queryByLabelText('글자 색 고르기')).toBeNull()
+    expect(screen.queryByText('글자 색')).toBeNull()
+
     const group = accentBox()
-    const titleId = group.getAttribute('aria-labelledby')
-    expect(titleId).toBeTruthy()
-    expect(document.getElementById(String(titleId))?.textContent).toBe('글자 색')
-    expect(group.getAttribute('aria-label')).toBeNull()
+    expect(styleBox().contains(group)).toBe(true)
+    expect(within(styleBox()).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['제목 글씨', '본문 글씨', '강조 색', '로고'])
     expect(pressed()).toEqual(AUTO_ON)
     for (const b of within(group).getAllByRole('button')) expect(b.getAttribute('type')).toBe('button')
-
+    expect(chip('빨강')).toBeTruthy()
     expect(colorInput().getAttribute('type')).toBe('color')
-    expect(colorInput().getAttribute('aria-label')).toBe('글자 색 고르기')
+    expect(group.contains(colorInput())).toBe(true)
     expect(shownText()).toMatch(/^자동 #[0-9a-f]{6}$/)
-    expect(screen.getByText(helpOf(11))).toBeTruthy()
+    const help = within(styleBox()).getByText(helpOf(11))
+    expect(group.compareDocumentPosition(help) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
-    // 놓인 자리: '배경' 칸 바로 뒤(눈으로는 배경 칸 맨 아래), 미리보기보다 앞
-    expect(bgBox().compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // 놓인 자리: '배경' 칸 뒤(배경 칸 밖), 미리보기보다 앞, 만들기 패널 안
+    expect(bgBox().compareDocumentPosition(styleBox()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(bgBox().contains(group)).toBe(false)
     expect(group.compareDocumentPosition(previewRegion()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getByRole('region', { name: '만들기' }).parentElement?.contains(group)).toBe(true)
   })
 
-  it("AC-4701.1: 도움말의 'N월'은 안내 달을 따른다", async () => {
+  it("AC-4701.1·AC-6801.5: 도움말의 'N월'은 안내 달을 따른다", async () => {
     await readyScreen()
     expect(screen.getByText(helpOf(5))).toBeTruthy()
     fireEvent.change(screen.getByLabelText('안내 달'), { target: { value: '2027-12' } })
@@ -273,13 +269,13 @@ describe('AC-4701.1: 글자 색 칸', () => {
 })
 
 describe('AC-4701.2: 처음은 [자동]', () => {
-  it('AC-4701.2: 새 안내문은 [자동]이 눌려 있고, 색 칸은 미리보기에 쓰이는 테마 강조색을 흐리게(누를 수 있게) 보이며, 지금 색 글은 자동 #…이다', async () => {
+  it('AC-4701.2: 새 안내문은 [자동]만 눌려 있고, 색 칸은 미리보기에 쓰이는 테마 강조색에서 시작하며(눌린 표시 없음) 지금 색 글은 자동 #…이다', async () => {
     await open()
     const auto = themeOf('m11').accent
     expect(firstHref(poster())).toBe('/poster/themes/m11.svg')
     expect(pressed()).toEqual(AUTO_ON)
     expect(colorInput().value).toBe(auto)
-    expect(dimmed()).toBe(true)
+    expect(own()).toBe(false)
     expect(colorInput().disabled).toBe(false)
     expect(shownText()).toBe(`자동 ${auto}`)
     expect(paint(poster()).month).toBe(auto)
@@ -303,7 +299,7 @@ describe('AC-4701.2: 처음은 [자동]', () => {
     const auto = themeOf('liberation').accent
     expect(pressed()).toEqual(AUTO_ON)
     expect(colorInput().value).toBe(auto)
-    expect(dimmed()).toBe(true)
+    expect(own()).toBe(false)
     expect(shownText()).toBe(`자동 ${auto}`)
   })
 
@@ -322,14 +318,14 @@ describe('AC-4701.2: 처음은 [자동]', () => {
   })
 })
 
-describe('AC-4701.3: 색 고르기·[직접 고르기]·[자동]', () => {
-  it("AC-4701.3: 색 칸에서 색을 고르면 그 색(소문자)이 되고 [직접 고르기]가 눌리며 지금 색 글이 #rrggbb, 미리보기·인쇄 사본의 'N월'·날짜 띠·카드 아래 글이 그 색이다", async () => {
+describe('AC-4701.3: 색 칸·칩·[자동]', () => {
+  it("AC-4701.3: 색 칸에서 색을 고르면 그 색(소문자)이 되고 아무 단추도 눌리지 않은 채 색 칸에 눌린 표시, 지금 색 글이 #rrggbb, 미리보기·인쇄 사본의 'N월'·날짜 띠·카드 아래 글이 그 색이다", async () => {
     await readyScreen()
     pickColor(PICKED.toUpperCase())
-    expect(pressed()).toEqual(OWN_ON)
+    expect(pressed()).toEqual([])
+    expect(own()).toBe(true)
     expect(colorInput().value).toBe(PICKED)
     expect(shownText()).toBe(PICKED)
-    expect(dimmed()).toBe(false)
     expect(paint(poster())).toEqual(painted(PICKED, 1))
     expect(paint(printCopy())).toEqual(painted(PICKED, 1))
     expect(usedBy(poster(), PICKED)).toBe(3) // 그 밖의 글자·카드는 그 색이 아니다
@@ -342,62 +338,37 @@ describe('AC-4701.3: 색 고르기·[직접 고르기]·[자동]', () => {
     expect(paint(printCopy())).toEqual(painted(OTHER, 1))
   })
 
-  it('AC-4701.3: [자동]일 때 [직접 고르기]를 누르면 글자 색이 지금 자동 색이 되고 색 고르기 창(showPicker)을 연다. 이미 직접이면 아무것도 하지 않는다', async () => {
-    const showPicker = vi.fn()
-    setShowPicker(showPicker)
+  it('AC-4701.3·AC-6801.4: 기본 색 칩을 누르면 그 색이 되고 그 칩만 눌리며(색 칸 눌린 표시 없음), 고른 뒤 테마를 바꿔도 그대로다', async () => {
     const user = await readyScreen()
-    const auto = themeOf('children').accent
-    await user.click(accentButton('직접 고르기'))
-    expect(pressed()).toEqual(OWN_ON)
-    expect(shownText()).toBe(auto)
-    expect(colorInput().value).toBe(auto)
-    expect(dimmed()).toBe(false)
-    expect(showPicker).toHaveBeenCalledTimes(1)
-    expect(showPicker.mock.contexts[0]).toBe(colorInput())
+    await user.click(chip('빨강'))
+    expect(pressed()).toEqual(['강조 색 빨강'])
+    expect(own()).toBe(false)
+    expect(colorInput().value).toBe(RED)
+    expect(shownText()).toBe(RED)
+    expect(paint(poster())).toEqual(painted(RED, 1))
+    expect(paint(printCopy())).toEqual(painted(RED, 1))
 
-    // 직접 고른 뒤 테마를 바꿔도 글자 색은 그대로다
     fireEvent.change(themeBox(), { target: { value: 'christmas' } })
-    expect(shownText()).toBe(auto)
-    expect(paint(poster())).toEqual(painted(auto, 1))
-
-    pickColor(PICKED)
-    await user.click(accentButton('직접 고르기'))
-    expect(shownText()).toBe(PICKED)
-    expect(showPicker).toHaveBeenCalledTimes(1)
+    expect(shownText()).toBe(RED)
+    expect(paint(poster())).toEqual(painted(RED, 1))
   })
 
-  it('AC-4701.3: showPicker가 없거나 던지는 브라우저에서도 [직접 고르기]는 색만 바꾼다', async () => {
-    setShowPicker(undefined)
-    const user = await readyScreen()
-    await user.click(accentButton('직접 고르기'))
-    expect(pressed()).toEqual(OWN_ON)
-    expect(shownText()).toBe(themeOf('children').accent)
-
-    await user.click(accentButton('자동'))
-    setShowPicker(() => {
-      throw new DOMException('사용자 동작 없음', 'NotAllowedError')
-    })
-    await user.click(accentButton('직접 고르기'))
-    expect(pressed()).toEqual(OWN_ON)
-    expect(shownText()).toBe(themeOf('children').accent)
-  })
-
-  it('AC-4701.3: [자동]을 누르면 글자 색이 없어지고 자동 색(흐림·자동 #…)으로 돌아간다', async () => {
+  it('AC-4701.3: [자동]을 누르면 글자 색이 없어지고 자동 색(색 칸 시작 색·자동 #…)으로 돌아간다', async () => {
     const user = await readyScreen()
     pickColor(PICKED)
-    await user.click(accentButton('자동'))
+    await user.click(autoButton())
     const auto = themeOf('children').accent
     expect(pressed()).toEqual(AUTO_ON)
     expect(colorInput().value).toBe(auto)
     expect(shownText()).toBe(`자동 ${auto}`)
-    expect(dimmed()).toBe(true)
+    expect(own()).toBe(false)
     expect(paint(poster())).toEqual(painted(auto, 1))
     expect(paint(printCopy())).toEqual(painted(auto, 1))
   })
 })
 
-describe('AC-4701.4: 옅은 색 경고', () => {
-  it('AC-4701.4: 직접 고른 색이 흰색과 4.5 미만이면 경고가 경고색으로 보이고, [저장]·[인쇄·PDF]·[그림 파일]은 막히지 않고 그대로 된다', async () => {
+describe('AC-4701.4·AC-6801.5: 옅은 색 경고', () => {
+  it('AC-4701.4·AC-6801.5: 직접 고른 색이 흰색과 4.5 미만이면 경고가 경고색으로 보이고, [저장]·[인쇄·PDF]·[그림 파일]은 막히지 않고 그대로 된다', async () => {
     expect(isLightAccent(LIGHT)).toBe(true)
     const user = await readyScreen()
     pickColor(LIGHT)
@@ -415,7 +386,7 @@ describe('AC-4701.4: 옅은 색 경고', () => {
     expect(paint(vi.mocked(downloadPosterPng).mock.calls[0][0])).toEqual(painted(LIGHT, 1))
   })
 
-  it('AC-4701.4: 4.5 이상인 색이거나 [자동]이면(자동 색이 옅어도) 경고가 없다', async () => {
+  it('AC-4701.4·AC-6801.5: 4.5 이상인 색이거나 [자동]이면(자동 색이 옅어도) 경고가 없다', async () => {
     expect(isLightAccent(PICKED)).toBe(false)
     expect(isLightAccent(themeOf('children').accent)).toBe(true)
     const user = await readyScreen()
@@ -424,8 +395,21 @@ describe('AC-4701.4: 옅은 색 경고', () => {
     expect(screen.queryByText(WARN)).toBeNull()
     pickColor(LIGHT)
     expect(screen.getByText(WARN)).toBeTruthy()
-    await user.click(accentButton('자동'))
+    await user.click(autoButton())
     expect(screen.queryByText(WARN)).toBeNull()
+  })
+
+  it('AC-6801.5: 옅은 기본 색 칩(흰색·노랑)을 골라도 경고가 보이고, 진한 칩(남색)이면 없다', async () => {
+    const user = await readyScreen()
+    for (const [name, light] of [
+      ['흰색', true],
+      ['노랑', true],
+      ['남색', false],
+    ] as const) {
+      await user.click(chip(name))
+      expect(pressed()).toEqual([`강조 색 ${name}`])
+      expect(screen.queryByText(WARN) !== null, name).toBe(light)
+    }
   })
 })
 
@@ -479,6 +463,10 @@ describe('AC-4702.1: 어느 그림 위에서도 고른 색', () => {
   })
 })
 
+// 저장 몸통 열쇠: 다섯 칸 + 글씨·로고 여섯 칸(spec form-style AC-6806.2 — 처음대로면 여섯 칸 모두 null)
+const BODY_KEYS = ['accent', 'body_color', 'body_scale', 'cards', 'logo_color', 'logo_scale', 'month', 'theme', 'title_color', 'title_scale', 'year']
+const STYLE_COLUMNS = ['title_scale', 'body_scale', 'logo_scale', 'title_color', 'body_color', 'logo_color']
+
 describe('AC-4703.1: [저장] 몸통의 accent', () => {
   it('AC-4703.1: 직접 고른 색은 accent(소문자 #rrggbb)로, 자동은 accent: null로 몸통에 들어간다(칸이 빠지지 않는다)', async () => {
     const sent = await realStorage()
@@ -487,8 +475,9 @@ describe('AC-4703.1: [저장] 몸통의 accent', () => {
     await screen.findByText('저장됨')
     expect(sent).toHaveLength(1)
     expect(sent[0].kind).toBe('insert')
-    expect(Object.keys(sent[0].body).sort()).toEqual(['accent', 'cards', 'month', 'theme', 'year'])
+    expect(Object.keys(sent[0].body).sort()).toEqual(BODY_KEYS)
     expect(sent[0].body.accent).toBeNull()
+    expect(STYLE_COLUMNS.map((key) => sent[0].body[key])).toEqual(Array(6).fill(null))
 
     pickColor(PICKED.toUpperCase())
     expect(screen.getByText(DIRTY)).toBeTruthy()
@@ -498,12 +487,12 @@ describe('AC-4703.1: [저장] 몸통의 accent', () => {
     expect(sent[1].body.accent).toBe(PICKED)
     expect(updateNotice).toHaveBeenCalledWith('new', expect.objectContaining({ accent: PICKED }))
 
-    await user.click(accentButton('자동'))
+    await user.click(autoButton())
     expect(screen.getByText(DIRTY)).toBeTruthy()
     await user.click(button('저장'))
     await screen.findByText('저장됨')
     expect(sent[2].kind).toBe('update')
-    expect(Object.keys(sent[2].body).sort()).toEqual(['accent', 'cards', 'month', 'theme', 'year'])
+    expect(Object.keys(sent[2].body).sort()).toEqual(BODY_KEYS)
     expect(sent[2].body.accent).toBeNull()
   })
 })
@@ -512,10 +501,10 @@ describe('AC-4703.2: 열기·바뀐 내용·새로 만들기', () => {
   it("AC-4703.2: 글자 색을 저장한 안내문을 열면 그 색으로 열리고, 바꾸면 '저장하지 않은 내용이 있어요', 처음 색으로 되돌리면 사라진다", async () => {
     const user = await open([AUG, DEC])
     await user.click(screen.getByRole('button', { name: /^2026년 12월 · 학회·성탄절 / }))
-    expect(pressed()).toEqual(OWN_ON)
+    expect(pressed()).toEqual([])
+    expect(own()).toBe(true)
     expect(colorInput().value).toBe(PICKED)
     expect(shownText()).toBe(PICKED)
-    expect(dimmed()).toBe(false)
     expect(paint(poster())).toEqual(painted(PICKED, 2))
     expect(paint(printCopy())).toEqual(painted(PICKED, 2))
     expect(screen.getByText('저장됨')).toBeTruthy()
@@ -527,12 +516,11 @@ describe('AC-4703.2: 열기·바뀐 내용·새로 만들기', () => {
     expect(screen.queryByText(DIRTY)).toBeNull()
     expect(screen.getByText('저장됨')).toBeTruthy()
 
-    // [자동] → 바뀐 내용. [직접 고르기]는 자동 색(성탄절)으로 시작해 아직 다르다. 처음 색을 고르면 사라진다
-    await user.click(accentButton('자동'))
+    // [자동] → 바뀐 내용. 색 칸은 자동 색(성탄절)에서 시작해 아직 다르다. 처음 색을 고르면 사라진다
+    await user.click(autoButton())
     expect(screen.getByText(DIRTY)).toBeTruthy()
-    await user.click(accentButton('직접 고르기'))
-    expect(shownText()).toBe(themeOf('christmas').accent)
-    expect(screen.getByText(DIRTY)).toBeTruthy()
+    expect(colorInput().value).toBe(themeOf('christmas').accent)
+    expect(shownText()).toBe(`자동 ${themeOf('christmas').accent}`)
     pickColor(PICKED)
     expect(screen.queryByText(DIRTY)).toBeNull()
   })
@@ -544,7 +532,7 @@ describe('AC-4703.2: 열기·바뀐 내용·새로 만들기', () => {
     expect(screen.queryByText(DIRTY)).toBeNull()
     pickColor(PICKED)
     expect(screen.getByText(DIRTY)).toBeTruthy()
-    await user.click(accentButton('자동'))
+    await user.click(autoButton())
     expect(screen.queryByText(DIRTY)).toBeNull()
     expect(screen.getByText('저장됨')).toBeTruthy()
   })
@@ -554,7 +542,7 @@ describe('AC-4703.2: 열기·바뀐 내용·새로 만들기', () => {
     await user.click(screen.getByRole('button', { name: /^2027년 1월 · 신정 / }))
     await screen.findByText(`고른 배경: ${WINTER.words}`)
     await vi.waitFor(() => expect(firstHref(poster())).toBe(jpegDataUrl(BYTES)))
-    expect(pressed()).toEqual(OWN_ON)
+    expect(own()).toBe(true)
     expect(shownText()).toBe(OTHER)
     expect(paint(poster())).toEqual(painted(OTHER, 1))
     expect(paint(printCopy())).toEqual(painted(OTHER, 1))
@@ -564,7 +552,7 @@ describe('AC-4703.2: 열기·바뀐 내용·새로 만들기', () => {
   it('AC-4703.2: [새로 만들기]는 자동으로 시작한다(연 안내문의 색·고치던 색 모두)', async () => {
     const user = await open([AUG, DEC])
     await user.click(screen.getByRole('button', { name: /^2026년 12월 · 학회·성탄절 / }))
-    expect(pressed()).toEqual(OWN_ON)
+    expect(own()).toBe(true)
     await user.click(button('+ 새로 만들기'))
     const auto = themeOf('m11').accent
     expect(pressed()).toEqual(AUTO_ON)
@@ -575,7 +563,7 @@ describe('AC-4703.2: 열기·바뀐 내용·새로 만들기', () => {
     // 새 안내문에서 고르던 색도 [새로 만들기]면 버린다(바뀐 내용이 있으면 먼저 묻는다)
     const card = screen.getByRole('group', { name: '카드 1' })
     fireEvent.change(within(card).getByLabelText('시작 날짜'), { target: { value: '2027-05-05' } })
-    pickColor(PICKED)
+    await user.click(chip('빨강'))
     await user.click(button('+ 새로 만들기'))
     expect(confirmSpy).toHaveBeenCalledTimes(1)
     expect(pressed()).toEqual(AUTO_ON)

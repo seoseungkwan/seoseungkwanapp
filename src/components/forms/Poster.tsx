@@ -1,8 +1,23 @@
 import { useId } from 'react'
-import { LOGO, LOGO_AREA, POSTER, layoutPoster, logoRect, logoTextFit, type LogoBox, type PosterLogo } from '@/lib/forms/layout'
+import {
+  LOGO,
+  LOGO_AREA,
+  LOGO_MAX,
+  POSTER,
+  layoutPoster,
+  logoRect,
+  logoTextFit,
+  logoTextWidth,
+  scaleLogoRect,
+  type LogoBox,
+  type PosterLogo,
+} from '@/lib/forms/layout'
+import type { GuideColors } from '@/lib/forms/logoColors'
+import { DEFAULT_STYLE } from '@/lib/forms/style'
 import { isAccentHex, themeHref, themeOf } from '@/lib/forms/themes'
 import type { BackgroundLook } from '@/types/formBackground'
 import type { ClosureNotice, ThemeArt, ThemeId } from '@/types/forms'
+import { NOTICE_INK, NOTICE_LEAD, noticeAutoColors } from './noticeColors'
 
 // 서식 탭 휴진 안내 그림(A4 세로 794×1123 SVG, spec forms design.md 5·6절).
 // 기준 그림은 승인 테마 시안 docs/mockups/forms/themes.html의 poster()다 — 자리·크기·굵기·색·자간·그림자·띠 모양을 그대로 옮겼다.
@@ -14,6 +29,8 @@ import type { ClosureNotice, ThemeArt, ThemeId } from '@/types/forms'
 // 글자로 된 병원 정보(이름·전화·주소)는 넣지 않는다 — 병원 로고 하나만 맨 아래에 둔다(specs/forms-logo).
 // 로고는 병원 정보 로고 그림, 로고가 없으면 병원 이름 굵은 글자다(spec clinic-profile AC-6604.1, LogoSlot).
 // 크기를 아는 로고 그림은 더 큰 로고 자리(LOGO_AREA)에 가장 크게 그린다(spec logo-fit AC-6703.1).
+// 글씨·로고 값(notice.style, spec form-style design.md 6절): 제목·본문 크기는 layoutPoster가, 제목·본문 색과 로고 크기·색은 여기서 쓴다.
+// [자동] 제목·강조 색은 로고 두 색이 있으면 로고 색이다(noticeAutoColors). 처음대로이고 로고 두 색이 없으면 지금 그림 그대로다(AC-6804.6).
 // 글자는 React가 이스케이프하고 HTML을 넣지 않는다
 
 const FONT = 'PosterPretendard' // 이 이름은 src/components/forms 안에서만 쓴다(AC-3510.2)
@@ -23,8 +40,6 @@ const FONT_CSS = [
   `@font-face { font-family: ${FONT}; font-weight: 900; src: url(/poster/fonts/Pretendard-Black.subset.woff2) format('woff2') }`,
 ].join('\n')
 
-const INK = '#262626' // '진료일정안내'·카드 이름
-const LEAD = '#3a3a3a' // 안내 두 줄
 const WHITE = '#fff' // 카드 바탕·띠 글·배경 위 흰 판
 const RADIUS = 22 // 카드 모서리
 
@@ -65,22 +80,54 @@ type LogoSlotProps = {
   area: LogoBox // 크기를 아는 로고 그림의 자리(spec logo-fit AC-6703.1·AC-6703.2)
   box: LogoBox // 원래 로고 상자: 크기 모르는 그림·이름 글자·옛 로고 그림(AC-6703.3·AC-6703.5)
   fill: string // 이름 글자 색
+  scale?: number // 로고 크기 %(spec form-style AC-6804.5). 기본 100 = 지금 크기
+  max: { width: number; height: number } // 로고를 키워도 넘지 않는 최대 폭·높이(LOGO_MAX·GUIDE_LOGO_MAX)
+  color?: string | null // 로고 색(spec form-style AC-6805.3). null = 원래 색
 }
 // 로고 자리 하나(spec clinic-profile design.md 6절, spec logo-fit design.md 5절): 그림이고 크기를 알면 자리(area) 안에 비율을 지켜
 // 가장 크게(logoRect), 크기를 모르면 원래 상자(box) 전체에 비율을 지켜(xMidYMid meet). 글자면 상자 가운데 900 글자를
-// 상자 높이 80%에서 상자 폭에 맞춘 크기로. 가장 작은 크기로도 넘치면 상자 폭으로 눌러 그린다. 환자 안내문(GuidePoster)도 같이 쓴다
-export function LogoSlot({ logo, area, box, fill }: LogoSlotProps) {
-  if (logo === undefined) return <image href={LOGO.href} x={box.x} y={box.y} width={box.width} height={box.height} />
+// 상자 높이 80%에서 상자 폭에 맞춘 크기로. 가장 작은 크기로도 넘치면 상자 폭으로 눌러 그린다. 환자 안내문(GuidePoster)도 같이 쓴다.
+// 로고 크기(scale %): 그 네모를 가운데를 지킨 채 키우고 줄인다(scaleLogoRect, 이름 글자는 logoTextFit). 로고 색(color): 이름 글자는 그 색 글자,
+// 칠할 수 있는 그림(tintable === true)은 불투명한 모양만 그 색으로 칠하는 필터를 건다(그림마다 다른 이름). 그 밖의 그림은 색을 쓰지 않는다
+export function LogoSlot({ logo, area, box, fill, scale = 100, max, color = null }: LogoSlotProps) {
+  const tintId = `logo-tint-${useId().replace(/[^\w-]/g, '')}`
+  if (logo === undefined) {
+    const at = scaleLogoRect(box, scale, max)
+    return <image href={LOGO.href} x={at.x} y={at.y} width={at.width} height={at.height} />
+  }
   if (logo === null) return null
   if (logo.kind === 'image') {
     if (typeof logo.href !== 'string' || !logo.href.startsWith(LOGO_IMAGE)) return null
     const { width, height } = logo
-    const at = isSide(width) && isSide(height) ? logoRect(area, { width, height }) : box
-    return <image href={logo.href} x={at.x} y={at.y} width={at.width} height={at.height} preserveAspectRatio="xMidYMid meet" />
+    const at = scaleLogoRect(isSide(width) && isSide(height) ? logoRect(area, { width, height }) : box, scale, max)
+    const tint = color !== null && logo.tintable === true
+    const image = (
+      <image
+        href={logo.href}
+        x={at.x}
+        y={at.y}
+        width={at.width}
+        height={at.height}
+        preserveAspectRatio="xMidYMid meet"
+        filter={tint ? `url(#${tintId})` : undefined}
+      />
+    )
+    if (!tint) return image
+    return (
+      <>
+        <defs>
+          <filter id={tintId}>
+            <feFlood floodColor={color} />
+            <feComposite in2="SourceAlpha" operator="in" />
+          </filter>
+        </defs>
+        {image}
+      </>
+    )
   }
   const text = typeof logo.text === 'string' ? logo.text.trim() : ''
   if (!text) return null
-  const { size, squeeze } = logoTextFit(text, box)
+  const { size, squeeze } = logoTextFit(text, box, scale, max)
   return (
     <text
       x={box.x + box.width / 2}
@@ -90,8 +137,8 @@ export function LogoSlot({ logo, area, box, fill }: LogoSlotProps) {
       fontFamily={FONT}
       fontSize={size}
       fontWeight={900}
-      fill={fill}
-      textLength={squeeze ? box.width : undefined}
+      fill={color ?? fill}
+      textLength={squeeze ? logoTextWidth(box, scale, max) : undefined}
       lengthAdjust={squeeze ? 'spacingAndGlyphs' : undefined}
     >
       {text}
@@ -105,16 +152,20 @@ type PosterProps = {
   art?: ThemeArt // 테마 그림 번호(기본 1)
   background?: BackgroundLook | null // 내 배경(AI 배경). 쓸 수 없는 값이면 테마로 그린다
   logo?: PosterLogo | null // 병원 정보 로고(서식 화면이 늘 넘긴다). null = 읽는 중
+  logoColors?: GuideColors | null // 병원 로고에서 뽑은 두 색([자동] 제목·강조 색, spec form-style AC-6803.1·AC-6803.2)
 }
 
-export function Poster({ notice, theme, art = 1, background = null, logo }: PosterProps) {
+export function Poster({ notice, theme, art = 1, background = null, logo, logoColors = null }: PosterProps) {
   // 미리보기와 인쇄 사본이 한 화면에 있어도 그림자·흐림 이름이 겹치지 않게 한다(숨긴 쪽 필터를 가리키면 그림자가 사라질 수 있다)
   const uid = useId().replace(/[^\w-]/g, '')
   const shadowId = `poster-shadow-${uid}`
   const softId = `poster-soft-${uid}`
   const bg = usableBackground(background)
-  // 강조색('N월'·날짜 띠·카드 아래 글): 직접 고른 글자 색이 맞는 모양이면 그 색, 아니면 자동(배경 강조색 또는 테마 강조색) (specs/forms-accent design.md 6절)
-  const accent = isAccentHex(notice.accent) ? notice.accent : bg ? bg.accent : themeOf(theme).accent
+  const style = notice.style ?? DEFAULT_STYLE
+  // [자동] 색: 로고 두 색이 있으면 제목 dark·강조 onWhite(main), 없으면 제목 지금 색·강조는 배경 강조색 또는 테마 강조색
+  const auto = noticeAutoColors({ logoColors, backgroundAccent: bg ? bg.accent : null, themeAccent: themeOf(theme).accent })
+  // 강조색('N월'·날짜 띠·카드 아래 글): 직접 고른 글자 색이 맞는 모양이면 그 색, 아니면 자동 (specs/forms-accent design.md 6절)
+  const accent = isAccentHex(notice.accent) ? notice.accent : auto.accent
   const layout = layoutPoster(notice)
   const { cx } = POSTER
   const cardsLabel = layout.cards.map((c) => `${c.date.text} ${c.name.text} ${c.status.text}`).join(', ')
@@ -146,14 +197,14 @@ export function Poster({ notice, theme, art = 1, background = null, logo }: Post
       <PosterText x={cx} y={162} size={132} weight={900} fill={accent} spacing="-0.02em">
         {layout.monthText}
       </PosterText>
-      <PosterText x={cx} y={296} size={120} weight={900} fill={INK} spacing="-0.045em">
-        진료일정안내
+      <PosterText x={cx} y={296} size={layout.title.size} weight={900} fill={style.titleColor ?? auto.title} spacing="-0.045em">
+        {layout.title.text}
       </PosterText>
-      <PosterText x={cx} y={417} size={27} weight={700} fill={LEAD} spacing="-0.02em">
-        {layout.leadLines[0]}
+      <PosterText x={cx} y={417} size={layout.lead[0].size} weight={700} fill={style.bodyColor ?? NOTICE_LEAD} spacing="-0.02em">
+        {layout.lead[0].text}
       </PosterText>
-      <PosterText x={cx} y={459} size={27} weight={700} fill={LEAD} spacing="-0.02em">
-        {layout.leadLines[1]}
+      <PosterText x={cx} y={459} size={layout.lead[1].size} weight={700} fill={style.bodyColor ?? NOTICE_LEAD} spacing="-0.02em">
+        {layout.lead[1].text}
       </PosterText>
       {layout.cards.map((c, i) => {
         const r = RADIUS
@@ -168,7 +219,7 @@ export function Poster({ notice, theme, art = 1, background = null, logo }: Post
           <PosterText key={`date-${i}`} x={mid} y={c.y + c.headH / 2} size={c.date.size} weight={700} fill={WHITE} spacing="-0.02em">
             {c.date.text}
           </PosterText>,
-          <PosterText key={`name-${i}`} x={mid} y={c.y + c.headH + c.bodyH * 0.3} size={c.name.size} weight={900} fill={INK} spacing="-0.03em">
+          <PosterText key={`name-${i}`} x={mid} y={c.y + c.headH + c.bodyH * 0.3} size={c.name.size} weight={900} fill={style.bodyColor ?? NOTICE_INK} spacing="-0.03em">
             {c.name.text}
           </PosterText>,
           <PosterText key={`status-${i}`} x={mid} y={c.y + c.headH + c.bodyH * 0.67} size={c.status.size} weight={900} fill={accent} spacing="0.02em">
@@ -176,8 +227,8 @@ export function Poster({ notice, theme, art = 1, background = null, logo }: Post
           </PosterText>,
         ]
       })}
-      {/* 병원 로고: 카드 다음 맨 위에, 받침·필터 없이 그대로(사용자 선택 ①). 이름 글자는 진한 글자색 */}
-      <LogoSlot logo={logo} area={LOGO_AREA} box={LOGO} fill={INK} />
+      {/* 병원 로고: 카드 다음 맨 위에, 받침 없이 그대로(사용자 선택 ①). 이름 글자는 진한 글자색. 로고 크기·색은 style대로 */}
+      <LogoSlot logo={logo} area={LOGO_AREA} box={LOGO} fill={NOTICE_INK} scale={style.logoScale} max={LOGO_MAX} color={style.logoColor} />
     </svg>
   )
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { BLANK_GUIDE, checkGuideValue, guideColorsOf, guideProblems, savableGuide, type GuideValue } from '@/lib/forms/guide'
 import { checkDrawing } from '@/lib/forms/guideDrawing'
 import type { GuideColors } from '@/lib/forms/logoColors'
+import { DEFAULT_STYLE, type FormStyle } from '@/lib/forms/style'
 import type { GuideContent, GuideDrawing, GuideField, GuideLine, SavedGuide } from '@/types/formGuide'
 import {
   blankLine,
@@ -529,5 +530,128 @@ describe('AC-6604.5·AC-6604.6: 색 칸 — [자동]·[직접 고르기]', () =>
     const own = run(start(), { type: 'open', guide: D })
     expect(colorsOf(run(own, { type: 'new' }))).toBeNull()
     expect(colorsOf(run(own, { type: 'deleteStart' }, { type: 'deleted', id: 'd' }))).toBeNull()
+  })
+})
+
+// ── 안내문 글씨·로고 값 (spec form-style REQ-6806 AC-6806.4·AC-6806.5, design.md 8절) ──
+
+describe('AC-6806.4·AC-6806.5: 글씨·로고 값 — content.style', () => {
+  // 작게 고른 크기라 줄이 넘치지 않는다
+  const STYLED: FormStyle = frozen({ titleScale: 90, bodyScale: 85, logoScale: 80, titleColor: '#1f2a44', bodyColor: null, logoColor: '#dc2626' })
+  const OTHER: FormStyle = frozen({ ...STYLED, titleScale: 95 })
+  const OWN: GuideColors = frozen({ main: '#3366cc', dark: '#102040' })
+  const S: SavedGuide = frozen({ id: 's', updatedAt: '2026-11-19T01:00:00.000Z', content: { ...structuredClone(INSURANCE), style: { ...STYLED } } as GuideValue })
+  const styleOf = (s: GuideState) => (s.content as GuideValue).style
+  // 이 기능 전 비교 글자: [글 칸 8개, 윗줄 작게, 그림, 그린 그림, 줄 표시, 줄들, 고른 색]
+  const OLD_INSURANCE = JSON.stringify([
+    [INSURANCE.tag, INSURANCE.subtitle, INSURANCE.big1, INSURANCE.big2, INSURANCE.boxTop, INSURANCE.boxBottom, INSURANCE.bandTitle, INSURANCE.note],
+    false,
+    'document',
+    null,
+    'check',
+    INSURANCE.lines.map((line) => [line.text, line.em]),
+    null,
+  ])
+
+  it('AC-6806.4: 새 안내문은 처음대로(style 열쇠 없음)이다', () => {
+    expect('style' in start().content).toBe(false)
+  })
+
+  it('AC-6806.4: style 동작은 처음대로가 아닌 값을 새 객체로 content.style에 넣고, 처음대로면 열쇠를 지운다', () => {
+    const input = { ...STYLED }
+    const s = run(start(), { type: 'style', style: input })
+    expect(styleOf(s)).toEqual(STYLED)
+    expect(styleOf(s)).not.toBe(input)
+    const back = run(s, { type: 'style', style: DEFAULT_STYLE })
+    expect('style' in back.content).toBe(false)
+    expect(back.content).toEqual(BLANK_GUIDE)
+  })
+
+  it.each([
+    ['제목 크기 75', { ...DEFAULT_STYLE, titleScale: 75 }],
+    ['본문 크기 83', { ...DEFAULT_STYLE, bodyScale: 83 }],
+    ['로고 크기 155', { ...DEFAULT_STYLE, logoScale: 155 }],
+    ['대문자 색', { ...DEFAULT_STYLE, bodyColor: '#FFFFFF' }],
+    ['열쇠 하나 덜', { titleScale: 100, bodyScale: 100, logoScale: 100, titleColor: null, bodyColor: null }],
+  ])('AC-6806.4: 틀린 값(%s)은 받지 않는다(상태 그대로)', (_, bad) => {
+    const before = run(start(), { type: 'style', style: STYLED })
+    expect(run(before, { type: 'style', style: bad as FormStyle })).toBe(before)
+  })
+
+  it('AC-6806.4: 새 안내문도 글씨·로고 값을 바꾸면 바뀐 내용이 있고, 처음대로로 되돌리면 없다(빈 안내문 비교 글자는 그대로)', () => {
+    const s = run(start(), { type: 'style', style: STYLED })
+    expect(isDirty(s)).toBe(true)
+    expect(isDirty(run(s, { type: 'style', style: DEFAULT_STYLE }))).toBe(false)
+  })
+
+  it('AC-6806.4: 처음대로면 비교 글자는 이 기능 전과 글자 그대로 같고, 아니면 끝에 여섯 값이 붙는다', () => {
+    expect(run(start(), { type: 'open', guide: A }).baseline).toBe(OLD_INSURANCE)
+    const withDefault: SavedGuide = { ...A, content: { ...structuredClone(INSURANCE), style: { ...DEFAULT_STYLE } } as GuideValue }
+    expect(run(start(), { type: 'open', guide: withDefault }).baseline).toBe(OLD_INSURANCE)
+    expect(run(start(), { type: 'open', guide: S }).baseline).toBe(`${OLD_INSURANCE.slice(0, -1)},90,85,80,"#1f2a44",null,"#dc2626"]`)
+  })
+
+  it('AC-6806.4: 글씨·로고 값이 저장된 안내문을 열면 그 값 그대로(새 객체)이고, 바꾸면 바뀐 내용이 있고 되돌리면 없다', () => {
+    const opened = run(start(), { type: 'open', guide: S })
+    expect(styleOf(opened)).toEqual(STYLED)
+    expect(styleOf(opened)).not.toBe((S.content as GuideValue).style)
+    expect(isDirty(opened)).toBe(false)
+    const changed = run(opened, { type: 'style', style: OTHER })
+    expect(isDirty(changed)).toBe(true)
+    expect(isDirty(run(changed, { type: 'style', style: { ...STYLED } }))).toBe(false)
+    expect(isDirty(run(opened, { type: 'style', style: DEFAULT_STYLE }))).toBe(true)
+  })
+
+  it('AC-6806.4: 글씨·로고 값이 없는 옛 안내문을 열면 처음대로이고, 값을 바꾸면 바뀐 내용이 있다', () => {
+    const opened = run(start(), { type: 'style', style: STYLED }, { type: 'open', guide: A })
+    expect('style' in opened.content).toBe(false)
+    expect(isDirty(opened)).toBe(false)
+    expect(isDirty(run(opened, { type: 'style', style: STYLED }))).toBe(true)
+  })
+
+  it('AC-6806.4: 저장하면 저장된 글씨·로고 값이 비교 기준이 된다', () => {
+    const saved = run(start(), { type: 'tidyDone', guide: INSURANCE, truncated: false }, { type: 'style', style: STYLED }, { type: 'saveStart' }, { type: 'saved', guide: S })
+    expect(isDirty(saved)).toBe(false)
+    expect(isDirty(run(saved, { type: 'style', style: DEFAULT_STYLE }))).toBe(true)
+  })
+
+  it('AC-6806.4: 저장 값(readyGuide)에 글씨·로고 값이 함께 들고, 처음대로면 style 열쇠가 없다(열쇠 13개)', () => {
+    const filled = run(start(), { type: 'tidyDone', guide: INSURANCE, truncated: false })
+    expect(readyGuide(run(filled, { type: 'style', style: STYLED }))).toEqual({ ...INSURANCE, style: STYLED })
+    expect(readyGuide(run(filled, { type: 'colors', colors: OWN }, { type: 'style', style: STYLED }))).toEqual({ ...INSURANCE, colors: OWN, style: STYLED })
+    const plain = readyGuide(run(filled, { type: 'style', style: STYLED }, { type: 'style', style: DEFAULT_STYLE }))
+    expect(plain).toEqual(INSURANCE)
+    expect(Object.keys(plain!)).toHaveLength(13)
+  })
+
+  it('AC-6806.5: AI 정리 답으로 칸이 새로 들어와도 고른 글씨·로고 값은 색처럼 그대로 남는다(처음대로면 처음대로 그대로)', () => {
+    const styled = run(start(), { type: 'colors', colors: OWN }, { type: 'style', style: STYLED }, { type: 'tidyStart' }, { type: 'tidyDone', guide: WAITING, truncated: false })
+    expect(styled.content).toEqual({ ...WAITING, colors: OWN, style: STYLED })
+    const opened = run(start(), { type: 'open', guide: S }, { type: 'tidyDone', guide: WAITING, truncated: false })
+    expect(styleOf(opened)).toEqual(STYLED)
+    const plain = run(start(), { type: 'tidyDone', guide: WAITING, truncated: false })
+    expect('style' in plain.content).toBe(false)
+  })
+
+  it('AC-6806.5: 칸·줄·그림·색을 고쳐도 고른 글씨·로고 값은 그대로다', () => {
+    const styled = run(start(), { type: 'style', style: STYLED })
+    const s = run(
+      typed(styled, { tag: '보험' }),
+      { type: 'firstSmall', value: true },
+      { type: 'mark', mark: 'number' },
+      { type: 'addLine' },
+      { type: 'line', index: 0, field: 'text', value: '진단서' },
+      { type: 'drawDone', drawing: WHEELCHAIR },
+      { type: 'picture', picture: 'knee' },
+      { type: 'colors', colors: OWN },
+      { type: 'colors', colors: null },
+    )
+    expect(styleOf(s)).toEqual(STYLED)
+  })
+
+  it('AC-6806.4: [새로 만들기]·지우기 뒤에는 처음대로다', () => {
+    const opened = run(start(), { type: 'open', guide: S })
+    expect('style' in run(opened, { type: 'new' }).content).toBe(false)
+    expect('style' in run(opened, { type: 'deleteStart' }, { type: 'deleted', id: 's' }).content).toBe(false)
   })
 })

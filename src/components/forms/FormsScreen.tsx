@@ -6,12 +6,14 @@ import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { memoProblem } from '@/lib/forms/ai'
 import type { PosterLogo } from '@/lib/forms/layout'
-import { logoPalette, type GuideColors } from '@/lib/forms/logoColors'
+import { logoPalette, logoSwatches, type GuideColors } from '@/lib/forms/logoColors'
 import { fitLogo } from '@/lib/forms/logoFit'
 import { fileNameOf, noticeTitle } from '@/lib/forms/notice'
 import { bitmapToPngUrl, downloadPosterPng, readLogoBitmap, readLogoPixels, type LogoPixels } from '@/lib/forms/png'
+import { DEFAULT_STYLE, logoTintable } from '@/lib/forms/style'
 import { themeOf } from '@/lib/forms/themes'
 import { deleteNotice, insertNotice, listNotices, updateNotice } from '@/lib/storage/formNotices'
+import { BASIC_COLORS } from './colorChoices'
 import {
   LEAVE_CONFIRM,
   formsReducer,
@@ -24,6 +26,7 @@ import {
 } from './formsState'
 import { GuideWorkspace } from './GuideWorkspace'
 import { NoticeEditor } from './NoticeEditor'
+import { NOTICE_LEAD, noticeAutoColors } from './noticeColors'
 import { NoticeList, type SavedList } from './NoticeList'
 import { Poster } from './Poster'
 import { PreviewPanel } from './PreviewPanel'
@@ -37,7 +40,9 @@ import { useBackgrounds } from './useBackgrounds'
 // 로고 자리(spec clinic-profile REQ-6604, design.md 6절): 병원 정보를 로고까지 한 번 읽어(useClinicProfile) 두 안내문에 같이 넘긴다.
 // 로고 그림이 있으면 그 그림을 한 번 작게 읽어 환자 안내문 [자동] 색을 뽑고, 로고가 없거나 못 읽으면 병원 이름 글자로 그린다.
 // 읽히는 로고는 흰 배경을 지우고 여백을 잘라 준비한 그림(PNG data: 주소)과 그 크기를 넘긴다(spec logo-fit REQ-6701·REQ-6702, prepareLogo).
-// 읽고 준비하는 동안에는 로고 자리를 비우고 [인쇄·PDF]·[그림 파일]을 막는다(AC-6604.2)
+// 읽고 준비하는 동안에는 로고 자리를 비우고 [인쇄·PDF]·[그림 파일]을 막는다(AC-6604.2).
+// 글씨·로고 칸(spec form-style design.md 1·8절): 로고 두 색과 같은 표본에서 로고 색 칩도 뽑아(readLogoPixels를 더 부르지 않는다, AC-6802.3)
+// 두 안내문 색 고르기에 넘기고, 준비한 그림에는 색을 칠해도 되는지(tintable, AC-6805.3)를 적는다. [자동] 제목·강조 색은 로고 색을 따른다(AC-6803.2)
 
 const TIDY_PATH = '/api/ai/forms'
 const DELETE_CONFIRM = '이 안내문을 지울까요?'
@@ -68,19 +73,25 @@ async function askTidy(text: string): Promise<TidyAnswer> {
   }
 }
 
-type FormLogo = { logo: PosterLogo | null; logoColors: GuideColors | null } // logo null = 읽는 중
-type Prepared = { logo: PosterLogo | null; colors: GuideColors | null } // logo null = 로고 그림을 못 읽음(병원 이름 글자)
+type FormLogo = { logo: PosterLogo | null; logoColors: GuideColors | null; logoSwatches: readonly string[] } // logo null = 읽는 중
+type Prepared = { logo: PosterLogo | null; colors: GuideColors | null; swatches: readonly string[] } // logo null = 로고 그림을 못 읽음(병원 이름 글자)
 type LogoRead = Prepared & { href: string }
-const READING: FormLogo = { logo: null, logoColors: null }
+const NO_SWATCHES: readonly string[] = Object.freeze([])
+const READING: FormLogo = { logo: null, logoColors: null, logoSwatches: NO_SWATCHES }
 const paletteOf = (pixels: LogoPixels) => logoPalette(pixels.data, pixels.width, pixels.height)
+const swatchesOf = (pixels: LogoPixels) => logoSwatches(pixels.data, pixels.width, pixels.height)
+// 직접 고르기 시작 색에 쓰는 기본 색(이름으로 찾는다): 로고 색 칩이 없을 때 로고는 검정
+const BLACK = BASIC_COLORS.find((c) => c.name === '검정')?.hex ?? BASIC_COLORS[0].hex
 
 // 로고 준비(spec logo-fit design.md 1·6절): 표본(64 점)을 못 읽으면 지금처럼 이름 글자(clinic-profile AC-6604.2).
 // 읽히면 큰 그림을 읽어 흰 배경을 지우고 여백을 잘라(fitLogo) PNG data: 주소로 만들고 그 크기와 함께 넘긴다. 색은 준비한 그림에서
-// 다시 뽑고 못 뽑으면 원래 표본 색. 준비가 어디서든 실패하면 원래 로고를 크기 없이(원래 상자, AC-6702.2). 저장·서버 전송은 없다(AC-6701.4)
+// 다시 뽑고 못 뽑으면 원래 표본 색. 준비가 어디서든 실패하면 원래 로고를 크기 없이(원래 상자, AC-6702.2). 저장·서버 전송은 없다(AC-6701.4).
+// 로고 색 칩은 두 색과 같은 표본에서 뽑는다(AC-6802.3). 준비한 그림은 투명 점이 넉넉할 때만 색을 칠할 수 있다(tintable, AC-6805.3) —
+// 원래 그림(준비 실패)에는 tintable을 넣지 않는다
 async function prepareLogo(href: string): Promise<Prepared> {
   const sample = await readLogoPixels(href)
-  if (sample === null) return { logo: null, colors: null }
-  const original: Prepared = { logo: { kind: 'image', href }, colors: paletteOf(sample) }
+  if (sample === null) return { logo: null, colors: null, swatches: NO_SWATCHES }
+  const original: Prepared = { logo: { kind: 'image', href }, colors: paletteOf(sample), swatches: swatchesOf(sample) }
   try {
     const bitmap = await readLogoBitmap(href)
     const fitted = bitmap === null ? null : fitLogo(bitmap)
@@ -88,8 +99,9 @@ async function prepareLogo(href: string): Promise<Prepared> {
     if (fitted === null || url === null) return original
     const again = await readLogoPixels(url)
     return {
-      logo: { kind: 'image', href: url, width: fitted.width, height: fitted.height },
+      logo: { kind: 'image', href: url, width: fitted.width, height: fitted.height, tintable: logoTintable(fitted) },
       colors: again === null ? original.colors : paletteOf(again),
+      swatches: again === null ? original.swatches : swatchesOf(again),
     }
   } catch {
     return original
@@ -112,15 +124,18 @@ function useFormLogo(): FormLogo {
     }
   }, [href])
   if (clinic.state === 'loading') return READING
-  const name: FormLogo = { logo: { kind: 'text', text: clinic.name }, logoColors: null }
+  const name: FormLogo = { logo: { kind: 'text', text: clinic.name }, logoColors: null, logoSwatches: NO_SWATCHES }
   if (href === null) return name
   if (read === null || read.href !== href) return READING
-  return read.logo === null ? name : { logo: read.logo, logoColors: read.colors }
+  return read.logo === null ? name : { logo: read.logo, logoColors: read.colors, logoSwatches: read.swatches }
 }
+
+// 로고에 색을 칠할 수 있다(AC-6801.8·AC-6805.3): 이름 글자, 투명 점이 넉넉한 준비한 그림, 아직 읽는 중(막힘이 잠깐 깜빡이지 않게)
+const tintableLogo = (logo: PosterLogo | null) => logo === null || logo.kind === 'text' || logo.tintable === true
 
 export function FormsScreen({ today }: { today?: string }) {
   const [state, dispatch] = useReducer(formsReducer, today, (given) => initialState(given ?? todayInKorea()))
-  const { logo, logoColors } = useFormLogo()
+  const { logo, logoColors, logoSwatches: swatches } = useFormLogo()
   const [imaging, setImaging] = useState(false)
   const [tool, setTool] = useState<Tool>('closure')
   const [guideSeen, setGuideSeen] = useState(false) // 환자 안내문을 한 번이라도 눌렀다(그때 만들고 목록을 읽는다)
@@ -135,8 +150,11 @@ export function FormsScreen({ today }: { today?: string }) {
   const bg = useBackgrounds(state.theme, (pick) => dispatch({ type: 'theme', theme: pick }))
   const preview = previewNotice(state)
   const look = bg.look(preview)
-  // '글자 색' 칸의 자동 색: 미리보기에 쓰이는 배경 강조색, 없으면 테마 강조색 (specs/forms-accent design.md 7-2절)
-  const autoAccent = look.background?.accent ?? themeOf(look.theme).accent
+  // [자동] 제목·강조 색(spec form-style AC-6803.1·AC-6803.2): 로고 두 색이 있으면 로고 색, 없으면 지금처럼 제목 지금 색·
+  // 강조는 미리보기에 쓰이는 배경 강조색 → 테마 강조색(미리보기 Poster와 같은 noticeAutoColors)
+  const auto = noticeAutoColors({ logoColors, backgroundAccent: look.background?.accent ?? null, themeAccent: themeOf(look.theme).accent })
+  // 직접 고르기 시작 색(AC-6801.3): 제목은 자동 제목 색, 본문은 안내 두 줄 지금 색, 로고는 로고 색 칩 첫째(없으면 검정)
+  const starts = { title: auto.title, body: NOTICE_LEAD, logo: swatches[0] ?? BLACK }
   const ready = look.blocked ? null : readyNotice(state)
   const dirty = isDirty(state)
   const list: SavedList =
@@ -279,11 +297,20 @@ export function FormsScreen({ today }: { today?: string }) {
               onMonth={(value) => dispatch({ type: 'month', value })}
               onTheme={(next) => dispatch({ type: 'theme', theme: next })}
               bg={bg}
-              autoAccent={autoAccent}
+              autoAccent={auto.accent}
               onAccent={(accent) => dispatch({ type: 'accent', accent })}
+              logoSwatches={swatches}
+              starts={starts}
+              logoTintable={tintableLogo(logo)}
+              onStyle={(style) => dispatch({ type: 'style', style })}
+              onReset={() => {
+                // [처음대로](AC-6801.7): 크기 셋 100·색 셋 없음, 강조 색도 자동
+                dispatch({ type: 'style', style: DEFAULT_STYLE })
+                dispatch({ type: 'accent', accent: null })
+              }}
             />
             <PreviewPanel
-              poster={<Poster notice={preview} theme={look.theme} art={look.art} background={look.background} logo={logo} />}
+              poster={<Poster notice={preview} theme={look.theme} art={look.art} background={look.background} logo={logo} logoColors={logoColors} />}
               empty={preview.cards.length === 0}
               posterRef={posterRef}
               ready={ready !== null}
@@ -309,11 +336,13 @@ export function FormsScreen({ today }: { today?: string }) {
       {tool === 'closure' && (
         <div data-print-copy="" aria-hidden="true" className="hidden print:block">
           <div className="h-[297mm] w-[210mm] *:block *:size-full">
-            <Poster notice={preview} theme={look.theme} art={look.art} background={look.background} logo={logo} />
+            <Poster notice={preview} theme={look.theme} art={look.art} background={look.background} logo={logo} logoColors={logoColors} />
           </div>
         </div>
       )}
-      {guideSeen && <GuideWorkspace hidden={tool !== 'guide'} logo={logo} logoColors={logoColors} />}
+      {guideSeen && (
+        <GuideWorkspace hidden={tool !== 'guide'} logo={logo} logoColors={logoColors} logoSwatches={swatches} logoTintable={tintableLogo(logo)} />
+      )}
     </>
   )
 }

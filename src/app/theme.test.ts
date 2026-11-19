@@ -685,13 +685,16 @@ const HEX = /#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})(?![\w-])/gi
 const COLOR_FN = /\b(?:rgba?|hsla?|color-mix)\(/gi
 // 16진수 색을 둘 수 있는 파일: 로고 두 색, 구글 상표 네 색,
 // 휴진 안내문 그림(인쇄물이라 테마 색을 직접 쓴다 — ADR-028): 그림 글자색·흰색, 테마 강조색 23개,
-// 환자 안내문 그림(ADR-028 덧붙임, specs/forms-guide AC-4510.2): 로고색 다섯 값과 AI 그림 색 이름 표
+// 환자 안내문 그림(ADR-028 덧붙임, specs/forms-guide AC-4510.2): 로고색 다섯 값과 AI 그림 색 이름 표,
+// 서식 글씨·로고 색(specs/form-style design.md 4절): 휴진 안내 글자 지금 색 둘(noticeColors)과 기본 색 16가지(colorChoices)
 const HEX_FILES = [
   'src/components/common/LogoMark.tsx',
   'src/components/common/GoogleMark.tsx',
   'src/components/forms/Poster.tsx',
   'src/lib/forms/themes.ts',
   'src/components/forms/guideColors.ts',
+  'src/components/forms/noticeColors.ts',
+  'src/components/forms/colorChoices.ts',
 ]
 // rgb(를 둘 수 있는 곳: 안내문 그림 카드 그림자 한 곳 (ADR-028)
 const COLOR_FN_ALLOWED: Record<string, number> = { 'src/components/forms/Poster.tsx': 1 }
@@ -722,7 +725,7 @@ describe('AC-202.3: 색 글자는 토큰 블록(과 로고·구글 마크)에만
     expect(read('src/app/globals.css').match(HEX)?.length ?? 0, '토큰 블록에 16진수 색이 있다').toBeGreaterThan(20)
   })
 
-  it('AC-202.3: 시험 파일 밖 src/의 16진수 색은 globals.css :root 토큰 블록·LogoMark·GoogleMark·안내문 그림(Poster·themes·guideColors)에만 있다', () => {
+  it('AC-202.3: 시험 파일 밖 src/의 16진수 색은 globals.css :root 토큰 블록·LogoMark·GoogleMark·안내문 그림(Poster·themes·guideColors·noticeColors·colorChoices)에만 있다', () => {
     const files = colorSources()
     expect(files).toEqual(expect.arrayContaining(['src/app/globals.css', 'src/components/common/LogoMark.tsx', 'src/components/landing/base.module.css']))
     const allowed = new Set(HEX_FILES)
@@ -743,15 +746,28 @@ describe('AC-202.3: 색 글자는 토큰 블록(과 로고·구글 마크)에만
 describe('AC-4510.2: 환자 안내문 그림 색은 components/forms/guideColors.ts 한 곳에만', () => {
   const GUIDE_PICTURE_FILES = ['src/components/forms/GuidePoster.tsx', 'src/components/forms/guidePictures.tsx']
 
-  it('AC-4510.2: 16진수 색 허용 파일은 원래 넷에 src/components/forms/guideColors.ts 하나만 더한 것이고, rgb( 허용은 휴진 안내 그림자 한 곳 그대로다', () => {
+  it('AC-4510.2: 16진수 색 허용 파일은 원래 넷에 src/components/forms/guideColors.ts와 서식 글씨·로고 색 둘(noticeColors·colorChoices, form-style)만 더한 것이고, rgb( 허용은 휴진 안내 그림자 한 곳 그대로다', () => {
     expect(HEX_FILES).toEqual([
       'src/components/common/LogoMark.tsx',
       'src/components/common/GoogleMark.tsx',
       'src/components/forms/Poster.tsx',
       'src/lib/forms/themes.ts',
       'src/components/forms/guideColors.ts',
+      'src/components/forms/noticeColors.ts',
+      'src/components/forms/colorChoices.ts',
     ])
     expect(COLOR_FN_ALLOWED).toEqual({ 'src/components/forms/Poster.tsx': 1 })
+  })
+
+  it('AC-4510.2: noticeColors.ts의 16진수 색은 휴진 안내 글자 지금 색 둘(#262626·#3a3a3a), colorChoices.ts는 기본 색 16가지뿐이고 rgb(류 색 함수가 없다 (form-style AC-6803.1·AC-6801.3)', () => {
+    const notice = read('src/components/forms/noticeColors.ts')
+    expect([...new Set(notice.match(HEX))].sort()).toEqual(['#262626', '#3a3a3a'])
+    expect(notice.match(COLOR_FN)).toBeNull()
+    const choices = read('src/components/forms/colorChoices.ts')
+    expect([...new Set(choices.match(HEX))].sort()).toEqual(
+      ['#111111', '#3a3a3a', '#6b7280', '#ffffff', '#1f2a44', '#2563eb', '#0ea5e9', '#0d9488', '#16a34a', '#65a30d', '#eab308', '#f97316', '#dc2626', '#db2777', '#7c3aed', '#92400e'].sort(),
+    )
+    expect(choices.match(COLOR_FN)).toBeNull()
   })
 
   it('AC-4510.2: guideColors.ts의 16진수 색은 로고색 다섯 값(#E6E006·#2e2e2e·#fff·#d6d6d6·#000)뿐이고 rgb(류 색 함수가 없다', () => {

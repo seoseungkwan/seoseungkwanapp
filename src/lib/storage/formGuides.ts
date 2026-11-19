@@ -6,6 +6,7 @@ import type { SavedGuide } from '@/types/formGuide'
 // 서식 탭 환자 안내문 읽기·저장 (specs/forms-guide design.md 7절, REQ-4507). 브라우저 Supabase 클라이언트 + RLS로만 한다(ADR-004).
 // 보내는 몸통은 { content } 하나다. content는 열쇠 13개(줄마다 text·em)를 골라 새로 만든 뒤 checkGuideValue(savableGuide(…))를 넘은 값이다.
 // [직접 고르기]로 고른 두 색은 colors 열쇠로 함께 보낸다(clinic-profile AC-6604.6). [자동](colors 없음·null)은 열쇠 없이 보낸다 — 옛 안내문과 같은 모양.
+// 글씨·로고 값은 style 열쇠로 함께 보낸다(form-style AC-6806.3, SQL 없음). 처음대로(style 없음·DEFAULT_STYLE)는 열쇠 없이 보낸다.
 // 그림이 custom이 아니면 drawing은 null로 보내고, 대충 적은 글·그릴 것은 보내지 않는다(AC-4507.5).
 // hospital_id·created_at·updated_at은 DB가 정하고, 어느 병원 줄인지는 RLS가 고른다.
 // 읽은 줄은 저장할 때와 같은 checkGuideValue를 넘어야 하고, 못 넘는 줄은 뺀다(고쳐 쓰지 않는다).
@@ -48,6 +49,8 @@ function bodyOf(c: GuideValue): Body | null {
   }
   // 색 모양 검사는 checkGuideValue가 한다: 틀린 색이면 null → 보내지 않는다
   if (c.colors !== undefined && c.colors !== null) picked.colors = c.colors
+  // 글씨·로고 값도 열쇠가 있을 때만 싣는다. 모양 검사·처음대로면 열쇠 빼기·새 객체 만들기는 checkGuideValue가 한다(틀리면 null → 보내지 않는다)
+  if (c.style !== undefined) picked.style = c.style
   // savableGuide: custom이 아니면 drawing을 비운다. checkGuideValue: 앞뒤 공백을 뗀 새 객체(그림도 새로 만든다)
   const content = checkGuideValue(savableGuide(picked))
   return content === null ? null : { content }
