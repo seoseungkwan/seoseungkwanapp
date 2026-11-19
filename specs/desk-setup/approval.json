@@ -1,0 +1,30 @@
+{
+  "status": "approved",
+  "feature": "desk-setup",
+  "approved_at": "2026-11-19T06:10:21Z",
+  "approved_via": "auto",
+  "session_id": "d8c599c5-f70a-49d3-a279-5c381ed7a718",
+  "spec_sha256": "42a3a85a3a46e98a6c703f3f66d37c8db0c1dac0db93ae3a091c97b67cc5995f",
+  "scope": [
+    "docs/ADR.md",
+    "docs/mockups/desk-setup/index.html",
+    "docs/mockups/desk-setup/notes.md",
+    "src/app/(app)/claim/setup/page.test.tsx",
+    "src/app/(app)/claim/setup/page.tsx",
+    "src/components/claim/setup/SetupScreen.test.tsx",
+    "src/components/claim/setup/SetupScreen.tsx",
+    "src/components/install/DownloadButton.tsx",
+    "src/components/shell/AccountMenu.tsx",
+    "src/components/shell/DeskGate.test.tsx",
+    "src/components/shell/menu.ts",
+    "src/components/shell/shell.test.tsx",
+    "src/components/sunap/RemoteView.test.tsx",
+    "src/components/sunap/RemoteView.tsx",
+    "src/components/worklog/BitNotice.test.tsx",
+    "src/components/worklog/BitNotice.tsx",
+    "src/lib/storage/installFiles.ts",
+    "supabase/deskInstallFiles.rls.test.ts",
+    "supabase/migrations/20261119200000_desk_install_files.sql",
+    "없음"
+  ]
+}
