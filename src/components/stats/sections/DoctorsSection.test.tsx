@@ -9,7 +9,7 @@ import { DoctorsSection } from './DoctorsSection'
 import { StatsCard } from './parts'
 import type { BitSectionsShown } from './PatientMixSection'
 
-// 원장님별 칸 (stats-bit-sections AC-2706.1·AC-2706.4·AC-2706.5·AC-2706.6·AC-2705.5·AC-2705.6·AC-2707.2, first90 REQ-4414 AC-4414.4,
+// 원장님별 칸 (stats-bit-sections AC-2706.1·AC-2706.4·AC-2706.5·AC-2706.6·AC-2705.5·AC-2705.6·AC-2707.2, first90 REQ-4414 AC-4414.4, bit-total AC-6907.2,
 // 시안 docs/mockups/first90/redesign.html .s-tbl·.s-docs). 이름·숫자는 모두 시험 안에서 지은 가짜다
 
 const HOSPITAL = '튼튼의원'
@@ -45,6 +45,7 @@ const bodyRows = () => within(table()).getAllByRole('row').slice(1)
 const texts = (tr: HTMLElement) => within(tr).getAllByRole('cell').map((td) => td.textContent)
 const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
 const DESC = '원장님마다 환자·신환·내원·매출'
+// 옛 칸 맨 끝 줄(first90 AC-4414.4) — bit-total AC-6907.2로 없어졌다
 const FOOT_NOW = '확인 필요한 날도 더해서 셌어요. 그래서 위 매출 요약과 다를 수 있어요.'
 // 768px 미만 원장님 카드: [이름, 매출] + 아래 다섯 칸 [이름표, 값]
 const cards = () => screen.getByRole('list', { name: '원장님별 카드' })
@@ -214,20 +215,21 @@ describe('AC-2706.4·AC-4414.4 원장님별 칸', () => {
     ])
   })
 
-  it('AC-4414.4: 아래 글 "확인 필요한 날도 더해서 셌어요. 그래서 위 매출 요약과 다를 수 있어요."가 접지 않고 칸 맨 끝에 보인다', () => {
+  it('AC-6907.2: 칸 맨 끝 줄 "확인 필요한 날도 더해서 셌어요. 그래서 위 매출 요약과 다를 수 있어요."가 없고 칸 맨 끝은 [어떻게 세나요?] · [표 복사] 칸이다', () => {
     draw(ready())
-    const foot = screen.getByText(FOOT_NOW)
-    expect(foot.closest('[hidden]')).toBeNull()
-    expect(section().lastElementChild).toBe(foot)
+    expect(screen.queryByText(FOOT_NOW)).toBeNull()
+    expect(section().lastElementChild!.contains(screen.getByRole('button', { name: '어떻게 세나요?' }))).toBe(true)
+    expect(section().textContent).not.toContain('확인 필요')
   })
 
-  it('AC-2706.4·AC-4109.2: 아래 글이 시안 그대로다(건당 진료비 · 확인 필요한 날 한 문장)', () => {
+  it('AC-6907.2·AC-2706.4·AC-4109.2: [어떻게 세나요?] 글이 새 시안 그대로다(건당 진료비 문장으로 끝나고 확인 필요한 날 문장이 없다)', () => {
     draw(ready())
     expect(
       screen.getByText(
-        '환자 수는 접수할 때 정한 진료의, 매출은 수납할 때 적힌 진료의로 나눠요. 두 원장님께 진료받은 분은 양쪽에 세요(합계는 한 번). 매출은 수납한 날의 총진료비(공단 + 본인부담 + 비급여)예요. 건당 진료비는 매출 ÷ 내원 건수예요. 확인 필요한 날(환불 등)도 더해서 위 매출 칸과 다를 수 있어요.',
+        '환자 수는 접수할 때 정한 진료의, 매출은 수납할 때 적힌 진료의로 나눠요. 두 원장님께 진료받은 분은 양쪽에 세요(합계는 한 번). 매출은 수납한 날의 총진료비(공단 + 본인부담 + 비급여)예요. 건당 진료비는 매출 ÷ 내원 건수예요.',
       ),
     ).toBeTruthy()
+    expect(screen.queryByText(/확인 필요한 날\(환불 등\)/)).toBeNull()
   })
 
   it('AC-2707.2: [표 복사]는 formatDoctors(병원 이름, 기간 글자, 표) 글이고 복사되면 "복사했어요"다', async () => {
@@ -254,8 +256,9 @@ describe('AC-2706.4·AC-4414.4 원장님별 칸', () => {
 
 // ── stats-pc-ux: 표 아래 [어떻게 세나요?] · [표 복사] 줄 (REQ-4004 AC-4004.2 ⑧, REQ-4005 AC-4005.1) ─────────────────
 describe('AC-4004.2 ⑧·AC-4005.1: 원장님별 표 아래 줄과 접는 설명', () => {
+  // bit-total AC-6907.2: 끝 문장 '확인 필요한 날(환불 등)도 …'이 빠진 글
   const FOOT =
-    '환자 수는 접수할 때 정한 진료의, 매출은 수납할 때 적힌 진료의로 나눠요. 두 원장님께 진료받은 분은 양쪽에 세요(합계는 한 번). 매출은 수납한 날의 총진료비(공단 + 본인부담 + 비급여)예요. 건당 진료비는 매출 ÷ 내원 건수예요. 확인 필요한 날(환불 등)도 더해서 위 매출 칸과 다를 수 있어요.'
+    '환자 수는 접수할 때 정한 진료의, 매출은 수납할 때 적힌 진료의로 나눠요. 두 원장님께 진료받은 분은 양쪽에 세요(합계는 한 번). 매출은 수납한 날의 총진료비(공단 + 본인부담 + 비급여)예요. 건당 진료비는 매출 ÷ 내원 건수예요.'
   const howButton = () => screen.getByRole('button', { name: '어떻게 세나요?' })
   const howBody = () => document.getElementById(howButton().getAttribute('aria-controls')!)!
   const copyButton = () => screen.getByRole('button', { name: '표 복사' })
@@ -277,7 +280,7 @@ describe('AC-4004.2 ⑧·AC-4005.1: 원장님별 표 아래 줄과 접는 설명
     expect(copyButton().classList.contains('max-md:w-full')).toBe(true)
   })
 
-  it('AC-4004.2·AC-4109.2: 아래 글은 "어떻게 세나요?" 칸 안에 있고 처음에는 접혀(hidden) 있어 그 자리에 보이지 않으며, 펼친 글은 그 줄 아래다', () => {
+  it('AC-4004.2·AC-4109.2·AC-6907.2: 아래 글은 "어떻게 세나요?" 칸 안에 있고 처음에는 접혀(hidden) 있어 그 자리에 보이지 않으며, 펼친 글은 그 줄 아래다', () => {
     draw(ready())
     expect(howButton().getAttribute('aria-expanded')).toBe('false')
     expect(howBody().hidden).toBe(true)
