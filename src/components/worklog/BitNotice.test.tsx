@@ -17,7 +17,7 @@ const TEXT = {
   setup: '비트 PC 연결을 마치면 숫자를 저절로 채워요',
   reading: '비트 숫자를 불러오는 중이에요',
   failed: '비트 숫자를 불러오지 못했어요. 직접 적어도 돼요',
-  unconfirmed: '이 날은 비트 금액 확인이 필요해요. 금액은 직접 적어 주세요',
+  unconfirmed: '이 날은 비트 금액을 채우지 못했어요. 금액은 직접 적어 주세요', // bit-total AC-6910.2
 }
 
 const dayWith = (cells: Partial<WorklogDay> = {}): WorklogDay => ({ ...emptyWorklogDay(), ...cells })
@@ -74,6 +74,13 @@ describe('AC-017.9 날짜 줄 아래 한 줄 (BitNotice)', () => {
     expect(screen.queryByText(/에 불러왔어요$/)).toBeNull()
     fireEvent.click(loadButton()!)
     expect(onReload).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-6910.2: unconfirmed 안내는 "이 날은 비트 금액을 채우지 못했어요. 금액은 직접 적어 주세요"이고 옛 "확인이 필요해요" 글은 없다', () => {
+    line('unconfirmed')
+    expect(screen.getByText('이 날은 비트 금액을 채우지 못했어요. 금액은 직접 적어 주세요')).toBeTruthy()
+    expect(screen.queryByText(/확인이 필요해요/)).toBeNull()
+    expect(loadButton()?.textContent).toBe('지금 불러오기')
   })
 
   it('AC-017.4·AC-017.9: 연결 안 됨은 "비트 PC가 연결되지 않아 직접 적어요"만 있고 단추·링크가 없다', () => {

@@ -9,6 +9,7 @@ import {
   type WorklogNumberKey,
 } from '@/types/worklog'
 import { BIT_FILL_KEYS, bitValuesFrom, dropBitField, mergeBit, takeBitValue, type BitValues } from './bitFill'
+import { readCell } from './cellText'
 
 // 비트 숫자 맞추기 (REQ-014, design.md 20-2·20-3절). 숫자는 모두 둥근 가짜다
 const dayWith = (cells: WorklogChanges): WorklogDay => ({ ...emptyWorklogDay(), ...cells })
@@ -179,6 +180,70 @@ describe('bitValuesFrom', () => {
     const result = bitValuesFrom({ ...ROW, unconfirmed: true })
     expect(result).toEqual({ values: { newPatients: 10, returnPatients: 20 }, unconfirmed: true })
     for (const key of MONEY_FILL_KEYS) expect(key in result.values).toBe(false)
+  })
+})
+
+// bit-total REQ-6910 (design.md 6절): 0.13.0 전 도우미의 확인 필요한 날은 총진료비만 그날 비트 총진료비(roughTotal)로 채운다
+describe('AC-6910.1 옛 도우미 답의 확인 필요한 날', () => {
+  const OTHER_MONEY_KEYS: readonly WorklogNumberKey[] = MONEY_FILL_KEYS.filter((key) => key !== 'totalFee')
+
+  it('AC-6910.1: unconfirmed + roughTotal 0 이상이면 신환·재진과 총진료비(= roughTotal)를 채우고 unconfirmed는 거짓이다', () => {
+    const result = bitValuesFrom({ ...UNCONFIRMED_ROW, roughTotal: 900000 })
+    expect(result).toEqual({ values: { newPatients: 10, returnPatients: 20, totalFee: 900000 }, unconfirmed: false })
+    for (const key of OTHER_MONEY_KEYS) expect(key in result.values, key).toBe(false)
+  })
+
+  it('AC-6910.1: roughTotal 0은 그대로 총진료비 0이고 칸에 "0"으로 채워 비트 칸으로 둔다(unconfirmed 거짓)', () => {
+    const result = bitValuesFrom({ ...UNCONFIRMED_ROW, roughTotal: 0 })
+    expect(result).toEqual({ values: { newPatients: 10, returnPatients: 20, totalFee: 0 }, unconfirmed: false })
+    const merged = mergeBit(emptyWorklogDay(), [], result.values)
+    expect(merged.day.totalFee).toBe('0')
+    expect(merged.bitFields).toContain('totalFee')
+  })
+
+  it('AC-6910.1: unconfirmed + 음수 roughTotal이면 총진료비도 채우지 않고 신환·재진뿐이며 unconfirmed는 참이다', () => {
+    const result = bitValuesFrom({ ...UNCONFIRMED_ROW, roughTotal: -120000 })
+    expect(result).toEqual({ values: { newPatients: 10, returnPatients: 20 }, unconfirmed: true })
+    for (const key of MONEY_FILL_KEYS) expect(key in result.values, key).toBe(false)
+    const merged = mergeBit(emptyWorklogDay(), [], result.values)
+    expect(merged.day.totalFee).toBe('')
+    expect(merged.bitFields).not.toContain('totalFee')
+  })
+
+  it("AC-6910.1: 음수를 칸에 넣으면 앞의 '-' 때문에 readCell이 합계 제외로 읽는다(그래서 채우지 않는다)", () => {
+    expect(readCell('won', String(-120000))).toEqual({ kind: 'excluded' })
+  })
+
+  it.each([
+    ['null', { roughTotal: null }],
+    ['열쇠 없음', {}],
+  ] as const)('AC-6910.1: unconfirmed + roughTotal %s이면 지금처럼 신환·재진뿐이고 unconfirmed는 참이다', (_name, over) => {
+    const result = bitValuesFrom({ ...UNCONFIRMED_ROW, ...over })
+    expect(result).toEqual({ values: { newPatients: 10, returnPatients: 20 }, unconfirmed: true })
+  })
+
+  it('AC-6910.1: unconfirmed + roughTotal 0 이상이고 인원이 null이면 그 칸만 없다', () => {
+    const result = bitValuesFrom({ ...UNCONFIRMED_ROW, newPatients: null, roughTotal: 900000 })
+    expect(result).toEqual({ values: { returnPatients: 20, totalFee: 900000 }, unconfirmed: false })
+  })
+
+  it('AC-6910.1: 확인된 날(0.13.0이 준 그런 날 포함)은 roughTotal과 상관없이 지금 그대로 여덟 칸을 채운다', () => {
+    expect(bitValuesFrom({ ...ROW, roughTotal: null })).toEqual({ values: FULL_VALUES, unconfirmed: false })
+    expect(bitValuesFrom({ ...ROW, roughTotal: 900000 })).toEqual({ values: FULL_VALUES, unconfirmed: false })
+  })
+
+  it('AC-6910.1: 나눔만 못 센 날(splitUnconfirmed)은 지금 그대로 조합청구액만 비운다', () => {
+    const result = bitValuesFrom({ ...SPLIT_ROW, roughTotal: null })
+    expect(result.unconfirmed).toBe(false)
+    expect(result.values).toEqual({
+      newPatients: 10,
+      returnPatients: 20,
+      totalFee: 1000000,
+      cashIn: 100000,
+      cardIn: 500000,
+      transferIn: 200000,
+      unpaidPaid: 40000,
+    })
   })
 })
 

@@ -35,7 +35,17 @@ function heldBack(key: BitFillKey, row: RevenueDayRow): boolean {
   return row.splitUnconfirmed && key === 'claimAmount'
 }
 
-/** 하루 줄 → 업무일지 칸 값. unconfirmed는 하루 줄의 unconfirmed만 따른다(splitUnconfirmed인 날은 false) */
+// 0.13.0 전 도우미의 확인 필요한 날은 총진료비만 그날 비트 총진료비(참고 금액 roughTotal, 0 그대로)로 채운다(bit-total AC-6910.1).
+// 음수는 채우지 않는다: 칸에 '-'로 시작하는 글자가 들어가면 readCell이 합계 제외로 읽는다(손으로 적은 음수와 같은 규칙)
+function roughFee(row: RevenueDayRow): number | null {
+  const fee = row.roughTotal
+  return typeof fee === 'number' && fee >= 0 ? fee : null
+}
+
+/**
+ * 하루 줄 → 업무일지 칸 값. unconfirmed는 확인 필요한 날 가운데 금액 칸을 하나도 못 채운 날만 참이다
+ * (roughTotal이 없거나 음수, bit-total AC-6910.1). splitUnconfirmed인 날은 false
+ */
 export function bitValuesFrom(revenueDay: RevenueDayRow | null): { values: BitValues; unconfirmed: boolean } {
   if (!revenueDay) return { values: {}, unconfirmed: false }
   const values: BitValues = {}
@@ -43,7 +53,11 @@ export function bitValuesFrom(revenueDay: RevenueDayRow | null): { values: BitVa
     const value = revenueDay[SOURCE_OF[key]]
     if (value !== null && !heldBack(key, revenueDay)) values[key] = value
   }
-  return { values, unconfirmed: revenueDay.unconfirmed }
+  if (!revenueDay.unconfirmed) return { values, unconfirmed: false }
+  const fee = roughFee(revenueDay)
+  if (fee === null) return { values, unconfirmed: true }
+  values.totalFee = fee
+  return { values, unconfirmed: false }
 }
 
 /** 사람이 비트 칸을 고치면 그 칸은 비트 칸이 아니다(화면이 부른다) */

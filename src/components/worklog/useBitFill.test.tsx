@@ -260,6 +260,29 @@ describe('AC-017.4 읽을 수 없을 때의 상태', () => {
     expect(result.current.values).toEqual({ newPatients: 12, returnPatients: 48 })
   })
 
+  it.each([900000, 0])(
+    'AC-6910.1: 옛 도우미 답의 확인 필요한 날도 roughTotal %d(0 이상)이면 ready이고 values는 신환·재진과 총진료비다',
+    async (roughTotal) => {
+      bridge.call.mockResolvedValueOnce(answer(TODAY, { ...UNCONFIRMED, roughTotal }))
+      const { result } = setup()
+      await settle()
+      expect(result.current.status).toBe('ready')
+      expect(result.current.values).toEqual({ newPatients: 12, returnPatients: 48, totalFee: roughTotal })
+      expect(result.current.lastReadAt).toEqual(NOW)
+    },
+  )
+
+  it.each([
+    ['음수', { roughTotal: -120000 }],
+    ['null', { roughTotal: null }],
+  ] as const)('AC-6910.1: 확인 필요한 날의 roughTotal이 %s이면 지금처럼 unconfirmed이고 values는 신환·재진뿐이다', async (_name, over) => {
+    bridge.call.mockResolvedValueOnce(answer(TODAY, { ...UNCONFIRMED, ...over }))
+    const { result } = setup()
+    await settle()
+    expect(result.current.status).toBe('unconfirmed')
+    expect(result.current.values).toEqual({ newPatients: 12, returnPatients: 48 })
+  })
+
   it('AC-017.4: 나눔만 못 센 날(splitUnconfirmed)은 ready이고 조합청구액만 없다', async () => {
     bridge.call.mockResolvedValueOnce(
       answer(TODAY, { splitUnconfirmed: true, insurer: null, noncovered: null, copay: null, otherTotal: null }),
