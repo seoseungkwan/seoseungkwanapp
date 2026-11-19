@@ -160,11 +160,11 @@ describe('AC-513.1·AC-801.1·AC-1201.1·AC-4003.1·AC-4411.1: 섹션 차례', (
     expect(container.querySelectorAll('[id^="stats-"]')).toHaveLength(WITH_REVENUE.length)
   })
 
-  it('AC-4109.1·AC-4106.3·AC-4408.2: 매출 값을 주면 환자 요약 바로 다음에 매출 요약(칸 셋)이 있고, 주지 않으면 매출 카드·매출 요약이 없다', () => {
+  it('AC-4109.1·AC-4106.3·AC-6904.1·AC-6904.4: 매출 값을 주면 환자 요약 바로 다음에 매출 요약(칸 둘)이 있고, 주지 않으면 매출 카드·매출 요약이 없다', () => {
     drawWithRevenue()
     expect(document.getElementById('stats-summary')!.nextElementSibling).toBe(revenueSummary())
     expect(revenueSummary()!.id).toBe('')
-    expect(revenueSummaryCells()).toEqual(['총매출–자료 없음', '건당 진료비–자료 없음', '확인 필요한 날–자료 없음'])
+    expect(revenueSummaryCells()).toEqual(['총매출–자료 없음', '건당 진료비–자료 없음'])
     expect(screen.getByRole('heading', { level: 2, name: '매출' }).closest('section')!.textContent).toBe('매출자료 없음 · 불러오면 이 기간의 매출이 하루씩 막대로 그려져요.')
     cleanup()
 
@@ -173,9 +173,9 @@ describe('AC-513.1·AC-801.1·AC-1201.1·AC-4003.1·AC-4411.1: 섹션 차례', (
     expect(revenueSummary()).toBeNull()
   })
 
-  it('AC-4107.1·AC-4106.3·AC-4408.2: 매출을 읽는 중이면 매출 요약 세 칸과 매출 칸이 `불러오는 중`이고, 읽기 실패면 매출 칸 [다시 읽기]가 매출만 다시 읽는다', () => {
+  it('AC-4107.1·AC-4106.3·AC-6904.4: 매출을 읽는 중이면 매출 요약 두 칸과 매출 칸이 `불러오는 중`이고, 읽기 실패면 매출 칸 [다시 읽기]가 매출만 다시 읽는다', () => {
     drawWithRevenue({ ...REVENUE_READY, state: 'reading' })
-    expect(revenueSummaryCells()).toEqual(['총매출–불러오는 중', '건당 진료비–불러오는 중', '확인 필요한 날–불러오는 중'])
+    expect(revenueSummaryCells()).toEqual(['총매출–불러오는 중', '건당 진료비–불러오는 중'])
     expect(screen.getByRole('heading', { level: 2, name: '매출' }).closest('section')!.textContent).toBe('매출불러오는 중')
     cleanup()
 
@@ -257,15 +257,16 @@ describe('AC-513.1·AC-513.2·AC-4403.1·AC-4403.2·AC-4403.3: 환자 요약 숫
     expect(screen.queryByText('비교 기간보다')).toBeNull()
   })
 
-  it('AC-4403.3: first90이 없는 날이 있으면 90일초진은 "확인 불가" + 옛 도우미 글(증감 없음), 재진은 "90일초진 포함"이고 아래에 안내 글과 "새 도우미 내려받기" 링크가 있다', () => {
+  it('AC-4403.3·AC-6907.1: first90이 없는 날이 있으면 90일초진은 "확인 불가" + 옛 도우미 글(증감 없음), 재진은 "90일초진 포함"이고 아래에 안내 글(굵은 글 `90일초진은 새 도우미(0.7.0)가 있어야 보여요.`)과 "새 도우미 내려받기" 링크가 있다', () => {
     render(<PeriodSummary input={inputOf(UP, WHOLE)} saved />)
     expect(cellText('90일초진')).toBe('90일초진확인 불가예전 도우미(0.6.0)는 90일초진을 따로 세지 못해요. 지금은 재진에 들어 있어요.')
     expect(cellText('재진')).toBe('재진90일초진 포함108건▲ 10건 (+10.2%) 늘어남')
     const note = screen.getByRole('note')
     expect(note.textContent).toBe(
-      '90일초진과 참고 금액은 새 도우미(0.7.0)가 있어야 보여요. 비트 PC 연결 화면에서 새 도우미를 받아 깐 뒤 [비트에서 불러오기]를 다시 누르면 보여요.새 도우미 내려받기',
+      '90일초진은 새 도우미(0.7.0)가 있어야 보여요. 비트 PC 연결 화면에서 새 도우미를 받아 깐 뒤 [비트에서 불러오기]를 다시 누르면 보여요.새 도우미 내려받기',
     )
-    expect(within(note).getByText('90일초진과 참고 금액은 새 도우미(0.7.0)가 있어야 보여요.').tagName).toBe('STRONG')
+    expect(within(note).getByText('90일초진은 새 도우미(0.7.0)가 있어야 보여요.').tagName).toBe('STRONG')
+    expect(note.textContent).not.toContain('참고 금액')
     expect(within(note).getByRole('link', { name: '새 도우미 내려받기' }).getAttribute('href')).toBe('/settings')
     expect(note.className.split(' ')).toEqual(expect.arrayContaining(['bg-warning-soft', 'text-st-warn-ink', 'rounded-st-sm']))
   })
@@ -551,8 +552,8 @@ describe('AC-1704.1·AC-1704.2·AC-1704.4·AC-4403.2: 고른 기간의 환자 �
   })
 })
 
-// ── first90 AC-4408.1: 참고 금액 포함 스위치 두 곳(매출 요약 머리 · 매출 카드 머리). 상태 하나를 StatsSections가 갖는다(design.md 5-7) ──
-describe('AC-4408.1·AC-4408.2: 참고 금액 포함 스위치 두 곳', () => {
+// ── bit-total AC-6904.1·AC-6905.1: 참고 금액 포함 스위치가 없다(옛 first90 AC-4408.1의 두 곳 · 매출 요약 머리 · 매출 카드 머리). 확인 필요로 저장되고 roughTotal이 있는 날은 그냥 더한다 ──
+describe('AC-6904.1·AC-6904.2·AC-6905.1: 매출 요약·매출 카드에 스위치가 없다', () => {
   const NULLS = { total: null, insurer: null, noncovered: null, copay: null, otherTotal: null, cash: null, card: null, transfer: null, receivableIn: null }
   const money = (date: string, over: Record<string, unknown> = {}) => ({
     date,
@@ -587,31 +588,23 @@ describe('AC-4408.1·AC-4408.2: 참고 금액 포함 스위치 두 곳', () => {
         revenue={{ state: 'ready', days, codes: [], monthCodes: [], noDayCodes: false, lastDay: '2026-11-12', onReread: () => undefined }}
       />,
     )
-  const cardTitle = (el: Element) => document.getElementById(el.closest('section[aria-labelledby]')!.getAttribute('aria-labelledby')!)!.textContent
-  const switches = () => screen.getAllByRole('switch', { name: '참고 금액 포함' })
   const revenueSummary = () => screen.getByRole('heading', { level: 2, name: '매출 요약' }).closest('section')!
 
-  it('AC-4408.1: 매출 요약 제목 줄과 매출 카드 제목 줄에 같은 스위치가 있고 처음은 꺼짐이며, 하나를 누르면 둘이 같이 바뀐다', () => {
+  it('AC-6904.1·AC-6904.2·AC-6905.1: roughTotal이 있는 확인 필요한 날은 처음부터 총매출에 들고(100만 + 30만 = 130만), 두 카드 어디에도 스위치·`참고 포함` 꼬리표가 없다', () => {
     drawWith([money('2026-11-02'), money('2026-11-03', { ...NULLS, unconfirmed: true, roughTotal: 300_000 })])
-    expect(switches().map(cardTitle)).toEqual(['매출 요약', '매출'])
-    expect(switches().map((s) => s.getAttribute('aria-checked'))).toEqual(['false', 'false'])
-    expect(within(revenueSummary()).queryByText('참고 포함')).toBeNull()
-    fireEvent.click(switches()[1]!)
-    expect(switches().map((s) => s.getAttribute('aria-checked'))).toEqual(['true', 'true'])
-    expect(screen.getAllByText('확인 필요한 날 1일의 참고 금액을 더했어요')).toHaveLength(2)
-    // 매출 요약 칸: 100만 + 참고 30만 = 130만, 총매출·건당 진료비에 "참고 포함"
-    expect(within(revenueSummary()).getAllByText('참고 포함')).toHaveLength(2)
+    expect(screen.queryByRole('switch')).toBeNull()
     expect(within(revenueSummary()).getByText('130만')).toBeTruthy()
-    fireEvent.click(switches()[0]!)
-    expect(switches().map((s) => s.getAttribute('aria-checked'))).toEqual(['false', 'false'])
-    expect(screen.getAllByText('확인 필요한 날 1일은 빼고 셌어요')).toHaveLength(2)
+    expect(within(revenueSummary()).queryByText('참고 포함')).toBeNull()
+    const card = screen.getByRole('heading', { level: 2, name: '매출' }).closest('section')!
+    expect(revenueSummary().textContent).not.toMatch(/참고 금액|참고 포함|확인 필요/)
+    expect(card.textContent).not.toMatch(/참고 금액|참고 포함|확인 필요/)
   })
 
-  it('AC-4408.1: 참고 금액이 있는 날이 없으면 두 스위치 모두 눌리지 않고, 확인 필요한 날이 없으면 둘 다 없다', () => {
+  it('AC-6904.1·AC-6906.1: 금액 모르는 확인 필요한 날(roughTotal 없음)이 있어도 스위치가 없고 그날은 세지 않는다', () => {
     drawWith([money('2026-11-02'), money('2026-11-03', { ...NULLS, unconfirmed: true })])
-    expect(switches().map((s) => s.getAttribute('aria-disabled'))).toEqual(['true', 'true'])
-    fireEvent.click(switches()[0]!)
-    expect(switches().map((s) => s.getAttribute('aria-checked'))).toEqual(['false', 'false'])
+    expect(screen.queryByRole('switch')).toBeNull()
+    expect(within(revenueSummary()).getByText('100만')).toBeTruthy()
+    expect(revenueSummary().textContent).not.toMatch(/참고 금액|참고 포함|확인 필요/)
     cleanup()
     drawWith([money('2026-11-02')])
     expect(screen.queryByRole('switch')).toBeNull()

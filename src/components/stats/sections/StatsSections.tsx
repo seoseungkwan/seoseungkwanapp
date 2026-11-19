@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useClinicProfile } from '@/components/clinic/useClinicProfile'
 import { Icon } from '@/components/common/Icon'
 import { pickReportText, type ReportRx } from '@/components/stats/periodPick'
-import { revenueCells, revenueTabs, roughInfo, type RevenueInput, type RevenueMode } from '@/components/stats/revenueView'
+import { revenueCells, revenueTabs, type RevenueInput } from '@/components/stats/revenueView'
 import { TOC_LINKS } from '@/components/stats/StatsToc'
 import { treatmentRows } from '@/components/stats/treatmentView'
 import type { StatsRxGroupsView } from '@/components/stats/useStatsRxGroups'
@@ -54,9 +54,8 @@ import { WeekdaySection } from './WeekdaySection'
 //     인쇄([인쇄])에는 그 보고서 종이만 나온다 — 종이 밖(다른 카드·카드 머리·단추·앱 틀)은 MonthlyReport의 인쇄 규칙이 가린다
 // 카드 안 칸은 h3 작은 칸이고 칸 사이는 얇은 선뿐이다(parts.tsx StatsCard). 비트 칸은 bit를 받을 때만 그린다(stats-bit-sections AC-2706.1, 통계 화면은 늘 준다).
 // 고른 기간(stats-period)이면 보고 칸에 [고른 기간 보고](저장된 숫자로 만든 글)를 넣고, 처방별 신환·재진 설명 끝에 기간 이름을 붙인다.
-// 매출(stats-revenue): revenue를 받으면 매출 요약 카드(칸 셋)도 넣는다. 숫자는 revenueView(순수)가 통계 기간·처방 칸 묶음으로 센다.
-// 참고 금액 포함 스위치(first90 AC-4408.1): 상태 하나를 여기서 갖고(저장하지 않음, 처음 꺼짐) 매출 요약·매출 카드 두 스위치에 같은 값을 준다.
-// 보는 기간에 참고 금액이 있는 날이 없으면 켤 수 없고 셈은 꺼짐 그대로다. 매출 카드 탭 넷의 셈은 아직 꺼짐 그대로다
+// 매출(stats-revenue): revenue를 받으면 매출 요약 카드(칸 둘, bit-total AC-6904.1)도 넣는다. 숫자는 revenueView(순수)가 통계 기간·처방 칸 묶음으로 센다.
+// 매출 요약·매출 카드에 스위치가 없다(bit-total AC-6905.1): 두 카드 모두 그날 매출(dayRevenue) 셈 하나다
 // 병원 정보(clinic-profile REQ-6606, design.md 8절): 여기서 useClinicProfile을 한 번 불러 칸마다 값으로 넘긴다 — 호칭은 보고 카드·보고 칸 제목과
 // 매출 칸 [어떻게 세나요?] 글(AC-6606.3), 저장된 진료시간은 시간대별 접수(AC-6606.1), 휴진일은 휴일에 따라(AC-6606.2).
 // 읽는 중·실패·줄 없음이면 호칭은 기본값 '원장님'이고 진료시간은 넘기지 않아(null) 지금처럼 그린다
@@ -168,11 +167,7 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
       noDayCodes,
     }
   }, [input.range, revenueState, revenueDays, revenueCodes, revenueMonthCodes, lastDay, noDayCodes, groups.state, groups.groups])
-  const [mode, setMode] = useState<RevenueMode>('out')
-  const rough = useMemo(() => (revenueIn === null ? null : roughInfo(revenueIn)), [revenueIn])
-  // 참고 금액이 있는 날이 없는 기간으로 바뀌면 켜 둔 값이 있어도 꺼짐으로 센다(스위치도 꺼짐으로 보인다)
-  const shownMode: RevenueMode = rough !== null && rough.roughDays > 0 ? mode : 'out'
-  const summaryRevenue = useMemo(() => (revenueIn === null ? undefined : revenueCells(revenueIn, shownMode)), [revenueIn, shownMode])
+  const summaryRevenue = useMemo(() => (revenueIn === null ? undefined : revenueCells(revenueIn)), [revenueIn])
   const tabs = useMemo(() => (revenueIn === null || typeof revenueIn === 'string' ? revenueIn : revenueTabs(revenueIn, honorific)), [revenueIn, honorific])
   // 알림·휴일·목표(stats-insights)는 오늘 기준이다. 예약 알림은 예약 칸이 읽은 수 세기 줄(읽는 중·실패면 없이 센다)
   const today = todayOf(input.range)
@@ -194,7 +189,7 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
         </StatsCard>
       )}
       {alertsFirst ? <NoAnchor>{summary}</NoAnchor> : <SectionAnchor id={SUMMARY_ID!}>{summary}</SectionAnchor>}
-      {summaryRevenue && <RevenueSummary cells={summaryRevenue} mode={shownMode} onMode={setMode} rough={rough} />}
+      {summaryRevenue && <RevenueSummary cells={summaryRevenue} />}
       {wide !== undefined && goals !== undefined && (
         <StatsCard title={GOAL}>
           <GoalSection
@@ -218,9 +213,6 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
             tabs={tabs}
             noDayCodes={noDayCodes}
             onReread={revenue.onReread}
-            mode={shownMode}
-            onMode={setMode}
-            rough={rough}
             bit={bit}
             groups={groups.groups}
           />

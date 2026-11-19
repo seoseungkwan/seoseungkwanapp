@@ -1,10 +1,12 @@
 // 금액 나눔·기간 합·비교(TASK-5, REQ-005 · AC-005.1~AC-005.6, 옛 달 셈은 지움 AC-4110.4). 자료는 모두 가짜 숫자다. 오늘은 인자로만 준다
+// bit-total(REQ-6904·REQ-6906, design.md 2절): sumPeriod는 그날 매출(dayRevenue = total ?? roughTotal)로 센다. 확인 필요로 저장되고 roughTotal이 있는 날은
+// 보통 날처럼 매출·내원·진료한 날·건당 짝에 들고 나눔만 못 한 날이다. roughTotal도 없는 날(금액 모르는 날)은 줄이 없는 날처럼 건너뛴다
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { eachDay } from '@/lib/analytics/dates'
 import type { RevenueDayRow } from '@/types/revenue'
-import { compare, dayRevenue, perVisit, revenueDayValues, splitDay, sumPeriod } from './summary'
+import { compare, dayRevenue, isWorkDay, perVisit, revenueDayValues, splitDay, sumPeriod } from './summary'
 
 // 나눔이 있는 보통 날: 1,000,000 = (500,000 + 200,000) + 250,000 + 50,000
 function day(date: string, over: Partial<RevenueDayRow> = {}): RevenueDayRow {
@@ -28,7 +30,7 @@ function day(date: string, over: Partial<RevenueDayRow> = {}): RevenueDayRow {
   }
 }
 
-// 그날 금액을 셀 수 없는 날: 아홉 칸 null
+// 확인 필요로 저장된 날: 아홉 칸 null. roughTotal을 주면 그날 비트 총진료비가 있는 옛 날, 없으면 금액 모르는 날(AC-6906.1)
 function uncheckedDay(date: string, over: Partial<RevenueDayRow> = {}): RevenueDayRow {
   return day(date, {
     total: null,
@@ -68,6 +70,9 @@ function restDay(date: string, over: Partial<RevenueDayRow> = {}): RevenueDayRow
     ...over,
   })
 }
+
+// 그날 비트 총진료비(roughTotal)가 있는 확인 필요한 날(도우미 0.13.0 전에 저장된 그런 날)
+const roughDay = (date: string, roughTotal: number, over: Partial<RevenueDayRow> = {}) => uncheckedDay(date, { roughTotal, ...over })
 
 const NO_SPLIT = { covered: null, insurer: null, selfPay: null, noncovered: null, other: null, splitTotal: null }
 const OCT_3 = { from: '2026-10-01', to: '2026-10-03' }
@@ -126,7 +131,7 @@ describe('AC-005.2 sumPeriod 기간 합', () => {
       day('2026-10-01', { total: 266_357, insurer: 123_457, copay: 52_901, noncovered: 88_888, otherTotal: 1_111 }),
       day('2026-10-02', { total: 400_007, insurer: 300_001, copay: 99_999, noncovered: 0, otherTotal: 7 }),
     ]
-    expect(sumPeriod(rows, { from: '2026-10-01', to: '2026-10-02' })).toEqual({
+    expect(sumPeriod(rows, { from: '2026-10-01', to: '2026-10-02' })).toStrictEqual({
       total: 666_364,
       covered: 576_358,
       insurer: 423_458,
@@ -137,7 +142,6 @@ describe('AC-005.2 sumPeriod 기간 합', () => {
       visits: 20,
       perVisitTotal: 666_364,
       perVisitCount: 20,
-      uncheckedDays: [],
       noSplitDays: [],
       noVisitDays: [],
       days: 2,
@@ -153,9 +157,9 @@ describe('AC-005.2 sumPeriod 기간 합', () => {
     expect(sum?.visits).toBe(30)
   })
 
-  it('AC-005.2·AC-4105.1 확인 필요한 날은 금액에서 빠지고 목록에 있으며 내원은 그대로 더한다', () => {
+  it('AC-6906.1 금액 모르는 날(확인 필요 + roughTotal 없음)은 줄이 없는 날처럼 건너뛴다: 매출·내원·진료한 날·건당 짝·날 목록 어디에도 없다', () => {
     const sum = sumPeriod([day('2026-10-01'), uncheckedDay('2026-10-02')], OCT_3)
-    expect(sum).toEqual({
+    expect(sum).toStrictEqual({
       total: 1_000_000,
       covered: 700_000,
       insurer: 500_000,
@@ -163,20 +167,53 @@ describe('AC-005.2 sumPeriod 기간 합', () => {
       noncovered: 250_000,
       other: 50_000,
       splitTotal: 1_000_000,
-      visits: 20,
+      visits: 10,
       perVisitTotal: 1_000_000,
       perVisitCount: 10,
-      uncheckedDays: ['2026-10-02'],
       noSplitDays: [],
       noVisitDays: [],
       days: 1,
       workDays: 1,
     })
+    // roughTotal이 null인 줄·열쇠가 없는 줄 모두, 그 줄을 뺀 셈과 같다
+    expect(sumPeriod([day('2026-10-01'), uncheckedDay('2026-10-02', { roughTotal: null, visits: 7 })], OCT_3)).toStrictEqual(sumPeriod([day('2026-10-01')], OCT_3))
+  })
+
+  it('AC-6904.2·AC-6904.3·AC-6905.4 roughTotal이 있는 확인 필요한 날은 그 금액이 매출이고 내원·진료한 날·건당 짝에 들며, 나눔을 못 한 날(noSplitDays)이다', () => {
+    const sum = sumPeriod([day('2026-10-01'), roughDay('2026-10-02', 300_000, { visits: 5 })], OCT_3)
+    expect(sum).toStrictEqual({
+      total: 1_300_000,
+      covered: 700_000,
+      insurer: 500_000,
+      selfPay: 200_000,
+      noncovered: 250_000,
+      other: 50_000,
+      splitTotal: 1_000_000,
+      visits: 15,
+      perVisitTotal: 1_300_000,
+      perVisitCount: 15,
+      noSplitDays: ['2026-10-02'],
+      noVisitDays: [],
+      days: 2,
+      workDays: 2,
+    })
+    expect(perVisit(sum)).toBe(86_666) // 1,300,000 ÷ 15 = 86,666.6… → 원 아래 버림
+  })
+
+  it('AC-6904.2·AC-6905.1 roughTotal 0원·음수(환불이 더 많은 날)도 그대로 매출에 든다(음수는 총매출을 줄인다)', () => {
+    const sum = sumPeriod([day('2026-10-01'), roughDay('2026-10-02', 0), roughDay('2026-10-03', -20_000)], OCT_3)
+    expect(sum).toMatchObject({ total: 980_000, perVisitTotal: 980_000, perVisitCount: 30, days: 3, workDays: 3, noSplitDays: ['2026-10-02', '2026-10-03'], splitTotal: 1_000_000 })
+  })
+
+  it('AC-6904.2·AC-6904.4 답에 옛 열쇠(uncheckedDays·roughDays·roughSum)가 없고 셈을 고르는 셋째 인자도 없다', () => {
+    const sum = sumPeriod([day('2026-10-01'), roughDay('2026-10-02', 300_000), uncheckedDay('2026-10-03')], OCT_3)
+    for (const key of ['uncheckedDays', 'roughDays', 'roughSum']) expect(sum, key).not.toHaveProperty(key)
+    expect(sumPeriod.length).toBe(2)
   })
 
   it('AC-005.2·AC-4105.1 나눔을 못 한 날은 총액에 들어가고 나눔 합·splitTotal에서 빠지며 noSplitDays에만 있다(splitTotal < 총액, 맞춰 고치지 않음)', () => {
     const sum = sumPeriod([day('2026-10-01'), noSplitDay('2026-10-02')], OCT_3)
-    expect(sum).toEqual({
+    expect(sum).toStrictEqual({
       total: 1_500_000,
       covered: 700_000,
       insurer: 500_000,
@@ -187,7 +224,6 @@ describe('AC-005.2 sumPeriod 기간 합', () => {
       visits: 20,
       perVisitTotal: 1_500_000,
       perVisitCount: 20,
-      uncheckedDays: [],
       noSplitDays: ['2026-10-02'],
       noVisitDays: [],
       days: 2,
@@ -200,7 +236,6 @@ describe('AC-005.2 sumPeriod 기간 합', () => {
     expect(sum?.total).toBe(2_000_001)
     expect(sum?.splitTotal).toBe(1_000_000)
     expect(sum?.noSplitDays).toEqual(['2026-10-02'])
-    expect(sum?.uncheckedDays).toEqual([])
   })
 
   it('AC-005.2 모든 날이 나눔을 못 한 날이면 나눔 여섯 칸은 null이고 총액은 있다', () => {
@@ -216,23 +251,21 @@ describe('AC-005.2 sumPeriod 기간 합', () => {
     const sum = sumPeriod(rows, { from: '2026-03-01', to: '2026-03-07' })
     expect(sum).toMatchObject({ ...NO_SPLIT, total: 3_000_000, days: 7 })
     expect(sum?.noSplitDays).toEqual(eachDay({ from: '2026-03-02', to: '2026-03-07' }))
-    expect(sum?.uncheckedDays).toEqual([])
   })
 
-  it('AC-005.2 31일 기간에 확인 필요한 날 2일과 쉬는 날·나눔을 못 한 날이 섞이면 days는 29다', () => {
+  it('AC-005.2·AC-6906.1 31일 기간에 금액 모르는 날 2일과 쉬는 날·나눔을 못 한 날이 섞이면 days는 29다(금액 모르는 날은 세지 않음)', () => {
     const rest = new Set(['2026-03-01', '2026-03-08', '2026-03-15', '2026-03-22', '2026-03-29'])
-    const unchecked = new Set(['2026-03-02', '2026-03-03'])
+    const unknown = new Set(['2026-03-02', '2026-03-03'])
     const noSplit = new Set(['2026-03-10', '2026-03-11'])
     const march = { from: '2026-03-01', to: '2026-03-31' }
     const rows = eachDay(march).map((date) => {
       if (rest.has(date)) return restDay(date)
-      if (unchecked.has(date)) return uncheckedDay(date)
+      if (unknown.has(date)) return uncheckedDay(date)
       if (noSplit.has(date)) return noSplitDay(date)
       return day(date)
     })
     const sum = sumPeriod(rows, march)
     expect(sum?.days).toBe(29)
-    expect(sum?.uncheckedDays).toEqual([...unchecked])
     expect(sum?.noSplitDays).toEqual([...noSplit])
     expect(sum?.total).toBe(22 * 1_000_000 + 2 * 500_000)
     expect(sum?.splitTotal).toBe(22 * 1_000_000)
@@ -260,15 +293,20 @@ describe('AC-005.2 sumPeriod 기간 합', () => {
     expect(sumPeriod([restDay('2026-10-01', { visits: null })], OCT_3)).toMatchObject({ total: 0, visits: null, days: 1 })
   })
 
-  it('AC-005.2 모든 날이 확인 필요한 날이어도 null이 아니다: 총액 0, days 0, 나눔 칸 null, 날짜 목록', () => {
-    const sum = sumPeriod([uncheckedDay('2026-10-01'), uncheckedDay('2026-10-02')], OCT_3)
-    expect(sum).toMatchObject({ ...NO_SPLIT, total: 0, days: 0, uncheckedDays: ['2026-10-01', '2026-10-02'] })
+  it('AC-6906.1 모든 날이 금액 모르는 날이면(쉬는 날이 섞여도) 자료 없음(null)이다', () => {
+    expect(sumPeriod([uncheckedDay('2026-10-01'), uncheckedDay('2026-10-02')], OCT_3)).toBeNull()
+    expect(sumPeriod([uncheckedDay('2026-10-01'), restDay('2026-10-02')], OCT_3)).toBeNull()
+  })
+
+  it('AC-6904.2·AC-6905.4 모든 날이 roughTotal이 있는 확인 필요한 날이면 매출은 그 합이고 나눔 칸은 null, 모두 나눔을 못 한 날이다', () => {
+    const sum = sumPeriod([roughDay('2026-10-01', 400_000), roughDay('2026-10-02', 600_000)], OCT_3)
+    expect(sum).toMatchObject({ ...NO_SPLIT, total: 1_000_000, days: 2, workDays: 2, noSplitDays: ['2026-10-01', '2026-10-02'] })
   })
 
   it('AC-005.2 날짜 목록은 줄 순서와 상관없이 날짜 순이다', () => {
     const sum = sumPeriod(
       [
-        uncheckedDay('2026-10-03'),
+        roughDay('2026-10-03', 100_000),
         noSplitDay('2026-10-02'),
         uncheckedDay('2026-10-01'),
         noSplitDay('2026-10-01'),
@@ -277,52 +315,47 @@ describe('AC-005.2 sumPeriod 기간 합', () => {
       ],
       OCT_3,
     )
-    expect(sum?.uncheckedDays).toEqual(['2026-10-01', '2026-10-03'])
-    expect(sum?.noSplitDays).toEqual(['2026-10-01', '2026-10-02'])
+    expect(sum?.noSplitDays).toEqual(['2026-10-01', '2026-10-02', '2026-10-03'])
     expect(sum?.noVisitDays).toEqual(['2026-10-02', '2026-10-03'])
   })
 
-  it('AC-005.2 visits는 null인 날만 건너뛴 아는 접수 건수 전부이고 unconfirmed인 날도 든다', () => {
+  it('AC-005.2·AC-6906.1 visits는 금액이 있는 날 가운데 null인 날만 건너뛴 접수 건수다(roughTotal이 있는 날은 들고 금액 모르는 날은 빠진다)', () => {
     const rows = [day('2026-10-01'), uncheckedDay('2026-10-02', { visits: 7 }), day('2026-10-03', { visits: null })]
-    expect(sumPeriod(rows, OCT_3)?.visits).toBe(17)
+    expect(sumPeriod(rows, OCT_3)?.visits).toBe(10)
+    const withRough = [day('2026-10-01'), roughDay('2026-10-02', 70_000, { visits: 7 }), day('2026-10-03', { visits: null })]
+    expect(sumPeriod(withRough, OCT_3)?.visits).toBe(17)
   })
 
-  it('AC-005.2 perVisitTotal·perVisitCount는 unconfirmed가 아니고 visits가 null이 아닌 날만 더한다', () => {
+  it('AC-005.2·AC-6904.3 perVisitTotal·perVisitCount는 금액이 있고 visits가 null이 아닌 날만 더한다(roughTotal이 있는 날은 그 금액과 접수 건수가 함께 든다)', () => {
     const rows = [
       day('2026-10-01', { visits: 12 }),
       uncheckedDay('2026-10-02', { visits: 7 }),
       day('2026-10-03', { total: 800_000, insurer: 300_000, visits: null }),
     ]
-    expect(sumPeriod(rows, OCT_3)).toMatchObject({ total: 1_800_000, visits: 19, perVisitTotal: 1_000_000, perVisitCount: 12 })
+    expect(sumPeriod(rows, OCT_3)).toMatchObject({ total: 1_800_000, visits: 12, perVisitTotal: 1_000_000, perVisitCount: 12 })
+    const withRough = rows.map((row) => (row.date === '2026-10-02' ? roughDay('2026-10-02', 70_000, { visits: 7 }) : row))
+    expect(sumPeriod(withRough, OCT_3)).toMatchObject({ total: 1_870_000, visits: 19, perVisitTotal: 1_070_000, perVisitCount: 19 })
   })
 
-  it('AC-005.2 noVisitDays는 unconfirmed가 아니고 visits가 null인 날이다(total이 0이어도 든다)', () => {
+  it('AC-005.2 noVisitDays는 금액이 있고 visits가 null인 날이다(total이 0이어도 든다)', () => {
     const rows = [day('2026-10-01', { visits: null }), restDay('2026-10-02', { visits: null }), day('2026-10-03')]
     const sum = sumPeriod(rows, OCT_3)
     expect(sum?.noVisitDays).toEqual(['2026-10-01', '2026-10-02'])
-    expect(sum?.uncheckedDays).toEqual([])
     expect(sum?.noSplitDays).toEqual([])
     expect(sum?.days).toBe(3)
   })
 
-  it('AC-005.2 unconfirmed이면서 visits도 null인 날은 uncheckedDays에만 있다', () => {
-    const sum = sumPeriod([uncheckedDay('2026-10-01', { visits: null }), day('2026-10-02')], OCT_3)
-    expect(sum).toMatchObject({ visits: 10, perVisitTotal: 1_000_000, perVisitCount: 10 })
-    expect(sum?.uncheckedDays).toEqual(['2026-10-01'])
-    expect(sum?.noVisitDays).toEqual([])
+  it('AC-6904.3·AC-6906.1 확인 필요이면서 visits도 null인 날: roughTotal이 있으면 매출에 들고 noVisitDays·noSplitDays에 있으며, 없으면 어디에도 없다', () => {
+    const rough = sumPeriod([roughDay('2026-10-01', 300_000, { visits: null }), day('2026-10-02')], OCT_3)
+    expect(rough).toMatchObject({ total: 1_300_000, visits: 10, perVisitTotal: 1_000_000, perVisitCount: 10, noVisitDays: ['2026-10-01'], noSplitDays: ['2026-10-01'] })
+    const unknown = sumPeriod([uncheckedDay('2026-10-01', { visits: null }), day('2026-10-02')], OCT_3)
+    expect(unknown).toMatchObject({ total: 1_000_000, visits: 10, perVisitTotal: 1_000_000, perVisitCount: 10, noVisitDays: [], noSplitDays: [], days: 1 })
   })
 
   it('AC-005.2 기간의 visits가 모두 null이면 visits는 0이 아니라 null이고 total은 그대로다', () => {
     const sum = sumPeriod([day('2026-10-01', { visits: null }), day('2026-10-02', { visits: null })], OCT_3)
     expect(sum).toMatchObject({ total: 2_000_000, visits: null, perVisitTotal: 0, perVisitCount: 0, days: 2 })
     expect(sum?.noVisitDays).toEqual(['2026-10-01', '2026-10-02'])
-  })
-
-  it('AC-005.2 unconfirmed인 날뿐이고 visits도 모두 null이면 visits는 null이다', () => {
-    const sum = sumPeriod([uncheckedDay('2026-10-01', { visits: null })], OCT_3)
-    expect(sum).toMatchObject({ total: 0, visits: null, perVisitTotal: 0, perVisitCount: 0, days: 0 })
-    expect(sum?.uncheckedDays).toEqual(['2026-10-01'])
-    expect(sum?.noVisitDays).toEqual([])
   })
 
   it('AC-005.2 visits가 모두 0이고 금액이 있으면 visits는 null이 아니라 0이다', () => {
@@ -415,9 +448,14 @@ describe('AC-005.6 perVisit 건당 진료비', () => {
     expect(perVisit(sumPeriod([row], ONE_DAY))).toBe(55_950)
   })
 
-  it('AC-005.6 unconfirmed인 날은 금액과 건수가 둘 다 빠진다', () => {
+  it('AC-005.6·AC-6906.1 금액 모르는 날은 금액과 건수가 둘 다 빠진다', () => {
     const rows = [day('2026-10-01'), uncheckedDay('2026-10-02', { visits: 990 })]
     expect(perVisit(sumPeriod(rows, TWO_DAYS))).toBe(100_000)
+  })
+
+  it('AC-6904.3 roughTotal이 있는 확인 필요한 날은 그 금액과 그날 접수 건수가 함께 든다', () => {
+    const rows = [day('2026-10-01'), roughDay('2026-10-02', 300_000, { visits: 5 })]
+    expect(perVisit(sumPeriod(rows, TWO_DAYS))).toBe(86_666) // 1,300,000 ÷ 15
   })
 
   it('AC-005.6 visits가 null이고 금액이 있는 날은 둘 다 빠지고 noVisitDays에 있으며 총액에는 남는다(건당 진료비가 부풀지 않음)', () => {
@@ -445,7 +483,7 @@ describe('AC-005.6 perVisit 건당 진료비', () => {
     expect(sum?.perVisitCount).toBe(day('2026-10-01').visits)
   })
 
-  it('AC-005.6 짝이 맞는 날이 없으면 null이다', () => {
+  it('AC-005.6·AC-6906.1 짝이 맞는 날이 없으면 null이다', () => {
     expect(perVisit(sumPeriod([uncheckedDay('2026-10-01')], ONE_DAY))).toBeNull()
     expect(perVisit(sumPeriod([day('2026-10-01', { visits: null })], ONE_DAY))).toBeNull()
   })
@@ -462,9 +500,11 @@ describe('AC-005.6 perVisit 건당 진료비', () => {
 })
 
 describe('AC-4105.1 sumPeriod 진료한 날 수(workDays)', () => {
-  it('AC-4105.1 workDays는 확인 필요한 날과 쉬는 날(접수 0건·금액 모두 0)을 뺀 날 수다', () => {
+  it('AC-4105.1·AC-6904.2 workDays는 금액이 있고 쉬는 날(접수 0건·금액 모두 0)이 아닌 날 수다(금액 모르는 날은 빠지고 roughTotal이 있는 날은 든다)', () => {
     const rows = [day('2026-10-01'), uncheckedDay('2026-10-02'), restDay('2026-10-03')]
     expect(sumPeriod(rows, OCT_3)).toMatchObject({ days: 2, workDays: 1 })
+    const withRough = [day('2026-10-01'), roughDay('2026-10-02', 300_000), restDay('2026-10-03')]
+    expect(sumPeriod(withRough, OCT_3)).toMatchObject({ days: 3, workDays: 2 })
   })
 
   it('AC-4105.1 나눔을 못 한 날·접수 건수를 모르는 날·접수 0건이지만 금액이 있는 날은 진료한 날이다', () => {
@@ -472,67 +512,36 @@ describe('AC-4105.1 sumPeriod 진료한 날 수(workDays)', () => {
     expect(sumPeriod(rows, OCT_3)).toMatchObject({ days: 3, workDays: 3 })
   })
 
-  it('AC-4105.1 31일 기간에 확인 필요한 날 2일 · 쉬는 날 5일 · 나눔을 못 한 날 2일이면 workDays는 24다', () => {
+  it('AC-4105.1·AC-6906.1 31일 기간에 금액 모르는 날 2일 · 쉬는 날 5일 · 나눔을 못 한 날 2일이면 workDays는 24다', () => {
     const rest = new Set(['2026-03-01', '2026-03-08', '2026-03-15', '2026-03-22', '2026-03-29'])
-    const unchecked = new Set(['2026-03-02', '2026-03-03'])
+    const unknown = new Set(['2026-03-02', '2026-03-03'])
     const noSplit = new Set(['2026-03-10', '2026-03-11'])
     const march = { from: '2026-03-01', to: '2026-03-31' }
     const rows = eachDay(march).map((date) => {
       if (rest.has(date)) return restDay(date)
-      if (unchecked.has(date)) return uncheckedDay(date)
+      if (unknown.has(date)) return uncheckedDay(date)
       if (noSplit.has(date)) return noSplitDay(date)
       return day(date)
     })
     expect(sumPeriod(rows, march)).toMatchObject({ days: 29, workDays: 24 })
   })
 
-  it('AC-4105.1 모든 날이 확인 필요한 날이면 workDays는 0이다(합은 null이 아님)', () => {
-    expect(sumPeriod([uncheckedDay('2026-10-01'), restDay('2026-10-02')], OCT_3)).toMatchObject({ total: 0, days: 1, workDays: 0 })
+  it('AC-6904.2 roughTotal이 0원이어도 금액이 있는 날이라 진료한 날이다(쉬는 날 하나와 함께여도 자료가 있다)', () => {
+    expect(sumPeriod([roughDay('2026-10-01', 0), restDay('2026-10-02')], OCT_3)).toMatchObject({ total: 0, days: 2, workDays: 1 })
   })
 })
 
-// first90 AC-4408.2: 참고 금액 포함(withRough). 확인 필요한 날 가운데 참고 금액(roughTotal, 숫자)이 있는 날만 매출·접수 건수·진료한 날에 더한다
-describe('AC-4408.2 sumPeriod 참고 금액 포함(withRough)', () => {
-  const rough = (date: string, roughTotal: number, over: Partial<RevenueDayRow> = {}) => uncheckedDay(date, { roughTotal, ...over })
-
-  it('AC-4408.2 참고 금액이 있는 확인 필요한 날의 금액·접수 건수·진료한 날을 더하고 roughDays·roughSum을 낸다', () => {
-    const rows = [day('2026-10-01'), rough('2026-10-02', 300_000, { visits: 5 }), restDay('2026-10-03')]
-    const sum = sumPeriod(rows, OCT_3, { withRough: true })
-    expect(sum).toMatchObject({ total: 1_300_000, perVisitTotal: 1_300_000, perVisitCount: 15, workDays: 2, days: 2, roughDays: ['2026-10-02'], roughSum: 300_000 })
-    expect(sum?.uncheckedDays).toEqual(['2026-10-02'])
-    expect(perVisit(sum)).toBe(86_666) // 1,300,000 ÷ 15 = 86,666.6… → 원 아래 버림
+describe('AC-6904.2 isWorkDay 진료한 날', () => {
+  it('AC-6904.2 그날 매출(dayRevenue)이 있고 쉬는 날이 아니면 참이다: 보통 날·나눔을 못 한 날·roughTotal이 있는 확인 필요한 날(0·음수 포함)', () => {
+    for (const row of [day('2026-10-01'), noSplitDay('2026-10-01'), roughDay('2026-10-01', 300_000), roughDay('2026-10-01', 0), roughDay('2026-10-01', -20_000)]) {
+      expect(isWorkDay(row), JSON.stringify(row)).toBe(true)
+    }
   })
 
-  it('AC-4408.2 급여·비급여·기타와 splitTotal에는 넣지 않는다', () => {
-    const rows = [day('2026-10-01'), rough('2026-10-02', 300_000)]
-    const plain = sumPeriod(rows, OCT_3)!
-    const withRough = sumPeriod(rows, OCT_3, { withRough: true })!
-    for (const key of ['covered', 'insurer', 'selfPay', 'noncovered', 'other', 'splitTotal'] as const) expect(withRough[key], key).toBe(plain[key])
-  })
-
-  it('AC-4408.2 참고 금액이 없는 확인 필요한 날(옛 도우미·null)은 켜도 빠진다', () => {
-    const rows = [day('2026-10-01'), uncheckedDay('2026-10-02'), uncheckedDay('2026-10-03', { roughTotal: null })]
-    expect(sumPeriod(rows, OCT_3, { withRough: true })).toMatchObject({ total: 1_000_000, perVisitCount: 10, workDays: 1, roughDays: [], roughSum: 0 })
-  })
-
-  it('AC-4408.2 참고 금액 0원·음수(환불)도 숫자라 더한다', () => {
-    const rows = [day('2026-10-01'), rough('2026-10-02', 0), rough('2026-10-03', -20_000)]
-    expect(sumPeriod(rows, OCT_3, { withRough: true })).toMatchObject({ total: 980_000, workDays: 3, roughDays: ['2026-10-02', '2026-10-03'], roughSum: -20_000 })
-  })
-
-  it('AC-4408.2 접수 건수를 모르는 참고 금액 날은 매출에만 들고 건당 진료비 짝에서 빠진다(noVisitDays)', () => {
-    const rows = [day('2026-10-01'), rough('2026-10-02', 300_000, { visits: null })]
-    const sum = sumPeriod(rows, OCT_3, { withRough: true })
-    expect(sum).toMatchObject({ total: 1_300_000, perVisitTotal: 1_000_000, perVisitCount: 10, noVisitDays: ['2026-10-02'] })
-  })
-
-  it('AC-4408.2 끄면(기본) 참고 금액이 있어도 지금 셈 그대로이고 roughDays·roughSum 열쇠가 없다', () => {
-    const rows = [day('2026-10-01'), rough('2026-10-02', 300_000)]
-    const sum = sumPeriod(rows, OCT_3)
-    expect(sum).toMatchObject({ total: 1_000_000, workDays: 1 })
-    expect(sum).not.toHaveProperty('roughDays')
-    expect(sum).not.toHaveProperty('roughSum')
-    expect(sumPeriod(rows, OCT_3, { withRough: false })).toEqual(sum)
+  it('AC-6904.2·AC-6906.1 금액 모르는 날과 쉬는 날은 거짓이다', () => {
+    expect(isWorkDay(uncheckedDay('2026-10-01'))).toBe(false)
+    expect(isWorkDay(uncheckedDay('2026-10-01', { roughTotal: null }))).toBe(false)
+    expect(isWorkDay(restDay('2026-10-01'))).toBe(false)
   })
 })
 

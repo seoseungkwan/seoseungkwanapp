@@ -21,26 +21,24 @@ afterEach(cleanup)
 
 const classesOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
 
-const NOTE = "휴진한 날은 칸이 없어요. '–'는 확인 필요한 날(10월 28일)이에요. 그날 금액은 합계에 넣지 않았어요."
+const NOTE = '휴진한 날은 칸이 없어요.'
+// 매출 추이 [어떻게 세나요?] 세 문단(bit-total AC-6905.3)
 const TREND_HOW = [
   '매출은 수납한 날(회계일)의 총진료비예요. 총진료비 = 공단부담 + 본인부담 + 비급여 + 기타이고, 그날 정상 수납한 것과 미수금으로 들어온 것을 더해요.',
-  "환불·변경수납·예치금이 있거나 수납 연결이 겹친 날은 '확인 필요한 날'로 두고 그날 금액을 매출에 넣지 않아요. 비트 외래환자경영통계에서 그날을 직접 확인해 주세요.",
-  "그래서 아래 '원장님별'의 매출 합계(그런 날도 더해요)나 '원장님 보고 문장'의 총진료비(그런 날이 든 날·달은 '확인 필요')와 다를 수 있어요.",
+  '환불·변경수납·예치금이 있거나 수납 연결이 겹친 날도 다른 날과 같은 기준으로 매출에 넣어요. 도우미 0.13.0 전에 불러온 그런 날은 그날 수납한 줄의 총진료비(원장님별 표와 같은 기준, 환불은 빼기)를 넣고, 급여·비급여·기타로는 나누지 못해요.',
   '막대 칸은 환자 수 추이와 같아요: 최근 7일·30일·90일은 하루씩, 최근 12개월은 한 달씩, 기간 골라 보기는 고른 단위(일별·주별·월별)예요.',
 ]
 const SPLIT_HOW = [
   '매출은 총진료비예요. 급여(요양비용총액)는 공단이 내는 몫과 환자가 내는 몫(본인부담)을 더한 금액, 비급여는 환자가 모두 내는 금액, 기타는 100/100 미만 항목과 전액 본인부담 금액이에요. 셋을 더하면 매출이에요.',
-  '막대는 날마다 아래부터 급여·비급여·기타예요. 확인 필요한 날과 나눔을 못 한 날은 막대가 없어요.',
+  '막대는 날마다 아래부터 급여·비급여·기타예요. 나눔을 못 한 날은 막대가 없어요.',
 ]
 const TREAT_HOW = [
   "처방 금액(단가 × 수량 × 일수)으로 세요. 처방한 날 기준이고 환불·할인이 빠지지 않아 매출과 조금 달라요. 어느 묶음에도 넣지 않은 처방은 '그 밖 처방'으로 세요.",
   '묶음은 처방 칸 [묶음 고치기]에서 고쳐요. 처방 하나는 한 묶음에만 들어가서 금액을 두 번 세지 않아요. 묶음의 빼는 처방·조건은 매출에는 쓰지 않아요(넣는 처방 금액을 모두 더해요).',
   "'처방 n번'은 그 기간에 그 묶음 처방을 낸 횟수예요. 처방 칸의 '건'(같은 날 같은 환자는 1건)과 세는 법이 달라요.",
 ]
-const PER_VISIT_HOW = [
-  '매출을 그 기간의 접수 건수로 나눠요. 같은 분이 다섯 번 오면 다섯 건으로 세요. 원장님 보고 문장의 건당진료비와 같은 식이고, 원 아래는 버려요.',
-  "확인 필요한 날은 금액을 알 수 없어서 그날 접수 건수도 함께 빼고 나눠요. 그래서 '원장님별'의 건당 진료비(그런 날도 더해요)와 조금 다를 수 있어요.",
-]
+// 건당 진료비 [어떻게 세나요?] 한 문단(bit-total AC-6905.3)
+const PER_VISIT_HOW = ['매출을 그 기간의 접수 건수로 나눠요. 같은 분이 다섯 번 오면 다섯 건으로 세요. 원장님 보고 문장의 건당진료비와 같은 식이고, 원 아래는 버려요.']
 
 const bar = (key: string, label: string, rangeLabel: string, value: number | null): BarBucket =>
   value === null ? { key, label, rangeLabel, state: 'complete', values: [0], blank: 'no-data' } : { key, label, rangeLabel, state: 'complete', values: [value] }
@@ -50,7 +48,6 @@ const PER_VISIT_BARS = [bar('2026-10-15', '10.15', '10월 15일', 57), bar('2026
 const TREND: TrendTab = {
   desc: '매출 = 총진료비 · 수납한 날 기준, 하루씩',
   lead: { text: '이 기간 매출', amount: '1억 3,261만 원', rest: '· 지난 30일 1억 3,200만 원' },
-  tag: false,
   series: [{ name: '매출', tone: 'accent' }],
   buckets: TREND_BARS,
   legend: [],
@@ -153,7 +150,7 @@ const PER_VISIT: PerVisitTab = {
 }
 
 type Ready = Extract<RevenueTabs, { kind: 'ready' }>
-const ready = (over: Partial<Omit<Ready, 'kind'>> = {}): Ready => ({ kind: 'ready', trend: TREND, split: SPLIT, treatments: TREATMENTS, perVisit: PER_VISIT, rough: null, ...over })
+const ready = (over: Partial<Omit<Ready, 'kind'>> = {}): Ready => ({ kind: 'ready', trend: TREND, split: SPLIT, treatments: TREATMENTS, perVisit: PER_VISIT, ...over })
 
 const TAB_NAMES = ['매출 추이', '급여·비급여·기타', '치료별 매출', '건당 진료비']
 const OLD_HELPER_LEAD = '도우미가 예전 판이라 치료별 매출은 읽지 못했어요.'
@@ -268,7 +265,7 @@ describe('AC-4107.3: 매출 추이 탭', () => {
     expect(within(shown()).getByText('1억 3,261만 원').parentElement!.textContent).toBe('이 기간 매출 1억 3,261만 원')
   })
 
-  it('AC-4107.3: 막대는 단위 (만 원), 칸 31개 이하면 막대 위 숫자, 화면 읽기 표 `매출 추이 (만 원)`이고 확인 필요한 날은 –다', () => {
+  it('AC-4107.3: 막대는 단위 (만 원), 칸 31개 이하면 막대 위 숫자, 화면 읽기 표 `매출 추이 (만 원)`이고 값이 없는 칸(no-data)은 –다', () => {
     draw()
     const panel = shown()
     const plot = panel.querySelector('div[aria-hidden="true"]')!
@@ -303,7 +300,7 @@ describe('AC-4107.3: 매출 추이 탭', () => {
     expect(within(shown()).queryByText(NOTE)).toBeNull()
   })
 
-  it('AC-4107.3: [어떻게 세나요?]는 처음 접혀 있고 펼치면 네 문단이 이 차례다', () => {
+  it('AC-4107.3·AC-6905.3: [어떻게 세나요?]는 처음 접혀 있고 펼치면 세 문단이 이 차례다', () => {
     draw()
     expect(howButton().getAttribute('aria-expanded')).toBe('false')
     expect(howBody().hidden).toBe(true)
@@ -449,7 +446,7 @@ describe('AC-4107.6: 건당 진료비 탭', () => {
     expect(cells[1]!.querySelector('.text-positive svg[aria-hidden="true"]')).not.toBeNull()
   })
 
-  it('AC-4107.6: 막대는 단위 (천 원) · 화면 읽기 표 `건당 진료비 (천 원)` · 아래 글 · [어떻게 세나요?] 두 문단(건당 진료비)', () => {
+  it('AC-4107.6·AC-6905.3: 막대는 단위 (천 원) · 화면 읽기 표 `건당 진료비 (천 원)` · 아래 글 · [어떻게 세나요?] 한 문단(건당 진료비)', () => {
     draw()
     pick('건당 진료비')
     const panel = shown()
@@ -574,178 +571,94 @@ describe('AC-4107.10: 고른 탭·펼침은 화면 상태뿐 · 소스 규칙', 
   })
 })
 
-// first90 AC-4408.1: 참고 금액 포함 스위치의 둘째 자리(매출 칸 제목 줄 오른쪽). 상태는 부르는 쪽(StatsSections)이 갖는다
-describe('AC-4408.1: 매출 칸 제목 줄의 참고 금액 포함 스위치', () => {
-  const drawCard = (props: Partial<Parameters<typeof RevenueSection>[0]> = {}) =>
+// bit-total(REQ-6905 AC-6905.1·AC-6905.2·AC-6905.4, design.md 2절): 매출 칸에 스위치·꼬리표·범례·점선 칸·빗금 막대·켜짐 안내 줄이 없다.
+// 막대는 늘 tabs.trend·tabs.perVisit(계열 하나)다. 확인 필요로 저장되고 roughTotal이 있는 날도 보통 막대이고, 음수면 높이 0 · 칸 위 숫자만 음수다
+const NEGATIVE = (values: number): BarBucket => ({ key: '2026-10-28', label: '', rangeLabel: '10월 28일', state: 'complete', values: [values] })
+const PLAIN_TREND: TrendTab = {
+  ...TREND,
+  buckets: [TREND_BARS[0]!, NEGATIVE(-5), TREND_BARS[2]!],
+  tips: { '2026-10-15': '10.15(목) 매출 530만 원', '2026-10-28': '10.28(수) 매출 −5만 원', '2026-11-13': '11.13(금) 매출 570만 원' },
+}
+const PLAIN_PER_VISIT: PerVisitTab = {
+  ...PER_VISIT,
+  buckets: [PER_VISIT_BARS[0]!, NEGATIVE(-5), PER_VISIT_BARS[2]!],
+  tips: { '2026-10-15': '10.15(목) 건당 진료비 57,608원', '2026-10-28': '10.28(수) 건당 진료비 −5,200원', '2026-11-13': '11.13(금) 건당 진료비 61,000원' },
+}
+const plain = (over: Partial<Omit<Ready, 'kind'>> = {}) => ready({ trend: PLAIN_TREND, perVisit: PLAIN_PER_VISIT, ...over })
+const plotOf = () => shown().querySelector('div[aria-hidden="true"]') as HTMLElement
+const barButtons = () => [...plotOf().querySelectorAll('button')]
+const OLD_WORDS = /참고 금액|참고 포함|확인 필요/
+
+describe('AC-6905.1: 매출 칸 제목 줄에 스위치가 없다', () => {
+  const drawCard = (tabsIn: RevenueTabs | 'reading' | 'read-failed') =>
     render(
       <StatsCard title="매출">
-        <RevenueSection tabs={ready()} noDayCodes={false} onReread={() => undefined} {...props} />
+        <RevenueSection tabs={tabsIn} noDayCodes={false} onReread={() => undefined} />
       </StatsCard>,
     )
   const cardHead = () => screen.getAllByRole('heading', { level: 2, name: '매출' })[0]!.parentElement!
 
-  it('AC-4408.1: 확인 필요한 날이 있으면 큰 카드 제목 줄 오른쪽에 스위치가 있고, 누르면 onMode를 부른다', () => {
-    const onMode = vi.fn()
-    drawCard({ mode: 'out', onMode, rough: { days: 2, roughDays: 1 } })
-    const button = within(cardHead()).getByRole('switch', { name: '참고 금액 포함' })
-    expect(button.getAttribute('aria-checked')).toBe('false')
-    expect(within(cardHead()).getByText('확인 필요한 날 2일은 빼고 셌어요')).toBeTruthy()
-    fireEvent.click(button)
-    expect(onMode).toHaveBeenCalledWith('in')
-  })
-
-  it('AC-4408.1: 켜짐이면 aria-checked="true"이고 아래 글은 참고 금액 글이다(참고 금액이 없는 날도 있으면 `참고 금액 {m}일 포함 · {k}일 금액 미확인`)', () => {
-    drawCard({ mode: 'in', onMode: () => undefined, rough: { days: 2, roughDays: 1 } })
-    expect(within(cardHead()).getByRole('switch').getAttribute('aria-checked')).toBe('true')
-    expect(within(cardHead()).getByText('참고 금액 1일 포함 · 1일 금액 미확인')).toBeTruthy()
-    cleanup()
-    drawCard({ mode: 'in', onMode: () => undefined, rough: { days: 1, roughDays: 1 } })
-    expect(within(cardHead()).getByText('확인 필요한 날 1일의 참고 금액을 더했어요')).toBeTruthy()
-  })
-
-  it('AC-4408.1: 확인 필요한 날이 없거나 rough를 주지 않으면 스위치가 없다. 탭 넷은 그대로다', () => {
-    drawCard({ mode: 'out', onMode: () => undefined, rough: { days: 0, roughDays: 0 } })
-    expect(screen.queryByRole('switch')).toBeNull()
-    expect(tabs()).toHaveLength(4)
-    cleanup()
-    drawCard()
-    expect(screen.queryByRole('switch')).toBeNull()
-  })
-
-  it('AC-4408.1: 읽는 중·읽기 실패·자료 없음 칸에는 스위치가 없다', () => {
-    for (const tabsIn of ['reading', 'read-failed', { kind: 'empty' }] as const) {
-      drawCard({ tabs: tabsIn, mode: 'out', onMode: () => undefined, rough: { days: 2, roughDays: 1 } })
+  it('AC-6905.1: 탭이 있을 때도 · 읽는 중·읽기 실패·자료 없음일 때도 큰 카드 제목 줄에 스위치·그 아래 글이 없다', () => {
+    for (const tabsIn of [plain(), 'reading', 'read-failed', { kind: 'empty' }] as const) {
+      drawCard(tabsIn)
       expect(screen.queryByRole('switch')).toBeNull()
+      expect(cardHead().textContent).not.toMatch(OLD_WORDS)
       cleanup()
     }
   })
+
+  it('AC-6905.1: RevenueSection은 스위치 props(mode·onMode·rough)를 받지 않고 RoughSwitch를 쓰지 않는다', () => {
+    const code = readFileSync(join(process.cwd(), 'src/components/stats/sections/RevenueSection.tsx'), 'utf8')
+    expect(code).not.toMatch(/RoughSwitch|RevenueMode|RoughInfo|ROUGH_TAG|onMode|tabs\.rough|outside/)
+  })
 })
 
-// first90 AC-4408.3·AC-4408.4·AC-4408.5·AC-4417.3: 점선·빗금 막대 · 범례 · 아래 글 · 막대 누르기 아래 줄 · 치료별 매출 순위.
-// 켜짐 막대(rough)는 revenueView가 따로 준다. 스위치 상태(mode)는 부르는 쪽(StatsSections)이 갖는다
-const DASHED = '휴진한 날은 칸이 없어요. 점선 칸은 확인 필요한 날(10월 28일)이에요. 0원이 아니라 금액이 확실하지 않아 합계에서 뺀 날이에요.'
-const ROUGH =
-  '휴진한 날은 칸이 없어요. 빗금 막대는 확인 필요한 날(10월 28일)의 참고 금액이에요. 원장님별 표와 같은 기준(그날 수납한 줄의 총진료비 합, 환불은 빼기)으로 셌어요. 비트 외래환자경영통계와 조금 다를 수 있어요.'
-const MARKED: BarBucket = { key: '2026-10-28', label: '', rangeLabel: '10월 28일', state: 'complete', values: [0], mark: 'unchecked' }
-const OUT_LEGEND: TrendTab['legend'] = [
-  { label: '매출', mark: 'accent' },
-  { label: '확인 필요한 날(뺌)', mark: 'unchecked' },
-]
-const IN_LEGEND: TrendTab['legend'] = [
-  { label: '매출', mark: 'accent' },
-  { label: '참고 금액(확인 필요한 날)', mark: 'rough' },
-]
-const OUT_TREND: TrendTab = {
-  ...TREND,
-  buckets: [TREND_BARS[0]!, MARKED, TREND_BARS[2]!],
-  legend: OUT_LEGEND,
-  tips: { '2026-10-15': '10.15(목) 매출 530만 원', '2026-10-28': '10.28(수) 확인 필요한 날 · 금액을 빼고 셌어요', '2026-11-13': '11.13(금) 매출 570만 원' },
-  note: DASHED,
-}
-const IN_TREND: TrendTab = {
-  ...TREND,
-  lead: { text: '이 기간 매출', amount: '1억 3,759만 원', rest: '· 지난 30일 1억 3,200만 원' },
-  tag: true,
-  series: [
-    { name: '참고 금액', tone: 'rough' },
-    { name: '매출', tone: 'accent' },
-  ],
-  buckets: [
-    { ...TREND_BARS[0]!, values: [0, 530] },
-    { key: '2026-10-28', label: '', rangeLabel: '10월 28일', state: 'complete', values: [498, 0] },
-    { ...TREND_BARS[2]!, values: [0, 570] },
-  ],
-  legend: IN_LEGEND,
-  tips: { '2026-10-15': '10.15(목) 매출 530만 원', '2026-10-28': '10.28(수) 참고 금액 498만 원 · 확인 필요한 날', '2026-11-13': '11.13(금) 매출 570만 원' },
-  note: ROUGH,
-}
-const OUT_PER_VISIT: PerVisitTab = {
-  ...PER_VISIT,
-  buckets: [PER_VISIT_BARS[0]!, MARKED, PER_VISIT_BARS[2]!],
-  legend: [
-    { label: '건당 진료비', mark: 'accent' },
-    { label: '확인 필요한 날(뺌)', mark: 'unchecked' },
-  ],
-  tips: { '2026-10-15': '10.15(목) 건당 진료비 57,608원', '2026-10-28': '10.28(수) 확인 필요한 날 · 금액을 빼고 셌어요', '2026-11-13': '11.13(금) 건당 진료비 61,000원' },
-  note: DASHED,
-}
-const IN_PER_VISIT: PerVisitTab = {
-  ...PER_VISIT,
-  series: [
-    { name: '건당 진료비(참고 금액)', tone: 'rough' },
-    { name: '건당 진료비', tone: 'accent' },
-  ],
-  buckets: [
-    { ...PER_VISIT_BARS[0]!, values: [0, 57] },
-    { key: '2026-10-28', label: '', rangeLabel: '10월 28일', state: 'complete', values: [52, 0] },
-    { ...PER_VISIT_BARS[2]!, values: [0, 61] },
-  ],
-  legend: [
-    { label: '건당 진료비', mark: 'accent' },
-    { label: '참고 금액(확인 필요한 날)', mark: 'rough' },
-  ],
-  tips: { '2026-10-15': '10.15(목) 건당 진료비 57,608원', '2026-10-28': '10.28(수) 건당 진료비 52,421원 · 참고 금액 · 확인 필요한 날', '2026-11-13': '11.13(금) 건당 진료비 61,000원' },
-  note: ROUGH,
-}
-const OUTSIDE = '참고 금액 498만 원(확인 필요한 날 1일)은 이 탭에 넣지 않아 합이 총매출과 달라요.'
-const roughTabs = (over: Partial<Omit<Ready, 'kind'>> = {}) => ready({ trend: OUT_TREND, perVisit: OUT_PER_VISIT, rough: { trend: IN_TREND, perVisit: IN_PER_VISIT, outside: OUTSIDE }, ...over })
-const drawMode = (tabsIn: RevenueTabs, mode: 'out' | 'in') => render(<RevenueSection tabs={tabsIn} noDayCodes={false} onReread={() => undefined} mode={mode} />)
-const plotOf = () => shown().querySelector('div[aria-hidden="true"]') as HTMLElement
-const legendOf = () => within(shown()).getAllByRole('list')[0]!
-const barButtons = () => [...plotOf().querySelectorAll('button')]
-
-describe('AC-4408.3: 매출 추이 막대 — 꺼짐 점선 칸 · 켜짐 빗금 막대 · 범례 · 아래 글', () => {
-  it('AC-4408.3: 꺼짐이면 확인 필요한 날은 점선 칸이고 칸 위 글 `확인 필요`(768px 이상), 범례 `매출` · `확인 필요한 날(뺌)`은 막대 위, 막대 아래 글은 점선 글이다', () => {
-    drawMode(roughTabs(), 'out')
+describe('AC-6905.1: 매출 추이·건당 진료비 막대 — 계열 하나, 범례·점선 칸·빗금 막대·꼬리표 없음', () => {
+  it('AC-6905.1: 매출 추이는 범례 목록·점선 칸·빗금 조각(st-rise)이 없고 화면 읽기 표 머리는 기간·매출·합계·상태다. 머리 글에 `참고 포함` 꼬리표가 없다', () => {
+    draw(plain())
     const plot = plotOf()
-    expect(classesOf(within(plot).getByText('확인 필요'))).toContain('max-md:hidden')
-    expect(plot.querySelector('.border-dashed')).not.toBeNull()
-    expect(within(legendOf()).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['매출', '확인 필요한 날(뺌)'])
-    expect(legendOf().compareDocumentPosition(plot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(within(shown()).getByText(DASHED)).toBeTruthy()
-    expect(within(shown()).queryByText('참고 포함')).toBeNull()
-    expect(within(within(shown()).getByRole('table', { name: '매출 추이 (만 원)' })).getByRole('rowheader', { name: '10월 28일' }).parentElement!.textContent).toBe('10월 28일––확인 필요')
-  })
-
-  it('AC-4408.3·AC-4417.3: 켜짐이면 참고 금액 날은 빗금 막대(st-rise로 솟음)·칸 위 금액, 범례 `참고 금액(확인 필요한 날)`, 머리 글에 `참고 포함` 꼬리표(st-tag-in), 막대 아래 글은 빗금 글이다', () => {
-    drawMode(roughTabs(), 'in')
-    const lead = within(shown()).getByText('1억 3,759만 원').parentElement!
-    expect(lead.textContent).toBe('이 기간 매출 1억 3,759만 원 참고 포함 · 지난 30일 1억 3,200만 원')
-    expect(classesOf(within(lead).getByText('참고 포함'))).toEqual(expect.arrayContaining(['st-tag-in', 'rounded-full', 'text-st-warn-ink']))
-    const plot = plotOf()
-    expect(plot.querySelector('.st-rise')).not.toBeNull()
-    expect(plot.querySelector('.st-rise svg path')).not.toBeNull() // 빗금은 svg 선(그라데이션 아님)
-    expect(within(plot).getByText('498')).toBeTruthy()
+    expect(within(shown()).queryByRole('list')).toBeNull()
+    expect(plot.querySelector('.border-dashed')).toBeNull()
+    expect(plot.querySelector('.st-rise')).toBeNull()
     expect(within(plot).queryByText('확인 필요')).toBeNull()
-    expect(within(legendOf()).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['매출', '참고 금액(확인 필요한 날)'])
     const table = within(shown()).getByRole('table', { name: '매출 추이 (만 원)' })
-    expect(within(table).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['기간', '참고 금액', '매출', '합계', '상태'])
-    expect(within(shown()).getByText(ROUGH)).toBeTruthy()
+    expect(within(table).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['기간', '매출', '합계', '상태'])
+    const lead = within(shown()).getByText('1억 3,261만 원').parentElement!
+    expect(lead.textContent).toBe('이 기간 매출 1억 3,261만 원 · 지난 30일 1억 3,200만 원')
+    expect(lead.querySelector('.st-tag-in')).toBeNull()
   })
 
-  it('AC-4408.3·AC-4417.3: 막대는 기간을 바꾸면 높이가 움직이고(st-move-period) 막대 위 숫자는 768px 이상에서만 보인다', () => {
-    drawMode(roughTabs(), 'out')
+  it('AC-6905.1: 음수(환불이 더 많은 날) 칸은 높이 0이고 칸 위 숫자만 `−5`다. 화면 읽기 표도 `−5`다', () => {
+    draw(plain())
+    const label = within(plotOf()).getByText('−5')
+    expect(label).toBeTruthy()
+    const row = within(within(shown()).getByRole('table', { name: '매출 추이 (만 원)' })).getByRole('rowheader', { name: '10월 28일' }).parentElement!
+    expect(row.textContent).toContain('−5')
+    expect(row.textContent).not.toMatch(OLD_WORDS)
+  })
+
+  it('AC-6905.1: 건당 진료비 탭도 범례·점선 칸·빗금 조각이 없고 음수 칸 위 숫자는 `−5`다', () => {
+    draw(plain())
+    pick('건당 진료비')
+    const plot = plotOf()
+    expect(within(shown()).queryByRole('list')).toBeNull()
+    expect(plot.querySelector('.border-dashed')).toBeNull()
+    expect(plot.querySelector('.st-rise')).toBeNull()
+    expect(within(plot).getByText('−5')).toBeTruthy()
+    expect(within(within(shown()).getByRole('table', { name: '건당 진료비 (천 원)' })).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['기간', '건당 진료비', '합계', '상태'])
+  })
+
+  it('AC-6905.1·AC-4417.3: 막대는 기간을 바꾸면 높이가 움직이고(st-move-period) 막대 위 숫자는 768px 이상에서만 보인다', () => {
+    draw(plain())
     const plot = plotOf()
     expect(plot.querySelectorAll('.st-move-period').length).toBeGreaterThan(0)
     expect(classesOf(within(plot).getByText('530').parentElement!)).toContain('max-md:hidden')
   })
-
-  it('AC-4408.3: mode가 in이어도 켜짐 막대가 없으면(rough null) 꺼짐 막대 그대로다', () => {
-    drawMode(ready({ trend: OUT_TREND, perVisit: OUT_PER_VISIT }), 'in')
-    expect(within(shown()).queryByText('참고 포함')).toBeNull()
-    expect(within(plotOf()).getByText('확인 필요')).toBeTruthy()
-    expect(within(shown()).getByText(DASHED)).toBeTruthy()
-  })
-
-  it('AC-4408.3: 범례가 없으면(확인 필요한 날 없음) 범례 목록을 그리지 않는다', () => {
-    drawMode(ready(), 'out')
-    expect(within(shown()).queryByRole('list')).toBeNull()
-  })
 })
 
-describe('AC-4408.3: 막대를 누르면(PC는 올리기도) 막대 아래 줄 글(role="status")', () => {
-  it('AC-4408.3: 처음은 빈 줄이고, 누르면 그 칸 글 · 올리면 그 칸 글이며 고른 칸 바탕이 옅은 파랑이다', () => {
-    drawMode(roughTabs(), 'out')
+describe('AC-6905.2: 막대를 누르면(PC는 올리기도) 막대 아래 줄 글(role="status")', () => {
+  it('AC-6905.2: 처음은 빈 줄이고, 누르면 그 칸 글 · 올리면 그 칸 글이며 고른 칸 바탕이 옅은 파랑이다', () => {
+    draw(plain())
     const status = within(shown()).getByRole('status')
     expect(status.textContent).toBe('')
     expect(plotOf().compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -755,87 +668,47 @@ describe('AC-4408.3: 막대를 누르면(PC는 올리기도) 막대 아래 줄 �
     expect(status.textContent).toBe('10.15(목) 매출 530만 원')
     expect(classesOf(barButtons()[0]!)).toContain('bg-accent-soft')
     fireEvent.mouseEnter(second!)
-    expect(status.textContent).toBe('10.28(수) 확인 필요한 날 · 금액을 빼고 셌어요')
+    expect(status.textContent).toBe('10.28(수) 매출 −5만 원')
   })
 
-  it('AC-4408.3: 스위치를 바꿔도 고른 칸은 그대로이고 글은 켜짐 글(`참고 금액 {금액} · 확인 필요한 날`)로 바뀐다', () => {
-    const view = drawMode(roughTabs(), 'out')
-    fireEvent.click(barButtons()[1]!)
-    expect(within(shown()).getByRole('status').textContent).toBe('10.28(수) 확인 필요한 날 · 금액을 빼고 셌어요')
-    view.rerender(<RevenueSection tabs={roughTabs()} noDayCodes={false} onReread={() => undefined} mode="in" />)
-    expect(within(shown()).getByRole('status').textContent).toBe('10.28(수) 참고 금액 498만 원 · 확인 필요한 날')
-  })
-
-  it('AC-4408.3: 건당 진료비 탭도 같은 규칙이다(꺼짐 점선 칸 · 켜짐 빗금 · 아래 줄 글)', () => {
-    const view = drawMode(roughTabs(), 'out')
+  it('AC-6905.2: 건당 진료비 탭도 같은 규칙이고 숫자 칸 셋은 그대로다', () => {
+    draw(plain())
     pick('건당 진료비')
-    expect(within(plotOf()).getByText('확인 필요')).toBeTruthy()
-    expect(within(legendOf()).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['건당 진료비', '확인 필요한 날(뺌)'])
     fireEvent.click(barButtons()[0]!)
     expect(within(shown()).getByRole('status').textContent).toBe('10.15(목) 건당 진료비 57,608원')
-    view.rerender(<RevenueSection tabs={roughTabs()} noDayCodes={false} onReread={() => undefined} mode="in" />)
-    expect(plotOf().querySelector('.st-rise')).not.toBeNull()
     fireEvent.click(barButtons()[1]!)
-    expect(within(shown()).getByRole('status').textContent).toBe('10.28(수) 건당 진료비 52,421원 · 참고 금액 · 확인 필요한 날')
-    expect(within(shown()).getByText(ROUGH)).toBeTruthy()
-    // 숫자 칸 셋은 그대로다
+    expect(within(shown()).getByRole('status').textContent).toBe('10.28(수) 건당 진료비 −5,200원')
     expect(within(shown()).getByText('57,333원')).toBeTruthy()
+  })
+
+  it('AC-6905.2: 막대 아래 글은 한 문장(휴진 문장)뿐이다', () => {
+    draw(plain())
+    expect(within(shown()).getByText(NOTE).textContent).toBe('휴진한 날은 칸이 없어요.')
+    pick('건당 진료비')
+    expect(within(shown()).getByText(NOTE)).toBeTruthy()
   })
 })
 
-describe('AC-4408.4·AC-4408.5: 급여·비급여·기타·치료별 매출은 스위치와 상관없고 탭 넷은 그대로', () => {
-  it('AC-4408.4: 켜짐이어도 급여·비급여·기타·치료별 매출 탭의 글은 맨 위 안내 줄 말고는 꺼짐과 한 글자도 다르지 않다', () => {
-    const texts = (mode: 'out' | 'in') => {
-      const view = drawMode(roughTabs(), mode)
-      const out = ['급여·비급여·기타', '치료별 매출'].map((name) => {
-        pick(name)
-        return shown().textContent
-      })
-      view.unmount()
-      return out
-    }
-    expect(texts('in')).toEqual(texts('out').map((text) => `${OUTSIDE}${text}`))
-  })
-
-  it('AC-4408.4: 켜짐이고 켜짐 셈(rough)이 있으면 급여·비급여·기타·치료별 매출 탭 맨 위(설명 줄 아래)에 안내 줄(outside)이 있다. 매출 추이·건당 진료비 탭에는 없다', () => {
-    drawMode(roughTabs({ split: { ...SPLIT, notice: { lead: '1일(11월 3일)', rest: '은 나눔을 못 해서 이 표에서 빠졌어요. 매출 합계에는 들어 있어요.' } } }), 'in')
-    for (const name of ['급여·비급여·기타', '치료별 매출']) {
-      pick(name)
-      const note = within(shown()).getByText(OUTSIDE)
-      expect(shown().firstElementChild, name).toBe(note) // 패널 맨 위(설명 줄은 머리 줄에 있다)
-      expect(note.tagName).toBe('P')
-      expect(classesOf(note)).toEqual(['mt-3', 'max-w-130', 'text-small', 'text-muted']) // 막대 아래 글과 같은 모양(새 모양 없음)
-      expect(within(head()).queryByText(OUTSIDE)).toBeNull()
-    }
-    for (const name of ['매출 추이', '건당 진료비']) {
-      pick(name)
-      expect(within(shown()).queryByText(OUTSIDE), name).toBeNull()
-    }
-  })
-
-  it('AC-4408.4: 꺼짐이거나 켜짐 셈이 없으면(rough null) 안내 줄이 없다', () => {
-    const view = drawMode(roughTabs(), 'out')
-    for (const name of ['급여·비급여·기타', '치료별 매출']) {
-      pick(name)
-      expect(within(shown()).queryByText(OUTSIDE), name).toBeNull()
-    }
-    view.unmount()
-    drawMode(ready({ trend: OUT_TREND, perVisit: OUT_PER_VISIT }), 'in')
+describe('AC-6905.4·AC-4408.5: 급여·비급여·기타·치료별 매출 탭 맨 위에 안내 줄이 없고 탭 넷은 그대로', () => {
+  it('AC-6905.4: 급여·비급여·기타·치료별 매출 탭 맨 위에 `참고 금액 … 합이 총매출과 달라요.` 줄이 없고, 칸 어디에도 참고 금액·확인 필요 글이 없다', () => {
+    const notice = { lead: '1일(10월 28일)', rest: '은 나눔을 못 해서 이 표에서 빠졌어요. 매출 합계에는 들어 있어요.' }
+    const { container } = draw(plain({ split: { ...SPLIT, notice } }))
     for (const name of ['급여·비급여·기타', '치료별 매출']) {
       pick(name)
       expect(within(shown()).queryByText(/이 탭에 넣지 않아/), name).toBeNull()
+      expect(shown().textContent, name).not.toMatch(OLD_WORDS)
     }
-  })
-
-  it('AC-4408.4: 치료별 매출이 줄이 아닐 때(읽는 중·자료 없음)도 켜짐 안내 줄은 맨 위다', () => {
-    drawMode(roughTabs({ treatments: { ...TREATMENTS, state: 'reading', lead: null, rows: [], lines: ['불러오는 중'] } }), 'in')
-    pick('치료별 매출')
-    expect(shown().firstElementChild!.textContent).toBe(OUTSIDE)
-    expect(within(shown()).getByText('불러오는 중')).toBeTruthy()
+    pick('급여·비급여·기타')
+    expect(within(shown()).getByRole('note').textContent).toBe('1일(10월 28일)은 나눔을 못 해서 이 표에서 빠졌어요. 매출 합계에는 들어 있어요.')
+    for (const name of TAB_NAMES) {
+      pick(name)
+      fireEvent.click(howButton())
+    }
+    expect(container.textContent).not.toMatch(OLD_WORDS)
   })
 
   it('AC-4408.5: 탭 넷(매출 추이 · 급여·비급여·기타 · 치료별 매출 · 건당 진료비)이고 치료별 매출은 가로 막대 순위(금액 크게 · 막대 폭 움직임)다', () => {
-    drawMode(roughTabs(), 'in')
+    draw(plain())
     expect(tabs().map((t) => t.textContent)).toEqual(TAB_NAMES)
     pick('치료별 매출')
     const items = within(shown()).getAllByRole('listitem')
