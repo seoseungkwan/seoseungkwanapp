@@ -11,6 +11,7 @@ import { BANNER, KpiRow, Note as RevenueNote, NoticeLine, STRONG } from '@/compo
 import { SplitTable } from '@/components/revenue/RevenueSplit'
 import { TreatmentBars } from '@/components/revenue/TreatmentBars'
 import type { BarsView, Lead, PerVisitTab, RevenueTabs, SplitTab, TreatmentsTab, TrendTab } from '@/components/stats/revenueView'
+import type { StatsRange } from '@/components/stats/view'
 import { ds } from '@/components/ui/classes'
 import type { StatsRxGroup } from '@/types/rxGroups'
 import { HowCounted } from './HowCounted'
@@ -26,7 +27,8 @@ import { RxSection } from './RxSection'
 //   매출 추이·건당 진료비 막대는 늘 tabs.trend·tabs.perVisit(계열 하나)다. 스위치·머리 글 꼬리표·범례·점선 칸·빗금 막대·두 탭 맨 위 안내 줄이 없다.
 //   막대를 누르면(PC는 올리기도) 막대 아래 줄(role="status")에 그 칸 글이 나온다. 고른 칸은 이 칸의 React 상태다.
 //   막대는 기간을 바꾸면 높이가 움직인다(st-move-period)
-// stats-insights(REQ-6106 AC-6106.4·AC-6106.5): bit(비트 칸 보기)를 주면 탭 넷 뒤에 다섯째 탭 '신환 1명당'(PatientValueSection)을 더한다.
+// stats-insights(REQ-6106 AC-6106.4·AC-6106.5) → pv-month(AC-7202.3): bit(비트 칸 보기와 통계 기간 한 묶음)를 주면 탭 넷 뒤에 다섯째 탭 '신환 1명당'(PatientValueSection)을 더한다.
+//   기간 없이 비트 칸만 줄 수 없게 { view, range }로 묶는다(칸이 고른 기간 이름을 쓴다)
 //   비트 칸이라 bit를 줄 때만이고, 탭이 있는 때(매출이 읽혔고 자료가 있음)만이다 — 읽는 중·읽기 실패·자료 없음 칸은 지금 모양 그대로다
 
 const TITLE = '매출'
@@ -53,8 +55,8 @@ type Props = {
   noDayCodes: boolean // 이 화면에서 읽은 답에 날 단위 처방 금액이 없었음(기본값 9)
   onReread(): void // 저장된 매출만 다시 읽기(AC-4107.9)
   className?: string
-  // 신환 1명당 탭(stats-insights AC-6106.4): 비트 칸 보기와 처방 칸 묶음(이름을 붙인다). bit를 주지 않으면 탭이 없다
-  bit?: BitSectionsShown
+  // 신환 1명당 탭(stats-insights AC-6106.4, pv-month AC-7202.3): 비트 칸 보기와 통계 기간, 처방 칸 묶음(이름을 붙인다). bit를 주지 않으면 탭이 없다
+  bit?: { view: BitSectionsShown; range: StatsRange }
   groups?: readonly StatsRxGroup[]
 }
 
@@ -261,7 +263,7 @@ export function RevenueSection({ tabs, noDayCodes, onReread, className, bit, gro
         { name: '급여·비급여·기타', panel: <SplitPanel tab={tabs.split} /> },
         { name: '치료별 매출', panel: <TreatmentsPanel tab={tabs.treatments} /> },
         { name: '건당 진료비', panel: <PerVisitPanel tab={tabs.perVisit} /> },
-        ...(bit === undefined ? [] : [{ name: '신환 1명당', panel: <PatientValueSection view={bit} groups={groups} /> }]),
+        ...(bit === undefined ? [] : [{ name: '신환 1명당', panel: <PatientValueSection view={bit.view} groups={groups} range={bit.range} /> }]),
       ]}
     />
   )
