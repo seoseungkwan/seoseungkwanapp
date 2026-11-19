@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { Icon } from '@/components/common/Icon'
-import { useDesk } from '@/components/shell/role'
 import { ds } from '@/components/ui/classes'
 import type { BitDiffer } from '@/lib/worklog/bitFill'
 import { cellKindOf, cellShownText } from '@/lib/worklog/cellText'
@@ -14,7 +13,7 @@ import { BIT_LEGEND_ID, BitMark } from './WorklogSheet'
 // 업무일지 비트 안내 (specs/worklog REQ-017 AC-017.2~017.5·017.9, design.md 20-5절, 승인 시안 docs/mockups/worklog/bitfill.html v2). 그리기만 한다.
 // 날짜 줄 아래 한 줄(BitNotice)과 양식 아래 설명 줄·'다름' 목록(BitSheetNotes). 오류 카드가 아니라 안내 한 줄이고, 손으로 적기를 막지 않는다.
 // 모두 인쇄에서 숨는다(AC-011.3 "양식만 나온다", 시안 상황 6). 양식 밖이라 앱 규칙(ds·토큰)이다
-// 데스크 계정은 비트 PC 연결 화면(/claim/setup)을 못 연다 → '연결하러 가기' 링크만 그리지 않는다(desk-feedback AC-6306.4)
+// 데스크 계정도 비트 PC 연결 화면(/claim/setup)을 연다 → 원장과 같이 '연결하러 가기' 링크를 그린다(desk-setup AC-7006.1)
 
 export { BIT_LEGEND_ID }
 
@@ -56,10 +55,9 @@ function NoticeText({ text, setup, className }: { text: string; setup: boolean; 
 
 /** 날짜 줄 아래 한 줄. 터치 기기(off)면 그리지 않는다(휴대폰은 툴바의 "휴대폰에서는 보기만 할 수 있어요"만, AC-017.5) */
 export function BitNotice({ status, lastReadAt, onReload }: { status: BitFillStatus; lastReadAt: Date | null; onReload(): void }) {
-  const desk = useDesk()
   if (status === 'off') return null
   const text = noticeText(status, lastReadAt)
-  const setup = status === 'setup-needed' && !desk
+  const setup = status === 'setup-needed'
   if (!WITH_BUTTON.includes(status)) return <NoticeText text={text} setup={setup} className="print:hidden" />
   const reading = status === 'reading'
   return (

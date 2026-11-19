@@ -191,8 +191,8 @@ describe('AC-017.3 비트 숫자와 다른 칸 목록', () => {
   })
 })
 
-// desk-feedback AC-6306.4: 데스크는 비트 PC 연결 화면(/claim/setup)을 못 연다 → 그리로 가는 링크만 숨기고 나머지는 그대로
-describe('AC-6306.4 데스크 — 연결 링크 숨김', () => {
+// desk-setup AC-7006.1: 데스크도 비트 PC 연결 화면(/claim/setup)을 연다 → 원장과 같이 '연결하러 가기' 링크가 있다(desk-feedback AC-6306.4의 숨김을 거둠). 나머지는 그대로
+describe('AC-7006.1 데스크도 연결 링크', () => {
   const deskLine = (status: BitFillStatus, desk = true) => {
     const onReload = vi.fn()
     render(
@@ -203,12 +203,13 @@ describe('AC-6306.4 데스크 — 연결 링크 숨김', () => {
     return { onReload }
   }
 
-  it('AC-6306.4: 데스크면 setup-needed 안내 글은 그대로이고 "연결하러 가기"(/claim/setup) 링크가 없다', () => {
+  it('AC-7006.1: 데스크도 setup-needed면 원장과 같이 안내 글 끝에 글자 링크 "연결하러 가기"(/claim/setup)이고 단추가 없다', () => {
     deskLine('setup-needed')
     expect(screen.getByText(TEXT.setup)).toBeTruthy()
-    expect(screen.queryByRole('link')).toBeNull()
-    expect(screen.queryByText('연결하러 가기')).toBeNull()
-    expect(document.querySelector('a[href="/claim/setup"]')).toBeNull()
+    const link = screen.getByRole('link', { name: '연결하러 가기' })
+    expect(link.getAttribute('href')).toBe('/claim/setup')
+    expect(link.parentElement?.lastElementChild).toBe(link)
+    expect(screen.getAllByRole('link')).toHaveLength(1)
     expect(loadButton()).toBeNull()
   })
 
@@ -216,14 +217,22 @@ describe('AC-6306.4 데스크 — 연결 링크 숨김', () => {
     ['ready', '비트 숫자를 14:20에 불러왔어요'],
     ['failed', TEXT.failed],
     ['unconfirmed', TEXT.unconfirmed],
-  ] as const)('AC-6306.4: 데스크도 %s의 글과 [지금 불러오기]는 그대로다', (status, text) => {
+  ] as const)('AC-7006.1: 데스크도 %s의 글과 [지금 불러오기]는 그대로이고 링크가 없다', (status, text) => {
     const { onReload } = deskLine(status)
     expect(screen.getByText(text)).toBeTruthy()
+    expect(screen.queryByRole('link')).toBeNull()
     fireEvent.click(loadButton()!)
     expect(onReload).toHaveBeenCalledTimes(1)
   })
 
-  it('AC-6306.4: 원장(RoleProvider desk={false})은 지금처럼 "연결하러 가기"(/claim/setup) 링크가 있다', () => {
+  it('AC-7006.1: 데스크도 not-connected는 안내 글만이고 단추·링크가 없다', () => {
+    deskLine('not-connected')
+    expect(screen.getByText(TEXT.notConnected)).toBeTruthy()
+    expect(screen.queryByRole('link')).toBeNull()
+    expect(loadButton()).toBeNull()
+  })
+
+  it('AC-7006.1: 원장(RoleProvider desk={false})은 지금처럼 "연결하러 가기"(/claim/setup) 링크가 있다', () => {
     deskLine('setup-needed', false)
     expect(screen.getByRole('link', { name: '연결하러 가기' }).getAttribute('href')).toBe('/claim/setup')
   })
