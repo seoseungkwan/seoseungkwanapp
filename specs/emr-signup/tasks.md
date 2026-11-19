@@ -1,7 +1,7 @@
 # 작업 분할: 가입 신청 때 쓰는 EMR 고르기 (emr-signup)
 
 > 기준 갈래 `feat-emr-signup`(운영 `f26c45a1`에서). 같은 Phase의 TASK는 파일이 겹치지 않는다. 검토는 마지막 한 번.
-> 사용자 "빨리, 병렬로" → Phase 1 일꾼 셋(TASK-2·3·4) → TASK-3이 합쳐지면 Phase 2(TASK-5).
+> 사용자 "빨리, 병렬로" → Phase 1: 일꾼 둘(TASK-3·4) + 기능 폴더에서 TASK-2(SQL) → TASK-3이 합쳐지면 Phase 2(TASK-5).
 
 ## TASK-1: 시안과 결정 기록
 - Phase: 0
@@ -31,9 +31,9 @@
 - Phase: 1
 - AC: AC-7302.1, AC-7303.1, AC-7303.2, AC-7303.3
 - REQ: REQ-7302, REQ-7303
-- Files: src/lib/auth/signup.ts, src/lib/auth/signup.test.ts, src/lib/auth/hospital.ts, src/lib/auth/hospital.test.ts, src/components/auth/SignupForm.tsx, src/components/auth/SignupForm.test.tsx
+- Files: src/lib/auth/signup.ts, src/lib/auth/signup.test.ts, src/lib/auth/hospital.ts, src/lib/auth/hospital.test.ts, src/components/auth/SignupForm.tsx, src/components/auth/SignupForm.test.tsx, src/components/ui/classes.test.ts
 - Tests: src/lib/auth/signup.test.ts, src/lib/auth/hospital.test.ts, src/components/auth/SignupForm.test.tsx
-- TDD: required — design.md 3절, 시안 ①. 옛 가입 시험은 이 칸 때문에 바뀌는 곳(칸 차례·보내는 값·EMR을 골라야 보냄)만 고친다.
+- TDD: required — design.md 3절, 시안 ①. 옛 가입 시험은 이 칸 때문에 바뀌는 곳(칸 차례·보내는 값·EMR을 골라야 보냄)만 고친다. `classes.test.ts`는 AC-204.7 REQ-215 시험에 '비트' 누르는 한 줄만 더한다.
 
 ## TASK-5: 관리자 승인 목록 'EMR' 칸
 - Phase: 2
