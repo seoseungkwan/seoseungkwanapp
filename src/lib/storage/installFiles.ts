@@ -5,7 +5,8 @@ import type { ErrorCode } from '@/types/errors'
 
 // 도우미·크롬 확장 설치 파일 목록·받기·올리기 (specs/helper-download design.md '함수', REQ-5102).
 // 브라우저 Supabase 클라이언트 + Storage 규칙으로만 한다(ADR-004): 보관함 install-files 안 helper/·extension/ 두 폴더.
-// 읽기는 승인된 사용자·관리자만, 올리기는 관리자만 된다(supabase/migrations/20261117000000_install_files.sql).
+// 읽기는 승인된 사용자·승인된 병원의 데스크·관리자만, 올리기는 관리자만 된다
+// (supabase/migrations/20261117000000_install_files.sql, 데스크 읽기는 20261119200000_desk_install_files.sql).
 // 실패는 InstallFilesError(번호) 하나로 바꾼다. Supabase 오류 글은 버리고 밖으로 내지 않는다
 
 export type InstallKind = 'helper' | 'extension'
