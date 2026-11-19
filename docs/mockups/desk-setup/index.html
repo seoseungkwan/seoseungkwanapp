@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>데스크 비트 PC 연결 시안</title>
+<style>
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-soft: #EFF4FF;
+  --pos: #047857; --warn-bg: #FEF3C7; --warn: #92400E; --r: 6px; --new: #FDE68A;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, 'Malgun Gothic', sans-serif; }
+main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.lead { color: var(--ink-2); margin: 0 0 20px; }
+section.s { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+h2 { font-size: 16px; margin: 0 0 2px; }
+.sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+.note { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
+.two { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+.two > * { min-width: 0; }
+.new { background: var(--new); border-radius: 3px; padding: 0 2px; }
+.newbox { outline: 2px dashed #D97706; outline-offset: 3px; border-radius: 6px; }
+.btn { height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font: inherit; font-size: 14px; color: var(--ink); text-decoration: none; }
+.btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chip { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+/* 앱 틀 */
+.app { border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: var(--canvas); }
+.bar { display: flex; align-items: center; gap: 4px; background: var(--surface); border-bottom: 1px solid var(--line); padding: 0 12px; height: 48px; overflow-x: auto; }
+.bar .logo { font-weight: 700; margin-right: 12px; white-space: nowrap; }
+.bar a { padding: 0 10px; height: 48px; display: inline-flex; align-items: center; color: var(--ink-2); text-decoration: none; border-bottom: 2px solid transparent; white-space: nowrap; }
+.bar a.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
+.bar .who { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; padding-left: 12px; display: inline-flex; gap: 6px; align-items: center; }
+.body { padding: 16px; display: grid; gap: 12px; }
+/* 수납일지 다른 기기 */
+.lock { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); padding: 8px 12px; font-size: 13px; color: var(--ink-2); }
+.away { display: grid; justify-items: center; gap: 8px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); padding: 24px 20px; text-align: center; }
+.away b { font-size: 14px; }
+.away p { margin: 0; max-width: 44ch; font-size: 13px; color: var(--muted); }
+/* 계정 메뉴 */
+.menu { width: 280px; max-width: 100%; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); box-shadow: 0 8px 24px rgba(0,0,0,.12); overflow: hidden; }
+.menu .head { padding: 12px 14px; border-bottom: 1px solid var(--line); display: grid; gap: 2px; }
+.menu .head small { color: var(--muted); }
+.menu a, .menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 14px; border: 0; background: none; font: inherit; color: var(--ink); text-decoration: none; text-align: left; }
+.menu a + button { border-top: 1px solid var(--line); }
+/* 비트 PC 연결 */
+.pcnote { display: flex; gap: 8px; border-radius: var(--r); background: var(--accent-soft); padding: 12px 16px; }
+.pcnote p { margin: 0; } .pcnote small { color: var(--ink-2); }
+.steps { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.steps li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); padding: 12px 16px; }
+.steps .n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 12px; }
+.steps .t { font-weight: 600; } .steps .d { color: var(--muted); font-size: 13px; flex-basis: 100%; padding-left: 32px; margin-top: -6px; }
+.steps .btn { margin-left: auto; height: 32px; font-size: 13px; }
+.subnav { display: flex; border-bottom: 1px solid var(--line); }
+.subnav span { padding: 8px 12px; color: var(--ink-2); }
+.subnav span.on { color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+.gone { text-decoration: line-through; color: var(--muted) !important; }
+h3.t1 { font-size: 20px; margin: 0; }
+@media (max-width: 760px) {
+  .two { grid-template-columns: 1fr; }
+  .steps .btn { margin-left: 32px; }
+}
+</style>
+</head>
+<body>
+<main>
+<h1>데스크 계정 — 비트 PC 연결 시안</h1>
+<p class="lead">데스크 계정도 비트 PC에 확장·도우미를 깔고 연결할 수 있게 합니다. <span class="new">노란 칠</span>과 점선 상자가 새로 생기는 곳입니다. 이름·메일은 지어낸 것입니다.</p>
+
+<section class="s">
+<h2>① 수납일지 — 이 PC가 아직 연결 안 됐을 때 (데스크·원장 같음)</h2>
+<p class="sub">도우미가 없는 PC에서 수납일지를 열면 나오는 안내 칸에 [이 PC 연결하기]가 생깁니다. 누르면 ③ 비트 PC 연결 화면으로 갑니다.</p>
+<div class="two">
+  <div>
+    <div class="app">
+      <div class="bar"><span class="logo">○○정형외과</span><a>업무일지</a><a class="on">수납일지</a><a>예약</a><span class="who"><span class="chip warn">데스크</span>desk@example.com</span></div>
+      <div class="body">
+        <div class="lock">🔒 이 기기에서는 마감한 날의 합계·비율만 보여요. 환자 장부는 접수 PC에서만 열려요.</div>
+        <div class="away newbox">
+          <span>🔒</span>
+          <b>환자 장부는 접수 PC에서만 보여요</b>
+          <p>이름·차트번호가 든 줄은 서버로 올리지 않아요. 고치거나 마감하려면 접수 PC에서 수납일지를 여세요.</p>
+          <p class="new">이 PC에 비트가 깔려 있으면 확장·도우미를 깔고 연결해서 장부를 볼 수 있어요.</p>
+          <a class="btn new" href="#s3">이 PC 연결하기</a>
+        </div>
+      </div>
+    </div>
+    <p class="note">도우미가 없는 PC(폰 포함) 안내 칸입니다.</p>
+  </div>
+  <div>
+    <div class="app">
+      <div class="bar"><span class="logo">○○정형외과</span><a>업무일지</a><a class="on">수납일지</a><a>예약</a><span class="who"><span class="chip warn">데스크</span>desk@example.com</span></div>
+      <div class="body">
+        <div class="away newbox">
+          <span>🔒</span>
+          <b>도우미 새 판(0.8.0)을 깔면 장부가 보여요</b>
+          <p>이름·차트번호가 든 줄은 서버로 올리지 않아요. 새 도우미를 깐 뒤 이 화면을 다시 열어 주세요.</p>
+          <a class="btn new" href="#s3">도우미 새 판 받기</a>
+        </div>
+      </div>
+    </div>
+    <p class="note">도우미가 옛 판일 때 안내 칸입니다. [도우미 새 판 받기]도 ③으로 갑니다.</p>
+  </div>
+</div>
+</section>
+
+<section class="s">
+<h2>② 데스크 계정 메뉴 — [비트 PC 연결] 더함</h2>
+<p class="sub">오른쪽 위 메일을 누르면 열리는 메뉴입니다. 데스크 계정에만 [비트 PC 연결]이 생깁니다(원장 계정은 설정 안에 이미 있습니다).</p>
+<div class="menu">
+  <div class="head"><b>desk@example.com</b><small>○○정형외과</small><span class="chip warn" style="justify-self:start">데스크</span></div>
+  <a href="#s3" class="new">🖥️ 비트 PC 연결</a>
+  <button type="button">↪ 로그아웃</button>
+</div>
+</section>
+
+<section class="s" id="s3">
+<h2>③ 비트 PC 연결 화면 — 데스크로 열었을 때</h2>
+<p class="sub">원장 계정과 같은 화면입니다. 다른 점: 데스크는 설정 탭을 못 열어서 제목이 '비트 PC 연결'이고 [설정] 안쪽 메뉴가 없습니다. [확장 내려받기]·[도우미 내려받기]는 관리자가 올린 설치 파일을 그대로 받습니다.</p>
+<div class="two">
+  <div>
+    <div class="app">
+      <div class="bar"><span class="logo">○○정형외과</span><a>업무일지</a><a>수납일지</a><a>예약</a><span class="who"><span class="chip warn">데스크</span>desk@example.com</span></div>
+      <div class="body">
+        <h3 class="t1 new">비트 PC 연결</h3>
+        <div class="pcnote"><span>🖥️</span><div><p><b>이 화면은 비트 PC의 크롬에서 열어요.</b></p><small>비트 PC는 비트가 깔린 의원 PC예요. 집 PC나 휴대폰에서는 연결하지 않아도 돼요.</small></div></div>
+        <ol class="steps">
+          <li><span class="n">1</span><span class="t">확장 설치</span><a class="btn pri">확장 내려받기</a><span class="d">받은 zip을 풀고 크롬 확장 화면에서 불러와요</span></li>
+          <li><span class="n">2</span><span class="t">도우미 설치</span><a class="btn pri">도우미 내려받기</a><span class="d">zip을 모두 풀고 install.cmd를 두 번 눌러요</span></li>
+          <li><span class="n">3</span><span class="t">연결 확인</span><a class="btn">다시 확인</a><span class="d">다 되면 '연결됨'으로 바뀌어요</span></li>
+        </ol>
+      </div>
+    </div>
+    <p class="note">데스크 화면. 단계 칸 모양·글은 지금 원장 화면 그대로(여기서는 줄여 그림)입니다.</p>
+  </div>
+  <div>
+    <div class="app">
+      <div class="bar"><span class="logo">○○정형외과</span><a>대시보드</a><a>통계</a><a>…</a><a class="on">설정</a><span class="who">owner@example.com</span></div>
+      <div class="body">
+        <h3 class="t1">설정</h3>
+        <div class="subnav"><span>설정</span><span class="on">비트 PC 연결</span></div>
+        <p class="note" style="margin:0">원장 화면은 지금 그대로입니다(바뀌는 것 없음).</p>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+
+<section class="s">
+<h2>바뀌지 않는 것</h2>
+<p class="sub" style="margin:0">데스크 탭은 그대로 업무일지·수납일지·예약 셋이고, 다른 화면(통계·설정 등)은 지금처럼 막힙니다. 서버에 새로 올라가는 자료는 없고, 데스크가 설치 파일을 받을 수 있게 하는 권한 SQL 한 줄만 운영 DB에 넣습니다.</p>
+</section>
+</main>
+</body>
+</html>
