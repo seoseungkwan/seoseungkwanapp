@@ -14,7 +14,7 @@ import type { BitSectionsView } from '@/types/stats'
 
 // 월간 보고서 자료 (stats-insights REQ-6108 AC-6108.1~AC-6108.4, design.md '월간 보고서'). 순수 함수: 여러 자료 → 보고서 칸 목록.
 // 내원·신환·묶음 건수는 넓은 하루 읽기(오늘 앞 12달 stats_days, 달 칸은 일 숫자의 합 — 통계 화면 규칙)에서, 매출은 고른 달·앞 달 하루 매출,
-// 예약·시행자·빈자리는 예약 칸이 읽은 줄, 몇 번까지 받나·1명당 매출은 비트 칸 답(불러온 범위 전체)에서 온다.
+// 예약·시행자·빈자리는 예약 칸이 읽은 줄, 몇 번까지 받나는 비트 칸 답(불러온 범위 전체), 1명당 매출은 비트 칸 답의 고른 달 줄(그 달 신환, bit-total AC-6911.5)에서 온다.
 // 자료가 없는 칸은 제목까지 뺀다(AC-6108.3). 결과에는 숫자·묶음 이름·시행자 이름만 있다(차트번호·환자 칸 없음).
 // '달라진 것'은 앞 달을 다 읽은 지표만 견준다: 내원·신환·묶음은 넓은 읽기가 앞 달 1일부터 덮고 그 달에 저장된 날이 있을 때, 매출은 두 달 다 하루 매출이 있을 때.
 // 견줄 것이 하나도 없으면 그 칸이 없고, 견줬는데 10% 넘게 달라진 것이 없으면 빈 목록이다(화면은 SAME_AS_BEFORE).
@@ -266,15 +266,15 @@ export function monthlyReport(input: ReportInput): MonthlyReportData {
     .map((line) => `${line.name} 1회만 ${Math.round((line.once * 100) / line.n)}% · 평균 ${line.average.toFixed(1)}회 (${people(line.n)})`)
   if (dropoff.length > 0) blocks.push({ key: 'dropoff', title: REPORT_TITLES.dropoff, items: dropoff })
 
-  // 신환 1명당 매출(90일)
-  const value = ready?.value
+  // 신환 1명당 매출(고른 달 신환이 그 달에 낸 돈). 그 달 줄이 없거나 0명이면 칸이 없다
+  const value = ready?.values?.find((row) => row.month === month)
   if (value !== undefined && value.n > 0) {
     blocks.push({
       key: 'value',
       title: REPORT_TITLES.value,
       cells: [
-        { name: '신환 1명당 평균 (90일)', value: formatManWon(value.average) },
-        { name: '신환 1명당 내원 횟수 (90일)', value: `${value.times.toFixed(1)}회` },
+        { name: '신환 1명당 평균', value: formatManWon(value.average) },
+        { name: '신환 1명당 내원 횟수', value: `${value.times.toFixed(1)}회` },
         { name: '한 번 올 때 평균', value: formatManWon(value.perVisit) },
       ],
     })
