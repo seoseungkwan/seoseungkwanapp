@@ -30,9 +30,9 @@
 - Phase: 1
 - AC: AC-7102.1, AC-7102.3
 - REQ: REQ-7102
-- Files: src/types/clinicProfile.ts, src/lib/clinic/emrText.ts, src/lib/clinic/emrText.test.ts, src/lib/storage/clinicProfile.ts, src/lib/storage/clinicProfile.test.ts, src/components/settings/ClinicProfileCard.tsx, src/components/settings/ClinicProfileCard.test.tsx, src/components/ai-report/ReportBody.test.tsx, src/components/calendar/CalendarScreen.test.tsx, src/components/calendar/useCalendarData.test.ts, src/components/clinic/useClinicProfile.test.ts, src/components/dashboard/live/BitDashboard.test.tsx, src/components/stats/sections/ReportSection.test.tsx, src/components/stats/useStatsCalendar.test.ts, src/lib/calendar/clinic.test.ts, supabase/clinicProfile.rls.test.ts
+- Files: src/types/clinicProfile.ts, src/lib/clinic/emrText.ts, src/lib/clinic/emrText.test.ts, src/lib/storage/clinicProfile.ts, src/lib/storage/clinicProfile.test.ts, src/components/settings/ClinicProfileCard.tsx, src/components/settings/ClinicProfileCard.test.tsx, src/components/ai-report/ReportBody.test.tsx, src/components/calendar/CalendarScreen.test.tsx, src/components/calendar/useCalendarData.test.ts, src/components/clinic/useClinicProfile.test.ts, src/components/dashboard/live/BitDashboard.test.tsx, src/components/stats/sections/ReportSection.test.tsx, src/components/stats/useStatsCalendar.test.ts, src/lib/calendar/clinic.test.ts
 - Tests: src/lib/clinic/emrText.test.ts, src/lib/storage/clinicProfile.test.ts
-- TDD: required — design.md 1·2절. ClinicProfileCard.tsx와 목록의 다른 시험 파일은 `emr`이 생겨 타입 검사가 깨지는 곳만 고친다(`emr: 'bit'` 더하기, 화면 바뀜 없음 — 칸은 TASK-4). `npx tsc --noEmit -p .`가 지나야 끝.
+- TDD: required — design.md 1·2절. ClinicProfileCard.tsx와 목록의 다른 시험 파일은 `emr`이 생겨 타입 검사가 깨지는 곳만 고친다(시험 글자에는 `emr: 'bit'` 더하기, 화면 바뀜 없음 — 칸은 TASK-4). ClinicProfileCard는 읽은 `profile.emr`을 그리기 자료(draft)에 그대로 들고 가 저장에 실어 보낸다('bit'로 박지 않는다 — Phase 사이에도 고른 값이 지켜진다). `npx tsc --noEmit -p .`가 지나야 끝.
 
 ## TASK-4: 병원 정보 '쓰는 EMR' 칸
 - Phase: 2
