@@ -36,6 +36,7 @@ import { useSunapWorker, useSunapWorkerObject, type SunapWorkerApi } from './use
 // 원장님별 표(spec sunap-doctors AC-5003.3)는 장부 아래·미수 입금/지출 위에, 원장님(미지정 빼고)이 두 분 이상일 때만(Worker가 doctors를 보낼 때만) 그린다. 서버 숫자 화면(RemoteView)에는 없다.
 // 시안과 다른 곳(design.md): 원장님별 hint는 '접수할 때 정한 진료의 기준'. 시안에 없는 글(읽는 중·오류·묶음 안 고름·서버에 아직 안 올라간 마감)은 더했다.
 // 다음 예약 종류(spec sunap-kinds REQ-5503): 설정의 종류 목록을 Worker load·장부 칩·고르기 판·카드(예약률 ○인 이름)·알림 띠에 쓴다
+// 도우미 답의 unsure는 장부 모양에 그대로 남지만 화면에 알림 줄로 그리지 않는다(spec bit-total AC-6909.1, 옛 AC-4905.9)
 
 export type SunapMode = 'ledger' | 'connecting' | 'device' | 'old-helper' | 'old-day'
 type BridgeLink = { state: BridgeState; helperVersion?: string; helloError: string | null }
@@ -351,12 +352,6 @@ function LedgerView({
       )}
       {localClosed && !serverClosed && server.status === 'ready' && problem === null && !busy && (
         <Banner tone="warn">이 PC에는 마감으로 적혔지만 서버에는 아직 올라가지 않았어요. [마감하기]를 다시 눌러 주세요.</Banner>
-      )}
-      {view?.unsure === true && (
-        // 도우미가 매출 확인 필요 조건·음수 금액을 본 날(AC-4905.9). 마감은 막지 않는다
-        <Banner tone="warn">
-          <b className="font-semibold text-ink">확인 필요한 날</b> — 환불·변경수납·예치금이 있거나 수납 연결이 겹쳐서 장부 금액이 비트와 다를 수 있어요. 마감 전에 비트 수납 화면과 맞춰 보세요.
-        </Banner>
       )}
       {!closed && unknown > 0 && <UnknownBanner count={unknown} />}
       {settings && (blockDef === null || ptDef === null) && <p className="text-small text-muted">설정에서 Block·물리치료 묶음을 골라 주세요</p>}

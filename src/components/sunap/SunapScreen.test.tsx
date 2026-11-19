@@ -311,20 +311,24 @@ describe('AC-4905.1 도우미 0.8.0 이상이 연결된 PC(시안 ?s=open)', () 
   })
 })
 
+// 옛 장부 위 알림 줄(sunap-ilji AC-4905.9) — bit-total AC-6909.1로 없어졌다
 const UNSURE = '확인 필요한 날 — 환불·변경수납·예치금이 있거나 수납 연결이 겹쳐서 장부 금액이 비트와 다를 수 있어요. 마감 전에 비트 수납 화면과 맞춰 보세요.'
 
-describe('AC-4905.9 도우미가 확인 필요(unsure)라고 한 날', () => {
-  it('AC-4905.9: unsure가 참이면 장부 위에 확인 필요한 날 한 줄이 보이고 [마감하기]는 그대로 누를 수 있다', async () => {
+describe('AC-6909.1 도우미가 unsure라고 한 날도 알림 줄이 없다 (옛 AC-4905.9)', () => {
+  it('AC-6909.1: unsure가 참이어도 장부 위 확인 필요한 날 줄이 없고 장부·[마감하기]는 그대로다', async () => {
     fake.load.mockImplementation((ask: { day: string }) => {
       const ledger = { ...ledgerOf(ask.day), unsure: true }
       fake.set!((() => ({ view: viewOf(ledger), loading: false, loadedAt: new Date('2026-11-16T09:40:00.000Z'), error: null })) as never)
     })
     await open()
-    expect(fullText(UNSURE)).toBeTruthy()
+    expect(screen.queryByText(/확인 필요한 날/)).toBeNull()
+    expect(screen.queryByText(/장부 금액이 비트와 다를 수 있어요/)).toBeNull()
+    expect(document.body.textContent).not.toContain(UNSURE)
+    expect(screen.getByRole('heading', { name: '환자 장부' })).toBeTruthy()
     expect((screen.getByRole('button', { name: '마감하기' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it('AC-4905.9: unsure가 거짓이면 그 줄이 없다', async () => {
+  it('AC-6909.1: unsure가 거짓이어도 그 줄이 없다(지금처럼)', async () => {
     await open()
     expect(screen.queryByText(/확인 필요한 날/)).toBeNull()
   })
