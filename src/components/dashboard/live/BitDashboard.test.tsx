@@ -39,12 +39,17 @@ vi.mock('@/workers/statsClient', async (importOriginal) => {
   return { ...real, createStatsWorker: vi.fn() }
 })
 // 병원 정보 훅(clinic-profile AC-6606.3): 대시보드가 한 번 읽어 보고 받는 사람 글(안내 줄·AI 요약)에 호칭을 넣는다. 처음은 읽는 중(기본값 '원장님')
-const clinic = vi.hoisted(() => ({ honorific: '원장님' as '원장님' | '대표원장님' | '선생님' }))
+// 쓰는 EMR(emr-choice AC-7103.1·AC-7103.2): 시험이 읽기 상태와 EMR을 바꿔 본다. 처음은 읽음 · 'bit'
+const clinic = vi.hoisted(() => ({
+  honorific: '원장님' as '원장님' | '대표원장님' | '선생님',
+  state: 'ready' as 'loading' | 'ready' | 'failed',
+  emr: 'bit' as 'bit' | 'uisarang' | 'egis' | 'other',
+}))
 vi.mock('@/components/clinic/useClinicProfile', () => ({
   useClinicProfile: () => {
     return {
-      state: 'ready',
-      profile: { displayName: null, phone: null, address: null, honorific: clinic.honorific, hours: [], closedDates: [], staff: [], logoPath: null },
+      state: clinic.state,
+      profile: { displayName: null, phone: null, address: null, honorific: clinic.honorific, hours: [], closedDates: [], staff: [], logoPath: null, emr: clinic.emr },
       saved: true,
       signupName: '',
       signupPhone: null,
@@ -229,6 +234,8 @@ const expectOnlyAiRead = () => {
 
 beforeEach(() => {
   clinic.honorific = '원장님'
+  clinic.state = 'ready'
+  clinic.emr = 'bit'
   reads.length = 0
   vi.mocked(readBitDays).mockReset()
   vi.mocked(readBitDays).mockImplementation(
@@ -2330,5 +2337,75 @@ describe('AC-6606.3: 대시보드 보고 받는 사람 글에 병원 호칭이 �
     const brief = screen.getByRole('region', { name: /^우리 병원 AI 경영 리포트/ })
     expect(within(brief).getByText(/선생님께 드릴 짧은 보고를 써 드려요/)).toBeTruthy()
     expect(within(brief).queryByText(/원장님께/)).toBeNull()
+  })
+})
+
+// ── emr-choice: 쓰는 EMR이 비트가 아닌 병원의 연결 전 첫 화면 (REQ-7103, design.md 4절, 시안 docs/mockups/emr-choice/index.html ②) ──
+describe('AC-7103.1·AC-7103.2: 쓰는 EMR에 따른 연결 전 첫 화면', () => {
+  const WAIT_LEAD = '지금은 비트만 연결돼요. 연결이 생기면 이 화면에 오늘 숫자와 보고 문장이 채워져요. 그동안 업무일지·예약·서식은 그대로 쓸 수 있어요.'
+  const CHANGE = '쓰는 EMR 바꾸기'
+  const TRUST = '환자 개인정보는 의원 PC 밖으로 나가지 않아요. 비트 자료는 읽기만 해요.'
+  const noChange = () => expect(screen.queryByRole('link', { name: CHANGE })).toBeNull()
+
+  it.each([
+    ['uisarang', '의사랑 연결은 준비하고 있어요'],
+    ['egis', '이지스 연결은 준비하고 있어요'],
+    ['other', '우리 병원 EMR은 아직 연결할 수 없어요'],
+  ] as const)('AC-7103.1: 병원 정보를 읽었고 EMR이 %s이면 연결 전 h1은 "%s"이고 [쓰는 EMR 바꾸기](/settings)가 있다 — [비트 PC 연결 시작]·안심 줄은 없다', (emr, title) => {
+    notBitPc()
+    clinic.emr = emr
+    draw()
+    expect(bigLine().textContent).toBe(title)
+    expect(screen.getByText(WAIT_LEAD)).toBeTruthy()
+    expect(link(CHANGE).getAttribute('href')).toBe('/settings')
+    expect(screen.queryByRole('link', { name: '비트 PC 연결 시작' })).toBeNull()
+    noText(TRUST)
+    noText(CONNECT_H1)
+    // 그 아래 '지금 바로' 줄·분석·기능 목차는 그대로(누르면 연결 화면의 준비 중을 본다)
+    expect(link('비트 PC 연결부터').getAttribute('href')).toBe('/claim/setup')
+    expect(within(todaySection()).getByText('비트 PC 연결 전')).toBeTruthy()
+    expect(within(flow()).getByText('연결하면 생기는 것 4가지')).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 2, name: '기능 목차' })).toBeTruthy()
+    expect(readBitDays).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['읽는 중', 'loading'],
+    ['읽기 실패', 'failed'],
+  ] as const)('AC-7103.2: 병원 정보가 %s이면 EMR 값과 상관없이 지금 연결 전 모양이다', (_, state) => {
+    notBitPc()
+    clinic.state = state
+    clinic.emr = 'egis'
+    draw()
+    expectBeforeConnect()
+    noChange()
+    noText(WAIT_LEAD)
+  })
+
+  it("AC-7103.2: 쓰는 EMR이 'bit'(줄 없음의 기본값과 같다)이면 지금 연결 전 모양이다", () => {
+    notBitPc()
+    draw()
+    expectBeforeConnect()
+    expect(screen.getByText(TRUST)).toBeTruthy()
+    noChange()
+  })
+
+  it('AC-7103.2: 비트가 아닌 병원도 숫자가 있으면(연결 뒤) 화면이 지금과 같다 — 머리 줄 h1 "대시보드"', () => {
+    notBitPc()
+    const bitMarkup = renderToStaticMarkup(<BitDashboard today={TODAY} initial={SAVED} />)
+    clinic.emr = 'uisarang'
+    expect(renderToStaticMarkup(<BitDashboard today={TODAY} initial={SAVED} />)).toBe(bitMarkup)
+    draw(SAVED)
+    expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual([HEADER_H1])
+    noChange()
+    noText(WAIT_LEAD)
+  })
+
+  it('AC-7103.2: 비트가 아닌 병원도 비트 PC에서 읽는 중이면 지금 읽는 중 모양이다', () => {
+    onBitPc()
+    clinic.emr = 'other'
+    draw()
+    expect(bigLine().textContent).toBe(READ_H1)
+    noChange()
   })
 })
