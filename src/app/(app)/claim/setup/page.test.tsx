@@ -102,18 +102,33 @@ describe('/claim/setup 페이지', () => {
     await expect(open()).rejects.toThrow(`NEXT_REDIRECT ${to}`)
   })
 
-  // desk-feedback AC-6305.4: 데스크는 앱 틀(DeskGate)이 막힌 화면을 그린다. 페이지가 던지면 앱 틀 대신 오류 화면이 뜬다 → 아무것도 그리지 않는다
-  it('AC-6305.4: 데스크(병원 줄 없음 + desk)면 문지기가 보내지 않고, 페이지는 던지지 않고 아무것도 그리지 않는다', async () => {
-    read.mockResolvedValue({ email: 'desk@example.com', hospital: null, isAdmin: false, desk: { hospitalId: 'h1', hospitalName: '가나 정형외과의원' } })
-    await expect(open('dashboard')).resolves.toBeNull()
+  // desk-setup AC-7001.3(옛 desk-feedback AC-6305.4 '데스크면 아무것도 그리지 않는다'를 바꿈): 데스크도 비트 PC 연결 화면을 그린다.
+  // '이 PC' 옆 이름은 데스크 병원 이름이고, 돌아갈 곳은 넘기지 않는다(데스크의 /dashboard는 앱 틀이 수납일지로 바꾼다)
+  const DESK_ME: Me = { email: 'desk@example.com', hospital: null, isAdmin: false, desk: { hospitalId: 'h2', hospitalName: '다라 정형외과의원' } }
+
+  it.each<[string, string | undefined]>([
+    ['next 없음', undefined],
+    ['?next=dashboard', 'dashboard'],
+  ])('AC-7001.3: 데스크(병원 줄 없음 + desk)면 문지기가 보내지 않고, 던지지 않고 비트 PC 연결 화면에 데스크 병원 이름을 넘기며 돌아갈 곳은 넘기지 않는다(%s)', async (_name, next) => {
+    read.mockResolvedValue(DESK_ME)
+    const page = await open(next)
+    expect(page.type).toBe(SetupScreen)
+    expect(page.props).toEqual({ clinicName: '다라 정형외과의원' })
+    expect(page.props.returnTo).toBeUndefined()
     expect(guard).toHaveBeenCalledExactlyOnceWith('/claim/setup')
     expect(redirect).not.toHaveBeenCalled()
   })
 
-  it('AC-6305.4: 원장은 지금과 같다 — 비트 PC 연결 화면에 병원 이름을 넘긴다', async () => {
+  it('AC-7001.3·AC-6305.4: 원장(승인)은 지금과 같다 — 비트 PC 연결 화면에 병원 이름을 넘기고, ?next=dashboard면 돌아갈 곳도 넘긴다', async () => {
     const page = await open()
     expect(page.type).toBe(SetupScreen)
     expect(page.props.clinicName).toBe('가나 정형외과의원')
+    expect((await open('dashboard')).props.returnTo).toBe('/dashboard')
+  })
+
+  it.each(['pending', 'rejected'] as const)('AC-7001.3: 문지기를 지나온 원장 줄이 %s(승인 안 됨)이면 지금처럼 던진다(데스크 줄이 같이 있어도)', async (status) => {
+    guard.mockResolvedValueOnce({ ...me(status), desk: DESK_ME.desk })
+    await expect(open()).rejects.toThrow('승인된 병원 줄이 없어요')
   })
 
   it('AC-006.4: 요청의 로그인 세션으로만 그린다(빌드 때 미리 그리지 않는다)', () => {

@@ -244,7 +244,6 @@ describe('menu', () => {
     '/stats',
     '/stats/x',
     '/claim',
-    '/claim/setup',
     '/patients',
     '/ai-report',
     '/forms',
@@ -258,6 +257,15 @@ describe('menu', () => {
     '/sunapx',
     '/calendarx',
   ])('AC-6306.1: isDeskPath(%s)는 거짓이다', (path) => {
+    expect(isDeskPath(path)).toBe(false)
+  })
+
+  // desk-setup REQ-7001: 데스크도 비트 PC 연결 화면(/claim/setup)을 연다. 탭은 세 개 그대로(위 AC-6306.1)
+  it.each(['/claim/setup', '/claim/setup/x'])('AC-7001.1: isDeskPath(%s)는 참이다(비트 PC 연결 화면과 그 아래)', (path) => {
+    expect(isDeskPath(path)).toBe(true)
+  })
+
+  it.each(['/claim', '/claim/setupx', '/claim/x', '/settings', '/stats', '/dashboard'])('AC-7001.1: isDeskPath(%s)는 그대로 거짓이다', (path) => {
     expect(isDeskPath(path)).toBe(false)
   })
 })

@@ -86,14 +86,16 @@ export const ADMIN_LINK: { label: '가입 승인'; href: '/admin' } = { label: '
 export const isUnder = (pathname: string, base: string) => pathname === base || pathname.startsWith(`${base}/`)
 
 // 데스크 계정(desk-feedback REQ-6306, ADR-031): 탭은 업무일지·수납일지·예약 셋뿐이고 첫 화면은 수납일지다.
-// 다른 주소는 DeskGate가 막힌 화면으로 바꾼다(자료는 서버 RLS가 막는다)
+// 다른 주소는 DeskGate가 막힌 화면으로 바꾼다(자료는 서버 RLS가 막는다). 비트 PC 연결 화면(/claim/setup)만 탭 밖에서 연다(desk-setup)
 const DESK_PATHS: readonly MenuPath[] = ['/worklog', '/sunap', '/calendar']
 /** 데스크 탭 띠(MENU 차례, MENU 항목 그대로) */
 export const DESK_MENU: readonly MenuItem[] = MENU.filter((item) => DESK_PATHS.includes(item.path))
 /** 데스크 첫 화면. 로그인 뒤 첫 주소 /dashboard는 여기로 바꾼다 */
 export const DESK_HOME: MenuPath = '/sunap'
-/** 데스크가 열 수 있는 주소: 세 탭 주소와 그 아래 */
-export const isDeskPath = (pathname: string) => DESK_PATHS.some((base) => isUnder(pathname, base))
+// 탭은 아니지만 데스크도 여는 주소: 비트 PC 연결 화면(desk-setup AC-7001.1 — 데스크 PC에 확장·도우미를 깔고 연결한다)
+const DESK_EXTRA: readonly string[] = ['/claim/setup']
+/** 데스크가 열 수 있는 주소: 세 탭 주소와 비트 PC 연결 화면, 그 아래 */
+export const isDeskPath = (pathname: string) => [...DESK_PATHS, ...DESK_EXTRA].some((base) => isUnder(pathname, base))
 
 /** 지금 화면의 탭 이름. 탭의 path·owns 중 가장 길게 맞는 경로가 이긴다(/claim/setup은 청구 /claim보다 설정 /claim/setup이 길게 맞는다, AC-302.4) */
 export function currentMenuLabel(pathname: string): MenuLabel | null {

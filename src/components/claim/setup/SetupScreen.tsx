@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useState, type ReactNode } from 'react'
 import { Icon } from '@/components/common/Icon'
 import { DownloadButton } from '@/components/install/DownloadButton'
 import { MENU } from '@/components/shell/menu'
+import { useDesk } from '@/components/shell/role'
 import { ds } from '@/components/ui/classes'
 import { BridgeError } from '@/lib/bridge/protocol'
 import type { ResultOf } from '@/types/bridge'
@@ -23,7 +24,8 @@ import { isRealProblem, setupSteps, type StepView } from './steps'
 // 등록이 없으면 [처음 등록], 의원이 다르면 [다시 등록] → bit.register(PC 확인 창) 뒤 다시 확인한다. 누르는 동안 단추를 막는다.
 // 오류 문구는 errors.ts에서만, 원래 오류 내용은 그리지 않는다(AC-006.6).
 // 기관기호는 뒤 4자리를 가리고, 옆 의원 이름은 사이트가 가진 로그인한 의원 이름(clinicName)이다(도우미는 의원 이름을 주지 않는다, AC-006.4).
-// 연결 상태·결과는 화면 메모리에만 둔다(브라우저 저장소 없음)
+// 연결 상태·결과는 화면 메모리에만 둔다(브라우저 저장소 없음).
+// 데스크(desk-setup REQ-7002, 앱 틀의 useDesk): 제목 '비트 PC 연결' 하나(안쪽 메뉴 없음), '준비됨' 줄은 [수납일지로 가기], busy 카드에 [건수만 보기] 없음. 나머지는 원장과 같다
 
 type Checked = { result: ResultOf<'bit.check'> | null; error: string | null; at: Date | null }
 const NOT_CHECKED: Checked = { result: null, error: null, at: null }
@@ -58,8 +60,9 @@ function SettingsSubnav() {
   )
 }
 
-/** 제목 '설정' → 안쪽 메뉴(사이 12px) */
-function Head() {
+/** 제목 '설정' → 안쪽 메뉴(사이 12px). 데스크는 설정 탭을 못 열어 제목 '비트 PC 연결' 하나(안쪽 메뉴 없음, desk-setup AC-7002.1) */
+function Head({ desk }: { desk: boolean }) {
+  if (desk) return <h1 className="text-title font-semibold text-ink">비트 PC 연결</h1>
   return (
     <div className="flex flex-col gap-3">
       <h1 className="text-title font-semibold text-ink">설정</h1>
@@ -146,6 +149,7 @@ export function SetupScreen({
   /** 5단계가 모두 되면 돌아갈 곳(주소가 ?next=dashboard일 때만, bit-dashboard AC-603.2). 없으면 그 자리에 머문다(AC-603.3) */
   returnTo?: '/dashboard'
 }) {
+  const desk = useDesk()
   const { state, hello, helloError, helperUpdateAvailable, call, retry } = useBridge()
   const [checked, setChecked] = useState<Checked>(NOT_CHECKED)
   const [working, setWorking] = useState<'check' | 'register' | null>(null)
@@ -212,18 +216,21 @@ export function SetupScreen({
   const actions = { storeUrl: extensionStoreUrl, disabled, onRetry: recheck, onRegister: () => void register() }
   const institution = state === 'ready' ? checked.result?.institutionCode : undefined
 
-  // 다른 창에서 작업 중: 목업 화면 6처럼 카드 하나, 제목 아래 왼쪽 정렬(이 창은 확장과 이야기할 수 없다)
+  // 다른 창에서 작업 중: 목업 화면 6처럼 카드 하나, 제목 아래 왼쪽 정렬(이 창은 확장과 이야기할 수 없다).
+  // 데스크는 청구 화면을 못 열어 [건수만 보기]가 없다(desk-setup AC-7002.1)
   if (state === 'busy') {
     return (
       <div className="flex flex-col gap-4 max-md:gap-3">
-        <Head />
+        <Head desk={desk} />
         <BusyCard
           onRetry={recheck}
           disabled={disabled}
           outside={
-            <Link href="/claim" className={`${ds.button.secondary} no-underline`}>
-              건수만 보기
-            </Link>
+            desk ? null : (
+              <Link href="/claim" className={`${ds.button.secondary} no-underline`}>
+                건수만 보기
+              </Link>
+            )
           }
         />
       </div>
@@ -233,7 +240,7 @@ export function SetupScreen({
   return (
     <div className="flex flex-col gap-4 max-md:gap-3">
       {state === 'no-extension' && <PcNote />}
-      <Head />
+      <Head desk={desk} />
 
       {alertCode && (
         <SetupAlert
@@ -246,14 +253,15 @@ export function SetupScreen({
       {/* 대시보드에서 왔으면 "준비됨" 줄 대신 돌아가는 안내(시안 setup_v 'ok', bit-dashboard AC-603.2·AC-603.3) */}
       {allOk && checked.at && returnTo && <ReturnWhenReady to={returnTo} />}
 
+      {/* 데스크는 청구 화면을 못 열어 수납일지 장부로 보낸다(desk-setup AC-7002.1) */}
       {allOk && checked.at && !returnTo && (
         <div className={line}>
           <span className={ds.chip.positive}>준비됨</span>
-          <span className="text-body text-ink">이 PC에서 청구 화면을 쓸 수 있어요.</span>
+          <span className="text-body text-ink">{desk ? '이 PC에서 수납일지 장부를 볼 수 있어요.' : '이 PC에서 청구 화면을 쓸 수 있어요.'}</span>
           <span className="ml-auto flex flex-wrap items-center gap-2">
             <span className={ds.count}>마지막 확인 {checkedAtText(checked.at)}</span>
-            <Link href="/claim" className={`${ds.button.primarySmall} no-underline`}>
-              청구로 가기
+            <Link href={desk ? '/sunap' : '/claim'} className={`${ds.button.primarySmall} no-underline`}>
+              {desk ? '수납일지로 가기' : '청구로 가기'}
             </Link>
           </span>
         </div>
@@ -264,7 +272,7 @@ export function SetupScreen({
         <div className={line}>
           <span className="text-body text-ink">새 도우미가 있어요.</span>
           <span className={ds.help}>지금 도우미로도 그대로 쓸 수 있어요.</span>
-          {/* 웹앱 보관함에서 받는다(helper-download AC-5103.4). 이 장면의 주 단추는 [청구로 가기]라 보조 */}
+          {/* 웹앱 보관함에서 받는다(helper-download AC-5103.4). 이 장면의 주 단추는 [청구로 가기](데스크는 [수납일지로 가기])라 보조 */}
           <span className="ml-auto flex flex-wrap items-center gap-2 max-md:w-full">
             <DownloadButton kind="helper" label="새 도우미 내려받기" variant="secondary" />
           </span>
