@@ -16,7 +16,7 @@ import { deltaLine, SummaryCell as CellView, type SummaryLine } from './SummaryC
 const TITLE = '환자 요약'
 const EMPTY = '숫자를 불러오면 이 기간의 평균 환자 수와 신환·재진이 보여요.'
 const UNKNOWN_VALUE = '확인 불가'
-const HELPER_LEAD = '90일초진과 참고 금액은 새 도우미(0.7.0)가 있어야 보여요.'
+const HELPER_LEAD = '90일초진은 새 도우미(0.7.0)가 있어야 보여요.'
 const HELPER_REST = '비트 PC 연결 화면에서 새 도우미를 받아 깐 뒤 [비트에서 불러오기]를 다시 누르면 보여요.'
 const HELPER_LINK = '새 도우미 내려받기'
 
