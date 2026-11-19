@@ -15,8 +15,8 @@
   - 칸 이름 `${short} 신환 1명당 평균` · `${short} 신환 1명당 내원 횟수` · '한 번 올 때 평균'. `short = shortName(range)`: `/^(\d{4})년 (\d{1,2}월)$/`에 맞고 그 해가 `range.load.to`의 해면 둘째 묶음, 아니면 `range.name`
   - FOOT 새 글. NO_FIRST_DAY 글은 지운다
   - 글 고르기 차례: 기다림 → none(NOT_HERE) → `period` 없음(OLD_HELPER) → n 0(NOBODY) → 숫자
-- `RevenueSection.tsx`: props `range?: StatsRange`, 다섯째 탭 `<PatientValueSection view={bit} groups={groups} range={range} />`. 탭은 지금처럼 `bit`를 줄 때만 있고, range가 없으면 탭을 두지 않는다(bit와 range를 함께 줄 때만).
-- `StatsSections.tsx`: `<RevenueSection … range={input.range} />`.
+- `RevenueSection.tsx`: prop `bit?: { view: BitSectionsShown; range: StatsRange }`(옛 `bit?: BitSectionsShown`를 바꿈 — 기간 없이 줄 수 없게). 다섯째 탭 `<PatientValueSection view={bit.view} groups={groups} range={bit.range} />`. 탭은 지금처럼 `bit`를 줄 때만 있다.
+- `StatsSections.tsx`: `bit={bit === undefined ? undefined : { view: bit, range: input.range }}`. 이 한 줄은 시험 파일이 없지만 prop 타입이 기간을 꼭 요구해 `tsc`가 빠뜨림을 막는다(AC-7202.3).
 - `spanLabel`은 `periodPick.ts`에서 가져온다(이미 export).
 
 ## 3. 결정

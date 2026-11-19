@@ -8,7 +8,7 @@
 - REQ: REQ-7201
 - Files: src/lib/analytics/patientValue.ts, src/lib/analytics/patientValue.test.ts, src/types/stats.ts, src/workers/stats/jobs.ts, src/workers/stats/jobs.test.ts
 - Tests: src/lib/analytics/patientValue.test.ts, src/workers/stats/jobs.test.ts
-- TDD: required — design.md 1절. 옛 `monthValues`·`values` 시험(AC-6911.1~6911.3)은 고치지 않고 통과해야 한다.
+- TDD: required — design.md 1절. 옛 `monthValues`·`values` 시험(AC-6911.1~6911.3)은 고치지 않고 통과해야 한다. 표시 날 앞의 span 안 줄도 센다는 규칙(AC-7201.1)을 시험 하나로 못 박는다.
 
 ## TASK-2: 신환 1명당 탭 글과 기간 넘기기
 - Phase: 2
@@ -16,4 +16,4 @@
 - REQ: REQ-7202
 - Files: src/components/stats/sections/PatientValueSection.tsx, src/components/stats/sections/PatientValueSection.test.tsx, src/components/stats/sections/RevenueSection.tsx, src/components/stats/sections/RevenueSection.test.tsx, src/components/stats/sections/StatsSections.tsx
 - Tests: src/components/stats/sections/PatientValueSection.test.tsx, src/components/stats/sections/RevenueSection.test.tsx
-- TDD: required — design.md 2절. TASK-1 다음. 옛 AC-6911.4 시험은 새 글로 옮기고(AC-7202.x 이름), 막대·받은 치료 이름 시험은 `period` 데이터로 그대로 지킨다. 월간 보고서 시험(AC-6911.5)은 고치지 않고 통과해야 한다.
+- TDD: required — design.md 2절. TASK-1 다음. 옛 AC-6911.4 시험은 새 글로 옮기고(AC-7202.x 이름), 막대·받은 치료 이름 시험은 `period` 데이터로 그대로 지킨다. `RevenueSection.test.tsx`의 AC-6106.4·AC-6106.5 시험은 `bit = { view, range }`·`period` 자료로 옮긴다(requirements.md '이 명세가 바꾸는 옛 수용 기준'). 월간 보고서 시험(AC-6911.5)은 고치지 않고 통과해야 한다. `npx tsc --noEmit -p .`가 지나야 끝(StatsSections 연결 증명).
