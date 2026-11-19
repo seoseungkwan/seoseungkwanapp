@@ -213,7 +213,7 @@ export function StatsSections({ input, saved, split, report, hospitalName, group
             tabs={tabs}
             noDayCodes={noDayCodes}
             onReread={revenue.onReread}
-            bit={bit}
+            bit={bit === undefined ? undefined : { view: bit, range: input.range }}
             groups={groups.groups}
           />
         </StatsCard>

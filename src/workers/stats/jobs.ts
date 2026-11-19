@@ -13,7 +13,7 @@ import {
 import { doctorStats } from '@/lib/analytics/doctorStats'
 import { dropoff } from '@/lib/analytics/dropoff'
 import { patientMix } from '@/lib/analytics/patientMix'
-import { monthValues, type ValuePay } from '@/lib/analytics/patientValue'
+import { monthValues, periodValue, type ValuePay } from '@/lib/analytics/patientValue'
 import { sunapDoctors, sunapRates } from '@/lib/analytics/sunapRates'
 import { visitHours } from '@/lib/analytics/visitHours'
 import { createPatientIds } from '@/lib/parsers/bit'
@@ -263,7 +263,8 @@ export function splitJob(memory: StatsMemory | null, { from, to }: { from: strin
 // 불러올 때 묶음을 실었으면 몇 번까지 받나(dropoff)도 싣는다(stats-insights AC-6103.1): 고른 기간과 상관없이 불러온 범위 전체, 자료 끝 날 = 불러온 끝.
 // 첫 내원일은 세 칸과 같은 first(toFirstVisits)라 v5 답이면 신환 날을 따른다(spec new-mark). 묶음이 없으면 열쇠가 없다.
 // 답에 금액 줄(도우미 0.11.0의 v5 pays)이 있었으면 신환 1명당 매출을 달마다(values) 싣는다(bit-total AC-6911.3): 고른 기간과 상관없이 불러온 범위 전체,
-// 대상은 그 달 신환 표시가 있는 환자, 묶음은 dropoff와 같고 묶음이 없어도 센다(받은 치료는 모두 진료만). 금액 줄이 없으면 열쇠가 없다
+// 대상은 그 달 신환 표시가 있는 환자, 묶음은 dropoff와 같고 묶음이 없어도 센다(받은 치료는 모두 진료만). 금액 줄이 없으면 열쇠가 없다.
+// 같은 때 묻기의 고른 기간(from~to) 그대로 센 신환 1명당 매출(period)도 싣는다(pv-month AC-7201.2, 통계 탭 '신환 1명당'이 쓴다)
 export function sectionsJob(
   bit: BitMemory | null,
   request: { from: string; to: string; previous?: DateRange | null; sunap?: StatsSunapGroups },
@@ -289,7 +290,11 @@ export function sectionsJob(
     doctors: doctorStats({ from, to, visits: extra.visits, first, doctors: extra.doctors, doctorDays: extra.doctorDays }),
   }
   if (bit.groups.length > 0) view.dropoff = dropoffOf(bit)
-  if (bit.pays !== null) view.values = valuesOf(bit, bit.pays)
+  if (bit.pays !== null) {
+    view.values = valuesOf(bit, bit.pays)
+    // 고른 기간 그대로(pv-month AC-7201.2): 기간마다 새로 센다(메모리 한 번 훑기)
+    view.period = periodValue({ days: bit.patientDays, rows: bit.consumption, pays: bit.pays, groups: bit.groups, span: { from, to } })
+  }
   const { sunap } = request
   if (sunap === undefined) return view
   const counted = { from, to, days: bit.patientDays, rows: bit.consumption, block: sunap.block, pt: sunap.pt }

@@ -8,7 +8,8 @@ import type { Kpi, StackChart, TreatmentRow } from '@/components/revenue/types'
 import type { PerVisitTab, RevenueSplitRow, RevenueTabs, SplitTab, TreatmentsTab, TrendTab } from '@/components/stats/revenueView'
 import { groupKey } from '@/components/stats/treatmentView'
 import type { StatsRxGroup } from '@/types/rxGroups'
-import type { BitSectionsView, MonthValue } from '@/types/stats'
+import { rangeOf } from '@/components/stats/view'
+import type { BitSectionsView, PeriodValue } from '@/types/stats'
 import { nestedBoxes } from '@/testing/boxes'
 import type { BitSectionsShown } from './PatientMixSection'
 import { SectionAnchor, StatsCard, TOC_SCROLL } from './parts'
@@ -718,12 +719,15 @@ describe('AC-6905.4·AC-4408.5: 급여·비급여·기타·치료별 매출 탭 
   })
 })
 
-// ── 신환 1명당 매출(stats-insights REQ-6106 AC-6106.4·AC-6106.5, bit-total AC-6911.4 그 달 신환): 비트 칸(bit)을 주면 다섯째 탭 '신환 1명당' ──
+// ── 신환 1명당 매출(stats-insights REQ-6106 → pv-month REQ-7202 고른 기간 그대로): 비트 칸(bit = { view, range })을 주면 다섯째 탭 '신환 1명당' ──
 // 탭 안 칸은 PatientValueSection이다(숫자·글은 PatientValueSection.test.tsx가 본다). 숫자는 모두 지어낸 값이다
-describe('AC-6106.4: 매출 칸 다섯째 탭 `신환 1명당`', () => {
+describe('AC-7202.3: 매출 칸 다섯째 탭 `신환 1명당`(비트 칸 보기와 통계 기간을 한 묶음으로)', () => {
   const GROUP: StatsRxGroup = { id: 'g1', name: '도수', codes: ['MAN1'], sortOrder: 0 }
-  const VALUE: MonthValue = {
-    month: '2026-11',
+  const TODAY = '2026-11-19'
+  const NOVEMBER = rangeOf(TODAY, { kind: 'month', unit: 'day', month: '2026-11' }, false)
+  const LAST_30 = rangeOf(TODAY, '30d', false)
+  const VALUE: PeriodValue = {
+    from: '2026-11-01',
     to: '2026-11-18',
     n: 12,
     average: 412_000,
@@ -731,21 +735,22 @@ describe('AC-6106.4: 매출 칸 다섯째 탭 `신환 1명당`', () => {
     perVisit: 80_800,
     lines: [{ groups: [groupKey(GROUP.codes, GROUP)], n: 12, average: 412_000 }],
   }
-  const bitReady = (value?: MonthValue): BitSectionsView => ({
+  const bitReady = (period?: PeriodValue): BitSectionsView => ({
     kind: 'ready',
     mix: { all: { total: { people: 1, visits: 1 }, compared: false, age: [], insurance: [], city: [], town: [] }, new: { total: { people: 1, visits: 1 }, compared: false, age: [], insurance: [], city: [], town: [] } },
     hours: { hours: [9], rows: [], unknown: 0, peak: null },
     doctors: { kind: 'single' },
-    ...(value === undefined ? {} : { values: [value] }),
+    ...(period === undefined ? {} : { period }),
   })
-  const drawBit = (bit: BitSectionsShown | undefined, tabsIn: RevenueTabs | 'reading' | 'read-failed' = ready()) =>
-    render(<RevenueSection tabs={tabsIn} noDayCodes={false} onReread={() => undefined} bit={bit} groups={[GROUP]} />)
+  const drawBit = (view: BitSectionsShown | undefined, tabsIn: RevenueTabs | 'reading' | 'read-failed' = ready(), range = NOVEMBER) =>
+    render(<RevenueSection tabs={tabsIn} noDayCodes={false} onReread={() => undefined} bit={view === undefined ? undefined : { view, range }} groups={[GROUP]} />)
 
-  it('AC-6106.4·AC-6911.4: bit를 주면 탭 넷 뒤에 `신환 1명당`이 더해지고, 누르면 그 패널에 마지막 달의 세 칸·받은 치료별이 보인다', () => {
+  it('AC-7202.3·AC-7202.1: bit를 주면 탭 넷 뒤에 `신환 1명당`이 더해지고, 누르면 그 패널에 고른 기간의 세 칸·받은 치료별이 보인다', () => {
     drawBit(bitReady(VALUE))
     expect(tabs().map((t) => t.textContent)).toEqual([...TAB_NAMES, '신환 1명당'])
     expect(tabNamed('신환 1명당').getAttribute('aria-selected')).toBe('false')
     pick('신환 1명당')
+    expect(within(shown()).getByText('2026년 11월 신환 12명 · 2026년 11월 1일 – 18일')).toBeTruthy()
     expect([...shown().querySelectorAll('[data-kpi]')].map((cell) => cell.textContent)).toEqual([
       '41만 2,000원11월 신환 1명당 평균',
       '5.1회11월 신환 1명당 내원 횟수',
@@ -756,17 +761,28 @@ describe('AC-6106.4: 매출 칸 다섯째 탭 `신환 1명당`', () => {
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['매출'])
   })
 
+  it('AC-7202.3: 같은 view에 기간만 바꾸면 칸 위 줄·칸 이름이 그 기간 이름이다', () => {
+    drawBit(bitReady({ ...VALUE, from: '2026-10-20' }), ready(), LAST_30)
+    pick('신환 1명당')
+    expect(within(shown()).getByText('최근 30일 신환 12명 · 2026년 10월 20일 – 11월 18일')).toBeTruthy()
+    expect([...shown().querySelectorAll('[data-kpi]')].map((cell) => cell.textContent)).toEqual([
+      '41만 2,000원최근 30일 신환 1명당 평균',
+      '5.1회최근 30일 신환 1명당 내원 횟수',
+      '8만 800원한 번 올 때 평균',
+    ])
+  })
+
   it.each<[string, BitSectionsShown, string]>([
     ['불러오지 않은 기기', null, '비트에서 불러오면 볼 수 있어요'],
     ['금액 줄이 없는 답(옛 도우미)', bitReady(), '도우미를 0.11.0으로 올리면 볼 수 있어요'],
-    ['대상 없음', bitReady({ month: '2026-11', to: '2026-11-18', n: 0, average: 0, times: 0, perVisit: 0, lines: [] }), '아직 셀 환자가 없어요'],
-  ])('AC-6106.5: %s이면 탭 안에 안내 한 줄이다', (_name, bit, text) => {
-    drawBit(bit)
+    ['대상 없음', bitReady({ ...VALUE, n: 0, average: 0, times: 0, perVisit: 0, lines: [] }), '아직 셀 환자가 없어요'],
+  ])('AC-7202.2: %s이면 탭 안에 안내 한 줄이다', (_name, view, text) => {
+    drawBit(view)
     pick('신환 1명당')
     expect(shown().textContent).toBe(text)
   })
 
-  it('AC-6106.4: bit를 주지 않으면 탭 넷 그대로이고, 매출 칸이 읽는 중·읽기 실패·자료 없음이면 탭이 없다(지금 모양 그대로)', () => {
+  it('AC-7202.3: bit를 주지 않으면 탭 넷 그대로이고, 매출 칸이 읽는 중·읽기 실패·자료 없음이면 탭이 없다(지금 모양 그대로)', () => {
     drawBit(undefined)
     expect(tabs().map((t) => t.textContent)).toEqual(TAB_NAMES)
     cleanup()

@@ -1,0 +1,20 @@
+{
+  "status": "approved",
+  "feature": "pv-month",
+  "approved_at": "2026-11-19T09:58:03Z",
+  "approved_via": "auto",
+  "session_id": "d8c599c5-f70a-49d3-a279-5c381ed7a718",
+  "spec_sha256": "9329c61b38cce2fd90110b312b04d3860c3f45f17d3a3f84bd3da118d734e431",
+  "scope": [
+    "src/components/stats/sections/PatientValueSection.test.tsx",
+    "src/components/stats/sections/PatientValueSection.tsx",
+    "src/components/stats/sections/RevenueSection.test.tsx",
+    "src/components/stats/sections/RevenueSection.tsx",
+    "src/components/stats/sections/StatsSections.tsx",
+    "src/lib/analytics/patientValue.test.ts",
+    "src/lib/analytics/patientValue.ts",
+    "src/types/stats.ts",
+    "src/workers/stats/jobs.test.ts",
+    "src/workers/stats/jobs.ts"
+  ]
+}
