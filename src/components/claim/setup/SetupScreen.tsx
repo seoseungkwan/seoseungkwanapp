@@ -82,7 +82,7 @@ function Head({ desk }: { desk: boolean }) {
 function EmrWaitBox({ emr, desk }: { emr: NonBitEmr; desk: boolean }) {
   const titleId = useId()
   return (
-    <section aria-labelledby={titleId} className={`${ds.panel} flex flex-col gap-2.5 p-5 max-md:p-4`}>
+    <section aria-labelledby={titleId} className={`${ds.panel} flex flex-col gap-3 p-5 max-md:p-4`}>
       <h2 id={titleId} className={ds.panelTitle}>
         {emrWaitTitle(emr)}
       </h2>
