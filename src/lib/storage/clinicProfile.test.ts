@@ -9,6 +9,7 @@ import {
   downloadLogo,
   loadClinicProfile,
   loadSignup,
+  loadSignupEmr,
   normalizeLogo,
   removeLogo,
   saveClinicProfile,
@@ -662,5 +663,31 @@ describe('AC-6602.2 가입 이름·전화(loadSignup)', () => {
     expect(await loadSignup(fakeClient((call) => (call.kind === 'table' ? { error: RAW_ERROR } : okReply(call))).client)).toBeNull()
     expect(await loadSignup(fakeClient(() => 'throw').client)).toBeNull()
     expect(await loadSignup(fakeClient((call) => (call.kind === 'rpc' ? { error: RAW_ERROR } : okReply(call))).client)).toBeNull()
+  })
+})
+
+describe('AC-7302.2 가입 때 고른 EMR(loadSignupEmr)', () => {
+  it.each(['bit', 'uisarang', 'egis', 'other'] as const)("AC-7302.2: my_signup_emr()가 '%s'를 주면 그 값이고, 함수 하나만 인자 없이 부른다", async (emr) => {
+    const { client, calls } = fakeClient((call) => (call.kind === 'rpc' ? { data: emr } : okReply(call)))
+    expect(await loadSignupEmr(client)).toBe(emr)
+    expect(opsOf(calls)).toEqual(['rpc.my_signup_emr'])
+    expect(calls[0]).toEqual({ kind: 'rpc', fn: 'my_signup_emr', args: undefined })
+  })
+
+  it.each([
+    ['null(대기·거절 원장·남)', { data: null }],
+    ['넷 밖의 값', { data: 'ubcare' }],
+    ['대문자', { data: 'BIT' }],
+    ['빈 글자', { data: '' }],
+    ['숫자', { data: 3 }],
+    ['배열', { data: ['bit'] }],
+    ['오류(함수 없음·권한 없음)', { data: 'egis', error: RAW_ERROR }],
+  ] as const)('AC-7302.2: 답이 %s이면 null이다', async (_name, reply) => {
+    const { client } = fakeClient((call) => (call.kind === 'rpc' ? reply : okReply(call)))
+    expect(await loadSignupEmr(client)).toBeNull()
+  })
+
+  it('AC-7302.2: 부르기가 던지면(네트워크) null이고 오류 글을 밖으로 내지 않는다', async () => {
+    await expect(loadSignupEmr(fakeClient(() => 'throw').client)).resolves.toBeNull()
   })
 })

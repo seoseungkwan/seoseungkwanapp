@@ -1,20 +1,21 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { defaultProfile, downloadLogo, loadClinicProfile, loadSignup, type Signup } from '@/lib/storage/clinicProfile'
+import { defaultProfile, downloadLogo, loadClinicProfile, loadSignup, loadSignupEmr, type Signup } from '@/lib/storage/clinicProfile'
 import { supabaseBrowser } from '@/lib/supabase/browser'
-import type { ClinicProfile } from '@/types/clinicProfile'
+import { DEFAULT_EMR, type ClinicProfile, type EmrKind } from '@/types/clinicProfile'
 
 // 병원 정보 공용 훅(spec clinic-profile design.md 2절). 서식·문자·통계·대시보드·설정 칸이 쓴다(예약은 useCalendarData가 loadClinicProfile을 바로 부른다).
 // 한 번 읽어 React 상태에만 둔다(저장소에 두지 않는다). 읽기 실패는 failed이고 profile은 기본값·saved 거짓이라,
 // 쓰는 쪽은 실패를 '줄 없음'처럼 다뤄 지금처럼 돈다(SQL을 넣기 전 배포에도, design.md '위험'). [다시 불러오기]는 reload.
 // 로고는 { logo: true }일 때만 받는다(1MB까지라 필요한 화면만). 그때는 로고까지 받은 뒤에 ready다(받는 중에는 인쇄·그림 파일을 막는다, AC-6604.2)
+// 병원 정보 줄이 없을 때(ready, saved 거짓)만 쓰는 EMR은 가입 신청 때 고른 EMR이다(spec emr-signup AC-7302.3). 줄이 있으면 줄 값, 읽는 중·실패·가입 EMR 없음은 'bit'
 
 export type ClinicProfileState = 'loading' | 'ready' | 'failed'
 
 export type ClinicProfileView = {
   state: ClinicProfileState
-  /** 저장한 값. 줄이 없거나 읽는 중·실패면 기본값(defaultProfile) */
+  /** 저장한 값. 줄이 없거나 읽는 중·실패면 기본값(defaultProfile, 줄 없음이면 emr만 가입 때 고른 EMR) */
   profile: ClinicProfile
   /** 병원 정보 줄이 있음 */
   saved: boolean
@@ -29,19 +30,24 @@ export type ClinicProfileView = {
   reload(): void
 }
 
-type Read = { profile: ClinicProfile | null | 'failed'; signup: Signup | null; logo: string | null }
+type Read = { profile: ClinicProfile | null | 'failed'; signup: Signup | null; signupEmr: EmrKind | null; logo: string | null }
 type Held = { key: string; value: Read }
 
-const FAILED: Read = { profile: 'failed', signup: null, logo: null }
+const FAILED: Read = { profile: 'failed', signup: null, signupEmr: null, logo: null }
 
-// 클라이언트를 만들다 던져도(설정 없는 환경) 거절로 받는다. 로고 받기가 던지면 로고만 없다
+// 클라이언트를 만들다 던져도(설정 없는 환경) 거절로 받는다. 로고 받기가 던지면 로고만 없다.
+// 가입 EMR은 줄이 있어도 함께 부른다(줄을 기다렸다 부르면 줄 없는 병원의 화면이 늦어진다)
 const read = (withLogo: boolean): Promise<Read> =>
   Promise.resolve().then(async () => {
     const client = supabaseBrowser()
-    const [profile, signup] = await Promise.all([loadClinicProfile(client), loadSignup(client).catch(() => null)])
+    const [profile, signup, signupEmr] = await Promise.all([
+      loadClinicProfile(client),
+      loadSignup(client).catch(() => null),
+      loadSignupEmr(client).catch(() => null),
+    ])
     const path = profile !== null && profile !== 'failed' ? profile.logoPath : null
     const logo = withLogo && path !== null ? await downloadLogo(client, path).catch(() => null) : null
-    return { profile, signup, logo }
+    return { profile, signup, signupEmr, logo }
   })
 
 export function useClinicProfile(options: { logo?: boolean } = {}): ClinicProfileView {
@@ -70,7 +76,7 @@ export function useClinicProfile(options: { logo?: boolean } = {}): ClinicProfil
   // 같은 읽기 결과면 같은 값을 준다(쓰는 쪽 effect가 그릴 때마다 돌지 않게)
   return useMemo((): ClinicProfileView => {
     const stored = shown === null || shown.profile === 'failed' ? null : shown.profile
-    const profile = stored ?? defaultProfile()
+    const profile = shown !== null && shown.profile === null ? { ...defaultProfile(), emr: shown.signupEmr ?? DEFAULT_EMR } : (stored ?? defaultProfile())
     const signupName = shown?.signup?.name ?? ''
     return {
       state: shown === null ? 'loading' : shown.profile === 'failed' ? 'failed' : 'ready',

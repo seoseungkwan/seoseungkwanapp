@@ -22,11 +22,12 @@ import {
   type ClinicProfile,
   type ClinicStaff,
   type DayHours,
+  type EmrKind,
   type Honorific,
   type StaffRole,
 } from '@/types/clinicProfile'
 
-// 병원 정보 읽기·저장·로고 (spec clinic-profile REQ-6601·REQ-6602, design.md 2절, ADR-033 · 쓰는 EMR은 spec emr-choice AC-7102.1). 브라우저 → Supabase, 권한은 RLS가 막는다(ADR-004).
+// 병원 정보 읽기·저장·로고 (spec clinic-profile REQ-6601·REQ-6602, design.md 2절, ADR-033 · 쓰는 EMR은 spec emr-choice AC-7102.1, 가입 때 고른 EMR은 spec emr-signup AC-7302.2). 브라우저 → Supabase, 권한은 RLS가 막는다(ADR-004).
 // 표 clinic_profiles(내 병원 한 줄, 고치기는 원장만)와 비공개 Storage clinic-logos({hospital_id}/{uuid}.png, PNG만, 1,000,000바이트).
 // 보내는 몸통은 정해 둔 칸만 골라 새로 만든다({ ...받은 값 } 금지). hospital_id·updated_at은 보내지 않는다(DB 기본값·RLS가 정한다).
 // 로고 이름(logo_path)은 uploadLogo·removeLogo만 고친다 — 표 저장은 그 칸을 보내지 않아 그새 바뀐 로고를 덮지 않는다.
@@ -411,6 +412,19 @@ export async function loadSignup(client: SignupClient): Promise<Signup | null> {
     if (desk.error || !Array.isArray(desk.data)) return null
     const row: unknown = desk.data[0]
     return isRecord(row) && isFilled(row.hospital_name) ? { name: row.hospital_name, phone: null } : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 가입 신청 때 고른 쓰는 EMR(spec emr-signup AC-7302.2, design.md 2절). DB 함수 my_signup_emr()가 승인된 원장·데스크에게 내 병원 가입 줄의 emr을 준다
+ * (데스크는 hospitals를 못 읽어 함수로 읽는다). 넷 중 하나가 아니거나 오류(함수가 아직 없음 포함)·던짐이면 null — 부르는 쪽은 'bit'(지금 그대로)다
+ */
+export async function loadSignupEmr(client: Pick<SupabaseClient, 'rpc'>): Promise<EmrKind | null> {
+  try {
+    const { data, error } = await client.rpc('my_signup_emr')
+    return !error && isEmrKind(data) ? data : null
   } catch {
     return null
   }

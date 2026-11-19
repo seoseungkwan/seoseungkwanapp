@@ -1,4 +1,6 @@
+import { isEmrKind } from '@/lib/clinic/emrText'
 import { supabaseBrowser } from '@/lib/supabase/browser'
+import type { EmrKind } from '@/types/clinicProfile'
 import type { HospitalRow } from '@/types/db'
 import type { Hospital } from './hospital.server'
 
@@ -6,11 +8,12 @@ import type { Hospital } from './hospital.server'
 // 읽기는 RLS가 막는다(관리자는 모든 병원, 그 밖은 내 줄만). 바꾸기는 DB 함수 set_hospital_status 하나뿐이다 —
 // 표 update 권한은 아무에게도 없고, 함수가 관리자인지·허용한 바꿈인지 본다(supabase/rls.test.ts가 증명).
 // 실패는 AdminError 하나로 던진다 → 화면은 정해 둔 오류 카드만 보인다(원래 오류 문구는 cause에만 둔다)
-export type Application = Hospital
+/** 가입 신청 한 줄. emr은 가입 신청 때 고른 쓰는 EMR(spec emr-signup AC-7302.4, 넷 밖·없으면 'bit') */
+export type Application = Hospital & { emr: EmrKind }
 export class AdminError extends Error {}
 
-type ApplicationPick = Pick<HospitalRow, 'id' | 'name' | 'applicant_name' | 'phone' | 'email' | 'status' | 'created_at'>
-const COLUMNS = 'id, name, applicant_name, phone, email, status, created_at'
+type ApplicationPick = Pick<HospitalRow, 'id' | 'name' | 'applicant_name' | 'phone' | 'email' | 'status' | 'created_at' | 'emr'>
+const COLUMNS = 'id, name, applicant_name, phone, email, status, created_at, emr'
 
 function toApplication(row: ApplicationPick): Application {
   return {
@@ -21,6 +24,8 @@ function toApplication(row: ApplicationPick): Application {
     email: row.email,
     status: row.status,
     createdAt: row.created_at,
+    // 읽은 값은 믿지 않는다(SQL 넣기 전 줄·넷 밖 값)
+    emr: isEmrKind(row.emr) ? row.emr : 'bit',
   }
 }
 

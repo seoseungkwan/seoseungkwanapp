@@ -27,6 +27,7 @@ vi.mock('@/lib/storage/clinicProfile', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/storage/clinicProfile')>()),
   loadClinicProfile: vi.fn(),
   loadSignup: vi.fn(),
+  loadSignupEmr: async () => null, // 가입 때 고른 EMR 없음(spec emr-signup AC-7302.3) → 줄 없음이면 'bit'(지금 그대로)
   downloadLogo: vi.fn(),
   saveClinicProfile: vi.fn(),
   uploadLogo: vi.fn(),
