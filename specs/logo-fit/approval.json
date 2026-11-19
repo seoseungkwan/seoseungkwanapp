@@ -1,0 +1,30 @@
+{
+  "status": "approved",
+  "feature": "logo-fit",
+  "approved_at": "2026-11-19T00:17:54Z",
+  "approved_via": "auto",
+  "session_id": "d8c599c5-f70a-49d3-a279-5c381ed7a718",
+  "spec_sha256": "9b4a3266662722678133732d4fc6b002456cd9bc122ceacd011e32497ce09b21",
+  "scope": [
+    "docs/mockups/logo-fit/index.html",
+    "docs/mockups/logo-fit/notes.md",
+    "src/components/forms/FormsScreen.test.tsx",
+    "src/components/forms/FormsScreen.tsx",
+    "src/components/forms/GuidePoster.test.tsx",
+    "src/components/forms/GuidePoster.tsx",
+    "src/components/forms/GuideWorkspace.test.tsx",
+    "src/components/forms/Poster.test.tsx",
+    "src/components/forms/Poster.tsx",
+    "src/components/forms/PosterBackground.test.tsx",
+    "src/lib/forms/guideDrawing.test.ts",
+    "src/lib/forms/guideLayout.test.ts",
+    "src/lib/forms/guideLayout.ts",
+    "src/lib/forms/layout.test.ts",
+    "src/lib/forms/layout.ts",
+    "src/lib/forms/logoFit.test.ts",
+    "src/lib/forms/logoFit.ts",
+    "src/lib/forms/png.test.ts",
+    "src/lib/forms/png.ts",
+    "없음"
+  ]
+}

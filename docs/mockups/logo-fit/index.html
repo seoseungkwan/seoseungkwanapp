@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>로고 자동 맞추기 시안</title>
+<!-- spec logo-fit 시안. 그림 처리는 design.md 2절 규칙을 이 페이지 JS로 그대로 돌린 것. 기본 로고는 페이지가 그린 가상 세로형 로고, ?logo=<파일>로 다른 그림 -->
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --line:#e3e6eb; --ink:#1f2328; --sub:#5b636e; --accent:#2563eb; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+  main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  p.lead { margin: 0 0 20px; color: var(--sub); font-size: 14px; line-height: 1.6; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  .pair { display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  figure { margin:0; }
+  figcaption { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+  figcaption.after { color: var(--accent); }
+  svg { width:100%; height:auto; display:block; border-radius:8px; border:1px solid var(--line); }
+  .note { font-size: 13px; color: var(--sub); margin: 10px 0 0; line-height: 1.5; }
+  label.toggle { display:inline-flex; gap:6px; align-items:center; font-size:13px; color:var(--sub); margin-bottom: 14px; }
+  @media (max-width: 640px) { .pair { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>서식 로고 자동 맞추기</h1>
+  <p class="lead">병원 정보에 올린 로고를 서식이 그릴 때 <b>흰 배경을 지우고</b>, <b>둘레 여백을 자르고</b>, 그림이 위·글자가 아래인 <b>세로형 로고는 더 크게</b> 그려요. 올린 원래 파일은 그대로 두고 서식에서만 바뀌어요. 가로형 투명 로고는 지금과 똑같아요.</p>
+  <label class="toggle"><input type="checkbox" id="showArea"> 로고 자리(점선) 보기</label>
+
+  <section>
+    <h2>진료일정 안내 · AI 배경</h2>
+    <div class="pair">
+      <figure><figcaption>지금</figcaption><svg id="ai-now" viewBox="0 880 794 243"></svg></figure>
+      <figure><figcaption class="after">바뀐 뒤</figcaption><svg id="ai-new" viewBox="0 880 794 243"></svg></figure>
+    </div>
+    <p class="note">흰 네모와 로고 뒤의 흐린 흰 빛(그라데이션)이 모두 없어지고 로고만 보여요.</p>
+  </section>
+
+  <section>
+    <h2>진료일정 안내 · 테마 배경</h2>
+    <div class="pair">
+      <figure><figcaption>지금</figcaption><svg id="th-now" viewBox="0 880 794 243"></svg></figure>
+      <figure><figcaption class="after">바뀐 뒤</figcaption><svg id="th-new" viewBox="0 880 794 243"></svg></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>환자 안내문</h2>
+    <div class="pair">
+      <figure><figcaption>지금</figcaption><svg id="gd-now" viewBox="0 880 794 243"></svg></figure>
+      <figure><figcaption class="after">바뀐 뒤</figcaption><svg id="gd-new" viewBox="0 880 794 243"></svg></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>가로형 투명 로고는 그대로</h2>
+    <div class="pair">
+      <figure><figcaption>지금</figcaption><svg id="wd-now" viewBox="0 880 794 243"></svg></figure>
+      <figure><figcaption class="after">바뀐 뒤</figcaption><svg id="wd-new" viewBox="0 880 794 243"></svg></figure>
+    </div>
+    <p class="note">이미 배경이 투명하고 가로로 긴 로고는 폭에 맞춰져 지금과 같은 크기·자리예요. 로고 뒤 흐린 흰 빛만 없어져요.</p>
+  </section>
+</main>
+<script>
+// ---- design.md 2절 규칙 (logoFit) ----
+const WHITE_MIN = 230, OPAQUE_MIN = 200, BORDER_SHARE = 0.9, EDGE_MIN = 200, ALPHA_MIN = 16
+function clearWhiteBackground({ data, width: w, height: h }) {
+  const out = new Uint8ClampedArray(data)
+  const near = (i) => out[i * 4 + 3] >= OPAQUE_MIN && Math.min(out[i * 4], out[i * 4 + 1], out[i * 4 + 2]) >= WHITE_MIN
+  const border = []
+  for (let x = 0; x < w; x++) { border.push(x); if (h > 1) border.push((h - 1) * w + x) }
+  for (let y = 1; y < h - 1; y++) { border.push(y * w); if (w > 1) border.push(y * w + w - 1) }
+  const nearCount = border.filter(near).length
+  if (border.length === 0 || nearCount / border.length < BORDER_SHARE) return { data: out, width: w, height: h }
+  const seen = new Uint8Array(w * h), stack = new Int32Array(w * h)
+  let top = 0
+  for (const i of border) if (!seen[i] && near(i)) { seen[i] = 1; stack[top++] = i }
+  while (top > 0) {
+    const i = stack[--top], x = i % w, y = (i - x) / w
+    const next = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1]
+    for (const j of next) if (j >= 0 && !seen[j] && near(j)) { seen[j] = 1; stack[top++] = j }
+  }
+  const alpha = new Uint8ClampedArray(w * h)
+  for (let i = 0; i < w * h; i++) alpha[i] = out[i * 4 + 3]
+  for (let i = 0; i < w * h; i++) {
+    if (seen[i]) { out[i * 4 + 3] = 0; continue }
+    const x = i % w, y = (i - x) / w
+    const touches = (x > 0 && seen[i - 1]) || (x < w - 1 && seen[i + 1]) || (y > 0 && seen[i - w]) || (y < h - 1 && seen[i + w])
+    const m = Math.min(out[i * 4], out[i * 4 + 1], out[i * 4 + 2])
+    if (touches && m >= EDGE_MIN) out[i * 4 + 3] = Math.max(0, Math.min(255, Math.round(alpha[i] * (255 - m) / 55)))
+  }
+  return { data: out, width: w, height: h }
+}
+// 가장자리 얇은 선 떼기(AC-6701.5): 위→아래→왼쪽→오른쪽 한 번씩, k=1..3 중 가장 작은 k로 '바깥 k줄 모두 흰 점 50% 미만 + k+1번째 줄 90% 이상'이면 k줄을 뗀다
+const PEEL_MAX = 3, PEEL_OUTER = 0.5
+function peelEdgeLines({ data, width: w, height: h }) {
+  const near = (x, y) => { const i = (y * w + x) * 4; return data[i + 3] >= OPAQUE_MIN && Math.min(data[i], data[i + 1], data[i + 2]) >= WHITE_MIN }
+  let x0 = 0, x1 = w - 1, y0 = 0, y1 = h - 1
+  const rowShare = (y) => { let n = 0; for (let x = x0; x <= x1; x++) n += near(x, y); return n / (x1 - x0 + 1) }
+  const colShare = (x) => { let n = 0; for (let y = y0; y <= y1; y++) n += near(x, y); return n / (y1 - y0 + 1) }
+  const peelCount = (share, line, step, length) => {
+    for (let k = 1; k <= PEEL_MAX; k++) {
+      if (length - k < 3) return 0
+      if (share(line + (k - 1) * step) >= PEEL_OUTER) return 0
+      if (share(line + k * step) >= BORDER_SHARE) return k
+    }
+    return 0
+  }
+  y0 += peelCount(rowShare, y0, 1, y1 - y0 + 1)
+  y1 -= peelCount(rowShare, y1, -1, y1 - y0 + 1)
+  x0 += peelCount(colShare, x0, 1, x1 - x0 + 1)
+  x1 -= peelCount(colShare, x1, -1, x1 - x0 + 1)
+  if (x0 === 0 && y0 === 0 && x1 === w - 1 && y1 === h - 1) return { data: new Uint8ClampedArray(data), width: w, height: h }
+  const tw = x1 - x0 + 1, th = y1 - y0 + 1, out = new Uint8ClampedArray(tw * th * 4)
+  for (let y = 0; y < th; y++) out.set(data.subarray(((y0 + y) * w + x0) * 4, ((y0 + y) * w + x1 + 1) * 4), y * tw * 4)
+  return { data: out, width: tw, height: th }
+}
+function trimLogo({ data, width: w, height: h }) {
+  let x0 = w, y0 = h, x1 = -1, y1 = -1
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (data[(y * w + x) * 4 + 3] >= ALPHA_MIN) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y }
+  if (x1 < 0) return null
+  const tw = x1 - x0 + 1, th = y1 - y0 + 1, out = new Uint8ClampedArray(tw * th * 4)
+  for (let y = 0; y < th; y++) out.set(data.subarray(((y0 + y) * w + x0) * 4, ((y0 + y) * w + x0 + tw) * 4), y * tw * 4)
+  return { data: out, width: tw, height: th }
+}
+const r1 = (v) => Math.round(v * 10) / 10
+function logoRect(area, size) {
+  const s = Math.min(area.width / size.width, area.height / size.height)
+  const width = size.width * s, height = size.height * s
+  return { x: r1(area.x + area.width / 2 - width / 2), y: r1(area.y + area.height / 2 - height / 2), width: r1(width), height: r1(height) }
+}
+// ---- 배치 (design.md 4절) ----
+const LOGO = { x: 227, y: 1011, width: 340, height: 58 }, LOGO_AREA = { x: 227, y: 990, width: 340, height: 100 }
+const GUIDE_LOGO = { x: 197, y: 1005, width: 400, height: 68 }, GUIDE_LOGO_AREA = { x: 197, y: 984, width: 400, height: 110 }
+
+// ---- 그림 읽기·쓰기 ----
+const load = (src) => new Promise((ok, no) => { const im = new Image(); im.onload = () => ok(im); im.onerror = no; im.src = src })
+function toBitmap(im) {
+  const s = Math.min(1, 1200 / Math.max(im.naturalWidth, im.naturalHeight))
+  const c = document.createElement('canvas'); c.width = Math.round(im.naturalWidth * s); c.height = Math.round(im.naturalHeight * s)
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(im, 0, 0, c.width, c.height)
+  return { data: g.getImageData(0, 0, c.width, c.height).data, width: c.width, height: c.height, url: c.toDataURL('image/png') }
+}
+function toUrl({ data, width, height }) {
+  const c = document.createElement('canvas'); c.width = width; c.height = height
+  c.getContext('2d').putImageData(new ImageData(data, width, height), 0, 0); return c.toDataURL('image/png')
+}
+// 가상 세로형 로고(흰 배경): 그림 위·글자 아래
+function fakeLogo() {
+  const c = document.createElement('canvas'); c.width = 1080; c.height = 500
+  const g = c.getContext('2d'); g.fillStyle = '#f5f5f5'; g.fillRect(0, 0, 1080, 500)
+  g.fillStyle = '#d9d21f'; g.beginPath(); g.roundRect(455, 40, 170, 200, 40); g.fill()
+  g.fillStyle = '#f5f5f5'; g.beginPath(); g.arc(540, 140, 38, 0, Math.PI * 2); g.fill()
+  g.fillStyle = '#333'; g.font = '900 104px "Malgun Gothic", sans-serif'; g.textAlign = 'center'; g.fillText('가상정형외과의원', 540, 390)
+  g.fillStyle = '#555'; g.font = '600 26px sans-serif'; g.fillText('G A S A N G   O R T H O P E D I C', 540, 450)
+  return c.toDataURL('image/png')
+}
+
+// ---- 그리기 ----
+const NS = 'http://www.w3.org/2000/svg'
+function el(name, attrs, parent) { const e = document.createElementNS(NS, name); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e }
+function bgAi(svg, id) {
+  const d = el('defs', {}, svg)
+  const f = el('filter', { id: 'blur-' + id, x: '-30%', y: '-30%', width: '160%', height: '160%' }, d); el('feGaussianBlur', { stdDeviation: 18 }, f)
+  const lg = el('linearGradient', { id: 'g-' + id, x1: 0, y1: 0, x2: 0, y2: 1 }, d)
+  el('stop', { offset: 0, 'stop-color': '#151515' }, lg); el('stop', { offset: 1, 'stop-color': '#2b2b26' }, lg)
+  el('rect', { x: 0, y: 880, width: 794, height: 243, fill: `url(#g-${id})` }, svg)
+  for (const [cx, cy, r, c] of [[40, 1000, 90, '#3f6b35'], [120, 1080, 70, '#f1efd6'], [760, 960, 80, '#3f6b35'], [690, 1060, 85, '#f1efd6'], [600, 1110, 60, '#4d7a3c'], [190, 940, 45, '#e9e6c8']])
+    el('circle', { cx, cy, r, fill: c, opacity: 0.85 }, svg)
+}
+function glow(svg, id, rx, ry) { el('ellipse', { cx: 397, cy: 1040, rx, ry, fill: '#fff', 'fill-opacity': '.7', filter: `url(#blur-${id})` }, svg) }
+function area(svg, a) { if (document.getElementById('showArea').checked) el('rect', { x: a.x, y: a.y, width: a.width, height: a.height, fill: 'none', stroke: '#e11d48', 'stroke-width': 2, 'stroke-dasharray': '8 6' }, svg) }
+function img(svg, href, b) { el('image', { href, x: b.x, y: b.y, width: b.width, height: b.height, preserveAspectRatio: 'xMidYMid meet' }, svg) }
+
+let state = null
+function draw() {
+  const { orig, fit, wide } = state
+  const clear = (id) => { const s = document.getElementById(id); s.innerHTML = ''; return s }
+  // AI 배경
+  let s = clear('ai-now'); bgAi(s, 'a1'); glow(s, 'a1', 210, 46); area(s, LOGO); img(s, orig, LOGO)
+  s = clear('ai-new'); bgAi(s, 'a2')
+  if (fit) { const r = logoRect(LOGO_AREA, fit); area(s, LOGO_AREA); img(s, fit.url, r) } // 로고 뒤 흰 빛 없음(사용자 '그라데이션 없애')
+  // 테마 배경
+  for (const [id, after] of [['th-now', false], ['th-new', true]]) {
+    s = clear(id); el('rect', { x: 0, y: 880, width: 794, height: 243, fill: '#fff8ec' }, s)
+    el('path', { d: 'M0 1123 L0 1060 Q120 1020 220 1070 Q300 1110 360 1123 Z', fill: '#f4c95d', opacity: 0.7 }, s)
+    el('path', { d: 'M794 1123 L794 1040 Q690 1010 600 1075 Q540 1110 500 1123 Z', fill: '#e88d67', opacity: 0.6 }, s)
+    if (after && fit) { area(s, LOGO_AREA); img(s, fit.url, logoRect(LOGO_AREA, fit)) } else { area(s, LOGO); img(s, orig, LOGO) }
+  }
+  // 환자 안내문
+  for (const [id, after] of [['gd-now', false], ['gd-new', true]]) {
+    s = clear(id); el('rect', { x: 0, y: 880, width: 794, height: 74, fill: '#1f2a44' }, s); el('rect', { x: 0, y: 954, width: 794, height: 169, fill: '#fff' }, s)
+    el('text', { x: 51, y: 920, fill: '#fff', 'font-size': 22, 'font-weight': 700, 'font-family': 'sans-serif' }, s).textContent = '※ 궁금한 점은 접수처에 물어보세요'
+    if (after && fit) { area(s, GUIDE_LOGO_AREA); img(s, fit.url, logoRect(GUIDE_LOGO_AREA, fit)) } else { area(s, GUIDE_LOGO); img(s, orig, GUIDE_LOGO) }
+  }
+  // 가로형 투명 로고
+  s = clear('wd-now'); bgAi(s, 'w1'); glow(s, 'w1', 210, 46); area(s, LOGO); img(s, wide.orig, LOGO)
+  s = clear('wd-new'); bgAi(s, 'w2')
+  const wr = wide.fit ? logoRect(LOGO_AREA, wide.fit) : LOGO
+  area(s, LOGO_AREA); img(s, wide.fit ? wide.fit.url : wide.orig, wr)
+}
+async function prepare(src) {
+  const b = toBitmap(await load(src))
+  const t = trimLogo(clearWhiteBackground(peelEdgeLines(b)))
+  return { orig: b.url, fit: t ? { ...t, url: toUrl(t) } : null }
+}
+;(async () => {
+  const q = new URLSearchParams(location.search)
+  const main = await prepare(q.get('logo') || fakeLogo())
+  let wide = { orig: '', fit: null }
+  try { wide = await prepare(q.get('wide') || '../../../public/poster/logo.png') } catch { wide = { orig: '', fit: null } }
+  state = { ...main, wide }
+  draw()
+  document.getElementById('showArea').addEventListener('change', draw)
+  document.body.dataset.ready = '1'
+})()
+</script>
+</body>
+</html>
