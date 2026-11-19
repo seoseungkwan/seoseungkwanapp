@@ -220,7 +220,7 @@ tr.sum td { font-weight: 600; border-top: 1px solid var(--st-line-2); border-bot
 <body data-s="both">
 <main>
   <h1>확인 필요 없이 비트 총진료비로 — 시안</h1>
-  <p class="lead">도우미가 '확인 필요'로 둔 날도 그날 비트 총진료비(원장님별과 같은 기준)를 그날 매출로 씁니다. 매출에서 '참고 금액'·'확인 필요한 날' 글과 스위치·빗금·점선·노란 줄이 모두 없어집니다. 그리고 '신환 1명당 매출'을 90일 대신 <b>그 달 신환이 그 달에 낸 돈</b>으로 셉니다. 숫자는 모두 지어낸 것입니다. 기간은 최근 30일(10월 20일–11월 18일), 그중 <b>10월 28일·11월 18일</b>이 '확인 필요한 날'입니다.</p>
+  <p class="lead">'확인 필요'로 두던 날(환불·변경수납·예치금·연결 중복)도 그날 비트 총진료비를 그날 매출로 씁니다. <b>새 도우미 0.13.0</b>은 그런 날도 보통 날처럼 금액을 다 읽어(급여·비급여·현금·카드까지) 보고 문장·업무일지가 다 채워지고, 그 전에 저장된 날은 그날 비트 총진료비만 씁니다. 매출에서 '참고 금액'·'확인 필요한 날' 글과 스위치·빗금·점선·노란 줄이 모두 없어집니다. 그리고 '신환 1명당 매출'을 90일 대신 <b>그 달 신환이 그 달에 낸 돈</b>으로 셉니다. 숫자는 모두 지어낸 것입니다. 기간은 최근 30일(10월 20일–11월 18일), 그중 <b>10월 28일·11월 18일</b>이 '확인 필요한 날'입니다. 2026-11-19 "이대로 만들기"로 승인, 그 뒤 답(비급여 넣기·현금 카드 채우기·도우미도 고치기)에 맞춰 ③·④·⑧·⑬의 '바뀜'을 고쳤습니다.</p>
   <nav class="states" aria-label="보기">
     <a href="?s=both" data-s="both">지금 · 바뀜 나란히</a>
     <a href="?s=before" data-s="before">지금만</a>
@@ -250,7 +250,7 @@ tr.sum td { font-weight: 600; border-top: 1px solid var(--st-line-2); border-bot
   <!-- ③ 급여·비급여·기타 -->
   <section class="part">
     <h2>③ 매출 칸 · 급여·비급여·기타 <span class="where">통계 탭 매출 칸</span></h2>
-    <p class="what">그런 날은 급여·비급여·기타로 나눌 수 없어 '나눔을 못 한 날'로 나옵니다. 그래서 이 표의 합계는 총매출보다 작습니다(지금 있는 안내 한 줄이 알려 줌).</p>
+    <p class="what">도우미 0.13.0으로 다시 불러오면 그런 날도 급여·비급여·기타로 나뉘어 셋의 합이 총매출과 같습니다. 0.13.0 전에 저장된 날만 '나눔을 못 한 날'로 나옵니다(아래 점선 상자).</p>
     <div class="pair">
       <div class="side before"><span class="tag">지금</span><div id="splitBefore"></div></div>
       <div class="side after"><span class="tag">바뀜</span><div id="splitAfter"></div></div>
@@ -300,7 +300,7 @@ tr.sum td { font-weight: 600; border-top: 1px solid var(--st-line-2); border-bot
   <!-- ⑧ 보고 문장 -->
   <section class="part">
     <h2>⑧ 원장님 보고 문장 <span class="where">통계 탭 · 어제 일일보고</span></h2>
-    <p class="what">'확인 필요' 대신 총진료비(원장님별과 같은 기준)와 건당진료비가 채워집니다. 나눌 수 없는 조합청구액·입금액·비급여는 '–'. 날짜 옆 '· 금액 확인 필요'와 노란 줄이 없어집니다. 바뀐 줄은 연두색.</p>
+    <p class="what">도우미 0.13.0이 그런 날도 금액을 다 읽어 '확인 필요' 대신 총진료비·조합청구액·입금액·<b>비급여</b>·건당진료비가 보통 날처럼 채워집니다. 날짜 옆 '· 금액 확인 필요'와 노란 줄이 없어집니다. 바뀐 줄은 연두색. 0.13.0을 깔기 전에는 금액 줄이 '–'입니다(아래 점선 상자).</p>
     <div class="pair">
       <div class="side before"><span class="tag">지금</span><div id="repBefore"></div></div>
       <div class="side after"><span class="tag">바뀜</span><div id="repAfter"></div></div>
@@ -527,11 +527,13 @@ tr.sum td { font-weight: 600; border-top: 1px solid var(--st-line-2); border-bot
       '<p class="bnote">' + SPLIT_NOTE + '셋을 더하면 매출이에요.</p>' +
       '<p class="bnote">막대는 날마다 아래부터 급여·비급여·기타예요. <span class="gone">확인 필요한 날과 </span>나눔을 못 한 날은 막대가 없어요.</p></div>'
     document.getElementById('splitAfter').innerHTML = '<div class="card"><div class="card-head"><div class="t"><h3>매출</h3></div></div>' + tabs(1) +
-      '<div class="notice"><b>2일(' + ROUGH_DAYS_TEXT + ')</b>은 나눔을 못 해서 이 표에서 빠졌어요. 매출 합계에는 들어 있어요.</div>' +
-      splitTable(conf) +
-      '<p class="bnote">' + SPLIT_NOTE + '이 기간은 나눔을 못 한 날이 빠져서 셋을 더해도 매출보다 작아요. 막대도 나눔이 있는 날만 더해요.</p>' +
+      splitTable(all) +
+      '<p class="bnote">' + SPLIT_NOTE + '셋을 더하면 매출이에요.</p>' +
       '<p class="bnote">막대는 날마다 아래부터 급여·비급여·기타예요. 나눔을 못 한 날은 막대가 없어요.</p>' +
-      '<p class="cap" style="color:var(--before);margin:8px 0 0">시안 메모: 이 표 합계 ' + man(conf) + ' &lt; 총매출 ' + man(all) + ' (차이 = 그 두 날)</p></div>'
+      '<p class="cap" style="color:var(--after);margin:8px 0 0">시안 메모: 도우미 0.13.0으로 다시 불러온 뒤 — 이 표 합계 ' + man(all) + ' = 총매출</p>' +
+      '<div class="subcases"><div class="subcase"><span class="k">0.13.0으로 다시 불러오기 전(옛 줄이 남은 기간) — 표 위 안내</span>' +
+      '<b>2일(' + ROUGH_DAYS_TEXT + ')</b>은 나눔을 못 해서 이 표에서 빠졌어요. 매출 합계에는 들어 있어요.' +
+      '<div class="cap muted" style="margin-top:4px">이때 표 합계 ' + man(conf) + ' &lt; 총매출 ' + man(all) + ', 아래 글은 \'이 기간은 나눔을 못 한 날이 빠져서 셋을 더해도 매출보다 작아요. …\'</div></div></div></div>'
   }
 
   // ── 어떻게 세나요 ──
@@ -548,7 +550,7 @@ tr.sum td { font-weight: 600; border-top: 1px solid var(--st-line-2); border-bot
       '<p class="gone">확인 필요한 날은 금액을 알 수 없어서 그날 접수 건수도 함께 빼고 나눠요. 그래서 \'원장님별\'의 건당 진료비(그런 날도 더해요)와 조금 다를 수 있어요.</p></div></div>'
     var after = '<div class="card"><div class="mini-title" style="margin-top:0">매출 추이 [어떻게 세나요?]</div><div class="how" style="border:0;padding:0;margin:0">' +
       '<p>' + p1 + '</p>' +
-      '<p class="mark-new">환불·변경수납·예치금이 있거나 수납 연결이 겹친 날도 그날 수납한 줄의 총진료비(원장님별 표와 같은 기준, 환불은 빼기)를 매출에 넣어요. 그런 날은 급여·비급여·기타로 나누지 못해요.</p>' +
+      '<p class="mark-new">환불·변경수납·예치금이 있거나 수납 연결이 겹친 날도 다른 날과 같은 기준으로 매출에 넣어요. 도우미 0.13.0 전에 불러온 그런 날은 그날 수납한 줄의 총진료비(원장님별 표와 같은 기준, 환불은 빼기)를 넣고, 급여·비급여·기타로는 나누지 못해요.</p>' +
       '<p>' + p4 + '</p></div>' +
       '<div class="mini-title">건당 진료비 [어떻게 세나요?]</div><div class="how" style="border:0;padding:0;margin:0"><p>' + pv1 + '</p></div>' +
       '<div class="mini-title">건당 진료비 탭 첫 칸 아래 글</div><p class="small ink2" style="margin:0">매출 ÷ 접수 ' + fmt(sumOf(true).visits) + '건 <span class="muted">(지금 켜짐의 \'· 참고 금액 포함\' 없음)</span></p></div>'
