@@ -5,6 +5,7 @@ import { formatClinicReport } from './reportText'
 
 // 골든은 원본 양지바른(medicore/reports.py)을 scripts/stats/golden/reports.py로 돌린 결과다.
 // 시험은 원본 없이 커밋한 파일과 견준다. 모두 가짜 숫자다
+// 확인 필요 사례 셋은 bit-total(REQ-6908)에서 일부러 원본과 달라졌다. 골든 파일은 그대로 두고 원본 비교에서 빼 같은 입력으로 새 글을 본다(design.md 5절)
 
 type Confirmed = Extract<ClinicReportNumbers, { ok: true }>
 type KnownDiff = { field: 'lines' | 'notes'; index: number; original: string; ours: string; why: string }
@@ -52,6 +53,25 @@ const CASES = [
 ]
 const goldens = CASES.map((name) => ({ name, golden: read<CaseGolden>(name) }))
 const periods = read<PeriodGolden>('period')
+const UNCONFIRMED_CASES = ['daily-unconfirmed', 'daily-zero-visits-unconfirmed', 'monthly-unconfirmed']
+const confirmedGoldens = goldens.filter(({ name }) => !UNCONFIRMED_CASES.includes(name))
+
+// 안내 글(bit-total AC-6908.3·AC-6908.4·AC-6912.5). 옛 글 셋은 지금 운영의 웹·도우미(0.13.0 전) 글이다
+const OLD_WEB_NOTE =
+  '이 기간은 환불·변경수납·예치금 또는 연결 중복이 있어 금액을 자동 집계하지 않았습니다(‘확인 필요’). 환자수·치료·LA 집계는 정상이며, 금액은 비트 원본 외래환자경영통계에서 확인해 직접 입력하세요.'
+const NEW_WEB_NOTE =
+  '이 기간은 환불·변경수납·예치금 또는 연결 중복이 있어 지금 도우미가 금액을 세지 않았습니다(–). 도우미를 0.13.0으로 올린 뒤 [비트에서 불러오기]를 다시 하면 채워집니다.'
+const OLD_HELPER_MONEY =
+  "금액은 외래환자경영통계의 회계일 기준 정상수납·미수입금 조건으로 집계합니다. 환불·변경수납·예치금 또는 연결 중복이 있으면 금액을 '확인 필요'로 두고 환자수·치료·LA만 집계합니다."
+const NEW_HELPER_MONEY =
+  '금액은 외래환자경영통계의 회계일 기준 정상수납·미수입금 조건으로 집계합니다. 환불·변경수납·예치금 또는 연결 중복이 있는 기간도 같은 조건으로 집계해 비트 원본 통계와 다를 수 있습니다.'
+const OLD_HELPER_UNCOUNTED = '이 기간은 금액을 자동 집계하지 않았습니다(환자수·치료·LA는 정상). 비트 원본 외래환자경영통계에서 금액을 확인해 직접 입력하세요.'
+const DAILY_BASE_NOTES = [
+  '총환은 내원 건수 기준이며, 건당진료비는 총진료비 ÷ 총환에서 원 미만을 버립니다.',
+  '입금액은 비트 원본 수납 구분에 따라 현금·카드·계좌이체를 각각 집계하며 서로 합산하거나 재분류하지 않습니다.',
+  '신환 내원경로의 0은 요청에 따른 고정값이며 실제 유입 집계가 아닙니다.',
+  '치료 인원은 치료별 당일 환자 중복을 제외한 값입니다.',
+]
 
 function toNumbers(input: OriginalInput): Confirmed {
   return {
@@ -113,7 +133,12 @@ describe('REQ-510 원장님 보고 문장', () => {
       }
     })
 
-    it.each(goldens)('AC-510.1 골든 $name: 적어 둔 차이 말고는 글·안내가 순서까지 같다', ({ golden }) => {
+    it('AC-510.1·AC-6908.2 원본 비교에서 빼는 사례는 확인 필요(finance_unconfirmed) 사례 셋뿐이다', () => {
+      expect(goldens.filter(({ golden }) => golden.input.finance_unconfirmed === true).map(({ name }) => name)).toEqual(UNCONFIRMED_CASES)
+      expect(confirmedGoldens).toHaveLength(CASES.length - UNCONFIRMED_CASES.length)
+    })
+
+    it.each(confirmedGoldens)('AC-510.1 골든 $name: 적어 둔 차이 말고는 글·안내가 순서까지 같다', ({ golden }) => {
       const { input } = golden
       const expected = expectedFrom(golden)
       const result = made(formatClinicReport({ mode: input.mode, numbers: toNumbers(input), hospitalName: input.hospital_name }, TODAY))
@@ -185,75 +210,6 @@ describe('REQ-510 원장님 보고 문장', () => {
       const before = structuredClone(numbers)
       made(format('monthly', numbers))
       expect(numbers).toEqual(before)
-    })
-  })
-
-  describe('AC-510.2 금액 확인 필요', () => {
-    it('AC-510.2 일일: 금액 줄과 건당진료비가 "확인 필요"이고 그 줄 번호를 0부터 돌려준다', () => {
-      const result = made(format('daily', sample('daily-unconfirmed')))
-      const lines = result.text.split('\n')
-      expect(result.unconfirmedLines).toEqual([7, 8, 9, 10, 11, 12, 20])
-      expect(result.unconfirmedLines.map((index) => lines[index])).toEqual([
-        '총진료비        확인 필요',
-        '조합청구액      확인 필요',
-        '입금액 (현금)         확인 필요',
-        '       (카드)         확인 필요',
-        '       (계좌이체)     확인 필요',
-        '비급여          확인 필요',
-        '건당진료비      확인 필요',
-      ])
-    })
-
-    it('AC-510.2 월말: 입금액 줄이 없어 줄 번호도 다르다', () => {
-      const result = made(format('monthly', sample('monthly-unconfirmed')))
-      const lines = result.text.split('\n')
-      expect(result.unconfirmedLines).toEqual([5, 6, 7, 17])
-      expect(result.unconfirmedLines.map((index) => lines[index])).toEqual([
-        '총진료비        확인 필요',
-        '조합청구액      확인 필요',
-        '비급여          확인 필요',
-        '건당진료비      확인 필요',
-      ])
-    })
-
-    it('AC-510.2 금액이 들어 있어도 글에 나오지 않고 다른 숫자는 그대로다', () => {
-      const numbers = { ...sample('daily-normal'), financeUnconfirmed: true }
-      const masked = made(format('daily', numbers)).text.split('\n')
-      expect(masked.filter((line) => /[\d,]+원$/.test(line))).toEqual([])
-      const plain = made(format('daily', sample('daily-normal'))).text.split('\n')
-      const counts = plain.filter((line) => /[\d,]+[명건]$/.test(line))
-      expect(counts.length).toBeGreaterThan(0)
-      expect(masked).toEqual(expect.arrayContaining(counts))
-    })
-
-    it('AC-510.2 총환 0명이어도 건당진료비는 "산출 불가"가 아니라 "확인 필요"다', () => {
-      const result = made(format('daily', sample('daily-zero-visits-unconfirmed')))
-      expect(result.text).toContain('건당진료비      확인 필요')
-      expect(result.text).not.toContain('산출 불가')
-    })
-
-    it('AC-510.2 사유가 없으면 원본의 기본 사유 줄이다', () => {
-      const { text } = made(format('monthly', sample('monthly-unconfirmed')))
-      expect(text).toContain('※ 금액 확인 필요 — 환불·변경수납·예치금 또는 연결 중복. 비트 원본에서 확인해 아래 금액을 직접 입력하세요.')
-    })
-
-    it('AC-510.2 사유 글에 줄바꿈이 있어도 줄 번호는 글의 진짜 줄을 가리킨다', () => {
-      const numbers = { ...sample('daily-unconfirmed'), financeUnconfirmedReason: '첫째 줄\n둘째 줄' }
-      const result = made(format('daily', numbers))
-      const lines = result.text.split('\n')
-      expect(result.unconfirmedLines).toEqual([8, 9, 10, 11, 12, 13, 21])
-      for (const index of result.unconfirmedLines) expect(lines[index]).toMatch(/확인 필요$/)
-    })
-
-    it('AC-510.2 병원 이름에 줄바꿈이 있어도 줄 번호는 글의 진짜 줄을 가리킨다', () => {
-      const result = made(formatClinicReport({ mode: 'daily', numbers: sample('daily-unconfirmed'), hospitalName: '가상\n의원' }, TODAY))
-      const lines = result.text.split('\n')
-      expect(result.unconfirmedLines).toEqual([8, 9, 10, 11, 12, 13, 21])
-      for (const index of result.unconfirmedLines) expect(lines[index]).toMatch(/확인 필요$/)
-    })
-
-    it('AC-510.2 확인 필요가 아니면 줄 번호가 없다', () => {
-      expect(made(format('daily', sample('daily-normal'))).unconfirmedLines).toEqual([])
     })
   })
 
@@ -337,6 +293,196 @@ describe('REQ-510 원장님 보고 문장', () => {
     it('AC-510.4 chart·name·rows·patient 칸이 없다', () => {
       const keys = [...Object.keys(confirmed), ...Object.keys(stopped), ...Object.keys(confirmed.treatments), ...Object.keys(input)]
       for (const banned of ['chart', 'name', 'rows', 'patient']) expect(keys).not.toContain(banned)
+    })
+  })
+})
+
+// ── bit-total REQ-6908: 원장님 보고 문장 — 확인 필요 없이 (design.md 5절) ─────────────────
+describe('REQ-6908 원장님 보고 문장 — 확인 필요 없이', () => {
+  const lines = (result: ReturnType<typeof formatClinicReport>) => made(result).text.split('\n')
+  const DAILY_DASH = [
+    '총진료비        –',
+    '조합청구액      –',
+    '입금액 (현금)         –',
+    '       (카드)         –',
+    '       (계좌이체)     –',
+    '비급여          –',
+    '건당진료비      –',
+  ]
+  const MONTHLY_DASH = ['총진료비        –', '조합청구액      –', '비급여          –', '건당진료비      –']
+  const fromGolden = (name: string) => {
+    const golden = read<CaseGolden>(name)
+    return { golden, result: made(formatClinicReport({ mode: golden.input.mode, numbers: toNumbers(golden.input), hospitalName: golden.input.hospital_name }, TODAY)) }
+  }
+
+  describe('AC-6908.1 도우미 0.13.0 벌(그런 날·달도 financeUnconfirmed 거짓, 금액 여섯 칸 숫자)', () => {
+    it('AC-6908.1 일일: 총진료비·조합청구액·입금액 셋·비급여·건당진료비가 모두 원 글이다', () => {
+      const numbers: Confirmed = {
+        ...sample('daily-normal'),
+        totalVisits: 102,
+        newPatients: 9,
+        returnPatients: 93,
+        totalAmount: 5213400,
+        insurerAmount: 1016900,
+        noncoveredAmount: 2184000,
+        cashAmount: 412000,
+        cardAmount: 3486500,
+        transferAmount: 298000,
+        financeUnconfirmed: false,
+        notes: [NEW_HELPER_MONEY],
+      }
+      const shown = lines(format('daily', numbers))
+      const from = shown.indexOf('재진                  93명') + 1
+      expect(from).toBeGreaterThan(0)
+      expect(shown.slice(from, from + 6)).toEqual([
+        '총진료비        5,213,400원',
+        '조합청구액      1,016,900원',
+        '입금액 (현금)         412,000원',
+        '       (카드)         3,486,500원',
+        '       (계좌이체)     298,000원',
+        '비급여          2,184,000원',
+      ])
+      expect(shown).toContain('건당진료비      51,111원')
+      expect(shown.join('\n')).not.toContain('확인 필요')
+      expect(shown.filter((line) => line.endsWith('–'))).toEqual([])
+    })
+
+    it('AC-6908.1 월말: 총진료비·조합청구액·비급여·건당진료비가 원 글이다', () => {
+      const numbers: Confirmed = {
+        ...sample('monthly-la'),
+        totalVisits: 100,
+        totalAmount: 120000000,
+        insurerAmount: 80000000,
+        noncoveredAmount: 30000000,
+        financeUnconfirmed: false,
+      }
+      const shown = lines(format('monthly', numbers))
+      expect(shown).toEqual(
+        expect.arrayContaining(['총진료비        120,000,000원', '조합청구액      80,000,000원', '비급여          30,000,000원', '건당진료비      1,200,000원']),
+      )
+      expect(shown.join('\n')).not.toContain('확인 필요')
+    })
+  })
+
+  describe('AC-6908.2 0.13.0 전 도우미의 financeUnconfirmed 벌: 금액 줄은 "–"', () => {
+    it.each(UNCONFIRMED_CASES)('AC-6908.2 골든 %s 입력: ※ 줄이 없고 금액 줄만 "–"이며 다른 줄은 원본 그대로다', (name) => {
+      const { golden, result } = fromGolden(name)
+      const expected = golden.output.lines.filter((line) => !line.startsWith('※ 금액 확인 필요')).map((line) => line.replace(/확인 필요$/, '–'))
+      expect(expected).toHaveLength(golden.output.lines.length - 1)
+      expect(result.text.split('\n')).toEqual(expected)
+      expect(result.text).not.toContain('확인 필요')
+      expect(result.text).not.toContain('※')
+    })
+
+    it('AC-6908.2 일일: 금액 줄 일곱이 차례대로 "–"다', () => {
+      expect(lines(format('daily', sample('daily-unconfirmed'))).filter((line) => line.endsWith('–'))).toEqual(DAILY_DASH)
+    })
+
+    it('AC-6908.2 월말: 입금액 줄이 없어 금액 줄 넷이 차례대로 "–"다', () => {
+      expect(lines(format('monthly', sample('monthly-unconfirmed'))).filter((line) => line.endsWith('–'))).toEqual(MONTHLY_DASH)
+    })
+
+    it('AC-6908.2 금액이 들어 있어도 글에 나오지 않고, 금액 줄 말고 다른 줄은 확인된 벌과 같다', () => {
+      const plain = lines(format('daily', sample('daily-normal')))
+      const masked = lines(format('daily', { ...sample('daily-normal'), financeUnconfirmed: true }))
+      expect(masked.filter((line) => /[\d,]+원$/.test(line))).toEqual([])
+      expect(masked).toEqual(plain.map((line) => line.replace(/-?[\d,]+원$/, '–')))
+      expect(masked.filter((line) => line.endsWith('–'))).toEqual(DAILY_DASH)
+    })
+
+    it('AC-6908.2 총환 0명이어도 건당진료비는 "산출 불가"가 아니라 "–"다', () => {
+      const shown = lines(format('daily', sample('daily-zero-visits-unconfirmed')))
+      expect(shown).toContain('건당진료비      –')
+      expect(shown.join('\n')).not.toContain('산출 불가')
+    })
+
+    it('AC-6908.2 사유(financeUnconfirmedReason)가 있든 없든(줄바꿈이 있어도) 글이 같고 어디에도 "확인 필요"가 없다', () => {
+      const { financeUnconfirmedReason: _reason, ...without } = sample('daily-unconfirmed')
+      expect(_reason).not.toBeUndefined()
+      const plain = made(format('daily', without)).text
+      expect(plain).not.toContain('확인 필요')
+      for (const reason of ['가짜 사유', '첫째 줄\n둘째 줄']) {
+        const { text } = made(format('daily', { ...without, financeUnconfirmedReason: reason }))
+        expect(text).toBe(plain)
+        expect(text).not.toContain(reason.split('\n')[0]!)
+      }
+    })
+
+    it('AC-6908.2 병원 이름에 줄바꿈이 있어도 금액 줄은 "–" 일곱이다', () => {
+      const shown = lines(formatClinicReport({ mode: 'daily', numbers: sample('daily-unconfirmed'), hospitalName: '가상\n의원' }, TODAY))
+      expect(shown.slice(0, 2)).toEqual(['가상', '의원'])
+      expect(shown.filter((line) => line.endsWith('–'))).toEqual(DAILY_DASH)
+    })
+
+    it('AC-6908.2 돌려주는 글 벌은 text·notes뿐이다(줄 번호 unconfirmedLines 없음)', () => {
+      expect(Object.keys(made(format('daily', sample('daily-unconfirmed')))).sort()).toEqual(['notes', 'text'])
+      expect(Object.keys(made(format('daily', sample('daily-normal')))).sort()).toEqual(['notes', 'text'])
+    })
+  })
+
+  describe('AC-6908.3 financeUnconfirmed 벌의 웹 안내', () => {
+    it.each(UNCONFIRMED_CASES)('AC-6908.3 골든 %s 입력: 옛 웹 안내 자리에 새 안내이고 다른 안내는 원본 그대로다', (name) => {
+      const { golden, result } = fromGolden(name)
+      const expected = expectedFrom(golden).notes.map((note) => (note === OLD_WEB_NOTE ? NEW_WEB_NOTE : note))
+      expect(expected).toContain(NEW_WEB_NOTE)
+      expect(result.notes).toEqual(expected)
+      expect(result.notes.join('\n')).not.toContain('확인 필요')
+    })
+
+    it('AC-6908.3 확인된 벌에는 금액을 세지 않았다는 웹 안내가 없다', () => {
+      const { notes } = made(format('daily', sample('daily-normal')))
+      expect(notes).not.toContain(NEW_WEB_NOTE)
+      expect(notes).not.toContain(OLD_WEB_NOTE)
+    })
+  })
+
+  describe('AC-6908.4 도우미 안내 바꾸기', () => {
+    it('AC-6908.4 확인된 벌: 옛 금액 안내는 같은 자리에서 새 금액 안내(AC-6912.5 글)로 바뀌고 다른 안내는 그대로다', () => {
+      const { notes } = made(format('daily', { ...sample('daily-normal'), notes: ['앞 안내', OLD_HELPER_MONEY, '뒤 안내'] }))
+      expect(notes).toEqual([...DAILY_BASE_NOTES, '앞 안내', NEW_HELPER_MONEY, '뒤 안내'])
+    })
+
+    it('AC-6908.4 financeUnconfirmed 벌: 옛 금액 안내를 빼고 새 금액 안내도 넣지 않으며 "이 기간은 금액을 자동 집계하지 않았습니다…"도 뺀다', () => {
+      const numbers = { ...sample('daily-unconfirmed'), notes: ['앞 안내', OLD_HELPER_MONEY, OLD_HELPER_UNCOUNTED, '뒤 안내'] }
+      const { notes } = made(format('daily', numbers))
+      expect(notes).toEqual([...DAILY_BASE_NOTES, NEW_WEB_NOTE, '앞 안내', '뒤 안내'])
+      expect(notes).not.toContain(NEW_HELPER_MONEY)
+    })
+
+    it('AC-6908.4 월말 financeUnconfirmed 벌도 같다', () => {
+      const numbers = { ...sample('monthly-unconfirmed'), notes: [OLD_HELPER_MONEY, OLD_HELPER_UNCOUNTED, '가상 자료입니다.'] }
+      expect(made(format('monthly', numbers)).notes).toEqual([
+        '총환은 내원 건수 기준이며, 건당진료비는 총진료비 ÷ 총환에서 원 미만을 버립니다.',
+        '치료 및 LA 코드 건수는 취소·삭제 등을 제외한 유효 처방 건수이며 총투여량이 아닙니다.',
+        NEW_WEB_NOTE,
+        '가상 자료입니다.',
+      ])
+    })
+
+    it('AC-6908.4 "이 기간은 금액을 자동 집계하지 않았습니다…"는 확인된 벌에서도 뺀다', () => {
+      const { notes } = made(format('daily', { ...sample('daily-normal'), notes: [OLD_HELPER_UNCOUNTED, '뒤 안내'] }))
+      expect(notes).toEqual([...DAILY_BASE_NOTES, '뒤 안내'])
+    })
+
+    it('AC-6908.4 글이 정확히 같을 때만 바꾸거나 뺀다(앞뒤 띄어쓰기가 다르면 그대로)', () => {
+      const near = [`${OLD_HELPER_MONEY} `, ` ${OLD_HELPER_UNCOUNTED}`]
+      expect(made(format('daily', { ...sample('daily-normal'), notes: near })).notes).toEqual([...DAILY_BASE_NOTES, ...near])
+      expect(made(format('daily', { ...sample('daily-unconfirmed'), notes: near })).notes).toEqual([...DAILY_BASE_NOTES, NEW_WEB_NOTE, ...near])
+    })
+
+    it('AC-6908.4 0.13.0 도우미의 새 금액 안내는 그대로이고 옛 글과 함께 와도 한 번만 나온다', () => {
+      expect(made(format('daily', { ...sample('daily-normal'), notes: [NEW_HELPER_MONEY] })).notes).toEqual([...DAILY_BASE_NOTES, NEW_HELPER_MONEY])
+      expect(made(format('daily', { ...sample('daily-normal'), notes: [OLD_HELPER_MONEY, NEW_HELPER_MONEY] })).notes).toEqual([
+        ...DAILY_BASE_NOTES,
+        NEW_HELPER_MONEY,
+      ])
+    })
+
+    it('AC-6908.4 받은 안내 목록을 고치지 않는다', () => {
+      const numbers = { ...sample('daily-unconfirmed'), notes: [OLD_HELPER_MONEY, OLD_HELPER_UNCOUNTED] }
+      const before = structuredClone(numbers)
+      made(format('daily', numbers))
+      expect(numbers).toEqual(before)
     })
   })
 })
