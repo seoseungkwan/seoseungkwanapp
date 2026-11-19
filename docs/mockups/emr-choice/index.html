@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EMR 고르기 시안</title>
+<style>
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-soft: #EFF4FF;
+  --pos: #047857; --warn-bg: #FEF3C7; --warn: #92400E; --r: 6px; --new: #FDE68A;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, 'Malgun Gothic', sans-serif; }
+main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.lead { color: var(--ink-2); margin: 0 0 20px; }
+section.s { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+h2 { font-size: 16px; margin: 0 0 2px; }
+.sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+.note { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
+.two { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+.two > * { min-width: 0; }
+.cap { font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 0 6px; }
+.new { background: var(--new); border-radius: 3px; padding: 0 2px; }
+.newbox { outline: 2px dashed #D97706; outline-offset: 3px; border-radius: 6px; }
+.btn { height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font: inherit; font-size: 14px; color: var(--ink); text-decoration: none; }
+.btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.big { height: 44px; padding: 0 18px; font-weight: 600; }
+/* 앱 틀 */
+.app { border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: var(--canvas); }
+.bar { display: flex; align-items: center; gap: 4px; background: var(--surface); border-bottom: 1px solid var(--line); padding: 0 12px; height: 48px; overflow-x: auto; }
+.bar .logo { font-weight: 700; margin-right: 12px; white-space: nowrap; }
+.bar a { padding: 0 10px; height: 48px; display: inline-flex; align-items: center; color: var(--ink-2); text-decoration: none; border-bottom: 2px solid transparent; white-space: nowrap; }
+.bar a.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
+.body { padding: 16px; display: grid; gap: 12px; }
+/* 병원 정보 칸 */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 14px; }
+.panel h3 { margin: 0; font-size: 16px; }
+.field { display: grid; gap: 6px; }
+.field .t { font-weight: 600; font-size: 13px; }
+.field .h { color: var(--muted); font-size: 12px; margin: 0; }
+.input { height: 36px; border: 1px solid var(--line-strong); border-radius: var(--r); padding: 0 10px; display: flex; align-items: center; color: var(--ink-2); background: var(--surface); }
+.seg { display: inline-grid; grid-auto-flow: column; border: 1px solid var(--line-strong); border-radius: var(--r); overflow: hidden; justify-self: start; }
+.seg button { border: 0; background: var(--surface); padding: 0 14px; height: 34px; font: inherit; color: var(--ink-2); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line-strong); }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.dim { color: var(--muted); }
+/* 준비 중 상자 */
+.wait { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); padding: 20px; }
+.wait b { font-size: 16px; }
+.wait p { margin: 0; color: var(--ink-2); }
+.wait ul { margin: 0; padding-left: 18px; color: var(--ink-2); }
+.subnav { display: flex; border-bottom: 1px solid var(--line); }
+.subnav span { padding: 8px 12px; color: var(--ink-2); }
+.subnav span.on { color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+.hero h3 { font-size: 22px; margin: 4px 0 8px; }
+.hero p { margin: 0 0 14px; color: var(--ink-2); max-width: 52ch; }
+.small { font-size: 12px; color: var(--muted); }
+.pick { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.pick span { font-size: 12px; color: var(--muted); align-self: center; }
+@media (max-width: 760px) {
+  .two { grid-template-columns: 1fr; }
+  .seg { grid-auto-flow: row; grid-template-columns: 1fr 1fr; width: 100%; }
+  .seg button + button { border-left: 0; }
+  .seg button:nth-child(2n) { border-left: 1px solid var(--line-strong); }
+  .seg button:nth-child(n+3) { border-top: 1px solid var(--line-strong); }
+  .btn.big { width: 100%; justify-content: center; }
+}
+</style>
+</head>
+<body>
+<main>
+<h1>EMR 고르기 — 시안</h1>
+<p class="lead">병원마다 쓰는 EMR(전자 차트)을 고르게 합니다. 지금은 비트만 연결되므로, 비트가 아닌 병원에는 비트 연결 안내 대신 '준비 중'이 나옵니다. <span class="new">노란 칠</span>과 점선 상자가 새로 생기는 곳입니다. 병원 이름은 지어낸 것입니다.</p>
+
+<section class="s">
+<h2>① 설정 → 병원 정보 — '쓰는 EMR' 칸 (원장만)</h2>
+<p class="sub">호칭 아래에 한 칸이 생깁니다. 처음 값은 비트이고, 지금 쓰는 병원은 모두 비트 그대로입니다. 저장은 지금처럼 병원 정보 [저장] 단추로 합니다.</p>
+<div class="panel" style="max-width:640px">
+  <h3>병원 정보</h3>
+  <div class="field"><span class="t">병원 이름</span><div class="input">○○정형외과의원</div></div>
+  <div class="field"><span class="t">호칭</span><div class="seg"><button aria-pressed="true">원장님</button><button>대표원장님</button><button>선생님</button></div></div>
+  <div class="field newbox">
+    <span class="t"><span class="new">쓰는 EMR</span></span>
+    <div class="seg" role="group" aria-label="쓰는 EMR" id="emrSeg">
+      <button data-emr="bit" aria-pressed="false">비트</button><button data-emr="uisarang" aria-pressed="true">의사랑</button><button data-emr="egis" aria-pressed="false">이지스</button><button data-emr="other" aria-pressed="false">그 밖의 EMR</button>
+    </div>
+    <p class="h"><span class="new">진료 자료를 읽어 오는 연결은 지금 비트만 돼요. 의사랑·이지스는 준비하고 있어요.</span></p>
+  </div>
+  <div class="field"><span class="t dim">진료시간 · 휴진일 · 원장님·직원 …</span></div>
+</div>
+<p class="note">눌러 보면 아래 ②·③ 글이 고른 EMR로 바뀝니다.</p>
+</section>
+
+<section class="s">
+<h2>② 대시보드 첫 화면 — 아직 연결 전일 때</h2>
+<p class="sub">지금은 큰 글씨로 "비트 PC를 연결하면…"과 [비트 PC 연결 시작]이 나옵니다. 비트가 아닌 병원에는 연결 단추 대신 안내만 나옵니다.</p>
+<div class="two">
+  <div>
+    <p class="cap">비트 병원 (지금 그대로)</p>
+    <div class="app"><div class="bar"><span class="logo">○○정형외과</span><a class="on">대시보드</a><a>통계</a><a>청구</a><a>설정</a></div>
+      <div class="body hero">
+        <h3>비트 PC를 연결하면 오늘 숫자가 여기에 채워져요</h3>
+        <p>아직 받은 진료 자료가 없어 오늘 분석이 비어 있어요. 연결은 처음 한 번만 하면 되고, 연결한 뒤에는 이 화면에 오늘 숫자와 보고 문장이 채워져요.</p>
+        <div><a class="btn pri big">비트 PC 연결 시작 →</a></div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <p class="cap">비트가 아닌 병원 (<span class="emrName">의사랑</span>)</p>
+    <div class="app"><div class="bar"><span class="logo">△△정형외과</span><a class="on">대시보드</a><a>통계</a><a>청구</a><a>설정</a></div>
+      <div class="body hero newbox">
+        <h3><span class="new"><span class="emrTitle">의사랑 연결은 준비하고 있어요</span></span></h3>
+        <p><span class="new">지금은 비트만 연결돼요. 연결이 생기면 이 화면에 오늘 숫자와 보고 문장이 채워져요. 그동안 업무일지·예약·서식은 그대로 쓸 수 있어요.</span></p>
+        <div><a class="btn"><span class="new">쓰는 EMR 바꾸기</span></a></div>
+        <p class="small">누르면 ① 설정 → 병원 정보로 갑니다.</p>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+
+<section class="s">
+<h2>③ 비트 PC 연결 화면 — 비트가 아닌 병원이 열었을 때</h2>
+<p class="sub">청구·환자·수납일지·업무일지·통계에 있는 [비트 PC 연결] 단추는 모두 이 화면으로 옵니다. 비트가 아닌 병원에는 단계·[확장 내려받기]·[도우미 내려받기] 대신 이 안내가 나옵니다. 원장·데스크 같습니다.</p>
+<div class="app" style="max-width:720px">
+  <div class="bar"><span class="logo">△△정형외과</span><a>대시보드</a><a>통계</a><a>청구</a><a class="on">설정</a></div>
+  <div class="body">
+    <h3 style="margin:0;font-size:20px">설정</h3>
+    <div class="subnav"><span>설정</span><span class="on">비트 PC 연결</span></div>
+    <div class="wait newbox">
+      <b><span class="new emrTitle">의사랑 연결은 준비하고 있어요</span></b>
+      <p><span class="new">우리 병원은 쓰는 EMR이 <span class="emrName">의사랑</span>으로 되어 있어요. 이 화면은 비트를 쓰는 PC를 연결하는 곳이라, 지금은 쓸 일이 없어요.</span></p>
+      <p><span class="new">비트를 쓰고 있다면 설정 → 병원 정보에서 쓰는 EMR을 비트로 바꿔 주세요.</span></p>
+      <div><a class="btn"><span class="new">쓰는 EMR 바꾸기</span></a></div>
+    </div>
+  </div>
+</div>
+<p class="note">데스크 계정은 설정을 열 수 없어서 [쓰는 EMR 바꾸기] 단추 대신 "원장님 계정에서 바꿀 수 있어요." 한 줄이 나옵니다.</p>
+</section>
+
+<section class="s">
+<h2>④ 그대로 두는 곳</h2>
+<ul style="margin:0;padding-left:18px;color:var(--ink-2)">
+  <li>청구·환자·수납일지·업무일지·통계 화면의 [비트 PC 연결] 단추와 글은 그대로 둡니다. 누르면 ③으로 와서 '준비 중'을 봅니다(가장 적게 바꾸는 길).</li>
+  <li>비트 병원 화면은 하나도 바뀌지 않습니다.</li>
+  <li>도우미·확장 프로그램은 바뀌지 않습니다.</li>
+  <li>함께 드리는 문서 <code>docs/emr/README.md</code>: 탭마다 EMR에서 받는 자료 목록과, 의사랑·이지스 PC에서 확인할 체크리스트.</li>
+</ul>
+</section>
+</main>
+<script>
+const NAMES = { bit: '비트', uisarang: '의사랑', egis: '이지스', other: '그 밖의 EMR' }
+const TITLE = (k) => k === 'other' ? '우리 병원 EMR은 아직 연결할 수 없어요' : `${NAMES[k]} 연결은 준비하고 있어요`
+document.getElementById('emrSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return
+  let k = b.dataset.emr
+  if (k === 'bit') k = 'uisarang' // 시안: 비트를 고르면 ②·③ 오른쪽 그림은 의사랑 예로 남긴다
+  document.querySelectorAll('#emrSeg button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)))
+  document.querySelectorAll('.emrName').forEach((x) => { x.textContent = NAMES[k] })
+  document.querySelectorAll('.emrTitle').forEach((x) => { x.textContent = TITLE(k) })
+})
+</script>
+</body>
+</html>
