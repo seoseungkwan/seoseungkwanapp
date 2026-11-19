@@ -670,6 +670,8 @@ describe('AC-6701.4·AC-6702.2: 휴진 안내 — 서식 화면이 로고를 준
     ['큰 그림 읽기 실패', () => vi.mocked(readLogoBitmap).mockResolvedValue(null), false],
     ['지우고 자른 뒤 남는 점 없음(모두 흰 그림)', () => vi.mocked(readLogoBitmap).mockResolvedValue(BLANK_LOGO), false],
     ['준비한 그림(PNG) 만들기 실패', () => vi.mocked(readLogoBitmap).mockResolvedValue(RAW_LOGO), true],
+    // 준비 중 뜻밖의 오류(거부)도 같은 길 — 로고 자리·뽑기 단추가 '읽는 중'에 멈추지 않는다
+    ['준비 중 뜻밖의 오류', () => vi.mocked(readLogoBitmap).mockRejectedValue(new Error('x')), false],
   ] as const)('AC-6702.2: %s이면 원래 로고 그림을 원래 상자(227,1011 · 340×58)에 그리고 뽑기가 된다', async (_, arrange, madePng) => {
     arrange()
     vi.mocked(bitmapToPngUrl).mockReturnValue(madePng ? null : FITTED_URL)
