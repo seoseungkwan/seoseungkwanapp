@@ -54,6 +54,7 @@ const PROFILE: ClinicProfile = {
     { id: 'ga', name: '가짜○○', role: 'staff', mark: '가', color: 'navy', calendar: true },
   ],
   logoPath: null,
+  emr: 'bit',
 }
 // 다시 예약·빈자리 줄(stats-insights AC-6104.1·AC-6105.1, 이름·메모 칸 없음)과 휴무
 const SLOTS: CalSlotRow[] = [

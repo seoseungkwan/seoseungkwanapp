@@ -21,8 +21,8 @@ import {
 
 const TABLE = 'clinic_profiles'
 const BUCKET = 'clinic-logos'
-const COLUMNS = ['display_name', 'phone', 'address', 'honorific', 'hours', 'closed_dates', 'staff', 'logo_path']
-const BODY_KEYS = ['address', 'closed_dates', 'display_name', 'honorific', 'hours', 'phone', 'staff']
+const COLUMNS = ['display_name', 'phone', 'address', 'honorific', 'hours', 'closed_dates', 'staff', 'logo_path', 'emr']
+const BODY_KEYS = ['address', 'closed_dates', 'display_name', 'emr', 'honorific', 'hours', 'phone', 'staff']
 const SECRET = 'secret detail' // 서버 답에 섞여 온 글자. 밖으로 나가면 안 된다
 const RAW_ERROR = { code: '42501', message: `permission denied (${SECRET})`, details: SECRET, hint: SECRET }
 
@@ -65,6 +65,7 @@ const PROFILE_ROW = {
     { id: 'lee', name: '이가짜', role: 'staff', mark: '이', color: 'teal', calendar: false },
   ],
   logo_path: OLD_PATH,
+  emr: 'egis',
 }
 
 /** 별일 없을 때의 답 */
@@ -201,6 +202,7 @@ describe('AC-6602.2 저장한 적 없을 때의 기본값', () => {
       closedDates: [],
       staff: [],
       logoPath: null,
+      emr: 'bit',
     })
     expect(checkProfile(defaultProfile())).toEqual([])
   })
@@ -275,7 +277,7 @@ describe('AC-6601.3·AC-6602.3·AC-6602.5 병원 정보 검사(checkProfile)', (
 })
 
 describe('AC-6602.7 병원 정보 읽기(loadClinicProfile)', () => {
-  it('AC-6602.7: 내 병원 줄 하나를 정해 둔 여덟 칸으로 읽어 앱 모양으로 바꾼다', async () => {
+  it('AC-6602.7·AC-7102.1: 내 병원 줄 하나를 정해 둔 아홉 칸(쓰는 EMR 포함)으로 읽어 앱 모양으로 바꾼다', async () => {
     const { client, calls } = fakeClient((call) => (call.kind === 'table' ? { data: PROFILE_ROW } : okReply(call)))
     expect(await loadClinicProfile(client)).toEqual({
       displayName: '가짜정형외과의원',
@@ -286,6 +288,7 @@ describe('AC-6602.7 병원 정보 읽기(loadClinicProfile)', () => {
       closedDates: ['2026-12-24', '2026-12-31'],
       staff: PROFILE_ROW.staff,
       logoPath: OLD_PATH,
+      emr: 'egis',
     })
     const [call] = tableCalls(calls)
     expect(calls).toHaveLength(1)
@@ -307,6 +310,7 @@ describe('AC-6602.7 병원 정보 읽기(loadClinicProfile)', () => {
       closed_dates: ['2026-12-31', '2026-12-24'],
       staff: [{ ...PROFILE_ROW.staff[0], color: 'gold' }],
       logo_path: '../other/logo.png',
+      emr: 'EGIS',
     }
     expect(await loadClinicProfile(fakeClient((call) => (call.kind === 'table' ? { data: row } : okReply(call))).client)).toEqual({
       ...defaultProfile(),
@@ -334,6 +338,7 @@ describe('AC-6602.4·AC-6602.7 병원 정보 저장(saveClinicProfile)', () => {
     phone: '02-1234-5678',
     address: ' 서울 가짜구 ',
     honorific: '선생님',
+    emr: 'uisarang',
     closedDates: ['2026-12-31', '2025-11-17', '2025-11-18', '2026-01-01'],
     staff: [person({ name: ' 김가짜 ', mark: ' 김 ' }), person({ id: 'lee', name: '이가짜', role: 'staff', mark: '이', color: 'teal', calendar: false })],
     logoPath: OLD_PATH,
@@ -347,7 +352,7 @@ describe('AC-6602.4·AC-6602.7 병원 정보 저장(saveClinicProfile)', () => {
     expect(saved !== 'invalid' && saved !== 'failed' && saved.closedDates).toEqual(['2025-11-18', '2026-01-01', '2026-12-31'])
   })
 
-  it('AC-6602.7: 정해 둔 일곱 칸만 upsert한다 — hospital_id·logo_path·updated_at은 보내지 않는다(로고는 uploadLogo가)', async () => {
+  it('AC-6602.7·AC-7102.1: 정해 둔 여덟 칸(쓰는 EMR 포함)만 upsert한다 — hospital_id·logo_path·updated_at은 보내지 않는다(로고는 uploadLogo가)', async () => {
     const { client, calls } = fakeClient()
     await saveClinicProfile(client, full, TODAY)
     expect(calls).toHaveLength(1)
@@ -359,6 +364,7 @@ describe('AC-6602.4·AC-6602.7 병원 정보 저장(saveClinicProfile)', () => {
       phone: '0212345678',
       address: '서울 가짜구',
       honorific: '선생님',
+      emr: 'uisarang',
       hours: [...DEFAULT_HOURS],
       closed_dates: ['2025-11-18', '2026-01-01', '2026-12-31'],
       staff: [
@@ -403,6 +409,51 @@ describe('AC-6602.4·AC-6602.7 병원 정보 저장(saveClinicProfile)', () => {
   it('AC-6602.7: 성공하면 보낸 값(앞뒤 빈칸·전화 기호를 뺌)을 돌려주고 받은 로고 이름은 그대로 둔다', async () => {
     const saved = await saveClinicProfile(fakeClient().client, full, TODAY)
     expect(saved).toMatchObject({ displayName: '가짜정형외과의원', phone: '0212345678', address: '서울 가짜구', logoPath: OLD_PATH })
+  })
+})
+
+describe('AC-7102.1 쓰는 EMR 읽기·저장·검사', () => {
+  const EMR_PROBLEM = '쓰는 EMR은 비트·의사랑·이지스·그 밖의 EMR 중에서 골라 주세요'
+
+  it("AC-7102.1: 저장한 적 없는 기본값은 'bit'다", () => {
+    expect(defaultProfile().emr).toBe('bit')
+  })
+
+  it.each(['bit', 'uisarang', 'egis', 'other'] as const)("AC-7102.1: 읽은 줄의 emr '%s'는 그대로 읽는다", async (emr) => {
+    const read = await loadClinicProfile(fakeClient((call) => (call.kind === 'table' ? { data: { ...PROFILE_ROW, emr } } : okReply(call))).client)
+    expect(read !== null && read !== 'failed' && read.emr).toBe(emr)
+  })
+
+  it.each([
+    ['칸 없음', undefined],
+    ['null', null],
+    ['넷 밖의 값', 'ubcare'],
+    ['대문자', 'BIT'],
+    ['숫자', 3],
+  ] as const)("AC-7102.1: 읽은 줄의 emr이 %s이면 'bit'로 보고 다른 칸은 그대로 읽는다", async (_name, emr) => {
+    const row: Record<string, unknown> = { ...PROFILE_ROW, emr }
+    if (emr === undefined) delete row.emr
+    const read = await loadClinicProfile(fakeClient((call) => (call.kind === 'table' ? { data: row } : okReply(call))).client)
+    expect(read !== null && read !== 'failed' && read.emr).toBe('bit')
+    expect(read !== null && read !== 'failed' && read.honorific).toBe('대표원장님')
+  })
+
+  it.each(['bit', 'uisarang', 'egis', 'other'] as const)("AC-7102.1: 저장하면 emr '%s'도 보내고 돌려준다", async (emr) => {
+    const { client, calls } = fakeClient()
+    const saved = await saveClinicProfile(client, profile({ emr }), TODAY)
+    expect((tableCalls(calls)[0].body as Record<string, unknown>).emr).toBe(emr)
+    expect(saved !== 'invalid' && saved !== 'failed' && saved.emr).toBe(emr)
+  })
+
+  it('AC-7102.1: 넷은 checkProfile을 지난다', () => {
+    for (const emr of ['bit', 'uisarang', 'egis', 'other'] as const) expect(checkProfile(profile({ emr })), emr).toEqual([])
+  })
+
+  it.each(['ubcare', 'BIT', '', null, undefined])("AC-7102.1: 넷 밖의 값(%s)은 checkProfile이 '쓰는 EMR은 …' 문구로 거절하고 저장은 보내지 않는다", async (emr) => {
+    expect(checkProfile(profile({ emr: emr as never }))).toEqual([EMR_PROBLEM])
+    const { client, calls } = fakeClient()
+    expect(await saveClinicProfile(client, profile({ emr: emr as never }), TODAY)).toBe('invalid')
+    expect(calls).toEqual([])
   })
 })
 

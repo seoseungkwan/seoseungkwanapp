@@ -39,6 +39,7 @@ const PROFILE: ClinicProfile = {
     { id: 'ga', name: '한○○', role: 'staff', mark: '가', color: 'navy', calendar: true },
   ],
   logoPath: null,
+  emr: 'bit',
 }
 
 const plain = (open: number, close: number): DayHours => ({ open: open * 60, close: close * 60, lunchFrom: null, lunchTo: null })

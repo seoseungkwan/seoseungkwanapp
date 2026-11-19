@@ -28,6 +28,7 @@ import {
   type ClinicProfile,
   type ClinicStaff,
   type DayHours,
+  type EmrKind,
   type Honorific,
   type StaffRole,
 } from '@/types/clinicProfile'
@@ -45,6 +46,7 @@ type Draft = {
   phone: string
   address: string
   honorific: Honorific
+  emr: EmrKind // 읽은 값을 그대로 들고 가 저장에 실어 보낸다(spec emr-choice TASK-3)
   hours: HourRow[]
   closedDates: string[]
   staff: StaffRow[]
@@ -100,6 +102,7 @@ function initialDraft(view: ClinicProfileView): Draft {
     phone: phoneText(p.phone ?? (view.saved ? null : view.signupPhone)),
     address: p.address ?? '',
     honorific: p.honorific,
+    emr: p.emr,
     hours: p.hours.map(toRow),
     closedDates: [...p.closedDates],
     staff: p.staff.map((person) => ({ ...person, markTouched: true })),
@@ -113,6 +116,7 @@ function toProfile(draft: Draft, logoPath: string | null): ClinicProfile {
     phone: textOrNull(draft.phone),
     address: textOrNull(draft.address),
     honorific: draft.honorific,
+    emr: draft.emr,
     hours: draft.hours.map(toDay),
     closedDates: draft.closedDates,
     staff: draft.staff.map(({ id, name, role, mark, color, calendar }) => ({ id, name, role, mark, color, calendar })),
