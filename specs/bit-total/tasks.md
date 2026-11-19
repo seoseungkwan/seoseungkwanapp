@@ -26,7 +26,7 @@
 - REQ: REQ-6901, REQ-6913
 - Files: src/lib/revenue/summary.ts, src/lib/revenue/summary.test.ts, src/lib/revenue/sync.ts, src/lib/revenue/sync.test.ts
 - Tests: src/lib/revenue/summary.test.ts, src/lib/revenue/sync.test.ts
-- TDD: required — design.md 1·11절. summary는 함수 둘을 더하기만 한다(sumPeriod는 TASK-5): total만·roughTotal만(0·음수)·둘 다·둘 다 없음·열쇠 없음. sync는 0.13.0·1.0.0에서 unconfirmed(참고 금액 있음·없음)·splitUnconfirmed 날 = 거짓, 확인된 날·dayCodes 거짓은 지금 그대로, 0.12.x·0.7.0·모름은 옛 규칙 그대로(옛 AC-4407 시험이 고치지 않고 통과).
+- TDD: required — design.md 1·11절. summary는 함수 둘을 더하기만 한다(sumPeriod는 TASK-5): total만·roughTotal만(0·음수)·둘 다·둘 다 없음·열쇠 없음. sync는 0.13.0·1.0.0에서 unconfirmed(참고 금액 있음·없음) 날 = 거짓, splitUnconfirmed로 저장된 날·확인된 날·dayCodes 거짓은 지금 그대로(dayCodes 값 — splitUnconfirmed 날은 다시 읽지 않음), 0.12.x·0.7.0·모름은 옛 규칙 그대로(옛 AC-4407 시험이 고치지 않고 통과).
 
 ## TASK-4: 신환 1명당 매출 = 그 달 신환 (Worker 셈 · 탭 · 보고서 칸)
 - Phase: 1
@@ -42,7 +42,7 @@
 - REQ: REQ-6912
 - Files: helper/src/Precheck.Core/Revenue/RevenueDays.cs, helper/src/Precheck.Core/Stats/StatsReport.cs, helper/Directory.Build.props, src/lib/bridge/versions.ts, helper/tests/Precheck.Core.Tests/Revenue/RevenueDays.test.cs, helper/tests/Precheck.Core.Tests/Revenue/RevenueFakes.test.cs, helper/tests/Precheck.Core.Tests/Revenue/RevenueCommands.test.cs, helper/tests/Precheck.Core.Tests/Stats/StatsReport.test.cs, helper/tests/Precheck.Core.Tests/Stats/StatsRows.test.cs, helper/tests/Precheck.Core.Tests/Stats/StatsExtra.test.cs, helper/tests/Precheck.Core.Tests/Calendar/CalendarTargets.test.cs, helper/tests/Precheck.Core.Tests/Sunap/SunapTargets.test.cs, helper/tests/revenue-read.dotnet.test.ts, helper/tests/stats-report.dotnet.test.ts, helper/tests/input-wiring.dotnet.test.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts
 - Tests: helper/tests/Precheck.Core.Tests/Revenue/RevenueDays.test.cs, helper/tests/Precheck.Core.Tests/Revenue/RevenueCommands.test.cs, helper/tests/Precheck.Core.Tests/Stats/StatsReport.test.cs, helper/tests/revenue-read.dotnet.test.ts, helper/tests/stats-report.dotnet.test.ts, helper/tests/input-wiring.dotnet.test.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts
-- TDD: required — design.md 10절. C# 시험 DisplayName에 AC ID를 넣고 감싸개(`*.dotnet.test.ts`)에 REQ-6912 묶음을 더한다. 옛 AC-003.1(하루 문장 8개)·AC-003.2(세 검사·불일치)·AC-4405.1(세 검사 날의 참고 금액)·AC-504.2(금액 확인 필요) 시험은 새 뜻으로 바꾼다(그 AC ID의 감싸개 글도). 시험: 세 검사 문장을 부르지 않음(가짜 DB가 1을 답해도), 하루 문장 다섯·음수 날 일곱, 음수 → unconfirmed + roughTotal, 불일치 → 나눔 채움, 나눔 음수 → splitUnconfirmed, 보고 한 벌 차례·financeUnconfirmed 거짓·사유 열쇠 없음·금액 여섯 칸, 안내 글, 판 0.13.0. SQL 문장 글·관문 표·수납일지 답은 그대로(RevenueSql·StatsSql·SunapTargets 시험이 판 줄 말고는 고치지 않고 통과).
+- TDD: required — design.md 10절. C# 시험 DisplayName에 AC ID를 넣고 감싸개(`*.dotnet.test.ts`)에 REQ-6912 묶음을 더한다. 옛 AC-003.1(하루 문장 8개)·AC-003.2(세 검사 부분만 — 나눔 불일치·음수 시험은 고치지 않고 통과)·AC-4405.1(세 검사 날의 참고 금액)·AC-4405.2(검사 차례)·AC-504.2(금액 확인 필요) 시험은 새 뜻으로 바꾼다(그 AC ID의 감싸개 글도). 시험: 세 검사 문장을 부르지 않음(가짜 DB가 1을 답해도), 하루 문장 다섯·음수 날 일곱, 음수 → unconfirmed + roughTotal, 불일치 → 지금 그대로 splitUnconfirmed(네 칸만 null, 세 검사에 걸리던 날도), 나눔 음수 → splitUnconfirmed, 보고 한 벌 차례·financeUnconfirmed 거짓·사유 열쇠 없음·금액 여섯 칸, 안내 글, 판 0.13.0. SQL 문장 글·관문 표·수납일지 답은 그대로(RevenueSql·StatsSql·SunapTargets 시험이 판 줄 말고는 고치지 않고 통과).
 
 ## TASK-5: 매출 요약 · 매출 칸 — 구분 없이 (셈 · 카드 · 탭)
 - Phase: 2
@@ -58,7 +58,7 @@
 - REQ: REQ-6908
 - Files: src/types/clinicReport.ts, src/lib/clinicReport/reportText.ts, src/lib/clinicReport/reportText.test.ts, src/components/stats/sections/ReportSection.tsx, src/components/stats/sections/ReportSection.test.tsx
 - Tests: src/lib/clinicReport/reportText.test.ts, src/components/stats/sections/ReportSection.test.tsx
-- TDD: required — design.md 5절. 골든 파일(fixtures/stats/golden)은 고치지 않고 확인 필요 사례 셋만 원본 비교에서 빼 새 글로 본다. 시험: 0.13.0 벌(그런 날도 금액 여섯 칸, 비급여·입금액 원 글), 옛 벌 금액 줄 '–'(일일 일곱·월말 넷)·총환 0명, 웹 안내·도우미 안내 바꾸기, 날짜 줄·노란 줄 없음, 글에 '확인 필요' 없음.
+- TDD: required — design.md 5절. 골든 파일(fixtures/stats/golden)은 고치지 않고 확인 필요 사례 셋만 원본 비교에서 빼 새 글로 본다. 시험: 0.13.0 벌(그런 날도 금액 여섯 칸, 비급여·입금액 원 글), 옛 벌 금액 줄 '–'(일일 일곱·월말 넷)·총환 0명, 웹 안내·도우미 안내 바꾸기(확인된 벌은 새 금액 안내로, financeUnconfirmed 벌은 옛 금액 안내를 빼고 새 글도 넣지 않음), 날짜 줄·노란 줄 없음, 글에 '확인 필요' 없음.
 
 ## TASK-7: 업무일지 — 옛 도우미 답에도 총진료비 칸 채우기
 - Phase: 2
@@ -66,7 +66,7 @@
 - REQ: REQ-6910
 - Files: src/lib/worklog/bitFill.ts, src/lib/worklog/bitFill.test.ts, src/components/worklog/BitNotice.tsx, src/components/worklog/BitNotice.test.tsx, src/components/worklog/useBitFill.test.tsx, src/components/worklog/WorklogScreen.test.tsx
 - Tests: src/lib/worklog/bitFill.test.ts, src/components/worklog/BitNotice.test.tsx, src/components/worklog/useBitFill.test.tsx, src/components/worklog/WorklogScreen.test.tsx
-- TDD: required — design.md 6절. useBitFill.ts는 바꾸지 않는다(bitValuesFrom의 unconfirmed로 상태가 정해진다). 옛 AC-014.2·AC-017.4 시험(roughTotal 없는 날)은 새 안내 글로만 바뀐다. 0.13.0이 준 보통 날은 지금 시험 그대로 여덟 칸이 찬다.
+- TDD: required — design.md 6절. useBitFill.ts는 바꾸지 않는다(bitValuesFrom의 unconfirmed로 상태가 정해진다). 옛 AC-014.2·AC-017.4 시험(roughTotal 없는 날)은 새 안내 글로만 바뀐다. 0.13.0이 준 보통 날은 지금 시험 그대로 여덟 칸이 찬다. 음수 날 시험을 꼭 더한다: `bitFill.test.ts`(unconfirmed + 음수 roughTotal → 총진료비 없음·unconfirmed 참, roughTotal 0 → '0' 채움·unconfirmed 거짓), `WorklogScreen.test.tsx`(음수 날을 불러오면 '이 날은 비트 금액을 채우지 못했어요. 금액은 직접 적어 주세요' 안내, 총진료비 칸 빈칸·비트 표시 없음, 합계 제외 표시 없음).
 
 ## TASK-3: 원장님별 아래 글 · 수납일지 알림 줄
 - Phase: 3

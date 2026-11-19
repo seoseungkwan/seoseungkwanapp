@@ -10,14 +10,15 @@
 - 이어서(같은 날 더함): "그 신환 매출 1명당 매출 당월 신환으로 고쳐" → "그 달 신환이 그 달에 낸 돈".
 - 시안을 본 뒤 답(같은 날): 보고 문장 "비급여는 넣어", 업무일지 "현금 카드 채워", 두 달 신환 "두 달 모두 세기 (추천)", 그 숫자를 얻는 길로 "도우미도 고치기"(비트에서 그런 날도 보통 날처럼 금액을 다 읽음), 일꾼 "3명 동시에".
 - 뜻:
-  1. 도우미 0.13.0은 환불·변경수납·예치금·연결 중복이 있는 날·달도 다른 날과 같은 문장으로 금액을 다 읽는다(총진료비·조합청구액·비급여·본인부담·기타·현금·카드·계좌이체·미수입금). 그래서 새 자료에서는 그런 날이 그냥 보통 날이다.
+  1. 도우미 0.13.0은 환불·변경수납·예치금·연결 중복이 있는 날·달도 다른 날과 같은 문장으로 금액을 다 읽는다(총진료비·조합청구액·비급여·본인부담·기타·현금·카드·계좌이체·미수입금). 그래서 새 자료에서는 그런 날이 그냥 보통 날이다. 급여·비급여·기타 나눔 검사(급여 = 공단 + 본인부담인지, 나눈 칸이 음수인지)는 지금 그대로라, 걸린 날은 지금처럼 나눔 네 칸만 비운다(2026-11-19 검토 뒤 결정).
   2. 그 전에 저장된 줄(sales_days에 unconfirmed + rough_total)은 웹이 그날 비트 총진료비(rough_total = 원장님별과 같은 기준, 환불은 음수 그대로)를 그날 매출로 쓴다. 0.13.0으로 [비트에서 불러오기]를 하면 그런 날을 한 번 다시 읽어 채운다.
   3. 매출에 대해 '참고 금액'·'확인 필요(한 날)'이라는 말과 구분(스위치·빗금·점선·꼬리표·노란 줄)을 화면에서 모두 없앤다.
 - DB·SQL·확장은 그대로다(rough_total 칸은 이미 있다).
 - 확인한 곳: AI 분석(`app/api/ai`·`lib/ai`)은 서버가 `stats_months`의 원장님 매출만 읽고 '확인 필요' 글이 없어 바꿀 것이 없다.
 
 ## 이 명세가 바꾸는 옛 수용 기준
-- revenue AC-003.1·AC-003.2(도우미 매출 읽기의 세 검사·나눔 불일치), first90 AC-4405.1(참고 금액은 이제 음수인 날에만), AC-4407.1(다시 읽기 표시에 0.13.0 규칙을 더함)
+- revenue AC-003.1·AC-003.2(도우미 매출 읽기의 세 검사만 — 음수·나눔 불일치 규칙은 그대로), first90 AC-4405.1(참고 금액은 이제 음수인 날에만), AC-4405.2(검사 차례 — 세 검사를 돌리지 않음), AC-4407.1(다시 읽기 표시에 0.13.0 규칙을 더함)
+- stats-revenue AC-4105.1(매출·진료한 날·건당 진료비 짝이 확인 필요한 날을 빼던 것 → 그날 금액(`dayRevenue`)이 있으면 넣음, 진료한 날 = `isWorkDay`)
 - stats REQ-504 AC-504.1·AC-504.2(보고 벌의 세 검사·금액 확인 필요)
 - first90 AC-4408.1~AC-4408.4(참고 금액 포함 스위치·매출 요약 셋째 칸·점선 칸·빗금 막대·탭 안내), AC-4403.3의 안내 굵은 글
 - stats-revenue의 '확인 필요한 날' 글들(매출 추이·건당 진료비 [어떻게 세나요?], 급여·비급여·기타 막대 설명)
@@ -68,15 +69,15 @@
 - AC-6908.1: Given 도우미 0.13.0이 준 보고 벌(그런 날·달도 financeUnconfirmed 거짓, 금액 여섯 칸 숫자), When 보고 글을 만들면, Then 금액 줄은 확인된 벌과 같은 글이다: `총진료비`·`조합청구액`·(일일만) `입금액 (현금)`·`(카드)`·`(계좌이체)`·`비급여`·`건당진료비`가 모두 원 글(지금 규칙)이다.
 - AC-6908.2: Given financeUnconfirmed 벌(0.13.0 전 도우미), When 보고 글을 만들면, Then '※ 금액 확인 필요 — …' 줄이 없고 금액 줄은 `총진료비        –`, `조합청구액      –`, (일일만) `입금액 (현금)         –`·`       (카드)         –`·`       (계좌이체)     –`, `비급여          –`, `건당진료비      –`이다. 다른 줄은 그대로이고 글 어디에도 '확인 필요'가 없다.
 - AC-6908.3: Given financeUnconfirmed 벌, When 안내를 만들면, Then 옛 안내 '이 기간은 … (‘확인 필요’) …' 대신 '이 기간은 환불·변경수납·예치금 또는 연결 중복이 있어 지금 도우미가 금액을 세지 않았습니다(–). 도우미를 0.13.0으로 올린 뒤 [비트에서 불러오기]를 다시 하면 채워집니다.'를 넣는다.
-- AC-6908.4: Given 도우미가 준 안내(notes), When 안내를 만들면, Then 글이 정확히 "금액은 외래환자경영통계의 회계일 기준 정상수납·미수입금 조건으로 집계합니다. 환불·변경수납·예치금 또는 연결 중복이 있으면 금액을 '확인 필요'로 두고 환자수·치료·LA만 집계합니다."인 것은 AC-6912.5의 새 금액 안내 글로 바꾸고, 정확히 '이 기간은 금액을 자동 집계하지 않았습니다(환자수·치료·LA는 정상). 비트 원본 외래환자경영통계에서 금액을 확인해 직접 입력하세요.'인 것은 뺀다. 다른 안내는 그대로다.
+- AC-6908.4: Given 도우미가 준 안내(notes), When 안내를 만들면, Then 글이 정확히 "금액은 외래환자경영통계의 회계일 기준 정상수납·미수입금 조건으로 집계합니다. 환불·변경수납·예치금 또는 연결 중복이 있으면 금액을 '확인 필요'로 두고 환자수·치료·LA만 집계합니다."인 것은 financeUnconfirmed가 아닌 벌에서는 AC-6912.5의 새 금액 안내 글로 바꾸고, financeUnconfirmed 벌(0.13.0 전 도우미)에서는 바꾸지 않고 뺀다(새 글 '같은 조건으로 집계해'가 AC-6908.3 '금액을 세지 않았습니다(–)'와 어긋나지 않게). 정확히 '이 기간은 금액을 자동 집계하지 않았습니다(환자수·치료·LA는 정상). 비트 원본 외래환자경영통계에서 금액을 확인해 직접 입력하세요.'인 것은 늘 뺀다. 다른 안내는 그대로다.
 - AC-6908.5: Given 보고 칸, When financeUnconfirmed 벌을 그리면, Then 날짜 줄에 ' · 금액 확인 필요'가 붙지 않고(예 '11월 18일 수요일') 금액 줄을 노란 바탕으로 칠하지 않는다. [복사]는 글 전체다. ok가 false인 벌의 '이 기간은 보고를 확정할 수 없어요'는 그대로다.
 
 ### REQ-6909: 수납일지 — 확인 필요한 날 줄 없앰
 - AC-6909.1: Given 도우미 답의 `unsure`가 참인 날, When 장부를 보면, Then 장부 위 '확인 필요한 날 — 환불·변경수납·예치금이 있거나 수납 연결이 겹쳐서 장부 금액이 비트와 다를 수 있어요. 마감 전에 비트 수납 화면과 맞춰 보세요.' 줄이 없다. 장부·마감·다른 안내는 그대로다.
 
 ### REQ-6910: 업무일지 — 옛 도우미 답에도 총진료비 칸 채우기
-- AC-6910.1: Given 매출 답의 하루 줄이 확인 필요(unconfirmed)이고 roughTotal이 숫자(0.13.0 전 도우미, 또는 0.13.0에서 금액이 음수인 날), When `bitValuesFrom`을 부르면, Then 값은 신환·재진과 총진료비(= roughTotal, 0·음수 그대로)이고 조합청구액·현금수납·카드수납·계좌이체·미수입금은 없으며, 돌려주는 `unconfirmed`는 거짓이다. roughTotal이 없으면 지금처럼 신환·재진뿐이고 `unconfirmed`는 참이다. 확인된 날(0.13.0이 준 그런 날 포함)·나눔만 못 센 날은 지금 그대로다(금액 칸 모두 채움).
-- AC-6910.2: Given 업무일지 화면, When roughTotal이 있는 그런 날을 불러오면, Then 날짜 줄 아래 안내는 보통 날과 같은 `비트 숫자를 {시각}에 불러왔어요`이고 총진료비 칸에 비트 값과 비트 표시가 있으며 남은 금액 다섯 칸은 비어 있다. roughTotal이 없는 날의 안내는 '이 날은 비트 금액을 채우지 못했어요. 금액은 직접 적어 주세요'다.
+- AC-6910.1: Given 매출 답의 하루 줄이 확인 필요(unconfirmed)이고 roughTotal이 0 이상의 숫자(0.13.0 전 도우미), When `bitValuesFrom`을 부르면, Then 값은 신환·재진과 총진료비(= roughTotal, 0 그대로)이고 조합청구액·현금수납·카드수납·계좌이체·미수입금은 없으며, 돌려주는 `unconfirmed`는 거짓이다. roughTotal이 없거나 음수이면(0.13.0 전 도우미의 환불이 더 많은 날, 0.13.0에서 금액이 음수라 확인 필요로 남은 날) 총진료비도 채우지 않고 지금처럼 신환·재진뿐이며 `unconfirmed`는 참이다(음수를 칸에 넣으면 앞의 '-' 때문에 칸 읽기 `readCell`이 그 칸을 합계 제외로 본다). 확인된 날(0.13.0이 준 그런 날 포함)은 지금 그대로 금액 칸을 모두 채우고, 나눔만 못 센 날(splitUnconfirmed)은 지금 그대로 조합청구액만 비운다.
+- AC-6910.2: Given 업무일지 화면, When roughTotal이 0 이상인 그런 날을 불러오면, Then 날짜 줄 아래 안내는 보통 날과 같은 `비트 숫자를 {시각}에 불러왔어요`이고 총진료비 칸에 비트 값과 비트 표시가 있으며 남은 금액 다섯 칸은 비어 있다. roughTotal이 없거나 음수인 날의 안내는 '이 날은 비트 금액을 채우지 못했어요. 금액은 직접 적어 주세요'이고 총진료비 칸을 포함해 금액 칸은 모두 비어 있다(음수 날은 `bitFill.test.ts`·`WorklogScreen.test.tsx`에서 따로 시험한다).
 
 ### REQ-6911: 신환 1명당 매출 = 그 달 신환이 그 달에 낸 돈
 - AC-6911.1: Given Worker 메모리의 접수 줄(환자·날·신환 날 표시)·진료 줄(환자·날·처방)·금액 줄(환자·수납일·금액)·묶음·메모리 기간, When `monthValues`를 부르면, Then 그 달 1일이 메모리 첫날보다 앞이 아닌 달 M마다(메모리 끝 날이 든 달까지) 한 줄을 달 차례(옛 → 새)로 낸다. 센 기간 = M 1일 ~ (M 말일과 메모리 끝 날 가운데 이른 날). 대상 = 그 기간 접수 줄 가운데 신환 날 표시가 있는 줄의 서로 다른 환자, 금액 = 대상의 그 기간 안 금액 줄 합, 내원 = 대상의 그 기간 안 서로 다른 내원 날 수다. 줄은 `month`('YYYY-MM')·`to`(센 끝 날)·n·average(금액 ÷ n, 원 미만 버림)·times(내원 ÷ n, 소수 1자리 아래 버림)·perVisit(금액 ÷ 내원, 버림)·lines다. lines = 대상마다 그 기간 안에 받은 묶음 조합(지금 규칙: 5명 이상인 조합 가운데 인원 많은 5개, 평균 작은 순, 나머지는 '그 밖' 한 줄로 맨 끝). 대상이 없으면 n 0·숫자 0·lines []다. 90일 기간과 '90일이 다 지난 신환만' 규칙은 없다.
@@ -86,19 +87,20 @@
 - AC-6911.5: Given 월간 보고서 고른 달 M, When '신환 1명당 매출' 칸을 만들면, Then `values`에 M 줄이 있고 n이 1 이상일 때만 칸 '신환 1명당 평균'·'신환 1명당 내원 횟수'·'한 번 올 때 평균'(값 글은 AC-6902.4, 횟수는 `{x.x}회`)이 그 달 줄의 값으로 보인다. M 줄이 없거나 n이 0이면 칸이 제목까지 없다. '(90일)'은 어디에도 없다.
 
 ### REQ-6912: 도우미 0.13.0 — 그런 날·달도 금액을 다 읽는다 (C#)
-- AC-6912.1: Given revenue.days의 어느 날(환불·변경수납·예치금이 있거나 연결 중복이 있는 날 포함), When 그날을 읽으면, Then 세 검사 문장(UnsupportedFinance·FinanceMultiplicity·ReceivableMultiplicity)을 돌리지 않고 그날 문장은 FinanceNormal → FinanceReceivable → FinanceNormalExtra → FinanceReceivableExtra → Patients 다섯 개다. 금액 아홉 칸은 지금 확인된 날과 같은 칸·같은 규칙(두 문장 합 뒤 원 미만 버림, otherTotal은 나머지)으로 채우고 unconfirmed·splitUnconfirmed는 거짓, roughTotal 열쇠는 없다.
-- AC-6912.2: Given 원 미만을 버린 total·cash·card·transfer·receivableIn 가운데 음수가 있음, When 그날을 읽으면, Then 지금처럼 unconfirmed 참, 금액 아홉 칸 null, roughTotal = 참고 금액(원장님별 문장 둘, Patients 앞에 한 번씩)이다(DB 칸과 웹 검사가 음수 금액을 받지 않아서 남기는 길).
-- AC-6912.3: Given insurer + copay ≠ 요양비용총액(버리기 전 값), When 그날을 읽으면, Then 나눔 네 칸도 채운다(insurer·noncovered·copay는 그 칸 값, otherTotal = total − (insurer + copay) − noncovered)이고 splitUnconfirmed는 거짓이다. 버린 뒤 insurer·noncovered·copay·otherTotal 가운데 음수가 있으면 지금처럼 splitUnconfirmed 참이고 그 네 칸만 null이다.
+- AC-6912.1: Given revenue.days의 어느 날(환불·변경수납·예치금이 있거나 연결 중복이 있는 날 포함), When 그날을 읽으면, Then 세 검사 문장(UnsupportedFinance·FinanceMultiplicity·ReceivableMultiplicity)을 돌리지 않고 그날 문장은 FinanceNormal → FinanceReceivable → FinanceNormalExtra → FinanceReceivableExtra → Patients 다섯 개다. 금액 아홉 칸은 지금 확인된 날과 같은 칸·같은 규칙(두 문장 합 뒤 원 미만 버림, otherTotal은 나머지)으로 채운다. 음수 검사(AC-6912.2)·나눔 검사(AC-6912.3)에 걸리지 않으면 unconfirmed·splitUnconfirmed는 거짓이고 roughTotal 열쇠는 없다. 세 검사에 걸리던 날도 이 두 검사를 다른 날과 똑같이 지난다.
+- AC-6912.2: Given 원 미만을 버린 total·cash·card·transfer·receivableIn 가운데 음수가 있음, When 그날을 읽으면, Then 지금처럼 unconfirmed 참, 금액 아홉 칸 null, roughTotal = 참고 금액(원장님별 문장 둘, Patients 앞에 한 번씩)이다(DB 칸 `>= 0` 제약과 웹 검사가 음수 금액을 받지 않아서 남기는 길).
+- AC-6912.3: Given 음수 검사(AC-6912.2)를 지난 날, When 나눔을 정하면, Then 지금 그대로다: 원 미만을 버리기 전 값으로 insurer + copay ≠ 요양비용총액이거나, 버린 뒤 insurer·noncovered·copay·otherTotal 가운데 음수가 있으면 splitUnconfirmed 참이고 그 네 칸만 null이며 total·cash·card·transfer·receivableIn 다섯 칸은 채운다(unconfirmed 거짓, roughTotal 열쇠 없음). 둘 다 아니면 네 칸을 채우고(otherTotal = total − (insurer + copay) − noncovered) splitUnconfirmed는 거짓이다.
 - AC-6912.4: Given stats.rows 보고 네 벌(일일·월말), When 한 벌을 읽으면, Then 세 검사 문장(UnsupportedFinanceSql·FinanceMultiplicitySql·ReceivableMultiplicitySql)을 돌리지 않고 늘 금액 문장 둘(FinanceNormalSql → FinanceReceivableSql)로 금액 여섯 칸(총진료비·공단·비급여·현금·카드·계좌)을 채운다(칸마다 원 미만 버림, 음수 그대로). 한 벌 차례는 스냅숏 → HistoryGuard → Patients → Treatments → LaCodes → FinanceNormal → FinanceReceivable이다. financeUnconfirmed는 늘 거짓이고 답에 financeUnconfirmedReason 열쇠가 없다. ok:false 자리(history_unsupported·invalid_aggregate·code_limit)는 그대로다.
 - AC-6912.5: Given 보고 벌, When 안내 글을 만들면, Then 금액 안내는 정확히 '금액은 외래환자경영통계의 회계일 기준 정상수납·미수입금 조건으로 집계합니다. 환불·변경수납·예치금 또는 연결 중복이 있는 기간도 같은 조건으로 집계해 비트 원본 통계와 다를 수 있습니다.'이고, '이 기간은 금액을 자동 집계하지 않았습니다(환자수·치료·LA는 정상). …' 글은 없다. 다른 안내는 그대로다.
 - AC-6912.6: Given 도우미 판, When 판을 보면, Then `helper/Directory.Build.props` Version과 웹 `LATEST_HELPER`가 같은 '0.13.0'이고 MIN_HELPER '0.3.0'과 LIST·SUNAP·CAL·VALUE·APPEND 판은 그대로다. 명령 표(13개·protocol 1)와 revenue.days·stats.rows·contact.targets 답의 칸 이름은 그대로다(새 명령·새 칸 없음).
 
 ### REQ-6913: 0.13.0으로 불러오면 옛 확인 필요한 날을 다시 읽는다
-- AC-6913.1: Given 저장된 날이 unconfirmed 또는 splitUnconfirmed이고 연결된 도우미가 0.13.0 이상, When `savedMark(row, helperVersion)`를 부르면, Then 거짓(그날을 다시 읽음)이다. dayCodes가 거짓이면 지금처럼 거짓이고, 확인된 날은 판과 상관없이 지금 그대로(dayCodes 값)다.
+- AC-6913.1: Given 저장된 날이 unconfirmed(참고 금액 있음·없음)이고 연결된 도우미가 0.13.0 이상, When `savedMark(row, helperVersion)`를 부르면, Then 거짓(그날을 다시 읽음)이다. splitUnconfirmed로 저장된 날(나눔만 못 센 날)은 0.13.0도 같은 나눔 검사(AC-6912.3)라 다시 읽지 않고 확인된 날처럼 dayCodes 값이다. dayCodes가 거짓이면 지금처럼 거짓이고, 확인된 날은 판과 상관없이 지금 그대로(dayCodes 값)다.
 - AC-6913.2: Given 도우미가 0.13.0 미만이거나 판을 모름, When `savedMark`를 부르면, Then 지금 규칙 그대로다(0.7.0 이상이면 참고 금액이 없는 확인 필요한 날만 거짓, first90 AC-4407.1·AC-4407.2).
 
 ## 범위 밖
-- DB 표·SQL·RLS·확장 바꾸기. sales_days에는 지금처럼 unconfirmed·nine null·rough_total이 저장될 수 있다(0.13.0 전 줄, 0.13.0에서 금액이 음수인 날).
+- DB 표·SQL·RLS·확장 바꾸기. sales_days에는 지금처럼 unconfirmed·nine null·rough_total이 저장될 수 있다(0.13.0 전 줄, 0.13.0에서 금액이 음수인 날). split_unconfirmed(나눔 검사에 걸린 날)도 지금처럼 저장된다.
+- 도우미 매출 읽기의 나눔 검사(급여 = 공단 + 본인부담 불일치·나눈 칸 음수) 바꾸기 — 지금 그대로 둔다(AC-6912.3).
 - 도우미의 수납일지 답(contact.targets 'sunap')의 `unsure` 셈과 그 검사 문장 — 그대로 둔다(웹이 더는 쓰지 않을 뿐, 답 모양 v:3 그대로).
 - 도우미 SQL 문장 글(원본 사본 대조 시험이 지키는 것). 세 검사 문장 상수는 수납일지가 계속 쓰므로 지우지 않는다.
 - 청구 사전점검의 '확인 필요'(`components/claim`·`lib/precheck`·`workers/precheck`·설정 RuleSettings·랜딩 FeaturesSection). 뜻이 다르다.
