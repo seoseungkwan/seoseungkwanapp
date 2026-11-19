@@ -1129,7 +1129,7 @@ const NOTICE = {
   setup: '비트 PC 연결을 마치면 숫자를 저절로 채워요',
   reading: '비트 숫자를 불러오는 중이에요',
   failed: '비트 숫자를 불러오지 못했어요. 직접 적어도 돼요',
-  unconfirmed: '이 날은 비트 금액 확인이 필요해요. 금액은 직접 적어 주세요',
+  unconfirmed: '이 날은 비트 금액을 채우지 못했어요. 금액은 직접 적어 주세요', // bit-total AC-6910.2
 }
 // revenueRow(TODAY)로 채우는 여덟 칸(design.md 20-2절 표)
 const FILLED: Partial<WorklogDay> = {
@@ -1410,6 +1410,56 @@ describe('AC-017.4 비트를 못 읽을 때', () => {
     expect(cell('신환').value).toBe('12')
     expect(cell('재진').value).toBe('48')
     for (const label of ['총진료비', '조합청구액', '현금수납', '카드수납', '계좌이체', '미수입금']) expect(cell(label).value, label).toBe('')
+    await settle(800)
+    expect(save).toHaveBeenCalledWith(client, TODAY, { newPatients: '12', returnPatients: '48' }, ['newPatients', 'returnPatients'])
+  })
+})
+
+// bit-total REQ-6910 (design.md 6절, 시안 docs/mockups/bit-total ⑬): 0.13.0 전 도우미의 확인 필요한 날은 총진료비만 채운다
+describe('AC-6910.2 옛 도우미 답의 확인 필요한 날', () => {
+  const OTHER_MONEY = ['조합청구액', '현금수납', '카드수납', '계좌이체', '미수입금']
+  const FLAG_TEXT = '합계에서 빠졌어요'
+
+  it('AC-6910.2: roughTotal 0 이상인 날은 안내가 보통 날과 같은 "비트 숫자를 12:00에 불러왔어요"이고, 총진료비에 비트 값과 비트 표시가 있으며 남은 금액 다섯 칸은 비어 있다', async () => {
+    connect(bitAnswer(TODAY, { ...UNCONFIRMED, roughTotal: 900000 }))
+    fakeServer({})
+    await openScreen()
+
+    expect(screen.getByText('비트 숫자를 12:00에 불러왔어요')).toBeTruthy()
+    expect(screen.queryByText(NOTICE.unconfirmed)).toBeNull()
+    expect(button('지금 불러오기')).toBeTruthy()
+    expect(cell('신환').value).toBe('12')
+    expect(cell('재진').value).toBe('48')
+    expect(cell('총진료비').value).toBe('900,000원')
+    expect(marked('총진료비')).toBe(true)
+    for (const label of OTHER_MONEY) {
+      expect(cell(label).value, label).toBe('')
+      expect(marked(label), label).toBe(false)
+    }
+    expect(screen.getByText(LEGEND)).toBeTruthy()
+    await settle(800)
+    expect(save).toHaveBeenCalledWith(client, TODAY, { newPatients: '12', returnPatients: '48', totalFee: '900000' }, [
+      'newPatients',
+      'returnPatients',
+      'totalFee',
+    ])
+  })
+
+  it('AC-6910.2: 음수 roughTotal인 날은 "이 날은 비트 금액을 채우지 못했어요. 금액은 직접 적어 주세요" 안내이고, 총진료비 칸은 빈칸·비트 표시 없음·합계 제외 표시 없음이다', async () => {
+    connect(bitAnswer(TODAY, { ...UNCONFIRMED, roughTotal: -120000 }))
+    fakeServer({})
+    await openScreen()
+
+    expect(screen.getByText('이 날은 비트 금액을 채우지 못했어요. 금액은 직접 적어 주세요')).toBeTruthy()
+    expect(screen.queryByText(/에 불러왔어요$/)).toBeNull()
+    expect(button('지금 불러오기')).toBeTruthy()
+    expect(cell('신환').value).toBe('12')
+    expect(cell('재진').value).toBe('48')
+    expect(cell('총진료비').value).toBe('')
+    expect(marked('총진료비')).toBe(false)
+    expect(tdOf('총진료비').classList.contains(s.flagged)).toBe(false)
+    expect(screen.queryByText(FLAG_TEXT)).toBeNull()
+    for (const label of OTHER_MONEY) expect(cell(label).value, label).toBe('')
     await settle(800)
     expect(save).toHaveBeenCalledWith(client, TODAY, { newPatients: '12', returnPatients: '48' }, ['newPatients', 'returnPatients'])
   })

@@ -27,7 +27,7 @@ const NOTICE_TEXT: Record<Exclude<BitFillStatus, 'off' | 'ready'>, string> = {
   'not-connected': '비트 PC가 연결되지 않아 직접 적어요',
   'setup-needed': '비트 PC 연결을 마치면 숫자를 저절로 채워요',
   reading: '비트 숫자를 불러오는 중이에요',
-  unconfirmed: '이 날은 비트 금액 확인이 필요해요. 금액은 직접 적어 주세요',
+  unconfirmed: '이 날은 비트 금액을 채우지 못했어요. 금액은 직접 적어 주세요', // 금액 칸을 하나도 못 채운 날(bit-total AC-6910.2)
   failed: '비트 숫자를 불러오지 못했어요. 직접 적어도 돼요',
 }
 // 비트를 읽을 수 있는 상태는 오른쪽에 [지금 불러오기]가 있다(읽는 중에는 눌리지 않는다)
