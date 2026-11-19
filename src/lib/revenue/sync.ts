@@ -23,18 +23,23 @@ function codeOf(error: unknown): string {
 
 /** 확인 필요한 날의 참고 금액(roughTotal)을 주는 첫 도우미(specs/first90 REQ-4405) */
 const ROUGH_HELPER = '0.7.0'
+/** 환불·변경수납·예치금·연결 중복이 있는 날도 금액을 다 읽는 첫 도우미(specs/bit-total REQ-6912·REQ-6913) */
+const FULL_HELPER = '0.13.0'
 
 /**
- * planRevenue에 넘기는 그날의 저장 표시(specs/first90 AC-4407.1·AC-4407.2). 참이면 '다 저장됨'이라 다시 읽지 않는다.
- * 지금은 dayCodes(날 단위 처방 금액이 있는지) 그대로다. 단, 확인 필요한 날인데 참고 금액이 없고(null·열쇠 없음) 연결된 도우미가 0.7.0 이상이면
- * 거짓(한 번 다시 읽음)이다. 0.7.0 미만·판을 모르면(연결 정보 없음·읽을 수 없는 판은 compareVersions가 가장 낮게 본다) 그대로 둔다: 옛 도우미로는 참고 금액을 얻지 못해 매번 다시 읽게 되기 때문이다
+ * planRevenue에 넘기는 그날의 저장 표시(specs/first90 AC-4407.1·AC-4407.2, specs/bit-total AC-6913.1·AC-6913.2). 참이면 '다 저장됨'이라 다시 읽지 않는다.
+ * 지금은 dayCodes(날 단위 처방 금액이 있는지) 그대로다. 단, 확인 필요한 날은 연결된 도우미에 따라 거짓(한 번 다시 읽음)이다:
+ * 0.13.0 이상이면 참고 금액이 있든 없든 거짓(그 판은 그런 날도 금액을 다 읽는다), 0.7.0 이상이면 참고 금액이 없을 때(null·열쇠 없음)만 거짓이다.
+ * 0.7.0 미만·판을 모르면(연결 정보 없음·읽을 수 없는 판은 compareVersions가 가장 낮게 본다) 그대로 둔다: 옛 도우미로는 참고 금액을 얻지 못해 매번 다시 읽게 되기 때문이다.
+ * 나눔만 못 센 날(splitUnconfirmed)은 0.13.0도 같은 나눔 검사라 다시 읽어도 같으므로 보지 않는다(확인된 날처럼 dayCodes 값)
  */
 export function savedMark(
   row: Pick<SavedRevenueDay, 'dayCodes' | 'unconfirmed' | 'roughTotal'>,
   helperVersion: string | null | undefined,
 ): boolean {
-  const roughHelper = typeof helperVersion === 'string' && compareVersions(helperVersion, ROUGH_HELPER) >= 0
-  return row.dayCodes && !(row.unconfirmed && typeof row.roughTotal !== 'number' && roughHelper)
+  const atLeast = (version: string) => typeof helperVersion === 'string' && compareVersions(helperVersion, version) >= 0
+  if (atLeast(FULL_HELPER)) return row.dayCodes && !row.unconfirmed
+  return row.dayCodes && !(row.unconfirmed && typeof row.roughTotal !== 'number' && atLeast(ROUGH_HELPER))
 }
 
 /**

@@ -419,3 +419,74 @@ describe('AC-4407.1·AC-4407.2 planRevenue에 넘기는 저장 표시', () => {
     expect(planRevenue(WHOLE, NOV_14, false, marks(version))).toEqual([dr('2026-11-13', '2026-11-13')])
   })
 })
+
+// ── 도우미 0.13.0으로 불러오면 옛 확인 필요한 날을 한 번 다시 읽는다(bit-total TASK-2, REQ-6913 · AC-6913.1·AC-6913.2) ──
+
+const FULL_HELPERS = ['0.13.0', '0.13.1', '0.14.0', '1.0.0']
+/** 0.13.0 미만이지만 0.7.0 이상(참고 금액을 주는 판) */
+const ROUGH_ONLY_HELPERS = ['0.7.0', '0.10.0', '0.12.0', '0.12.9']
+/** 나눔만 못 센 날로 저장된 줄(unconfirmed 거짓). savedMark는 이 칸을 보지 않는다 */
+const splitSaved = (over: Partial<Mark> = {}): Mark & { splitUnconfirmed: boolean } => ({ ...mark(over), splitUnconfirmed: true })
+
+describe('AC-6913.1 savedMark: 도우미 0.13.0 이상이면 확인 필요한 날을 모두 다시 읽는다', () => {
+  it.each(FULL_HELPERS)('AC-6913.1 확인 필요한 날 · 참고 금액 null · 도우미 %s → 거짓(다시 읽을 날)', (version) => {
+    expect(savedMark(UNCHECKED, version)).toBe(false)
+    expect(savedMark({ dayCodes: true, unconfirmed: true }, version)).toBe(false)
+  })
+
+  it.each(FULL_HELPERS)('AC-6913.1 확인 필요한 날 · 참고 금액 있음(870,000·0·음수) · 도우미 %s → 거짓(다시 읽을 날)', (version) => {
+    for (const roughTotal of [870_000, 0, -52_000]) expect(savedMark(mark({ unconfirmed: true, roughTotal }), version), String(roughTotal)).toBe(false)
+  })
+
+  it.each(FULL_HELPERS)('AC-6913.1 나눔만 못 센 날(splitUnconfirmed)은 도우미 %s도 다시 읽지 않는다(dayCodes 값)', (version) => {
+    expect(savedMark(splitSaved(), version)).toBe(true)
+    expect(savedMark(splitSaved({ dayCodes: false }), version)).toBe(false)
+  })
+
+  it.each(FULL_HELPERS)('AC-6913.1 확인된 날은 도우미 %s도 지금 그대로다(dayCodes 값)', (version) => {
+    expect(savedMark(mark(), version)).toBe(true)
+    expect(savedMark(mark({ dayCodes: false }), version)).toBe(false)
+  })
+
+  it.each(FULL_HELPERS)('AC-6913.1 dayCodes 거짓이면 도우미 %s도 지금처럼 거짓이다', (version) => {
+    expect(savedMark({ ...UNCHECKED, dayCodes: false }, version)).toBe(false)
+    expect(savedMark(mark({ unconfirmed: true, roughTotal: 1_000, dayCodes: false }), version)).toBe(false)
+  })
+
+  it('AC-6913.1 planRevenue: 도우미 0.13.0이면 참고 금액이 있는 확인 필요한 날도 덩어리로 고른다', () => {
+    const rows = eachDay(dr('2026-09-01', '2026-11-12')).map((date) => ({
+      date,
+      ...(['2026-10-05', '2026-10-06'].includes(date)
+        ? UNCHECKED
+        : date === '2026-10-20'
+          ? mark({ unconfirmed: true, roughTotal: 870_000 })
+          : date === '2026-10-25'
+            ? splitSaved()
+            : mark()),
+    }))
+    const marks = new Map(rows.map((row) => [row.date, savedMark(row, '0.13.0')]))
+    expect(planRevenue(WHOLE, NOV_14, false, marks)).toEqual([
+      dr('2026-11-13', '2026-11-13'),
+      dr('2026-10-20', '2026-10-20'),
+      dr('2026-10-05', '2026-10-06'),
+    ])
+  })
+})
+
+describe('AC-6913.2 savedMark: 도우미 0.13.0 미만·판을 모르면 지금 규칙 그대로', () => {
+  it.each(ROUGH_ONLY_HELPERS)('AC-6913.2 도우미 %s → 참고 금액이 없는 확인 필요한 날만 거짓, 참고 금액이 있으면 참', (version) => {
+    expect(savedMark(UNCHECKED, version)).toBe(false)
+    for (const roughTotal of [870_000, 0, -52_000]) expect(savedMark(mark({ unconfirmed: true, roughTotal }), version), String(roughTotal)).toBe(true)
+  })
+
+  it.each([...OLD_HELPERS, ...UNKNOWN_HELPERS])('AC-6913.2 도우미 %j → 확인 필요한 날도 참(다시 읽지 않음)', (version) => {
+    expect(savedMark(UNCHECKED, version)).toBe(true)
+    expect(savedMark(mark({ unconfirmed: true, roughTotal: 870_000 }), version)).toBe(true)
+  })
+
+  it.each([...ROUGH_ONLY_HELPERS, ...OLD_HELPERS, ...UNKNOWN_HELPERS])('AC-6913.2 도우미 %j도 나눔만 못 센 날·확인된 날은 dayCodes 값이다', (version) => {
+    expect(savedMark(splitSaved(), version)).toBe(true)
+    expect(savedMark(mark(), version)).toBe(true)
+    expect(savedMark(mark({ dayCodes: false }), version)).toBe(false)
+  })
+})

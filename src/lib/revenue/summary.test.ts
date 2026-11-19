@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { eachDay } from '@/lib/analytics/dates'
 import type { RevenueDayRow } from '@/types/revenue'
-import { compare, perVisit, splitDay, sumPeriod } from './summary'
+import { compare, dayRevenue, perVisit, revenueDayValues, splitDay, sumPeriod } from './summary'
 
 // 나눔이 있는 보통 날: 1,000,000 = (500,000 + 200,000) + 250,000 + 50,000
 function day(date: string, over: Partial<RevenueDayRow> = {}): RevenueDayRow {
@@ -342,8 +342,16 @@ describe('AC-005.2 sumPeriod 기간 합', () => {
 
 // 옛 매출 탭의 달 기간·13달 셈(periodsFor·firstMonth·monthSeries·MonthPoint)과 그 시험은 지웠다(stats-revenue TASK-8, AC-4110.4)
 describe('AC-4110.4 옛 달 기간·13달 셈이 없다', () => {
-  it('AC-4110.4 summary.ts는 splitDay·isWorkDay·sumPeriod·compare·perVisit만 내보낸다', async () => {
-    expect(Object.keys(await import('./summary')).sort()).toEqual(['compare', 'isWorkDay', 'perVisit', 'splitDay', 'sumPeriod'])
+  it('AC-4110.4·AC-6901.1 summary.ts는 splitDay·isWorkDay·sumPeriod·compare·perVisit·dayRevenue·revenueDayValues만 내보낸다', async () => {
+    expect(Object.keys(await import('./summary')).sort()).toEqual([
+      'compare',
+      'dayRevenue',
+      'isWorkDay',
+      'perVisit',
+      'revenueDayValues',
+      'splitDay',
+      'sumPeriod',
+    ])
   })
 
   it('AC-4110.4 소스에 옛 이름(periodsFor·firstMonth·monthSeries·MonthPoint)이 없다', () => {
@@ -525,5 +533,73 @@ describe('AC-4408.2 sumPeriod 참고 금액 포함(withRough)', () => {
     expect(sum).not.toHaveProperty('roughDays')
     expect(sum).not.toHaveProperty('roughSum')
     expect(sumPeriod(rows, OCT_3, { withRough: false })).toEqual(sum)
+  })
+})
+
+// bit-total AC-6901.1: 그날 매출 = total ?? roughTotal(0·음수 그대로), 둘 다 없으면 null
+describe('AC-6901.1 dayRevenue 그날 매출', () => {
+  it('AC-6901.1 total만 있는 날(roughTotal null·열쇠 없음)은 total이다', () => {
+    expect(dayRevenue(day('2026-10-01'))).toBe(1_000_000)
+    expect(dayRevenue(day('2026-10-01', { roughTotal: null }))).toBe(1_000_000)
+    expect(dayRevenue({ total: 730_000 })).toBe(730_000)
+  })
+
+  it('AC-6901.1 total이 0인 날(쉬는 날)도 0 그대로다', () => {
+    expect(dayRevenue(restDay('2026-10-04'))).toBe(0)
+  })
+
+  it('AC-6901.1 나눔만 못 센 날(splitUnconfirmed)은 남은 total이다', () => {
+    expect(dayRevenue(noSplitDay('2026-10-02'))).toBe(500_000)
+  })
+
+  it.each([870_000, 0, -52_000])('AC-6901.1 total이 null이고 roughTotal만 숫자(%j, 0·음수 포함)면 roughTotal 그대로다', (roughTotal) => {
+    expect(dayRevenue(uncheckedDay('2026-10-02', { roughTotal }))).toBe(roughTotal)
+    expect(dayRevenue({ total: null, roughTotal })).toBe(roughTotal)
+  })
+
+  it('AC-6901.1 둘 다 숫자면 total이다', () => {
+    expect(dayRevenue({ total: 1_000_000, roughTotal: 870_000 })).toBe(1_000_000)
+    expect(dayRevenue({ total: 0, roughTotal: 870_000 })).toBe(0)
+  })
+
+  it('AC-6901.1 둘 다 없으면(null·열쇠 없음) null이다', () => {
+    expect(dayRevenue(uncheckedDay('2026-10-02'))).toBeNull()
+    expect(dayRevenue(uncheckedDay('2026-10-02', { roughTotal: null }))).toBeNull()
+    expect(dayRevenue({ total: null })).toBeNull()
+    expect(dayRevenue({ total: null, roughTotal: null })).toBeNull()
+  })
+})
+
+// bit-total AC-6901.2: dayRevenue가 숫자인 날만 { day, value }로, 받은 차례 그대로
+describe('AC-6901.2 revenueDayValues 하루 매출 목록', () => {
+  it('AC-6901.2 금액이 있는 날만 받은 차례 그대로 { day, value }로 돌려준다(null인 날은 뺀다)', () => {
+    const rows = [
+      day('2026-10-03'),
+      uncheckedDay('2026-10-01', { roughTotal: 300_000 }),
+      uncheckedDay('2026-10-02'),
+      restDay('2026-10-05'),
+      noSplitDay('2026-10-04'),
+      uncheckedDay('2026-10-06', { roughTotal: -20_000 }),
+      uncheckedDay('2026-10-07', { roughTotal: null }),
+    ]
+    expect(revenueDayValues(rows)).toEqual([
+      { day: '2026-10-03', value: 1_000_000 },
+      { day: '2026-10-01', value: 300_000 },
+      { day: '2026-10-05', value: 0 },
+      { day: '2026-10-04', value: 500_000 },
+      { day: '2026-10-06', value: -20_000 },
+    ])
+  })
+
+  it('AC-6901.2 날짜·total·roughTotal 세 칸만 있는 줄도 받는다', () => {
+    expect(revenueDayValues([{ date: '2026-11-01', total: 100 }, { date: '2026-11-02', total: null, roughTotal: 0 }])).toEqual([
+      { day: '2026-11-01', value: 100 },
+      { day: '2026-11-02', value: 0 },
+    ])
+  })
+
+  it('AC-6901.2 빈 목록·금액 모르는 날뿐이면 빈 목록이다', () => {
+    expect(revenueDayValues([])).toEqual([])
+    expect(revenueDayValues([uncheckedDay('2026-10-01'), uncheckedDay('2026-10-02', { roughTotal: null })])).toEqual([])
   })
 })

@@ -42,6 +42,23 @@ export type PeriodSum = {
   roughSum?: number
 } | null
 
+/**
+ * 그날 매출(bit-total AC-6901.1): total이 숫자면 total, 아니면 roughTotal(그날 비트 총진료비, 0·음수 그대로), 둘 다 없으면(null·열쇠 없음) null.
+ * 줄은 저장된 그대로 두고 세는 곳이 이 규칙을 부른다(design.md 1절)
+ */
+export function dayRevenue(row: Pick<RevenueDayRow, 'total' | 'roughTotal'>): number | null {
+  if (typeof row.total === 'number') return row.total
+  return typeof row.roughTotal === 'number' ? row.roughTotal : null
+}
+
+/** dayRevenue가 숫자인 날만 { day, value }로 받은 차례 그대로(goalPace의 DayValue와 같은 모양, bit-total AC-6901.2) */
+export function revenueDayValues(rows: readonly Pick<RevenueDayRow, 'date' | 'total' | 'roughTotal'>[]): { day: string; value: number }[] {
+  return rows.flatMap((row) => {
+    const value = dayRevenue(row)
+    return value === null ? [] : [{ day: row.date, value }]
+  })
+}
+
 /** withRough = 확인 필요한 날 가운데 참고 금액(roughTotal)이 숫자인 날(0·음수 포함)을 매출·접수 건수 짝·진료한 날에 더한다(first90 AC-4408.2). 나눔(급여·비급여·기타)에는 넣지 않는다 */
 type SumOptions = { withRough?: boolean }
 
