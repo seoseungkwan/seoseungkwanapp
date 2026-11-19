@@ -1,17 +1,20 @@
 import { useId, type InputHTMLAttributes } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { ds } from '@/components/ui/classes'
+import type { FormStyle } from '@/lib/forms/style'
 import { autoTheme, themeOf } from '@/lib/forms/themes'
 import { MAX_CARDS, MAX_MEMO, MAX_NAME, MAX_STATUS, type DraftCard, type ThemePick } from '@/types/forms'
 import { AccentPicker } from './AccentPicker'
 import { cardProblems, draftDateLabel, monthProblem, previewNotice, type FormsState } from './formsState'
+import { StyleControls } from './StyleControls'
 import { ThemePicker } from './ThemePicker'
 import type { Backgrounds } from './useBackgrounds'
 
-// 서식 화면 가운데: 대충 적기 → [정리하기], 안내 달·카드 1~4장, 맨 아래 '배경' 칸(ThemePicker — 테마 그림 1·2 / 내 배경)과
-// 그 바로 아래 '글자 색' 칸(AccentPicker) (spec forms REQ-3502·REQ-3503·AC-3504.3, spec forms-themes REQ-4610~4612,
-// spec forms-accent REQ-4701, 시안 screen.html '만들기'). 색·글자는 토큰과 ds만 쓴다.
-// '만들기' 칸(section)은 '배경' 칸으로 끝나고, '글자 색' 칸은 같은 패널 안 그 바로 뒤에 둔다(ThemePicker.tsx는 고치지 않는다 — forms-accent design.md 7-2절)
+// 서식 화면 가운데: 대충 적기 → [정리하기], 안내 달·카드 1~4장, '배경' 칸(ThemePicker — 테마 그림 1·2 / 내 배경)과
+// 맨 아래 '글씨·로고' 칸(StyleControls — 제목·본문 글씨, '강조 색' 줄(AccentPicker), 로고) (spec forms REQ-3502·REQ-3503·AC-3504.3,
+// spec forms-themes REQ-4610~4612, spec forms-accent REQ-4701, spec form-style REQ-6801, 시안 screen.html '만들기'·docs/mockups/form-style).
+// 색·글자는 토큰과 ds만 쓴다. '만들기' 칸(section)은 '배경' 칸으로 끝나고, '글씨·로고' 칸은 같은 패널 안 그 바로 뒤에 둔다
+// (ThemePicker.tsx는 고치지 않는다 — forms-accent design.md 7-2절). 예전 '배경' 칸 아래 '글자 색' 칸은 '강조 색' 줄로 옮겼다(AC-6801.5)
 
 const NOTE = '전화번호·주민번호·메일 주소는 적지 마세요. 적은 글은 정리할 때만 AI로 보내고 저장하지 않아요'
 const PLACEHOLDER = '예) 5월 5일 어린이날 휴진\n예) 추석 연휴 9월 24일부터 26일까지 쉬어요'
@@ -33,8 +36,13 @@ type Props = {
   onMonth: (value: string) => void
   onTheme: (theme: ThemePick | null) => void
   bg: Backgrounds // '배경' 칸(내 배경·AI 배경)의 상태와 부르기(useBackgrounds)
-  autoAccent: string // 자동 글자 색(미리보기의 배경 강조색 또는 테마 강조색)
+  autoAccent: string // 자동 강조 색(로고 색, 없으면 미리보기의 배경 강조색 또는 테마 강조색)
   onAccent: (accent: string | null) => void
+  logoSwatches: readonly string[] // 로고에서 뽑은 색 칩(색 고르기 넷 모두에)
+  starts: { title: string; body: string; logo: string } // 색이 없을 때 직접 고르기 색 칸의 처음 값
+  logoTintable: boolean // 로고에 색을 칠할 수 있다(아니면 로고 색 고르기를 막는다)
+  onStyle: (style: FormStyle) => void
+  onReset: () => void // [처음대로]: 글씨·로고 값과 강조 색을 처음대로
 }
 
 type FieldProps = {
@@ -65,7 +73,24 @@ function CardField({ id, label, hint, error, input }: FieldProps) {
   )
 }
 
-export function NoticeEditor({ state, onMemo, onTidy, onCard, onAddCard, onRemoveCard, onMonth, onTheme, bg, autoAccent, onAccent }: Props) {
+export function NoticeEditor({
+  state,
+  onMemo,
+  onTidy,
+  onCard,
+  onAddCard,
+  onRemoveCard,
+  onMonth,
+  onTheme,
+  bg,
+  autoAccent,
+  onAccent,
+  logoSwatches,
+  starts,
+  logoTintable,
+  onStyle,
+  onReset,
+}: Props) {
   const id = useId()
   const problems = cardProblems(state)
   const monthError = monthProblem(state)
@@ -195,7 +220,16 @@ export function NoticeEditor({ state, onMemo, onTidy, onCard, onAddCard, onRemov
 
         <ThemePicker pick={state.theme} autoName={autoName} bg={bg} note={bg.look(preview).note} onPick={onTheme} />
       </section>
-      <AccentPicker month={state.month} accent={state.accent} autoAccent={autoAccent} onAccent={onAccent} />
+      <StyleControls
+        tool="notice"
+        style={state.style}
+        logoSwatches={logoSwatches}
+        starts={starts}
+        logoTintable={logoTintable}
+        onStyle={onStyle}
+        onReset={onReset}
+        accentRow={<AccentPicker month={state.month} accent={state.accent} autoAccent={autoAccent} logoSwatches={logoSwatches} onAccent={onAccent} />}
+      />
     </div>
   )
 }

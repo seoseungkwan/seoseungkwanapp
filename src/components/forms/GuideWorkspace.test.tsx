@@ -5,9 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useClinicProfile, type ClinicProfileView } from '@/components/clinic/useClinicProfile'
 import { errorInfo } from '@/lib/errors'
 import type { GuideValue } from '@/lib/forms/guide'
-import { logoPalette, type GuideColors } from '@/lib/forms/logoColors'
+import { GUIDE_LOGO, GUIDE_LOGO_MAX, layoutGuide } from '@/lib/forms/guideLayout'
+import { scaleLogoRect } from '@/lib/forms/layout'
+import { logoPalette, logoSwatches, type GuideColors } from '@/lib/forms/logoColors'
 import type { LogoBitmap } from '@/lib/forms/logoFit'
 import { bitmapToPngUrl, downloadGuidePng, downloadPosterPng, readLogoBitmap, readLogoPixels } from '@/lib/forms/png'
+import { DEFAULT_STYLE, type FormStyle } from '@/lib/forms/style'
 import { contrastRatio } from '@/lib/forms/themes'
 import { defaultProfile } from '@/lib/storage/clinicProfile'
 import { deleteGuide, insertGuide, listGuides, updateGuide } from '@/lib/storage/formGuides'
@@ -871,8 +874,9 @@ describe('AC-6604.5·AC-6604.6: 환자 안내문 색 칸 — [자동]·[직접 �
 
   it("AC-6604.5: 만들기에 '진회색 띠' 다음 '색' 칸이 있고, 처음엔 [자동]이 눌려 있으며 색 고르기 칸은 없다", async () => {
     await openGuide()
+    // 그 다음 맨 아래는 '글씨·로고' 칸이다(spec form-style AC-6801.1)
     const legends = [...editor().querySelectorAll('fieldset')].map((el) => el.querySelector('legend')?.textContent)
-    expect(legends).toEqual(['노란 윗단', '진회색 띠', '색'])
+    expect(legends).toEqual(['노란 윗단', '진회색 띠', '색', '글씨·로고'])
     expect(colorButton('자동').getAttribute('aria-pressed')).toBe('true')
     expect(colorButton('직접 고르기').getAttribute('aria-pressed')).toBe('false')
     expect(colorInput('바탕색')).toBeNull()
@@ -1042,5 +1046,166 @@ describe('AC-6701.4·AC-6702.2: 환자 안내문 — 서식 화면이 준비한 
     expect(poster().outerHTML).toContain(blue().main)
     expect(readLogoBitmap).toHaveBeenCalledWith(LOGO_URL)
     expect(vi.mocked(readLogoPixels).mock.calls.map(([href]) => href)).toEqual([LOGO_URL])
+  })
+})
+
+// ── 글씨·로고 칸 (spec form-style TASK-6, REQ-6801·REQ-6802·REQ-6805, design.md 8절, 승인 시안 docs/mockups/form-style ?tool=guide) ──
+
+describe('AC-6801.1~AC-6801.8·AC-6802.3: 환자 안내문 글씨·로고 칸', () => {
+  const GUIDE_HELP = '제목은 큰 문구 두 줄, 본문은 진회색 띠 안의 줄 글이에요. [자동]이면 제목은 띠 색, 본문은 흰색이에요. 자리보다 크게는 커지지 않아요.'
+  const LOCKED = '배경이 있는 로고라 색을 바꿀 수 없어요. 원래 색으로 그려요'
+  const DIRTY = '저장하지 않은 내용이 있어요'
+  const RED = '#dc2626'
+  const YELLOW = '#eab308'
+  // 흰 배경(8×6)에 진한 점 두 개 → 흰 배경을 지우고 자르면 3×2 중 4점이 투명(칠할 수 있는 로고)
+  const TINT_LOGO: LogoBitmap = {
+    data: Uint8ClampedArray.from(
+      Array.from({ length: 48 }, (_, i) => ((i % 8 === 2 && Math.floor(i / 8) === 2) || (i % 8 === 4 && Math.floor(i / 8) === 3) ? [20, 40, 90, 255] : [255, 255, 255, 255])).flat(),
+    ),
+    width: 8,
+    height: 6,
+  }
+  const FITTED_URL = `data:image/png;base64,VGludGVk${'G'.repeat(40)}` // 준비한 그림(지어낸 값)
+  const blueSwatches = () => logoSwatches(BLUE_PIXELS.data, BLUE_PIXELS.width, BLUE_PIXELS.height)
+
+  // 보이는 '글씨·로고' 묶음(숨긴 도구의 묶음은 역할 찾기에 잡히지 않는다)
+  const styleBox = () => screen.getByRole('group', { name: '글씨·로고' })
+  const slider = (name: string) => within(styleBox()).getByRole('slider', { name }) as HTMLInputElement
+  const chooser = (name: string) => within(styleBox()).getByRole('group', { name })
+  const pick = (name: string) => within(styleBox()).getByRole('button', { name })
+  const firstOf = (name: string) => within(chooser(name)).getAllByRole('button')[0] as HTMLButtonElement
+  const colorStart = (name: string) => within(styleBox()).getByLabelText(`${name} 직접 고르기`) as HTMLInputElement
+  const rgb = (hex: string) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`
+  const logoChips = (name: string) =>
+    within(chooser(name))
+      .queryAllByRole('button', { name: new RegExp(`^${name} 로고 색 \\d$`) })
+      .map((b) => (b as HTMLElement).style.backgroundColor)
+  const printSvg = () => printCopies()[0]?.querySelector('svg')
+  const textOf = (svg: Element | null | undefined, content: string) => [...(svg?.querySelectorAll('text') ?? [])].find((t) => t.textContent === content)
+  function tintOf(svg: Element | null | undefined): string | null {
+    const id = /^url\(#(.+)\)$/.exec(svg?.lastElementChild?.getAttribute('filter') ?? '')?.[1]
+    if (!svg || !id) return null
+    const filter = [...svg.querySelectorAll('*')].find((el) => el.localName === 'filter' && el.getAttribute('id') === id)
+    const flood = filter ? [...filter.children].find((el) => el.localName === 'feFlood') : undefined
+    return flood?.getAttribute('flood-color') ?? null
+  }
+
+  it("AC-6801.1·AC-6801.6: 만들기 맨 아래('색' 칸 다음)에 '글씨·로고' 묶음이 있고 '제목 글씨'·'본문 글씨'·'로고' 줄(강조 색 없음), 안내문 도움말, [처음대로]가 있다", async () => {
+    await openGuide()
+    const legends = [...editor().querySelectorAll('fieldset')].map((el) => el.querySelector('legend')?.textContent)
+    expect(legends).toEqual(['노란 윗단', '진회색 띠', '색', '글씨·로고'])
+    expect(editor().contains(styleBox())).toBe(true)
+    expect(editor().lastElementChild).toBe(styleBox())
+    expect(within(styleBox()).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['제목 글씨', '본문 글씨', '로고'])
+    expect(within(styleBox()).queryByRole('group', { name: '강조 색' })).toBeNull()
+    expect(within(styleBox()).getByText(GUIDE_HELP)).toBeTruthy()
+    expect(within(styleBox()).getByRole('button', { name: '처음대로' })).toBeTruthy()
+    expect([firstOf('제목 글씨 색'), firstOf('본문 글씨 색'), firstOf('로고 색')].map((b) => b.textContent)).toEqual(['자동', '자동', '원래 색'])
+  })
+
+  it("AC-6801.3: 시작 색 — 제목은 띠 색(로고 색이 있으면 로고 dark, '색' 칸을 직접 고르면 그 띠 색), 본문은 흰색, 로고는 로고 색 칩 첫째다", async () => {
+    vi.mocked(readLogoPixels).mockResolvedValue(BLUE_PIXELS)
+    const colors = logoPalette(BLUE_PIXELS.data, BLUE_PIXELS.width, BLUE_PIXELS.height)!
+    expect(colors).not.toBeNull()
+    const user = await openGuide()
+    await waitFor(() => expect(colorStart('제목 글씨 색').value).toBe(colors.dark))
+    expect(colorStart('본문 글씨 색').value).toBe('#ffffff')
+    expect(colorStart('로고 색').value).toBe(blueSwatches()[0])
+    const colorGroup = within(editor()).getByRole('group', { name: '색' })
+    await user.click(within(colorGroup).getByRole('button', { name: '직접 고르기' }))
+    change(within(colorGroup).getByLabelText('띠 색'), '#1b2740')
+    expect(colorStart('제목 글씨 색').value).toBe('#1b2740')
+  })
+
+  it('AC-6801.3·AC-6802.2: 로고 색이 없으면 제목 시작 색은 지금 띠 색이고, 이름 글자 로고면 로고 색 칩이 없고 로고 시작 색은 검정이다', async () => {
+    vi.mocked(useClinicProfile).mockReturnValue(clinicView({ logoDataUrl: null }))
+    await openGuide()
+    expect(colorStart('제목 글씨 색').value).toBe('#2e2e2e')
+    expect(colorStart('로고 색').value).toBe('#111111')
+    for (const name of ['제목 글씨 색', '본문 글씨 색', '로고 색']) {
+      expect(logoChips(name), name).toEqual([])
+      expect(within(chooser(name)).queryByText('로고 색'), name).toBeNull()
+    }
+  })
+
+  it('AC-6801.2·AC-6801.4·AC-6805.4: 밀대·칩으로 고른 값이 큰 문구·줄 글·로고 크기와 색에 들고(미리보기·인쇄 사본·그림 파일) content.style로 저장된다', async () => {
+    const user = await openGuide()
+    await openInsurance(user)
+    const at = (svg: Element | null | undefined) => ['x', 'y', 'width', 'height'].map((n) => svg?.lastElementChild?.getAttribute(n))
+    await waitFor(() => expect(poster().lastElementChild?.getAttribute('href')).toBe(LOGO_URL)) // 크기를 모르는 원래 로고(원래 상자)
+    fireEvent.change(slider('제목 글씨 크기'), { target: { value: '120' } })
+    fireEvent.change(slider('본문 글씨 크기'), { target: { value: '90' } })
+    fireEvent.change(slider('로고 크기'), { target: { value: '150' } })
+    await user.click(pick('제목 글씨 색 빨강'))
+    await user.click(pick('본문 글씨 색 노랑'))
+    expect(within(styleBox()).getByText('120%')).toBeTruthy()
+    expect(within(styleBox()).getByText('90%')).toBeTruthy()
+    expect(within(styleBox()).getByText('150%')).toBeTruthy()
+    const big = scaleLogoRect(GUIDE_LOGO, 150, GUIDE_LOGO_MAX)
+    expect(at(poster())).toEqual([big.x, big.y, big.width, big.height].map(String))
+    expect(at(printSvg())).toEqual(at(poster()))
+    const style: FormStyle = { ...DEFAULT_STYLE, titleScale: 120, bodyScale: 90, logoScale: 150, titleColor: RED, bodyColor: YELLOW }
+    const L = layoutGuide({ ...INSURANCE, style })
+    const look = (svg: Element | null | undefined) =>
+      [L.big[0].text, L.big[1].text, L.rows[0].text.text].map((t) => [textOf(svg, t)?.getAttribute('font-size'), textOf(svg, t)?.getAttribute('fill')])
+    const want = [
+      [String(L.big[0].size), RED],
+      [String(L.big[1].size), RED],
+      [String(L.rows[0].text.size), YELLOW],
+    ]
+    expect(look(poster())).toEqual(want)
+    expect(look(printSvg())).toEqual(want)
+    expect(within(preview()).getByText(DIRTY)).toBeTruthy()
+    await waitFor(() => expect(output('그림 파일').disabled).toBe(false))
+    await user.click(output('그림 파일'))
+    expect(look(vi.mocked(downloadGuidePng).mock.calls[0]![0])).toEqual(want)
+    await user.click(output('저장'))
+    expect(updateGuide).toHaveBeenCalledWith('ins', { ...INSURANCE, style })
+  })
+
+  it('AC-6801.7: [처음대로]를 누르면 크기 셋 100·색 셋 자동·원래 색이 되어 style 열쇠가 없어지고(저장 열쇠 13개) 바뀐 내용이 사라진다', async () => {
+    const user = await openGuide()
+    await openInsurance(user)
+    fireEvent.change(slider('로고 크기'), { target: { value: '60' } })
+    fireEvent.change(slider('제목 글씨 크기'), { target: { value: '85' } })
+    await user.click(pick('본문 글씨 색 검정'))
+    expect(within(preview()).getByText(DIRTY)).toBeTruthy()
+    await user.click(within(styleBox()).getByRole('button', { name: '처음대로' }))
+    expect(['제목 글씨 크기', '본문 글씨 크기', '로고 크기'].map((name) => slider(name).value)).toEqual(['100', '100', '100'])
+    for (const name of ['제목 글씨 색', '본문 글씨 색', '로고 색']) expect(firstOf(name).getAttribute('aria-pressed'), name).toBe('true')
+    expect(within(preview()).queryByText(DIRTY)).toBeNull()
+    change(input('띠 제목'), '이런 서류를 주세요')
+    await user.click(output('저장'))
+    const [, saved] = vi.mocked(updateGuide).mock.calls[0]!
+    expect('style' in saved).toBe(false)
+    expect(Object.keys(saved)).toHaveLength(13)
+  })
+
+  it('AC-6801.8: 준비에 실패한 원래 로고면 환자 안내문에서도 로고 색 고르기가 막히고 까닭 글이 보인다(크기 밀대는 된다)', async () => {
+    await openGuide()
+    await waitFor(() => expect(poster().lastElementChild?.getAttribute('href')).toBe(LOGO_URL))
+    expect(within(styleBox()).getByText(LOCKED)).toBeTruthy()
+    for (const b of within(chooser('로고 색')).getAllByRole('button') as HTMLButtonElement[]) expect(b.disabled).toBe(true)
+    expect(colorStart('로고 색').disabled).toBe(true)
+    expect(slider('로고 크기').disabled).toBe(false)
+  })
+
+  it('AC-6802.3·AC-6805.3: 준비한 그림의 표본에서 뽑은 로고 색 칩이 두 서식에 같이 가고(readLogoPixels 두 번 그대로), 칠할 수 있는 로고면 고른 로고 색으로 칠한다', async () => {
+    vi.mocked(readLogoBitmap).mockResolvedValue(TINT_LOGO)
+    vi.mocked(bitmapToPngUrl).mockReturnValue(FITTED_URL)
+    vi.mocked(readLogoPixels).mockImplementation(async (href) => (href === FITTED_URL ? BLUE_PIXELS : GRAY_PIXELS))
+    const want = blueSwatches().map(rgb)
+    expect(want.length).toBeGreaterThan(0)
+    const user = await openGuide()
+    await waitFor(() => expect(logoChips('제목 글씨 색')).toEqual(want))
+    for (const name of ['본문 글씨 색', '로고 색']) expect(logoChips(name), name).toEqual(want)
+    await user.click(tool('휴진 안내'))
+    for (const name of ['제목 글씨 색', '본문 글씨 색', '강조 색', '로고 색']) expect(logoChips(name), name).toEqual(want)
+    await user.click(tool('환자 안내문'))
+    expect(within(styleBox()).queryByText(LOCKED)).toBeNull()
+    await user.click(pick('로고 색 로고 색 1'))
+    expect(tintOf(poster())).toBe(blueSwatches()[0])
+    expect(tintOf(printSvg())).toBe(blueSwatches()[0])
+    expect(vi.mocked(readLogoPixels).mock.calls.map(([href]) => href)).toEqual([LOGO_URL, FITTED_URL])
   })
 })
