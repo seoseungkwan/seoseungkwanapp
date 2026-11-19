@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ds } from '@/components/ui/classes'
 import { nestedBoxes } from '@/testing/boxes'
 import { DeskGate } from './DeskGate'
+import { DESK_HOME, DESK_MENU, isDeskPath } from './menu'
 import { RoleProvider, useDesk } from './role'
 
 // 데스크 문지기·막힌 화면 (desk-feedback REQ-6306 AC-6306.3, design.md '④ 데스크 화면', 시안 docs/mockups/desk-feedback ④).
@@ -41,7 +42,8 @@ describe('AC-6306.3 DeskGate — 주소마다 본문·막힌 화면·수납일�
     expect(router.replace).not.toHaveBeenCalled()
   })
 
-  it.each(['/stats', '/stats/x', '/claim', '/claim/setup', '/patients', '/ai-report', '/forms', '/notices', '/settings', '/admin', '/sunapx'])(
+  // /claim/setup(비트 PC 연결)은 desk-setup AC-7001.1부터 데스크도 연다 → 아래 AC-7001.1 시험
+  it.each(['/stats', '/stats/x', '/claim', '/patients', '/ai-report', '/forms', '/notices', '/settings', '/admin', '/sunapx'])(
     'AC-6306.3: 다른 주소(%s)는 본문 대신 막힌 화면 — h1 "데스크 계정은 볼 수 없는 화면이에요" · 글 · [수납일지로 가기](/sunap)',
     (path) => {
       pathname.mockReturnValue(path)
@@ -100,6 +102,45 @@ describe('AC-6306.3 DeskGate — 주소마다 본문·막힌 화면·수납일�
     rerender(gate())
     expect(container.innerHTML).toBe('<p>본문</p>')
     expect(router.replace).toHaveBeenCalledTimes(1)
+  })
+})
+
+// 데스크도 비트 PC 연결 화면을 연다 (desk-setup REQ-7001, design.md 1절, 시안 docs/mockups/desk-setup ③).
+// usePathname은 주소의 ?뒤를 주지 않는다 → ?next=dashboard로 열어도 경로는 /claim/setup이다
+describe('AC-7001.1·AC-7001.2 데스크의 비트 PC 연결 화면(/claim/setup)', () => {
+  it.each(['/claim/setup', '/claim/setup/x'])('AC-7001.1: %s는 isDeskPath가 참이고 DeskGate는 본문을 그대로 그린다(막힌 화면·수납일지로 바꾸기 없음)', (path) => {
+    expect(isDeskPath(path)).toBe(true)
+    pathname.mockReturnValue(path)
+    const { container } = render(gate())
+    expect(container.innerHTML).toBe('<p>본문</p>')
+    expect(screen.queryByText(TITLE)).toBeNull()
+    expect(router.replace).not.toHaveBeenCalled()
+  })
+
+  it.each(['/claim', '/claim/setupx', '/claim/x', '/settings', '/stats'])('AC-7001.1: %s는 지금처럼 막힌 화면이다', (path) => {
+    expect(isDeskPath(path)).toBe(false)
+    pathname.mockReturnValue(path)
+    render(gate())
+    expect(screen.queryByText('본문')).toBeNull()
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(TITLE)
+    expect(router.replace).not.toHaveBeenCalled()
+  })
+
+  it('AC-7001.1: /dashboard는 지금처럼 수납일지(/sunap)로 바꾸고 아무것도 그리지 않는다', () => {
+    pathname.mockReturnValue('/dashboard')
+    const { container } = render(gate())
+    expect(container.innerHTML).toBe('')
+    expect(router.replace).toHaveBeenCalledExactlyOnceWith('/sunap')
+  })
+
+  it('AC-7001.2: 데스크 탭 띠(DESK_MENU)는 지금처럼 업무일지·수납일지·예약 셋뿐이다(비트 PC 연결은 탭에 없다)', () => {
+    expect(DESK_MENU.map((m) => [m.label, m.path])).toEqual([
+      ['업무일지', '/worklog'],
+      ['수납일지', '/sunap'],
+      ['예약', '/calendar'],
+    ])
+    for (const item of DESK_MENU) expect(item.owns ?? [], item.label).not.toContain('/claim/setup')
+    expect(DESK_HOME).toBe('/sunap')
   })
 })
 

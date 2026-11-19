@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { RoleProvider } from '@/components/shell/role'
 import { ds } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
@@ -1292,5 +1293,124 @@ describe('AC-5103.1·AC-5103.3 비트 PC 연결의 웹앱 받기 단추', () => 
     expect((within(guide).getByRole('button', { name: '확장 내려받기' }) as HTMLButtonElement).disabled).toBe(true)
     expect(within(guide).getByRole('button', { name: '다시 확인' })).toBeTruthy()
     expect(document.body.textContent).not.toContain(RAW)
+  })
+})
+
+// 데스크로 연 비트 PC 연결 화면 (desk-setup REQ-7002, design.md 3절, 시안 docs/mockups/desk-setup ③).
+// 데스크인지는 앱 틀의 RoleProvider(useDesk)로 안다 — 앱 틀처럼 RoleProvider desk로 감싸 그린다.
+// 다른 점은 머리(제목 '비트 PC 연결', 안쪽 메뉴 없음)와 데스크가 못 여는 청구로 가는 두 곳('준비됨' 줄, busy 카드)뿐이다
+describe('AC-7002.1·AC-7002.2 데스크로 연 연결 화면', () => {
+  const DESK_CLINIC = '다라 정형외과의원'
+  const renderAs = (desk: boolean, props: Partial<Parameters<typeof SetupScreen>[0]> = {}) =>
+    render(
+      <RoleProvider desk={desk}>
+        <SetupScreen clinicName={desk ? DESK_CLINIC : CLINIC} {...props} />
+      </RoleProvider>,
+    )
+  const hrefs = () => screen.queryAllByRole('link').map((a) => a.getAttribute('href'))
+
+  it("AC-7002.1: 데스크면 제목(h1)은 '비트 PC 연결' 하나이고 안쪽 메뉴(설정 안 메뉴)와 설정 화면(/settings) 링크가 없다", async () => {
+    fakeExtension({ hello: HELLO })
+    renderAs(true)
+    await screen.findByText('준비됨')
+    const h1s = screen.getAllByRole('heading', { level: 1 })
+    expect(h1s.map((h) => h.textContent)).toEqual(['비트 PC 연결'])
+    hasAll(h1s[0], 'text-title font-semibold text-ink')
+    expect(screen.queryByRole('heading', { level: 1, name: '설정' })).toBeNull()
+    expect(screen.queryByRole('navigation', { name: '설정 안 메뉴' })).toBeNull()
+    expect(screen.queryAllByRole('navigation')).toEqual([])
+    expect(hrefs()).not.toContain('/settings')
+    expect(hrefs()).not.toContain('/claim/setup')
+  })
+
+  it("AC-7002.1: 데스크면 다 준비됐을 때 '준비됨' 줄 글이 '이 PC에서 수납일지 장부를 볼 수 있어요.'이고 단추는 [수납일지로 가기](/sunap, 같은 작은 주 단추) — 청구로 가는 글·링크가 없다", async () => {
+    fakeExtension({ hello: HELLO })
+    renderAs(true)
+    const ready = (await screen.findByText('준비됨')).parentElement as HTMLElement
+    expect(within(ready).getByText('이 PC에서 수납일지 장부를 볼 수 있어요.')).toBeTruthy()
+    const go = within(ready).getByRole('link', { name: '수납일지로 가기' })
+    expect(go.getAttribute('href')).toBe('/sunap')
+    hasAll(go, `${ds.button.primarySmall} no-underline`)
+    expect(within(ready).getByText(/^마지막 확인 \d{1,2}월 \d{1,2}일/)).toBeTruthy()
+    expect(screen.queryByText('이 PC에서 청구 화면을 쓸 수 있어요.')).toBeNull()
+    expect(screen.queryByRole('link', { name: '청구로 가기' })).toBeNull()
+    expect(hrefs()).toEqual(['/sunap'])
+    expect(primaries()).toEqual([go])
+    // '이 PC' 옆 의원 이름은 받은 데스크 병원 이름
+    expect(pcValue('요양기관기호').textContent).toBe(`1234**** · ${DESK_CLINIC}`)
+  })
+
+  it('AC-7002.1: 데스크면 다른 창이 연결을 쓰는 중(busy) 카드에 [다시 확인]만 있고 [건수만 보기](/claim)가 없다', async () => {
+    const fake = fakeExtension({ hello: 'busy' })
+    renderAs(true)
+    const card = await screen.findByRole('alert')
+    await waitFor(() => expectInfo(card, 'E-BRIDGE-BUSY'))
+    expect(within(card).queryByRole('link', { name: '건수만 보기' })).toBeNull()
+    expect(screen.queryAllByRole('link')).toEqual([])
+    expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual(['비트 PC 연결'])
+    expect(screen.queryByRole('navigation', { name: '설정 안 메뉴' })).toBeNull()
+    expect(screen.queryByRole('list', { name: '준비 순서' })).toBeNull()
+    await userEvent.setup().click(within(card).getByRole('button', { name: '다시 확인' }))
+    await waitFor(() => expect(fake.ports).toHaveLength(2))
+  })
+
+  it('AC-7002.1: 데스크면 안내·단계·[확장 내려받기]·[도우미 내려받기]·연결 확인은 원장 화면과 같다', async () => {
+    const seen = async (desk: boolean, arrange: () => void, meta: string) => {
+      arrange()
+      renderAs(desk)
+      await screen.findByText(meta)
+      const out = {
+        steps: stepList().textContent,
+        buttons: screen.getAllByRole('button').map((b) => b.textContent),
+        note: NOTE.map((t) => screen.queryByText(t) !== null),
+        pc: pcPanel().textContent,
+        keep: screen.getByRole('region', { name: '이렇게 지켜요' }).textContent,
+      }
+      cleanup()
+      vi.unstubAllGlobals()
+      return out
+    }
+    const helperMissing = () => void fakeExtension({ hello: { type: 'error', code: 'E-HELPER-MISSING' } })
+    for (const [arrange, meta] of [
+      [noExtension, EXTENSION_META],
+      [helperMissing, HELPER_META],
+    ] as const) {
+      const owner = await seen(false, arrange, meta)
+      const desk = await seen(true, arrange, meta)
+      expect(desk).toEqual(owner)
+    }
+    // 처음(확장 없음): 맨 위 안내 두 줄과 1단계 [확장 내려받기]가 데스크에게도 있다
+    noExtension()
+    renderAs(true)
+    await screen.findByText(EXTENSION_META)
+    for (const t of NOTE) expect(screen.getByText(t)).toBeTruthy()
+    const get = expectDownload(row(STEP_TITLES[0]), '확장 내려받기', EXTENSION_META)
+    await userEvent.setup().click(get)
+    expect(installStore.download).toHaveBeenCalledWith(EXTENSION_FILE)
+  })
+
+  it("AC-7002.2: 원장(RoleProvider desk={false})이면 지금과 같다 — 제목 '설정'과 안쪽 메뉴([설정]·[비트 PC 연결]), '준비됨' 줄 [청구로 가기]", async () => {
+    fakeExtension({ hello: HELLO })
+    renderAs(false)
+    await screen.findByText('준비됨')
+    expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual(['설정'])
+    const sub = screen.getByRole('navigation', { name: '설정 안 메뉴' })
+    expect(within(sub).getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      ['설정', '/settings'],
+      ['비트 PC 연결', '/claim/setup'],
+    ])
+    expect(screen.getByText('이 PC에서 청구 화면을 쓸 수 있어요.')).toBeTruthy()
+    expect(screen.getByRole('link', { name: '청구로 가기' }).getAttribute('href')).toBe('/claim')
+    expect(screen.queryByText('이 PC에서 수납일지 장부를 볼 수 있어요.')).toBeNull()
+    expect(screen.queryByRole('link', { name: '수납일지로 가기' })).toBeNull()
+  })
+
+  it('AC-7002.2: 원장이면 busy 카드에 지금처럼 [건수만 보기](/claim)가 있다', async () => {
+    fakeExtension({ hello: 'busy' })
+    renderAs(false)
+    const card = await screen.findByRole('alert')
+    await waitFor(() => expectInfo(card, 'E-BRIDGE-BUSY'))
+    expect(within(card).getByRole('link', { name: '건수만 보기' }).getAttribute('href')).toBe('/claim')
+    expect(screen.getByRole('heading', { level: 1, name: '설정' })).toBeTruthy()
   })
 })
