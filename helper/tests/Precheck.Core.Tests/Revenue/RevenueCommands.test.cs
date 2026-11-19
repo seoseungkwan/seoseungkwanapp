@@ -133,11 +133,11 @@ public class RevenueCommandsTests
         Assert.Empty(rig.Connector.Opened);
     }
 
-    [Fact(DisplayName = "AC-003.7 AC-4101.1 AC-4405.1 답의 칸은 AC-002.2와 같다: {days, codes, dayCodes}, 날 줄 15칸(확인 필요한 날만 roughTotal을 더해 16칸), 코드 줄 4칸, 칸 이름 camelCase, null 그대로")]
+    [Fact(DisplayName = "AC-003.7 AC-4101.1 AC-4405.1 AC-6912.6 답의 칸은 AC-002.2와 같다: {days, codes, dayCodes}, 날 줄 15칸(금액이 음수라 확인 필요한 날만 roughTotal을 더해 16칸), 코드 줄 4칸, 칸 이름 camelCase, null 그대로")]
     public void ReplyHasExactFields()
     {
         using var rig = Ready();
-        RevenueFake.RowOn(rig.Session, RevenueSql.UnsupportedFinance, "20261031", new object?[] { 1L }, new object?[] { 0L });
+        RevenueFake.RowOn(rig.Session, RevenueSql.FinanceNormal, "20261031", RevenueFake.NegativeCash, RevenueFake.Normal);
         RevenueFake.Codes(rig.Session,
             RevenueFake.Code("도수", 4, 12345.67m, name: "도수치료"),
             RevenueFake.Code("NONAME", 1, null, missing: 1));
@@ -187,6 +187,26 @@ public class RevenueCommandsTests
         Assert.All(RemainingKeys, key => Assert.Equal(JsonValueKind.Number, days[1].GetProperty(key).ValueKind));
         Assert.False(days[0].GetProperty("splitUnconfirmed").GetBoolean());
         Assert.All(MoneyKeys, key => Assert.Equal(JsonValueKind.Number, days[0].GetProperty(key).ValueKind));
+    }
+
+    [Fact(DisplayName = "AC-6912.1 AC-6912.6 세 검사에 걸리던 날(가짜 DB가 세 검사에 1을 답함)의 답도 보통 날과 같다: 날 줄 15칸, 금액 아홉 칸 숫자, unconfirmed·splitUnconfirmed 거짓, roughTotal 열쇠 없음")]
+    public void CaughtDayReplyIsPlain()
+    {
+        using var rig = Ready();
+        RevenueFake.ChecksCaught(rig.Session);
+        var reply = Assert.Single(Handle(rig).Sink.Replies);
+        var days = reply.GetProperty("data").GetProperty("days").EnumerateArray().ToArray();
+
+        Assert.Equal(3, days.Length);
+        Assert.All(days, day =>
+        {
+            Assert.Equal(DayKeys, Json.Keys(day));
+            Assert.False(day.GetProperty("unconfirmed").GetBoolean());
+            Assert.False(day.GetProperty("splitUnconfirmed").GetBoolean());
+            Assert.All(MoneyKeys, key => Assert.Equal(JsonValueKind.Number, day.GetProperty(key).ValueKind));
+            Assert.Equal(1050000, day.GetProperty("total").GetInt64());
+        });
+        Assert.DoesNotContain(rig.Session.Sqls, RevenueFake.Checks.Contains);
     }
 
     [Fact(DisplayName = "AC-003.7 가짜 DB가 준 가짜 차트번호·이름이 답·진단 기록 어디에도 없다")]
@@ -275,10 +295,10 @@ public class RevenueCommandsTests
         Assert.Equal(("revenue.days", (string?)"E-BIT-READ-FAILED"), Assert.Single(outcome.Log));
     }
 
-    [Fact(DisplayName = "AC-4101.5 AC-4405.3 도우미 판은 0.12.0이고 명령 표의 revenue.days는 그대로다(새 명령·새 인자 없음: from·to 날짜, 31일, 환자 아님)")]
+    [Fact(DisplayName = "AC-4101.5 AC-4405.3 AC-6912.6 도우미 판은 0.13.0이고 명령 표의 revenue.days는 그대로다(새 명령·새 인자 없음: from·to 날짜, 31일, 환자 아님)")]
     public void VersionAndCommandTableStay()
     {
-        Assert.Equal("0.12.0", HelperVersion.Value);
+        Assert.Equal("0.13.0", HelperVersion.Value);
 
         using var table = JsonDocument.Parse(CommandTable.EmbeddedBytes());
         var commands = table.RootElement.GetProperty("commands");
@@ -289,13 +309,30 @@ public class RevenueCommandsTests
         Assert.Equal(1, table.RootElement.GetProperty("protocol").GetInt32());
     }
 
+    [Fact(DisplayName = "AC-6912.6 도우미 판은 0.13.0이고 revenue.days 답의 칸 이름은 그대로다: {days, codes, dayCodes}, 날 줄 15칸, 코드 줄 4칸(새 칸 없음), 명령 13개·protocol 1")]
+    public void VersionAndReplyKeysStay()
+    {
+        Assert.Equal("0.13.0", HelperVersion.Value);
+
+        using var rig = Ready();
+        RevenueFake.Codes(rig.Session, RevenueFake.Code("MM101", 1, 1m, name: "가상 처방"));
+        var data = Assert.Single(Handle(rig).Sink.Replies).GetProperty("data");
+        Assert.Equal(new[] { "days", "codes", "dayCodes" }, Json.Keys(data));
+        Assert.All(data.GetProperty("days").EnumerateArray(), day => Assert.Equal(DayKeys, Json.Keys(day)));
+        Assert.All(data.GetProperty("codes").EnumerateArray(), code => Assert.Equal(new[] { "code", "name", "count", "amount" }, Json.Keys(code)));
+
+        using var table = JsonDocument.Parse(CommandTable.EmbeddedBytes());
+        Assert.Equal(13, table.RootElement.GetProperty("commands").EnumerateObject().Count());
+        Assert.Equal(1, table.RootElement.GetProperty("protocol").GetInt32());
+    }
+
     // ---- AC-4405 확인 필요한 날의 참고 금액(roughTotal)·판 0.7.0 ------------------------------------------
 
-    [Fact(DisplayName = "AC-4405.2 답 JSON: 확인 필요한 날 줄 끝에만 \"roughTotal\":정수(음수 그대로)가 붙고 확인된 날 줄에는 열쇠가 없다, 다른 칸·차례는 그대로")]
+    [Fact(DisplayName = "AC-4405.2 AC-6912.2 답 JSON: 금액이 음수라 확인 필요한 날 줄 끝에만 \"roughTotal\":정수(음수 그대로)가 붙고 확인된 날 줄에는 열쇠가 없다, 다른 칸·차례는 그대로")]
     public void RoughTotalReplyShape()
     {
         using var rig = Ready();
-        RevenueFake.RowOn(rig.Session, RevenueSql.ReceivableMultiplicity, "20261030", new object?[] { 1L }, new object?[] { 0L });
+        RevenueFake.RowOn(rig.Session, RevenueSql.FinanceNormal, "20261030", RevenueFake.NegativeCash, RevenueFake.Normal);
         RevenueFake.RoughRows(rig.Session, new[] { RevenueFake.RoughLine("D001", 1000.9m) }, new[] { RevenueFake.RoughLine("D002", -3000.9m) });
         var days = Assert.Single(Handle(rig, "2026-10-30", "2026-10-31").Sink.Replies).GetProperty("data").GetProperty("days").EnumerateArray().ToArray();
 
@@ -308,10 +345,10 @@ public class RevenueCommandsTests
         Assert.Equal(DayKeys, Json.Keys(days[1]));
     }
 
-    [Fact(DisplayName = "AC-4405.3 판은 0.12.0이고 명령 목록은 그대로다(명령 13개·protocol 1, stats.rows·revenue.days 새 인자 없음)")]
+    [Fact(DisplayName = "AC-4405.3 AC-6912.6 판은 0.13.0이고 명령 목록은 그대로다(명령 13개·protocol 1, stats.rows·revenue.days 새 인자 없음)")]
     public void VersionIsZeroSevenAndCommandsStay()
     {
-        Assert.Equal("0.12.0", HelperVersion.Value);
+        Assert.Equal("0.13.0", HelperVersion.Value);
 
         using var table = JsonDocument.Parse(CommandTable.EmbeddedBytes());
         var commands = table.RootElement.GetProperty("commands");

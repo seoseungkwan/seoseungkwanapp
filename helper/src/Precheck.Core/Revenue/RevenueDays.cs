@@ -52,7 +52,7 @@ public sealed class RevenueDay
     [JsonPropertyName("receivableIn")]
     public long? ReceivableIn { get; set; }
 
-    /// <summary>금액 아홉 칸이 모두 null이다. SplitUnconfirmed와 함께 참이 되지 않는다.</summary>
+    /// <summary>금액 아홉 칸이 모두 null이다(도우미 0.13.0부터 금액이 음수인 날만, spec bit-total AC-6912.2). SplitUnconfirmed와 함께 참이 되지 않는다.</summary>
     [JsonPropertyName("unconfirmed")]
     public bool Unconfirmed { get; set; }
 
@@ -62,6 +62,7 @@ public sealed class RevenueDay
 
     /// <summary>
     /// 확인 필요한 날(Unconfirmed)의 참고 금액(spec first90 AC-4405.1, 도우미 0.7.0부터). 원 단위 정수이고 환불이 크면 음수다.
+    /// 0.13.0부터 Unconfirmed는 금액이 음수인 날뿐이라 이 값도 그날에만 생긴다(spec bit-total AC-6912.2).
     /// 그 밖의 날은 null이고 JSON에 열쇠를 쓰지 않는다(AC-4405.2).
     /// </summary>
     [JsonPropertyName("roughTotal")]
@@ -177,24 +178,16 @@ public static class RevenueDays
     }
 
     /// <summary>
-    /// 세 검사를 원본 순서대로 보고, 모두 지난 날만 금액을 읽는다(AC-003.1). 맞춰 고치지 않고 칸을 비운다. 두 표시는 함께 참이 되지 않는다(AC-003.2):
-    /// Unconfirmed(금액 아홉 칸 null) = 세 검사 또는 total·cash·card·transfer·receivableIn의 음수. 이쪽을 먼저 본다.
-    /// SplitUnconfirmed(나눔 네 칸만 null, 남는 다섯 칸은 그대로) = insurer + copay ≠ 요양비용총액 또는 insurer·noncovered·copay·otherTotal의 음수.
+    /// 그날 금액을 읽는다. 도우미 0.13.0(spec bit-total AC-6912.1)부터 세 검사(환불·변경수납·예치금·연결 중복)를 돌리지 않고, 그런 날도 다른 날과 같은
+    /// 문장 넷(FinanceNormal → FinanceReceivable → 두 Extra)으로 같은 칸을 채운다. RevenueSql의 세 검사 상수는 수납일지가 계속 쓴다.
+    /// 맞춰 고치지 않고 칸을 비운다. 두 표시는 함께 참이 되지 않는다(AC-003.2):
+    /// Unconfirmed(금액 아홉 칸 null) = total·cash·card·transfer·receivableIn의 음수(AC-6912.2: DB 칸 >= 0 제약과 웹 검사가 음수 금액을 받지 않는다). 이쪽을 먼저 본다.
+    /// SplitUnconfirmed(나눔 네 칸만 null, 남는 다섯 칸은 그대로) = insurer + copay ≠ 요양비용총액 또는 insurer·noncovered·copay·otherTotal의 음수(AC-6912.3, 지금 그대로).
     /// otherTotal은 나머지라서 총액에 섞인 다른 금액도 여기에 든다. 그것을 잡는 것은 의원 PC 확인표 ⑤뿐이다(design.md 2절 2).
-    /// Unconfirmed로 끝나는 두 곳(세 검사, 음수)에서만 참고 금액 RoughTotal을 더 읽는다(spec first90 AC-4405.1). 다른 칸·검사 순서는 그대로다(AC-4405.2).
+    /// Unconfirmed로 끝나는 곳(음수)에서만 참고 금액 RoughTotal을 더 읽는다(spec first90 AC-4405.1, bit-total AC-6912.2).
     /// </summary>
     private static void ReadMoney(IBitDb db, IReadOnlyDictionary<string, string> values, RevenueDay row)
     {
-        foreach (var check in new[] { RevenueSql.UnsupportedFinance, RevenueSql.FinanceMultiplicity, RevenueSql.ReceivableMultiplicity })
-        {
-            if (Number(Row(db, check, values, 1)[0]) != 0)
-            {
-                row.Unconfirmed = true;
-                row.RoughTotal = Rough(db, values);
-                return;
-            }
-        }
-
         var normal = Amounts(db, RevenueSql.FinanceNormal, values, 6);
         var receivable = Amounts(db, RevenueSql.FinanceReceivable, values, 6);
         var normalExtra = Amounts(db, RevenueSql.FinanceNormalExtra, values, 2);
@@ -243,7 +236,7 @@ public static class RevenueDays
     }
 
     /// <summary>
-    /// 확인 필요한 날의 참고 금액(spec first90 AC-4405.1): 통계 원장님별 금액 doctorDays와 같은 두 문장(StatsSql 정상수납 → 미수입금)을
+    /// 금액이 음수라 확인 필요한 날의 참고 금액(spec first90 AC-4405.1, bit-total AC-6912.2): 통계 원장님별 금액 doctorDays와 같은 두 문장(StatsSql 정상수납 → 미수입금)을
     /// 그날 @day·@nextDay·@hospital로 읽는다. 줄마다 셋째 칸(총진료비)의 원 미만을 버리고(0 쪽으로) 모두 더한다. 환불 음수는 그대로 빼고,
     /// 진료의 칸이 빈 줄도 그날 수납이라 더한다. 칸이 모자라거나 숫자가 아니거나 웹이 받지 못하는 큰 값이면 읽기 실패다(일부만 답하지 않음).
     /// </summary>

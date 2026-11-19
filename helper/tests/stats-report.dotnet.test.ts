@@ -1,5 +1,5 @@
-// 도우미 보고 숫자 읽기(TASK-4, REQ-504)의 C# 시험을 감싼다.
-// - Precheck.Core.Tests.Stats(보고 SQL 사본 대조·@daily 관문, 네 벌의 기간·순서·칸, 금액 확인 필요, 그 벌만 실패, 원 미만 버림)
+// 도우미 보고 숫자 읽기(TASK-4, REQ-504)와 도우미 0.13.0의 보고 금액(spec bit-total TASK-9, REQ-6912)의 C# 시험을 감싼다.
+// - Precheck.Core.Tests.Stats(보고 SQL 사본 대조·@daily 관문, 네 벌의 기간·순서·칸, 세 검사 없이 늘 금액, 그 벌만 실패, 원 미만 버림)
 // dotnet test를 한 번 돌리고, AC마다 그 AC ID가 붙은 C# 시험이 실제로 돌았고 하나도 실패하지 않았는지 본다.
 import { beforeAll, describe, expect, it } from 'vitest'
 import { runDotnet } from './runDotnet'
@@ -31,7 +31,7 @@ describe('REQ-504 도우미 보고 숫자 읽기 (C# Precheck.Core.Tests.Stats)'
     expectAc('AC-504.1')
   })
 
-  it('AC-504.2 환불·변경수납·예치금·연결 중복이면 그 벌만 금액 확인 필요(사유 포함)이고 총환·신환·치료·LA는 그대로다', () => {
+  it('AC-504.2 AC-6912.4 환불·변경수납·예치금·연결 중복이 있어도 세 검사를 돌리지 않고 금액 여섯 칸을 채운다(financeUnconfirmed 거짓·사유 열쇠 없음), 총환·신환·치료·LA는 그대로다', () => {
     expectAc('AC-504.2')
   })
 
@@ -41,6 +41,20 @@ describe('REQ-504 도우미 보고 숫자 읽기 (C# Precheck.Core.Tests.Stats)'
 
   it('AC-504.4 AC-1001.3 보고 SQL은 연결 조건 한 가지만 바꾼 원본 사본과 공백만 다르고 @daily는 Char(1)로 관문을 지나며 금액은 원 미만을 버린 정수다', () => {
     expectAc('AC-504.4')
+  })
+})
+
+describe('REQ-6912 도우미 0.13.0 — 그런 달도 보고 금액을 다 읽는다 (spec bit-total, C# Precheck.Core.Tests.Stats)', () => {
+  it('AC-6912.4 보고 한 벌은 스냅숏 → HistoryGuard → Patients → Treatments → LaCodes → FinanceNormal → FinanceReceivable, 세 검사 문장 없음, 금액 여섯 칸(원 미만 버림·음수 그대로), financeUnconfirmed 늘 거짓·financeUnconfirmedReason 열쇠 없음', () => {
+    expectAc('AC-6912.4')
+  })
+
+  it("AC-6912.5 금액 안내는 '… 연결 중복이 있는 기간도 같은 조건으로 집계해 비트 원본 통계와 다를 수 있습니다.'이고 '금액을 자동 집계하지 않았습니다' 안내는 없다", () => {
+    expectAc('AC-6912.5')
+  })
+
+  it('AC-6912.6 도우미 판 0.13.0', () => {
+    expectAc('AC-6912.6')
   })
 })
 

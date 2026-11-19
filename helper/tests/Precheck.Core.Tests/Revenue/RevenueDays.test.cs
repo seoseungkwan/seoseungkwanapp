@@ -76,8 +76,8 @@ public class RevenueDaysTests
 
     // ---- AC-003.1 어떤 문장을 언제 돌리는가 -------------------------------------------------------------
 
-    [Fact(DisplayName = "AC-003.1 AC-4101.2 3일 기간이면 줄 3개, HistoryGuard 한 번, 날마다 문장 8개를 그날 기간으로, 그 뒤 CodeAmounts 한 번, 맨 끝에 CodeAmountsByDay 한 번")]
-    public void RunsEightStatementsEachDay()
+    [Fact(DisplayName = "AC-003.1 AC-4101.2 AC-6912.1 3일 기간이면 줄 3개, HistoryGuard 한 번, 날마다 문장 5개(FinanceNormal → FinanceReceivable → FinanceNormalExtra → FinanceReceivableExtra → Patients)를 그날 기간으로, 그 뒤 CodeAmounts 한 번, 맨 끝에 CodeAmountsByDay 한 번")]
+    public void RunsFiveStatementsEachDay()
     {
         var db = RevenueFake.Quiet(new FakeDb());
         var result = Read(db, First, Last);
@@ -87,13 +87,13 @@ public class RevenueDaysTests
         Assert.Empty(db.Calls[0].Args);
         Assert.Equal(RevenueSql.CodeAmounts, db.Calls[db.Calls.Count - 2].Sql);
         Assert.Equal(RevenueSql.CodeAmountsByDay, db.Calls[db.Calls.Count - 1].Sql);
-        Assert.Equal(1 + 3 * 8 + 2, db.Calls.Count);
+        Assert.Equal(1 + 3 * 5 + 2, db.Calls.Count);
 
         var days = new[] { ("20261030", "20261031"), ("20261031", "20261101"), ("20261101", "20261102") };
         foreach (var (day, next) in days)
         {
             var calls = RevenueFake.CallsOn(db, next);
-            Assert.Equal(Sorted(RevenueFake.EightStatements), Sorted(calls.Select(call => call.Sql)));
+            Assert.Equal(RevenueFake.FiveStatements, calls.Select(call => call.Sql));
             foreach (var call in calls)
             {
                 var expected = new Dictionary<string, string>
@@ -106,9 +106,8 @@ public class RevenueDaysTests
                 };
                 foreach (var arg in call.Args) Assert.Equal(expected[arg.Key], arg.Value);
             }
-            var checks = calls.Select(call => call.Sql).Where(RevenueFake.Checks.Contains);
-            Assert.Equal(RevenueFake.Checks, checks);
         }
+        Assert.DoesNotContain(db.Calls, call => RevenueFake.Checks.Contains(call.Sql));
     }
 
     [Fact(DisplayName = "AC-003.1 모든 읽기의 시간 제한은 원본 CommandTimeout=90과 같다")]
@@ -119,23 +118,24 @@ public class RevenueDaysTests
         Assert.All(db.Calls, call => Assert.Equal(TimeSpan.FromSeconds(90), call.Timeout));
     }
 
-    [Theory(DisplayName = "AC-003.1 AC-4405.1 검사에 걸린 날은 남은 검사·금액 문장을 돌리지 않고 참고 금액 문장 둘만 더 돌린다(4개·5개·6개)")]
-    [InlineData(0, 4)]
-    [InlineData(1, 5)]
-    [InlineData(2, 6)]
-    public void StopsAtFirstFailedCheck(int check, int statements)
+    [Theory(DisplayName = "AC-003.1 AC-6912.1 세 검사 문장(UnsupportedFinance·FinanceMultiplicity·ReceivableMultiplicity)은 부르지 않는다: 가짜 DB가 검사에 1을 답해도 날마다 문장 5개뿐이고 참고 금액 문장도 없다")]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(-1)]
+    public void NeverRunsTheThreeChecks(int check)
     {
         var db = RevenueFake.Quiet(new FakeDb());
-        RevenueFake.RowOn(db, RevenueFake.Checks[check], "20261031", new object?[] { 1L }, new object?[] { 0L });
+        if (check < 0) RevenueFake.ChecksCaught(db);
+        else RevenueFake.Row(db, RevenueFake.Checks[check], 1L);
         Read(db, First, Last);
 
-        var caught = RevenueFake.CallsOn(db, "20261101").Select(call => call.Sql).ToArray();
-        Assert.Equal(statements, caught.Length);
-        Assert.Equal(
-            Sorted(RevenueFake.Checks.Take(check + 1).Concat(RevenueFake.RoughStatements).Concat(new[] { RevenueSql.Patients })),
-            Sorted(caught));
-        Assert.Equal(8, RevenueFake.CallsOn(db, "20261031").Count);
-        Assert.Equal(8, RevenueFake.CallsOn(db, "20261102").Count);
+        Assert.DoesNotContain(db.Calls, call => RevenueFake.Checks.Contains(call.Sql));
+        Assert.DoesNotContain(db.Calls, call => RevenueFake.RoughStatements.Contains(call.Sql));
+        foreach (var next in new[] { "20261031", "20261101", "20261102" })
+        {
+            Assert.Equal(RevenueFake.FiveStatements, RevenueFake.CallsOn(db, next).Select(call => call.Sql));
+        }
     }
 
     // ---- AC-003.2 금액 ------------------------------------------------------------------------------
@@ -204,24 +204,87 @@ public class RevenueDaysTests
         Assert.All(Money(day), value => Assert.Equal(0L, value));
     }
 
-    [Theory(DisplayName = "AC-003.2 세 검사 가운데 하나가 0이 아니면 그날만 unconfirmed(splitUnconfirmed는 거짓), 금액 아홉 칸 null")]
+    [Theory(DisplayName = "AC-003.2 AC-6912.1 세 검사에 걸리던 날(환불·변경수납·예치금·연결 중복)도 확인된 날과 같은 칸·같은 규칙으로 금액 아홉 칸을 채우고 unconfirmed·splitUnconfirmed 거짓, roughTotal 열쇠 없음")]
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(2)]
-    public void FailedCheckMakesOnlyThatDayUnconfirmed(int check)
+    [InlineData(-1)]
+    public void CaughtDayIsReadLikeOtherDays(int check)
+    {
+        var plain = OneDay(RevenueFake.Quiet(new FakeDb()));
+        var db = RevenueFake.Quiet(new FakeDb());
+        if (check < 0) RevenueFake.ChecksCaught(db);
+        else RevenueFake.Row(db, RevenueFake.Checks[check], 1L);
+        var day = OneDay(db);
+
+        AssertNoFlag(day);
+        Assert.False(HasRough(day));
+        Assert.Equal(Money(plain), Money(day));
+        Assert.Equal(new long?[] { 1050000L, 310000L, 405000L, 155000L, 180000L, 200000L, 300000L, 100000L, 24000L }, Money(day));
+        Assert.Equal(10L, day.Visits);
+    }
+
+    [Fact(DisplayName = "AC-6912.1 세 검사에 걸리던 날도 금액은 두 문장 합 뒤 원 미만을 버리고 otherTotal은 나머지다(0.6 + 0.6 → 1, 12345.07 + 0.6 → 12345)")]
+    public void CaughtDayUsesSameMoneyRules()
     {
         var db = RevenueFake.Quiet(new FakeDb());
-        RevenueFake.RowOn(db, RevenueFake.Checks[check], "20261031", new object?[] { 1L }, new object?[] { 0L });
-        var days = Read(db, First, Last).Days;
+        RevenueFake.ChecksCaught(db);
+        RevenueFake.Row(db, RevenueSql.FinanceNormal, 12345.07m, 1000m, 2000m, 100.9m, 200.9m, 300.9m);
+        RevenueFake.Row(db, RevenueSql.FinanceReceivable, 0.6m, 0m, 0m, 0.4m, 0.4m, 0.4m);
+        RevenueFake.Row(db, RevenueSql.FinanceNormalExtra, 1500m, 500m);
+        RevenueFake.Row(db, RevenueSql.FinanceReceivableExtra, null, null);
+        var day = OneDay(db);
 
-        AssertUnconfirmed(days[1]);
-        Assert.False(days[0].Unconfirmed);
-        Assert.False(days[2].Unconfirmed);
-        Assert.Equal(1050000L, days[0].Total);
-        Assert.Equal(1050000L, days[2].Total);
+        AssertNoFlag(day);
+        Assert.Equal(12345L, day.Total);
+        Assert.Equal(1000L, day.Insurer);
+        Assert.Equal(2000L, day.Noncovered);
+        Assert.Equal(500L, day.Copay);
+        Assert.Equal(12345L - 1500L - 2000L, day.OtherTotal);
+        Assert.Equal(100L, day.Cash);
+        Assert.Equal(200L, day.Card);
+        Assert.Equal(300L, day.Transfer);
+        Assert.Equal(1L, day.ReceivableIn);
+    }
 
-        // 건수는 금액과 상관없이 남는다
-        Assert.Equal(10L, days[1].Visits);
+    [Fact(DisplayName = "AC-6912.2 세 검사에 걸리던 날도 total·cash·card·transfer·receivableIn이 음수면 지금처럼 unconfirmed 참, 금액 아홉 칸 null, roughTotal = 참고 금액")]
+    public void CaughtNegativeDayIsUnconfirmed()
+    {
+        var db = RevenueFake.Quiet(new FakeDb());
+        RevenueFake.ChecksCaught(db);
+        RevenueFake.Row(db, RevenueSql.FinanceNormal, RevenueFake.NegativeCash);
+        var day = OneDay(db);
+
+        AssertUnconfirmed(day);
+        Assert.Equal(RevenueFake.Rough, RoughOf(day));
+        Assert.Equal(
+            RevenueFake.MoneyStatements.Concat(RevenueFake.RoughStatements).Concat(new[] { RevenueSql.Patients }),
+            RevenueFake.CallsOn(db, "20261031").Select(call => call.Sql));
+    }
+
+    [Fact(DisplayName = "AC-6912.3 세 검사에 걸리던 날도 insurer + copay ≠ 요양비용총액이면 지금처럼 splitUnconfirmed, 나눔 네 칸만 null·다섯 칸은 채움, unconfirmed 거짓, roughTotal 열쇠 없음")]
+    public void CaughtMismatchDayIsSplitOnly()
+    {
+        var db = RevenueFake.Quiet(new FakeDb());
+        RevenueFake.ChecksCaught(db);
+        RevenueFake.Row(db, RevenueSql.FinanceNormalExtra, 450001m, 150000m);
+        var day = OneDay(db);
+
+        AssertSplitUnconfirmed(day);
+        Assert.False(HasRough(day));
+        Assert.DoesNotContain(db.Calls, call => RevenueFake.RoughStatements.Contains(call.Sql));
+    }
+
+    [Fact(DisplayName = "AC-6912.3 세 검사에 걸리던 날도 나눔 칸(비급여)이 버린 뒤 음수면 지금처럼 splitUnconfirmed, 네 칸만 null")]
+    public void CaughtNegativeSplitDayIsSplitOnly()
+    {
+        var db = RevenueFake.Quiet(new FakeDb());
+        RevenueFake.ChecksCaught(db);
+        RevenueFake.Row(db, RevenueSql.FinanceNormal, 1000000m, 300000m, -6000m, 200000m, 300000m, 100000m);
+        var day = OneDay(db);
+
+        AssertSplitUnconfirmed(day);
+        Assert.False(HasRough(day));
     }
 
     [Fact(DisplayName = "AC-003.2 insurer + copay ≠ 요양비용총액이면 그날만 splitUnconfirmed, 나눔 네 칸만 null, total·cash·card·transfer·receivableIn은 그대로(맞춰 고치지 않음)")]
@@ -362,33 +425,43 @@ public class RevenueDaysTests
 
     // ---- AC-4405 확인 필요한 날의 참고 금액(roughTotal) --------------------------------------------------
 
-    [Theory(DisplayName = "AC-4405.1 세 검사에 걸린 날은 roughTotal = 그날 정상수납 + 미수입금 줄 총진료비의 합(줄마다 원 미만 버림)이고 금액 아홉 칸은 그대로 null")]
+    [Theory(DisplayName = "AC-4405.1 AC-6912.1 참고 금액은 이제 음수인 날에만: 세 검사에 걸리던 날은 roughTotal 열쇠가 없고 금액 아홉 칸이 숫자다, 음수인 날만 roughTotal = 그날 정상수납 + 미수입금 줄 총진료비의 합(줄마다 원 미만 버림)")]
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(2)]
-    public void CaughtDayGetsRoughTotal(int check)
+    public void RoughTotalOnlyOnNegativeDays(int check)
     {
         var db = RevenueFake.Quiet(new FakeDb());
-        RevenueFake.RowOn(db, RevenueFake.Checks[check], "20261031", new object?[] { 1L }, new object?[] { 0L });
+        RevenueFake.Row(db, RevenueFake.Checks[check], 1L);
+        RevenueFake.RowOn(db, RevenueSql.FinanceNormal, "20261101", RevenueFake.NegativeCash, RevenueFake.Normal);
         var days = Read(db, First, Last).Days;
 
-        AssertUnconfirmed(days[1]);
-        Assert.Equal(RevenueFake.Rough, RoughOf(days[1]));
-        Assert.Null(RoughOf(days[0]));
-        Assert.Null(RoughOf(days[2]));
+        AssertNoFlag(days[0]);
+        AssertNoFlag(days[1]);
+        Assert.False(HasRough(days[0]));
+        Assert.False(HasRough(days[1]));
+        Assert.Equal(1050000L, days[1].Total);
+        AssertUnconfirmed(days[2]);
+        Assert.Equal(RevenueFake.Rough, RoughOf(days[2]));
     }
 
-    [Fact(DisplayName = "AC-4405.1 참고 금액 문장은 원장님별 doctorDays와 같은 글(StatsSql 정상수납 → 미수입금)을 그날 @day·@nextDay·@hospital로 90초 제한, 걸린 검사 바로 뒤·Patients 앞에 한 번씩 돌린다")]
+    [Fact(DisplayName = "AC-4405.1 AC-6912.2 참고 금액 문장은 원장님별 doctorDays와 같은 글(StatsSql 정상수납 → 미수입금)을 그날 @day·@nextDay·@hospital로 90초 제한, 음수인 날의 금액 문장 넷 뒤·Patients 앞에 한 번씩 돌린다(그날 문장 일곱)")]
     public void RoughStatementsUseThatDay()
     {
         var db = RevenueFake.Quiet(new FakeDb());
-        RevenueFake.RowOn(db, RevenueSql.FinanceMultiplicity, "20261031", new object?[] { 1L }, new object?[] { 0L });
+        RevenueFake.RowOn(db, RevenueSql.FinanceNormal, "20261031", RevenueFake.NegativeCash, RevenueFake.Normal);
         Read(db, First, Last);
 
         var calls = RevenueFake.CallsOn(db, "20261101");
         Assert.Equal(
-            new[] { RevenueSql.UnsupportedFinance, RevenueSql.FinanceMultiplicity, StatsSql.DoctorMoneyNormalSql, StatsSql.DoctorMoneyReceivableSql, RevenueSql.Patients },
+            new[]
+            {
+                RevenueSql.FinanceNormal, RevenueSql.FinanceReceivable, RevenueSql.FinanceNormalExtra, RevenueSql.FinanceReceivableExtra,
+                StatsSql.DoctorMoneyNormalSql, StatsSql.DoctorMoneyReceivableSql, RevenueSql.Patients,
+            },
             calls.Select(call => call.Sql));
+        Assert.Equal(RevenueFake.FiveStatements, RevenueFake.CallsOn(db, "20261031").Select(call => call.Sql));
+        Assert.Equal(RevenueFake.FiveStatements, RevenueFake.CallsOn(db, "20261102").Select(call => call.Sql));
         foreach (var call in calls.Where(call => RevenueFake.RoughStatements.Contains(call.Sql)))
         {
             Assert.Equal(3, call.Args.Count);
@@ -401,7 +474,7 @@ public class RevenueDaysTests
         Assert.True(Sql.IsAllowed(StatsSql.DoctorMoneyReceivableSql));
     }
 
-    [Fact(DisplayName = "AC-4405.1 음수로 버린 날도 roughTotal을 넣는다: 환불 음수는 그대로 빼고 줄마다 0 쪽으로 원 미만을 버린다(-20,000.7 → -20,000, -0.9 → 0), 진료의가 빈 줄도 더한다")]
+    [Fact(DisplayName = "AC-4405.1 AC-6912.2 음수로 버린 날은 roughTotal을 넣는다: 환불 음수는 그대로 빼고 줄마다 0 쪽으로 원 미만을 버린다(-20,000.7 → -20,000, -0.9 → 0), 진료의가 빈 줄도 더한다, 그날 문장 일곱")]
     public void NegativeDayGetsRoughTotal()
     {
         var db = RevenueFake.Quiet(new FakeDb());
@@ -414,20 +487,21 @@ public class RevenueDaysTests
         AssertUnconfirmed(day);
         Assert.Equal(500000L - 20000L + 0L + 1000L, RoughOf(day));
         Assert.Equal(
-            Sorted(RevenueFake.EightStatements.Concat(RevenueFake.RoughStatements)),
+            Sorted(RevenueFake.FiveStatements.Concat(RevenueFake.RoughStatements)),
             Sorted(RevenueFake.CallsOn(db, "20261031").Select(call => call.Sql)));
+        Assert.Equal(7, RevenueFake.CallsOn(db, "20261031").Count);
     }
 
     [Fact(DisplayName = "AC-4405.1 환불이 더 큰 날은 roughTotal이 음수 그대로이고, 줄이 없거나 금액이 DB NULL이면 0이다")]
     public void RoughTotalKeepsSignAndNullIsZero()
     {
         var refund = RevenueFake.Quiet(new FakeDb());
-        RevenueFake.Row(refund, RevenueSql.UnsupportedFinance, 1L);
+        RevenueFake.Row(refund, RevenueSql.FinanceNormal, RevenueFake.NegativeCash);
         RevenueFake.RoughRows(refund, new[] { RevenueFake.RoughLine("D001", 1000m) }, new[] { RevenueFake.RoughLine("D001", -5000.5m) });
         Assert.Equal(-4000L, RoughOf(OneDay(refund)));
 
         var empty = RevenueFake.Quiet(new FakeDb());
-        RevenueFake.Row(empty, RevenueSql.UnsupportedFinance, 1L);
+        RevenueFake.Row(empty, RevenueSql.FinanceNormal, RevenueFake.NegativeCash);
         RevenueFake.RoughRows(empty, new object?[0][], new[] { RevenueFake.RoughLine("D001", null) });
         Assert.Equal(0L, RoughOf(OneDay(empty)));
     }
@@ -445,7 +519,7 @@ public class RevenueDaysTests
     {
         Assert.NotEmpty(what);
         var db = RevenueFake.Quiet(new FakeDb());
-        RevenueFake.Row(db, RevenueSql.UnsupportedFinance, 1L);
+        RevenueFake.Row(db, RevenueSql.FinanceNormal, RevenueFake.NegativeCash);
         db.Answer(sql, _ => rows);
         Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => Read(db, First, First)).Code);
     }
@@ -454,14 +528,14 @@ public class RevenueDaysTests
     public void RoughFailureThrows()
     {
         var db = RevenueFake.Quiet(new FakeDb());
-        RevenueFake.RowOn(db, RevenueSql.UnsupportedFinance, "20261031", new object?[] { 1L }, new object?[] { 0L });
+        RevenueFake.RowOn(db, RevenueSql.FinanceNormal, "20261031", RevenueFake.NegativeCash, RevenueFake.Normal);
         db.Fail(StatsSql.DoctorMoneyReceivableSql, BitErrors.ReadFailed);
 
         Assert.Equal("E-BIT-READ-FAILED", Assert.Throws<BitException>(() => Read(db, First, Last)).Code);
         Assert.DoesNotContain(db.Calls, call => call.Sql == RevenueSql.CodeAmounts);
     }
 
-    [Fact(DisplayName = "AC-4405.2 확인된 날·나눔만 확인 필요한 날(splitUnconfirmed)은 roughTotal이 null이고 참고 금액 문장을 돌리지 않는다, 다른 칸은 그대로")]
+    [Fact(DisplayName = "AC-4405.2 AC-6912.3 확인된 날·나눔만 확인 필요한 날(splitUnconfirmed)은 roughTotal이 null이고 참고 금액 문장을 돌리지 않는다, 다른 칸은 그대로, 날마다 문장 다섯")]
     public void ConfirmedDaysHaveNoRoughTotal()
     {
         var db = RevenueFake.Quiet(new FakeDb());
@@ -474,7 +548,7 @@ public class RevenueDaysTests
         Assert.All(days, day => Assert.False(HasRough(day)));
         Assert.Equal(1050000L, days[0].Total);
         Assert.DoesNotContain(db.Calls, call => RevenueFake.RoughStatements.Contains(call.Sql));
-        foreach (var next in new[] { "20261031", "20261101", "20261102" }) Assert.Equal(8, RevenueFake.CallsOn(db, next).Count);
+        foreach (var next in new[] { "20261031", "20261101", "20261102" }) Assert.Equal(5, RevenueFake.CallsOn(db, next).Count);
     }
 
     // ---- AC-003.3 내원·신환·재진 -------------------------------------------------------------------
@@ -825,7 +899,7 @@ public class RevenueDaysTests
 
     private static string Json(object value) => System.Text.Json.JsonSerializer.Serialize(value);
 
-    [Fact(DisplayName = "AC-4101.2 CodeAmountsByDay는 기간에 한 번만: @from = 첫날 0000, @to = 끝날 다음 날 0000, @hospital 셋뿐이고 날마다 문장은 그대로 8개")]
+    [Fact(DisplayName = "AC-4101.2 AC-6912.1 CodeAmountsByDay는 기간에 한 번만: @from = 첫날 0000, @to = 끝날 다음 날 0000, @hospital 셋뿐이고 날마다 문장은 5개")]
     public void ReadsDayCodesOncePerPeriod()
     {
         var db = RevenueFake.Quiet(new FakeDb());
@@ -837,7 +911,7 @@ public class RevenueDaysTests
         Assert.Equal("202611020000", call.Args["@to"]);
         Assert.Equal(Synthetic.Scope, call.Args["@hospital"]);
         Assert.Equal(TimeSpan.FromSeconds(90), call.Timeout);
-        foreach (var next in new[] { "20261031", "20261101", "20261102" }) Assert.Equal(8, RevenueFake.CallsOn(db, next).Count);
+        foreach (var next in new[] { "20261031", "20261101", "20261102" }) Assert.Equal(5, RevenueFake.CallsOn(db, next).Count);
 
         var month = RevenueFake.Quiet(new FakeDb());
         Read(month, "2026-10-01", "2026-10-31");

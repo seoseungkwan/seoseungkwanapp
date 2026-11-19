@@ -1,5 +1,5 @@
-// 도우미 매출 읽기(TASK-3, REQ-003)와 날마다 처방별 금액(spec stats-revenue TASK-1, REQ-4101)·확인 필요한 날의 참고 금액(spec first90 TASK-1, REQ-4405)의
-// C# 시험(helper/tests/Precheck.Core.Tests/Revenue/*.test.cs)을 감싼다.
+// 도우미 매출 읽기(TASK-3, REQ-003)와 날마다 처방별 금액(spec stats-revenue TASK-1, REQ-4101)·확인 필요한 날의 참고 금액(spec first90 TASK-1, REQ-4405)·
+// 그런 날도 금액을 다 읽는 도우미 0.13.0(spec bit-total TASK-9, REQ-6912)의 C# 시험(helper/tests/Precheck.Core.Tests/Revenue/*.test.cs)을 감싼다.
 // dotnet test를 한 번 돌리고, AC마다 그 AC ID가 붙은 C# 시험이 실제로 돌았고 하나도 실패하지 않았는지 본다.
 import { beforeAll, describe, expect, it } from 'vitest'
 import { runDotnet } from './runDotnet'
@@ -27,11 +27,11 @@ function expectAc(ac: string) {
 }
 
 describe('REQ-003 도우미 매출 읽기 (C# Precheck.Core.Tests.Revenue)', () => {
-  it('AC-003.1 AC-1001.3 AC-4405.1 관문 → HistoryGuard 한 번 → 날마다 세 검사를 원본 순서대로, 지난 날 문장 8개·걸린 날 2~4개 + 참고 금액 문장 2개, 원본 문장은 연결 조건 한 가지만 바꾼 사본과 공백·끝 ;·-- 줄만 다르고 Extra 둘은 정해 둔 줄만 다르다', () => {
+  it('AC-003.1 AC-1001.3 AC-6912.1 관문 → HistoryGuard 한 번 → 날마다 문장 5개(세 검사 없이 금액 넷 → Patients), 금액이 음수인 날만 참고 금액 문장 2개를 더해 7개, 원본 문장은 연결 조건 한 가지만 바꾼 사본과 공백·끝 ;·-- 줄만 다르고 Extra 둘은 정해 둔 줄만 다르다', () => {
     expectAc('AC-003.1')
   })
 
-  it('AC-003.2 세 검사·total·cash·card·transfer·receivableIn의 음수는 unconfirmed와 금액 아홉 칸 null, insurer + copay ≠ 요양비용총액(버리기 전 값)·나눔 네 칸의 음수는 splitUnconfirmed와 그 네 칸만 null, 아니면 맞는 칸에서 원 미만 버림, otherTotal은 나머지', () => {
+  it('AC-003.2 AC-6912.1 세 검사에 걸리던 날도 보통 날처럼 금액을 읽고, total·cash·card·transfer·receivableIn의 음수는 unconfirmed와 금액 아홉 칸 null, insurer + copay ≠ 요양비용총액(버리기 전 값)·나눔 네 칸의 음수는 splitUnconfirmed와 그 네 칸만 null, 아니면 맞는 칸에서 원 미만 버림, otherTotal은 나머지', () => {
     expectAc('AC-003.2')
   })
 
@@ -83,16 +83,34 @@ describe('REQ-4101 도우미 날마다 처방별 금액 dayCodes (C# Precheck.Co
 })
 
 describe('REQ-4405 도우미가 확인 필요한 날의 참고 금액을 보낸다 · 판 0.7.0 (C# Precheck.Core.Tests.Revenue)', () => {
-  it('AC-4405.1 unconfirmed인 날(세 검사·음수)에 roughTotal = 그날 정상수납 + 미수입금 줄 총진료비 합(줄마다 원 미만 버림, 환불 음수 그대로), 원장님별 doctorDays와 같은 문장', () => {
+  it('AC-4405.1 AC-6912.2 unconfirmed인 날(이제 금액이 음수인 날만)에 roughTotal = 그날 정상수납 + 미수입금 줄 총진료비 합(줄마다 원 미만 버림, 환불 음수 그대로), 원장님별 doctorDays와 같은 문장', () => {
     expectAc('AC-4405.1')
   })
 
-  it('AC-4405.2 확인된 날은 roughTotal 열쇠가 없고 다른 칸·검사 순서는 그대로', () => {
+  it('AC-4405.2 확인된 날(세 검사에 걸리던 날 포함)·나눔만 못 센 날은 roughTotal 열쇠가 없고 다른 칸은 그대로', () => {
     expectAc('AC-4405.2')
   })
 
   it('AC-4405.3 도우미 판 0.7.0, 명령 목록은 그대로', () => {
     expectAc('AC-4405.3')
+  })
+})
+
+describe('REQ-6912 도우미 0.13.0 — 그런 날도 금액을 다 읽는다 (spec bit-total, C# Precheck.Core.Tests.Revenue)', () => {
+  it('AC-6912.1 세 검사 문장(UnsupportedFinance·FinanceMultiplicity·ReceivableMultiplicity)을 돌리지 않고 날마다 FinanceNormal → FinanceReceivable → FinanceNormalExtra → FinanceReceivableExtra → Patients 다섯, 세 검사에 걸리던 날도 확인된 날과 같은 칸·규칙으로 금액 아홉 칸, 두 표시 거짓·roughTotal 열쇠 없음', () => {
+    expectAc('AC-6912.1')
+  })
+
+  it('AC-6912.2 total·cash·card·transfer·receivableIn이 음수면 지금처럼 unconfirmed 참·금액 아홉 칸 null·roughTotal = 참고 금액(원장님별 문장 둘, Patients 앞에 한 번씩, 그날 문장 일곱)', () => {
+    expectAc('AC-6912.2')
+  })
+
+  it('AC-6912.3 나눔 검사는 지금 그대로: insurer + copay ≠ 요양비용총액(버리기 전)·나눔 칸 음수면 splitUnconfirmed, 네 칸만 null·다섯 칸은 채움, 세 검사에 걸리던 날도 같다', () => {
+    expectAc('AC-6912.3')
+  })
+
+  it('AC-6912.6 도우미 판 0.13.0, 명령 표(13개·protocol 1)와 revenue.days 답의 칸 이름은 그대로', () => {
+    expectAc('AC-6912.6')
   })
 })
 

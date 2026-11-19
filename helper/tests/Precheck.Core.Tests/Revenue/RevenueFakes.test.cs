@@ -12,6 +12,7 @@ namespace Precheck.Core.Tests.Revenue;
 /// 기본 하루: 총진료비 1,050,000 = 급여 465,000(공단 310,000 + 본인 155,000) + 비급여 405,000 + 기타 180,000.
 /// 참고 금액 문장(원장님별 doctorDays와 같은 글, first90 AC-4405.1) 기본 답: 정상수납 700,000.9 + 300,000.5, 미수입금 50,000.9
 /// → 줄마다 원 미만을 버려 1,050,000(더한 뒤 버리면 1,050,002라 줄마다 버리는지 가른다).
+/// 도우미 0.13.0(spec bit-total AC-6912.1)은 세 검사 문장을 돌리지 않는다. 그래서 Quiet는 세 검사에 답을 두지 않는다: 부르면 가짜 DB가 읽기 실패로 답한다.
 /// </summary>
 internal static class RevenueFake
 {
@@ -20,6 +21,7 @@ internal static class RevenueFake
     public static readonly object?[] NormalExtra = { 450000m, 150000m };
     public static readonly object?[] ReceivableExtra = { 15000m, 5000m };
 
+    /// <summary>0.12.0까지 날마다 먼저 돌리던 세 검사(spec bit-total AC-6912.1: 이제 매출 읽기는 부르지 않는다, 수납일지가 계속 쓴다).</summary>
     public static readonly string[] Checks =
     {
         RevenueSql.UnsupportedFinance,
@@ -35,20 +37,19 @@ internal static class RevenueFake
         RevenueSql.FinanceReceivableExtra,
     };
 
-    /// <summary>세 검사를 지난 날에 돌리는 문장 8개.</summary>
-    public static readonly string[] EightStatements = Checks.Concat(MoneyStatements).Concat(new[] { RevenueSql.Patients }).ToArray();
+    /// <summary>날마다 돌리는 문장 다섯, 이 차례로(spec bit-total AC-6912.1): 금액 넷 → Patients.</summary>
+    public static readonly string[] FiveStatements = MoneyStatements.Concat(new[] { RevenueSql.Patients }).ToArray();
 
-    /// <summary>확인 필요한 날(unconfirmed)에만 더 돌리는 참고 금액 문장 둘: 통계 원장님별 금액과 같은 글(StatsSql), 정상수납 → 미수입금.</summary>
+    /// <summary>금액이 음수라 확인 필요한 날(unconfirmed)에만 더 돌리는 참고 금액 문장 둘: 통계 원장님별 금액과 같은 글(StatsSql), 정상수납 → 미수입금.</summary>
     public static readonly string[] RoughStatements = { StatsSql.DoctorMoneyNormalSql, StatsSql.DoctorMoneyReceivableSql };
 
     /// <summary>기본 참고 금액 답의 roughTotal.</summary>
     public const long Rough = 1050000L;
 
-    /// <summary>검사 모두 0, 기본 금액·건수, 처방 없음(기간 합계·날 단위 둘 다).</summary>
+    /// <summary>HistoryGuard 0, 기본 금액·건수, 처방 없음(기간 합계·날 단위 둘 다). 세 검사에는 답을 두지 않는다(부르면 읽기 실패).</summary>
     public static T Quiet<T>(T db) where T : FakeDb
     {
         Row(db, RevenueSql.HistoryGuard, 0L);
-        foreach (var check in Checks) Row(db, check, 0L);
         Row(db, RevenueSql.FinanceNormal, Normal);
         Row(db, RevenueSql.FinanceReceivable, Receivable);
         Row(db, RevenueSql.FinanceNormalExtra, NormalExtra);
@@ -71,6 +72,15 @@ internal static class RevenueFake
         db.Answer(StatsSql.DoctorMoneyNormalSql, args => normal.Select(line => new[] { args["@day"] }.Concat(line).ToArray()).ToArray());
         db.Answer(StatsSql.DoctorMoneyReceivableSql, args => receivable.Select(line => new[] { args["@day"] }.Concat(line).ToArray()).ToArray());
     }
+
+    /// <summary>세 검사 모두에 '걸림'(1)을 답한다: 0.12.0이면 확인 필요한 날이 되던 날(spec bit-total AC-6912.1 시험용).</summary>
+    public static void ChecksCaught(FakeDb db)
+    {
+        foreach (var check in Checks) Row(db, check, 1L);
+    }
+
+    /// <summary>현금이 음수인 FinanceNormal 답(그 밖은 기본 하루): 버린 뒤 음수라 unconfirmed + roughTotal이 되는 날(AC-6912.2).</summary>
+    public static readonly object?[] NegativeCash = { 1000000m, 300000m, 400000m, -1m, 300000m, 100000m };
 
     /// <summary>이 문장의 답을 한 줄로 정한다.</summary>
     public static void Row(FakeDb db, string sql, params object?[] cells) =>

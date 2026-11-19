@@ -764,15 +764,15 @@ public class SunapTargetsTests
             Replies.Canon(json));
     }
 
-    [Fact(DisplayName = "AC-5002.3 도우미 판은 0.12.0이다(웹 LATEST_HELPER 0.12.0·CAL_HELPER 0.10.0·MIN_HELPER·SUNAP_HELPER 그대로는 handshake.test.ts가 본다)")]
-    public void HelperVersionIsZeroNine() => Assert.Equal("0.12.0", HelperVersion.Value);
+    [Fact(DisplayName = "AC-5002.3 AC-6912.6 도우미 판은 0.13.0이다(웹 LATEST_HELPER 0.13.0·CAL_HELPER 0.10.0·MIN_HELPER·SUNAP_HELPER 그대로는 handshake.test.ts가 본다)")]
+    public void HelperVersionIsZeroNine() => Assert.Equal("0.13.0", HelperVersion.Value);
 
     // ── AC-4902.6 판 ───────────────────────────────────────────────
 
-    [Fact(DisplayName = "AC-4902.6 도우미 판은 0.12.0이고 명령 이름 목록은 그대로다(명령 13개·protocol 1, contact.targets 칸은 kind·from·to + 선택 q(clinic-calendar))")]
+    [Fact(DisplayName = "AC-4902.6 AC-6912.6 도우미 판은 0.13.0이고 명령 이름 목록은 그대로다(명령 13개·protocol 1, contact.targets 칸은 kind·from·to + 선택 q(clinic-calendar))")]
     public void SunapVersionAndCommandNamesStay()
     {
-        Assert.Equal("0.12.0", HelperVersion.Value);
+        Assert.Equal("0.13.0", HelperVersion.Value);
         CommandNamesStay();
     }
 
@@ -919,10 +919,10 @@ public class SunapTargetsTests
         Assert.Equal(new[] { "OrcAccDte", "OrcChtNum", "OrcCod", "OrcInf", "OrcNewAmt", "OrcOcmNum" }, columns);
     }
 
-    [Fact(DisplayName = "AC-5401.3 도우미 판은 0.12.0이고 답 v:3(clinic-calendar)·명령 이름 목록(명령 13개·protocol 1, contact.targets 칸 kind·from·to + 선택 q)이다(웹 LATEST_HELPER 0.12.0·CAL_HELPER 0.10.0·MIN_HELPER·SUNAP_HELPER 그대로는 handshake.test.ts가 본다)")]
+    [Fact(DisplayName = "AC-5401.3 AC-6912.6 도우미 판은 0.13.0이고 답 v:3(clinic-calendar)·명령 이름 목록(명령 13개·protocol 1, contact.targets 칸 kind·from·to + 선택 q)이다(웹 LATEST_HELPER 0.13.0·CAL_HELPER 0.10.0·MIN_HELPER·SUNAP_HELPER 그대로는 handshake.test.ts가 본다)")]
     public void HealthVersionAndShapeStay()
     {
-        Assert.Equal("0.12.0", HelperVersion.Value);
+        Assert.Equal("0.13.0", HelperVersion.Value);
         Assert.Equal(3, SunapTargets.Version);
         CommandNamesStay();
     }

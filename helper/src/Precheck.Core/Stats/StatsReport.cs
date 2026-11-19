@@ -74,8 +74,10 @@ public sealed class StatsReportSet
 
     public List<StatsLaCode> LaCodes { get; } = new List<StatsLaCode>();
 
+    /// <summary>도우미 0.13.0부터 늘 거짓이다(spec bit-total AC-6912.4). 답 모양(financeUnconfirmed 칸)과 웹 검사를 그대로 두려고 남긴다.</summary>
     public bool FinanceUnconfirmed { get; internal set; }
 
+    /// <summary>늘 null이다(FinanceUnconfirmed가 거짓이라 답에 financeUnconfirmedReason 열쇠를 쓰지 않는다).</summary>
     public string? FinanceUnconfirmedReason { get; internal set; }
 
     public List<string> Notes { get; } = new List<string>();
@@ -97,7 +99,8 @@ public sealed class StatsReportResult
 
 /// <summary>
 /// 보고 숫자 읽기(REQ-504). 원본 OperationalReportData.Load를 한 벌마다 줄 그대로 옮겼다(VerifyIdentity만 뺌: 등록 확인은
-/// HospitalGate가 이미 했다). 원본 Fail 자리는 그 벌만 ok:false(AC-504.3), SetFinanceUnconfirmed 자리는 금액 확인 필요(AC-504.2)다.
+/// HospitalGate가 이미 했다). 원본 Fail 자리는 그 벌만 ok:false(AC-504.3)다. 원본의 세 검사(SetFinanceUnconfirmed 자리)는 도우미 0.13.0부터
+/// 돌리지 않는다(spec bit-total AC-6912.4): 환불·변경수납·예치금·연결 중복이 있는 기간도 같은 금액 문장 둘로 센다.
 /// SQL 실행 실패와 값 모양 틀림(원본 query_failed 자리)은 BitException(번호만)으로 명령 전체를 멈춘다: 반쪽 자료를 보내지 않는다.
 /// SQL은 StatsSql·Sql 상수만 ReadOnlyGuard로 돌린다. 숫자·코드는 기록·예외 글에 싣지 않는다.
 /// </summary>
@@ -142,10 +145,6 @@ public static class StatsReport
         var snapshot = Scalar(Meta(db, Sql.SnapshotStateSql)) == 1;
 
         if (Scalar(Meta(db, StatsSql.HistoryGuardSql)) != 0) return Fail(result, HistoryUnsupported);
-        if (Scalar(Data(db, request, StatsSql.UnsupportedFinanceSql)) != 0)
-        {
-            SetFinanceUnconfirmed(result, "환불·변경수납·예치금 자료가 있어 금액을 자동 집계하지 않았습니다. 원본 외래환자경영통계에서 확인해 직접 입력하세요.");
-        }
 
         var patients = Data(db, request, StatsSql.PatientsSql);
         if (patients.Count == 0) return Fail(result, InvalidAggregate);
@@ -180,26 +179,18 @@ public static class StatsReport
             result.LaCodes.Add(new StatsLaCode(code, Number(row, 1)));
         }
 
-        if (!result.FinanceUnconfirmed && Scalar(Data(db, request, StatsSql.FinanceMultiplicitySql)) != 0)
-        {
-            SetFinanceUnconfirmed(result, "같은 내원의 수납일 또는 연결 자료가 중복되어 금액을 자동 집계하지 않았습니다. 원본 금융 통계에서 확인해 직접 입력하세요.");
-        }
-        if (!result.FinanceUnconfirmed && Scalar(Data(db, request, StatsSql.ReceivableMultiplicitySql)) != 0)
-        {
-            SetFinanceUnconfirmed(result, "같은 내원의 미수입금 수납일 또는 연결 자료가 중복되어 금액을 자동 집계하지 않았습니다. 원본 금융 통계에서 확인해 직접 입력하세요.");
-        }
-        if (!result.FinanceUnconfirmed) AddFinance(db, request, result);
+        // 세 검사 없이 늘 금액을 읽는다(spec bit-total AC-6912.4). FinanceUnconfirmed는 거짓 그대로다
+        AddFinance(db, request, result);
 
         result.Notes.Add("총환은 취소·제외 기록을 뺀 외래 내원 건수입니다. 같은 환자의 추가 접수도 포함합니다.");
         result.Notes.Add("신환은 같은 병원 보유 이력의 유효 외래·입원 첫 내원이 조회 기간에 있는 환자 수이며, 재진은 총내원에서 신환을 뺀 건수입니다. 이관 전·삭제된 과거 기록은 확인할 수 없습니다.");
         result.Notes.Add(request.Daily ? "일일 치료는 치료별 차트번호 중복을 제거한 환자 수입니다." : "월간 치료는 유효 처방행 수입니다. 동일 환자의 여러 처방을 각각 셉니다.");
         result.Notes.Add("LA 코드는 실제 LA 접두어 코드별 유효 처방행 수입니다. 횟수·수량을 곱한 값이 아닙니다.");
-        result.Notes.Add("금액은 외래환자경영통계의 회계일 기준 정상수납·미수입금 조건으로 집계합니다. 환불·변경수납·예치금 또는 연결 중복이 있으면 금액을 '확인 필요'로 두고 환자수·치료·LA만 집계합니다.");
+        result.Notes.Add("금액은 외래환자경영통계의 회계일 기준 정상수납·미수입금 조건으로 집계합니다. 환불·변경수납·예치금 또는 연결 중복이 있는 기간도 같은 조건으로 집계해 비트 원본 통계와 다를 수 있습니다.");
         result.Notes.Add("입금액은 선택 기간 정상수납과 미수입금 합계입니다. 현금·카드·계좌 구분을 유지하고 현금영수증 발급 기록·미수발생은 입금액에 중복 반영하지 않습니다. 미수상각은 입금액에서 차감하지 않습니다.");
         result.Notes.Add("건당진료비는 총진료비÷총내원건수로 계산합니다. 원본 통계의 수납액 기준 건당 지표와 다를 수 있습니다.");
         result.Notes.Add(snapshot ? "조회는 DB의 기존 스냅샷 격리를 사용했습니다." : "조회시점의 자료입니다. 조회 중 변경된 기록은 다음 조회 결과에 반영될 수 있습니다.");
         if (request.PartialMonth) result.Notes.Add("월중 집계: 선택한 달의 1일부터 오늘까지 집계했습니다.");
-        if (result.FinanceUnconfirmed) result.Notes.Add("이 기간은 금액을 자동 집계하지 않았습니다(환자수·치료·LA는 정상). 비트 원본 외래환자경영통계에서 금액을 확인해 직접 입력하세요.");
         return result;
     }
 
@@ -207,14 +198,6 @@ public static class StatsReport
     {
         result.Reason = reason;
         return result;
-    }
-
-    /// <summary>원본 SetFinanceUnconfirmed: 첫 사유만 남긴다. 금액은 AddFinance를 돌리지 않아 0 그대로다.</summary>
-    private static void SetFinanceUnconfirmed(StatsReportSet result, string reason)
-    {
-        if (result.FinanceUnconfirmed) return;
-        result.FinanceUnconfirmed = true;
-        result.FinanceUnconfirmedReason = reason;
     }
 
     /// <summary>원본 AddFinance 두 번: 여섯 칸을 decimal로 다 더한 뒤 칸마다 원 미만을 버린다(반올림하지 않음, AC-504.4).</summary>
