@@ -13,7 +13,8 @@ namespace Precheck.Core.Tests.Stats;
 
 /// <summary>
 /// AC-504.1 보고 네 벌(일일 to·to−1, 월말 to가 든 달·그 앞 달)을 원본 Load 순서로 읽어 같은 JSON의 report에 싣는다.
-/// AC-504.2 환불·변경수납·예치금·연결 중복은 그 벌만 '금액 확인 필요'이고 다른 숫자는 그대로다.
+/// AC-504.2 · AC-6912.4 (spec bit-total, 도우미 0.13.0) 세 검사 문장을 돌리지 않는다: 환불·변경수납·예치금·연결 중복이 있어도 금액 여섯 칸을 채우고
+/// financeUnconfirmed는 늘 거짓, financeUnconfirmedReason 열쇠는 없다. AC-6912.5 금액 안내는 새 글이고 '금액을 자동 집계하지 않았습니다' 안내는 없다.
 /// AC-504.3 원본 Fail 자리는 그 벌만 { ok: false, period, reason }, SQL 실패는 명령 전체 error다.
 /// AC-504.4 금액은 원 미만을 버린 정수다. 사본 대조·@daily 관문은 StatsSql.test.cs.
 /// </summary>
@@ -31,23 +32,23 @@ public class StatsReportTests
 
     private static readonly string[] AmountKeys = { "totalAmount", "insurerAmount", "noncoveredAmount", "cashAmount", "cardAmount", "transferAmount" };
 
-    // 원본 Load가 한 벌에 돌리는 순서
+    // 한 벌에 돌리는 순서(원본 Load에서 세 검사만 뺌, spec bit-total AC-6912.4)
     private static readonly string[] OneSet =
     {
-        Sql.SnapshotStateSql, StatsSql.HistoryGuardSql, StatsSql.UnsupportedFinanceSql, StatsSql.PatientsSql, StatsSql.TreatmentsSql, StatsSql.LaCodesSql,
-        StatsSql.FinanceMultiplicitySql, StatsSql.ReceivableMultiplicitySql, StatsSql.FinanceNormalSql, StatsSql.FinanceReceivableSql,
+        Sql.SnapshotStateSql, StatsSql.HistoryGuardSql, StatsSql.PatientsSql, StatsSql.TreatmentsSql, StatsSql.LaCodesSql,
+        StatsSql.FinanceNormalSql, StatsSql.FinanceReceivableSql,
     };
 
-    private const string RefundReason = "환불·변경수납·예치금 자료가 있어 금액을 자동 집계하지 않았습니다. 원본 외래환자경영통계에서 확인해 직접 입력하세요.";
-    private const string FinanceDuplicateReason = "같은 내원의 수납일 또는 연결 자료가 중복되어 금액을 자동 집계하지 않았습니다. 원본 금융 통계에서 확인해 직접 입력하세요.";
-    private const string ReceivableDuplicateReason = "같은 내원의 미수입금 수납일 또는 연결 자료가 중복되어 금액을 자동 집계하지 않았습니다. 원본 금융 통계에서 확인해 직접 입력하세요.";
+    // 0.12.0까지 금액을 '확인 필요'로 두던 세 검사(spec bit-total AC-6912.4: 이제 부르지 않는다)
+    private static readonly string[] Checks = { StatsSql.UnsupportedFinanceSql, StatsSql.FinanceMultiplicitySql, StatsSql.ReceivableMultiplicitySql };
 
     private const string VisitsNote = "총환은 취소·제외 기록을 뺀 외래 내원 건수입니다. 같은 환자의 추가 접수도 포함합니다.";
     private const string NewNote = "신환은 같은 병원 보유 이력의 유효 외래·입원 첫 내원이 조회 기간에 있는 환자 수이며, 재진은 총내원에서 신환을 뺀 건수입니다. 이관 전·삭제된 과거 기록은 확인할 수 없습니다.";
     private const string DailyTreatmentNote = "일일 치료는 치료별 차트번호 중복을 제거한 환자 수입니다.";
     private const string MonthlyTreatmentNote = "월간 치료는 유효 처방행 수입니다. 동일 환자의 여러 처방을 각각 셉니다.";
     private const string LaNote = "LA 코드는 실제 LA 접두어 코드별 유효 처방행 수입니다. 횟수·수량을 곱한 값이 아닙니다.";
-    private const string AmountNote = "금액은 외래환자경영통계의 회계일 기준 정상수납·미수입금 조건으로 집계합니다. 환불·변경수납·예치금 또는 연결 중복이 있으면 금액을 '확인 필요'로 두고 환자수·치료·LA만 집계합니다.";
+    private const string AmountNote = "금액은 외래환자경영통계의 회계일 기준 정상수납·미수입금 조건으로 집계합니다. 환불·변경수납·예치금 또는 연결 중복이 있는 기간도 같은 조건으로 집계해 비트 원본 통계와 다를 수 있습니다.";
+    private const string OldAmountNote = "금액은 외래환자경영통계의 회계일 기준 정상수납·미수입금 조건으로 집계합니다. 환불·변경수납·예치금 또는 연결 중복이 있으면 금액을 '확인 필요'로 두고 환자수·치료·LA만 집계합니다.";
     private const string PaidNote = "입금액은 선택 기간 정상수납과 미수입금 합계입니다. 현금·카드·계좌 구분을 유지하고 현금영수증 발급 기록·미수발생은 입금액에 중복 반영하지 않습니다. 미수상각은 입금액에서 차감하지 않습니다.";
     private const string PerVisitNote = "건당진료비는 총진료비÷총내원건수로 계산합니다. 원본 통계의 수납액 기준 건당 지표와 다를 수 있습니다.";
     private const string SnapshotNote = "조회는 DB의 기존 스냅샷 격리를 사용했습니다.";
@@ -117,13 +118,14 @@ public class StatsReportTests
         Assert.Equal(new[] { "1", "1", "0", "0" }, Windows(rig, StatsSql.TreatmentsSql, "@daily"));
     }
 
-    [Fact(DisplayName = "AC-504.1 한 벌은 원본 Load 순서대로 읽는다(메타 15초, 자료 150초), 네 벌 모두")]
+    [Fact(DisplayName = "AC-504.1 AC-6912.4 한 벌은 스냅숏 → HistoryGuard → Patients → Treatments → LaCodes → FinanceNormal → FinanceReceivable 차례로 읽는다(메타 15초, 자료 150초), 네 벌 모두, 세 검사 문장 없음")]
     public void LoadOrder()
     {
         using var rig = StatsFake.Clinic();
         Read(rig);
 
         Assert.Equal(Enumerable.Repeat(OneSet, 4).SelectMany(sql => sql), rig.Session.Sqls);
+        Assert.DoesNotContain(rig.Session.Sqls, Checks.Contains);
         foreach (var call in rig.Session.Calls)
         {
             var meta = call.Sql == Sql.SnapshotStateSql || call.Sql == StatsSql.HistoryGuardSql;
@@ -182,7 +184,7 @@ public class StatsReportTests
         Assert.Equal(new long[] { 0, 0, 0, 0, 7 }, new[] { treatments.Manual, treatments.Eswt, treatments.Carm, treatments.Sono, treatments.Cryo });
     }
 
-    [Fact(DisplayName = "AC-504.1 안내 글은 원본 결과 그대로: 일일·월말 글이 다르고, 달 중간까지면 월중 글이 붙고, 스냅숏이면 스냅숏 글이다")]
+    [Fact(DisplayName = "AC-6912.5 AC-504.1 안내 글은 원본 결과 그대로이고 금액 안내만 새 글('… 연결 중복이 있는 기간도 같은 조건으로 집계해 비트 원본 통계와 다를 수 있습니다.'), '금액을 자동 집계하지 않았습니다' 글은 없다: 일일·월말 글이 다르고, 달 중간까지면 월중 글이 붙고, 스냅숏이면 스냅숏 글이다")]
     public void OriginalNotes()
     {
         string[] Expected(string treatment, string snapshot, params string[] more) =>
@@ -204,72 +206,89 @@ public class StatsReportTests
             // 달 마지막 날까지면 월중이 아니다
             Assert.Equal(Expected(MonthlyTreatmentNote, SnapshotNote), result.Monthly[0].Notes);
         }
+        using (var rig = StatsFake.Clinic())
+        {
+            var result = Read(rig);
+            Assert.All(result.Daily.Concat(result.Monthly), set =>
+            {
+                Assert.DoesNotContain(OldAmountNote, set.Notes);
+                Assert.DoesNotContain(UnconfirmedNote, set.Notes);
+                Assert.Single(set.Notes, note => note == AmountNote);
+            });
+        }
     }
 
-    // ---- AC-504.2 -------------------------------------------------------------------------------
+    [Fact(DisplayName = "AC-6912.6 도우미 판은 0.13.0이고 stats.rows 보고 벌의 칸 이름은 그대로다(새 칸 없음, financeUnconfirmed 칸은 남고 financeUnconfirmedReason 열쇠는 없음)")]
+    public void VersionAndReportKeysStay()
+    {
+        Assert.Equal("0.13.0", HelperVersion.Value);
+        using var rig = StatsFake.Clinic();
+        var report = ReportJson(rig);
+        Assert.Equal(new[] { "daily", "monthly" }, Json.Keys(report));
+        foreach (var set in report.GetProperty("daily").EnumerateArray().Concat(report.GetProperty("monthly").EnumerateArray()))
+        {
+            Assert.Equal(SetKeys, Json.Keys(set));
+        }
+    }
 
-    private static void AssertUnconfirmed(JsonElement set, string reason)
+    // ---- AC-504.2 · AC-6912.4 · AC-6912.5 (spec bit-total, 도우미 0.13.0) --------------------------------------------
+
+    /// <summary>금액이 채워진 확인된 벌: financeUnconfirmed 거짓, 사유 열쇠 없음, 금액 여섯 칸, 환자·치료·LA 그대로, 안내에 옛 글 없음.</summary>
+    private static void AssertConfirmed(JsonElement set)
     {
         Assert.True(set.GetProperty("ok").GetBoolean());
-        Assert.Equal(SetKeys.Take(14).Append("financeUnconfirmedReason").Append("notes"), Json.Keys(set));
-        Assert.True(set.GetProperty("financeUnconfirmed").GetBoolean());
-        Assert.Equal(reason, set.GetProperty("financeUnconfirmedReason").GetString());
-        Assert.Equal(new long[6], Amounts(set));
+        Assert.Equal(SetKeys, Json.Keys(set));
+        Assert.False(set.GetProperty("financeUnconfirmed").GetBoolean());
+        Assert.False(set.TryGetProperty("financeUnconfirmedReason", out _));
+        Assert.Equal(new long[] { 101000, 60600, 30300, 10100, 20200, 5050 }, Amounts(set));
         Assert.Equal(new long[] { 12, 3, 9, 5, 4, 3, 2, 1 }, Numbers(set));
         Assert.Equal(2, set.GetProperty("laCodes").GetArrayLength());
-        Assert.Equal(UnconfirmedNote, Notes(set).Last());
+        Assert.Contains(AmountNote, Notes(set));
+        Assert.DoesNotContain(OldAmountNote, Notes(set));
+        Assert.DoesNotContain(UnconfirmedNote, Notes(set));
     }
 
-    [Fact(DisplayName = "AC-504.2 환불·변경수납·예치금 자료(UnsupportedFinance > 0)면 그 벌만 금액 확인 필요(사유, 금액 0)이고 환자·치료·LA는 그대로, 금액 SQL을 돌리지 않는다")]
-    public void RefundPeriodIsUnconfirmed()
+    public static IEnumerable<object[]> CaughtChecks() => new[]
     {
+        new object[] { "환불·변경수납·예치금(UnsupportedFinance)", new[] { 0 } },
+        new object[] { "정상수납 연결 중복(FinanceMultiplicity)", new[] { 1 } },
+        new object[] { "미수입금 연결 중복(ReceivableMultiplicity)", new[] { 2 } },
+        new object[] { "셋 다", new[] { 0, 1, 2 } },
+    };
+
+    [Theory(DisplayName = "AC-6912.4 AC-504.2 AC-6912.5 환불·변경수납·예치금·연결 중복이 있어도(가짜 DB가 세 검사에 1을 답해도) 세 검사 문장을 돌리지 않고 네 벌 모두 금액 여섯 칸을 채운다, financeUnconfirmed 거짓·financeUnconfirmedReason 열쇠 없음, 안내는 새 금액 글")]
+    [MemberData(nameof(CaughtChecks))]
+    public void CaughtPeriodsStillReadMoney(string what, int[] caught)
+    {
+        Assert.NotEmpty(what);
         using var rig = StatsFake.Clinic();
-        rig.Session.Answer(StatsSql.UnsupportedFinanceSql, args => One((string?)args["@day"] == "20261114" ? 2L : 0L));
+        foreach (var check in caught) rig.Session.Answer(Checks[check], _ => One(1L));
         var report = ReportJson(rig);
 
-        AssertUnconfirmed(report.GetProperty("daily")[1], RefundReason);
-        Assert.False(report.GetProperty("daily")[0].GetProperty("financeUnconfirmed").GetBoolean());
-        Assert.Equal(new long[] { 101000, 60600, 30300, 10100, 20200, 5050 }, Amounts(report.GetProperty("daily")[0]));
-        Assert.Equal(new long[] { 101000, 60600, 30300, 10100, 20200, 5050 }, Amounts(report.GetProperty("monthly")[0]));
-
-        Assert.DoesNotContain("20261114 20261115", Windows(rig, StatsSql.FinanceMultiplicitySql, "@day", "@nextDay"));
-        Assert.DoesNotContain("20261114 20261115", Windows(rig, StatsSql.ReceivableMultiplicitySql, "@day", "@nextDay"));
-        Assert.DoesNotContain("20261114 20261115", Windows(rig, StatsSql.FinanceNormalSql, "@day", "@nextDay"));
-        Assert.DoesNotContain("20261114 20261115", Windows(rig, StatsSql.FinanceReceivableSql, "@day", "@nextDay"));
-        Assert.Equal(4, CallsOf(rig, StatsSql.LaCodesSql));
+        foreach (var set in report.GetProperty("daily").EnumerateArray().Concat(report.GetProperty("monthly").EnumerateArray())) AssertConfirmed(set);
+        Assert.DoesNotContain(rig.Session.Sqls, Checks.Contains);
+        Assert.Equal(4, CallsOf(rig, StatsSql.FinanceNormalSql));
+        Assert.Equal(4, CallsOf(rig, StatsSql.FinanceReceivableSql));
     }
 
-    [Fact(DisplayName = "AC-504.2 정상수납 연결 중복(FinanceMultiplicity > 0)이면 원본 사유로 금액 확인 필요, 다음 중복 확인과 금액 SQL을 돌리지 않는다")]
-    public void FinanceDuplicateIsUnconfirmed()
+    [Fact(DisplayName = "AC-504.2 AC-6912.4 세 검사 문장에 답이 없어도(부르면 읽기 실패) 보고를 끝까지 읽는다: FinanceUnconfirmed 거짓·사유 null, 금액은 FinanceNormal → FinanceReceivable 합(음수 그대로)")]
+    public void ChecksAreNeverAsked()
     {
         using var rig = StatsFake.Clinic();
-        rig.Session.Answer(StatsSql.FinanceMultiplicitySql, args => One((string?)args["@day"] == "20261101" ? 1L : 0L));
-        var report = ReportJson(rig);
+        rig.Session.Answer(StatsSql.FinanceNormalSql, _ => One(-129629.535m, 1000m, 0m, -1m, 0m, 0m));
+        rig.Session.Answer(StatsSql.FinanceReceivableSql, _ => One(100m, 0.5m, 0m, 0m, 0m, 0m));
+        var result = Read(rig);
 
-        AssertUnconfirmed(report.GetProperty("monthly")[0], FinanceDuplicateReason);
-        Assert.False(report.GetProperty("monthly")[1].GetProperty("financeUnconfirmed").GetBoolean());
-        Assert.DoesNotContain("20261101 20261116", Windows(rig, StatsSql.ReceivableMultiplicitySql, "@day", "@nextDay"));
-        Assert.DoesNotContain("20261101 20261116", Windows(rig, StatsSql.FinanceNormalSql, "@day", "@nextDay"));
-    }
-
-    [Fact(DisplayName = "AC-504.2 미수입금 연결 중복(ReceivableMultiplicity > 0)이면 원본 사유로 금액 확인 필요, 금액 SQL을 돌리지 않는다")]
-    public void ReceivableDuplicateIsUnconfirmed()
-    {
-        using var rig = StatsFake.Clinic();
-        rig.Session.Answer(StatsSql.ReceivableMultiplicitySql, args => One((string?)args["@day"] == "20261001" ? 1L : 0L));
-        var report = ReportJson(rig);
-
-        AssertUnconfirmed(report.GetProperty("monthly")[1], ReceivableDuplicateReason);
-        Assert.DoesNotContain("20261001 20261101", Windows(rig, StatsSql.FinanceReceivableSql, "@day", "@nextDay"));
-    }
-
-    [Fact(DisplayName = "AC-504.2 환불과 중복이 함께면 첫 사유(환불)만 남는다")]
-    public void FirstReasonWins()
-    {
-        using var rig = StatsFake.Clinic();
-        rig.Session.Answer(StatsSql.UnsupportedFinanceSql, _ => One(1L));
-        rig.Session.Answer(StatsSql.FinanceMultiplicitySql, _ => One(1L));
-        Assert.All(Read(rig).Daily, set => Assert.Equal(RefundReason, set.FinanceUnconfirmedReason));
+        Assert.All(result.Daily.Concat(result.Monthly), set =>
+        {
+            Assert.True(set.Ok);
+            Assert.False(set.FinanceUnconfirmed);
+            Assert.Null(set.FinanceUnconfirmedReason);
+            Assert.Equal(-129529L, set.TotalAmount);
+            Assert.Equal(1000L, set.InsurerAmount);
+            Assert.Equal(-1L, set.CashAmount);
+        });
+        Assert.DoesNotContain(rig.Session.Sqls, Checks.Contains);
     }
 
     // ---- AC-504.3 -------------------------------------------------------------------------------
@@ -418,7 +437,6 @@ public class StatsReportTests
 
     public static IEnumerable<object[]> Malformed() => new[]
     {
-        new object[] { StatsSql.UnsupportedFinanceSql, new object?[] { "x" } },
         new object[] { StatsSql.PatientsSql, new object?[] { "x", 0L, 0L, 0L, 0L } },
         new object[] { StatsSql.PatientsSql, new object?[] { 1L, 0L } },
         new object[] { StatsSql.TreatmentsSql, new object?[] { null, 1L, 0L } },

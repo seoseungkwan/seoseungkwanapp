@@ -65,10 +65,12 @@ internal static class StatsFake
         return rig;
     }
 
-    /// <summary>문제없는 가짜 보고 숫자(모든 벌이 같다). 시험마다 필요한 SQL 답만 바꾼다.</summary>
+    /// <summary>
+    /// 문제없는 가짜 보고 숫자(모든 벌이 같다). 시험마다 필요한 SQL 답만 바꾼다. 세 검사(UnsupportedFinance·FinanceMultiplicity·ReceivableMultiplicity)는
+    /// 도우미 0.13.0이 부르지 않으므로(spec bit-total AC-6912.4) 답을 두지 않는다: 부르면 가짜 DB가 읽기 실패로 답한다.
+    /// </summary>
     public static void AnswerReport(FakeDb db)
     {
-        db.Answer(StatsSql.UnsupportedFinanceSql, _ => new[] { new object?[] { 0L } });
         db.Answer(StatsSql.PatientsSql, _ => new[] { new object?[] { 12L, 3L, 0L, 0L, 0L } });
         db.Answer(StatsSql.TreatmentsSql, _ => new[]
         {
@@ -79,8 +81,6 @@ internal static class StatsFake
             new object?[] { "cryo", 1L, 0L },
         });
         db.Answer(StatsSql.LaCodesSql, _ => new[] { new object?[] { "LA01 ", 2L }, new object?[] { "LA-B.2", 1L } });
-        db.Answer(StatsSql.FinanceMultiplicitySql, _ => new[] { new object?[] { 0L } });
-        db.Answer(StatsSql.ReceivableMultiplicitySql, _ => new[] { new object?[] { 0L } });
         db.Answer(StatsSql.FinanceNormalSql, _ => new[] { new object?[] { 100000m, 60000m, 30000m, 10000m, 20000m, 5000m } });
         db.Answer(StatsSql.FinanceReceivableSql, _ => new[] { new object?[] { 1000m, 600m, 300m, 100m, 200m, 50m } });
     }

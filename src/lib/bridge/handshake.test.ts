@@ -81,9 +81,10 @@ describe('AC-004.4 웹 versions.ts 값', () => {
   // 도우미 0.10.0 = 0.9.1 + 예약 탭 비트 찾기·접수·비트 예약(contact.targets kind calfind·calday, 선택 칸 q)·수납일지 답 v:3 건강생활 칸(spec clinic-calendar). 새 명령 없음, MIN·SUNAP·LIST는 그대로
   // 도우미 0.11.0 = 0.10.0 + stats.rows v5(접수 줄 신환 표시 칸, spec new-mark)·v5 extra.pays 환자·날 금액 줄(spec stats-insights). 새 명령 없음, MIN·SUNAP·LIST·CAL은 그대로
   // 도우미 0.12.0 = 0.11.0 + bit.input 항목 appends(비트 메모 뒤에 붙이기)·붙인 메모 견주기·3,000바이트(spec clinic-profile). 새 명령 없음, MIN·SUNAP·LIST·CAL·VALUE는 그대로
-  it('AC-004.4·AC-012.1·AC-604.1·AC-3402.1·AC-4101.5·AC-4405.3·AC-4902.6·AC-5002.3·AC-5401.3·AC-5903.5·AC-6106.1·AC-6611.2 지금 값은 도우미 최소 0.3.0·최신 0.12.0, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
+  // 도우미 0.13.0 = 0.12.0 + 환불·변경수납·예치금·연결 중복이 있는 날·달도 금액을 다 읽음(spec bit-total). 새 명령·새 칸 없음, MIN·SUNAP·LIST·CAL·VALUE·APPEND는 그대로
+  it('AC-004.4·AC-012.1·AC-604.1·AC-3402.1·AC-4101.5·AC-4405.3·AC-4902.6·AC-5002.3·AC-5401.3·AC-5903.5·AC-6106.1·AC-6611.2·AC-6912.6 지금 값은 도우미 최소 0.3.0·최신 0.13.0, 확장 최소 0.1.0이고 MIN ≤ LATEST, protocol은 명령 표와 같다', () => {
     expect(MIN_HELPER).toBe('0.3.0')
-    expect(LATEST_HELPER).toBe('0.12.0')
+    expect(LATEST_HELPER).toBe('0.13.0')
     expect(MIN_EXTENSION).toBe('0.1.0')
     expect(compareVersions(MIN_HELPER, LATEST_HELPER)).toBeLessThanOrEqual(0)
     expect(WEB_VERSIONS).toEqual({
@@ -127,9 +128,10 @@ describe('AC-004.4 웹 versions.ts 값', () => {
     expect(LIST_HELPER).toBe('0.5.0')
   })
 
-  it('AC-6611.2 뒤에 붙이기(bit.input appends)를 쓰는 APPEND_HELPER는 0.12.0이고 LATEST_HELPER와 같다. MIN_HELPER 0.3.0·VALUE_HELPER 0.11.0·CAL_HELPER 0.10.0·SUNAP_HELPER 0.8.0·LIST_HELPER 0.5.0은 그대로다(옛 도우미는 appends 칸을 모르는 칸으로 거절한다)', () => {
+  // 0.12.0을 내보낼 때는 APPEND = LATEST였다. 0.13.0부터는 APPEND(0.12.0)가 LATEST 이하인지만 본다(bit-total TASK-9)
+  it('AC-6611.2·AC-6912.6 뒤에 붙이기(bit.input appends)를 쓰는 APPEND_HELPER는 0.12.0 그대로이고 LATEST_HELPER 이하다. MIN_HELPER 0.3.0·VALUE_HELPER 0.11.0·CAL_HELPER 0.10.0·SUNAP_HELPER 0.8.0·LIST_HELPER 0.5.0은 그대로다(옛 도우미는 appends 칸을 모르는 칸으로 거절한다)', () => {
     expect(APPEND_HELPER).toBe('0.12.0')
-    expect(compareVersions(APPEND_HELPER, LATEST_HELPER)).toBe(0)
+    expect(compareVersions(APPEND_HELPER, LATEST_HELPER)).toBeLessThanOrEqual(0)
     expect(compareVersions(VALUE_HELPER, APPEND_HELPER)).toBeLessThan(0)
     expect(MIN_HELPER).toBe('0.3.0')
     expect(VALUE_HELPER).toBe('0.11.0')
@@ -138,7 +140,7 @@ describe('AC-004.4 웹 versions.ts 값', () => {
     expect(LIST_HELPER).toBe('0.5.0')
   })
 
-  it('AC-004.4·AC-3402.1·AC-4902.6·AC-5002.3·AC-5401.3·AC-5903.5·AC-6106.1·AC-6611.2 LATEST_HELPER는 helper/Directory.Build.props의 도우미 버전과 같다(같은 커밋에서 올린다)', () => {
+  it('AC-004.4·AC-3402.1·AC-4902.6·AC-5002.3·AC-5401.3·AC-5903.5·AC-6106.1·AC-6611.2·AC-6912.6 LATEST_HELPER는 helper/Directory.Build.props의 도우미 버전과 같다(같은 커밋에서 올린다)', () => {
     const props = readFileSync(new URL('../../../helper/Directory.Build.props', import.meta.url), 'utf8')
     expect(props.match(/<Version>([^<]+)<\/Version>/)?.[1]).toBe(LATEST_HELPER)
   })
