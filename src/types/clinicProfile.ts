@@ -9,6 +9,11 @@ export type Honorific = (typeof HONORIFICS)[number]
 /** 하루 진료시간. 0시부터 분, 10분 단위. 점심은 둘 다 있거나 둘 다 null(점심 없음). null = 휴진 */
 export type DayHours = { open: number; close: number; lunchFrom: number | null; lunchTo: number | null } | null
 
+/** 쓰는 EMR(spec emr-choice REQ-7102, design.md 1절). DB 제약(migration 20261119300000_clinic_emr.sql)과 같은 넷. 글자는 lib/clinic/emrText.ts */
+export const EMR_KINDS = ['bit', 'uisarang', 'egis', 'other'] as const // 비트 · 의사랑 · 이지스 · 그 밖의 EMR
+export type EmrKind = (typeof EMR_KINDS)[number]
+export const DEFAULT_EMR: EmrKind = 'bit'
+
 export const STAFF_ROLES = ['doctor', 'staff'] as const // 원장님 · 직원
 export type StaffRole = (typeof STAFF_ROLES)[number]
 /** 원장님·직원 한 사람. id·이름·표시·색은 예약 시행자와 같은 모양(calendar = '예약에 보이기') */
@@ -23,6 +28,7 @@ export type ClinicProfile = {
   closedDates: string[] // YYYY-MM-DD 오름차순
   staff: ClinicStaff[]
   logoPath: string | null // clinic-logos 안 {hospital_id}/{uuid}.png
+  emr: EmrKind // 쓰는 EMR. 저장한 적 없거나 읽은 값이 넷 밖이면 'bit'
 }
 
 /** hours 칸 차례의 요일 이름 */

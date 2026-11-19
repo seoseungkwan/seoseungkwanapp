@@ -722,6 +722,7 @@ describe('AC-6603 예약이 병원 정보를 쓴다 (spec clinic-profile)', () =
       { id: 'na', name: '윤○○', role: 'staff', mark: '나', color: 'teal', calendar: false },
     ],
     logoPath: null,
+    emr: 'bit',
   }
   beforeEach(() => {
     vi.mocked(loadClinicProfile).mockResolvedValue(PROFILE)

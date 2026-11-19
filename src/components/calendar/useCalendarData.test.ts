@@ -67,6 +67,7 @@ const PROFILE: ClinicProfile = {
     { id: 'ga', name: '한○○', role: 'staff', mark: '가', color: 'blue', calendar: true },
   ],
   logoPath: null,
+  emr: 'bit',
 }
 const MERGED_PROFILE: CalSettings = {
   kinds: SETTINGS.kinds,

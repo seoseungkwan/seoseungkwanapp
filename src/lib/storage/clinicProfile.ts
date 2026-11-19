@@ -1,11 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { addMonthsToDay, isYmd, todayInKorea } from '@/lib/analytics/dates'
+import { isEmrKind } from '@/lib/clinic/emrText'
 import { CAL_COLORS, type CalColor } from '@/types/calendar'
 import {
   CLINIC_ADDRESS_MAX,
   CLINIC_LOGO_BUCKET,
   CLINIC_NAME_MAX,
   CLOSED_DATES_MAX,
+  DEFAULT_EMR,
   DEFAULT_HONORIFIC,
   DEFAULT_HOURS,
   HONORIFICS,
@@ -24,7 +26,7 @@ import {
   type StaffRole,
 } from '@/types/clinicProfile'
 
-// 병원 정보 읽기·저장·로고 (spec clinic-profile REQ-6601·REQ-6602, design.md 2절, ADR-033). 브라우저 → Supabase, 권한은 RLS가 막는다(ADR-004).
+// 병원 정보 읽기·저장·로고 (spec clinic-profile REQ-6601·REQ-6602, design.md 2절, ADR-033 · 쓰는 EMR은 spec emr-choice AC-7102.1). 브라우저 → Supabase, 권한은 RLS가 막는다(ADR-004).
 // 표 clinic_profiles(내 병원 한 줄, 고치기는 원장만)와 비공개 Storage clinic-logos({hospital_id}/{uuid}.png, PNG만, 1,000,000바이트).
 // 보내는 몸통은 정해 둔 칸만 골라 새로 만든다({ ...받은 값 } 금지). hospital_id·updated_at은 보내지 않는다(DB 기본값·RLS가 정한다).
 // 로고 이름(logo_path)은 uploadLogo·removeLogo만 고친다 — 표 저장은 그 칸을 보내지 않아 그새 바뀐 로고를 덮지 않는다.
@@ -38,7 +40,7 @@ type ReadRow = Record<string, unknown> // 읽은 줄은 모양을 믿지 않고 
 type Report = (reason: string) => void
 
 const TABLE = 'clinic_profiles'
-const COLUMNS = 'display_name, phone, address, honorific, hours, closed_dates, staff, logo_path'
+const COLUMNS = 'display_name, phone, address, honorific, hours, closed_dates, staff, logo_path, emr'
 const PNG_TYPE = 'image/png'
 const LOGO_INPUT_TYPES: readonly string[] = ['image/png', 'image/jpeg', 'image/webp']
 const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
@@ -92,6 +94,7 @@ export function defaultProfile(): ClinicProfile {
     closedDates: [],
     staff: [],
     logoPath: null,
+    emr: DEFAULT_EMR,
   }
 }
 
@@ -157,7 +160,7 @@ function checkStaff(value: unknown, report: Report): void {
 
 /**
  * 병원 정보 검사: 까닭 목록(비면 통과, 같은 까닭은 한 번). 이름·주소는 앞뒤 빈칸을 뺀 값(비면 없음), 전화는 기호를 뺀 숫자로 본다.
- * 이름 1~50 · 전화 숫자 9~11 · 주소 100 · 호칭 셋 · 요일마다 dayProblem(까닭 앞에 '월요일: ') · 휴진일 날짜 모양·겹침 없음·200개 ·
+ * 이름 1~50 · 전화 숫자 9~11 · 주소 100 · 호칭 셋 · 쓰는 EMR 넷 · 요일마다 dayProblem(까닭 앞에 '월요일: ') · 휴진일 날짜 모양·겹침 없음·200개 ·
  * 사람 30명·id 1~40 겹침 없음·이름 1~10·원장님/직원·표시 1자 겹침 없음·예약 20색·예약에 보이기 참거짓
  */
 export function checkProfile(profile: ClinicProfile): string[] {
@@ -173,6 +176,7 @@ export function checkProfile(profile: ClinicProfile): string[] {
   const address = textOrNull(value.address)
   if (!(address === null || isText(address, 1, CLINIC_ADDRESS_MAX))) report(`주소는 ${CLINIC_ADDRESS_MAX}자까지예요`)
   if (!isHonorific(value.honorific)) report('호칭은 원장님·대표원장님·선생님 중에서 골라 주세요')
+  if (!isEmrKind(value.emr)) report('쓰는 EMR은 비트·의사랑·이지스·그 밖의 EMR 중에서 골라 주세요')
   checkHours(value.hours, report)
   checkClosedDates(value.closedDates, report)
   checkStaff(value.staff, report)
@@ -212,11 +216,12 @@ export async function loadClinicProfile(client: Client): Promise<ClinicProfile |
     closedDates: passes(checkClosedDates, row.closed_dates) ? [...(row.closed_dates as string[])].sort() : [],
     staff: passes(checkStaff, row.staff) ? (row.staff as ClinicStaff[]).map(cleanStaff) : [],
     logoPath: typeof row.logo_path === 'string' && LOGO_PATH.test(row.logo_path) ? row.logo_path : null,
+    emr: isEmrKind(row.emr) ? row.emr : DEFAULT_EMR,
   }
 }
 
 /**
- * 표 일곱 칸을 내 병원 줄 하나에 덮어쓴다(onConflict hospital_id). checkProfile을 못 지나면 보내지 않고 'invalid'.
+ * 표 여덟 칸(쓰는 EMR 포함)을 내 병원 줄 하나에 덮어쓴다(onConflict hospital_id). checkProfile을 못 지나면 보내지 않고 'invalid'.
  * 오늘보다 1년 넘게 지난 휴진일은 빼고 앞날부터 차례로 보낸다(AC-6602.4). 받은 값은 고치지 않고, 성공하면 보낸 값(로고 이름은 받은 그대로)을 돌려준다
  */
 export async function saveClinicProfile(client: Client, profile: ClinicProfile, today: string = todayInKorea()): Promise<ClinicProfile | 'invalid' | 'failed'> {
@@ -232,6 +237,7 @@ export async function saveClinicProfile(client: Client, profile: ClinicProfile, 
     closedDates: profile.closedDates.filter((day) => day >= oldest).sort(),
     staff: profile.staff.map(cleanStaff),
     logoPath: profile.logoPath,
+    emr: profile.emr,
   }
   const body = {
     display_name: clean.displayName,
@@ -241,6 +247,7 @@ export async function saveClinicProfile(client: Client, profile: ClinicProfile, 
     hours: clean.hours,
     closed_dates: clean.closedDates,
     staff: clean.staff,
+    emr: clean.emr,
   }
   try {
     const { error } = await client.from(TABLE).upsert(body, { onConflict: 'hospital_id' })

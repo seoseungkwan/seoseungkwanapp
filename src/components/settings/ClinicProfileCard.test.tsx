@@ -608,3 +608,19 @@ describe('AC-6602.8 저장 성공', () => {
     expect(screen.queryByText('저장했어요')).toBeNull()
   })
 })
+
+describe('AC-7102.1 쓰는 EMR 들고 가기(spec emr-choice TASK-3 — 고르는 칸은 TASK-4)', () => {
+  it.each(['uisarang', 'egis', 'other', 'bit'] as const)("AC-7102.1: 읽은 쓰는 EMR('%s')을 바꾸지 않고 [저장]에 그대로 실어 보낸다", async (emr) => {
+    const user = await renderReady({ ...SAVED, emr })
+    await user.click(saveButton())
+    await screen.findByText('저장했어요')
+    expect(lastSaved().emr).toBe(emr)
+  })
+
+  it("AC-7102.1: 저장한 적 없으면 기본값 'bit'로 저장한다", async () => {
+    const user = await renderReady(null)
+    await user.click(saveButton())
+    await screen.findByText('저장했어요')
+    expect(lastSaved().emr).toBe('bit')
+  })
+})

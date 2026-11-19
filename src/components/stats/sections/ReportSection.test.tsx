@@ -776,7 +776,7 @@ describe('AC-6606.1·AC-6606.2·AC-6606.3: 통계 틀이 병원 정보(useClinic
   }
   const profileView = (over: { state?: ClinicProfileView['state']; saved?: boolean; honorific?: Honorific; closedDates?: string[] } = {}): ClinicProfileView => ({
     state: over.state ?? 'ready',
-    profile: { displayName: null, phone: null, address: null, honorific: over.honorific ?? '원장님', hours: [...DEFAULT_HOURS], closedDates: over.closedDates ?? [], staff: [], logoPath: null },
+    profile: { displayName: null, phone: null, address: null, honorific: over.honorific ?? '원장님', hours: [...DEFAULT_HOURS], closedDates: over.closedDates ?? [], staff: [], logoPath: null, emr: 'bit' },
     saved: over.saved ?? true,
     signupName: HOSPITAL,
     signupPhone: null,
