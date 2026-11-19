@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>비트 총진료비로 시안</title>
+<!--
+  bit-total 시안 (specs/bit-total). 숫자는 모두 지어낸 것이고 환자 자료는 없다.
+  ?s=both(기본, 지금·바뀜 나란히) · ?s=before(지금만) · ?s=after(바뀜만)
+  '지금' 쪽의 [참고 금액 포함] 스위치는 눌러 볼 수 있다(지금 운영 화면과 같은 꺼짐·켜짐).
+  색·모서리는 src/app/globals.css 토큰(--st-*)을 옮겨 왔다.
+-->
+<style>
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB;
+  --ink: #111827; --ink-2: #374151; --muted: #6B7280; --accent: #2563EB; --accent-soft: #EFF4FF;
+  --st-canvas: #F4F6F9; --st-ink: #172B4D; --st-ink-2: #3B4A63; --st-muted: #5B6B82;
+  --st-line: #E5EAF1; --st-line-2: #CBD3DF; --st-ref: #B7791F; --st-ref-2: #E9C98F;
+  --st-warn-ink: #975A16; --warning-soft: #FDF4E3; --cat-2: #0F766E;
+  --pos: #047857; --neg: #B91C1C;
+  --st-r: 14px; --st-r-sm: 8px; --r: 6px;
+  --before: #8A5A00; --before-soft: #FFF7E6; --after: #1D4ED8; --after-soft: #EAF1FF;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/1.55 system-ui, -apple-system, 'Pretendard', 'Malgun Gothic', sans-serif; }
+main { max-width: 1240px; margin: 0 auto; padding: 24px 16px 56px; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.lead { color: var(--ink-2); margin: 0 0 12px; }
+.states { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 20px; }
+.states a { height: 34px; display: inline-flex; align-items: center; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink-2); text-decoration: none; font-size: 13px; }
+.states a.on { border-color: var(--ink); color: var(--ink); font-weight: 600; }
+.part { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+.part > h2 { font-size: 16px; margin: 0; }
+.where { display: inline-block; font-size: 12px; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; margin-left: 6px; font-weight: 400; vertical-align: 1px; }
+.what { color: var(--ink-2); font-size: 13px; margin: 4px 0 12px; }
+.pair { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+body[data-s="before"] .pair, body[data-s="after"] .pair { grid-template-columns: minmax(0, 1fr); }
+body[data-s="before"] .after, body[data-s="after"] .before { display: none; }
+.side { min-width: 0; }
+.side > .tag { display: inline-block; font-size: 12px; font-weight: 700; border-radius: 4px; padding: 1px 8px; margin-bottom: 6px; }
+.before > .tag { color: var(--before); background: var(--before-soft); }
+.after > .tag { color: var(--after); background: var(--after-soft); }
+.mini-title { font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
+
+/* 앱 카드(통계 틀) */
+.card { background: var(--surface); border: 1px solid var(--st-line); border-radius: var(--st-r); padding: 16px; min-width: 0; }
+.card + .card { margin-top: 10px; }
+.card-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 12px; }
+.card-head .t { min-width: 0; }
+.card-head h3 { font-size: 16px; line-height: 24px; margin: 0; color: var(--st-ink); }
+.card-head .d { font-size: 13px; color: var(--st-muted); margin: 0; }
+.small { font-size: 13px; }
+.cap { font-size: 12px; }
+.muted { color: var(--st-muted); }
+.ink2 { color: var(--st-ink-2); }
+.num { font-variant-numeric: tabular-nums; }
+.gone { text-decoration: line-through; text-decoration-color: rgba(185, 28, 28, .55); }
+.mark-new { background: #E7F7EE; border-radius: 3px; padding: 0 2px; }
+
+/* 스위치 */
+.sw { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; max-width: 340px; }
+.sw button { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 4px; border: 0; background: none; font: inherit; font-size: 13px; color: var(--st-ink); cursor: pointer; }
+.sw .track { position: relative; width: 38px; height: 22px; border-radius: 999px; background: var(--st-line-2); flex: none; }
+.sw .knob { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.sw[data-on="1"] .track { background: var(--st-ref); }
+.sw[data-on="1"] .knob { transform: translateX(16px); }
+.sw span.txt { font-size: 12px; color: var(--st-muted); text-align: right; }
+.reftag { display: inline-block; font-size: 11px; font-weight: 600; color: var(--st-warn-ink); background: var(--warning-soft); border: 1px solid var(--st-ref-2); border-radius: 4px; padding: 0 5px; margin-left: 6px; vertical-align: 2px; }
+
+/* 매출 요약 칸 */
+.cells { display: grid; margin-top: 14px; }
+.cells.three { grid-template-columns: 3fr 2fr 2fr; }
+.cells.two { grid-template-columns: 3fr 2fr; }
+.cell { min-width: 0; padding: 0 16px; border-left: 1px solid var(--st-line); }
+.cell:first-child { padding-left: 0; border-left: 0; }
+.cell .lab { font-size: 13px; color: var(--st-ink-2); }
+.cell .lab .hint { color: var(--st-muted); font-size: 12px; margin-left: 4px; }
+.cell .big { font-size: 22px; line-height: 32px; font-weight: 600; color: var(--st-ink); font-variant-numeric: tabular-nums; }
+.cell .big.warn { color: var(--st-warn-ink); }
+.cell .big small { font-size: 14px; font-weight: 500; margin-left: 2px; }
+.cell .delta { font-size: 13px; }
+.delta.up { color: var(--pos); } .delta.down { color: var(--neg); } .delta.none { color: var(--st-muted); }
+.cell .note { font-size: 12px; color: var(--st-muted); margin-top: 2px; }
+
+/* 탭 · 막대 */
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 12px 0 10px; }
+.tabs span { font-size: 13px; padding: 4px 10px; border-radius: var(--r); border: 1px solid var(--line-strong); color: var(--st-ink-2); background: var(--surface); }
+.tabs span.on { border-color: var(--st-ink); color: var(--st-ink); font-weight: 600; }
+.leadline { font-size: 14px; color: var(--st-ink-2); }
+.leadline b { color: var(--st-ink); font-size: 16px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 8px 0 4px; font-size: 12px; color: var(--st-muted); }
+.legend i { display: inline-block; width: 16px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+.sw-dash { border: 1.5px dashed var(--st-ref); background: transparent; }
+.sw-hatch { background: repeating-linear-gradient(135deg, var(--st-ref) 0 2px, var(--st-ref-2) 2px 5px); }
+.bars { display: flex; align-items: flex-end; gap: 2px; height: 132px; margin-top: 8px; border-bottom: 1px solid var(--st-line-2); }
+.bars button { flex: 1 1 0; min-width: 0; height: 100%; padding: 0; border: 0; background: none; display: flex; align-items: flex-end; cursor: pointer; }
+.bars button i { display: block; width: 100%; background: var(--accent); border-radius: 2px 2px 0 0; }
+.bars button.sel i { outline: 2px solid var(--st-ink); outline-offset: 1px; }
+.bars button i.dash { background: transparent; border: 1.5px dashed var(--st-ref); border-bottom: 0; }
+.bars button i.hatch { background: repeating-linear-gradient(135deg, var(--st-ref) 0 2px, var(--st-ref-2) 2px 5px); }
+.axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--st-muted); margin-top: 2px; }
+.tip { font-size: 13px; color: var(--st-ink); margin-top: 6px; min-height: 20px; }
+.bnote { font-size: 12px; color: var(--st-muted); margin: 6px 0 0; }
+.notice { font-size: 13px; color: var(--st-ink-2); background: var(--st-canvas); border-radius: var(--st-r-sm); padding: 8px 10px; margin: 8px 0; }
+.notice b { color: var(--st-ink); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--st-line); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--st-muted); font-weight: 500; }
+tr.sub td:first-child { padding-left: 20px; color: var(--st-ink-2); }
+tr.sum td { font-weight: 600; border-top: 1px solid var(--st-line-2); border-bottom: 0; }
+.scroll { overflow-x: auto; }
+.how { margin-top: 10px; border-top: 1px solid var(--st-line); padding-top: 8px; }
+.how summary { font-size: 13px; color: var(--accent); cursor: pointer; }
+.how p { font-size: 13px; color: var(--st-ink-2); margin: 6px 0 0; }
+.how p.drop { color: var(--muted); }
+
+/* 신환 1명당 */
+.vline { font-size: 14px; color: var(--st-ink-2); margin: 10px 0 0; }
+.vcells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 12px; }
+.vcells > div { padding: 0 16px; border-left: 1px solid var(--st-line); min-width: 0; }
+.vcells > div:first-child { padding-left: 0; border-left: 0; }
+.vcells b { display: block; font-size: 22px; line-height: 32px; font-weight: 600; color: var(--st-ink); font-variant-numeric: tabular-nums; }
+.vcells span { font-size: 13px; color: var(--st-muted); }
+.hb-title { font-size: 15px; font-weight: 600; color: var(--st-ink); margin: 18px 0 6px; }
+.hb { display: grid; grid-template-columns: 110px minmax(0, 1fr) 150px; gap: 2px 8px; align-items: center; font-size: 13px; color: var(--st-ink-2); padding: 3px 0; }
+.hb i { display: block; height: 18px; background: var(--cat-2); border-radius: 4px; }
+.hb .v { text-align: right; color: var(--st-ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.foot { font-size: 13px; color: var(--st-muted); margin: 12px 0 0; }
+.subcases { display: grid; gap: 8px; margin-top: 10px; }
+.subcase { border: 1px dashed var(--st-line-2); border-radius: var(--st-r-sm); padding: 8px 10px; font-size: 13px; }
+.subcase .k { font-size: 12px; color: var(--muted); display: block; }
+
+/* 보고 문장 */
+.picks { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line-strong); border-radius: var(--r); overflow: hidden; margin-top: 10px; }
+.picks span { font-size: 13px; padding: 4px 10px; border-left: 1px solid var(--line-strong); color: var(--ink-2); }
+.picks span:first-child { border-left: 0; }
+.picks span.on { background: var(--accent-soft); color: #1E40AF; font-weight: 600; }
+.dateline { font-size: 14px; font-weight: 600; color: var(--st-ink); margin: 10px 0 0; }
+.dateline .w { color: var(--st-warn-ink); }
+.rtext { margin-top: 6px; background: var(--st-canvas); border-radius: var(--st-r-sm); padding: 12px 16px; font-size: 14px; color: var(--st-ink); }
+.rtext span { display: block; min-height: 22px; white-space: pre-wrap; overflow-wrap: anywhere; font-family: ui-monospace, 'D2Coding', Consolas, monospace; font-size: 13px; }
+.rtext span.warn { background: var(--warning-soft); color: #92400E; font-weight: 500; margin: 0 -8px; padding: 0 8px; }
+.rtext span.newv { background: #E7F7EE; margin: 0 -8px; padding: 0 8px; }
+.rnotes { margin: 8px 0 0; padding-left: 18px; font-size: 12px; color: var(--st-ink-2); }
+.rnotes li { margin: 2px 0; }
+.rnotes li.del { color: var(--muted); text-decoration: line-through; }
+.rnotes li.add { background: #E7F7EE; }
+.btn { height: 32px; display: inline-flex; align-items: center; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font: inherit; font-size: 13px; color: var(--ink-2); }
+
+/* 목표 */
+.goal .top { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.goal .top b { color: var(--st-ink); }
+.gtrack { position: relative; height: 12px; background: var(--st-canvas); border: 1px solid var(--st-line); border-radius: var(--st-r-sm); margin: 6px 0; }
+.gtrack .fill { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: var(--st-r-sm); }
+.gtrack .today { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--st-ink); }
+.pace { font-size: 13px; color: var(--st-ink-2); }
+.pace .bad { color: var(--neg); font-weight: 600; } .pace .ok { color: var(--pos); font-weight: 600; }
+
+/* 보고서 종이 */
+.paper { border: 1px solid var(--line-strong); background: #fff; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.06); border-radius: 4px; }
+.paper h4 { font-size: 15px; margin: 0 0 2px; }
+.paper h5 { font-size: 13px; margin: 12px 0 6px; border-bottom: 1px solid var(--line); padding-bottom: 3px; }
+.pcells { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.pcells.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pcells div { border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; min-width: 0; }
+.pcells span { display: block; font-size: 12px; color: var(--muted); }
+.pcells b { display: block; font-size: 15px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.paper ul { margin: 0; padding-left: 18px; font-size: 13px; }
+.hl { background: #E7F7EE; }
+.hl-old { background: var(--before-soft); }
+
+/* 수납일지 · 업무일지 */
+.banner { border: 1px solid #F3D9A4; background: var(--warning-soft); border-radius: var(--r); padding: 8px 12px; font-size: 13px; color: #78350F; }
+.ledger { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.ledger div { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; }
+.ledger span { display: block; font-size: 12px; color: var(--muted); }
+.ledger b { font-variant-numeric: tabular-nums; }
+.wnotice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0; }
+.wnotice p { margin: 0; font-size: 13px; color: var(--ink-2); display: flex; gap: 6px; align-items: flex-start; }
+.wnotice p::before { content: 'i'; flex: none; width: 16px; height: 16px; border: 1px solid var(--muted); border-radius: 50%; font-size: 11px; line-height: 14px; text-align: center; color: var(--muted); margin-top: 2px; font-style: italic; }
+.wgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line-strong); border-radius: 4px; overflow: hidden; }
+.wgrid div { position: relative; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 6px 8px; min-height: 52px; min-width: 0; }
+.wgrid div:nth-child(4n) { border-right: 0; }
+.wgrid div:nth-last-child(-n+4) { border-bottom: 0; }
+.wgrid span { display: block; font-size: 12px; color: var(--muted); }
+.wgrid b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.wgrid div.bit::after { content: ''; position: absolute; top: 0; right: 0; border-style: solid; border-width: 0 10px 10px 0; border-color: transparent var(--accent) transparent transparent; }
+.wgrid div.newv { background: #E7F7EE; }
+.bitlegend { font-size: 12px; color: var(--ink-2); margin-top: 6px; display: flex; gap: 6px; align-items: center; }
+.bitlegend i { width: 10px; height: 10px; background: linear-gradient(225deg, var(--accent) 50%, transparent 50%); display: inline-block; }
+
+.keep { font-size: 13px; color: var(--ink-2); margin: 0; padding-left: 18px; }
+.keep li { margin: 3px 0; }
+
+@media (max-width: 767px) {
+  .pair { grid-template-columns: minmax(0, 1fr); }
+  .cells.three, .cells.two { grid-template-columns: minmax(0, 1fr); }
+  .cell { padding: 10px 0 0; border-left: 0; border-top: 1px solid var(--st-line); margin-top: 10px; }
+  .cell:first-child { padding-top: 0; border-top: 0; margin-top: 0; }
+  .sw { margin-left: 0; width: 100%; align-items: flex-start; max-width: none; }
+  .sw span.txt { text-align: left; }
+  .vcells { grid-template-columns: minmax(0, 1fr); }
+  .vcells > div { padding: 10px 0 0; border-left: 0; border-top: 1px solid var(--st-line); margin-top: 10px; }
+  .vcells > div:first-child { padding-top: 0; border-top: 0; margin-top: 0; }
+  .hb { grid-template-columns: 84px minmax(0, 1fr); }
+  .hb .v { grid-column: 2; text-align: left; color: var(--st-ink-2); }
+  .pcells { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pcells.three { grid-template-columns: minmax(0, 1fr); }
+  .ledger { grid-template-columns: minmax(0, 1fr); }
+  .wgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wgrid div:nth-child(4n) { border-right: 1px solid var(--line); }
+  .wgrid div:nth-child(2n) { border-right: 0; }
+  .wgrid div:nth-last-child(-n+4) { border-bottom: 1px solid var(--line); }
+  .wgrid div:nth-last-child(-n+2) { border-bottom: 0; }
+}
+</style>
+</head>
+<body data-s="both">
+<main>
+  <h1>확인 필요 없이 비트 총진료비로 — 시안</h1>
+  <p class="lead">도우미가 '확인 필요'로 둔 날도 그날 비트 총진료비(원장님별과 같은 기준)를 그날 매출로 씁니다. 매출에서 '참고 금액'·'확인 필요한 날' 글과 스위치·빗금·점선·노란 줄이 모두 없어집니다. 그리고 '신환 1명당 매출'을 90일 대신 <b>그 달 신환이 그 달에 낸 돈</b>으로 셉니다. 숫자는 모두 지어낸 것입니다. 기간은 최근 30일(10월 20일–11월 18일), 그중 <b>10월 28일·11월 18일</b>이 '확인 필요한 날'입니다.</p>
+  <nav class="states" aria-label="보기">
+    <a href="?s=both" data-s="both">지금 · 바뀜 나란히</a>
+    <a href="?s=before" data-s="before">지금만</a>
+    <a href="?s=after" data-s="after">바뀜만</a>
+  </nav>
+
+  <!-- ① 매출 요약 -->
+  <section class="part">
+    <h2>① 매출 요약 <span class="where">통계 탭 위</span></h2>
+    <p class="what">칸 셋 → 칸 둘. [참고 금액 포함] 스위치와 '확인 필요한 날' 칸이 없어지고, 그런 날도 그날 금액으로 총매출·진료한 날·건당 진료비에 들어갑니다.</p>
+    <div class="pair">
+      <div class="side before"><span class="tag">지금</span><div id="sumBefore"></div></div>
+      <div class="side after"><span class="tag">바뀜</span><div id="sumAfter"></div></div>
+    </div>
+  </section>
+
+  <!-- ② 매출 추이 -->
+  <section class="part">
+    <h2>② 매출 칸 · 매출 추이 <span class="where">통계 탭 매출 칸</span></h2>
+    <p class="what">점선 칸(꺼짐)·빗금 막대(켜짐)·범례·'참고 포함' 꼬리표가 없어지고 그런 날도 보통 막대입니다. 막대를 눌러 아래 줄을 보세요.</p>
+    <div class="pair">
+      <div class="side before"><span class="tag">지금</span><div id="trendBefore"></div></div>
+      <div class="side after"><span class="tag">바뀜</span><div id="trendAfter"></div></div>
+    </div>
+  </section>
+
+  <!-- ③ 급여·비급여·기타 -->
+  <section class="part">
+    <h2>③ 매출 칸 · 급여·비급여·기타 <span class="where">통계 탭 매출 칸</span></h2>
+    <p class="what">그런 날은 급여·비급여·기타로 나눌 수 없어 '나눔을 못 한 날'로 나옵니다. 그래서 이 표의 합계는 총매출보다 작습니다(지금 있는 안내 한 줄이 알려 줌).</p>
+    <div class="pair">
+      <div class="side before"><span class="tag">지금</span><div id="splitBefore"></div></div>
+      <div class="side after"><span class="tag">바뀜</span><div id="splitAfter"></div></div>
+    </div>
+  </section>
+
+  <!-- ④ 어떻게 세나요 -->
+  <section class="part">
+    <h2>④ 매출 칸 · [어떻게 세나요?] <span class="where">매출 추이 · 건당 진료비 탭</span></h2>
+    <p class="what">'확인 필요한 날'을 빼고 센다는 문단이 '그런 날도 그날 총진료비를 넣는다'로 바뀝니다. 지워지는 문단은 줄을 그었습니다.</p>
+    <div class="pair">
+      <div class="side before"><span class="tag">지금</span><div id="howBefore"></div></div>
+      <div class="side after"><span class="tag">바뀜</span><div id="howAfter"></div></div>
+    </div>
+  </section>
+
+  <!-- ⑤ 신환 1명당 탭 -->
+  <section class="part">
+    <h2>⑤ 매출 칸 · 신환 1명당 <span class="where">통계 탭 매출 칸 다섯째 탭 · 추가된 요구</span></h2>
+    <p class="what">'처음 온 날부터 90일'이 아니라 <b>그 달에 비트 신환 표시가 있는 환자가 그 달 안에 낸 진료비</b>입니다. 불러온 범위의 마지막 달(보통 이번 달)을 보여 주고, 어느 달인지 칸 위에 적습니다.</p>
+    <div class="pair">
+      <div class="side before"><span class="tag">지금</span><div id="valueBefore"></div></div>
+      <div class="side after"><span class="tag">바뀜</span><div id="valueAfter"></div></div>
+    </div>
+  </section>
+
+  <!-- ⑥ 환자 요약 안내 -->
+  <section class="part">
+    <h2>⑥ 환자 요약 · 새 도우미 안내 <span class="where">통계 탭 위 · 옛 도우미일 때만</span></h2>
+    <p class="what">굵은 글에서 '참고 금액'만 빠집니다.</p>
+    <div class="pair">
+      <div class="side before"><span class="tag">지금</span><div class="card"><div class="notice"><b>90일초진과 참고 금액은 새 도우미(0.7.0)가 있어야 보여요.</b> 비트 PC 연결 화면에서 새 도우미를 받아 깐 뒤 [비트에서 불러오기]를 다시 누르면 보여요.<div style="margin-top:6px"><span class="btn">새 도우미 내려받기</span></div></div></div></div>
+      <div class="side after"><span class="tag">바뀜</span><div class="card"><div class="notice"><b>90일초진은 새 도우미(0.7.0)가 있어야 보여요.</b> 비트 PC 연결 화면에서 새 도우미를 받아 깐 뒤 [비트에서 불러오기]를 다시 누르면 보여요.<div style="margin-top:6px"><span class="btn">새 도우미 내려받기</span></div></div></div></div>
+    </div>
+  </section>
+
+  <!-- ⑦ 원장님별 -->
+  <section class="part">
+    <h2>⑦ 원장님별 <span class="where">통계 탭</span></h2>
+    <p class="what">표 숫자는 그대로입니다(원래 그런 날도 더했음). '확인 필요한 날도 더해서…' 두 글이 없어지고, 이제 위 매출 요약 총매출과 합계가 같은 기준입니다.</p>
+    <div class="pair">
+      <div class="side before"><span class="tag">지금</span><div id="docBefore"></div></div>
+      <div class="side after"><span class="tag">바뀜</span><div id="docAfter"></div></div>
+    </div>
+  </section>
+
+  <!-- ⑧ 보고 문장 -->
+  <section class="part">
+    <h2>⑧ 원장님 보고 문장 <span class="where">통계 탭 · 어제 일일보고</span></h2>
+    <p class="what">'확인 필요' 대신 총진료비(원장님별과 같은 기준)와 건당진료비가 채워집니다. 나눌 수 없는 조합청구액·입금액·비급여는 '–'. 날짜 옆 '· 금액 확인 필요'와 노란 줄이 없어집니다. 바뀐 줄은 연두색.</p>
+    <div class="pair">
+      <div class="side before"><span class="tag">지금</span><div id="repBefore"></div></div>
+      <div class="side after"><span class="tag">바뀜</span><div id="repAfter"></div></div>
+    </div>
+  </section>
+
+  <!-- ⑨ 이번 달 목표 -->
+  <section class="part">
+    <h2>⑨ 이번 달 목표 <span class="where">통계 탭 위 요약 칸</span></h2>
+    <p class="what">11월 18일(확인 필요한 날) 금액이 '지금까지'에 들어가 달성률과 월말 예상이 올라갑니다. 글 모양(만 원)은 그대로.</p>
+    <div class="pair">
+      <div class="side before"><span class="tag">지금</span><div id="goalBefore"></div></div>
+      <div class="side after"><span class="tag">바뀜</span><div id="goalAfter"></div></div>
+    </div>
+  </section>
+
+  <!-- ⑩ 월간 보고서 매출 -->
+  <section class="part">
+    <h2>⑩ 월간 보고서 · 매출 <span class="where">통계 탭 월간 보고서 · 10월</span></h2>
+    <p class="what">확인 필요한 날(10월 28일)도 더하고, 만 원 아래까지 원 단위로 다 씁니다. 한 달 요약 · 목표 · 달라진 것 세 곳.</p>
+    <div class="pair">
+      <div class="side before"><span class="tag">지금</span><div id="paperBefore"></div></div>
+      <div class="side after"><span class="tag">바뀜</span><div id="paperAfter"></div></div>
+    </div>
+  </section>
+
+  <!-- ⑪ 월간 보고서 신환 1명당 -->
+  <section class="part">
+    <h2>⑪ 월간 보고서 · 신환 1명당 매출 <span class="where">월간 보고서 · 10월 · 추가된 요구</span></h2>
+    <p class="what">고른 달(10월)의 신환이 10월 안에 낸 돈으로 바뀌고 '(90일)'이 빠집니다. 금액 글은 만 원 그대로(평균이라서). 그 달 값이 없거나 0명이면 이 칸이 없습니다.</p>
+    <div class="pair">
+      <div class="side before"><span class="tag">지금</span><div id="pvBefore"></div></div>
+      <div class="side after"><span class="tag">바뀜</span><div id="pvAfter"></div></div>
+    </div>
+  </section>
+
+  <!-- ⑫ 수납일지 -->
+  <section class="part">
+    <h2>⑫ 수납일지 <span class="where">수납일지 탭 · 장부 위</span></h2>
+    <p class="what">'확인 필요한 날' 알림 줄만 없어집니다. 장부·마감은 그대로.</p>
+    <div class="pair">
+      <div class="side before"><span class="tag">지금</span><div class="card"><div class="small ink2" style="margin-bottom:8px"><b>11월 18일 (수)</b> 장부</div><div class="banner"><b>확인 필요한 날</b> — 환불·변경수납·예치금이 있거나 수납 연결이 겹쳐서 장부 금액이 비트와 다를 수 있어요. 마감 전에 비트 수납 화면과 맞춰 보세요.</div><div class="ledger"><div><span>현금</span><b>412,000원</b></div><div><span>카드</span><b>3,486,500원</b></div><div><span>계좌이체</span><b>298,000원</b></div></div></div></div>
+      <div class="side after"><span class="tag">바뀜</span><div class="card"><div class="small ink2" style="margin-bottom:8px"><b>11월 18일 (수)</b> 장부</div><div class="ledger"><div><span>현금</span><b>412,000원</b></div><div><span>카드</span><b>3,486,500원</b></div><div><span>계좌이체</span><b>298,000원</b></div></div></div></div>
+    </div>
+  </section>
+
+  <!-- ⑬ 업무일지 -->
+  <section class="part">
+    <h2>⑬ 업무일지 <span class="where">업무일지 탭 · 비트 숫자 채우기</span></h2>
+    <p class="what">그런 날도 총진료비 칸에 비트 총진료비가 채워지고 안내는 보통 날과 같습니다. 나머지 금액 칸은 비트가 나눌 수 없어 비어 있습니다(따로 안내 없음).</p>
+    <div class="pair">
+      <div class="side before"><span class="tag">지금</span><div id="wlBefore"></div></div>
+      <div class="side after"><span class="tag">바뀜</span><div id="wlAfter"></div></div>
+    </div>
+  </section>
+
+  <section class="part">
+    <h2>그대로 두는 것</h2>
+    <ul class="keep">
+      <li>도우미·확장·DB·SQL — 바꾸지 않습니다(그날 비트 총진료비는 이미 저장돼 있음). 새 도우미 설치도 필요 없습니다.</li>
+      <li>청구 사전점검의 '확인 필요'(뜻이 다름), AI 분석(이미 원장님별과 같은 금액을 씀).</li>
+      <li>이번 달 목표·매출 칸의 금액 글(만 원). 원 단위는 월간 보고서 매출만.</li>
+      <li>보고 문장의 '이 기간은 보고를 확정할 수 없어요'(도우미가 아예 보고를 못 만든 날).</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+(function () {
+  // ── 보기 상태 ──
+  var s = new URLSearchParams(location.search).get('s')
+  if (['both', 'before', 'after'].indexOf(s) < 0) s = 'both'
+  document.body.dataset.s = s
+  document.querySelectorAll('.states a').forEach(function (a) { if (a.dataset.s === s) a.classList.add('on') })
+
+  // ── 글 모양(앱 money.ts·PatientValueSection과 같은 규칙) ──
+  var MINUS = '−'
+  function fmt(n) { return (n < 0 ? MINUS : '') + Math.trunc(Math.abs(n)).toLocaleString('en-US') }
+  function won(n) { return fmt(n) + '원' }
+  function man(n) {
+    var m = Math.trunc(Math.abs(n) / 1e4)
+    if (m === 0) return won(n)
+    var e = Math.trunc(m / 1e4), r = m % 1e4, sg = n < 0 ? MINUS : ''
+    if (e === 0) return sg + fmt(r) + '만 원'
+    return r === 0 ? sg + e + '억 원' : sg + e + '억 ' + fmt(r) + '만 원'
+  }
+  function wonText(n) {
+    var a = Math.abs(n), w = a % 1e4
+    if (a < 1e4) return won(n)
+    var head = man(Math.sign(n) * (a - w))
+    return w === 0 ? head : head.replace(/ 원$/, '') + ' ' + fmt(w) + '원'
+  }
+  var WD = '일월화수목금토'
+
+  // ── 지어낸 날 자료: 10/20(화)–11/18(수), 일요일 휴진 ──
+  var WK = [562, 541, 575, 533, 548, 566, 529, 552, 571, 544, 538, 560, 547, 583, 526, 557, 549, 564, 541, 550]
+  var SAT = [298, 312, 305, 290]
+  var ROUGH = { '2026-10-28': { v: 4980000, visits: 96 }, '2026-11-18': { v: 5213400, visits: 102 } }
+  var days = [], wi = 0, si = 0
+  for (var t = Date.UTC(2026, 9, 20); t <= Date.UTC(2026, 10, 18); t += 864e5) {
+    var d = new Date(t), ymd = d.toISOString().slice(0, 10), dow = d.getUTCDay()
+    if (dow === 0) continue
+    var label = (d.getUTCMonth() + 1) + '.' + d.getUTCDate() + '(' + WD[dow] + ')'
+    if (ROUGH[ymd]) { days.push({ d: ymd, label: label, dow: dow, total: null, rough: ROUGH[ymd].v, visits: ROUGH[ymd].visits }); continue }
+    var v = dow === 6 ? SAT[si++] * 1e4 + (si * 4310) % 1e4 : WK[wi++] * 1e4 + (wi * 3170) % 1e4
+    days.push({ d: ymd, label: label, dow: dow, total: v, rough: null, visits: Math.round(v / (dow === 6 ? 48000 : 52500)) })
+  }
+  var PREV = { total: 121850000, visits: 2330 } // 지난 30일(9/20–10/19), 확인 필요한 날 없음
+  var ROUGH_DAYS_TEXT = '10월 28일·11월 18일'
+
+  function sumOf(withRough) {
+    var total = 0, visits = 0, n = 0
+    days.forEach(function (x) {
+      var v = x.total !== null ? x.total : (withRough ? x.rough : null)
+      if (v === null) return
+      total += v; visits += x.visits; n += 1
+    })
+    return { total: total, visits: visits, days: n, per: Math.trunc(total / visits) }
+  }
+  function deltaOf(now, before) {
+    var rate = (now - before) / before * 100
+    return { cls: rate > 0 ? 'up' : 'down', text: (rate > 0 ? '▲ ' : '▼ ') + man(Math.abs(now - before)) + ' (' + (rate > 0 ? '+' : MINUS) + Math.abs(rate).toFixed(1) + '%)' }
+  }
+  function perDelta(now, before) {
+    var rate = (now - before) / before * 100
+    return { cls: rate > 0 ? 'up' : 'down', text: (rate > 0 ? '▲ ' : '▼ ') + (rate > 0 ? '+' : MINUS) + Math.abs(rate).toFixed(1) + '%' }
+  }
+  var PREV_PER = Math.trunc(PREV.total / PREV.visits)
+  var roughSum = days.reduce(function (a, x) { return a + (x.rough || 0) }, 0)
+
+  // ── 스위치(지금 쪽만, 모든 '지금' 칸이 같은 상태) ──
+  var on = false
+  function switchHtml() {
+    return '<div class="sw" data-on="' + (on ? 1 : 0) + '"><button type="button" role="switch" aria-checked="' + on + '" data-sw><span class="track"><span class="knob"></span></span>참고 금액 포함</button>' +
+      '<span class="txt">' + (on ? '확인 필요한 날 2일의 참고 금액을 더했어요' : '확인 필요한 날 2일은 빼고 셌어요') + '</span></div>'
+  }
+  var REFTAG = '<span class="reftag">참고 포함</span>'
+
+  function cell(label, hint, big, unit, delta, notes, tag, warn) {
+    return '<div class="cell"><div class="lab">' + label + (hint ? '<span class="hint">' + hint + '</span>' : '') + (tag ? REFTAG : '') + '</div>' +
+      '<div class="big' + (warn ? ' warn' : '') + '">' + big + (unit ? '<small>' + unit + '</small>' : '') + '</div>' +
+      (delta ? '<div class="delta ' + delta.cls + '">' + delta.text + '</div>' : '') +
+      (notes || []).map(function (n) { return '<div class="note">' + n + '</div>' }).join('') + '</div>'
+  }
+  function manBig(n) { return man(n).replace(/ 원$/, '') }
+
+  function renderSummary() {
+    var b = sumOf(on), a = sumOf(true)
+    var before = '<div class="card"><div class="card-head"><div class="t"><h3>매출 요약</h3><p class="d">총진료비 · 수납한 날 기준</p></div>' + switchHtml() + '</div>' +
+      '<div class="cells three">' +
+      cell('총매출', null, manBig(b.total), '원', deltaOf(b.total, PREV.total), ['진료한 날 ' + b.days + '일 · 하루 평균 ' + man(Math.floor(b.total / b.days)) + (on ? ' · 참고 ' + man(roughSum) + ' 포함' : '')], on) +
+      cell('건당 진료비', '매출 ÷ 접수 ' + fmt(b.visits) + '건', fmt(b.per), '원', perDelta(b.per, PREV_PER), [], on) +
+      cell('확인 필요한 날', null, '2', '일', null, [ROUGH_DAYS_TEXT + ' · ' + (on ? '참고 금액 ' + man(roughSum) + ' 포함' : '금액이 확실하지 않아 뺐어요')], false, true) +
+      '</div></div>'
+    var after = '<div class="card"><div class="card-head"><div class="t"><h3>매출 요약</h3><p class="d">총진료비 · 수납한 날 기준</p></div></div>' +
+      '<div class="cells two">' +
+      cell('총매출', null, manBig(a.total), '원', deltaOf(a.total, PREV.total), ['진료한 날 ' + a.days + '일 · 하루 평균 ' + man(Math.floor(a.total / a.days))]) +
+      cell('건당 진료비', '매출 ÷ 접수 ' + fmt(a.visits) + '건', fmt(a.per), '원', perDelta(a.per, PREV_PER), []) +
+      '</div></div>'
+    document.getElementById('sumBefore').innerHTML = before
+    document.getElementById('sumAfter').innerHTML = after
+  }
+
+  // ── 매출 추이 막대 ──
+  var TABS = ['매출 추이', '급여·비급여·기타', '치료별 매출', '건당 진료비', '신환 1명당']
+  function tabs(i) { return '<div class="tabs">' + TABS.map(function (n, k) { return '<span' + (k === i ? ' class="on"' : '') + '>' + n + '</span>' }).join('') + '</div>' }
+  var sel = { before: '2026-10-28', after: '2026-10-28' }
+  function bars(side) {
+    var mode = side === 'after' ? 'after' : (on ? 'on' : 'off')
+    var max = 0
+    days.forEach(function (x) { max = Math.max(max, x.total !== null ? x.total : x.rough) })
+    return '<div class="bars" data-side="' + side + '">' + days.map(function (x) {
+      var cls = '', v = x.total
+      if (x.total === null) {
+        if (mode === 'off') { cls = 'dash'; v = max * 0.92 }
+        else if (mode === 'on') { cls = 'hatch'; v = x.rough }
+        else v = x.rough
+      }
+      return '<button type="button" data-d="' + x.d + '" class="' + (sel[side] === x.d ? 'sel' : '') + '" aria-label="' + x.label + '"><i class="' + cls + '" style="height:' + (v / max * 100).toFixed(1) + '%"></i></button>'
+    }).join('') + '</div><div class="axis"><span>10.20</span><span>11.1</span><span>11.18</span></div>'
+  }
+  function tipText(side) {
+    var x = days.filter(function (y) { return y.d === sel[side] })[0]
+    if (!x) return ''
+    if (x.total !== null) return x.label + ' 매출 ' + man(x.total)
+    if (side === 'after') return x.label + ' 매출 ' + man(x.rough)
+    return on ? x.label + ' 참고 금액 ' + man(x.rough) : x.label + ' 확인 필요한 날 · 금액을 빼고 셌어요'
+  }
+  function renderTrend() {
+    var b = sumOf(on), a = sumOf(true)
+    var legendB = on ? '<div class="legend"><span><i class="sw-hatch"></i>참고 금액(확인 필요한 날)</span></div>' : '<div class="legend"><span><i class="sw-dash"></i>확인 필요한 날(뺌)</span></div>'
+    var notesB = '<p class="bnote">휴진한 날은 칸이 없어요.</p>' + (on
+      ? '<p class="bnote">빗금 막대는 확인 필요한 날(' + ROUGH_DAYS_TEXT + ')의 참고 금액이에요. 원장님별 표와 같은 기준(그날 수납한 줄의 총진료비 합, 환불은 빼기)으로 셌어요. 비트 외래환자경영통계와 조금 다를 수 있어요.</p>'
+      : '<p class="bnote">점선 칸은 확인 필요한 날(' + ROUGH_DAYS_TEXT + ')이에요. 0원이 아니라 금액이 확실하지 않아 합계에서 뺀 날이에요.</p>')
+    var head = function (withSw) { return '<div class="card-head"><div class="t"><h3>매출</h3></div>' + (withSw ? switchHtml() : '') + '</div>' }
+    document.getElementById('trendBefore').innerHTML = '<div class="card">' + head(true) + tabs(0) +
+      '<p class="d small muted" style="margin:0">매출 = 총진료비 · 수납한 날 기준, 하루씩</p>' +
+      '<div class="leadline">이 기간 매출 <b>' + man(b.total) + '</b> · 지난 30일 ' + man(PREV.total) + (on ? REFTAG : '') + '</div>' +
+      legendB + bars('before') + '<div class="tip" data-tip="before">' + tipText('before') + '</div>' + notesB + '</div>'
+    document.getElementById('trendAfter').innerHTML = '<div class="card">' + head(false) + tabs(0) +
+      '<p class="d small muted" style="margin:0">매출 = 총진료비 · 수납한 날 기준, 하루씩</p>' +
+      '<div class="leadline">이 기간 매출 <b>' + man(a.total) + '</b> · 지난 30일 ' + man(PREV.total) + '</div>' +
+      bars('after') + '<div class="tip" data-tip="after">' + tipText('after') + '</div><p class="bnote">휴진한 날은 칸이 없어요.</p></div>'
+  }
+
+  // ── 급여·비급여·기타 ──
+  var SPLIT_NOTE = '매출은 총진료비예요. 급여(요양비용총액)는 공단이 내는 몫과 환자가 내는 몫(본인부담)을 더한 금액, 비급여는 환자가 모두 내는 금액, 기타는 100/100 미만 항목과 전액 본인부담 금액이에요. '
+  function splitTable(sum) {
+    var cov = Math.trunc(sum * 0.78), ins = Math.trunc(cov * 0.7), co = cov - ins, non = Math.trunc(sum * 0.17), oth = sum - cov - non
+    var pct = function (v) { return (v / sum * 100).toFixed(1) + '%' }
+    return '<div class="scroll"><table><thead><tr><th>구분</th><th>금액</th><th>비중</th></tr></thead><tbody>' +
+      '<tr><td>급여</td><td>' + man(cov) + '</td><td>' + pct(cov) + '</td></tr>' +
+      '<tr class="sub"><td>공단부담</td><td>' + man(ins) + '</td><td></td></tr>' +
+      '<tr class="sub"><td>본인부담</td><td>' + man(co) + '</td><td></td></tr>' +
+      '<tr><td>비급여</td><td>' + man(non) + '</td><td>' + pct(non) + '</td></tr>' +
+      '<tr><td>기타</td><td>' + man(oth) + '</td><td>' + pct(oth) + '</td></tr>' +
+      '<tr class="sum"><td>합계</td><td>' + man(sum) + '</td><td>100%</td></tr></tbody></table></div>'
+  }
+  function renderSplit() {
+    var conf = sumOf(false).total, all = sumOf(true).total
+    document.getElementById('splitBefore').innerHTML = '<div class="card"><div class="card-head"><div class="t"><h3>매출</h3></div>' + switchHtml() + '</div>' + tabs(1) +
+      (on ? '<div class="notice">참고 금액 ' + man(roughSum) + '(확인 필요한 날 2일)은 이 탭에 넣지 않아 합이 총매출과 달라요.</div>' : '') +
+      splitTable(conf) +
+      '<p class="bnote">' + SPLIT_NOTE + '셋을 더하면 매출이에요.</p>' +
+      '<p class="bnote">막대는 날마다 아래부터 급여·비급여·기타예요. <span class="gone">확인 필요한 날과 </span>나눔을 못 한 날은 막대가 없어요.</p></div>'
+    document.getElementById('splitAfter').innerHTML = '<div class="card"><div class="card-head"><div class="t"><h3>매출</h3></div></div>' + tabs(1) +
+      '<div class="notice"><b>2일(' + ROUGH_DAYS_TEXT + ')</b>은 나눔을 못 해서 이 표에서 빠졌어요. 매출 합계에는 들어 있어요.</div>' +
+      splitTable(conf) +
+      '<p class="bnote">' + SPLIT_NOTE + '이 기간은 나눔을 못 한 날이 빠져서 셋을 더해도 매출보다 작아요. 막대도 나눔이 있는 날만 더해요.</p>' +
+      '<p class="bnote">막대는 날마다 아래부터 급여·비급여·기타예요. 나눔을 못 한 날은 막대가 없어요.</p>' +
+      '<p class="cap" style="color:var(--before);margin:8px 0 0">시안 메모: 이 표 합계 ' + man(conf) + ' &lt; 총매출 ' + man(all) + ' (차이 = 그 두 날)</p></div>'
+  }
+
+  // ── 어떻게 세나요 ──
+  function renderHow() {
+    var p1 = '매출은 수납한 날(회계일)의 총진료비예요. 총진료비 = 공단부담 + 본인부담 + 비급여 + 기타이고, 그날 정상 수납한 것과 미수금으로 들어온 것을 더해요.'
+    var p4 = '막대 칸은 환자 수 추이와 같아요: 최근 7일·30일·90일은 하루씩, 최근 12개월은 한 달씩, 기간 골라 보기는 고른 단위(일별·주별·월별)예요.'
+    var pv1 = '매출을 그 기간의 접수 건수로 나눠요. 같은 분이 다섯 번 오면 다섯 건으로 세요. 원장님 보고 문장의 건당진료비와 같은 식이고, 원 아래는 버려요.'
+    var before = '<div class="card"><div class="mini-title" style="margin-top:0">매출 추이 [어떻게 세나요?] · 스위치 꺼짐</div><div class="how" style="border:0;padding:0;margin:0">' +
+      '<p>' + p1 + '</p>' +
+      '<p class="gone">환불·변경수납·예치금이 있거나 수납 연결이 겹친 날은 \'확인 필요한 날\'로 두고 그날 금액을 매출에 넣지 않아요. 비트 외래환자경영통계에서 그날을 직접 확인해 주세요.</p>' +
+      '<p class="gone">그래서 아래 \'원장님별\'의 매출 합계(그런 날도 더해요)나 \'원장님 보고 문장\'의 총진료비(그런 날이 든 날·달은 \'확인 필요\')와 다를 수 있어요.</p>' +
+      '<p>' + p4 + '</p></div>' +
+      '<div class="mini-title">건당 진료비 [어떻게 세나요?]</div><div class="how" style="border:0;padding:0;margin:0"><p>' + pv1 + '</p>' +
+      '<p class="gone">확인 필요한 날은 금액을 알 수 없어서 그날 접수 건수도 함께 빼고 나눠요. 그래서 \'원장님별\'의 건당 진료비(그런 날도 더해요)와 조금 다를 수 있어요.</p></div></div>'
+    var after = '<div class="card"><div class="mini-title" style="margin-top:0">매출 추이 [어떻게 세나요?]</div><div class="how" style="border:0;padding:0;margin:0">' +
+      '<p>' + p1 + '</p>' +
+      '<p class="mark-new">환불·변경수납·예치금이 있거나 수납 연결이 겹친 날도 그날 수납한 줄의 총진료비(원장님별 표와 같은 기준, 환불은 빼기)를 매출에 넣어요. 그런 날은 급여·비급여·기타로 나누지 못해요.</p>' +
+      '<p>' + p4 + '</p></div>' +
+      '<div class="mini-title">건당 진료비 [어떻게 세나요?]</div><div class="how" style="border:0;padding:0;margin:0"><p>' + pv1 + '</p></div>' +
+      '<div class="mini-title">건당 진료비 탭 첫 칸 아래 글</div><p class="small ink2" style="margin:0">매출 ÷ 접수 ' + fmt(sumOf(true).visits) + '건 <span class="muted">(지금 켜짐의 \'· 참고 금액 포함\' 없음)</span></p></div>'
+    document.getElementById('howBefore').innerHTML = before
+    document.getElementById('howAfter').innerHTML = after
+  }
+
+  // ── 신환 1명당 (탭) ──
+  function careBars(lines) {
+    var own = lines.filter(function (l) { return !l.rest })
+    var max = Math.max.apply(null, own.map(function (l) { return l.avg }))
+    return '<div class="hb-title">받은 치료별</div>' + lines.map(function (l) {
+      return '<div class="hb"><span>' + l.name + '</span><span><i style="width:' + Math.min(100, l.avg / max * 100).toFixed(1) + '%"></i></span><span class="v">' + wonText(l.avg) + ' · ' + l.n + '명</span></div>'
+    }).join('')
+  }
+  function vcells(c) { return '<div class="vcells">' + c.map(function (x) { return '<div><b>' + x[0] + '</b><span>' + x[1] + '</span></div>' }).join('') + '</div>' }
+  function renderValue() {
+    var before = '<div class="card"><div class="card-head"><div class="t"><h3>매출</h3></div></div>' + tabs(4) +
+      '<p class="small ink2" style="margin:0">신환이 처음 온 날부터 90일 동안 낸 진료비를 받은 치료별로 봐요</p>' +
+      vcells([[wonText(412000), '신환 1명당 평균 (90일)'], ['5.1회', '신환 1명당 내원 횟수 (90일)'], [wonText(80800), '한 번 올 때 평균']]) +
+      careBars([{ name: '진료만', avg: 92000, n: 14 }, { name: '진료 + 충격파', avg: 384000, n: 9 }, { name: '진료 + 도수', avg: 615000, n: 12 }, { name: '그 밖', avg: 871200, n: 5, rest: true }]) +
+      '<p class="foot">진료비 = 공단 부담까지 합친 총액. 처음 온 지 90일이 다 지난 신환만 세요. 환자별 금액은 이 PC 안에서만 계산하고 서버에 저장하지 않아요.</p></div>'
+    var after = '<div class="card"><div class="card-head"><div class="t"><h3>매출</h3></div></div>' + tabs(4) +
+      '<p class="small ink2" style="margin:0">그 달 신환이 그 달에 낸 진료비를 받은 치료별로 봐요</p>' +
+      '<p class="vline">2026년 11월 신환 38명 · 11월 1일–18일</p>' +
+      vcells([[wonText(186000), '11월 신환 1명당 평균'], ['2.2회', '11월 신환 1명당 내원 횟수'], [wonText(81241), '한 번 올 때 평균']]) +
+      careBars([{ name: '진료만', avg: 61000, n: 9 }, { name: '진료 + 충격파', avg: 198000, n: 8 }, { name: '진료 + 도수', avg: 312000, n: 11 }, { name: '그 밖', avg: 150300, n: 10, rest: true }]) +
+      '<p class="foot">진료비 = 공단 부담까지 합친 총액. 그 달에 비트 신환 표시가 있는 환자를 그 달 신환으로 보고, 그 달 안에 낸 진료비와 내원만 세요. 두 달에 신환 표시가 있으면 두 달 모두에 들어가요. 환자별 금액은 이 PC 안에서만 계산하고 서버에 저장하지 않아요.</p>' +
+      '<div class="subcases"><div class="subcase"><span class="k">그 달 신환이 0명일 때</span>아직 셀 환자가 없어요</div>' +
+      '<div class="subcase"><span class="k">불러온 범위에 어느 달 1일도 없을 때(예: 11월 10일부터 불러옴)</span>그 달 1일부터 불러오면 볼 수 있어요</div></div></div>'
+    document.getElementById('valueBefore').innerHTML = before
+    document.getElementById('valueAfter').innerHTML = after
+  }
+
+  // ── 원장님별 ──
+  function renderDoctors() {
+    var all = sumOf(true)
+    var aAmt = 78410000 + 4170, bAmt = all.total - aAmt
+    var aVis = 1494, bVis = all.visits - aVis
+    var row = function (name, pts, np, vis, amt, share) { return '<tr><td>' + name + '</td><td>' + fmt(pts) + '</td><td>' + np + '</td><td>' + fmt(vis) + '</td><td><b>' + won(amt) + '</b></td><td>' + won(Math.trunc(amt / vis)) + '</td><td>' + share + '</td></tr>' }
+    var table = '<div class="scroll"><table><thead><tr><th>원장님</th><th>실환자</th><th>신환</th><th>내원</th><th>매출</th><th>건당 진료비</th><th>비중</th></tr></thead><tbody>' +
+      row('김원장', 812, 61, aVis, aAmt, (aAmt / all.total * 100).toFixed(1) + '%') +
+      row('이원장', 574, 44, bVis, bAmt, (bAmt / all.total * 100).toFixed(1) + '%') +
+      '<tr class="sum"><td>합계</td><td>1,342</td><td>105</td><td>' + fmt(all.visits) + '</td><td>' + won(all.total) + '</td><td>' + won(all.per) + '</td><td>100%</td></tr></tbody></table></div>'
+    var foot = '환자 수는 접수할 때 정한 진료의, 매출은 수납할 때 적힌 진료의로 나눠요. 두 원장님께 진료받은 분은 양쪽에 세요(합계는 한 번). 매출은 수납한 날의 총진료비(공단 + 본인부담 + 비급여)예요. 건당 진료비는 매출 ÷ 내원 건수예요.'
+    var head = '<div class="card-head"><div class="t"><h3>원장님별</h3><p class="d">원장님마다 환자·신환·내원·매출</p></div></div>'
+    document.getElementById('docBefore').innerHTML = '<div class="card">' + head + table +
+      '<details class="how" open><summary>어떻게 세나요?</summary><p>' + foot + ' <span class="gone">확인 필요한 날(환불 등)도 더해서 위 매출 칸과 다를 수 있어요.</span></p></details>' +
+      '<p class="bnote gone" style="font-size:13px">확인 필요한 날도 더해서 셌어요. 그래서 위 매출 요약과 다를 수 있어요.</p>' +
+      '<p class="cap" style="color:var(--before);margin:8px 0 0">시안 메모: 지금은 위 매출 요약(꺼짐) ' + man(sumOf(false).total) + ' ≠ 이 표 합계 ' + man(all.total) + '</p></div>'
+    document.getElementById('docAfter').innerHTML = '<div class="card">' + head + table +
+      '<details class="how" open><summary>어떻게 세나요?</summary><p>' + foot + '</p></details>' +
+      '<p class="cap" style="color:var(--after);margin:8px 0 0">시안 메모: 위 매출 요약 ' + man(all.total) + ' = 이 표 합계 ' + man(all.total) + ' (진료 중인 오늘이 든 기간은 다를 수 있음)</p></div>'
+  }
+
+  // ── 보고 문장 ──
+  var REASON = '환불·변경수납·예치금 자료가 있어 금액을 자동 집계하지 않았습니다. 원본 외래환자경영통계에서 확인해 직접 입력하세요.'
+  var TOP = ['가상의원', '2026년 11월 18일 수요일', '', '총환                102명', '신환                  9명', '재진                 93명']
+  var TREAT = ['', '도수               12명', '씨암블락              6명', '크라이오              3명', '쏘노                9명', '충격파              14명', '']
+  var TAIL = ['', '신환 내원경로', '소개                  0명', '간판                  0명', '인터넷                0명', '기타                  0명', '', '고생하셨습니다 !!']
+  function lines(arr) { return arr.map(function (l) { var t = typeof l === 'string' ? l : l[0], c = typeof l === 'string' ? '' : l[1]; return '<span' + (c ? ' class="' + c + '"' : '') + '>' + (t === '' ? '<br>' : t) + '</span>' }).join('') }
+  var BASE_NOTES = ['총환은 내원 건수 기준이며, 건당진료비는 총진료비 ÷ 총환에서 원 미만을 버립니다.', '입금액은 비트 원본 수납 구분에 따라 현금·카드·계좌이체를 각각 집계하며 서로 합산하거나 재분류하지 않습니다.', '신환 내원경로의 0은 요청에 따른 고정값이며 실제 유입 집계가 아닙니다.', '치료 인원은 치료별 당일 환자 중복을 제외한 값입니다.']
+  function notesHtml(items) { return '<div class="mini-title">안내</div><ul class="rnotes">' + items.map(function (x) { return '<li' + (x[1] ? ' class="' + x[1] + '"' : '') + '>' + x[0] + '</li>' }).join('') + '</ul>' }
+  function renderReport() {
+    var picks = '<div class="picks"><span>오늘 일일보고</span><span class="on">어제 일일보고</span><span>이번 달 월말보고</span><span>지난달 월말보고</span></div>'
+    var head = '<div class="card-head"><div class="t"><h3>원장님 보고 문장</h3><p class="d">비트 PC에서 불러온 숫자로 만든 보고 글</p></div></div>'
+    var W = 'warn'
+    var before = '<div class="card">' + head + picks +
+      '<p class="dateline">11월 18일 수요일<span class="w"> · 금액 확인 필요</span></p>' +
+      '<div class="rtext">' + lines(TOP.concat([['※ 금액 확인 필요 — ' + REASON, W], ['총진료비        확인 필요', W], ['조합청구액      확인 필요', W], ['입금액 (현금)         확인 필요', W], ['       (카드)         확인 필요', W], ['       (계좌이체)     확인 필요', W], ['비급여          확인 필요', W]], TREAT, [['건당진료비      확인 필요', W]], TAIL)) + '</div>' +
+      '<div style="margin-top:8px"><span class="btn">복사</span></div>' +
+      notesHtml(BASE_NOTES.map(function (n) { return [n] }).concat([
+        ['이 기간은 환불·변경수납·예치금 또는 연결 중복이 있어 금액을 자동 집계하지 않았습니다(‘확인 필요’). 환자수·치료·LA 집계는 정상이며, 금액은 비트 원본 외래환자경영통계에서 확인해 직접 입력하세요.'],
+        ["금액은 외래환자경영통계의 회계일 기준 정상수납·미수입금 조건으로 집계합니다. 환불·변경수납·예치금 또는 연결 중복이 있으면 금액을 '확인 필요'로 두고 환자수·치료·LA만 집계합니다."],
+        ['이 기간은 금액을 자동 집계하지 않았습니다(환자수·치료·LA는 정상). 비트 원본 외래환자경영통계에서 금액을 확인해 직접 입력하세요.']])) + '</div>'
+    var N = 'newv', total = 5213400
+    var after = '<div class="card">' + head + picks +
+      '<p class="dateline">11월 18일 수요일</p>' +
+      '<div class="rtext">' + lines(TOP.concat([['총진료비        ' + won(total), N], ['조합청구액      –', N], ['입금액 (현금)         –', N], ['       (카드)         –', N], ['       (계좌이체)     –', N], ['비급여          –', N]], TREAT, [['건당진료비      ' + won(Math.trunc(total / 102)), N]], TAIL)) + '</div>' +
+      '<div style="margin-top:8px"><span class="btn">복사</span></div>' +
+      notesHtml(BASE_NOTES.map(function (n) { return [n] }).concat([
+        ['이 기간은 환불·변경수납·예치금 또는 연결 중복이 있어 총진료비는 원장님별과 같은 기준(그날 수납한 줄의 총진료비 합, 환불은 빼기)으로 셌고, 조합청구액·입금액·비급여는 비워 두었습니다(–).', 'add'],
+        ['금액은 외래환자경영통계의 회계일 기준 정상수납·미수입금 조건으로 집계합니다. 환불·변경수납·예치금 또는 연결 중복이 있으면 총진료비만 원장님별과 같은 기준으로 세고 다른 금액은 비워 둡니다.', 'add']])) +
+      '<div class="subcases"><div class="subcase"><span class="k">지난달 월말보고인데 불러온 기간이 지난달 1일을 덮지 않을 때(합을 셀 수 없음)</span>' +
+      '<div class="rtext" style="margin-top:4px">' + lines([['총진료비        –', N], ['조합청구액      –', N], ['비급여          –', N], '…', ['건당진료비      –', N]]) + '</div>' +
+      '<ul class="rnotes"><li class="add">이 기간은 환불·변경수납·예치금 또는 연결 중복이 있어 금액을 비워 두었습니다(–). 불러올 기간이 이 기간을 다 덮게 [비트에서 불러오기]를 하면 총진료비가 채워집니다.</li></ul></div></div></div>'
+    document.getElementById('repBefore').innerHTML = before
+    document.getElementById('repAfter').innerHTML = after
+  }
+
+  // ── 이번 달 목표(11월, 어제 11/18까지) ──
+  function renderGoal() {
+    var target = 110000000
+    function pace(withRough) {
+      var so = 0, wk = [], sat = []
+      days.forEach(function (x) {
+        var v = x.total !== null ? x.total : (withRough ? x.rough : null)
+        if (v === null) return
+        if (x.d >= '2026-11-01') so += v
+        ;(x.dow === 6 ? sat : wk).push(v)
+      })
+      var avg = function (a) { return a.reduce(function (p, q) { return p + q }, 0) / a.length }
+      var fc = Math.trunc(so + 8 * avg(wk) + 2 * avg(sat))
+      return { so: so, fc: fc }
+    }
+    function card(p) {
+      var pct = Math.floor(p.so * 100 / target), fp = Math.floor(p.fc * 100 / target), short = target - p.fc
+      return '<div class="card goal"><div class="card-head"><div class="t"><h3>이번 달 목표</h3></div></div>' +
+        '<div class="mini-title">… 내원 · 신환 줄은 그대로 …</div>' +
+        '<div class="top"><b>매출</b><span class="num ink2">' + man(p.so) + ' / 목표 ' + man(target) + ' · ' + pct + '%</span></div>' +
+        '<div class="gtrack"><div class="fill" style="width:' + Math.min(pct, 100) + '%"></div><div class="today" style="left:' + (18 / 30 * 100).toFixed(1) + '%"></div></div>' +
+        '<div class="pace">이 속도면 월말 ' + man(p.fc) + ' · 목표의 ' + fp + '% ' + (short > 0 ? '<span class="bad">' + man(short) + ' 모자라요</span>' : '<span class="ok">넘길 것 같아요</span>') + '</div>' +
+        '<p class="bnote">세로줄은 이번 달이 지나간 만큼이에요. 월말 예상은 지금까지에 남은 날마다 지난 8주 같은 요일의 하루 평균을 더해요.</p></div>'
+    }
+    document.getElementById('goalBefore').innerHTML = card(pace(false))
+    document.getElementById('goalAfter').innerHTML = card(pace(true))
+  }
+
+  // ── 월간 보고서(10월) ──
+  function renderPaper() {
+    var conf = 129021450, rough = 4980000, all = conf + rough, prev = 116230000, target = 130000000
+    function paper(v, text, cls) {
+      var pct = Math.floor(v * 100 / target), ch = Math.round((v - prev) / prev * 100)
+      return '<div class="paper"><h4>10월 월간 보고서</h4><div class="cap muted">가상의원 · 2026년 10월 1일–31일</div>' +
+        '<h5>한 달 요약</h5><div class="pcells"><div><span>내원</span><b>2,318</b></div><div><span>신환</span><b>186</b></div><div class="' + cls + '"><span>매출</span><b>' + text(v) + '</b></div><div><span>예약 안 옴</span><b>4%</b></div></div>' +
+        '<h5>목표</h5><ul><li>내원 2,318명 / 목표 2,400명 · 96%</li><li class="' + cls + '">매출 ' + text(v) + ' / 목표 ' + text(target) + ' · ' + pct + '%</li></ul>' +
+        '<h5>달라진 것 (지난달보다)</h5><ul><li class="' + cls + '">매출 · 9월보다 ' + ch + '% 많아요 (' + text(prev) + ' → ' + text(v) + ')</li><li class="muted">… 다른 줄은 그대로 …</li></ul></div>'
+    }
+    document.getElementById('paperBefore').innerHTML = paper(conf, man, 'hl-old') + '<p class="cap" style="color:var(--before);margin:6px 0 0">10월 28일(확인 필요한 날) ' + won(rough) + '이 빠진 합, 만 원 아래 버림</p>'
+    document.getElementById('paperAfter').innerHTML = paper(all, won, 'hl') + '<p class="cap" style="color:var(--after);margin:6px 0 0">10월 28일도 그날 비트 총진료비로 더함, 원 단위까지</p>'
+  }
+  function renderPv() {
+    var p = function (cells, note) {
+      return '<div class="paper"><h4>10월 월간 보고서</h4><div class="cap muted">… 앞 칸 생략 …</div><h5>신환 1명당 매출</h5><div class="pcells three">' +
+        cells.map(function (c) { return '<div class="' + (c[2] || '') + '"><span>' + c[0] + '</span><b>' + c[1] + '</b></div>' }).join('') + '</div>' + (note || '') + '</div>'
+    }
+    document.getElementById('pvBefore').innerHTML = p([['신환 1명당 평균 (90일)', man(412000), 'hl-old'], ['신환 1명당 내원 횟수 (90일)', '5.2회', 'hl-old'], ['한 번 올 때 평균', man(79230)]]) +
+      '<p class="cap" style="color:var(--before);margin:6px 0 0">어느 달을 골라도 같은 숫자(불러온 범위 전체의 90일 값)</p>'
+    document.getElementById('pvAfter').innerHTML = p([['신환 1명당 평균', man(203500), 'hl'], ['신환 1명당 내원 횟수', '2.6회', 'hl'], ['한 번 올 때 평균', man(78269), 'hl']]) +
+      '<p class="cap" style="color:var(--after);margin:6px 0 0">10월 신환 42명이 10월 안에 낸 돈. 9월을 고르면 9월 신환 값. 그 달 값이 없거나 0명이면 이 칸이 통째로 없음</p>'
+  }
+
+  // ── 업무일지 ──
+  function renderWorklog() {
+    function grid(total, newv) {
+      var c = [['신환', '9', 1], ['재진', '93', 1], ['총진료비', total, total ? 1 : 0, newv], ['조합청구액', ''], ['현금수납', ''], ['카드수납', ''], ['계좌이체', ''], ['미수입금', '']]
+      return '<div class="wgrid">' + c.map(function (x) { return '<div class="' + (x[2] ? 'bit ' : '') + (x[3] ? 'newv' : '') + '"><span>' + x[0] + '</span><b>' + x[1] + '</b></div>' }).join('') + '</div>'
+    }
+    var date = '<div class="small" style="font-weight:600">2026년 11월 18일 수요일</div>'
+    document.getElementById('wlBefore').innerHTML = '<div class="card">' + date +
+      '<div class="wnotice"><p>이 날은 비트 금액 확인이 필요해요. 금액은 직접 적어 주세요</p><span class="btn">지금 불러오기</span></div>' + grid('', false) +
+      '<div class="bitlegend"><i></i>표시한 칸은 비트에서 불러온 숫자예요</div></div>'
+    document.getElementById('wlAfter').innerHTML = '<div class="card">' + date +
+      '<div class="wnotice"><p>비트 숫자를 08:42에 불러왔어요</p><span class="btn">지금 불러오기</span></div>' + grid('5,213,400', true) +
+      '<div class="bitlegend"><i></i>표시한 칸은 비트에서 불러온 숫자예요</div>' +
+      '<div class="subcases"><div class="subcase"><span class="k">옛 도우미로 저장돼 그날 금액이 아예 없을 때</span>이 날은 비트 금액을 채우지 못했어요. 금액은 직접 적어 주세요</div></div></div>'
+  }
+
+  function renderAll() { renderSummary(); renderTrend(); renderSplit() }
+  renderAll(); renderHow(); renderValue(); renderDoctors(); renderReport(); renderGoal(); renderPaper(); renderPv(); renderWorklog()
+
+  document.addEventListener('click', function (e) {
+    var sw = e.target.closest('[data-sw]')
+    if (sw) { on = !on; renderAll(); return }
+    var bar = e.target.closest('.bars button')
+    if (bar) {
+      var side = bar.parentElement.dataset.side
+      sel[side] = bar.dataset.d
+      renderTrend()
+    }
+  })
+})()
+</script>
+</body>
+</html>
