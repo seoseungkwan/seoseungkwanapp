@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { LOGO, LOGO_AREA, layoutPoster, logoRect, logoTextFit, type PosterLogo } from '@/lib/forms/layout'
+import { LOGO, LOGO_AREA, LOGO_MAX, layoutPoster, logoRect, logoTextFit, logoTextWidth, scaleLogoRect, type PosterLogo } from '@/lib/forms/layout'
+import type { GuideColors } from '@/lib/forms/logoColors'
+import { DEFAULT_STYLE, type FormStyle } from '@/lib/forms/style'
 import { themeOf } from '@/lib/forms/themes'
 import type { ClosureNotice, NoticeCard, ThemeId } from '@/types/forms'
 import { Poster } from './Poster'
@@ -499,5 +501,241 @@ describe('AC-6703.1·AC-6703.3·AC-6703.5: 휴진 안내 로고 자리 — 크�
     const base = plain(drawWith(null))
     cleanup()
     expect(plain(drawWith(sized(1080, 501))).replace(/<image href="data:[^>]*><\/image>/, '')).toBe(base)
+  })
+})
+
+// ---------- 글씨·로고 크기·색 (spec form-style REQ-6804·REQ-6805 AC-6804.1·.2·.5·.6, AC-6805.1·.3, design.md 6절, TASK-4) ----------
+
+const styleOf = (patch: Partial<FormStyle>): FormStyle => ({ ...DEFAULT_STYLE, ...patch })
+const styledNotice = (patch: Partial<FormStyle>, notice: ClosureNotice = CHILDREN): ClosureNotice => ({ ...notice, style: styleOf(patch) })
+type StyleProps = { logo?: PosterLogo | null; logoColors?: GuideColors | null; theme?: ThemeId }
+function drawStyled(notice: ClosureNotice, { theme = 'children', ...rest }: StyleProps = {}) {
+  const { container } = render(<Poster notice={notice} theme={theme} {...rest} />)
+  const svg = container.querySelector('svg')
+  if (!svg) throw new Error('svg가 없다')
+  return svg
+}
+// useId로 지은 그림자·로고 칠 이름을 하나로 맞춘 SVG 글
+const plainSvg = (svg: Element) => svg.outerHTML.replace(/poster-shadow-[\w-]+/g, 'poster-shadow-ID').replace(/logo-tint-[\w-]+/g, 'logo-tint-ID')
+const htmlOf = (notice: ClosureNotice, props: StyleProps = {}) => {
+  const html = plainSvg(drawStyled(notice, props))
+  cleanup()
+  return html
+}
+const count = (html: string, part: string) => html.split(part).length - 1
+const TWO: ClosureNotice = { ...CHILDREN, cards: [card('2027-05-05', '어린이날'), card('2027-05-13', '부처님오신날', null, '오전진료')] }
+const LEAD = ['5월 진료일정을 안내드리오니', '진료 및 내원에 참고해주시길 바랍니다']
+const TITLE_PICK = '#7c3aed'
+const BODY_PICK = '#0d9488'
+const LOGO_PICK = '#dc2626'
+
+describe("AC-6804.1·AC-6804.2: 휴진 안내 글씨 크기 — '진료일정안내'·안내 두 줄·카드 글", () => {
+  it("AC-6804.1: 제목 80·130%면 '진료일정안내'는 96·124px이고 자리·굵기·색·자간은 그대로, 'N월'은 132 그대로다", () => {
+    for (const [titleScale, size] of [[80, '96'], [130, '124']] as const) {
+      const svg = drawStyled(styledNotice({ titleScale }))
+      expect(attrs(textOf(svg, '진료일정안내'), TEXT_ATTRS), `${titleScale}%`).toEqual({
+        x: '397',
+        y: '296',
+        'font-size': size,
+        'font-weight': '900',
+        fill: '#262626',
+        'letter-spacing': '-0.045em',
+      })
+      expect(textOf(svg, '5월').getAttribute('font-size')).toBe('132')
+      cleanup()
+    }
+  })
+
+  it('AC-6804.2: 본문 80·130%면 안내 두 줄은 22·35px(자리 417·459 그대로)이다', () => {
+    for (const [bodyScale, size] of [[80, '22'], [130, '35']] as const) {
+      const svg = drawStyled(styledNotice({ bodyScale }))
+      expect(attrs(textOf(svg, LEAD[0]), ['y', 'font-size']), `${bodyScale}%`).toEqual({ y: '417', 'font-size': size })
+      expect(attrs(textOf(svg, LEAD[1]), ['y', 'font-size']), `${bodyScale}%`).toEqual({ y: '459', 'font-size': size })
+      expect(textOf(svg, '진료일정안내').getAttribute('font-size')).toBe('120')
+      cleanup()
+    }
+  })
+
+  it.each([1, 2, 3, 4])('AC-6804.2: 본문 130% 카드 %i장 — 날짜·이름·아래 글은 layoutPoster(style)의 크기로 그린다', (n) => {
+    const all4 = [card('2027-05-01', '근로자의날'), card('2027-05-05', '어린이날'), card('2027-05-13', '부처님오신날'), card('2027-05-20', '임시휴진', null, '오전진료')]
+    const notice = styledNotice({ bodyScale: 130 }, { ...CHILDREN, cards: all4.slice(0, n) })
+    const layout = layoutPoster(notice)
+    const cardTexts = texts(drawStyled(notice)).slice(4)
+    layout.cards.forEach((c, i) => {
+      for (const [j, part] of [c.date, c.name, c.status].entries()) {
+        expect(cardTexts[i * 3 + j].textContent).toBe(part.text)
+        expect(cardTexts[i * 3 + j].getAttribute('font-size'), part.text).toBe(String(part.size))
+      }
+    })
+    expect(layout.cards.map((c) => c.status.size)).not.toEqual(layoutPoster({ ...notice, style: undefined }).cards.map((c) => c.status.size))
+  })
+})
+
+describe('AC-6805.1: 휴진 안내 글씨 색 — 제목 색·본문 색', () => {
+  it("AC-6805.1: 제목 색 c면 '진료일정안내'만 c이고 나머지는 글자 하나까지 같다", () => {
+    const now = htmlOf(TWO)
+    const picked = htmlOf(styledNotice({ titleColor: TITLE_PICK }, TWO))
+    expect(count(picked, TITLE_PICK)).toBe(1)
+    expect(picked.replace(`fill="${TITLE_PICK}"`, 'fill="#262626"')).toBe(now)
+    expect(textOf(drawStyled(styledNotice({ titleColor: TITLE_PICK }, TWO)), '진료일정안내').getAttribute('fill')).toBe(TITLE_PICK)
+  })
+
+  it("AC-6805.1: 본문 색 c면 안내 두 줄과 카드 이름이 c — 날짜(흰 글자)·아래 글·'N월'·띠는 강조색 그대로다", () => {
+    const svg = drawStyled(styledNotice({ bodyColor: BODY_PICK }, TWO))
+    const accent = themeOf('children').accent
+    for (const line of LEAD) expect(textOf(svg, line).getAttribute('fill'), line).toBe(BODY_PICK)
+    for (const name of ['어린이날', '부처님오신날']) expect(textOf(svg, name).getAttribute('fill'), name).toBe(BODY_PICK)
+    for (const date of ['5월 5일(수)', '5월 13일(목)']) expect(textOf(svg, date).getAttribute('fill'), date).toBe('#fff')
+    for (const status of ['휴진', '오전진료', '5월']) expect(textOf(svg, status).getAttribute('fill'), status).toBe(accent)
+    expect(all(svg, 'path').map((p) => p.getAttribute('fill'))).toEqual([accent, accent])
+    expect(textOf(svg, '진료일정안내').getAttribute('fill')).toBe('#262626')
+    cleanup()
+    const html = htmlOf(styledNotice({ bodyColor: BODY_PICK }, TWO))
+    expect(count(html, BODY_PICK)).toBe(2 + 2)
+    const back = html.replace(new RegExp(`(<text[^>]*?)fill="${BODY_PICK}"([^>]*>(?:5월 진료일정을|진료 및 내원에))`, 'g'), '$1fill="#3a3a3a"$2')
+    expect(back.split(BODY_PICK).join('#262626')).toBe(htmlOf(TWO))
+  })
+
+  it('AC-6805.1: 제목 색·본문 색은 직접 고른 강조 색과 함께 쓸 수 있다', () => {
+    const svg = drawStyled({ ...styledNotice({ titleColor: TITLE_PICK, bodyColor: BODY_PICK }, TWO), accent: '#0b7a5c' })
+    expect(textOf(svg, '진료일정안내').getAttribute('fill')).toBe(TITLE_PICK)
+    expect(textOf(svg, '어린이날').getAttribute('fill')).toBe(BODY_PICK)
+    expect(textOf(svg, '휴진').getAttribute('fill')).toBe('#0b7a5c')
+  })
+})
+
+describe('AC-6804.5: 휴진 안내 로고 크기', () => {
+  const LOGO_URL = `data:image/png;base64,iVBORw0KGgo${'D'.repeat(24)}`
+  const sized = (width: number, height: number): PosterLogo => ({ kind: 'image', href: LOGO_URL, width, height })
+  const boxOf = (el: Element) => ({ x: num(el, 'x'), y: num(el, 'y'), width: num(el, 'width'), height: num(el, 'height') })
+
+  it('AC-6804.5: 크기를 아는 그림은 logoRect 네모를 가운데를 지킨 채 키우고 줄인다(150% → 142, 996.8 · 510×86.4)', () => {
+    const last = drawStyled(styledNotice({ logoScale: 150 }), { logo: sized(1033, 175) }).lastElementChild!
+    expect(attrs(last, ['href', 'x', 'y', 'width', 'height', 'preserveAspectRatio'])).toEqual({
+      href: LOGO_URL,
+      x: '142',
+      y: '996.8',
+      width: '510',
+      height: '86.4',
+      preserveAspectRatio: 'xMidYMid meet',
+    })
+    cleanup()
+    for (const [w, h] of [[1080, 501], [500, 500], [777, 333]] as const)
+      for (const logoScale of [60, 120, 150]) {
+        const el = drawStyled(styledNotice({ logoScale }), { logo: sized(w, h) }).lastElementChild!
+        expect(boxOf(el), `${w}×${h} ${logoScale}%`).toEqual(scaleLogoRect(logoRect(LOGO_AREA, { width: w, height: h }), logoScale, LOGO_MAX))
+        cleanup()
+      }
+  })
+
+  it('AC-6804.5: 크기를 모르는 그림·옛 로고 그림은 원래 상자(227,1011 · 340×58)를 같은 식으로 키운다(150% → 142, 996.5 · 510×87)', () => {
+    const unknown = drawStyled(styledNotice({ logoScale: 150 }), { logo: { kind: 'image', href: LOGO_URL } }).lastElementChild!
+    expect(boxOf(unknown)).toEqual({ x: 142, y: 996.5, width: 510, height: 87 })
+    cleanup()
+    const legacy = drawStyled(styledNotice({ logoScale: 60 })).lastElementChild!
+    expect(legacy.getAttribute('href')).toBe('/poster/logo.png')
+    expect(boxOf(legacy)).toEqual({ x: 295, y: 1022.6, width: 204, height: 34.8 })
+  })
+
+  it('AC-6804.5: 이름 글자 로고는 150%면 69px(가운데 397·1040 그대로), 넘치면 W = 510으로 눌러 그린다', () => {
+    const last = drawStyled(styledNotice({ logoScale: 150 }), { logo: { kind: 'text', text: '서승관' } }).lastElementChild!
+    expect(attrs(last, ['x', 'y', 'font-size', 'textLength'])).toEqual({ x: '397', y: '1040', 'font-size': '69', textLength: null })
+    expect(num(last, 'font-size')).toBe(logoTextFit('서승관', LOGO, 150, LOGO_MAX).size)
+    cleanup()
+    const long = drawStyled(styledNotice({ logoScale: 150 }), { logo: { kind: 'text', text: '가'.repeat(50) } }).lastElementChild!
+    expect(attrs(long, ['font-size', 'textLength', 'lengthAdjust'])).toEqual({ 'font-size': '18', textLength: '510', lengthAdjust: 'spacingAndGlyphs' })
+    expect(logoTextWidth(LOGO, 150, LOGO_MAX)).toBe(510)
+  })
+
+  it('AC-6804.5: 로고 크기는 로고 말고 다른 것을 바꾸지 않는다', () => {
+    const base = htmlOf(CHILDREN, { logo: null })
+    expect(htmlOf(styledNotice({ logoScale: 150 }), { logo: sized(1080, 501) }).replace(/<image href="data:[^>]*><\/image>/, '')).toBe(base)
+  })
+})
+
+describe('AC-6805.3: 휴진 안내 로고 색 — 칠할 수 있는 로고만 SVG 필터로 모양 그대로 칠한다', () => {
+  const LOGO_URL = `data:image/png;base64,iVBORw0KGgo${'E'.repeat(24)}`
+  const tintable: PosterLogo = { kind: 'image', href: LOGO_URL, width: 1033, height: 175, tintable: true }
+  const IMAGE_ATTRS = ['href', 'x', 'y', 'width', 'height', 'preserveAspectRatio']
+
+  it('AC-6805.3: 로고 색 c + 칠할 수 있는 그림이면 feFlood c + feComposite(in, SourceAlpha) 필터를 그 image에 건다', () => {
+    const svg = drawStyled(styledNotice({ logoColor: LOGO_PICK }), { logo: tintable })
+    const last = svg.lastElementChild!
+    expect(last.localName).toBe('image')
+    const ref = last.getAttribute('filter')
+    expect(ref).toMatch(/^url\(#logo-tint-[\w-]+\)$/)
+    const filters = all(svg, 'filter').filter((f) => f.getAttribute('id')?.startsWith('logo-tint-'))
+    expect(filters).toHaveLength(1)
+    expect(ref).toBe(`url(#${filters[0].getAttribute('id')})`)
+    expect([...filters[0].children].map((el) => el.localName)).toEqual(['feFlood', 'feComposite'])
+    const [flood, composite] = [...filters[0].children]
+    expect(flood.getAttribute('flood-color')).toBe(LOGO_PICK)
+    expect(attrs(composite, ['in2', 'operator'])).toEqual({ in2: 'SourceAlpha', operator: 'in' })
+    // 자리·비율은 칠하지 않을 때와 같다
+    expect(attrs(last, IMAGE_ATTRS)).toEqual({ href: LOGO_URL, x: '227', y: '1011.2', width: '340', height: '57.6', preserveAspectRatio: 'xMidYMid meet' })
+  })
+
+  it('AC-6805.3: 안내문 두 장을 한 화면에 그려도 로고 필터 이름이 겹치지 않고 저마다 제 필터를 가리킨다', () => {
+    const notice = styledNotice({ logoColor: LOGO_PICK })
+    const { container } = render(
+      <>
+        <Poster notice={notice} theme="children" logo={tintable} />
+        <Poster notice={notice} theme="children" logo={tintable} />
+      </>,
+    )
+    const ids = all(container, 'filter').map((f) => f.getAttribute('id')).filter((id) => id?.startsWith('logo-tint-'))
+    expect(ids).toHaveLength(2)
+    expect(new Set(ids).size).toBe(2)
+    const refs = [...container.querySelectorAll('svg')].map((svg) => svg.lastElementChild!.getAttribute('filter'))
+    expect(refs).toEqual(ids.map((id) => `url(#${id})`))
+  })
+
+  it('AC-6805.3: 칠할 수 없는 그림(tintable 없음·false·크기 모름)은 로고 색이 있어도 필터 없이 지금 그대로다', () => {
+    const plainLogos: PosterLogo[] = [
+      { kind: 'image', href: LOGO_URL, width: 1033, height: 175 },
+      { kind: 'image', href: LOGO_URL, width: 1033, height: 175, tintable: false },
+      { kind: 'image', href: LOGO_URL },
+    ]
+    for (const logo of plainLogos) {
+      const picked = htmlOf(styledNotice({ logoColor: LOGO_PICK }), { logo })
+      expect(picked, JSON.stringify(logo)).not.toContain('logo-tint')
+      expect(picked, JSON.stringify(logo)).not.toContain(LOGO_PICK)
+      expect(picked, JSON.stringify(logo)).toBe(htmlOf(CHILDREN, { logo }))
+    }
+    expect(htmlOf(styledNotice({ logoColor: LOGO_PICK }))).toBe(htmlOf(CHILDREN)) // 옛 로고 그림
+  })
+
+  it('AC-6805.3: 로고 색이 없으면(null) 칠할 수 있는 그림도 필터 없이 지금 그대로다', () => {
+    const html = htmlOf(CHILDREN, { logo: tintable })
+    expect(html).not.toContain('logo-tint')
+    expect(html).toBe(htmlOf(CHILDREN, { logo: { kind: 'image', href: LOGO_URL, width: 1033, height: 175 } }))
+  })
+
+  it('AC-6805.3: 이름 글자 로고는 글자를 c로 그린다(필터 없음)', () => {
+    const svg = drawStyled(styledNotice({ logoColor: LOGO_PICK }), { logo: { kind: 'text', text: '서승관의원' } })
+    expect(svg.lastElementChild!.getAttribute('fill')).toBe(LOGO_PICK)
+    expect(svg.outerHTML).not.toContain('logo-tint')
+  })
+})
+
+describe('AC-6804.6: 처음대로이고 로고 두 색이 없으면 휴진 안내 그림은 이 기능 전과 한 점도 다르지 않다', () => {
+  const LOGO_URL = `data:image/png;base64,iVBORw0KGgo${'F'.repeat(24)}`
+  const logos: (PosterLogo | null | undefined)[] = [
+    undefined,
+    null,
+    { kind: 'image', href: LOGO_URL },
+    { kind: 'image', href: LOGO_URL, width: 1080, height: 501, tintable: true },
+    { kind: 'text', text: '서승관정형외과의원' },
+    { kind: 'text', text: '가'.repeat(50) },
+  ]
+
+  it.each([1, 2, 3, 4])('AC-6804.6: 카드 %i장 — 처음대로 style·logoColors null이면 style 없을 때와 글자 하나까지 같다', (n) => {
+    const notice: ClosureNotice = { ...CHILDREN, cards: Array.from({ length: n }, (_, i) => card(`2027-05-${String(10 + i).padStart(2, '0')}`, `학회${i + 1}`)) }
+    for (const logo of logos) {
+      const now = htmlOf(notice, { logo })
+      expect(htmlOf({ ...notice, style: { ...DEFAULT_STYLE } }, { logo }), JSON.stringify(logo)).toBe(now)
+      expect(htmlOf({ ...notice, style: { ...DEFAULT_STYLE } }, { logo, logoColors: null }), JSON.stringify(logo)).toBe(now)
+      expect(now).not.toContain('logo-tint')
+    }
   })
 })

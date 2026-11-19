@@ -5,9 +5,10 @@ import { cleanup, render } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { GuideValue } from '@/lib/forms/guide'
-import { GUIDE_LOGO, GUIDE_LOGO_AREA, layoutGuide } from '@/lib/forms/guideLayout'
-import { logoRect, logoTextFit, type PosterLogo } from '@/lib/forms/layout'
+import { GUIDE_LOGO, GUIDE_LOGO_AREA, GUIDE_LOGO_MAX, layoutGuide } from '@/lib/forms/guideLayout'
+import { logoRect, logoTextFit, scaleLogoRect, type PosterLogo } from '@/lib/forms/layout'
 import type { GuideColors } from '@/lib/forms/logoColors'
+import { DEFAULT_STYLE, type FormStyle } from '@/lib/forms/style'
 import { DRAW_COLORS, PICTURE_IDS, type DrawKind, type DrawShape, type GuideContent, type GuideDrawing, type GuideLine } from '@/types/formGuide'
 import { DRAW_COLOR_VALUES, GUIDE_COLORS, drawColorValues, guidePalette } from './guideColors'
 import { GuidePoster } from './GuidePoster'
@@ -902,5 +903,158 @@ describe('AC-6604.5·AC-6604.6: 안내문 색 — 직접 고른 색 > 로고 색
     const [shadow, base] = [...group.children]
     expect(attrsOf(shadow!)).toEqual({ cx: '90', cy: '91', r: '82', fill: SHADOW, 'fill-opacity': '.18' })
     expect(attrsOf(base!)).toEqual({ cx: '85', cy: '85', r: '80', fill: W, stroke: OWN.dark, 'stroke-width': '5' })
+  })
+})
+
+// ---------- 글씨·로고 크기·색 (spec form-style REQ-6803·REQ-6804·REQ-6805, design.md 6절, TASK-4) ----------
+
+const styleOf = (patch: Partial<FormStyle>): FormStyle => ({ ...DEFAULT_STYLE, ...patch })
+const styledGuide = (content: GuideContent, patch: Partial<FormStyle>): GuideValue => ({ ...content, style: styleOf(patch) })
+// 그릴 때마다 달라지는 자르는 원·로고 칠 이름을 하나로 맞춘 SVG 글
+const plainStyled = (svg: Element) => plainSvg(svg).replace(/logo-tint-[\w-]+/g, 'logo-tint-ID')
+const htmlOfGuide = (content: GuideValue, props: DrawProps = {}) => {
+  const html = plainStyled(drawWith(content, props))
+  cleanup()
+  return html
+}
+const countOf = (html: string, part: string) => html.split(part).length - 1
+const TITLE_C = '#7c3aed'
+const BODY_C = '#0d9488'
+const LOGO_C = '#dc2626'
+
+describe('AC-6804.3·AC-6804.4: 환자 안내문 글씨 크기대로 그리기', () => {
+  it('AC-6804.3: 제목 80·130%면 큰 문구 두 줄은 layoutGuide(style)의 크기이고 작은 제목·머리표는 그대로다', () => {
+    for (const n of [1, 6]) {
+      for (const titleScale of [80, 130]) {
+        const content = styledGuide(example(n), { titleScale })
+        const svg = drawWith(content)
+        const g = layoutGuide(content)
+        for (const at of g.big) expect(textOf(svg, at.text).getAttribute('font-size'), `예시 ${n} ${titleScale}%`).toBe(String(at.size))
+        expect(textOf(svg, content.subtitle).getAttribute('font-size')).toBe(String(layoutGuide(example(n)).subtitle.size))
+        cleanup()
+      }
+    }
+    const svg = drawWith(styledGuide(example(6), { titleScale: 130 }))
+    expect(textOf(svg, '1회 비용').getAttribute('font-size')).toBe('88')
+    expect(textOf(svg, '43,850원').getAttribute('font-size')).toBe('153')
+  })
+
+  it('AC-6804.4: 본문 130%면 줄 글·체크 표시 크기는 layoutGuide(style)대로(예시 4: 글 44·✓ 46)다', () => {
+    const content = styledGuide(example(4), { bodyScale: 130 })
+    const svg = drawWith(content)
+    for (const line of content.lines) expect(textOf(svg, line.text).getAttribute('font-size'), line.text).toBe('44')
+    const checks = texts(svg).filter((t) => t.textContent === '✓')
+    expect(checks.map((t) => t.getAttribute('font-size'))).toEqual(['46', '46'])
+    const g = layoutGuide(content)
+    expect(checks.map((t) => num(t, 'x'))).toEqual(g.rows.map((r) => r.markX))
+    for (const r of g.rows) expect(num(textOf(svg, r.text.text), 'x')).toBeCloseTo(r.text.x, 6)
+  })
+
+  it('AC-6804.4: 번호 표시면 줄 글만 커지고 번호 원·숫자 크기는 그대로다(예시 5, 130% → 46)', () => {
+    const svg = drawWith(styledGuide(example(5), { bodyScale: 130 }))
+    for (const line of example(5).lines) expect(textOf(svg, line.text).getAttribute('font-size'), line.text).toBe('46')
+    // 번호 원은 뿌리 바로 아래 circle(그림 자리 <g> 안의 원은 빼고 센다)
+    expect([...svg.children].filter((el) => el.localName === 'circle').map((c) => c.getAttribute('r'))).toEqual(['24.5', '24.5', '24.5'])
+    for (const d of ['1', '2', '3']) expect(textOf(svg, d).getAttribute('font-size')).toBe('31')
+  })
+})
+
+describe('AC-6805.2·AC-6803.4: 환자 안내문 글씨 색', () => {
+  it.each(EXAMPLES.map((_, i) => [i + 1] as const))('AC-6805.2: 예시 %i — 제목 색 c면 큰 문구 두 줄만 c이고 작은 제목 등 나머지는 글자 하나까지 같다', (n) => {
+    const now = htmlOfGuide(example(n))
+    const picked = htmlOfGuide(styledGuide(example(n), { titleColor: TITLE_C }))
+    expect(countOf(picked, TITLE_C)).toBe(2)
+    expect(picked.split(TITLE_C).join(D)).toBe(now)
+    const svg = drawWith(styledGuide(example(n), { titleColor: TITLE_C }))
+    expect(textOf(svg, example(n).big1).getAttribute('fill')).toBe(TITLE_C)
+    expect(textOf(svg, example(n).big2).getAttribute('fill')).toBe(TITLE_C)
+    expect(textOf(svg, example(n).subtitle).getAttribute('fill')).toBe(D)
+  })
+
+  it.each(EXAMPLES.map((_, i) => [i + 1] as const))('AC-6805.2: 예시 %i — 본문 색 c면 띠 줄 글만 c이고 강조 낱말·체크·번호 표시는 지금 색 그대로다', (n) => {
+    const content = example(n)
+    const now = htmlOfGuide(content)
+    const picked = htmlOfGuide(styledGuide(content, { bodyColor: BODY_C }))
+    expect(countOf(picked, BODY_C)).toBe(content.lines.length)
+    expect(picked.split(BODY_C).join(W)).toBe(now)
+  })
+
+  it('AC-6805.2: 강조 낱말 tspan은 노랑 그대로, 그 줄 글 색만 c다(예시 6)', () => {
+    const svg = drawWith(styledGuide(example(6), { bodyColor: BODY_C }))
+    const spans = all(svg, 'tspan').filter((s) => s.getAttribute('fill') === Y)
+    expect(spans).toHaveLength(3)
+    for (const span of spans) expect(span.parentElement!.getAttribute('fill')).toBe(BODY_C)
+    expect(texts(svg).filter((t) => t.textContent === '✓').map((t) => t.getAttribute('fill'))).toEqual([Y, Y, Y])
+  })
+
+  it('AC-6803.4: 색이 null이면 제목은 띠 색(로고 색이 있으면 로고 dark), 줄 글은 흰색이다', () => {
+    const FROM_LOGO: GuideColors = { main: '#f2b8c6', dark: '#3a1520' }
+    const svg = drawWith(styledGuide(example(1), { titleScale: 120, bodyScale: 90 }), { logoColors: FROM_LOGO })
+    expect(textOf(svg, example(1).big1).getAttribute('fill')).toBe(FROM_LOGO.dark)
+    for (const line of example(1).lines) expect(textOf(svg, line.text).getAttribute('fill')).toBe(W)
+  })
+
+  it('AC-6805.2: 고른 제목·본문 색은 직접 고른 두 색·로고 색보다 먼저다', () => {
+    const svg = drawWith({ ...styledGuide(example(1), { titleColor: TITLE_C, bodyColor: BODY_C }), colors: { main: '#9fc3ff', dark: '#1b2740' } }, { logoColors: { main: '#f2b8c6', dark: '#3a1520' } })
+    expect(textOf(svg, example(1).big2).getAttribute('fill')).toBe(TITLE_C)
+    expect(textOf(svg, example(1).lines[0]!.text).getAttribute('fill')).toBe(BODY_C)
+    expect(textOf(svg, example(1).subtitle).getAttribute('fill')).toBe('#1b2740')
+  })
+})
+
+describe('AC-6804.5·AC-6805.3: 환자 안내문 로고 크기·색', () => {
+  const URL = `data:image/png;base64,iVBORw0KGgo${'G'.repeat(24)}`
+  const boxOf = (el: Element) => ({ x: num(el, 'x'), y: num(el, 'y'), width: num(el, 'width'), height: num(el, 'height') })
+
+  it('AC-6804.5: 크기를 아는 그림은 150%면 97, 988.2 · 600×101.7, 크기 모름은 원래 상자를 키워 97, 988 · 600×102다', () => {
+    const known = drawWith(styledGuide(example(1), { logoScale: 150 }), { logo: { kind: 'image', href: URL, width: 1033, height: 175 } }).lastElementChild!
+    expect(boxOf(known)).toEqual({ x: 97, y: 988.2, width: 600, height: 101.7 })
+    expect(known.getAttribute('preserveAspectRatio')).toBe('xMidYMid meet')
+    cleanup()
+    const unknown = drawWith(styledGuide(example(1), { logoScale: 150 }), { logo: { kind: 'image', href: URL } }).lastElementChild!
+    expect(boxOf(unknown)).toEqual({ x: 97, y: 988, width: 600, height: 102 })
+    cleanup()
+    for (const logoScale of [60, 90, 140]) {
+      const el = drawWith(styledGuide(example(1), { logoScale }), { logo: { kind: 'image', href: URL, width: 1080, height: 501 } }).lastElementChild!
+      expect(boxOf(el), `${logoScale}%`).toEqual(scaleLogoRect(logoRect(GUIDE_LOGO_AREA, { width: 1080, height: 501 }), logoScale, GUIDE_LOGO_MAX))
+      cleanup()
+    }
+  })
+
+  it('AC-6804.5: 이름 글자 로고는 150%면 81px(가운데 397·1039), 넘치면 W = 600으로 눌러 그린다', () => {
+    const logo = drawWith(styledGuide(example(1), { logoScale: 150 }), { logo: { kind: 'text', text: '서승관' } }).lastElementChild!
+    expect(attrsOf(logo)).toMatchObject({ x: '397', y: '1039', 'font-size': '81' })
+    expect(num(logo, 'font-size')).toBe(logoTextFit('서승관', GUIDE_LOGO, 150, GUIDE_LOGO_MAX).size)
+    cleanup()
+    const long = drawWith(styledGuide(example(1), { logoScale: 150 }), { logo: { kind: 'text', text: '가'.repeat(50) } }).lastElementChild!
+    expect(attrsOf(long)).toMatchObject({ textLength: '600', lengthAdjust: 'spacingAndGlyphs' })
+  })
+
+  it('AC-6805.3: 로고 색 c + 칠할 수 있는 그림이면 필터로 칠하고, 칠할 수 없는 그림은 지금 그대로다', () => {
+    const tintable: PosterLogo = { kind: 'image', href: URL, width: 1033, height: 175, tintable: true }
+    const svg = drawWith(styledGuide(example(1), { logoColor: LOGO_C }), { logo: tintable })
+    const last = svg.lastElementChild!
+    const filter = all(svg, 'filter').find((f) => last.getAttribute('filter') === `url(#${f.getAttribute('id')})`)
+    expect(filter?.getAttribute('id')).toMatch(/^logo-tint-/)
+    expect(all(filter!, 'feFlood')[0]!.getAttribute('flood-color')).toBe(LOGO_C)
+    expect(attrsOf(all(filter!, 'feComposite')[0]!)).toEqual({ in2: 'SourceAlpha', operator: 'in' })
+    cleanup()
+    const plainLogo: PosterLogo = { kind: 'image', href: URL, width: 1033, height: 175 }
+    expect(htmlOfGuide(styledGuide(example(1), { logoColor: LOGO_C }), { logo: plainLogo })).toBe(htmlOfGuide(example(1), { logo: plainLogo }))
+    expect(htmlOfGuide(example(1), { logo: tintable })).toBe(htmlOfGuide(example(1), { logo: plainLogo }))
+  })
+
+  it('AC-6805.3: 이름 글자 로고는 글자를 c로 그린다', () => {
+    const logo = drawWith(styledGuide(example(1), { logoColor: LOGO_C }), { logo: { kind: 'text', text: '서승관의원' } }).lastElementChild!
+    expect(logo.getAttribute('fill')).toBe(LOGO_C)
+  })
+})
+
+describe('AC-6804.6: 처음대로면 환자 안내문 그림은 이 기능 전과 한 점도 다르지 않다', () => {
+  const URL = `data:image/png;base64,iVBORw0KGgo${'H'.repeat(24)}`
+  it.each(EXAMPLES.map((_, i) => [i + 1] as const))('AC-6804.6: 예시 %i — 처음대로 style이면 로고 그림·이름 글자·없음 모두 글자 하나까지 같다', (n) => {
+    for (const logo of [undefined, null, { kind: 'image', href: URL, width: 1080, height: 501, tintable: true }, { kind: 'text', text: '서승관의원' }] as (PosterLogo | null | undefined)[]) {
+      expect(htmlOfGuide({ ...example(n), style: { ...DEFAULT_STYLE } }, { logo }), JSON.stringify(logo)).toBe(htmlOfGuide(example(n), { logo }))
+    }
   })
 })

@@ -1,4 +1,5 @@
 import type { GuideContent, GuideProblems } from '@/types/formGuide'
+import { DEFAULT_STYLE, scaled, type FormStyle } from './style'
 
 // 서식 탭 환자 안내문 그림(A4 세로 794×1123)의 배치 (specs/forms-guide design.md 4절, AC-4503).
 // 값은 승인 시안 docs/mockups/forms-guide/index.html의 emOf()·measure()·fit()·layout()과 같다.
@@ -11,6 +12,8 @@ export const GUIDE_PAGE = { width: 794, height: 1123, x: 51, inner: 692, bandY: 
 export const GUIDE_LOGO = { x: 197, y: 1005, width: 400, height: 68 } as const
 // 크기를 아는 로고 그림의 자리(spec logo-fit design.md 4절, AC-6703.2): 가운데 397·1039(GUIDE_LOGO와 같다), 흰 로고 칸 954~1123에서 위 30·아래 29 띄움
 export const GUIDE_LOGO_AREA = { x: 197, y: 984, width: 400, height: 110 } as const
+// 로고 크기(%)를 키워도 넘지 않는 최대 폭·높이 — 글자 안쪽 폭 692, 흰 로고 칸 169 안(spec form-style AC-6804.5)
+export const GUIDE_LOGO_MAX = { width: 692, height: 140 } as const
 // 그림 170×170: 오른쪽 여백 58, 윗단 바닥에서 28 위
 const PICTURE = { x: 566, y: 468, size: 170 } as const
 
@@ -22,6 +25,10 @@ const COL_GAP = 13 // 두 열 사이
 const COL_W = (INNER - COL_GAP) / 2 // 339.5
 const ROW = { check: { base: 59.5, min: 44 }, number: { base: 67, min: 54 } } as const
 const NOTE_H = 11.5 + 31 // 아래 작은 글 블록 높이
+// 큰 문구 처음 크기 × 제목 %의 한도(spec form-style AC-6804.3): 보통 두 줄·'윗줄 작게' 윗줄·아랫줄
+const BIG_MAX = 120
+const SMALL_TOP_MAX = 88
+const SMALL_BOTTOM_MAX = 165
 
 const TOO_LONG = '한 줄에 들어가지 않아요. 줄여 주세요'
 const BAND_OVER = '띠에 다 들어가지 않아요. 줄을 하나 빼거나, 띠 제목·아래 작은 글을 비워 주세요'
@@ -77,8 +84,10 @@ export function fitGuide(text: string, start: number, min: number, room: number,
 const fitted = (text: string, size: number, x: number, y: number): Fitted => ({ text, size, x, y })
 const filled = (value: string) => value.trim() !== ''
 
-// 빈 글 칸·빈 줄도 배치는 한다(빈 줄은 그리지 않는다)
-export function layoutGuide(c: GuideContent): GuideLayout {
+// 빈 글 칸·빈 줄도 배치는 한다(빈 줄은 그리지 않는다).
+// 글씨 크기(c.style, spec form-style AC-6804.3·AC-6804.4): 큰 문구·띠 줄 글의 처음 크기만 바꾸고 가장 작은 크기·까닭 규칙은 그대로다. 처음대로면 지금과 같다
+export function layoutGuide(c: GuideContent & { style?: FormStyle }): GuideLayout {
+  const { titleScale, bodyScale } = c.style ?? DEFAULT_STYLE
   const problems: GuideProblems = {}
   const say = (key: string, message: string) => {
     if (problems[key] === undefined) problems[key] = message
@@ -95,17 +104,19 @@ export function layoutGuide(c: GuideContent): GuideLayout {
   if (!sub.ok) say('subtitle', '작은 제목이 한 줄에 들어가지 않아요. 줄여 주세요')
   const subtitle = fitted(c.subtitle, sub.size, X, 161.5)
 
-  // 큰 문구 두 줄: 보통은 109 → 72에서 두 줄 같은 크기(작은 쪽), '윗줄 작게'면 윗줄 80 → 56 · 아랫줄 150 → 72 따로
+  // 큰 문구 두 줄: 보통은 109 → 72에서 두 줄 같은 크기(작은 쪽), '윗줄 작게'면 윗줄 80 → 56 · 아랫줄 150 → 72 따로.
+  // 처음 크기는 제목 %를 곱하고 한도(120·88·165)로 묶는다
   let big: [Fitted, Fitted]
   if (c.firstSmall) {
-    const a = fitGuide(c.big1, 80, 56, INNER, BIG_SPACING)
-    const b = fitGuide(c.big2, 150, 72, INNER, BIG_SPACING)
+    const a = fitGuide(c.big1, Math.min(scaled(80, titleScale), SMALL_TOP_MAX), 56, INNER, BIG_SPACING)
+    const b = fitGuide(c.big2, Math.min(scaled(150, titleScale), SMALL_BOTTOM_MAX), 72, INNER, BIG_SPACING)
     if (!a.ok) say('big1', TOO_LONG)
     if (!b.ok) say('big2', TOO_LONG)
     big = [fitted(c.big1, a.size, X, 252), fitted(c.big2, b.size, X, 381)]
   } else {
-    const a = fitGuide(c.big1, 109, 72, INNER, BIG_SPACING)
-    const b = fitGuide(c.big2, 109, 72, INNER, BIG_SPACING)
+    const start = Math.min(scaled(109, titleScale), BIG_MAX)
+    const a = fitGuide(c.big1, start, 72, INNER, BIG_SPACING)
+    const b = fitGuide(c.big2, start, 72, INNER, BIG_SPACING)
     if (!a.ok) say('big1', TOO_LONG)
     if (!b.ok) say('big2', TOO_LONG)
     const size = Math.min(a.size, b.size)
@@ -160,7 +171,10 @@ export function layoutGuide(c: GuideContent): GuideLayout {
     say('band', BAND_OVER)
     rowH = min
   }
-  const font = check ? Math.min(34, Math.floor(rowH / 1.35)) : 35
+  // 줄 글 처음 크기 × 본문 %: 체크는 줄 높이 / 1.35까지, 번호는 키울 때만 max(35, 줄 높이 / 1.35)까지
+  const fit = Math.floor(rowH / 1.35)
+  const numberSize = scaled(35, bodyScale)
+  const font = check ? Math.min(scaled(34, bodyScale), fit) : bodyScale <= 100 ? numberSize : Math.min(numberSize, Math.max(35, fit))
   const circle = Math.min(49, rowH - 8)
   const checkSize = font + 2
   const checkW = 0.855 * checkSize

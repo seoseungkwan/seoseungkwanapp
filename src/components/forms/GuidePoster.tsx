@@ -1,8 +1,9 @@
 import { Fragment, type ReactNode } from 'react'
 import { guideColorsOf, type GuideValue } from '@/lib/forms/guide'
-import { GUIDE_LOGO, GUIDE_LOGO_AREA, GUIDE_PAGE, layoutGuide, type Fitted } from '@/lib/forms/guideLayout'
+import { GUIDE_LOGO, GUIDE_LOGO_AREA, GUIDE_LOGO_MAX, GUIDE_PAGE, layoutGuide, type Fitted } from '@/lib/forms/guideLayout'
 import type { PosterLogo } from '@/lib/forms/layout'
 import type { GuideColors } from '@/lib/forms/logoColors'
+import { DEFAULT_STYLE } from '@/lib/forms/style'
 import { PICTURE_IDS, type PictureId } from '@/types/formGuide'
 import { SHADOW_OPACITY, guidePalette } from './guideColors'
 import { GuideDrawingPicture, GuidePicture } from './guidePictures'
@@ -15,6 +16,8 @@ import { LogoSlot } from './Poster'
 // 노랑·진회색 두 자리는 안내문에서 직접 고른 색 > 병원 로고 색 > 지금 색으로 칠한다(spec clinic-profile AC-6604.5, guidePalette).
 // 글자로 된 병원 정보(전화·주소)는 넣지 않는다 — 병원 로고 하나만 맨 아래에 둔다. 로고가 없으면 병원 이름 글자(띠 색, AC-6604.1).
 // 크기를 아는 로고 그림은 더 큰 로고 자리(GUIDE_LOGO_AREA)에 가장 크게 그린다(spec logo-fit AC-6703.2).
+// 글씨·로고 값(content.style, spec form-style design.md 6절): 큰 문구·줄 글 크기는 layoutGuide가, 큰 문구 색(없으면 띠 색)·줄 글 색(없으면 흰색)과
+// 로고 크기·색은 여기서 쓴다. 강조 낱말·체크·번호 표시 색은 그대로다. 처음대로면 지금 그림 그대로다(AC-6804.6).
 // 글자는 React가 이스케이프하고 HTML을 넣지 않는다
 
 const FONT = 'PosterPretendard' // 이 이름은 src/components/forms 안에서만 쓴다(AC-3510.2)
@@ -86,6 +89,7 @@ type Props = {
 export function GuidePoster({ content, logo, logoColors = null }: Props) {
   const palette = guidePalette(guideColorsOf(content), logoColors)
   const { yellow: Y, dark: D, white: W, note: NOTE, shadow: SHADOW } = palette
+  const style = content.style ?? DEFAULT_STYLE
   const layout = layoutGuide(content)
   const { pill, box, picture, rows } = layout
   const label = `${content.tag}: ${content.subtitle} ${content.big1} ${content.big2}`
@@ -107,9 +111,9 @@ export function GuidePoster({ content, logo, logoColors = null }: Props) {
       <GuideText at={pill.text} weight={900} fill={Y} anchor="middle">
         {pill.text.text}
       </GuideText>
-      {/* 작은 제목·큰 문구 두 줄: 노랑 위 진회색 */}
+      {/* 작은 제목·큰 문구 두 줄: 노랑 위 진회색. 큰 문구는 고른 제목 색이 있으면 그 색 */}
       {[layout.subtitle, ...layout.big].map((at, i) => (
-        <GuideText key={i} at={at} weight={900} fill={D} spacing={BIG_SPACING}>
+        <GuideText key={i} at={at} weight={900} fill={i === 0 ? D : (style.titleColor ?? D)} spacing={BIG_SPACING}>
           {at.text}
         </GuideText>
       ))}
@@ -162,7 +166,7 @@ export function GuidePoster({ content, logo, logoColors = null }: Props) {
         return (
           <Fragment key={row.n}>
             {mark}
-            <LineText at={row.text} em={row.em} W={W} Y={Y} />
+            <LineText at={row.text} em={row.em} W={style.bodyColor ?? W} Y={Y} />
           </Fragment>
         )
       })}
@@ -171,8 +175,8 @@ export function GuidePoster({ content, logo, logoColors = null }: Props) {
           {layout.note.text}
         </GuideText>
       )}
-      {/* 병원 로고: 흰 로고 칸 가운데, 받침·필터 없이 그대로. 이름 글자는 띠 색 */}
-      <LogoSlot logo={logo} area={GUIDE_LOGO_AREA} box={GUIDE_LOGO} fill={D} />
+      {/* 병원 로고: 흰 로고 칸 가운데, 받침 없이 그대로. 이름 글자는 띠 색. 로고 크기·색은 style대로 */}
+      <LogoSlot logo={logo} area={GUIDE_LOGO_AREA} box={GUIDE_LOGO} fill={D} scale={style.logoScale} max={GUIDE_LOGO_MAX} color={style.logoColor} />
     </svg>
   )
 }
