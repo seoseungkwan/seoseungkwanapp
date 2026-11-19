@@ -1,17 +1,19 @@
 import { useId } from 'react'
-import { LOGO, POSTER, layoutPoster, logoTextFit, type PosterLogo } from '@/lib/forms/layout'
+import { LOGO, LOGO_AREA, POSTER, layoutPoster, logoRect, logoTextFit, type LogoBox, type PosterLogo } from '@/lib/forms/layout'
 import { isAccentHex, themeHref, themeOf } from '@/lib/forms/themes'
 import type { BackgroundLook } from '@/types/formBackground'
 import type { ClosureNotice, ThemeArt, ThemeId } from '@/types/forms'
 
 // 서식 탭 휴진 안내 그림(A4 세로 794×1123 SVG, spec forms design.md 5·6절).
 // 기준 그림은 승인 테마 시안 docs/mockups/forms/themes.html의 poster()다 — 자리·크기·굵기·색·자간·그림자·띠 모양을 그대로 옮겼다.
-// 테마 그림 2(art 2)와 AI 배경(내 배경, background)은 specs/forms-themes design.md 6절 — 배경 위 흰 판·흰 빛 값은
-// 승인 시안 docs/mockups/forms-themes/ai-backgrounds.html 그대로다.
+// 테마 그림 2(art 2)와 AI 배경(내 배경, background)은 specs/forms-themes design.md 6절 — 배경 위 흰 판 값은
+// 승인 시안 docs/mockups/forms-themes/ai-backgrounds.html 그대로다. 로고 뒤 흰 빛은 그리지 않는다(spec logo-fit AC-6703.4,
+// 사용자 2026-11-19 "그라데이션 없애").
 // 안내문 그림 안의 색(강조색·글자색·흰색·그림자)과 글꼴(PosterPretendard 700·900)은 인쇄물이라 앱 토큰·굵기 규칙의 예외다(ADR-028).
 // 그 값은 이 파일 안에서만 쓴다. 앱 화면 쪽은 토큰만 쓴다.
 // 글자로 된 병원 정보(이름·전화·주소)는 넣지 않는다 — 병원 로고 하나만 맨 아래에 둔다(specs/forms-logo).
 // 로고는 병원 정보 로고 그림, 로고가 없으면 병원 이름 굵은 글자다(spec clinic-profile AC-6604.1, LogoSlot).
+// 크기를 아는 로고 그림은 더 큰 로고 자리(LOGO_AREA)에 가장 크게 그린다(spec logo-fit AC-6703.1).
 // 글자는 React가 이스케이프하고 HTML을 넣지 않는다
 
 const FONT = 'PosterPretendard' // 이 이름은 src/components/forms 안에서만 쓴다(AC-3510.2)
@@ -23,7 +25,7 @@ const FONT_CSS = [
 
 const INK = '#262626' // '진료일정안내'·카드 이름
 const LEAD = '#3a3a3a' // 안내 두 줄
-const WHITE = '#fff' // 카드 바탕·띠 글·배경 위 흰 판과 흰 빛
+const WHITE = '#fff' // 카드 바탕·띠 글·배경 위 흰 판
 const RADIUS = 22 // 카드 모서리
 
 // 배경으로 쓸 수 있는 값: JPEG data: 주소와 '#'+소문자 6자리 강조색. 아니면 배경이 없는 것처럼 테마로 그린다(AC-4603.3)
@@ -55,21 +57,26 @@ function PosterText({ x, y, size, weight, fill, spacing, children }: TextProps) 
 
 // 로고 그림으로 쓸 수 있는 주소: 병원 정보 로고의 PNG data: 주소만(바깥 주소를 그림에 넣지 않는다)
 const LOGO_IMAGE = 'data:image/png;base64,'
-type LogoBox = { x: number; y: number; width: number; height: number }
+// 그림 크기는 유한한 양수 둘일 때만 안다고 본다. 아니면 크기 모름(spec logo-fit design.md 5절)
+const isSide = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0
 
 type LogoSlotProps = {
   logo: PosterLogo | null | undefined // undefined = 로고를 넘기지 않은 옛 부르기(옛 로고 그림), null = 읽는 중(비운다)
-  box: LogoBox
+  area: LogoBox // 크기를 아는 로고 그림의 자리(spec logo-fit AC-6703.1·AC-6703.2)
+  box: LogoBox // 원래 로고 상자: 크기 모르는 그림·이름 글자·옛 로고 그림(AC-6703.3·AC-6703.5)
   fill: string // 이름 글자 색
 }
-// 로고 자리 하나(spec clinic-profile design.md 6절): 그림이면 상자 안에 비율을 지켜(xMidYMid meet), 글자면 상자 가운데 900 글자를
+// 로고 자리 하나(spec clinic-profile design.md 6절, spec logo-fit design.md 5절): 그림이고 크기를 알면 자리(area) 안에 비율을 지켜
+// 가장 크게(logoRect), 크기를 모르면 원래 상자(box) 전체에 비율을 지켜(xMidYMid meet). 글자면 상자 가운데 900 글자를
 // 상자 높이 80%에서 상자 폭에 맞춘 크기로. 가장 작은 크기로도 넘치면 상자 폭으로 눌러 그린다. 환자 안내문(GuidePoster)도 같이 쓴다
-export function LogoSlot({ logo, box, fill }: LogoSlotProps) {
+export function LogoSlot({ logo, area, box, fill }: LogoSlotProps) {
   if (logo === undefined) return <image href={LOGO.href} x={box.x} y={box.y} width={box.width} height={box.height} />
   if (logo === null) return null
   if (logo.kind === 'image') {
     if (typeof logo.href !== 'string' || !logo.href.startsWith(LOGO_IMAGE)) return null
-    return <image href={logo.href} x={box.x} y={box.y} width={box.width} height={box.height} preserveAspectRatio="xMidYMid meet" />
+    const { width, height } = logo
+    const at = isSide(width) && isSide(height) ? logoRect(area, { width, height }) : box
+    return <image href={logo.href} x={at.x} y={at.y} width={at.width} height={at.height} preserveAspectRatio="xMidYMid meet" />
   }
   const text = typeof logo.text === 'string' ? logo.text.trim() : ''
   if (!text) return null
@@ -130,17 +137,8 @@ export function Poster({ notice, theme, art = 1, background = null, logo }: Post
       {bg ? (
         <>
           <image href={bg.image} x="0" y="0" width={POSTER.width} height={POSTER.height} preserveAspectRatio="xMidYMid slice" />
-          {/* 어떤 그림이 와도 글자가 읽히게: 글자 뒤 반투명 흰 판, 로고 뒤 흰 빛(로고 가운데 y = 1011 + 58/2) */}
+          {/* 어떤 그림이 와도 글자가 읽히게: 글자 뒤 반투명 흰 판. 로고 뒤 흰 빛은 없다(spec logo-fit AC-6703.4) */}
           <rect x="64" y="70" width="666" height="770" rx="40" fill={WHITE} fillOpacity=".55" filter={`url(#${softId})`} />
-          <ellipse
-            cx={POSTER.cx}
-            cy={LOGO.y + LOGO.height / 2}
-            rx="210"
-            ry="46"
-            fill={WHITE}
-            fillOpacity=".7"
-            filter={`url(#${softId})`}
-          />
         </>
       ) : (
         <image href={themeHref(theme, art)} x="0" y="0" width={POSTER.width} height={POSTER.height} />
@@ -179,7 +177,7 @@ export function Poster({ notice, theme, art = 1, background = null, logo }: Post
         ]
       })}
       {/* 병원 로고: 카드 다음 맨 위에, 받침·필터 없이 그대로(사용자 선택 ①). 이름 글자는 진한 글자색 */}
-      <LogoSlot logo={logo} box={LOGO} fill={INK} />
+      <LogoSlot logo={logo} area={LOGO_AREA} box={LOGO} fill={INK} />
     </svg>
   )
 }

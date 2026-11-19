@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode } from 'react'
 import { guideColorsOf, type GuideValue } from '@/lib/forms/guide'
-import { GUIDE_LOGO, GUIDE_PAGE, layoutGuide, type Fitted } from '@/lib/forms/guideLayout'
+import { GUIDE_LOGO, GUIDE_LOGO_AREA, GUIDE_PAGE, layoutGuide, type Fitted } from '@/lib/forms/guideLayout'
 import type { PosterLogo } from '@/lib/forms/layout'
 import type { GuideColors } from '@/lib/forms/logoColors'
 import { PICTURE_IDS, type PictureId } from '@/types/formGuide'
@@ -14,6 +14,7 @@ import { LogoSlot } from './Poster'
 // 색은 guideColors.ts의 다섯 자리뿐이고, 노란 글자는 진회색 위(머리표·띠 제목·✓·줄 안 강조)에만 둔다.
 // 노랑·진회색 두 자리는 안내문에서 직접 고른 색 > 병원 로고 색 > 지금 색으로 칠한다(spec clinic-profile AC-6604.5, guidePalette).
 // 글자로 된 병원 정보(전화·주소)는 넣지 않는다 — 병원 로고 하나만 맨 아래에 둔다. 로고가 없으면 병원 이름 글자(띠 색, AC-6604.1).
+// 크기를 아는 로고 그림은 더 큰 로고 자리(GUIDE_LOGO_AREA)에 가장 크게 그린다(spec logo-fit AC-6703.2).
 // 글자는 React가 이스케이프하고 HTML을 넣지 않는다
 
 const FONT = 'PosterPretendard' // 이 이름은 src/components/forms 안에서만 쓴다(AC-3510.2)
@@ -171,7 +172,7 @@ export function GuidePoster({ content, logo, logoColors = null }: Props) {
         </GuideText>
       )}
       {/* 병원 로고: 흰 로고 칸 가운데, 받침·필터 없이 그대로. 이름 글자는 띠 색 */}
-      <LogoSlot logo={logo} box={GUIDE_LOGO} fill={D} />
+      <LogoSlot logo={logo} area={GUIDE_LOGO_AREA} box={GUIDE_LOGO} fill={D} />
     </svg>
   )
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { GUIDE_LIMITS, PICTURE_IDS, type GuideContent, type GuideLine } from '@/types/formGuide'
-import { GUIDE_LOGO, GUIDE_PAGE, fitGuide, guideTextWidth, layoutGuide, type Fitted, type GuideLayout } from './guideLayout'
+import { GUIDE_LOGO, GUIDE_LOGO_AREA, GUIDE_PAGE, fitGuide, guideTextWidth, layoutGuide, type Fitted, type GuideLayout } from './guideLayout'
+import { logoRect } from './layout'
 
 // 서식 탭 환자 안내문 그림(A4 세로 794×1123)의 배치 (specs/forms-guide REQ-4503, design.md 4절, TASK-1).
 // 값은 승인 시안 docs/mockups/forms-guide/index.html의 emOf()·measure()·fit()·layout()과 같다
@@ -479,5 +480,31 @@ describe('AC-4503.7: 까닭이 없는 배치의 자리', () => {
       expect(t.left).toBeGreaterThanOrEqual(g.pill.x)
       expect(t.right).toBeLessThanOrEqual(g.pill.x + g.pill.w)
     }
+  })
+})
+
+describe('AC-6703.2: 환자 안내문 로고 자리 400×110 (spec logo-fit design.md 4절)', () => {
+  it('AC-6703.2: 자리는 x 197·y 984·400×110, 가운데 397·1039이고 원래 로고 상자(197,1005 · 400×68)는 그대로다', () => {
+    expect(GUIDE_LOGO_AREA).toEqual({ x: 197, y: 984, width: 400, height: 110 })
+    expect(GUIDE_LOGO_AREA.x + GUIDE_LOGO_AREA.width / 2).toBe(397)
+    expect(GUIDE_LOGO_AREA.y + GUIDE_LOGO_AREA.height / 2).toBe(1039)
+    expect(GUIDE_LOGO_AREA.y + GUIDE_LOGO_AREA.height / 2).toBe(GUIDE_LOGO.y + GUIDE_LOGO.height / 2)
+    expect(GUIDE_LOGO).toEqual({ x: 197, y: 1005, width: 400, height: 68 })
+  })
+
+  it('AC-6703.2: 자리는 흰 로고 칸(954~1123) 안 — 위 30, 아래 29 띄운다. 그림 주소(href)는 없다', () => {
+    expect(GUIDE_LOGO_AREA.y - GUIDE_PAGE.logoY).toBe(30)
+    expect(GUIDE_PAGE.height - (GUIDE_LOGO_AREA.y + GUIDE_LOGO_AREA.height)).toBe(29)
+    expect('href' in GUIDE_LOGO_AREA).toBe(false)
+  })
+
+  it('AC-6703.2: 가로형 1033×175는 x 197·y 1005.1·400×67.8이다', () => {
+    expect(logoRect(GUIDE_LOGO_AREA, { width: 1033, height: 175 })).toEqual({ x: 197, y: 1005.1, width: 400, height: 67.8 })
+  })
+
+  it('AC-6703.2: 세로로 긴 쪽 로고(1080×501)는 높이 110에 묶여 가운데 397에, 정사각은 110×110이다', () => {
+    // 배율 = min(400/1080, 110/501) = 110/501 → 폭 237.12…
+    expect(logoRect(GUIDE_LOGO_AREA, { width: 1080, height: 501 })).toEqual({ x: 278.4, y: 984, width: 237.1, height: 110 })
+    expect(logoRect(GUIDE_LOGO_AREA, { width: 64, height: 64 })).toEqual({ x: 342, y: 984, width: 110, height: 110 })
   })
 })

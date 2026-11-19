@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { LOGO, layoutPoster, logoTextFit, type PosterLogo } from '@/lib/forms/layout'
+import { LOGO, LOGO_AREA, layoutPoster, logoRect, logoTextFit, type PosterLogo } from '@/lib/forms/layout'
 import { themeOf } from '@/lib/forms/themes'
 import type { ClosureNotice, NoticeCard, ThemeId } from '@/types/forms'
 import { Poster } from './Poster'
@@ -410,5 +410,94 @@ describe('AC-6604.1·AC-6604.2: 로고 자리 — 병원 정보 로고 그림 �
     expect(plain(drawWith({ kind: 'image', href: LOGO_URL })).replace(/<image href="data:[^>]*><\/image>/, '')).toBe(base)
     cleanup()
     expect(plain(drawWith({ kind: 'text', text: '서승관의원' })).replace(/<text[^>]*>서승관의원<\/text>/, '')).toBe(base)
+  })
+})
+
+// ---------- 로고 자리 크게 (spec logo-fit REQ-6703 AC-6703.1·AC-6703.3·AC-6703.5, design.md 4·5절) ----------
+
+describe('AC-6703.1·AC-6703.3·AC-6703.5: 휴진 안내 로고 자리 — 크기를 알면 340×100 자리에 가장 크게', () => {
+  const LOGO_URL = `data:image/png;base64,iVBORw0KGgo${'C'.repeat(24)}`
+  const IMAGE_ATTRS = ['href', 'x', 'y', 'width', 'height', 'preserveAspectRatio']
+  const sized = (width: number, height: number): PosterLogo => ({ kind: 'image', href: LOGO_URL, width, height })
+  function drawWith(logo: PosterLogo | null | undefined, notice: ClosureNotice = CHILDREN) {
+    const { container } = render(<Poster notice={notice} theme="children" logo={logo} />)
+    const svg = container.querySelector('svg')
+    if (!svg) throw new Error('svg가 없다')
+    return svg
+  }
+  const boxOf = (el: Element) => ({ x: num(el, 'x'), y: num(el, 'y'), width: num(el, 'width'), height: num(el, 'height') })
+
+  it('AC-6703.1: 가로형 1033×175는 지금과 같은 자리(227, 1011.2 · 340×57.6)에 비율을 지켜(xMidYMid meet) 그린다', () => {
+    for (const n of [1, 4]) {
+      const cards = Array.from({ length: n }, (_, i) => card(`2027-05-${String(10 + i).padStart(2, '0')}`, `학회${i + 1}`))
+      const svg = drawWith(sized(1033, 175), { ...CHILDREN, cards })
+      const last = svg.lastElementChild!
+      expect(last.localName, `${n}장`).toBe('image')
+      expect(attrs(last, IMAGE_ATTRS)).toEqual({ href: LOGO_URL, x: '227', y: '1011.2', width: '340', height: '57.6', preserveAspectRatio: 'xMidYMid meet' })
+      expect(all(svg, 'image').map((el) => el.getAttribute('href'))).toEqual(['/poster/themes/children.svg', LOGO_URL])
+      cleanup()
+    }
+  })
+
+  it('AC-6703.1: 세로로 긴 쪽 로고(1080×501)는 높이 100에 묶여 289.2, 990 · 215.6×100, 가운데 397·1040에 그린다', () => {
+    const last = drawWith(sized(1080, 501)).lastElementChild!
+    expect(attrs(last, IMAGE_ATTRS)).toEqual({ href: LOGO_URL, x: '289.2', y: '990', width: '215.6', height: '100', preserveAspectRatio: 'xMidYMid meet' })
+    expect(num(last, 'x') + num(last, 'width') / 2).toBeCloseTo(397, 1)
+    expect(num(last, 'y') + num(last, 'height') / 2).toBe(1040)
+  })
+
+  it('AC-6703.1: 정사각·위아래로 긴 로고도 자리(227, 990 · 340×100) 안 가장 크게 — logoRect(LOGO_AREA, 크기)와 같다', () => {
+    for (const [w, h] of [[500, 500], [120, 360], [777, 333]] as const) {
+      const last = drawWith(sized(w, h)).lastElementChild!
+      expect(boxOf(last), `${w}×${h}`).toEqual(logoRect(LOGO_AREA, { width: w, height: h }))
+      expect(last.getAttribute('preserveAspectRatio')).toBe('xMidYMid meet')
+      cleanup()
+    }
+    expect(boxOf(drawWith(sized(500, 500)).lastElementChild!)).toEqual({ x: 347, y: 990, width: 100, height: 100 })
+  })
+
+  it('AC-6703.3: 크기를 모르는 로고 값(크기 없음·0·음수·NaN·무한·한쪽만·글자 숫자)은 원래 로고 상자(227,1011 · 340×58) 전체에 그린다', () => {
+    const bad: PosterLogo[] = [
+      { kind: 'image', href: LOGO_URL },
+      sized(0, 175),
+      sized(1033, 0),
+      sized(-1033, 175),
+      sized(Number.NaN, 175),
+      sized(1033, Number.POSITIVE_INFINITY),
+      { kind: 'image', href: LOGO_URL, height: 175 },
+      { kind: 'image', href: LOGO_URL, width: '1033', height: '175' } as unknown as PosterLogo,
+    ]
+    for (const logo of bad) {
+      const last = drawWith(logo).lastElementChild!
+      expect(attrs(last, IMAGE_ATTRS), JSON.stringify(logo)).toEqual({ href: LOGO_URL, x: '227', y: '1011', width: '340', height: '58', preserveAspectRatio: 'xMidYMid meet' })
+      cleanup()
+    }
+  })
+
+  it('AC-6703.3: 크기가 있어도 PNG data: 주소가 아니면 지금처럼 그리지 않는다', () => {
+    const svg = drawWith({ kind: 'image', href: 'https://example.com/logo.png', width: 1033, height: 175 })
+    expect(all(svg, 'image').map((el) => el.getAttribute('href'))).toEqual(['/poster/themes/children.svg'])
+  })
+
+  it('AC-6703.3: 로고를 넘기지 않은 옛 부르기는 지금처럼 /poster/logo.png를 227,1011 · 340×58에 그린다', () => {
+    const last = drawWith(undefined).lastElementChild!
+    expect(attrs(last, IMAGE_ATTRS)).toEqual({ href: '/poster/logo.png', x: '227', y: '1011', width: '340', height: '58', preserveAspectRatio: null })
+  })
+
+  it('AC-6703.5: 로고 그림이 없으면 병원 이름 글자는 원래 상자(340×58) 기준 크기·자리(397, 1040)다', () => {
+    const name = '서승관정형외과의원'
+    const last = drawWith({ kind: 'text', text: name }).lastElementChild!
+    expect(attrs(last, ['x', 'y'])).toEqual({ x: '397', y: '1040' })
+    expect(num(last, 'font-size')).toBe(logoTextFit(name, LOGO).size)
+    cleanup()
+    const long = drawWith({ kind: 'text', text: '가'.repeat(50) }).lastElementChild!
+    expect(attrs(long, ['textLength', 'lengthAdjust'])).toEqual({ textLength: '340', lengthAdjust: 'spacingAndGlyphs' })
+  })
+
+  it('AC-6703.1: 로고 말고는 옛 그림과 글자 하나까지 같다(크기를 아는 로고)', () => {
+    const plain = (svg: Element) => svg.outerHTML.replace(/poster-shadow-[\w-]+/g, 'poster-shadow-ID')
+    const base = plain(drawWith(null))
+    cleanup()
+    expect(plain(drawWith(sized(1080, 501))).replace(/<image href="data:[^>]*><\/image>/, '')).toBe(base)
   })
 })

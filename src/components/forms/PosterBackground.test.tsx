@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { LOGO, POSTER, layoutPoster } from '@/lib/forms/layout'
+import { LOGO, POSTER, layoutPoster, type PosterLogo } from '@/lib/forms/layout'
 import { themeHref, themeOf } from '@/lib/forms/themes'
 import type { BackgroundLook } from '@/types/formBackground'
 import type { ClosureNotice, NoticeCard, ThemeArt, ThemeId } from '@/types/forms'
@@ -9,6 +9,7 @@ import { Poster } from './Poster'
 
 // 휴진 안내 그림 — 그림 2와 AI 배경(내 배경) (specs/forms-themes TASK-10, REQ-4603 · AC-4603.1~4603.4, design.md 6절).
 // 값은 승인 시안 docs/mockups/forms-themes/ai-backgrounds.html 그대로 본다. 지금 그림 시험(Poster.test.tsx)은 고치지 않는다.
+// 로고 뒤 흰 빛(흐린 흰 타원)은 spec logo-fit AC-6703.4(사용자 2026-11-19 "그라데이션 없애")로 없앴다 — AC-4603.2 시험 세 곳을 타원 없는 형으로 고쳤다.
 // 배경 그림·강조색은 지어낸 값이다
 
 afterEach(cleanup)
@@ -25,7 +26,7 @@ const IMAGE = `data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ${'A'.repeat(40)}==`
 const ACCENT = '#7a1f4d' // 테마 23개의 강조색과 다른 값
 const BACKGROUND: BackgroundLook = { image: IMAGE, accent: ACCENT }
 
-type Props = { theme?: ThemeId; art?: ThemeArt; background?: BackgroundLook | null }
+type Props = { theme?: ThemeId; art?: ThemeArt; background?: BackgroundLook | null; logo?: PosterLogo | null }
 function draw({ theme = THEME, ...rest }: Props = {}) {
   const { container } = render(<Poster notice={NOTICE} theme={theme} {...rest} />)
   const svg = container.querySelector('svg')
@@ -87,23 +88,21 @@ describe('AC-4603.2: AI 배경(내 배경)을 얹은 그림', () => {
     expect([POSTER.width, POSTER.height]).toEqual([794, 1123])
   })
 
-  it('AC-4603.2: 배경 바로 뒤에 반투명 흰 판과 로고 뒤 흰 빛이 시안 값 그대로 온다', () => {
+  it('AC-4603.2·AC-6703.4: 배경 바로 뒤에 반투명 흰 판이 시안 값 그대로 오고, 로고 뒤 흰 빛(타원)은 없다', () => {
     const svg = draw({ background: BACKGROUND })
     const [image] = images(svg)
     const panel = image.nextElementSibling
-    const glow = panel?.nextElementSibling
     expect(panel?.localName).toBe('rect')
-    expect(glow?.localName).toBe('ellipse')
+    expect(panel?.nextElementSibling?.localName).not.toBe('ellipse')
     const { filter: panelFilter, ...panelRest } = attrs(panel as Element)
     expect(panelRest).toEqual({ x: '64', y: '70', width: '666', height: '770', rx: '40', fill: '#fff', 'fill-opacity': '.55' })
-    const { filter: glowFilter, ...glowRest } = attrs(glow as Element)
-    expect(glowRest).toEqual({ cx: '397', cy: '1040', rx: '210', ry: '46', fill: '#fff', 'fill-opacity': '.7' })
-    expect(LOGO.y + LOGO.height / 2).toBe(1040) // 흰 빛 가운데 = 로고 가운데
     expect(urlId(panelFilter)).not.toBeNull()
-    expect(urlId(glowFilter)).toBe(urlId(panelFilter))
+    expect(all(svg, 'ellipse')).toHaveLength(0)
+    // 반투명은 흰 판 하나뿐이다(흰 빛 .7이 없다)
+    expect([...svg.querySelectorAll('[fill-opacity]')].map((el) => el.localName)).toEqual(['rect'])
   })
 
-  it('AC-4603.2: 흐림 필터는 하나(feGaussianBlur stdDeviation 18, -10%·120%)이고 판·빛 두 도형이 그 필터를 함께 쓴다', () => {
+  it('AC-4603.2·AC-6703.4: 흐림 필터는 하나(feGaussianBlur stdDeviation 18, -10%·120%)이고 흰 판 하나만 그 필터를 쓴다', () => {
     const svg = draw({ background: BACKGROUND })
     const blurs = all(svg, 'feGaussianBlur')
     expect(blurs).toHaveLength(1)
@@ -114,7 +113,7 @@ describe('AC-4603.2: AI 배경(내 배경)을 얹은 그림', () => {
     expect(attrs(soft)).toEqual({ id: soft.id, x: '-10%', y: '-10%', width: '120%', height: '120%' })
     expect(soft.id).toMatch(/^poster-soft-[\w-]+$/)
     const users = [...svg.querySelectorAll('[filter]')].filter((el) => el.getAttribute('filter') === `url(#${soft.id})`)
-    expect(users.map((el) => el.localName)).toEqual(['rect', 'ellipse'])
+    expect(users.map((el) => el.localName)).toEqual(['rect'])
     // 그림자 필터는 지금처럼 카드 상자만 쓴다
     const shadow = all(svg, 'filter').find((f) => f !== soft) as Element
     expect(all(svg, 'filter')).toHaveLength(2)
@@ -151,10 +150,44 @@ describe('AC-4603.2: AI 배경(내 배경)을 얹은 그림', () => {
     expect(svg.outerHTML).not.toContain('/poster/themes/')
   })
 
-  it('AC-4603.2: 차례는 style → defs → 배경 → 흰 판 → 흰 빛 → 글자·카드 → 로고다', () => {
+  it('AC-4603.2·AC-6703.4: 차례는 style → defs → 배경 → 흰 판 → 글자·카드 → 로고다(흰 빛 없음)', () => {
     const order = [...draw({ background: BACKGROUND }).children].map((el) => el.localName)
-    expect(order.slice(0, 5)).toEqual(['style', 'defs', 'image', 'rect', 'ellipse'])
+    expect(order.slice(0, 4)).toEqual(['style', 'defs', 'image', 'rect'])
+    expect(order).not.toContain('ellipse')
+    expect(order.slice(4, -1).every((n) => n === 'text' || n === 'g' || n === 'path')).toBe(true)
     expect(order.at(-1)).toBe('image')
+  })
+})
+
+describe('AC-6703.4: AI 배경 위 로고 뒤에 흰 빛을 그리지 않는다 (spec logo-fit, 사용자 2026-11-19 "그라데이션 없애")', () => {
+  const LOGO_URL = `data:image/png;base64,iVBORw0KGgo${'E'.repeat(24)}`
+  it.each([
+    ['크기를 아는 세로형 그림', { kind: 'image', href: LOGO_URL, width: 1080, height: 501 }],
+    ['크기를 아는 가로형 그림', { kind: 'image', href: LOGO_URL, width: 1033, height: 175 }],
+    ['크기 모르는 그림', { kind: 'image', href: LOGO_URL }],
+    ['병원 이름 글자', { kind: 'text', text: '서승관정형외과의원' }],
+    ['읽는 중', null],
+    ['옛 부르기(로고 없음)', undefined],
+  ] as [string, PosterLogo | null | undefined][])('AC-6703.4: %s — 타원이 없고, 글자 뒤 반투명 흰 판은 그대로다', (_, logo) => {
+    const svg = draw({ background: BACKGROUND, logo })
+    expect(all(svg, 'ellipse')).toHaveLength(0)
+    expect(svg.outerHTML).not.toContain('fill-opacity=".7"')
+    const panels = [...svg.children].filter((el) => el.localName === 'rect') // 카드 상자는 g 안이라 빠진다
+    expect(panels).toHaveLength(1)
+    expect(panels[0].getAttribute('fill-opacity')).toBe('.55')
+    expect(urlId(panels[0].getAttribute('filter'))).toMatch(/^poster-soft-/)
+    expect(all(svg, 'feGaussianBlur')).toHaveLength(1)
+  })
+
+  it('AC-6703.4: 로고 자리 말고는 로고 종류와 상관없이 같다(흰 빛이 로고를 따라 바뀌지 않는다)', () => {
+    const withoutLogo = (logo: PosterLogo | null) =>
+      plain(draw({ background: BACKGROUND, logo }))
+        .replace(/<image href="data:image\/png[^>]*><\/image>/, '')
+        .replace(/<text[^>]*>서승관의원<\/text>/, '')
+    const base = withoutLogo(null)
+    expect(withoutLogo({ kind: 'image', href: LOGO_URL, width: 1080, height: 501 })).toBe(base)
+    expect(withoutLogo({ kind: 'image', href: LOGO_URL })).toBe(base)
+    expect(withoutLogo({ kind: 'text', text: '서승관의원' })).toBe(base)
   })
 })
 
