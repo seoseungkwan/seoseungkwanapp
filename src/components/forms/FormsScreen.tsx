@@ -7,8 +7,9 @@ import { todayInKorea } from '@/lib/analytics/dates'
 import { memoProblem } from '@/lib/forms/ai'
 import type { PosterLogo } from '@/lib/forms/layout'
 import { logoPalette, type GuideColors } from '@/lib/forms/logoColors'
+import { fitLogo } from '@/lib/forms/logoFit'
 import { fileNameOf, noticeTitle } from '@/lib/forms/notice'
-import { downloadPosterPng, readLogoPixels } from '@/lib/forms/png'
+import { bitmapToPngUrl, downloadPosterPng, readLogoBitmap, readLogoPixels, type LogoPixels } from '@/lib/forms/png'
 import { themeOf } from '@/lib/forms/themes'
 import { deleteNotice, insertNotice, listNotices, updateNotice } from '@/lib/storage/formNotices'
 import {
@@ -35,7 +36,8 @@ import { useBackgrounds } from './useBackgrounds'
 // 저장은 브라우저 Supabase + RLS(lib/storage/formNotices). 인쇄는 window.print — 인쇄 면에는 A4 한 장의 안내문만 나온다(AC-3506.1).
 // 로고 자리(spec clinic-profile REQ-6604, design.md 6절): 병원 정보를 로고까지 한 번 읽어(useClinicProfile) 두 안내문에 같이 넘긴다.
 // 로고 그림이 있으면 그 그림을 한 번 작게 읽어 환자 안내문 [자동] 색을 뽑고, 로고가 없거나 못 읽으면 병원 이름 글자로 그린다.
-// 읽는 동안에는 로고 자리를 비우고 [인쇄·PDF]·[그림 파일]을 막는다(AC-6604.2)
+// 읽히는 로고는 흰 배경을 지우고 여백을 잘라 준비한 그림(PNG data: 주소)과 그 크기를 넘긴다(spec logo-fit REQ-6701·REQ-6702, prepareLogo).
+// 읽고 준비하는 동안에는 로고 자리를 비우고 [인쇄·PDF]·[그림 파일]을 막는다(AC-6604.2)
 
 const TIDY_PATH = '/api/ai/forms'
 const DELETE_CONFIRM = '이 안내문을 지울까요?'
@@ -67,10 +69,34 @@ async function askTidy(text: string): Promise<TidyAnswer> {
 }
 
 type FormLogo = { logo: PosterLogo | null; logoColors: GuideColors | null } // logo null = 읽는 중
-type LogoRead = { href: string; ok: boolean; colors: GuideColors | null }
+type Prepared = { logo: PosterLogo | null; colors: GuideColors | null } // logo null = 로고 그림을 못 읽음(병원 이름 글자)
+type LogoRead = Prepared & { href: string }
 const READING: FormLogo = { logo: null, logoColors: null }
+const paletteOf = (pixels: LogoPixels) => logoPalette(pixels.data, pixels.width, pixels.height)
 
-// 병원 정보 로고 → 로고 자리 값과 로고 색. 로고 그림은 바뀔 때마다 한 번만 읽는다
+// 로고 준비(spec logo-fit design.md 1·6절): 표본(64 점)을 못 읽으면 지금처럼 이름 글자(clinic-profile AC-6604.2).
+// 읽히면 큰 그림을 읽어 흰 배경을 지우고 여백을 잘라(fitLogo) PNG data: 주소로 만들고 그 크기와 함께 넘긴다. 색은 준비한 그림에서
+// 다시 뽑고 못 뽑으면 원래 표본 색. 준비가 어디서든 실패하면 원래 로고를 크기 없이(원래 상자, AC-6702.2). 저장·서버 전송은 없다(AC-6701.4)
+async function prepareLogo(href: string): Promise<Prepared> {
+  const sample = await readLogoPixels(href)
+  if (sample === null) return { logo: null, colors: null }
+  const original: Prepared = { logo: { kind: 'image', href }, colors: paletteOf(sample) }
+  try {
+    const bitmap = await readLogoBitmap(href)
+    const fitted = bitmap === null ? null : fitLogo(bitmap)
+    const url = fitted === null ? null : bitmapToPngUrl(fitted)
+    if (fitted === null || url === null) return original
+    const again = await readLogoPixels(url)
+    return {
+      logo: { kind: 'image', href: url, width: fitted.width, height: fitted.height },
+      colors: again === null ? original.colors : paletteOf(again),
+    }
+  } catch {
+    return original
+  }
+}
+
+// 병원 정보 로고 → 로고 자리 값과 로고 색. 로고 그림은 바뀔 때마다 한 번만 읽고 준비한다
 function useFormLogo(): FormLogo {
   const clinic = useClinicProfile({ logo: true })
   const href = clinic.state === 'loading' ? null : clinic.logoDataUrl
@@ -78,9 +104,8 @@ function useFormLogo(): FormLogo {
   useEffect(() => {
     if (href === null) return
     let live = true
-    void readLogoPixels(href).then((pixels) => {
-      if (!live) return
-      setRead({ href, ok: pixels !== null, colors: pixels === null ? null : logoPalette(pixels.data, pixels.width, pixels.height) })
+    void prepareLogo(href).then((prepared) => {
+      if (live) setRead({ href, ...prepared })
     })
     return () => {
       live = false
@@ -90,7 +115,7 @@ function useFormLogo(): FormLogo {
   const name: FormLogo = { logo: { kind: 'text', text: clinic.name }, logoColors: null }
   if (href === null) return name
   if (read === null || read.href !== href) return READING
-  return read.ok ? { logo: { kind: 'image', href }, logoColors: read.colors } : name
+  return read.logo === null ? name : { logo: read.logo, logoColors: read.colors }
 }
 
 export function FormsScreen({ today }: { today?: string }) {

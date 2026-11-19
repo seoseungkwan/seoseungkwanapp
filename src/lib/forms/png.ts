@@ -1,9 +1,12 @@
+import { LOGO_MAX_SIDE } from '@/types/clinicProfile'
 import { LOGO } from './layout'
+import type { LogoBitmap } from './logoFit'
 
 // 서식 탭 안내문 그림 파일(PNG) 만들기 — 휴진 안내(specs/forms design.md 7절 '그림 파일', AC-3506.2·3506.3; 로고는 specs/forms-logo 5절)와
 // 환자 안내문(specs/forms-guide design.md 6절, AC-4509.2·4509.3).
 // SVG를 그림(Image)으로 그리면 바깥 주소(/poster/…)를 읽지 않으므로, 테마 그림(휴진 안내만)·글꼴 두 개를 data: 주소로 넣은 SVG 글을 쓴다.
-// 병원 로고는 병원 정보 로고(PNG data: 주소)라 그대로 둔다(spec clinic-profile AC-6604.3). 옛 로고 주소(/poster/logo.png)는 로고를 넘기지 않은
+// 병원 로고는 병원 정보 로고나 서식 화면이 준비한 로고(둘 다 PNG data: 주소)라 그대로 둔다(spec clinic-profile AC-6604.3,
+// spec logo-fit AC-6701.4). 로고 준비용 큰 그림 읽기·PNG 만들기도 여기 있다(readLogoBitmap·bitmapToPngUrl). 옛 로고 주소(/poster/logo.png)는 로고를 넘기지 않은
 // 옛 부르기의 SVG에 남아 있을 때만 읽어 넣는다 — 서식 화면은 늘 병원 정보 로고를 넘기므로 읽지 않는다.
 // 그림은 blob: 주소라 CSP(img-src 'self' data: blob:)를 바꾸지 않는다. 실패는 false — 화면이 E-FORMS-IMAGE-FAILED를 보인다
 
@@ -86,20 +89,21 @@ function loadImage(url: string): Promise<HTMLImageElement | null> {
   })
 }
 
-// ---------- 로고 그림의 점 읽기 (spec clinic-profile AC-6604.4, design.md 6절) ----------
+// ---------- 로고 그림의 점 읽기 (spec clinic-profile AC-6604.4, design.md 6절 · spec logo-fit design.md 3절) ----------
 
-export const LOGO_SAMPLE_MAX = 64 // 긴 변을 이 안으로 줄여 읽는다(키우지 않는다)
+export const LOGO_SAMPLE_MAX = 64 // 색 뽑기 표본: 긴 변을 이 안으로 줄여 읽는다(키우지 않는다)
+export const LOGO_READ_MAX = LOGO_MAX_SIDE // 로고 준비(흰 배경 지우기·자르기)용 큰 그림: 병원 정보 로고 한도(긴 변 1200)와 같다
 const LOGO_DATA = 'data:image/png;base64,'
 export type LogoPixels = { data: Uint8ClampedArray; width: number; height: number }
 
-// 병원 정보 로고(PNG data: 주소)를 그림으로 읽어 작게 줄인 canvas에서 점(RGBA)을 뽑는다. data: 주소라 fetch·바깥 읽기가 없다.
-// PNG data: 주소가 아니거나 그림을 못 읽으면 null(던지지 않고 로그를 남기지 않는다)
-export async function readLogoPixels(href: string): Promise<LogoPixels | null> {
+// 병원 정보 로고(PNG data: 주소)를 그림으로 읽어 긴 변 max 안으로 줄인(키우지 않는) canvas에서 점(RGBA)을 뽑는다.
+// data: 주소라 fetch·바깥 읽기가 없다. PNG data: 주소가 아니거나 그림을 못 읽으면 null(던지지 않고 로그를 남기지 않는다)
+async function readLogoAt(href: string, max: number): Promise<LogoPixels | null> {
   if (typeof href !== 'string' || !href.startsWith(LOGO_DATA)) return null
   try {
     const image = await loadImage(href)
     if (!image || image.naturalWidth <= 0 || image.naturalHeight <= 0) return null
-    const scale = Math.min(1, LOGO_SAMPLE_MAX / Math.max(image.naturalWidth, image.naturalHeight))
+    const scale = Math.min(1, max / Math.max(image.naturalWidth, image.naturalHeight))
     const width = Math.max(1, Math.round(image.naturalWidth * scale))
     const height = Math.max(1, Math.round(image.naturalHeight * scale))
     const canvas = document.createElement('canvas')
@@ -109,6 +113,37 @@ export async function readLogoPixels(href: string): Promise<LogoPixels | null> {
     if (!context) return null
     context.drawImage(image, 0, 0, width, height)
     return { data: context.getImageData(0, 0, width, height).data, width, height }
+  } catch {
+    return null
+  }
+}
+
+// 색 뽑기 표본(긴 변 64 안, spec clinic-profile AC-6604.4)
+export function readLogoPixels(href: string): Promise<LogoPixels | null> {
+  return readLogoAt(href, LOGO_SAMPLE_MAX)
+}
+
+// 로고 준비용 큰 그림(긴 변 1200 안, spec logo-fit design.md 3절). 실패는 null → 서식이 원래 로고를 쓴다(AC-6702.2)
+export function readLogoBitmap(href: string): Promise<LogoBitmap | null> {
+  return readLogoAt(href, LOGO_READ_MAX)
+}
+
+// 준비한 로고 점(spec logo-fit AC-6701.4)을 같은 크기 canvas에 그대로 넣어 PNG data: 주소로 만든다. 저장·전송하지 않는다.
+// 크기가 맞지 않거나 PNG 주소가 나오지 않으면 null(던지지 않고 로그를 남기지 않는다) → 서식이 원래 로고를 쓴다(AC-6702.2)
+export function bitmapToPngUrl(px: LogoBitmap): string | null {
+  try {
+    const { data, width, height } = px
+    if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || data.length !== width * height * 4) return null
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const context = canvas.getContext('2d')
+    if (!context) return null
+    const image = context.createImageData(width, height)
+    image.data.set(data)
+    context.putImageData(image, 0, 0)
+    const url = canvas.toDataURL('image/png')
+    return typeof url === 'string' && url.startsWith(LOGO_DATA) ? url : null
   } catch {
     return null
   }

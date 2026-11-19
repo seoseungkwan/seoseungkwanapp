@@ -10,7 +10,18 @@ import type { GuideContent } from '@/types/formGuide'
 import type { ClosureNotice } from '@/types/forms'
 import { guideFileName } from './guide'
 import type { PosterLogo } from './layout'
-import { LOGO_SAMPLE_MAX, downloadGuidePng, downloadPosterPng, readLogoPixels, svgForImage } from './png'
+import { LOGO_MAX_SIDE } from '@/types/clinicProfile'
+import type { LogoBitmap } from './logoFit'
+import {
+  LOGO_READ_MAX,
+  LOGO_SAMPLE_MAX,
+  bitmapToPngUrl,
+  downloadGuidePng,
+  downloadPosterPng,
+  readLogoBitmap,
+  readLogoPixels,
+  svgForImage,
+} from './png'
 
 // 서식 탭 휴진 안내 그림 파일(spec forms REQ-3506 AC-3506.2·3506.3, design.md 7절 '그림 파일').
 // svgForImage는 순수 함수라 글만 본다. downloadPosterPng는 fetch·Image·canvas·URL·<a>를 흉내 내 성공(true)·실패(false)만 본다.
@@ -660,5 +671,145 @@ describe('AC-6604.4: readLogoPixels — 로고 그림을 긴 변 64px 안으로 
     const env = pixelsSetup(options)
     await expect(readLogoPixels(LOGO_DATA)).resolves.toBeNull()
     for (const spy of env.quiet) expect(spy).not.toHaveBeenCalled()
+  })
+})
+
+// ---------- 로고 준비용 큰 그림 읽기·PNG 만들기 (spec logo-fit REQ-6701·REQ-6702, design.md 3절) ----------
+
+describe('AC-6701.4·AC-6702.2: readLogoBitmap — 로고 그림을 원래 크기(긴 변 1200 안)로 점(RGBA)을 읽는다', () => {
+  function bitmapSetup({ width = 1080, height = 501, fail = false, noContext = false, readThrows = false } = {}) {
+    const loaded: string[] = []
+    class FakeImage {
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      naturalWidth = width
+      naturalHeight = height
+      private current = ''
+      get src() {
+        return this.current
+      }
+      set src(value: string) {
+        this.current = value
+        loaded.push(value)
+        queueMicrotask(() => (fail ? this.onerror?.() : this.onload?.()))
+      }
+    }
+    vi.stubGlobal('Image', FakeImage)
+    const drawImage = vi.fn()
+    const getImageData = vi.fn((_x: number, _y: number, w: number, h: number) => {
+      if (readThrows) throw new DOMException('tainted', 'SecurityError')
+      return { data: new Uint8ClampedArray(w * h * 4).fill(240), width: w, height: h }
+    })
+    const canvases: HTMLCanvasElement[] = []
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (this: HTMLCanvasElement) {
+      canvases.push(this)
+      return noContext ? null : ({ drawImage, getImageData } as unknown as CanvasRenderingContext2D)
+    } as HTMLCanvasElement['getContext'])
+    const quiet = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) => vi.spyOn(console, m))
+    return { loaded, drawImage, getImageData, canvases, quiet }
+  }
+
+  it('AC-6701.4: 긴 변 1200 안의 로고(세로형 1080×501)는 줄이지 않고 원래 크기 그대로 한 번 읽는다', async () => {
+    const env = bitmapSetup()
+    const result = await readLogoBitmap(LOGO_DATA)
+    expect(LOGO_READ_MAX).toBe(1200)
+    expect(LOGO_READ_MAX).toBe(LOGO_MAX_SIDE) // 병원 정보 로고 한도와 같은 값
+    expect(env.loaded).toEqual([LOGO_DATA])
+    expect(env.canvases).toHaveLength(1)
+    expect([env.canvases[0].width, env.canvases[0].height]).toEqual([1080, 501])
+    expect(env.drawImage.mock.calls[0].slice(1)).toEqual([0, 0, 1080, 501])
+    expect(env.getImageData).toHaveBeenCalledWith(0, 0, 1080, 501)
+    expect([result?.width, result?.height]).toEqual([1080, 501])
+    expect(result?.data).toHaveLength(1080 * 501 * 4)
+    for (const spy of env.quiet) expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('AC-6701.4: 긴 변이 1200을 넘으면 비율을 지켜 1200 안으로 줄인다(2400×600 → 1200×300)', async () => {
+    const env = bitmapSetup({ width: 2400, height: 600 })
+    const result = await readLogoBitmap(LOGO_DATA)
+    expect([env.canvases[0].width, env.canvases[0].height]).toEqual([1200, 300])
+    expect([result?.width, result?.height]).toEqual([1200, 300])
+  })
+
+  it.each([
+    ['옛 로고 주소', '/poster/logo.png'],
+    ['바깥 주소', 'https://example.com/logo.png'],
+    ['SVG data: 주소', 'data:image/svg+xml;base64,PHN2Zz4='],
+    ['빈 글', ''],
+  ])('AC-6702.2: PNG data: 주소가 아니면(%s) 읽지 않고 null', async (_, href) => {
+    const env = bitmapSetup()
+    await expect(readLogoBitmap(href)).resolves.toBeNull()
+    expect(env.loaded).toEqual([])
+  })
+
+  it.each([
+    ['그림을 못 읽음(Image error)', { fail: true }],
+    ['그림 크기가 0', { width: 0, height: 0 }],
+    ['canvas 2d를 못 얻음', { noContext: true }],
+    ['점 읽기가 던짐', { readThrows: true }],
+  ] as const)('AC-6702.2: %s이면 null이고 던지지·로그를 남기지 않는다', async (_, options) => {
+    const env = bitmapSetup(options)
+    await expect(readLogoBitmap(LOGO_DATA)).resolves.toBeNull()
+    for (const spy of env.quiet) expect(spy).not.toHaveBeenCalled()
+  })
+})
+
+describe('AC-6701.4·AC-6702.2: bitmapToPngUrl — 준비한 로고 점을 PNG data: 주소로 만든다', () => {
+  const PREPARED_URL = 'data:image/png;base64,UHJlcGFyZWQ='
+  // 3×2 점: 칸마다 다른 값(불투명도 칸 포함)이라 그대로 옮겨졌는지 보인다
+  const bitmap = (): LogoBitmap => ({ data: Uint8ClampedArray.from({ length: 3 * 2 * 4 }, (_, i) => (i * 11) % 256), width: 3, height: 2 })
+
+  function urlSetup({ noContext = false, dataUrl = PREPARED_URL, urlThrows = false } = {}) {
+    const canvases: HTMLCanvasElement[] = []
+    const createImageData = vi.fn((w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }))
+    const putImageData = vi.fn()
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (this: HTMLCanvasElement) {
+      canvases.push(this)
+      return noContext ? null : ({ createImageData, putImageData } as unknown as CanvasRenderingContext2D)
+    } as HTMLCanvasElement['getContext'])
+    const toDataURL = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockImplementation(function () {
+      if (urlThrows) throw new DOMException('tainted', 'SecurityError')
+      return dataUrl
+    })
+    const quiet = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) => vi.spyOn(console, m))
+    return { canvases, createImageData, putImageData, toDataURL, quiet }
+  }
+
+  it('AC-6701.4: 같은 크기 canvas(3×2)에 점을 그대로 넣어(0,0) PNG로 만든 data: 주소를 준다. 넣은 배열은 바뀌지 않는다', () => {
+    const env = urlSetup()
+    const px = bitmap()
+    const before = Array.from(px.data)
+    expect(bitmapToPngUrl(px)).toBe(PREPARED_URL)
+    expect(env.canvases).toHaveLength(1)
+    expect([env.canvases[0].width, env.canvases[0].height]).toEqual([3, 2])
+    expect(env.createImageData).toHaveBeenCalledWith(3, 2)
+    expect(env.putImageData).toHaveBeenCalledTimes(1)
+    const [image, x, y] = env.putImageData.mock.calls[0]
+    expect([x, y]).toEqual([0, 0])
+    expect(Array.from((image as ImageData).data)).toEqual(before)
+    expect(env.toDataURL).toHaveBeenCalledWith('image/png')
+    expect(Array.from(px.data)).toEqual(before)
+    for (const spy of env.quiet) expect(spy).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['canvas 2d를 못 얻음', { noContext: true }],
+    ['PNG 주소가 나오지 않음("data:,")', { dataUrl: 'data:,' }],
+    ['PNG가 아닌 주소가 나옴', { dataUrl: 'data:image/jpeg;base64,QUJD' }],
+    ['PNG 만들기가 던짐', { urlThrows: true }],
+  ] as const)('AC-6702.2: %s이면 null이고 던지지·로그를 남기지 않는다', (_, options) => {
+    const env = urlSetup(options)
+    expect(bitmapToPngUrl(bitmap())).toBeNull()
+    for (const spy of env.quiet) expect(spy).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['크기가 0', { data: new Uint8ClampedArray(0), width: 0, height: 0 }],
+    ['점 수와 배열 길이가 다름', { data: new Uint8ClampedArray(4), width: 3, height: 2 }],
+    ['크기가 정수가 아님', { data: new Uint8ClampedArray(24), width: 1.5, height: 4 }],
+  ])('AC-6702.2: %s이면 canvas를 만들지 않고 null', (_, px) => {
+    const env = urlSetup()
+    expect(bitmapToPngUrl(px)).toBeNull()
+    expect(env.canvases).toHaveLength(0)
   })
 })
