@@ -1,10 +1,15 @@
 // 가입 신청 값 검사(순수). 결과는 DB 검사 제약(supabase/migrations/20261028000000_auth.sql)과 같아야 한다:
 //   name·applicant_name: char_length(코드포인트) 1~50 / 1~30, 앞뒤 공백 없음(= btrim)
 //   phone: null 또는 '^[0-9]{9,11}$'
+//   emr: 'bit'·'uisarang'·'egis'·'other' 넷 중 하나(emr-signup AC-7301.1, migration 20261119400000_hospital_emr.sql)
 // 통과한 값은 그대로 hospitals에 넣는다(lib/auth/hospital.ts). 틀린 칸마다 칸 아래에 보일 문구를 돌려준다
 
-export type SignupInput = { name: string; applicantName: string; phone: string; agreed: boolean }
-export type SignupValue = { name: string; applicant_name: string; phone: string | null }
+import { isEmrKind } from '@/lib/clinic/emrText'
+import type { EmrKind } from '@/types/clinicProfile'
+
+// emr: 가입 화면은 처음에 아무것도 고르지 않는다(null, emr-signup design.md 5절)
+export type SignupInput = { name: string; applicantName: string; phone: string; agreed: boolean; emr: EmrKind | null }
+export type SignupValue = { name: string; applicant_name: string; phone: string | null; emr: EmrKind }
 export type SignupErrors = Partial<Record<keyof SignupInput, string>>
 
 const NAME_MAX = 50
@@ -44,7 +49,10 @@ export function validateSignup(i: SignupInput): { ok: true; value: SignupValue }
   if ('error' in applicant) errors.applicantName = applicant.error
   if ('error' in phone) errors.phone = phone.error
   if (!i.agreed) errors.agreed = '가입 신청을 보내려면 동의에 체크해 주세요.'
+  // 고르지 않음(null)과 넷 밖 값은 같은 문구(emr-signup AC-7302.1)
+  const emr = isEmrKind(i.emr) ? i.emr : null
+  if (emr === null) errors.emr = '쓰는 EMR을 골라 주세요.'
 
-  if ('error' in name || 'error' in applicant || 'error' in phone || !i.agreed) return { ok: false, errors }
-  return { ok: true, value: { name: name.value, applicant_name: applicant.value, phone: phone.value } }
+  if ('error' in name || 'error' in applicant || 'error' in phone || !i.agreed || emr === null) return { ok: false, errors }
+  return { ok: true, value: { name: name.value, applicant_name: applicant.value, phone: phone.value, emr } }
 }

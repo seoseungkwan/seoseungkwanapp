@@ -7,19 +7,28 @@ import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { submitSignup } from '@/lib/auth/hospital'
 import { validateSignup, type SignupErrors, type SignupInput } from '@/lib/auth/signup'
+import { EMR_LABEL } from '@/lib/clinic/emrText'
+import { EMR_KINDS, type EmrKind } from '@/types/clinicProfile'
 import { SignOutButton } from './SignOutButton'
 import { Stepper } from './Stepper'
 
-// 칸 id(목업과 같은 이름). 틀린 칸 문구는 `${id}-error`로 칸에 이어 둔다(aria-describedby)
+// 칸 id(목업과 같은 이름). 틀린 칸 문구는 `${id}-error`로 칸에 이어 둔다(aria-describedby).
+// 쓰는 EMR(su-emr)은 첫 단추('비트')의 id다 — 틀렸을 때 초점 자리. 묶음 div에는 id를 두지 않는다(emr-signup design.md 3절)
 const IDS: Record<keyof SignupInput, string> = {
   name: 'su-clinic',
+  emr: 'su-emr',
   applicantName: 'su-name',
   phone: 'su-phone',
   agreed: 'su-agree',
 }
 // 틀린 칸이 여럿이면 화면 순서로 첫 칸에 초점을 둔다
-const ORDER: (keyof SignupInput)[] = ['name', 'applicantName', 'phone', 'agreed']
-const EMPTY: SignupInput = { name: '', applicantName: '', phone: '', agreed: false }
+const ORDER: (keyof SignupInput)[] = ['name', 'emr', 'applicantName', 'phone', 'agreed']
+// 쓰는 EMR은 처음에 아무것도 고르지 않는다(비트로 미리 골라 두면 다른 병원이 그냥 넘어가기 쉽다, emr-signup design.md 5절)
+const EMPTY: SignupInput = { name: '', applicantName: '', phone: '', agreed: false, emr: null }
+// 쓰는 EMR 묶음: ds.segment를 넓은 화면은 한 줄 넷·44px, 폰은 두 줄 둘씩으로 접두사만 덮는다(폰 grid·전체 폭·44px는 ds.segment에 이미 있다).
+// 오류면 묶음에 data-invalid를 달아 테두리를 입력란 오류와 같은 border-negative로 바꾼다
+const EMR_GROUP = `${ds.segment.group} md:grid md:w-full md:grid-cols-4 max-md:grid-cols-2 data-invalid:border-negative`
+const EMR_BUTTON = `${ds.segment.button} md:h-11`
 
 // 칸이 가리킬 설명 id들(틀린 문구 먼저, 그다음 안내). 없으면 속성을 달지 않는다
 const describedBy = (...ids: (string | false)[]) => ids.filter(Boolean).join(' ') || undefined
@@ -41,6 +50,11 @@ export function SignupForm({ email }: { email: string }) {
 
   const set = <K extends keyof SignupInput>(key: K, value: SignupInput[K]) =>
     setValues((prev) => ({ ...prev, [key]: value }))
+  // 쓰는 EMR을 고르면 그 칸 오류 글만 지운다(AC-7303.2). 다른 칸 오류는 다시 보낼 때까지 그대로다
+  const pickEmr = (emr: EmrKind) => {
+    set('emr', emr)
+    setErrors((prev) => (prev.emr === undefined ? prev : { ...prev, emr: undefined }))
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -121,6 +135,38 @@ export function SignupForm({ email }: { email: string }) {
             className={ds.input}
           />
           {fieldError('name')}
+        </div>
+
+        {/* 쓰는 EMR(emr-signup REQ-7303, 시안 docs/mockups/emr-signup/index.html ①). 칸 이름은 단추 넷을 묶는 이름이라 label이 아닌 span이고,
+            묶음(role="group")이 그 이름과 '오류 도움말' 차례 설명을 가리킨다(연락처 칸과 같은 차례) */}
+        <div className={ds.field}>
+          <span id="su-emr-label" className={ds.label}>
+            쓰는 EMR <span className={ds.labelHint}>필수</span>
+          </span>
+          <div
+            role="group"
+            aria-labelledby="su-emr-label"
+            aria-describedby={describedBy(errorId('emr'), 'su-emr-help')}
+            data-invalid={invalid('emr')}
+            className={EMR_GROUP}
+          >
+            {EMR_KINDS.map((kind, index) => (
+              <button
+                key={kind}
+                id={index === 0 ? IDS.emr : undefined}
+                type="button"
+                aria-pressed={values.emr === kind}
+                onClick={() => pickEmr(kind)}
+                className={`${EMR_BUTTON} ${values.emr === kind ? ds.segment.on : ds.segment.off}`}
+              >
+                {EMR_LABEL[kind]}
+              </button>
+            ))}
+          </div>
+          {fieldError('emr')}
+          <p id="su-emr-help" className={ds.help}>
+            진료 자료를 읽어 오는 연결은 지금 비트만 돼요. 승인 뒤 설정 → 병원 정보에서 바꿀 수 있어요.
+          </p>
         </div>
 
         <div className={ds.field}>
