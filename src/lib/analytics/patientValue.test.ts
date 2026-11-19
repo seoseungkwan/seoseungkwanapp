@@ -259,8 +259,8 @@ describe('AC-7201.1 periodValue: 고른 기간 신환이 그 기간에 낸 돈',
       ['2026-01', '2026-01-01', '2026-01-31'],
       ['2026-02', '2026-02-01', '2026-02-28'],
     ] as const) {
-      const { month: _month, to: _to, ...numbers } = monthIn({}, month)!
-      expect(runSpan({ from, to })).toEqual({ from, to, ...numbers })
+      const { n, average, times, perVisit, lines } = monthIn({}, month)!
+      expect(runSpan({ from, to })).toEqual({ from, to, n, average, times, perVisit, lines })
     }
   })
 
