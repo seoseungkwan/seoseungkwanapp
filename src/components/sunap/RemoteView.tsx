@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
@@ -9,26 +10,35 @@ import { SPEND_LABEL, SunapCards } from './SunapCards'
 
 // 다른 기기 수납일지(spec sunap-ilji AC-4905.7, 시안 remotePage): 도우미 없는 PC·폰·0.8.0 미만 도우미, 그리고 오늘−62일보다 이른 날.
 // 서버 숫자만 그린다(마감한 날 합계 24칸·그날 지출). 고치기·마감 단추가 없다. 날짜 줄은 SunapScreen이 그린다.
+// 안내 상자 아래 한 줄·[이 PC 연결하기]·[도우미 새 판 받기]는 비트 PC 연결 화면(/claim/setup)으로 간다(spec desk-setup REQ-7004, 시안 docs/mockups/desk-setup ①). 데스크·원장 같다
 // 시안과 다른 곳: 원장님별 표를 뺐다(design.md, 서버에 원장님별 숫자를 두지 않는다 — spec sunap-doctors AC-5003.3). 읽는 중·읽기 실패·옛 도우미·62일 넘은 날·지출 없음 글은 시안에 없어 더했다
 
 /** 서버에서 읽은 그날(마감 줄·지출). closed = null은 마감 전 */
 export type ServerDayView = { status: 'loading' | 'ready' | 'failed'; closed: SunapDay | null; spends: readonly SunapSpend[] }
 export type RemoteReason = 'device' | 'old-helper' | 'old-day'
 
-const AWAY: Record<RemoteReason, { title: string; body: string }> = {
+const SETUP_HREF = '/claim/setup'
+
+// more: 글 아래 한 줄, link: 연결 화면으로 가는 단추 글(없으면 단추 없음)
+const AWAY: Record<RemoteReason, { title: string; body: string; more?: string; link?: string }> = {
   device: {
     title: '환자 장부는 접수 PC에서만 보여요',
     body: '이름·차트번호가 든 줄은 서버로 올리지 않아요. 고치거나 마감하려면 접수 PC에서 수납일지를 여세요.',
+    more: '이 PC에 비트가 깔려 있으면 확장·도우미를 깔고 연결해서 장부를 볼 수 있어요.',
+    link: '이 PC 연결하기',
   },
   'old-helper': {
     title: `도우미 새 판(${SUNAP_HELPER})을 깔면 장부가 보여요`,
     body: '이름·차트번호가 든 줄은 서버로 올리지 않아요. 새 도우미를 깐 뒤 이 화면을 다시 열어 주세요.',
+    link: '도우미 새 판 받기',
   },
   'old-day': {
     title: '62일 넘게 지난 날은 합계·지출만 보여요',
     body: '비트에서 장부를 다시 읽을 수 있는 날은 오늘부터 62일 전까지예요.',
   },
 }
+
+const AWAY_TEXT = 'max-w-[44ch] text-small text-muted'
 
 export function LockLine({ children }: { children: ReactNode }) {
   return (
@@ -101,7 +111,13 @@ export function RemoteView({ server, reason, onRetry }: { server: ServerDayView;
       <section className="grid justify-items-center gap-2 rounded-control border border-line bg-surface px-5 py-6 text-center">
         <Icon name="lock" className="text-muted" />
         <b className="text-body font-semibold text-ink">{away.title}</b>
-        <p className="max-w-[44ch] text-small text-muted">{away.body}</p>
+        <p className={AWAY_TEXT}>{away.body}</p>
+        {away.more && <p className={AWAY_TEXT}>{away.more}</p>}
+        {away.link && (
+          <Link href={SETUP_HREF} className={`${ds.button.secondary} no-underline`}>
+            {away.link}
+          </Link>
+        )}
       </section>
     </>
   )

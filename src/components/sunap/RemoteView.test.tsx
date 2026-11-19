@@ -2,6 +2,8 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { RoleProvider } from '@/components/shell/role'
+import { ds } from '@/components/ui/classes'
 import type { SunapDay, SunapSpend } from '@/lib/storage/sunap'
 import { SUNAP_TOTAL_KEYS, type SunapTotals } from '@/types/sunap'
 import { RemoteView, type ServerDayView } from './RemoteView'
@@ -138,5 +140,64 @@ describe('AC-5503.7 서버 숫자 화면의 예약률 아래 글', () => {
     const rates = card(/^예약 · Block 전환/)
     expect(rates.getByText('신환 9명 중 6명 · 예약률 ○ 종류 예약만')).toBeTruthy()
     expect(rates.queryByText(/주사치료·진료\(경과\) 예약만/)).toBeNull()
+  })
+})
+
+// ── desk-setup REQ-7004: 수납일지 안내 칸에서 비트 PC 연결 화면(/claim/setup)으로. 데스크·원장 같다 ─────────
+describe('AC-7004 안내 칸의 연결 단추', () => {
+  const MORE = '이 PC에 비트가 깔려 있으면 확장·도우미를 깔고 연결해서 장부를 볼 수 있어요.'
+  // 자물쇠·제목·글이 든 안내 상자(제목 글자로 찾는다)
+  const awayBox = (title: string) => screen.getByText(title).closest('section') as HTMLElement
+
+  function showAs(reason: 'device' | 'old-helper' | 'old-day', desk: boolean) {
+    render(
+      <RoleProvider desk={desk}>
+        <RemoteView server={{ status: 'ready', closed: CLOSED, spends: SPENDS }} reason={reason} onRetry={vi.fn()} />
+      </RoleProvider>,
+    )
+  }
+
+  it.each([true, false])('AC-7004.1: device(desk=%s) 안내 상자는 지금 제목·글 아래 한 줄과 링크 단추 [이 PC 연결하기](/claim/setup)가 있다', (desk) => {
+    showAs('device', desk)
+    const box = awayBox('환자 장부는 접수 PC에서만 보여요')
+    const body = within(box).getByText('이름·차트번호가 든 줄은 서버로 올리지 않아요. 고치거나 마감하려면 접수 PC에서 수납일지를 여세요.')
+    const more = within(box).getByText(MORE)
+    expect(more.tagName).toBe('P')
+    expect(more.className).toBe(body.className)
+    const link = within(box).getByRole('link', { name: '이 PC 연결하기' })
+    expect(link.getAttribute('href')).toBe('/claim/setup')
+    expect(link.className.split(' ')).toEqual(expect.arrayContaining(ds.button.secondary.split(' ')))
+    expect(link.className).not.toContain('w-full')
+    // 순서: 제목 → 글 → 한 줄 → 단추
+    const kids = Array.from(box.children)
+    expect(kids.indexOf(body)).toBeLessThan(kids.indexOf(more))
+    expect(kids.indexOf(more)).toBeLessThan(kids.indexOf(link))
+    expect(box.lastElementChild).toBe(link)
+    expect(screen.getAllByRole('link')).toHaveLength(1)
+    expect(screen.queryByRole('link', { name: '도우미 새 판 받기' })).toBeNull()
+  })
+
+  it.each([true, false])('AC-7004.2: old-helper(desk=%s) 안내 상자는 지금 제목·글 아래 링크 단추 [도우미 새 판 받기](/claim/setup)이고 device의 한 줄은 없다', (desk) => {
+    showAs('old-helper', desk)
+    const box = awayBox('도우미 새 판(0.8.0)을 깔면 장부가 보여요')
+    const body = within(box).getByText('이름·차트번호가 든 줄은 서버로 올리지 않아요. 새 도우미를 깐 뒤 이 화면을 다시 열어 주세요.')
+    const link = within(box).getByRole('link', { name: '도우미 새 판 받기' })
+    expect(link.getAttribute('href')).toBe('/claim/setup')
+    expect(link.className.split(' ')).toEqual(expect.arrayContaining(ds.button.secondary.split(' ')))
+    expect(body.nextElementSibling).toBe(link)
+    expect(box.lastElementChild).toBe(link)
+    expect(screen.queryByText(MORE)).toBeNull()
+    expect(screen.getAllByRole('link')).toHaveLength(1)
+    expect(screen.queryByRole('link', { name: '이 PC 연결하기' })).toBeNull()
+  })
+
+  it.each([true, false])('AC-7004.3: old-day(desk=%s) 안내 상자는 지금 그대로 — 단추와 한 줄이 없다', (desk) => {
+    showAs('old-day', desk)
+    const box = awayBox('62일 넘게 지난 날은 합계·지출만 보여요')
+    const body = within(box).getByText('비트에서 장부를 다시 읽을 수 있는 날은 오늘부터 62일 전까지예요.')
+    expect(box.lastElementChild).toBe(body)
+    expect(screen.queryByText(MORE)).toBeNull()
+    expect(screen.queryAllByRole('link')).toHaveLength(0)
+    expect(document.querySelector('a[href="/claim/setup"]')).toBeNull()
   })
 })
