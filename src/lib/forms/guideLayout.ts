@@ -7,8 +7,10 @@ import type { GuideContent, GuideProblems } from '@/types/formGuide'
 
 // 세 구역: 노랑 0~bandY, 진회색 띠 bandY~logoY(288), 흰 로고 칸 logoY~height(169). 글자는 x부터 안쪽 폭 inner. 띠 안 글은 bandEnd(logoY − 16)까지
 export const GUIDE_PAGE = { width: 794, height: 1123, x: 51, inner: 692, bandY: 666, logoY: 954, bandEnd: 938 } as const
-// 병원 로고(가로형 1033×175)를 400 폭으로, 로고 칸 가운데
+// 병원 로고(가로형 1033×175)를 400 폭으로, 로고 칸 가운데. 크기 모르는 로고 그림·병원 이름 글자·옛 로고 그림이 쓴다(spec logo-fit AC-6703.3·AC-6703.5)
 export const GUIDE_LOGO = { x: 197, y: 1005, width: 400, height: 68 } as const
+// 크기를 아는 로고 그림의 자리(spec logo-fit design.md 4절, AC-6703.2): 가운데 397·1039(GUIDE_LOGO와 같다), 흰 로고 칸 954~1123에서 위 30·아래 29 띄움
+export const GUIDE_LOGO_AREA = { x: 197, y: 984, width: 400, height: 110 } as const
 // 그림 170×170: 오른쪽 여백 58, 윗단 바닥에서 28 위
 const PICTURE = { x: 566, y: 468, size: 170 } as const
 

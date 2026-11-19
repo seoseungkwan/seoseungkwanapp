@@ -5,8 +5,8 @@ import { cleanup, render } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { GuideValue } from '@/lib/forms/guide'
-import { GUIDE_LOGO, layoutGuide } from '@/lib/forms/guideLayout'
-import { logoTextFit, type PosterLogo } from '@/lib/forms/layout'
+import { GUIDE_LOGO, GUIDE_LOGO_AREA, layoutGuide } from '@/lib/forms/guideLayout'
+import { logoRect, logoTextFit, type PosterLogo } from '@/lib/forms/layout'
 import type { GuideColors } from '@/lib/forms/logoColors'
 import { DRAW_COLORS, PICTURE_IDS, type DrawKind, type DrawShape, type GuideContent, type GuideDrawing, type GuideLine } from '@/types/formGuide'
 import { DRAW_COLOR_VALUES, GUIDE_COLORS, drawColorValues, guidePalette } from './guideColors'
@@ -773,6 +773,67 @@ describe('AC-6604.1·AC-6604.2: 환자 안내문 로고 자리 — 병원 정보
     expect(plainSvg(drawWith(example(1))).replace(/<image href="\/poster\/logo\.png"[^>]*><\/image>/, '')).toBe(base)
     cleanup()
     expect(plainSvg(drawWith(example(1), { logo: { kind: 'image', href: LOGO_URL } })).replace(/<image href="data:[^>]*><\/image>/, '')).toBe(base)
+  })
+})
+
+describe('AC-6703.2·AC-6703.3·AC-6703.5: 환자 안내문 로고 자리 크게 (spec logo-fit design.md 4·5절)', () => {
+  const sized = (width: number, height: number): PosterLogo => ({ kind: 'image', href: LOGO_URL, width, height })
+  const boxOf = (el: Element) => ({ x: num(el, 'x'), y: num(el, 'y'), width: num(el, 'width'), height: num(el, 'height') })
+
+  it('AC-6703.2: 크기를 아는 가로형 1033×175는 x 197·y 1005.1·400×67.8에 비율을 지켜(xMidYMid meet) 그린다', () => {
+    for (const content of [example(1), example(5), drawn()]) {
+      const svg = drawWith(content, { logo: sized(1033, 175) })
+      const logo = svg.lastElementChild!
+      expect(logo.localName).toBe('image')
+      expect(attrsOf(logo)).toEqual({ href: LOGO_URL, x: '197', y: '1005.1', width: '400', height: '67.8', preserveAspectRatio: 'xMidYMid meet' })
+      expect(all(svg, 'image')).toHaveLength(1)
+      cleanup()
+    }
+  })
+
+  it('AC-6703.2: 세로로 긴 쪽 로고(1080×501)·정사각 로고는 400×110 자리(197, 984) 안 가장 크게, 가운데 397·1039에 그린다', () => {
+    for (const [w, h] of [[1080, 501], [64, 64], [300, 900]] as const) {
+      const logo = drawWith(example(1), { logo: sized(w, h) }).lastElementChild!
+      const r = logoRect(GUIDE_LOGO_AREA, { width: w, height: h })
+      expect(boxOf(logo), `${w}×${h}`).toEqual(r)
+      expect(r.height, `${w}×${h}`).toBe(110)
+      expect(r.x + r.width / 2, `${w}×${h}`).toBeCloseTo(397, 0)
+      expect(logo.getAttribute('preserveAspectRatio')).toBe('xMidYMid meet')
+      cleanup()
+    }
+    expect(boxOf(drawWith(example(1), { logo: sized(1080, 501) }).lastElementChild!)).toEqual({ x: 278.4, y: 984, width: 237.1, height: 110 })
+  })
+
+  it('AC-6703.3: 크기를 모르는 로고 값(크기 없음·0·음수·NaN·무한·한쪽만)은 원래 로고 상자(197,1005 · 400×68) 전체에 그린다', () => {
+    const bad: PosterLogo[] = [
+      { kind: 'image', href: LOGO_URL },
+      sized(0, 175),
+      sized(1033, -1),
+      sized(Number.NaN, 175),
+      sized(Number.POSITIVE_INFINITY, 175),
+      { kind: 'image', href: LOGO_URL, width: 1033 },
+      { kind: 'image', href: LOGO_URL, width: '1033', height: '175' } as unknown as PosterLogo,
+    ]
+    for (const logo of bad) {
+      const last = drawWith(example(1), { logo }).lastElementChild!
+      expect(attrsOf(last), JSON.stringify(logo)).toEqual({ href: LOGO_URL, x: '197', y: '1005', width: '400', height: '68', preserveAspectRatio: 'xMidYMid meet' })
+      cleanup()
+    }
+  })
+
+  it('AC-6703.5: 로고 그림이 없으면 병원 이름 글자는 원래 상자(400×68) 기준 크기·자리(397, 1039)다', () => {
+    const name = '서승관정형외과의원'
+    const logo = drawWith(example(1), { logo: { kind: 'text', text: name } }).lastElementChild!
+    expect(attrsOf(logo)).toMatchObject({ x: '397', y: '1039' })
+    expect(num(logo, 'font-size')).toBe(logoTextFit(name, GUIDE_LOGO).size)
+    cleanup()
+    const long = drawWith(example(1), { logo: { kind: 'text', text: '가'.repeat(50) } }).lastElementChild!
+    expect(attrsOf(long)).toMatchObject({ textLength: '400', lengthAdjust: 'spacingAndGlyphs' })
+  })
+
+  it('AC-6703.2: 로고 말고는 옛 그림과 글자 하나까지 같다(흰 띠·글자 배치 그대로)', () => {
+    const base = plainSvg(drawWith(example(1), { logo: null }))
+    expect(plainSvg(drawWith(example(1), { logo: sized(1080, 501) })).replace(/<image href="data:[^>]*><\/image>/, '')).toBe(base)
   })
 })
 

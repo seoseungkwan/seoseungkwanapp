@@ -10,11 +10,31 @@ export const TEXT_AREA = { left: 24, right: 770, top: 80, bottom: 960 } as const
 export const MIN_FONT = 18
 const CARD_PADDING = 32 // 카드 폭 − 안쪽 폭(양옆 16)
 // 병원 로고(가로형 1033×175): 맨 아래 가운데, 아래 끝에서 54 위. 카드 수와 상관없이 같은 자리 (specs/forms-logo design.md 3절)
+// 크기 모르는 로고 그림·병원 이름 글자·옛 로고 그림이 이 상자를 쓴다(spec logo-fit AC-6703.3·AC-6703.5).
 // href는 로고를 넘기지 않은 옛 부르기(logo prop 없음)만 쓴다 — 서식 화면은 늘 병원 정보 로고를 넘긴다(spec clinic-profile AC-6604.1)
 export const LOGO = { href: '/poster/logo.png', x: 227, y: 1011, width: 340, height: 58 } as const
+// 크기를 아는 로고 그림의 자리(spec logo-fit design.md 4절, AC-6703.1): 가운데 397·1040(LOGO와 같다).
+// 글자 자리 아래 끝 960에서 30 띄워 시작하고 종이 끝 1123에서 33 위에서 끝난다. 가로형 로고는 폭에 묶여 LOGO와 같은 자리다
+export const LOGO_AREA = { x: 227, y: 990, width: 340, height: 100 } as const
 
-// 로고 자리 값(spec clinic-profile design.md 6절): 병원 정보 로고 그림(PNG data: 주소) 또는 로고가 없을 때 병원 이름 글자
-export type PosterLogo = { kind: 'image'; href: string } | { kind: 'text'; text: string }
+export type LogoBox = { x: number; y: number; width: number; height: number }
+// 로고 자리 값(spec clinic-profile design.md 6절): 병원 정보 로고 그림(PNG data: 주소) 또는 로고가 없을 때 병원 이름 글자.
+// 그림의 width·height는 그림 크기(점 수, spec logo-fit AC-6702.1). 모르면 비운다 → 원래 로고 상자(AC-6703.3)
+export type PosterLogo = { kind: 'image'; href: string; width?: number; height?: number } | { kind: 'text'; text: string }
+
+const tenth = (value: number) => Math.round(value * 10) / 10
+// 크기(가로·세로 점 수)인 그림을 자리 안에 비율을 지켜 가장 크게, 가운데 맞춰 놓은 네모. 네 값 모두 소수 첫째 자리 (AC-6703.1·AC-6703.2)
+export function logoRect(area: LogoBox, size: { width: number; height: number }): LogoBox {
+  const scale = Math.min(area.width / size.width, area.height / size.height)
+  const width = size.width * scale
+  const height = size.height * scale
+  return {
+    x: tenth(area.x + area.width / 2 - width / 2),
+    y: tenth(area.y + area.height / 2 - height / 2),
+    width: tenth(width),
+    height: tenth(height),
+  }
+}
 // 이름 글자는 상자 높이의 80%에서 시작해 상자 폭에 맞춘다
 export const LOGO_TEXT_SHARE = 0.8
 
