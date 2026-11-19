@@ -2,6 +2,7 @@
 // formNotices.test.ts와 같은 흉내: 가짜 클라이언트가 어느 표에 어떤 칸·몸통·거르기가 나갔는지 적어 둔다.
 // 표 권한·RLS는 supabase/formGuides.rls.test.ts가 증명한다. 글·id는 모두 지어낸 값이다
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_STYLE, type FormStyle } from '@/lib/forms/style'
 import type { DrawShape, GuideContent, GuideDrawing, GuideLine, SavedGuide } from '@/types/formGuide'
 import { deleteGuide, insertGuide, listGuides, updateGuide } from './formGuides'
 
@@ -507,5 +508,98 @@ describe('AC-6604.6 안내문 색 저장·읽기', () => {
     const list = (await listGuides()) as SavedGuide[]
     expect(list[0].content).toEqual({ ...INSURANCE, colors: PICKED })
     expect(Object.keys(list[1].content).sort()).toEqual(CONTENT_KEYS)
+  })
+})
+
+// 환자 안내문 글씨·로고 값(spec form-style REQ-6806 AC-6806.3, design.md 7-3절): 처음대로가 아니면 content 안 style 열쇠로 함께 저장한다(SQL 없음).
+// 처음대로(열쇠 없음·DEFAULT_STYLE)는 열쇠 없이(옛 안내문과 같은 모양) 보내고, 틀린 값은 보내지 않는다
+describe('AC-6806.3 안내문 글씨·로고 값 저장·읽기', () => {
+  // 작게 고른 크기라 줄이 넘치지 않는다
+  const STYLED: FormStyle = { titleScale: 90, bodyScale: 90, logoScale: 120, titleColor: '#1f2a44', bodyColor: null, logoColor: '#dc2626' }
+  const PICKED = { main: '#3b82c4', dark: '#16324a' }
+  const SAVES: [string, (c: GuideContent) => Promise<unknown>][] = [
+    ['insertGuide', (c) => insertGuide(c)],
+    ['updateGuide', (c) => updateGuide(ID, c)],
+  ]
+
+  it.each(SAVES)('AC-6806.3: %s — 처음대로가 아닌 style은 열쇠 13개에 style을 더해 보내고, 돌려받은 줄도 그 값을 갖는다', async (_, save) => {
+    const calls = fakeClient(echoRow)
+    const saved = await save({ ...INSURANCE, style: STYLED } as GuideContent)
+    expect(calls[0].body).toEqual({ content: { ...INSURANCE, style: STYLED } })
+    expect(Object.keys((calls[0].body as { content: object }).content).sort()).toEqual([...CONTENT_KEYS, 'style'].sort())
+    expect((saved as SavedGuide).content).toEqual({ ...INSURANCE, style: STYLED })
+  })
+
+  it.each(SAVES)('AC-6806.3: %s — 고른 색과 글씨·로고 값을 함께 보낸다', async (_, save) => {
+    const calls = fakeClient(echoRow)
+    await save({ ...INSURANCE, colors: PICKED, style: STYLED } as GuideContent)
+    expect(calls[0].body).toEqual({ content: { ...INSURANCE, colors: PICKED, style: STYLED } })
+  })
+
+  it.each(SAVES)('AC-6806.3: %s — 처음대로(style 없음·DEFAULT_STYLE)면 열쇠 13개만 보낸다 — 옛 안내문과 같은 모양', async (_, save) => {
+    const calls = fakeClient(echoRow)
+    await save(INSURANCE)
+    await save({ ...INSURANCE, style: { ...DEFAULT_STYLE } } as GuideContent)
+    expect(calls).toHaveLength(2)
+    for (const call of calls) {
+      expect(call.body).toEqual({ content: INSURANCE })
+      expect(Object.keys((call.body as { content: object }).content).sort()).toEqual(CONTENT_KEYS)
+    }
+  })
+
+  it.each(SAVES)('AC-6806.3: %s — 보내는 style은 받은 값을 그대로 쓰지 않고 새 객체이며, 받은 값은 고치지 않는다', async (_, save) => {
+    const calls = fakeClient(echoRow)
+    const input = { ...structuredClone(INSURANCE), style: { ...STYLED } } as GuideContent & { style: FormStyle }
+    const before = structuredClone(input)
+    await save(input)
+    const sent = (calls[0].body as { content: { style: FormStyle } }).content.style
+    expect(sent).toEqual(STYLED)
+    expect(sent).not.toBe(input.style)
+    expect(input).toEqual(before)
+  })
+
+  it.each(SAVES)("AC-6806.3: %s — 틀린 style(범위 밖·5의 배수 아님·대문자 색·열쇠 하나 더/덜·null)은 보내지 않고 'failed'다", async (_, save) => {
+    const four = Object.fromEntries(Object.entries(DEFAULT_STYLE).slice(0, 5))
+    for (const bad of [
+      { ...DEFAULT_STYLE, titleScale: 75 },
+      { ...DEFAULT_STYLE, bodyScale: 83 },
+      { ...DEFAULT_STYLE, logoScale: 155 },
+      { ...DEFAULT_STYLE, bodyColor: '#ABCDEF' },
+      { ...DEFAULT_STYLE, memo: 'x' },
+      four,
+      null,
+    ]) {
+      const calls = fakeClient(echoRow)
+      expect(await save({ ...INSURANCE, style: bad } as unknown as GuideContent), JSON.stringify(bad)).toBe('failed')
+      expect(calls).toHaveLength(0)
+    }
+  })
+
+  it('AC-6806.3: style이 저장된 줄을 읽으면 그 값이 남고, 처음대로 값이 적힌 줄·style이 없는 옛 줄은 style 없이 읽는다', async () => {
+    fakeClient(() => ({
+      data: [
+        dbRow(ID, UPDATED, { ...INSURANCE, style: STYLED }),
+        dbRow('plain-1', UPDATED, { ...INSURANCE, style: DEFAULT_STYLE }),
+        dbRow('old-1', UPDATED),
+      ],
+    }))
+    const list = (await listGuides()) as SavedGuide[]
+    expect(list.map((g) => g.id)).toEqual([ID, 'plain-1', 'old-1'])
+    expect(list[0].content).toEqual({ ...INSURANCE, style: STYLED })
+    expect(Object.keys(list[1].content).sort()).toEqual(CONTENT_KEYS)
+    expect(Object.keys(list[2].content).sort()).toEqual(CONTENT_KEYS)
+  })
+
+  it('AC-6806.3: style이 틀린 줄만 빼고 나머지는 차례 그대로 둔다', async () => {
+    fakeClient(() => ({
+      data: [
+        dbRow('good-1', UPDATED, { ...INSURANCE, style: STYLED }),
+        dbRow('bad-1', UPDATED, { ...INSURANCE, style: { ...STYLED, logoScale: 55 } }),
+        dbRow('bad-2', UPDATED, { ...INSURANCE, style: null }),
+        dbRow('good-2', UPDATED),
+      ],
+    }))
+    const list = (await listGuides()) as SavedGuide[]
+    expect(list.map((g) => g.id)).toEqual(['good-1', 'good-2'])
   })
 })

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_STYLE, type FormStyle } from '@/lib/forms/style'
 import type { NoticeCard, SavedNotice } from '@/types/forms'
 import {
   LEAVE_CONFIRM,
@@ -400,5 +401,111 @@ describe('AC-3506.3: 그림 파일 실패 표시', () => {
     const s = run(start(), { type: 'imageFailed', failed: true })
     expect(s.imageFailed).toBe(true)
     expect(run(s, { type: 'imageFailed', failed: false }).imageFailed).toBe(false)
+  })
+})
+
+// 글씨·로고 값 상태 (spec form-style TASK-5, design.md 8절). 처음대로 = DEFAULT_STYLE
+describe('AC-6806.4: 글씨·로고 값 상태와 바뀐 내용', () => {
+  const STYLED: FormStyle = { titleScale: 120, bodyScale: 90, logoScale: 150, titleColor: '#1f2a44', bodyColor: null, logoColor: '#dc2626' }
+  const OTHER: FormStyle = { ...STYLED, logoScale: 60 }
+  const ready = () => typed(start(), 0, { start: '2027-05-05', name: '어린이날' })
+  const keysOf = (value: object | null) => Object.keys(value ?? {}).sort()
+  // 이 기능 전 비교 글자: [연, 월, 테마, 글자 색, 카드들]
+  const OLD_MAY = JSON.stringify([2027, 5, null, null, [['2027-05-05', '', '어린이날', '휴진']]])
+
+  it('AC-6806.4: 새 안내문은 처음대로로 시작하고, 새로 만들기·지우기도 처음대로로 돌아간다', () => {
+    expect(start().style).toEqual(DEFAULT_STYLE)
+    const styled = run(ready(), { type: 'style', style: STYLED })
+    expect(styled.style).toEqual(STYLED)
+    expect(run(styled, { type: 'new' }).style).toEqual(DEFAULT_STYLE)
+    const opened = run(start(), { type: 'open', notice: { ...MAY, style: STYLED } })
+    expect(run(opened, { type: 'deleteStart' }, { type: 'deleted', id: 'may' }).style).toEqual(DEFAULT_STYLE)
+  })
+
+  it('AC-6806.4: style 동작은 받은 값을 새 객체로 넣고, 처음대로로도 되돌린다', () => {
+    const input = { ...STYLED }
+    const s = run(start(), { type: 'style', style: input })
+    expect(s.style).toEqual(STYLED)
+    expect(s.style).not.toBe(input)
+    expect(run(s, { type: 'style', style: DEFAULT_STYLE }).style).toEqual(DEFAULT_STYLE)
+  })
+
+  it.each([
+    ['제목 크기 75', { ...DEFAULT_STYLE, titleScale: 75 }],
+    ['본문 크기 83', { ...DEFAULT_STYLE, bodyScale: 83 }],
+    ['로고 크기 155', { ...DEFAULT_STYLE, logoScale: 155 }],
+    ['대문자 색', { ...DEFAULT_STYLE, titleColor: '#1F2A44' }],
+    ['색 이름', { ...DEFAULT_STYLE, logoColor: 'red' }],
+    ['열쇠 하나 더', { ...DEFAULT_STYLE, memo: 'x' }],
+  ])('AC-6806.4: 틀린 값(%s)은 무시하고 상태를 그대로 둔다', (_, bad) => {
+    const before = run(ready(), { type: 'style', style: STYLED })
+    expect(run(before, { type: 'style', style: bad as FormStyle })).toBe(before)
+  })
+
+  it('AC-6806.4: 열면 저장한 글씨·로고 값으로, 값이 없으면 처음대로로 열린다', () => {
+    const opened = run(start(), { type: 'open', notice: { ...MAY, style: STYLED } })
+    expect(opened.style).toEqual(STYLED)
+    expect(opened.style).not.toBe(STYLED)
+    expect(run(start(), { type: 'style', style: STYLED }, { type: 'open', notice: MAY }).style).toEqual(DEFAULT_STYLE)
+  })
+
+  it('AC-6806.4: 처음대로면 비교 글자는 이 기능 전과 글자 그대로 같다', () => {
+    expect(run(start(), { type: 'open', notice: MAY }).baseline).toBe(OLD_MAY)
+    expect(run(start(), { type: 'open', notice: { ...MAY, style: { ...DEFAULT_STYLE } } }).baseline).toBe(OLD_MAY)
+    expect(run(ready(), { type: 'saved', notice: MAY }).baseline).toBe(OLD_MAY)
+  })
+
+  it('AC-6806.4: 처음대로가 아니면 비교 글자 끝에 여섯 값이 붙는다', () => {
+    const baseline = run(start(), { type: 'open', notice: { ...MAY, style: STYLED } }).baseline
+    expect(baseline).toBe(JSON.stringify([2027, 5, null, null, [['2027-05-05', '', '어린이날', '휴진']], 120, 90, 150, '#1f2a44', null, '#dc2626']))
+  })
+
+  it('AC-6806.4: 연 안내문의 글씨·로고 값을 바꾸면 바뀐 내용이 있고, 처음 값으로 되돌리면 없어진다', () => {
+    const plain = run(start(), { type: 'open', notice: MAY })
+    expect(isDirty(plain)).toBe(false)
+    const changed = run(plain, { type: 'style', style: STYLED })
+    expect(isDirty(changed)).toBe(true)
+    expect(isDirty(run(changed, { type: 'style', style: DEFAULT_STYLE }))).toBe(false)
+
+    const styled = run(start(), { type: 'open', notice: { ...MAY, style: STYLED } })
+    expect(isDirty(styled)).toBe(false)
+    expect(isDirty(run(styled, { type: 'style', style: OTHER }))).toBe(true)
+    expect(isDirty(run(styled, { type: 'style', style: DEFAULT_STYLE }))).toBe(true)
+    expect(isDirty(run(styled, { type: 'style', style: OTHER }, { type: 'style', style: { ...STYLED } }))).toBe(false)
+  })
+
+  it('AC-6806.4: 새 안내문은 테마·글자 색처럼 글씨·로고 값만 바꿔서는 바뀐 내용이 없다(카드를 적어야 있다)', () => {
+    expect(isDirty(run(start(), { type: 'theme', theme: 'm05' }))).toBe(false)
+    expect(isDirty(run(start(), { type: 'style', style: STYLED }))).toBe(false)
+    expect(isDirty(run(ready(), { type: 'style', style: STYLED }))).toBe(true)
+  })
+
+  it('AC-6806.4: 저장하면 저장된 글씨·로고 값이 비교 기준이 되고 고른 값은 그대로다', () => {
+    const saved = run(ready(), { type: 'style', style: STYLED }, { type: 'saveStart' }, { type: 'saved', notice: { ...MAY, style: STYLED } })
+    expect(saved.style).toEqual(STYLED)
+    expect(isDirty(saved)).toBe(false)
+    expect(isDirty(run(saved, { type: 'style', style: DEFAULT_STYLE }))).toBe(true)
+  })
+
+  it('AC-6806.4: 저장·뽑기 값(readyNotice)에 고른 글씨·로고 값이 들어가고, 처음대로면 style 열쇠가 없다', () => {
+    expect(readyNotice(run(ready(), { type: 'style', style: STYLED }))).toEqual({ year: 2027, month: 5, cards: [CHILDREN], theme: null, style: STYLED })
+    expect(keysOf(readyNotice(ready()))).toEqual(['cards', 'month', 'theme', 'year'])
+    expect(keysOf(readyNotice(run(ready(), { type: 'style', style: STYLED }, { type: 'style', style: DEFAULT_STYLE })))).toEqual(['cards', 'month', 'theme', 'year'])
+    expect(readyNotice(run(start(), { type: 'style', style: STYLED }))).toBeNull()
+  })
+
+  it('AC-6806.4: 미리보기·인쇄 사본 값(previewNotice)에 고른 글씨·로고 값이 들어가고, 처음대로면 style 열쇠가 없다', () => {
+    expect(previewNotice(run(start(), { type: 'style', style: STYLED }))).toEqual({ year: 2026, month: 11, theme: null, cards: [], style: STYLED })
+    expect(previewNotice(run(ready(), { type: 'accent', accent: '#c62828' }, { type: 'style', style: STYLED }))).toMatchObject({ accent: '#c62828', style: STYLED })
+    expect(keysOf(previewNotice(start()))).toEqual(['cards', 'month', 'theme', 'year'])
+    expect(keysOf(previewNotice(run(ready(), { type: 'style', style: STYLED }, { type: 'style', style: DEFAULT_STYLE })))).toEqual(['cards', 'month', 'theme', 'year'])
+  })
+
+  it('AC-6806.4: AI 정리 답·카드·안내 달·테마·글자 색을 바꿔도 고른 글씨·로고 값은 그대로다', () => {
+    const styled = run(start(), { type: 'style', style: STYLED })
+    expect(run(styled, { type: 'tidyStart' }, { type: 'tidyDone', cards: [CHILDREN], truncated: false }).style).toEqual(STYLED)
+    expect(run(styled, { type: 'tidyStart' }, { type: 'tidyFailed', code: 'E-AI-FAILED' }).style).toEqual(STYLED)
+    const s = run(typed(styled, 0, { start: '2027-05-05', name: '어린이날' }), { type: 'month', value: '2027-06' }, { type: 'theme', theme: 'christmas' }, { type: 'accent', accent: null })
+    expect(s.style).toEqual(STYLED)
   })
 })
