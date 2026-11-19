@@ -8,7 +8,7 @@
 범위 밖: 데스크 탭 늘리기(탭은 세 개 그대로), 설정·통계·청구 등 다른 화면 열기, 데스크가 설치 파일을 올리기, 폰에서 장부 보기(sunap-phone, 보류), 원장 화면 바꾸기(③ 원장 화면·원장 계정 메뉴 그대로), 도우미·확장 코드.
 
 ### REQ-7001: 데스크도 비트 PC 연결 화면을 연다
-- AC-7001.1: Given 데스크 계정, When 주소가 `/claim/setup`(또는 그 아래, 예 `/claim/setup?next=dashboard`)이면, Then `isDeskPath`가 참이고 DeskGate는 본문을 그대로 그린다(막힌 화면 '데스크 계정은 볼 수 없는 화면이에요'가 없다). `/claim`·`/settings`·`/stats`·`/dashboard`(첫 주소 바꾸기 그대로)는 지금처럼 막히거나 바뀐다.
+- AC-7001.1: Given 데스크 계정, When 경로가 `/claim/setup`이거나 그 아래(`/claim/setup/x`)이면(`?next=dashboard`로 열어도 경로는 `/claim/setup`), Then `isDeskPath`가 참이고 DeskGate는 본문을 그대로 그린다(막힌 화면 '데스크 계정은 볼 수 없는 화면이에요'가 없다). `/claim`·`/settings`·`/stats`·`/dashboard`(첫 주소 바꾸기 그대로)는 지금처럼 막히거나 바뀐다.
 - AC-7001.2: Given 데스크 계정, Then 데스크 탭 띠(`DESK_MENU`)는 지금처럼 업무일지·수납일지·예약 셋뿐이다(비트 PC 연결은 탭에 없다).
 - AC-7001.3: Given 데스크(병원 줄 없음 + desk) 로그인, When `/claim/setup` 페이지를 그리면, Then 던지지 않고 비트 PC 연결 화면을 그린다 — '이 PC' 옆 의원 이름은 데스크 병원 이름(`desk.hospitalName`)이고, 주소에 `?next=dashboard`가 있어도 돌아갈 곳(returnTo)을 넘기지 않는다(데스크의 대시보드는 수납일지로 바뀐다). 원장(승인)은 지금과 같고, 승인되지 않은 원장 줄은 지금처럼 던진다.
 

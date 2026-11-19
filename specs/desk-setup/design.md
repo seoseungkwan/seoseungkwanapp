@@ -54,7 +54,7 @@ create policy "설치 파일 읽기(승인된 사용자·데스크·관리자)" 
 ## 6-2. 결정 기록 — `docs/ADR.md` ADR-031
 - '화면' 줄: 다른 주소는 막힌 화면이되 비트 PC 연결 화면(`/claim/setup`)은 연다(탭에는 없음, 계정 메뉴·수납일지 안내 칸·업무일지 안내에서 감).
 - '트레이드오프' 줄의 '데스크 PC의 확장·도우미 설치와 비트 PC 연결은 원장 계정으로 한다'를 '데스크도 비트 PC 연결 화면에서 설치 파일(읽기 규칙 "설치 파일 읽기(승인된 사용자·데스크·관리자)", `20261119200000_desk_install_files.sql`)을 받아 깔고 연결한다(desk-setup, 2026-11-19)'로 바꾼다.
-- 설명 글만 고치는 곳: `src/lib/storage/installFiles.ts`·`src/components/install/DownloadButton.tsx` 머리 주석의 '승인된 사용자·관리자만' → '승인된 사용자·데스크·관리자'(코드 바뀜 없음).
+- 설명 글만 고치는 곳: `src/lib/storage/installFiles.ts`·`src/components/install/DownloadButton.tsx` 머리 주석에서 받을 수 있는 사람을 말하는 글(installFiles.ts '승인된 사용자·관리자', DownloadButton.tsx '로그인하고 승인된 사람만')에 데스크도 받는다는 뜻을 더한다(코드 바뀜 없음). AC-7001.1 시험은 shell.test.tsx의 옛 AC-6306.1 목록에 끼우지 않고 따로 둔다.
 
 ## 7. 시험
 - `DeskGate.test.tsx`: AC-7001.1·7001.2(`isDeskPath`·`DESK_MENU`·DeskGate가 `/claim/setup`에서 본문을 그림, 다른 주소는 그대로 막힘). 옛 막힌 주소 목록(`:44`)에서 `/claim/setup`을 빼고, `shell.test.tsx`의 데스크 주소 목록(`:246`, 거짓 목록)에서도 `/claim/setup`을 참 쪽으로 옮긴다(TASK-3).
