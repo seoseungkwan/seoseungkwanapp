@@ -16,8 +16,8 @@ export type ClinicReportNumbers =
       transferAmount: number
       treatments: { manual: number; eswt: number; carm: number; sono: number; cryo: number }
       laCodes: { code: string; count: number }[]
-      financeUnconfirmed: boolean
-      financeUnconfirmedReason?: string
+      financeUnconfirmed: boolean // 0.13.0 전 도우미가 금액을 세지 않은 벌(0.13.0은 늘 거짓, bit-total AC-6912.4). 보고 글은 금액 줄을 '–'로 쓴다
+      financeUnconfirmedReason?: string // 0.13.0 전 도우미만 준다. 보고 글에는 쓰지 않는다(AC-6908.2)
       notes: string[]
     }
   | { ok: false; period: string; reason: string } // 원본이 '보고를 확정할 수 없음'으로 멈춘 벌
@@ -26,8 +26,8 @@ export type ClinicReportMode = 'daily' | 'monthly'
 
 export type ClinicReportInput = { mode: ClinicReportMode; numbers: ClinicReportNumbers; hospitalName: string }
 
-// unconfirmedLines: '확인 필요'로 가린 금액 줄의 번호(text를 줄바꿈으로 나눈 차례, 0부터)
+// 글 벌은 글과 안내뿐이다. financeUnconfirmed 벌(0.13.0 전 도우미)도 금액 줄이 '–'인 보통 글이라 따로 칠할 줄이 없다(bit-total AC-6908.5)
 export type ClinicReportResult =
-  | { text: string; notes: string[]; unconfirmedLines: number[] }
+  | { text: string; notes: string[] }
   | { error: 'future-date' }
   | { error: 'unconfirmed'; reason: string }

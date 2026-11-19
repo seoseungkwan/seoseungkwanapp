@@ -74,28 +74,27 @@ function periodOf(key: BitKey, today: string): string {
 
 const weekdayDate = (ymd: string) => `${longDate(ymd)} ${weekdayName(ymd)}요일`
 
-function dateLine(key: BitKey, today: string, report: ReportData, numbers: ClinicReportNumbers): string {
+// financeUnconfirmed 벌(0.13.0 전 도우미)도 같은 날짜 줄이다(' · 금액 확인 필요' 없음, bit-total AC-6908.5)
+function dateLine(key: BitKey, today: string, report: ReportData): string {
   const period = periodOf(key, today)
-  const unconfirmed = numbers.ok && numbers.financeUnconfirmed ? ' · 금액 확인 필요' : ''
-  if (key === 'today') return `${weekdayDate(today)} · ${report.loadedAt}까지 불러온 숫자예요${report.closedToday ? '' : '(오늘은 진료 중)'}${unconfirmed}`
-  if (key === 'yesterday') return `${weekdayDate(period)}${unconfirmed}`
+  if (key === 'today') return `${weekdayDate(today)} · ${report.loadedAt}까지 불러온 숫자예요${report.closedToday ? '' : '(오늘은 진료 중)'}`
+  if (key === 'yesterday') return weekdayDate(period)
   const { from, to } = monthRange(period)
-  if (key === 'month') return `${longDate(from)} – ${longDate(today)} · 오늘까지 불러온 숫자예요${unconfirmed}`
-  return `${longDate(from)} – ${longDate(to)}${unconfirmed}`
+  if (key === 'month') return `${longDate(from)} – ${longDate(today)} · 오늘까지 불러온 숫자예요`
+  return `${longDate(from)} – ${longDate(to)}`
 }
 
-type Shown = { lines: string[]; unconfirmed: ReadonlySet<number>; notes: string[]; text: string }
+type Shown = { lines: string[]; notes: string[]; text: string }
 
 function shownOf(result: Extract<ClinicReportResult, { text: string }>): Shown {
-  return { lines: result.text.split('\n'), unconfirmed: new Set(result.unconfirmedLines), notes: result.notes, text: result.text }
+  return { lines: result.text.split('\n'), notes: result.notes, text: result.text }
 }
 
 // 미리보기 줄 수. 줄 수 제한 클래스(line-clamp-4)와 같은 수다
 const PREVIEW_LINES = 4
 // 글 칸(시안 .s-rep: 옅은 회색 · 8px 모서리 · 14px 글자). 여백은 바깥 칸이 갖고 줄 수 제한은 안쪽 칸에 붙인다 — 잘린 다음 줄이 아래 여백에 비치지 않게.
-// 안쪽 칸 -mx-2 px-2: '확인 필요' 줄 바탕(-mx-2)이 줄 수 제한의 잘림(overflow)에 깎이지 않게 그만큼 넓힌다
 const TEXT_BOX = 'mt-2 rounded-st-sm bg-st-canvas px-4 py-3 text-body text-st-ink'
-const TEXT_LINES = '-mx-2 whitespace-pre-wrap px-2'
+const TEXT_LINES = 'whitespace-pre-wrap'
 
 // 글 아래 단추 줄(시안 .s-rep-a): [전체 보기]·[접기](네 줄이 넘을 때만) + [복사]. 글이 없으면 막힌 [복사]만
 function Actions({ toggle, copyText }: { toggle?: ReactNode; copyText: string | null }) {
@@ -107,7 +106,7 @@ function Actions({ toggle, copyText }: { toggle?: ReactNode; copyText: string | 
   )
 }
 
-// 줄마다 블록이라 빈 줄도 자리를 지킨다. 빈 줄은 br 한 줄이라 줄 수 제한도 한 줄로 센다. 띄어쓰기는 그대로 둔다(whitespace-pre-wrap). '확인 필요' 줄은 색과 글자를 함께 쓴다.
+// 줄마다 블록이라 빈 줄도 자리를 지킨다. 빈 줄은 br 한 줄이라 줄 수 제한도 한 줄로 센다. 띄어쓰기는 그대로 둔다(whitespace-pre-wrap). 칠하는 줄은 없다(AC-6908.5).
 // 고른 보고가 바뀌면 놓는 쪽이 key로 다시 그려 다시 접힌다
 function ReportText({ shown }: { shown: Shown }) {
   const [open, setOpen] = useState(false)
@@ -118,7 +117,7 @@ function ReportText({ shown }: { shown: Shown }) {
       <div id={boxId} className={TEXT_BOX}>
         <div className={long && !open ? `${TEXT_LINES} line-clamp-4` : TEXT_LINES}>
           {shown.lines.map((line, i) => (
-            <span key={i} className={shown.unconfirmed.has(i) ? '-mx-2 block min-h-5.5 bg-warning-soft px-2 font-medium text-warning' : 'block min-h-5.5'}>
+            <span key={i} className="block min-h-5.5">
               {line === '' ? <br /> : line}
             </span>
           ))}
@@ -164,7 +163,7 @@ function BitBody({ bit, report, today }: { bit: Bit; report: ReportData; today: 
   const { key, numbers, result, shown, place } = bit
   return (
     <>
-      {numbers !== null && <p className="mt-4 text-small text-muted">{dateLine(key, today, report, numbers)}</p>}
+      {numbers !== null && <p className="mt-4 text-small text-muted">{dateLine(key, today, report)}</p>}
       {shown !== null && <ReportText key={key} shown={shown} />}
       {shown !== null && shown.notes.length > 0 && (
         <HowCounted>
@@ -199,7 +198,7 @@ function PickBody({ pick }: { pick: PickReport }) {
   return (
     <>
       <p className="mt-4 text-small text-muted">{`${pick.label} · 저장된 숫자로 만든 글이에요`}</p>
-      <ReportText key="pick" shown={{ lines: pick.text.split('\n'), unconfirmed: new Set(), notes: [], text: pick.text }} />
+      <ReportText key="pick" shown={{ lines: pick.text.split('\n'), notes: [], text: pick.text }} />
     </>
   )
 }

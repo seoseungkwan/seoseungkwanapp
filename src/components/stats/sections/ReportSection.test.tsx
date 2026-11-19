@@ -340,32 +340,57 @@ describe('AC-4004.2 ⑤·AC-4004.3: 보고 아래 · 글은 "어떻게 세나요
   })
 })
 
-describe("AC-513.6: '확인 필요' 줄", () => {
+// bit-total REQ-6908 AC-6908.5: 0.13.0 전 도우미의 financeUnconfirmed 벌도 날짜 줄·글 칸은 보통 벌과 같다('· 금액 확인 필요'·노란 줄 없음)
+describe('AC-6908.5: financeUnconfirmed 벌(0.13.0 전 도우미)', () => {
   const UNCONFIRMED = numbers('2026-11-12', { financeUnconfirmed: true, financeUnconfirmedReason: '가짜 사유' })
+  const ALL_UNCONFIRMED = {
+    daily: [numbers(TODAY, { financeUnconfirmed: true }), UNCONFIRMED],
+    monthly: [numbers('2026-11', { financeUnconfirmed: true }), numbers('2026-10', { financeUnconfirmed: true })],
+  }
 
-  it("AC-513.6: 금액 줄은 '확인 필요' 글자 + warning 색이고 다른 줄은 아니다", () => {
-    draw(data({ daily: [DAILY[0]!, UNCONFIRMED] }))
+  it("AC-6908.5: 날짜 줄에 ' · 금액 확인 필요'가 붙지 않는다(오늘·어제·이번 달·지난달)", () => {
+    draw(data(ALL_UNCONFIRMED))
+    expect(screen.getByText('11월 13일 금요일 · 18:42까지 불러온 숫자예요(오늘은 진료 중)')).toBeTruthy()
     pick('어제 일일보고')
-    const { text, unconfirmedLines } = textOf('daily', UNCONFIRMED)
-    expect(unconfirmedLines.length).toBeGreaterThan(0)
-    const lines = Array.from(reportBox().children)
-    expect(lines.map((line) => line.textContent)).toEqual(text.split('\n'))
-    lines.forEach((line, i) => {
-      if (unconfirmedLines.includes(i)) {
-        expect(line.textContent).toContain('확인 필요')
-        expect(line.className).toContain('bg-warning-soft')
-        expect(line.className).toContain('text-warning')
-      } else {
-        expect(line.className).not.toContain('bg-warning-soft')
-      }
-    })
+    expect(screen.getByText('11월 12일 목요일')).toBeTruthy()
+    pick('이번 달 월말보고')
+    expect(screen.getByText('11월 1일 – 11월 13일 · 오늘까지 불러온 숫자예요')).toBeTruthy()
+    pick('지난달 월말보고')
+    expect(screen.getByText('10월 1일 – 10월 31일')).toBeTruthy()
+    expect(screen.queryByText(/확인 필요/)).toBeNull()
   })
 
-  it('AC-513.6: 날짜 줄에 "금액 확인 필요"가 붙고 [복사]는 그대로 된다', () => {
+  it('AC-6908.5: 글 줄은 formatClinicReport 글 그대로이고 어느 줄도 노란 바탕·경고 색이 아니다(금액 줄 "–"도 보통 줄)', () => {
     draw(data({ daily: [DAILY[0]!, UNCONFIRMED] }))
     pick('어제 일일보고')
-    expect(screen.getByText('11월 12일 목요일 · 금액 확인 필요')).toBeTruthy()
+    const { text } = textOf('daily', UNCONFIRMED)
+    const lines = Array.from(reportBox().children)
+    expect(lines.map((line) => line.textContent)).toEqual(text.split('\n'))
+    expect(lines.map((line) => line.textContent)).toContain('총진료비        –')
+    for (const line of lines) expect(classesOf(line)).toEqual(['block', 'min-h-5.5'])
+    expect(reportBox().textContent).not.toContain('확인 필요')
+  })
+
+  it('AC-6908.5: [복사]는 누를 수 있고 글 전체를 복사한다', async () => {
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    draw(data({ daily: [DAILY[0]!, UNCONFIRMED] }))
+    pick('어제 일일보고')
     expect(screen.getByRole('button', { name: '복사' }).getAttribute('aria-disabled')).toBeNull()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '복사' }))
+    })
+    const { text } = textOf('daily', UNCONFIRMED)
+    expect(writeText).toHaveBeenCalledWith(text)
+    expect(text).toContain('건당진료비      –')
+    expect(text).toContain('고생하셨습니다 !!')
+  })
+
+  it("AC-6908.5: ok가 false인 벌의 '이 기간은 보고를 확정할 수 없어요'는 그대로다", () => {
+    draw(data({ daily: [UNCONFIRMED, { ok: false, period: '2026-11-13', reason: '가짜 사유 글' }] }))
+    expect(screen.getByText('이 기간은 보고를 확정할 수 없어요')).toBeTruthy()
+    expect(screen.getByText('비트 원본 통계에서 11월 13일 숫자를 확인해 주세요. 이유: 가짜 사유 글')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '복사' }).getAttribute('aria-disabled')).toBe('true')
   })
 })
 
