@@ -2,6 +2,8 @@
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { LOGO, layoutPoster } from '@/lib/forms/layout'
+import { onWhite, type GuideColors } from '@/lib/forms/logoColors'
+import { DEFAULT_STYLE } from '@/lib/forms/style'
 import { THEMES, isAccentHex, themeHref, themeOf } from '@/lib/forms/themes'
 import type { BackgroundLook } from '@/types/formBackground'
 import type { ClosureNotice, NoticeCard, ThemeArt, ThemeId } from '@/types/forms'
@@ -153,5 +155,75 @@ describe("AC-4702.3: 모양이 틀린 글자 색은 쓰지 않고 자동 색으�
       cleanup()
       expect(html, name).toBe(plainOf(BASE, look))
     }
+  })
+})
+
+// ---------- [자동] 색은 로고 색 (spec form-style REQ-6803 AC-6803.1·AC-6803.2·AC-6803.4, AC-6804.6, design.md 6절, TASK-4) ----------
+
+describe('AC-6803.1·AC-6803.2: [자동] 제목·강조 색은 로고 두 색이 있으면 로고 색이다', () => {
+  // 노란 로고: 바탕색이 흰 바탕 위에서 옅어 onWhite가 어둡게 한다
+  const LOGO_COLORS: GuideColors = { main: '#f2c200', dark: '#3a2a00' }
+  const AUTO = onWhite(LOGO_COLORS.main)
+  // 로고 두 색을 넘기는 값({}이면 logoColors를 아예 넘기지 않는다)
+  type Colors = { logoColors?: GuideColors | null }
+  const drawLogo = (notice: ClosureNotice, look: Look, colors: Colors = { logoColors: LOGO_COLORS }) => {
+    const { container } = render(<Poster notice={notice} theme={look.theme ?? THEME} art={look.art} background={look.background} {...colors} />)
+    const svg = container.querySelector('svg')
+    if (!svg) throw new Error('svg가 없다')
+    return svg
+  }
+  const plainLogo = (notice: ClosureNotice, look: Look, colors: Colors) => {
+    const html = plain(drawLogo(notice, look, colors))
+    cleanup()
+    return html
+  }
+
+  it('AC-6803.2: 시험 값 — 자동 강조 색은 onWhite(main)이고 바탕색·테마·배경 강조색과 다르다', () => {
+    expect(AUTO).toMatch(/^#[0-9a-f]{6}$/)
+    expect(AUTO).not.toBe(LOGO_COLORS.main)
+    expect(THEMES.map((t) => t.accent)).not.toContain(AUTO)
+    expect(AUTO).not.toBe(BG_ACCENT)
+  })
+
+  it.each(LOOKS)("AC-6803.1·AC-6803.2: %s — '진료일정안내'는 dark, 'N월'·날짜 띠·카드 아래 글은 onWhite(main)이다(배경 그림 강조색보다 먼저)", (_, look) => {
+    const svg = drawLogo(withAccent(null), look)
+    expect(textFill(svg, '진료일정안내')).toBe(LOGO_COLORS.dark)
+    expect(textFill(svg, layout.monthText)).toBe(AUTO)
+    expect(all(svg, 'path').map((p) => p.getAttribute('fill'))).toEqual(BASE.cards.map(() => AUTO))
+    for (const c of layout.cards) expect(textFill(svg, c.status.text), c.status.text).toBe(AUTO)
+  })
+
+  it.each(LOOKS)('AC-6804.6: %s — 로고 두 색이 바꾸는 것은 자동 제목·강조 색뿐이다(강조 AUTO·제목 dark를 직접 고른 그림과 글자 하나까지 같다)', (_, look) => {
+    const withLogo = plainLogo(BASE, look, { logoColors: LOGO_COLORS })
+    const picked = plainOf({ ...BASE, accent: AUTO, style: { ...DEFAULT_STYLE, titleColor: LOGO_COLORS.dark } }, look)
+    expect(withLogo).toBe(picked)
+  })
+
+  it.each(LOOKS)('AC-6803.2: %s — 직접 고른 강조 색은 로고 두 색이 있어도 그 색이다', (_, look) => {
+    const svg = drawLogo(withAccent(PICKED), look)
+    expect(textFill(svg, layout.monthText)).toBe(PICKED)
+    expect(all(svg, 'path').map((p) => p.getAttribute('fill'))).toEqual(BASE.cards.map(() => PICKED))
+    expect(svg.outerHTML).not.toContain(AUTO)
+    expect(textFill(svg, '진료일정안내')).toBe(LOGO_COLORS.dark)
+  })
+
+  it('AC-6803.1: 직접 고른 제목 색은 로고 dark보다 먼저다', () => {
+    const svg = drawLogo({ ...BASE, style: { ...DEFAULT_STYLE, titleColor: '#7c3aed' } }, {})
+    expect(textFill(svg, '진료일정안내')).toBe('#7c3aed')
+  })
+
+  it.each(LOOKS)('AC-6804.6: %s — 로고 두 색이 없으면(null·안 넘김) 지금 그림 그대로다', (_, look) => {
+    const now = plainOf(BASE, look)
+    expect(plainLogo(BASE, look, { logoColors: null })).toBe(now)
+    expect(plainLogo(BASE, look, {})).toBe(now)
+    expect(plainLogo({ ...BASE, style: { ...DEFAULT_STYLE } }, look, { logoColors: null })).toBe(now)
+  })
+
+  it('AC-6803.4: 본문 색이 null이면 로고 두 색이 있어도 안내 두 줄 #3a3a3a·카드 이름 #262626 그대로다', () => {
+    const svg = drawLogo(BASE, {})
+    expect(textFill(svg, layout.leadLines[0])).toBe('#3a3a3a')
+    expect(textFill(svg, layout.leadLines[1])).toBe('#3a3a3a')
+    for (const c of layout.cards) expect(textFill(svg, c.name.text), c.name.text).toBe('#262626')
+    for (const c of layout.cards) expect(textFill(svg, c.date.text), c.date.text).toBe('#fff')
   })
 })

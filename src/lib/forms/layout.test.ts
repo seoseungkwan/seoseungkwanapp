@@ -1,6 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import type { ClosureNotice, NoticeCard } from '@/types/forms'
-import { LOGO, LOGO_AREA, LOGO_TEXT_SHARE, MIN_FONT, POSTER, TEXT_AREA, fitSize, layoutPoster, logoRect, logoTextFit, textWidth } from './layout'
+import {
+  LOGO,
+  LOGO_AREA,
+  LOGO_MAX,
+  LOGO_TEXT_SHARE,
+  MIN_FONT,
+  POSTER,
+  TEXT_AREA,
+  fitSize,
+  layoutPoster,
+  logoRect,
+  logoTextFit,
+  logoTextWidth,
+  scaleLogoRect,
+  textWidth,
+} from './layout'
+import { DEFAULT_STYLE, type FormStyle } from './style'
 
 // 서식 탭 휴진 안내 그림의 배치와 글자 크기 맞추기 (specs/forms REQ-3505, design.md 5절, TASK-3).
 // 자리 값은 승인 시안(794×1123)을 브라우저에서 잰 값(design.md 5절 표)
@@ -229,5 +245,187 @@ describe('AC-6703.3·AC-6703.5: 크기 모르는 로고와 병원 이름 글자�
   it('AC-6703.5: 병원 이름 글자 크기는 원래 상자(340×58) 기준이다(새 자리 100 높이가 아니다)', () => {
     expect(logoTextFit('서승관', LOGO)).toEqual({ size: 46, squeeze: false })
     expect(logoTextFit('서승관', LOGO_AREA).size).not.toBe(46)
+  })
+})
+
+// ---------- 글씨·로고 크기 (spec form-style REQ-6804 AC-6804.1·AC-6804.2·AC-6804.5·AC-6804.6, design.md 5-1절, TASK-4) ----------
+
+const styleOf = (patch: Partial<FormStyle>): FormStyle => ({ ...DEFAULT_STYLE, ...patch })
+const styled = (notice: ClosureNotice, patch: Partial<FormStyle>): ClosureNotice => ({ ...notice, style: styleOf(patch) })
+
+describe("AC-6804.1: '진료일정안내' 크기 = fitSize('진료일정안내', round(120 × t / 100), 746)", () => {
+  it('AC-6804.1: 처음대로(style 없음·처음대로 값)면 120 그대로다', () => {
+    expect(layoutPoster(noticeOf(days(1))).title).toEqual({ text: '진료일정안내', size: 120 })
+    expect(layoutPoster({ ...noticeOf(days(1)), style: { ...DEFAULT_STYLE } }).title).toEqual({ text: '진료일정안내', size: 120 })
+  })
+
+  it('AC-6804.1: 80%는 96, 90%는 108이다', () => {
+    expect(layoutPoster(styled(noticeOf(days(1)), { titleScale: 80 })).title.size).toBe(96)
+    expect(layoutPoster(styled(noticeOf(days(1)), { titleScale: 90 })).title.size).toBe(108)
+  })
+
+  it('AC-6804.1: 105% 이상은 746 폭에 묶여 124에서 멈춘다(6글자 × 124 = 744)', () => {
+    for (const t of [105, 115, 130]) {
+      const { title } = layoutPoster(styled(noticeOf(days(1)), { titleScale: t }))
+      expect(title.size, `${t}%`).toBe(fitSize('진료일정안내', Math.round((120 * t) / 100), 746))
+      expect(title.size, `${t}%`).toBe(124)
+      expect(textWidth('진료일정안내', title.size)).toBeLessThanOrEqual(746)
+    }
+  })
+
+  it("AC-6804.1: 'N월'과 안내 두 줄·카드는 제목 크기를 따르지 않는다", () => {
+    const now = layoutPoster(noticeOf(days(2)))
+    const big = layoutPoster(styled(noticeOf(days(2)), { titleScale: 130 }))
+    expect(big.monthText).toBe(now.monthText)
+    expect(big.lead).toEqual(now.lead)
+    expect(big.cards).toEqual(now.cards)
+  })
+})
+
+describe('AC-6804.2: 본문 크기 — 안내 두 줄·카드 날짜·이름·아래 글', () => {
+  const LEAD = ['5월 진료일정을 안내드리오니', '진료 및 내원에 참고해주시길 바랍니다']
+
+  it('AC-6804.2: 안내 두 줄은 각각 fitSize(줄, round(27 × b / 100), 746) — 80·100·130%는 22·27·35, 글은 leadLines와 같다', () => {
+    expect(layoutPoster(noticeOf(days(1))).lead).toEqual(LEAD.map((text) => ({ text, size: 27 })))
+    expect(layoutPoster(styled(noticeOf(days(1)), { bodyScale: 80 })).lead).toEqual(LEAD.map((text) => ({ text, size: 22 })))
+    expect(layoutPoster(styled(noticeOf(days(1)), { bodyScale: 130 })).lead).toEqual(LEAD.map((text) => ({ text, size: 35 })))
+    expect(layoutPoster(styled(noticeOf(days(1)), { bodyScale: 130 })).leadLines).toEqual(LEAD)
+  })
+
+  it('AC-6804.2: 카드가 없어도 제목·안내 두 줄 크기는 있다', () => {
+    const layout = layoutPoster(styled(noticeOf([]), { titleScale: 80, bodyScale: 80 }))
+    expect(layout.cards).toEqual([])
+    expect(layout.title.size).toBe(96)
+    expect(layout.lead.map((l) => l.size)).toEqual([22, 22])
+  })
+
+  // 본문 % → 카드 수 → [날짜, 이름, 아래 글] 크기(학회1… · 5월 10일(월) · 휴진)
+  const EXPECTED: Record<number, Record<number, number[]>> = {
+    80: { 1: [26, 37, 40], 2: [26, 37, 40], 3: [22, 30, 35], 4: [24, 30, 34] },
+    100: { 1: [33, 46, 50], 2: [33, 46, 50], 3: [28, 38, 44], 4: [30, 38, 42] },
+    // 4장: 날짜 39 → 띠 60 × 0.6 = 36, 아래 글 55 → 몸통 140 × 0.37 = 51에 묶인다. 3장 날짜 36은 안쪽 폭 194에 들게 32로
+    130: { 1: [43, 60, 65], 2: [43, 60, 65], 3: [32, 49, 57], 4: [36, 49, 51] },
+  }
+
+  it.each([80, 100, 130])('AC-6804.2: 본문 %i% — 카드 1~4장의 날짜·이름·아래 글 크기', (b) => {
+    for (const n of [1, 2, 3, 4]) {
+      const { cards } = layoutPoster(styled(noticeOf(days(n)), { bodyScale: b }))
+      expect(cards.map(sizes), `${n}장`).toEqual(Array.from({ length: n }, () => EXPECTED[b][n]))
+    }
+  })
+
+  it.each([80, 85, 95, 105, 115, 125, 130])('AC-6804.2: 본문 %i% — 크기는 식(카드 수별 처음 크기 × b, 띠 × 0.6·몸통 × 0.37 한도, 안쪽 폭 맞추기)대로다', (b) => {
+    const fonts: Record<number, number[]> = { 1: [33, 46, 50], 2: [33, 46, 50], 3: [28, 38, 44], 4: [30, 38, 42] }
+    for (const n of [1, 2, 3, 4]) {
+      const cards = days(n).map((c, i) => (i === 0 ? card('2027-01-31', '가나다라마바사아자차', '2027-02-02', '오전진료만해') : c))
+      for (const c of layoutPoster(styled(noticeOf(cards, 1), { bodyScale: b })).cards) {
+        const inner = c.w - 32
+        const [fd, fn, fs] = fonts[n]
+        const head = Math.floor(c.headH * 0.6)
+        const body = Math.floor(c.bodyH * 0.37)
+        expect(c.date.size, `${n}장 ${c.date.text}`).toBe(fitSize(c.date.text, Math.min(Math.round((fd * b) / 100), head), inner))
+        expect(c.name.size, `${n}장 ${c.name.text}`).toBe(fitSize(c.name.text, Math.min(Math.round((fn * b) / 100), body), inner))
+        expect(c.status.size, `${n}장 ${c.status.text}`).toBe(fitSize(c.status.text, Math.min(Math.round((fs * b) / 100), body), inner))
+        for (const part of [c.date, c.name, c.status]) if (part.size > MIN_FONT) expect(textWidth(part.text, part.size)).toBeLessThanOrEqual(inner)
+      }
+    }
+  })
+
+  it('AC-6804.2: 본문 크기는 카드 자리(x·y·폭·띠·몸통)와 제목을 바꾸지 않는다', () => {
+    for (const n of [1, 2, 3, 4]) {
+      const now = layoutPoster(noticeOf(days(n)))
+      const big = layoutPoster(styled(noticeOf(days(n)), { bodyScale: 130 }))
+      expect(big.cards.map(box)).toEqual(now.cards.map(box))
+      expect(big.title).toEqual(now.title)
+    }
+  })
+
+  it('AC-6804.6: 처음대로 style이면 배치가 style 없을 때와 한 값도 다르지 않다', () => {
+    for (const n of [0, 1, 2, 3, 4]) {
+      expect(layoutPoster({ ...noticeOf(days(n)), style: { ...DEFAULT_STYLE } }), `${n}장`).toEqual(layoutPoster(noticeOf(days(n))))
+    }
+  })
+})
+
+describe('AC-6804.5: 로고 크기 — scaleLogoRect(가운데를 지킨 채 s = min(L/100, 최대 폭 ÷ 폭, 최대 높이 ÷ 높이)배)', () => {
+  const WIDE = logoRect(LOGO_AREA, { width: 1033, height: 175 }) // 227, 1011.2 · 340×57.6
+  const TALL = logoRect(LOGO_AREA, { width: 1080, height: 501 }) // 289.2, 990 · 215.6×100
+
+  it('AC-6804.5: 휴진 안내 로고 최대는 600×130이다', () => {
+    expect(LOGO_MAX).toEqual({ width: 600, height: 130 })
+  })
+
+  it('AC-6804.5: 100%면 네모 그대로다(크기를 아는 그림·원래 상자)', () => {
+    expect(scaleLogoRect(WIDE, 100, LOGO_MAX)).toEqual(WIDE)
+    expect(scaleLogoRect(TALL, 100, LOGO_MAX)).toEqual(TALL)
+    expect(scaleLogoRect(LOGO, 100, LOGO_MAX)).toEqual({ x: 227, y: 1011, width: 340, height: 58 })
+  })
+
+  it('AC-6804.5: 150%면 1.5배(가운데 397·1040 그대로), 60%면 0.6배다', () => {
+    expect(scaleLogoRect(WIDE, 150, LOGO_MAX)).toEqual({ x: 142, y: 996.8, width: 510, height: 86.4 })
+    expect(scaleLogoRect(WIDE, 60, LOGO_MAX)).toEqual({ x: 295, y: 1022.7, width: 204, height: 34.6 })
+    expect(scaleLogoRect(TALL, 60, LOGO_MAX)).toEqual({ x: 332.3, y: 1010, width: 129.4, height: 60 })
+    expect(scaleLogoRect(LOGO, 150, LOGO_MAX)).toEqual({ x: 142, y: 996.5, width: 510, height: 87 })
+    expect(scaleLogoRect(LOGO, 60, LOGO_MAX)).toEqual({ x: 295, y: 1022.6, width: 204, height: 34.8 })
+  })
+
+  it('AC-6804.5: 최대 높이 130에 묶이면 1.5배보다 덜 커진다(세로로 긴 쪽 로고 150% → 1.3배)', () => {
+    const r = scaleLogoRect(TALL, 150, LOGO_MAX)
+    expect(r).toEqual({ x: 256.9, y: 975, width: 280.3, height: 130 })
+    expect(r.x + r.width / 2).toBeCloseTo(397, 1)
+    expect(r.y + r.height / 2).toBe(1040)
+  })
+
+  it('AC-6804.5: 최대 폭에 묶이는 아주 납작한 네모도 가운데를 지키고 최대 폭을 넘지 않는다', () => {
+    const flat = { x: 100, y: 200, width: 500, height: 10 }
+    expect(scaleLogoRect(flat, 150, LOGO_MAX)).toEqual({ x: 50, y: 199, width: 600, height: 12 })
+  })
+
+  it('AC-6804.5: 네 값은 소수 첫째 자리까지이고 최대를 넘지 않는다', () => {
+    for (const size of [{ width: 1033, height: 175 }, { width: 777, height: 333 }, { width: 123, height: 457 }, { width: 3, height: 7 }])
+      for (const pct of [60, 65, 85, 115, 135, 150]) {
+        const r = scaleLogoRect(logoRect(LOGO_AREA, size), pct, LOGO_MAX)
+        for (const [name, value] of Object.entries(r)) expect(Math.round(value * 10) / 10, `${size.width}×${size.height} ${pct}% ${name}`).toBe(value)
+        expect(r.width).toBeLessThanOrEqual(LOGO_MAX.width)
+        expect(r.height).toBeLessThanOrEqual(LOGO_MAX.height)
+      }
+  })
+})
+
+describe('AC-6804.5: 이름 글자 로고 — 맞출 폭 W = min(최대 폭, 상자 폭 × L / 100), 크기 fitSize(이름, min(floor(높이 × 0.8 × L / 100), floor(최대 높이 × 0.8)), W)', () => {
+  const BOX = { width: LOGO.width, height: LOGO.height }
+
+  it('AC-6804.5: logoTextWidth — 처음대로(pct·max 없음)·100%면 상자 폭, 150%·60%면 510·204, 최대 폭에서 멈춘다', () => {
+    expect(logoTextWidth(BOX)).toBe(340)
+    expect(logoTextWidth(BOX, 100, LOGO_MAX)).toBe(340)
+    expect(logoTextWidth(BOX, 150, LOGO_MAX)).toBe(510)
+    expect(logoTextWidth(BOX, 60, LOGO_MAX)).toBe(204)
+    expect(logoTextWidth({ width: 500, height: 58 }, 150, LOGO_MAX)).toBe(600)
+  })
+
+  it('AC-6804.5: logoTextFit은 돌려주는 모양 { size, squeeze } 그대로이고 100%면 지금 값과 같다', () => {
+    for (const name of ['서승관', '서승관정형외과의원', '가'.repeat(50)]) {
+      expect(logoTextFit(name, BOX, 100, LOGO_MAX), name).toEqual(logoTextFit(name, BOX))
+      expect(Object.keys(logoTextFit(name, BOX, 150, LOGO_MAX)).sort()).toEqual(['size', 'squeeze'])
+    }
+  })
+
+  it('AC-6804.5: 150%면 46 → 69에서 510 폭에, 60%면 27에서 204 폭에 맞춘다', () => {
+    expect(logoTextFit('서승관', BOX, 150, LOGO_MAX)).toEqual({ size: 69, squeeze: false })
+    expect(logoTextFit('서승관', BOX, 60, LOGO_MAX)).toEqual({ size: 27, squeeze: false })
+    const name = '서승관정형외과의원'
+    expect(logoTextFit(name, BOX, 150, LOGO_MAX)).toEqual({ size: fitSize(name, 69, 510), squeeze: false })
+    expect(logoTextFit(name, BOX, 150, LOGO_MAX).size).toBe(56)
+    expect(logoTextFit(name, BOX, 60, LOGO_MAX)).toEqual({ size: 22, squeeze: false })
+  })
+
+  it('AC-6804.5: 처음 크기는 최대 높이 × 0.8을 넘지 않는다', () => {
+    expect(logoTextFit('가', BOX, 150, { width: 600, height: 50 })).toEqual({ size: 40, squeeze: false })
+  })
+
+  it('AC-6804.5: 가장 작은 크기로도 W를 넘치면 squeeze가 참이다(그리는 쪽이 W로 눌러 그린다)', () => {
+    expect(logoTextFit('가'.repeat(50), BOX, 150, LOGO_MAX)).toEqual({ size: MIN_FONT, squeeze: true })
+    expect(logoTextFit('가'.repeat(25), BOX, 150, LOGO_MAX)).toEqual({ size: 20, squeeze: false }) // 25 × 20 = 500 ≤ 510
+    expect(logoTextFit('가'.repeat(25), BOX)).toEqual({ size: MIN_FONT, squeeze: true }) // 25 × 18 = 450 > 340
   })
 })

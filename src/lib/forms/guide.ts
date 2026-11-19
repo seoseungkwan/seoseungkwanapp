@@ -96,8 +96,9 @@ export function checkGuide(c: GuideContent): GuideProblems {
   return problems
 }
 
-// 배치 까닭과 칸 검사 까닭을 합친다. 같은 칸이면 칸 검사 까닭이 이긴다
-export function guideProblems(c: GuideContent): GuideProblems {
+// 배치 까닭과 칸 검사 까닭을 합친다. 같은 칸이면 칸 검사 까닭이 이긴다.
+// 배치는 그림과 같은 글씨 크기(c.style)로 본다(spec form-style AC-6804.7)
+export function guideProblems(c: GuideContent & { style?: FormStyle }): GuideProblems {
   return { ...layoutGuide(c).problems, ...checkGuide(c) }
 }
 
@@ -177,7 +178,8 @@ export function checkGuideValue(value: unknown): GuideValue | null {
     lines,
     note: texts.note,
   }
-  if (Object.keys(guideProblems(content)).length !== 0) return null
+  // 줄 넘침은 검사한 글씨 크기를 넣은 배치로 본다(AC-6804.7)
+  if (Object.keys(guideProblems(style === null ? content : { ...content, style })).length !== 0) return null
   const out: GuideValue = colors ? { ...content, colors } : content
   if (style !== null && !isDefaultStyle(style)) out.style = style
   return out

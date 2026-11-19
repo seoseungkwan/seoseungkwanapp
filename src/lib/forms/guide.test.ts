@@ -646,3 +646,34 @@ describe('AC-6806.3: 안내문 글씨·로고 값(content.style) — 저장 값 
     expect(checkGuideValue(savableGuide(c))).toEqual({ ...example(1), style: STYLE })
   })
 })
+
+// ---------- 글씨 크기를 넣은 배치로 까닭 보기 (spec form-style REQ-6804 AC-6804.7, design.md 5-2절, TASK-4) ----------
+
+describe('AC-6804.7: guideProblems·checkGuideValue는 그림과 같은 style을 넣은 배치로 줄 넘침을 본다', () => {
+  const DEFAULT = { titleScale: 100, bodyScale: 100, logoScale: 100, titleColor: null, bodyColor: null, logoColor: null }
+  const BODY_130 = { ...DEFAULT, bodyScale: 130 }
+  // 28자 줄: 체크 표시 36(본문 100%)이면 26px로 자리에 들고, 체크 표시 46(본문 130%)이면 26px로도 넘친다
+  const LONG = `WWWW${가(24)}`
+  const content = (): GuideContent => ({ ...example(4), lines: [L(LONG), example(4).lines[1]!] })
+
+  it('AC-6804.7: 처음대로·style 없음이면 까닭이 없고, 본문 130%면 그 줄(line0)에 한 줄 까닭이 붙는다', () => {
+    expect(checkGuide(content())).toEqual({})
+    expect(guideProblems(content())).toEqual({})
+    expect(guideProblems({ ...content(), style: { ...DEFAULT } })).toEqual({})
+    expect(guideProblems({ ...content(), style: BODY_130 })).toEqual({ line0: TOO_LONG })
+    expect(layoutGuide({ ...content(), style: BODY_130 }).problems).toEqual({ line0: TOO_LONG })
+  })
+
+  it('AC-6804.7: 저장 검사(checkGuideValue)도 검사한 style을 넣은 배치로 본다 — 본문 130%의 넘치는 줄은 저장되지 않는다', () => {
+    expect(checkGuideValue(content())).toEqual(content())
+    expect(checkGuideValue({ ...content(), style: { ...DEFAULT } })).toEqual(content())
+    expect(checkGuideValue({ ...content(), style: { ...DEFAULT, bodyScale: 80 } })).toEqual({ ...content(), style: { ...DEFAULT, bodyScale: 80 } })
+    expect(checkGuideValue({ ...content(), style: BODY_130 })).toBeNull()
+  })
+
+  it('AC-6804.7: 제목 크기도 같다 — 크기를 바꿔도 가장 작은 크기 규칙은 그대로라 넘치는 큰 문구는 저장되지 않는다', () => {
+    // 8자 안의 큰 문구는 72px에 들어 어느 크기에서도 저장된다
+    const ok = withEx1({ big1: 가(8) })
+    for (const titleScale of [80, 130]) expect(checkGuideValue({ ...ok, style: { ...DEFAULT, titleScale } }), `${titleScale}%`).not.toBeNull()
+  })
+})
