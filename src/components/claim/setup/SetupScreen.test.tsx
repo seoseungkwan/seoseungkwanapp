@@ -2,10 +2,13 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ClinicProfileState, ClinicProfileView } from '@/components/clinic/useClinicProfile'
 import { RoleProvider } from '@/components/shell/role'
 import { ds } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
+import { defaultProfile } from '@/lib/storage/clinicProfile'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
+import type { EmrKind } from '@/types/clinicProfile'
 import type { ErrorCode } from '@/types/errors'
 import { checkedAtText } from './checkedAt'
 import { SetupScreen } from './SetupScreen'
@@ -24,6 +27,13 @@ const installStore = vi.hoisted(() => ({ latest: vi.fn(), download: vi.fn() }))
 vi.mock('@/lib/storage/installFiles', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/storage/installFiles')>()
   return { ...real, latestInstallFiles: installStore.latest, downloadInstallFile: installStore.download }
+})
+// 병원 정보(쓰는 EMR, emr-choice REQ-7104)는 시험마다 가짜로 바꿀 수 있다. clinic.view가 null이면 진짜 훅을 그대로 쓴다 —
+// 시험 환경에는 Supabase 설정이 없어 진짜 훅은 읽기 실패(failed)로 끝나고 'bit'처럼 돈다(옛 시험은 지금 화면 그대로)
+const clinic = vi.hoisted(() => ({ view: null as ClinicProfileView | null }))
+vi.mock('@/components/clinic/useClinicProfile', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/components/clinic/useClinicProfile')>()
+  return { ...real, useClinicProfile: (options?: { logo?: boolean }) => clinic.view ?? real.useClinicProfile(options) }
 })
 
 type Reply = Record<string, unknown>
@@ -1412,5 +1422,172 @@ describe('AC-7002.1·AC-7002.2 데스크로 연 연결 화면', () => {
     await waitFor(() => expectInfo(card, 'E-BRIDGE-BUSY'))
     expect(within(card).getByRole('link', { name: '건수만 보기' }).getAttribute('href')).toBe('/claim')
     expect(screen.getByRole('heading', { level: 1, name: '설정' })).toBeTruthy()
+  })
+})
+
+// 비트가 아닌 병원의 비트 PC 연결 화면 (emr-choice REQ-7104, design.md 5절, 시안 docs/mockups/emr-choice ③).
+// 병원 정보를 읽었고(ready) 쓰는 EMR이 'bit'가 아니면 머리 아래에 안내 상자 하나만 있다. 도우미 연결은 그대로 돌지만 화면에 쓰지 않는다.
+// 글자는 요구사항 글을 그대로 적어 맞춘다(lib/clinic/emrText.ts의 값을 다시 쓰지 않는다)
+describe('AC-7104.1·AC-7104.2 비트가 아닌 병원의 연결 화면', () => {
+  const viewOf = (state: ClinicProfileState, emr: EmrKind, saved = true): ClinicProfileView => ({
+    state,
+    profile: { ...defaultProfile(), emr },
+    saved,
+    signupName: CLINIC,
+    signupPhone: null,
+    name: CLINIC,
+    logoDataUrl: null,
+    reload: () => {},
+  })
+  const NON_BIT = [
+    { emr: 'uisarang', title: '의사랑 연결은 준비하고 있어요', ro: '의사랑으로' },
+    { emr: 'egis', title: '이지스 연결은 준비하고 있어요', ro: '이지스로' },
+    { emr: 'other', title: '우리 병원 EMR은 아직 연결할 수 없어요', ro: '그 밖의 EMR로' },
+  ] as const
+  const sayOf = (ro: string) => [
+    `우리 병원은 쓰는 EMR이 ${ro} 되어 있어요. 이 화면은 비트를 쓰는 PC를 연결하는 곳이라, 지금은 쓸 일이 없어요.`,
+    '비트를 쓰고 있다면 설정 → 병원 정보에서 쓰는 EMR을 비트로 바꿔 주세요.',
+  ]
+  const DESK_SAY = '원장님 계정에서 바꿀 수 있어요.'
+  const CHANGE = '쓰는 EMR 바꾸기'
+  const renderAs = (desk: boolean) =>
+    render(
+      <RoleProvider desk={desk}>
+        <SetupScreen clinicName={CLINIC} />
+      </RoleProvider>,
+    )
+  // 도우미 답(setTimeout 0)이 다 올 때까지 기다린다
+  const settle = () => act(() => new Promise((r) => setTimeout(r, 30)))
+  // 세 가지 연결 상태: 확장 없음(맨 위 안내·[확장 내려받기] 자리), 다 붙고 새 도우미 있음('준비됨'·'새 도우미' 줄 자리), 다른 창이 쓰는 중(busy 카드 자리)
+  const ARRANGE = [
+    ['확장 없음', () => noExtension()],
+    ['준비됨 + 새 도우미', () => void fakeExtension({ hello: helloWith({ helperVersion: '0.3.0' }) })],
+    ['다른 창이 쓰는 중', () => void fakeExtension({ hello: 'busy' })],
+  ] as const
+
+  /** 안내 상자 말고 연결 화면의 것이 하나도 없다 */
+  function expectOnlyBox(label: string) {
+    expect(screen.queryByRole('list', { name: '준비 순서' }), label).toBeNull()
+    expect(screen.queryByRole('region', { name: '이 PC' }), label).toBeNull()
+    expect(screen.queryByRole('region', { name: '이렇게 지켜요' }), label).toBeNull()
+    expect(screen.queryByRole('alert'), label).toBeNull()
+    expect(screen.queryAllByRole('button'), label).toEqual([])
+    const gone = [...NOTE, '준비됨', '새 도우미가 있어요.', '확장 내려받기', '도우미 내려받기', '새 도우미 내려받기', '건수만 보기', '청구로 가기', '수납일지로 가기']
+    for (const t of gone) expect(screen.queryByText(t), `${label} ${t}`).toBeNull()
+    expect(document.body.textContent, label).not.toContain(HELPER_META)
+    expect(document.body.textContent, label).not.toContain(EXTENSION_META)
+  }
+
+  afterEach(() => {
+    cleanup()
+    clinic.view = null
+  })
+
+  it("AC-7104.1: 원장 × 의사랑·이지스·그 밖의 EMR — 머리는 제목 '설정'과 안쪽 메뉴 그대로, 그 아래 안내 상자 하나(제목·글 둘·[쓰는 EMR 바꾸기] /settings)만 있다", async () => {
+    for (const { emr, title, ro } of NON_BIT) {
+      for (const [state, arrange] of ARRANGE) {
+        const label = `${emr} ${state}`
+        arrange()
+        clinic.view = viewOf('ready', emr)
+        const { container } = renderAs(false)
+        await settle()
+
+        expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent), label).toEqual(['설정'])
+        const sub = screen.getByRole('navigation', { name: '설정 안 메뉴' })
+        expect(within(sub).getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')]), label).toEqual([
+          ['설정', '/settings'],
+          ['비트 PC 연결', '/claim/setup'],
+        ])
+        // 머리 아래에는 상자 하나만
+        const root = container.firstElementChild as HTMLElement
+        expect(root.children, label).toHaveLength(2)
+        const box = screen.getByRole('region', { name: title })
+        expect(root.children[1], label).toBe(box)
+        expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent), label).toEqual([title])
+        for (const t of sayOf(ro)) expect(within(box).getByText(t), `${label} ${t}`).toBeTruthy()
+        const change = within(box).getByRole('link', { name: CHANGE })
+        expect(change.getAttribute('href'), label).toBe('/settings')
+        expect(isSecondary(change), label).toBe(true)
+        expect(primaries(), label).toEqual([])
+        expect(screen.queryByText(DESK_SAY), label).toBeNull()
+        expect(screen.getAllByRole('link'), label).toHaveLength(3)
+        expectOnlyBox(label)
+
+        cleanup()
+        vi.unstubAllGlobals()
+      }
+    }
+  })
+
+  it("AC-7104.1: 데스크 × 의사랑·이지스·그 밖의 EMR — 머리는 제목 '비트 PC 연결' 하나 그대로, 상자에는 단추 대신 '원장님 계정에서 바꿀 수 있어요.'", async () => {
+    for (const { emr, title, ro } of NON_BIT) {
+      for (const [state, arrange] of ARRANGE) {
+        const label = `${emr} ${state}`
+        arrange()
+        clinic.view = viewOf('ready', emr)
+        const { container } = renderAs(true)
+        await settle()
+
+        expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent), label).toEqual(['비트 PC 연결'])
+        expect(screen.queryAllByRole('navigation'), label).toEqual([])
+        const root = container.firstElementChild as HTMLElement
+        expect(root.children, label).toHaveLength(2)
+        const box = screen.getByRole('region', { name: title })
+        expect(root.children[1], label).toBe(box)
+        for (const t of [...sayOf(ro), DESK_SAY]) expect(within(box).getByText(t), `${label} ${t}`).toBeTruthy()
+        expect(screen.queryAllByRole('link'), label).toEqual([])
+        expect(screen.queryByText(CHANGE), label).toBeNull()
+        expectOnlyBox(label)
+
+        cleanup()
+        vi.unstubAllGlobals()
+      }
+    }
+  })
+
+  it('AC-7104.1: 비트가 아니어도 도우미 연결은 그대로 돈다(hello 뒤 bit.check) — 화면에만 쓰지 않는다', async () => {
+    const fake = fakeExtension({ hello: HELLO })
+    clinic.view = viewOf('ready', 'egis')
+    renderAs(false)
+    await waitFor(() => expect(fake.count('bit.check')).toBe(1))
+    await settle()
+    expect(screen.getByRole('region', { name: '이지스 연결은 준비하고 있어요' })).toBeTruthy()
+    expectOnlyBox('egis')
+  })
+
+  it("AC-7104.2: 쓰는 EMR이 'bit'이거나 병원 정보를 읽는 중·읽기 실패·줄 없음이면 연결 화면은 지금과 같다(원장·데스크)", async () => {
+    const cases: [string, ClinicProfileView][] = [
+      ['bit 저장됨', viewOf('ready', 'bit')],
+      ['줄 없음', viewOf('ready', 'bit', false)],
+      // 읽는 중·실패는 받은 값이 무엇이든 'bit'처럼 돈다
+      ['읽는 중', viewOf('loading', 'uisarang', false)],
+      ['읽기 실패', viewOf('failed', 'other', false)],
+    ]
+    for (const [name, view] of cases) {
+      for (const desk of [false, true]) {
+        const label = `${name} ${desk ? '데스크' : '원장'}`
+        fakeExtension({ hello: HELLO })
+        clinic.view = view
+        renderAs(desk)
+        await screen.findByText('준비됨')
+        expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent), label).toEqual([desk ? '비트 PC 연결' : '설정'])
+        expect(rows().map((li) => li.querySelector('h3')?.textContent), label).toEqual(STEP_TITLES)
+        expect(screen.getByRole('region', { name: '이 PC' }), label).toBeTruthy()
+        expect(screen.getByRole('link', { name: desk ? '수납일지로 가기' : '청구로 가기' }), label).toBeTruthy()
+        for (const { title } of NON_BIT) expect(screen.queryByText(title), label).toBeNull()
+        expect(screen.queryByRole('link', { name: CHANGE }), label).toBeNull()
+        expect(screen.queryByText(DESK_SAY), label).toBeNull()
+        expect(document.body.textContent, label).not.toContain('지금은 쓸 일이 없어요')
+
+        cleanup()
+        vi.unstubAllGlobals()
+      }
+    }
+    // 확장 없음도 지금처럼 맨 위 안내와 [확장 내려받기]
+    noExtension()
+    clinic.view = viewOf('ready', 'bit')
+    renderAs(false)
+    await screen.findByText(EXTENSION_META)
+    for (const t of NOTE) expect(screen.getByText(t)).toBeTruthy()
   })
 })
