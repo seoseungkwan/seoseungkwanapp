@@ -22,14 +22,14 @@
 - Phase: 2
 - AC: AC-7503.2, AC-7503.3, AC-7504.1
 - REQ: REQ-7503, REQ-7504
-- Files: helper/src/Precheck.PtSlip/MemoButtonForm.cs, helper/src/Precheck.PtSlip/NoticeForm.cs, helper/src/Precheck.PtSlip/SettingsForm.cs, helper/src/Precheck.PtSlip/Program.cs
-- Tests: (없음)
-- TDD: exempt — WinForms·잇기, 판단은 Core. 시안 글자 그대로. 가짜 DB 사진 + 이 PC 접수 화면(테스트 환자, 저장 없음)으로 확인
+- Files: helper/src/Precheck.PtSlip/MemoButtonForm.cs, helper/src/Precheck.PtSlip/NoticeForm.cs, helper/src/Precheck.PtSlip/SettingsForm.cs, helper/src/Precheck.PtSlip/Program.cs, helper/src/Precheck.Core/InjectionMemo/MemoNotices.cs, helper/tests/Precheck.Core.Tests/InjectionMemo/**
+- Tests: helper/tests/injection-memo.dotnet.test.ts
+- TDD: required — '넣지 못함' 알림 글(MemoNotices.TypeFailed, AC-7503.3)은 시험 먼저. WinForms·잇기는 판단 없이 Core를 부르기만, 시안 글자 그대로, 가짜 DB 사진으로 확인
 
-## TASK-4: 빌드·zip·검토
+## TASK-4: 설치(높은 권한)·빌드·zip·검토
 - Phase: 3
-- AC: AC-7503.2
-- REQ: REQ-7503
+- AC: AC-7503.2, AC-7504.2
+- REQ: REQ-7503, REQ-7504
 - Files: helper/install/ptslip/**, specs/injection-memo/notes/**
 - Tests: helper/tests/injection-memo.dotnet.test.ts
-- TDD: exempt — doc-print와 한 Release x86 zip(읽어주세요.txt에 주사 차수 단추·F8 안내 더함). 마지막 검토 한 번
+- TDD: exempt — 설치.cmd·지우기.cmd를 로그온 예약 작업(높은 권한)으로, 읽어주세요.txt에 주사 차수 단추·F8·'예' 한 번 안내. doc-print와 한 Release x86 zip. 이 PC에서 높은 권한 PtSlip으로 차트 926(사용자 본인, 동의)·2(테스트) 메모 칸 넣기 확인(저장 없이 지움). 마지막 검토 한 번
