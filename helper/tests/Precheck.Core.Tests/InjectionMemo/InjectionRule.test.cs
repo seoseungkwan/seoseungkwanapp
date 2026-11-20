@@ -350,5 +350,10 @@ public class InjectionRuleTests
         Assert.Equal("DNA 2차", Inserted(Lines(5, "", "DNA 1차")));
         Assert.Equal("오)어깨 2차", Inserted(Lines(5, "", "많이 좋아지면 2차 주사 합니다|Rt shoulder pain")));
         Assert.Equal("왼)무릎 3차", Inserted(Lines(5, "", "왼쪽 무릎 전 2차 주사")));
+
+        // 앞말에 좌우가 있으면 좌우 있는 부위 주사: 다른 주사 줄의 가운데 부위(C-MBB → 목)는 붙이지 않고 좌우를 남김(90일 대조 좌우 빠짐 62건)
+        Assert.Equal("양)아라간 2차", Inserted(Lines(5, "", "양 아라간 1차 + FNB SNB both|C-MBB 3,4,5")));
+        Assert.Equal("오)무릎 DNA 3차", Inserted(Lines(5, "", "Rt DNA 2차|C-MBB 3,4,5|knee OA")));
+        Assert.Equal("목 아라간 2차", Inserted(Lines(5, "", "아라간 1차|C-MBB 3,4,5")));
     }
 }

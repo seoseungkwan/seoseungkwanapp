@@ -350,6 +350,15 @@ public static class InjectionRule
         }
 
         var injectionLines = lines.Where(line => InjectionWord.IsMatch(line ?? "")).ToList();
+        if (drugs.Count > 0 && side.Length > 0)
+        {
+            // 앞말이 좌우 + 약 이름이면 좌우 있는 부위 주사다: 다른 주사 줄의 가운데 부위(C-MBB → 목 등)는 붙이지 않고 좌우를 남긴다
+            // (주사 말 줄 → 다른 줄, 없으면 '양)아라간 2차'. 90일 대조에서 좌우가 빠진 62건)
+            var sided = PartsOfLines(injectionLines, side).Found.Where(part => !IsAxialWord(part)).ToList();
+            if (sided.Count == 0) sided = PartsOfLines(lines, side).Found.Where(part => !IsAxialWord(part)).ToList();
+            return (side, string.Join(" ", new[] { string.Join(",", sided), string.Join(" ", drugs) }.Where(t => t.Length > 0)));
+        }
+
         var (lineSide, found) = PartsOfLines(injectionLines, side);
         if (found.Count == 0) (lineSide, found) = PartsOfLines(lines, side);
         found = SidedFirst(found);
