@@ -17,7 +17,6 @@ public static class MemoCompose
     public const int MaxLength = 50;
 
     private static readonly Regex SideHead = new Regex(@"^(오|왼|양)\)", RegexOptions.Compiled);
-    private static readonly Regex Separators = new Regex(@"[\s,]+", RegexOptions.Compiled);
 
     /// <summary>칸 글에 'xr'(대소문자 무시)이 있는지.</summary>
     public static bool HasXray(string? memo) => (memo ?? "").IndexOf("xr", StringComparison.OrdinalIgnoreCase) >= 0;
@@ -63,13 +62,13 @@ public static class MemoCompose
 
     private static string Suffix(int years) => "xr" + years + "년경과";
 
-    // 주사 글('오)무릎,발목 DNA 2차')의 메모 부위들(표의 다른 말도 같은 부위로)
+    // 주사 글('오)무릎,발목 DNA 2차'·'오)무릎관절 3차')의 메모 부위들 — 경과 부위와 같은 방법(표의 다른 말도 같은 부위로)
     private static List<string> PartsOfText(string text)
     {
         var result = new List<string>();
-        foreach (var word in Separators.Split(SideHead.Replace(text ?? "", "")))
+        foreach (var hit in InjectionRule.PartHits(SideHead.Replace(text ?? "", ""), loose: true).OrderBy(hit => hit.Index))
         {
-            var part = XrayParts.MemoPartOf(word);
+            var part = XrayParts.MemoPartOf(hit.Part);
             if (part != null && !result.Contains(part)) result.Add(part);
         }
         return result;

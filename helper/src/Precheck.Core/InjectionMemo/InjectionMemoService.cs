@@ -19,6 +19,8 @@ public static class InjectionMemoService
         if (db == null) throw new ArgumentNullException(nameof(db));
         var number = ChartNumber.Normalize(chart);
         if (number == null) return new MemoResult(MemoResultKind.NoPatient);
+        // 주사 차수도 엑스레이도 이미 적혀 있으면 더 넣을 게 없다(읽기 실패로 '이미 있음'을 가리지 않게 DB를 안 읽음)
+        if (MemoMerge.HasInjectionCount(currentMemo) && MemoCompose.HasXray(currentMemo)) return new MemoResult(MemoResultKind.AlreadyHas);
 
         try
         {

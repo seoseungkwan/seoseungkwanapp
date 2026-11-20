@@ -90,7 +90,7 @@ public static class XrayParts
         {
             foreach (var line in visit.SymptomLines)
             {
-                foreach (var hit in InjectionRule.PartHits(line).OrderBy(hit => hit.Index))
+                foreach (var hit in InjectionRule.PartHits(line, loose: true).OrderBy(hit => hit.Index))
                 {
                     var part = MemoPartOf(hit.Part);
                     if (part != null && !result.Contains(part)) result.Add(part);
@@ -117,7 +117,8 @@ public sealed class XrayDue
 
     public int Years { get; }
 
-    public override string ToString() => "XrayDue(" + Part + " " + Years + ")";
+    /// <summary>기한만(부위는 증상 기록에서 나온 환자 값이라 뺀다).</summary>
+    public override string ToString() => "XrayDue(" + Years + ")";
 }
 
 /// <summary>경과 판정(AC-7505.2): 기한 날(오늘 − N년)보다 뒤에 인정 코드가 하나라도 있으면 경과 아님, 없으면(기록이 아예 없어도) 경과.</summary>

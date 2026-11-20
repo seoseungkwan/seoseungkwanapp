@@ -47,6 +47,14 @@ public class XrayMemoTests
         Assert.Empty(PartsOf(Visit(5, "", "가슴 답답", "두통"), Visit(9, "물리치료")));
     }
 
+    [Fact(DisplayName = "AC-7505.1 좌우 말·다른 부위에 붙여 쓴 부위도(양무릎·우측어깨·왼무릎·오른쪽무릎·발뒤꿈치·등허리)")]
+    public void PartsGluedToSideOrPart()
+    {
+        Assert.Equal(new[] { "무릎", "어깨", "발" }, PartsOf(Visit(5, "", "양무릎 통증", "우측어깨 통증", "왼무릎 2차 주사", "오른쪽무릎", "Lt 발뒤꿈치 통증")));
+        Assert.Equal(new[] { "허리" }, PartsOf(Visit(5, "", "등허리 통증")));
+        Assert.Empty(PartsOf(Visit(5, "", "관무릎", "사어깨")));
+    }
+
     [Fact(DisplayName = "AC-7505.1 표의 말 → 메모에 쓰는 부위(견갑·회전근개→어깨, 경추→목, 흉추→등, 요추→허리, 천장관절→골반, 둔부→엉덩이, 사타구니→고관절 …)")]
     public void MapsWordsToMemoParts()
     {
@@ -141,6 +149,10 @@ public class XrayMemoTests
         Assert.Equal("왼)무릎 DNA 2차 xr1년경과", MemoCompose.Compose(Insert("왼)무릎 DNA 2차"), DueOf("무릎1"), "").Text);
         Assert.Equal("DNA 2차 무릎 xr1년경과", MemoCompose.Compose(Insert("DNA 2차"), DueOf("무릎1"), "").Text);
         Assert.Equal("목 3차 xr2년경과", MemoCompose.Compose(Insert("목 3차"), DueOf("목2"), "").Text);
+
+        // 주사 글 부위를 붙여 썼어도 부위는 한 번만
+        Assert.Equal("오)무릎관절 3차 xr1년경과", MemoCompose.Compose(Insert("오)무릎관절 3차"), DueOf("무릎1"), "").Text);
+        Assert.Equal("허리디스크 3차 xr2년경과", MemoCompose.Compose(Insert("허리디스크 3차"), DueOf("허리2"), "").Text);
 
         // 칸에 글이 있으면 '/'로 붙임(Append), 넣는 글(Text)은 '/' 없이
         var merged = MemoCompose.Compose(Insert("오)무릎 3차", "물리치료만"), DueOf("무릎1"), "물리치료만");
@@ -312,6 +324,20 @@ public class XrayMemoTests
         Assert.Equal("무릎 xr1년경과 허리 xr2년경과", already.Text);
         Assert.Equal("/무릎 xr1년경과 허리 xr2년경과", already.Append);
         Assert.Equal(MemoResultKind.AlreadyHas, already.Reason!.Kind);
+    }
+
+    [Fact(DisplayName = "AC-7505.3 서비스: 칸에 주사 차수와 'xr'이 다 있으면 DB를 읽지 않고 이미 있음")]
+    public void ServiceSkipsWhenMemoHasBoth()
+    {
+        var db = new FakeDb();
+        Assert.Equal(MemoResultKind.AlreadyHas, InjectionMemoService.Compute(db, Chart, "오)무릎 2차 xr1년경과", Today).Kind);
+        Assert.Empty(db.Calls);
+    }
+
+    [Fact(DisplayName = "AC-7503.3 경과 부위(XrayDue)도 ToString에 부위 글을 남기지 않음")]
+    public void XrayDueHidesPart()
+    {
+        Assert.DoesNotContain("무릎", new XrayDue("무릎", 1).ToString());
     }
 
     [Fact(DisplayName = "AC-7506.1 서비스: 칸에 'xr'이 있거나 부위가 없으면 영상은 안 읽고, 영상·그 전 내원 읽기 실패는 전체가 읽기 실패")]

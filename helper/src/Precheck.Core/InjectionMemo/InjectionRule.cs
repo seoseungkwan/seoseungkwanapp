@@ -389,11 +389,15 @@ public static class InjectionRule
     private static readonly HashSet<string> OneLetterParts = new HashSet<string>(StringComparer.Ordinal) { "발", "손", "목", "등", "팔" };
     private const string Particles = "이가은는을를에의도쪽만과와로";
 
+    // 부위 말 바로 앞에 붙여 쓰는 좌우 말(긴 것 먼저): '양무릎'·'우측어깨'·'오른쪽무릎'
+    private static readonly string[] SideHeads = { "오른쪽", "왼쪽", "양측", "양쪽", "우측", "좌측", "오른", "양", "왼", "우", "좌", "오" };
+
     /// <summary>
     /// 한 줄의 부위 말과 그 자리: 영어 부위(EnglishParts 차례, 처음 맞는 자리) 다음에 우리말 부위(나온 차례). 영어는 우리말로 바꿔 둔다.
-    /// 주사 차수 부위(PartsIn)와 엑스레이 경과 부위(XrayParts)가 같이 쓴다.
+    /// 주사 차수 부위(PartsIn)와 엑스레이 경과 부위(XrayParts·MemoCompose)가 같이 쓴다.
+    /// 우리말 부위는 앞 글자가 한글이면 안 잡는데, loose(엑스레이 경과)면 앞이 좌우 말('양무릎')이거나 바로 앞 부위 말에 붙은 것('발뒤꿈치')도 잡는다.
     /// </summary>
-    internal static List<(int Index, string Part)> PartHits(string line)
+    internal static List<(int Index, string Part)> PartHits(string line, bool loose = false)
     {
         var result = new List<(int Index, string Part)>();
         line = line ?? "";
@@ -403,12 +407,14 @@ public static class InjectionRule
             if (m.Success) result.Add((m.Index, pair.Value));
         }
         var i = 0;
+        var lastPartEnd = -1;
         while (i < line.Length)
         {
             string? hit = null;
+            var boundary = i == 0 || !IsHangul(line[i - 1]) || (loose && (i == lastPartEnd || AfterSide(line, i)));
             foreach (var part in PartsLongestFirst)
             {
-                if (string.CompareOrdinal(line, i, part, 0, part.Length) == 0 && (i == 0 || !IsHangul(line[i - 1])))
+                if (boundary && string.CompareOrdinal(line, i, part, 0, part.Length) == 0)
                 {
                     hit = part;
                     break;
@@ -421,6 +427,7 @@ public static class InjectionRule
                 var glued = OneLetterParts.Contains(hit) && i + 1 < line.Length && IsHangul(line[i + 1]) && Particles.IndexOf(line[i + 1]) < 0;
                 if (!weekday && !glued) result.Add((i, hit));
                 i += hit.Length;
+                lastPartEnd = i;
             }
             else
             {
@@ -428,6 +435,16 @@ public static class InjectionRule
             }
         }
         return result;
+    }
+
+    private static bool AfterSide(string line, int i)
+    {
+        foreach (var side in SideHeads)
+        {
+            var start = i - side.Length;
+            if (start >= 0 && string.CompareOrdinal(line, start, side, 0, side.Length) == 0 && (start == 0 || !IsHangul(line[start - 1]))) return true;
+        }
+        return false;
     }
 
     private static bool IsHangul(char c) => c >= '가' && c <= '힣';
