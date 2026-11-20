@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "injection-memo",
-  "approved_at": "2026-11-20T02:39:03Z",
+  "approved_at": "2026-11-20T03:30:57Z",
   "approved_via": "user-prompt",
   "session_id": "74aecb3c-14de-42ec-98b3-3aee3a20f070",
-  "spec_sha256": "a8c946887a00e1c41c5eb3771e0b0d8834cd3fcf6b59c63be65704d65f1083b9",
+  "spec_sha256": "bf8e52d0956d1b0d90226fe74c9463873865ffadfeed571154923de399991b84",
   "scope": [
     "(없음)",
     "helper/install/ptslip/**",
