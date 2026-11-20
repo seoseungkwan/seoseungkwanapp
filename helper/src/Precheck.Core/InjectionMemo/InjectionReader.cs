@@ -61,6 +61,61 @@ public static class InjectionReader
             .ToArray();
     }
 
+    /// <summary>엑스레이 경과(REQ-7506): 청구 코드 앞 3글자(대문자) → 오늘 앞 2년 안 마지막 영상 처방 날짜. 틀린 줄은 버린다.</summary>
+    public static IReadOnlyDictionary<string, DateTime> ReadXray(IBitDb db, string chart, DateTime today)
+    {
+        if (db == null) throw new ArgumentNullException(nameof(db));
+        var result = new Dictionary<string, DateTime>(StringComparer.Ordinal);
+        if (!ChartNumber.IsNormalized(chart)) return result;
+        var day = today.Date;
+        var args = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["@cht"] = chart,
+            ["@from"] = Stamp(day.AddYears(-XrayRule.LongestYears)),
+            ["@to"] = Stamp(day),
+        };
+        foreach (var row in ReadOnlyGuard.Query(db, InjectionSql.XraySql, args, InjectionSql.Timeout))
+        {
+            if (row == null || row.Count < 2) continue;
+            var code = Text(row[0]).Trim().ToUpperInvariant();
+            if (code.Length == 0 || !TryDay(Text(row[1]), out var date)) continue;
+            if (!result.TryGetValue(code, out var seen) || date > seen) result[code] = date;
+        }
+        return result;
+    }
+
+    /// <summary>30일 안에 증상 줄 있는 내원이 없을 때(REQ-7506): 그 전 마지막 외래 내원 하나(증상 줄 EmrShtSeq 차례). 없으면 null.</summary>
+    public static VisitNote? ReadLastBefore(IBitDb db, string chart, DateTime today)
+    {
+        if (db == null) throw new ArgumentNullException(nameof(db));
+        if (!ChartNumber.IsNormalized(chart)) return null;
+        var args = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["@cht"] = chart,
+            ["@from"] = Stamp(today.Date.AddDays(-InjectionRule.WindowDays)),
+        };
+        DateTime? date = null;
+        var lines = new List<(decimal Seq, string Text)>();
+        foreach (var row in ReadOnlyGuard.Query(db, InjectionSql.LastBeforeSql, args, InjectionSql.Timeout))
+        {
+            if (row == null || row.Count < 4) continue;
+            if (date == null)
+            {
+                if (!TryDay(Text(row[1]), out var day)) return null;
+                date = day;
+            }
+            lines.Add((Seq(row[2]), Text(row[3])));
+        }
+        return date == null ? null : new VisitNote(date.Value, lines.OrderBy(line => line.Seq).Select(line => line.Text).ToArray(), "");
+    }
+
+    private static bool TryDay(string stamp, out DateTime day)
+    {
+        day = default;
+        var text = stamp.Trim();
+        return text.Length >= 8 && DateTime.TryParseExact(text.Substring(0, 8), "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out day);
+    }
+
     private static string Stamp(DateTime day) => day.ToString("yyyyMMdd", CultureInfo.InvariantCulture) + "0000";
 
     private static string Text(object? value) => value == null ? "" : Convert.ToString(value, CultureInfo.InvariantCulture) ?? "";

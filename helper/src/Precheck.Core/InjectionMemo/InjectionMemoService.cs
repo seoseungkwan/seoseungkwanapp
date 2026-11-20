@@ -19,19 +19,30 @@ public static class InjectionMemoService
         if (db == null) throw new ArgumentNullException(nameof(db));
         var number = ChartNumber.Normalize(chart);
         if (number == null) return new MemoResult(MemoResultKind.NoPatient);
-        if (MemoMerge.HasInjectionCount(currentMemo)) return new MemoResult(MemoResultKind.AlreadyHas);
 
-        IReadOnlyList<VisitNote> notes;
         try
         {
-            notes = InjectionReader.Read(db, number, today);
+            var notes = InjectionReader.Read(db, number, today);
+            var injection = Injection(notes, currentMemo, today);
+
+            // 엑스레이 경과(REQ-7505·7506): 칸에 xr이 있으면 안 읽음, 30일 안 증상 없으면 그 전 마지막 내원, 부위가 없으면 영상 안 읽음
+            if (MemoCompose.HasXray(currentMemo)) return injection;
+            var lastBefore = XrayParts.HasSymptoms(notes, today) ? null : InjectionReader.ReadLastBefore(db, number, today);
+            var parts = XrayParts.Of(notes, lastBefore, today);
+            if (parts.Count == 0) return injection;
+            var shots = InjectionReader.ReadXray(db, number, today);
+            return MemoCompose.Compose(injection, XrayRule.Overdue(parts, shots, today), currentMemo);
         }
         catch (Exception)
         {
             // 어떤 실패든 알림은 '비트에서 기록을 읽지 못했어요'만(오류 내용·환자 값을 남기지 않는다)
             return new MemoResult(MemoResultKind.Failed);
         }
+    }
 
+    private static MemoResult Injection(IReadOnlyList<VisitNote> notes, string? currentMemo, DateTime today)
+    {
+        if (MemoMerge.HasInjectionCount(currentMemo)) return new MemoResult(MemoResultKind.AlreadyHas);
         var decided = InjectionRule.Decide(notes, today);
         if (decided.Kind != MemoResultKind.Insert) return decided;
         return new MemoResult(MemoResultKind.Insert, decided.Text, append: MemoMerge.AppendText(currentMemo, decided.Text));

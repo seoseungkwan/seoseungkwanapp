@@ -30,15 +30,19 @@ public class InjectionReadTests
     // 증상 줄: [내원 번호, 차례 EmrShtSeq, 글 EmrShtVal]
     private static object?[] LineRow(string id, object seq, string? text) => new object?[] { id, seq, text };
 
-    private static FakeDb Db(object?[][] visits, object?[][] lines) =>
-        new FakeDb().Answer(InjectionSql.VisitsSql, _ => visits).Answer(InjectionSql.LinesSql, _ => lines);
+    // 영상 처방(REQ-7506)은 따로 주지 않으면 빈 답. 주사 차수만 보려는 시험은 최근 사진(Recent)을 준다
+    private static FakeDb Db(object?[][] visits, object?[][] lines, object?[][]? xray = null) =>
+        new FakeDb().Answer(InjectionSql.VisitsSql, _ => visits).Answer(InjectionSql.LinesSql, _ => lines)
+            .Answer(InjectionSql.XraySql, _ => xray ?? new object?[][] { }).Answer(InjectionSql.LastBeforeSql, _ => new object?[][] { });
+
+    private static object?[][] Recent(params string[] codes) => codes.Select(code => new object?[] { code, "202611010900" }).ToArray();
 
     // ── 허용 목록 ─────────────────────────────
 
     [Fact(DisplayName = "AC-7502.1 문장은 읽기 전용 SELECT 둘(; · 주석 · 쓰기 낱말 없음)이고 Sql.IsAllowed·ReadOnlyGuard를 정해 둔 매개변수와 함께만 지난다(청구 Sql.All 밖)")]
     public void SqlIsGuardedSelect()
     {
-        Assert.Equal(Both.OrderBy(s => s, StringComparer.Ordinal), InjectionSql.All.OrderBy(s => s, StringComparer.Ordinal));
+        Assert.Equal(Both.Concat(new[] { InjectionSql.XraySql, InjectionSql.LastBeforeSql }).OrderBy(s => s, StringComparer.Ordinal), InjectionSql.All.OrderBy(s => s, StringComparer.Ordinal));
         foreach (var sql in Both)
         {
             Assert.StartsWith("SELECT ", sql, StringComparison.Ordinal);
@@ -164,7 +168,8 @@ public class InjectionReadTests
     {
         var db = Db(
             new[] { VisitRow("V1", "202611131000", "오)무릎 2차") },
-            new[] { LineRow("V1", 1, "오른쪽 무릎 2차 주사 + FNB") });
+            new[] { LineRow("V1", 1, "오른쪽 무릎 2차 주사 + FNB") },
+            Recent("G72"));
         var result = InjectionMemoService.Compute(db, " 0090001 ", "", new DateTime(2026, 11, 20, 9, 5, 0));
         Assert.Equal(MemoResultKind.Insert, result.Kind);
         Assert.Equal("오)무릎 3차", result.Text);
@@ -173,7 +178,8 @@ public class InjectionReadTests
 
         var early = Db(
             new[] { VisitRow("V1", "202611180930", "") },
-            new[] { LineRow("V1", 1, "Rt. knee OA"), LineRow("V1", 2, "1주뒤 2차 주사") });
+            new[] { LineRow("V1", 1, "Rt. knee OA"), LineRow("V1", 2, "1주뒤 2차 주사") },
+            Recent("G72"));
         var tooEarly = InjectionMemoService.Compute(early, Chart, "", Today);
         Assert.Equal(MemoResultKind.TooEarly, tooEarly.Kind);
         Assert.Equal(Day(11, 25), tooEarly.PlannedDate);

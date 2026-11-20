@@ -38,16 +38,19 @@ public class MemoMergeTests
         Assert.False(MemoMerge.HasInjectionCount(null));
     }
 
-    [Fact(DisplayName = "AC-7503.1 서비스: 칸 글에 주사 차수가 있으면 DB에 묻지 않고 이미 있음, 글이 있으면 칸 끝에 '/새 글'을 친다")]
+    [Fact(DisplayName = "AC-7503.1 서비스: 칸 글에 주사 차수가 있으면 이미 있음, 글이 있으면 칸 끝에 '/새 글'을 친다")]
     public void ServiceMerges()
     {
-        var empty = new FakeDb();
+        // 영상(REQ-7506)은 빈 답 · 최근 무릎 사진: 경과가 없어 주사 차수만 본다
+        var empty = new FakeDb()
+            .Answer(InjectionSql.VisitsSql, _ => new object?[][] { }).Answer(InjectionSql.LinesSql, _ => new object?[][] { })
+            .Answer(InjectionSql.LastBeforeSql, _ => new object?[][] { }).Answer(InjectionSql.XraySql, _ => new object?[][] { });
         Assert.Equal(MemoResultKind.AlreadyHas, InjectionMemoService.Compute(empty, Chart, "오)무릎 2차", Today).Kind);
-        Assert.Empty(empty.Calls);
 
         var db = new FakeDb()
             .Answer(InjectionSql.VisitsSql, _ => new[] { new object?[] { "V1", "202611131000", "" } })
-            .Answer(InjectionSql.LinesSql, _ => new[] { new object?[] { "V1", 1, "오른쪽 무릎 2차 주사" } });
+            .Answer(InjectionSql.LinesSql, _ => new[] { new object?[] { "V1", 1, "오른쪽 무릎 2차 주사" } })
+            .Answer(InjectionSql.XraySql, _ => new[] { new object?[] { "G72", "202611010900" } });
         var result = InjectionMemoService.Compute(db, Chart, "물리치료만", Today);
         Assert.Equal(MemoResultKind.Insert, result.Kind);
         Assert.Equal("오)무릎 3차", result.Text);

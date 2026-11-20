@@ -35,6 +35,33 @@ public static class InjectionSql
         + "JOIN dbo.EmrInf e ON e.EmrOcmNum=c.OcmNum\n"
         + InRange + " AND e.EmrShtTyp='S'";
 
+    /// <summary>
+    /// 엑스레이 경과(REQ-7506): 그 환자의 @from(오늘 − 2년)~@to(오늘 0시) 영상 처방(영수증 항목 30, 삭제·취소 아님)을
+    /// 청구 코드 앞 3글자(G + 부위 두 자리)별 마지막 처방 시각으로 DB 안에서 묶는다. 질문 자체는 약 60ms(2026-11-20 이 PC, 테스트 환자).
+    /// </summary>
+    public const string XraySql =
+        "SELECT LEFT(UPPER(RTRIM(o.OdrElcCod)),3) Code3,MAX(o.OdrDtm) LastDtm\n"
+        + "FROM dbo.OdrInf o\n"
+        + "WHERE LTRIM(RTRIM(o.OdrChtNum))=@cht AND o.OdrDtm>=@from AND o.OdrDtm<@to AND o.OdrIncCod=30 AND o.OdrDelFlg='N' AND o.OdrCanYon='N'\n"
+        + "GROUP BY LEFT(UPPER(RTRIM(o.OdrElcCod)),3)";
+
+    /// <summary>
+    /// 30일 안에 증상 줄 있는 내원이 없을 때만(REQ-7506): @from(오늘 30일 앞 0시) 전 외래 내원 가운데 증상 줄 있는 마지막 하나의 증상 줄.
+    /// </summary>
+    public const string LastBeforeSql =
+        "SELECT RTRIM(c.OcmNum) VisitId,c.OcmAcpDtm,e.EmrShtSeq,e.EmrShtVal\n"
+        + "FROM dbo.OcmInf c JOIN dbo.EmrInf e ON e.EmrOcmNum=c.OcmNum\n"
+        + "WHERE e.EmrShtTyp='S' AND c.OcmNum=(SELECT TOP 1 c2.OcmNum FROM dbo.PbsInf b JOIN dbo.OcmInf c2 ON c2.OcmChtNum=b.PbsChtNum"
+        + " WHERE LTRIM(RTRIM(b.PbsChtNum))=@cht AND c2.OcmAcpDtm<@from AND c2.OcmPatTyp='O' AND c2.OcmRsuYon<>'O'"
+        + " AND EXISTS(SELECT 1 FROM dbo.EmrInf e2 WHERE e2.EmrOcmNum=c2.OcmNum AND e2.EmrShtTyp='S')"
+        + " ORDER BY c2.OcmAcpDtm DESC,c2.OcmNum DESC)";
+
+    private static readonly SqlParam[] Before =
+    {
+        new SqlParam("@cht", SqlParamKind.VarChar, 14),
+        new SqlParam("@from", SqlParamKind.Char, 12),
+    };
+
     private static readonly SqlParam[] Range =
     {
         new SqlParam("@cht", SqlParamKind.VarChar, 14),
@@ -46,6 +73,8 @@ public static class InjectionSql
     {
         [VisitsSql] = Range,
         [LinesSql] = Range,
+        [XraySql] = Range,
+        [LastBeforeSql] = Before,
     };
 
     /// <summary>주사 차수 SQL 목록.</summary>

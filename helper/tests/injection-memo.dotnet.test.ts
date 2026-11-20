@@ -65,6 +65,26 @@ describe('REQ-7503 메모 넣기 (C# Precheck.Core.Tests.InjectionMemo)', () => 
   })
 })
 
+describe('REQ-7505 엑스레이 경과 (C# Precheck.Core.Tests.InjectionMemo)', () => {
+  it("AC-7505.1 30일 안 모든 내원(없으면 그 전 마지막 내원) 증상 줄의 표 부위를 메모 부위로 나온 차례·중복 없이, 좌우 안 가림, 한 글자 부위는 조사일 때만", () => {
+    expectAc('AC-7505.1')
+  })
+
+  it('AC-7505.2 무릎 1년·그 밖 2년 안에 인정 코드가 없으면(기록 없어도) 경과', () => {
+    expectAc('AC-7505.2')
+  })
+
+  it("AC-7505.3 주사 부위 하나가 경과면 'xrN년경과'를 뒤에, 다른 부위는 '<부위> xrN년경과', 주사 없어도 경과만, 칸에 xr 있으면 안 붙임, 50자 넘으면 뒤 조각부터 뺌", () => {
+    expectAc('AC-7505.3')
+  })
+})
+
+describe('REQ-7506 영상 처방 읽기 (C# Precheck.Core.Tests.InjectionMemo)', () => {
+  it('AC-7506.1 허용 목록 SELECT로 코드 앞 3글자별 마지막 날짜(2년), 30일 안 증상 없을 때만 그 전 마지막 내원 증상 줄, 실패는 읽기 실패', () => {
+    expectAc('AC-7506.1')
+  })
+})
+
 describe('REQ-7504 설정 (C# Precheck.Core.Tests.InjectionMemo)', () => {
   it('AC-7504.1 기본 F8·0, 단축키 F4·F8·F10·F11만, 단추 자리 -400~400px, memo-settings.json, 깨진 파일은 기본값', () => {
     expectAc('AC-7504.1')

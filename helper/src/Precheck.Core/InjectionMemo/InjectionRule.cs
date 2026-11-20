@@ -378,9 +378,29 @@ public static class InjectionRule
     private static List<string> PartsIn(string line)
     {
         var result = new List<string>();
+        foreach (var hit in PartHits(line))
+        {
+            if (!result.Contains(hit.Part)) result.Add(hit.Part);
+        }
+        return result;
+    }
+
+    // 한 글자 부위: 뒤가 한글이면 조사일 때만 부위('발생'·'손상'·'목요일'·'등록'은 아님, AC-7505.1)
+    private static readonly HashSet<string> OneLetterParts = new HashSet<string>(StringComparer.Ordinal) { "발", "손", "목", "등", "팔" };
+    private const string Particles = "이가은는을를에의도쪽만과와로";
+
+    /// <summary>
+    /// 한 줄의 부위 말과 그 자리: 영어 부위(EnglishParts 차례, 처음 맞는 자리) 다음에 우리말 부위(나온 차례). 영어는 우리말로 바꿔 둔다.
+    /// 주사 차수 부위(PartsIn)와 엑스레이 경과 부위(XrayParts)가 같이 쓴다.
+    /// </summary>
+    internal static List<(int Index, string Part)> PartHits(string line)
+    {
+        var result = new List<(int Index, string Part)>();
+        line = line ?? "";
         foreach (var pair in EnglishParts)
         {
-            if (pair.Key.IsMatch(line) && !result.Contains(pair.Value)) result.Add(pair.Value);
+            var m = pair.Key.Match(line);
+            if (m.Success) result.Add((m.Index, pair.Value));
         }
         var i = 0;
         while (i < line.Length)
@@ -398,7 +418,8 @@ public static class InjectionRule
             {
                 // '목'이 요일로 쓰인 경우는 뺀다
                 var weekday = hit == "목" && NeckAsWeekday.IsMatch(line);
-                if (!weekday && !result.Contains(hit)) result.Add(hit);
+                var glued = OneLetterParts.Contains(hit) && i + 1 < line.Length && IsHangul(line[i + 1]) && Particles.IndexOf(line[i + 1]) < 0;
+                if (!weekday && !glued) result.Add((i, hit));
                 i += hit.Length;
             }
             else

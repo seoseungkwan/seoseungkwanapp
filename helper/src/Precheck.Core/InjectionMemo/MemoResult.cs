@@ -33,13 +33,14 @@ public enum MemoResultKind
 /// </summary>
 public sealed class MemoResult
 {
-    public MemoResult(MemoResultKind kind, string? text = null, DateTime? plannedDate = null, int untilNumber = 0, string? append = null)
+    public MemoResult(MemoResultKind kind, string? text = null, DateTime? plannedDate = null, int untilNumber = 0, string? append = null, MemoResult? reason = null)
     {
         Kind = kind;
         Text = kind == MemoResultKind.Insert ? (text ?? "") : "";
         Append = kind == MemoResultKind.Insert ? (append ?? Text) : "";
         PlannedDate = kind == MemoResultKind.TooEarly ? plannedDate?.Date : null;
         UntilNumber = kind == MemoResultKind.Finished ? untilNumber : 0;
+        Reason = kind == MemoResultKind.Insert ? reason : null;
     }
 
     public MemoResultKind Kind { get; }
@@ -55,6 +56,9 @@ public sealed class MemoResult
 
     /// <summary>'N차까지'의 N.</summary>
     public int UntilNumber { get; }
+
+    /// <summary>엑스레이 경과만 넣고 주사 글은 못 넣었을 때 그 주사 쪽 결과(기록 없음·끝남·일찍 옴·이미 있음, AC-7505.3·.4). 그 밖에는 null.</summary>
+    public MemoResult? Reason { get; }
 
     /// <summary>종류만(넣을 글·날짜는 환자 값이라 빼고).</summary>
     public override string ToString() => "MemoResult(" + Kind + ")";
