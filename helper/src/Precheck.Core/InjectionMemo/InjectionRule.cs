@@ -73,6 +73,10 @@ public static class InjectionRule
     private static readonly Regex Spaces = new Regex(@"\s+", RegexOptions.Compiled);
     private static readonly Regex NerveBlock = new Regex(@"^(FNB|fnb|NB|TPI|tpi|SNB|snb|MBB|mbb|SSNB|ssnb|ANB|anb)$", RegexOptions.Compiled);
     private static readonly Regex PainWord = new Regex(@"^(pain|통증|pt|PT|inj)$", RegexOptions.Compiled);
+    // 약 이름: 한 줄에 부위와 같이 있으면 부위 뒤에 띄어 쓴다('왼)무릎 DNA 2차', 2026-11-20 사용자)
+    private static readonly Regex DrugWord = new Regex(@"^(DNA|PDRN|아라간|프롤로)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    // 점이 조각 끝이 아니라 줄임말 점인 낱말('Rt.'·'Lt.'·'Bil.'·'inj.')
+    private static readonly HashSet<string> DotAbbreviations = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "rt", "lt", "bil", "both", "inj" };
     private static readonly Regex InjectionWord = new Regex(@"주사|\binj|SNB|MBB|SSNB|ANB|FNB|TPI|DNA|PDRN|아라간|프롤로|block|블록|차단", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex NeckAsWeekday = new Regex(@"다음\s*주\s*목|목\s*요일|[월화수금]\s*/\s*목|목\s*/\s*[월화수금]", RegexOptions.Compiled);
 
@@ -173,21 +177,30 @@ public static class InjectionRule
 
     private static string Head(string s, int n) => s.Length <= n ? s : s.Substring(0, n);
 
-    // 조각 나눔: '/'·'.'·';'(앞쪽은 '>'도). 요일 사이 '/'('월/목')는 요일 묶음이라 나누지 않는다
+    // 조각 나눔: '/'·'.'·';'(앞쪽은 '>'도). 요일 사이 '/'('월/목')는 요일 묶음이라, 줄임말 점('Rt.'·'inj.')은 낱말 끝이라 나누지 않는다
     private static int ClauseStart(string line, int pos)
     {
         for (var i = pos - 1; i >= 0; i--)
         {
-            if ((line[i] == '/' && !IsWeekdaySlash(line, i)) || line[i] == '.' || line[i] == ';' || line[i] == '>') return i + 1;
+            if ((line[i] == '/' && !IsWeekdaySlash(line, i)) || (line[i] == '.' && !IsAbbreviationDot(line, i)) || line[i] == ';' || line[i] == '>') return i + 1;
         }
         return 0;
     }
+
+    private static bool IsAbbreviationDot(string line, int dot)
+    {
+        var start = dot;
+        while (start > 0 && IsAsciiLetter(line[start - 1])) start--;
+        return start < dot && DotAbbreviations.Contains(line.Substring(start, dot - start));
+    }
+
+    private static bool IsAsciiLetter(char c) => (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
 
     private static int ClauseEnd(string line, int pos)
     {
         for (var i = pos; i < line.Length; i++)
         {
-            if ((line[i] == '/' && !IsWeekdaySlash(line, i)) || line[i] == '.' || line[i] == ';') return i;
+            if ((line[i] == '/' && !IsWeekdaySlash(line, i)) || (line[i] == '.' && !IsAbbreviationDot(line, i)) || line[i] == ';') return i;
         }
         return line.Length;
     }
@@ -301,15 +314,21 @@ public static class InjectionRule
         if (sm.Success && sm.Index == 0)
         {
             side = SideOf(sm.Groups[1].Value);
-            pre = pre.Substring(sm.Length).Trim();
+            pre = pre.Substring(sm.Length).TrimStart('.', ' ').Trim();
         }
         if (pre.Length > 0)
         {
             var words = new List<string>();
+            var drugs = new List<string>();
             foreach (var w0 in pre.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
             {
                 if (NerveBlock.IsMatch(w0)) continue;   // 신경차단 이름(덧붙이·차단술)은 빼고 부위는 다른 줄에서
                 if (PainWord.IsMatch(w0)) continue;
+                if (DrugWord.IsMatch(w0))
+                {
+                    if (!drugs.Contains(w0)) drugs.Add(w0);
+                    continue;
+                }
                 var w = w0;
                 foreach (var pair in EnglishParts)
                 {
@@ -321,7 +340,12 @@ public static class InjectionRule
                 }
                 if (!words.Contains(w)) words.Add(w);
             }
-            if (words.Count > 0) return (words.All(Axial.Contains) ? "" : side, string.Join(",", words));
+            if (words.Count + drugs.Count > 0)
+            {
+                // 부위끼리는 쉼표, 약 이름은 그 뒤에 띄어 씀. 약 이름만이면 약 이름만('양)아라간 2차')
+                var text = string.Join(" ", new[] { string.Join(",", words), string.Join(" ", drugs) }.Where(t => t.Length > 0));
+                return (words.Count > 0 && drugs.Count == 0 && words.All(Axial.Contains) ? "" : side, text);
+            }
         }
 
         var injectionLines = lines.Where(line => InjectionWord.IsMatch(line ?? "")).ToList();

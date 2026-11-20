@@ -64,6 +64,25 @@ public class InjectionRuleTests
         Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "Rt knee injection 2차")));
     }
 
+    [Fact(DisplayName = "AC-7501.1 한 줄에 부위와 약 이름이 같이 있으면 부위 뒤에 띄어 씀(Lt knee DNA 1차 → 왼)무릎 DNA 2차, 2026-11-20 사용자)")]
+    public void PartThenDrugWithSpace()
+    {
+        Assert.Equal("왼)무릎 DNA 2차", Inserted(Visit(7, "", "Lt knee DNA 1차")));
+        Assert.Equal("오)무릎 DNA 2차", Inserted(Visit(7, "", "우측 무릎 DNA 1차")));
+        Assert.Equal("양)무릎,발목 DNA 2차", Inserted(Visit(7, "", "양측 무릎 발목 DNA 2차 주사 합니다")));
+        Assert.Equal("오)어깨 PDRN 3차", Inserted(Visit(7, "", "Rt shoulder PDRN 2차")));
+        Assert.Equal("DNA 2차", Inserted(Visit(7, "", "DNA 1차")));
+        Assert.Equal("오)DNA 2차", Inserted(Visit(7, "", "Rt DNA 1차")));
+    }
+
+    [Fact(DisplayName = "AC-7501.1 좌우 줄임말 뒤 점('Rt.'·'Lt.')에서 조각을 나누지 않음(Rt. knee 2차 주사 → 오)무릎 3차)")]
+    public void SideAbbreviationDot()
+    {
+        Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "Rt. knee 2차 주사")));
+        Assert.Equal("왼)어깨 2차", Inserted(Visit(7, "", "Lt. 어깨 1차 주사")));
+        Assert.Equal("양)무릎 2차", Inserted(Visit(7, "", "Bil. knee inj. 1차")));
+    }
+
     // ── AC-7501.2 번호 ─────────────────────────────
 
     [Fact(DisplayName = "AC-7501.2 그날 한 것은 +1 ('양 아라간 1차 + FNB' → 2차, '2차 주사 시행' → 3차)")]

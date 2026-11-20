@@ -70,7 +70,7 @@ public static class InjectionReader
         decimal.TryParse(Text(value).Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out var seq) ? seq : decimal.MaxValue;
 }
 
-/// <summary>차트번호 글 정리(PT 종이·서류 인쇄와 같은 1~14자리).</summary>
+/// <summary>차트번호 글 정리(PT 종이와 같은 1~14자리).</summary>
 internal static class ChartNumber
 {
     public const int MaxDigits = 14;

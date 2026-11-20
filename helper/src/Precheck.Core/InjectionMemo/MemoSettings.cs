@@ -10,7 +10,7 @@ namespace Precheck.Core.InjectionMemo;
 
 /// <summary>
 /// 주사 차수 단축키·단추 자리(AC-7504.1). 파일은 %LOCALAPPDATA%\PtSlip\memo-settings.json(쓰고 읽기는 윈도우 층 MemoSettingsFile),
-/// PT 종이 settings.json·서류 doc-settings.json과 따로 둔다. 환자 값은 담지 않는다.
+/// PT 종이 settings.json과 따로 둔다. 환자 값은 담지 않는다.
 /// </summary>
 public sealed class MemoSettings
 {
