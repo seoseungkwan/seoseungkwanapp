@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
+using Precheck.Core.DocPrint;
 using Precheck.Core.PtSlip;
 
 namespace Precheck.PtSlip;
@@ -8,10 +11,10 @@ namespace Precheck.PtSlip;
 /// <summary>
 /// 설정 창(PT 종이 시안 ⑦·서류 시안 ⑥, AC-6401·AC-6403.4·AC-7406.3). 탭 셋:
 /// `PT 종이` — 치료 항목·부위 목록(한 줄에 하나), 프린터와 [시험 1장](빈 양식)·[프린터 종이 설정], 종이 길이(mm), 빅솔론에 직접 보내기.
-/// `서류` — 빈 판(DocsTabPanel, 서류 창 쪽이 채운다).
-/// `단추 자리` — 버튼 자리(◀ 왼쪽으로 / 오른쪽으로 ▶, 20px씩, [서류]·[PT 먼저] 두 단추에 바로 보임).
-/// [저장]·[취소]는 탭 아래 한 줄. [저장]은 Core 규칙으로 검사해 틀리면 저장하지 않고, 맞으면 settings.json에 쓴다.
-/// [취소]·닫기는 버튼 자리를 처음대로 되돌린다.
+/// `서류` — 서류 프린터(A4, 빈칸 = 윈도우 기본)와 [시험 1장], 묶음 목록 고치기(이름·서류 4 체크·[+ 더하기]·[빼기]), [뽑은 기록 보기](DocLogForm).
+/// `단추 자리` — 단추 자리(◀ 왼쪽으로 / 오른쪽으로 ▶, 20px씩, [서류]·[PT 먼저] 두 단추에 바로 보임).
+/// [저장]·[취소]는 탭 아래 한 줄. [저장]은 Core 규칙(SlipSettingsRules·DocSettingsRules)으로 검사해 틀리면 저장하지 않고,
+/// 맞으면 settings.json과 doc-settings.json에 함께 쓴다. [취소]·닫기는 버튼 자리를 처음대로 되돌린다.
 /// </summary>
 public sealed class SettingsForm : Form
 {
@@ -34,14 +37,27 @@ public sealed class SettingsForm : Form
     private readonly Label errorLabel;
     private readonly TabControl tabs;
     private readonly TabPage slipPage;
+    private readonly TabPage docsPage;
+    private readonly DocSettings originalDocs;
+    private readonly ComboBox docPrinterBox;
+    private readonly ListBox bundleList;
+    private readonly TextBox bundleName;
+    private readonly CheckBox[] kindBoxes;
+    private readonly PillButton addBundleButton;
+    private readonly PillButton removeBundleButton;
+    private readonly List<EditBundle> bundles;
+    private bool loadingBundle;
     private int offset;
 
     /// <param name="offsetChanged">버튼 자리를 바꿀 때마다(그리고 취소하면 처음 값으로) 부른다.</param>
-    public SettingsForm(SlipSettings settings, Action<int> offsetChanged)
+    /// <param name="docSettings">서류 설정. null이면 doc-settings.json에서 읽는다(없거나 깨졌으면 기본값).</param>
+    public SettingsForm(SlipSettings settings, Action<int> offsetChanged, DocSettings? docSettings = null)
     {
         original = settings ?? throw new ArgumentNullException(nameof(settings));
         this.offsetChanged = offsetChanged ?? throw new ArgumentNullException(nameof(offsetChanged));
         offset = settings.ButtonOffsetPx;
+        originalDocs = docSettings ?? DocSettingsRules.FromJson(DocFiles.ReadText());
+        bundles = originalDocs.Bundles.Select(bundle => new EditBundle(bundle.Name, bundle.Kinds)).ToList();
 
         Text = Title;
         StartPosition = FormStartPosition.CenterScreen;
@@ -117,9 +133,83 @@ public sealed class SettingsForm : Form
 
         // 단추 자리 탭: [서류]·[PT 먼저]가 함께 옮겨진다(ButtonForm)
         var buttonBody = Grid(1);
-        buttonBody.Controls.Add(Cell("버튼 자리", Field(leftButton, rightButton)), 0, 0);
+        buttonBody.Controls.Add(Cell("단추 자리", Field(leftButton, rightButton)), 0, 0);
 
-        // 서류 탭: 빈 판. 서류 프린터·묶음·뽑은 기록 칸은 서류 창 쪽(TASK-3)이 채운다
+        // 서류 탭(서류 시안 ⑥): 서류 프린터 → 묶음 → 뽑은 기록
+        docPrinterBox = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Width = SlipUi.S(300),
+            Font = SlipUi.Body,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 0, SlipUi.S(10), 0),
+        };
+        FillDocPrinters(originalDocs.PrinterName);
+        var docTestButton = SlipUi.Plain("시험 1장", 36);
+        docTestButton.Anchor = AnchorStyles.Left;
+        var printerStack = Stack(
+            Field(docPrinterBox, docTestButton),
+            Note("처음엔 윈도우 기본 프린터가 골라져 있어요. PT 종이 프린터(빅솔론)와 따로예요."));
+
+        bundleList = new ListBox
+        {
+            Font = SlipUi.Body,
+            IntegralHeight = false,
+            BorderStyle = BorderStyle.FixedSingle,
+            Size = new Size(SlipUi.S(150), SlipUi.S(150)),
+            Margin = Padding.Empty,
+        };
+        foreach (var bundle in bundles) bundleList.Items.Add(bundle.Name);
+        addBundleButton = DocUi.Mini("+ 더하기");
+        addBundleButton.Margin = new Padding(0, 0, SlipUi.S(6), 0);
+        removeBundleButton = DocUi.Mini("빼기");
+        var bundleButtons = Field(addBundleButton, removeBundleButton);
+        bundleButtons.Margin = new Padding(0, SlipUi.S(8), 0, 0);
+        var listColumn = Stack(bundleList, bundleButtons);
+        listColumn.Margin = new Padding(0, 0, SlipUi.S(12), 0);
+        bundleName = new TextBox
+        {
+            Font = SlipUi.Body,
+            Width = SlipUi.S(260),
+            MaxLength = 20,
+            BorderStyle = BorderStyle.FixedSingle,
+            Margin = new Padding(0, 0, 0, SlipUi.S(10)),
+        };
+        kindBoxes = DocNames.All.Select(kind => new CheckBox
+        {
+            Text = DocNames.Of(kind),
+            AutoSize = false,
+            Size = new Size(SlipUi.S(170), SlipUi.S(26)),
+            Font = SlipUi.Body,
+            Margin = new Padding(0, 0, SlipUi.S(8), SlipUi.S(6)),
+        }).ToArray();
+        var checks = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            MaximumSize = new Size(SlipUi.S(360), 0),
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+        };
+        checks.Controls.AddRange(kindBoxes);
+        var bundleEditor = Field(listColumn, Stack(bundleName, checks));
+
+        var logButton = SlipUi.Plain("뽑은 기록 보기");
+        var logStack = Stack(logButton, Note("누가 언제 어떤 서류를 뽑았는지 이 PC 안에만 남아요."));
+
+        var docsBody = Grid(3);
+        var docPrinterCell = Cell("서류 프린터 (A4)", printerStack);
+        docsBody.Controls.Add(docPrinterCell, 0, 0);
+        docsBody.SetColumnSpan(docPrinterCell, 2);
+        var bundlesCell = Cell("묶음", bundleEditor);
+        docsBody.Controls.Add(bundlesCell, 0, 1);
+        docsBody.SetColumnSpan(bundlesCell, 2);
+        var logCell = Cell("뽑은 기록", logStack);
+        docsBody.Controls.Add(logCell, 0, 2);
+        docsBody.SetColumnSpan(logCell, 2);
+
         DocsTabPanel = new Panel
         {
             Dock = DockStyle.Fill,
@@ -135,11 +225,13 @@ public sealed class SettingsForm : Form
             Padding = new Point(SlipUi.S(14), SlipUi.S(5)),
             Margin = new Padding(SlipUi.S(TabsSide), SlipUi.S(10), SlipUi.S(TabsSide), SlipUi.S(12)),
         };
+        DocsTabPanel.Controls.Add(docsBody);
         slipPage = Page("PT 종이", body);
+        docsPage = Page("서류", DocsTabPanel);
         tabs.TabPages.Add(slipPage);
-        tabs.TabPages.Add(Page("서류", DocsTabPanel));
+        tabs.TabPages.Add(docsPage);
         tabs.TabPages.Add(Page("단추 자리", buttonBody));
-        FitTabs(body, buttonBody);
+        FitTabs(body, buttonBody, docsBody);
         // 창 폭은 탭에 맞춘다(아래 줄·빨간 글도 같은 폭)
         var formWidth = tabs.Width + SlipUi.S(TabsSide * 2);
 
@@ -172,6 +264,21 @@ public sealed class SettingsForm : Form
         // 버튼 자리 값이 클수록 비트 창 오른쪽 끝에서 더 왼쪽(Core SlipButton.Place)
         leftButton.Click += (sender, e) => MoveButton(SlipSettingsRules.ButtonOffsetStep);
         rightButton.Click += (sender, e) => MoveButton(-SlipSettingsRules.ButtonOffsetStep);
+        docTestButton.Click += (sender, e) => DocTestPrint();
+        bundleList.SelectedIndexChanged += (sender, e) => LoadBundle();
+        bundleName.TextChanged += (sender, e) => OnBundleNameChanged();
+        for (var i = 0; i < kindBoxes.Length; i++)
+        {
+            var kind = DocNames.All[i];
+            var box = kindBoxes[i];
+            box.CheckedChanged += (sender, e) => OnKindChanged(kind, box.Checked);
+        }
+        addBundleButton.Click += (sender, e) => AddBundle();
+        removeBundleButton.Click += (sender, e) => RemoveBundle();
+        logButton.Click += (sender, e) => ShowLog();
+        if (bundleList.Items.Count > 0) bundleList.SelectedIndex = 0;
+        LoadBundle();
+        UpdateBundleButtons();
         cancelButton.Click += (sender, e) => Close();
         saveButton.Click += (sender, e) => Save();
         CancelButton = cancelButton;
@@ -183,7 +290,10 @@ public sealed class SettingsForm : Form
     /// <summary>[저장]으로 쓴 새 설정. 저장하지 않고 닫았으면 null.</summary>
     public SlipSettings? Saved { get; private set; }
 
-    /// <summary>`서류` 탭의 빈 판(탭 안을 꽉 채우고, 넘치면 스크롤). 서류 창 쪽이 칸을 넣는다</summary>
+    /// <summary>[저장]으로 쓴 새 서류 설정(Saved와 함께 정해진다). 저장하지 않고 닫았으면 null.</summary>
+    public DocSettings? SavedDocs { get; private set; }
+
+    /// <summary>`서류` 탭의 판(탭 안을 꽉 채우고, 넘치면 스크롤). 서류 프린터·묶음·뽑은 기록 칸이 들어 있다</summary>
     internal Panel DocsTabPanel { get; }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
@@ -220,11 +330,21 @@ public sealed class SettingsForm : Form
         }
         var length = (int)lengthBox.Value;
         if (!SlipSettingsRules.IsPaperLength(length) || !SlipSettingsRules.IsButtonOffset(offset)) return;
+        // 서류 묶음(AC-7401.2): 이름 1~10글자·겹침 없음·서류 1개 이상, 묶음 1~8개
+        var check = DocSettingsRules.Check(bundles.Select(bundle => new DocBundle(bundle.Name, bundle.Kinds)).ToArray());
+        if (!check.Ok)
+        {
+            tabs.SelectedTab = docsPage;
+            ShowError(check.Error);
+            return;
+        }
         var next = new SlipSettings(items.Names, parts.Names, printerBox.SelectedItem as string ?? "", length, offset);
+        var nextDocs = new DocSettings(ChosenDocPrinter(), check.Bundles);
         try
         {
             SettingsFile.WriteText(SlipSettingsRules.ToJson(next));
             SettingsFile.WriteDirectMode(directBox.Checked);
+            DocFiles.WriteText(DocSettingsRules.ToJson(nextDocs));
         }
         catch (Exception)
         {
@@ -232,6 +352,7 @@ public sealed class SettingsForm : Form
             return;
         }
         Saved = next;
+        SavedDocs = nextDocs;
         DialogResult = DialogResult.OK;
         Close();
     }
@@ -280,6 +401,143 @@ public sealed class SettingsForm : Form
         {
             ShowError("프린터 종이 설정 창을 열지 못했어요(" + printer + "). 프린터가 켜져 있는지 보고 다시 눌러 주세요.");
         }
+    }
+
+    /// <summary>서류 [시험 1장]: 고른 서류 프린터로 빈 A4에 테두리와 '서류 시험' 글만(환자 값 없음).</summary>
+    private void DocTestPrint()
+    {
+        HideError();
+        var printer = docPrinterBox.SelectedItem as string ?? "";
+        Cursor = Cursors.WaitCursor;
+        try
+        {
+            var page = new DocPage(new[]
+            {
+                DocOp.Box(10f, 10f, DocPage.WidthMm - 20f, DocPage.HeightMm - 20f, 0.5f),
+                DocOp.Text(10f, DocPage.HeightMm / 2f - 10f, DocPage.WidthMm - 20f, 20f, "서류 시험", 28f, true, DocAlign.Center),
+            });
+            DocPrintJob.Send(printer, 1, (g, i) => DocDrawer.Draw(g, page));
+        }
+        catch (Exception)
+        {
+            ShowError(SlipUi.PrintFailed(DocPrintJob.Resolve(printer)));
+        }
+        finally
+        {
+            Cursor = Cursors.Default;
+        }
+    }
+
+    /// <summary>서류 프린터: 처음에 빈칸(윈도우 기본)이었고 지금도 윈도우 기본 프린터를 골라 두었으면 빈칸 그대로 둔다(기본 프린터를 바꾸면 따라가게).</summary>
+    private string ChosenDocPrinter()
+    {
+        var chosen = docPrinterBox.SelectedItem as string ?? "";
+        if (originalDocs.PrinterName.Trim().Length == 0
+            && (chosen.Length == 0 || string.Equals(chosen, DocPrintJob.DefaultPrinter(), StringComparison.OrdinalIgnoreCase))) return "";
+        return chosen;
+    }
+
+    /// <summary>서류 프린터 목록. 설정이 빈칸이면 윈도우 기본 프린터를 미리 고른다.</summary>
+    private void FillDocPrinters(string configured)
+    {
+        foreach (var installed in Printers.Installed()) docPrinterBox.Items.Add(installed);
+        var chosen = string.IsNullOrWhiteSpace(configured) ? DocPrintJob.DefaultPrinter() : configured.Trim();
+        if (string.IsNullOrEmpty(chosen)) return;
+        // 설정에 적힌 프린터가 지금 없으면 그 이름을 그대로 보여 준다(고른 것을 몰래 바꾸지 않는다)
+        if (!docPrinterBox.Items.Contains(chosen!)) docPrinterBox.Items.Add(chosen!);
+        docPrinterBox.SelectedItem = chosen;
+    }
+
+    /// <summary>목록에서 고른 묶음을 오른쪽 이름 칸·서류 체크에</summary>
+    private void LoadBundle()
+    {
+        if (loadingBundle) return;
+        var bundle = SelectedBundle();
+        loadingBundle = true;
+        try
+        {
+            bundleName.Text = bundle?.Name ?? "";
+            bundleName.Enabled = bundle != null;
+            for (var i = 0; i < kindBoxes.Length; i++)
+            {
+                kindBoxes[i].Checked = bundle != null && bundle.Kinds.Contains(DocNames.All[i]);
+                kindBoxes[i].Enabled = bundle != null;
+            }
+        }
+        finally
+        {
+            loadingBundle = false;
+        }
+    }
+
+    private void OnBundleNameChanged()
+    {
+        if (loadingBundle) return;
+        var bundle = SelectedBundle();
+        if (bundle == null) return;
+        bundle.Name = bundleName.Text;
+        loadingBundle = true;
+        try
+        {
+            bundleList.Items[bundleList.SelectedIndex] = bundle.Name;
+        }
+        finally
+        {
+            loadingBundle = false;
+        }
+    }
+
+    private void OnKindChanged(DocKind kind, bool on)
+    {
+        if (loadingBundle) return;
+        var bundle = SelectedBundle();
+        if (bundle == null) return;
+        if (on) bundle.Kinds.Add(kind);
+        else bundle.Kinds.Remove(kind);
+    }
+
+    /// <summary>[+ 더하기]: 겹치지 않는 이름의 빈 묶음(서류는 사용자가 고른다). 8개까지</summary>
+    private void AddBundle()
+    {
+        if (bundles.Count >= DocSettingsRules.MaxBundles) return;
+        var name = "새 묶음";
+        for (var n = 2; bundles.Any(bundle => bundle.Name.Trim() == name); n++) name = "새 묶음 " + n;
+        bundles.Add(new EditBundle(name, Array.Empty<DocKind>()));
+        bundleList.Items.Add(name);
+        bundleList.SelectedIndex = bundles.Count - 1;
+        UpdateBundleButtons();
+        bundleName.Focus();
+        bundleName.SelectAll();
+    }
+
+    /// <summary>[빼기]: 고른 묶음을 뺀다. 하나는 남긴다</summary>
+    private void RemoveBundle()
+    {
+        var index = bundleList.SelectedIndex;
+        if (index < 0 || bundles.Count <= 1) return;
+        bundles.RemoveAt(index);
+        bundleList.Items.RemoveAt(index);
+        bundleList.SelectedIndex = Math.Min(index, bundles.Count - 1);
+        UpdateBundleButtons();
+    }
+
+    private void UpdateBundleButtons()
+    {
+        addBundleButton.Enabled = bundles.Count < DocSettingsRules.MaxBundles;
+        removeBundleButton.Enabled = bundles.Count > 1;
+    }
+
+    private EditBundle? SelectedBundle()
+    {
+        var index = bundleList.SelectedIndex;
+        return index >= 0 && index < bundles.Count ? bundles[index] : null;
+    }
+
+    /// <summary>[뽑은 기록 보기]: doc-log.tsv를 읽어 기록 창(읽기만)</summary>
+    private void ShowLog()
+    {
+        using var form = new DocLogForm(DocFiles.ReadLines());
+        form.ShowDialog(this);
     }
 
     /// <summary>설치된 프린터들. 설정이 빈칸이면 Printers.Choose가 고른 것(BIXOLON)을 미리 고른다.</summary>
@@ -388,8 +646,28 @@ public sealed class SettingsForm : Form
         return cell;
     }
 
+    /// <summary>세로로 차례대로.</summary>
+    private static FlowLayoutPanel Stack(params Control[] controls)
+    {
+        var stack = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+        };
+        stack.Controls.AddRange(controls);
+        return stack;
+    }
+
+    /// <summary>흐린 작은 안내 글(시안 .hint).</summary>
+    private static Label Note(string text) =>
+        SlipUi.Caption(text, SlipUi.Help, SlipUi.Sub, new Padding(0, SlipUi.S(6), 0, 0), CellWidth * 2 + Gap);
+
     /// <summary>가로로 나란히(시안 .field).</summary>
-    private static Control Field(params Control[] controls)
+    private static FlowLayoutPanel Field(params Control[] controls)
     {
         var field = new FlowLayoutPanel
         {
@@ -403,4 +681,18 @@ public sealed class SettingsForm : Form
         field.Controls.AddRange(controls);
         return field;
     }
+}
+
+/// <summary>설정 창에서 고치는 중인 묶음 하나(저장할 때 DocSettingsRules.Check로 검사한다).</summary>
+internal sealed class EditBundle
+{
+    public EditBundle(string name, IEnumerable<DocKind> kinds)
+    {
+        Name = name ?? "";
+        Kinds = new HashSet<DocKind>(kinds ?? Enumerable.Empty<DocKind>());
+    }
+
+    public string Name { get; set; }
+
+    public HashSet<DocKind> Kinds { get; }
 }
