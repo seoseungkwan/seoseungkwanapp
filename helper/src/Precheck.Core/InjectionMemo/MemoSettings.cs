@@ -31,12 +31,20 @@ public sealed class MemoSettings
     };
 
     /// <summary>값이 규칙 밖이면 ArgumentException.</summary>
-    public MemoSettings(string hotKey, int buttonOffsetPx)
+    /// <summary>'메모에 넣을 엑스레이' 처음 값에서 끄는 부위(저림을 적을 때 많이 쓰는 말, AC-7505.5).</summary>
+    private static readonly string[] OffByDefault = { "팔", "허벅지", "다리", "종아리" };
+
+    /// <summary>'메모에 넣을 엑스레이' 처음 값: 표 20부위 가운데 팔·허벅지·다리·종아리만 끔.</summary>
+    public static IReadOnlyList<string> DefaultXrayParts { get; } =
+        global::Precheck.Core.InjectionMemo.XrayParts.All.Where(part => !OffByDefault.Contains(part)).ToArray();
+
+    public MemoSettings(string hotKey, int buttonOffsetPx, IEnumerable<string>? xrayParts = null)
     {
         if (!IsAllowedKey(hotKey)) throw new ArgumentException("hot key must be F4, F8, F10 or F11", nameof(hotKey));
         if (!IsButtonOffset(buttonOffsetPx)) throw new ArgumentException("button offset must be -400..400", nameof(buttonOffsetPx));
         HotKey = hotKey;
         ButtonOffsetPx = buttonOffsetPx;
+        XrayParts = xrayParts == null ? DefaultXrayParts : Known(xrayParts);
     }
 
     /// <summary>설정이 없을 때: 단축키 F8, 단추 자리 0.</summary>
@@ -45,6 +53,15 @@ public sealed class MemoSettings
     public string HotKey { get; }
 
     public int ButtonOffsetPx { get; }
+
+    /// <summary>메모에 넣을 엑스레이(표 부위 이름, 표 차례, 중복·모르는 이름 없음, AC-7505.5).</summary>
+    public IReadOnlyList<string> XrayParts { get; }
+
+    private static string[] Known(IEnumerable<string> names)
+    {
+        var chosen = new HashSet<string>(names.Where(name => name != null), StringComparer.Ordinal);
+        return global::Precheck.Core.InjectionMemo.XrayParts.All.Where(chosen.Contains).ToArray();
+    }
 
     /// <summary>F4·F8·F10·F11 글자와 똑같은가(대소문자·빈칸까지).</summary>
     public static bool IsAllowedKey(string? key) => key != null && AllowedKeys.Contains(key, StringComparer.Ordinal);
@@ -61,6 +78,9 @@ public sealed class MemoSettings
             writer.WriteStartObject();
             writer.WriteString("hotKey", HotKey);
             writer.WriteNumber("buttonOffset", ButtonOffsetPx);
+            writer.WriteStartArray("xrayParts");
+            foreach (var part in XrayParts) writer.WriteStringValue(part);
+            writer.WriteEndArray();
             writer.WriteEndObject();
         }
         return Encoding.UTF8.GetString(stream.ToArray());
@@ -78,7 +98,14 @@ public sealed class MemoSettings
             if (!root.TryGetProperty("hotKey", out var key) || key.ValueKind != JsonValueKind.String) return Defaults;
             if (!root.TryGetProperty("buttonOffset", out var offset) || offset.ValueKind != JsonValueKind.Number || !offset.TryGetInt32(out var px)) return Defaults;
             var hotKey = key.GetString();
-            return IsAllowedKey(hotKey) && IsButtonOffset(px) ? new MemoSettings(hotKey!, px) : Defaults;
+            if (!IsAllowedKey(hotKey) || !IsButtonOffset(px)) return Defaults;
+            // 엑스레이 칸이 없거나 목록이 아니면 처음 값, 목록 안의 글이 아닌 값·모르는 이름은 버린다
+            IEnumerable<string>? parts = null;
+            if (root.TryGetProperty("xrayParts", out var list) && list.ValueKind == JsonValueKind.Array)
+            {
+                parts = list.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String).Select(item => item.GetString() ?? "").ToList();
+            }
+            return new MemoSettings(hotKey!, px, parts);
         }
         catch (JsonException)
         {

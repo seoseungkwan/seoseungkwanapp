@@ -2,7 +2,7 @@ using System;
 
 namespace Precheck.Core.InjectionMemo;
 
-/// <summary>[주사 차수]를 누른 결과 종류(spec injection-memo). 알림 글은 MemoNotices.Of가 고른다.</summary>
+/// <summary>[주사 차수]·[엑스레이]를 누른 결과 종류(spec injection-memo). 알림 글은 MemoNotices.Of가 고른다.</summary>
 public enum MemoResultKind
 {
     /// <summary>메모 칸에 넣는다(Text·Append).</summary>
@@ -25,6 +25,12 @@ public enum MemoResultKind
 
     /// <summary>비트 DB를 읽지 못했다(실패·5초 넘음).</summary>
     Failed,
+
+    /// <summary>[엑스레이]: 고른 부위 가운데 경과된 부위가 없다(AC-7505.3).</summary>
+    XrayNone,
+
+    /// <summary>[엑스레이]: 메모 칸에 'xr'이 이미 있다(AC-7505.3).</summary>
+    XrayAlreadyHas,
 }
 
 /// <summary>
@@ -33,14 +39,13 @@ public enum MemoResultKind
 /// </summary>
 public sealed class MemoResult
 {
-    public MemoResult(MemoResultKind kind, string? text = null, DateTime? plannedDate = null, int untilNumber = 0, string? append = null, MemoResult? reason = null)
+    public MemoResult(MemoResultKind kind, string? text = null, DateTime? plannedDate = null, int untilNumber = 0, string? append = null)
     {
         Kind = kind;
         Text = kind == MemoResultKind.Insert ? (text ?? "") : "";
         Append = kind == MemoResultKind.Insert ? (append ?? Text) : "";
         PlannedDate = kind == MemoResultKind.TooEarly ? plannedDate?.Date : null;
         UntilNumber = kind == MemoResultKind.Finished ? untilNumber : 0;
-        Reason = kind == MemoResultKind.Insert ? reason : null;
     }
 
     public MemoResultKind Kind { get; }
@@ -48,7 +53,7 @@ public sealed class MemoResult
     /// <summary>넣을 글('오)무릎 3차'). 알림 '넣었어요: …'에 쓴다.</summary>
     public string Text { get; }
 
-    /// <summary>메모 칸 끝에 칠 글: 칸이 비었으면 Text, 글이 있으면 '/' + Text(칸 끝이 이미 '/'면 Text).</summary>
+    /// <summary>메모 칸 끝에 칠 글: 칸이 비었으면 Text, 글이 있으면 '/' + Text(칸 끝이 이미 '/'면 Text). [엑스레이]는 칸 끝이 주사 차수면 ' ' + Text.</summary>
     public string Append { get; }
 
     /// <summary>계획 날짜(차수가 적힌 내원 날 + 간격).</summary>
@@ -56,9 +61,6 @@ public sealed class MemoResult
 
     /// <summary>'N차까지'의 N.</summary>
     public int UntilNumber { get; }
-
-    /// <summary>엑스레이 경과만 넣고 주사 글은 못 넣었을 때 그 주사 쪽 결과(기록 없음·끝남·일찍 옴·이미 있음, AC-7505.3·.4). 그 밖에는 null.</summary>
-    public MemoResult? Reason { get; }
 
     /// <summary>종류만(넣을 글·날짜는 환자 값이라 빼고).</summary>
     public override string ToString() => "MemoResult(" + Kind + ")";

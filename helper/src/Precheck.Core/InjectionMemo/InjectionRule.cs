@@ -100,18 +100,19 @@ public static class InjectionRule
     // 영어로 적힌 부위 → 우리말(메모에 쓰는 말), 차례대로 처음 맞는 것
     private static readonly KeyValuePair<Regex, string>[] EnglishParts =
     {
-        English(@"\b(neck|c-?spine|cervical|PCS)\b|\bC\s*[1-7](?!\d)", "목", true),
+        English(@"\b(neck|c-?spine|cervical|PCS|c-?mbb)\b|\bC\s*[1-7](?!\d)", "목", true),
         English(@"\b(shoulder|shd|sh|frozen|RCT|SAB|GHJ|SSNB|ANB|impingement|adhesive|capsulitis)\b", "어깨", true),
-        English(@"\b(stenosis|spinal)\b|\bL\s*[1-5](?!\d)|\bS\s*1\b", "허리", false),
+        English(@"\b(stenosis|spinal|L-?MBB)\b|\bL\s*[1-5](?!\d)|\bS\s*1\b", "허리", false),
         English(@"\b(KLG)\b", "무릎", false),
         English(@"\b(elbow|tennis|golfer|epicondyl\w*)\b", "팔꿈치", true),
         English(@"\b(wrist|CTS|dequervain\w*)\b", "손목", true),
-        English(@"\b(finger|thumb|trigger)\b", "손가락", true),
+        English(@"\b(finger|thumb|trigger|CMC)\b", "손가락", true),
         English(@"\b(back|LBP|l-?spine|lumbar|HIVD|LSS)\b", "허리", true),
         English(@"\b(hip)\b", "고관절", true),
         English(@"\b(knee|OA)\b", "무릎", true),
         English(@"\b(ankle)\b", "발목", true),
         English(@"\b(foot|heel|plantar)\b", "발", true),
+        English(@"\b(impar|gang)\b", "꼬리뼈", true),
     };
 
     private static KeyValuePair<Regex, string> English(string pattern, string part, bool ignoreCase) =>
@@ -297,7 +298,10 @@ public static class InjectionRule
         }
     }
 
-    /// <summary>좌우·부위: 차수 앞말 → 없으면 같은 내원의 주사 말이 든 줄 → 그래도 없으면 모든 줄(여러 개면 쉼표로).</summary>
+    /// <summary>
+    /// 좌우·부위: 차수 앞말 → 없으면(약 이름만일 때도) 같은 내원의 주사 말이 든 줄 → 그래도 없으면 모든 줄. 여러 개면 쉼표로,
+    /// 좌우 있는 부위 먼저·가운데 부위는 뒤, 좌우 말은 맨 앞 한 번(AC-7501.6). 앞말에서 부위·약 이름으로 읽히지 않는 말은 버린다.
+    /// </summary>
     private static (string Side, string Part) PartOf(Mention pick, IReadOnlyList<string> lines)
     {
         var weekdayContext = WeekdayContext.IsMatch(pick.Clause) || WeekdayList.IsMatch(pick.Clause);
@@ -316,43 +320,64 @@ public static class InjectionRule
             side = SideOf(sm.Groups[1].Value);
             pre = pre.Substring(sm.Length).TrimStart('.', ' ').Trim();
         }
-        if (pre.Length > 0)
+        var words = new List<string>();
+        var drugs = new List<string>();
+        foreach (var w0 in pre.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
         {
-            var words = new List<string>();
-            var drugs = new List<string>();
-            foreach (var w0 in pre.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
+            if (NerveBlock.IsMatch(w0)) continue;   // 신경차단 이름(덧붙이·차단술)은 빼고 부위는 다른 줄에서
+            if (PainWord.IsMatch(w0)) continue;
+            if (DrugWord.IsMatch(w0))
             {
-                if (NerveBlock.IsMatch(w0)) continue;   // 신경차단 이름(덧붙이·차단술)은 빼고 부위는 다른 줄에서
-                if (PainWord.IsMatch(w0)) continue;
-                if (DrugWord.IsMatch(w0))
-                {
-                    if (!drugs.Contains(w0)) drugs.Add(w0);
-                    continue;
-                }
-                var w = w0;
-                foreach (var pair in EnglishParts)
-                {
-                    if (pair.Key.IsMatch(w0))
-                    {
-                        w = pair.Value;
-                        break;
-                    }
-                }
-                if (!words.Contains(w)) words.Add(w);
+                if (!drugs.Contains(w0)) drugs.Add(w0);
+                continue;
             }
-            if (words.Count + drugs.Count > 0)
+            var sideOnly = SideWord.Match(w0);
+            if (sideOnly.Success && sideOnly.Index == 0 && sideOnly.Length == w0.Length)
             {
-                // 부위끼리는 쉼표, 약 이름은 그 뒤에 띄어 씀. 약 이름만이면 약 이름만('양)아라간 2차')
-                var text = string.Join(" ", new[] { string.Join(",", words), string.Join(" ", drugs) }.Where(t => t.Length > 0));
-                return (words.Count > 0 && drugs.Count == 0 && words.All(Axial.Contains) ? "" : side, text);
+                if (side.Length == 0) side = SideOf(sideOnly.Groups[1].Value);
+                continue;
             }
+            var w = EnglishPartOf(w0) ?? (PartHits(w0).Count > 0 ? w0 : null);
+            if (w != null && !words.Contains(w)) words.Add(w);   // 부위로 읽히지 않는 말은 버린다(AC-7501.1)
+        }
+
+        if (words.Count > 0)
+        {
+            // 부위끼리는 쉼표, 약 이름은 그 뒤에 띄어 씀
+            words = SidedFirst(words);
+            var text = string.Join(" ", new[] { string.Join(",", words), string.Join(" ", drugs) }.Where(t => t.Length > 0));
+            return (drugs.Count == 0 && words.All(IsAxialWord) ? "" : side, text);
         }
 
         var injectionLines = lines.Where(line => InjectionWord.IsMatch(line ?? "")).ToList();
         var (lineSide, found) = PartsOfLines(injectionLines, side);
         if (found.Count == 0) (lineSide, found) = PartsOfLines(lines, side);
-        if (found.All(Axial.Contains)) lineSide = "";
-        return (lineSide, string.Join(",", found));
+        found = SidedFirst(found);
+        if (found.Count > 0 && found.All(IsAxialWord)) lineSide = "";
+        var partText = string.Join(",", found);
+        // 약 이름만이면 줄에서 찾은 부위 뒤에 약 이름(없으면 약 이름만: '양)아라간 2차')
+        if (drugs.Count > 0) return (found.Count == 0 ? side : lineSide, string.Join(" ", new[] { partText, string.Join(" ", drugs) }.Where(t => t.Length > 0)));
+        return (lineSide, partText);
+    }
+
+    private static string? EnglishPartOf(string word)
+    {
+        foreach (var pair in EnglishParts)
+        {
+            if (pair.Key.IsMatch(word)) return pair.Value;
+        }
+        return null;
+    }
+
+    // 좌우 있는 부위 먼저, 가운데 부위(목·허리 …)는 뒤(각각 나온 차례 그대로, AC-7501.6)
+    private static List<string> SidedFirst(List<string> parts) => parts.Where(part => !IsAxialWord(part)).Concat(parts.Where(IsAxialWord)).ToList();
+
+    // 가운데 부위 말: 그 말 자체이거나 그 말의 첫 부위가 가운데 부위('허리통증')
+    private static bool IsAxialWord(string word)
+    {
+        if (Axial.Contains(word)) return true;
+        var hits = PartHits(word);
+        return hits.Count > 0 && Axial.Contains(hits.OrderBy(hit => hit.Index).First().Part);
     }
 
     private static (string Side, List<string> Found) PartsOfLines(IEnumerable<string> lines, string side)

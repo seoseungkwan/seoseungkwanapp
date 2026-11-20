@@ -49,6 +49,12 @@ describe('REQ-7501 차수 규칙 (C# Precheck.Core.Tests.InjectionMemo)', () => 
   })
 })
 
+describe('REQ-7501 두 부위·약 이름만 (C# Precheck.Core.Tests.InjectionMemo)', () => {
+  it("AC-7501.6 주사 부위가 둘·셋이면 다(좌우 있는 부위 먼저·목·허리 뒤·좌우 맨 앞 한 번), C-MBB=목·IMPAR·GANG=꼬리뼈·CMC=손가락", () => {
+    expectAc('AC-7501.6')
+  })
+})
+
 describe('REQ-7502 비트 읽기 (C# Precheck.Core.Tests.InjectionMemo)', () => {
   it('AC-7502.1 허용 목록의 읽기 전용 SELECT 둘(외래 내원·OcmRefCmt, EmrInf S 줄)을 @cht·@from·@to로 5초 안에, 잇기는 메모리, 실패·시간 지남은 읽기 실패', () => {
     expectAc('AC-7502.1')
@@ -74,12 +80,18 @@ describe('REQ-7505 엑스레이 경과 (C# Precheck.Core.Tests.InjectionMemo)', 
     expectAc('AC-7505.2')
   })
 
-  it("AC-7505.4 경과만 넣고 주사는 끝남·일찍 옴이면 초록 '넣었어요' 아래 이유 노랑, 기록 없음·이미 있음은 초록 하나만", () => {
+  it("AC-7505.4 [주사 차수]는 엑스레이를 안 보고, [엑스레이] 알림은 넣음 초록·경과 없음·이미 있음 노랑", () => {
     expectAc('AC-7505.4')
   })
 
-  it("AC-7505.3 주사 부위 하나가 경과면 'xrN년경과'를 뒤에, 다른 부위는 '<부위> xrN년경과', 주사 없어도 경과만, 칸에 xr 있으면 안 붙임, 50자 넘으면 뒤 조각부터 뺌", () => {
+  it("AC-7505.3 [엑스레이]: 칸 끝 주사 차수 부위면 'xrN년경과', 다른 부위는 '<부위> xrN년경과', 칸에 xr 있으면 이미 있음, 50자 넘으면 뒤 조각부터 뺌", () => {
     expectAc('AC-7505.3')
+  })
+})
+
+describe('REQ-7505 메모에 넣을 엑스레이 (C# Precheck.Core.Tests.InjectionMemo)', () => {
+  it('AC-7505.5 처음엔 팔·허벅지·다리·종아리만 끔, 표 차례로 저장·읽기, 모르는 이름 버림, 깨진 값은 처음 값', () => {
+    expectAc('AC-7505.5')
   })
 })
 

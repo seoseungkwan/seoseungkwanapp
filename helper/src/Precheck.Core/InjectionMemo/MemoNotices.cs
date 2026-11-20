@@ -9,24 +9,14 @@ public static class MemoNotices
     public const string AlreadyHas = "메모에 주사 차수가 이미 있어요.";
     public const string NoPatient = "접수 화면에 환자를 먼저 불러와 주세요.";
     public const string Failed = "비트에서 기록을 읽지 못했어요. 잠시 뒤 다시 눌러 주세요.";
+    public const string XrayNone = "엑스레이 경과된 부위가 없어요.";
+    public const string XrayAlreadyHas = "메모에 엑스레이가 이미 있어요.";
 
     /// <summary>
     /// '넣지 못함'(빨강): 넣을 글(Insert 결과의 Text, '/' 없는 새 글)을 메모 칸에 치지 못했을 때 — 칸이 꽉 참(50자)·잠김·윈도우가 막음.
     /// 직원이 보고 직접 적도록 글을 같이 보인다(화면에만, 파일·로그에 남기지 않는다).
     /// </summary>
     public static string TypeFailed(string? text) => "메모 칸에 넣지 못했어요. 직접 적어 주세요: " + (text ?? "");
-
-    /// <summary>
-    /// 엑스레이 경과만 넣고 주사 글은 끝남·일찍 옴이라 못 넣었을 때, 초록 '넣었어요' 아래에 함께 띄우는 노랑 알림 글(AC-7505.4).
-    /// 기록 없음·이미 있음, 주사 글을 넣은 경우는 null(초록 하나만).
-    /// </summary>
-    public static string? ReasonOf(MemoResult? result)
-    {
-        var reason = result != null && result.Kind == MemoResultKind.Insert ? result.Reason : null;
-        if (reason == null || (reason.Kind != MemoResultKind.Finished && reason.Kind != MemoResultKind.TooEarly)) return null;
-        var text = Of(reason);
-        return text == Failed ? null : text;
-    }
 
     /// <summary>결과 → 알림 글. null은 읽기 실패 글. 계획 날짜는 'M월 D일'(앞 0 없음).</summary>
     public static string Of(MemoResult? result)
@@ -50,6 +40,10 @@ public static class MemoNotices
                 return AlreadyHas;
             case MemoResultKind.NoPatient:
                 return NoPatient;
+            case MemoResultKind.XrayNone:
+                return XrayNone;
+            case MemoResultKind.XrayAlreadyHas:
+                return XrayAlreadyHas;
             default:
                 return Failed;
         }

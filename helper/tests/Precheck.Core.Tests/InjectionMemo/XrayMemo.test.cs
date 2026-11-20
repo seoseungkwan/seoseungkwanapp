@@ -137,93 +137,69 @@ public class XrayMemoTests
         Assert.Equal(new[] { "무릎1" }, Due(XrayRule.Overdue(new[] { "무릎" }, Shots(("G74", Today.AddDays(-3)), ("G04", Today.AddDays(-3))), Today)));
     }
 
-    // ── AC-7505.3 넣을 글 ─────────────────────────────
+    // ── AC-7505.3 [엑스레이] 넣을 글 ─────────────────────────────
 
-    [Fact(DisplayName = "AC-7505.3 주사 부위 하나가 경과면 주사 글 뒤에 띄어 'xrN년경과', 다른 경과 부위는 '<부위> xrN년경과'를 나온 차례대로")]
-    public void AppendsToInjection()
+    private static MemoResult Xr(string memo, params string[] due) => MemoCompose.ComposeXray(memo, DueOf(due));
+
+    [Fact(DisplayName = "AC-7505.3 칸 끝 조각이 주사 차수이고 그 부위 하나가 경과면 띄어 'xrN년경과', 다른 부위는 '<부위> xrN년경과'를 띄어 나온 차례대로")]
+    public void AppendsAfterInjection()
     {
-        var knee = Insert("오)무릎 3차");
-        Assert.Equal("오)무릎 3차 xr1년경과", MemoCompose.Compose(knee, DueOf("무릎1"), "").Text);
-        Assert.Equal("오)무릎 3차 xr1년경과 어깨 xr2년경과", MemoCompose.Compose(knee, DueOf("무릎1", "어깨2"), "").Text);
-        Assert.Equal("오)무릎 3차 어깨 xr2년경과", MemoCompose.Compose(knee, DueOf("어깨2"), "").Text);
-        Assert.Equal("오)무릎 3차 xr1년경과 어깨 xr2년경과", MemoCompose.Compose(knee, DueOf("어깨2", "무릎1"), "").Text);
+        var r = Xr("오)무릎 3차", "무릎1");
+        Assert.Equal(MemoResultKind.Insert, r.Kind);
+        Assert.Equal("xr1년경과", r.Text);
+        Assert.Equal(" xr1년경과", r.Append);
+        Assert.Equal(" xr1년경과 어깨 xr2년경과", Xr("오)무릎 3차", "무릎1", "어깨2").Append);
+        Assert.Equal(" xr1년경과 어깨 xr2년경과", Xr("오)무릎 3차", "어깨2", "무릎1").Append);
+        Assert.Equal(" 어깨 xr2년경과", Xr("오)무릎 3차", "어깨2").Append);
+        Assert.Equal("어깨 xr2년경과", Xr("오)무릎 3차", "어깨2").Text);
 
-        // 주사 글 부위가 둘이면 붙이지 않고 따로, 표의 다른 말(슬관절)도 같은 부위, 약 이름만이면 따로
-        Assert.Equal("양)무릎,발목 DNA 2차 무릎 xr1년경과 발목 xr2년경과", MemoCompose.Compose(Insert("양)무릎,발목 DNA 2차"), DueOf("무릎1", "발목2"), "").Text);
-        Assert.Equal("왼)슬관절 2차 xr1년경과", MemoCompose.Compose(Insert("왼)슬관절 2차"), DueOf("무릎1"), "").Text);
-        Assert.Equal("왼)무릎 DNA 2차 xr1년경과", MemoCompose.Compose(Insert("왼)무릎 DNA 2차"), DueOf("무릎1"), "").Text);
-        Assert.Equal("DNA 2차 무릎 xr1년경과", MemoCompose.Compose(Insert("DNA 2차"), DueOf("무릎1"), "").Text);
-        Assert.Equal("목 3차 xr2년경과", MemoCompose.Compose(Insert("목 3차"), DueOf("목2"), "").Text);
-
-        // 주사 글 부위를 붙여 썼어도 부위는 한 번만
-        Assert.Equal("오)무릎관절 3차 xr1년경과", MemoCompose.Compose(Insert("오)무릎관절 3차"), DueOf("무릎1"), "").Text);
-        Assert.Equal("허리디스크 3차 xr2년경과", MemoCompose.Compose(Insert("허리디스크 3차"), DueOf("허리2"), "").Text);
-
-        // 칸에 글이 있으면 '/'로 붙임(Append), 넣는 글(Text)은 '/' 없이
-        var merged = MemoCompose.Compose(Insert("오)무릎 3차", "물리치료만"), DueOf("무릎1"), "물리치료만");
-        Assert.Equal(MemoResultKind.Insert, merged.Kind);
-        Assert.Equal("/오)무릎 3차 xr1년경과", merged.Append);
-        Assert.Null(merged.Reason);
+        // 마지막 '/' 뒤 조각만 봄, 표의 다른 말(슬관절)·붙여 쓴 부위(무릎관절)도 같은 부위, 부위 둘이면 따로
+        Assert.Equal(" xr1년경과", Xr("물리치료/왼)슬관절 2차", "무릎1").Append);
+        Assert.Equal(" xr1년경과", Xr("오)무릎관절 3차", "무릎1").Append);
+        Assert.Equal(" xr2년경과", Xr("목 3차", "목2").Append);
+        Assert.Equal(" 무릎 xr1년경과 발목 xr2년경과", Xr("양)무릎,발목 DNA 2차", "무릎1", "발목2").Append);
+        Assert.Equal(" 무릎 xr1년경과", Xr("DNA 2차", "무릎1").Append);
     }
 
-    [Fact(DisplayName = "AC-7505.3 주사 글이 안 들어가도(기록 없음·끝남·일찍 옴·이미 있음) 경과 부위만 넣고, 주사 쪽 결과는 Reason에")]
-    public void XrayOnly()
+    [Fact(DisplayName = "AC-7505.3 칸 끝이 주사 차수가 아니면 '<부위> xrN년경과 …'를 빈 칸은 그대로, 글이 있으면 '/'로")]
+    public void AppendsAsNewPiece()
     {
-        var noRecord = MemoCompose.Compose(new MemoResult(MemoResultKind.NoRecord), DueOf("무릎1", "허리2"), "");
-        Assert.Equal(MemoResultKind.Insert, noRecord.Kind);
-        Assert.Equal("무릎 xr1년경과 허리 xr2년경과", noRecord.Text);
-        Assert.Equal("무릎 xr1년경과 허리 xr2년경과", noRecord.Append);
-        Assert.Equal(MemoResultKind.NoRecord, noRecord.Reason!.Kind);
-
-        var early = MemoCompose.Compose(new MemoResult(MemoResultKind.TooEarly, plannedDate: Day(11, 27)), DueOf("무릎1"), "");
-        Assert.Equal("무릎 xr1년경과", early.Text);
-        Assert.Equal(MemoResultKind.TooEarly, early.Reason!.Kind);
-        Assert.Equal(Day(11, 27), early.Reason.PlannedDate);
-
-        var finished = MemoCompose.Compose(new MemoResult(MemoResultKind.Finished, untilNumber: 5), DueOf("어깨2"), "");
-        Assert.Equal("어깨 xr2년경과", finished.Text);
-        Assert.Equal(5, finished.Reason!.UntilNumber);
-
-        var already = MemoCompose.Compose(new MemoResult(MemoResultKind.AlreadyHas), DueOf("무릎1"), "오)무릎 2차");
-        Assert.Equal("무릎 xr1년경과", already.Text);
-        Assert.Equal("/무릎 xr1년경과", already.Append);
-        Assert.Equal(MemoResultKind.AlreadyHas, already.Reason!.Kind);
+        var empty = Xr("", "무릎1", "허리2");
+        Assert.Equal("무릎 xr1년경과 허리 xr2년경과", empty.Text);
+        Assert.Equal("무릎 xr1년경과 허리 xr2년경과", empty.Append);
+        Assert.Equal("/허리 xr2년경과", Xr("물리치료만", "허리2").Append);
+        Assert.Equal("허리 xr2년경과", Xr("물리치료만/", "허리2").Append);
+        Assert.Equal("/무릎 xr1년경과", Xr("오)무릎 3차/물리치료", "무릎1").Append);
+        Assert.Equal("무릎 xr1년경과", MemoCompose.ComposeXray(null, DueOf("무릎1")).Append);
     }
 
-    [Fact(DisplayName = "AC-7505.3 칸에 이미 'xr'(대소문자 무시)이 있거나 경과가 없으면 그대로, 환자 없음·읽기 실패도 그대로")]
-    public void KeepsWhenNothingToAdd()
+    [Fact(DisplayName = "AC-7505.3 칸에 이미 'xr'(대소문자 무시)이 있으면 엑스레이 이미 있음, 경과가 없으면 경과 없음")]
+    public void XrayNoneOrAlready()
     {
-        var knee = Insert("오)무릎 3차");
-        Assert.Same(knee, MemoCompose.Compose(knee, DueOf("무릎1"), "XR 오늘"));
-        Assert.Same(knee, MemoCompose.Compose(knee, DueOf("무릎1"), "허리 xr2년경과"));
-        Assert.Same(knee, MemoCompose.Compose(knee, Array.Empty<XrayDue>(), ""));
-        foreach (var kind in new[] { MemoResultKind.NoRecord, MemoResultKind.NoPatient, MemoResultKind.Failed })
-        {
-            var result = new MemoResult(kind);
-            Assert.Same(result, MemoCompose.Compose(result, kind == MemoResultKind.NoRecord ? Array.Empty<XrayDue>() : DueOf("무릎1"), ""));
-        }
-        var noRecord = new MemoResult(MemoResultKind.NoRecord);
-        Assert.Same(noRecord, MemoCompose.Compose(noRecord, DueOf("무릎1"), "Xr1년경과"));
+        Assert.Equal(MemoResultKind.XrayAlreadyHas, Xr("XR 오늘", "무릎1").Kind);
+        Assert.Equal(MemoResultKind.XrayAlreadyHas, Xr("오)무릎 3차 xr1년경과", "어깨2").Kind);
+        Assert.Equal(MemoResultKind.XrayNone, Xr("오)무릎 3차").Kind);
+        Assert.Equal(MemoResultKind.XrayNone, MemoCompose.ComposeXray("", null).Kind);
+        Assert.Equal("", Xr("", Array.Empty<string>()).Text);
     }
 
-    [Fact(DisplayName = "AC-7505.3 칸 글과 합쳐 50자를 넘으면 뒤쪽 경과 조각부터 빼고, 주사 글은 남김(경과가 하나도 안 들어가면 원래 결과)")]
+    [Fact(DisplayName = "AC-7505.3 칸 글과 합쳐 50자를 넘으면 뒤쪽 경과 조각부터 빼고, 하나도 안 들어가면 전부 그대로(넣지 못함으로 직접 적을 글)")]
     public void FitsFiftyCharacters()
     {
         Assert.Equal(50, MemoCompose.MaxLength);
-        var memo = new string('가', 20);
-        var fit = MemoCompose.Compose(Insert("오)무릎 3차", memo), DueOf("무릎1", "어깨2", "허리2", "손목2"), memo);
-        Assert.Equal("오)무릎 3차 xr1년경과 어깨 xr2년경과", fit.Text);
-        Assert.Equal(45, memo.Length + fit.Append.Length);
+        var memo = new string('가', 20) + "/오)무릎 3차";   // 28
+        var fit = Xr(memo, "무릎1", "어깨2", "허리2", "손목2");
+        Assert.Equal(" xr1년경과 어깨 xr2년경과", fit.Append);   // 28 + 17 = 45, 허리 더하면 55
+        Assert.True(memo.Length + fit.Append.Length <= 50);
 
-        var exact = new string('가', 39);   // 39 + '/' + '무릎 xr1년경과'(10) = 50 → 들어감
-        Assert.Equal("/무릎 xr1년경과", MemoCompose.Compose(new MemoResult(MemoResultKind.NoRecord), DueOf("무릎1"), exact).Append);
+        var exact = new string('가', 40);   // 40 + '/' + '무릎 xr1년경과'(9) = 50 → 들어감
+        Assert.Equal("/무릎 xr1년경과", Xr(exact, "무릎1").Append);
 
         var full = new string('가', 45);
-        var knee = Insert("오)무릎 3차", full);
-        var kept = MemoCompose.Compose(knee, DueOf("무릎1", "어깨2"), full);
-        Assert.Equal("오)무릎 3차", kept.Text);
-        var noRecord = new MemoResult(MemoResultKind.NoRecord);
-        Assert.Same(noRecord, MemoCompose.Compose(noRecord, DueOf("무릎1"), full));
+        var none = Xr(full, "무릎1", "어깨2");
+        Assert.Equal(MemoResultKind.Insert, none.Kind);
+        Assert.Equal("무릎 xr1년경과 어깨 xr2년경과", none.Text);
+        Assert.True(full.Length + none.Append.Length > 50);
     }
 
     // ── AC-7506.1 영상 처방 읽기 ─────────────────────────────
@@ -307,61 +283,65 @@ public class XrayMemoTests
             .Answer(InjectionSql.XraySql, _ => xray ?? new object?[][] { })
             .Answer(InjectionSql.LastBeforeSql, _ => before ?? new object?[][] { });
 
-    [Fact(DisplayName = "AC-7505.3 서비스: 주사 결과 → (30일 안 증상 없으면 그 전 마지막 내원) → 영상 읽기 → 합치기")]
-    public void ServiceComposes()
+    private static readonly string[] Chosen = MemoSettings.Defaults.XrayParts.ToArray();
+
+    [Fact(DisplayName = "AC-7505.4 [주사 차수](Compute)는 엑스레이를 보지 않고 주사 차수만, 칸에 차수가 있으면 DB에 묻지 않고 이미 있음")]
+    public void InjectionButtonIgnoresXray()
+    {
+        var visit = new[] { new object?[] { "V1", "202611131000", "" } };
+        var knee = new[] { new object?[] { "V1", 1, "오른쪽 무릎 2차 주사" }, new object?[] { "V1", 2, "허리도 아프다" } };
+        var db = Db(visit, knee);
+        var result = InjectionMemoService.Compute(db, Chart, "", Today);
+        Assert.Equal("오)무릎 3차", result.Text);
+        Assert.Equal(new[] { InjectionSql.VisitsSql, InjectionSql.LinesSql }, db.Sqls.ToArray());
+
+        var none = new FakeDb();
+        Assert.Equal(MemoResultKind.AlreadyHas, InjectionMemoService.Compute(none, Chart, "오)무릎 2차", Today).Kind);
+        Assert.Empty(none.Calls);
+    }
+
+    [Fact(DisplayName = "AC-7505.3 [엑스레이](ComputeXray): 30일 내원(없으면 그 전 마지막 내원) → 고른 엑스레이 부위만 → 영상 읽기 → 칸 끝에")]
+    public void XrayButtonComposes()
     {
         var visit = new[] { new object?[] { "V1", "202611131000", "" } };
         var knee = new[] { new object?[] { "V1", 1, "오른쪽 무릎 2차 주사" }, new object?[] { "V1", 2, "허리도 아프다" } };
 
         var db = Db(visit, knee, new[] { new object?[] { "G45", "202501020900" } });
-        var result = InjectionMemoService.Compute(db, Chart, "", Today);
-        Assert.Equal("오)무릎 3차 xr1년경과", result.Text);
+        var result = InjectionMemoService.ComputeXray(db, Chart, "오)무릎 3차", Today, Chosen);
+        Assert.Equal(MemoResultKind.Insert, result.Kind);
+        Assert.Equal(" xr1년경과", result.Append);
         Assert.Equal(new[] { InjectionSql.VisitsSql, InjectionSql.LinesSql, InjectionSql.XraySql }, db.Sqls.ToArray());
 
         var old = Db(visit, new object?[][] { }, before: new[] { new object?[] { "V0", "202604011000", 1, "허리 통증" } });
-        var fromBefore = InjectionMemoService.Compute(old, Chart, "", Today);
-        Assert.Equal(MemoResultKind.Insert, fromBefore.Kind);
-        Assert.Equal("허리 xr2년경과", fromBefore.Text);
-        Assert.Equal(MemoResultKind.NoRecord, fromBefore.Reason!.Kind);
+        Assert.Equal("허리 xr2년경과", InjectionMemoService.ComputeXray(old, Chart, "", Today, Chosen).Text);
         Assert.Equal(new[] { InjectionSql.VisitsSql, InjectionSql.LinesSql, InjectionSql.LastBeforeSql, InjectionSql.XraySql }, old.Sqls.ToArray());
 
-        var already = InjectionMemoService.Compute(Db(visit, knee), Chart, "오)무릎 2차", Today);
-        Assert.Equal("무릎 xr1년경과 허리 xr2년경과", already.Text);
-        Assert.Equal("/무릎 xr1년경과 허리 xr2년경과", already.Append);
-        Assert.Equal(MemoResultKind.AlreadyHas, already.Reason!.Kind);
+        // 고르지 않은 엑스레이(다리)는 안 봄 → 부위가 없으면 영상도 안 읽고 경과 없음
+        var leg = Db(visit, new[] { new object?[] { "V1", 1, "좌측 다리 저림" } });
+        Assert.Equal(MemoResultKind.XrayNone, InjectionMemoService.ComputeXray(leg, Chart, "", Today, Chosen).Kind);
+        Assert.DoesNotContain(InjectionSql.XraySql, leg.Sqls);
+        Assert.Equal("다리 xr2년경과", InjectionMemoService.ComputeXray(Db(visit, new[] { new object?[] { "V1", 1, "좌측 다리 저림" } }), Chart, "", Today, new[] { "다리" }).Text);
+        Assert.Equal(MemoResultKind.XrayNone, InjectionMemoService.ComputeXray(Db(visit, knee), Chart, "", Today, Array.Empty<string>()).Kind);
     }
 
-    [Fact(DisplayName = "AC-7505.3 서비스: 칸에 주사 차수와 'xr'이 다 있으면 DB를 읽지 않고 이미 있음")]
-    public void ServiceSkipsWhenMemoHasBoth()
+    [Fact(DisplayName = "AC-7506.1 [엑스레이]: 환자 없음·칸에 xr 있음은 DB에 안 묻고, 읽기 실패는 읽기 실패")]
+    public void XrayButtonSkipsAndFails()
     {
-        var db = new FakeDb();
-        Assert.Equal(MemoResultKind.AlreadyHas, InjectionMemoService.Compute(db, Chart, "오)무릎 2차 xr1년경과", Today).Kind);
-        Assert.Empty(db.Calls);
+        var none = new FakeDb();
+        Assert.Equal(MemoResultKind.NoPatient, InjectionMemoService.ComputeXray(none, " ", "", Today, Chosen).Kind);
+        Assert.Equal(MemoResultKind.XrayAlreadyHas, InjectionMemoService.ComputeXray(none, Chart, "무릎 xr1년경과", Today, Chosen).Kind);
+        Assert.Empty(none.Calls);
+
+        var visit = new[] { new object?[] { "V1", "202611131000", "" } };
+        var knee = new[] { new object?[] { "V1", 1, "오른쪽 무릎 2차 주사" } };
+        Assert.Equal(MemoResultKind.Failed, InjectionMemoService.ComputeXray(Db(visit, knee).Fail(InjectionSql.XraySql, BitErrors.ReadFailed), Chart, "", Today, Chosen).Kind);
+        Assert.Equal(MemoResultKind.Failed, InjectionMemoService.ComputeXray(Db(visit, new object?[][] { }).Fail(InjectionSql.LastBeforeSql, BitErrors.ReadFailed), Chart, "", Today, Chosen).Kind);
+        Assert.Equal(MemoResultKind.Failed, InjectionMemoService.ComputeXray(new FakeDb().Fail(InjectionSql.VisitsSql, BitErrors.ReadFailed), Chart, "", Today, Chosen).Kind);
     }
 
     [Fact(DisplayName = "AC-7503.3 경과 부위(XrayDue)도 ToString에 부위 글을 남기지 않음")]
     public void XrayDueHidesPart()
     {
         Assert.DoesNotContain("무릎", new XrayDue("무릎", 1).ToString());
-    }
-
-    [Fact(DisplayName = "AC-7506.1 서비스: 칸에 'xr'이 있거나 부위가 없으면 영상은 안 읽고, 영상·그 전 내원 읽기 실패는 전체가 읽기 실패")]
-    public void ServiceSkipsAndFails()
-    {
-        var visit = new[] { new object?[] { "V1", "202611131000", "" } };
-        var knee = new[] { new object?[] { "V1", 1, "오른쪽 무릎 2차 주사" } };
-
-        var hasXr = Db(visit, knee);
-        Assert.Equal("오)무릎 3차", InjectionMemoService.Compute(hasXr, Chart, "xr 오늘", Today).Text);
-        Assert.Equal(new[] { InjectionSql.VisitsSql, InjectionSql.LinesSql }, hasXr.Sqls.ToArray());
-
-        var noPart = Db(visit, new[] { new object?[] { "V1", 1, "3차 주사 합니다" } });
-        Assert.Equal("3차", InjectionMemoService.Compute(noPart, Chart, "", Today).Text);
-        Assert.DoesNotContain(InjectionSql.XraySql, noPart.Sqls);
-
-        var xrayFails = Db(visit, knee).Fail(InjectionSql.XraySql, BitErrors.ReadFailed);
-        Assert.Equal(MemoResultKind.Failed, InjectionMemoService.Compute(xrayFails, Chart, "", Today).Kind);
-        var beforeFails = Db(visit, new object?[][] { }).Fail(InjectionSql.LastBeforeSql, BitErrors.ReadFailed);
-        Assert.Equal(MemoResultKind.Failed, InjectionMemoService.Compute(beforeFails, Chart, "", Today).Kind);
     }
 }

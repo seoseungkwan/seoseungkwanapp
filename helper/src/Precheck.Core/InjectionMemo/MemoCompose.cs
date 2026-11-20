@@ -6,10 +6,10 @@ using System.Text.RegularExpressions;
 namespace Precheck.Core.InjectionMemo;
 
 /// <summary>
-/// 주사 차수 결과에 엑스레이 경과를 합친다(AC-7505.3).
-/// 주사 글 부위가 하나이고 경과면 '오)무릎 3차 xr1년경과', 다른 경과 부위는 '어깨 xr2년경과'를 띄어 나온 차례대로.
-/// 주사 글이 안 들어가는 경우에도 경과만 넣고 그 주사 쪽 결과는 Reason에 둔다. 칸에 이미 'xr'이 있으면 그대로.
-/// 칸 글과 합쳐 50자를 넘으면 뒤쪽 경과 조각부터 뺀다(주사 글은 남김).
+/// [엑스레이]를 누르면 넣을 경과 글(AC-7505.3, 2026-11-20 오후 바꿈: 주사 차수와 따로).
+/// 칸 글의 마지막 '/' 뒤 조각에 주사 'N차'가 있고 그 조각 부위가 하나이며 경과면 그 뒤에 띄어 'xr1년경과', 다른 경과 부위는 '어깨 xr2년경과'를 띄어 나온 차례대로.
+/// 마지막 조각이 주사 차수가 아니면 MemoMerge 규칙(빈 칸 그대로, 글이 있으면 '/'). 칸에 이미 'xr'이 있으면 XrayAlreadyHas, 경과가 없으면 XrayNone.
+/// 칸 글과 합쳐 50자를 넘으면 뒤쪽 경과 조각부터 빼고, 하나도 안 들어가면 전부를 그대로 돌려준다(칸에 못 쳐서 '넣지 못함'으로 직접 적을 글).
 /// </summary>
 public static class MemoCompose
 {
@@ -21,21 +21,21 @@ public static class MemoCompose
     /// <summary>칸 글에 'xr'(대소문자 무시)이 있는지.</summary>
     public static bool HasXray(string? memo) => (memo ?? "").IndexOf("xr", StringComparison.OrdinalIgnoreCase) >= 0;
 
-    public static MemoResult Compose(MemoResult injection, IReadOnlyList<XrayDue>? due, string? currentMemo)
+    public static MemoResult ComposeXray(string? currentMemo, IReadOnlyList<XrayDue>? due)
     {
-        if (injection == null) throw new ArgumentNullException(nameof(injection));
-        if (injection.Kind == MemoResultKind.NoPatient || injection.Kind == MemoResultKind.Failed) return injection;
-        if (due == null || due.Count == 0 || HasXray(currentMemo)) return injection;
-
         var memo = currentMemo ?? "";
-        var insert = injection.Kind == MemoResultKind.Insert;
-        var head = insert ? injection.Text : "";
+        if (HasXray(memo)) return new MemoResult(MemoResultKind.XrayAlreadyHas);
+        if (due == null || due.Count == 0) return new MemoResult(MemoResultKind.XrayNone);
+
+        var slash = memo.LastIndexOf('/');
+        var last = (slash >= 0 ? memo.Substring(slash + 1) : memo).Trim();
+        var afterInjection = last.Length > 0 && MemoMerge.HasInjectionCount(last);
+
         var rest = due.ToList();
         var pieces = new List<string>();
-
-        if (insert)
+        if (afterInjection)
         {
-            var own = PartsOfText(head);
+            var own = PartsOfText(last);
             var same = own.Count == 1 ? rest.FirstOrDefault(d => d.Part == own[0]) : null;
             if (same != null)
             {
@@ -45,19 +45,18 @@ public static class MemoCompose
         }
         pieces.AddRange(rest.Select(d => d.Part + " " + Suffix(d.Years)));
 
+        string? first = null;
+        string? firstAppend = null;
         while (pieces.Count > 0)
         {
-            var text = string.Join(" ", new[] { head }.Concat(pieces).Where(piece => piece.Length > 0));
-            var append = MemoMerge.AppendText(memo, text);
-            if (memo.Length + append.Length <= MaxLength)
-            {
-                return insert
-                    ? new MemoResult(MemoResultKind.Insert, text, append: append)
-                    : new MemoResult(MemoResultKind.Insert, text, append: append, reason: injection);
-            }
+            var text = string.Join(" ", pieces);
+            var append = afterInjection ? (memo.EndsWith(" ", StringComparison.Ordinal) ? text : " " + text) : MemoMerge.AppendText(memo, text);
+            first ??= text;
+            firstAppend ??= append;
+            if (memo.Length + append.Length <= MaxLength) return new MemoResult(MemoResultKind.Insert, text, append: append);
             pieces.RemoveAt(pieces.Count - 1);
         }
-        return injection;
+        return new MemoResult(MemoResultKind.Insert, first, append: firstAppend);
     }
 
     private static string Suffix(int years) => "xr" + years + "년경과";

@@ -60,7 +60,9 @@ public static class XrayParts
         Table.SelectMany(entry => entry.Words.Select(word => (word, entry))).ToDictionary(pair => pair.word, pair => pair.entry, StringComparer.Ordinal);
 
     /// <summary>표의 '메모에 쓰는 부위' 모두.</summary>
-    public static IReadOnlyCollection<string> All => ByPart.Keys;
+    private static readonly string[] PartsInOrder = Table.Select(entry => entry.Part).ToArray();
+
+    public static IReadOnlyList<string> All => PartsInOrder;
 
     /// <summary>인정하는 영상 처방 코드 앞 3글자. 표에 없는 부위는 빈 목록.</summary>
     public static IReadOnlyList<string> CodesOf(string part) =>

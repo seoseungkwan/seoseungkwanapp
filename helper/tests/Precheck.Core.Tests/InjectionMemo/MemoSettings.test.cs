@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Precheck.Core.InjectionMemo;
 using Xunit;
 
@@ -38,7 +39,7 @@ public class MemoSettingsTests
     [Fact(DisplayName = "AC-7504.1 JSON으로 쓰고 읽으면 같은 값(한 줄 {\"hotKey\",\"buttonOffset\"}, 모르는 칸은 무시)")]
     public void JsonRoundTrip()
     {
-        Assert.Equal("{\"hotKey\":\"F8\",\"buttonOffset\":0}", MemoSettings.Defaults.ToJson());
+        Assert.StartsWith("{\"hotKey\":\"F8\",\"buttonOffset\":0,\"xrayParts\":[\"무릎\",", MemoSettings.Defaults.ToJson());
         foreach (var settings in new[] { new MemoSettings("F11", -400), new MemoSettings("F4", 400), new MemoSettings("F10", -20) })
         {
             var back = MemoSettings.FromJson(settings.ToJson());
@@ -69,5 +70,28 @@ public class MemoSettingsTests
         var settings = MemoSettings.FromJson(json);
         Assert.Equal("F8", settings.HotKey);
         Assert.Equal(0, settings.ButtonOffsetPx);
+    }
+
+    [Fact(DisplayName = "AC-7505.5 메모에 넣을 엑스레이: 처음엔 표 20부위 중 팔·허벅지·다리·종아리만 끔, 표 차례로 저장·읽기, 모르는 이름 버림, 깨진 값은 처음 값")]
+    public void XrayPartsSetting()
+    {
+        var all = XrayParts.All.ToArray();
+        Assert.Equal(20, all.Length);
+        Assert.Equal("무릎", all[0]);
+        var expected = all.Where(p => p != "팔" && p != "허벅지" && p != "다리" && p != "종아리").ToArray();
+        Assert.Equal(expected, MemoSettings.Defaults.XrayParts.ToArray());
+
+        var chosen = new MemoSettings("F10", 20, new[] { "허리", "무릎", "모름", "허리" });
+        Assert.Equal(new[] { "무릎", "허리" }, chosen.XrayParts.ToArray());
+        var back = MemoSettings.FromJson(chosen.ToJson());
+        Assert.Equal("F10", back.HotKey);
+        Assert.Equal(20, back.ButtonOffsetPx);
+        Assert.Equal(new[] { "무릎", "허리" }, back.XrayParts.ToArray());
+
+        Assert.Empty(MemoSettings.FromJson("{\"hotKey\":\"F8\",\"buttonOffset\":0,\"xrayParts\":[]}").XrayParts);
+        Assert.Equal(expected, MemoSettings.FromJson("{\"hotKey\":\"F8\",\"buttonOffset\":0}").XrayParts.ToArray());
+        Assert.Equal(expected, MemoSettings.FromJson("{\"hotKey\":\"F8\",\"buttonOffset\":0,\"xrayParts\":\"무릎\"}").XrayParts.ToArray());
+        Assert.Equal(new[] { "무릎" }, MemoSettings.FromJson("{\"hotKey\":\"F8\",\"buttonOffset\":0,\"xrayParts\":[\"무릎\",3,null,\"가슴\"]}").XrayParts.ToArray());
+        Assert.Equal(expected, new MemoSettings("F8", 0).XrayParts.ToArray());
     }
 }

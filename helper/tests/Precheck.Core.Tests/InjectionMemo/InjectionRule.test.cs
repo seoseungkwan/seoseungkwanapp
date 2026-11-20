@@ -328,4 +328,27 @@ public class InjectionRuleTests
         Assert.Equal(MemoResultKind.NoRecord, InjectionRule.Decide(new[] { new VisitNote(Today.AddDays(-3), null!, "") }, Today).Kind);
         Assert.Throws<ArgumentNullException>(() => InjectionRule.Decide(null!, Today));
     }
+
+    [Fact(DisplayName = "AC-7501.6 주사 부위가 둘·셋이면 다: 좌우 있는 부위 먼저, 목·허리는 뒤, 좌우는 맨 앞 한 번, C-MBB는 목·IMPAR·GANG는 꼬리뼈·CMC는 손가락")]
+    public void SeveralParts()
+    {
+        Assert.Equal("오)어깨,목 3차", Inserted(Lines(5, "", "3차 주사 합니다|Rt SSNB ANB + C-MBB 2,3,4 Rt|neck & shoulder Rt")));
+        Assert.Equal("왼)어깨,목 2차", Inserted(Lines(5, "", "목,왼쪽 어깨 1차 주사")));
+        Assert.Equal("오)어깨,목 3차", Inserted(Lines(5, "", "3차 주사 합니다|Rt shoulder SSNB + CMBB")));
+        Assert.Equal("왼)어깨,손가락,목 2차", Inserted(Lines(5, "", "2차 주사 합니다|Lt SSNB ANB + 목 MBB|CMC 주사")));
+        Assert.Equal("꼬리뼈 2차", Inserted(Lines(5, "", "2차 주사 합니다|IMPAR block")));
+        Assert.Equal("허리 3차", Inserted(Lines(5, "", "3차 주사 합니다|L-MBB L4,5 both")));
+        Assert.Equal("양)무릎,허리 2차", Inserted(Lines(5, "", "허리 양측 무릎 1차 주사")));
+    }
+
+    [Fact(DisplayName = "AC-7501.1 앞말에 약 이름만 있으면 부위는 주사 말 줄 → 다른 줄에서(왼)무릎 DNA 2차), 없으면 약 이름만, 부위 아닌 앞말은 버림")]
+    public void DrugOnlyFindsPart()
+    {
+        Assert.Equal("왼)무릎 DNA 3차", Inserted(Lines(5, "", "DNA 2차 주사|Lt knee OA")));
+        Assert.Equal("오)무릎 DNA 3차", Inserted(Lines(5, "", "Rt DNA 2차|knee OA")));
+        Assert.Equal("양)아라간 2차", Inserted(Lines(5, "", "양측 아라간 1차")));
+        Assert.Equal("DNA 2차", Inserted(Lines(5, "", "DNA 1차")));
+        Assert.Equal("오)어깨 2차", Inserted(Lines(5, "", "많이 좋아지면 2차 주사 합니다|Rt shoulder pain")));
+        Assert.Equal("왼)무릎 3차", Inserted(Lines(5, "", "왼쪽 무릎 전 2차 주사")));
+    }
 }
