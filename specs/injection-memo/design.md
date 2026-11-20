@@ -35,7 +35,7 @@ InjectionReader.ReadLastBefore(IBitDb, string chart, DateTime today) → VisitNo
 - TASK-2: `ReceptionWindows`(맨 앞 창이 비트 접수 화면인지, 차트번호 칸 글·메모 칸 핸들·글·사각형 읽기, 칸 글은 저장·로그 안 함), `MemoTyper.Append(handle, text)`(끝으로 커서 → EM_REPLACESEL), `HotKeys`(RegisterHotKey/UnregisterHotKey, 접수 화면이 맨 앞일 때만 잡음), `MemoSettingsFile`
 - TASK-2 결과(954cb686): 칸은 라벨 글로 찾음(AutomationId는 창 핸들 숫자라 못 씀). `MemoTyper.Append` → `Typed`·`NotEditable`·`TooLong`(50자 넘음)·`Blocked`(권한 다름, 오류 5)·`Failed` — Typed 밖은 모두 '넣지 못함' 알림
 - 권한: 이 PC 비트(접수·BitAuth)는 관리자 권한 → 일반 권한 PtSlip의 넣기·단축키가 막힘. TASK-4 설치가 `schtasks /create /sc onlogon /rl highest`로 PtSlip을 높은 권한으로 켜는 예약 작업을 등록(설치 때 '예' 한 번), 옛 시작프로그램 바로가기는 지움. 지우기는 예약 작업도 지움
-- 한 글자 부위(발·손·목·등·팔)는 뒤 글자가 조사일 때만(InjectionRule.PartsIn, 주사 부위와 경과 부위가 같이 씀)
+- 한 글자 부위(발·손·목·등·팔)는 막는 말(발생·발병·발현·발작·발급·발견·발적·발열·발기·발전·손상·손해·손톱·등산·등록·등급·등등·목욕·목발·목적·목표·목요일)의 첫 글자일 때만 뺀다(InjectionRule.PartHits, 주사 부위와 경과 부위가 같이 씀). 좌우 말·앞 부위 말에 붙은 부위는 경과 쪽(loose)에서만 잡는다
 - TASK-6: `MemoButtonForm`이 `Reason`이 끝남·일찍 옴이면 `NoticeForm`을 하나 더(초록 아래 노랑) 띄운다
 - TASK-3: `MemoButtonForm`(테두리 없는 작은 [주사 차수] 단추, 메모 칸 오른쪽에 0.25초마다 붙음), `NoticeForm`(2~3초 알림, 칸 옆), `SettingsForm` 맨 아래 줄에 주사 차수 단추 자리(◀ ▶)·단축키 칸(탭 없음, 서류 인쇄를 뺐으므로), `Program.cs` 잇기(백그라운드로 읽고 결과는 창 스레드로)
 
