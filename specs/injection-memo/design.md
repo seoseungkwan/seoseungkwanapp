@@ -39,14 +39,14 @@ FractureRule.PartOf(string? code) → string   // notes/fracture.md 표, 없으�
 FractureRule.Text(IReadOnlyList<VisitNote> last30Days /*날짜순*/) → string?   // '오)발 fx', 골절 주상병 내원이 없으면 null
 FractureRule.HasFx(string? memo) → bool
 ```
-- `InjectionMemoService.Compute`는 주사 차수와 골절 fx(영상 안 읽음): 칸에 차수와 fx가 다 있으면 끝 → 30일 내원 읽기(칸에 fx가 없으면 주상병도) → 차수 규칙(칸에 차수가 있으면 AlreadyHas) + FractureRule.Text → fx가 있으면 `fx 글` 또는 `fx 글/차수 글`을 Insert, 없으면 지금대로. `ComputeXray`는 차트번호 → (칸에 xr 있으면 끝) → 30일 내원(없으면 그 전 마지막 내원) → 고른 부위만 → 영상 읽기 → `ComposeXray`
+- `InjectionMemoService.Compute`는 주사 차수와 골절 fx(영상 안 읽음): 칸에 차수와 fx가 다 있으면 끝 → 30일 내원 읽기(칸에 fx가 없으면 주상병도) → 차수 규칙(칸에 차수가 있으면 AlreadyHas) + FractureRule.Text → fx가 있으면 `fx 글` 또는 `fx 글/차수 글`을 Insert, 없으면 지금대로. `ReadXrayList`는 차트번호 → 영상 처방만 읽기(20년, 증상 줄 안 읽음) → `XrayList.Of`. [넣기]마다 창에서 그때 칸 글로 `ComposeXrayPart`
 
 ## 윈도우 (`Precheck.PtSlip`)
 - TASK-2: `ReceptionWindows`(맨 앞 창이 비트 접수 화면인지, 차트번호 칸 글·메모 칸 핸들·글·사각형 읽기, 칸 글은 저장·로그 안 함), `MemoTyper.Append(handle, text)`(끝으로 커서 → EM_REPLACESEL), `HotKeys`(RegisterHotKey/UnregisterHotKey, 접수 화면이 맨 앞일 때만 잡음), `MemoSettingsFile`
 - TASK-2 결과(954cb686): 칸은 라벨 글로 찾음(AutomationId는 창 핸들 숫자라 못 씀). `MemoTyper.Append` → `Typed`·`NotEditable`·`TooLong`(50자 넘음)·`Blocked`(권한 다름, 오류 5)·`Failed` — Typed 밖은 모두 '넣지 못함' 알림
 - 권한: 이 PC 비트(접수·BitAuth)는 관리자 권한 → 일반 권한 PtSlip의 넣기·단축키가 막힘. TASK-4 설치가 `schtasks /create /sc onlogon /rl highest`로 PtSlip을 높은 권한으로 켜는 예약 작업을 등록(설치 때 '예' 한 번), 옛 시작프로그램 바로가기는 지움. 지우기는 예약 작업도 지움
-- 한 글자 부위(발·손·목·등·팔)는 막는 말(발생·발병·발현·발작·발급·발견·발적·발열·발기·발전·손상·손해·손톱·등산·등록·등급·등등·목욕·목발·목적·목표·목요일)의 첫 글자일 때만 뺀다(InjectionRule.PartHits, 주사 부위와 경과 부위가 같이 씀). 좌우 말·앞 부위 말에 붙은 부위는 경과 쪽(loose)에서만 잡는다
-- TASK-14: [엑스레이]를 누르면 `XrayListForm`(새 파일, WS_EX_NOACTIVATE 작은 창, 시안 ⑤)을 단추 아래에 띄우고(다시 누르면 닫음), [넣기]는 그때 칸 글로 `ComposeXrayPart` → `MemoTyper.Append` → 그 줄 '넣음 ✓'. 차트번호가 바뀌거나 접수 화면이 사라지면 닫는다. (옛 TASK-8: `MemoButtonForm`이 [주사 차수] 오른쪽에 [엑스레이]를 같이 그리고(같은 창 안 두 단추), 누르면 `ComputeXray` → 넣기·알림.) 두 알림 쌓기(Reason)는 뺀다. 설정 창 맨 아래 묶음에 '메모에 넣을 엑스레이' 체크 20칸
+- 한 글자 부위(발·손·목·등·팔)는 막는 말(발생·발병·발현·발작·발급·발견·발적·발열·발기·발전·손상·손해·손톱·등산·등록·등급·등등·목욕·목발·목적·목표·목요일)의 첫 글자일 때만 뺀다(InjectionRule.PartHits). '목'은 요일로 쓰인 그 자리(목 요일·다음/이번 주 목·월/목)만 요일이고 같은 줄의 다른 '목'은 부위(2026-11-20 '목요일 목 3차'). 좌우 말·앞 부위 말에 붙은 부위는 loose(MemoCompose가 칸 글의 주사 부위를 볼 때)에서만 잡는다
+- TASK-14: [엑스레이]를 누르면 `XrayListForm`(새 파일, WS_EX_NOACTIVATE 작은 창, 시안 ⑤)을 단추 아래에 띄우고(다시 누르면 닫음), [넣기]는 그때 칸 글로 `ComposeXrayPart` → `MemoTyper.Append` → 그 줄 '넣음 ✓'. 차트번호가 바뀌거나 접수 화면이 사라지면 닫는다. (옛 TASK-8: `MemoButtonForm`이 [주사 차수] 오른쪽에 [엑스레이]를 같이 그리고(같은 창 안 두 단추), 누르면 `ComputeXray` → 넣기·알림.) 두 알림 쌓기(Reason)는 뺀다. 설정 창 맨 아래 묶음에 '찍은 적 없을 때 보여 줄 엑스레이' 체크 20칸
 - TASK-3: `MemoButtonForm`(테두리 없는 작은 [주사 차수] 단추, 메모 칸 오른쪽에 0.25초마다 붙음), `NoticeForm`(2~3초 알림, 칸 옆), `SettingsForm` 맨 아래 줄에 주사 차수 단추 자리(◀ ▶)·단축키 칸(탭 없음, 서류 인쇄를 뺐으므로), `Program.cs` 잇기(백그라운드로 읽고 결과는 창 스레드로)
 
 ## 위험
