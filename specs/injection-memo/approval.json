@@ -1,15 +1,16 @@
 {
   "status": "approved",
   "feature": "injection-memo",
-  "approved_at": "2026-11-20T01:51:39Z",
+  "approved_at": "2026-11-20T02:39:03Z",
   "approved_via": "user-prompt",
   "session_id": "74aecb3c-14de-42ec-98b3-3aee3a20f070",
-  "spec_sha256": "7234bfa7767a589592e222d2741a6fb92d807c199b27feb737aebca693eb2ad4",
+  "spec_sha256": "a8c946887a00e1c41c5eb3771e0b0d8834cd3fcf6b59c63be65704d65f1083b9",
   "scope": [
     "(없음)",
     "helper/install/ptslip/**",
     "helper/src/Precheck.Core/Bit/Sql.cs",
     "helper/src/Precheck.Core/InjectionMemo/**",
+    "helper/src/Precheck.Core/InjectionMemo/MemoNotices.cs",
     "helper/src/Precheck.PtSlip/HotKeys.cs",
     "helper/src/Precheck.PtSlip/MemoButtonForm.cs",
     "helper/src/Precheck.PtSlip/MemoSettingsFile.cs",
