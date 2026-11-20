@@ -353,7 +353,9 @@ public class InjectionRuleTests
 
         // 앞말에 좌우가 있으면 좌우 있는 부위 주사: 다른 주사 줄의 가운데 부위(C-MBB → 목)는 붙이지 않고 좌우를 남김(90일 대조 좌우 빠짐 62건)
         Assert.Equal("양)아라간 2차", Inserted(Lines(5, "", "양 아라간 1차 + FNB SNB both|C-MBB 3,4,5")));
-        Assert.Equal("오)무릎 DNA 3차", Inserted(Lines(5, "", "Rt DNA 2차|C-MBB 3,4,5|knee OA")));
+        // 주사 말 줄에 가운데 부위만 있으면 다른 줄은 뒤지지 않는다(다른 줄에서 무릎·팔 … 여럿을 모으던 19건)
+        Assert.Equal("오)DNA 3차", Inserted(Lines(5, "", "Rt DNA 2차|C-MBB 3,4,5|knee OA")));
+        Assert.Equal("양)무릎 아라간 2차", Inserted(Lines(5, "", "양 아라간 1차|Both knee FNB + C-MBB")));
         Assert.Equal("목 아라간 2차", Inserted(Lines(5, "", "아라간 1차|C-MBB 3,4,5")));
     }
 }
