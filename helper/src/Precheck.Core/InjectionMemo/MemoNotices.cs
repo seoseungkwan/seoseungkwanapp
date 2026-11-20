@@ -16,6 +16,18 @@ public static class MemoNotices
     /// </summary>
     public static string TypeFailed(string? text) => "메모 칸에 넣지 못했어요. 직접 적어 주세요: " + (text ?? "");
 
+    /// <summary>
+    /// 엑스레이 경과만 넣고 주사 글은 끝남·일찍 옴이라 못 넣었을 때, 초록 '넣었어요' 아래에 함께 띄우는 노랑 알림 글(AC-7505.4).
+    /// 기록 없음·이미 있음, 주사 글을 넣은 경우는 null(초록 하나만).
+    /// </summary>
+    public static string? ReasonOf(MemoResult? result)
+    {
+        var reason = result != null && result.Kind == MemoResultKind.Insert ? result.Reason : null;
+        if (reason == null || (reason.Kind != MemoResultKind.Finished && reason.Kind != MemoResultKind.TooEarly)) return null;
+        var text = Of(reason);
+        return text == Failed ? null : text;
+    }
+
     /// <summary>결과 → 알림 글. null은 읽기 실패 글. 계획 날짜는 'M월 D일'(앞 0 없음).</summary>
     public static string Of(MemoResult? result)
     {

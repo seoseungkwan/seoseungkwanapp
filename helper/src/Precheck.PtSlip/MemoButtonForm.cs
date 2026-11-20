@@ -45,6 +45,8 @@ public sealed class MemoButtonForm : Form
     private readonly SynchronizationContext ui;
     private readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer { Interval = TickMs };
     private readonly NoticeForm notice = new NoticeForm();
+    /// <summary>엑스레이 경과만 넣었을 때 초록 알림 아래에 함께 띄우는 주사 쪽 이유(노랑, AC-7505.4)</summary>
+    private readonly NoticeForm reasonNotice = new NoticeForm();
     private MemoSettings settings;
     /// <summary>지금 단추 자리(설정 창에서 옮기는 동안은 저장 전 값)</summary>
     private int offset;
@@ -204,6 +206,7 @@ public sealed class MemoButtonForm : Form
         {
             timer.Dispose();
             notice.Dispose();
+            reasonNotice.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -253,6 +256,7 @@ public sealed class MemoButtonForm : Form
         try
         {
             if (IsDisposed) return;
+            reasonNotice.Dismiss();
             if (result.Kind == MemoResultKind.Insert)
             {
                 if (!SameScreen(chart, memo, box))
@@ -261,8 +265,15 @@ public sealed class MemoButtonForm : Form
                     return;
                 }
                 var typed = MemoTyper.Append(box, result.Append);
-                if (typed == MemoTypeResult.Typed) notice.ShowAt(anchor, MemoNotices.Of(result), NoticeTone.Ok);
-                else notice.ShowAt(anchor, MemoNotices.TypeFailed(result.Text), NoticeTone.Bad);
+                if (typed != MemoTypeResult.Typed)
+                {
+                    notice.ShowAt(anchor, MemoNotices.TypeFailed(result.Text), NoticeTone.Bad);
+                    return;
+                }
+                notice.ShowAt(anchor, MemoNotices.Of(result), NoticeTone.Ok);
+                // 경과만 넣고 주사는 끝남·일찍 옴: 초록 바로 아래에 그 이유(노랑)
+                var reason = MemoNotices.ReasonOf(result);
+                if (reason != null) reasonNotice.ShowAt(notice.Bounds, reason, NoticeTone.Warn);
                 return;
             }
             var text = MemoNotices.Of(result);

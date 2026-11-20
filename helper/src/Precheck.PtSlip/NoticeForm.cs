@@ -209,7 +209,8 @@ public sealed class NoticeForm : Form
         if (Left != x || Top != y) Location = new Point(x, y);
     }
 
-    private void Dismiss()
+    /// <summary>바로 숨긴다(눌렀을 때·시간이 지났을 때, 새 결과로 아래 알림을 치울 때).</summary>
+    public void Dismiss()
     {
         timer.Stop();
         if (Visible) Hide();

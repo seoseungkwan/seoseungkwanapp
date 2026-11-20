@@ -20,6 +20,24 @@ public class MemoNoticesTests
         Assert.Equal("비트에서 기록을 읽지 못했어요. 잠시 뒤 다시 눌러 주세요.", MemoNotices.Of(new MemoResult(MemoResultKind.Failed)));
     }
 
+    [Fact(DisplayName = "AC-7505.4 경과만 넣고 주사는 끝남·일찍 옴이면 초록 '넣었어요: <넣은 글>' 아래 그 이유 노랑 글, 기록 없음·이미 있음·주사 글 넣음은 초록 하나만")]
+    public void XrayOnlyNotices()
+    {
+        var early = new MemoResult(MemoResultKind.Insert, "무릎 xr1년경과", reason: new MemoResult(MemoResultKind.TooEarly, plannedDate: Day(11, 27)));
+        Assert.Equal("넣었어요: 무릎 xr1년경과", MemoNotices.Of(early));
+        Assert.Equal("주사 날이 아닐 수 있어요(계획 11월 27일). 넣지 않았어요.", MemoNotices.ReasonOf(early));
+
+        var finished = new MemoResult(MemoResultKind.Insert, "어깨 xr2년경과", reason: new MemoResult(MemoResultKind.Finished, untilNumber: 5));
+        Assert.Equal("계획한 주사가 끝났어요(5차까지). 넣지 않았어요.", MemoNotices.ReasonOf(finished));
+
+        Assert.Null(MemoNotices.ReasonOf(new MemoResult(MemoResultKind.Insert, "무릎 xr1년경과", reason: new MemoResult(MemoResultKind.NoRecord))));
+        Assert.Null(MemoNotices.ReasonOf(new MemoResult(MemoResultKind.Insert, "무릎 xr1년경과", reason: new MemoResult(MemoResultKind.AlreadyHas))));
+        Assert.Null(MemoNotices.ReasonOf(new MemoResult(MemoResultKind.Insert, "오)무릎 3차 xr1년경과")));
+        Assert.Null(MemoNotices.ReasonOf(new MemoResult(MemoResultKind.TooEarly, plannedDate: Day(11, 27))));
+        Assert.Null(MemoNotices.ReasonOf(null));
+        Assert.Equal("넣었어요: 오)무릎 3차 xr1년경과", MemoNotices.Of(new MemoResult(MemoResultKind.Insert, "오)무릎 3차 xr1년경과")));
+    }
+
     [Fact(DisplayName = "AC-7503.3 계획 날짜는 'M월 D일'(앞 0 없음), 넣은 글 알림에는 '/' 없이 새 글만")]
     public void NoticeDetails()
     {
