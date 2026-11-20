@@ -101,6 +101,24 @@ describe('REQ-7506 영상 처방 읽기 (C# Precheck.Core.Tests.InjectionMemo)',
   })
 })
 
+describe('REQ-7507 골절 fx (C# Precheck.Core.Tests.InjectionMemo)', () => {
+  it('AC-7507.1 30일 안 주상병이 골절(S?2·T02·T08·T10·T12·T142·M80·M484·M84)인 마지막 내원 하나, 없으면 fx 없음', () => {
+    expectAc('AC-7507.1')
+  })
+
+  it("AC-7507.2 부위는 코드 표(직원 말), 좌우는 fx 줄 첫 좌우 말, 가운데 부위·부위 없음은 좌우 없음: '<좌우>)<부위> fx'", () => {
+    expectAc('AC-7507.2')
+  })
+
+  it("AC-7507.3 칸에 fx가 없으면 fx 글 앞·주사 차수 '/' 뒤, 주사가 없어도 fx만 초록 하나, 차수와 fx가 다 있으면 DB 안 묻고 이미 있음, [엑스레이]는 fx 안 봄", () => {
+    expectAc('AC-7507.3')
+  })
+
+  it('AC-7507.4 칸에 fx가 없을 때만 허용 목록 SELECT로 30일 내원 주상병 읽기, 실패는 읽기 실패', () => {
+    expectAc('AC-7507.4')
+  })
+})
+
 describe('REQ-7504 설정 (C# Precheck.Core.Tests.InjectionMemo)', () => {
   it('AC-7504.1 기본 F8·0, 단축키 F4·F8·F10·F11만, 단추 자리 -400~400px, memo-settings.json, 깨진 파일은 기본값', () => {
     expectAc('AC-7504.1')

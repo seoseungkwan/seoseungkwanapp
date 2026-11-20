@@ -15,8 +15,9 @@ public static class InjectionReader
     /// <summary>
     /// chart는 정리한 차트번호(숫자 1~14자리, 앞자리 0 없음). 아니면 DB에 묻지 않고 빈 목록.
     /// 내원은 접수 시각 차례, 증상 줄은 EmrShtSeq 차례. 줄 없는 내원·빈 메모도 남기고, 접수 시각이 틀린 내원·모르는 내원의 줄은 버린다.
+    /// withDiagnoses면 같은 기간 주상병(InjectionSql.DiagnosisSql)도 읽어 MainDiagnosis에 잇는다(골절 fx, REQ-7507).
     /// </summary>
-    public static IReadOnlyList<VisitNote> Read(IBitDb db, string chart, DateTime today)
+    public static IReadOnlyList<VisitNote> Read(IBitDb db, string chart, DateTime today, bool withDiagnoses = false)
     {
         if (db == null) throw new ArgumentNullException(nameof(db));
         if (!ChartNumber.IsNormalized(chart)) return Array.Empty<VisitNote>();
@@ -41,6 +42,18 @@ public static class InjectionReader
             visits[id] = (stamp, date, Text(row[2]).Trim());
         }
 
+        var mains = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (withDiagnoses)
+        {
+            foreach (var row in ReadOnlyGuard.Query(db, InjectionSql.DiagnosisSql, args, InjectionSql.Timeout))
+            {
+                if (row == null || row.Count < 2) continue;
+                var id = Text(row[0]).Trim();
+                if (id.Length == 0 || !visits.ContainsKey(id) || mains.ContainsKey(id)) continue;
+                mains[id] = Text(row[1]);
+            }
+        }
+
         var lines = new Dictionary<string, List<(decimal Seq, string Text)>>(StringComparer.Ordinal);
         foreach (var row in lineRows)
         {
@@ -57,7 +70,8 @@ public static class InjectionReader
             .Select(pair => new VisitNote(
                 pair.Value.Date,
                 lines.TryGetValue(pair.Key, out var list) ? list.OrderBy(line => line.Seq).Select(line => line.Text).ToArray() : Array.Empty<string>(),
-                pair.Value.Memo))
+                pair.Value.Memo,
+                mains.TryGetValue(pair.Key, out var main) ? main : null))
             .ToArray();
     }
 

@@ -230,7 +230,7 @@ public class XrayMemoTests
         foreach (var part in new[] { "TOP 1", "LTRIM(RTRIM(b.PbsChtNum))=@cht", "OcmAcpDtm<@from", "OcmPatTyp='O'", "OcmRsuYon<>'O'", "EmrShtTyp='S'", "ORDER BY" })
             Assert.Contains(part, b);
         Assert.Equal("@cht:VarChar(14) @from:Char(12)", Shape(b));
-        Assert.Equal(4, InjectionSql.All.Count);
+        Assert.Equal(5, InjectionSql.All.Count);
     }
 
     [Fact(DisplayName = "AC-7506.1 ReadXray: @cht·@from(오늘 − 2년 0시)·@to(오늘 0시), 5초, 코드 앞 3글자 → 마지막 날짜(틀린 줄은 버림)")]
@@ -281,11 +281,12 @@ public class XrayMemoTests
             .Answer(InjectionSql.VisitsSql, _ => visits)
             .Answer(InjectionSql.LinesSql, _ => lines)
             .Answer(InjectionSql.XraySql, _ => xray ?? new object?[][] { })
-            .Answer(InjectionSql.LastBeforeSql, _ => before ?? new object?[][] { });
+            .Answer(InjectionSql.LastBeforeSql, _ => before ?? new object?[][] { })
+            .Answer(InjectionSql.DiagnosisSql, _ => new object?[][] { });
 
     private static readonly string[] Chosen = MemoSettings.Defaults.XrayParts.ToArray();
 
-    [Fact(DisplayName = "AC-7505.4 [주사 차수](Compute)는 엑스레이를 보지 않고 주사 차수만, 칸에 차수가 있으면 DB에 묻지 않고 이미 있음")]
+    [Fact(DisplayName = "AC-7505.4 [주사 차수](Compute)는 엑스레이를 보지 않고 주사 차수(와 골절 fx)만, 칸에 차수와 fx가 다 있으면 DB에 묻지 않고 이미 있음")]
     public void InjectionButtonIgnoresXray()
     {
         var visit = new[] { new object?[] { "V1", "202611131000", "" } };
@@ -293,11 +294,12 @@ public class XrayMemoTests
         var db = Db(visit, knee);
         var result = InjectionMemoService.Compute(db, Chart, "", Today);
         Assert.Equal("오)무릎 3차", result.Text);
-        Assert.Equal(new[] { InjectionSql.VisitsSql, InjectionSql.LinesSql }, db.Sqls.ToArray());
+        Assert.Equal(new[] { InjectionSql.VisitsSql, InjectionSql.LinesSql, InjectionSql.DiagnosisSql }, db.Sqls.ToArray());
 
         var none = new FakeDb();
-        Assert.Equal(MemoResultKind.AlreadyHas, InjectionMemoService.Compute(none, Chart, "오)무릎 2차", Today).Kind);
+        Assert.Equal(MemoResultKind.AlreadyHas, InjectionMemoService.Compute(none, Chart, "오)무릎 2차/오)발 fx", Today).Kind);
         Assert.Empty(none.Calls);
+        Assert.Equal(MemoResultKind.AlreadyHas, InjectionMemoService.Compute(Db(visit, knee), Chart, "오)무릎 2차", Today).Kind);
     }
 
     [Fact(DisplayName = "AC-7505.3 [엑스레이](ComputeXray): 30일 내원(없으면 그 전 마지막 내원) → 고른 엑스레이 부위만 → 영상 읽기 → 칸 끝에")]

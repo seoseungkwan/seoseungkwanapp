@@ -44,13 +44,15 @@ public class MemoMergeTests
         // 영상(REQ-7506)은 빈 답 · 최근 무릎 사진: 경과가 없어 주사 차수만 본다
         var empty = new FakeDb()
             .Answer(InjectionSql.VisitsSql, _ => new object?[][] { }).Answer(InjectionSql.LinesSql, _ => new object?[][] { })
-            .Answer(InjectionSql.LastBeforeSql, _ => new object?[][] { }).Answer(InjectionSql.XraySql, _ => new object?[][] { });
+            .Answer(InjectionSql.LastBeforeSql, _ => new object?[][] { }).Answer(InjectionSql.XraySql, _ => new object?[][] { })
+            .Answer(InjectionSql.DiagnosisSql, _ => new object?[][] { });
         Assert.Equal(MemoResultKind.AlreadyHas, InjectionMemoService.Compute(empty, Chart, "오)무릎 2차", Today).Kind);
 
         var db = new FakeDb()
             .Answer(InjectionSql.VisitsSql, _ => new[] { new object?[] { "V1", "202611131000", "" } })
             .Answer(InjectionSql.LinesSql, _ => new[] { new object?[] { "V1", 1, "오른쪽 무릎 2차 주사 시행" } })
-            .Answer(InjectionSql.XraySql, _ => new[] { new object?[] { "G72", "202611010900" } });
+            .Answer(InjectionSql.XraySql, _ => new[] { new object?[] { "G72", "202611010900" } })
+            .Answer(InjectionSql.DiagnosisSql, _ => new object?[][] { });
         var result = InjectionMemoService.Compute(db, Chart, "물리치료만", Today);
         Assert.Equal(MemoResultKind.Insert, result.Kind);
         Assert.Equal("오)무릎 3차", result.Text);

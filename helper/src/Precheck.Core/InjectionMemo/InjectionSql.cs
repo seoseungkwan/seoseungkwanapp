@@ -35,6 +35,13 @@ public static class InjectionSql
         + "JOIN dbo.EmrInf e ON e.EmrOcmNum=c.OcmNum\n"
         + InRange + " AND e.EmrShtTyp='S'";
 
+    /// <summary>골절 fx(REQ-7507): 그 30일 외래 내원들의 주상병 [내원 번호 RTRIM(OcmNum), 진단 코드 UPPER(RTRIM(OicElcCod))]. OicIcdPri='1'은 내원마다 하나.</summary>
+    public const string DiagnosisSql =
+        "SELECT RTRIM(c.OcmNum) VisitId,UPPER(RTRIM(i.OicElcCod)) Code\n"
+        + Joined
+        + "JOIN dbo.OicInf i ON i.OicOcmNum=c.OcmNum\n"
+        + InRange + " AND i.OicIcdPri='1'";
+
     /// <summary>
     /// 엑스레이 경과(REQ-7506): 그 환자의 @from(오늘 − 2년)~@to(오늘 0시) 영상 처방(영수증 항목 30, 삭제·취소 아님)을
     /// 청구 코드 앞 3글자(G + 부위 두 자리)별 마지막 처방 시각으로 DB 안에서 묶는다. 질문 자체는 약 60ms(2026-11-20 이 PC, 테스트 환자).
@@ -75,6 +82,7 @@ public static class InjectionSql
         [LinesSql] = Range,
         [XraySql] = Range,
         [LastBeforeSql] = Before,
+        [DiagnosisSql] = Range,
     };
 
     /// <summary>주사 차수 SQL 목록.</summary>
