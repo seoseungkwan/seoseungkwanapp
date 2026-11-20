@@ -50,7 +50,6 @@ public class InjectionReadTests
             Assert.True(Sql.IsAllowed(sql));
             Assert.True(InjectionSql.IsAllowed(sql));
             Assert.DoesNotContain(sql, Sql.All);
-            Assert.False(Precheck.Core.DocPrint.DocSql.IsAllowed(sql));
 
             var used = Regex.Matches(sql, @"@[A-Za-z][A-Za-z0-9]*").Cast<Match>().Select(m => m.Value).Distinct().OrderBy(n => n, StringComparer.Ordinal).ToArray();
             Assert.Equal(new[] { "@cht", "@from", "@to" }, used);

@@ -10,6 +10,12 @@ public static class MemoNotices
     public const string NoPatient = "접수 화면에 환자를 먼저 불러와 주세요.";
     public const string Failed = "비트에서 기록을 읽지 못했어요. 잠시 뒤 다시 눌러 주세요.";
 
+    /// <summary>
+    /// '넣지 못함'(빨강): 넣을 글(Insert 결과의 Text, '/' 없는 새 글)을 메모 칸에 치지 못했을 때 — 칸이 꽉 참(50자)·잠김·윈도우가 막음.
+    /// 직원이 보고 직접 적도록 글을 같이 보인다(화면에만, 파일·로그에 남기지 않는다).
+    /// </summary>
+    public static string TypeFailed(string? text) => "메모 칸에 넣지 못했어요. 직접 적어 주세요: " + (text ?? "");
+
     /// <summary>결과 → 알림 글. null은 읽기 실패 글. 계획 날짜는 'M월 D일'(앞 0 없음).</summary>
     public static string Of(MemoResult? result)
     {
@@ -23,9 +29,10 @@ public static class MemoNotices
             case MemoResultKind.Finished:
                 return "계획한 주사가 끝났어요(" + result.UntilNumber.ToString(CultureInfo.InvariantCulture) + "차까지). 넣지 않았어요.";
             case MemoResultKind.TooEarly:
+                // 계획 날짜 없는 일찍 옴은 규칙상 안 나온다. 시안에 없는 글을 만들지 않고 읽기 실패 글로
                 var planned = result.PlannedDate;
                 return planned == null
-                    ? "주사 날이 아닐 수 있어요. 넣지 않았어요."
+                    ? Failed
                     : "주사 날이 아닐 수 있어요(계획 " + planned.Value.Month.ToString(CultureInfo.InvariantCulture) + "월 " + planned.Value.Day.ToString(CultureInfo.InvariantCulture) + "일). 넣지 않았어요.";
             case MemoResultKind.AlreadyHas:
                 return AlreadyHas;
