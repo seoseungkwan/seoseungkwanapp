@@ -114,6 +114,10 @@ describe('REQ-7507 골절 fx (C# Precheck.Core.Tests.InjectionMemo)', () => {
     expectAc('AC-7507.3')
   })
 
+  it("AC-7507.5 족지·수지는 몇 번째도('오)4족지 fx'·'왼)3,4수지 fx'), 엄지 코드는 1, 못 읽으면 번호 없이", () => {
+    expectAc('AC-7507.5')
+  })
+
   it('AC-7507.4 칸에 fx가 없을 때만 허용 목록 SELECT로 30일 내원 주상병 읽기, 실패는 읽기 실패', () => {
     expectAc('AC-7507.4')
   })

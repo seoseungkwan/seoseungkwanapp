@@ -209,6 +209,39 @@ public class FractureTests
         Assert.DoesNotContain(InjectionSql.DiagnosisSql, db.Sqls);
     }
 
+    // ── AC-7507.5 족지·수지 번호 ─────────────────────────────
+
+    [Fact(DisplayName = "AC-7507.5 족지·수지는 몇 번째를 앞에: 엄지 코드(S92.4·S62.5)는 1, 그 밖은 30일 증상 줄의 '<1~5>st·nd·rd·th' + toe·finger·MT·MC …(골절 내원 줄 먼저, 다른 내원은 최근부터), thumb·great toe·hallux 1·little·small 5, 여럿이면 쉼표, 못 읽으면 번호 없이")]
+    public void DigitNumber()
+    {
+        Assert.Equal("오)4족지 fx", FractureRule.Text(new[] { Dx(5, "S9250", "Rt 4th toe fx") }));
+        Assert.Equal("왼)3,4수지 fx", FractureRule.Text(new[] { Dx(5, "S6260", "Lt 3rd, 4th finger fx") }));
+        Assert.Equal("왼)3,4수지 fx", FractureRule.Text(new[] { Dx(5, "S6260", "Lt 4th, 3rd finger, 3rd finger fx") }));
+        Assert.Equal("왼)1족지 fx", FractureRule.Text(new[] { Dx(5, "S9240", "Lt hallux fx") }));
+        Assert.Equal("왼)1족지 fx", FractureRule.Text(new[] { Dx(5, "S9240", "Lt 3rd toe fx") }));
+        Assert.Equal("오)1수지 fx", FractureRule.Text(new[] { Dx(5, "S6250", "Rt finger fx") }));
+        Assert.Equal("오)1수지 fx", FractureRule.Text(new[] { Dx(5, "S6260", "Rt thumb fx") }));
+        Assert.Equal("오)1족지 fx", FractureRule.Text(new[] { Dx(5, "S9250", "Rt great toe fx") }));
+        Assert.Equal("오)5족지 fx", FractureRule.Text(new[] { Dx(5, "S9250", "Rt 5th MT base fx") }));
+        Assert.Equal("오)2족지 fx", FractureRule.Text(new[] { Dx(5, "S9250", "Rt 2ND TOE fx") }));
+        Assert.Equal("왼)5수지 fx", FractureRule.Text(new[] { Dx(5, "S6260", "Lt little finger fx") }));
+        Assert.Equal("왼)5수지 fx", FractureRule.Text(new[] { Dx(5, "S6260", "Lt small finger FX") }));
+
+        // 골절 내원 줄에 번호가 없으면 다른 내원(최근부터), 골절 내원 줄이 먼저
+        Assert.Equal("오)4족지 fx", FractureRule.Text(new[] { Dx(20, "", "Rt 4th toe pain"), Dx(5, "S9250", "Rt toe fx") }));
+        Assert.Equal("오)3족지 fx", FractureRule.Text(new[] { Dx(10, "", "Rt 4th toe"), Dx(5, "S9250", "Rt 3rd toe fx") }));
+        Assert.Equal("오)2족지 fx", FractureRule.Text(new[] { Dx(25, "", "4th toe"), Dx(20, "", "2nd toe"), Dx(5, "S9250", "Rt toe fx") }));
+        Assert.Equal("오)4족지 fx", FractureRule.Text(new[] { Dx(5, "S9250", "Rt toe fx", "4th toe swelling") }));
+
+        // 못 읽으면 번호 없이: 우리말 꼴·6 이상·toe에서 10글자 넘게 떨어짐
+        Assert.Equal("오)족지 fx", FractureRule.Text(new[] { Dx(5, "S9250", "우측 4지 골절") }));
+        Assert.Equal("오)족지 fx", FractureRule.Text(new[] { Dx(5, "S9250", "Rt 6th toe fx") }));
+        Assert.Equal("오)족지 fx", FractureRule.Text(new[] { Dx(5, "S9250", "Rt 4th week after injury, toe fx") }));
+
+        // 족지·수지가 아니면 번호 안 붙임(중족골은 '발')
+        Assert.Equal("오)발 fx", FractureRule.Text(new[] { Dx(5, "S9230", "Rt 5th MT fx") }));
+    }
+
     // ── AC-7507.4 주상병 읽기 ─────────────────────────────
 
     [Fact(DisplayName = "AC-7507.4 문장: 읽기 전용 SELECT(그 30일 외래 내원들의 OicInf OicIcdPri='1'), 허용 목록·@cht·@from·@to")]

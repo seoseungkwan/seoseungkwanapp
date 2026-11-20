@@ -26,6 +26,15 @@ public static class FractureRule
         @"(?<![A-Za-z])(Rt|RT|rt|Lt|LT|lt|Both|both|BOTH|Bil|bil|BIL)(?![A-Za-z])|(?<![가-힣])(오른쪽|오른|우측|왼쪽|왼|좌측|양측|양쪽|[우좌오양](?=[\s\)]))",
         RegexOptions.Compiled);
 
+    // 족지·수지 번호(AC-7507.5): '<1~5>st·nd·rd·th' 뒤 10글자 안에 손가락·발가락 말
+    private static readonly Regex Ordinal = new Regex(
+        @"(?<![0-9])([1-5])\s*(st|nd|rd|th)(?![A-Za-z])(?=.{0,10}?(?<![A-Za-z])(toe|finger|digit|phalan|MT|MC|metatars|metacarp))",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex First = new Regex(@"(?<![A-Za-z])(thumb|great\s*toe|big\s*toe|hallux)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex Fifth = new Regex(@"(?<![A-Za-z])(little|small)\s*(toe|finger)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // 좌우를 쓰지 않는 가운데 부위
     private static readonly HashSet<string> Axial = new HashSet<string>(StringComparer.Ordinal) { "목", "등", "흉골", "허리", "꼬리뼈", "골반" };
 
@@ -55,18 +64,39 @@ public static class FractureRule
 
     /// <summary>
     /// 날짜순 30일 내원 → 주상병이 골절인 마지막 내원의 '&lt;좌우&gt;)&lt;부위&gt; fx'·'&lt;부위&gt; fx'·'fx'. 그런 내원이 없으면 null.
+    /// 족지·수지는 몇 번째를 앞에('오)4족지 fx', AC-7507.5).
     /// </summary>
     public static string? Text(IReadOnlyList<VisitNote>? last30Days)
     {
-        var visit = (last30Days ?? Array.Empty<VisitNote>())
-            .Where(note => note != null && IsFracture(note.MainDiagnosis))
+        var all = (last30Days ?? Array.Empty<VisitNote>()).Where(note => note != null).ToList();
+        var visit = all
+            .Where(note => IsFracture(note.MainDiagnosis))
             .OrderBy(note => note.Date)
             .LastOrDefault();
         if (visit == null) return null;
         var part = PartOf(visit.MainDiagnosis);
         if (part.Length == 0) return "fx";
+        if (part == "족지" || part == "수지") part = DigitOf(visit, all) + part;
         var side = Axial.Contains(part) ? "" : SideOfFxLines(visit.SymptomLines);
         return (side.Length > 0 ? side + ")" : "") + part + " fx";
+    }
+
+    // 엄지 코드(S92.4·S62.5)는 1, 그 밖은 골절 내원 줄 → 다른 내원(최근부터) 줄에서 번호가 처음 읽히는 줄의 번호들(작은 차례, 쉼표). 없으면 ""
+    private static string DigitOf(VisitNote visit, IReadOnlyList<VisitNote> all)
+    {
+        var code = Clean(visit.MainDiagnosis);
+        if (code.StartsWith("S924", StringComparison.Ordinal) || code.StartsWith("S625", StringComparison.Ordinal)) return "1";
+        var lines = visit.SymptomLines.Concat(all.Where(note => !ReferenceEquals(note, visit)).OrderByDescending(note => note.Date).SelectMany(note => note.SymptomLines));
+        foreach (var line in lines)
+        {
+            var text = line ?? "";
+            var numbers = new SortedSet<int>();
+            foreach (Match m in Ordinal.Matches(text)) numbers.Add(m.Groups[1].Value[0] - '0');
+            if (First.IsMatch(text)) numbers.Add(1);
+            if (Fifth.IsMatch(text)) numbers.Add(5);
+            if (numbers.Count > 0) return string.Join(",", numbers);
+        }
+        return "";
     }
 
     /// <summary>메모 칸에 fx가 이미 있나: 'fx' 낱말(대소문자 무시)·서류 말이 아닌 '골절'·fracture.</summary>
