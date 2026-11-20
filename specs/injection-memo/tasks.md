@@ -49,3 +49,19 @@
 - Files: helper/src/Precheck.PtSlip/MemoButtonForm.cs, helper/src/Precheck.PtSlip/NoticeForm.cs, helper/src/Precheck.Core/InjectionMemo/MemoNotices.cs, helper/tests/Precheck.Core.Tests/InjectionMemo/**, helper/tests/injection-memo.dotnet.test.ts, helper/install/ptslip/**, specs/injection-memo/notes/**
 - Tests: helper/tests/injection-memo.dotnet.test.ts
 - TDD: exempt — WinForms 알림 둘 쌓기만(판단은 Core Reason). 읽어주세요.txt에 엑스레이 경과 한 줄. 가짜 화면 사진 확인, Release x86 zip 다시
+
+## TASK-7: [엑스레이] 따로·고른 엑스레이·두 부위 주사 Core (2026-11-20 오후)
+- Phase: 6
+- AC: AC-7501.6, AC-7505.1, AC-7505.3, AC-7505.5, AC-7506.1
+- REQ: REQ-7501, REQ-7505, REQ-7506
+- Files: helper/src/Precheck.Core/InjectionMemo/**, helper/tests/Precheck.Core.Tests/InjectionMemo/**, helper/tests/injection-memo.dotnet.test.ts
+- Tests: helper/tests/injection-memo.dotnet.test.ts
+- TDD: required — Compute는 주사 차수만, ComputeXray·ComposeXray·MemoSettings.XrayParts, 두 부위 '오)어깨,목 N차'. 시험은 지어낸 글·가짜 IBitDb
+
+## TASK-8: [엑스레이] 단추·설정 칸·zip (2026-11-20 오후)
+- Phase: 7
+- AC: AC-7505.4, AC-7505.5
+- REQ: REQ-7505
+- Files: helper/src/Precheck.PtSlip/MemoButtonForm.cs, helper/src/Precheck.PtSlip/NoticeForm.cs, helper/src/Precheck.PtSlip/SettingsForm.cs, helper/src/Precheck.PtSlip/MemoSettingsFile.cs, helper/src/Precheck.PtSlip/Program.cs, helper/src/Precheck.Core/InjectionMemo/MemoNotices.cs, helper/tests/Precheck.Core.Tests/InjectionMemo/**, helper/tests/injection-memo.dotnet.test.ts, helper/install/ptslip/**, specs/injection-memo/notes/**
+- Tests: helper/tests/injection-memo.dotnet.test.ts
+- TDD: exempt — WinForms 단추·체크 칸(판단은 Core). 가짜 화면 사진 확인, 읽어주세요 고침, Release x86 zip 다시
