@@ -51,7 +51,7 @@ public static class XrayParts
         new Entry("종아리", 2, new[] { "G73" }, new[] { "종아리" }),
         new Entry("발목", 2, new[] { "G74" }, new[] { "발목", "족관절", "아킬레스" }),
         new Entry("발", 2, new[] { "G75", "G79" }, new[] { "발", "발바닥", "족저", "뒤꿈치", "발등" }),
-        new Entry("발가락", 2, new[] { "G82", "G75" }, new[] { "발가락" }),
+        new Entry("발가락", 2, new[] { "G82", "G75" }, new[] { "발가락", "엄지발가락" }),
     };
 
     private static readonly Dictionary<string, Entry> ByPart = Table.ToDictionary(entry => entry.Part, StringComparer.Ordinal);

@@ -88,7 +88,7 @@ public static class InjectionRule
     private static readonly string[] Parts =
     {
         "경추", "목", "어깨", "견관절", "견갑", "날개뼈", "승모근", "팔꿈치", "주관절", "엘보", "손목", "수근관", "손가락", "수지", "엄지", "손바닥", "손등", "손",
-        "허리", "요추", "흉추", "등", "골반", "천장관절", "엉덩이", "둔부", "고관절", "사타구니", "무릎", "슬관절", "종아리", "발목", "족관절", "발바닥", "족저", "아킬레스", "뒤꿈치", "발등", "발가락", "발",
+        "허리", "요추", "흉추", "등", "골반", "천장관절", "엉덩이", "둔부", "고관절", "사타구니", "무릎", "슬관절", "종아리", "발목", "족관절", "발바닥", "족저", "아킬레스", "뒤꿈치", "발등", "발가락", "엄지발가락", "발",
         "꼬리뼈", "미추", "팔", "다리", "허벅지", "회전근개", "방아쇠",
     };
 
@@ -430,6 +430,8 @@ public static class InjectionRule
                 var weekday = hit == "목" && NeckAsWeekday.IsMatch(line);
                 // 부위가 아닌 말('목발'·'등등')은 통째로 건너뛰고 뒤 글자를 붙은 부위로 보지 않는다
                 var notPart = OneLetterParts.Contains(hit) ? NotPartWords.FirstOrDefault(word => string.CompareOrdinal(line, i, word, 0, word.Length) == 0) : null;
+                // '엄지 발가락'(띄어 씀)의 '엄지'는 손가락이 아니다: 뒤 '발가락'만 잡는다
+                if (notPart == null && hit == "엄지" && line.Substring(i + hit.Length).TrimStart().StartsWith("발가락", StringComparison.Ordinal)) notPart = hit;
                 if (notPart != null)
                 {
                     i += notPart.Length;

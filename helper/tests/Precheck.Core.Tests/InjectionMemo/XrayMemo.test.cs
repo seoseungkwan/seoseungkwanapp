@@ -64,6 +64,8 @@ public class XrayMemoTests
             PartsOf(Visit(5, "", "경추 흉추 요추 천장관절 둔부 사타구니 미추 주관절 수근관 손바닥 수지 허벅지 다리 종아리 족관절 족저 발가락 팔")));
         Assert.Equal(new[] { "팔꿈치", "손가락", "손", "발", "발목", "손목", "고관절" }, PartsOf(Visit(5, "", "엘보 엄지 손등 뒤꿈치 아킬레스 CTS hip")));
         Assert.Equal(new[] { "손가락", "발" }, PartsOf(Visit(5, "", "방아쇠 발등 발바닥")));
+        Assert.Equal(new[] { "발가락" }, PartsOf(Visit(5, "", "엄지발가락 통증", "Rt 엄지 발가락")));
+        Assert.Equal(new[] { "손가락" }, PartsOf(Visit(5, "", "엄지 통증")));
     }
 
     [Fact(DisplayName = "AC-7505.1 한 글자 부위(발·손·목·등·팔)는 부위 아닌 말(발생·손상·목요일·등록 …)이면 빼고, 붙여 쓴 '팔저림'·'목통증'은 부위, 주사 차수 부위에도 같이")]
