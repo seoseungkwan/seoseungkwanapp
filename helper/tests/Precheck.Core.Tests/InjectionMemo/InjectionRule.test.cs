@@ -105,6 +105,23 @@ public class InjectionRuleTests
         Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "Rt. knee OA", "다음주 월/목 3차주")));
     }
 
+    [Fact(DisplayName = "AC-7501.1 '목'은 요일로 쓰인 그 자리('목요일'·'목 요일'·'다음주 목'·'이번주 목'·'월/목')만 요일이고, 같은 줄의 다른 '목'은 부위(2026-11-20 사용자 '목요일 목 주사')")]
+    public void NeckBesideThursday()
+    {
+        Assert.Equal("목 3차", Inserted(Visit(7, "", "목요일 목 3차 주사")));
+        Assert.Equal("목 3차", Inserted(Visit(7, "", "목요일에 목 3차 주사 예정")));
+        Assert.Equal("목 3차", Inserted(Visit(7, "", "목 요일 목 3차 주사")));
+        Assert.Equal("목 3차", Inserted(Visit(7, "", "Rt shoulder pain", "목요일 목 3차 주사")));
+        Assert.Equal("목 3차", Inserted(Visit(7, "", "목 2차 주사 시행, 목요일 3차 예정")));
+        Assert.Equal("목 2차", Inserted(Visit(7, "", "월/목 목 2차 주사")));
+
+        // 요일 자리의 '목'은 그대로 요일: 부위는 다른 줄에서
+        Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "Rt. knee OA", "다음주 목 3차 주사")));
+        Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "Rt. knee OA", "이번주 목 3차 주사")));
+        Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "Rt. knee OA", "목요일 3차 주사")));
+        Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "Rt. knee OA", "다음주 월/목 3차주")));
+    }
+
     [Fact(DisplayName = "AC-7501.2 'N차 주사'·'N차주사' 뒤에 한 말(함·했·시행·완료·하였·맞)이 없으면 다음 계획(그대로), 있으면 그날 한 것(+1)")]
     public void BareInjectionCountIsPlan()
     {

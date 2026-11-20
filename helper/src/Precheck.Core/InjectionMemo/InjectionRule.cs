@@ -80,7 +80,7 @@ public static class InjectionRule
     // 점이 조각 끝이 아니라 줄임말 점인 낱말('Rt.'·'Lt.'·'Bil.'·'inj.')
     private static readonly HashSet<string> DotAbbreviations = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "rt", "lt", "bil", "both", "inj" };
     private static readonly Regex InjectionWord = new Regex(@"주사|\binj|SNB|MBB|SSNB|ANB|FNB|TPI|DNA|PDRN|아라간|프롤로|block|블록|차단", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex NeckAsWeekday = new Regex(@"다음\s*주\s*목|목\s*요일|[월화수금]\s*/\s*목|목\s*/\s*[월화수금]", RegexOptions.Compiled);
+    private static readonly Regex NeckAsWeekday = new Regex(@"(다음|이번)\s*주\s*목|목\s*요일|[월화수금]\s*/\s*목|목\s*/\s*[월화수금]", RegexOptions.Compiled);
 
     // 좌우 말 → 오·왼·양
     private static readonly Regex SideWord = new Regex(
@@ -208,6 +208,15 @@ public static class InjectionRule
         return line.Length;
     }
 
+    private static bool IsWeekdayAt(string line, int index)
+    {
+        foreach (Match m in NeckAsWeekday.Matches(line))
+        {
+            if (index >= m.Index && index < m.Index + m.Length) return true;
+        }
+        return false;
+    }
+
     private static bool IsWeekdaySlash(string line, int slash)
     {
         var p = slash - 1;
@@ -307,12 +316,13 @@ public static class InjectionRule
     private static (string Side, string Part) PartOf(Mention pick, IReadOnlyList<string> lines)
     {
         var weekdayContext = WeekdayContext.IsMatch(pick.Clause) || WeekdayList.IsMatch(pick.Clause);
-        var pre = pick.Prefix;
+        // '목'은 요일로 쓰인 그 자리('목요일'·'다음주 목'·'월/목')만 지운다. 같은 줄의 다른 '목'은 부위('목요일 목 3차')
+        var pre = NeckAsWeekday.Replace(pick.Prefix, m => new string(' ', m.Length));
         pre = WeekdayList.Replace(pre, " ");
         pre = TimeWords.Replace(pre, " ");
         pre = Filler.Replace(pre, " ");
-        // 요일 한 글자: 월·화·수·금·토는 늘 지우고, 목(부위)·일은 요일 말이 함께 있을 때만
-        pre = Weekday.Replace(pre, m => (m.Value != "목" && m.Value != "일") || weekdayContext ? " " : m.Value);
+        // 요일 한 글자: 월·화·수·금·토는 늘 지우고, 일은 요일 말이 함께 있을 때만, 남은 목은 부위
+        pre = Weekday.Replace(pre, m => m.Value == "목" ? m.Value : m.Value != "일" || weekdayContext ? " " : m.Value);
         pre = Spaces.Replace(pre, " ").Trim();
 
         var side = "";
@@ -464,8 +474,8 @@ public static class InjectionRule
             }
             if (hit != null)
             {
-                // '목'이 요일로 쓰인 경우는 뺀다
-                var weekday = hit == "목" && NeckAsWeekday.IsMatch(line);
+                // '목'이 요일로 쓰인 그 자리만 뺀다(같은 줄의 다른 '목'은 부위)
+                var weekday = hit == "목" && IsWeekdayAt(line, i);
                 // 부위가 아닌 말('목발'·'등등')은 통째로 건너뛰고 뒤 글자를 붙은 부위로 보지 않는다
                 var notPart = OneLetterParts.Contains(hit) ? NotPartWords.FirstOrDefault(word => string.CompareOrdinal(line, i, word, 0, word.Length) == 0) : null;
                 // '엄지 발가락'(띄어 씀)의 '엄지'는 손가락이 아니다: 뒤 '발가락'만 잡는다
