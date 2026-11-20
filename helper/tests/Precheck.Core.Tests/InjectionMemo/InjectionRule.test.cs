@@ -351,11 +351,15 @@ public class InjectionRuleTests
         Assert.Equal("오)어깨 2차", Inserted(Lines(5, "", "많이 좋아지면 2차 주사 합니다|Rt shoulder pain")));
         Assert.Equal("왼)무릎 3차", Inserted(Lines(5, "", "왼쪽 무릎 전 2차 주사")));
 
-        // 앞말에 좌우가 있으면 좌우 있는 부위 주사: 다른 주사 줄의 가운데 부위(C-MBB → 목)는 붙이지 않고 좌우를 남김(90일 대조 좌우 빠짐 62건)
+        // 앞말이 좌우 + 약 이름만인데 찾은 부위가 가운데 부위뿐이면 붙이지 않고 좌우를 남김(AC-7501.1, 90일 대조 좌우 빠짐 62건)
         Assert.Equal("양)아라간 2차", Inserted(Lines(5, "", "양 아라간 1차 + FNB SNB both|C-MBB 3,4,5")));
         // 주사 말 줄에 가운데 부위만 있으면 다른 줄은 뒤지지 않는다(다른 줄에서 무릎·팔 … 여럿을 모으던 19건)
         Assert.Equal("오)DNA 3차", Inserted(Lines(5, "", "Rt DNA 2차|C-MBB 3,4,5|knee OA")));
-        Assert.Equal("양)무릎 아라간 2차", Inserted(Lines(5, "", "양 아라간 1차|Both knee FNB + C-MBB")));
+        // 좌우 있는 부위와 같이 나오면 가운데 부위도 다 쓴다(AC-7501.6)
+        Assert.Equal("양)무릎,목 아라간 2차", Inserted(Lines(5, "", "양 아라간 1차|Both knee FNB + C-MBB")));
+        Assert.Equal("오)어깨,목 아라간 3차", Inserted(Lines(5, "", "Rt 아라간 2차|Rt SSNB ANB + C-MBB")));
+        // 부위를 못 찾으면 앞말의 좌우만 남기지 않는다(예전 그대로)
+        Assert.Equal("3차", Inserted(Lines(5, "", "Rt 2차 주사")));
         Assert.Equal("목 아라간 2차", Inserted(Lines(5, "", "아라간 1차|C-MBB 3,4,5")));
     }
 }

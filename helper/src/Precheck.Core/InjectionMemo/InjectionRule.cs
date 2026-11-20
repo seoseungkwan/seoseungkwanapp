@@ -352,18 +352,19 @@ public static class InjectionRule
         var injectionLines = lines.Where(line => InjectionWord.IsMatch(line ?? "")).ToList();
         if (drugs.Count > 0 && side.Length > 0)
         {
-            // 앞말이 좌우 + 약 이름이면 좌우 있는 부위 주사다: 다른 주사 줄의 가운데 부위(C-MBB → 목 등)는 붙이지 않고 좌우를 남긴다(90일 대조 좌우 빠짐 62건).
-            // 주사 말 줄에 부위가 있으면 그 가운데 좌우 있는 부위만(가운데 부위만이면 '양)아라간 2차'), 주사 말 줄에 부위가 없을 때만 다른 줄에서
-            // (가운데 부위만인데 다른 줄을 뒤지면 무릎·팔 … 여럿이 붙던 19건)
+            // 앞말이 좌우 + 약 이름만이면 부위는 주사 말 줄 → (없으면) 다른 줄에서 찾되, 찾은 부위가 가운데 부위(목·허리 …)뿐이면
+            // 다른 주사(C-MBB 등)의 부위라 붙이지 않고 좌우를 남긴다('양)아라간 2차', AC-7501.1, 90일 대조 좌우 빠짐 62건).
+            // 좌우 있는 부위와 같이 나오면 가운데 부위도 다 쓴다(AC-7501.6)
             var fromInjection = PartsOfLines(injectionLines, side).Found;
-            var sided = (fromInjection.Count > 0 ? fromInjection : PartsOfLines(lines, side).Found).Where(part => !IsAxialWord(part)).ToList();
+            var sided = fromInjection.Count > 0 ? fromInjection : PartsOfLines(lines, side).Found;
+            sided = sided.All(IsAxialWord) ? new List<string>() : SidedFirst(sided);
             return (side, string.Join(" ", new[] { string.Join(",", sided), string.Join(" ", drugs) }.Where(t => t.Length > 0)));
         }
 
         var (lineSide, found) = PartsOfLines(injectionLines, side);
         if (found.Count == 0) (lineSide, found) = PartsOfLines(lines, side);
         found = SidedFirst(found);
-        if (found.Count > 0 && found.All(IsAxialWord)) lineSide = "";
+        if (found.All(IsAxialWord)) lineSide = "";   // 가운데 부위만이거나 부위를 못 찾으면 좌우 없음
         var partText = string.Join(",", found);
         // 약 이름만이면 줄에서 찾은 부위 뒤에 약 이름(없으면 약 이름만: '양)아라간 2차')
         if (drugs.Count > 0) return (found.Count == 0 ? side : lineSide, string.Join(" ", new[] { partText, string.Join(" ", drugs) }.Where(t => t.Length > 0)));
