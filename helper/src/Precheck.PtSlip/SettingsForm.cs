@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 using Precheck.Core.InjectionMemo;
 using Precheck.Core.PtSlip;
@@ -11,7 +13,8 @@ namespace Precheck.PtSlip;
 /// 버튼 자리(◀ 왼쪽으로 / 오른쪽으로 ▶, 20px씩, 바로 버튼에 보임). [저장]은 Core 규칙으로 검사해 틀리면 저장하지 않고,
 /// 맞으면 settings.json에 쓴다. [취소]·닫기는 버튼 자리를 처음대로 되돌린다.
 /// 맨 아래 주사 차수 묶음(injection-memo 시안 ④, AC-7504.1): [주사 차수] 단추 자리(◀ ▶ 20px씩, -400~400px, 바로 단추에 보임)와
-/// 단축키(F4·F8·F10·F11). [저장]하면 memo-settings.json에 쓰고 단추·단축키에 바로 쓴다. [취소]·닫기는 단추 자리를 처음대로.
+/// 단축키(F4·F8·F10·F11), 메모에 넣을 엑스레이(20칸 체크, 칸마다 찍은 것으로 치는 처방 이름, AC-7505.5).
+/// [저장]하면 memo-settings.json에 쓰고 단추·단축키·[엑스레이]에 바로 쓴다. [취소]·닫기는 단추 자리를 처음대로.
 /// </summary>
 public sealed class SettingsForm : Form
 {
@@ -25,6 +28,42 @@ public sealed class SettingsForm : Form
     public const string MemoOffsetHint = "비트 단추나 글을 가리면 옆으로 옮겨요. 한 번에 20px씩, 접수 화면에 바로 보여요.";
     public const string MemoKeyLabel = "주사 차수 단축키";
     public const string MemoKeyHint = "비트가 쓰는 키(F1·F2·F3·F5·F6·F7·F9·F12)는 고를 수 없어요.";
+    public const string XrayLabel = "메모에 넣을 엑스레이";
+    public const string XrayNote = "체크한 것만 [엑스레이]가 메모에 넣어요";
+    public const string XrayHint = "칸 아래 작은 글은 '찍은 것'으로 치는 비트 영상 처방이에요. 처음엔 저림을 적을 때 많이 쓰는 팔·허벅지·다리·종아리만 꺼져 있어요. 무릎은 1년, 나머지는 2년.";
+
+    /// <summary>칸 아래 작은 글: 그 부위에서 '찍은 것'으로 치는 비트 영상 처방(시안 ④, notes/xray-parts.md 코드 묶음의 이름)</summary>
+    public static IReadOnlyDictionary<string, string> XrayShots { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["무릎"] = "knee·patella·하지전장",
+        ["어깨"] = "shoulder·scapula",
+        ["목"] = "C-spine·전척추",
+        ["등"] = "T-spine·전척추",
+        ["허리"] = "L-spine·전척추",
+        ["골반"] = "pelvis",
+        ["엉덩이"] = "pelvis·hip",
+        ["고관절"] = "hip·pelvis",
+        ["꼬리뼈"] = "sacrum·coccyx",
+        ["팔꿈치"] = "elbow",
+        ["팔"] = "forearm·humerus",
+        ["손목"] = "wrist",
+        ["손"] = "hand",
+        ["손가락"] = "finger·hand",
+        ["허벅지"] = "femur",
+        ["다리"] = "femur·tibia·하지전장",
+        ["종아리"] = "tibia",
+        ["발목"] = "ankle",
+        ["발"] = "foot·calcaneus",
+        ["발가락"] = "toe·foot",
+    };
+
+    /// <summary>설정 창 체크 칸 차례(시안 ④: 처음 켜진 16칸 다음에 꺼진 팔·허벅지·다리·종아리)</summary>
+    public static IReadOnlyList<string> XrayOrder { get; } =
+        MemoSettings.DefaultXrayParts.Concat(XrayParts.All.Where(part => !MemoSettings.DefaultXrayParts.Contains(part))).ToArray();
+
+    private const int XrayColumns = 5;
+    // 시안 .checks label small 11px(→ 8.25pt)
+    private static readonly Font XrayShotFont = new Font(SlipUi.FontName, 8.25f);
 
     /// <summary>시안 .set 폭 620px: 여백 18 + 칸 282 + 틈 20 + 칸 282 + 여백 18</summary>
     private const int FormWidth = 620;
@@ -41,6 +80,7 @@ public sealed class SettingsForm : Form
     private readonly Label errorLabel;
     private readonly MemoSettings memoOriginal;
     private readonly ComboBox memoKeyBox;
+    private readonly Dictionary<string, CheckBox> xrayBoxes = new Dictionary<string, CheckBox>(StringComparer.Ordinal);
     private int offset;
     private int memoOffset;
 
@@ -147,7 +187,7 @@ public sealed class SettingsForm : Form
         };
         body.Controls.Add(directBox, 0, 3);
         body.SetColumnSpan(directBox, 2);
-        var memoGroup = MemoGroup(memoLeftButton, memoRightButton, memoKeyBox);
+        var memoGroup = MemoGroup(memoLeftButton, memoRightButton, memoKeyBox, XrayChecks());
         body.Controls.Add(memoGroup, 0, 4);
         body.SetColumnSpan(memoGroup, 2);
 
@@ -260,7 +300,7 @@ public sealed class SettingsForm : Form
         var next = new SlipSettings(items.Names, parts.Names, printerBox.SelectedItem as string ?? "", length, offset);
         var memoKey = memoKeyBox.SelectedItem as string;
         if (!MemoSettings.IsAllowedKey(memoKey) || !MemoSettings.IsButtonOffset(memoOffset)) return;
-        var nextMemo = new MemoSettings(memoKey!, memoOffset);
+        var nextMemo = new MemoSettings(memoKey!, memoOffset, xrayBoxes.Where(pair => pair.Value.Checked).Select(pair => pair.Key));
         try
         {
             SettingsFile.WriteText(SlipSettingsRules.ToJson(next));
@@ -386,7 +426,7 @@ public sealed class SettingsForm : Form
     /// 맨 아래 주사 차수 묶음(injection-memo 시안 ④): 옅은 윗줄, '주사 차수 단추 자리'(+ 흐린 '접수메모(당일) 옆') · ◀ ▶ · 안내,
     /// '주사 차수 단축키' · F4·F8·F10·F11 고르기 · 안내. 두 칸 폭(282 + 20 + 282)을 다 쓴다.
     /// </summary>
-    private static Control MemoGroup(Control leftButton, Control rightButton, Control keyBox)
+    private static Control MemoGroup(Control leftButton, Control rightButton, Control keyBox, Control xrayChecks)
     {
         const int width = CellWidth + Gap + CellWidth;
         var group = SlipUi.Column(width, Padding.Empty);
@@ -410,8 +450,50 @@ public sealed class SettingsForm : Form
 
         group.Controls.Add(SlipUi.Heading(MemoKeyLabel));
         group.Controls.Add(keyBox);
-        group.Controls.Add(SlipUi.Caption(MemoKeyHint, SlipUi.Help, SlipUi.Sub, new Padding(0, SlipUi.S(6), 0, SlipUi.S(16)), width));
+        group.Controls.Add(SlipUi.Caption(MemoKeyHint, SlipUi.Help, SlipUi.Sub, new Padding(0, SlipUi.S(6), 0, SlipUi.S(20)), width));
+
+        var xrayHeading = SlipUi.Flow(width, new Padding(0, 0, 0, SlipUi.S(8)));
+        xrayHeading.Controls.Add(SlipUi.Caption(XrayLabel, SlipUi.BodyBold, SlipUi.Ink, Padding.Empty));
+        xrayHeading.Controls.Add(SlipUi.Caption(XrayNote, SlipUi.Help, SlipUi.Sub, new Padding(SlipUi.S(6), SlipUi.S(2), 0, 0)));
+        group.Controls.Add(xrayHeading);
+        group.Controls.Add(xrayChecks);
+        group.Controls.Add(SlipUi.Caption(XrayHint, SlipUi.Help, SlipUi.Sub, new Padding(0, SlipUi.S(6), 0, SlipUi.S(16)), width));
         return group;
+    }
+
+    /// <summary>
+    /// 메모에 넣을 엑스레이 20칸(시안 ④ .checks): 다섯 칸씩 네 줄, 칸마다 체크 + 굵은 부위 이름, 그 아래 흐린 작은 처방 이름.
+    /// 처음 체크는 저장된 설정(없으면 팔·허벅지·다리·종아리만 끔).
+    /// </summary>
+    private Control XrayChecks()
+    {
+        const int width = CellWidth + Gap + CellWidth;
+        // 시안 칸 사이 가로 12px·세로 10px
+        const int across = 12;
+        var cellWidth = (width - across * (XrayColumns - 1)) / XrayColumns - 1;
+        var grid = SlipUi.Flow(width, Padding.Empty);
+        var chosen = new HashSet<string>(memoOriginal.XrayParts, StringComparer.Ordinal);
+        for (var i = 0; i < XrayOrder.Count; i++)
+        {
+            var part = XrayOrder[i];
+            var cell = SlipUi.Column(cellWidth, new Padding(0, 0, (i + 1) % XrayColumns == 0 ? 0 : SlipUi.S(across), SlipUi.S(10)));
+            var box = new CheckBox
+            {
+                Text = part,
+                Checked = chosen.Contains(part),
+                AutoSize = true,
+                Font = SlipUi.SmallBold,
+                Margin = Padding.Empty,
+                UseMnemonic = false,
+            };
+            xrayBoxes[part] = box;
+            cell.Controls.Add(box);
+            // 체크 네모 폭만큼 들여 부위 이름 아래에 맞춘다
+            cell.Controls.Add(SlipUi.Caption(XrayShots.TryGetValue(part, out var shots) ? shots : "", XrayShotFont, SlipUi.Sub,
+                new Padding(SlipUi.S(18), 0, 0, 0), cellWidth - 18));
+            grid.Controls.Add(cell);
+        }
+        return grid;
     }
 
     /// <summary>가로로 나란히(시안 .field).</summary>

@@ -80,6 +80,8 @@ public sealed class NoticeForm : Form
             case MemoResultKind.Finished:
             case MemoResultKind.TooEarly:
             case MemoResultKind.AlreadyHas:
+            case MemoResultKind.XrayNone:
+            case MemoResultKind.XrayAlreadyHas:
                 return NoticeTone.Warn;
             default:
                 return NoticeTone.Bad;

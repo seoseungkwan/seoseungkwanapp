@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Threading;
@@ -8,17 +9,20 @@ using Precheck.Core.InjectionMemo;
 namespace Precheck.PtSlip;
 
 /// <summary>
-/// 비트 접수 화면 '접수메모(당일)' 칸 오른쪽에 붙는 [주사 차수] 단추(시안 ①②, AC-7503.2). [PT 먼저] 단추(ButtonForm)처럼
+/// 비트 접수 화면 '접수메모(당일)' 칸 오른쪽에 붙는 [주사 차수]와 그 바로 오른쪽 [엑스레이] 단추(시안 ①②, AC-7503.2·AC-7505.4). 한 창 안에 두 단추를 그리고
+/// (사이 6px은 창 밖이라 눌리지 않는다) 같이 움직이고 같이 숨는다. [PT 먼저] 단추(ButtonForm)처럼
 /// 테두리 없는 맨 위 작은 창이고 작업 표시줄에 안 나오며, 눌러도 비트에서 포커스를 뺏지 않는다(WS_EX_NOACTIVATE).
 /// 0.25초마다 접수 화면이 맨 앞인지 보고(findScreen = ReceptionWindows.FindForeground) 맞으면 메모 칸 오른쪽(+ 설정의 단추 자리 px)에
 /// 붙어 보이고 단축키를 잡는다. 아니면 숨고 단축키를 놓는다(이 프로그램 창이 맨 앞이면 단추는 그대로 둔다).
-/// 누르면(단추·단축키) 화면의 차트번호 칸·메모 칸 글을 읽어 백그라운드에서 compute(Core InjectionMemoService)를 부르고,
+/// [주사 차수]·단축키는 주사 차수만(compute), [엑스레이]는 설정에서 고른 엑스레이만 보고 경과를 넣는다(computeXray).
+/// 누르면 화면의 차트번호 칸·메모 칸 글을 읽어 백그라운드에서 Core InjectionMemoService를 부르고,
 /// 결과를 창 스레드에서 받아 Insert면 칸 끝에 글을 넣고(MemoTyper.Append) 알림(NoticeForm)을 띄운다. 판단은 하지 않고 Core를 부르기만 한다.
 /// 칸 글·결과 글은 파일·로그·콘솔에 남기지 않는다. 만든 스레드(창 스레드)에서만 부른다.
 /// </summary>
 public sealed class MemoButtonForm : Form
 {
     public const string ButtonText = "주사 차수";
+    public const string XrayText = "엑스레이";
 
     private const int TickMs = 250;
     private const int WsExToolWindow = 0x00000080;
@@ -26,9 +30,10 @@ public sealed class MemoButtonForm : Form
     private const int WmMouseActivate = 0x0021;
     private const int MaNoActivate = 3;
 
-    /// <summary>시안 .mrow 틈 6px, .injbtn 양옆 10px·모서리 4px, 높이는 메모 칸과 같게(20~40px)</summary>
+    /// <summary>시안 .mrow 틈 6px(메모 칸과 단추, 두 단추 사이), .injbtn 양옆 10px·.xrbtn 양옆 9px·모서리 4px, 높이는 메모 칸과 같게(20~40px)</summary>
     private const int BesideGap = 6;
     private const int SidePad = 10;
+    private const int XraySidePad = 9;
     private const int Radius = 4;
     private const int MinHeight = 20;
     private const int MaxHeight = 40;
@@ -38,15 +43,20 @@ public sealed class MemoButtonForm : Form
     private static readonly Color Edge = Color.FromArgb(0x4A, 0x9B, 0x66);
     private static readonly Color Ink = Color.FromArgb(0x12, 0x36, 0x1F);
     private static readonly Font ButtonFont = new Font(SlipUi.FontName, 9.375f, FontStyle.Bold);
+    // 시안 .xrbtn 바탕 #DBE7F7, 테두리 #7F9CC4, 글 #1D3A63
+    private static readonly Color XrayFill = Color.FromArgb(0xDB, 0xE7, 0xF7);
+    private static readonly Color XrayEdge = Color.FromArgb(0x7F, 0x9C, 0xC4);
+    private static readonly Color XrayInk = Color.FromArgb(0x1D, 0x3A, 0x63);
 
     private readonly Func<ReceptionScreen?> findScreen;
     private readonly HotKeys hotKeys;
     private readonly Func<string?, string?, DateTime, MemoResult> compute;
+    private readonly Func<string?, string?, DateTime, IReadOnlyList<string>, MemoResult> computeXray;
+    private readonly int injectionWidth;
+    private readonly int xrayWidth;
     private readonly SynchronizationContext ui;
     private readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer { Interval = TickMs };
     private readonly NoticeForm notice = new NoticeForm();
-    /// <summary>엑스레이 경과만 넣었을 때 초록 알림 아래에 함께 띄우는 주사 쪽 이유(노랑, AC-7505.4)</summary>
-    private readonly NoticeForm reasonNotice = new NoticeForm();
     private MemoSettings settings;
     /// <summary>지금 단추 자리(설정 창에서 옮기는 동안은 저장 전 값)</summary>
     private int offset;
@@ -57,14 +67,17 @@ public sealed class MemoButtonForm : Form
 
     /// <param name="findScreen">맨 앞 접수 화면 찾기(ReceptionWindows.FindForeground). 0.25초마다·누를 때 창 스레드에서 부른다</param>
     /// <param name="hotKeys">주사 차수 단축키(접수 화면이 맨 앞일 때만 잡는다). 만들고 없애기는 부르는 쪽</param>
-    /// <param name="settings">단축키·단추 자리</param>
-    /// <param name="compute">(차트번호 칸 글, 메모 칸 글, 오늘) → 결과. 백그라운드 스레드에서 부른다(비트 DB 읽기)</param>
-    public MemoButtonForm(Func<ReceptionScreen?> findScreen, HotKeys hotKeys, MemoSettings settings, Func<string?, string?, DateTime, MemoResult> compute)
+    /// <param name="settings">단축키·단추 자리·메모에 넣을 엑스레이</param>
+    /// <param name="compute">[주사 차수]: (차트번호 칸 글, 메모 칸 글, 오늘) → 결과. 백그라운드 스레드에서 부른다(비트 DB 읽기)</param>
+    /// <param name="computeXray">[엑스레이]: (차트번호 칸 글, 메모 칸 글, 오늘, 고른 엑스레이) → 결과. 백그라운드 스레드에서 부른다</param>
+    public MemoButtonForm(Func<ReceptionScreen?> findScreen, HotKeys hotKeys, MemoSettings settings, Func<string?, string?, DateTime, MemoResult> compute,
+        Func<string?, string?, DateTime, IReadOnlyList<string>, MemoResult> computeXray)
     {
         this.findScreen = findScreen ?? throw new ArgumentNullException(nameof(findScreen));
         this.hotKeys = hotKeys ?? throw new ArgumentNullException(nameof(hotKeys));
         this.settings = settings ?? throw new ArgumentNullException(nameof(settings));
         this.compute = compute ?? throw new ArgumentNullException(nameof(compute));
+        this.computeXray = computeXray ?? throw new ArgumentNullException(nameof(computeXray));
         offset = settings.ButtonOffsetPx;
         // 컨트롤을 만들면 이 스레드에 WinForms 동기화 문맥이 깔린다(결과를 창 스레드로 돌려보낼 때 쓴다)
         ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
@@ -80,7 +93,9 @@ public sealed class MemoButtonForm : Form
         Font = ButtonFont;
         Cursor = Cursors.Hand;
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
-        Size = new Size(TextRenderer.MeasureText(ButtonText, ButtonFont).Width + SlipUi.S(SidePad * 2) + 2, SlipUi.S(24));
+        injectionWidth = TextRenderer.MeasureText(ButtonText, ButtonFont).Width + SlipUi.S(SidePad * 2) + 2;
+        xrayWidth = TextRenderer.MeasureText(XrayText, ButtonFont).Width + SlipUi.S(XraySidePad * 2) + 2;
+        Size = new Size(injectionWidth + SlipUi.S(BesideGap) + xrayWidth, SlipUi.S(24));
 
         timer.Tick += (sender, e) => Follow();
         timer.Start();
@@ -112,7 +127,16 @@ public sealed class MemoButtonForm : Form
     /// [주사 차수]를 눌렀다(단추·단축키, 창 스레드). 계산 중이면 무시. 맨 앞 접수 화면이 없으면 아무것도 안 한다.
     /// 차트번호 칸 글은 받은 그대로 넘긴다(다듬기·환자 없음 판단은 Core).
     /// </summary>
-    public void Press()
+    public void Press() => Run((chart, memo, today) => compute(chart, memo, today));
+
+    /// <summary>[엑스레이]를 눌렀다(창 스레드). 누를 때 저장된 '메모에 넣을 엑스레이'로 계산한다.</summary>
+    public void PressXray()
+    {
+        var chosen = settings.XrayParts;
+        Run((chart, memo, today) => computeXray(chart, memo, today, chosen));
+    }
+
+    private void Run(Func<string?, string?, DateTime, MemoResult> work)
     {
         if (busy || IsDisposed) return;
         ReceptionScreen? screen;
@@ -137,7 +161,7 @@ public sealed class MemoButtonForm : Form
             MemoResult result;
             try
             {
-                result = compute(chart, memo, today);
+                result = work(chart, memo, today);
             }
             catch (Exception)
             {
@@ -171,12 +195,22 @@ public sealed class MemoButtonForm : Form
         base.WndProc(ref m);
     }
 
+    /// <summary>창 안 [주사 차수] 자리(왼쪽)</summary>
+    private Rectangle InjectionBox => new Rectangle(0, 0, injectionWidth, Height);
+
+    /// <summary>창 안 [엑스레이] 자리(6px 띄운 오른쪽)</summary>
+    private Rectangle XrayBox => new Rectangle(injectionWidth + SlipUi.S(BesideGap), 0, xrayWidth, Height);
+
     protected override void OnSizeChanged(EventArgs e)
     {
         base.OnSizeChanged(e);
-        using var path = SlipUi.Rounded(new Rectangle(0, 0, Width, Height), SlipUi.S(Radius));
+        // 두 단추 모양만 창으로(사이 틈은 비트 화면이 보이고 눌린다)
+        using var left = SlipUi.Rounded(InjectionBox, SlipUi.S(Radius));
+        using var right = SlipUi.Rounded(XrayBox, SlipUi.S(Radius));
+        var shape = new Region(left);
+        shape.Union(right);
         var old = Region;
-        Region = new Region(path);
+        Region = shape;
         old?.Dispose();
     }
 
@@ -185,19 +219,29 @@ public sealed class MemoButtonForm : Form
         var g = e.Graphics;
         g.Clear(Fill);
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        using (var path = SlipUi.Rounded(new Rectangle(0, 0, Width - 1, Height - 1), SlipUi.S(Radius)))
-        using (var pen = new Pen(Edge))
+        DrawButton(g, InjectionBox, ButtonText, Fill, Edge, Ink);
+        DrawButton(g, XrayBox, XrayText, XrayFill, XrayEdge, XrayInk);
+    }
+
+    private static void DrawButton(Graphics g, Rectangle box, string text, Color fill, Color edge, Color ink)
+    {
+        using (var path = SlipUi.Rounded(new Rectangle(box.X, box.Y, box.Width - 1, box.Height - 1), SlipUi.S(Radius)))
+        using (var brush = new SolidBrush(fill))
+        using (var pen = new Pen(edge))
         {
+            g.FillPath(brush, path);
             g.DrawPath(pen, path);
         }
-        TextRenderer.DrawText(g, ButtonText, ButtonFont, ClientRectangle, Ink,
+        TextRenderer.DrawText(g, text, ButtonFont, box, ink,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
     }
 
     protected override void OnMouseUp(MouseEventArgs e)
     {
         base.OnMouseUp(e);
-        if (e.Button == MouseButtons.Left && ClientRectangle.Contains(e.Location)) Press();
+        if (e.Button != MouseButtons.Left) return;
+        if (InjectionBox.Contains(e.Location)) Press();
+        else if (XrayBox.Contains(e.Location)) PressXray();
     }
 
     protected override void Dispose(bool disposing)
@@ -206,7 +250,6 @@ public sealed class MemoButtonForm : Form
         {
             timer.Dispose();
             notice.Dispose();
-            reasonNotice.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -256,7 +299,6 @@ public sealed class MemoButtonForm : Form
         try
         {
             if (IsDisposed) return;
-            reasonNotice.Dismiss();
             if (result.Kind == MemoResultKind.Insert)
             {
                 if (!SameScreen(chart, memo, box))
@@ -271,9 +313,6 @@ public sealed class MemoButtonForm : Form
                     return;
                 }
                 notice.ShowAt(anchor, MemoNotices.Of(result), NoticeTone.Ok);
-                // 경과만 넣고 주사는 끝남·일찍 옴: 초록 바로 아래에 그 이유(노랑)
-                var reason = MemoNotices.ReasonOf(result);
-                if (reason != null) reasonNotice.ShowAt(notice.Bounds, reason, NoticeTone.Warn);
                 return;
             }
             var text = MemoNotices.Of(result);

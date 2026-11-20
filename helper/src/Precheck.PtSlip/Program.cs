@@ -70,7 +70,7 @@ internal static class Program
             var memoSettings = MemoSettings.FromJson(MemoSettingsFile.ReadText());
             using var hotKeys = new HotKeys(HotKeys.KeyOf(memoSettings.HotKey) ?? Keys.F8);
             var reception = new ReceptionWindows();
-            using var memoButton = new MemoButtonForm(reception.FindForeground, hotKeys, memoSettings, ComputeMemo);
+            using var memoButton = new MemoButtonForm(reception.FindForeground, hotKeys, memoSettings, ComputeMemo, ComputeXray);
             hotKeys.Pressed += (sender, e) => memoButton.Press();
             SettingsForm.MemoButton = memoButton;
 
@@ -203,6 +203,23 @@ internal static class Program
         try
         {
             result = InjectionMemoService.Compute(db, chart, memo, today);
+        }
+        catch (Exception)
+        {
+            result = new MemoResult(MemoResultKind.Failed);
+        }
+        if (result.Kind == MemoResultKind.Failed) memoInstallPath = null;
+        return result;
+    }
+
+    /// <summary>[엑스레이] 한 번(백그라운드 스레드): [주사 차수]와 같은 길로 DB를 열어 Core InjectionMemoService.ComputeXray가 판단한다(고른 엑스레이만).</summary>
+    private static MemoResult ComputeXray(string? chart, string? memo, DateTime today, IReadOnlyList<string> chosen)
+    {
+        using var db = new LazyBitDb();
+        MemoResult result;
+        try
+        {
+            result = InjectionMemoService.ComputeXray(db, chart, memo, today, chosen);
         }
         catch (Exception)
         {
