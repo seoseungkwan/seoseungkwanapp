@@ -116,6 +116,30 @@
   .sp { flex: 1; }
   hr.div { border: 0; border-top: 1px solid #edf0f4; margin: 0; }
 
+  /* [엑스레이] 창 (2026-11-20 바꿈) */
+  .xwin { width: 400px; max-width: 100%; background: #fff; border: 1px solid #7f9cc4; border-radius: 8px; box-shadow: 0 8px 24px rgba(20,30,50,.22); font-size: 13px; }
+  .xwin .xt { display: flex; align-items: center; height: 30px; padding: 0 10px; background: #dbe7f7; color: #1d3a63; font-weight: 700; border-bottom: 1px solid #b8c9e2; border-radius: 8px 8px 0 0; }
+  .xwin .xt .sp { flex: 1; }
+  .xwin .xt .x { font-weight: 400; color: #1d3a63; }
+  .xrows { padding: 4px 10px; }
+  .xr { display: grid; grid-template-columns: 52px 84px minmax(0, 1fr) auto; gap: 8px; align-items: center; min-height: 30px; border-top: 1px solid #edf0f4; }
+  .xr:first-child { border-top: 0; }
+  .xr b { font-weight: 700; white-space: nowrap; }
+  .xr .d { color: var(--sub); white-space: nowrap; }
+  .xr .ago { white-space: nowrap; }
+  .xr .due { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 9px; background: var(--warn-soft); color: var(--warn); font-size: 11.5px; font-weight: 700; border: 1px solid #e9cf8a; }
+  .xbtn { height: 24px; padding: 0 10px; border: 1px solid #7f9cc4; border-radius: 4px; background: #fff; color: #1d3a63; font-weight: 700; font-family: inherit; font-size: 12.5px; white-space: nowrap; }
+  .xdone { color: var(--ok); font-weight: 700; font-size: 12.5px; white-space: nowrap; }
+  .xnone { padding: 6px 10px 8px; border-top: 1px solid #edf0f4; }
+  .xnone .h { color: var(--sub); font-size: 12px; margin-bottom: 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { height: 24px; padding: 0 8px; border: 1px solid #b8c9e2; border-radius: 12px; background: #f5f8fd; color: #1d3a63; font-family: inherit; font-size: 12.5px; white-space: nowrap; }
+  .chip.done { border-color: #9fd3b2; background: var(--ok-soft); color: var(--ok); font-weight: 700; }
+  .xfoot { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--line); background: var(--foot); border-radius: 0 0 8px 8px; }
+  .xfoot .h { flex: 1; color: var(--sub); font-size: 11.5px; line-height: 1.45; }
+  .xwrap { margin: 6px 0 0 102px; }
+  @media (max-width: 520px) { .xwrap { margin-left: 0; } .xr { grid-template-columns: 44px 78px minmax(0, 1fr) auto; gap: 6px; } }
+
   [data-s] { display: none; }
   body.all [data-s], [data-s].show { display: block; }
 
@@ -166,7 +190,7 @@
         </div>
       </div>
     </div>
-    <p class="note">단추는 '접수메모(당일)' 칸 바로 오른쪽에 붙어서 비트 창을 옮기면 같이 따라가요. 비트 접수 화면이 맨 앞일 때만 보이고, 다른 창을 보고 있으면 숨어요. <span class="key">F8</span>도 그때만 들어요(다른 프로그램의 F8은 그대로). <span class="key">F8</span>은 주사 차수만 넣어요. [엑스레이]는 [주사 차수] 바로 오른쪽에 붙어 같이 움직여요(2026-11-20 더함).</p>
+    <p class="note">단추는 '접수메모(당일)' 칸 바로 오른쪽에 붙어서 비트 창을 옮기면 같이 따라가요. 비트 접수 화면이 맨 앞일 때만 보이고, 다른 창을 보고 있으면 숨어요. <span class="key">F8</span>도 그때만 들어요(다른 프로그램의 F8은 그대로). <span class="key">F8</span>은 주사 차수만 넣어요. [엑스레이]는 [주사 차수] 바로 오른쪽에 붙어 같이 움직이고, 누르면 그 환자가 찍은 엑스레이 목록 창이 떠요(⑤, 2026-11-20 바꿈).</p>
   </section>
 
   <!-- ② 넣은 뒤 -->
@@ -229,19 +253,82 @@
       </table>
     </div>
 
-    <h3>[엑스레이] 단추 — 누를 때만 (2026-11-20 바꿈)</h3>
-    <p class="note">최근 30일 증상 기록(30일 안에 온 적이 없으면 그 전 마지막 내원 기록)에 나온 부위 가운데 <b>설정에서 고른 엑스레이</b>마다 비트 영상 처방을 봐요. <b>무릎은 1년, 다른 부위는 2년</b> 안에 찍은 사진이 없으면(아예 없어도) 경과로 칸 끝에 넣어요. 좌우는 안 가려요.</p>
-    <div class="scroll">
+    <p class="note">[엑스레이]는 ⑤ 창에서 골라 넣어요. [주사 차수]·<span class="key">F8</span>은 엑스레이를 보지 않아요.</p>
+  </section>
+
+  <!-- ⑤ [엑스레이] 창 -->
+  <section data-s="xray">
+    <h2><b>⑤ [엑스레이] 창</b> — 누르면 그 환자가 비트에서 찍은 엑스레이를 부위별로 마지막 날짜·지난 기간과 함께 보여 줘요. 경과된 줄의 [넣기]를 누른 것만 메모 칸 끝에 들어가요. (2026-11-20 바꿈)</h2>
+    <div class="win bit">
+      <div class="titlebar"><span class="t">비트 - 접수</span><span class="ctl">—</span><span class="ctl">☐</span><span class="ctl">✕</span></div>
+      <div class="bitbody">
+        <div class="brow">
+          <span class="bf"><span>차트번호</span><span class="bin">12345</span></span>
+          <span class="bf"><span>이름</span><span class="bin">김새봄</span></span>
+          <span class="bf"><span>진료실</span><span class="bin">1진료실</span></span>
+        </div>
+        <div class="grid"><span>(비트 접수 화면)</span></div>
+        <div class="bottom">
+          <div class="memos">
+            <div class="mrow"><span>접수메모(당일)</span><span class="memo focus">오)무릎 3차<span class="caret"></span></span><button class="injbtn">주사 차수</button><button class="xrbtn">엑스레이</button></div>
+            <div class="xwrap"><div class="xwin">
+              <div class="xt">엑스레이<span class="sp"></span><span class="x">✕</span></div>
+              <div class="xrows">
+                <div class="xr"><b>허리</b><span class="d">2023-07-14</span><span class="ago">3년 4달 전<span class="due">경과</span></span><button class="xbtn">넣기</button></div>
+                <div class="xr"><b>목</b><span class="d">2023-07-14</span><span class="ago">3년 4달 전<span class="due">경과</span></span><button class="xbtn">넣기</button></div>
+                <div class="xr"><b>무릎</b><span class="d">2025-09-02</span><span class="ago">1년 2달 전<span class="due">경과</span></span><button class="xbtn">넣기</button></div>
+                <div class="xr"><b>어깨</b><span class="d">2026-06-11</span><span class="ago">5달 전</span><span></span></div>
+              </div>
+              <div class="xnone"><div class="h">찍은 적 없음 (설정에서 고른 부위)</div><div class="chips"><button class="chip">등 넣기</button><button class="chip">골반 넣기</button><button class="chip">엉덩이 넣기</button><button class="chip">고관절 넣기</button><button class="chip">꼬리뼈 넣기</button><button class="chip">팔꿈치 넣기</button><button class="chip">손목 넣기</button><button class="chip">손 넣기</button><button class="chip">손가락 넣기</button><button class="chip">발목 넣기</button><button class="chip">발 넣기</button><button class="chip">발가락 넣기</button></div></div>
+              <div class="xfoot"><span class="h">무릎은 1년, 다른 부위는 2년이 지나면 경과예요. 좌우는 안 가려요.</span><button class="xbtn">닫기</button></div>
+            </div></div>
+            <div class="mrow"><span>접수메모(연속)</span><span class="memo"></span></div>
+          </div>
+          <div class="bitbtns"><button class="bitbtn">접수</button><button class="bitbtn">취소</button></div>
+        </div>
+      </div>
+    </div>
+    <h3>[넣기]를 누른 뒤 — 무릎, 허리를 차례로 누름</h3>
+    <div class="win bit">
+      <div class="titlebar"><span class="t">비트 - 접수</span><span class="ctl">—</span><span class="ctl">☐</span><span class="ctl">✕</span></div>
+      <div class="bitbody">
+        <div class="brow">
+          <span class="bf"><span>차트번호</span><span class="bin">12345</span></span>
+          <span class="bf"><span>이름</span><span class="bin">김새봄</span></span>
+          <span class="bf"><span>진료실</span><span class="bin">1진료실</span></span>
+        </div>
+        <div class="grid"><span>(비트 접수 화면)</span></div>
+        <div class="bottom">
+          <div class="memos">
+            <div class="mrow"><span>접수메모(당일)</span><span class="memo focus">오)무릎 3차<span class="new">&nbsp;xr1년경과 허리 xr2년경과</span><span class="caret"></span></span><button class="injbtn">주사 차수</button><button class="xrbtn">엑스레이</button></div>
+            <div class="xwrap"><div class="xwin">
+              <div class="xt">엑스레이<span class="sp"></span><span class="x">✕</span></div>
+              <div class="xrows">
+                <div class="xr"><b>허리</b><span class="d">2023-07-14</span><span class="ago">3년 4달 전<span class="due">경과</span></span><span class="xdone">넣음 ✓</span></div>
+                <div class="xr"><b>목</b><span class="d">2023-07-14</span><span class="ago">3년 4달 전<span class="due">경과</span></span><button class="xbtn">넣기</button></div>
+                <div class="xr"><b>무릎</b><span class="d">2025-09-02</span><span class="ago">1년 2달 전<span class="due">경과</span></span><span class="xdone">넣음 ✓</span></div>
+                <div class="xr"><b>어깨</b><span class="d">2026-06-11</span><span class="ago">5달 전</span><span></span></div>
+              </div>
+              <div class="xnone"><div class="h">찍은 적 없음 (설정에서 고른 부위)</div><div class="chips"><button class="chip">등 넣기</button><button class="chip">골반 넣기</button><button class="chip">엉덩이 넣기</button><button class="chip">고관절 넣기</button><button class="chip">꼬리뼈 넣기</button><button class="chip">팔꿈치 넣기</button><button class="chip">손목 넣기</button><button class="chip">손 넣기</button><button class="chip">손가락 넣기</button><button class="chip">발목 넣기</button><button class="chip">발 넣기</button><button class="chip">발가락 넣기</button></div></div>
+              <div class="xfoot"><span class="h">무릎은 1년, 다른 부위는 2년이 지나면 경과예요. 좌우는 안 가려요.</span><button class="xbtn">닫기</button></div>
+            </div></div>
+            <div class="mrow"><span>접수메모(연속)</span><span class="memo"></span></div>
+          </div>
+          <div class="bitbtns"><button class="bitbtn">접수</button><button class="bitbtn">취소</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="scroll" style="margin-top:12px">
       <table>
-        <tr><th>누르기 전 칸 · 부위와 마지막 사진</th><th>누른 뒤 칸</th><th>정하는 법</th></tr>
-        <tr><td><code>오)무릎 3차</code> · 무릎 사진 14달 전</td><td class="out">오)무릎 3차 xr1년경과</td><td>칸 끝이 주사 차수이고 그 부위가 경과면 띄어 'xr1년경과'</td></tr>
-        <tr><td><code>오)무릎 3차</code> · 무릎 사진 3달 전 / 어깨 사진 없음</td><td class="out">오)무릎 3차 어깨 xr2년경과</td><td>다른 부위는 '부위 xr2년경과'를 띄어 뒤에</td></tr>
-        <tr><td>(빈 칸) · 무릎 사진 없음 / 허리 사진 3년 전</td><td class="out">무릎 xr1년경과 허리 xr2년경과</td><td>나온 차례대로 다 씀</td></tr>
-        <tr><td><code>물리치료만</code> · 허리 사진 없음</td><td class="out">물리치료만/허리 xr2년경과</td><td>칸 끝이 주사 차수가 아니면 '/'로 붙여요</td></tr>
-        <tr><td>(빈 칸) · <code>다리 저림</code>만 · 다리는 설정에서 꺼 둠</td><td class="out">(넣을 것 없음)</td><td>고르지 않은 엑스레이는 안 봐요 → '경과된 부위 없음' 알림</td></tr>
+        <tr><th>누르기 전 칸 · 누른 줄</th><th>누른 뒤 칸</th><th>정하는 법</th></tr>
+        <tr><td><code>오)무릎 3차</code> · 무릎 [넣기]</td><td class="out">오)무릎 3차 xr1년경과</td><td>칸 끝이 그 부위 주사 차수면 띄어 'xr1년경과'만</td></tr>
+        <tr><td><code>오)무릎 3차</code> · 허리 [넣기]</td><td class="out">오)무릎 3차 허리 xr2년경과</td><td>칸 끝이 다른 부위 주사 차수면 띄어 '부위 xr2년경과'</td></tr>
+        <tr><td><code>물리치료만</code> · 허리 [넣기]</td><td class="out">물리치료만/허리 xr2년경과</td><td>칸 끝이 주사 차수가 아니면 '/'로 붙여요</td></tr>
+        <tr><td>(빈 칸) · 찍은 적 없음 '등 넣기'</td><td class="out">등 xr2년경과</td><td>한 번도 안 찍은 부위도 같은 글</td></tr>
+        <tr><td><code>허리 xr2년경과</code> · 창을 엶</td><td class="out">(그대로)</td><td>칸에 이미 그 부위 경과 글이 있으면 그 줄은 처음부터 '넣음 ✓'</td></tr>
       </table>
     </div>
-    <p class="note">메모 칸에 이미 'xr'이 적혀 있으면 넣지 않아요. 합쳐서 50자를 넘으면 뒤쪽 경과부터 빼고 들어가는 만큼만 넣어요. [주사 차수]·<span class="key">F8</span>은 엑스레이를 보지 않아요.</p>
+    <p class="note">찍은 부위는 설정과 상관없이 다 나와요(비트에 있는 것 전부). 경과된 줄이 먼저, 그 안에서 오래된 것부터예요. 한 번도 안 찍은 부위는 설정 '찍은 적 없을 때 보여 줄 엑스레이'에서 체크한 것만 아래에 작은 단추로 나와요. 전척추 사진은 목·등·허리 모두로, 하지전장은 무릎·다리로 쳐요. 창은 [닫기]·✕·<span class="key">Esc</span>·다른 환자를 불러올 때·[엑스레이]를 다시 누를 때 닫혀요. 창을 눌러도 비트 화면이 맨 앞 그대로예요. 찍은 것도 고른 것도 없으면 창에 '찍은 엑스레이가 없어요.'만 떠요.</p>
   </section>
 
   <!-- ③ 알림 -->
@@ -256,16 +343,14 @@
       <div class="nrow"><div class="when"><b>환자를 안 불러왔을 때</b>차트번호 칸이 비어 있음</div><div><span class="toast bad"><i>×</i>접수 화면에 환자를 먼저 불러와 주세요.</span></div></div>
       <div class="nrow"><div class="when"><b>비트를 못 읽었을 때</b>5초 안에 못 읽음</div><div><span class="toast bad"><i>×</i>비트에서 기록을 읽지 못했어요. 잠시 뒤 다시 눌러 주세요.</span></div></div>
       <div class="nrow"><div class="when"><b>칸에 못 넣었을 때</b>칸이 꽉 참(50자)·잠김·윈도우가 막음</div><div><span class="toast bad"><i>×</i>메모 칸에 넣지 못했어요. 직접 적어 주세요: 오)무릎 3차</span></div></div>
-      <div class="nrow"><div class="when"><b>[엑스레이] 넣었을 때</b>칸 끝에 넣은 글을 같이 보여 줘요</div><div><span class="toast ok"><i>✓</i>넣었어요: 무릎 xr1년경과 허리 xr2년경과</span></div></div>
-      <div class="nrow"><div class="when"><b>[엑스레이] 경과된 부위가 없을 때</b>고른 부위가 기록에 없거나 모두 기한 안에 찍음</div><div><span class="toast warn"><i>!</i>엑스레이 경과된 부위가 없어요.</span></div></div>
-      <div class="nrow"><div class="when"><b>[엑스레이] 이미 적혀 있을 때</b>칸에 'xr'이 벌써 있음</div><div><span class="toast warn"><i>!</i>메모에 엑스레이가 이미 있어요.</span></div></div>
+      <div class="nrow"><div class="when"><b>[엑스레이] 창의 [넣기]가 칸에 못 넣었을 때</b>칸이 꽉 참(50자)·잠김·윈도우가 막음</div><div><span class="toast bad"><i>×</i>메모 칸에 넣지 못했어요. 직접 적어 주세요: 허리 xr2년경과</span></div></div>
     </div>
-    <p class="note">[엑스레이]도 환자 없음·비트를 못 읽음·칸에 못 넣음은 위와 같은 빨간 알림이에요. '일찍 옴'은 기록에 간격('1주뒤'·'2주 후' 같은 말)이 있을 때만 봐요. 계획 날짜보다 3일 일찍까지는 그냥 넣어요. 간격이 없으면 늘 넣어요.</p>
+    <p class="note">[엑스레이]도 환자 없음·비트를 못 읽음은 위와 같은 빨간 알림이고 창은 안 떠요. [넣기]로 넣으면 알림 대신 그 줄이 '넣음 ✓'으로 바뀌어요. '일찍 옴'은 기록에 간격('1주뒤'·'2주 후' 같은 말)이 있을 때만 봐요. 계획 날짜보다 3일 일찍까지는 그냥 넣어요. 간격이 없으면 늘 넣어요.</p>
   </section>
 
   <!-- ④ 설정 -->
   <section data-s="settings">
-    <h2><b>④ 설정 창</b> — 지금 PT 종이 설정 창(치료 항목·부위·프린터·종이 길이·버튼 자리) 맨 아래에 주사 차수 단추 자리·단축키와 메모에 넣을 엑스레이가 더해져요.</h2>
+    <h2><b>④ 설정 창</b> — 지금 PT 종이 설정 창(치료 항목·부위·프린터·종이 길이·버튼 자리) 맨 아래에 주사 차수 단추 자리·단축키와 찍은 적 없을 때 보여 줄 엑스레이가 더해져요.</h2>
     <div class="win set">
       <div class="titlebar"><span class="t">PT 후 진료 종이 설정</span><span class="ctl">✕</span></div>
       <div class="setbody">
@@ -278,9 +363,9 @@
           <div class="field"><span class="select">F8 <span>▾</span></span></div>
           <div class="menu"><div>F4</div><div class="sel">F8</div><div>F10</div><div>F11</div></div>
           <div class="hint">비트가 쓰는 키(F1·F2·F3·F5·F6·F7·F9·F12)는 고를 수 없어요.</div></div>
-        <div><div class="lbl">메모에 넣을 엑스레이 <span class="k">체크한 것만 [엑스레이]가 메모에 넣어요 (2026-11-20 더함)</span></div>
+        <div><div class="lbl">찍은 적 없을 때 보여 줄 엑스레이 <span class="k">체크한 부위는 한 번도 안 찍었으면 [엑스레이] 창에 나와요 (2026-11-20 바꿈)</span></div>
           <div class="checks"><label><span class="box on">✓</span><span><b>무릎</b><small>knee·patella·하지전장</small></span></label><label><span class="box on">✓</span><span><b>어깨</b><small>shoulder·scapula</small></span></label><label><span class="box on">✓</span><span><b>목</b><small>C-spine·전척추</small></span></label><label><span class="box on">✓</span><span><b>등</b><small>T-spine·전척추</small></span></label><label><span class="box on">✓</span><span><b>허리</b><small>L-spine·전척추</small></span></label><label><span class="box on">✓</span><span><b>골반</b><small>pelvis</small></span></label><label><span class="box on">✓</span><span><b>엉덩이</b><small>pelvis·hip</small></span></label><label><span class="box on">✓</span><span><b>고관절</b><small>hip·pelvis</small></span></label><label><span class="box on">✓</span><span><b>꼬리뼈</b><small>sacrum·coccyx</small></span></label><label><span class="box on">✓</span><span><b>팔꿈치</b><small>elbow</small></span></label><label><span class="box on">✓</span><span><b>손목</b><small>wrist</small></span></label><label><span class="box on">✓</span><span><b>손</b><small>hand</small></span></label><label><span class="box on">✓</span><span><b>손가락</b><small>finger·hand</small></span></label><label><span class="box on">✓</span><span><b>발목</b><small>ankle</small></span></label><label><span class="box on">✓</span><span><b>발</b><small>foot·calcaneus</small></span></label><label><span class="box on">✓</span><span><b>발가락</b><small>toe·foot</small></span></label><label><span class="box"></span><span><b>팔</b><small>forearm·humerus</small></span></label><label><span class="box"></span><span><b>허벅지</b><small>femur</small></span></label><label><span class="box"></span><span><b>다리</b><small>femur·tibia·하지전장</small></span></label><label><span class="box"></span><span><b>종아리</b><small>tibia</small></span></label></div>
-          <div class="hint">칸 아래 작은 글은 '찍은 것'으로 치는 비트 영상 처방이에요. 처음엔 저림을 적을 때 많이 쓰는 팔·허벅지·다리·종아리만 꺼져 있어요. 무릎은 1년, 나머지는 2년.</div></div>
+          <div class="hint">칸 아래 작은 글은 '찍은 것'으로 치는 비트 영상 처방이에요. 찍은 부위는 체크와 상관없이 다 나와요. 처음엔 팔·허벅지·다리·종아리만 꺼져 있어요. 무릎은 1년, 나머지는 2년이 지나면 경과.</div></div>
       </div>
       <div class="foot"><span class="sp"></span><button class="btn">취소</button><button class="btn primary">저장</button></div>
     </div>

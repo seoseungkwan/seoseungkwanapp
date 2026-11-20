@@ -18,18 +18,17 @@ InjectionMemoService.Compute(IBitDb, string chart, string currentMemo, DateTime 
 MemoNotices.Of(MemoResult) → string   // 시안 글
 MemoSettings(hotKey, buttonOffsetPx) { Defaults; IsAllowedKey; ToJson; FromJson }
 
-// 엑스레이 경과 (REQ-7505·7506, 2026-11-20)
-XrayParts.Of(IReadOnlyList<VisitNote> last30Days, VisitNote? lastBefore, DateTime today) → IReadOnlyList<string>   // '메모에 쓰는 부위', 최근 내원부터 나온 차례, 중복 없음 (notes/xray-parts.md 표). 30일 안에 증상 줄 있는 내원이 없으면 lastBefore
-XrayParts.YearsOf(string part) → int   // 무릎 1, 그 밖 2
-XrayParts.CodesOf(string part) → IReadOnlyList<string>   // 인정 코드 앞 3글자
-XrayRule.Overdue(IReadOnlyList<string> parts, IReadOnlyDictionary<string, DateTime> lastByCode3, DateTime today) → IReadOnlyList<XrayDue>
-XrayDue(string Part, int Years)
-MemoCompose.ComposeXray(string? currentMemo, IReadOnlyList<XrayDue> due) → MemoResult   // Insert(Text=넣는 조각, Append=칸 끝에 칠 글) | XrayNone | XrayAlreadyHas (2026-11-20 오후 바꿈)
-MemoResultKind 더함: XrayNone(경과 없음), XrayAlreadyHas(엑스레이 이미 있음)
-InjectionReader.ReadXray(IBitDb, string chart, DateTime today) → IReadOnlyDictionary<string, DateTime>   // InjectionSql.XraySql, 같은 5초 제한
-InjectionReader.ReadLastBefore(IBitDb, string chart, DateTime today) → VisitNote?   // InjectionSql.LastBeforeSql, 30일 안 증상 없을 때만
-InjectionMemoService.ComputeXray(IBitDb, string? chart, string? currentMemo, DateTime today, IReadOnlyCollection<string> chosen) → MemoResult   // [엑스레이] 단추
-MemoSettings.XrayParts : IReadOnlyList<string>   // 메모에 넣을 엑스레이(표 부위), Defaults = 표 − {팔, 허벅지, 다리, 종아리}
+// 엑스레이 목록 창 (REQ-7505·7506, 2026-11-20 오후 목록 창으로 바꿈 — 증상 기록 부위 거르기·ComputeXray·ComposeXray·ReadLastBefore·LastBeforeSql은 뺌)
+XrayParts.All · XrayParts.YearsOf(part) · XrayParts.CodesOf(part)   // 표 그대로
+XrayItem(string Part, DateTime? Last, int Years, bool Overdue)   // Last null = 찍은 적 없음
+XrayList.Of(IReadOnlyDictionary<string, DateTime> lastByCode3, IReadOnlyCollection<string> chosen, DateTime today) → IReadOnlyList<XrayItem>   // AC-7505.1·.2 차례
+XrayList.AgoText(DateTime last, DateTime today) → string   // 'N년 M달 전'·'M달 전'·'N년 전'·'N일 전'
+MemoCompose.ComposeXrayPart(string? currentMemo, string part, int years) → MemoResult   // Insert(Text, Append) | XrayAlreadyHas(칸에 그 부위 경과 글 있음)
+MemoCompose.HasXrayFor(string? currentMemo, string part) → bool
+InjectionReader.ReadXray(IBitDb, string chart, DateTime today) → IReadOnlyDictionary<string, DateTime>   // @from = 오늘 − 20년(XrayList.ReadYears)
+InjectionMemoService.ReadXrayList(IBitDb, string? chart, DateTime today, IReadOnlyCollection<string> chosen) → XrayListResult { Kind: Ok|NoPatient|Failed, Items }
+MemoSettings.XrayParts : IReadOnlyList<string>   // 찍은 적 없을 때 보여 줄 엑스레이, Defaults = 표 − {팔, 허벅지, 다리, 종아리}
+MemoResultKind: XrayNone 뺌, XrayAlreadyHas는 ComposeXrayPart 결과(알림 없음, 창에서 '넣음')
 
 // 골절 fx (REQ-7507, 2026-11-20 오후)
 VisitNote(date, symptomLines, receptionMemo, string? mainDiagnosis = null) { MainDiagnosis }   // 주상병 코드(대문자·빈칸 뺌, 모르면 "")
@@ -47,7 +46,7 @@ FractureRule.HasFx(string? memo) → bool
 - TASK-2 결과(954cb686): 칸은 라벨 글로 찾음(AutomationId는 창 핸들 숫자라 못 씀). `MemoTyper.Append` → `Typed`·`NotEditable`·`TooLong`(50자 넘음)·`Blocked`(권한 다름, 오류 5)·`Failed` — Typed 밖은 모두 '넣지 못함' 알림
 - 권한: 이 PC 비트(접수·BitAuth)는 관리자 권한 → 일반 권한 PtSlip의 넣기·단축키가 막힘. TASK-4 설치가 `schtasks /create /sc onlogon /rl highest`로 PtSlip을 높은 권한으로 켜는 예약 작업을 등록(설치 때 '예' 한 번), 옛 시작프로그램 바로가기는 지움. 지우기는 예약 작업도 지움
 - 한 글자 부위(발·손·목·등·팔)는 막는 말(발생·발병·발현·발작·발급·발견·발적·발열·발기·발전·손상·손해·손톱·등산·등록·등급·등등·목욕·목발·목적·목표·목요일)의 첫 글자일 때만 뺀다(InjectionRule.PartHits, 주사 부위와 경과 부위가 같이 씀). 좌우 말·앞 부위 말에 붙은 부위는 경과 쪽(loose)에서만 잡는다
-- TASK-8: `MemoButtonForm`이 [주사 차수] 오른쪽에 [엑스레이]를 같이 그리고(같은 창 안 두 단추), 누르면 `ComputeXray` → 넣기·알림. 두 알림 쌓기(Reason)는 뺀다. 설정 창 맨 아래 묶음에 '메모에 넣을 엑스레이' 체크 20칸
+- TASK-14: [엑스레이]를 누르면 `XrayListForm`(새 파일, WS_EX_NOACTIVATE 작은 창, 시안 ⑤)을 단추 아래에 띄우고(다시 누르면 닫음), [넣기]는 그때 칸 글로 `ComposeXrayPart` → `MemoTyper.Append` → 그 줄 '넣음 ✓'. 차트번호가 바뀌거나 접수 화면이 사라지면 닫는다. (옛 TASK-8: `MemoButtonForm`이 [주사 차수] 오른쪽에 [엑스레이]를 같이 그리고(같은 창 안 두 단추), 누르면 `ComputeXray` → 넣기·알림.) 두 알림 쌓기(Reason)는 뺀다. 설정 창 맨 아래 묶음에 '메모에 넣을 엑스레이' 체크 20칸
 - TASK-3: `MemoButtonForm`(테두리 없는 작은 [주사 차수] 단추, 메모 칸 오른쪽에 0.25초마다 붙음), `NoticeForm`(2~3초 알림, 칸 옆), `SettingsForm` 맨 아래 줄에 주사 차수 단추 자리(◀ ▶)·단축키 칸(탭 없음, 서류 인쇄를 뺐으므로), `Program.cs` 잇기(백그라운드로 읽고 결과는 창 스레드로)
 
 ## 위험
