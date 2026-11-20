@@ -385,9 +385,13 @@ public static class InjectionRule
         return result;
     }
 
-    // 한 글자 부위: 뒤가 한글이면 조사일 때만 부위('발생'·'손상'·'목요일'·'등록'은 아님, AC-7505.1)
+    // 한 글자 부위: 부위가 아닌 말의 첫 글자면 뺀다('발생'·'손상'·'목요일'·'등록', AC-7505.1). 붙여 쓴 '팔저림'·'목통증'은 부위
     private static readonly HashSet<string> OneLetterParts = new HashSet<string>(StringComparer.Ordinal) { "발", "손", "목", "등", "팔" };
-    private const string Particles = "이가은는을를에의도쪽만과와로";
+    private static readonly string[] NotPartWords =
+    {
+        "발생", "발병", "발현", "발작", "발급", "발견", "발적", "발열", "발기", "발전", "손상", "손해", "손톱",
+        "등산", "등록", "등급", "등등", "목욕", "목발", "목적", "목표", "목요일",
+    };
 
     // 부위 말 바로 앞에 붙여 쓰는 좌우 말(긴 것 먼저): '양무릎'·'우측어깨'·'오른쪽무릎'
     private static readonly string[] SideHeads = { "오른쪽", "왼쪽", "양측", "양쪽", "우측", "좌측", "오른", "양", "왼", "우", "좌", "오" };
@@ -424,8 +428,15 @@ public static class InjectionRule
             {
                 // '목'이 요일로 쓰인 경우는 뺀다
                 var weekday = hit == "목" && NeckAsWeekday.IsMatch(line);
-                var glued = OneLetterParts.Contains(hit) && i + 1 < line.Length && IsHangul(line[i + 1]) && Particles.IndexOf(line[i + 1]) < 0;
-                if (!weekday && !glued) result.Add((i, hit));
+                // 부위가 아닌 말('목발'·'등등')은 통째로 건너뛰고 뒤 글자를 붙은 부위로 보지 않는다
+                var notPart = OneLetterParts.Contains(hit) ? NotPartWords.FirstOrDefault(word => string.CompareOrdinal(line, i, word, 0, word.Length) == 0) : null;
+                if (notPart != null)
+                {
+                    i += notPart.Length;
+                    lastPartEnd = -1;
+                    continue;
+                }
+                if (!weekday) result.Add((i, hit));
                 i += hit.Length;
                 lastPartEnd = i;
             }

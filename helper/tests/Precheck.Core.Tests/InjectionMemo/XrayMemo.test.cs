@@ -51,7 +51,7 @@ public class XrayMemoTests
     public void PartsGluedToSideOrPart()
     {
         Assert.Equal(new[] { "무릎", "어깨", "발" }, PartsOf(Visit(5, "", "양무릎 통증", "우측어깨 통증", "왼무릎 2차 주사", "오른쪽무릎", "Lt 발뒤꿈치 통증")));
-        Assert.Equal(new[] { "허리" }, PartsOf(Visit(5, "", "등허리 통증")));
+        Assert.Equal(new[] { "등", "허리" }, PartsOf(Visit(5, "", "등허리 통증")));
         Assert.Empty(PartsOf(Visit(5, "", "관무릎", "사어깨")));
     }
 
@@ -66,15 +66,18 @@ public class XrayMemoTests
         Assert.Equal(new[] { "손가락", "발" }, PartsOf(Visit(5, "", "방아쇠 발등 발바닥")));
     }
 
-    [Fact(DisplayName = "AC-7505.1 한 글자 부위(발·손·목·등·팔)는 뒤가 한글이면 조사일 때만: '발생'·'손상'·'목요일'·'등록'은 아님, 주사 차수 부위에도 같이")]
+    [Fact(DisplayName = "AC-7505.1 한 글자 부위(발·손·목·등·팔)는 부위 아닌 말(발생·손상·목요일·등록 …)이면 빼고, 붙여 쓴 '팔저림'·'목통증'은 부위, 주사 차수 부위에도 같이")]
     public void OneLetterPartsNeedParticle()
     {
         Assert.Empty(PartsOf(Visit(5, "", "2주 전 발생", "인대 손상", "목요일 예약", "등록함")));
+        Assert.Empty(PartsOf(Visit(5, "", "발병 2주", "발현", "발작", "발급", "발견", "발적", "발열", "발기", "발전", "손해", "손톱", "등산", "등급", "등등", "목욕", "목발", "목적", "목표")));
+        Assert.Equal(new[] { "팔", "목", "손", "등", "발" }, PartsOf(Visit(5, "", "팔저림", "목통증", "손저림 심함", "등으로 뻗침", "발시림")));
         Assert.Equal(new[] { "발", "손", "목", "어깨", "등", "허리", "팔" }, PartsOf(Visit(5, "", "발이 붓고", "손 저림", "목, 어깨", "등과 허리", "팔로 짚음")));
         Assert.Equal(new[] { "손", "발", "목", "등", "팔" }, PartsOf(Visit(5, "", "손은", "발에", "목의", "등쪽", "팔만")));
 
         // 주사 차수 부위: '발생'의 '발'이 섞이지 않는다
         Assert.Equal("왼)어깨 3차", Inserted(Lines(5, "", "3차 주사 합니다|어제 발생한 통증|Lt. shoulder pain")));
+        Assert.Equal("목 3차", Inserted(Lines(5, "", "3차 주사 합니다|목통증 심함")));
     }
 
     [Fact(DisplayName = "AC-7505.1 30일 안에 증상 줄 있는 내원이 없으면 그 전 마지막 내원 기록, 있으면 그 전 기록은 안 봄")]
