@@ -14,14 +14,8 @@ if not defined LOCALAPPDATA goto :nofolder
 if not defined APPDATA goto :nofolder
 if not exist "%~dp0app\PtSlip.exe" goto :nofiles
 
-rem already admin (right click, run as admin): use this user as is
 fltmc >nul 2>&1
-if not errorlevel 1 (
-  set "PTSLIP_LOCAL=%LOCALAPPDATA%"
-  set "PTSLIP_ROAMING=%APPDATA%"
-  set "PTSLIP_USER=%USERDOMAIN%\%USERNAME%"
-  goto :install
-)
+if not errorlevel 1 goto :adminnow
 
 echo PT 후 진료 종이 프로그램을 설치합니다.
 echo 곧 뜨는 "이 앱이 디바이스를 변경하도록 허용하시겠어요?" 창에서 [예]를 눌러 주세요.
@@ -32,6 +26,16 @@ rem relaunch this file elevated; user folders and name go as arguments (an eleva
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $q=[char]34; $a='/c '+$q+$q+$env:PTSLIP_SELF+$q+' elevated '+$q+$env:LOCALAPPDATA+$q+' '+$q+$env:APPDATA+$q+' '+$q+$env:PTSLIP_USER+$q+$q; Start-Process -FilePath $env:ComSpec -ArgumentList $a -Verb RunAs"
 if errorlevel 1 goto :denied
 exit /b 0
+
+:adminnow
+rem started as admin (right click, run as admin): fine only when this admin is the signed-in user,
+rem otherwise the program would go to the other admin folders and logon
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$u=(Get-CimInstance Win32_ComputerSystem).UserName; if ($u -and ($u -ne ($env:USERDOMAIN + [char]92 + $env:USERNAME))) { exit 1 }"
+if errorlevel 1 goto :otheradmin
+set "PTSLIP_LOCAL=%LOCALAPPDATA%"
+set "PTSLIP_ROAMING=%APPDATA%"
+set "PTSLIP_USER=%USERDOMAIN%\%USERNAME%"
+goto :install
 
 :elevated
 set "PTSLIP_LOCAL=%~2"
@@ -105,5 +109,11 @@ exit /b 1
 
 :runfail
 echo 설치는 했지만 지금 켜지 못했어요. 컴퓨터를 다시 켜면 저절로 켜집니다.
+pause
+exit /b 1
+
+:otheradmin
+echo 다른 관리자 계정으로 실행돼서 설치 작업을 하지 않았어요.
+echo 설치.cmd를 오른쪽 클릭하지 말고, 이 PC를 쓰는 계정에서 그냥 두 번 눌러 주세요.
 pause
 exit /b 1

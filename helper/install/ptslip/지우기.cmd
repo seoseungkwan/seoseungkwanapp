@@ -16,12 +16,7 @@ echo 지우려면 아무 키나 누르세요. 그만두려면 이 창을 닫으�
 pause >nul
 
 fltmc >nul 2>&1
-if not errorlevel 1 (
-  set "PTSLIP_LOCAL=%LOCALAPPDATA%"
-  set "PTSLIP_ROAMING=%APPDATA%"
-  set "PTSLIP_USER=%USERDOMAIN%\%USERNAME%"
-  goto :remove
-)
+if not errorlevel 1 goto :adminnow
 
 echo 곧 뜨는 "이 앱이 디바이스를 변경하도록 허용하시겠어요?" 창에서 [예]를 눌러 주세요.
 set "PTSLIP_SELF=%~f0"
@@ -30,6 +25,16 @@ rem relaunch this file elevated; user folders and name go as arguments
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $q=[char]34; $a='/c '+$q+$q+$env:PTSLIP_SELF+$q+' elevated '+$q+$env:LOCALAPPDATA+$q+' '+$q+$env:APPDATA+$q+' '+$q+$env:PTSLIP_USER+$q+$q; Start-Process -FilePath $env:ComSpec -ArgumentList $a -Verb RunAs"
 if errorlevel 1 goto :denied
 exit /b 0
+
+:adminnow
+rem started as admin (right click, run as admin): fine only when this admin is the signed-in user,
+rem otherwise the program would go to the other admin folders and logon
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$u=(Get-CimInstance Win32_ComputerSystem).UserName; if ($u -and ($u -ne ($env:USERDOMAIN + [char]92 + $env:USERNAME))) { exit 1 }"
+if errorlevel 1 goto :otheradmin
+set "PTSLIP_LOCAL=%LOCALAPPDATA%"
+set "PTSLIP_ROAMING=%APPDATA%"
+set "PTSLIP_USER=%USERDOMAIN%\%USERNAME%"
+goto :remove
 
 :elevated
 set "PTSLIP_LOCAL=%~2"
@@ -73,5 +78,11 @@ exit /b 1
 
 :fail
 echo 다 지우지 못했어요. 컴퓨터를 다시 켠 뒤 지우기.cmd를 한 번 더 눌러 주세요.
+pause
+exit /b 1
+
+:otheradmin
+echo 다른 관리자 계정으로 실행돼서 지우기 작업을 하지 않았어요.
+echo 지우기.cmd를 오른쪽 클릭하지 말고, 이 PC를 쓰는 계정에서 그냥 두 번 눌러 주세요.
 pause
 exit /b 1

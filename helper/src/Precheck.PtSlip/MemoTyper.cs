@@ -45,6 +45,8 @@ public static class MemoTyper
     private const int GwlStyle = -16;
     private const int EsReadOnly = 0x0800;
     private const int ErrorAccessDenied = 5;
+    /// <summary>비트 '접수메모(당일)' 칸 최대 글자 수(2026-11-20 이 PC 확인). 칸이 한도를 알려 주지 않거나 더 크게 알려 줘도 이것을 넘기지 않는다</summary>
+    public const int MemoMaxLength = 50;
 
     /// <summary>칸이 살아 있고 켜져 있고 읽기 전용이 아닌가(UChartAutomation.IsMemoEditable과 같다)</summary>
     public static bool IsEditable(IntPtr box) =>
@@ -65,7 +67,9 @@ public static class MemoTyper
 
         var limit = Send(box, EmGetLimitText, IntPtr.Zero, IntPtr.Zero, SelTimeoutMs);
         if (limit.Denied) return MemoTypeResult.Blocked;
-        if (limit.Sent && limit.Result > 0 && before.Length + text.Length > limit.Result) return MemoTypeResult.TooLong;
+        // 한도 답이 안 와도(시간 지남) 50자를 넘기지 않는다: 넘기면 칸이 잘린 글을 받아 반쪽 글이 남는다
+        var max = limit.Sent && limit.Result > 0 ? (int)Math.Min(limit.Result, MemoMaxLength) : MemoMaxLength;
+        if (before.Length + text.Length > max) return MemoTypeResult.TooLong;
 
         var caret = Send(box, EmSetSel, (IntPtr)before.Length, (IntPtr)before.Length, SelTimeoutMs);
         if (caret.Denied) return MemoTypeResult.Blocked;
@@ -84,22 +88,21 @@ public static class MemoTyper
             return MemoTypeResult.Typed;
         }
         // 무언가 바뀌었는데 예상과 다르면 두 번 넣지 않는다. 그대로일 때만 ValuePattern
-        return after == before ? AppendByValue(box, text) : MemoTypeResult.Failed;
+        return after == before ? AppendByValue(box, text, max) : MemoTypeResult.Failed;
     }
 
     /// <summary>
     /// 대비 길: UI Automation ValuePattern으로 칸 글을 (있던 글 + text)로 바꾸고 커서를 끝에 둔다. 다시 읽어 맞으면 Typed.
-    /// (Append가 EM_REPLACESEL이 안 먹을 때 부른다. 바로 불러도 된다. 최대 글자 수는 ValuePattern이 알려 주지 않아 보지 않는다)
+    /// (Append가 EM_REPLACESEL이 안 먹을 때만 부른다. ValuePattern은 칸 한도를 지키지 않으므로 Append가 정한 max를 여기서도 본다)
     /// </summary>
-    public static MemoTypeResult AppendByValue(IntPtr box, string text)
+    private static MemoTypeResult AppendByValue(IntPtr box, string text, int max)
     {
-        if (text == null) throw new ArgumentNullException(nameof(text));
         if (!IsEditable(box)) return MemoTypeResult.NotEditable;
         var before = ReceptionWindows.ReadText(box);
         if (before == null) return MemoTypeResult.Failed;
-        if (text.Length == 0) return MemoTypeResult.Typed;
 
         var wanted = before + text;
+        if (wanted.Length > max) return MemoTypeResult.TooLong;
         try
         {
             using var uia = new UIA3Automation();
