@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using Precheck.Core.DocPrint;
 using Precheck.Core.PtSlip;
 
 namespace Precheck.PtSlip;
@@ -10,7 +11,7 @@ namespace Precheck.PtSlip;
 /// 두 단추를 그리고(사이 틈은 창 모양에서 빼서 비트가 보인다), 작업 표시줄에 안 나오며, 눌러도 비트에서 초점을 뺏지 않는다(WS_EX_NOACTIVATE).
 /// 0.25초마다 맨 앞 비트 창을 보고 그 오른쪽 위에 붙는다: [PT 먼저] 자리는 Core SlipButton.Place 그대로, [서류]는 그 왼쪽에 붙어
 /// 같이 움직이고 같이 숨는다. 비트 판단은 SlipButton.IsBitProcess. 비트가 맨 앞이 아니면 숨는다(이 프로그램 창이 맨 앞이면 그대로 둔다).
-/// [PT 먼저]를 누르면 고르는 창, [서류]를 누르면 DocsClicked만 일으킨다. 오른쪽 클릭은 두 단추 모두 `설정`·`끝내기`.
+/// [PT 먼저]를 누르면 고르는 창, [서류]를 누르면 DocsClicked를 일으키고 서류 창(DocForm)을 연다. 오른쪽 클릭은 두 단추 모두 `설정`·`끝내기`.
 /// </summary>
 public sealed class ButtonForm : Form
 {
@@ -39,6 +40,7 @@ public sealed class ButtonForm : Form
     /// <summary>마지막으로 본 비트 창(설정 창이 맨 앞일 때도 버튼 자리를 바로 옮기려고)</summary>
     private Rectangle? lastBit;
     private PickForm? pick;
+    private DocForm? docs;
     private SettingsForm? settingsForm;
     /// <summary>창 안 두 단추 자리(창 왼쪽 위 기준 px): [서류] 왼쪽, 틈 6, [PT 먼저] 오른쪽</summary>
     private readonly Rectangle docsBox;
@@ -79,9 +81,10 @@ public sealed class ButtonForm : Form
 
         timer.Tick += (sender, e) => Follow();
         timer.Start();
+        DocsClicked += (sender, e) => OpenDocs();
     }
 
-    /// <summary>[서류]를 눌렀다(창 열기는 받는 쪽이 한다)</summary>
+    /// <summary>[서류]를 눌렀다(이 창이 받아 서류 창을 연다)</summary>
     public event EventHandler? DocsClicked;
 
     protected override bool ShowWithoutActivation => true;
@@ -236,7 +239,47 @@ public sealed class ButtonForm : Form
         form.Activate();
     }
 
-    /// <summary>설정 창(하나만). 저장하면 새 설정을 버튼·열린 고르는 창에 바로 쓴다.</summary>
+    /// <summary>서류 설정 파일을 읽는다. 없거나 깨졌거나 못 읽으면 기본값(AC-7401.1·AC-7401.2).</summary>
+    private static DocSettings LoadDocSettings() => DocSettingsRules.FromJson(DocFiles.ReadText());
+
+    /// <summary>
+    /// [서류](AC-7402.1): 누른 그 순간 맨 앞 비트 창 제목에서 차트번호(숫자만, 제목 글은 남기지 않음)를 꺼내 서류 창을 연다.
+    /// 서류 창이 이미 열려 있으면 앞으로 가져온다. 다만 보내는 중이 아닌데 비트에서 다른 환자를 보고 있으면
+    /// 옛 창(앞 환자)을 닫고 그 환자로 새로 연다(다른 환자 서류가 나가지 않게, PT 종이 고르는 창과 같은 까닭).
+    /// </summary>
+    private void OpenDocs()
+    {
+        string? chart;
+        try
+        {
+            chart = CurrentChart.FromTitle(BitWindows.ReadChartTitle());
+        }
+        catch (Exception)
+        {
+            chart = null;
+        }
+        if (docs != null && !docs.IsDisposed)
+        {
+            if (docs.IsSending || chart == null || docs.ShowsChart(chart))
+            {
+                docs.Activate();
+                return;
+            }
+            var old = docs;
+            docs = null;
+            old.Close();
+        }
+        var form = new DocForm(LoadDocSettings(), chart, OpenSettings);
+        form.FormClosed += (sender, e) =>
+        {
+            if (ReferenceEquals(docs, form)) docs = null;
+        };
+        docs = form;
+        form.Show();
+        form.Activate();
+    }
+
+    /// <summary>설정 창(하나만). 저장하면 새 설정을 버튼·열린 고르는 창·열린 서류 창에 바로 쓴다.</summary>
     private void OpenSettings(IWin32Window? owner)
     {
         if (settingsForm != null && !settingsForm.IsDisposed)
@@ -244,7 +287,7 @@ public sealed class ButtonForm : Form
             settingsForm.Activate();
             return;
         }
-        using var form = new SettingsForm(settings, MoveButton);
+        using var form = new SettingsForm(settings, MoveButton, LoadDocSettings());
         settingsForm = form;
         try
         {
@@ -260,6 +303,7 @@ public sealed class ButtonForm : Form
             settings = form.Saved;
             if (pick != null && !pick.IsDisposed) pick.ApplySettings(settings);
         }
+        if (form.SavedDocs != null && docs != null && !docs.IsDisposed) docs.ApplySettings(form.SavedDocs);
         MoveButton(settings.ButtonOffsetPx);
     }
 }
