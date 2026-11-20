@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
 using Precheck.Core.InjectionMemo;
@@ -14,9 +15,11 @@ namespace Precheck.PtSlip;
 /// 테두리 없는 맨 위 작은 창이고 작업 표시줄에 안 나오며, 눌러도 비트에서 포커스를 뺏지 않는다(WS_EX_NOACTIVATE).
 /// 0.25초마다 접수 화면이 맨 앞인지 보고(findScreen = ReceptionWindows.FindForeground) 맞으면 메모 칸 오른쪽(+ 설정의 단추 자리 px)에
 /// 붙어 보이고 단축키를 잡는다. 아니면 숨고 단축키를 놓는다(이 프로그램 창이 맨 앞이면 단추는 그대로 둔다).
-/// [주사 차수]·단축키는 주사 차수만(compute), [엑스레이]는 설정에서 고른 엑스레이만 보고 경과를 넣는다(computeXray).
-/// 누르면 화면의 차트번호 칸·메모 칸 글을 읽어 백그라운드에서 Core InjectionMemoService를 부르고,
-/// 결과를 창 스레드에서 받아 Insert면 칸 끝에 글을 넣고(MemoTyper.Append) 알림(NoticeForm)을 띄운다. 판단은 하지 않고 Core를 부르기만 한다.
+/// [주사 차수]·단축키는 주사 차수만(compute): 화면의 차트번호 칸·메모 칸 글을 읽어 백그라운드에서 Core InjectionMemoService를 부르고,
+/// 결과를 창 스레드에서 받아 Insert면 칸 끝에 글을 넣고(MemoTyper.Append) 알림(NoticeForm)을 띄운다.
+/// [엑스레이]는 그 환자가 찍은 엑스레이 목록 창(XrayListForm, 시안 ⑤)을 메모 칸 아래에 띄우고(readXray, 다시 누르면 닫음),
+/// 창의 [넣기]마다 그때 칸 글로 Core MemoCompose.ComposeXrayPart를 불러 칸 끝에 넣는다. 차트번호가 바뀌거나 접수 화면이 맨 앞이 아니면 창을 닫는다.
+/// 판단은 하지 않고 Core를 부르기만 한다.
 /// 칸 글·결과 글은 파일·로그·콘솔에 남기지 않는다. 만든 스레드(창 스레드)에서만 부른다.
 /// </summary>
 public sealed class MemoButtonForm : Form
@@ -51,7 +54,11 @@ public sealed class MemoButtonForm : Form
     private readonly Func<ReceptionScreen?> findScreen;
     private readonly HotKeys hotKeys;
     private readonly Func<string?, string?, DateTime, MemoResult> compute;
-    private readonly Func<string?, string?, DateTime, IReadOnlyList<string>, MemoResult> computeXray;
+    private readonly Func<string?, DateTime, IReadOnlyList<string>, XrayListResult> readXray;
+    private readonly XrayListForm xrayList;
+    /// <summary>[엑스레이] 창을 띄울 때의 차트번호 칸 글·메모 칸(바뀌면 창을 닫는다)</summary>
+    private string? listChart;
+    private IntPtr listBox;
     private readonly int injectionWidth;
     private readonly int xrayWidth;
     private readonly SynchronizationContext ui;
@@ -67,17 +74,17 @@ public sealed class MemoButtonForm : Form
 
     /// <param name="findScreen">맨 앞 접수 화면 찾기(ReceptionWindows.FindForeground). 0.25초마다·누를 때 창 스레드에서 부른다</param>
     /// <param name="hotKeys">주사 차수 단축키(접수 화면이 맨 앞일 때만 잡는다). 만들고 없애기는 부르는 쪽</param>
-    /// <param name="settings">단축키·단추 자리·메모에 넣을 엑스레이</param>
+    /// <param name="settings">단축키·단추 자리·찍은 적 없을 때 보여 줄 엑스레이</param>
     /// <param name="compute">[주사 차수]: (차트번호 칸 글, 메모 칸 글, 오늘) → 결과. 백그라운드 스레드에서 부른다(비트 DB 읽기)</param>
-    /// <param name="computeXray">[엑스레이]: (차트번호 칸 글, 메모 칸 글, 오늘, 고른 엑스레이) → 결과. 백그라운드 스레드에서 부른다</param>
+    /// <param name="readXray">[엑스레이]: (차트번호 칸 글, 오늘, 찍은 적 없을 때 보여 줄 엑스레이) → 목록. 백그라운드 스레드에서 부른다(비트 DB 읽기)</param>
     public MemoButtonForm(Func<ReceptionScreen?> findScreen, HotKeys hotKeys, MemoSettings settings, Func<string?, string?, DateTime, MemoResult> compute,
-        Func<string?, string?, DateTime, IReadOnlyList<string>, MemoResult> computeXray)
+        Func<string?, DateTime, IReadOnlyList<string>, XrayListResult> readXray)
     {
         this.findScreen = findScreen ?? throw new ArgumentNullException(nameof(findScreen));
         this.hotKeys = hotKeys ?? throw new ArgumentNullException(nameof(hotKeys));
         this.settings = settings ?? throw new ArgumentNullException(nameof(settings));
         this.compute = compute ?? throw new ArgumentNullException(nameof(compute));
-        this.computeXray = computeXray ?? throw new ArgumentNullException(nameof(computeXray));
+        this.readXray = readXray ?? throw new ArgumentNullException(nameof(readXray));
         offset = settings.ButtonOffsetPx;
         // 컨트롤을 만들면 이 스레드에 WinForms 동기화 문맥이 깔린다(결과를 창 스레드로 돌려보낼 때 쓴다)
         ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
@@ -97,9 +104,14 @@ public sealed class MemoButtonForm : Form
         xrayWidth = TextRenderer.MeasureText(XrayText, ButtonFont).Width + SlipUi.S(XraySidePad * 2) + 2;
         Size = new Size(injectionWidth + SlipUi.S(BesideGap) + xrayWidth, SlipUi.S(24));
 
+        xrayList = new XrayListForm(Put);
+
         timer.Tick += (sender, e) => Follow();
         timer.Start();
     }
+
+    /// <summary>[엑스레이] 목록 창</summary>
+    public XrayListForm ListWindow => xrayList;
 
     /// <summary>지금 쓰는 설정(저장된 값)</summary>
     public MemoSettings Settings => settings;
@@ -129,11 +141,138 @@ public sealed class MemoButtonForm : Form
     /// </summary>
     public void Press() => Run((chart, memo, today) => compute(chart, memo, today));
 
-    /// <summary>[엑스레이]를 눌렀다(창 스레드). 누를 때 저장된 '메모에 넣을 엑스레이'로 계산한다.</summary>
+    /// <summary>
+    /// [엑스레이]를 눌렀다(창 스레드). 목록 창이 떠 있으면 닫는다. 아니면 차트번호 칸 글로 백그라운드에서 목록을 읽어(저장된 '찍은 적 없을 때 보여 줄 엑스레이'로)
+    /// 창 스레드에서 띄운다. 계산 중이면 무시. 맨 앞 접수 화면이 없으면 아무것도 안 한다.
+    /// </summary>
     public void PressXray()
     {
+        if (xrayList.Visible)
+        {
+            CloseList();
+            return;
+        }
+        if (busy || IsDisposed) return;
+        var screen = SafeFind();
+        if (screen == null) return;
+
+        var chart = screen.ReadChart();
+        var box = screen.MemoBox;
+        var anchor = screen.MemoBounds() ?? lastMemo;
+        var today = DateTime.Today;
         var chosen = settings.XrayParts;
-        Run((chart, memo, today) => computeXray(chart, memo, today, chosen));
+        busy = true;
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            XrayListResult result;
+            try
+            {
+                result = readXray(chart, today, chosen);
+            }
+            catch (Exception)
+            {
+                result = new XrayListResult(XrayListKind.Failed);
+            }
+            PostSafely(state => FinishXray((XrayListResult)state!, chart, box, anchor, today), result);
+        });
+    }
+
+    /// <summary>
+    /// 목록 결과(창 스레드): 환자 없음·읽기 실패는 빨강 알림(창 없음). 읽는 동안 맨 앞 접수 화면·메모 칸·차트번호 칸 글이 바뀌었으면 '읽기 실패'.
+    /// 같으면 지금 메모 칸에 그 부위 경과 글이 이미 있는 부위를 '넣음'으로 표시해 창을 띄운다.
+    /// </summary>
+    private void FinishXray(XrayListResult result, string? chart, IntPtr box, Rectangle? anchor, DateTime today)
+    {
+        try
+        {
+            if (IsDisposed) return;
+            if (result.Kind == XrayListKind.NoPatient)
+            {
+                notice.ShowAt(anchor, MemoNotices.NoPatient, NoticeTone.Bad);
+                return;
+            }
+            var screen = result.Kind == XrayListKind.Ok ? SafeFind() : null;
+            var chartNow = screen?.ReadChart();
+            var memoNow = screen?.ReadMemo();
+            if (screen == null || screen.MemoBox != box || chartNow == null || memoNow == null || !string.Equals(chartNow, chart, StringComparison.Ordinal))
+            {
+                notice.ShowAt(anchor, MemoNotices.Failed, NoticeTone.Bad);
+                return;
+            }
+            var already = result.Items.Where(item => MemoCompose.HasXrayFor(memoNow, item.Part)).Select(item => item.Part).ToArray();
+            listChart = chart;
+            listBox = box;
+            notice.Dismiss();
+            xrayList.ShowList(screen.MemoBounds() ?? anchor, result.Items, today, already);
+        }
+        catch (Exception)
+        {
+            // 창을 못 띄워도 프로그램은 산다(다음 누름은 받는다)
+        }
+        finally
+        {
+            PostSafely(_ => busy = false, null);
+        }
+    }
+
+    /// <summary>
+    /// 목록 창 [넣기](창 스레드): 맨 앞 접수 화면의 메모 칸·차트번호 칸이 창을 띄울 때와 같아야 한다(다르면 창을 닫고 안 넣음).
+    /// 지금 칸 글로 경과 글을 만들어(MemoCompose.ComposeXrayPart) 칸 끝에 넣는다. 그 부위 경과 글이 이미 있으면 넣지 않고 '넣음'.
+    /// 칸이 꽉 참(50자)·잠김·막힘·실패면 '넣지 못함'(빨강, 직접 적을 글). 넣은 뒤 알림은 없다(그 줄이 '넣음 ✓'으로 바뀐다).
+    /// </summary>
+    private bool Put(XrayItem item)
+    {
+        try
+        {
+            var screen = SafeFind();
+            var chartNow = screen?.ReadChart();
+            if (screen == null || screen.MemoBox != listBox || (chartNow != null && !string.Equals(chartNow, listChart, StringComparison.Ordinal)))
+            {
+                CloseList();
+                return false;
+            }
+            var anchor = screen.MemoBounds() ?? lastMemo;
+            var memo = screen.ReadMemo();
+            if (chartNow == null || memo == null)
+            {
+                notice.ShowAt(anchor, MemoNotices.Failed, NoticeTone.Bad);
+                return false;
+            }
+            var result = MemoCompose.ComposeXrayPart(memo, item.Part, item.Years);
+            if (result.Kind == MemoResultKind.XrayAlreadyHas) return true;
+            if (result.Kind != MemoResultKind.Insert) return false;
+            var typed = MemoTyper.Append(listBox, result.Append);
+            if (typed != MemoTypeResult.Typed)
+            {
+                notice.ShowAt(anchor, MemoNotices.TypeFailed(result.Text), NoticeTone.Bad);
+                return false;
+            }
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>목록 창을 닫고 띄울 때 본 칸을 잊는다</summary>
+    private void CloseList()
+    {
+        xrayList.HideList();
+        listChart = null;
+        listBox = IntPtr.Zero;
+    }
+
+    private ReceptionScreen? SafeFind()
+    {
+        try
+        {
+            return findScreen();
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     private void Run(Func<string?, string?, DateTime, MemoResult> work)
@@ -250,11 +389,15 @@ public sealed class MemoButtonForm : Form
         {
             timer.Dispose();
             notice.Dispose();
+            xrayList.Dispose();
         }
         base.Dispose(disposing);
     }
 
-    /// <summary>0.25초마다: 접수 화면이 맨 앞이면 메모 칸 옆에 붙고 단축키를 잡는다. 아니면 숨고 단축키를 놓는다.</summary>
+    /// <summary>
+    /// 0.25초마다: 접수 화면이 맨 앞이면 메모 칸 옆에 붙고 단축키를 잡는다. 아니면 숨고 단축키를 놓는다.
+    /// [엑스레이] 창은 메모 칸을 따라가고, 접수 화면이 맨 앞이 아니거나 메모 칸·차트번호 칸 글이 바뀌면 닫는다.
+    /// </summary>
     private void Follow()
     {
         try
@@ -266,8 +409,10 @@ public sealed class MemoButtonForm : Form
                 lastMemo = memo;
                 PlaceBeside(memo);
                 if (!Visible) Show();
+                FollowList(screen, memo);
                 return;
             }
+            if (xrayList.Visible) CloseList();
             var front = BitWindows.ReadForeground();
             if (front != null && BitWindows.IsOwnProcess(front)) return;
             if (Visible) Hide();
@@ -276,6 +421,19 @@ public sealed class MemoButtonForm : Form
         {
             // 창 읽기가 한 번 실패해도 단추는 살아 있고 다음 0.25초에 다시 본다
         }
+    }
+
+    /// <summary>[엑스레이] 창이 떠 있으면: 메모 칸이 다르거나 차트번호 칸 글이 바뀌면(다른 환자) 닫고, 아니면 메모 칸 아래로 따라간다</summary>
+    private void FollowList(ReceptionScreen screen, Rectangle memo)
+    {
+        if (!xrayList.Visible) return;
+        var chartNow = screen.ReadChart();
+        if (screen.MemoBox != listBox || (chartNow != null && !string.Equals(chartNow, listChart, StringComparison.Ordinal)))
+        {
+            CloseList();
+            return;
+        }
+        xrayList.Follow(memo);
     }
 
     /// <summary>메모 칸 오른쪽 6px + 단추 자리(+는 오른쪽), 위 끝과 높이는 메모 칸에 맞춘다(물리 픽셀)</summary>

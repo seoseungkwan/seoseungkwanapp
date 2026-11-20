@@ -28,6 +28,22 @@ public class MemoNoticesTests
         Assert.DoesNotContain("XrayNone", Enum.GetNames(typeof(MemoResultKind)));
     }
 
+    [Fact(DisplayName = "AC-7505.4 [엑스레이] 창 글자는 시안 ⑤ 그대로(제목·빈 목록·찍은 적 없음·바닥 안내·경과·넣기·넣음·닫기·작은 단추·날짜)")]
+    public void XrayWindowTexts()
+    {
+        Assert.Equal("엑스레이", MemoNotices.XrayTitle);
+        Assert.Equal("찍은 엑스레이가 없어요.", MemoNotices.XrayEmpty);
+        Assert.Equal("찍은 적 없음 (설정에서 고른 부위)", MemoNotices.XrayNeverHeading);
+        Assert.Equal("무릎은 1년, 다른 부위는 2년이 지나면 경과예요. 좌우는 안 가려요.", MemoNotices.XrayFoot);
+        Assert.Equal("경과", MemoNotices.XrayDueMark);
+        Assert.Equal("넣기", MemoNotices.XrayPut);
+        Assert.Equal("넣음 ✓", MemoNotices.XrayPutDone);
+        Assert.Equal("닫기", MemoNotices.XrayClose);
+        Assert.Equal("등 넣기", MemoNotices.XrayChip("등"));
+        Assert.Equal("등 ✓", MemoNotices.XrayChipDone("등"));
+        Assert.Equal("2023-07-14", MemoNotices.XrayDate(new DateTime(2023, 7, 14, 9, 30, 0)));
+    }
+
     [Fact(DisplayName = "AC-7503.3 계획 날짜는 'M월 D일'(앞 0 없음), 넣은 글 알림에는 '/' 없이 새 글만")]
     public void NoticeDetails()
     {

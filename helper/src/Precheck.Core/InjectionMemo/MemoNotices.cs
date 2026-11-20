@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 
 namespace Precheck.Core.InjectionMemo;
@@ -9,6 +10,25 @@ public static class MemoNotices
     public const string AlreadyHas = "메모에 주사 차수가 이미 있어요.";
     public const string NoPatient = "접수 화면에 환자를 먼저 불러와 주세요.";
     public const string Failed = "비트에서 기록을 읽지 못했어요. 잠시 뒤 다시 눌러 주세요.";
+
+    // [엑스레이] 목록 창(시안 ⑤, AC-7505.4)
+    public const string XrayTitle = "엑스레이";
+    public const string XrayEmpty = "찍은 엑스레이가 없어요.";
+    public const string XrayNeverHeading = "찍은 적 없음 (설정에서 고른 부위)";
+    public const string XrayFoot = "무릎은 1년, 다른 부위는 2년이 지나면 경과예요. 좌우는 안 가려요.";
+    public const string XrayDueMark = "경과";
+    public const string XrayPut = "넣기";
+    public const string XrayPutDone = "넣음 ✓";
+    public const string XrayClose = "닫기";
+
+    /// <summary>찍은 적 없는 부위의 작은 단추 글('등 넣기').</summary>
+    public static string XrayChip(string? part) => (part ?? "") + " 넣기";
+
+    /// <summary>넣은 뒤 작은 단추 글('등 ✓').</summary>
+    public static string XrayChipDone(string? part) => (part ?? "") + " ✓";
+
+    /// <summary>마지막 날짜 'yyyy-MM-dd'.</summary>
+    public static string XrayDate(DateTime day) => day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// '넣지 못함'(빨강): 넣을 글(Insert 결과의 Text, '/' 없는 새 글)을 메모 칸에 치지 못했을 때 — 칸이 꽉 참(50자)·잠김·윈도우가 막음.
