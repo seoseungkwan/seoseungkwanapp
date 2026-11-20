@@ -74,9 +74,17 @@
 - Tests: helper/tests/injection-memo.dotnet.test.ts
 - TDD: required — design.md 이름표 그대로, 부위 표는 notes/fracture.md 그대로. 시험은 지어낸 코드·글·가짜 IBitDb
 
-## TASK-10: 읽어주세요·zip (2026-11-20 오후)
+## TASK-11: 족지·수지 번호 (2026-11-20 오후)
 - Phase: 9
-- AC: AC-7507.3
+- AC: AC-7507.5
+- REQ: REQ-7507
+- Files: helper/src/Precheck.Core/InjectionMemo/**, helper/tests/Precheck.Core.Tests/InjectionMemo/**, helper/tests/injection-memo.dotnet.test.ts
+- Tests: helper/tests/injection-memo.dotnet.test.ts
+- TDD: required — FractureRule.Text에 번호, 시험은 지어낸 코드·글
+
+## TASK-10: 읽어주세요·zip (2026-11-20 오후)
+- Phase: 10
+- AC: AC-7507.3, AC-7507.5
 - REQ: REQ-7507
 - Files: helper/install/ptslip/**, specs/injection-memo/notes/**
 - Tests: helper/tests/injection-memo.dotnet.test.ts
