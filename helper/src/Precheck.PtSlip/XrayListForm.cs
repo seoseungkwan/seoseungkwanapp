@@ -243,7 +243,8 @@ public sealed class XrayListForm : Form
 
     protected override void Dispose(bool disposing)
     {
-        ReleaseEsc();
+        // 창 손잡이는 정리(disposing)할 때만 만진다(종료자 스레드에서는 손대지 않음)
+        if (disposing) ReleaseEsc();
         base.Dispose(disposing);
     }
 

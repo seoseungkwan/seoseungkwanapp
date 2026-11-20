@@ -419,7 +419,15 @@ public sealed class MemoButtonForm : Form
         }
         catch (Exception)
         {
-            // 창 읽기가 한 번 실패해도 단추는 살아 있고 다음 0.25초에 다시 본다
+            // 창 읽기가 한 번 실패해도 단추는 살아 있고 다음 0.25초에 다시 본다. [엑스레이] 창은 닫는다(Esc를 잡은 채 남지 않게)
+            try
+            {
+                if (xrayList.Visible) CloseList();
+            }
+            catch (Exception)
+            {
+                // 닫기도 못 하면 다음 0.25초에 다시
+            }
         }
     }
 

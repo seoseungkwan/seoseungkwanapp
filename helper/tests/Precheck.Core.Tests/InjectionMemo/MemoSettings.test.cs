@@ -72,7 +72,7 @@ public class MemoSettingsTests
         Assert.Equal(0, settings.ButtonOffsetPx);
     }
 
-    [Fact(DisplayName = "AC-7505.5 메모에 넣을 엑스레이: 처음엔 표 20부위 중 팔·허벅지·다리·종아리만 끔, 표 차례로 저장·읽기, 모르는 이름 버림, 깨진 값은 처음 값")]
+    [Fact(DisplayName = "AC-7505.5 찍은 적 없을 때 보여 줄 엑스레이: 처음엔 표 20부위 중 팔·허벅지·다리·종아리만 끔, 표 차례로 저장·읽기, 모르는 이름 버림, 깨진 값은 처음 값")]
     public void XrayPartsSetting()
     {
         var all = XrayParts.All.ToArray();
