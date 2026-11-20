@@ -58,6 +58,8 @@ public static class InjectionRule
     private static readonly Regex PlanBefore = new Regex(
         GapPattern + @"|\d+\s*(주|일|wk|week)\s*(뒤|후|간격|째)?|다음\s*주?|이번\s*주|[월화수목금토일]\s*요일|(?<![가-힣])[월화수금토](?![가-힣])|예정|f/u|F/U|내원\s*시|다음번|오면",
         RegexOptions.Compiled);
+    // 'N차 주사'·'N차주사' 뒤에 한 말(함·했·시행·완료·하였·맞)이 없으면 다음 계획(AC-7501.2, 2026-11-20 오후: 90일 직원 메모 그대로 29·+1 0)
+    private static readonly Regex BareInjectionPlan = new Regex(@"^\s*주사(?!\s*(함|했|시행|완료|하였|맞))", RegexOptions.Compiled);
     private static readonly Regex PlanAfter = new Regex(
         @"^\s*(주사\s*)?(예정|하기로|할\s*것|할게|하자|진행|예약|합니다|합시다|하겠|할\s*예정|드립니다|해\s*드림)",
         RegexOptions.Compiled);
@@ -162,7 +164,7 @@ public static class InjectionRule
                 // 같은 조각에 주사 아닌 말(ESWT·도수)이 차수 앞이나 바로 뒤에 있으면 뺀다
                 if (NonInjection.IsMatch(before) || NonInjection.IsMatch(Head(after, 6))) continue;
                 var mode = Until.IsMatch(after) ? Mode.Until
-                    : (PlanBefore.IsMatch(before) || PlanAfter.IsMatch(after) || WeekdayList.IsMatch(before)) ? Mode.Plan : Mode.Today;
+                    : (PlanBefore.IsMatch(before) || PlanAfter.IsMatch(after) || BareInjectionPlan.IsMatch(after) || WeekdayList.IsMatch(before)) ? Mode.Plan : Mode.Today;
                 list.Add(new Mention
                 {
                     Line = li,

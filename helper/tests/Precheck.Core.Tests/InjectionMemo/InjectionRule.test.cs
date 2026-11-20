@@ -15,7 +15,7 @@ public class InjectionRuleTests
     [Fact(DisplayName = "AC-7501.1 '<좌우>)<부위> N차': '주사' 말·차수 뒤 덧붙이('+ FNB')는 빼고 오른쪽 → 오)")]
     public void DropsInjectionWordAndTrailer()
     {
-        Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "오른쪽 무릎 2차 주사 + FNB")));
+        Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "오른쪽 무릎 2차 주사 시행 + FNB")));
         Assert.Equal("오)어깨 2차", Inserted(Visit(7, "", "오른쪽 어깨 1차 + SSNB")));
     }
 
@@ -24,8 +24,8 @@ public class InjectionRuleTests
     {
         Assert.Equal("왼)어깨 3차", Inserted(Visit(7, "", "왼쪽 어깨 2차")));
         Assert.Equal("왼)어깨 2차", Inserted(Visit(7, "", "Lt shoulder 1차")));
-        Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "Rt knee 2차 주사")));
-        Assert.Equal("양)무릎 2차", Inserted(Visit(7, "", "양측 무릎 1차 주사")));
+        Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "Rt knee 2차 주사 시행")));
+        Assert.Equal("양)무릎 2차", Inserted(Visit(7, "", "양측 무릎 1차 주사 시행")));
         Assert.Equal("양)아라간 2차", Inserted(Visit(7, "", "양 아라간 1차 + FNB")));
     }
 
@@ -34,7 +34,7 @@ public class InjectionRuleTests
     {
         Assert.Equal("목 3차", Inserted(Visit(7, "", "neck 2차 주사 시행")));
         Assert.Equal("허리 4차", Inserted(Visit(7, "", "허리 MBB 3차")));
-        Assert.Equal("허리 2차", Inserted(Visit(7, "", "Rt L5 SNB 1차 주사")));
+        Assert.Equal("허리 2차", Inserted(Visit(7, "", "Rt L5 SNB 1차 주사 시행")));
     }
 
     [Fact(DisplayName = "AC-7501.1 영어 부위 말: shoulder → 어깨, knee·OA → 무릎, elbow → 팔꿈치, wrist → 손목, ankle → 발목, LBP → 허리")]
@@ -75,11 +75,11 @@ public class InjectionRuleTests
         Assert.Equal("오)DNA 2차", Inserted(Visit(7, "", "Rt DNA 1차")));
     }
 
-    [Fact(DisplayName = "AC-7501.1 좌우 줄임말 뒤 점('Rt.'·'Lt.')에서 조각을 나누지 않음(Rt. knee 2차 주사 → 오)무릎 3차)")]
+    [Fact(DisplayName = "AC-7501.1 좌우 줄임말 뒤 점('Rt.'·'Lt.')에서 조각을 나누지 않음(Rt. knee 2차 주사 시행 → 오)무릎 3차)")]
     public void SideAbbreviationDot()
     {
-        Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "Rt. knee 2차 주사")));
-        Assert.Equal("왼)어깨 2차", Inserted(Visit(7, "", "Lt. 어깨 1차 주사")));
+        Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "Rt. knee 2차 주사 시행")));
+        Assert.Equal("왼)어깨 2차", Inserted(Visit(7, "", "Lt. 어깨 1차 주사 시행")));
         Assert.Equal("양)무릎 2차", Inserted(Visit(7, "", "Bil. knee inj. 1차")));
     }
 
@@ -105,6 +105,22 @@ public class InjectionRuleTests
         Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "Rt. knee OA", "다음주 월/목 3차주")));
     }
 
+    [Fact(DisplayName = "AC-7501.2 'N차 주사'·'N차주사' 뒤에 한 말(함·했·시행·완료·하였·맞)이 없으면 다음 계획(그대로), 있으면 그날 한 것(+1)")]
+    public void BareInjectionCountIsPlan()
+    {
+        Assert.Equal("목 3차", Inserted(Visit(7, "", "목 3차주사")));
+        Assert.Equal("오)무릎 2차", Inserted(Visit(7, "", "오른쪽 무릎 2차 주사")));
+        Assert.Equal("오)무릎 2차", Inserted(Visit(7, "", "오른쪽 무릎 2차 주사 + FNB")));
+        Assert.Equal("허리 3차", Inserted(Visit(7, "", "MBB L4,5 both", "3차주사.")));
+        Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "오른쪽 무릎 2차 주사함")));
+        Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "오른쪽 무릎 2차 주사 했음")));
+        Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "오른쪽 무릎 2차 주사 완료")));
+        Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "오른쪽 무릎 2차 주사 맞음")));
+        Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "오른쪽 무릎 2차 주사 하였음")));
+        Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "오른쪽 무릎 2차 + FNB")));
+        Assert.Equal("양)아라간 3차", Inserted(Visit(7, "", "양 아라간 2차 + FNB SNB both")));
+    }
+
     [Fact(DisplayName = "AC-7501.2 번호가 둘이면 앞 번호('금요일 2차/다음주 화 3차' → 2차), 계획이 앞이면 계획 번호")]
     public void TwoNumbersTakeTheFirst()
     {
@@ -120,7 +136,7 @@ public class InjectionRuleTests
     public void UntilUsesLastMemo()
     {
         Assert.Equal("오)무릎 3차", Inserted(Visit(14, "오)무릎 2차", "Rt. knee OA", "1주간격 5차까지 주사합니다")));
-        Assert.Equal("오)무릎 3차", Inserted(Visit(21, "오)무릎 2차 주사", "Rt. knee OA"), Visit(14, "", "Rt. knee OA", "1주간격 5차까지 주사합니다")));
+        Assert.Equal("오)무릎 3차", Inserted(Visit(21, "오)무릎 2차 주사 시행", "Rt. knee OA"), Visit(14, "", "Rt. knee OA", "1주간격 5차까지 주사합니다")));
         Assert.Equal("오)무릎 3차", Inserted(Visit(14, "물리치료/오)무릎 2차", "Rt. knee OA", "5차까지 주사")));
 
         var finished = Decide(Visit(14, "오)무릎 5차", "Rt. knee OA", "1주간격 5차까지 주사합니다"));
@@ -161,18 +177,18 @@ public class InjectionRuleTests
     public void LastVisitWithCount()
     {
         Assert.Equal("왼)어깨 3차", Inserted(
-            Visit(20, "", "오른쪽 무릎 1차 주사"),
-            Visit(10, "", "왼쪽 어깨 2차 주사"),
+            Visit(20, "", "오른쪽 무릎 1차 주사 시행"),
+            Visit(10, "", "왼쪽 어깨 2차 주사 시행"),
             Visit(5, "", "물리치료 시행")));
         // 날짜순이 아니어도 날짜가 늦은 내원
-        Assert.Equal("왼)어깨 3차", Inserted(Visit(10, "", "왼쪽 어깨 2차 주사"), Visit(20, "", "오른쪽 무릎 1차 주사")));
+        Assert.Equal("왼)어깨 3차", Inserted(Visit(10, "", "왼쪽 어깨 2차 주사 시행"), Visit(20, "", "오른쪽 무릎 1차 주사 시행")));
     }
 
     [Fact(DisplayName = "AC-7501.3 ESWT·도수·충격파 차수는 빼고 그 앞 주사 차수")]
     public void NonInjectionCountsAreSkipped()
     {
         Assert.Equal("오)무릎 2차", Inserted(
-            Visit(10, "", "오른쪽 무릎 1차 주사"),
+            Visit(10, "", "오른쪽 무릎 1차 주사 시행"),
             Visit(5, "", "ESWT 3차"),
             Visit(4, "", "3차 ESWT"),
             Visit(3, "", "도수 2차"),
@@ -184,11 +200,11 @@ public class InjectionRuleTests
     {
         Assert.Equal(MemoResultKind.NoRecord, Decide().Kind);
         Assert.Equal(MemoResultKind.NoRecord, Decide(Visit(5, "오)무릎 2차", "물리치료 시행")).Kind);
-        Assert.Equal(MemoResultKind.NoRecord, Decide(Visit(31, "", "오른쪽 무릎 1차 주사")).Kind);
-        Assert.Equal(MemoResultKind.NoRecord, Decide(Visit(0, "", "오른쪽 무릎 1차 주사")).Kind);
+        Assert.Equal(MemoResultKind.NoRecord, Decide(Visit(31, "", "오른쪽 무릎 1차 주사 시행")).Kind);
+        Assert.Equal(MemoResultKind.NoRecord, Decide(Visit(0, "", "오른쪽 무릎 1차 주사 시행")).Kind);
         Assert.Equal(MemoResultKind.NoRecord, Decide(Visit(5, "", "ESWT 3차", "도수 2차")).Kind);
-        Assert.Equal("오)무릎 2차", Inserted(Visit(30, "", "오른쪽 무릎 1차 주사")));
-        Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "오른쪽 무릎 2차 주사"), Visit(0, "", "오른쪽 무릎 5차 주사")));
+        Assert.Equal("오)무릎 2차", Inserted(Visit(30, "", "오른쪽 무릎 1차 주사 시행")));
+        Assert.Equal("오)무릎 3차", Inserted(Visit(7, "", "오른쪽 무릎 2차 주사 시행"), Visit(0, "", "오른쪽 무릎 5차 주사 시행")));
         Assert.Equal("", Decide().Text);
         Assert.Null(Decide().PlannedDate);
     }
@@ -196,7 +212,7 @@ public class InjectionRuleTests
     [Fact(DisplayName = "AC-7501.3 부위: 차수 줄 앞말이 먼저(다른 줄 부위는 안 붙임)")]
     public void PrefixPartFirst()
     {
-        Assert.Equal("오)어깨 3차", Inserted(Visit(7, "", "Lt. knee pain", "오른쪽 어깨 2차 주사")));
+        Assert.Equal("오)어깨 3차", Inserted(Visit(7, "", "Lt. knee pain", "오른쪽 어깨 2차 주사 시행")));
     }
 
     [Fact(DisplayName = "AC-7501.3 부위: 앞말이 없으면 같은 내원의 주사 말이 든 줄, 그래도 없으면 다른 줄, 여러 개면 쉼표로")]
@@ -258,7 +274,7 @@ public class InjectionRuleTests
     [Fact(DisplayName = "AC-7501.4 간격이 없으면 다음 날 와도 넣고, 'N주째'(지난 기간)는 간격이 아니다")]
     public void NoGapAlwaysInserts()
     {
-        Assert.Equal("오)무릎 3차", Inserted(Visit(1, "", "오른쪽 무릎 2차 주사")));
+        Assert.Equal("오)무릎 3차", Inserted(Visit(1, "", "오른쪽 무릎 2차 주사 시행")));
         Assert.Equal("오)무릎 2차", Inserted(Visit(1, "", "Rt. knee OA", "3주째 2차 주사")));
     }
 
@@ -275,8 +291,11 @@ public class InjectionRuleTests
 
     // ── AC-7501.5 모양별 지어낸 예 ─────────────────────────────
 
-    [Theory(DisplayName = "AC-7501.5 시안 '기록 → 메모 글' 4줄(11-13 기록, 오늘 11-20)")]
-    [InlineData("오른쪽 무릎 2차 주사 + FNB", "오)무릎 3차")]
+    [Theory(DisplayName = "AC-7501.5 시안 '기록 → 메모 글'(11-13 기록, 오늘 11-20)")]
+    [InlineData("오른쪽 무릎 2차 + FNB", "오)무릎 3차")]
+    [InlineData("목 3차주사", "목 3차")]
+    [InlineData("DNA 2차|Lt knee OA", "왼)무릎 DNA 3차")]
+    [InlineData("Rt shoulder, neck 2차", "오)어깨,목 3차")]
     [InlineData("Lt. shoulder pain|3차 주사 합니다", "왼)어깨 3차")]
     [InlineData("neck 2차 주사 시행", "목 3차")]
     [InlineData("양측 아라간 1차", "양)아라간 2차")]
@@ -324,7 +343,7 @@ public class InjectionRuleTests
     public void NullSafe()
     {
         Assert.Equal(MemoResultKind.NoRecord, InjectionRule.Decide(new[] { new VisitNote(Today.AddDays(-3), new string[0], null!) }, Today).Kind);
-        Assert.Equal("오)무릎 3차", InjectionRule.Decide(new[] { new VisitNote(Today.AddDays(-3), new[] { null!, "", "오른쪽 무릎 2차 주사" }, null!) }, Today).Text);
+        Assert.Equal("오)무릎 3차", InjectionRule.Decide(new[] { new VisitNote(Today.AddDays(-3), new[] { null!, "", "오른쪽 무릎 2차 주사 시행" }, null!) }, Today).Text);
         Assert.Equal(MemoResultKind.NoRecord, InjectionRule.Decide(new[] { new VisitNote(Today.AddDays(-3), null!, "") }, Today).Kind);
         Assert.Throws<ArgumentNullException>(() => InjectionRule.Decide(null!, Today));
     }
@@ -333,23 +352,23 @@ public class InjectionRuleTests
     public void SeveralParts()
     {
         Assert.Equal("오)어깨,목 3차", Inserted(Lines(5, "", "3차 주사 합니다|Rt SSNB ANB + C-MBB 2,3,4 Rt|neck & shoulder Rt")));
-        Assert.Equal("왼)어깨,목 2차", Inserted(Lines(5, "", "목,왼쪽 어깨 1차 주사")));
+        Assert.Equal("왼)어깨,목 2차", Inserted(Lines(5, "", "목,왼쪽 어깨 1차 주사 시행")));
         Assert.Equal("오)어깨,목 3차", Inserted(Lines(5, "", "3차 주사 합니다|Rt shoulder SSNB + CMBB")));
         Assert.Equal("왼)어깨,손가락,목 2차", Inserted(Lines(5, "", "2차 주사 합니다|Lt SSNB ANB + 목 MBB|CMC 주사")));
         Assert.Equal("꼬리뼈 2차", Inserted(Lines(5, "", "2차 주사 합니다|IMPAR block")));
         Assert.Equal("허리 3차", Inserted(Lines(5, "", "3차 주사 합니다|L-MBB L4,5 both")));
-        Assert.Equal("양)무릎,허리 2차", Inserted(Lines(5, "", "허리 양측 무릎 1차 주사")));
+        Assert.Equal("양)무릎,허리 2차", Inserted(Lines(5, "", "허리 양측 무릎 1차 주사 시행")));
     }
 
     [Fact(DisplayName = "AC-7501.1 앞말에 약 이름만 있으면 부위는 주사 말 줄 → 다른 줄에서(왼)무릎 DNA 2차), 없으면 약 이름만, 부위 아닌 앞말은 버림")]
     public void DrugOnlyFindsPart()
     {
-        Assert.Equal("왼)무릎 DNA 3차", Inserted(Lines(5, "", "DNA 2차 주사|Lt knee OA")));
+        Assert.Equal("왼)무릎 DNA 3차", Inserted(Lines(5, "", "DNA 2차 주사 시행|Lt knee OA")));
         Assert.Equal("오)무릎 DNA 3차", Inserted(Lines(5, "", "Rt DNA 2차|knee OA")));
         Assert.Equal("양)아라간 2차", Inserted(Lines(5, "", "양측 아라간 1차")));
         Assert.Equal("DNA 2차", Inserted(Lines(5, "", "DNA 1차")));
         Assert.Equal("오)어깨 2차", Inserted(Lines(5, "", "많이 좋아지면 2차 주사 합니다|Rt shoulder pain")));
-        Assert.Equal("왼)무릎 3차", Inserted(Lines(5, "", "왼쪽 무릎 전 2차 주사")));
+        Assert.Equal("왼)무릎 3차", Inserted(Lines(5, "", "왼쪽 무릎 전 2차 주사 시행")));
 
         // 앞말이 좌우 + 약 이름만인데 찾은 부위가 가운데 부위뿐이면 붙이지 않고 좌우를 남김(AC-7501.1, 90일 대조 좌우 빠짐 62건)
         Assert.Equal("양)아라간 2차", Inserted(Lines(5, "", "양 아라간 1차 + FNB SNB both|C-MBB 3,4,5")));
@@ -359,7 +378,7 @@ public class InjectionRuleTests
         Assert.Equal("양)무릎,목 아라간 2차", Inserted(Lines(5, "", "양 아라간 1차|Both knee FNB + C-MBB")));
         Assert.Equal("오)어깨,목 아라간 3차", Inserted(Lines(5, "", "Rt 아라간 2차|Rt SSNB ANB + C-MBB")));
         // 부위를 못 찾으면 앞말의 좌우만 남기지 않는다(예전 그대로)
-        Assert.Equal("3차", Inserted(Lines(5, "", "Rt 2차 주사")));
+        Assert.Equal("3차", Inserted(Lines(5, "", "Rt 2차 주사 시행")));
         Assert.Equal("목 아라간 2차", Inserted(Lines(5, "", "아라간 1차|C-MBB 3,4,5")));
     }
 }

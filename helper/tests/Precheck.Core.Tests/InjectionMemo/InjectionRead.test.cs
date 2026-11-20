@@ -125,7 +125,7 @@ public class InjectionReadTests
             new[]
             {
                 LineRow("V200", 2, "Rt. knee OA"),
-                LineRow("V200", "1", "오른쪽 무릎 2차 주사"),
+                LineRow("V200", "1", "오른쪽 무릎 2차 주사 시행"),
                 LineRow("V100 ", 1m, "Lt. shoulder pain"),
                 LineRow("V100", 3, null),
                 LineRow("V999", 1, "다른 내원"),
@@ -135,7 +135,7 @@ public class InjectionReadTests
         Assert.Equal(new[] { Day(11, 13), Day(11, 18), Day(11, 19) }, notes.Select(n => n.Date).ToArray());
         Assert.Equal(new[] { "오)무릎 2차", "", "물리치료" }, notes.Select(n => n.ReceptionMemo).ToArray());
         Assert.Equal(new[] { "Lt. shoulder pain", "" }, notes[0].SymptomLines.ToArray());
-        Assert.Equal(new[] { "오른쪽 무릎 2차 주사", "Rt. knee OA" }, notes[1].SymptomLines.ToArray());
+        Assert.Equal(new[] { "오른쪽 무릎 2차 주사 시행", "Rt. knee OA" }, notes[1].SymptomLines.ToArray());
         Assert.Empty(notes[2].SymptomLines);
     }
 
@@ -168,7 +168,7 @@ public class InjectionReadTests
     {
         var db = Db(
             new[] { VisitRow("V1", "202611131000", "오)무릎 2차") },
-            new[] { LineRow("V1", 1, "오른쪽 무릎 2차 주사 + FNB") },
+            new[] { LineRow("V1", 1, "오른쪽 무릎 2차 주사 시행 + FNB") },
             Recent("G72"));
         var result = InjectionMemoService.Compute(db, " 0090001 ", "", new DateTime(2026, 11, 20, 9, 5, 0));
         Assert.Equal(MemoResultKind.Insert, result.Kind);

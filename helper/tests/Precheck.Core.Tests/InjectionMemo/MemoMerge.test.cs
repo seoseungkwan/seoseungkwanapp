@@ -49,7 +49,7 @@ public class MemoMergeTests
 
         var db = new FakeDb()
             .Answer(InjectionSql.VisitsSql, _ => new[] { new object?[] { "V1", "202611131000", "" } })
-            .Answer(InjectionSql.LinesSql, _ => new[] { new object?[] { "V1", 1, "오른쪽 무릎 2차 주사" } })
+            .Answer(InjectionSql.LinesSql, _ => new[] { new object?[] { "V1", 1, "오른쪽 무릎 2차 주사 시행" } })
             .Answer(InjectionSql.XraySql, _ => new[] { new object?[] { "G72", "202611010900" } });
         var result = InjectionMemoService.Compute(db, Chart, "물리치료만", Today);
         Assert.Equal(MemoResultKind.Insert, result.Kind);

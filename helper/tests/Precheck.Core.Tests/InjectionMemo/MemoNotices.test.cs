@@ -50,7 +50,7 @@ public class MemoNoticesTests
     {
         Assert.Equal("계획한 주사가 끝났어요(3차까지). 넣지 않았어요.", MemoNotices.Of(Decide(Lines(7, "오)무릎 3차", "Rt. knee OA|1주간격 3차까지 주사합니다"))));
         Assert.Equal("주사 날이 아닐 수 있어요(계획 11월 25일). 넣지 않았어요.", MemoNotices.Of(Decide(Lines(2, "", "Rt. knee OA|1주뒤 2차 주사"))));
-        Assert.Equal("넣었어요: 오)무릎 3차", MemoNotices.Of(Decide(Lines(7, "", "오른쪽 무릎 2차 주사 + FNB"))));
+        Assert.Equal("넣었어요: 오)무릎 3차", MemoNotices.Of(Decide(Lines(7, "", "오른쪽 무릎 2차 주사 시행 + FNB"))));
     }
 
     [Fact(DisplayName = "AC-7503.3 넣지 못함(칸이 꽉 참·잠김·윈도우가 막음) 알림은 시안 그대로 넣을 글을 붙인다('/' 없는 새 글)")]
@@ -65,7 +65,7 @@ public class MemoNoticesTests
     [Fact(DisplayName = "AC-7503.3 결과·내원 기록을 글로 바꿔도(로그에 찍혀도) 환자 글·메모가 나오지 않는다")]
     public void NoPatientTextInToString()
     {
-        var note = Visit(3, "오)무릎 2차", "오른쪽 무릎 2차 주사");
+        var note = Visit(3, "오)무릎 2차", "오른쪽 무릎 2차 주사 시행");
         Assert.DoesNotContain("무릎", note.ToString());
         var result = new MemoResult(MemoResultKind.Insert, "오)무릎 3차", append: "/오)무릎 3차");
         Assert.DoesNotContain("무릎", result.ToString());

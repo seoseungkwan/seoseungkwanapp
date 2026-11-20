@@ -41,7 +41,7 @@ public class XrayMemoTests
     {
         Assert.Equal(new[] { "어깨", "무릎", "허리" }, PartsOf(
             Visit(20, "", "허리 통증", "Rt knee OA"),
-            Visit(3, "", "왼쪽 어깨 아프다", "슬관절 2차 주사")));
+            Visit(3, "", "왼쪽 어깨 아프다", "슬관절 2차 주사 시행")));
         Assert.Equal(new[] { "목", "허리" }, PartsOf(Visit(5, "", "neck pain, L-spine", "가슴 답답, 늑골 통증")));
         Assert.Equal(new[] { "무릎" }, PartsOf(Visit(5, "", "Rt. knee OA", "Lt 무릎 2차 주사", "양측 슬관절")));
         Assert.Empty(PartsOf(Visit(5, "", "가슴 답답", "두통"), Visit(9, "물리치료")));
@@ -289,7 +289,7 @@ public class XrayMemoTests
     public void InjectionButtonIgnoresXray()
     {
         var visit = new[] { new object?[] { "V1", "202611131000", "" } };
-        var knee = new[] { new object?[] { "V1", 1, "오른쪽 무릎 2차 주사" }, new object?[] { "V1", 2, "허리도 아프다" } };
+        var knee = new[] { new object?[] { "V1", 1, "오른쪽 무릎 2차 주사 시행" }, new object?[] { "V1", 2, "허리도 아프다" } };
         var db = Db(visit, knee);
         var result = InjectionMemoService.Compute(db, Chart, "", Today);
         Assert.Equal("오)무릎 3차", result.Text);
@@ -304,7 +304,7 @@ public class XrayMemoTests
     public void XrayButtonComposes()
     {
         var visit = new[] { new object?[] { "V1", "202611131000", "" } };
-        var knee = new[] { new object?[] { "V1", 1, "오른쪽 무릎 2차 주사" }, new object?[] { "V1", 2, "허리도 아프다" } };
+        var knee = new[] { new object?[] { "V1", 1, "오른쪽 무릎 2차 주사 시행" }, new object?[] { "V1", 2, "허리도 아프다" } };
 
         var db = Db(visit, knee, new[] { new object?[] { "G45", "202501020900" } });
         var result = InjectionMemoService.ComputeXray(db, Chart, "오)무릎 3차", Today, Chosen);
@@ -333,7 +333,7 @@ public class XrayMemoTests
         Assert.Empty(none.Calls);
 
         var visit = new[] { new object?[] { "V1", "202611131000", "" } };
-        var knee = new[] { new object?[] { "V1", 1, "오른쪽 무릎 2차 주사" } };
+        var knee = new[] { new object?[] { "V1", 1, "오른쪽 무릎 2차 주사 시행" } };
         Assert.Equal(MemoResultKind.Failed, InjectionMemoService.ComputeXray(Db(visit, knee).Fail(InjectionSql.XraySql, BitErrors.ReadFailed), Chart, "", Today, Chosen).Kind);
         Assert.Equal(MemoResultKind.Failed, InjectionMemoService.ComputeXray(Db(visit, new object?[][] { }).Fail(InjectionSql.LastBeforeSql, BitErrors.ReadFailed), Chart, "", Today, Chosen).Kind);
         Assert.Equal(MemoResultKind.Failed, InjectionMemoService.ComputeXray(new FakeDb().Fail(InjectionSql.VisitsSql, BitErrors.ReadFailed), Chart, "", Today, Chosen).Kind);
