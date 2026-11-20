@@ -187,6 +187,20 @@ public sealed class SettingsForm : Form
         ActiveControl = itemsBox;
         // 처음 열 때 목록 글이 모두 골라진(파란) 채로 보이지 않게
         Shown += (sender, e) => itemsBox.Select(0, 0);
+        // 주사 차수 묶음으로 창이 길어졌다: 낮은 화면(세로 768 등)에서는 화면 높이에 맞추고 굴려 보게 해 [저장]이 밖으로 나가지 않게
+        Load += (sender, e) => FitToScreen();
+    }
+
+    private void FitToScreen()
+    {
+        var area = Screen.FromPoint(Cursor.Position).WorkingArea;
+        if (Height <= area.Height) return;
+        var width = Math.Min(Width + SystemInformation.VerticalScrollBarWidth, area.Width);
+        AutoSize = false;
+        AutoScroll = true;
+        StartPosition = FormStartPosition.Manual;
+        Size = new Size(width, area.Height);
+        Location = new Point(area.Left + Math.Max(0, (area.Width - width) / 2), area.Top);
     }
 
     /// <summary>
