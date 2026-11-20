@@ -23,7 +23,7 @@ MemoSettings(hotKey, buttonOffsetPx) { Defaults; IsAllowedKey; ToJson; FromJson 
 - TASK-2: `ReceptionWindows`(맨 앞 창이 비트 접수 화면인지, 차트번호 칸 글·메모 칸 핸들·글·사각형 읽기, 칸 글은 저장·로그 안 함), `MemoTyper.Append(handle, text)`(끝으로 커서 → EM_REPLACESEL), `HotKeys`(RegisterHotKey/UnregisterHotKey, 접수 화면이 맨 앞일 때만 잡음), `MemoSettingsFile`
 - TASK-2 결과(954cb686): 칸은 라벨 글로 찾음(AutomationId는 창 핸들 숫자라 못 씀). `MemoTyper.Append` → `Typed`·`NotEditable`·`TooLong`(50자 넘음)·`Blocked`(권한 다름, 오류 5)·`Failed` — Typed 밖은 모두 '넣지 못함' 알림
 - 권한: 이 PC 비트(접수·BitAuth)는 관리자 권한 → 일반 권한 PtSlip의 넣기·단축키가 막힘. TASK-4 설치가 `schtasks /create /sc onlogon /rl highest`로 PtSlip을 높은 권한으로 켜는 예약 작업을 등록(설치 때 '예' 한 번), 옛 시작프로그램 바로가기는 지움. 지우기는 예약 작업도 지움
-- TASK-3: `MemoButtonForm`(테두리 없는 작은 [주사 차수] 단추, 메모 칸 오른쪽에 0.25초마다 붙음), `NoticeForm`(2~3초 알림, 칸 옆), `SettingsForm` '단추 자리' 탭에 단축키·단추 자리 칸, `Program.cs` 잇기(백그라운드로 읽고 결과는 창 스레드로)
+- TASK-3: `MemoButtonForm`(테두리 없는 작은 [주사 차수] 단추, 메모 칸 오른쪽에 0.25초마다 붙음), `NoticeForm`(2~3초 알림, 칸 옆), `SettingsForm` 맨 아래 줄에 주사 차수 단추 자리(◀ ▶)·단축키 칸(탭 없음, 서류 인쇄를 뺐으므로), `Program.cs` 잇기(백그라운드로 읽고 결과는 창 스레드로)
 
 ## 위험
 - 접수 화면 칸 이름은 이 PC 비트 로그인 뒤 확인(접수 PC도 같은 판인지 의원에서 확인)

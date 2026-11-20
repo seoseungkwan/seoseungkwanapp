@@ -88,6 +88,7 @@
 
   /* 설정 */
   .set { max-width: 760px; }
+  .muted { color: var(--sub); font-size: 13.5px; padding: 6px 0; }
   .tabs { display: flex; gap: 2px; padding: 10px 18px 0; border-bottom: 1px solid var(--line); background: #fff; }
   .tabs span { padding: 8px 16px; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; color: var(--sub); font-size: 13.5px; white-space: nowrap; }
   .tabs span.on { border-color: var(--line); background: #fff; color: var(--text); font-weight: 700; margin-bottom: -1px; }
@@ -222,13 +223,11 @@
 
   <!-- ④ 설정 -->
   <section data-s="settings">
-    <h2><b>④ 설정 '단추 자리' 탭</b> — 지금 있는 [서류]·[PT 먼저] 자리 아래에 주사 차수 단추 자리와 단축키가 더해져요.</h2>
+    <h2><b>④ 설정 창</b> — 지금 PT 종이 설정 창(치료 항목·부위·프린터·종이 길이·버튼 자리) 맨 아래에 주사 차수 단추 자리와 단축키 한 줄이 더해져요.</h2>
     <div class="win set">
       <div class="titlebar"><span class="t">PT 후 진료 종이 설정</span><span class="ctl">✕</span></div>
-      <div class="tabs"><span>PT 종이</span><span>서류</span><span class="on">단추 자리</span></div>
       <div class="setbody">
-        <div><div class="lbl">단추 자리 <span class="k">[서류]·[PT 먼저]</span></div>
-          <div class="field"><button class="btn">◀ 왼쪽으로</button><button class="btn">오른쪽으로 ▶</button></div></div>
+        <div class="muted">치료 항목 · 치료 부위 · 프린터 · 종이 길이 · [PT 먼저] 버튼 자리 · 빅솔론에 직접 보내기 (지금 그대로)</div>
         <hr class="div">
         <div><div class="lbl">주사 차수 단추 자리 <span class="k">접수 화면 '접수메모(당일)' 옆</span></div>
           <div class="field"><button class="btn">◀ 왼쪽으로</button><button class="btn">오른쪽으로 ▶</button></div>

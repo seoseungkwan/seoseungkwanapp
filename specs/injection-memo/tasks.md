@@ -1,6 +1,6 @@
 # 작업 분할: 주사 차수 → 비트 접수메모(당일) 채우기
 
-> Phase 1: TASK-1·2 병렬 → Phase 2: TASK-3 → Phase 3: TASK-4(doc-print와 한 zip, 마지막 검토 한 번). 같은 Phase 파일 겹침 없음. C#은 `PATH="$HOME/.dotnet:$PATH"`, dotnet 시험은 잠금으로 차례대로.
+> Phase 1: TASK-1·2 병렬 → Phase 2: TASK-3 → Phase 3: TASK-4(PT 종이 zip, 마지막 검토 한 번). 서류 인쇄(doc-print)는 2026-11-20 사용자 결정으로 뺌 — 갈래는 PT 종이(feat-pt-slip e0f39a62) 위에 다시 쌓음. 같은 Phase 파일 겹침 없음. C#은 `PATH="$HOME/.dotnet:$PATH"`, dotnet 시험은 잠금으로 차례대로.
 
 ## TASK-1: Core 규칙·읽기·설정
 - Phase: 1 · 병렬
@@ -24,7 +24,7 @@
 - REQ: REQ-7503, REQ-7504
 - Files: helper/src/Precheck.PtSlip/MemoButtonForm.cs, helper/src/Precheck.PtSlip/NoticeForm.cs, helper/src/Precheck.PtSlip/SettingsForm.cs, helper/src/Precheck.PtSlip/Program.cs, helper/src/Precheck.Core/InjectionMemo/MemoNotices.cs, helper/tests/Precheck.Core.Tests/InjectionMemo/**
 - Tests: helper/tests/injection-memo.dotnet.test.ts
-- TDD: required — '넣지 못함' 알림 글(MemoNotices.TypeFailed, AC-7503.3)은 시험 먼저. WinForms·잇기는 판단 없이 Core를 부르기만, 시안 글자 그대로, 가짜 DB 사진으로 확인
+- TDD: required — '넣지 못함' 알림 글(MemoNotices.TypeFailed, AC-7503.3)은 시험 먼저. 시험에 남은 서류 인쇄 확인 한 줄(DocSql)은 뺀다. WinForms·잇기는 판단 없이 Core를 부르기만, 시안 글자 그대로, 가짜 DB 사진으로 확인
 
 ## TASK-4: 설치(높은 권한)·빌드·zip·검토
 - Phase: 3
@@ -32,4 +32,4 @@
 - REQ: REQ-7503, REQ-7504
 - Files: helper/install/ptslip/**, specs/injection-memo/notes/**
 - Tests: helper/tests/injection-memo.dotnet.test.ts
-- TDD: exempt — 설치.cmd·지우기.cmd를 로그온 예약 작업(높은 권한)으로, 읽어주세요.txt에 주사 차수 단추·F8·'예' 한 번 안내. doc-print와 한 Release x86 zip. 이 PC에서 높은 권한 PtSlip으로 차트 926(사용자 본인, 동의)·2(테스트) 메모 칸 넣기 확인(저장 없이 지움). 마지막 검토 한 번
+- TDD: exempt — 설치.cmd·지우기.cmd를 로그온 예약 작업(높은 권한)으로, 읽어주세요.txt에 주사 차수 단추·F8·'예' 한 번 안내. PT 종이 Release x86 zip(`PT후진료종이-설치-<날짜>-주사차수.zip`). 이 PC에서 높은 권한 PtSlip으로 차트 926(사용자 본인, 동의)·2(테스트) 메모 칸 넣기 확인(저장 없이 지움). 마지막 검토 한 번
