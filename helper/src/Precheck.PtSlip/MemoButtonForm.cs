@@ -142,7 +142,7 @@ public sealed class MemoButtonForm : Form
                 // 무엇이 잘못되든 '읽기 실패' 알림만(예외 글에는 값이 섞일 수 있어 버린다)
                 result = new MemoResult(MemoResultKind.Failed);
             }
-            ui.Post(state => Finish((MemoResult)state!, chart, memo, box, anchor), result);
+            PostSafely(state => Finish((MemoResult)state!, chart, memo, box, anchor), result);
         });
     }
 
@@ -275,7 +275,20 @@ public sealed class MemoButtonForm : Form
         finally
         {
             // 넣는 동안(창 스레드가 멈춘 사이) 쌓인 단축키는 이 뒤에 오므로 그것까지 무시하고 풀어 준다
-            ui.Post(_ => busy = false, null);
+            PostSafely(_ => busy = false, null);
+        }
+    }
+
+    /// <summary>창 스레드로 넘긴다. 읽는 사이 프로그램을 끝내거나 로그오프해 창 스레드가 없어졌으면 조용히 버린다(스레드풀 예외로 오류 창이 뜨지 않게)</summary>
+    private void PostSafely(SendOrPostCallback callback, object? state)
+    {
+        try
+        {
+            ui.Post(callback, state);
+        }
+        catch (Exception e) when (e is InvalidOperationException || e is ObjectDisposedException || e is System.ComponentModel.InvalidAsynchronousStateException)
+        {
+            // 끝나는 중: 넣지도 알리지도 않는다
         }
     }
 
