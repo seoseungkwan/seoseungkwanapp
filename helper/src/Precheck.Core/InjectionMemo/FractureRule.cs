@@ -7,7 +7,7 @@ namespace Precheck.Core.InjectionMemo;
 
 /// <summary>
 /// 골절 fx(spec injection-memo REQ-7507): 오늘 앞 30일 외래 내원 가운데 주상병이 골절인 마지막 내원 → '&lt;좌우&gt;)&lt;부위&gt; fx'.
-/// 부위는 진단 코드 표(notes/fracture.md, 직원 말), 좌우는 그 내원 증상 줄 가운데 fx·골절·fracture 줄의 첫 좌우 말.
+/// 부위는 진단 코드 표(notes/fracture.md, 직원 말), 좌우는 그 내원 fx·골절·fracture 줄 → 같은 내원 다른 줄 → 30일 안 다른 내원 fx 줄의 첫 좌우 말.
 /// 환자 값은 돌려주기만 하고 파일·로그에 남기지 않는다.
 /// </summary>
 public static class FractureRule
@@ -54,7 +54,7 @@ public static class FractureRule
             case "S32": return d == '0' ? "허리" : d == '1' || d == '2' ? "꼬리뼈" : "골반";
             case "S42": return d == '0' ? "쇄골" : d >= '1' && d <= '3' ? "어깨" : d == '4' ? "팔꿈치" : "팔";
             case "S52": return d == '0' || d == '1' ? "팔꿈치" : d == '5' || d == '6' ? "손목" : "팔";
-            case "S62": return d >= '0' && d <= '2' ? "손목" : d >= '3' && d <= '7' ? "수지" : "손";
+            case "S62": return d >= '0' && d <= '2' ? "손목" : d >= '5' && d <= '7' ? "수지" : "손";
             case "S72": return d >= '0' && d <= '2' ? "고관절" : "허벅지";
             case "S82": return d == '0' || d == '1' ? "무릎" : d == '5' || d == '6' || d == '8' ? "발목" : "다리";
             case "S92": return d == '4' || d == '5' ? "족지" : "발";
@@ -77,7 +77,7 @@ public static class FractureRule
         var part = PartOf(visit.MainDiagnosis);
         if (part.Length == 0) return "fx";
         if (part == "족지" || part == "수지") part = DigitOf(visit, all) + part;
-        var side = Axial.Contains(part) ? "" : SideOfFxLines(visit.SymptomLines);
+        var side = Axial.Contains(part) ? "" : SideOf(visit, all);
         return (side.Length > 0 ? side + ")" : "") + part + " fx";
     }
 
@@ -102,12 +102,26 @@ public static class FractureRule
     /// <summary>메모 칸에 fx가 이미 있나: 'fx' 낱말(대소문자 무시)·서류 말이 아닌 '골절'·fracture.</summary>
     public static bool HasFx(string? memo) => FxWord.IsMatch(DocWord.Replace(memo ?? "", " "));
 
-    private static string SideOfFxLines(IReadOnlyList<string> lines)
+    // 좌우(AC-7507.2): 골절 내원 fx 줄 → 같은 내원 다른 줄(차례대로) → 30일 안 다른 내원 fx 줄(최근부터)의 첫 좌우 말
+    private static string SideOf(VisitNote visit, IReadOnlyList<VisitNote> all)
+    {
+        var side = FirstSide(visit.SymptomLines, fxOnly: true);
+        if (side.Length == 0) side = FirstSide(visit.SymptomLines, fxOnly: false);
+        if (side.Length > 0) return side;
+        foreach (var other in all.Where(note => !ReferenceEquals(note, visit)).OrderByDescending(note => note.Date))
+        {
+            side = FirstSide(other.SymptomLines, fxOnly: true);
+            if (side.Length > 0) return side;
+        }
+        return "";
+    }
+
+    private static string FirstSide(IReadOnlyList<string> lines, bool fxOnly)
     {
         foreach (var line in lines)
         {
             var text = DocWord.Replace(line ?? "", " ");
-            if (!FxWord.IsMatch(text)) continue;
+            if (fxOnly && !FxWord.IsMatch(text)) continue;
             var m = Side.Match(text);
             if (m.Success) return SideOf(m.Value);
         }

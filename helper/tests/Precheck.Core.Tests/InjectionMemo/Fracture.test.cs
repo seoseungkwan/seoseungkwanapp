@@ -83,7 +83,8 @@ public class FractureTests
     [InlineData("S6200", "손목")]
     [InlineData("S6210", "손목")]
     [InlineData("S6220", "손목")]
-    [InlineData("S6230", "수지")]
+    [InlineData("S6230", "손")]
+    [InlineData("S6240", "손")]
     [InlineData("S6250", "수지")]
     [InlineData("S6260", "수지")]
     [InlineData("S6270", "수지")]
@@ -121,11 +122,24 @@ public class FractureTests
         Assert.Equal("왼)손목 fx", FractureRule.Text(new[] { Dx(5, "S5250", "Lt distal radius FX") }));
         Assert.Equal("양)발목 fx", FractureRule.Text(new[] { Dx(5, "S8250", "both ankle fracture") }));
         Assert.Equal("왼)수지 fx", FractureRule.Text(new[] { Dx(5, "S6260", "왼손 5지 Fx") }));
-        Assert.Equal("발 fx", FractureRule.Text(new[] { Dx(5, "S9230", "Rt knee pain", "5th MT fx") }));
-        Assert.Equal("발 fx", FractureRule.Text(new[] { Dx(5, "S9230", "Lt 골절진단서 요청", "발등 통증") }));
+        Assert.Equal("발 fx", FractureRule.Text(new[] { Dx(5, "S9230", "knee pain", "5th MT fx") }));
+        Assert.Equal("발 fx", FractureRule.Text(new[] { Dx(5, "S9230", "골절진단서 요청", "발등 통증") }));
         Assert.Equal("허리 fx", FractureRule.Text(new[] { Dx(5, "S3200", "Rt L1 compression fx") }));
         Assert.Equal("늑골 fx", FractureRule.Text(new[] { Dx(5, "S2230", "rib fx 양호") }));
         Assert.Equal("fx", FractureRule.Text(new[] { Dx(5, "S0220", "Rt nasal bone fx") }));
+    }
+
+    [Fact(DisplayName = "AC-7507.2 fx 줄에 좌우가 없으면 같은 내원 다른 줄(차례대로), 그래도 없으면 30일 안 다른 내원 fx 줄(최근부터) — 다른 내원의 fx 아닌 줄은 안 봄")]
+    public void SideFallback()
+    {
+        Assert.Equal("왼)발 fx", FractureRule.Text(new[] { Dx(5, "S9230", "5th MT fx", "Lt ankle pain", "Rt knee") }));
+        Assert.Equal("오)발 fx", FractureRule.Text(new[] { Dx(5, "S9230", "Lt knee OA", "Rt. 5th MT fx") }));
+        Assert.Equal("왼)발 fx", FractureRule.Text(new[] { Dx(20, "", "Rt 5th MT fx"), Dx(10, "", "Lt foot fx"), Dx(5, "S9230", "5th MT fx") }));
+        Assert.Equal("오)발 fx", FractureRule.Text(new[] { Dx(20, "", "Rt 5th MT fx"), Dx(10, "", "foot pain Lt"), Dx(5, "S9230", "5th MT fx") }));
+        Assert.Equal("발 fx", FractureRule.Text(new[] { Dx(10, "", "Rt knee pain"), Dx(5, "S9230", "5th MT fx") }));
+        Assert.Equal("왼)발 fx", FractureRule.Text(new[] { Dx(5, "S9230", "Lt 골절진단서 요청", "발등 통증") }));
+        Assert.Equal("허리 fx", FractureRule.Text(new[] { Dx(5, "S3200", "L1 compression fx", "Rt buttock pain") }));
+        Assert.Equal("왼)손 fx", FractureRule.Text(new[] { Dx(5, "S6230", "Lt 5th MC fx") }));
     }
 
     // ── AC-7507.3 [주사 차수]에 같이 넣기 ─────────────────────────────
