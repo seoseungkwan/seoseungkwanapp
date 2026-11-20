@@ -31,7 +31,7 @@ public class RxCopyReadTests
         Assert.Equal(
             "@cht:VarChar(14) @from:Char(12) @to:Char(12)",
             string.Join(" ", RxCopySql.Allowed[sql].Select(p => p.Name + ":" + p.Kind + "(" + p.Size + ")")));
-        ReadOnlyGuard.Require(sql, new Dictionary<string, object?> { ["@cht"] = Chart, ["@from"] = "202611030000", ["@to"] = "202611110000" });
+        ReadOnlyGuard.Require(sql, new Dictionary<string, object?> { ["@cht"] = RxFixture.Chart, ["@from"] = "202611030000", ["@to"] = "202611110000" });
     }
 
     [Fact(DisplayName = "AC-7405.1 처방전 SQL은 처방전 머리 OutInf·원외약 OdrInf(XX, 지움·취소 뺌)·주상병 OicInf(OicIcdPri='1' 하나)·의사 UidMst를 읽고, 주민번호는 앞 7자리만, 이름·전화·주소·도장 그림은 읽지 않는다")]
@@ -74,7 +74,7 @@ public class RxCopyReadTests
         Assert.Equal(DocKind.RxCopy, Source.Kind);
         var call = Assert.Single(db.Calls);
         Assert.Equal(RxSql, call.Sql);
-        Assert.Equal(Chart, call.Args["@cht"]);
+        Assert.Equal(RxFixture.Chart, call.Args["@cht"]);
         Assert.Equal("202611030000", call.Args["@from"]);
         Assert.Equal("202611110000", call.Args["@to"]);
         Assert.Equal(DocSql.ReadTimeout, call.Timeout);
