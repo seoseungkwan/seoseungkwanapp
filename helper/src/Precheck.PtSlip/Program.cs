@@ -1,17 +1,22 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using Precheck.Core.Bit;
+using Precheck.Core.InjectionMemo;
 using Precheck.Core.PtSlip;
+using Precheck.Windows;
 
 namespace Precheck.PtSlip;
 
 /// <summary>
 /// PT 후 진료 종이 프로그램 입구(specs/pt-slip, AC-6403.5). 이 윈도우 로그인에서 하나만 돈다.
-/// 오류 글에는 환자 값(차트번호·이름)을 넣지 않는다. 파일·로그도 남기지 않는다.
+/// 비트 창 옆 [PT 먼저] 단추에 더해, 비트 접수 화면 '접수메모(당일)' 옆 [주사 차수] 단추·단축키도 띄운다(specs/injection-memo).
+/// 오류 글에는 환자 값(차트번호·이름·메모)을 넣지 않는다. 파일·로그도 남기지 않는다.
 /// </summary>
 internal static class Program
 {
@@ -45,8 +50,8 @@ internal static class Program
             return;
         }
 
-        using var single = new Mutex(true, MutexName, out var first);
-        if (!first) return;
+        using var single = OpenSingle(out var first);
+        if (single == null || !first) return;
 
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
@@ -59,7 +64,18 @@ internal static class Program
             // [PT 먼저] 버튼 창은 비트 창이 맨 앞일 때만 스스로 뜬다(처음부터 띄우지 않게 주 창으로 넘기지 않는다).
             // 오른쪽 클릭 [끝내기]가 Application.Exit로 이 고리를 끝낸다
             using var button = new ButtonForm();
+
+            // [주사 차수] 단추·단축키(spec injection-memo): 이 창 스레드에서 만든다. 비트 접수 화면이 맨 앞일 때만 단추가 뜨고 단축키를 잡는다.
+            // 끝날 때 단추 → 단축키 차례로 없앤다(using은 거꾸로 닫힌다)
+            var memoSettings = MemoSettings.FromJson(MemoSettingsFile.ReadText());
+            using var hotKeys = new HotKeys(HotKeys.KeyOf(memoSettings.HotKey) ?? Keys.F8);
+            var reception = new ReceptionWindows();
+            using var memoButton = new MemoButtonForm(reception.FindForeground, hotKeys, memoSettings, ComputeMemo);
+            hotKeys.Pressed += (sender, e) => memoButton.Press();
+            SettingsForm.MemoButton = memoButton;
+
             Application.Run(new ApplicationContext());
+            SettingsForm.MemoButton = null;
         }
         catch (Exception)
         {
@@ -153,6 +169,66 @@ internal static class Program
         const int Head = 8000, Tail = 3000;
         if (text.Length <= Head + Tail) return text.ToString();
         return text.ToString(0, Head) + "\r\n\r\n…(가운데 " + (text.Length - Head - Tail) + "자 줄임)…\r\n\r\n" + text.ToString(text.Length - Tail, Tail);
+    }
+
+    /// <summary>
+    /// 이 로그인에서 하나만(처음이면 first = true). 높은 권한(로그온 예약 작업)으로 켜진 PtSlip이 만든 Mutex는 일반 권한으로 띄운
+    /// 두 번째 PtSlip(exe를 또 누름 등)이 열면 접근 거부다 — 그때는 이미 켜져 있는 것으로 보고 null(조용히 끝낸다)
+    /// </summary>
+    private static Mutex? OpenSingle(out bool first)
+    {
+        try
+        {
+            return new Mutex(true, MutexName, out first);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            first = false;
+            return null;
+        }
+    }
+
+    /// <summary>찾은 비트 설치 위치(NameSource와 같다: 한 번 찾으면 다시 훑지 않고, 읽기에 실패하면 잊고 다음에 다시 찾는다)</summary>
+    private static volatile string? memoInstallPath;
+
+    /// <summary>
+    /// [주사 차수] 한 번(백그라운드 스레드): 원래 PT 종이가 비트 DB를 여는 길(InstallationLocator → SqlBitConnector.Open, 되돌리는 읽기 트랜잭션)
+    /// 그대로 열어 Core InjectionMemoService가 판단한다. 차트번호가 아니거나 메모에 이미 있으면 Core가 DB에 묻지 않으므로 DB도 열지 않는다(LazyBitDb).
+    /// 무엇이 잘못되든 '읽기 실패'(Failed). 차트번호·메모 글은 어디에도 남기지 않는다.
+    /// </summary>
+    private static MemoResult ComputeMemo(string? chart, string? memo, DateTime today)
+    {
+        using var db = new LazyBitDb();
+        MemoResult result;
+        try
+        {
+            result = InjectionMemoService.Compute(db, chart, memo, today);
+        }
+        catch (Exception)
+        {
+            result = new MemoResult(MemoResultKind.Failed);
+        }
+        if (result.Kind == MemoResultKind.Failed) memoInstallPath = null;
+        return result;
+    }
+
+    /// <summary>처음 읽을 때 비트 DB를 연다(되돌리는 트랜잭션, 닫으면 되돌린다). 열지 못하면 그 읽기가 예외 → Core가 Failed로 바꾼다</summary>
+    private sealed class LazyBitDb : IBitDb, IDisposable
+    {
+        private IBitSession? session;
+
+        public IReadOnlyList<IReadOnlyList<object?>> Query(string sql, IReadOnlyDictionary<string, object?> args, TimeSpan timeout)
+        {
+            if (session == null)
+            {
+                var path = memoInstallPath ?? new InstallationLocator(AppDomain.CurrentDomain.BaseDirectory).Find();
+                session = new SqlBitConnector().Open(path);
+                memoInstallPath = path;
+            }
+            return session.Query(sql, args, timeout);
+        }
+
+        public void Dispose() => session?.Dispose();
     }
 
     /// <summary>화면 스레드 예외: 짧은 글을 한 번 보이고 프로그램을 끝낸다</summary>

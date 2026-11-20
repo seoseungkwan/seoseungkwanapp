@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using Precheck.Core.InjectionMemo;
 using Precheck.Core.PtSlip;
 
 namespace Precheck.PtSlip;
@@ -9,10 +10,21 @@ namespace Precheck.PtSlip;
 /// 설정 창(시안 ⑦, AC-6401·AC-6403.4): 치료 항목·부위 목록(한 줄에 하나), 프린터와 [시험 1장](빈 양식), 종이 길이(mm),
 /// 버튼 자리(◀ 왼쪽으로 / 오른쪽으로 ▶, 20px씩, 바로 버튼에 보임). [저장]은 Core 규칙으로 검사해 틀리면 저장하지 않고,
 /// 맞으면 settings.json에 쓴다. [취소]·닫기는 버튼 자리를 처음대로 되돌린다.
+/// 맨 아래 주사 차수 묶음(injection-memo 시안 ④, AC-7504.1): [주사 차수] 단추 자리(◀ ▶ 20px씩, -400~400px, 바로 단추에 보임)와
+/// 단축키(F4·F8·F10·F11). [저장]하면 memo-settings.json에 쓰고 단추·단축키에 바로 쓴다. [취소]·닫기는 단추 자리를 처음대로.
 /// </summary>
 public sealed class SettingsForm : Form
 {
     public const string Title = "설정";
+
+    // 주사 차수 묶음 글(시안 docs/mockups/injection-memo/notes.md '화면 글자' 그대로)
+    public const string MemoOffsetLabel = "주사 차수 단추 자리";
+    public const string MemoOffsetNote = "접수 화면 '접수메모(당일)' 옆";
+    public const string MemoLeftText = "◀ 왼쪽으로";
+    public const string MemoRightText = "오른쪽으로 ▶";
+    public const string MemoOffsetHint = "비트 단추나 글을 가리면 옆으로 옮겨요. 한 번에 20px씩, 접수 화면에 바로 보여요.";
+    public const string MemoKeyLabel = "주사 차수 단축키";
+    public const string MemoKeyHint = "비트가 쓰는 키(F1·F2·F3·F5·F6·F7·F9·F12)는 고를 수 없어요.";
 
     /// <summary>시안 .set 폭 620px: 여백 18 + 칸 282 + 틈 20 + 칸 282 + 여백 18</summary>
     private const int FormWidth = 620;
@@ -27,7 +39,10 @@ public sealed class SettingsForm : Form
     private readonly NumericUpDown lengthBox;
     private readonly CheckBox directBox;
     private readonly Label errorLabel;
+    private readonly MemoSettings memoOriginal;
+    private readonly ComboBox memoKeyBox;
     private int offset;
+    private int memoOffset;
 
     /// <param name="offsetChanged">버튼 자리를 바꿀 때마다(그리고 취소하면 처음 값으로) 부른다.</param>
     public SettingsForm(SlipSettings settings, Action<int> offsetChanged)
@@ -35,6 +50,8 @@ public sealed class SettingsForm : Form
         original = settings ?? throw new ArgumentNullException(nameof(settings));
         this.offsetChanged = offsetChanged ?? throw new ArgumentNullException(nameof(offsetChanged));
         offset = settings.ButtonOffsetPx;
+        memoOriginal = MemoSettings.FromJson(MemoSettingsFile.ReadText());
+        memoOffset = memoOriginal.ButtonOffsetPx;
 
         Text = Title;
         StartPosition = FormStartPosition.CenterScreen;
@@ -88,12 +105,25 @@ public sealed class SettingsForm : Form
         leftButton.Margin = new Padding(0, 0, SlipUi.S(10), 0);
         var rightButton = SlipUi.Plain("오른쪽으로 ▶", 36);
 
+        var memoLeftButton = SlipUi.Plain(MemoLeftText, 36);
+        memoLeftButton.Margin = new Padding(0, 0, SlipUi.S(8), 0);
+        var memoRightButton = SlipUi.Plain(MemoRightText, 36);
+        memoKeyBox = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Width = SlipUi.S(140),
+            Font = SlipUi.Body,
+            Margin = Padding.Empty,
+        };
+        foreach (var key in MemoSettings.AllowedKeys) memoKeyBox.Items.Add(key);
+        memoKeyBox.SelectedItem = memoOriginal.HotKey;
+
         var body = new TableLayoutPanel
         {
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 2,
-            RowCount = 4,
+            RowCount = 5,
             Padding = new Padding(SlipUi.S(18), SlipUi.S(18), SlipUi.S(18), SlipUi.S(2)),
             Margin = Padding.Empty,
         };
@@ -117,6 +147,9 @@ public sealed class SettingsForm : Form
         };
         body.Controls.Add(directBox, 0, 3);
         body.SetColumnSpan(directBox, 2);
+        var memoGroup = MemoGroup(memoLeftButton, memoRightButton, memoKeyBox);
+        body.Controls.Add(memoGroup, 0, 4);
+        body.SetColumnSpan(memoGroup, 2);
 
         errorLabel = SlipUi.ErrorBox(FormWidth);
 
@@ -145,6 +178,9 @@ public sealed class SettingsForm : Form
         // 버튼 자리 값이 클수록 비트 창 오른쪽 끝에서 더 왼쪽(Core SlipButton.Place)
         leftButton.Click += (sender, e) => MoveButton(SlipSettingsRules.ButtonOffsetStep);
         rightButton.Click += (sender, e) => MoveButton(-SlipSettingsRules.ButtonOffsetStep);
+        // [주사 차수] 단추 자리는 +가 오른쪽(MemoSettings)
+        memoLeftButton.Click += (sender, e) => MoveMemoButton(-MemoSettings.ButtonOffsetStep);
+        memoRightButton.Click += (sender, e) => MoveMemoButton(MemoSettings.ButtonOffsetStep);
         cancelButton.Click += (sender, e) => Close();
         saveButton.Click += (sender, e) => Save();
         CancelButton = cancelButton;
@@ -153,13 +189,23 @@ public sealed class SettingsForm : Form
         Shown += (sender, e) => itemsBox.Select(0, 0);
     }
 
+    /// <summary>
+    /// Program이 만든 [주사 차수] 단추. 설정 창은 [PT 먼저] 단추(ButtonForm)가 열므로 여기로 잇는다.
+    /// 없으면(null) 주사 차수 설정은 파일에만 쓰고 단추·단축키를 바로 바꾸지 않는다.
+    /// </summary>
+    public static MemoButtonForm? MemoButton { get; set; }
+
     /// <summary>[저장]으로 쓴 새 설정. 저장하지 않고 닫았으면 null.</summary>
     public SlipSettings? Saved { get; private set; }
+
+    /// <summary>[저장]으로 쓴 새 주사 차수 설정. 저장하지 않고 닫았으면 null.</summary>
+    public MemoSettings? SavedMemo { get; private set; }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         // 저장하지 않고 닫으면 버튼 자리를 처음대로
         if (Saved == null && offset != original.ButtonOffsetPx) offsetChanged(original.ButtonOffsetPx);
+        if (SavedMemo == null && memoOffset != memoOriginal.ButtonOffsetPx) MemoButton?.PreviewOffset(memoOriginal.ButtonOffsetPx);
         base.OnFormClosed(e);
     }
 
@@ -169,6 +215,15 @@ public sealed class SettingsForm : Form
         if (!SlipSettingsRules.IsButtonOffset(next)) return;
         offset = next;
         offsetChanged(offset);
+    }
+
+    /// <summary>주사 차수 ◀ ▶: -400~400px 안에서만, 저장 전에도 단추를 바로 옮긴다.</summary>
+    private void MoveMemoButton(int delta)
+    {
+        var next = memoOffset + delta;
+        if (!MemoSettings.IsButtonOffset(next)) return;
+        memoOffset = next;
+        MemoButton?.PreviewOffset(memoOffset);
     }
 
     private void Save()
@@ -189,10 +244,14 @@ public sealed class SettingsForm : Form
         var length = (int)lengthBox.Value;
         if (!SlipSettingsRules.IsPaperLength(length) || !SlipSettingsRules.IsButtonOffset(offset)) return;
         var next = new SlipSettings(items.Names, parts.Names, printerBox.SelectedItem as string ?? "", length, offset);
+        var memoKey = memoKeyBox.SelectedItem as string;
+        if (!MemoSettings.IsAllowedKey(memoKey) || !MemoSettings.IsButtonOffset(memoOffset)) return;
+        var nextMemo = new MemoSettings(memoKey!, memoOffset);
         try
         {
             SettingsFile.WriteText(SlipSettingsRules.ToJson(next));
             SettingsFile.WriteDirectMode(directBox.Checked);
+            MemoSettingsFile.WriteText(nextMemo.ToJson());
         }
         catch (Exception)
         {
@@ -200,6 +259,9 @@ public sealed class SettingsForm : Form
             return;
         }
         Saved = next;
+        SavedMemo = nextMemo;
+        // 단추 자리·단축키를 바로 바꾼다(단축키는 다시 등록)
+        MemoButton?.Apply(nextMemo);
         DialogResult = DialogResult.OK;
         Close();
     }
@@ -304,6 +366,38 @@ public sealed class SettingsForm : Form
         cell.Controls.Add(SlipUi.Heading(label));
         cell.Controls.Add(content);
         return cell;
+    }
+
+    /// <summary>
+    /// 맨 아래 주사 차수 묶음(injection-memo 시안 ④): 옅은 윗줄, '주사 차수 단추 자리'(+ 흐린 '접수메모(당일) 옆') · ◀ ▶ · 안내,
+    /// '주사 차수 단축키' · F4·F8·F10·F11 고르기 · 안내. 두 칸 폭(282 + 20 + 282)을 다 쓴다.
+    /// </summary>
+    private static Control MemoGroup(Control leftButton, Control rightButton, Control keyBox)
+    {
+        const int width = CellWidth + Gap + CellWidth;
+        var group = SlipUi.Column(width, Padding.Empty);
+        group.Controls.Add(new Panel
+        {
+            // 시안 hr.div: #EDF0F4 1px
+            BackColor = Color.FromArgb(0xED, 0xF0, 0xF4),
+            Size = new Size(SlipUi.S(width), 1),
+            Margin = new Padding(0, SlipUi.S(10), 0, SlipUi.S(18)),
+        });
+
+        var heading = SlipUi.Flow(width, new Padding(0, 0, 0, SlipUi.S(8)));
+        var title = SlipUi.Caption(MemoOffsetLabel, SlipUi.BodyBold, SlipUi.Ink, Padding.Empty);
+        // 시안 .lbl .k: 흐린 12.5px, 제목 오른쪽 6px, 아래 끝을 제목 글자에 맞춘다
+        var note = SlipUi.Caption(MemoOffsetNote, SlipUi.Help, SlipUi.Sub, new Padding(SlipUi.S(6), SlipUi.S(2), 0, 0));
+        heading.Controls.Add(title);
+        heading.Controls.Add(note);
+        group.Controls.Add(heading);
+        group.Controls.Add(Field(leftButton, rightButton));
+        group.Controls.Add(SlipUi.Caption(MemoOffsetHint, SlipUi.Help, SlipUi.Sub, new Padding(0, SlipUi.S(6), 0, SlipUi.S(20)), width));
+
+        group.Controls.Add(SlipUi.Heading(MemoKeyLabel));
+        group.Controls.Add(keyBox);
+        group.Controls.Add(SlipUi.Caption(MemoKeyHint, SlipUi.Help, SlipUi.Sub, new Padding(0, SlipUi.S(6), 0, SlipUi.S(16)), width));
+        return group;
     }
 
     /// <summary>가로로 나란히(시안 .field).</summary>
