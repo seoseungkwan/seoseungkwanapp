@@ -203,6 +203,19 @@
       </table>
     </div>
     <p class="note">좌우·부위는 증상 기록에서만 가져오고(지난 접수 메모에서는 안 가져옴), 주사 말이 든 줄을 먼저 봐요. ESWT·도수 차수는 안 넣어요.</p>
+
+    <h3>엑스레이 경과도 같이 (2026-11-20 더함)</h3>
+    <p class="note">같은 단추에서, 최근 30일 증상 기록에 나온 부위마다 비트 영상 처방을 봐요. <b>무릎은 1년, 다른 부위는 2년</b> 안에 찍은 사진이 없으면(아예 없어도) 경과로 적어요. 좌우는 안 가려요.</p>
+    <div class="scroll">
+      <table>
+        <tr><th>최근 30일 증상 기록 부위 · 마지막 사진</th><th>넣는 글</th><th>정하는 법</th></tr>
+        <tr><td>무릎(주사) · 무릎 사진 14달 전</td><td class="out">오)무릎 3차 xr1년경과</td><td>주사 부위가 경과면 주사 글 뒤에 띄어 'xr1년경과'</td></tr>
+        <tr><td>무릎(주사) · 무릎 사진 3달 전 / 어깨 · 어깨 사진 없음</td><td class="out">오)무릎 3차 어깨 xr2년경과</td><td>다른 부위는 '부위 xr2년경과'를 뒤에</td></tr>
+        <tr><td>주사 기록 없음 · 무릎 사진 없음 / 허리 · 허리 사진 3년 전</td><td class="out">무릎 xr1년경과 허리 xr2년경과</td><td>주사가 없어도 경과 부위는 넣어요. 나온 차례대로 다 씀</td></tr>
+        <tr><td>목 · 목 사진 1년 전</td><td class="out">(넣을 것 없음)</td><td>목은 2년 안이라 경과 아님 → '기록 없음' 알림</td></tr>
+      </table>
+    </div>
+    <p class="note">메모 칸에 이미 'xr'이 적혀 있으면 경과는 다시 안 붙여요. 합쳐서 50자를 넘으면 뒤쪽 경과부터 빼고 들어가는 만큼만 넣어요.</p>
   </section>
 
   <!-- ③ 알림 -->
@@ -217,6 +230,8 @@
       <div class="nrow"><div class="when"><b>환자를 안 불러왔을 때</b>차트번호 칸이 비어 있음</div><div><span class="toast bad"><i>×</i>접수 화면에 환자를 먼저 불러와 주세요.</span></div></div>
       <div class="nrow"><div class="when"><b>비트를 못 읽었을 때</b>5초 안에 못 읽음</div><div><span class="toast bad"><i>×</i>비트에서 기록을 읽지 못했어요. 잠시 뒤 다시 눌러 주세요.</span></div></div>
       <div class="nrow"><div class="when"><b>칸에 못 넣었을 때</b>칸이 꽉 참(50자)·잠김·윈도우가 막음</div><div><span class="toast bad"><i>×</i>메모 칸에 넣지 못했어요. 직접 적어 주세요: 오)무릎 3차</span></div></div>
+      <div class="nrow"><div class="when"><b>엑스레이 경과도 넣었을 때</b>주사 글 뒤에 같이</div><div><span class="toast ok"><i>✓</i>넣었어요: 오)무릎 3차 xr1년경과</span></div></div>
+      <div class="nrow"><div class="when"><b>경과만 넣고 주사는 안 넣었을 때</b>계획이 끝났거나 일찍 옴 → 두 알림을 위아래로</div><div><span class="toast ok"><i>✓</i>넣었어요: 무릎 xr1년경과</span><br><span class="toast warn" style="margin-top:6px"><i>!</i>주사 날이 아닐 수 있어요(계획 11월 27일). 넣지 않았어요.</span></div></div>
     </div>
     <p class="note">'일찍 옴'은 기록에 간격('1주뒤'·'2주 후' 같은 말)이 있을 때만 봐요. 계획 날짜보다 3일 일찍까지는 그냥 넣어요. 간격이 없으면 늘 넣어요.</p>
   </section>

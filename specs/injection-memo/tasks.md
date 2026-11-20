@@ -32,4 +32,20 @@
 - REQ: REQ-7503, REQ-7504
 - Files: helper/install/ptslip/**, specs/injection-memo/notes/**
 - Tests: helper/tests/injection-memo.dotnet.test.ts
-- TDD: exempt — 설치.cmd·지우기.cmd를 로그온 예약 작업(높은 권한)으로, 읽어주세요.txt에 주사 차수 단추·F8·'예' 한 번 안내. PT 종이 Release x86 zip(`PT후진료종이-설치-<날짜>-주사차수.zip`). 이 PC에서 높은 권한 PtSlip으로 차트 926(사용자 본인, 동의)·2(테스트) 메모 칸 넣기 확인(저장 없이 지움). 마지막 검토 한 번
+- TDD: exempt — 설치.cmd·지우기.cmd를 로그온 예약 작업(높은 권한)으로, 읽어주세요.txt에 주사 차수 단추·F8·'예' 한 번 안내. PT 종이 Release x86 zip(`PT후진료종이-설치-<날짜>-주사차수.zip`). 이 PC에서 높은 권한 PtSlip으로 테스트 환자로만 메모 칸 넣기 확인(저장 없이 지움). 마지막 검토 한 번
+
+## TASK-5: 엑스레이 경과 Core (2026-11-20 더함)
+- Phase: 4
+- AC: AC-7505.1, AC-7505.2, AC-7505.3, AC-7506.1
+- REQ: REQ-7505, REQ-7506
+- Files: helper/src/Precheck.Core/InjectionMemo/**, helper/src/Precheck.Core/Bit/Sql.cs, helper/tests/Precheck.Core.Tests/InjectionMemo/**, helper/tests/injection-memo.dotnet.test.ts
+- Tests: helper/tests/injection-memo.dotnet.test.ts
+- TDD: required — design.md 이름표 그대로, 부위·코드 표는 notes/xray-parts.md 그대로. 시험은 지어낸 글·날짜만, DB는 가짜 `IBitDb`
+
+## TASK-6: 두 알림·zip (2026-11-20 더함)
+- Phase: 5
+- AC: AC-7505.4
+- REQ: REQ-7505
+- Files: helper/src/Precheck.PtSlip/MemoButtonForm.cs, helper/src/Precheck.PtSlip/NoticeForm.cs, helper/src/Precheck.Core/InjectionMemo/MemoNotices.cs, helper/tests/Precheck.Core.Tests/InjectionMemo/**, helper/tests/injection-memo.dotnet.test.ts, helper/install/ptslip/**, specs/injection-memo/notes/**
+- Tests: helper/tests/injection-memo.dotnet.test.ts
+- TDD: exempt — WinForms 알림 둘 쌓기만(판단은 Core Reason). 읽어주세요.txt에 엑스레이 경과 한 줄. 가짜 화면 사진 확인, Release x86 zip 다시
