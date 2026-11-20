@@ -6,10 +6,10 @@ using System.Text.RegularExpressions;
 namespace Precheck.Core.InjectionMemo;
 
 /// <summary>
-/// [엑스레이]를 누르면 넣을 경과 글(AC-7505.3, 2026-11-20 오후 바꿈: 주사 차수와 따로).
-/// 칸 글의 마지막 '/' 뒤 조각에 주사 'N차'가 있고 그 조각 부위가 하나이며 경과면 그 뒤에 띄어 'xr1년경과', 다른 경과 부위는 '어깨 xr2년경과'를 띄어 나온 차례대로.
-/// 마지막 조각이 주사 차수가 아니면 MemoMerge 규칙(빈 칸 그대로, 글이 있으면 '/'). 칸에 이미 'xr'이 있으면 XrayAlreadyHas, 경과가 없으면 XrayNone.
-/// 칸 글과 합쳐 50자를 넘으면 뒤쪽 경과 조각부터 빼고, 하나도 안 들어가면 전부를 그대로 돌려준다(칸에 못 쳐서 '넣지 못함'으로 직접 적을 글).
+/// [엑스레이] 창 [넣기] 한 번에 넣을 경과 글(AC-7505.3, 2026-11-20 오후 바꿈: 부위 하나씩).
+/// 칸 글의 마지막 '/' 뒤 조각에 주사 'N차'가 있으면 띄어 붙인다. 그 조각의 주사 부위가 그 부위 하나이고 조각이 'N차'로 끝나면 'xrN년경과'만,
+/// 아니면 '&lt;부위&gt; xrN년경과'(다른 부위 경과가 먼저 붙은 뒤라도 주사 부위가 이름 없이 붙지 않게). 마지막 조각이 주사 차수가 아니면 MemoMerge 규칙('/').
+/// 칸에 그 부위 경과 글이 이미 있으면 XrayAlreadyHas. 칸 글과 합쳐 50자를 넘어도 글을 그대로 돌려준다(칸에 못 쳐서 '넣지 못함'으로 직접 적을 글).
 /// </summary>
 public static class MemoCompose
 {
@@ -18,45 +18,52 @@ public static class MemoCompose
 
     private static readonly Regex SideHead = new Regex(@"^(오|왼|양)\)", RegexOptions.Compiled);
 
-    /// <summary>칸 글에 'xr'(대소문자 무시)이 있는지.</summary>
-    public static bool HasXray(string? memo) => (memo ?? "").IndexOf("xr", StringComparison.OrdinalIgnoreCase) >= 0;
+    private static readonly Regex CountAt = new Regex(@"\d{1,2}\s*차", RegexOptions.Compiled);
 
-    public static MemoResult ComposeXray(string? currentMemo, IReadOnlyList<XrayDue>? due)
+    private static readonly Regex XrHead = new Regex(@"^\s*xr", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// 칸에 그 부위 경과 글이 있나: '&lt;부위&gt; xr'(부위 앞이 한글이 아님 — '발목'의 '목'은 아님, 대소문자 무시) 또는
+    /// 마지막 조각이 그 부위 하나의 주사 차수이고 'N차' 바로 뒤가 'xr'.
+    /// </summary>
+    public static bool HasXrayFor(string? currentMemo, string part)
     {
         var memo = currentMemo ?? "";
-        if (HasXray(memo)) return new MemoResult(MemoResultKind.XrayAlreadyHas);
-        if (due == null || due.Count == 0) return new MemoResult(MemoResultKind.XrayNone);
+        if (string.IsNullOrEmpty(part)) return false;
+        if (Regex.IsMatch(memo, "(?<![가-힣])" + Regex.Escape(part) + @"\s*xr", RegexOptions.IgnoreCase)) return true;
+        var own = OwnInjection(memo);
+        return own != null && own.Value.Part == part && XrHead.IsMatch(own.Value.After);
+    }
+
+    public static MemoResult ComposeXrayPart(string? currentMemo, string part, int years)
+    {
+        var memo = currentMemo ?? "";
+        if (HasXrayFor(memo, part)) return new MemoResult(MemoResultKind.XrayAlreadyHas);
 
         var slash = memo.LastIndexOf('/');
         var last = (slash >= 0 ? memo.Substring(slash + 1) : memo).Trim();
-        var afterInjection = last.Length > 0 && MemoMerge.HasInjectionCount(last);
-
-        var rest = due.ToList();
-        var pieces = new List<string>();
-        if (afterInjection)
+        if (last.Length == 0 || !MemoMerge.HasInjectionCount(last))
         {
-            var own = PartsOfText(last);
-            var same = own.Count == 1 ? rest.FirstOrDefault(d => d.Part == own[0]) : null;
-            if (same != null)
-            {
-                pieces.Add(Suffix(same.Years));
-                rest.Remove(same);
-            }
+            var piece = part + " " + Suffix(years);
+            return new MemoResult(MemoResultKind.Insert, piece, append: MemoMerge.AppendText(memo, piece));
         }
-        pieces.AddRange(rest.Select(d => d.Part + " " + Suffix(d.Years)));
 
-        string? first = null;
-        string? firstAppend = null;
-        while (pieces.Count > 0)
-        {
-            var text = string.Join(" ", pieces);
-            var append = afterInjection ? (memo.EndsWith(" ", StringComparison.Ordinal) ? text : " " + text) : MemoMerge.AppendText(memo, text);
-            first ??= text;
-            firstAppend ??= append;
-            if (memo.Length + append.Length <= MaxLength) return new MemoResult(MemoResultKind.Insert, text, append: append);
-            pieces.RemoveAt(pieces.Count - 1);
-        }
-        return new MemoResult(MemoResultKind.Insert, first, append: firstAppend);
+        var own = OwnInjection(memo);
+        var text = own != null && own.Value.Part == part && own.Value.After.Trim().Length == 0 ? Suffix(years) : part + " " + Suffix(years);
+        var append = memo.EndsWith(" ", StringComparison.Ordinal) ? text : " " + text;
+        return new MemoResult(MemoResultKind.Insert, text, append: append);
+    }
+
+    // 마지막 '/' 뒤 조각이 주사 차수면 'N차'까지의 주사 부위(하나일 때만, 아니면 "")와 'N차' 뒤 글. 주사 차수가 아니면 null
+    private static (string Part, string After)? OwnInjection(string memo)
+    {
+        var slash = memo.LastIndexOf('/');
+        var last = slash >= 0 ? memo.Substring(slash + 1) : memo;
+        if (last.Trim().Length == 0 || !MemoMerge.HasInjectionCount(last)) return null;
+        var count = CountAt.Match(last);
+        if (!count.Success) return null;
+        var parts = PartsOfText(last.Substring(0, count.Index + count.Length).Trim());
+        return (parts.Count == 1 ? parts[0] : "", last.Substring(count.Index + count.Length));
     }
 
     private static string Suffix(int years) => "xr" + years + "년경과";

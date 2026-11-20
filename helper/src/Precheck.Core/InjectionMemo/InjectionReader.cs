@@ -75,7 +75,7 @@ public static class InjectionReader
             .ToArray();
     }
 
-    /// <summary>엑스레이 경과(REQ-7506): 청구 코드 앞 3글자(대문자) → 오늘 앞 2년 안 마지막 영상 처방 날짜. 틀린 줄은 버린다.</summary>
+    /// <summary>엑스레이 목록(REQ-7506): 청구 코드 앞 3글자(대문자) → 오늘 앞 20년(XrayList.ReadYears) 안 마지막 영상 처방 날짜. 틀린 줄은 버린다.</summary>
     public static IReadOnlyDictionary<string, DateTime> ReadXray(IBitDb db, string chart, DateTime today)
     {
         if (db == null) throw new ArgumentNullException(nameof(db));
@@ -85,7 +85,7 @@ public static class InjectionReader
         var args = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["@cht"] = chart,
-            ["@from"] = Stamp(day.AddYears(-XrayRule.LongestYears)),
+            ["@from"] = Stamp(day.AddYears(-XrayList.ReadYears)),
             ["@to"] = Stamp(day),
         };
         foreach (var row in ReadOnlyGuard.Query(db, InjectionSql.XraySql, args, InjectionSql.Timeout))
@@ -96,31 +96,6 @@ public static class InjectionReader
             if (!result.TryGetValue(code, out var seen) || date > seen) result[code] = date;
         }
         return result;
-    }
-
-    /// <summary>30일 안에 증상 줄 있는 내원이 없을 때(REQ-7506): 그 전 마지막 외래 내원 하나(증상 줄 EmrShtSeq 차례). 없으면 null.</summary>
-    public static VisitNote? ReadLastBefore(IBitDb db, string chart, DateTime today)
-    {
-        if (db == null) throw new ArgumentNullException(nameof(db));
-        if (!ChartNumber.IsNormalized(chart)) return null;
-        var args = new Dictionary<string, object?>(StringComparer.Ordinal)
-        {
-            ["@cht"] = chart,
-            ["@from"] = Stamp(today.Date.AddDays(-InjectionRule.WindowDays)),
-        };
-        DateTime? date = null;
-        var lines = new List<(decimal Seq, string Text)>();
-        foreach (var row in ReadOnlyGuard.Query(db, InjectionSql.LastBeforeSql, args, InjectionSql.Timeout))
-        {
-            if (row == null || row.Count < 4) continue;
-            if (date == null)
-            {
-                if (!TryDay(Text(row[1]), out var day)) return null;
-                date = day;
-            }
-            lines.Add((Seq(row[2]), Text(row[3])));
-        }
-        return date == null ? null : new VisitNote(date.Value, lines.OrderBy(line => line.Seq).Select(line => line.Text).ToArray(), "");
     }
 
     private static bool TryDay(string stamp, out DateTime day)

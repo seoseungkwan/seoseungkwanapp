@@ -20,14 +20,12 @@ public class MemoNoticesTests
         Assert.Equal("비트에서 기록을 읽지 못했어요. 잠시 뒤 다시 눌러 주세요.", MemoNotices.Of(new MemoResult(MemoResultKind.Failed)));
     }
 
-    [Fact(DisplayName = "AC-7505.4 [엑스레이] 알림 글은 시안 그대로: 넣음 초록, 경과 없음·이미 있음 노랑")]
+    [Fact(DisplayName = "AC-7505.3 [엑스레이] [넣기]: 그 부위 경과 글이 이미 있으면 알림 없음(창에서 '넣음'), 넣지 못함은 직접 적을 글")]
     public void XrayNotices()
     {
-        Assert.Equal("넣었어요: 무릎 xr1년경과 허리 xr2년경과", MemoNotices.Of(new MemoResult(MemoResultKind.Insert, "무릎 xr1년경과 허리 xr2년경과")));
-        Assert.Equal("엑스레이 경과된 부위가 없어요.", MemoNotices.Of(new MemoResult(MemoResultKind.XrayNone)));
-        Assert.Equal("메모에 엑스레이가 이미 있어요.", MemoNotices.Of(new MemoResult(MemoResultKind.XrayAlreadyHas)));
-        Assert.Equal("엑스레이 경과된 부위가 없어요.", MemoNotices.XrayNone);
-        Assert.Equal("메모에 엑스레이가 이미 있어요.", MemoNotices.XrayAlreadyHas);
+        Assert.Equal("", MemoNotices.Of(new MemoResult(MemoResultKind.XrayAlreadyHas)));
+        Assert.Equal("메모 칸에 넣지 못했어요. 직접 적어 주세요: 허리 xr2년경과", MemoNotices.TypeFailed("허리 xr2년경과"));
+        Assert.DoesNotContain("XrayNone", Enum.GetNames(typeof(MemoResultKind)));
     }
 
     [Fact(DisplayName = "AC-7503.3 계획 날짜는 'M월 D일'(앞 0 없음), 넣은 글 알림에는 '/' 없이 새 글만")]

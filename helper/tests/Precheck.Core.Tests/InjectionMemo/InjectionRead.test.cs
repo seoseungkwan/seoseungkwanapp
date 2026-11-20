@@ -33,7 +33,7 @@ public class InjectionReadTests
     // 영상 처방(REQ-7506)은 따로 주지 않으면 빈 답. 주사 차수만 보려는 시험은 최근 사진(Recent)을 준다
     private static FakeDb Db(object?[][] visits, object?[][] lines, object?[][]? xray = null) =>
         new FakeDb().Answer(InjectionSql.VisitsSql, _ => visits).Answer(InjectionSql.LinesSql, _ => lines)
-            .Answer(InjectionSql.XraySql, _ => xray ?? new object?[][] { }).Answer(InjectionSql.LastBeforeSql, _ => new object?[][] { })
+            .Answer(InjectionSql.XraySql, _ => xray ?? new object?[][] { })
             .Answer(InjectionSql.DiagnosisSql, _ => new object?[][] { });
 
     private static object?[][] Recent(params string[] codes) => codes.Select(code => new object?[] { code, "202611010900" }).ToArray();
@@ -43,7 +43,7 @@ public class InjectionReadTests
     [Fact(DisplayName = "AC-7502.1 문장은 읽기 전용 SELECT 둘(; · 주석 · 쓰기 낱말 없음)이고 Sql.IsAllowed·ReadOnlyGuard를 정해 둔 매개변수와 함께만 지난다(청구 Sql.All 밖)")]
     public void SqlIsGuardedSelect()
     {
-        Assert.Equal(Both.Concat(new[] { InjectionSql.XraySql, InjectionSql.LastBeforeSql, InjectionSql.DiagnosisSql }).OrderBy(s => s, StringComparer.Ordinal), InjectionSql.All.OrderBy(s => s, StringComparer.Ordinal));
+        Assert.Equal(Both.Concat(new[] { InjectionSql.XraySql, InjectionSql.DiagnosisSql }).OrderBy(s => s, StringComparer.Ordinal), InjectionSql.All.OrderBy(s => s, StringComparer.Ordinal));
         foreach (var sql in Both)
         {
             Assert.StartsWith("SELECT ", sql, StringComparison.Ordinal);

@@ -23,8 +23,7 @@ public class FractureTests
             .Answer(InjectionSql.VisitsSql, _ => visits)
             .Answer(InjectionSql.LinesSql, _ => lines)
             .Answer(InjectionSql.DiagnosisSql, _ => diagnoses)
-            .Answer(InjectionSql.XraySql, _ => new object?[][] { })
-            .Answer(InjectionSql.LastBeforeSql, _ => new object?[][] { });
+            .Answer(InjectionSql.XraySql, _ => new object?[][] { });
 
     private static object?[] Visit1(string id, string stamp, string memo = "") => new object?[] { id, stamp, memo };
 
@@ -211,16 +210,16 @@ public class FractureTests
         Assert.Equal("/오)발 fx/오)무릎 3차", doc.Append);
     }
 
-    [Fact(DisplayName = "AC-7507.3 [엑스레이]는 fx를 보지 않는다(주상병 안 읽음)")]
+    [Fact(DisplayName = "AC-7507.3 [엑스레이]는 fx를 보지 않는다(주상병 안 읽음, 영상 처방만)")]
     public void XrayIgnoresFx()
     {
         var db = Db(
             new[] { Visit1("V1", "202611131000") },
             new[] { Line("V1", 1, "Rt. 5th MT fx"), Line("V1", 2, "오른쪽 무릎 2차 주사 시행") },
             new[] { MainDx("V1", "S9230") });
-        var result = InjectionMemoService.ComputeXray(db, Chart, "", Today, MemoSettings.Defaults.XrayParts.ToArray());
-        Assert.DoesNotContain("fx", result.Text);
-        Assert.DoesNotContain(InjectionSql.DiagnosisSql, db.Sqls);
+        var result = InjectionMemoService.ReadXrayList(db, Chart, Today, MemoSettings.Defaults.XrayParts.ToArray());
+        Assert.Equal(XrayListKind.Ok, result.Kind);
+        Assert.Equal(new[] { InjectionSql.XraySql }, db.Sqls.ToArray());
     }
 
     // ── AC-7507.5 족지·수지 번호 ─────────────────────────────

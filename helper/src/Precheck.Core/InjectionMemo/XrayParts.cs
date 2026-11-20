@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace Precheck.Core.InjectionMemo;
 
 /// <summary>
-/// 엑스레이 경과 부위(AC-7505.1·.2). 표는 specs/injection-memo/notes/xray-parts.md 그대로:
-/// 증상 기록의 부위 말 → '메모에 쓰는 부위' → 기한(무릎 1년·그 밖 2년)과 인정하는 영상 처방 코드 앞 3글자.
+/// 엑스레이 부위 표(AC-7505.1·.2). 표는 specs/injection-memo/notes/xray-parts.md 그대로:
+/// '메모에 쓰는 부위' → 기한(무릎 1년·그 밖 2년)과 인정하는 영상 처방 코드 앞 3글자, 부위 말(주사 차수 글의 부위를 같은 부위로 볼 때).
 /// 좌우는 가리지 않는다. C-Arm(G04)·관절조영(HA2)은 어느 부위에도 없다.
 /// </summary>
 public static class XrayParts
@@ -70,77 +71,115 @@ public static class XrayParts
 
     /// <summary>기한(년): 무릎 1, 그 밖 2.</summary>
     public static int YearsOf(string part) =>
-        part != null && ByPart.TryGetValue(part, out var entry) ? entry.Years : XrayRule.LongestYears;
+        part != null && ByPart.TryGetValue(part, out var entry) ? entry.Years : 2;
 
     /// <summary>부위 말(우리말, 영어는 규칙이 바꾼 말) → 메모에 쓰는 부위. 표에 없으면 null.</summary>
     internal static string? MemoPartOf(string? word) =>
         word != null && ByWord.TryGetValue(word, out var entry) ? entry.Part : null;
-
-    /// <summary>오늘 앞 내원 가운데 증상 줄(빈칸 아닌 글)이 있는 내원이 있는지.</summary>
-    public static bool HasSymptoms(IReadOnlyList<VisitNote>? visits, DateTime today) => WithSymptoms(visits, today).Any();
-
-    /// <summary>
-    /// 30일 안 증상 줄 있는 내원들(없으면 lastBefore 하나)의 증상 줄에서 표 부위를 최근 내원부터, 줄 차례·줄 안 자리 차례로 중복 없이 모은다.
-    /// </summary>
-    public static IReadOnlyList<string> Of(IReadOnlyList<VisitNote>? last30Days, VisitNote? lastBefore, DateTime today)
-    {
-        var visits = WithSymptoms(last30Days, today).OrderByDescending(visit => visit.Date).ToList();
-        if (visits.Count == 0 && lastBefore != null) visits.Add(lastBefore);
-
-        var result = new List<string>();
-        foreach (var visit in visits)
-        {
-            foreach (var line in visit.SymptomLines)
-            {
-                foreach (var hit in InjectionRule.PartHits(line, loose: true).OrderBy(hit => hit.Index))
-                {
-                    var part = MemoPartOf(hit.Part);
-                    if (part != null && !result.Contains(part)) result.Add(part);
-                }
-            }
-        }
-        return result;
-    }
-
-    private static IEnumerable<VisitNote> WithSymptoms(IReadOnlyList<VisitNote>? visits, DateTime today) =>
-        (visits ?? Array.Empty<VisitNote>()).Where(visit => visit != null && visit.Date < today.Date && visit.SymptomLines.Any(line => !string.IsNullOrWhiteSpace(line)));
 }
 
-/// <summary>경과한 부위 하나와 그 기한(년).</summary>
-public sealed class XrayDue
+/// <summary>[엑스레이] 창 줄 하나(AC-7505.1·.2): 부위, 마지막 날짜(null = 찍은 적 없음), 기한(년), 경과인지.</summary>
+public sealed class XrayItem
 {
-    public XrayDue(string part, int years)
+    public XrayItem(string part, DateTime? last, int years, bool overdue)
     {
         Part = part ?? "";
+        Last = last?.Date;
         Years = years;
+        Overdue = overdue;
     }
 
     public string Part { get; }
 
+    public DateTime? Last { get; }
+
     public int Years { get; }
 
-    /// <summary>기한만(부위는 증상 기록에서 나온 환자 값이라 뺀다).</summary>
-    public override string ToString() => "XrayDue(" + Years + ")";
+    public bool Overdue { get; }
+
+    /// <summary>기한·경과만(부위·날짜는 환자 값이라 뺀다).</summary>
+    public override string ToString() => "XrayItem(" + Years + "," + (Overdue ? "overdue" : "ok") + ")";
 }
 
-/// <summary>경과 판정(AC-7505.2): 기한 날(오늘 − N년)보다 뒤에 인정 코드가 하나라도 있으면 경과 아님, 없으면(기록이 아예 없어도) 경과.</summary>
-public static class XrayRule
+/// <summary>[엑스레이] 창 목록(AC-7505.1·.2): 찍은 부위 전부 + 설정에서 고른 부위 가운데 찍은 적 없는 것.</summary>
+public static class XrayList
 {
-    /// <summary>가장 긴 기한(년) — 영상 처방은 오늘 앞 이만큼만 읽는다.</summary>
-    public const int LongestYears = 2;
+    /// <summary>영상 처방은 오늘 앞 이만큼(년) 읽는다(이 PC 영상 처방은 2022년부터라 사실상 전부, AC-7506.1).</summary>
+    public const int ReadYears = 20;
 
-    public static IReadOnlyList<XrayDue> Overdue(IReadOnlyList<string>? parts, IReadOnlyDictionary<string, DateTime>? lastByCode3, DateTime today)
+    /// <summary>
+    /// 표 20부위마다 인정 코드의 마지막 날짜가 있으면 찍은 부위 줄(설정과 상관없이), 없고 chosen에 있으면 찍은 적 없음 줄.
+    /// 경과 = 기한 날(오늘 − N년)보다 뒤에 인정 코드가 없음(찍은 적 없음도 경과). 차례: 찍은 부위(경과 먼저, 그 안에서 마지막 날짜가 오래된 것부터, 같으면 표 차례) → 찍은 적 없음(표 차례).
+    /// </summary>
+    public static IReadOnlyList<XrayItem> Of(IReadOnlyDictionary<string, DateTime>? lastByCode3, IReadOnlyCollection<string>? chosen, DateTime today)
     {
-        var result = new List<XrayDue>();
-        foreach (var part in (parts ?? Array.Empty<string>()).Distinct(StringComparer.Ordinal))
+        var picked = new HashSet<string>(chosen ?? Array.Empty<string>(), StringComparer.Ordinal);
+        var shot = new List<(int Order, XrayItem Item)>();
+        var never = new List<XrayItem>();
+        var order = 0;
+        foreach (var part in XrayParts.All)
         {
-            var codes = XrayParts.CodesOf(part);
-            if (codes.Count == 0) continue;
             var years = XrayParts.YearsOf(part);
-            var cutoff = today.Date.AddYears(-years);
-            var recent = codes.Any(code => lastByCode3 != null && lastByCode3.TryGetValue(code, out var day) && day.Date > cutoff);
-            if (!recent) result.Add(new XrayDue(part, years));
+            DateTime? last = null;
+            foreach (var code in XrayParts.CodesOf(part))
+            {
+                if (lastByCode3 != null && lastByCode3.TryGetValue(code, out var day) && (last == null || day.Date > last.Value)) last = day.Date;
+            }
+            if (last != null) shot.Add((order, new XrayItem(part, last, years, last.Value <= today.Date.AddYears(-years))));
+            else if (picked.Contains(part)) never.Add(new XrayItem(part, null, years, true));
+            order++;
         }
-        return result;
+        return shot
+            .OrderBy(pair => pair.Item.Overdue ? 0 : 1)
+            .ThenBy(pair => pair.Item.Last)
+            .ThenBy(pair => pair.Order)
+            .Select(pair => pair.Item)
+            .Concat(never)
+            .ToArray();
     }
+
+    /// <summary>지난 기간 글(AC-7505.2): 달 수(날짜가 덜 찼으면 한 달 뺌) ≥ 1이면 'N년 M달 전'('M달 전'·'N년 전'), 0이면 'N일 전'.</summary>
+    public static string AgoText(DateTime last, DateTime today)
+    {
+        var from = last.Date;
+        var to = today.Date;
+        var months = (to.Year - from.Year) * 12 + to.Month - from.Month;
+        if (to.Day < from.Day) months--;
+        if (months < 1) return (to - from).Days.ToString(CultureInfo.InvariantCulture) + "일 전";
+        var y = months / 12;
+        var m = months % 12;
+        if (y == 0) return m.ToString(CultureInfo.InvariantCulture) + "달 전";
+        if (m == 0) return y.ToString(CultureInfo.InvariantCulture) + "년 전";
+        return y.ToString(CultureInfo.InvariantCulture) + "년 " + m.ToString(CultureInfo.InvariantCulture) + "달 전";
+    }
+}
+
+/// <summary>[엑스레이]를 누른 결과 종류(AC-7505.4·7506.1).</summary>
+public enum XrayListKind
+{
+    /// <summary>목록을 만들었다(비어 있으면 창에 '찍은 엑스레이가 없어요.').</summary>
+    Ok,
+
+    /// <summary>접수 화면 차트번호 칸이 비었거나 차트번호가 아니다(DB에 묻지 않음).</summary>
+    NoPatient,
+
+    /// <summary>비트 DB를 읽지 못했다(실패·5초 넘음).</summary>
+    Failed,
+}
+
+/// <summary>[엑스레이] 결과: 종류와 목록(Ok일 때만).</summary>
+public sealed class XrayListResult
+{
+    public XrayListResult(XrayListKind kind, IReadOnlyList<XrayItem>? items = null)
+    {
+        Kind = kind;
+        Items = kind == XrayListKind.Ok && items != null ? items : Array.Empty<XrayItem>();
+    }
+
+    public XrayListKind Kind { get; }
+
+    public IReadOnlyList<XrayItem> Items { get; }
+
+    /// <summary>종류와 줄 수만.</summary>
+    public override string ToString() => "XrayListResult(" + Kind + "," + Items.Count + ")";
 }

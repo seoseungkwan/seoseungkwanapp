@@ -9,8 +9,6 @@ public static class MemoNotices
     public const string AlreadyHas = "메모에 주사 차수가 이미 있어요.";
     public const string NoPatient = "접수 화면에 환자를 먼저 불러와 주세요.";
     public const string Failed = "비트에서 기록을 읽지 못했어요. 잠시 뒤 다시 눌러 주세요.";
-    public const string XrayNone = "엑스레이 경과된 부위가 없어요.";
-    public const string XrayAlreadyHas = "메모에 엑스레이가 이미 있어요.";
 
     /// <summary>
     /// '넣지 못함'(빨강): 넣을 글(Insert 결과의 Text, '/' 없는 새 글)을 메모 칸에 치지 못했을 때 — 칸이 꽉 참(50자)·잠김·윈도우가 막음.
@@ -40,10 +38,9 @@ public static class MemoNotices
                 return AlreadyHas;
             case MemoResultKind.NoPatient:
                 return NoPatient;
-            case MemoResultKind.XrayNone:
-                return XrayNone;
             case MemoResultKind.XrayAlreadyHas:
-                return XrayAlreadyHas;
+                // [엑스레이] 창은 알림 없이 그 줄을 '넣음'으로 바꾼다(AC-7505.3)
+                return "";
             default:
                 return Failed;
         }

@@ -26,10 +26,7 @@ public enum MemoResultKind
     /// <summary>비트 DB를 읽지 못했다(실패·5초 넘음).</summary>
     Failed,
 
-    /// <summary>[엑스레이]: 고른 부위 가운데 경과된 부위가 없다(AC-7505.3).</summary>
-    XrayNone,
-
-    /// <summary>[엑스레이]: 메모 칸에 'xr'이 이미 있다(AC-7505.3).</summary>
+    /// <summary>[엑스레이] 창 [넣기]: 메모 칸에 그 부위 경과 글이 이미 있다(AC-7505.3, 알림 없이 창에서 '넣음').</summary>
     XrayAlreadyHas,
 }
 
