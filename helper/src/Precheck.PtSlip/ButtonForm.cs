@@ -6,14 +6,16 @@ using Precheck.Core.PtSlip;
 namespace Precheck.PtSlip;
 
 /// <summary>
-/// 비트 창에 붙는 [PT 먼저] 버튼(시안 ①, AC-6403.3). 테두리 없는 맨 위 작은 창이고 작업 표시줄에 안 나오며,
-/// 눌러도 비트에서 초점을 뺏지 않는다(WS_EX_NOACTIVATE). 0.25초마다 맨 앞 비트 창을 보고 그 오른쪽 위에 붙는다:
-/// 자리는 Core SlipButton.Place, 비트 판단은 SlipButton.IsBitProcess. 비트가 맨 앞이 아니면 숨는다
-/// (이 프로그램 창이 맨 앞이면 그대로 둔다). 누르면 고르는 창, 오른쪽 클릭은 `설정`·`끝내기`.
+/// 비트 창에 붙는 [서류] [PT 먼저] 두 단추(PT 종이 시안 ①·서류 시안 ①, AC-6403.3·AC-7406.3). 테두리 없는 맨 위 작은 창 하나에
+/// 두 단추를 그리고(사이 틈은 창 모양에서 빼서 비트가 보인다), 작업 표시줄에 안 나오며, 눌러도 비트에서 초점을 뺏지 않는다(WS_EX_NOACTIVATE).
+/// 0.25초마다 맨 앞 비트 창을 보고 그 오른쪽 위에 붙는다: [PT 먼저] 자리는 Core SlipButton.Place 그대로, [서류]는 그 왼쪽에 붙어
+/// 같이 움직이고 같이 숨는다. 비트 판단은 SlipButton.IsBitProcess. 비트가 맨 앞이 아니면 숨는다(이 프로그램 창이 맨 앞이면 그대로 둔다).
+/// [PT 먼저]를 누르면 고르는 창, [서류]를 누르면 DocsClicked만 일으킨다. 오른쪽 클릭은 두 단추 모두 `설정`·`끝내기`.
 /// </summary>
 public sealed class ButtonForm : Form
 {
     public const string ButtonText = "PT 먼저";
+    public const string DocsText = "서류";
 
     private const int TickMs = 250;
     private const int WsExToolWindow = 0x00000080;
@@ -23,6 +25,9 @@ public sealed class ButtonForm : Form
 
     private static readonly Color Yellow = Color.FromArgb(0xFF, 0xD2, 0x3F);
     private static readonly Color Shade = Color.FromArgb(0xC9, 0xA6, 0x32);
+    /// <summary>서류 시안 .topbtn.doc: 연한 파랑 바탕, 글은 [PT 먼저]와 같은 진한 색</summary>
+    private static readonly Color DocsBlue = Color.FromArgb(0xBF, 0xE0, 0xFF);
+    private static readonly Color DocsShade = Color.FromArgb(0x8D, 0xB4, 0xDB);
     private static readonly Font ButtonFont = new Font(SlipUi.FontName, 9.75f, FontStyle.Bold);
 
     private readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer { Interval = TickMs };
@@ -35,6 +40,9 @@ public sealed class ButtonForm : Form
     private Rectangle? lastBit;
     private PickForm? pick;
     private SettingsForm? settingsForm;
+    /// <summary>창 안 두 단추 자리(창 왼쪽 위 기준 px): [서류] 왼쪽, 틈 6, [PT 먼저] 오른쪽</summary>
+    private readonly Rectangle docsBox;
+    private readonly Rectangle ptBox;
 
     public ButtonForm()
         : this(LoadSettings())
@@ -57,8 +65,13 @@ public sealed class ButtonForm : Form
         Font = ButtonFont;
         Cursor = Cursors.Hand;
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
-        // 시안 .ptbtn: 높이 26, 양옆 12
-        Size = new Size(TextRenderer.MeasureText(ButtonText, ButtonFont).Width + SlipUi.S(24), SlipUi.S(26));
+        // 시안 .topbtn: 높이 26, 양옆 12, [서류] 오른쪽 틈 6
+        var height = SlipUi.S(26);
+        var docsWidth = TextRenderer.MeasureText(DocsText, ButtonFont).Width + SlipUi.S(24);
+        var ptWidth = TextRenderer.MeasureText(ButtonText, ButtonFont).Width + SlipUi.S(24);
+        docsBox = new Rectangle(0, 0, docsWidth, height);
+        ptBox = new Rectangle(docsWidth + SlipUi.S(6), 0, ptWidth, height);
+        Size = new Size(ptBox.Right, height);
 
         menu.Items.Add("설정", null, (sender, e) => OpenSettings(null));
         menu.Items.Add("끝내기", null, (sender, e) => Application.Exit());
@@ -67,6 +80,9 @@ public sealed class ButtonForm : Form
         timer.Tick += (sender, e) => Follow();
         timer.Start();
     }
+
+    /// <summary>[서류]를 눌렀다(창 열기는 받는 쪽이 한다)</summary>
+    public event EventHandler? DocsClicked;
 
     protected override bool ShowWithoutActivation => true;
 
@@ -94,9 +110,15 @@ public sealed class ButtonForm : Form
     protected override void OnSizeChanged(EventArgs e)
     {
         base.OnSizeChanged(e);
-        using var path = SlipUi.Rounded(new Rectangle(0, 0, Width, Height), SlipUi.S(6));
+        // 두 단추 모양만 창으로 남긴다(사이 틈은 비트가 보이고 눌러도 비트로 간다). 자리를 아직 안 정했으면 창 전체 한 덩이
+        var region = new Region(Rectangle.Empty);
+        foreach (var box in ptBox.IsEmpty ? new[] { new Rectangle(0, 0, Width, Height) } : new[] { docsBox, ptBox })
+        {
+            using var path = SlipUi.Rounded(box, SlipUi.S(6));
+            region.Union(path);
+        }
         var old = Region;
-        Region = new Region(path);
+        Region = region;
         old?.Dispose();
     }
 
@@ -104,18 +126,32 @@ public sealed class ButtonForm : Form
     {
         var g = e.Graphics;
         g.Clear(Yellow);
-        using (var pen = new Pen(Shade))
-        {
-            g.DrawLine(pen, 0, Height - 1, Width, Height - 1);
-        }
-        TextRenderer.DrawText(g, ButtonText, ButtonFont, ClientRectangle, SlipUi.Ink,
-            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+        PaintButton(g, docsBox, DocsText, DocsBlue, DocsShade);
+        PaintButton(g, ptBox, ButtonText, Yellow, Shade);
     }
 
     protected override void OnMouseUp(MouseEventArgs e)
     {
         base.OnMouseUp(e);
-        if (e.Button == MouseButtons.Left && ClientRectangle.Contains(e.Location)) OpenPick();
+        if (e.Button != MouseButtons.Left) return;
+        if (docsBox.Contains(e.Location)) DocsClicked?.Invoke(this, EventArgs.Empty);
+        else if (ptBox.Contains(e.Location)) OpenPick();
+    }
+
+    /// <summary>단추 하나: 바탕, 아래 그늘 선(시안 box-shadow 0 1px), 가운데 굵은 글</summary>
+    private static void PaintButton(Graphics g, Rectangle box, string text, Color fill, Color shade)
+    {
+        if (box.IsEmpty) return;
+        using (var brush = new SolidBrush(fill))
+        {
+            g.FillRectangle(brush, box);
+        }
+        using (var pen = new Pen(shade))
+        {
+            g.DrawLine(pen, box.Left, box.Bottom - 1, box.Right, box.Bottom - 1);
+        }
+        TextRenderer.DrawText(g, text, ButtonFont, box, SlipUi.Ink,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
     }
 
     protected override void Dispose(bool disposing)
@@ -166,13 +202,15 @@ public sealed class ButtonForm : Form
         }
     }
 
+    /// <summary>[PT 먼저]는 지금까지와 같은 자리(SlipButton.Place), 창은 [서류]만큼 더 왼쪽에서 시작한다</summary>
     private void PlaceOn(Rectangle bit)
     {
-        var (x, y) = SlipButton.Place(bit.Right, bit.Top, Width, offset);
+        var (x, y) = SlipButton.Place(bit.Right, bit.Top, ptBox.Width, offset);
+        x -= ptBox.Left;
         if (Left != x || Top != y) Location = new Point(x, y);
     }
 
-    /// <summary>설정 창의 ◀ ▶: 저장 전에도 버튼을 바로 옮겨 보인다.</summary>
+    /// <summary>설정 창의 ◀ ▶: 저장 전에도 두 단추를 바로 함께 옮겨 보인다.</summary>
     private void MoveButton(int px)
     {
         offset = px;
