@@ -1,0 +1,25 @@
+{
+  "status": "approved",
+  "feature": "injection-memo",
+  "approved_at": "2026-11-20T01:51:39Z",
+  "approved_via": "user-prompt",
+  "session_id": "74aecb3c-14de-42ec-98b3-3aee3a20f070",
+  "spec_sha256": "7234bfa7767a589592e222d2741a6fb92d807c199b27feb737aebca693eb2ad4",
+  "scope": [
+    "(없음)",
+    "helper/install/ptslip/**",
+    "helper/src/Precheck.Core/Bit/Sql.cs",
+    "helper/src/Precheck.Core/InjectionMemo/**",
+    "helper/src/Precheck.PtSlip/HotKeys.cs",
+    "helper/src/Precheck.PtSlip/MemoButtonForm.cs",
+    "helper/src/Precheck.PtSlip/MemoSettingsFile.cs",
+    "helper/src/Precheck.PtSlip/MemoTyper.cs",
+    "helper/src/Precheck.PtSlip/NoticeForm.cs",
+    "helper/src/Precheck.PtSlip/Program.cs",
+    "helper/src/Precheck.PtSlip/ReceptionWindows.cs",
+    "helper/src/Precheck.PtSlip/SettingsForm.cs",
+    "helper/tests/Precheck.Core.Tests/InjectionMemo/**",
+    "helper/tests/injection-memo.dotnet.test.ts",
+    "specs/injection-memo/notes/**"
+  ]
+}
