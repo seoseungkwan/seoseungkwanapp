@@ -6,9 +6,12 @@ using Precheck.Core.PtSlip;
 namespace Precheck.PtSlip;
 
 /// <summary>
-/// 설정 창(시안 ⑦, AC-6401·AC-6403.4): 치료 항목·부위 목록(한 줄에 하나), 프린터와 [시험 1장](빈 양식), 종이 길이(mm),
-/// 버튼 자리(◀ 왼쪽으로 / 오른쪽으로 ▶, 20px씩, 바로 버튼에 보임). [저장]은 Core 규칙으로 검사해 틀리면 저장하지 않고,
-/// 맞으면 settings.json에 쓴다. [취소]·닫기는 버튼 자리를 처음대로 되돌린다.
+/// 설정 창(PT 종이 시안 ⑦·서류 시안 ⑥, AC-6401·AC-6403.4·AC-7406.3). 탭 셋:
+/// `PT 종이` — 치료 항목·부위 목록(한 줄에 하나), 프린터와 [시험 1장](빈 양식)·[프린터 종이 설정], 종이 길이(mm), 빅솔론에 직접 보내기.
+/// `서류` — 빈 판(DocsTabPanel, 서류 창 쪽이 채운다).
+/// `단추 자리` — 버튼 자리(◀ 왼쪽으로 / 오른쪽으로 ▶, 20px씩, [서류]·[PT 먼저] 두 단추에 바로 보임).
+/// [저장]·[취소]는 탭 아래 한 줄. [저장]은 Core 규칙으로 검사해 틀리면 저장하지 않고, 맞으면 settings.json에 쓴다.
+/// [취소]·닫기는 버튼 자리를 처음대로 되돌린다.
 /// </summary>
 public sealed class SettingsForm : Form
 {
@@ -18,6 +21,8 @@ public sealed class SettingsForm : Form
     private const int FormWidth = 620;
     private const int CellWidth = 282;
     private const int Gap = 20;
+    /// <summary>탭 묶음 양옆 여백(시안 .tabs padding 0 18px에서 탭 안 여백 몫을 뺌)</summary>
+    private const int TabsSide = 8;
 
     private readonly SlipSettings original;
     private readonly Action<int> offsetChanged;
@@ -27,6 +32,8 @@ public sealed class SettingsForm : Form
     private readonly NumericUpDown lengthBox;
     private readonly CheckBox directBox;
     private readonly Label errorLabel;
+    private readonly TabControl tabs;
+    private readonly TabPage slipPage;
     private int offset;
 
     /// <param name="offsetChanged">버튼 자리를 바꿀 때마다(그리고 취소하면 처음 값으로) 부른다.</param>
@@ -88,24 +95,14 @@ public sealed class SettingsForm : Form
         leftButton.Margin = new Padding(0, 0, SlipUi.S(10), 0);
         var rightButton = SlipUi.Plain("오른쪽으로 ▶", 36);
 
-        var body = new TableLayoutPanel
-        {
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            ColumnCount = 2,
-            RowCount = 4,
-            Padding = new Padding(SlipUi.S(18), SlipUi.S(18), SlipUi.S(18), SlipUi.S(2)),
-            Margin = Padding.Empty,
-        };
-        body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, SlipUi.S(CellWidth + Gap)));
-        body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, SlipUi.S(CellWidth)));
+        // PT 종이 탭: 지금까지의 칸 그대로(버튼 자리만 '단추 자리' 탭으로 옮김)
+        var body = Grid(4);
         body.Controls.Add(Cell("치료 항목 (한 줄에 하나)", itemsBox), 0, 0);
         body.Controls.Add(Cell("치료 부위 (한 줄에 하나)", partsBox), 1, 0);
         var printerCell = Cell("프린터", Field(printerBox, testButton, driverButton));
         body.Controls.Add(printerCell, 0, 1);
         body.SetColumnSpan(printerCell, 2);
         body.Controls.Add(Cell("종이 길이", Field(lengthBox, mm)), 0, 2);
-        body.Controls.Add(Cell("버튼 자리", Field(leftButton, rightButton)), 1, 2);
         // 드라이버를 거치지 않고 빅솔론 명령(SLCS)으로 '연속 용지, 이 길이'를 알려 주며 보낸다. [저장]하면 바뀐다([시험 1장]은 바로 따른다)
         directBox = new CheckBox
         {
@@ -118,11 +115,41 @@ public sealed class SettingsForm : Form
         body.Controls.Add(directBox, 0, 3);
         body.SetColumnSpan(directBox, 2);
 
+        // 단추 자리 탭: [서류]·[PT 먼저]가 함께 옮겨진다(ButtonForm)
+        var buttonBody = Grid(1);
+        buttonBody.Controls.Add(Cell("버튼 자리", Field(leftButton, rightButton)), 0, 0);
+
+        // 서류 탭: 빈 판. 서류 프린터·묶음·뽑은 기록 칸은 서류 창 쪽(TASK-3)이 채운다
+        DocsTabPanel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            AutoScroll = true,
+            BackColor = Color.White,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+        };
+
+        tabs = new TabControl
+        {
+            Font = SlipUi.Body,
+            Padding = new Point(SlipUi.S(14), SlipUi.S(5)),
+            Margin = new Padding(SlipUi.S(TabsSide), SlipUi.S(10), SlipUi.S(TabsSide), SlipUi.S(12)),
+        };
+        slipPage = Page("PT 종이", body);
+        tabs.TabPages.Add(slipPage);
+        tabs.TabPages.Add(Page("서류", DocsTabPanel));
+        tabs.TabPages.Add(Page("단추 자리", buttonBody));
+        FitTabs(body, buttonBody);
+        // 창 폭은 탭에 맞춘다(아래 줄·빨간 글도 같은 폭)
+        var formWidth = tabs.Width + SlipUi.S(TabsSide * 2);
+
         errorLabel = SlipUi.ErrorBox(FormWidth);
+        errorLabel.MinimumSize = new Size(formWidth - SlipUi.S(36), 0);
+        errorLabel.MaximumSize = new Size(formWidth - SlipUi.S(36), 0);
 
         var cancelButton = SlipUi.Plain("취소");
         var saveButton = SlipUi.Primary("저장");
-        var foot = new FootPanel(FormWidth);
+        var foot = new FootPanel(FormWidth) { Width = formWidth };
         foot.PlaceRight(saveButton, cancelButton);
 
         var root = new FlowLayoutPanel
@@ -135,7 +162,7 @@ public sealed class SettingsForm : Form
             Padding = Padding.Empty,
             Location = Point.Empty,
         };
-        root.Controls.Add(body);
+        root.Controls.Add(tabs);
         root.Controls.Add(errorLabel);
         root.Controls.Add(foot);
         Controls.Add(root);
@@ -155,6 +182,9 @@ public sealed class SettingsForm : Form
 
     /// <summary>[저장]으로 쓴 새 설정. 저장하지 않고 닫았으면 null.</summary>
     public SlipSettings? Saved { get; private set; }
+
+    /// <summary>`서류` 탭의 빈 판(탭 안을 꽉 채우고, 넘치면 스크롤). 서류 창 쪽이 칸을 넣는다</summary>
+    internal Panel DocsTabPanel { get; }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
@@ -177,12 +207,14 @@ public sealed class SettingsForm : Form
         var items = SlipSettingsRules.ParseList(LinesOf(itemsBox), SlipListKind.Items);
         if (!items.Ok)
         {
+            tabs.SelectedTab = slipPage;
             ShowError("치료 항목: " + items.Error);
             return;
         }
         var parts = SlipSettingsRules.ParseList(LinesOf(partsBox), SlipListKind.Parts);
         if (!parts.Ok)
         {
+            tabs.SelectedTab = slipPage;
             ShowError("치료 부위: " + parts.Error);
             return;
         }
@@ -272,6 +304,56 @@ public sealed class SettingsForm : Form
         if (!errorLabel.Visible) return;
         errorLabel.Visible = false;
         errorLabel.Text = "";
+    }
+
+    /// <summary>
+    /// 탭 크기를 가장 큰 칸 묶음에 맞춘다(TabControl은 스스로 커지지 않는다). 탭 머리·테두리 몫은 윈도우가 알려 준 만큼(DisplayRectangle) 더한다.
+    /// 서류 탭에 칸 묶음을 넣으면 그것도 생성자의 FitTabs에 함께 넘긴다(창 폭·아래 줄 폭이 이 크기로 정해진다).
+    /// </summary>
+    private void FitTabs(params Control[] bodies)
+    {
+        var content = Size.Empty;
+        foreach (var body in bodies)
+        {
+            var preferred = body.PreferredSize;
+            content = new Size(Math.Max(content.Width, preferred.Width), Math.Max(content.Height, preferred.Height));
+        }
+        tabs.Size = new Size(content.Width + SlipUi.S(40), content.Height + SlipUi.S(80));
+        var display = tabs.DisplayRectangle;
+        tabs.Size = new Size(content.Width + tabs.Width - display.Width, content.Height + tabs.Height - display.Height);
+    }
+
+    /// <summary>탭 한 장(흰 바탕, 안에 칸 묶음 하나).</summary>
+    private static TabPage Page(string text, Control content)
+    {
+        var page = new TabPage(text)
+        {
+            UseVisualStyleBackColor = false,
+            BackColor = Color.White,
+            Padding = Padding.Empty,
+            Margin = Padding.Empty,
+        };
+        content.Location = Point.Empty;
+        page.Controls.Add(content);
+        return page;
+    }
+
+    /// <summary>두 칸 표(시안 .setbody: 왼쪽 칸 + 틈, 오른쪽 칸).</summary>
+    private static TableLayoutPanel Grid(int rows)
+    {
+        var grid = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2,
+            RowCount = rows,
+            Padding = new Padding(SlipUi.S(10), SlipUi.S(16), SlipUi.S(10), SlipUi.S(2)),
+            Margin = Padding.Empty,
+            BackColor = Color.White,
+        };
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, SlipUi.S(CellWidth + Gap)));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, SlipUi.S(CellWidth)));
+        return grid;
     }
 
     private static string LinesOf(TextBox box) => box.Text.Replace("\r\n", "\n");
