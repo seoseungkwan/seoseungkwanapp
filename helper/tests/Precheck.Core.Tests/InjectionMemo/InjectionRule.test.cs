@@ -110,6 +110,8 @@ public class InjectionRuleTests
     {
         Assert.Equal("목 3차", Inserted(Visit(7, "", "목요일 목 3차 주사")));
         Assert.Equal("목 3차", Inserted(Visit(7, "", "목요일에 목 3차 주사 예정")));
+        Assert.Equal("목 3차", Inserted(Visit(7, "", "목요일 목주사 3차")));
+        Assert.Equal("목 3차", Inserted(Visit(7, "", "목요일 목3차주사")));
         Assert.Equal("목 3차", Inserted(Visit(7, "", "목 요일 목 3차 주사")));
         Assert.Equal("목 3차", Inserted(Visit(7, "", "Rt shoulder pain", "목요일 목 3차 주사")));
         Assert.Equal("목 3차", Inserted(Visit(7, "", "목 2차 주사 시행, 목요일 3차 예정")));
