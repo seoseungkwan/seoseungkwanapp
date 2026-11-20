@@ -65,3 +65,19 @@
 - Files: helper/src/Precheck.PtSlip/MemoButtonForm.cs, helper/src/Precheck.PtSlip/NoticeForm.cs, helper/src/Precheck.PtSlip/SettingsForm.cs, helper/src/Precheck.PtSlip/MemoSettingsFile.cs, helper/src/Precheck.PtSlip/Program.cs, helper/src/Precheck.Core/InjectionMemo/MemoNotices.cs, helper/tests/Precheck.Core.Tests/InjectionMemo/**, helper/tests/injection-memo.dotnet.test.ts, helper/install/ptslip/**, specs/injection-memo/notes/**
 - Tests: helper/tests/injection-memo.dotnet.test.ts
 - TDD: exempt — WinForms 단추·체크 칸(판단은 Core). 가짜 화면 사진 확인, 읽어주세요 고침, Release x86 zip 다시
+
+## TASK-9: 골절 fx Core (2026-11-20 오후)
+- Phase: 8
+- AC: AC-7507.1, AC-7507.2, AC-7507.3, AC-7507.4
+- REQ: REQ-7507
+- Files: helper/src/Precheck.Core/InjectionMemo/**, helper/tests/Precheck.Core.Tests/InjectionMemo/**, helper/tests/injection-memo.dotnet.test.ts
+- Tests: helper/tests/injection-memo.dotnet.test.ts
+- TDD: required — design.md 이름표 그대로, 부위 표는 notes/fracture.md 그대로. 시험은 지어낸 코드·글·가짜 IBitDb
+
+## TASK-10: 읽어주세요·zip (2026-11-20 오후)
+- Phase: 9
+- AC: AC-7507.3
+- REQ: REQ-7507
+- Files: helper/install/ptslip/**, specs/injection-memo/notes/**
+- Tests: helper/tests/injection-memo.dotnet.test.ts
+- TDD: exempt — 읽어주세요.txt에 골절 fx 한 줄(화면·알림은 그대로). 90일 대조 다시, Release x86 zip 다시

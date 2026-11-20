@@ -30,8 +30,17 @@ InjectionReader.ReadXray(IBitDb, string chart, DateTime today) → IReadOnlyDict
 InjectionReader.ReadLastBefore(IBitDb, string chart, DateTime today) → VisitNote?   // InjectionSql.LastBeforeSql, 30일 안 증상 없을 때만
 InjectionMemoService.ComputeXray(IBitDb, string? chart, string? currentMemo, DateTime today, IReadOnlyCollection<string> chosen) → MemoResult   // [엑스레이] 단추
 MemoSettings.XrayParts : IReadOnlyList<string>   // 메모에 넣을 엑스레이(표 부위), Defaults = 표 − {팔, 허벅지, 다리, 종아리}
+
+// 골절 fx (REQ-7507, 2026-11-20 오후)
+VisitNote(date, symptomLines, receptionMemo, string? mainDiagnosis = null) { MainDiagnosis }   // 주상병 코드(대문자·빈칸 뺌, 모르면 "")
+InjectionSql.DiagnosisSql   // [내원 번호, 주상병 코드]: 그 30일 외래 내원들의 OicInf OicIcdPri='1'
+InjectionReader.Read(IBitDb, string chart, DateTime today, bool withDiagnoses = false)   // true면 DiagnosisSql도 읽어 MainDiagnosis를 채운다
+FractureRule.IsFracture(string? code) → bool
+FractureRule.PartOf(string? code) → string   // notes/fracture.md 표, 없으면 ""
+FractureRule.Text(IReadOnlyList<VisitNote> last30Days /*날짜순*/) → string?   // '오)발 fx', 골절 주상병 내원이 없으면 null
+FractureRule.HasFx(string? memo) → bool
 ```
-- `InjectionMemoService.Compute`는 주사 차수만(영상 안 읽음). `ComputeXray`는 차트번호 → (칸에 xr 있으면 끝) → 30일 내원(없으면 그 전 마지막 내원) → 고른 부위만 → 영상 읽기 → `ComposeXray`
+- `InjectionMemoService.Compute`는 주사 차수와 골절 fx(영상 안 읽음): 칸에 차수와 fx가 다 있으면 끝 → 30일 내원 읽기(칸에 fx가 없으면 주상병도) → 차수 규칙(칸에 차수가 있으면 AlreadyHas) + FractureRule.Text → fx가 있으면 `fx 글` 또는 `fx 글/차수 글`을 Insert, 없으면 지금대로. `ComputeXray`는 차트번호 → (칸에 xr 있으면 끝) → 30일 내원(없으면 그 전 마지막 내원) → 고른 부위만 → 영상 읽기 → `ComposeXray`
 
 ## 윈도우 (`Precheck.PtSlip`)
 - TASK-2: `ReceptionWindows`(맨 앞 창이 비트 접수 화면인지, 차트번호 칸 글·메모 칸 핸들·글·사각형 읽기, 칸 글은 저장·로그 안 함), `MemoTyper.Append(handle, text)`(끝으로 커서 → EM_REPLACESEL), `HotKeys`(RegisterHotKey/UnregisterHotKey, 접수 화면이 맨 앞일 때만 잡음), `MemoSettingsFile`
