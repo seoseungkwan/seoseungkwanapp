@@ -31,7 +31,7 @@ const starButton = `${ds.button.secondarySmall} aria-pressed:border-warning aria
 
 function BackLink() {
   return (
-    <Link href={BACK_TO} className={`inline-flex h-8 items-center gap-1 rounded-control text-body font-medium text-ink-2 hover:text-ink ${ds.focusRing}`}>
+    <Link href={BACK_TO} className={`inline-flex h-8 items-center gap-1 rounded-control text-body font-medium text-ink-2 no-underline hover:text-ink ${ds.focusRing}`}>
       <LeftIcon />
       글 목록으로
     </Link>
@@ -78,6 +78,7 @@ function Opened({ notice }: { notice: NoticeView }) {
               <span className="font-semibold text-ink-2">{sourcesText(notice.posts)}</span>
               <span>{`${safeDateText(notice.postedOn)} 올라옴`}</span>
             </p>
+            {/* 시안 .dtitle은 22px — 앱 글자 토큰에 22px이 없고 title(20px)·heading-m(24px)이 같은 거리라 title 그대로(st-22는 통계 화면 전용) */}
             <h1 className="whitespace-pre-wrap break-words text-title font-semibold text-ink">{notice.title}</h1>
             {(number !== '' || must !== '' || related) && (
               <p className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-small text-ink-2">

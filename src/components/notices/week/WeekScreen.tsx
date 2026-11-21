@@ -11,10 +11,13 @@ import type { NoticeSummary, NoticeWeek, WeekItem } from '@/types/notices'
 import { InfoIcon, LeftIcon, PrintIcon, RightIcon } from './icons'
 
 // 고시·공지 주간 모음 /notices/week (specs/notices REQ-7421 · 기본값 15, design 10절, 시안 docs/mockups/notices ?s=weekly).
-// 자료는 lib/storage/notices readWeek로만 읽는다. 주는 주소 ?w=<월요일>(쪽 파일이 week로 넘김)이고, 없거나 월요일 날짜가 아니면 가장 최근 모음이다.
+// 자료는 lib/storage/notices readWeek로만 읽는다. 주는 주소 ?w=<월요일>(쪽 파일이 week로 넘김)이고, 없거나 월요일 날짜가 아니거나
+// 월요일이어도 그 주(월~일)를 그릴 수 없는 날짜(예: 9999-12-27 → 일요일이 10000년)면 가장 최근 모음이다(기본값 24).
 // [지난주]·[다음 주]는 주소를 바꾸는 링크다 → 쪽 파일이 새 week로 다시 그리면 그 주를 읽는다. 가장 최근 주 = 모으기가 모음을 만드는
 // 지난주 월요일(오늘 주 월요일 − 7일)이고 거기서 [다음 주]는 막힌다. [인쇄]는 window.print() — 앱 틀(위쪽 띠·탭 줄)은 AppShell이,
-// 쪽 머리·작은 탭·주 옮기기 줄은 이 화면이 print:hidden으로 숨긴다(A4 한 장, 시안 @media print).
+// 쪽 머리·작은 탭·주 옮기기 줄은 이 화면이 print:hidden으로 숨긴다(A4 한 장, 시안 @media print). 종이 여백(@page)은 이 화면이 붙어 있을 때만
+// 쓰이게 부품 안 <style>로 둔다(서식 화면과 같은 방식, globals.css는 고치지 않는다, 기본값 24).
+// 앱에는 링크 밑줄·목록 점을 지우는 초기화가 없다 → 링크마다 no-underline, 목록마다 list-none을 직접 준다(시안에 밑줄·점 없음)
 // 관련 글 = related 참인 글. 관련 아님·관련 여부 모름(요약 전·실패)은 '그 밖의 글'에 제목만 적는다. 모든 글은 글자 노드로만 그린다(HTML 해석 없음)
 
 type Props = {
@@ -22,13 +25,15 @@ type Props = {
   hospitalName: string
   /** 요청 때의 한국 날짜 'YYYY-MM-DD' */
   today: string
-  /** 주소 ?w 글자. 월요일 날짜가 아니면 가장 최근 모음 */
+  /** 주소 ?w 글자. 월요일 날짜가 아니거나 그릴 수 없는 주면 가장 최근 모음 */
   week?: string
 }
 
 type Got = { key: string; value: NoticeWeek | null | 'failed' }
 
-const SUBTAB = 'relative inline-flex h-10 items-center px-3 whitespace-nowrap'
+const SUBTAB = 'relative inline-flex h-10 items-center px-3 whitespace-nowrap no-underline'
+// 인쇄 종이: A4 한 장, 시안 @media print의 @page 여백 14mm
+const PRINT_PAGE = '@media print { @page { size: A4 portrait; margin: 14mm } }'
 const SUMMARY_LINES: readonly [keyof Omit<NoticeSummary, 'related' | 'amends'>, string][] = [
   ['what', '무엇이 바뀌나'],
   ['when', '언제부터'],
@@ -48,8 +53,11 @@ function safeText(make: () => string): string {
   }
 }
 
+// 그릴 수 있는 주: 월요일이고 그 주 기간 글(월~일)을 만들 수 있다
+const isWeek = (s: string | undefined): s is string => isMonday(s) && safeText(() => weekPeriodText(s)) !== ''
+
 export function WeekScreen({ hospitalName, today, week }: Props) {
-  const target = isMonday(week) ? week : 'latest'
+  const target = isWeek(week) ? week : 'latest'
   const [got, setGot] = useState<Got | null>(null)
   const [tries, setTries] = useState(0)
 
@@ -76,6 +84,7 @@ export function WeekScreen({ hospitalName, today, week }: Props) {
 
   return (
     <div>
+      <style>{PRINT_PAGE}</style>
       <div className="print:hidden">
         <h1 className="text-heading-m font-semibold text-ink">고시·공지</h1>
         <p className="mt-1 text-body text-ink-2">심평원·보건복지부 새 글을 매일 아침 모아 AI가 요약해요.</p>
@@ -170,7 +179,7 @@ function WeekSheet({ week, hospitalName }: { week: NoticeWeek; hospitalName: str
 
       {related.length > 0 && week.top3.length > 0 && (
         <Section title="이번 주 꼭 알 것 3가지">
-          <ol className="grid gap-2 print:gap-1.5">
+          <ol className="grid list-none gap-2 print:gap-1.5">
             {week.top3.map((t, i) => (
               <li
                 key={i}
@@ -194,7 +203,7 @@ function WeekSheet({ week, hospitalName }: { week: NoticeWeek; hospitalName: str
           </>
         }
       >
-        <ul>
+        <ul className="list-none">
           {related.map((n) => (
             <EachItem key={n.id} n={n} />
           ))}
@@ -202,7 +211,7 @@ function WeekSheet({ week, hospitalName }: { week: NoticeWeek; hospitalName: str
       </Section>
 
       <Section title={`그 밖의 글 ${others.length}건`}>
-        <ul className="columns-2 gap-x-6 text-small text-ink-2 print:text-caption">
+        <ul className="list-none columns-2 gap-x-6 text-small text-ink-2 print:text-caption">
           {others.map((n) => (
             <li key={n.id} className="break-inside-avoid py-1 print:py-px">
               <span className="mr-1.5 text-muted">{safeText(() => dayText(n.postedOn))}</span>
