@@ -1,22 +1,36 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { ComponentType } from 'react'
+import { isValidElement, type ComponentType, type ReactElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NotReadyScreen } from '@/components/common/NotReadyScreen'
 import { NOT_READY_FEATURES, notReadyFeature, type NotReadyPath } from '@/components/common/notReadyFeatures'
-import { MENU } from '@/components/shell/menu'
+import { KeywordsControl } from '@/components/notices/keywords/KeywordsControl'
+import { MENU, isDeskPath } from '@/components/shell/menu'
 import { decideRoute, type HospitalState } from '@/lib/auth/gate'
+import type { Me } from '@/lib/auth/hospital.server'
 import AiReportPage from './ai-report/page'
 import ContactsPage from './contacts/page'
 import InventoryPage from './inventory/page'
-import NoticesPage from './notices/page'
+import NoticesPage, { metadata as noticesMetadata } from './notices/page'
 import StaffPage from './staff/page'
 
 // 화면 부품은 가짜로 바꿔 페이지가 넘긴 today만 본다(AC-714.3). 화면 자체는 components/ai-report 시험이 본다
 vi.mock('@/components/ai-report/AiReportScreen', () => ({
   AiReportScreen: ({ today }: { today: string }) => <p data-ai-report-today={today}>AI 리포트 화면</p>,
 }))
+
+// /notices 쪽 파일(notices AC-7423.2·AC-7424.13): 문지기 읽기와 화면 부품 셋은 가짜다. 화면 자체는 components/notices 시험이 본다
+const { currentMe, NoticesScreen, NoticeDetail, KeywordsMock } = vi.hoisted(() => ({
+  currentMe: vi.fn<() => Promise<Me>>(),
+  NoticesScreen: vi.fn<(props: { keywords?: unknown }) => unknown>(),
+  NoticeDetail: vi.fn<(props: { id: string }) => unknown>(),
+  KeywordsMock: vi.fn<() => unknown>(),
+}))
+vi.mock('./currentMe.server', () => ({ currentMe }))
+vi.mock('@/components/notices/list/NoticesScreen', () => ({ NoticesScreen }))
+vi.mock('@/components/notices/detail/NoticeDetail', () => ({ NoticeDetail }))
+vi.mock('@/components/notices/keywords/KeywordsControl', () => ({ KeywordsControl: KeywordsMock }))
 
 // 준비 중 주소의 페이지 (tab-frame REQ-305 AC-305.5·AC-305.6, ui-90 AC-415.5, design.md '준비 중 화면' 한 줄 페이지·'데이터 흐름').
 // 페이지는 (app) 묶음 안이라 앱 틀과 승인 검사((app)/layout)를 저절로 받는다. 문지기 규칙은 바꾸지 않는다
@@ -26,7 +40,6 @@ const APP_GROUP = 'src/app/(app)'
 
 // 주소 · 표의 이름 · h1(title) · 페이지 (탭 순서)
 const PAGES: Array<{ path: NotReadyPath; name: string; title: string; Page: ComponentType }> = [
-  { path: '/notices', name: '고시·공지', title: '고시·공지는 준비 중이에요', Page: NoticesPage },
   { path: '/staff', name: '직원', title: '직원은 준비 중이에요', Page: StaffPage },
   { path: '/inventory', name: '재고', title: '재고는 준비 중이에요', Page: InventoryPage },
   { path: '/contacts', name: '주소록', title: '주소록은 준비 중이에요', Page: ContactsPage },
@@ -128,6 +141,18 @@ describe('AC-305.5: 준비 중 주소의 페이지 = notReadyFeature(주소)를 
     expect(source).toMatch(/from '@\/components\/forms\/FormsScreen'/)
   })
 
+  it('AC-7423.1·AC-7423.2: /notices는 준비 중 주소가 아니다 — 페이지 표와 준비 중 목록에 없고, 페이지 소스는 준비 중 화면이 아니라 고시·공지 화면(NoticesScreen·NoticeDetail·KeywordsControl)을 쓴다', () => {
+    expect(PAGES.map((p) => p.path as string)).not.toContain('/notices')
+    expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/notices')
+    const source = readFileSync(join(ROOT, pageFile('/notices')), 'utf8')
+    expect(source).not.toMatch(/NotReadyScreen|notReadyFeature/)
+    expect(source).toMatch(/from '@\/components\/notices\/list\/NoticesScreen'/)
+    expect(source).toMatch(/from '@\/components\/notices\/detail\/NoticeDetail'/)
+    expect(source).toMatch(/from '@\/components\/notices\/keywords\/KeywordsControl'/)
+    // 쪽 파일은 서버 쪽이다: 화면을 놓기만 하고 고시·공지 표를 읽지 않는다(ADR-004)
+    expect(source).not.toMatch(/['"]use client['"]|['"]use server['"]|supabase|guard\.server|lib\/storage|\bfetch\s*\(/)
+  })
+
   it('AC-610.1: /patients 페이지는 준비 중 화면을 쓰지 않는 환자 탭이다', () => {
     const source = readFileSync(join(ROOT, pageFile('/patients')), 'utf8')
     expect(source).not.toMatch(/NotReadyScreen|notReadyFeature/)
@@ -166,5 +191,96 @@ describe('AC-305.6: 준비 중 주소는 문지기(decideRoute) 규칙 그대로
     const layout = readFileSync(join(ROOT, APP_GROUP, 'layout.tsx'), 'utf8')
     expect(layout).toMatch(/guardPage\(/)
     expect(layout).toMatch(/<AppShell\b/)
+  })
+})
+
+describe('/notices 쪽 파일 (AC-7423.2·AC-7424.13)', () => {
+  const ME: Me = {
+    email: 'manager@example.com',
+    isAdmin: false,
+    hospital: {
+      id: 'h1',
+      name: '가나 정형외과의원',
+      applicantName: '홍길동',
+      phone: null,
+      email: 'manager@example.com',
+      status: 'approved',
+      createdAt: '2026-10-28T01:23:45+00:00',
+    },
+  }
+  const ID = '0f8b9c2e-4a1d-4e6b-9c3f-2b7d5e8a1c40'
+
+  beforeEach(() => {
+    currentMe.mockReset()
+    currentMe.mockResolvedValue(ME)
+    NoticesScreen.mockReset()
+    NoticesScreen.mockImplementation(({ keywords }) => <section data-list="">{keywords as ReactNode}</section>)
+    NoticeDetail.mockReset()
+    NoticeDetail.mockImplementation(({ id }) => <article data-detail={id} />)
+    KeywordsMock.mockReset()
+    KeywordsMock.mockImplementation(() => <span data-keywords="" />)
+  })
+
+  const draw = async (params: Record<string, string | string[] | undefined>) =>
+    renderToStaticMarkup((await NoticesPage({ searchParams: Promise.resolve(params) })) as ReactElement)
+
+  it('AC-7423.2·AC-7424.13: id가 없으면 글 목록(NoticesScreen)이고, keywords 자리에 KeywordsControl을 넣는다. 글 화면은 없다', async () => {
+    const html = await draw({})
+    expect(html).toBe('<section data-list=""><span data-keywords=""></span></section>')
+    expect(NoticesScreen).toHaveBeenCalledTimes(1)
+    const keywords = NoticesScreen.mock.calls[0]![0].keywords as ReactElement
+    expect(isValidElement(keywords)).toBe(true)
+    expect(keywords.type).toBe(KeywordsControl)
+    expect(keywords.props).toEqual({})
+    expect(NoticeDetail).not.toHaveBeenCalled()
+    expect(currentMe).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([ID, ID.toUpperCase()])('AC-7423.2·AC-7424.13: ?id=<uuid>(%s)면 그 id의 글 화면(NoticeDetail)이고 목록·내 낱말은 없다', async (id) => {
+    const html = await draw({ id })
+    expect(html).toBe(`<article data-detail="${id}"></article>`)
+    expect(NoticeDetail).toHaveBeenCalledTimes(1)
+    expect(NoticeDetail.mock.calls[0]![0]).toEqual({ id })
+    expect(NoticesScreen).not.toHaveBeenCalled()
+    expect(KeywordsMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['uuid 모양이 아님', 'abc'],
+    ['빈 글자', ''],
+    ['뒤에 글자가 더 붙음', `${ID}x`],
+    ['여러 개', [ID, ID]],
+  ])('AC-7423.2: id가 %s이면 글 화면이 아니라 글 목록이다', async (_why, id) => {
+    const html = await draw({ id })
+    expect(html).toContain('data-list')
+    expect(NoticeDetail).not.toHaveBeenCalled()
+  })
+
+  it('AC-7423.2: 탭 이름은 "고시·공지"이고 준비 중 화면 글자가 없다', async () => {
+    expect(noticesMetadata).toEqual({ title: '고시·공지' })
+    const html = await draw({})
+    expect(html).not.toContain('준비 중')
+    expect(html).not.toContain('대시보드로 돌아가기')
+  })
+
+  // 데스크는 앱 틀(DeskGate)이 막힌 화면을 그린다(/notices는 데스크 주소가 아니다). 페이지가 던지면 앱 틀 대신 오류 화면이 뜬다 → 아무것도 그리지 않는다
+  it('AC-7423.2·AC-7424.13: 데스크(병원 줄 없음 + desk)면 던지지 않고 아무것도 그리지 않는다 — 목록·글·낱말 부품을 부르지 않는다', async () => {
+    currentMe.mockResolvedValue({ email: 'desk@example.com', isAdmin: false, hospital: null, desk: { hospitalId: 'h1', hospitalName: '가나 정형외과의원' } })
+    for (const params of [{}, { id: ID }]) {
+      await expect(NoticesPage({ searchParams: Promise.resolve(params) })).resolves.toBeNull()
+    }
+    expect(NoticesScreen).not.toHaveBeenCalled()
+    expect(NoticeDetail).not.toHaveBeenCalled()
+    expect(KeywordsMock).not.toHaveBeenCalled()
+    expect(isDeskPath('/notices')).toBe(false)
+  })
+
+  it('AC-7423.2: 병원 줄이 없거나(데스크 아님) 승인되지 않았으면(문지기가 막아 오지 않는 길) 그리지 않고 던진다', async () => {
+    currentMe.mockResolvedValue({ ...ME, hospital: null })
+    await expect(NoticesPage({ searchParams: Promise.resolve({}) })).rejects.toThrow()
+    currentMe.mockResolvedValue({ ...ME, hospital: { ...ME.hospital!, status: 'pending' } })
+    await expect(NoticesPage({ searchParams: Promise.resolve({}) })).rejects.toThrow()
+    expect(NoticesScreen).not.toHaveBeenCalled()
+    expect(NoticeDetail).not.toHaveBeenCalled()
   })
 })

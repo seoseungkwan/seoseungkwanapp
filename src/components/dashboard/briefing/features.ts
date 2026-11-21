@@ -23,7 +23,7 @@ export const DASHBOARD_FEATURES: readonly DashboardFeature[] = [
   // 매출은 통계 매출 칸으로 옮겨 따로 줄이 없다(stats-revenue AC-4110.3). 설명은 통계 칸 차례대로
   { name: '통계', desc: '환자 수 추이·신환 재방문율·매출·처방별 추세·요일별 환자 수', href: '/stats', status: 'connect-first' },
   { name: '청구', desc: '삭감 예방 사전점검·청구메모·상병 확인·월말 마감', href: '/claim', status: 'connect-first' },
-  { name: '고시·공지', desc: '심평원·보건복지부·건강보험공단 새 글과 세 줄 요약', href: '/notices', status: 'soon' },
+  { name: '고시·공지', desc: '심평원·보건복지부 새 글을 매일 아침 모아 AI가 요약해요.', href: '/notices', status: 'ready' }, // notices AC-7423.1 — 설명은 쪽 안내 글 그대로(기본값 18)
   { name: '환자', desc: '다시 오실 환자 명단·정기 주사 문자 명단·문자 문구', href: '/patients', status: 'connect-first' },
   { name: '업무일지', desc: '엑셀 양식과 똑같은 업무일지', href: '/worklog', status: 'ready' }, // 수납일지 바로 앞(nav-worklog AC-5801.4)
   { name: '수납일지', desc: '비트에서 채우는 하루 수납 장부·예약률·Block 전환·마감', href: '/sunap', status: 'connect-first' }, // sunap-ilji AC-4907.1
