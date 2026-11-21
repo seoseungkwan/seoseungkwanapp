@@ -74,7 +74,7 @@
 ### REQ-7406: 심평원 심사기준 읽기
 - AC-7406.1: Given 탭 `01` 목록 견본, When `parseHiraCrtrList(html, '01')`, Then 10줄이고 key = `<mtgHmeDd>-<sno>-<mtgMtrRegSno>`, 제목, 관련근거 글, 날짜, 종류 `gosi`, 주소 `https://www.hira.or.kr/rc/insu/insuadtcrtr/InsuAdtCrtrPopup.do?mtgHmeDd=…&sno=…&mtgMtrRegSno=…`다. 탭 `02`·`09`·`10` 견본은 종류 `interp`·`guide`·`case`다.
 - AC-7406.2: Given 팝업 견본, When `parseHiraCrtrPopup`, Then 본문은 '고시 신설/개정 전체내용'부터 '변경 전 고시' 글까지 담고 붙임은 빈 목록이다.
-- AC-7406.3: Given 탭과 쪽, When `crtrListBody`, Then `tabGbn=<탭>&pageIndex=<쪽>`이다. Given 표가 없는 쪽, Then 빈 목록이다.
+- AC-7406.3: Given 탭과 쪽, When `crtrListBody`, Then `tabGbn=<탭>&decIteTpCd=<탭>&pageIndex=<쪽>`이다(fetchSite도 이 세 칸만 받는다). Given 표가 없는 쪽, Then 빈 목록이다.
 
 ### REQ-7407: 보건복지부 RSS 읽기
 - AC-7407.1: Given RSS 견본, When `parseMohwRss`, Then 30줄이고 key = `list_no`, 제목(CDATA 안), 날짜는 `pubDate`의 한국 날짜, 본문은 `description` 글자(실체 풂), 주소는 `link` 그대로, 종류는 고시 번호가 있으면 `gosi` 아니면 `notice`다. `author`는 담지 않는다.
