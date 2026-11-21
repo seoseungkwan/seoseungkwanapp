@@ -103,7 +103,7 @@ export async function runCollector(deps: CollectorDeps): Promise<RunReport | 'bu
 - 비용 어림: 붙임 10쪽 ≈ 2만 토큰. 30쪽 넘는 책자는 글자만 보내 값을 묶는다.
 
 ## 7. 묶기 · 고시 번호 · 점검 규칙
-- `noticeNo(text)`: `/(?:^|[^가-힣])(?:보건복지부\s*)?고시\s*제?\s*(\d{4})\s*-\s*(\d{1,4})\s*호/`. '고시' 앞 15자에 질병관리청·식품의약품안전처·식약처·국토교통부·고용노동부·행정안전부·교육부가 있으면 그 맞춤은 버리고 다음 것을 본다. 결과 `'<연도>-<숫자, 앞 0 뗌>'`. 복지부 고시만 묶고 맞춘다(공고·훈령은 기관마다 번호가 겹친다).
+- `noticeNo(text)`: `/(?:^|[^가-힣])(?:보건복지부\s*)?고시\s*제?\s*(\d{4})\s*-\s*(\d{1,4})\s*호/`. '고시' 앞 15자에 질병관리청·식품의약품안전처·식약처·국토교통부·고용노동부·행정안전부·교육부·통계청이 있으면 그 맞춤은 버리고 다음 것을 본다(통계청 고시 '한국표준질병·사인분류'가 심평원 공지에 자주 붙는다). 이 판정은 `noticeNo.ts` 한 곳에 두고, `sources/hiraNotice.ts`·`sources/mohwRss.ts`는 사본 대신 `noticeNo`를 불러 쓴다. 결과 `'<연도>-<숫자, 앞 0 뗌>'`. 복지부 고시만 묶고 맞춘다(공고·훈령은 기관마다 번호가 겹친다).
 - `mergeGroup`: 제목 차례 `mohw_rss` > `hira_notice` > `hira_crtr`, 본문은 `[<출처 글 제목>]\n<본문>`을 이어 20,000자, 종류는 제목을 준 글의 종류.
 - `ruleBasisIndex(rulesJson)`: `rules[].basis[].number`를 `noticeNo`로 읽어 `Map<no, RuleHit[]>`. `ruleMatch.ts`가 `@/lib/precheck/data/rules.json`을 import해 `defaultRuleIndex()`로 한 번 만든다(울타리는 구역 안 파일이 밖을 부르는 것을 막고, 밖에서 자료 파일 읽기는 막지 않는다. 울타리는 고치지 않는다). 화면은 저장된 `rule_hits`만 그린다.
 - `matchRules(amends, body, ownNo, index)`: `amends` ∪ 본문 `/변경\s*전\s*고시\s*\(\s*고시\s*제\s*\d{4}\s*-\s*\d+\s*호/` 번호 − `ownNo`. 규칙 파일이 바뀌어도 저장된 `rule_hits`는 그 요약 때 값이다.
@@ -125,7 +125,8 @@ export function checkQuestion(q: string): TextCheck   // 1~300자
 export function checkMemo(m: string): TextCheck       // 0~500자(빈 메모 = 지우기)
 export function kindsText(k: PrivateKind[]): string    // '주민번호·전화번호'
 ```
-- 정규식(시안 제안을 명세로 정함): rrn `/\d{6}\s*-\s*[1-8]\d{6}|(?<!\d)\d{6}[1-8]\d{6}(?!\d)/` · tel `/0\d{1,2}\s*-\s*\d{3,4}\s*-\s*\d{4}|(?<!\d)01[016789]\d{7,8}(?!\d)/` · chart `/(차트|챠트|등록번호|환자번호)\s*(번호)?\s*[:：]?\s*\d{2,}/` · digits(앞 셋이 없을 때만) `제?\d{4}-\d{1,4}호`를 지운 뒤 `/\d{6,}/`.
+- 정규식(시안 제안을 명세로 정함): rrn `/\d{6} *[-. ] *[1-8]\d{6}|(?<!\d)\d{6}[1-8]\d{6}(?!\d)/` · tel `/(?<!\d)(?:\+82[-. ]?\(?0?\d{1,2}\)?|\(?0\d{1,2}\)|0\d{1,2}) *[-. ]? *\d{3,4} *[-. ]? *\d{4}(?!\d)/`(업무일지 `lib/worklog/notes.ts` PHONE에 빈칸 나눔을 더한 것) · chart `/(차트|챠트|등록번호|환자번호)\s*(번호)?\s*[:：]?\s*\d{2,}/` · digits(앞 셋이 없을 때만) `제?\d{4}-\d{1,4}호`를 지운 뒤 `/\d{6,}/`.
+- 맞추기(2026-11-21 더함): 검사 전에 줄표 `/[－—–―‐‑−ㅡ]/g`를 `-`로 바꾸고 NFKC로 맞춘 글자와, 딸린 숫자(`\p{No}`)를 빈칸으로 바꾼 뒤 NFKC로 맞춘 글자 둘 다 본다(업무일지 `privacyProblem`과 같은 방법). 맞춘 글자는 검사에만 쓰고 보내는 글자는 바꾸지 않는다.
 - 메일 모양은 넣지 않는다(시안 종류 넷). 9자리 약품코드 같은 긴 숫자도 '긴 숫자'로 막힌다 → 안내 글로 숫자를 빼고 묻게 한다.
 
 ## 10. 화면
@@ -180,6 +181,10 @@ export interface CollectorStore {
   weekNotices(weekStart: string): Promise<WeekInput[]>
   saveWeek(d: { weekStart: string; top3: WeekTop[] }): Promise<boolean>
 }
+// 일괄 요약용(2026-11-21 더함): collector.ts의 BatchReadingStore. collectorStore(supabase)가 CollectorStore와 함께 구현한다.
+// 일괄 결과에는 글 id와 답만 오므로, 보내기 전에 붙임 글자·읽은 방식을 적어 두고 거둘 때 다시 읽는다
+//   saveReading(id: string, r: { readMode: ReadMode; attachText: string }): Promise<boolean>   // read_mode·attach_text 두 칸만, 1줄 고쳤을 때만 true
+//   batchNotices(ids: string[]): Promise<{ id: string; noticeNo: string | null; body: string; readMode: ReadMode | null; attachText: string }[]>   // 상태 상관없이 id로 읽음, 실패는 던짐
 // 화면
 export type NoticeMark = { readAt: string | null; starred: boolean; memo: string; memoAt: string | null; rulesCheckedAt: string | null }
 export type NoticeView = { id: string; title: string; kind: NoticeKind; postedOn: string; noticeNo: string | null; related: boolean | null; summary: NoticeSummary | null; readMode: ReadMode | null; state: NoticeState; ruleHits: RuleHit[]; posts: GroupPost[]; mark: NoticeMark; unread: boolean }
