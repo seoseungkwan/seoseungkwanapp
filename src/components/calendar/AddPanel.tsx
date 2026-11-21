@@ -4,14 +4,17 @@ import { useEffect, useId, useState, type ReactNode } from 'react'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { isYmd } from '@/lib/analytics/dates'
-import { parseStart, slotLabel, warnings } from '@/lib/calendar/rules'
+import { HALF_DAY_NOON, parseStart, slotLabel, warnings } from '@/lib/calendar/rules'
+import type { CalAllDay } from '@/lib/calendar/shapes'
 import { APPT_MEMO_MAX, APPT_NAME_MAX } from '@/lib/storage/calendar'
-import type { ApptDraft, CalAllDay, CalAppt, CalSettings } from '@/types/calendar'
+import type { ApptDraft, CalAppt, CalSettings } from '@/types/calendar'
 import { CalIcon, Swatch, dayLabel, hm } from './CalendarToolbar'
+import { offText } from './rows/parts'
 
 // 예약 더하기·고치기 판 (spec clinic-calendar AC-5905.2·AC-5905.6·AC-5906.2, 시안 ?s=new·phone-new·overlap-warn·off-warn).
 // 판은 draft를 받아 onDraft로 돌려준다(화면이 쥔다 → 이름·차트번호가 바뀌면 화면이 비트에서 찾아 나머지 칸을 채운다).
 // 비트 찾기 자리는 화면이 넣는 lookup 칸이다: 이 판은 비트 자료를 쥐지 않는다. 경고(담당 겹침·휴무)는 lib/calendar warnings, 저장은 막지 않는다.
+// 반차 휴무(spec staff AC-7616)는 담당 칩이 '오전 휴무'·'오후 휴무'이고, 경고는 화면이 넘긴 noon(그 요일 병원 점심 시작) 앞뒤 반나절만이다.
 // [저장]은 onSave로 칸만 넘긴다(이름·메모 앞뒤 빈칸 빼고, 빈 차트번호는 null). 서버에 넣는 일은 화면이 한다
 // 시작은 쳐서 넣는 글 칸이다(spec calendar-colors AC-6002.2~4): 읽히면 바로 draft.start, 못 읽는 동안은 저장을 막고 벗어나면 오류 글
 
@@ -142,6 +145,7 @@ type AddPanelProps = {
   settings: CalSettings
   appts: readonly CalAppt[] // 경고를 볼 예약(보이는 기간)
   allday: readonly CalAllDay[] // 휴무를 볼 종일 항목
+  noon?: number // 반차 휴무 경계(분) — 그 날 요일 병원 점심 시작, 없으면 13:00
   editId?: string | null // 고치는 예약 id(자기 자신과는 겹침을 보지 않는다)
   orig?: { day: string; start: number } | null // 고치는 예약의 처음 자리(있으면 변경 안내에 적는다)
   bit: boolean // 비트 PC면 안내 상자 + lookup 자리, 아니면 손으로 적는다
@@ -162,6 +166,7 @@ export function AddPanel({
   settings,
   appts,
   allday,
+  noon = HALF_DAY_NOON,
   editId = null,
   orig = null,
   bit,
@@ -175,9 +180,10 @@ export function AddPanel({
 }: AddPanelProps) {
   const ids = useId()
   const set = (patch: Partial<AddDraft>) => onDraft({ ...draft, ...patch })
-  const isOff = (staffId: string) => allday.some((d) => d.type === 'off' && d.day === draft.day && d.staffId === staffId)
+  // 그날 휴무인 시행자 → 담당 칩 글('휴무'·반차면 '오전 휴무'·'오후 휴무')
+  const offLabels = new Map(allday.filter((d) => d.type === 'off' && d.day === draft.day).map((d) => [d.staffId, offText(d.part)]))
 
-  const found = warnings({ id: editId, day: draft.day, start: draft.start, len: draft.len, staffId: draft.staffId ?? '' }, appts, allday)
+  const found = warnings({ id: editId, day: draft.day, start: draft.start, len: draft.len, staffId: draft.staffId ?? '' }, appts, allday, noon)
   const who = `(${draft.staffMark}) ${draft.staffName}`
   const overlapText = found.overlap
     .map((id) => appts.find((a) => a.id === id))
@@ -370,8 +376,8 @@ export function AddPanel({
               onClick={() => set({ staffId: person.id, staffName: person.name, staffMark: person.mark })}
             >
               <Swatch color={person.color} />({person.mark}) {person.name}
-              {isOff(person.id) && (
-                <span className="rounded-control bg-warning-soft px-1 text-caption leading-4 font-semibold text-warning">휴무</span>
+              {offLabels.has(person.id) && (
+                <span className="rounded-control bg-warning-soft px-1 text-caption leading-4 font-semibold text-warning">{offLabels.get(person.id)}</span>
               )}
             </button>
           ))}

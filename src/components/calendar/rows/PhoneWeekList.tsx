@@ -4,14 +4,15 @@ import { useState } from 'react'
 import { ds } from '@/components/ui/classes'
 import { compareYmd } from '@/lib/analytics/dates'
 import { shownStatus } from '@/lib/calendar/rules'
-import type { BitGhost, ShownStatus } from '@/lib/calendar/shapes'
-import type { CalAllDay, CalAppt, CalSettings } from '@/types/calendar'
+import type { BitGhost, CalAllDay, ShownStatus } from '@/lib/calendar/shapes'
+import type { CalAppt, CalSettings } from '@/types/calendar'
 import { apptColor, CAL_TONES } from '../colors'
 import { allDayChipClass, allDayText, apptLabel, dateNum, dayLabel, ghostLabel, hm, MovedMark, weekdayName } from './parts'
 
 // 폰 주 보기(768px 미만, spec clinic-calendar AC-5905.8·AC-5906.2, 시안 ?s=phone-week·기본값 7번).
 // 날짜별 목록: 날짜 줄(요약) + 종일 칩 + 펼치면 그날 예약 줄. 처음에는 오늘만 펼친다. 울타리 안 부품: props로만 받고 누름은 콜백으로만 넘긴다.
-// 받은 휴진일(closedDates, spec clinic-profile AC-6603.3)은 날짜 줄에 '휴진' + 카드 회색. 펼치기·예약 줄·+ 종일은 그대로다
+// 받은 휴진일(closedDates, spec clinic-profile AC-6603.3)은 날짜 줄에 '휴진' + 카드 회색. 펼치기·예약 줄·+ 종일은 그대로다.
+// 반차 휴무 칩은 같은 모양에 글만 '오전 휴무'·'오후 휴무'(parts allDayText, spec staff AC-7616.1)
 
 export type PhoneWeekListProps = {
   days: readonly string[]

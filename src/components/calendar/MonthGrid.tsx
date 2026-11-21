@@ -1,14 +1,16 @@
 import { ds } from '@/components/ui/classes'
 import { addDays, compareYmd, weekdayOf, weekStartOf } from '@/lib/analytics/dates'
 import { monthCells } from '@/lib/calendar/counts'
-import type { CalAllDay, CalCountRow, CalSettings } from '@/types/calendar'
+import type { CalAllDay } from '@/lib/calendar/shapes'
+import type { CalCountRow, CalSettings } from '@/types/calendar'
 import { allDayChipClass, allDayText, dateNum, dayLabel } from './rows/parts'
 
 // 월 보기(spec clinic-calendar AC-5905.1·AC-5906.3, 시안 ?s=month·기본값 6번). 목록이 아니라 날마다 수만 그린다(monthCells):
 // `예약 N`(취소 뺌) · 종일 칩 · 종류별 수(설정 차례, 지운 종류는 뒤) · `안 옴 N`(오늘 전 날만) · `변경 N`.
 // 월~일 7칸으로 그 달을 덮는 주 전부. 날을 누르면 그날 일 보기(onDay). 이름·차트번호 없는 수 세기 줄만 받는다.
 // 달 밖 날은 옅은 바탕 + muted 글(시안은 faint 글이지만 UI_GUIDE '대비': 글자는 muted 이상).
-// 병원 정보 휴진일(closedDates, spec clinic-profile AC-6603.3)은 칸에 '휴진' + 회색 바탕. 수는 그대로 세고 누르면 그날 일 보기다
+// 병원 정보 휴진일(closedDates, spec clinic-profile AC-6603.3)은 칸에 '휴진' + 회색 바탕. 수는 그대로 세고 누르면 그날 일 보기다.
+// 반차 휴무 칩은 '오전 휴무'·'오후 휴무'(rows/parts allDayText, spec staff AC-7616.1)
 
 export type MonthGridProps = {
   month: string // 'YYYY-MM'

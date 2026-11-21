@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_CAL_SETTINGS, type CalAllDay, type CalAppt, type CalStaff } from '@/types/calendar'
+import type { CalAllDay } from '@/lib/calendar/shapes'
+import { DEFAULT_CAL_SETTINGS, type CalAppt, type CalStaff } from '@/types/calendar'
 import { PhoneWeekList, type PhoneWeekListProps } from './PhoneWeekList'
 
 // 폰 주 보기(768px 미만, spec clinic-calendar AC-5905.8, 시안 ?s=phone-week·기본값 7번): 날짜별 목록, 오늘만 펼침, 날짜 줄을 누르면 펼치고 접는다.
@@ -197,5 +198,22 @@ describe('AC-6603.3: 폰 주 보기 — 휴진일(병원 정보)은 날짜 줄�
   it('AC-6603.3: 휴진일을 받지 않으면 "휴진"이 없다', () => {
     renderList()
     expect(screen.queryByText('휴진')).toBeNull()
+  })
+})
+
+describe('AC-7616.1: 폰 주 보기의 반차 휴무 칩', () => {
+  it("AC-7616.1: part가 있는 휴무 칩은 '{이름} 오전 휴무'·'{이름} 오후 휴무'(그 시행자 색, 지금 칩 모양 그대로)이고 누르면 onAllDay(날짜)다", () => {
+    const allday: CalAllDay[] = [
+      { id: 'h1', day: '2026-11-16', type: 'off', memo: null, staffId: 'na', staffName: '윤○○', part: 'am' },
+      { id: 'h2', day: '2026-11-19', type: 'off', memo: null, staffId: 'gone', staffName: '퇴사○○', part: 'pm' },
+      ...ALLDAY,
+    ]
+    const { props } = renderList({ allday })
+    const am = screen.getByRole('button', { name: '(나) 윤○○ 오전 휴무' })
+    expect(am.className).toContain('bg-cal-teal-soft')
+    expect(screen.getByRole('button', { name: '퇴사○○ 오후 휴무' }).className).toContain('bg-cal-gray-soft')
+    expect(screen.getByRole('button', { name: '(나) 윤○○ 휴무' })).toBeTruthy()
+    fireEvent.click(am)
+    expect(props.onAllDay).toHaveBeenLastCalledWith('2026-11-16')
   })
 })

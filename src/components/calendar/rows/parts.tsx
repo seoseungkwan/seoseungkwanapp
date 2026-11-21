@@ -1,7 +1,7 @@
 import { weekdayOf } from '@/lib/analytics/dates'
 import { slotLabel } from '@/lib/calendar/rules'
-import type { BitGhost, ShownStatus } from '@/lib/calendar/shapes'
-import type { CalAllDay, CalAppt, CalStaff } from '@/types/calendar'
+import type { BitGhost, CalAllDay, ShownStatus } from '@/lib/calendar/shapes'
+import type { CalAppt, CalStaff } from '@/types/calendar'
 import { CAL_TONES, staffColor } from '../colors'
 
 // 예약표 그리기 부품이 같이 쓰는 글·표시(spec clinic-calendar design.md '화면', 시안 hm·MK·adChip). 울타리 안: props로 받은 값만 그린다
@@ -93,11 +93,16 @@ export function Hatch({ kind, className }: { kind: keyof typeof HATCH; className
   )
 }
 
-/** 종일 항목 글: 메모 그대로 · 휴무는 `(표시) 이름 휴무`(목록에 없는 시행자는 표시 없이) */
+/** 휴무 글: 반차 휴무(part)는 '오전 휴무'·'오후 휴무', 종일은 '휴무'(spec staff AC-7616.1) */
+export function offText(part: CalAllDay['part']): string {
+  return part === 'am' ? '오전 휴무' : part === 'pm' ? '오후 휴무' : '휴무'
+}
+
+/** 종일 항목 글: 메모 그대로 · 휴무는 `(표시) 이름 휴무`(반차면 `오전 휴무`·`오후 휴무`, 목록에 없는 시행자는 표시 없이) */
 export function allDayText(item: CalAllDay, staff: readonly CalStaff[]): string {
   if (item.type === 'memo') return item.memo ?? ''
   const mark = staff.find((s) => s.id === item.staffId)?.mark
-  return `${mark ? `(${mark}) ` : ''}${item.staffName ?? ''} 휴무`
+  return `${mark ? `(${mark}) ` : ''}${item.staffName ?? ''} ${offText(item.part)}`
 }
 
 /** 종일 칩 모양: 메모 = 회색, 휴무 = 그 시행자 옅은 색 + 왼쪽 3px 띠 */

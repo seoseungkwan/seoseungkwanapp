@@ -2,7 +2,8 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { CalAllDay, CalAppt, CalSettings } from '@/types/calendar'
+import type { CalAllDay } from '@/lib/calendar/shapes'
+import type { CalAppt, CalSettings } from '@/types/calendar'
 import { AddPanel, draftOf, newDraft, type AddDraft } from './AddPanel'
 
 // 예약 더하기·고치기 판 (spec clinic-calendar AC-5905.2·AC-5905.6, 시안 ?s=new·phone-new·overlap-warn·off-warn).
@@ -232,6 +233,70 @@ describe('AC-5905.2: 경고(저장은 됨) — 담당 겹침·휴무인 담당',
     cleanup()
     draw({ mode: 'edit', editId: 'a1', start: draftOf(appt({})) })
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
+
+describe('AC-7616.1·AC-7616.2: 반차 휴무인 담당', () => {
+  // 11/18(수): (나) 오전 반차 휴무 · (다) 오후 반차 휴무 · (라) 종일 휴무(part null)
+  const HALF: CalAllDay[] = [
+    { id: 'h1', day: '2026-11-18', type: 'off', memo: null, staffId: 'na', staffName: '윤○○', part: 'am' },
+    { id: 'h2', day: '2026-11-18', type: 'off', memo: null, staffId: 'da', staffName: '조○○', part: 'pm' },
+    { id: 'h3', day: '2026-11-18', type: 'off', memo: null, staffId: 'ra', staffName: '강○○', part: null },
+  ]
+  const pick = (start: number, staffId: string, staffName: string, staffMark: string): AddDraft => ({
+    ...newDraft('2026-11-18', start),
+    name: '최○○',
+    chart: '20944',
+    staffId,
+    staffName,
+    staffMark,
+    kindId: 'dosu',
+    kindName: '도수',
+  })
+  // 담당 단추(이름이 '(표시) '로 시작) 안 휴무 칩 글
+  const tag = (mark: string) => {
+    const group = screen.getByRole('group', { name: '담당' })
+    const button = within(group)
+      .getAllByRole('button')
+      .find((b) => (b.textContent ?? '').startsWith(`(${mark}) `))
+    return button?.querySelector('span:last-child')?.textContent
+  }
+  const alerts = () => screen.queryAllByRole('alert').map((a) => a.textContent)
+
+  it("AC-7616.1: 담당 단추의 휴무 칩은 반차면 '오전 휴무'·'오후 휴무', part 없으면 지금 그대로 '휴무'다", () => {
+    draw({ allday: HALF })
+    expect(tag('나')).toBe('오전 휴무')
+    expect(tag('다')).toBe('오후 휴무')
+    expect(tag('라')).toBe('휴무')
+    expect(screen.getByRole('button', { name: /^\(가\) 한○○/ }).textContent).not.toContain('휴무')
+  })
+
+  it('AC-7616.2: 오전 휴무 담당은 시작이 13:00(기본 경계) 앞일 때만 휴무 경고다 — 저장은 막지 않는다', () => {
+    draw({ allday: HALF, start: pick(720, 'na', '윤○○', '나') })
+    expect(alerts()).toEqual(['(나) 윤○○ 담당은 11월 18일 (수) 휴무예요. 그래도 저장할 수 있어요.'])
+    expect(saveButton().textContent).toBe('그래도 저장')
+    cleanup()
+    draw({ allday: HALF, start: pick(780, 'na', '윤○○', '나') })
+    expect(alerts()).toEqual([])
+  })
+
+  it('AC-7616.2: 오후 휴무 담당은 끝이 경계 뒤일 때만 휴무 경고다', () => {
+    draw({ allday: HALF, start: pick(750, 'da', '조○○', '다') }) // 12:30–13:00
+    expect(alerts()).toEqual([])
+    cleanup()
+    draw({ allday: HALF, start: pick(760, 'da', '조○○', '다') }) // 12:40–13:10
+    expect(alerts()).toEqual(['(다) 조○○ 담당은 11월 18일 (수) 휴무예요. 그래도 저장할 수 있어요.'])
+  })
+
+  it('AC-7616.2: 경계는 화면이 넘긴 noon(그 요일 병원 점심 시작)이다. 종일 휴무는 시간과 상관없이 지금 그대로 경고다', () => {
+    draw({ allday: HALF, noon: 720, start: pick(750, 'na', '윤○○', '나') }) // 점심 12:00이면 12:30 시작은 오후 일
+    expect(alerts()).toEqual([])
+    cleanup()
+    draw({ allday: HALF, noon: 720, start: pick(750, 'da', '조○○', '다') })
+    expect(alerts()).toEqual(['(다) 조○○ 담당은 11월 18일 (수) 휴무예요. 그래도 저장할 수 있어요.'])
+    cleanup()
+    draw({ allday: HALF, noon: 720, start: pick(1020, 'ra', '강○○', '라') })
+    expect(alerts()).toEqual(['(라) 강○○ 담당은 11월 18일 (수) 휴무예요. 그래도 저장할 수 있어요.'])
   })
 })
 
