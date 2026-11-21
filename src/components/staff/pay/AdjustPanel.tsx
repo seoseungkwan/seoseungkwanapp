@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { ds } from '@/components/ui/classes'
 import type { AdjustReason, PayLine } from '@/types/staff'
 import { monthNumber } from './format'
-import { smallInput, WonInput } from './parts'
+import { SEG_GROUP, smallInput, WonInput } from './parts'
 
 // 조정(±) 작은 창 (staff AC-7615.3, 시안 pay.html ① 오른쪽 .pop). 저장 단추 없이 고를 때·칸에서 나갈 때 그 줄을 바로 저장한다.
 // 까닭(일할 계산·공제·기타 + 짧은 글 30자)은 세무사 엑셀 '메모' 칸에 들어간다(taxExcel.ts)
@@ -35,7 +35,7 @@ export function AdjustPanel({ line, name, onSave, onClose }: { line: PayLine; na
         <div className="flex flex-col gap-1">
           <span className="text-caption text-muted">더하거나 뺄 금액</span>
           <div className="flex flex-wrap items-center gap-1.5 text-small text-ink">
-            <span role="group" aria-label="더하기·빼기" className={ds.segment.group}>
+            <span role="group" aria-label="더하기·빼기" className={SEG_GROUP}>
               <button
                 type="button"
                 aria-pressed={!minus}
@@ -65,7 +65,7 @@ export function AdjustPanel({ line, name, onSave, onClose }: { line: PayLine; na
         </div>
         <div className="flex flex-col gap-1">
           <span className="text-caption text-muted">까닭</span>
-          <span role="group" aria-label="까닭" className={`${ds.segment.group} self-start`}>
+          <span role="group" aria-label="까닭" className={`${SEG_GROUP} self-start`}>
             {REASONS.map((reason) => (
               <button
                 key={reason}

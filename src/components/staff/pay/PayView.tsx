@@ -13,7 +13,7 @@ import type { PayItem, PayLine } from '@/types/staff'
 import { IncentivePart } from './IncentivePart'
 import { LaborCost } from './LaborCost'
 import { MonthPay } from './MonthPay'
-import { MonthNav, Reading, ToolRow } from './parts'
+import { MonthNav, Reading, SEG_GROUP, ToolRow } from './parts'
 import { monthLeaves, remainingIn, taxInput } from './payPeople'
 import { RulesEditor } from './RulesEditor'
 import { SlipPart } from './SlipPart'
@@ -22,7 +22,10 @@ import { usePayData, type LoadRevenue } from './usePayData'
 
 // 급여 화면 (staff REQ-7615, design.md 6절 '급여', 시안 pay.html ①~⑧). 작은 메뉴 다섯(이달 급여·인센티브·세무사 파일·인건비·명세서)이 한 화면 안에서 바뀌고
 // 고른 칸은 주소 ?part= 하나로 기억한다(history.replaceState — 다시 그리지 않음). 달 고르기는 다섯 칸이 함께 쓴다(세무사 파일·규칙 고치기는 달이 없다).
-// 자료는 usePayData(보는 달 기준)가 읽고 저장한다. 읽기 실패는 E-STAFF-READ-FAILED + [다시 불러오기], 저장 실패는 E-STAFF-SAVE-FAILED(값은 화면에 남음).
+// 자료는 usePayData(보는 달 기준)가 읽고 저장한다. 읽기 실패는 E-STAFF-READ-FAILED + [다시 불러오기], 저장 실패는 E-STAFF-SAVE-FAILED(값은 화면에 남음),
+// [엑셀 받기] 실패는 E-STAFF-EXCEL-FAILED(AC-7615.7).
+// 보는 달의 줄은 여기서 한 번 만든다(AC-7615.11): 그달 재직자마다 '저장된 줄 ?? 새 줄(newLine — 고정 수당 포함)'을
+// 이달 급여·인센티브·세무사 엑셀·인건비·명세서가 같이 쓴다. 인건비의 다른 달은 그 달 저장된 줄로 센다.
 // 페이지 제목 '직원'과 탭 작은 메뉴는 staff/layout이 그린다
 
 export const PAY_PARTS = ['month', 'incentive', 'files', 'cost', 'slip'] as const
@@ -54,7 +57,17 @@ export function PayView({ base, today, initialPart, loadRevenue }: PayViewProps)
   }
 
   const find = (m: string, staffId: string): PayLine | null => data?.lines.find((line) => line.month === m && line.staffId === staffId) ?? null
-  const lineOf = (staffId: string): PayLine => find(month, staffId) ?? newLine({ month, staffId, rules: data?.rules ?? [] })
+  // 보는 달 줄: 그달 재직자마다 저장된 줄, 없으면 새 줄(명단 차례)
+  const monthLines = useMemo(
+    () =>
+      data === null
+        ? []
+        : members.map(
+            (member) => data.lines.find((line) => line.month === month && line.staffId === member.id) ?? newLine({ month, staffId: member.id, rules: data.rules }),
+          ),
+    [data, members, month],
+  )
+  const lineOf = (staffId: string): PayLine => monthLines.find((line) => line.staffId === staffId) ?? newLine({ month, staffId, rules: data?.rules ?? [] })
   const prevOf = (staffId: string) => find(prevMonth, staffId)
   const payMonth = data?.months.find((row) => row.month === month) ?? null
 
@@ -85,7 +98,7 @@ export function PayView({ base, today, initialPart, loadRevenue }: PayViewProps)
         hospitalName: clinic.name,
         items,
         members,
-        lines: data.lines,
+        lines: monthLines,
         overtime,
         leaves: data.leaves,
         settings,
@@ -135,7 +148,8 @@ export function PayView({ base, today, initialPart, loadRevenue }: PayViewProps)
           today={today}
           members={members}
           items={items}
-          lines={data.lines}
+          saved={data.lines}
+          monthLines={monthLines}
           months={data.months}
           revenue={pay.revenue}
           onMonth={setMonth}
@@ -181,7 +195,7 @@ export function PayView({ base, today, initialPart, loadRevenue }: PayViewProps)
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      <div role="group" aria-label="급여 안 메뉴" className={`${ds.segment.group} self-start print:hidden`}>
+      <div role="group" aria-label="급여 안 메뉴" className={`${SEG_GROUP} self-start print:hidden`}>
         {PAY_PARTS.map((key) => (
           <button
             key={key}
@@ -201,7 +215,7 @@ export function PayView({ base, today, initialPart, loadRevenue }: PayViewProps)
       )}
       {excelFailed && part === 'month' && (
         <div className="print:hidden">
-          <ErrorCard code="E-STAFF-FILE-FAILED" />
+          <ErrorCard code="E-STAFF-EXCEL-FAILED" />
         </div>
       )}
       {body()}

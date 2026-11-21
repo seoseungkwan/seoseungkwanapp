@@ -14,7 +14,9 @@ import type { RevenueRead } from './usePayData'
 
 // '인건비' 칸 (staff AC-7615.9, 시안 pay.html ⑦). 인건비 = 지급 합계(이달 급여 표 합계) + 병원 부담분(세무사가 알려준 금액, 원장이 한 줄 적음).
 // 숫자 칸 셋 → 병원 부담분 칸([저장]으로만 저장 — 금액 칸 가운데 하나뿐) → 6달 그림 둘과 달별 숫자 표 → 사람별 지급 합계 표.
-// 매출은 웹앱 매출 자료(sales_days)가 있는 달만 쓴다(없거나 못 읽으면 '매출 자료 없음')
+// 매출은 웹앱 매출 자료(sales_days)가 있는 달만 쓴다(없거나 못 읽으면 '매출 자료 없음').
+// 보는 달은 이달 급여와 같은 줄(monthLines — 저장 안 한 재직자는 새 줄)로 세고 '{n}명'은 그달 재직자 수, 다른 달은 그 달 저장된 줄로 센다(AC-7615.11).
+// 저장된 급여 줄이 하나도 없는 달은 그림의 막대·% 점과 달별 표의 지급 합계·인건비·매출 대비를 비운다(AC-7615.9)
 
 const SPAN = 6
 
@@ -23,17 +25,21 @@ export type LaborCostProps = {
   today: string
   members: readonly StaffMember[]
   items: readonly PayItem[]
-  lines: readonly PayLine[]
+  /** 저장된 급여 줄(보는 달과 앞 다섯 달) */
+  saved: readonly PayLine[]
+  /** 보는 달 줄: 그달 재직자마다 저장된 줄 ?? 새 줄(명단 차례) */
+  monthLines: readonly PayLine[]
   months: readonly PayMonth[]
   revenue: RevenueRead
   onMonth: (month: string) => void
   onSaveMonth: (row: PayMonth) => Promise<boolean>
 }
 
-const th = 'whitespace-nowrap border-b border-line bg-canvas px-3 py-2 text-right text-caption font-semibold text-muted'
-const td = 'whitespace-nowrap border-b border-line px-3 py-2 text-right text-small text-ink'
+// 줄맞춤은 칸마다 하나만 붙인다(둘이면 CSS 차례로 엉뚱한 쪽이 이긴다): 글 칸은 왼쪽, 숫자 칸은 오른쪽(시안)
+const th = 'whitespace-nowrap border-b border-line bg-canvas px-3 py-2 text-caption font-semibold text-muted'
+const td = 'whitespace-nowrap border-b border-line px-3 py-2 text-small text-ink'
 const rowHead = 'whitespace-nowrap border-b border-line px-3 py-2 text-left text-small font-normal text-ink-2'
-const foot = 'whitespace-nowrap bg-canvas px-3 py-2 text-right text-small font-semibold text-ink'
+const foot = 'whitespace-nowrap bg-canvas px-3 py-2 text-small font-semibold text-ink'
 const swatch = 'mr-1.5 inline-block size-2.5 rounded-control align-middle'
 
 function Tile({ label, value, detail }: { label: string; value: string; detail: string }) {
@@ -104,19 +110,24 @@ function BurdenRow({ month, today, row, onSave }: { month: string; today: string
 }
 
 export function LaborCost(props: LaborCostProps) {
-  const { month, members, items, lines, months, revenue } = props
+  const { month, members, items, saved, monthLines, months, revenue } = props
   const prev = addMonths(month, -1)
   const span = recentMonths(month, SPAN)
   const rowOf = (m: string) => months.find((row) => row.month === m) ?? null
+  // 보는 달은 monthLines, 다른 달은 그 달 저장된 줄
+  const linesOf = (m: string) => (m === month ? monthLines : saved.filter((line) => line.month === m))
   const series: LaborMonth[] = span.map((m) => {
     const employer = rowOf(m)?.employerCost ?? 0
-    const { pay, cost } = laborCost(lines, items, m, employer)
+    const { pay, cost } = laborCost(linesOf(m), items, m, employer)
     const sales = revenue.state === 'ready' ? monthRevenue(revenue.days, m) : null
-    return { month: m, pay, employer, cost, revenue: sales, ratio: revenueRatio(cost, sales) }
+    const empty = !saved.some((line) => line.month === m)
+    return { month: m, empty, pay, employer, cost, revenue: sales, ratio: empty ? null : revenueRatio(cost, sales) }
   })
+  // 숫자 칸 셋은 이달 급여와 같은 줄로 센다(그림에서 비는 달이어도)
   const now = series[series.length - 1]
-  const count = laborCost(lines, items, month, null).count
-  const prevPay = laborCost(lines, items, prev, null).pay
+  const nowRatio = revenueRatio(now.cost, now.revenue)
+  const count = members.length
+  const prevPay = laborCost(linesOf(prev), items, prev, null).pay
   const diff = now.pay - prevPay
   const payDetail =
     diff === 0
@@ -124,10 +135,10 @@ export function LaborCost(props: LaborCostProps) {
       : `${count}명 · ${monthNumber(prev)}월보다 ${won(Math.abs(diff))}원 ${diff > 0 ? '많아요' : '적어요'}`
   const employerNow = rowOf(month)?.employerCost ?? null
   const ratioDetail =
-    revenue.state === 'reading' ? '매출을 읽고 있어요' : now.ratio === null ? '매출 자료 없음' : `인건비 ${won(now.cost)}원 ÷ 매출 ${won(now.revenue ?? 0)}원`
+    revenue.state === 'reading' ? '매출을 읽고 있어요' : nowRatio === null ? '매출 자료 없음' : `인건비 ${won(now.cost)}원 ÷ 매출 ${won(now.revenue ?? 0)}원`
 
-  // 사람별(그달 재직자, 명단 차례)
-  const find = (m: string, staffId: string) => lines.find((line) => line.month === m && line.staffId === staffId) ?? null
+  // 사람별(그달 재직자, 명단 차례) — 보는 달 줄, 앞 달은 저장된 줄
+  const find = (m: string, staffId: string) => linesOf(m).find((line) => line.staffId === staffId) ?? null
   const people = members.map((member) => {
     const line = find(month, member.id)
     const before = find(prev, member.id)
@@ -143,9 +154,9 @@ export function LaborCost(props: LaborCostProps) {
   }, 0)
 
   const rows: { label: string; cells: string[] }[] = [
-    { label: '지급 합계', cells: series.map((m) => won(m.pay)) },
+    { label: '지급 합계', cells: series.map((m) => (m.empty ? '–' : won(m.pay))) },
     { label: '병원 부담분', cells: series.map((m) => won(m.employer)) },
-    { label: '인건비', cells: series.map((m) => won(m.cost)) },
+    { label: '인건비', cells: series.map((m) => (m.empty ? '–' : won(m.cost))) },
     { label: '매출', cells: series.map((m) => (m.revenue === null ? (revenue.state === 'reading' ? '…' : '매출 자료 없음') : won(m.revenue))) },
     { label: '매출 대비', cells: series.map((m) => (m.ratio === null ? '–' : ratioText(m.ratio))) },
   ]
@@ -153,10 +164,10 @@ export function LaborCost(props: LaborCostProps) {
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <ToolRow left={<MonthNav month={month} onMonth={props.onMonth} />} />
-      <div className="grid min-w-0 gap-3 md:grid-cols-3">
+      <div className="grid min-w-0 grid-cols-3 gap-3">
         <Tile label="지급 합계" value={`${won(now.pay)}원`} detail={payDetail} />
         <Tile label="병원 부담분" value={employerNow === null ? '–' : `${won(employerNow)}원`} detail="세무사가 알려준 금액" />
-        <Tile label="매출 대비 인건비" value={now.ratio === null ? '–' : ratioText(now.ratio)} detail={ratioDetail} />
+        <Tile label="매출 대비 인건비" value={nowRatio === null ? '–' : ratioText(nowRatio)} detail={ratioDetail} />
       </div>
       <BurdenRow key={month} month={month} today={props.today} row={rowOf(month)} onSave={props.onSaveMonth} />
       <section className={`${ds.panel} flex min-w-0 flex-col gap-2 px-4 py-3`}>
@@ -181,9 +192,9 @@ export function LaborCost(props: LaborCostProps) {
             <table aria-label="달별 인건비 표" className="mt-2 w-full border-collapse text-small tabular-nums">
               <thead>
                 <tr>
-                  <th scope="col" className={th} />
+                  <th scope="col" className={`${th} text-left`} />
                   {span.map((m) => (
-                    <th key={m} scope="col" className={th}>{`${monthNumber(m)}월`}</th>
+                    <th key={m} scope="col" className={`${th} text-right`}>{`${monthNumber(m)}월`}</th>
                   ))}
                 </tr>
               </thead>
@@ -194,7 +205,7 @@ export function LaborCost(props: LaborCostProps) {
                       {row.label}
                     </th>
                     {row.cells.map((cell, i) => (
-                      <td key={span[i]} className={td}>
+                      <td key={span[i]} className={`${td} text-right`}>
                         {cell}
                       </td>
                     ))}
@@ -217,11 +228,11 @@ export function LaborCost(props: LaborCostProps) {
                 <th scope="col" className={`${th} text-left`}>
                   직종 · 근무 형태
                 </th>
-                <th scope="col" className={th}>{`${monthNumber(month)}월 지급 합계 (원)`}</th>
-                <th scope="col" className={th}>
+                <th scope="col" className={`${th} text-right`}>{`${monthNumber(month)}월 지급 합계 (원)`}</th>
+                <th scope="col" className={`${th} text-right`}>
                   그중 인센티브
                 </th>
-                <th scope="col" className={th}>{`${monthNumber(prev)}월보다`}</th>
+                <th scope="col" className={`${th} text-right`}>{`${monthNumber(prev)}월보다`}</th>
               </tr>
             </thead>
             <tbody>
@@ -231,19 +242,19 @@ export function LaborCost(props: LaborCostProps) {
                     {member.name}
                   </th>
                   <td className={`${td} text-left text-ink-2`}>{`${jobLabel(member)} · ${EMPLOYMENT_LABEL[member.employment]}`}</td>
-                  <td className={`${td} font-semibold`}>{won(sum.total)}</td>
-                  <td className={td}>{line === null || line.incentives.length === 0 ? '–' : won(sum.incentive)}</td>
-                  <td className={`${td} ${change === 0 ? 'text-muted' : ''}`}>{change === null ? '–' : change === 0 ? '같음' : signedWon(change)}</td>
+                  <td className={`${td} text-right font-semibold`}>{won(sum.total)}</td>
+                  <td className={`${td} text-right`}>{line === null || line.incentives.length === 0 ? '–' : won(sum.incentive)}</td>
+                  <td className={`${td} text-right ${change === 0 ? 'text-muted' : ''}`}>{change === null ? '–' : change === 0 ? '같음' : signedWon(change)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr>
                 <td className={`${foot} text-left`}>{`합계 (${people.length}명)`}</td>
-                <td className={foot} />
-                <td className={foot}>{won(peopleTotal)}</td>
-                <td className={foot}>{won(peopleIncentive)}</td>
-                <td className={foot}>{signedWon(peopleTotal - peoplePrev)}</td>
+                <td className={`${foot} text-left`} />
+                <td className={`${foot} text-right`}>{won(peopleTotal)}</td>
+                <td className={`${foot} text-right`}>{won(peopleIncentive)}</td>
+                <td className={`${foot} text-right`}>{signedWon(peopleTotal - peoplePrev)}</td>
               </tr>
             </tfoot>
           </table>

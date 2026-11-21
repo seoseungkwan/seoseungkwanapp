@@ -84,7 +84,7 @@ export function SlipPart(props: SlipPartProps) {
         {person === null ? (
           <p className="text-small text-muted">이달 재직자가 없어요.</p>
         ) : (
-          <div className="grid min-w-0 items-start gap-3 md:grid-cols-[200px_minmax(0,1fr)]">
+          <div className="grid min-w-0 grid-cols-[200px_minmax(0,1fr)] items-start gap-3">
             <div role="group" aria-label="사람 고르기" className="flex min-w-0 flex-col gap-1">
               <span className="px-0.5 pb-1 text-caption text-muted">사람 고르기</span>
               {members.map((member) => {

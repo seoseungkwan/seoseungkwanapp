@@ -5,7 +5,11 @@ import { addMonths } from '@/lib/analytics/dates'
 import { ds } from '@/components/ui/classes'
 import { monthNumber, monthTitle, parseWon, won } from './format'
 
-// 급여 화면 여러 칸이 같이 쓰는 작은 부품 (staff REQ-7615, 시안 pay.html). 모양은 ds(components/ui/classes.ts)·globals.css 토큰만 쓴다
+// 급여 화면 여러 칸이 같이 쓰는 작은 부품 (staff REQ-7615, 시안 pay.html). 모양은 ds(components/ui/classes.ts)·globals.css 토큰만 쓴다.
+// 폰 전용 모양은 두지 않는다(AC-7611.4) — 폭에 따라 칸 나눔·쌓임이 바뀌는 클래스를 쓰지 않는다
+
+/** 단추 묶음 틀(시안 .seg): ds 단추 묶음 틀에서 폰 칸 나눔만 뺀 것 — 폰에서도 PC 모양 그대로다(근무표 schedule/parts.tsx와 같다) */
+export const SEG_GROUP = 'inline-flex shrink-0 overflow-clip rounded-control border border-line-strong bg-surface'
 
 // 표 안 금액 칸(시안 .in): 30px · 오른쪽 정렬 · 고정폭 숫자. 노란 칸(시안 .chg)은 바꾼 값·적은 실적
 const cellBase =
