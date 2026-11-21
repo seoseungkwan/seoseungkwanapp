@@ -176,6 +176,58 @@ describe('AC-7514.4 찾기·고르기', () => {
   })
 })
 
+describe('AC-7514.4 같은 이름 코드', () => {
+  // 이름(normalizeName: 빈칸·영문 글자 크기 무시)이 같은 다른 코드가 있는 처방 달
+  const SAME_NAME: InvBitMonth[] = [
+    {
+      month: '2026-11',
+      rx: [rx('XE0410', '탄력붕대 4인치', 400), rx('XE0411', '탄력붕대  4인치', 120), rx('XB1103', '반깁스(Fiberglass) 3인치', 205), rx('XB1199', '반깁스(FIBERGLASS) 3인치', 30), rx('XE0610', '탄력붕대 6인치', 121)],
+    },
+  ]
+  const codeBox = (code: string) => {
+    const row = within(dialog()).getByText(code).closest('tr')
+    if (row === null) throw new Error(`${code} 줄 없음`)
+    return { row, box: within(row).getByRole('checkbox') as HTMLInputElement }
+  }
+
+  it('AC-7514.4: 한 코드를 고르면 이름이 같은 다른 코드는 "같은 이름 고름"이고 고를 수 없으며, 풀면 다시 고를 수 있다', async () => {
+    store.months.mockResolvedValue(SAME_NAME)
+    const { user } = await openReady()
+    expect(within(dialog()).queryByText('같은 이름 고름')).toBeNull()
+    for (const code of ['XE0410', 'XE0411', 'XB1103', 'XB1199']) expect(codeBox(code).box.disabled).toBe(false)
+
+    await user.click(codeBox('XE0410').box)
+    expect(within(codeBox('XE0411').row).getByText('같은 이름 고름')).toBeTruthy()
+    expect(codeBox('XE0411').box.disabled).toBe(true)
+    expect(within(codeBox('XE0410').row).queryByText('같은 이름 고름')).toBeNull()
+    expect(codeBox('XE0610').box.disabled).toBe(false)
+    await user.click(codeBox('XE0411').box)
+    expect(codeBox('XE0411').box.checked).toBe(false)
+    expect(addButton().textContent).toBe('1개 더하기')
+
+    // 영문 글자 크기만 달라도 같은 이름
+    await user.click(codeBox('XB1199').box)
+    expect(within(codeBox('XB1103').row).getByText('같은 이름 고름')).toBeTruthy()
+    expect(codeBox('XB1103').box.disabled).toBe(true)
+    expect(addButton().textContent).toBe('2개 더하기')
+
+    // 풀면 다시 고를 수 있다
+    await user.click(codeBox('XE0410').box)
+    expect(within(codeBox('XE0411').row).queryByText('같은 이름 고름')).toBeNull()
+    expect(codeBox('XE0411').box.disabled).toBe(false)
+    await user.click(codeBox('XE0411').box)
+    expect(codeBox('XE0411').box.checked).toBe(true)
+    expect(codeBox('XE0410').box.disabled).toBe(true)
+
+    await user.click(addButton())
+    await waitFor(() => expect(store.add).toHaveBeenCalledTimes(1))
+    expect(store.add).toHaveBeenCalledWith('c-drug', [
+      { code: 'XE0411', name: '탄력붕대 4인치' },
+      { code: 'XB1199', name: '반깁스(FIBERGLASS) 3인치' },
+    ])
+  })
+})
+
 describe('AC-7514.4 [n개 더하기]', () => {
   it('AC-7514.4: 누르면 고른 분류에 고른 코드를 목록 차례로 한 번에 넣고(addBitItems), 성공하면 목록을 다시 읽게 알리고 판을 닫는다', async () => {
     const { user, onAdded, onClose } = await openReady()

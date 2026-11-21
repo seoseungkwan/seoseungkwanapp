@@ -89,6 +89,16 @@ const OWN_ROWS: Aoa = [
 const ownFile = (rows: Aoa = OWN_ROWS) => xlsxFile('재고목록_2026.xlsx', [['재고현황', [OWN_HEADER, ...rows]], ['거래처', [['이름', '전화']]]])
 const OWN_MAPPING = { category: 0, name: 1, unit: 2, minQty: 4, qty: 3, expiry: 5, vendor: 6, unitPrice: 7 }
 
+// 앞 줄에 전화번호 모양이 있는 엑셀(양식 아님). 머리 글 가운데 분류·단위·최소 수량·거래처·단가만 양식 칸 이름과 똑같다
+const PRIVATE_HEADER = ['분류', '품명', '단위', '현재고', '최소 수량', '유효기간', '거래처', '단가', '비고']
+const PRIVATE_ROWS: Aoa = [
+  ['약품', '히알루론산 주사 2mL', '개', 6, 10, '2027-03-31', '한빛약품', 18500, '담당 010-1234-5678'],
+  ['약품', '디클로페낙 겔 100g', '개', 12, 5, '27.08', '한빛약품', 3300, null],
+]
+const privateFile = () => xlsxFile('재고목록_담당.xlsx', [['재고현황', [PRIVATE_HEADER, ...PRIVATE_ROWS]]])
+const PRIVATE_NOTE = '개인정보 모양이 있어 AI에 보내지 않았어요. 칸을 직접 골라 주세요.'
+const FIELD_NAMES = ['분류', '물품 이름', '단위', '최소 수량', '지금 수량', '가장 빠른 유통기한', '거래처', '단가']
+
 const jsonAnswer = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } })
 
 function deferred<T>() {
@@ -228,13 +238,56 @@ describe('AC-7509.2: 갖고 있던 엑셀 — 머리 줄·앞 줄을 칸 맞춤 
     expect(screen.getByText('6줄')).toBeTruthy()
   })
 
-  it('AC-7509.2: 앞 줄에 전화번호 모양이 있으면 보내지 않고 E-INV-PRIVATE 오류 카드다', async () => {
-    const rows: Aoa = [['주사약', '히알루론산 주사 2mL', '개', 6, 10, null, '한빛약품', 18500, '담당 010-1234-5678'], ...OWN_ROWS.slice(1)]
-    renderPreview(ownFile(rows))
-    await screen.findByRole('alert')
-    expectErrorCard('E-INV-PRIVATE')
+  it('AC-7509.2·AC-7509.5: 앞 줄에 전화번호 모양이 있으면 보내지 않고, 양식 칸 이름과 똑같은 머리 글만 맞춘 칸 맞춤과 안내 글이다(오류 카드 없음)', async () => {
+    renderPreview(privateFile())
+    expect(await screen.findByText(PRIVATE_NOTE)).toBeTruthy()
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(screen.queryByRole('table')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByText('AI가 칸을 맞추는 중…')).toBeNull()
+    expect(screen.queryByText('AI가 맞춘 칸')).toBeNull()
+    expect(screen.queryByText(/AI가 칸을 맞췄어요/)).toBeNull()
+    expect(chosen('분류에 넣을 엑셀 칸')).toBe('A 분류')
+    expect(chosen('물품 이름에 넣을 엑셀 칸')).toBe('넣지 않음')
+    expect(chosen('단위에 넣을 엑셀 칸')).toBe('C 단위')
+    expect(chosen('최소 수량에 넣을 엑셀 칸')).toBe('E 최소 수량')
+    expect(chosen('지금 수량에 넣을 엑셀 칸')).toBe('넣지 않음')
+    expect(chosen('가장 빠른 유통기한에 넣을 엑셀 칸')).toBe('넣지 않음')
+    expect(chosen('거래처에 넣을 엑셀 칸')).toBe('G 거래처')
+    expect(chosen('단가에 넣을 엑셀 칸')).toBe('H 단가')
+  })
+
+  it('AC-7509.5: 개인정보 모양으로 보내지 않았을 때 칸을 직접 고르면 미리 보기로 넘어가 넣을 수 있다(그 뒤에도 보내지 않음)', async () => {
+    const { onDone } = renderPreview(privateFile())
+    await screen.findByText(PRIVATE_NOTE)
+    // 물품 이름 칸이 없으면 모든 줄이 건너뜀이고 [넣기]는 꺼져 있다
+    expect(bodyRows().map((tr) => cellTexts(tr)[1])).toEqual(['건너뜀', '건너뜀'])
+    expect(insertButton().getAttribute('aria-disabled')).toBe('true')
+
+    await userEvent.selectOptions(select('물품 이름에 넣을 엑셀 칸'), '1')
+    await userEvent.selectOptions(select('지금 수량에 넣을 엑셀 칸'), '3')
+    expect(chosen('물품 이름에 넣을 엑셀 칸')).toBe('B 품명')
+    expect(cellTexts(rowOf('히알루론산 주사 2mL'))[1]).toBe('고침')
+    expect(cellTexts(rowOf('디클로페낙 겔 100g'))[1]).toBe('새 물품')
+    await userEvent.click(insertButton())
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1))
+    const plan = importMock.mock.calls[0][0]
+    expect(plan.adds.map((add) => add.name)).toEqual(['디클로페낙 겔 100g'])
+    expect(plan.counts).toEqual([
+      { name: '히알루론산 주사 2mL', qty: 6 },
+      { name: '디클로페낙 겔 100g', qty: 12 },
+    ])
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('AC-7509.5: 칸 맞춤 경로가 E-INV-PRIVATE로 답하면 다시 보내지 않고 같은 직접 고르기 칸 맞춤이다', async () => {
+    fetchMock.mockResolvedValue(jsonAnswer({ code: 'E-INV-PRIVATE' }, 422))
+    renderPreview(ownFile())
+    expect(await screen.findByText(PRIVATE_NOTE)).toBeTruthy()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('alert')).toBeNull()
+    // 갖고 있던 엑셀 머리 줄(구분·품명·단위·현재고·안전재고·유효기간·구입처·단가·비고)에서 양식 칸 이름과 똑같은 것은 단위·단가뿐
+    expect(FIELD_NAMES.map((label) => chosen(`${label}에 넣을 엑셀 칸`))).toEqual(['넣지 않음', '넣지 않음', 'C 단위', '넣지 않음', '넣지 않음', '넣지 않음', '넣지 않음', 'H 단가'])
+    expect(screen.getByRole('table')).toBeTruthy()
   })
 
   it('AC-7509.2: 경로가 E-INV-NO-NAME이면 그 오류 카드다', async () => {
@@ -372,6 +425,14 @@ describe('AC-7509.3: 미리 보기 — 줄마다 엑셀 줄·상태 칩·여덟 
     expect(within(rowOf('발목 보조기 M')).getByText("지금 수량 '세 개' → 수량은 0 이상 숫자로 적어요").className).toContain('text-negative')
   })
 
+  it('AC-7509.3·AC-7503.5: 영문 글자 크기만 다른 이름 줄도 그 물품의 고침이고 바뀐 것 글이 보인다', async () => {
+    const rows: Aoa = [[...TEMPLATE_HEADER], ['사무·생활', 'a4 용지', '박스', 2, 6, null, '오피스마트', 24000]]
+    renderPreview(xlsxFile('재고-양식.xlsx', [['물품', rows]]))
+    await screen.findByRole('table')
+    expect(cellTexts(rowOf('a4 용지'))[1]).toBe('고침')
+    expect(cellTexts(rowOf('a4 용지')).at(-1)).toBe('지금 수량 4 → 6 (오늘 센 것으로 남아요)')
+  })
+
   it("AC-7509.3: 달만 적은 기한은 그 달 마지막 날로 읽었다는 글이 보인다", async () => {
     fetchMock.mockResolvedValue(jsonAnswer({ mapping: OWN_MAPPING }))
     renderPreview(ownFile())
@@ -386,6 +447,10 @@ describe('AC-7509.3: 미리 보기 — 줄마다 엑셀 줄·상태 칩·여덟 
     renderPreview(templateFile())
     await screen.findByRole('table')
     const group = screen.getByRole('group', { name: '보일 줄' })
+    // 폰 전용 모양 없음: 거르기 단추 묶음·단추에 폰 너비 맞춤(max-md:)이 없다
+    expect(group.className).toContain('inline-flex')
+    expect(group.className).not.toMatch(/max-md:/)
+    for (const button of within(group).getAllByRole('button')) expect(button.className).not.toMatch(/max-md:/)
     expect(within(group).getAllByRole('button').map((b) => b.textContent)).toEqual(['모두 8', '새 물품 2', '고침 4', '건너뜀 1', '그대로 1'])
     expect(within(group).getByRole('button', { name: '모두 8' }).getAttribute('aria-pressed')).toBe('true')
     expect(bodyRows()).toHaveLength(8)
@@ -484,6 +549,59 @@ describe('AC-7509.4: [넣기] — importItems로 넣고 목록으로, 실패하�
     expect(insertButton().textContent).toBe('넣기')
     await userEvent.click(insertButton())
     await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1))
+    expect(importMock).toHaveBeenCalledTimes(2)
+    expect(load).toHaveBeenCalledTimes(2) // 다시 넣기 전에 재고를 다시 읽었다
+  })
+
+  it('AC-7509.4: 실패 뒤 [넣기]는 재고를 다시 읽어 계획을 다시 만들고(칸 맞춤·분류 맞추기 그대로, AI 다시 안 부름) 넣는다 — 반쯤 들어간 뒤에도 겹치지 않는다', async () => {
+    fetchMock.mockResolvedValue(jsonAnswer({ mapping: OWN_MAPPING }))
+    // 첫 넣기에서 새 분류 '외용약'과 새 물품 디클로페낙까지만 들어가고(처음 수량 0) 실패했다
+    const after = {
+      categories: [...CATS, { id: 'c5', name: '외용약', sortOrder: 4 }],
+      items: [...ITEMS, item('i6', 'c5', '디클로페낙 겔 100g', '개', 5, 0, { expiry: '2027-08-31', vendor: '한빛약품', unitPrice: 3300 })],
+    }
+    load.mockResolvedValueOnce({ categories: CATS, items: ITEMS }).mockResolvedValueOnce(after)
+    importMock.mockResolvedValueOnce('failed').mockResolvedValueOnce('ok')
+    const file = ownFile()
+    const { onDone } = renderPreview(file)
+    await screen.findByRole('table')
+    await userEvent.selectOptions(select("엑셀 '주사약'을 넣을 분류"), '약품')
+    await userEvent.click(insertButton())
+    await screen.findByRole('alert')
+    expect(load).toHaveBeenCalledTimes(1)
+    expect(importMock.mock.calls[0][0].adds.map((add) => add.name)).toEqual(['디클로페낙 겔 100g', '주사기 1cc', '케토롤락 주사 30mg'])
+
+    await userEvent.click(insertButton())
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1))
+    expect(load).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const sheet = readSheet(await file.arrayBuffer())
+    if (sheet === null) throw new Error('못 읽음')
+    const categoryMap = { 주사약: '약품', 외용약: '외용약', 소모품: '소모품' }
+    const expected = previewRows({ rows: sheet.rows, rowNumbers: sheet.rowNumbers, mapping: OWN_MAPPING, categoryMap, categories: after.categories, items: after.items }).plan
+    const [plan, today] = importMock.mock.calls[1]
+    expect(plan).toEqual(expected)
+    expect(today).toBe(todayInKorea())
+    expect(plan.newCategories).toEqual(['소모품'])
+    expect(plan.adds.map((add) => add.name)).toEqual(['주사기 1cc', '케토롤락 주사 30mg'])
+    expect(plan.adds.find((add) => add.name === '케토롤락 주사 30mg')?.categoryName).toBe('약품')
+    expect(plan.counts).toContainEqual({ name: '디클로페낙 겔 100g', qty: 12 })
+  })
+
+  it('AC-7509.4: 다시 넣기 전 재고를 다시 읽지 못하면 넣지 않고 E-INV-READ-FAILED 오류 카드이며, 다시 누르면 또 읽고 넣는다', async () => {
+    importMock.mockResolvedValueOnce('failed').mockResolvedValueOnce('ok')
+    const { onDone } = renderPreview(templateFile())
+    await screen.findByRole('table')
+    await userEvent.click(insertButton())
+    await screen.findByRole('alert')
+    load.mockResolvedValueOnce('failed')
+    await userEvent.click(insertButton())
+    await waitFor(() => expectErrorCard('E-INV-READ-FAILED'))
+    expect(importMock).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('table')).toBeTruthy()
+    await userEvent.click(insertButton())
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1))
+    expect(load).toHaveBeenCalledTimes(3)
     expect(importMock).toHaveBeenCalledTimes(2)
   })
 

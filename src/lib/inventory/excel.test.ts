@@ -272,6 +272,24 @@ describe('AC-7503.5: previewRows 미리 보기와 넣기 계획', () => {
     expect(result.rows[0].status).toBe('same')
   })
 
+  it('AC-7503.5: 같은 이름은 normalizeName이 같은 것이다 — 영문 글자 크기만 달라도 지금 물품과 맞추고, 세기 줄은 지금 물품 이름으로 남는다', () => {
+    const result = preview([
+      ['약품', '리도카인 주사 2% 20ML', '병', 10, 26, '2026-12-05', '한빛약품', 1400],
+      ['치료 소모품', '주사기  3CC', '개', 100, 55, null, '메디팜', 95],
+    ])
+    expect(result.rows.map((r) => r.status)).toEqual(['same', 'update'])
+    expect(result.plan.adds).toEqual([])
+    expect(result.plan.counts).toEqual([{ name: '주사기 3cc', qty: 55 }])
+  })
+
+  it('AC-7503.5: 같은 파일 안 겹침도 normalizeName으로 본다(영문 글자 크기만 다른 둘째 줄은 건너뜀)', () => {
+    const result = preview([newRow('Gauze 5x5'), newRow('gauze  5X5')])
+    expect(result.rows.map((r) => r.status)).toEqual(['new', 'skip'])
+    expect(result.rows[1].reason).toContain('같은 이름')
+    expect(result.plan.adds.map((a) => a.name)).toEqual(['Gauze 5x5'])
+    expect(result.plan.counts).toEqual([{ name: 'Gauze 5x5', qty: 12 }])
+  })
+
   it('AC-7503.5: 건너뜀 — 물품 이름 없음·같은 파일 안 같은 이름 둘째 줄부터·이름 40자·단위 10자 넘음', () => {
     const result = preview([
       newRow('', { 2: '개' }),

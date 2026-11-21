@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx'
 import { isMonth, monthRange, parseDateCell } from '@/lib/analytics/dates'
 import { FIELDS, FIELD_LABELS, clipText, sheetProblem, type ColumnMapping, type Field } from './ai'
+import { normalizeName } from './names'
 
 // 재고 엑셀: 양식 만들기·양식 알아보기·머리 줄 찾기·줄 읽기·미리 보기와 넣기 계획 (specs/inventory REQ-7503, design.md 4절).
 // 브라우저에서 부르는 순수 함수다(xlsx만 쓴다). 파일 내려받기(XLSX.writeFile)·저장은 화면과 lib/storage/inventory.ts 몫이다.
@@ -237,14 +238,18 @@ type PreviewInput = {
 }
 
 // AC-7503.5: 줄마다 새 물품·고침·그대로·건너뜀과 넣기 계획. 같은 이름 = 고침(빈칸은 옛 값), 새 이름 = 끝에 더함,
-// 파일에 없는 물품 = 계획에 없음, 지금 수량이 적혀 있고 지금 값과 다르면 세기 줄(새 물품은 적혀 있으면 늘)
+// 파일에 없는 물품 = 계획에 없음, 지금 수량이 적혀 있고 지금 값과 다르면 세기 줄(새 물품은 적혀 있으면 늘).
+// 같은 이름 = normalizeName이 같은 것(지금 물품과 맞추기·파일 안 겹침 모두, 영문 글자 크기 무시)
 export function previewRows(input: PreviewInput): { rows: PreviewRow[]; plan: ImportPlan } {
   const { rows, mapping, categoryMap, categories, items, rowNumbers } = input
   const categoryByClean = new Map(categories.map((category) => [clean(category.name), category.name]))
   const categoryNameById = new Map(categories.map((category) => [category.id, category.name]))
   const firstCategory = sortCategories(categories)[0]?.name ?? null
   const itemByName = new Map<string, Item>()
-  for (const item of items) if (!itemByName.has(clean(item.name))) itemByName.set(clean(item.name), item)
+  for (const item of items) {
+    const key = normalizeName(item.name)
+    if (!itemByName.has(key)) itemByName.set(key, item)
+  }
 
   const out: PreviewRow[] = []
   const plan: ImportPlan = { newCategories: [], adds: [], updates: [], counts: [] }
@@ -261,13 +266,14 @@ export function previewRows(input: PreviewInput): { rows: PreviewRow[]; plan: Im
 
     const name = values.name
     if (name === '') return skip('물품 이름이 없어요')
-    if (seen.has(name)) return skip('같은 이름이 위 줄에 있어요')
-    seen.add(name)
+    const key = normalizeName(name)
+    if (seen.has(key)) return skip('같은 이름이 위 줄에 있어요')
+    seen.add(key)
     if (length(name) > MAX_NAME) return skip(`물품 이름은 ${MAX_NAME}자까지예요`)
     const unit = values.unit
     if (length(unit) > MAX_UNIT) return skip(`단위는 ${MAX_UNIT}자까지예요`)
 
-    const existing = itemByName.get(name)
+    const existing = itemByName.get(key)
     const minQty = intCell(raw.minQty, 0, MAX_QTY)
     if (minQty === 'bad') return skip(`${FIELD_LABELS.minQty} '${values.minQty}' → ${QTY_REASON}`)
     // 음수 지금 수량(입고 지우기로 생김)은 받은 양식을 그대로 올린 때만 받는다

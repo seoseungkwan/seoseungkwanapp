@@ -23,15 +23,18 @@ import {
   type PreviewStatus,
   type SheetRead,
 } from '@/lib/inventory/excel'
+import { normalizeName } from '@/lib/inventory/names'
 import { importItems, loadInventory } from '@/lib/storage/inventory'
 import type { ErrorCode } from '@/types/errors'
 import type { InvInventory, InvItem } from '@/types/inventory'
-import { askColumns } from './columnsClient'
+import { askColumns, type ColumnsAnswer } from './columnsClient'
 
 // 엑셀 양식 받기·올리기 (spec inventory TASK-11, REQ-7509, design.md 4·6절, 시안 ?s=excel·excel-own).
 // [양식 받기] = 브라우저가 지금 분류·물품으로 재고-양식.xlsx를 만든다(서버·정적 파일 없음).
 // [엑셀 올리기] → ExcelPreview: 양식이면 칸 맞춤 없이 바로 미리 보기('양식 그대로'), 아니면 머리 줄 + 앞 줄 5개만 칸 맞춤 경로로 보내고
-// (개인정보 모양이면 보내지 않음) 'AI가 맞춘 칸'·'분류 맞추기'를 고치면 미리 보기가 바로 바뀐다. 모든 줄은 브라우저가 읽는다 → [넣기] = importItems.
+// 'AI가 맞춘 칸'·'분류 맞추기'를 고치면 미리 보기가 바로 바뀐다. 모든 줄은 브라우저가 읽는다 → [넣기] = importItems.
+// 개인정보 모양이면(보내기 전 검사 또는 경로 답 E-INV-PRIVATE) 보내지 않고 양식 칸 이름과 똑같은 머리 글만 맞춘 칸 맞춤으로 시작한다(AC-7509.5).
+// 넣기가 실패한 뒤 [넣기]는 재고를 다시 읽어 계획을 다시 만든다(칸 맞춤·분류 맞추기 그대로, AI 다시 안 부름, AC-7509.4).
 // PC 모양 하나뿐이다. 미리 보기 표는 제 상자 안에서 옆으로 밀린다
 
 /** [양식 받기]: 지금 분류·물품(숨긴 물품 빼고)을 채운 재고-양식.xlsx를 내려받게 한다. 못 읽거나 못 만들면 거짓 */
@@ -54,6 +57,9 @@ type Stage =
 type Loaded = { sheet: SheetRead; inventory: InvInventory }
 type Filter = 'all' | PreviewStatus
 type Note = { text: string; tone: 'error' | 'info' | 'plain' }
+type InsertError = 'E-INV-SAVE-FAILED' | 'E-INV-READ-FAILED'
+
+const PRIVATE_NOTE = '개인정보 모양이 있어 AI에 보내지 않았어요. 칸을 직접 골라 주세요.'
 
 const STATUS: Record<PreviewStatus, { label: string; chip: string }> = {
   new: { label: '새 물품', chip: ds.chip.accent },
@@ -69,6 +75,14 @@ const MONTH_ONLY = /^(\d{2}|\d{4})[-./](\d{1,2})$/
 const CELL = 'h-11 whitespace-nowrap border-b border-line px-3 first:pl-5 last:pr-5'
 const NOTE_CELL = 'h-11 min-w-56 whitespace-normal border-b border-line px-3 py-2 first:pl-5 last:pr-5'
 const SELECT = `h-9 w-full min-w-0 cursor-pointer rounded-control border border-line-strong bg-surface px-2 text-body text-ink not-disabled:hover:border-muted focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent focus-visible:outline-hidden`
+// 거르기 단추: ds.segment 모양에서 폰 너비 맞춤(max-md:)만 뺀다 — 새 화면은 폰 전용 모양이 없다(AC-7509.3)
+const pcOnly = (classes: string) =>
+  classes
+    .split(' ')
+    .filter((name) => !name.startsWith('max-md:'))
+    .join(' ')
+const FILTER_GROUP = pcOnly(ds.segment.group)
+const FILTER_BUTTON = pcOnly(ds.segment.button)
 
 // excel.ts와 같은 글자 다듬기(NFC, 제어 문자·빈칸 여럿 → 빈칸 하나, 앞뒤 빈칸 뗌): 분류 값 세기·물품 이름 맞추기에 쓴다
 const clean = (value: string) => value.normalize('NFC').replace(/\p{Cc}+/gu, ' ').replace(/\s+/gu, ' ').trim()
@@ -76,6 +90,25 @@ const cellText = (value: Cell | undefined) => (value === null || value === undef
 const columnLabel = (header: readonly string[], i: number) => `${XLSX.utils.encode_col(i)} ${header[i] ?? ''}`.trim()
 const count = (n: number | null) => (n === null ? '–' : formatCount(n))
 const won = (n: number | null) => (n === null ? '–' : formatWon(n))
+
+// AC-7509.5: AI에 보내지 않을 때의 칸 맞춤 — 머리 글이 양식 칸 이름과 똑같은 엑셀 칸만 그 칸에, 나머지는 넣지 않음
+function labelMapping(header: readonly string[]): ColumnMapping {
+  const mapping = { ...TEMPLATE_MAPPING }
+  for (const field of FIELDS) {
+    const at = header.indexOf(FIELD_LABELS[field])
+    mapping[field] = at < 0 ? null : at
+  }
+  return mapping
+}
+
+// 읽은 시트·재고·칸 맞춤·고른 분류 → 분류 맞추기 값과 미리 보기·넣기 계획. 다시 넣기 전 다시 읽은 재고로도 부른다
+function previewOf(sheet: SheetRead, inventory: InvInventory, mapping: ColumnMapping, categoryPick: Readonly<Record<string, string>>) {
+  const values = categoryValues(sheet.rows, mapping)
+  const defaults = defaultCategoryMap(values, inventory.categories)
+  const categoryMap = Object.fromEntries(values.map((value) => [value, categoryPick[value] ?? defaults[value]]))
+  const preview = previewRows({ rows: sheet.rows, rowNumbers: sheet.rowNumbers, mapping, categoryMap, categories: inventory.categories, items: inventory.items })
+  return { values, defaults, categoryMap, ...preview }
+}
 
 async function readFile(file: File): Promise<SheetRead | null> {
   try {
@@ -140,9 +173,13 @@ export function ExcelPreview({ file, onDone, onCancel }: { file: File; onDone: (
   const [categoryPick, setCategoryPick] = useState<Record<string, string>>({})
   const [filter, setFilter] = useState<Filter>('all')
   const [importing, setImporting] = useState(false)
-  const [importFailed, setImportFailed] = useState(false)
+  const [insertError, setInsertError] = useState<InsertError | null>(null)
   const [templateFailed, setTemplateFailed] = useState(false)
+  // 개인정보 모양이라 AI에 보내지 않고 칸을 직접 고르는 중(AC-7509.5)
+  const [manual, setManual] = useState(false)
   const busy = useRef(false)
+  // 넣기가 한 번 실패했다: 다음 [넣기]는 재고를 다시 읽고 계획을 다시 만든다(AC-7509.4)
+  const failedOnce = useRef(false)
   const input = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -152,7 +189,9 @@ export function ExcelPreview({ file, onDone, onCancel }: { file: File; onDone: (
     setMapping(null)
     setCategoryPick({})
     setFilter('all')
-    setImportFailed(false)
+    setInsertError(null)
+    setManual(false)
+    failedOnce.current = false
     void (async () => {
       const [sheet, inventory] = await Promise.all([readFile(current), loadInventory()])
       if (!alive) return
@@ -163,10 +202,19 @@ export function ExcelPreview({ file, onDone, onCancel }: { file: File; onDone: (
         setMapping(TEMPLATE_MAPPING)
         return setStage({ kind: 'ready' })
       }
-      setStage({ kind: 'matching' })
-      // 보내기 전 개인정보 모양 검사: 걸리면 askColumns가 보내지 않고 E-INV-PRIVATE
-      const answer = await askColumns(sampleForAi(sheet.header, sheet.rows))
-      if (!alive) return
+      // 보내기 전 개인정보 모양 검사(sampleForAi). 걸리거나 경로가 E-INV-PRIVATE로 답하면 보내지 않고 칸을 직접 고르게 한다
+      const sample = sampleForAi(sheet.header, sheet.rows)
+      let answer: ColumnsAnswer = { kind: 'error', code: 'E-INV-PRIVATE' }
+      if (!sample.problem) {
+        setStage({ kind: 'matching' })
+        answer = await askColumns(sample)
+        if (!alive) return
+      }
+      if (answer.kind === 'error' && answer.code === 'E-INV-PRIVATE') {
+        setMapping(labelMapping(sheet.header))
+        setManual(true)
+        return setStage({ kind: 'ready' })
+      }
       if (answer.kind === 'error') {
         const retry = answer.code === 'E-AI-BUSY' || answer.code === 'E-AI-FAILED' ? '다시 분석' : null
         return setStage({ kind: 'error', code: answer.code, retry })
@@ -182,19 +230,18 @@ export function ExcelPreview({ file, onDone, onCancel }: { file: File; onDone: (
   const view = useMemo(() => {
     if (loaded === null || mapping === null) return null
     const { sheet, inventory } = loaded
-    const values = categoryValues(sheet.rows, mapping)
-    const defaults = defaultCategoryMap(values, inventory.categories)
-    const categoryMap = Object.fromEntries(values.map((value) => [value, categoryPick[value] ?? defaults[value]]))
-    const preview = previewRows({ rows: sheet.rows, rowNumbers: sheet.rowNumbers, mapping, categoryMap, categories: inventory.categories, items: inventory.items })
-    const itemByName = new Map(inventory.items.map((item) => [clean(item.name), item]))
+    const preview = previewOf(sheet, inventory, mapping, categoryPick)
+    // 미리 보기 줄의 물품(같은 이름 = normalizeName이 같음, previewRows와 같이 먼저 나온 물품)
+    const itemByName = new Map<string, InvItem>()
+    for (const item of inventory.items) if (!itemByName.has(normalizeName(item.name))) itemByName.set(normalizeName(item.name), item)
     const categoryName = new Map(inventory.categories.map((category) => [category.id, category.name]))
     const notes = preview.rows.map((row, i) => {
-      const item = itemByName.get(row.values.name)
+      const item = itemByName.get(normalizeName(row.values.name))
       return noteOf(row, sheet.rows[i] ?? [], mapping, item, item === undefined ? '' : (categoryName.get(item.categoryId) ?? ''))
     })
     const sums: Record<PreviewStatus, number> = { new: 0, update: 0, same: 0, skip: 0 }
     for (const row of preview.rows) sums[row.status]++
-    return { values, defaults, categoryMap, notes, sums, ...preview }
+    return { notes, sums, ...preview }
   }, [loaded, mapping, categoryPick])
 
   const ready = stage.kind === 'ready' && view !== null && loaded !== null && mapping !== null
@@ -223,24 +270,40 @@ export function ExcelPreview({ file, onDone, onCancel }: { file: File; onDone: (
   }
 
   async function insert() {
-    if (view === null || !canInsert || busy.current) return
+    if (view === null || loaded === null || mapping === null || !canInsert || busy.current) return
     busy.current = true
     setImporting(true)
-    setImportFailed(false)
-    const result = await importItems(view.plan, todayInKorea())
+    setInsertError(null)
+    let plan = view.plan
+    if (failedOnce.current) {
+      // 반쯤 들어갔을 수 있다: 지금 재고를 다시 읽어 읽어 둔 시트·지금 칸 맞춤·고른 분류로 계획을 다시 만든다(AI 안 부름)
+      const inventory = await loadInventory()
+      if (inventory === 'failed') {
+        busy.current = false
+        setImporting(false)
+        setInsertError('E-INV-READ-FAILED')
+        return
+      }
+      setLoaded({ sheet: loaded.sheet, inventory })
+      plan = previewOf(loaded.sheet, inventory, mapping, categoryPick).plan
+    }
+    const result = await importItems(plan, todayInKorea())
     busy.current = false
     setImporting(false)
-    if (result === 'ok') onDone()
-    else setImportFailed(true)
+    if (result === 'ok') return onDone()
+    failedOnce.current = true
+    setInsertError('E-INV-SAVE-FAILED')
   }
 
   const own = loaded !== null && !loaded.sheet.template
   const categoryColumn = mapping?.category ?? null
   const desc = !ready
     ? null
-    : own
-      ? '양식이 아닌 엑셀이라 AI가 칸을 맞췄어요. 칸이나 분류가 틀리면 바꾸고, 미리 보기를 본 뒤 넣어요. 물품 이름이 같은 줄은 그 물품을 고쳐요.'
-      : '양식 그대로라 칸을 맞출 것이 없어요. 미리 보기를 보고 넣어요. 물품 이름이 같은 줄은 그 물품을 고쳐요.'
+    : !own
+      ? '양식 그대로라 칸을 맞출 것이 없어요. 미리 보기를 보고 넣어요. 물품 이름이 같은 줄은 그 물품을 고쳐요.'
+      : manual
+        ? '양식이 아닌 엑셀이에요. 칸과 분류를 골라 미리 보기를 본 뒤 넣어요. 물품 이름이 같은 줄은 그 물품을 고쳐요.'
+        : '양식이 아닌 엑셀이라 AI가 칸을 맞췄어요. 칸이나 분류가 틀리면 바꾸고, 미리 보기를 본 뒤 넣어요. 물품 이름이 같은 줄은 그 물품을 고쳐요.'
 
   return (
     <div>
@@ -303,7 +366,7 @@ export function ExcelPreview({ file, onDone, onCancel }: { file: File; onDone: (
         </div>
       )}
 
-      {ready && own && <ColumnsSection header={loaded.sheet.header} mapping={mapping} onPick={pickColumn} />}
+      {ready && own && <ColumnsSection header={loaded.sheet.header} mapping={mapping} manual={manual} onPick={pickColumn} />}
       {ready && own && categoryColumn !== null && view.values.length > 0 && (
         <CategorySection
           title={loaded.sheet.header[categoryColumn] || XLSX.utils.encode_col(categoryColumn)}
@@ -322,13 +385,13 @@ export function ExcelPreview({ file, onDone, onCancel }: { file: File; onDone: (
             <p id="excel-preview-h" className="text-small font-semibold text-ink">
               미리 보기
             </p>
-            <div role="group" aria-label="보일 줄" className={ds.segment.group}>
+            <div role="group" aria-label="보일 줄" className={FILTER_GROUP}>
               {(['all', ...FILTERS.filter((status) => status !== 'same' || view.sums.same > 0)] as Filter[]).map((key) => (
                 <button
                   key={key}
                   type="button"
                   aria-pressed={filter === key}
-                  className={`${ds.segment.button} ${filter === key ? ds.segment.on : ds.segment.off}`}
+                  className={`${FILTER_BUTTON} ${filter === key ? ds.segment.on : ds.segment.off}`}
                   onClick={() => setFilter(key)}
                 >
                   {key === 'all' ? `모두 ${view.rows.length}` : `${STATUS[key].label} ${view.sums[key]}`}
@@ -338,9 +401,9 @@ export function ExcelPreview({ file, onDone, onCancel }: { file: File; onDone: (
           </div>
           <PreviewTable rows={view.rows} notes={view.notes} filter={filter} />
           <p className="mt-2 pl-5 text-caption text-muted">굵은 글자 = 바뀌는 칸. 파일에 없는 물품은 그대로 둬요(지우지 않아요).</p>
-          {importFailed && (
+          {insertError !== null && (
             <div className="mt-4">
-              <ErrorCard code="E-INV-SAVE-FAILED" />
+              <ErrorCard code={insertError} />
             </div>
           )}
         </section>
@@ -379,15 +442,33 @@ export function ExcelPreview({ file, onDone, onCancel }: { file: File; onDone: (
   )
 }
 
-// AI가 맞춘 칸: 재고 탭 칸 여덟 → 엑셀 칸 고르기(4칸 그리드) + 넣지 않는 엑셀 칸
-function ColumnsSection({ header, mapping, onPick }: { header: readonly string[]; mapping: ColumnMapping; onPick: (field: Field, value: string) => void }) {
+// AI가 맞춘 칸: 재고 탭 칸 여덟 → 엑셀 칸 고르기(4칸 그리드) + 넣지 않는 엑셀 칸.
+// manual(개인정보 모양이라 보내지 않음)이면 제목은 '칸 맞춤'이고 칸을 직접 고르라는 안내 글이 붙는다(AC-7509.5)
+function ColumnsSection({
+  header,
+  mapping,
+  manual,
+  onPick,
+}: {
+  header: readonly string[]
+  mapping: ColumnMapping
+  manual: boolean
+  onPick: (field: Field, value: string) => void
+}) {
   const used = new Set(FIELDS.map((field) => mapping[field]))
   const unused = header.map((_, i) => i).filter((i) => !used.has(i))
   return (
     <section className="mt-6" aria-labelledby="excel-columns-h">
       <p id="excel-columns-h" className="text-small font-semibold text-ink">
-        AI가 맞춘 칸<span className="ml-2 font-normal text-muted">왼쪽이 재고 탭 칸, 고른 것이 엑셀 칸이에요. 틀리면 바꿔요</span>
+        {manual ? '칸 맞춤' : 'AI가 맞춘 칸'}
+        <span className="ml-2 font-normal text-muted">왼쪽이 재고 탭 칸, 고른 것이 엑셀 칸이에요. 틀리면 바꿔요</span>
       </p>
+      {manual && (
+        <p className="mt-1.5 flex items-start gap-1.5 text-caption font-medium text-warning">
+          <Icon name="alert" className="shrink-0" />
+          <span>{PRIVATE_NOTE}</span>
+        </p>
+      )}
       <div className="mt-3 grid grid-cols-4 gap-x-6 gap-y-4">
         {FIELDS.map((field) => (
           <div key={field} className={ds.field}>

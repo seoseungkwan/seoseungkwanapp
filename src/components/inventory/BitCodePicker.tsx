@@ -6,12 +6,14 @@ import { ErrorCard } from '@/components/common/ErrorCard'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { bitCodeList, searchBitCodes, type BitCode } from '@/lib/inventory/bitCodes'
+import { normalizeName } from '@/lib/inventory/names'
 import { addBitItems, listBitCodeMonths, loadInventory } from '@/lib/storage/inventory'
 import type { InvBitMonth, InvCategory } from '@/types/inventory'
 
 // 비트 코드에서 고르기 판 (spec inventory REQ-7514 AC-7514.4, design.md 6절 TASK-14, 시안 docs/mockups/inventory ?s=bit·bit-empty).
 // 가운데 창(시안 .dlg 640px, 사진 보기 창과 같은 틀). 열리면 스스로 물품(loadInventory)과 통계에 저장된 처방 코드(listBitCodeMonths)를 읽어
 // bitCodeList로 많이 쓴 차례 목록을 만든다. 이미 이어진 코드·같은 이름 물품이 있는 코드는 "이미 있음"이고 고를 수 없다.
+// 한 코드를 고르면 이름(normalizeName)이 같은 다른 코드는 "같은 이름 고름"이고 고를 수 없다(풀면 다시 고를 수 있음).
 // [n개 더하기] = 고른 코드를 넣을 분류 하나에 한 번에(addBitItems). 성공하면 onAdded(목록 다시 읽기) → onClose, 실패하면 고른 것 그대로 + 오류 카드.
 // 코드·이름·건수만 다룬다(환자 정보 없음, 서버·Claude로 가지 않음). 여는 단추·닫은 뒤 초점은 화면(InventoryScreen, TASK-15)이 맡는다
 
@@ -210,6 +212,8 @@ export function BitCodePicker({ onAdded, onClose }: Props) {
   } else {
     const shown = searchBitCodes(view.codes, query)
     const count = picked.size
+    // 고른 코드의 이름들: 같은 이름 다른 코드는 고를 수 없다(물품 이름은 겹칠 수 없다)
+    const pickedNames = new Set(view.codes.filter((c) => picked.has(c.code)).map((c) => normalizeName(c.name)))
     body = (
       <>
         <div className="border-b border-line px-5 pt-4 pb-3">
@@ -248,7 +252,9 @@ export function BitCodePicker({ onAdded, onClose }: Props) {
             <tbody>
               {shown.map((c, index) => {
                 const inputId = `${idBase}-${index}`
-                const tone = c.taken ? 'text-ink-2' : 'text-ink'
+                const twin = !c.taken && !picked.has(c.code) && pickedNames.has(normalizeName(c.name))
+                const off = c.taken || twin
+                const tone = off ? 'text-ink-2' : 'text-ink'
                 return (
                   <tr key={c.code} className={ds.table.row}>
                     <td className={ds.table.check}>
@@ -258,7 +264,7 @@ export function BitCodePicker({ onAdded, onClose }: Props) {
                           type="checkbox"
                           aria-label={c.name}
                           checked={!c.taken && picked.has(c.code)}
-                          disabled={c.taken}
+                          disabled={off}
                           onChange={() => toggle(c.code)}
                           className={ds.checkbox}
                         />
@@ -266,13 +272,14 @@ export function BitCodePicker({ onAdded, onClose }: Props) {
                       </span>
                     </td>
                     <td className={`${NAME_CELL} ${tone}`}>
-                      <label htmlFor={inputId} className={c.taken ? undefined : 'cursor-pointer'}>
+                      <label htmlFor={inputId} className={off ? undefined : 'cursor-pointer'}>
                         {c.name}
                       </label>
                       {c.taken && <span className={`${ds.chip.neutral} ml-1.5`}>이미 있음</span>}
+                      {twin && <span className={`${ds.chip.neutral} ml-1.5`}>같은 이름 고름</span>}
                     </td>
                     <td className={CODE_CELL}>{c.code}</td>
-                    <td className={c.taken ? `${ds.table.tdSub} text-right tabular-nums` : ds.table.tdNum}>{`${formatCount(c.count)}건`}</td>
+                    <td className={off ? `${ds.table.tdSub} text-right tabular-nums` : ds.table.tdNum}>{`${formatCount(c.count)}건`}</td>
                   </tr>
                 )
               })}
