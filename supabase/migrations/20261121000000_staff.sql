@@ -32,6 +32,8 @@
 
 -- 직원 한 사람. 근무 형태 regular(정규직)·contract(계약직)·part(파트타임). 0.5 단위 = x * 2가 정수.
 -- used_before = 앱을 쓰기 전 이번 연차 기간에 이미 쓴 연차, used_before_from = 그 값을 적은 날이 든 연차 기간 시작일
+-- carry_start = 넘어온 연차 시작 값('carry' 병원 셈에서 시작 기간(등록일이 든 연차 기간)으로 넘어온 일수, −30~100, 0.5 단위, 안 보내면 0)
+-- registered_on = 웹앱에 처음 넣은 날(넣은 때의 한국 오늘, 시작 기간을 정함). 칸 권한이 없어 DB 기본값만 정한다
 create table if not exists public.staff_members (
   id uuid primary key default gen_random_uuid(),
   hospital_id uuid not null default public.my_hospital_id() references public.hospitals (id) on delete cascade,
@@ -51,6 +53,8 @@ create table if not exists public.staff_members (
   memo text check (char_length(memo) <= 500),
   used_before numeric(3, 1) not null default 0 check (used_before between 0 and 50 and used_before * 2 = trunc(used_before * 2)),
   used_before_from date,
+  carry_start numeric(4, 1) not null default 0 check (carry_start between -30 and 100 and carry_start * 2 = trunc(carry_start * 2)),
+  registered_on date not null default (now() at time zone 'Asia/Seoul')::date,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   -- 직접 적은 직종은 '기타'일 때만
@@ -59,6 +63,9 @@ create table if not exists public.staff_members (
   unique (hospital_id, name, hired_on),
   unique (id, hospital_id)
 );
+-- 두 칸이 없는 앞 판 표를 이미 실행한 DB에도 같은 정의로 더한다(있으면 그대로. 이미 있던 줄은 0·붙여 넣은 날 한국 오늘이 된다)
+alter table public.staff_members add column if not exists carry_start numeric(4, 1) not null default 0 check (carry_start between -30 and 100 and carry_start * 2 = trunc(carry_start * 2));
+alter table public.staff_members add column if not exists registered_on date not null default (now() at time zone 'Asia/Seoul')::date;
 -- 같은 예약 시행자 id는 병원 안 한 사람에게만
 create unique index if not exists staff_members_calendar_one on public.staff_members (hospital_id, calendar_staff_id) where calendar_staff_id is not null;
 
@@ -346,12 +353,12 @@ revoke all on table public.staff_pay_lines from public, anon, authenticated;
 revoke all on table public.staff_pay_months from public, anon, authenticated;
 revoke all on table public.staff_files from public, anon, authenticated;
 
--- 직원: 읽기·지우기(정책이 퇴사 3년 지난 사람만), 넣기·고치기는 값 칸 열여섯
+-- 직원: 읽기·지우기(정책이 퇴사 3년 지난 사람만), 넣기·고치기는 값 칸 열일곱(registered_on은 칸 권한이 없어 DB 기본값만)
 grant select, delete on table public.staff_members to authenticated;
 grant insert (name, job, job_other, employment, weekly_hours, hired_on, left_on, phone, birthday, address, bank, account_no,
-              calendar_staff_id, memo, used_before, used_before_from),
+              calendar_staff_id, memo, used_before, used_before_from, carry_start),
   update (name, job, job_other, employment, weekly_hours, hired_on, left_on, phone, birthday, address, bank, account_no,
-          calendar_staff_id, memo, used_before, used_before_from)
+          calendar_staff_id, memo, used_before, used_before_from, carry_start)
   on table public.staff_members to authenticated;
 
 -- 기본 근무·바뀐 날·더 일한 시간: 읽기·지우기, 넣기, 고치기는 값 칸만(열쇠 칸 직원·시작일·날·종류는 고치기 없음 — 고치고, 없으면 넣기)

@@ -164,6 +164,8 @@ const COLUMNS: Record<Table, [string, string][]> = {
     ['memo', 'text'],
     ['used_before', 'numeric'],
     ['used_before_from', 'date'],
+    ['carry_start', 'numeric'],
+    ['registered_on', 'date'],
     ['created_at', 'timestamptz'],
     ['updated_at', 'timestamptz'],
   ],
@@ -272,8 +274,9 @@ const MEMBER_COLUMNS = [
   'memo',
   'used_before',
   'used_before_from',
+  'carry_start',
 ]
-// authenticated 권한: 표 단위(select·delete)와 칸 단위(넣기·고치기). id·hospital_id·created_at·updated_at은 칸 권한 없음.
+// authenticated 권한: 표 단위(select·delete)와 칸 단위(넣기·고치기). id·hospital_id·created_at·updated_at과 직원 registered_on은 칸 권한 없음.
 // design.md 1절 권한 표 그대로: 기본 근무·바뀐 날·더 일한 시간·급여 줄·달 줄의 열쇠 칸(직원·시작일·날·종류·달)에는 고치기 권한이 없다 —
 // 앱은 upsert를 쓰지 않고 '고치고, 없으면 넣기'(값 칸만 update, 없으면 열쇠와 함께 insert)로 저장한다(design.md 5절)
 const GRANTS: Record<Table, { table: string[]; insert: string[]; update: string[] }> = {
@@ -769,6 +772,7 @@ describe('AC-7601.1 파일·표·권한 모양', SLOW, () => {
     )
     expect(numeric).toEqual([
       { table_name: 'staff_incentive_rules', column_name: 'percent', numeric_precision: 5, numeric_scale: 2 },
+      { table_name: 'staff_members', column_name: 'carry_start', numeric_precision: 4, numeric_scale: 1 },
       { table_name: 'staff_members', column_name: 'used_before', numeric_precision: 3, numeric_scale: 1 },
       { table_name: 'staff_members', column_name: 'weekly_hours', numeric_precision: 4, numeric_scale: 1 },
     ])
@@ -1633,6 +1637,294 @@ describe('AC-7601.7 퇴사 3년 지난 직원만 지우기', SLOW, () => {
     expect((await db.query(`delete from ${MEMBERS} where id = $1`, [staff])).affectedRows).toBe(1)
     await become(A)
     expect(await rows(`select staff_id, month, adjust::int as adjust from public.staff_pay_lines`)).toEqual([{ staff_id: null, month: '2026-11', adjust: 0 }])
+  })
+})
+
+// 넘어온 연차 시작 값(2026-11-21): carry_start = 'carry' 병원 셈의 시작 기간 넘어옴(원장이 적음), registered_on = 웹앱에 처음 넣은 날(DB만 정함)
+const CARRY_START_DEF = 'carry_start numeric(4, 1) not null default 0 check (carry_start between -30 and 100 and carry_start * 2 = trunc(carry_start * 2))'
+const REGISTERED_ON_DEF = "registered_on date not null default (now() at time zone 'Asia/Seoul')::date"
+
+/** 운영자 눈으로 본 직원 표 한 칸의 정의(형·자리·not null·기본값) */
+async function memberColumn(column: string, target: PGlite = db) {
+  await operator(target)
+  return (
+    await rows(
+      `select udt_name, numeric_precision, numeric_scale, is_nullable, column_default from information_schema.columns
+       where table_schema = 'public' and table_name = 'staff_members' and column_name = $1`,
+      [column],
+      target,
+    )
+  )[0]
+}
+
+/** 직원 표에서 그 칸을 보는 검사 제약(이름·글) */
+async function checksOn(column: string, target: PGlite = db) {
+  await operator(target)
+  return rows(
+    `select c.conname, pg_get_constraintdef(c.oid) as def from pg_constraint c
+     where c.conrelid = 'public.staff_members'::regclass and c.contype = 'c'
+       and c.conkey = array[(select attnum from pg_attribute where attrelid = 'public.staff_members'::regclass and attname = $1)]::int2[]
+     order by 1`,
+    [column],
+    target,
+  )
+}
+
+/** 표마다 칸 순서와 상관없이 견주게 줄을 표·칸 이름 차례로 놓고, 칸 권한 목록도 이름 차례로 */
+function orderFree(shape: Awaited<ReturnType<typeof shapeOf>>) {
+  const key = (r: Row) => `${String(r.table_name)}.${String(r.column_name)}`
+  return {
+    ...shape,
+    columns: [...shape.columns].sort((x, y) => key(x).localeCompare(key(y))),
+    access: shape.access.map((a) => ({ ...a, columns: [...((a.columns as string[] | null) ?? [])].sort() })),
+  }
+}
+
+describe('AC-7601.8 넘어온 연차 시작 값·웹앱 등록일', SLOW, () => {
+  const addMember = (patch: Row) => postgrestInsert(MEMBERS, [{ ...MEMBER, ...patch }])
+
+  it('AC-7601.8: create table 안 used_before_from 다음에 두 칸이 있고, 표 바로 아래 같은 정의의 add column if not exists 두 줄, 표 위 주석에 두 칸 뜻이 있다', () => {
+    const create = STAFF_SQL.match(/create table if not exists public\.staff_members \(\n([\s\S]*?)\n\);/)
+    expect(create).not.toBeNull()
+    const body = (create?.[1] ?? '').split('\n').map((line) => line.trim().replace(/,$/, ''))
+    const at = (name: string) => body.findIndex((line) => line.startsWith(`${name} `))
+    expect([at('carry_start'), at('registered_on')]).toEqual([at('used_before_from') + 1, at('used_before_from') + 2])
+    expect(body[at('carry_start')]).toBe(CARRY_START_DEF)
+    expect(body[at('registered_on')]).toBe(REGISTERED_ON_DEF)
+    // 표 만들기 바로 다음 문장 둘이 두 칸 없을 때만 더하기(같은 정의)
+    const rest = STAFF_TOP.slice(STAFF_TOP.indexOf('create table if not exists public.staff_members ('))
+    const statements = rest
+      .split(';')
+      .map((x) => x.replace(/\s+/g, ' ').trim())
+      .filter((x) => x !== '')
+    expect(statements.slice(1, 3)).toEqual([
+      `alter table public.staff_members add column if not exists ${CARRY_START_DEF}`,
+      `alter table public.staff_members add column if not exists ${REGISTERED_ON_DEF}`,
+    ])
+    expect((STAFF_TOP.match(/alter\s+table\s+public\.staff_members\s+add\s+column/gi) ?? []).length).toBe(2)
+    // 직원 표 위 주석(used_before처럼 한 줄씩)
+    const lines = STAFF_MIGRATION.split('\n')
+    const createAt = lines.findIndex((line) => line.startsWith('create table if not exists public.staff_members ('))
+    let top = createAt
+    while (top > 0 && lines[top - 1].startsWith('--')) top -= 1
+    const comment = lines.slice(top, createAt)
+    expect(comment.filter((line) => line.startsWith('-- carry_start = '))).toHaveLength(1)
+    expect(comment.filter((line) => line.startsWith('-- registered_on = '))).toHaveLength(1)
+    expect(comment.find((line) => line.startsWith('-- carry_start = '))).toMatch(/넘어온 연차 시작 값[^\n]*'carry'[^\n]*시작 기간/)
+    expect(comment.find((line) => line.startsWith('-- registered_on = '))).toMatch(/웹앱에 처음 넣은 날[^\n]*DB/)
+  })
+
+  it("AC-7601.8: carry_start는 numeric(4,1) not null 기본 0, registered_on은 date not null 기본 (now() at time zone 'Asia/Seoul')::date다", async () => {
+    expect(await memberColumn('carry_start')).toMatchObject({ udt_name: 'numeric', numeric_precision: 4, numeric_scale: 1, is_nullable: 'NO' })
+    expect(await memberColumn('registered_on')).toMatchObject({ udt_name: 'date', is_nullable: 'NO' })
+    const registeredDefault = String((await memberColumn('registered_on')).column_default)
+    for (const part of ['now()', "AT TIME ZONE 'Asia/Seoul'"]) expect(registeredDefault).toContain(part)
+    expect(registeredDefault).toMatch(/::date$/)
+    expect((await checksOn('carry_start')).map((c) => c.conname)).toEqual(['staff_members_carry_start_check'])
+    expect(await checksOn('registered_on')).toEqual([])
+  })
+
+  it("AC-7601.8·AC-7601.1: 직원 넣기·고치기 칸 권한에 carry_start가 있고 registered_on은 없으며, SQL 주석은 '값 칸 열일곱'이다", async () => {
+    expect(
+      await rows(
+        `select column_name, privilege_type from information_schema.column_privileges
+         where table_schema = 'public' and table_name = 'staff_members' and column_name in ('carry_start', 'registered_on')
+           and grantee in ('anon', 'authenticated', 'PUBLIC') order by 1, 2`,
+      ),
+    ).toEqual([
+      { column_name: 'carry_start', privilege_type: 'INSERT' },
+      { column_name: 'carry_start', privilege_type: 'SELECT' },
+      { column_name: 'carry_start', privilege_type: 'UPDATE' },
+      { column_name: 'registered_on', privilege_type: 'SELECT' },
+    ])
+    for (const privilege of ['INSERT', 'UPDATE']) {
+      expect([privilege, (await rows(`select has_column_privilege('authenticated', $1, 'registered_on', $2) as ok`, [MEMBERS, privilege]))[0].ok]).toEqual([
+        privilege,
+        false,
+      ])
+    }
+    expect(STAFF_MIGRATION).toMatch(/^-- 직원: [^\n]*값 칸 열일곱/m)
+    expect(STAFF_MIGRATION).toMatch(/^-- [^\n]*registered_on[^\n]*칸 권한이 없/m)
+  })
+
+  it('AC-7601.8: 넘어온 연차 시작 값을 보내지 않으면 0이다', async () => {
+    await become(A)
+    await addMember({})
+    await operator()
+    expect(await rows(`select carry_start::float8 as c from ${MEMBERS}`)).toEqual([{ c: 0 }])
+  })
+
+  it.each<[string, number]>([
+    ['−30', -30],
+    ['100', 100],
+    ['−0.5', -0.5],
+    ['0.5', 0.5],
+    ['99.5', 99.5],
+    ['−29.5', -29.5],
+  ])('AC-7601.8: 넘어온 연차 시작 값 %s는 들어간다(원장)', async (_name, value) => {
+    await become(A)
+    await addMember({ carry_start: value })
+    await operator()
+    expect(await rows(`select carry_start::float8 as c from ${MEMBERS}`)).toEqual([{ c: value }])
+  })
+
+  it.each<[string, number]>([
+    ['−30.5', -30.5],
+    ['100.5', 100.5],
+    ['1.3', 1.3],
+    ['−0.3', -0.3],
+    ['−31', -31],
+    ['101', 101],
+  ])('AC-7601.8: 넘어온 연차 시작 값 %s는 거부(23514)된다', async (_name, value) => {
+    await become(A)
+    await expect(addMember({ carry_start: value })).rejects.toMatchObject(CHECK_FAILED)
+    await operator()
+    expect(await rows(`select * from ${MEMBERS}`)).toEqual([])
+  })
+
+  it('AC-7601.8: 넘어온 연차 시작 값 null은 거부(23502)되고, 고칠 때도 범위·null 제약이 그대로다', async () => {
+    await become(A)
+    await expect(addMember({ carry_start: null })).rejects.toMatchObject(NOT_NULL)
+    await seedRow('staff_members', hospital[A], { ...MEMBER, carry_start: 3 })
+    const before = await everything()
+    for (const [set, error] of [
+      ['carry_start = 100.5', CHECK_FAILED],
+      ['carry_start = -30.5', CHECK_FAILED],
+      ['carry_start = 1.3', CHECK_FAILED],
+      ['carry_start = null', NOT_NULL],
+    ] as const) {
+      await become(A)
+      await expect(db.query(`update ${MEMBERS} set ${set}`), set).rejects.toMatchObject(error)
+    }
+    expect(await everything()).toEqual(before)
+  })
+
+  it('AC-7601.8: 원장이 넣으면 registered_on은 넣은 때의 한국 오늘이다(세션 시간대와 상관없음)', async () => {
+    const zones = ['UTC', 'Pacific/Kiritimati', 'Pacific/Pago_Pago'] // +14·−11은 늘 날짜가 달라 current_date였다면 한쪽이 틀린다
+    try {
+      for (const [n, zone] of zones.entries()) {
+        await become(A)
+        await db.query(`select set_config('timezone', $1, false)`, [zone])
+        await addMember({ name: `김하늘${n}` })
+      }
+    } finally {
+      await db.exec('reset timezone')
+    }
+    const today = await koreaToday()
+    expect(await rows(`select name, registered_on::text as d from ${MEMBERS} order by name`)).toEqual(zones.map((_, n) => ({ name: `김하늘${n}`, d: today })))
+  })
+
+  it('AC-7601.8: 원장이 registered_on을 보내 넣거나 고치면 권한 없음(42501)이고 줄은 그대로다', async () => {
+    const staff = (await seedRow('staff_members', hospital[A], { ...MEMBER, registered_on: '2025-03-02' })).id as string
+    const before = await everything()
+    await become(A)
+    await expect(addMember({ name: '이바다', registered_on: '2026-01-01' })).rejects.toMatchObject(DENIED)
+    await become(A)
+    await expect(addMember({ name: '이바다', registered_on: null })).rejects.toMatchObject(DENIED)
+    await become(A)
+    await expect(db.query(`update ${MEMBERS} set registered_on = '2026-01-01'`)).rejects.toMatchObject(DENIED)
+    await become(A)
+    await expect(postgrestUpdate(MEMBERS, { memo: '고침', registered_on: '2026-01-01' }, { id: staff })).rejects.toMatchObject(DENIED)
+    await become(A)
+    await expect(postgrestInsert(MEMBERS, [{ ...MEMBER, registered_on: '2026-01-01' }], 'hospital_id, name, hired_on')).rejects.toMatchObject(DENIED)
+    expect(await everything()).toEqual(before)
+  })
+
+  it('AC-7601.8: 원장이 다른 칸(넘어온 연차 시작 값·메모·퇴사일·연결)을 고쳐도 registered_on은 그대로다', async () => {
+    await seedProfile(hospital[A])
+    const staff = (await seedRow('staff_members', hospital[A], { ...MEMBER, registered_on: '2025-03-02' })).id as string
+    await become(A)
+    const updated = (await postgrestUpdate(MEMBERS, { carry_start: -1.5, memo: '고침', left_on: '2026-10-31', calendar_staff_id: 'st-na' }, { id: staff })).rows
+    expect(updated.map((r) => r.r)).toMatchObject([{ carry_start: -1.5, memo: '고침', left_on: '2026-10-31', registered_on: '2025-03-02' }])
+    await become(A)
+    expect((await db.query(`update ${MEMBERS} set carry_start = 2.5, used_before = 1`)).affectedRows).toBe(1)
+    await operator()
+    expect(await rows(`select carry_start::float8 as c, registered_on::text as d from ${MEMBERS}`)).toEqual([{ c: 2.5, d: '2025-03-02' }])
+  })
+})
+
+describe('AC-7601.8 두 칸이 없는 앞 판 표를 실행한 DB에 다시 붙여 넣기', SLOW, () => {
+  let old: PGlite
+  let ids: Record<string, string> = {}
+  let existing = ''
+  let pastedOn = ''
+
+  beforeAll(async () => {
+    old = await PGlite.create()
+    await migrateChain(old)
+    await old.exec(STAFF_MIGRATION)
+    // 앞 판(2026-11-21 넘어온 연차 전): 두 칸이 없던 표. 칸 권한은 칸과 함께 없어진다. 그 판으로 직원 한 사람을 이미 넣었다
+    await old.exec('alter table public.staff_members drop column if exists carry_start, drop column if exists registered_on')
+    ids = await seedPeople(old)
+    existing = (await seedRow('staff_members', ids[A], MEMBER, old)).id as string
+    await operator(old)
+    pastedOn = (await rows(`select (now() at time zone 'Asia/Seoul')::date::text as d`, [], old))[0].d as string
+    await old.exec(STAFF_MIGRATION)
+  }, 240_000)
+
+  afterAll(async () => {
+    await old.close()
+  })
+
+  it('AC-7601.8: 두 칸이 처음부터 만든 표와 같은 정의(형·자리·not null·기본값·검사 제약)로 생긴다', async () => {
+    for (const column of ['carry_start', 'registered_on']) {
+      const made = await memberColumn(column, old)
+      expect([column, made]).toEqual([column, expect.objectContaining({ is_nullable: 'NO' })])
+      expect([column, made]).toEqual([column, await memberColumn(column, db)])
+      expect([column, await checksOn(column, old)]).toEqual([column, await checksOn(column, db)])
+    }
+    // 칸 차례(맨 끝에 붙음) 말고는 처음부터 만든 DB와 모양이 같다
+    const shape = orderFree(await shapeOf(old))
+    const freshShape = orderFree(await shapeOf(db))
+    for (const key of ['columns', 'constraints', 'indexes', 'access', 'policies', 'triggers', 'functions', 'buckets'] as const) {
+      expect([key, shape[key]]).toEqual([key, freshShape[key]])
+    }
+  })
+
+  it('AC-7601.8: 이미 있던 직원은 넘어온 연차 시작 값 0·등록일 = 붙여 넣은 날(한국 오늘)이고 다른 칸은 그대로다', async () => {
+    await operator(old)
+    expect(
+      await rows(`select id, name, hired_on::text as hired, carry_start::float8 as c, registered_on::text as d from ${MEMBERS}`, [], old),
+    ).toEqual([{ id: existing, name: MEMBER.name, hired: MEMBER.hired_on, c: 0, d: pastedOn }])
+  })
+
+  it('AC-7601.8: 칸 권한이 design.md 1절 표 그대로가 되고, 원장이 넘어온 연차 시작 값을 넣고 고치며 registered_on은 넣지도 고치지도 못한다', async () => {
+    await operator(old)
+    const found = await rows(
+      `select column_name, privilege_type from information_schema.column_privileges
+       where grantee = 'authenticated' and table_schema = 'public' and table_name = 'staff_members' and privilege_type in ('INSERT', 'UPDATE')`,
+      [],
+      old,
+    )
+    for (const privilege of ['INSERT', 'UPDATE']) {
+      const columns = found
+        .filter((r) => r.privilege_type === privilege)
+        .map((r) => r.column_name as string)
+        .sort()
+      expect([privilege, columns]).toEqual([privilege, [...GRANTS.staff_members.insert].sort()])
+    }
+    await become(A, old)
+    await postgrestInsert(MEMBERS, [{ ...MEMBER, name: '이바다', carry_start: -0.5 }], null, old)
+    await become(A, old)
+    await expect(postgrestInsert(MEMBERS, [{ ...MEMBER, name: '박구름', carry_start: 1.3 }], null, old)).rejects.toMatchObject(CHECK_FAILED)
+    await become(A, old)
+    expect((await old.query(`update ${MEMBERS} set carry_start = 4 where id = $1`, [existing])).affectedRows).toBe(1)
+    await become(A, old)
+    await expect(old.query(`update ${MEMBERS} set registered_on = '2020-01-01'`)).rejects.toMatchObject(DENIED)
+    await operator(old)
+    expect(await rows(`select name, carry_start::float8 as c, registered_on::text as d from ${MEMBERS} order by name`, [], old)).toEqual([
+      { name: MEMBER.name, c: 4, d: pastedOn },
+      { name: '이바다', c: -0.5, d: pastedOn },
+    ])
+  })
+
+  it('AC-7601.8: 한 번 더 붙여 넣어도 모양과 줄이 그대로다', async () => {
+    const shape = await shapeOf(old)
+    const data = await everything(old)
+    await operator(old)
+    await old.exec(STAFF_MIGRATION)
+    expect(await shapeOf(old)).toEqual(shape)
+    expect(await everything(old)).toEqual(data)
   })
 })
 
