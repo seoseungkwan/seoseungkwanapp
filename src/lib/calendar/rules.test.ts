@@ -77,6 +77,58 @@ describe('AC-5902.2 warnings: 같은 시행자 겹침·그날 휴무', () => {
   })
 })
 
+describe('AC-7616.2 warnings: 반차 휴무는 반나절만 경고(경계 = 그 요일 병원 점심 시작, 없으면 13:00)', () => {
+  // 직원 탭 휴가에서 온 반차 휴무(part). 박서연 11-13(금) 오후 반차 같은 줄
+  const half = (part: 'am' | 'pm', day = '2026-11-18', staffId = 'na'): CalAllDay => ({ ...off(day, staffId), part })
+  const draft = (start: number, len = 30, staffId = 'na') => ({ day: '2026-11-18', start, len, staffId })
+  const offAt = (start: number, len: number, allday: CalAllDay[], noon?: number) =>
+    noon === undefined ? warnings(draft(start, len), [], allday).off : warnings(draft(start, len), [], allday, noon).off
+
+  it('AC-7616.2: 오전 휴무는 예약 시작이 경계(기본 13:00) 앞일 때만 휴무 경고다', () => {
+    const allday = [half('am')]
+    expect(offAt(at(9), 30, allday)).toBe(true)
+    expect(offAt(at(12, 50), 30, allday)).toBe(true) // 12:50–13:20, 시작이 13:00 앞
+    expect(offAt(at(13), 30, allday)).toBe(false) // 시작이 경계와 같으면 오후 일
+    expect(offAt(at(15), 30, allday)).toBe(false)
+  })
+
+  it('AC-7616.2: 오후 휴무는 예약 끝이 경계(기본 13:00) 뒤일 때만 휴무 경고다', () => {
+    const allday = [half('pm')]
+    expect(offAt(at(9), 30, allday)).toBe(false)
+    expect(offAt(at(12, 30), 30, allday)).toBe(false) // 12:30–13:00, 끝이 경계와 같으면 오전 일
+    expect(offAt(at(12, 40), 30, allday)).toBe(true) // 12:40–13:10
+    expect(offAt(at(15), 30, allday)).toBe(true)
+  })
+
+  it('AC-7616.2: 경계는 넘긴 값(그 요일 병원 점심 시작)이다 — 점심 12:00이면 12:00 앞뒤로 나눈다', () => {
+    const noon = at(12)
+    expect(offAt(at(11, 50), 30, [half('am')], noon)).toBe(true)
+    expect(offAt(at(12), 30, [half('am')], noon)).toBe(false)
+    expect(offAt(at(12, 30), 30, [half('am')], noon)).toBe(false) // 기본 13:00이면 오전 휴무 경고인 시각
+    expect(offAt(at(11, 30), 30, [half('pm')], noon)).toBe(false)
+    expect(offAt(at(11, 40), 30, [half('pm')], noon)).toBe(true)
+  })
+
+  it('AC-7616.2: part 없는 휴무(종일, null 포함)는 지금 그대로 시간과 상관없이 휴무 경고다', () => {
+    const plain = [off('2026-11-18', 'na')]
+    const nullPart = [{ ...off('2026-11-18', 'na'), part: null }]
+    for (const allday of [plain, nullPart]) {
+      expect(offAt(at(9), 30, allday)).toBe(true)
+      expect(offAt(at(15), 30, allday)).toBe(true)
+      expect(offAt(at(9), 30, allday, at(12))).toBe(true)
+      expect(offAt(at(15), 30, allday, at(12))).toBe(true)
+    }
+  })
+
+  it('AC-7616.2: 반차라도 다른 날·다른 시행자면 경고가 아니고, 겹침 경고는 그대로 함께 셈한다', () => {
+    const allday = [half('am', '2026-11-19'), half('am', '2026-11-18', 'ga')]
+    expect(offAt(at(9), 30, allday)).toBe(false)
+    const booked = [appt({ id: 'h1', start: at(9), len: 30, staffId: 'na' })]
+    expect(warnings(draft(at(9, 10), 30), booked, [half('am')])).toEqual({ overlap: ['h1'], off: true })
+    expect(warnings(draft(at(14), 30), [appt({ id: 'h2', start: at(14), staffId: 'na' })], [half('am')])).toEqual({ overlap: ['h2'], off: false })
+  })
+})
+
 describe('AC-5902.3 arrivalOf: 비트 접수로 도착 셈(한국 시각)', () => {
   // design.md '예': 지금 2026-11-17 (화) 10:40
   const NOW = new Date('2026-11-17T10:40:00+09:00')

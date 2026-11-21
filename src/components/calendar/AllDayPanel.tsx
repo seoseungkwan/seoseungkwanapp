@@ -2,12 +2,15 @@
 
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import { ds } from '@/components/ui/classes'
+import type { CalAllDay } from '@/lib/calendar/shapes'
 import { ALLDAY_MEMO_MAX } from '@/lib/storage/calendar'
-import type { CalAllDay, CalSettings } from '@/types/calendar'
+import type { CalSettings } from '@/types/calendar'
 import { CalIcon, Swatch, dayLabel } from './CalendarToolbar'
+import { offText } from './rows/parts'
 
 // 종일 작은 판 (spec clinic-calendar AC-5905.4, 시안 종일 줄 누름 .pop 320px). 그날 항목(메모·시행자 휴무)을 보여 주고 지우거나,
-// 메모(20자) 또는 아직 휴무가 아닌 시행자의 휴무를 더한다. 휴무 표시는 그 시행자 색(--cal-* 토큰). 콜백만 부른다(저장은 화면이 한다)
+// 메모(20자) 또는 아직 휴무가 아닌 시행자의 휴무를 더한다. 휴무 표시는 그 시행자 색(--cal-* 토큰). 콜백만 부른다(저장은 화면이 한다).
+// 직원 탭 휴가에서 온 반차 휴무(part)는 '오전 휴무'·'오후 휴무'로 보인다(spec staff AC-7616.1). 여기서 더하는 휴무는 늘 종일이다
 
 /** 누른 종일 칸 자리(화면 기준). 없으면 가운데 위에 뜬다 */
 export type AllDayAnchor = { bottom: number; left: number }
@@ -82,7 +85,7 @@ export function AllDayPanel({ day, items, settings, anchor = null, busy = false,
           <ul className="grid gap-1">
             {items.map((item) => {
               const person = settings.staff.find((s) => s.id === item.staffId)
-              const label = item.type === 'memo' ? (item.memo ?? '') : `${person ? `(${person.mark}) ` : ''}${item.staffName ?? ''} 휴무`
+              const label = item.type === 'memo' ? (item.memo ?? '') : `${person ? `(${person.mark}) ` : ''}${item.staffName ?? ''} ${offText(item.part)}`
               return (
                 <li key={item.id} className="flex items-center justify-between gap-2 py-0.5 text-small text-ink">
                   <span className="flex min-w-0 items-center gap-1.5">

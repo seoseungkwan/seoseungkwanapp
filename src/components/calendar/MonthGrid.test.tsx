@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_CAL_SETTINGS, type CalAllDay, type CalCountRow, type CalStaff } from '@/types/calendar'
+import type { CalAllDay } from '@/lib/calendar/shapes'
+import { DEFAULT_CAL_SETTINGS, type CalCountRow, type CalStaff } from '@/types/calendar'
 import { MonthGrid, type MonthGridProps } from './MonthGrid'
 
 // 월 보기(spec clinic-calendar AC-5905.1·AC-5906.3, 시안 ?s=month·기본값 6번): 목록이 아니라 날마다 수만(monthCells).
@@ -159,5 +160,20 @@ describe('AC-6603.3: 휴진일(병원 정보)은 월 칸에 "휴진", 칸이 회
     renderMonth()
     expect(screen.queryByText('휴진')).toBeNull()
     expect(document.querySelector('[data-closed]')).toBeNull()
+  })
+})
+
+describe('AC-7616.1: 월 칸의 반차 휴무 칩', () => {
+  it("AC-7616.1: part가 있는 휴무 칩은 '{이름} 오전 휴무'·'{이름} 오후 휴무'(그 시행자 색), part 없는 칩은 지금 그대로다", () => {
+    const allday: CalAllDay[] = [
+      { id: 'h1', day: '2026-11-13', type: 'off', memo: null, staffId: 'na', staffName: '윤○○', part: 'pm' },
+      { id: 'h2', day: '2026-11-20', type: 'off', memo: null, staffId: 'ga', staffName: '한○○', part: 'am' },
+      ...ALLDAY,
+    ]
+    renderMonth({ allday })
+    const pm = within(cell(/^11월 13일/)).getByText('(나) 윤○○ 오후 휴무')
+    expect(pm.className).toContain('bg-cal-teal-soft')
+    expect(within(cell(/^11월 20일/)).getByText('(가) 한○○ 오전 휴무').className).toContain('bg-cal-blue-soft')
+    expect(within(cell(/^11월 18일/)).getByText('(나) 윤○○ 휴무')).toBeTruthy()
   })
 })

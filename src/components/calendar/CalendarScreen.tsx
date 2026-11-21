@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { ds } from '@/components/ui/classes'
 import { addDays, addMonths, compareYmd, monthOf, todayInKorea, weekdayOf, weekStartOf } from '@/lib/analytics/dates'
-import { opensOn } from '@/lib/calendar/clinic'
-import { nextWeek, slotLabel, visibleGhosts, warnings } from '@/lib/calendar/rules'
+import { hoursOn, opensOn } from '@/lib/calendar/clinic'
+import { HALF_DAY_NOON, nextWeek, slotLabel, visibleGhosts, warnings } from '@/lib/calendar/rules'
+import type { CalAllDay } from '@/lib/calendar/shapes'
 import {
   addAllDay,
   addAppt,
@@ -17,7 +18,7 @@ import {
   updateAppt,
 } from '@/lib/storage/calendar'
 import { supabaseBrowser } from '@/lib/supabase/browser'
-import { DEFAULT_CAL_SETTINGS, type CalAllDay, type CalAppt, type CalCountRow, type CalSettings } from '@/types/calendar'
+import { DEFAULT_CAL_SETTINGS, type CalAppt, type CalCountRow, type CalSettings } from '@/types/calendar'
 import { AddPanel, draftOf, newDraft, type AddDraft, type AddFields } from './AddPanel'
 import { AllDayPanel } from './AllDayPanel'
 import { CalendarSettings } from './CalendarSettings'
@@ -119,6 +120,11 @@ function stepDay(day: string, by: 1 | -1, settings: Pick<CalSettings, 'sunday' |
   let next = addDays(day, by)
   for (let i = 0; i < 6 && !opensOn(settings, weekdayOf(next)); i++) next = addDays(next, by)
   return opensOn(settings, weekdayOf(next)) ? next : addDays(day, by)
+}
+
+/** 반차 휴무 경고의 경계(분): 그날 요일 병원 정보 점심 시작. 점심이 없거나 휴진 요일·병원 정보가 없으면 13:00 (spec staff AC-7616.2) */
+function noonOn(settings: Pick<CalSettings, 'days'>, day: string): number {
+  return hoursOn(settings, day)?.lunchFrom ?? HALF_DAY_NOON
 }
 
 // ── 판 ──────────────────────────────────────────────────────
@@ -354,7 +360,12 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
       let caution = ''
       try {
         const [there, thereAllDay] = await Promise.all([listAppts(client, next.day, next.day), listAllDay(client, next.day, next.day)])
-        const found = warnings({ id: saved.id, day: next.day, start: next.start, len: next.len, staffId: next.staffId }, there, thereAllDay)
+        const found = warnings(
+          { id: saved.id, day: next.day, start: next.start, len: next.len, staffId: next.staffId },
+          there,
+          thereAllDay,
+          noonOn(settings, next.day),
+        )
         if (found.overlap.length > 0 || found.off) caution = ' 그 시간에 같은 담당 예약이 있거나 휴무예요 — 확인해 주세요.'
       } catch {
         // 확인을 못 해도 넣은 것은 그대로다
@@ -423,7 +434,12 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
   // ── 그리기 ──
   const editing = layer?.kind === 'add' ? layer : null
   const draftWarn = editing
-    ? warnings({ id: editing.editId, day: draft.day, start: draft.start, len: draft.len, staffId: draft.staffId ?? '' }, warnAppts, allday)
+    ? warnings(
+        { id: editing.editId, day: draft.day, start: draft.start, len: draft.len, staffId: draft.staffId ?? '' },
+        warnAppts,
+        allday,
+        noonOn(settings, draft.day),
+      )
     : null
   const gridDraft =
     editing && draftWarn
@@ -535,6 +551,7 @@ function Board({ worker, initialToday }: { worker: CalendarWorkerHandle; initial
           settings={settings}
           appts={warnAppts}
           allday={allday}
+          noon={noonOn(settings, draft.day)}
           editId={editing.editId}
           orig={editing.orig}
           bit={api.bit}

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { isYmd } from '@/lib/analytics/dates'
+import type { CalAllDay } from '@/lib/calendar/shapes'
 import { privacyProblem } from '@/lib/worklog/notes'
 import {
   CAL_COLORS,
@@ -7,7 +8,6 @@ import {
   type ApptAuto,
   type ApptDraft,
   type ApptStatus,
-  type CalAllDay,
   type CalAppt,
   type CalColor,
   type CalCountRow,
@@ -56,7 +56,8 @@ const REV = 'calendar_rev'
 const APPT_COLUMNS = 'id,day,start_min,len_min,name,chart,staff_id,staff_name,staff_mark,kind_id,kind_name,memo,status,auto,orig_day,orig_start'
 const COUNT_COLUMNS = 'day,staff_id,staff_name,kind_id,kind_name,status,auto,orig_day' // 이름·차트번호·메모 없음
 const SLOT_COLUMNS = 'day,staff_id,staff_name,kind_id,kind_name,status,auto,start_min,len_min,chart' // 이름·메모 없음(stats-insights AC-6104.1)
-const ALLDAY_COLUMNS = 'id,day,type,memo,staff_id,staff_name'
+// part = 반차 휴무(직원 탭 휴가에서 트리거가 적음, spec staff AC-7616.1 — migration 20261121000000_staff.sql). leave_id는 읽지 않는다
+const ALLDAY_COLUMNS = 'id,day,type,memo,staff_id,staff_name,part'
 const SETTINGS_COLUMNS = 'kinds,staff,open_hour,close_hour,sunday'
 const PAGE_ROWS = 1000
 const ASC = { ascending: true }
@@ -306,15 +307,18 @@ export async function deleteAppt(client: Client, id: string): Promise<void> {
 
 // ── 종일 (calendar_allday) ──────────────────────────────────
 
+// 종일 줄: part가 null이거나 없으면 종일(돌려주는 줄에 part 칸을 두지 않는다 — 지금 모양 그대로), 'am'·'pm'은 휴무 줄만
 function toAllDay(row: unknown): CalAllDay | null {
   if (!isRecord(row)) return null
-  const { id, day, type, memo, staff_id: staffId, staff_name: staffName } = row
+  const { id, day, type, memo, staff_id: staffId, staff_name: staffName, part } = row
   if (!isFilled(id) || !isDay(day)) return null
-  if (type === 'memo' && isText(memo, 1, ALLDAY_MEMO_MAX) && staffId === null && staffName === null) {
+  const whole = part === null || part === undefined
+  if (type === 'memo' && whole && isText(memo, 1, ALLDAY_MEMO_MAX) && staffId === null && staffName === null) {
     return { id, day, type, memo, staffId: null, staffName: null }
   }
   if (type === 'off' && memo === null && isText(staffId, 1, CAL_ID_MAX) && isText(staffName, 1, CAL_LABEL_MAX)) {
-    return { id, day, type, memo: null, staffId, staffName }
+    if (whole) return { id, day, type, memo: null, staffId, staffName }
+    if (part === 'am' || part === 'pm') return { id, day, type, memo: null, staffId, staffName, part }
   }
   return null
 }
@@ -328,7 +332,8 @@ export async function listAllDay(client: Client, from: string, to: string): Prom
   return found.flatMap((row) => toAllDay(row) ?? [])
 }
 
-/** 종일 한 줄 넣기: 메모(20자, 개인정보 모양이면 'blocked') 또는 시행자 휴무. 다섯 칸을 늘 보낸다(쓰지 않는 칸은 null) */
+/** 종일 한 줄 넣기: 메모(20자, 개인정보 모양이면 'blocked') 또는 시행자 휴무(종일). 다섯 칸을 늘 보낸다(쓰지 않는 칸은 null).
+ * part·leave_id는 보내지 않는다(넣기 권한이 없고 직원 탭 휴가 트리거만 쓴다) */
 export async function addAllDay(client: Client, item: Omit<CalAllDay, 'id'>): Promise<CalAllDay | 'blocked'> {
   if (!isDay(item.day)) throw failed()
   let row: Record<string, unknown>

@@ -25,11 +25,15 @@ function minutesInKorea(now: Date): number {
 
 type WarnDraft = Pick<CalAppt, 'day' | 'start' | 'len' | 'staffId'> & { id?: string | null }
 type WarnAppt = Pick<CalAppt, 'id' | 'day' | 'start' | 'len' | 'staffId' | 'status'>
-type WarnAllDay = Pick<CalAllDay, 'day' | 'type' | 'staffId'>
+type WarnAllDay = Pick<CalAllDay, 'day' | 'type' | 'staffId' | 'part'>
+
+/** 반차 휴무의 반나절 경계 기본값(13:00). 화면은 그 요일 병원 정보 점심 시작을 넘긴다(spec staff AC-7616.2) */
+export const HALF_DAY_NOON = 780
 
 /** 저장 전 경고(저장은 막지 않는다). 같은 날 같은 시행자의 취소 아닌 다른 예약과 겹치면 overlap, 그날 그 시행자 휴무면 off.
+ * 반차 휴무는 반나절만: 오전(am)은 시작이 noon 앞일 때만, 오후(pm)는 끝이 noon 뒤일 때만 off. part 없는 휴무는 종일.
  * 고치는 예약 자신(draft.id)과는 견주지 않는다. 시행자를 아직 안 골랐으면 경고 없음 */
-export function warnings(draft: WarnDraft, appts: readonly WarnAppt[], allday: readonly WarnAllDay[]): CalWarnings {
+export function warnings(draft: WarnDraft, appts: readonly WarnAppt[], allday: readonly WarnAllDay[], noon = HALF_DAY_NOON): CalWarnings {
   if (!draft.staffId) return { overlap: [], off: false }
   const end = draft.start + draft.len
   const overlap = appts
@@ -44,7 +48,8 @@ export function warnings(draft: WarnDraft, appts: readonly WarnAppt[], allday: r
     )
     .sort((a, b) => a.start - b.start)
     .map((a) => a.id)
-  const off = allday.some((d) => d.type === 'off' && d.day === draft.day && d.staffId === draft.staffId)
+  const hits = (part: CalAllDay['part']) => (part === 'am' ? draft.start < noon : part === 'pm' ? end > noon : true)
+  const off = allday.some((d) => d.type === 'off' && d.day === draft.day && d.staffId === draft.staffId && hits(d.part))
   return { overlap, off }
 }
 
