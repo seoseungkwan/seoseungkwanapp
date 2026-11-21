@@ -130,8 +130,16 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 | `inventory_counts` · `inventory_count_lines` | 세기(센 날 하나씩) · 세기 줄(물품마다 센 수·저장 시각). 읽기만, 쓰기는 DB 함수 `save_inventory_count`로만(날짜는 마지막 세기 날~한국 오늘, 같은 날은 덮어씀) (specs/inventory) |
 | `inventory_receipts` · `inventory_receipt_lines` | 입고(명세서 날짜·거래처·사진 자리 `photo_path`·저장 시각) · 입고 줄(물품·수량·단가·금액). 읽기만, 쓰기는 DB 함수 `save_inventory_receipt`·`update_inventory_receipt`·`delete_inventory_receipt`로만. 저장하면 지금 수량에 더하고, 단가를 적은 줄은 물품 단가를 바꾸고, 주문함을 푼다 (specs/inventory) |
 | `inventory_aliases` | 명세서에서 읽은 이름 → 물품(맞춘 이름을 기억해 다음엔 자동). 넣기·읽기·고치기·지우기 (specs/inventory) |
-| `employees` · `incentive_rules` | 직원(세후 기본급·재직 여부) · 인센티브 항목(방식·금액·%) |
-| `payroll_months` | 달마다 입력값·결과(jsonb), `draft`·`final`. `final`은 RLS로 수정 불가 |
+| `staff_members` | 직원 한 사람: 이름(1~20자)·직종(여섯, '기타'면 직접 적은 직종)·근무 형태(`regular`·`contract`·`part`)·주 근무시간(0~80, 0.5 단위)·입사일·퇴사일·연락처·생일·주소·은행·계좌번호·예약 시행자 id(병원 안 한 사람)·메모·올해 이미 쓴 연차(0~50)와 그 기간 시작일. 주민번호 칸 없음. 병원·이름·입사일 하나. 지우기는 퇴사일 + 3년이 지난 사람만. 표 열 개 모두 RLS `my_hospital_id()`(원장만), 데스크 정책 없음 (ADR-039, specs/staff) |
+| `staff_week_plans` | 기본 근무 한 판: 직원·시작일·요일 7칸 `week`(jsonb, 1,000바이트까지, 안 모양은 앱 `checkWeek`)·토요일 격주 `sat_rotation`(`every`·`1-3`·`2-4`). 직원·시작일 하나 (specs/staff) |
+| `staff_day_changes` | 바뀐 날 한 줄: 근무 시작·끝·점심(분, 10분 단위, 점심은 근무 안) 또는 쉼(모두 비움)·메모(50자). 직원·날 하나 (specs/staff) |
+| `staff_overtime` | 더 일한 시간: 직원·날·종류(`extended`·`night`·`holiday`)·분(30분 단위 30~1440). 직원·날·종류 하나 (specs/staff) |
+| `staff_leaves` | 휴가 하루 한 줄: 묶음 `group_id`·직원·날·종류(`annual`·`half`·`family`·`sick`·`maternity`·`unpaid`)·반차 오전·오후·유급(병가만 고름)·메모. 고치기 없음(묶음을 지우고 다시 넣음). 예약 시행자와 이어진 직원이면 트리거(`staff_leave_link`)가 `calendar_allday` 휴무 줄을 넣고, 연결을 바꾸면 `staff_member_relink`가 다시 맞춘다 (ADR-039, specs/staff) |
+| `staff_settings` | 병원 직원 설정 한 줄: 연차 기준 `leave_basis`(`hire`·`jan1`)·못 쓴 연차 `leftover`(`pay`·`carry`)·급여 항목 `pay_items`(jsonb 배열 30개·4,000바이트까지, 기본 기본급·연장수당·식대·인센티브·상여). 지우기 없음 (specs/staff) |
+| `staff_incentive_rules` | 사람마다 인센티브 규칙: 이름·방식(`per_case`·`fixed` 금액, `percent` 0~100)·차례 (specs/staff) |
+| `staff_pay_lines` | 달·사람마다 급여 줄: 항목 금액 `amounts`(jsonb 객체)·그때 인센티브 규칙과 실적 `incentives`·조정(±1억)·조정 까닭. 직원을 지우면 `staff_id`만 비워 남는다(달별 인건비 그대로). 잠금 없음, 지우기 없음 (ADR-039, specs/staff) |
+| `staff_pay_months` | 병원·달마다 한 줄: 병원 부담분·저장한 날·지난달 금액 가져온 날. 지우기 없음 (specs/staff) |
+| `staff_files` | 직원 파일 한 줄: 서류(`doc`, 직원마다 PDF·JPEG·PNG 20개까지) 또는 세무사 파일(`tax`, 달마다 PDF·ZIP·XLSX·XLS·JPEG·PNG 20개까지)·이름·경로(`<병원 id>/doc/<직원 id>/…`·`<병원 id>/tax/<YYYY-MM>/…`)·크기·종류. 고치기 없음. 파일은 Storage `staff-files` (specs/staff) |
 | `worklog_days` | 업무일지 하루 한 줄: 인원 2·수입 8·지출 4칸은 글자, 비고 5·업무사항 1·항목 이름 12칸 · 업무사항 글씨 크기 `memo_font_pt`(8·9·10·11·12·14·16pt, 기본 11, specs/worklog-memo-font) · 현금 시재(장수 8칸·그날 시재·환불/미수입금 현금 표시·차이 이유, specs/worklog-cash-float) |
 | `worklog_settings` | 병원 업무일지 설정 한 줄: 시재 금액 `cash_float`(기본 300,000원) (specs/worklog-cash-float) |
 | `sunap_days` | 수납일지 마감한 날 한 줄: `work_date`·`closed_at`·`late`(늦은 마감)와 합계 숫자 24칸(내원·구분·Block·물리치료·예약·결제별 건수·금액, 0~10억 정수). 환자 줄은 없다(장부는 접수 PC 도우미 저장). 다시 마감하면 덮어쓰고 마감 풀기는 지운다. 저장은 `lib/storage/sunap.ts` (specs/sunap-ilji) |
@@ -139,7 +147,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 | `sunap_settings` | 병원 수납일지 설정 한 줄: Block·물리치료 묶음 id(`block_group`·`pt_group`, 통계 처방 묶음, 바깥 키 없음 = 지워지면 안 고름)·예약 메모 말 `rsv_words`(jsonb 객체, 4,000바이트 미만). 지우기 없음 (specs/sunap-ilji) |
 | `calendar_settings` | 병원 예약 탭 설정 한 줄: 종류 `kinds`·시행자 `staff`(jsonb 배열, 8,000바이트 미만, 안 모양은 앱이 `checkCalendarSettings`로 봄)·보이는 시간 `open_hour`(5~12)·`close_hour`(12~24)·`sunday`. 지우기 없음 (specs/clinic-calendar) |
 | `calendar_appts` | 예약 한 줄: 날짜·시작(분, 10분 칸)·길이(5~240분)·환자 이름(1~20자)·차트번호(숫자 10자리까지, 신환은 비움)·시행자·종류(id와 그때 이름)·메모(100자)·상태(`auto`·`came`·`noshow`·`cancel`)·도착 자동 `auto`(비트 PC가 정함)·처음 자리 `orig_day`·`orig_start`(트리거만 적음). 전화·성별·나이·생일 칸 없음. 넣을 때마다 한국 오늘 − 1년보다 이른 예약·종일 줄을 트리거가 지운다 (ADR-030, specs/clinic-calendar) |
-| `calendar_allday` | 예약 탭 종일 한 줄: 메모(1~20자) 또는 시행자 휴무(같은 날 같은 시행자 하나). 고치기 없음(지우고 다시 넣음) (specs/clinic-calendar) |
+| `calendar_allday` | 예약 탭 종일 한 줄: 메모(1~20자) 또는 시행자 휴무(같은 날 같은 시행자 하나). 고치기 없음(지우고 다시 넣음) (specs/clinic-calendar). 반차 `part`(`am`·`pm`, 휴무 줄만)·휴가 줄 `leave_id`(`staff_leaves`, 함께 지워짐)는 직원 휴가 트리거만 쓴다(사용자 넣기 칸 그대로) (ADR-039, specs/staff) |
 | `calendar_rev` | 병원마다 예약 바뀜 숫자 한 줄. 위 세 표가 바뀔 때마다 트리거(`calendar_bump`)만 늘리고 사용자는 읽기만 한다. 화면이 5초마다 읽어 바뀌면 다시 읽는다 (specs/clinic-calendar) |
 | `clinic_profiles` | 병원 정보 한 줄: `display_name`(1~50자)·`phone`(숫자 9~11자)·`address`(100자)·`honorific`(원장님·대표원장님·선생님)·`hours`(월~일 7칸, 분)·`closed_dates`·`staff`(원장님·직원, 예약 시행자를 합침, 12,000바이트까지)·`logo_path`·`updated_at`. 원장만 넣고 고치고 데스크는 읽기만, 지우기 없음. 넣고 고치면 `calendar_bump`로 rev가 오른다. 처음 실행 때 예약 설정 시행자를 옮긴다. `claim_hospital_settings.input_mode`(null·code·date, 원장만 고침)도 같은 SQL `20261119000000_clinic_profile.sql` (ADR-033, specs/clinic-profile) |
 | `contacts_companies` · `contacts_people` · `contacts_equipment` · `contacts_repairs` | 주소록: 업체(분류 `supplier`·`repair`·`agency`·`other`, 이름 1~40자 병원 안에서 하나, 대표 전화·하는 일·품목·주소·홈페이지·사업자번호·계좌·사이트 아이디·사이트 비밀번호·메모) · 담당자(이름 1~20자 업체 안에서 하나, 휴대폰·맡은 일) · 장비(이름·일련번호, 겹침 제약 없음, 들여온 날·무상 수리 끝나는 날) · 수리 기록(날짜·내용 1~200자·비용 0~9,999,999,999원 또는 비움). 바깥 키는 (`hospital_id`, 부모 id) 둘로 걸어 남의 병원 부모 밑에 못 달고, 업체를 지우면 담당자·장비·수리 기록이, 장비를 지우면 그 수리 기록이 함께 지워진다. 원장만(`my_hospital_id()`) 읽고 넣고 고치고 지우며 데스크 정책은 없다. 엑셀 넣기는 부른 사람 권한 함수 `contacts_import(jsonb)` 한 번(한 트랜잭션, 엑셀로는 지우지 않음). 사이트 비밀번호·계좌는 잠그지 않고 글자로 둔다. SQL `20261121000000_contacts.sql` (ADR-035, specs/contacts) |
@@ -158,8 +166,9 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 - Storage 버킷 `form-backgrounds`(내 배경 큰 그림, 공개 아님, 한 파일 3,000,000바이트·`image/jpeg`만). `storage.objects` 정책은 첫 폴더가 내 병원 id인 것만 읽기·지우기, 올리기는 거기에 더해 이름이 내 `form_backgrounds` 줄의 `path`와 같을 때만이다(고치기 없음). 버킷과 정책은 migration `20261115020000_form_backgrounds.sql`이 만든다 (ADR-029)
 - Storage 버킷 `clinic-logos`(병원 로고, 공개 아님, 한 파일 1,000,000바이트·`image/png`만): 첫 폴더가 내 병원 id인 것만 원장이 읽기·지우기, 올리기는 거기에 더해 이름이 내 `clinic_profiles.logo_path`와 같을 때만(고치기 없음, 데스크·다른 병원 못 함). migration `20261119000000_clinic_profile.sql` (ADR-033)
 - Storage 버킷 `inventory-photos`(재고 거래명세서 사진, 공개 아님, 한 파일 3,000,000바이트·`image/jpeg`만, 이름 `<병원 id>/<uuid>.jpg`): 첫 폴더가 내 병원 id인 것만 원장이 읽기·올리기·지우기(고치기 없음, 데스크·다른 병원 못 함). [저장]한 입고만 올리고 입고를 지우면 사진도 지운다. migration `20261121100000_inventory.sql` (ADR-034)
+- Storage 버킷 `staff-files`(직원 서류·세무사 파일, 공개 아님, 한 파일 10,000,000바이트·PDF·JPEG·PNG·ZIP·XLSX·XLS만): 첫 폴더가 내 병원 id인 것만 원장이 읽기·지우기, 올리기는 거기에 더해 같은 이름의 내 `staff_files` 줄이 먼저 있을 때만(고치기 없음, 데스크·다른 병원 못 함). migration `20261121000000_staff.sql` (ADR-039)
 - 금액은 원 단위 정수. 반올림하지 않고 원 미만은 항목마다 버린다. 합계는 항목 합. %는 소수 둘째 자리까지
-- 퇴사자는 지우지 않고 숨긴다(임금대장 3년 보존, §6-3). 주민번호·계좌번호는 저장하지 않는다
+- 퇴사자는 숨기고, 퇴사 3년 뒤에만 지울 수 있다(임금대장 3년 보존, §6-3, 지워도 달별 급여 줄은 이름 없이 남음). 주민번호는 저장하지 않고 계좌는 저장한다(원장만, ADR-039)
 - 백업 목록(`lib/backup/tables.ts`)에 `sales_days`·`sales_codes`·`rx_groups`를 넣는다(`rx_groups`는 총괄이 손으로 만든 유일한 자료). `stats_rx_picks`: `lib/backup/tables.ts`가 생기면 이 표도 넣는다. `stats_rx_groups`(손으로 만든 자료, 통계 처방별 추세 묶음, specs/treatment-trend)도 넣는다
 
 ## 인증·승인 흐름 (§2-1, §5, §6-4)

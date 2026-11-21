@@ -11,7 +11,7 @@ import { decideRoute, type HospitalState } from '@/lib/auth/gate'
 import type { Me } from '@/lib/auth/hospital.server'
 import AiReportPage from './ai-report/page'
 import NoticesPage, { metadata as noticesMetadata } from './notices/page'
-import StaffPage from './staff/page'
+import StaffPage, { dynamic as staffDynamic, metadata as staffMetadata } from './staff/page'
 
 // 화면 부품은 가짜로 바꿔 페이지가 넘긴 today만 본다(AC-714.3). 화면 자체는 components/ai-report 시험이 본다
 vi.mock('@/components/ai-report/AiReportScreen', () => ({
@@ -37,9 +37,7 @@ const ROOT = process.cwd()
 const APP_GROUP = 'src/app/(app)'
 
 // 주소 · 표의 이름 · h1(title) · 페이지 (탭 순서)
-const PAGES: Array<{ path: NotReadyPath; name: string; title: string; Page: ComponentType }> = [
-  { path: '/staff', name: '직원', title: '직원은 준비 중이에요', Page: StaffPage },
-]
+const PAGES: Array<{ path: NotReadyPath; name: string; title: string; Page: ComponentType }> = []
 
 const pageFile = (path: string) => `${APP_GROUP}${path}/page.tsx`
 const h1Texts = (markup: string) =>
@@ -135,6 +133,21 @@ describe('AC-305.5: 준비 중 주소의 페이지 = notReadyFeature(주소)를 
     const source = readFileSync(join(ROOT, pageFile('/forms')), 'utf8')
     expect(source).not.toMatch(/NotReadyScreen|notReadyFeature/)
     expect(source).toMatch(/from '@\/components\/forms\/FormsScreen'/)
+  })
+
+  it('AC-7611.1·AC-7611.2: /staff는 준비 중 주소가 아니다 — 페이지 표와 준비 중 목록에 없고, 페이지는 준비 중 화면이 아닌 명단 자리(제목·작은 메뉴는 staff/layout)다', () => {
+    expect(PAGES.map((p) => p.path as string)).not.toContain('/staff')
+    expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/staff')
+    const source = readFileSync(join(ROOT, pageFile('/staff')), 'utf8')
+    expect(source).not.toMatch(/NotReadyScreen|notReadyFeature/)
+    const html = renderToStaticMarkup(<StaffPage />)
+    expect(html).not.toContain('준비 중')
+    expect(html).not.toContain('대시보드로 돌아가기')
+    // 제목 h1 '직원'은 레이아웃이 그린다 → 페이지에 h1이 또 있으면 제목이 둘이 된다
+    expect(h1Texts(html)).toEqual([])
+    expect(staffMetadata).toEqual({ title: '직원' })
+    expect(staffDynamic).toBe('force-dynamic')
+    expect(existsSync(join(ROOT, APP_GROUP, 'staff/layout.tsx'))).toBe(true)
   })
 
   it('AC-7423.1·AC-7423.2: /notices는 준비 중 주소가 아니다 — 페이지 표와 준비 중 목록에 없고, 페이지 소스는 준비 중 화면이 아니라 고시·공지 화면(NoticesScreen·NoticeDetail·KeywordsControl)을 쓴다', () => {

@@ -34,7 +34,7 @@ export type MenuPath =
   | '/contacts'
   | '/settings'
 /** 기능 자신의 화면이 있는 주소. 다음 명세가 화면을 만들면 여기에 더한다 */
-export type MenuHref = '/dashboard' | '/stats' | '/claim' | '/notices' | '/patients' | '/sunap' | '/calendar' | '/ai-report' | '/forms' | '/inventory' | '/worklog' | '/contacts' | '/settings'
+export type MenuHref = '/dashboard' | '/stats' | '/claim' | '/notices' | '/patients' | '/sunap' | '/calendar' | '/ai-report' | '/forms' | '/staff' | '/inventory' | '/worklog' | '/contacts' | '/settings'
 
 export type MenuItem = {
   label: MenuLabel
@@ -68,7 +68,8 @@ export const MENU: readonly MenuItem[] = [
   { label: '예약', path: '/calendar', href: '/calendar', ready: true, primary: true },
   { label: 'AI 리포트', path: '/ai-report', href: '/ai-report', ready: true, primary: false },
   { label: '서식', path: '/forms', href: '/forms', ready: true, primary: false }, // 휴진 안내 서식 화면(forms AC-3501.1)
-  { label: '직원', path: '/staff', href: null, ready: false, primary: false },
+  // 직원 화면 /staff(명단·근무표·휴가·급여, staff AC-7611.1). 원장만 본다 — 데스크는 DESK_PATHS 밖이라 탭이 없고 주소로 와도 DeskGate가 막는다
+  { label: '직원', path: '/staff', href: '/staff', ready: true, primary: false },
   // 재고 화면 /inventory(목록·세기·들어온 기록·달별, inventory AC-7512.1). [더보기] 판 자리 그대로. 원장만 본다 — 데스크는 DESK_PATHS 밖이라 탭이 없다
   { label: '재고', path: '/inventory', href: '/inventory', ready: true, primary: false },
   // 주소록 화면 /contacts — 원장(의원) 계정만, [더보기] 판(contacts AC-6508.1). 데스크는 DESK_MENU에 없고 DeskGate가 막는다(AC-6508.3)

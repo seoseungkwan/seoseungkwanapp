@@ -25,6 +25,7 @@ export type CalAppt = {
 }
 export type ApptDraft = Omit<CalAppt, 'id' | 'auto' | 'origDay' | 'origStart'>
 export type CalCountRow = Pick<CalAppt, 'day' | 'staffId' | 'staffName' | 'kindId' | 'kindName' | 'status' | 'auto' | 'origDay'>
+/** 종일 줄. part = 반차 휴무('off' 줄만, 직원 탭 휴가에서 DB 트리거가 적음, spec staff REQ-7616) — 없거나 null이면 종일 */
 export type CalAllDay = {
   id: string
   day: string
@@ -32,6 +33,7 @@ export type CalAllDay = {
   memo: string | null
   staffId: string | null
   staffName: string | null
+  part?: 'am' | 'pm' | null
 }
 
 /** 비트 자체 예약(RsvInf) 칸. 보기만 한다 */

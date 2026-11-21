@@ -5,7 +5,7 @@
 // 기능에 진짜 화면이 생기면 그 항목을 여기서 빼고 그 주소의 page.tsx를 진짜 화면으로 바꾼다(design.md '다음 명세가 탭을 채울 때')
 
 export type NotReadyPath =
-  | '/staff'
+  never // 지금은 준비 중 기능이 없다(고시·공지·재고·주소록·직원 모두 화면이 생겼다). 새 준비 중 탭을 더하면 `| '/주소'`로 적는다
 
 export type NotReadyFeature = {
   path: NotReadyPath
@@ -17,18 +17,10 @@ export type NotReadyFeature = {
   items: readonly string[]
 }
 
-const SOON = '만들어지면 이 탭에서 바로 쓸 수 있어요.'
+// 소개 글 끝맺음(새 준비 중 항목을 더할 때 intro 끝에 붙인다): '만들어지면 이 탭에서 바로 쓸 수 있어요.'
 
 // 탭 순서
-export const NOT_READY_FEATURES: readonly NotReadyFeature[] = [
-  {
-    path: '/staff',
-    name: '직원',
-    title: '직원은 준비 중이에요',
-    intro: `직원과 급여·휴가를 한곳에서 볼 자리예요. ${SOON}`,
-    items: ['직원 명단', '급여 계산과 명세서', '연차와 휴가'],
-  },
-]
+export const NOT_READY_FEATURES: readonly NotReadyFeature[] = []
 
 const BY_PATH = new Map(NOT_READY_FEATURES.map((feature) => [feature.path, feature]))
 

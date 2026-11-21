@@ -6,21 +6,13 @@ import { NOT_READY_FEATURES, notReadyFeature, type NotReadyPath } from './notRea
 // 표는 이 시험이 정한다(구현에서 읽지 않는다). 문구는 ui-90 시안(docs/mockups/ui-90/app/gen.py nr_body)의 주소록 말투를 따른다(주소록은 화면이 생겨 빠졌다, contacts AC-6508.1).
 // title(h1)은 조사(은/는)까지 통째로 적는다 — 받침에 따라 계산하지 않는다(design.md '준비 중 h1은 자료에 통째로')
 
-const SOON = '만들어지면 이 탭에서 바로 쓸 수 있어요.'
+// 소개 글 끝맺음(새 준비 중 항목을 표에 더할 때 intro 끝에 붙인다): '만들어지면 이 탭에서 바로 쓸 수 있어요.'
 
 // 탭 순서(화면이 있는 탭은 빼고). 수는 적지 않는다: 기능에 화면이 생기면 그 줄만 뺀다
-const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: string; items: string[] }> = [
-  {
-    path: '/staff',
-    name: '직원',
-    title: '직원은 준비 중이에요',
-    intro: `직원과 급여·휴가를 한곳에서 볼 자리예요. ${SOON}`,
-    items: ['직원 명단', '급여 계산과 명세서', '연차와 휴가'],
-  },
-]
+const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: string; items: string[] }> = []
 
 describe('AC-305.4: NOT_READY_FEATURES — 준비 중 기능(탭 순서)', () => {
-  it('AC-305.4·AC-010.1·AC-3501.2·AC-6508.1·AC-7512.2: 탭 순서대로 주소·이름이 표와 같다', () => {
+  it('AC-305.4·AC-010.1·AC-3501.2·AC-6508.1·AC-7512.2·AC-7611.1: 탭 순서대로 주소·이름이 표와 같다', () => {
     expect(NOT_READY_FEATURES.map(({ path, name }) => [path, name])).toEqual(TABLE.map(({ path, name }) => [path, name]))
   })
 
@@ -55,6 +47,16 @@ describe('AC-305.4: NOT_READY_FEATURES — 준비 중 기능(탭 순서)', () =>
     expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('서식')
     expect(JSON.stringify(NOT_READY_FEATURES)).not.toContain('대충 적은 글을 양식에 맞게 정리할 자리예요')
     expect(MENU.find((m) => m.label === '서식')?.ready).toBe(true)
+  })
+
+  it('AC-7611.1: 직원(/staff)은 준비 중 목록에 없다 — 주소·이름·옛 소개·만들 것 글자 모두, 탭 목록에서도 ready다', () => {
+    // @ts-expect-error '/staff'는 이제 NotReadyPath가 아니다(타입 점검이 본다)
+    const staff: NotReadyPath = '/staff'
+    expect(NOT_READY_FEATURES.map((f) => f.path)).not.toContain(staff)
+    expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('직원')
+    expect(JSON.stringify(NOT_READY_FEATURES)).not.toContain('직원과 급여·휴가를 한곳에서 볼 자리예요')
+    expect(JSON.stringify(NOT_READY_FEATURES)).not.toContain('급여 계산과 명세서')
+    expect(MENU.find((m) => m.label === '직원')?.ready).toBe(true)
   })
 
   it('AC-7423.1: 고시·공지(/notices)는 준비 중 목록에 없다 — 주소·이름·옛 소개·만들 것 글자 모두, 탭 목록에서도 ready다', () => {
@@ -126,9 +128,7 @@ describe('AC-610.1: 환자는 준비 중 목록에서 빠진다', () => {
 })
 
 describe('AC-415.1: NOT_READY_FEATURES — 항목마다 title(h1, 조사까지 통째로)', () => {
-  const TITLES = [
-    '직원은 준비 중이에요',
-  ]
+  const TITLES: string[] = []
 
   it('AC-415.1·AC-010.1: 항목마다 title이 있고 탭 순서대로 요구사항의 글자 그대로다', () => {
     expect(NOT_READY_FEATURES.map((f) => f.title)).toEqual(TITLES)

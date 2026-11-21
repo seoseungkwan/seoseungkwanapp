@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import type { ErrorCode } from '@/types/errors'
+import { STAFF_ERROR_CODES } from '@/types/staff'
 import { ERRORS, errorInfo, isErrorCode } from './errors'
 
 // ErrorCode에 번호를 더하거나 빼면 이 목록도 같이 고쳐야 타입 검사가 통과한다
@@ -99,6 +100,11 @@ const ALL_CODES = [
   'E-CLINIC-SAVE-FAILED',
   'E-CLINIC-LOGO-FAILED',
   'E-FIRST-RUN-SAVE-FAILED',
+  'E-STAFF-READ-FAILED',
+  'E-STAFF-SAVE-FAILED',
+  'E-STAFF-FILE-FAILED',
+  'E-STAFF-EXCEL-FAILED',
+  'E-STAFF-IMAGE-FAILED',
   'E-NOTICE-READ',
   'E-NOTICE-SAVE',
   'E-NOTICE-WORDS',
@@ -149,7 +155,8 @@ const AUTH_CODES = [
 ] as const satisfies readonly ErrorCode[]
 
 describe('AC-003.4 ERRORS', () => {
-  it('ErrorCode의 모든 번호가 빠짐없이, 그 밖의 번호 없이 있다', () => {
+  // 직원 탭 번호(E-STAFF-*, spec staff AC-7610.1)도 번호 타입 ErrorCode에 들어 있다(ErrorCard가 받게)
+  it('ErrorCode의 모든 번호가 빠짐없이, 그 밖의 번호 없이 있다 (AC-7610.1 E-STAFF 포함)', () => {
     expectTypeOf<(typeof ALL_CODES)[number]>().toEqualTypeOf<ErrorCode>()
     expect(Object.keys(ERRORS).sort()).toEqual([...ALL_CODES].sort())
   })
@@ -1137,6 +1144,48 @@ describe('AC-6602.7·AC-6614.8 병원 정보·처음 질문 오류 번호', () =
     const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
     const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
     for (const code of Object.keys(CLINIC)) expect(union).toContain(`'${code}'`)
+  })
+})
+
+// 직원 탭(spec staff AC-7610.1, design.md 5절). 문구는 E-CLINIC-* 말투('무엇이 · 어떻게 고치나'), 곁의 단추나 할 일을 말한다
+const STAFF = {
+  'E-STAFF-READ-FAILED': '[다시 불러오기]',
+  'E-STAFF-SAVE-FAILED': '그대로',
+  'E-STAFF-FILE-FAILED': '10MB',
+  'E-STAFF-EXCEL-FAILED': '[엑셀 양식 받기]',
+  'E-STAFF-IMAGE-FAILED': '[인쇄·PDF]',
+} as const
+
+describe('AC-7610.1 직원 탭 오류 번호', () => {
+  it('AC-7610.1: 직원 탭 번호는 정확히 다섯이고 번호 목록(STAFF_ERROR_CODES)과 같다', () => {
+    expect([...STAFF_ERROR_CODES].sort()).toEqual(Object.keys(STAFF).sort())
+    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-STAFF-')).sort()).toEqual(Object.keys(STAFF).sort())
+  })
+
+  it.each(STAFF_ERROR_CODES)('AC-7610.1: %s는 무엇이·어떻게 고치나가 있고 곁의 단추·할 일을 말한다', (code) => {
+    expect(isErrorCode(code), code).toBe(true)
+    const { what, fix } = errorInfo(code)
+    expect(what.trim(), code).not.toBe('')
+    expect(fix.trim(), code).not.toBe('')
+    expect(fix, code).toContain(STAFF[code])
+    // '병원' 낱말 규칙(AC-409.1)·말끝 규칙 그대로. 비트 PC 연결 단추를 말하지 않는다(청구 화면 링크 규칙, AC-013.5)
+    expect(`${what} ${fix}`, code).not.toContain('병원')
+    expect(`${what} ${fix}`, code).not.toMatch(/니다\./)
+    expect(fix, code).not.toMatch(/\[(다시 확인|처음 등록|다시 등록)\]/)
+  })
+
+  it('AC-7610.1: 저장 실패는 적은 값이 화면에 그대로 있다고, 파일 실패는 받는 종류·크기·개수를, 그림 실패는 그림 파일이라고 알린다', () => {
+    expect(errorInfo('E-STAFF-SAVE-FAILED').fix).toContain('적은 값은 화면에 그대로 있어요')
+    expect(errorInfo('E-STAFF-FILE-FAILED').fix).toContain('PDF·JPG·PNG')
+    expect(errorInfo('E-STAFF-FILE-FAILED').fix).toContain('20개')
+    expect(errorInfo('E-STAFF-IMAGE-FAILED').what).toContain('그림 파일')
+  })
+
+  it('AC-7610.1: E-STAFF-EXCEL-FAILED는 올린 엑셀을 못 읽음·세무사 엑셀을 못 만듦 둘 다를 말한다(문구는 명세 글 그대로)', () => {
+    expect(errorInfo('E-STAFF-EXCEL-FAILED')).toEqual({
+      what: '엑셀 파일을 읽거나 만들지 못했어요',
+      fix: '올린 파일이면 [엑셀 양식 받기]로 받은 파일에 적었는지, 암호로 잠긴 파일이 아닌지 확인하고 다시 올려 주세요. [엑셀 받기]가 안 됐으면 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+    })
   })
 })
 

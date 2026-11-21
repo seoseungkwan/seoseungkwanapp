@@ -18,8 +18,10 @@ const EMR_PATTERNS = ['*.[cC][sS][vV]', '*.[xX][lL][sS]', '*.[xX][lL][sS][xX]']
 
 // 가짜 파일 폴더. 되살리기(!)는 이 안의 파일 이름 하나하나만 된다
 const FAKE_FOLDERS = ['fixtures/fake-', 'public/fake-sample/']
-// 폴더 밖에서 되살리는 파일(폴더가 아니라 파일 하나): 주소록 [양식 받기]의 빈 엑셀 양식(specs/contacts AC-6504.4)
-const TEMPLATE_FILES = ['public/contacts/contacts-template.xlsx']
+// 폴더 밖에서 되살리는 파일(폴더가 아니라 파일 하나씩): 주소록 [양식 받기]의 빈 엑셀 양식(specs/contacts AC-6504.4)과
+// 직원 탭 엑셀 양식(지어낸 보기 줄만, 운영 사이트에서 내려받음 — spec staff AC-7612.4)
+const STAFF_TEMPLATE = 'public/staff/staff-template.xlsx'
+const TEMPLATE_FILES = ['public/contacts/contacts-template.xlsx', STAFF_TEMPLATE]
 
 describe('vercel.json', () => {
   it('AC-009.1: framework는 nextjs, 함수 지역은 icn1 하나, 깃 자동 배포는 꺼져 있다', () => {
@@ -63,12 +65,13 @@ describe('vercel.json', () => {
 })
 
 describe('.vercelignore', () => {
-  it('AC-009.2: 비밀값·시험 산출물·개발 전용 파일·실제 EMR 파일 모양을 올리지 않는다', () => {
+  it('AC-009.2·AC-6504.4·AC-7612.4: 비밀값·시험 산출물·개발 전용 파일·실제 EMR 파일 모양을 올리지 않는다(주소록·직원 엑셀 양식 파일 하나씩만 되살림)', () => {
     expect(ignoreLines()).toEqual([
       '.env*',
       ...EMR_PATTERNS,
       '!public/fake-sample/bit-sample.csv',
       '!public/contacts/contacts-template.xlsx',
+      `!${STAFF_TEMPLATE}`,
       '.harness/',
       '.claude/',
       'specs/',
@@ -93,17 +96,21 @@ describe('.vercelignore', () => {
     expect(lines.filter((line) => /^!\s*\/?\.env/.test(line))).toEqual([])
   })
 
-  it('AC-009.2·AC-6504.4: 되살리기는 가짜 파일 폴더의 파일 이름 하나하나와 주소록 양식 파일 하나뿐이고 확장자 줄보다 뒤에 있다', () => {
+  it('AC-009.2·AC-6504.4·AC-7612.4: 되살리기는 가짜 파일 폴더의 파일 이름 하나하나와 주소록·직원 엑셀 양식 파일 하나씩뿐이고 확장자 줄보다 뒤에 있다(환자 엑셀 막기는 그대로)', () => {
     const lines = ignoreLines()
+    for (const pattern of EMR_PATTERNS) expect(lines).toContain(pattern)
     const lastEmr = Math.max(...EMR_PATTERNS.map((pattern) => lines.indexOf(pattern)))
     const reincludes = lines.flatMap((line, index) => (line.startsWith('!') ? [{ line, index }] : []))
     expect(reincludes.length).toBeGreaterThan(0)
     for (const { line, index } of reincludes) {
       const path = line.slice(1)
-      expect(FAKE_FOLDERS.some((folder) => path.startsWith(folder)) || TEMPLATE_FILES.includes(path)).toBe(true)
+      expect(FAKE_FOLDERS.some((folder) => path.startsWith(folder)) || TEMPLATE_FILES.includes(path), path).toBe(true)
       expect(path).not.toMatch(/[*?[\]]/)
       expect(index).toBeGreaterThan(lastEmr)
     }
+    // 가짜 파일 폴더 밖 되살리기 = 양식 파일 이름 그대로 한 줄씩(폴더·글롭으로 넓히지 않는다)
+    const outside = reincludes.map(({ line }) => line.slice(1)).filter((path) => !FAKE_FOLDERS.some((folder) => path.startsWith(folder)))
+    expect(outside).toEqual(TEMPLATE_FILES)
   })
 
   it('AC-6504.4: 주소록 양식 파일 하나만 그 이름 그대로 되살린다(엑셀 줄은 그대로, 글롭 없음)', () => {

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_CAL_SETTINGS, type CalAllDay, type CalAppt, type CalStaff } from '@/types/calendar'
+import type { CalAllDay } from '@/lib/calendar/shapes'
+import { DEFAULT_CAL_SETTINGS, type CalAppt, type CalStaff } from '@/types/calendar'
 import type { DayHours } from '@/types/clinicProfile'
 import { BLOCK_GUTTER_PX, placeStyle } from './ApptBlock'
 import { GHOST_NOTE } from './GhostBlock'
@@ -582,5 +583,22 @@ describe('AC-6603.3: 휴진일은 머리에 "휴진", 열이 회색, 예약은 �
   it('AC-6603.3: 일 보기 휴진일도 머리에 "휴진"이다', () => {
     renderGrid({ days: ['2026-11-19'], settings: CLINIC })
     expect(screen.getByRole('button', { name: '11월 19일 (목) 휴진 예약 1' })).toBeTruthy()
+  })
+})
+
+describe('AC-7616.1: 일·주 보기 종일 줄의 반차 휴무 칩', () => {
+  it("AC-7616.1: part가 있는 휴무 칩은 '{이름} 오전 휴무'·'{이름} 오후 휴무'(그 시행자 색)이고, part 없는 칩은 지금 그대로다", () => {
+    const allday: CalAllDay[] = [
+      { id: 'h1', day: '2026-11-17', type: 'off', memo: null, staffId: 'ga', staffName: '한○○', part: 'am' },
+      { id: 'h2', day: '2026-11-19', type: 'off', memo: null, staffId: 'da', staffName: '조○○', part: 'pm' },
+      ...ALLDAY,
+    ]
+    const { props } = renderGrid({ allday })
+    const am = screen.getByRole('button', { name: '(가) 한○○ 오전 휴무' })
+    expect(am.className).toContain('bg-cal-blue-soft')
+    expect(screen.getByRole('button', { name: '(다) 조○○ 오후 휴무' }).className).toContain('bg-cal-purple-soft')
+    expect(screen.getByRole('button', { name: '(나) 윤○○ 휴무' })).toBeTruthy()
+    fireEvent.click(am)
+    expect(props.onAllDay).toHaveBeenLastCalledWith('2026-11-17')
   })
 })

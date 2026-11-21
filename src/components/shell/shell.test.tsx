@@ -41,7 +41,7 @@ const hasNone = (el: Element, classes: string) => {
   for (const t of tokens(classes)) expect(classesOf(el), t).not.toContain(t)
 }
 
-// 탭과 탭 주소(tab-frame REQ-302, design.md '탭 목록'). 기능 자신의 화면이 있는 것은 READY의 탭이다(통계는 stats AC-515.1, 환자는 patients AC-610.1, 업무일지는 worklog AC-012.2, 서식은 forms AC-3501.1, 재고는 inventory AC-7512.1, 주소록은 contacts AC-6508.1).
+// 탭과 탭 주소(tab-frame REQ-302, design.md '탭 목록'). 기능 자신의 화면이 있는 것은 READY의 탭이다(통계는 stats AC-515.1, 환자는 patients AC-610.1, 업무일지는 worklog AC-012.2, 서식은 forms AC-3501.1, 직원은 staff AC-7611.1, 재고는 inventory AC-7512.1, 주소록은 contacts AC-6508.1).
 // 매출 탭은 통계 매출 칸으로 옮겨 없어졌다(stats-revenue AC-4110.1, /revenue는 next.config가 /stats로 넘긴다)
 const PATHS: readonly (readonly [string, string])[] = [
   ['대시보드', '/dashboard'],
@@ -60,7 +60,7 @@ const PATHS: readonly (readonly [string, string])[] = [
   ['설정', '/settings'],
 ]
 const LABELS = PATHS.map(([label]) => label)
-const READY = ['대시보드', '통계', '청구', '고시·공지', '환자', '업무일지', '수납일지', '예약', 'AI 리포트', '서식', '재고', '주소록'] // 고시·공지는 notices AC-7423.1, 재고는 inventory AC-7512.1, 주소록은 contacts AC-6508.1
+const READY = ['대시보드', '통계', '청구', '고시·공지', '환자', '업무일지', '수납일지', '예약', 'AI 리포트', '서식', '직원', '재고', '주소록'] // 고시·공지는 notices AC-7423.1, 직원은 staff AC-7611.1, 재고는 inventory AC-7512.1, 주소록은 contacts AC-6508.1
 // 준비 중 화면 주소(설정 빼고 화면이 없는 탭)
 const NOT_READY_PATHS = PATHS.filter(([label]) => !READY.includes(label) && label !== '설정')
 const EMAIL = 'manager@example.com'
@@ -109,8 +109,8 @@ const panel = () => {
   const id = moreButton().getAttribute('aria-controls')
   return id ? document.getElementById(id) : null
 }
-// 화면이 있는 탭(MENU ready: true) — 대시보드·통계·청구·고시·공지·환자·업무일지·수납일지·예약·AI 리포트·서식·재고·주소록·설정(MENU 차례)
-const READY_TABS = ['대시보드', '통계', '청구', '고시·공지', '환자', '업무일지', '수납일지', '예약', 'AI 리포트', '서식', '재고', '주소록', '설정']
+// 화면이 있는 탭(MENU ready: true) — 대시보드·통계·청구·고시·공지·환자·업무일지·수납일지·예약·AI 리포트·서식·직원·재고·주소록·설정(MENU 차례)
+const READY_TABS = ['대시보드', '통계', '청구', '고시·공지', '환자', '업무일지', '수납일지', '예약', 'AI 리포트', '서식', '직원', '재고', '주소록', '설정']
 // 준비 중 탭(MENU ready: false). 수는 NOT_READY_FEATURES에서 센다
 const NOT_READY_TABS = LABELS.filter((l) => !READY_TABS.includes(l))
 // 지금 탭 모양(ink 600 + 아래 2px accent 밑줄)과 기본 모양(ink-2 500)
@@ -146,7 +146,7 @@ describe('menu', () => {
     for (const { label, path } of MENU) expect(path, label).toMatch(/^\/[a-z0-9-]+(?:\/[a-z0-9-]+)*$/)
   })
 
-  it('AC-302.3·AC-4110.1·AC-515.1·AC-714.1·AC-610.1·AC-012.2·AC-012.6·AC-3501.1·AC-7423.1·AC-7512.1·AC-6508.1: 기능 자신의 화면(href)은 대시보드 /dashboard · 통계 /stats · 청구 /claim · 고시·공지 /notices · 환자 /patients · AI 리포트 /ai-report · 서식 /forms · 재고 /inventory · 업무일지 /worklog · 주소록 /contacts · 설정 /settings이고 나머지는 null. href가 있으면 path와 같다', () => {
+  it('AC-302.3·AC-4110.1·AC-515.1·AC-714.1·AC-610.1·AC-012.2·AC-012.6·AC-3501.1·AC-7423.1·AC-7512.1·AC-6508.1·AC-7611.1: 기능 자신의 화면(href)은 대시보드 /dashboard · 통계 /stats · 청구 /claim · 고시·공지 /notices · 환자 /patients · AI 리포트 /ai-report · 서식 /forms · 직원 /staff · 재고 /inventory · 업무일지 /worklog · 주소록 /contacts · 설정 /settings이고 나머지는 null. href가 있으면 path와 같다', () => {
     expect(MENU.filter((m) => m.href !== null).map(({ label, href }) => ({ label, href }))).toEqual([
       { label: '대시보드', href: '/dashboard' },
       { label: '통계', href: '/stats' },
@@ -158,6 +158,7 @@ describe('menu', () => {
       { label: '예약', href: '/calendar' },
       { label: 'AI 리포트', href: '/ai-report' },
       { label: '서식', href: '/forms' },
+      { label: '직원', href: '/staff' },
       { label: '재고', href: '/inventory' },
       { label: '주소록', href: '/contacts' },
       { label: '설정', href: '/settings' },
@@ -208,7 +209,7 @@ describe('menu', () => {
     expect('ADMIN_ITEM' in menuModule).toBe(false)
   })
 
-  it('AC-416.4·AC-4110.1·AC-515.1·AC-714.1·AC-610.1·AC-012.2·AC-3501.1·AC-7423.1·AC-7512.1·AC-6508.1: 항목마다 ready가 있고 화면이 있는 탭(대시보드·통계·청구·고시·공지·환자·AI 리포트·서식·재고·업무일지·주소록·설정)만 true다. ready: false인 주소들은 NOT_READY_FEATURES의 주소와 같다(순서도)', () => {
+  it('AC-416.4·AC-4110.1·AC-515.1·AC-714.1·AC-610.1·AC-012.2·AC-3501.1·AC-7423.1·AC-7512.1·AC-6508.1·AC-7611.1: 항목마다 ready가 있고 화면이 있는 탭(대시보드·통계·청구·고시·공지·환자·AI 리포트·서식·직원·재고·업무일지·주소록·설정)만 true다. ready: false인 주소들은 NOT_READY_FEATURES의 주소와 같다(순서도)', () => {
     for (const item of MENU) expect(typeof item.ready, item.label).toBe('boolean')
     expect(MENU.filter((m) => m.ready).map((m) => m.label)).toEqual(READY_TABS)
     expect(MENU.filter((m) => !m.ready).map((m) => m.label)).toEqual(NOT_READY_TABS)
@@ -278,6 +279,10 @@ describe('menu', () => {
     '/ai-report',
     '/forms',
     '/notices',
+    '/staff',
+    '/staff/schedule',
+    '/staff/leave',
+    '/staff/pay',
     '/contacts',
     '/settings',
     '/admin',
@@ -287,7 +292,7 @@ describe('menu', () => {
     '/worklogs',
     '/sunapx',
     '/calendarx',
-  ])('AC-6306.1: isDeskPath(%s)는 거짓이다', (path) => {
+  ])('AC-6306.1·AC-7611.3: isDeskPath(%s)는 거짓이다', (path) => {
     expect(isDeskPath(path)).toBe(false)
   })
 
@@ -691,7 +696,8 @@ describe('MoreMenu', () => {
         expect(a.textContent, label).toBe(label)
       }
     }
-    expect(within(p).getAllByText('준비 중')).toHaveLength(NOT_READY_FEATURES.length)
+    // 준비 중 탭이 하나도 없으면(고시·공지·재고·주소록·직원 모두 화면이 생김) 칩도 없다 — getAll은 0개면 던지므로 queryAll로 센다
+    expect(within(p).queryAllByText('준비 중')).toHaveLength(NOT_READY_FEATURES.length)
   })
 
   it('AC-2702.2: 판 머리의 숫자는 MORE_MENU에서 센다(MoreMenu.tsx에 수를 적지 않는다). 옛 [전체 메뉴](AllMenu.tsx)는 없다', () => {
@@ -781,6 +787,29 @@ describe('MoreMenu', () => {
       expect(link.children, label).toHaveLength(1)
       expect(link.textContent, label).toBe(label)
     }
+  })
+
+  it('AC-7611.1: 직원(/staff)은 href·path가 /staff인 ready 탭이고(주요 메뉴 아님) [더보기] 판에 있으며 그 칸에 "준비 중" 칩이 없다', async () => {
+    expect(MENU.find((m) => m.label === '직원')).toEqual({ label: '직원', path: '/staff', href: '/staff', ready: true, primary: false })
+    expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/staff')
+    const user = userEvent.setup()
+    render(<TabBar />)
+    expect(within(strip()).queryByRole('link', { name: /직원/ })).toBeNull()
+    await user.click(moreButton())
+    const link = within(panel() as HTMLElement).getByRole('link', { name: '직원' })
+    expect(link.getAttribute('href')).toBe('/staff')
+    expect(link.children).toHaveLength(1)
+    expect(link.textContent).toBe('직원')
+  })
+
+  it.each(['/staff', '/staff/schedule', '/staff/leave', '/staff/pay'])('AC-7611.2: %s에서는 탭 "직원"이 켜진다 — [더보기] 단추가 "더보기 · 직원"이고 판 안 직원 링크가 aria-current="page"다', async (path) => {
+    pathname.mockReturnValue(path)
+    expect(currentMenuLabel(path)).toBe('직원')
+    const user = userEvent.setup()
+    render(<TabBar />)
+    expect(moreButton().textContent).toContain('직원')
+    await user.click(moreButton())
+    expect(within(panel() as HTMLElement).getByRole('link', { name: '직원' }).getAttribute('aria-current')).toBe('page')
   })
 
   it('AC-7512.1: 재고(/inventory)는 href·path가 /inventory인 ready 탭이고(주요 메뉴 아님) [더보기] 판 자리 그대로이며 그 칸에 "준비 중" 칩이 없다', async () => {

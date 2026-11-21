@@ -69,7 +69,16 @@ export type ApptDraft = Omit<CalAppt, 'id' | 'auto' | 'origDay' | 'origStart'>
 export type CalCountRow = Pick<CalAppt, 'day' | 'staffId' | 'staffName' | 'kindId' | 'kindName' | 'status' | 'auto' | 'origDay'>
 // 통계 다시 예약·예약 빈자리용(spec stats-insights AC-6104.1). 이름·메모 없음. 차트번호는 lib/calendar 다시 예약 셈 안에서만 쓴다
 export type CalSlotRow = Pick<CalAppt, 'day' | 'staffId' | 'staffName' | 'kindId' | 'kindName' | 'status' | 'auto' | 'start' | 'len' | 'chart'>
-export type CalAllDay = { id: string; day: string; type: 'memo' | 'off'; memo: string | null; staffId: string | null; staffName: string | null }
+/** 종일 줄. part = 반차 휴무('off' 줄만, 직원 탭 휴가에서 DB 트리거가 적음, spec staff REQ-7616) — 없거나 null이면 종일 */
+export type CalAllDay = {
+  id: string
+  day: string
+  type: 'memo' | 'off'
+  memo: string | null
+  staffId: string | null
+  staffName: string | null
+  part?: 'am' | 'pm' | null
+}
 
 // 설정 줄이 없을 때(DB 기본값과 같다). 시행자는 비어 있다(설정에서 더한다)
 export const DEFAULT_CAL_SETTINGS: CalSettings = {

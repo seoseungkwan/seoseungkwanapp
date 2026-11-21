@@ -144,6 +144,52 @@ describe('AC-6105.1 occupancy: 요일 × 시 찬 정도', () => {
   })
 })
 
+// 반차 휴무(spec staff AC-7616.3): 그 담당의 그날 자리에서 오전 휴무는 경계 앞, 오후 휴무는 경계 뒤만 뺀다.
+// 경계 = 그 요일 병원 점심 시작(없으면 13:00, 예약 넣기 경고 AC-7616.2와 같다). 시간 줄은 11시~14시로 경계 앞뒤를 다 본다
+describe('AC-7616.3 occupancy: 반차 휴무는 반나절 자리만 뺀다', () => {
+  const MIDDAY: CalSettings = { ...SETTINGS, openHour: 11, closeHour: 15 }
+  const half = (day: string, staffId: string, part: 'am' | 'pm' | null): CalAllDay => ({ ...off(day, staffId), part })
+  // 목(11-12)·금(11-13)·수(11-04) 11:00~15:00 한○○ 예약 세 겹 → 그 요일 시마다 찬 분 180
+  const busy = (...days: string[]) => days.flatMap((day) => [0, 1, 2].map(() => slot(day, 'ga', 660, 240)))
+  const ROWS_MID = busy('2026-11-12', '2026-11-13', '2026-11-04')
+  const at = (over: Partial<Parameters<typeof occupancy>[0]>) =>
+    occupancy({ rows: ROWS_MID, offs: [], settings: MIDDAY, today: TODAY, staffId: 'ga', ...over })
+  // 한○○ 자리: 휴무 없으면 8일 × 60 = 480분 → 180/480 = 37.5 → 38, 하루가 빠지면 420분 → 180/420 = 42.9 → 43
+
+  it('AC-7616.3: 점심 시작이 없으면(병원 정보 없음) 경계는 13:00 — 오전 휴무는 11·12시만, 오후 휴무는 13·14시만 그날 자리가 빠진다', () => {
+    const view = at({ offs: [half('2026-11-05', 'ga', 'am'), half('2026-11-06', 'ga', 'pm')] }) // 목 오전 · 금 오후
+    expect(view.hours).toEqual([11, 12, 13, 14])
+    expect(view.cells[3]).toEqual([43, 43, 38, 38]) // 목: 경계 앞만 420분
+    expect(view.cells[4]).toEqual([38, 38, 43, 43]) // 금: 경계 뒤만 420분
+    expect(view.cells[2]).toEqual([38, 38, 38, 38]) // 수: 휴무 없음
+  })
+
+  it('AC-7616.3: 경계는 그 요일 병원 점심 시작이다 — 12:30이면 12시 칸은 30분만 빠지고, 점심 없는 요일·휴진 요일은 13:00', () => {
+    const open = { open: 540, close: 1080, lunchFrom: 780, lunchTo: 840 }
+    const days = [open, open, null, { ...open, lunchFrom: 750, lunchTo: 810 }, { ...open, lunchFrom: null, lunchTo: null }, open, null]
+    const offs = [half('2026-11-05', 'ga', 'am'), half('2026-11-06', 'ga', 'pm'), half('2026-11-11', 'ga', 'am')] // 목 오전 · 금 오후 · 수(휴진 요일) 오전
+    const view = at({ offs, settings: { ...MIDDAY, days } })
+    expect(view.cells[3]).toEqual([43, 40, 38, 38]) // 목 경계 12:30: 11시 420분 · 12시 450분(180/450 = 40)
+    expect(view.cells[4]).toEqual([38, 38, 43, 43]) // 금 점심 없음 → 13:00
+    expect(view.cells[2]).toEqual([43, 43, 38, 38]) // 수 휴진 요일 → 13:00
+  })
+
+  it('AC-7616.3: 그 담당의 자리만 빠진다 — 모두 보기에서 한○○ 오전 휴무는 경계 앞 60분만 줄고, 윤○○ 반차는 한○○ 자리를 안 건드린다', () => {
+    // 모두: 8일 × 2명 × 60 = 960분 → 180/960 = 18.75 → 19, 오전 60분 빠지면 900분 → 180/900 = 20
+    const all = at({ offs: [half('2026-11-05', 'ga', 'am')], staffId: null })
+    expect(all.cells[3]).toEqual([20, 20, 19, 19])
+    const other = at({ offs: [half('2026-11-05', 'na', 'am'), half('2026-11-06', 'na', 'pm')] })
+    expect(other.cells[3]).toEqual([38, 38, 38, 38])
+    expect(other.cells[4]).toEqual([38, 38, 38, 38])
+  })
+
+  it('AC-7616.3: part 없는(null) 휴무는 지금처럼 하루 전체가 빠지고, 같은 날 오전·오후 휴무가 다 있으면 하루 전체가 빠진다', () => {
+    expect(at({ offs: [half('2026-11-05', 'ga', null)] }).cells[3]).toEqual([43, 43, 43, 43])
+    expect(at({ offs: [half('2026-11-05', 'ga', 'am'), half('2026-11-05', 'ga', 'pm')] }).cells[3]).toEqual([43, 43, 43, 43])
+    expect(at({ offs: [half('2026-11-05', 'ga', 'pm'), half('2026-11-05', 'ga', null)] }).cells[3]).toEqual([43, 43, 43, 43])
+  })
+})
+
 describe('AC-6105.2 occupancyLists: 늘 비는 시간 · 꽉 차는 시간', () => {
   const view = (cells: (number | null)[][], weekdays = [1, 2, 3, 4, 5, 6]): Occupancy => ({ weekdays, hours: [9, 10, 14], cells, booked: 1 })
   const SAMPLE = view([

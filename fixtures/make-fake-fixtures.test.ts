@@ -473,17 +473,22 @@ describe('AC-005.2 저장소의 가짜 파일 폴더 · .gitignore 되살리기 
     expect(readdirSync(join(root, 'public', 'fake-sample'))).toEqual(['bit-sample.csv'])
   })
 
-  // AC-6504.4(specs/contacts): 가짜 파일 말고는 주소록 [양식 받기]의 빈 엑셀 양식 파일 하나만 더 되살린다(엑셀 줄 뒤)
-  it('AC-6504.4: .gitignore가 되살리는 것은 생성기 파일 이름 그대로와 주소록 양식 파일 하나뿐이다(글롭 없음)', () => {
+  // 가짜 파일 밖 예외는 엑셀 양식 두 개뿐이다: 주소록 [양식 받기]의 빈 양식(specs/contacts AC-6504.4)과
+  // 직원 탭 양식(지어낸 보기 줄만, 운영 사이트에서 내려받음 — spec staff AC-7612.4)
+  it('AC-005.2·AC-6504.4·AC-7612.4: .gitignore가 되살리는 것은 생성기 파일 이름 그대로와 주소록·직원 엑셀 양식 파일 하나씩뿐이고(글롭 없음) 엑셀 막는 줄보다 뒤에 있다', () => {
     const lines = readFileSync(join(root, '.gitignore'), 'utf8').split(/\r?\n/) // Windows에서 받은 저장소는 줄 끝이 CRLF다
     const allowed = lines.filter((line) => line.startsWith('!') && line !== '!.env.example')
-    expect(allowed.sort()).toEqual(
+    expect([...allowed].sort()).toEqual(
       [
         ...FILES.map((name) => `!fixtures/fake-bit/${name}`),
         '!public/fake-sample/bit-sample.csv',
         '!public/contacts/contacts-template.xlsx',
+        '!public/staff/staff-template.xlsx',
       ].sort(),
     )
-    expect(lines.indexOf('!public/contacts/contacts-template.xlsx')).toBeGreaterThan(lines.indexOf('*.[xX][lL][sS][xX]'))
+    // 환자 엑셀 막기(확장자 대소문자 무시)는 그대로이고, 되살리는 줄은 모두 그 뒤에 있어야 git이 되살린다
+    const blocks = ['*.[cC][sS][vV]', '*.[xX][lL][sS]', '*.[xX][lL][sS][xX]'].map((pattern) => lines.indexOf(pattern))
+    for (const at of blocks) expect(at).toBeGreaterThanOrEqual(0)
+    for (const line of allowed) expect(lines.indexOf(line), line).toBeGreaterThan(Math.max(...blocks))
   })
 })

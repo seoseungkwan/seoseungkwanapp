@@ -35,7 +35,8 @@ const APPT_COLUMNS = 'id,day,start_min,len_min,name,chart,staff_id,staff_name,st
 const COUNT_COLUMNS = 'day,staff_id,staff_name,kind_id,kind_name,status,auto,orig_day'
 // 통계 다시 예약·빈자리(stats-insights AC-6104.1): 날·시행자·종류·상태·도착 표시·시작 분·길이 분·차트번호. 이름·메모 없음
 const SLOT_COLUMNS = 'day,staff_id,staff_name,kind_id,kind_name,status,auto,start_min,len_min,chart'
-const ALLDAY_COLUMNS = 'id,day,type,memo,staff_id,staff_name'
+// part = 반차 휴무 'am'·'pm'(직원 탭 휴가에서 트리거가 적음, spec staff AC-7616.1). leave_id는 읽지 않는다
+const ALLDAY_COLUMNS = 'id,day,type,memo,staff_id,staff_name,part'
 const SETTINGS_COLUMNS = 'kinds,staff,open_hour,close_hour,sunday'
 const APPT_INSERT_KEYS = ['day', 'start_min', 'len_min', 'name', 'chart', 'staff_id', 'staff_name', 'staff_mark', 'kind_id', 'kind_name', 'memo', 'status']
 const ALLDAY_INSERT_KEYS = ['day', 'type', 'memo', 'staff_id', 'staff_name']
@@ -712,6 +713,41 @@ describe('listAllDay', () => {
   ])('AC-5901.6: 모양이 틀린 종일 줄(%s)은 뺀다', async (_name, bad) => {
     const { client } = fakeClient(okWith([bad, OFF_ROW]))
     await expect(listAllDay(client, DAY, DAY2)).resolves.toEqual([OFF_DAY])
+  })
+})
+
+describe('AC-7616.1 listAllDay · addAllDay: 반차 휴무 part', () => {
+  it('AC-7616.1: 휴무 줄의 part(am·pm)를 읽어 CalAllDay part로 둔다. part가 null이거나 없는 줄은 지금 그대로(종일)다', async () => {
+    const am = { ...OFF_ROW, id: ID, part: 'am' }
+    const pm = { ...OFF_ROW, id: ID2, day: DAY2, part: 'pm' }
+    const whole = { ...OFF_ROW, part: null }
+    const memo = { ...MEMO_ROW, part: null }
+    const { client, calls } = fakeClient(okWith([am, pm, whole, memo, OFF_ROW]))
+    await expect(listAllDay(client, DAY, DAY2)).resolves.toEqual([
+      { ...OFF_DAY, id: ID, part: 'am' },
+      { ...OFF_DAY, id: ID2, day: DAY2, part: 'pm' },
+      OFF_DAY,
+      MEMO_DAY,
+      OFF_DAY,
+    ])
+    expect(calls[1]).toEqual(['select', ALLDAY_COLUMNS])
+  })
+
+  it.each<[string, Record<string, unknown>]>([
+    ['메모 줄에 part', { ...MEMO_ROW, part: 'am' }],
+    ['part 틀림', { ...OFF_ROW, part: 'x' }],
+    ['part 숫자', { ...OFF_ROW, part: 1 }],
+  ])('AC-7616.1: 모양이 틀린 종일 줄(%s)은 뺀다', async (_name, bad) => {
+    const { client } = fakeClient(okWith([bad, OFF_ROW]))
+    await expect(listAllDay(client, DAY, DAY2)).resolves.toEqual([OFF_DAY])
+  })
+
+  it('AC-7616.1: 손으로 넣는 휴무는 part·leave_id를 보내지 않는다(두 칸은 트리거만 쓴다)', async () => {
+    const { client, calls } = fakeClient(okWith(OFF_ROW))
+    const item = { day: DAY, type: 'off', memo: null, staffId: 'st-ga', staffName: '가', part: 'am', leaveId: ID } as Omit<CalAllDay, 'id'>
+    await expect(addAllDay(client, item)).resolves.toEqual(OFF_DAY)
+    expect(calls[1]).toEqual(['insert', { day: DAY, type: 'off', memo: null, staff_id: 'st-ga', staff_name: '가' }])
+    expect(calls[2]).toEqual(['select', ALLDAY_COLUMNS])
   })
 })
 

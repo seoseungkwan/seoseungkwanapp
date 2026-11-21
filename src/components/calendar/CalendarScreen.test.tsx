@@ -19,7 +19,8 @@ import {
 } from '@/lib/storage/calendar'
 import { loadClinicProfile } from '@/lib/storage/clinicProfile'
 import type { BridgeState } from '@/types/bridge'
-import { DEFAULT_CAL_SETTINGS, type ApptDraft, type CalAllDay, type CalAppt, type CalSettings } from '@/types/calendar'
+import type { CalAllDay } from '@/lib/calendar/shapes'
+import { DEFAULT_CAL_SETTINGS, type ApptDraft, type CalAppt, type CalSettings } from '@/types/calendar'
 import type { ClinicProfile, DayHours } from '@/types/clinicProfile'
 import type { CalendarWorkerMessage } from '@/workers/calendar/messages'
 import { CalendarScreen } from './CalendarScreen'
@@ -807,5 +808,59 @@ describe('AC-6603 예약이 병원 정보를 쓴다 (spec clinic-profile)', () =
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '예약 설정' })).toBeNull())
     expect(columns()).toEqual(['2026-11-16', '2026-11-17', '2026-11-19', '2026-11-20', '2026-11-21'])
     expect(staffButtons(openAdd())).toEqual(['(원) 원장님', '(가) 한○○'])
+  })
+})
+
+describe('AC-7616.2 반차 휴무 경고의 경계 = 그 요일 병원 정보 점심 시작 (spec staff)', () => {
+  const W: DayHours = { open: 540, close: 1110, lunchFrom: 780, lunchTo: 840 }
+  const TUE: DayHours = { open: 540, close: 1110, lunchFrom: 720, lunchTo: 780 } // 화요일만 점심 12:00~13:00
+  const PROFILE: ClinicProfile = {
+    displayName: null,
+    phone: null,
+    address: null,
+    honorific: '원장님',
+    hours: [W, TUE, W, W, W, { open: 540, close: 780, lunchFrom: null, lunchTo: null }, null],
+    closedDates: [],
+    staff: [
+      { id: 'won', name: '원장님', role: 'doctor', mark: '원', color: 'gray', calendar: true },
+      { id: 'ga', name: '한○○', role: 'staff', mark: '가', color: 'blue', calendar: true },
+    ],
+    logoPath: null,
+    emr: 'bit',
+  }
+  const halfOff = (day: string, part: 'am' | 'pm'): CalAllDay => ({ id: `h-${day}`, day, type: 'off', memo: null, staffId: 'ga', staffName: '한○○', part })
+  const start = (panel: HTMLElement, value: string) => fireEvent.change(within(panel).getByLabelText('시작'), { target: { value } })
+
+  it("AC-7616.2: 화요일(점심 12:00) 오전 휴무 담당 — 12:30 시작은 경고 없고 11:50 시작은 휴무 경고다. 칩은 '오전 휴무'", async () => {
+    vi.mocked(loadClinicProfile).mockResolvedValue(PROFILE)
+    db.allday = [halfOff(TODAY, 'am')]
+    await open()
+    await waitFor(() => expect(screen.getByRole('button', { name: '(가) 한○○ 오전 휴무' })).toBeTruthy())
+    const panel = openAdd()
+    start(panel, '1230')
+    fillBasics(panel, '최○○', /^\(가\) 한○○\s*오전 휴무$/, /^도수/)
+    expect(within(panel).queryByRole('alert')).toBeNull()
+    start(panel, '1150')
+    expect(within(panel).getByRole('alert').textContent).toContain('담당은 11월 17일 (화) 휴무예요')
+    expect(within(panel).getByRole('button', { name: '그래도 저장' })).toBeTruthy()
+  })
+
+  it('AC-7616.2: 병원 정보가 없으면 경계는 13:00 — 12:30 시작도 오전 휴무 경고다', async () => {
+    db.allday = [halfOff(TODAY, 'am')]
+    await open()
+    const panel = openAdd()
+    start(panel, '1230')
+    fillBasics(panel, '최○○', /^\(가\) 한○○\s*오전 휴무$/, /^도수/)
+    expect(within(panel).getByRole('alert').textContent).toContain('담당은 11월 17일 (화) 휴무예요')
+  })
+
+  it('AC-7616.2: [다음 주에도] 확인도 그 요일 점심 시작으로 나눈다(화 12:30 예약, 다음 주 오전 휴무 → 확인 글 없음)', async () => {
+    vi.mocked(loadClinicProfile).mockResolvedValue(PROFILE)
+    db.appts = [appt('n2', { start: 750, chart: '10457', name: '박○○' })]
+    db.allday = [halfOff('2026-11-24', 'am')]
+    await open()
+    fireEvent.click(await screen.findByRole('button', { name: /^10457 박○○ 도수 \(가\)/ }))
+    fireEvent.click(within(dialog('예약')).getByRole('button', { name: '다음 주에도' }))
+    expect(await screen.findByText('11월 24일 (화) 12:30에 똑같이 넣었어요.')).toBeTruthy()
   })
 })
