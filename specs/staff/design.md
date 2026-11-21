@@ -12,7 +12,7 @@
 
 | 표 | 칸 | 하나만 |
 |---|---|---|
-| `staff_members` | name · job · job_other · employment · weekly_hours numeric(4,1) default 40 · hired_on date not null · left_on · phone · birthday · address · bank · account_no · calendar_staff_id · memo · used_before numeric(3,1) default 0 · used_before_from date · created_at · updated_at | (hospital_id, name, hired_on) · (id, hospital_id) · (hospital_id, calendar_staff_id) where not null |
+| `staff_members` | name · job · job_other · employment · weekly_hours numeric(4,1) default 40 · hired_on date not null · left_on · phone · birthday · address · bank · account_no · calendar_staff_id · memo · used_before numeric(3,1) default 0 · used_before_from date · carry_start numeric(4,1) default 0 · registered_on date default 한국 오늘 · created_at · updated_at | (hospital_id, name, hired_on) · (id, hospital_id) · (hospital_id, calendar_staff_id) where not null |
 | `staff_week_plans` 기본 근무 | staff_id · from_day date · week jsonb(길이 7 월~일, 칸 = `{start,end,lunchFrom,lunchTo}` 분 또는 null, 1,000바이트) · sat_rotation | (staff_id, from_day) |
 | `staff_day_changes` 바뀐 날 | staff_id · day · start_min · end_min · lunch_from · lunch_to · memo(50) | (staff_id, day) |
 | `staff_overtime` | staff_id · day · kind · minutes | (staff_id, day, kind) |
@@ -25,6 +25,7 @@
 
 - 자식 표 직원 키: `foreign key (staff_id, hospital_id) references public.staff_members (id, hospital_id) on delete cascade`. `staff_pay_lines`만 `on delete set null (staff_id)`(PG15 칸 목록 문법).
 - check는 AC-7601.4~7601.6 그대로. 0.5 단위 = `x * 2 = trunc(x * 2)`. 근무 칸(바뀐 날): `(start_min is null) = (end_min is null)`, `(lunch_from is null) = (lunch_to is null)`, 점심은 근무 안, 모두 `% 10 = 0`. week jsonb 안 모양은 앱(`checkWeek`)이 보고 DB는 배열·길이·크기만. 방식별: `per_case`·`fixed` ⇒ unit_amount not null·percent null, `percent` ⇒ 반대. 휴가: `(kind = 'half') = (part is not null)`, `kind = 'sick' or paid = (kind <> 'unpaid')`. 파일: `(kind = 'doc' and staff_id is not null and month is null and mime in (pdf, jpeg, png)) or (kind = 'tax' and staff_id is null and month is not null and mime in (pdf, zip, xlsx, xls, jpeg, png))`, path 모양 `^[0-9a-f-]{36}/(doc/[0-9a-f-]{36}|tax/[0-9]{4}-[0-9]{2})/[0-9a-f-]{36}\.[a-z0-9]{1,5}$` + `split_part(path, '/', 1) = hospital_id::text`.
+- **넘어온 연차 시작 값**(2026-11-21, AC-7601.8): `carry_start numeric(4, 1) not null default 0 check (carry_start between -30 and 100 and carry_start * 2 = trunc(carry_start * 2))`(넘어온 연차 시작 값 — 'carry' 병원 셈의 시작 기간 넘어옴), `registered_on date not null default (now() at time zone 'Asia/Seoul')::date`(웹앱에 처음 넣은 날 — 시작 기간을 정함, 칸 권한 없음이라 DB 기본값만). 이 파일은 아직 운영에 실행하지 않았으므로 새 migration 없이 `create table` 안 `used_before_from` 다음에 둔다. 두 칸이 없는 앞 판을 실행한 DB에도 들어가게 표 만들기 바로 아래 `alter table public.staff_members add column if not exists carry_start …`·`… registered_on …` 두 줄(같은 정의)을 둔다(머리 글의 '칸은 없을 때만 더하고' 약속). 직원 표 위 주석에 두 칸 뜻을 `used_before`처럼 한 줄씩.
 - `pay_items` 기본값: `[{"id":"base","name":"기본급","kind":"amount","base":true,"removedFrom":null}, {"id":"overtime","name":"연장수당",…}, {"id":"meal","name":"식대",…}, {"id":"incentive","name":"인센티브","kind":"incentive","base":true,…}, {"id":"bonus","name":"상여",…}]`(배열·30개·4,000바이트만 DB가, 안 모양은 앱 `checkPayItems`). 항목은 `removedFrom`('YYYY-MM') 앞 달에만 보인다.
 - 트리거(모두 `set search_path = ''`, 함수 revoke all): touch(updated_at, `clinic_profiles_touch` 모양) — members·settings·pay_lines. `staff_files_limit`(before insert, invoker): 같은 병원 같은 직원 'doc' 또는 같은 달 'tax'가 이미 20개면 raise.
 
@@ -33,7 +34,7 @@
 
 | 표 | authenticated |
 |---|---|
-| staff_members | select · delete · insert/update(name, job, job_other, employment, weekly_hours, hired_on, left_on, phone, birthday, address, bank, account_no, calendar_staff_id, memo, used_before, used_before_from) |
+| staff_members | select · delete · insert/update(name, job, job_other, employment, weekly_hours, hired_on, left_on, phone, birthday, address, bank, account_no, calendar_staff_id, memo, used_before, used_before_from, carry_start) — `registered_on`은 칸 권한 없음 |
 | staff_week_plans | select · delete · insert(staff_id, from_day, week, sat_rotation) · update(week, sat_rotation) |
 | staff_day_changes | select · delete · insert(staff_id, day, start_min, end_min, lunch_from, lunch_to, memo) · update(start_min, end_min, lunch_from, lunch_to, memo) |
 | staff_overtime | select · delete · insert(staff_id, day, kind, minutes) · update(minutes) |
@@ -62,6 +63,7 @@ alter table public.calendar_allday add column if not exists leave_id uuid refere
 
 ### 시험 `supabase/staff.rls.test.ts`
 `clinicEmr.rls.test.ts` 틀(PGlite, CHAIN → clinic_profile → clinic_emr → hospital_emr → 이 파일 → 이 파일 다시). 사람: 원장 A·B, A 데스크, 대기·거절 원장, 병원 없음, anon. 본다: 열 표 칸 권한(`information_schema.column_privileges`로 정확히 위 표 — 열쇠 칸 update 없음)·앱 저장 모양('고치고, 없으면 넣기' — 값 칸 update·열쇠와 함께 insert가 되고, 열쇠 칸 update는 거절)·RLS·제약·남의 병원 직원 id 거절·cascade/set null·지우기 정책(3년)·트리거(넣기·지우기·손 휴무 그대로·병원 정보에 없는 시행자·연결 끊기·바꾸기·rev 오름)·calendar_allday 옛 줄·정책·insert 칸 그대로·파일 줄 종류·20개 한도·바구니 정책·두 번 실행.
+넘어온 연차(AC-7601.8): 칸 모양(`carry_start` numeric 4,1·`registered_on` date, 둘 다 not null)·칸 권한(insert/update에 `carry_start`, `registered_on`은 없음)·`carry_start` 기본 0·−30·100·−0.5 됨, −30.5·100.5·1.3·null 거절·`registered_on`이 넣은 때 `(now() at time zone 'Asia/Seoul')::date`·원장이 `registered_on`을 넣거나 고치면 권한 거절·두 칸을 지운(앞 판) 표에 다시 붙이면 두 칸이 같은 정의로 생김.
 
 ## 2. 결정 기록 ADR-035 (`docs/ADR.md` 끝)
 > ### ADR-035: 직원 자료(연락처·주소·생일·계좌·근무·휴가·급여·서류 파일)를 Supabase에 원장만 보게 둔다. 주민번호는 두지 않는다
@@ -83,7 +85,8 @@ export type SatRotation = 'every' | '1-3' | '2-4'
 export type WeekPlan = { id: string; staffId: string; from: string; week: DayShift[] /* 7칸 월~일 */; sat: SatRotation }
 export type StaffMember = { id: string; name: string; job: StaffJob; jobOther: string | null; employment: Employment; weeklyHours: number
   hiredOn: string; leftOn: string | null; phone: string | null; birthday: string | null; address: string | null; bank: string | null
-  accountNo: string | null; calendarStaffId: string | null; memo: string | null; usedBefore: number; usedBeforeFrom: string | null }
+  accountNo: string | null; calendarStaffId: string | null; memo: string | null; usedBefore: number; usedBeforeFrom: string | null
+  carryStart: number /* 넘어온 연차 시작 값 −30~100, 0.5 단위 */; registeredOn: string /* 웹앱에 처음 넣은 날 — DB가 정함, 읽기만 */ }
 export type DayChange = { staffId: string; day: string; shift: DayShift; memo: string | null }
 export type OvertimeKind = 'extended' | 'night' | 'holiday'
 export type Overtime = { staffId: string; day: string; kind: OvertimeKind; minutes: number }
@@ -102,6 +105,7 @@ export type PayLine = { id: string | null; month: string; staffId: string | null
 export type PayMonth = { month: string; employerCost: number | null; costSavedOn: string | null; copiedOn: string | null }
 export type StaffFile = { id: string; kind: 'doc' | 'tax'; staffId: string | null; month: string | null; name: string; path: string; size: number; mime: string; createdAt: string }
 ```
+`registeredOn`은 DB가 정하는 읽기 칸이라 `saveMember` 입력은 `Omit<StaffMember, 'id' | 'registeredOn'>`이다(2026-11-21 넘어온 연차).
 `lib/staff/*` 순수 함수는 이 파일을 **불러오지 않고** 필요한 칸만 든 자기 입력 형을 둔다(같은 Phase 일꾼이 서로 기다리지 않게). 칸 이름이 위와 같아 구조가 맞아 그대로 넘긴다. `lib/staff`는 네트워크·저장소·React를 쓰지 않는다(엑셀 받기 한 함수만 `xlsx` writeFile, 그림 파일은 `slipPng.ts`).
 
 ## 4. 순수 함수 (`src/lib/staff/`)
@@ -111,20 +115,24 @@ export type StaffFile = { id: string; kind: 'doc' | 'tax'; staffId: string | nul
 | `schedule.ts` | `checkWeek(week)` · `nthSaturday(day)` · `planOn(plans, day)` · `shiftOn({ member, plans, changes, day })` · `isChangedDay(…)` · `dayKind(day, { hours, closedDates })` → `{ holiday: boolean, closed: boolean, noHolidayList: boolean }` · `holidayPrefill(shift)` · `monthOvertime(overtime, month)` · `expandLeave({ from, to }, ctx)` · `workingCount(day, ctx)` · `fmtMinutes(m)`('2시간 30분') · `weekSummary(plan)`('월~금 09:00~18:00 (점심 13:00~14:00)' 줄들) | REQ-7605 |
 | `pay.ts` | `visibleItems(items, month)` · `checkPayItems(items)` · `incentiveAmount(entry)` · `lineTotal(line, items, month)` → `{ total, incentive, problem }` · `newLine({ month, staffId, rules })` · `copyPrev(line, prev, items, month)` · `applyRules(entries, rules)` · `laborCost(lines, items, month, employerCost)` · `revenueRatio(cost, revenue)`(소수 첫째 반올림, 0·null → null) · `monthRevenue(days)`(`revenueDayValues` 합) | REQ-7606 |
 | `roster.ts` | `upcoming(members, today)` → `{ day, staffId, kind: 'birthday' \| 'anniversary', years? }[]` · `tenure(hiredOn, today)` · `keepUntil(leftOn)` · `canPurge(member, today)` · `splitActive(members, today)` · `employedIn(member, month)` | REQ-7607 |
-| `rosterExcel.ts` | `ROSTER_HEADERS`(21칸) · `readRoster(buffer, existing, ctx)` → `{ problem: string \| null, rows: { line, action: 'new' \| 'update' \| 'problem', reason: string \| null, changed: string[], member: Partial<…>, plan: { week, sat } \| null }[] }` | REQ-7608 |
+| `rosterExcel.ts` | `ROSTER_HEADERS`(22칸 — 맨 끝 '넘어온 연차(일)', 옛 양식 21칸 = 앞 21칸도 읽음) · `readRoster(buffer, existing, ctx)` → `{ problem: string \| null, rows: { line, action: 'new' \| 'update' \| 'problem', reason: string \| null, changed: string[], member: Partial<…>, plan: { week, sat } \| null }[] }` | REQ-7608 |
 | `taxExcel.ts` | `taxSheet(input)` → `{ fileName, sheetName, rows: (string \| number \| null)[][] }`(순수) · `downloadTaxExcel(sheet)` | REQ-7609 |
 | `slipPng.ts` | `downloadSlipPng(svg, fileName): Promise<boolean>` — `lib/forms/png.ts`의 `svgForImage`(글꼴 data: 주소)로 캔버스 → PNG(서식 탭과 같은 길, `png.ts`는 고치지 않음) | AC-7615.10 |
 | `nationalId.ts` (검토 뒤) | `hasNationalId(text): boolean` — 주민번호 모양(붙임표·점·빈칸 나눔 6+7, 붙여 쓴 13자리). 전각 숫자·긴 줄표는 맞춘 글로 검사만 하고 받은 글은 바꾸지 않는다(`lib/worklog/notes.ts` `privacyProblem`과 같은 맞춤 방식, 전화·메일은 보지 않음). 저장 층 `checkMember`·`rosterExcel.ts`·명단 칸이 이 한 함수를 쓴다 | AC-7610.6 |
 
 - 날짜는 모두 `lib/analytics/dates.ts`(`addDays`·`addMonthsToDay`·`weekdayOf`·`monthRange`·`parseDateCell`), '2026.03.02'는 `rosterExcel.ts`가 '-'로 바꿔 `parseDateCell`에 넘긴다. 공휴일은 `lib/analytics/holidays.ts` `HOLIDAYS`(목록 첫 해~끝 해 밖이면 `noHolidayList`).
 - 연차 기간(입사일 기준): 0번 = [입사일, 입사일+1년) 달마다 1일, k번(k≥1) = [입사일+k년, +k+1년) `annualDays(k)`. 1월 1일 기준: 0번은 같고, 입사 다음 해 1월 1일 비례, 그 뒤 해마다. 오늘이 든 기간을 보인다.
+- **넘김 시작 기간**(2026-11-21, AC-7604.9): `leave.ts`의 `LeavePerson`에 **선택 칸** `carryStart?: number`·`registeredOn?: string | null`을 더한다(`StaffMember`를 그대로 넘기면 들어간다. 선택 칸이라 다른 곳·옛 시험은 그대로 — 없으면 시작 기간 = 첫 기간·시작 값 0 = 지금 셈). 장부(`ledger`)는 기간마다 `period.to < registeredOn`이면 '시작 기간 앞'으로 보고 넘어옴 0·다음으로 넘기지 않음, 그렇지 않은 첫 기간의 넘어옴 = `carryStart`('carry'일 때만), 그 뒤는 지금처럼 앞 기간 남은 일수. `leaveStatus`의 `previous`는 'carry'이고 앞 기간이 시작 기간 앞이면 null. 'pay'는 바뀌지 않는다. `settleInMonth`·`remainingAt`은 같은 장부를 쓰므로 따라 바뀐다(급여 `payPeople.ts`·휴가 `leaveView.ts`·명단 `rosterText.ts`는 고치지 않는다 — 직원을 그대로 넘긴다).
 - 인센티브 % 셈은 정수로: `Math.floor(sales * Math.round(percent * 100) / 10000)`.
 - 엑셀 넣은 기본 근무 점심 = 병원 정보 그 요일 `lunchFrom~lunchTo`(근무 안일 때).
+- **엑셀 '넘어온 연차(일)'**(2026-11-21, AC-7608.1·7608.7): 머리 줄이 22칸 `ROSTER_HEADERS`면 새 양식, 앞 21칸만 같고 21칸이면 옛 양식이다. 옛 양식은 22번째 칸을 읽지 않고 그 칸을 빈 칸으로 본다(`raw`의 그 칸은 ''). `RosterMember`·`RosterExisting`에 `carryStart: number`, 고침 비교 칸 차례는 지금 끝(… 계좌번호 · 기본 근무 · 메모) 뒤에 '넘어온 연차'. 양식은 `scripts/make_staff_template.py` `COLUMNS` 맨 끝(메모 뒤)에 `넘어온 연차(일)`(kind number, 보기 줄 빈칸), 숫자 확인(custom: 숫자·−30~100·0.5 단위, 경고만 — '올해 이미 쓴 연차(일)' 모양), 칸 도움말·'안내' 시트 한 줄(requirements '화면 글 기본값')을 더하고, 같은 스크립트로 `public/staff/staff-template.xlsx`를 다시 만든다(스크립트 확인이 새 칸·확인·안내 글을 본다). 사용자 바탕화면의 옛 양식 파일은 건드리지 않는다.
 
 ## 5. 저장 층 — `src/lib/storage/staff.ts`·`staffFiles.ts`, 오류 `src/lib/errors.ts`
 `createStaffStore(client: SupabaseClient)` → `listMembers()` · `saveMember(m, id?)`(주소·메모에 주민번호 모양이면 안 보냄, AC-7610.6) · `purgeMember(member)`(서류 파일 먼저 — 바구니가 지운 개수가 서류 수보다 적으면 실패) · `importRoster(rows)`(같은 검사) · `listPlans()` · `savePlan(staffId, from, week, sat)`(열쇠 줄 저장) · `listChanges(range)` · `saveChange(c)`(열쇠 줄 저장) · `resetDay(staffId, day)`(바뀐 날·더 일한 시간 지움) · `listOvertime(range)` · `saveOvertime(o)`(0이면 지움, 아니면 열쇠 줄 저장) · `listLeaves(range)` · `addLeaveGroup(rows)` · `replaceLeaveGroup(groupId, rows)` · `deleteLeaveGroup(groupId)` · `countAppts(calendarStaffId, days)`(`calendar_appts`에서 `day`만 select, status 취소 빼고) · `loadSettings()`(줄 없으면 기본값) · `saveSettings(s)`(upsert onConflict hospital_id) · `listRules()` · `saveRules(staffId, rules, fromMonth)`(규칙 저장 + fromMonth 이후 줄 `applyRules`) · `listPayLines(fromMonth, toMonth)` · `savePayLine(line)`(열쇠 줄 저장 — 열쇠 달·직원, 줄 id를 알면 그 id로 고침) · `listPayMonths(fromMonth, toMonth)` · `savePayMonth(m)`(열쇠 줄 저장 — 열쇠 달). `staffFiles.ts`: `listFiles(kind)` · `uploadFile({ kind, staffId \| month, file })` · `deleteFile(f)`(바구니가 0개를 지우면 실패, 줄은 그대로) · `downloadFile(f)`. `clinicProfile.ts`의 `Pick<SupabaseClient, …>`·1,000줄씩 읽기 방식을 따른다. 엑셀 넣기 = 새 줄 한 번 insert(+ 기본 근무 줄) → 고침 줄은 10개씩 update(적힌 칸만).
 
 **열쇠 줄 저장**(지금 방식, 2026-11-21 검토 뒤 명세를 코드에 맞춤): 기본 근무(직원·시작일)·바뀐 날(직원·날)·더 일한 시간(직원·날·종류)·급여 줄(달·직원)·달 줄(달)은 **upsert를 쓰지 않는다**. 그 열쇠로 먼저 값 칸만 고치고(`update(값).eq(열쇠…).select()`), 고친 줄이 없으면 열쇠와 함께 넣고(`insert`), 넣다가 겹치면(23505 — 다른 창이 그새 넣음) 한 번 더 고친다. upsert는 겹칠 때 보낸 열쇠 칸까지 고치려 해 열쇠 칸 update 권한이 있어야 하는데, 1절 권한 표대로 그 권한은 없다. 설정(`saveSettings`)만 upsert onConflict hospital_id다 — hospital_id를 보내지 않아(기본값 `my_hospital_id()`) 겹칠 때 고치는 칸이 값 세 칸뿐이다.
+
+**넘어온 연차 칸**(2026-11-21, AC-7610.7): 보내는 칸(`MEMBER_FIELDS`)에 `carryStart` → `carry_start`를 더하고, `registeredOn` → `registered_on`은 **읽는 칸(select)에만** 둔다(보내는 칸·`memberBody`에 없음 — 칸 권한이 없다). `checkMember`는 `carryStart`를 −30~100·0.5 단위로 보고, 읽은 줄은 `registered_on`이 날짜가 아니면 버린다. 엑셀 넣기 새 줄 기본값 `carryStart: 0`, 고침 줄은 `{ ...지금 값, ...적힌 칸 }`이라 적힌 `carryStart`만 바뀐다('올해 이미 쓴 연차'는 지금처럼 지금 값).
 
 **바구니 지우기 개수**: Storage `remove(paths)`는 권한에 막히거나 없는 파일이면 오류 없이 지운 것만(0개일 수 있음) 돌려준다. `deleteFile`·`purgeMember`는 돌려받은 개수가 보낸 개수보다 적으면 `E-STAFF-FILE-FAILED`를 던지고 줄을 지우지 않는다(AC-7610.3·7610.4).
 
@@ -136,6 +144,7 @@ export type StaffFile = { id: string; kind: 'doc' | 'tax'; staffId: string | nul
 - 공용(Phase 1 탭 틀 TASK): `src/components/staff/StaffNav.tsx`, `useStaffBase.ts`(직원·설정·기본 근무·병원 정보 `useClinicProfile` 읽기 + 다시 읽기), `labels.ts`(직종·근무 형태·휴가 종류·방식 글자, 휴가 색 — 예약 달력 색 토큰을 빌림), `TableScroll.tsx`(넓은 표만 옆으로 밀리는 칸).
 - 화면 부품은 `src/components/staff/{roster,schedule,leave,pay}/`로 나눠 Phase 2 일꾼이 겹치지 않게 한다. 모양은 `ds` 클래스(`components/ui/classes.ts`)와 `globals.css` 토큰.
 - **폰 모양 없음**(AC-7611.4, 검토 뒤): 직원 부품은 폭 경계 접두가 붙은 칸 나눔·쌓임 클래스를 쓰지 않는다. `ds.segment.group`은 폰에서 칸 나눔(`max-md:grid max-md:w-full`)이라 쓰지 않고, 폴더마다 근무표 `schedule/parts.tsx`의 `SEG_GROUP`(그 클래스에서 폰 칸 나눔만 뺀 것) 같은 PC 틀을 쓴다(명단·휴가는 `schedule/parts.tsx`를 불러 써도 된다, 급여는 `pay/parts.tsx`에 둔다). `components/ui/classes.ts`는 고치지 않는다. 폭이 모자랄 수 있는 표·달력(근무표 달 보기 포함)은 `TableScroll` 안에 최소 폭(휴가 달력 `min-w-190`처럼)을 준다. 시험은 폴더마다 `pcOnly.test.tsx`: ① 폴더 안 소스(시험 밖)에 폭 경계 접두와 `ds.segment.group`이 없다 ② 화면을 그려 모든 요소의 class에 폭 경계 접두 + 모양 클래스(`grid`·`grid-cols-*`·`flex`·`flex-col`·`flex-row`·`block`·`hidden`·`w-full`·`col-span-*`)가 없다(ds 손가락 크기 클래스는 통과).
+- **넘어온 연차 칸**(2026-11-21, AC-7612.8): `roster/MemberForm.tsx`는 `settings.leftover === 'carry'`일 때만 '예약 · 연차 · 메모' 구역 메모 앞에 '넘어온 연차' 칸(`Field`, 입력 `max-w-32` + '일' — '올해 이미 쓴 연차'와 같은 모양)을 보이고, 'pay'면 칸 없이 더하기 0·고치기 지금 값을 보낸다. `roster/ExcelPreview.tsx`는 `leftover`를 받아(`RosterScreen.tsx`가 `settings.leftover`를 넘김) 'carry'일 때만 '올해 쓴 연차' 다음에 '넘어온 연차' 칸을 그린다. 명단 카드·휴가·급여 폴더는 고치지 않는다(셈이 바뀐 숫자를 그대로 보임). 폰 모양 없음(AC-7611.4) 그대로.
 - 급여 작은 메뉴 다섯은 `/staff/pay` 한 화면 안 상태(주소 `?part=` 하나로 기억). 금액·실적 칸은 blur에 저장(같은 칸 저장 중이면 끝난 뒤 한 번 더), 병원 부담분만 [저장].
 - 명세서: `components/staff/pay/PaySlip.tsx`가 SVG 한 장으로 그린다. [인쇄·PDF]는 서식 탭처럼 `window.print` + `@media print`(명세서만), [그림 파일]은 `lib/staff/slipPng.ts`. 화면 미리 보기도 같은 A4 SVG 그대로(내용 높이로 줄이지 않음, AC-7615.10).
 - 인건비 그림: 보는 달과 앞 5달(6달). 위 막대(지급 합계 + 병원 부담분 쌓음), 아래 % 선. 매출은 `createRevenueStore(supabaseBrowser()).loadDays(monthRange)` → `monthRevenue`(통계 목표 칸 `useStatsGoals`와 같은 길). 저장된 급여 줄이 없는 달은 막대·점을 그리지 않고(선은 끊김) '{M}월 급여 자료 없음'(AC-7615.9).
@@ -152,4 +161,5 @@ export type StaffFile = { id: string; kind: 'doc' | 'tax'; staffId: string | nul
 - 트리거가 `clinic_profiles.staff` JSON에서 이름을 찾는다 — 병원 정보 모양이 바뀌면 같이 고친다(시험이 지킨다).
 - 직원 개인정보가 서버로 간다(ADR-035). 원장 RLS 하나에 기대므로 RLS 시험이 열 표 모두·데스크·다른 병원을 본다. 화면·오류에 Supabase 내용을 보이지 않는다.
 - blur 저장이 많다 — 칸마다 그 줄 하나만 '고치고, 없으면 넣기'(5절 열쇠 줄 저장). 엑셀 넣기 중간 실패는 일부만 들어간다(다시 올리면 고침).
+- 웹앱 등록일(`registered_on`)은 DB가 넣은 날로 정하고 화면에서 고칠 수 없다. 시작 기간이 생각과 다르면 원장은 '넘어온 연차' 시작 값으로 맞춘다. 'pay' 병원의 웹앱을 쓰기 전 지난 기간 줄(쓴 0으로 보임)은 이번에 바꾸지 않았다(사용자 결정이 'carry' 셈 이야기).
 - 지우고 다시 넣는 저장(휴가 묶음 고치기·그날만 바꾸기 되돌리기)은 중간에 실패하면 일부만 남을 수 있다 — 실패하면 그 기간을 다시 읽어 화면을 DB와 맞춘다(AC-7613.4·7614.3).
