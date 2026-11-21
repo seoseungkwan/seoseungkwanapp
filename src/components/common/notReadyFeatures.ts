@@ -1,5 +1,5 @@
 // 준비 중 기능 자료 (tab-frame REQ-305 AC-305.4, ui-90 REQ-415 AC-415.1, design.md '준비 중 (TASK-12)'). 주소마다 얇은 페이지가 이 항목을 꺼내 NotReadyScreen에 넘긴다.
-// 주소록은 시안(docs/mockups/ui-90/app/gen.py nr_body) 그대로이고, 나머지는 같은 말투다. 숫자를 쓰지 않는다.
+// 문구는 ui-90 시안(docs/mockups/ui-90/app/gen.py nr_body)의 주소록 말투를 따른다(주소록은 화면이 생겨 빠졌다, contacts AC-6508.1). 숫자를 쓰지 않는다.
 // title(h1)은 조사(은/는)까지 통째로 적는다 — 받침에 따라 계산하지 않는다(몇 개뿐이고 시험이 글자를 못 박는다). 탭 이름(metadata)은 name이다.
 // 이름·주소는 탭 목록(shell/menu.ts)·기능 목차(dashboard/briefing/features.ts)에도 따로 적는다(병렬 갈래라 서로 불러오지 않는다). 셋이 같은지는 통합 시험이 본다.
 // 기능에 진짜 화면이 생기면 그 항목을 여기서 빼고 그 주소의 page.tsx를 진짜 화면으로 바꾼다(design.md '다음 명세가 탭을 채울 때')
@@ -8,7 +8,6 @@ export type NotReadyPath =
   | '/notices'
   | '/staff'
   | '/inventory'
-  | '/contacts'
 
 export type NotReadyFeature = {
   path: NotReadyPath
@@ -44,13 +43,6 @@ export const NOT_READY_FEATURES: readonly NotReadyFeature[] = [
     title: '재고는 준비 중이에요',
     intro: `물품이 얼마나 남았는지 챙길 자리예요. ${SOON}`,
     items: ['물품 목록·남은 수량', '부족 표시', '들어온 것과 쓴 것'],
-  },
-  {
-    path: '/contacts',
-    name: '주소록',
-    title: '주소록은 준비 중이에요',
-    intro: `거래처와 업체 연락처를 한곳에 모아 둘 자리예요. ${SOON}`,
-    items: ['거래처', '수리·관리 업체', '뉴메디코어 연락처'],
   },
 ]
 

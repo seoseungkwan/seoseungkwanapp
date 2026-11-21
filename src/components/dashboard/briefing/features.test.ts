@@ -6,7 +6,7 @@ import { DASHBOARD_FEATURES } from './features'
 // 여기서는 메모 §6 표 그대로인지만 본다. 상태는 ui-90 AC-414.5(design.md '대시보드 (TASK-11)')의 셋이고 칸마다 아래 표가 못 박는다. 칸 수·상태별 수는 표에서 센다(고정 숫자 없음, 칸의 상태는 다른 탭 명세도 바꾼다).
 // 설정 설명은 시안(docs/mockups/ui-90/app/gen.py FEATS) 글자 그대로 "의원 문구"다
 
-// 메모 §6 = requirements AC-316.3 표 (탭 순서), 상태는 AC-414.5. 서식은 spec forms AC-3501.2.
+// 메모 §6 = requirements AC-316.3 표 (탭 순서), 상태는 AC-414.5. 서식은 spec forms AC-3501.2, 주소록은 spec contacts AC-6508.1.
 // 매출 줄은 없다 — 매출은 통계 매출 칸으로 옮겼고 통계 설명에 든다(stats-revenue AC-4110.3)
 const TABLE = [
   { name: '통계', desc: '환자 수 추이·신환 재방문율·매출·처방별 추세·요일별 환자 수', href: '/stats', status: 'connect-first' }, // 설명은 stats-revenue AC-4110.3이 대신한다
@@ -20,12 +20,12 @@ const TABLE = [
   { name: '서식', desc: '휴진 안내를 테마 그림으로 만들어 인쇄·그림 파일로', href: '/forms', status: 'ready' },
   { name: '직원', desc: '직원 명단·급여 계산과 명세서·연차와 휴가', href: '/staff', status: 'soon' },
   { name: '재고', desc: '물품 목록·남은 수량·부족 표시', href: '/inventory', status: 'soon' },
-  { name: '주소록', desc: '거래처·수리와 관리 업체·뉴메디코어 연락처', href: '/contacts', status: 'soon' },
+  { name: '주소록', desc: '거래처·수리와 관리 업체·뉴메디코어 연락처', href: '/contacts', status: 'ready' },
   { name: '설정', desc: '점검 규칙·의원 문구·비트 PC 연결·백업', href: '/settings', status: 'ready' },
 ]
 
 describe('DASHBOARD_FEATURES: 기능 목차 (AC-316.3·AC-414.5)', () => {
-  it('AC-316.3·AC-414.5·AC-4110.3·AC-3501.2·AC-5801.4: 탭 순서대로 이름·설명·주소·상태가 표와 같다', () => {
+  it('AC-316.3·AC-414.5·AC-4110.3·AC-3501.2·AC-5801.4·AC-6508.1: 탭 순서대로 이름·설명·주소·상태가 표와 같다', () => {
     expect(DASHBOARD_FEATURES).toHaveLength(TABLE.length)
     expect(DASHBOARD_FEATURES.map((f) => ({ name: f.name, desc: f.desc, href: f.href, status: f.status }))).toEqual(TABLE)
   })
@@ -87,6 +87,15 @@ describe('DASHBOARD_FEATURES: 기능 목차 (AC-316.3·AC-414.5)', () => {
       name: '서식',
       desc: '휴진 안내를 테마 그림으로 만들어 인쇄·그림 파일로',
       href: '/forms',
+      status: 'ready',
+    })
+  })
+
+  it('AC-6508.1: 주소록 칸은 ready("사용 가능")이고 주소는 /contacts, 설명 글은 그대로다', () => {
+    expect(DASHBOARD_FEATURES.find((f) => f.name === '주소록')).toEqual({
+      name: '주소록',
+      desc: '거래처·수리와 관리 업체·뉴메디코어 연락처',
+      href: '/contacts',
       status: 'ready',
     })
   })

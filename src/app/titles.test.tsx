@@ -73,12 +73,12 @@ const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ meta
       ['/notices', () => import('./(app)/notices/page')],
       ['/staff', () => import('./(app)/staff/page')],
       ['/inventory', () => import('./(app)/inventory/page')],
-      ['/contacts', () => import('./(app)/contacts/page')],
     ] as const
   ).map(([path, load]) => ({ path, title: notReadyFeature(path as NotReadyPath).name, load })),
   // 진짜 화면이 생겨 준비 중 목록에 없다(AC-714.3)
   { path: '/ai-report', title: 'AI 리포트', load: () => import('./(app)/ai-report/page') },
   { path: '/forms', title: '서식', load: () => import('./(app)/forms/page') }, // 화면이 있는 탭(forms AC-3501.3)
+  { path: '/contacts', title: '주소록', load: () => import('./(app)/contacts/page') }, // 화면이 있는 탭(contacts AC-6508.2)
   { path: '/worklog', title: '업무일지', load: () => import('./(app)/worklog/page') },
   { path: '/sunap', title: '수납일지', load: () => import('./(app)/sunap/page') },
   { path: '/calendar', title: '예약', load: () => import('./(app)/calendar/page') }, // 예약 탭(clinic-calendar AC-5905.10)
@@ -101,6 +101,12 @@ describe('AC-402.4: 앱 페이지의 탭 이름', () => {
     expect(titles.every((t) => typeof t === 'string' && t !== '')).toBe(true)
     expect(new Set(titles).size).toBe(16)
     expect(titles).not.toContain('매출')
+  })
+
+  it('AC-6508.2: /contacts 페이지의 metadata.title은 준비 중 자료가 아니라 페이지가 직접 적은 "주소록"이다', async () => {
+    const { metadata } = await import('./(app)/contacts/page')
+    expect(metadata.title).toBe('주소록')
+    expect(notReadyFeature('/contacts' as NotReadyPath)).toBeUndefined()
   })
 
   it('AC-3501.3: /forms 페이지의 metadata.title은 준비 중 자료가 아니라 페이지가 직접 적은 "서식"이다', async () => {

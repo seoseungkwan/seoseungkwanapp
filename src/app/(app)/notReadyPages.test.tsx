@@ -8,7 +8,6 @@ import { NOT_READY_FEATURES, notReadyFeature, type NotReadyPath } from '@/compon
 import { MENU } from '@/components/shell/menu'
 import { decideRoute, type HospitalState } from '@/lib/auth/gate'
 import AiReportPage from './ai-report/page'
-import ContactsPage from './contacts/page'
 import InventoryPage from './inventory/page'
 import NoticesPage from './notices/page'
 import StaffPage from './staff/page'
@@ -29,7 +28,6 @@ const PAGES: Array<{ path: NotReadyPath; name: string; title: string; Page: Comp
   { path: '/notices', name: '고시·공지', title: '고시·공지는 준비 중이에요', Page: NoticesPage },
   { path: '/staff', name: '직원', title: '직원은 준비 중이에요', Page: StaffPage },
   { path: '/inventory', name: '재고', title: '재고는 준비 중이에요', Page: InventoryPage },
-  { path: '/contacts', name: '주소록', title: '주소록은 준비 중이에요', Page: ContactsPage },
 ]
 
 const pageFile = (path: string) => `${APP_GROUP}${path}/page.tsx`
@@ -126,6 +124,14 @@ describe('AC-305.5: 준비 중 주소의 페이지 = notReadyFeature(주소)를 
     const source = readFileSync(join(ROOT, pageFile('/forms')), 'utf8')
     expect(source).not.toMatch(/NotReadyScreen|notReadyFeature/)
     expect(source).toMatch(/from '@\/components\/forms\/FormsScreen'/)
+  })
+
+  it('AC-6508.1·AC-6508.2: /contacts는 준비 중 주소가 아니다 — 페이지 표와 준비 중 목록에 없고, 그 페이지 소스는 준비 중 화면이 아니라 주소록 화면(ContactsScreen)을 쓴다', () => {
+    expect(PAGES.map((p) => p.path as string)).not.toContain('/contacts')
+    expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/contacts')
+    const source = readFileSync(join(ROOT, pageFile('/contacts')), 'utf8')
+    expect(source).not.toMatch(/NotReadyScreen|notReadyFeature/)
+    expect(source).toMatch(/from '@\/components\/contacts\/ContactsScreen'/)
   })
 
   it('AC-610.1: /patients 페이지는 준비 중 화면을 쓰지 않는 환자 탭이다', () => {

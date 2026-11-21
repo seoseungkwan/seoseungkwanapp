@@ -70,6 +70,7 @@ const SCREEN_DIR: Record<string, string> = {
   '/calendar': 'calendar', // spec clinic-calendar AC-5905.10
   '/ai-report': 'ai-report',
   '/forms': 'forms', // spec forms AC-3501.1
+  '/contacts': 'contacts', // spec contacts AC-6508.1
   '/worklog': 'worklog',
   '/settings': 'settings',
 }
@@ -168,10 +169,10 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     },
   )
 
-  it('AC-307.3·AC-4110.1·AC-515.4·AC-714.3·AC-610.1·AC-012.4·AC-012.6·AC-3501.1·AC-5801.4·AC-5905.10: 쓰는 화면이 있는 칸의 페이지는 NotReadyScreen을 쓰지 않는 자기 화면이다 — 칸은 MENU의 ready 탭(대시보드 뺌)과 같고 /stats·/claim·/patients·/worklog·/sunap·/calendar·/ai-report·/forms·/settings다', () => {
+  it('AC-307.3·AC-4110.1·AC-515.4·AC-714.3·AC-610.1·AC-012.4·AC-012.6·AC-3501.1·AC-5801.4·AC-5905.10·AC-6508.1: 쓰는 화면이 있는 칸의 페이지는 NotReadyScreen을 쓰지 않는 자기 화면이다 — 칸은 MENU의 ready 탭(대시보드 뺌)과 같고 /stats·/claim·/patients·/worklog·/sunap·/calendar·/ai-report·/forms·/contacts·/settings다', () => {
     expect(READY.map((f) => f.href)).toEqual(MENU.filter((m) => m.ready && m.label !== '대시보드').map((m) => m.path))
     // 업무일지가 수납일지 바로 앞(nav-worklog AC-5801.4)
-    expect(READY.map((f) => f.href)).toEqual(['/stats', '/claim', '/patients', '/worklog', '/sunap', '/calendar', '/ai-report', '/forms', '/settings'])
+    expect(READY.map((f) => f.href)).toEqual(['/stats', '/claim', '/patients', '/worklog', '/sunap', '/calendar', '/ai-report', '/forms', '/contacts', '/settings'])
     expect(READY.map((f) => f.href)).toContain('/stats')
     expect(READY.map((f) => f.href)).toContain('/patients')
     expect(READY.map((f) => f.href)).toContain('/ai-report')
