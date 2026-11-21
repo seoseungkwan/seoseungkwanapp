@@ -18,13 +18,6 @@ const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: str
     items: ['직원 명단', '급여 계산과 명세서', '연차와 휴가'],
   },
   {
-    path: '/inventory',
-    name: '재고',
-    title: '재고는 준비 중이에요',
-    intro: `물품이 얼마나 남았는지 챙길 자리예요. ${SOON}`,
-    items: ['물품 목록·남은 수량', '부족 표시', '들어온 것과 쓴 것'],
-  },
-  {
     path: '/contacts',
     name: '주소록',
     title: '주소록은 준비 중이에요',
@@ -82,6 +75,16 @@ describe('AC-305.4: NOT_READY_FEATURES — 준비 중 기능(탭 순서)', () =>
     expect(MENU.find((m) => m.label === '고시·공지')?.ready).toBe(true)
   })
 
+  it('AC-7512.2: 재고(/inventory)는 준비 중 목록에 없다 — 주소·이름·옛 소개·만들 것 글자 모두, 탭 목록에서도 ready다', () => {
+    // @ts-expect-error '/inventory'는 이제 NotReadyPath가 아니다(타입 점검이 본다)
+    const inventory: NotReadyPath = '/inventory'
+    expect(NOT_READY_FEATURES.map((f) => f.path)).not.toContain(inventory)
+    expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('재고')
+    expect(JSON.stringify(NOT_READY_FEATURES)).not.toContain('물품이 얼마나 남았는지 챙길 자리예요')
+    expect(JSON.stringify(NOT_READY_FEATURES)).not.toContain('들어온 것과 쓴 것')
+    expect(MENU.find((m) => m.label === '재고')?.ready).toBe(true)
+  })
+
   it('AC-305.4: 주소가 겹치지 않는다', () => {
     expect(new Set(NOT_READY_FEATURES.map((f) => f.path)).size).toBe(NOT_READY_FEATURES.length)
   })
@@ -130,7 +133,6 @@ describe('AC-610.1: 환자는 준비 중 목록에서 빠진다', () => {
 describe('AC-415.1: NOT_READY_FEATURES — 항목마다 title(h1, 조사까지 통째로)', () => {
   const TITLES = [
     '직원은 준비 중이에요',
-    '재고는 준비 중이에요',
     '주소록은 준비 중이에요',
   ]
 

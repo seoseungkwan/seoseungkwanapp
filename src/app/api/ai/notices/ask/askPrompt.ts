@@ -3,7 +3,7 @@ import type { NoticeSummary } from '@/types/notices'
 import type { ClaudeRequest } from '../../claude'
 import { cutText, escapeTags } from '../text'
 
-// 고시·공지 글에 AI에게 묻기 — 요청 만들기와 답 검사(specs/notices AC-7417.4, design 8절 '묻기', ADR-036). 순수 함수만 둔다.
+// 고시·공지 글에 AI에게 묻기 — 요청 만들기와 답 검사(specs/notices AC-7417.4, design 8절 '묻기', ADR-037). 순수 함수만 둔다.
 // 보내는 것은 서버가 DB에서 읽은 공개 글(제목·요약 네 칸·본문·붙임 글자)과 사용자가 적은 질문뿐이다.
 // 질문은 경로가 checkQuestion(lib/notices/askCheck)으로 먼저 검사한다. 병원·사용자·글 id는 보내지 않는다
 

@@ -6,7 +6,7 @@ import { runCollector, type RunReport } from '../collector'
 import { fetchSite } from '../fetchSite'
 import { defaultRuleIndex, type RuleBasisIndex } from '../ruleMatch'
 
-// GET /api/ai/notices/collect (specs/notices REQ-7416, design 1·4절, ADR-034). Vercel Cron이 하루 아홉 번 부르는 고시·공지 모으기.
+// GET /api/ai/notices/collect (specs/notices REQ-7416, design 1·4절, ADR-035). Vercel Cron이 하루 아홉 번 부르는 고시·공지 모으기.
 // 세션 없이 오므로 문지기(lib/auth/gate.ts)가 이 주소만 공개로 두고, 여기서 `Authorization: Bearer <CRON_SECRET>`를 같은 시간 비교로 본다.
 // CRON_SECRET이 비었거나 머리가 다르면 401(몸통 없음)이고 사이트·DB·Claude를 부르지 않는다.
 // 맞으면 모으기 계정으로 로그인해 runCollector를 한 번 돌리고 숫자와 출처 이름만 돌려준다.

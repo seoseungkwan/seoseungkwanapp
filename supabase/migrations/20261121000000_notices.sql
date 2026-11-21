@@ -1,5 +1,5 @@
 -- 고시·공지 탭 DB: 공용 표 넷(notices·notice_posts·notice_sources·notice_weeks)·실행 기록(notice_runs)·모으기 계정 목록(notice_collectors)·
--- 병원 표시(notice_marks)·묻기 횟수(notice_ask_days·notice_ask_holds)와 그 권한·함수 (spec notices REQ-7402·REQ-7403, ADR-034·ADR-035)
+-- 병원 표시(notice_marks)·묻기 횟수(notice_ask_days·notice_ask_holds)와 그 권한·함수 (spec notices REQ-7402·REQ-7403, ADR-035·ADR-036)
 --
 -- 실행: 운영자가 Supabase 관리 화면 → SQL Editor에 이 파일 전체를 붙여 한 번 실행한다(앱·CLI는 실행하지 않는다).
 -- 먼저 20261028000000_auth.sql(병원·관리자 표)이 들어가 있어야 한다. my_hospital_id()는 C1 글자 그대로 다시 만든다(다른 공용 함수는 만들지도 부르지도 않는다).
@@ -9,7 +9,7 @@
 -- 붙인 뒤 모으기 계정 넣기(design 13절): Authentication에서 모으기 전용 사용자를 만들고(메일 확인 끝, 16자 넘는 비밀번호) 메일만 바꿔 한 번 실행한다.
 --   insert into public.notice_collectors (user_id) select id from auth.users where email = '<모으기 메일>';
 --
--- 무엇을 왜(ADR-034·ADR-035): 고시·공지 글은 병원과 상관없는 같은 자료라 hospital_id 없이 한 벌만 둔다(요약도 한 번만).
+-- 무엇을 왜(ADR-035·ADR-036): 고시·공지 글은 병원과 상관없는 같은 자료라 hospital_id 없이 한 벌만 둔다(요약도 한 번만).
 -- 공용 줄은 모으기 계정(notice_collectors에 있는 로그인 계정, 병원 줄 없음)만 넣고 고친다. 지우는 길은 없다(잘못 들어간 글은 SQL 편집기로 지운다).
 -- 병원마다 다른 것(읽음·별표·메모·규칙 확인, 묻기 횟수)은 hospital_id 표다. service role 키는 쓰지 않는다.
 --

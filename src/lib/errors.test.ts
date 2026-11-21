@@ -102,6 +102,16 @@ const ALL_CODES = [
   'E-NOTICE-READ',
   'E-NOTICE-SAVE',
   'E-NOTICE-WORDS',
+  'E-INV-READ-FAILED',
+  'E-INV-SAVE-FAILED',
+  'E-INV-DUPLICATE',
+  'E-INV-IN-USE',
+  'E-INV-COUNT-DATE',
+  'E-INV-PHOTO',
+  'E-INV-NO-LINES',
+  'E-INV-PRIVATE',
+  'E-INV-NO-NAME',
+  'E-INV-EXCEL',
 ] as const satisfies readonly ErrorCode[]
 
 // '병원' 낱말 예외(AC-409.1): 명세가 글자를 정한 번호만. 데스크 메일 둘은 '병원 계정'·'다른 병원'이라고 말해야 뜻이 산다(desk-feedback design.md 표, AC-6304.3).
@@ -1176,5 +1186,63 @@ describe('AC-7424.2 내 낱말 오류 번호', () => {
     const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
     const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
     expect(union).toContain(`'E-NOTICE-WORDS'`)
+  })
+})
+
+// 재고 탭(specs/inventory design.md 4절 '오류 번호'). E-AI-*는 지금 문구를 그대로 쓴다
+// 번호마다 '무엇이 · 어떻게 고치나'에 꼭 들어갈 말(design.md 글의 뜻·곁의 단추)
+const INVENTORY = {
+  'E-INV-READ-FAILED': { what: ['재고', '읽지 못했어요'], fix: ['[다시 읽기]'] },
+  'E-INV-SAVE-FAILED': { what: ['저장하지 못했어요'], fix: ['적은 값은 그대로', '잠시 뒤 다시 해 주세요'] }, // [다시 저장] 단추가 없는 화면(주문함·순서·다시 쓰기)에도 뜬다
+  'E-INV-DUPLICATE': { what: ['같은 이름이 이미 있어요'], fix: ['다른 이름', '안 쓰는 물품'] },
+  'E-INV-IN-USE': { what: ['물품이 있는 분류는 지울 수 없어요'], fix: ['다른 분류로 옮긴 뒤'] },
+  'E-INV-COUNT-DATE': { what: ['세기'], fix: ['마지막 세기 날짜', '오늘'] },
+  'E-INV-PHOTO': { what: ['사진을 읽지 못했거나 너무 커요'], fix: ['다른 사진', '[사진 없이 적기]'] },
+  'E-INV-NO-LINES': { what: ['사진에서 물품 줄을 찾지 못했어요'], fix: ['다시 찍', '[사진 없이 적기]'] },
+  'E-INV-PRIVATE': { what: ['엑셀 앞 줄에 전화번호·주민번호·메일 주소 모양이 있어 보내지 않았어요'], fix: ['그 칸을 지우', '[양식 받기]'] },
+  'E-INV-NO-NAME': { what: ['물품 이름 칸을 찾지 못했어요'], fix: ['[양식 받기]', '옮겨 적'] },
+  'E-INV-EXCEL': { what: ['엑셀 파일을 읽지 못했어요'], fix: ['.xlsx'] },
+} as const satisfies Partial<Record<ErrorCode, { what: readonly string[]; fix: readonly string[] }>>
+
+describe('AC-7503.6 재고 오류 번호', () => {
+  it.each(Object.keys(INVENTORY) as Array<keyof typeof INVENTORY>)('AC-7503.6: %s는 번호가 있고 무엇이·어떻게 고치나 글이 있다', (code) => {
+    expect(isErrorCode(code), code).toBe(true)
+    expect(ALL_CODES, code).toContain(code)
+    const { what, fix } = errorInfo(code)
+    expect(what.trim(), code).not.toBe('')
+    expect(fix.trim(), code).not.toBe('')
+    for (const word of INVENTORY[code].what) expect(what, code).toContain(word)
+    for (const word of INVENTORY[code].fix) expect(fix, code).toContain(word)
+  })
+
+  it("AC-7503.6: 재고 오류 글에는 '병원'·'니다.'·메일 모양 글자(@)가 없다", () => {
+    for (const code of Object.keys(INVENTORY) as Array<keyof typeof INVENTORY>) {
+      const text = `${errorInfo(code).what} ${errorInfo(code).fix}`
+      expect(text, code).not.toContain('병원')
+      expect(text, code).not.toMatch(/니다\./)
+      expect(text, code).not.toContain('@')
+    }
+  })
+
+  it('AC-7503.6·AC-7512.3: E-INV-SAVE-FAILED 글은 [다시 저장] 단추를 말하지 않는다 — 그 단추가 없는 재고 화면([주문함]·[다 됐어요]·[다시 쓰기])에도 뜬다', () => {
+    const { what, fix } = errorInfo('E-INV-SAVE-FAILED')
+    expect(`${what} ${fix}`).not.toMatch(/\[다시 저장\]|\[[^\]]+\]/)
+  })
+
+  it('AC-7503.6: 이 명세가 더하는 E-INV- 번호는 design.md 4절의 열뿐이다', () => {
+    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-INV-')).sort()).toEqual(Object.keys(INVENTORY).sort())
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
+  it('AC-7503.6: 열 번호가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    for (const code of Object.keys(INVENTORY)) expect(union).toContain(`'${code}'`)
+  })
+
+  it('AC-7503.6: 함께 쓰는 E-AI-BUSY·E-AI-LIMIT·E-AI-FAILED는 지금 문구 그대로다', () => {
+    expect(errorInfo('E-AI-BUSY')).toEqual({ what: 'AI가 지금 바빠서 답하지 못했어요', fix: '1~2분 뒤 [다시 분석]을 눌러 주세요.' })
+    expect(errorInfo('E-AI-LIMIT').what).toBe('이번 달 AI 사용 한도에 닿았어요')
+    expect(errorInfo('E-AI-FAILED').what).toBe('AI 리포트를 만들지 못했어요')
   })
 })

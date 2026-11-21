@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// GET /api/ai/notices/collect — Vercel Cron이 부르는 고시·공지 모으기(specs/notices REQ-7416 AC-7416.1·AC-7416.2, design 4절·ADR-034, TASK-21).
+// GET /api/ai/notices/collect — Vercel Cron이 부르는 고시·공지 모으기(specs/notices REQ-7416 AC-7416.1·AC-7416.2, design 4절·ADR-035, TASK-21).
 // collectorClient·collectorStore·runCollector·규칙 색인·사이트·Claude·일괄은 모두 가짜다. 실제 사이트·Claude·Supabase에 붙지 않는다.
 // node:crypto는 진짜를 쓰되 timingSafeEqual만 지켜본다(같은 시간 비교를 쓰는지)
 const mocks = vi.hoisted(() => ({

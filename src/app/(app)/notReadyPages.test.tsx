@@ -11,7 +11,6 @@ import { decideRoute, type HospitalState } from '@/lib/auth/gate'
 import type { Me } from '@/lib/auth/hospital.server'
 import AiReportPage from './ai-report/page'
 import ContactsPage from './contacts/page'
-import InventoryPage from './inventory/page'
 import NoticesPage, { metadata as noticesMetadata } from './notices/page'
 import StaffPage from './staff/page'
 
@@ -41,7 +40,6 @@ const APP_GROUP = 'src/app/(app)'
 // 주소 · 표의 이름 · h1(title) · 페이지 (탭 순서)
 const PAGES: Array<{ path: NotReadyPath; name: string; title: string; Page: ComponentType }> = [
   { path: '/staff', name: '직원', title: '직원은 준비 중이에요', Page: StaffPage },
-  { path: '/inventory', name: '재고', title: '재고는 준비 중이에요', Page: InventoryPage },
   { path: '/contacts', name: '주소록', title: '주소록은 준비 중이에요', Page: ContactsPage },
 ]
 
@@ -151,6 +149,15 @@ describe('AC-305.5: 준비 중 주소의 페이지 = notReadyFeature(주소)를 
     expect(source).toMatch(/from '@\/components\/notices\/keywords\/KeywordsControl'/)
     // 쪽 파일은 서버 쪽이다: 화면을 놓기만 하고 고시·공지 표를 읽지 않는다(ADR-004)
     expect(source).not.toMatch(/['"]use client['"]|['"]use server['"]|supabase|guard\.server|lib\/storage|\bfetch\s*\(/)
+  })
+
+  it('AC-7512.1·AC-7512.2: /inventory는 준비 중 주소가 아니다 — 페이지 표와 준비 중 목록에 없고, 그 페이지 소스는 준비 중 화면이 아니라 재고 화면(InventoryScreen)을 쓴다', () => {
+    expect(PAGES.map((p) => p.path as string)).not.toContain('/inventory')
+    expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/inventory')
+    const source = readFileSync(join(ROOT, pageFile('/inventory')), 'utf8')
+    expect(source).not.toMatch(/NotReadyScreen|notReadyFeature/)
+    expect(source).toMatch(/from '@\/components\/inventory\/InventoryScreen'/)
+    expect(existsSync(join(ROOT, pageFile('/inventory')))).toBe(true)
   })
 
   it('AC-610.1: /patients 페이지는 준비 중 화면을 쓰지 않는 환자 탭이다', () => {

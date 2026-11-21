@@ -71,7 +71,6 @@ const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ meta
   ...(
     [
       ['/staff', () => import('./(app)/staff/page')],
-      ['/inventory', () => import('./(app)/inventory/page')],
       ['/contacts', () => import('./(app)/contacts/page')],
     ] as const
   ).map(([path, load]) => ({ path, title: notReadyFeature(path as NotReadyPath).name, load })),
@@ -79,6 +78,7 @@ const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ meta
   { path: '/ai-report', title: 'AI 리포트', load: () => import('./(app)/ai-report/page') },
   { path: '/forms', title: '서식', load: () => import('./(app)/forms/page') }, // 화면이 있는 탭(forms AC-3501.3)
   { path: '/notices', title: '고시·공지', load: () => import('./(app)/notices/page') }, // 화면이 있는 탭(notices AC-7423.2)
+  { path: '/inventory', title: '재고', load: () => import('./(app)/inventory/page') }, // 화면이 있는 탭(inventory AC-7512.1)
   { path: '/worklog', title: '업무일지', load: () => import('./(app)/worklog/page') },
   { path: '/sunap', title: '수납일지', load: () => import('./(app)/sunap/page') },
   { path: '/calendar', title: '예약', load: () => import('./(app)/calendar/page') }, // 예약 탭(clinic-calendar AC-5905.10)
@@ -107,6 +107,12 @@ describe('AC-402.4: 앱 페이지의 탭 이름', () => {
     const { metadata } = await import('./(app)/notices/page')
     expect(metadata.title).toBe('고시·공지')
     expect(notReadyFeature('/notices' as NotReadyPath)).toBeUndefined()
+  })
+
+  it('AC-7512.1: /inventory 페이지의 metadata.title은 준비 중 자료가 아니라 페이지가 직접 적은 "재고"다', async () => {
+    const { metadata } = await import('./(app)/inventory/page')
+    expect(metadata.title).toBe('재고')
+    expect(notReadyFeature('/inventory' as NotReadyPath)).toBeUndefined()
   })
 
   it('AC-3501.3: /forms 페이지의 metadata.title은 준비 중 자료가 아니라 페이지가 직접 적은 "서식"이다', async () => {

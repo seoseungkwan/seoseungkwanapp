@@ -14,8 +14,10 @@ import { RoleProvider } from '@/components/shell/role'
 import { ds } from '@/components/ui/classes'
 import { addDays } from '@/lib/analytics/dates'
 import { errorInfo } from '@/lib/errors'
+import { loadInventory } from '@/lib/storage/inventory'
 import { ruleAlerts, unreadCount } from '@/lib/storage/notices'
 import { readDays, StorageError } from '@/lib/storage/stats'
+import type { InvInventory } from '@/types/inventory'
 import type { DayPayload } from '@/types/payload'
 import { DashboardAnalysis } from './DashboardAnalysis'
 import { LiveDashboard, SAVED_READ_TIMEOUT_MS } from './LiveDashboard'
@@ -52,6 +54,8 @@ vi.mock('@/lib/storage/notices', () => ({
   listNotices: vi.fn(() => new Promise<never>(() => {})),
   sourceStates: vi.fn(() => new Promise<never>(() => {})),
 }))
+// 대시보드 재고 칸(spec inventory AC-7512.4)은 스스로 loadInventory({ seed: false })로 읽는다 → 가짜. 처음은 물품 없음(칸 없음, 지금 화면 그대로)
+vi.mock('@/lib/storage/inventory', () => ({ loadInventory: vi.fn() }))
 
 type SavedResult = Awaited<ReturnType<typeof readDays>>
 
@@ -112,6 +116,31 @@ const BIT_RANK = [
   ['운동치료', '4건'],
 ]
 const GROUPS_UNREAD = '통계 탭 묶음을 읽지 못했어요. 화면을 새로 열면 다시 읽어요.' // AC-606.5
+
+// 재고(spec inventory AC-7512.4): 물품 없음 · 최소 수량보다 적은 물품 하나('주문하세요' 1, 지어낸 물품)
+const NO_INVENTORY: InvInventory = { categories: [], items: [] }
+const LOW_INVENTORY: InvInventory = {
+  categories: [{ id: 'c1', name: '약품', sortOrder: 0 }],
+  items: [
+    {
+      id: 'i1',
+      categoryId: 'c1',
+      name: '히알루론산 주사 2mL',
+      unit: '개',
+      minQty: 10,
+      qty: 4,
+      lastCountQty: 4,
+      lastCountedAt: null,
+      expiry: null,
+      vendor: null,
+      unitPrice: null,
+      bitCode: null,
+      sortOrder: 0,
+      hidden: false,
+      orderedAt: null,
+    },
+  ],
+}
 
 // ── 잡아 둔 저장 숫자 읽기: 화면이 부른 차례대로 쌓이고, 시험이 답을 준다 ──
 type SavedRead = { range: Parameters<typeof readDays>[0]; resolve(result: SavedResult): void; reject(error: unknown): void }
@@ -259,6 +288,8 @@ beforeEach(() => {
         bitReads.push({ deps, resolve })
       }),
   )
+  vi.mocked(loadInventory).mockReset()
+  vi.mocked(loadInventory).mockResolvedValue(NO_INVENTORY)
   vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
   vi.setSystemTime(new Date('2026-11-02T06:42:00Z')) // 한국 오후 3시 42분
   // 쓰면 안 되는 길: 불리면 시험이 잡는다
@@ -1073,5 +1104,83 @@ describe('고시·공지 맨 위 경고 (notices TASK-20 · AC-7422.1)', () => {
     expect(ruleAlerts).not.toHaveBeenCalled()
     expect(unreadCount).not.toHaveBeenCalled()
     expect(screen.queryByRole('region', { name: '고시·공지' })).toBeNull()
+  })
+})
+
+// ── 재고 칸 자리 (spec inventory REQ-7512 AC-7512.4, design.md 6절 TASK-15) ──
+// 저장 숫자 읽는 중 뼈대·읽기 실패 카드에서는 LiveDashboard가 재고 칸을 맨 위(뼈대·카드 앞)에 두고, 그때 BitDashboard는 맨 위 칸을 두지 않는다 → 한 화면에 하나
+describe('AC-7512.4: 대시보드 재고 칸 — 뼈대·읽기 실패 카드', () => {
+  const inventoryCards = () => screen.queryAllByRole('region', { name: '재고' })
+  const settle = () => act(async () => {})
+  const lowStock = () => vi.mocked(loadInventory).mockResolvedValue(LOW_INVENTORY)
+  const todaySection = () => screen.getByRole('region', { name: '오늘 하루 분석' })
+
+  it('AC-7512.4: 저장 숫자를 읽는 동안 — 재고 칸이 뼈대 앞(맨 위)에 하나', async () => {
+    notBitPc()
+    lowStock()
+    const { container } = draw()
+    await settle()
+    expectSkeleton()
+    const cards = inventoryCards()
+    expect(cards).toHaveLength(1)
+    expect(container.firstElementChild!.contains(cards[0]!)).toBe(true)
+    expectOrder(cards[0]!, screen.getByRole('status'))
+    expect(loadInventory).toHaveBeenCalledWith({ seed: false })
+  })
+
+  it('AC-7512.4: 저장 숫자 읽기 실패 카드 — 재고 칸이 그 카드 앞(맨 위)에 하나이고 아래 연결 전 화면에는 없다', async () => {
+    notBitPc()
+    lowStock()
+    const { container } = draw()
+    await savedFail()
+    await settle()
+    expect(bigLine().textContent).toBe(CONNECT_H1)
+    const cards = inventoryCards()
+    expect(cards).toHaveLength(1)
+    expect(container.firstElementChild!.contains(cards[0]!)).toBe(true)
+    expectOrder(cards[0]!, savedCard()!, screen.getByRole('region', { name: '오늘 브리핑' }))
+  })
+
+  it('AC-7512.4: 읽기 실패 카드 뒤 비트 숫자가 오면 카드가 걷히고 재고 칸은 보고 문장 오른쪽 하나뿐이다', async () => {
+    onBitPc()
+    lowStock()
+    draw()
+    await savedFail()
+    await settle()
+    expect(inventoryCards()).toHaveLength(1)
+    await bitAnswer(bitDays())
+    await settle()
+    expect(savedCard()).toBeNull()
+    const cards = inventoryCards()
+    expect(cards).toHaveLength(1)
+    expect(todaySection().contains(cards[0]!)).toBe(true)
+  })
+
+  it('AC-7512.4: 저장 숫자가 오면 뼈대 앞 재고 칸은 사라지고 보고 문장 오른쪽 하나뿐이다', async () => {
+    notBitPc()
+    lowStock()
+    draw()
+    await settle()
+    expect(inventoryCards()).toHaveLength(1)
+    await savedAnswer(SAVED_ROWS)
+    await settle()
+    const cards = inventoryCards()
+    expect(cards).toHaveLength(1)
+    expect(todaySection().contains(cards[0]!)).toBe(true)
+  })
+
+  it('AC-7512.4: 알림이 없으면 뼈대·실패 카드 모양은 지금 그대로다(재고 칸 없음)', async () => {
+    notBitPc()
+    const { container } = draw()
+    await settle()
+    expect(inventoryCards()).toHaveLength(0)
+    const html = withoutIds(container.innerHTML)
+    cleanup()
+    expect(html).toBe(markupOf(<DashboardSkeleton />))
+    draw()
+    await savedFail()
+    await settle()
+    expect(inventoryCards()).toHaveLength(0)
+    expect(savedCard()).not.toBeNull()
   })
 })

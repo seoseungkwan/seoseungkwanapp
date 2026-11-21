@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-// 고시·공지 탭의 DB 표 아홉·권한·함수 (notices REQ-7402·REQ-7403, design.md 3절, ADR-034·ADR-035).
+// 고시·공지 탭의 DB 표 아홉·권한·함수 (notices REQ-7402·REQ-7403, design.md 3절, ADR-035·ADR-036).
 // clinicEmr.rls.test.ts와 같은 방법: 진짜 Postgres(PGlite, WASM)에서 운영자가 SQL 편집기에 붙일 migration 파일을 차례로
 // (auth → … → 데스크 → 이 파일) 그대로 돌린다. 실제 Supabase에는 붙지 않는다. Supabase가 미리 갖춘 것(역할·auth)만 흉내 낸다.
 // 메일·글·주소·번호는 모두 지어낸 것이다
@@ -480,7 +480,7 @@ describe('AC-7402.1 표 아홉·RLS·anon·두 번 붙여 넣기', SLOW, () => {
     expect(head).toContain("insert into public.notice_collectors (user_id) select id from auth.users where email = '<모으기 메일>';")
     expect(head).toContain('REQ-7402')
     expect(head).toContain('REQ-7403')
-    expect(head).toContain('ADR-035')
+    expect(head).toContain('ADR-036')
   })
 
   it('AC-7402.1: 두 번 돌려도 되는 문장만 쓴다(표·색인 if not exists, 함수·트리거 or replace, 정책 지우고 다시 만들기, 출처 줄은 없을 때만)', () => {

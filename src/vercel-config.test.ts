@@ -27,7 +27,7 @@ describe('vercel.json', () => {
     expect(config.git?.deploymentEnabled).toBe(false)
   })
 
-  // specs/notices REQ-7416, design 1절·ADR-034: 무료판 Cron은 식마다 하루 한 번(그 시간 안 아무 때). 같은 경로를 아홉 식으로 건다
+  // specs/notices REQ-7416, design 1절·ADR-035: 무료판 Cron은 식마다 하루 한 번(그 시간 안 아무 때). 같은 경로를 아홉 식으로 건다
   const COLLECT = '/api/ai/notices/collect'
   const SCHEDULES = ['0 22 * * *', '0 0 * * *', '0 2 * * *', '0 4 * * *', '0 6 * * *', '0 8 * * *', '0 10 * * *', '0 12 * * *', '0 14 * * *']
 
