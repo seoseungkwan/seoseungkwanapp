@@ -6,6 +6,7 @@ import { BitDashboard } from '@/components/dashboard/live/BitDashboard'
 import { DashboardSkeleton } from '@/components/dashboard/live/DashboardSkeleton'
 import { LOOKBACK_DAYS } from '@/components/dashboard/live/readBitDays'
 import { readDashboardGroups, type DashboardGroups } from '@/components/dashboard/live/rxGroups'
+import { RuleAlert } from '@/components/dashboard/notices/RuleAlert'
 import { ds } from '@/components/ui/classes'
 import { addDays } from '@/lib/analytics/dates'
 import { readDays } from '@/lib/storage/stats'
@@ -125,6 +126,8 @@ export function LiveDashboard({ today }: { today: string }) {
 
   return (
     <>
+      {/* 고시·공지 점검 규칙 경고(notices AC-7422.1): 맨 위. 확인할 글이 없거나 읽는 중·실패·데스크면 아무것도 그리지 않는다 */}
+      <RuleAlert />
       {/* 오류 카드와 그 아래 [다시 읽기]: 시안에 없어 통계 탭의 같은 카드 모양(StatsScreen ErrorWithAction)을 따른다 */}
       {drawn.failed && !drawn.bitLoaded && !showsSaved && (
         <div className="mt-4">

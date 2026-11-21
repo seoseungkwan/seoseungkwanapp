@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useClinicProfile } from '@/components/clinic/useClinicProfile'
 import { AiBrief } from '@/components/dashboard/ai/AiBrief'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
+import { NoticesCard } from '@/components/dashboard/notices/NoticesCard'
 import { DailySection, sentenceNote } from '@/components/dashboard/summary/DailySection'
 import { DashboardAnalysis, type DashboardAnalysisProps } from '@/components/dashboard/summary/DashboardAnalysis'
 import { FlowSection } from '@/components/dashboard/summary/FlowSection'
@@ -203,6 +204,8 @@ export function BitDashboard({
           // key: 날짜를 바꾸면 복사 결과 표시가 다른 날 문장에 남지 않는다
           sentence={<ReportBlock key={selected} today={today} days={status.days} selected={selected} />}
         />
+        {/* 고시·공지 칸(notices AC-7422.2): 일별 현황 바로 아래. 숫자가 있는 화면에만 놓는다 */}
+        <NoticesCard />
         {status.days.length > 0 && (
           <div className="mt-12 max-md:mt-8">
             <AiBrief today={today} honorific={honorific} />

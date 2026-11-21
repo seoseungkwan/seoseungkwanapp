@@ -10,9 +10,11 @@ import { BitDashboard } from '@/components/dashboard/live/BitDashboard'
 import { DashboardSkeleton } from '@/components/dashboard/live/DashboardSkeleton'
 import { LOOKBACK_DAYS, readBitDays, type ReadResult } from '@/components/dashboard/live/readBitDays'
 import { readDashboardGroups, type DashboardGroups } from '@/components/dashboard/live/rxGroups'
+import { RoleProvider } from '@/components/shell/role'
 import { ds } from '@/components/ui/classes'
 import { addDays } from '@/lib/analytics/dates'
 import { errorInfo } from '@/lib/errors'
+import { ruleAlerts, unreadCount } from '@/lib/storage/notices'
 import { readDays, StorageError } from '@/lib/storage/stats'
 import type { DayPayload } from '@/types/payload'
 import { DashboardAnalysis } from './DashboardAnalysis'
@@ -40,6 +42,16 @@ vi.mock('@/workers/statsClient', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/workers/statsClient')>()
   return { ...real, createStatsWorker: vi.fn() }
 })
+// 고시·공지(notices TASK-20): 맨 위 경고(RuleAlert)와 '고시·공지' 칸(NoticesCard)이 읽는 저장소. 시험이 답을 주지 않으면 늘 읽는 중이라
+// 두 부품은 아무것도 그리지 않는다 — 이 파일의 다른 시험은 지금 모양 그대로다. 진짜 Supabase에 붙지 않는다
+const pendingRead = () => new Promise<never>(() => {})
+vi.mock('@/lib/storage/notices', () => ({
+  NOTICES_CHANGED: 'notices:changed',
+  ruleAlerts: vi.fn(() => new Promise<never>(() => {})),
+  unreadCount: vi.fn(() => new Promise<never>(() => {})),
+  listNotices: vi.fn(() => new Promise<never>(() => {})),
+  sourceStates: vi.fn(() => new Promise<never>(() => {})),
+}))
 
 type SavedResult = Awaited<ReturnType<typeof readDays>>
 
@@ -1001,5 +1013,65 @@ describe('dashboard-period: 옛 기간은 LiveDashboard가 만든 older(readDays
     expect(periodCard()).not.toBeNull()
     expect(bigLine().textContent).toBe(report)
     expect(screen.getByRole('group', { name: '날짜 고르기' }).outerHTML).toBe(dateLine)
+  })
+})
+
+describe('고시·공지 맨 위 경고 (notices TASK-20 · AC-7422.1)', () => {
+  // 지어낸 고시 하나(규칙 2개). 환자 자료가 없다
+  const ALERT = { id: '00000000-0000-4000-8000-000000000218', noticeNo: '2026-218', title: '관절강내 주사 인정기준 일부개정', ruleCount: 2 }
+  const WARN_TITLE = '점검 규칙 확인 필요'
+  const warning = () => screen.queryByText(WARN_TITLE)?.closest('[role="status"]') ?? null
+
+  beforeEach(() => {
+    vi.mocked(ruleAlerts).mockReset()
+    vi.mocked(ruleAlerts).mockImplementation(pendingRead)
+    vi.mocked(unreadCount).mockClear()
+  })
+
+  afterEach(() => {
+    vi.mocked(ruleAlerts).mockImplementation(pendingRead)
+  })
+
+  it('AC-7422.1: 저장 숫자를 읽은 뒤 맨 위(날짜 줄·머리 줄·일별 현황보다 앞)에 경고를 놓는다 — 뼈대 동안은 없다', async () => {
+    vi.mocked(ruleAlerts).mockResolvedValue([ALERT])
+    notBitPc()
+    const { container } = draw()
+    expect(warning()).toBeNull()
+    await savedAnswer(SAVED_ROWS)
+    const box = warning()
+    expect(box).not.toBeNull()
+    expect(container.firstElementChild).toBe(box)
+    expectOrder(box!, screen.getByRole('heading', { level: 1, name: HEADER_H1 }), screen.getByRole('region', { name: '오늘 하루 분석' }))
+    expect(within(box as HTMLElement).getByRole('link', { name: '글 보기' }).getAttribute('href')).toBe(`/notices?id=${ALERT.id}`)
+  })
+
+  it('AC-7422.1: 연결 전 화면(저장 숫자 없음)에서도 맨 위에 놓고, 0개면 놓지 않는다', async () => {
+    vi.mocked(ruleAlerts).mockResolvedValue([ALERT])
+    notBitPc()
+    const first = draw()
+    await savedAnswer([])
+    expect(first.container.firstElementChild).toBe(warning())
+    expectOrder(warning()!, screen.getByRole('heading', { level: 1, name: CONNECT_H1 }))
+    first.unmount()
+
+    vi.mocked(ruleAlerts).mockResolvedValue([])
+    draw()
+    await savedAnswer(SAVED_ROWS, 1)
+    expect(warning()).toBeNull()
+  })
+
+  it('AC-7422.1: 데스크 계정(RoleProvider desk)에게는 경고와 칸을 놓지 않고 읽지도 않는다', async () => {
+    vi.mocked(ruleAlerts).mockResolvedValue([ALERT])
+    notBitPc()
+    render(
+      <RoleProvider desk>
+        <LiveDashboard today={TODAY} />
+      </RoleProvider>,
+    )
+    await savedAnswer(SAVED_ROWS)
+    expect(warning()).toBeNull()
+    expect(ruleAlerts).not.toHaveBeenCalled()
+    expect(unreadCount).not.toHaveBeenCalled()
+    expect(screen.queryByRole('region', { name: '고시·공지' })).toBeNull()
   })
 })

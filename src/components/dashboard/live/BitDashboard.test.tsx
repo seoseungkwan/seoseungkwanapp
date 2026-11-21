@@ -8,13 +8,16 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
 import { AiBrief } from '@/components/dashboard/ai/AiBrief'
+import { NoticesCard } from '@/components/dashboard/notices/NoticesCard'
 import { DailySection } from '@/components/dashboard/summary/DailySection'
 import { DashboardAnalysis } from '@/components/dashboard/summary/DashboardAnalysis'
 import { FlowSection } from '@/components/dashboard/summary/FlowSection'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
 import type { OlderDays, SummarySource } from '@/components/dashboard/summary/source'
+import { RoleProvider } from '@/components/shell/role'
 import { ds } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
+import { listNotices, sourceStates, unreadCount } from '@/lib/storage/notices'
 import { nestedBoxes } from '@/testing/boxes'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
 import type { ErrorCode } from '@/types/errors'
@@ -38,6 +41,16 @@ vi.mock('@/workers/statsClient', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/workers/statsClient')>()
   return { ...real, createStatsWorker: vi.fn() }
 })
+// 고시·공지(notices TASK-20): '고시·공지' 칸(NoticesCard)이 읽는 저장소. 시험이 답을 주지 않으면 늘 읽는 중이라 칸을 그리지 않는다 —
+// 이 파일의 다른 시험은 지금 모양 그대로다. 진짜 Supabase에 붙지 않는다
+const pendingRead = () => new Promise<never>(() => {})
+vi.mock('@/lib/storage/notices', () => ({
+  NOTICES_CHANGED: 'notices:changed',
+  ruleAlerts: vi.fn(() => new Promise<never>(() => {})),
+  unreadCount: vi.fn(() => new Promise<never>(() => {})),
+  listNotices: vi.fn(() => new Promise<never>(() => {})),
+  sourceStates: vi.fn(() => new Promise<never>(() => {})),
+}))
 // 병원 정보 훅(clinic-profile AC-6606.3): 대시보드가 한 번 읽어 보고 받는 사람 글(안내 줄·AI 요약)에 호칭을 넣는다. 처음은 읽는 중(기본값 '원장님')
 // 쓰는 EMR(emr-choice AC-7103.1·AC-7103.2): 시험이 읽기 상태와 EMR을 바꿔 본다. 처음은 읽음 · 'bit'
 const clinic = vi.hoisted(() => ({
@@ -276,6 +289,8 @@ describe('서버가 그린 첫 모양', () => {
                 dateLine={<DateControl today={TODAY} selected={TODAY} onChange={() => {}} />}
                 sentence={<ReportBlock today={TODAY} days={SAVED.kind === 'data' ? SAVED.days : []} />}
               />
+              {/* 고시·공지 칸 자리(notices AC-7422.2): 서버 그림에서는 아직 읽지 않아 아무것도 그리지 않는다 */}
+              <NoticesCard />
               <div className="mt-12 max-md:mt-8">
                 <AiBrief today={TODAY} />
               </div>
@@ -2407,5 +2422,72 @@ describe('AC-7103.1·AC-7103.2: 쓰는 EMR에 따른 연결 전 첫 화면', () 
     draw()
     expect(bigLine().textContent).toBe(READ_H1)
     noChange()
+  })
+})
+
+describe("고시·공지 칸 자리 (notices TASK-20 · AC-7422.2)", () => {
+  const card = () => screen.queryByRole('region', { name: '고시·공지' })
+  const settle = () => act(async () => {})
+  const notices = [unreadCount, listNotices, sourceStates] as const
+
+  beforeEach(() => {
+    for (const read of notices) {
+      vi.mocked(read).mockReset()
+      vi.mocked(read).mockImplementation(pendingRead)
+    }
+  })
+
+  afterEach(() => {
+    for (const read of notices) vi.mocked(read).mockImplementation(pendingRead)
+  })
+
+  // 새 관련 글 0건 · 출처 확인 기록 없음(지어낸 답)
+  const answerNotices = () => {
+    vi.mocked(unreadCount).mockResolvedValue(0)
+    vi.mocked(listNotices).mockResolvedValue({ total: 0, unread: 0, rows: [] })
+    vi.mocked(sourceStates).mockResolvedValue([])
+  }
+
+  it("AC-7422.2: 숫자가 있으면 '고시·공지' 칸이 일별 현황(오늘 하루 분석) 바로 아래이고 AI 경영 리포트·기간별 흐름 앞이다", async () => {
+    answerNotices()
+    notBitPc()
+    const { container } = draw(SAVED)
+    await settle()
+    const box = card()!
+    expect(box).not.toBeNull()
+    expect(todaySection().nextElementSibling).toBe(box)
+    expectOrder(todaySection(), box, region('우리 병원 AI 경영 리포트'), flow())
+    expect(within(box).getByText('새 관련 글이 없어요')).toBeTruthy()
+    expect(nestedBoxes(container)).toEqual([])
+  })
+
+  it('AC-7422.2: 숫자가 없는 화면(연결 전·읽는 중·처음 읽기 실패)에는 칸을 놓지 않고 읽지도 않는다', async () => {
+    answerNotices()
+    notBitPc()
+    draw(NONE)
+    await settle()
+    expect(card()).toBeNull()
+    cleanup()
+
+    onBitPc()
+    draw(NONE)
+    await settle()
+    expect(card()).toBeNull()
+    await answer(failed('E-BIT-READ-FAILED'))
+    expect(card()).toBeNull()
+    for (const read of notices) expect(read).not.toHaveBeenCalled()
+  })
+
+  it('AC-7422.2: 데스크 계정(RoleProvider desk)에게는 칸을 놓지 않고 읽지도 않는다', async () => {
+    answerNotices()
+    notBitPc()
+    render(
+      <RoleProvider desk>
+        <BitDashboard today={TODAY} initial={SAVED} />
+      </RoleProvider>,
+    )
+    await settle()
+    expect(card()).toBeNull()
+    for (const read of notices) expect(read).not.toHaveBeenCalled()
   })
 })
