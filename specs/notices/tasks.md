@@ -198,7 +198,7 @@
 - Files: src/components/shell/menu.ts, src/components/shell/TabBar.tsx, src/components/shell/NoticeBadge.tsx, src/components/shell/NoticeBadge.test.tsx, src/components/shell/shell.test.tsx, src/components/common/notReadyFeatures.ts, src/components/common/notReadyFeatures.test.ts, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/app/(app)/notices/page.tsx, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx, src/app/notFound.test.tsx, docs/ADR.md, docs/ARCHITECTURE.md, plan.md, CLAUDE.md
 - Tests: src/components/shell/shell.test.tsx, src/components/shell/NoticeBadge.test.tsx, src/components/common/notReadyFeatures.test.ts, src/components/dashboard/briefing/features.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx
 - TDD: required
-- 문서: design 12절 ADR-035~037을 `docs/ADR.md`에 옮기고, `CLAUDE.md` 아키텍처 규칙에 예외 한 줄(ADR-035~037: 고시·공지 모으기 경로·공용 표·바깥 글과 질문을 Claude로)을 더한다. `docs/ARCHITECTURE.md`·`plan.md`에는 고시·공지 줄만 더한다.
+- 문서: design 12절 ADR-036~038을 `docs/ADR.md`에 옮기고, `CLAUDE.md` 아키텍처 규칙에 예외 한 줄(ADR-036~038: 고시·공지 모으기 경로·공용 표·바깥 글과 질문을 Claude로)을 더한다. `docs/ARCHITECTURE.md`·`plan.md`에는 고시·공지 줄만 더한다.
 
 ## TASK-23: 내 낱말 DB 표 · 맞춤 · 목록 함수 (2026-11-21 추가)
 - Phase: 3

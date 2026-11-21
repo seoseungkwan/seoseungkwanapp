@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "notices",
-  "approved_at": "2026-11-21T08:36:34Z",
+  "approved_at": "2026-11-21T09:12:47Z",
   "approved_via": "user-prompt",
   "session_id": "564f910f-c538-4591-ad30-a3552610b06c",
-  "spec_sha256": "65da3fac3c01730b50dd2a21b82caef423dd2156a11f2edb57d35caed77eeb54",
+  "spec_sha256": "0417a0ccf1657f93a18e8f48a4a22b0f94d52cde557960d2e8c2ab269eb786ba",
   "scope": [
     "CLAUDE.md",
     "docs/ADR.md",
