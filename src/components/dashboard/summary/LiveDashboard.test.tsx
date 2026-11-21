@@ -10,10 +10,17 @@ import { BitDashboard } from '@/components/dashboard/live/BitDashboard'
 import { DashboardSkeleton } from '@/components/dashboard/live/DashboardSkeleton'
 import { LOOKBACK_DAYS, readBitDays, type ReadResult } from '@/components/dashboard/live/readBitDays'
 import { readDashboardGroups, type DashboardGroups } from '@/components/dashboard/live/rxGroups'
+import { RoleProvider } from '@/components/shell/role'
 import { ds } from '@/components/ui/classes'
 import { addDays } from '@/lib/analytics/dates'
 import { errorInfo } from '@/lib/errors'
+import { ContactsStorageError, listWarrantySoon } from '@/lib/storage/contacts'
+import { loadInventory } from '@/lib/storage/inventory'
+import { ruleAlerts, unreadCount } from '@/lib/storage/notices'
 import { readDays, StorageError } from '@/lib/storage/stats'
+import { supabaseBrowser } from '@/lib/supabase/browser'
+import type { WarrantyItem } from '@/types/contacts'
+import type { InvInventory } from '@/types/inventory'
 import type { DayPayload } from '@/types/payload'
 import { DashboardAnalysis } from './DashboardAnalysis'
 import { LiveDashboard, SAVED_READ_TIMEOUT_MS } from './LiveDashboard'
@@ -40,6 +47,25 @@ vi.mock('@/workers/statsClient', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/workers/statsClient')>()
   return { ...real, createStatsWorker: vi.fn() }
 })
+// 고시·공지(notices TASK-20): 맨 위 경고(RuleAlert)와 '고시·공지' 칸(NoticesCard)이 읽는 저장소. 시험이 답을 주지 않으면 늘 읽는 중이라
+// 두 부품은 아무것도 그리지 않는다 — 이 파일의 다른 시험은 지금 모양 그대로다. 진짜 Supabase에 붙지 않는다
+const pendingRead = () => new Promise<never>(() => {})
+vi.mock('@/lib/storage/notices', () => ({
+  NOTICES_CHANGED: 'notices:changed',
+  ruleAlerts: vi.fn(() => new Promise<never>(() => {})),
+  unreadCount: vi.fn(() => new Promise<never>(() => {})),
+  listNotices: vi.fn(() => new Promise<never>(() => {})),
+  sourceStates: vi.fn(() => new Promise<never>(() => {})),
+}))
+// 대시보드 재고 칸(spec inventory AC-7512.4)은 스스로 loadInventory({ seed: false })로 읽는다 → 가짜. 처음은 물품 없음(칸 없음, 지금 화면 그대로)
+vi.mock('@/lib/storage/inventory', () => ({ loadInventory: vi.fn() }))
+// 무상 수리 알림(contacts AC-6507.1·AC-6507.2): 저장 함수 listWarrantySoon과 Supabase 클라이언트도 잡아 둔다. 진짜 Supabase에 붙지 않는다.
+// 기본은 지금처럼 Supabase 설정이 없는 환경(supabaseBrowser가 던짐)이고, 알림 시험만 가짜 클라이언트를 준다
+vi.mock('@/lib/storage/contacts', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/storage/contacts')>()
+  return { ...real, listWarrantySoon: vi.fn() }
+})
+vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: vi.fn() }))
 
 type SavedResult = Awaited<ReturnType<typeof readDays>>
 
@@ -101,6 +127,31 @@ const BIT_RANK = [
 ]
 const GROUPS_UNREAD = '통계 탭 묶음을 읽지 못했어요. 화면을 새로 열면 다시 읽어요.' // AC-606.5
 
+// 재고(spec inventory AC-7512.4): 물품 없음 · 최소 수량보다 적은 물품 하나('주문하세요' 1, 지어낸 물품)
+const NO_INVENTORY: InvInventory = { categories: [], items: [] }
+const LOW_INVENTORY: InvInventory = {
+  categories: [{ id: 'c1', name: '약품', sortOrder: 0 }],
+  items: [
+    {
+      id: 'i1',
+      categoryId: 'c1',
+      name: '히알루론산 주사 2mL',
+      unit: '개',
+      minQty: 10,
+      qty: 4,
+      lastCountQty: 4,
+      lastCountedAt: null,
+      expiry: null,
+      vendor: null,
+      unitPrice: null,
+      bitCode: null,
+      sortOrder: 0,
+      hidden: false,
+      orderedAt: null,
+    },
+  ],
+}
+
 // ── 잡아 둔 저장 숫자 읽기: 화면이 부른 차례대로 쌓이고, 시험이 답을 준다 ──
 type SavedRead = { range: Parameters<typeof readDays>[0]; resolve(result: SavedResult): void; reject(error: unknown): void }
 const savedReads: SavedRead[] = []
@@ -146,6 +197,18 @@ const bitAnswer = (result: ReadResult, i = bitReads.length - 1) =>
     bitReads[i]!.resolve(result)
   })
 const bitDays = (list: readonly DayPayload[] = BIT_DAYS): ReadResult => ({ kind: 'days', days: [...list] })
+
+// ── 잡아 둔 무상 수리 읽기(contacts AC-6507.1): 부른 차례대로 쌓이고, 시험이 답을 준다 ──
+type WarrantyRead = { client: unknown; today: string; resolve(items: WarrantyItem[]): void; reject(error: unknown): void }
+const warrantyReads: WarrantyRead[] = []
+const warrantyAnswer = (items: WarrantyItem[], i = warrantyReads.length - 1) =>
+  act(async () => {
+    warrantyReads[i]!.resolve(items)
+  })
+const warrantyFail = (error: unknown, i = warrantyReads.length - 1) =>
+  act(async () => {
+    warrantyReads[i]!.reject(error)
+  })
 
 const onBitPc = () => vi.stubGlobal('chrome', { runtime: { connect: vi.fn() } })
 const notBitPc = () => vi.stubGlobal('chrome', undefined)
@@ -247,10 +310,25 @@ beforeEach(() => {
         bitReads.push({ deps, resolve })
       }),
   )
+  vi.mocked(loadInventory).mockReset()
+  vi.mocked(loadInventory).mockResolvedValue(NO_INVENTORY)
   vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
   vi.setSystemTime(new Date('2026-11-02T06:42:00Z')) // 한국 오후 3시 42분
   // 쓰면 안 되는 길: 불리면 시험이 잡는다
   vi.stubGlobal('fetch', aiRead())
+  // 무상 수리 알림: 기본은 Supabase 설정 없음(지금 시험 환경 그대로). 알림 시험이 가짜 클라이언트로 바꾼다
+  warrantyReads.length = 0
+  vi.mocked(supabaseBrowser).mockReset()
+  vi.mocked(supabaseBrowser).mockImplementation(() => {
+    throw new Error('NEXT_PUBLIC_SUPABASE_URL이 비었어요')
+  })
+  vi.mocked(listWarrantySoon).mockReset()
+  vi.mocked(listWarrantySoon).mockImplementation(
+    (client, today) =>
+      new Promise<WarrantyItem[]>((resolve, reject) => {
+        warrantyReads.push({ client, today, resolve, reject })
+      }),
+  )
 })
 
 afterEach(() => {
@@ -1001,5 +1079,304 @@ describe('dashboard-period: 옛 기간은 LiveDashboard가 만든 older(readDays
     expect(periodCard()).not.toBeNull()
     expect(bigLine().textContent).toBe(report)
     expect(screen.getByRole('group', { name: '날짜 고르기' }).outerHTML).toBe(dateLine)
+  })
+})
+
+describe('고시·공지 맨 위 경고 (notices TASK-20 · AC-7422.1)', () => {
+  // 지어낸 고시 하나(규칙 2개). 환자 자료가 없다
+  const ALERT = { id: '00000000-0000-4000-8000-000000000218', noticeNo: '2026-218', title: '관절강내 주사 인정기준 일부개정', ruleCount: 2 }
+  const WARN_TITLE = '점검 규칙 확인 필요'
+  const warning = () => screen.queryByText(WARN_TITLE)?.closest('[role="status"]') ?? null
+
+  beforeEach(() => {
+    vi.mocked(ruleAlerts).mockReset()
+    vi.mocked(ruleAlerts).mockImplementation(pendingRead)
+    vi.mocked(unreadCount).mockClear()
+  })
+
+  afterEach(() => {
+    vi.mocked(ruleAlerts).mockImplementation(pendingRead)
+  })
+
+  it('AC-7422.1: 저장 숫자를 읽은 뒤 맨 위(날짜 줄·머리 줄·일별 현황보다 앞)에 경고를 놓는다 — 뼈대 동안은 없다', async () => {
+    vi.mocked(ruleAlerts).mockResolvedValue([ALERT])
+    notBitPc()
+    const { container } = draw()
+    expect(warning()).toBeNull()
+    await savedAnswer(SAVED_ROWS)
+    const box = warning()
+    expect(box).not.toBeNull()
+    expect(container.firstElementChild).toBe(box)
+    expectOrder(box!, screen.getByRole('heading', { level: 1, name: HEADER_H1 }), screen.getByRole('region', { name: '오늘 하루 분석' }))
+    expect(within(box as HTMLElement).getByRole('link', { name: '글 보기' }).getAttribute('href')).toBe(`/notices?id=${ALERT.id}`)
+  })
+
+  it('AC-7422.1: 연결 전 화면(저장 숫자 없음)에서도 맨 위에 놓고, 0개면 놓지 않는다', async () => {
+    vi.mocked(ruleAlerts).mockResolvedValue([ALERT])
+    notBitPc()
+    const first = draw()
+    await savedAnswer([])
+    expect(first.container.firstElementChild).toBe(warning())
+    expectOrder(warning()!, screen.getByRole('heading', { level: 1, name: CONNECT_H1 }))
+    first.unmount()
+
+    vi.mocked(ruleAlerts).mockResolvedValue([])
+    draw()
+    await savedAnswer(SAVED_ROWS, 1)
+    expect(warning()).toBeNull()
+  })
+
+  it('AC-7422.1: 데스크 계정(RoleProvider desk)에게는 경고와 칸을 놓지 않고 읽지도 않는다', async () => {
+    vi.mocked(ruleAlerts).mockResolvedValue([ALERT])
+    notBitPc()
+    render(
+      <RoleProvider desk>
+        <LiveDashboard today={TODAY} />
+      </RoleProvider>,
+    )
+    await savedAnswer(SAVED_ROWS)
+    expect(warning()).toBeNull()
+    expect(ruleAlerts).not.toHaveBeenCalled()
+    expect(unreadCount).not.toHaveBeenCalled()
+    expect(screen.queryByRole('region', { name: '고시·공지' })).toBeNull()
+  })
+})
+
+// ── contacts: 대시보드 무상 수리 알림 (REQ-6507, design.md '대시보드 알림', 시안 docs/mockups/contacts/index.html ?s=dashboard·?s=dashboard-off) ──
+// LiveDashboard가 화면을 열 때 useWarrantySoon(오늘)으로 한 번(10초 한도) 읽어 BitDashboard에 notice로 넘긴다. 읽기 실패는 조용히 비운다(오류 카드 없음)
+describe('무상 수리 알림: LiveDashboard가 한 번 읽어 맨 위 줄 바로 아래에 둔다 (contacts AC-6507.1·AC-6507.2)', () => {
+  const NOTICE_NAME = '무상 수리 알림'
+  const CLIENT = { from: vi.fn(), rpc: vi.fn() }
+  // 오늘(11월 2일) 끝나는 원내 서버 PC, 12일 남은 충격파 기계(지어낸 업체·장비)
+  const ITEMS: WarrantyItem[] = [
+    { equipmentId: 'e-server', companyId: 'c-pc', companyName: '예시전산', name: '원내 서버 PC', warrantyUntil: TODAY },
+    { equipmentId: 'e-shock', companyId: 'c-medi', companyName: '예시메디칼', name: '충격파 기계', warrantyUntil: '2026-11-14' },
+  ]
+  const LINES = ['원내 서버 PC 무상 수리 오늘 끝나요 · 예시전산주소록에서 보기', '충격파 기계 무상 수리 12일 남음 · 예시메디칼주소록에서 보기']
+  const noticeEl = () => screen.getByRole('status', { name: NOTICE_NAME })
+  const noNotice = () => expect(screen.queryByRole('status', { name: NOTICE_NAME })).toBeNull()
+  const lines = () => within(noticeEl()).getAllByRole('link')
+  const headerH1 = () => screen.getByRole('heading', { level: 1, name: HEADER_H1 })
+  const todaySection = () => screen.getByRole('region', { name: '오늘 하루 분석' })
+  // 알림 읽기가 실패해도 오류 카드·오류 번호가 없다(저장 숫자 카드 E-STATS-…와 다른 글)
+  const noWarrantyError = () => {
+    expect(screen.queryByText(/E-CONTACTS/)).toBeNull()
+    expect(screen.queryByText(/주소록을 읽지 못했어요/)).toBeNull()
+  }
+
+  beforeEach(() => {
+    vi.mocked(supabaseBrowser).mockReset()
+    vi.mocked(supabaseBrowser).mockReturnValue(CLIENT as never)
+  })
+
+  it('AC-6507.1: 화면을 열면 supabaseBrowser()와 오늘로 listWarrantySoon을 한 번 읽고, 숫자 화면에서는 머리 줄 바로 아래 · 오늘 하루 분석 앞에 알림을 그린다', async () => {
+    notBitPc()
+    draw()
+    await act(async () => {})
+    expect(warrantyReads.map((r) => [r.client, r.today])).toEqual([[CLIENT, TODAY]])
+    // 저장 숫자를 읽는 동안은 뼈대뿐이다(알림도 아직 없다)
+    await warrantyAnswer(ITEMS)
+    expectSkeleton()
+    noNotice()
+    await savedAnswer(SAVED_ROWS)
+    expect(lines().map((a) => a.textContent)).toEqual(LINES)
+    expect(lines().map((a) => a.getAttribute('href'))).toEqual(['/contacts?c=c-pc', '/contacts?c=c-medi'])
+    expect(noticeEl().previousElementSibling).toBe(header())
+    expectOrder(headerH1(), noticeEl(), todaySection())
+    expect(within(noticeEl()).queryAllByRole('button')).toEqual([]) // [닫기] 없음
+    expect(listWarrantySoon).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-6507.1: 저장 숫자가 비면(연결 전) 날짜 줄 바로 아래 · 큰 문장 앞이다 — 저장 숫자가 먼저 와도 알림은 답이 오면 그 자리에 생긴다', async () => {
+    notBitPc()
+    draw()
+    await savedAnswer([])
+    noNotice()
+    expect(bigLine().textContent).toBe(CONNECT_H1)
+    await warrantyAnswer(ITEMS)
+    const h1 = screen.getByRole('heading', { level: 1, name: CONNECT_H1 })
+    expect(noticeEl().nextElementSibling).toBe(h1)
+    expect(noticeEl().previousElementSibling?.tagName).toBe('P') // 날짜 줄
+    expect(lines().map((a) => a.textContent)).toEqual(LINES)
+  })
+
+  it('AC-6507.2: 알림 읽기를 기다리지 않는다 — 저장 숫자로 그리고 비트 읽기를 시작하며, 비트 숫자도 알림 없이 그린다', async () => {
+    onBitPc()
+    draw()
+    await savedAnswer(SAVED_ROWS)
+    expect(bigLine().textContent).toBe(SAVED_H1)
+    expect(bitReads).toHaveLength(1)
+    await bitAnswer(bitDays())
+    expect(bigLine().textContent).toBe(BIT_H1)
+    noNotice()
+    expect(warrantyReads).toHaveLength(1)
+    await warrantyAnswer(ITEMS)
+    expectOrder(headerH1(), noticeEl(), todaySection())
+    expect(bigLine().textContent).toBe(BIT_H1)
+  })
+
+  it.each([
+    ['ContactsStorageError offline', new ContactsStorageError('offline')],
+    ['ContactsStorageError failed', new ContactsStorageError('failed')],
+  ])('AC-6507.2: 읽기 실패(%s)면 알림 묶음도 오류 카드도 없고 나머지 대시보드는 그대로다', async (_name, error) => {
+    notBitPc()
+    draw()
+    await savedAnswer(SAVED_ROWS)
+    await warrantyFail(error)
+    noNotice()
+    noWarrantyError()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(bigLine().textContent).toBe(SAVED_H1)
+  })
+
+  it('AC-6507.2: 10초 한도를 넘기면 그리지 않고, 늦게 온 답도 버린다', async () => {
+    notBitPc()
+    draw()
+    await savedAnswer(SAVED_ROWS)
+    await wait(SAVED_READ_TIMEOUT_MS)
+    noNotice()
+    await warrantyAnswer(ITEMS)
+    noNotice()
+    noWarrantyError()
+    expect(bigLine().textContent).toBe(SAVED_H1)
+  })
+
+  it('AC-6507.2: 0줄이면 아무것도 그리지 않는다(빈 상자 없음) — 알림 읽기가 없는 화면과 같다', async () => {
+    notBitPc()
+    draw()
+    await savedAnswer(SAVED_ROWS)
+    await warrantyAnswer([])
+    noNotice()
+    expect(header().nextElementSibling).toBeNull() // 머리 줄 아래 빈 자리가 없다
+  })
+
+  it('AC-6507.2: Supabase가 없으면(supabaseBrowser가 던짐) 읽지 않고 그리지 않는다', async () => {
+    vi.mocked(supabaseBrowser).mockImplementation(() => {
+      throw new Error('NEXT_PUBLIC_SUPABASE_URL이 비었어요')
+    })
+    notBitPc()
+    draw()
+    await savedAnswer(SAVED_ROWS)
+    await wait(SAVED_READ_TIMEOUT_MS)
+    expect(listWarrantySoon).not.toHaveBeenCalled()
+    noNotice()
+    noWarrantyError()
+  })
+
+  it('AC-6507.2: 저장 숫자 다시 읽기로 BitDashboard가 다시 놓여도 다시 읽지 않고 알림은 그대로다', async () => {
+    notBitPc()
+    draw()
+    await act(async () => {}) // 읽기는 효과 안 다음 차례에 시작한다
+    await warrantyAnswer(ITEMS)
+    await savedFail()
+    expect(savedCard()).not.toBeNull()
+    expect(lines().map((a) => a.textContent)).toEqual(LINES)
+    fireEvent.click(retryButton())
+    await savedAnswer(SAVED_ROWS)
+    expect(savedCard()).toBeNull()
+    expect(bigLine().textContent).toBe(SAVED_H1)
+    expect(lines().map((a) => a.textContent)).toEqual(LINES)
+    expect(listWarrantySoon).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-6507.2: 비트 다시 읽기·날짜가 바뀌어도 다시 읽지 않고, 끝나는 날 다음 날이면 그 장비는 빠진다', async () => {
+    onBitPc()
+    const { rerender } = draw()
+    await act(async () => {})
+    await warrantyAnswer(ITEMS)
+    await savedAnswer(SAVED_ROWS)
+    await bitAnswer(bitDays())
+    fireEvent.click(screen.getByRole('button', { name: '비트에서 다시 읽기' }))
+    await bitAnswer(bitDays())
+    expect(lines().map((a) => a.textContent)).toEqual(LINES)
+    rerender(<LiveDashboard today="2026-11-03" />)
+    await savedAnswer(SAVED_ROWS)
+    expect(lines().map((a) => a.textContent)).toEqual(['충격파 기계 무상 수리 11일 남음 · 예시메디칼주소록에서 보기'])
+    expect(listWarrantySoon).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-6507.2: LiveDashboard 소스는 useWarrantySoon(today)을 부르고 BitDashboard에 notice로 WarrantyNotice를 넘긴다 — Supabase를 직접 쓰지 않는다', () => {
+    const text = readFileSync(join(process.cwd(), 'src/components/dashboard/summary/LiveDashboard.tsx'), 'utf8')
+    expect(text).toMatch(/useWarrantySoon\(today\)/)
+    expect(text).toMatch(/notice=\{<WarrantyNotice items=\{warranty\} today=\{today\} \/>\}/)
+    expect(text).not.toMatch(/listWarrantySoon|lib\/supabase/)
+  })
+})
+
+// ── 재고 칸 자리 (spec inventory REQ-7512 AC-7512.4, design.md 6절 TASK-15) ──
+// 저장 숫자 읽는 중 뼈대·읽기 실패 카드에서는 LiveDashboard가 재고 칸을 맨 위(뼈대·카드 앞)에 두고, 그때 BitDashboard는 맨 위 칸을 두지 않는다 → 한 화면에 하나
+describe('AC-7512.4: 대시보드 재고 칸 — 뼈대·읽기 실패 카드', () => {
+  const inventoryCards = () => screen.queryAllByRole('region', { name: '재고' })
+  const settle = () => act(async () => {})
+  const lowStock = () => vi.mocked(loadInventory).mockResolvedValue(LOW_INVENTORY)
+  const todaySection = () => screen.getByRole('region', { name: '오늘 하루 분석' })
+
+  it('AC-7512.4: 저장 숫자를 읽는 동안 — 재고 칸이 뼈대 앞(맨 위)에 하나', async () => {
+    notBitPc()
+    lowStock()
+    const { container } = draw()
+    await settle()
+    expectSkeleton()
+    const cards = inventoryCards()
+    expect(cards).toHaveLength(1)
+    expect(container.firstElementChild!.contains(cards[0]!)).toBe(true)
+    expectOrder(cards[0]!, screen.getByRole('status'))
+    expect(loadInventory).toHaveBeenCalledWith({ seed: false })
+  })
+
+  it('AC-7512.4: 저장 숫자 읽기 실패 카드 — 재고 칸이 그 카드 앞(맨 위)에 하나이고 아래 연결 전 화면에는 없다', async () => {
+    notBitPc()
+    lowStock()
+    const { container } = draw()
+    await savedFail()
+    await settle()
+    expect(bigLine().textContent).toBe(CONNECT_H1)
+    const cards = inventoryCards()
+    expect(cards).toHaveLength(1)
+    expect(container.firstElementChild!.contains(cards[0]!)).toBe(true)
+    expectOrder(cards[0]!, savedCard()!, screen.getByRole('region', { name: '오늘 브리핑' }))
+  })
+
+  it('AC-7512.4: 읽기 실패 카드 뒤 비트 숫자가 오면 카드가 걷히고 재고 칸은 보고 문장 오른쪽 하나뿐이다', async () => {
+    onBitPc()
+    lowStock()
+    draw()
+    await savedFail()
+    await settle()
+    expect(inventoryCards()).toHaveLength(1)
+    await bitAnswer(bitDays())
+    await settle()
+    expect(savedCard()).toBeNull()
+    const cards = inventoryCards()
+    expect(cards).toHaveLength(1)
+    expect(todaySection().contains(cards[0]!)).toBe(true)
+  })
+
+  it('AC-7512.4: 저장 숫자가 오면 뼈대 앞 재고 칸은 사라지고 보고 문장 오른쪽 하나뿐이다', async () => {
+    notBitPc()
+    lowStock()
+    draw()
+    await settle()
+    expect(inventoryCards()).toHaveLength(1)
+    await savedAnswer(SAVED_ROWS)
+    await settle()
+    const cards = inventoryCards()
+    expect(cards).toHaveLength(1)
+    expect(todaySection().contains(cards[0]!)).toBe(true)
+  })
+
+  it('AC-7512.4: 알림이 없으면 뼈대·실패 카드 모양은 지금 그대로다(재고 칸 없음)', async () => {
+    notBitPc()
+    const { container } = draw()
+    await settle()
+    expect(inventoryCards()).toHaveLength(0)
+    const html = withoutIds(container.innerHTML)
+    cleanup()
+    expect(html).toBe(markupOf(<DashboardSkeleton />))
+    draw()
+    await savedFail()
+    await settle()
+    expect(inventoryCards()).toHaveLength(0)
+    expect(savedCard()).not.toBeNull()
   })
 })

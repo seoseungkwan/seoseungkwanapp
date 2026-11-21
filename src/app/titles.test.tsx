@@ -68,16 +68,12 @@ describe('AC-402.2: 입구 페이지의 탭 이름', () => {
 const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ metadata?: Metadata }> }> = [
   { path: '/dashboard', title: '대시보드', load: () => import('./(app)/dashboard/page') },
   { path: '/stats', title: '통계', load: () => import('./(app)/stats/page') },
-  ...(
-    [
-      ['/notices', () => import('./(app)/notices/page')],
-      ['/inventory', () => import('./(app)/inventory/page')],
-      ['/contacts', () => import('./(app)/contacts/page')],
-    ] as const
-  ).map(([path, load]) => ({ path, title: notReadyFeature(path as NotReadyPath).name, load })),
   // 진짜 화면이 생겨 준비 중 목록에 없다(AC-714.3)
   { path: '/ai-report', title: 'AI 리포트', load: () => import('./(app)/ai-report/page') },
   { path: '/forms', title: '서식', load: () => import('./(app)/forms/page') }, // 화면이 있는 탭(forms AC-3501.3)
+  { path: '/notices', title: '고시·공지', load: () => import('./(app)/notices/page') }, // 화면이 있는 탭(notices AC-7423.2)
+  { path: '/inventory', title: '재고', load: () => import('./(app)/inventory/page') }, // 화면이 있는 탭(inventory AC-7512.1)
+  { path: '/contacts', title: '주소록', load: () => import('./(app)/contacts/page') }, // 화면이 있는 탭(contacts AC-6508.2)
   { path: '/staff', title: '직원', load: () => import('./(app)/staff/page') }, // 화면이 있는 탭(staff AC-7611.1·AC-7611.2)
   { path: '/worklog', title: '업무일지', load: () => import('./(app)/worklog/page') },
   { path: '/sunap', title: '수납일지', load: () => import('./(app)/sunap/page') },
@@ -101,6 +97,24 @@ describe('AC-402.4: 앱 페이지의 탭 이름', () => {
     expect(titles.every((t) => typeof t === 'string' && t !== '')).toBe(true)
     expect(new Set(titles).size).toBe(16)
     expect(titles).not.toContain('매출')
+  })
+
+  it('AC-7423.2: /notices 페이지의 metadata.title은 준비 중 자료가 아니라 페이지가 직접 적은 "고시·공지"다(글 화면 ?id=도 같은 쪽이라 같은 이름)', async () => {
+    const { metadata } = await import('./(app)/notices/page')
+    expect(metadata.title).toBe('고시·공지')
+    expect(notReadyFeature('/notices' as NotReadyPath)).toBeUndefined()
+  })
+
+  it('AC-6508.2: /contacts 페이지의 metadata.title은 준비 중 자료가 아니라 페이지가 직접 적은 "주소록"이다', async () => {
+    const { metadata } = await import('./(app)/contacts/page')
+    expect(metadata.title).toBe('주소록')
+    expect(notReadyFeature('/contacts' as NotReadyPath)).toBeUndefined()
+  })
+
+  it('AC-7512.1: /inventory 페이지의 metadata.title은 준비 중 자료가 아니라 페이지가 직접 적은 "재고"다', async () => {
+    const { metadata } = await import('./(app)/inventory/page')
+    expect(metadata.title).toBe('재고')
+    expect(notReadyFeature('/inventory' as NotReadyPath)).toBeUndefined()
   })
 
   it('AC-7611.1·AC-7611.2: /staff 페이지의 metadata.title은 준비 중 자료가 아니라 페이지가 직접 적은 "직원"이다', async () => {

@@ -7,7 +7,13 @@ import Anthropic, {
   InternalServerError,
   RateLimitError,
 } from '@anthropic-ai/sdk'
-import type { BetaContentBlock, BetaMessage, BetaMessageStreamParams } from '@anthropic-ai/sdk/resources/beta/messages/messages'
+import type {
+  BetaContentBlock,
+  BetaContentBlockParam,
+  BetaMessage,
+  BetaMessageContentParam,
+  BetaMessageStreamParams,
+} from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import type { AiErrorCode, AiUsage } from '@/types/aiReport'
 
 // Claude 부르기(spec ai-report design.md 'Claude 부르기', ADR-024). SDK는 이 폴더에서만 쓴다(ADR-004)
@@ -39,9 +45,17 @@ const ENDED_EARLY: ReadonlySet<string> = new Set([
   'request ended without sending any chunks',
 ])
 
+// 사진 한 장(base64 글자). 재고 탭 명세서 읽기만 쓴다(spec inventory design.md 5절)
+export type ClaudeImage = { mediaType: 'image/jpeg'; data: string }
+
 // effort: 생각 깊이. 없으면 medium(AI 리포트). 서식 정리처럼 짧은 글 뽑기는 low(spec forms)
+// user: 글자 하나, 또는 내용 블록 배열(고시·공지 요약의 PDF document 블록 + 글 블록, spec notices AC-7412.1) — 받은 그대로 보낸다
+// 일괄 처리(notices/batch.ts)도 같은 모양을 받는다
+export type ClaudeRequest = { system: string; user: string | BetaContentBlockParam[]; schema: object; effort?: 'low' | 'medium' }
+
+// image: 있으면 user 내용이 [사진 블록, 글 블록]이고, 없으면 user 그대로다(재고 탭만. 일괄 처리는 사진을 받지 않는다)
 export async function callClaude(
-  req: { system: string; user: string; schema: object; effort?: 'low' | 'medium' },
+  req: ClaudeRequest & { image?: ClaudeImage },
   deps?: { client?: AnthropicLike; apiKey?: string; timeoutMs?: number },
 ): Promise<ClaudeResult> {
   const apiKey = deps?.apiKey ?? process.env.ANTHROPIC_API_KEY
@@ -64,7 +78,7 @@ export async function callClaude(
           fallbacks: 'default',
           output_config: { effort: req.effort ?? 'medium', format: { type: 'json_schema', schema: req.schema as Record<string, unknown> } },
           system: req.system,
-          messages: [{ role: 'user', content: req.user }],
+          messages: [{ role: 'user', content: userContent(req.user, req.image) }],
         },
         { signal },
       )
@@ -78,6 +92,15 @@ export async function callClaude(
     return { ok: false, code: 'E-AI-FAILED', usage }
   }
   return { ok: true, text: answerText(message.content), usage }
+}
+
+// 사진은 글보다 앞에 둔다(사진 블록 하나 + 글 블록 하나, user가 블록 배열이면 그 블록들)
+function userContent(user: ClaudeRequest['user'], image: ClaudeImage | undefined): BetaMessageContentParam {
+  if (image === undefined) return user
+  return [
+    { type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.data } },
+    ...(typeof user === 'string' ? [{ type: 'text' as const, text: user }] : user),
+  ]
 }
 
 // 맨 위 usage는 답을 만든 시도 몫만 담는다. 시도마다의 사용량(거절한 시도 + 대신 답한 시도)은 usage.iterations에 있다

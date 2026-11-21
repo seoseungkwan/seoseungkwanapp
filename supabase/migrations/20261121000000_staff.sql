@@ -1,6 +1,6 @@
 -- 직원 탭 DB: 표 열(staff_members·staff_week_plans·staff_day_changes·staff_overtime·staff_leaves·staff_settings·staff_incentive_rules·
 -- staff_pay_lines·staff_pay_months·staff_files)·휴가 → 예약 '휴무' 잇기(calendar_allday.part·leave_id와 트리거 둘)·직원 파일 바구니(Storage) staff-files
--- (spec staff REQ-7601·REQ-7602·REQ-7603, ADR-035)
+-- (spec staff REQ-7601·REQ-7602·REQ-7603, ADR-039)
 --
 -- 실행: 운영자가 Supabase 관리 화면 → SQL Editor에 이 파일 전체를 붙여 한 번 실행한다(앱·CLI는 실행하지 않는다).
 -- 먼저 20261028000000_auth.sql·20261030000000_precheck_settings.sql(my_hospital_id())·업무일지 넷·통계 묶음 둘·20261116000000_sunap.sql·
@@ -12,7 +12,7 @@
 -- 관문: 이 파일을 먼저 붙여 넣고 그다음 사이트에 올린다(예약 달력이 calendar_allday.part를 읽어, 없으면 예약 종일 줄 읽기가 실패한다. 직원 탭도 표가 없으면 읽기 실패 글을 보인다).
 -- 실행 뒤 Storage 화면에 staff-files 바구니가 보이고 'Private'(공개 아님)인지 본다.
 --
--- 무엇을 왜(ADR-035): 원장이 직원 명단·근무표·휴가·급여를 한 곳에서 본다. 직원 연락처·주소·생일·계좌·근무·휴가·급여·서류 파일을 서버에 둔다
+-- 무엇을 왜(ADR-039): 원장이 직원 명단·근무표·휴가·급여를 한 곳에서 본다. 직원 연락처·주소·생일·계좌·근무·휴가·급여·서류 파일을 서버에 둔다
 -- (plan.md 4절 '서버로 가는 것'을 넓힘). 주민번호 칸은 어느 표에도 없다. 환자 자료는 들어가지 않는다. 금액은 원 단위 정수다.
 -- 휴가 → 예약 '휴무'는 앱이 아니라 DB 트리거가 잇는다: 예약 시행자와 이어진 직원의 휴가를 넣으면 그날 그 시행자 '휴무' 줄(반차는 오전·오후)이 생기고,
 -- 휴가를 지우면 함께 지워지며, 연결을 끊거나 바꾸면 다시 맞춘다. 손으로 넣은 '휴무' 줄은 건드리지 않는다.

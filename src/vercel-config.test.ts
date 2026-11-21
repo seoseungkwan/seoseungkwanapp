@@ -18,8 +18,10 @@ const EMR_PATTERNS = ['*.[cC][sS][vV]', '*.[xX][lL][sS]', '*.[xX][lL][sS][xX]']
 
 // 가짜 파일 폴더. 되살리기(!)는 이 안의 파일 이름 하나하나만 된다
 const FAKE_FOLDERS = ['fixtures/fake-', 'public/fake-sample/']
-// 가짜 파일 폴더 밖에서 되살리는 것은 직원 탭 엑셀 양식 파일 하나뿐이다(지어낸 보기 줄만, 운영 사이트에서 내려받음 — spec staff AC-7612.4)
+// 폴더 밖에서 되살리는 파일(폴더가 아니라 파일 하나씩): 주소록 [양식 받기]의 빈 엑셀 양식(specs/contacts AC-6504.4)과
+// 직원 탭 엑셀 양식(지어낸 보기 줄만, 운영 사이트에서 내려받음 — spec staff AC-7612.4)
 const STAFF_TEMPLATE = 'public/staff/staff-template.xlsx'
+const TEMPLATE_FILES = ['public/contacts/contacts-template.xlsx', STAFF_TEMPLATE]
 
 describe('vercel.json', () => {
   it('AC-009.1: framework는 nextjs, 함수 지역은 icn1 하나, 깃 자동 배포는 꺼져 있다', () => {
@@ -28,14 +30,47 @@ describe('vercel.json', () => {
     expect(config.regions).toEqual(['icn1'])
     expect(config.git?.deploymentEnabled).toBe(false)
   })
+
+  // specs/notices REQ-7416, design 1절·ADR-036: 무료판 Cron은 식마다 하루 한 번(그 시간 안 아무 때). 같은 경로를 아홉 식으로 건다
+  const COLLECT = '/api/ai/notices/collect'
+  const SCHEDULES = ['0 22 * * *', '0 0 * * *', '0 2 * * *', '0 4 * * *', '0 6 * * *', '0 8 * * *', '0 10 * * *', '0 12 * * *', '0 14 * * *']
+
+  it('AC-7416.4: crons는 모으기 경로 아홉 개(한국 07시대 아침 0 22 + 09~23시대 두 시간마다)다', () => {
+    const config = JSON.parse(readText('vercel.json'))
+    expect(config.crons).toEqual(SCHEDULES.map((schedule) => ({ path: COLLECT, schedule })))
+  })
+
+  it('AC-7416.4: 식마다 하루 한 번(분·시가 숫자 하나, 나머지 *)이고 겹치는 시각이 없다', () => {
+    const config = JSON.parse(readText('vercel.json')) as { crons: { path: string; schedule: string }[] }
+    const hours = config.crons.map(({ schedule }) => {
+      const m = /^0 (\d{1,2}) \* \* \*$/.exec(schedule)
+      expect(m, schedule).not.toBeNull()
+      const hour = Number(m![1])
+      expect(hour).toBeGreaterThanOrEqual(0)
+      expect(hour).toBeLessThanOrEqual(23)
+      return hour
+    })
+    expect(new Set(hours).size).toBe(hours.length)
+    // 첫 식(아침)은 한국 07시 = UTC 전날 22시
+    expect((hours[0] + 9) % 24).toBe(7)
+  })
+
+  it('AC-7416.4: 모으기 경로 파일이 있고, 설정 칸은 $schema·framework·regions·git·crons뿐이다', () => {
+    expect(readText('src/app/api/ai/notices/collect/route.ts')).toMatch(/export async function GET\b/)
+    const config = JSON.parse(readText('vercel.json'))
+    expect(Object.keys(config).sort()).toEqual(['$schema', 'crons', 'framework', 'git', 'regions'])
+    expect(config.$schema).toBe('https://openapi.vercel.sh/vercel.json')
+    expect(config.git).toEqual({ deploymentEnabled: false })
+  })
 })
 
 describe('.vercelignore', () => {
-  it('AC-009.2·AC-7612.4: 비밀값·시험 산출물·개발 전용 파일·실제 EMR 파일 모양을 올리지 않는다(직원 엑셀 양식 파일 하나만 되살림)', () => {
+  it('AC-009.2·AC-6504.4·AC-7612.4: 비밀값·시험 산출물·개발 전용 파일·실제 EMR 파일 모양을 올리지 않는다(주소록·직원 엑셀 양식 파일 하나씩만 되살림)', () => {
     expect(ignoreLines()).toEqual([
       '.env*',
       ...EMR_PATTERNS,
       '!public/fake-sample/bit-sample.csv',
+      '!public/contacts/contacts-template.xlsx',
       `!${STAFF_TEMPLATE}`,
       '.harness/',
       '.claude/',
@@ -61,7 +96,7 @@ describe('.vercelignore', () => {
     expect(lines.filter((line) => /^!\s*\/?\.env/.test(line))).toEqual([])
   })
 
-  it('AC-009.2·AC-7612.4: 되살리기는 가짜 파일 폴더의 파일 이름 하나하나와 직원 엑셀 양식 파일 하나뿐이고 확장자 줄보다 뒤에 있다(환자 엑셀 막기는 그대로)', () => {
+  it('AC-009.2·AC-6504.4·AC-7612.4: 되살리기는 가짜 파일 폴더의 파일 이름 하나하나와 주소록·직원 엑셀 양식 파일 하나씩뿐이고 확장자 줄보다 뒤에 있다(환자 엑셀 막기는 그대로)', () => {
     const lines = ignoreLines()
     for (const pattern of EMR_PATTERNS) expect(lines).toContain(pattern)
     const lastEmr = Math.max(...EMR_PATTERNS.map((pattern) => lines.indexOf(pattern)))
@@ -69,13 +104,20 @@ describe('.vercelignore', () => {
     expect(reincludes.length).toBeGreaterThan(0)
     for (const { line, index } of reincludes) {
       const path = line.slice(1)
-      expect(path === STAFF_TEMPLATE || FAKE_FOLDERS.some((folder) => path.startsWith(folder)), path).toBe(true)
+      expect(FAKE_FOLDERS.some((folder) => path.startsWith(folder)) || TEMPLATE_FILES.includes(path), path).toBe(true)
       expect(path).not.toMatch(/[*?[\]]/)
       expect(index).toBeGreaterThan(lastEmr)
     }
-    // 가짜 파일 폴더 밖 되살리기 = 양식 파일 이름 그대로 한 줄(폴더·글롭으로 넓히지 않는다)
+    // 가짜 파일 폴더 밖 되살리기 = 양식 파일 이름 그대로 한 줄씩(폴더·글롭으로 넓히지 않는다)
     const outside = reincludes.map(({ line }) => line.slice(1)).filter((path) => !FAKE_FOLDERS.some((folder) => path.startsWith(folder)))
-    expect(outside).toEqual([STAFF_TEMPLATE])
+    expect(outside).toEqual(TEMPLATE_FILES)
+  })
+
+  it('AC-6504.4: 주소록 양식 파일 하나만 그 이름 그대로 되살린다(엑셀 줄은 그대로, 글롭 없음)', () => {
+    const lines = ignoreLines()
+    for (const pattern of EMR_PATTERNS) expect(lines).toContain(pattern)
+    expect(lines.filter((line) => line.startsWith('!public/contacts'))).toEqual(['!public/contacts/contacts-template.xlsx'])
+    expect(lines.indexOf('!public/contacts/contacts-template.xlsx')).toBeGreaterThan(lines.indexOf('*.[xX][lL][sS][xX]'))
   })
 
   it('AC-009.2: e2e/를 빼면 그것을 import하는 playwright.config.ts도 함께 뺀다(Vercel 빌드 타입 검사가 깨지지 않게)', () => {

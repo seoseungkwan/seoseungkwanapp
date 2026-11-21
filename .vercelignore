@@ -3,12 +3,13 @@
 .env*
 
 # 실제 EMR 파일 모양은 올리지 않는다. .gitignore처럼 확장자 대소문자를 가리지 않는다(Windows에서 온 REAL.XLS 등)
-# 되살리는 것은 사이트가 내주는 가짜 견본 파일과 직원 탭 엑셀 양식(지어낸 보기 줄만, spec staff AC-7612.4) 이름 하나씩뿐이다.
-# fixtures/의 가짜 파일은 빌드에 필요 없어 올리지 않는다
+# 되살리는 것은 사이트가 내주는 가짜 견본 파일 이름 하나, 주소록 빈 엑셀 양식 파일 하나(specs/contacts AC-6504.4),
+# 직원 탭 엑셀 양식(지어낸 보기 줄만, spec staff AC-7612.4) 파일 하나뿐이다. fixtures/의 가짜 파일은 빌드에 필요 없어 올리지 않는다
 *.[cC][sS][vV]
 *.[xX][lL][sS]
 *.[xX][lL][sS][xX]
 !public/fake-sample/bit-sample.csv
+!public/contacts/contacts-template.xlsx
 !public/staff/staff-template.xlsx
 
 # 개발 전용

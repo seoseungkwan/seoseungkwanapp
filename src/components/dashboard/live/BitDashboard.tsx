@@ -1,9 +1,11 @@
 'use client'
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useClinicProfile } from '@/components/clinic/useClinicProfile'
 import { AiBrief } from '@/components/dashboard/ai/AiBrief'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
+import { InventoryAlertCard } from '@/components/dashboard/inventory/InventoryAlertCard'
+import { NoticesCard } from '@/components/dashboard/notices/NoticesCard'
 import { DailySection, sentenceNote } from '@/components/dashboard/summary/DailySection'
 import { DashboardAnalysis, type DashboardAnalysisProps } from '@/components/dashboard/summary/DashboardAnalysis'
 import { FlowSection } from '@/components/dashboard/summary/FlowSection'
@@ -29,6 +31,9 @@ import type { DashboardGroups } from './rxGroups'
 // 병원 호칭(clinic-profile AC-6606.3)은 여기서 useClinicProfile을 한 번 불러 보고 받는 사람 글(숫자 줄 아래 안내 줄·AI 요약 만들기 안내)에 넘긴다.
 // 읽는 중·실패면 기본값 '원장님'이다(서버 그림도 '원장님'이라 첫 그림이 어긋나지 않는다)
 // 쓰는 EMR(emr-choice AC-7103.1·AC-7103.2, design.md 4절)도 같은 결과에서 받아 DashboardHome에 넘긴다. 병원 정보를 읽었을 때만 그 값이고, 읽는 중·실패는 'bit'(지금 그대로)
+// 재고 칸(spec inventory AC-7512.4, design.md 6절 TASK-15)은 비트 자료와 상관없이 놓는다: 숫자가 있으면 보고 문장을 InventoryAlertCard로 감싸 오른쪽(9~12)에,
+// 숫자가 없는 모양(연결 전·읽는 중·실패)이면 DashboardHome 앞(대시보드 내용 맨 위)에. 알림이 없으면 칸이 그리지 않아 지금 그대로다.
+// LiveDashboard가 저장 숫자 오류 카드 위에 이미 둔 때는 inventoryOnTop={false}로 맨 위 칸을 빼 한 화면에 하나다
 
 /** 묶음을 주지 않으면 묶음 없음 */
 const NO_GROUPS: DashboardGroups = { lines: [], defs: [] }
@@ -111,6 +116,8 @@ function emptyLook(status: Status, honorific: Honorific): EmptyLook {
  * 비트 읽기(stats.rows, 오늘 − 100 ~ 오늘)는 지금처럼 열 때와 [비트에서 다시 읽기]에만 하고, 기간을 골라도 하지 않는다(AC-1804.4)
  * savedRefresh: 저장 숫자 새로고침(LiveDashboard가 읽는 중·실패와 누름을 준다, AC-2701.7·AC-2701.8). 주지 않으면 그 단추가 없다.
  * initial이 새 값으로 바뀌면(새로고침 성공) 다시 놓지 않고 화면 숫자만 바꾼다 — 고른 날·AI 요약이 그대로이고 비트 읽기를 새로 시작하지 않는다
+ * inventoryOnTop: 숫자가 없는 모양에서 재고 칸을 맨 위에 둔다(기본 참). LiveDashboard가 오류 카드 위에 이미 둘 때 거짓(AC-7512.4)
+ * notice: 맨 위 줄 바로 아래 알림(contacts AC-6507.1, 무상 수리). LiveDashboard가 읽어 넘기고 여기서는 DashboardHome에 그대로 넘기기만 한다(읽지 않음)
  */
 export function BitDashboard({
   today,
@@ -120,6 +127,8 @@ export function BitDashboard({
   older,
   onBitLoaded,
   savedRefresh,
+  inventoryOnTop = true,
+  notice,
 }: {
   today: string
   initial: SummarySource
@@ -128,6 +137,8 @@ export function BitDashboard({
   older?: OlderDays
   onBitLoaded?: () => void
   savedRefresh?: SavedRefresh
+  inventoryOnTop?: boolean
+  notice?: ReactNode
 }) {
   const [status, setStatus] = useState(() => firstStatus(initial))
   // 새 처음 자료가 오면(저장 숫자 새로고침 성공) 그리는 중에 상태를 맞춘다 — 다시 놓지 않는다(AC-2701.8)
@@ -200,9 +211,15 @@ export function BitDashboard({
           emptyNote={emptyNote}
           ptKey={ptKeyOf(groups)}
           dateLine={<DateControl today={today} selected={selected} onChange={(day) => setPicked(day === today ? null : day)} />}
-          // key: 날짜를 바꾸면 복사 결과 표시가 다른 날 문장에 남지 않는다
-          sentence={<ReportBlock key={selected} today={today} days={status.days} selected={selected} />}
+          // key: 날짜를 바꾸면 복사 결과 표시가 다른 날 문장에 남지 않는다. 재고 칸은 날짜와 상관없이 그대로다(다시 읽지 않는다)
+          sentence={
+            <InventoryAlertCard today={today}>
+              <ReportBlock key={selected} today={today} days={status.days} selected={selected} />
+            </InventoryAlertCard>
+          }
         />
+        {/* 고시·공지 칸(notices AC-7422.2): 일별 현황 바로 아래. 숫자가 있는 화면에만 놓는다 */}
+        <NoticesCard />
         {status.days.length > 0 && (
           <div className="mt-12 max-md:mt-8">
             <AiBrief today={today} honorific={honorific} />
@@ -214,7 +231,7 @@ export function BitDashboard({
       <DashboardAnalysis today={today} day={selected} source={source} {...look} />
     )
 
-  return (
+  const home = (
     <DashboardHome
       today={today}
       emr={emr}
@@ -254,6 +271,18 @@ export function BitDashboard({
         )
       }
       analysis={analysis}
+      notice={notice}
     />
   )
+  // 숫자가 없는 모양: 재고 칸이 대시보드 내용 맨 위(AC-7512.4). 자리는 모양과 상관없이 늘 두어(숫자가 있으면 빈 자리)
+  // 읽는 중 → 숫자로 바뀔 때 DashboardHome이 다시 만들어지지 않는다
+  return (
+    <>
+      {status.kind !== 'data' && inventoryOnTop ? <InventoryAlertCard today={today} /> : null}
+      {home}
+    </>
+  )
 }
+
+// LiveDashboard(summary 폴더)는 정해 둔 곳만 불러온다(DashboardAnalysis.test AC-311.8) → 뼈대·오류 카드 위 재고 칸은 이 파일을 거쳐 쓴다
+export { InventoryAlertCard }

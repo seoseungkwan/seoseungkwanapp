@@ -953,3 +953,61 @@ describe('DashboardHome: 비트가 아닌 병원의 연결 전 (emr-choice AC-71
     noText(container, WAIT_LEAD)
   })
 })
+
+// ── contacts: 대시보드 무상 수리 알림 자리 (REQ-6507, design.md '대시보드 알림', 시안 docs/mockups/contacts/index.html ?s=dashboard·?s=dashboard-off) ──
+// 알림 묶음은 LiveDashboard가 읽어 BitDashboard를 거쳐 notice로 넘긴다. 여기서는 받은 노드를 '맨 위 줄 바로 아래' 자리에 두는지만 본다(그림은 WarrantyNotice.test.tsx)
+describe('DashboardHome: 무상 수리 알림 자리 (contacts AC-6507.1)', () => {
+  const NOTICE_NAME = '무상 수리 알림'
+  const notice = <div role="status" aria-label={NOTICE_NAME} data-testid="notice">가짜 무상 수리 알림</div>
+  const noticeEl = () => screen.getByTestId('notice')
+
+  it('AC-6507.1: 연결 뒤(report 있음)는 브리핑 칸의 report(머리 줄과 그 아래 오류 상자) 바로 다음 · 분석 앞이다', () => {
+    render(<DashboardHome today={TODAY} report={report} analysis={analysis} dateLine={null} notice={notice} />)
+    expect(noticeEl().previousElementSibling).toBe(screen.getByTestId('report'))
+    expect(noticeEl().nextElementSibling).toBeNull()
+    expect(brief().contains(noticeEl())).toBe(true)
+    expectOrder(screen.getByTestId('report'), noticeEl(), screen.getByTestId('analysis'), sectionNamed('기능 목차'))
+  })
+
+  it('AC-6507.1: 연결 뒤 읽는 중·실패 모양(날짜 줄 + 그 블록)은 그 블록 다음이다', () => {
+    const block = (
+      <div data-testid="block">
+        <h1>비트에서 오늘 숫자를 읽고 있어요</h1>
+      </div>
+    )
+    render(<DashboardHome today={TODAY} report={block} analysis={analysis} notice={notice} />)
+    expectOrder(dateLineEl(), screen.getByTestId('block'), noticeEl(), screen.getByTestId('analysis'))
+    expect(noticeEl().previousElementSibling).toBe(screen.getByTestId('block'))
+  })
+
+  it('AC-6507.1: 비트 병원 연결 전은 날짜 줄 바로 다음 · 큰 문장(h1) 앞이다', () => {
+    render(<DashboardHome today={TODAY} report={null} analysis={analysis} notice={notice} />)
+    expect(noticeEl().previousElementSibling).toBe(dateLineEl())
+    expect(noticeEl().nextElementSibling).toBe(screen.getByRole('heading', { level: 1, name: H1 }))
+    expect(briefLeft().contains(noticeEl())).toBe(true)
+  })
+
+  it.each(['uisarang', 'egis', 'other'] as const)('AC-6507.1: 비트가 아닌 EMR(%s) 연결 전도 날짜 줄 바로 다음 · 안내 제목(h1) 앞이다', (emr) => {
+    const { container } = render(<DashboardHome today={TODAY} report={null} analysis={analysis} emr={emr} notice={notice} />)
+    expect(noticeEl().previousElementSibling).toBe(dateLineEl())
+    expect(noticeEl().nextElementSibling).toBe(container.querySelector('h1'))
+  })
+
+  it('AC-6507.1: 알림 묶음은 하나만 그린다(연결 전·뒤 모두)', () => {
+    for (const node of [null, report]) {
+      render(<DashboardHome today={TODAY} report={node} analysis={analysis} notice={notice} />)
+      expect(screen.getAllByRole('status', { name: NOTICE_NAME })).toHaveLength(1)
+      cleanup()
+    }
+  })
+
+  it('AC-6507.2: notice를 주지 않거나 null이면 지금 그대로다(빈 자리·빈 상자 없음)', () => {
+    for (const emr of ['bit', 'uisarang'] as const) {
+      for (const node of [null, report]) {
+        const plain = renderToStaticMarkup(<DashboardHome today={TODAY} report={node} analysis={analysis} emr={emr} />)
+        expect(renderToStaticMarkup(<DashboardHome today={TODAY} report={node} analysis={analysis} emr={emr} notice={null} />)).toBe(plain)
+        expect(renderToStaticMarkup(<DashboardHome today={TODAY} report={node} analysis={analysis} emr={emr} notice={undefined} />)).toBe(plain)
+      }
+    }
+  })
+})

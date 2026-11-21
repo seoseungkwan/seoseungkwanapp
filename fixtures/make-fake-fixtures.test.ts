@@ -473,14 +473,16 @@ describe('AC-005.2 저장소의 가짜 파일 폴더 · .gitignore 되살리기 
     expect(readdirSync(join(root, 'public', 'fake-sample'))).toEqual(['bit-sample.csv'])
   })
 
-  // 가짜 파일 밖 예외는 직원 탭 엑셀 양식 하나(지어낸 보기 줄만, 운영 사이트에서 내려받음 — spec staff AC-7612.4)
-  it('AC-005.2·AC-7612.4: .gitignore가 되살리는 것은 생성기 파일 이름 그대로와 직원 엑셀 양식 파일 하나뿐이고(글롭 없음) 엑셀 막는 줄보다 뒤에 있다', () => {
+  // 가짜 파일 밖 예외는 엑셀 양식 두 개뿐이다: 주소록 [양식 받기]의 빈 양식(specs/contacts AC-6504.4)과
+  // 직원 탭 양식(지어낸 보기 줄만, 운영 사이트에서 내려받음 — spec staff AC-7612.4)
+  it('AC-005.2·AC-6504.4·AC-7612.4: .gitignore가 되살리는 것은 생성기 파일 이름 그대로와 주소록·직원 엑셀 양식 파일 하나씩뿐이고(글롭 없음) 엑셀 막는 줄보다 뒤에 있다', () => {
     const lines = readFileSync(join(root, '.gitignore'), 'utf8').split(/\r?\n/) // Windows에서 받은 저장소는 줄 끝이 CRLF다
     const allowed = lines.filter((line) => line.startsWith('!') && line !== '!.env.example')
     expect([...allowed].sort()).toEqual(
       [
         ...FILES.map((name) => `!fixtures/fake-bit/${name}`),
         '!public/fake-sample/bit-sample.csv',
+        '!public/contacts/contacts-template.xlsx',
         '!public/staff/staff-template.xlsx',
       ].sort(),
     )

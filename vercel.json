@@ -4,5 +4,16 @@
   "regions": ["icn1"],
   "git": {
     "deploymentEnabled": false
-  }
+  },
+  "crons": [
+    { "path": "/api/ai/notices/collect", "schedule": "0 22 * * *" },
+    { "path": "/api/ai/notices/collect", "schedule": "0 0 * * *" },
+    { "path": "/api/ai/notices/collect", "schedule": "0 2 * * *" },
+    { "path": "/api/ai/notices/collect", "schedule": "0 4 * * *" },
+    { "path": "/api/ai/notices/collect", "schedule": "0 6 * * *" },
+    { "path": "/api/ai/notices/collect", "schedule": "0 8 * * *" },
+    { "path": "/api/ai/notices/collect", "schedule": "0 10 * * *" },
+    { "path": "/api/ai/notices/collect", "schedule": "0 12 * * *" },
+    { "path": "/api/ai/notices/collect", "schedule": "0 14 * * *" }
+  ]
 }

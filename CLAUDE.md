@@ -20,6 +20,8 @@
 - 예외 (ADR-028): 서식 AI 정리(`app/api/ai/forms`, 환자 안내문은 그 아래 `guide`·AI 그림 `guide/picture`)만 사용자가 적은 글을 Claude로 보낸다 — 500자까지, 전화·주민번호·메일 모양이면 보내지 않고, 저장·로그하지 않는다(AI 그림의 '그릴 것'만 20자까지이고 그림 이름으로 안내문과 함께 저장). AI 그림은 도형·색 이름·숫자로만 받아 앱이 그린다. 안내문 그림 안의 색·글꼴 700·900은 `components/forms` 안에서만 쓴다(휴진 안내 테마 색은 `lib/forms/themes.ts`, 환자 안내문 로고색은 `components/forms/guideColors.ts`에 둔다)
 - 예외 (ADR-029): 휴진 안내 AI 배경(`app/api/ai/forms/background`)만 사용자가 적은 짧은 말(30자까지, 개인정보 모양 거부)을 OpenAI 그림 AI로 보낸다. 열쇠 `OPENAI_API_KEY`는 서버 환경 변수에만, 하루 20장, 저장은 고른 그림만(`form_backgrounds`·Storage `form-backgrounds`)
 - 예외 (ADR-030): 예약 탭만 환자 이름·차트번호를 서버(calendar_appts, RLS 내 병원)에 둔다 — 전화·성별·나이·생일·비트 접수 목록·비트 예약은 두지 않고, 비트에서 온 값은 비트 PC가 정한 도착 표시(auto) 하나만 적는다. 이름·메모는 개인정보 모양이면 안 보내고, 지난 예약은 1년 뒤 DB가 지운다
+- 예외 (ADR-034): 재고 탭 AI(`app/api/ai/inventory/invoice`·`columns`)만 거래명세서 사진 한 장(브라우저가 줄인 JPEG)과 서버가 읽은 물품 이름·단위, 엑셀 머리 줄·앞 줄 5개(칸마다 40자, 개인정보 모양 거부, 앱 양식이면 부르지 않음)를 Claude로 보낸다. 환자 정보는 보내지 않고 요청·답은 저장·로그하지 않는다. 사진은 [저장]한 입고만 비공개 Storage `inventory-photos`(내 병원 폴더)에 둔다. 재고 표·사진은 원장만(데스크 없음)
+- 예외 (ADR-036~038): 고시·공지(`specs/notices`)만 — 모으기 경로 `GET /api/ai/notices/collect`(Vercel Cron, `CRON_SECRET`만 받고 문지기 공개 경로 한 칸)가 심평원·복지부 공개 글을 읽어 모으기 전용 계정(`notice_collectors`, 비밀번호는 서버 환경 변수)으로 `hospital_id` 없는 공용 표(`notices`·`notice_posts`·`notice_sources`·`notice_weeks`)에 쓴다. 바깥 공개 글(본문·붙임)과 묻기의 사용자 질문(300자까지, 환자 정보 모양이면 안 보냄, 병원마다 하루 20번, 저장·로그 안 함)을 Claude로 보낸다. 답은 글자로만 그린다
 - 날짜 계산은 `lib/analytics/dates.ts` 한 곳(한국 날짜). 오류 문구는 `lib/errors.ts` 한 곳('무엇이 · 어떻게 고치나 · 번호')
 - 금액은 원 단위 정수다. 반올림하지 않고 원 미만은 항목마다 버린다. 합계는 항목 금액의 합 (`plan.md §5`)
 - 같은 효과면 코드 대신 DB 제약. 자동 계산보다 직접 입력 + 조정 칸 (`plan.md §0`)

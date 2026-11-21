@@ -8,16 +8,22 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
 import { AiBrief } from '@/components/dashboard/ai/AiBrief'
+import { InventoryAlertCard } from '@/components/dashboard/inventory/InventoryAlertCard'
+import { NoticesCard } from '@/components/dashboard/notices/NoticesCard'
 import { DailySection } from '@/components/dashboard/summary/DailySection'
 import { DashboardAnalysis } from '@/components/dashboard/summary/DashboardAnalysis'
 import { FlowSection } from '@/components/dashboard/summary/FlowSection'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
 import type { OlderDays, SummarySource } from '@/components/dashboard/summary/source'
+import { RoleProvider } from '@/components/shell/role'
 import { ds } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
+import { loadInventory } from '@/lib/storage/inventory'
+import { listNotices, sourceStates, unreadCount } from '@/lib/storage/notices'
 import { nestedBoxes } from '@/testing/boxes'
 import type { ChromeRuntimeLike, PortLike } from '@/types/bridge'
 import type { ErrorCode } from '@/types/errors'
+import type { InvInventory } from '@/types/inventory'
 import type { DayPayload } from '@/types/payload'
 import type { StatsLoaded, StatsLoadRequest, StatsWorkerMessage } from '@/types/stats'
 import { createStatsWorker } from '@/workers/statsClient'
@@ -38,6 +44,19 @@ vi.mock('@/workers/statsClient', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/workers/statsClient')>()
   return { ...real, createStatsWorker: vi.fn() }
 })
+// 고시·공지(notices TASK-20): '고시·공지' 칸(NoticesCard)이 읽는 저장소. 시험이 답을 주지 않으면 늘 읽는 중이라 칸을 그리지 않는다 —
+// 이 파일의 다른 시험은 지금 모양 그대로다. 진짜 Supabase에 붙지 않는다
+const pendingRead = () => new Promise<never>(() => {})
+vi.mock('@/lib/storage/notices', () => ({
+  NOTICES_CHANGED: 'notices:changed',
+  ruleAlerts: vi.fn(() => new Promise<never>(() => {})),
+  unreadCount: vi.fn(() => new Promise<never>(() => {})),
+  listNotices: vi.fn(() => new Promise<never>(() => {})),
+  sourceStates: vi.fn(() => new Promise<never>(() => {})),
+}))
+// 대시보드 재고 칸(spec inventory AC-7511.3·AC-7512.4)은 스스로 loadInventory({ seed: false })로 읽는다. 진짜 Supabase에 붙지 않게 가짜로 두고,
+// 처음은 물품 없음(알림 0개 → 재고 칸을 그리지 않아 지금 화면 그대로). 재고 칸 자리 시험만 알림이 있는 물품을 준다
+vi.mock('@/lib/storage/inventory', () => ({ loadInventory: vi.fn() }))
 // 병원 정보 훅(clinic-profile AC-6606.3): 대시보드가 한 번 읽어 보고 받는 사람 글(안내 줄·AI 요약)에 호칭을 넣는다. 처음은 읽는 중(기본값 '원장님')
 // 쓰는 EMR(emr-choice AC-7103.1·AC-7103.2): 시험이 읽기 상태와 EMR을 바꿔 본다. 처음은 읽음 · 'bit'
 const clinic = vi.hoisted(() => ({
@@ -113,6 +132,30 @@ const GROUPS_UNREAD = '통계 탭 묶음을 읽지 못했어요. 화면을 새�
 const GROUPS_NONE = '통계 탭 처방별 추세에서 묶음을 만들면 여기에 보여요.' // AC-606.4
 
 const CONNECT_CHECK = '/claim/setup?next=dashboard'
+// 재고(spec inventory AC-7512.4): 물품 없음 · 최소 수량보다 적은 물품 하나('주문하세요' 1, 지어낸 물품)
+const NO_INVENTORY: InvInventory = { categories: [], items: [] }
+const LOW_INVENTORY: InvInventory = {
+  categories: [{ id: 'c1', name: '약품', sortOrder: 0 }],
+  items: [
+    {
+      id: 'i1',
+      categoryId: 'c1',
+      name: '히알루론산 주사 2mL',
+      unit: '개',
+      minQty: 10,
+      qty: 4,
+      lastCountQty: 4,
+      lastCountedAt: null,
+      expiry: null,
+      vendor: null,
+      unitPrice: null,
+      bitCode: null,
+      sortOrder: 0,
+      hidden: false,
+      orderedAt: null,
+    },
+  ],
+}
 const CONNECT_H1 = '비트 PC를 연결하면 오늘 숫자가 여기에 채워져요'
 const READ_H1 = '비트에서 오늘 숫자를 읽고 있어요'
 const READ_LEAD = '최근 100일 자료를 읽어요. 길면 3분쯤 걸려요. 다 읽을 때까지 이 화면을 열어 두세요.'
@@ -244,6 +287,8 @@ beforeEach(() => {
         reads.push({ deps, resolve })
       }),
   )
+  vi.mocked(loadInventory).mockReset()
+  vi.mocked(loadInventory).mockResolvedValue(NO_INVENTORY)
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(AT_342)
   // 쓰면 안 되는 길: 불리면 시험이 잡는다
@@ -257,34 +302,51 @@ afterEach(() => {
 })
 
 describe('서버가 그린 첫 모양', () => {
-  it('AC-601.6·AC-601.13·AC-2701.3·AC-2707.2: 서버 그림은 initial 그대로다 — 비트 PC에서도 읽는 중을 먼저 그리지 않는다(저장 숫자면 머리 줄 → 일별 현황(기준일·보고 문장) → AI 요약 → 기간별 흐름)', () => {
+  // 재고 칸 자리(spec inventory AC-7512.4): DashboardHome 앞 자리 하나를 늘 둔다(숫자가 없으면 InventoryAlertCard, 있으면 빈 자리 — 칸은 보고 문장을 감싼다).
+  // 서버 그림에서는 재고를 읽기 전이라 그 칸이 아무것도 그리지 않는다
+  it('AC-601.6·AC-601.13·AC-2701.3·AC-2707.2·AC-7512.4: 서버 그림은 initial 그대로다 — 비트 PC에서도 읽는 중을 먼저 그리지 않는다(저장 숫자면 머리 줄 → 일별 현황(기준일·보고 문장) → AI 요약 → 기간별 흐름)', () => {
     onBitPc()
     expect(renderToStaticMarkup(<BitDashboard today={TODAY} initial={NONE} />)).toBe(
-      renderToStaticMarkup(<DashboardHome today={TODAY} report={null} analysis={<DashboardAnalysis today={TODAY} source={NONE} />} />),
+      renderToStaticMarkup(
+        <>
+          <InventoryAlertCard today={TODAY} />
+          <DashboardHome today={TODAY} report={null} analysis={<DashboardAnalysis today={TODAY} source={NONE} />} />
+        </>,
+      ),
     )
     expect(renderToStaticMarkup(<BitDashboard today={TODAY} initial={SAVED} />)).toBe(
       renderToStaticMarkup(
-        <DashboardHome
-          today={TODAY}
-          dateLine={null}
-          report={<StatusHeader readAt={null} savedAt={null} reading={false} failed={false} onReread={() => {}} bitReadable={false} savedRefresh={null} />}
-          analysis={
-            <>
-              <DailySection
-                today={TODAY}
-                source={SAVED}
-                dateLine={<DateControl today={TODAY} selected={TODAY} onChange={() => {}} />}
-                sentence={<ReportBlock today={TODAY} days={SAVED.kind === 'data' ? SAVED.days : []} />}
-              />
-              <div className="mt-12 max-md:mt-8">
-                <AiBrief today={TODAY} />
-              </div>
-              <FlowSection today={TODAY} source={SAVED} />
-            </>
-          }
-        />,
+        <>
+          {null /* 숫자가 있으면 맨 위 칸 자리는 비어 있다(같은 짜임이라 useId 값도 같다) */}
+          <DashboardHome
+            today={TODAY}
+            dateLine={null}
+            report={<StatusHeader readAt={null} savedAt={null} reading={false} failed={false} onReread={() => {}} bitReadable={false} savedRefresh={null} />}
+            analysis={
+              <>
+                <DailySection
+                  today={TODAY}
+                  source={SAVED}
+                  dateLine={<DateControl today={TODAY} selected={TODAY} onChange={() => {}} />}
+                  sentence={
+                    <InventoryAlertCard today={TODAY}>
+                      <ReportBlock today={TODAY} days={SAVED.kind === 'data' ? SAVED.days : []} />
+                    </InventoryAlertCard>
+                  }
+                />
+                {/* 고시·공지 칸 자리(notices AC-7422.2): 서버 그림에서는 아직 읽지 않아 아무것도 그리지 않는다 */}
+                <NoticesCard />
+                <div className="mt-12 max-md:mt-8">
+                  <AiBrief today={TODAY} />
+                </div>
+                <FlowSection today={TODAY} source={SAVED} />
+              </>
+            }
+          />
+        </>,
       ),
     )
+    expect(renderToStaticMarkup(<BitDashboard today={TODAY} initial={NONE} />)).not.toMatch(/<h2\b[^>]*>재고<\/h2>/) // 재고 칸 제목(기능 목차의 '재고' 줄은 따로다)
     expect(readBitDays).not.toHaveBeenCalled()
   })
 
@@ -2407,5 +2469,274 @@ describe('AC-7103.1·AC-7103.2: 쓰는 EMR에 따른 연결 전 첫 화면', () 
     draw()
     expect(bigLine().textContent).toBe(READ_H1)
     noChange()
+  })
+})
+
+describe("고시·공지 칸 자리 (notices TASK-20 · AC-7422.2)", () => {
+  const card = () => screen.queryByRole('region', { name: '고시·공지' })
+  const settle = () => act(async () => {})
+  const notices = [unreadCount, listNotices, sourceStates] as const
+
+  beforeEach(() => {
+    for (const read of notices) {
+      vi.mocked(read).mockReset()
+      vi.mocked(read).mockImplementation(pendingRead)
+    }
+  })
+
+  afterEach(() => {
+    for (const read of notices) vi.mocked(read).mockImplementation(pendingRead)
+  })
+
+  // 새 관련 글 0건 · 출처 확인 기록 없음(지어낸 답)
+  const answerNotices = () => {
+    vi.mocked(unreadCount).mockResolvedValue(0)
+    vi.mocked(listNotices).mockResolvedValue({ total: 0, unread: 0, rows: [] })
+    vi.mocked(sourceStates).mockResolvedValue([])
+  }
+
+  it("AC-7422.2: 숫자가 있으면 '고시·공지' 칸이 일별 현황(오늘 하루 분석) 바로 아래이고 AI 경영 리포트·기간별 흐름 앞이다", async () => {
+    answerNotices()
+    notBitPc()
+    const { container } = draw(SAVED)
+    await settle()
+    const box = card()!
+    expect(box).not.toBeNull()
+    expect(todaySection().nextElementSibling).toBe(box)
+    expectOrder(todaySection(), box, region('우리 병원 AI 경영 리포트'), flow())
+    expect(within(box).getByText('새 관련 글이 없어요')).toBeTruthy()
+    expect(nestedBoxes(container)).toEqual([])
+  })
+
+  it('AC-7422.2: 숫자가 없는 화면(연결 전·읽는 중·처음 읽기 실패)에는 칸을 놓지 않고 읽지도 않는다', async () => {
+    answerNotices()
+    notBitPc()
+    draw(NONE)
+    await settle()
+    expect(card()).toBeNull()
+    cleanup()
+
+    onBitPc()
+    draw(NONE)
+    await settle()
+    expect(card()).toBeNull()
+    await answer(failed('E-BIT-READ-FAILED'))
+    expect(card()).toBeNull()
+    for (const read of notices) expect(read).not.toHaveBeenCalled()
+  })
+
+  it('AC-7422.2: 데스크 계정(RoleProvider desk)에게는 칸을 놓지 않고 읽지도 않는다', async () => {
+    answerNotices()
+    notBitPc()
+    render(
+      <RoleProvider desk>
+        <BitDashboard today={TODAY} initial={SAVED} />
+      </RoleProvider>,
+    )
+    await settle()
+    expect(card()).toBeNull()
+    for (const read of notices) expect(read).not.toHaveBeenCalled()
+  })
+})
+
+// ── contacts: 대시보드 무상 수리 알림 (REQ-6507, design.md '대시보드 알림', 시안 docs/mockups/contacts/index.html ?s=dashboard·?s=dashboard-off) ──
+// 알림은 LiveDashboard가 읽어 notice로 넘긴다. BitDashboard는 받은 노드를 DashboardHome에 그대로 넘기기만 한다(읽지 않음) — 자리는 상태마다 '맨 위 줄 바로 아래'
+describe('무상 수리 알림 자리 (contacts AC-6507.1)', () => {
+  const NOTICE_NAME = '무상 수리 알림'
+  const NOTICE = (
+    <div role="status" aria-label={NOTICE_NAME}>
+      가짜 무상 수리 알림
+    </div>
+  )
+  const noticeEl = () => screen.getByRole('status', { name: NOTICE_NAME })
+  const drawNotice = (initial: SummarySource = NONE) => render(<BitDashboard today={TODAY} initial={initial} notice={NOTICE} />)
+  const headerH1 = () => screen.getByRole('heading', { level: 1, name: HEADER_H1 })
+
+  it('AC-6507.1: 숫자가 있으면 머리 줄(대시보드 · 상태 · 시각 · 읽기 단추) 바로 아래 · 오늘 하루 분석 앞이다', () => {
+    notBitPc()
+    drawNotice(SAVED)
+    expect(noticeEl().previousElementSibling).toBe(headerH1().parentElement)
+    expectOrder(headerH1(), noticeEl(), todaySection(), flow())
+    expect(region('오늘 브리핑').contains(noticeEl())).toBe(true)
+  })
+
+  it('AC-6507.1: 머리 줄 아래 오류 상자(다시 읽기 실패)가 있으면 그 상자 다음이다', async () => {
+    onBitPc()
+    drawNotice(SAVED)
+    await answer(failed('E-BIT-READ-FAILED'))
+    const alert = screen.getByRole('alert')
+    expect(noticeEl().previousElementSibling).toBe(alert)
+    expectOrder(headerH1(), alert, noticeEl(), todaySection())
+  })
+
+  it("AC-6507.1: 머리 줄 아래 '이 PC에서 비트를 읽을 수 없어요' 안내가 있으면 그 안내 다음이다", async () => {
+    onBitPc()
+    const user = userEvent.setup({ advanceTimers: () => {} })
+    drawNotice()
+    await answer(days())
+    await user.click(button(BIT_REREAD))
+    await answer(NOT_READY)
+    const note = screen.getByText(UNREADABLE).closest('[role="status"]')!
+    expect(noticeEl().previousElementSibling).toBe(note)
+    expectOrder(headerH1(), note, noticeEl(), todaySection())
+  })
+
+  it('AC-6507.1: 숫자 없이 읽는 중이면 날짜 줄과 읽는 중 블록 다음, 실패면 실패 블록 다음이다', async () => {
+    onBitPc()
+    drawNotice()
+    const reading = screen.getByRole('heading', { level: 1, name: READ_H1 })
+    expectOrder(reading, screen.getByRole('progressbar'), noticeEl(), todaySection())
+    await answer(failed('E-BIT-READ-FAILED'))
+    const block = screen.getByRole('alert')
+    expect(noticeEl().previousElementSibling).toBe(block)
+    expectOrder(block, noticeEl(), todaySection())
+  })
+
+  it('AC-6507.1: 연결 전(비트)은 날짜 줄 바로 다음 · 큰 문장 앞이다', () => {
+    notBitPc()
+    drawNotice()
+    const h1 = screen.getByRole('heading', { level: 1, name: CONNECT_H1 })
+    expect(noticeEl().nextElementSibling).toBe(h1)
+    expect(noticeEl().previousElementSibling?.tagName).toBe('P') // 날짜 줄
+    expectOrder(noticeEl(), h1, todaySection())
+  })
+
+  it('AC-6507.1: 쓰는 EMR이 비트가 아니면 연결 전 날짜 줄 바로 다음 · 안내 제목 앞이다', () => {
+    notBitPc()
+    clinic.emr = 'uisarang'
+    drawNotice()
+    const h1 = screen.getByRole('heading', { level: 1 })
+    expect(h1.textContent).not.toBe(CONNECT_H1)
+    expect(noticeEl().nextElementSibling).toBe(h1)
+    expect(noticeEl().previousElementSibling?.tagName).toBe('P')
+  })
+
+  it('AC-6507.2: 비트 숫자가 와 화면이 바뀌어도 알림은 그대로 한 묶음이다', async () => {
+    onBitPc()
+    drawNotice(SAVED)
+    expect(screen.getAllByRole('status', { name: NOTICE_NAME })).toHaveLength(1)
+    await answer(days())
+    expect(screen.getAllByRole('status', { name: NOTICE_NAME })).toHaveLength(1)
+    expectOrder(headerH1(), noticeEl(), todaySection())
+  })
+
+  it('AC-6507.2: notice를 주지 않으면 지금 그대로다(서버 그림 · 연결 전 · 숫자 화면)', () => {
+    notBitPc()
+    for (const initial of [NONE, SAVED]) {
+      expect(renderToStaticMarkup(<BitDashboard today={TODAY} initial={initial} notice={null} />)).toBe(
+        renderToStaticMarkup(<BitDashboard today={TODAY} initial={initial} />),
+      )
+    }
+  })
+
+  it('AC-6507.2: BitDashboard는 무상 수리를 읽지 않는다 — 저장 함수·Supabase를 부르지 않고 받은 notice를 DashboardHome에 넘기기만 한다', () => {
+    const text = readFileSync(join(process.cwd(), 'src/components/dashboard/live/BitDashboard.tsx'), 'utf8')
+    expect(text).not.toMatch(/listWarrantySoon|useWarrantySoon|storage\/contacts|lib\/supabase/)
+    expect(text).toMatch(/notice=\{notice\}/)
+  })
+})
+
+// ── 재고 칸 자리 (spec inventory REQ-7512 AC-7512.4, design.md 6절 TASK-15, 시안 docs/mockups/inventory ?s=dash) ──
+// 칸은 비트 자료와 상관없이 늘 놓인다: 비트 숫자가 있는 일별 현황이면 보고 문장 오른쪽(12칸 중 9~12), 그 밖의 모양이면 대시보드 내용 맨 위. 한 화면에 하나다
+describe('AC-7512.4: 대시보드 재고 칸 자리', () => {
+  const inventoryCards = () => screen.queryAllByRole('region', { name: '재고' })
+  const settle = () => act(async () => {})
+  const classesOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/)
+  const lowStock = () => vi.mocked(loadInventory).mockResolvedValue(LOW_INVENTORY)
+  // 재고 칸이 대시보드 내용의 맨 앞이다: 그린 것의 첫 덩어리 안이고, 브리핑(오늘 브리핑)보다 앞
+  const expectOnTop = (container: HTMLElement) => {
+    const cards = inventoryCards()
+    expect(cards).toHaveLength(1)
+    expect(container.firstElementChild!.contains(cards[0]!)).toBe(true)
+    expectOrder(cards[0]!, region('오늘 브리핑'))
+    expect(region('오늘 브리핑').contains(cards[0]!)).toBe(false)
+    return cards[0]!
+  }
+
+  it('AC-7512.4·AC-7511.3: 숫자가 있는 일별 현황 — 보고 문장은 왼쪽(1~7), 재고 칸은 오른쪽(9~12)이고 일별 현황 안에 하나뿐이다(맨 위에는 없다)', async () => {
+    notBitPc()
+    lowStock()
+    draw(SAVED)
+    await settle()
+    const cards = inventoryCards()
+    expect(cards).toHaveLength(1)
+    const card = cards[0]!
+    expect(todaySection().contains(card)).toBe(true)
+    const right = card.parentElement!
+    expect(classesOf(right)).toEqual(expect.arrayContaining(['lg:col-span-4', 'lg:col-start-9']))
+    const left = right.previousElementSibling!
+    expect(classesOf(left)).toContain('lg:col-span-7')
+    expect(within(left as HTMLElement).getByText(REPORT_NAME)).toBeTruthy()
+    expect(classesOf(right.parentElement!)).toEqual(expect.arrayContaining(['lg:grid', 'lg:grid-cols-12']))
+    expect(loadInventory).toHaveBeenCalledWith({ seed: false })
+  })
+
+  it('AC-7512.4: 비트 연결 전 — 재고 칸이 대시보드 내용 맨 위(날짜 줄·브리핑보다 앞)에 하나', async () => {
+    notBitPc()
+    lowStock()
+    const { container } = draw(NONE)
+    await settle()
+    expectBeforeConnect()
+    const card = expectOnTop(container)
+    expect(todaySection().contains(card)).toBe(false)
+  })
+
+  it('AC-7512.4: 비트 읽는 중 → 재고 칸이 맨 위, 비트 숫자가 오면 보고 문장 오른쪽으로 옮겨 가고 여전히 하나다', async () => {
+    onBitPc()
+    lowStock()
+    const { container } = draw(NONE)
+    await settle()
+    expect(bigLine().textContent).toBe(READ_H1)
+    expectOnTop(container)
+    await answer(days())
+    await settle()
+    const cards = inventoryCards()
+    expect(cards).toHaveLength(1)
+    expect(todaySection().contains(cards[0]!)).toBe(true)
+  })
+
+  it('AC-7512.4: 비트 읽기 실패 — 재고 칸이 맨 위에 하나', async () => {
+    onBitPc()
+    lowStock()
+    const { container } = draw(NONE)
+    await answer(failed('E-BIT-READ-FAILED'))
+    await settle()
+    expectOnTop(container)
+  })
+
+  it('AC-7512.4: inventoryOnTop={false}(LiveDashboard가 위에 이미 둠)이면 숫자가 없는 모양에서 맨 위 칸을 그리지 않는다 — 숫자가 있으면 보고 문장 오른쪽은 그대로다', async () => {
+    notBitPc()
+    lowStock()
+    render(<BitDashboard today={TODAY} initial={NONE} inventoryOnTop={false} />)
+    await settle()
+    expectBeforeConnect()
+    expect(inventoryCards()).toHaveLength(0)
+    cleanup()
+    render(<BitDashboard today={TODAY} initial={SAVED} inventoryOnTop={false} />)
+    await settle()
+    expect(inventoryCards()).toHaveLength(1)
+    expect(todaySection().contains(inventoryCards()[0]!)).toBe(true)
+  })
+
+  it('AC-7512.4: 알림이 없으면 재고 칸이 없고 보고 문장·연결 전 모양은 지금 그대로다(재고를 읽지 못해도)', async () => {
+    notBitPc()
+    const withoutIds = (html: string) => html.replace(/\s(?:id|for|aria-labelledby|aria-describedby|aria-controls)="[^"]*"/g, '')
+    const { container: home, unmount } = render(<DashboardHome today={TODAY} report={null} analysis={<DashboardAnalysis today={TODAY} source={NONE} />} />)
+    const homeHtml = withoutIds(home.innerHTML)
+    unmount()
+    for (const answer of [NO_INVENTORY, 'failed'] as const) {
+      vi.mocked(loadInventory).mockResolvedValue(answer)
+      const { container } = draw(NONE)
+      await settle()
+      expect(inventoryCards()).toHaveLength(0)
+      expect(withoutIds(container.innerHTML)).toBe(homeHtml)
+      cleanup()
+    }
+    vi.mocked(loadInventory).mockResolvedValue(NO_INVENTORY)
+    draw(SAVED)
+    await settle()
+    expect(inventoryCards()).toHaveLength(0)
+    const report = screen.getByText(REPORT_NAME).closest('div')!.parentElement!
+    expect(report.parentElement).toBe(todaySection())
   })
 })

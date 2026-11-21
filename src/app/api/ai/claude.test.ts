@@ -11,6 +11,7 @@ import {
 } from '@anthropic-ai/sdk'
 import type {
   BetaContentBlock,
+  BetaContentBlockParam,
   BetaFallbackBlock,
   BetaFallbackMessageIterationUsage,
   BetaIterationsUsage,
@@ -21,7 +22,7 @@ import type {
 } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import type { ErrorType } from '@anthropic-ai/sdk/resources/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CALL_TIMEOUT_MS, MAX_TOKENS, MODEL, callClaude, type AnthropicLike } from './claude'
+import { CALL_TIMEOUT_MS, MAX_TOKENS, MODEL, callClaude, type AnthropicLike, type ClaudeRequest } from './claude'
 
 // Claude 부르기(spec ai-report design.md 'Claude 부르기'). 네트워크·진짜 Claude는 쓰지 않는다
 // 보통은 가짜 클라이언트를 넣고, SDK 안쪽 사실(끊김·끝맺지 않음의 오류 모양과 글자, logLevel)은 진짜 SDK 클래스 + 가짜 fetch로 본다
@@ -188,6 +189,54 @@ describe('AC-3509.3 effort 칸', () => {
     await callClaude({ ...REQ, effort: 'medium' }, { client, apiKey: FAKE_KEY })
     await callClaude(REQ, { client, apiKey: FAKE_KEY })
     expect(calls.map((p) => p.output_config?.effort)).toEqual(['medium', 'medium'])
+  })
+})
+
+// 재고 탭 명세서 읽기(specs/inventory TASK-6): 사진을 주면 user 내용이 [사진 블록, 글 블록]이다. 칸이 없으면 지금처럼 글자 하나
+describe('AC-7505.2 사진 칸', () => {
+  const IMAGE = { mediaType: 'image/jpeg', data: '/9j/4AAQSkZJRgABAQ==' } as const
+
+  it('AC-7505.2 image를 주면 user 내용이 [base64 사진 블록, 글 블록] 차례이고, 나머지 칸은 그대로다', async () => {
+    const { client, calls } = fakeClient(message())
+    await callClaude({ ...REQ, image: IMAGE }, { client, apiKey: FAKE_KEY })
+    expect(calls).toHaveLength(1)
+    const p = calls[0]
+    expect(p.messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: '/9j/4AAQSkZJRgABAQ==' } },
+          { type: 'text', text: '{"month":"2026-10"}' },
+        ],
+      },
+    ])
+    expect(p.model).toBe('claude-opus-5-5')
+    expect(p.max_tokens).toBe(16000)
+    expect(p.betas).toEqual(['server-side-fallback-2026-07-01'])
+    expect(p.fallbacks).toBe('default')
+    expect(p.output_config?.effort).toBe('medium')
+    expect(p.output_config?.format?.schema).toEqual(REQ.schema)
+    expect(p.system).toBe('지시문')
+    expect(p).not.toHaveProperty('thinking')
+  })
+
+  it('AC-7505.2 image 칸이 없거나 undefined이면 user 내용은 글자 하나 그대로다', async () => {
+    const { client, calls } = fakeClient(message())
+    await callClaude(REQ, { client, apiKey: FAKE_KEY })
+    await callClaude({ ...REQ, image: undefined }, { client, apiKey: FAKE_KEY })
+    expect(calls.map((p) => p.messages)).toEqual([
+      [{ role: 'user', content: '{"month":"2026-10"}' }],
+      [{ role: 'user', content: '{"month":"2026-10"}' }],
+    ])
+  })
+
+  it('AC-7505.2 사진을 보내도 답·사용량은 글자만 보낼 때와 같은 모양이다', async () => {
+    const { client } = fakeClient(message({ content: [text('{"lines":[]}')], input: 2500, output: 120 }))
+    expect(await callClaude({ ...REQ, image: IMAGE }, { client, apiKey: FAKE_KEY })).toEqual({
+      ok: true,
+      text: '{"lines":[]}',
+      usage: { inputTokens: 2500, outputTokens: 120, model: 'claude-opus-5-5' },
+    })
   })
 })
 
@@ -606,6 +655,88 @@ describe('AC-510.8 대신 답한 글자만', () => {
   })
 })
 
+// 고시·공지 요약(specs/notices AC-7412.1): user에 내용 블록 배열(PDF document 블록 + 글 블록)을 넣는다. 글자 user는 지금 그대로다
+describe('AC-7412.1 user에 내용 블록 배열', () => {
+  const BLOCKS: BetaContentBlockParam[] = [
+    { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'JVBERi0xLjQKJcfsj6IK' } },
+    { type: 'text', text: '<notice>본문</notice>' },
+    { type: 'text', text: '<attachment name="붙임.hwpx">붙임 글</attachment>' },
+  ]
+  const BLOCK_REQ: ClaudeRequest = { ...REQ, user: BLOCKS }
+
+  it('AC-7412.1 배열을 그대로 messages[0].content로 보내고, 나머지 칸(모델·fallbacks·effort·schema·지시문)은 글자 user와 같다', async () => {
+    const blocksBefore = structuredClone(BLOCKS)
+    const { client, calls } = fakeClient(message())
+    await callClaude(BLOCK_REQ, { client, apiKey: FAKE_KEY })
+    await callClaude(REQ, { client, apiKey: FAKE_KEY })
+
+    const [withBlocks, withText] = calls
+    expect(withBlocks.messages).toEqual([{ role: 'user', content: BLOCKS }])
+    expect(withBlocks.messages[0].content).toBe(BLOCKS)
+    expect(BLOCKS).toEqual(blocksBefore)
+    // messages만 다르고 나머지 칸은 모두 같다
+    expect(withBlocks).toEqual({ ...withText, messages: withBlocks.messages })
+    expect(withBlocks).toMatchObject({ model: MODEL, max_tokens: MAX_TOKENS, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' })
+    expect(withBlocks).not.toHaveProperty('thinking')
+  })
+
+  it("AC-7412.1 배열 user에 effort 'low'를 주면 low, 없으면 medium", async () => {
+    const { client, calls } = fakeClient(message())
+    await callClaude({ ...BLOCK_REQ, effort: 'low' }, { client, apiKey: FAKE_KEY })
+    await callClaude(BLOCK_REQ, { client, apiKey: FAKE_KEY })
+    expect(calls.map((p) => p.output_config?.effort)).toEqual(['low', 'medium'])
+  })
+
+  it('AC-7412.1 글자 user는 지금처럼 글자로 보낸다', async () => {
+    const { client, calls } = fakeClient(message())
+    await callClaude(REQ, { client, apiKey: FAKE_KEY })
+    expect(calls[0].messages).toEqual([{ role: 'user', content: '{"month":"2026-10"}' }])
+  })
+
+  const errors: [string, () => Error, string][] = [
+    ['429', () => APIError.generate(429, errorBody('rate_limit_error'), undefined, new Headers()), 'E-AI-BUSY'],
+    ['402', () => APIError.generate(402, errorBody('billing_error'), undefined, new Headers()), 'E-AI-LIMIT'],
+    ['400', () => APIError.generate(400, errorBody('invalid_request_error'), undefined, new Headers()), 'E-AI-FAILED'],
+    ['조각 도중 overloaded_error', () => new APIError(undefined, errorBody('overloaded_error'), undefined, new Headers(), 'overloaded_error'), 'E-AI-BUSY'],
+  ]
+
+  for (const [name, make, code] of errors) {
+    it(`AC-7412.1 배열 user에서도 오류 나누기가 같다: ${name} → ${code}`, async () => {
+      const withBlocks = await callClaude(BLOCK_REQ, { client: fakeClient(make()).client, apiKey: FAKE_KEY })
+      const withText = await callClaude(REQ, { client: fakeClient(make()).client, apiKey: FAKE_KEY })
+      expect(withBlocks).toEqual({ ok: false, code, usage: null })
+      expect(withBlocks).toEqual(withText)
+    })
+  }
+
+  it('AC-7412.1 배열 user에서도 refusal·max_tokens는 E-AI-FAILED이고 모든 시도의 사용량을 돌려준다', async () => {
+    const iterations = [attempt('message', 'claude-opus-5-5', 900, 40), attempt('fallback_message', 'claude-opus-5', 1000, 200)]
+    for (const stop_reason of ['refusal', 'max_tokens'] as const) {
+      const { client } = fakeClient(message({ model: 'claude-opus-5', iterations, stop_reason, content: [] }))
+      expect(await callClaude(BLOCK_REQ, { client, apiKey: FAKE_KEY })).toEqual({
+        ok: false,
+        code: 'E-AI-FAILED',
+        usage: { inputTokens: 1900, outputTokens: 240, model: 'claude-opus-5' },
+      })
+    }
+  })
+
+  it('AC-7412.1 배열 user에서도 글자는 마지막 fallback 뒤 text만, 사용량은 모든 시도의 합이다', async () => {
+    const { client } = fakeClient(
+      message({
+        model: 'claude-opus-5',
+        iterations: [attempt('message', 'claude-opus-5-5', 900, 40), attempt('fallback_message', 'claude-opus-5', 1000, 200)],
+        content: [text('{"rel'), fallback('claude-opus-5-5', 'claude-opus-5'), text('{"related":'), text('true}')],
+      }),
+    )
+    expect(await callClaude(BLOCK_REQ, { client, apiKey: FAKE_KEY })).toEqual({
+      ok: true,
+      text: '{"related":true}',
+      usage: { inputTokens: 1900, outputTokens: 240, model: 'claude-opus-5' },
+    })
+  })
+})
+
 // 아래는 deps.client 없이 진짜 SDK 클래스 + 가짜 fetch로 돈다. SDK 판이 바뀌어 오류 모양·글자가 달라지면 여기서 잡힌다
 const enc = new TextEncoder()
 const sse = (type: string, data: object) => `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`
@@ -818,6 +949,32 @@ describe('진짜 SDK 클래스 + 가짜 fetch', () => {
         expect(await callClaude(REQ, { client, apiKey: FAKE_KEY })).toEqual(FAILED)
       })
     }
+  })
+
+  // 진짜 SDK가 사진 블록을 HTTP 몸통에 그대로 싣는지 본다(가짜 클라이언트로는 SDK의 직렬화를 못 본다)
+  describe('AC-7505.2 사진을 담은 HTTP 몸통', () => {
+    it('AC-7505.2 messages[0].content가 [base64 사진, 글] 차례이고 답은 그대로 성공이다', async () => {
+      const bodies: unknown[] = []
+      const f = vi.fn(async (...args: unknown[]) => {
+        bodies.push((args[1] as RequestInit | undefined)?.body)
+        return sseResponse(WHOLE_ANSWER)
+      })
+      vi.stubGlobal('fetch', f)
+      const result = await callClaude({ ...REQ, image: { mediaType: 'image/jpeg', data: '/9j/AAAA' } }, { apiKey: FAKE_KEY })
+      expect(result).toMatchObject({ ok: true, text: '{"summary":"ok"}' })
+      expect(f).toHaveBeenCalledTimes(1)
+      const sent = JSON.parse(String(bodies[0])) as { messages: unknown; output_config: unknown }
+      expect(sent.messages).toEqual([
+        {
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: '/9j/AAAA' } },
+            { type: 'text', text: '{"month":"2026-10"}' },
+          ],
+        },
+      ])
+      expect(sent.output_config).toEqual({ effort: 'medium', format: { type: 'json_schema', schema: REQ.schema } })
+    })
   })
 
   describe('AC-510.11 SDK 로그 끄기', () => {

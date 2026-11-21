@@ -1,7 +1,7 @@
 // 급여 셈(staff REQ-7606, design.md 4절). 순수 함수 — 네트워크·저장소·React를 쓰지 않는다.
 // 형은 design.md 3절과 같은 칸 이름의 자기 입력 형이다(@/types/staff를 불러오지 않음 — 구조가 같아 그대로 넘긴다).
 // 금액은 원 단위 정수, 원 미만은 항목마다 버리고, 합계는 항목 금액의 합이다(CLAUDE.md, plan.md §5).
-// 달 줄은 그때 인센티브 규칙을 복사해 두고(incentives), 합계는 늘 그 복사본으로 센다 — 규칙을 고쳐도 앞 달 금액이 바뀌지 않는다(ADR-035)
+// 달 줄은 그때 인센티브 규칙을 복사해 두고(incentives), 합계는 늘 그 복사본으로 센다 — 규칙을 고쳐도 앞 달 금액이 바뀌지 않는다(ADR-039)
 import { isMonth, monthOf } from '@/lib/analytics/dates'
 import { revenueDayValues } from '@/lib/revenue/summary'
 

@@ -1,5 +1,5 @@
 // 직원 탭 형(spec staff design.md 3절). DB 표 staff_*(design.md 1절)의 칸을 앱 이름(camelCase)으로 옮긴 것이다.
-// 시간은 하루 0시부터의 분(10분 단위), 날짜는 'YYYY-MM-DD', 달은 'YYYY-MM', 금액은 원 단위 정수다. 주민번호 칸은 어디에도 없다(ADR-035).
+// 시간은 하루 0시부터의 분(10분 단위), 날짜는 'YYYY-MM-DD', 달은 'YYYY-MM', 금액은 원 단위 정수다. 주민번호 칸은 어디에도 없다(ADR-039).
 // lib/staff/* 순수 함수는 이 파일을 불러오지 않고 같은 칸 이름의 자기 입력 형을 둔다(design.md 3절)
 
 export const STAFF_JOBS = ['간호사', '간호조무사', '물리치료사', '방사선사', '원무', '기타'] as const

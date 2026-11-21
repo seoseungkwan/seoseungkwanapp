@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
-import { BitDashboard } from '@/components/dashboard/live/BitDashboard'
+import { BitDashboard, InventoryAlertCard } from '@/components/dashboard/live/BitDashboard'
 import { DashboardSkeleton } from '@/components/dashboard/live/DashboardSkeleton'
 import { LOOKBACK_DAYS } from '@/components/dashboard/live/readBitDays'
 import { readDashboardGroups, type DashboardGroups } from '@/components/dashboard/live/rxGroups'
+import { RuleAlert } from '@/components/dashboard/notices/RuleAlert'
+import { useWarrantySoon } from '@/components/dashboard/warranty/useWarrantySoon'
+import { WarrantyNotice } from '@/components/dashboard/warranty/WarrantyNotice'
 import { ds } from '@/components/ui/classes'
 import { addDays } from '@/lib/analytics/dates'
 import { readDays } from '@/lib/storage/stats'
@@ -21,6 +24,10 @@ import { toSummarySource, type OlderDays, type SummarySource } from './source'
 // 숫자가 있는 화면의 [저장된 숫자 새로고침]도 같은 [다시 읽기]다(dashboard-ux AC-2701.7·AC-2701.8): 화면에 저장 숫자가 이미 있으면 성공해도 BitDashboard를
 // 다시 놓지 않고 새 처음 자료·저장 시각만 넘기며(고른 날·AI 요약 유지, 비트 읽기를 새로 시작하지 않음), 실패는 위쪽 카드가 아니라 머리 줄 아래 상자(BitDashboard)다
 // 늦게 온 답(떠난 뒤·날짜가 바뀐 뒤)은 상태를 바꾸지 않는다(AC-2701.6)
+// 재고 칸(spec inventory AC-7512.4): 뼈대일 때와 저장 숫자 오류 카드가 보일 때는 여기서 맨 위(뼈대·카드 앞)에 두고 BitDashboard의 맨 위 칸은 뺀다 → 한 화면에 하나.
+// 숫자가 있으면 BitDashboard가 보고 문장 오른쪽에 둔다. 알림이 없으면 칸이 그리지 않아 지금 그대로다
+// 무상 수리 알림(contacts AC-6507.1·AC-6507.2, design.md '대시보드 알림')도 여기서 화면을 열 때 한 번 읽어(useWarrantySoon, 10초 한도) BitDashboard에 notice로 넘긴다.
+// 여기서 읽으므로 BitDashboard가 key로 다시 놓여도 다시 읽지 않는다. 저장 숫자·비트 읽기는 그 읽기를 기다리지 않고, 실패는 조용히 비운다(오류 카드 없음)
 
 export const SAVED_READ_TIMEOUT_MS = 10_000
 
@@ -76,6 +83,7 @@ export function LiveDashboard({ today }: { today: string }) {
   const retrying = useRef(false)
   // 날짜가 바뀌거나 떠날 때 올린다. 그 전에 시작한 [다시 읽기]의 늦은 답은 버린다(AC-2701.6)
   const era = useRef(0)
+  const warranty = useWarrantySoon(today)
 
   // 묶음은 화면을 열 때 한 번만 읽는다(같은 10초 한도). 날짜가 바뀌어도 다시 읽지 않는다
   useEffect(() => {
@@ -105,7 +113,14 @@ export function LiveDashboard({ today }: { today: string }) {
   const older = useMemo(() => olderDays(today), [today])
 
   // 저장 숫자를 읽는 동안: 연결 전 화면이 아니라 뼈대(AC-2701.1). 묶음은 기다리지 않는다(AC-2701.2)
-  if (drawn === null) return <DashboardSkeleton />
+  if (drawn === null) {
+    return (
+      <>
+        <InventoryAlertCard today={today} />
+        <DashboardSkeleton />
+      </>
+    )
+  }
 
   const readAgain = () => {
     if (retrying.current) return
@@ -122,11 +137,15 @@ export function LiveDashboard({ today }: { today: string }) {
   // 저장 숫자를 손에 들고 있으면(toSummarySource는 줄이 있을 때만 data) 새로고침 단추·실패 상자는 머리 줄이 맡는다(AC-2701.7·AC-2701.8).
   // 없으면(처음 읽기 실패) 위쪽 카드가 맡는다. 연결 판정은 하지 않는다(AC-601.14)
   const showsSaved = drawn.initial.kind === 'data'
+  const failedCard = drawn.failed && !drawn.bitLoaded && !showsSaved
 
   return (
     <>
+      {/* 고시·공지 점검 규칙 경고(notices AC-7422.1): 맨 위. 확인할 글이 없거나 읽는 중·실패·데스크면 아무것도 그리지 않는다 */}
+      <RuleAlert />
+      {failedCard && <InventoryAlertCard today={today} />}
       {/* 오류 카드와 그 아래 [다시 읽기]: 시안에 없어 통계 탭의 같은 카드 모양(StatsScreen ErrorWithAction)을 따른다 */}
-      {drawn.failed && !drawn.bitLoaded && !showsSaved && (
+      {failedCard && (
         <div className="mt-4">
           <ErrorCard code="E-STATS-READ-FAILED" />
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -146,6 +165,8 @@ export function LiveDashboard({ today }: { today: string }) {
         older={older}
         onBitLoaded={markBitLoaded}
         savedRefresh={showsSaved ? { refreshing: drawn.retrying, failed: drawn.failed, onRefresh: readAgain } : undefined}
+        inventoryOnTop={!failedCard}
+        notice={<WarrantyNotice items={warranty} today={today} />}
       />
     </>
   )

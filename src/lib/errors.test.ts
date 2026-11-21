@@ -105,6 +105,27 @@ const ALL_CODES = [
   'E-STAFF-FILE-FAILED',
   'E-STAFF-EXCEL-FAILED',
   'E-STAFF-IMAGE-FAILED',
+  'E-NOTICE-READ',
+  'E-NOTICE-SAVE',
+  'E-NOTICE-WORDS',
+  'E-INV-READ-FAILED',
+  'E-INV-SAVE-FAILED',
+  'E-INV-DUPLICATE',
+  'E-INV-IN-USE',
+  'E-INV-COUNT-DATE',
+  'E-INV-PHOTO',
+  'E-INV-NO-LINES',
+  'E-INV-PRIVATE',
+  'E-INV-NO-NAME',
+  'E-INV-EXCEL',
+  'E-CONTACTS-READ-FAILED',
+  'E-CONTACTS-SAVE-FAILED',
+  'E-CONTACTS-IMPORT-FAILED',
+  'E-CONTACTS-FILE-FORM',
+  'E-CONTACTS-FILE-NOT-XLSX',
+  'E-CONTACTS-FILE-LOCKED',
+  'E-CONTACTS-FILE-EMPTY',
+  'E-CONTACTS-FILE-BIG',
 ] as const satisfies readonly ErrorCode[]
 
 // '병원' 낱말 예외(AC-409.1): 명세가 글자를 정한 번호만. 데스크 메일 둘은 '병원 계정'·'다른 병원'이라고 말해야 뜻이 산다(desk-feedback design.md 표, AC-6304.3).
@@ -1165,5 +1186,173 @@ describe('AC-7610.1 직원 탭 오류 번호', () => {
       what: '엑셀 파일을 읽거나 만들지 못했어요',
       fix: '올린 파일이면 [엑셀 양식 받기]로 받은 파일에 적었는지, 암호로 잠긴 파일이 아닌지 확인하고 다시 올려 주세요. [엑셀 받기]가 안 됐으면 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
     })
+  })
+})
+
+// 고시·공지 탭(specs/notices requirements 기본값 12). 목록·글 읽기 실패는 [다시 읽기], 별표·메모·규칙 확인 저장 실패는 적은 메모가 그대로
+const NOTICE = {
+  'E-NOTICE-READ': {
+    what: '고시·공지를 읽지 못했어요',
+    fix: '인터넷 연결을 확인하고 [다시 읽기]를 눌러 주세요',
+  },
+  'E-NOTICE-SAVE': {
+    what: '저장하지 못했어요',
+    fix: '잠시 뒤 다시 눌러 주세요. 적은 메모는 그대로 있어요',
+  },
+} as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
+
+// 내 낱말 저장 실패(specs/notices requirements 기본값 20). 고른 낱말이 화면에 그대로 있다
+const NOTICE_WORDS = {
+  'E-NOTICE-WORDS': {
+    what: '낱말을 저장하지 못했어요',
+    fix: '잠시 뒤 다시 눌러 주세요. 고른 낱말은 그대로 있어요',
+  },
+} as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
+
+describe('AC-7401.1 고시·공지 오류 번호', () => {
+  it.each(Object.keys(NOTICE) as Array<keyof typeof NOTICE>)('AC-7401.1: errorInfo(%s)는 기본값 12의 무엇이·어떻게 글 그대로다', (code) => {
+    expect(isErrorCode(code), code).toBe(true)
+    expect(ALL_CODES, code).toContain(code)
+    expect(errorInfo(code)).toEqual(NOTICE[code])
+  })
+
+  // 내 낱말(REQ-7424)이 E-NOTICE-WORDS를 더해 셋이 됐다(design 15절)
+  it('AC-7401.1·AC-7424.2: 이 명세가 더하는 번호는 E-NOTICE-READ·E-NOTICE-SAVE·E-NOTICE-WORDS 셋뿐이다', () => {
+    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-NOTICE-')).sort()).toEqual(
+      [...Object.keys(NOTICE), ...Object.keys(NOTICE_WORDS)].sort(),
+    )
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
+  it('AC-7401.1: 두 번호가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    for (const code of Object.keys(NOTICE)) expect(union).toContain(`'${code}'`)
+  })
+})
+
+describe('AC-7424.2 내 낱말 오류 번호', () => {
+  it('AC-7424.2: errorInfo(E-NOTICE-WORDS)는 기본값 20의 무엇이·어떻게 글 그대로다', () => {
+    expect(isErrorCode('E-NOTICE-WORDS')).toBe(true)
+    expect(ALL_CODES).toContain('E-NOTICE-WORDS')
+    expect(errorInfo('E-NOTICE-WORDS')).toEqual(NOTICE_WORDS['E-NOTICE-WORDS'])
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
+  it('AC-7424.2: E-NOTICE-WORDS가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    expect(union).toContain(`'E-NOTICE-WORDS'`)
+  })
+})
+
+// 주소록(specs/contacts design.md '오류 번호' 표, TASK-2). 글은 그 표 글자 그대로다.
+// 읽기·저장·넣기 실패 셋은 오류 카드(AC-6505.9·AC-6505.4·AC-6506.4), 파일 다섯은 확인 창(제목 = what, 본문 = fix, AC-6506.2)
+const CONTACTS = {
+  'E-CONTACTS-READ-FAILED': { what: '주소록을 읽지 못했어요', fix: '인터넷 연결을 확인하고 [다시 읽기]를 눌러 주세요' },
+  'E-CONTACTS-SAVE-FAILED': { what: '주소록을 바꾸지 못했어요', fix: '적은 값은 그대로예요. 인터넷 연결을 확인하고 다시 눌러 주세요' },
+  'E-CONTACTS-IMPORT-FAILED': { what: '엑셀에서 넣지 못했어요. 주소록은 그대로예요', fix: '인터넷 연결을 확인하고 [넣기]를 다시 눌러 주세요' },
+  'E-CONTACTS-FILE-FORM': {
+    what: '주소록 양식이 아니에요',
+    fix: '이 엑셀에서 주소록 양식의 시트와 칸 이름을 찾지 못했어요. [양식 받기]로 받은 엑셀에 적어서 올려 주세요.',
+  },
+  'E-CONTACTS-FILE-NOT-XLSX': { what: '엑셀 파일만 올릴 수 있어요', fix: '.xlsx 파일을 골라 주세요. [양식 받기]로 받은 파일에 적으면 돼요.' },
+  'E-CONTACTS-FILE-LOCKED': { what: '비밀번호가 걸린 엑셀이에요', fix: '엑셀에서 비밀번호를 푼 뒤 다시 올려 주세요.' },
+  'E-CONTACTS-FILE-EMPTY': { what: '엑셀에 적힌 업체가 없어요', fix: "'연락처' 시트에 사람마다 한 줄씩 적은 뒤 올려 주세요." },
+  'E-CONTACTS-FILE-BIG': { what: '엑셀 파일이 너무 커요', fix: '5MB, 연락처 2,000줄, 장비 1,000줄까지 올릴 수 있어요. 나눠서 올려 주세요.' },
+} as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
+const CONTACTS_AC = {
+  'E-CONTACTS-READ-FAILED': 'AC-6505.9',
+  'E-CONTACTS-SAVE-FAILED': 'AC-6505.4',
+  'E-CONTACTS-IMPORT-FAILED': 'AC-6506.4',
+  'E-CONTACTS-FILE-FORM': 'AC-6506.2',
+  'E-CONTACTS-FILE-NOT-XLSX': 'AC-6506.2',
+  'E-CONTACTS-FILE-LOCKED': 'AC-6506.2',
+  'E-CONTACTS-FILE-EMPTY': 'AC-6506.2',
+  'E-CONTACTS-FILE-BIG': 'AC-6506.2',
+} as const satisfies Record<keyof typeof CONTACTS, string>
+
+describe('주소록 오류 번호 여덟(specs/contacts design.md 오류 번호, AC-6505.4·AC-6505.9·AC-6506.2·AC-6506.4의 글)', () => {
+  it.each((Object.keys(CONTACTS) as Array<keyof typeof CONTACTS>).map((code) => [CONTACTS_AC[code], code] as const))(
+    '%s: %s는 번호가 있고 무엇이·어떻게 고치나가 design.md 표 글자 그대로다',
+    (_ac, code) => {
+      expect(isErrorCode(code), code).toBe(true)
+      expect(ALL_CODES, code).toContain(code)
+      expect(errorInfo(code)).toEqual(CONTACTS[code])
+    },
+  )
+
+  it('AC-6506.2·AC-6505.9: 이 명세가 더하는 E-CONTACTS- 번호는 표의 여덟뿐이다', () => {
+    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-CONTACTS-')).sort()).toEqual(Object.keys(CONTACTS).sort())
+  })
+
+  it('AC-6505.4: 저장 실패는 적은 값이 그대로라고, 넣기 실패는 주소록이 그대로라고 알린다', () => {
+    expect(errorInfo('E-CONTACTS-SAVE-FAILED').fix).toContain('적은 값은 그대로')
+    expect(errorInfo('E-CONTACTS-IMPORT-FAILED').what).toContain('주소록은 그대로')
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
+  it('AC-6506.2: 여덟 번호가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    for (const code of Object.keys(CONTACTS)) expect(union).toContain(`'${code}'`)
+  })
+})
+
+// 재고 탭(specs/inventory design.md 4절 '오류 번호'). E-AI-*는 지금 문구를 그대로 쓴다
+// 번호마다 '무엇이 · 어떻게 고치나'에 꼭 들어갈 말(design.md 글의 뜻·곁의 단추)
+const INVENTORY = {
+  'E-INV-READ-FAILED': { what: ['재고', '읽지 못했어요'], fix: ['[다시 읽기]'] },
+  'E-INV-SAVE-FAILED': { what: ['저장하지 못했어요'], fix: ['적은 값은 그대로', '잠시 뒤 다시 해 주세요'] }, // [다시 저장] 단추가 없는 화면(주문함·순서·다시 쓰기)에도 뜬다
+  'E-INV-DUPLICATE': { what: ['같은 이름이 이미 있어요'], fix: ['다른 이름', '안 쓰는 물품'] },
+  'E-INV-IN-USE': { what: ['물품이 있는 분류는 지울 수 없어요'], fix: ['다른 분류로 옮긴 뒤'] },
+  'E-INV-COUNT-DATE': { what: ['세기'], fix: ['마지막 세기 날짜', '오늘'] },
+  'E-INV-PHOTO': { what: ['사진을 읽지 못했거나 너무 커요'], fix: ['다른 사진', '[사진 없이 적기]'] },
+  'E-INV-NO-LINES': { what: ['사진에서 물품 줄을 찾지 못했어요'], fix: ['다시 찍', '[사진 없이 적기]'] },
+  'E-INV-PRIVATE': { what: ['엑셀 앞 줄에 전화번호·주민번호·메일 주소 모양이 있어 보내지 않았어요'], fix: ['그 칸을 지우', '[양식 받기]'] },
+  'E-INV-NO-NAME': { what: ['물품 이름 칸을 찾지 못했어요'], fix: ['[양식 받기]', '옮겨 적'] },
+  'E-INV-EXCEL': { what: ['엑셀 파일을 읽지 못했어요'], fix: ['.xlsx'] },
+} as const satisfies Partial<Record<ErrorCode, { what: readonly string[]; fix: readonly string[] }>>
+
+describe('AC-7503.6 재고 오류 번호', () => {
+  it.each(Object.keys(INVENTORY) as Array<keyof typeof INVENTORY>)('AC-7503.6: %s는 번호가 있고 무엇이·어떻게 고치나 글이 있다', (code) => {
+    expect(isErrorCode(code), code).toBe(true)
+    expect(ALL_CODES, code).toContain(code)
+    const { what, fix } = errorInfo(code)
+    expect(what.trim(), code).not.toBe('')
+    expect(fix.trim(), code).not.toBe('')
+    for (const word of INVENTORY[code].what) expect(what, code).toContain(word)
+    for (const word of INVENTORY[code].fix) expect(fix, code).toContain(word)
+  })
+
+  it("AC-7503.6: 재고 오류 글에는 '병원'·'니다.'·메일 모양 글자(@)가 없다", () => {
+    for (const code of Object.keys(INVENTORY) as Array<keyof typeof INVENTORY>) {
+      const text = `${errorInfo(code).what} ${errorInfo(code).fix}`
+      expect(text, code).not.toContain('병원')
+      expect(text, code).not.toMatch(/니다\./)
+      expect(text, code).not.toContain('@')
+    }
+  })
+
+  it('AC-7503.6·AC-7512.3: E-INV-SAVE-FAILED 글은 [다시 저장] 단추를 말하지 않는다 — 그 단추가 없는 재고 화면([주문함]·[다 됐어요]·[다시 쓰기])에도 뜬다', () => {
+    const { what, fix } = errorInfo('E-INV-SAVE-FAILED')
+    expect(`${what} ${fix}`).not.toMatch(/\[다시 저장\]|\[[^\]]+\]/)
+  })
+
+  it('AC-7503.6: 이 명세가 더하는 E-INV- 번호는 design.md 4절의 열뿐이다', () => {
+    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-INV-')).sort()).toEqual(Object.keys(INVENTORY).sort())
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
+  it('AC-7503.6: 열 번호가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    for (const code of Object.keys(INVENTORY)) expect(union).toContain(`'${code}'`)
+  })
+
+  it('AC-7503.6: 함께 쓰는 E-AI-BUSY·E-AI-LIMIT·E-AI-FAILED는 지금 문구 그대로다', () => {
+    expect(errorInfo('E-AI-BUSY')).toEqual({ what: 'AI가 지금 바빠서 답하지 못했어요', fix: '1~2분 뒤 [다시 분석]을 눌러 주세요.' })
+    expect(errorInfo('E-AI-LIMIT').what).toBe('이번 달 AI 사용 한도에 닿았어요')
+    expect(errorInfo('E-AI-FAILED').what).toBe('AI 리포트를 만들지 못했어요')
   })
 })

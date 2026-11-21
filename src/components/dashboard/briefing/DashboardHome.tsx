@@ -17,6 +17,8 @@ import { StickyConnect } from './StickyConnect'
 //   report 있음 = 연결 뒤(dashboard-ux AC-2707.2): 한 칸 브리핑(날짜 줄·report, h1은 report 안) → analysis → 바로 가기(지금 바로 묶음) → 기능 목차
 //   쓰는 EMR이 비트가 아니고 연결 전(emr-choice AC-7103.1, design.md 4절, 시안 docs/mockups/emr-choice/index.html ②): 큰 문장 자리에 준비 중 안내 · [쓰는 EMR 바꾸기].
 //   연결 순서·폰 아래 단추·안심 줄은 없고, 그 아래 '지금 바로' 줄·analysis·기능 목차는 다른 탭 단추처럼 그대로다. 연결 뒤는 emr과 상관없이 그대로(AC-7103.2)
+// notice(contacts AC-6507.1, 무상 수리 알림)는 받은 그대로 '맨 위 줄 바로 아래'에 둔다: 연결 뒤는 브리핑 칸의 report(머리 줄과 그 아래 오류 상자, 또는 읽는 중·실패 블록) 다음,
+//   연결 전(비트·비트 아닌 EMR)은 날짜 줄 다음·큰 문장 앞. 무엇을 그릴지(0줄이면 null)는 넘기는 쪽이 정한다
 // analysis(오늘 하루 분석 + 기간별 흐름)는 갈래 라 몫이라 무엇이 오는지 모르고 받은 그대로 둔다. 무엇을 넘길지는 페이지 조립(TASK-9)이 정한다.
 // 바탕은 앱 틀이 늘 흰색 한 장이다(ui-90 AC-404.1) — 뿌리에 바탕 표시를 달지 않는다
 export type DashboardHomeProps = {
@@ -30,6 +32,8 @@ export type DashboardHomeProps = {
   dateLine?: ReactNode
   /** 쓰는 EMR(emr-choice AC-7103.1). 주지 않으면 'bit'. 병원 정보를 읽는 중·실패면 BitDashboard가 'bit'를 넘긴다(AC-7103.2) */
   emr?: EmrKind
+  /** 맨 위 줄 바로 아래 알림(contacts AC-6507.1, 무상 수리). 주지 않거나 null이면 아무것도 없다 */
+  notice?: ReactNode
 }
 
 // 휴대폰 아래 단추(StickyConnect)가 이 id로 위 주 단추를 지켜본다
@@ -98,7 +102,7 @@ function EmrWaitSentence({ emr }: { emr: NonBitEmr }) {
   )
 }
 
-export function DashboardHome({ today, report, analysis, dateLine: dateControl, emr = 'bit' }: DashboardHomeProps) {
+export function DashboardHome({ today, report, analysis, dateLine: dateControl, emr = 'bit', notice }: DashboardHomeProps) {
   // undefined도 연결 전이다(tab-frame 남은 일)
   const connected = report != null
   if (connected) {
@@ -111,6 +115,7 @@ export function DashboardHome({ today, report, analysis, dateLine: dateControl, 
           <div>
             {dateControl === undefined ? <DateLine today={today} /> : dateControl}
             {report}
+            {notice}
           </div>
         </section>
         {analysis}
@@ -130,6 +135,7 @@ export function DashboardHome({ today, report, analysis, dateLine: dateControl, 
         <section aria-label="오늘 브리핑" className="lg:grid lg:grid-cols-12 lg:items-start lg:gap-x-6">
           <div className="md:max-lg:max-w-128 lg:col-span-7">
             {dateControl ?? <DateLine today={today} />}
+            {notice}
             <EmrWaitSentence emr={emr} />
           </div>
         </section>
@@ -146,6 +152,7 @@ export function DashboardHome({ today, report, analysis, dateLine: dateControl, 
       <section aria-label="오늘 브리핑" className="lg:grid lg:grid-cols-12 lg:items-start lg:gap-x-6">
         <div className="md:max-lg:max-w-128 lg:col-span-7">
           {dateControl ?? <DateLine today={today} />}
+          {notice}
           <BigSentence />
         </div>
         {/* 연결 전: 폰은 접는 칸이 위 20 */}

@@ -60,5 +60,13 @@ export type ErrorCode =
   | 'E-STAFF-READ-FAILED' | 'E-STAFF-SAVE-FAILED' | 'E-STAFF-FILE-FAILED' | 'E-STAFF-EXCEL-FAILED' | 'E-STAFF-IMAGE-FAILED'
   // 처음 질문 저장 실패(specs/clinic-profile AC-6614.8)
   | 'E-FIRST-RUN-SAVE-FAILED'
+  // 고시·공지 탭(specs/notices requirements 기본값 12·20): 목록·글 읽기 실패 · 별표·메모·규칙 확인 저장 실패 · 내 낱말 저장 실패
+  | 'E-NOTICE-READ' | 'E-NOTICE-SAVE' | 'E-NOTICE-WORDS'
+  // 재고 탭(specs/inventory design.md 4절): 읽기 · 저장 · 이름 겹침 · 물품 있는 분류 · 세기 날짜 · 사진 · 명세서 줄 없음 · 엑셀 개인정보 모양 · 이름 칸 없음 · 엑셀 읽기
+  | 'E-INV-READ-FAILED' | 'E-INV-SAVE-FAILED' | 'E-INV-DUPLICATE' | 'E-INV-IN-USE' | 'E-INV-COUNT-DATE'
+  | 'E-INV-PHOTO' | 'E-INV-NO-LINES' | 'E-INV-PRIVATE' | 'E-INV-NO-NAME' | 'E-INV-EXCEL'
+  // 주소록(specs/contacts design.md '오류 번호'): 읽기 · 저장·지우기 · [넣기] 실패 · 올린 엑셀이 양식 아님 · xlsx 아님 · 비밀번호 걸림 · 적힌 줄 없음 · 너무 큼
+  | 'E-CONTACTS-READ-FAILED' | 'E-CONTACTS-SAVE-FAILED' | 'E-CONTACTS-IMPORT-FAILED'
+  | 'E-CONTACTS-FILE-FORM' | 'E-CONTACTS-FILE-NOT-XLSX' | 'E-CONTACTS-FILE-LOCKED' | 'E-CONTACTS-FILE-EMPTY' | 'E-CONTACTS-FILE-BIG'
 
 export type ErrorInfo = { what: string; fix: string }

@@ -773,7 +773,7 @@ describe('generateReport에 loadReportMonths를 이어 부름 (REQ-2007)', () =>
     expect(res.ok).toBe(true)
     expect(callClaude).toHaveBeenCalledTimes(1)
     const { user } = callClaude.mock.calls[0][0]
-    const input = JSON.parse(user.slice('<data>\n'.length, user.length - '\n</data>'.length)) as ReportInput
+    const input = JSON.parse((user as string).slice('<data>\n'.length, (user as string).length - '\n</data>'.length)) as ReportInput
     const total = input.metrics.find((m) => m.id === 'total.patients')
     expect(total?.values).toEqual({
       selected: sel.payload.totals.patients,

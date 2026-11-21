@@ -31,7 +31,7 @@ import {
   type WeekPlan,
 } from '@/types/staff'
 
-// 직원 탭 저장 층(spec staff REQ-7610, design.md 5절, ADR-035). 브라우저 → Supabase, 어느 병원 줄인지는 RLS(my_hospital_id(), 승인된 원장만)가 고른다(ADR-004).
+// 직원 탭 저장 층(spec staff REQ-7610, design.md 5절, ADR-039). 브라우저 → Supabase, 어느 병원 줄인지는 RLS(my_hospital_id(), 승인된 원장만)가 고른다(ADR-004).
 // 표는 staff_*(migration 20261121000000_staff.sql, design.md 1절). 보내는 몸통은 정해 둔 칸만 골라 새로 만든다({ ...받은 값 } 금지) —
 // hospital_id·id·시각은 보내지 않고, 주민번호 칸은 없다. 받은 값이 DB 규칙(AC-7601.4~7601.6)을 어기면 보내지 않는다.
 // 읽은 줄은 모양을 믿지 않는다: 틀린 줄은 버리고(설정은 틀린 칸만 기본값), 목록은 1,000줄씩 끝까지 읽는다(쪽 하나라도 실패하면 반쪽 목록 대신 실패).
@@ -886,7 +886,7 @@ export function createStaffStore(client: StaffClient): StaffStore {
           client.from(RULES).select(RULE_COLUMNS).eq('staff_id', staffId).order('sort', ASC).order('id', ASC).range(first, last),
         )
       ).flatMap((row) => toRule(row) ?? [])
-      // 보는 달부터만 고친다(앞 달 금액이 바뀌지 않게, ADR-035)
+      // 보는 달부터만 고친다(앞 달 금액이 바뀌지 않게, ADR-039)
       const lines = (
         await readAllOrFail(SAVE, (first, last) =>
           client.from(LINES).select(LINE_COLUMNS).eq('staff_id', staffId).gte('month', fromMonth).order('month', ASC).order('id', ASC).range(first, last),

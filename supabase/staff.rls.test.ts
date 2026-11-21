@@ -5,7 +5,7 @@ import { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 // 직원 탭 DB: 열 표·칸 권한·RLS·제약·휴가 → 예약 '휴무' 트리거·직원 파일 바구니 staff-files
-// (staff REQ-7601·REQ-7602·REQ-7603, design.md 1절·2절, ADR-035).
+// (staff REQ-7601·REQ-7602·REQ-7603, design.md 1절·2절, ADR-039).
 // clinicEmr.rls.test.ts와 같은 방법: 진짜 Postgres(PGlite, WASM)에서 운영자가 붙일 migration 파일을 차례로
 // (… desk_accounts → clinic_profile → clinic_emr → hospital_emr → 이 파일 → 이 파일 다시) 그대로 돌린다. 실제 Supabase에는 붙지 않는다.
 // Supabase가 미리 갖춘 것(역할·auth·storage)만 흉내 낸다. 사람·메일·전화·주소·계좌는 모두 지어낸 것이다
@@ -697,7 +697,7 @@ afterAll(async () => {
 beforeEach(resetData)
 
 describe('AC-7601.1 파일·표·권한 모양', SLOW, () => {
-  it('AC-7601.1: 파일이 있고 줄 끝이 LF이며, 머리 주석에 붙여 넣는 방법·앞 파일 차례·두 번 실행·관문·바구니 확인·REQ·ADR-035가 있다', () => {
+  it('AC-7601.1: 파일이 있고 줄 끝이 LF이며, 머리 주석에 붙여 넣는 방법·앞 파일 차례·두 번 실행·관문·바구니 확인·REQ·ADR-039가 있다', () => {
     expect(STAFF_MIGRATION).not.toBe('')
     expect(STAFF_MIGRATION).not.toContain('\r')
     const lines = STAFF_MIGRATION.split('\n')
@@ -719,7 +719,7 @@ describe('AC-7601.1 파일·표·권한 모양', SLOW, () => {
     expect(head).toMatch(/두 번 붙여 넣어도/)
     expect(head).toMatch(/관문:[^\n]*먼저 붙여 넣고[^\n]*사이트에 올린다[^\n]*calendar_allday\.part/)
     expect(head).toMatch(/staff-files[^\n]*'Private'/)
-    for (const word of ['REQ-7601', 'REQ-7602', 'REQ-7603', 'ADR-035', '주민번호']) expect(head, word).toContain(word)
+    for (const word of ['REQ-7601', 'REQ-7602', 'REQ-7603', 'ADR-039', '주민번호']) expect(head, word).toContain(word)
   })
 
   it('AC-7601.1: 두 번 돌려도 되는 문장만 쓴다(표·색인 if not exists, 칸 if not exists, 함수·트리거 or replace, 정책 지우고 다시, 바구니 on conflict)', () => {
@@ -2564,13 +2564,13 @@ describe('AC-7601.1·AC-7602.1·AC-7603.1 이미 있는 DB에 붙여 넣기·두
   })
 })
 
-describe('AC-7601.1 · ADR-035 문서', () => {
+describe('AC-7601.1 · ADR-039 문서', () => {
   const repo = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), 'utf-8')
-  const TITLE = '### ADR-035: 직원 자료(연락처·주소·생일·계좌·근무·휴가·급여·서류 파일)를 Supabase에 원장만 보게 둔다. 주민번호는 두지 않는다'
+  const TITLE = '### ADR-039: 직원 자료(연락처·주소·생일·계좌·근무·휴가·급여·서류 파일)를 Supabase에 원장만 보게 둔다. 주민번호는 두지 않는다'
 
-  it('AC-7601.1: docs/ADR.md 맨 끝에 ADR-035 하나가 design.md 2절 글로 있다', () => {
+  it('AC-7601.1: docs/ADR.md 맨 끝에 ADR-039 하나가 design.md 2절 글로 있다', () => {
     const doc = repo('docs/ADR.md')
-    expect(doc.split(/\r?\n/).filter((line) => line.startsWith('### ADR-035:'))).toEqual([TITLE])
+    expect(doc.split(/\r?\n/).filter((line) => line.startsWith('### ADR-039:'))).toEqual([TITLE])
     const body = doc.slice(doc.indexOf(TITLE))
     expect(body.slice(TITLE.length)).not.toMatch(/^### /m)
     for (const part of [
@@ -2591,7 +2591,7 @@ describe('AC-7601.1 · ADR-035 문서', () => {
     }
     const bucket = lines.filter((line) => line.startsWith('- Storage 버킷 `staff-files`'))
     expect(bucket).toHaveLength(1)
-    for (const word of ['20261121000000_staff.sql', 'ADR-035', '10,000,000']) expect(bucket[0]).toContain(word)
+    for (const word of ['20261121000000_staff.sql', 'ADR-039', '10,000,000']) expect(bucket[0]).toContain(word)
     expect(lines.filter((line) => /`employees`|`payroll_months`|`incentive_rules`/.test(line))).toEqual([])
     expect(lines.filter((line) => line.includes('계좌번호는 저장하지 않는다'))).toEqual([])
     expect(lines.filter((line) => line.includes('| `calendar_allday` |'))[0]).toContain('`part`')
