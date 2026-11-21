@@ -86,6 +86,7 @@ export interface CollectorStore {
   markBatch(ids: string[], batchId: string): Promise<boolean>
   openBatches(): Promise<{ batchId: string; ids: string[]; oldest: string }[]>
   weekExists(weekStart: string): Promise<boolean>
+  weekPending(weekStart: string): Promise<boolean>
   weekNotices(weekStart: string): Promise<WeekInput[]>
   saveWeek(d: { weekStart: string; top3: WeekTop[] }): Promise<boolean>
 }

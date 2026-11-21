@@ -452,6 +452,9 @@ class CollectRun {
     const weekStart = addDays(weekStartOf(this.today), -7)
     try {
       if (await store.weekExists(weekStart)) return
+      // 그 주 글 가운데 요약을 기다리는 글(wait·batch)이 있으면 이번에는 만들지 않고 다음 실행으로 미룬다(기본값 22).
+      // 모음은 늘 지난주라 일요일까지 못 만들면 그 주는 건너뛴다
+      if (await store.weekPending(weekStart)) return
       const items = await store.weekNotices(weekStart)
       let top3: WeekTop[] = []
       if (items.length > 0) {

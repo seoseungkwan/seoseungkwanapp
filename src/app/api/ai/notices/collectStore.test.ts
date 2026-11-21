@@ -258,6 +258,7 @@ const READS: [string, (s: Store) => Promise<unknown>][] = [
   ['waiting', (s) => s.waiting(40)],
   ['openBatches', (s) => s.openBatches()],
   ['weekExists', (s) => s.weekExists('2026-11-16')],
+  ['weekPending', (s) => s.weekPending('2026-11-16')],
   ['weekNotices', (s) => s.weekNotices('2026-11-16')],
   ['batchNotices', (s) => s.batchNotices([NOTICE_ID, NOTICE_ID2])],
 ]
@@ -613,6 +614,36 @@ describe('collectorStore — 표·칸 (AC-7415.2)', () => {
     expect(await no.store.weekExists('2026-11-16')).toBe(false)
   })
 
+  it('AC-7415.2: weekPending은 그 주(월~일) posted_on 글 가운데 wait·batch 글이 하나라도 있으면 true다(한 줄만 읽는다, 기본값 22)', async () => {
+    const { store, calls } = fakeDb(() => ok([{ id: NOTICE_ID }]))
+    expect(await store.weekPending('2026-11-16')).toBe(true)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ table: 'notices', op: 'select', columns: 'id' })
+    expect(calls[0].filters).toEqual(
+      expect.arrayContaining([
+        { name: 'in', args: ['state', ['wait', 'batch']] },
+        { name: 'gte', args: ['posted_on', '2026-11-16'] },
+        { name: 'lte', args: ['posted_on', '2026-11-22'] },
+        { name: 'limit', args: [1] },
+      ]),
+    )
+    expect(calls[0].filters).toHaveLength(4)
+  })
+
+  it('AC-7415.2: weekPending은 맞는 글이 없으면 false다', async () => {
+    const { store } = fakeDb(() => ok([]))
+    expect(await store.weekPending('2026-11-16')).toBe(false)
+  })
+
+  it.each(['2026-11-17', '2026-11-22', '2026-11-1', '2026-02-30', ''])(
+    'AC-7415.3: weekPending은 월요일 YYYY-MM-DD가 아니면(%s) DB를 부르지 않고 고정 글로 던진다',
+    async (weekStart) => {
+      const { store, calls } = fakeDb(() => ok([]))
+      await expect(store.weekPending(weekStart)).rejects.toThrow(new Error(STORE_READ_FAILED))
+      expect(calls).toHaveLength(0)
+    },
+  )
+
   it('AC-7415.2: weekNotices는 그 주(월~일) 요약이 끝난 관련 글의 종류·제목·요약이고, 요약 모양이 틀린 줄은 건너뛴다', async () => {
     const { store, calls } = fakeDb(() =>
       ok([
@@ -775,6 +806,7 @@ describe('collectorStore — 오류 (AC-7415.3)', () => {
     ['startRun(글자가 아님)', (s: Store) => s.startRun(), ok(42)],
     ['openBatches(시각이 아님)', (s: Store) => s.openBatches(), ok([{ id: NOTICE_ID, batch_id: 'msgbatch_A', updated_at: 'yesterday' }])],
     ['batchNotices(목록이 아님)', (s: Store) => s.batchNotices([NOTICE_ID]), ok({ not: 'array' })],
+    ['weekPending(목록이 아님)', (s: Store) => s.weekPending('2026-11-16'), ok({ id: NOTICE_ID })],
   ])('AC-7415.3: 읽은 줄 모양이 틀리면(%s) 고정 글로 던진다', async (_name, run, answer) => {
     const { store } = fakeDb(() => answer)
     await expect(run(store)).rejects.toThrow(new Error(STORE_READ_FAILED))

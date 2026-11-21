@@ -444,6 +444,14 @@ export function collectorStore(supabase: SupabaseClient): CollectorStore & Batch
         return dataOf(res) !== null
       }),
 
+    // 그 주(월~일, 한국 날짜) 글 가운데 요약을 기다리는 글(wait·batch)이 있나(기본값 22). 한 줄만 읽는다
+    weekPending: (weekStart) =>
+      reading(async () => {
+        const { from, to } = weekRange(weekStart)
+        const res = await notices().select('id').in('state', ['wait', 'batch']).gte('posted_on', from).lte('posted_on', to).limit(1)
+        return listOf(dataOf(res)).length > 0
+      }),
+
     // 그 주(월~일, 한국 날짜) 요약이 끝난 관련 글. 요약 모양이 틀린 줄은 건너뛴다(한 줄 때문에 모음을 못 만들지 않게)
     weekNotices: (weekStart) =>
       reading(async () => {

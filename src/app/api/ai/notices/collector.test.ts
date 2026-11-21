@@ -343,6 +343,11 @@ function makeStore(log: string[]) {
       enter('weekExists')
       return db.weeks.has(weekStart)
     },
+    weekPending: async (weekStart) => {
+      enter('weekPending')
+      const to = addDays(weekStart, 6)
+      return db.notices.some((n) => (n.state === 'wait' || n.state === 'batch') && n.postedOn >= weekStart && n.postedOn <= to)
+    },
     weekNotices: async (weekStart) => {
       enter('weekNotices')
       const to = addDays(weekStart, 6)
@@ -1248,6 +1253,7 @@ describe('AC-7414.8 지난주 모음', () => {
     const w = world()
     w.seed({ state: 'done', postedOn: '2026-11-10', summary: SUMMARY })
     await runReport(w.deps)
+    expect(w.log).not.toContain('weekPending')
     expect(w.log).not.toContain('weekNotices')
     expect(w.log).not.toContain('saveWeek')
     expect(w.claude).not.toHaveBeenCalled()
@@ -1269,6 +1275,82 @@ describe('AC-7414.8 지난주 모음', () => {
     await runReport(w.deps)
     expect(w.db.weeks.has(LAST_WEEK)).toBe(false)
     expect(logged()).toContain('E-NOTICE-WEEK')
+  })
+
+  // ── 기본값 22: 요약을 기다리는 지난주 글이 있으면 미룸 ──
+
+  it.each([
+    ['wait', { state: 'wait' as const }],
+    ['batch', { state: 'batch' as const, batchId: 'msgbatch_a', updatedAt: new Date(NOW.getTime() - HOUR).toISOString() }],
+  ])('AC-7414.8: 지난주 글 가운데 %s 글이 있으면 그 실행에서는 모음을 만들지 않는다(AI·저장·오류 번호 없음, 기본값 22)', async (_name, over) => {
+    const w = world()
+    w.db.weeks.delete(LAST_WEEK)
+    w.seed({ state: 'done', postedOn: '2026-11-10', summary: SUMMARY })
+    w.seed({ postedOn: '2026-11-13', ...over })
+    const report = await runReport(w.deps)
+    expect(w.log).toContain('weekPending')
+    expect(w.log).not.toContain('weekNotices')
+    expect(w.log).not.toContain('saveWeek')
+    expect(w.log).not.toContain('claude week')
+    expect(w.db.weeks.has(LAST_WEEK)).toBe(false)
+    expect(logged()).not.toContain('E-NOTICE-WEEK')
+    expect(w.db.finished).toEqual([{ runId: 'run-1', counts: report }])
+  })
+
+  it('AC-7414.8: 미룬 모음은 기다리던 글의 요약이 끝난 다음 실행이 만든다(기본값 22)', async () => {
+    const w = world()
+    w.db.weeks.delete(LAST_WEEK)
+    w.seed({ state: 'done', postedOn: '2026-11-10', title: '먼저 끝난 글', summary: SUMMARY })
+    const pending = w.seed({
+      state: 'batch',
+      batchId: 'msgbatch_a',
+      readMode: 'body',
+      postedOn: '2026-11-13',
+      title: '일괄 글',
+      updatedAt: new Date(NOW.getTime() - HOUR).toISOString(),
+    })
+    await runReport(w.deps)
+    expect(w.db.weeks.has(LAST_WEEK)).toBe(false)
+
+    w.read.mockResolvedValue(new Map<string, BatchOutcome>([[pending.id, { ok: true, text: JSON.stringify(SUMMARY), usage: USAGE }]]))
+    await runReport(w.deps)
+    expect(w.db.notices.find((n) => n.id === pending.id)).toMatchObject({ state: 'done' })
+    const week = w.claude.mock.calls.map(([req]) => req).filter((req) => req.system === WEEKLY_SYSTEM)
+    expect(week).toHaveLength(1)
+    expect(week[0].user).toContain('먼저 끝난 글')
+    expect(week[0].user).toContain('일괄 글')
+    expect(w.db.weeks.get(LAST_WEEK)).toEqual([TOP])
+    expect(logged()).not.toContain('E-NOTICE-WEEK')
+  })
+
+  it('AC-7414.8: 기다리는 글이 그 주 밖(지지난주 일요일·이번 주 월요일)이거나 그 주 글이 done·failed뿐이면 미루지 않고 만든다', async () => {
+    const w = world()
+    w.db.weeks.delete(LAST_WEEK)
+    w.seed({ state: 'done', postedOn: '2026-11-10', summary: SUMMARY })
+    w.seed({ state: 'failed', postedOn: '2026-11-12', tries: 3 })
+    w.seed({ postedOn: '2026-11-08' })
+    w.seed({ postedOn: '2026-11-16' })
+    await runReport(w.deps)
+    expect(w.log).toContain('weekPending')
+    expect(w.log).toContain('claude week')
+    expect(w.db.weeks.get(LAST_WEEK)).toEqual([TOP])
+  })
+
+  it('AC-7414.8: 기다리는 글 확인(weekPending)이 던지면 모음을 만들지 않고 E-NOTICE-WEEK를 남기며 다음 단계로 간다', async () => {
+    const w = world()
+    w.db.weeks.delete(LAST_WEEK)
+    w.seed({ state: 'done', postedOn: '2026-11-10', summary: SUMMARY })
+    const recent = w.seed({ postedOn: '2026-11-21' })
+    w.deps.store.weekPending = async () => {
+      throw new Error('notices store read failed')
+    }
+    await runReport(w.deps)
+    expect(w.log).not.toContain('weekNotices')
+    expect(w.log).not.toContain('claude week')
+    expect(w.db.weeks.has(LAST_WEEK)).toBe(false)
+    expect(logged()).toContain('E-NOTICE-WEEK')
+    expect(w.db.notices.find((n) => n.id === recent.id)).toMatchObject({ state: 'done' })
+    expect(w.log.at(-1)).toBe('finishRun')
   })
 })
 

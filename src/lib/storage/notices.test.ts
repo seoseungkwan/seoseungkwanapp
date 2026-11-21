@@ -1,6 +1,8 @@
 // 고시·공지 화면 자료 읽고 쓰기(specs/notices TASK-16, REQ-7418 · AC-7424.7). 실제 Supabase에 붙지 않는다.
 // formGuides.test.ts와 같은 흉내: 가짜 클라이언트가 어느 표·함수에 어떤 칸·몸통·거르기가 나갔는지 적어 둔다.
 // 표 권한·RLS·함수 동작은 supabase/notices.rls.test.ts·noticeKeywords.rls.test.ts가 증명한다. 글·id는 모두 지어낸 값이다
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FillProgress, NoticeFilter, NoticeView, NoticeWeek, RuleAlert, SourceView } from '@/types/notices'
 import {
@@ -781,5 +783,16 @@ describe('AC-7418.4 읽기 실패는 failed, 쓰기 실패는 false(오류 글�
     fakeClient(() => ({ data: { id: ID1 } }))
     expect(await ruleAlerts()).toBe('failed')
     expect(await sourceStates()).toBe('failed')
+  })
+})
+
+// ── 공용 타입(이 TASK가 types/notices.ts를 맡는다) ─────────────
+
+describe('AC-7414.8 공용 타입 CollectorStore.weekPending (기본값 22)', () => {
+  // 타입은 시험이 돌 때 사라지므로 선언 글자를 본다. 모양이 맞는지는 tsc가, 동작은 collectStore·collector 시험이 증명한다
+  it('AC-7414.8: CollectorStore에 weekPending(weekStart: string): Promise<boolean>이 weekExists 바로 뒤에 있다', () => {
+    const source = readFileSync(fileURLToPath(new URL('../../types/notices.ts', import.meta.url)), 'utf-8')
+    const body = /export interface CollectorStore \{([\s\S]*?)\n\}/.exec(source)?.[1] ?? ''
+    expect(body).toMatch(/weekExists\(weekStart: string\): Promise<boolean>\n\s*weekPending\(weekStart: string\): Promise<boolean>\n/)
   })
 })
