@@ -58,5 +58,8 @@ export type ErrorCode =
   | 'E-CLINIC-READ-FAILED' | 'E-CLINIC-SAVE-FAILED' | 'E-CLINIC-LOGO-FAILED'
   // 처음 질문 저장 실패(specs/clinic-profile AC-6614.8)
   | 'E-FIRST-RUN-SAVE-FAILED'
+  // 주소록(specs/contacts design.md '오류 번호'): 읽기 · 저장·지우기 · [넣기] 실패 · 올린 엑셀이 양식 아님 · xlsx 아님 · 비밀번호 걸림 · 적힌 줄 없음 · 너무 큼
+  | 'E-CONTACTS-READ-FAILED' | 'E-CONTACTS-SAVE-FAILED' | 'E-CONTACTS-IMPORT-FAILED'
+  | 'E-CONTACTS-FILE-FORM' | 'E-CONTACTS-FILE-NOT-XLSX' | 'E-CONTACTS-FILE-LOCKED' | 'E-CONTACTS-FILE-EMPTY' | 'E-CONTACTS-FILE-BIG'
 
 export type ErrorInfo = { what: string; fix: string }

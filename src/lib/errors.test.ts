@@ -99,6 +99,14 @@ const ALL_CODES = [
   'E-CLINIC-SAVE-FAILED',
   'E-CLINIC-LOGO-FAILED',
   'E-FIRST-RUN-SAVE-FAILED',
+  'E-CONTACTS-READ-FAILED',
+  'E-CONTACTS-SAVE-FAILED',
+  'E-CONTACTS-IMPORT-FAILED',
+  'E-CONTACTS-FILE-FORM',
+  'E-CONTACTS-FILE-NOT-XLSX',
+  'E-CONTACTS-FILE-LOCKED',
+  'E-CONTACTS-FILE-EMPTY',
+  'E-CONTACTS-FILE-BIG',
 ] as const satisfies readonly ErrorCode[]
 
 // '병원' 낱말 예외(AC-409.1): 명세가 글자를 정한 번호만. 데스크 메일 둘은 '병원 계정'·'다른 병원'이라고 말해야 뜻이 산다(desk-feedback design.md 표, AC-6304.3).
@@ -1116,5 +1124,58 @@ describe('AC-6602.7·AC-6614.8 병원 정보·처음 질문 오류 번호', () =
     const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
     const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
     for (const code of Object.keys(CLINIC)) expect(union).toContain(`'${code}'`)
+  })
+})
+
+// 주소록(specs/contacts design.md '오류 번호' 표, TASK-2). 글은 그 표 글자 그대로다.
+// 읽기·저장·넣기 실패 셋은 오류 카드(AC-6505.9·AC-6505.4·AC-6506.4), 파일 다섯은 확인 창(제목 = what, 본문 = fix, AC-6506.2)
+const CONTACTS = {
+  'E-CONTACTS-READ-FAILED': { what: '주소록을 읽지 못했어요', fix: '인터넷 연결을 확인하고 [다시 읽기]를 눌러 주세요' },
+  'E-CONTACTS-SAVE-FAILED': { what: '주소록을 바꾸지 못했어요', fix: '적은 값은 그대로예요. 인터넷 연결을 확인하고 다시 눌러 주세요' },
+  'E-CONTACTS-IMPORT-FAILED': { what: '엑셀에서 넣지 못했어요. 주소록은 그대로예요', fix: '인터넷 연결을 확인하고 [넣기]를 다시 눌러 주세요' },
+  'E-CONTACTS-FILE-FORM': {
+    what: '주소록 양식이 아니에요',
+    fix: '이 엑셀에서 주소록 양식의 시트와 칸 이름을 찾지 못했어요. [양식 받기]로 받은 엑셀에 적어서 올려 주세요.',
+  },
+  'E-CONTACTS-FILE-NOT-XLSX': { what: '엑셀 파일만 올릴 수 있어요', fix: '.xlsx 파일을 골라 주세요. [양식 받기]로 받은 파일에 적으면 돼요.' },
+  'E-CONTACTS-FILE-LOCKED': { what: '비밀번호가 걸린 엑셀이에요', fix: '엑셀에서 비밀번호를 푼 뒤 다시 올려 주세요.' },
+  'E-CONTACTS-FILE-EMPTY': { what: '엑셀에 적힌 업체가 없어요', fix: "'연락처' 시트에 사람마다 한 줄씩 적은 뒤 올려 주세요." },
+  'E-CONTACTS-FILE-BIG': { what: '엑셀 파일이 너무 커요', fix: '5MB, 연락처 2,000줄, 장비 1,000줄까지 올릴 수 있어요. 나눠서 올려 주세요.' },
+} as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
+const CONTACTS_AC = {
+  'E-CONTACTS-READ-FAILED': 'AC-6505.9',
+  'E-CONTACTS-SAVE-FAILED': 'AC-6505.4',
+  'E-CONTACTS-IMPORT-FAILED': 'AC-6506.4',
+  'E-CONTACTS-FILE-FORM': 'AC-6506.2',
+  'E-CONTACTS-FILE-NOT-XLSX': 'AC-6506.2',
+  'E-CONTACTS-FILE-LOCKED': 'AC-6506.2',
+  'E-CONTACTS-FILE-EMPTY': 'AC-6506.2',
+  'E-CONTACTS-FILE-BIG': 'AC-6506.2',
+} as const satisfies Record<keyof typeof CONTACTS, string>
+
+describe('주소록 오류 번호 여덟(specs/contacts design.md 오류 번호, AC-6505.4·AC-6505.9·AC-6506.2·AC-6506.4의 글)', () => {
+  it.each((Object.keys(CONTACTS) as Array<keyof typeof CONTACTS>).map((code) => [CONTACTS_AC[code], code] as const))(
+    '%s: %s는 번호가 있고 무엇이·어떻게 고치나가 design.md 표 글자 그대로다',
+    (_ac, code) => {
+      expect(isErrorCode(code), code).toBe(true)
+      expect(ALL_CODES, code).toContain(code)
+      expect(errorInfo(code)).toEqual(CONTACTS[code])
+    },
+  )
+
+  it('AC-6506.2·AC-6505.9: 이 명세가 더하는 E-CONTACTS- 번호는 표의 여덟뿐이다', () => {
+    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-CONTACTS-')).sort()).toEqual(Object.keys(CONTACTS).sort())
+  })
+
+  it('AC-6505.4: 저장 실패는 적은 값이 그대로라고, 넣기 실패는 주소록이 그대로라고 알린다', () => {
+    expect(errorInfo('E-CONTACTS-SAVE-FAILED').fix).toContain('적은 값은 그대로')
+    expect(errorInfo('E-CONTACTS-IMPORT-FAILED').what).toContain('주소록은 그대로')
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
+  it('AC-6506.2: 여덟 번호가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    for (const code of Object.keys(CONTACTS)) expect(union).toContain(`'${code}'`)
   })
 })
