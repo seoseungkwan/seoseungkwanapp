@@ -108,7 +108,7 @@ export function MoreMenu({
         <div ref={panelRef} id={panelId} className={panelClass}>
           <p className="flex justify-between py-2 text-small text-muted">
             <span>{`다른 메뉴 ${OTHERS}개`}</span>
-            <span>{`준비 중 ${NOT_READY}개`}</span>
+            {NOT_READY > 0 && <span>{`준비 중 ${NOT_READY}개`}</span>}
           </p>
           <ul className={listClass}>
             {MORE_MENU.map((item) => (

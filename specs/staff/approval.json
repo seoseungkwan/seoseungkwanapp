@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "staff",
-  "approved_at": "2026-11-21T13:15:40Z",
+  "approved_at": "2026-11-21T22:41:01Z",
   "approved_via": "user-prompt",
   "session_id": "d6645c74-6bc0-4844-b534-4aaafe727366",
-  "spec_sha256": "3da1abe64c62c437b23e3a954e07f239f5579dd57c0c36751135e885bd5c53d6",
+  "spec_sha256": "2906424af7006e3f74d8f8877f152b0a9fa039f5d3b3c03e5f8960b187912452",
   "scope": [
     ".gitignore",
     ".vercelignore",
@@ -46,6 +46,7 @@
     "src/components/common/notReadyFeatures.ts",
     "src/components/dashboard/briefing/features.test.ts",
     "src/components/dashboard/briefing/features.ts",
+    "src/components/shell/MoreMenu.tsx",
     "src/components/shell/menu.ts",
     "src/components/shell/shell.test.tsx",
     "src/components/staff/StaffNav.test.tsx",

@@ -659,7 +659,7 @@ describe('MoreMenu', () => {
     expect(svg.innerHTML).toBe(iconInner('chev'))
   })
 
-  it('AC-2702.2·AC-5801.2·AC-7423.1: 열면 판 머리 "다른 메뉴 6개"·"준비 중 N개"(N = 판 안 ready=false 수), 목록(ul) 링크가 MORE_MENU 차례·MENU.path·44px이고 준비 중 항목만 링크 글자 안에 "준비 중" 칩이 있다(화면 읽기가 이름과 함께 읽는다)', async () => {
+  it('AC-2702.2·AC-5801.2·AC-7423.1·AC-7611.5: 열면 판 머리 "다른 메뉴 6개"·"준비 중 N개"(N = 판 안 ready=false 수, 0이면 "준비 중" 칸 없음), 목록(ul) 링크가 MORE_MENU 차례·MENU.path·44px이고 준비 중 항목만 링크 글자 안에 "준비 중" 칩이 있다(화면 읽기가 이름과 함께 읽는다)', async () => {
     const user = userEvent.setup()
     render(<TabBar />)
     await user.click(moreButton())
@@ -669,8 +669,16 @@ describe('MoreMenu', () => {
     expect(moreWrap().contains(p)).toBe(true)
     expect(strip().contains(p)).toBe(false)
     const head = p.firstElementChild as HTMLElement
-    expect(Array.from(head.children).map((s) => s.textContent)).toEqual([`다른 메뉴 ${MORE_PATHS.length}개`, `준비 중 ${NOT_READY_FEATURES.length}개`])
+    expect(Array.from(head.children).map((s) => s.textContent)).toEqual(
+      NOT_READY_FEATURES.length === 0
+        ? [`다른 메뉴 ${MORE_PATHS.length}개`]
+        : [`다른 메뉴 ${MORE_PATHS.length}개`, `준비 중 ${NOT_READY_FEATURES.length}개`],
+    )
     expect(head.textContent).toContain('다른 메뉴 6개')
+    if (NOT_READY_FEATURES.length === 0) {
+      expect(p.textContent).not.toContain('준비 중 0개')
+      expect(head.textContent).not.toContain('준비 중')
+    }
     const list = within(p).getByRole('list')
     expect(list.tagName).toBe('UL')
     expect(head.nextElementSibling).toBe(list)
