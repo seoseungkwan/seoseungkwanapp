@@ -33,10 +33,10 @@ const ALLOWED: SiteRequest[] = [
   { url: HIRA_LIST, method: 'GET', kind: 'page' },
   page(HIRA_VIEW),
   file(HIRA_FILE),
-  crtr('tabGbn=01&pageIndex=1'),
-  crtr('tabGbn=02&pageIndex=2'),
-  crtr('tabGbn=09&pageIndex=3'),
-  crtr('tabGbn=10&pageIndex=40'),
+  crtr('tabGbn=01&decIteTpCd=01&pageIndex=1'),
+  crtr('tabGbn=02&decIteTpCd=02&pageIndex=2'),
+  crtr('tabGbn=09&decIteTpCd=09&pageIndex=3'),
+  crtr('tabGbn=10&decIteTpCd=10&pageIndex=40'),
   page(CRTR_POPUP),
   page(MOHW_RSS),
 ]
@@ -133,9 +133,11 @@ describe('AC-7404.1 정해 둔 길만 부른다', () => {
     ['공지 목록을 POST로', { url: HIRA_LIST, method: 'POST', form: 'pageIndex=1', kind: 'page' }],
     ['GET에 몸통', { url: HIRA_LIST, form: 'pageIndex=1', kind: 'page' }],
     ['심사기준 목록에 몸통 없음', crtr(undefined)],
-    ['심사기준 목록에 없는 탭', crtr('tabGbn=03&pageIndex=1')],
-    ['심사기준 목록 몸통에 모르는 칸', crtr('tabGbn=01&pageIndex=1&searchWrd=x')],
-    ['심사기준 목록 몸통에 쪽 없음', crtr('tabGbn=01')],
+    ['심사기준 목록에 없는 탭', crtr('tabGbn=03&decIteTpCd=03&pageIndex=1')],
+    ['심사기준 목록 몸통에 모르는 칸', crtr('tabGbn=01&decIteTpCd=01&pageIndex=1&searchWrd=x')],
+    ['심사기준 목록 몸통에 쪽 없음', crtr('tabGbn=01&decIteTpCd=01')],
+    ['심사기준 목록 몸통에 decIteTpCd 없음(2026-11-22 전 모양)', crtr('tabGbn=01&pageIndex=1')],
+    ['심사기준 목록 두 탭 칸이 다름', crtr('tabGbn=01&decIteTpCd=02&pageIndex=1')],
     ['javascript:', page('javascript:alert(1)')],
     ['file:', page('file:///etc/passwd')],
     ['주소가 아닌 글', page('주소 아님')],
@@ -166,9 +168,9 @@ describe('AC-7404.2 보내는 모양', () => {
 
   it('AC-7404.2: 심사기준 목록은 정해 둔 몸통을 form 모양 POST로 보낸다', async () => {
     const { fn, seen } = fake()
-    await createFetchSite({ fetchImpl: fn })(crtr('tabGbn=09&pageIndex=3'))
+    await createFetchSite({ fetchImpl: fn })(crtr('tabGbn=09&decIteTpCd=09&pageIndex=3'))
     expect(seen[0].init.method).toBe('POST')
-    expect(seen[0].init.body).toBe('tabGbn=09&pageIndex=3')
+    expect(seen[0].init.body).toBe('tabGbn=09&decIteTpCd=09&pageIndex=3')
     expect(new Headers(seen[0].init.headers).get('content-type')).toMatch(/^application\/x-www-form-urlencoded\b/)
   })
 

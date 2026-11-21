@@ -5,7 +5,7 @@ import { cutText, decodeEntities, htmlToText } from '../text'
 
 // 심평원 보험인정기준(고시·행정해석·심사지침·공개사례 탭) 읽기(specs/notices REQ-7406, design 5절). 순수 함수만 둔다:
 // 사이트는 fetchSite가 부르고, 여기는 부를 모양(목록 POST 몸통)을 만들고 받은 HTML 글자에서 목록 줄·팝업 본문만 꺼낸다.
-// 목록은 POST로만 탭을 고른다(GET은 tabGbn을 무시하고 고시 탭을 준다, 2026-11-21 실측). 한 고시가 여러 줄로 오므로
+// 목록은 POST로만 탭을 고른다(GET은 tabGbn을 무시하고 고시 탭을 준다, 2026-11-21 실측. 2026-11-22 점검 뒤로는 POST도 decIteTpCd가 있어야 탭을 바꾼다). 한 고시가 여러 줄로 오므로
 // numberText에 관련근거를 앞세워 고시 번호로 묶게 한다(묶기는 noticeNo.ts). 못 읽는 줄은 버린다(0줄이면 모으기가 'shape')
 
 const ORIGIN = 'https://www.hira.or.kr'
@@ -22,10 +22,10 @@ const KIND: Readonly<Record<CrtrTab, NoticeKind>> = { '01': 'gosi', '02': 'inter
 const TITLE_MAX = 300
 const REF_MAX = 300
 
-/** 목록 n쪽 POST 몸통(쪽 번호는 1 이상 정수로 맞춘다) */
+/** 목록 n쪽 POST 몸통(두 탭 칸에 같은 탭, 쪽 번호는 1 이상 정수로 맞춘다) */
 export function crtrListBody(tab: CrtrTab, page: number): string {
   const n = Number.isFinite(page) ? Math.max(1, Math.trunc(page)) : 1
-  return `tabGbn=${tab}&pageIndex=${n}`
+  return `tabGbn=${tab}&decIteTpCd=${tab}&pageIndex=${n}`
 }
 
 /** 목록 n쪽 부르기(fetchSite에 그대로 넘긴다) */

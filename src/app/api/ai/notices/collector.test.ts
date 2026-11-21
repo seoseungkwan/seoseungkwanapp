@@ -72,7 +72,7 @@ const RULES: RuleBasisIndex = new Map<string, RuleHit[]>([
 const HIRA = 'https://www.hira.or.kr'
 const viewUrl = (key: number) => `${HIRA}/bbsDummy.do?pgmid=HIRAA020002000100&brdScnBltNo=4&brdBltNo=${key}`
 const fileUrl = (n: number) => `${HIRA}/bbs/bbsCDownLoad.do?apndNo=${n}&apndBrdBltNo=500&apndBrdTyNo=2&apndBltNo=1`
-const crtrPage = (tab: CrtrTab, page: number) => `${CRTR_LIST_URL}|tabGbn=${tab}&pageIndex=${page}`
+const crtrPage = (tab: CrtrTab, page: number) => `${CRTR_LIST_URL}|tabGbn=${tab}&decIteTpCd=${tab}&pageIndex=${page}`
 const popupUrl = (r: CrtrRow) => `${HIRA}/rc/insu/insuadtcrtr/InsuAdtCrtrPopup.do?mtgHmeDd=${r.d}&sno=${r.s}&mtgMtrRegSno=${r.m}`
 const rssLink = (no: number) => `https://www.mohw.go.kr/board.es?mid=a10409020000&bid=0026&list_no=${no}&act=view`
 
@@ -757,7 +757,7 @@ describe('AC-7414.3 새 글 확인', () => {
     }
     await runReport(w.deps)
     const lists = w.site.fetchSite.mock.calls.map(([req]) => req).filter((req) => req.url === CRTR_LIST_URL)
-    expect(lists.map((req) => [req.method, req.form])).toEqual(tabs.map((t) => ['POST', `tabGbn=${t}&pageIndex=1`]))
+    expect(lists.map((req) => [req.method, req.form])).toEqual(tabs.map((t) => ['POST', `tabGbn=${t}&decIteTpCd=${t}&pageIndex=1`]))
     const group = w.db.notices.find((n) => n.groupKey === 'gosi:2026-234')
     expect(group?.posts.map((p) => p.sourceKey)).toEqual(['20261112-1-0004', '20261112-1-0007'])
     expect(group?.body).toContain('가10 격리실 입원료 팝업 본문')

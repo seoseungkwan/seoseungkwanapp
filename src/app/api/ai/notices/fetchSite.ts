@@ -22,11 +22,12 @@ const fail = (kind: Fail): SiteResult => ({ ok: false, fail: kind })
 
 // 정해 둔 길(design 5절). 칸 이름은 정확히 이것만(빠짐·더함·두 번 없음)이고 값은 모양에 맞아야 한다
 type Fields = Readonly<Record<string, RegExp>>
-type Route = { host: string; path: string; method: 'GET' | 'POST'; query: Fields; form?: Fields }
+type Route = { host: string; path: string; method: 'GET' | 'POST'; query: Fields; form?: Fields; sameForm?: readonly [string, string] }
 const HIRA = 'www.hira.or.kr'
 const MOHW = 'www.mohw.go.kr'
 const NUM = /^\d{1,20}$/
 const NOTICE_BOARD = /^HIRAA020002000100$/
+const CRTR_TAB = /^(?:01|02|09|10)$/
 const ROUTES: readonly Route[] = [
   // 심평원 공지 목록 · 글
   { host: HIRA, path: '/bbsDummy.do', method: 'GET', query: { pgmid: NOTICE_BOARD, pageIndex: NUM } },
@@ -39,7 +40,9 @@ const ROUTES: readonly Route[] = [
     path: '/rc/insu/insuadtcrtr/InsuAdtCrtrList.do',
     method: 'POST',
     query: { pgmid: /^HIRAA030069000410$/ },
-    form: { tabGbn: /^(?:01|02|09|10)$/, pageIndex: NUM },
+    // 2026-11-22 심평원 점검 뒤로 탭은 decIteTpCd로 고른다(tabGbn만이면 고시 탭). 두 칸은 같은 탭이어야 한다
+    form: { tabGbn: CRTR_TAB, decIteTpCd: CRTR_TAB, pageIndex: NUM },
+    sameForm: ['tabGbn', 'decIteTpCd'],
   },
   { host: HIRA, path: '/rc/insu/insuadtcrtr/InsuAdtCrtrPopup.do', method: 'GET', query: { mtgHmeDd: NUM, sno: NUM, mtgMtrRegSno: NUM } },
   // 보건복지부 훈령/고시 RSS(robots가 board.es 쪽을 막아 RSS만 읽는다)
@@ -76,7 +79,8 @@ function targetOf(req: SiteRequest): Target | null {
   if (!route.form) return req.form === undefined ? { ...base, body: undefined } : null
   if (typeof req.form !== 'string') return null
   const form = new URLSearchParams(req.form)
-  return fieldsMatch(form, route.form) ? { ...base, body: form.toString() } : null
+  const same = route.sameForm === undefined || form.get(route.sameForm[0]) === form.get(route.sameForm[1])
+  return same && fieldsMatch(form, route.form) ? { ...base, body: form.toString() } : null
 }
 
 // host 줄: 한 host에 동시에 HOST_MAX_RUNNING개까지, 시작 사이 HOST_GAP_MS 이상. 온 차례대로 시작한다

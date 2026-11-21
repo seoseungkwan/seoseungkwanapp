@@ -5,7 +5,7 @@ import { createFetchSite } from '../fetchSite'
 import { CRTR_LIST_URL, CRTR_TABS, crtrListBody, crtrListRequest, parseHiraCrtrList, parseHiraCrtrPopup } from './hiraCrtr'
 
 // 심평원 보험인정기준(고시·행정해석·심사지침·공개사례 탭) 목록·팝업 읽기(specs/notices requirements REQ-7406, design 5절).
-// 견본은 2026-11-21 받은 쪽(목록은 POST tabGbn=탭&pageIndex=1)에서 표·본문 부분만 잘라 둔 것(fixtures/notices/hira-crtr-*)
+// 견본은 2026-11-21 받은 쪽(목록은 POST tabGbn=탭&pageIndex=1, 2026-11-22부터는 decIteTpCd=탭도)에서 표·본문 부분만 잘라 둔 것(fixtures/notices/hira-crtr-*)
 const fixture = (name: string) => readFileSync(new URL(`../../../../../../fixtures/notices/${name}`, import.meta.url), 'utf8')
 const LIST_01 = fixture('hira-crtr-list-01.html')
 const LIST_02 = fixture('hira-crtr-list-02.html')
@@ -150,7 +150,7 @@ describe('AC-7406.1 parseHiraCrtrList', () => {
     }
     expect(seen).toHaveLength(44)
     expect(seen.slice(0, 4)).toEqual(
-      CRTR_TABS.map((tab) => ({ url: CRTR_LIST_URL, method: 'POST', body: `tabGbn=${tab}&pageIndex=3` })),
+      CRTR_TABS.map((tab) => ({ url: CRTR_LIST_URL, method: 'POST', body: `tabGbn=${tab}&decIteTpCd=${tab}&pageIndex=3` })),
     )
     expect(seen.slice(4).map((s) => s.url)).toEqual(items.map((i) => i.url))
     expect(seen.slice(4).every((s) => s.method === 'GET' && s.body === undefined)).toBe(true)
@@ -198,25 +198,25 @@ describe('AC-7406.2 parseHiraCrtrPopup', () => {
 })
 
 describe('AC-7406.3 crtrListBody · 표 없는 쪽', () => {
-  it('AC-7406.3: 탭과 쪽 → tabGbn=<탭>&pageIndex=<쪽>', () => {
-    expect(crtrListBody('01', 1)).toBe('tabGbn=01&pageIndex=1')
-    expect(crtrListBody('02', 7)).toBe('tabGbn=02&pageIndex=7')
-    expect(crtrListBody('09', 25)).toBe('tabGbn=09&pageIndex=25')
-    expect(crtrListBody('10', 462)).toBe('tabGbn=10&pageIndex=462')
+  it('AC-7406.3: 탭과 쪽 → tabGbn=<탭>&decIteTpCd=<탭>&pageIndex=<쪽>', () => {
+    expect(crtrListBody('01', 1)).toBe('tabGbn=01&decIteTpCd=01&pageIndex=1')
+    expect(crtrListBody('02', 7)).toBe('tabGbn=02&decIteTpCd=02&pageIndex=7')
+    expect(crtrListBody('09', 25)).toBe('tabGbn=09&decIteTpCd=09&pageIndex=25')
+    expect(crtrListBody('10', 462)).toBe('tabGbn=10&decIteTpCd=10&pageIndex=462')
   })
 
   it('AC-7406.3: 쪽 번호는 1 이상 정수로 맞춘다(0·음수·소수·NaN)', () => {
-    expect(crtrListBody('01', 0)).toBe('tabGbn=01&pageIndex=1')
-    expect(crtrListBody('01', -3)).toBe('tabGbn=01&pageIndex=1')
-    expect(crtrListBody('01', 2.7)).toBe('tabGbn=01&pageIndex=2')
-    expect(crtrListBody('01', Number.NaN)).toBe('tabGbn=01&pageIndex=1')
-    expect(crtrListBody('01', Number.POSITIVE_INFINITY)).toBe('tabGbn=01&pageIndex=1')
+    expect(crtrListBody('01', 0)).toBe('tabGbn=01&decIteTpCd=01&pageIndex=1')
+    expect(crtrListBody('01', -3)).toBe('tabGbn=01&decIteTpCd=01&pageIndex=1')
+    expect(crtrListBody('01', 2.7)).toBe('tabGbn=01&decIteTpCd=01&pageIndex=2')
+    expect(crtrListBody('01', Number.NaN)).toBe('tabGbn=01&decIteTpCd=01&pageIndex=1')
+    expect(crtrListBody('01', Number.POSITIVE_INFINITY)).toBe('tabGbn=01&decIteTpCd=01&pageIndex=1')
   })
 
   it('AC-7406.3: 목록 부르기는 정해 둔 목록 주소에 POST · 몸통 crtrListBody · 글 쪽이다', () => {
     expect(CRTR_TABS).toEqual(['01', '02', '09', '10'])
     expect(CRTR_LIST_URL).toBe('https://www.hira.or.kr/rc/insu/insuadtcrtr/InsuAdtCrtrList.do?pgmid=HIRAA030069000410')
-    expect(crtrListRequest('09', 2)).toEqual({ url: CRTR_LIST_URL, method: 'POST', form: 'tabGbn=09&pageIndex=2', kind: 'page' })
+    expect(crtrListRequest('09', 2)).toEqual({ url: CRTR_LIST_URL, method: 'POST', form: 'tabGbn=09&decIteTpCd=09&pageIndex=2', kind: 'page' })
   })
 
   it('AC-7406.3: 표가 없는 쪽(견본 사본)·빈 글·HTML이 아닌 글은 빈 목록이다', () => {
