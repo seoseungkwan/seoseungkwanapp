@@ -1,6 +1,7 @@
 import 'server-only'
 import { isYmd } from '@/lib/analytics/dates'
 import type { Attachment, ListItem, PostDetail } from '@/types/notices'
+import { noticeNo } from '../noticeNo'
 import { cutText, decodeEntities, htmlToText } from '../text'
 
 // 심평원 공지 게시판 읽기(specs/notices REQ-7405, design 5절). 순수 함수만 둔다:
@@ -59,18 +60,6 @@ function divInner(html: string, cls: string): string | null {
 
 // ── 목록 ────────────────────────────────────────────────
 
-// 복지부 고시 번호가 제목에 있는지(design 7절 noticeNo와 같은 식). 다른 기관 고시는 번호가 겹쳐 보지 않는다
-const GOSI_NO = /(?:^|[^가-힣])(?:보건복지부\s*)?고시\s*제?\s*\d{4}\s*-\s*\d{1,4}\s*호/g
-const OTHER_AGENCY = /질병관리청|식품의약품안전처|식약처|국토교통부|고용노동부|행정안전부|교육부/
-
-function hasGosiNo(text: string): boolean {
-  for (const m of text.matchAll(GOSI_NO)) {
-    const at = m.index + m[0].indexOf('고시')
-    if (!OTHER_AGENCY.test(text.slice(Math.max(0, at - 15), at))) return true
-  }
-  return false
-}
-
 const NEW_MARK = /<(i|span|em)\b[^>]*icon-new[^>]*>[\s\S]*?<\/\1\s*>/gi
 const KEY = /[?&]brdBltNo=(\d{1,20})(?!\d)/
 const DATE = /^(\d{4})([-./])(\d{2})\2(\d{2})$/
@@ -106,7 +95,8 @@ function listRow(tr: string): ListItem | null {
     title,
     url: `${BOARD}&brdScnBltNo=4&brdBltNo=${link.key}`,
     postedOn,
-    kind: hasGosiNo(title) ? 'gosi' : 'notice',
+    // 복지부 고시 번호가 제목에 있으면 gosi(판정은 noticeNo 한 곳, design 7절). 다른 기관 고시는 번호가 겹쳐 보지 않는다
+    kind: noticeNo(title) !== null ? 'gosi' : 'notice',
     numberText: title,
     body: null,
   }

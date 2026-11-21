@@ -90,6 +90,23 @@ describe('AC-7405.1 parseHiraNoticeList', () => {
     expect(kinds).toEqual(['gosi', 'gosi', 'gosi', 'notice', 'notice', 'notice', 'notice'])
   })
 
+  // 통계청 고시 '한국표준질병·사인분류'가 심평원 공지에 자주 붙는다(design 7절, 2026-11-21 더함)
+  it('AC-7405.1: 통계청 고시 번호만 있는 제목은 복지부 고시가 아니어서 notice이고, 뒤에 복지부 고시가 있으면 gosi다', () => {
+    const titles = [
+      '통계청 고시 제2025-1호 「한국표준질병·사인분류」 개정 안내',
+      '「한국표준질병·사인분류」(통계청 고시 제2025-1호) 적용 안내',
+      '통계청 고시 제2025-1호 및 보건복지부 고시 제2026-218호 안내',
+    ]
+    const kinds = parseHiraNoticeList(table(...titles.map((t, n) => row({ title: t, href: href(String(n + 1)) })))).map((i) => i.kind)
+    expect(kinds).toEqual(['notice', 'notice', 'gosi'])
+  })
+
+  it('AC-7405.1: 고시 번호 판정은 noticeNo.ts 한 곳 것을 불러 쓴다(사본 식·기관 목록을 두지 않는다)', () => {
+    const source = readFileSync(new URL('./hiraNotice.ts', import.meta.url), 'utf8')
+    expect(source).toMatch(/^import \{ noticeNo \} from '\.\.\/noticeNo'$/m)
+    expect(source).not.toMatch(/OTHER_AGENCY|hasGosiNo|GOSI_NO|질병관리청/)
+  })
+
   it('AC-7405.1: 날짜는 YYYY-MM-DD로 맞추고, 같은 key 줄은 한 번만, 제목은 300자까지다', () => {
     const items = parseHiraNoticeList(
       table(

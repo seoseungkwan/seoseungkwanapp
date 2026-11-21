@@ -1,6 +1,7 @@
 import 'server-only'
 import { todayInKorea } from '@/lib/analytics/dates'
 import type { ListItem } from '@/types/notices'
+import { noticeNo } from '../noticeNo'
 import { cutText, decodeEntities, htmlToText } from '../text'
 
 // 보건복지부 훈령/고시 RSS 읽기(specs/notices REQ-7407, design 5절). 순수 함수만 둔다.
@@ -78,19 +79,6 @@ function koreaDateOf(pubDate: string): string | null {
   return todayInKorea(new Date(Date.UTC(year, month, day, hour, minute, second) - zoneMinutes(m[7]) * 60_000))
 }
 
-// 고시 번호가 있는지(종류 gosi). TASK-8 `noticeNo`와 같은 규칙(design 7절)이다 — 같은 Phase라 그 파일을 쓰지 못해 여기 둔다.
-// '고시' 앞 15자에 다른 기관 이름이 있으면 그 맞춤은 버리고 다음 것을 본다
-const GOSI_NO = /(?:^|[^가-힣])(?:보건복지부\s*)?고시\s*제?\s*(\d{4})\s*-\s*(\d{1,4})\s*호/g
-const OTHER_AGENCY = /질병관리청|식품의약품안전처|식약처|국토교통부|고용노동부|행정안전부|교육부/
-
-function hasGosiNo(text: string): boolean {
-  for (const m of text.matchAll(GOSI_NO)) {
-    const at = m.index + m[0].indexOf('고시')
-    if (!OTHER_AGENCY.test(text.slice(Math.max(0, at - 15), at))) return true
-  }
-  return false
-}
-
 // link → key(list_no). 복지부 https 주소이고 list_no가 숫자 하나일 때만
 function keyOf(link: string): string | null {
   if (link.length > URL_MAX || !LINK.test(link)) return null
@@ -130,7 +118,8 @@ export function parseMohwRss(text: string): ListItem[] {
       title,
       url: link,
       postedOn,
-      kind: hasGosiNo(numberText) ? 'gosi' : 'notice',
+      // 복지부 고시 번호가 있으면 gosi(판정은 noticeNo 한 곳, design 7절)
+      kind: noticeNo(numberText) !== null ? 'gosi' : 'notice',
       numberText,
       body,
     })

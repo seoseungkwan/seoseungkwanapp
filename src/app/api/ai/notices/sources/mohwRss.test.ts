@@ -175,6 +175,28 @@ describe('AC-7407.1 parseMohwRss — 한 줄씩', () => {
     ])
   })
 
+  // 통계청 고시 '한국표준질병·사인분류'(design 7절, 2026-11-21 더함)
+  it('AC-7407.1: 종류 — 통계청 고시 번호만 있으면 notice, 뒤에 복지부 고시 번호가 있으면 gosi다', () => {
+    const rows = parseMohwRss(
+      rss(
+        ok({ link: link('1'), title: '알림', description: '통계청 고시 제2025-1호 「한국표준질병·사인분류」' }),
+        ok({ link: link('2'), title: '「한국표준질병·사인분류」(통계청 고시 제2025-1호) 안내', description: '' }),
+        ok({ link: link('3'), title: '알림', description: '통계청 고시 제2025-1호 및 보건복지부 고시 제2026-218호' }),
+      ),
+    )
+    expect(rows.map((r) => [r.key, r.kind])).toEqual([
+      ['1', 'notice'],
+      ['2', 'notice'],
+      ['3', 'gosi'],
+    ])
+  })
+
+  it('AC-7407.1: 고시 번호 판정은 noticeNo.ts 한 곳 것을 불러 쓴다(사본 식·기관 목록을 두지 않는다)', () => {
+    const source = readFileSync(fileURLToPath(new URL('./mohwRss.ts', import.meta.url)), 'utf8')
+    expect(source).toMatch(/^import \{ noticeNo \} from '\.\.\/noticeNo'$/m)
+    expect(source).not.toMatch(/OTHER_AGENCY|hasGosiNo|GOSI_NO|질병관리청/)
+  })
+
   it('AC-7407.1: 설명이 비거나 없어도 본문은 빈 글자(null 아님) — 글 쪽(board.es)을 읽으러 가지 않는다', () => {
     const rows = parseMohwRss(rss(ok({ link: link('1'), description: '' }), ok({ link: link('2'), description: undefined })))
     expect(rows.map((r) => [r.key, r.body, r.numberText])).toEqual([
