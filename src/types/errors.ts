@@ -58,5 +58,8 @@ export type ErrorCode =
   | 'E-CLINIC-READ-FAILED' | 'E-CLINIC-SAVE-FAILED' | 'E-CLINIC-LOGO-FAILED'
   // 처음 질문 저장 실패(specs/clinic-profile AC-6614.8)
   | 'E-FIRST-RUN-SAVE-FAILED'
+  // 재고 탭(specs/inventory design.md 4절): 읽기 · 저장 · 이름 겹침 · 물품 있는 분류 · 세기 날짜 · 사진 · 명세서 줄 없음 · 엑셀 개인정보 모양 · 이름 칸 없음 · 엑셀 읽기
+  | 'E-INV-READ-FAILED' | 'E-INV-SAVE-FAILED' | 'E-INV-DUPLICATE' | 'E-INV-IN-USE' | 'E-INV-COUNT-DATE'
+  | 'E-INV-PHOTO' | 'E-INV-NO-LINES' | 'E-INV-PRIVATE' | 'E-INV-NO-NAME' | 'E-INV-EXCEL'
 
 export type ErrorInfo = { what: string; fix: string }
