@@ -9,6 +9,7 @@
   ?s=list(기본, 관련 글만) · all(전체) · detail(글 열기) · detail-mohw(본문만 요약한 글) · ask(AI에게 묻기) · ask-blocked(환자 정보 막음)
      · ask-answer(답) · ask-limit(오늘 다 씀) · weekly(주간 모음) · search-empty(찾기 결과 없음) · backfill(처음 채우는 중)
      · stopped(한 곳 못 가져옴) · dashboard(대시보드 새 칸·맨 위 경고)
+     · keywords(내 낱말 칸 열림) · keywords-empty(고른 낱말 없음, 추천 낱말만) — 2026-11-21 사용자 추가(승인 기다림)
   색·크기는 앱 토큰(src/app/globals.css :root)과 탭 줄(src/components/shell/TabBar.tsx) 그대로. 글 제목·번호·요약·숫자는 모두 지어낸 예시다. 환자 자료는 없다. 어디로도 보내지 않는다.
   화면 글자는 아래 T(앱 글자)에 모았다. 시안 표시(.mhead·.anno)는 앱 글자가 아니다.
 -->
@@ -90,6 +91,7 @@ main > * { min-width: 0; }
 .chip.p { background: var(--positive-soft); color: var(--positive); }
 .chip.w { background: var(--warning-soft); color: var(--warning); }
 .chip.ng { background: var(--negative-soft); color: var(--negative); }
+.chip.must { background: var(--accent-strong); color: #fff; font-weight: 600; }
 .panel { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); min-width: 0; }
 .muted { color: var(--muted); }
 .help { font-size: 12px; line-height: 18px; color: var(--muted); }
@@ -120,6 +122,7 @@ main > * { min-width: 0; }
 .seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
 .tog { height: 36px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--ink-2); background: var(--surface); white-space: nowrap; }
 .tog[aria-pressed="true"] { border-color: #F59E0B; background: #FFFBEB; color: #92400E; font-weight: 600; }
+.tog[aria-expanded="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
 .search { margin-left: auto; display: flex; gap: 8px; flex: 1 1 360px; max-width: 460px; min-width: 0; }
 .search .box { position: relative; flex: 1; min-width: 0; }
 .search .box svg { position: absolute; left: 12px; top: 14px; color: var(--muted); pointer-events: none; }
@@ -152,6 +155,37 @@ main > * { min-width: 0; }
 .prog .bar { flex: 1; max-width: 420px; height: 8px; border-radius: 4px; background: #fff; overflow: hidden; box-shadow: inset 0 0 0 1px #C7D7F8; }
 .prog .bar i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
 .prog span { font-size: 13px; font-weight: 600; color: var(--accent-strong); white-space: nowrap; }
+
+/* 내 낱말 칸 (2026-11-21 사용자 추가) */
+/* 고르기 첫 줄 안에서 줄을 바꿔 그 줄 바로 아래로 꽉 차게 펼친다 */
+.kw { flex: 1 1 100%; order: 10; margin-top: 4px; padding: 20px; display: grid; gap: 14px; }
+.kwh { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.kwh h2 { font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); display: inline-flex; align-items: center; gap: 6px; }
+.kwh h2 svg { color: var(--accent); }
+.kwh .btn { margin-left: auto; }
+.kwlede { font-size: 14px; color: var(--ink-2); }
+.kwgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 32px; }
+.kwcol { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.kwcol h3 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-size: 14px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.kwcol h3 .help { font-weight: 400; }
+.kwlist { display: flex; flex-wrap: wrap; gap: 6px 8px; }
+.kwlist li { display: inline-flex; align-items: center; gap: 2px; height: 32px; padding: 0 4px 0 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-strong); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.kwlist button { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; color: var(--accent-strong); }
+.kwlist button:hover { background: var(--surface); }
+.kwempty { padding: 12px 14px; border-radius: var(--r); background: var(--canvas); display: grid; gap: 2px; }
+.kwempty b { font-size: 14px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.kwempty p { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.kwadd { display: flex; gap: 8px; max-width: 440px; }
+.kwadd label { flex: 1; min-width: 0; }
+.kwadd .input { height: 36px; }
+.kwadd .input[aria-invalid="true"] { border-color: var(--negative); }
+.kwerr { font-size: 13px; line-height: 20px; color: var(--negative); font-weight: 500; }
+.kwrec { display: flex; flex-wrap: wrap; gap: 6px 8px; }
+.kwr { height: 32px; padding: 0 12px 0 8px; border: 1px solid var(--line-strong); border-radius: 999px; display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 500; color: var(--ink-2); background: var(--surface); white-space: nowrap; transition: background-color .15s; }
+.kwr:hover { background: var(--canvas); }
+.kwr svg { color: var(--accent); }
+.kwr[disabled] { opacity: .4; cursor: not-allowed; }
+.kw .note { margin-top: 0; }
 
 /* 목록 */
 .lhead { margin-top: 20px; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; padding-bottom: 8px; border-bottom: 1px solid var(--line-strong); }
@@ -519,7 +553,35 @@ const T = {
   dCardOpen: '고시·공지 열기',
   dCardEmpty: (t) => `새 관련 글이 없어요 · 오늘 ${t} 확인`,
   dCardMore: (n) => `그 밖에 ${n}건`,
+  // 내 낱말(꼭 볼 글) — 2026-11-21 사용자 추가
+  kwBtn: (n) => `내 낱말 ${n}개`,
+  kwBtnEmpty: '내 낱말 고르기',
+  mustChip: (words) => `꼭 볼 글 · ${words}`,
+  mustMore: (n) => ` 외 ${n}개`,
+  kwTitle: '내 낱말',
+  kwLede: '고른 낱말이 제목·본문·붙임 파일·AI 요약에 들어 있으면 ‘꼭 볼 글’로 표시해요. 꼭 볼 글은 관련 글만 보기에 늘 나오고, 탭 옆 숫자와 대시보드에도 들어가요.',
+  kwClose: '닫기',
+  kwMine: (n) => `고른 낱말 ${n}개`,
+  kwMax: '30개까지',
+  kwRemove: (w) => `${w} 빼기`,
+  kwEmptyTitle: '아직 고른 낱말이 없어요',
+  kwEmptyBody: '추천 낱말을 누르거나 직접 적어 더해 주세요.',
+  kwInputLabel: '더할 낱말',
+  kwPh: '예: 실손보험',
+  kwAdd: '더하기',
+  kwSpaceHelp: '띄어쓰기와 영문 대소문자는 가리지 않아요. ‘관절강내 주사’로 적어도 ‘관절강내주사’가 든 글을 찾아요. 낱말마다 20자까지예요.',
+  kwRec: '추천 낱말',
+  kwRecHelp: '눌러서 더해요',
+  kwRecAdd: (w) => `${w} 더하기`,
+  kwDup: '이미 고른 낱말이에요',
+  kwFull: '낱말은 30개까지 고를 수 있어요. 하나를 빼고 더해 주세요.',
+  kwPrivTitle: '환자 정보로 보이는 글자가 있어 저장하지 않았어요',
+  kwPrivBody: (kinds) => `${kinds}로 보이는 글자를 지우고 다시 눌러 주세요.`,
 }
+// 추천 낱말(정형외과 의원, 차례 그대로)
+const REC = ['도수치료', '체외충격파', '물리치료', '관절강내 주사', '신경차단술', '증식치료', 'MRI', '초음파', '골다공증', '비급여', '본인부담', '비대면 진료']
+const KW_MAX = 30
+const KW_LEN = 20
 
 /* ───────── 지어낸 예시 자료(실제 고시·공지가 아니다) ───────── */
 const N = [
@@ -540,6 +602,11 @@ const N = [
     title: '의원급 비대면 진료 청구 방법 변경 안내',
     rel: true, unread: false, star: false, files: ['붙임. 변경 안내문.pdf'],
     line: '비대면 진료를 청구할 때 넣는 표시 방법이 12월부터 바뀌어요.', text: '비대면 진료 청구' },
+  // AI는 '관련 아님'으로 봤지만 내 낱말(도수치료)이 들어 있어 관련 글만 보기에도 나오는 글
+  { id: 'kw1', d: '11월 19일 (목)', m: '11월', src: ['심평원 공지'], no: '',
+    title: '한방병원 추나요법·도수 치료 같은 날 청구 점검 결과 안내',
+    rel: false, unread: false, star: false, files: ['붙임. 점검 결과.pdf'],
+    line: '한방병원에서 추나요법과 도수치료를 같은 날 청구한 사례를 점검한 결과예요.', text: '한방병원 추나요법 도수치료 점검' },
   { id: 'c1', d: '11월 18일 (수)', m: '11월', src: ['심평원 심사기준'], no: '공개 심사사례',
     title: '체외충격파 치료 심사사례 공개 (어깨 석회성 건염 등 4건)',
     rel: true, unread: false, star: true, files: ['붙임. 심사사례 4건.pdf'],
@@ -623,6 +690,10 @@ const I = {
   file: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M4 1.8h5.2L12.5 5v9.2H4z"/><path d="M9 1.8V5.2h3.5"/></svg>',
   print: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M4.5 6V2h7v4M4.5 12H2.5V6.5h11V12h-2"/><path d="M4.5 9.5h7V14h-7z"/></svg>',
   spark: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5 9.3 6.7 14.5 8 9.3 9.3 8 14.5 6.7 9.3 1.5 8l5.2-1.3z"/></svg>',
+  tag: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M2 2.5h5.5l6.5 6.5-5 5-6.5-6.5z"/><circle cx="5.2" cy="5.7" r="1"/></svg>',
+  flag: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M3 1.5h1.6v13H3z"/><path d="M4.6 2h8.4l-2 3.2 2 3.3H4.6z"/></svg>',
+  plus: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 3v10M3 8h10"/></svg>',
+  x: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m4 4 8 8M12 4l-8 8"/></svg>',
 }
 
 /* ───────── 상태 ───────── */
@@ -631,6 +702,7 @@ const STATES = [
   ['list', '목록 · 관련 글만'], ['all', '목록 · 전체'], ['detail', '글 열기'], ['detail-mohw', '글 열기 · 본문만 요약'],
   ['ask', 'AI에게 묻기'], ['ask-blocked', '묻기 · 환자 정보 막음'], ['ask-answer', '묻기 · 답'], ['ask-limit', '묻기 · 오늘 다 씀'],
   ['weekly', '주간 모음'], ['search-empty', '찾기 · 없음'], ['backfill', '처음 채우는 중'], ['stopped', '한 곳 못 가져옴'], ['dashboard', '대시보드 새 칸'],
+  ['keywords', '내 낱말'], ['keywords-empty', '내 낱말 · 처음'],
 ]
 document.getElementById('switch').innerHTML = STATES.map(([k, t]) => `<a href="?s=${k}" aria-current="${k === S}">${t}</a>`).join('')
 
@@ -646,14 +718,28 @@ const V = {
   askLeft: S === 'ask-limit' ? 0 : 17,
   answer: S === 'ask-answer' ? { q: '어깨 관절 주사도 1년에 4번으로 줄어드나요?', a: '네. 이번 개정은 관절 부위를 나누지 않아서 어깨에도 똑같이 적용돼요. 다만 ‘같은 관절’ 기준이라 무릎과 어깨는 따로 세요. 근거는 붙임1 고시 전문 2쪽 ‘나. 인정 횟수’예요.' } : null,
   blocked: S === 'ask-blocked' ? ['tel'] : null,
+  // 내 낱말: 처음 병원은 0개(keywords-empty). 다른 상태는 이미 고른 4개(셋은 추천, 하나는 직접 적음)
+  words: S === 'keywords-empty' ? [] : ['도수치료', '체외충격파', '관절강내 주사', '실손보험'],
+  kwOpen: S === 'keywords' || S === 'keywords-empty',
+  kwText: '',
+  kwErr: null,
 }
 if (S === 'ask-answer') V.askLeft = 16
 const byId = (id) => N.find((n) => n.id === id)
+
+// 낱말 맞춤: 빈칸·탭·줄바꿈을 빼고 영문 대문자를 소문자로 바꾼 뒤, 칸(제목·본문·붙임 글자·요약)마다 들어 있는지 본다
+const norm = (s) => String(s).replace(/[ \t\n\r 　]/g, '').replace(/[A-Z]/g, (c) => c.toLowerCase())
+const cleanWord = (s) => String(s).replace(/[ \t\n\r 　]+/g, ' ').replace(/[\u0000-\u001f\u007f]/g, '').trim()
+function hits(n) {
+  const fields = [n.title, n.line, n.text, n.s1, n.s2, n.s3, n.ours].filter(Boolean).map(norm)
+  return V.words.filter((w) => fields.some((f) => f.includes(norm(w))))
+}
+const shown = (n) => n.rel || hits(n).length > 0
 const STOPPED = '보건복지부'
 if (S === 'stopped') { byId('n218').src = ['심평원 심사기준']; N.splice(N.findIndex((n) => n.id === 'u1'), 1) }
 if (V.open) byId(V.open).unread = false
 
-function badgeCount() { return N.filter((n) => n.rel && n.unread).length }
+function badgeCount() { return N.filter((n) => shown(n) && n.unread).length }
 
 function renderTabs() {
   const here = S === 'dashboard' ? '대시보드' : '고시·공지'
@@ -693,10 +779,12 @@ function filters(stopped) {
         <button data-act="rel" aria-pressed="${V.rel}">${T.segRel}</button><button data-act="all" aria-pressed="${!V.rel}">${T.segAll}</button>
       </div>
       <button class="tog" data-act="staronly" aria-pressed="${V.starOnly}">${I.star(V.starOnly)}${T.starOnly}</button>
+      <button class="tog" data-act="kw" aria-expanded="${V.kwOpen}" aria-controls="kwpanel">${I.tag}${V.words.length ? T.kwBtn(V.words.length) : T.kwBtnEmpty}</button>
       <form class="search" role="search" data-act="search">
         <label class="box"><span class="sr">${T.searchLabel}</span>${I.search}<input class="input" name="q" value="${esc(V.q)}" placeholder="${T.searchPh}"></label>
         <button class="btn" type="submit">${T.searchBtn}</button>
       </form>
+      ${V.kwOpen ? kwPanel() : ''}
     </div>
     <div class="srcs" role="group" aria-label="${T.srcLabel}"><span class="flab">${T.srcLabel}</span>
       ${T.sources.map((s) => `<button class="src" data-act="src" data-src="${s}" aria-pressed="${!V.srcOff.has(s)}">${I.check}${s}</button>`).join('')}
@@ -705,8 +793,16 @@ function filters(stopped) {
   </div>`
 }
 
+// 꼭 볼 글 칩: 목록 줄은 낱말 2개까지 + ' 외 n개', 글 화면은 모두
+function mustChip(n, max) {
+  const w = hits(n)
+  if (!w.length) return ''
+  const words = w.slice(0, max).join('·') + (w.length > max ? T.mustMore(w.length - max) : '')
+  return `<span class="chip must">${I.flag}${T.mustChip(words)}</span>`
+}
+
 function chips(n) {
-  const c = []
+  const c = [mustChip(n, 2)]
   if (n.rel === null) c.push(`<span class="chip n">${T.chipWait}</span>`)
   if (n.rel) c.push(`<span class="chip a">${T.chipRel}</span>`)
   if (n.rules && !n.ruleDone) c.push(`<span class="chip w">${T.chipRule}</span>`)
@@ -737,7 +833,7 @@ function matches(n, q) {
 }
 
 function listBody(extraOld) {
-  let rows = N.filter((n) => (V.rel ? n.rel : true))
+  let rows = N.filter((n) => (V.rel ? shown(n) : true))
   if (extraOld) rows = rows.concat(OLD)
   rows = rows.filter((n) => n.src.some((s) => !V.srcOff.has(s)))
   if (V.starOnly) rows = rows.filter((n) => n.star)
@@ -774,6 +870,51 @@ function listPage() {
       <div class="prog"><span class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="1240" aria-valuenow="530" aria-label="${T.backfillProg('1,240', 530)}"><i style="width:43%"></i></span><span>${T.backfillProg('1,240', 530)} (43%)</span></div>
       <p style="margin-top:6px">${T.backfillBody}</p></div></div>`
   return pageHead('list') + filters(stopped) + notes + listBody(backfill)
+}
+
+// 내 낱말 칸: 고른 낱말(빼기) · 직접 적어 더하기 · 추천 낱말(아직 안 고른 것만, 눌러 더하기)
+function kwPanel() {
+  const n = V.words.length
+  const full = n >= KW_MAX
+  const chosen = new Set(V.words.map(norm))
+  const rec = REC.filter((w) => !chosen.has(norm(w)))
+  const mine = n
+    ? `<ul class="kwlist">${V.words.map((w) => `<li>${esc(w)}<button type="button" data-act="kwrm" data-w="${esc(w)}" aria-label="${esc(T.kwRemove(w))}">${I.x}</button></li>`).join('')}</ul>`
+    : `<div class="kwempty" role="status"><b>${T.kwEmptyTitle}</b><p>${T.kwEmptyBody}</p></div>`
+  let err = ''
+  if (full) err = `<div class="note info" role="status">${I.info}<div class="grow"><p>${T.kwFull}</p></div></div>`
+  else if (V.kwErr === 'dup') err = `<p class="kwerr" id="kwerr" role="alert">${T.kwDup}</p>`
+  else if (V.kwErr && V.kwErr.private) err = `<div class="note ng" id="kwerr" role="alert">${I.stop}<div class="grow"><b>${T.kwPrivTitle}</b><p>${T.kwPrivBody(V.kwErr.private.map((k) => T.piiKinds[k]).join('·'))}</p></div></div>`
+  const bad = V.kwErr ? 'aria-invalid="true" aria-describedby="kwerr"' : ''
+  return `<section class="panel kw" id="kwpanel" aria-labelledby="kwh">
+    <div class="kwh"><h2 id="kwh">${I.tag}${T.kwTitle}</h2><button class="btn ghost sm" data-act="kwclose">${T.kwClose}</button></div>
+    <p class="kwlede">${T.kwLede}</p>
+    <div class="kwgrid">
+      <div class="kwcol">
+        <h3>${T.kwMine(n)}<span class="help">${T.kwMax}</span></h3>
+        ${mine}
+        <form class="kwadd" data-act="kwadd"><label><span class="sr">${T.kwInputLabel}</span><input class="input" id="kwText" name="w" maxlength="${KW_LEN}" autocomplete="off" value="${esc(V.kwText)}" placeholder="${T.kwPh}" ${bad} ${full ? 'disabled' : ''}></label><button class="btn" type="submit" ${full ? 'disabled' : ''}>${I.plus}${T.kwAdd}</button></form>
+        ${err}
+        <p class="help">${T.kwSpaceHelp}</p>
+      </div>
+      ${rec.length ? `<div class="kwcol">
+        <h3>${T.kwRec}<span class="help">${T.kwRecHelp}</span></h3>
+        <div class="kwrec">${rec.map((w) => `<button type="button" class="kwr" data-act="kwrec" data-w="${esc(w)}" aria-label="${esc(T.kwRecAdd(w))}" ${full ? 'disabled' : ''}>${I.plus}${esc(w)}</button>`).join('')}</div>
+      </div>` : ''}
+    </div>
+  </section>`
+}
+
+// 더하기: 다듬고(이어진 빈칸 하나로·앞뒤 공백 뗌) → 빈 글자·환자 정보 모양·같은 낱말·30개를 본다
+function addWord(raw) {
+  const w = cleanWord(raw)
+  if (!w) return
+  if (V.words.length >= KW_MAX) { V.kwErr = 'full'; render(); return }
+  const k = piiKinds(w)
+  if (k.length) { V.kwErr = { private: k }; V.kwText = raw; render(); return }
+  if (V.words.some((x) => norm(x) === norm(w))) { V.kwErr = 'dup'; V.kwText = raw; render(); return }
+  V.words.push(w.slice(0, KW_LEN)); V.kwErr = null; V.kwText = ''
+  render()
 }
 
 function ruleBox(n) {
@@ -847,7 +988,7 @@ function detailPage() {
       <header class="dhead">
         <p class="dmeta"><span class="srcl">${n.src.join(' · ')}</span><span>${T.posted(n.d)}</span></p>
         <h1 class="dtitle">${n.title}</h1>
-        <p class="dsub">${n.no ? `<span>${n.no}</span>` : ''}${n.rel ? `<span class="chip a">${T.chipRel}</span>` : ''}</p>
+        <p class="dsub">${n.no ? `<span>${n.no}</span>` : ''}${mustChip(n, Infinity)}${n.rel ? `<span class="chip a">${T.chipRel}</span>` : ''}</p>
         <div class="dacts"><button class="btn sm star" data-act="dstar" aria-pressed="${n.star}">${I.star(n.star)}<span>${n.star ? T.starBtnOn : T.starBtnOff}</span></button></div>
       </header>
       ${n.rules ? ruleBox(n) : ''}
@@ -876,7 +1017,7 @@ function weeklyPage() {
 }
 
 function dashboardPage() {
-  const news = N.filter((n) => n.rel && n.unread)
+  const news = N.filter((n) => shown(n) && n.unread)
   const warnN = N.find((n) => n.rules && !n.ruleDone)
   return `<div class="dwarn" role="status">${I.warn}<span class="grow"><b>${T.dWarnTitle}</b> · ${T.dWarnBody(warnN.rules.length, warnN.no)}</span><a class="txt" href="?s=detail">${T.dWarnLink}${I.arrow}</a><span class="anno">시안: 대시보드 맨 위에 새로 생김</span></div>
     <p class="dline"><b>11월 21일 (토)</b></p>
@@ -927,6 +1068,10 @@ app.addEventListener('click', (e) => {
     if (V.srcOff.has(s)) V.srcOff.delete(s); else if (V.srcOff.size < T.sources.length - 1) V.srcOff.add(s)
     render(); return
   }
+  if (act === 'kw') { V.kwOpen = !V.kwOpen; V.kwErr = null; render(); return }
+  if (act === 'kwclose') { V.kwOpen = false; V.kwErr = null; render(); return }
+  if (act === 'kwrm') { V.words = V.words.filter((w) => w !== el.dataset.w); V.kwErr = null; render(); return }
+  if (act === 'kwrec') { addWord(el.dataset.w); return }
   if (act === 'star') { const n = byId(el.dataset.id); n.star = !n.star; render(); return }
   if (act === 'dstar') { const n = byId(V.open); n.star = !n.star; render(); return }
   if (act === 'ruledone') {
@@ -951,6 +1096,13 @@ app.addEventListener('click', (e) => {
   }
 })
 app.addEventListener('submit', (e) => {
+  const k = e.target.closest('form[data-act="kwadd"]')
+  if (k) {
+    e.preventDefault()
+    addWord(new FormData(k).get('w') || '')
+    const input = document.getElementById('kwText'); if (input && !input.disabled) input.focus()
+    return
+  }
   const f = e.target.closest('form[data-act="search"]')
   if (!f) return
   e.preventDefault()

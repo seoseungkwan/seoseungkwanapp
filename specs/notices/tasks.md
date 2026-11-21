@@ -17,8 +17,8 @@
 > **할 순서**: Phase 하나 = 단계 하나. 같은 Phase의 TASK는 병렬 작업자(ssk-parallel-workers)가 따로 한다. 단계마다 합친 뒤 다음 단계. 검토는 모든 단계가 끝난 뒤 ssk-finish-check와 독립 검토 한 번.
 > 1. Phase 1: TASK-1 (모두가 쓰는 타입·오류 번호)
 > 2. Phase 2: TASK-2~12 병렬 (TASK-1의 타입만 쓴다)
-> 3. Phase 3: TASK-13~16 병렬
-> 4. Phase 4: TASK-17~21 병렬 (화면은 시안 승인됨)
+> 3. Phase 3: TASK-13~16 · TASK-23·24 병렬
+> 4. Phase 4: TASK-17~21 · TASK-25 병렬 (화면은 시안 승인됨, 내 낱말은 2026-11-21 추가분 승인 뒤)
 > 5. Phase 5: TASK-22 — 탭을 켜는 일은 맨 끝이다. 그 전까지 사용자에게는 '준비 중'이 보인다.
 
 ## TASK-1: 공용 타입 · 오류 번호 · 글자 도구
@@ -97,7 +97,8 @@
 - Phase: 2
 - AC: AC-7412.1~AC-7412.3
 - REQ: REQ-7412
-- Files: src/app/api/ai/claude.ts, src/app/api/ai/claude.test.ts, src/app/api/ai/notices/batch.ts, src/app/api/ai/notices/batch.test.ts
+- Files: src/app/api/ai/claude.ts, src/app/api/ai/claude.test.ts, src/app/api/ai/notices/batch.ts, src/app/api/ai/notices/batch.test.ts, src/app/api/ai/generate.test.ts, src/app/api/ai/store.test.ts
+- 왜 두 시험 파일: `user`를 `string | BetaContentBlockParam[]`로 넓히면 가짜 부름 인자에 `user.slice(...)`를 쓰는 세 줄(generate.test.ts 435·552, store.test.ts 776)이 타입 검사에서 깨진다 → 줄마다 `user as string`만 고친다.
 - Tests: src/app/api/ai/claude.test.ts, src/app/api/ai/notices/batch.test.ts
 - TDD: required
 
@@ -143,24 +144,25 @@
 
 ## TASK-16: 화면 자료 읽고 쓰기
 - Phase: 3
-- AC: AC-7418.1~AC-7418.4
-- REQ: REQ-7418
-- Files: src/lib/storage/notices.ts, src/lib/storage/notices.test.ts
+- AC: AC-7418.1~AC-7418.4, AC-7424.7
+- REQ: REQ-7418, REQ-7424
+- Files: src/lib/storage/notices.ts, src/lib/storage/notices.test.ts, src/types/notices.ts
+- 내 낱말: `NoticeView.keywords`를 타입에 더하는 것도 이 TASK다(design 15절). 같은 Phase의 TASK-23(DB)·TASK-24(도구)를 import하지 않는다.
 - Tests: src/lib/storage/notices.test.ts
 - TDD: required
 
 ## TASK-17: 글 목록 화면
 - Phase: 4
-- AC: AC-7419.1~AC-7419.8
-- REQ: REQ-7419
+- AC: AC-7419.1~AC-7419.8, AC-7424.10
+- REQ: REQ-7419, REQ-7424
 - Files: src/components/notices/list/**
 - Tests: src/components/notices/list/NoticesScreen.test.tsx
 - TDD: required
 
 ## TASK-18: 글 화면 (규칙 상자 · 요약 · 묻기 · 메모 · 올라온 곳)
 - Phase: 4
-- AC: AC-7420.1~AC-7420.10
-- REQ: REQ-7420
+- AC: AC-7420.1~AC-7420.10, AC-7424.11
+- REQ: REQ-7420, REQ-7424
 - Files: src/components/notices/detail/**
 - Tests: src/components/notices/detail/NoticeDetail.test.tsx, src/components/notices/detail/AskBox.test.tsx
 - TDD: required
@@ -175,8 +177,8 @@
 
 ## TASK-20: 대시보드 맨 위 경고 · '고시·공지' 칸
 - Phase: 4
-- AC: AC-7422.1, AC-7422.2
-- REQ: REQ-7422
+- AC: AC-7422.1, AC-7422.2, AC-7424.12
+- REQ: REQ-7422, REQ-7424
 - Files: src/components/dashboard/notices/**, src/components/dashboard/summary/LiveDashboard.tsx, src/components/dashboard/summary/LiveDashboard.test.tsx, src/components/dashboard/live/BitDashboard.tsx, src/components/dashboard/live/BitDashboard.test.tsx
 - Tests: src/components/dashboard/notices/RuleAlert.test.tsx, src/components/dashboard/notices/NoticesCard.test.tsx
 - TDD: required
@@ -191,9 +193,35 @@
 
 ## TASK-22: 탭 켜기 · 탭 숫자 · 문서
 - Phase: 5
-- AC: AC-7423.1~AC-7423.3
-- REQ: REQ-7423
+- AC: AC-7423.1~AC-7423.3, AC-7424.13
+- REQ: REQ-7423, REQ-7424
 - Files: src/components/shell/menu.ts, src/components/shell/TabBar.tsx, src/components/shell/NoticeBadge.tsx, src/components/shell/NoticeBadge.test.tsx, src/components/shell/shell.test.tsx, src/components/common/notReadyFeatures.ts, src/components/common/notReadyFeatures.test.ts, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/app/(app)/notices/page.tsx, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx, src/app/titles.test.tsx, src/app/notFound.test.tsx, docs/ADR.md, docs/ARCHITECTURE.md, plan.md, CLAUDE.md
 - Tests: src/components/shell/shell.test.tsx, src/components/shell/NoticeBadge.test.tsx, src/components/common/notReadyFeatures.test.ts, src/components/dashboard/briefing/features.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/(app)/tabFrame.test.tsx
 - TDD: required
 - 문서: design 12절 ADR-034~036을 `docs/ADR.md`에 옮기고, `CLAUDE.md` 아키텍처 규칙에 예외 한 줄(ADR-034~036: 고시·공지 모으기 경로·공용 표·바깥 글과 질문을 Claude로)을 더한다. `docs/ARCHITECTURE.md`·`plan.md`에는 고시·공지 줄만 더한다.
+
+## TASK-23: 내 낱말 DB 표 · 맞춤 · 목록 함수 (2026-11-21 추가)
+- Phase: 3
+- AC: AC-7424.3~AC-7424.6
+- REQ: REQ-7424
+- Files: supabase/migrations/20261121000001_notice_keywords.sql, supabase/noticeKeywords.rls.test.ts
+- Tests: supabase/noticeKeywords.rls.test.ts
+- TDD: required
+- 메모: TASK-2의 `20261121000000_notices.sql`은 고치지 않는다. `notice_list`·`notice_unread_count`는 합쳐진 TASK-2 본문을 옮겨 두 곳만 더한다(design 15절). 시험은 auth·desk·000000·000001 차례로 돌린다.
+
+## TASK-24: 내 낱말 도구 · 오류 번호 (2026-11-21 추가)
+- Phase: 3
+- AC: AC-7424.1, AC-7424.2
+- REQ: REQ-7424
+- Files: src/lib/notices/keywords.ts, src/lib/notices/keywords.test.ts, src/lib/errors.ts, src/types/errors.ts, src/lib/errors.test.ts
+- Tests: src/lib/notices/keywords.test.ts, src/lib/errors.test.ts
+- TDD: required
+
+## TASK-25: 내 낱말 단추 · 칸 (2026-11-21 추가)
+- Phase: 4
+- AC: AC-7424.8, AC-7424.9
+- REQ: REQ-7424
+- Files: src/components/notices/keywords/**
+- Tests: src/components/notices/keywords/KeywordsControl.test.tsx
+- TDD: required
+- 메모: 목록(TASK-17)을 import하지 않는다. 목록에 끼우는 것은 TASK-22의 쪽 파일이다(AC-7424.13).

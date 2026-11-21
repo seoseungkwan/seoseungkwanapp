@@ -37,7 +37,11 @@
 | `src/components/dashboard/notices/**`·`src/components/shell/NoticeBadge.tsx` | 대시보드 경고·칸, 탭 숫자 |
 | `supabase/migrations/20261121000000_notices.sql`·`supabase/notices.rls.test.ts` | 표·권한·시험 |
 | `fixtures/notices/` | 사이트 견본(필요한 부분만 잘라 넣음) |
+| `supabase/migrations/20261121000001_notice_keywords.sql`·`supabase/noticeKeywords.rls.test.ts` | 내 낱말 표·맞춤·목록 함수 다시 만들기(15절) |
+| `src/lib/notices/keywords.ts` | 내 낱말 순수 도구(정규화·다듬기·검사·추천 12개·칩 글) |
+| `src/components/notices/keywords/**` | 내 낱말 단추·칸 `KeywordsControl` |
 - 서버 코드는 모두 `app/api/ai/notices/` 아래다(CLAUDE.md). 새 패키지 `unpdf`·`fflate`(버전 고정, 설치 때 2주 넘은 판)는 `attachText.ts`만 쓴다.
+- `src/app/api/ai/` 아래 새 `.ts` 파일(시험·`route.ts` 밖)은 첫 줄이 `import 'server-only'`다(`src/lib/ai/boundary.test.ts` AC-513.2가 본다).
 - 화면은 PC 배치 하나다(폰 전용 배치 없음, 2026-11-21 사용자 규칙). 폰에서도 같은 화면이 그대로 보인다.
 
 ## 3. 표 (`20261121000000_notices.sql`, 두 번 실행해도 됨, 먼저 모두 revoke)
@@ -199,7 +203,7 @@ export type AskReply = { ok: true; answer: string; left: number } | { ok: false;
 **트레이드오프**: 모으기 비밀번호가 새면 가짜 글을 쓸 수 있다 → 주소 제약(두 사이트만)·글자로만 그림·지우기 없음, 비밀번호를 바꾸면 끝난다. 사이트 모양이 바뀌면 그 출처가 멈추고 코드를 고쳐야 한다. 시각이 그 시간 안에서 흔들린다. Vercel은 Cron Jobs를 Schedules로 옮길 예정이라 그때 설정을 옮긴다.
 
 ### ADR-035: 모든 병원이 같이 보는 공용 표 (plan.md §0 '모든 표에 hospital_id' 예외)
-**결정**: 고시·공지 글·출처 글·출처 상태·주간 모음(`notices`·`notice_posts`·`notice_sources`·`notice_weeks`)은 병원과 상관없는 같은 자료라 `hospital_id` 없이 한 벌만 둔다(요약은 한 번만 만든다). 읽기는 승인된 원장(`my_hospital_id()`가 있음)과 모으기 계정만이고 데스크·승인 대기·anon은 못 본다. 실행 기록 `notice_runs`(토큰·비용·건수 숫자만)는 관리자·모으기 계정만 읽는다. 병원마다 다른 것(읽음·별표·메모·규칙 확인 `notice_marks`, 묻기 횟수 `notice_ask_days`·`notice_ask_holds`)은 `hospital_id` 표다. 메모는 병원이 손으로 적는 500자 글이다: 앱이 환자 정보 모양(주민번호·전화·차트번호·긴 숫자)을 막고 AI로 보내지 않는다(업무일지 메모 ADR-025와 같은 남는 위험 — 환자 이름은 못 막음).
+**결정**: 고시·공지 글·출처 글·출처 상태·주간 모음(`notices`·`notice_posts`·`notice_sources`·`notice_weeks`)은 병원과 상관없는 같은 자료라 `hospital_id` 없이 한 벌만 둔다(요약은 한 번만 만든다). 읽기는 승인된 원장(`my_hospital_id()`가 있음)과 모으기 계정만이고 데스크·승인 대기·anon은 못 본다. 실행 기록 `notice_runs`(토큰·비용·건수 숫자만)는 관리자·모으기 계정만 읽는다. 병원마다 다른 것(읽음·별표·메모·규칙 확인 `notice_marks`, 묻기 횟수 `notice_ask_days`·`notice_ask_holds`, 내 낱말 `notice_keywords`와 그 맞춤 `notice_keyword_hits`)은 `hospital_id` 표다. 맞춤 줄은 정의자 트리거만 쓴다(공용 글이 바뀌면 모든 병원 낱말로 다시 맞춤). 메모는 병원이 손으로 적는 500자 글이다: 앱이 환자 정보 모양(주민번호·전화·차트번호·긴 숫자)을 막고 AI로 보내지 않는다(업무일지 메모 ADR-025와 같은 남는 위험 — 환자 이름은 못 막음).
 **이유**: 같은 글을 병원마다 따로 요약하면 비용이 병원 수만큼 든다. 판단 기준(정형외과 의원)이 모두 같다 **(사용자)**.
 **트레이드오프**: 공용 줄은 모으기 계정만 쓴다. 지우는 길이 없어 잘못 들어간 글은 SQL 편집기로 지운다. 무료 DB 500MB 안에서 본문·붙임 글자를 각 20,000자로 묶는다.
 
@@ -215,7 +219,7 @@ export type AskReply = { ok: true; answer: string; left: number } | { ok: false;
 **트레이드오프**: 환자 이름은 걸러낼 수 없다 → 안내 글과 저장·로그 안 함. 9자리 약품코드 같은 긴 숫자도 막힌다. 바깥 글 속 지시(프롬프트 주입)는 모양 고정 답·글자 그림으로 피해를 줄인다. 비용은 처음 8~17만 원·매달 약 1.5만 원 어림이고 `notice_runs`로 잰다.
 
 ## 13. 운영 준비 (배포 전, 사용자와 함께)
-1. SQL `20261121000000_notices.sql` 붙여 넣기(ssk-supabase-sql).
+1. SQL `20261121000000_notices.sql` 붙여 넣기(ssk-supabase-sql), 이어서 `20261121000001_notice_keywords.sql`. 첫 파일을 나중에 다시 붙이면 둘째 파일도 다시 붙인다(둘째가 `notice_list`·`notice_unread_count`를 다시 만든다).
 2. 모으기 계정: Supabase Authentication에서 사용자 하나 만들기(메일 확인 끝, 16자 넘는 비밀번호) → SQL `insert into public.notice_collectors (user_id) select id from auth.users where email = '<모으기 메일>';`
 3. Vercel 환경 변수: `CRON_SECRET`(영문·숫자 32자 넘게), `NOTICES_COLLECTOR_EMAIL`, `NOTICES_COLLECTOR_PASSWORD`. `ANTHROPIC_API_KEY`는 있는 것. 값은 채팅에 붙이지 않는다.
 4. 배포 뒤 Vercel Cron Jobs 화면의 [Run]으로 한 번 돌려 본다.
@@ -227,3 +231,41 @@ export type AskReply = { ok: true; answer: string; left: number } | { ok: false;
 - 심사기준 공개사례·행정해석이 하루에 많이 올라오면 요약 수가 는다 → 같은 날·같은 관련근거 줄은 한 묶음(`crtr:` 열쇠).
 - 복지부 RSS 글이 짧아 요약이 얕다 → 같은 고시가 심평원 공지로 붙임과 함께 오면 다시 요약한다(묶음마다 3번까지).
 - 처음 채우기가 '하루쯤'보다 길어질 수 있다(사이트 속도). 띠는 끝날 때까지 남는다.
+- 낱말 하나를 넣을 때 모든 글 글자(본문·붙임 각 20,000자까지)를 한 번 정규화해 훑는다 — 글 수천 개면 1초 안팎이다. 해가 지나 느려지면 정규화한 글 칸을 저장해 두는 것을 따로 정한다(무료 DB 용량과 맞바꿈).
+
+## 15. 내 낱말 (꼭 볼 글 · 2026-11-21 추가, REQ-7424)
+병원마다 고른 낱말이 든 글을 '꼭 볼 글'로 표시한다. 맞춤은 DB가 미리 해 두고 화면은 맞은 낱말만 받는다(붙임 글자를 받지 않는다).
+
+**정규화**(`normKeyword` = SQL `notice_norm`, 같은 규칙): 빈칸·탭·`\n`·`\r`·U+00A0·U+3000을 빼고 A~Z만 a~z로 바꾼다. SQL은 `translate(s, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' || E' \t\n\r 　', 'abcdefghijklmnopqrstuvwxyz')`(immutable·`set search_path = ''`) — 정규식·`lower()`보다 빠르고 DB 글자 설정(collation)에 기대지 않는다.
+
+**표**(`20261121000001_notice_keywords.sql`, 000000 뒤, 두 번 실행해도 됨, 먼저 모두 revoke, `notice_marks`와 같은 내 병원 틀):
+- `notice_keywords`: `hospital_id` 기본 `my_hospital_id()` → hospitals cascade · `word`(`= btrim(word)`, 1~20자, `!~ '[[:cntrl:]]'`, `notice_norm(word) <> ''`) · `word_norm` generated `notice_norm(word)` stored · `created_at` · pk(`hospital_id`,`word_norm`). before insert 정의자 트리거가 병원마다 `pg_advisory_xact_lock`으로 줄 세운 뒤 이미 30개면 `check_violation`. 권한 select·delete와 insert(`word`)만. 정책 `hospital_id = (select my_hospital_id())`. 환자 정보 모양 검사는 화면(`checkKeyword`)이 한다.
+- `notice_keyword_hits`: pk(`hospital_id` → hospitals cascade, `notice_id` → notices cascade) · `words` text[](≤ 30, 넣은 차례). 권한 select만, 정책 같음. 쓰기는 아래 정의자 트리거뿐이다.
+
+**맞춤**(정의자 트리거, `set search_path = ''`). 맞음 = `notice_hit(n, w)`: `title`·`body`·`attach_text`·`summary->>'what'|'when'|'who'|'forUs'` 칸마다 `strpos(notice_norm(칸), w) > 0`인 칸이 있음(칸을 잇지 않는다).
+- `notice_keywords` after insert: 모든 `notices` 가운데 맞는 글에 `insert … on conflict (hospital_id, notice_id) do update set words = words || new.word`.
+- `notice_keywords` after delete: 그 병원 줄에서 `array_remove(words, old.word)`, 빈 줄은 지운다.
+- `notices` after insert 또는 update of `title`·`body`·`attach_text`·`summary`: 그 글의 줄을 지우고 모든 병원 낱말로 다시 넣는다(`array_agg(word order by created_at, word_norm)`). 모으기 계정의 문장 안에서 돌고, 모으기 계정은 낱말·맞춤 줄을 읽지 못한다.
+
+**목록 함수 다시 만들기**: 같은 파일에서 `notice_list`·`notice_unread_count`를 `create or replace`(인자·돌려주는 모양·호출자 그대로)로 다시 만든다. 본문은 합쳐진 TASK-2 글 그대로에 두 곳만 더한다 — 줄 `keywords` = `coalesce((select h.words from public.notice_keyword_hits h where h.notice_id = n.id and h.hospital_id = (select public.my_hospital_id())), '{}')`, `p_related` 조건과 `notice_unread_count`의 '관련' 조건에 `or exists(내 맞춤 줄)`. 그래서:
+- 관련 글만 보기(`listNotices`)·탭 숫자(`NoticeBadge` → `unreadCount`)·대시보드 칸(`unreadCount`·`listNotices`)이 화면 코드 고침 없이 꼭 볼 글을 넣는다. 화면은 `related`로 다시 거르지 않는다.
+- 찾기(`notice_search` id → `notice_list(p_ids)`)도 같은 조건을 탄다.
+
+**화면 쪽**
+- 타입: `NoticeView`에 `keywords: string[]`(TASK-16이 `src/types/notices.ts`에 더함).
+- 저장소(TASK-16): `readKeywords(): Promise<string[] | 'failed'>`(`created_at` 차례) · `addKeyword(word): Promise<boolean>`(insert `{ word }`) · `removeKeyword(word): Promise<boolean>`(delete `word = word`). 성공하면 `notices:changed`.
+- `src/lib/notices/keywords.ts`(순수, `askCheck.ts`의 `privateKinds`를 씀):
+```ts
+export const KEYWORD_MAX = 30
+export const KEYWORD_LEN = 20
+export const RECOMMENDED_KEYWORDS: readonly string[]   // 기본값 19의 12개
+export function normKeyword(s: string): string
+export function cleanKeyword(s: string): string
+export type KeywordCheck = { ok: string } | 'empty' | 'too-long' | 'full' | 'dup' | { private: PrivateKind[] }
+export function checkKeyword(s: string, words: string[]): KeywordCheck
+export function mustSeeText(words: string[], max: number): string   // '꼭 볼 글 · 도수치료·체외충격파 외 1개'
+```
+- `E-NOTICE-WORDS`(기본값 20)는 `lib/errors.ts`·`types/errors.ts`에 더한다. AC-7401.1 시험의 '번호 둘뿐'은 셋으로 고친다.
+- `components/notices/keywords/KeywordsControl.tsx`('use client'): 단추와 펼친 칸. 혼자 `readKeywords`(그릴 때 한 번 + `notices:changed`마다)·`addKeyword`·`removeKeyword`를 부른다. 펼친 칸은 `basis-full order-last`로 고르기 첫 줄(`flex-wrap`) 아래로 꽉 차게 내려온다(시안 그대로).
+- 끼우기: 같은 Phase에 따로 만드는 목록(TASK-17)과 낱말 부품(TASK-25)이 서로 import하지 않게, 쪽 파일 `(app)/notices/page.tsx`(TASK-22)가 `<NoticesScreen keywords={<KeywordsControl />} />`로 넣는다. `NoticesScreen`은 `keywords?: ReactNode`를 `별표만` 뒤에 그린다.
+- 칩: 진한 파랑(`bg-accent-strong text-white font-semibold`, 깃발 아이콘), 다른 칩 맨 앞. 목록 `mustSeeText(keywords, 2)`, 글 화면 `mustSeeText(keywords, Infinity)`. 대시보드 칸 줄은 칩 없음.
