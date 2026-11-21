@@ -172,7 +172,7 @@ export type WarrantyItem = { equipmentId: string; companyId: string; companyName
   - 파일 이름·내용은 어디에도 보내지 않고 저장하지 않는다(브라우저 메모리에서 미리 보기 동안만). 파일 이름 끝 `.xlsx` 검사는 부르는 화면(`readUpload`)이 한다.
 
 ## 양식 파일 (TASK-5)
-- 바탕화면 `C:\Users\tjtmd\Desktop\주소록-양식.xlsx`(사용자가 만든 것, 예시는 모두 가짜 업체)를 **바이트 그대로** `public/contacts/contacts-template.xlsx`로 복사한다. 앱은 새로 만들지 않는다(사용자 2026-11-21).
+- 바탕화면 `주소록-양식.xlsx`를 만든 것과 같은 스크립트로 **빈 양식을 새로 만들어** `public/contacts/contacts-template.xlsx`에 넣는다(시트·머리글·분류 목록·예시가 바탕화면 양식과 같음). 바탕화면 파일은 사용자가 실제 업체·비밀번호를 채우는 중일 수 있어 복사하지 않는다(2026-11-21). 앱은 브라우저에서 양식을 만들지 않는다.
 - 저장소에 엑셀 파일은 `.gitignore`·`.vercelignore`가 막는다(실제 EMR 파일 울타리). 엑셀 줄 뒤에 `!public/contacts/contacts-template.xlsx` 한 줄씩만 더한다(글롭 없음). 되살리기를 고정한 시험 둘을 맞춘다: `src/vercel-config.test.ts`(`.vercelignore` 줄 목록에 그 한 줄, 되살리기 허용 자리에 그 **파일 하나**를 더함 — 폴더가 아니다), `fixtures/make-fake-fixtures.test.ts`(`.gitignore` 되살리기 목록에 그 한 줄). 가짜 견본 폴더 `public/fake-sample/`에 넣지 않는 까닭: 그 폴더는 가짜 비트 파일 생성기 몫이고 시험이 그 안 파일을 `bit-sample.csv` 하나로 고정한다.
 - 시험 `src/lib/contacts/template.test.ts`(AC-6504.3): 파일을 `xlsx`로 읽어 시트 이름 차례 · 두 시트 첫 줄 = `CONTACT_HEADERS`·`EQUIPMENT_HEADERS` · 두 시트에 머리글 줄만 · `연락처` 시트 XML(`XLSX.CFB`로 `/xl/worksheets/…` 찾기)의 `<dataValidation … type="list"` 목록 글자가 `"거래처,수리·관리,기관·보험,기타"`(= `CONTACT_CATEGORIES` 글자를 쉼표로 이음)이고 범위가 A열 · `readContactsFile` → `'empty'`.
 - 만든 스크립트(scratchpad `make_contacts_template.py`, openpyxl)는 **저장소에 넣지 않는다**: 이 저장소에 openpyxl이 없고 시험도 없다. 양식을 고칠 때는 엑셀 파일을 직접 고쳐 다시 복사하고, 위 시험이 머리글이 코드와 같은지 지킨다.

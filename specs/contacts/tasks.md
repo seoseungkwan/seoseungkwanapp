@@ -60,7 +60,7 @@
 - REQ: REQ-6504, REQ-6506
 - Files: src/lib/contacts/workbook.ts, src/lib/contacts/workbook.test.ts, src/lib/contacts/template.test.ts, src/components/contacts/import/**, public/contacts/contacts-template.xlsx, .gitignore, .vercelignore, src/vercel-config.test.ts, fixtures/make-fake-fixtures.test.ts
 - Tests: src/lib/contacts/workbook.test.ts, src/lib/contacts/template.test.ts, src/components/contacts/import/, src/vercel-config.test.ts, fixtures/make-fake-fixtures.test.ts
-- TDD: required — design.md '엑셀 읽기'·'양식 파일'·'화면'의 `import/`, requirements.md '화면 글자' 엑셀 미리 보기·오류 문구 6~9·파일 큼. 시험 파일은 시험 안에서 `xlsx`로 만든다(가짜 업체만, 저장소에 엑셀을 더 넣지 않음). 시트는 이름 `연락처`·`장비`로만 찾는다(`쓰는 법`의 같은 머리글 예시 표를 읽지 않는지 시험). 양식 파일은 바탕화면 `C:\Users\tjtmd\Desktop\주소록-양식.xlsx`를 **바이트 그대로 복사**하고(앱이 만들지 않음, 스크립트는 저장소에 넣지 않음), `.gitignore`·`.vercelignore`는 엑셀 줄 뒤에 `!public/contacts/contacts-template.xlsx` 한 줄씩, 되살리기를 고정한 두 시험은 그 한 줄(허용 자리는 그 파일 하나)만큼 맞춘다. 미리 보기·창은 plan·결과를 props로 받고, 미리 보기까지 네트워크가 없음을 fetch·Supabase 흉내로 본다. 칸 값(비밀번호·계좌 포함)이 미리 보기에 안 보이는지 본다. [양식 받기]는 `download="주소록-양식.xlsx"` 링크 + 알림
+- TDD: required — design.md '엑셀 읽기'·'양식 파일'·'화면'의 `import/`, requirements.md '화면 글자' 엑셀 미리 보기·오류 문구 6~9·파일 큼. 시험 파일은 시험 안에서 `xlsx`로 만든다(가짜 업체만, 저장소에 엑셀을 더 넣지 않음). 시트는 이름 `연락처`·`장비`로만 찾는다(`쓰는 법`의 같은 머리글 예시 표를 읽지 않는지 시험). 양식 파일은 바탕화면 양식을 만든 스크립트로 빈 양식을 새로 만들어 넣고(바탕화면 파일은 복사하지 않음, 앱이 만들지 않음, 스크립트는 저장소에 넣지 않음), `.gitignore`·`.vercelignore`는 엑셀 줄 뒤에 `!public/contacts/contacts-template.xlsx` 한 줄씩, 되살리기를 고정한 두 시험은 그 한 줄(허용 자리는 그 파일 하나)만큼 맞춘다. 미리 보기·창은 plan·결과를 props로 받고, 미리 보기까지 네트워크가 없음을 fetch·Supabase 흉내로 본다. 칸 값(비밀번호·계좌 포함)이 미리 보기에 안 보이는지 본다. [양식 받기]는 `download="주소록-양식.xlsx"` 링크 + 알림
 
 ## TASK-6: 대시보드 무상 수리 알림
 - Phase: 3
@@ -82,6 +82,6 @@
 - Phase: 4
 - AC: AC-6505.1, AC-6506.3, AC-6507.1
 - REQ: REQ-6505, REQ-6506, REQ-6507
-- Files: src/components/contacts/**, src/components/dashboard/warranty/**
+- Files: src/components/contacts/**, src/components/dashboard/warranty/**, src/components/dashboard/summary/DashboardAnalysis.test.tsx
 - Tests: src/components/contacts/, src/components/dashboard/warranty/
 - TDD: exempt — 전체 검사(`npm test`·`npm run lint`·`npm run build`·tsc, ssk-finish-check — 이 PC에서 원래 나는 실패는 specs/clinic-calendar/known-failures.md와 견줌)와 화면 확인(ssk-screen-check: 로그인 없는 하네스, 1440·1024, 가짜 업체 자료, 시안 `shots/*-1440.png`·`list-1024.png`·`detail-1024.png`와 견줌. 폰 폭 사진은 찍지 않는다). 그다음 독립 검토 한 번(코드를 주고 결론은 주지 않음). 고칠 것이 나오면 Files의 화면 파일만 고치고, 그 밖이면 명세를 고친 뒤 한다
