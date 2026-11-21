@@ -2,7 +2,8 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { StaffStoreError } from '@/lib/storage/staff'
-import { OVERTIME, inRange, kit, openDialog, pressed, renderWeek, resetKit, select, shown, stepper } from './scheduleTestKit'
+import type { DayChange, Overtime } from '@/types/staff'
+import { CHANGES, OVERTIME, cell, inRange, kit, openDialog, pressed, renderWeek, resetKit, select, shown, stepper } from './scheduleTestKit'
 
 // 근무표 화면 — ④ 그날만 바꾸기 창 (staff AC-7613.4, 시안 schedule.html ④). 보기 자료·도구는 scheduleTestKit.tsx
 
@@ -162,6 +163,53 @@ describe('AC-7613.4: 그날만 바꾸기 창', () => {
     expect(await within(dialog).findByText('오류 번호 E-STAFF-SAVE-FAILED')).toBeTruthy()
     expect(screen.getByRole('dialog')).toBe(dialog)
     expect(shown(dialog, '연장')).toBe('2시간 30분')
+  })
+
+  it('AC-7613.4: 여러 번 쓰다 중간에 실패하면 그 기간을 다시 읽어 화면이 DB와 같아지고, 다시 [저장]하면 DB에 없는 것만 쓴다', async () => {
+    // DB 흉내: 박서연 11-19 바뀐 날(10–19) + 야간 30분
+    let changes: DayChange[] = [...CHANGES]
+    let overtime: Overtime[] = [...OVERTIME, { staffId: 'm3', day: '2026-11-19', kind: 'night', minutes: 30 }]
+    kit.store.listChanges.mockImplementation(async (range) => inRange(changes, range))
+    kit.store.listOvertime.mockImplementation(async (range) => inRange(overtime, range))
+    kit.store.resetDay.mockImplementation(async (staffId, day) => {
+      changes = changes.filter((c) => !(c.staffId === staffId && c.day === day))
+      overtime = overtime.filter((o) => !(o.staffId === staffId && o.day === day))
+    })
+    kit.store.saveOvertime.mockRejectedValueOnce(new StaffStoreError('E-STAFF-SAVE-FAILED'))
+    await renderWeek()
+    const dialog = await openDialog('박서연', '11월 19일 (목)')
+    fireEvent.change(select('근무 시작'), { target: { value: '540' } })
+    fireEvent.change(select('근무 끝'), { target: { value: '1080' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }))
+    expect(await within(dialog).findByText('오류 번호 E-STAFF-SAVE-FAILED')).toBeTruthy()
+    // 바뀐 날은 지워졌고 야간 30분은 못 넣었다 → 그 주를 다시 읽어 칸이 DB와 같다(바꾼 날 점 없음)
+    await waitFor(() => expect(kit.store.listOvertime).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(within(cell('박서연', '11월 19일 (목)')).queryByRole('img', { name: '기본과 다르게 바꾼 날' })).toBeNull())
+    expect(cell('박서연', '11월 19일 (목)').textContent).toBe('09–18')
+    // 창은 열린 채 적은 값 그대로
+    expect(screen.getByRole('dialog')).toBe(dialog)
+    expect(shown(dialog, '야간')).toBe('30분')
+    expect(select('근무 시작').value).toBe('540')
+    // 다시 저장하면 DB에 없는 야간 30분만 넣는다(바뀐 날은 이미 지워져 다시 지우지 않는다)
+    kit.store.saveOvertime.mockImplementation(async (o) => {
+      overtime = [...overtime, o]
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(kit.store.resetDay).toHaveBeenCalledTimes(1)
+    expect(kit.store.saveChange).not.toHaveBeenCalled()
+    expect(kit.store.saveOvertime).toHaveBeenCalledTimes(2)
+    expect(kit.store.saveOvertime).toHaveBeenLastCalledWith({ staffId: 'm3', day: '2026-11-19', kind: 'night', minutes: 30 })
+  })
+
+  it('AC-7613.4: [기본으로 되돌리기]가 실패해도 그 기간을 다시 읽고 E-STAFF-SAVE-FAILED가 보인다', async () => {
+    kit.store.resetDay.mockRejectedValueOnce(new StaffStoreError('E-STAFF-SAVE-FAILED'))
+    await renderWeek()
+    const dialog = await openDialog('박서연', '11월 19일 (목)')
+    fireEvent.click(within(dialog).getByRole('button', { name: '기본으로 되돌리기' }))
+    expect(await within(dialog).findByText('오류 번호 E-STAFF-SAVE-FAILED')).toBeTruthy()
+    await waitFor(() => expect(kit.store.listChanges).toHaveBeenCalledTimes(2))
+    expect(screen.getByRole('dialog')).toBe(dialog)
   })
 
   it('AC-7613.4: Esc를 누르면 저장하지 않고 닫힌다', async () => {

@@ -9,10 +9,11 @@ import { phoneText } from '@/lib/clinic/format'
 import { canPurge, keepUntil, tenure, upcoming } from '@/lib/staff/roster'
 import type { ClinicStaff } from '@/types/clinicProfile'
 import type { StaffMember } from '@/types/staff'
+import { Segment } from '../schedule/parts'
 import { weekdayName } from './rosterText'
 
 // 명단 첫 화면(staff AC-7612.1 · AC-7612.5, 시안 list.html ①·⑤): 앞으로 7일 알림 줄 · 재직/퇴사 고르기 · 단추 셋 · 표.
-// 넓은 표는 TableScroll 칸만 옆으로 밀린다(폰 전용 모양 없음). 줄을 누르면(이름 단추로도) 직원 카드다
+// 넓은 표는 TableScroll 칸만 옆으로 밀린다(폰 전용 모양 없음 — 재직/퇴사 고르기도 근무표와 같은 PC 틀 Segment). 줄을 누르면(이름 단추로도) 직원 카드다
 
 export type RosterTab = 'active' | 'left'
 
@@ -97,24 +98,15 @@ export function RosterList({
     <div className="flex min-w-0 flex-col gap-3">
       <Alerts members={members} today={today} />
       <div className="flex flex-wrap items-center gap-2">
-        <div role="group" aria-label="재직·퇴사" className={ds.segment.group}>
-          {(
-            [
-              ['active', `재직 ${active.length}`],
-              ['left', `퇴사 ${left.length}`],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              aria-pressed={tab === key}
-              className={`${ds.segment.button} ${tab === key ? ds.segment.on : ds.segment.off}`}
-              onClick={() => onTab(key)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <Segment
+          label="재직·퇴사"
+          options={[
+            ['active', `재직 ${active.length}`],
+            ['left', `퇴사 ${left.length}`],
+          ]}
+          value={tab}
+          onChange={onTab}
+        />
         <div className="ml-auto flex flex-wrap gap-2">
           <button type="button" className={ds.button.primary} onClick={onAdd}>
             ＋ 직원 더하기

@@ -328,6 +328,35 @@ describe('AC-7610.1 직원 저장 saveMember', () => {
   })
 })
 
+describe('AC-7610.6 주소·메모의 주민번호 모양 막기(saveMember)', () => {
+  it.each([
+    ['메모', { memo: RRN }],
+    ['메모(빈칸 나눔)', { memo: '주민 900101 1234567 확인' }],
+    ['메모(붙여 씀)', { memo: '9001011234567' }],
+    ['메모(전각)', { memo: '９００１０１－１２３４５６７' }],
+    ['주소', { address: '가짜시 가짜로 1 (850315-2345678)' }],
+  ])('AC-7610.6: %s에 주민번호 모양이 있으면 더하기·고치기 모두 아무것도 보내지 않고 E-STAFF-SAVE-FAILED', async (_why, patch) => {
+    for (const id of [undefined, M1]) {
+      const { client, calls } = fakeClient(okWith(MEMBER_ROW))
+      await caught(() => createStaffStore(client).saveMember({ ...MEMBER, ...patch }, id), 'E-STAFF-SAVE-FAILED')
+      expect(calls).toEqual([])
+    }
+  })
+
+  it.each([
+    ['전화 모양 메모', { memo: '보호자 010-1234-5678' }],
+    ['계좌 모양 메모', { memo: '월급 계좌 110-123-456789' }],
+    ['날짜·금액 메모', { memo: '1990-01-01 입사 · 3,200,000원' }],
+    ['계좌번호 칸은 검사하지 않는다', { accountNo: '900101-1234567' }],
+  ])('AC-7610.6: 반례 — %s는 막지 않고 그대로 보낸다', async (_why, patch) => {
+    const { client, calls } = fakeClient(okWith({ ...MEMBER_ROW }))
+    await createStaffStore(client).saveMember({ ...MEMBER, ...patch })
+    const body = bodyOf(calls, 'insert') as Record<string, unknown>
+    if ('memo' in patch) expect(body.memo).toBe(patch.memo)
+    if ('accountNo' in patch) expect(body.account_no).toBe(patch.accountNo)
+  })
+})
+
 describe('AC-7610.4 퇴사자 지우기 purgeMember', () => {
   const GONE = { ...MEMBER, leftOn: '2023-11-20' } // 퇴사 + 3년 = 2026-11-20 < 오늘
   const P1 = `${H}/doc/${M1}/00000000-0000-4000-8000-000000000f01.pdf`
@@ -355,6 +384,17 @@ describe('AC-7610.4 퇴사자 지우기 purgeMember', () => {
   it('AC-7610.4: 바구니 지우기가 실패하면 직원 줄은 지우지 않고 E-STAFF-FILE-FAILED', async () => {
     const { client, calls } = fakeClient(okWith([{ path: P1 }]), failure())
     await caught(() => createStaffStore(client).purgeMember(GONE, TODAY), 'E-STAFF-FILE-FAILED')
+    expect(named(calls, 'delete')).toEqual([])
+  })
+
+  it.each([
+    ['0개(권한에 막혀도 오류 없이 0개)', okWith([])],
+    ['서류 수보다 적게', okWith([{ name: P1 }])],
+    ['개수를 모름', OK],
+  ])('AC-7610.4: 바구니가 지운 파일이 %s면 실패(E-STAFF-FILE-FAILED)이고 직원 줄은 그대로다', async (_why, removed) => {
+    const { client, calls } = fakeClient(okWith([{ path: P1 }, { path: P2 }]), removed, okWith([{ id: M1 }]))
+    await caught(() => createStaffStore(client).purgeMember(GONE, TODAY), 'E-STAFF-FILE-FAILED')
+    expect(named(calls, 'remove')).toEqual([['remove', [P1, P2]]])
     expect(named(calls, 'delete')).toEqual([])
   })
 
@@ -479,6 +519,31 @@ describe('AC-7610.1 엑셀 넣기 importRoster', () => {
     const third = fakeClient()
     await caught(() => createStaffStore(third.client).importRoster([badWeek], TODAY), 'E-STAFF-SAVE-FAILED')
     expect(third.calls).toEqual([])
+  })
+
+  it('AC-7610.6: 새 줄 주소·메모에 주민번호 모양이 있으면 아무것도 보내지 않고 E-STAFF-SAVE-FAILED', async () => {
+    for (const patch of [{ memo: RRN }, { address: '가짜시 9001011234567' }]) {
+      const bad: RosterImportRow = { ...NEW_JIWOO, member: { ...NEW_JIWOO.member, ...patch } }
+      const { client, calls } = fakeClient(okWith([{ id: N2, name: '한지우', hired_on: '2026-02-02' }]))
+      await caught(() => createStaffStore(client).importRoster([NEW_YUNA, bad], TODAY), 'E-STAFF-SAVE-FAILED')
+      expect(calls).toEqual([])
+    }
+  })
+
+  it('AC-7610.6: 고침 줄 주소·메모에 주민번호 모양이 있으면 넣기·고치기를 하나도 보내지 않고 E-STAFF-SAVE-FAILED', async () => {
+    const bad: RosterImportRow = { action: 'update', member: { name: '김하늘', hiredOn: '2021-03-02', memo: `주민 ${RRN}` }, plan: null }
+    const { client, calls } = fakeClient(okWith([MEMBER_ROW]), okWith([{ id: N2, name: '한지우', hired_on: '2026-02-02' }]))
+    await caught(() => createStaffStore(client).importRoster([NEW_JIWOO, bad], TODAY), 'E-STAFF-SAVE-FAILED')
+    expect(named(calls, 'insert')).toEqual([])
+    expect(named(calls, 'update')).toEqual([])
+    expect(JSON.stringify(calls)).not.toContain('900101')
+  })
+
+  it('AC-7610.6: 반례 — 전화·계좌 모양 메모는 그대로 넣는다', async () => {
+    const memo = '보호자 010-1234-5678 · 계좌 110-123-456789'
+    const { client, calls } = fakeClient(okWith([{ id: N2, name: '한지우', hired_on: '2026-02-02' }]))
+    await createStaffStore(client).importRoster([{ ...NEW_JIWOO, member: { ...NEW_JIWOO.member, memo } }], TODAY)
+    expect(bodyOf(calls, 'insert')).toEqual([{ ...JIWOO_BODY, memo }])
   })
 
   it('AC-7610.1: 중간에 실패하면 E-STAFF-SAVE-FAILED(된 것은 남는다)', async () => {

@@ -61,6 +61,8 @@ type LeaveEditorProps = {
   preset: EditorPreset
   store: Pick<StaffStore, 'addLeaveGroup' | 'replaceLeaveGroup' | 'countAppts'>
   onSaved(): void
+  /** 고치기(지우고 다시 넣기)가 실패함 — 지우기만 됐을 수 있어 칸은 연 채 휴가를 다시 읽는다(AC-7614.3) */
+  onFailed(): void
   onClose(): void
 }
 
@@ -68,7 +70,7 @@ const rowLabel = 'pt-2 text-small font-semibold text-ink-2'
 const formRow = 'grid grid-cols-[4.5rem_minmax(0,1fr)] items-start gap-3'
 const dateInput = `${ds.input} w-auto max-w-50`
 
-export function LeaveEditor({ choices, leaves, changes, plans, settings, profile, today, preset, store, onSaved, onClose }: LeaveEditorProps) {
+export function LeaveEditor({ choices, leaves, changes, plans, settings, profile, today, preset, store, onSaved, onFailed, onClose }: LeaveEditorProps) {
   const ids = { person: useId(), memo: useId() }
   const group = preset.group
   const first = group?.[0] ?? null
@@ -134,6 +136,8 @@ export function LeaveEditor({ choices, leaves, changes, plans, settings, profile
     } catch (e) {
       setError(e instanceof StaffStoreError ? e.code : 'E-STAFF-SAVE-FAILED')
       setBusy(false)
+      // 넣기는 한 번에 들어가거나 안 들어가 다시 읽을 것이 없다. 고치기는 지운 뒤 넣기가 실패했을 수 있어 뒤 표·달력을 DB와 맞춘다
+      if (groupId !== null) onFailed()
     }
   }
 

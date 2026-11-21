@@ -6,6 +6,7 @@ import { ds } from '@/components/ui/classes'
 import { dayKind, fmtMinutes, isChangedDay, planOn, shiftOn, workingCount, type DayCtx } from '@/lib/staff/schedule'
 import type { DayChange, Leave, Overtime, OvertimeKind, StaffMember, WeekPlan } from '@/types/staff'
 import { cellTime, dateNum, dayTitle, halfWorked, restName, weekdayName, workDaysText } from './format'
+import { REST_HOVER, REST_SHADE } from './parts'
 
 // 주 보기 표 (staff AC-7613.1, 시안 schedule.html ①). 줄은 사람(명단 차례), 칸은 월~일.
 // 칸: 근무 '09–18' · '쉼' · 하루 휴가 칩 · 반차는 일한 반나절 + 칩 · '+연장 {시간}' · 기본과 다르게 바꾼 날은 주황 점. 공휴일·휴진일은 회색(바꾼 날이 없으면 빈 칸).
@@ -30,7 +31,8 @@ type WeekTableProps = {
   onName(member: StaffMember): void
 }
 
-const TH = 'h-10 whitespace-nowrap border-b border-l border-line bg-canvas px-2.5 text-left align-middle text-caption font-medium first:border-l-0'
+// 머리 바탕은 칸마다 준다: 보통 canvas, 공휴일·휴진일 REST_SHADE
+const TH = 'h-10 whitespace-nowrap border-b border-l border-line px-2.5 text-left align-middle text-caption font-medium first:border-l-0'
 const TD = 'h-px border-b border-l border-line p-0 align-top'
 const DOT = 'size-1.5 shrink-0 rounded-full bg-cal-orange'
 
@@ -74,7 +76,7 @@ export function WeekTable(props: WeekTableProps) {
         </colgroup>
         <thead>
           <tr>
-            <th scope="col" className={`${TH} text-muted`}>
+            <th scope="col" className={`${TH} bg-canvas text-muted`}>
               이름
             </th>
             {days.map((day, i) => {
@@ -85,7 +87,7 @@ export function WeekTable(props: WeekTableProps) {
                   key={day}
                   scope="col"
                   data-today={isToday ? 'true' : undefined}
-                  className={`${TH} ${isToday ? 'border-t-2 border-t-accent text-accent' : 'text-muted'}`}
+                  className={`${TH} ${rest !== null ? REST_SHADE : 'bg-canvas'} ${isToday ? 'border-t-2 border-t-accent text-accent' : 'text-muted'}`}
                 >
                   <span className={`text-body font-semibold tabular-nums ${isToday ? 'text-accent' : 'text-ink'}`}>{dateNum(day)}</span> {weekdayName(day)}
                   {isToday ? ' · 오늘' : ''}
@@ -114,7 +116,7 @@ export function WeekTable(props: WeekTableProps) {
                 {days.map((day, i) => {
                   const kind = kinds[i]!
                   const rest = kind.holiday || kind.closed
-                  const shade = rest ? 'bg-canvas' : ''
+                  const shade = rest ? REST_SHADE : ''
                   if (!employedOn(member, day)) return <td key={day} data-rest={rest ? 'true' : undefined} className={`${TD} ${shade}`} />
                   const view = cellView(member, day, props, rest)
                   const key = `${member.id}|${day}`
@@ -135,7 +137,7 @@ export function WeekTable(props: WeekTableProps) {
                         type="button"
                         aria-label={name}
                         className={`relative flex size-full min-h-14 cursor-pointer flex-col items-start gap-0.5 px-2.5 py-2 text-left ${
-                          rest ? 'hover:bg-line/40' : 'hover:bg-canvas'
+                          rest ? REST_HOVER : 'hover:bg-canvas'
                         } ${picked === key ? 'outline-2 -outline-offset-2 outline-accent' : ''} ${ds.focusRing}`}
                         onClick={() => onCell(member, day)}
                       >
@@ -195,7 +197,7 @@ export function WeekLegend() {
         <span className="font-semibold text-positive">+연장 2시간</span> 더 일한 시간
       </li>
       <li className={item}>
-        <span aria-hidden="true" className="size-3.5 shrink-0 rounded-control border border-line-strong bg-canvas" />
+        <span aria-hidden="true" className={`size-3.5 shrink-0 rounded-control border border-line-strong ${REST_SHADE}`} />
         공휴일·휴진일
       </li>
     </ul>

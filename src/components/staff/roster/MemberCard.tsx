@@ -39,11 +39,13 @@ function Panel({ title, aside, action, children }: { title: ReactNode; aside?: R
   )
 }
 
-function Stat({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+// sub = 숫자 아래 작은 줄('다음 해로 넘김'으로 넘어온 일수 '넘어옴 {n}일', AC-7612.2 — 휴가 표·한 사람 기록과 같다)
+function Stat({ label, value, strong, sub }: { label: string; value: string; strong?: boolean; sub?: string | null }) {
   return (
     <div className={`rounded-control border px-3 py-2 ${strong ? 'border-accent-soft bg-accent-soft' : 'border-line'}`}>
       <small className="block text-caption text-muted">{label}</small>
       <b className={`text-lead tabular-nums ${strong ? 'text-accent' : 'text-ink'}`}>{value}</b>일
+      {sub ? <small className="block text-caption tabular-nums text-muted">{sub}</small> : null}
     </div>
   )
 }
@@ -226,7 +228,11 @@ export function MemberCard({
             aside={<span className="text-caption text-muted">{period === null ? BASIS_TEXT[settings.leaveBasis] : `${period.from} ~ ${period.to} · ${BASIS_TEXT[settings.leaveBasis]}`}</span>}
           >
             <div className="grid grid-cols-3 gap-2">
-              <Stat label="생긴 연차" value={status === null ? '–' : `${status.granted + status.carried}`} />
+              <Stat
+                label="생긴 연차"
+                value={status === null ? '–' : `${status.granted}`}
+                sub={status !== null && status.carried !== 0 ? `넘어옴 ${status.carried}일` : null}
+              />
               <Stat label="쓴 연차" value={status === null ? '–' : `${status.used}`} />
               <Stat label="남은 연차" value={status === null ? '–' : `${status.left}`} strong />
             </div>

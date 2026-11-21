@@ -8,6 +8,7 @@ import { EMPLOYMENT_LABEL } from '@/components/staff/labels'
 import { ds } from '@/components/ui/classes'
 import { isYmd } from '@/lib/analytics/dates'
 import { phoneText } from '@/lib/clinic/format'
+import { hasNationalId } from '@/lib/staff/nationalId'
 import type { StaffStore } from '@/lib/storage/staff'
 import type { ClinicStaff } from '@/types/clinicProfile'
 import type { ErrorCode } from '@/types/errors'
@@ -103,6 +104,9 @@ function draftOf(member: StaffMember | null): Draft {
   }
 }
 
+// 주소·메모에 주민번호 모양이 있으면 저장하지 않는다(AC-7612.7). 모양은 lib/staff/nationalId.ts 한 곳(엑셀 읽기·저장 층과 같다)
+const NATIONAL_ID_PROBLEM = '주민번호는 저장하지 않아요. 지우고 다시 저장해 주세요.'
+
 const digitsOf = (phone: string) => phone.replace(/[\s.()-]/g, '')
 
 function check(draft: Draft, others: readonly StaffMember[], adding: boolean): Problems {
@@ -120,11 +124,13 @@ function check(draft: Draft, others: readonly StaffMember[], adding: boolean): P
   if (phone !== '' && !/^[0-9]{9,11}$/.test(phone)) problems.phone = '연락처는 숫자 9~11자리로 적어 주세요.'
   if (draft.birthday !== '' && !isYmd(draft.birthday)) problems.birthday = '날짜 모양이 틀렸어요. 2026-03-02처럼 적어 주세요.'
   if (lengthOf(draft.address.trim()) > ADDRESS_MAX) problems.address = `주소는 ${ADDRESS_MAX}자까지예요.`
+  else if (hasNationalId(draft.address)) problems.address = NATIONAL_ID_PROBLEM
   if (draft.bank === OTHER_BANK && lengthOf(draft.bankOther.trim()) > BANK_MAX) problems.bankOther = `은행 이름은 ${BANK_MAX}자까지예요.`
   const account = draft.accountNo.trim()
   if (account !== '' && !ACCOUNT.test(account)) problems.accountNo = '계좌번호는 숫자와 - 만, 6~30자로 적어 주세요.'
   if (adding && draft.usedBefore.trim() !== '' && halfStep(draft.usedBefore.trim(), 50) === null) problems.usedBefore = '0~50일, 0.5일 단위로 적어 주세요.'
   if (lengthOf(draft.memo.trim()) > MEMO_MAX) problems.memo = `메모는 ${MEMO_MAX}자까지예요.`
+  else if (hasNationalId(draft.memo)) problems.memo = NATIONAL_ID_PROBLEM
   return problems
 }
 

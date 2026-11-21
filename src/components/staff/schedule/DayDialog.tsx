@@ -16,7 +16,8 @@ import { Segment, ShiftFields, shiftProblem } from './parts'
 // 휴일 날(공휴일·휴진일)을 [일함]으로 바꾸면 휴일 칸을 AC-7605.4 값(근무 − 점심, 30분 버림)으로 먼저 채운다 — 휴일 칸을 손대기 전까지는 근무를 고칠 때마다 다시 채운다.
 // [저장]: 근무가 기본과 다르거나 메모가 있으면 바뀐 날로 저장하고, 기본과 같고 메모도 없으면 바뀐 날 줄을 지운다(resetDay는 더 일한 시간도 지우므로 남길 값은 다시 넣는다).
 // 더 일한 시간은 바뀐 종류만 저장한다(0이면 그 줄을 지운다). [기본으로 되돌리기]는 그날 바꾼 근무·더 일한 시간·메모를 모두 지운다.
-// 저장이 실패하면 창 안에 E-STAFF-SAVE-FAILED, 적은 값은 그대로다. Esc·✕·뒤 가림막은 저장하지 않고 닫는다
+// 저장이 실패하면 창 안에 E-STAFF-SAVE-FAILED, 적은 값은 그대로다. 여러 번 쓰다(지우고 다시 넣기) 중간에 실패할 수 있으니 실패하면 그 기간을 다시 읽어
+// 뒤 칸을 DB와 맞추고(onFailed), 다시 [저장]하면 다시 읽은 값(changes·overtime)과 견줘 DB에 없는 것만 쓴다. Esc·✕·뒤 가림막은 저장하지 않고 닫는다
 
 const KINDS: readonly OvertimeKind[] = ['extended', 'night', 'holiday']
 const KIND_HELP: Record<OvertimeKind, string> = {
@@ -47,9 +48,11 @@ type DayDialogProps = {
   onClose(): void
   /** 저장·되돌리기가 끝남(창을 닫고 그 기간을 다시 읽는다) */
   onSaved(): void
+  /** 저장·되돌리기가 실패함(창은 연 채 그 기간을 다시 읽는다 — 중간까지 쓴 것이 있을 수 있다, AC-7613.4) */
+  onFailed(): void
 }
 
-export function DayDialog({ member, day, plans, changes, overtime, ctx, store, onClose, onSaved }: DayDialogProps) {
+export function DayDialog({ member, day, plans, changes, overtime, ctx, store, onClose, onSaved, onFailed }: DayDialogProps) {
   const titleId = useId()
   const memoId = useId()
   const panel = useRef<HTMLDivElement>(null)
@@ -57,11 +60,9 @@ export function DayDialog({ member, day, plans, changes, overtime, ctx, store, o
   const change = changes.find((c) => c.staffId === member.id && c.day === day)
   const kind = dayKind(day, ctx)
   const rest = kind.holiday || kind.closed
-  const [initial] = useState<Minutes>(() => {
-    const minutes: Minutes = { extended: 0, night: 0, holiday: 0 }
-    for (const row of overtime) if (row.staffId === member.id && row.day === day) minutes[row.kind] += row.minutes
-    return minutes
-  })
+  // DB에 있는 그날 더 일한 시간: 받은 값에서 매번 센다(실패 뒤 다시 읽으면 새 값과 견준다)
+  const initial: Minutes = { extended: 0, night: 0, holiday: 0 }
+  for (const row of overtime) if (row.staffId === member.id && row.day === day) initial[row.kind] += row.minutes
   const [shift, setShift] = useState<DayShift>(() => (change !== undefined ? change.shift : base))
   const [minutes, setMinutes] = useState<Minutes>(initial)
   const [memo, setMemo] = useState(change?.memo ?? '')
@@ -122,6 +123,7 @@ export function DayDialog({ member, day, plans, changes, overtime, ctx, store, o
     } catch {
       setFailed(true)
       setBusy(false)
+      onFailed()
     }
   }
 

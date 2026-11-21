@@ -44,6 +44,39 @@ describe('AC-7613.2: 달 보기', () => {
     expect(screen.queryByRole('button', { name: /^12월 1일/ })).toBeNull()
   })
 
+  it("AC-7613.2: 공휴일 칸은 '공휴일'(일한 사람이 있으면 '공휴일 {n}명'), 휴진일이기도 하면 '휴진'이고 칸은 시안 회색(bg-line/60)이다", async () => {
+    // 12-25(금) 성탄절은 아무도 일하지 않고, 12-31(목)은 병원 휴진일로 넣었다. 뒤에서 12-25에 김하늘이 일하게 바꿔 본다
+    kit.base = { ...kit.base, clinic: { ...kit.base.clinic, profile: { ...kit.base.clinic.profile, closedDates: ['2026-12-31'] } } }
+    await openMonth()
+    fireEvent.click(screen.getByRole('button', { name: '다음 달 ▶' }))
+    await screen.findByRole('heading', { name: '12월 더 일한 시간' })
+    const day = (label: string) => screen.getByRole('button', { name: new RegExp(`^${esc(label)}( |$)`) })
+    expect(day('12월 25일 (금)').textContent).toBe('25공휴일')
+    expect(day('12월 31일 (목)').textContent).toBe('31휴진')
+    for (const label of ['12월 25일 (금)', '12월 31일 (목)', '12월 27일 (일)']) {
+      expect(day(label).getAttribute('data-rest'), label).toBe('true')
+      expect(day(label).className.split(/\s+/), label).toContain('bg-line/60')
+    }
+    expect(day('12월 24일 (목)').className.split(/\s+/)).not.toContain('bg-line/60')
+    cleanup()
+
+    resetKit()
+    kit.store.listChanges.mockImplementation(async () => [{ staffId: 'm1', day: '2026-12-25', shift: { start: 540, end: 780, lunchFrom: null, lunchTo: null }, memo: null }])
+    await openMonth()
+    fireEvent.click(screen.getByRole('button', { name: '다음 달 ▶' }))
+    await screen.findByRole('heading', { name: '12월 더 일한 시간' })
+    expect(day('12월 25일 (금)').textContent).toBe('25공휴일 1명')
+  })
+
+  it('AC-7613.2·AC-7611.4: 달 달력은 휴가 달력처럼 옆으로 밀리는 칸(TableScroll) 안에서 최소 폭을 지킨다', async () => {
+    await openMonth()
+    const grid = screen.getByRole('region', { name: '달 근무표' })
+    const box = grid.parentElement!.closest('[role="region"]')!
+    expect(box.getAttribute('aria-label')).toBe('달 근무표 칸')
+    expect(box.className.split(/\s+/)).toEqual(expect.arrayContaining(['min-w-0', 'max-w-full', 'overflow-x-auto']))
+    expect(grid.className.split(/\s+/)).toContain('min-w-190')
+  })
+
   it('AC-7613.2: 달력 아래 휴가 목록 "{d}일 ({요일}) {종류} {이름}"', async () => {
     await openMonth()
     const items = within(screen.getByRole('list', { name: '이달 휴가' })).getAllByRole('listitem').map((li) => li.textContent)

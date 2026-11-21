@@ -149,6 +149,21 @@ describe('AC-7614.1: 연차 현황 표', () => {
     ).toBeTruthy()
   })
 
+  it("AC-7614.1: 다음 해로 넘김이면 표 아래 글이 '막대 = 남은 ÷ (생긴 + 넘어옴).'이고 막대 길이도 그 비율이다", async () => {
+    const next = makeBase()
+    next.settings = { ...next.settings, leftover: 'carry' }
+    show(next)
+    await statusTable()
+    expect(
+      screen.getByText(
+        "'쓴'은 연차·반차만 셉니다. 경조사·병가·출산·육아휴직·무급(결근)은 연차에서 빼지 않습니다. 막대 = 남은 ÷ (생긴 + 넘어옴). 남은 비율이 25% 밑이면 막대가 주황입니다. 퇴사한 직원은 이 표에 없습니다.",
+      ),
+    ).toBeTruthy()
+    expect(screen.queryByText(/막대 = 남은 ÷ 생긴\./)).toBeNull()
+    // 이도윤 남은 38 ÷ (16 + 28) = 86%
+    expect(cellsOf(await rowOf('이도윤'))[5].querySelector<HTMLElement>('[data-meter] span')?.style.width).toBe('86%')
+  })
+
   it('AC-7614.1: 휴가는 직원들 입사일부터 2년 뒤까지 한 번에 읽고, 기간 셈에는 근무표 바뀐 날도 함께 읽는다', async () => {
     show()
     await statusTable()
@@ -500,6 +515,32 @@ describe('AC-7614.4: 한 사람 휴가 기록', () => {
     fireEvent.click(within(rec).getByRole('button', { name: '이도윤 님 휴가 넣기' }))
     dialog = screen.getByRole('dialog', { name: '휴가 넣기' })
     expect((within(dialog).getByRole('combobox', { name: '사람' }) as HTMLSelectElement).value).toBe('m-lee')
+  })
+
+  it('AC-7614.4: 이번 기간 밖 날까지 이어진 묶음의 [고치기]는 묶음 전체를 열고, 저장해도 기간 밖 날이 지워지지 않는다(달력 칩과 같다)', async () => {
+    // 이도윤 이번 연차 기간은 2027-07-16까지. 07-15(목)·07-16(금) + 07-20(화)(07-17 토·07-18 일·07-19 대체공휴일은 셀 날이 아님)
+    const group = ['2027-07-15', '2027-07-16', '2027-07-20'].map((day) => leave('m-lee', day, 'annual', { groupId: 'g-cross', memo: '여름' }))
+    const next = makeBase()
+    next.store.listLeaves.mockResolvedValue([...LEAVES, ...group])
+    show(next)
+    fireEvent.click(within(await statusTable()).getByRole('button', { name: '이도윤' }))
+    const rec = await screen.findByRole('region', { name: '이도윤 휴가 기록' })
+    const row = within(recordTable(rec))
+      .getAllByRole('row')
+      .find((r) => flat(r).includes('여름'))!
+    // 표 줄은 이번 기간에 든 날만 센다
+    expect(cellsOf(row).slice(0, 3).map(flat)).toEqual(['2027-07-15 (목) ~ 07-16 (금)', '연차', '2일'])
+    fireEvent.click(within(row).getByRole('button', { name: '고치기' }))
+    const dialog = within(screen.getByRole('dialog', { name: '휴가 고치기' }))
+    expect((dialog.getByLabelText('시작 날짜') as HTMLInputElement).value).toBe('2027-07-15')
+    expect((dialog.getByLabelText('끝 날짜') as HTMLInputElement).value).toBe('2027-07-20')
+    fireEvent.click(dialog.getByRole('button', { name: '저장' }))
+    await waitFor(() =>
+      expect(next.store.replaceLeaveGroup).toHaveBeenCalledWith(
+        'g-cross',
+        ['2027-07-15', '2027-07-16', '2027-07-20'].map((day) => ({ staffId: 'm-lee', day, kind: 'annual', part: null, paid: true, memo: '여름' })),
+      ),
+    )
   })
 
   it('AC-7614.4: ‹ 연차 현황 을 누르면 표로 돌아간다', async () => {
