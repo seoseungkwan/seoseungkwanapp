@@ -110,6 +110,8 @@ export function ItemsTool({ today, reloadKey, onChanged, alerts, onTemplate, onU
   const [showHidden, setShowHidden] = useState(false)
   const [panel, setPanel] = useState<Panel>(null)
   const [error, setError] = useState<ErrorCode | null>(null)
+  // 판이 닫힐 때 받은 알림 글(물품은 더했는데 처음 수량만 실패, AC-7506.2). 다른 판을 열거나 다른 저장을 하면 지운다
+  const [notice, setNotice] = useState<string | null>(null)
   const [busyItem, setBusyItem] = useState<string | null>(null)
   // 순서 바꾸기 모드: 숨기지 않은 물품 id 차례(null = 목록 모양)
   const [orderIds, setOrderIds] = useState<string[] | null>(null)
@@ -143,8 +145,13 @@ export function ItemsTool({ today, reloadKey, onChanged, alerts, onTemplate, onU
     void load()
     onChanged?.()
   }
-  function closePanel(saved: boolean) {
+  function openPanel(next: NonNullable<Panel>) {
+    setNotice(null)
+    setPanel(next)
+  }
+  function closePanel(saved: boolean, message?: string) {
     setPanel(null)
+    setNotice(message ?? null)
     if (saved) changed()
   }
   function pickFile() {
@@ -219,9 +226,9 @@ export function ItemsTool({ today, reloadKey, onChanged, alerts, onTemplate, onU
           categories={categories}
           onTemplate={() => onTemplate?.()}
           onUpload={pickFile}
-          onAdd={() => setPanel({ kind: 'add' })}
+          onAdd={() => openPanel({ kind: 'add' })}
           onBitPick={() => onBitPick?.()}
-          onCategories={() => setPanel({ kind: 'cats' })}
+          onCategories={() => openPanel({ kind: 'cats' })}
         />
         {fileBox}
         {panelView}
@@ -235,6 +242,7 @@ export function ItemsTool({ today, reloadKey, onChanged, alerts, onTemplate, onU
 
   function startOrder() {
     setError(null)
+    setNotice(null)
     setOrderIds(visible.map((item) => item.id))
   }
   function step(id: string, by: number) {
@@ -290,6 +298,7 @@ export function ItemsTool({ today, reloadKey, onChanged, alerts, onTemplate, onU
     if (busyItem !== null) return
     setBusyItem(item.id)
     setError(null)
+    setNotice(null)
     const result = await updateItem(item.id, { hidden: false })
     setBusyItem(null)
     if (result === 'ok') changed()
@@ -337,7 +346,7 @@ export function ItemsTool({ today, reloadKey, onChanged, alerts, onTemplate, onU
                   <Icon name="upload" />
                   엑셀 올리기
                 </button>
-                <button type="button" className={ds.button.secondary} onClick={() => setPanel({ kind: 'cats' })}>
+                <button type="button" className={ds.button.secondary} onClick={() => openPanel({ kind: 'cats' })}>
                   분류 고치기
                 </button>
                 <button type="button" className={ds.button.secondary} onClick={startOrder}>
@@ -346,7 +355,7 @@ export function ItemsTool({ today, reloadKey, onChanged, alerts, onTemplate, onU
                 <button type="button" className={ds.button.secondary} onClick={() => onBitPick?.()}>
                   비트 코드에서 고르기
                 </button>
-                <button type="button" className={ds.button.primary} onClick={() => setPanel({ kind: 'add' })}>
+                <button type="button" className={ds.button.primary} onClick={() => openPanel({ kind: 'add' })}>
                   물품 더하기
                 </button>
               </div>
@@ -357,6 +366,12 @@ export function ItemsTool({ today, reloadKey, onChanged, alerts, onTemplate, onU
           </div>
         )}
 
+        {!ordering && notice && (
+          <p role="status" className="flex items-center gap-2 text-small text-ink-2">
+            <Icon name="info" className="text-muted" />
+            {notice}
+          </p>
+        )}
         {error && <ErrorCard code={error} />}
 
         <div className={ds.table.wrap}>
@@ -468,7 +483,7 @@ export function ItemsTool({ today, reloadKey, onChanged, alerts, onTemplate, onU
                           type="button"
                           className={ds.button.ghostSmall}
                           aria-label={`${item.name} 고치기`}
-                          onClick={() => setPanel({ kind: 'edit', itemId: item.id })}
+                          onClick={() => openPanel({ kind: 'edit', itemId: item.id })}
                         >
                           고치기
                         </button>

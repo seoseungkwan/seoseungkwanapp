@@ -277,6 +277,51 @@ describe('AC-7506.2 [물품 더하기]·[고치기]는 오른쪽 판을 연다',
     expect(onChanged).toHaveBeenCalledTimes(1)
   })
 
+  const COUNT_FAILED = '물품은 더했어요. 처음 수량은 [세기]에서 적어 주세요.'
+  async function addWithCountFailed(user: ReturnType<typeof userEvent.setup>) {
+    vi.mocked(addItem).mockResolvedValue({ id: 'i-new', countFailed: true })
+    await user.click(button('물품 더하기'))
+    const dialog = screen.getByRole('dialog', { name: '물품 더하기' })
+    await user.type(within(dialog).getByRole('textbox', { name: '물품 이름 필수' }), '핫팩')
+    await user.type(within(dialog).getByRole('textbox', { name: '단위 필수' }), '개')
+    await user.type(within(dialog).getByRole('textbox', { name: '지금 수량 선택' }), '12')
+    await user.click(within(dialog).getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  }
+
+  it('AC-7506.2: 물품은 들어가고 처음 수량만 실패하면(countFailed) 판을 닫고 다시 읽고, 목록 위에 알림 줄(role="status")을 보인다', async () => {
+    const { user, onChanged } = await open()
+    await addWithCountFailed(user)
+    const notice = await screen.findByRole('status')
+    expect(notice.textContent).toBe(COUNT_FAILED)
+    hasClasses(notice, 'text-small text-ink-2')
+    expect(notice.compareDocumentPosition(screen.getByRole('table')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '물품 목록' }).compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(load).toHaveBeenCalledTimes(2)
+    expect(onChanged).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('AC-7506.2: 처음 수량 실패 알림은 다른 판을 열면 사라진다', async () => {
+    const { user } = await open()
+    await addWithCountFailed(user)
+    expect(await screen.findByText(COUNT_FAILED)).toBeTruthy()
+    await user.click(button('분류 고치기'))
+    expect(screen.queryByText(COUNT_FAILED)).toBeNull()
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '취소' }))
+    expect(screen.queryByText(COUNT_FAILED)).toBeNull()
+  })
+
+  it('AC-7506.2: 처음 수량 실패 알림은 다른 저장(다시 쓰기)을 하면 사라진다', async () => {
+    const { user } = await open()
+    await addWithCountFailed(user)
+    expect(await screen.findByText(COUNT_FAILED)).toBeTruthy()
+    await user.click(button('보기'))
+    await user.click(button('주사기 5cc 다시 쓰기'))
+    await waitFor(() => expect(update).toHaveBeenCalledWith('i-syr5', { hidden: false }))
+    expect(screen.queryByText(COUNT_FAILED)).toBeNull()
+  })
+
   it('AC-7506.3: [분류 고치기] → "분류 고치기" 판, 아무것도 안 바꾸고 [취소]면 다시 읽지 않는다', async () => {
     const { user, onChanged } = await open()
     await user.click(button('분류 고치기'))
