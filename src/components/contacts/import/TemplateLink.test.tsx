@@ -32,7 +32,8 @@ describe('AC-6506.1 TemplateLink', () => {
     expect(link.getAttribute('href')).toBe('/contacts/contacts-template.xlsx')
     expect(link.getAttribute('download')).toBe('주소록-양식.xlsx')
     expect(link.getAttribute('target')).toBeNull()
-    expect(link.className).toBe(look.button) // 보조 단추에서 폰 전용 줄을 뺀 묶음(AC-6505.1)
+    // 보조 단추에서 폰 전용 줄을 뺀 묶음(AC-6505.1) + 링크 밑줄 없음(시안 .btn text-decoration: none — 앱은 Preflight가 없어 a 기본 밑줄이 남는다)
+    expect(link.className).toBe(`${look.button} no-underline`)
     expect([TEMPLATE_HREF, TEMPLATE_FILE_NAME]).toEqual(['/contacts/contacts-template.xlsx', '주소록-양식.xlsx'])
   })
 

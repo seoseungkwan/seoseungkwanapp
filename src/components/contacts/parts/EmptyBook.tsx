@@ -17,7 +17,7 @@ export function EmptyBook({ actions }: { actions: ReactNode }) {
       <p className="mt-2 text-lead text-ink-2">
         거래처와 수리·관리 업체 연락처를 한곳에 모아 둬요. 업체가 많으면 엑셀 양식에 적어 한 번에 올리고, 몇 곳 안 되면 하나씩 더해요.
       </p>
-      <ol className="mt-5 border-t border-line">
+      <ol className="mt-5 list-none border-t border-line">
         {STEPS.map(([n, title, text]) => (
           <li key={n} className="grid grid-cols-[28px_minmax(0,1fr)] gap-2 border-b border-line py-3">
             <span className="font-semibold text-accent-strong tabular-nums">{n}</span>

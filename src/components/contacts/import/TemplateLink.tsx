@@ -13,7 +13,7 @@ export const TEMPLATE_DOWNLOADED = '주소록-양식.xlsx를 받았어요.'
 
 export function TemplateLink({ onDownloaded }: { onDownloaded: () => void }) {
   return (
-    <a href={TEMPLATE_HREF} download={TEMPLATE_FILE_NAME} onClick={() => onDownloaded()} className={look.button}>
+    <a href={TEMPLATE_HREF} download={TEMPLATE_FILE_NAME} onClick={() => onDownloaded()} className={`${look.button} no-underline`}>
       <DownloadIcon />
       양식 받기
     </a>

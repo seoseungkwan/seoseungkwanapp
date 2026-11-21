@@ -206,6 +206,25 @@ describe('AC-6505.1: 목록 화면', () => {
     const source = readFileSync(join(process.cwd(), 'src/components/contacts/ContactsScreen.tsx'), 'utf8')
     expect(source).not.toMatch(/\b(?:max-)?(?:sm|md|xl|2xl):/)
   })
+
+  it('AC-6505.1: 화면 뿌리가 본문 글자(text-body = 14px/22px, 시안 body)이고 업체 판·확인 창·짧은 알림도 그 안에 그려져 물려받는다', async () => {
+    const { container } = await open({ initialCompanyId: MEDICAL.id })
+    const root = container.firstElementChild as HTMLElement
+    expect(container.children).toHaveLength(1)
+    expect(root.tagName).toBe('DIV')
+    expect(root.className.split(/\s+/)).toContain('text-body')
+    expect(root.contains(listBox())).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: `${MEDICAL.name} 고치기` }))
+    expect(root.contains(panel())).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }))
+    fireEvent.click(screen.getByRole('button', { name: `${MEDICAL.name} 지우기` }))
+    expect(root.contains(screen.getByRole('alertdialog'))).toBe(true)
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '그만두기' }))
+    fireEvent.click(screen.getByRole('link', { name: '양식 받기' }))
+    const toast = document.querySelector('[role="status"][aria-live="polite"]')
+    expect(toast?.textContent).toBe('주소록-양식.xlsx를 받았어요.')
+    expect(root.contains(toast)).toBe(true)
+  })
 })
 
 describe('AC-6505.2: 업체 고르기·자세히', () => {

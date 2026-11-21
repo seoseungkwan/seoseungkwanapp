@@ -196,8 +196,10 @@ export function ContactsScreen({ initialCompanyId }: { initialCompanyId?: string
   const editing = panel?.mode === 'edit' && book ? (book.companies.find((c) => c.id === panel.companyId) ?? null) : null
   const panelOpen = book !== null && !preview && panel !== null && (panel.mode === 'new' || editing !== null)
 
+  // 뿌리는 본문 글자(text-body 14px/22px, 시안 body): 앱 틀은 글자 크기를 주지 않아(Preflight 없음) 크기를 따로 주지 않은 글이 브라우저 기본 16px이 된다.
+  // 업체 판·확인 창·짧은 알림도 포털 없이 이 안에 그려 같은 크기를 물려받는다
   return (
-    <>
+    <div className="text-body">
       {body}
       {panelOpen && (
         <CompanyPanel
@@ -214,6 +216,6 @@ export function ContactsScreen({ initialCompanyId }: { initialCompanyId?: string
         <FileProblemDialog problem={fileProblem.problem} fileName={fileProblem.fileName} onClose={() => setFileProblem(null)} onDownloaded={downloaded} onRead={onRead} />
       )}
       <ShortNotice notice={notice} />
-    </>
+    </div>
   )
 }

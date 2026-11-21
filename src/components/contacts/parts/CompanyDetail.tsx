@@ -129,7 +129,7 @@ function Detail({
     <section aria-label="담당자" className="min-w-0">
       <SectionHead title="담당자" count={people.length} action={<AddButton label="담당자 더하기" text="담당자" onClick={() => setOpen({ kind: 'person', id: null })} />} />
       {people.length > 0 && (
-        <ul>
+        <ul className="list-none">
           {people.map((person) => (
             <li key={person.id}>
               {isOpen('person', person.id) ? (
@@ -312,7 +312,7 @@ function CompanyInfo({ company }: { company: Company }) {
         let shownValue: ReactNode = value
         if (kind === 'link') {
           shownValue = (
-            <a href={homepageHref(value) ?? undefined} target="_blank" rel="noopener noreferrer" className={`inline-flex items-center gap-1 rounded-control text-accent-strong hover:underline ${look.focusRing}`}>
+            <a href={homepageHref(value) ?? undefined} target="_blank" rel="noopener noreferrer" className={`inline-flex items-center gap-1 rounded-control text-accent-strong no-underline hover:underline ${look.focusRing}`}>
               {value}
               <ExternalIcon />
             </a>
@@ -403,7 +403,7 @@ function EquipmentBlock({ item, today, repairs, onEdit, onAddRepair, onEditRepai
       </div>
       {adding}
       {repairs.length > 0 && (
-        <ul aria-label={`${item.name} 수리 기록`}>
+        <ul aria-label={`${item.name} 수리 기록`} className="list-none">
           {repairs.map((repair) => (
             <li key={repair.id}>
               {repairForm(repair) ?? (

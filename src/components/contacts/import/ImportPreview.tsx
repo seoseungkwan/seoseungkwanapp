@@ -2,13 +2,12 @@
 
 import { useState, type ReactNode } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
-import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { categoryLabel } from '@/lib/contacts/categories'
 import { isEmptyPayload, type ImportPlan, type RowProblem } from '@/lib/contacts/plan'
 import { look } from '../parts/look'
 import { changeLabels, newCompanyLine, planCounts } from './changeLabels'
-import { FileIcon, WarnIcon } from './icons'
+import { DisclosureIcon, FileIcon, WarnIcon } from './icons'
 import { problemPlace, problemSubject, problemText } from './problemText'
 
 // 엑셀 미리 보기(requirements.md '화면 글자' 엑셀 미리 보기, 시안 ?s=upload-preview, AC-6506.3). 주소록 자리에 한 화면으로 그린다.
@@ -35,7 +34,8 @@ export function ImportPreview({ plan, fileName, saving, failed, onCancel, onImpo
   const changed = plan.changes.filter((c) => c.status === 'changed')
   const same = plan.changes.filter((c) => c.status === 'same')
   const nothing = isEmptyPayload(plan.payload)
-  const summary = `새로 ${counts.added}곳을 더하고 ${counts.changed}곳을 고쳐요.${counts.skipped > 0 ? ` 넣지 않는 줄 ${counts.skipped}개는 빼요.` : ''}`
+  // 아래 줄은 '화면 글자' 그대로 늘 두 문장(넣지 않는 줄이 0이어도 뒤 문장을 둔다, 시안 .upbar)
+  const summary = `새로 ${counts.added}곳을 더하고 ${counts.changed}곳을 고쳐요. 넣지 않는 줄 ${counts.skipped}개는 빼요.`
 
   const actions = (
     <div className="flex flex-wrap gap-2">
@@ -63,7 +63,7 @@ export function ImportPreview({ plan, fileName, saving, failed, onCancel, onImpo
         <span className="text-muted">{`연락처 시트 ${plan.counts.contacts}줄 · 장비 시트 ${plan.counts.equipment}줄`}</span>
       </p>
 
-      <ul aria-label="미리 보기 숫자" className="mt-4 grid grid-cols-4 border-y border-b-line border-t-line-strong">
+      <ul aria-label="미리 보기 숫자" className="mt-4 grid list-none grid-cols-4 border-y border-b-line border-t-line-strong">
         <SumCell label="새로" value={counts.added} unit="곳" />
         <SumCell label="바뀜" value={counts.changed} unit="곳" />
         <SumCell label="그대로" value={counts.same} unit="곳" />
@@ -75,7 +75,7 @@ export function ImportPreview({ plan, fileName, saving, failed, onCancel, onImpo
 
       {fresh.length > 0 && (
         <Section title="새로 더할 업체" count={fresh.length}>
-          <ul>
+          <ul className="list-none">
             {fresh.map((c) => (
               <li key={c.name} className="grid grid-cols-[44px_minmax(140px,200px)_minmax(0,1fr)] items-baseline gap-x-3 gap-y-0.5 border-b border-line py-2.5">
                 <span>
@@ -91,7 +91,7 @@ export function ImportPreview({ plan, fileName, saving, failed, onCancel, onImpo
 
       {changed.length > 0 && (
         <Section title="바뀌는 업체" count={changed.length} note="바뀌는 칸만 보여 줘요">
-          <ul>
+          <ul className="list-none">
             {changed.map((c) => (
               <li key={c.name} className="grid grid-cols-[44px_minmax(140px,200px)_minmax(0,1fr)] items-baseline gap-x-3 gap-y-0.5 border-b border-line py-2.5">
                 <span>
@@ -117,7 +117,7 @@ export function ImportPreview({ plan, fileName, saving, failed, onCancel, onImpo
 
       {plan.problems.length > 0 && (
         <Section title="넣지 않는 줄" count={plan.problems.length} note="이 줄만 빼고 나머지는 넣을 수 있어요">
-          <ul>
+          <ul className="list-none">
             {plan.problems.map((p, i) => (
               <ProblemRow key={`${p.sheet}-${p.row}-${i}`} problem={p} />
             ))}
@@ -133,9 +133,9 @@ export function ImportPreview({ plan, fileName, saving, failed, onCancel, onImpo
                 type="button"
                 aria-expanded={showSame}
                 onClick={() => setShowSame((open) => !open)}
-                className={`flex w-full cursor-pointer items-center gap-1 border-b border-line py-2.5 text-left font-medium text-ink-2 ${ds.focusRing}`}
+                className={`flex w-full cursor-pointer items-center gap-1.5 border-b border-line py-2.5 text-left font-medium text-ink-2 ${ds.focusRing}`}
               >
-                <Icon name="chev" size={14} className={showSame ? 'shrink-0' : 'shrink-0 -rotate-90'} />
+                <DisclosureIcon className={showSame ? 'shrink-0 rotate-90' : 'shrink-0'} />
                 {`그대로인 업체 ${same.length}곳 보기`}
               </button>
               {showSame && <p className="border-b border-line py-2.5 text-small text-ink-2">{same.map((c) => c.name).join(' · ')}</p>}

@@ -23,9 +23,14 @@ type TextFieldProps = {
   inputRef?: Ref<HTMLInputElement>
   className?: string
   after?: ReactNode // 칸 안 오른쪽 단추([보기])
+  /** 브라우저·비밀번호 관리자가 저장하거나 채우지 않을 칸: 'secret' = 계좌·사이트 비밀번호, 'site-id' = 사이트 아이디(내 앱 로그인이 채워지지 않게) */
+  noAutofill?: 'secret' | 'site-id'
 }
 
-export function TextField({ id, label, value, onChange, required, placeholder, maxLength, type = 'text', inputMode, help, error, suffix, inputRef, className, after }: TextFieldProps) {
+// 비밀번호 관리자(1Password·LastPass·Bitwarden)가 이 칸을 건너뛰게 하는 표시. 크롬은 비밀번호 칸의 autocomplete="off"를 무시하므로 비밀 칸은 new-password로 둔다
+const IGNORE_PASSWORD_MANAGERS = { 'data-1p-ignore': 'true', 'data-lpignore': 'true', 'data-bwignore': 'true' } as const
+
+export function TextField({ id, label, value, onChange, required, placeholder, maxLength, type = 'text', inputMode, help, error, suffix, inputRef, className, after, noAutofill }: TextFieldProps) {
   const helpId = `${id}-help`
   const errorId = `${id}-error`
   const described = [help ? helpId : null, error ? errorId : null].filter(Boolean).join(' ') || undefined
@@ -40,7 +45,8 @@ export function TextField({ id, label, value, onChange, required, placeholder, m
       placeholder={placeholder}
       maxLength={maxLength}
       inputMode={inputMode}
-      autoComplete="off"
+      autoComplete={noAutofill === 'secret' ? 'new-password' : 'off'}
+      {...(noAutofill ? IGNORE_PASSWORD_MANAGERS : {})}
       aria-invalid={error ? true : undefined}
       aria-describedby={described}
       className={`${inputClass} ${inputMode === 'numeric' || inputMode === 'tel' ? 'tabular-nums' : ''}`}

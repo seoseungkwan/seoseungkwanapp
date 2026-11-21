@@ -42,7 +42,7 @@ export function PhoneNumber({ value, big = false }: { value: string; big?: boole
     const href = telHref(value)
     if (href === null) return <span className={base}>{shown}</span>
     return (
-      <a href={href} className={base}>
+      <a href={href} className={`${base} no-underline`}>
         {number}
       </a>
     )

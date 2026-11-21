@@ -102,6 +102,35 @@ describe('AC-6505.4: 업체 더하기 판 — 글·칸·도움', () => {
     fireEvent.click(show)
     expect(input('계좌').type).toBe('password')
   })
+
+  it('AC-6505.4: [가리기]는 [보기]와 같은 흰 작은 단추(글자만 바뀜)이고 눌림 표시는 aria-pressed뿐이다', () => {
+    draw({ company: MEDICAL })
+    const show = screen.getByRole('button', { name: '사이트 비밀번호 보기' })
+    const before = show.className
+    fireEvent.click(show)
+    expect(show.textContent).toBe('가리기')
+    expect(show.getAttribute('aria-pressed')).toBe('true')
+    expect(show.className).toBe(before)
+    expect(show.className.split(/\s+/)).toContain('bg-surface')
+  })
+
+  it('AC-6505.4: 비밀 칸(계좌·사이트 비밀번호)은 브라우저·비밀번호 관리자가 저장·자동 채움을 하지 않게 new-password + 관리자 무시 표시, 사이트 아이디도 내 로그인으로 채워지지 않게 off + 무시 표시 — [보기] 뒤에도 그대로', () => {
+    draw({ company: MEDICAL })
+    const ignored = (el: HTMLInputElement) => [el.getAttribute('data-1p-ignore'), el.getAttribute('data-lpignore'), el.getAttribute('data-bwignore')]
+    for (const label of ['계좌', '사이트 비밀번호']) {
+      expect(input(label).getAttribute('autocomplete'), label).toBe('new-password')
+      expect(ignored(input(label)), label).toEqual(['true', 'true', 'true'])
+    }
+    expect(input('사이트 아이디').getAttribute('autocomplete')).toBe('off')
+    expect(ignored(input('사이트 아이디'))).toEqual(['true', 'true', 'true'])
+    fireEvent.click(screen.getByRole('button', { name: '계좌 보기' }))
+    expect(input('계좌').type).toBe('text')
+    expect(input('계좌').getAttribute('autocomplete')).toBe('new-password')
+    expect(ignored(input('계좌'))).toEqual(['true', 'true', 'true'])
+    // 다른 칸은 전처럼 off만(관리자 무시 표시 없음)
+    expect(input(/^업체 이름/).getAttribute('autocomplete')).toBe('off')
+    expect(input(/^업체 이름/).getAttribute('data-1p-ignore')).toBeNull()
+  })
 })
 
 describe('AC-6505.4: 업체 고치기 판', () => {

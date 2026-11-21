@@ -38,3 +38,12 @@ export function WarnIcon({ className }: { className?: string }) {
     </svg>
   )
 }
+
+// 펼침 표시(시안 details.same summary의 브라우저 표시 ▶ — 폭 8·높이 9 채운 세모, 글자색 ink-2, 1440 사진에서 잰 크기). 펼치면 놓는 자리가 rotate-90으로 ▼를 만든다
+export function DisclosureIcon({ className }: { className?: string }) {
+  return (
+    <svg width="8" height="9" viewBox="0 0 8 9" fill="currentColor" aria-hidden="true" className={className}>
+      <path d="M0 0 8 4.5 0 9z" />
+    </svg>
+  )
+}

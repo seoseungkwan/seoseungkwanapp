@@ -110,7 +110,7 @@ export function CompanyPanel({ mode, company, category, companies, onSave, onClo
     void save()
   }
 
-  const text = (key: Exclude<TextKey, 'memo'>, extra: { placeholder?: string; help?: string; required?: boolean; inputMode?: 'tel' | 'numeric' } = {}) => (
+  const text = (key: Exclude<TextKey, 'memo'>, extra: { placeholder?: string; help?: string; required?: boolean; inputMode?: 'tel' | 'numeric'; noAutofill?: 'site-id' } = {}) => (
     <TextField
       id={`${id}-${key}`}
       label={labels[key]}
@@ -121,6 +121,7 @@ export function CompanyPanel({ mode, company, category, companies, onSave, onClo
       help={extra.help}
       required={extra.required}
       inputMode={extra.inputMode}
+      noAutofill={extra.noAutofill}
       error={key === 'name' ? nameError : null}
       inputRef={key === 'name' ? nameRef : undefined}
     />
@@ -134,6 +135,7 @@ export function CompanyPanel({ mode, company, category, companies, onSave, onClo
       onChange={set(key)}
       maxLength={limits[key]}
       placeholder={placeholder}
+      noAutofill="secret"
       after={
         <button type="button" aria-label={`${labels[key]} 보기`} aria-pressed={shown[key]} onClick={() => setShown((prev) => ({ ...prev, [key]: !prev[key] }))} className={look.mini}>
           {shown[key] ? '가리기' : '보기'}
@@ -183,7 +185,7 @@ export function CompanyPanel({ mode, company, category, companies, onSave, onClo
             {text('bizNo', { placeholder: '000-00-00000', inputMode: 'numeric' })}
             {secret('account', '예: 예시은행 000-000000-00-000 (예금주)')}
             <div className="grid grid-cols-2 gap-x-3 gap-y-5">
-              {text('siteId', { placeholder: '주문·수리 접수 사이트' })}
+              {text('siteId', { placeholder: '주문·수리 접수 사이트', noAutofill: 'site-id' })}
               {secret('sitePw')}
             </div>
             <div className={look.field}>

@@ -188,6 +188,22 @@ describe('AC-6506.3 ImportPreview — 화면 글자 그대로', () => {
     expect(within(box).getByText('엑셀에 없는 업체 2곳(예시꽃집·예시방역)도 그대로 둬요.')).toBeTruthy()
   })
 
+  it('AC-6506.3: [그대로인 업체 {n}곳 보기] 앞 표시는 시안(details summary 표시)처럼 채운 세모 ▶이고 펼치면 아래 ▼로 돈다', () => {
+    draw()
+    const toggle = within(section('그대로인 업체 1')).getByRole('button', { name: '그대로인 업체 1곳 보기' })
+    const marks = toggle.querySelectorAll('svg')
+    expect(marks).toHaveLength(1)
+    const mark = marks[0]!
+    expect(mark.getAttribute('aria-hidden')).toBe('true')
+    // 채운 세모(선 그림 꺾쇠 › 가 아님): 글자색으로 채우고 선은 없다. 오른쪽을 가리킨다
+    expect(mark.getAttribute('fill')).toBe('currentColor')
+    expect(mark.getAttribute('stroke')).toBeNull()
+    expect(mark.querySelector('path')?.getAttribute('d')).toBe('M0 0 8 4.5 0 9z')
+    expect(mark.getAttribute('class')?.split(/\s+/)).not.toContain('rotate-90')
+    fireEvent.click(toggle)
+    expect(mark.getAttribute('class')?.split(/\s+/)).toContain('rotate-90')
+  })
+
   it('AC-6506.3: 아래 줄 글과 위·아래 [그만두기]·[넣기]', () => {
     const { onCancel, onImport } = draw()
     expect(screen.getByText('새로 2곳을 더하고 2곳을 고쳐요. 넣지 않는 줄 3개는 빼요.')).toBeTruthy()
@@ -218,8 +234,8 @@ describe('AC-6506.3 ImportPreview — 화면 글자 그대로', () => {
     expect(screen.queryByRole('heading', { name: /^새로 더할 업체/ })).toBeNull()
     expect(screen.queryByRole('heading', { name: /^바뀌는 업체/ })).toBeNull()
     expect(screen.queryByRole('heading', { name: /^넣지 않는 줄/ })).toBeNull()
-    expect(screen.getByText('새로 0곳을 더하고 0곳을 고쳐요.')).toBeTruthy()
-    expect(text()).not.toContain('개는 빼요')
+    // 아래 줄은 requirements.md '화면 글자' 엑셀 미리 보기(시안 .upbar)대로 늘 두 문장이다 — 넣지 않는 줄이 0이어도 뒤 문장을 빼지 않는다
+    expect(screen.getByText('새로 0곳을 더하고 0곳을 고쳐요. 넣지 않는 줄 0개는 빼요.')).toBeTruthy()
   })
 
   it('AC-6506.3: 넣는 동안(saving)은 [넣기]·[그만두기]가 모두 꺼진다', () => {
