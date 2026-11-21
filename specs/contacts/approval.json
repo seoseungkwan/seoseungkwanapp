@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "contacts",
-  "approved_at": "2026-11-21T03:14:51Z",
+  "approved_at": "2026-11-21T04:55:56Z",
   "approved_via": "user-prompt",
   "session_id": "1f87142b-df3a-4d9f-9bb5-532361cab0e1",
-  "spec_sha256": "e7c73ed706d2a617c4e7a63d6a494258ec9b42f75a58788c7df662b7e3ba0bae",
+  "spec_sha256": "7e1aa52b6030eba23621de3a5c9a4c91a79b1bdf710e97b0326de66db9164a40",
   "scope": [
     ".gitignore",
     ".vercelignore",
@@ -39,6 +39,7 @@
     "src/components/dashboard/briefing/features.ts",
     "src/components/dashboard/live/BitDashboard.test.tsx",
     "src/components/dashboard/live/BitDashboard.tsx",
+    "src/components/dashboard/summary/DashboardAnalysis.test.tsx",
     "src/components/dashboard/summary/LiveDashboard.test.tsx",
     "src/components/dashboard/summary/LiveDashboard.tsx",
     "src/components/dashboard/warranty/",
