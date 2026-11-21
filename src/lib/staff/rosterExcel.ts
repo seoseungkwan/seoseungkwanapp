@@ -6,7 +6,10 @@ import { hasNationalId } from './nationalId'
 // 양식은 public/staff/staff-template.xlsx(scripts/make_staff_template.py가 만든다). 형은 @/types/staff를 불러오지 않고
 // 같은 칸 이름으로 둔다(StaffMember·WeekPlan·병원 정보 hours를 그대로 넘길 수 있다). 결과 줄은 저장 층 importRoster로 넘긴다
 
-/** 양식 '직원' 시트 첫 줄 21칸(AC-7608.1). 주민번호 칸은 없다 */
+/**
+ * 양식 '직원' 시트 첫 줄 22칸(AC-7608.1). 맨 끝 '넘어온 연차(일)'은 2026-11-21에 더했다 — 그 칸이 없는 옛 양식(앞 21칸)도 읽는다(AC-7608.7).
+ * 주민번호 칸은 없다
+ */
 export const ROSTER_HEADERS = [
   '이름*',
   '직종',
@@ -29,8 +32,11 @@ export const ROSTER_HEADERS = [
   '일',
   '토요일 격주',
   '메모',
+  '넘어온 연차(일)',
 ] as const
 export type RosterHeader = (typeof ROSTER_HEADERS)[number]
+/** 옛 양식 칸 수(맨 끝 '넘어온 연차(일)'이 없음) */
+const OLD_FORM_WIDTH = 21
 
 const JOBS = ['간호사', '간호조무사', '물리치료사', '방사선사', '원무', '기타'] as const
 type Job = (typeof JOBS)[number]
@@ -55,6 +61,7 @@ export type RosterMember = {
   memo: string | null
   usedBefore: number
   usedBeforeFrom: string | null
+  carryStart: number // 넘어온 연차 시작 값(AC-7608.7). 새 사람은 비면 0
 }
 /** 이미 있는 직원(StaffMember를 그대로 넘겨도 된다) */
 export type RosterExisting = { id: string } & Omit<RosterMember, 'usedBefore' | 'usedBeforeFrom'>
@@ -74,11 +81,11 @@ export type RosterRow = {
   action: 'new' | 'update' | 'problem'
   reason: string | null // 문제 줄의 까닭
   changed: string[] // 고침 줄에서 바뀌는 칸 이름(양식 칸 차례)
-  /** 새 줄 = 넣을 모든 칸, 고침 줄 = id·이름·입사일 + 적힌 칸만(올해 쓴 연차 빼고), 문제 줄 = 읽힌 칸만 */
+  /** 새 줄 = 넣을 모든 칸, 고침 줄 = id·이름·입사일 + 적힌 칸만(올해 쓴 연차 빼고 — 넘어온 연차는 적혔을 때만), 문제 줄 = 읽힌 칸만 */
   member: Partial<RosterMember> & { id?: string }
   /** 새 기본 근무(새 사람은 입사일부터, 고침은 오늘부터). null = 넣지 않음(요일 칸이 다 비었거나 지금과 같음) */
   plan: { week: Shift[]; sat: Sat } | null
-  /** 칸마다 적힌 글자 그대로(미리 보기에서 문제 줄을 보일 때) */
+  /** 칸마다 적힌 글자 그대로(미리 보기에서 문제 줄을 보일 때). 옛 양식이면 '넘어온 연차(일)'은 '' */
   raw: Record<RosterHeader, string>
 }
 export type RosterRead = { problem: string | null; rows: RosterRow[] }
@@ -100,6 +107,7 @@ const TOO_MANY = '한 번에 300명까지 올릴 수 있어요.'
 const NAME_EMPTY = '이름을 적어 주세요.'
 const HIRE_EMPTY = '입사일을 적어 주세요.'
 const DUPLICATE = '같은 사람이 위 줄에도 있어요.'
+const CARRY_PROBLEM = '넘어온 연차(일)는 -30~100 사이 숫자로 적어 주세요. 반차는 0.5예요.'
 
 const EMPLOYMENTS: Record<string, Employment> = { 정규직: 'regular', 계약직: 'contract', 파트타임: 'part' }
 const SAT_ROTATIONS: Record<string, Sat> = { 매주: 'every', '1·3주': '1-3', '2·4주': '2-4' }
@@ -146,10 +154,10 @@ function openSheet(buffer: ArrayBuffer | Uint8Array): XLSX.WorkSheet | null {
   return Object.hasOwn(book.Sheets, SHEET) ? book.Sheets[SHEET] : null
 }
 
-/** 칸이 있는 곳만 훑는다(서식만 깔린 빈 줄 수만큼 돌지 않게). 머리 줄은 모든 칸, 나머지 줄은 21칸까지 */
-function gridOf(sheet: XLSX.WorkSheet): { header: Map<number, string>; lines: Map<number, Cell[]> } {
+/** 칸이 있는 곳만 훑는다(서식만 깔린 빈 줄 수만큼 돌지 않게). 머리 줄은 모든 칸, 나머지 줄은 22칸까지 */
+function gridOf(sheet: XLSX.WorkSheet): { header: Map<number, string>; cells: Map<number, Map<number, Cell>> } {
   const header = new Map<number, string>()
-  const lines = new Map<number, Cell[]>()
+  const cells = new Map<number, Map<number, Cell>>()
   for (const key of Object.keys(sheet)) {
     if (key.startsWith('!')) continue
     const { r, c } = XLSX.utils.decode_cell(key)
@@ -157,16 +165,30 @@ function gridOf(sheet: XLSX.WorkSheet): { header: Map<number, string>; lines: Ma
     if (cell.value === null) continue
     if (r === 0) header.set(c, cell.shown)
     else if (c < ROSTER_HEADERS.length) {
-      const cells = lines.get(r) ?? ROSTER_HEADERS.map(() => EMPTY)
-      cells[c] = cell
-      lines.set(r, cells)
+      const line = cells.get(r) ?? new Map<number, Cell>()
+      line.set(c, cell)
+      cells.set(r, line)
     }
   }
-  return { header, lines }
+  return { header, cells }
 }
 
-const headerOk = (header: Map<number, string>) =>
-  header.size === ROSTER_HEADERS.length && ROSTER_HEADERS.every((name, c) => header.get(c) === name)
+/** 머리 줄이 새 양식(22칸)이면 22, 옛 양식(앞 21칸만)이면 21, 아니면 null */
+function formWidth(header: Map<number, string>): number | null {
+  const same = (width: number) => header.size === width && ROSTER_HEADERS.slice(0, width).every((name, c) => header.get(c) === name)
+  if (same(ROSTER_HEADERS.length)) return ROSTER_HEADERS.length
+  return same(OLD_FORM_WIDTH) ? OLD_FORM_WIDTH : null
+}
+
+/** 양식 칸 수 안의 값만 줄로 모은다. 옛 양식은 22번째 칸을 읽지 않는다(그 칸만 적힌 줄은 빈 줄) — 그 칸은 빈 칸 */
+function linesOf(cells: Map<number, Map<number, Cell>>, width: number): Map<number, Cell[]> {
+  const lines = new Map<number, Cell[]>()
+  for (const [r, line] of cells) {
+    const row = ROSTER_HEADERS.map((_, c) => (c < width ? (line.get(c) ?? EMPTY) : EMPTY))
+    if (row.some((cell) => cell.value !== null)) lines.set(r, row)
+  }
+  return lines
+}
 
 // ── 칸 읽기 ─────────────────────────────────────────────
 
@@ -296,6 +318,13 @@ function parseLine(cells: readonly Cell[], hours: RosterContext['hours']): Parse
 
   text('메모', '메모는', MEMO_MAX, (value) => (fields.memo = value), true)
 
+  // 넘어온 연차(일): −30~100·0.5 단위, 음수는 '-'로 시작하는 글자도(AC-7608.7)
+  if (at('넘어온 연차(일)').value !== null) {
+    const carry = readNumber(at('넘어온 연차(일)'))
+    if (isHalfStep(carry, -30, 100)) fields.carryStart = carry
+    else reasons.push(CARRY_PROBLEM)
+  }
+
   if (fields.hiredOn !== undefined && typeof fields.leftOn === 'string' && fields.leftOn < fields.hiredOn) {
     reasons.push('퇴사일이 입사일보다 앞이에요. 퇴사일을 확인해 주세요.')
   }
@@ -304,7 +333,7 @@ function parseLine(cells: readonly Cell[], hours: RosterContext['hours']): Parse
 
 // ── 고침 ─────────────────────────────────────────────
 
-/** 고침 줄에서 비교하는 칸(양식 칸 차례). '기본 근무'는 계좌번호와 메모 사이 */
+/** 고침 줄에서 비교하는 칸(양식 칸 차례). '기본 근무'는 계좌번호와 메모 사이, 그 뒤 메모·넘어온 연차는 readRoster가 붙인다 */
 const CHANGE_FIELDS: readonly (readonly [string, readonly (keyof RosterExisting)[]])[] = [
   ['직종', ['job', 'jobOther']],
   ['근무 형태', ['employment']],
@@ -333,18 +362,20 @@ function changesOf(fields: Partial<RosterMember>, target: RosterExisting): strin
 // ── 읽기 ─────────────────────────────────────────────
 
 /**
- * 올린 엑셀을 읽어 미리 보기 줄을 만든다(AC-7608.1~AC-7608.5).
- * - 시트 '직원' 첫 줄이 ROSTER_HEADERS와 다르거나 넣을 줄이 300명을 넘으면 problem만(줄 없음)
+ * 올린 엑셀을 읽어 미리 보기 줄을 만든다(AC-7608.1~AC-7608.7).
+ * - 시트 '직원' 첫 줄이 ROSTER_HEADERS(또는 옛 양식 앞 21칸)와 다르거나 넣을 줄이 300명을 넘으면 problem만(줄 없음)
  * - 다 빈 줄·메모가 '보기 줄'로 시작하는 줄은 건너뛴다
  * - 같은 이름 + 입사일이 existing에 있으면 고침(적힌 칸만), 파일 안 같은 사람 두 줄은 뒤 줄이 문제
- * - 새 사람 기본값: 직종이 비면 '기타'(직접 적은 직종 없음), 근무 형태 정규직, 주 40시간, 올해 쓴 연차 0
+ * - 새 사람 기본값: 직종이 비면 '기타'(직접 적은 직종 없음), 근무 형태 정규직, 주 40시간, 올해 쓴 연차 0, 넘어온 연차 0
  * 엑셀로 열 수 없으면 RosterExcelError를 던진다
  */
 export function readRoster(buffer: ArrayBuffer | Uint8Array, existing: readonly RosterExisting[], ctx: RosterContext): RosterRead {
   const sheet = openSheet(buffer)
   if (sheet === null) return { problem: FORM_PROBLEM, rows: [] }
-  const { header, lines } = gridOf(sheet)
-  if (!headerOk(header)) return { problem: FORM_PROBLEM, rows: [] }
+  const { header, cells: grid } = gridOf(sheet)
+  const width = formWidth(header)
+  if (width === null) return { problem: FORM_PROBLEM, rows: [] }
+  const lines = linesOf(grid, width)
 
   const people = [...lines.entries()]
     .filter(([, cells]) => !cells[COL['메모']].text.startsWith(EXAMPLE_PREFIX))
@@ -377,6 +408,8 @@ export function readRoster(buffer: ArrayBuffer | Uint8Array, existing: readonly 
       const plan = week !== null && !samePlan ? { week, sat } : null
       if (plan !== null) changed.push('기본 근무')
       if ('memo' in written && written.memo !== target.memo) changed.push('메모')
+      // 넘어온 연차는 고침 줄에도 넣는다 — 적혔고 지금 값과 다를 때만 바뀐 칸(양식 칸 차례로 맨 끝, AC-7608.7)
+      if ('carryStart' in written && written.carryStart !== target.carryStart) changed.push('넘어온 연차')
       return { line, action: 'update', reason: null, changed, member: { id: target.id, ...written }, plan, raw }
     }
 
@@ -401,6 +434,7 @@ export function readRoster(buffer: ArrayBuffer | Uint8Array, existing: readonly 
       memo: fields.memo ?? null,
       usedBefore,
       usedBeforeFrom: usedBefore > 0 ? ctx.periodStart({ employment, weeklyHours, hiredOn, leftOn }) : null,
+      carryStart: fields.carryStart ?? 0,
     }
     return { line, action: 'new', reason: null, changed: [], member, plan: week === null ? null : { week, sat }, raw }
   })

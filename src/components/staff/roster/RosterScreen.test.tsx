@@ -10,9 +10,9 @@ import { defaultStaffSettings, StaffStoreError, type StaffStore } from '@/lib/st
 import type { StaffFileStore } from '@/lib/storage/staffFiles'
 import { readRoster, ROSTER_HEADERS, RosterExcelError, type RosterContext, type RosterRead, type RosterRow } from '@/lib/staff/rosterExcel'
 import type { ClinicStaff } from '@/types/clinicProfile'
-import type { Leave, StaffFile, StaffMember, WeekPlan } from '@/types/staff'
+import type { Leave, StaffFile, StaffMember, StaffSettings, WeekPlan } from '@/types/staff'
 
-// 직원 탭 명단 화면 (staff TASK-10 · REQ-7612, 시안 docs/mockups/staff/list.html ①~⑥ — 폰 장면 ⑦은 만들지 않는다).
+// 직원 탭 명단 화면 (staff TASK-10·TASK-20 · REQ-7612, 시안 docs/mockups/staff/list.html ①~⑥ — 폰 장면 ⑦은 만들지 않는다).
 // 진짜 /staff 페이지를 그린다(페이지 → 명단 화면). 오늘은 2026-11-21(토)로 고정(Date만 가짜 — 기다림 타이머는 진짜).
 // 공용 읽기 훅(useStaffBase)·저장 층·엑셀 읽기(readRoster)는 가짜고, 셈(연차·근속·알림·보관·기본 근무 요약)은 진짜 lib/staff를 쓴다.
 // 사람·숫자는 지어낸 보기 자료(requirements.md 머리 '보기 자료', AC-7604.8)다
@@ -40,9 +40,16 @@ function person(over: Partial<StaffMember> & Pick<StaffMember, 'id' | 'name' | '
     memo: null,
     usedBefore: 0,
     usedBeforeFrom: null,
+    carryStart: 0,
+    registeredOn: '2000-01-01', // 가장 이른 입사일보다 앞 — 연차 셈은 지금 숫자 그대로(AC-7604.9)
     ...over,
   }
 }
+/** saveMember가 받는 값(웹앱 등록일 없음 — DB가 정한다, AC-7610.7) */
+const inputOf = (member: StaffMember) =>
+  Object.fromEntries(Object.entries(member).filter(([key]) => key !== 'id' && key !== 'registeredOn')) as Omit<StaffMember, 'id' | 'registeredOn'>
+/** DB가 돌려주는 줄(등록일은 DB가 넣은 날) */
+const savedAs = (m: Omit<StaffMember, 'id' | 'registeredOn'>, id = 'm-new'): StaffMember => ({ id, registeredOn: TODAY, ...m })
 
 // 저장 층이 주는 차례(입사일·이름). 남은 연차는 '올해 이미 쓴 연차'(그 기간 시작일)와 이도윤 휴가 줄로 맞춘다(AC-7604.8)
 const MOON = person({ id: 'm-moon', name: '문태호', job: '물리치료사', hiredOn: '2018-04-02', leftOn: '2022-12-31' })
@@ -524,8 +531,8 @@ describe('AC-7612.3: 직원 더하기 · 고치기 칸', () => {
     expect(saveMember).not.toHaveBeenCalled()
   })
 
-  it("AC-7612.3: 다 채워 저장하면 열여섯 칸으로 저장하고('올해 이미 쓴 연차'는 이번 연차 기간 시작일과 함께) 그 사람 카드로 간다", async () => {
-    saveMember.mockImplementation(async (m) => ({ id: 'm-new', ...m }))
+  it("AC-7612.3·AC-7612.8: 다 채워 저장하면 열일곱 칸으로 저장하고('올해 이미 쓴 연차'는 이번 연차 기간 시작일과 함께, 'pay' 병원이라 넘어온 연차 0) 그 사람 카드로 간다", async () => {
+    saveMember.mockImplementation(async (m) => savedAs(m))
     const user = await openAdd()
     await user.type(screen.getByLabelText('이름'), ' 윤가람 ')
     await user.click(within(screen.getByRole('group', { name: '근무 형태' })).getByRole('button', { name: '파트타임' }))
@@ -563,6 +570,7 @@ describe('AC-7612.3: 직원 더하기 · 고치기 칸', () => {
         memo: '오후만',
         usedBefore: 1.5,
         usedBeforeFrom: '2026-11-02',
+        carryStart: 0,
       },
       undefined,
     )
@@ -571,13 +579,13 @@ describe('AC-7612.3: 직원 더하기 · 고치기 칸', () => {
   })
 
   it("AC-7612.3: 직종을 고르지 않고 이름·입사일만 적어도 저장된다(직종 '기타', 직접 적은 직종 없음, 올해 쓴 연차 0)", async () => {
-    saveMember.mockImplementation(async (m) => ({ id: 'm-new', ...m }))
+    saveMember.mockImplementation(async (m) => savedAs(m))
     const user = await openAdd()
     await user.type(screen.getByLabelText('이름'), '강다은')
     fireEvent.change(screen.getByLabelText('입사일'), { target: { value: '2026-03-02' } })
     await user.click(screen.getByRole('button', { name: '저장' }))
     await waitFor(() => expect(saveMember).toHaveBeenCalledTimes(1))
-    expect(saveMember.mock.calls[0]![0]).toMatchObject({ name: '강다은', job: '기타', jobOther: null, employment: 'regular', weeklyHours: 40, usedBefore: 0, usedBeforeFrom: null, calendarStaffId: null })
+    expect(saveMember.mock.calls[0]![0]).toMatchObject({ name: '강다은', job: '기타', jobOther: null, employment: 'regular', weeklyHours: 40, usedBefore: 0, usedBeforeFrom: null, calendarStaffId: null, carryStart: 0 })
   })
 
   it('AC-7612.3: 저장이 실패하면 적은 값은 그대로이고 E-STAFF-SAVE-FAILED가 보인다', async () => {
@@ -619,7 +627,7 @@ describe('AC-7612.3: 직원 더하기 · 고치기 칸', () => {
   })
 
   it("AC-7612.7: 반례 — 전화번호('010-1234-5678')·계좌번호('110-123-456789') 모양이 든 주소·메모는 막지 않고 저장된다", async () => {
-    saveMember.mockImplementation(async (m) => ({ id: 'm-new', ...m }))
+    saveMember.mockImplementation(async (m) => savedAs(m))
     const user = await openAdd()
     const put = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } })
     put('이름', '강다은')
@@ -641,7 +649,7 @@ describe('AC-7612.3: 직원 더하기 · 고치기 칸', () => {
   })
 
   it("AC-7612.3: 카드 [고치기] — 제목 '{이름} 님 고치기', 지금 값이 들어 있고 '올해 이미 쓴 연차' 칸은 없다, 저장하면 그 사람 줄을 고친다", async () => {
-    saveMember.mockImplementation(async (m, id) => ({ id: id!, ...m }))
+    saveMember.mockImplementation(async (m, id) => savedAs(m, id))
     const user = show()
     await user.click(within(await screen.findByRole('table', { name: '재직 직원' })).getByText('이도윤'))
     await user.click(screen.getByRole('button', { name: '고치기' }))
@@ -665,8 +673,113 @@ describe('AC-7612.3: 직원 더하기 · 고치기 칸', () => {
     await waitFor(() => expect(saveMember).toHaveBeenCalledTimes(1))
     const [member, id] = saveMember.mock.calls[0]!
     expect(id).toBe('m-lee')
-    expect({ id: 'm-lee', ...member }).toEqual({ ...LEE, memo: '도수치료·체외충격파' })
+    expect(member).toEqual(inputOf({ ...LEE, memo: '도수치료·체외충격파' }))
     expect(await screen.findByRole('heading', { name: '이도윤' })).toBeTruthy()
+  })
+})
+
+describe('AC-7612.8: 넘어온 연차 칸(못 쓴 연차가 다음 해로 넘김인 병원만)', () => {
+  const CARRY_SETTINGS: StaffSettings = { ...defaultStaffSettings(), leftover: 'carry' }
+  const HELP = '웹앱을 쓰기 전에 이미 넘어와 있던 연차예요(웹앱에 처음 넣은 날이 든 연차 기간에 더해요). 없으면 비워 두세요. 반차는 0.5로, 미리 당겨 써서 모자라면 -1처럼 적어요.'
+  const REASON = '-30~100일, 0.5일 단위로 적어 주세요.'
+  const labelsIn = (region: string) => [...screen.getByRole('region', { name: region }).querySelectorAll('label')].map((el) => el.textContent)
+  const reasonOf = (label: string) => document.getElementById(`${screen.getByLabelText(label).id}-error`)?.textContent ?? null
+  const put = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } })
+
+  async function openAdd(settings = CARRY_SETTINGS, members = MEMBERS) {
+    const user = show({ settings, members })
+    await user.click(await screen.findByRole('button', { name: '＋ 직원 더하기' }))
+    put('이름', '강다은')
+    put('입사일', '2026-03-02')
+    return user
+  }
+  async function openEdit(who: StaffMember, settings = CARRY_SETTINGS) {
+    const user = show({ settings, members: [who] })
+    await user.click(within(await screen.findByRole('table', { name: '재직 직원' })).getByText(who.name))
+    await user.click(screen.getByRole('button', { name: '고치기' }))
+    return user
+  }
+
+  it("AC-7612.8: 더하기 — '예약 · 연차 · 메모' 구역 '올해 이미 쓴 연차' 다음·메모 앞에 '넘어온 연차' 칸(입력 옆 '일', 도움말 그대로), 처음 값은 빈칸", async () => {
+    await openAdd()
+    expect(labelsIn('예약 · 연차 · 메모')).toEqual(['올해 이미 쓴 연차', '넘어온 연차', '메모'])
+    const input = screen.getByLabelText('넘어온 연차') as HTMLInputElement
+    expect(input.value).toBe('')
+    expect(input.parentElement?.textContent).toBe('일')
+    expect(screen.getByText(HELP)).toBeTruthy()
+  })
+
+  it.each([
+    ['비우면 0', '', 0],
+    ['반차', '2.5', 2.5],
+    ["'-'로 시작하는 음수", '-1.5', -1.5],
+    ['가장 작은 값', '-30', -30],
+    ['가장 큰 값', '100', 100],
+    ['앞뒤 빈칸', ' 3 ', 3],
+  ])('AC-7612.8: 더하기에서 %s(%j)면 carryStart %s로 저장한다', async (_why, typed, want) => {
+    saveMember.mockImplementation(async (m) => savedAs(m))
+    const user = await openAdd()
+    put('넘어온 연차', typed)
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(saveMember).toHaveBeenCalledTimes(1))
+    expect(saveMember.mock.calls[0]![0].carryStart).toBe(want)
+    expect('registeredOn' in saveMember.mock.calls[0]![0]).toBe(false)
+  })
+
+  it.each(['-30.5', '100.5', '1.3', '두 일', '--1', '1/2', '+2'])(
+    "AC-7612.8: −30~100·0.5 단위가 아니면(%j) 칸 아래 '-30~100일, 0.5일 단위로 적어 주세요.'이고 저장하지 않는다(적은 값은 칸에 그대로)",
+    async (typed) => {
+      const user = await openAdd()
+      put('넘어온 연차', typed)
+      await user.click(screen.getByRole('button', { name: '저장' }))
+      expect(reasonOf('넘어온 연차')).toBe(REASON)
+      expect(screen.getByLabelText('넘어온 연차').getAttribute('aria-invalid')).toBe('true')
+      expect((screen.getByLabelText('넘어온 연차') as HTMLInputElement).value).toBe(typed)
+      expect(saveMember).not.toHaveBeenCalled()
+    },
+  )
+
+  it("AC-7612.8: 고치기 — 메모 앞에 '넘어온 연차' 칸, 처음 값은 지금 값이고 바꾸면 그 값으로 고친다", async () => {
+    saveMember.mockImplementation(async (m, id) => savedAs(m, id))
+    const who = { ...KIM, carryStart: 2.5 }
+    const user = await openEdit(who)
+    expect(labelsIn('예약 · 연차 · 메모')).toEqual(['넘어온 연차', '메모'])
+    expect((screen.getByLabelText('넘어온 연차') as HTMLInputElement).value).toBe('2.5')
+    expect(screen.getByText(HELP)).toBeTruthy()
+    put('넘어온 연차', '-3')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(saveMember).toHaveBeenCalledTimes(1))
+    expect(saveMember.mock.calls[0]).toEqual([inputOf({ ...who, carryStart: -3 }), 'm-kim'])
+  })
+
+  it('AC-7612.8: 고치기 — 지금 값이 0이면 빈칸이고, 비운 채 저장하면 0이다', async () => {
+    saveMember.mockImplementation(async (m, id) => savedAs(m, id))
+    const user = await openEdit(KIM)
+    expect((screen.getByLabelText('넘어온 연차') as HTMLInputElement).value).toBe('')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(saveMember).toHaveBeenCalledTimes(1))
+    expect(saveMember.mock.calls[0]![0].carryStart).toBe(0)
+  })
+
+  it("AC-7612.8: 'pay' 병원은 더하기에 칸이 없고 0으로 저장한다", async () => {
+    saveMember.mockImplementation(async (m) => savedAs(m))
+    const user = await openAdd(defaultStaffSettings())
+    expect(screen.queryByLabelText('넘어온 연차')).toBeNull()
+    expect(screen.queryByText(HELP)).toBeNull()
+    expect(labelsIn('예약 · 연차 · 메모')).toEqual(['올해 이미 쓴 연차', '메모'])
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(saveMember).toHaveBeenCalledTimes(1))
+    expect(saveMember.mock.calls[0]![0].carryStart).toBe(0)
+  })
+
+  it("AC-7612.8: 'pay' 병원은 고치기에 칸이 없고 지금 값 그대로 저장한다", async () => {
+    saveMember.mockImplementation(async (m, id) => savedAs(m, id))
+    const who = { ...KIM, carryStart: 4 }
+    const user = await openEdit(who, defaultStaffSettings())
+    expect(screen.queryByLabelText('넘어온 연차')).toBeNull()
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(saveMember).toHaveBeenCalledTimes(1))
+    expect(saveMember.mock.calls[0]).toEqual([inputOf(who), 'm-kim'])
   })
 })
 
@@ -783,6 +896,40 @@ describe('AC-7612.4: 엑셀 양식 받기 · 엑셀 올리기 미리 보기', ()
     await upload({ problem: null, rows })
     const table = within(await screen.findByRole('dialog')).getByRole('table', { name: '엑셀 미리 보기' })
     expect(cellsOf(table).map((cells) => cells[6])).toEqual(['고침 생일이 바뀌어요', '고침 은행·계좌번호가 바뀌어요', '고침'])
+  })
+
+  it("AC-7612.8: 'pay' 병원 미리 보기 표에는 '넘어온 연차' 칸이 없다", async () => {
+    await upload()
+    const table = within(await screen.findByRole('dialog')).getByRole('table', { name: '엑셀 미리 보기' })
+    expect(headsOf(table)).not.toContain('넘어온 연차')
+  })
+
+  it("AC-7612.8: 'carry' 병원 미리 보기 표는 '올해 쓴 연차' 다음에 '넘어온 연차' — 새 직원 '{n}', 고침 줄은 적혔으면 '{n}' 아니면 '—', 문제 줄은 적힌 글자 그대로", async () => {
+    const read: RosterRead = {
+      problem: null,
+      rows: [
+        { ...fresh(2, { name: '최민준', job: '방사선사', employment: 'regular', weeklyHours: 40, hiredOn: '2019-11-25', usedBefore: 14 }, '2025-11-25'), member: { ...fresh(2, { name: '최민준', job: '방사선사', employment: 'regular', weeklyHours: 40, hiredOn: '2019-11-25', usedBefore: 14 }, '2025-11-25').member, carryStart: 2.5 } },
+        { ...fresh(3, { name: '한지우', job: '원무', employment: 'contract', weeklyHours: 40, hiredOn: '2026-02-02', usedBefore: 0 }, null), member: { ...fresh(3, { name: '한지우', job: '원무', employment: 'contract', weeklyHours: 40, hiredOn: '2026-02-02', usedBefore: 0 }, null).member, carryStart: 0 } },
+        { ...READ.rows[1]!, line: 4, changed: ['넘어온 연차'], member: { ...READ.rows[1]!.member, carryStart: -1 } },
+        { ...READ.rows[1]!, line: 5, changed: ['연락처'] },
+        {
+          ...READ.rows[6]!,
+          line: 6,
+          reason: '넘어온 연차(일)는 -30~100 사이 숫자로 적어 주세요. 반차는 0.5예요.',
+          raw: { ...READ.rows[6]!.raw, '입사일*': '2026-03-02', '넘어온 연차(일)': '두 일' },
+        },
+      ],
+    }
+    await upload(read, { members: [KIM], settings: { ...defaultStaffSettings(), leftover: 'carry' } })
+    const table = within(await screen.findByRole('dialog')).getByRole('table', { name: '엑셀 미리 보기' })
+    expect(headsOf(table)).toEqual(['엑셀 줄', '이름', '직종', '근무 형태', '입사일', '올해 쓴 연차', '넘어온 연차', '어떻게 넣나'])
+    expect(cellsOf(table).map((cells) => [cells[0], cells[5], cells[6], cells[7]])).toEqual([
+      ['2', '14', '2.5', '새 직원'],
+      ['3', '0', '0', '새 직원'],
+      ['4', '—', '-1', '고침 넘어온 연차가 바뀌어요'],
+      ['5', '—', '—', '고침 연락처가 바뀌어요'],
+      ['6', '1', '두 일', '문제 넘어온 연차(일)는 -30~100 사이 숫자로 적어 주세요. 반차는 0.5예요.'],
+    ])
   })
 
   it('AC-7612.4: [넣기]는 문제 줄을 빼고 오늘로 넣은 뒤 창을 닫고 다시 읽는다', async () => {

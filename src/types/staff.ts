@@ -26,6 +26,8 @@ export type StaffMember = {
   memo: string | null
   usedBefore: number
   usedBeforeFrom: string | null
+  carryStart: number // 넘어온 연차 시작 값 −30~100, 0.5 단위('carry' 병원 셈의 시작 기간 넘어옴, AC-7604.9)
+  registeredOn: string // 웹앱에 처음 넣은 날 — DB가 정한다(읽기만, 보내지 않는다 AC-7610.7)
 }
 export type DayChange = { staffId: string; day: string; shift: DayShift; memo: string | null }
 export type OvertimeKind = 'extended' | 'night' | 'holiday'

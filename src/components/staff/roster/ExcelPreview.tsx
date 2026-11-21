@@ -7,17 +7,18 @@ import { TableScroll } from '@/components/staff/TableScroll'
 import { ds } from '@/components/ui/classes'
 import type { RosterRead, RosterRow } from '@/lib/staff/rosterExcel'
 import type { ErrorCode } from '@/types/errors'
-import type { StaffMember } from '@/types/staff'
+import type { Leftover, StaffMember } from '@/types/staff'
 import { codeOf, withSubject } from './rosterText'
 
 // [엑셀 올리기] 미리 보기 창(staff AC-7612.4 · AC-7608.5, 시안 list.html ④). 바로 넣지 않고 줄마다 어떻게 넣을지 먼저 보인다.
 // 새 직원 줄은 넣을 값, 고침 줄은 지금 값 + 엑셀에 적힌 칸, 문제 줄은 엑셀에 보이는 글자(raw) 그대로다.
-// [넣기]는 문제 줄을 빼고 넣는다. 중간에 실패하면 된 것은 남고 오류 칸에 다시 올리는 법을 보인다
+// [넣기]는 문제 줄을 빼고 넣는다. 중간에 실패하면 된 것은 남고 오류 칸에 다시 올리는 법을 보인다.
+// 못 쓴 연차가 'carry'인 병원만 '올해 쓴 연차' 다음에 '넘어온 연차' 칸을 더 보인다(AC-7612.8)
 
 // 문제 줄의 까닭 칸은 줄을 바꿔 쓴다(줄바꿈 없음 클래스를 바꿔 낀다)
 const tdWrap = `${ds.table.td.replace('whitespace-nowrap', 'whitespace-normal')} min-w-56`
 
-type Shown = { name: string; job: string; work: string; hiredOn: string; used: string }
+type Shown = { name: string; job: string; work: string; hiredOn: string; used: string; carry: string }
 
 function shownOf(row: RosterRow, members: readonly StaffMember[]): Shown {
   if (row.action === 'problem') {
@@ -28,6 +29,7 @@ function shownOf(row: RosterRow, members: readonly StaffMember[]): Shown {
       work: [raw['근무 형태'], raw['주 근무시간']].filter((cell) => cell !== '').join(' · '),
       hiredOn: raw['입사일*'],
       used: raw['올해 이미 쓴 연차(일)'],
+      carry: raw['넘어온 연차(일)'],
     }
   }
   const target = row.action === 'update' ? members.find((m) => m.id === row.member.id) : undefined
@@ -39,6 +41,8 @@ function shownOf(row: RosterRow, members: readonly StaffMember[]): Shown {
     work,
     hiredOn: m.hiredOn ?? '',
     used: row.action === 'update' ? '—' : String(m.usedBefore ?? 0),
+    // 새 직원은 넣을 값, 고침 줄은 엑셀에 적혔을 때만(아니면 지금 값 그대로라 '—')
+    carry: row.action === 'update' ? (row.member.carryStart === undefined ? '—' : String(row.member.carryStart)) : String(m.carryStart ?? 0),
   }
 }
 
@@ -68,12 +72,15 @@ export function ExcelPreview({
   fileName,
   read,
   members,
+  leftover,
   onImport,
   onCancel,
 }: {
   fileName: string
   read: RosterRead
   members: readonly StaffMember[]
+  /** 못 쓴 연차 설정. 'carry'면 '넘어온 연차' 칸을 더 보인다 */
+  leftover: Leftover
   /** 넣을 줄(문제 줄 뺌)을 넣는다. 실패하면 던진다 */
   onImport(rows: RosterRow[]): Promise<void>
   onCancel(): void
@@ -85,6 +92,8 @@ export function ExcelPreview({
   const rows = read.rows
   const count = (action: RosterRow['action']) => rows.filter((row) => row.action === action).length
   const putRows = rows.filter((row) => row.action !== 'problem')
+  const carry = leftover === 'carry'
+  const heads = ['엑셀 줄', '이름', '직종', '근무 형태', '입사일', '올해 쓴 연차', ...(carry ? ['넘어온 연차'] : []), '어떻게 넣나']
 
   useEffect(() => {
     cancelRef.current?.focus()
@@ -156,7 +165,7 @@ export function ExcelPreview({
                 <table aria-label="엑셀 미리 보기" className={ds.table.table}>
                   <thead>
                     <tr>
-                      {['엑셀 줄', '이름', '직종', '근무 형태', '입사일', '올해 쓴 연차', '어떻게 넣나'].map((head) => (
+                      {heads.map((head) => (
                         <th key={head} className={ds.table.th}>
                           {head}
                         </th>
@@ -177,6 +186,7 @@ export function ExcelPreview({
                           <td className={ds.table.td}>{shown.work}</td>
                           <td className={ds.table.tdSub}>{shown.hiredOn}</td>
                           <td className={ds.table.tdNum}>{shown.used}</td>
+                          {carry && <td className={ds.table.tdNum}>{shown.carry}</td>}
                           <td className={bad ? tdWrap : ds.table.td}>
                             <How row={row} />
                           </td>

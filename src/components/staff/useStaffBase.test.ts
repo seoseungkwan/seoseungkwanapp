@@ -39,6 +39,8 @@ const MEMBER: StaffMember = {
   memo: null,
   usedBefore: 0,
   usedBeforeFrom: null,
+  carryStart: 0,
+  registeredOn: '2000-01-01',
 }
 const SETTINGS: StaffSettings = { ...defaultStaffSettings(), leaveBasis: 'jan1' }
 const PLAN: WeekPlan = { id: 'p1', staffId: 'm1', from: '2021-03-02', week: [null, null, null, null, null, null, null], sat: 'every' }

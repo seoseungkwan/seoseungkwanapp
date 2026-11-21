@@ -206,7 +206,8 @@ function cleanWeek(value: unknown): DayShift[] | null {
 
 // ── 직원 (staff_members) ────────────────────────────────────
 
-type MemberFields = Omit<StaffMember, 'id'>
+/** 보내는 칸(웹앱 등록일 registeredOn은 DB가 정하는 읽기 칸이라 뺀다 — 칸 권한 없음, AC-7610.7) */
+type MemberFields = Omit<StaffMember, 'id' | 'registeredOn'>
 const MEMBER_FIELDS = [
   'name',
   'job',
@@ -224,6 +225,7 @@ const MEMBER_FIELDS = [
   'memo',
   'usedBefore',
   'usedBeforeFrom',
+  'carryStart',
 ] as const satisfies readonly (keyof MemberFields)[]
 const MEMBER_DB: Record<keyof MemberFields, string> = {
   name: 'name',
@@ -242,8 +244,10 @@ const MEMBER_DB: Record<keyof MemberFields, string> = {
   memo: 'memo',
   usedBefore: 'used_before',
   usedBeforeFrom: 'used_before_from',
+  carryStart: 'carry_start',
 }
-const MEMBER_COLUMNS = ['id', ...MEMBER_FIELDS.map((key) => MEMBER_DB[key])].join(',')
+/** 읽는 칸 = id + 보내는 칸 + 웹앱 등록일(읽기만) */
+const MEMBER_COLUMNS = ['id', ...MEMBER_FIELDS.map((key) => MEMBER_DB[key]), 'registered_on'].join(',')
 const NEW_ROW_COLUMNS = 'id,name,hired_on'
 
 /** 엑셀로 넣는 새 사람의 빈 칸 값(근무 형태 정규직·주 40시간, AC-7608.3) */
@@ -261,14 +265,15 @@ const NEW_MEMBER: Omit<MemberFields, 'name' | 'job' | 'hiredOn'> = {
   memo: null,
   usedBefore: 0,
   usedBeforeFrom: null,
+  carryStart: 0,
 }
 
 /**
- * 칸 규칙(AC-7601.4)을 다 지나면 그 열여섯 칸, 아니면 null. 값은 고치지 않는다(읽은 줄도 이것으로 본다).
+ * 칸 규칙(AC-7601.4·AC-7601.8)을 다 지나면 그 열일곱 칸, 아니면 null. 값은 고치지 않는다(읽은 줄도 이것으로 본다).
  * sending = 보내려는 줄: 주소·메모에 주민번호 모양(lib/staff/nationalId.ts)이 있으면 null(AC-7610.6). 읽은 줄은 이 검사로 버리지 않는다
  */
 function checkMember(value: Row, sending = false): MemberFields | null {
-  const { name, job, jobOther, employment, weeklyHours, hiredOn, leftOn, phone, birthday, address, bank, accountNo, calendarStaffId, memo, usedBefore, usedBeforeFrom } =
+  const { name, job, jobOther, employment, weeklyHours, hiredOn, leftOn, phone, birthday, address, bank, accountNo, calendarStaffId, memo, usedBefore, usedBeforeFrom, carryStart } =
     value
   if (!isText(name, 1, NAME_MAX) || name.trim() !== name) return null
   if (!isOneOf(STAFF_JOBS, job)) return null
@@ -284,6 +289,8 @@ function checkMember(value: Row, sending = false): MemberFields | null {
   if (!(calendarStaffId === null || isText(calendarStaffId, 1, CAL_ID_MAX))) return null
   if (!(memo === null || isText(memo, 1, MEMBER_MEMO_MAX))) return null
   if (!isHalfStep(usedBefore, 0, 50) || !(usedBeforeFrom === null || isDay(usedBeforeFrom))) return null
+  // 넘어온 연차 시작 값 −30~100·0.5 단위(DB check와 같다, AC-7610.7)
+  if (!isHalfStep(carryStart, -30, 100)) return null
   // 계좌번호 칸은 이 검사를 하지 않는다(숫자·'-'만 받는 칸 그대로)
   if (sending && [address, memo].some((text) => typeof text === 'string' && hasNationalId(text))) return null
   return {
@@ -303,6 +310,7 @@ function checkMember(value: Row, sending = false): MemberFields | null {
     memo: memo as string | null,
     usedBefore,
     usedBeforeFrom: usedBeforeFrom as string | null,
+    carryStart,
   }
 }
 
@@ -327,15 +335,17 @@ function normalizeMember(value: unknown): Row {
     memo: textOrNull(input.memo),
     usedBefore: input.usedBefore,
     usedBeforeFrom: nullable('usedBeforeFrom'),
+    carryStart: input.carryStart,
   }
 }
 
 const memberBody = (fields: MemberFields): Row => Object.fromEntries(MEMBER_FIELDS.map((key) => [MEMBER_DB[key], fields[key]]))
 
+// 읽은 줄: 보내는 칸 규칙 + 웹앱 등록일이 날짜여야 한다(아니면 그 줄을 버린다, AC-7610.7)
 function toMember(row: unknown): StaffMember | null {
-  if (!isRecord(row) || !isFilled(row.id)) return null
+  if (!isRecord(row) || !isFilled(row.id) || !isDay(row.registered_on)) return null
   const fields = checkMember(Object.fromEntries(MEMBER_FIELDS.map((key) => [key, row[MEMBER_DB[key]]])))
-  return fields === null ? null : { id: row.id, ...fields }
+  return fields === null ? null : { id: row.id, ...fields, registeredOn: row.registered_on }
 }
 
 // ── 휴가·설정·급여 칸 ───────────────────────────────────────
@@ -524,8 +534,11 @@ export type ApptCount = { day: string; count: number }
 export type StaffStore = {
   /** 직원 모두(재직·퇴사), 입사일·이름 차례. 실패 E-STAFF-READ-FAILED */
   listMembers(): Promise<StaffMember[]>
-  /** id가 없으면 새로 넣고, 있으면 그 줄을 고친다(열여섯 칸). DB가 준 줄을 돌려준다. 실패·규칙 어김 E-STAFF-SAVE-FAILED */
-  saveMember(member: Omit<StaffMember, 'id'>, id?: string): Promise<StaffMember>
+  /**
+   * id가 없으면 새로 넣고, 있으면 그 줄을 고친다(열일곱 칸 — 웹앱 등록일은 보내지 않는다, DB가 정함 AC-7610.7).
+   * DB가 준 줄(등록일 포함)을 돌려준다. 실패·규칙 어김 E-STAFF-SAVE-FAILED
+   */
+  saveMember(member: Omit<StaffMember, 'id' | 'registeredOn'>, id?: string): Promise<StaffMember>
   /** 퇴사 3년 지난 사람(AC-7601.7)만: 서류 파일을 바구니에서 먼저 지우고(실패 E-STAFF-FILE-FAILED, 직원 줄 그대로) 직원 줄을 지운다(AC-7610.4) */
   purgeMember(member: StaffMember, today?: string): Promise<void>
   /** 엑셀 넣기(AC-7608.5): 새 줄 한 번(+ 입사일부터 기본 근무) → 고침 줄은 바뀐 칸만 10개씩(+ 오늘부터 기본 근무). 중간 실패는 된 것이 남는다 */
@@ -690,7 +703,7 @@ export function createStaffStore(client: StaffClient): StaffStore {
           ? existing.find((member) => member.id === input.id)
           : existing.find((member) => member.name === name && member.hiredOn === input.hiredOn)
         if (target === undefined) throw fail(SAVE)
-        // '올해 이미 쓴 연차'는 새 직원 줄에만 넣는다(AC-7608.4)
+        // '올해 이미 쓴 연차'는 새 직원 줄에만 넣는다(AC-7608.4). 넘어온 연차는 적힌 줄만 바뀐다(비면 지금 값, AC-7610.7)
         const fields = checkMember(normalizeMember({ ...target, ...input, usedBefore: target.usedBefore, usedBeforeFrom: target.usedBeforeFrom }), true)
         const plan = cleanPlan(row.plan)
         if (fields === null || plan === undefined) throw fail(SAVE)

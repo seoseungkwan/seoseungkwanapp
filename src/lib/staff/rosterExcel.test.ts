@@ -1,4 +1,4 @@
-// 엑셀 올리기 읽기(staff TASK-7, REQ-7608 · AC-7608.1~AC-7608.5). 사람·연락처·계좌는 모두 지어낸 것이다.
+// 엑셀 올리기 읽기(staff TASK-7·TASK-20, REQ-7608 · AC-7608.1~AC-7608.7). 사람·연락처·계좌는 모두 지어낸 것이다.
 // 시험 통은 SheetJS로 그 자리에서 만든다(양식 파일 public/staff/staff-template.xlsx는 머리 줄·보기 줄만 본다)
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -34,6 +34,7 @@ const HANEUL: RosterExisting = {
   bank: '가짜은행',
   accountNo: '000-00-000001',
   memo: null,
+  carryStart: 0,
 }
 
 const WORK = { start: 540, end: 1080, lunchFrom: 780, lunchTo: 840 }
@@ -68,19 +69,32 @@ const one = (cells: Cells, existing: readonly RosterExisting[] = [], ctx: Roster
 
 const FORM_PROBLEM = '양식이 달라요. [엑셀 양식 받기]로 받은 파일에 적어 주세요.'
 
-describe('AC-7608.1 양식 — 시트 직원 첫 줄 21칸', () => {
-  it('AC-7608.1: ROSTER_HEADERS는 21칸이고 양식 파일 직원 시트 첫 줄과 같다(주민번호 칸 없음)', () => {
+describe('AC-7608.1 양식 — 시트 직원 첫 줄 22칸(옛 양식 21칸도)', () => {
+  it('AC-7608.1: ROSTER_HEADERS는 22칸(맨 끝 넘어온 연차(일))이고 양식 파일 직원 시트 첫 줄과 같다(주민번호 칸 없음)', () => {
     expect(ROSTER_HEADERS).toEqual([
       '이름*', '직종', '근무 형태', '주 근무시간', '입사일*', '퇴사일', '연락처', '생일', '주소', '은행', '계좌번호',
-      '올해 이미 쓴 연차(일)', '월', '화', '수', '목', '금', '토', '일', '토요일 격주', '메모',
+      '올해 이미 쓴 연차(일)', '월', '화', '수', '목', '금', '토', '일', '토요일 격주', '메모', '넘어온 연차(일)',
     ])
     const wb = XLSX.read(readFileSync(TEMPLATE), { type: 'buffer' })
     expect(wb.SheetNames).toEqual(['안내', '직원'])
     const sheet = wb.Sheets['직원']
     const first = Array.from({ length: 30 }, (_, c) => sheet[XLSX.utils.encode_cell({ r: 0, c })]?.v ?? null)
-    expect(first.slice(0, 21)).toEqual([...ROSTER_HEADERS])
-    expect(first.slice(21).every((v) => v === null)).toBe(true)
+    expect(first.slice(0, 22)).toEqual([...ROSTER_HEADERS])
+    expect(first.slice(22).every((v) => v === null)).toBe(true)
     expect(ROSTER_HEADERS.some((h) => h.includes('주민'))).toBe(false)
+  })
+
+  it("AC-7608.7: 양식 파일 — 보기 줄의 '넘어온 연차(일)'은 빈칸, '안내' 시트에 '올해 이미 쓴 연차' 줄 다음 넘어온 연차 한 줄('화면 글 기본값' 그대로)", () => {
+    const wb = XLSX.read(readFileSync(TEMPLATE), { type: 'buffer' })
+    const sheet = wb.Sheets['직원']
+    expect(sheet[XLSX.utils.encode_cell({ r: 1, c: 21 })]?.v ?? null).toBeNull()
+    expect(sheet[XLSX.utils.encode_cell({ r: 1, c: 20 })]?.v).toBe('보기 줄 — 지우고 쓰세요')
+    const guide = XLSX.utils.sheet_to_json<(string | number | null)[]>(wb.Sheets['안내'], { header: 1, defval: null }).map((row) => row[1] ?? null)
+    const used = guide.findIndex((line) => typeof line === 'string' && line.includes("'올해 이미 쓴 연차(일)'"))
+    expect(used).toBeGreaterThan(0)
+    expect(guide[used + 1]).toBe(
+      "'넘어온 연차(일)'(맨 끝 칸)는 못 쓴 연차를 다음 해로 넘기는 병원만 적어요. 웹앱을 쓰기 전에 이미 넘어와 있던 일수예요. 없으면 비워 두세요. 반차는 0.5, 미리 당겨 써서 모자라면 -1처럼 적어요.",
+    )
   })
 
   it('AC-7608.1: 받은 양식을 그대로 올리면 보기 줄만 있어 넣을 줄이 없다', () => {
@@ -91,12 +105,17 @@ describe('AC-7608.1 양식 — 시트 직원 첫 줄 21칸', () => {
     const rows = [person('최민준', '2019-11-25')]
     const swapped = [...ROSTER_HEADERS]
     ;[swapped[0], swapped[1]] = [swapped[1], swapped[0]]
+    const old = ROSTER_HEADERS.slice(0, 21)
     const cases: ArrayBuffer[] = [
       book(rows, { headers: ROSTER_HEADERS.slice(0, 20) }),
       book(rows, { headers: [...ROSTER_HEADERS, '주민번호'] }),
       book(rows, { headers: ROSTER_HEADERS.map((h) => (h === '이름*' ? '이름' : h)) }),
       book(rows, { headers: swapped }),
       book(rows, { sheet: 'Sheet1' }),
+      // 22번째 칸 이름이 다름 · 옛 21칸의 칸 이름이 바뀜 · 옛 21칸 뒤에 다른 칸
+      book(rows, { headers: [...old, '넘어온 연차'] }),
+      book(rows, { headers: old.map((h) => (h === '메모' ? '비고' : h)) }),
+      book(rows, { headers: [...old, '주민번호'] }),
     ]
     for (const buffer of cases) expect(readRoster(buffer, [], CTX)).toEqual({ problem: FORM_PROBLEM, rows: [] })
   })
@@ -477,6 +496,7 @@ describe('AC-7608.5 넣기에 넘길 줄', () => {
       memo: null,
       usedBefore: 6,
       usedBeforeFrom: '2026-07-17',
+      carryStart: 0,
     })
     expect(seen).toEqual([{ employment: 'regular', weeklyHours: 40, hiredOn: '2023-07-17', leftOn: null }])
     expect(rows[1].member).toMatchObject({ job: '기타', jobOther: null, usedBefore: 0, usedBeforeFrom: null })
@@ -506,5 +526,100 @@ describe('AC-7608.5 넣기에 넘길 줄', () => {
       expect(['간호사', '간호조무사', '물리치료사', '방사선사', '원무', '기타']).toContain(row.member.job)
     }
     expect(rows[0].member).toMatchObject({ usedBefore: 14, usedBeforeFrom: '2026-11-25' })
+  })
+})
+
+describe('AC-7608.7 넘어온 연차(일) 칸', () => {
+  const CARRY = '넘어온 연차(일)'
+  const REASON = '넘어온 연차(일)는 -30~100 사이 숫자로 적어 주세요. 반차는 0.5예요.'
+
+  it('AC-7608.7: −30~100·0.5 단위 숫자(엑셀 숫자 값 또는 2·2.5·-1 같은 글자)를 받는다', () => {
+    const cases: [string | number, number][] = [
+      [2.5, 2.5],
+      ['2', 2],
+      ['2.5', 2.5],
+      ['-1', -1],
+      [-30, -30],
+      [100, 100],
+      [-0.5, -0.5],
+      [0, 0],
+    ]
+    const { problem, rows } = read(cases.map(([value], i) => person(`가짜${i + 1}`, '2026-01-05', { [CARRY]: value })))
+    expect(problem).toBeNull()
+    expect(rows.map((row) => [row.action, row.member.carryStart])).toEqual(cases.map(([, want]) => ['new', want]))
+  })
+
+  it("AC-7608.7: 어기면(−30.5·100.5·0.3·글자·'1/2'·'+2') '넘어온 연차(일)는 -30~100 사이 숫자로 적어 주세요. 반차는 0.5예요.' 문제 줄이다", () => {
+    const bad: (string | number)[] = [-30.5, 100.5, 0.3, '두 일', '1/2', '+2']
+    const { rows } = read(bad.map((value, i) => person(`가짜${i + 1}`, '2026-01-05', { [CARRY]: value })))
+    expect(rows).toHaveLength(bad.length)
+    for (const row of rows) {
+      expect(row.action).toBe('problem')
+      expect(row.reason).toBe(REASON)
+      expect(row.member.carryStart).toBeUndefined()
+    }
+    expect(rows.map((row) => row.raw[CARRY])).toEqual(['-30.5', '100.5', '0.3', '두 일', '1/2', '+2'])
+  })
+
+  it('AC-7608.7: 문제 까닭은 양식 칸 차례(메모 뒤)로 잇는다', () => {
+    const row = read([person('최민준', '2019-11-25', { 연락처: '010', [CARRY]: 200 })]).rows[0]
+    expect(row.reason).toBe(`연락처는 숫자 9~11자리로 적어 주세요. 예: 010-0000-0000 ${REASON}`)
+  })
+
+  it('AC-7608.7: 새 직원은 비면 0이다', () => {
+    const row = one(person('한지우', '2026-02-02'))
+    expect(row).toMatchObject({ action: 'new', member: { carryStart: 0 } })
+  })
+
+  it("AC-7608.7: 고침 줄은 적혔을 때만 그 값으로 넘기고, 지금 값과 다르면 '{칸들}' 맨 끝에 '넘어온 연차'다(비면 지금 값 그대로 — 넘기지 않음)", () => {
+    const now: RosterExisting = { ...HANEUL, carryStart: 1.5 }
+    const changed = one(person('김하늘', '2021-03-02', { 메모: '새 메모', 연락처: '010-9999-8888', [CARRY]: '-2' }), [now])
+    expect(changed).toMatchObject({ action: 'update', changed: ['연락처', '메모', '넘어온 연차'] })
+    expect(changed.member.carryStart).toBe(-2)
+    const same = one(person('김하늘', '2021-03-02', { [CARRY]: 1.5 }), [now])
+    expect(same).toMatchObject({ action: 'update', changed: [] })
+    expect(same.member.carryStart).toBe(1.5)
+    const blank = one(person('김하늘', '2021-03-02', { 연락처: '010-9999-8888' }), [now])
+    expect(blank.changed).toEqual(['연락처'])
+    expect('carryStart' in blank.member).toBe(false)
+    const plan = one(person('김하늘', '2021-03-02', { 월: '09:00-18:00', [CARRY]: 0 }), [now], { ...CTX, plans: [HANEUL_PLAN] })
+    expect(plan.changed).toEqual(['기본 근무', '넘어온 연차'])
+  })
+
+  describe('AC-7608.7 옛 양식(21칸)', () => {
+    const OLD = ROSTER_HEADERS.slice(0, 21)
+    const oldBook = (rows: readonly (Cells | null)[]) => book(rows, { headers: OLD })
+
+    it('AC-7608.7: 맨 끝 칸이 없는 옛 양식도 읽는다 — 새 직원은 넘어온 연차 0, 나머지 칸은 지금처럼', () => {
+      const { problem, rows } = readRoster(oldBook([person('최민준', '2019-11-25', { 직종: '방사선사', '올해 이미 쓴 연차(일)': 14, 메모: '옛 양식' })]), [], CTX)
+      expect(problem).toBeNull()
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ line: 2, action: 'new', reason: null })
+      expect(rows[0].member).toMatchObject({ name: '최민준', job: '방사선사', usedBefore: 14, usedBeforeFrom: '2026-11-25', memo: '옛 양식', carryStart: 0 })
+      expect(rows[0].raw[CARRY]).toBe('')
+    })
+
+    it('AC-7608.7: 옛 양식 고침 줄은 넘어온 연차를 그대로 둔다(넘기지 않음)', () => {
+      const row = readRoster(oldBook([person('김하늘', '2021-03-02', { 연락처: '010-9999-8888' })]), [{ ...HANEUL, carryStart: 4 }], CTX).rows[0]
+      expect(row).toMatchObject({ action: 'update', changed: ['연락처'] })
+      expect('carryStart' in row.member).toBe(false)
+    })
+
+    it('AC-7608.7: 옛 머리 줄 뒤 22번째 칸의 값은 읽지 않는다(그 칸만 적힌 줄은 빈 줄로 건너뛴다)', () => {
+      const { problem, rows } = readRoster(
+        oldBook([person('최민준', '2019-11-25', { [CARRY]: 7 }), { [CARRY]: 3 }, person('김하늘', '2021-03-02', { [CARRY]: 'abc' })]),
+        [{ ...HANEUL, carryStart: 4 }],
+        CTX,
+      )
+      expect(problem).toBeNull()
+      expect(rows.map((row) => [row.line, row.action, row.reason])).toEqual([
+        [2, 'new', null],
+        [4, 'update', null],
+      ])
+      expect(rows[0].member.carryStart).toBe(0)
+      expect(rows[0].raw[CARRY]).toBe('')
+      expect('carryStart' in rows[1].member).toBe(false)
+      expect(rows[1].changed).toEqual([])
+    })
   })
 })

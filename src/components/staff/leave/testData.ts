@@ -30,6 +30,8 @@ export function member(id: string, name: string, over: Partial<StaffMember> = {}
     memo: null,
     usedBefore: 0,
     usedBeforeFrom: null,
+    carryStart: 0,
+    registeredOn: '2000-01-01', // 웹앱 등록일 — 가장 이른 입사일보다 앞이라 연차 셈은 지금 숫자 그대로(AC-7604.9)
     ...over,
   }
 }

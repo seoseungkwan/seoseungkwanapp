@@ -62,6 +62,8 @@ function person(over: Partial<StaffMember> & Pick<StaffMember, 'id' | 'name' | '
     memo: null,
     usedBefore: 0,
     usedBeforeFrom: null,
+    carryStart: 0,
+    registeredOn: '2000-01-01',
     ...over,
   }
 }
@@ -193,6 +195,37 @@ describe('AC-7611.4: 명단 화면은 폰 전용 모양이 없다', () => {
     cleanup()
     show({ members: [] })
     await screen.findByText('아직 직원이 없어요')
+    expect(phoneShapes()).toEqual([])
+  })
+
+  it("AC-7611.4·AC-7612.8: 다음 해로 넘김 병원의 '넘어온 연차' 칸(더하기·고치기)과 미리 보기 칸에도 폭 경계 + 모양 클래스가 없다", async () => {
+    const raw = Object.fromEntries(ROSTER_HEADERS.map((h) => [h, ''])) as Record<(typeof ROSTER_HEADERS)[number], string>
+    const read: RosterRead = {
+      problem: null,
+      rows: [
+        { line: 2, action: 'new', reason: null, changed: [], member: { name: '강다은', job: '간호사', employment: 'regular', weeklyHours: 40, hiredOn: '2026-03-02', usedBefore: 0, carryStart: 2.5 }, plan: null, raw },
+        { line: 3, action: 'update', reason: null, changed: ['넘어온 연차'], member: { id: 'm-lee', name: '이도윤', hiredOn: '2023-07-17', carryStart: -1 }, plan: null, raw },
+        { line: 4, action: 'problem', reason: '이름을 적어 주세요.', changed: [], member: {}, plan: null, raw: { ...raw, '넘어온 연차(일)': '두 일' } },
+      ],
+    }
+    vi.mocked(readRoster).mockReturnValue(read)
+    const user = show({ settings: { ...defaultStaffSettings(), leftover: 'carry' }, members: [OLD, { ...LEE, carryStart: 3 }] })
+    await user.click(await screen.findByRole('button', { name: '엑셀 올리기' }))
+    await user.upload(screen.getByLabelText('엑셀 파일 고르기'), new File([new Uint8Array([80, 75, 3, 4])], '직원명단.xlsx'))
+    const dialog = await screen.findByRole('dialog', { name: '엑셀 올리기 — 미리 보기' })
+    expect(within(dialog).getByRole('columnheader', { name: '넘어온 연차' })).toBeTruthy()
+    expect(phoneShapes()).toEqual([])
+    await user.click(screen.getByRole('button', { name: '취소' }))
+
+    await user.click(screen.getByRole('button', { name: '＋ 직원 더하기' }))
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    expect(screen.getByLabelText('넘어온 연차')).toBeTruthy()
+    expect(phoneShapes()).toEqual([])
+    await user.click(screen.getByRole('button', { name: '취소' }))
+
+    await user.click(within(await screen.findByRole('table', { name: '재직 직원' })).getByText('이도윤'))
+    await user.click(screen.getByRole('button', { name: '고치기' }))
+    expect((screen.getByLabelText('넘어온 연차') as HTMLInputElement).value).toBe('3')
     expect(phoneShapes()).toEqual([])
   })
 })

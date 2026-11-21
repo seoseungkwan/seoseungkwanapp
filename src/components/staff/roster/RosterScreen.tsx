@@ -230,7 +230,14 @@ export function RosterScreen({ today }: { today: string }) {
         />
       )}
       {preview !== null && (
-        <ExcelPreview fileName={preview.fileName} read={preview.read} members={members} onImport={importRows} onCancel={() => setPreview(null)} />
+        <ExcelPreview
+          fileName={preview.fileName}
+          read={preview.read}
+          members={members}
+          leftover={settings.leftover}
+          onImport={importRows}
+          onCancel={() => setPreview(null)}
+        />
       )}
       {purging !== null && (
         <ConfirmDialog

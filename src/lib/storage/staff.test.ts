@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_PAY_ITEMS, type DayShift, type Leave, type PayLine, type StaffErrorCode, type StaffMember, type WeekPlan } from '@/types/staff'
 import { createStaffStore, defaultStaffSettings, StaffStoreError, type LeaveDraft, type RosterImportRow, type StaffClient } from './staff'
 
-// 직원 저장 층(spec staff REQ-7610 AC-7610.1·AC-7610.2·AC-7610.4·AC-7610.5, design.md 5절). 실제 Supabase에 붙지 않는다.
+// 직원 저장 층(spec staff REQ-7610 AC-7610.1·AC-7610.2·AC-7610.4·AC-7610.5·AC-7610.7, design.md 5절). 실제 Supabase에 붙지 않는다.
 // 사람·전화·계좌·id는 모두 지어낸 것이다
 
 const H = '11111111-1111-4111-8111-111111111111'
@@ -23,9 +23,10 @@ const RRN = '900101-1234567'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const ASC = { ascending: true }
 
-// 읽는 칸·보내는 칸(design.md 1절 권한 표 그대로). hospital_id·주민번호 칸은 어디에도 없다
+// 읽는 칸·보내는 칸(design.md 1절 권한 표 그대로). hospital_id·주민번호 칸은 어디에도 없다.
+// 웹앱 등록일 registered_on은 읽기만 한다(칸 권한 없음 — 보내는 칸에 없다, AC-7610.7)
 const MEMBER_COLUMNS =
-  'id,name,job,job_other,employment,weekly_hours,hired_on,left_on,phone,birthday,address,bank,account_no,calendar_staff_id,memo,used_before,used_before_from'
+  'id,name,job,job_other,employment,weekly_hours,hired_on,left_on,phone,birthday,address,bank,account_no,calendar_staff_id,memo,used_before,used_before_from,carry_start,registered_on'
 const MEMBER_KEYS = [
   'name',
   'job',
@@ -43,6 +44,7 @@ const MEMBER_KEYS = [
   'memo',
   'used_before',
   'used_before_from',
+  'carry_start',
 ]
 const PLAN_COLUMNS = 'id,staff_id,from_day,week,sat_rotation'
 const CHANGE_COLUMNS = 'staff_id,day,start_min,end_min,lunch_from,lunch_to,memo'
@@ -72,6 +74,8 @@ const MEMBER: StaffMember = {
   memo: null,
   usedBefore: 0,
   usedBeforeFrom: null,
+  carryStart: 0,
+  registeredOn: '2000-01-01',
 }
 const MEMBER_ROW = {
   id: M1,
@@ -91,8 +95,12 @@ const MEMBER_ROW = {
   memo: null,
   used_before: 0,
   used_before_from: null,
+  carry_start: 0,
+  registered_on: '2000-01-01',
 }
-const MEMBER_BODY = Object.fromEntries(Object.entries(MEMBER_ROW).filter(([key]) => key !== 'id'))
+const MEMBER_BODY = Object.fromEntries(Object.entries(MEMBER_ROW).filter(([key]) => key !== 'id' && key !== 'registered_on'))
+/** saveMember에 넘기는 값(등록일 없음 — DB가 정한다, AC-7610.7) */
+const MEMBER_INPUT = Object.fromEntries(Object.entries(MEMBER).filter(([key]) => key !== 'id' && key !== 'registeredOn')) as Omit<StaffMember, 'id' | 'registeredOn'>
 
 const DAY: DayShift = { start: 540, end: 1080, lunchFrom: 780, lunchTo: 840 }
 const SAT: DayShift = { start: 540, end: 780, lunchFrom: null, lunchTo: null }
@@ -245,6 +253,10 @@ describe('AC-7610.1 직원 명단 읽기 listMembers', () => {
       { ...MEMBER_ROW, account_no: '123 456' },
       { ...MEMBER_ROW, used_before: 50.5 },
       { ...MEMBER_ROW, memo: '가'.repeat(501) },
+      { ...MEMBER_ROW, carry_start: 100.5 },
+      { ...MEMBER_ROW, carry_start: null },
+      { ...MEMBER_ROW, registered_on: null },
+      { ...MEMBER_ROW, registered_on: '2026-02-30' },
     ]
     const other = { ...MEMBER_ROW, id: M2, name: '박서연', job: '기타', job_other: '코디네이터', weekly_hours: 37.5, left_on: '2024-05-31', used_before: 1.5 }
     const { client } = fakeClient(okWith([...bad, MEMBER_ROW, other]))
@@ -270,7 +282,7 @@ describe('AC-7610.1 직원 명단 읽기 listMembers', () => {
 })
 
 describe('AC-7610.1 직원 저장 saveMember', () => {
-  it('AC-7610.1: 새 직원은 정해 둔 16칸만 새 객체로 넣는다 — hospital_id·id·주민번호를 함께 받아도 보내지 않는다', async () => {
+  it('AC-7610.1·AC-7610.7: 새 직원은 정해 둔 17칸만 새 객체로 넣는다 — hospital_id·id·주민번호·웹앱 등록일을 함께 받아도 보내지 않는다', async () => {
     const { client, calls } = fakeClient(okWith(MEMBER_ROW))
     const input = { ...MEMBER, hospital_id: H, rrn: RRN, residentNo: RRN } as StaffMember
     await expect(createStaffStore(client).saveMember(input)).resolves.toEqual(MEMBER)
@@ -281,7 +293,7 @@ describe('AC-7610.1 직원 저장 saveMember', () => {
     expect(JSON.stringify(calls)).not.toContain('900101')
   })
 
-  it('AC-7610.1: 고치기는 그 id 줄에 같은 16칸을 보낸다. 이름 앞뒤 빈칸은 빼고, 전화는 숫자만, 빈 글은 null로 보낸다', async () => {
+  it('AC-7610.1: 고치기는 그 id 줄에 같은 17칸을 보낸다. 이름 앞뒤 빈칸은 빼고, 전화는 숫자만, 빈 글은 null로 보낸다', async () => {
     const { client, calls } = fakeClient(okWith({ ...MEMBER_ROW, memo: null }))
     await createStaffStore(client).saveMember({ ...MEMBER, name: '  김하늘 ', phone: '010-1234-5678', memo: '   ', address: '' }, M1)
     expect(calls).toEqual([
@@ -316,6 +328,11 @@ describe('AC-7610.1 직원 저장 saveMember', () => {
     ['계좌에 글자', { accountNo: '123-abc-456' }],
     ['올해 이미 쓴 연차 51', { usedBefore: 51 }],
     ['메모 501자', { memo: '가'.repeat(501) }],
+    ['넘어온 연차 −30.5', { carryStart: -30.5 }],
+    ['넘어온 연차 100.5', { carryStart: 100.5 }],
+    ['넘어온 연차 0.5 단위 아님', { carryStart: 1.3 }],
+    ['넘어온 연차 글자', { carryStart: '2' }],
+    ['넘어온 연차 없음', { carryStart: null }],
   ])('AC-7610.1: 칸 규칙(AC-7601.4)을 어기면(%s) 보내지 않고 E-STAFF-SAVE-FAILED', async (_why, patch) => {
     const { client, calls } = fakeClient()
     await caught(() => createStaffStore(client).saveMember({ ...MEMBER, ...patch } as StaffMember), 'E-STAFF-SAVE-FAILED')
@@ -325,6 +342,66 @@ describe('AC-7610.1 직원 저장 saveMember', () => {
   it('AC-7610.1: 저장 실패·던짐은 E-STAFF-SAVE-FAILED 번호만 던진다', async () => {
     await caught(() => createStaffStore(fakeClient(failure(409, '23505')).client).saveMember(MEMBER), 'E-STAFF-SAVE-FAILED')
     await caught(() => createStaffStore(throwingClient).saveMember(MEMBER, M1), 'E-STAFF-SAVE-FAILED')
+  })
+})
+
+describe('AC-7610.7 넘어온 연차 시작 값·웹앱 등록일(saveMember·listMembers)', () => {
+  it('AC-7610.7: 읽은 줄의 carry_start·registered_on을 carryStart·registeredOn으로 읽는다(−30·100·−0.5 모두 맞는 값)', async () => {
+    const rows = [
+      { ...MEMBER_ROW, carry_start: -30, registered_on: '2026-11-21' },
+      { ...MEMBER_ROW, id: M2, name: '박서연', carry_start: 100, registered_on: '2025-03-04' },
+      { ...MEMBER_ROW, id: N1, name: '한지우', carry_start: -0.5, registered_on: '2026-01-02' },
+    ]
+    const found = await createStaffStore(fakeClient(okWith(rows)).client).listMembers()
+    expect(found.map((m) => [m.id, m.carryStart, m.registeredOn])).toEqual([
+      [M1, -30, '2026-11-21'],
+      [M2, 100, '2025-03-04'],
+      [N1, -0.5, '2026-01-02'],
+    ])
+  })
+
+  it.each([
+    ['등록일 없음', { registered_on: undefined }],
+    ['등록일 null', { registered_on: null }],
+    ['등록일이 날짜가 아님', { registered_on: '2026-11-21T00:00:00Z' }],
+    ['등록일 빈 글', { registered_on: '' }],
+    ['넘어온 연차 −30.5', { carry_start: -30.5 }],
+    ['넘어온 연차 0.5 단위 아님', { carry_start: 2.3 }],
+    ['넘어온 연차 글자', { carry_start: '2' }],
+  ])('AC-7610.7: 읽은 줄의 모양이 틀리면(%s) 그 줄을 버린다', async (_why, patch) => {
+    const bad = { ...MEMBER_ROW, id: M2, name: '박서연', ...patch }
+    const found = await createStaffStore(fakeClient(okWith([MEMBER_ROW, bad])).client).listMembers()
+    expect(found.map((m) => m.id)).toEqual([M1])
+  })
+
+  it('AC-7610.7: 더하기·고치기 모두 carry_start를 보내고 registered_on은 보내지 않는다 — 돌려주는 직원에는 DB의 등록일이 있다', async () => {
+    for (const id of [undefined, M1]) {
+      const { client, calls } = fakeClient(okWith({ ...MEMBER_ROW, carry_start: -1.5, registered_on: '2026-11-21' }))
+      const saved = await createStaffStore(client).saveMember({ ...MEMBER_INPUT, carryStart: -1.5 }, id)
+      expect(saved).toEqual({ ...MEMBER, carryStart: -1.5, registeredOn: '2026-11-21' })
+      const body = bodyOf(calls, id === undefined ? 'insert' : 'update') as Record<string, unknown>
+      expect(body).toEqual({ ...MEMBER_BODY, carry_start: -1.5 })
+      expect(Object.keys(body)).not.toContain('registered_on')
+      expect(named(calls, 'select')).toEqual([['select', MEMBER_COLUMNS]])
+    }
+  })
+
+  it('AC-7610.7: 등록일을 함께 받아도(화면이 직원을 그대로 넘김) 등록일은 보내지 않는다', async () => {
+    const { client, calls } = fakeClient(okWith(MEMBER_ROW))
+    await createStaffStore(client).saveMember({ ...MEMBER_INPUT, registeredOn: '1999-01-01' } as typeof MEMBER_INPUT, M1)
+    expect(JSON.stringify(calls)).not.toContain('registered_on":')
+    expect(JSON.stringify(calls)).not.toContain('1999-01-01')
+  })
+
+  it.each([-30, 100, 0, 2.5])('AC-7610.7: 넘어온 연차 %s는 범위 안이라 보낸다', async (carryStart) => {
+    const { client, calls } = fakeClient(okWith({ ...MEMBER_ROW, carry_start: carryStart }))
+    await createStaffStore(client).saveMember({ ...MEMBER_INPUT, carryStart })
+    expect((bodyOf(calls, 'insert') as Record<string, unknown>).carry_start).toBe(carryStart)
+  })
+
+  it('AC-7610.7: DB가 돌려준 줄의 등록일이 날짜가 아니면 E-STAFF-SAVE-FAILED', async () => {
+    const { client } = fakeClient(okWith({ ...MEMBER_ROW, registered_on: null }))
+    await caught(() => createStaffStore(client).saveMember(MEMBER_INPUT), 'E-STAFF-SAVE-FAILED')
   })
 })
 
@@ -442,6 +519,7 @@ describe('AC-7610.1 엑셀 넣기 importRoster', () => {
     phone: '01022223333',
     used_before: 2,
     used_before_from: '2026-09-02',
+    carry_start: 0,
   }
   const JIWOO_BODY = {
     ...Object.fromEntries(MEMBER_KEYS.map((key) => [key, null])),
@@ -451,6 +529,7 @@ describe('AC-7610.1 엑셀 넣기 importRoster', () => {
     weekly_hours: 40,
     hired_on: '2026-02-02',
     used_before: 0,
+    carry_start: 0,
   }
 
   it('AC-7610.1: 문제 줄은 빼고, 새 줄은 한 번에 넣고(+ 입사일부터 기본 근무), 고침 줄은 바뀐 칸만 고치고 오늘부터 기본 근무를 둔다', async () => {
@@ -544,6 +623,48 @@ describe('AC-7610.1 엑셀 넣기 importRoster', () => {
     const { client, calls } = fakeClient(okWith([{ id: N2, name: '한지우', hired_on: '2026-02-02' }]))
     await createStaffStore(client).importRoster([{ ...NEW_JIWOO, member: { ...NEW_JIWOO.member, memo } }], TODAY)
     expect(bodyOf(calls, 'insert')).toEqual([{ ...JIWOO_BODY, memo }])
+  })
+
+  it('AC-7610.7: 새 줄은 적힌 넘어온 연차를 carry_start로 넣고(비면 0), 등록일은 넣지 않는다', async () => {
+    const withCarry: RosterImportRow = { ...NEW_JIWOO, member: { ...NEW_JIWOO.member, carryStart: -2.5, registeredOn: '1999-01-01' } as RosterImportRow['member'] }
+    const { client, calls } = fakeClient(okWith([{ id: N2, name: '한지우', hired_on: '2026-02-02' }, { id: N1, name: '정유나', hired_on: '2024-09-02' }]))
+    await createStaffStore(client).importRoster([withCarry, NEW_YUNA], TODAY)
+    const bodies = bodyOf(calls, 'insert') as Record<string, unknown>[]
+    expect(bodies).toEqual([{ ...JIWOO_BODY, carry_start: -2.5 }, YUNA_BODY])
+    for (const body of bodies) expect(Object.keys(body)).not.toContain('registered_on')
+  })
+
+  it('AC-7610.7: 고침 줄은 적힌 넘어온 연차가 지금 값과 다를 때만 carry_start를 보내고, 비면 지금 값 그대로다(등록일은 보내지 않는다)', async () => {
+    const now = { ...MEMBER_ROW, carry_start: 1.5, registered_on: '2026-11-01' }
+    const other = { ...MEMBER_ROW, id: M2, name: '박서연', hired_on: '2025-01-06', carry_start: 0 }
+    const third = { ...MEMBER_ROW, id: N1, name: '오세린', hired_on: '2020-03-02', carry_start: 4 }
+    const rows: RosterImportRow[] = [
+      { action: 'update', member: { name: '김하늘', hiredOn: '2021-03-02', carryStart: -3, registeredOn: '1999-01-01' } as RosterImportRow['member'], plan: null },
+      { action: 'update', member: { name: '박서연', hiredOn: '2025-01-06', carryStart: 0, memo: '바뀐 메모' }, plan: null },
+      { action: 'update', member: { name: '오세린', hiredOn: '2020-03-02', memo: '바뀐 메모' }, plan: null },
+    ]
+    const { client, calls } = fakeClient(okWith([now, other, third]), OK)
+    await expect(createStaffStore(client).importRoster(rows, TODAY)).resolves.toEqual({ added: 0, updated: 3 })
+    expect(named(calls, 'update')).toEqual([
+      ['update', { carry_start: -3 }],
+      ['update', { memo: '바뀐 메모' }],
+      ['update', { memo: '바뀐 메모' }],
+    ])
+    expect(JSON.stringify(named(calls, 'update'))).not.toContain('registered_on')
+  })
+
+  it('AC-7610.7: 새 줄·고침 줄의 넘어온 연차가 −30~100·0.5 단위가 아니면 아무것도 보내지 않고 E-STAFF-SAVE-FAILED', async () => {
+    for (const carryStart of [-30.5, 100.5, 1.3]) {
+      const badNew: RosterImportRow = { ...NEW_JIWOO, member: { ...NEW_JIWOO.member, carryStart } }
+      const first = fakeClient(okWith([{ id: N2, name: '한지우', hired_on: '2026-02-02' }]))
+      await caught(() => createStaffStore(first.client).importRoster([NEW_YUNA, badNew], TODAY), 'E-STAFF-SAVE-FAILED')
+      expect(first.calls).toEqual([])
+      const badChange: RosterImportRow = { action: 'update', member: { name: '김하늘', hiredOn: '2021-03-02', carryStart }, plan: null }
+      const second = fakeClient(okWith([MEMBER_ROW]), okWith([{ id: N2, name: '한지우', hired_on: '2026-02-02' }]))
+      await caught(() => createStaffStore(second.client).importRoster([NEW_JIWOO, badChange], TODAY), 'E-STAFF-SAVE-FAILED')
+      expect(named(second.calls, 'insert')).toEqual([])
+      expect(named(second.calls, 'update')).toEqual([])
+    }
   })
 
   it('AC-7610.1: 중간에 실패하면 E-STAFF-SAVE-FAILED(된 것은 남는다)', async () => {

@@ -11,6 +11,7 @@
 - 직종: 목록 밖 글자도 받음(웹앱에서는 '기타' + 그 글자).
 - 요일 칸: 'HH:MM-HH:MM', 비면 쉬는 날. 토요일 격주가 비면 '매주'.
 - 날짜 칸: 엑셀 날짜 값 또는 '2026-03-02' 같은 글자 둘 다 올 수 있다.
+- 맨 끝 칸 '넘어온 연차(일)'(2026-11-21 더함): -30~100, 0.5 단위. 그 칸이 없는 옛 양식(21칸)도 웹앱이 읽는다.
 """
 from __future__ import annotations
 
@@ -38,6 +39,14 @@ WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"]
 
 EXAMPLE_MEMO = "보기 줄 — 지우고 쓰세요"
 
+# 넘어온 연차(일) 칸 글(specs/staff requirements '화면 글 기본값' 그대로)
+CARRY_HEADER = "넘어온 연차(일)"
+CARRY_PROMPT = "웹앱을 쓰기 전에 이미 넘어와 있던 연차 일수. 없으면 비워요. 반차는 0.5. 예: 2.5"
+CARRY_ERROR = "-30~100 사이 일수를 숫자로 적어 주세요. 반차는 0.5예요."
+CARRY_GUIDE = ("'넘어온 연차(일)'(맨 끝 칸)는 못 쓴 연차를 다음 해로 넘기는 병원만 적어요. "
+               "웹앱을 쓰기 전에 이미 넘어와 있던 일수예요. 없으면 비워 두세요. "
+               "반차는 0.5, 미리 당겨 써서 모자라면 -1처럼 적어요.")
+
 FONT_NAME = "맑은 고딕"
 DATE_FMT = "yyyy-mm-dd"
 TEXT_FMT = "@"
@@ -64,6 +73,8 @@ COLUMNS = [
     ],
     dict(header="토요일 격주", key="saturdayRotation", kind="choice", width=11, sample="1·3주"),
     dict(header="메모", key="memo", kind="plain", width=26, sample=EXAMPLE_MEMO),
+    # 넘어온 연차 시작 값(2026-11-21) — 옛 양식과 앞 칸 차례가 같게 맨 끝(메모 뒤)에 둔다. 보기 줄은 빈칸
+    dict(header=CARRY_HEADER, key="carryStart", kind="number", width=12, sample=None),
 ]
 HEADERS = [c["header"] for c in COLUMNS]
 
@@ -75,6 +86,7 @@ GUIDE_LINES = [
     "토요일에 격주로 일하면 '토요일 격주' 칸에서 1·3주 또는 2·4주를 골라요. 비워 두면 매주로 봐요.",
     "직종·근무 형태·토요일 격주는 칸을 누르면 나오는 목록에서 골라요. 직종이 목록에 없으면 직접 적어도 돼요(기타로 들어가요).",
     "주 근무시간은 숫자만 적어요(예: 40). '올해 이미 쓴 연차(일)'에는 올해 들어 지금까지 쓴 연차 일수를 적어요. 반차는 0.5예요(예: 9.5).",
+    CARRY_GUIDE,
     "연락처·계좌번호는 적은 그대로(앞의 0, 줄표 포함) 남아요.",
     "회색 기울임 글씨 '김하늘' 줄은 보기 줄이에요. 지우고 쓰세요.",
     "퇴사한 직원도 넣을 수 있어요. 퇴사일을 적으면 '퇴사' 목록으로 들어가요.",
@@ -245,6 +257,12 @@ def build_staff(ws) -> None:
                                       f"{c}{FIRST_ROW}<=60,MOD({c}{FIRST_ROW}*2,1)=0)"),
               prompt="올해 들어 지금까지 쓴 연차 일수. 반차는 0.5. 예: 9.5",
               error="일수를 숫자로 적어 주세요. 반차는 0.5예요. 예: 9.5")
+    c = col_letter(CARRY_HEADER)
+    add_check(ws, CARRY_HEADER,
+              DataValidation(type="custom",
+                             formula1=f"AND(ISNUMBER({c}{FIRST_ROW}),{c}{FIRST_ROW}>=-30,"
+                                      f"{c}{FIRST_ROW}<=100,MOD({c}{FIRST_ROW}*2,1)=0)"),
+              prompt=CARRY_PROMPT, error=CARRY_ERROR)
 
     # 요일 칸(한 번에)
     first, last = col_letter(WEEKDAYS[0]), col_letter(WEEKDAYS[-1])
@@ -313,6 +331,18 @@ def verify(out_path: str) -> None:
         check(any(d.type == "date" for d in find(col_range(h))), f"{h} 날짜 확인 없음")
     check(any(d.type == "decimal" for d in find(col_range("주 근무시간"))), "주 근무시간 숫자 확인 없음")
     check(any(d.type == "custom" for d in find(col_range("올해 이미 쓴 연차(일)"))), "연차 확인 없음")
+    # 넘어온 연차(일): 맨 끝 칸 · 숫자 확인(-30~100, 0.5 단위, 경고만) · 칸 도움말 · 확인 글
+    check(HEADERS[-1] == CARRY_HEADER and HEADERS[-2] == "메모", f"넘어온 연차 칸 자리 {HEADERS[-2:]}")
+    carry = [d for d in find(col_range(CARRY_HEADER)) if d.type == "custom"]
+    check(len(carry) == 1, f"넘어온 연차 확인 {len(carry)}개")
+    if carry:
+        d = carry[0]
+        c = col_letter(CARRY_HEADER)
+        want = f"AND(ISNUMBER({c}{FIRST_ROW}),{c}{FIRST_ROW}>=-30,{c}{FIRST_ROW}<=100,MOD({c}{FIRST_ROW}*2,1)=0)"
+        check(d.formula1 == want, f"넘어온 연차 확인 식 {d.formula1}")
+        check(d.promptTitle == CARRY_HEADER and d.prompt == CARRY_PROMPT, f"넘어온 연차 도움말 {d.promptTitle} / {d.prompt}")
+        check(d.error == CARRY_ERROR and d.errorStyle == "warning", f"넘어온 연차 확인 글 {d.error} / {d.errorStyle}")
+    check(ws.cell(row=FIRST_ROW, column=len(HEADERS)).value is None, "넘어온 연차 보기 줄이 빈칸이 아님")
     week = f"{col_letter('월')}{FIRST_ROW}:{col_letter('일')}{LAST_ROW}"
     check(any(d.type == "custom" for d in find(week)), "요일 칸 확인 없음")
 
@@ -341,6 +371,8 @@ def verify(out_path: str) -> None:
     g = wb[GUIDE_SHEET]
     guide_text = [g.cell(row=r, column=2).value for r in range(4, 4 + len(GUIDE_LINES))]
     check(guide_text == GUIDE_LINES, "안내 글이 다름")
+    used_line = next((i for i, line in enumerate(GUIDE_LINES) if "'올해 이미 쓴 연차(일)'" in line), -1)
+    check(used_line >= 0 and GUIDE_LINES[used_line + 1] == CARRY_GUIDE, "넘어온 연차 안내 줄이 '올해 이미 쓴 연차' 줄 다음이 아님")
 
     # 주민번호는 저장하지 않음(2026-11-21) — 파일 어디에도 '주민' 말이 없어야 함
     texts = [str(cell.value) for s in wb for row in s.iter_rows() for cell in row if cell.value is not None]

@@ -3,12 +3,14 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useStaffBase } from '@/components/staff/useStaffBase'
 import { StaffStoreError } from '@/lib/storage/staff'
+import type { StaffMember } from '@/types/staff'
 import { HAN, JUNG, KIM, LEAVES, LEE, MEMBERS, TODAY, clinicProfile, leave, makeBase, member, run } from './testData'
 import { LeaveScreen } from './LeaveScreen'
 
 // 휴가 화면 (staff REQ-7614, 시안 docs/mockups/staff/leave.html ①·②·④·⑤·⑥ '나'). 폰 장면 ⑦은 만들지 않는다.
 // 공용 읽기 훅(useStaffBase)만 흉내 낸다 — 연차 셈(lib/staff/leave)·근무표 셈(lib/staff/schedule)은 진짜를 쓴다.
-// 보기 자료는 requirements.md '보기 자료'(오늘 2026-11-21 토, 입사일 기준 · 못 쓴 연차는 수당으로 정산)
+// 보기 자료는 requirements.md '보기 자료'(오늘 2026-11-21 토, 입사일 기준 · 못 쓴 연차는 수당으로 정산).
+// 보기 자료의 웹앱 등록일은 가장 이른 입사일보다 앞(2000-01-01)이라 지금 숫자 그대로다. 등록일·넘어온 연차 시작 값을 바꾼 시험은 AC-7604.9 셈을 본다
 
 vi.mock('@/components/staff/useStaffBase', () => ({ useStaffBase: vi.fn() }))
 
@@ -34,6 +36,13 @@ async function rowOf(name: string) {
   return row
 }
 const cellsOf = (row: HTMLElement) => within(row).getAllByRole('cell')
+/** 보기 자료에서 한 사람만 웹앱 등록일·넘어온 연차 시작 값을 바꾼 공용 자료(AC-7604.9) */
+function baseWith(leftover: 'pay' | 'carry', id: string, over: Pick<Partial<StaffMember>, 'registeredOn' | 'carryStart'>): Base {
+  const next = makeBase()
+  next.settings = { ...next.settings, leftover }
+  next.members = MEMBERS.map((m) => (m.id === id ? { ...m, ...over } : m))
+  return next
+}
 
 beforeEach(() => {
   vi.mocked(useStaffBase).mockReset()
@@ -263,6 +272,39 @@ describe('AC-7614.6: 이번 달 연차 기간이 끝나는 직원 안내(시안 
   })
 })
 
+describe('AC-7614.6: 웹앱 시작 기간 앞에 끝난 기간은 끝 안내에 없다(AC-7604.9)', () => {
+  // 최민준 기간 2025-11-25 ~ 2026-11-24, 11-27이면 이미 끝났다. 등록일이 11-25면 그 기간은 웹앱을 쓰기 전(시작 기간 앞)이다
+  it("AC-7614.6: 'pay' — 이번 달에 이미 끝난 기간이 등록일보다 앞이면 '{이름} {MM-DD}에 끝났어요 {n}일'이 없고, 그런 사람뿐이면 칸이 없다", async () => {
+    show(baseWith('pay', 'm-choi', { registeredOn: '2026-11-25' }), '2026-11-27')
+    await statusTable()
+    expect(screen.queryByRole('region', { name: /연차 기간이 끝나는 직원/ })).toBeNull()
+    expect(screen.queryByText(/끝났어요/)).toBeNull()
+  })
+
+  it("AC-7614.6: 'carry' — 그런 사람뿐이면 '남은 일수를 다음 기간에 더했어요' 줄도 없다", async () => {
+    show(baseWith('carry', 'm-choi', { registeredOn: '2026-11-25', carryStart: 2 }), '2026-11-27')
+    await statusTable()
+    expect(screen.queryByText('남은 일수를 다음 기간에 더했어요')).toBeNull()
+    expect(screen.queryByRole('region', { name: /연차 기간이 끝나는 직원/ })).toBeNull()
+  })
+
+  it("AC-7614.6: 반례 — 등록일이 끝날과 같으면(11-24) 'pay'는 '최민준 11-24에 끝났어요 3일', 'carry'는 '남은 일수를 다음 기간에 더했어요'가 지금처럼 보인다", async () => {
+    show(baseWith('pay', 'm-choi', { registeredOn: '2026-11-24' }), '2026-11-27')
+    const box = await screen.findByRole('region', { name: '이번 달 연차 기간이 끝나는 직원 1명 — 11월 세무사 자료에 일수가 들어가요.' })
+    expect(within(box).getAllByRole('listitem').map(flat)).toEqual(['최민준 11-24에 끝났어요 3일'])
+    cleanup()
+    show(baseWith('carry', 'm-choi', { registeredOn: '2026-11-24' }), '2026-11-27')
+    await statusTable()
+    expect(screen.getByText('남은 일수를 다음 기간에 더했어요')).toBeTruthy()
+  })
+
+  it("AC-7614.6: 반례 — 등록일이 이번 기간 안이면(11-21) 이번 달에 끝나는 그 기간은 지금처럼 '{이름} {MM-DD}에 끝나요 {n}일'이다", async () => {
+    show(baseWith('pay', 'm-choi', { registeredOn: '2026-11-21' }))
+    const box = await screen.findByRole('region', { name: '이번 달 연차 기간이 끝나는 직원 1명 — 11월 세무사 자료에 일수가 들어가요.' })
+    expect(within(box).getAllByRole('listitem').map(flat)).toEqual(['최민준 11-24에 끝나요 3일'])
+  })
+})
+
 describe('AC-7614.2: 휴가 달력', () => {
   const calendar = () => screen.findByRole('region', { name: '휴가 달력' })
   const dayCell = (cal: HTMLElement, day: string) => {
@@ -450,6 +492,49 @@ describe('AC-7614.4: 한 사람 휴가 기록', () => {
     expect(flat(granted)).toBe('16일')
     expect(flat(granted?.nextElementSibling ?? null)).toBe('넘어옴 28일')
     expect(flat(within(rec).getByText('남은 연차').nextElementSibling)).toBe('38일')
+  })
+
+  async function openLeeWith(next: Base) {
+    show(next)
+    fireEvent.click(within(await statusTable()).getByRole('button', { name: '이도윤' }))
+    return screen.findByRole('region', { name: '이도윤 휴가 기록' })
+  }
+  const tileOf = (rec: HTMLElement, key: string) => within(rec).getByText(key).nextElementSibling as HTMLElement
+
+  it.each(['pay', 'carry'] as const)(
+    "AC-7614.4: 지난 기간(2025-07-17 ~ 2026-07-16)이 웹앱 등록일(2026-11-21)보다 앞에 끝났으면 '%s'도 지난 연차 기간 줄이 없다",
+    async (leftover) => {
+      const rec = await openLeeWith(baseWith(leftover, 'm-lee', { registeredOn: '2026-11-21' }))
+      expect(flat(rec)).not.toContain('지난 연차 기간')
+      expect(flat(rec)).not.toContain('세무사 자료에')
+      // 앞 기간들의 남은 일수가 쌓이지 않는다(AC-7604.9 보기 16/6/10)
+      expect([flat(tileOf(rec, '생긴 연차')), flat(tileOf(rec, '쓴 연차')), flat(tileOf(rec, '남은 연차'))]).toEqual(['16일', '6일', '10일'])
+      expect(flat(rec)).not.toContain('넘어옴')
+    },
+  )
+
+  it("AC-7614.4: 'carry'·넘어온 연차 시작 값 3이면 생긴 아래 '넘어옴 3일'·남은 13일, 지난 기간 줄은 없다('pay'면 시작 값을 쓰지 않는다)", async () => {
+    const rec = await openLeeWith(baseWith('carry', 'm-lee', { registeredOn: '2026-11-21', carryStart: 3 }))
+    expect(flat(tileOf(rec, '생긴 연차'))).toBe('16일')
+    expect(flat(tileOf(rec, '생긴 연차').nextElementSibling)).toBe('넘어옴 3일')
+    expect(flat(tileOf(rec, '남은 연차'))).toBe('13일')
+    expect(flat(rec)).not.toContain('지난 연차 기간')
+    cleanup()
+    const pay = await openLeeWith(baseWith('pay', 'm-lee', { registeredOn: '2026-11-21', carryStart: 3 }))
+    expect(flat(tileOf(pay, '남은 연차'))).toBe('10일')
+    expect(flat(pay)).not.toContain('넘어옴')
+  })
+
+  it("AC-7614.4: 반례 — 지난 기간 끝날이 등록일과 같으면(2026-07-16) 지금처럼 지난 기간 줄이 보인다('pay' 정산 2일 · 'carry'는 그 기간이 시작 기간이라 시작 값부터)", async () => {
+    const pay = await openLeeWith(baseWith('pay', 'm-lee', { registeredOn: '2026-07-16' }))
+    expect(flat(pay)).toContain(
+      '지난 연차 기간 2025-07-17 ~ 2026-07-16 15일 생김 · 13일 씀 · 남은 2일 → 수당으로 정산 (2026년 7월 세무사 자료에 2일이 들어갔어요)',
+    )
+    cleanup()
+    const carry = await openLeeWith(baseWith('carry', 'm-lee', { registeredOn: '2026-07-16', carryStart: 3 }))
+    expect(flat(carry)).toContain('지난 연차 기간 2025-07-17 ~ 2026-07-16 15일 생김 · 3일 넘어옴 · 13일 씀 · 남은 5일 → 다음 기간에 더함')
+    expect(flat(tileOf(carry, '생긴 연차').nextElementSibling)).toBe('넘어옴 5일')
+    expect(flat(tileOf(carry, '남은 연차'))).toBe('15일')
   })
 
   it('AC-7614.4: 올해 이미 쓴 연차는 합계 줄에 따로 보인다(최민준 쓴 14 = 웹앱 4 + 10)', async () => {

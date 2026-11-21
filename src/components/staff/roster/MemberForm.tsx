@@ -17,7 +17,8 @@ import { codeOf, periodStartOf } from './rosterText'
 
 // 직원 더하기 · 고치기 칸(staff AC-7612.3, 시안 list.html ③). 꼭 적을 칸은 이름·입사일 둘이고 나머지는 비워도 저장된다.
 // 칸 규칙(AC-7601.4)은 저장 전에 칸 아래 까닭으로 막는다(DB도 같은 규칙으로 막는다). '올해 이미 쓴 연차'는 더할 때만 있고,
-// 이번 연차 기간 시작일과 함께 저장한다. 직종을 고르지 않으면 '기타'(직접 적은 직종 없음 — 엑셀로 넣을 때와 같다)
+// 이번 연차 기간 시작일과 함께 저장한다. 직종을 고르지 않으면 '기타'(직접 적은 직종 없음 — 엑셀로 넣을 때와 같다).
+// '넘어온 연차'(시작 값)는 못 쓴 연차가 'carry'인 병원에서만 칸이 있다(AC-7612.8). 'pay'면 더하기 0·고치기 지금 값 그대로 보낸다
 
 const OTHER_BANK = '그 밖의 은행'
 /** 은행 고르기(Claude가 정한 것 9: 주요 은행 + '그 밖의 은행' 직접 적기) */
@@ -54,11 +55,22 @@ const BANK_MAX = 20
 const MEMO_MAX = 500
 const ACCOUNT = /^[0-9-]{6,30}$/
 const DECIMAL = /^\d+(\.\d+)?$/
+const SIGNED_DECIMAL = /^-?\d+(\.\d+)?$/
+// 넘어온 연차 시작 값 −30~100, 0.5 단위(AC-7601.8)
+const CARRY_MIN = -30
+const CARRY_MAX = 100
 
 const lengthOf = (text: string) => [...text].length
 const halfStep = (text: string, max: number): number | null => {
   const value = Number(text)
   return DECIMAL.test(text) && value <= max && Number.isInteger(value * 2) ? value : null
+}
+/** 넘어온 연차 칸 글 → 일수. 비면 0, '-'로 시작하는 음수도 받는다. 틀리면 null */
+const carryOf = (text: string): number | null => {
+  const trimmed = text.trim()
+  if (trimmed === '') return 0
+  const value = Number(trimmed)
+  return SIGNED_DECIMAL.test(trimmed) && value >= CARRY_MIN && value <= CARRY_MAX && Number.isInteger(value * 2) ? value || 0 : null
 }
 
 type Draft = {
@@ -77,6 +89,7 @@ type Draft = {
   accountNo: string
   calendarStaffId: string | null
   usedBefore: string
+  carryStart: string // 넘어온 연차('carry' 병원만 칸이 있다)
   memo: string
 }
 type Problems = Partial<Record<keyof Draft, string>>
@@ -100,6 +113,8 @@ function draftOf(member: StaffMember | null): Draft {
     accountNo: member?.accountNo ?? '',
     calendarStaffId: member?.calendarStaffId ?? null,
     usedBefore: '0',
+    // 더하기는 빈칸, 고치기는 지금 값(0이면 빈칸)
+    carryStart: member === null || member.carryStart === 0 ? '' : String(member.carryStart),
     memo: member?.memo ?? '',
   }
 }
@@ -109,7 +124,7 @@ const NATIONAL_ID_PROBLEM = '주민번호는 저장하지 않아요. 지우고 �
 
 const digitsOf = (phone: string) => phone.replace(/[\s.()-]/g, '')
 
-function check(draft: Draft, others: readonly StaffMember[], adding: boolean): Problems {
+function check(draft: Draft, others: readonly StaffMember[], adding: boolean, carry: boolean): Problems {
   const problems: Problems = {}
   const name = draft.name.trim()
   if (name === '') problems.name = '이름을 적어 주세요.'
@@ -129,6 +144,7 @@ function check(draft: Draft, others: readonly StaffMember[], adding: boolean): P
   const account = draft.accountNo.trim()
   if (account !== '' && !ACCOUNT.test(account)) problems.accountNo = '계좌번호는 숫자와 - 만, 6~30자로 적어 주세요.'
   if (adding && draft.usedBefore.trim() !== '' && halfStep(draft.usedBefore.trim(), 50) === null) problems.usedBefore = '0~50일, 0.5일 단위로 적어 주세요.'
+  if (carry && carryOf(draft.carryStart) === null) problems.carryStart = '-30~100일, 0.5일 단위로 적어 주세요.'
   if (lengthOf(draft.memo.trim()) > MEMO_MAX) problems.memo = `메모는 ${MEMO_MAX}자까지예요.`
   else if (hasNationalId(draft.memo)) problems.memo = NATIONAL_ID_PROBLEM
   return problems
@@ -136,7 +152,7 @@ function check(draft: Draft, others: readonly StaffMember[], adding: boolean): P
 
 const orNull = (text: string) => (text.trim() === '' ? null : text.trim())
 
-function memberOf(draft: Draft, member: StaffMember | null, settings: StaffSettings, today: string): Omit<StaffMember, 'id'> {
+function memberOf(draft: Draft, member: StaffMember | null, settings: StaffSettings, today: string): Omit<StaffMember, 'id' | 'registeredOn'> {
   const job = draft.job ?? '기타'
   const employment = draft.employment
   const weeklyHours = Number(draft.weeklyHours.trim())
@@ -146,6 +162,8 @@ function memberOf(draft: Draft, member: StaffMember | null, settings: StaffSetti
   const usedBefore = member === null ? Number(draft.usedBefore.trim() || '0') : member.usedBefore
   const usedBeforeFrom =
     member === null ? (usedBefore > 0 ? periodStartOf({ employment, weeklyHours, hiredOn, leftOn }, settings, today) : null) : member.usedBeforeFrom
+  // 'pay' 병원은 칸이 없다 → 더하기 0 · 고치기 지금 값 그대로
+  const carryStart = settings.leftover === 'carry' ? (carryOf(draft.carryStart) ?? 0) : (member?.carryStart ?? 0)
   return {
     name: draft.name.trim(),
     job,
@@ -163,6 +181,7 @@ function memberOf(draft: Draft, member: StaffMember | null, settings: StaffSetti
     memo: orNull(draft.memo),
     usedBefore,
     usedBeforeFrom,
+    carryStart,
   }
 }
 
@@ -244,6 +263,7 @@ export function MemberForm({
   onSaved(saved: StaffMember): void
 }) {
   const adding = member === null
+  const carry = settings.leftover === 'carry'
   const [draft, setDraft] = useState<Draft>(() => draftOf(member))
   const [problems, setProblems] = useState<Problems>({})
   const [saving, setSaving] = useState(false)
@@ -265,6 +285,7 @@ export function MemberForm({
     accountNo: `${id}-account`,
     calendar: `${id}-calendar`,
     usedBefore: `${id}-used`,
+    carryStart: `${id}-carry`,
     memo: `${id}-memo`,
   }
 
@@ -285,7 +306,7 @@ export function MemberForm({
 
   async function save() {
     if (saving) return
-    const found = check(draft, others, adding)
+    const found = check(draft, others, adding, carry)
     setProblems(found)
     setSaveError(null)
     if (Object.keys(found).length > 0) return
@@ -425,6 +446,20 @@ export function MemberForm({
           >
             <div className="flex items-center gap-2">
               <input type="text" inputMode="decimal" className={`${ds.input} max-w-32`} {...text('usedBefore')} />
+              <span className="text-small text-muted">일</span>
+            </div>
+          </Field>
+        )}
+        {carry && (
+          <Field
+            id={ids.carryStart}
+            label="넘어온 연차"
+            help="웹앱을 쓰기 전에 이미 넘어와 있던 연차예요(웹앱에 처음 넣은 날이 든 연차 기간에 더해요). 없으면 비워 두세요. 반차는 0.5로, 미리 당겨 써서 모자라면 -1처럼 적어요."
+            error={problems.carryStart}
+          >
+            <div className="flex items-center gap-2">
+              {/* 음수('-1')를 적을 수 있게 숫자 자판(decimal)을 쓰지 않는다 */}
+              <input type="text" className={`${ds.input} max-w-32`} {...text('carryStart')} />
               <span className="text-small text-muted">일</span>
             </div>
           </Field>
