@@ -7,7 +7,12 @@ import Anthropic, {
   InternalServerError,
   RateLimitError,
 } from '@anthropic-ai/sdk'
-import type { BetaContentBlock, BetaMessage, BetaMessageStreamParams } from '@anthropic-ai/sdk/resources/beta/messages/messages'
+import type {
+  BetaContentBlock,
+  BetaContentBlockParam,
+  BetaMessage,
+  BetaMessageStreamParams,
+} from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import type { AiErrorCode, AiUsage } from '@/types/aiReport'
 
 // Claude 부르기(spec ai-report design.md 'Claude 부르기', ADR-024). SDK는 이 폴더에서만 쓴다(ADR-004)
@@ -40,8 +45,12 @@ const ENDED_EARLY: ReadonlySet<string> = new Set([
 ])
 
 // effort: 생각 깊이. 없으면 medium(AI 리포트). 서식 정리처럼 짧은 글 뽑기는 low(spec forms)
+// user: 글자 하나, 또는 내용 블록 배열(고시·공지 요약의 PDF document 블록 + 글 블록, spec notices AC-7412.1) — 받은 그대로 보낸다
+// 일괄 처리(notices/batch.ts)도 같은 모양을 받는다
+export type ClaudeRequest = { system: string; user: string | BetaContentBlockParam[]; schema: object; effort?: 'low' | 'medium' }
+
 export async function callClaude(
-  req: { system: string; user: string; schema: object; effort?: 'low' | 'medium' },
+  req: ClaudeRequest,
   deps?: { client?: AnthropicLike; apiKey?: string; timeoutMs?: number },
 ): Promise<ClaudeResult> {
   const apiKey = deps?.apiKey ?? process.env.ANTHROPIC_API_KEY
