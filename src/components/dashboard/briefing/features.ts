@@ -31,7 +31,7 @@ export const DASHBOARD_FEATURES: readonly DashboardFeature[] = [
   { name: '예약', desc: '구글 캘린더 대신 쓰는 예약표·비트 도착 표시·취소와 변경 통계', href: '/calendar', status: 'ready' },
   { name: 'AI 리포트', desc: '지난달·작년 같은 달과 견준 월간 AI 보고', href: '/ai-report', status: 'ready' },
   { name: '서식', desc: '휴진 안내를 테마 그림으로 만들어 인쇄·그림 파일로', href: '/forms', status: 'ready' }, // forms AC-3501.2
-  { name: '직원', desc: '직원 명단·급여 계산과 명세서·연차와 휴가', href: '/staff', status: 'soon' },
+  { name: '직원', desc: '직원 명단·급여 계산과 명세서·연차와 휴가', href: '/staff', status: 'ready' }, // staff AC-7611.1
   { name: '재고', desc: '물품 목록·남은 수량·부족 표시', href: '/inventory', status: 'soon' },
   { name: '주소록', desc: '거래처·수리와 관리 업체·뉴메디코어 연락처', href: '/contacts', status: 'soon' },
   { name: '설정', desc: '점검 규칙·의원 문구·비트 PC 연결·백업', href: '/settings', status: 'ready' },

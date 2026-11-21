@@ -18,13 +18,6 @@ const TABLE: Array<{ path: NotReadyPath; name: string; title: string; intro: str
     items: ['심평원 공지·심사기준 변경', '보건복지부 고시·공지', '건강보험공단 공지', '글마다 AI 세 줄 요약'],
   },
   {
-    path: '/staff',
-    name: '직원',
-    title: '직원은 준비 중이에요',
-    intro: `직원과 급여·휴가를 한곳에서 볼 자리예요. ${SOON}`,
-    items: ['직원 명단', '급여 계산과 명세서', '연차와 휴가'],
-  },
-  {
     path: '/inventory',
     name: '재고',
     title: '재고는 준비 중이에요',
@@ -78,6 +71,16 @@ describe('AC-305.4: NOT_READY_FEATURES — 준비 중 기능(탭 순서)', () =>
     expect(MENU.find((m) => m.label === '서식')?.ready).toBe(true)
   })
 
+  it('AC-7611.1: 직원(/staff)은 준비 중 목록에 없다 — 주소·이름·옛 소개·만들 것 글자 모두, 탭 목록에서도 ready다', () => {
+    // @ts-expect-error '/staff'는 이제 NotReadyPath가 아니다(타입 점검이 본다)
+    const staff: NotReadyPath = '/staff'
+    expect(NOT_READY_FEATURES.map((f) => f.path)).not.toContain(staff)
+    expect(NOT_READY_FEATURES.map((f) => f.name)).not.toContain('직원')
+    expect(JSON.stringify(NOT_READY_FEATURES)).not.toContain('직원과 급여·휴가를 한곳에서 볼 자리예요')
+    expect(JSON.stringify(NOT_READY_FEATURES)).not.toContain('급여 계산과 명세서')
+    expect(MENU.find((m) => m.label === '직원')?.ready).toBe(true)
+  })
+
   it('AC-305.4: 주소가 겹치지 않는다', () => {
     expect(new Set(NOT_READY_FEATURES.map((f) => f.path)).size).toBe(NOT_READY_FEATURES.length)
   })
@@ -126,7 +129,6 @@ describe('AC-610.1: 환자는 준비 중 목록에서 빠진다', () => {
 describe('AC-415.1: NOT_READY_FEATURES — 항목마다 title(h1, 조사까지 통째로)', () => {
   const TITLES = [
     '고시·공지는 준비 중이에요',
-    '직원은 준비 중이에요',
     '재고는 준비 중이에요',
     '주소록은 준비 중이에요',
   ]
