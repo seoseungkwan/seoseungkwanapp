@@ -41,7 +41,7 @@
 - Phase: 1
 - AC: AC-7610.1, AC-7610.2, AC-7610.3, AC-7610.4, AC-7610.5
 - REQ: REQ-7610
-- Files: src/types/staff.ts, src/lib/storage/staff.ts, src/lib/storage/staff.test.ts, src/lib/storage/staffFiles.ts, src/lib/storage/staffFiles.test.ts, src/lib/errors.ts, src/lib/errors.test.ts, src/components/staff/useStaffBase.ts, src/components/staff/useStaffBase.test.ts
+- Files: src/types/staff.ts, src/lib/storage/staff.ts, src/lib/storage/staff.test.ts, src/lib/storage/staffFiles.ts, src/lib/storage/staffFiles.test.ts, src/lib/errors.ts, src/lib/errors.test.ts, src/components/staff/useStaffBase.ts, src/components/staff/useStaffBase.test.ts, src/types/errors.ts
 - Tests: src/lib/storage/staff.test.ts, src/lib/storage/staffFiles.test.ts, src/lib/errors.test.ts, src/components/staff/useStaffBase.test.ts
 - TDD: required — design.md 3절·5절. 가짜 클라이언트로 보내는 칸이 정해 둔 것뿐인지(hospital_id·주민번호 모양 없음)·1,000줄 쪽 읽기·틀린 줄 버림·오류 번호만 던짐·파일 줄 먼저 → 올리기, 실패 때 줄 지움·퇴사자 지우기 차례·예약 수 세기가 `day`만 읽는지·`saveRules`가 보는 달부터만 줄을 고치는지를 본다.
 
@@ -73,7 +73,7 @@
 - Phase: 1
 - AC: AC-7608.1, AC-7608.2, AC-7608.3, AC-7608.4, AC-7608.5
 - REQ: REQ-7608
-- Files: src/lib/staff/rosterExcel.ts, src/lib/staff/rosterExcel.test.ts, public/staff/staff-template.xlsx, scripts/make_staff_template.py
+- Files: src/lib/staff/rosterExcel.ts, src/lib/staff/rosterExcel.test.ts, public/staff/staff-template.xlsx, scripts/make_staff_template.py, .gitignore, .vercelignore, src/vercel-config.test.ts, fixtures/make-fake-fixtures.test.ts
 - Tests: src/lib/staff/rosterExcel.test.ts
 - TDD: required — design.md 4절. 양식은 총괄 창 스크립트(scratchpad `make_staff_template.py`)를 `scripts/`로 옮겨 `public/staff/staff-template.xlsx`를 만든다(지어낸 보기 줄만). 시험은 그 파일의 머리 줄이 `ROSTER_HEADERS`와 같은지, `xlsx`로 만든 통으로 날짜 세 모양·시간 두 모양·직종 '기타'·보기 줄 건너뜀·비운 칸 그대로·문제 줄 까닭·300줄을 본다.
 
@@ -81,7 +81,7 @@
 - Phase: 1
 - AC: AC-7611.1, AC-7611.2, AC-7611.3, AC-7611.4
 - REQ: REQ-7611
-- Files: src/components/shell/menu.ts, src/components/shell/shell.test.tsx, src/components/common/notReadyFeatures.ts, src/components/common/notReadyFeatures.test.ts, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/titles.test.tsx, src/app/notFound.test.tsx, src/app/(app)/staff/layout.tsx, src/app/(app)/staff/layout.test.tsx, src/app/(app)/staff/page.tsx, src/components/staff/StaffNav.tsx, src/components/staff/StaffNav.test.tsx, src/components/staff/labels.ts, src/components/staff/TableScroll.tsx
+- Files: src/components/shell/menu.ts, src/components/shell/shell.test.tsx, src/components/common/notReadyFeatures.ts, src/components/common/notReadyFeatures.test.ts, src/components/dashboard/briefing/features.ts, src/components/dashboard/briefing/features.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/titles.test.tsx, src/app/notFound.test.tsx, src/app/(app)/staff/layout.tsx, src/app/(app)/staff/layout.test.tsx, src/app/(app)/staff/page.tsx, src/components/staff/StaffNav.tsx, src/components/staff/StaffNav.test.tsx, src/components/staff/labels.ts, src/components/staff/TableScroll.tsx, src/app/(app)/tabFrame.test.tsx
 - Tests: src/components/staff/StaffNav.test.tsx, src/app/(app)/staff/layout.test.tsx, src/components/shell/shell.test.tsx, src/components/common/notReadyFeatures.test.ts, src/components/dashboard/briefing/features.test.ts, src/app/(app)/notReadyPages.test.tsx, src/app/titles.test.tsx
 - TDD: required — design.md 6절. `/staff/page.tsx`는 여기서 빈 명단 자리(제목만)로 두고 TASK-10이 바꾼다. 옛 시험은 직원이 준비 중이 아니게 된 곳만 고친다.
 
@@ -89,7 +89,7 @@
 - Phase: 1
 - AC: AC-7616.1, AC-7616.2
 - REQ: REQ-7616
-- Files: src/lib/calendar/shapes.ts, src/lib/calendar/rules.ts, src/lib/calendar/rules.test.ts, src/lib/storage/calendar.ts, src/lib/storage/calendar.test.ts, src/components/calendar/AllDayPanel.tsx, src/components/calendar/AllDayPanel.test.tsx, src/components/calendar/MonthGrid.tsx, src/components/calendar/MonthGrid.test.tsx, src/components/calendar/rows/parts.tsx, src/components/calendar/rows/PhoneWeekList.tsx, src/components/calendar/rows/PhoneWeekList.test.tsx, src/components/calendar/rows/TimeGrid.test.tsx, src/components/calendar/AddPanel.tsx, src/components/calendar/AddPanel.test.tsx, src/components/calendar/CalendarScreen.tsx, src/components/calendar/CalendarScreen.test.tsx
+- Files: src/lib/calendar/shapes.ts, src/lib/calendar/rules.ts, src/lib/calendar/rules.test.ts, src/lib/storage/calendar.ts, src/lib/storage/calendar.test.ts, src/components/calendar/AllDayPanel.tsx, src/components/calendar/AllDayPanel.test.tsx, src/components/calendar/MonthGrid.tsx, src/components/calendar/MonthGrid.test.tsx, src/components/calendar/rows/parts.tsx, src/components/calendar/rows/PhoneWeekList.tsx, src/components/calendar/rows/PhoneWeekList.test.tsx, src/components/calendar/rows/TimeGrid.test.tsx, src/components/calendar/AddPanel.tsx, src/components/calendar/AddPanel.test.tsx, src/components/calendar/CalendarScreen.tsx, src/components/calendar/CalendarScreen.test.tsx, src/types/calendar.ts, src/lib/calendar/occupancy.ts, src/lib/calendar/occupancy.test.ts
 - Tests: src/lib/calendar/rules.test.ts, src/lib/storage/calendar.test.ts, src/components/calendar/AllDayPanel.test.tsx, src/components/calendar/MonthGrid.test.tsx, src/components/calendar/rows/PhoneWeekList.test.tsx, src/components/calendar/AddPanel.test.tsx
 - TDD: required — design.md 7절. `CalAllDay.part`는 선택 칸(`part?: 'am' | 'pm' | null`, 없으면 종일)이라 옛 시험 줄은 그대로 둔다. `lib/calendar`는 환자 자료 구역 규칙을 그대로 지킨다(가드레일 시험 통과).
 
