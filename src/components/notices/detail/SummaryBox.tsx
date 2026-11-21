@@ -22,7 +22,8 @@ function titlePost(n: Pick<NoticeView, 'title' | 'posts'>): GroupPost | null {
   return [...n.posts].sort((a, b) => rank(a) - rank(b))[0] ?? null
 }
 
-const linkClass = `flex min-h-8 items-center gap-2 rounded-control font-medium text-accent underline-offset-3 hover:underline ${ds.focusRing}`
+// 붙임 이름은 시안 .files li a처럼 본문 글자(14px)이고 밑줄은 가리킬 때만
+const linkClass = `flex min-h-8 items-center gap-2 rounded-control text-body font-medium text-accent no-underline underline-offset-3 hover:underline ${ds.focusRing}`
 
 export function SummaryBox({ notice }: { notice: NoticeView }) {
   const headId = useId()
@@ -72,7 +73,7 @@ export function SummaryBox({ notice }: { notice: NoticeView }) {
       <div className="grid gap-3 border-t border-line pt-4">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           {original && (
-            <a className={ds.button.secondarySmall} href={original} target="_blank" rel="noopener noreferrer">
+            <a className={`${ds.button.secondarySmall} no-underline`} href={original} target="_blank" rel="noopener noreferrer">
               원문 보기
               <ExternalIcon />
             </a>
@@ -82,7 +83,7 @@ export function SummaryBox({ notice }: { notice: NoticeView }) {
         {files.length > 0 && (
           <div className="grid gap-1">
             <p className="text-caption font-semibold text-ink-2">붙임 파일</p>
-            <ul className="grid gap-0.5">
+            <ul className="grid list-none gap-0.5">
               {files.map((file) => {
                 const href = safeLink(file.url)
                 return (
@@ -94,7 +95,7 @@ export function SummaryBox({ notice }: { notice: NoticeView }) {
                         <ExternalIcon className="text-muted" />
                       </a>
                     ) : (
-                      <span className="flex min-h-8 items-center gap-2 font-medium text-ink-2">
+                      <span className="flex min-h-8 items-center gap-2 text-body font-medium text-ink-2">
                         <FileIcon className="text-muted" />
                         <span className="break-all">{file.name}</span>
                       </span>

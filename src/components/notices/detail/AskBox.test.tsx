@@ -324,3 +324,28 @@ describe('AC-7420.10: 답은 글자로만', () => {
     expect(container.innerHTML).not.toContain('<b>x</b>')
   })
 })
+
+describe('AC-7420.8: 기다리는 동안 새로 적은 질문', () => {
+  it('AC-7420.8: 답을 기다리는 동안 칸에 새 질문을 적으면 답이 와도 그 글을 지우지 않는다(보낸 질문 그대로일 때만 비운다)', async () => {
+    const { resolve } = deferredFetch()
+    await openBox()
+    send(QUESTION)
+    await within(box()).findByText('AI가 답을 쓰는 중이에요')
+    const next = '무릎에 놓는 주사도 같은가요?'
+    type(next)
+    resolve({ status: 200, body: { answer: ANSWER, left: 16 } })
+    expect(await within(box()).findByText(ANSWER)).toBeTruthy()
+    // 물어본 것은 보낸 질문이고, 칸에는 새로 적은 글이 그대로다
+    expect(within(box()).getByText(QUESTION)).toBeTruthy()
+    expect(area().value).toBe(next)
+    await expectLeft(16)
+  })
+
+  it('AC-7420.8: 앞뒤 빈칸까지 그대로면(보낸 칸 글 그대로) 답이 오면 칸을 비운다', async () => {
+    stubFetch({ status: 200, body: { answer: ANSWER, left: 16 } })
+    await openBox()
+    send(`  ${QUESTION}  `)
+    await within(box()).findByText(ANSWER)
+    expect(area().value).toBe('')
+  })
+})

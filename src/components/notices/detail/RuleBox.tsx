@@ -17,7 +17,7 @@ const RULE_SETTINGS = '/settings#rule-settings-title'
 
 function RuleList({ rules }: { rules: RuleHit[] }) {
   return (
-    <ul className="grid gap-1">
+    <ul className="grid list-none gap-1">
       {rules.map((rule, i) => (
         <li key={`${rule.id}-${i}`} className="whitespace-pre-wrap break-words rounded-control bg-surface/70 px-3 py-1.5 text-body font-medium text-ink">
           {rule.title}
@@ -83,7 +83,7 @@ export function RuleBox({ noticeId, rules, checkedAt: firstCheckedAt }: RuleBoxP
       <RuleList rules={rules} />
       {failed && <ErrorCard code="E-NOTICE-SAVE" />}
       <div className="flex flex-wrap gap-2">
-        <Link href={RULE_SETTINGS} className={ds.button.secondarySmall}>
+        <Link href={RULE_SETTINGS} className={`${ds.button.secondarySmall} no-underline`}>
           점검 규칙 보기
           <ArrowIcon />
         </Link>

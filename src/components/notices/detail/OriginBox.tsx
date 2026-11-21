@@ -14,7 +14,7 @@ export function OriginBox({ posts }: { posts: GroupPost[] }) {
       <h2 id={headId} className={sectionTitle}>
         올라온 곳
       </h2>
-      <ul>
+      <ul className="list-none">
         {posts.map((post, i) => (
           <li key={`${post.source}-${i}`} className="flex justify-between gap-2 border-b border-line py-1.5 text-small last:border-b-0">
             <b className="font-semibold text-ink">{sourceName(post.source)}</b>

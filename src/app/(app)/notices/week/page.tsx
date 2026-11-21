@@ -22,7 +22,7 @@ export default async function NoticesWeekPage({ searchParams }: { searchParams: 
     throw new Error('승인된 병원 줄이 없어요')
   }
   if (hospital.status !== 'approved') throw new Error('승인된 병원 줄이 없어요')
-  // ?w는 글자 하나일 때만 넘긴다. 월요일 날짜인지는 화면이 본다(아니면 가장 최근 모음)
+  // ?w는 글자 하나일 때만 넘긴다. 그릴 수 있는 월요일 날짜인지는 화면이 본다(아니면 가장 최근 모음, 기본값 24)
   const { w } = await searchParams
   return <WeekScreen hospitalName={hospital.name} today={todayInKorea()} week={typeof w === 'string' ? w : undefined} />
 }

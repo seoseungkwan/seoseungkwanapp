@@ -382,6 +382,46 @@ describe('AC-7421.3: 지난주 · 다음 주 · 인쇄', () => {
   })
 })
 
+// 2026-11-21 마지막 검토 뒤 더함(requirements 기본값 24) · 시안 모양(앱에는 링크 밑줄·목록 점을 지우는 초기화가 없다)
+describe('AC-7421.1·AC-7421.3: 그릴 수 없는 주 · 인쇄 여백 · 밑줄·점', () => {
+  const classesOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/)
+
+  it('AC-7421.1·기본값 24: ?w=가 월요일이어도 그릴 수 없는 날짜(9999-12-27)면 가장 최근 모음을 읽는다', async () => {
+    await shown({ week: '9999-12-27' })
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(read).toHaveBeenCalledWith('latest')
+  })
+
+  it('AC-7421.2·기본값 24: 그릴 수 없는 주에 모음이 없어도 오류 화면 없이 가장 최근 주 안내다', async () => {
+    read.mockResolvedValue(null)
+    render(<WeekScreen hospitalName={NAME} today={TODAY} week="9999-12-27" />)
+    expect(await screen.findByText('이번 주 모음은 월요일 아침에 나와요.')).toBeTruthy()
+    expect(read).toHaveBeenCalledWith('latest')
+    expect(screen.getByText('11월 9일 (월) ~ 11월 15일 (일)')).toBeTruthy()
+    expect(screen.getByRole('link', { name: '지난주' }).getAttribute('href')).toBe('/notices/week?w=2026-11-02')
+  })
+
+  it('AC-7421.3·기본값 24: 인쇄 쪽은 A4 한 장 여백(@page, 시안 14mm)이고 화면 부품 안 <style> 하나로 둔다', async () => {
+    const { container } = await shown()
+    const pageRules = Array.from(document.querySelectorAll('style')).filter((s) => s.textContent?.includes('@page'))
+    expect(pageRules.map((s) => s.textContent)).toEqual(['@media print { @page { size: A4 portrait; margin: 14mm } }'])
+    expect(container.contains(pageRules[0]!)).toBe(true)
+  })
+
+  it('AC-7421.1·AC-7421.3: 모든 링크에 밑줄이 없고(no-underline) 모든 목록에 점이 없다(list-none)', async () => {
+    read.mockResolvedValue({ ...WEEK, weekStart: '2026-11-02', createdAt: '2026-11-08T22:05:00Z' })
+    const { container } = await shown({ week: '2026-11-02' })
+    const links = Array.from(container.querySelectorAll('a'))
+    // 글 목록 · 주간 모음 · 지난주 · 다음 주
+    expect(links).toHaveLength(4)
+    for (const a of links) expect(classesOf(a), a.textContent ?? '').toContain('no-underline')
+    // 꼭 알 것 3가지 · 글별 요약 · 그 밖의 글
+    const lists = Array.from(container.querySelectorAll('ul, ol'))
+    expect(lists).toHaveLength(3)
+    for (const list of lists) expect(classesOf(list)).toContain('list-none')
+  })
+})
+
 describe('AC-7421.1·AC-7421.3: /notices/week 쪽 파일', () => {
   const HOSPITAL: NonNullable<Me['hospital']> = {
     id: 'h1',

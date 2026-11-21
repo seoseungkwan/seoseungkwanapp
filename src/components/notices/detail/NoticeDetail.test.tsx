@@ -513,3 +513,50 @@ describe('AC-7424.11: 꼭 볼 글 칩', () => {
     expect(screen.queryByText(/꼭 볼 글/)).toBeNull()
   })
 })
+
+// 앱에는 링크 밑줄·목록 점을 지우는 초기화가 없다 → 시안(밑줄·점 없음)처럼 요소마다 no-underline·list-none을 직접 준다
+describe('AC-7420.1·AC-7420.2·AC-7420.3·AC-7420.5: 시안 모양(밑줄·점·글자 크기)', () => {
+  const classesOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/)
+
+  it('AC-7420.1·AC-7420.2·AC-7420.3·AC-7420.5: 모든 링크에 밑줄이 없고(no-underline) 모든 목록에 점이 없다(list-none)', async () => {
+    const plain = { name: '붙임3. 바깥 주소.pdf', url: 'https://example.com/x.pdf' }
+    // [글, 링크 수]: 확인 전 = 글 목록으로 · 점검 규칙 보기 · 원문 보기 · 붙임 둘 / 확인함 = 글 목록으로 · 원문 보기 · 붙임 하나(바깥 주소는 링크 아님)
+    const views: [NoticeView, number][] = [
+      [notice(), 5],
+      [
+        notice({
+          mark: { readAt: null, starred: false, memo: '', memoAt: null, rulesCheckedAt: '2026-11-21T00:10:00.000Z' },
+          posts: [MOHW_POST, { ...CRTR_POST, attachments: [FILE1, plain] }],
+        }),
+        3,
+      ],
+    ]
+    for (const [view, linkCount] of views) {
+      const { container } = await show(view)
+      const links = Array.from(container.querySelectorAll('a'))
+      expect(links).toHaveLength(linkCount)
+      for (const a of links) expect(classesOf(a), textOf(a)).toContain('no-underline')
+      // 규칙 목록 · 붙임 목록 · 올라온 곳
+      const lists = Array.from(container.querySelectorAll('ul, ol'))
+      expect(lists).toHaveLength(3)
+      for (const list of lists) expect(classesOf(list), textOf(list)).toContain('list-none')
+      cleanup()
+    }
+  })
+
+  it('AC-7420.1: 읽기 실패 화면의 글 목록으로 링크도 밑줄이 없다', async () => {
+    await show('failed')
+    expect(classesOf(screen.getByRole('link', { name: '글 목록으로' }))).toContain('no-underline')
+  })
+
+  it('AC-7420.3: 붙임 파일 이름은 시안대로 본문 글자 크기(text-body, 14px)다. 링크로 만들지 않은 이름도 같다', async () => {
+    const plain = { name: '붙임3. 바깥 주소.pdf', url: 'https://example.com/x.pdf' }
+    await show(notice({ posts: [MOHW_POST, { ...CRTR_POST, attachments: [FILE1, plain] }] }))
+    const box = region('AI 세 줄 요약')
+    expect(classesOf(within(box).getByRole('link', { name: FILE1.name }))).toContain('text-body')
+    expect(within(box).queryByRole('link', { name: plain.name })).toBeNull()
+    const name = within(box).getByText(plain.name).parentElement
+    if (name === null) throw new Error('붙임 이름 줄이 없다')
+    expect(classesOf(name)).toContain('text-body')
+  })
+})

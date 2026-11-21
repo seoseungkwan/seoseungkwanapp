@@ -76,7 +76,9 @@ export function AskBox({ noticeId, readMode, onToMemo }: AskBoxProps) {
       setProblem({ kind: 'failed' })
       return
     }
-    const asked = question.trim()
+    // 칸 글 그대로(보낸 때). 답을 기다리는 동안 새로 적은 글은 답이 와도 지우지 않는다
+    const typed = question
+    const asked = typed.trim()
     sending.current = true
     setWaiting(true)
     setProblem(null)
@@ -87,7 +89,7 @@ export function AskBox({ noticeId, readMode, onToMemo }: AskBoxProps) {
     if (reply.ok) {
       setAnswered({ question: asked, answer: reply.answer })
       setLeft(reply.left)
-      setQuestion('')
+      setQuestion((now) => (now === typed ? '' : now))
     } else if (reply.kind === 'private') {
       setProblem({ kind: 'blocked', kinds: reply.kinds })
     } else if (reply.kind === 'limit') {
