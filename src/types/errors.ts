@@ -56,6 +56,8 @@ export type ErrorCode =
   | 'E-DESK-READ-FAILED' | 'E-DESK-SAVE-FAILED' | 'E-DESK-EMAIL-BAD' | 'E-DESK-EMAIL-TAKEN' | 'E-DESK-EMAIL-USED' | 'E-DESK-LIMIT'
   // 설정 '병원 정보' 칸(specs/clinic-profile design.md 3절): 읽기 · 저장 · 로고 올리기 실패
   | 'E-CLINIC-READ-FAILED' | 'E-CLINIC-SAVE-FAILED' | 'E-CLINIC-LOGO-FAILED'
+  // 직원 탭(spec staff AC-7610.1). 목록은 types/staff.ts STAFF_ERROR_CODES와 같다
+  | 'E-STAFF-READ-FAILED' | 'E-STAFF-SAVE-FAILED' | 'E-STAFF-FILE-FAILED' | 'E-STAFF-EXCEL-FAILED' | 'E-STAFF-IMAGE-FAILED'
   // 처음 질문 저장 실패(specs/clinic-profile AC-6614.8)
   | 'E-FIRST-RUN-SAVE-FAILED'
 

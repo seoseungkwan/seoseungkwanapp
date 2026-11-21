@@ -100,6 +100,11 @@ const ALL_CODES = [
   'E-CLINIC-SAVE-FAILED',
   'E-CLINIC-LOGO-FAILED',
   'E-FIRST-RUN-SAVE-FAILED',
+  'E-STAFF-READ-FAILED',
+  'E-STAFF-SAVE-FAILED',
+  'E-STAFF-FILE-FAILED',
+  'E-STAFF-EXCEL-FAILED',
+  'E-STAFF-IMAGE-FAILED',
 ] as const satisfies readonly ErrorCode[]
 
 // '병원' 낱말 예외(AC-409.1): 명세가 글자를 정한 번호만. 데스크 메일 둘은 '병원 계정'·'다른 병원'이라고 말해야 뜻이 산다(desk-feedback design.md 표, AC-6304.3).
@@ -129,10 +134,10 @@ const AUTH_CODES = [
 ] as const satisfies readonly ErrorCode[]
 
 describe('AC-003.4 ERRORS', () => {
-  // 직원 탭 번호(E-STAFF-*, spec staff AC-7610.1)는 번호 타입이 types/staff.ts의 StaffErrorCode에 따로 있다(아래 'AC-7610.1 직원 탭 오류 번호')
-  it('ErrorCode의 모든 번호가 빠짐없이, 그 밖의 번호(직원 탭 번호 빼고) 없이 있다', () => {
+  // 직원 탭 번호(E-STAFF-*, spec staff AC-7610.1)도 번호 타입 ErrorCode에 들어 있다(ErrorCard가 받게)
+  it('ErrorCode의 모든 번호가 빠짐없이, 그 밖의 번호 없이 있다 (AC-7610.1 E-STAFF 포함)', () => {
     expectTypeOf<(typeof ALL_CODES)[number]>().toEqualTypeOf<ErrorCode>()
-    expect(Object.keys(ERRORS).sort()).toEqual([...ALL_CODES, ...STAFF_ERROR_CODES].sort())
+    expect(Object.keys(ERRORS).sort()).toEqual([...ALL_CODES].sort())
   })
 
   it.each(ALL_CODES)('%s: 무엇이·어떻게 고치나가 비어 있지 않다', (code) => {

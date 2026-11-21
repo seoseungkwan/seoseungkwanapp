@@ -1,7 +1,7 @@
 import type { ErrorCode, ErrorInfo } from '@/types/errors'
 import type { StaffErrorCode } from '@/types/staff'
 
-/** 문구가 있는 번호. 직원 탭 번호(E-STAFF-*)는 번호 타입 ErrorCode에 더해질 때까지 types/staff.ts의 StaffErrorCode로 함께 받는다 */
+/** 문구가 있는 번호. 직원 탭 번호(E-STAFF-*)도 이제 ErrorCode 안에 있다 — StaffErrorCode는 같은 다섯을 가리키는 이름으로 남긴다 */
 export type KnownErrorCode = ErrorCode | StaffErrorCode
 
 // 오류 번호 → 한국어 안내(무엇이 · 어떻게 고치나). 안내 문구는 이 파일 한 곳에만 둔다.
