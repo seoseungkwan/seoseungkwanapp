@@ -432,7 +432,7 @@ const asPartial = (value: unknown): unknown => ({ ...(value as Record<string, un
 describe('비교 달이 덜 불러온 달이면 없는 달 (REQ-2005, REQ-2007)', () => {
   const claudeInput = (deps: ReturnType<typeof setup>['deps']): ReportInput => {
     const { user } = deps.callClaude.mock.calls[0][0]
-    return JSON.parse(user.slice('<data>\n'.length, user.length - '\n</data>'.length)) as ReportInput
+    return JSON.parse((user as string).slice('<data>\n'.length, (user as string).length - '\n</data>'.length)) as ReportInput
   }
 
   it('AC-2005.1 지난달 줄이 검사는 통과했지만 partial: true면 Claude 입력의 hasPrev가 false이고 지난달 값은 모두 null', async () => {
@@ -549,7 +549,7 @@ const ALL_SECTIONS = () => ({ selected: sectionsRow('2026-10'), prev: sectionsRo
 // Claude에게 간 입력(<data> 안 JSON)
 const sentInput = (deps: ReturnType<typeof setup>['deps']): ReportInput => {
   const { user } = deps.callClaude.mock.calls[0][0]
-  return JSON.parse(user.slice('<data>\n'.length, user.length - '\n</data>'.length)) as ReportInput
+  return JSON.parse((user as string).slice('<data>\n'.length, (user as string).length - '\n</data>'.length)) as ReportInput
 }
 
 const SECTION_ID = /^(age|insurance|town|weekday|hour|doctor):/

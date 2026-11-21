@@ -1,5 +1,14 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { cutText, decodeEntities, escapeTags, htmlToText } from './text'
+
+// 서버 코드 울타리(AC-513.2와 같은 규칙): 이 도구는 서버에서만 쓴다
+describe('AC-7401.2 서버 전용', () => {
+  it("AC-7401.2: text.ts 첫 줄은 import 'server-only'다", () => {
+    const first = readFileSync(new URL('./text.ts', import.meta.url), 'utf8').split(/\r?\n/)[0]
+    expect(first).toMatch(/^import\s+['"]server-only['"]\s*;?\s*$/)
+  })
+})
 
 // 바깥 사이트 HTML을 글자로 바꾸는 도구(specs/notices requirements AC-7401.2, design 2절)
 describe('AC-7401.2 htmlToText', () => {
