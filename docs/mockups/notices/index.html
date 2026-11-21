@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>고시·공지 시안</title>
+<!--
+  '고시·공지' 탭(/notices) 시안. 결정은 notes.md, 정한 것은 고시·공지 인터뷰(2026-11-21).
+  ?s=list(기본, 관련 글만) · all(전체) · detail(글 열기) · detail-mohw(본문만 요약한 글) · ask(AI에게 묻기) · ask-blocked(환자 정보 막음)
+     · ask-answer(답) · ask-limit(오늘 다 씀) · weekly(주간 모음) · search-empty(찾기 결과 없음) · backfill(처음 채우는 중)
+     · stopped(한 곳 못 가져옴) · dashboard(대시보드 새 칸·맨 위 경고)
+  색·크기는 앱 토큰(src/app/globals.css :root)과 탭 줄(src/components/shell/TabBar.tsx) 그대로. 글 제목·번호·요약·숫자는 모두 지어낸 예시다. 환자 자료는 없다. 어디로도 보내지 않는다.
+  화면 글자는 아래 T(앱 글자)에 모았다. 시안 표시(.mhead·.anno)는 앱 글자가 아니다.
+-->
+<style>
+@font-face{font-family:'Pretendard';font-weight:400;src:url(../../../src/app/fonts/Pretendard-Regular.subset.woff2) format('woff2')}
+@font-face{font-family:'Pretendard';font-weight:500;src:url(../../../src/app/fonts/Pretendard-Medium.subset.woff2) format('woff2')}
+@font-face{font-family:'Pretendard';font-weight:600;src:url(../../../src/app/fonts/Pretendard-SemiBold.subset.woff2) format('woff2')}
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB; --faint: #9CA3AF;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-strong: #1D4ED8; --accent-soft: #EAF1FE;
+  --positive: #15803D; --positive-soft: #ECF7EF; --negative: #C2410C; --negative-soft: #FDF0EA;
+  --warning: #B45309; --warning-soft: #FDF4E3;
+  --r: 4px; --r-float: 8px;
+  --float: 0 1px 2px rgb(17 24 39 / .06), 0 6px 16px rgb(17 24 39 / .1);
+  --ui: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface); color: var(--ink); font: 14px/22px var(--ui); word-break: keep-all; font-variant-numeric: tabular-nums; }
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; background: none; border: 0; padding: 0; }
+a { color: inherit; text-decoration: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h1, h2, h3, p, ul, ol, dl, dd { margin: 0; padding: 0; }
+ul, ol { list-style: none; }
+svg { flex: none; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* 시안 머리(앱 밖) */
+.mhead { background: #E9ECF0; border-bottom: 1px solid var(--line-strong); }
+.mhead-in { max-width: 1280px; margin: 0 auto; padding: 12px 24px; display: grid; gap: 8px; }
+.mhead b { color: var(--ink); font-size: 15px; }
+.mhead .ex { margin-left: 6px; padding: 1px 7px; border-radius: 4px; background: #FEF3C7; color: #92400E; font-size: 12px; font-weight: 600; }
+.mhead .mnote { font-size: 13px; color: var(--muted); }
+.switch { display: flex; flex-wrap: wrap; gap: 4px; }
+.switch a { padding: 3px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.switch a[aria-current="true"] { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+.anno { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border: 1px dashed #A78BFA; border-radius: 999px; background: #F5F3FF; color: #6D28D9; font-size: 11px; font-weight: 600; white-space: nowrap; }
+
+/* 앱 머리 · 탭 줄 (AppShell·TabBar 그대로) */
+.top { background: var(--surface); border-bottom: 1px solid var(--line); }
+.top-in { max-width: 1280px; margin: 0 auto; height: 56px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 16px; font-weight: 600; color: var(--ink); }
+.brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-r { display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.acct { height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); display: inline-flex; align-items: center; color: var(--ink-2); font-weight: 500; }
+nav.tabs { background: var(--surface); border-bottom: 1px solid var(--line); }
+.tabs-in { max-width: 1280px; margin: 0 auto; display: flex; }
+.strip { flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+.row-t { display: flex; width: max-content; min-width: 100%; padding: 0 24px; }
+.row-t > :first-child { margin-left: -12px; }
+.tab, .more { position: relative; height: 44px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; color: var(--ink-2); font-weight: 500; }
+.tab[aria-current="page"] { color: var(--ink); font-weight: 600; }
+.tab[aria-current="page"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; background: var(--accent); }
+.more { flex: none; gap: 4px; margin-right: 12px; }
+.badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 11px; line-height: 18px; font-weight: 600; text-align: center; }
+
+/* 본문 */
+main { max-width: 1280px; margin: 0 auto; padding: 24px 24px 48px; }
+main > * { min-width: 0; }
+
+/* 공통 모양 (classes.ts ds 옮김) */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink); font-size: 14px; font-weight: 500; white-space: nowrap; transition: background-color .15s; }
+.btn:hover { background: var(--canvas); }
+.btn.sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.btn.pri { border-color: transparent; background: var(--accent); color: #fff; }
+.btn.pri:hover { background: var(--accent-strong); }
+.btn.outline { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.btn.outline:hover { background: var(--accent-soft); }
+.btn.ghost { border-color: transparent; color: var(--ink-2); }
+.btn[disabled] { opacity: .4; cursor: not-allowed; }
+.btn[aria-pressed="true"].star { border-color: #F59E0B; background: #FFFBEB; color: #92400E; }
+.txt { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-weight: 500; text-underline-offset: 3px; }
+.txt:hover { text-decoration: underline; }
+.txt.sm { font-size: 13px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--r); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.chip.n { border-color: var(--line); background: var(--canvas); color: var(--ink-2); }
+.chip.a { background: var(--accent-soft); color: var(--accent-strong); }
+.chip.p { background: var(--positive-soft); color: var(--positive); }
+.chip.w { background: var(--warning-soft); color: var(--warning); }
+.chip.ng { background: var(--negative-soft); color: var(--negative); }
+.panel { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); min-width: 0; }
+.muted { color: var(--muted); }
+.help { font-size: 12px; line-height: 18px; color: var(--muted); }
+.input { height: 44px; width: 100%; min-width: 0; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink); }
+.input::placeholder, .area::placeholder { color: var(--muted); }
+.input:focus-visible, .area:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.area { display: block; width: 100%; min-width: 0; min-height: 88px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink); resize: vertical; line-height: 22px; }
+.area[aria-invalid="true"] { border-color: var(--negative); }
+.area[disabled] { background: var(--canvas); color: var(--muted); cursor: not-allowed; }
+
+/* 쪽 머리 */
+.phead { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 16px; }
+.phead h1 { font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: -.01em; }
+.phead .lede { margin-top: 4px; font-size: 14px; color: var(--ink-2); }
+.subtabs { margin-top: 16px; display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+.subtabs a { position: relative; height: 40px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-weight: 500; white-space: nowrap; }
+.subtabs a:first-child { margin-left: -12px; }
+.subtabs a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+.subtabs a[aria-current="page"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; background: var(--accent); }
+
+/* 고르기 줄 */
+.filters { margin-top: 16px; display: grid; gap: 12px; }
+.frow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--r); overflow: hidden; background: var(--surface); flex: none; }
+.seg button { height: 34px; padding: 0 14px; font-size: 13px; font-weight: 500; color: var(--ink-2); border-left: 1px solid var(--line-strong); transition: background-color .15s; }
+.seg button:first-child { border-left: 0; }
+.seg button:hover { background: var(--canvas); }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.tog { height: 36px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--ink-2); background: var(--surface); white-space: nowrap; }
+.tog[aria-pressed="true"] { border-color: #F59E0B; background: #FFFBEB; color: #92400E; font-weight: 600; }
+.search { margin-left: auto; display: flex; gap: 8px; flex: 1 1 360px; max-width: 460px; min-width: 0; }
+.search .box { position: relative; flex: 1; min-width: 0; }
+.search .box svg { position: absolute; left: 12px; top: 14px; color: var(--muted); pointer-events: none; }
+.search .input { height: 36px; padding-left: 36px; }
+.search .btn { height: 36px; }
+.srcs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.srcs .flab { font-size: 13px; font-weight: 600; color: var(--ink-2); margin-right: 4px; }
+.src { height: 30px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 999px; display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 500; color: var(--ink-2); background: var(--surface); white-space: nowrap; }
+.src[aria-pressed="true"] { border-color: transparent; background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.src[aria-pressed="false"] svg { visibility: hidden; width: 0; margin-left: -4px; }
+.checked { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; font-size: 12px; line-height: 18px; color: var(--muted); }
+.checked .lead { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-2); font-weight: 500; }
+.checked b { font-weight: 500; color: var(--ink-2); }
+.checked .bad, .checked .bad b { color: var(--warning); font-weight: 600; }
+
+/* 알림 띠 */
+.note { margin-top: 16px; display: flex; gap: 10px; align-items: flex-start; padding: 12px 16px; border-radius: var(--r); font-size: 13px; line-height: 20px; }
+.note > svg { margin-top: 2px; }
+.note b { display: block; font-size: 14px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.note p { color: var(--ink-2); }
+.note .acts { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.note.warn { background: var(--warning-soft); }
+.note.warn > svg { color: var(--warning); }
+.note.info { background: var(--accent-soft); }
+.note.info > svg { color: var(--accent-strong); }
+.note.ng { background: var(--negative-soft); }
+.note.ng > svg { color: var(--negative); }
+.note .grow { flex: 1; min-width: 0; }
+.prog { margin-top: 8px; display: flex; align-items: center; gap: 10px; }
+.prog .bar { flex: 1; max-width: 420px; height: 8px; border-radius: 4px; background: #fff; overflow: hidden; box-shadow: inset 0 0 0 1px #C7D7F8; }
+.prog .bar i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.prog span { font-size: 13px; font-weight: 600; color: var(--accent-strong); white-space: nowrap; }
+
+/* 목록 */
+.lhead { margin-top: 20px; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; padding-bottom: 8px; border-bottom: 1px solid var(--line-strong); }
+.lhead .cnt { font-size: 13px; color: var(--ink-2); }
+.lhead .cnt b { color: var(--ink); font-weight: 600; }
+.lhead .help { max-width: 52ch; }
+.list > li.month { padding: 14px 0 6px; font-size: 12px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--line); }
+.item { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: start; border-bottom: 1px solid var(--line); transition: background-color .15s; }
+.item:hover { background: var(--canvas); }
+.ilink { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 0 12px; padding: 14px 0 14px 8px; min-width: 0; }
+.idate { font-size: 13px; line-height: 22px; color: var(--muted); white-space: nowrap; }
+.ibody { position: relative; min-width: 0; display: grid; gap: 4px; }
+.ititle { display: block; font-size: 15px; line-height: 23px; color: var(--ink); font-weight: 400; }
+.ititle .dot { position: absolute; left: -14px; top: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+.item.unread .ititle { font-weight: 600; }
+.item:not(.unread) .ititle .dot { visibility: hidden; }
+.iline { font-size: 13px; line-height: 20px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iline.wait { color: var(--muted); }
+.imeta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12px; line-height: 20px; color: var(--muted); }
+.imeta .srcl { color: var(--ink-2); font-weight: 500; }
+.imeta .d2 { display: none; }
+.istar { height: 52px; display: grid; place-items: center; color: var(--faint); border-radius: var(--r); }
+.istar:hover { color: #B45309; }
+.istar[aria-pressed="true"] { color: #F59E0B; }
+.lmore { margin-top: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.empty { padding: 40px 16px; text-align: center; display: grid; justify-items: center; gap: 8px; border-bottom: 1px solid var(--line); }
+.empty b { font-size: 16px; line-height: 24px; color: var(--ink); font-weight: 600; }
+.empty p { max-width: 46ch; color: var(--ink-2); font-size: 14px; }
+.empty .acts { margin-top: 8px; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+
+/* 글 열기 */
+.back { display: inline-flex; align-items: center; gap: 4px; height: 32px; color: var(--ink-2); font-weight: 500; }
+.back:hover { color: var(--ink); }
+.dgrid { margin-top: 8px; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px 32px; align-items: start; }
+.dmain { display: grid; gap: 16px; min-width: 0; }
+.dside { display: grid; gap: 16px; min-width: 0; }
+.dhead { display: grid; gap: 8px; padding-bottom: 16px; border-bottom: 1px solid var(--line-strong); }
+.dmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 13px; color: var(--muted); }
+.dmeta .srcl { color: var(--ink-2); font-weight: 600; }
+.dtitle { font-size: 22px; line-height: 31px; font-weight: 600; letter-spacing: -.01em; color: var(--ink); }
+.dsub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; color: var(--ink-2); }
+.dacts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.rule { padding: 16px 20px; border-radius: var(--r); background: var(--warning-soft); border: 1px solid #F3D9A8; display: grid; gap: 10px; }
+.rule h2 { display: flex; gap: 8px; align-items: flex-start; font-size: 15px; line-height: 23px; font-weight: 600; color: #78350F; }
+.rule h2 svg { color: var(--warning); margin-top: 3px; }
+.rule p { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.rule ul { display: grid; gap: 4px; }
+.rule li { display: flex; gap: 8px; align-items: baseline; padding: 6px 10px; border-radius: var(--r); background: rgb(255 255 255 / .7); font-size: 14px; color: var(--ink); font-weight: 500; }
+.rule li small { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: auto; white-space: nowrap; }
+.rule .acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.rule.done { background: var(--canvas); border-color: var(--line); }
+.rule.done h2 { color: var(--ink-2); }
+.rule.done h2 svg { color: var(--positive); }
+.sum { padding: 20px; display: grid; gap: 14px; }
+.sh { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.sh h2 { font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); display: inline-flex; align-items: center; gap: 6px; }
+.sh h2 svg { color: var(--accent); }
+.sh .right { margin-left: auto; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.three { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px 16px; }
+.three dt { font-size: 13px; line-height: 23px; font-weight: 600; color: var(--muted); }
+.three dd { font-size: 15px; line-height: 23px; color: var(--ink); }
+.ours { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 4px 16px; padding: 12px 14px; border-radius: var(--r); background: var(--accent-soft); }
+.ours b { font-size: 13px; line-height: 23px; color: var(--accent-strong); font-weight: 600; }
+.ours span { font-size: 15px; line-height: 23px; color: var(--ink); font-weight: 600; }
+.caution { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; line-height: 18px; color: var(--muted); }
+.caution svg { margin-top: 1px; color: var(--muted); }
+.files { border-top: 1px solid var(--line); padding-top: 14px; display: grid; gap: 10px; }
+.files .frow2 { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.files ul { display: grid; gap: 2px; }
+.files li a { display: flex; gap: 8px; align-items: center; min-height: 32px; color: var(--accent); font-weight: 500; overflow-wrap: anywhere; }
+.files li a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.files li a svg { color: var(--muted); }
+.ask { padding: 20px; display: grid; gap: 12px; }
+.ask .lede { font-size: 14px; color: var(--ink-2); }
+.pii { display: flex; gap: 8px; align-items: flex-start; padding: 8px 12px; border-radius: var(--r); background: var(--warning-soft); font-size: 13px; line-height: 20px; font-weight: 600; color: #78350F; }
+.pii svg { margin-top: 2px; color: var(--warning); }
+.ask .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.ask .acts .left { margin-left: auto; font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.ask .acts .left b { font-weight: 600; color: var(--ink); }
+.block { margin: 0; }
+.qa { display: grid; gap: 10px; }
+.ques { padding: 10px 14px; border-radius: var(--r); background: var(--canvas); }
+.ques small, .ans small { display: block; font-size: 12px; line-height: 18px; font-weight: 600; color: var(--muted); }
+.ques p { color: var(--ink); }
+.ans { padding: 12px 14px; border-left: 3px solid var(--accent); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); border-radius: 0 var(--r) var(--r) 0; display: grid; gap: 8px; }
+.ans p { font-size: 15px; line-height: 24px; color: var(--ink); }
+.ans p.caution { font-size: 12px; line-height: 18px; color: var(--muted); }
+.ans .acts2 { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.sblock { padding: 16px 20px; display: grid; gap: 10px; }
+.sblock h2 { font-size: 15px; line-height: 23px; font-weight: 600; color: var(--ink); }
+.memo .area { min-height: 104px; }
+.memo .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.memo .saved { font-size: 12px; color: var(--muted); }
+.origin li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.origin li:last-child { border-bottom: 0; }
+.origin li b { font-weight: 600; color: var(--ink); }
+.origin li span { color: var(--muted); white-space: nowrap; }
+
+/* 주간 모음 */
+.wtool { margin-top: 16px; max-width: 880px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.wtool .wk { font-weight: 600; color: var(--ink); white-space: nowrap; }
+.wtool .sp { flex: 1; }
+.sheet { margin-top: 16px; max-width: 880px; padding: 32px 36px; display: grid; gap: 24px; }
+.sheet .shd { display: grid; gap: 4px; padding-bottom: 16px; border-bottom: 2px solid var(--ink); }
+.sheet .shd h2 { font-size: 22px; line-height: 30px; font-weight: 600; letter-spacing: -.01em; }
+.sheet .shd p { font-size: 13px; color: var(--ink-2); }
+.sheet h3 { font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); margin-bottom: 10px; }
+.top3 { display: grid; gap: 10px; }
+.top3 li { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 2px 10px; padding: 12px 14px; border-radius: var(--r); background: var(--canvas); }
+.top3 .no { grid-row: span 2; width: 28px; height: 28px; border-radius: 50%; background: var(--ink); color: #fff; display: grid; place-items: center; font-weight: 600; font-size: 14px; }
+.top3 b { font-size: 15px; line-height: 23px; font-weight: 600; color: var(--ink); }
+.top3 p { font-size: 14px; color: var(--ink-2); }
+.wlist li { padding: 10px 0; border-bottom: 1px solid var(--line); display: grid; gap: 2px; }
+.wlist li:last-child { border-bottom: 0; }
+.wlist .wm { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 12px; color: var(--muted); }
+.wlist .wm b { color: var(--ink-2); font-weight: 500; }
+.wlist .wt { font-size: 14px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.wlist p { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.others { columns: 2; column-gap: 24px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.others li { break-inside: avoid; padding: 3px 0; }
+.others li span { color: var(--muted); margin-right: 6px; }
+
+/* 대시보드 */
+.dwarn { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 10px 16px; border-radius: var(--r); background: var(--warning-soft); border: 1px solid #F3D9A8; font-size: 14px; color: var(--ink-2); }
+.dwarn > svg { color: var(--warning); }
+.dwarn b { color: #78350F; font-weight: 600; }
+.dwarn .grow { flex: 1 1 320px; min-width: 0; }
+.dline { margin-top: 20px; font-size: 13px; color: var(--muted); }
+.dline b { color: var(--ink); font-weight: 600; }
+.dh { margin-top: 4px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding-bottom: 16px; border-bottom: 1px solid var(--line-strong); }
+.dh h1 { font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: -.01em; }
+.dh .when { font-size: 13px; color: var(--ink-2); }
+.dim { opacity: .45; filter: grayscale(.4); pointer-events: none; }
+.kpis { margin-top: 12px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+.kpi { padding: 16px 20px; border-left: 1px solid var(--line); min-width: 0; }
+.kpi:first-child { border-left: 0; padding-left: 0; }
+.kpi .l { font-size: 13px; color: var(--muted); }
+.kpi .v { font-size: 28px; line-height: 36px; font-weight: 600; }
+.kpi .v small { font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 2px; }
+.dsec { margin-top: 32px; }
+.dsec .shh { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-bottom: 12px; }
+.dsec h2 { font-size: 20px; line-height: 28px; font-weight: 600; }
+.dsec .shh .cntb { font-size: 14px; font-weight: 600; color: var(--accent-strong); }
+.dsec .shh .sp { flex: 1; }
+.ncard { padding: 4px 20px; }
+.ncard li { border-bottom: 1px solid var(--line); }
+.ncard li:last-child { border-bottom: 0; }
+.ncard a { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 2px 12px; padding: 12px 0; }
+.ncard .nd { font-size: 13px; color: var(--muted); white-space: nowrap; line-height: 22px; }
+.ncard .nt { font-weight: 600; color: var(--ink); }
+.ncard a:hover .nt { text-decoration: underline; text-underline-offset: 3px; }
+.ncard .nm { grid-column: 2; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 12px; color: var(--muted); }
+.ghost-blk { height: 120px; border-radius: var(--r-float); background: var(--canvas); display: grid; place-items: center; color: var(--muted); font-size: 13px; }
+
+@media (max-width: 1023px) {
+  .dgrid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 767px) {
+  .mhead-in, .top-in, main { padding-left: 16px; padding-right: 16px; }
+  .top-in { height: 48px; }
+  .brand { font-size: 14px; gap: 8px; }
+  .top-r time { display: none; }
+  .row-t { padding: 0 16px; }
+  .more { margin-right: 4px; }
+  main { padding-top: 16px; padding-bottom: 32px; }
+  .phead h1 { font-size: 22px; line-height: 30px; }
+  .btn { height: 44px; }
+  .btn.sm { height: 44px; }
+  .search { order: -1; flex: 1 1 100%; max-width: none; margin-left: 0; }
+  .search .input, .search .btn { height: 44px; }
+  .search .input { font-size: 16px; }
+  .search .box svg { top: 18px; }
+  .frow .seg { flex: 1; display: grid; grid-template-columns: 1fr 1fr; }
+  .seg button { height: 42px; }
+  .tog { height: 44px; }
+  .src { height: 36px; }
+  .srcs .flab { width: 100%; }
+  .ilink { grid-template-columns: minmax(0, 1fr); padding-left: 0; }
+  .idate { display: none; }
+  .imeta .d2 { display: inline; color: var(--ink-2); }
+  .iline { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .ilink { padding-left: 16px; }
+  .dtitle { font-size: 19px; line-height: 28px; }
+  .rule { padding: 14px 16px; }
+  .rule li { flex-wrap: wrap; }
+  .rule li small { margin-left: 0; }
+  .rule .acts .btn { flex: 1; }
+  .sum, .ask { padding: 16px; }
+  .sblock { padding: 14px 16px; }
+  .three, .ours { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .three dd { margin-bottom: 8px; }
+  .three dd:last-child { margin-bottom: 0; }
+  .area { font-size: 16px; }
+  .ask .acts .btn { flex: 1; }
+  .ask .acts .left { margin-left: 0; width: 100%; order: -1; }
+  .sheet { padding: 20px 16px; }
+  .others { columns: 1; }
+  .wtool .sp { display: none; }
+  .wtool .wk { order: -1; width: 100%; }
+  .wtool .btn.sm { flex: 1; }
+  .wtool .print { width: 100%; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi { padding: 12px 0; border-left: 0; }
+  .ncard { padding: 4px 16px; }
+  .ncard a { grid-template-columns: minmax(0, 1fr); }
+  .ncard .nm { grid-column: 1; }
+  .dsec .shh .sp { display: none; }
+  .dwarn { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 4px 10px; align-items: start; }
+  .dwarn > svg { margin-top: 2px; }
+  .dwarn > :not(svg):not(.grow) { grid-column: 2; justify-self: start; }
+  .dwarn .txt { min-height: 44px; }
+}
+@media print {
+  @page { size: A4; margin: 14mm; }
+  body { font-size: 12px; line-height: 18px; }
+  .mhead, .top, nav.tabs, .phead, .subtabs, .wtool, .noprint { display: none !important; }
+  main { padding: 0; max-width: none; }
+  .sheet { margin: 0; padding: 0; border: 0; max-width: none; gap: 14px; }
+  .sheet .shd h2 { font-size: 18px; line-height: 24px; }
+  .top3 li { background: none; border: 1px solid #999; padding: 8px 10px; }
+  .top3 .no { background: none; color: #000; border: 1px solid #000; }
+  .wlist li { padding: 5px 0; gap: 0; }
+  .sheet h3 { font-size: 14px; line-height: 20px; margin-bottom: 6px; }
+  .top3 { gap: 6px; }
+  .top3 b, .wlist .wt { font-size: 13px; line-height: 19px; }
+  .top3 p, .wlist p, .others { font-size: 12px; line-height: 17px; }
+  .others li { padding: 1px 0; }
+  .chip { border: 1px solid #999; background: none !important; color: #000 !important; }
+}
+</style>
+</head>
+<body>
+<div class="mhead noprint"><div class="mhead-in">
+  <div><b>고시·공지 탭 시안</b><span class="ex">예시</span> <span class="mnote">글 제목·고시 번호·요약·숫자는 모두 지어낸 예시예요. 환자 정보는 없어요. 글을 누르거나 단추를 눌러 넘어가 볼 수 있어요.</span></div>
+  <div class="switch" id="switch"></div>
+</div></div>
+
+<header class="top"><div class="top-in">
+  <div class="brand"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 30 30"><rect x="3" y="3" width="24" height="24" rx="6" fill="none" stroke="#14C8BA" stroke-width="2.4"/><path d="M13.5 8h3a1 1 0 0 1 1 1v3.5H21a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3.5V21a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3.5H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3.5V9a1 1 0 0 1 1-1z" fill="#6D5DF5"/></svg><span>샘플정형외과의원</span></div>
+  <div class="top-r"><time>2026년 11월 21일 (토) 09:20 (KST)</time><span class="acct">계정 ▾</span></div>
+</div></header>
+<nav class="tabs" aria-label="메뉴"><div class="tabs-in"><div class="strip"><div class="row-t" id="tabs"></div></div><span class="more">더보기 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4.5 6.5 8 10l3.5-3.5"/></svg></span></div></nav>
+
+<main id="app"></main>
+
+<script>
+/* ───────── 화면 글자(앱 글자). notes.md '화면 글자'와 한 글자도 다르면 안 된다 ───────── */
+const T = {
+  tab: '고시·공지',
+  badgeLabel: (n) => `안 읽은 관련 글 ${n}건`,
+  h1: '고시·공지',
+  lede: '심평원·보건복지부 새 글을 매일 아침 모아 AI가 요약해요.',
+  subList: '글 목록',
+  subWeekly: '주간 모음',
+  segRel: '관련 글만',
+  segAll: '전체',
+  starOnly: '별표만',
+  searchLabel: '글 찾기',
+  searchPh: '제목·본문·붙임 파일 글자로 찾기',
+  searchBtn: '찾기',
+  srcLabel: '출처',
+  sources: ['심평원 공지', '심평원 심사기준', '보건복지부'],
+  checkedLead: '매일 아침 확인해요',
+  checkedOk: (src, t) => `${src} 오늘 ${t} 확인`,
+  checkedBad: (src) => `${src}: 어제부터 못 가져왔어요`,
+  stoppedTitle: (src) => `${src}: 어제부터 못 가져왔어요`,
+  stoppedBody: (src, last) => `${src} 게시판 모양이 바뀌었거나 잠시 막힌 것 같아요. 마지막으로 ${last}에 가져왔어요. 다른 곳 글은 오늘 아침에도 잘 가져왔어요. 고쳐질 때까지 ${src} 새 글은 직접 확인해 주세요.`,
+  stoppedLink: (src) => `${src} 게시판 열기`,
+  backfillTitle: '올해 1월부터 지난 글을 채우는 중이에요',
+  backfillProg: (done, all) => `지난 글 ${all}건 중 ${done}건 채웠어요`,
+  backfillBody: '요약을 한꺼번에 만들고 있어 하루쯤 걸려요. 채운 글은 바로 볼 수 있어요. 요약이 아직 없는 글은 관련 여부를 몰라 관련 글만 보기에도 함께 보여요.',
+  cntRel: (n, u) => `관련 글 <b>${n}건</b> · 안 읽은 글 <b>${u}건</b>`,
+  cntAll: (n, u) => `전체 <b>${n}건</b> · 안 읽은 글 <b>${u}건</b>`,
+  cntFound: (n) => `찾은 글 <b>${n}건</b>`,
+  relHelp: '관련 여부는 AI가 정해요. 빠진 글이 걱정되면 [전체]로 보세요.',
+  allHelp: '정형외과 의원과 관련 적은 글도 함께 보여요.',
+  chipRel: '정형외과 의원 관련',
+  chipRule: '점검 규칙 확인 필요',
+  chipRuleDone: '점검 규칙 확인함',
+  chipFiles: (n) => `붙임 파일 ${n}개`,
+  chipWait: '요약 만드는 중',
+  waitLine: '요약을 만드는 중이에요.',
+  unreadSr: '안 읽음',
+  starOn: '별표 빼기',
+  starOff: '별표 하기',
+  moreBtn: '지난 글 더 보기',
+  listFoot: '2026년 1월 1일부터 모은 글이에요.',
+  emptyTitle: (q) => `‘${q}’와 맞는 글이 없어요`,
+  emptyBody: '제목·본문·붙임 파일 글자에서 찾았어요. 낱말을 더 짧게 하거나 띄어쓰기를 바꿔 보세요.',
+  emptyRelNote: '지금은 관련 글만 보고 있어요.',
+  emptyAllBtn: '전체에서 찾기',
+  emptyClear: '찾기 지우기',
+  starEmptyTitle: '별표한 글이 없어요',
+  starEmptyBody: '글 오른쪽 별을 누르면 여기에 모여요.',
+  back: '글 목록으로',
+  posted: (d) => `${d} 올라옴`,
+  starBtnOff: '별표',
+  starBtnOn: '별표함',
+  ruleTitle: (n) => `이 글이 점검 규칙 ${n}개의 근거를 바꿔요 — 확인 필요`,
+  ruleBody: '점검 규칙은 저절로 바뀌지 않아요. 아래 규칙이 새 기준과 맞는지 설정 → 점검 규칙에서 확인해 주세요.',
+  ruleOpen: '점검 규칙 보기',
+  ruleDoneBtn: '확인했어요',
+  ruleDoneTitle: (n) => `점검 규칙 ${n}개 확인함`,
+  ruleDoneWhen: (w) => `${w}에 확인했어요.`,
+  sumTitle: 'AI 세 줄 요약',
+  sumFull: '붙임 파일까지 읽고 요약',
+  sumBody: '본문만 보고 요약',
+  sumBodyWhy: '보건복지부는 붙임 파일 가져가기를 막아 두어 본문만 보고 요약했어요. 붙임 파일은 원문에서 확인해 주세요.',
+  k1: '무엇이 바뀌나',
+  k2: '언제부터',
+  k3: '누구 대상',
+  ours: '우리 의원에는',
+  caution: 'AI가 만든 요약이라 틀릴 수 있어요. 중요한 내용은 원문에서 꼭 확인해 주세요.',
+  orig: '원문 보기',
+  filesHead: '붙임 파일',
+  filesNote: '원래 게시판에서 새 창으로 열려요. 파일은 이 앱에 저장하지 않아요.',
+  noFiles: '붙임 파일은 원문에서 받아 주세요.',
+  askTitle: 'AI에게 묻기',
+  askLede: '이 글과 붙임 파일 내용을 바탕으로 답해요.',
+  askLedeBody: '이 글 본문을 바탕으로 답해요.',
+  askLeft: (n) => `오늘 <b>${n}번</b> 남음 (하루 20번)`,
+  askOpen: 'AI에게 묻기',
+  askPii: '환자 이름·주민번호·전화번호·차트번호는 쓰지 마세요.',
+  askLabel: '물어볼 것',
+  askPh: '예: 어깨 관절 주사도 횟수가 줄어드나요?',
+  askSend: '묻기',
+  askClose: '닫기',
+  askShared: '우리 병원 계정이 함께 하루 20번까지 쓸 수 있어요.',
+  askBlockedTitle: '환자 정보로 보이는 글자가 있어 보내지 않았어요',
+  askBlockedBody: (kinds) => `${kinds}로 보이는 글자를 지우고 다시 눌러 주세요. 남은 횟수는 줄지 않았어요.`,
+  piiKinds: { rrn: '주민번호', tel: '전화번호', chart: '차트번호', digits: '긴 숫자' },
+  askBusy: 'AI가 답을 쓰는 중이에요',
+  askFail: '답을 받지 못했어요. 잠시 뒤 다시 눌러 주세요. 남은 횟수는 줄지 않았어요.',
+  askLimit: '오늘 물어볼 수 있는 20번을 다 썼어요. 내일 다시 쓸 수 있어요.',
+  qLabel: '물어본 것',
+  aLabel: 'AI 답',
+  aCaution: 'AI 답이라 틀릴 수 있어요. 원문에서 꼭 확인해 주세요.',
+  aToMemo: '메모에 옮기기',
+  aNotSaved: '답은 저장되지 않아요. 남기려면 메모에 옮겨 두세요.',
+  memoTitle: '우리 병원 메모',
+  memoHelp: '우리 병원 계정만 봐요. 환자 정보는 쓰지 마세요.',
+  memoPh: '예: 12월 회의 때 원장님들께 알리기',
+  memoSave: '메모 저장',
+  memoSaved: (w) => `${w} 저장됨`,
+  originTitle: '올라온 곳',
+  originNote: '같은 고시 번호라 한 글로 묶었어요.',
+  wPrev: '지난주',
+  wNext: '다음 주',
+  wPrint: '인쇄',
+  wSheet: '고시·공지 주간 모음',
+  wMade: (d) => `${d} 아침에 AI가 정리했어요`,
+  wCount: (n, r) => `새 글 ${n}건 · 정형외과 의원 관련 ${r}건`,
+  wTop: '이번 주 꼭 알 것 3가지',
+  wEach: '글별 요약',
+  wEachCount: (n) => `정형외과 의원 관련 ${n}건`,
+  wOthers: (n) => `그 밖의 글 ${n}건`,
+  wCaution: 'AI가 만든 정리라 틀릴 수 있어요. 중요한 내용은 원문에서 꼭 확인해 주세요.',
+  wNotYet: '이번 주 모음은 월요일 아침에 나와요.',
+  dWarnTitle: '점검 규칙 확인 필요',
+  dWarnBody: (n, no) => `새 고시(${no})가 점검 규칙 ${n}개의 근거를 바꿨어요. 규칙은 저절로 바뀌지 않아요.`,
+  dWarnLink: '글 보기',
+  dCardTitle: '고시·공지',
+  dCardCount: (n) => `새 관련 글 ${n}건`,
+  dCardOpen: '고시·공지 열기',
+  dCardEmpty: (t) => `새 관련 글이 없어요 · 오늘 ${t} 확인`,
+  dCardMore: (n) => `그 밖에 ${n}건`,
+}
+
+/* ───────── 지어낸 예시 자료(실제 고시·공지가 아니다) ───────── */
+const N = [
+  { id: 'n218', d: '11월 20일 (금)', m: '11월', src: ['보건복지부', '심평원 심사기준'], no: '보건복지부 고시 제2026-218호',
+    title: '「요양급여의 적용기준 및 방법에 관한 세부사항」 일부개정 — 관절강내 주사 인정기준',
+    rel: true, unread: true, star: false, rules: ['스테로이드 관절강내주사 같은 관절 1년 횟수', '스테로이드 관절강내주사 1개월 관절 수'], ruleDone: false, files: ['붙임1. 고시 전문.hwpx', '붙임2. 신구조문 대비표.pdf'],
+    line: '스테로이드 관절강내 주사를 같은 관절에 1년에 인정하는 횟수가 줄어요.',
+    s1: '스테로이드 관절강내 주사를 같은 관절에 1년에 인정하는 횟수가 6번에서 4번으로 줄고, 한 달에 주사하는 관절 수 기준도 정리돼요.',
+    s2: '2026년 12월 1일 진료분부터', s3: '스테로이드 관절강내 주사를 놓는 모든 의료기관(의원 포함)',
+    ours: '무릎·어깨에 스테로이드 주사를 1년에 5번 이상 맞는 환자는 12월부터 삭감될 수 있어요.',
+    full: true, origin: [['보건복지부', '11월 20일 (금)'], ['심평원 심사기준', '11월 20일 (금)']],
+    text: '관절강내 주사 스테로이드 횟수 무릎 어깨 인정기준 마9' },
+  { id: 'h1', d: '11월 20일 (금)', m: '11월', src: ['심평원 공지'], no: '',
+    title: '2026년 12월 진료분 요양급여비용 청구·지급 일정 안내',
+    rel: true, unread: true, star: false, files: ['붙임. 연말 청구 일정표.pdf'],
+    line: '연말 연휴로 12월 진료분 청구 마감과 지급 날짜가 평소와 달라져요.', text: '청구 일정 지급 연말 연휴' },
+  { id: 'k1', d: '11월 19일 (목)', m: '11월', src: ['심평원 공지'], no: '',
+    title: '의원급 비대면 진료 청구 방법 변경 안내',
+    rel: true, unread: false, star: false, files: ['붙임. 변경 안내문.pdf'],
+    line: '비대면 진료를 청구할 때 넣는 표시 방법이 12월부터 바뀌어요.', text: '비대면 진료 청구' },
+  { id: 'c1', d: '11월 18일 (수)', m: '11월', src: ['심평원 심사기준'], no: '공개 심사사례',
+    title: '체외충격파 치료 심사사례 공개 (어깨 석회성 건염 등 4건)',
+    rel: true, unread: false, star: true, files: ['붙임. 심사사례 4건.pdf'],
+    line: '석회성 건염이 아닌 어깨 통증에 실시한 체외충격파가 인정되지 않은 사례가 실렸어요.', text: '체외충격파 어깨 석회성 건염' },
+  { id: 'h2', d: '11월 17일 (화)', m: '11월', src: ['심평원 공지'], no: '',
+    title: '요양기관 업무포털 일시 중단 안내 (11월 22일 새벽)',
+    rel: true, unread: false, star: false, files: [],
+    line: '11월 22일(일) 0시부터 6시까지는 청구 파일을 보낼 수 없어요.', text: '업무포털 중단 점검' },
+  { id: 'n214', d: '11월 16일 (월)', m: '11월', src: ['보건복지부'], no: '보건복지부 고시 제2026-214호',
+    title: '「건강보험 행위 급여·비급여 목록표 및 급여 상대가치점수」 일부개정 — 물리치료',
+    rel: true, unread: false, star: false, rules: ['표층열 + 심층열 → MM015(50%)'], ruleDone: true, ruleWhen: '11월 17일 (화) 08:40', files: [],
+    line: '표층열치료와 심층열치료를 같은 날 함께 할 때 산정 방법이 정리돼요.',
+    s1: '표층열치료와 심층열치료를 같은 날 함께 할 때, 둘째 치료를 50%로 산정하는 기준이 목록표 본문에 들어가요.',
+    s2: '2026년 12월 1일 진료분부터', s3: '물리치료를 하는 모든 의료기관',
+    ours: '같은 날 핫팩과 초음파 열치료를 함께 하는 환자는 둘째 치료가 절반 금액으로 청구돼요.',
+    full: false, origin: [['보건복지부', '11월 16일 (월)']],
+    memo: '12월부터 핫팩+초음파 같은 날은 절반. 물리치료실에 알림 끝.', memoWhen: '11월 17일 (화) 08:42',
+    text: '물리치료 표층열 심층열 산정 목록표' },
+  { id: 'c2', d: '11월 13일 (금)', m: '11월', src: ['심평원 심사기준'], no: '행정해석',
+    title: '골다공증 치료제 연장 투여 인정 여부 행정해석',
+    rel: true, unread: false, star: true, files: ['붙임. 행정해석 전문.pdf'],
+    line: '연장 투여를 인정받으려면 추적 골밀도 결과가 있어야 한다는 해석이에요.', text: '골다공증 연장 투여 골밀도' },
+  { id: 'u1', d: '11월 20일 (금)', m: '11월', src: ['보건복지부'], no: '보건복지부 고시 제2026-219호',
+    title: '「치과 건강보험 요양급여 기준」 일부개정', rel: false, unread: true, star: false, files: [],
+    line: '치과 의원의 치료 재료 인정 기준이 바뀌어요.', text: '치과' },
+  { id: 'u2', d: '11월 19일 (목)', m: '11월', src: ['심평원 공지'], no: '',
+    title: '요양병원 입원 적정성 평가 설명회 안내', rel: false, unread: true, star: false, files: ['붙임. 설명회 자료.pdf'],
+    line: '요양병원을 대상으로 한 평가 설명회 일정이에요.', text: '요양병원 평가 설명회' },
+  { id: 'u3', d: '11월 18일 (수)', m: '11월', src: ['심평원 공지'], no: '',
+    title: '상급종합병원 의료질평가 결과 안내', rel: false, unread: true, star: false, files: [],
+    line: '상급종합병원과 종합병원 대상 평가 결과 안내예요.', text: '의료질평가 상급종합병원' },
+  { id: 'u4', d: '11월 17일 (화)', m: '11월', src: ['보건복지부'], no: '보건복지부 고시 제2026-216호',
+    title: '「한약제제 급여 목록 및 상한금액표」 일부개정', rel: false, unread: false, star: false, files: [],
+    line: '한약제제 몇 가지의 상한금액이 바뀌어요.', text: '한약제제 상한금액' },
+]
+// 처음 채우는 중(backfill)에 보이는 지난 글(요약 전)
+const OLD = [
+  { id: 'o1', d: '6월 30일 (화)', m: '6월', src: ['보건복지부', '심평원 심사기준'], no: '보건복지부 고시 제2026-121호', title: '「요양급여의 적용기준 및 방법에 관한 세부사항」 일부개정 — 신경차단술', rel: null, unread: true, star: false, files: [], text: '' },
+  { id: 'o2', d: '6월 29일 (월)', m: '6월', src: ['심평원 공지'], no: '', title: '2026년 7월 진료분 청구 일정 안내', rel: null, unread: true, star: false, files: [], text: '' },
+  { id: 'o3', d: '6월 26일 (금)', m: '6월', src: ['보건복지부'], no: '보건복지부 고시 제2026-117호', title: '「약제 급여 목록 및 급여 상한금액표」 일부개정', rel: null, unread: true, star: false, files: [], text: '' },
+]
+const CHECK = [['심평원 공지', '07:02'], ['심평원 심사기준', '07:02'], ['보건복지부', '07:03']]
+const WEEK = {
+  period: '11월 9일 (월) ~ 11월 15일 (일)', made: '11월 16일 (월)', n: 14,
+  top: [
+    ['도수치료 기준이 12월부터 바뀌어요', '주 2회를 세는 방법(월요일~일요일)이 고시에 들어갔어요. 관련 점검 규칙 1개는 확인을 마쳤어요.'],
+    ['인력·장비가 바뀌었으면 11월 30일까지 신고하세요', '물리치료사나 장비 변경을 늦게 신고하면 그동안 청구한 것이 깎일 수 있어요.'],
+    ['골다공증 약 연장 투여는 추적 골밀도가 있어야 해요', '연장 투여를 인정받으려면 추적 골밀도 결과가 있어야 한다는 해석이 나왔어요.'],
+  ],
+  each: [
+    ['11월 13일 (금)', '심평원 심사기준', '골다공증 치료제 연장 투여 인정 여부 행정해석', '연장 투여를 인정받으려면 추적 골밀도 결과가 있어야 한다는 해석이에요.', ''],
+    ['11월 12일 (목)', '심평원 공지', '2027년 외래 약제 적정성 평가 세부 계획 안내', '내년 외래 약제 평가 항목과 기간이 나왔어요. 의원도 대상이에요.', ''],
+    ['11월 11일 (수)', '보건복지부 · 심평원 심사기준', '「요양급여의 적용기준 및 방법에 관한 세부사항」 일부개정 — 도수치료', '주 2회를 세는 방법이 월요일~일요일로 정해져요. 12월 1일 진료분부터예요.', 'done'],
+    ['11월 10일 (화)', '심평원 공지', '요양기관 현황 신고 기한 안내 (인력·장비 변경)', '인력·장비가 바뀌었으면 11월 30일까지 신고해야 해요.', ''],
+    ['11월 10일 (화)', '보건복지부', '실손보험 청구 전산화 의원급 참여 안내', '의원도 실손보험 서류를 전산으로 보낼 수 있게 되는 일정 안내예요.', ''],
+    ['11월 9일 (월)', '심평원 심사기준', '신경차단술 심사사례 공개 (요추 경막외 신경차단술 3건)', '같은 날 여러 번 실시한 요추 신경차단술이 일부만 인정된 사례예요.', ''],
+  ],
+  others: [
+    ['11월 13일', '「치과 건강보험 요양급여 기준」 일부개정'], ['11월 13일', '약국 의약품 관리료 산정 안내'],
+    ['11월 12일', '요양병원 입원료 차등제 안내'], ['11월 12일', '「한약제제 급여 목록」 일부개정'],
+    ['11월 11일', '간호 인력 확보 수준 신고 안내'], ['11월 10일', '의료기관 인증 평가 설명회 안내'],
+    ['11월 10일', '장기요양기관 평가 일정 안내'], ['11월 9일', '정신건강의학과 수가 시범사업 공모'],
+  ],
+}
+
+/* ───────── 아이콘 ───────── */
+const I = {
+  star: (on) => `<svg aria-hidden="true" width="18" height="18" viewBox="0 0 20 20" fill="${on ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="m10 2.8 2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 8.1l5-.7z"/></svg>`,
+  ext: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 3h4v4M13 3 7.5 8.5M12 9.5V13H3V4h3.5"/></svg>',
+  search: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>',
+  warn: '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M10 3 18 17H2z"/><path d="M10 8v4M10 14.5v.5"/></svg>',
+  shield: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M8 1.8 13 3.6v4c0 3-2.2 5.3-5 6.6-2.8-1.3-5-3.6-5-6.6v-4z"/><path d="M6 8h4"/></svg>',
+  info: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 7.2v3.8M8 5v.4"/></svg>',
+  clock: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4.8V8l2.2 1.4"/></svg>',
+  check: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3.5 8.5 3 3 6-7"/></svg>',
+  checkC: '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7.5"/><path d="m6.8 10.2 2.2 2.2 4.2-4.6"/></svg>',
+  stop: '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7.5"/><path d="M6.5 13.5l7-7"/></svg>',
+  left: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg>',
+  right: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg>',
+  arrow: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8h10M9 4l4 4-4 4"/></svg>',
+  file: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M4 1.8h5.2L12.5 5v9.2H4z"/><path d="M9 1.8V5.2h3.5"/></svg>',
+  print: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M4.5 6V2h7v4M4.5 12H2.5V6.5h11V12h-2"/><path d="M4.5 9.5h7V14h-7z"/></svg>',
+  spark: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5 9.3 6.7 14.5 8 9.3 9.3 8 14.5 6.7 9.3 1.5 8l5.2-1.3z"/></svg>',
+}
+
+/* ───────── 상태 ───────── */
+const S = new URLSearchParams(location.search).get('s') || 'list'
+const STATES = [
+  ['list', '목록 · 관련 글만'], ['all', '목록 · 전체'], ['detail', '글 열기'], ['detail-mohw', '글 열기 · 본문만 요약'],
+  ['ask', 'AI에게 묻기'], ['ask-blocked', '묻기 · 환자 정보 막음'], ['ask-answer', '묻기 · 답'], ['ask-limit', '묻기 · 오늘 다 씀'],
+  ['weekly', '주간 모음'], ['search-empty', '찾기 · 없음'], ['backfill', '처음 채우는 중'], ['stopped', '한 곳 못 가져옴'], ['dashboard', '대시보드 새 칸'],
+]
+document.getElementById('switch').innerHTML = STATES.map(([k, t]) => `<a href="?s=${k}" aria-current="${k === S}">${t}</a>`).join('')
+
+const DETAIL = { detail: 'n218', 'detail-mohw': 'n214', ask: 'n218', 'ask-blocked': 'n218', 'ask-answer': 'n218', 'ask-limit': 'n218' }
+const V = {
+  rel: S !== 'all',
+  starOnly: false,
+  q: S === 'search-empty' ? '도수치료 횟수' : '',
+  srcOff: new Set(),
+  open: DETAIL[S] || null,
+  ask: S.startsWith('ask') ? S : null,
+  askText: S === 'ask-blocked' ? '010-1234-5678 환자분 어깨 주사도 해당되나요?' : '',
+  askLeft: S === 'ask-limit' ? 0 : 17,
+  answer: S === 'ask-answer' ? { q: '어깨 관절 주사도 1년에 4번으로 줄어드나요?', a: '네. 이번 개정은 관절 부위를 나누지 않아서 어깨에도 똑같이 적용돼요. 다만 ‘같은 관절’ 기준이라 무릎과 어깨는 따로 세요. 근거는 붙임1 고시 전문 2쪽 ‘나. 인정 횟수’예요.' } : null,
+  blocked: S === 'ask-blocked' ? ['tel'] : null,
+}
+if (S === 'ask-answer') V.askLeft = 16
+const byId = (id) => N.find((n) => n.id === id)
+const STOPPED = '보건복지부'
+if (S === 'stopped') { byId('n218').src = ['심평원 심사기준']; N.splice(N.findIndex((n) => n.id === 'u1'), 1) }
+if (V.open) byId(V.open).unread = false
+
+function badgeCount() { return N.filter((n) => n.rel && n.unread).length }
+
+function renderTabs() {
+  const here = S === 'dashboard' ? '대시보드' : '고시·공지'
+  const TABS = ['대시보드', '통계', '청구', '고시·공지', '환자', '업무일지', '수납일지', '예약']
+  const n = badgeCount()
+  document.getElementById('tabs').innerHTML = TABS.map((t) => {
+    const cur = t === here ? 'aria-current="page"' : ''
+    const b = t === '고시·공지' && n > 0 ? `<span class="badge" aria-hidden="true">${n}</span><span class="sr">${T.badgeLabel(n)}</span>` : ''
+    const go = t === '고시·공지' ? '?s=list' : t === '대시보드' ? '?s=dashboard' : '#'
+    return `<a class="tab" href="${go}" ${cur}>${t}${b}</a>`
+  }).join('')
+}
+
+/* ───────── 부품 ───────── */
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+
+function pageHead(sub) {
+  return `<div class="phead"><div><h1>${T.h1}</h1><p class="lede">${T.lede}</p></div></div>
+  <nav class="subtabs" aria-label="${T.h1}">
+    <a href="?s=list" ${sub === 'list' ? 'aria-current="page"' : ''}>${T.subList}</a>
+    <a href="?s=weekly" ${sub === 'weekly' ? 'aria-current="page"' : ''}>${T.subWeekly}</a>
+  </nav>`
+}
+
+function checkedLine(stopped) {
+  const items = CHECK.map(([src, t]) => {
+    if (stopped && src === STOPPED) return `<span class="bad">${T.checkedBad(src)}</span>`
+    return `<span>${T.checkedOk(`<b>${src}</b>`, t)}</span>`
+  }).join('')
+  return `<p class="checked"><span class="lead">${I.clock}${T.checkedLead}</span>${items}</p>`
+}
+
+function filters(stopped) {
+  return `<div class="filters">
+    <div class="frow">
+      <div class="seg" role="group" aria-label="보기">
+        <button data-act="rel" aria-pressed="${V.rel}">${T.segRel}</button><button data-act="all" aria-pressed="${!V.rel}">${T.segAll}</button>
+      </div>
+      <button class="tog" data-act="staronly" aria-pressed="${V.starOnly}">${I.star(V.starOnly)}${T.starOnly}</button>
+      <form class="search" role="search" data-act="search">
+        <label class="box"><span class="sr">${T.searchLabel}</span>${I.search}<input class="input" name="q" value="${esc(V.q)}" placeholder="${T.searchPh}"></label>
+        <button class="btn" type="submit">${T.searchBtn}</button>
+      </form>
+    </div>
+    <div class="srcs" role="group" aria-label="${T.srcLabel}"><span class="flab">${T.srcLabel}</span>
+      ${T.sources.map((s) => `<button class="src" data-act="src" data-src="${s}" aria-pressed="${!V.srcOff.has(s)}">${I.check}${s}</button>`).join('')}
+    </div>
+    ${checkedLine(stopped)}
+  </div>`
+}
+
+function chips(n) {
+  const c = []
+  if (n.rel === null) c.push(`<span class="chip n">${T.chipWait}</span>`)
+  if (n.rel) c.push(`<span class="chip a">${T.chipRel}</span>`)
+  if (n.rules && !n.ruleDone) c.push(`<span class="chip w">${T.chipRule}</span>`)
+  if (n.rules && n.ruleDone) c.push(`<span class="chip n">${T.chipRuleDone}</span>`)
+  if (n.files && n.files.length) c.push(`<span class="chip n">${T.chipFiles(n.files.length)}</span>`)
+  return c.join('')
+}
+
+function item(n) {
+  const to = n.id === 'n214' ? '?s=detail-mohw' : '?s=detail'
+  const line = n.rel === null ? `<span class="iline wait">${T.waitLine}</span>` : `<span class="iline">${n.line}</span>`
+  return `<li class="item ${n.unread ? 'unread' : ''}" data-id="${n.id}">
+    <a class="ilink" href="${to}">
+      <span class="idate">${n.d}</span>
+      <span class="ibody">
+        <span class="ititle"><span class="dot" aria-hidden="true"></span><span class="t">${n.unread ? `<span class="sr">${T.unreadSr} </span>` : ''}${n.title}</span></span>
+        ${line}
+        <span class="imeta"><span class="d2">${n.d}</span><span class="srcl">${n.src.join(' · ')}</span>${n.no ? `<span>${n.no}</span>` : ''}${chips(n)}</span>
+      </span>
+    </a>
+    <button class="istar" data-act="star" data-id="${n.id}" aria-pressed="${n.star}" aria-label="${n.star ? T.starOn : T.starOff}">${I.star(n.star)}</button>
+  </li>`
+}
+
+function matches(n, q) {
+  const hay = `${n.title} ${n.line || ''} ${n.text || ''} ${n.s1 || ''} ${n.ours || ''}`
+  return q.split(/\s+/).filter(Boolean).every((w) => hay.includes(w))
+}
+
+function listBody(extraOld) {
+  let rows = N.filter((n) => (V.rel ? n.rel : true))
+  if (extraOld) rows = rows.concat(OLD)
+  rows = rows.filter((n) => n.src.some((s) => !V.srcOff.has(s)))
+  if (V.starOnly) rows = rows.filter((n) => n.star)
+  const searching = V.q.trim() !== ''
+  if (searching) rows = rows.filter((n) => matches(n, V.q.trim()))
+  const unread = rows.filter((n) => n.unread).length
+  const cnt = searching ? T.cntFound(rows.length) : V.rel ? T.cntRel(extraOld ? 318 : 318, 2) : T.cntAll('1,184', 5)
+  const help = searching ? '' : V.rel ? T.relHelp : T.allHelp
+  let body
+  if (rows.length === 0 && searching) {
+    body = `<div class="empty" role="status"><b>${T.emptyTitle(esc(V.q.trim()))}</b><p>${T.emptyBody}${V.rel ? ` ${T.emptyRelNote}` : ''}</p>
+      <div class="acts">${V.rel ? `<button class="btn outline" data-act="all">${T.emptyAllBtn}</button>` : ''}<button class="btn" data-act="clear">${T.emptyClear}</button></div></div>`
+  } else if (rows.length === 0 && V.starOnly) {
+    body = `<div class="empty" role="status"><b>${T.starEmptyTitle}</b><p>${T.starEmptyBody}</p></div>`
+  } else {
+    let lastM = ''
+    body = '<ul class="list">' + rows.map((n) => {
+      const head = n.m !== lastM ? `<li class="month" aria-hidden="true">${n.m}</li>` : ''
+      lastM = n.m
+      return head + item(n)
+    }).join('') + '</ul>'
+    if (!searching && !V.starOnly) body += `<div class="lmore"><button class="btn">${T.moreBtn}</button><span class="help">${T.listFoot}</span></div>`
+  }
+  void unread
+  return `<div class="lhead"><span class="cnt">${cnt}</span>${help ? `<span class="help">${help}</span>` : ''}</div>${body}`
+}
+
+function listPage() {
+  const stopped = S === 'stopped'
+  const backfill = S === 'backfill'
+  let notes = ''
+  if (stopped) notes += `<div class="note warn" role="status">${I.warn}<div class="grow"><b>${T.stoppedTitle(STOPPED)}</b><p>${T.stoppedBody(STOPPED, '11월 19일 (목) 07:03')}</p><div class="acts"><a class="txt sm" href="#">${T.stoppedLink(STOPPED)}${I.ext}</a></div></div></div>`
+  if (backfill) notes += `<div class="note info" role="status">${I.clock}<div class="grow"><b>${T.backfillTitle}</b>
+      <div class="prog"><span class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="1240" aria-valuenow="530" aria-label="${T.backfillProg('1,240', 530)}"><i style="width:43%"></i></span><span>${T.backfillProg('1,240', 530)} (43%)</span></div>
+      <p style="margin-top:6px">${T.backfillBody}</p></div></div>`
+  return pageHead('list') + filters(stopped) + notes + listBody(backfill)
+}
+
+function ruleBox(n) {
+  if (n.ruleDone) {
+    return `<section class="rule done" aria-label="${T.ruleDoneTitle(n.rules.length)}"><h2>${I.checkC}<span>${T.ruleDoneTitle(n.rules.length)}</span></h2>
+      <ul>${n.rules.map((r) => `<li>${r}</li>`).join('')}</ul><p>${T.ruleDoneWhen(n.ruleWhen)}</p></section>`
+  }
+  return `<section class="rule" id="rule"><h2>${I.warn}<span>${T.ruleTitle(n.rules.length)}</span></h2><p>${T.ruleBody}</p>
+    <ul>${n.rules.map((r) => `<li>${r}</li>`).join('')}</ul>
+    <div class="acts"><a class="btn sm" href="#">${T.ruleOpen}${I.arrow}</a><button class="btn sm" data-act="ruledone">${I.check}${T.ruleDoneBtn}</button></div></section>`
+}
+
+function summary(n) {
+  const label = n.full ? `<span class="chip p">${T.sumFull}</span>` : `<span class="chip n">${T.sumBody}</span>`
+  const files = n.files.length
+    ? `<div><p class="help" style="font-weight:600;color:var(--ink-2)">${T.filesHead}</p><ul>${n.files.map((f) => `<li><a href="#" target="_blank" rel="noopener">${I.file}<span>${f}</span>${I.ext}</a></li>`).join('')}</ul></div>`
+    : `<p class="help">${T.noFiles}</p>`
+  return `<section class="panel sum" aria-labelledby="sumh">
+    <div class="sh"><h2 id="sumh">${I.spark}${T.sumTitle}</h2>${label}</div>
+    ${n.full ? '' : `<p class="help">${T.sumBodyWhy}</p>`}
+    <dl class="three"><dt>${T.k1}</dt><dd>${n.s1}</dd><dt>${T.k2}</dt><dd>${n.s2}</dd><dt>${T.k3}</dt><dd>${n.s3}</dd></dl>
+    <p class="ours"><b>${T.ours}</b><span>${n.ours}</span></p>
+    <p class="caution">${I.info}<span>${T.caution}</span></p>
+    <div class="files"><div class="frow2"><a class="btn sm" href="#" target="_blank" rel="noopener">${T.orig}${I.ext}</a><span class="help">${T.filesNote}</span></div>${files}</div>
+  </section>`
+}
+
+function askBox(n) {
+  const lede = n.full ? T.askLede : T.askLedeBody
+  const left = `<span class="left">${T.askLeft(V.askLeft)}</span>`
+  if (!V.ask) {
+    return `<section class="panel ask" aria-labelledby="askh"><div class="sh"><h2 id="askh">${T.askTitle}</h2><span class="right">${T.askLeft(V.askLeft)}</span></div>
+      <p class="lede">${lede}</p><div><a class="btn outline" href="?s=ask">${T.askOpen}</a></div></section>`
+  }
+  const limit = V.askLeft === 0
+  const qa = V.answer ? `<div class="qa"><div class="ques"><small>${T.qLabel}</small><p>${esc(V.answer.q)}</p></div>
+      <div class="ans" role="status"><small>${T.aLabel}</small><p>${esc(V.answer.a)}</p><p class="caution">${I.info}<span>${T.aCaution}</span></p>
+      <div class="acts2"><button class="btn sm" data-act="tomemo">${T.aToMemo}</button><span class="help">${T.aNotSaved}</span></div></div></div>` : ''
+  const blocked = V.blocked ? `<div class="note ng block" role="alert">${I.stop}<div class="grow"><b>${T.askBlockedTitle}</b><p>${T.askBlockedBody(V.blocked.map((k) => T.piiKinds[k]).join('·'))}</p></div></div>` : ''
+  const limitNote = limit ? `<div class="note info block" role="status">${I.clock}<div class="grow"><p>${T.askLimit}</p></div></div>` : ''
+  return `<section class="panel ask" aria-labelledby="askh" id="ask"><div class="sh"><h2 id="askh">${T.askTitle}</h2></div>
+    <p class="lede">${lede}</p>
+    ${qa}
+    <p class="pii">${I.shield}<span>${T.askPii}</span></p>
+    <label><span class="sr">${T.askLabel}</span><textarea class="area" id="askText" placeholder="${T.askPh}" ${V.blocked ? 'aria-invalid="true"' : ''} ${limit ? 'disabled' : ''}>${esc(V.askText)}</textarea></label>
+    ${blocked}${limitNote}
+    <div class="acts"><button class="btn pri" data-act="send" ${limit ? 'disabled' : ''}>${T.askSend}</button><a class="btn ghost" href="?s=detail">${T.askClose}</a>${left}</div>
+    <p class="help">${T.askShared}</p>
+  </section>`
+}
+
+function memoBox(n) {
+  const saved = n.memo ? `<span class="saved">${T.memoSaved(n.memoWhen)}</span>` : '<span class="saved" id="memoSaved"></span>'
+  return `<section class="panel sblock memo" aria-labelledby="memoh"><h2 id="memoh">${T.memoTitle}</h2>
+    <label><span class="sr">${T.memoTitle}</span><textarea class="area" id="memo" placeholder="${T.memoPh}">${esc(n.memo || '')}</textarea></label>
+    <p class="help">${T.memoHelp}</p>
+    <div class="acts"><button class="btn sm" data-act="memosave">${T.memoSave}</button>${saved}</div></section>`
+}
+
+function originBox(n) {
+  return `<section class="panel sblock origin" aria-labelledby="origh"><h2 id="origh">${T.originTitle}</h2>
+    <ul>${n.origin.map(([s, d]) => `<li><b>${s}</b><span>${d}</span></li>`).join('')}</ul>
+    ${n.origin.length > 1 ? `<p class="help">${T.originNote}</p>` : ''}</section>`
+}
+
+function detailPage() {
+  const n = byId(V.open)
+  return `<a class="back" href="?s=list">${I.left}${T.back}</a>
+  <div class="dgrid">
+    <article class="dmain">
+      <header class="dhead">
+        <p class="dmeta"><span class="srcl">${n.src.join(' · ')}</span><span>${T.posted(n.d)}</span></p>
+        <h1 class="dtitle">${n.title}</h1>
+        <p class="dsub">${n.no ? `<span>${n.no}</span>` : ''}${n.rel ? `<span class="chip a">${T.chipRel}</span>` : ''}</p>
+        <div class="dacts"><button class="btn sm star" data-act="dstar" aria-pressed="${n.star}">${I.star(n.star)}<span>${n.star ? T.starBtnOn : T.starBtnOff}</span></button></div>
+      </header>
+      ${n.rules ? ruleBox(n) : ''}
+      ${summary(n)}
+      ${askBox(n)}
+    </article>
+    <aside class="dside">
+      ${memoBox(n)}
+      ${originBox(n)}
+    </aside>
+  </div>`
+}
+
+function weeklyPage() {
+  return pageHead('weekly') + `<div class="wtool">
+      <button class="btn sm">${I.left}${T.wPrev}</button><span class="wk">${WEEK.period}</span><button class="btn sm" disabled>${T.wNext}${I.right}</button>
+      <span class="sp"></span><button class="btn print" data-act="print">${I.print}${T.wPrint}</button>
+    </div>
+    <article class="panel sheet">
+      <header class="shd"><h2>${T.wSheet}</h2><p><b>${WEEK.period}</b> · ${T.wCount(WEEK.n, WEEK.each.length)}</p><p class="muted">${T.wMade(WEEK.made)} · 샘플정형외과의원</p></header>
+      <section><h3>${T.wTop}</h3><ol class="top3">${WEEK.top.map(([b, p], i) => `<li><span class="no">${i + 1}</span><b>${b}</b><p>${p}</p></li>`).join('')}</ol></section>
+      <section><h3>${T.wEach} <small class="muted" style="font-size:13px;font-weight:500">${T.wEachCount(WEEK.each.length)}</small></h3><ul class="wlist">${WEEK.each.map(([d, s, t, p, r]) => `<li><span class="wm"><span>${d}</span><b>${s}</b>${r === 'done' ? `<span class="chip n">${T.chipRuleDone}</span>` : ''}</span><span class="wt">${t}</span><p>${p}</p></li>`).join('')}</ul></section>
+      <section><h3>${T.wOthers(WEEK.others.length)}</h3><ul class="others">${WEEK.others.map(([d, t]) => `<li><span>${d}</span>${t}</li>`).join('')}</ul></section>
+      <p class="caution">${I.info}<span>${T.wCaution}</span></p>
+    </article>`
+}
+
+function dashboardPage() {
+  const news = N.filter((n) => n.rel && n.unread)
+  const warnN = N.find((n) => n.rules && !n.ruleDone)
+  return `<div class="dwarn" role="status">${I.warn}<span class="grow"><b>${T.dWarnTitle}</b> · ${T.dWarnBody(warnN.rules.length, warnN.no)}</span><a class="txt" href="?s=detail">${T.dWarnLink}${I.arrow}</a><span class="anno">시안: 대시보드 맨 위에 새로 생김</span></div>
+    <p class="dline"><b>11월 21일 (토)</b></p>
+    <div class="dh dim"><h1>대시보드</h1><span class="chip p">비트에서 읽은 숫자</span><span class="when">오늘 오전 9:18 비트에서 읽음</span></div>
+    <div class="dim"><div class="kpis">
+      <div class="kpi"><div class="l">오늘 환자 수</div><div class="v">42<small>명</small></div></div>
+      <div class="kpi"><div class="l">신환</div><div class="v">6<small>명</small></div></div>
+      <div class="kpi"><div class="l">재진</div><div class="v">36<small>명</small></div></div>
+      <div class="kpi"><div class="l">지난주 같은 요일보다</div><div class="v" style="font-size:20px">—</div></div>
+    </div></div>
+    <section class="dsec" aria-labelledby="dnh"><div class="shh"><h2 id="dnh">${T.dCardTitle}</h2><span class="cntb">${T.dCardCount(news.length)}</span><span class="anno">시안: 새 칸</span><span class="sp"></span><a class="txt" href="?s=list">${T.dCardOpen}${I.arrow}</a></div>
+      <ul class="panel ncard">${news.slice(0, 3).map((n) => `<li><a href="${n.id === 'n214' ? '?s=detail-mohw' : '?s=detail'}"><span class="nd">${n.d}</span><span class="nt">${n.title}</span><span class="nm"><span>${n.src.join(' · ')}</span>${n.rules && !n.ruleDone ? `<span class="chip w">${T.chipRule}</span>` : ''}</span></a></li>`).join('')}</ul>
+    </section>
+    <section class="dsec dim"><div class="shh"><h2>우리 병원 AI 경영 리포트</h2></div><div class="ghost-blk">지금 대시보드 그대로 (줄인 모습)</div></section>
+    <section class="dsec dim"><div class="shh"><h2>추이</h2></div><div class="ghost-blk">지금 대시보드 그대로 (줄인 모습)</div></section>`
+}
+
+/* ───────── 그리기·누름 ───────── */
+const app = document.getElementById('app')
+function render() {
+  renderTabs()
+  if (S === 'dashboard') app.innerHTML = dashboardPage()
+  else if (S === 'weekly') app.innerHTML = weeklyPage()
+  else if (V.open) app.innerHTML = detailPage()
+  else app.innerHTML = listPage()
+  document.title = (S === 'dashboard' ? '대시보드' : T.tab) + ' 시안'
+}
+
+// 환자 정보 모양 거르기(시안용 규칙 — 명세에서 정한다)
+function piiKinds(s) {
+  const k = []
+  if (/\d{6}\s*-\s*[1-8]\d{6}|\b\d{6}[1-8]\d{6}\b/.test(s)) k.push('rrn')
+  if (/0\d{1,2}\s*-\s*\d{3,4}\s*-\s*\d{4}|\b01[016789]\d{7,8}\b/.test(s)) k.push('tel')
+  if (/(차트|챠트|등록번호|환자번호)\s*(번호)?\s*[:：]?\s*\d{2,}/.test(s)) k.push('chart')
+  if (!k.length && /\d{6,}/.test(s.replace(/제?\d{4}-\d{1,4}호/g, ''))) k.push('digits')
+  return k
+}
+
+app.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-act]')
+  if (!el || el.tagName === 'FORM') return
+  const act = el.dataset.act
+  if (act === 'rel' || act === 'all') { V.rel = act === 'rel'; render(); return }
+  if (act === 'staronly') { V.starOnly = !V.starOnly; render(); return }
+  if (act === 'clear') { V.q = ''; render(); return }
+  if (act === 'src') {
+    const s = el.dataset.src
+    if (V.srcOff.has(s)) V.srcOff.delete(s); else if (V.srcOff.size < T.sources.length - 1) V.srcOff.add(s)
+    render(); return
+  }
+  if (act === 'star') { const n = byId(el.dataset.id); n.star = !n.star; render(); return }
+  if (act === 'dstar') { const n = byId(V.open); n.star = !n.star; render(); return }
+  if (act === 'ruledone') {
+    const n = byId(V.open); n.ruleDone = true; n.ruleWhen = '11월 21일 (토) 09:20'; render(); return
+  }
+  if (act === 'memosave') { const s = document.getElementById('memoSaved'); if (s) s.textContent = T.memoSaved('11월 21일 (토) 09:20'); return }
+  if (act === 'tomemo') {
+    const m = document.getElementById('memo'); m.value = (m.value ? m.value + '\n' : '') + V.answer.a; m.focus(); return
+  }
+  if (act === 'print') { window.print(); return }
+  if (act === 'send') {
+    const text = document.getElementById('askText').value
+    V.askText = text
+    const k = piiKinds(text)
+    if (k.length) { V.blocked = k; render(); document.getElementById('ask').scrollIntoView({ block: 'center' }); return }
+    if (!text.trim()) return
+    V.blocked = null
+    V.answer = { q: text, a: '네. 이번 개정은 관절 부위를 나누지 않아서 어깨에도 똑같이 적용돼요. 다만 ‘같은 관절’ 기준이라 무릎과 어깨는 따로 세요. 근거는 붙임1 고시 전문 2쪽 ‘나. 인정 횟수’예요.' }
+    V.askText = ''
+    V.askLeft = Math.max(0, V.askLeft - 1)
+    render(); document.getElementById('ask').scrollIntoView({ block: 'start' }); return
+  }
+})
+app.addEventListener('submit', (e) => {
+  const f = e.target.closest('form[data-act="search"]')
+  if (!f) return
+  e.preventDefault()
+  V.q = new FormData(f).get('q') || ''
+  render()
+})
+render()
+</script>
+</body>
+</html>
