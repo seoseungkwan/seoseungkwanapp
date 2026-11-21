@@ -274,24 +274,24 @@ const MEMBER_COLUMNS = [
   'used_before_from',
 ]
 // authenticated 권한: 표 단위(select·delete)와 칸 단위(넣기·고치기). id·hospital_id·created_at·updated_at은 칸 권한 없음.
-// 기본 근무·바뀐 날·더 일한 시간·급여 줄·달 줄의 고치기 칸에는 열쇠 칸(직원·날·달)도 든다 — 앱 저장(PostgREST upsert)이
-// 보낸 칸을 모두 SET에 쓰기 때문(stats_goals·claim_rule_settings와 같은 까닭)
+// design.md 1절 권한 표 그대로: 기본 근무·바뀐 날·더 일한 시간·급여 줄·달 줄의 열쇠 칸(직원·시작일·날·종류·달)에는 고치기 권한이 없다 —
+// 앱은 upsert를 쓰지 않고 '고치고, 없으면 넣기'(값 칸만 update, 없으면 열쇠와 함께 insert)로 저장한다(design.md 5절)
 const GRANTS: Record<Table, { table: string[]; insert: string[]; update: string[] }> = {
   staff_members: { table: ['DELETE', 'SELECT'], insert: MEMBER_COLUMNS, update: MEMBER_COLUMNS },
   staff_week_plans: {
     table: ['DELETE', 'SELECT'],
     insert: ['staff_id', 'from_day', 'week', 'sat_rotation'],
-    update: ['staff_id', 'from_day', 'week', 'sat_rotation'],
+    update: ['week', 'sat_rotation'],
   },
   staff_day_changes: {
     table: ['DELETE', 'SELECT'],
     insert: ['staff_id', 'day', 'start_min', 'end_min', 'lunch_from', 'lunch_to', 'memo'],
-    update: ['staff_id', 'day', 'start_min', 'end_min', 'lunch_from', 'lunch_to', 'memo'],
+    update: ['start_min', 'end_min', 'lunch_from', 'lunch_to', 'memo'],
   },
   staff_overtime: {
     table: ['DELETE', 'SELECT'],
     insert: ['staff_id', 'day', 'kind', 'minutes'],
-    update: ['staff_id', 'day', 'kind', 'minutes'],
+    update: ['minutes'],
   },
   staff_leaves: { table: ['DELETE', 'SELECT'], insert: ['group_id', 'staff_id', 'day', 'kind', 'part', 'paid', 'memo'], update: [] },
   staff_settings: { table: ['SELECT'], insert: ['leave_basis', 'leftover', 'pay_items'], update: ['leave_basis', 'leftover', 'pay_items'] },
@@ -303,12 +303,12 @@ const GRANTS: Record<Table, { table: string[]; insert: string[]; update: string[
   staff_pay_lines: {
     table: ['SELECT'],
     insert: ['month', 'staff_id', 'amounts', 'incentives', 'adjust', 'adjust_reason', 'adjust_memo'],
-    update: ['month', 'staff_id', 'amounts', 'incentives', 'adjust', 'adjust_reason', 'adjust_memo'],
+    update: ['amounts', 'incentives', 'adjust', 'adjust_reason', 'adjust_memo'],
   },
   staff_pay_months: {
     table: ['SELECT'],
     insert: ['month', 'employer_cost', 'cost_saved_on', 'copied_on'],
-    update: ['month', 'employer_cost', 'cost_saved_on', 'copied_on'],
+    update: ['employer_cost', 'cost_saved_on', 'copied_on'],
   },
   staff_files: { table: ['DELETE', 'SELECT'], insert: ['kind', 'staff_id', 'month', 'name', 'path', 'size', 'mime'], update: [] },
 }
@@ -491,6 +491,48 @@ function postgrestInsert(table: string, body: Row[], conflict: string | null = n
     [JSON.stringify(body)],
   )
 }
+
+// PostgREST update와 같은 모양: json 한 줄을 표 모양으로 풀어 보낸 칸만 SET에 쓰고, 거르기(eq)는 그 칸 = 값. 고친 줄을 돌려준다
+function postgrestUpdate(table: string, values: Row, filters: Row, target: PGlite = db) {
+  const set = Object.keys(values)
+    .map((c) => `${c} = body.${c}`)
+    .join(', ')
+  const keys = Object.keys(filters)
+  const where = keys.map((c, i) => `x.${c} = $${i + 2}`).join(' and ')
+  return target.query<Row>(`update ${table} x set ${set} from json_populate_record(null::${table}, $1::json) body where ${where} returning to_jsonb(x) as r`, [
+    JSON.stringify(values),
+    ...keys.map((c) => filters[c]),
+  ])
+}
+
+// 열쇠 줄 저장 표(design.md 5절): 열쇠 칸·PostgREST upsert onConflict·고칠 값·열쇠 칸을 바꾸는 SET(다른 직원으로 바꾸기는 시험에서 더함)
+const KEYED: { table: Exclude<Table, 'staff_files'>; key: string[]; conflict: string; change: Row; keySets: string[] }[] = [
+  { table: 'staff_week_plans', key: ['staff_id', 'from_day'], conflict: 'staff_id, from_day', change: { sat_rotation: '2-4' }, keySets: ["from_day = '2026-02-01'"] },
+  {
+    table: 'staff_day_changes',
+    key: ['staff_id', 'day'],
+    conflict: 'staff_id, day',
+    change: { start_min: null, end_min: null, lunch_from: null, lunch_to: null, memo: '쉼' },
+    keySets: ["day = '2026-11-11'"],
+  },
+  {
+    table: 'staff_overtime',
+    key: ['staff_id', 'day', 'kind'],
+    conflict: 'staff_id, day, kind',
+    change: { minutes: 90 },
+    keySets: ["day = '2026-11-11'", "kind = 'extended'"],
+  },
+  {
+    table: 'staff_pay_lines',
+    key: ['month', 'staff_id'],
+    conflict: 'hospital_id, month, staff_id',
+    change: { adjust: -5000, adjust_reason: 'deduct' },
+    keySets: ["month = '2026-12'", 'staff_id = null'],
+  },
+  { table: 'staff_pay_months', key: ['month'], conflict: 'hospital_id, month', change: { employer_cost: 0 }, keySets: ["month = '2026-12'"] },
+]
+const pick = (row: Row, columns: string[]) => Object.fromEntries(Object.entries(row).filter(([c]) => columns.includes(c)))
+const omit = (row: Row, columns: string[]) => Object.fromEntries(Object.entries(row).filter(([c]) => !columns.includes(c)))
 
 /** 지금 역할로 한 줄 넣고 그 줄을 돌려준다 */
 async function insertAs(table: string, body: Row, target: PGlite = db) {
@@ -884,26 +926,62 @@ describe('AC-7601.1 파일·표·권한 모양', SLOW, () => {
     }
   })
 
-  it('AC-7601.1: 앱 저장 모양(PostgREST upsert, 열쇠 칸까지 SET)이 기본 근무·바뀐 날·더 일한 시간·설정·급여 줄·달 줄에서 돌고, 같은 열쇠면 줄 하나를 고친다', async () => {
+  it('AC-7601.1: 앱 저장 모양(고치고, 없으면 넣기)이 기본 근무·바뀐 날·더 일한 시간·급여 줄·달 줄에서 돈다 — 값 칸 update·열쇠와 함께 insert가 되고, 같은 열쇠를 또 넣으면 겹침(23505)', async () => {
     const staff = (await seedRow('staff_members', hospital[A], MEMBER)).id as string
-    const cases: [Table, string, Row, Row][] = [
-      ['staff_week_plans', 'staff_id, from_day', BODY.staff_week_plans(staff), { sat_rotation: '2-4' }],
-      ['staff_day_changes', 'staff_id, day', BODY.staff_day_changes(staff), { start_min: null, end_min: null, lunch_from: null, lunch_to: null, memo: '쉼' }],
-      ['staff_overtime', 'staff_id, day, kind', BODY.staff_overtime(staff), { minutes: 90 }],
-      ['staff_settings', 'hospital_id', SETTINGS, { leftover: 'pay' }],
-      ['staff_pay_lines', 'hospital_id, month, staff_id', BODY.staff_pay_lines(staff), { adjust: -5000, adjust_reason: 'deduct' }],
-      ['staff_pay_months', 'hospital_id, month', PAY_MONTH, { employer_cost: 0 }],
-    ]
-    for (const [table, key, body, change] of cases) {
+    for (const { table, key, change } of KEYED) {
+      const row = BODY[table](staff)
+      const filters = pick(row, key)
+      const values = omit(row, key)
+      // 처음: 그 열쇠 줄이 없어 고친 줄이 0이다 → 열쇠와 함께 넣는다
       await become(A)
-      await postgrestInsert(t(table), [body], key)
+      expect([table, (await postgrestUpdate(t(table), values, filters)).rows]).toEqual([table, []])
       await become(A)
-      await postgrestInsert(t(table), [{ ...body, ...change }], key)
+      expect([table, (await insertAs(t(table), row)).hospital_id]).toEqual([table, hospital[A]])
+      // 다시: 그 열쇠 줄의 값 칸만 고친다(한 줄)
+      await become(A)
+      const updated = (await postgrestUpdate(t(table), { ...values, ...change }, filters)).rows
+      expect([table, updated.length]).toEqual([table, 1])
+      expect(updated[0].r).toMatchObject({ hospital_id: hospital[A], ...filters, ...change })
+      // 그새 다른 창이 넣은 열쇠면 넣기는 겹침(23505) — 앱은 한 번 더 고친다
+      await become(A)
+      await expect(postgrestInsert(t(table), [row]), table).rejects.toMatchObject(UNIQUE)
       await operator()
       const found = await rows(`select to_jsonb(x) as r from public.${table} x`)
       expect([table, found.length]).toEqual([table, 1])
-      expect(found[0].r).toMatchObject({ hospital_id: hospital[A], ...change })
+      expect(found[0].r).toMatchObject({ hospital_id: hospital[A], ...filters, ...change })
     }
+    // 설정만 upsert onConflict hospital_id: hospital_id를 보내지 않아(기본값 my_hospital_id()) 겹칠 때 SET은 값 세 칸뿐이다
+    await become(A)
+    await postgrestInsert(t('staff_settings'), [SETTINGS], 'hospital_id')
+    await become(A)
+    await postgrestInsert(t('staff_settings'), [{ ...SETTINGS, leftover: 'pay' }], 'hospital_id')
+    await operator()
+    expect(await rows(`select hospital_id, leave_basis, leftover from public.staff_settings`)).toEqual([
+      { hospital_id: hospital[A], leave_basis: 'jan1', leftover: 'pay' },
+    ])
+  })
+
+  it('AC-7601.1: 열쇠 칸(직원·시작일·날·종류·달)을 바꾸는 update와 열쇠 칸까지 SET하는 upsert는 원장도 권한 없음(42501)이고 줄은 그대로다', async () => {
+    const staff = await seedAll(hospital[A])
+    const other = (await seedRow('staff_members', hospital[A], { ...MEMBER, name: '이바다' })).id as string
+    const before = await everything()
+    for (const { table, key, conflict, keySets } of KEYED) {
+      const sets = key.includes('staff_id') ? [...keySets, `staff_id = '${other}'`] : keySets
+      for (const set of sets) {
+        await become(A)
+        await expect(db.query(`update public.${table} set ${set}`), `${table}: ${set}`).rejects.toMatchObject(DENIED)
+      }
+      await become(A)
+      await expect(postgrestInsert(t(table), [BODY[table](staff)], conflict), `${table} upsert`).rejects.toMatchObject(DENIED)
+    }
+    expect(await everything()).toEqual(before)
+  })
+
+  it("AC-7601.1: SQL 주석은 열쇠 줄 저장을 '고치고, 없으면 넣기'로 적고, upsert는 설정(onConflict hospital_id) 줄에만 나온다", () => {
+    expect(STAFF_MIGRATION).toContain('고치고, 없으면 넣기')
+    const upsertLines = STAFF_MIGRATION.split('\n').filter((line) => /upsert/i.test(line))
+    expect(upsertLines.length).toBeGreaterThan(0)
+    for (const line of upsertLines) expect(line).toMatch(/^-- 설정:.*upsert onConflict hospital_id/)
   })
 
   it('AC-7601.1: 휴가·파일 줄은 원장도 고치기가, 설정·급여 줄·달 줄은 지우기가 권한 없음(42501)이다', async () => {
@@ -1061,13 +1139,13 @@ describe('AC-7601.3 직원 키(직원 id + 병원 id)', SLOW, () => {
     expect(await rows(`select * from public.${table}`)).toEqual([])
   })
 
-  it('AC-7601.3: 열쇠 칸(staff_id)을 고칠 수 있는 표에서도 B 병원 직원 id로 바꾸면 거절(23503)된다', async () => {
+  it('AC-7601.3: 자식 표의 직원 칸(staff_id)은 고치기 권한이 없어 B 병원 직원 id로 바꾸는 update도 거절(42501)된다', async () => {
     await seedAll(hospital[A])
     const staffB = (await seedRow('staff_members', hospital[B], MEMBER)).id as string
     const before = await everything()
-    for (const table of ['staff_week_plans', 'staff_day_changes', 'staff_overtime', 'staff_pay_lines']) {
+    for (const table of CHILD_TABLES) {
       await become(A)
-      await expect(db.query(`update public.${table} set staff_id = $1`, [staffB]), table).rejects.toMatchObject(FK_FAILED)
+      await expect(db.query(`update public.${table} set staff_id = $1`, [staffB]), table).rejects.toMatchObject(DENIED)
     }
     expect(await everything()).toEqual(before)
   })
@@ -2148,6 +2226,33 @@ describe('AC-7601.1·AC-7602.1·AC-7603.1 이미 있는 DB에 붙여 넣기·두
     expect(await shapeOf(fresh)).toEqual(once)
     expect(await everything(fresh)).toEqual(data)
     expect(staff).toBeTruthy()
+  })
+
+  it('AC-7601.1: 열쇠 칸 고치기 권한을 주던 앞 판을 이미 실행한 DB에 이 파일을 다시 붙여 넣으면 칸 권한이 design.md 1절 표 그대로가 된다', async () => {
+    const updateColumns = async (table: string) =>
+      (
+        await rows(
+          `select column_name from information_schema.column_privileges
+           where grantee = 'authenticated' and table_schema = 'public' and table_name = $1 and privilege_type = 'UPDATE'`,
+          [table],
+          fresh,
+        )
+      )
+        .map((r) => r.column_name as string)
+        .sort()
+    await operator(fresh)
+    // 앞 판(2026-11-21 검토 전)이 준 열쇠 칸 고치기 권한
+    await fresh.exec(`
+      grant update (staff_id, from_day, week, sat_rotation) on table public.staff_week_plans to authenticated;
+      grant update (staff_id, day, start_min, end_min, lunch_from, lunch_to, memo) on table public.staff_day_changes to authenticated;
+      grant update (staff_id, day, kind, minutes) on table public.staff_overtime to authenticated;
+      grant update (month, staff_id, amounts, incentives, adjust, adjust_reason, adjust_memo) on table public.staff_pay_lines to authenticated;
+      grant update (month, employer_cost, cost_saved_on, copied_on) on table public.staff_pay_months to authenticated;
+    `)
+    expect(await updateColumns('staff_week_plans')).toContain('from_day')
+    await fresh.exec(STAFF_MIGRATION)
+    for (const table of TABLES) expect([table, await updateColumns(table)]).toEqual([table, [...GRANTS[table].update].sort()])
+    expect(await shapeOf(fresh)).toEqual(once)
   })
 
   it('AC-7601.1: 앞 파일(calendar.sql·clinic_profile.sql)을 다시 붙여 넣어도 이 파일이 더한 칸·트리거·권한은 그대로이고 휴가 잇기가 돈다', async () => {

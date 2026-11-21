@@ -20,7 +20,7 @@ export type StaffFileStore = {
   listFiles(kind: StaffFile['kind']): Promise<StaffFile[]>
   /** 줄 먼저 → 바구니에 올리기. 올리기 실패면 줄을 지운다. 실패 E-STAFF-FILE-FAILED */
   uploadFile(input: StaffFileUpload): Promise<StaffFile>
-  /** 바구니 → 줄 차례로 지운다. 바구니 지우기가 실패하면 줄은 그대로 */
+  /** 바구니 → 줄 차례로 지운다. 바구니 지우기가 실패하거나 0개를 지우면 E-STAFF-FILE-FAILED, 줄은 그대로 */
   deleteFile(file: StaffFile): Promise<void>
   /** 내려받아 원래 이름으로 저장하게 한다(임시 주소는 바로 거둔다) */
   downloadFile(file: StaffFile): Promise<void>
@@ -162,7 +162,9 @@ export function createStaffFileStore(client: StaffFileClient): StaffFileStore {
 
     async deleteFile(file) {
       if (!isFilled(file?.id) || !isFilled(file.path)) throw fail(FILE)
-      await requestOrFail(FILE, () => client.storage.from(STAFF_FILES_BUCKET).remove([file.path]))
+      // 바구니는 권한에 막히거나 없는 파일이면 오류 없이 지운 것만(0개일 수 있음) 돌려준다 → 0개면 실패, 줄은 그대로
+      const { data } = await requestOrFail(FILE, () => client.storage.from(STAFF_FILES_BUCKET).remove([file.path]))
+      if (!Array.isArray(data) || data.length < 1) throw fail(FILE)
       await requestOrFail(FILE, () => client.from(TABLE).delete().eq('id', file.id))
     },
 

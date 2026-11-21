@@ -22,8 +22,9 @@
 -- 데스크 정책은 두지 않는다(데스크·승인 대기·거절·병원 없는 사용자는 아무 줄도 못 본다). 표마다 public·anon·authenticated 권한을 다 거둔 뒤
 -- 칸 단위로만 준다. id·hospital_id·created_at·updated_at은 칸 권한이 없어 DB(기본값·트리거)만 정한다. 휴가·파일 줄은 고치기 없음(지우고 다시 넣음),
 -- 설정·급여 줄·달 줄은 지우기 없음. 직원 지우기는 퇴사일 + 3년이 한국 오늘보다 앞인 사람만이다.
--- 앱 저장(PostgREST upsert)은 보낸 칸을 모두 SET에 쓰므로 기본 근무·바뀐 날·더 일한 시간·급여 줄·달 줄은 고치기 칸에 열쇠 칸(직원·날·종류·달)도 준다
--- (직원 id + 병원 id 외래 키가 남의 병원 직원을 막는다).
+-- 기본 근무·바뀐 날·더 일한 시간·급여 줄·달 줄은 앱이 '고치고, 없으면 넣기'로 저장한다(그 열쇠 줄의 값 칸만 고치고, 없으면 열쇠와 함께 넣는다).
+-- 그래서 열쇠 칸(직원·시작일·날·종류·달)에는 고치기 권한이 없다(넣기만). 직원 id + 병원 id 외래 키가 남의 병원 직원을 막는다.
+-- 앞 판(열쇠 칸 고치기를 주던 것)을 이미 실행한 DB에 다시 붙여 넣어도 권한을 다 거두고 다시 주므로 이 표가 된다.
 -- calendar_allday의 part·leave_id는 사용자 넣기 권한이 없어 트리거만 쓴다(읽기는 표 권한대로 원장·데스크 모두).
 -- 직원 파일은 비공개 바구니 staff-files의 '<병원 id>/doc/<직원 id>/<uuid>.<확장자>'·'<병원 id>/tax/<YYYY-MM>/<uuid>.<확장자>'에 두고,
 -- 원장이 자기 병원 폴더 것만 읽고 지우며, 올리기는 같은 이름의 staff_files 줄을 먼저 넣었을 때만이다(덮어쓰기 없음).
@@ -353,16 +354,16 @@ grant insert (name, job, job_other, employment, weekly_hours, hired_on, left_on,
           calendar_staff_id, memo, used_before, used_before_from)
   on table public.staff_members to authenticated;
 
--- 기본 근무·바뀐 날·더 일한 시간: 읽기·지우기, 넣기·고치기(고치기에 열쇠 칸 포함 — upsert onConflict 직원·날)
+-- 기본 근무·바뀐 날·더 일한 시간: 읽기·지우기, 넣기, 고치기는 값 칸만(열쇠 칸 직원·시작일·날·종류는 고치기 없음 — 고치고, 없으면 넣기)
 grant select, delete on table public.staff_week_plans to authenticated;
-grant insert (staff_id, from_day, week, sat_rotation), update (staff_id, from_day, week, sat_rotation)
+grant insert (staff_id, from_day, week, sat_rotation), update (week, sat_rotation)
   on table public.staff_week_plans to authenticated;
 grant select, delete on table public.staff_day_changes to authenticated;
 grant insert (staff_id, day, start_min, end_min, lunch_from, lunch_to, memo),
-  update (staff_id, day, start_min, end_min, lunch_from, lunch_to, memo)
+  update (start_min, end_min, lunch_from, lunch_to, memo)
   on table public.staff_day_changes to authenticated;
 grant select, delete on table public.staff_overtime to authenticated;
-grant insert (staff_id, day, kind, minutes), update (staff_id, day, kind, minutes) on table public.staff_overtime to authenticated;
+grant insert (staff_id, day, kind, minutes), update (minutes) on table public.staff_overtime to authenticated;
 
 -- 휴가: 읽기·지우기·넣기(고치기 없음 — 묶음을 지우고 다시 넣는다)
 grant select, delete on table public.staff_leaves to authenticated;
@@ -377,13 +378,13 @@ grant select, delete on table public.staff_incentive_rules to authenticated;
 grant insert (staff_id, name, method, unit_amount, percent, sort), update (name, method, unit_amount, percent, sort)
   on table public.staff_incentive_rules to authenticated;
 
--- 급여 줄·달 줄: 읽기, 넣기·고치기(지우기 없음, upsert onConflict hospital_id,month(,staff_id)라 고치기에 열쇠 칸 포함)
+-- 급여 줄·달 줄: 읽기, 넣기, 고치기는 값 칸만(지우기 없음, 열쇠 칸 달·직원은 고치기 없음 — 고치고, 없으면 넣기)
 grant select on table public.staff_pay_lines to authenticated;
 grant insert (month, staff_id, amounts, incentives, adjust, adjust_reason, adjust_memo),
-  update (month, staff_id, amounts, incentives, adjust, adjust_reason, adjust_memo)
+  update (amounts, incentives, adjust, adjust_reason, adjust_memo)
   on table public.staff_pay_lines to authenticated;
 grant select on table public.staff_pay_months to authenticated;
-grant insert (month, employer_cost, cost_saved_on, copied_on), update (month, employer_cost, cost_saved_on, copied_on)
+grant insert (month, employer_cost, cost_saved_on, copied_on), update (employer_cost, cost_saved_on, copied_on)
   on table public.staff_pay_months to authenticated;
 
 -- 파일 줄: 읽기·지우기·넣기(고치기 없음)

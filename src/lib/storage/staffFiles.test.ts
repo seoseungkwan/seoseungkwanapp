@@ -235,6 +235,14 @@ describe('AC-7610.3 파일 지우기·받기', () => {
     expect(named(calls, 'delete')).toEqual([])
   })
 
+  it('AC-7610.3: 바구니가 0개를 지우면(권한에 막혀도·없는 파일이어도 오류 없이 빈 목록) E-STAFF-FILE-FAILED이고 줄은 그대로다', async () => {
+    for (const reply of [okWith([]), OK]) {
+      const { client, calls } = fakeClient(reply, OK)
+      await caught(() => createStaffFileStore(client).deleteFile(DOC))
+      expect(calls).toEqual([['bucket', 'staff-files'], ['remove', [DOC.path]]])
+    }
+  })
+
   it('AC-7610.3: 받기는 바구니에서 내려받아 원래 이름으로 저장하게 하고 임시 주소를 바로 거둔다', async () => {
     const createObjectURL = vi.fn(() => 'blob:fake-url')
     const revokeObjectURL = vi.fn()
