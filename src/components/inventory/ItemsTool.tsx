@@ -51,6 +51,10 @@ function GripIcon({ size = 16, className }: { size?: number; className?: string 
 
 const NONE = <span className="text-muted">–</span>
 const NUM_HEAD = `${ds.table.th} text-right`
+// 분류 머리 줄(시안 .tb tr.grp): 흰 바탕·아래 선·글은 아래에 붙임. 첫 묶음은 32px, 다음 묶음부터 위 12px 띄워 44px
+const GROUP_HEAD = 'border-b border-line px-3 pl-5 text-left align-bottom font-semibold text-ink'
+// 물품 줄: 마지막 줄도 아래 선을 둔다(ds.table.row는 마지막 줄 선을 지운다)
+const ITEM_ROW = 'hover:bg-canvas'
 
 /** 물품 하나의 챙길 것 상태: 주문하세요(주문함이면 그 날짜), 기한 가까움(남은 날, 음수 = 지남) */
 type Status = { low?: { ordered: boolean }; expiryDays?: number }
@@ -318,7 +322,7 @@ export function ItemsTool({ today, reloadKey, onChanged, alerts, onTemplate, onU
             </button>
           </div>
         ) : (
-          <>
+          <div className="flex flex-col gap-2">
             <div data-head className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex flex-col gap-1">
                 <h2 className="text-subtitle font-semibold text-ink">물품 목록</h2>
@@ -347,10 +351,10 @@ export function ItemsTool({ today, reloadKey, onChanged, alerts, onTemplate, onU
                 </button>
               </div>
             </div>
-            <p id={helpId} className={ds.help}>
+            <p id={helpId} className={`${ds.help} text-right`}>
               {TEMPLATE_HELP}
             </p>
-          </>
+          </div>
         )}
 
         {error && <ErrorCard code={error} />}
@@ -390,10 +394,10 @@ export function ItemsTool({ today, reloadKey, onChanged, alerts, onTemplate, onU
                 </th>
               </tr>
             </thead>
-            {groups.map(({ category, items }) => (
+            {groups.map(({ category, items }, groupIndex) => (
               <tbody key={category.id}>
                 <tr>
-                  <th scope="rowgroup" colSpan={columns} className="h-9 border-y border-line bg-canvas px-5 text-left text-small font-semibold text-ink">
+                  <th scope="rowgroup" colSpan={columns} className={`${GROUP_HEAD} ${groupIndex === 0 ? 'h-8' : 'h-11 pt-3'}`}>
                     {category.name}
                     <span className="ml-2 font-normal text-muted">{`${items.length}개`}</span>
                   </th>
@@ -402,7 +406,7 @@ export function ItemsTool({ today, reloadKey, onChanged, alerts, onTemplate, onU
                   <tr
                     key={item.id}
                     data-item={item.id}
-                    className={`${ds.table.row} ${item.hidden ? 'opacity-60' : ''} ${dragging === item.id ? 'bg-accent-soft' : ''}`}
+                    className={`${ITEM_ROW} ${item.hidden ? 'opacity-60' : ''} ${dragging === item.id ? 'bg-accent-soft' : ''}`}
                   >
                     {ordering && (
                       <td aria-hidden="true" className={`${ds.table.td} w-10`}>
@@ -415,7 +419,7 @@ export function ItemsTool({ today, reloadKey, onChanged, alerts, onTemplate, onU
                         </span>
                       </td>
                     )}
-                    <td className={ds.table.td}>{item.name}</td>
+                    <td className={`${ds.table.td} ${item.hidden ? '' : 'font-medium'}`}>{item.name}</td>
                     <td className={ds.table.tdNum}>
                       <span className={item.qty < 0 ? 'text-negative' : undefined}>{formatCount(item.qty)}</span>
                       <span className="ml-0.5 text-caption text-muted">{item.unit}</span>
@@ -478,7 +482,7 @@ export function ItemsTool({ today, reloadKey, onChanged, alerts, onTemplate, onU
         </div>
 
         {!ordering && hiddenCount > 0 && (
-          <p className="text-small text-ink-2">
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-5 text-small text-muted">
             {showHidden ? `안 쓰는 물품 ${hiddenCount}개도 흐리게 보여요.` : `안 쓰는 물품 ${hiddenCount}개는 숨겨 뒀어요.`}{' '}
             <button type="button" className={ds.textButton} onClick={() => setShowHidden((on) => !on)}>
               {showHidden ? '숨기기' : '보기'}
@@ -509,20 +513,23 @@ function EmptyState({
   onCategories(): void
 }) {
   const fields = FIELDS.map((field) => FIELD_LABELS[field]).join(' · ')
-  const step = 'flex flex-col items-start gap-1 border-l border-line px-5 py-4 first:border-l-0'
-  const number = 'mb-1 inline-flex size-6 items-center justify-center rounded-control bg-accent-soft text-small font-semibold text-accent-strong'
+  // 시안 .steps: 960px까지, 위아래 선과 단계 사이 선만(네 변 상자 아님). 첫 단계는 왼쪽 여백 없이
+  const step = 'flex flex-col items-start border-l border-line px-6 pt-4 pb-5 first:border-l-0 first:pl-0'
+  const number = 'inline-flex size-6 items-center justify-center rounded-control bg-accent-soft text-caption font-semibold text-accent-strong'
+  const title = 'mt-2 text-subtitle font-semibold text-ink'
+  const desc = 'mt-0.5 text-small text-ink-2'
   return (
     <section className="flex min-w-0 flex-col">
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-2">
         <h2 className="text-subtitle font-semibold text-ink">아직 물품이 없어요</h2>
-        <p className="text-small text-ink-2">양식 받기 → 채우기 → 엑셀 올리기, 이 차례로 하면 목록이 한 번에 만들어져요.</p>
+        <p className="text-body text-ink-2">양식 받기 → 채우기 → 엑셀 올리기, 이 차례로 하면 목록이 한 번에 만들어져요.</p>
       </div>
-      <div className="mt-4 min-w-0 overflow-x-auto">
-        <ol aria-label="물품 넣는 차례" className="grid min-w-180 grid-cols-3 rounded-control border border-line">
+      <div className="mt-5 min-w-0 overflow-x-auto">
+        <ol aria-label="물품 넣는 차례" className="grid min-w-180 max-w-240 list-none grid-cols-3 border-y border-line">
           <li className={step}>
             <span className={number}>1</span>
-            <p className="text-body font-semibold text-ink">양식 받기</p>
-            <p className="text-small text-muted">빈 양식(엑셀), 시트 &apos;물품&apos;</p>
+            <p className={title}>양식 받기</p>
+            <p className={desc}>빈 양식(엑셀), 시트 &apos;물품&apos;</p>
             <button type="button" className={`${ds.button.secondary} mt-3`} onClick={onTemplate}>
               <Icon name="arrowDown" />
               양식 받기
@@ -530,13 +537,13 @@ function EmptyState({
           </li>
           <li className={step}>
             <span className={number}>2</span>
-            <p className="text-body font-semibold text-ink">채우기</p>
-            <p className="text-small text-muted">{`한 줄에 물품 하나: ${fields}`}</p>
+            <p className={title}>채우기</p>
+            <p className={desc}>{`한 줄에 물품 하나: ${fields}`}</p>
           </li>
           <li className={step}>
             <span className={number}>3</span>
-            <p className="text-body font-semibold text-ink">엑셀 올리기</p>
-            <p className="text-small text-muted">넣기 전에 미리 보기로 확인해요</p>
+            <p className={title}>엑셀 올리기</p>
+            <p className={desc}>넣기 전에 미리 보기로 확인해요</p>
             <button type="button" className={`${ds.button.primary} mt-3`} onClick={onUpload}>
               <Icon name="upload" />
               엑셀 올리기
@@ -557,9 +564,9 @@ function EmptyState({
           비트 코드에서 고르기
         </button>
       </p>
-      <div className="mt-6 flex flex-col items-start gap-1 border-t border-line pt-4">
-        <p className="text-small font-semibold text-ink">{categories.length === 4 ? '분류는 넷으로 시작해요' : `분류 ${categories.length}개`}</p>
-        <p className="text-small text-ink-2">{categories.map((c) => c.name).join(' · ')}</p>
+      <div className="mt-8 flex max-w-140 flex-col items-start gap-1 border-t border-line pt-4">
+        <p className="text-small font-semibold text-muted">{categories.length === 4 ? '분류는 넷으로 시작해요' : `분류 ${categories.length}개`}</p>
+        <p className="text-body text-ink-2">{categories.map((c) => c.name).join(' · ')}</p>
         <button type="button" className={ds.textButton} onClick={onCategories}>
           분류 고치기
         </button>

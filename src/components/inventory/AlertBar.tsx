@@ -159,7 +159,7 @@ export function AlertBar({ today, reloadKey, onChanged }: Props) {
                 <span className="flex">
                   <RowChip row={row} />
                 </span>
-                <span className={`${done ? 'font-normal text-muted' : 'font-medium text-ink'}`}>{item.name}</span>
+                <span className={`text-body ${done ? 'font-normal text-muted' : 'font-medium text-ink'}`}>{item.name}</span>
                 <span className={`text-small ${done ? 'text-muted' : 'text-ink-2'}`}>{rowText(row)}</span>
                 <span className="text-small text-muted">{item.vendor ?? ''}</span>
                 <span className="justify-self-end">

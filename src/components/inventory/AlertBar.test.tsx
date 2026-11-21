@@ -125,6 +125,12 @@ describe('AC-7511.1: 챙길 것 — 머리·칩·줄 글자', () => {
     expect(within(headChips()).queryByText(/기한 가까움 \d/)).toBeNull()
   })
 
+  it('AC-7511.1: 물품 이름은 본문 글자 크기(14px, text-body)다', async () => {
+    await shown()
+    expect(rowOf('히알루론산 주사 2mL').children[1]!.getAttribute('class')?.split(/\s+/)).toContain('text-body')
+    expect(rowOf('주사기 3cc').children[1]!.getAttribute('class')?.split(/\s+/)).toContain('text-body')
+  })
+
   it('AC-7511.1: [주문함]은 주문하세요 줄에만 있고 기한 줄에는 단추가 없다', async () => {
     await shown()
     for (const name of ['히알루론산 주사 2mL', '알코올 솜']) {

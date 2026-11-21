@@ -187,6 +187,37 @@ describe('들어온 것 확인 그리기 (AC-7508.2)', () => {
     expect(screen.getByText(/4줄 · 합계/).textContent).toContain('126,600원')
   })
 
+  it('AC-7508.2: 단가가 빈 줄은 수량을 고쳐도 읽은 줄 금액 그대로이고 0으로 바꾸지 않는다', async () => {
+    const noPrice: InvoiceRead = { ...INVOICE, lines: [{ name: '알콜솜 100매', qty: 5, unitPrice: null, amount: 17600, itemId: 'i-alc', unsure: false }] }
+    show('photo', draftFromInvoice(noPrice, ITEMS, ALIASES, CATEGORIES, TODAY), { photo: PHOTO })
+    expect(lineRows()[0].textContent).toContain('17,600원')
+    change('1번째 줄 수량', '6')
+    expect(lineRows()[0].textContent).toContain('17,600원')
+    expect(screen.getByText(/1줄 · 합계/).textContent).toContain('17,600원')
+    save()
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+    expect(vi.mocked(saveReceipt).mock.calls[0][0].lines).toEqual([{ itemId: 'i-alc', qty: 6, unitPrice: null, amount: 17600 }])
+  })
+
+  it('AC-7508.2: 단가를 지우면 수량 × 단가 대신 읽은 줄 금액으로 돌아간다', () => {
+    showRead()
+    change('2번째 줄 단가', '3,000')
+    expect(lineRows()[1].textContent).toContain('15,000원')
+    change('2번째 줄 단가', '')
+    expect(lineRows()[1].textContent).toContain('17,600원')
+    expect(screen.getByText(/4줄 · 합계/).textContent).toContain('126,200원')
+  })
+
+  it('AC-7508.2: 금액도 단가도 없던 줄만 금액 0으로 저장한다', async () => {
+    const bare: InvoiceRead = { ...INVOICE, lines: [{ name: '알콜솜 100매', qty: 5, unitPrice: null, amount: null, itemId: 'i-alc', unsure: false }] }
+    show('photo', draftFromInvoice(bare, ITEMS, ALIASES, CATEGORIES, TODAY), { photo: PHOTO })
+    change('1번째 줄 수량', '6')
+    expect(lineRows()[0].textContent).toContain('–')
+    save()
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+    expect(vi.mocked(saveReceipt).mock.calls[0][0].lines).toEqual([{ itemId: 'i-alc', qty: 6, unitPrice: null, amount: 0 }])
+  })
+
   it('AC-7508.2: 단가가 목록과 다르면 줄 아래 안내가 붙는다', () => {
     showRead()
     expect(lineRows()[1].textContent).toContain('목록 단가 3,000원 → 3,200원으로 바뀌어요')
@@ -483,6 +514,15 @@ describe('기록 고치기 (AC-7508.5)', () => {
     })
     expect(saveReceipt).not.toHaveBeenCalled()
     expect(saveAliases).not.toHaveBeenCalled()
+  })
+
+  it('AC-7508.2: 고치기에서 단가가 빈 줄의 수량을 고쳐도 저장한 금액 그대로 보낸다', async () => {
+    show('edit', draftFromReceipt(RECEIPT, ITEMS, CATEGORIES), { receiptId: RECEIPT.id })
+    change('1번째 줄 수량', '120')
+    expect(lineRows()[0].textContent).toContain('9,500원')
+    save()
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+    expect(vi.mocked(updateReceipt).mock.calls[0][1].lines[0]).toEqual({ itemId: 'i-syr', qty: 120, unitPrice: null, amount: 9500 })
   })
 
   it('AC-7508.5: 줄을 다 지우고 [저장]하면 확인 창 뒤 그 기록을 지운다', async () => {

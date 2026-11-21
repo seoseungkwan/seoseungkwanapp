@@ -32,7 +32,8 @@ import { PhotoDialog } from './PhotoDialog'
 // "들어온 것 확인" 화면 (specs/inventory REQ-7508 AC-7508.1~7508.5, design.md 6절 TASK-10, 시안 ?s=in-check·in-manual).
 // 세 모양: 사진(photo, 경로가 읽은 줄) · 사진 없이(manual, 빈 줄 하나) · 고치기(edit, 저장한 기록). 왼쪽 사진(300px) + 오른쪽 날짜·거래처·줄 표,
 // 1200px 아래(작은 PC 화면)는 사진이 표 위로 가고, 덩어리는 최소 960px(사진 없으면 720px)이라 더 좁으면 제 상자 안에서 옆으로 밀린다.
-// 물품은 matchLines(이름 같음 → 기억한 이름 → AI → 새 물품)로 미리 고른다. 금액은 답 금액이고 수량·단가를 고치면 수량 × 단가다.
+// 물품은 matchLines(이름 같음 → 기억한 이름 → AI → 새 물품)로 미리 고른다. 금액은 처음은 답 금액이고, 수량·단가를 고치면 단가가 있을 때 수량 × 단가,
+// 단가가 비면 읽은 줄 금액 그대로다(0으로 바꾸지 않는다). 금액도 단가도 없던 줄만 0으로 저장한다.
 // [저장]: 칸 검사를 넘을 때만 '새 물품'을 먼저 만들고(같은 이름은 하나) → 입고 저장(사진은 저장 모듈이 먼저 올림, '넣지 않음' 줄 뺌)
 // → 읽은 이름이 고른 물품 이름과 다른 줄은 별칭으로 기억한다(기억 실패는 입고를 되돌리지 않는다). 실패하면 화면 값은 그대로이고 오류 카드다 —
 // 이미 만든 새 물품은 기억해 두어 다시 저장할 때 또 만들지 않는다. 고치기는 update_inventory_receipt, 줄을 다 지우면 확인 창 뒤 delete
@@ -57,7 +58,8 @@ export type DraftLine = {
   tag: 'alias' | 'unsure' | null // 미리 고른 까닭 칩(고르기를 바꾸면 빠진다)
   qty: string
   price: string
-  amount: number | null // 답·저장한 금액. 수량·단가를 고치면 null → 수량 × 단가
+  amount: number | null // 답·저장한 금액(고쳐도 지우지 않는다 — 단가가 비면 이 값)
+  edited: boolean // 수량·단가를 고쳤음 → 단가가 있으면 수량 × 단가
   newCategoryId: string
   newUnit: string
 }
@@ -77,7 +79,7 @@ const firstCategoryId = (categories: readonly InvCategory[]) => byOrder(categori
 const priceText = (price: number | null) => (price === null ? '' : formatCount(price))
 
 function blankLine(key: number, categories: readonly InvCategory[]): DraftLine {
-  return { key, src: '', read: false, typed: true, pick: NONE, tag: null, qty: '', price: '', amount: null, newCategoryId: firstCategoryId(categories), newUnit: DEFAULT_UNIT }
+  return { key, src: '', read: false, typed: true, pick: NONE, tag: null, qty: '', price: '', amount: null, edited: false, newCategoryId: firstCategoryId(categories), newUnit: DEFAULT_UNIT }
 }
 
 /** 경로가 읽은 명세서 → 확인 화면 값. 날짜가 없거나 오늘보다 뒤면 오늘 */
@@ -166,11 +168,13 @@ const priceOf = (line: DraftLine): number | null | undefined => {
   const price = wholeOf(line.price)
   return price !== null && price <= UNIT_PRICE_MAX ? price : undefined
 }
+/** 금액: 고치기 전은 답·저장한 금액. 고쳤거나 그 금액이 없으면 단가가 있을 때 수량 × 단가, 단가가 비면 답·저장한 금액 그대로(없으면 null → 0으로 저장) */
 function amountOf(line: DraftLine): number | null {
-  if (line.amount !== null) return line.amount
-  const qty = qtyOf(line)
+  if (!line.edited && line.amount !== null) return line.amount
   const price = priceOf(line)
-  return qty !== null && typeof price === 'number' ? qty * price : null
+  if (price === null) return line.amount
+  const qty = qtyOf(line)
+  return qty !== null && price !== undefined ? qty * price : null
 }
 const clip = (text: string, max: number) => [...text.trim()].slice(0, max).join('').trim()
 /** 새 물품 이름: 명세서·적은 이름(40자로 자름) */
@@ -637,7 +641,7 @@ export function ReceiptConfirm({ mode, today, categories, items, initial, photo 
                               autoComplete="off"
                               className={CELL_NUMBER}
                               value={line.qty}
-                              onChange={(event) => patch(line.key, { qty: event.target.value, amount: null })}
+                              onChange={(event) => patch(line.key, { qty: event.target.value, edited: true })}
                             />
                             {unit !== '' && <span className="text-small text-muted">{unit}</span>}
                           </div>
@@ -654,7 +658,7 @@ export function ReceiptConfirm({ mode, today, categories, items, initial, photo 
                               placeholder="비워도 돼요"
                               className={CELL_NUMBER}
                               value={line.price}
-                              onChange={(event) => patch(line.key, { price: event.target.value, amount: null })}
+                              onChange={(event) => patch(line.key, { price: event.target.value, edited: true })}
                             />
                             <span className="text-small text-muted">원</span>
                           </div>
