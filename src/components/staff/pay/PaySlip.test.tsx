@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { payDb, renderPay } from './payTestKit'
@@ -138,6 +140,56 @@ describe('AC-7615.10: 간단 명세서', () => {
     expect(copy.querySelectorAll('svg')).toHaveLength(1)
     const css = [...container.querySelectorAll('style')].map((s) => s.textContent).join('\n')
     expect(css).toContain('@media print')
+  })
+
+  it('AC-7615.10: 화면 미리 보기도 A4 종이 모양 그대로다 — 인쇄 면·그림 파일과 같은 794×1123 SVG이고 내용 높이로 줄이지 않는다', async () => {
+    const { container } = renderPay({ part: 'slip' })
+    await waitFor(() => expect(within(picker()).getAllByRole('button')).toHaveLength(6))
+    choose('정유나')
+    const preview = slip('정유나')
+    const print = container.querySelector('[data-print-copy] svg') as SVGSVGElement
+    for (const svg of [preview, print]) {
+      expect(svg.getAttribute('viewBox')).toBe('0 0 794 1123')
+      // 비율을 바꾸는 값이 없다(preserveAspectRatio="none" 없음), 높이는 폭을 따른다(h-auto)
+      expect(svg.getAttribute('preserveAspectRatio')).toBeNull()
+      const classes = (svg.getAttribute('class') ?? '').split(/\s+/)
+      expect(classes).toEqual(expect.arrayContaining(['h-auto', 'w-full']))
+      expect(classes.filter((c) => /^(?:max-|min-)?h-/.test(c) && c !== 'h-auto')).toEqual([])
+      expect(classes.filter((c) => c.startsWith('aspect-'))).toEqual([])
+      // 종이 바탕은 A4 전체다(줄이 적어도 아래 빈칸이 남는다)
+      const paper = svg.querySelector('rect')!
+      expect([paper.getAttribute('width'), paper.getAttribute('height')]).toEqual(['794', '1123'])
+    }
+    // 그림 파일은 화면 미리 보기 그 SVG로 만든다
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '그림 파일' }))
+    })
+    expect(png.calls[0][0]).toBe(preview)
+  })
+
+  it('AC-7615.10: 명세서 그림 굵기 700·900 예외가 docs/ADR.md ADR-035 넷째 줄과 docs/UI_GUIDE.md 굵기 규칙·ADR-028 예외 옆에 적혀 있다', () => {
+    const read = (rel: string) => readFileSync(join(process.cwd(), rel), 'utf8')
+    const adr = read('docs/ADR.md')
+    const title = '### ADR-035: 직원 자료(연락처·주소·생일·계좌·근무·휴가·급여·서류 파일)를 Supabase에 원장만 보게 둔다. 주민번호는 두지 않는다'
+    const body = adr.slice(adr.indexOf(title)).split(/\r?\n/)
+    expect(body[0]).toBe(title)
+    // ADR-035는 그대로 맨 끝이고, 첫 세 줄 뒤 넷째 줄이 명세서 그림 예외다(design.md 2절 글 그대로)
+    expect(body.slice(1).some((line) => line.startsWith('### '))).toBe(false)
+    expect(body[1]).toMatch(/^- plan\.md 4절 /)
+    expect(body[2]).toMatch(/^- 휴가 → 예약 '휴무'는 /)
+    expect(body[3]).toMatch(/^- \[급여 확정\] 잠금은 /)
+    expect(body[4]).toBe(
+      '- 급여 명세서 그림(`components/staff/pay/PaySlip.tsx`의 SVG)은 그림 파일·인쇄로 내보내는 종이라 그림 안에서만 글꼴 `SlipPretendard`(서식 안내문과 같은 `public/poster/fonts/` 파일) 700·900을 쓴다. 급여 화면의 칸·단추·표는 400·500·600 그대로다. (2026-11-21 검토 뒤 더함)',
+    )
+    const guide = read('docs/UI_GUIDE.md').split(/\r?\n/)
+    const weightRow = guide.find((line) => line.startsWith('| 700 굵기'))!
+    expect(weightRow).toContain('급여 명세서 그림')
+    expect(weightRow).toContain('ADR-035')
+    const besideAdr028 = guide.findIndex((line) => line.startsWith('- 예외(ADR-028)'))
+    expect(besideAdr028).toBeGreaterThan(0)
+    const next = guide[besideAdr028 + 1]
+    expect(next).toMatch(/^- 예외\(ADR-035\): 급여 명세서 그림/)
+    for (const word of ['components/staff/pay/PaySlip.tsx', 'SlipPretendard', '700·900']) expect(next).toContain(word)
   })
 
   it('AC-7615.10: [그림 파일]은 급여명세-{이름}-{YYYY}-{MM}.png로 받고, 실패하면 E-STAFF-IMAGE-FAILED다', async () => {

@@ -49,6 +49,16 @@ describe('AC-7615.5: 이달 실적 입력', () => {
     expect(cells(t.querySelector('tfoot tr')!)).toEqual(['합계 (3명)', '995,000'])
   })
 
+  it('AC-7615.5: 표 칸마다 줄맞춤 클래스는 하나다 — 금액 칸(인센티브 (원))만 오른쪽, 나머지는 왼쪽', async () => {
+    renderPay({ part: 'incentive' })
+    const t = await perfTable()
+    const align = (cell: Element) => cell.className.split(/\s+/).filter((c) => /^text-(left|center|right)$/.test(c))
+    for (const tr of t.querySelectorAll('tr')) {
+      const row = [...tr.querySelectorAll('th, td')]
+      row.forEach((cell, i) => expect(align(cell), cell.textContent ?? '').toEqual([i === row.length - 1 ? 'text-right' : 'text-left']))
+    }
+  })
+
   it('AC-7615.5: 규칙이 없는 사람 줄과 [규칙 더하기], 노란 칸 안내가 보인다', async () => {
     renderPay({ part: 'incentive' })
     await perfTable()
@@ -178,6 +188,45 @@ describe('AC-7615.6: 인센티브 규칙 고치기', () => {
     fireEvent.click(screen.getByRole('button', { name: '‹ 이달 실적으로' }))
     const t = await perfTable()
     await waitFor(() => expect(within(t).getAllByText('120,000').length).toBeGreaterThan(0))
+  })
+
+  it('AC-7615.4: 규칙을 저장하는 동안은 이 창의 단추·칸이 막혀 [넣기]를 두 번 눌러도 규칙이 하나만 생긴다', async () => {
+    const { callsOf, db } = await openRules()
+    const park = card('박서연')
+    fireEvent.click(within(park).getByRole('button', { name: '+ 항목 더하기' }))
+    fireEvent.change(within(park).getByRole('textbox', { name: '박서연 새 항목 이름' }), { target: { value: '신장분사1' } })
+    fireEvent.change(within(park).getByRole('textbox', { name: '박서연 새 항목 값' }), { target: { value: '3000' } })
+    const put = within(park).getByRole('button', { name: '넣기' }) as HTMLButtonElement
+    fireEvent.click(put)
+    // 저장 중: 규칙 화면의 단추는 모두 막히고 글 칸은 읽기만, 방식 고르기는 막힌다
+    const buttons = screen.getAllByRole('button') as HTMLButtonElement[]
+    const editor = buttons.filter((b) => !b.closest('[aria-label="급여 안 메뉴"]'))
+    expect(editor.filter((b) => !b.disabled).map((b) => b.textContent)).toEqual([])
+    const lee = card('이도윤')
+    expect((within(lee).getByRole('textbox', { name: '이도윤 1번째 항목 값' }) as HTMLInputElement).readOnly).toBe(true)
+    expect((within(lee).getByRole('combobox', { name: '이도윤 1번째 항목 방식' }) as HTMLSelectElement).disabled).toBe(true)
+    fireEvent.click(put)
+    expect(callsOf('saveRules')).toHaveLength(1)
+    await waitFor(() => expect(within(card('박서연')).getByText('항목 2개')).toBeTruthy())
+    await waitFor(() => expect((within(card('이도윤')).getByRole('textbox', { name: '이도윤 1번째 항목 값' }) as HTMLInputElement).readOnly).toBe(false))
+    expect(callsOf('saveRules')).toHaveLength(1)
+    expect(db.rules.filter((rule) => rule.staffId === 'park').map((rule) => rule.name)).toEqual(['도수치료 비급여', '신장분사1'])
+    expect(within(card('박서연')).getAllByRole('button', { name: '빼기' }).every((b) => !(b as HTMLButtonElement).disabled)).toBe(true)
+  })
+
+  it('AC-7615.4: 한 줄을 저장하는 동안 같은 사람의 다른 줄을 고쳐도 앞 저장을 덮어쓰지 않는다', async () => {
+    const { callsOf, db } = await openRules()
+    await blurWith(within(card('이도윤')).getByRole('textbox', { name: '이도윤 1번째 항목 값' }) as HTMLInputElement, '6,000')
+    await waitFor(() => expect(callsOf('saveRules')).toHaveLength(1))
+    await waitFor(() => expect((within(card('이도윤')).getByRole('textbox', { name: '이도윤 2번째 항목 값' }) as HTMLInputElement).readOnly).toBe(false))
+    await blurWith(within(card('이도윤')).getByRole('textbox', { name: '이도윤 2번째 항목 값' }) as HTMLInputElement, '12')
+    await waitFor(() => expect(callsOf('saveRules')).toHaveLength(2))
+    const drafts = callsOf('saveRules')[1][1] as RuleDraft[]
+    expect(drafts.map((d) => [d.id, d.unitAmount, d.percent])).toEqual([
+      ['r-lee-1', 6_000, null],
+      ['r-lee-2', null, 12],
+    ])
+    await waitFor(() => expect(db.rules.filter((rule) => rule.staffId === 'lee').map((rule) => rule.unitAmount ?? rule.percent)).toEqual([6_000, 12]))
   })
 
   it('AC-7615.6: 규칙 저장이 실패하면 E-STAFF-SAVE-FAILED가 보인다', async () => {

@@ -1153,11 +1153,17 @@ describe('AC-7610.1 직원 탭 오류 번호', () => {
     expect(fix, code).not.toMatch(/\[(다시 확인|처음 등록|다시 등록)\]/)
   })
 
-  it('AC-7610.1: 저장 실패는 적은 값이 화면에 그대로 있다고, 파일 실패는 받는 종류·크기·개수를, 엑셀 실패는 읽지 못했다고 알린다', () => {
+  it('AC-7610.1: 저장 실패는 적은 값이 화면에 그대로 있다고, 파일 실패는 받는 종류·크기·개수를, 그림 실패는 그림 파일이라고 알린다', () => {
     expect(errorInfo('E-STAFF-SAVE-FAILED').fix).toContain('적은 값은 화면에 그대로 있어요')
     expect(errorInfo('E-STAFF-FILE-FAILED').fix).toContain('PDF·JPG·PNG')
     expect(errorInfo('E-STAFF-FILE-FAILED').fix).toContain('20개')
-    expect(errorInfo('E-STAFF-EXCEL-FAILED').what).toContain('읽지 못했어요')
     expect(errorInfo('E-STAFF-IMAGE-FAILED').what).toContain('그림 파일')
+  })
+
+  it('AC-7610.1: E-STAFF-EXCEL-FAILED는 올린 엑셀을 못 읽음·세무사 엑셀을 못 만듦 둘 다를 말한다(문구는 명세 글 그대로)', () => {
+    expect(errorInfo('E-STAFF-EXCEL-FAILED')).toEqual({
+      what: '엑셀 파일을 읽거나 만들지 못했어요',
+      fix: '올린 파일이면 [엑셀 양식 받기]로 받은 파일에 적었는지, 암호로 잠긴 파일이 아닌지 확인하고 다시 올려 주세요. [엑셀 받기]가 안 됐으면 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+    })
   })
 })

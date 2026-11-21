@@ -14,6 +14,8 @@ import type { IncentiveRule, Leave, Overtime, PayLine, PayMonth } from '@/types/
 // 매출(sales_days)은 따로 읽어 실패해도 나머지는 그대로다('매출 자료 없음').
 // 금액·실적 칸은 칸에서 나갈 때 그 줄 하나만 저장한다: 화면 값은 바로 바꾸고, 같은 줄을 저장하는 중이면 끝난 뒤 마지막 값으로 한 번 더.
 // 합계가 0원 밑인 줄은 저장하지 않는다(AC-7606.2 — 화면은 까닭을 보인다). 실패하면 값은 화면에 남고 saveFailed가 켜진다.
+// 실패는 줄(달·직원)·달 줄·규칙(직원)마다 기억한다: 다른 줄 저장이 성공해도 실패한 줄이 남아 있는 동안은 saveFailed 그대로이고,
+// 그 줄을 다시 저장해 성공하거나 다시 읽어 화면 줄이 DB 값으로 바뀌면 지운다(AC-7615.2).
 // 같은 달을 다시 읽는 동안은 앞서 읽은 값을 그대로 보인다. 자료는 React 상태에만 둔다
 
 const SPAN = 6 // 인건비 그림 달 수
@@ -30,7 +32,14 @@ export type RevenueRead = { state: 'reading' | 'ready' | 'failed'; days: readonl
 type Held = { key: string; month: string; value: PayData | 'failed' }
 type Queue = { running: boolean; next: PayLine | null }
 
+const lineKey = (line: Pick<PayLine, 'month' | 'staffId'>) => `line:${line.month}|${line.staffId}`
+
 const sameLine = (a: Pick<PayLine, 'month' | 'staffId'>, b: Pick<PayLine, 'month' | 'staffId'>) => a.month === b.month && a.staffId === b.staffId
+
+function withoutPrefix(keys: ReadonlySet<string>, prefix: string): ReadonlySet<string> {
+  const kept = [...keys].filter((key) => !key.startsWith(prefix))
+  return kept.length === keys.size ? keys : new Set(kept)
+}
 
 function putLine(lines: readonly PayLine[], line: PayLine): PayLine[] {
   const at = lines.findIndex((row) => sameLine(row, line))
@@ -42,7 +51,8 @@ export function usePayData(base: StaffBase, month: string, loadRevenue: LoadReve
   const [attempt, setAttempt] = useState(0)
   const [held, setHeld] = useState<Held | null>(null)
   const [revenue, setRevenue] = useState<{ month: string; read: RevenueRead } | null>(null)
-  const [saveFailed, setSaveFailed] = useState(false)
+  // 저장이 실패한 것들('line:{달}|{직원}' · 'month:{달}' · 'rules:{직원}')
+  const [failed, setFailed] = useState<ReadonlySet<string>>(() => new Set())
   const queues = useRef(new Map<string, Queue>())
 
   const firstHire = members.reduce<string | null>((min, m) => (min === null || m.hiredOn < min ? m.hiredOn : min), null)
@@ -62,7 +72,10 @@ export function usePayData(base: StaffBase, month: string, loadRevenue: LoadReve
       store.listLeaves({ from: leaveFrom, to: addDays(range.to, AHEAD_DAYS) }),
     ]).then(
       ([lines, months, rules, overtime, leaves]) => {
-        if (current) setHeld({ key, month, value: { lines, months, rules, overtime, leaves } })
+        if (!current) return
+        setHeld({ key, month, value: { lines, months, rules, overtime, leaves } })
+        // 화면 줄이 다시 읽은 DB 값이 됐다 — 실패한 줄 값은 더 남아 있지 않다
+        setFailed((now) => withoutPrefix(now, 'line:'))
       },
       () => {
         if (current) setHeld({ key, month, value: 'failed' })
@@ -99,6 +112,16 @@ export function usePayData(base: StaffBase, month: string, loadRevenue: LoadReve
 
   const reload = useCallback(() => setAttempt((n) => n + 1), [])
 
+  const mark = useCallback((key: string, ok: boolean) => {
+    setFailed((now) => {
+      if (now.has(key) !== ok) return now
+      const next = new Set(now)
+      if (ok) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }, [])
+
   const setLocal = useCallback((line: PayLine) => {
     setHeld((now) => (now === null || now.value === 'failed' ? now : { ...now, value: { ...now.value, lines: putLine(now.value.lines, line) } }))
   }, [])
@@ -111,7 +134,7 @@ export function usePayData(base: StaffBase, month: string, loadRevenue: LoadReve
         queue.next = null
         try {
           const saved = await store.savePayLine(line)
-          setSaveFailed(false)
+          mark(lineKey(line), true)
           // 새 줄 번호만 붙인다(그사이 더 고친 값은 화면 값 그대로)
           setHeld((now) => {
             if (now === null || now.value === 'failed') return now
@@ -122,13 +145,13 @@ export function usePayData(base: StaffBase, month: string, loadRevenue: LoadReve
           const pending = queue.next as PayLine | null
           if (pending !== null) queue.next = { ...pending, id: saved.id }
         } catch {
-          setSaveFailed(true)
+          mark(lineKey(line), false)
         }
       }
       queue.running = false
       queues.current.delete(id)
     },
-    [store],
+    [store, mark],
   )
 
   /** 줄 하나를 화면에 바로 보이고 저장한다. 합계가 0원 밑이면 화면에만 둔다 */
@@ -136,7 +159,7 @@ export function usePayData(base: StaffBase, month: string, loadRevenue: LoadReve
     (line: PayLine) => {
       setLocal(line)
       if (lineTotal(line, settings.payItems, line.month).problem !== null) return
-      const id = `${line.month}|${line.staffId}`
+      const id = lineKey(line)
       const queue = queues.current.get(id) ?? { running: false, next: null }
       queues.current.set(id, queue)
       queue.next = line
@@ -150,18 +173,18 @@ export function usePayData(base: StaffBase, month: string, loadRevenue: LoadReve
     async (row: PayMonth): Promise<boolean> => {
       try {
         const saved = await store.savePayMonth(row)
-        setSaveFailed(false)
+        mark(`month:${row.month}`, true)
         setHeld((now) => {
           if (now === null || now.value === 'failed') return now
           return { ...now, value: { ...now.value, months: [...now.value.months.filter((m) => m.month !== saved.month), saved] } }
         })
         return true
       } catch {
-        setSaveFailed(true)
+        mark(`month:${row.month}`, false)
         return false
       }
     },
-    [store],
+    [store, mark],
   )
 
   /** 한 사람 인센티브 규칙 저장(보는 달부터 줄에 들어감) → 규칙·줄을 다시 읽는다. 성공하면 true */
@@ -169,15 +192,15 @@ export function usePayData(base: StaffBase, month: string, loadRevenue: LoadReve
     async (staffId: string, drafts: readonly RuleDraft[]): Promise<boolean> => {
       try {
         await store.saveRules(staffId, drafts, month)
-        setSaveFailed(false)
+        mark(`rules:${staffId}`, true)
         reload()
         return true
       } catch {
-        setSaveFailed(true)
+        mark(`rules:${staffId}`, false)
         return false
       }
     },
-    [store, month, reload],
+    [store, month, reload, mark],
   )
 
   /** 모든 달 급여 줄(항목을 뺄 때 금액이 있었는지 본다) */
@@ -185,7 +208,7 @@ export function usePayData(base: StaffBase, month: string, loadRevenue: LoadReve
 
   const revenueRead: RevenueRead = revenue !== null && revenue.month === month ? revenue.read : { state: 'reading', days: [] }
 
-  return { state, data, revenue: revenueRead, saveFailed, setSaveFailed, reload, saveLine, saveMonth, saveRules, allLines }
+  return { state, data, revenue: revenueRead, saveFailed: failed.size > 0, reload, saveLine, saveMonth, saveRules, allLines }
 }
 
 export type PayRead = ReturnType<typeof usePayData>

@@ -88,7 +88,10 @@ describe('AC-7615.9: 인건비', () => {
   })
 
   it('AC-7615.9: 아래 그림은 매출 대비 % 선 — 매출 없는 달은 "매출 자료 없음", 점마다 계산 글', async () => {
-    renderPay({ part: 'cost' })
+    // 8월은 급여 줄은 있고 매출 자료가 없다
+    const db = payDb()
+    db.lines.push({ id: 'a-kim', month: '2026-08', staffId: 'kim', amounts: { base: 2_900_000 }, incentives: [], adjust: 0, adjustReason: null, adjustMemo: null })
+    renderPay({ db, part: 'cost' })
     await ready()
     expect(screen.getByRole('heading', { name: '매출 대비 인건비 %' })).toBeTruthy()
     expect(screen.getByText('점에 마우스를 올리면 계산이 보여요')).toBeTruthy()
@@ -108,10 +111,93 @@ describe('AC-7615.9: 인건비', () => {
     await waitFor(() => expect(cells(t.querySelectorAll('tbody tr')[3])).toEqual(['매출', '112,300,000', '120,500,000', '매출 자료 없음', '115,800,000', '121,900,000', '118,400,000']))
     const r = [...t.querySelectorAll('tr')].map(cells)
     expect(r[0]).toEqual(['', '6월', '7월', '8월', '9월', '10월', '11월'])
-    expect(r[1]).toEqual(['지급 합계', '0', '0', '0', '0', '18,470,000', '18,615,000'])
+    // 6~9월은 저장된 급여 줄이 하나도 없다 → 지급 합계·인건비·매출 대비는 '–'(0원·0%로 적지 않음)
+    expect(r[1]).toEqual(['지급 합계', '–', '–', '–', '–', '18,470,000', '18,615,000'])
     expect(r[2]).toEqual(['병원 부담분', '0', '0', '0', '0', '2,130,000', '2,150,000'])
-    expect(r[3]).toEqual(['인건비', '0', '0', '0', '0', '20,600,000', '20,765,000'])
-    expect(r[5]).toEqual(['매출 대비', '0.0%', '0.0%', '–', '0.0%', '16.9%', '17.5%'])
+    expect(r[3]).toEqual(['인건비', '–', '–', '–', '–', '20,600,000', '20,765,000'])
+    expect(r[5]).toEqual(['매출 대비', '–', '–', '–', '–', '16.9%', '17.5%'])
+  })
+
+  it('AC-7615.9: 저장된 급여 줄이 없는 달은 막대·% 점을 그리지 않고 비우며, 마우스를 올리면 "{M}월 급여 자료 없음"이다(선은 끊김)', async () => {
+    renderPay({ part: 'cost' })
+    await ready()
+    const bars = screen.getByRole('img', { name: '6월부터 11월까지 인건비 막대' })
+    const line = screen.getByRole('img', { name: '6월부터 11월까지 매출 대비 인건비 비율 선' })
+    await waitFor(() => expect(svgTitles(line)).toContain('11월 매출 대비 17.5% (인건비 20,765,000원 ÷ 매출 118,400,000원)'))
+    for (const m of ['6월', '7월', '8월', '9월']) {
+      expect(svgTitles(bars), m).toContain(`${m} 급여 자료 없음`)
+      expect(svgTitles(line), m).toContain(`${m} 급여 자료 없음`)
+    }
+    expect(svgTitles(bars).filter((t) => / 인건비 /.test(t ?? ''))).toHaveLength(2)
+    // 막대는 10·11월 두 달(지급 합계 + 병원 부담분 조각)만, % 점도 두 개, 선은 10~11월 한 조각
+    expect(bars.querySelectorAll('.fill-chart-4')).toHaveLength(2)
+    expect(bars.querySelectorAll('.fill-chart-3')).toHaveLength(2)
+    expect(line.querySelectorAll('circle')).toHaveLength(2)
+    expect(line.querySelectorAll('path')).toHaveLength(1)
+    // 0%·매출 자료 없음 글자로 채우지 않는다
+    expect(svgTexts(line)).not.toContain('0.0%')
+    expect(svgTexts(line)).not.toContain('매출 자료 없음')
+  })
+
+  it('AC-7615.9: 보는 달에 저장된 급여 줄이 없으면 그 달 자리도 비운다(12월, 고정 수당이 있어도)', async () => {
+    renderPay({ part: 'cost', today: '2026-12-03' })
+    await ready()
+    const bars = screen.getByRole('img', { name: '7월부터 12월까지 인건비 막대' })
+    expect(svgTitles(bars)).toContain('12월 급여 자료 없음')
+    expect(bars.querySelectorAll('.fill-chart-4')).toHaveLength(2)
+    const t = screen.getByRole('table', { name: '달별 인건비 표' })
+    expect(cells(t.querySelectorAll('tbody tr')[0]).slice(-1)).toEqual(['–'])
+    expect(cells(t.querySelectorAll('tbody tr')[2]).slice(-1)).toEqual(['–'])
+  })
+
+  it('AC-7615.9: 해를 넘는 6달은 "인건비 · 9월~2월"처럼 앞 달에도 월이 붙는다', async () => {
+    renderPay({ part: 'cost', today: '2027-02-10' })
+    await ready()
+    expect(screen.getByRole('heading', { name: '인건비 · 9월~2월' })).toBeTruthy()
+  })
+
+  it('AC-7615.11: 줄을 저장하지 않은 재직자는 새 줄(고정 수당 포함)로 세어 지급 합계 = 이달 급여 합계, "{n}명"은 그달 재직자 수다', async () => {
+    // 11월 김하늘 줄을 아직 저장하지 않음 → 새 줄 = 고정 수당 100,000원만
+    const db = payDb()
+    db.lines = db.lines.filter((l) => l.id !== 'n-kim')
+    renderPay({ db, part: 'cost' })
+    const t = await ready()
+    expect(within(tile('지급 합계')).getByText('15,515,000원')).toBeTruthy()
+    expect(within(tile('지급 합계')).getByText('6명 · 10월보다 2,955,000원 적어요')).toBeTruthy()
+    expect(cells([...t.querySelectorAll('tbody tr')][1])).toEqual(['김하늘', '간호조무사 · 정규직', '100,000', '100,000', '−3,100,000'])
+    expect(cells(t.querySelector('tfoot tr')!)).toEqual(['합계 (6명)', '', '15,515,000', '995,000', '−2,955,000'])
+    const bars = screen.getByRole('img', { name: '6월부터 11월까지 인건비 막대' })
+    expect(svgTitles(bars)).toContain('11월 인건비 17,665,000원 (지급 합계 15,515,000원 + 병원 부담분 2,150,000원)')
+    // 이달 급여 표 합계 줄도 같다
+    fireEvent.click(within(screen.getByRole('group', { name: '급여 안 메뉴' })).getByRole('button', { name: '이달 급여' }))
+    const pay = await screen.findByRole('table', { name: '이달 급여 표' })
+    expect(cells(pay.querySelector('tfoot tr')!).at(-1)).toBe('15,515,000')
+  })
+
+  it('AC-7615.11: 그달 재직자가 아닌 사람의 저장된 줄은 보는 달 지급 합계·"{n}명"에 들지 않는다', async () => {
+    const db = payDb()
+    // 퇴사자 오세린(2024-05 퇴사)의 11월 줄이 남아 있어도 11월 재직자 6명만 센다
+    db.lines.push({ id: 'n-oh', month: '2026-11', staffId: 'oh', amounts: { base: 1_000_000 }, incentives: [], adjust: 0, adjustReason: null, adjustMemo: null })
+    renderPay({ db, part: 'cost' })
+    await ready()
+    expect(within(tile('지급 합계')).getByText('18,615,000원')).toBeTruthy()
+    expect(within(tile('지급 합계')).getByText('6명 · 10월보다 145,000원 많아요')).toBeTruthy()
+  })
+
+  it('AC-7615.9: 표 글자 줄맞춤은 시안대로 — 사람별 표 이름·직종·근무 형태 칸(머리 포함)과 합계 (6명)은 왼쪽, 숫자 칸만 오른쪽(칸마다 줄맞춤 클래스 하나)', async () => {
+    renderPay({ part: 'cost' })
+    const t = await ready()
+    const align = (cell: Element) => cell.className.split(/\s+/).filter((c) => /^text-(left|center|right)$/.test(c))
+    // 머리·사람 줄·합계 줄 모두 앞 두 칸(이름 · 직종 · 근무 형태 — 합계 줄은 '합계 (6명)'과 빈 칸)은 왼쪽
+    for (const tr of t.querySelectorAll('tr')) {
+      const row = [...tr.querySelectorAll('th, td')]
+      row.forEach((cell, i) => expect(align(cell), `${cell.textContent} (${i})`).toEqual([i < 2 ? 'text-left' : 'text-right']))
+    }
+    const months = screen.getByRole('table', { name: '달별 인건비 표' })
+    for (const tr of months.querySelectorAll('tbody tr')) {
+      const row = [...tr.querySelectorAll('th, td')]
+      row.forEach((cell, i) => expect(align(cell), cell.textContent ?? '').toEqual([i === 0 ? 'text-left' : 'text-right']))
+    }
   })
 
   it('AC-7615.9: 사람별 · 11월 지급 합계 표 — 그중 인센티브·10월보다(같음·+·−)·합계', async () => {

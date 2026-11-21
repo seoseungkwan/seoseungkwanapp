@@ -5,9 +5,11 @@ import { monthNumber, ratioText, won } from './format'
 // 위: 지급 합계(아래, chart-4) + 병원 부담분(위, chart-3) 쌓은 막대 — 두 조각 사이 2px 바탕 틈, 맨 위만 4px 둥근 끝, 바닥선에 붙는다.
 // 아래: 매출 대비 % 선(2px)과 점(지름 9px, 바탕색 2px 테두리) — 매출 없는 달은 선을 끊고 '매출 자료 없음'.
 // 숫자는 보는 달만 그림에 적고, 나머지는 달마다 <title>(마우스를 올리면 보임)과 아래 '달별 숫자 표'가 준다.
+// 저장된 급여 줄이 하나도 없는 달(empty)은 막대·점을 그리지 않고 비운다(0원·0%로 그리지 않음, 선은 그 달에서 끊김) —
+// 그 자리에 마우스를 올리면 '{M}월 급여 자료 없음'(AC-7615.9).
 // 색은 토큰 클래스(fill-chart-4·fill-chart-3, 글자는 muted·ink)만 쓴다
 
-export type LaborMonth = { month: string; pay: number; employer: number; cost: number; revenue: number | null; ratio: number | null }
+export type LaborMonth = { month: string; empty: boolean; pay: number; employer: number; cost: number; revenue: number | null; ratio: number | null }
 
 const W = 960
 const LEFT = 64
@@ -42,7 +44,7 @@ const centerOf = (i: number, count: number) => LEFT + bandOf(count) * (i + 0.5)
 export function LaborBars({ months, current }: { months: readonly LaborMonth[]; current: string }) {
   const first = monthNumber(months[0].month)
   const last = monthNumber(months[months.length - 1].month)
-  const max = Math.max(0, ...months.map((m) => m.cost))
+  const max = Math.max(0, ...months.filter((m) => !m.empty).map((m) => m.cost))
   const step = niceStep(max / 5)
   const ticks = Array.from({ length: Math.max(1, Math.ceil(max / step)) + 1 }, (_, i) => i * step)
   const top = ticks[ticks.length - 1]
@@ -67,10 +69,24 @@ export function LaborBars({ months, current }: { months: readonly LaborMonth[]; 
           const employerH = Math.max(0, payTop - costTop - (payH > 0 ? GAP : 0))
           const on = m.month === current
           const name = `${monthNumber(m.month)}월`
+          const band = <rect x={LEFT + bandOf(months.length) * i} y={BARS.top - 4} width={bandOf(months.length)} height={BARS.base - BARS.top + 4} fill="transparent" />
+          const label = (
+            <text x={cx} y={BARS.base + 20} textAnchor="middle" className={on ? 'fill-ink text-small font-semibold' : 'fill-muted text-small'}>
+              {name}
+            </text>
+          )
+          if (m.empty)
+            return (
+              <g key={m.month}>
+                <title>{`${name} 급여 자료 없음`}</title>
+                {band}
+                {label}
+              </g>
+            )
           return (
             <g key={m.month}>
               <title>{`${name} 인건비 ${won(m.cost)}원 (지급 합계 ${won(m.pay)}원 + 병원 부담분 ${won(m.employer)}원)`}</title>
-              <rect x={LEFT + bandOf(months.length) * i} y={BARS.top - 4} width={bandOf(months.length)} height={BARS.base - BARS.top + 4} fill="transparent" />
+              {band}
               {payH > 0 && (employerH > 0 ? <rect x={x} y={payTop} width={BAR_W} height={payH} className="fill-chart-4" /> : <path d={roundedTop(x, payTop, BAR_W, payH)} className="fill-chart-4" />)}
               {employerH > 0 && <path d={roundedTop(x, costTop, BAR_W, employerH)} className="fill-chart-3" />}
               {on && (
@@ -78,9 +94,7 @@ export function LaborBars({ months, current }: { months: readonly LaborMonth[]; 
                   {`${won(m.cost)}원`}
                 </text>
               )}
-              <text x={cx} y={BARS.base + 20} textAnchor="middle" className={on ? 'fill-ink text-small font-semibold' : 'fill-muted text-small'}>
-                {name}
-              </text>
+              {label}
             </g>
           )
         })}
@@ -92,18 +106,18 @@ export function LaborBars({ months, current }: { months: readonly LaborMonth[]; 
 export function RatioLine({ months, current }: { months: readonly LaborMonth[]; current: string }) {
   const first = monthNumber(months[0].month)
   const last = monthNumber(months[months.length - 1].month)
-  const values = months.flatMap((m) => (m.ratio === null ? [] : [m.ratio]))
+  const values = months.flatMap((m) => (m.empty || m.ratio === null ? [] : [m.ratio]))
   const lo = values.length === 0 ? 0 : Math.floor(Math.min(...values))
   const span = values.length === 0 ? 1 : Math.max(1, Math.ceil(Math.max(...values)) - lo)
   const step = span <= 4 ? 1 : niceStep(span / 4)
   const ticks = Array.from({ length: Math.ceil(span / step) + 1 }, (_, i) => lo + i * step)
   const hi = ticks[ticks.length - 1]
   const y = (value: number) => LINE.base - ((value - lo) / (hi - lo)) * (LINE.base - LINE.top)
-  // 매출 없는 달에서 끊는 선 조각들
+  // 급여 자료·매출이 없는 달에서 끊는 선 조각들
   const segments: string[] = []
   let run: string[] = []
   months.forEach((m, i) => {
-    if (m.ratio === null) {
+    if (m.empty || m.ratio === null) {
       if (run.length > 1) segments.push(run.join(''))
       run = []
       return
@@ -132,7 +146,12 @@ export function RatioLine({ months, current }: { months: readonly LaborMonth[]; 
           const name = `${monthNumber(m.month)}월`
           return (
             <g key={m.month}>
-              {m.ratio === null ? (
+              {m.empty ? (
+                <g>
+                  <title>{`${name} 급여 자료 없음`}</title>
+                  <rect x={LEFT + bandOf(months.length) * i} y={LINE.top - 8} width={bandOf(months.length)} height={LINE.base - LINE.top + 16} fill="transparent" />
+                </g>
+              ) : m.ratio === null ? (
                 <text x={cx} y={(LINE.top + LINE.base) / 2 + 4} textAnchor="middle" className="fill-muted text-small">
                   매출 자료 없음
                 </text>

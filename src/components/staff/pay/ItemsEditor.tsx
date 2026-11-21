@@ -10,7 +10,9 @@ import { smallInput } from './parts'
 
 // 지급 항목 고치기 (staff AC-7615.4, 시안 pay.html ④). 병원 설정 pay_items 하나를 고쳐 바로 저장한다(saveSettings).
 // 보는 달에 보이는 항목만 줄로 보인다. 빼기 = 보는 달부터 안 보이게(removedFrom = 보는 달, 앞 달 표·엑셀에는 남음).
-// 금액이 있었던 항목만 한 번 묻는다(모든 달 줄을 읽어 가장 늦은 달을 알린다). 30개·이름 10자·같은 이름은 checkPayItems가 막는다
+// 금액이 있었던 항목만 한 번 묻는다(모든 달 줄을 읽어 가장 늦은 달을 알린다). 30개·이름 10자·같은 이름은 checkPayItems가 막는다.
+// 저장(과 빼기 전 금액 찾기)하는 동안은 이 창의 단추를 모두 막는다 — 두 번 저장하거나 앞 목록으로 덮어쓰지 않게,
+// 저장이 끝난 뒤 새 항목 목록(items)을 다시 받을 때까지 막아 둔다(AC-7615.4)
 
 const NAME_MAX = 10
 
@@ -48,20 +50,25 @@ export function ItemsEditor({
 }) {
   const [problem, setProblem] = useState<string | null>(null)
   const [failed, setFailed] = useState<'save' | 'read' | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [savedOver, setSavedOver] = useState<readonly PayItem[] | null>(null)
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null)
   const [ask, setAsk] = useState<Ask | null>(null)
   const [adding, setAdding] = useState('')
+  const busy = saving || savedOver === items
   const shown = visibleItems(items, month)
 
   const save = async (next: PayItem[]): Promise<boolean> => {
+    if (busy) return false
     const why = checkPayItems(next)
     setProblem(why)
     if (why !== null) return false
-    setBusy(true)
+    setSaving(true)
     const ok = await onSave(next)
-    setBusy(false)
+    setSaving(false)
     setFailed(ok ? null : 'save')
+    // 이 목록(items)으로 저장했다 — 새 목록이 올 때까지 막는다
+    if (ok) setSavedOver(items)
     return ok
   }
 
@@ -79,14 +86,18 @@ export function ItemsEditor({
   const removeNow = (id: string) => save(items.map((item) => (item.id === id ? { ...item, removedFrom: month } : item)))
 
   const askRemove = async (item: PayItem) => {
+    if (busy) return
     setFailed(null)
+    setSaving(true)
     let lines: PayLine[]
     try {
       lines = await readAllLines()
     } catch {
+      setSaving(false)
       setFailed('read')
       return
     }
+    setSaving(false)
     const used = lastUsedMonth(item, lines)
     if (used === null) await removeNow(item.id)
     else setAsk({ id: item.id, month: used })
@@ -108,7 +119,7 @@ export function ItemsEditor({
     <section role="dialog" aria-label="지급 항목 고치기" aria-busy={busy || undefined} className={`${ds.layer} w-full max-w-160 self-end`}>
       <div className="flex items-center gap-2 border-b border-line px-4 py-2">
         <b className="text-body font-semibold text-ink">지급 항목 고치기</b>
-        <button type="button" className={`${ds.button.ghostSmall} ml-auto`} onClick={onClose}>
+        <button type="button" disabled={busy} className={`${ds.button.ghostSmall} ml-auto`} onClick={onClose}>
           닫기
         </button>
       </div>
@@ -119,13 +130,13 @@ export function ItemsEditor({
           return (
             <li key={item.id} className={`flex flex-wrap items-center gap-2 border-b border-line px-4 py-2 ${asking ? 'bg-warning-soft' : ''}`}>
               <span className="inline-flex gap-0.5">
-                <button type="button" aria-label={`${item.name} 위로`} disabled={i === 0} className={ds.button.secondarySmall} onClick={() => move(item.id, -1)}>
+                <button type="button" aria-label={`${item.name} 위로`} disabled={busy || i === 0} className={ds.button.secondarySmall} onClick={() => move(item.id, -1)}>
                   ▲
                 </button>
                 <button
                   type="button"
                   aria-label={`${item.name} 아래로`}
-                  disabled={i === shown.length - 1}
+                  disabled={busy || i === shown.length - 1}
                   className={ds.button.secondarySmall}
                   onClick={() => move(item.id, 1)}
                 >
@@ -151,19 +162,19 @@ export function ItemsEditor({
               <span className="ml-auto inline-flex gap-1.5">
                 {editing ? (
                   <>
-                    <button type="button" className={ds.button.primarySmall} onClick={() => void rename()}>
+                    <button type="button" disabled={busy} className={ds.button.primarySmall} onClick={() => void rename()}>
                       확인
                     </button>
-                    <button type="button" className={ds.button.secondarySmall} onClick={() => setRenaming(null)}>
+                    <button type="button" disabled={busy} className={ds.button.secondarySmall} onClick={() => setRenaming(null)}>
                       그만두기
                     </button>
                   </>
                 ) : (
                   <>
-                    <button type="button" className={ds.button.secondarySmall} onClick={() => setRenaming({ id: item.id, name: item.name })}>
+                    <button type="button" disabled={busy} className={ds.button.secondarySmall} onClick={() => setRenaming({ id: item.id, name: item.name })}>
                       이름 고치기
                     </button>
-                    <button type="button" aria-pressed={asking} className={ds.button.secondarySmall} onClick={() => void askRemove(item)}>
+                    <button type="button" aria-pressed={asking} disabled={busy} className={ds.button.secondarySmall} onClick={() => void askRemove(item)}>
                       빼기
                     </button>
                   </>
@@ -177,6 +188,7 @@ export function ItemsEditor({
                   </p>
                   <button
                     type="button"
+                    disabled={busy}
                     className={ds.button.danger}
                     onClick={() => {
                       setAsk(null)
@@ -185,7 +197,7 @@ export function ItemsEditor({
                   >
                     빼기
                   </button>
-                  <button type="button" className={ds.button.secondary} onClick={() => setAsk(null)}>
+                  <button type="button" disabled={busy} className={ds.button.secondary} onClick={() => setAsk(null)}>
                     그만두기
                   </button>
                 </div>
@@ -204,7 +216,7 @@ export function ItemsEditor({
           value={adding}
           onChange={(event) => setAdding(event.target.value)}
         />
-        <button type="button" className={ds.button.primarySmall} onClick={() => void add()}>
+        <button type="button" disabled={busy} className={ds.button.primarySmall} onClick={() => void add()}>
           + 항목 더하기
         </button>
       </div>

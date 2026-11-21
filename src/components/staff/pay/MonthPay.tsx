@@ -35,11 +35,12 @@ export type MonthPayProps = {
   onDownloadExcel: () => void
 }
 
-const th = 'whitespace-nowrap border-b border-line bg-canvas px-1.5 py-1.5 text-right text-caption font-semibold text-muted'
-const thGray = 'whitespace-nowrap border-b border-line bg-canvas px-1.5 py-1.5 text-right text-caption font-medium text-muted'
+// 줄맞춤은 칸마다 하나만 붙인다(둘이면 CSS 차례로 엉뚱한 쪽이 이긴다): 머리 첫 줄은 가운데, 항목 머리·금액은 오른쪽, 아래 합계 첫 칸은 왼쪽(시안)
+const th = 'whitespace-nowrap border-b border-line bg-canvas px-1.5 py-1.5 text-caption font-semibold text-muted'
+const thGray = 'whitespace-nowrap border-b border-line bg-canvas px-1.5 py-1.5 text-caption font-medium text-muted'
 const td = 'whitespace-nowrap border-b border-line px-1 py-1 text-right'
 const tdHours = 'whitespace-nowrap border-b border-line px-2 py-1 text-right text-small text-muted'
-const foot = 'whitespace-nowrap bg-canvas px-1.5 py-2 text-right text-small font-semibold text-ink'
+const foot = 'whitespace-nowrap bg-canvas px-1.5 py-2 text-small font-semibold text-ink'
 const footHours = 'whitespace-nowrap bg-canvas px-2 py-2 text-right text-small font-semibold text-muted'
 // 인센티브 칸(시안 .calc): 점선 accent 테두리 · accent-soft, 규칙 없으면 회색
 const calcOn =
@@ -110,7 +111,7 @@ export function MonthPay(props: MonthPayProps) {
         <table aria-label="이달 급여 표" className="w-full border-collapse rounded-control border border-line bg-surface text-small tabular-nums">
           <thead>
             <tr>
-              <th rowSpan={2} scope="col" className={`${th} pl-3 text-left`}>
+              <th rowSpan={2} scope="col" className={`${th} pl-3 text-center`}>
                 이름
               </th>
               <th colSpan={shown.length} scope="colgroup" className={`${th} text-center`}>
@@ -119,26 +120,26 @@ export function MonthPay(props: MonthPayProps) {
               <th colSpan={3} scope="colgroup" className={`${thGray} text-center`}>
                 더 일한 시간 · 근무표에서 자동 (시간)
               </th>
-              <th rowSpan={2} scope="col" className={th}>
+              <th rowSpan={2} scope="col" className={`${th} text-center`}>
                 조정(±)
               </th>
-              <th rowSpan={2} scope="col" className={`${th} pr-3`}>
+              <th rowSpan={2} scope="col" className={`${th} pr-3 text-center`}>
                 합계 (원)
               </th>
             </tr>
             <tr>
               {shown.map((item) => (
-                <th key={item.id} scope="col" className={th}>
+                <th key={item.id} scope="col" className={`${th} text-right`}>
                   {item.name}
                 </th>
               ))}
-              <th scope="col" className={thGray}>
+              <th scope="col" className={`${thGray} text-right`}>
                 연장
               </th>
-              <th scope="col" className={thGray}>
+              <th scope="col" className={`${thGray} text-right`}>
                 야간
               </th>
-              <th scope="col" className={thGray}>
+              <th scope="col" className={`${thGray} text-right`}>
                 휴일
               </th>
             </tr>
@@ -200,7 +201,7 @@ export function MonthPay(props: MonthPayProps) {
             <tr>
               <td className={`${foot} pl-3 text-left`}>{`합계 (${rows.length}명)`}</td>
               {shown.map((item) => (
-                <td key={item.id} className={foot}>
+                <td key={item.id} className={`${foot} text-right`}>
                   {won(itemSum(item))}
                 </td>
               ))}
@@ -209,8 +210,8 @@ export function MonthPay(props: MonthPayProps) {
                   {hoursCell(members.reduce((sum, member) => sum + (overtime.people[member.id]?.[kind] ?? 0), 0))}
                 </td>
               ))}
-              <td className={foot}>{won(rows.reduce((sum, row) => sum + row.line.adjust, 0))}</td>
-              <td className={`${foot} pr-3`}>{won(rows.reduce((sum, row) => sum + row.sum.total, 0))}</td>
+              <td className={`${foot} text-right`}>{won(rows.reduce((sum, row) => sum + row.line.adjust, 0))}</td>
+              <td className={`${foot} pr-3 text-right`}>{won(rows.reduce((sum, row) => sum + row.sum.total, 0))}</td>
             </tr>
           </tfoot>
         </table>
@@ -220,7 +221,7 @@ export function MonthPay(props: MonthPayProps) {
           {`${member.name} 님 합계가 0원보다 적어요. 저장하지 않았어요.`}
         </p>
       ))}
-      <div className="grid min-w-0 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,360px)] items-start gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5 text-caption text-muted">
           <span>
             <i className={`${swatch} border-line-strong bg-surface`} />

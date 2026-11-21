@@ -187,6 +187,43 @@ describe('AC-7615.2: 이달 급여 표', () => {
     expect(amount('최민준 직책수당').value).toBe('150,000')
   })
 
+  it('AC-7615.2: 한 줄 저장이 실패하면 다른 줄 저장이 성공해도 E-STAFF-SAVE-FAILED가 남고, 실패한 줄을 다시 저장하면 사라진다', async () => {
+    const db = payDb()
+    db.failing.add('savePayLine')
+    const { callsOf } = renderPay({ db })
+    await table()
+    await blurWith(amount('한지우 상여'), '30000')
+    expect(await screen.findByText('오류 번호 E-STAFF-SAVE-FAILED')).toBeTruthy()
+    // 다른 줄(김하늘)은 저장된다 — 한지우 줄은 아직 실패한 채라 안내가 그대로다
+    db.failing.delete('savePayLine')
+    await blurWith(amount('김하늘 상여'), '10000')
+    await waitFor(() => expect(db.lines.find((l) => l.id === 'n-kim')?.amounts.bonus).toBe(10_000))
+    await act(async () => {})
+    expect(screen.getByText('오류 번호 E-STAFF-SAVE-FAILED')).toBeTruthy()
+    expect(amount('한지우 상여').value).toBe('30,000')
+    // 실패한 줄을 다시 저장하면 안내가 사라진다
+    await blurWith(amount('한지우 상여'), '40000')
+    await waitFor(() => expect(db.lines.find((l) => l.id === 'n-han')?.amounts.bonus).toBe(40_000))
+    await waitFor(() => expect(screen.queryByText('오류 번호 E-STAFF-SAVE-FAILED')).toBeNull())
+    expect(callsOf('savePayLine').map((args) => (args[0] as PayLine).staffId)).toEqual(['han', 'kim', 'han'])
+  })
+
+  it('AC-7615.2: 표 글자 줄맞춤은 시안대로 — 머리 첫 줄(이름·묶음 머리·조정(±)·합계 (원))은 가운데, 항목 머리·금액은 오른쪽, 아래 합계 (6명)은 왼쪽', async () => {
+    renderPay()
+    const t = await table()
+    // 칸마다 줄맞춤 클래스는 하나뿐이다(둘이면 CSS 차례에 따라 엉뚱한 쪽이 이긴다)
+    const align = (cell: Element) => cell.className.split(/\s+/).filter((c) => /^text-(left|center|right)$/.test(c))
+    const [group, items] = rows(t)
+    expect([...group.querySelectorAll('th')].map(align)).toEqual([['text-center'], ['text-center'], ['text-center'], ['text-center'], ['text-center']])
+    for (const th of items.querySelectorAll('th')) expect(align(th), th.textContent ?? '').toEqual(['text-right'])
+    const lee = rowOf(t, '이도윤')
+    expect(align(lee.querySelector('th')!)).toEqual(['text-left'])
+    for (const td of lee.querySelectorAll('td')) expect(align(td), td.textContent ?? '').toEqual(['text-right'])
+    const foot = [...t.querySelectorAll('tfoot td')]
+    expect(align(foot[0])).toEqual(['text-left'])
+    for (const td of foot.slice(1)) expect(align(td), td.textContent ?? '').toEqual(['text-right'])
+  })
+
   it('AC-7606.2: 합계가 0원보다 적어지면 저장하지 않고 까닭을 보인다', async () => {
     const { callsOf } = renderPay()
     const t = await table()
@@ -323,5 +360,41 @@ describe('AC-7615.4: 지급 항목 고치기', () => {
       fireEvent.click(within(meal).getByRole('button', { name: '식대 위로' }))
     })
     await waitFor(() => expect(db.settings.payItems.slice(0, 3).map((i) => i.name)).toEqual(['기본급', '식대', '연장수당']))
+  })
+
+  it('AC-7615.4: 저장하는 동안은 이 창의 단추가 눌리지 않아 두 번 저장하지 않는다(끝나면 다시 눌린다)', async () => {
+    const { callsOf, db } = renderPay()
+    const dialog = await open()
+    fireEvent.change(within(dialog).getByPlaceholderText('새 항목 이름 (예: 자격수당)'), { target: { value: '자격수당' } })
+    const add = within(dialog).getByRole('button', { name: '+ 항목 더하기' }) as HTMLButtonElement
+    fireEvent.click(add)
+    // 저장 중: 창 안 단추가 모두 막힌다 → 한 번 더 눌러도 저장은 한 번
+    const buttons = within(dialog).getAllByRole('button') as HTMLButtonElement[]
+    expect(buttons.filter((b) => !b.disabled).map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual([])
+    fireEvent.click(add)
+    fireEvent.click(within(itemRows(dialog)[2]).getByRole('button', { name: '식대 위로' }))
+    expect(callsOf('saveSettings')).toHaveLength(1)
+    await waitFor(() => expect(db.settings.payItems.map((i) => i.name)).toEqual(['기본급', '연장수당', '식대', '인센티브', '상여', '직책수당', '자격수당']))
+    await waitFor(() => expect((within(dialog).getByRole('button', { name: '+ 항목 더하기' }) as HTMLButtonElement).disabled).toBe(false))
+    expect(callsOf('saveSettings')).toHaveLength(1)
+    // 끝난 뒤에는 새 목록으로 다시 저장한다(앞 저장을 덮어쓰지 않음)
+    await act(async () => {
+      fireEvent.click(within(itemRows(dialog)[2]).getByRole('button', { name: '식대 위로' }))
+    })
+    await waitFor(() => expect(callsOf('saveSettings')).toHaveLength(2))
+    expect(db.settings.payItems.map((i) => i.name)).toEqual(['기본급', '식대', '연장수당', '인센티브', '상여', '직책수당', '자격수당'])
+  })
+
+  it('AC-7615.4: [빼기]가 금액을 찾는 동안에도 단추가 막혀 두 번 빼지 않는다', async () => {
+    const { callsOf } = renderPay()
+    const dialog = await open()
+    const remove = within(itemRows(dialog)[4]).getByRole('button', { name: '빼기' }) as HTMLButtonElement
+    fireEvent.click(remove)
+    expect(remove.disabled).toBe(true)
+    fireEvent.click(remove)
+    await waitFor(() => expect(callsOf('saveSettings')).toHaveLength(1))
+    await act(async () => {})
+    expect(callsOf('listPayLines').filter(([from]) => from === '2000-01')).toHaveLength(1)
+    expect(callsOf('saveSettings')).toHaveLength(1)
   })
 })

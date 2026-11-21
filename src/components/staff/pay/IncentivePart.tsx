@@ -11,8 +11,13 @@ import { InfoLine, MonthNav, Note, ToolRow, WonInput } from './parts'
 // '인센티브' 칸 첫 화면 — 이달 실적 입력 (staff AC-7615.5, 시안 pay.html ②). 줄은 그달 급여 줄이 복사해 둔 인센티브 규칙(없으면 지금 규칙).
 // 건수·매출만 적고(0 이상 정수, 칸에서 나가면 그 줄 저장) 금액은 pay.ts incentiveAmount가 센다(원 미만 버림). 실적은 지난달을 가져오지 않는다
 
-const th = 'whitespace-nowrap border-b border-line bg-canvas px-3 py-2 text-left text-caption font-semibold text-muted'
-const td = 'whitespace-nowrap border-b border-line px-3 py-2 text-left text-small text-ink'
+// 줄맞춤은 칸마다 하나만(둘이면 CSS 차례로 정해진다): 금액 칸만 오른쪽, 나머지는 왼쪽(시안 .perf)
+const thBase = 'whitespace-nowrap border-b border-line bg-canvas px-3 py-2 text-caption font-semibold text-muted'
+const tdBase = 'whitespace-nowrap border-b border-line px-3 py-2 text-small text-ink'
+const th = `${thBase} text-left`
+const thNum = `${thBase} text-right`
+const td = `${tdBase} text-left`
+const tdNum = `${tdBase} text-right`
 
 function howText(entry: IncentiveEntry): { name: string; detail: string } {
   if (entry.method === 'per_case') return { name: '건당 정액', detail: `1건에 ${won(entry.unitAmount ?? 0)}원` }
@@ -78,7 +83,7 @@ export function IncentivePart({
               <th scope="col" className={th}>
                 계산
               </th>
-              <th scope="col" className={`${th} text-right`}>
+              <th scope="col" className={thNum}>
                 인센티브 (원)
               </th>
             </tr>
@@ -90,7 +95,7 @@ export function IncentivePart({
                   <b className="text-body font-semibold">{member.name}</b>
                   <small className="ml-1.5 text-caption text-muted">{jobLabel(member)}</small>
                 </td>
-                <td className={`${td} border-t border-line-strong text-right font-semibold`}>{won(sumOf(line))}</td>
+                <td className={`${tdNum} border-t border-line-strong font-semibold`}>{won(sumOf(line))}</td>
               </tr>,
               ...line.incentives.map((entry, i) => {
                 const how = howText(entry)
@@ -118,7 +123,7 @@ export function IncentivePart({
                       )}
                     </td>
                     <td className={`${td} text-caption text-muted`}>{calcText(entry)}</td>
-                    <td className={`${td} text-right`}>{won(incentiveAmount(entry))}</td>
+                    <td className={tdNum}>{won(incentiveAmount(entry))}</td>
                   </tr>
                 )
               }),
@@ -127,7 +132,7 @@ export function IncentivePart({
           <tfoot>
             <tr>
               <td colSpan={4} className={`${td} bg-canvas font-semibold`}>{`합계 (${withRules.length}명)`}</td>
-              <td className={`${td} bg-canvas text-right font-semibold`}>{won(withRules.reduce((sum, p) => sum + sumOf(p.line), 0))}</td>
+              <td className={`${tdNum} bg-canvas font-semibold`}>{won(withRules.reduce((sum, p) => sum + sumOf(p.line), 0))}</td>
             </tr>
           </tfoot>
         </table>

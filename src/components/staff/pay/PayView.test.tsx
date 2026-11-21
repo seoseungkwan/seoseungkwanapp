@@ -7,14 +7,21 @@ import { payDb, renderPay } from './payTestKit'
 // 급여 화면 틀 (staff REQ-7615 AC-7615.1·AC-7615.7, 시안 docs/mockups/staff/pay.html ①·⑤). 가짜 저장 층(payTestKit)으로 그린다.
 // 오늘 2026-11-21. 엑셀 내려받기는 가짜로 바꿔 만든 줄만 본다
 
-const sheets = vi.hoisted(() => ({ list: [] as TaxSheet[] }))
+const sheets = vi.hoisted(() => ({ list: [] as TaxSheet[], fail: false }))
 vi.mock('@/lib/staff/taxExcel', async (load) => {
   const real = await load<typeof import('@/lib/staff/taxExcel')>()
-  return { ...real, downloadTaxExcel: (sheet: TaxSheet) => sheets.list.push(sheet) }
+  return {
+    ...real,
+    downloadTaxExcel: (sheet: TaxSheet) => {
+      if (sheets.fail) throw new Error('xlsx')
+      sheets.list.push(sheet)
+    },
+  }
 })
 
 beforeEach(() => {
   sheets.list = []
+  sheets.fail = false
   window.history.replaceState(null, '', '/staff/pay')
 })
 afterEach(cleanup)
@@ -121,6 +128,46 @@ describe('AC-7615.7: [엑셀 받기]는 그달 세무사 엑셀(REQ-7609)을 내
     const head = sheet.rows[1] as string[]
     const han = sheet.rows.find((row) => row[0] === '한지우')!
     expect(han[head.indexOf('계좌 (이달 입사자만)')]).toBe('○○은행 000-0000-0000')
+  })
+
+  it('AC-7615.7: 파일을 못 만들면 E-STAFF-EXCEL-FAILED가 보인다(E-STAFF-FILE-FAILED 아님). 다시 되면 안내가 사라진다', async () => {
+    renderPay()
+    await screen.findByRole('table', { name: '이달 급여 표' })
+    sheets.fail = true
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '엑셀 받기' }))
+    })
+    expect(screen.getByText('오류 번호 E-STAFF-EXCEL-FAILED')).toBeTruthy()
+    expect(screen.queryByText('오류 번호 E-STAFF-FILE-FAILED')).toBeNull()
+    expect(screen.getByText('엑셀 파일을 읽거나 만들지 못했어요')).toBeTruthy()
+    sheets.fail = false
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '엑셀 받기' }))
+    })
+    expect(sheets.list).toHaveLength(1)
+    expect(screen.queryByText('오류 번호 E-STAFF-EXCEL-FAILED')).toBeNull()
+  })
+
+  it('AC-7615.11: 줄을 아직 저장하지 않은 재직자도 이달 급여와 같은 새 줄(고정 수당 포함)로 들어가 합계 줄 = 이달 급여 합계다', async () => {
+    // 12월: 저장된 줄이 하나도 없다 → 새 줄. 김하늘만 고정 수당 100,000원
+    renderPay({ today: '2026-12-03' })
+    const pay = await screen.findByRole('table', { name: '이달 급여 표' })
+    expect([...pay.querySelectorAll('tfoot td')].map((td) => td.textContent).at(-1)).toBe('100,000')
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '엑셀 받기' }))
+    })
+    const sheet = sheets.list[0]
+    const head = sheet.rows[1] as string[]
+    const total = sheet.rows[sheet.rows.length - 1]
+    expect(total[head.indexOf('지급 합계')]).toBe(100_000)
+    expect(total[head.indexOf('인센티브')]).toBe(100_000)
+    expect(sheet.rows.find((row) => row[0] === '김하늘')![head.indexOf('지급 합계')]).toBe(100_000)
+    // 명세서 합계도 같은 줄이다
+    fireEvent.click(within(menu()).getByRole('button', { name: '명세서' }))
+    fireEvent.click(within(await screen.findByRole('group', { name: '사람 고르기' })).getByRole('button', { name: /^김하늘/ }))
+    const slip = [...screen.getByRole('img', { name: '김하늘 2026년 12월 급여 명세' }).querySelectorAll('text')].map((t) => t.textContent)
+    expect(slip).toContain('100,000원')
+    expect(slip).toContain('고정 수당 100,000원')
   })
 })
 

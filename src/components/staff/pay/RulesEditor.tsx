@@ -10,7 +10,9 @@ import { Note, smallInput } from './parts'
 
 // 인센티브 규칙 (staff AC-7615.6, 시안 pay.html ③). 사람마다 항목 여럿(이름·방식·금액 또는 %).
 // 고치면 그 사람 규칙 목록을 통째로 저장하고(saveRules) 저장 층이 보는 달부터 그 사람 급여 줄 인센티브를 새 값으로 바꾼다(앞 달은 그대로, AC-7606.4).
-// 카드는 규칙이 있는 그달 재직자 + 이름 단추로 연 사람, 명단 차례
+// 카드는 규칙이 있는 그달 재직자 + 이름 단추로 연 사람, 명단 차례.
+// 저장하는 동안은 이 화면의 단추를 모두 막고 글 칸은 읽기만·방식 고르기는 막는다 — 두 번 넣거나 앞 규칙으로 덮어쓰지 않게,
+// 저장이 끝난 뒤 새 규칙 목록(rules)을 다시 받을 때까지 막아 둔다(AC-7615.4)
 
 const NAME_MAX = 20
 const BAD_NAME = '항목 이름은 1~20자로 적어 주세요.'
@@ -18,6 +20,7 @@ const BAD_AMOUNT = '금액은 0 이상 숫자로 적어 주세요.'
 const BAD_PERCENT = '%는 0~100, 소수 둘째 자리까지 적어 주세요.'
 
 type Draft = { name: string; method: IncentiveMethod; value: string }
+type SaveRules = (staffId: string, drafts: RuleDraft[]) => Promise<boolean>
 
 const valueText = (rule: Pick<IncentiveRule, 'method' | 'unitAmount' | 'percent'>) =>
   rule.method === 'percent' ? (rule.percent === null ? '' : String(rule.percent)) : rule.unitAmount === null ? '' : won(rule.unitAmount)
@@ -38,9 +41,9 @@ export function ruleOf(draft: Draft): Omit<RuleDraft, 'sort' | 'id'> | string {
 
 const asDraft = (rule: IncentiveRule): RuleDraft => ({ id: rule.id, name: rule.name, method: rule.method, unitAmount: rule.unitAmount, percent: rule.percent, sort: rule.sort })
 
-function MethodSelect({ label, value, onChange }: { label: string; value: IncentiveMethod; onChange: (method: IncentiveMethod) => void }) {
+function MethodSelect({ label, value, disabled, onChange }: { label: string; value: IncentiveMethod; disabled: boolean; onChange: (method: IncentiveMethod) => void }) {
   return (
-    <select aria-label={label} className={`${smallInput} w-30`} value={value} onChange={(event) => onChange(event.target.value as IncentiveMethod)}>
+    <select aria-label={label} disabled={disabled} className={`${smallInput} w-30`} value={value} onChange={(event) => onChange(event.target.value as IncentiveMethod)}>
       {INCENTIVE_METHODS.map((method) => (
         <option key={method} value={method}>
           {INCENTIVE_METHOD_LABEL[method]}
@@ -50,7 +53,21 @@ function MethodSelect({ label, value, onChange }: { label: string; value: Incent
   )
 }
 
-function RuleRow({ who, index, rule, onCommit, onRemove }: { who: string; index: number; rule: IncentiveRule; onCommit: (draft: Draft) => void; onRemove: () => void }) {
+function RuleRow({
+  who,
+  index,
+  rule,
+  busy,
+  onCommit,
+  onRemove,
+}: {
+  who: string
+  index: number
+  rule: IncentiveRule
+  busy: boolean
+  onCommit: (draft: Draft) => void
+  onRemove: () => void
+}) {
   const [draft, setDraft] = useState<Draft>({ name: rule.name, method: rule.method, value: valueText(rule) })
   const label = `${who} ${index + 1}번째 항목`
   const changedFrom = (next: Draft) => next.name !== rule.name || next.method !== rule.method || next.value !== valueText(rule)
@@ -62,6 +79,7 @@ function RuleRow({ who, index, rule, onCommit, onRemove }: { who: string; index:
       <input
         type="text"
         aria-label={`${label} 이름`}
+        readOnly={busy}
         maxLength={NAME_MAX}
         className={`${smallInput} min-w-0 flex-[1_1_120px]`}
         value={draft.name}
@@ -71,6 +89,7 @@ function RuleRow({ who, index, rule, onCommit, onRemove }: { who: string; index:
       <MethodSelect
         label={`${label} 방식`}
         value={draft.method}
+        disabled={busy}
         onChange={(method) => {
           const next = { ...draft, method }
           setDraft(next)
@@ -81,28 +100,21 @@ function RuleRow({ who, index, rule, onCommit, onRemove }: { who: string; index:
         type="text"
         inputMode="decimal"
         aria-label={`${label} 값`}
+        readOnly={busy}
         className={`${smallInput} w-21 text-right tabular-nums`}
         value={draft.value}
         onChange={(event) => setDraft({ ...draft, value: event.target.value })}
         onBlur={() => commit(draft)}
       />
       <span className="w-4 text-small text-muted">{draft.method === 'percent' ? '%' : '원'}</span>
-      <button type="button" className={ds.button.secondarySmall} onClick={onRemove}>
+      <button type="button" disabled={busy} className={ds.button.secondarySmall} onClick={onRemove}>
         빼기
       </button>
     </div>
   )
 }
 
-function RuleCard({
-  member,
-  rules,
-  onSave,
-}: {
-  member: StaffMember
-  rules: readonly IncentiveRule[]
-  onSave: (staffId: string, drafts: RuleDraft[]) => Promise<boolean>
-}) {
+function RuleCard({ member, rules, busy, onSave }: { member: StaffMember; rules: readonly IncentiveRule[]; busy: boolean; onSave: SaveRules }) {
   const [adding, setAdding] = useState<Draft | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const drafts = rules.map(asDraft)
@@ -140,6 +152,7 @@ function RuleCard({
           who={member.name}
           index={i}
           rule={rule}
+          busy={busy}
           onCommit={(draft) => commitRow(i, draft)}
           onRemove={() => void save(drafts.filter((_, j) => j !== i))}
         />
@@ -149,28 +162,31 @@ function RuleCard({
           <input
             type="text"
             aria-label={`${member.name} 새 항목 이름`}
+            readOnly={busy}
             maxLength={NAME_MAX}
             placeholder="항목 이름"
             className={`${smallInput} min-w-0 flex-[1_1_120px]`}
             value={adding.name}
             onChange={(event) => setAdding({ ...adding, name: event.target.value })}
           />
-          <MethodSelect label={`${member.name} 새 항목 방식`} value={adding.method} onChange={(method) => setAdding({ ...adding, method })} />
+          <MethodSelect label={`${member.name} 새 항목 방식`} value={adding.method} disabled={busy} onChange={(method) => setAdding({ ...adding, method })} />
           <input
             type="text"
             inputMode="decimal"
             aria-label={`${member.name} 새 항목 값`}
+            readOnly={busy}
             placeholder={adding.method === 'percent' ? '%' : '금액'}
             className={`${smallInput} w-21 text-right tabular-nums`}
             value={adding.value}
             onChange={(event) => setAdding({ ...adding, value: event.target.value })}
           />
           <span className="w-4 text-small text-muted">{adding.method === 'percent' ? '%' : '원'}</span>
-          <button type="button" className={ds.button.primarySmall} onClick={() => void add()}>
+          <button type="button" disabled={busy} className={ds.button.primarySmall} onClick={() => void add()}>
             넣기
           </button>
           <button
             type="button"
+            disabled={busy}
             className={ds.button.ghostSmall}
             onClick={() => {
               setAdding(null)
@@ -188,7 +204,12 @@ function RuleCard({
           </p>
         )}
         {adding === null && (
-          <button type="button" className={`${ds.button.secondarySmall} self-start`} onClick={() => setAdding({ name: '', method: 'per_case', value: '' })}>
+          <button
+            type="button"
+            disabled={busy}
+            className={`${ds.button.secondarySmall} self-start`}
+            onClick={() => setAdding({ name: '', method: 'per_case', value: '' })}
+          >
             + 항목 더하기
           </button>
         )}
@@ -205,17 +226,29 @@ export function RulesEditor({
 }: {
   members: readonly StaffMember[]
   rules: readonly IncentiveRule[]
-  onSave: (staffId: string, drafts: RuleDraft[]) => Promise<boolean>
+  onSave: SaveRules
   onBack: () => void
 }) {
   const [opened, setOpened] = useState<string[]>([])
+  const [saving, setSaving] = useState(false)
+  const [savedOver, setSavedOver] = useState<readonly IncentiveRule[] | null>(null)
+  const busy = saving || savedOver === rules
+  const save: SaveRules = async (staffId, drafts) => {
+    if (busy) return false
+    setSaving(true)
+    const ok = await onSave(staffId, drafts)
+    setSaving(false)
+    // 이 규칙 목록(rules)으로 저장했다 — 다시 읽은 목록이 올 때까지 막는다
+    if (ok) setSavedOver(rules)
+    return ok
+  }
   const rulesOf = (staffId: string) => rules.filter((rule) => rule.staffId === staffId).sort((a, b) => a.sort - b.sort)
   const cards = members.filter((member) => rulesOf(member.id).length > 0 || opened.includes(member.id))
   const none = members.filter((member) => !cards.includes(member))
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className={ds.button.secondarySmall} onClick={onBack}>
+        <button type="button" disabled={busy} className={ds.button.secondarySmall} onClick={onBack}>
           ‹ 이달 실적으로
         </button>
         <h2 className="text-subtitle font-semibold text-ink">인센티브 규칙</h2>
@@ -233,9 +266,9 @@ export function RulesEditor({
           <b className="font-semibold text-ink">고정 수당</b> = 매달 같은 금액
         </span>
       </p>
-      <div className="grid min-w-0 items-start gap-3 lg:grid-cols-2">
+      <div className="grid min-w-0 grid-cols-2 items-start gap-3">
         {cards.map((member) => (
-          <RuleCard key={member.id} member={member} rules={rulesOf(member.id)} onSave={onSave} />
+          <RuleCard key={member.id} member={member} rules={rulesOf(member.id)} busy={busy} onSave={save} />
         ))}
         {none.length > 0 && (
           <div
@@ -245,7 +278,13 @@ export function RulesEditor({
           >
             <span>규칙 없음</span>
             {none.map((member) => (
-              <button key={member.id} type="button" className={ds.button.secondarySmall} onClick={() => setOpened((ids) => [...ids, member.id])}>
+              <button
+                key={member.id}
+                type="button"
+                disabled={busy}
+                className={ds.button.secondarySmall}
+                onClick={() => setOpened((ids) => [...ids, member.id])}
+              >
                 {`+ ${member.name}`}
               </button>
             ))}
