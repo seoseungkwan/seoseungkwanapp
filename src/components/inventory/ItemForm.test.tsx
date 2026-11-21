@@ -237,6 +237,19 @@ describe('AC-7506.2 물품 더하기 판', () => {
     expect(add).toHaveBeenCalledTimes(2)
   })
 
+  it('AC-7506.2: 물품은 들어가고 처음 수량만 실패하면(countFailed) 판을 닫고 다시 읽게 onDone(true, "물품은 더했어요. 처음 수량은 [세기]에서 적어 주세요.")', async () => {
+    add.mockResolvedValue({ id: 'i-new', countFailed: true })
+    const { user, onDone } = openAdd()
+    await user.type(box(NAME), '핫팩')
+    await user.type(box(UNIT), '개')
+    await user.type(box(QTY), '12')
+    await user.click(button('저장'))
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(true, '물품은 더했어요. 처음 수량은 [세기]에서 적어 주세요.'))
+    expect(onDone).toHaveBeenCalledTimes(1)
+    expect(add).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('AC-7506.2: [취소]·닫기·Esc는 보내지 않고 onDone(false)', async () => {
     const { user, onDone } = openAdd()
     await user.click(button('취소'))
@@ -336,6 +349,30 @@ describe('AC-7506.2 물품 고치기 판', () => {
     expect(update).not.toHaveBeenCalled()
     expect(again.onDone).toHaveBeenCalledWith(false)
     expect(onDone).toHaveBeenCalledWith(true)
+  })
+
+  it('AC-7506.2: 고치기에서 이름이 그대로(제 옛 이름과 normalizeName이 같음)면 겹침을 보지 않는다 — 이름이 같아 보이는 다른 물품이 이미 있어도 다른 칸을 고친다', async () => {
+    // 예전에 들어간 같은 이름(영문 대소문자만 다름)의 안 쓰는 물품
+    const twin = make({ id: 'i-ha-old', categoryId: 'c-med', name: '히알루론산 주사 2ML', sortOrder: 3, hidden: true })
+    const onDone = vi.fn()
+    render(<ItemForm mode="edit" item={HA} categories={CATS} items={[...ITEMS, twin]} today={TODAY} onDone={onDone} />)
+    await waitFor(() => expect(aliases).toHaveBeenCalled())
+    await act(async () => {})
+    const user = userEvent.setup()
+    fireEvent.change(box(MIN), { target: { value: '5' } })
+    await user.click(button('저장'))
+    expect(errorOf(NAME)).toBe('')
+    expect(update).toHaveBeenCalledWith('i-ha', { minQty: 5 })
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(true))
+    // 빈칸만 다르게 고쳐도(normalizeName이 같음) 겹침을 보지 않고 보낸다(DB가 마지막으로 본다)
+    cleanup()
+    update.mockClear()
+    render(<ItemForm mode="edit" item={HA} categories={CATS} items={[...ITEMS, twin]} today={TODAY} onDone={onDone} />)
+    await act(async () => {})
+    fireEvent.change(box(NAME), { target: { value: '히알루론산  주사 2mL' } })
+    await userEvent.setup().click(button('저장'))
+    expect(errorOf(NAME)).toBe('')
+    expect(update).toHaveBeenCalledWith('i-ha', { name: '히알루론산  주사 2mL' })
   })
 
   it('AC-7506.2: 고치기에서 다른 물품(안 쓰는 물품 포함) 이름이면 겹침 오류다', async () => {

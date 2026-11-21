@@ -205,7 +205,8 @@ const COLUMNS: Record<Table, [string, string, string][]> = {
   ],
 }
 
-// authenticated 칸 권한(넣기·고치기). 읽기는 표 전체, 그 밖은 없다. 별칭 고치기에 alias가 든 것은 앱의 upsert(보낸 칸을 모두 SET)가 돌게
+// authenticated 칸 권한(넣기·고치기). 읽기는 표 전체, 그 밖은 없다. 별칭 고치기는 item_id 하나뿐이다
+// (앱은 새 이름을 ON CONFLICT DO NOTHING으로 넣고, 이미 있던 이름은 item_id만 고친다)
 const ITEM_INSERT = ['category_id', 'name', 'unit', 'min_qty', 'expiry', 'vendor', 'unit_price', 'bit_code', 'sort_order', 'hidden']
 const WRITES: Record<Table, { insert: string[]; update: string[] }> = {
   inventory_categories: { insert: ['name', 'sort_order'], update: ['name', 'sort_order'] },
@@ -214,7 +215,7 @@ const WRITES: Record<Table, { insert: string[]; update: string[] }> = {
   inventory_count_lines: { insert: [], update: [] },
   inventory_receipts: { insert: [], update: [] },
   inventory_receipt_lines: { insert: [], update: [] },
-  inventory_aliases: { insert: ['alias', 'item_id'], update: ['alias', 'item_id'] },
+  inventory_aliases: { insert: ['alias', 'item_id'], update: ['item_id'] },
 }
 // 표 단위 권한(authenticated). 넣기·고치기는 칸 단위라 여기 없다
 const TABLE_GRANTS: Record<Table, string[]> = {
@@ -408,11 +409,17 @@ async function receiptNow(id: string) {
   return { head: head[0] ?? null, lines }
 }
 
-// PostgREST insert·upsert와 같은 모양: json 줄을 표 모양으로 풀어 보낸 칸만 넣고, upsert는 겹치면 보낸 칸만 SET에 쓴다(hospital_id는 보내지 않는다)
-function postgrestInsert(table: string, body: Row[], conflict: string | null = null) {
+// PostgREST insert·upsert와 같은 모양: json 줄을 표 모양으로 풀어 보낸 칸만 넣고, upsert는 겹치면 보낸 칸만 SET에 쓴다(hospital_id는 보내지 않는다).
+// ignore = upsert의 ignoreDuplicates(겹치면 ON CONFLICT DO NOTHING으로 건너뜀, 고치기 권한이 필요 없다)
+function postgrestInsert(table: string, body: Row[], conflict: string | null = null, ignore = false) {
   const columns = Object.keys(body[0] ?? {})
   const list = columns.join(', ')
-  const onConflict = conflict === null ? '' : `on conflict (${conflict}) do update set ${columns.map((c) => `${c} = excluded.${c}`).join(', ')}`
+  const onConflict =
+    conflict === null
+      ? ''
+      : ignore
+        ? `on conflict (${conflict}) do nothing`
+        : `on conflict (${conflict}) do update set ${columns.map((c) => `${c} = excluded.${c}`).join(', ')}`
   return db.query(`insert into ${table} (${list}) select ${list} from json_populate_recordset(null::${table}, $1::json) ${onConflict}`, [
     JSON.stringify(body),
   ])
@@ -1079,21 +1086,42 @@ describe('AC-7501.2 RLS·권한', SLOW, () => {
       expect(await dump()).toEqual(old)
     })
 
-    it('AC-7501.2: A는 별칭을 넣고(앱의 upsert 포함) 물품을 바꾸고 지운다', async () => {
+    it('AC-7501.2: A는 별칭을 넣고(앱의 저장: 겹치면 건너뛰는 넣기 → item_id만 고치기) 물품을 바꾸고 지운다', async () => {
       await become(A)
       await postgrestInsert('public.inventory_aliases', [{ alias: '가짜 솜 1봉', item_id: a.item2 }])
+      // 앱의 saveAliases: 같은 별칭을 다시 넣으면 건너뛰고(ignoreDuplicates, 0줄) 그 이름의 item_id 하나만 고친다
       await become(A)
-      // 같은 별칭을 다시 저장하면(upsert onConflict hospital_id,alias) 고른 물품만 바뀐다
-      await postgrestInsert('public.inventory_aliases', [{ alias: '가짜 솜 1봉', item_id: a.item }], 'hospital_id, alias')
-      expect(await as(A, `select alias, item_id, hospital_id from public.inventory_aliases where alias = '가짜 솜 1봉'`)).toEqual([
+      const skipped = await postgrestInsert(
+        'public.inventory_aliases',
+        [
+          { alias: '가짜 솜 1봉', item_id: a.item },
+          { alias: '가짜 솜 2봉', item_id: a.item },
+        ],
+        'hospital_id, alias',
+        true,
+      )
+      expect(skipped.affectedRows).toBe(1)
+      expect(await affected(A, `update public.inventory_aliases set item_id = $1 where alias = '가짜 솜 1봉'`, [a.item])).toBe(1)
+      expect(await as(A, `select alias, item_id, hospital_id from public.inventory_aliases where alias like '가짜 솜 _봉' order by alias`)).toEqual([
         { alias: '가짜 솜 1봉', item_id: a.item, hospital_id: hospital[A] },
+        { alias: '가짜 솜 2봉', item_id: a.item, hospital_id: hospital[A] },
       ])
-      expect(await affected(A, `update public.inventory_aliases set item_id = $1 where alias = '가짜 솜 1봉'`, [a.item2])).toBe(1)
       expect(await affected(A, `delete from public.inventory_aliases where alias = '가짜 솜 1봉'`)).toBe(1)
       await become(A)
       await expect(postgrestInsert('public.inventory_aliases', [{ alias: '날짜', item_id: a.item, created_at: '2026-11-01' }])).rejects.toMatchObject(
         DENIED,
       )
+    })
+
+    it('AC-7501.2: A는 별칭 글자(alias)를 고치지 못하고, 보낸 칸을 모두 SET에 쓰는 upsert도 권한 없음이다(별칭 고치기는 item_id만)', async () => {
+      const old = await dump()
+      await become(A)
+      await expect(rows(`update public.inventory_aliases set alias = '바꾼 이름' where alias = '가짜 거즈 10매'`)).rejects.toMatchObject(DENIED)
+      await become(A)
+      await expect(
+        postgrestInsert('public.inventory_aliases', [{ alias: '가짜 거즈 10매', item_id: a.item2 }], 'hospital_id, alias'),
+      ).rejects.toMatchObject(DENIED)
+      expect(await dump()).toEqual(old)
     })
 
     it('AC-7501.2: A는 B의 분류·물품·별칭을 고치거나 지우지 못하고(0줄) B 병원으로 넣지도 못한다', async () => {
@@ -1254,6 +1282,39 @@ describe('AC-7501.3 save_inventory_count', SLOW, () => {
     expect(await countLines()).toEqual([])
     expect(await saveCount(A, seoulDay(), [{ item_id: x, qty: 4 }])).toBe(1)
     expect(await itemNow(x)).toMatchObject({ qty: 4, expiry: '2027-08-31' })
+  })
+
+  async function countDays() {
+    await operator()
+    return (await rows(`select counted_on::text as day from public.inventory_counts order by 1`)).map((row) => row.day)
+  }
+
+  it('AC-7501.3: 기한만 있는 줄들만 보내면 물품 기한만 바뀌고 세기 날은 생기지 않는다(세기가 없던 병원)', async () => {
+    expect(await saveCount(A, seoulDay(), [{ item_id: x, expiry: '2027-08-31' }, { item_id: y, qty: null, expiry: null }])).toBe(0)
+    expect(await countDays()).toEqual([])
+    expect(await itemNow(x)).toMatchObject({ expiry: '2027-08-31', last_counted_at: null })
+    expect(await itemNow(y)).toMatchObject({ expiry: null })
+  })
+
+  it('AC-7501.3: 기한만 저장한 날은 마지막 세기 날짜가 되지 않는다(그 사이 날 세기가 그대로 된다)', async () => {
+    expect(await saveCount(A, seoulDay(-5), [{ item_id: x, qty: 3 }])).toBe(1)
+    expect(await saveCount(A, seoulDay(), [{ item_id: y, expiry: '2027-05-31' }])).toBe(0)
+    expect(await countDays()).toEqual([seoulDay(-5)])
+    expect(await itemNow(y)).toMatchObject({ expiry: '2027-05-31', qty: 0, last_count_qty: null })
+    // 마지막 세기 날짜는 그대로 5일 전이라 3일 전 세기가 된다
+    expect(await saveCount(A, seoulDay(-3), [{ item_id: y, qty: 2 }])).toBe(1)
+    expect(await countDays()).toEqual([seoulDay(-5), seoulDay(-3)])
+    // 기한만 보내도 날짜 검사는 같다(마지막 세기 날짜보다 앞이면 오류이고 기한도 그대로)
+    const old = await dump()
+    await expect(saveCount(A, seoulDay(-4), [{ item_id: x, expiry: '2028-01-31' }])).rejects.toMatchObject(BAD)
+    expect(await dump()).toEqual(old)
+  })
+
+  it('AC-7501.3: 센 수가 있는 줄이 하나라도 있으면 그 날 세기를 만들고, 기한만 있는 줄은 세기 줄이 되지 않는다', async () => {
+    expect(await saveCount(A, seoulDay(), [{ item_id: x, expiry: '2027-08-31' }, { item_id: y, qty: 6 }])).toBe(1)
+    expect(await countDays()).toEqual([seoulDay()])
+    expect((await countLines()).map((l) => [l.item_id, l.qty])).toEqual([[y, 6]])
+    expect(await itemNow(x)).toMatchObject({ expiry: '2027-08-31', qty: 0, last_counted_at: null })
   })
 
   it('AC-7501.3: 같은 날 다시 저장하면 그 물품 줄만 덮어쓰고 저장 시각이 새 시각이 된다(세기는 하나)', async () => {

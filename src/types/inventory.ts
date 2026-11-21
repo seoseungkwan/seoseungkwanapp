@@ -81,6 +81,8 @@ export type InvItemFields = {
   unitPrice: number | null
   bitCode?: string | null
 }
+/** 물품 더하기 결과: 넣은 물품 id. countFailed = 물품은 들어갔는데 처음 수량(오늘 세기)만 적지 못함 */
+export type InvItemAdded = { id: string; countFailed?: true }
 /** 물품 고치기: 바뀐 칸만. bitCode null = [연결 끊기], hidden = 안 씀 */
 export type InvItemChanges = Partial<Omit<InvItemFields, 'bitCode'> & { bitCode: string | null; hidden: boolean }>
 /** 세기 한 줄. qty·expiry는 열쇠가 있을 때만 보낸다(qty null = 안 셈, expiry null = 기한 비움) */

@@ -637,9 +637,22 @@ describe('AC-7504.2 물품 넣기·고치기·주문함·차례', () => {
     expect(rpcCalls(calls)).toEqual([])
   })
 
-  it("AC-7504.2: addItem 넣은 뒤 세기가 실패하면 'failed'", async () => {
-    fakeClient(by({ 'rpc:save_inventory_count': () => ({ error: RAW_ERROR }) }))
-    await expect(addItem(FIELDS, 5, TODAY)).resolves.toBe('failed')
+  it.each([
+    ['오류 답', () => ({ error: RAW_ERROR })],
+    ['보내다 예외(네트워크)', throwing],
+  ] as [string, () => Reply][])('AC-7504.2: addItem 물품은 들어갔는데 처음 수량 세기가 실패하면(%s) { id, countFailed: true }', async (_, reply) => {
+    const calls = fakeClient(by({ 'rpc:save_inventory_count': reply }))
+    const result = await addItem(FIELDS, 5, TODAY)
+    expect(result).toEqual({ id: NEW_ID, countFailed: true })
+    expect(JSON.stringify(result)).not.toContain(SECRET)
+    expect(steps(calls)).toEqual(['inventory_items:select', 'inventory_items:insert', 'rpc:save_inventory_count'])
+  })
+
+  it('AC-7504.2: addItem 세기가 되면 countFailed 열쇠가 없다', async () => {
+    fakeClient()
+    const result = await addItem(FIELDS, 5, TODAY)
+    expect(result).toEqual({ id: NEW_ID })
+    expect(Object.keys(result as object)).toEqual(['id'])
   })
 
   it('AC-7504.2: updateItem은 받은 칸만 DB 칸 이름으로 바꿔 그 id 줄 하나를 고친다([연결 끊기]는 bit_code null, 안 씀은 hidden)', async () => {
@@ -1082,13 +1095,21 @@ describe('AC-7504.5 importItems 엑셀 넣기', () => {
       { name: '물품1', qty: 0 },
     ],
   }
+  // 넣기 전 읽기('name, sort_order' = 지금 물품 이름·차례)와 넣은 뒤 다시 읽기('id, name')
+  const BEFORE_ROWS = [
+    { name: '물품1', sort_order: 7 },
+    { name: '물품2', sort_order: 3 },
+  ]
+  const itemsBy = (before: unknown[], after: unknown[]) => (call: Call) =>
+    (call as TableCall).columns === 'name, sort_order' ? { data: before } : { data: after }
   const routes = {
     'inventory_categories:select': () => ({ data: [catRow(CAT_A, '약품', 0), catRow(CAT_B, '사무·생활', 1)] }),
     'inventory_categories:insert': () => ({ data: [{ id: CAT_NEW, name: '소모품' }] }),
-    'inventory_items:select': (call: Call) =>
-      (call as TableCall).columns === 'sort_order'
-        ? { data: [{ sort_order: 7 }] }
-        : { data: [{ id: ITEM_1, name: '물품1' }, { id: ITEM_2, name: '물품2' }, { id: GAUZE, name: '거즈' }] },
+    'inventory_items:select': itemsBy(BEFORE_ROWS, [
+      { id: ITEM_1, name: '물품1' },
+      { id: ITEM_2, name: '물품2' },
+      { id: GAUZE, name: '거즈' },
+    ]),
   }
   const ORDER = [
     'inventory_categories:select',
@@ -1115,16 +1136,80 @@ describe('AC-7504.5 importItems 엑셀 넣기', () => {
     expect(insert.columns).toBe('id, name')
   })
 
-  it('AC-7504.5: 새 물품은 지금 가장 큰 sort_order 뒤로 파일 차례, 분류 이름은 (새로 넣은 것 포함) 분류 id로 바꿔 넣기 칸만 보낸다', async () => {
+  it('AC-7504.5: 새 물품은 지금 물품(이름·차례)을 1,000줄씩 읽고 가장 큰 sort_order 뒤로 파일 차례, 분류 이름은 (새로 넣은 것 포함) 분류 id로 바꿔 넣기 칸만 보낸다', async () => {
     const calls = fakeClient(by(routes))
     await importItems(PLAN, TODAY)
-    const [, , top, insert] = tableCalls(calls)
-    expect(top).toMatchObject({ columns: 'sort_order', limit: 1, filters: [] })
-    expect(top.orders).toEqual([['sort_order', { ascending: false }]])
+    const [, , existing, insert] = tableCalls(calls)
+    expect(existing).toMatchObject({ table: 'inventory_items', columns: 'name, sort_order', range: [0, 999], filters: [] })
+    expect(existing.orders).toEqual([['id', { ascending: true }]])
     expect(insert.body).toEqual([
       { category_id: CAT_NEW, name: '거즈', unit: '박스', min_qty: 2, expiry: null, vendor: null, unit_price: 5000, sort_order: 8 },
       { category_id: CAT_A, name: '파스', unit: '개', min_qty: null, expiry: '2027-08-31', vendor: '가짜약품', unit_price: null, sort_order: 9 },
     ])
+  })
+
+  it('AC-7504.5: normalizeName이 이미 있는 물품(안 쓰는 물품 포함)과 같은 새 물품은 넣지 않고 건너뛰고, 나머지만 이어진 차례로 넣는다', async () => {
+    const plan: ImportPlan = {
+      newCategories: [],
+      adds: [
+        { ...PLAN.adds[1], name: 'Hot  Pack' }, // 이미 있는 'hot pack'과 같은 이름(빈칸 여럿·영문 대소문자)
+        { ...PLAN.adds[1], name: '파스' },
+      ],
+      updates: [],
+      counts: [{ name: 'Hot  Pack', qty: 3 }],
+    }
+    const calls = fakeClient(
+      by({
+        ...routes,
+        'inventory_items:select': itemsBy(
+          [...BEFORE_ROWS, { name: 'hot pack', sort_order: 9 }],
+          [
+            { id: ITEM_1, name: '물품1' },
+            { id: ITEM_3, name: 'hot pack' },
+            { id: GAUZE, name: '파스' },
+          ],
+        ),
+      }),
+    )
+    await expect(importItems(plan, TODAY)).resolves.toBe('ok')
+    const insert = tableCalls(calls).find((call) => call.op === 'insert' && call.table === 'inventory_items')
+    expect(insert?.body).toEqual([
+      { category_id: CAT_A, name: '파스', unit: '개', min_qty: null, expiry: '2027-08-31', vendor: '가짜약품', unit_price: null, sort_order: 10 },
+    ])
+    // 건너뛴 물품의 세기 줄은 이미 있던 그 물품으로 간다
+    expect(rpcCalls(calls)[0].args).toEqual({ p_day: TODAY, p_lines: [{ item_id: ITEM_3, qty: 3 }] })
+  })
+
+  it('AC-7504.5: 앞에 새 물품을 넣고 실패한 뒤 같은 계획을 다시 넣으면 물품 넣기는 부르지 않고 고침·세기로 이어간다', async () => {
+    const calls = fakeClient(
+      by({
+        ...routes,
+        'inventory_categories:select': () => ({ data: [catRow(CAT_A, '약품', 0), catRow(CAT_NEW, '소모품', 2)] }),
+        'inventory_items:select': itemsBy(
+          [...BEFORE_ROWS, { name: '거즈', sort_order: 8 }, { name: '파스', sort_order: 9 }],
+          [
+            { id: ITEM_1, name: '물품1' },
+            { id: GAUZE, name: '거즈' },
+          ],
+        ),
+      }),
+    )
+    await expect(importItems(PLAN, TODAY)).resolves.toBe('ok')
+    expect(steps(calls)).toEqual([
+      'inventory_categories:select',
+      'inventory_items:select',
+      'inventory_items:update',
+      'inventory_items:update',
+      'inventory_items:select',
+      'rpc:save_inventory_count',
+    ])
+    expect(rpcCalls(calls)[0].args).toEqual({ p_day: TODAY, p_lines: [{ item_id: GAUZE, qty: 4 }, { item_id: ITEM_1, qty: 0 }] })
+  })
+
+  it("AC-7504.5: 넣기 전 읽은 물품 줄 모양이 틀리면 넣지 않고 'failed'", async () => {
+    const calls = fakeClient(by({ ...routes, 'inventory_items:select': itemsBy([{ name: '물품1' }], []) }))
+    await expect(importItems(PLAN, TODAY)).resolves.toBe('failed')
+    expect(steps(calls)).not.toContain('inventory_items:insert')
   })
 
   it("AC-7504.5: '고침' 물품은 바뀐 칸만(안 씀이면 hidden false도) 그 id 줄에 고친다", async () => {
@@ -1178,7 +1263,7 @@ describe('AC-7504.5 importItems 엑셀 넣기', () => {
   })
 
   it("AC-7504.5: 다시 읽은 물품에 세기 이름이 없으면 세기를 부르지 않고 'failed'", async () => {
-    const calls = fakeClient(by({ ...routes, 'inventory_items:select': () => ({ data: [{ id: ITEM_1, name: '물품1' }] }) }))
+    const calls = fakeClient(by({ ...routes, 'inventory_items:select': itemsBy([], [{ id: ITEM_1, name: '물품1' }]) }))
     await expect(importItems({ newCategories: [], adds: [], updates: [], counts: [{ name: '없는 물품', qty: 1 }] }, TODAY)).resolves.toBe('failed')
     expect(rpcCalls(calls)).toEqual([])
   })

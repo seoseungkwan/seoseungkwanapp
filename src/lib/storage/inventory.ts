@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { addDays, isMonth, isYmd } from '@/lib/analytics/dates'
+import { normalizeName } from '@/lib/inventory/names'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import {
   ALIAS_MAX,
@@ -26,6 +27,7 @@ import {
   type InvCountLine,
   type InvInventory,
   type InvItem,
+  type InvItemAdded,
   type InvItemChanges,
   type InvItemFields,
   type InvRange,
@@ -345,10 +347,10 @@ export async function saveCategoryOrder(ids: string[]): Promise<'ok' | 'failed'>
 
 /**
  * 그 분류 맨 끝에 넣는다(넣기 칸 권한 칸만, 지금 수량은 보내지 않음). qty(0~1,000,000)를 주면 넣은 뒤 today 날짜 세기로 그 수를 적는다.
- * 넣은 물품 id를 준다. 이름·비트 코드 겹침은 'duplicate'
+ * 넣은 물품 id를 준다. 물품은 들어갔는데 그 세기만 실패하면 { id, countFailed: true }(물품은 되돌리지 않는다). 이름·비트 코드 겹침은 'duplicate'
  */
-export async function addItem(fields: InvItemFields, qty: number | null, today: string): Promise<{ id: string } | 'duplicate' | 'failed'> {
-  return attempt<{ id: string }, 'duplicate' | 'failed'>(async (client) => {
+export async function addItem(fields: InvItemFields, qty: number | null, today: string): Promise<InvItemAdded | 'duplicate' | 'failed'> {
+  return attempt<InvItemAdded, 'duplicate' | 'failed'>(async (client) => {
     if (!isRecord(fields)) return fail()
     const body = itemBody({
       categoryId: id(fields.categoryId),
@@ -365,7 +367,12 @@ export async function addItem(fields: InvItemFields, qty: number | null, today: 
     body.sort_order = await nextSortOrder(client, ITEMS, body.category_id as string)
     const data = check(await client.from(ITEMS).insert(body).select('id').single(), NAME_TAKEN)
     const itemId = isRecord(data) && isId(data.id) ? data.id : fail()
-    if (count !== null) await sendCount(client, ymd, [{ item_id: itemId, qty: count }])
+    if (count === null) return { id: itemId }
+    try {
+      await sendCount(client, ymd, [{ item_id: itemId, qty: count }])
+    } catch {
+      return { id: itemId, countFailed: true }
+    }
     return { id: itemId }
   })
 }
@@ -578,13 +585,11 @@ export async function listReceiptLines(span: InvRange): Promise<InvReceiptLine[]
 
 // ── 엑셀 넣기 (AC-7504.5) ───────────────────────────────────
 
-/** 세기 이름을 다시 읽은 물품에서 찾을 때만 쓰는 견줌(앞뒤·여러 빈칸, 영문 대소문자 무시) */
-const looseName = (name: string) => name.normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase()
-
 /**
- * 엑셀 계획 넣기: 새 분류(이미 있는 이름은 뺌) → 새 물품 한 번에(지금 가장 큰 sort_order 뒤로 파일 차례) → '고침' 물품마다 바뀐 칸만
- * → 세기 줄이 있으면 물품을 다시 읽어 이름을 id로 바꾸고 today 날짜로 save_inventory_count(expiry 열쇠 없음).
- * 한 번에 묶지 않는다: 중간에 실패하면 'failed'이고, 이름으로 맞추므로 같은 파일을 다시 넣으면 같은 결과가 된다
+ * 엑셀 계획 넣기: 새 분류(이미 있는 이름은 뺌) → 새 물품 한 번에(지금 물품을 읽어 normalizeName이 이미 있는 이름은 건너뛰고,
+ * 가장 큰 sort_order 뒤로 파일 차례) → '고침' 물품마다 바뀐 칸만 → 세기 줄이 있으면 물품을 다시 읽어 이름을 id로 바꾸고
+ * today 날짜로 save_inventory_count(expiry 열쇠 없음).
+ * 한 번에 묶지 않는다: 중간에 실패하면 'failed'이고, 이름으로 맞추므로(넣다 만 새 물품은 건너뜀) 같은 파일을 다시 넣으면 같은 결과가 된다
  */
 export async function importItems(plan: ImportPlan, today: string): Promise<'ok' | 'failed'> {
   return attempt(async (client) => {
@@ -622,8 +627,22 @@ export async function importItems(plan: ImportPlan, today: string): Promise<'ok'
           unitPrice: add.unitPrice ?? null,
         }),
       )
-      const start = await nextSortOrder(client, ITEMS)
-      check(await client.from(ITEMS).insert(bodies.map((body, index) => ({ ...body, sort_order: start + index }))))
+      // 지금 물품(안 쓰는 물품 포함)의 이름·차례. 이름이 이미 있는 새 물품(앞에 넣다 실패한 것 포함)은 넣지 않는다
+      const existing = await readAll((first, last) => client.from(ITEMS).select('name, sort_order').order('id', ASC).range(first, last))
+      const taken = new Set<string>()
+      let start = 0
+      for (const row of existing) {
+        if (!isRecord(row) || typeof row.name !== 'string' || !isInt(row.sort_order)) return fail()
+        taken.add(normalizeName(row.name))
+        start = Math.max(start, row.sort_order + 1)
+      }
+      const fresh = bodies.filter((body) => {
+        const key = normalizeName(body.name as string)
+        if (taken.has(key)) return false
+        taken.add(key)
+        return true
+      })
+      if (fresh.length > 0) check(await client.from(ITEMS).insert(fresh.map((body, index) => ({ ...body, sort_order: start + index }))))
     }
 
     for (const update of updates) {
@@ -648,9 +667,9 @@ export async function importItems(plan: ImportPlan, today: string): Promise<'ok'
       for (const row of rows) {
         if (!isRecord(row) || !isId(row.id) || !isId(row.name)) continue
         exact.set(row.name, row.id)
-        if (!loose.has(looseName(row.name))) loose.set(looseName(row.name), row.id)
+        if (!loose.has(normalizeName(row.name))) loose.set(normalizeName(row.name), row.id)
       }
-      const lines = countRows.map(({ name, qty }) => ({ item_id: exact.get(name) ?? loose.get(looseName(name)) ?? fail(), qty }))
+      const lines = countRows.map(({ name, qty }) => ({ item_id: exact.get(name) ?? loose.get(normalizeName(name)) ?? fail(), qty }))
       await sendCount(client, ymd, lines)
     }
     return 'ok' as const

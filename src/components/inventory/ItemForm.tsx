@@ -26,7 +26,9 @@ import {
 // 오른쪽 판(예약 탭 AddPanel의 Drawer 모양, 460px)이고 [취소]·[저장]이다. 칸 검사에 걸리면 칸 아래 오류 글이고 보내지 않는다.
 // 지금 수량은 더하기에서만 적는다(그날 세기로 남는다, 저장 모듈 addItem). 고치기에서는 읽기만 — 수량은 [세기]에서만 바뀐다.
 // 고치기 판 아래 "명세서에서 맞춘 이름"의 [지우기]와 비트 코드 [연결 끊기]는 누르면 바로 저장한다(판 [저장]과 따로).
-// 그래서 판을 닫을 때 onDone(바뀐 것이 있었나)를 준다. 새 물품을 그 분류 맨 끝에 붙이는 것은 addItem이 한다
+// 그래서 판을 닫을 때 onDone(바뀐 것이 있었나)를 준다. 새 물품을 그 분류 맨 끝에 붙이는 것은 addItem이 한다.
+// 더하기에서 물품은 들어가고 처음 수량(오늘 세기)만 실패하면 판을 닫고 onDone(true, 알림 글)로 목록이 그 글을 보이게 한다.
+// 이름 겹침은 normalizeName으로 본다. 고치기에서 이름이 그대로(제 옛 이름과 normalizeName이 같음)면 보지 않는다
 
 const NAME_EMPTY = '물품 이름을 적어 주세요'
 const NAME_LONG = `물품 이름은 ${ITEM_NAME_MAX}자까지 적어요`
@@ -39,6 +41,7 @@ const QTY_BAD = `0부터 ${formatCount(QTY_MAX)}까지 정수로 적어요`
 const PRICE_BAD = `0부터 ${formatCount(UNIT_PRICE_MAX)}까지 정수로 적어요`
 const DAY_BAD = '날짜를 2027-03-31처럼 골라 주세요'
 const CATEGORY_EMPTY = '분류를 골라 주세요'
+const COUNT_FAILED = '물품은 더했어요. 처음 수량은 [세기]에서 적어 주세요.'
 
 const CONTROL = /\p{Cc}/u
 const lengthOf = (text: string) => [...text].length
@@ -236,8 +239,8 @@ export type ItemFormProps = {
   /** 모든 물품(안 쓰는 물품 포함) — 이름 겹침을 본다 */
   items: readonly InvItem[]
   today: string
-  /** 판을 닫을 때. changed = 저장한 것이 있음(다시 읽기) */
-  onDone(changed: boolean): void
+  /** 판을 닫을 때. changed = 저장한 것이 있음(다시 읽기), notice = 목록에 보일 알림 글(물품은 더했는데 처음 수량만 실패했을 때) */
+  onDone(changed: boolean, notice?: string): void
 } & ({ mode: 'add'; item?: undefined } | { mode: 'edit'; item: InvItem })
 
 export function ItemForm({ mode, item, categories, items, today, onDone }: ItemFormProps) {
@@ -279,6 +282,7 @@ export function ItemForm({ mode, item, categories, items, today, onDone }: ItemF
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((d) => ({ ...d, [key]: value }))
   const taken = (name: string) => {
     const key = normalizeName(name)
+    if (item !== undefined && normalizeName(item.name) === key) return false // 고치기에서 이름이 그대로
     return items.some((other) => other.id !== itemId && normalizeName(other.name) === key)
   }
   const close = () => onDone(changed.current)
@@ -293,6 +297,10 @@ export function ItemForm({ mode, item, categories, items, today, onDone }: ItemF
       setSaving(true)
       const { categoryId, name, unit, minQty, expiry, vendor, unitPrice } = values
       const added = await addItem({ categoryId, name, unit, minQty, expiry, vendor, unitPrice }, values.qty, today)
+      if (added !== 'duplicate' && added !== 'failed' && added.countFailed) {
+        setSaving(false)
+        return onDone(true, COUNT_FAILED)
+      }
       result = added === 'duplicate' || added === 'failed' ? added : 'ok'
     } else {
       const changes = changesOf(item, values)

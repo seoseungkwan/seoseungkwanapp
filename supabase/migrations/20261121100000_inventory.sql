@@ -146,9 +146,10 @@ grant select on table public.inventory_counts to authenticated;
 grant select on table public.inventory_count_lines to authenticated;
 grant select on table public.inventory_receipts to authenticated;
 grant select on table public.inventory_receipt_lines to authenticated;
--- 별칭: 앱의 저장(upsert onConflict hospital_id,alias)이 보낸 칸(alias·item_id)을 모두 SET에 쓰므로 고치기도 두 칸
+-- 별칭: 앱의 저장은 새 이름을 넣고(겹치면 ON CONFLICT DO NOTHING으로 건너뜀 — 넣기 칸 권한만 쓴다), 이미 있던 이름은 고른 물품(item_id)만 고친다.
+-- 별칭 글자(alias)는 고치지 못한다(바꾸려면 지우고 새로 넣는다)
 grant select, delete on table public.inventory_aliases to authenticated;
-grant insert (alias, item_id), update (alias, item_id) on table public.inventory_aliases to authenticated;
+grant insert (alias, item_id), update (item_id) on table public.inventory_aliases to authenticated;
 
 -- (select …): 줄마다가 아니라 문장마다 한 번 계산한다(Supabase 권장). 원장이 아니면 null이라 아무 줄과도 같지 않다
 drop policy if exists "내 병원 재고 분류 읽기" on public.inventory_categories;
@@ -223,7 +224,8 @@ create policy "내 병원 재고 별칭 지우기" on public.inventory_aliases
 -- 오늘은 세션 시간대가 아니라 한국 날짜다
 
 -- 세기 저장: p_lines = [{ item_id, qty?: 0~1,000,000 정수|null, expiry?: 'YYYY-MM-DD'|null }] 1~1,000개(물품 겹침 없음).
--- p_day는 병원의 마지막 세기 날짜 ~ 한국 오늘. 그 날 세기가 없으면 만든다.
+-- p_day는 병원의 마지막 세기 날짜 ~ 한국 오늘. qty가 있는 줄이 하나라도 있을 때만 그 날 세기가 없으면 만든다
+-- (기한만 고친 저장은 세기 날을 만들지 않는다 → 마지막 세기 날짜 그대로).
 -- qty가 있는 줄: 세기 줄을 넣거나 덮어쓰고(saved_at = 지금), 물품 qty = last_count_qty = 센 수, last_counted_at = 지금.
 -- expiry 열쇠가 있는 줄: 물품 expiry = 그 값(null이면 비움). 돌려주는 값 = 넣거나 덮어쓴 세기 줄 수
 create or replace function public.save_inventory_count(p_day date, p_lines jsonb)
@@ -242,7 +244,7 @@ declare
   v_set_expiry boolean[] := '{}';
   v_expiries date[] := '{}';
   v_count uuid;
-  v_saved integer;
+  v_saved integer := 0;
 begin
   if v_h is null then
     raise exception 'not a hospital owner' using errcode = '42501';
@@ -314,21 +316,24 @@ begin
     raise exception 'bad inventory count' using errcode = '22023';
   end if;
 
-  insert into public.inventory_counts (hospital_id, counted_on) values (v_h, p_day)
-    on conflict (hospital_id, counted_on) do nothing;
-  select c.id into v_count from public.inventory_counts c where c.hospital_id = v_h and c.counted_on = p_day;
+  -- 센 수가 있는 줄이 있을 때만 세기 날·세기 줄·지금 수량을 적는다
+  if exists (select 1 from unnest(v_qtys) as u (qty) where u.qty is not null) then
+    insert into public.inventory_counts (hospital_id, counted_on) values (v_h, p_day)
+      on conflict (hospital_id, counted_on) do nothing;
+    select c.id into v_count from public.inventory_counts c where c.hospital_id = v_h and c.counted_on = p_day;
 
-  insert into public.inventory_count_lines (hospital_id, count_id, item_id, qty, saved_at)
-  select v_h, v_count, u.item_id, u.qty, now()
-    from unnest(v_items, v_qtys) as u (item_id, qty)
-   where u.qty is not null
-  on conflict (count_id, item_id) do update set qty = excluded.qty, saved_at = excluded.saved_at;
-  get diagnostics v_saved = row_count;
+    insert into public.inventory_count_lines (hospital_id, count_id, item_id, qty, saved_at)
+    select v_h, v_count, u.item_id, u.qty, now()
+      from unnest(v_items, v_qtys) as u (item_id, qty)
+     where u.qty is not null
+    on conflict (count_id, item_id) do update set qty = excluded.qty, saved_at = excluded.saved_at;
+    get diagnostics v_saved = row_count;
 
-  update public.inventory_items i
-     set qty = u.qty, last_count_qty = u.qty, last_counted_at = now()
-    from unnest(v_items, v_qtys) as u (item_id, qty)
-   where u.qty is not null and i.hospital_id = v_h and i.id = u.item_id;
+    update public.inventory_items i
+       set qty = u.qty, last_count_qty = u.qty, last_counted_at = now()
+      from unnest(v_items, v_qtys) as u (item_id, qty)
+     where u.qty is not null and i.hospital_id = v_h and i.id = u.item_id;
+  end if;
 
   update public.inventory_items i
      set expiry = u.expiry
