@@ -12,6 +12,7 @@ import {
   templateRows,
   templateWorkbook,
 } from './excel'
+import { sheetProblem } from './ai'
 
 // 재고 엑셀 양식·머리 줄 찾기·줄 읽기·미리 보기 (specs/inventory REQ-7503, design.md 4절, TASK-4).
 // 엑셀 파일은 시험 안에서 xlsx로 만든다. 물품·거래처·숫자는 모두 지어낸 것
@@ -155,7 +156,23 @@ describe('AC-7503.3·AC-7503.4: sampleForAi 칸 맞춤에 보낼 머리 줄·앞
 
   it('AC-7503.3: 칸 안 줄바꿈·탭은 빈칸 하나로 바꾸고 앞뒤 빈칸을 뗀다(제어 문자를 보내지 않는다)', () => {
     const sample = sampleForAi(['최소\n수량', ' 단가 '], [['10\t개', null]])
-    expect(sample).toEqual({ header: ['최소 수량', '단가'], rows: [['10 개', '']] })
+    expect(sample).toEqual({ header: ['최소 수량', '단가'], rows: [['10 개', '']], problem: false })
+  })
+
+  it('AC-7509.2·AC-7503.3: 개인정보 모양은 40자로 자르기 전 칸 전체로 본다(전화번호가 40자 경계에 걸쳐도 problem)', () => {
+    const cell = `${'가'.repeat(33)}010-1234-5678` // 전화 모양이 34째 글자에서 시작해 40자를 넘어 끝난다
+    const sample = sampleForAi(['구분', '비고'], [['약품', cell]])
+    expect(sample.rows[0][1]).toBe(`${'가'.repeat(33)}010-123`)
+    expect(sheetProblem(sample.header, sample.rows)).toBe(false) // 자른 글자만 보면 놓친다
+    expect(sample.problem).toBe(true)
+    expect(sampleForAi([`${'가'.repeat(30)} a@hanbit.kr`, '이름'], []).problem).toBe(true)
+    expect(sampleForAi(['구분', '비고'], [['약품', '가'.repeat(50)]]).problem).toBe(false)
+  })
+
+  it('AC-7509.2: 보내지 않는 6째 줄부터는 보지 않는다', () => {
+    const rows: Cell[][] = Array.from({ length: 6 }, () => ['약품', '거즈'])
+    rows[5][1] = '010-1234-5678'
+    expect(sampleForAi(['구분', '이름'], rows).problem).toBe(false)
   })
 
   it('AC-7503.3: 40자는 UTF-16 길이로도 넘지 않는다(이모지 같은 글자를 반으로 자르지 않는다)', () => {

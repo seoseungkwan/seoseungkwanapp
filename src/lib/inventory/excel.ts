@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx'
 import { isMonth, monthRange, parseDateCell } from '@/lib/analytics/dates'
-import { FIELDS, FIELD_LABELS, clipText, type ColumnMapping, type Field } from './ai'
+import { FIELDS, FIELD_LABELS, clipText, sheetProblem, type ColumnMapping, type Field } from './ai'
 
 // 재고 엑셀: 양식 만들기·양식 알아보기·머리 줄 찾기·줄 읽기·미리 보기와 넣기 계획 (specs/inventory REQ-7503, design.md 4절).
 // 브라우저에서 부르는 순수 함수다(xlsx만 쓴다). 파일 내려받기(XLSX.writeFile)·저장은 화면과 lib/storage/inventory.ts 몫이다.
@@ -156,13 +156,13 @@ export function readSheet(bytes: ArrayBuffer): SheetRead | null {
   return { template: false, header, ...dataRows(first, at + 1, header.length) }
 }
 
-// 칸 맞춤 경로로 보낼 머리 줄 + 앞 5줄(칸마다 40자, 줄마다 머리와 같은 칸 수, 제어 문자 없음)
-export function sampleForAi(header: readonly string[], rows: readonly (readonly Cell[])[]): { header: string[]; rows: string[][] } {
-  const text = (value: Cell | undefined) => clipText(textOf(value), MAX_CELL)
-  return {
-    header: header.map(text),
-    rows: rows.slice(0, MAX_SAMPLE_ROWS).map((row) => header.map((_, i) => text(row[i]))),
-  }
+// 칸 맞춤 경로로 보낼 머리 줄 + 앞 5줄(칸마다 40자, 줄마다 머리와 같은 칸 수, 제어 문자 없음).
+// problem: 보낼 칸들을 자르기 전 글자 전체로 본 개인정보 모양 검사(AC-7509.2). 40자 경계에 걸친 전화번호도 잡는다 → 참이면 보내지 않는다
+export function sampleForAi(header: readonly string[], rows: readonly (readonly Cell[])[]): { header: string[]; rows: string[][]; problem: boolean } {
+  const fullHeader = header.map(textOf)
+  const fullRows = rows.slice(0, MAX_SAMPLE_ROWS).map((row) => header.map((_, i) => textOf(row[i])))
+  const clip = (value: string) => clipText(value, MAX_CELL)
+  return { header: fullHeader.map(clip), rows: fullRows.map((row) => row.map(clip)), problem: sheetProblem(fullHeader, fullRows) }
 }
 
 // ── 분류 맞추기 ──────────────────────────────────────────
