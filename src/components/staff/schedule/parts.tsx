@@ -9,7 +9,7 @@ import { clock, type Shift } from './format'
 // 단추 묶음 틀: ds 단추 묶음 틀에서 폰 칸 나눔만 뺀 것 — 폰에서도 PC 모양 그대로다(명단·휴가 화면도 이것을 쓴다)
 const SEG_GROUP = 'inline-flex shrink-0 overflow-clip rounded-control border border-line-strong bg-surface'
 
-// 공휴일·휴진일 칸·머리 회색(주 보기·달 보기·칸 뜻 견본): 시안 --closed(#EEF0F3)쯤 — 보통 칸·머리 바탕(canvas)보다 진해 한눈에 갈린다(AC-7613.1)
+// 공휴일·휴진일 칸·머리 회색(주 보기·달 보기·칸 뜻 견본): 시안 --closed 회색쯤 — 보통 칸·머리 바탕(canvas)보다 진해 한눈에 갈린다(AC-7613.1)
 export const REST_SHADE = 'bg-line/60'
 export const REST_HOVER = 'hover:bg-line/80'
 
