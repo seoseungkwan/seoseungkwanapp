@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>직원 근무표 시안</title>
+<style>
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-soft: #EFF4FF;
+  --pos: #047857; --warn-bg: #FEF3C7; --warn: #92400E; --r: 6px; --new: #FDE68A;
+  /* 근무표에서 더 쓰는 색 */
+  --head: #FAFBFC; --closed: #EEF0F3; --faint: #B8BDC6; --dot: #D97706;
+  --leave-bg: #EFF4FF; --leave: #1D4ED8;
+  --half-bg: #E0F2FE; --half: #0369A1;
+  --sick-bg: #FDECEC; --sick: #B42318;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, 'Malgun Gothic', sans-serif; word-break: keep-all; overflow-wrap: break-word; }
+main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.lead { color: var(--ink-2); margin: 0 0 20px; }
+section.s { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+h2 { font-size: 16px; margin: 0 0 2px; }
+.sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+.note { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
+.ask { display: inline-block; background: var(--warn-bg); color: var(--warn); border-radius: 3px; padding: 0 4px; font-weight: 600; margin-right: 4px; }
+.btn { height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font: inherit; font-size: 14px; color: var(--ink); text-decoration: none; white-space: nowrap; cursor: pointer; }
+.btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.chip { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 4px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.gray { background: #F3F4F6; color: var(--ink-2); }
+.chip.lv-a { background: var(--leave-bg); color: var(--leave); }
+.chip.lv-h { background: var(--half-bg); color: var(--half); }
+.chip.lv-s { background: var(--sick-bg); color: var(--sick); }
+/* 앱 틀 */
+.app { border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: var(--canvas); }
+.bar { display: flex; align-items: center; gap: 4px; background: var(--surface); border-bottom: 1px solid var(--line); padding: 0 12px; height: 48px; overflow-x: auto; }
+.bar .logo { font-weight: 700; margin-right: 12px; white-space: nowrap; }
+.bar a { padding: 0 10px; height: 48px; display: inline-flex; align-items: center; color: var(--ink-2); text-decoration: none; border-bottom: 2px solid transparent; white-space: nowrap; }
+.bar a.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
+.bar { overflow: hidden; }
+.bar .strip { display: flex; min-width: 0; overflow: hidden; flex: 0 1 auto; }
+.bar a.more { flex: none; }
+.bar .who { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; padding-left: 12px; display: inline-flex; gap: 6px; align-items: center; }
+.body { padding: 16px; display: grid; gap: 12px; }
+.body > * { min-width: 0; }
+.subnav { display: flex; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.subnav span { padding: 8px 12px; color: var(--ink-2); white-space: nowrap; }
+.subnav span.on { color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+h3.t1 { font-size: 20px; margin: 0; }
+/* 위쪽 도구 줄 */
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tools .range { font-weight: 600; margin: 0 6px; white-space: nowrap; }
+.tools .seg { margin-left: auto; }
+.seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--r); overflow: hidden; background: var(--surface); flex: none; }
+.seg span { height: 32px; display: inline-flex; align-items: center; padding: 0 12px; font-size: 13px; color: var(--ink-2); white-space: nowrap; cursor: pointer; }
+.seg span + span { border-left: 1px solid var(--line-strong); }
+.seg span.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+/* ① 주 보기 */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+table { border-collapse: collapse; }
+table.wk { width: 100%; min-width: 960px; table-layout: fixed; }
+td.c .x { white-space: normal; }
+table.wk col.name { width: 136px; }
+table.wk th, table.wk td { border-bottom: 1px solid var(--line); border-left: 1px solid var(--line); padding: 8px 10px; vertical-align: top; text-align: left; }
+table.wk th:first-child, table.wk td:first-child { border-left: 0; }
+table.wk thead th { font-size: 12px; color: var(--muted); font-weight: 500; background: var(--head); white-space: nowrap; }
+table.wk thead th b { font-size: 15px; color: var(--ink); margin-right: 3px; }
+table.wk thead th.today { box-shadow: inset 0 3px 0 var(--accent); color: var(--accent); }
+table.wk thead th.today b { color: var(--accent); }
+table.wk tbody tr:last-child td { border-bottom: 0; }
+.pn b { display: block; color: var(--accent); cursor: pointer; }
+.pn small { display: block; color: var(--muted); font-size: 12px; }
+td.c { position: relative; height: 60px; font-variant-numeric: tabular-nums; cursor: pointer; }
+td.c:hover { background: #F9FAFB; }
+.t { font-weight: 600; }
+.off { color: var(--muted); }
+.x { display: block; font-size: 12px; color: var(--pos); font-weight: 600; margin-top: 2px; white-space: nowrap; }
+.d { position: absolute; top: 8px; right: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--dot); }
+.closed, td.c.closed:hover { background: var(--closed); cursor: default; }
+td.c .chip { margin-top: 1px; }
+td.pick { outline: 2px solid var(--accent); outline-offset: -2px; }
+table.wk tfoot td { background: var(--head); font-size: 12px; color: var(--ink-2); border-top: 1px solid var(--line); border-bottom: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: var(--ink-2); align-items: center; }
+.legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.legend .dotm { width: 7px; height: 7px; border-radius: 50%; background: var(--dot); display: inline-block; }
+.legend .sw { width: 14px; height: 14px; border-radius: 3px; background: var(--closed); border: 1px solid var(--line-strong); display: inline-block; }
+.legend .x { display: inline; margin: 0; }
+/* ② 달 보기 */
+.mon-help { margin: 0; font-size: 13px; color: var(--ink-2); }
+.mon { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--surface); }
+.mon .h { padding: 6px 8px; font-size: 12px; color: var(--muted); background: var(--head); border-bottom: 1px solid var(--line); }
+.mon .m { min-height: 86px; padding: 6px 8px; border-left: 1px solid var(--line); border-top: 1px solid var(--line); display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; cursor: pointer; }
+.mon .m:nth-child(7n+1) { border-left: 0; }
+.mon .m:nth-child(-n+14) { border-top: 0; }
+.mon .n { font-weight: 600; font-size: 13px; }
+.mon .cnt { font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.mon .cl { font-size: 12px; color: var(--muted); }
+.mon .chip { height: 18px; font-size: 11px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.mon .out { color: var(--faint); background: #FCFCFD; cursor: default; }
+.mon .m.closed { background: var(--closed); }
+.mon .m.today { box-shadow: inset 0 0 0 2px var(--accent); }
+.mon .m.today .n { color: var(--accent); }
+.mon-list { display: none; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.mon-list li { display: flex; gap: 8px; align-items: center; padding: 4px 0; }
+/* ③ 기본 근무 */
+.who-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.who-h b { font-size: 16px; }
+.who-h small { color: var(--muted); }
+.days { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.drow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 10px 12px; border-top: 1px solid var(--line); }
+.drow:first-child { border-top: 0; }
+.drow .dn { width: 22px; font-weight: 700; }
+.drow.rest { background: var(--head); }
+.fld { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.sel { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 8px 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font-variant-numeric: tabular-nums; color: var(--ink); font-size: 14px; cursor: pointer; }
+.sel::after { content: '▾'; color: var(--muted); font-size: 11px; }
+.sel.dim { color: var(--muted); }
+.alt { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding-left: 40px; font-size: 13px; color: var(--ink-2); }
+.alt small { color: var(--muted); font-size: 12px; }
+.since { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 13px; color: var(--ink-2); }
+.basis { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; border-radius: var(--r); background: var(--accent-soft); padding: 10px 14px; }
+.basis p { margin: 0; }
+/* ④ 그날만 바꾸기 창 */
+.scrim { background: rgba(17, 24, 39, .38); padding: 24px 16px; border-radius: var(--r); }
+.dlg { max-width: 480px; margin: 0 auto; background: var(--surface); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.22); padding: 18px; display: grid; gap: 16px; }
+.dlg > * { min-width: 0; }
+.dlg .hd { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.dlg .hd b { font-size: 17px; display: block; }
+.dlg .hd small { color: var(--muted); font-size: 13px; }
+.dlg .close { width: 32px; height: 32px; display: grid; place-items: center; border-radius: var(--r); color: var(--muted); flex: none; }
+.lbl { font-size: 13px; font-weight: 700; margin: 0 0 8px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.lbl small { font-weight: 400; color: var(--muted); font-size: 12px; }
+.times { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; }
+.help { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+.xrow { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.xrow + .xrow { border-top: 1px solid var(--line); }
+.xrow .k { flex: 1; min-width: 0; font-weight: 600; }
+.xrow .k small { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
+.step { display: inline-flex; align-items: center; border: 1px solid var(--line-strong); border-radius: var(--r); overflow: hidden; flex: none; }
+.step span { width: 34px; height: 34px; display: grid; place-items: center; color: var(--ink-2); font-size: 16px; cursor: pointer; }
+.step output { min-width: 96px; height: 34px; display: grid; place-items: center; border-left: 1px solid var(--line-strong); border-right: 1px solid var(--line-strong); font-variant-numeric: tabular-nums; font-weight: 600; }
+.step output.zero { color: var(--muted); font-weight: 400; }
+.info { font-size: 13px; color: var(--ink-2); background: var(--canvas); border-radius: var(--r); padding: 8px 12px; margin: 8px 0 0; }
+.inp { border: 1px solid var(--line-strong); border-radius: var(--r); padding: 8px 10px; min-height: 38px; color: var(--ink); }
+.foot { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.foot .r { display: flex; gap: 8px; margin-left: auto; }
+/* ⑤ 합계 표 */
+table.sum { width: 100%; min-width: 560px; font-variant-numeric: tabular-nums; }
+table.sum th, table.sum td { padding: 10px 14px; border-bottom: 1px solid var(--line); text-align: right; vertical-align: top; white-space: nowrap; }
+table.sum th:first-child, table.sum td:first-child { text-align: left; white-space: normal; }
+table.sum thead th { font-size: 12px; color: var(--muted); font-weight: 500; background: var(--head); }
+table.sum td small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+table.sum td.z { color: var(--faint); }
+table.sum td.tot { font-weight: 700; }
+table.sum tfoot td { font-weight: 700; background: var(--head); border-bottom: 0; }
+.goes { display: flex; gap: 8px; align-items: center; border-radius: var(--r); background: var(--accent-soft); padding: 10px 14px; margin: 0; }
+/* ⑥ 폰 */
+.phone { max-width: 390px; margin: 0 auto; border: 1px solid var(--line-strong); border-radius: 22px; overflow: hidden; background: var(--canvas); }
+.phone .bar { height: 44px; }
+.phone .bar a { height: 44px; padding: 0 8px; }
+.phone .body { padding: 12px; gap: 10px; }
+.ptools { display: flex; align-items: center; gap: 6px; }
+.ptools .range { flex: 1; text-align: center; font-weight: 600; font-size: 14px; white-space: nowrap; }
+.ptools .btn.sm { padding: 0 10px; }
+.day { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.day .dh { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; background: var(--head); border-bottom: 1px solid var(--line); font-weight: 700; }
+.day .dh small { font-weight: 400; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.day.today .dh { background: var(--accent-soft); color: var(--accent); }
+.day.cl .dh { background: var(--closed); border-bottom: 0; color: var(--ink-2); }
+.pr { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-top: 1px solid var(--line); cursor: pointer; }
+.dh + .pr { border-top: 0; }
+.pr .nm { min-width: 0; }
+.pr .nm small { color: var(--muted); font-size: 12px; margin-left: 4px; }
+.pr .v { margin-left: auto; text-align: right; font-variant-numeric: tabular-nums; display: flex; flex-direction: column; align-items: flex-end; }
+.pr .v .t { display: inline-flex; align-items: center; gap: 6px; }
+.pr .v .di { width: 7px; height: 7px; border-radius: 50%; background: var(--dot); display: inline-block; }
+.rest-line { padding: 8px 12px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); }
+/* 맨 아래 확인 대상 */
+.asks { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.asks li { color: var(--ink-2); }
+@media (max-width: 760px) {
+  .tools .seg { margin-left: 0; }
+  .bar .who { display: none; }
+}
+@media (max-width: 600px) {
+  section.s { padding: 12px; }
+  .body { padding: 10px; }
+  .tools .range { flex-basis: 100%; order: -1; margin: 0; }
+  .mon .h { padding: 4px; text-align: center; }
+  .mon .m { min-height: 58px; padding: 4px; align-items: center; }
+  .mon .cnt { font-size: 12px; }
+  .mon .cl { font-size: 11px; }
+  .mon .chip { font-size: 0; width: 8px; height: 8px; padding: 0; border-radius: 50%; background: currentColor; }
+  .mon-list { display: block; }
+  .alt { padding-left: 0; }
+  .scrim { padding: 12px 8px; }
+  .dlg { padding: 14px; }
+  .step output { min-width: 72px; }
+  .mon .tdy { display: none; }
+}
+</style>
+</head>
+<body>
+<main>
+<h1>직원 탭 — 근무표 시안</h1>
+<p class="lead">사람마다 요일별 기본 근무를 한 번 정해 두고, 바뀐 날과 더 일한 시간만 적는 근무표입니다. 출퇴근은 찍지 않고 근무표대로 일한 것으로 봅니다. 이름·숫자는 지어낸 것입니다(오늘 = 2026년 11월 21일 토요일).</p>
+
+<!-- ① 주 보기 -->
+<section class="s" id="s1">
+<h2>① 주 보기 — 이번 주(11월 16일 월 ~ 22일 일)</h2>
+<p class="sub">줄은 사람, 칸은 날짜입니다. 칸을 누르면 그날만 바꾸는 창(④)이 뜨고, 이름을 누르면 그 사람 기본 근무(③)가 열립니다.</p>
+<div class="app">
+  <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a><span class="who"><span class="chip gray">원장</span>owner@example.com</span></div>
+  <div class="body">
+    <h3 class="t1">직원</h3>
+    <div class="subnav"><span>명단</span><span class="on">근무표</span><span>휴가</span><span>급여</span></div>
+    <div class="tools">
+      <span class="btn sm">◀ 지난주</span><span class="btn sm">이번 주</span><span class="btn sm">다음 주 ▶</span>
+      <span class="range">11월 16일 (월) ~ 22일 (일)</span>
+      <span class="seg"><span class="on">주</span><span>달</span></span>
+    </div>
+    <div class="table-wrap">
+      <table class="wk">
+        <colgroup><col class="name"><col><col><col><col><col><col><col></colgroup>
+        <thead><tr>
+          <th>이름</th>
+          <th><b>16</b>월</th><th><b>17</b>화</th><th><b>18</b>수</th><th><b>19</b>목</th><th><b>20</b>금</th>
+          <th class="today"><b>21</b>토 · 오늘</th>
+          <th class="closed"><b>22</b>일 · 휴진</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="pn"><b>김하늘</b><small>간호조무사 · 토 1·3주</small></td>
+            <td class="c"><span class="t">09–18</span></td><td class="c"><span class="t">09–18</span></td><td class="c"><span class="t">09–18</span></td><td class="c"><span class="t">09–18</span></td><td class="c"><span class="t">09–18</span></td>
+            <td class="c"><span class="t">09–13</span></td><td class="c closed"></td>
+          </tr>
+          <tr>
+            <td class="pn"><b>이도윤</b><small>물리치료사 · 토 2·4주</small></td>
+            <td class="c"><span class="t">09–18</span></td><td class="c"><span class="t">09–18</span></td>
+            <td class="c pick"><span class="t">09–18</span><span class="x">+연장 2시간</span></td>
+            <td class="c"><span class="t">09–18</span></td><td class="c"><span class="t">09–18</span></td>
+            <td class="c"><span class="off">쉼</span></td><td class="c closed"></td>
+          </tr>
+          <tr>
+            <td class="pn"><b>박서연</b><small>물리치료사 · 토 2·4주</small></td>
+            <td class="c"><span class="t">09–18</span></td><td class="c"><span class="t">09–18</span></td><td class="c"><span class="t">09–18</span></td>
+            <td class="c"><i class="d" title="기본과 다르게 바꾼 날"></i><span class="t">10–19</span></td>
+            <td class="c"><span class="t">09–18</span><span class="x">+연장 1시간 30분</span></td>
+            <td class="c"><span class="off">쉼</span></td><td class="c closed"></td>
+          </tr>
+          <tr>
+            <td class="pn"><b>최민준</b><small>방사선사 · 토 1·3주</small></td>
+            <td class="c"><span class="t">09–18</span></td><td class="c"><span class="t">09–18</span></td><td class="c"><span class="t">09–18</span></td><td class="c"><span class="t">09–18</span></td><td class="c"><span class="t">09–18</span></td>
+            <td class="c"><span class="t">09–13</span></td><td class="c closed"></td>
+          </tr>
+          <tr>
+            <td class="pn"><b>정유나</b><small>원무 · 월·수·금</small></td>
+            <td class="c"><span class="t">09–18</span></td><td class="c"><span class="off">쉼</span></td>
+            <td class="c"><span class="chip lv-s">병가</span></td>
+            <td class="c"><span class="off">쉼</span></td>
+            <td class="c"><span class="t">09–18</span></td>
+            <td class="c"><span class="off">쉼</span></td><td class="c closed"></td>
+          </tr>
+          <tr>
+            <td class="pn"><b>한지우</b><small>원무 · 월~금</small></td>
+            <td class="c"><span class="t">09–18</span></td><td class="c"><span class="t">09–18</span></td><td class="c"><span class="t">09–18</span></td><td class="c"><span class="t">09–18</span></td>
+            <td class="c"><i class="d" title="기본과 다르게 바꾼 날"></i><span class="t">09–15</span></td>
+            <td class="c"><span class="off">쉼</span></td><td class="c closed"></td>
+          </tr>
+        </tbody>
+        <tfoot><tr>
+          <td>일한 사람</td><td>6명</td><td>5명</td><td>5명</td><td>5명</td><td>6명</td><td>2명</td><td class="closed">0명</td>
+        </tr></tfoot>
+      </table>
+    </div>
+    <div class="legend">
+      <span><span class="t">09–18</span> 근무 시간</span>
+      <span><span class="off">쉼</span> 쉬는 날</span>
+      <span><span class="chip lv-a">연차</span><span class="chip lv-h">오후 반차</span><span class="chip lv-s">병가</span> 휴가(휴가 화면에서 넣은 것)</span>
+      <span><i class="dotm"></i> 기본과 다르게 바꾼 날</span>
+      <span><span class="x">+연장 2시간</span> 더 일한 시간</span>
+      <span><i class="sw"></i> 공휴일·휴진일</span>
+    </div>
+  </div>
+</div>
+<p class="note">파란 테 칸(이도윤 18일)을 누르면 ④ 창이 뜹니다. 반차인 날은 칸에 일한 시간과 칩이 함께 나옵니다(예: 09–13 <span class="chip lv-h">오후 반차</span>). 이번 주에는 공휴일이 없어 일요일 휴진만 회색입니다.</p>
+<p class="note"><span class="ask">확인 대상</span>이름 아래 작은 글자(토 1·3주 등), 맨 아래 '일한 사람' 줄, 이름을 누르면 기본 근무가 열리는 것.</p>
+</section>
+
+<!-- ② 달 보기 -->
+<section class="s" id="s2">
+<h2>② 달 보기 — 11월</h2>
+<p class="sub">[주 / 달]에서 '달'을 고르면 한 달이 한눈에 보입니다. 날짜를 누르면 그 주의 주 보기로 갑니다.</p>
+<div class="app">
+  <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a><span class="who"><span class="chip gray">원장</span>owner@example.com</span></div>
+  <div class="body">
+    <div class="subnav"><span>명단</span><span class="on">근무표</span><span>휴가</span><span>급여</span></div>
+    <div class="tools">
+      <span class="btn sm">◀ 지난달</span><span class="btn sm">이번 달</span><span class="btn sm">다음 달 ▶</span>
+      <span class="range">2026년 11월</span>
+      <span class="seg"><span>주</span><span class="on">달</span></span>
+    </div>
+    <p class="mon-help">칸의 숫자는 그날 일한 사람 수예요. 하루 휴가는 빼고, 반차는 넣어서 세요.</p>
+    <div class="mon">
+      <div class="h">월</div><div class="h">화</div><div class="h">수</div><div class="h">목</div><div class="h">금</div><div class="h">토</div><div class="h">일</div>
+      <!-- 1주 -->
+      <div class="m out"><span class="n">26</span></div><div class="m out"><span class="n">27</span></div><div class="m out"><span class="n">28</span></div><div class="m out"><span class="n">29</span></div><div class="m out"><span class="n">30</span></div><div class="m out"><span class="n">31</span></div>
+      <div class="m closed"><span class="n">1</span><span class="cl">휴진</span></div>
+      <!-- 2주 -->
+      <div class="m"><span class="n">2</span><span class="cnt">6명</span></div>
+      <div class="m"><span class="n">3</span><span class="cnt">5명</span></div>
+      <div class="m"><span class="n">4</span><span class="cnt">6명</span></div>
+      <div class="m"><span class="n">5</span><span class="cnt">5명</span></div>
+      <div class="m"><span class="n">6</span><span class="cnt">6명</span></div>
+      <div class="m"><span class="n">7</span><span class="cnt">1명</span><span class="chip lv-a">연차 김하늘</span></div>
+      <div class="m closed"><span class="n">8</span><span class="cl">휴진</span></div>
+      <!-- 3주 -->
+      <div class="m"><span class="n">9</span><span class="cnt">6명</span></div>
+      <div class="m"><span class="n">10</span><span class="cnt">5명</span></div>
+      <div class="m"><span class="n">11</span><span class="cnt">6명</span></div>
+      <div class="m"><span class="n">12</span><span class="cnt">5명</span></div>
+      <div class="m"><span class="n">13</span><span class="cnt">6명</span><span class="chip lv-h">오후 반차 박서연</span></div>
+      <div class="m"><span class="n">14</span><span class="cnt">2명</span></div>
+      <div class="m closed"><span class="n">15</span><span class="cl">휴진</span><span class="cnt">1명</span></div>
+      <!-- 4주 (이번 주) -->
+      <div class="m"><span class="n">16</span><span class="cnt">6명</span></div>
+      <div class="m"><span class="n">17</span><span class="cnt">5명</span></div>
+      <div class="m"><span class="n">18</span><span class="cnt">5명</span><span class="chip lv-s">병가 정유나</span></div>
+      <div class="m"><span class="n">19</span><span class="cnt">5명</span></div>
+      <div class="m"><span class="n">20</span><span class="cnt">6명</span></div>
+      <div class="m today"><span class="n">21<span class="tdy"> 오늘</span></span><span class="cnt">2명</span></div>
+      <div class="m closed"><span class="n">22</span><span class="cl">휴진</span></div>
+      <!-- 5주 -->
+      <div class="m"><span class="n">23</span><span class="cnt">6명</span></div>
+      <div class="m"><span class="n">24</span><span class="cnt">5명</span></div>
+      <div class="m"><span class="n">25</span><span class="cnt">6명</span></div>
+      <div class="m"><span class="n">26</span><span class="cnt">5명</span></div>
+      <div class="m"><span class="n">27</span><span class="cnt">6명</span></div>
+      <div class="m"><span class="n">28</span><span class="cnt">1명</span><span class="chip lv-a">연차 이도윤</span></div>
+      <div class="m closed"><span class="n">29</span><span class="cl">휴진</span></div>
+      <!-- 6주 -->
+      <div class="m"><span class="n">30</span><span class="cnt">6명</span></div>
+      <div class="m out"><span class="n">1</span></div><div class="m out"><span class="n">2</span></div><div class="m out"><span class="n">3</span></div><div class="m out"><span class="n">4</span></div><div class="m out"><span class="n">5</span></div><div class="m out"><span class="n">6</span></div>
+    </div>
+    <ul class="mon-list">
+      <li><b>7일 (토)</b><span class="chip lv-a">연차</span>김하늘</li>
+      <li><b>13일 (금)</b><span class="chip lv-h">오후 반차</span>박서연</li>
+      <li><b>18일 (수)</b><span class="chip lv-s">병가</span>정유나</li>
+      <li><b>28일 (토)</b><span class="chip lv-a">연차</span>이도윤</li>
+    </ul>
+  </div>
+</div>
+<p class="note">15일(일)은 휴진일인데 최민준이 일해서 1명입니다(그 4시간은 ⑤에 '휴일'로 잡힘). 폰처럼 좁은 화면에서는 칸 안 휴가 이름 대신 색 점만 보이고, 달력 아래에 휴가 목록이 붙습니다.</p>
+</section>
+
+<!-- ③ 기본 근무 고치기 -->
+<section class="s" id="s3">
+<h2>③ 기본 근무 고치기 — 김하늘</h2>
+<p class="sub">주 보기에서 이름을 누르면 열립니다. 요일마다 일함/쉼과 시간을 정해 두면, 매주 근무표가 이대로 채워집니다.</p>
+<div class="app">
+  <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a><span class="who"><span class="chip gray">원장</span>owner@example.com</span></div>
+  <div class="body">
+    <div class="subnav"><span>명단</span><span class="on">근무표</span><span>휴가</span><span>급여</span></div>
+    <div class="tools"><span class="btn sm">◀ 근무표로</span></div>
+    <div class="who-h"><b>김하늘 — 기본 근무</b><small>간호조무사 · 정규직 · 주 40시간</small></div>
+    <div class="days">
+      <div class="drow"><span class="dn">월</span><span class="seg"><span class="on">일함</span><span>쉼</span></span>
+        <span class="fld">근무 <span class="sel">09:00</span>~<span class="sel">18:00</span></span>
+        <span class="fld">점심 <span class="sel">13:00</span>~<span class="sel">14:00</span></span></div>
+      <div class="drow"><span class="dn">화</span><span class="seg"><span class="on">일함</span><span>쉼</span></span>
+        <span class="fld">근무 <span class="sel">09:00</span>~<span class="sel">18:00</span></span>
+        <span class="fld">점심 <span class="sel">13:00</span>~<span class="sel">14:00</span></span></div>
+      <div class="drow"><span class="dn">수</span><span class="seg"><span class="on">일함</span><span>쉼</span></span>
+        <span class="fld">근무 <span class="sel">09:00</span>~<span class="sel">18:00</span></span>
+        <span class="fld">점심 <span class="sel">13:00</span>~<span class="sel">14:00</span></span></div>
+      <div class="drow"><span class="dn">목</span><span class="seg"><span class="on">일함</span><span>쉼</span></span>
+        <span class="fld">근무 <span class="sel">09:00</span>~<span class="sel">18:00</span></span>
+        <span class="fld">점심 <span class="sel">13:00</span>~<span class="sel">14:00</span></span></div>
+      <div class="drow"><span class="dn">금</span><span class="seg"><span class="on">일함</span><span>쉼</span></span>
+        <span class="fld">근무 <span class="sel">09:00</span>~<span class="sel">18:00</span></span>
+        <span class="fld">점심 <span class="sel">13:00</span>~<span class="sel">14:00</span></span></div>
+      <div class="drow"><span class="dn">토</span><span class="seg"><span class="on">일함</span><span>쉼</span></span>
+        <span class="fld">근무 <span class="sel">09:00</span>~<span class="sel">13:00</span></span>
+        <span class="fld">점심 <span class="sel dim">없음</span></span>
+        <div class="alt">어느 토요일에 <span class="seg"><span>매주</span><span class="on">1·3주</span><span>2·4주</span></span><small>그달 첫째·셋째 토요일에 일해요. 다섯째 토요일은 쉬어요.</small></div></div>
+      <div class="drow rest"><span class="dn">일</span><span class="seg"><span>일함</span><span class="on">쉼</span></span><span class="off">쉬는 요일</span></div>
+    </div>
+    <p class="help" style="margin:0">시간은 10분 단위로 골라요. 점심이 없으면 '없음'을 골라요.</p>
+    <div class="since">지난 근무표는 그대로 두고 <span class="sel">11월 23일 (월)</span>부터 이 근무로 바꿔요.</div>
+    <div class="basis"><p>이 근무가 매주 근무표의 바탕이 돼요.</p><span class="btn pri">저장</span></div>
+  </div>
+</div>
+<p class="note"><span class="ask">확인 대상</span>'다섯째 토요일은 쉼'(일하면 그날만 바꿈), '언제부터 바꾸나' 날짜 칸(지난 주 근무표가 저절로 바뀌지 않게).</p>
+</section>
+
+<!-- ④ 그날만 바꾸기 -->
+<section class="s" id="s4">
+<h2>④ 날짜 칸을 눌렀을 때 — 그날만 바꾸기(이도윤 11월 18일)</h2>
+<p class="sub">근무표 위에 창이 뜹니다. 그날 근무 시간을 바꾸거나 쉼으로 하고, 더 일한 시간을 적습니다.</p>
+<div class="app">
+  <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a><span class="who"><span class="chip gray">원장</span>owner@example.com</span></div>
+  <div class="body">
+    <div class="scrim">
+      <div class="dlg" role="dialog" aria-label="이도윤 11월 18일 근무 바꾸기">
+        <div class="hd"><div><b>이도윤 · 11월 18일 (수)</b><small>기본 근무 09:00~18:00 · 점심 13:00~14:00</small></div><span class="close">✕</span></div>
+        <div>
+          <p class="lbl">그날 근무</p>
+          <span class="seg"><span class="on">일함</span><span>쉼</span></span>
+          <div class="times">
+            <span class="fld">근무 <span class="sel">09:00</span>~<span class="sel">18:00</span></span>
+            <span class="fld">점심 <span class="sel">13:00</span>~<span class="sel">14:00</span></span>
+          </div>
+          <p class="help">근무 시간을 늘려도 더 일한 시간은 저절로 늘지 않아요. 아래 칸에 따로 적어 주세요.</p>
+        </div>
+        <div>
+          <p class="lbl">더 일한 시간 <small>30분씩 늘고 줄어요</small></p>
+          <div class="xrow"><span class="k">연장<small>정해진 근무보다 더 일한 시간</small></span><span class="step"><span>−</span><output>2시간</output><span>+</span></span></div>
+          <div class="xrow"><span class="k">야간<small>밤 10시 ~ 아침 6시</small></span><span class="step"><span>−</span><output class="zero">0시간</output><span>+</span></span></div>
+          <div class="xrow"><span class="k">휴일<small>공휴일·휴진일에 일한 시간</small></span><span class="step"><span>−</span><output class="zero">0시간</output><span>+</span></span></div>
+          <p class="info">공휴일·휴진일에 일하면 그 시간은 '휴일'로 들어가요.</p>
+        </div>
+        <div>
+          <p class="lbl">메모</p>
+          <div class="inp">저녁 환자가 많아 8시까지 일함</div>
+          <p class="help">휴가는 이 창이 아니라 휴가 화면에서 넣어요.</p>
+        </div>
+        <div class="foot"><span class="btn">기본으로 되돌리기</span><div class="r"><span class="btn pri">저장</span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="note">저장하면 주 보기 칸에 '+연장 2시간'이 보입니다. 근무 시간이나 쉼을 기본과 다르게 저장하면 칸 오른쪽 위에 주황 점이 찍힙니다.</p>
+<p class="note"><span class="ask">확인 대상</span>[기본으로 되돌리기]는 그날 바꾼 근무·더 일한 시간·메모를 모두 지우고 기본 근무로 돌림. 휴진일을 '일함'으로 바꾸면 그 근무 시간이 '휴일' 칸에 먼저 채워짐(고칠 수 있음). 근무 시간을 늘려도 연장은 저절로 안 채움.</p>
+</section>
+
+<!-- ⑤ 이달 더 일한 시간 합계 -->
+<section class="s" id="s5">
+<h2>⑤ 이달 더 일한 시간 합계 — 11월</h2>
+<p class="sub">달 보기(②) 아래에 붙어 나옵니다. 이름 아래 작은 글자는 그 시간을 적은 날짜입니다.</p>
+<div class="app">
+  <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a><span class="who"><span class="chip gray">원장</span>owner@example.com</span></div>
+  <div class="body">
+    <div class="subnav"><span>명단</span><span class="on">근무표</span><span>휴가</span><span>급여</span></div>
+    <div class="tools"><span class="range" style="margin:0">11월 더 일한 시간</span><span class="seg"><span>주</span><span class="on">달</span></span></div>
+    <div class="table-wrap">
+      <table class="sum">
+        <thead><tr><th>이름</th><th>연장</th><th>야간</th><th>휴일</th><th>합계</th></tr></thead>
+        <tbody>
+          <tr><td><b>김하늘</b><small>10일 (화) 야간 1시간</small></td><td class="z">–</td><td>1시간</td><td class="z">–</td><td class="tot">1시간</td></tr>
+          <tr><td><b>이도윤</b><small>11일 (수) 연장 2시간 · 18일 (수) 연장 2시간</small></td><td>4시간</td><td class="z">–</td><td class="z">–</td><td class="tot">4시간</td></tr>
+          <tr><td><b>박서연</b><small>12일 (목) 연장 1시간 · 20일 (금) 연장 1시간 30분</small></td><td>2시간 30분</td><td class="z">–</td><td class="z">–</td><td class="tot">2시간 30분</td></tr>
+          <tr><td><b>최민준</b><small>15일 (일, 휴진일) 휴일 4시간</small></td><td class="z">–</td><td class="z">–</td><td>4시간</td><td class="tot">4시간</td></tr>
+          <tr><td><b>정유나</b></td><td class="z">–</td><td class="z">–</td><td class="z">–</td><td class="z">–</td></tr>
+          <tr><td><b>한지우</b></td><td class="z">–</td><td class="z">–</td><td class="z">–</td><td class="z">–</td></tr>
+        </tbody>
+        <tfoot><tr><td>모두</td><td>6시간 30분</td><td>1시간</td><td>4시간</td><td>11시간 30분</td></tr></tfoot>
+      </table>
+    </div>
+    <p class="goes">💡 이 시간은 급여 화면과 세무사 자료에 자동으로 들어가요.</p>
+  </div>
+</div>
+<p class="note"><span class="ask">확인 대상</span>이 표가 달 보기 아래에 붙는 자리, 시간을 '2시간 30분'처럼 적는 것, 이름 아래 날짜 내역.</p>
+</section>
+
+<!-- ⑥ 폰 -->
+<section class="s" id="s6">
+<h2>⑥ 폰(390px) — 하루씩 목록</h2>
+<p class="sub">폰에서는 표 대신 날짜마다 상자가 쌓입니다. 오늘 상자가 보이게 열리고, 위로 넘기면 16·17일이 있습니다. 사람 줄을 누르면 ④ 창이 아래에서 올라옵니다.</p>
+<div class="phone">
+  <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a></div>
+  <div class="body">
+    <div class="subnav"><span>명단</span><span class="on">근무표</span><span>휴가</span><span>급여</span></div>
+    <div class="ptools"><span class="btn sm">◀</span><span class="range">11월 16일 ~ 22일</span><span class="btn sm">▶</span><span class="seg"><span class="on">주</span><span>달</span></span></div>
+    <div class="day">
+      <div class="dh">11월 18일 (수)<small>5명 일함 · 휴가 1명</small></div>
+      <div class="pr"><span class="nm"><b>김하늘</b><small>간호조무사</small></span><span class="v"><span class="t">09–18</span></span></div>
+      <div class="pr"><span class="nm"><b>이도윤</b><small>물리치료사</small></span><span class="v"><span class="t">09–18</span><span class="x">+연장 2시간</span></span></div>
+      <div class="pr"><span class="nm"><b>박서연</b><small>물리치료사</small></span><span class="v"><span class="t">09–18</span></span></div>
+      <div class="pr"><span class="nm"><b>최민준</b><small>방사선사</small></span><span class="v"><span class="t">09–18</span></span></div>
+      <div class="pr"><span class="nm"><b>한지우</b><small>원무</small></span><span class="v"><span class="t">09–18</span></span></div>
+      <div class="pr"><span class="nm"><b>정유나</b><small>원무</small></span><span class="v"><span class="chip lv-s">병가</span></span></div>
+    </div>
+    <div class="day">
+      <div class="dh">11월 19일 (목)<small>5명 일함</small></div>
+      <div class="pr"><span class="nm"><b>김하늘</b><small>간호조무사</small></span><span class="v"><span class="t">09–18</span></span></div>
+      <div class="pr"><span class="nm"><b>이도윤</b><small>물리치료사</small></span><span class="v"><span class="t">09–18</span></span></div>
+      <div class="pr"><span class="nm"><b>박서연</b><small>물리치료사</small></span><span class="v"><span class="t"><i class="di" title="기본과 다르게 바꾼 날"></i>10–19</span></span></div>
+      <div class="pr"><span class="nm"><b>최민준</b><small>방사선사</small></span><span class="v"><span class="t">09–18</span></span></div>
+      <div class="pr"><span class="nm"><b>한지우</b><small>원무</small></span><span class="v"><span class="t">09–18</span></span></div>
+      <div class="rest-line">쉼: 정유나</div>
+    </div>
+    <div class="day">
+      <div class="dh">11월 20일 (금)<small>6명 일함</small></div>
+      <div class="pr"><span class="nm"><b>김하늘</b><small>간호조무사</small></span><span class="v"><span class="t">09–18</span></span></div>
+      <div class="pr"><span class="nm"><b>이도윤</b><small>물리치료사</small></span><span class="v"><span class="t">09–18</span></span></div>
+      <div class="pr"><span class="nm"><b>박서연</b><small>물리치료사</small></span><span class="v"><span class="t">09–18</span><span class="x">+연장 1시간 30분</span></span></div>
+      <div class="pr"><span class="nm"><b>최민준</b><small>방사선사</small></span><span class="v"><span class="t">09–18</span></span></div>
+      <div class="pr"><span class="nm"><b>정유나</b><small>원무</small></span><span class="v"><span class="t">09–18</span></span></div>
+      <div class="pr"><span class="nm"><b>한지우</b><small>원무</small></span><span class="v"><span class="t"><i class="di" title="기본과 다르게 바꾼 날"></i>09–15</span></span></div>
+    </div>
+    <div class="day today">
+      <div class="dh">11월 21일 (토) · 오늘<small>2명 일함</small></div>
+      <div class="pr"><span class="nm"><b>김하늘</b><small>간호조무사</small></span><span class="v"><span class="t">09–13</span></span></div>
+      <div class="pr"><span class="nm"><b>최민준</b><small>방사선사</small></span><span class="v"><span class="t">09–13</span></span></div>
+      <div class="rest-line">쉼: 이도윤 · 박서연 · 정유나 · 한지우</div>
+    </div>
+    <div class="day cl">
+      <div class="dh">11월 22일 (일) · 휴진<small>모두 쉼</small></div>
+    </div>
+  </div>
+</div>
+<p class="note"><span class="ask">확인 대상</span>폰에서 쉬는 사람은 한 줄로 모아 보여 주는 것, 날짜 머리에 'n명 일함 · 휴가 n명' 요약.</p>
+</section>
+
+<section class="s">
+<h2>확인 대상 모음 (Claude가 정한 것)</h2>
+<ol class="asks">
+  <li>토요일은 '매주 / 1·3주 / 2·4주' 중에서 고름. 1·3주는 그달 첫째·셋째 토요일, 다섯째 토요일은 쉼(일하면 그날만 바꿈).</li>
+  <li>더 일한 시간은 30분 단위, [−]·[+]로 늘리고 줄임. '2시간 30분'처럼 적음.</li>
+  <li>기본 근무를 바꿀 때 '언제부터' 날짜를 고름. 지난 근무표는 그대로.</li>
+  <li>근무 시간을 늘려도 연장은 저절로 안 채움(따로 적음). 휴진일·공휴일을 '일함'으로 바꾸면 그 시간이 '휴일' 칸에 먼저 채워짐.</li>
+  <li>[기본으로 되돌리기]는 그날 바꾼 것(근무·더 일한 시간·메모)을 모두 지움.</li>
+  <li>일한 사람 수: 하루 휴가는 빼고 반차는 넣음. 주 보기 맨 아래 줄과 달 보기 칸에 같은 숫자.</li>
+  <li>주 보기에서 이름을 누르면 기본 근무, 칸을 누르면 그날만 바꾸기.</li>
+  <li>이달 더 일한 시간 표는 달 보기 아래에 붙음.</li>
+  <li>폰은 하루씩 상자, 쉬는 사람은 한 줄로 모음, 오늘 상자가 보이게 열림.</li>
+</ol>
+</section>
+</main>
+</body>
+</html>

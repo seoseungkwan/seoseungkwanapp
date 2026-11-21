@@ -1,0 +1,700 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>직원 급여 화면 시안</title>
+<style>
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-soft: #EFF4FF;
+  --pos: #047857; --warn-bg: #FEF3C7; --warn: #92400E; --r: 6px; --new: #FDE68A;
+  --chg: #FEF9C3; --chg-line: #EAB308; --c1: #2563EB; --c2: #8DB0F4; --neg: #B91C1C;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, 'Malgun Gothic', sans-serif; word-break: keep-all; overflow-wrap: break-word; }
+main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.lead { color: var(--ink-2); margin: 0 0 20px; }
+section.s { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+h2 { font-size: 16px; margin: 0 0 2px; }
+.sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+.note { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
+.two { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+.two > * { min-width: 0; }
+.btn { height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font: inherit; font-size: 14px; color: var(--ink); text-decoration: none; white-space: nowrap; }
+.btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.sm { height: 32px; padding: 0 10px; font-size: 13px; }
+.btn.xs { height: 28px; padding: 0 8px; font-size: 12px; }
+.btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.btn.ghost { border-color: transparent; color: var(--muted); }
+.chip { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 4px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.gray { background: #F3F4F6; color: var(--ink-2); }
+.chip.n { background: var(--canvas); color: var(--ink-2); border: 1px solid var(--line); font-weight: 500; }
+.chip.join { background: var(--accent-soft); color: var(--accent); }
+.chip.q { background: var(--warn-bg); color: var(--warn); }
+/* 앱 틀 */
+.app { border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: var(--canvas); }
+.bar { display: flex; align-items: center; gap: 4px; background: var(--surface); border-bottom: 1px solid var(--line); padding: 0 12px; height: 48px; overflow: hidden; }
+.bar .logo { font-weight: 700; margin-right: 12px; white-space: nowrap; }
+.bar a { padding: 0 10px; height: 48px; display: inline-flex; align-items: center; color: var(--ink-2); text-decoration: none; border-bottom: 2px solid transparent; white-space: nowrap; }
+.bar a.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
+.bar .strip { display: flex; min-width: 0; overflow: hidden; flex: 0 1 auto; }
+.bar a.more { flex: none; }
+.bar .who { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; padding-left: 12px; display: inline-flex; gap: 6px; align-items: center; }
+.body { padding: 16px; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+.body > * { min-width: 0; }
+.subnav { display: flex; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.subnav span { padding: 8px 12px; color: var(--ink-2); white-space: nowrap; }
+.subnav span.on { color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.pills span { height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface); display: inline-flex; align-items: center; font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.pills span.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+/* 도구 줄 */
+.tool { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tool .right { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; }
+.month { display: inline-flex; align-items: center; gap: 6px; }
+.month b { font-size: 16px; padding: 0 6px; white-space: nowrap; }
+.info { background: var(--accent-soft); border-radius: var(--r); padding: 8px 12px; font-size: 13px; color: var(--ink-2); }
+.state { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+.state .sp { margin-left: auto; }
+/* 표 */
+.tw { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.pay { width: 100%; font-size: 13px; }
+.pay th, .pay td { border-bottom: 1px solid var(--line); padding: 5px 4px; white-space: nowrap; }
+.pay thead th { color: var(--muted); font-weight: 600; font-size: 12px; text-align: right; background: var(--canvas); padding: 6px 6px; }
+.pay thead tr.grp th { text-align: center; border-bottom: 1px solid var(--line); }
+.pay thead th.l, .pay td.l { text-align: left; }
+.pay td.nm { padding-left: 10px; padding-right: 8px; }
+.pay td.nm b { display: block; font-size: 14px; }
+.pay td.nm small { display: block; color: var(--muted); font-size: 11px; }
+.pay td.num { text-align: right; }
+.pay td.sum { text-align: right; font-weight: 700; padding-right: 10px; }
+.pay tfoot td { background: var(--canvas); font-weight: 700; text-align: right; padding: 8px 6px; border-bottom: 0; }
+.pay tfoot td.l { text-align: left; padding-left: 10px; }
+.pay .hrs { color: var(--muted); text-align: right; padding: 5px 8px; }
+.pay thead th.hrs-h { color: var(--muted); font-weight: 500; }
+.pay tfoot td.hrs { color: var(--muted); font-weight: 600; }
+.in { display: block; min-width: 84px; height: 30px; line-height: 28px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--surface); text-align: right; color: var(--ink); }
+.in.chg { background: var(--chg); border-color: var(--chg-line); }
+.in.focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.in.ph { color: #9CA3AF; }
+.calc { display: flex; justify-content: flex-end; align-items: center; gap: 4px; min-width: 84px; height: 30px; padding: 0 6px 0 8px; border: 1px dashed var(--accent); border-radius: 4px; background: var(--accent-soft); color: var(--accent); text-decoration: none; font-weight: 600; }
+.calc.none { border-color: var(--line-strong); background: var(--canvas); color: var(--muted); font-weight: 400; }
+.lg { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); align-items: center; }
+.sw { width: 16px; height: 14px; border-radius: 3px; display: inline-block; vertical-align: -2px; margin-right: 5px; border: 1px solid var(--line-strong); background: var(--surface); }
+.sw.chg { background: var(--chg); border-color: var(--chg-line); }
+.sw.calc { background: var(--accent-soft); border: 1px dashed var(--accent); }
+.sw.c1 { background: var(--c1); border-color: var(--c1); }
+.sw.c2 { background: var(--c2); border-color: var(--c2); }
+.sw.ln { height: 2px; border: 0; background: var(--ink-2); vertical-align: 3px; }
+.gtxt { color: var(--muted); font-weight: 600; }
+/* 작은 창 */
+.pop { border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); box-shadow: 0 8px 24px rgba(0,0,0,.12); overflow: hidden; }
+.pop .ph-h { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.pop .ph-h b { font-size: 14px; }
+.pop .ph-h .btn { margin-left: auto; }
+.pop .ph-b { padding: 12px 14px; display: grid; gap: 10px; }
+.fld { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+.fld .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; color: var(--ink); font-size: 13px; }
+.box { display: inline-flex; align-items: center; height: 32px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--surface); font-size: 13px; color: var(--ink); white-space: nowrap; }
+.box.grow { flex: 1 1 140px; min-width: 0; }
+.box.ph { color: #9CA3AF; }
+.box.r { justify-content: flex-end; min-width: 96px; font-variant-numeric: tabular-nums; }
+.box.sel::after { content: '▾'; margin-left: auto; padding-left: 10px; color: var(--muted); font-size: 11px; }
+.box.focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 4px; overflow: hidden; }
+.seg span { height: 30px; padding: 0 10px; display: inline-flex; align-items: center; font-size: 13px; color: var(--ink-2); background: var(--surface); }
+.seg span + span { border-left: 1px solid var(--line-strong); }
+.seg span.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.under { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr) minmax(0, 360px); align-items: start; }
+.under > * { min-width: 0; }
+/* 실적 입력 */
+.perf { width: 100%; font-size: 13px; }
+.perf th, .perf td { padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; text-align: left; }
+.perf thead th { background: var(--canvas); color: var(--muted); font-size: 12px; font-weight: 600; }
+.perf th.r, .perf td.r { text-align: right; }
+.perf tr.who td { background: #FAFBFC; border-top: 1px solid var(--line-strong); }
+.perf tr.who td b { font-size: 14px; }
+.perf tr.who td small { color: var(--muted); margin-left: 6px; }
+.perf tbody tr:not(.who) td:first-child { padding-left: 26px; }
+.perf .how { color: var(--ink-2); }
+.perf .how small { display: block; color: var(--muted); font-size: 11px; }
+.perf .fx { color: var(--muted); font-size: 12px; }
+.perf .amt { font-weight: 700; }
+.perf .inl { display: inline-flex; align-items: center; gap: 6px; }
+.perf .in { display: inline-block; min-width: 110px; }
+.perf .in.n { min-width: 64px; }
+.perf tfoot td { background: var(--canvas); font-weight: 700; border-bottom: 0; }
+/* 인센티브 규칙 */
+.rules { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+.rules > * { min-width: 0; }
+.rcard { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.rcard .rh { display: flex; align-items: baseline; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.rcard .rh b { font-size: 15px; }
+.rcard .rh small { color: var(--muted); }
+.rcard .rh .tot { margin-left: auto; font-size: 12px; color: var(--muted); }
+.rrow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+.rrow .box.name { flex: 1 1 120px; min-width: 0; }
+.rrow .box.r { min-width: 0; width: 84px; }
+.rrow .box.how { width: 118px; }
+.rrow .unit { width: 18px; color: var(--muted); font-size: 13px; }
+.rrow.adding { background: #FAFBFF; outline: 2px dashed var(--accent); outline-offset: -2px; }
+.rfoot { padding: 10px 14px; }
+.none-list { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border: 1px dashed var(--line-strong); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: var(--ink-2); background: var(--surface); }
+.howkey { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: var(--ink-2); }
+.howkey b { color: var(--ink); }
+/* 항목 고치기 */
+.items { list-style: none; margin: 0; padding: 0; }
+.items li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+.items .ord { display: inline-flex; gap: 2px; }
+.items .ord span { width: 26px; height: 26px; display: inline-grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 4px; font-size: 10px; color: var(--ink-2); background: var(--surface); }
+.items .ord span.off { color: #C4C8CE; border-color: var(--line); }
+.items .nm { font-weight: 600; min-width: 64px; }
+.items .acts { margin-left: auto; display: inline-flex; gap: 6px; }
+.items li.ask { background: var(--warn-bg); }
+.askbox { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 10px; margin-top: 2px; border-radius: var(--r); background: var(--surface); border: 1px solid #F3D9A4; font-size: 13px; color: var(--ink-2); }
+.askbox p { margin: 0; flex: 1 1 260px; }
+.askbox .btn { flex: none; }
+.btn.danger { border-color: var(--neg); color: var(--neg); }
+.addrow { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px; }
+/* 엑셀 미리 보기 */
+.xl { border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.xl .xh { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px; background: #F0FDF4; border-bottom: 1px solid #BBE5C8; }
+.xl .xh .fi { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 4px; background: #15803D; color: #fff; font-size: 12px; font-weight: 700; }
+.xl .xh b { font-size: 14px; word-break: break-all; }
+.xl .xh .btn { margin-left: auto; }
+.xl .grid { overflow-x: auto; }
+.sheet { font-size: 12px; }
+.sheet td, .sheet th { border: 1px solid #DADDE2; padding: 3px 7px; white-space: nowrap; height: 24px; }
+.sheet .cl th { background: #F3F4F6; color: var(--muted); font-weight: 500; text-align: center; font-size: 11px; }
+.sheet th.rn { background: #F3F4F6; color: var(--muted); font-weight: 500; width: 30px; text-align: center; font-size: 11px; }
+.sheet .ttl td { font-weight: 700; font-size: 13px; }
+.sheet .hd td { background: #EEF2F7; font-weight: 700; text-align: center; line-height: 1.25; height: auto; padding: 4px 6px; }
+.sheet td.n { text-align: right; }
+.sheet .tt td { font-weight: 700; border-top: 2px solid #9CA3AF; }
+.sheet td.mt { color: var(--muted); }
+.xl .tabs { display: flex; gap: 2px; padding: 0 10px; background: #F3F4F6; border-top: 1px solid #DADDE2; }
+.xl .tabs span { padding: 5px 14px; font-size: 12px; color: var(--ink-2); }
+.xl .tabs span.on { background: var(--surface); color: #15803D; font-weight: 700; box-shadow: inset 0 -2px 0 #15803D; }
+/* 세무사 파일 */
+.files { display: grid; gap: 12px; }
+.fmonth { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.fmonth .fm-h { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: #FAFBFC; border-radius: 8px 8px 0 0; }
+.fmonth .fm-h b { font-size: 14px; }
+.fmonth .fm-h small { color: var(--muted); }
+.frow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+.frow:last-child { border-bottom: 0; }
+.frow .ext { display: inline-grid; place-items: center; min-width: 34px; height: 22px; padding: 0 4px; border-radius: 4px; font-size: 11px; font-weight: 700; background: var(--canvas); border: 1px solid var(--line-strong); color: var(--ink-2); }
+.frow .fn { font-weight: 600; word-break: break-all; }
+.frow .meta { color: var(--muted); font-size: 12px; }
+.frow .acts { margin-left: auto; display: inline-flex; gap: 6px; }
+.drop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border: 1px dashed var(--line-strong); border-radius: 8px; padding: 12px 14px; background: var(--surface); font-size: 13px; color: var(--ink-2); }
+.drop .right { margin-left: auto; display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/* 인건비 */
+.tiles { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tile { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 12px 14px; min-width: 0; }
+.tile small { display: block; color: var(--muted); font-size: 12px; }
+.tile b { display: block; font-size: 22px; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.tile .d { display: block; color: var(--muted); font-size: 12px; }
+.burden { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 10px 14px; }
+.burden .lb { font-weight: 600; }
+.burden .lb small { display: block; color: var(--muted); font-weight: 400; font-size: 12px; }
+.burden .ok { color: var(--pos); font-size: 12px; }
+.cbox { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 12px 14px; }
+.cbox h3 { font-size: 14px; margin: 0; }
+.cbox .ch { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; margin-bottom: 6px; }
+.cwrap { overflow-x: auto; }
+.cwrap.end { direction: rtl; }
+.cwrap.end > svg { direction: ltr; }
+svg.chart { display: block; width: 100%; min-width: 640px; height: auto; font-family: inherit; }
+svg.chart .gl { stroke: var(--line); stroke-width: 1; }
+svg.chart .base { stroke: var(--line-strong); stroke-width: 1; }
+svg.chart .yt { fill: var(--muted); font-size: 12px; text-anchor: end; }
+svg.chart .xt { fill: var(--muted); font-size: 13px; text-anchor: middle; }
+svg.chart .xt.on { fill: var(--ink); font-weight: 700; }
+svg.chart .vl { fill: var(--ink); font-size: 13px; font-weight: 700; text-anchor: middle; }
+svg.chart .na { fill: var(--muted); font-size: 13px; text-anchor: middle; }
+svg.chart .s1 { fill: var(--c1); }
+svg.chart .s2 { fill: var(--c2); }
+svg.chart .ln { fill: none; stroke: var(--ink-2); stroke-width: 2; stroke-linejoin: round; }
+svg.chart .dot { fill: var(--ink-2); stroke: var(--surface); stroke-width: 2; }
+svg.chart g:hover .s1, svg.chart g:hover .s2, svg.chart g:hover .dot { opacity: .8; }
+details.mt { margin-top: 8px; font-size: 13px; }
+details.mt summary { color: var(--accent); cursor: pointer; }
+.mtab { margin-top: 8px; font-size: 12px; }
+.mtab th, .mtab td { padding: 5px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.mtab th:first-child, .mtab td:first-child { text-align: left; color: var(--muted); font-weight: 500; }
+.mtab thead th { color: var(--muted); font-weight: 600; }
+.plus, .minus { color: var(--ink-2); } .same { color: var(--muted); }
+/* 명세서 */
+.slipwrap { display: grid; gap: 16px; grid-template-columns: minmax(0, 240px) minmax(0, 1fr); align-items: start; }
+.slipwrap > * { min-width: 0; }
+.picker { display: grid; gap: 4px; }
+.picker span { display: flex; justify-content: space-between; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); font-size: 13px; }
+.picker span small { color: var(--muted); }
+.picker span.on { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.slip { width: 100%; max-width: 420px; background: #fff; border: 1px solid var(--line-strong); box-shadow: 0 4px 16px rgba(0,0,0,.08); padding: 22px 24px; }
+.slip .hosp { font-size: 15px; font-weight: 700; }
+.slip .t { font-size: 18px; font-weight: 700; margin: 2px 0 10px; }
+.slip .who { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; color: var(--ink-2); padding-bottom: 10px; border-bottom: 2px solid var(--ink); }
+.slip h5 { font-size: 12px; color: var(--muted); margin: 14px 0 4px; font-weight: 600; }
+.slip table { width: 100%; font-size: 13px; }
+.slip td { padding: 5px 0; border-bottom: 1px solid var(--line); }
+.slip td.n { text-align: right; }
+.slip td:first-child { white-space: nowrap; padding-right: 12px; vertical-align: top; }
+.slip td small { display: block; color: var(--muted); font-size: 11px; white-space: normal; }
+.slip tr.tt td { border-top: 1px solid var(--ink); border-bottom: 0; font-weight: 700; font-size: 15px; padding-top: 8px; }
+.slip .foot { margin-top: 16px; padding-top: 10px; border-top: 1px dashed var(--line-strong); font-size: 12px; color: var(--ink-2); }
+/* 폰 */
+.phones { display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; }
+.phone { width: 390px; max-width: 100%; border: 8px solid #1F2937; border-radius: 28px; overflow: hidden; background: var(--canvas); }
+.phone .bar { height: 44px; padding: 0 10px; }
+.phone .bar a { height: 44px; padding: 0 8px; }
+.phone .body { padding: 12px; gap: 10px; }
+.phone .month b { font-size: 15px; }
+.pcards { display: grid; gap: 8px; }
+.pc { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.pc .pc-h { display: flex; align-items: center; gap: 8px; padding: 11px 12px; }
+.pc .pc-h b { font-size: 15px; }
+.pc .pc-h small { color: var(--muted); font-size: 12px; }
+.pc .pc-h .amt { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pc .pc-h .cv { color: var(--muted); font-size: 11px; width: 12px; text-align: center; }
+.pc.open { border-color: var(--accent); }
+.pc .pc-b { border-top: 1px solid var(--line); padding: 4px 12px 10px; }
+.pc .li { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 13px; }
+.pc .li > span:first-child { color: var(--ink-2); }
+.pc .li .in, .pc .li .calc { margin-left: auto; min-width: 120px; }
+.pc .hrs-l { margin-top: 6px; padding: 6px 8px; border-radius: 4px; background: var(--canvas); color: var(--muted); font-size: 12px; }
+.ptotal { display: flex; justify-content: space-between; padding: 10px 12px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line-strong); font-weight: 700; }
+.pbtns { display: flex; flex-wrap: wrap; gap: 6px; }
+.pbtns .btn { flex: 1 1 auto; justify-content: center; }
+.tiles.stack { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.tiles.stack .tile { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; padding: 10px 12px; }
+.tiles.stack .tile b { font-size: 18px; margin-left: auto; }
+.tiles.stack .tile .d { flex-basis: 100%; }
+/* 정한 것 */
+.dec { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 13px; color: var(--ink-2); }
+.dec b { color: var(--ink); }
+@media (max-width: 760px) {
+  .bar .who { display: none; }
+}
+@media (max-width: 900px) {
+  .two, .rules, .under, .slipwrap { grid-template-columns: minmax(0, 1fr); }
+  .tiles { grid-template-columns: minmax(0, 1fr); }
+  .picker { display: flex; flex-wrap: wrap; gap: 6px; }
+  .picker span small { display: none; }
+  .picker span:first-child { flex-basis: 100%; }
+}
+@media (max-width: 560px) {
+  .tool .right { margin-left: 0; }
+  .state .sp { margin-left: 0; flex-basis: 100%; }
+  .frow .acts { margin-left: 0; }
+  .drop .right { margin-left: 0; }
+  .items .acts { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+<main>
+<h1>직원 탭 — 급여 화면 시안</h1>
+<p class="lead">원장 계정만 보는 직원 탭의 '급여' 칸입니다. 위에서 아래로 넘기며 장면 ①~⑨를 봐 주세요. 이름·숫자는 지어낸 것입니다.</p>
+
+<!-- ① -->
+<section class="s" id="s1">
+<h2>① 이달 급여 입력 표 (PC · 2026년 11월)</h2>
+<p class="sub">줄은 사람, 칸은 지급 항목입니다. 10월 금액을 그대로 가져온 뒤 바뀐 칸만 고쳤어요. 인센티브 칸은 직접 적지 않고 ② 이달 실적에서 계산한 합계가 들어와요(누르면 ②로 가요).</p>
+<div class="app">
+  <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a><span class="who"><span class="chip gray">원장</span>owner@example.com</span></div>
+  <div class="body">
+    <div class="subnav"><span>명단</span><span>근무표</span><span>휴가</span><span class="on">급여</span></div>
+    <div class="pills"><span class="on">이달 급여</span><span>인센티브</span><span>세무사 파일</span><span>인건비</span><span>명세서</span></div>
+    <div class="tool">
+      <div class="month"><a class="btn sm">◀ 10월</a><b>2026년 11월</b><a class="btn sm">12월 ▶</a></div>
+      <div class="right"><a class="btn">지난달 금액 가져오기</a><a class="btn">항목 고치기</a><a class="btn pri" href="#s5">엑셀 받기</a></div>
+    </div>
+    <div class="info">금액은 실수령 기준으로 적어요. 세전 금액과 세금·4대보험은 세무사가 계산해요.</div>
+    <div class="state"><span class="chip n">10월 금액을 가져왔어요 · 11월 2일</span><span class="chip n">이달 입사 없음</span><span class="chip n">이달 퇴사 없음</span><span class="sp">칸에서 나가면 바로 저장돼요. 언제든 다시 고칠 수 있어요.</span></div>
+    <div class="tw">
+      <table class="pay">
+        <thead>
+          <tr class="grp"><th rowspan="2" class="l" style="padding-left:10px">이름</th><th colspan="6">지급 항목 · 실수령 기준 (원)</th><th colspan="3" class="hrs-h">더 일한 시간 · 근무표에서 자동 (시간)</th><th rowspan="2">조정(±)</th><th rowspan="2" style="padding-right:10px">합계 (원)</th></tr>
+          <tr><th>기본급</th><th>연장수당</th><th>식대</th><th>인센티브</th><th>상여</th><th>직책수당</th><th class="hrs-h">연장</th><th class="hrs-h">야간</th><th class="hrs-h">휴일</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="nm"><b>김하늘</b><small>간호조무사 · 정규직</small></td><td class="num"><span class="in">2,900,000</span></td><td class="num"><span class="in"></span></td><td class="num"><span class="in">200,000</span></td><td class="num"><a class="calc" href="#s2">100,000 ›</a></td><td class="num"><span class="in"></span></td><td class="num"><span class="in"></span></td><td class="hrs">–</td><td class="hrs">1</td><td class="hrs">–</td><td class="num"><span class="in"></span></td><td class="sum">3,200,000</td></tr>
+          <tr><td class="nm"><b>이도윤</b><small>물리치료사 · 정규직</small></td><td class="num"><span class="in">3,100,000</span></td><td class="num"><span class="in chg">120,000</span></td><td class="num"><span class="in">200,000</span></td><td class="num"><a class="calc" href="#s2">580,000 ›</a></td><td class="num"><span class="in"></span></td><td class="num"><span class="in"></span></td><td class="hrs">4</td><td class="hrs">–</td><td class="hrs">–</td><td class="num"><span class="in"></span></td><td class="sum">4,000,000</td></tr>
+          <tr><td class="nm"><b>박서연</b><small>물리치료사 · 정규직</small></td><td class="num"><span class="in">2,800,000</span></td><td class="num"><span class="in chg">70,000</span></td><td class="num"><span class="in">200,000</span></td><td class="num"><a class="calc" href="#s2">315,000 ›</a></td><td class="num"><span class="in"></span></td><td class="num"><span class="in"></span></td><td class="hrs">2.5</td><td class="hrs">–</td><td class="hrs">–</td><td class="num"><span class="in"></span></td><td class="sum">3,385,000</td></tr>
+          <tr><td class="nm"><b>최민준</b><small>방사선사 · 정규직</small></td><td class="num"><span class="in">3,300,000</span></td><td class="num"><span class="in chg">160,000</span></td><td class="num"><span class="in">200,000</span></td><td class="num"><a class="calc none" href="#s2">– ›</a></td><td class="num"><span class="in"></span></td><td class="num"><span class="in">150,000</span></td><td class="hrs">–</td><td class="hrs">–</td><td class="hrs">4</td><td class="num"><span class="in"></span></td><td class="sum">3,810,000</td></tr>
+          <tr><td class="nm"><b>정유나</b><small>원무 · 파트타임</small></td><td class="num"><span class="in">1,450,000</span></td><td class="num"><span class="in"></span></td><td class="num"><span class="in">120,000</span></td><td class="num"><a class="calc none" href="#s2">– ›</a></td><td class="num"><span class="in"></span></td><td class="num"><span class="in"></span></td><td class="hrs">–</td><td class="hrs">–</td><td class="hrs">–</td><td class="num"><span class="in"></span></td><td class="sum">1,570,000</td></tr>
+          <tr><td class="nm"><b>한지우</b><small>원무 · 계약직</small></td><td class="num"><span class="in">2,450,000</span></td><td class="num"><span class="in"></span></td><td class="num"><span class="in">200,000</span></td><td class="num"><a class="calc none" href="#s2">– ›</a></td><td class="num"><span class="in"></span></td><td class="num"><span class="in"></span></td><td class="hrs">–</td><td class="hrs">–</td><td class="hrs">–</td><td class="num"><span class="in focus"></span></td><td class="sum">2,650,000</td></tr>
+        </tbody>
+        <tfoot>
+          <tr><td class="l">합계 (6명)</td><td>16,000,000</td><td>350,000</td><td>1,120,000</td><td>995,000</td><td>0</td><td>150,000</td><td class="hrs">6.5</td><td class="hrs">1</td><td class="hrs">4</td><td>0</td><td style="padding-right:10px">18,615,000</td></tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="under">
+      <div class="lg">
+        <span><i class="sw"></i>10월에서 그대로 가져온 칸</span>
+        <span><i class="sw chg"></i>이달 바꾼 칸</span>
+        <span><i class="sw calc"></i>인센티브 — 실적으로 계산 (누르면 ② 이달 실적)</span>
+        <span><span class="gtxt">회색 숫자</span> 근무표에서 자동 (여기서 못 고침)</span>
+        <span style="flex-basis:100%">입사·퇴사한 달에는 이름 아래에 <span class="chip join">2월 입사</span> <span class="chip n">3월 퇴사</span>처럼 칩이 붙어요. 11월은 입사·퇴사가 없어요.</span>
+      </div>
+      <div class="pop">
+        <div class="ph-h"><b>조정(±) · 한지우 · 11월</b><span class="btn xs ghost">닫기</span></div>
+        <div class="ph-b">
+          <div class="fld">더하거나 뺄 금액<div class="row"><span class="seg"><span class="on">+ 더하기</span><span>− 빼기</span></span><span class="box r ph">0</span>원</div></div>
+          <div class="fld">까닭<div class="row"><span class="seg"><span>일할 계산</span><span>공제</span><span class="on">기타</span></span></div><div class="row"><span class="box grow ph">짧게 적어요 (예: 무급 1일 공제)</span></div></div>
+          <p class="note" style="margin:0">조정 칸을 누르면 열리는 작은 창이에요. 적은 까닭은 세무사 엑셀 '메모' 칸에도 들어가요.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="note">합계 = 지급 항목 + 조정. 회색 '더 일한 시간'은 금액이 아니라서 합계에 안 들어가요(연장수당 금액은 원장님이 적어요). [급여 확정]·잠금 단추는 없어요.</p>
+</section>
+
+<!-- ② -->
+<section class="s" id="s2">
+<h2>② 이달 실적 입력 — 인센티브 자동 계산</h2>
+<p class="sub">'인센티브' 작은 메뉴의 첫 화면입니다. 항목마다 이달 건수나 매출만 적으면 금액이 바로 나오고, 사람별 합계가 ① 표의 인센티브 칸으로 들어가요.</p>
+<div class="app">
+  <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a><span class="who"><span class="chip gray">원장</span>owner@example.com</span></div>
+  <div class="body">
+    <div class="subnav"><span>명단</span><span>근무표</span><span>휴가</span><span class="on">급여</span></div>
+    <div class="pills"><span>이달 급여</span><span class="on">인센티브</span><span>세무사 파일</span><span>인건비</span><span>명세서</span></div>
+    <div class="tool">
+      <div class="month"><a class="btn sm">◀ 10월</a><b>2026년 11월 실적</b><a class="btn sm">12월 ▶</a></div>
+      <div class="right"><a class="btn" href="#s3">인센티브 규칙 고치기</a></div>
+    </div>
+    <div class="info">건수·매출은 이달 숫자를 그대로 적어요(0 이상). 원 미만은 항목마다 버려요. 빼야 할 돈은 ① 표의 조정 칸에 적어요.</div>
+    <div class="tw">
+      <table class="perf">
+        <thead><tr><th>항목</th><th>방식</th><th>이달 실적 (적는 칸)</th><th>계산</th><th class="r">인센티브 (원)</th></tr></thead>
+        <tbody>
+          <tr class="who"><td colspan="4"><b>김하늘</b><small>간호조무사</small></td><td class="r amt">100,000</td></tr>
+          <tr><td>고정 수당</td><td class="how">고정 수당<small>매달 100,000원</small></td><td class="fx">적을 것 없음</td><td class="fx">매달 같은 금액</td><td class="r">100,000</td></tr>
+          <tr class="who"><td colspan="4"><b>이도윤</b><small>물리치료사</small></td><td class="r amt">580,000</td></tr>
+          <tr><td>도수치료 급여</td><td class="how">건당 정액<small>1건에 5,000원</small></td><td><span class="inl"><span class="in n chg">32</span>건</span></td><td class="fx">32건 × 5,000원</td><td class="r">160,000</td></tr>
+          <tr><td>도수치료 비급여</td><td class="how">매출의 %<small>매출의 10%</small></td><td><span class="inl"><span class="in chg">4,200,000</span>원</span></td><td class="fx">4,200,000원 × 10%</td><td class="r">420,000</td></tr>
+          <tr class="who"><td colspan="4"><b>박서연</b><small>물리치료사</small></td><td class="r amt">315,000</td></tr>
+          <tr><td>도수치료 비급여</td><td class="how">매출의 %<small>매출의 10%</small></td><td><span class="inl"><span class="in chg focus">3,150,000</span>원</span></td><td class="fx">3,150,000원 × 10%</td><td class="r">315,000</td></tr>
+        </tbody>
+        <tfoot><tr><td colspan="4">합계 (3명)</td><td class="r">995,000</td></tr></tfoot>
+      </table>
+    </div>
+    <div class="none-list">인센티브 규칙이 없는 사람: <b>최민준 · 정유나 · 한지우</b><a class="btn xs" href="#s3" style="margin-left:auto">규칙 더하기</a></div>
+  </div>
+</div>
+<p class="note">노란 칸 = 이달 적은 실적. 실적 칸은 지난달 숫자를 가져오지 않고 매달 새로 적어요(고정 수당은 적을 것 없음).</p>
+</section>
+
+<!-- ③ -->
+<section class="s" id="s3">
+<h2>③ 인센티브 규칙 — 사람마다 항목·방식·값</h2>
+<p class="sub">②에서 [인센티브 규칙 고치기]를 누르면 나와요. 사람마다 항목을 여러 개 둘 수 있고, 같은 치료라도 사람마다 금액·%를 다르게 정할 수 있어요. 금액·%는 언제든 고쳐요.</p>
+<div class="app">
+  <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a><span class="who"><span class="chip gray">원장</span>owner@example.com</span></div>
+  <div class="body">
+    <div class="subnav"><span>명단</span><span>근무표</span><span>휴가</span><span class="on">급여</span></div>
+    <div class="pills"><span>이달 급여</span><span class="on">인센티브</span><span>세무사 파일</span><span>인건비</span><span>명세서</span></div>
+    <div class="tool"><a class="btn sm" href="#s2">‹ 이달 실적으로</a><b style="font-size:16px">인센티브 규칙</b></div>
+    <div class="howkey"><span><b>건당 정액</b> = 건수 × 금액</span><span><b>매출의 %</b> = 매출 × %</span><span><b>고정 수당</b> = 매달 같은 금액</span></div>
+    <div class="rules">
+      <div class="rcard">
+        <div class="rh"><b>이도윤</b><small>물리치료사</small><span class="tot">항목 2개</span></div>
+        <div class="rrow"><span class="box name">도수치료 급여</span><span class="box sel how">건당 정액</span><span class="box r focus">5,000</span><span class="unit">원</span><span class="btn xs">빼기</span></div>
+        <div class="rrow"><span class="box name">도수치료 비급여</span><span class="box sel how">매출의 %</span><span class="box r">10</span><span class="unit">%</span><span class="btn xs">빼기</span></div>
+        <div class="rfoot"><a class="btn sm">+ 항목 더하기</a></div>
+      </div>
+      <div class="rcard">
+        <div class="rh"><b>박서연</b><small>물리치료사</small><span class="tot">항목 1개</span></div>
+        <div class="rrow"><span class="box name">도수치료 비급여</span><span class="box sel how">매출의 %</span><span class="box r">10</span><span class="unit">%</span><span class="btn xs">빼기</span></div>
+        <div class="rrow adding"><span class="box name">신장분사1</span><span class="box sel how">건당 정액</span><span class="box r ph">금액</span><span class="unit">원</span><span class="btn xs pri">넣기</span><span class="btn xs ghost">그만두기</span></div>
+        <div class="rfoot"><a class="btn sm">+ 항목 더하기</a></div>
+      </div>
+      <div class="rcard">
+        <div class="rh"><b>김하늘</b><small>간호조무사</small><span class="tot">항목 1개</span></div>
+        <div class="rrow"><span class="box name">고정 수당</span><span class="box sel how">고정 수당</span><span class="box r">100,000</span><span class="unit">원</span><span class="btn xs">빼기</span></div>
+        <div class="rfoot"><a class="btn sm">+ 항목 더하기</a></div>
+      </div>
+      <div class="none-list">규칙 없음<span class="btn xs">+ 최민준</span><span class="btn xs">+ 정유나</span><span class="btn xs">+ 한지우</span><span style="flex-basis:100%;font-size:12px;color:var(--muted)">이름을 누르면 그 사람 카드가 생기고 항목을 더할 수 있어요.</span></div>
+    </div>
+  </div>
+</div>
+<p class="note">파란 테두리 = 고치는 중(이도윤 도수치료 급여 금액), 점선 줄 = 막 더하는 중(박서연 '신장분사1'). <span class="chip q">확인</span> 금액·%를 고치면 지금 보는 달부터 새 값으로 계산하고, 지난 달 인센티브는 그때 금액 그대로 둬요.</p>
+</section>
+
+<!-- ④ -->
+<section class="s" id="s4">
+<h2>④ 항목 고치기</h2>
+<p class="sub">① 표에서 [항목 고치기]를 누르면 열려요. 병원마다 항목을 더하고, 이름을 고치고, 차례를 바꾸고, 뺄 수 있어요.</p>
+<div class="app">
+  <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a><span class="who"><span class="chip gray">원장</span>owner@example.com</span></div>
+  <div class="body">
+    <div class="subnav"><span>명단</span><span>근무표</span><span>휴가</span><span class="on">급여</span></div>
+    <div class="pills"><span class="on">이달 급여</span><span>인센티브</span><span>세무사 파일</span><span>인건비</span><span>명세서</span></div>
+    <div class="tool">
+      <div class="month"><a class="btn sm">◀ 10월</a><b>2026년 11월</b><a class="btn sm">12월 ▶</a></div>
+      <div class="right"><a class="btn">지난달 금액 가져오기</a><a class="btn on">항목 고치기</a><a class="btn pri">엑셀 받기</a></div>
+    </div>
+    <div class="pop" style="max-width:640px;justify-self:end;width:100%">
+      <div class="ph-h"><b>지급 항목 고치기</b><span class="btn xs">닫기</span></div>
+      <ul class="items">
+        <li><span class="ord"><span class="off">▲</span><span>▼</span></span><span class="nm">기본급</span><span class="chip n">기본</span><span class="acts"><span class="btn xs">이름 고치기</span><span class="btn xs">빼기</span></span></li>
+        <li><span class="ord"><span>▲</span><span>▼</span></span><span class="nm">연장수당</span><span class="chip n">기본</span><span class="acts"><span class="btn xs">이름 고치기</span><span class="btn xs">빼기</span></span></li>
+        <li><span class="ord"><span>▲</span><span>▼</span></span><span class="nm">식대</span><span class="chip n">기본</span><span class="acts"><span class="btn xs">이름 고치기</span><span class="btn xs">빼기</span></span></li>
+        <li><span class="ord"><span>▲</span><span>▼</span></span><span class="nm">인센티브</span><span class="chip n">기본</span><span class="chip join">실적으로 계산</span><span class="acts"><span class="btn xs">이름 고치기</span><span class="btn xs">빼기</span></span></li>
+        <li class="ask"><span class="ord"><span>▲</span><span>▼</span></span><span class="nm">상여</span><span class="chip n">기본</span><span class="acts"><span class="btn xs">이름 고치기</span><span class="btn xs on">빼기</span></span>
+          <div class="askbox"><p><b>상여를 뺄까요?</b> 9월에 적은 금액이 있어요. 지난 달 기록은 그대로 남아요. 11월 표부터 이 칸이 안 보여요.</p><span class="btn sm danger">빼기</span><span class="btn sm">그만두기</span></div></li>
+        <li><span class="ord"><span>▲</span><span class="off">▼</span></span><span class="box focus" style="width:180px">직책수당</span><span class="chip warn">병원이 더함</span><span class="acts"><span class="btn xs pri">확인</span><span class="btn xs">그만두기</span></span></li>
+      </ul>
+      <div class="addrow"><span class="box grow ph">새 항목 이름 (예: 자격수당)</span><span class="btn sm pri">+ 항목 더하기</span></div>
+      <p class="note" style="margin:0 14px 12px">더 일한 시간(연장·야간·휴일)·조정(±)·합계는 늘 있는 칸이라 이 목록에 없어요.</p>
+    </div>
+  </div>
+</div>
+<p class="note">'상여' 줄 = [빼기]를 누른 모습, '직책수당' 줄 = [이름 고치기]를 누른 모습. 금액이 한 번도 없던 항목은 묻지 않고 바로 빠져요.</p>
+</section>
+
+<!-- ⑤ -->
+<section class="s" id="s5">
+<h2>⑤ 세무사에게 보낼 엑셀 — 받은 파일을 열면</h2>
+<p class="sub">① 표에서 [엑셀 받기]를 누르면 이 파일이 내려받아져요. 원장님이 카톡·메일로 세무사에게 직접 보내요.</p>
+<div class="xl">
+  <div class="xh"><span class="fi">X</span><b>2026-11 급여자료 (○○정형외과).xlsx</b><a class="btn sm">엑셀 받기</a></div>
+  <div class="grid">
+    <table class="sheet">
+      <thead><tr class="cl"><th class="rn"></th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F</th><th>G</th><th>H</th><th>I</th><th>J</th><th>K</th><th>L</th><th>M</th><th>N</th><th>O</th><th>P</th><th>Q</th><th>R</th><th>S</th><th>T</th><th>U</th><th>V</th></tr></thead>
+      <tbody>
+        <tr class="ttl"><th class="rn">1</th><td colspan="22">2026년 11월 급여자료 · ○○정형외과 · 금액은 모두 실수령(손에 받는 돈) 기준, 단위 원</td></tr>
+        <tr class="hd"><th class="rn">2</th><td>이름</td><td>직종</td><td>근무<br>형태</td><td>입사일</td><td>퇴사일</td><td>기본급</td><td>연장수당</td><td>식대</td><td>인센티브</td><td>상여</td><td>직책수당</td><td>조정<br>(±)</td><td>지급 합계</td><td>연장<br>(시간)</td><td>야간<br>(시간)</td><td>휴일<br>(시간)</td><td>연차<br>(일)</td><td>병가<br>(일)</td><td>무급<br>(일)</td><td>남은 연차<br>(일)</td><td>메모</td><td>계좌<br>(이달 입사자만)</td></tr>
+        <tr><th class="rn">3</th><td>김하늘</td><td>간호조무사</td><td>정규직</td><td>2021-03-02</td><td></td><td class="n">2,900,000</td><td class="n"></td><td class="n">200,000</td><td class="n">100,000</td><td class="n"></td><td class="n"></td><td class="n"></td><td class="n">3,200,000</td><td class="n"></td><td class="n">1</td><td class="n"></td><td class="n">1</td><td class="n"></td><td class="n"></td><td class="n">7.5</td><td></td><td></td></tr>
+        <tr><th class="rn">4</th><td>이도윤</td><td>물리치료사</td><td>정규직</td><td>2023-07-17</td><td></td><td class="n">3,100,000</td><td class="n">120,000</td><td class="n">200,000</td><td class="n">580,000</td><td class="n"></td><td class="n"></td><td class="n"></td><td class="n">4,000,000</td><td class="n">4</td><td class="n"></td><td class="n"></td><td class="n">1</td><td class="n"></td><td class="n"></td><td class="n">10</td><td></td><td></td></tr>
+        <tr><th class="rn">5</th><td>박서연</td><td>물리치료사</td><td>정규직</td><td>2025-01-06</td><td></td><td class="n">2,800,000</td><td class="n">70,000</td><td class="n">200,000</td><td class="n">315,000</td><td class="n"></td><td class="n"></td><td class="n"></td><td class="n">3,385,000</td><td class="n">2.5</td><td class="n"></td><td class="n"></td><td class="n">0.5</td><td class="n"></td><td class="n"></td><td class="n">12</td><td></td><td></td></tr>
+        <tr><th class="rn">6</th><td>최민준</td><td>방사선사</td><td>정규직</td><td>2019-11-25</td><td></td><td class="n">3,300,000</td><td class="n">160,000</td><td class="n">200,000</td><td class="n"></td><td class="n"></td><td class="n">150,000</td><td class="n"></td><td class="n">3,810,000</td><td class="n"></td><td class="n"></td><td class="n">4</td><td class="n"></td><td class="n"></td><td class="n"></td><td class="n">3</td><td>11-15(일) 휴진일 근무</td><td></td></tr>
+        <tr><th class="rn">7</th><td>정유나</td><td>원무</td><td>파트타임</td><td>2024-09-02</td><td></td><td class="n">1,450,000</td><td class="n"></td><td class="n">120,000</td><td class="n"></td><td class="n"></td><td class="n"></td><td class="n"></td><td class="n">1,570,000</td><td class="n"></td><td class="n"></td><td class="n"></td><td class="n"></td><td class="n">1</td><td class="n"></td><td class="n">7</td><td></td><td></td></tr>
+        <tr><th class="rn">8</th><td>한지우</td><td>원무</td><td>계약직</td><td>2026-02-02</td><td></td><td class="n">2,450,000</td><td class="n"></td><td class="n">200,000</td><td class="n"></td><td class="n"></td><td class="n"></td><td class="n"></td><td class="n">2,650,000</td><td class="n"></td><td class="n"></td><td class="n"></td><td class="n"></td><td class="n"></td><td class="n"></td><td class="n">5</td><td></td><td></td></tr>
+        <tr class="tt"><th class="rn">9</th><td>합계</td><td></td><td></td><td></td><td></td><td class="n">16,000,000</td><td class="n">350,000</td><td class="n">1,120,000</td><td class="n">995,000</td><td class="n">0</td><td class="n">150,000</td><td class="n">0</td><td class="n">18,615,000</td><td class="n">6.5</td><td class="n">1</td><td class="n">4</td><td class="n">2.5</td><td class="n">1</td><td class="n">0</td><td></td><td></td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="tabs"><span class="on">11월 급여</span></div>
+</div>
+<p class="note">표가 넓어서 옆으로 밀면 나머지 칸(메모·계좌)이 보여요. 시트 한 장입니다. 주민번호 칸은 없어요. 계좌는 그달 입사한 사람 줄에만 들어가요 — 예) 2026년 2월 파일이라면 한지우 줄에 '○○은행 000-0000-0000'. 퇴사한 달에는 퇴사일 칸이 채워져요. 반차는 연차 0.5일로 세요.</p>
+</section>
+
+<!-- ⑥ -->
+<section class="s" id="s6">
+<h2>⑥ 세무사 파일 보관</h2>
+<p class="sub">세무사가 보내 준 급여대장·명세서를 달마다 묶어 둬요(사람별로 나누지 않아요).</p>
+<div class="app">
+  <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a><span class="who"><span class="chip gray">원장</span>owner@example.com</span></div>
+  <div class="body">
+    <div class="subnav"><span>명단</span><span>근무표</span><span>휴가</span><span class="on">급여</span></div>
+    <div class="pills"><span>이달 급여</span><span>인센티브</span><span class="on">세무사 파일</span><span>인건비</span><span>명세서</span></div>
+    <div class="drop"><span>세무사가 보낸 급여대장·명세서를 달마다 올려 두세요.</span><span class="right"><span class="box sel">올릴 달 2026-11</span><a class="btn pri">파일 올리기</a></span><span style="flex-basis:100%;font-size:12px;color:var(--muted)">여러 파일을 한 번에 골라도 돼요. 이 칸으로 끌어다 놓아도 올라가요.</span></div>
+    <div class="files">
+      <div class="fmonth">
+        <div class="fm-h"><b>2026-11</b><small>파일 2개</small></div>
+        <div class="frow"><span class="ext">PDF</span><span class="fn">급여대장_11월.pdf</span><span class="meta">214KB · 11월 20일 올림</span><span class="acts"><span class="btn xs">받기</span><span class="btn xs ghost">지우기</span></span></div>
+        <div class="frow"><span class="ext">ZIP</span><span class="fn">명세서_11월.zip</span><span class="meta">1.3MB · 11월 20일 올림</span><span class="acts"><span class="btn xs">받기</span><span class="btn xs ghost">지우기</span></span></div>
+      </div>
+      <div class="fmonth">
+        <div class="fm-h"><b>2026-10</b><small>파일 3개</small></div>
+        <div class="frow"><span class="ext">PDF</span><span class="fn">급여대장_10월.pdf</span><span class="meta">208KB · 10월 21일 올림</span><span class="acts"><span class="btn xs">받기</span><span class="btn xs ghost">지우기</span></span></div>
+        <div class="frow"><span class="ext">ZIP</span><span class="fn">명세서_10월.zip</span><span class="meta">1.2MB · 10월 21일 올림</span><span class="acts"><span class="btn xs">받기</span><span class="btn xs ghost">지우기</span></span></div>
+        <div class="frow"><span class="ext">PDF</span><span class="fn">4대보험_고지_10월.pdf</span><span class="meta">96KB · 10월 24일 올림</span><span class="acts"><span class="btn xs">받기</span><span class="btn xs ghost">지우기</span></span></div>
+      </div>
+      <div class="fmonth">
+        <div class="fm-h"><b>2026-09</b><small>파일 2개</small></div>
+        <div class="frow"><span class="ext">PDF</span><span class="fn">급여대장_9월.pdf</span><span class="meta">205KB · 9월 22일 올림</span><span class="acts"><span class="btn xs">받기</span><span class="btn xs ghost">지우기</span></span></div>
+        <div class="frow"><span class="ext">ZIP</span><span class="fn">명세서_9월.zip</span><span class="meta">1.2MB · 9월 22일 올림</span><span class="acts"><span class="btn xs">받기</span><span class="btn xs ghost">지우기</span></span></div>
+      </div>
+      <a class="btn sm" style="justify-self:start">더 지난 달 보기</a>
+    </div>
+  </div>
+</div>
+<p class="note">[지우기]는 "이 파일을 지울까요?"를 한 번 더 물어요. 새 달이 맨 위에 와요.</p>
+</section>
+
+<!-- ⑦ -->
+<section class="s" id="s7">
+<h2>⑦ 인건비 추이 — 매출 대비 %</h2>
+<p class="sub">인건비 = 지급 합계(① 표 합계) + 병원 부담분(세무사가 알려준 이달 병원 몫 세금·보험료, 원장님이 한 줄 적음). 매출은 웹앱 매출 자료가 있는 달만 써요.</p>
+<div class="app">
+  <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a><span class="who"><span class="chip gray">원장</span>owner@example.com</span></div>
+  <div class="body">
+    <div class="subnav"><span>명단</span><span>근무표</span><span>휴가</span><span class="on">급여</span></div>
+    <div class="pills"><span>이달 급여</span><span>인센티브</span><span>세무사 파일</span><span class="on">인건비</span><span>명세서</span></div>
+    <div class="tool"><div class="month"><a class="btn sm">◀ 10월</a><b>2026년 11월</b><a class="btn sm">12월 ▶</a></div></div>
+    <div class="tiles">
+      <div class="tile"><small>지급 합계</small><b>18,615,000원</b><span class="d">6명 · 10월보다 145,000원 많아요</span></div>
+      <div class="tile"><small>병원 부담분</small><b>2,150,000원</b><span class="d">세무사가 알려준 금액</span></div>
+      <div class="tile"><small>매출 대비 인건비</small><b>17.5%</b><span class="d">인건비 20,765,000원 ÷ 매출 118,400,000원</span></div>
+    </div>
+    <div class="burden"><span class="lb">병원 부담분 (11월)<small>세무사가 알려준 이달 병원 몫 세금·보험료</small></span><span class="box r">2,150,000</span>원<a class="btn sm pri">저장</a><span class="ok">✓ 11월 20일 저장함</span></div>
+    <div class="cbox">
+      <div class="ch"><h3>인건비 · 6~11월</h3><span class="lg"><span><i class="sw c1"></i>지급 합계</span><span><i class="sw c2"></i>병원 부담분</span></span></div>
+      <div class="cwrap end"><svg class="chart" viewBox="0 0 960 232" role="img" aria-label="6월부터 11월까지 인건비 막대"><line x1="64" x2="944" y1="200" y2="200" class="base"/><text x="56" y="204" class="yt">0</text><line x1="64" x2="944" y1="164" y2="164" class="gl"/><text x="56" y="168" class="yt">500만</text><line x1="64" x2="944" y1="128" y2="128" class="gl"/><text x="56" y="132" class="yt">1,000만</text><line x1="64" x2="944" y1="92" y2="92" class="gl"/><text x="56" y="96" class="yt">1,500만</text><line x1="64" x2="944" y1="56" y2="56" class="gl"/><text x="56" y="60" class="yt">2,000만</text><line x1="64" x2="944" y1="20" y2="20" class="gl"/><text x="56" y="24" class="yt">2,500만</text><g><title>6월 인건비 20,400,000원 (지급 합계 18,320,000원 + 병원 부담분 2,080,000원)</title><rect x="64.0" y="16" width="146.7" height="184" fill="transparent"/><rect x="117.3" y="68.1" width="40" height="131.9" class="s1"/><path d="M117.3 66.1V57.1q0 -4 4 -4h32q4 0 4 4V66.1z" class="s2"/><text x="137.3" y="220" class="xt">6월</text></g><g><title>7월 인건비 20,610,000원 (지급 합계 18,510,000원 + 병원 부담분 2,100,000원)</title><rect x="210.7" y="16" width="146.7" height="184" fill="transparent"/><rect x="264.0" y="66.7" width="40" height="133.3" class="s1"/><path d="M264.0 64.7V55.6q0 -4 4 -4h32q4 0 4 4V64.7z" class="s2"/><text x="284" y="220" class="xt">7월</text></g><g><title>8월 인건비 20,370,000원 (지급 합계 18,280,000원 + 병원 부담분 2,090,000원)</title><rect x="357.4" y="16" width="146.7" height="184" fill="transparent"/><rect x="410.7" y="68.4" width="40" height="131.6" class="s1"/><path d="M410.7 66.4V57.3q0 -4 4 -4h32q4 0 4 4V66.4z" class="s2"/><text x="430.7" y="220" class="xt">8월</text></g><g><title>9월 인건비 21,170,000원 (지급 합계 19,050,000원 + 병원 부담분 2,120,000원)</title><rect x="504.0" y="16" width="146.7" height="184" fill="transparent"/><rect x="557.3" y="62.8" width="40" height="137.2" class="s1"/><path d="M557.3 60.8V51.6q0 -4 4 -4h32q4 0 4 4V60.8z" class="s2"/><text x="577.3" y="220" class="xt">9월</text></g><g><title>10월 인건비 20,600,000원 (지급 합계 18,470,000원 + 병원 부담분 2,130,000원)</title><rect x="650.7" y="16" width="146.7" height="184" fill="transparent"/><rect x="704.0" y="67" width="40" height="133.0" class="s1"/><path d="M704.0 65V55.7q0 -4 4 -4h32q4 0 4 4V65z" class="s2"/><text x="724" y="220" class="xt">10월</text></g><g><title>11월 인건비 20,765,000원 (지급 합계 18,615,000원 + 병원 부담분 2,150,000원)</title><rect x="797.4" y="16" width="146.7" height="184" fill="transparent"/><rect x="850.7" y="66" width="40" height="134.0" class="s1"/><path d="M850.7 64V54.5q0 -4 4 -4h32q4 0 4 4V64z" class="s2"/><text x="870.7" y="42.5" class="vl">20,765,000원</text><text x="870.7" y="220" class="xt on">11월</text></g></svg></div>
+      <div class="ch" style="margin-top:10px"><h3>매출 대비 인건비 %</h3><span class="lg"><span>점에 마우스를 올리면 계산이 보여요</span></span></div>
+      <div class="cwrap end"><svg class="chart" viewBox="0 0 960 132" role="img" aria-label="6월부터 11월까지 매출 대비 인건비 비율 선"><line x1="64" x2="944" y1="100" y2="100" class="gl"/><text x="56" y="104" class="yt">16%</text><line x1="64" x2="944" y1="73.3" y2="73.3" class="gl"/><text x="56" y="77.3" class="yt">17%</text><line x1="64" x2="944" y1="46.7" y2="46.7" class="gl"/><text x="56" y="50.7" class="yt">18%</text><line x1="64" x2="944" y1="20" y2="20" class="gl"/><text x="56" y="24" class="yt">19%</text><path d="M137.3 42.2L284 70.6" class="ln"/><path d="M577.3 39.2L724 76L870.7 59" class="ln"/><g><title>6월 매출 대비 18.2% (인건비 20,400,000원 ÷ 매출 112,300,000원)</title><rect x="64.0" y="12" width="146.7" height="96" fill="transparent"/><circle cx="137.3" cy="42.2" r="4.5" class="dot"/></g><text x="137.3" y="122" class="xt">6월</text><g><title>7월 매출 대비 17.1% (인건비 20,610,000원 ÷ 매출 120,500,000원)</title><rect x="210.7" y="12" width="146.7" height="96" fill="transparent"/><circle cx="284" cy="70.6" r="4.5" class="dot"/></g><text x="284" y="122" class="xt">7월</text><text x="430.7" y="64" class="na">매출 자료 없음</text><text x="430.7" y="122" class="xt">8월</text><g><title>9월 매출 대비 18.3% (인건비 21,170,000원 ÷ 매출 115,800,000원)</title><rect x="504.0" y="12" width="146.7" height="96" fill="transparent"/><circle cx="577.3" cy="39.2" r="4.5" class="dot"/></g><text x="577.3" y="122" class="xt">9월</text><g><title>10월 매출 대비 16.9% (인건비 20,600,000원 ÷ 매출 121,900,000원)</title><rect x="650.7" y="12" width="146.7" height="96" fill="transparent"/><circle cx="724" cy="76" r="4.5" class="dot"/></g><text x="724" y="122" class="xt">10월</text><g><title>11월 매출 대비 17.5% (인건비 20,765,000원 ÷ 매출 118,400,000원)</title><rect x="797.4" y="12" width="146.7" height="96" fill="transparent"/><circle cx="870.7" cy="59" r="4.5" class="dot"/><text x="870.7" y="47.0" class="vl">17.5%</text></g><text x="870.7" y="122" class="xt on">11월</text></svg></div>
+      <details class="mt"><summary>달별 숫자 표로 보기</summary>
+        <div class="cwrap"><table class="mtab">
+          <thead><tr><th></th><th>6월</th><th>7월</th><th>8월</th><th>9월</th><th>10월</th><th>11월</th></tr></thead>
+          <tbody>
+            <tr><td>지급 합계</td><td>18,320,000</td><td>18,510,000</td><td>18,280,000</td><td>19,050,000</td><td>18,470,000</td><td>18,615,000</td></tr>
+            <tr><td>병원 부담분</td><td>2,080,000</td><td>2,100,000</td><td>2,090,000</td><td>2,120,000</td><td>2,130,000</td><td>2,150,000</td></tr>
+            <tr><td>인건비</td><td>20,400,000</td><td>20,610,000</td><td>20,370,000</td><td>21,170,000</td><td>20,600,000</td><td>20,765,000</td></tr>
+            <tr><td>매출</td><td>112,300,000</td><td>120,500,000</td><td>매출 자료 없음</td><td>115,800,000</td><td>121,900,000</td><td>118,400,000</td></tr>
+            <tr><td>매출 대비</td><td>18.2%</td><td>17.1%</td><td>–</td><td>18.3%</td><td>16.9%</td><td>17.5%</td></tr>
+          </tbody>
+        </table></div>
+      </details>
+    </div>
+    <div class="cbox">
+      <div class="ch"><h3>사람별 · 11월 지급 합계</h3></div>
+      <div class="tw" style="border:0">
+        <table class="pay">
+          <thead><tr><th class="l" style="padding-left:10px">이름</th><th class="l">직종 · 근무 형태</th><th>11월 지급 합계 (원)</th><th>그중 인센티브</th><th style="padding-right:10px">10월보다</th></tr></thead>
+          <tbody>
+            <tr><td class="nm"><b>김하늘</b></td><td>간호조무사 · 정규직</td><td class="sum">3,200,000</td><td class="num">100,000</td><td class="num same" style="padding-right:10px">같음</td></tr>
+            <tr><td class="nm"><b>이도윤</b></td><td>물리치료사 · 정규직</td><td class="sum">4,000,000</td><td class="num">580,000</td><td class="num minus" style="padding-right:10px">−40,000</td></tr>
+            <tr><td class="nm"><b>박서연</b></td><td>물리치료사 · 정규직</td><td class="sum">3,385,000</td><td class="num">315,000</td><td class="num plus" style="padding-right:10px">+95,000</td></tr>
+            <tr><td class="nm"><b>최민준</b></td><td>방사선사 · 정규직</td><td class="sum">3,810,000</td><td class="num">–</td><td class="num plus" style="padding-right:10px">+90,000</td></tr>
+            <tr><td class="nm"><b>정유나</b></td><td>원무 · 파트타임</td><td class="sum">1,570,000</td><td class="num">–</td><td class="num same" style="padding-right:10px">같음</td></tr>
+            <tr><td class="nm"><b>한지우</b></td><td>원무 · 계약직</td><td class="sum">2,650,000</td><td class="num">–</td><td class="num same" style="padding-right:10px">같음</td></tr>
+          </tbody>
+          <tfoot><tr><td class="l">합계 (6명)</td><td></td><td>18,615,000</td><td>995,000</td><td class="plus" style="padding-right:10px">+145,000</td></tr></tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="note">8월은 웹앱에 매출 자료가 없어 % 대신 '매출 자료 없음'. 병원 부담분은 사람별로 나누지 않아서 사람별 표에는 지급 합계만 있어요. 9월이 높은 건 추석 상여 때문이에요(지어낸 숫자).</p>
+</section>
+
+<!-- ⑧ -->
+<section class="s" id="s8">
+<h2>⑧ 간단 명세서 미리 보기 — 이도윤 · 2026년 11월</h2>
+<p class="sub">원장님이 직원에게 건네는 쉬운 명세서예요. 세금·4대보험이 든 법정 명세서는 세무사가 따로 만들어요.</p>
+<div class="app">
+  <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a><span class="who"><span class="chip gray">원장</span>owner@example.com</span></div>
+  <div class="body">
+    <div class="subnav"><span>명단</span><span>근무표</span><span>휴가</span><span class="on">급여</span></div>
+    <div class="pills"><span>이달 급여</span><span>인센티브</span><span>세무사 파일</span><span>인건비</span><span class="on">명세서</span></div>
+    <div class="tool"><div class="month"><a class="btn sm">◀ 10월</a><b>2026년 11월</b><a class="btn sm">12월 ▶</a></div><div class="right"><a class="btn">인쇄·PDF</a><a class="btn">그림 파일</a></div></div>
+    <div class="slipwrap">
+      <div class="picker">
+        <span style="border:0;background:none;padding:0 2px 4px;color:var(--muted);font-size:12px">사람 고르기</span>
+        <span>김하늘 <small>3,200,000</small></span>
+        <span class="on">이도윤 <small>4,000,000</small></span>
+        <span>박서연 <small>3,385,000</small></span>
+        <span>최민준 <small>3,810,000</small></span>
+        <span>정유나 <small>1,570,000</small></span>
+        <span>한지우 <small>2,650,000</small></span>
+      </div>
+      <div class="slip">
+        <div class="hosp">○○정형외과</div>
+        <div class="t">2026년 11월 급여 명세</div>
+        <div class="who"><b>이도윤</b><span>물리치료사</span><span>정규직</span><span>입사 2023-07-17</span></div>
+        <h5>지급 항목 · 실수령 기준</h5>
+        <table>
+          <tr><td>기본급</td><td class="n">3,100,000원</td></tr>
+          <tr><td>연장수당</td><td class="n">120,000원</td></tr>
+          <tr><td>식대</td><td class="n">200,000원</td></tr>
+          <tr><td>인센티브<small>도수치료 급여 32건 × 5,000원 = 160,000원</small><small>도수치료 비급여 매출 4,200,000원 × 10% = 420,000원</small></td><td class="n">580,000원</td></tr>
+          <tr class="tt"><td>합계 (실수령)</td><td class="n">4,000,000원</td></tr>
+        </table>
+        <h5>이달 근무 요약</h5>
+        <table>
+          <tr><td>더 일한 시간</td><td class="n">연장 4시간 · 야간 없음 · 휴일 없음</td></tr>
+          <tr><td>쓴 휴가</td><td class="n">연차 1일 (11월 28일)</td></tr>
+          <tr><td>남은 연차</td><td class="n">10일</td></tr>
+        </table>
+        <div class="foot">세금·4대보험 내역은 세무사 명세서로 따로 드려요.</div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="note">금액이 없는 항목(상여·직책수당·조정)은 명세서에 안 나와요. [인쇄·PDF]는 이 종이 한 장만 인쇄 창으로 열고, [그림 파일]은 같은 모양을 그림으로 저장해 카톡으로 보낼 수 있게 해요.</p>
+</section>
+
+<!-- ⑨ -->
+<section class="s" id="s9">
+<h2>⑨ 폰 모양 (390px)</h2>
+<p class="sub">폰에서는 표 대신 사람별 카드예요. 카드를 누르면 항목이 펼쳐져요. 인건비는 숫자 칸만 크게 보여요.</p>
+<div class="phones">
+  <div class="phone">
+    <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a></div>
+    <div class="body">
+      <div class="subnav"><span>명단</span><span>근무표</span><span>휴가</span><span class="on">급여</span></div>
+      <div class="pills"><span class="on">이달 급여</span><span>인센티브</span><span>세무사 파일</span><span>인건비</span><span>명세서</span></div>
+      <div class="month" style="justify-content:space-between"><a class="btn sm">◀ 10월</a><b>2026년 11월</b><a class="btn sm">12월 ▶</a></div>
+      <div class="info">금액은 실수령 기준으로 적어요. 세전 금액과 세금·4대보험은 세무사가 계산해요.</div>
+      <div class="pcards">
+        <div class="pc"><div class="pc-h"><b>김하늘</b><small>간호조무사</small><span class="amt">3,200,000원</span><span class="cv">▼</span></div></div>
+        <div class="pc open"><div class="pc-h"><b>이도윤</b><small>물리치료사</small><span class="amt">4,000,000원</span><span class="cv">▲</span></div>
+          <div class="pc-b">
+            <div class="li"><span>기본급</span><span class="in">3,100,000</span></div>
+            <div class="li"><span>연장수당</span><span class="in chg">120,000</span></div>
+            <div class="li"><span>식대</span><span class="in">200,000</span></div>
+            <div class="li"><span>인센티브</span><a class="calc" href="#s2">580,000 ›</a></div>
+            <div class="li"><span>상여</span><span class="in"></span></div>
+            <div class="li"><span>직책수당</span><span class="in"></span></div>
+            <div class="li"><span>조정(±)</span><span class="in"></span></div>
+            <div class="hrs-l">더 일한 시간 (근무표에서 자동): 연장 4시간 · 야간 0 · 휴일 0</div>
+          </div>
+        </div>
+        <div class="pc"><div class="pc-h"><b>박서연</b><small>물리치료사</small><span class="amt">3,385,000원</span><span class="cv">▼</span></div></div>
+        <div class="pc"><div class="pc-h"><b>최민준</b><small>방사선사</small><span class="amt">3,810,000원</span><span class="cv">▼</span></div></div>
+        <div class="pc"><div class="pc-h"><b>정유나</b><small>원무</small><span class="amt">1,570,000원</span><span class="cv">▼</span></div></div>
+        <div class="pc"><div class="pc-h"><b>한지우</b><small>원무</small><span class="amt">2,650,000원</span><span class="cv">▼</span></div></div>
+      </div>
+      <div class="ptotal"><span>합계 (6명)</span><span>18,615,000원</span></div>
+      <div class="pbtns"><a class="btn sm">지난달 금액 가져오기</a><a class="btn sm">항목 고치기</a><a class="btn sm pri">엑셀 받기</a></div>
+    </div>
+  </div>
+  <div class="phone">
+    <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a></div>
+    <div class="body">
+      <div class="subnav"><span>명단</span><span>근무표</span><span>휴가</span><span class="on">급여</span></div>
+      <div class="pills"><span>이달 급여</span><span>인센티브</span><span>세무사 파일</span><span class="on">인건비</span><span>명세서</span></div>
+      <div class="month" style="justify-content:space-between"><a class="btn sm">◀ 10월</a><b>2026년 11월</b><a class="btn sm">12월 ▶</a></div>
+      <div class="tiles stack">
+        <div class="tile"><small>지급 합계</small><b>18,615,000원</b><span class="d">6명 · 10월보다 145,000원 많아요</span></div>
+        <div class="tile"><small>병원 부담분</small><b>2,150,000원</b><span class="d">세무사가 알려준 금액</span></div>
+        <div class="tile"><small>매출 대비 인건비</small><b>17.5%</b><span class="d">인건비 20,765,000원 ÷ 매출 118,400,000원</span></div>
+      </div>
+      <div class="burden"><span class="lb">병원 부담분 (11월)<small>세무사가 알려준 이달 병원 몫 세금·보험료</small></span><span class="box r" style="flex:1 1 120px">2,150,000</span>원<a class="btn sm pri">저장</a></div>
+      <p class="note" style="margin:0">그 아래에 PC와 같은 그래프·사람별 표가 이어져요. 그래프는 이달(11월)이 먼저 보이고, 옆으로 밀면 지난 달이 나와요.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<section class="s" id="dec">
+<h2>제가 따로 정한 것 — 확인해 주세요</h2>
+<p class="sub">공통 안내에 없던 것을 시안에서 정한 곳입니다. 다르면 말씀해 주세요.</p>
+<ol class="dec">
+  <li><b>급여 안의 작은 메뉴 5개</b>: 이달 급여 · 인센티브 · 세무사 파일 · 인건비 · 명세서. 위쪽 달 고르기는 칸마다 같이 써요.</li>
+  <li><b>저장 단추 없이 바로 저장</b>: ① 표는 칸에서 나가면 저장돼요. 병원 부담분만 [저장] 단추가 있어요.</li>
+  <li><b>① 표 칸 차례</b>: 지급 항목 → 더 일한 시간(회색) → 조정(±) → 합계. 더 일한 시간은 합계에 안 들어가요.</li>
+  <li><b>조정(±) 작은 창</b>: 더하기/빼기 + 까닭(일할 계산 · 공제 · 기타) + 짧은 글. 까닭은 세무사 엑셀 메모 칸에 들어가요.</li>
+  <li><b>인센티브 규칙을 고치면</b> 지금 보는 달부터 새 값으로 계산하고, 지난 달 금액은 그대로 둬요.</li>
+  <li><b>실적 칸은 매달 새로 적어요</b>(지난달 건수·매출을 가져오지 않아요). 고정 수당은 적을 것이 없어요.</li>
+  <li><b>항목 빼기</b>: 지난 달에 금액이 있던 항목만 한 번 더 묻고, 한 번도 없던 항목은 바로 빠져요. 빼면 그달 표부터 안 보여요.</li>
+  <li><b>세무사 엑셀</b>: 시트 한 장, 맨 위 줄에 '실수령 기준' 안내, 맨 아래 합계 줄, 지급 합계·조정 칸 더함, 반차는 연차 0.5일. 인센티브 계산 내역은 넣지 않아요.</li>
+  <li><b>인건비 그래프</b>: 막대(인건비)와 % 선을 한 그림에 겹치지 않고 위아래 두 그림으로 나눴어요(눈금이 둘이면 헷갈려서). 숫자는 11월만 그림에 적고, 나머지는 마우스를 올리거나 '달별 숫자 표'에서 봐요.</li>
+  <li><b>사람별 표</b>: 11월 지급 합계 · 그중 인센티브 · 10월보다 얼마 늘고 줄었는지.</li>
+  <li><b>간단 명세서</b>: 금액 없는 항목은 숨기고, 인센티브는 계산 내역(건수 × 금액, 매출 × %)을 작게 보여 줘요. 입사일도 적어요.</li>
+  <li><b>폰</b>: 인건비 화면은 숫자 칸을 위아래로 쌓고, 그래프는 이달이 먼저 보이게 한 뒤 옆으로 밀어서 지난 달을 봐요.</li>
+</ol>
+</section>
+</main>
+</body>
+</html>

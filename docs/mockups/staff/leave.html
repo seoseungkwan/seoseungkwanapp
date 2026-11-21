@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>직원 휴가 시안</title>
+<style>
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-soft: #EFF4FF;
+  --pos: #047857; --warn-bg: #FEF3C7; --warn: #92400E; --r: 6px; --new: #FDE68A;
+  /* 휴가 종류 색 — 예약 달력 색(--cal-*)을 빌려 씀 */
+  --lv-annual: #2563EB; --lv-annual-soft: #E1EAFD;
+  --lv-half: #0F766E;   --lv-half-soft: #DFEFED;
+  --lv-family: #7C3AED; --lv-family-soft: #EEE6FD;
+  --lv-sick: #DB2777;   --lv-sick-soft: #FBE3EF;
+  --lv-parent: #4D7C0F; --lv-parent-soft: #EBF4E0;
+  --lv-unpaid: #4B5563; --lv-unpaid-soft: #F3F4F6;
+  --off: #EEF0F3;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, 'Malgun Gothic', sans-serif; }
+main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.lead { color: var(--ink-2); margin: 0 0 20px; }
+section.s { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+h2 { font-size: 16px; margin: 0 0 2px; }
+.sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+.note { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
+.two { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+.two > * { min-width: 0; }
+.btn { height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font: inherit; font-size: 14px; color: var(--ink); text-decoration: none; white-space: nowrap; }
+.btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.sm { height: 30px; padding: 0 10px; font-size: 13px; }
+.btn.ghost { border-color: transparent; color: var(--ink-2); }
+.btn.danger { color: #B91C1C; }
+.chip { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 4px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.gray { background: #F3F4F6; color: var(--ink-2); }
+.chip.soon { background: var(--warn-bg); color: var(--warn); margin-left: 4px; }
+/* 앱 틀 */
+.app { border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: var(--canvas); }
+.bar { display: flex; align-items: center; gap: 4px; background: var(--surface); border-bottom: 1px solid var(--line); padding: 0 12px; height: 48px; overflow-x: auto; }
+.bar .logo { font-weight: 700; margin-right: 12px; white-space: nowrap; }
+.bar a { padding: 0 10px; height: 48px; display: inline-flex; align-items: center; color: var(--ink-2); text-decoration: none; border-bottom: 2px solid transparent; white-space: nowrap; }
+.bar a.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
+.bar { overflow: hidden; }
+.bar .strip { display: flex; min-width: 0; overflow: hidden; flex: 0 1 auto; }
+.bar a.more { flex: none; }
+.bar .who { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; padding-left: 12px; display: inline-flex; gap: 6px; align-items: center; }
+.body { padding: 16px; display: grid; gap: 12px; min-width: 0; }
+.body > * { min-width: 0; }
+.subnav { display: flex; border-bottom: 1px solid var(--line); }
+.subnav span { padding: 8px 12px; color: var(--ink-2); white-space: nowrap; }
+.subnav span.on { color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+h3.t1 { font-size: 20px; margin: 0; }
+/* 공통 조각 */
+.hrow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.hrow .h { font-size: 16px; }
+.hrow .meta { display: block; font-size: 12px; color: var(--muted); }
+.acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.tiny { font-size: 12px; color: var(--muted); }
+.hint { font-size: 12px; color: var(--accent); margin-top: 2px; }
+.hint.w { color: var(--warn); }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 14px; min-width: 0; }
+.panel h4 { margin: 0; font-size: 16px; }
+.panel .ptitle { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.x { color: var(--muted); font-size: 18px; line-height: 1; }
+/* 표 */
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl th, .tbl td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.tbl tr:last-child td { border-bottom: 0; }
+.tbl th { font-size: 12px; font-weight: 600; color: var(--muted); background: var(--canvas); white-space: nowrap; }
+.tbl .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tbl .left { font-weight: 700; }
+.tbl .nowrap { white-space: nowrap; }
+.tbl.leave-st { min-width: 900px; }
+.tbl.leave-st td:first-child { white-space: nowrap; }
+.tbl.rec { min-width: 640px; }
+.nm { color: var(--ink); font-weight: 600; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.link-tag { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; margin-left: 6px; border: 1px solid var(--line-strong); border-radius: 4px; font-size: 11px; color: var(--ink-2); vertical-align: 1px; white-space: nowrap; }
+.mcell { display: flex; align-items: center; gap: 8px; }
+.meter { width: 120px; height: 8px; background: var(--line); border-radius: 999px; overflow: hidden; flex: none; }
+.meter i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.meter.low i { background: #D97706; }
+/* 휴가 종류 칩 */
+.lv { display: inline-flex; align-items: center; max-width: 100%; min-height: 20px; padding: 1px 6px; border-radius: 4px; font-size: 12px; font-weight: 600; border-left: 3px solid; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lv.annual { background: var(--lv-annual-soft); color: var(--lv-annual); border-color: var(--lv-annual); }
+.lv.half   { background: var(--lv-half-soft);   color: var(--lv-half);   border-color: var(--lv-half); }
+.lv.family { background: var(--lv-family-soft); color: var(--lv-family); border-color: var(--lv-family); }
+.lv.sick   { background: var(--lv-sick-soft);   color: var(--lv-sick);   border-color: var(--lv-sick); }
+.lv.parent { background: var(--lv-parent-soft); color: var(--lv-parent); border-color: var(--lv-parent); }
+.lv.unpaid { background: var(--lv-unpaid-soft); color: var(--lv-unpaid); border: 1px dashed var(--lv-unpaid); border-left-width: 3px; }
+.rsv { display: inline-flex; align-items: center; height: 16px; padding: 0 4px; border-radius: 3px; background: var(--warn-bg); color: var(--warn); font-size: 11px; font-weight: 600; white-space: nowrap; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.legend .offsw { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+.legend .offsw i { width: 14px; height: 14px; border-radius: 3px; background: var(--off); border: 1px solid var(--line-strong); }
+/* 달력 */
+.mnav { display: flex; align-items: center; gap: 8px; }
+.calwrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); min-width: 760px; }
+.cal .wd { padding: 6px 8px; font-size: 12px; font-weight: 600; color: var(--muted); background: var(--canvas); border-bottom: 1px solid var(--line); }
+.cal .wd.sun { color: #B91C1C; }
+.cal .d { min-height: 92px; padding: 4px 6px 6px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cal .d:nth-child(7n) { border-right: 0; }
+.cal .d .n { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.cal .d.off { background: var(--off); }
+.cal .d.off .n { color: var(--muted); }
+.cal .d .offlbl { font-size: 11px; color: var(--muted); }
+.cal .d.out .n { color: #B5BAC2; font-weight: 400; }
+.cal .d.today .n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 999px; background: var(--accent); color: #fff; }
+.cal .d.last { border-bottom: 0; }
+.cal .d > .rsv { align-self: flex-start; }
+/* 입력 칸 */
+.frm { display: grid; gap: 14px; }
+.frow { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 12px; align-items: start; }
+.frow > label { font-size: 13px; font-weight: 600; color: var(--ink-2); padding-top: 7px; }
+.frow > div { display: grid; gap: 8px; min-width: 0; }
+.inp { height: 36px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); min-width: 0; white-space: nowrap; overflow: hidden; }
+.inp .ph { color: var(--muted); }
+.inp.w-date { max-width: 200px; }
+.dates { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dates .inp { flex: 1 1 150px; max-width: 200px; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg span { height: 32px; display: inline-flex; align-items: center; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--ink-2); font-size: 13px; white-space: nowrap; }
+.seg span.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.seg.sub2 span { height: 28px; font-size: 12px; }
+.calc { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; padding: 10px 12px; border-radius: var(--r); background: var(--canvas); border: 1px solid var(--line); }
+.calc b { font-size: 16px; }
+.calc .arrow { color: var(--muted); }
+.calc .to { color: var(--accent); font-size: 16px; font-weight: 700; }
+.infobox { padding: 10px 12px; border-radius: var(--r); background: var(--accent-soft); color: var(--ink-2); font-size: 13px; }
+.warnbox { padding: 10px 12px; border-radius: var(--r); background: var(--warn-bg); color: var(--warn); font-size: 13px; }
+.mini { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 8px; }
+.mini > b { font-size: 13px; }
+.stack { display: grid; gap: 12px; }
+/* 한 사람 기록 */
+.back { font-size: 13px; color: var(--accent); text-decoration: none; }
+.who-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.who-head b { font-size: 18px; }
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.tile .k { font-size: 12px; color: var(--muted); }
+.tile .v { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tile .v small { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.past { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: 8px; background: var(--surface); font-size: 13px; color: var(--ink-2); }
+.past .pk { font-weight: 600; color: var(--ink); }
+/* 연차 규칙 */
+.rgroup { display: grid; gap: 8px; }
+.rgroup > b { font-size: 14px; }
+.opt { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.opt.on { border-color: var(--accent); background: var(--accent-soft); }
+.radio { width: 18px; height: 18px; border-radius: 999px; border: 2px solid var(--line-strong); margin-top: 1px; background: var(--surface); }
+.opt.on .radio { border-color: var(--accent); box-shadow: inset 0 0 0 3px var(--surface); background: var(--accent); }
+.opt .ot { font-weight: 600; }
+.opt .od { font-size: 13px; color: var(--ink-2); }
+.law { margin: 0; padding: 10px 12px 10px 28px; border-radius: 8px; background: var(--canvas); border: 1px solid var(--line); font-size: 13px; color: var(--ink-2); display: grid; gap: 2px; }
+/* 해 끝 안내 */
+.endnote { border: 1px solid #F3D58A; background: #FFFBEB; border-radius: 8px; padding: 14px 16px; display: grid; gap: 10px; }
+.endnote .et { font-weight: 700; color: var(--warn); }
+.endnote ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; background: var(--surface); border: 1px solid #F3E2B3; border-radius: 6px; }
+.endnote li { display: flex; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #F6EBCB; }
+.endnote li:last-child { border-bottom: 0; }
+.endnote li b { font-variant-numeric: tabular-nums; }
+.endnote .ef { font-size: 12px; color: var(--ink-2); }
+.tag-view { display: inline-block; font-size: 12px; font-weight: 600; color: var(--ink-2); background: var(--canvas); border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; margin-bottom: 8px; }
+/* 폰 */
+.phone { width: 390px; max-width: 100%; margin: 0 auto; border: 1px solid var(--line-strong); border-radius: 16px; overflow: hidden; background: var(--canvas); }
+.phone .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 44px; padding: 0 14px; background: var(--surface); }
+.phone .top b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.phone .bar { height: 42px; padding: 0 6px; }
+.phone .bar a { height: 42px; padding: 0 8px; font-size: 13px; }
+.phone .bar { overflow: hidden; }
+.bar .strip { display: flex; min-width: 0; overflow: hidden; flex: 0 1 auto; }
+.bar a.more { flex: none; }
+.phone .body { padding: 12px; gap: 10px; }
+.phone h3.t1 { font-size: 18px; }
+.phone .subnav span { flex: 1; text-align: center; padding: 8px 4px; }
+.phone .btn.full { width: 100%; justify-content: center; height: 44px; }
+.ptl { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 4px; }
+.ptl b { font-size: 15px; }
+.pcards { display: grid; gap: 8px; }
+.pcard { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 6px; }
+.pcard .r1 { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.pcard .r1 b { font-size: 15px; white-space: nowrap; }
+.pcard .r1 .tiny { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pcard .left { margin-left: auto; font-size: 16px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pcard .left small { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.pcard .meter { width: 100%; }
+.pcard .r3 { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; font-size: 12px; color: var(--muted); }
+.mlist { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.mlist li { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 4px 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); align-items: center; }
+.mlist li:last-child { border-bottom: 0; }
+.mlist .dt { font-size: 13px; font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.mlist .wh { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; min-width: 0; }
+.mlist .wh b { font-size: 14px; }
+/* 확인 대상 */
+.check { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 13px; color: var(--ink-2); }
+.check b { color: var(--ink); }
+@media (max-width: 760px) {
+  .two { grid-template-columns: 1fr; }
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .frow { grid-template-columns: 1fr; gap: 6px; }
+  .frow > label { padding-top: 0; }
+  .bar .who { display: none; }
+}
+</style>
+</head>
+<body>
+<main>
+<h1>직원 탭 — 휴가 화면 시안</h1>
+<p class="lead">직원 탭 안 작은 메뉴 '휴가' 화면입니다. 원장 계정만 봅니다. ①~⑦을 위에서 아래로 넘겨 보세요. 이름·숫자는 지어낸 것입니다(오늘 = 2026-11-21 토, 이 병원 설정 = 입사일 기준 · 못 쓴 연차는 수당으로 정산).</p>
+
+<!-- ① 연차 현황 -->
+<section class="s" id="s1">
+<h2>① 연차 현황 — 휴가 화면 첫 모습 (PC)</h2>
+<p class="sub">사람마다 이번 연차 기간에 생긴·쓴·남은 연차를 한 표로 봅니다. 이름을 누르면 ④ 한 사람 휴가 기록이 열립니다.</p>
+<div class="app">
+  <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a><span class="who"><span class="chip gray">원장</span>owner@example.com</span></div>
+  <div class="body">
+    <h3 class="t1">직원</h3>
+    <div class="subnav"><span>명단</span><span>근무표</span><span class="on">휴가</span><span>급여</span></div>
+    <div class="hrow">
+      <div><b class="h">연차 현황</b><span class="meta">연차 기준 입사일 기준 · 못 쓴 연차는 수당으로 정산 · 2026-11-21 (토) 기준</span></div>
+      <div class="acts"><a class="btn pri" href="#s3">휴가 넣기</a><a class="btn" href="#s5">연차 규칙</a></div>
+    </div>
+    <div class="table-wrap">
+      <table class="tbl leave-st">
+        <thead><tr><th>이름 · 직종</th><th>이번 연차 기간</th><th class="num">생긴</th><th class="num">쓴</th><th class="num">남은</th><th>남은 비율</th><th>다음 새 연차</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><a class="nm" href="#s4">김하늘</a><div class="tiny">간호조무사 · 정규직</div></td>
+            <td class="nowrap">2026-03-02 ~ 2027-03-01</td>
+            <td class="num">17일</td><td class="num">9.5일</td><td class="num left">7.5일</td>
+            <td><div class="mcell"><div class="meter"><i style="width:44%"></i></div><span class="tiny">44%</span></div></td>
+            <td class="nowrap">2027-03-02 <span class="tiny">· 17일</span></td>
+          </tr>
+          <tr>
+            <td><a class="nm" href="#s4">이도윤</a><span class="link-tag">예약 (이)</span><div class="tiny">물리치료사 · 정규직</div></td>
+            <td class="nowrap">2026-07-17 ~ 2027-07-16</td>
+            <td class="num">16일</td><td class="num">6일</td><td class="num left">10일</td>
+            <td><div class="mcell"><div class="meter"><i style="width:63%"></i></div><span class="tiny">63%</span></div></td>
+            <td class="nowrap">2027-07-17 <span class="tiny">· 16일</span></td>
+          </tr>
+          <tr>
+            <td><a class="nm" href="#s4">박서연</a><span class="link-tag">예약 (박)</span><div class="tiny">물리치료사 · 정규직</div></td>
+            <td class="nowrap">2026-01-06 ~ 2027-01-05</td>
+            <td class="num">15일</td><td class="num">3일</td><td class="num left">12일</td>
+            <td><div class="mcell"><div class="meter"><i style="width:80%"></i></div><span class="tiny">80%</span></div></td>
+            <td class="nowrap">2027-01-06 <span class="tiny">· 15일</span></td>
+          </tr>
+          <tr>
+            <td><a class="nm" href="#s4">최민준</a><div class="tiny">방사선사 · 정규직</div></td>
+            <td class="nowrap">2025-11-25 ~ 2026-11-24<div class="hint w">11-24에 끝나요 — 남은 3일은 수당으로 정산</div></td>
+            <td class="num">17일</td><td class="num">14일</td><td class="num left">3일</td>
+            <td><div class="mcell"><div class="meter low"><i style="width:18%"></i></div><span class="tiny">18%</span></div></td>
+            <td class="nowrap">2026-11-25 <span class="tiny">· 18일</span><span class="chip soon">4일 뒤</span></td>
+          </tr>
+          <tr>
+            <td><a class="nm" href="#s4">정유나</a><div class="tiny">원무 · 파트타임</div><div class="hint">파트타임 — 주 24시간 비례</div></td>
+            <td class="nowrap">2026-09-02 ~ 2027-09-01</td>
+            <td class="num">9일</td><td class="num">2일</td><td class="num left">7일</td>
+            <td><div class="mcell"><div class="meter"><i style="width:78%"></i></div><span class="tiny">78%</span></div></td>
+            <td class="nowrap">2027-09-02 <span class="tiny">· 9일</span></td>
+          </tr>
+          <tr>
+            <td><a class="nm" href="#s4">한지우</a><div class="tiny">원무 · 계약직</div><div class="hint">1년 미만 — 달마다 1일씩 생겨요</div></td>
+            <td class="nowrap">2026-02-02 ~ 2027-02-01</td>
+            <td class="num">9일</td><td class="num">4일</td><td class="num left">5일</td>
+            <td><div class="mcell"><div class="meter"><i style="width:56%"></i></div><span class="tiny">56%</span></div></td>
+            <td class="nowrap">2026-12-02 <span class="tiny">· 1일 더</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" style="margin:0">'쓴'은 연차·반차만 셉니다. 경조사·병가·출산·육아휴직·무급(결근)은 연차에서 빼지 않습니다. 막대 = 남은 ÷ 생긴. 남은 비율이 25% 밑이면 막대가 주황입니다. 퇴사한 직원은 이 표에 없습니다.</p>
+  </div>
+</div>
+</section>
+
+<!-- ② 휴가 달력 -->
+<section class="s" id="s2">
+<h2>② 휴가 달력 — 2026년 11월 달 보기</h2>
+<p class="sub">① 표 아래에 있습니다. 휴가 종류마다 색이 다르고, 예약 시행자와 이어진 사람(이도윤·박서연)의 휴가에는 '예약 휴무' 꼬리표가 붙습니다. 날짜 칸을 누르면 그날로 ③ 휴가 넣기가 열리고, 칩을 누르면 고칠 수 있습니다.</p>
+<div class="app">
+  <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a><span class="who"><span class="chip gray">원장</span>owner@example.com</span></div>
+  <div class="body">
+    <h3 class="t1">직원</h3>
+    <div class="subnav"><span>명단</span><span>근무표</span><span class="on">휴가</span><span>급여</span></div>
+    <div class="hrow">
+      <div class="mnav"><a class="btn sm">‹</a><b class="h">2026년 11월</b><a class="btn sm">›</a><a class="btn sm ghost">이번 달</a></div>
+      <div class="legend">
+        <span class="lv annual">연차</span><span class="lv half">반차</span><span class="lv family">경조사</span><span class="lv sick">병가</span><span class="lv parent">출산·육아휴직</span><span class="lv unpaid">무급(결근)</span>
+        <span class="rsv">예약 휴무</span>
+        <span class="offsw"><i></i>공휴일·휴진일</span>
+      </div>
+    </div>
+    <div class="calwrap">
+      <div class="cal">
+        <div class="wd">월</div><div class="wd">화</div><div class="wd">수</div><div class="wd">목</div><div class="wd">금</div><div class="wd">토</div><div class="wd sun">일</div>
+        <!-- 1주 -->
+        <div class="d out"><span class="n">26</span></div>
+        <div class="d out"><span class="n">27</span></div>
+        <div class="d out"><span class="n">28</span></div>
+        <div class="d out"><span class="n">29</span></div>
+        <div class="d out"><span class="n">30</span></div>
+        <div class="d out"><span class="n">31</span></div>
+        <div class="d off"><span class="n">11/1</span><span class="offlbl">휴진</span></div>
+        <!-- 2주 -->
+        <div class="d"><span class="n">2</span></div>
+        <div class="d"><span class="n">3</span></div>
+        <div class="d"><span class="n">4</span></div>
+        <div class="d"><span class="n">5</span></div>
+        <div class="d"><span class="n">6</span></div>
+        <div class="d"><span class="n">7</span><span class="lv annual">김하늘 연차</span></div>
+        <div class="d off"><span class="n">8</span><span class="offlbl">휴진</span></div>
+        <!-- 3주 -->
+        <div class="d"><span class="n">9</span></div>
+        <div class="d"><span class="n">10</span></div>
+        <div class="d"><span class="n">11</span></div>
+        <div class="d"><span class="n">12</span></div>
+        <div class="d"><span class="n">13</span><span class="lv half">박서연 오후 반차</span><span class="rsv">예약 휴무 · 오후</span></div>
+        <div class="d"><span class="n">14</span></div>
+        <div class="d off"><span class="n">15</span><span class="offlbl">휴진</span></div>
+        <!-- 4주 -->
+        <div class="d"><span class="n">16</span></div>
+        <div class="d"><span class="n">17</span></div>
+        <div class="d"><span class="n">18</span><span class="lv sick">정유나 병가</span></div>
+        <div class="d"><span class="n">19</span></div>
+        <div class="d"><span class="n">20</span></div>
+        <div class="d today"><span class="n">21</span></div>
+        <div class="d off"><span class="n">22</span><span class="offlbl">휴진</span></div>
+        <!-- 5주 -->
+        <div class="d"><span class="n">23</span></div>
+        <div class="d"><span class="n">24</span></div>
+        <div class="d"><span class="n">25</span></div>
+        <div class="d"><span class="n">26</span></div>
+        <div class="d"><span class="n">27</span></div>
+        <div class="d"><span class="n">28</span><span class="lv annual">이도윤 연차</span><span class="rsv">예약 휴무</span></div>
+        <div class="d off"><span class="n">29</span><span class="offlbl">휴진</span></div>
+        <!-- 6주 -->
+        <div class="d last"><span class="n">30</span></div>
+        <div class="d out last"><span class="n">12/1</span></div>
+        <div class="d out last"><span class="n">2</span></div>
+        <div class="d out last"><span class="n">3</span></div>
+        <div class="d out last"><span class="n">4</span></div>
+        <div class="d out last"><span class="n">5</span></div>
+        <div class="d off out last"><span class="n">6</span></div>
+      </div>
+    </div>
+    <p class="note" style="margin:0">회색 칸 = 공휴일(웹앱 공휴일 목록)과 병원 휴진일(설정 → 병원 정보). 11월엔 공휴일이 없어 일요일 휴진만 회색입니다. 넓은 달력이라 폰에서는 달력만 옆으로 밀리고, 폰 첫 모습은 ⑦처럼 목록입니다.</p>
+  </div>
+</div>
+</section>
+
+<!-- ③ 휴가 넣기 -->
+<section class="s" id="s3">
+<h2>③ 휴가 넣기 칸</h2>
+<p class="sub">[휴가 넣기]나 달력 날짜 칸을 누르면 열립니다. 보기: 이도윤 님 11-28 연차를 넣는 순간입니다(넣기 전 남은 10일). 저장하면 ② 달력 11-28에 칩이 생기고, ①·④의 이도윤 님 숫자는 쓴 7 · 남은 9로 바뀝니다.</p>
+<div class="two">
+  <div class="app">
+    <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a><span class="who"><span class="chip gray">원장</span>owner@example.com</span></div>
+    <div class="body">
+      <div class="subnav"><span>명단</span><span>근무표</span><span class="on">휴가</span><span>급여</span></div>
+      <div class="panel">
+        <div class="ptitle"><h4>휴가 넣기</h4><span class="x">×</span></div>
+        <div class="frm">
+          <div class="frow"><label>사람</label><div><div class="inp"><span>이도윤 · 물리치료사</span><span class="tiny">▾</span></div></div></div>
+          <div class="frow"><label>종류</label><div><div class="seg"><span class="on">연차</span><span>반차</span><span>경조사</span><span>병가</span><span>출산·육아휴직</span><span>무급(결근)</span></div></div></div>
+          <div class="frow"><label>날짜</label><div>
+            <div class="seg sub2"><span class="on">하루</span><span>여러 날 (시작~끝)</span></div>
+            <div class="inp w-date"><span>2026-11-28 (토)</span><span class="tiny">▾</span></div>
+          </div></div>
+          <div class="frow"><label>메모</label><div><div class="inp"><span>가족 행사</span><span></span></div></div></div>
+        </div>
+        <div class="calc"><span>이도윤 님 남은 연차</span><b>10일</b><span class="arrow">→</span><span class="to">9일</span></div>
+        <div class="infobox">예약 달력에 '휴무'로 보여요. <span class="tiny">(예약 시행자 (이) 이도윤과 이어져 있어요)</span></div>
+        <div class="warnbox">11-28에 이도윤 님 예약이 3건 있어요. 예약은 그대로 두고 휴무만 표시해요.</div>
+        <div class="acts"><a class="btn pri">저장</a><a class="btn">취소</a></div>
+      </div>
+    </div>
+  </div>
+  <div class="stack">
+    <p class="sub" style="margin:0"><b style="color:var(--ink-2)">고르는 것에 따라 바뀌는 곳</b> (같은 칸의 한 부분만 그림)</p>
+    <div class="mini">
+      <b>반차를 고르면 — 오전·오후 고르기가 생겨요</b>
+      <div class="seg"><span>연차</span><span class="on">반차</span><span>경조사</span><span>…</span></div>
+      <div class="seg sub2"><span>오전</span><span class="on">오후</span></div>
+      <div class="calc"><span>이도윤 님 남은 연차</span><b>10일</b><span class="arrow">→</span><span class="to">9.5일</span></div>
+      <div class="infobox">예약 달력에 그날 오후만 '휴무'로 보여요.</div>
+    </div>
+    <div class="mini">
+      <b>병가를 고르면 — 유급·무급 고르기가 생겨요</b>
+      <div class="seg"><span>연차</span><span>반차</span><span>경조사</span><span class="on">병가</span><span>…</span></div>
+      <div class="seg sub2"><span class="on">유급</span><span>무급</span></div>
+      <p class="tiny" style="margin:0">연차에서 빼지 않아요. 남은 연차는 그대로 10일이에요. 무급을 고르면 이달 세무사 자료에 무급 일수로 들어가요.</p>
+    </div>
+    <div class="mini">
+      <b>여러 날을 고르면 — 시작~끝</b>
+      <div class="dates"><div class="inp"><span>2026-12-21 (월)</span></div><span class="tiny">~</span><div class="inp"><span>2026-12-23 (수)</span></div></div>
+      <div class="calc"><span>쉬는 날 빼고 3일 · 남은 연차</span><b>10일</b><span class="arrow">→</span><span class="to">7일</span></div>
+      <p class="tiny" style="margin:0">그 사람 근무표에서 쉬는 요일·공휴일·휴진일은 세지 않아요.</p>
+    </div>
+    <div class="mini">
+      <b>경조사 · 출산·육아휴직 · 무급(결근)을 고르면</b>
+      <p class="tiny" style="margin:0">연차에서 빼지 않아요(미리 보기 줄 대신 "연차에서 빼지 않아요"). 무급(결근)은 이달 세무사 자료에 무급 일수로 들어가요.</p>
+    </div>
+    <div class="mini">
+      <b>예약 시행자와 안 이어진 사람(예: 김하늘)이면</b>
+      <p class="tiny" style="margin:0">파란 '예약 달력에 휴무로 보여요' 줄과 노란 예약 경고가 나오지 않아요.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ④ 한 사람 휴가 기록 -->
+<section class="s" id="s4">
+<h2>④ 한 사람 휴가 기록 — 이도윤</h2>
+<p class="sub">① 표에서 이름을 누르면 열립니다. 이번 연차 기간에 쓴 휴가를 날짜 차례로 보고, 줄마다 고치거나 지웁니다.</p>
+<div class="app">
+  <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a><span class="who"><span class="chip gray">원장</span>owner@example.com</span></div>
+  <div class="body">
+    <h3 class="t1">직원</h3>
+    <div class="subnav"><span>명단</span><span>근무표</span><span class="on">휴가</span><span>급여</span></div>
+    <a class="back" href="#s1">‹ 연차 현황</a>
+    <div class="hrow">
+      <div class="who-head"><b>이도윤</b><span class="tiny">물리치료사 · 정규직 · 주 40시간 · 입사 2023-07-17</span><span class="link-tag" style="margin-left:0">예약 (이)</span></div>
+      <div class="acts"><a class="btn pri" href="#s3">이도윤 님 휴가 넣기</a></div>
+    </div>
+    <div class="tiles">
+      <div class="tile"><div class="k">생긴 연차</div><div class="v">16<small>일</small></div></div>
+      <div class="tile"><div class="k">쓴 연차</div><div class="v">6<small>일</small></div></div>
+      <div class="tile"><div class="k">남은 연차</div><div class="v" style="color:var(--accent)">10<small>일</small></div></div>
+      <div class="tile"><div class="k">다음 새 연차</div><div class="v" style="font-size:15px;padding-top:4px">2027-07-17 · 16일</div></div>
+    </div>
+    <div class="hrow"><div><b class="h" style="font-size:15px">쓴 휴가</b><span class="meta">이번 연차 기간 2026-07-17 ~ 2027-07-16</span></div></div>
+    <div class="table-wrap">
+      <table class="tbl rec">
+        <thead><tr><th>날짜</th><th>종류</th><th class="num">일수</th><th>메모</th><th></th></tr></thead>
+        <tbody>
+          <tr><td class="nowrap">2026-10-23 (금)</td><td><span class="lv half">오후 반차</span></td><td class="num">0.5일</td><td>—</td><td class="num"><a class="btn sm">고치기</a> <a class="btn sm danger">지우기</a></td></tr>
+          <tr><td class="nowrap">2026-10-12 (월)</td><td><span class="lv half">오전 반차</span></td><td class="num">0.5일</td><td>병원 진료</td><td class="num"><a class="btn sm">고치기</a> <a class="btn sm danger">지우기</a></td></tr>
+          <tr><td class="nowrap">2026-09-18 (금)</td><td><span class="lv family">경조사</span></td><td class="num">1일<div class="tiny">연차에서 안 뺌</div></td><td>형 결혼</td><td class="num"><a class="btn sm">고치기</a> <a class="btn sm danger">지우기</a></td></tr>
+          <tr><td class="nowrap">2026-09-07 (월)</td><td><span class="lv annual">연차</span></td><td class="num">1일</td><td>이사</td><td class="num"><a class="btn sm">고치기</a> <a class="btn sm danger">지우기</a></td></tr>
+          <tr><td class="nowrap">2026-08-03 (월) ~ 08-05 (수)</td><td><span class="lv annual">연차</span></td><td class="num">3일</td><td>여름 휴가</td><td class="num"><a class="btn sm">고치기</a> <a class="btn sm danger">지우기</a></td></tr>
+          <tr><td class="nowrap">2026-07-31 (금)</td><td><span class="lv annual">연차</span></td><td class="num">1일</td><td>—</td><td class="num"><a class="btn sm">고치기</a> <a class="btn sm danger">지우기</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" style="margin:0">연차·반차 합계 6일 · 경조사 1일. [지우기]를 누르면 "이 휴가를 지울까요? 남은 연차가 다시 늘어나요."를 한 번 묻습니다.</p>
+    <div class="past"><span class="pk">지난 연차 기간 2025-07-17 ~ 2026-07-16</span><span>15일 생김 · 13일 씀 · 남은 2일 → 수당으로 정산</span><span class="tiny">(2026년 7월 세무사 자료에 2일이 들어갔어요)</span></div>
+  </div>
+</div>
+</section>
+
+<!-- ⑤ 연차 규칙 -->
+<section class="s" id="s5">
+<h2>⑤ 연차 규칙 칸 (원장)</h2>
+<p class="sub">① 위 [연차 규칙]을 누르면 열립니다. 병원마다 두 가지를 고릅니다. 법으로 정해진 셈법은 아래에 보여만 줍니다.</p>
+<div class="two">
+  <div class="app">
+    <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a><span class="who"><span class="chip gray">원장</span>owner@example.com</span></div>
+    <div class="body">
+      <div class="subnav"><span>명단</span><span>근무표</span><span class="on">휴가</span><span>급여</span></div>
+      <div class="panel">
+        <div class="ptitle"><h4>연차 규칙</h4><span class="x">×</span></div>
+        <div class="rgroup">
+          <b>연차 기준</b>
+          <div class="opt on"><span class="radio"></span><div><div class="ot">입사일 기준</div><div class="od">사람마다 입사한 날부터 1년씩 세요. 입사 기념일에 새 연차가 생겨요.</div></div></div>
+          <div class="opt"><span class="radio"></span><div><div class="ot">1월 1일 기준</div><div class="od">모두 1월 1일에 한꺼번에 새 연차가 생겨요. 입사한 해는 일한 날만큼 나눠 주고, 퇴사할 때 입사일 기준보다 적으면 차이를 알려 드려요.</div></div></div>
+        </div>
+        <div class="rgroup">
+          <b>못 쓴 연차</b>
+          <div class="opt on"><span class="radio"></span><div><div class="ot">수당으로 정산</div><div class="od">연차 기간이 끝날 때 남은 일수를 세무사 자료에 넣어요. 금액은 세무사가 계산해요.</div></div></div>
+          <div class="opt"><span class="radio"></span><div><div class="ot">다음 해로 넘김</div><div class="od">남은 일수를 다음 연차 기간에 더해요.</div></div></div>
+        </div>
+        <div class="acts"><a class="btn pri">저장</a><a class="btn">취소</a></div>
+      </div>
+    </div>
+  </div>
+  <div class="stack">
+    <p class="sub" style="margin:0"><b style="color:var(--ink-2)">법으로 정해진 셈법 (고를 수 없음, 같은 칸 아래에 보임)</b></p>
+    <ul class="law">
+      <li>1년 미만: 한 달 다 나오면 1일씩 (최대 11일)</li>
+      <li>1년 이상: 15일, 3년째부터 2년마다 1일 더 (최대 25일)</li>
+      <li>파트타임: 15일 × 주 근무시간 ÷ 40 (주 15시간 밑이면 연차 없음)</li>
+      <li>쓰는 단위: 하루 · 반차(오전/오후)</li>
+      <li>직원 5명 이상 의원 규칙이에요.</li>
+    </ul>
+    <p class="note" style="margin:0">예: 정유나 님 주 24시간 → 15 × 24 ÷ 40 = 9일.</p>
+  </div>
+</div>
+</section>
+
+<!-- ⑥ 해 끝 안내 -->
+<section class="s" id="s6">
+<h2>⑥ 해 끝 안내 칸 — 12월에 보이는 모양</h2>
+<p class="sub">'못 쓴 연차 = 수당으로 정산'일 때 휴가 화면 맨 위(① 위)에 뜹니다. 웹앱은 일수만 넣고 금액은 계산하지 않습니다. '다음 해로 넘김'이면 이 칸 대신 "남은 일수를 다음 기간에 더했어요" 한 줄만 나옵니다.</p>
+<div class="two">
+  <div>
+    <span class="tag-view">가. 12월에 한꺼번에 모아 보여 줄 때</span>
+    <div class="app">
+      <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a><span class="who"><span class="chip gray">원장</span>owner@example.com</span></div>
+      <div class="body">
+        <div class="subnav"><span>명단</span><span>근무표</span><span class="on">휴가</span><span>급여</span></div>
+        <div class="endnote">
+          <div class="et">올해 못 쓴 연차가 있는 직원 4명 — 12월 세무사 자료에 일수가 들어가요.</div>
+          <ul>
+            <li><span>김하늘 <span class="tiny">간호조무사</span></span><b>7.5일</b></li>
+            <li><span>이도윤 <span class="tiny">물리치료사</span></span><b>9일</b></li>
+            <li><span>박서연 <span class="tiny">물리치료사</span></span><b>12일</b></li>
+            <li><span>정유나 <span class="tiny">원무</span></span><b>7일</b></li>
+          </ul>
+          <div class="ef">금액은 세무사가 계산해요. 12월 31일 전에 더 쓰면 일수가 줄어요. <a href="#s1" style="color:var(--accent)">연차 현황 보기</a></div>
+        </div>
+      </div>
+    </div>
+    <p class="note">보기로 4명만 그렸습니다(최민준 님은 11월에 이미 정리, 한지우 님은 1년 미만이라 따로).</p>
+  </div>
+  <div>
+    <span class="tag-view">나. 연차 기간이 끝나는 달마다 보여 줄 때 (11월 모양)</span>
+    <div class="app">
+      <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a><span class="who"><span class="chip gray">원장</span>owner@example.com</span></div>
+      <div class="body">
+        <div class="subnav"><span>명단</span><span>근무표</span><span class="on">휴가</span><span>급여</span></div>
+        <div class="endnote">
+          <div class="et">이번 달 연차 기간이 끝나는 직원 1명 — 11월 세무사 자료에 일수가 들어가요.</div>
+          <ul>
+            <li><span>최민준 <span class="tiny">11-24에 끝나요</span></span><b>3일</b></li>
+          </ul>
+          <div class="ef">금액은 세무사가 계산해요. 11-24 전에 쓰면 일수가 줄어요.</div>
+        </div>
+      </div>
+    </div>
+    <p class="note">이 병원처럼 입사일 기준이면 사람마다 연차 기간 끝나는 달이 달라서, 그달마다 이렇게 뜨는 게 맞아 보입니다. 가·나 중 어느 쪽으로 할지 골라 주세요(1월 1일 기준 병원은 가와 같아집니다).</p>
+  </div>
+</div>
+</section>
+
+<!-- ⑦ 폰 -->
+<section class="s" id="s7">
+<h2>⑦ 폰(390px) 모양</h2>
+<p class="sub">폰에서는 표 대신 사람별 연차 카드, 달력 대신 이번 달 휴가 목록이 먼저 보입니다. 카드를 누르면 ④ 한 사람 기록이 열립니다.</p>
+<div class="phone">
+  <div class="bar"><span class="logo">○○정형외과</span><span class="strip"><a>대시보드</a><a>통계</a><a>청구</a><a>환자</a><a>업무일지</a><a>수납일지</a><a>예약</a></span><a class="on more">더보기 · 직원</a></div>
+  <div class="body">
+    <h3 class="t1">직원</h3>
+    <div class="subnav"><span>명단</span><span>근무표</span><span class="on">휴가</span><span>급여</span></div>
+    <div class="acts" style="display:grid;grid-template-columns:2fr 1fr"><a class="btn pri full">휴가 넣기</a><a class="btn full">연차 규칙</a></div>
+    <div class="ptl"><b>연차 현황</b><span class="tiny">입사일 기준</span></div>
+    <div class="pcards">
+      <div class="pcard"><div class="r1"><b>김하늘</b><span class="tiny">간호조무사 · 정규직</span><span class="left">7.5<small>일 남음</small></span></div><div class="meter"><i style="width:44%"></i></div><div class="r3"><span>생긴 17 · 쓴 9.5</span><span>다음 새 연차 2027-03-02</span></div></div>
+      <div class="pcard"><div class="r1"><b>이도윤</b><span class="tiny">물리치료사 · 정규직</span><span class="left">10<small>일 남음</small></span></div><div class="meter"><i style="width:63%"></i></div><div class="r3"><span>생긴 16 · 쓴 6</span><span>다음 새 연차 2027-07-17</span></div></div>
+      <div class="pcard"><div class="r1"><b>박서연</b><span class="tiny">물리치료사 · 정규직</span><span class="left">12<small>일 남음</small></span></div><div class="meter"><i style="width:80%"></i></div><div class="r3"><span>생긴 15 · 쓴 3</span><span>다음 새 연차 2027-01-06</span></div></div>
+      <div class="pcard"><div class="r1"><b>최민준</b><span class="tiny">방사선사 · 정규직</span><span class="left">3<small>일 남음</small></span></div><div class="meter low"><i style="width:18%"></i></div><div class="r3"><span>생긴 17 · 쓴 14</span><span>다음 새 연차 2026-11-25 <span class="chip soon">4일 뒤</span></span></div><div class="hint w" style="margin:0">11-24에 끝나요 — 남은 3일은 수당으로 정산</div></div>
+      <div class="pcard"><div class="r1"><b>정유나</b><span class="tiny">원무 · 파트타임</span><span class="left">7<small>일 남음</small></span></div><div class="meter"><i style="width:78%"></i></div><div class="r3"><span>생긴 9 · 쓴 2</span><span>다음 새 연차 2027-09-02</span></div><div class="hint" style="margin:0">파트타임 — 주 24시간 비례</div></div>
+      <div class="pcard"><div class="r1"><b>한지우</b><span class="tiny">원무 · 계약직</span><span class="left">5<small>일 남음</small></span></div><div class="meter"><i style="width:56%"></i></div><div class="r3"><span>생긴 9 · 쓴 4</span><span>다음 2026-12-02 · 1일 더</span></div><div class="hint" style="margin:0">1년 미만 — 달마다 1일씩 생겨요</div></div>
+    </div>
+    <div class="ptl"><b>이번 달 휴가</b><span class="mnav"><a class="btn sm">‹</a><span class="tiny">2026년 11월</span><a class="btn sm">›</a></span></div>
+    <ul class="mlist">
+      <li><span class="dt">11-07 (토)</span><span class="wh"><b>김하늘</b><span class="lv annual">연차</span></span></li>
+      <li><span class="dt">11-13 (금)</span><span class="wh"><b>박서연</b><span class="lv half">오후 반차</span><span class="rsv">예약 휴무 · 오후</span></span></li>
+      <li><span class="dt">11-18 (수)</span><span class="wh"><b>정유나</b><span class="lv sick">병가</span></span></li>
+      <li><span class="dt">11-28 (토)</span><span class="wh"><b>이도윤</b><span class="lv annual">연차</span><span class="rsv">예약 휴무</span></span></li>
+    </ul>
+    <a class="btn full" style="width:100%;justify-content:center">달력으로 보기</a>
+  </div>
+</div>
+</section>
+
+<!-- 확인 대상 -->
+<section class="s">
+<h2>확인해 주세요 — 시안을 그리며 정한 것</h2>
+<p class="sub">사용자가 정한 것(연차 기준 두 가지, 못 쓴 연차 두 가지, 휴가 종류, 반차 단위, 예약 '휴무' 연결, 금액 계산 안 함)은 그대로 두고, 아래는 이 시안에서 새로 정한 것입니다.</p>
+<ol class="check">
+  <li><b>탭 줄</b>: 지금 앱처럼 주요 7개 + [더보기 · 직원]으로 그렸어요(직원은 더보기 안에 있음).</li>
+  <li><b>표 칸</b>: '이번 연차 기간' 칸을 더했어요(입사일 기준이라 사람마다 기간이 달라서). 남은 비율 25% 밑이면 막대 주황.</li>
+  <li><b>'쓴' 연차</b>: 연차·반차만 셈. 경조사·병가·출산·육아휴직·무급은 연차에서 안 뺌.</li>
+  <li><b>기간 끝 알림</b>: 최민준 줄에 '11-24에 끝나요 — 남은 3일은 수당으로 정산', 다음 새 연차가 가까우면 '4일 뒤'.</li>
+  <li><b>휴가 종류 색</b>: 연차 파랑 · 반차 청록 · 경조사 보라 · 병가 분홍 · 출산·육아휴직 초록 · 무급(결근) 회색 점선(예약 달력 색을 빌림). '예약 휴무' 꼬리표는 노랑, 반차면 '예약 휴무 · 오후'.</li>
+  <li><b>여러 날 휴가</b>: 그 사람 근무표의 쉬는 요일·공휴일·휴진일은 빼고 셈.</li>
+  <li><b>병가</b>: 기본은 '유급'. 무급 병가와 무급(결근)은 이달 세무사 자료에 무급 일수로 들어감.</li>
+  <li><b>누르면</b>: 달력 날짜 칸 → 그날로 휴가 넣기, 칩 → 고치기, [지우기] → 한 번 묻기.</li>
+  <li><b>해 끝 안내(⑥)</b>: 입사일 기준 병원은 사람마다 기간 끝나는 달에 뜨는 게 맞아 보여 두 모양을 그렸어요. 12월에 한꺼번에 모을지, 그달마다 띄울지 골라 주세요.</li>
+  <li><b>1년 미만 직원</b>: 달마다 생긴 연차는 입사 1년 되는 달에 따로 정리.</li>
+  <li><b>연차 규칙 칸</b>: 고를 수 없는 법 셈법(1년 미만·1년 이상·파트타임·단위·5인 이상)을 같은 칸 아래에 보여만 줌.</li>
+  <li><b>폰</b>: 카드 + 이번 달 목록이 먼저, 달력은 [달력으로 보기].</li>
+</ol>
+</section>
+</main>
+</body>
+</html>
