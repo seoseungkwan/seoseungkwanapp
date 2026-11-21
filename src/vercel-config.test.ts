@@ -18,6 +18,8 @@ const EMR_PATTERNS = ['*.[cC][sS][vV]', '*.[xX][lL][sS]', '*.[xX][lL][sS][xX]']
 
 // 가짜 파일 폴더. 되살리기(!)는 이 안의 파일 이름 하나하나만 된다
 const FAKE_FOLDERS = ['fixtures/fake-', 'public/fake-sample/']
+// 폴더 밖에서 되살리는 파일(폴더가 아니라 파일 하나): 주소록 [양식 받기]의 빈 엑셀 양식(specs/contacts AC-6504.4)
+const TEMPLATE_FILES = ['public/contacts/contacts-template.xlsx']
 
 describe('vercel.json', () => {
   it('AC-009.1: framework는 nextjs, 함수 지역은 icn1 하나, 깃 자동 배포는 꺼져 있다', () => {
@@ -27,7 +29,7 @@ describe('vercel.json', () => {
     expect(config.git?.deploymentEnabled).toBe(false)
   })
 
-  // specs/notices REQ-7416, design 1절·ADR-035: 무료판 Cron은 식마다 하루 한 번(그 시간 안 아무 때). 같은 경로를 아홉 식으로 건다
+  // specs/notices REQ-7416, design 1절·ADR-036: 무료판 Cron은 식마다 하루 한 번(그 시간 안 아무 때). 같은 경로를 아홉 식으로 건다
   const COLLECT = '/api/ai/notices/collect'
   const SCHEDULES = ['0 22 * * *', '0 0 * * *', '0 2 * * *', '0 4 * * *', '0 6 * * *', '0 8 * * *', '0 10 * * *', '0 12 * * *', '0 14 * * *']
 
@@ -66,6 +68,7 @@ describe('.vercelignore', () => {
       '.env*',
       ...EMR_PATTERNS,
       '!public/fake-sample/bit-sample.csv',
+      '!public/contacts/contacts-template.xlsx',
       '.harness/',
       '.claude/',
       'specs/',
@@ -90,17 +93,24 @@ describe('.vercelignore', () => {
     expect(lines.filter((line) => /^!\s*\/?\.env/.test(line))).toEqual([])
   })
 
-  it('AC-009.2: 되살리기는 가짜 파일 폴더의 파일 이름 하나하나뿐이고 확장자 줄보다 뒤에 있다', () => {
+  it('AC-009.2·AC-6504.4: 되살리기는 가짜 파일 폴더의 파일 이름 하나하나와 주소록 양식 파일 하나뿐이고 확장자 줄보다 뒤에 있다', () => {
     const lines = ignoreLines()
     const lastEmr = Math.max(...EMR_PATTERNS.map((pattern) => lines.indexOf(pattern)))
     const reincludes = lines.flatMap((line, index) => (line.startsWith('!') ? [{ line, index }] : []))
     expect(reincludes.length).toBeGreaterThan(0)
     for (const { line, index } of reincludes) {
       const path = line.slice(1)
-      expect(FAKE_FOLDERS.some((folder) => path.startsWith(folder))).toBe(true)
+      expect(FAKE_FOLDERS.some((folder) => path.startsWith(folder)) || TEMPLATE_FILES.includes(path)).toBe(true)
       expect(path).not.toMatch(/[*?[\]]/)
       expect(index).toBeGreaterThan(lastEmr)
     }
+  })
+
+  it('AC-6504.4: 주소록 양식 파일 하나만 그 이름 그대로 되살린다(엑셀 줄은 그대로, 글롭 없음)', () => {
+    const lines = ignoreLines()
+    for (const pattern of EMR_PATTERNS) expect(lines).toContain(pattern)
+    expect(lines.filter((line) => line.startsWith('!public/contacts'))).toEqual(['!public/contacts/contacts-template.xlsx'])
+    expect(lines.indexOf('!public/contacts/contacts-template.xlsx')).toBeGreaterThan(lines.indexOf('*.[xX][lL][sS][xX]'))
   })
 
   it('AC-009.2: e2e/를 빼면 그것을 import하는 playwright.config.ts도 함께 뺀다(Vercel 빌드 타입 검사가 깨지지 않게)', () => {

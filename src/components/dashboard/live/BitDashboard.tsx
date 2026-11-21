@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useClinicProfile } from '@/components/clinic/useClinicProfile'
 import { AiBrief } from '@/components/dashboard/ai/AiBrief'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
@@ -117,6 +117,7 @@ function emptyLook(status: Status, honorific: Honorific): EmptyLook {
  * savedRefresh: 저장 숫자 새로고침(LiveDashboard가 읽는 중·실패와 누름을 준다, AC-2701.7·AC-2701.8). 주지 않으면 그 단추가 없다.
  * initial이 새 값으로 바뀌면(새로고침 성공) 다시 놓지 않고 화면 숫자만 바꾼다 — 고른 날·AI 요약이 그대로이고 비트 읽기를 새로 시작하지 않는다
  * inventoryOnTop: 숫자가 없는 모양에서 재고 칸을 맨 위에 둔다(기본 참). LiveDashboard가 오류 카드 위에 이미 둘 때 거짓(AC-7512.4)
+ * notice: 맨 위 줄 바로 아래 알림(contacts AC-6507.1, 무상 수리). LiveDashboard가 읽어 넘기고 여기서는 DashboardHome에 그대로 넘기기만 한다(읽지 않음)
  */
 export function BitDashboard({
   today,
@@ -127,6 +128,7 @@ export function BitDashboard({
   onBitLoaded,
   savedRefresh,
   inventoryOnTop = true,
+  notice,
 }: {
   today: string
   initial: SummarySource
@@ -136,6 +138,7 @@ export function BitDashboard({
   onBitLoaded?: () => void
   savedRefresh?: SavedRefresh
   inventoryOnTop?: boolean
+  notice?: ReactNode
 }) {
   const [status, setStatus] = useState(() => firstStatus(initial))
   // 새 처음 자료가 오면(저장 숫자 새로고침 성공) 그리는 중에 상태를 맞춘다 — 다시 놓지 않는다(AC-2701.8)
@@ -268,6 +271,7 @@ export function BitDashboard({
         )
       }
       analysis={analysis}
+      notice={notice}
     />
   )
   // 숫자가 없는 모양: 재고 칸이 대시보드 내용 맨 위(AC-7512.4). 자리는 모양과 상관없이 늘 두어(숫자가 있으면 빈 자리)

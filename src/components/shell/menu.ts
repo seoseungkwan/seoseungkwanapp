@@ -34,7 +34,7 @@ export type MenuPath =
   | '/contacts'
   | '/settings'
 /** 기능 자신의 화면이 있는 주소. 다음 명세가 화면을 만들면 여기에 더한다 */
-export type MenuHref = '/dashboard' | '/stats' | '/claim' | '/notices' | '/patients' | '/sunap' | '/calendar' | '/ai-report' | '/forms' | '/inventory' | '/worklog' | '/settings'
+export type MenuHref = '/dashboard' | '/stats' | '/claim' | '/notices' | '/patients' | '/sunap' | '/calendar' | '/ai-report' | '/forms' | '/inventory' | '/worklog' | '/contacts' | '/settings'
 
 export type MenuItem = {
   label: MenuLabel
@@ -71,7 +71,8 @@ export const MENU: readonly MenuItem[] = [
   { label: '직원', path: '/staff', href: null, ready: false, primary: false },
   // 재고 화면 /inventory(목록·세기·들어온 기록·달별, inventory AC-7512.1). [더보기] 판 자리 그대로. 원장만 본다 — 데스크는 DESK_PATHS 밖이라 탭이 없다
   { label: '재고', path: '/inventory', href: '/inventory', ready: true, primary: false },
-  { label: '주소록', path: '/contacts', href: null, ready: false, primary: false },
+  // 주소록 화면 /contacts — 원장(의원) 계정만, [더보기] 판(contacts AC-6508.1). 데스크는 DESK_MENU에 없고 DeskGate가 막는다(AC-6508.3)
+  { label: '주소록', path: '/contacts', href: '/contacts', ready: true, primary: false },
   // 설정 화면 /settings(precheck AC-012.6). 비트 PC 연결(/claim/setup)에 있어도 설정 탭이 지금 탭이다.
   // SetupScreen의 [청구·연락]은 이 href로 가는 링크가 된다
   { label: '설정', path: '/settings', href: '/settings', owns: ['/claim/setup'], ready: true, primary: false },

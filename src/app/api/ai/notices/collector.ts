@@ -28,7 +28,7 @@ import { MOHW_RSS_URL, parseMohwRss } from './sources/mohwRss'
 import { parseSummary, summaryRequest } from './summaryPrompt'
 import { parseWeekly, weeklyRequest } from './weeklyPrompt'
 
-// 고시·공지 모으기 흐름(specs/notices REQ-7414, design 4절, ADR-035·037). 하루 아홉 번 같은 흐름이 돈다:
+// 고시·공지 모으기 흐름(specs/notices REQ-7414, design 4절, ADR-036·038). 하루 아홉 번 같은 흐름이 돈다:
 // ① 일괄 결과 거두기 ② 새 글 확인(오늘 확인 안 한 출처만) ③ 지난주 모음 ④ 요약(바로 또는 일괄) ⑤ 지난 글 채우기 ⑥ 실행 마감.
 // 사이트·Claude·일괄·DB는 모두 deps로 받는다(시험이 가짜를 넣는다). 시간은 nowMs로 재고, 한국 날짜는 lib/analytics/dates로 낸다.
 // 300초(Vercel 무료판) 안에 끝내려고 정해 둔 때가 지나면 새 일을 시작하지 않고 남은 일은 다음 실행이 잇는다(작은 단위로 이어 하기).

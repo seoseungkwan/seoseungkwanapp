@@ -6,7 +6,7 @@ export type HospitalState = 'none' | 'pending' | 'approved' | 'rejected' | 'unkn
 
 export type GateInput = { path: string; signedIn: boolean; hospital: HospitalState; isAdmin: boolean }
 
-// '/api/ai/notices/collect' = Vercel Cron이 세션 없이 부르는 고시·공지 모으기(specs/notices REQ-7416, ADR-035).
+// '/api/ai/notices/collect' = Vercel Cron이 세션 없이 부르는 고시·공지 모으기(specs/notices REQ-7416, ADR-036).
 // 그 경로가 CRON_SECRET 머리를 검사해 지킨다. 정확히 이 주소 하나만(아래 경로·비슷한 이름은 공개가 아니다)
 const PUBLIC_PATHS = new Set(['/', '/login', '/auth/callback', '/api/ai/notices/collect'])
 

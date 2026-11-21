@@ -20,7 +20,7 @@ describe('isPublicPath()', () => {
   )
 })
 
-// specs/notices REQ-7416: Vercel Cron이 세션 없이 부르는 모으기 경로 하나만 공개로 더한다(지키는 것은 경로의 CRON_SECRET 검사, ADR-035)
+// specs/notices REQ-7416: Vercel Cron이 세션 없이 부르는 모으기 경로 하나만 공개로 더한다(지키는 것은 경로의 CRON_SECRET 검사, ADR-036)
 const COLLECT = '/api/ai/notices/collect'
 
 describe('고시·공지 모으기 경로 (notices AC-7416.3)', () => {

@@ -467,6 +467,40 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '엑셀 파일을 읽지 못했어요',
     fix: '.xlsx 파일인지, 칸 이름 줄이 있는지 확인하고 다시 올려 주세요.',
   },
+  // 주소록(specs/contacts design.md '오류 번호', 글은 requirements.md '화면 글자' 그대로). 읽기·저장·넣기 실패 셋은 오류 카드,
+  // 올린 파일 다섯은 확인 창(제목 = what, 파일 이름, 본문 = fix. 'form' 창은 한 줄을 더 그린다 — 그 줄은 부품 글)
+  'E-CONTACTS-READ-FAILED': {
+    what: '주소록을 읽지 못했어요',
+    fix: '인터넷 연결을 확인하고 [다시 읽기]를 눌러 주세요',
+  },
+  'E-CONTACTS-SAVE-FAILED': {
+    what: '주소록을 바꾸지 못했어요',
+    fix: '적은 값은 그대로예요. 인터넷 연결을 확인하고 다시 눌러 주세요',
+  },
+  'E-CONTACTS-IMPORT-FAILED': {
+    what: '엑셀에서 넣지 못했어요. 주소록은 그대로예요',
+    fix: '인터넷 연결을 확인하고 [넣기]를 다시 눌러 주세요',
+  },
+  'E-CONTACTS-FILE-FORM': {
+    what: '주소록 양식이 아니에요',
+    fix: '이 엑셀에서 주소록 양식의 시트와 칸 이름을 찾지 못했어요. [양식 받기]로 받은 엑셀에 적어서 올려 주세요.',
+  },
+  'E-CONTACTS-FILE-NOT-XLSX': {
+    what: '엑셀 파일만 올릴 수 있어요',
+    fix: '.xlsx 파일을 골라 주세요. [양식 받기]로 받은 파일에 적으면 돼요.',
+  },
+  'E-CONTACTS-FILE-LOCKED': {
+    what: '비밀번호가 걸린 엑셀이에요',
+    fix: '엑셀에서 비밀번호를 푼 뒤 다시 올려 주세요.',
+  },
+  'E-CONTACTS-FILE-EMPTY': {
+    what: '엑셀에 적힌 업체가 없어요',
+    fix: "'연락처' 시트에 사람마다 한 줄씩 적은 뒤 올려 주세요.",
+  },
+  'E-CONTACTS-FILE-BIG': {
+    what: '엑셀 파일이 너무 커요',
+    fix: '5MB, 연락처 2,000줄, 장비 1,000줄까지 올릴 수 있어요. 나눠서 올려 주세요.',
+  },
 }
 
 /**

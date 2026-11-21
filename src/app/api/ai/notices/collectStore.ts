@@ -21,10 +21,10 @@ import type {
 import type { BatchNotice, BatchReadingStore } from './collector'
 import { WEEK_ITEMS_MAX } from './weeklyPrompt'
 
-// 고시·공지 모으기의 DB 쪽(specs/notices REQ-7415, design 3·4절, ADR-035).
+// 고시·공지 모으기의 DB 쪽(specs/notices REQ-7415, design 3·4절, ADR-036).
 // 모으기 계정(notice_collectors에 있는 Supabase 로그인 계정)이 공개 열쇠로 비밀번호 로그인한 클라이언트로만 쓴다 — 다른 열쇠는 읽지 않는다.
 // 공용 표 넷(notices·notice_posts·notice_sources·notice_weeks)과 실행 기록 함수 셋(notice_start_run·notice_add_run_usage·notice_finish_run)만 쓰고
-// 병원 조건은 넣지 않는다(공용 표다, ADR-036). 지우기는 없다.
+// 병원 조건은 넣지 않는다(공용 표다, ADR-037). 지우기는 없다.
 // 오류 내용은 버린다: 쓰기는 false, 읽기(startRun 포함)는 고정 글 STORE_READ_FAILED로 던진다
 
 /** 읽기 실패(DB 오류·던짐·줄 모양이 틀림)의 고정 글. 받은 오류 글은 담지 않는다 */

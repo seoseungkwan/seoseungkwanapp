@@ -1232,6 +1232,8 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
     'LiveDashboard.tsx: @/components/dashboard/live/DashboardSkeleton',
     'LiveDashboard.tsx: @/components/dashboard/live/readBitDays',
     'LiveDashboard.tsx: @/components/dashboard/live/rxGroups',
+    'LiveDashboard.tsx: @/components/dashboard/warranty/useWarrantySoon', // contacts AC-6507.1: 무상 수리 알림 읽기·그리기(design.md '대시보드 알림' 잇기)
+    'LiveDashboard.tsx: @/components/dashboard/warranty/WarrantyNotice',
     'LiveDashboard.tsx: @/lib/storage/stats',
     // notices AC-7422.1: 맨 위 점검 규칙 경고 부품 하나만 놓는다. 고시·공지 저장소(lib/storage/notices)는 그 부품이 읽고 이 폴더는 부르지 않는다
     'LiveDashboard.tsx: @/components/dashboard/notices/RuleAlert',

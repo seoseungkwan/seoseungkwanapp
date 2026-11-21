@@ -8,7 +8,7 @@ import { addUsage } from '../../store'
 import { askRequest, parseAnswer, type AskNotice } from './askPrompt'
 
 // POST /api/ai/notices/ask (specs/notices REQ-7417, design 8절 '묻기'). 고시·공지 글 하나에 사용자가 적은 질문을 Claude로 묻는다.
-// 집계만 보낸다는 규칙의 예외(ADR-037): 질문(1~300자, 환자 정보 모양 거부, 저장 안 함)과 서버가 DB에서 읽은 공개 글을 보낸다.
+// 집계만 보낸다는 규칙의 예외(ADR-038): 질문(1~300자, 환자 정보 모양 거부, 저장 안 함)과 서버가 DB에서 읽은 공개 글을 보낸다.
 // 차례: 몸통 → 로그인·승인 → 질문 검사 → 표 받기(병원마다 하루 20번) → 글 읽기 → Claude → 남은 수 → 표 끝내기.
 // 표를 받은 뒤 실패하면 end_notice_ask(표, false)로 횟수를 돌려준다. 질문 검사를 못 넘으면 표를 받지 않는다.
 // 400(몸통·질문 모양)·401·403은 상태만(몸통·로그 없음). { code }로 답하는 모든 경우에 console.error('[api/ai/notices/ask]', code) 한 줄만 —

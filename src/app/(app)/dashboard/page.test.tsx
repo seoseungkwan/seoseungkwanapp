@@ -19,8 +19,10 @@ import { FlowSection } from '@/components/dashboard/summary/FlowSection'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
 import type { SummarySource } from '@/components/dashboard/summary/source'
 import { addDays } from '@/lib/analytics/dates'
+import { listWarrantySoon } from '@/lib/storage/contacts'
 import { loadInventory } from '@/lib/storage/inventory'
 import { readDays } from '@/lib/storage/stats'
+import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { InvInventory } from '@/types/inventory'
 import type { DayPayload } from '@/types/payload'
 import DashboardPage, { dynamic } from './page'
@@ -49,6 +51,17 @@ vi.mock('@/lib/storage/notices', () => ({
 }))
 // 대시보드 재고 칸(spec inventory AC-7512.4)은 스스로 loadInventory({ seed: false })로 읽는다 → 가짜. 이 파일의 계정은 처음은 물품이 없다(칸 없음, 지금 화면 그대로)
 vi.mock('@/lib/storage/inventory', () => ({ loadInventory: vi.fn(async () => ({ categories: [], items: [] })) }))
+// 무상 수리 알림 읽기(contacts AC-6507.1)도 감싼다. 기본은 지금처럼 Supabase 설정이 없는 환경(supabaseBrowser가 던짐 → 알림 없음)이고,
+// 알림 시험만 가짜 클라이언트와 가짜 장비 줄을 준다. 진짜 Supabase에 붙지 않는다
+vi.mock('@/lib/storage/contacts', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/storage/contacts')>()
+  return { ...real, listWarrantySoon: vi.fn(async () => []) }
+})
+vi.mock('@/lib/supabase/browser', () => ({
+  supabaseBrowser: vi.fn(() => {
+    throw new Error('NEXT_PUBLIC_SUPABASE_URL이 비었어요')
+  }),
+}))
 
 // /dashboard 페이지 (tab-frame REQ-306, design.md '대시보드 짜임'·'대시보드 페이지 조립'). 문지기와 앱 틀(위쪽 띠·탭·<main>)은 (app)/layout이 준다(layout.test.tsx).
 // 여기서는 오늘 한국 날짜로 대시보드(DashboardHome)를 그리는지, 자료 읽는 자리(저장 숫자 읽기) 하나로 연결 전·뒤 분석·보고 문장을 끼우는지 본다(AC-307.5·307.6)
@@ -462,6 +475,55 @@ describe('/dashboard 조립 — 시험 안 가짜 자료로 바꾼 자리(연결
     expect(text).toContain('재진 9 명')
     expect(text).toContain('지난주 같은 요일보다')
     expect(text).toContain('지난주 토요일')
+  })
+})
+
+// ── contacts: 대시보드 무상 수리 알림 (REQ-6507, design.md '대시보드 알림') ──
+// 페이지(page.tsx)는 그대로이고, 페이지가 놓는 LiveDashboard가 오늘 한국 날짜로 한 번 읽어 맨 위 줄 바로 아래에 그린다
+describe('/dashboard 무상 수리 알림 (contacts AC-6507.1·AC-6507.2)', () => {
+  const CLIENT = { from: vi.fn(), rpc: vi.fn() }
+  const NOTICE = '[role="status"][aria-label="무상 수리 알림"]'
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.mocked(readDays).mockReset()
+    vi.mocked(listWarrantySoon).mockReset()
+    vi.mocked(listWarrantySoon).mockResolvedValue([
+      { equipmentId: 'e-shock', companyId: 'c-medi', companyName: '예시메디칼', name: '충격파 기계', warrantyUntil: '2026-12-03' },
+    ])
+    vi.mocked(supabaseBrowser).mockReturnValue(CLIENT as never)
+  })
+
+  afterEach(() => {
+    vi.mocked(supabaseBrowser).mockReset()
+    vi.mocked(supabaseBrowser).mockImplementation(() => {
+      throw new Error('NEXT_PUBLIC_SUPABASE_URL이 비었어요')
+    })
+    vi.useRealTimers()
+  })
+
+  it('AC-6507.1: 브라우저에서 /dashboard를 열면 오늘 한국 날짜로 listWarrantySoon을 한 번 읽어, 연결 전 화면의 날짜 줄 바로 아래 · 큰 문장 앞에 알림을 그린다(누르면 /contacts?c=)', async () => {
+    // UTC 11월 20일 15시 30분 = 한국 11월 21일 0시 30분
+    vi.setSystemTime(new Date('2026-11-20T15:30:00Z'))
+    vi.mocked(readDays).mockResolvedValueOnce({ rows: [], dropped: 0, latest: null, fromFile: false })
+    const { container } = render(<DashboardPage />)
+    await act(async () => {})
+    await act(async () => {})
+    expect(vi.mocked(listWarrantySoon).mock.calls).toEqual([[CLIENT, '2026-11-21']])
+    const notice = container.querySelector(NOTICE)
+    expect(notice).not.toBeNull()
+    expect(plain(notice!.outerHTML)).toBe('충격파 기계 무상 수리 12일 남음 · 예시메디칼 주소록에서 보기')
+    expect(notice!.querySelector('a')!.getAttribute('href')).toBe('/contacts?c=c-medi')
+    expect(notice!.previousElementSibling?.textContent).toBe('11월 21일 토요일')
+    expect(notice!.nextElementSibling?.tagName).toBe('H1')
+    expect(plain(notice!.nextElementSibling!.outerHTML)).toBe(H1)
+  })
+
+  it('AC-6507.2: 서버 그림(뼈대)에는 알림이 없고 읽지도 않는다 — page.tsx는 그대로다(Supabase를 쓰지 않음)', () => {
+    const server = renderAt('2026-11-20T15:30:00Z')
+    expect(server).not.toContain('무상 수리')
+    expect(listWarrantySoon).not.toHaveBeenCalled()
+    expect(SOURCE).not.toMatch(/Warranty|contacts/)
   })
 })
 

@@ -63,5 +63,8 @@ export type ErrorCode =
   // 재고 탭(specs/inventory design.md 4절): 읽기 · 저장 · 이름 겹침 · 물품 있는 분류 · 세기 날짜 · 사진 · 명세서 줄 없음 · 엑셀 개인정보 모양 · 이름 칸 없음 · 엑셀 읽기
   | 'E-INV-READ-FAILED' | 'E-INV-SAVE-FAILED' | 'E-INV-DUPLICATE' | 'E-INV-IN-USE' | 'E-INV-COUNT-DATE'
   | 'E-INV-PHOTO' | 'E-INV-NO-LINES' | 'E-INV-PRIVATE' | 'E-INV-NO-NAME' | 'E-INV-EXCEL'
+  // 주소록(specs/contacts design.md '오류 번호'): 읽기 · 저장·지우기 · [넣기] 실패 · 올린 엑셀이 양식 아님 · xlsx 아님 · 비밀번호 걸림 · 적힌 줄 없음 · 너무 큼
+  | 'E-CONTACTS-READ-FAILED' | 'E-CONTACTS-SAVE-FAILED' | 'E-CONTACTS-IMPORT-FAILED'
+  | 'E-CONTACTS-FILE-FORM' | 'E-CONTACTS-FILE-NOT-XLSX' | 'E-CONTACTS-FILE-LOCKED' | 'E-CONTACTS-FILE-EMPTY' | 'E-CONTACTS-FILE-BIG'
 
 export type ErrorInfo = { what: string; fix: string }

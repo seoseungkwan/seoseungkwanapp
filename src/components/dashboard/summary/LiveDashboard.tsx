@@ -7,6 +7,8 @@ import { DashboardSkeleton } from '@/components/dashboard/live/DashboardSkeleton
 import { LOOKBACK_DAYS } from '@/components/dashboard/live/readBitDays'
 import { readDashboardGroups, type DashboardGroups } from '@/components/dashboard/live/rxGroups'
 import { RuleAlert } from '@/components/dashboard/notices/RuleAlert'
+import { useWarrantySoon } from '@/components/dashboard/warranty/useWarrantySoon'
+import { WarrantyNotice } from '@/components/dashboard/warranty/WarrantyNotice'
 import { ds } from '@/components/ui/classes'
 import { addDays } from '@/lib/analytics/dates'
 import { readDays } from '@/lib/storage/stats'
@@ -24,6 +26,8 @@ import { toSummarySource, type OlderDays, type SummarySource } from './source'
 // 늦게 온 답(떠난 뒤·날짜가 바뀐 뒤)은 상태를 바꾸지 않는다(AC-2701.6)
 // 재고 칸(spec inventory AC-7512.4): 뼈대일 때와 저장 숫자 오류 카드가 보일 때는 여기서 맨 위(뼈대·카드 앞)에 두고 BitDashboard의 맨 위 칸은 뺀다 → 한 화면에 하나.
 // 숫자가 있으면 BitDashboard가 보고 문장 오른쪽에 둔다. 알림이 없으면 칸이 그리지 않아 지금 그대로다
+// 무상 수리 알림(contacts AC-6507.1·AC-6507.2, design.md '대시보드 알림')도 여기서 화면을 열 때 한 번 읽어(useWarrantySoon, 10초 한도) BitDashboard에 notice로 넘긴다.
+// 여기서 읽으므로 BitDashboard가 key로 다시 놓여도 다시 읽지 않는다. 저장 숫자·비트 읽기는 그 읽기를 기다리지 않고, 실패는 조용히 비운다(오류 카드 없음)
 
 export const SAVED_READ_TIMEOUT_MS = 10_000
 
@@ -79,6 +83,7 @@ export function LiveDashboard({ today }: { today: string }) {
   const retrying = useRef(false)
   // 날짜가 바뀌거나 떠날 때 올린다. 그 전에 시작한 [다시 읽기]의 늦은 답은 버린다(AC-2701.6)
   const era = useRef(0)
+  const warranty = useWarrantySoon(today)
 
   // 묶음은 화면을 열 때 한 번만 읽는다(같은 10초 한도). 날짜가 바뀌어도 다시 읽지 않는다
   useEffect(() => {
@@ -161,6 +166,7 @@ export function LiveDashboard({ today }: { today: string }) {
         onBitLoaded={markBitLoaded}
         savedRefresh={showsSaved ? { refreshing: drawn.retrying, failed: drawn.failed, onRefresh: readAgain } : undefined}
         inventoryOnTop={!failedCard}
+        notice={<WarrantyNotice items={warranty} today={today} />}
       />
     </>
   )

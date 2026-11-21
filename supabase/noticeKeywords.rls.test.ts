@@ -4,7 +4,7 @@ import { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 // 내 낱말(꼭 볼 글) DB: 표 둘(notice_keywords·notice_keyword_hits)·권한·맞춤 트리거·목록 함수 다시 만들기
-// (notices REQ-7424 AC-7424.3~AC-7424.6, design.md 15절, ADR-036).
+// (notices REQ-7424 AC-7424.3~AC-7424.6, design.md 15절, ADR-037).
 // notices.rls.test.ts와 같은 방법: 진짜 Postgres(PGlite, WASM)에서 운영자가 SQL 편집기에 붙일 migration 파일을 차례로
 // (auth → … → 데스크 → 20261121000000_notices.sql → 이 파일) 그대로 돌린다. 실제 Supabase에는 붙지 않는다.
 // Supabase가 미리 갖춘 것(역할·auth)만 흉내 낸다. 메일·글·낱말은 모두 지어낸 것이다
@@ -428,7 +428,7 @@ describe('AC-7424.3 표 둘·RLS·권한·두 번 붙여 넣기', SLOW, () => {
     // 첫 파일을 다시 붙이면 목록 함수가 낱말 없는 판으로 돌아가므로 이 파일도 다시 붙인다(design 13절)
     expect(head).toMatch(/20261121000000_notices\.sql을 다시 붙이면[^\n]*이 파일도 다시/)
     expect(head).toContain('REQ-7424')
-    expect(head).toContain('ADR-036')
+    expect(head).toContain('ADR-037')
   })
 
   it('AC-7424.3: 두 번 돌려도 되는 문장만 쓴다(표·색인 if not exists, 함수·트리거 or replace, 정책 지우고 다시 만들기)', () => {
