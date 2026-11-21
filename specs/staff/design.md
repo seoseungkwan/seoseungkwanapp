@@ -29,6 +29,8 @@
 - 트리거(모두 `set search_path = ''`, 함수 revoke all): touch(updated_at, `clinic_profiles_touch` 모양) — members·settings·pay_lines. `staff_files_limit`(before insert, invoker): 같은 병원 같은 직원 'doc' 또는 같은 달 'tax'가 이미 20개면 raise.
 
 ### 권한 (revoke all from public, anon, authenticated 뒤)
+> 이 표가 맞다(2026-11-21 검토 뒤 확인). 기본 근무·바뀐 날·더 일한 시간·급여 줄·달 줄의 **열쇠 칸(직원·시작일·날·종류·달)에는 update 권한이 없다** — 앱은 upsert를 쓰지 않고 '고치고, 없으면 넣기'로 저장한다(5절). SQL이 열쇠 칸 update를 주던 것은 빼고, RLS 시험은 이 표 그대로(열쇠 칸 update 없음·열쇠 칸을 바꾸는 update는 거절)를 본다.
+
 | 표 | authenticated |
 |---|---|
 | staff_members | select · delete · insert/update(name, job, job_other, employment, weekly_hours, hired_on, left_on, phone, birthday, address, bank, account_no, calendar_staff_id, memo, used_before, used_before_from) |
@@ -59,15 +61,17 @@ alter table public.calendar_allday add column if not exists leave_id uuid refere
 `insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types) values ('staff-files', 'staff-files', false, 10000000, array['application/pdf','image/jpeg','image/png','application/zip','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.ms-excel']) on conflict (id) do update …`. 정책 clinic-logos 모양: 읽기·지우기 = `bucket_id = 'staff-files' and (storage.foldername(name))[1] = (select public.my_hospital_id())::text`, 올리기 = 같은 조건 + `exists (select 1 from public.staff_files f where f.hospital_id = (select public.my_hospital_id()) and f.path = objects.name)`. update 정책 없음.
 
 ### 시험 `supabase/staff.rls.test.ts`
-`clinicEmr.rls.test.ts` 틀(PGlite, CHAIN → clinic_profile → clinic_emr → hospital_emr → 이 파일 → 이 파일 다시). 사람: 원장 A·B, A 데스크, 대기·거절 원장, 병원 없음, anon. 본다: 열 표 칸 권한(`information_schema.column_privileges`로 정확히 위 표)·RLS·제약·남의 병원 직원 id 거절·cascade/set null·지우기 정책(3년)·트리거(넣기·지우기·손 휴무 그대로·병원 정보에 없는 시행자·연결 끊기·바꾸기·rev 오름)·calendar_allday 옛 줄·정책·insert 칸 그대로·파일 줄 종류·20개 한도·바구니 정책·두 번 실행.
+`clinicEmr.rls.test.ts` 틀(PGlite, CHAIN → clinic_profile → clinic_emr → hospital_emr → 이 파일 → 이 파일 다시). 사람: 원장 A·B, A 데스크, 대기·거절 원장, 병원 없음, anon. 본다: 열 표 칸 권한(`information_schema.column_privileges`로 정확히 위 표 — 열쇠 칸 update 없음)·앱 저장 모양('고치고, 없으면 넣기' — 값 칸 update·열쇠와 함께 insert가 되고, 열쇠 칸 update는 거절)·RLS·제약·남의 병원 직원 id 거절·cascade/set null·지우기 정책(3년)·트리거(넣기·지우기·손 휴무 그대로·병원 정보에 없는 시행자·연결 끊기·바꾸기·rev 오름)·calendar_allday 옛 줄·정책·insert 칸 그대로·파일 줄 종류·20개 한도·바구니 정책·두 번 실행.
 
 ## 2. 결정 기록 ADR-035 (`docs/ADR.md` 끝)
 > ### ADR-035: 직원 자료(연락처·주소·생일·계좌·근무·휴가·급여·서류 파일)를 Supabase에 원장만 보게 둔다. 주민번호는 두지 않는다
 > - plan.md 4절 '서버로 가는 것: 직원 이름·직종·금액'을 넓힌다. 표마다 RLS `my_hospital_id()`(승인된 원장) 하나, 데스크 정책 없음. 서류·세무사 파일은 비공개 바구니 `staff-files`.
 > - 휴가 → 예약 '휴무'는 앱이 아니라 DB 트리거가 잇는다(휴가와 종일 줄이 어긋나지 않게). `calendar_allday`에 `part`·`leave_id`를 더한다.
 > - [급여 확정] 잠금은 두지 않는다(사용자). 달 줄이 그때 인센티브 규칙을 복사해 두고, 규칙을 고치면 보는 달부터만 바꿔 지난 달 금액이 안 바뀐다.
+> - 급여 명세서 그림(`components/staff/pay/PaySlip.tsx`의 SVG)은 그림 파일·인쇄로 내보내는 종이라 그림 안에서만 글꼴 `SlipPretendard`(서식 안내문과 같은 `public/poster/fonts/` 파일) 700·900을 쓴다. 급여 화면의 칸·단추·표는 400·500·600 그대로다. (2026-11-21 검토 뒤 더함)
 
 `docs/ARCHITECTURE.md` DB 표 목록에 열 표·바구니 한 줄씩. (plan.md는 총괄 창이 고친다.)
+검토 뒤(Phase 4): ADR-035에 위 넷째 줄을 더하고(첫 세 줄·제목은 그대로 — `staff.rls.test.ts`가 본다, ADR-035는 그대로 맨 끝), `docs/UI_GUIDE.md` 굵기 규칙 줄의 예외와 ADR-028 예외 줄 옆에 '급여 명세서 그림'(ADR-035, `components/staff/pay/PaySlip.tsx` SVG 안의 `SlipPretendard` 700·900만)을 적는다.
 
 ## 3. 형 — `src/types/staff.ts`
 ```ts
@@ -110,6 +114,7 @@ export type StaffFile = { id: string; kind: 'doc' | 'tax'; staffId: string | nul
 | `rosterExcel.ts` | `ROSTER_HEADERS`(21칸) · `readRoster(buffer, existing, ctx)` → `{ problem: string \| null, rows: { line, action: 'new' \| 'update' \| 'problem', reason: string \| null, changed: string[], member: Partial<…>, plan: { week, sat } \| null }[] }` | REQ-7608 |
 | `taxExcel.ts` | `taxSheet(input)` → `{ fileName, sheetName, rows: (string \| number \| null)[][] }`(순수) · `downloadTaxExcel(sheet)` | REQ-7609 |
 | `slipPng.ts` | `downloadSlipPng(svg, fileName): Promise<boolean>` — `lib/forms/png.ts`의 `svgForImage`(글꼴 data: 주소)로 캔버스 → PNG(서식 탭과 같은 길, `png.ts`는 고치지 않음) | AC-7615.10 |
+| `nationalId.ts` (검토 뒤) | `hasNationalId(text): boolean` — 주민번호 모양(붙임표·점·빈칸 나눔 6+7, 붙여 쓴 13자리). 전각 숫자·긴 줄표는 맞춘 글로 검사만 하고 받은 글은 바꾸지 않는다(`lib/worklog/notes.ts` `privacyProblem`과 같은 맞춤 방식, 전화·메일은 보지 않음). 저장 층 `checkMember`·`rosterExcel.ts`·명단 칸이 이 한 함수를 쓴다 | AC-7610.6 |
 
 - 날짜는 모두 `lib/analytics/dates.ts`(`addDays`·`addMonthsToDay`·`weekdayOf`·`monthRange`·`parseDateCell`), '2026.03.02'는 `rosterExcel.ts`가 '-'로 바꿔 `parseDateCell`에 넘긴다. 공휴일은 `lib/analytics/holidays.ts` `HOLIDAYS`(목록 첫 해~끝 해 밖이면 `noHolidayList`).
 - 연차 기간(입사일 기준): 0번 = [입사일, 입사일+1년) 달마다 1일, k번(k≥1) = [입사일+k년, +k+1년) `annualDays(k)`. 1월 1일 기준: 0번은 같고, 입사 다음 해 1월 1일 비례, 그 뒤 해마다. 오늘이 든 기간을 보인다.
@@ -117,18 +122,24 @@ export type StaffFile = { id: string; kind: 'doc' | 'tax'; staffId: string | nul
 - 엑셀 넣은 기본 근무 점심 = 병원 정보 그 요일 `lunchFrom~lunchTo`(근무 안일 때).
 
 ## 5. 저장 층 — `src/lib/storage/staff.ts`·`staffFiles.ts`, 오류 `src/lib/errors.ts`
-`createStaffStore(client: SupabaseClient)` → `listMembers()` · `saveMember(m, id?)` · `purgeMember(member)`(서류 파일 먼저) · `importRoster(rows)` · `listPlans()` · `savePlan(staffId, from, week, sat)` · `listChanges(range)` · `saveChange(c)` · `resetDay(staffId, day)`(바뀐 날·더 일한 시간 지움) · `listOvertime(range)` · `saveOvertime(o)`(0이면 지움) · `listLeaves(range)` · `addLeaveGroup(rows)` · `replaceLeaveGroup(groupId, rows)` · `deleteLeaveGroup(groupId)` · `countAppts(calendarStaffId, days)`(`calendar_appts`에서 `day`만 select, status 취소 빼고) · `loadSettings()`(줄 없으면 기본값) · `saveSettings(s)`(upsert onConflict hospital_id) · `listRules()` · `saveRules(staffId, rules, fromMonth)`(규칙 저장 + fromMonth 이후 줄 `applyRules`) · `listPayLines(fromMonth, toMonth)` · `savePayLine(line)`(upsert onConflict hospital_id,month,staff_id) · `listPayMonths(fromMonth, toMonth)` · `savePayMonth(m)`. `staffFiles.ts`: `listFiles(kind)` · `uploadFile({ kind, staffId \| month, file })` · `deleteFile(f)` · `downloadFile(f)`. `clinicProfile.ts`의 `Pick<SupabaseClient, …>`·1,000줄씩 읽기 방식을 따른다. 엑셀 넣기 = 새 줄 한 번 insert(+ 기본 근무 줄) → 고침 줄은 10개씩 update(적힌 칸만).
+`createStaffStore(client: SupabaseClient)` → `listMembers()` · `saveMember(m, id?)`(주소·메모에 주민번호 모양이면 안 보냄, AC-7610.6) · `purgeMember(member)`(서류 파일 먼저 — 바구니가 지운 개수가 서류 수보다 적으면 실패) · `importRoster(rows)`(같은 검사) · `listPlans()` · `savePlan(staffId, from, week, sat)`(열쇠 줄 저장) · `listChanges(range)` · `saveChange(c)`(열쇠 줄 저장) · `resetDay(staffId, day)`(바뀐 날·더 일한 시간 지움) · `listOvertime(range)` · `saveOvertime(o)`(0이면 지움, 아니면 열쇠 줄 저장) · `listLeaves(range)` · `addLeaveGroup(rows)` · `replaceLeaveGroup(groupId, rows)` · `deleteLeaveGroup(groupId)` · `countAppts(calendarStaffId, days)`(`calendar_appts`에서 `day`만 select, status 취소 빼고) · `loadSettings()`(줄 없으면 기본값) · `saveSettings(s)`(upsert onConflict hospital_id) · `listRules()` · `saveRules(staffId, rules, fromMonth)`(규칙 저장 + fromMonth 이후 줄 `applyRules`) · `listPayLines(fromMonth, toMonth)` · `savePayLine(line)`(열쇠 줄 저장 — 열쇠 달·직원, 줄 id를 알면 그 id로 고침) · `listPayMonths(fromMonth, toMonth)` · `savePayMonth(m)`(열쇠 줄 저장 — 열쇠 달). `staffFiles.ts`: `listFiles(kind)` · `uploadFile({ kind, staffId \| month, file })` · `deleteFile(f)`(바구니가 0개를 지우면 실패, 줄은 그대로) · `downloadFile(f)`. `clinicProfile.ts`의 `Pick<SupabaseClient, …>`·1,000줄씩 읽기 방식을 따른다. 엑셀 넣기 = 새 줄 한 번 insert(+ 기본 근무 줄) → 고침 줄은 10개씩 update(적힌 칸만).
 
-오류 번호 다섯(AC-7610.1) `E-STAFF-READ-FAILED`·`E-STAFF-SAVE-FAILED`·`E-STAFF-FILE-FAILED`·`E-STAFF-EXCEL-FAILED`·`E-STAFF-IMAGE-FAILED` — 문구는 `E-CLINIC-*` 말투.
+**열쇠 줄 저장**(지금 방식, 2026-11-21 검토 뒤 명세를 코드에 맞춤): 기본 근무(직원·시작일)·바뀐 날(직원·날)·더 일한 시간(직원·날·종류)·급여 줄(달·직원)·달 줄(달)은 **upsert를 쓰지 않는다**. 그 열쇠로 먼저 값 칸만 고치고(`update(값).eq(열쇠…).select()`), 고친 줄이 없으면 열쇠와 함께 넣고(`insert`), 넣다가 겹치면(23505 — 다른 창이 그새 넣음) 한 번 더 고친다. upsert는 겹칠 때 보낸 열쇠 칸까지 고치려 해 열쇠 칸 update 권한이 있어야 하는데, 1절 권한 표대로 그 권한은 없다. 설정(`saveSettings`)만 upsert onConflict hospital_id다 — hospital_id를 보내지 않아(기본값 `my_hospital_id()`) 겹칠 때 고치는 칸이 값 세 칸뿐이다.
+
+**바구니 지우기 개수**: Storage `remove(paths)`는 권한에 막히거나 없는 파일이면 오류 없이 지운 것만(0개일 수 있음) 돌려준다. `deleteFile`·`purgeMember`는 돌려받은 개수가 보낸 개수보다 적으면 `E-STAFF-FILE-FAILED`를 던지고 줄을 지우지 않는다(AC-7610.3·7610.4).
+
+오류 번호 다섯(AC-7610.1) `E-STAFF-READ-FAILED`·`E-STAFF-SAVE-FAILED`·`E-STAFF-FILE-FAILED`·`E-STAFF-EXCEL-FAILED`·`E-STAFF-IMAGE-FAILED` — 문구는 `E-CLINIC-*` 말투. 세무사 엑셀 [엑셀 받기] 실패는 새 번호를 만들지 않고 `E-STAFF-EXCEL-FAILED`를 쓰며, 그 문구를 '엑셀 파일을 읽거나 만들지 못했어요'로 넓힌다(AC-7610.1 글 그대로 — `E-STAFF-FILE-FAILED` 문구는 올리기 이야기라 맞지 않음).
 
 ## 6. 화면
 - 주소 `/staff`(명단) · `/staff/schedule` · `/staff/leave` · `/staff/pay`. `src/app/(app)/staff/layout.tsx`(server): `currentMe()` — 데스크면 `null`(막힌 화면은 DeskGate), 아니면 제목 '직원' + `<StaffNav />` + children. 각 page.tsx는 `metadata: { title: '직원' }`·`dynamic = 'force-dynamic'`, 오늘은 `todayInKorea()`로 넘긴다.
 - `menu.ts`: 직원 `href: '/staff'`·`ready: true`, `MenuHref`에 '/staff'. `notReadyFeatures.ts`에서 '/staff' 항목·형 빼기. `dashboard/briefing/features.ts` 직원 status 'ready'. DeskGate는 고치지 않는다(DESK_PATHS 밖이라 이미 막힘).
 - 공용(Phase 1 탭 틀 TASK): `src/components/staff/StaffNav.tsx`, `useStaffBase.ts`(직원·설정·기본 근무·병원 정보 `useClinicProfile` 읽기 + 다시 읽기), `labels.ts`(직종·근무 형태·휴가 종류·방식 글자, 휴가 색 — 예약 달력 색 토큰을 빌림), `TableScroll.tsx`(넓은 표만 옆으로 밀리는 칸).
 - 화면 부품은 `src/components/staff/{roster,schedule,leave,pay}/`로 나눠 Phase 2 일꾼이 겹치지 않게 한다. 모양은 `ds` 클래스(`components/ui/classes.ts`)와 `globals.css` 토큰.
+- **폰 모양 없음**(AC-7611.4, 검토 뒤): 직원 부품은 폭 경계 접두가 붙은 칸 나눔·쌓임 클래스를 쓰지 않는다. `ds.segment.group`은 폰에서 칸 나눔(`max-md:grid max-md:w-full`)이라 쓰지 않고, 폴더마다 근무표 `schedule/parts.tsx`의 `SEG_GROUP`(그 클래스에서 폰 칸 나눔만 뺀 것) 같은 PC 틀을 쓴다(명단·휴가는 `schedule/parts.tsx`를 불러 써도 된다, 급여는 `pay/parts.tsx`에 둔다). `components/ui/classes.ts`는 고치지 않는다. 폭이 모자랄 수 있는 표·달력(근무표 달 보기 포함)은 `TableScroll` 안에 최소 폭(휴가 달력 `min-w-190`처럼)을 준다. 시험은 폴더마다 `pcOnly.test.tsx`: ① 폴더 안 소스(시험 밖)에 폭 경계 접두와 `ds.segment.group`이 없다 ② 화면을 그려 모든 요소의 class에 폭 경계 접두 + 모양 클래스(`grid`·`grid-cols-*`·`flex`·`flex-col`·`flex-row`·`block`·`hidden`·`w-full`·`col-span-*`)가 없다(ds 손가락 크기 클래스는 통과).
 - 급여 작은 메뉴 다섯은 `/staff/pay` 한 화면 안 상태(주소 `?part=` 하나로 기억). 금액·실적 칸은 blur에 저장(같은 칸 저장 중이면 끝난 뒤 한 번 더), 병원 부담분만 [저장].
-- 명세서: `components/staff/pay/PaySlip.tsx`가 SVG 한 장으로 그린다. [인쇄·PDF]는 서식 탭처럼 `window.print` + `@media print`(명세서만), [그림 파일]은 `lib/staff/slipPng.ts`.
-- 인건비 그림: 보는 달과 앞 5달(6달). 위 막대(지급 합계 + 병원 부담분 쌓음), 아래 % 선. 매출은 `createRevenueStore(supabaseBrowser()).loadDays(monthRange)` → `monthRevenue`(통계 목표 칸 `useStatsGoals`와 같은 길).
+- 명세서: `components/staff/pay/PaySlip.tsx`가 SVG 한 장으로 그린다. [인쇄·PDF]는 서식 탭처럼 `window.print` + `@media print`(명세서만), [그림 파일]은 `lib/staff/slipPng.ts`. 화면 미리 보기도 같은 A4 SVG 그대로(내용 높이로 줄이지 않음, AC-7615.10).
+- 인건비 그림: 보는 달과 앞 5달(6달). 위 막대(지급 합계 + 병원 부담분 쌓음), 아래 % 선. 매출은 `createRevenueStore(supabaseBrowser()).loadDays(monthRange)` → `monthRevenue`(통계 목표 칸 `useStatsGoals`와 같은 길). 저장된 급여 줄이 없는 달은 막대·점을 그리지 않고(선은 끊김) '{M}월 급여 자료 없음'(AC-7615.9).
+- 보는 달의 줄(AC-7615.11, 검토 뒤): `PayView`가 그달 재직자마다 '저장된 줄 ?? `newLine`'을 한 번 만들어 이달 급여·인센티브·세무사 엑셀(`payPeople.ts`)·인건비(`LaborCost`)·명세서에 같은 배열로 넘긴다. 인건비 '{n}명' = 그달 재직자 수. 저장 실패는 줄마다 기억해 다른 줄 저장이 성공해도 실패 안내가 남고(`usePayData`), 항목·규칙 저장 중에는 그 창 단추를 막는다.
 
 ## 7. 예약 달력 반차 (REQ-7616)
 `lib/calendar/shapes.ts` `CalAllDay`에 선택 칸 `part?: 'am' | 'pm' | null`(없으면 종일 — 옛 시험 줄 그대로), `lib/storage/calendar.ts` `toAllDay`·select에 part(없으면 null). `lib/calendar/rules.ts` `warnings(draft, appts, allday, noon = 780)` — part 'am'은 `draft.start < noon`, 'pm'은 `draft.start + draft.len > noon`일 때만 off. `CalendarScreen`이 그 요일 병원 정보 `hours[요일]?.lunchFrom ?? 780`을 넘긴다. 이름표 글은 `AllDayPanel`·`MonthGrid`·`rows/parts.tsx`·`rows/PhoneWeekList.tsx`·`AddPanel` '휴무' 칩에서 '오전 휴무'·'오후 휴무'.
@@ -140,4 +151,5 @@ export type StaffFile = { id: string; kind: 'doc' | 'tax'; staffId: string | nul
 - `on delete set null (staff_id)`는 PG15+ 문법 — Supabase·PGlite는 됨. 안 되면 트리거로 대신.
 - 트리거가 `clinic_profiles.staff` JSON에서 이름을 찾는다 — 병원 정보 모양이 바뀌면 같이 고친다(시험이 지킨다).
 - 직원 개인정보가 서버로 간다(ADR-035). 원장 RLS 하나에 기대므로 RLS 시험이 열 표 모두·데스크·다른 병원을 본다. 화면·오류에 Supabase 내용을 보이지 않는다.
-- blur 저장이 많다 — 칸마다 그 줄 하나만 upsert. 엑셀 넣기 중간 실패는 일부만 들어간다(다시 올리면 고침).
+- blur 저장이 많다 — 칸마다 그 줄 하나만 '고치고, 없으면 넣기'(5절 열쇠 줄 저장). 엑셀 넣기 중간 실패는 일부만 들어간다(다시 올리면 고침).
+- 지우고 다시 넣는 저장(휴가 묶음 고치기·그날만 바꾸기 되돌리기)은 중간에 실패하면 일부만 남을 수 있다 — 실패하면 그 기간을 다시 읽어 화면을 DB와 맞춘다(AC-7613.4·7614.3).
