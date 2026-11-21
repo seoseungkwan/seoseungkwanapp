@@ -182,7 +182,7 @@
 - 랜딩 내용 폭: 1200px(`--w-landing`) + 좌우 24px(`--gutter`, 768px 미만 16px `--gutter-m`)
 - 앱 내용 폭: 1280px(`--w-app`, `max-w-7xl`) + 좌우 24px(768px 미만 16px). 위쪽 띠·탭 줄·본문이 같은 감싸개 폭이라 왼쪽 끝이 맞는다
 - 인증 화면: 480px 한 칸. 로그인은 1024px 이상에서 두 칸(왼쪽 400px 칸)이다
-- 가로 스크롤은 없다(390·768·1440에서 확인). 넘치는 것은 제 감싸개 안에서만 옆으로 밀린다(1024px 미만의 앱 탭 줄)
+- 가로 스크롤은 없다(390·768·1440에서 확인). 넘치는 것은 제 감싸개 안에서만 옆으로 밀린다(1024px 미만의 앱 탭 줄, 720px 미만의 주소록 두 칸 틀)
 
 ## 공통 모양 (`components/ui/classes.ts`의 `ds`)
 앱 화면은 반복 모양을 `ds` 묶음에서 가져다 쓴다. 랜딩은 `components/landing/base.module.css`에 같은 종류를 같은 토큰 값으로 둔다(`.btn*`·`.chip*`).
@@ -342,7 +342,7 @@
   - 열면 첫 항목에 초점, ↓↑로 항목 사이를 돈다(끝에서 처음으로). Esc·Tab·바깥 누름은 닫는다. 메뉴 층은 나타날 때만 움직인다('움직임')
 - **탭 줄**: 44px(모든 폭), `surface`, 아래 1px line. 1024px 이상에서 위쪽 띠와 같은 폭·여백이다. 첫 탭은 줄 한 곳의 `[&>:first-child]:-ml-3`으로 모든 폭에서 왼쪽으로 12px 당겨, 첫 탭 글자가 로고 왼쪽 끝과 맞는다
   - 순서와 주소(13개, `components/shell/menu.ts`의 `MENU`): 대시보드 `/dashboard` · 통계 `/stats` · 청구 `/claim` · 고시·공지 `/notices` · 환자 `/patients` · 매출 `/revenue` · AI 리포트 `/ai-report` · 서식 `/forms` · 직원 `/staff` · 업무일지 `/worklog` · 재고 `/inventory` · 주소록 `/contacts` · 설정 `/claim/setup`(비트 PC 연결 화면). 관리자 탭과 세로 구분선이 없다(관리자 화면은 계정 메뉴 [가입 승인])
-  - 화면이 아직 없는 탭(고시·공지, 직원, 재고, 주소록)은 그 주소의 준비 중 화면으로 간다(아래 '빈 상태'). `MENU` 항목마다 `ready`가 있고 대시보드·통계·청구·환자·매출·AI 리포트·서식·업무일지·설정만 `true`다. 기능에 화면이 생기면 `menu.ts`·`components/dashboard/briefing/features.ts`·`components/common/notReadyFeatures.ts`와 그 주소의 페이지를 같이 바꾼다
+  - 화면이 아직 없는 탭(고시·공지, 직원, 재고)은 그 주소의 준비 중 화면으로 간다(아래 '빈 상태'). `MENU` 항목마다 `ready`가 있고 대시보드·통계·청구·환자·매출·AI 리포트·서식·업무일지·주소록·설정만 `true`다. 기능에 화면이 생기면 `menu.ts`·`components/dashboard/briefing/features.ts`·`components/common/notReadyFeatures.ts`와 그 주소의 페이지를 같이 바꾼다
   - 지금 탭은 `menu.ts`의 `currentMenuLabel`이 정한다: 탭 주소 가운데 가장 길게 맞는 것이 이긴다. `/claim`·`/claim/…`은 [청구], 비트 PC 연결 `/claim/setup`은 [설정](`/claim`보다 길게 맞는다). `/admin`에서는 지금 탭이 없다
   - 1024px 미만에서는 탭 띠가 옆으로 밀린다(얇은 스크롤바). 지금 탭과 키보드 초점이 간 탭이 보이게 띠만 민다
 - **[전체 메뉴]**(1024px 미만, tab-frame AC-303.5 "메뉴 단추 없음"을 대체, 768px 폭도 같다): 탭 띠 오른쪽 끝, 띠 밖에 단추(44px, 왼쪽 1px `line`, `accent` 600, 꾸밈 `chev`, `aria-expanded`·`aria-controls`). 1024px 이상에서는 보이지 않는다(`lg:hidden`)
@@ -487,6 +487,10 @@
 - [구글로 시작하기]는 메뉴·히어로·`#how`에 하나씩 3개이고 모두 `/login`으로 간다
 - 약속 띠·시작하기 섹션·히어로 숫자 순환·작은 카드는 없다. 약속은 히어로 안 목록이 되었고, 시작하기는 `#how`에 합쳤다
 - 랜딩은 아무것도 받지 않는다(입력·폼 없음). 로고 밖 svg는 꾸밈(`aria-hidden`, `currentColor`)이다
+
+## 주소록 (`/contacts`)
+- 기준: 승인 시안 `docs/mockups/contacts/`(`index.html`·`notes.md`), 명세 `specs/contacts`. 화면은 `components/contacts/ContactsScreen.tsx`(상태) + `parts/`(목록·자세히·판·칸) + `import/`(엑셀 올리기·미리 보기)
+- 주소록: 폰 전용 모양 없음(사용자 규칙 2026-11-21), 두 칸 틀 최소 720px은 제 감싸개 안에서 옆으로(`min-w-180` + 감싼 칸 `overflow-x-auto`). 목록 칸은 1024px 미만 300px · 이상 360px, 자세히 두 칸은 1200px 이상. 번호 누르기만 기기로 가른다(터치 = 전화, 마우스 = 복사)
 
 ## 휴대폰 (768px 미만)
 - 한 줄 배치다. 글자는 `-m` 단계(heading-m·display-m)를 쓴다
