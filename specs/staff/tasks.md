@@ -6,7 +6,7 @@
 > | Phase | TASK | 하는 일 |
 > |---|---|---|
 > | 0 | TASK-1 | 시안 네 장·명세 (끝남, 사용자 승인 2026-11-21) |
-> | 1 | TASK-2 | DB: 열 표·RLS·예약 휴무 트리거·바구니 + RLS 시험 + ADR-035 |
+> | 1 | TASK-2 | DB: 열 표·RLS·예약 휴무 트리거·바구니 + RLS 시험 + ADR-039 |
 > | 1 | TASK-3 | 형·저장 층·오류 문구·공용 읽기 훅 |
 > | 1 | TASK-4 | 연차 셈 |
 > | 1 | TASK-5 | 근무표 셈 + 명단 셈(알림·근속·보관) |
@@ -42,7 +42,7 @@
 - REQ: REQ-7601, REQ-7602, REQ-7603
 - Files: supabase/migrations/20261121000000_staff.sql, supabase/staff.rls.test.ts, docs/ADR.md, docs/ARCHITECTURE.md
 - Tests: supabase/staff.rls.test.ts
-- TDD: required — design.md 1절·2절. `clinicEmr.rls.test.ts` 틀(PGlite, 진짜 migration 차례). 옛 RLS 시험은 고치지 않고 통과해야 한다. `docs/ADR.md` 끝에 ADR-035(design.md 2절 글), `docs/ARCHITECTURE.md` DB 표 목록에 한 줄씩. **실제 Supabase에 붙여 넣지 않는다**
+- TDD: required — design.md 1절·2절. `clinicEmr.rls.test.ts` 틀(PGlite, 진짜 migration 차례). 옛 RLS 시험은 고치지 않고 통과해야 한다. `docs/ADR.md` 끝에 ADR-039(design.md 2절 글), `docs/ARCHITECTURE.md` DB 표 목록에 한 줄씩. **실제 Supabase에 붙여 넣지 않는다**
 
 ## TASK-3: 형·저장 층·오류 문구·공용 읽기 훅
 - Phase: 1
@@ -146,7 +146,7 @@
 - REQ: REQ-7615, REQ-7610, REQ-7611
 - Files: src/components/staff/pay/PayView.tsx, src/components/staff/pay/PayView.test.tsx, src/components/staff/pay/MonthPay.tsx, src/components/staff/pay/MonthPay.test.tsx, src/components/staff/pay/AdjustPanel.tsx, src/components/staff/pay/ItemsEditor.tsx, src/components/staff/pay/RulesEditor.tsx, src/components/staff/pay/IncentivePart.tsx, src/components/staff/pay/IncentivePart.test.tsx, src/components/staff/pay/LaborCost.tsx, src/components/staff/pay/LaborCharts.tsx, src/components/staff/pay/LaborCost.test.tsx, src/components/staff/pay/SlipPart.tsx, src/components/staff/pay/PaySlip.tsx, src/components/staff/pay/PaySlip.test.tsx, src/components/staff/pay/parts.tsx, src/components/staff/pay/usePayData.ts, src/components/staff/pay/payPeople.ts, src/components/staff/pay/payTestKit.tsx, src/components/staff/pay/pcOnly.test.tsx, src/lib/staff/pay.ts, src/lib/staff/pay.test.ts, src/lib/errors.ts, src/lib/errors.test.ts, docs/ADR.md, docs/UI_GUIDE.md
 - Tests: src/components/staff/pay/PayView.test.tsx, src/components/staff/pay/MonthPay.test.tsx, src/components/staff/pay/IncentivePart.test.tsx, src/components/staff/pay/LaborCost.test.tsx, src/components/staff/pay/PaySlip.test.tsx, src/components/staff/pay/pcOnly.test.tsx, src/lib/staff/pay.test.ts, src/lib/errors.test.ts
-- TDD: required — 검토(2026-11-21) 4·5·6·11 + 화면 사진 + 사용자 결정. ① 저장 실패는 줄마다 기억해 다른 줄 저장이 성공해도 E-STAFF-SAVE-FAILED가 남는다(`usePayData.ts`, AC-7615.2) ② [항목 고치기]·[인센티브 규칙 고치기] 저장 중에는 단추를 막아 두 번 저장·덮어쓰기가 없다(`ItemsEditor`·`RulesEditor`, AC-7615.4) ③ 보는 달 줄 하나로: 이달 급여·인센티브·세무사 엑셀(`payPeople.ts`)·인건비·명세서가 '저장된 줄 ?? 새 줄(고정 수당 포함)'을 같이 쓰고, 인건비 '{n}명' = 그달 재직자 수(AC-7615.11) ④ 인건비 그림: 저장된 급여 줄이 없는 달은 막대·% 점을 비우고 '{M}월 급여 자료 없음', 달별 표 '–'(`LaborCharts`·`LaborCost`, AC-7615.9) ⑤ 폰 모양 없애기: `PayView`·`AdjustPanel`의 `ds.segment.group` → `pay/parts.tsx`의 PC 단추 묶음 틀, `LaborCost` `md:grid-cols-3`·`SlipPart` `md:grid-cols-[…]`·`MonthPay` `lg:grid-cols-[…]`·`RulesEditor` `lg:grid-cols-2` → 폭과 상관없는 칸 나눔, 넓은 칸은 `TableScroll` 안·최소 폭(AC-7611.4, `pcOnly.test.tsx`) ⑥ 줄맞춤: `MonthPay`·`LaborCost` 머리·합계 칸의 기본 `text-right`가 `text-left`·`text-center`를 이기지 않게(시안대로, AC-7615.2·7615.9) ⑦ [엑셀 받기] 실패는 E-STAFF-EXCEL-FAILED, `errors.ts` 그 번호 문구를 AC-7610.1 글로 넓힘(AC-7615.7) ⑧ 명세서 미리 보기는 A4 그대로임을 시험으로 지킴(AC-7615.10) ⑨ 문서: `docs/ADR.md` ADR-035에 넷째 줄(design.md 2절, 제목·첫 세 줄 그대로·맨 끝 그대로), `docs/UI_GUIDE.md` 굵기 예외에 '급여 명세서 그림'. 화면 글은 `requirements.md` '화면 글 기본값' 그대로. 통합 시험은 고치지 않고 통과.
+- TDD: required — 검토(2026-11-21) 4·5·6·11 + 화면 사진 + 사용자 결정. ① 저장 실패는 줄마다 기억해 다른 줄 저장이 성공해도 E-STAFF-SAVE-FAILED가 남는다(`usePayData.ts`, AC-7615.2) ② [항목 고치기]·[인센티브 규칙 고치기] 저장 중에는 단추를 막아 두 번 저장·덮어쓰기가 없다(`ItemsEditor`·`RulesEditor`, AC-7615.4) ③ 보는 달 줄 하나로: 이달 급여·인센티브·세무사 엑셀(`payPeople.ts`)·인건비·명세서가 '저장된 줄 ?? 새 줄(고정 수당 포함)'을 같이 쓰고, 인건비 '{n}명' = 그달 재직자 수(AC-7615.11) ④ 인건비 그림: 저장된 급여 줄이 없는 달은 막대·% 점을 비우고 '{M}월 급여 자료 없음', 달별 표 '–'(`LaborCharts`·`LaborCost`, AC-7615.9) ⑤ 폰 모양 없애기: `PayView`·`AdjustPanel`의 `ds.segment.group` → `pay/parts.tsx`의 PC 단추 묶음 틀, `LaborCost` `md:grid-cols-3`·`SlipPart` `md:grid-cols-[…]`·`MonthPay` `lg:grid-cols-[…]`·`RulesEditor` `lg:grid-cols-2` → 폭과 상관없는 칸 나눔, 넓은 칸은 `TableScroll` 안·최소 폭(AC-7611.4, `pcOnly.test.tsx`) ⑥ 줄맞춤: `MonthPay`·`LaborCost` 머리·합계 칸의 기본 `text-right`가 `text-left`·`text-center`를 이기지 않게(시안대로, AC-7615.2·7615.9) ⑦ [엑셀 받기] 실패는 E-STAFF-EXCEL-FAILED, `errors.ts` 그 번호 문구를 AC-7610.1 글로 넓힘(AC-7615.7) ⑧ 명세서 미리 보기는 A4 그대로임을 시험으로 지킴(AC-7615.10) ⑨ 문서: `docs/ADR.md` ADR-039에 넷째 줄(design.md 2절, 제목·첫 세 줄 그대로·맨 끝 그대로), `docs/UI_GUIDE.md` 굵기 예외에 '급여 명세서 그림'. 화면 글은 `requirements.md` '화면 글 기본값' 그대로. 통합 시험은 고치지 않고 통과.
 
 ## TASK-16: 검토 고침 — 명단·근무표·휴가 + 주민번호 모양 막기
 - Phase: 4
@@ -162,7 +162,7 @@
 - REQ: REQ-7601, REQ-7610
 - Files: supabase/migrations/20261121000000_staff.sql, supabase/staff.rls.test.ts, src/lib/storage/staffFiles.ts, src/lib/storage/staffFiles.test.ts
 - Tests: supabase/staff.rls.test.ts, src/lib/storage/staffFiles.test.ts
-- TDD: required — 검토(2026-11-21) 3 + 작은 것. ① SQL: 기본 근무·바뀐 날·더 일한 시간·급여 줄·달 줄 다섯 표의 update 권한에서 열쇠 칸(staff_id·from_day·day·kind·month)을 빼 design.md 1절 권한 표와 똑같이(주석의 'upsert' 말도 '고치고, 없으면 넣기'로). revoke all 뒤 다시 주므로 두 번 실행해도·이미 실행한 DB에 다시 붙여도 그 표가 된다(AC-7601.1) ② `staff.rls.test.ts`: `GRANTS`를 design 1절 표대로, 'upsert(열쇠 칸까지 SET)' 시험을 '값 칸 update·열쇠와 함께 insert는 되고 열쇠 칸 update는 거절'로 바꿈. ADR-035 문서 시험은 첫 세 줄을 그대로 보게 둔다(TASK-15가 넷째 줄을 더함) ③ `staffFiles.ts deleteFile`: 바구니가 0개를 지우면 E-STAFF-FILE-FAILED·줄 그대로(AC-7610.3). 실제 Supabase에는 붙이지 않는다(배포 때 사용자가 SQL Editor에).
+- TDD: required — 검토(2026-11-21) 3 + 작은 것. ① SQL: 기본 근무·바뀐 날·더 일한 시간·급여 줄·달 줄 다섯 표의 update 권한에서 열쇠 칸(staff_id·from_day·day·kind·month)을 빼 design.md 1절 권한 표와 똑같이(주석의 'upsert' 말도 '고치고, 없으면 넣기'로). revoke all 뒤 다시 주므로 두 번 실행해도·이미 실행한 DB에 다시 붙여도 그 표가 된다(AC-7601.1) ② `staff.rls.test.ts`: `GRANTS`를 design 1절 표대로, 'upsert(열쇠 칸까지 SET)' 시험을 '값 칸 update·열쇠와 함께 insert는 되고 열쇠 칸 update는 거절'로 바꿈. ADR-039 문서 시험은 첫 세 줄을 그대로 보게 둔다(TASK-15가 넷째 줄을 더함) ③ `staffFiles.ts deleteFile`: 바구니가 0개를 지우면 E-STAFF-FILE-FAILED·줄 그대로(AC-7610.3). 실제 Supabase에는 붙이지 않는다(배포 때 사용자가 SQL Editor에).
 
 ## TASK-18: 넘어온 연차 — DB 칸 둘
 - Phase: 5

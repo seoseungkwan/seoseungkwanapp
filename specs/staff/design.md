@@ -1,6 +1,6 @@
 # 설계: 직원 탭 — 명단 · 근무표 · 휴가 · 급여 (staff)
 
-> 기능 ID `staff`. 기준 갈래 `feat-staff`(운영 b2ab27e5). 시안 `docs/mockups/staff/` 승인(notes.md). 결정 기록 ADR-035(ADR-034는 재고 명세가 씀).
+> 기능 ID `staff`. 기준 갈래 `feat-staff`(운영 b2ab27e5). 시안 `docs/mockups/staff/` 승인(notes.md). 결정 기록 ADR-039(ADR-034는 재고 명세가 씀).
 > 주민번호는 저장하지 않으므로 암호화 방식 결정은 없다. 폰 전용 모양은 만들지 않는다 — 넓은 표·달력은 `overflow-x-auto` 칸 하나만 밀린다.
 
 ## 1. DB — `supabase/migrations/20261121000000_staff.sql` (REQ-7601~7603)
@@ -65,15 +65,15 @@ alter table public.calendar_allday add column if not exists leave_id uuid refere
 `clinicEmr.rls.test.ts` 틀(PGlite, CHAIN → clinic_profile → clinic_emr → hospital_emr → 이 파일 → 이 파일 다시). 사람: 원장 A·B, A 데스크, 대기·거절 원장, 병원 없음, anon. 본다: 열 표 칸 권한(`information_schema.column_privileges`로 정확히 위 표 — 열쇠 칸 update 없음)·앱 저장 모양('고치고, 없으면 넣기' — 값 칸 update·열쇠와 함께 insert가 되고, 열쇠 칸 update는 거절)·RLS·제약·남의 병원 직원 id 거절·cascade/set null·지우기 정책(3년)·트리거(넣기·지우기·손 휴무 그대로·병원 정보에 없는 시행자·연결 끊기·바꾸기·rev 오름)·calendar_allday 옛 줄·정책·insert 칸 그대로·파일 줄 종류·20개 한도·바구니 정책·두 번 실행.
 넘어온 연차(AC-7601.8): 칸 모양(`carry_start` numeric 4,1·`registered_on` date, 둘 다 not null)·칸 권한(insert/update에 `carry_start`, `registered_on`은 없음)·`carry_start` 기본 0·−30·100·−0.5 됨, −30.5·100.5·1.3·null 거절·`registered_on`이 넣은 때 `(now() at time zone 'Asia/Seoul')::date`·원장이 `registered_on`을 넣거나 고치면 권한 거절·두 칸을 지운(앞 판) 표에 다시 붙이면 두 칸이 같은 정의로 생김.
 
-## 2. 결정 기록 ADR-035 (`docs/ADR.md` 끝)
-> ### ADR-035: 직원 자료(연락처·주소·생일·계좌·근무·휴가·급여·서류 파일)를 Supabase에 원장만 보게 둔다. 주민번호는 두지 않는다
+## 2. 결정 기록 ADR-039 (`docs/ADR.md` 끝)
+> ### ADR-039: 직원 자료(연락처·주소·생일·계좌·근무·휴가·급여·서류 파일)를 Supabase에 원장만 보게 둔다. 주민번호는 두지 않는다
 > - plan.md 4절 '서버로 가는 것: 직원 이름·직종·금액'을 넓힌다. 표마다 RLS `my_hospital_id()`(승인된 원장) 하나, 데스크 정책 없음. 서류·세무사 파일은 비공개 바구니 `staff-files`.
 > - 휴가 → 예약 '휴무'는 앱이 아니라 DB 트리거가 잇는다(휴가와 종일 줄이 어긋나지 않게). `calendar_allday`에 `part`·`leave_id`를 더한다.
 > - [급여 확정] 잠금은 두지 않는다(사용자). 달 줄이 그때 인센티브 규칙을 복사해 두고, 규칙을 고치면 보는 달부터만 바꿔 지난 달 금액이 안 바뀐다.
 > - 급여 명세서 그림(`components/staff/pay/PaySlip.tsx`의 SVG)은 그림 파일·인쇄로 내보내는 종이라 그림 안에서만 글꼴 `SlipPretendard`(서식 안내문과 같은 `public/poster/fonts/` 파일) 700·900을 쓴다. 급여 화면의 칸·단추·표는 400·500·600 그대로다. (2026-11-21 검토 뒤 더함)
 
 `docs/ARCHITECTURE.md` DB 표 목록에 열 표·바구니 한 줄씩. (plan.md는 총괄 창이 고친다.)
-검토 뒤(Phase 4): ADR-035에 위 넷째 줄을 더하고(첫 세 줄·제목은 그대로 — `staff.rls.test.ts`가 본다, ADR-035는 그대로 맨 끝), `docs/UI_GUIDE.md` 굵기 규칙 줄의 예외와 ADR-028 예외 줄 옆에 '급여 명세서 그림'(ADR-035, `components/staff/pay/PaySlip.tsx` SVG 안의 `SlipPretendard` 700·900만)을 적는다.
+검토 뒤(Phase 4): ADR-039에 위 넷째 줄을 더하고(첫 세 줄·제목은 그대로 — `staff.rls.test.ts`가 본다, ADR-039는 그대로 맨 끝), `docs/UI_GUIDE.md` 굵기 규칙 줄의 예외와 ADR-028 예외 줄 옆에 '급여 명세서 그림'(ADR-039, `components/staff/pay/PaySlip.tsx` SVG 안의 `SlipPretendard` 700·900만)을 적는다.
 
 ## 3. 형 — `src/types/staff.ts`
 ```ts
@@ -159,7 +159,7 @@ export type StaffFile = { id: string; kind: 'doc' | 'tax'; staffId: string | nul
 ## 9. 위험
 - `on delete set null (staff_id)`는 PG15+ 문법 — Supabase·PGlite는 됨. 안 되면 트리거로 대신.
 - 트리거가 `clinic_profiles.staff` JSON에서 이름을 찾는다 — 병원 정보 모양이 바뀌면 같이 고친다(시험이 지킨다).
-- 직원 개인정보가 서버로 간다(ADR-035). 원장 RLS 하나에 기대므로 RLS 시험이 열 표 모두·데스크·다른 병원을 본다. 화면·오류에 Supabase 내용을 보이지 않는다.
+- 직원 개인정보가 서버로 간다(ADR-039). 원장 RLS 하나에 기대므로 RLS 시험이 열 표 모두·데스크·다른 병원을 본다. 화면·오류에 Supabase 내용을 보이지 않는다.
 - blur 저장이 많다 — 칸마다 그 줄 하나만 '고치고, 없으면 넣기'(5절 열쇠 줄 저장). 엑셀 넣기 중간 실패는 일부만 들어간다(다시 올리면 고침).
 - 웹앱 등록일(`registered_on`)은 DB가 넣은 날로 정하고 화면에서 고칠 수 없다. 시작 기간이 생각과 다르면 원장은 '넘어온 연차' 시작 값으로 맞춘다. 웹앱을 쓰기 전 기간은 기록이 없어 '쓴 0'으로 보일 수밖에 없으므로 'pay'·'carry' 모두 지난 기간 줄·끝 안내·정산에서 뺀다(AC-7604.9 — 'pay'는 같은 날 총괄 결정). 그래서 웹앱을 쓰기 전 달의 세무사 엑셀을 만들어도 정산 일수가 나오지 않는다.
 - 지우고 다시 넣는 저장(휴가 묶음 고치기·그날만 바꾸기 되돌리기)은 중간에 실패하면 일부만 남을 수 있다 — 실패하면 그 기간을 다시 읽어 화면을 DB와 맞춘다(AC-7613.4·7614.3).
