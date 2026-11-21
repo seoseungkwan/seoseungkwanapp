@@ -419,6 +419,11 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '저장하지 못했어요',
     fix: '잠시 뒤 다시 눌러 주세요. 적은 메모는 그대로 있어요',
   },
+  // 내 낱말 더하기·빼기 실패(specs/notices requirements 기본값 20 글자 그대로). 고른 낱말과 적은 글은 화면에 그대로다
+  'E-NOTICE-WORDS': {
+    what: '낱말을 저장하지 못했어요',
+    fix: '잠시 뒤 다시 눌러 주세요. 고른 낱말은 그대로 있어요',
+  },
 }
 
 /**

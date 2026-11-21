@@ -101,6 +101,7 @@ const ALL_CODES = [
   'E-FIRST-RUN-SAVE-FAILED',
   'E-NOTICE-READ',
   'E-NOTICE-SAVE',
+  'E-NOTICE-WORDS',
 ] as const satisfies readonly ErrorCode[]
 
 // '병원' 낱말 예외(AC-409.1): 명세가 글자를 정한 번호만. 데스크 메일 둘은 '병원 계정'·'다른 병원'이라고 말해야 뜻이 산다(desk-feedback design.md 표, AC-6304.3).
@@ -1133,6 +1134,14 @@ const NOTICE = {
   },
 } as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
 
+// 내 낱말 저장 실패(specs/notices requirements 기본값 20). 고른 낱말이 화면에 그대로 있다
+const NOTICE_WORDS = {
+  'E-NOTICE-WORDS': {
+    what: '낱말을 저장하지 못했어요',
+    fix: '잠시 뒤 다시 눌러 주세요. 고른 낱말은 그대로 있어요',
+  },
+} as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
+
 describe('AC-7401.1 고시·공지 오류 번호', () => {
   it.each(Object.keys(NOTICE) as Array<keyof typeof NOTICE>)('AC-7401.1: errorInfo(%s)는 기본값 12의 무엇이·어떻게 글 그대로다', (code) => {
     expect(isErrorCode(code), code).toBe(true)
@@ -1140,8 +1149,11 @@ describe('AC-7401.1 고시·공지 오류 번호', () => {
     expect(errorInfo(code)).toEqual(NOTICE[code])
   })
 
-  it('AC-7401.1: 이 명세가 더하는 번호는 E-NOTICE-READ·E-NOTICE-SAVE 둘뿐이다', () => {
-    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-NOTICE-')).sort()).toEqual(Object.keys(NOTICE).sort())
+  // 내 낱말(REQ-7424)이 E-NOTICE-WORDS를 더해 셋이 됐다(design 15절)
+  it('AC-7401.1·AC-7424.2: 이 명세가 더하는 번호는 E-NOTICE-READ·E-NOTICE-SAVE·E-NOTICE-WORDS 셋뿐이다', () => {
+    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-NOTICE-')).sort()).toEqual(
+      [...Object.keys(NOTICE), ...Object.keys(NOTICE_WORDS)].sort(),
+    )
   })
 
   // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
@@ -1149,5 +1161,20 @@ describe('AC-7401.1 고시·공지 오류 번호', () => {
     const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
     const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
     for (const code of Object.keys(NOTICE)) expect(union).toContain(`'${code}'`)
+  })
+})
+
+describe('AC-7424.2 내 낱말 오류 번호', () => {
+  it('AC-7424.2: errorInfo(E-NOTICE-WORDS)는 기본값 20의 무엇이·어떻게 글 그대로다', () => {
+    expect(isErrorCode('E-NOTICE-WORDS')).toBe(true)
+    expect(ALL_CODES).toContain('E-NOTICE-WORDS')
+    expect(errorInfo('E-NOTICE-WORDS')).toEqual(NOTICE_WORDS['E-NOTICE-WORDS'])
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
+  it('AC-7424.2: E-NOTICE-WORDS가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    expect(union).toContain(`'E-NOTICE-WORDS'`)
   })
 })
