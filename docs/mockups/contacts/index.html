@@ -7,7 +7,7 @@
 <!--
   주소록 탭(contacts) 시안. 업체 연락처 · 담당자 · 장비와 수리 기록 · 엑셀로 한 번에 넣기 · 대시보드 무상 수리 알림. 결정·화면 글자 목록은 notes.md.
   ?s=list(기본) · search · detail · pw-shown · edit · new · repair-add · empty · upload-preview · upload-bad-file · upload-done · delete-confirm · dashboard · dashboard-off
-  &v=phone 을 붙이면 넓은 화면에서도 390px 폰 틀 안에 그린다(폰 실제 폭이면 저절로 폰 모양). &c=<업체 id> 로 자세히 볼 업체를 고른다(대시보드 알림 링크가 쓴다).
+  &c=<업체 id> 로 자세히 볼 업체를 고른다(대시보드 알림 링크가 쓴다).
   색·글자는 앱 토큰(src/app/globals.css :root)만 쓴다. 업체 이름(예시○○)·사람 이름(○예시)·번호는 모두 지어낸 값이다(뉴메디코어만 실제 이름, 번호는 가짜).
   오늘은 2026-11-21 (토) 10:40으로 고정. 어디로도 보내지 않는다.
 -->
@@ -45,14 +45,11 @@ svg { flex: none; }
 .seg { display: flex; flex-wrap: wrap; gap: 4px; }
 .seg a { padding: 3px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); font-size: 12px; line-height: 18px; color: var(--ink-2); text-decoration: none; white-space: nowrap; }
 .seg a[aria-current="true"] { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
-.seg .sep { width: 1px; background: var(--line-strong); margin: 2px 6px; }
 .mnote { font-size: 12px; line-height: 18px; color: var(--ink-2); }
 .mnote b { font-size: 12px; }
 
 /* 앱 틀 */
 .app { position: relative; background: var(--surface); }
-body.framed { background: #E9ECF0; }
-.framed .app { width: 390px; max-width: 100%; margin: 16px auto 32px; border: 1px solid var(--line-strong); border-radius: 12px; overflow: clip; box-shadow: var(--elev); min-height: 820px; }
 .top { background: var(--surface); border-bottom: 1px solid var(--line); }
 .top-in { max-width: 1280px; margin: 0 auto; height: 56px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .brand { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 16px; font-weight: 600; color: var(--ink); }
@@ -202,7 +199,6 @@ mark { background: var(--warning-soft); color: inherit; box-shadow: 0 -1px 0 var
 .rrow .rc { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap; }
 .rrow .rc.no { color: var(--faint); }
 .rnone { padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
-.back { display: inline-flex; align-items: center; gap: 4px; height: 44px; margin: -8px 0 4px -8px; padding: 0 8px; border: 0; background: none; color: var(--ink-2); font-weight: 500; }
 
 /* 바로 고치는 칸(담당자·장비·수리 기록) */
 .iform { margin-top: 8px; padding: 12px; border-radius: var(--r); background: var(--canvas); display: grid; gap: 12px; }
@@ -252,8 +248,6 @@ textarea.inp { height: 88px; padding: 10px 12px; line-height: 22px; resize: vert
 .dlg p.sm { font-size: 13px; line-height: 20px; color: var(--muted); }
 .dlg .fname { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .dlg .foot { margin-top: 8px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.framed .scrim, .framed .drawer, .framed .dlg { position: absolute; }
-.framed .drawer { bottom: auto; height: 100%; }
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 40; padding: 10px 16px; border-radius: var(--r-float); background: var(--ink); color: #fff; font-size: 13px; line-height: 20px; box-shadow: var(--elev); max-width: calc(100vw - 32px); }
 .toast:empty { display: none; }
 
@@ -274,8 +268,6 @@ textarea.inp { height: 88px; padding: 10px 12px; line-height: 22px; resize: vert
 .upfile svg { color: var(--positive); }
 .upfile .mut { color: var(--muted); }
 .upfile .mut::before { content: "· "; }
-.narrow .upfile .mut { flex-basis: 100%; }
-.narrow .upfile .mut::before { content: none; }
 .upsum { margin-top: 16px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--line-strong); border-bottom: 1px solid var(--line); }
 .upsum > div { padding: 12px 20px; border-left: 1px solid var(--line); min-width: 0; }
 .upsum > div:first-child { border-left: 0; padding-left: 0; }
@@ -340,87 +332,6 @@ details.same p { padding: 10px 0; border-bottom: 1px solid var(--line); color: v
 .dlead { margin-top: 16px; max-width: 512px; font-size: 16px; line-height: 24px; color: var(--ink-2); }
 .cut { margin-top: 24px; padding: 8px 12px; border: 1px dashed #D6B656; border-radius: 4px; background: #FFFBEB; color: #92400E; font-size: 12px; line-height: 18px; text-align: center; }
 
-/* 폰(768px 미만) */
-.narrow .mhead-in { padding-left: 16px; padding-right: 16px; }
-.narrow .top-in { height: 48px; padding: 0 8px 0 16px; }
-.narrow .brand { font-size: 14px; }
-.narrow .top-r time { display: none; }
-.narrow .acct { width: 44px; height: 44px; padding: 0; border: 0; justify-content: center; font-size: 0; }
-.narrow .acct::before { content: ""; width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--ink-2); }
-.narrow .tabs-in { padding: 0 4px; }
-.narrow .more { border-left: 1px solid var(--line); }
-.narrow main { padding: 16px 16px 32px; }
-.narrow .btn, .narrow .btn.sm { height: 44px; }
-.narrow .tbtn { height: 44px; font-size: 14px; }
-.narrow .mini { height: 36px; padding: 0 10px; font-size: 13px; }
-.narrow .tools { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
-.narrow .tools .primary { grid-column: 1 / -1; grid-row: 1; }
-.narrow .tools.up .primary { grid-column: auto; grid-row: auto; }
-.narrow .tools.up { display: none; }
-.narrow .findrow { gap: 8px; }
-.narrow .search { flex: 1 1 100%; }
-.narrow .search input { font-size: 16px; }
-.narrow .fc { height: 40px; }
-.narrow .list { margin-top: 12px; border-top: 1px solid var(--line-strong); margin-left: -16px; margin-right: -16px; }
-.narrow .grp { padding-left: 16px; padding-right: 16px; }
-.narrow .mrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border-bottom: 1px solid var(--line); }
-.narrow .mrow .row { border-bottom: 0; padding: 10px 8px 10px 16px; min-height: 64px; }
-.callb { width: 44px; height: 44px; margin-right: 8px; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: var(--r); color: var(--accent-strong); background: var(--surface); }
-.narrow .dtitle h2 { font-size: 20px; line-height: 28px; }
-.narrow .dhead { display: grid; grid-template-columns: minmax(0, 1fr); }
-.narrow .dacts { display: grid; grid-template-columns: 1fr 1fr; }
-.callbig { margin-top: 16px; display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: var(--r); color: var(--ink); text-decoration: none; }
-.callbig svg { color: var(--accent-strong); }
-.callbig .v { font-size: 18px; line-height: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.callbig small { margin-left: auto; font-size: 13px; font-weight: 500; color: var(--accent-strong); }
-.narrow .dgrid { margin-top: 24px; }
-.narrow .prow { grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 8px; }
-.narrow .prow .who span { display: block; margin-left: 0; }
-.ptel { display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); color: var(--ink); text-decoration: none; font-variant-numeric: tabular-nums; font-weight: 500; white-space: nowrap; }
-.ptel svg { color: var(--accent-strong); }
-.narrow .info > div { grid-template-columns: minmax(0, 1fr) auto; padding: 8px 0; }
-.narrow .info dt { grid-column: 1 / -1; line-height: 18px; font-size: 12px; }
-.narrow .info .act { grid-column: 2; grid-row: 2; }
-.narrow .rrow { grid-template-columns: 84px minmax(0, 1fr) auto; }
-.narrow .rrow .tbtn { grid-column: 3; grid-row: 1 / span 2; }
-.narrow .rrow .rc { grid-column: 2; text-align: left; }
-.narrow .rrow .rc.no { display: none; }
-.narrow .ig.p3, .narrow .ig.r3, .narrow .ig.e2, .narrow .f2 { grid-template-columns: minmax(0, 1fr); }
-.narrow .inp { font-size: 16px; }
-.narrow .ob { height: 44px; }
-.narrow .drawer { width: 100%; border-left: 0; }
-.narrow .dwb { padding: 16px; }
-.narrow .dwh { padding-left: 16px; }
-.narrow .dwf { padding: 10px 16px 14px; }
-.narrow .dwf .need { flex-basis: 100%; }
-.narrow .dwf .btn { flex: 1; }
-.narrow .dlg { padding: 20px 16px 16px; }
-.narrow .dlg .foot { display: grid; grid-template-columns: 1fr 1fr; }
-.narrow .dlg .foot.three { grid-template-columns: 1fr; }
-.narrow .empty .acts { display: grid; }
-.narrow .upsum { grid-template-columns: 1fr 1fr; }
-.narrow .upsum > div { padding: 10px 12px; }
-.narrow .upsum > div:nth-child(3) { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); }
-.narrow .upsum > div:nth-child(4) { border-top: 1px solid var(--line); }
-.narrow .uprow { grid-template-columns: 44px minmax(0, 1fr); }
-.narrow .uprow .what { grid-column: 2; }
-.narrow .badrow { grid-template-columns: 16px minmax(0, 1fr); }
-.narrow .badrow .why { grid-column: 2; }
-.narrow .upbar { display: grid; grid-template-columns: 1fr 1fr; margin-left: -16px; margin-right: -16px; padding: 10px 16px 14px; }
-.narrow .upbar p { grid-column: 1 / -1; }
-.narrow .dh-head h1 { font-size: 20px; line-height: 28px; }
-.narrow .dh-sp { margin-left: 0; width: 100%; }
-.narrow .dh-sp .btn { width: 100%; }
-.narrow .wnote { margin-left: -4px; margin-right: -4px; }
-.narrow .wn { padding: 12px; grid-template-columns: 16px minmax(0, 1fr) 16px; }
-.narrow .wn .go span { display: none; }
-.narrow .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.narrow .kpi { padding: 12px 16px; }
-.narrow .kpi:nth-child(odd) { border-left: 0; padding-left: 0; }
-.narrow .kpi:nth-child(n+3) { border-top: 1px solid var(--line); }
-.narrow .big { margin-top: 8px; font-size: 24px; line-height: 32px; }
-.narrow .dsec { margin-top: 32px; padding-top: 16px; }
-.narrow .scope { width: 100%; }
 /* 768~1023px: 목록 칸을 줄인다 */
 .mid .cbody { grid-template-columns: 300px minmax(0, 1fr); }
 .mid .dcol { padding-left: 24px; }
@@ -450,9 +361,9 @@ details.same p { padding: 10px 0; border-bottom: 1px solid var(--line); color: v
 <script>
 /* ───────── 상태 고르기 ───────── */
 const STATES = [
-  ['list', '목록 (기본)', "처음 연 모습이에요. 왼쪽 목록에서 업체를 누르면 오른쪽에 자세히가 열려요(폰은 목록 → 누르면 자세히). 분류 칩을 누르면 그 묶음만 보이고, 칩 숫자는 그 묶음 업체 수예요. 무상 수리가 30일 안에 끝나는 장비가 있는 업체는 목록에도 칩이 붙어요."],
+  ['list', '목록 (기본)', "처음 연 모습이에요. 왼쪽 목록에서 업체를 누르면 오른쪽에 자세히가 열려요. 분류 칩을 누르면 그 묶음만 보이고, 칩 숫자는 그 묶음 업체 수예요. 무상 수리가 30일 안에 끝나는 장비가 있는 업체는 목록에도 칩이 붙어요."],
   ['search', '찾기', "'충격파'를 친 모습이에요. 업체 이름·담당자 이름·하는 일·품목·장비 이름에서 찾아요. 찾은 글자는 노랗게, 담당자·장비에서 찾았으면 줄 아래에 한 줄로 보여 줘요. 칩 숫자도 찾은 결과로 바뀌어요."],
-  ['detail', '업체 자세히', '예시메디칼이에요. 담당자 2명, 장비 2대(충격파 기계는 무상 수리 12일 남음, 초음파 진단기는 끝남), 수리 기록 3줄. 계좌·사이트 비밀번호는 가려져 있어요. PC에서 번호를 누르면 복사돼요(폰은 바로 전화).'],
+  ['detail', '업체 자세히', '예시메디칼이에요. 담당자 2명, 장비 2대(충격파 기계는 무상 수리 12일 남음, 초음파 진단기는 끝남), 수리 기록 3줄. 계좌·사이트 비밀번호는 가려져 있어요. 마우스로 번호를 누르면 복사돼요(터치 기기는 바로 전화).'],
   ['pw-shown', '비밀번호 보기', '사이트 비밀번호 [보기]를 누른 모습이에요. [가리기]로 다시 가려요. 다른 업체로 옮기거나 화면을 떠나면 저절로 다시 가려져요. [복사]는 가린 채로도 돼요.'],
   ['edit', '업체 고치기', '[고치기]를 누르면 오른쪽에서 판이 나와요. 업체 칸만 여기서 고치고, 담당자·장비·수리 기록은 자세히 화면에서 줄마다 바로 고쳐요.'],
   ['new', '업체 더하기', '[+ 업체 더하기]를 누른 모습이에요. 업체 이름만 꼭 적고 나머지는 비워도 돼요. 분류는 지금 고른 칩으로 골라져 있어요(전체면 거래처).'],
@@ -467,13 +378,9 @@ const STATES = [
 ]
 const Q = new URLSearchParams(location.search)
 let S = Q.get('s'); if (!STATES.some(x => x[0] === S)) S = 'list'
-const V = Q.get('v') === 'phone' ? 'phone' : 'wide'
-const VQ = V === 'phone' ? '&v=phone' : ''
 const TODAY = '2026-11-21'
 
-document.getElementById('seg').innerHTML = STATES.map(([k, t]) => `<a href="?s=${k}${VQ}" aria-current="${k === S}">${t}</a>`).join('')
-  + '<span class="sep" aria-hidden="true"></span>'
-  + `<a href="?s=${S}" aria-current="${V === 'wide'}">넓은 화면</a><a href="?s=${S}&v=phone" aria-current="${V === 'phone'}">폰 틀 (390)</a>`
+document.getElementById('seg').innerHTML = STATES.map(([k, t]) => `<a href="?s=${k}" aria-current="${k === S}">${t}</a>`).join('')
 const curState = STATES.find(x => x[0] === S)
 document.getElementById('mnote').innerHTML = `<b>${curState[1]}</b> — ${curState[2]}`
 
@@ -491,7 +398,6 @@ const ICON = {
   plus: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>',
   upload: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 10.5V2.5M5 5.5l3-3 3 3M2.5 10v2.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V10"/></svg>',
   download: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2.5v8M5 7.5l3 3 3-3M2.5 10v2.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V10"/></svg>',
-  phone: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M5.3 2.5H3.6a1 1 0 0 0-1 1.1c.3 5.3 4.6 9.6 9.9 9.9a1 1 0 0 0 1.1-1v-1.7a1 1 0 0 0-.8-1l-2-.5a1 1 0 0 0-1 .3l-.7.8a7.6 7.6 0 0 1-3.4-3.4l.8-.7a1 1 0 0 0 .3-1l-.5-2a1 1 0 0 0-1-.8z"/></svg>',
   copy: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1"/><path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2"/></svg>',
   check: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m3.5 8.5 3 3 6-6.5"/></svg>',
   close: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
@@ -574,12 +480,12 @@ function applyUpload(list) {
 /* ───────── 화면 상태 ───────── */
 const st = {
   list: S === 'empty' ? [] : clone(BASE),
-  cat: 'all', q: '', sel: null, view: 'list',
+  cat: 'all', q: '', sel: null,
   shown: {}, drawer: null, inline: null, dlg: null, page: 'contacts', notice: null, dashOn: true,
 }
 if (S === 'upload-done') { applyUpload(st.list); st.notice = { fresh: 5, changed: 3, bad: 3 } }
-if (S === 'search') { st.q = '충격파'; st.sel = 'physio'; st.view = 'detail' }
-if (['detail', 'pw-shown', 'edit', 'repair-add', 'delete-confirm'].includes(S)) { st.sel = Q.get('c') && BASE.some(c => c.id === Q.get('c')) ? Q.get('c') : 'medical'; st.view = 'detail' }
+if (S === 'search') { st.q = '충격파'; st.sel = 'physio' }
+if (['detail', 'pw-shown', 'edit', 'repair-add', 'delete-confirm'].includes(S)) st.sel = Q.get('c') && BASE.some(c => c.id === Q.get('c')) ? Q.get('c') : 'medical'
 if (S === 'pw-shown') st.shown.sitePw = true
 if (S === 'edit') st.drawer = { mode: 'edit', id: st.sel }
 if (S === 'new') st.drawer = { mode: 'new' }
@@ -589,21 +495,17 @@ if (S === 'upload-preview') st.page = 'upload'
 if (S === 'upload-bad-file') st.dlg = { kind: 'bad-file' }
 if (S === 'dashboard') st.page = 'dash'
 if (S === 'dashboard-off') { st.page = 'dash'; st.dashOn = false }
-// 폰에서 search는 목록을 보여 준다
-const PHONE_LIST_STATES = ['search']
 
+// 폰 전용 모양은 없다(폰에서도 PC 화면 그대로). 폭에 따라 목록 칸(1024 미만)과 자세히 두 칸(1200 이상)만 바뀐다
 function setMode() {
   const w = window.innerWidth
-  const framed = V === 'phone' && w >= 600
-  const narrow = framed || w < 768
   const before = document.body.className
-  document.body.classList.toggle('framed', framed)
-  document.body.classList.toggle('narrow', narrow)
-  document.body.classList.toggle('mid', !narrow && w < 1024)
-  document.body.classList.toggle('w2', !narrow && w >= 1200)
+  document.body.classList.toggle('mid', w < 1024)
+  document.body.classList.toggle('w2', w >= 1200)
   return before !== document.body.className
 }
-const isNarrow = () => document.body.classList.contains('narrow')
+// 손가락으로 누르는 기기(폰·태블릿)인지. 배치는 바꾸지 않고 번호를 눌렀을 때 전화/복사만 가른다
+const isTouch = () => matchMedia('(pointer: coarse)').matches
 
 /* ───────── 찾기·나누기 ───────── */
 const norm = s => String(s || '').toLowerCase().replace(/\s+/g, '')
@@ -655,7 +557,7 @@ function alertLines() {
 function tabsHtml() {
   const TABS = ['대시보드', '통계', '청구', '환자', '업무일지', '수납일지', '예약']
   const dash = st.page === 'dash'
-  return `<div class="tabs">${TABS.map(t => `<a href="${t === '대시보드' ? `?s=dashboard${VQ}` : '#'}" ${dash && t === '대시보드' ? 'aria-current="page"' : ''}>${t}</a>`).join('')}</div>`
+  return `<div class="tabs">${TABS.map(t => `<a href="${t === '대시보드' ? '?s=dashboard' : '#'}" ${dash && t === '대시보드' ? 'aria-current="page"' : ''}>${t}</a>`).join('')}</div>`
     + `<button class="more ${dash ? '' : 'on'}" aria-expanded="false">${dash ? '더보기' : '더보기 · 주소록'}${ICON.chev}</button>`
 }
 function render() {
@@ -682,9 +584,7 @@ function rowHtml(c) {
   // 하는 일·품목이 길면 그것만 줄이고 대표 전화는 늘 보인다
   const sub = [c.job ? `<span class="jb">${hl(c.job, st.q)}</span>` : '', c.tel ? `<span class="num">${esc(c.tel)}</span>` : ''].filter(Boolean).join('<span class="sep"> · </span>')
   const hit = h.length ? `<span class="hit">${h.slice(0, 2).map(([k, v]) => `<i>${k}:</i> ${hl(v, st.q)}`).join(' · ')}</span>` : ''
-  const row = `<button class="row" data-act="pick" data-id="${c.id}" aria-current="${!isNarrow() && c.id === st.sel}"><span class="nm">${hl(c.name, st.q)}</span>${listChip(c)}${sub ? `<span class="sub">${sub}</span>` : ''}${hit}</button>`
-  if (!isNarrow()) return row
-  return `<div class="mrow">${row}${c.tel ? `<a class="callb" href="${telHref(c.tel)}" data-act="call" aria-label="${esc(c.name)} 대표 전화 걸기">${ICON.phone}</a>` : '<span></span>'}</div>`
+  return `<button class="row" data-act="pick" data-id="${c.id}" aria-current="${c.id === st.sel}"><span class="nm">${hl(c.name, st.q)}</span>${listChip(c)}${sub ? `<span class="sub">${sub}</span>` : ''}${hit}</button>`
 }
 function listHtml() {
   const l = shownList()
@@ -698,11 +598,9 @@ function listHtml() {
 }
 function contactsHtml() {
   if (!st.list.length) return toolbarHtml(false) + emptyHtml()
-  const N = isNarrow(), c = cur()
-  if (N && st.view === 'detail' && c && !PHONE_LIST_STATES.includes(S)) return detailHtml(c)
+  const c = cur()
   const notice = st.notice ? `<div class="notice" role="status">${ICON.check}<p><b>엑셀에서 넣었어요.</b> 새로 ${st.notice.fresh}곳 · 바뀜 ${st.notice.changed}곳. 넣지 않은 줄 ${st.notice.bad}개는 엑셀에서 고쳐 다시 올리면 돼요.</p><button class="btn ghost sm" data-act="notice-close">닫기</button></div>` : ''
   const head = toolbarHtml(true) + notice + findHtml()
-  if (N) return head + `<div class="list">${listHtml()}</div>`
   return head + `<div class="cbody"><div class="lcol">${listHtml()}</div><div class="dcol">${c ? detailHtml(c) : `<div class="ph"><b>업체를 골라 주세요</b>왼쪽에서 업체를 누르면 연락처·담당자·장비가 여기에 보여요.</div>`}</div></div>`
 }
 function emptyHtml() {
@@ -718,24 +616,20 @@ function emptyHtml() {
   </section>`
 }
 
-/* 번호: PC는 누르면 복사, 폰은 바로 전화 */
+/* 번호: 마우스 기기(PC)는 누르면 복사, 터치 기기는 바로 전화. 모양은 같다 */
 function numHtml(tel, big) {
-  if (isNarrow()) return `<a class="ptel" href="${telHref(tel)}" data-act="call">${ICON.phone}${esc(tel)}</a>`
+  if (isTouch()) return `<a class="nb ${big ? 'big' : ''}" href="${telHref(tel)}" data-act="call"><span class="v">${esc(tel)}</span></a>`
   return `<button class="nb ${big ? 'big' : ''}" data-act="copy-num" data-v="${esc(tel)}" title="누르면 복사돼요"><span class="v">${esc(tel)}</span><span class="cpk">누르면 복사돼요</span></button>`
 }
 const copyBtn = (v, label = '복사') => `<button class="mini" data-act="copy" data-v="${esc(v)}">${ICON.copy}${label}</button>`
 
 function detailHtml(c) {
-  const N = isNarrow()
-  const back = N ? `<button class="back" data-act="back">${ICON.left}주소록</button>` : ''
   const head = `<div class="dhead"><div class="dtitle"><span class="chip neutral">${esc(c.cat)}</span><h2>${esc(c.name)}</h2>${c.job ? `<p class="job">${esc(c.job)}</p>` : ''}</div>
     <div class="dacts"><button class="btn sm" data-act="edit">고치기</button><button class="btn sm danger" data-act="del-company">지우기</button></div></div>`
-  const tel = !c.tel ? '' : N
-    ? `<a class="callbig" href="${telHref(c.tel)}" data-act="call">${ICON.phone}<span class="v">${esc(c.tel)}</span><small>대표 전화 걸기</small></a>`
-    : `<div class="dtel"><span class="lb">대표 전화</span>${numHtml(c.tel, true)}</div>`
+  const tel = c.tel ? `<div class="dtel"><span class="lb">대표 전화</span>${numHtml(c.tel, true)}</div>` : ''
   const left = peopleHtml(c) + infoHtml(c)
   const right = equipHtml(c)
-  return back + head + tel + `<div class="dgrid"><div>${left}</div><div>${right}</div></div>`
+  return head + tel + `<div class="dgrid"><div>${left}</div><div>${right}</div></div>`
 }
 function peopleHtml(c) {
   const ps = c.people || []
@@ -879,7 +773,7 @@ function uploadHtml() {
 /* ───────── 그리기: 대시보드(잘라 보기) ───────── */
 function dashHtml() {
   const lines = alertLines()
-  const note = lines.length ? `<div class="wnote mark-new" role="status" aria-label="무상 수리 알림">${lines.slice(0, 3).map(l => `<a class="wn" href="?s=detail&c=${l.id}${VQ}">${ICON.wrench}<span class="wt">${esc(l.eq)} 무상 수리 <b>${l.d === 0 ? '오늘 끝나요' : `${l.d}일 남음`}</b> · ${esc(l.company)}</span><span class="go"><span>주소록에서 보기</span>${ICON.right}</span></a>`).join('')}${lines.length > 3 ? `<a class="wn" href="?s=list${VQ}">${ICON.wrench}<span class="wt">무상 수리가 곧 끝나는 장비가 ${lines.length - 3}개 더 있어요</span><span class="go"><span>주소록에서 보기</span>${ICON.right}</span></a>` : ''}</div>` : ''
+  const note = lines.length ? `<div class="wnote mark-new" role="status" aria-label="무상 수리 알림">${lines.slice(0, 3).map(l => `<a class="wn" href="?s=detail&c=${l.id}">${ICON.wrench}<span class="wt">${esc(l.eq)} 무상 수리 <b>${l.d === 0 ? '오늘 끝나요' : `${l.d}일 남음`}</b> · ${esc(l.company)}</span><span class="go"><span>주소록에서 보기</span>${ICON.right}</span></a>`).join('')}${lines.length > 3 ? `<a class="wn" href="?s=list">${ICON.wrench}<span class="wt">무상 수리가 곧 끝나는 장비가 ${lines.length - 3}개 더 있어요</span><span class="go"><span>주소록에서 보기</span>${ICON.right}</span></a>` : ''}</div>` : ''
   const tag = '<span class="mark-tag">새로 생기는 줄</span>'
   if (!st.dashOn) {
     return `<p class="dline"><b>11월 21일 토요일</b></p>${note}${tag}
@@ -920,10 +814,9 @@ document.addEventListener('click', e => {
     case 'pick':
       if (st.sel !== t.dataset.id) st.shown = {}
       st.sel = t.dataset.id; st.inline = null
-      if (isNarrow()) { st.view = 'detail'; if (PHONE_LIST_STATES.includes(S)) S = 'detail'; render(); window.scrollTo(0, 0) } else rerender()
+      rerender()
       break
-    case 'back': st.view = 'list'; st.inline = null; st.shown = {}; render(); window.scrollTo(0, 0); break
-    case 'call': e.preventDefault(); toast('폰에서는 누르면 이 번호로 바로 전화가 걸려요. (시안이라 걸지 않아요)'); break
+    case 'call': e.preventDefault(); toast('터치 기기에서는 누르면 이 번호로 바로 전화가 걸려요. (시안이라 걸지 않아요)'); break
     case 'ext': e.preventDefault(); toast('홈페이지가 새 탭으로 열려요. (시안이라 열지 않아요)'); break
     case 'copy-num': writeClip(t.dataset.v); flash(t, `<span class="v">${esc(t.dataset.v)}</span><span class="cpk">${ICON.check}복사했어요</span>`); break
     case 'copy': writeClip(t.dataset.v); flash(t, `${ICON.check}복사했어요`); break
@@ -931,7 +824,7 @@ document.addEventListener('click', e => {
     case 'template': toast('주소록-양식.xlsx를 받았어요.'); break
     case 'upload': st.dlg = null; st.drawer = null; st.page = 'upload'; render(); window.scrollTo(0, 0); break
     case 'up-cancel': st.page = 'contacts'; render(); window.scrollTo(0, 0); break
-    case 'up-apply': if (!st.list.some(x => x.id === 'rehab')) applyUpload(st.list); st.notice = { fresh: 5, changed: 3, bad: 3 }; st.page = 'contacts'; st.sel = null; st.view = 'list'; render(); window.scrollTo(0, 0); break
+    case 'up-apply': if (!st.list.some(x => x.id === 'rehab')) applyUpload(st.list); st.notice = { fresh: 5, changed: 3, bad: 3 }; st.page = 'contacts'; st.sel = null; render(); window.scrollTo(0, 0); break
     case 'notice-close': st.notice = null; rerender(); break
     case 'new': st.drawer = { mode: 'new' }; st.shown = {}; rerender(); setTimeout(() => $('#f-name')?.focus(), 0); break
     case 'edit': st.drawer = { mode: 'edit', id: st.sel }; rerender(); break
@@ -945,11 +838,11 @@ document.addEventListener('click', e => {
       if (dup) { showErr(form, 'name', '같은 이름의 업체가 이미 있어요.'); break }
       v.cat = d.dataset.cat
       if (st.drawer.mode === 'edit') { const x = st.list.find(y => y.id === st.drawer.id); for (const k of Object.keys(v)) x[k] = v[k] }
-      else { const id = 'n' + Date.now(); st.list.push({ id, ...v, people: [], equips: [] }); st.sel = id; st.view = 'detail'; st.cat = 'all'; st.q = '' }
+      else { const id = 'n' + Date.now(); st.list.push({ id, ...v, people: [], equips: [] }); st.sel = id; st.cat = 'all'; st.q = '' }
       st.drawer = null; rerender(); toast('저장했어요.'); break
     }
     case 'del-company': st.dlg = { kind: 'del-company', id: st.sel }; rerender(); break
-    case 'do-del-company': { const x = st.list.find(y => y.id === st.dlg.id); st.list = st.list.filter(y => y.id !== st.dlg.id); st.dlg = null; st.sel = null; st.view = 'list'; render(); toast(`${x.name}${eul(x.name)} 지웠어요.`); break }
+    case 'do-del-company': { const x = st.list.find(y => y.id === st.dlg.id); st.list = st.list.filter(y => y.id !== st.dlg.id); st.dlg = null; st.sel = null; render(); toast(`${x.name}${eul(x.name)} 지웠어요.`); break }
     case 'add-person': st.inline = { kind: 'person', i: null }; rerender(); break
     case 'edit-person': st.inline = { kind: 'person', i: +t.dataset.i }; rerender(); break
     case 'add-equip': st.inline = { kind: 'equip', i: null }; rerender(); break
