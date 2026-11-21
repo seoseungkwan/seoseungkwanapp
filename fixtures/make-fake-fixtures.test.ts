@@ -473,12 +473,17 @@ describe('AC-005.2 저장소의 가짜 파일 폴더 · .gitignore 되살리기 
     expect(readdirSync(join(root, 'public', 'fake-sample'))).toEqual(['bit-sample.csv'])
   })
 
-  it('.gitignore가 되살리는 것은 생성기 파일 이름 그대로뿐이다(글롭 없음)', () => {
-    const allowed = readFileSync(join(root, '.gitignore'), 'utf8')
-      .split(/\r?\n/) // Windows에서 받은 저장소는 줄 끝이 CRLF다
-      .filter((line) => line.startsWith('!') && line !== '!.env.example')
+  // AC-6504.4(specs/contacts): 가짜 파일 말고는 주소록 [양식 받기]의 빈 엑셀 양식 파일 하나만 더 되살린다(엑셀 줄 뒤)
+  it('AC-6504.4: .gitignore가 되살리는 것은 생성기 파일 이름 그대로와 주소록 양식 파일 하나뿐이다(글롭 없음)', () => {
+    const lines = readFileSync(join(root, '.gitignore'), 'utf8').split(/\r?\n/) // Windows에서 받은 저장소는 줄 끝이 CRLF다
+    const allowed = lines.filter((line) => line.startsWith('!') && line !== '!.env.example')
     expect(allowed.sort()).toEqual(
-      [...FILES.map((name) => `!fixtures/fake-bit/${name}`), '!public/fake-sample/bit-sample.csv'].sort(),
+      [
+        ...FILES.map((name) => `!fixtures/fake-bit/${name}`),
+        '!public/fake-sample/bit-sample.csv',
+        '!public/contacts/contacts-template.xlsx',
+      ].sort(),
     )
+    expect(lines.indexOf('!public/contacts/contacts-template.xlsx')).toBeGreaterThan(lines.indexOf('*.[xX][lL][sS][xX]'))
   })
 })
