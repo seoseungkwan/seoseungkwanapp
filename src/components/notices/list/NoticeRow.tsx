@@ -6,7 +6,8 @@ import type { NoticeView } from '@/types/notices'
 import { FlagIcon, StarIcon } from './icons'
 
 // 글 목록 한 줄(specs/notices AC-7419.2·AC-7419.3·AC-7424.10, 시안 .item). 줄을 누르면 /notices?id=<id>로 글을 연다.
-// 제목·요약은 바깥 글과 AI 글이라 글자 노드로만 그린다(HTML로 해석하지 않음)
+// 제목·요약은 바깥 글과 AI 글이라 글자 노드로만 그린다(HTML로 해석하지 않음).
+// 줄 링크는 밑줄 없이(no-underline) ink로 두고 안의 글마다 시안 색을 준다 — 앱에는 a 밑줄·파랑을 지우는 바탕 규칙이 없다(시안 a { color: inherit; text-decoration: none })
 
 const WAIT_LINE = '요약을 만드는 중이에요.'
 const FAILED_LINE = '요약을 만들지 못했어요. 원문에서 확인해 주세요.' // 기본값 6
@@ -56,7 +57,7 @@ export function NoticeRow({ n, onStar }: { n: NoticeView; onStar: (id: string, s
       <Link
         href={`/notices?id=${encodeURIComponent(n.id)}`}
         prefetch={false}
-        className={`grid min-w-0 grid-cols-[120px_minmax(0,1fr)] gap-x-3 py-3.5 pl-2 ${ds.focusRing}`}
+        className={`grid min-w-0 grid-cols-[120px_minmax(0,1fr)] gap-x-3 py-3.5 pl-2 text-ink no-underline ${ds.focusRing}`}
       >
         <span className="whitespace-nowrap text-small leading-6 text-muted">{safeText(() => dateText(n.postedOn))}</span>
         <span className="relative grid min-w-0 gap-1">

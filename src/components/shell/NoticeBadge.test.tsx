@@ -53,11 +53,13 @@ describe('NoticeBadge (AC-7423.3)', () => {
     await waitFor(() => expect(dot(tabEl())?.textContent).toBe('3'))
     expect(count).toHaveBeenCalledTimes(1)
     expect(srText(tabEl())).toBe('안 읽은 관련 글 3건')
-    // 시안 .badge: 18px 높이·최소 18px 폭·좌우 5px 안팎의 둥근 accent 바탕, 흰 글자 600, 가운데
+    // 시안 .badge: 18px 높이·최소 18px 폭의 accent 바탕, 흰 글자 600, 가운데. 모서리·간격은 앱 토큰(classes.test.ts AC-204.6)으로 —
+    // 모서리 rounded-control(칩·키 표시와 같다, rounded-full 아님), 좌우 4px(px-1, 간격 단계 안)
     const circle = dot(tabEl())!
     expect(circle.tagName).toBe('SPAN')
     const classes = (circle.getAttribute('class') ?? '').split(/\s+/)
-    expect(classes).toEqual(expect.arrayContaining(['rounded-full', 'bg-accent', 'text-surface', 'font-semibold', 'h-4.5', 'min-w-4.5', 'tabular-nums']))
+    expect(classes).toEqual(expect.arrayContaining(['rounded-control', 'px-1', 'bg-accent', 'text-surface', 'font-semibold', 'h-4.5', 'min-w-4.5', 'tabular-nums']))
+    expect(classes.filter((c) => c.startsWith('rounded-') && c !== 'rounded-control')).toEqual([])
     // 화면 읽기 글은 보이지 않는다(sr-only) — 보이는 숫자는 읽지 않는다(aria-hidden)
     expect(tabEl().textContent).toBe('고시·공지3안 읽은 관련 글 3건')
   })

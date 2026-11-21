@@ -14,7 +14,8 @@ import { ArrowIcon } from './icons'
 // 수는 unreadCount(안 읽은 관련 글 + 꼭 볼 글), 줄은 관련 글만 첫 쪽(listNotices) 가운데 안 읽은 글 3개까지, 0건 글의 시각은 출처 상태(sourceStates)의 가장 늦은 확인이다.
 // 화면은 받은 줄을 related로 다시 거르지 않는다(꼭 볼 글은 DB가 넣는다, AC-7424.12). 줄에 꼭 볼 글 칩은 없다(기본값 21).
 // 그릴 때 한 번, notices:changed마다 다시 읽는다. 읽는 중에는 칸을 그리지 않고, 수나 목록을 못 읽으면 그 칸만 기본값 9다.
-// 제목은 바깥 글이라 글자 노드로만 그린다. 데스크 계정(useDesk)에게는 그리지 않고 읽지도 않는다
+// 제목은 바깥 글이라 글자 노드로만 그린다. 데스크 계정(useDesk)에게는 그리지 않고 읽지도 않는다.
+// 앱에는 a 밑줄·파랑과 목록 점을 지우는 바탕 규칙이 없어 링크마다 no-underline(줄 링크는 ink, 제목 밑줄은 올림 반응뿐), 목록에 list-none을 준다
 
 const MAX_ROWS = 3
 const FAILED = '고시·공지를 불러오지 못했어요' // 기본값 9
@@ -65,7 +66,11 @@ function Row({ n }: { n: NoticeView }) {
   const needsCheck = n.ruleHits.length > 0 && !n.mark.rulesCheckedAt
   return (
     <li className="border-b border-line last:border-b-0">
-      <Link href={noticeHref(n.id)} prefetch={false} className={`group grid grid-cols-[112px_minmax(0,1fr)] gap-x-3 gap-y-0.5 rounded-control py-3 ${ds.focusRing}`}>
+      <Link
+        href={noticeHref(n.id)}
+        prefetch={false}
+        className={`group grid grid-cols-[112px_minmax(0,1fr)] gap-x-3 gap-y-0.5 rounded-control py-3 text-ink no-underline ${ds.focusRing}`}
+      >
         <span className="whitespace-nowrap text-small leading-[22px] text-muted">{safeText(() => dateText(n.postedOn))}</span>
         <span className="min-w-0 text-body font-semibold text-ink underline-offset-3 group-hover:underline">{n.title}</span>
         <span className="col-start-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-muted">
@@ -112,7 +117,7 @@ export function NoticesCard() {
           고시·공지
         </h2>
         {card !== 'failed' && card.count > 0 && <span className="text-body font-semibold text-accent-strong">{`새 관련 글 ${card.count}건`}</span>}
-        <Link href={LIST_HREF} prefetch={false} className={`${ds.textButton} ml-auto`}>
+        <Link href={LIST_HREF} prefetch={false} className={`${ds.textButton} ml-auto no-underline`}>
           고시·공지 열기
           <ArrowIcon />
         </Link>
@@ -125,7 +130,7 @@ export function NoticesCard() {
         ) : (
           <>
             {card.rows.length > 0 && (
-              <ul>
+              <ul className="list-none">
                 {card.rows.map((n) => (
                   <Row key={n.id} n={n} />
                 ))}

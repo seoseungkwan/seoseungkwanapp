@@ -160,6 +160,25 @@ describe('AC-7424.8: 내 낱말 단추와 펼친 칸', () => {
     expect(screen.queryByRole('region', { name: '내 낱말' })).toBeNull()
   })
 
+  it('AC-7424.8: 낱말을 읽기 전과 읽지 못했을 때 단추 글자는 `내 낱말`이다(개수를 모르므로 `내 낱말 고르기`가 아니다, 기본값 23)', async () => {
+    const slow = deferred<string[] | 'failed'>()
+    read.mockReturnValue(slow.promise)
+    mount()
+    const button = screen.getByRole('button', { name: '내 낱말' })
+    expect(button.textContent).toBe('내 낱말')
+    expect(screen.queryByRole('button', { name: '내 낱말 고르기' })).toBeNull()
+    await act(async () => slow.resolve('failed'))
+    expect(screen.getByRole('button', { name: '내 낱말' }).textContent).toBe('내 낱말')
+    expect(screen.queryByRole('button', { name: '내 낱말 고르기' })).toBeNull()
+  })
+
+  it('AC-7424.8: 목록은 점이 없다(list-none) — 앱에는 목록 점을 지우는 바탕 규칙이 없다', async () => {
+    const { panel } = await opened(MINE, '내 낱말 4개')
+    const lists = Array.from(panel.querySelectorAll('ul, ol'))
+    expect(lists.length).toBeGreaterThan(0)
+    for (const list of lists) expect((list.getAttribute('class') ?? '').split(/\s+/)).toContain('list-none')
+  })
+
   it('AC-7424.8: notices:changed가 오면 낱말을 다시 읽어 단추 수를 고친다', async () => {
     mount()
     await screen.findByRole('button', { name: '내 낱말 4개' })
@@ -294,7 +313,7 @@ describe('AC-7424.9: 더하기 · 빼기 · 막힘 · 실패', () => {
   })
 
   it('AC-7424.9: 낱말을 못 읽으면 칸에 E-NOTICE-READ 상자이고 다시 읽기로 다시 읽는다', async () => {
-    const { user, panel } = await opened('failed', '내 낱말 고르기')
+    const { user, panel } = await opened('failed', '내 낱말')
     const alert = within(panel).getByRole('alert')
     expect(within(alert).getByText('고시·공지를 읽지 못했어요')).toBeTruthy()
     expect(within(alert).getByText('오류 번호 E-NOTICE-READ')).toBeTruthy()

@@ -2,6 +2,7 @@
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RoleProvider } from '@/components/shell/role'
+import { ds } from '@/components/ui/classes'
 import { NOTICES_CHANGED, ruleAlerts } from '@/lib/storage/notices'
 import type { RuleAlert as RuleAlertRow } from '@/types/notices'
 import { RuleAlert } from './RuleAlert'
@@ -53,6 +54,14 @@ describe('RuleAlert — 맨 위 경고 (AC-7422.1)', () => {
     expect(box().textContent).toBe(`${TITLE} · 새 고시(보건복지부 고시 제2026-218호)가 점검 규칙 2개의 근거를 바꿨어요. ${TAIL}글 보기`)
     expect(screen.getByText(TITLE).tagName).toBe('B')
     expect(seeLink().getAttribute('href')).toBe(`/notices?id=${GOSI.id}`)
+  })
+
+  it('AC-7422.1: `글 보기`는 글자 단추 모양 그대로 + no-underline이다 — 앱에는 a 밑줄을 지우는 바탕 규칙이 없다(밑줄은 올림 반응뿐)', async () => {
+    alerts.mockResolvedValue([GOSI])
+    draw()
+    await settle()
+    const classes = (seeLink().getAttribute('class') ?? '').split(/\s+/)
+    expect(classes).toEqual(expect.arrayContaining([...ds.textButton.split(/\s+/), 'no-underline']))
   })
 
   it('AC-7422.1·기본값 8: 둘 이상이면 `새 고시 {k}개가 점검 규칙 {n}개의 근거를 바꿨어요. …`(n은 규칙 수 합)이고 `글 보기`는 목록(/notices)으로 간다', async () => {

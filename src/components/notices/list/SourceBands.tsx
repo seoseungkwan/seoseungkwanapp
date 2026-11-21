@@ -8,8 +8,8 @@ import { ClockIcon, ExternalIcon, WarnIcon } from './icons'
 
 const countText = (n: number) => n.toLocaleString('ko-KR')
 
-// 띠 링크: 글자 단추 모양(ds.textButton)의 small 크기
-const BAND_LINK = `inline-flex items-center gap-1 rounded-control text-small font-medium text-accent underline-offset-3 transition hover:underline ${ds.focusRing}`
+// 띠 링크: 글자 단추 모양(ds.textButton)의 small 크기. 밑줄은 올림 반응뿐이라 평소에는 no-underline(앱에 a 밑줄을 지우는 바탕 규칙이 없다)
+const BAND_LINK = `inline-flex items-center gap-1 rounded-control text-small font-medium text-accent no-underline underline-offset-3 transition hover:underline ${ds.focusRing}`
 
 /** 확인 줄: '매일 아침 확인해요'와 출처마다 '{출처} 오늘 {시각} 확인' 또는 못 가져옴 글. 확인한 적 없는 출처는 뺀다 */
 export function CheckedLine({ rows, now }: { rows: readonly SourceView[]; now: Date }) {
