@@ -268,7 +268,8 @@ function checkMember(value: Row): MemberFields | null {
     value
   if (!isText(name, 1, NAME_MAX) || name.trim() !== name) return null
   if (!isOneOf(STAFF_JOBS, job)) return null
-  if (job === '기타' ? !isText(jobOther, 1, JOB_OTHER_MAX) : jobOther !== null) return null
+  // 직접 적은 직종은 '기타'일 때만 1~20자, 비워도 된다(DB 제약과 같다 — 엑셀 직종 칸에 '기타'만 적은 줄도 넣는다)
+  if (!(jobOther === null || (job === '기타' && isText(jobOther, 1, JOB_OTHER_MAX)))) return null
   if (!isOneOf(EMPLOYMENTS, employment) || !isHalfStep(weeklyHours, 0, 80) || !isDay(hiredOn)) return null
   if (!(leftOn === null || (isDay(leftOn) && leftOn >= hiredOn))) return null
   if (!(phone === null || (typeof phone === 'string' && PHONE.test(phone)))) return null

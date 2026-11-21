@@ -233,7 +233,8 @@ describe('AC-7610.1 직원 명단 읽기 listMembers', () => {
       { ...MEMBER_ROW, name: '' },
       { ...MEMBER_ROW, name: '가'.repeat(21) },
       { ...MEMBER_ROW, job: '의사' },
-      { ...MEMBER_ROW, job: '기타', job_other: null },
+      { ...MEMBER_ROW, job: '기타', job_other: '가'.repeat(21) },
+      { ...MEMBER_ROW, job: '기타', job_other: '' },
       { ...MEMBER_ROW, job: '간호사', job_other: '코디' },
       { ...MEMBER_ROW, employment: 'intern' },
       { ...MEMBER_ROW, weekly_hours: 37.3 },
@@ -250,6 +251,13 @@ describe('AC-7610.1 직원 명단 읽기 listMembers', () => {
     const found = await createStaffStore(client).listMembers()
     expect(found.map((m) => m.id)).toEqual([M1, M2])
     expect(found[1]).toMatchObject({ job: '기타', jobOther: '코디네이터', weeklyHours: 37.5, leftOn: '2024-05-31', usedBefore: 1.5 })
+  })
+
+  it("AC-7601.4: 직종 '기타'는 직접 적은 직종이 비어도(null) 맞는 줄로 읽는다", async () => {
+    const plain = { ...MEMBER_ROW, id: M2, name: '박서연', job: '기타', job_other: null }
+    const found = await createStaffStore(fakeClient(okWith([MEMBER_ROW, plain])).client).listMembers()
+    expect(found.map((m) => m.id)).toEqual([M1, M2])
+    expect(found[1]).toMatchObject({ job: '기타', jobOther: null })
   })
 
   it('AC-7610.1: 오류 답·던짐·둘째 쪽 실패는 반쪽 목록 대신 E-STAFF-READ-FAILED 번호만 던진다(Supabase 글은 버린다)', async () => {
@@ -286,9 +294,20 @@ describe('AC-7610.1 직원 저장 saveMember', () => {
   })
 
   it.each([
+    [null, null],
+    ['   ', null],
+    [' 코디네이터 ', '코디네이터'],
+    ['가'.repeat(20), '가'.repeat(20)],
+  ])("AC-7601.4: 직종 '기타'는 직접 적은 직종(%j)이 비어도 저장한다 — 빈 글은 null, 적었으면 1~20자", async (jobOther, sent) => {
+    const { client, calls } = fakeClient(okWith({ ...MEMBER_ROW, job: '기타', job_other: sent }))
+    await expect(createStaffStore(client).saveMember({ ...MEMBER, job: '기타', jobOther })).resolves.toMatchObject({ job: '기타', jobOther: sent })
+    expect(bodyOf(calls, 'insert')).toEqual({ ...MEMBER_BODY, job: '기타', job_other: sent })
+  })
+
+  it.each([
     ['이름 없음', { name: ' ' }],
     ['이름 21자', { name: '가'.repeat(21) }],
-    ['기타인데 직종 글 없음', { job: '기타', jobOther: null }],
+    ['기타 직종 글 21자', { job: '기타', jobOther: '가'.repeat(21) }],
     ['기타가 아닌데 직종 글', { jobOther: '코디' }],
     ['주 근무시간 0.5 단위 아님', { weeklyHours: 37.3 }],
     ['입사일 모양', { hiredOn: '2021-3-2' }],
