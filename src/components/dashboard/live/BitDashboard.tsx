@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useClinicProfile } from '@/components/clinic/useClinicProfile'
 import { AiBrief } from '@/components/dashboard/ai/AiBrief'
 import { DashboardHome } from '@/components/dashboard/briefing/DashboardHome'
@@ -111,6 +111,7 @@ function emptyLook(status: Status, honorific: Honorific): EmptyLook {
  * 비트 읽기(stats.rows, 오늘 − 100 ~ 오늘)는 지금처럼 열 때와 [비트에서 다시 읽기]에만 하고, 기간을 골라도 하지 않는다(AC-1804.4)
  * savedRefresh: 저장 숫자 새로고침(LiveDashboard가 읽는 중·실패와 누름을 준다, AC-2701.7·AC-2701.8). 주지 않으면 그 단추가 없다.
  * initial이 새 값으로 바뀌면(새로고침 성공) 다시 놓지 않고 화면 숫자만 바꾼다 — 고른 날·AI 요약이 그대로이고 비트 읽기를 새로 시작하지 않는다
+ * notice: 맨 위 줄 바로 아래 알림(contacts AC-6507.1, 무상 수리). LiveDashboard가 읽어 넘기고 여기서는 DashboardHome에 그대로 넘기기만 한다(읽지 않음)
  */
 export function BitDashboard({
   today,
@@ -120,6 +121,7 @@ export function BitDashboard({
   older,
   onBitLoaded,
   savedRefresh,
+  notice,
 }: {
   today: string
   initial: SummarySource
@@ -128,6 +130,7 @@ export function BitDashboard({
   older?: OlderDays
   onBitLoaded?: () => void
   savedRefresh?: SavedRefresh
+  notice?: ReactNode
 }) {
   const [status, setStatus] = useState(() => firstStatus(initial))
   // 새 처음 자료가 오면(저장 숫자 새로고침 성공) 그리는 중에 상태를 맞춘다 — 다시 놓지 않는다(AC-2701.8)
@@ -254,6 +257,7 @@ export function BitDashboard({
         )
       }
       analysis={analysis}
+      notice={notice}
     />
   )
 }

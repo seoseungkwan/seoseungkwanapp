@@ -2409,3 +2409,100 @@ describe('AC-7103.1·AC-7103.2: 쓰는 EMR에 따른 연결 전 첫 화면', () 
     noChange()
   })
 })
+
+// ── contacts: 대시보드 무상 수리 알림 (REQ-6507, design.md '대시보드 알림', 시안 docs/mockups/contacts/index.html ?s=dashboard·?s=dashboard-off) ──
+// 알림은 LiveDashboard가 읽어 notice로 넘긴다. BitDashboard는 받은 노드를 DashboardHome에 그대로 넘기기만 한다(읽지 않음) — 자리는 상태마다 '맨 위 줄 바로 아래'
+describe('무상 수리 알림 자리 (contacts AC-6507.1)', () => {
+  const NOTICE_NAME = '무상 수리 알림'
+  const NOTICE = (
+    <div role="status" aria-label={NOTICE_NAME}>
+      가짜 무상 수리 알림
+    </div>
+  )
+  const noticeEl = () => screen.getByRole('status', { name: NOTICE_NAME })
+  const drawNotice = (initial: SummarySource = NONE) => render(<BitDashboard today={TODAY} initial={initial} notice={NOTICE} />)
+  const headerH1 = () => screen.getByRole('heading', { level: 1, name: HEADER_H1 })
+
+  it('AC-6507.1: 숫자가 있으면 머리 줄(대시보드 · 상태 · 시각 · 읽기 단추) 바로 아래 · 오늘 하루 분석 앞이다', () => {
+    notBitPc()
+    drawNotice(SAVED)
+    expect(noticeEl().previousElementSibling).toBe(headerH1().parentElement)
+    expectOrder(headerH1(), noticeEl(), todaySection(), flow())
+    expect(region('오늘 브리핑').contains(noticeEl())).toBe(true)
+  })
+
+  it('AC-6507.1: 머리 줄 아래 오류 상자(다시 읽기 실패)가 있으면 그 상자 다음이다', async () => {
+    onBitPc()
+    drawNotice(SAVED)
+    await answer(failed('E-BIT-READ-FAILED'))
+    const alert = screen.getByRole('alert')
+    expect(noticeEl().previousElementSibling).toBe(alert)
+    expectOrder(headerH1(), alert, noticeEl(), todaySection())
+  })
+
+  it("AC-6507.1: 머리 줄 아래 '이 PC에서 비트를 읽을 수 없어요' 안내가 있으면 그 안내 다음이다", async () => {
+    onBitPc()
+    const user = userEvent.setup({ advanceTimers: () => {} })
+    drawNotice()
+    await answer(days())
+    await user.click(button(BIT_REREAD))
+    await answer(NOT_READY)
+    const note = screen.getByText(UNREADABLE).closest('[role="status"]')!
+    expect(noticeEl().previousElementSibling).toBe(note)
+    expectOrder(headerH1(), note, noticeEl(), todaySection())
+  })
+
+  it('AC-6507.1: 숫자 없이 읽는 중이면 날짜 줄과 읽는 중 블록 다음, 실패면 실패 블록 다음이다', async () => {
+    onBitPc()
+    drawNotice()
+    const reading = screen.getByRole('heading', { level: 1, name: READ_H1 })
+    expectOrder(reading, screen.getByRole('progressbar'), noticeEl(), todaySection())
+    await answer(failed('E-BIT-READ-FAILED'))
+    const block = screen.getByRole('alert')
+    expect(noticeEl().previousElementSibling).toBe(block)
+    expectOrder(block, noticeEl(), todaySection())
+  })
+
+  it('AC-6507.1: 연결 전(비트)은 날짜 줄 바로 다음 · 큰 문장 앞이다', () => {
+    notBitPc()
+    drawNotice()
+    const h1 = screen.getByRole('heading', { level: 1, name: CONNECT_H1 })
+    expect(noticeEl().nextElementSibling).toBe(h1)
+    expect(noticeEl().previousElementSibling?.tagName).toBe('P') // 날짜 줄
+    expectOrder(noticeEl(), h1, todaySection())
+  })
+
+  it('AC-6507.1: 쓰는 EMR이 비트가 아니면 연결 전 날짜 줄 바로 다음 · 안내 제목 앞이다', () => {
+    notBitPc()
+    clinic.emr = 'uisarang'
+    drawNotice()
+    const h1 = screen.getByRole('heading', { level: 1 })
+    expect(h1.textContent).not.toBe(CONNECT_H1)
+    expect(noticeEl().nextElementSibling).toBe(h1)
+    expect(noticeEl().previousElementSibling?.tagName).toBe('P')
+  })
+
+  it('AC-6507.2: 비트 숫자가 와 화면이 바뀌어도 알림은 그대로 한 묶음이다', async () => {
+    onBitPc()
+    drawNotice(SAVED)
+    expect(screen.getAllByRole('status', { name: NOTICE_NAME })).toHaveLength(1)
+    await answer(days())
+    expect(screen.getAllByRole('status', { name: NOTICE_NAME })).toHaveLength(1)
+    expectOrder(headerH1(), noticeEl(), todaySection())
+  })
+
+  it('AC-6507.2: notice를 주지 않으면 지금 그대로다(서버 그림 · 연결 전 · 숫자 화면)', () => {
+    notBitPc()
+    for (const initial of [NONE, SAVED]) {
+      expect(renderToStaticMarkup(<BitDashboard today={TODAY} initial={initial} notice={null} />)).toBe(
+        renderToStaticMarkup(<BitDashboard today={TODAY} initial={initial} />),
+      )
+    }
+  })
+
+  it('AC-6507.2: BitDashboard는 무상 수리를 읽지 않는다 — 저장 함수·Supabase를 부르지 않고 받은 notice를 DashboardHome에 넘기기만 한다', () => {
+    const text = readFileSync(join(process.cwd(), 'src/components/dashboard/live/BitDashboard.tsx'), 'utf8')
+    expect(text).not.toMatch(/listWarrantySoon|useWarrantySoon|storage\/contacts|lib\/supabase/)
+    expect(text).toMatch(/notice=\{notice\}/)
+  })
+})
