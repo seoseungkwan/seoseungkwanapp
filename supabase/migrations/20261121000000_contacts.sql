@@ -1,5 +1,5 @@
 -- 주소록 서버 표: 업체(contacts_companies)·담당자(contacts_people)·장비(contacts_equipment)·수리 기록(contacts_repairs)과
--- 엑셀 넣기 함수(contacts_import) (spec contacts REQ-6501, ADR-034)
+-- 엑셀 넣기 함수(contacts_import) (spec contacts REQ-6501, ADR-035)
 --
 -- 실행: 운영자가 Supabase 관리 화면 → SQL Editor에 이 파일 전체를 붙여 한 번 실행한다(앱·CLI는 실행하지 않는다).
 -- 먼저 20261028000000_auth.sql과 20261030000000_precheck_settings.sql(또는 my_hospital_id()를 만드는 다른 앞 migration)이
@@ -9,7 +9,7 @@
 -- 관문: 이 파일을 먼저 붙여 넣고 그다음 사이트에 올린다(표가 없으면 주소록 탭은 읽기 실패 글을 보이고 대시보드 무상 수리 알림은 비어 있다).
 --
 -- 무엇을 왜: 거래처·수리 업체·기관의 연락처·담당자, 들여온 장비와 무상 수리 끝나는 날, 수리 기록을 한곳에 둔다. 환자 정보는 없다.
--- 사이트 비밀번호(site_pw)·계좌(account)는 잠그지 않고 다른 칸처럼 글자로 둔다(ADR-034, 사용자 결정). 앱이 따로 암호화하지 않는다.
+-- 사이트 비밀번호(site_pw)·계좌(account)는 잠그지 않고 다른 칸처럼 글자로 둔다(ADR-035, 사용자 결정). 앱이 따로 암호화하지 않는다.
 -- 바깥 키는 (hospital_id, 부모 id) 둘로 건다. 바깥 키 검사는 RLS를 보지 않아서 id 하나로만 걸면 남의 병원 업체 id를 알 때
 -- 그 밑에 줄을 달 수 있다. 둘로 걸면 내 hospital_id(기본값)와 다른 병원의 부모는 거부된다.
 -- 같은 병원 안 업체 이름과 같은 업체 안 담당자 이름은 하나뿐이다(엑셀 다시 올리기가 이름으로 찾는다). 장비에는 겹침 제약이 없다.

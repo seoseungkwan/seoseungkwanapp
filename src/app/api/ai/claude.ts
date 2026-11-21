@@ -7,7 +7,12 @@ import Anthropic, {
   InternalServerError,
   RateLimitError,
 } from '@anthropic-ai/sdk'
-import type { BetaContentBlock, BetaMessage, BetaMessageStreamParams } from '@anthropic-ai/sdk/resources/beta/messages/messages'
+import type {
+  BetaContentBlock,
+  BetaMessage,
+  BetaMessageContentParam,
+  BetaMessageStreamParams,
+} from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import type { AiErrorCode, AiUsage } from '@/types/aiReport'
 
 // Claude 부르기(spec ai-report design.md 'Claude 부르기', ADR-024). SDK는 이 폴더에서만 쓴다(ADR-004)
@@ -39,9 +44,13 @@ const ENDED_EARLY: ReadonlySet<string> = new Set([
   'request ended without sending any chunks',
 ])
 
+// 사진 한 장(base64 글자). 재고 탭 명세서 읽기만 쓴다(spec inventory design.md 5절)
+export type ClaudeImage = { mediaType: 'image/jpeg'; data: string }
+
 // effort: 생각 깊이. 없으면 medium(AI 리포트). 서식 정리처럼 짧은 글 뽑기는 low(spec forms)
+// image: 있으면 user 내용이 [사진 블록, 글 블록]이고, 없으면 글자 하나 그대로다
 export async function callClaude(
-  req: { system: string; user: string; schema: object; effort?: 'low' | 'medium' },
+  req: { system: string; user: string; schema: object; effort?: 'low' | 'medium'; image?: ClaudeImage },
   deps?: { client?: AnthropicLike; apiKey?: string; timeoutMs?: number },
 ): Promise<ClaudeResult> {
   const apiKey = deps?.apiKey ?? process.env.ANTHROPIC_API_KEY
@@ -64,7 +73,7 @@ export async function callClaude(
           fallbacks: 'default',
           output_config: { effort: req.effort ?? 'medium', format: { type: 'json_schema', schema: req.schema as Record<string, unknown> } },
           system: req.system,
-          messages: [{ role: 'user', content: req.user }],
+          messages: [{ role: 'user', content: userContent(req.user, req.image) }],
         },
         { signal },
       )
@@ -78,6 +87,15 @@ export async function callClaude(
     return { ok: false, code: 'E-AI-FAILED', usage }
   }
   return { ok: true, text: answerText(message.content), usage }
+}
+
+// 사진은 글보다 앞에 둔다(사진 블록 하나 + 글 블록 하나)
+function userContent(user: string, image: ClaudeImage | undefined): BetaMessageContentParam {
+  if (image === undefined) return user
+  return [
+    { type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.data } },
+    { type: 'text', text: user },
+  ]
 }
 
 // 맨 위 usage는 답을 만든 시도 몫만 담는다. 시도마다의 사용량(거절한 시도 + 대신 답한 시도)은 usage.iterations에 있다

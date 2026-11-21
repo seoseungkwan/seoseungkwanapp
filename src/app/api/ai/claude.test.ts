@@ -191,6 +191,54 @@ describe('AC-3509.3 effort 칸', () => {
   })
 })
 
+// 재고 탭 명세서 읽기(specs/inventory TASK-6): 사진을 주면 user 내용이 [사진 블록, 글 블록]이다. 칸이 없으면 지금처럼 글자 하나
+describe('AC-7505.2 사진 칸', () => {
+  const IMAGE = { mediaType: 'image/jpeg', data: '/9j/4AAQSkZJRgABAQ==' } as const
+
+  it('AC-7505.2 image를 주면 user 내용이 [base64 사진 블록, 글 블록] 차례이고, 나머지 칸은 그대로다', async () => {
+    const { client, calls } = fakeClient(message())
+    await callClaude({ ...REQ, image: IMAGE }, { client, apiKey: FAKE_KEY })
+    expect(calls).toHaveLength(1)
+    const p = calls[0]
+    expect(p.messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: '/9j/4AAQSkZJRgABAQ==' } },
+          { type: 'text', text: '{"month":"2026-10"}' },
+        ],
+      },
+    ])
+    expect(p.model).toBe('claude-opus-5-5')
+    expect(p.max_tokens).toBe(16000)
+    expect(p.betas).toEqual(['server-side-fallback-2026-07-01'])
+    expect(p.fallbacks).toBe('default')
+    expect(p.output_config?.effort).toBe('medium')
+    expect(p.output_config?.format?.schema).toEqual(REQ.schema)
+    expect(p.system).toBe('지시문')
+    expect(p).not.toHaveProperty('thinking')
+  })
+
+  it('AC-7505.2 image 칸이 없거나 undefined이면 user 내용은 글자 하나 그대로다', async () => {
+    const { client, calls } = fakeClient(message())
+    await callClaude(REQ, { client, apiKey: FAKE_KEY })
+    await callClaude({ ...REQ, image: undefined }, { client, apiKey: FAKE_KEY })
+    expect(calls.map((p) => p.messages)).toEqual([
+      [{ role: 'user', content: '{"month":"2026-10"}' }],
+      [{ role: 'user', content: '{"month":"2026-10"}' }],
+    ])
+  })
+
+  it('AC-7505.2 사진을 보내도 답·사용량은 글자만 보낼 때와 같은 모양이다', async () => {
+    const { client } = fakeClient(message({ content: [text('{"lines":[]}')], input: 2500, output: 120 }))
+    expect(await callClaude({ ...REQ, image: IMAGE }, { client, apiKey: FAKE_KEY })).toEqual({
+      ok: true,
+      text: '{"lines":[]}',
+      usage: { inputTokens: 2500, outputTokens: 120, model: 'claude-opus-5-5' },
+    })
+  })
+})
+
 describe('AC-510.2 정상 답', () => {
   it('AC-510.2 text 블록 둘을 이어 붙인 글자와 사용량(입력·출력 토큰, 답한 모델)을 돌려준다', async () => {
     const { client } = fakeClient(message({ content: [text('{"summary":'), text('"요약","cards":[]}')], input: 1234, output: 567 }))
@@ -818,6 +866,32 @@ describe('진짜 SDK 클래스 + 가짜 fetch', () => {
         expect(await callClaude(REQ, { client, apiKey: FAKE_KEY })).toEqual(FAILED)
       })
     }
+  })
+
+  // 진짜 SDK가 사진 블록을 HTTP 몸통에 그대로 싣는지 본다(가짜 클라이언트로는 SDK의 직렬화를 못 본다)
+  describe('AC-7505.2 사진을 담은 HTTP 몸통', () => {
+    it('AC-7505.2 messages[0].content가 [base64 사진, 글] 차례이고 답은 그대로 성공이다', async () => {
+      const bodies: unknown[] = []
+      const f = vi.fn(async (...args: unknown[]) => {
+        bodies.push((args[1] as RequestInit | undefined)?.body)
+        return sseResponse(WHOLE_ANSWER)
+      })
+      vi.stubGlobal('fetch', f)
+      const result = await callClaude({ ...REQ, image: { mediaType: 'image/jpeg', data: '/9j/AAAA' } }, { apiKey: FAKE_KEY })
+      expect(result).toMatchObject({ ok: true, text: '{"summary":"ok"}' })
+      expect(f).toHaveBeenCalledTimes(1)
+      const sent = JSON.parse(String(bodies[0])) as { messages: unknown; output_config: unknown }
+      expect(sent.messages).toEqual([
+        {
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: '/9j/AAAA' } },
+            { type: 'text', text: '{"month":"2026-10"}' },
+          ],
+        },
+      ])
+      expect(sent.output_config).toEqual({ effort: 'medium', format: { type: 'json_schema', schema: REQ.schema } })
+    })
   })
 
   describe('AC-510.11 SDK 로그 끄기', () => {

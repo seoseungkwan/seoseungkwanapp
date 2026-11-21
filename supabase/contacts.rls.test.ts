@@ -479,14 +479,14 @@ describe('AC-6501.1 표 모양', SLOW, () => {
     expect(String(acl.acl)).not.toMatch(/(^|,)anon=/)
   })
 
-  it('AC-6501.1: 파일이 있고 줄 끝이 LF이며, 머리 주석에 운영자가 붙여 넣는 방법·앞에 있어야 할 파일·ADR-034가 있다', () => {
+  it('AC-6501.1: 파일이 있고 줄 끝이 LF이며, 머리 주석에 운영자가 붙여 넣는 방법·앞에 있어야 할 파일·ADR-035가 있다', () => {
     expect(CONTACTS_MIGRATION).not.toBe('')
     expect(CONTACTS_MIGRATION).not.toContain('\r')
     const lines = CONTACTS_MIGRATION.split('\n')
     const head = lines.slice(0, lines.findIndex((line) => !/^(--|\s*$)/.test(line))).join('\n')
     expect(head).toContain('운영자가 Supabase 관리 화면 → SQL Editor에 이 파일 전체를 붙여 한 번 실행한다')
     expect(head).toContain('20261030000000_precheck_settings.sql')
-    expect(head).toContain('ADR-034')
+    expect(head).toContain('ADR-035')
   })
 
   it('AC-6501.1: 두 번 돌려도 되는 문장만 쓴다(표·색인은 if not exists, 함수는 or replace, 정책은 지우고 다시 만들기, 지우기 없음)', () => {
@@ -1166,9 +1166,11 @@ describe('AC-6501.6 넣기 함수는 한 줄이라도 틀리면 아무것도 바
 describe('REQ-6501 TASK-1 문서', () => {
   const readRepo = (rel: string) => read(`../${rel}`)
 
-  it('REQ-6501 TASK-1: docs/ADR.md에 ADR-034 주소록 글이 한 번 있고 맥락·결정·이유·대안·트레이드오프·바꾸는 것이 있다', () => {
+  // 재고(specs/inventory)가 먼저 운영에 올라 ADR-034를 썼다 → 주소록은 다음 번호 ADR-035(specs/contacts design.md 'ADR' 줄의 약속)
+  it('REQ-6501 TASK-1: docs/ADR.md에 ADR-035 주소록 글이 한 번 있고 맥락·결정·이유·대안·트레이드오프·바꾸는 것이 있다', () => {
     const doc = readRepo('docs/ADR.md')
-    const heads = [...doc.matchAll(/^### ADR-034: (.+)$/gm)]
+    expect([...doc.matchAll(/^### ADR-\d+: 주소록/gm)]).toHaveLength(1)
+    const heads = [...doc.matchAll(/^### ADR-035: (.+)$/gm)]
     expect(heads.map((m) => m[1])).toEqual(['주소록 — 사이트 비밀번호·계좌를 잠그지 않고 다른 칸처럼 서버에 둔다'])
     const rest = doc.slice((heads[0]?.index ?? 0) + 1)
     const next = rest.search(/^### ADR-/m)
@@ -1178,15 +1180,16 @@ describe('REQ-6501 TASK-1 문서', () => {
     expect(section).toContain('`site_pw`')
   })
 
-  it('REQ-6501 TASK-1: plan.md §4 서버로 가는 것에 주소록(ADR-034)이 있고, §5 DB 표 clinic_profiles 줄 바로 다음이 contacts_* 줄이다', () => {
+  it('REQ-6501 TASK-1: plan.md §4 서버로 가는 것에 주소록(ADR-035)이 있고, §5 DB 표 clinic_profiles 줄 바로 다음이 contacts_* 줄이다', () => {
     const lines = readRepo('plan.md').split('\n')
     const server = lines.filter((line) => line.startsWith('- 서버(Supabase, 서울)로 가는 것:'))
     expect(server).toHaveLength(1)
-    expect(server[0]).toContain('주소록(업체 연락처·담당자·장비·수리 기록, 사이트 비밀번호·계좌 포함 — ADR-034)')
+    expect(server[0]).toContain('주소록(업체 연락처·담당자·장비·수리 기록, 사이트 비밀번호·계좌 포함 — ADR-035)')
     const clinic = lines.findIndex((line) => line.startsWith('| `clinic_profiles` |'))
     expect(clinic).toBeGreaterThan(0)
-    expect(lines[clinic + 1]).toMatch(/^\| `contacts_\*` \| .*ADR-034.* \|$/)
-    expect(lines[clinic + 2]).toMatch(/^\| `inventory_items` · `inventory_moves` \|/)
+    expect(lines[clinic + 1]).toMatch(/^\| `contacts_\*` \| .*ADR-035.* \|$/)
+    // 그다음은 재고 표 줄(specs/inventory가 옛 inventory_items · inventory_moves 줄을 바꿨다)
+    expect(lines[clinic + 2]).toMatch(/^\| `inventory_categories` · `inventory_items` \|/)
     expect(lines.filter((line) => line.startsWith('| `contacts_'))).toHaveLength(1)
   })
 
@@ -1196,6 +1199,6 @@ describe('REQ-6501 TASK-1 문서', () => {
     expect(found).toHaveLength(1)
     for (const table of TABLES) expect(found[0]).toContain(`\`${nameOf(table)}\``)
     expect(found[0]).toContain('contacts_import')
-    expect(found[0]).toContain('ADR-034')
+    expect(found[0]).toContain('ADR-035')
   })
 })

@@ -18,8 +18,10 @@ import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
 import type { SummarySource } from '@/components/dashboard/summary/source'
 import { addDays } from '@/lib/analytics/dates'
 import { listWarrantySoon } from '@/lib/storage/contacts'
+import { loadInventory } from '@/lib/storage/inventory'
 import { readDays } from '@/lib/storage/stats'
 import { supabaseBrowser } from '@/lib/supabase/browser'
+import type { InvInventory } from '@/types/inventory'
 import type { DayPayload } from '@/types/payload'
 import DashboardPage, { dynamic } from './page'
 
@@ -36,6 +38,8 @@ vi.mock('@/lib/storage/statsRxGroups', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/storage/statsRxGroups')>()
   return { ...real, listStatsRxGroups: vi.fn(async () => []) }
 })
+// 대시보드 재고 칸(spec inventory AC-7512.4)은 스스로 loadInventory({ seed: false })로 읽는다 → 가짜. 이 파일의 계정은 처음은 물품이 없다(칸 없음, 지금 화면 그대로)
+vi.mock('@/lib/storage/inventory', () => ({ loadInventory: vi.fn(async () => ({ categories: [], items: [] })) }))
 // 무상 수리 알림 읽기(contacts AC-6507.1)도 감싼다. 기본은 지금처럼 Supabase 설정이 없는 환경(supabaseBrowser가 던짐 → 알림 없음)이고,
 // 알림 시험만 가짜 클라이언트와 가짜 장비 줄을 준다. 진짜 Supabase에 붙지 않는다
 vi.mock('@/lib/storage/contacts', async (importOriginal) => {
@@ -503,5 +507,92 @@ describe('/dashboard 무상 수리 알림 (contacts AC-6507.1·AC-6507.2)', () =
     expect(server).not.toContain('무상 수리')
     expect(listWarrantySoon).not.toHaveBeenCalled()
     expect(SOURCE).not.toMatch(/Warranty|contacts/)
+  })
+})
+
+// ── 대시보드 재고 칸 (spec inventory REQ-7512 AC-7512.4, design.md 6절 TASK-15, 시안 docs/mockups/inventory ?s=dash) ──
+// 알림이 있으면 비트 자료와 상관없이 늘 하나: 숫자가 있으면 보고 문장 오른쪽, 연결 전이면 대시보드 내용 맨 위. 알림이 없으면 지금 그대로(위 시험들)
+describe('/dashboard 재고 칸 (AC-7512.4)', () => {
+  const LOW: InvInventory = {
+    categories: [{ id: 'c1', name: '약품', sortOrder: 0 }],
+    items: [
+      {
+        id: 'i1',
+        categoryId: 'c1',
+        name: '히알루론산 주사 2mL',
+        unit: '개',
+        minQty: 10,
+        qty: 4,
+        lastCountQty: 4,
+        lastCountedAt: null,
+        expiry: null,
+        vendor: null,
+        unitPrice: null,
+        bitCode: null,
+        sortOrder: 0,
+        hidden: false,
+        orderedAt: null,
+      },
+    ],
+  }
+  const day = (ymd: string, newPatients: number, returning: number): DayPayload => ({
+    schemaVersion: 2,
+    quality: 'valid',
+    day: ymd,
+    partial: false,
+    totals: { patients: newPatients + returning, newPatients, returning, unknown: 0 },
+    rx: [],
+    groups: [],
+    revisit: { cohort: newPatients, within7: 0, within14: 0 },
+  })
+  const AI_EMPTY = { report: null, stale: false, usage: { calls: 0, tokens: 0, costMicroUsd: 0 } }
+  // 브라우저에 그리고 저장 숫자 읽기·재고 읽기가 끝난 뒤의 마크업
+  const drawSettled = async (rows: DayPayload[]) => {
+    await drawInBrowser(AT_TODAY, rows)
+    await act(async () => {})
+    return document.body.innerHTML
+  }
+  const inventoryTitles = (html: string) => [...html.matchAll(/<h2\b[^>]*>재고<\/h2>/g)]
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.mocked(readDays).mockReset()
+    vi.mocked(loadInventory).mockReset()
+    vi.mocked(loadInventory).mockResolvedValue(LOW)
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(AI_EMPTY), { status: 200, headers: { 'Content-Type': 'application/json' } })))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+    vi.mocked(loadInventory).mockResolvedValue({ categories: [], items: [] })
+  })
+
+  it('AC-7512.4: 서버 그림은 알림이 있어도 뼈대 그대로다(재고는 브라우저가 읽는다)', () => {
+    const server = renderAt(AT_TODAY)
+    expect(server).toBe(renderToStaticMarkup(<DashboardSkeleton />))
+    expect(loadInventory).not.toHaveBeenCalled()
+  })
+
+  it('AC-7512.4: 연결 전 대시보드 — 재고 칸 하나가 내용 맨 위(날짜 줄·큰 문장 h1보다 앞)이고, [재고 탭에서 보기]는 /inventory다', async () => {
+    const html = await drawSettled([])
+    const titles = inventoryTitles(html)
+    expect(titles).toHaveLength(1)
+    expect(titles[0]!.index).toBeLessThan(placeOf(html, 'h1', H1))
+    expect(titles[0]!.index).toBeLessThan(html.indexOf('10월 31일 토요일'))
+    expect(hrefOf(html, '재고 탭에서 보기')).toBe('/inventory')
+    expect(loadInventory).toHaveBeenCalledWith({ seed: false })
+  })
+
+  it('AC-7512.4: 숫자가 있는 대시보드 — 재고 칸 하나가 오늘 보고 문장 뒤(오른쪽 칸)·기간별 흐름 앞이다', async () => {
+    const html = await drawSettled([day(TODAY, 4, 9), day('2026-10-24', 2, 8)])
+    const titles = inventoryTitles(html)
+    expect(titles).toHaveLength(1)
+    expectAscending([
+      ['오늘 하루 분석', placeOf(html, 'h2', '오늘 하루 분석')],
+      ['오늘 보고 문장', placeOf(html, 'p', '오늘 보고 문장 자동 집계 요약')],
+      ['재고', titles[0]!.index],
+      ['기간별 흐름', placeOf(html, 'h2', '기간별 흐름')],
+    ])
   })
 })

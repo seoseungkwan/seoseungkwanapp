@@ -18,7 +18,7 @@ import type {
 
 // 주소록 서버 저장 (spec contacts REQ-6502, design.md '저장 함수'). 브라우저 → Supabase, 권한은 RLS가 막는다(ADR-004).
 // 표: 업체 contacts_companies · 담당자 contacts_people · 장비 contacts_equipment · 수리 기록 contacts_repairs, 넣기 함수 contacts_import
-// (migration 20261121000000_contacts.sql). 사이트 비밀번호·계좌도 다른 칸처럼 보낸다(ADR-034) — 오류·로그에는 담지 않는다.
+// (migration 20261121000000_contacts.sql). 사이트 비밀번호·계좌도 다른 칸처럼 보낸다(ADR-035) — 오류·로그에는 담지 않는다.
 // 보내는 몸통은 정해 둔 칸을 골라 새로 만든다({ ...받은 값 } 금지). id·hospital_id·created_at은 DB가 정하고 어느 병원 줄인지는 RLS가 고른다.
 // 글자는 cleanText(앞뒤 빈칸 빼고 NFC)로 맞추고 lib/contacts의 칸 검사(…Problems)를 못 지나면 보내지 않고 'invalid'다.
 // 업체·담당자 이름 겹침(23505)만 'duplicate'다(장비·수리 기록에는 겹침 제약이 없다).
