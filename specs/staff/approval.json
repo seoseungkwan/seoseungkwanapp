@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "staff",
-  "approved_at": "2026-11-21T07:21:36Z",
+  "approved_at": "2026-11-21T09:32:18Z",
   "approved_via": "user-prompt",
   "session_id": "d6645c74-6bc0-4844-b534-4aaafe727366",
-  "spec_sha256": "60e1a1cb965805e48b52c1c9e96e9b25c7c6fe6e76116f78e14dffb88536e291",
+  "spec_sha256": "73338ea81ca4943feca40c8b67dcbd78b144d7d940006cce74f6ad189ee53f6a",
   "scope": [
     ".gitignore",
     ".vercelignore",
