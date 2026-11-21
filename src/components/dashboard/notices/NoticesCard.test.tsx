@@ -169,6 +169,27 @@ describe("NoticesCard — 대시보드 '고시·공지' 칸 (AC-7422.2)", () => 
     expect(within(card()).queryByText(/^그 밖에/)).toBeNull()
   })
 
+  it('AC-7422.2: 링크는 모두 밑줄이 없고(no-underline, 제목 밑줄은 올림 반응뿐) 목록은 점이 없다(list-none) — 앱에는 a 밑줄·목록 점을 지우는 바탕 규칙이 없다(시안 .ncard)', async () => {
+    given(2, [GOSI, NEWS])
+    draw()
+    await settle()
+    const classes = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/)
+    const links = within(card()).getAllByRole('link')
+    // 고시·공지 열기 하나 · 줄마다 하나
+    expect(links).toHaveLength(1 + 2)
+    for (const a of links) expect(classes(a), a.textContent ?? '').toContain('no-underline')
+    // 고시·공지 열기는 글자 단추 모양 그대로 + no-underline(대시보드 다른 글자 단추 링크와 같다)
+    expect(classes(within(card()).getByRole('link', { name: '고시·공지 열기' }))).toEqual(expect.arrayContaining([...ds.textButton.split(/\s+/), 'no-underline']))
+    // 줄 링크 안 글은 링크 색이 아니다: 링크 ink, 날짜·출처 muted, 제목 ink(올림 때만 밑줄)
+    const link = rowLinks()[0]!
+    expect(classes(link)).toContain('text-ink')
+    expect(classes(within(link).getByText('11월 20일 (금)'))).toContain('text-muted')
+    expect(classes(within(link).getByText(GOSI.title))).toEqual(expect.arrayContaining(['text-ink', 'group-hover:underline']))
+    const lists = Array.from(card().querySelectorAll('ul, ol'))
+    expect(lists).toHaveLength(1)
+    for (const ul of lists) expect(classes(ul)).toContain('list-none')
+  })
+
   it('AC-7422.2: 관련 글만(전체 출처·별표 없음·찾기 없음·첫 쪽)을 읽고, 안 읽은 글만 차례대로 줄로 놓는다(읽은 글·규칙을 확인한 글의 칩은 없음)', async () => {
     given(2, [GOSI, READ, CHECKED])
     draw()

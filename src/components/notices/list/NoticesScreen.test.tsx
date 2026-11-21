@@ -232,6 +232,35 @@ describe('AC-7419.1: 머리 · 작은 탭 · 고르기 줄', () => {
     await user.click(screen.getByRole('button', { name: '관련 글만' }))
     await waitFor(() => expect(lastFilter()).toEqual({ related: true, sources: ['hira_notice', 'hira_crtr'], starred: true, q: '', offset: 0 }))
   })
+
+  it('AC-7419.1: 관련 글만·전체 묶음은 PC 배치 하나다 — 폰 전용 배치(max-md:) 클래스가 없다(폰에서도 PC 모양 그대로, 2026-11-21 사용자 규칙)', async () => {
+    await shown()
+    const group = screen.getByRole('group', { name: '보기' })
+    const buttons = within(group).getAllByRole('button')
+    expect(buttons.map((b) => b.textContent)).toEqual(['관련 글만', '전체'])
+    for (const el of [group, ...buttons]) {
+      const classes = (el.getAttribute('class') ?? '').split(/\s+/)
+      expect(classes.filter((c) => c.startsWith('max-md:')), el.textContent ?? '').toEqual([])
+    }
+    expect((group.getAttribute('class') ?? '').split(/\s+/)).toContain('inline-flex')
+  })
+
+  it('AC-7419.1·AC-7419.2·AC-7419.6: 링크는 모두 밑줄이 없고(no-underline) 목록은 모두 점이 없다(list-none) — 앱에는 a 밑줄·목록 점을 지우는 바탕 규칙이 없다(시안 a·ul 초기화)', async () => {
+    states.mockResolvedValue([
+      okSource('hira_notice'),
+      okSource('hira_crtr'),
+      { ...okSource('mohw_rss'), state: 'stopped', errorCode: 'shape', lastOkAt: '2026-11-18T22:03:00Z', stoppedSince: '2026-11-19T22:03:00Z' },
+    ])
+    const { container } = await shown()
+    await screen.findByRole('link', { name: '보건복지부 게시판 열기' })
+    const links = Array.from(container.querySelectorAll('a'))
+    // 작은 탭 둘 · 글 줄마다 하나 · 게시판 열기 하나
+    expect(links).toHaveLength(2 + ROWS.length + 1)
+    for (const a of links) expect((a.getAttribute('class') ?? '').split(/\s+/), a.textContent ?? '').toContain('no-underline')
+    const lists = Array.from(container.querySelectorAll('ul, ol'))
+    expect(lists.length).toBeGreaterThan(0)
+    for (const list of lists) expect((list.getAttribute('class') ?? '').split(/\s+/)).toContain('list-none')
+  })
 })
 
 describe('AC-7419.2: 건수 · 달 머리 줄 · 글 줄', () => {
@@ -367,6 +396,18 @@ describe('AC-7419.3: 안 읽은 글 · 글 열기', () => {
     expect(link.getAttribute('href')).toBe(`/notices?id=${GOSI.id}`)
     expect(within(rowOf(CASE.title)).getByRole('link').getAttribute('href')).toBe(`/notices?id=${CASE.id}`)
   })
+
+  it('AC-7419.2·AC-7419.3: 줄 링크 안 글은 링크 색(파랑)이 아니라 시안 색이다 — 링크는 ink, 제목 ink · 무엇이 바뀌나 ink-2(만드는 중이면 muted) · 날짜·출처 줄 muted', async () => {
+    await shown()
+    const classes = (el: Element | null) => (el?.getAttribute('class') ?? '').split(/\s+/)
+    const link = within(rowOf(GOSI.title)).getByRole('link')
+    expect(classes(link)).toContain('text-ink')
+    expect(classes(within(link).getByText('11월 20일 (금)'))).toContain('text-muted')
+    expect(classes(within(link).getByTestId('notice-title'))).toContain('text-ink')
+    expect(classes(within(link).getByText(GOSI.summary!.what))).toContain('text-ink-2')
+    expect(classes(within(link).getByText('보건복지부 · 심평원 심사기준').parentElement)).toContain('text-muted')
+    expect(classes(within(rowOf(WAITING.title)).getByText('요약을 만드는 중이에요.'))).toContain('text-muted')
+  })
 })
 
 describe('AC-7419.4: 지난 글 더 보기', () => {
@@ -408,6 +449,44 @@ describe('AC-7419.4: 지난 글 더 보기', () => {
     await screen.findByText('지난 글 59')
     expect(lastFilter().offset).toBe(50)
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  // 다시 읽는 동안(고르기를 바꿈 · notices:changed) 화면에 남은 앞 쪽의 줄 수는 새 고르기의 자리가 아니다.
+  // 그때 누른 `지난 글 더 보기`는 읽지 않고, 다시 읽기가 끝난 뒤에는 새 쪽의 줄 수(50)로 새 고르기의 다음 50개를 읽는다
+  it.each([
+    ['고르기를 바꿈(전체)', 'filter'],
+    ['notices:changed', 'changed'],
+  ] as const)('AC-7419.4·AC-7424.10: 다시 읽는 중(%s)에 `지난 글 더 보기`를 눌러도 앞 쪽의 줄 수로 읽지 않는다 — 끝난 뒤 새 쪽에서 이어 읽는다', async (_, trigger) => {
+    const user = userEvent.setup()
+    list.mockResolvedValueOnce(pageOf(many(0, 50), 200, 3))
+    render(<NoticesScreen />)
+    await screen.findByText('지난 글 0')
+    // 앞 쪽을 100줄로 늘려 둔다(새 쪽 50줄과 달라야 잘못 이은 자리가 보인다)
+    list.mockResolvedValueOnce(pageOf(many(50, 50), 200, 3))
+    await user.click(screen.getByRole('button', { name: '지난 글 더 보기' }))
+    await screen.findByText('지난 글 99')
+
+    const slow = deferred<NoticePage | 'failed'>()
+    list.mockReturnValueOnce(slow.promise)
+    if (trigger === 'filter') await user.click(screen.getByRole('button', { name: '전체' }))
+    else await act(async () => void window.dispatchEvent(new Event('notices:changed')))
+    const related = trigger !== 'filter'
+    await waitFor(() => expect(lastFilter()).toEqual({ related, sources: ALL_SOURCES, starred: false, q: '', offset: 0 }))
+    const calls = list.mock.calls.length
+    // 앞 쪽 100줄과 단추가 아직 보인다 — 눌러도 읽지 않는다
+    expect(screen.getByText('지난 글 99')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: '지난 글 더 보기' }))
+    expect(list).toHaveBeenCalledTimes(calls)
+
+    await act(async () => slow.resolve(pageOf(many(500, 50), 200, 3)))
+    await screen.findByText('지난 글 500')
+    expect(screen.queryByText('지난 글 99')).toBeNull()
+    list.mockResolvedValueOnce(pageOf(many(550, 50), 200, 3))
+    await user.click(screen.getByRole('button', { name: '지난 글 더 보기' }))
+    await screen.findByText('지난 글 599')
+    expect(list).toHaveBeenCalledTimes(calls + 1)
+    expect(lastFilter()).toEqual({ related, sources: ALL_SOURCES, starred: false, q: '', offset: 50 })
+    expect(screen.getAllByRole('link').filter((a) => a.getAttribute('href')?.startsWith('/notices?id='))).toHaveLength(100)
   })
 })
 

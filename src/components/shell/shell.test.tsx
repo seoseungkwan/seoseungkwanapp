@@ -584,12 +584,12 @@ describe('TabBar', () => {
     expect(label!.getAttribute('data-label')).toBe('고시·공지')
     expect(dot!.getAttribute('aria-hidden')).toBe('true')
     expect(dot!.textContent).toBe('3')
-    hasAll(dot!, 'rounded-full bg-accent text-surface')
+    hasAll(dot!, 'rounded-control bg-accent text-surface')
     expect(sr!.textContent).toBe('안 읽은 관련 글 3건')
     hasAll(sr!, 'sr-only')
     expect(within(nav()).getByRole('link', { name: /^고시·공지/ })).toBe(link)
     // 숫자는 고시·공지 옆 하나뿐이다
-    expect(nav().querySelectorAll('.bg-accent.rounded-full')).toHaveLength(1)
+    expect(nav().querySelectorAll('.bg-accent.text-surface')).toHaveLength(1)
     for (const other of PRIMARY.filter((l) => l !== '고시·공지')) expect(tab(other).textContent, other).toBe(other)
   })
 

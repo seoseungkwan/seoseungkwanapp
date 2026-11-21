@@ -11,6 +11,8 @@ import { DateControl } from '@/components/dashboard/live/DateControl'
 import { StatusHeader } from '@/components/dashboard/live/ReadStatus'
 import { LOOKBACK_DAYS } from '@/components/dashboard/live/readBitDays'
 import { AiBrief } from '@/components/dashboard/ai/AiBrief'
+import { NoticesCard } from '@/components/dashboard/notices/NoticesCard'
+import { RuleAlert } from '@/components/dashboard/notices/RuleAlert'
 import { DailySection } from '@/components/dashboard/summary/DailySection'
 import { DashboardAnalysis } from '@/components/dashboard/summary/DashboardAnalysis'
 import { FlowSection } from '@/components/dashboard/summary/FlowSection'
@@ -34,6 +36,15 @@ vi.mock('@/lib/storage/statsRxGroups', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/storage/statsRxGroups')>()
   return { ...real, listStatsRxGroups: vi.fn(async () => []) }
 })
+// 고시·공지(notices TASK-20): 맨 위 경고(RuleAlert)와 '고시·공지' 칸(NoticesCard)이 읽는 저장소도 감싼다. 늘 읽는 중이라 두 부품은
+// 아무것도 그리지 않는다(BitDashboard.test.tsx·LiveDashboard.test.tsx와 같다). 진짜 Supabase에 붙지 않는다
+vi.mock('@/lib/storage/notices', () => ({
+  NOTICES_CHANGED: 'notices:changed',
+  ruleAlerts: vi.fn(() => new Promise<never>(() => {})),
+  unreadCount: vi.fn(() => new Promise<never>(() => {})),
+  listNotices: vi.fn(() => new Promise<never>(() => {})),
+  sourceStates: vi.fn(() => new Promise<never>(() => {})),
+}))
 
 // /dashboard 페이지 (tab-frame REQ-306, design.md '대시보드 짜임'·'대시보드 페이지 조립'). 문지기와 앱 틀(위쪽 띠·탭·<main>)은 (app)/layout이 준다(layout.test.tsx).
 // 여기서는 오늘 한국 날짜로 대시보드(DashboardHome)를 그리는지, 자료 읽는 자리(저장 숫자 읽기) 하나로 연결 전·뒤 분석·보고 문장을 끼우는지 본다(AC-307.5·307.6)
@@ -337,40 +348,46 @@ describe('/dashboard 조립 — 시험 안 가짜 자료로 바꾼 자리(연결
     vi.unstubAllGlobals()
   })
 
-  it('AC-307.6·AC-605.1·AC-2701.3·AC-2707.2: 화면 = <DashboardHome dateLine={null} report={<StatusHeader … />} analysis={<>일별 현황(기준일 DateControl · 보고 문장 ReportBlock) · AI 요약 · 기간별 흐름</>} /> 그대로다', async () => {
+  it('AC-307.6·AC-605.1·AC-2701.3·AC-2707.2: 화면 = <RuleAlert /> + <DashboardHome dateLine={null} report={<StatusHeader … />} analysis={<>일별 현황(기준일 DateControl · 보고 문장 ReportBlock) · 고시·공지 칸 · AI 요약 · 기간별 흐름</>} /> 그대로다', async () => {
     const html = withoutIds(await renderConnected())
     cleanup()
     const { container } = render(
-      <DashboardHome
-        today={TODAY}
-        dateLine={null}
-        report={
-          // 비트를 읽을 수 없는 브라우저(chrome.runtime 없음) + 저장 숫자 새로고침(dashboard-ux AC-2701.7)
-          <StatusHeader
-            readAt={null}
-            savedAt={null}
-            reading={false}
-            failed={false}
-            onReread={() => {}}
-            bitReadable={false}
-            savedRefresh={{ refreshing: false, failed: false, onRefresh: () => {} }}
-          />
-        }
-        analysis={
-          <>
-            <DailySection
-              today={TODAY}
-              source={SOURCE_DATA}
-              dateLine={<DateControl today={TODAY} selected={TODAY} onChange={() => {}} />}
-              sentence={<ReportBlock today={TODAY} days={DAYS} />}
+      <>
+        {/* 고시·공지 맨 위 경고 자리(notices AC-7422.1): LiveDashboard 맨 위. 저장소가 늘 읽는 중이라 아무것도 그리지 않는다 */}
+        <RuleAlert />
+        <DashboardHome
+          today={TODAY}
+          dateLine={null}
+          report={
+            // 비트를 읽을 수 없는 브라우저(chrome.runtime 없음) + 저장 숫자 새로고침(dashboard-ux AC-2701.7)
+            <StatusHeader
+              readAt={null}
+              savedAt={null}
+              reading={false}
+              failed={false}
+              onReread={() => {}}
+              bitReadable={false}
+              savedRefresh={{ refreshing: false, failed: false, onRefresh: () => {} }}
             />
-            <div className="mt-12 max-md:mt-8">
-              <AiBrief today={TODAY} />
-            </div>
-            <FlowSection today={TODAY} source={SOURCE_DATA} />
-          </>
-        }
-      />,
+          }
+          analysis={
+            <>
+              <DailySection
+                today={TODAY}
+                source={SOURCE_DATA}
+                dateLine={<DateControl today={TODAY} selected={TODAY} onChange={() => {}} />}
+                sentence={<ReportBlock today={TODAY} days={DAYS} />}
+              />
+              {/* 고시·공지 칸 자리(notices AC-7422.2): 일별 현황 바로 아래. 저장소가 늘 읽는 중이라 아무것도 그리지 않는다 */}
+              <NoticesCard />
+              <div className="mt-12 max-md:mt-8">
+                <AiBrief today={TODAY} />
+              </div>
+              <FlowSection today={TODAY} source={SOURCE_DATA} />
+            </>
+          }
+        />
+      </>,
     )
     await act(async () => {}) // AI 요약의 합성 답까지
     expect(html).toBe(withoutIds(container.innerHTML))

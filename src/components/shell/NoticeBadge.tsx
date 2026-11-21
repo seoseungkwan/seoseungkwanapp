@@ -10,9 +10,10 @@ import { NOTICES_CHANGED, unreadCount } from '@/lib/storage/notices'
 // 보이는 숫자(100 이상은 99+)는 화면 읽기에서 숨기고, 화면 읽기에는 실제 수 글을 따로 준다.
 // TabBar가 원장 탭 띠에만 놓는다 — 데스크 탭 띠에는 이 부품이 없어 읽지도 그리지도 않는다
 
-// 시안 .badge: 18px 높이·최소 18px 폭·좌우 5px 안팎, 둥근 accent 바탕에 흰 글자 600, 가운데. 이름과는 6px 띄운다(시안 .tab gap)
+// 시안 .badge: 18px 높이·최소 18px 폭, accent 바탕에 흰 글자 600, 가운데. 이름과는 6px 띄운다(시안 .tab gap).
+// 모서리·간격은 앱 토큰만 쓴다(classes.test.ts AC-204.6): 모서리 rounded-control(칩·키 표시와 같다), 좌우 4px(px-1 — 시안 5px에 가장 가까운 간격 단계)
 const DOT =
-  'ml-1.5 inline-flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full bg-accent px-1.25 text-caption leading-4.5 font-semibold text-surface tabular-nums'
+  'ml-1.5 inline-flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-control bg-accent px-1 text-caption leading-4.5 font-semibold text-surface tabular-nums'
 
 export function NoticeBadge() {
   const [count, setCount] = useState<number | null>(null)

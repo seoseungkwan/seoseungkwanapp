@@ -36,6 +36,12 @@ const INPUT =
 // 추천 칩(시안 .kwr)
 const RECOMMEND = `inline-flex h-8 cursor-pointer items-center gap-1 whitespace-nowrap rounded-full border border-line-strong bg-surface pr-3 pl-2 text-small font-medium text-ink-2 transition not-disabled:hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40 ${ds.focusRing}`
 
+/** 고르기 줄 단추 글자: 읽기 전·읽지 못함이면 개수를 몰라 `내 낱말`(기본값 23), 0개면 `내 낱말 고르기`, 아니면 `내 낱말 {n}개` */
+function buttonText(words: string[] | 'failed' | null): string {
+  if (!Array.isArray(words)) return '내 낱말'
+  return words.length > 0 ? `내 낱말 ${words.length}개` : '내 낱말 고르기'
+}
+
 export function KeywordsControl() {
   const [words, setWords] = useState<string[] | 'failed' | null>(null)
   const [open, setOpen] = useState(false)
@@ -141,7 +147,7 @@ export function KeywordsControl() {
         className={`${TOGGLE} ${open ? TOGGLE_OPEN : TOGGLE_SHUT}`}
       >
         <TagIcon className="shrink-0" />
-        {count > 0 ? `내 낱말 ${count}개` : '내 낱말 고르기'}
+        {buttonText(words)}
       </button>
       {open && (
         <section
@@ -178,7 +184,7 @@ export function KeywordsControl() {
                   <span className={COL_HINT}>{`${KEYWORD_MAX}개까지`}</span>
                 </h3>
                 {count > 0 ? (
-                  <ul className="flex flex-wrap gap-x-2 gap-y-1.5">
+                  <ul className="flex list-none flex-wrap gap-x-2 gap-y-1.5">
                     {list.map((w) => (
                       <li
                         key={w}

@@ -17,7 +17,8 @@ import { BackfillBand, CheckedLine, filling, StoppedBand } from './SourceBands'
 // 바로 아래로 펼쳐지므로 감싸지 않고 '별표만' 바로 뒤에 그대로 둔다. 모든 글은 글자 노드로만 그린다(HTML 해석 없음)
 
 type Choice = Omit<NoticeFilter, 'offset'>
-type Loaded = { total: number; unread: number; rows: NoticeView[] }
+// read: 이 쪽을 만든 읽기 번호, choice: 이 쪽의 고르기. 지난 글 더 보기는 이 둘에 묶는다(다시 읽는 동안 남은 앞 쪽의 줄 수로 새 고르기를 읽지 않게)
+type Loaded = { total: number; unread: number; rows: NoticeView[]; read: number; choice: Choice }
 
 const SEARCH_MAX = 50 // 기본값 16: 찾는 말은 앞뒤 공백을 뗀 1~50자
 const FIRST_CHOICE: Choice = { related: true, sources: [...SOURCES], starred: false, q: '' }
@@ -33,6 +34,11 @@ function monthHead(n: NoticeView): string {
   }
 }
 
+// 관련 글만·전체 묶음(시안 .seg): 묶음 36px(단추 34px + 1px 테두리)·4px·1px line-strong, 단추 좌우 14px·small. 눌린 것은 ds.segment.on 그대로.
+// ds.segment.group·button은 쓰지 않는다 — 그 둘의 휴대폰 전체 폭 칸 나눔(max-md:)이 PC 배치 하나 규칙(2026-11-21)에 어긋난다
+const SEGMENT_GROUP = 'inline-flex shrink-0 overflow-clip rounded-control border border-line-strong bg-surface'
+const SEGMENT_BUTTON =
+  'h-8.5 cursor-pointer border-l border-line-strong px-3.5 text-small first:border-l-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent'
 // 고르기 줄 모양(시안 .tog·.src·.search). 눌린 별표만은 노랑, 켜진 출처는 옅은 파랑
 const TOGGLE = `inline-flex h-9 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-control border px-3 text-small transition ${ds.focusRing}`
 const TOGGLE_ON = 'border-warning bg-warning-soft font-semibold text-warning'
@@ -44,7 +50,8 @@ const SEARCH_INPUT =
   'h-9 w-full min-w-0 rounded-control border border-line-strong bg-surface pr-3 pl-9 text-body text-ink placeholder:text-muted hover:border-muted focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent focus-visible:outline-hidden'
 // 시안 .btn.outline(기본 크기): 테두리·글자 accent, 600
 const OUTLINE_BUTTON = `inline-flex h-9 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-control border border-accent bg-surface px-4 text-body font-semibold text-accent transition hover:bg-accent-soft ${ds.focusRing}`
-const SUBTAB = 'relative inline-flex h-10 items-center px-3 whitespace-nowrap'
+// 작은 탭(시안 .subtabs a). 앱에는 a 밑줄을 지우는 바탕 규칙이 없어 링크마다 no-underline을 준다(목록은 list-none)
+const SUBTAB = 'relative inline-flex h-10 items-center px-3 whitespace-nowrap no-underline'
 
 export function NoticesScreen({ keywords }: { keywords?: ReactNode }) {
   const [choice, setChoice] = useState<Choice>(FIRST_CHOICE)
@@ -67,7 +74,7 @@ export function NoticesScreen({ keywords }: { keywords?: ReactNode }) {
     const res = await listNotices({ ...c, sources: [...c.sources], offset: 0 })
     if (mine !== seq.current) return
     setBusy(false)
-    setPage(res === 'failed' ? 'failed' : { total: res.total, unread: res.unread, rows: res.rows })
+    setPage(res === 'failed' ? 'failed' : { total: res.total, unread: res.unread, rows: res.rows, read: mine, choice: c })
   }, [])
 
   useEffect(() => {
@@ -128,12 +135,15 @@ export function NoticesScreen({ keywords }: { keywords?: ReactNode }) {
     }
   }
 
+  // 다음 50개는 화면의 쪽(그 쪽의 고르기 · 줄 수)에 묶는다. 그 뒤 다시 읽기가 시작됐으면(고르기를 바꿈 · notices:changed)
+  // 그 쪽은 곧 바뀌므로 누름을 무시하고, 늦게 온 답도 버린다. 번호는 ref라 그리기 전 누름에서도 바로 맞다
   const loadMore = async () => {
     if (page === null || page === 'failed' || more === 'busy') return
-    const mine = seq.current
+    const mine = page.read
+    if (mine !== seq.current) return
     const offset = page.rows.length
     setMore('busy')
-    const res = await listNotices({ ...choice, sources: [...choice.sources], offset })
+    const res = await listNotices({ ...page.choice, sources: [...page.choice.sources], offset })
     if (mine !== seq.current) return
     if (res === 'failed') {
       setMore('failed')
@@ -141,11 +151,11 @@ export function NoticesScreen({ keywords }: { keywords?: ReactNode }) {
     }
     setMore('idle')
     setPage((p) => {
-      if (!p || p === 'failed') return p
+      if (!p || p === 'failed' || p.read !== mine) return p
       const seen = new Set(p.rows.map((r) => r.id))
       const rows = [...p.rows, ...res.rows.filter((r) => !seen.has(r.id))]
       // 더 받은 줄이 없으면 끝으로 본다(단추가 남지 않게)
-      return { total: res.rows.length === 0 ? rows.length : res.total, unread: res.unread, rows }
+      return { ...p, total: res.rows.length === 0 ? rows.length : res.total, unread: res.unread, rows }
     })
   }
 
@@ -173,12 +183,12 @@ export function NoticesScreen({ keywords }: { keywords?: ReactNode }) {
 
       <div className="mt-4 grid gap-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <div role="group" aria-label="보기" className={ds.segment.group}>
+          <div role="group" aria-label="보기" className={SEGMENT_GROUP}>
             <button
               type="button"
               aria-pressed={choice.related}
               onClick={() => pick({ related: true })}
-              className={`${ds.segment.button} ${choice.related ? ds.segment.on : ds.segment.off}`}
+              className={`${SEGMENT_BUTTON} ${choice.related ? ds.segment.on : ds.segment.off}`}
             >
               관련 글만
             </button>
@@ -186,7 +196,7 @@ export function NoticesScreen({ keywords }: { keywords?: ReactNode }) {
               type="button"
               aria-pressed={!choice.related}
               onClick={() => pick({ related: false })}
-              className={`${ds.segment.button} ${choice.related ? ds.segment.off : ds.segment.on}`}
+              className={`${SEGMENT_BUTTON} ${choice.related ? ds.segment.off : ds.segment.on}`}
             >
               전체
             </button>
@@ -286,7 +296,7 @@ export function NoticesScreen({ keywords }: { keywords?: ReactNode }) {
           <ListBody
             page={page}
             choice={choice}
-            more={more}
+            more={busy ? 'busy' : more}
             onStar={(id, starred) => void toggleStar(id, starred)}
             onMore={() => void loadMore()}
             onAll={() => pick({ related: false })}
@@ -344,7 +354,7 @@ function ListBody({ page, choice, more, onStar, onMore, onAll, onClear }: BodyPr
   const showFoot = !searching && !choice.starred
   return (
     <>
-      <ul>
+      <ul className="list-none">
         {page.rows.map((n, i) => (
           <Fragment key={n.id}>
             {(i === 0 || monthKey(page.rows[i - 1]) !== monthKey(n)) && (

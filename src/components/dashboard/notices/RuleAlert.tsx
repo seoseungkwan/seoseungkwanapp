@@ -60,7 +60,8 @@ export function RuleAlert() {
       <span className="min-w-0 flex-1">
         <b className="font-semibold text-warning">{TITLE}</b> · {body}
       </span>
-      <Link href={href} prefetch={false} className={ds.textButton}>
+      {/* 글자 단추 모양 + no-underline: 앱에는 a 밑줄을 지우는 바탕 규칙이 없다(밑줄은 올림 반응뿐) */}
+      <Link href={href} prefetch={false} className={`${ds.textButton} no-underline`}>
         글 보기
         <ArrowIcon />
       </Link>

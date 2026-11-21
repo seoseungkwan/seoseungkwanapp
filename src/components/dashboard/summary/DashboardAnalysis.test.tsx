@@ -1233,6 +1233,8 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
     'LiveDashboard.tsx: @/components/dashboard/live/readBitDays',
     'LiveDashboard.tsx: @/components/dashboard/live/rxGroups',
     'LiveDashboard.tsx: @/lib/storage/stats',
+    // notices AC-7422.1: 맨 위 점검 규칙 경고 부품 하나만 놓는다. 고시·공지 저장소(lib/storage/notices)는 그 부품이 읽고 이 폴더는 부르지 않는다
+    'LiveDashboard.tsx: @/components/dashboard/notices/RuleAlert',
   ]
   // 대시보드 기간 고르기(dashboard-period AC-1805.2, design.md '결정과 트레이드오프'): 통계를 부르는 곳은 flow.ts(periodPick·view)와
   // DashboardAnalysis.tsx(PeriodPicker) 둘뿐이고, 오류 카드는 옛 기간 읽기 실패 카드에만 쓴다
