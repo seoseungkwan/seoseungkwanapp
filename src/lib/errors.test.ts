@@ -1133,7 +1133,7 @@ describe('AC-6602.7·AC-6614.8 병원 정보·처음 질문 오류 번호', () =
 // 번호마다 '무엇이 · 어떻게 고치나'에 꼭 들어갈 말(design.md 글의 뜻·곁의 단추)
 const INVENTORY = {
   'E-INV-READ-FAILED': { what: ['재고', '읽지 못했어요'], fix: ['[다시 읽기]'] },
-  'E-INV-SAVE-FAILED': { what: ['저장하지 못했어요'], fix: ['적은 값은 그대로', '[다시 저장]'] },
+  'E-INV-SAVE-FAILED': { what: ['저장하지 못했어요'], fix: ['적은 값은 그대로', '잠시 뒤 다시 해 주세요'] }, // [다시 저장] 단추가 없는 화면(주문함·순서·다시 쓰기)에도 뜬다
   'E-INV-DUPLICATE': { what: ['같은 이름이 이미 있어요'], fix: ['다른 이름', '안 쓰는 물품'] },
   'E-INV-IN-USE': { what: ['물품이 있는 분류는 지울 수 없어요'], fix: ['다른 분류로 옮긴 뒤'] },
   'E-INV-COUNT-DATE': { what: ['세기'], fix: ['마지막 세기 날짜', '오늘'] },
@@ -1162,6 +1162,11 @@ describe('AC-7503.6 재고 오류 번호', () => {
       expect(text, code).not.toMatch(/니다\./)
       expect(text, code).not.toContain('@')
     }
+  })
+
+  it('AC-7503.6·AC-7512.3: E-INV-SAVE-FAILED 글은 [다시 저장] 단추를 말하지 않는다 — 그 단추가 없는 재고 화면([주문함]·[다 됐어요]·[다시 쓰기])에도 뜬다', () => {
+    const { what, fix } = errorInfo('E-INV-SAVE-FAILED')
+    expect(`${what} ${fix}`).not.toMatch(/\[다시 저장\]|\[[^\]]+\]/)
   })
 
   it('AC-7503.6: 이 명세가 더하는 E-INV- 번호는 design.md 4절의 열뿐이다', () => {

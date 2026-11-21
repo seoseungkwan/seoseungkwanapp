@@ -1,13 +1,16 @@
 import type { Metadata } from 'next'
-import { NotReadyScreen } from '@/components/common/NotReadyScreen'
-import { notReadyFeature } from '@/components/common/notReadyFeatures'
+import { InventoryScreen } from '@/components/inventory/InventoryScreen'
+import { todayInKorea } from '@/lib/analytics/dates'
 
-// /inventory 재고 — 준비 중 화면 (tab-frame REQ-305). 화면이 생기면 이 파일을 진짜 화면으로 바꾼다
-// 탭 이름(metadata)과 화면이 같은 항목 하나를 쓴다 (ui-90 AC-402.4)
-const feature = notReadyFeature('/inventory')
+// /inventory 재고 (specs/inventory REQ-7512, design.md 6절 TASK-15). 문지기와 앱 틀은 (app)/layout이 준다.
+// 고른 도구(?tool=)는 화면이 주소에서 읽는다. 병원 id는 넘기지 않는다: 읽고 쓰기는 RLS·DB 기본값이 내 병원으로 한다
 
-export const metadata: Metadata = { title: feature.name }
+// 오늘은 요청 때의 한국 날짜다 → 빌드 때 미리 그리지 않는다
+export const dynamic = 'force-dynamic'
+
+// 브라우저 탭 이름
+export const metadata: Metadata = { title: '재고' }
 
 export default function InventoryPage() {
-  return <NotReadyScreen feature={feature} />
+  return <InventoryScreen today={todayInKorea()} />
 }

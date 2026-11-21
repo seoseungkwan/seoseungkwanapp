@@ -7,7 +7,6 @@
 export type NotReadyPath =
   | '/notices'
   | '/staff'
-  | '/inventory'
   | '/contacts'
 
 export type NotReadyFeature = {
@@ -37,13 +36,6 @@ export const NOT_READY_FEATURES: readonly NotReadyFeature[] = [
     title: '직원은 준비 중이에요',
     intro: `직원과 급여·휴가를 한곳에서 볼 자리예요. ${SOON}`,
     items: ['직원 명단', '급여 계산과 명세서', '연차와 휴가'],
-  },
-  {
-    path: '/inventory',
-    name: '재고',
-    title: '재고는 준비 중이에요',
-    intro: `물품이 얼마나 남았는지 챙길 자리예요. ${SOON}`,
-    items: ['물품 목록·남은 수량', '부족 표시', '들어온 것과 쓴 것'],
   },
   {
     path: '/contacts',

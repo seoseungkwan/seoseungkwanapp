@@ -38,7 +38,7 @@ const hasNone = (el: Element, classes: string) => {
   for (const t of tokens(classes)) expect(classesOf(el), t).not.toContain(t)
 }
 
-// 탭과 탭 주소(tab-frame REQ-302, design.md '탭 목록'). 기능 자신의 화면이 있는 것은 READY의 탭이다(통계는 stats AC-515.1, 환자는 patients AC-610.1, 업무일지는 worklog AC-012.2, 서식은 forms AC-3501.1).
+// 탭과 탭 주소(tab-frame REQ-302, design.md '탭 목록'). 기능 자신의 화면이 있는 것은 READY의 탭이다(통계는 stats AC-515.1, 환자는 patients AC-610.1, 업무일지는 worklog AC-012.2, 서식은 forms AC-3501.1, 재고는 inventory AC-7512.1).
 // 매출 탭은 통계 매출 칸으로 옮겨 없어졌다(stats-revenue AC-4110.1, /revenue는 next.config가 /stats로 넘긴다)
 const PATHS: readonly (readonly [string, string])[] = [
   ['대시보드', '/dashboard'],
@@ -57,7 +57,7 @@ const PATHS: readonly (readonly [string, string])[] = [
   ['설정', '/settings'],
 ]
 const LABELS = PATHS.map(([label]) => label)
-const READY = ['대시보드', '통계', '청구', '환자', '업무일지', '수납일지', '예약', 'AI 리포트', '서식']
+const READY = ['대시보드', '통계', '청구', '환자', '업무일지', '수납일지', '예약', 'AI 리포트', '서식', '재고']
 // 준비 중 화면 주소(설정 빼고 화면이 없는 탭)
 const NOT_READY_PATHS = PATHS.filter(([label]) => !READY.includes(label) && label !== '설정')
 const EMAIL = 'manager@example.com'
@@ -103,8 +103,8 @@ const panel = () => {
   const id = moreButton().getAttribute('aria-controls')
   return id ? document.getElementById(id) : null
 }
-// 화면이 있는 탭(MENU ready: true) — 대시보드·통계·청구·환자·업무일지·수납일지·예약·AI 리포트·서식·설정(MENU 차례)
-const READY_TABS = ['대시보드', '통계', '청구', '환자', '업무일지', '수납일지', '예약', 'AI 리포트', '서식', '설정']
+// 화면이 있는 탭(MENU ready: true) — 대시보드·통계·청구·환자·업무일지·수납일지·예약·AI 리포트·서식·재고·설정(MENU 차례)
+const READY_TABS = ['대시보드', '통계', '청구', '환자', '업무일지', '수납일지', '예약', 'AI 리포트', '서식', '재고', '설정']
 // 준비 중 탭(MENU ready: false). 수는 NOT_READY_FEATURES에서 센다
 const NOT_READY_TABS = LABELS.filter((l) => !READY_TABS.includes(l))
 // 지금 탭 모양(ink 600 + 아래 2px accent 밑줄)과 기본 모양(ink-2 500)
@@ -140,7 +140,7 @@ describe('menu', () => {
     for (const { label, path } of MENU) expect(path, label).toMatch(/^\/[a-z0-9-]+(?:\/[a-z0-9-]+)*$/)
   })
 
-  it('AC-302.3·AC-4110.1·AC-515.1·AC-714.1·AC-610.1·AC-012.2·AC-012.6·AC-3501.1: 기능 자신의 화면(href)은 대시보드 /dashboard · 통계 /stats · 청구 /claim · 환자 /patients · AI 리포트 /ai-report · 서식 /forms · 업무일지 /worklog · 설정 /settings이고 나머지는 null. href가 있으면 path와 같다', () => {
+  it('AC-302.3·AC-4110.1·AC-515.1·AC-714.1·AC-610.1·AC-012.2·AC-012.6·AC-3501.1·AC-7512.1: 기능 자신의 화면(href)은 대시보드 /dashboard · 통계 /stats · 청구 /claim · 환자 /patients · AI 리포트 /ai-report · 서식 /forms · 재고 /inventory · 업무일지 /worklog · 설정 /settings이고 나머지는 null. href가 있으면 path와 같다', () => {
     expect(MENU.filter((m) => m.href !== null).map(({ label, href }) => ({ label, href }))).toEqual([
       { label: '대시보드', href: '/dashboard' },
       { label: '통계', href: '/stats' },
@@ -151,6 +151,7 @@ describe('menu', () => {
       { label: '예약', href: '/calendar' },
       { label: 'AI 리포트', href: '/ai-report' },
       { label: '서식', href: '/forms' },
+      { label: '재고', href: '/inventory' },
       { label: '설정', href: '/settings' },
     ])
     expect(MENU.filter((m) => m.href === null).map((m) => m.label)).toEqual(NOT_READY_TABS)
@@ -199,7 +200,7 @@ describe('menu', () => {
     expect('ADMIN_ITEM' in menuModule).toBe(false)
   })
 
-  it('AC-416.4·AC-4110.1·AC-515.1·AC-714.1·AC-610.1·AC-012.2·AC-3501.1: 항목마다 ready가 있고 화면이 있는 탭(대시보드·통계·청구·환자·AI 리포트·서식·업무일지·설정)만 true다. ready: false인 주소들은 NOT_READY_FEATURES의 주소와 같다(순서도)', () => {
+  it('AC-416.4·AC-4110.1·AC-515.1·AC-714.1·AC-610.1·AC-012.2·AC-3501.1·AC-7512.1: 항목마다 ready가 있고 화면이 있는 탭(대시보드·통계·청구·환자·AI 리포트·서식·재고·업무일지·설정)만 true다. ready: false인 주소들은 NOT_READY_FEATURES의 주소와 같다(순서도)', () => {
     for (const item of MENU) expect(typeof item.ready, item.label).toBe('boolean')
     expect(MENU.filter((m) => m.ready).map((m) => m.label)).toEqual(READY_TABS)
     expect(MENU.filter((m) => !m.ready).map((m) => m.label)).toEqual(NOT_READY_TABS)
@@ -698,6 +699,29 @@ describe('MoreMenu', () => {
       expect(link.children, label).toHaveLength(1)
       expect(link.textContent, label).toBe(label)
     }
+  })
+
+  it('AC-7512.1: 재고(/inventory)는 href·path가 /inventory인 ready 탭이고(주요 메뉴 아님) [더보기] 판 자리 그대로이며 그 칸에 "준비 중" 칩이 없다', async () => {
+    expect(MENU.find((m) => m.label === '재고')).toEqual({ label: '재고', path: '/inventory', href: '/inventory', ready: true, primary: false })
+    expect(NOT_READY_FEATURES.map((f) => f.path as string)).not.toContain('/inventory')
+    const user = userEvent.setup()
+    render(<TabBar />)
+    expect(within(strip()).queryByRole('link', { name: /재고/ })).toBeNull()
+    await user.click(moreButton())
+    const link = within(panel() as HTMLElement).getByRole('link', { name: '재고' })
+    expect(link.getAttribute('href')).toBe('/inventory')
+    expect(link.children).toHaveLength(1)
+    expect(link.textContent).toBe('재고')
+  })
+
+  it('AC-7512.1: /inventory에서는 탭 "재고"가 켜진다 — [더보기] 단추가 "더보기 · 재고"이고 판 안 재고 링크가 aria-current="page"다', async () => {
+    pathname.mockReturnValue('/inventory')
+    expect(currentMenuLabel('/inventory')).toBe('재고')
+    const user = userEvent.setup()
+    render(<TabBar />)
+    expect(moreButton().textContent).toBe('더보기 · 재고')
+    await user.click(moreButton())
+    expect(within(panel() as HTMLElement).getByRole('link', { name: '재고' }).getAttribute('aria-current')).toBe('page')
   })
 
   it('AC-3501.1: 서식(/forms)은 href·path가 /forms인 ready 탭이고 [더보기] 판에 있으며 그 칸에 "준비 중" 칩이 없다', async () => {
