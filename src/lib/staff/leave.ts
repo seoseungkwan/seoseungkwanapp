@@ -6,6 +6,11 @@
 // - 1월 1일 기준: 0번 = [입사일, 입사한 해 12-31], 그 뒤 해마다 [1-01, 12-31]. 달마다 1일은 생긴 날이 든 해의 기간에 들고,
 //   입사 다음 해 1월 1일에 15 × (입사일~12-31 날 수) ÷ (그해 날 수), 그 뒤 1월 1일마다 annualDays(그해 − 입사한 해 − 1)
 // - 퇴사하면 퇴사일이 든 기간은 퇴사일에 끝나고 그 뒤 기간은 없다. 연차는 생기는 날 재직(퇴사일 ≥ 그날)일 때만 생긴다
+//
+// 넘김 시작 기간(AC-7604.9): 끝날이 웹앱 등록일보다 앞인 기간은 '시작 기간 앞'(웹앱을 쓰기 전 — 기록이 없음)이다.
+// 그 기간은 넘어옴 0·다음으로 안 넘기고, 'pay'·'carry' 모두 지난 기간(previous)·정산(settleInMonth)에 내지 않는다.
+// 시작 기간 앞이 아닌 첫 기간(= 시작 기간)의 넘어옴은 시작 값('carry'만), 그 뒤는 앞 기간 남은 일수.
+// 등록일이 없으면 시작 기간 = 첫 기간, 시작 값이 없으면 0 — 지금 셈과 같다
 import { addDays, addMonthsToDay, compareYmd, diffDays, monthOf, monthRange } from '@/lib/analytics/dates'
 
 export type LeaveBasis = 'hire' | 'jan1'
@@ -21,6 +26,8 @@ export type LeavePerson = {
   leftOn: string | null
   usedBefore: number
   usedBeforeFrom: string | null
+  carryStart?: number // 넘어온 연차 시작 값 — 시작 기간의 넘어옴('carry'만, 음수도 그대로). 없으면 0
+  registeredOn?: string | null // 웹앱 등록일 — 끝날이 이보다 앞인 기간은 시작 기간 앞. 없으면 시작 기간 = 첫 기간
 }
 
 // Leave에서 셈에 쓰는 칸만
@@ -40,6 +47,7 @@ export type LeaveStatus = {
   left: number // granted + carried − used (0 밑이면 음수 그대로)
   next: { day: string; days: number; inDays: number } | null // 다음에 연차가 생기는 날. 더 생길 일이 없으면 null
   endsThisMonth: boolean // 이번 기간이 오늘이 든 달에 끝남
+  // 지난 기간. 첫 기간이거나 지난 기간이 시작 기간 앞(AC-7604.9)이면 null
   previous: { from: string; to: string; granted: number; used: number; left: number; settledMonth: string | null } | null
 }
 
@@ -151,24 +159,29 @@ function usedIn(period: Period, p: LeavePerson, leaves: readonly LeaveDay[]): nu
   return used
 }
 
-type Row = { from: string; to: string; granted: number; carried: number; used: number; left: number }
+// beforeStart: 끝날이 웹앱 등록일보다 앞인 기간(시작 기간 앞, AC-7604.9)
+type Row = { from: string; to: string; granted: number; carried: number; used: number; left: number; beforeStart: boolean }
 
 // `asOf`가 든 기간(입사 전이면 첫 기간, 퇴사 뒤면 마지막 기간)까지 차례로 셈한다. 그 기간은 asOf까지 생긴 것만 센다
 function ledger(input: LeaveInput, asOf: string) {
+  const { person } = input
   const leaves = ownLeaves(input)
-  const periods = buildPeriods(input.person, leaves, input.basis, asOf)
+  const periods = buildPeriods(person, leaves, input.basis, asOf)
   let index = periods.findIndex((period) => within(asOf, period.from, period.to))
-  if (index < 0) index = compareYmd(asOf, input.person.hiredOn) < 0 ? 0 : periods.length - 1
+  if (index < 0) index = compareYmd(asOf, person.hiredOn) < 0 ? 0 : periods.length - 1
+  const registeredOn = person.registeredOn ?? null
   const rows: Row[] = []
-  let carried = 0
   for (let i = 0; i <= index; i++) {
     const period = periods[i]
     const cut = i === index ? asOf : period.to
     const granted = period.grants.filter((g) => compareYmd(g.day, cut) <= 0).reduce((sum, g) => sum + g.days, 0)
-    const used = usedIn(period, input.person, leaves)
-    const left = granted + carried - used
-    rows.push({ from: period.from, to: period.to, granted, carried, used, left })
-    carried = input.leftover === 'carry' ? left : 0
+    const used = usedIn(period, person, leaves)
+    const beforeStart = registeredOn !== null && compareYmd(period.to, registeredOn) < 0
+    const prev = rows[i - 1]
+    // 시작 기간 앞·'pay'는 0, 시작 기간은 시작 값, 그 뒤는 앞 기간 남은 일수
+    const carried =
+      beforeStart || input.leftover !== 'carry' ? 0 : prev !== undefined && !prev.beforeStart ? prev.left : (person.carryStart ?? 0)
+    rows.push({ from: period.from, to: period.to, granted, carried, used, left: granted + carried - used, beforeStart })
   }
   return { periods, rows, index }
 }
@@ -186,7 +199,7 @@ export function leaveStatus(input: LeaveInput & { today: string }): LeaveStatus 
     .filter((g) => g.days > 0 && compareYmd(today, g.day) < 0)
   const nextDay = later.map((g) => g.day).sort(compareYmd)[0]
   const nextDays = later.filter((g) => g.day === nextDay).reduce((sum, g) => sum + g.days, 0)
-  const prev = index > 0 ? rows[index - 1] : null
+  const prev = index > 0 && !rows[index - 1].beforeStart ? rows[index - 1] : null
   return {
     period: { from: row.from, to: row.to },
     basis: input.basis,
@@ -209,13 +222,13 @@ export function leaveStatus(input: LeaveInput & { today: string }): LeaveStatus 
 }
 
 // 그달에 끝난 기간의 정산 일수(0 밑이면 0). 'pay'면 기간 끝마다, 퇴사로 끝난 기간은 넘길 곳이 없어 'carry'도 정산한다.
-// 그달에 끝난 기간이 없으면(또는 'carry'로 넘겼으면) null
+// 시작 기간 앞 기간(기간 끝·퇴사 모두, AC-7604.9)은 정산하지 않는다. 그달에 끝난 기간이 없으면(또는 'carry'로 넘겼으면) null
 export function settleInMonth(input: LeaveInput & { month: string }): number | null {
   const { rows } = ledger(input, monthRange(input.month).to)
   const leftOn = input.person.leftOn
   let total: number | null = null
   for (const row of rows) {
-    if (monthOf(row.to) !== input.month) continue
+    if (row.beforeStart || monthOf(row.to) !== input.month) continue
     if (input.leftover !== 'pay' && row.to !== leftOn) continue
     total = (total ?? 0) + Math.max(0, row.left)
   }

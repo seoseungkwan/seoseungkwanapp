@@ -1,6 +1,6 @@
-// 연차 셈(staff TASK-4, REQ-7604 · AC-7604.1~AC-7604.8, 근로기준법 60조). 사람·휴가는 모두 지어낸 것이고 오늘은 인자로만 준다.
+// 연차 셈(staff TASK-4·TASK-19, REQ-7604 · AC-7604.1~AC-7604.9, 근로기준법 60조). 사람·휴가는 모두 지어낸 것이고 오늘은 인자로만 준다.
 // 보기 여섯 명은 requirements.md 보기 자료(오늘 2026-11-21, 입사일 기준, 못 쓴 연차는 수당 정산) — 휴가 목록은 합이 맞게 지어냈고,
-// 이도윤 이번 기간은 시안 휴가 ④ 목록 그대로다(11-28 넣기 전)
+// 이도윤 이번 기간은 시안 휴가 ④ 목록 그대로다(11-28 넣기 전). AC-7604.9(넘김 시작 기간)는 같은 사람에 등록일·시작 값을 더해 본다
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -16,6 +16,8 @@ type Person = {
   leftOn: string | null
   usedBefore: number
   usedBeforeFrom: string | null
+  carryStart?: number
+  registeredOn?: string | null
 }
 
 const TODAY = '2026-11-21'
@@ -570,6 +572,216 @@ describe('AC-7604.7 못 쓴 연차 — pay 정산 · carry 넘김', () => {
     const p = { person: person('2024-09-02'), leaves: [lv('2026-06-01')], ...jan1 }
     expect(settleInMonth({ ...p, month: '2026-12' })).toBe(14)
     expect(settleInMonth({ ...p, month: '2026-11' })).toBeNull()
+  })
+})
+
+describe('AC-7604.9 넘김 시작 기간 — 웹앱 등록일 · 넘어온 연차 시작 값', () => {
+  // 이도윤(2023-07-17 입사) 기간: 0번 2023-07-17~2024-07-16(달마다 11) · 1번 ~2025-07-16(15) · 2번 2025-07-17~2026-07-16(15, 13 씀)
+  // · 3번 2026-07-17~2027-07-16(16, 6 씀) · 4번 2027-07-17~(16). 등록일 2026-11-21이면 3번이 시작 기간이다
+  const REG = '2026-11-21'
+  const carry = { basis: 'hire', leftover: 'carry' } as const
+  const 등록 = (over: Partial<Person> = {}) => ({ ...이도윤, person: { ...이도윤.person, registeredOn: REG, ...over } })
+
+  it('AC-7604.9 carry 이도윤 등록일 2026-11-21 · 시작 값 없음 → 16/0/6/10 · previous null', () => {
+    expect(leaveStatus({ ...등록(), ...carry, today: TODAY })).toMatchObject({
+      period: { from: '2026-07-17', to: '2027-07-16' },
+      granted: 16,
+      carried: 0,
+      used: 6,
+      left: 10,
+      previous: null,
+    })
+  })
+
+  it('AC-7604.9 옛 셈(등록일 없음)이면 앞 기간 넘어옴 28일(11 → 26 → 28)이 쌓였을 것 — 등록일이 있으면 0', () => {
+    expect(leaveStatus({ ...이도윤, ...carry, today: TODAY })).toMatchObject({ carried: 28, left: 38 })
+    expect(leaveStatus({ ...등록(), ...carry, today: TODAY })).toMatchObject({ carried: 0, left: 10 })
+  })
+
+  it('AC-7604.9 carry 시작 값 3 → 넘어옴 3 · 남은 13 (남은 비율 13 ÷ 19)', () => {
+    const status = leaveStatus({ ...등록({ carryStart: 3 }), ...carry, today: TODAY })
+    expect(status).toMatchObject({ granted: 16, carried: 3, used: 6, left: 13, previous: null })
+    expect(status.left / (status.granted + status.carried)).toBeCloseTo(13 / 19)
+  })
+
+  it('AC-7604.9 그다음 기간(오늘 2027-07-20) → 2027-07-17~2028-07-16 16/13/0/29 · previous = 시작 기간(16 · 6 · 13)', () => {
+    const status = leaveStatus({ ...등록({ carryStart: 3 }), ...carry, today: '2027-07-20' })
+    expect(status).toMatchObject({
+      period: { from: '2027-07-17', to: '2028-07-16' },
+      granted: 16,
+      carried: 13,
+      used: 0,
+      left: 29,
+    })
+    expect(status.previous).toEqual({ from: '2026-07-17', to: '2027-07-16', granted: 16, used: 6, left: 13, settledMonth: null })
+    // carry는 기간 끝에 정산하지 않는다
+    expect(settleInMonth({ ...등록({ carryStart: 3 }), ...carry, month: '2027-07' })).toBeNull()
+  })
+
+  it("AC-7604.9 pay면 시작 값 3이 있어도 16/6/10 · previous null · settleInMonth('2026-07') null · ('2027-07') = 시작 기간 남은 10", () => {
+    const p = { ...등록({ carryStart: 3 }), ...hire }
+    expect(leaveStatus({ ...p, today: TODAY })).toMatchObject({ granted: 16, carried: 0, used: 6, left: 10, previous: null })
+    expect(settleInMonth({ ...p, month: '2026-07' })).toBeNull()
+    expect(settleInMonth({ ...p, month: '2027-07' })).toBe(10)
+    expect(leaveStatus({ ...p, today: '2027-07-20' })).toMatchObject({ carried: 0, left: 16 })
+    expect(leaveStatus({ ...p, today: '2027-07-20' }).previous).toEqual({
+      from: '2026-07-17',
+      to: '2027-07-16',
+      granted: 16,
+      used: 6,
+      left: 10,
+      settledMonth: '2027-07',
+    })
+    // 등록일이 없으면 AC-7604.8대로 지난 기간 남은 2일
+    expect(settleInMonth({ ...이도윤, ...hire, month: '2026-07' })).toBe(2)
+  })
+
+  it("AC-7604.9 시작 기간 정산은 '올해 이미 쓴 연차'를 반영 — pay 2027-07 = 16 − 6 − 2 = 8, carry 다음 기간 넘어옴 16 + 3 − 8 = 11", () => {
+    const before = { usedBefore: 2, usedBeforeFrom: '2026-07-17' }
+    const pay = { ...등록(before), ...hire }
+    expect(leaveStatus({ ...pay, today: TODAY })).toMatchObject({ used: 8, left: 8 })
+    expect(settleInMonth({ ...pay, month: '2027-07' })).toBe(8)
+    const c = { ...등록({ ...before, carryStart: 3 }), ...carry }
+    expect(leaveStatus({ ...c, today: TODAY })).toMatchObject({ carried: 3, used: 8, left: 11 })
+    expect(leaveStatus({ ...c, today: '2027-07-20' })).toMatchObject({ carried: 11, left: 27 })
+  })
+
+  it('AC-7604.9 경계: 등록일이 지난 기간 끝날(2026-07-16)이면 그 기간이 시작 기간, 하루 뒤(2026-07-17)면 이번 기간', () => {
+    const onEnd = { ...이도윤, person: { ...이도윤.person, registeredOn: '2026-07-16', carryStart: 3 } }
+    expect(leaveStatus({ ...onEnd, ...hire, today: TODAY }).previous).toEqual({
+      from: '2025-07-17',
+      to: '2026-07-16',
+      granted: 15,
+      used: 13,
+      left: 2,
+      settledMonth: '2026-07',
+    })
+    expect(settleInMonth({ ...onEnd, ...hire, month: '2026-07' })).toBe(2)
+    const c = leaveStatus({ ...onEnd, ...carry, today: TODAY })
+    expect(c.previous).toMatchObject({ from: '2025-07-17', granted: 15, used: 13, left: 5 }) // 15 + 3 − 13
+    expect(c).toMatchObject({ carried: 5, left: 15 })
+
+    const dayAfter = { ...이도윤, person: { ...이도윤.person, registeredOn: '2026-07-17', carryStart: 3 } }
+    expect(leaveStatus({ ...dayAfter, ...carry, today: TODAY })).toMatchObject({ carried: 3, left: 13, previous: null })
+    expect(leaveStatus({ ...dayAfter, ...hire, today: TODAY }).previous).toBeNull()
+    expect(settleInMonth({ ...dayAfter, ...hire, month: '2026-07' })).toBeNull()
+  })
+
+  it('AC-7604.9 등록일이 입사 전(2000-01-01)·null이면 첫 기간이 시작 기간 — AC-7604.8 보기 여섯 명 숫자 그대로', () => {
+    const people = [김하늘, 이도윤, 이도윤1128, 박서연, 최민준, 정유나, 한지우]
+    for (const registeredOn of ['2000-01-01', null]) {
+      for (const who of people) {
+        const reg = { ...who, person: { ...who.person, registeredOn, carryStart: 0 } }
+        for (const settings of [hire, carry, jan1]) {
+          expect(leaveStatus({ ...reg, ...settings, today: TODAY })).toEqual(leaveStatus({ ...who, ...settings, today: TODAY }))
+          for (const month of ['2026-01', '2026-03', '2026-07', '2026-11', '2026-12']) {
+            expect(settleInMonth({ ...reg, ...settings, month })).toBe(settleInMonth({ ...who, ...settings, month }))
+          }
+          expect(remainingAt({ ...reg, ...settings }, '2026-11-30')).toBe(remainingAt({ ...who, ...settings }, '2026-11-30'))
+        }
+      }
+    }
+  })
+
+  it('AC-7604.9 등록일이 입사 전이면 시작 값은 첫 기간 넘어옴 — carry 이번 기간 28 + 3 = 31, pay는 안 씀', () => {
+    const early = { ...이도윤, person: { ...이도윤.person, registeredOn: '2000-01-01', carryStart: 3 } }
+    expect(leaveStatus({ ...early, ...carry, today: '2023-08-01' })).toMatchObject({
+      period: { from: '2023-07-17', to: '2024-07-16' },
+      granted: 0,
+      carried: 3,
+      left: 3,
+      previous: null,
+    })
+    expect(leaveStatus({ ...early, ...carry, today: TODAY })).toMatchObject({ carried: 31, left: 41 })
+    expect(leaveStatus({ ...early, ...hire, today: TODAY })).toMatchObject({ carried: 0, left: 10 })
+  })
+
+  it('AC-7604.9 1월 1일 기준: 시작 기간은 등록일이 든 해 — 그 앞 해는 넘김·정산 없음, 12-31 등록이면 그해부터', () => {
+    // 2024-09-02 입사: 2024 기간 달마다 3 · 2025 기간 5 + 달마다 8 = 13(1 씀) · 2026 기간 15(1 씀)
+    const leaves = [lv('2025-03-03'), lv('2026-06-01')]
+    const at = (registeredOn: string | null, carryStart = 2) => ({
+      person: person('2024-09-02', { registeredOn, carryStart }),
+      leaves,
+    })
+    const jan1Carry = { basis: 'jan1', leftover: 'carry' } as const
+    // 옛 셈: 3 → 13 + 3 − 1 = 15가 2026에 넘어옴
+    expect(leaveStatus({ ...at(null, 0), ...jan1Carry, today: TODAY })).toMatchObject({ carried: 15, left: 29 })
+
+    const reg = at('2026-05-10')
+    expect(leaveStatus({ ...reg, ...jan1Carry, today: TODAY })).toMatchObject({
+      period: { from: '2026-01-01', to: '2026-12-31' },
+      granted: 15,
+      carried: 2,
+      used: 1,
+      left: 16,
+      previous: null,
+    })
+    const next = leaveStatus({ ...reg, ...jan1Carry, today: '2027-01-01' })
+    expect(next).toMatchObject({ granted: 15, carried: 16, left: 31 })
+    expect(next.previous).toEqual({ from: '2026-01-01', to: '2026-12-31', granted: 15, used: 1, left: 16, settledMonth: null })
+    // pay: 2025-12는 시작 기간 앞이라 정산 없음(등록일이 없으면 13 − 1 = 12), 2026-12는 시작 기간 남은 14
+    expect(settleInMonth({ ...reg, ...jan1, month: '2025-12' })).toBeNull()
+    expect(settleInMonth({ ...at(null), ...jan1, month: '2025-12' })).toBe(12)
+    expect(settleInMonth({ ...reg, ...jan1, month: '2026-12' })).toBe(14)
+    expect(leaveStatus({ ...reg, ...jan1, today: TODAY }).previous).toBeNull()
+
+    // 경계: 2025-12-31 등록이면 2025 기간이 시작 기간(넘어옴 2), 2026-01-01 등록이면 2026 기간
+    const dec31 = at('2025-12-31')
+    expect(leaveStatus({ ...dec31, ...jan1Carry, today: TODAY })).toMatchObject({ carried: 14, left: 28 }) // 13 + 2 − 1
+    expect(leaveStatus({ ...dec31, ...jan1Carry, today: TODAY }).previous).toMatchObject({ from: '2025-01-01', left: 14 })
+    expect(settleInMonth({ ...dec31, ...jan1, month: '2025-12' })).toBe(12)
+    expect(leaveStatus({ ...at('2026-01-01'), ...jan1Carry, today: TODAY })).toMatchObject({ carried: 2, previous: null })
+  })
+
+  it('AC-7604.9 퇴사 뒤 등록하면 시작 기간이 없다 — 넘어옴 0 · previous null · 정산 null (pay·carry)', () => {
+    const late = { person: person('2021-03-02', { leftOn: '2026-05-31', registeredOn: REG, carryStart: 3 }), leaves: [lv('2026-04-10')] }
+    for (const settings of [hire, carry]) {
+      expect(leaveStatus({ ...late, ...settings, today: TODAY })).toMatchObject({
+        period: { from: '2026-03-02', to: '2026-05-31' },
+        granted: 17,
+        carried: 0,
+        used: 1,
+        left: 16,
+        next: null,
+        previous: null,
+      })
+      expect(settleInMonth({ ...late, ...settings, month: '2026-05' })).toBeNull()
+      expect(settleInMonth({ ...late, ...settings, month: '2026-03' })).toBeNull()
+      expect(remainingAt({ ...late, ...settings }, '2026-11-30')).toBe(16)
+    }
+    // 경계: 퇴사일 = 등록일이면 퇴사로 끝난 기간이 시작 기간 — carry 17 + 3 − 1 = 19, pay 16
+    const sameDay = { ...late, person: { ...late.person, registeredOn: '2026-05-31' } }
+    expect(settleInMonth({ ...sameDay, ...carry, month: '2026-05' })).toBe(19)
+    expect(settleInMonth({ ...sameDay, ...hire, month: '2026-05' })).toBe(16)
+  })
+
+  it('AC-7604.9 음수 시작 값 −1.5는 그대로 넘어옴 — carry 남은 8.5, 다음 기간 넘어옴 8.5, pay는 안 씀', () => {
+    const p = 등록({ carryStart: -1.5 })
+    expect(leaveStatus({ ...p, ...carry, today: TODAY })).toMatchObject({ granted: 16, carried: -1.5, used: 6, left: 8.5 })
+    expect(leaveStatus({ ...p, ...carry, today: '2027-07-20' })).toMatchObject({ carried: 8.5, left: 24.5 })
+    expect(leaveStatus({ ...p, ...hire, today: TODAY })).toMatchObject({ carried: 0, left: 10 })
+  })
+
+  it('AC-7604.7 AC-7604.9 settleInMonth: 퇴사 달 정산에 시작 값 포함 — carry 16 + 3 − 6 = 13, pay 10, 0 밑이면 0', () => {
+    const left = (carryStart: number) => 등록({ carryStart, leftOn: '2027-03-31' })
+    expect(settleInMonth({ ...left(3), ...carry, month: '2027-03' })).toBe(13)
+    expect(settleInMonth({ ...left(-1.5), ...carry, month: '2027-03' })).toBe(8.5)
+    expect(settleInMonth({ ...left(-20), ...carry, month: '2027-03' })).toBe(0)
+    expect(settleInMonth({ ...left(3), ...hire, month: '2027-03' })).toBe(10)
+    expect(settleInMonth({ ...left(3), ...carry, month: '2027-02' })).toBeNull()
+  })
+
+  it('AC-7604.9 remainingAt: 시작 기간 앞 기간의 날(등록일 앞)은 넘어옴 0, 시작 기간 첫날부터 시작 값', () => {
+    const p = { ...등록({ carryStart: 3 }), ...carry }
+    // 2026-07-16 = 시작 기간 앞 기간 끝날: 15 + 0 − 13 = 2 (등록일이 없으면 15 + 26 − 13 = 28)
+    expect(remainingAt(p, '2026-07-16')).toBe(2)
+    expect(remainingAt({ ...이도윤, ...carry }, '2026-07-16')).toBe(28)
+    expect(remainingAt(p, '2025-12-31')).toBe(2)
+    expect(leaveStatus({ ...p, today: '2025-12-31' })).toMatchObject({ carried: 0, previous: null })
+    // 2026-07-17 = 시작 기간 첫날: 16 + 3 − 6 = 13
+    expect(remainingAt(p, '2026-07-17')).toBe(13)
+    expect(remainingAt(p, '2026-11-30')).toBe(13)
+    expect(remainingAt({ ...등록({ carryStart: 3 }), ...hire }, '2026-07-16')).toBe(2)
   })
 })
 
