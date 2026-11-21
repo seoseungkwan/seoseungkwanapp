@@ -29,6 +29,8 @@ export const look = {
   primarySmall: pc(ds.button.primarySmall),
   danger: pc(ds.button.danger),
   dangerSmall: swap(pc(ds.button.secondarySmall), 'text-ink', 'text-negative'),
+  // 글자만 작은 단추(시안 .btn.ghost.sm 32px·좌우 8px) — 엑셀에서 넣은 뒤 초록 줄 [닫기](import/ImportDoneNotice)
+  ghostSmall: pc(ds.button.ghostSmall),
   // 아이콘만 있는 닫기(시안 .btn.icon.ghost 36×36)
   iconButton: swap(pc(ds.button.ghost), 'px-4', 'w-9 px-0'),
   // 글자 단추(시안 .tbtn: 32px·좌우 4px·13px 500)

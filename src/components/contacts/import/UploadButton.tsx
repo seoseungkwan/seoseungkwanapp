@@ -1,8 +1,8 @@
 'use client'
 
 import { useRef, useState, type ChangeEvent } from 'react'
-import { ds } from '@/components/ui/classes'
 import type { ReadResult } from '@/lib/contacts/workbook'
+import { look } from '../parts/look'
 import { UploadIcon } from './icons'
 import { readUpload } from './readUpload'
 
@@ -44,7 +44,7 @@ export function UploadButton({
 
   return (
     <>
-      <button type="button" onClick={open} aria-busy={reading || undefined} className={primary ? ds.button.primary : ds.button.secondary}>
+      <button type="button" onClick={open} aria-busy={reading || undefined} className={primary ? look.primary : look.button}>
         {!primary && <UploadIcon />}
         {label}
       </button>

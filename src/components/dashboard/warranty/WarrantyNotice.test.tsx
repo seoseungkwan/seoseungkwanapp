@@ -141,6 +141,24 @@ describe('WarrantyNotice: 모양 (AC-6507.1, 시안 .wnote)', () => {
     expect(tokens(go)).toEqual(expect.arrayContaining(['text-accent', 'whitespace-nowrap']))
   })
 
+  it('AC-6507.1: 간격(여백·사이)은 앱 간격 단계만 쓴다(classes.test.ts AC-204.6) — 렌치는 본문 한 줄(22px) 높이 칸 가운데라 시안 위 3px와 같다', () => {
+    draw([SHOCK, SERVER, TRACTION, ULTRA])
+    const steps = new Set(['0', '0.5', '1', '1.5', '2', '3', '4', '5', '6', '8', '12', '16', '24', 'px', 'auto'])
+    const spacing = /^-?(?:gap-x|gap-y|gap|space-x|space-y|px|py|pt|pr|pb|pl|ps|pe|p|mx|my|mt|mr|mb|ml|ms|me|m)-(.+)$/
+    const bad = Array.from(notice().querySelectorAll('[class]'))
+      .flatMap((el) => tokens(el))
+      .filter((token) => {
+        const m = token.split(':').at(-1)!.match(spacing)
+        return m !== null && !steps.has(m[1]!)
+      })
+    expect(bad).toEqual([])
+    for (const a of links()) {
+      const wrench = a.firstElementChild!
+      expect(tokens(wrench)).toEqual(expect.arrayContaining(['flex', 'h-5.5', 'items-center', 'text-warning']))
+      expect(wrench.querySelector('svg')?.getAttribute('width')).toBe('16')
+    }
+  })
+
   it('AC-6507.1: 폰 전용 모양이 없다(max-md: 없음) — 받은 줄만 그리고 읽기·저장·Supabase를 쓰지 않는다', () => {
     const text = readFileSync(join(process.cwd(), 'src/components/dashboard/warranty/WarrantyNotice.tsx'), 'utf8')
     expect(text).not.toMatch(/max-md:|max-sm:/)

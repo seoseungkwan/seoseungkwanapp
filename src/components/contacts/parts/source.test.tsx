@@ -120,6 +120,35 @@ describe('AC-6505.1: 그려진 부품에 폰 전용 모양(화면 폭으로 바�
     expect(widthClasses(document.body)).toEqual([])
   })
 
+  it('AC-6505.1: 목록·자세히 칸에 그리는 부품은 sticky를 쓰지 않는다 — 두 칸 틀을 감싼 칸이 overflow-x: auto라 그 안에서는 붙지 않는다', () => {
+    installMatchMedia(false)
+    const { container } = render(
+      <>
+        <NoSelection />
+        <CompanyList book={BOOK} query="" category="all" today={TODAY} selectedId={MEDICAL.id} onSelect={() => {}} />
+        <CompanyDetail
+          book={BOOK}
+          company={MEDICAL}
+          today={TODAY}
+          onEdit={() => {}}
+          onDeleteCompany={ok}
+          onSavePerson={ok}
+          onDeletePerson={ok}
+          onSaveEquipment={ok}
+          onDeleteEquipment={ok}
+          onSaveRepair={ok}
+          onDeleteRepair={ok}
+          onNotice={() => {}}
+        />
+      </>,
+    )
+    expect(screen.getByText('업체를 골라 주세요')).toBeTruthy()
+    const sticky = Array.from(container.querySelectorAll('[class]')).flatMap((el) =>
+      (el.getAttribute('class') ?? '').split(/\s+/).filter((token) => /(?:^|:)sticky$/.test(token)),
+    )
+    expect(sticky).toEqual([])
+  })
+
   it('AC-6505.4: 업체 판', () => {
     render(<CompanyPanel mode="edit" company={MEDICAL} category="all" companies={BOOK.companies} onSave={ok} onClose={() => {}} onNotice={() => {}} />)
     expect(widthClasses(document.body)).toEqual([])

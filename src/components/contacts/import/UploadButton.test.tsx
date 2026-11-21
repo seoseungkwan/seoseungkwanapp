@@ -2,8 +2,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import * as XLSX from 'xlsx'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ds } from '@/components/ui/classes'
 import { CONTACT_HEADERS, EQUIPMENT_HEADERS } from '@/lib/contacts/sheet'
+import { look } from '../parts/look'
 import { UploadButton } from './UploadButton'
 
 // [엑셀 올리기]·[다른 파일 고르기](specs/contacts AC-6506.2, design.md '화면' import/UploadButton.tsx).
@@ -43,7 +43,7 @@ describe('AC-6506.2 UploadButton', () => {
   it('AC-6506.2: [엑셀 올리기] 단추와 숨은 파일 고르기 칸(.xlsx만 보이게)이 있고, 단추를 누르면 파일 고르기 창을 연다', () => {
     const { container } = render(<UploadButton onRead={vi.fn()} />)
     const button = screen.getByRole('button', { name: '엑셀 올리기' })
-    expect(button.className).toBe(ds.button.secondary)
+    expect(button.className).toBe(look.button) // 보조 단추에서 폰 전용 줄을 뺀 묶음(AC-6505.1)
     const input = fileInput(container)
     expect(input.accept).toBe('.xlsx')
     expect(input.hidden).toBe(true)
@@ -87,7 +87,7 @@ describe('AC-6506.2 UploadButton', () => {
 
   it('AC-6506.2: [다른 파일 고르기]는 같은 부품의 주 단추 모양이다', () => {
     render(<UploadButton onRead={vi.fn()} label="다른 파일 고르기" primary />)
-    expect(screen.getByRole('button', { name: '다른 파일 고르기' }).className).toBe(ds.button.primary)
+    expect(screen.getByRole('button', { name: '다른 파일 고르기' }).className).toBe(look.primary)
   })
 
   it('AC-6506.2: 파일을 읽는 동안·읽은 뒤에도 네트워크·Supabase를 부르지 않는다', async () => {

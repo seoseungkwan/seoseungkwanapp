@@ -1232,6 +1232,8 @@ describe('소스·모양 규칙 (AC-311.8)', () => {
     'LiveDashboard.tsx: @/components/dashboard/live/DashboardSkeleton',
     'LiveDashboard.tsx: @/components/dashboard/live/readBitDays',
     'LiveDashboard.tsx: @/components/dashboard/live/rxGroups',
+    'LiveDashboard.tsx: @/components/dashboard/warranty/useWarrantySoon', // contacts AC-6507.1: 무상 수리 알림 읽기·그리기(design.md '대시보드 알림' 잇기)
+    'LiveDashboard.tsx: @/components/dashboard/warranty/WarrantyNotice',
     'LiveDashboard.tsx: @/lib/storage/stats',
   ]
   // 대시보드 기간 고르기(dashboard-period AC-1805.2, design.md '결정과 트레이드오프'): 통계를 부르는 곳은 flow.ts(periodPick·view)와

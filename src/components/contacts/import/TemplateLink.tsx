@@ -1,6 +1,6 @@
 'use client'
 
-import { ds } from '@/components/ui/classes'
+import { look } from '../parts/look'
 import { DownloadIcon } from './icons'
 
 // [양식 받기](design.md '흐름' 양식 받기, AC-6506.1). 앱이 양식을 만들지 않는다: 저장소 public/contacts/contacts-template.xlsx(사용자 양식)를
@@ -13,7 +13,7 @@ export const TEMPLATE_DOWNLOADED = '주소록-양식.xlsx를 받았어요.'
 
 export function TemplateLink({ onDownloaded }: { onDownloaded: () => void }) {
   return (
-    <a href={TEMPLATE_HREF} download={TEMPLATE_FILE_NAME} onClick={() => onDownloaded()} className={ds.button.secondary}>
+    <a href={TEMPLATE_HREF} download={TEMPLATE_FILE_NAME} onClick={() => onDownloaded()} className={look.button}>
       <DownloadIcon />
       양식 받기
     </a>

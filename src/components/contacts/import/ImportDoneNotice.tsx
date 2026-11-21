@@ -1,7 +1,7 @@
 'use client'
 
 import { Icon } from '@/components/common/Icon'
-import { ds } from '@/components/ui/classes'
+import { look } from '../parts/look'
 
 // [넣기] 뒤 목록 위 초록 줄(requirements.md '화면 글자' 엑셀 미리 보기 마지막 줄, 시안 기본값 26·?s=upload-done, AC-6506.4의 부품 몫).
 // [닫기]를 누를 때까지 남는다. 넣지 않은 줄이 0이면 뒤 문장을 뺀다. 숫자는 넣기 전 계획의 planCounts(changeLabels.ts)를 화면이 넘긴다.
@@ -16,7 +16,7 @@ export function ImportDoneNotice({ added, changed, skipped, onClose }: { added: 
         <b className="font-semibold text-positive">엑셀에서 넣었어요.</b>
         {` 새로 ${added}곳 · 바뀜 ${changed}곳.${rest}`}
       </p>
-      <button type="button" onClick={onClose} className={ds.button.ghostSmall}>
+      <button type="button" onClick={onClose} className={look.ghostSmall}>
         닫기
       </button>
     </div>

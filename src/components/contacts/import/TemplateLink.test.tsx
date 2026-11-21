@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ds } from '@/components/ui/classes'
+import { look } from '../parts/look'
 import { TEMPLATE_DOWNLOADED, TEMPLATE_FILE_NAME, TEMPLATE_HREF, TemplateLink } from './TemplateLink'
 
 // [양식 받기](specs/contacts AC-6506.1, design.md '흐름' 양식 받기). 같은 사이트의 정적 파일을 주소록-양식.xlsx 이름으로 내려받는 링크다.
@@ -32,7 +32,7 @@ describe('AC-6506.1 TemplateLink', () => {
     expect(link.getAttribute('href')).toBe('/contacts/contacts-template.xlsx')
     expect(link.getAttribute('download')).toBe('주소록-양식.xlsx')
     expect(link.getAttribute('target')).toBeNull()
-    expect(link.className).toBe(ds.button.secondary)
+    expect(link.className).toBe(look.button) // 보조 단추에서 폰 전용 줄을 뺀 묶음(AC-6505.1)
     expect([TEMPLATE_HREF, TEMPLATE_FILE_NAME]).toEqual(['/contacts/contacts-template.xlsx', '주소록-양식.xlsx'])
   })
 

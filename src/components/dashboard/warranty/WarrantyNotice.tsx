@@ -26,12 +26,15 @@ function soonLines(items: readonly WarrantyItem[], today: string): Line[] {
 const ROW = `group grid grid-cols-[16px_minmax(0,1fr)_auto] items-start gap-2 rounded-control px-4 py-3 text-body text-ink-2 no-underline ${ds.focusRing}`
 const DIVIDED = 'border-t border-line'
 
-// 렌치(시안 ICON.wrench). 꾸밈이고 색은 주황
+// 렌치(시안 ICON.wrench). 꾸밈이고 색은 주황. 시안 위 3px(.wn > svg)는 앱 간격 단계 밖이라
+// 본문 한 줄 높이(22px) 칸 가운데에 16px 그림을 둔다 — (22 - 16) / 2 = 3px로 같은 자리다
 function Wrench() {
   return (
-    <svg aria-hidden="true" width={16} height={16} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="mt-0.75 text-warning">
-      <path d="M10.6 2.3a3.3 3.3 0 0 0-4 4.3l-4.2 4.2a1.4 1.4 0 0 0 2 2l4.2-4.2a3.3 3.3 0 0 0 4.3-4l-2 2-1.8-.5-.5-1.8z" />
-    </svg>
+    <span aria-hidden="true" className="flex h-5.5 items-center text-warning">
+      <svg aria-hidden="true" width={16} height={16} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path d="M10.6 2.3a3.3 3.3 0 0 0-4 4.3l-4.2 4.2a1.4 1.4 0 0 0 2 2l4.2-4.2a3.3 3.3 0 0 0 4.3-4l-2 2-1.8-.5-.5-1.8z" />
+      </svg>
+    </span>
   )
 }
 

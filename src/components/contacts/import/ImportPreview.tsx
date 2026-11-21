@@ -6,6 +6,7 @@ import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { categoryLabel } from '@/lib/contacts/categories'
 import { isEmptyPayload, type ImportPlan, type RowProblem } from '@/lib/contacts/plan'
+import { look } from '../parts/look'
 import { changeLabels, newCompanyLine, planCounts } from './changeLabels'
 import { FileIcon, WarnIcon } from './icons'
 import { problemPlace, problemSubject, problemText } from './problemText'
@@ -38,10 +39,10 @@ export function ImportPreview({ plan, fileName, saving, failed, onCancel, onImpo
 
   const actions = (
     <div className="flex flex-wrap gap-2">
-      <button type="button" onClick={onCancel} disabled={saving} className={ds.button.secondary}>
+      <button type="button" onClick={onCancel} disabled={saving} className={look.button}>
         그만두기
       </button>
-      <button type="button" onClick={onImport} disabled={saving || nothing} className={ds.button.primary}>
+      <button type="button" onClick={onImport} disabled={saving || nothing} className={look.primary}>
         넣기
       </button>
     </div>

@@ -5,6 +5,7 @@ import { ds } from '@/components/ui/classes'
 import { errorInfo } from '@/lib/errors'
 import type { ReadProblem } from '@/lib/contacts/workbook'
 import type { ErrorCode } from '@/types/errors'
+import { look } from '../parts/look'
 import { FileIcon } from './icons'
 import { TemplateLink } from './TemplateLink'
 import { UploadButton, type UploadRead } from './UploadButton'
@@ -101,7 +102,7 @@ export function FileProblemDialog({
         </p>
         {problem === 'form' && <p className="text-small text-muted">{FORM_KEEP_NAMES}</p>}
         <div className="mt-2 flex flex-wrap justify-end gap-2">
-          <button ref={closeRef} type="button" onClick={onClose} className={ds.button.secondary}>
+          <button ref={closeRef} type="button" onClick={onClose} className={look.button}>
             닫기
           </button>
           <TemplateLink onDownloaded={onDownloaded} />
