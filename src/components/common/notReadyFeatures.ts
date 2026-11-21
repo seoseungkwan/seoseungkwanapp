@@ -5,7 +5,6 @@
 // 기능에 진짜 화면이 생기면 그 항목을 여기서 빼고 그 주소의 page.tsx를 진짜 화면으로 바꾼다(design.md '다음 명세가 탭을 채울 때')
 
 export type NotReadyPath =
-  | '/notices'
   | '/staff'
   | '/inventory'
   | '/contacts'
@@ -24,13 +23,6 @@ const SOON = '만들어지면 이 탭에서 바로 쓸 수 있어요.'
 
 // 탭 순서
 export const NOT_READY_FEATURES: readonly NotReadyFeature[] = [
-  {
-    path: '/notices',
-    name: '고시·공지',
-    title: '고시·공지는 준비 중이에요',
-    intro: `심사·고시 새 글을 한곳에서 볼 자리예요. ${SOON}`,
-    items: ['심평원 공지·심사기준 변경', '보건복지부 고시·공지', '건강보험공단 공지', '글마다 AI 세 줄 요약'],
-  },
   {
     path: '/staff',
     name: '직원',

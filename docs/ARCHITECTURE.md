@@ -8,10 +8,12 @@ src/
 ├── app/                 # 페이지(App Router). page.tsx = 랜딩(섹션은 components/landing/)
 │   ├── globals.css      # 디자인 토큰 한 곳(`:root`), Tailwind `@theme inline`(토큰을 var()로만), 모션 줄이기 규칙 (docs/UI_GUIDE.md, ADR-019)
 │   ├── fonts/           # Pretendard 1.3.9 정적 subset 세 굵기(400·500·600) woff2 + OFL.txt. layout.tsx가 next/font/local로 낸다 (ADR-019)
-│   ├── (app)/<기능 주소>/page.tsx  # 화면이 아직 없는 탭(/notices 등)의 준비 중 화면 = components/common/NotReadyScreen + notReadyFeatures. 기능 명세가 진짜 화면으로 바꿀 때 shell/menu.ts·dashboard/briefing/features.ts·common/notReadyFeatures.ts를 같이 고친다(맞춤은 (app)/tabFrame.test.tsx, specs/tab-frame)
+│   ├── (app)/<기능 주소>/page.tsx  # 화면이 아직 없는 탭(/staff 등)의 준비 중 화면 = components/common/NotReadyScreen + notReadyFeatures. 기능 명세가 진짜 화면으로 바꿀 때 shell/menu.ts·dashboard/briefing/features.ts·common/notReadyFeatures.ts를 같이 고친다(맞춤은 (app)/tabFrame.test.tsx, specs/tab-frame)
 │   ├── (app)/patients/page.tsx # 환자 탭 = components/patients/PatientsEntry (specs/patients)
 │   ├── (app)/forms/page.tsx    # 서식 탭 = components/forms/FormsScreen (specs/forms)
+│   ├── (app)/notices/          # 고시·공지 탭: page.tsx = 글 목록(components/notices/list + 내 낱말 keywords) · ?id=<uuid>면 글 화면(detail), week/page.tsx = 주간 모음(week) (specs/notices)
 │   └── api/ai/          # 유일한 서버 경로 (§5). forms/route.ts = 서식 AI 정리 `POST /api/ai/forms`(적은 글을 Claude로 보내는 예외, ADR-028). forms/guide/route.ts = 환자 안내문 AI 정리 `POST /api/ai/forms/guide`, forms/guide/picture/route.ts = 환자 안내문 AI 그림 `POST /api/ai/forms/guide/picture`(도형·색 이름·숫자로만 받음) (ADR-028 덧붙임, specs/forms-guide). forms/background/route.ts = 휴진 안내 AI 배경 `POST /api/ai/forms/background`(적은 말을 OpenAI 그림 AI로 보내는 예외, 부르기는 openaiImage.ts, ADR-029, specs/forms-themes)
+│       └── notices/     # 고시·공지 서버 쪽(파일마다 import 'server-only'): collect/route.ts = 자동 모으기 `GET /api/ai/notices/collect`(Vercel Cron 아홉 식, CRON_SECRET만, 모으기 계정으로 씀, ADR-034) · ask/route.ts = 묻기 `POST /api/ai/notices/ask`(ADR-036) · 사이트 읽기(fetchSite·sources/)·붙임 글자(attachText)·묶기·요약·일괄 처리 (specs/notices)
 ├── lib/
 │   ├── parsers/         # [환자 구역] 파일 읽기. bit/ = 비트 '환자별 소모 통계'
 │   ├── analytics/       # [환자 구역] 세기(aggregate)·요약(compare)·날짜(dates.ts)
@@ -53,6 +55,7 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 - 서식(환자 안내문): 같은 두 폴더 · `lib/storage/formGuides.ts`(저장, `form_guides`) · `app/api/ai/forms/guide/`(AI 정리, 그 아래 `picture/`는 AI 그림, ADR-028 덧붙임) — `specs/forms-guide/design.md` 1절. 휴진 안내 표·경로(`form_notices`·`app/api/ai/forms/route.ts`)는 그대로다
 - 서식(휴진 안내 AI 배경·내 배경): 같은 두 폴더 · `app/api/ai/forms/background/`(AI 배경, OpenAI 그림 AI, ADR-029) · `lib/storage/formBackgrounds.ts`(저장, `form_backgrounds` 표 + Storage `form-backgrounds`) · migration `supabase/migrations/20261115020000_form_backgrounds.sql` — `specs/forms-themes/design.md` 1절. 고른 그림은 `form_notices.theme` 한 칸에 담는다(테마·그림 2·`bg-<id>`)
 - 예약 탭(구글 캘린더 대신): `components/calendar/`(화면, 그 아래 `rows/`는 예약표 울타리) · `lib/calendar/`(환자 구역, 칸 놓기·경고·도착·수 세기 순수 함수) · `workers/calendar.worker.ts`(비트 찾기·도착·비트 예약 칸) · `lib/storage/calendar.ts`(저장, 표 넷) · migration `supabase/migrations/20261117010000_calendar.sql` — 환자 이름·차트번호를 서버에 두는 예외(ADR-030), `specs/clinic-calendar/design.md`
+- 고시·공지 탭: `components/notices/`(list·detail·week·keywords 화면, 글은 글자 노드로만·바깥 링크는 `safeLink`만) · `components/shell/NoticeBadge.tsx`(탭 옆 안 읽은 수, 원장만) · `components/dashboard/notices/`(대시보드 경고·칸) · `lib/notices/`(화면 글자·환자 정보 모양 검사·내 낱말, 순수) · `lib/storage/notices.ts`(읽기·쓰기, RLS) · `app/api/ai/notices/`(모으기·묻기) · migration `supabase/migrations/20261121000000_notices.sql`·`20261121000001_notice_keywords.sql` — 바깥 사이트 읽기·공용 표·바깥 글과 질문을 Claude로 보내는 예외(ADR-034~036), `specs/notices/design.md`
 
 ## 패턴
 - 서버 코드는 `app/api/ai/` 하나. 나머지는 브라우저 + Supabase RLS (§0). 예외: 인증(콜백·middleware·페이지 guard)은 세션과 내 줄만 읽는다 (ADR-004)
@@ -79,6 +82,10 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
        AI 배경: 적은 말(30자까지) → 개인정보 모양 검사(화면·서버) → app/api/ai/forms/background: 승인 확인 → 하루 한도(take_ai_image, 20장)
        → OpenAI 그림 AI(고정 프롬프트 + 적은 말) → JPEG base64 → 브라우저가 강조색·작은 그림 → 미리보기
        → [내 배경으로 저장]만 form_backgrounds(RLS) + Storage form-backgrounds → 안내문 theme = bg-<id> (ADR-029)
+[고시·공지] Vercel Cron(한국 07시대 + 09~23시대 두 시간마다) → GET /api/ai/notices/collect(CRON_SECRET) → 모으기 계정 로그인(anon 열쇠 + 비밀번호)
+       → 심평원 공지·심사기준·복지부 RSS(정해 둔 주소만) → 고시 번호로 묶기 → 붙임 글자 → Claude 요약(바로 또는 일괄) → 공용 표(notices 등) (ADR-034~036)
+       화면(/notices · ?id= · /notices/week) → lib/storage/notices.ts → RLS(승인된 원장만). 읽음·별표·메모·규칙 확인 → notice_marks, 내 낱말 → notice_keywords
+       [묻기] 질문(1~300자) → 환자 정보 모양 검사(화면·서버) → POST /api/ai/notices/ask → 하루 20번 표(take_notice_ask) → DB의 글 + 질문 → Claude → 답(글자로만, 저장 안 함)
 [백업] [백업 내려받기] → 브라우저가 내 병원 모든 표 읽기 → JSON 파일 하나
 [청구] (예정) 도우미(비트 DB·화면) → 확장 → lib/bridge(풀지 않음) → Worker → 화면(보기 모양, PC 메모리만)
        고친 메모·완료 표시 → 도우미가 그 PC에 암호화 저장. 서버에는 건수(정수)·설정만 (ADR-020·021)
@@ -88,11 +95,13 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 - 서버로 가는 것: 통계·매출 집계, 재고, 직원 이름·직종·금액, 일일마감·보고 내용, 병원 이름 (§4)
 - Claude API로 가는 것: 서버가 DB에서 꺼낸 집계와 인건비 총액뿐. 직원 이름·개인별 급여는 안 보낸다 (§2-3). 예외는 서식 AI 정리 하나다: 사용자가 적은 글(500자까지, 전화·주민번호·메일 모양이면 안 보냄)과 오늘 날짜. 환자 안내문은 적은 글, AI 그림은 그릴 것(20자까지)만 보낸다 (ADR-028)
 - OpenAI 그림 AI로 가는 것: 휴진 안내 AI 배경의 고정 프롬프트와 적은 말(30자까지, 전화·주민번호·메일 모양이면 안 보냄)뿐이다. 병원·환자·안내문 카드·사용자 정보는 보내지 않는다. 서버만 부르므로 CSP는 그대로다 (ADR-029)
+- 고시·공지도 예외다: 심평원·복지부 공개 글(본문·붙임)과 묻기 질문(300자까지, 환자 정보 모양이면 안 보냄)을 Claude로 보낸다. 병원·사용자·환자 정보는 보내지 않는다. 사이트·Claude는 서버만 부르므로 CSP는 그대로다 (ADR-036)
 - 채팅 입력에 전화·주민번호·메일 모양이 있으면 보내지 않는다. 처방명은 '데이터'로 감싼다 (§6-2)
 - AI 경로 로그에는 오류 번호·경로만 남긴다 (§8)
 
 ## DB 표 (§5)
 모든 표에 `hospital_id`를 둔다(§0). 모든 표에 RLS.
+예외: 고시·공지 공용 표(`notices`·`notice_posts`·`notice_sources`·`notice_weeks`)와 `notice_collectors`·`notice_runs`는 병원과 상관없어 `hospital_id` 없이 한 벌이다 (ADR-035)
 
 | 표 | 내용 |
 |---|---|
@@ -125,6 +134,11 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
 | `form_guides` | 서식 환자 안내문 한 줄: 안내문 칸·고른 그림·AI로 그린 그림을 `content`(jsonb 객체, 16,000바이트까지) 하나에 담는다. 안 모양은 앱이 `checkGuideValue`로 본다. 대충 적은 글은 두지 않는다. 칸은 specs/forms-guide design.md 7절 (ADR-028 덧붙임) |
 | `form_backgrounds` | 서식 휴진 안내 '내 배경' 한 장: 적은 말 `words`(1~30자)·강조색 `accent`·작은 그림 `thumb`(120×170 JPEG base64, 16,000자까지)·그림 자리 `path`(`<병원 id>/<id>.jpg`, DB가 만듦). 큰 그림은 Storage `form-backgrounds`에만. 넣기(세 칸만)·읽기·지우기, 고치기 없음. 화면은 30장까지. 칸은 specs/forms-themes design.md 8-1절 (ADR-029) |
 | `ai_image_days` | 병원·한국 날짜마다 AI 배경 장 수(0~20). 표 권한·정책이 없고 DB 함수 `take_ai_image()`로만 센다(하루 20장, 보내기 전에) (ADR-029) |
+| `notices` · `notice_posts` · `notice_sources` · `notice_weeks` | 고시·공지 공용 표(`hospital_id` 없음): 묶음 한 줄(제목·종류·올린 날·고시 번호·본문과 붙임 글자 각 20,000자·관련 여부·AI 요약·점검 규칙 연결·요약 상태) · 출처 글(두 사이트 https 주소·붙임 링크) · 출처 상태(확인·성공·멈춘 시각, 지난 글 채우기) · 주간 모음(월요일마다 꼭 알 것 0~3개). 읽기는 승인된 원장과 모으기 계정, 넣기·고치기는 모으기 계정만, 지우기 없음 (ADR-035, specs/notices) |
+| `notice_collectors` · `notice_runs` | 모으기 계정 허용 목록(SQL 편집기로만 넣음) · 모으기 실행 기록(건수·토큰·비용 숫자만, 관리자·모으기 계정만 읽음) (ADR-034·035) |
+| `notice_marks` | 병원마다 글 하나에 표시 한 줄: 읽음·별표·메모(500자, 환자 정보 모양은 앱이 안 보냄)·메모 시각·규칙 확인 시각. 내 병원 줄만 읽고 넣고 고친다(지우기 없음, 데스크 못 봄) (specs/notices) |
+| `notice_ask_days` · `notice_ask_holds` | 묻기 횟수: 병원·한국 날짜마다 받은 표 수(0~20)와 끝나지 않은 표. 표 권한 없이 DB 함수(`take_notice_ask`·`end_notice_ask`·`notice_ask_left`)로만 센다. AI가 실패하면 표를 돌려준다 (ADR-036) |
+| `notice_keywords` · `notice_keyword_hits` | 내 낱말(병원마다 30개, 1~20자, 띄어쓰기·영문 대소문자만 다른 낱말은 하나만, 넣기·지우기만) · 글마다 맞은 낱말(정의자 트리거만 씀, 읽기만). migration `20261121000001_notice_keywords.sql` (specs/notices 15절) |
 
 - Storage 버킷은 `form-backgrounds` 하나다(내 배경 큰 그림, 공개 아님, 한 파일 3,000,000바이트·`image/jpeg`만). `storage.objects` 정책은 첫 폴더가 내 병원 id인 것만 읽기·지우기, 올리기는 거기에 더해 이름이 내 `form_backgrounds` 줄의 `path`와 같을 때만이다(고치기 없음). 버킷과 정책은 migration `20261115020000_form_backgrounds.sql`이 만든다 (ADR-029)
 - Storage 버킷 `clinic-logos`(병원 로고, 공개 아님, 한 파일 1,000,000바이트·`image/png`만): 첫 폴더가 내 병원 id인 것만 원장이 읽기·지우기, 올리기는 거기에 더해 이름이 내 `clinic_profiles.logo_path`와 같을 때만(고치기 없음, 데스크·다른 병원 못 함). migration `20261119000000_clinic_profile.sql` (ADR-033)

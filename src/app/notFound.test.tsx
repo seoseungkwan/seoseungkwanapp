@@ -146,6 +146,7 @@ describe('AC-410.5: 잡는 페이지보다 구체적인 기존 주소는 모두 
     ['/stats', 'src/app/(app)/stats/page.tsx'],
     ['/claim', 'src/app/(app)/claim/page.tsx'],
     ['/notices', 'src/app/(app)/notices/page.tsx'],
+    ['/notices/week', 'src/app/(app)/notices/week/page.tsx'], // 고시·공지 주간 모음(notices REQ-7421)
     ['/patients', 'src/app/(app)/patients/page.tsx'],
     ['/ai-report', 'src/app/(app)/ai-report/page.tsx'],
     ['/forms', 'src/app/(app)/forms/page.tsx'],

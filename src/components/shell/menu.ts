@@ -1,5 +1,5 @@
 // 앱 탭 줄의 항목 (tab-frame REQ-302, design.md '탭 목록'). 14개 모두 자기 주소(path)로 가는 링크다.
-// 탭 띠에는 주요 메뉴 일곱(primary)만 있고, 나머지는 [더보기] 판에 MENU 차례로 있다(dashboard-ux REQ-2702).
+// 탭 띠에는 주요 메뉴 여덟(primary)만 있고, 나머지는 [더보기] 판에 MENU 차례로 있다(dashboard-ux REQ-2702, 고시·공지가 더해짐 notices AC-7423.1).
 // 매출 탭은 통계 매출 칸으로 옮겨 없앴다. 옛 주소 /revenue는 next.config.ts가 /stats로 넘긴다(stats-revenue AC-4110.1·AC-4110.2).
 // 화면이 아직 없는 기능은 그 주소의 '준비 중' 화면이다. 비트 PC 연결 화면(/claim/setup)은 설정 탭 자리에 속한다(owns).
 // 관리자 화면은 탭이 아니라 계정 메뉴의 [가입 승인](ADMIN_LINK)이다
@@ -34,7 +34,7 @@ export type MenuPath =
   | '/contacts'
   | '/settings'
 /** 기능 자신의 화면이 있는 주소. 다음 명세가 화면을 만들면 여기에 더한다 */
-export type MenuHref = '/dashboard' | '/stats' | '/claim' | '/patients' | '/sunap' | '/calendar' | '/ai-report' | '/forms' | '/worklog' | '/settings'
+export type MenuHref = '/dashboard' | '/stats' | '/claim' | '/notices' | '/patients' | '/sunap' | '/calendar' | '/ai-report' | '/forms' | '/worklog' | '/settings'
 
 export type MenuItem = {
   label: MenuLabel
@@ -48,7 +48,7 @@ export type MenuItem = {
   /** 지금 쓸 수 있는 화면이 있다. false면 그 주소는 '준비 중' 화면이고 [더보기] 판에 "준비 중" 칩이 붙는다(dashboard-ux AC-2702.2).
    *  false인 주소들은 common/notReadyFeatures.ts의 NOT_READY_FEATURES와 같다(시험이 견준다) */
   ready: boolean
-  /** 탭 띠의 주요 메뉴(대시보드·통계·청구·환자·업무일지·수납일지·예약, nav-worklog AC-5801.2·clinic-calendar AC-5905.10). false면 [더보기] 판에 있다(dashboard-ux AC-2702.1) */
+  /** 탭 띠의 주요 메뉴(대시보드·통계·청구·고시·공지·환자·업무일지·수납일지·예약, nav-worklog AC-5801.2·clinic-calendar AC-5905.10·notices AC-7423.1). false면 [더보기] 판에 있다(dashboard-ux AC-2702.1) */
   primary: boolean
 }
 
@@ -56,7 +56,9 @@ export const MENU: readonly MenuItem[] = [
   { label: '대시보드', path: '/dashboard', href: '/dashboard', ready: true, primary: true },
   { label: '통계', path: '/stats', href: '/stats', ready: true, primary: true },
   { label: '청구', path: '/claim', href: '/claim', ready: true, primary: true },
-  { label: '고시·공지', path: '/notices', href: null, ready: false, primary: false },
+  // 고시·공지 /notices(글 목록·?id= 글 화면·/notices/week 주간 모음, notices AC-7423.1). 탭 옆 안 읽은 수(NoticeBadge)가 보이게 주요 메뉴다.
+  // 원장만 본다 — 데스크는 DESK_PATHS 밖이라 탭이 없고 주소로 와도 DeskGate가 막는다
+  { label: '고시·공지', path: '/notices', href: '/notices', ready: true, primary: true },
   { label: '환자', path: '/patients', href: '/patients', ready: true, primary: true },
   // 업무일지 /worklog — 주요 메뉴, 수납일지 바로 왼쪽(nav-worklog AC-5801.1)
   { label: '업무일지', path: '/worklog', href: '/worklog', ready: true, primary: true },
@@ -74,7 +76,7 @@ export const MENU: readonly MenuItem[] = [
   { label: '설정', path: '/settings', href: '/settings', owns: ['/claim/setup'], ready: true, primary: false },
 ]
 
-/** 탭 띠의 주요 메뉴 일곱(MENU 차례) */
+/** 탭 띠의 주요 메뉴 여덟(MENU 차례) */
 export const PRIMARY_MENU: readonly MenuItem[] = MENU.filter((item) => item.primary)
 /** [더보기] 판의 나머지(MENU 차례) */
 export const MORE_MENU: readonly MenuItem[] = MENU.filter((item) => !item.primary)

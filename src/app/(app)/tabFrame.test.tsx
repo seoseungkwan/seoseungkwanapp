@@ -65,6 +65,7 @@ const SCREEN_DIR: Record<string, string> = {
   '/claim': 'claim/setup',
   '/claim/setup': 'claim/setup',
   '/stats': 'stats',
+  '/notices': 'notices', // spec notices AC-7423.2 — 쪽 파일이 list·detail·keywords를 놓는다
   '/patients': 'patients',
   '/sunap': 'sunap', // spec sunap-ilji AC-4907.2
   '/calendar': 'calendar', // spec clinic-calendar AC-5905.10
@@ -168,10 +169,10 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     },
   )
 
-  it('AC-307.3·AC-4110.1·AC-515.4·AC-714.3·AC-610.1·AC-012.4·AC-012.6·AC-3501.1·AC-5801.4·AC-5905.10: 쓰는 화면이 있는 칸의 페이지는 NotReadyScreen을 쓰지 않는 자기 화면이다 — 칸은 MENU의 ready 탭(대시보드 뺌)과 같고 /stats·/claim·/patients·/worklog·/sunap·/calendar·/ai-report·/forms·/settings다', () => {
+  it('AC-307.3·AC-4110.1·AC-515.4·AC-714.3·AC-610.1·AC-012.4·AC-012.6·AC-3501.1·AC-5801.4·AC-5905.10·AC-7423.1·AC-7423.2: 쓰는 화면이 있는 칸의 페이지는 NotReadyScreen을 쓰지 않는 자기 화면이다 — 칸은 MENU의 ready 탭(대시보드 뺌)과 같고 /stats·/claim·/notices·/patients·/worklog·/sunap·/calendar·/ai-report·/forms·/settings다', () => {
     expect(READY.map((f) => f.href)).toEqual(MENU.filter((m) => m.ready && m.label !== '대시보드').map((m) => m.path))
     // 업무일지가 수납일지 바로 앞(nav-worklog AC-5801.4)
-    expect(READY.map((f) => f.href)).toEqual(['/stats', '/claim', '/patients', '/worklog', '/sunap', '/calendar', '/ai-report', '/forms', '/settings'])
+    expect(READY.map((f) => f.href)).toEqual(['/stats', '/claim', '/notices', '/patients', '/worklog', '/sunap', '/calendar', '/ai-report', '/forms', '/settings'])
     expect(READY.map((f) => f.href)).toContain('/stats')
     expect(READY.map((f) => f.href)).toContain('/patients')
     expect(READY.map((f) => f.href)).toContain('/ai-report')
@@ -189,6 +190,10 @@ describe('탭 · 목차 · 준비 중 화면 맞춤 (REQ-307)', () => {
     expect(read(pageFile('/patients')), '/patients').toMatch(/from '@\/components\/patients\//)
     // 설정 화면(SettingsPage)
     expect(read(pageFile('/settings')), '/settings').toMatch(/from '@\/components\/settings\//)
+    // 고시·공지 쪽 파일(notices AC-7423.2·AC-7424.13): 글 목록·글 화면·내 낱말 칸
+    for (const part of ['list/NoticesScreen', 'detail/NoticeDetail', 'keywords/KeywordsControl']) {
+      expect(read(pageFile('/notices')), part).toContain(`from '@/components/notices/${part}'`)
+    }
   })
 
   it('AC-515.4·AC-2702.1: 통계는 세 곳(menu · features · notReady)이 맞고(주요 메뉴) /stats 페이지는 StatsScreen이다', () => {

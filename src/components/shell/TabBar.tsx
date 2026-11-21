@@ -2,10 +2,11 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useRef, useState, type FocusEvent, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from 'react'
 import { LoadBar } from './LoadBar'
 import { DESK_MENU, MENU, PRIMARY_MENU, currentMenuLabel } from './menu'
 import { MoreMenu } from './MoreMenu'
+import { NoticeBadge } from './NoticeBadge'
 
 // 탭 줄 (tab-frame REQ-303, AC-008.7, b2b-redesign AC-218.2, ui-90 REQ-405, dashboard-ux REQ-2702, UI_GUIDE '앱 화면' 탭 줄·누른 탭 먼저).
 // 44px·흰 바탕·아래 1px 선. 위쪽 띠와 함께 AppShell의 붙는 묶음 안에 있다(이 nav 자신은 붙지 않는다).
@@ -45,6 +46,7 @@ function TabLink({
   pending,
   onPress,
   onFocus,
+  badge,
 }: {
   label: string
   href: string
@@ -56,6 +58,8 @@ function TabLink({
   pending: boolean
   onPress: (e: MouseEvent<HTMLAnchorElement>, href: string) => void
   onFocus: (e: FocusEvent<HTMLAnchorElement>) => void
+  /** 이름 뒤에 붙는 것(고시·공지의 안 읽은 수). 링크 글자 안이라 화면 읽기가 이름과 함께 읽는다 */
+  badge?: ReactNode
 }) {
   return (
     <Link
@@ -67,6 +71,7 @@ function TabLink({
       className={shown ? tabCurrent : tabIdle}
     >
       <TabLabel label={label} />
+      {badge}
     </Link>
   )
 }
@@ -138,6 +143,7 @@ export function TabBar({ desk = false }: { desk?: boolean } = {}) {
                 pending={pendingHref === item.path}
                 onPress={press}
                 onFocus={(e) => revealInStrip(stripRef.current, e.currentTarget)}
+                badge={!desk && item.path === '/notices' ? <NoticeBadge /> : null}
               />
             ))}
           </div>
