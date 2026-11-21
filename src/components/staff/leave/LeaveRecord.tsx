@@ -13,7 +13,7 @@ import { deductOf, fmtDays, nextOf, rangeText, recordRows, recordSummary, rowDay
 
 // 한 사람 휴가 기록 (staff AC-7614.4, 시안 leave.html ④). 연차 현황 표에서 이름을 누르면 표 자리에 열린다.
 // 머리(이름·직종·근무 형태·주 시간·입사·예약 표시) → 네 칸(생긴·쓴·남은·다음 새 연차) → 이번 연차 기간 쓴 휴가 표(묶음마다 한 줄, 최근 날부터) →
-// 합계 줄 → 지난 연차 기간 줄. [고치기]·[지우기]는 화면이 맡는다(지우기는 화면이 한 번 묻는다)
+// 합계 줄 → 지난 연차 기간 줄. [고치기]·[지우기]는 화면이 맡는다(지우기는 화면이 한 번 묻는다). 줄은 이번 기간 날만 세고, [고치기]는 그 묶음 전체(기간 밖 날 포함)를 넘긴다
 
 export const linkTag = 'inline-flex h-5 shrink-0 items-center whitespace-nowrap rounded-control border border-line-strong px-1.5 text-caption text-ink-2'
 

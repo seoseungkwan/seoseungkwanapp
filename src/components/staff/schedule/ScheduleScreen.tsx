@@ -82,7 +82,8 @@ export function ScheduleScreen({ today }: { today: string }) {
     setMode(next)
   }
   const failed = base.state === 'failed' || loaded.state === 'failed'
-  const data = base.state === 'ready' ? loaded.data : null
+  // 병원 정보(진료시간·휴진일)를 다 읽기 전에는 기본값으로 그리지 않는다(AC-7613.1). 병원 정보 실패는 기본값으로 돈다
+  const data = base.state === 'ready' && base.clinic.state !== 'loading' ? loaded.data : null
   const openMember = open === null ? undefined : base.members.find((m) => m.id === open.staffId)
 
   return (
@@ -172,6 +173,7 @@ export function ScheduleScreen({ today }: { today: string }) {
           store={base.store}
           onClose={closeDialog}
           onSaved={savedDialog}
+          onFailed={reloadRange}
         />
       ) : null}
     </div>

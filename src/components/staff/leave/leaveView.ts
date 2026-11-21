@@ -116,21 +116,29 @@ export function leftBeforeAfter(
 
 // ── 한 사람 기록 ─────────────────────────────────────────────
 
+/** from·to·count = 이번 기간에 든 날만(표 줄), leaves = 그 묶음 전체(이번 기간 밖 날 포함 — [고치기]가 넘긴다, 달력 칩과 같다) */
 export type RecordRow = { groupId: string; from: string; to: string; kind: LeaveKind; part: 'am' | 'pm' | null; count: number; memo: string | null; leaves: Leave[] }
 
 /** 이번 기간 쓴 휴가를 묶음마다 한 줄로, 최근 날부터 (AC-7614.4) */
 export function recordRows(staffId: string, leaves: readonly Leave[], period: { from: string; to: string }): RecordRow[] {
   const groups = new Map<string, Leave[]>()
+  const whole = new Map<string, Leave[]>()
   for (const l of leaves) {
-    if (l.staffId !== staffId || compareYmd(l.day, period.from) < 0 || compareYmd(l.day, period.to) > 0) continue
+    if (l.staffId !== staffId) continue
+    const all = whole.get(l.groupId)
+    if (all) all.push(l)
+    else whole.set(l.groupId, [l])
+    if (compareYmd(l.day, period.from) < 0 || compareYmd(l.day, period.to) > 0) continue
     const list = groups.get(l.groupId)
     if (list) list.push(l)
     else groups.set(l.groupId, [l])
   }
+  const byDay = (a: Leave, b: Leave) => compareYmd(a.day, b.day)
   const rows = [...groups.entries()].map(([groupId, list]): RecordRow => {
-    const sorted = [...list].sort((a, b) => compareYmd(a.day, b.day))
+    const sorted = [...list].sort(byDay)
     const first = sorted[0]
-    return { groupId, from: first.day, to: sorted[sorted.length - 1].day, kind: first.kind, part: first.part, count: sorted.length, memo: first.memo, leaves: sorted }
+    const group = [...(whole.get(groupId) ?? sorted)].sort(byDay)
+    return { groupId, from: first.day, to: sorted[sorted.length - 1].day, kind: first.kind, part: first.part, count: sorted.length, memo: first.memo, leaves: group }
   })
   return rows.sort((a, b) => compareYmd(b.from, a.from))
 }

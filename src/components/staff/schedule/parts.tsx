@@ -6,8 +6,12 @@ import { clock, type Shift } from './format'
 // 근무표 화면이 같이 쓰는 작은 조각: 단추 묶음([일함]·[쉼], [주]·[달] …)과 근무·점심 시각 고르기 (시안 schedule.html .seg·.fld·.sel).
 // 모양은 ds(components/ui/classes.ts)의 단추 묶음·작은 칸이다. 폰 전용 모양은 두지 않는다(묶음은 PC 모양 그대로)
 
-// 단추 묶음 틀: ds.segment.group에서 폰 칸 나눔(max-md:grid)만 뺀 것 — 폰에서도 PC 모양 그대로다
+// 단추 묶음 틀: ds 단추 묶음 틀에서 폰 칸 나눔만 뺀 것 — 폰에서도 PC 모양 그대로다(명단·휴가 화면도 이것을 쓴다)
 const SEG_GROUP = 'inline-flex shrink-0 overflow-clip rounded-control border border-line-strong bg-surface'
+
+// 공휴일·휴진일 칸·머리 회색(주 보기·달 보기·칸 뜻 견본): 시안 --closed(#EEF0F3)쯤 — 보통 칸·머리 바탕(canvas)보다 진해 한눈에 갈린다(AC-7613.1)
+export const REST_SHADE = 'bg-line/60'
+export const REST_HOVER = 'hover:bg-line/80'
 
 type SegmentProps<T extends string> = {
   /** 묶음 이름(화면 읽기). labelledBy를 주면 그 글이 이름이다 */

@@ -250,6 +250,33 @@ describe('AC-7610.2·AC-7614.3: 저장', () => {
     expect(next.store.listLeaves).toHaveBeenCalledTimes(1)
   })
 
+  it('AC-7614.3: 고치기(지우고 다시 넣기)가 중간에 실패하면 휴가를 다시 읽어 화면이 DB와 같아지고, 칸은 열린 채 E-STAFF-SAVE-FAILED', async () => {
+    const next = makeBase()
+    const target = LEAVES.find((l) => l.staffId === 'm-park' && l.day === '2026-11-13')!
+    // 지우기는 됐고 다시 넣기가 실패한 DB: 그 묶음이 없다
+    next.store.listLeaves.mockResolvedValueOnce(LEAVES).mockResolvedValue(LEAVES.filter((l) => l.groupId !== target.groupId))
+    next.store.replaceLeaveGroup.mockRejectedValueOnce(new StaffStoreError('E-STAFF-SAVE-FAILED'))
+    vi.mocked(useStaffBase).mockReturnValue(next as never)
+    render(<LeaveScreen today={TODAY} />)
+    const cal = await screen.findByRole('region', { name: '휴가 달력' })
+    fireEvent.click(within(cal).getByRole('button', { name: '박서연 오후 반차' }))
+    const dialog = screen.getByRole('dialog', { name: '휴가 고치기' })
+    fireEvent.click(within(dialog).getByRole('button', { name: '오전' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }))
+    expect(flat(await within(dialog).findByRole('alert'))).toContain('E-STAFF-SAVE-FAILED')
+    await waitFor(() => expect(next.store.listLeaves).toHaveBeenCalledTimes(2))
+    // 뒤 달력은 DB대로 그 휴가가 없다
+    await waitFor(() => expect(within(cal).queryByRole('button', { name: '박서연 오후 반차' })).toBeNull())
+    expect(screen.getByRole('dialog', { name: '휴가 고치기' })).toBe(dialog)
+    expect(within(dialog).getByRole('button', { name: '오전' }).getAttribute('aria-pressed')).toBe('true')
+    // 다시 [저장]하면 같은 묶음 id로 다시 넣는다
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(next.store.replaceLeaveGroup).toHaveBeenCalledTimes(2))
+    expect(next.store.replaceLeaveGroup).toHaveBeenLastCalledWith(target.groupId, [
+      { staffId: 'm-park', day: '2026-11-13', kind: 'half', part: 'am', paid: true, memo: null },
+    ])
+  })
+
   it('AC-7610.2: 칩에서 연 고치기를 저장하면 그 묶음을 바꾼다(지우고 다시 넣기)', async () => {
     const next = makeBase()
     vi.mocked(useStaffBase).mockReturnValue(next as never)

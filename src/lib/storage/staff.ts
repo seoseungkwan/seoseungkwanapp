@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { addMonthsToDay, isMonth, isYmd, todayInKorea } from '@/lib/analytics/dates'
+import { hasNationalId } from '@/lib/staff/nationalId'
 import type { DateRange } from '@/types/dates'
 import {
   ADJUST_REASONS,
@@ -262,8 +263,11 @@ const NEW_MEMBER: Omit<MemberFields, 'name' | 'job' | 'hiredOn'> = {
   usedBeforeFrom: null,
 }
 
-/** 칸 규칙(AC-7601.4)을 다 지나면 그 열여섯 칸, 아니면 null. 값은 고치지 않는다(읽은 줄도 이것으로 본다) */
-function checkMember(value: Row): MemberFields | null {
+/**
+ * 칸 규칙(AC-7601.4)을 다 지나면 그 열여섯 칸, 아니면 null. 값은 고치지 않는다(읽은 줄도 이것으로 본다).
+ * sending = 보내려는 줄: 주소·메모에 주민번호 모양(lib/staff/nationalId.ts)이 있으면 null(AC-7610.6). 읽은 줄은 이 검사로 버리지 않는다
+ */
+function checkMember(value: Row, sending = false): MemberFields | null {
   const { name, job, jobOther, employment, weeklyHours, hiredOn, leftOn, phone, birthday, address, bank, accountNo, calendarStaffId, memo, usedBefore, usedBeforeFrom } =
     value
   if (!isText(name, 1, NAME_MAX) || name.trim() !== name) return null
@@ -280,6 +284,8 @@ function checkMember(value: Row): MemberFields | null {
   if (!(calendarStaffId === null || isText(calendarStaffId, 1, CAL_ID_MAX))) return null
   if (!(memo === null || isText(memo, 1, MEMBER_MEMO_MAX))) return null
   if (!isHalfStep(usedBefore, 0, 50) || !(usedBeforeFrom === null || isDay(usedBeforeFrom))) return null
+  // 계좌번호 칸은 이 검사를 하지 않는다(숫자·'-'만 받는 칸 그대로)
+  if (sending && [address, memo].some((text) => typeof text === 'string' && hasNationalId(text))) return null
   return {
     name,
     job,
@@ -628,7 +634,7 @@ export function createStaffStore(client: StaffClient): StaffStore {
     listMembers: () => readMembers(READ),
 
     async saveMember(member, id) {
-      const fields = checkMember(normalizeMember(member))
+      const fields = checkMember(normalizeMember(member), true)
       if (fields === null) throw fail(SAVE)
       const body = memberBody(fields)
       const { data } =
@@ -653,7 +659,11 @@ export function createStaffStore(client: StaffClient): StaffStore {
         client.from(FILES).select('path').eq('kind', 'doc').eq('staff_id', id).order('id', ASC).range(first, last),
       )
       const paths = rows.flatMap((row) => (isRecord(row) && isFilled(row.path) ? [row.path] : []))
-      if (paths.length > 0) await requestOrFail(FILE, () => client.storage.from(STAFF_FILES_BUCKET).remove(paths))
+      if (paths.length > 0) {
+        // 바구니 remove는 권한에 막히거나 없는 파일이면 오류 없이 지운 것만(0개일 수 있음) 돌려준다 → 덜 지웠으면 직원 줄을 두고 실패
+        const { data: removed } = await requestOrFail(FILE, () => client.storage.from(STAFF_FILES_BUCKET).remove(paths))
+        if (!Array.isArray(removed) || removed.length < paths.length) throw fail(FILE)
+      }
       const { data } = await requestOrFail(SAVE, () => client.from(MEMBERS).delete().eq('id', id).select('id'))
       if (!Array.isArray(data) || data.length !== 1) throw fail(SAVE)
     },
@@ -666,7 +676,7 @@ export function createStaffStore(client: StaffClient): StaffStore {
       const fresh = rows
         .filter((row) => row.action === 'new')
         .map((row) => {
-          const fields = checkMember(normalizeMember({ ...NEW_MEMBER, ...defined(row.member) }))
+          const fields = checkMember(normalizeMember({ ...NEW_MEMBER, ...defined(row.member) }), true)
           const plan = cleanPlan(row.plan)
           if (fields === null || plan === undefined) throw fail(SAVE)
           return { fields, plan }
@@ -681,7 +691,7 @@ export function createStaffStore(client: StaffClient): StaffStore {
           : existing.find((member) => member.name === name && member.hiredOn === input.hiredOn)
         if (target === undefined) throw fail(SAVE)
         // '올해 이미 쓴 연차'는 새 직원 줄에만 넣는다(AC-7608.4)
-        const fields = checkMember(normalizeMember({ ...target, ...input, usedBefore: target.usedBefore, usedBeforeFrom: target.usedBeforeFrom }))
+        const fields = checkMember(normalizeMember({ ...target, ...input, usedBefore: target.usedBefore, usedBeforeFrom: target.usedBeforeFrom }), true)
         const plan = cleanPlan(row.plan)
         if (fields === null || plan === undefined) throw fail(SAVE)
         const body: Row = {}

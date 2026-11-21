@@ -292,6 +292,24 @@ describe('AC-7612.2: 직원 카드', () => {
     expect(within(leave).getByRole('link', { name: '휴가 보기' }).getAttribute('href')).toBe('/staff/leave')
   })
 
+  it("AC-7612.2: 다음 해로 넘김이면 '생긴 연차'는 그 기간에 생긴 일수만이고 그 아래 '넘어옴 {n}일'(휴가 표와 같다)", async () => {
+    const user = show({ settings: { ...defaultStaffSettings(), leftover: 'carry' } })
+    await user.click(within(await screen.findByRole('table', { name: '재직 직원' })).getByText('이도윤'))
+    const leave = screen.getByRole('region', { name: '연차' })
+    // 이도윤 앞 기간들(11 → 15 + 11 → 15 + 26)에 쓴 휴가가 없어 41일이 넘어왔다: 남은 = 16 + 41 − 6
+    await waitFor(() => expect(within(leave).getByText('생긴 연차').parentElement?.textContent).toBe('생긴 연차16일넘어옴 41일'))
+    expect(within(leave).getByText('넘어옴 41일')).toBeTruthy()
+    expect(within(leave).getByText('쓴 연차').parentElement?.textContent).toBe('쓴 연차6일')
+    expect(within(leave).getByText('남은 연차').parentElement?.textContent).toBe('남은 연차51일')
+  })
+
+  it("AC-7612.2: 수당으로 정산이면 '넘어옴' 줄이 없다", async () => {
+    await openLee()
+    const leave = screen.getByRole('region', { name: '연차' })
+    await waitFor(() => expect(within(leave).getByText('생긴 연차').parentElement?.textContent).toBe('생긴 연차16일'))
+    expect(within(leave).queryByText(/넘어옴/)).toBeNull()
+  })
+
   it("AC-7612.2: 1월 1일 기준 병원이면 연차 머리가 '· 1월 1일 기준'이다", async () => {
     const user = show({ settings: { ...defaultStaffSettings(), leaveBasis: 'jan1' } })
     await user.click(within(await screen.findByRole('table', { name: '재직 직원' })).getByText('김하늘'))
@@ -454,6 +472,49 @@ describe('AC-7612.3: 직원 더하기 · 고치기 칸', () => {
     expect(saveMember).not.toHaveBeenCalled()
   })
 
+  it("AC-7612.3: 입사일 까닭은 '입사일을 적어 주세요. 연차와 근속을 셀 때 써요.' 그대로다", async () => {
+    const user = await openAdd()
+    await user.type(screen.getByLabelText('이름'), '강다은')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    expect(screen.getByText('입사일을 적어 주세요. 연차와 근속을 셀 때 써요.')).toBeTruthy()
+    expect(saveMember).not.toHaveBeenCalled()
+  })
+
+  it("AC-7612.3: 칸 아래 까닭은 '화면 글 기본값' 글 그대로다", async () => {
+    const user = await openAdd()
+    const put = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } })
+    put('이름', '가'.repeat(21))
+    put('입사일', '2026-11-02')
+    put('퇴사일', '2026-10-01')
+    put('주 근무시간', '40.3')
+    put('연락처', '010-12')
+    put('주소', '다'.repeat(101))
+    put('계좌번호', '농협 123')
+    put('올해 이미 쓴 연차', '51')
+    put('메모', '마'.repeat(501))
+    await user.click(within(screen.getByRole('group', { name: '직종' })).getByRole('button', { name: '기타' }))
+    put('직종 직접 적기', '나'.repeat(21))
+    await user.selectOptions(screen.getByLabelText('은행'), '그 밖의 은행')
+    put('은행 이름', '라'.repeat(21))
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    const reasonOf = (label: string) => document.getElementById(`${screen.getByLabelText(label).id}-error`)?.textContent
+    expect(
+      ['이름', '직종 직접 적기', '주 근무시간', '퇴사일', '연락처', '주소', '은행 이름', '계좌번호', '올해 이미 쓴 연차', '메모'].map((label) => [label, reasonOf(label)]),
+    ).toEqual([
+      ['이름', '이름은 20자까지예요.'],
+      ['직종 직접 적기', '직종은 20자까지예요.'],
+      ['주 근무시간', '주 근무시간은 0~80시간, 0.5시간 단위로 적어 주세요.'],
+      ['퇴사일', '퇴사일은 입사일보다 앞일 수 없어요.'],
+      ['연락처', '연락처는 숫자 9~11자리로 적어 주세요.'],
+      ['주소', '주소는 100자까지예요.'],
+      ['은행 이름', '은행 이름은 20자까지예요.'],
+      ['계좌번호', '계좌번호는 숫자와 - 만, 6~30자로 적어 주세요.'],
+      ['올해 이미 쓴 연차', '0~50일, 0.5일 단위로 적어 주세요.'],
+      ['메모', '메모는 500자까지예요.'],
+    ])
+    expect(saveMember).not.toHaveBeenCalled()
+  })
+
   it('AC-7612.3: 같은 이름 + 입사일인 직원이 이미 있으면 저장하지 않는다', async () => {
     const user = await openAdd()
     await user.type(screen.getByLabelText('이름'), '김하늘')
@@ -528,6 +589,47 @@ describe('AC-7612.3: 직원 더하기 · 고치기 칸', () => {
     await waitFor(() => expect(alertCode()).toContain('E-STAFF-SAVE-FAILED'))
     expect((screen.getByLabelText('이름') as HTMLInputElement).value).toBe('강다은')
     expect(screen.getByRole('heading', { name: '직원 더하기' })).toBeTruthy()
+  })
+
+  it("AC-7612.7: 주소·메모에 주민번호 모양이 든 채 [저장]하면 그 칸 아래 '주민번호는 저장하지 않아요. 지우고 다시 저장해 주세요.'이고 저장하지 않는다(적은 값은 그대로)", async () => {
+    const user = await openAdd()
+    const put = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } })
+    put('이름', '강다은')
+    put('입사일', '2026-03-02')
+    put('주소', '○○시 900101-1234567')
+    put('메모', '주민 9001011234567')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    const reasonOf = (label: string) => document.getElementById(`${screen.getByLabelText(label).id}-error`)?.textContent
+    expect(reasonOf('주소')).toBe('주민번호는 저장하지 않아요. 지우고 다시 저장해 주세요.')
+    expect(reasonOf('메모')).toBe('주민번호는 저장하지 않아요. 지우고 다시 저장해 주세요.')
+    expect(screen.getByLabelText('메모').getAttribute('aria-invalid')).toBe('true')
+    expect((screen.getByLabelText('주소') as HTMLInputElement).value).toBe('○○시 900101-1234567')
+    expect((screen.getByLabelText('메모') as HTMLTextAreaElement).value).toBe('주민 9001011234567')
+    expect(saveMember).not.toHaveBeenCalled()
+
+    // 고치기에서도 같다(전각 숫자·긴 줄표도 같은 모양)
+    cleanup()
+    const again = show()
+    await again.click(within(await screen.findByRole('table', { name: '재직 직원' })).getByText('이도윤'))
+    await again.click(screen.getByRole('button', { name: '고치기' }))
+    put('메모', '９００１０１—１２３４５６７')
+    await again.click(screen.getByRole('button', { name: '저장' }))
+    expect(reasonOf('메모')).toBe('주민번호는 저장하지 않아요. 지우고 다시 저장해 주세요.')
+    expect(saveMember).not.toHaveBeenCalled()
+  })
+
+  it("AC-7612.7: 반례 — 전화번호('010-1234-5678')·계좌번호('110-123-456789') 모양이 든 주소·메모는 막지 않고 저장된다", async () => {
+    saveMember.mockImplementation(async (m) => ({ id: 'm-new', ...m }))
+    const user = await openAdd()
+    const put = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } })
+    put('이름', '강다은')
+    put('입사일', '2026-03-02')
+    put('주소', '○○시 ○○로 1 (010-1234-5678)')
+    put('메모', '월급 계좌 110-123-456789 · 1990-01-01 · 3,200,000원')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(saveMember).toHaveBeenCalledTimes(1))
+    expect(saveMember.mock.calls[0]![0]).toMatchObject({ address: '○○시 ○○로 1 (010-1234-5678)', memo: '월급 계좌 110-123-456789 · 1990-01-01 · 3,200,000원' })
+    expect(screen.queryByText('주민번호는 저장하지 않아요. 지우고 다시 저장해 주세요.')).toBeNull()
   })
 
   it('AC-7612.3: [취소]는 저장하지 않고 명단으로 돌아간다', async () => {

@@ -159,8 +159,9 @@ export function LeaveScreen({ today }: { today: string }) {
               <p className={`${ds.panel} px-5 py-4 text-small text-muted`}>재직 중인 직원이 없어요. 명단에서 직원을 더하면 여기에 연차가 보여요.</p>
             )}
             <p className={ds.help}>
-              &apos;쓴&apos;은 연차·반차만 셉니다. 경조사·병가·출산·육아휴직·무급(결근)은 연차에서 빼지 않습니다. 막대 = 남은 ÷ 생긴. 남은 비율이 25% 밑이면 막대가
-              주황입니다. 퇴사한 직원은 이 표에 없습니다.
+              {`'쓴'은 연차·반차만 셉니다. 경조사·병가·출산·육아휴직·무급(결근)은 연차에서 빼지 않습니다. ${
+                settings.leftover === 'carry' ? '막대 = 남은 ÷ (생긴 + 넘어옴).' : '막대 = 남은 ÷ 생긴.'
+              } 남은 비율이 25% 밑이면 막대가 주황입니다. 퇴사한 직원은 이 표에 없습니다.`}
             </p>
           </section>
           <LeaveCalendar
@@ -192,6 +193,7 @@ export function LeaveScreen({ today }: { today: string }) {
             setDialog(null)
             retryLeaves()
           }}
+          onFailed={retryLeaves}
           onClose={() => setDialog(null)}
         />
       ) : null}

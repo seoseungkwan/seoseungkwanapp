@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx'
 import { excelSerialToYmd, parseDateCell } from '@/lib/analytics/dates'
+import { hasNationalId } from './nationalId'
 
 // 직원 명단 [엑셀 올리기] 읽기(specs/staff REQ-7608, design.md 4절). 순수 함수 — 네트워크·저장소·supabase 없음.
 // 양식은 public/staff/staff-template.xlsx(scripts/make_staff_template.py가 만든다). 형은 @/types/staff를 불러오지 않고
@@ -203,11 +204,12 @@ function parseLine(cells: readonly Cell[], hours: RosterContext['hours']): Parse
     if (ymd === null) (header === '입사일*' ? first : reasons).push(`${label(header)} 모양이 틀렸어요. 2026-03-02처럼 적어 주세요.`)
     else into(ymd)
   }
-  // subject = 칸 이름 + 은/는
-  const text = (header: RosterHeader, subject: string, max: number, into: (value: string) => void) => {
+  // subject = 칸 이름 + 은/는. noNationalId = 주민번호 모양이면 문제 줄(주소·메모, AC-7608.6) — 그 글은 넣을 칸에 두지 않는다
+  const text = (header: RosterHeader, subject: string, max: number, into: (value: string) => void, noNationalId = false) => {
     const value = at(header).text
     if (value === '') return
     if (lengthOf(value) > max) reasons.push(`${subject} ${max}자까지 적어 주세요.`)
+    else if (noNationalId && hasNationalId(value)) reasons.push(`${label(header)}에 주민번호 모양 글이 있어요. 주민번호는 저장하지 않아요.`)
     else into(value)
   }
 
@@ -247,7 +249,7 @@ function parseLine(cells: readonly Cell[], hours: RosterContext['hours']): Parse
   }
 
   date('생일', (ymd) => (fields.birthday = ymd))
-  text('주소', '주소는', ADDRESS_MAX, (value) => (fields.address = value))
+  text('주소', '주소는', ADDRESS_MAX, (value) => (fields.address = value), true)
   text('은행', '은행은', BANK_MAX, (value) => (fields.bank = value))
 
   const account = at('계좌번호').text
@@ -292,7 +294,7 @@ function parseLine(cells: readonly Cell[], hours: RosterContext['hours']): Parse
     else reasons.push("토요일 격주는 '매주', '1·3주', '2·4주' 가운데 하나로 적어 주세요.")
   }
 
-  text('메모', '메모는', MEMO_MAX, (value) => (fields.memo = value))
+  text('메모', '메모는', MEMO_MAX, (value) => (fields.memo = value), true)
 
   if (fields.hiredOn !== undefined && typeof fields.leftOn === 'string' && fields.leftOn < fields.hiredOn) {
     reasons.push('퇴사일이 입사일보다 앞이에요. 퇴사일을 확인해 주세요.')

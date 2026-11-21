@@ -139,6 +139,49 @@ describe('AC-7613.1: 주 보기', () => {
     expect(within(foot).getAllByRole('cell').map((td) => td.textContent)[4]).toBe('0명')
   })
 
+  it("AC-7613.1: 공휴일이면서 휴진일이면 머리는 '· 휴진'이다", async () => {
+    kit.base = { ...kit.base, clinic: { ...kit.base.clinic, profile: { ...kit.base.clinic.profile, closedDates: ['2026-12-25'] } } }
+    await renderWeek('2026-12-24')
+    const heads = within(table()).getAllByRole('columnheader').map((th) => th.textContent)
+    expect(heads).toContain('25 금 · 휴진')
+    expect(heads).not.toContain('25 금 · 공휴일')
+  })
+
+  it('AC-7613.1: 공휴일·휴진일 칸·머리·칸 뜻 표시는 시안 회색(--closed 쯤, bg-line/60)이고 보통 칸 바탕(canvas)보다 진하다', async () => {
+    await renderWeek()
+    const sunday = cell('김하늘', '11월 22일 (일)').closest('td')!
+    expect(sunday.className.split(/\s+/)).toContain('bg-line/60')
+    expect(sunday.className.split(/\s+/)).not.toContain('bg-canvas')
+    const monday = cell('김하늘', '11월 16일 (월)').closest('td')!
+    expect(monday.className.split(/\s+/)).not.toContain('bg-line/60')
+    const head = within(table())
+      .getAllByRole('columnheader')
+      .find((th) => th.textContent === '22 일 · 휴진')!
+    expect(head.className.split(/\s+/)).toContain('bg-line/60')
+    // 칸 뜻 안내의 '공휴일·휴진일' 견본도 같은 색
+    const legend = within(screen.getByRole('list', { name: '칸 뜻' })).getAllByRole('listitem').at(-1)!
+    expect(legend.querySelector('span')?.className.split(/\s+/)).toContain('bg-line/60')
+  })
+
+  it("AC-7613.1: 기본 근무가 없는 사람은 이름 아래 '{직종}'만이다", async () => {
+    kit.base = { ...kit.base, plans: kit.base.plans.filter((p) => p.staffId !== 'm6') }
+    await renderWeek()
+    expect(screen.getByRole('button', { name: '한지우 원무' })).toBeTruthy()
+  })
+
+  it("AC-7613.1: 병원 정보(진료시간·휴진일)를 다 읽기 전에는 기본값으로 그리지 않고 '근무표를 불러오는 중이에요'", async () => {
+    const ready = kit.base
+    kit.base = { ...ready, clinic: { ...ready.clinic, state: 'loading' } }
+    const { rerender } = render(<ScheduleScreen today={TODAY} />)
+    await waitFor(() => expect(kit.store.listChanges).toHaveBeenCalled())
+    expect(screen.getByText('근무표를 불러오는 중이에요')).toBeTruthy()
+    expect(screen.queryByRole('table', { name: '주 근무표' })).toBeNull()
+    kit.base = ready
+    rerender(<ScheduleScreen today={TODAY} />)
+    expect(await screen.findByRole('table', { name: '주 근무표' })).toBeTruthy()
+    expect(screen.queryByText('근무표를 불러오는 중이에요')).toBeNull()
+  })
+
   it('AC-7613.1·AC-7605.3: 공휴일 목록이 없는 해(2028)의 주에는 "{YYYY}년 공휴일 목록이 아직 없어요. …" 안내가 보인다', async () => {
     await renderWeek('2028-01-05')
     expect(screen.getByText('2028년 공휴일 목록이 아직 없어요. 쉬는 날은 설정 → 병원 정보 휴진일로 넣어 주세요.')).toBeTruthy()

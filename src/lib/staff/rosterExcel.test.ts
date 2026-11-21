@@ -312,11 +312,75 @@ describe('AC-7608.3 칸 값 읽기', () => {
     expect(fine.action).toBe('new')
   })
 
+  it("AC-7608.3: DB 한도 까닭은 '화면 글 기본값' 글 그대로다", () => {
+    const { rows } = read([
+      person('가'.repeat(21), '2026-01-05'),
+      person('가짜2', '2026-01-05', { 직종: '나'.repeat(21) }),
+      person('가짜3', '2026-01-05', { 주소: '다'.repeat(101) }),
+      person('가짜4', '2026-01-05', { 은행: '라'.repeat(21) }),
+      person('가짜5', '2026-01-05', { 메모: '마'.repeat(501) }),
+    ])
+    expect(rows.map((row) => row.reason)).toEqual([
+      '이름은 20자까지 적어 주세요.',
+      '직종은 20자까지 적어 주세요.',
+      '주소는 100자까지 적어 주세요.',
+      '은행은 20자까지 적어 주세요.',
+      '메모는 500자까지 적어 주세요.',
+    ])
+  })
+
   it('AC-7608.3: 한 줄에 문제가 여럿이면 까닭을 모두 잇는다', () => {
     const row = one(person('가짜', '2026-01-05', { 연락처: '12', 월: '9-6' }))
     expect(row.action).toBe('problem')
     expect(row.reason).toContain('연락처')
     expect(row.reason).toContain('월')
+  })
+})
+
+describe('AC-7608.6 주소·메모 칸의 주민번호 모양', () => {
+  const ADDRESS_REASON = '주소에 주민번호 모양 글이 있어요. 주민번호는 저장하지 않아요.'
+  const MEMO_REASON = '메모에 주민번호 모양 글이 있어요. 주민번호는 저장하지 않아요.'
+
+  it('AC-7608.6: 새 직원 줄의 주소·메모에 주민번호 모양이 있으면 그 칸 이름이 든 문제 줄이고 그 글은 넣을 칸에 없다', () => {
+    const { rows } = read([
+      person('가짜1', '2026-01-05', { 주소: '가짜시 가짜로 1 900101-1234567' }),
+      person('가짜2', '2026-01-05', { 메모: '주민 850315 - 2345678 확인' }),
+      person('가짜3', '2026-01-05', { 메모: '9001011234567' }),
+      person('가짜4', '2026-01-05', { 메모: 9001011234567 }),
+      person('가짜5', '2026-01-05', { 주소: '９００１０１－１２３４５６７', 메모: '900101.1234567' }),
+    ])
+    expect(rows.map((row) => row.action)).toEqual(Array(5).fill('problem'))
+    expect(rows.map((row) => row.reason)).toEqual([ADDRESS_REASON, MEMO_REASON, MEMO_REASON, MEMO_REASON, `${ADDRESS_REASON} ${MEMO_REASON}`])
+    for (const row of rows) {
+      expect(row.member.address).toBeUndefined()
+      expect(row.member.memo).toBeUndefined()
+    }
+  })
+
+  it('AC-7608.6: 고침 줄(같은 이름 + 입사일)도 주민번호 모양이 있으면 문제 줄이다', () => {
+    const address = one(person('김하늘', '2021-03-02', { 주소: '가짜시 900101 1234567' }), [HANEUL])
+    expect(address).toMatchObject({ action: 'problem', reason: ADDRESS_REASON, changed: [] })
+    const memo = one(person('김하늘', '2021-03-02', { 메모: '900101-1234567' }), [HANEUL])
+    expect(memo).toMatchObject({ action: 'problem', reason: MEMO_REASON, changed: [] })
+  })
+
+  it('AC-7608.6: 반례 — 전화·계좌·날짜·금액 모양이 든 주소·메모는 그대로 들어간다(계좌번호 칸은 검사하지 않는다)', () => {
+    const fresh = one(
+      person('가짜', '2026-01-05', {
+        주소: '가짜시 가짜로 1 (02-123-4567)',
+        메모: '보호자 010-1234-5678 · 계좌 110-123-456789 · 1990-01-01 · 3,200,000원',
+        계좌번호: '900101-1234567',
+      }),
+    )
+    expect(fresh.action).toBe('new')
+    expect(fresh.member).toMatchObject({
+      address: '가짜시 가짜로 1 (02-123-4567)',
+      memo: '보호자 010-1234-5678 · 계좌 110-123-456789 · 1990-01-01 · 3,200,000원',
+      accountNo: '900101-1234567',
+    })
+    const update = one(person('김하늘', '2021-03-02', { 메모: '새 연락처 01012345678' }), [HANEUL])
+    expect(update).toMatchObject({ action: 'update', changed: ['메모'] })
+    expect(update.member.memo).toBe('새 연락처 01012345678')
   })
 })
 

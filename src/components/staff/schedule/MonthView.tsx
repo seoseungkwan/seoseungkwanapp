@@ -9,6 +9,7 @@ import { employedIn } from '@/lib/staff/roster'
 import { dayKind, fmtMinutes, monthOvertime, workingCount, type DayCtx, type OvertimeTotals } from '@/lib/staff/schedule'
 import type { DayChange, Leave, Overtime, StaffMember, WeekPlan } from '@/types/staff'
 import { WEEKDAYS, dateNum, dayTitle, monthName, restName, shortDay, weekdayName } from './format'
+import { REST_HOVER, REST_SHADE } from './parts'
 
 // 달 보기 (staff AC-7613.2, 시안 schedule.html ②·⑤). 월~일 7칸 달력에 날마다 일한 사람 수(AC-7605.7)·휴가 칩,
 // 그 아래 이달 휴가 목록과 '{M}월 더 일한 시간' 표(AC-7605.5 — 요약에 없는 사람은 0으로). 날짜를 누르면 그 주 주 보기(onDay).
@@ -47,57 +48,60 @@ export function MonthView({ month, today, members, plans, changes, overtime, lea
   return (
     <div className="flex flex-col gap-4">
       <p className="text-small text-ink-2">칸의 숫자는 그날 일한 사람 수예요. 하루 휴가는 빼고, 반차는 넣어서 세요.</p>
-      <section aria-label="달 근무표" className="min-w-0 overflow-clip rounded-control border border-line bg-surface">
-        <div className="grid grid-cols-7 border-b border-line bg-canvas">
-          {WEEKDAYS.map((w) => (
-            <span key={w} className="px-2 py-1.5 text-caption font-semibold text-muted">
-              {w}
-            </span>
-          ))}
-        </div>
-        <div className="grid grid-cols-7">
-          {days.map((day, i) => {
-            const edge = (i + 1) % 7 ? 'border-r' : ''
-            if (day < range.from || day > range.to) {
+      {/* 폰 전용 모양 없음: 좁으면 이 칸만 옆으로 밀리고 달력은 최소 폭을 지킨다(휴가 달력과 같다, AC-7611.4) */}
+      <TableScroll label="달 근무표 칸">
+        <section aria-label="달 근무표" className="min-w-190 overflow-clip rounded-control border border-line bg-surface">
+          <div className="grid grid-cols-7 border-b border-line bg-canvas">
+            {WEEKDAYS.map((w) => (
+              <span key={w} className="px-2 py-1.5 text-caption font-semibold text-muted">
+                {w}
+              </span>
+            ))}
+          </div>
+          <div className="grid grid-cols-7">
+            {days.map((day, i) => {
+              const edge = (i + 1) % 7 ? 'border-r' : ''
+              if (day < range.from || day > range.to) {
+                return (
+                  <div key={day} className={`min-h-24 border-b border-line bg-canvas/60 px-2 pt-1.5 text-small font-semibold text-muted tabular-nums ${edge}`}>
+                    {dateNum(day)}
+                  </div>
+                )
+              }
+              const kind = dayKind(day, ctx)
+              const rest = restName(kind)
+              const count = workingCount(day, { ...ctx, members, plans, changes, leaves })
+              const status = rest === null ? `${count}명` : count > 0 ? `${rest} ${count}명` : rest
+              const isToday = day === today
+              const chips = monthLeaves.filter((l) => l.day === day).map((l) => ({ id: l.id, kind: l.kind, text: `${leaveLabel(l.kind, l.part)} ${nameOf.get(l.staffId)}` }))
               return (
-                <div key={day} className={`min-h-24 border-b border-line bg-canvas/60 px-2 pt-1.5 text-small font-semibold text-muted tabular-nums ${edge}`}>
-                  {dateNum(day)}
-                </div>
-              )
-            }
-            const kind = dayKind(day, ctx)
-            const rest = restName(kind)
-            const count = workingCount(day, { ...ctx, members, plans, changes, leaves })
-            const status = rest === null ? `${count}명` : count > 0 ? `${rest} ${count}명` : rest
-            const isToday = day === today
-            const chips = monthLeaves.filter((l) => l.day === day).map((l) => ({ id: l.id, kind: l.kind, text: `${leaveLabel(l.kind, l.part)} ${nameOf.get(l.staffId)}` }))
-            return (
-              <button
-                key={day}
-                type="button"
-                aria-label={[dayTitle(day), ...(isToday ? ['오늘'] : []), status, ...chips.map((c) => c.text)].join(' ')}
-                aria-current={isToday ? 'date' : undefined}
-                data-rest={rest !== null ? 'true' : undefined}
-                onClick={() => onDay(day)}
-                className={`flex min-h-24 min-w-0 cursor-pointer flex-col items-start gap-1 border-b border-line px-2 pt-1.5 pb-2 text-left hover:bg-canvas ${
-                  rest !== null ? 'bg-canvas' : ''
-                } ${isToday ? 'ring-2 ring-accent ring-inset' : ''} ${edge} ${ds.focusRing}`}
-              >
-                <span className={`text-small font-semibold tabular-nums ${isToday ? 'text-accent' : 'text-ink'}`}>
-                  {dateNum(day)}
-                  {isToday ? <span className="text-caption font-medium"> 오늘</span> : null}
-                </span>
-                <span className={`text-small tabular-nums ${rest !== null && count === 0 ? 'text-muted' : 'text-ink'}`}>{status}</span>
-                {chips.map((chip) => (
-                  <span key={chip.id} className={LEAVE_CHIP[chip.kind]}>
-                    {chip.text}
+                <button
+                  key={day}
+                  type="button"
+                  aria-label={[dayTitle(day), ...(isToday ? ['오늘'] : []), status, ...chips.map((c) => c.text)].join(' ')}
+                  aria-current={isToday ? 'date' : undefined}
+                  data-rest={rest !== null ? 'true' : undefined}
+                  onClick={() => onDay(day)}
+                  className={`flex min-h-24 min-w-0 cursor-pointer flex-col items-start gap-1 border-b border-line px-2 pt-1.5 pb-2 text-left ${
+                    rest !== null ? `${REST_SHADE} ${REST_HOVER}` : 'hover:bg-canvas'
+                  } ${isToday ? 'ring-2 ring-accent ring-inset' : ''} ${edge} ${ds.focusRing}`}
+                >
+                  <span className={`text-small font-semibold tabular-nums ${isToday ? 'text-accent' : 'text-ink'}`}>
+                    {dateNum(day)}
+                    {isToday ? <span className="text-caption font-medium"> 오늘</span> : null}
                   </span>
-                ))}
-              </button>
-            )
-          })}
-        </div>
-      </section>
+                  <span className={`text-small tabular-nums ${rest !== null && count === 0 ? 'text-muted' : 'text-ink'}`}>{status}</span>
+                  {chips.map((chip) => (
+                    <span key={chip.id} className={LEAVE_CHIP[chip.kind]}>
+                      {chip.text}
+                    </span>
+                  ))}
+                </button>
+              )
+            })}
+          </div>
+        </section>
+      </TableScroll>
       {monthLeaves.length > 0 ? (
         <ul aria-label="이달 휴가" className="flex flex-col gap-1.5 text-small text-ink">
           {monthLeaves.map((l) => (

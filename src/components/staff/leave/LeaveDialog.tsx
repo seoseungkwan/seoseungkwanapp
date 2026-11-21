@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, type MouseEvent, type ReactNode } from 'react'
 import { ds } from '@/components/ui/classes'
+import { Segment } from '../schedule/parts'
 
 // 휴가 화면의 떠 있는 칸 틀(시안 leave.html ③ 휴가 넣기 · ⑤ 연차 규칙 .panel): 제목 + × 닫기, 그 아래 내용.
 // 가림막(ai-report RedoDialog와 같은 bg-ink/36)을 누르거나 Esc를 누르면 닫는다. 긴 칸은 가림막 안에서 위아래로 밀린다.
@@ -43,10 +44,10 @@ export function LeaveDialog({ title, onClose, children }: { title: string; onClo
   )
 }
 
-// 휴대폰에서 ds.segment는 전체 폭 칸 나눔이다 — 칸 수는 놓는 자리가 준다(클래스 이름은 통째로)
-const PHONE_COLS: Record<number, string> = { 2: 'max-md:grid-cols-2', 6: 'max-md:grid-cols-3' }
-
-/** 고르기 단추 묶음(종류·하루/여러 날·오전/오후·유급/무급): 눌린 것은 aria-pressed */
+/**
+ * 고르기 단추 묶음(종류·하루/여러 날·오전/오후·유급/무급): 눌린 것은 aria-pressed.
+ * 틀은 근무표·명단과 같은 PC 틀(schedule/parts Segment) — 폰 전용 칸 나눔이 없다(AC-7611.4)
+ */
 export function Choice<T extends string>({
   label,
   options,
@@ -58,19 +59,5 @@ export function Choice<T extends string>({
   value: T
   onChange(value: T): void
 }) {
-  return (
-    <div role="group" aria-label={label} className={`${ds.segment.group} ${PHONE_COLS[options.length] ?? ''}`}>
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          aria-pressed={option.value === value}
-          onClick={() => onChange(option.value)}
-          className={`${ds.segment.button} ${option.value === value ? ds.segment.on : ds.segment.off}`}
-        >
-          {option.text}
-        </button>
-      ))}
-    </div>
-  )
+  return <Segment label={label} options={options.map((option) => [option.value, option.text] as const)} value={value} onChange={onChange} />
 }
