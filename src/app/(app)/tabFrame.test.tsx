@@ -71,6 +71,7 @@ const SCREEN_DIR: Record<string, string> = {
   '/ai-report': 'ai-report',
   '/forms': 'forms', // spec forms AC-3501.1
   '/worklog': 'worklog',
+  '/staff': 'staff', // spec staff AC-7611.1
   '/settings': 'settings',
 }
 
