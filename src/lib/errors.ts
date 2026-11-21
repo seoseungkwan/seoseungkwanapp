@@ -1,7 +1,11 @@
 import type { ErrorCode, ErrorInfo } from '@/types/errors'
+import type { StaffErrorCode } from '@/types/staff'
+
+/** 문구가 있는 번호. 직원 탭 번호(E-STAFF-*)는 번호 타입 ErrorCode에 더해질 때까지 types/staff.ts의 StaffErrorCode로 함께 받는다 */
+export type KnownErrorCode = ErrorCode | StaffErrorCode
 
 // 오류 번호 → 한국어 안내(무엇이 · 어떻게 고치나). 안내 문구는 이 파일 한 곳에만 둔다.
-export const ERRORS: Record<ErrorCode, ErrorInfo> = {
+export const ERRORS: Record<KnownErrorCode, ErrorInfo> = {
   'E-PARSE-COLUMN': {
     what: '꼭 있어야 하는 칸이 파일에 없어요',
     fix: "비트에서 '환자별 소모 통계'의 열 설정에서 빠진 칸을 켜고 다시 뽑아 주세요",
@@ -409,6 +413,27 @@ export const ERRORS: Record<ErrorCode, ErrorInfo> = {
     what: '고른 메모 모양을 저장하지 못했어요',
     fix: '고른 답은 그대로 있어요. 인터넷 연결을 확인하고 [다시 저장]을 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
   },
+  // 직원 탭(specs/staff AC-7610.1, design.md 5절). E-CLINIC-* 말투. 저장은 칸에서 나갈 때·[저장]·[넣기] 여러 곳이라 단추 이름 대신 '다시 저장'이라고 한다
+  'E-STAFF-READ-FAILED': {
+    what: '직원 자료를 불러오지 못했어요',
+    fix: '인터넷 연결을 확인하고 [다시 불러오기]를 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
+  'E-STAFF-SAVE-FAILED': {
+    what: '직원 자료를 저장하지 못했어요',
+    fix: '적은 값은 화면에 그대로 있어요. 인터넷 연결을 확인하고 다시 저장해 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
+  'E-STAFF-FILE-FAILED': {
+    what: '파일을 올리거나 받거나 지우지 못했어요',
+    fix: '올릴 수 있는 파일은 PDF·JPG·PNG(세무사 파일은 ZIP·XLSX·XLS도)이고 한 파일 10MB, 한 사람·한 달에 20개까지예요. 인터넷 연결을 확인하고 다시 해 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
+  'E-STAFF-EXCEL-FAILED': {
+    what: '엑셀 파일을 읽지 못했어요',
+    fix: '[엑셀 양식 받기]로 받은 파일에 적었는지, 암호로 잠긴 파일이 아닌지 확인하고 다시 올려 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
+  'E-STAFF-IMAGE-FAILED': {
+    what: '그림 파일을 만들지 못했어요',
+    fix: '다시 눌러 보고, 계속 안 되면 [인쇄·PDF]로 PDF를 저장해 주세요.',
+  },
 }
 
 /**
@@ -420,7 +445,7 @@ export const EXCEL_FAILED: ErrorInfo = {
   fix: '점검 결과는 화면에 그대로 있어요. [엑셀 내려받기]를 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
 }
 
-export function errorInfo(code: ErrorCode): ErrorInfo {
+export function errorInfo(code: KnownErrorCode): ErrorInfo {
   return ERRORS[code]
 }
 
