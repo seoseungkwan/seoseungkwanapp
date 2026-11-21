@@ -144,7 +144,7 @@ function Tiles({ month, report, prevReport }: { month: string; report: Report; p
   const pm = monthNo(addMonths(month, -1))
   const missing = report.rows.filter((row) => row.missing).length
   return (
-    <ul aria-label={`${m}월 숫자`} className="mt-4 grid max-w-210 grid-cols-3 border-y border-line">
+    <ul aria-label={`${m}월 숫자`} className="mt-4 grid max-w-210 list-none grid-cols-3 border-y border-line">
       <Tile name={`${m}월 구입비`} value={report.numbers.cost} unit="원">
         {`${pm}월 ${formatWon(report.total.prevCost)} · `}
         <Change text={report.total.change} />

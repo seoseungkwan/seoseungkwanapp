@@ -184,6 +184,12 @@ describe('MonthlyTool', () => {
     ])
   })
 
+  it('AC-7510.2: 숫자 세 칸 목록은 글머리 점이 없다(list-none)', async () => {
+    render(<MonthlyTool today={TODAY} />)
+    await ready()
+    expect(screen.getByRole('list', { name: '11월 숫자' }).getAttribute('class')?.split(/\s+/)).toContain('list-none')
+  })
+
   it('AC-7510.2: 분류별 구입비 표는 분류 차례 줄과 합계 줄이고, 0원은 –다', async () => {
     render(<MonthlyTool today={TODAY} />)
     await ready()

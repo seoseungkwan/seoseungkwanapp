@@ -165,6 +165,20 @@ describe('AC-7506.1 목록: 챙길 것 자리 · 머리 줄 단추 · 분류별 
     expect(tokens(within(rowOf('멸균 거즈')).getByText('22'))).not.toContain('text-negative')
   })
 
+  it('AC-7506.1: 표 모양은 시안 그대로 — 분류 머리 줄은 흰 바탕(첫 묶음 32px), 물품 이름 500, 마지막 줄 아래 선, 양식 안내는 오른쪽, 숨긴 물품 줄은 흐린 글·20px 들임', async () => {
+    await open()
+    const groups = within(screen.getByRole('table')).getAllByRole('rowheader')
+    expect(tokens(groups[0])).not.toContain('bg-canvas')
+    hasClasses(groups[0], 'h-8 border-b border-line')
+    hasClasses(groups[1], 'h-11 pt-3')
+    hasClasses(within(rowOf('히알루론산 주사 2mL')).getAllByRole('cell')[0], 'font-medium')
+    const last = rowOf('무릎 보조기 L')
+    expect(tokens(last)).not.toContain('last:*:border-b-0')
+    hasClasses(within(last).getAllByRole('cell')[0], 'border-b border-line')
+    hasClasses(screen.getByText(/^\[양식 받기\] = /), 'text-right')
+    hasClasses(screen.getByText('안 쓰는 물품 1개는 숨겨 뒀어요.', { exact: false }), 'text-muted pl-5')
+  })
+
   it('AC-7506.1: 숨긴 물품이 있으면 "안 쓰는 물품 n개는 숨겨 뒀어요." [보기] → 흐린 줄 · "안 씀" 칩 · [다시 쓰기]', async () => {
     const { user } = await open()
     expect(screen.getByText('안 쓰는 물품 1개는 숨겨 뒀어요.')).toBeTruthy()
@@ -417,6 +431,22 @@ describe('AC-7506.6·AC-7514.5 빈 상태 (시안 ?s=empty)', () => {
     hasClasses(button('분류 고치기'), ds.textButton)
     expect(screen.queryByRole('table')).toBeNull()
     expect(screen.queryByTestId('alerts')).toBeNull()
+  })
+
+  it('AC-7506.6: 빈 상태 모양은 시안 그대로 — 세 단계는 960px까지 위아래 선·단계 사이 선(네 변 상자 아님), 글자 크기·색, 아래 나눔 선 560px', async () => {
+    await open()
+    hasClasses(screen.getByText('양식 받기 → 채우기 → 엑셀 올리기, 이 차례로 하면 목록이 한 번에 만들어져요.'), 'text-body text-ink-2')
+    const steps = screen.getByRole('list', { name: '물품 넣는 차례' })
+    hasClasses(steps, 'max-w-240 border-y border-line')
+    expect(tokens(steps)).not.toContain('border')
+    expect(tokens(steps)).not.toContain('rounded-control')
+    const items = within(steps).getAllByRole('listitem')
+    hasClasses(items[1], 'border-l border-line')
+    hasClasses(within(items[0]).getByText('양식 받기', { selector: 'p' }), 'text-subtitle')
+    hasClasses(within(items[0]).getByText("빈 양식(엑셀), 시트 '물품'"), 'text-small text-ink-2')
+    hasClasses(screen.getByText('분류는 넷으로 시작해요'), 'text-small font-semibold text-muted')
+    hasClasses(screen.getByText('약품 · 치료 소모품 · 보조기·깁스 · 사무·생활'), 'text-body text-ink-2')
+    hasClasses(screen.getByText('분류는 넷으로 시작해요').parentElement as HTMLElement, 'max-w-140 border-t border-line')
   })
 
   it('AC-7514.5: 빈 상태에도 [비트 코드에서 고르기]가 있는 한 줄이 있고, 누르면 onBitPick', async () => {

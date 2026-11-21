@@ -8,19 +8,21 @@ import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { compareYmd, isYmd, weekdayOf } from '@/lib/analytics/dates'
 import { countWarning } from '@/lib/inventory/alerts'
-import { lastCountDay, loadInventory, saveCount } from '@/lib/storage/inventory'
+import { lastCountDay, listCountLines, listReceiptLines, loadInventory, saveCount } from '@/lib/storage/inventory'
 import { QTY_MAX, type InvCountInput, type InvInventory, type InvItem } from '@/types/inventory'
 import { CountSheet, countGroups } from './CountSheet'
 
 // 세기 도구 (spec inventory REQ-7507 AC-7507.1~AC-7507.4, design.md 6절, 시안 docs/mockups/inventory ?s=count·print).
 // 스스로 물품(loadInventory)·마지막 세기 날짜(lastCountDay)를 읽는다(reloadKey가 바뀌면 다시). 센 날은 기본 오늘, 마지막 세기 날짜~오늘만.
+// 머리 글 "지난 세기 M월 D일(요일) · 그 뒤 들어온 기록 n건": n = 마지막 세기 날 줄(listCountLines)의 가장 늦은 저장 시각 뒤에 저장된 입고 건수(listReceiptLines의 저장 시각).
+// 0건이거나 못 읽으면 ' · …'를 붙이지 않는다(표는 그대로 그린다).
 // 표는 숨기지 않은 물품을 목록 차례로(세기 종이와 같은 countGroups): 이름 · 단위 · 지난 수량 · 그 뒤 들어옴 · 센 수량(비면 "그대로") · 가장 빠른 유통기한.
 // 센 수가 지금 수량보다 많으면 그 줄 바로 아래 countWarning 글 + [입고 적기](onManualReceipt, 사진 없이 적기는 TASK-15가 잇는다). 저장은 막지 않는다.
 // [저장]은 바꾼 줄만(센 수량을 적은 줄은 qty, 기한을 바꾼 줄은 expiry — 비우면 null) saveCount로 보낸다. 성공하면 칸을 비우고 다시 읽어 새 지금 수량으로 그린다.
 // 실패하면 적은 값은 그대로 두고 오류 카드와 [다시 저장]. 센 날이 범위 밖이면 보내지 않고 E-INV-COUNT-DATE.
 // [세기 종이 인쇄]는 이 자리를 미리 보기(CountSheet)로 바꾼다 — 적던 값은 이 부품이 들고 있어 [세기로 돌아가기] 뒤에도 그대로다
 
-type Loaded = { inventory: InvInventory; lastDay: string | null }
+type Loaded = { inventory: InvInventory; lastDay: string | null; later: number | null }
 type Held = { key: string; value: Loaded | 'failed' }
 /** 줄 하나에 적던 값. qty '' = 비움(그대로), expiry undefined = 손대지 않음 */
 type Draft = { qty: string; expiry?: string }
@@ -31,10 +33,33 @@ const WEEKDAY = ['', '월', '화', '수', '목', '금', '토', '일'] // weekday
 const monthDay = (ymd: string) => `${Number(ymd.slice(5, 7))}월 ${Number(ymd.slice(8, 10))}일(${WEEKDAY[weekdayOf(ymd)]})`
 const slashDay = (ymd: string) => `${Number(ymd.slice(5, 7))}/${Number(ymd.slice(8, 10))}`
 
-async function read(): Promise<Loaded | 'failed'> {
-  const [inventory, lastDay] = await Promise.all([loadInventory(), lastCountDay()])
-  if (inventory === 'failed' || lastDay === 'failed') return 'failed'
-  return { inventory, lastDay }
+/**
+ * 마지막 세기 날 줄의 가장 늦은 저장 시각 뒤에 저장된 입고 건수(AC-7507.1). 입고 줄은 그 입고의 저장 시각을 함께 가지므로 저장 시각으로 한 건씩 묶는다.
+ * 명세서 날짜가 세기 날보다 앞이어도 세기 뒤에 저장했으면 센다 — 그런 입고의 저장 시각(한국 날짜)은 세기 날~오늘이라 그 구간으로 읽는다. 못 읽으면 null
+ */
+async function receiptsAfter(lastDay: string, today: string): Promise<number | null> {
+  try {
+    const [counts, receipts] = await Promise.all([listCountLines({ from: lastDay, to: lastDay }), listReceiptLines({ from: lastDay, to: today })])
+    if (!Array.isArray(counts) || !Array.isArray(receipts)) return null
+    const since = counts.reduce((latest, line) => Math.max(latest, Date.parse(line.savedAt)), -Infinity)
+    if (!Number.isFinite(since)) return null
+    return new Set(receipts.filter((line) => Date.parse(line.savedAt) > since).map((line) => line.savedAt)).size
+  } catch {
+    return null
+  }
+}
+
+/** 마지막 세기 날짜와 그 뒤 들어온 기록 건수(센 적이 없으면 읽지 않음) */
+async function lastCount(today: string): Promise<Pick<Loaded, 'lastDay' | 'later'> | 'failed'> {
+  const lastDay = await lastCountDay()
+  if (lastDay === 'failed') return 'failed'
+  return { lastDay, later: lastDay === null ? null : await receiptsAfter(lastDay, today) }
+}
+
+async function read(today: string): Promise<Loaded | 'failed'> {
+  const [inventory, last] = await Promise.all([loadInventory(), lastCount(today)])
+  if (inventory === 'failed' || last === 'failed') return 'failed'
+  return { inventory, ...last }
 }
 
 /** 센 수량 칸 글 → 수(빈칸은 null) */
@@ -158,7 +183,7 @@ export function CountTool({
 
   useEffect(() => {
     let current = true
-    read().then(
+    read(today).then(
       (value) => {
         if (current) setHeld({ key, value })
       },
@@ -169,7 +194,7 @@ export function CountTool({
     return () => {
       current = false
     }
-  }, [key])
+  }, [key, today])
 
   const reading = held === null || held.key !== key
   // 다시 읽는 동안에도 앞서 읽은 표는 그대로 보인다(실패 카드만 읽는 중으로 바뀐다)
@@ -185,7 +210,7 @@ export function CountTool({
     )
   }
 
-  const { inventory, lastDay } = held.value
+  const { inventory, lastDay, later } = held.value
   if (printing) return <SheetView inventory={inventory} today={today} onBack={() => setPrinting(false)} />
 
   const groups = countGroups(inventory.items, inventory.categories)
@@ -259,7 +284,11 @@ export function CountTool({
             className={ds.input}
           />
         </div>
-        <p className="pb-3 text-small text-muted">{lastDay === null ? '아직 센 적이 없어요' : `지난 세기 ${monthDay(lastDay)}`}</p>
+        <p className="pb-3 text-small text-muted">
+          {lastDay === null
+            ? '아직 센 적이 없어요'
+            : `지난 세기 ${monthDay(lastDay)}${later !== null && later > 0 ? ` · 그 뒤 들어온 기록 ${formatCount(later)}건` : ''}`}
+        </p>
       </div>
 
       <div className={`mt-3 ${ds.table.wrap}`}>

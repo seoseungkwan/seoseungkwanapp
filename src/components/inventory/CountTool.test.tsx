@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { lastCountDay, loadInventory, saveCount } from '@/lib/storage/inventory'
-import type { InvCategory, InvInventory, InvItem } from '@/types/inventory'
+import { lastCountDay, listCountLines, listReceiptLines, loadInventory, saveCount } from '@/lib/storage/inventory'
+import type { InvCategory, InvCountLine, InvInventory, InvItem, InvReceiptLine } from '@/types/inventory'
 import { CountTool } from './CountTool'
 
 // 세기 도구 (spec inventory REQ-7507 AC-7507.1~AC-7507.4, design.md 6절, 시안 docs/mockups/inventory ?s=count·print).
@@ -13,6 +13,8 @@ vi.mock('@/lib/storage/inventory', () => ({
   loadInventory: vi.fn(),
   lastCountDay: vi.fn(),
   saveCount: vi.fn(),
+  listCountLines: vi.fn(),
+  listReceiptLines: vi.fn(),
 }))
 
 vi.mock('@/components/clinic/useClinicProfile', () => ({
@@ -31,6 +33,8 @@ vi.mock('@/components/clinic/useClinicProfile', () => ({
 const load = vi.mocked(loadInventory)
 const lastDay = vi.mocked(lastCountDay)
 const save = vi.mocked(saveCount)
+const countLines = vi.mocked(listCountLines)
+const receiptLines = vi.mocked(listReceiptLines)
 
 const TODAY = '2026-11-21'
 const LAST = '2026-11-14'
@@ -72,6 +76,8 @@ beforeEach(() => {
   load.mockReset().mockResolvedValue(INVENTORY)
   lastDay.mockReset().mockResolvedValue(LAST)
   save.mockReset().mockResolvedValue('ok')
+  countLines.mockReset().mockResolvedValue([])
+  receiptLines.mockReset().mockResolvedValue([])
 })
 
 afterEach(() => {
@@ -184,6 +190,49 @@ describe('AC-7507.1: 세기 표 — 센 날과 숨기지 않은 물품', () => {
     lastDay.mockResolvedValueOnce('failed')
     render(<CountTool today={TODAY} />)
     expect((await screen.findByRole('alert')).textContent).toContain('오류 번호 E-INV-READ-FAILED')
+  })
+
+  describe('AC-7507.1: 머리 글 "지난 세기 … · 그 뒤 들어온 기록 n건"', () => {
+    const counted = (savedAt: string, itemId = 'i-lido'): InvCountLine => ({ itemId, day: LAST, savedAt, qty: 1 })
+    const received = (savedAt: string, day = LAST, itemId = 'i-lido'): InvReceiptLine => ({ itemId, day, savedAt, qty: 1, unitPrice: null, amount: 0 })
+
+    it('AC-7507.1: n = 마지막 세기 날 줄의 가장 늦은 저장 시각 뒤에 저장된 입고 건수(줄 여럿인 입고는 한 건, 앞 날짜 명세서도 셈)', async () => {
+      countLines.mockResolvedValue([counted('2026-11-14T03:00:00.000Z'), counted('2026-11-14T05:00:00.000Z', 'i-syr3')])
+      receiptLines.mockResolvedValue([
+        received('2026-11-14T04:00:00.000Z'), // 세기 저장 사이 → 세기에 들었음
+        received('2026-11-15T01:00:00.000Z'),
+        received('2026-11-15T01:00:00.000Z', LAST, 'i-syr3'), // 같은 입고의 둘째 줄
+        received('2026-11-18T02:00:00.000Z', '2026-11-10'), // 세기 뒤에 저장한 앞 날짜 명세서
+      ])
+      await draw()
+      expect(screen.getByText('지난 세기 11월 14일(토) · 그 뒤 들어온 기록 2건')).toBeTruthy()
+      expect(countLines).toHaveBeenCalledWith({ from: LAST, to: LAST })
+      expect(receiptLines).toHaveBeenCalledWith({ from: LAST, to: TODAY })
+    })
+
+    it("AC-7507.1: 그 뒤 들어온 기록이 0건이면 ' · …' 없이 지난 세기 날짜만", async () => {
+      countLines.mockResolvedValue([counted('2026-11-14T05:00:00.000Z')])
+      receiptLines.mockResolvedValue([received('2026-11-14T04:00:00.000Z')])
+      await draw()
+      expect(screen.getByText('지난 세기 11월 14일(토)')).toBeTruthy()
+      expect(screen.queryByText(/그 뒤 들어온 기록/)).toBeNull()
+    })
+
+    it('AC-7507.1: 센 적이 없으면 "아직 센 적이 없어요"이고 세기·입고 줄은 읽지 않는다', async () => {
+      lastDay.mockResolvedValue(null)
+      await draw()
+      expect(screen.getByText('아직 센 적이 없어요')).toBeTruthy()
+      expect(countLines).not.toHaveBeenCalled()
+      expect(receiptLines).not.toHaveBeenCalled()
+    })
+
+    it('AC-7507.1: 세기·입고 줄 읽기가 실패해도 표는 그리고 머리 글은 지난 세기 날짜만', async () => {
+      countLines.mockResolvedValue([counted('2026-11-14T05:00:00.000Z')])
+      receiptLines.mockResolvedValue('failed')
+      await draw()
+      expect(screen.getByText('지난 세기 11월 14일(토)')).toBeTruthy()
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
   })
 
   it('AC-7507.1: reloadKey가 바뀌면 다시 읽는다', async () => {
