@@ -3,7 +3,11 @@ import { fileURLToPath } from 'node:url'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CollectorStore, GroupRow, NoticeSummary, PostRow, SourceRow } from '@/types/notices'
+import type { BatchNotice, BatchReadingStore } from './collector'
 import { STORE_READ_FAILED, collectorClient, collectorStore } from './collectStore'
+
+// 모으기 흐름(collector.ts)이 받는 가게 모양 그대로
+type Store = CollectorStore & BatchReadingStore
 
 // 진짜 Supabase에 붙지 않는다. collectorClient 시험은 createClient를 가짜로 바꾸고,
 // store 시험은 from·rpc만 있는 가짜 클라이언트(fakeDb)에 부른 표·칸·조건·값을 모두 남긴다
@@ -88,7 +92,8 @@ function fakeDb(respond: Responder) {
       return thenable(call)
     },
   } as unknown as SupabaseClient
-  return { client, calls, store: collectorStore(client) }
+  const store: Store = collectorStore(client)
+  return { client, calls, store }
 }
 
 const ok = (data: unknown = null): Answer => ({ data, error: null })
@@ -131,6 +136,8 @@ const dbNotice = (over: Record<string, unknown> = {}) => ({
   batch_id: null,
   related: true,
   summary: SUMMARY,
+  read_mode: 'full',
+  attach_text: '붙임.pdf\n글자',
   updated_at: '2026-11-20T00:00:00+00:00',
   // 일부러 늦게 들어온 글을 앞에 둔다(가게는 들어온 차례로 다시 놓아야 한다)
   notice_posts: [MOHW_DB_POST, dbPost()],
@@ -228,9 +235,10 @@ function happy(call: Call): Answer {
 
 const USAGE = { inputTokens: 1200, outputTokens: 300, costMicroUsd: 18000 }
 const SAVED = { summary: SUMMARY, readMode: 'full' as const, attachText: '붙임.pdf\n글자', ruleHits: [{ id: 'DX-01', title: '규칙' }] }
+const READING = { readMode: 'text' as const, attachText: '붙임.hwpx\n글자' }
 
 // 쓰기(true/false)와 읽기(값 또는 던짐) 모두
-const WRITES: [string, (s: CollectorStore) => Promise<boolean>][] = [
+const WRITES: [string, (s: Store) => Promise<boolean>][] = [
   ['addRunUsage', (s) => s.addRunUsage(RUN_ID, USAGE)],
   ['finishRun', (s) => s.finishRun(RUN_ID, { new: { hira_notice: 2 }, stopped: [], summarized: 1 })],
   ['saveSource', (s) => s.saveSource(SOURCE)],
@@ -240,8 +248,9 @@ const WRITES: [string, (s: CollectorStore) => Promise<boolean>][] = [
   ['failSummary', (s) => s.failSummary(NOTICE_ID)],
   ['markBatch', (s) => s.markBatch([NOTICE_ID], 'msgbatch_01')],
   ['saveWeek', (s) => s.saveWeek({ weekStart: '2026-11-16', top3: [{ head: '머리', body: '몸' }] })],
+  ['saveReading', (s) => s.saveReading(NOTICE_ID, READING)],
 ]
-const READS: [string, (s: CollectorStore) => Promise<unknown>][] = [
+const READS: [string, (s: Store) => Promise<unknown>][] = [
   ['startRun', (s) => s.startRun()],
   ['sources', (s) => s.sources()],
   ['knownKeys', (s) => s.knownKeys('hira_notice', ['12353', '12354'])],
@@ -250,6 +259,7 @@ const READS: [string, (s: CollectorStore) => Promise<unknown>][] = [
   ['openBatches', (s) => s.openBatches()],
   ['weekExists', (s) => s.weekExists('2026-11-16')],
   ['weekNotices', (s) => s.weekNotices('2026-11-16')],
+  ['batchNotices', (s) => s.batchNotices([NOTICE_ID, NOTICE_ID2])],
 ]
 
 // ── collectorClient ────────────────────────────────────────
@@ -633,6 +643,89 @@ describe('collectorStore — 표·칸 (AC-7415.2)', () => {
     expect(await store.saveWeek({ weekStart: '2026-11-16', top3 })).toBe(true)
     expect(calls[0]).toMatchObject({ table: 'notice_weeks', op: 'insert', payload: { week_start: '2026-11-16', top3: [{ head: '머리', body: '몸' }] } })
   })
+
+  // ── 일괄 글의 읽기 결과(BatchReadingStore) ──
+
+  it('AC-7415.2: saveReading은 그 글 한 줄의 read_mode·attach_text만 고치고, 한 줄을 고쳤을 때 true다', async () => {
+    const { store, calls } = fakeDb(() => ok([{ id: NOTICE_ID }]))
+    expect(await store.saveReading(NOTICE_ID, READING)).toBe(true)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ table: 'notices', op: 'update' })
+    expect(calls[0].payload).toEqual({ read_mode: 'text', attach_text: '붙임.hwpx\n글자' })
+    expect(calls[0].filters).toEqual([{ name: 'eq', args: ['id', NOTICE_ID] }])
+  })
+
+  it.each([
+    ['고친 줄 없음(없는 id·권한 없음)', [] as unknown[]],
+    ['고친 줄 둘', [{ id: NOTICE_ID }, { id: NOTICE_ID2 }]],
+  ])('AC-7415.2: saveReading은 %s이면 false다', async (_name, rows) => {
+    const { store } = fakeDb(() => ok(rows))
+    expect(await store.saveReading(NOTICE_ID, READING)).toBe(false)
+  })
+
+  it('AC-7415.2: saveReading은 붙임 글자가 notices 제약 끝(20,000자, 글자 수는 DB char_length처럼 셈)이면 쓴다', async () => {
+    const { store, calls } = fakeDb(() => ok([{ id: NOTICE_ID }]))
+    // 이모지 20,000개 = JS 길이 40,000이지만 DB 글자 수는 20,000
+    const attachText = '😀'.repeat(20000)
+    expect(await store.saveReading(NOTICE_ID, { readMode: 'body', attachText })).toBe(true)
+    expect(calls[0].payload).toEqual({ read_mode: 'body', attach_text: attachText })
+  })
+
+  it.each([
+    ['읽은 방법이 정한 값 밖', { readMode: 'pdf', attachText: '' }],
+    ['읽은 방법이 null', { readMode: null, attachText: '' }],
+    ['붙임 글자 20,001자', { readMode: 'full', attachText: '가'.repeat(20001) }],
+    ['붙임 글자가 글자가 아님', { readMode: 'full', attachText: null }],
+  ])('AC-7415.2: saveReading은 notices 제약(%s)에 맞지 않으면 DB를 부르지 않고 false다', async (_name, reading) => {
+    const { store, calls } = fakeDb(happy)
+    expect(await store.saveReading(NOTICE_ID, reading as unknown as typeof READING)).toBe(false)
+    expect(calls).toHaveLength(0)
+  })
+
+  it('AC-7415.2: batchNotices는 그 id들의 글(상태 상관없음)을 id로 읽어 id·고시 번호·본문·읽은 방법·붙임 글자를 돌려준다', async () => {
+    const { store, calls } = fakeDb(() =>
+      ok([
+        { id: NOTICE_ID, notice_no: '2026-218', body: '[복지부 고시 글]\n본문', read_mode: 'full', attach_text: '붙임.pdf\n글자' },
+        { id: NOTICE_ID2, notice_no: null, body: '', read_mode: null, attach_text: '' },
+      ]),
+    )
+    expect(await store.batchNotices([NOTICE_ID, NOTICE_ID2, NOTICE_ID])).toEqual([
+      { id: NOTICE_ID, noticeNo: '2026-218', body: '[복지부 고시 글]\n본문', readMode: 'full', attachText: '붙임.pdf\n글자' },
+      { id: NOTICE_ID2, noticeNo: null, body: '', readMode: null, attachText: '' },
+    ] satisfies BatchNotice[])
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ table: 'notices', op: 'select', single: null })
+    expect(
+      selectedColumns('notices', calls[0].columns as string)
+        .map(([, c]) => c)
+        .sort(),
+    ).toEqual(['attach_text', 'body', 'id', 'notice_no', 'read_mode'])
+    // 상태 조건 없이 id로만(같은 id는 한 번)
+    expect(calls[0].filters).toEqual([{ name: 'in', args: ['id', [NOTICE_ID, NOTICE_ID2]] }])
+  })
+
+  it('AC-7415.2: batchNotices는 빈 목록이면 DB를 부르지 않고 빈 목록이다', async () => {
+    const { store, calls } = fakeDb(happy)
+    expect(await store.batchNotices([])).toEqual([])
+    expect(calls).toHaveLength(0)
+  })
+
+  it('AC-7415.2: batchNotices는 모양이 틀린 줄을 건너뛴다(그 글은 거둘 때 없는 글이 된다)', async () => {
+    const good = { id: NOTICE_ID, notice_no: '2026-218', body: '본문', read_mode: 'text', attach_text: '붙임' }
+    const { store } = fakeDb(() =>
+      ok([
+        { ...good, id: 42 },
+        { ...good, read_mode: 'pdf' },
+        { ...good, body: null },
+        { ...good, attach_text: undefined },
+        { ...good, notice_no: 218 },
+        null,
+        'row',
+        good,
+      ]),
+    )
+    expect(await store.batchNotices([NOTICE_ID])).toEqual([{ id: NOTICE_ID, noticeNo: '2026-218', body: '본문', readMode: 'text', attachText: '붙임' }])
+  })
 })
 
 // ── CollectorStore: 오류 ───────────────────────────────────
@@ -675,12 +768,13 @@ describe('collectorStore — 오류 (AC-7415.3)', () => {
   })
 
   it.each([
-    ['sources(목록이 아님)', (s: CollectorStore) => s.sources(), ok({ not: 'array' })],
-    ['sources(정한 값 밖 출처)', (s: CollectorStore) => s.sources(), ok([{ ...DB_SOURCE, source: 'kma' }])],
-    ['groupOf(출처 글이 목록이 아님)', (s: CollectorStore) => s.groupOf('gosi:2026-218'), ok(dbNotice({ notice_posts: null }))],
-    ['waiting(종류가 정한 값 밖)', (s: CollectorStore) => s.waiting(40), ok([dbNotice({ kind: 'memo' })])],
-    ['startRun(글자가 아님)', (s: CollectorStore) => s.startRun(), ok(42)],
-    ['openBatches(시각이 아님)', (s: CollectorStore) => s.openBatches(), ok([{ id: NOTICE_ID, batch_id: 'msgbatch_A', updated_at: 'yesterday' }])],
+    ['sources(목록이 아님)', (s: Store) => s.sources(), ok({ not: 'array' })],
+    ['sources(정한 값 밖 출처)', (s: Store) => s.sources(), ok([{ ...DB_SOURCE, source: 'kma' }])],
+    ['groupOf(출처 글이 목록이 아님)', (s: Store) => s.groupOf('gosi:2026-218'), ok(dbNotice({ notice_posts: null }))],
+    ['waiting(종류가 정한 값 밖)', (s: Store) => s.waiting(40), ok([dbNotice({ kind: 'memo' })])],
+    ['startRun(글자가 아님)', (s: Store) => s.startRun(), ok(42)],
+    ['openBatches(시각이 아님)', (s: Store) => s.openBatches(), ok([{ id: NOTICE_ID, batch_id: 'msgbatch_A', updated_at: 'yesterday' }])],
+    ['batchNotices(목록이 아님)', (s: Store) => s.batchNotices([NOTICE_ID]), ok({ not: 'array' })],
   ])('AC-7415.3: 읽은 줄 모양이 틀리면(%s) 고정 글로 던진다', async (_name, run, answer) => {
     const { store } = fakeDb(() => answer)
     await expect(run(store)).rejects.toThrow(new Error(STORE_READ_FAILED))

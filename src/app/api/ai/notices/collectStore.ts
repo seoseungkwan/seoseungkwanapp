@@ -12,11 +12,13 @@ import type {
   NoticeState,
   NoticeSummary,
   PostRow,
+  ReadMode,
   SourceError,
   SourceRow,
   WaitingNotice,
   WeekInput,
 } from '@/types/notices'
+import type { BatchNotice, BatchReadingStore } from './collector'
 import { WEEK_ITEMS_MAX } from './weeklyPrompt'
 
 // 고시·공지 모으기의 DB 쪽(specs/notices REQ-7415, design 3·4절, ADR-034).
@@ -57,6 +59,7 @@ export async function collectorClient(): Promise<SupabaseClient | null> {
 const SOURCES: readonly NoticeSource[] = ['hira_notice', 'hira_crtr', 'mohw_rss']
 const KINDS: readonly NoticeKind[] = ['gosi', 'notice', 'interp', 'guide', 'case']
 const STATES: readonly NoticeState[] = ['wait', 'batch', 'done', 'failed']
+const READ_MODES: readonly ReadMode[] = ['full', 'text', 'body']
 const SOURCE_STATES: readonly SourceRow['state'][] = ['ok', 'stopped']
 const SOURCE_ERRORS: readonly SourceError[] = ['blocked', 'http', 'shape']
 
@@ -203,10 +206,29 @@ function postFits(p: PostRow): boolean {
   )
 }
 
+// notices.read_mode·attach_text 제약(design 3절)과 같은 검사. 넘치면 DB가 거부하므로 부르기 전에 본다
+const readingFits = (r: { readMode: unknown; attachText: unknown }) => READ_MODES.includes(r.readMode as ReadMode) && fits(r.attachText, 0, 20000)
+
+// 일괄 거두기 때 읽는 글. 모양이 틀린 줄은 null(건너뛴다 — 그 글은 거둘 때 없는 글이 되어 실패로 센다)
+function batchNoticeOf(v: unknown): BatchNotice | null {
+  try {
+    const r = recordOf(v)
+    return {
+      id: textOf(r.id),
+      noticeNo: textOrNull(r.notice_no),
+      body: textOf(r.body),
+      readMode: r.read_mode === null ? null : oneOf(READ_MODES, r.read_mode),
+      attachText: textOf(r.attach_text),
+    }
+  } catch {
+    return null
+  }
+}
+
 // ── 가게 ───────────────────────────────────────────────────
 
-/** 모으기 흐름(collector.ts)이 쓰는 DB 쪽. supabase는 collectorClient()가 준 클라이언트 */
-export function collectorStore(supabase: SupabaseClient): CollectorStore {
+/** 모으기 흐름(collector.ts)이 쓰는 DB 쪽(일괄 글의 읽기 결과 둘 포함). supabase는 collectorClient()가 준 클라이언트 */
+export function collectorStore(supabase: SupabaseClient): CollectorStore & BatchReadingStore {
   const notices = () => supabase.from('notices')
 
   return {
@@ -450,6 +472,25 @@ export function collectorStore(supabase: SupabaseClient): CollectorStore {
           .from('notice_weeks')
           .insert({ week_start: d.weekStart, top3: d.top3.map((t) => ({ head: t.head, body: t.body })) })
         return !res.error
+      }),
+
+    // 일괄로 보내기 전에 그 글의 읽기 결과만 적는다(일괄 결과에는 글 id와 답만 온다)
+    saveReading: (id, r) =>
+      writing(async () => {
+        if (!readingFits(r)) return false
+        const res = await notices().update({ read_mode: r.readMode, attach_text: r.attachText }).eq('id', id).select('id')
+        return rowsOk(res)
+      }),
+
+    // 일괄을 거둘 때 그 글들(상태 상관없음). 없는 id는 빠지고 모양이 틀린 줄은 건너뛴다
+    batchNotices: (ids) =>
+      reading(async () => {
+        const unique = [...new Set(ids)]
+        if (unique.length === 0) return []
+        const res = await notices().select('id, notice_no, body, read_mode, attach_text').in('id', unique)
+        return listOf(dataOf(res))
+          .map(batchNoticeOf)
+          .filter((n): n is BatchNotice => n !== null)
       }),
   }
 }
