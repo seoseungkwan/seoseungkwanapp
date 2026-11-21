@@ -109,10 +109,28 @@ export type NoticeView = {
   posts: GroupPost[]
   mark: NoticeMark
   unread: boolean
+  // 내 병원 낱말 가운데 이 글에 맞은 것(넣은 차례, design 15절). 없으면 []
+  keywords: string[]
 }
 export type NoticeFilter = { related: boolean; sources: NoticeSource[]; starred: boolean; q: string; offset: number }
 export type NoticePage = { total: number; unread: number; rows: NoticeView[] }
 export type RuleAlert = { id: string; noticeNo: string | null; title: string; ruleCount: number }
+// 출처 상태(확인 줄·못 가져옴 띠·채우기 띠). 지난 글 쪽 표시(cursor)는 모으기만 쓴다
+export type SourceView = Omit<SourceRow, 'cursor'>
+// 처음 채우기 띠: 지금까지 찾은 글 수 · 요약이 끝난(실패 포함) 글 수 · 일괄 요약 중인 글 수
+export type FillProgress = { total: number; done: number; batching: number }
+// 주간 모음: 그 주(월~일)에 올라온 글 하나(최근 글부터). 출처는 lib/notices/view sourcesText로 그린다
+export type WeekItem = {
+  id: string
+  title: string
+  kind: NoticeKind
+  postedOn: string
+  related: boolean | null
+  summary: NoticeSummary | null
+  state: NoticeState
+  posts: Pick<GroupPost, 'source'>[]
+}
+export type NoticeWeek = { weekStart: string; createdAt: string; top3: WeekTop[]; items: WeekItem[] }
 export type AskReply =
   | { ok: true; answer: string; left: number }
   | { ok: false; kind: 'private'; kinds: PrivateKind[] }
