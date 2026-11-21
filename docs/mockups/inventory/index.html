@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>재고 탭 시안</title>
+<!--
+  재고 탭(/inventory) 클릭 시안. 한 파일: CSS·JS가 이 안에 있다(글꼴만 저장소 src/app/fonts를 부르고, 없으면 시스템 글꼴).
+  상태는 ?s= 로 고른다: list · order · count · print · in-check · in-manual · in-list · in-photo · excel · month · edit · cats · dash · empty
+  색·글자·모서리·그림자 값은 src/app/globals.css :root 그대로. 모양 이름은 components/ui/classes.ts ds와 짝:
+    .btn-pri = ds.button.primary · .btn-sec = secondary · .btn-sm = …Small · .btn-gh = ghostSmall · .tbtn = textButton
+    .chip-n/-a/-w = ds.chip.neutral/accent/warning · .inp = ds.input · .tb = ds.table · .tool = 도구 단추 줄(ToolRow) · .sheet = 예약 탭 AddPanel 모양
+  물품 이름·숫자·거래처·사진은 모두 지어낸 예시다. 환자 정보는 없다. 오늘 = 2026-11-21(토).
+-->
+<style>
+@font-face { font-family: 'Pretendard'; font-weight: 400; src: url('../../../src/app/fonts/Pretendard-Regular.subset.woff2') format('woff2'); }
+@font-face { font-family: 'Pretendard'; font-weight: 500; src: url('../../../src/app/fonts/Pretendard-Medium.subset.woff2') format('woff2'); }
+@font-face { font-family: 'Pretendard'; font-weight: 600; src: url('../../../src/app/fonts/Pretendard-SemiBold.subset.woff2') format('woff2'); }
+:root {
+  /* src/app/globals.css :root 값 그대로 */
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB; --faint: #9CA3AF;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827;
+  --accent: #2563EB; --accent-strong: #1D4ED8; --accent-soft: #EAF1FE;
+  --positive: #15803D; --positive-soft: #ECF7EF; --negative: #C2410C; --negative-soft: #FDF0EA;
+  --warning: #B45309; --warning-soft: #FDF4E3;
+  --ls-heading: -0.01em;
+  --r-control: 4px; --r-float: 8px;
+  --elev-float: 0 1px 2px rgb(17 24 39 / 0.06), 0 6px 16px rgb(17 24 39 / 0.1);
+  --font-ui: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  color-scheme: light;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { background: var(--surface); -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--surface); color: var(--ink); font: 400 14px/22px var(--font-ui); word-break: keep-all; overflow-wrap: break-word; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+h1, h2, h3, p, ul, ol, li, dl, dt, dd, figure { margin: 0; padding: 0; }
+ul, ol { list-style: none; }
+button, input, select, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+
+/* ---------- 시안 쪽 (앱 밖) ---------- */
+.doc { border-bottom: 1px solid var(--line-strong); background: var(--canvas); }
+.doc-in { max-width: 1280px; margin: 0 auto; padding: 16px 24px; }
+.doc-t { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.doc-h { font-size: 16px; line-height: 24px; font-weight: 600; }
+.doc-s { font-size: 12px; line-height: 16px; color: var(--muted); }
+.picks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.pick { display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); font-size: 12px; line-height: 16px; font-weight: 500; color: var(--ink-2); cursor: pointer; white-space: nowrap; }
+.pick:hover { background: var(--canvas); }
+.pick[aria-pressed=true] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.cap { margin-top: 10px; font-size: 13px; line-height: 20px; color: var(--ink); }
+.cap b { font-weight: 600; }
+.mock-ph { display: grid; place-items: center; min-height: 120px; padding: 16px; border: 1px dashed var(--line-strong); border-radius: var(--r-control); background: var(--canvas); color: var(--muted); font-size: 13px; line-height: 20px; text-align: center; }
+@media (max-width: 767.98px) {
+  .doc-in { padding: 12px 16px; }
+  .picks { flex-wrap: nowrap; overflow-x: auto; margin: 8px -16px 0; padding: 0 16px 2px; scrollbar-width: none; }
+  .picks::-webkit-scrollbar { display: none; }
+}
+
+/* ---------- 앱 화면 (ds와 같은 값) ---------- */
+.ui { position: relative; background: var(--surface); color: var(--ink); }
+.ui button { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; text-align: inherit; }
+.ui a { color: inherit; text-decoration: none; }
+.ic { flex: none; display: block; }
+.wa { max-width: 1280px; margin: 0 auto; padding: 0 24px; }
+.num { text-align: right; }
+.u { margin-left: 2px; color: var(--muted); font-size: 12px; }
+.na { color: var(--muted); }
+.mt4 { margin-top: 4px; } .mt8 { margin-top: 8px; } .mt12 { margin-top: 12px; } .mt16 { margin-top: 16px; } .mt24 { margin-top: 24px; } .mt32 { margin-top: 32px; }
+
+/* 위쪽 띠 */
+.a-hdr { border-bottom: 1px solid var(--line); background: var(--surface); }
+.a-hdr .wa { height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.clinic { font-size: 16px; line-height: 24px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hdr-r { display: flex; align-items: center; gap: 16px; }
+.clock { font-size: 13px; line-height: 20px; color: var(--muted); white-space: nowrap; }
+.ui .acct { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r-control); font-size: 13px; line-height: 20px; font-weight: 500; white-space: nowrap; }
+.acct .ic { color: var(--muted); }
+.ui .iconbtn { width: 44px; height: 44px; display: none; place-items: center; border-radius: var(--r-control); color: var(--ink-2); }
+
+/* 탭 줄 */
+.a-tabs { border-bottom: 1px solid var(--line); background: var(--surface); }
+.a-tabs .wa { display: flex; height: 43px; }
+.strip { flex: 1; min-width: 0; display: flex; overflow-x: auto; scrollbar-width: thin; }
+.strip > .tab:first-child { margin-left: -12px; }
+.ui .tab { position: relative; display: inline-flex; flex: none; align-items: center; gap: 4px; height: 43px; padding: 0 12px; font-size: 14px; font-weight: 500; color: var(--ink-2); white-space: nowrap; transition: color 150ms; }
+.ui .tab:hover { color: var(--ink); }
+.ui .tab[aria-current=page] { color: var(--ink); font-weight: 600; }
+.ui .tab[aria-current=page]::after { content: ''; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; background: var(--accent); }
+.ui .tab.more { margin-right: -12px; }
+
+/* 본문 */
+.main { padding: 24px 0 48px; }
+.pg-h1 { font-size: 20px; line-height: 28px; font-weight: 600; }
+.pg-hrow { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; }
+.pg-meta { font-size: 13px; line-height: 20px; color: var(--muted); }
+
+/* 도구 단추 줄 (ToolRow) */
+.tools { display: flex; gap: 8px; margin-top: 12px; overflow-x: auto; padding-bottom: 2px; }
+.ui .tool { display: inline-flex; flex: none; align-items: center; gap: 8px; height: 36px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); font-size: 14px; line-height: 22px; font-weight: 500; color: var(--ink); white-space: nowrap; transition: background-color 150ms, border-color 150ms, color 150ms; }
+.ui .tool .ic { color: var(--ink-2); }
+.ui .tool:hover { background: var(--canvas); }
+.ui .tool[aria-current=page] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.ui .tool[aria-current=page] .ic { color: var(--accent); }
+.tbody { margin-top: 24px; }
+
+/* 단추 */
+.ui .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px; border: 1px solid transparent; border-radius: var(--r-control); font-size: 14px; line-height: 22px; font-weight: 500; white-space: nowrap; transition: background-color 150ms, border-color 150ms, color 150ms; }
+.ui .btn-sm { height: 32px; padding: 0 12px; font-size: 13px; line-height: 20px; }
+.ui .btn-gh { height: 32px; padding: 0 8px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.ui .btn-ic { width: 32px; padding: 0; }
+.ui .btn-pri { background: var(--accent); color: var(--surface); }
+.ui .btn-pri:hover { background: var(--accent-strong); }
+.ui .btn-sec { background: var(--surface); border-color: var(--line-strong); color: var(--ink); }
+.ui .btn-sec:hover { background: var(--canvas); }
+.ui .btn-sec .ic { color: var(--ink-2); }
+.ui .btn-gh:hover { background: var(--canvas); }
+.ui .btn[aria-disabled=true] { opacity: .4; cursor: not-allowed; }
+.ui .btn:not([aria-disabled=true]):active { transform: translateY(1px); }
+.ui .tbtn { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; line-height: 22px; font-weight: 500; color: var(--accent); text-underline-offset: 3px; }
+.ui .tbtn.s { font-size: 13px; line-height: 20px; }
+.ui .tbtn:hover { text-decoration: underline; }
+
+/* 칩 */
+.chip { display: inline-flex; align-items: center; gap: 4px; flex: none; height: 20px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--r-control); font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap; }
+.chip-n { background: var(--canvas); border-color: var(--line); color: var(--ink-2); }
+.chip-a { background: var(--accent-soft); color: var(--accent-strong); }
+.chip-w { background: var(--warning-soft); color: var(--warning); }
+.chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+
+/* 입력 */
+.ui .inp { height: 44px; width: 100%; min-width: 0; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); font-size: 14px; line-height: 22px; color: var(--ink); }
+.ui .inp:hover { border-color: var(--muted); }
+.ui .inp:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.ui .inp::placeholder { color: var(--muted); }
+.ui .inp.sm { height: 36px; padding: 0 8px; }
+.ck-b { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); vertical-align: middle; }
+.ui .inp.n { text-align: right; }
+.ui select.inp { appearance: none; -webkit-appearance: none; padding-right: 32px; background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%236B7280' stroke-width='1.5'%3E%3Cpath d='m4.75 6.25 3.25 3.25 3.25-3.25'/%3E%3C/svg%3E") no-repeat right 10px center; cursor: pointer; }
+.ui .inp.warn { border-color: var(--warning); }
+.ro { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 12px; border: 1px solid var(--line); border-radius: var(--r-control); background: var(--canvas); color: var(--ink-2); }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.label { display: flex; align-items: baseline; gap: 6px; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); }
+.hint { font-size: 12px; line-height: 16px; font-weight: 400; color: var(--muted); }
+.help { font-size: 12px; line-height: 16px; color: var(--muted); }
+.wtxt { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--warning); }
+.wtxt .ic { margin-top: 0; }
+.ck { display: inline-flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 20px; color: var(--ink); cursor: pointer; }
+.ck input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
+.unitin { display: flex; align-items: center; gap: 6px; }
+.unitin .u { margin: 0; font-size: 13px; }
+
+/* 도구 머리 */
+.sh { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 16px; }
+.sh-t { font-size: 16px; line-height: 24px; font-weight: 600; }
+.sh-d { margin-top: 2px; font-size: 13px; line-height: 20px; color: var(--muted); max-width: 52em; }
+.sh-a { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* 표 (ds.table) */
+.tbw { position: relative; min-width: 0; overflow-x: auto; margin-top: 12px; }
+.tb { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 20px; }
+.tb th { height: 40px; padding: 0 12px; border-bottom: 1px solid var(--line); text-align: left; font-weight: 500; color: var(--muted); white-space: nowrap; }
+.tb td { height: 44px; padding: 0 12px; border-bottom: 1px solid var(--line); white-space: nowrap; color: var(--ink); }
+.tb th:first-child, .tb td:first-child { padding-left: 20px; }
+.tb th:last-child, .tb td:last-child { padding-right: 20px; }
+.tb th.num, .tb td.num { text-align: right; }
+.tb tbody tr.r:hover { background: var(--canvas); }
+.tb td.sub { color: var(--ink-2); }
+.tb td.mu { color: var(--muted); }
+.tb td.act { width: 1%; text-align: right; }
+.tb td.nm { font-weight: 500; }
+.tb tr.grp th { height: 44px; padding-top: 12px; vertical-align: bottom; border-bottom: 1px solid var(--line); color: var(--ink); font-weight: 600; }
+.tb tr.grp th .c { margin-left: 8px; font-weight: 400; color: var(--muted); }
+.tb tr.grp th .r2 { float: right; font-weight: 500; color: var(--ink-2); }
+.tb tbody:first-of-type tr.grp th { padding-top: 0; height: 32px; }
+.tb tr.off td { color: var(--muted); }
+.tb tr.off td.nm { font-weight: 400; }
+.tb tr.wrow td { height: auto; padding-top: 0; padding-bottom: 8px; white-space: normal; }
+.tb tr.has-w td { border-bottom: 0; }
+.tb tr.tot td { font-weight: 600; border-top: 1px solid var(--line-strong); }
+.tb tr.det td { height: auto; padding-top: 4px; padding-bottom: 12px; background: var(--surface); white-space: normal; }
+.det-l { display: grid; grid-template-columns: max-content max-content max-content; column-gap: 24px; row-gap: 2px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.det-l .num { text-align: right; }
+.tb .grip { width: 1%; padding-right: 0; color: var(--muted); cursor: grab; }
+.tb tr.dragging { opacity: .5; }
+.tb tr.drop td { box-shadow: inset 0 2px 0 var(--accent); }
+.updn { display: inline-flex; gap: 4px; }
+.foot-l { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 12px; padding-left: 20px; font-size: 13px; line-height: 20px; color: var(--muted); }
+
+/* 챙길 것 */
+.al-h { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.al-h h2 { font-size: 16px; line-height: 24px; font-weight: 600; }
+.al-h .s { font-size: 13px; line-height: 20px; color: var(--muted); }
+.scroll-x { position: relative; min-width: 0; overflow-x: auto; }
+.al { min-width: 800px; margin-top: 8px; border-top: 1px solid var(--line); }
+.al > li { display: grid; grid-template-columns: 112px minmax(0, 280px) minmax(0, 1fr) 160px 120px; align-items: center; gap: 4px 16px; min-height: 48px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.al .n { font-weight: 500; }
+.al .d { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.al .v { font-size: 13px; line-height: 20px; color: var(--muted); }
+.al .a { justify-self: end; }
+.al > li.done .n, .al > li.done .d { color: var(--muted); font-weight: 400; }
+.al-none { margin-top: 8px; padding: 12px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+.sec { margin-top: 40px; }
+
+/* 아래 붙는 저장 줄 */
+.savebar { position: sticky; bottom: 0; z-index: 4; margin-top: 16px; background: var(--surface); border-top: 1px solid var(--line); }
+.savebar-in { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 12px 0; }
+.savebar .s { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.savebar .s b { font-weight: 600; color: var(--ink); }
+
+/* 세기 위 줄 */
+.cnt-top { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 16px; margin-top: 16px; }
+.cnt-top .field { width: 200px; }
+
+/* 입고 확인 */
+.inb { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 24px; align-items: start; min-width: 960px; margin-top: 16px; }
+.inb.nophoto { min-width: 720px; }
+.inb.nophoto { grid-template-columns: minmax(0, 1fr); }
+/* 작은 PC 화면(1200px 아래): 사진을 표 위로, 표가 넓게 */
+@media (max-width: 1199.98px) {
+  .inb { grid-template-columns: minmax(0, 1fr); }
+  .inb > figure { width: 300px; }
+}
+.inb .tb .unitin .inp { min-width: 64px; }
+.photo-c { font-size: 12px; line-height: 16px; color: var(--muted); margin-top: 8px; display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.inv { position: relative; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--canvas); padding: 16px 14px; font-size: 11px; line-height: 15px; color: var(--ink-2); }
+.inv .chip { position: absolute; top: 8px; left: 8px; }
+.inv-t { margin-top: 18px; text-align: center; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: .3em; color: var(--ink); }
+.inv-m { display: flex; justify-content: space-between; margin-top: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line-strong); }
+.inv table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+.inv th, .inv td { padding: 3px 2px; border-bottom: 1px solid var(--line); text-align: left; font-weight: 400; }
+.inv th { color: var(--muted); }
+.inv td.num, .inv th.num { text-align: right; }
+.inv-s { margin-top: 8px; text-align: right; font-weight: 600; color: var(--ink); }
+.inv.big { padding: 28px 32px; font-size: 14px; line-height: 22px; }
+.inv.big .inv-t { font-size: 22px; line-height: 30px; margin-top: 12px; }
+.inv.big th, .inv.big td { padding: 6px 4px; }
+.inb-f { display: grid; grid-template-columns: 200px minmax(0, 320px); gap: 16px; }
+.ln-n { width: 1%; color: var(--muted); }
+.ln-src { color: var(--ink-2); max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.ln-pick { min-width: 220px; }
+.ln-pick .chips { display: flex; margin-top: 4px; }
+.ln-pick select.inp { display: block; }
+.tb td.top { vertical-align: top; padding-top: 6px; padding-bottom: 6px; height: auto; }
+.tb td.top.t2 { padding-top: 14px; }
+.newf { display: grid; grid-template-columns: 160px 96px; gap: 8px; margin-top: 6px; }
+.newf .label { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--ink-2); }
+.notes { display: grid; gap: 4px; margin-top: 12px; }
+.notes li { display: flex; gap: 6px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.notes li .ic { color: var(--muted); margin-top: 0; }
+.sum-r { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; padding-left: 20px; }
+.sum-r .t { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.sum-r .t b { font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); margin-left: 4px; }
+
+/* 엑셀 */
+.file { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 16px; padding: 12px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.file b { font-weight: 600; color: var(--ink); }
+.file .ic { color: var(--ink-2); }
+.map { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 24px; margin-top: 12px; }
+.map .label .ai { font-weight: 400; color: var(--muted); font-size: 12px; }
+.h3 { font-size: 13px; line-height: 20px; font-weight: 600; }
+.h3 .s { margin-left: 8px; font-weight: 400; color: var(--muted); }
+.catmap { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 24px; margin-top: 12px; }
+.catmap > div { display: grid; grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1.2fr); align-items: center; gap: 8px; }
+.catmap .from { font-size: 13px; line-height: 20px; }
+.catmap .from .c { color: var(--muted); margin-left: 4px; }
+.catmap .arw { color: var(--muted); }
+.unused { margin-top: 12px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.chip-positive { background: var(--positive-soft); color: var(--positive); }
+.pv-h { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.seg { display: inline-flex; flex: none; max-width: 100%; overflow-x: auto; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); overflow: hidden; }
+.ui .seg button { height: 30px; padding: 0 12px; font-size: 13px; line-height: 20px; font-weight: 500; color: var(--ink-2); white-space: nowrap; }
+.ui .seg button + button { border-left: 1px solid var(--line-strong); }
+.ui .seg button:hover { background: var(--canvas); }
+.ui .seg button[aria-pressed=true] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.tb .chg { font-weight: 600; color: var(--ink); }
+.tb td.note { white-space: normal; min-width: 220px; color: var(--ink-2); }
+.tb td .mu2 { color: var(--muted); }
+.ferr { display: inline-flex; align-items: flex-start; gap: 4px; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--negative); }
+.ferr .ic { margin-top: 1px; }
+.tpl-h { margin-top: 8px; text-align: right; }
+
+/* 달별 */
+.mon { display: inline-flex; align-items: center; gap: 4px; }
+.mon-l { min-width: 112px; text-align: center; font-size: 16px; line-height: 24px; font-weight: 600; }
+.kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 840px; margin-top: 16px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.kpis > div { min-width: 0; padding: 16px 20px; }
+.kpis > div:first-child { padding-left: 0; }
+.kpis > div + div { border-left: 1px solid var(--line); }
+.k-n { font-size: 13px; line-height: 20px; color: var(--muted); }
+.k-v { margin-top: 4px; font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: var(--ls-heading); }
+.k-v small { margin-left: 2px; font-size: 16px; line-height: 24px; font-weight: 500; letter-spacing: 0; color: var(--ink-2); }
+.k-s { margin-top: 4px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.dl { display: inline-flex; align-items: center; gap: 2px; color: var(--ink-2); }
+.dl.z { color: var(--muted); }
+.grid2 { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 32px; align-items: start; }
+/* 작은 PC 화면(1280px 아래): 두 표를 위아래로 */
+@media (max-width: 1279.98px) { .grid2 { grid-template-columns: minmax(0, 1fr); } .grid2 > :first-child { max-width: 640px; } }
+
+/* 오른쪽 판 (예약 탭 AddPanel 모양) · 사진 창 */
+.scrim { position: fixed; inset: 0; z-index: 40; background: rgb(17 24 39 / 0.2); }
+.scrim.dk { background: rgb(17 24 39 / 0.36); }
+.sheet { position: fixed; top: 0; right: 0; bottom: 0; z-index: 50; display: flex; flex-direction: column; width: 460px; max-width: 100%; border-left: 1px solid var(--line-strong); background: var(--surface); box-shadow: var(--elev-float); }
+.sheet-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px 8px 20px; border-bottom: 1px solid var(--line); }
+.sheet-h h2 { font-size: 16px; line-height: 24px; font-weight: 600; }
+.sheet-b { flex: 1; overflow-y: auto; display: grid; align-content: start; gap: 20px; padding: 16px 20px 20px; }
+.sheet-f { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.alias { border-top: 1px solid var(--line); }
+.alias li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; border-bottom: 1px solid var(--line); font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.alias li .v { color: var(--muted); margin-left: 6px; }
+.catl { display: grid; gap: 6px; }
+.catl li { display: grid; grid-template-columns: 22px minmax(0, 1fr) 56px auto; align-items: center; gap: 8px; }
+.catl .no { display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--canvas); font-size: 12px; font-weight: 600; color: var(--muted); }
+.catl .cnt { font-size: 12px; line-height: 16px; color: var(--muted); text-align: right; }
+.catl .acts { display: inline-flex; gap: 4px; }
+.dlg { position: fixed; top: 50%; left: 50%; z-index: 50; width: 640px; max-width: calc(100% - 32px); max-height: calc(100% - 48px); transform: translate(-50%, -50%); display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-float); background: var(--surface); box-shadow: var(--elev-float); }
+.dlg-b { overflow-y: auto; padding: 16px 20px 20px; }
+/* 비트 코드에서 고르기 */
+.dlg.bit { height: min(720px, calc(100% - 48px)); }
+.dlg.bit.emp { height: auto; }
+.bit-top { padding: 16px 20px 12px; border-bottom: 1px solid var(--line); }
+.bit-top .help { margin-top: 6px; }
+.srch { position: relative; }
+.srch .ic { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+.ui .srch .inp { padding-left: 36px; }
+.bit-l { flex: 1; min-height: 0; overflow-y: auto; }
+.bit-l .tb th { position: sticky; top: 0; z-index: 1; background: var(--surface); }
+.bit-l .tb td:first-child, .bit-l .tb th:first-child { width: 36px; padding-right: 0; }
+.bit-l .tb tr.on td { color: var(--ink-2); }
+.bit-l .cd { color: var(--muted); font-variant-numeric: tabular-nums; }
+.bit-l label { cursor: pointer; }
+.bit-l .chip { margin-left: 6px; }
+.bit-none { padding: 24px 20px; color: var(--muted); font-size: 13px; line-height: 20px; }
+.bit-emp { flex: 1; display: grid; place-items: center; padding: 48px 32px; text-align: center; color: var(--ink-2); }
+.bit-f { justify-content: space-between; }
+.bit-f .cat { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.bit-f .cat select { width: 160px; }
+.bit-f .r { display: inline-flex; gap: 8px; }
+.ro .cd { color: var(--muted); }
+.ro .sp { flex: 1; }
+
+/* 세기 종이 (A4) */
+.paperwrap { margin-top: 16px; padding: 24px; background: var(--canvas); border-radius: var(--r-control); overflow: hidden; }
+.a4 { width: 794px; min-height: 1123px; margin: 0 auto; padding: 56px 60px; background: #fff; border: 1px solid var(--line); color: #111; font-size: 12px; line-height: 16px; transform-origin: top left; }
+.a4-h { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; padding-bottom: 8px; border-bottom: 1.5px solid #111; }
+.a4-t { font-size: 20px; line-height: 28px; font-weight: 600; }
+.a4-blank { font-size: 13px; line-height: 20px; }
+.a4-blank span { display: inline-block; width: 44px; border-bottom: 1px solid #111; }
+.a4-blank span.w { width: 96px; }
+.a4-s { margin-top: 6px; font-size: 11px; line-height: 16px; color: #444; }
+.a4 table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.a4 th { height: 26px; padding: 0 6px; border-bottom: 1px solid #111; text-align: left; font-weight: 500; font-size: 11px; color: #444; }
+.a4 td { height: 30px; padding: 0 6px; border-bottom: 1px solid #bbb; }
+.a4 tr.g td { height: 28px; padding-top: 8px; border-bottom: 1px solid #111; font-weight: 600; vertical-align: bottom; }
+.a4 .num { text-align: right; }
+.a4 .box { display: inline-block; width: 64px; height: 22px; border: 1px solid #111; vertical-align: middle; }
+.a4 .box.d { width: 112px; position: relative; }
+.a4 .box.d::after { content: '.        .'; position: absolute; inset: 0; display: grid; place-items: center; color: #999; white-space: pre; font-size: 12px; }
+.a4 .cur { font-size: 11px; color: #444; }
+.a4-f { margin-top: 16px; display: flex; justify-content: space-between; font-size: 11px; color: #444; }
+
+/* 대시보드 작은 칸 */
+@media (min-width: 1024px) {
+  .dsh { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 24px; align-items: start; }
+  .dsh-l { grid-column: 1 / span 7; }
+  .dsh-r { grid-column: 9 / span 4; }
+}
+@media (max-width: 1023.98px) { .dsh-r { margin-top: 24px; } }
+.dline { font-size: 13px; line-height: 20px; color: var(--muted); }
+.dline b { font-weight: 600; color: var(--ink); }
+.dinv { border-top: 1px solid var(--line-strong); padding-top: 16px; }
+.dinv-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.dinv-h h2 { font-size: 16px; line-height: 24px; font-weight: 600; }
+.dinv-n { display: grid; grid-template-columns: 1fr 1fr; margin-top: 12px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.dinv-n > div { padding: 10px 0; }
+.dinv-n > div + div { padding-left: 16px; border-left: 1px solid var(--line); }
+.dinv-n .k { font-size: 13px; line-height: 20px; color: var(--muted); }
+.dinv-n .v { font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: var(--ls-heading); }
+.dinv-n .v small { margin-left: 2px; font-size: 14px; font-weight: 500; color: var(--ink-2); letter-spacing: 0; }
+.dinv ul { margin-top: 4px; }
+.dinv li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; line-height: 20px; }
+.dinv li .d { color: var(--ink-2); white-space: nowrap; }
+.dinv .more { margin-top: 8px; font-size: 13px; line-height: 20px; color: var(--muted); }
+
+/* 빈 상태 */
+.empty { max-width: 40em; }
+.empty h2 { font-size: 16px; line-height: 24px; font-weight: 600; }
+.empty p { margin-top: 8px; color: var(--ink-2); }
+.empty .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); min-width: 720px; max-width: 960px; margin-top: 20px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.steps li { position: relative; min-width: 0; padding: 16px 24px 20px; }
+.steps li:first-child { padding-left: 0; }
+.steps li + li { border-left: 1px solid var(--line); }
+.st-n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: var(--r-control); background: var(--accent-soft); color: var(--accent-strong); font-size: 12px; font-weight: 600; }
+.st-t { margin-top: 8px; font-size: 16px; line-height: 24px; font-weight: 600; }
+.ui .steps .btn { margin-top: 12px; }
+.tb tr.grp th.r9 { color: var(--ink-2); font-weight: 500; }
+.st-d { margin-top: 2px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.empty-2 { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--line); max-width: 40em; }
+.empty-2 .h { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--muted); }
+.empty-2 p { margin-top: 4px; color: var(--ink-2); }
+
+/* ---------- 좁은 폭: 새 화면은 폰 모양이 없다(PC 그대로, 넓은 것은 제 상자 안에서 옆으로 밀림).
+   아래는 이미 있는 앱 틀(AppShell 위쪽 띠·탭 줄·본문 여백)의 768px 미만 모양을 따라 그린 것뿐 ---------- */
+@media (max-width: 767.98px) {
+  .wa { padding: 0 16px; }
+  .a-hdr .wa { height: 48px; padding-right: 2px; gap: 8px; }
+  .brand { gap: 8px; }
+  .clinic { font-size: 14px; line-height: 22px; }
+  .clock, .ui .acct { display: none; }
+  .ui .iconbtn { display: grid; }
+  .a-tabs .wa { padding-right: 0; }
+  .ui .tab.more { margin-right: 0; border-left: 1px solid var(--line); }
+  .main { padding: 16px 0 32px; }
+}
+
+/* 인쇄: 종이만 */
+@media print {
+  @page { size: A4 portrait; margin: 0; }
+  body * { visibility: hidden; }
+  .a4, .a4 * { visibility: visible; }
+  .a4 { position: absolute; left: 0; top: 0; border: 0; zoom: 1 !important; }
+}
+</style>
+</head>
+<body>
+<div class="doc">
+  <div class="doc-in">
+    <div class="doc-t">
+      <p class="doc-h">재고 탭 화면 시안</p>
+      <p class="doc-s">물품·숫자·거래처·사진은 모두 지어낸 예시예요. 오늘 = 2026년 11월 21일(토). 원장 계정만 이 탭이 보여요.</p>
+    </div>
+    <div class="picks" id="picks" role="group" aria-label="볼 화면 고르기"></div>
+    <p class="cap" id="cap"></p>
+  </div>
+</div>
+<div class="ui" id="app"></div>
+
+<script>
+// ---------- 아이콘 (components/common/Icon.tsx 모양, grip만 새것) ----------
+const SH = {
+  upload: '<path d="M8 10.25V2.75M5 5.5l3-2.75 3 2.75M2.75 10.5v2.75h10.5V10.5"/>',
+  chev: '<path d="m4.75 6.25 3.25 3.25 3.25-3.25"/>',
+  check: '<path d="m3.5 8.25 2.9 2.9 6.1-6.65"/>',
+  x: '<path d="m4.75 4.75 6.5 6.5m0-6.5-6.5 6.5"/>',
+  arrow: '<path d="M2.75 8h10.5M9.25 4l4 4-4 4"/>',
+  arrowDown: '<path d="M8 2.75v10.5M4 9.25l4 4 4-4"/>',
+  cal: '<rect x="2.25" y="3.25" width="11.5" height="10.5" rx="1"/><path d="M2.25 6.5h11.5M5.5 1.75v3M10.5 1.75v3"/>',
+  doc: '<path d="M4 1.75h5.25L12 4.5v9.75H4z"/><path d="M9.25 1.75V4.5H12M6 8h4M6 10.75h4"/>',
+  user: '<circle cx="8" cy="5.5" r="2.75"/><path d="M2.75 14c.6-2.5 2.7-3.9 5.25-3.9s4.65 1.4 5.25 3.9"/>',
+  info: '<circle cx="8" cy="8" r="6"/><path d="M8 7.33v3.67"/><path d="M8 5h.01"/>',
+  alert: '<circle cx="8" cy="8" r="6"/><path d="M8 4.67v3.66"/><path d="M8 11h.01"/>',
+  up: '<path d="m4.75 9.75 3.25-3.25 3.25 3.25"/>',
+  search: '<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/>',
+  grip: '<path d="M6 4h.01M10 4h.01M6 8h.01M10 8h.01M6 12h.01M10 12h.01" stroke-width="2.25" stroke-linecap="round"/>',
+};
+const ic = (n, s = 16, cls = '') => `<svg class="ic ${cls}" aria-hidden="true" width="${s}" height="${s}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">${SH[n]}</svg>`;
+const LOGO = '<svg class="ic" aria-hidden="true" width="24" height="24" viewBox="0 0 30 30"><rect x="3" y="3" width="24" height="24" rx="6" fill="none" stroke="#14C8BA" stroke-width="2.4"/><path d="M13.5 8h3a1 1 0 0 1 1 1v3.5H21a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3.5V21a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3.5H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3.5V9a1 1 0 0 1 1-1z" fill="#6D5DF5"/></svg>';
+
+// ---------- 날짜·숫자 ----------
+const TODAY = '2026-11-21';
+const WD = ['일', '월', '화', '수', '목', '금', '토'];
+const dt = (d) => new Date(d + 'T00:00:00');
+const md = (d) => `${+d.slice(5, 7)}월 ${+d.slice(8, 10)}일`;
+const mdw = (d) => `${md(d)}(${WD[dt(d).getDay()]})`;
+const sl = (d) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
+const days = (a, b) => Math.round((dt(b) - dt(a)) / 86400000);
+const won = (n) => n.toLocaleString('ko-KR');
+const MINUS = '−';
+function delta(a, b, unit) {
+  // a = 이번, b = 지난. 색 없이 ink-2 화살표 + 글자(좋고 나쁨이 없어서)
+  if (b == null || b === 0) return a ? '<span class="dl z">새로 생김</span>' : '<span class="dl z">–</span>';
+  const d = a - b;
+  if (d === 0) return '<span class="dl z">변화 없음</span>';
+  const pct = Math.floor(Math.abs(d) / b * 1000 + 1e-9) / 10;
+  const sign = d > 0 ? '+' : MINUS;
+  return `<span class="dl">${ic(d > 0 ? 'up' : 'chev', 14)}${sign}${won(Math.abs(d))}${unit} (${sign}${pct.toFixed(1)}%)<span class="sr">${d > 0 ? '늘어남' : '줄어듦'}</span></span>`;
+}
+
+// ---------- 예시 자료 ----------
+let CATS = [
+  { id: 'med', name: '약품' },
+  { id: 'sup', name: '치료 소모품' },
+  { id: 'ort', name: '보조기·깁스' },
+  { id: 'off', name: '사무·생활' },
+];
+// qty = 지금 수량(지난 세기 + 그 뒤 들어옴), last = 11/14 세기 수량, inS = 그 뒤 들어옴, cnt = 2 세기 칸에 적은 값('' = 비움)
+let ITEMS = [
+  { id: 1, cat: 'med', name: '히알루론산 주사 2mL', unit: '개', qty: 4, last: 4, inS: 0, min: 10, exp: '2027-03-31', vendor: '한빛약품', price: 18500, cnt: '3' },
+  { id: 2, cat: 'med', name: '리도카인 주사 2% 20mL', unit: '병', qty: 26, last: 26, inS: 0, min: 10, exp: '2026-12-05', vendor: '한빛약품', price: 1400, cnt: '24' },
+  { id: 3, cat: 'med', name: '트리암시놀론 주사 40mg', unit: '병', qty: 15, last: 5, inS: 10, min: 5, exp: '2027-06-30', vendor: '한빛약품', price: 2900, cnt: '13' },
+  { id: 4, cat: 'med', name: '케토프로펜 패치', unit: '봉', qty: 38, last: 18, inS: 20, min: 20, exp: '2027-01-31', vendor: '한빛약품', price: 700, cnt: '31' },
+  { id: 5, cat: 'sup', name: '주사기 3cc', unit: '개', qty: 40, last: 40, inS: 0, min: 100, exp: '', vendor: '메디팜', price: 95, cnt: '22' },
+  { id: 6, cat: 'sup', name: '주사침 25G', unit: '개', qty: 140, last: 40, inS: 100, min: 100, exp: '2028-09-30', vendor: '메디팜', price: 60, cnt: '118' },
+  { id: 7, cat: 'sup', name: '알코올 솜', unit: '통', qty: 3, last: 3, inS: 0, min: 4, exp: '2027-08-31', vendor: '메디팜', price: 3000, cnt: '' },
+  { id: 8, cat: 'sup', name: '멸균 거즈', unit: '봉', qty: 22, last: 12, inS: 10, min: 10, exp: '2028-02-28', vendor: '메디팜', price: 2800, cnt: '19' },
+  { id: 9, cat: 'sup', name: '일회용 장갑 M', unit: '갑', qty: 9, last: 4, inS: 5, min: 5, exp: '', vendor: '메디팜', price: 8900, cnt: '8' },
+  { id: 10, cat: 'sup', name: '초음파 젤', unit: '통', qty: 5, last: 5, inS: 0, min: 3, exp: '2026-11-18', vendor: '메디팜', price: 6800, cnt: '4' },
+  { id: 11, cat: 'sup', name: '전기치료 패드', unit: '개', qty: 60, last: 60, inS: 0, min: 40, exp: '', vendor: '정형메디칼', price: 1220, cnt: '44' },
+  { id: 20, cat: 'sup', name: '주사기 5cc', unit: '개', qty: 0, last: 0, inS: 0, min: null, exp: '', vendor: '메디팜', price: 110, cnt: '', hidden: true },
+  { id: 12, cat: 'ort', name: '반깁스 재료 4인치', unit: '개', qty: 8, last: 8, inS: 0, min: 10, exp: '', vendor: '정형메디칼', price: 5500, cnt: '18' },
+  { id: 13, cat: 'ort', name: '손목 보조기 M', unit: '개', qty: 6, last: 6, inS: 0, min: 3, exp: '', vendor: '정형메디칼', price: 12000, cnt: '' },
+  { id: 14, cat: 'ort', name: '압박 붕대 3인치', unit: '개', qty: 30, last: 30, inS: 0, min: 20, exp: '', vendor: '정형메디칼', price: 1300, cnt: '26' },
+  { id: 15, cat: 'ort', name: '무릎 보조기 L', unit: '개', qty: 2, last: 2, inS: 0, min: null, exp: '', vendor: '정형메디칼', price: null, cnt: '' },
+  { id: 16, cat: 'off', name: 'A4 용지', unit: '박스', qty: 4, last: 4, inS: 0, min: 2, exp: '', vendor: '오피스마트', price: 24000, cnt: '3' },
+  { id: 17, cat: 'off', name: '영수증 용지', unit: '롤', qty: 12, last: 12, inS: 0, min: 6, exp: '', vendor: '오피스마트', price: 900, cnt: '' },
+  { id: 18, cat: 'off', name: '핸드타월', unit: '박스', qty: 7, last: 7, inS: 0, min: null, exp: '', vendor: '', price: null, cnt: '5' },
+  { id: 19, cat: 'off', name: '손 소독제 500mL', unit: '통', qty: 5, last: 5, inS: 0, min: 3, exp: '2027-05-31', vendor: '오피스마트', price: 4500, cnt: '' },
+];
+const ordered = { 5: '11/20' }; // 물품 id → [주문함] 누른 날
+const LAST_COUNT = '2026-11-14';
+let showHidden = new URLSearchParams(location.search).get('h') === '1';
+let openRec = { 0: true };
+
+// 들어온 기록 (4에서 저장한 11/21 포함)
+const RECS = [
+  { date: '2026-11-21', vendor: '메디팜', photo: '명세서_1121.jpg', lines: [['주사기 3cc', 200, '개', 95], ['알코올 솜', 5, '통', 3200], ['멸균 거즈', 10, '봉', 2800], ['일회용 장갑 M', 4, '갑', 8900], ['테이핑 테이프 5cm', 12, '개', 4500]] },
+  { date: '2026-11-20', vendor: '한빛약품', photo: '영수증_1120.jpg', lines: [['트리암시놀론 주사 40mg', 10, '병', 2900], ['케토프로펜 패치', 20, '봉', 700]] },
+  { date: '2026-11-18', vendor: '메디팜', photo: '명세서_1118.jpg', lines: [['주사침 25G', 100, '개', 60], ['멸균 거즈', 10, '봉', 2800], ['일회용 장갑 M', 5, '갑', 8900]] },
+  { date: '2026-11-12', vendor: '오피스마트', photo: null, lines: [['A4 용지', 2, '박스', 24000], ['영수증 용지', 6, '롤', 900]] },
+  { date: '2026-11-06', vendor: '정형메디칼', photo: '주문화면_1106.png', lines: [['압박 붕대 3인치', 20, '개', 1300], ['손목 보조기 M', 3, '개', 12000]] },
+];
+
+// 4 입고 확인: AI가 읽은 줄
+const READ = {
+  date: '2026-11-21', vendor: '메디팜',
+  lines: [
+    { src: '일회용주사기 3ml', pick: 5, tag: ['n', '기억한 이름'], qty: 200, price: 95 },
+    { src: '알콜솜 100매', pick: 7, qty: 5, price: 3200, priceNote: '목록 단가 3,000원 → 3,200원으로 바뀌어요' },
+    { src: '멸균거즈 4x4', pick: 8, qty: 10, price: 2800 },
+    { src: '니트릴장갑 M', pick: 9, tag: ['w', '확인해 주세요'], qty: 4, price: 8900 },
+    { src: '테이핑 테이프 5cm', pick: 'new', tag: ['a', '새 물품'], qty: 12, price: 4500, newCat: 'sup', newUnit: '개' },
+  ],
+};
+
+// 7 달별: 물품별 [10월 쓴 양, 9월 쓴 양, 10월 구입비, 9월 구입비]
+const MON = {
+  1: [34, 30, 555000, 462500], 2: [18, 21, 28000, 42000], 3: [9, 11, 29000, 29000], 4: [16, 14, 0, 7000],
+  5: [520, 560, 57000, 57000], 6: [430, 470, 30000, 36000], 7: [7, 8, 24000, 24000], 8: [18, 17, 56000, 56000],
+  9: [11, 12, 89000, 106800], 10: [5, 6, 40800, 40800], 11: [96, 88, 122000, 109800],
+  12: [22, 19, 110000, 88000], 13: [4, 2, 36000, 24000], 14: [28, 24, 26000, 26000], 15: [1, null, 0, 0],
+  16: [2, 3, 48000, 48000], 17: [8, 7, 5400, 5400], 18: [6, 6, 0, 0], 19: [3, 2, 13500, 4500],
+};
+
+// ---------- 계산 ----------
+const catOf = (id) => CATS.find((c) => c.id === id);
+const visible = () => ITEMS.filter((it) => showHidden || !it.hidden);
+const groups = (list) => CATS.map((c) => ({ cat: c, items: list.filter((it) => it.cat === c.id) })).filter((g) => g.items.length);
+const isLow = (it) => !it.hidden && it.min != null && it.qty < it.min;
+const soonDays = (it) => (it.exp && !it.hidden ? days(TODAY, it.exp) : null);
+const isSoon = (it) => { const d = soonDays(it); return d != null && d <= 30; };
+// 기한 지남(오늘보다 앞) = '기한 가까움' 알림에 들어가고 칩·글자만 다르다
+const expChip = (it) => (soonDays(it) < 0 ? '기한 지남' : '기한 가까움');
+const expLeft = (it) => { const d = soonDays(it); return d < 0 ? `${-d}일 지났어요` : d === 0 ? '오늘까지' : `${d}일 남음`; };
+function alerts() {
+  const out = [];
+  for (const it of ITEMS) if (isLow(it)) out.push({ it, k: 'low' });
+  for (const it of ITEMS) if (isSoon(it)) out.push({ it, k: 'exp' });
+  return out;
+}
+function statusChips(it) {
+  if (it.hidden) return '<span class="chip chip-n">안 씀</span>';
+  const c = [];
+  // [주문함]은 '주문하세요'에만 있다. 기한 칩은 주문함과 상관없이 그대로
+  if (isLow(it)) c.push(ordered[it.id] ? `<span class="chip chip-n">${ic('check', 12)}주문함 ${ordered[it.id]}</span>` : '<span class="chip chip-w">주문하세요</span>');
+  if (isSoon(it)) c.push(`<span class="chip chip-w">${expChip(it)}</span>`);
+  return c.length ? `<span class="chips">${c.join('')}</span>` : '';
+}
+const qtyTxt = (it) => `${won(it.qty)}<span class="u">${it.unit}</span>`;
+const minTxt = (it) => (it.min == null ? '<span class="na">–</span>' : won(it.min));
+const expTxt = (it) => (it.exp ? it.exp : '<span class="na">–</span>');
+const priceTxt = (p) => (p == null ? '<span class="na">–</span>' : `${won(p)}원`);
+const recSum = (r) => r.lines.reduce((s, l) => s + l[1] * l[3], 0);
+
+// ---------- 상태 ----------
+const STATES = [
+  ['list', '1 목록(기본)'], ['order', '1-2 순서 바꾸기'], ['count', '2 세기 입력'], ['print', '3 세기 종이 인쇄'],
+  ['in-check', '4 입고 확인'], ['in-manual', '4-2 사진 없이 적기'], ['in-list', '5 들어온 기록'], ['in-photo', '5-2 사진 보기'],
+  ['excel', '6 엑셀: 양식 파일'], ['excel-own', '6-2 엑셀: 갖고 있던 엑셀'], ['month', '7 달별'], ['edit', '8 물품 고치기'], ['cats', '8-2 분류 고치기'], ['bit', '8-3 비트 코드에서 고르기'], ['bit-empty', '8-4 비트 코드 없음'],
+  ['dash', '9 대시보드 작은 칸'], ['empty', '10 빈 상태'],
+];
+const CAPS = {
+  list: '<b>1 재고 탭 기본</b> — 맨 위 \'챙길 것\'(주문하세요·기한 가까움) 다음에 분류별 물품 목록. [주문함]을 눌러 봐요.',
+  order: '<b>1-2 순서 바꾸기</b> — 줄을 끌어서 옮기거나 ▲▼로 옮겨요. 분류 안에서만 옮겨지고, 세기 표·세기 종이가 이 차례를 따라요.',
+  count: '<b>2 세기 입력</b> — 종이에 적어 온 숫자를 죽 넣고 [저장]. 비운 칸은 지난 수량 그대로예요. \'반깁스 재료\' 줄이 경고 예시예요.',
+  print: '<b>3 세기 종이 인쇄</b> — A4 한 장, 세기 표와 같은 차례. 센 수량·가장 빠른 기한 칸이 비어서 나와요.',
+  'in-check': '<b>4 입고 확인</b> — 명세서 사진을 올리면 AI가 날짜·거래처·줄을 읽고, 줄마다 목록 물품을 골라 줘요(없으면 \'새 물품\'). 고친 뒤 [저장].',
+  'in-manual': '<b>4-2 사진 없이 적기</b> — 같은 확인 화면에서 직접 적어요.',
+  'in-list': '<b>5 들어온 기록</b> — 4에서 저장한 뒤의 모습. 사진이 있는 기록은 [사진 보기].',
+  'in-photo': '<b>5-2 사진 보기</b> — 저장해 둔 사진을 크게 봐요.',
+  excel: '<b>6 엑셀 올리기: 양식 파일</b> — [양식 받기]로 받은 파일(지금 목록이 채워져 있음)을 고쳐 올린 모습. 칸 맞추기 없이 바로 미리 보기, 줄마다 새 물품·고침·그대로·건너뜀.',
+  'excel-own': '<b>6-2 엑셀 올리기: 갖고 있던 엑셀</b> — 양식이 아닌 엑셀이면 AI가 칸을 맞춰요. 맞춘 칸·분류를 고를 수 있고, 그 아래 미리 보기.',
+  month: '<b>7 달별</b> — 달을 고르면 물품별 쓴 양·구입비, 분류별 합계, 지난달 비교.',
+  edit: '<b>8 물품 고치기</b> — 목록에서 [고치기]를 누르면 오른쪽에 열려요. [안 씀]으로 숨겨도 기록은 남아요.',
+  cats: '<b>8-2 분류 고치기</b> — 이름 바꾸기·더하기·차례 바꾸기. 물품이 있는 분류는 못 지워요.',
+  bit: '<b>8-3 비트 코드에서 고르기</b> — 통계에서 불러온 비트 자료의 약·재료 코드를 많이 쓴 차례로 보여 줘요. 골라서 한 번에 물품으로 더해요. 이미 이어진 코드는 \'이미 있음\'.',
+  'bit-empty': '<b>8-4 비트 코드 없음</b> — 통계에서 비트 자료를 아직 안 불러왔을 때.',
+  dash: '<b>9 대시보드 작은 칸</b> — 챙길 것이 있을 때만 브리핑 오른쪽 칸에 보여요.',
+  empty: '<b>10 빈 상태</b> — 물품이 하나도 없을 때. 양식 받기 → 채우기 → 엑셀 올리기로 안내해요.',
+};
+const TOOL_OF = { list: 'list', order: 'list', excel: 'list', 'excel-own': 'list', edit: 'list', cats: 'list', bit: 'list', 'bit-empty': 'list', empty: 'list', count: 'count', print: 'count', 'in-check': 'in', 'in-manual': 'in', 'in-list': 'in', 'in-photo': 'in', month: 'month' };
+let state = new URLSearchParams(location.search).get('s') || 'list';
+if (!CAPS[state]) state = 'list';
+
+function go(s) {
+  state = s;
+  const u = new URL(location.href); u.searchParams.set('s', s); history.replaceState(null, '', u);
+  render(); window.scrollTo(0, 0);
+}
+
+// ---------- 앱 틀 ----------
+function header() {
+  return `<header class="a-hdr"><div class="wa">
+    <div class="brand">${LOGO}<span class="clinic">튼튼정형외과의원</span></div>
+    <div class="hdr-r"><span class="clock">2026년 11월 21일 (토) 10:00 (KST)</span>
+      <button type="button" class="acct">${ic('user')}owner@example.com${ic('chev')}</button>
+      <button type="button" class="iconbtn" aria-label="계정 owner@example.com">${ic('user', 20)}</button></div>
+  </div></header>`;
+}
+function tabs(cur) {
+  const T = ['대시보드', '통계', '청구', '환자', '업무일지', '수납일지', '예약'];
+  return `<nav class="a-tabs" aria-label="메뉴"><div class="wa"><div class="strip">
+    ${T.map((t) => `<a class="tab" href="#" ${t === '대시보드' && cur === 'dash' ? 'aria-current="page"' : ''} data-go="${t === '대시보드' ? 'dash' : ''}">${t}</a>`).join('')}
+    </div><a class="tab more" href="#" data-go="list" ${cur === 'inv' ? 'aria-current="page"' : ''}>${cur === 'inv' ? '더보기 · 재고' : '더보기'}${ic('chev')}</a></div></nav>`;
+}
+function toolRow(cur) {
+  const T = [['list', '목록', 'doc'], ['count', '세기', 'check'], ['in', '들어온 기록', 'arrowDown'], ['month', '달별', 'cal']];
+  const to = { list: 'list', count: 'count', in: 'in-list', month: 'month' };
+  return `<nav class="tools" aria-label="재고 도구">${T.map(([k, l, i]) => `<a class="tool" href="#" data-go="${to[k]}" ${k === cur ? 'aria-current="page"' : ''}>${ic(i)}${l}</a>`).join('')}</nav>`;
+}
+
+// ---------- 1 목록 ----------
+function alertBlock() {
+  const all = alerts();
+  const act = all.filter((a) => a.k === 'exp' || !ordered[a.it.id]);
+  const done = all.filter((a) => a.k === 'low' && ordered[a.it.id]);
+  const nLow = act.filter((a) => a.k === 'low').length, nExp = act.filter((a) => a.k === 'exp').length;
+  const row = (a, isDone) => {
+    const it = a.it;
+    const chip = isDone ? `<span class="chip chip-n">${ic('check', 12)}주문함 ${ordered[it.id]}</span>` : `<span class="chip chip-w">${a.k === 'low' ? '주문하세요' : expChip(it)}</span>`;
+    const d = a.k === 'low' ? `남은 ${won(it.qty)}${it.unit} · 최소 ${won(it.min)}` : `기한 ${md(it.exp)} · ${expLeft(it)} · 남은 ${won(it.qty)}${it.unit}`;
+    const btn = a.k === 'exp' ? ''
+      : isDone ? `<button type="button" class="btn btn-gh" data-unorder="${it.id}" aria-label="${it.name} 주문함 표시 취소">주문 취소</button>`
+      : `<button type="button" class="btn btn-sec btn-sm" data-order="${it.id}" aria-label="${it.name} 주문함">${ic('check', 14)}주문함</button>`;
+    return `<li class="${isDone ? 'done' : ''}"><span class="c">${chip}</span><span class="n">${it.name}</span><span class="d">${d}</span><span class="v">${it.vendor || ''}</span><span class="a">${btn}</span></li>`;
+  };
+  if (!act.length && !done.length) return `<section aria-labelledby="al-h"><div class="al-h"><h2 id="al-h">챙길 것</h2></div><p class="al-none">챙길 것이 없어요.</p></section>`;
+  return `<section aria-labelledby="al-h">
+    <div class="al-h"><h2 id="al-h">챙길 것</h2>
+      ${nLow ? `<span class="chip chip-w">주문하세요 ${nLow}</span>` : ''}${nExp ? `<span class="chip chip-w">기한 가까움 ${nExp}</span>` : ''}
+      <span class="s">${done.length ? `주문함 ${done.length}개는 들어오면 저절로 풀려요` : '기한 가까움 = 30일 안'}</span></div>
+    <div class="scroll-x"><ul class="al">${act.map((a) => row(a, false)).join('')}${done.map((a) => row(a, true)).join('')}</ul></div>
+  </section>`;
+}
+function listHead(order) {
+  if (order) return `<div class="sh"><div><h2 class="sh-t">순서 바꾸기</h2><p class="sh-d">줄 앞 ${ic('grip', 14).replace('class="ic ', 'style="display:inline;vertical-align:-2px" class="ic ')}를 끌거나 ▲▼로 옮겨요. 분류 안에서만 옮겨져요. 분류 차례는 [분류 고치기]에서 바꿔요.</p></div>
+    <div class="sh-a"><button type="button" class="btn btn-pri" data-go="list">${ic('check')}다 됐어요</button></div></div>`;
+  const n = ITEMS.filter((i) => !i.hidden).length;
+  return `<div class="sh"><div><h2 class="sh-t">물품 목록</h2><p class="sh-d">${n}개 · 마지막 세기 ${mdw(LAST_COUNT)} · 지금 수량 = 마지막 세기 + 그 뒤 들어온 것</p></div>
+    <div class="sh-a">
+      <button type="button" class="btn btn-sec" aria-describedby="tpl-h">${ic('arrowDown')}양식 받기</button>
+      <button type="button" class="btn btn-sec" data-go="excel">${ic('upload')}엑셀 올리기</button>
+      <button type="button" class="btn btn-sec" data-go="cats">분류 고치기</button>
+      <button type="button" class="btn btn-sec" data-go="order">순서 바꾸기</button>
+      <button type="button" class="btn btn-sec" data-go="bit">비트 코드에서 고르기</button>
+      <button type="button" class="btn btn-pri" data-go="edit">물품 더하기</button>
+    </div></div>
+    <p class="help tpl-h" id="tpl-h">[양식 받기] = 지금 목록이 채워진 양식(엑셀)이에요. 고쳐서 [엑셀 올리기]로 넣으면 바뀐 줄만 고쳐져요.</p>`;
+}
+function listTable(order) {
+  const cols = order ? 9 : 8;
+  const body = groups(visible()).map((g) => `<tbody data-cat="${g.cat.id}">
+    <tr class="grp"><th colspan="${cols}" scope="colgroup">${g.cat.name}<span class="c">${g.items.length}개</span></th></tr>
+    ${g.items.map((it, i) => `<tr class="r ${it.hidden ? 'off' : ''}" data-id="${it.id}" ${order ? 'draggable="true"' : ''}>
+      ${order ? `<td class="grip" aria-hidden="true">${ic('grip')}</td>` : ''}
+      <td class="nm">${it.name}</td>
+      <td class="num">${qtyTxt(it)}</td><td class="num">${minTxt(it)}</td>
+      <td class="sub">${expTxt(it)}</td><td class="sub">${it.vendor || '<span class="na">–</span>'}</td>
+      <td class="num">${priceTxt(it.price)}</td><td>${statusChips(it)}</td>
+      <td class="act">${order ? `<span class="updn">
+          <button type="button" class="btn btn-sec btn-sm btn-ic" data-mv="${it.id}" data-d="-1" aria-label="${it.name} 위로" ${i === 0 ? 'aria-disabled="true"' : ''}>${ic('up')}</button>
+          <button type="button" class="btn btn-sec btn-sm btn-ic" data-mv="${it.id}" data-d="1" aria-label="${it.name} 아래로" ${i === g.items.length - 1 ? 'aria-disabled="true"' : ''}>${ic('chev')}</button></span>`
+        : it.hidden ? `<button type="button" class="btn btn-gh" data-unhide="${it.id}" aria-label="${it.name} 다시 쓰기">다시 쓰기</button>`
+        : `<button type="button" class="btn btn-gh" data-go="edit" aria-label="${it.name} 고치기">고치기</button>`}</td>
+    </tr>`).join('')}</tbody>`).join('');
+  return `<div class="tbw"><table class="tb" id="itemtb">
+    <thead><tr>${order ? '<th><span class="sr">끌기</span></th>' : ''}<th>물품 이름</th><th class="num">지금 수량</th><th class="num">최소 수량</th><th>가장 빠른 유통기한</th><th>거래처</th><th class="num">단가</th><th>상태</th><th><span class="sr">${order ? '옮기기' : '고치기'}</span></th></tr></thead>
+    ${body}</table></div>`;
+}
+function hiddenLine() {
+  const n = ITEMS.filter((i) => i.hidden).length;
+  if (!n) return '';
+  return `<p class="foot-l">${showHidden ? `안 쓰는 물품 ${n}개도 흐리게 보여요.` : `안 쓰는 물품 ${n}개는 숨겨 뒀어요.`} <button type="button" class="tbtn s" data-hid>${showHidden ? '숨기기' : '보기'}</button></p>`;
+}
+function vList(order = false) {
+  return `${order ? '' : alertBlock()}<div class="${order ? '' : 'sec'}">${listHead(order)}${listTable(order)}${order ? '' : hiddenLine()}</div>`;
+}
+
+// ---------- 2 세기 ----------
+function overCount(it) { const v = it.cnt === '' ? null : +it.cnt; return v != null && v > it.last + it.inS; }
+function warnMsg(it) { return `센 수량 ${it.cnt}이 지난 수량 ${it.last} + 들어온 ${it.inS} = ${it.last + it.inS}보다 많아요. 입고 기록이 빠졌을 수 있어요.`; }
+function vCount() {
+  const list = ITEMS.filter((i) => !i.hidden);
+  const filled = list.filter((i) => i.cnt !== '').length;
+  const rows = groups(list).map((g) => `<tbody><tr class="grp"><th colspan="6" scope="colgroup">${g.cat.name}<span class="c">${g.items.length}개</span></th></tr>
+    ${g.items.map((it) => `<tr class="r ${overCount(it) ? 'has-w' : ''}" id="cr${it.id}">
+      <td class="nm">${it.name}</td><td class="sub">${it.unit}</td>
+      <td class="num">${won(it.last)}</td><td class="num">${it.inS ? '+' + won(it.inS) : '<span class="na">–</span>'}</td>
+      <td style="width:120px"><input class="inp sm n ${overCount(it) ? 'warn' : ''}" inputmode="numeric" placeholder="그대로" value="${it.cnt}" data-cnt="${it.id}" aria-label="${it.name} 센 수량"></td>
+      <td style="width:168px"><input class="inp sm" type="date" value="${it.exp}" aria-label="${it.name} 가장 빠른 유통기한"></td>
+    </tr>
+    <tr class="wrow" id="cw${it.id}" ${overCount(it) ? '' : 'hidden'}><td colspan="6"><p class="wtxt">${ic('alert', 16)}<span id="cwt${it.id}">${warnMsg(it)}</span> <button type="button" class="tbtn s" data-go="in-manual">입고 적기</button></p></td></tr>`).join('')}</tbody>`).join('');
+  return `<div class="sh"><div><h2 class="sh-t">수량 세기</h2><p class="sh-d">종이에 적어 온 숫자를 넣어요. 비운 칸은 지난 수량 그대로예요. 가장 빠른 유통기한도 여기서 고쳐요.</p></div>
+    <div class="sh-a"><button type="button" class="btn btn-sec" data-go="print">${ic('doc')}세기 종이 인쇄</button></div></div>
+    <div class="cnt-top"><div class="field"><label class="label" for="cday">센 날</label><input id="cday" class="inp" type="date" value="${TODAY}"></div>
+      <p class="pg-meta" style="padding-bottom:12px">지난 세기 ${mdw(LAST_COUNT)} · 그 뒤 들어온 기록 2건</p></div>
+    <div class="tbw"><table class="tb"><thead><tr><th>물품 이름</th><th>단위</th><th class="num">지난 수량 (${sl(LAST_COUNT)})</th><th class="num">그 뒤 들어옴</th><th>센 수량</th><th>가장 빠른 유통기한</th></tr></thead>${rows}</table></div>
+    <div class="savebar"><div class="savebar-in"><p class="s" id="cfill"><b>${list.length}개 가운데 ${filled}개</b> 적었어요 · 비운 ${list.length - filled}개는 그대로예요</p>
+      <button type="button" class="btn btn-pri" data-go="list">저장</button></div></div>`;
+}
+
+// ---------- 3 세기 종이 ----------
+function vPrint() {
+  const list = ITEMS.filter((i) => !i.hidden);
+  const rows = groups(list).map((g) => `<tr class="g"><td colspan="6">${g.cat.name}</td></tr>
+    ${g.items.map((it) => `<tr><td>${it.name}</td><td>${it.unit}</td><td class="num">${won(it.qty)}</td><td><span class="box"></span></td><td class="cur">${it.exp || ''}</td><td><span class="box d"></span></td></tr>`).join('')}`).join('');
+  return `<div class="sh"><div><h2 class="sh-t">세기 종이 미리 보기</h2><p class="sh-d">A4 한 장에 세기 표와 같은 차례로 나와요. 안 쓰는 물품은 빠져요. 물품이 많으면 다음 장으로 넘어가요.</p></div>
+    <div class="sh-a"><button type="button" class="btn btn-sec" data-go="count">세기로 돌아가기</button><button type="button" class="btn btn-pri" data-print>${ic('doc')}인쇄</button></div></div>
+    <div class="paperwrap" id="pw"><div class="a4" id="a4">
+      <div class="a4-h"><p class="a4-t">재고 세기</p><p class="a4-blank">센 날 <span class="w"></span> &nbsp; 센 사람 <span class="w"></span></p></div>
+      <p class="a4-s">튼튼정형외과의원 · 인쇄 ${TODAY} · 센 수량을 적어요. 못 센 물품은 비워 두면 지난 수량 그대로예요. 가장 빠른 유통기한이 바뀌었을 때만 적어요.</p>
+      <table><thead><tr><th>물품 이름</th><th>단위</th><th class="num">지금 수량</th><th>센 수량</th><th>지금 유통기한</th><th>가장 빠른 유통기한</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="a4-f"><span>재고 · 세기 종이</span><span>1 / 1</span></div>
+    </div></div>`;
+}
+
+// ---------- 4 입고 확인 ----------
+function invPaper(big = false) {
+  const L = READ.lines;
+  return `<div class="inv ${big ? 'big' : ''}" role="img" aria-label="올린 사진(예시): 메디팜 거래명세서">
+    <span class="chip chip-n">예시 사진</span>
+    <p class="inv-t">거래명세서</p>
+    <div class="inv-m"><span>2026년 11월 21일</span><span>공급자 (주)메디팜</span></div>
+    <table><thead><tr><th>품목</th><th class="num">수량</th><th class="num">단가</th><th class="num">금액</th></tr></thead>
+    <tbody>${L.map((l) => `<tr><td>${l.src}</td><td class="num">${l.qty}</td><td class="num">${won(l.price)}</td><td class="num">${won(l.qty * l.price)}</td></tr>`).join('')}</tbody></table>
+    <p class="inv-s">합계 ${won(L.reduce((s, l) => s + l.qty * l.price, 0))}</p>
+  </div>`;
+}
+function pickSelect(l, idx) {
+  const opts = CATS.map((c) => `<optgroup label="${c.name}">${ITEMS.filter((i) => i.cat === c.id && !i.hidden).map((i) => `<option value="${i.id}" ${l.pick === i.id ? 'selected' : ''}>${i.name}</option>`).join('')}</optgroup>`).join('');
+  return `<select class="inp sm" aria-label="${idx + 1}번째 줄 목록 물품"><option value="new" ${l.pick === 'new' ? 'selected' : ''}>+ 새 물품으로 넣기</option><option value="skip">넣지 않음</option>${opts}</select>`;
+}
+function vInCheck(manual) {
+  const lines = manual ? [{ src: '', pick: null, qty: '', price: '' }] : READ.lines;
+  const total = manual ? 0 : lines.reduce((s, l) => s + l.qty * l.price, 0);
+  const unitOf = (l) => (l.pick === 'new' ? l.newUnit : l.pick ? ITEMS.find((i) => i.id === l.pick).unit : '');
+  const newFields = (l) => `<div class="newf"><div class="field"><span class="label">분류</span><select class="inp sm" aria-label="새 물품 분류">${CATS.map((c) => `<option ${c.id === l.newCat ? 'selected' : ''}>${c.name}</option>`).join('')}</select></div>
+     <div class="field"><span class="label">단위</span><input class="inp sm" value="${l.newUnit}" aria-label="새 물품 단위"></div></div>
+     <p class="help mt4">이름은 명세서 글자로 넣어요. 최소 수량은 나중에 [고치기]에서.</p>`;
+  const rows = lines.map((l, i) => `<tr class="r">
+      <td class="ln-n top t2">${i + 1}</td>
+      <td class="top">${manual ? `<input class="inp sm" placeholder="물품 이름" aria-label="${i + 1}번째 줄 이름">` : `<div class="ln-src" style="padding-top:8px" title="${l.src}">${l.src}</div>`}</td>
+      <td class="top ln-pick">${manual ? `<select class="inp sm" aria-label="${i + 1}번째 줄 목록 물품"><option>고르기</option></select>` : pickSelect(l, i)}
+        ${l.tag ? `<div class="chips"><span class="chip chip-${l.tag[0]}">${l.tag[1]}</span></div>` : ''}${l.pick === 'new' ? newFields(l) : ''}</td>
+      <td class="top" style="width:120px"><div class="unitin"><input class="inp sm n" inputmode="numeric" value="${l.qty}" aria-label="${i + 1}번째 줄 수량"><span class="u">${unitOf(l)}</span></div></td>
+      <td class="top" style="width:150px"><div class="unitin"><input class="inp sm n" inputmode="numeric" value="${l.price === '' ? '' : won(l.price)}" placeholder="비워도 돼요" aria-label="${i + 1}번째 줄 단가"><span class="u">원</span></div>${l.priceNote ? `<p class="help mt4" style="white-space:normal">${l.priceNote}</p>` : ''}</td>
+      <td class="num top t2">${l.qty && l.price ? won(l.qty * l.price) + '원' : '<span class="na">–</span>'}</td>
+      <td class="top act"><button type="button" class="btn btn-gh btn-ic" aria-label="${i + 1}번째 줄 지우기">${ic('x')}</button></td>
+    </tr>`).join('');
+  const photo = manual ? '' : `<figure>${invPaper()}<figcaption class="photo-c"><span>${RECS[0].photo}</span><button type="button" class="tbtn s" data-go="in-photo">크게 보기</button></figcaption></figure>`;
+  return `<div class="sh"><div><h2 class="sh-t">${manual ? '사진 없이 적기' : '들어온 것 확인'}</h2><p class="sh-d">${manual ? '명세서가 없을 때 직접 적어요. 저장하면 지금 수량에 더해져요.' : 'AI가 사진에서 읽은 내용이에요. 맞는지 보고 고친 뒤 저장해요. 저장하면 지금 수량에 더해져요.'}</p></div>
+    <div class="sh-a">${manual ? `<button type="button" class="btn btn-sec" data-go="in-check">${ic('upload')}사진 올리기</button>` : `<button type="button" class="btn btn-sec">${ic('upload')}사진 다시 올리기</button>`}</div></div>
+    <div class="scroll-x"><div class="inb ${manual ? 'nophoto' : ''}">${photo}
+      <div>
+        <div class="inb-f"><div class="field"><label class="label" for="idate">날짜</label><input id="idate" class="inp" type="date" value="${manual ? TODAY : READ.date}"></div>
+          <div class="field"><label class="label" for="ivend">거래처</label><input id="ivend" class="inp" list="vlist" value="${manual ? '' : READ.vendor}" placeholder="거래처 이름">
+          <datalist id="vlist"><option>메디팜</option><option>한빛약품</option><option>정형메디칼</option><option>오피스마트</option></datalist></div></div>
+        <div class="tbw"><table class="tb"><thead><tr><th><span class="sr">줄</span></th><th>${manual ? '이름' : '명세서에 적힌 이름'}</th><th>목록 물품</th><th>수량</th><th>단가</th><th class="num">금액</th><th><span class="sr">지우기</span></th></tr></thead><tbody>${rows}</tbody></table></div>
+        <div class="sum-r"><button type="button" class="tbtn s">+ 줄 더하기</button><p class="t">${lines.length}줄 · 합계<b>${total ? won(total) + '원' : '–'}</b></p></div>
+        <ul class="notes">
+          <li>${ic('info', 14)}수량은 목록 단위로 적어요. 100개들이 2박스면 200이에요.</li>
+          ${manual ? '' : `<li>${ic('info', 14)}저장하면 주사기 3cc의 '주문함' 표시가 풀려요.</li><li>${ic('info', 14)}고른 짝(명세서 이름 → 목록 물품)은 기억해서 다음 명세서에는 저절로 골라요.</li>`}
+          <li>${ic('info', 14)}단가를 적은 줄은 그 물품 단가도 이 값으로 바뀌어요.</li>
+        </ul>
+      </div></div></div>
+    <div class="savebar"><div class="savebar-in"><p class="s">${manual ? '날짜·거래처·줄을 적어요' : `<b>${md(READ.date)} · ${READ.vendor}</b> · ${lines.length}줄을 들어온 기록에 넣어요`}</p>
+          <span class="sh-a"><button type="button" class="btn btn-sec" data-go="in-list">취소</button><button type="button" class="btn btn-pri" data-go="in-list">저장</button></span></div></div>`;
+}
+
+// ---------- 5 들어온 기록 ----------
+function vInList() {
+  const byMonth = {};
+  RECS.forEach((r, i) => { (byMonth[r.date.slice(0, 7)] ||= []).push([r, i]); });
+  const summary = (r) => `${r.lines[0][0]} ${won(r.lines[0][1])}${r.lines[0][2]}${r.lines.length > 1 ? ` 외 ${r.lines.length - 1}줄` : ''}`;
+  const photoBtn = (r) => (r.photo ? `<button type="button" class="btn btn-sec btn-sm" data-go="in-photo">사진 보기</button>` : '<span class="na" style="font-size:13px">사진 없음</span>');
+  const body = Object.entries(byMonth).map(([m, list]) => `<tbody><tr class="grp"><th colspan="3" scope="colgroup">${+m.slice(5)}월<span class="c">${list.length}건</span></th><th class="num">${won(list.reduce((s, [r]) => s + recSum(r), 0))}원</th><th colspan="2"></th></tr>
+    ${list.map(([r, i]) => `<tr class="r"><td>${mdw(r.date)}</td><td>${r.vendor}</td>
+      <td><button type="button" class="tbtn s" style="color:var(--ink)" data-open="${i}" aria-expanded="${!!openRec[i]}">${summary(r)}${ic('chev', 14, openRec[i] ? '' : '')}</button></td>
+      <td class="num">${won(recSum(r))}원</td><td>${photoBtn(r)}</td><td class="act"><button type="button" class="btn btn-gh" data-go="in-check">고치기</button></td></tr>
+      ${openRec[i] ? `<tr class="det"><td></td><td></td><td colspan="4"><div class="det-l">${r.lines.map((l) => `<span>${l[0]}</span><span class="num">${won(l[1])}${l[2]} × ${won(l[3])}원</span><span class="num">${won(l[1] * l[3])}원</span>`).join('')}</div></td></tr>` : ''}`).join('')}</tbody>`).join('');
+  // 지난달은 접힌 머리 한 줄(⑦ 달별 10월과 같은 숫자)
+  const oct = won(ITEMS.filter((i) => MON[i.id]).reduce((s, i) => s + MON[i.id][2], 0));
+  const octPc = `<tbody><tr class="grp"><th colspan="3" scope="colgroup">10월<span class="c">9건</span></th><th class="num">${oct}원</th><th colspan="2" style="text-align:right"><button type="button" class="tbtn s" aria-expanded="false">펼치기${ic('chev', 14)}</button></th></tr></tbody>`;
+  return `<div class="sh"><div><h2 class="sh-t">들어온 기록</h2><p class="sh-d">거래명세서·영수증·주문 화면 캡처 사진을 올리면 AI가 읽어 줘요. 사진은 기록과 함께 보관해요.</p></div>
+    <div class="sh-a"><button type="button" class="btn btn-sec" data-go="in-manual">사진 없이 적기</button><button type="button" class="btn btn-pri" data-go="in-check">${ic('upload')}사진 올리기</button></div></div>
+    <div class="tbw"><table class="tb"><thead><tr><th>날짜</th><th>거래처</th><th>물품</th><th class="num">금액</th><th>사진</th><th><span class="sr">고치기</span></th></tr></thead>${body}${octPc}</table></div>`;
+}
+function photoDialog() {
+  return `<div class="scrim dk" data-go="in-list"></div>
+    <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="ph-h">
+      <div class="sheet-h"><h2 id="ph-h">${mdw(RECS[0].date)} · ${RECS[0].vendor} 사진</h2><button type="button" class="btn btn-gh btn-ic" aria-label="닫기" data-go="in-list">${ic('x')}</button></div>
+      <div class="dlg-b">${invPaper(true)}<p class="help mt8">${RECS[0].photo} · 올린 날 ${TODAY} 10:12</p></div>
+    </div>`;
+}
+
+// ---------- 6 엑셀 ----------
+// 양식 칸(시트 '물품'): 분류 · 물품 이름 · 단위 · 최소 수량 · 지금 수량 · 가장 빠른 유통기한 · 거래처 · 단가
+const TPL = ['분류', '물품 이름', '단위', '최소 수량', '지금 수량', '가장 빠른 유통기한', '거래처', '단가'];
+let xFilter = 'all';
+// 줄: [엑셀 줄, 상태(new·fix·same·skip), 분류, 이름, 단위, 최소, 지금, 기한, 거래처, 단가, 바뀐 칸 번호들, 알림 글, 알림 종류]
+const XROWS = {
+  form: {
+    file: '재고_물품양식_1121.xlsx', sheet: '물품', total: 24, sum: { new: 4, fix: 3, skip: 1, same: 16 },
+    rows: [
+      [2, 'same', '약품', '히알루론산 주사 2mL', '개', '10', '4', '2027-03-31', '한빛약품', '18,500'],
+      [3, 'fix', '약품', '리도카인 주사 2% 20mL', '병', '15', '26', '2026-12-05', '한빛약품', '1,400', [5], '최소 수량 10 → 15'],
+      [4, 'same', '약품', '트리암시놀론 주사 40mg', '병', '5', '15', '2027-06-30', '한빛약품', '2,900'],
+      [6, 'fix', '치료 소모품', '주사기 3cc', '개', '100', '40', '', '메디팜', '100', [9], '단가 95원 → 100원'],
+      [17, 'fix', '사무·생활', 'A4 용지', '박스', '2', '6', '', '오피스마트', '24,000', [6], '지금 수량 4 → 6 (오늘 센 것으로 남아요)'],
+      [21, 'new', '치료 소모품', '테이핑 테이프 5cm', '개', '10', '12', '', '메디팜', '4,500'],
+      [22, 'new', '사무·생활', '물티슈', '팩', '5', '10', '', '오피스마트', '1,800'],
+      [23, 'skip', '보조기·깁스', '발목 보조기 M', '개', '3', '세 개', '', '정형메디칼', '15,000', [6], "지금 수량 '세 개' → 수량은 0 이상 숫자로 적어요", 'err'],
+      [24, 'new', '보조기·깁스', '통깁스 재료 3인치', '개', '10', '24', '', '정형메디칼', '6,800'],
+    ],
+  },
+  own: {
+    file: '재고목록_2026.xlsx', sheet: '재고현황', total: 38, sum: { new: 32, fix: 5, skip: 1, same: 0 },
+    rows: [
+      [2, 'fix', '약품', '히알루론산 주사 2mL', '개', '10', '6', '2027-03-31', '한빛약품', '18,500', [6], '지금 수량 4 → 6 (오늘 센 것으로 남아요)'],
+      [3, 'new', '약품', '케토롤락 주사 30mg', '앰플', '10', '25', '2027-02-28', '한빛약품', '1,100'],
+      [4, 'new', '약품', '디클로페낙 겔 100g', '개', '5', '12', '2027-08-31', '한빛약품', '3,300', [7], "유통기한 '27.08' → 그 달 마지막 날로 읽었어요", 'info'],
+      [5, 'new', '치료 소모품', '주사기 1cc', '개', '100', '300', '', '메디팜', '80'],
+      [6, 'skip', '보조기·깁스', '발목 보조기 M', '개', '3', '세 개', '', '정형메디칼', '15,000', [6], "지금 수량 '세 개' → 수량은 0 이상 숫자로 적어요", 'err'],
+      [7, 'new', '보조기·깁스', '통깁스 재료 3인치', '개', '10', '24', '', '정형메디칼', '6,800'],
+      [8, 'fix', '사무·생활', 'A4 용지', '박스', '2', '5', '', '오피스마트', '23,500', [6, 9], '지금 수량 4 → 5 · 단가 24,000원 → 23,500원'],
+      [9, 'new', '사무·생활', '물티슈', '팩', '5', '10', '', '', ''],
+    ],
+  },
+};
+const XST = { new: ['a', '새 물품'], fix: ['w', '고침'], same: ['n', '그대로'], skip: ['n', '건너뜀'] };
+function vExcel(kind) {
+  const X = XROWS[kind];
+  const own = kind === 'own';
+  const S = X.sum;
+  const na = (v) => (v === '' ? '<span class="na">–</span>' : v);
+  const XC = ['A 구분', 'B 품명', 'C 규격', 'D 단위', 'E 현재고', 'F 안전재고', 'G 유효기간', 'H 구입처', 'I 단가', 'J 비고'];
+  const MAP = [['분류', 'A 구분'], ['물품 이름', 'B 품명 + C 규격', '필수'], ['단위', 'D 단위'], ['최소 수량', 'F 안전재고'], ['지금 수량', 'E 현재고'], ['가장 빠른 유통기한', 'G 유효기간'], ['거래처', 'H 구입처'], ['단가', 'I 단가']];
+  const sel = (v, lab) => `<select class="inp sm" aria-label="${lab}에 넣을 엑셀 칸"><option>넣지 않음</option>${[...XC, 'B 품명 + C 규격'].map((c) => `<option ${c === v ? 'selected' : ''}>${c}</option>`).join('')}</select>`;
+  const CM = [['주사약', 9, '약품'], ['외용약', 3, '약품'], ['소모품', 13, '치료 소모품'], ['깁스·보조기', 7, '보조기·깁스'], ['사무용품', 6, '사무·생활']];
+  const catSel = (v, from) => `<select class="inp sm" aria-label="엑셀 '${from}'을 넣을 분류">${CATS.map((c) => `<option ${c.name === v ? 'selected' : ''}>${c.name}</option>`).join('')}<option>+ 새 분류 '${from}'</option></select>`;
+  const rows = X.rows.filter((r) => xFilter === 'all' || r[1] === xFilter);
+  const cell = (r, k, v, cls) => `<td class="${cls}">${r[10] && r[10].includes(k) ? `<b class="chg">${na(v)}</b>` : na(v)}</td>`;
+  const seg = [['all', `모두 ${X.total}`], ['new', `새 물품 ${S.new}`], ['fix', `고침 ${S.fix}`], ['skip', `건너뜀 ${S.skip}`], ...(S.same ? [['same', `그대로 ${S.same}`]] : [])];
+  const mapping = own ? `
+    <section class="mt24" aria-labelledby="mp-h"><p class="h3" id="mp-h">AI가 맞춘 칸<span class="s">왼쪽이 재고 탭 칸, 고른 것이 엑셀 칸이에요. 틀리면 바꿔요</span></p>
+      <div class="map">${MAP.map(([f, v, req]) => `<div class="field"><span class="label">${f}${req ? '<span class="hint">필수</span>' : ''}</span>${sel(v, f)}</div>`).join('')}</div>
+      <p class="unused">넣지 않는 엑셀 칸: J 비고</p></section>
+    <section class="mt24" aria-labelledby="cm-h"><p class="h3" id="cm-h">분류 맞추기<span class="s">엑셀 '구분' 값 → 재고 탭 분류</span></p>
+      <div class="catmap">${CM.map(([f, n, v]) => `<div><span class="from">${f}<span class="c">${n}줄</span></span><span class="arw">${ic('arrow', 14)}</span>${catSel(v, f)}</div>`).join('')}</div></section>` : '';
+  return `<div class="sh"><div><h2 class="sh-t">엑셀로 물품 넣기</h2><p class="sh-d">${own ? '양식이 아닌 엑셀이라 AI가 칸을 맞췄어요. 칸이나 분류가 틀리면 바꾸고, 미리 보기를 본 뒤 넣어요.' : '양식 그대로라 칸을 맞출 것이 없어요. 미리 보기를 보고 넣어요.'} 물품 이름이 같은 줄은 그 물품을 고쳐요.</p></div>
+    <div class="sh-a"><button type="button" class="btn btn-sec" aria-describedby="tpl-h">${ic('arrowDown')}양식 받기</button><button type="button" class="btn btn-sec">${ic('upload')}다른 파일 올리기</button></div></div>
+    <div class="file">${ic('doc')}<b>${X.file}</b>${own ? `<span>시트</span><select class="inp sm" style="width:auto" aria-label="시트"><option>${X.sheet}</option><option>거래처</option></select>` : `<span>시트 '${X.sheet}'</span><span class="chip chip-positive">${ic('check', 12)}양식 그대로</span>`}<span>${X.total}줄</span></div>
+    ${mapping}
+    <section class="mt24" aria-labelledby="pv-h"><div class="pv-h"><p class="h3" id="pv-h">미리 보기</p>
+      <div class="seg" role="group" aria-label="보일 줄">${seg.map(([k, l]) => `<button type="button" data-xf="${k}" aria-pressed="${xFilter === k}">${l}</button>`).join('')}</div></div>
+      <div class="tbw"><table class="tb"><thead><tr><th class="num">엑셀 줄</th><th>상태</th>${TPL.map((h, i) => `<th class="${i >= 3 && i <= 4 || i === 7 ? 'num' : ''}">${h}</th>`).join('')}<th>바뀐 것 · 살펴볼 것</th></tr></thead>
+      <tbody>${rows.map((r) => `<tr class="r ${r[1] === 'skip' ? 'off' : ''}"><td class="num mu">${r[0]}</td><td><span class="chip chip-${XST[r[1]][0]}">${XST[r[1]][1]}</span></td>
+        ${cell(r, 2, r[2], 'sub')}${cell(r, 3, r[3], 'nm')}${cell(r, 4, r[4], 'sub')}${cell(r, 5, r[5], 'num')}${cell(r, 6, r[6], 'num')}${cell(r, 7, r[7], 'sub')}${cell(r, 8, r[8], 'sub')}${cell(r, 9, r[9] ? r[9] + '원' : '', 'num')}
+        <td class="note">${r[11] ? (r[12] === 'err' ? `<span class="ferr">${ic('alert', 14)}${r[11]}</span>` : `<span class="${r[12] === 'info' ? 'mu2' : ''}">${r[11]}</span>`) : ''}</td></tr>`).join('') || `<tr><td colspan="11" class="mu">이 상태인 줄이 없어요.</td></tr>`}</tbody></table></div>
+      <p class="help mt8" style="padding-left:20px">굵은 글자 = 바뀌는 칸. 파일에 없는 물품은 그대로 둬요(지우지 않아요).</p></section>
+    <div class="savebar"><div class="savebar-in"><p class="s"><b>새 물품 ${S.new} · 고침 ${S.fix} · 건너뜀 ${S.skip}</b>${S.same ? ` · 그대로 ${S.same}` : ''} · 건너뛴 줄은 고쳐서 다시 올리면 돼요</p>
+      <span class="sh-a"><button type="button" class="btn btn-sec" data-go="list">취소</button><button type="button" class="btn btn-pri" data-go="list">넣기</button></span></div></div>`;
+}
+
+// ---------- 7 달별 ----------
+function vMonth() {
+  const list = ITEMS.filter((i) => MON[i.id]);
+  const cat = CATS.map((c) => {
+    const its = list.filter((i) => i.cat === c.id);
+    return { c, its, b10: its.reduce((s, i) => s + MON[i.id][2], 0), b9: its.reduce((s, i) => s + MON[i.id][3], 0) };
+  });
+  const T10 = cat.reduce((s, x) => s + x.b10, 0), T9 = cat.reduce((s, x) => s + x.b9, 0);
+  const mw = (v) => (v ? `${won(v)}원` : '<span class="na">–</span>');
+  const catT = `<table class="tb"><thead><tr><th>분류</th><th class="num">10월 구입비</th><th class="num">9월</th><th>지난달보다</th></tr></thead><tbody>
+    ${cat.map((x) => `<tr class="r"><td class="nm">${x.c.name}</td><td class="num">${mw(x.b10)}</td><td class="num sub">${mw(x.b9)}</td><td>${delta(x.b10, x.b9, '원')}</td></tr>`).join('')}
+    <tr class="tot"><td>합계</td><td class="num">${won(T10)}원</td><td class="num">${won(T9)}원</td><td>${delta(T10, T9, '원')}</td></tr></tbody></table>`;
+  const itemT = `<table class="tb"><thead><tr><th>이름</th><th class="num">10월 쓴 양</th><th class="num">9월</th><th>지난달보다</th><th class="num">10월 구입비</th><th class="num">9월</th></tr></thead>
+    ${cat.map((x) => `<tbody><tr class="grp"><th colspan="4" scope="colgroup">${x.c.name}<span class="c">${x.its.length}개</span></th><th class="num">${won(x.b10)}원</th><th class="num r9">${won(x.b9)}원</th></tr>
+      ${x.its.map((i) => { const m = MON[i.id]; return `<tr class="r"><td class="nm">${i.name}</td><td class="num">${won(m[0])}<span class="u">${i.unit}</span></td><td class="num sub">${m[1] == null ? '<span class="na">–</span>' : won(m[1])}</td><td>${delta(m[0], m[1], '')}</td><td class="num">${mw(m[2])}</td><td class="num sub">${mw(m[3])}</td></tr>`; }).join('')}</tbody>`).join('')}</table>`;
+  return `<div class="sh"><div><h2 class="sh-t">달별</h2><p class="sh-d">쓴 양 = 지난 세기 + 그 사이 들어온 것 − 이번 세기. 그 달에 끝난 주를 더해요(달을 걸친 주는 끝난 날의 달). 구입비 = 그 달 들어온 기록 금액의 합.</p></div>
+    <div class="sh-a"><span class="mon"><button type="button" class="btn btn-sec btn-ic" aria-label="9월">${ic('chev', 16, '').replace('<svg', '<svg style="transform:rotate(90deg)"')}</button><span class="mon-l">2026년 10월</span><button type="button" class="btn btn-sec btn-ic" aria-label="11월">${ic('chev', 16).replace('<svg', '<svg style="transform:rotate(-90deg)"')}</button></span></div></div>
+    <p class="pg-meta mt8">10월에 끝난 세기 5번: 10월 3일 · 10일 · 17일 · 24일 · 31일 (9월 26일 ~ 10월 31일에 쓴 양)</p>
+    <div class="kpis"><div><p class="k-n">10월 구입비</p><p class="k-v">${won(T10)}<small>원</small></p><p class="k-s">9월 ${won(T9)}원 · ${delta(T10, T9, '원')}</p></div>
+      <div><p class="k-n">들어온 기록</p><p class="k-v">9<small>건</small></p><p class="k-s">9월 8건</p></div>
+      <div><p class="k-n">세기</p><p class="k-v">5<small>번</small></p><p class="k-s">빠진 주 없음</p></div></div>
+    <div class="grid2 mt32">
+      <section aria-labelledby="mc-h"><h2 class="sh-t" id="mc-h">분류별 구입비</h2><div class="tbw">${catT}</div></section>
+      <section aria-labelledby="mi-h"><h2 class="sh-t" id="mi-h">물품별 쓴 양 · 구입비</h2><div class="tbw">${itemT}</div>
+        <p class="help mt8" style="padding-left:20px">'–' = 그 달 세기가 없었거나 그 달에 들어온 기록이 없어요.</p></section>
+    </div>`;
+}
+
+// ---------- 8 물품 고치기 · 분류 고치기 ----------
+function editSheet() {
+  const it = ITEMS[0];
+  return `<div class="scrim" data-go="list"></div>
+  <aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="ed-h">
+    <div class="sheet-h"><h2 id="ed-h">물품 고치기</h2><button type="button" class="btn btn-gh btn-ic" aria-label="닫기" data-go="list">${ic('x')}</button></div>
+    <div class="sheet-b">
+      <div class="field"><label class="label" for="e-name">물품 이름<span class="hint">필수</span></label><input id="e-name" class="inp" value="${it.name}"></div>
+      <div class="two"><div class="field"><label class="label" for="e-cat">분류</label><select id="e-cat" class="inp">${CATS.map((c) => `<option ${c.id === it.cat ? 'selected' : ''}>${c.name}</option>`).join('')}</select></div>
+        <div class="field"><label class="label" for="e-unit">단위<span class="hint">필수</span></label><input id="e-unit" class="inp" value="${it.unit}"><p class="help">하나만 써요. 세기·입고 수량이 모두 이 단위예요.</p></div></div>
+      <div class="two"><div class="field"><label class="label" for="e-min">최소 수량<span class="hint">선택</span></label><input id="e-min" class="inp n" inputmode="numeric" value="${it.min}"><p class="help">이보다 적으면 '주문하세요'. 비우면 알림이 없어요.</p></div>
+        <div class="field"><span class="label">지금 수량</span><div class="ro">${it.qty}${it.unit}</div><p class="help">수량은 [세기]에서 고쳐요.</p></div></div>
+      <div class="field"><label class="label" for="e-exp">가장 빠른 유통기한<span class="hint">선택</span></label><input id="e-exp" class="inp" type="date" value="${it.exp}"><p class="help">30일 안으로 다가오면 '기한 가까움'이 떠요.</p></div>
+      <div class="two"><div class="field"><label class="label" for="e-v">거래처<span class="hint">선택</span></label><input id="e-v" class="inp" value="${it.vendor}"></div>
+        <div class="field"><label class="label" for="e-p">단가<span class="hint">선택</span></label><div class="unitin"><input id="e-p" class="inp n" inputmode="numeric" value="${won(it.price)}"><span class="u">원</span></div></div></div>
+      <div class="field"><span class="label">비트 코드</span><div class="ro"><span><b style="font-weight:600">${BIT[0].code}</b> <span class="cd">· ${BIT[0].name}</span></span><span class="sp"></span><button type="button" class="btn btn-gh">연결 끊기</button></div><p class="help">[비트 코드에서 고르기]로 이어진 코드예요. 끊으면 그 목록에서 다시 고를 수 있어요.</p></div>
+      <div class="field"><span class="label">명세서에서 맞춘 이름</span>
+        <ul class="alias"><li><span>히알루론산나트륨주 2ml<span class="v">한빛약품</span></span><button type="button" class="btn btn-gh" aria-label="맞춘 이름 지우기">지우기</button></li>
+          <li><span>HA 주사 2mL<span class="v">한빛약품</span></span><button type="button" class="btn btn-gh" aria-label="맞춘 이름 지우기">지우기</button></li></ul>
+        <p class="help">다음 명세서에 이 이름이 있으면 이 물품으로 골라요.</p></div>
+      <label class="ck" style="border-top:1px solid var(--line);padding-top:16px"><input type="checkbox"><span><b style="font-weight:600">안 씀</b><br><span class="help">목록·세기·알림에서 숨겨요. 지난 기록은 그대로 남아요.</span></span></label>
+    </div>
+    <div class="sheet-f"><button type="button" class="btn btn-sec" data-go="list">취소</button><button type="button" class="btn btn-pri" data-go="list">저장</button></div>
+  </aside>`;
+}
+function catsSheet() {
+  const L = [...CATS.map((c) => ({ ...c, n: ITEMS.filter((i) => i.cat === c.id).length })), { id: 'new', name: '소독·위생', n: 0 }];
+  return `<div class="scrim" data-go="list"></div>
+  <aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="ct-h">
+    <div class="sheet-h"><h2 id="ct-h">분류 고치기</h2><button type="button" class="btn btn-gh btn-ic" aria-label="닫기" data-go="list">${ic('x')}</button></div>
+    <div class="sheet-b"><p class="help" style="font-size:13px;line-height:20px;color:var(--ink-2)">목록·세기 표·세기 종이가 이 차례로 나와요. 물품이 있는 분류는 지울 수 없어요(물품을 다른 분류로 옮긴 뒤 지워요).</p>
+      <ol class="catl">${L.map((c, i) => `<li><span class="no">${i + 1}</span><input class="inp sm" value="${c.name}" aria-label="${i + 1}번째 분류 이름"><span class="cnt">물품 ${c.n}개</span>
+        <span class="acts"><button type="button" class="btn btn-sec btn-sm btn-ic" aria-label="${c.name} 위로" ${i === 0 ? 'aria-disabled="true"' : ''}>${ic('up')}</button><button type="button" class="btn btn-sec btn-sm btn-ic" aria-label="${c.name} 아래로" ${i === L.length - 1 ? 'aria-disabled="true"' : ''}>${ic('chev')}</button><button type="button" class="btn btn-gh btn-ic" aria-label="${c.name} 지우기" ${c.n ? 'aria-disabled="true" title="물품이 있는 분류는 지울 수 없어요"' : ''}>${ic('x')}</button></span></li>`).join('')}</ol>
+      <div><button type="button" class="tbtn s">+ 분류 더하기</button></div>
+    </div>
+    <div class="sheet-f"><button type="button" class="btn btn-sec" data-go="list">취소</button><button type="button" class="btn btn-pri" data-go="list">저장</button></div>
+  </aside>`;
+}
+
+// ---------- 8-3 비트 코드에서 고르기 ----------
+// 지어낸 코드. n = 불러온 비트 자료에서 쓴 건수(처방 줄 수), link = 이어진 물품 id, on = 처음부터 골라 둔 것(시안)
+const BIT = [
+  { code: 'XH0201', name: '히알루론산나트륨주 2ml', n: 1240, link: 1 },
+  { code: 'XL0402', name: '리도카인염산염주 2%', n: 986, link: 2 },
+  { code: 'XE0410', name: '탄력붕대 4인치', n: 742, on: true },
+  { code: 'XB1104', name: '반깁스(Fiberglass) 4인치', n: 318, link: 12 },
+  { code: 'XT0140', name: '트리암시놀론아세토니드주 40mg', n: 296, link: 3 },
+  { code: 'XK0030', name: '케토프로펜 플라스타', n: 264, link: 4 },
+  { code: 'XB1103', name: '반깁스(Fiberglass) 3인치', n: 205, on: true },
+  { code: 'XD0505', name: '덱사메타손인산에스테르나트륨주 5mg', n: 188 },
+  { code: 'XE0610', name: '탄력붕대 6인치', n: 121, on: true },
+  { code: 'XW0002', name: '손목 보조기(Wrist brace)', n: 64 },
+  { code: 'XN0003', name: '무릎 보조기(Knee brace)', n: 22 },
+  { code: 'XL0510', name: '리도카인 젤리 2%', n: 9 },
+];
+const BIT_FROM = '2026-08-01', BIT_TO = '2026-11-20';
+function bitDialog(empty) {
+  const head = `<div class="sheet-h"><h2 id="bt-h">비트 코드에서 고르기</h2><button type="button" class="btn btn-gh btn-ic" aria-label="닫기" data-go="list">${ic('x')}</button></div>`;
+  if (empty) return `<div class="scrim" data-go="list"></div>
+    <div class="dlg bit emp" role="dialog" aria-modal="true" aria-labelledby="bt-h">${head}
+      <div class="bit-emp"><p>불러온 처방 코드가 없어요. 통계에서 비트 자료를 불러오면 고를 수 있어요.</p></div>
+      <div class="sheet-f"><button type="button" class="btn btn-sec" data-go="list">닫기</button></div>
+    </div>`;
+  const rows = [...BIT].sort((a, b) => b.n - a.n).map((b, i) => {
+    const has = b.link != null;
+    return `<tr class="${has ? 'on' : ''}" data-q="${(b.name + ' ' + b.code).toLowerCase()}"><td><input type="checkbox" class="ck-b bit-ck" id="bk${i}" ${has ? 'disabled' : b.on ? 'checked' : ''} aria-label="${b.name}"></td>
+      <td><label for="bk${i}">${b.name}</label>${has ? '<span class="chip chip-n">이미 있음</span>' : ''}</td><td class="cd">${b.code}</td><td class="num">${won(b.n)}건</td></tr>`;
+  }).join('');
+  const n = BIT.filter((b) => b.link == null && b.on).length;
+  return `<div class="scrim" data-go="list"></div>
+    <div class="dlg bit" role="dialog" aria-modal="true" aria-labelledby="bt-h">${head}
+      <div class="bit-top"><div class="srch">${ic('search')}<input id="bit-q" class="inp sm" type="search" placeholder="이름이나 코드" aria-label="이름이나 코드로 찾기"></div>
+        <p class="help">통계에서 불러온 비트 자료(${md(BIT_FROM)} ~ ${md(BIT_TO)})의 약·재료 코드예요. 많이 쓴 차례.</p></div>
+      <div class="bit-l"><table class="tb"><thead><tr><th><span class="sr">고르기</span></th><th>이름</th><th>코드</th><th class="num">쓴 건수</th></tr></thead><tbody>${rows}</tbody></table>
+        <p class="bit-none" id="bit-none" hidden>맞는 코드가 없어요.</p></div>
+      <div class="sheet-f bit-f"><label class="cat">넣을 분류<select class="inp sm">${CATS.map((c) => `<option ${c.id === 'ort' ? 'selected' : ''}>${c.name}</option>`).join('')}</select></label>
+        <span class="r"><button type="button" class="btn btn-sec" data-go="list">취소</button><button type="button" class="btn btn-pri" id="bit-go" data-go="list">${n}개 더하기</button></span></div>
+    </div>`;
+}
+
+// ---------- 9 대시보드 ----------
+function vDash() {
+  const act = alerts().filter((a) => a.k === 'exp' || !ordered[a.it.id]);
+  const nLow = act.filter((a) => a.k === 'low').length, nExp = act.filter((a) => a.k === 'exp').length;
+  const shown = act.slice(0, 4);
+  return `<p class="dline"><b>11월 21일 토요일</b></p>
+    <div class="dsh mt12">
+      <div class="dsh-l"><div class="mock-ph" style="min-height:220px">원장님 보고 문장 · [복사]<br>(지금 대시보드 그대로)</div></div>
+      <div class="dsh-r"><section class="dinv" aria-labelledby="di-h">
+        <div class="dinv-h"><h2 id="di-h">재고</h2><a href="#" class="tbtn s" data-go="list">재고 탭에서 보기${ic('arrow', 14)}</a></div>
+        <div class="dinv-n"><div><p class="k">주문하세요</p><p class="v">${nLow}<small>개</small></p></div><div><p class="k">기한 가까움</p><p class="v">${nExp}<small>개</small></p></div></div>
+        <ul>${shown.map((a) => `<li><span>${a.it.name}</span><span class="d">${a.k === 'low' ? `남은 ${a.it.qty}${a.it.unit}` : expLeft(a.it)}</span></li>`).join('')}</ul>
+        ${act.length > shown.length ? `<p class="more">외 ${act.length - shown.length}개</p>` : ''}
+      </section></div>
+    </div>
+    <div class="mock-ph mt32" style="min-height:160px">오늘 하루 분석 · AI 요약 · 기간별 흐름 · 바로 가기 · 기능 목차<br>(지금 대시보드 그대로)</div>`;
+}
+
+// ---------- 10 빈 상태 ----------
+function vEmpty() {
+  return `<div class="empty"><h2>아직 물품이 없어요</h2>
+      <p>양식 받기 → 채우기 → 엑셀 올리기, 이 차례로 하면 목록이 한 번에 만들어져요.</p></div>
+    <div class="scroll-x"><ol class="steps" aria-label="물품 넣는 차례">
+      <li><span class="st-n">1</span><p class="st-t">양식 받기</p><p class="st-d">빈 양식(엑셀), 시트 '물품'</p><button type="button" class="btn btn-sec mt12">${ic('arrowDown')}양식 받기</button></li>
+      <li><span class="st-n">2</span><p class="st-t">채우기</p><p class="st-d">한 줄에 물품 하나: ${TPL.join(' · ')}</p></li>
+      <li><span class="st-n">3</span><p class="st-t">엑셀 올리기</p><p class="st-d">넣기 전에 미리 보기로 확인해요</p><button type="button" class="btn btn-pri mt12" data-go="excel">${ic('upload')}엑셀 올리기</button></li>
+    </ol></div>
+    <p class="help mt12" style="font-size:13px;line-height:20px">갖고 계신 엑셀도 올릴 수 있어요(AI가 칸을 맞춰요).</p>
+    <p class="mt8" style="font-size:13px;line-height:20px;color:var(--ink-2)">물품을 하나씩 더할 수도 있어요. <button type="button" class="tbtn s" data-go="edit">물품 더하기</button></p>
+    <p class="mt4" style="font-size:13px;line-height:20px;color:var(--ink-2)">비트에서 쓰던 약·재료 코드에서 골라 넣을 수도 있어요. <button type="button" class="tbtn s" data-go="bit">비트 코드에서 고르기</button></p>
+    <div class="empty-2"><p class="h">분류는 넷으로 시작해요</p><p>${CATS.map((c) => c.name).join(' · ')}</p><button type="button" class="tbtn s mt4" data-go="cats">분류 고치기</button></div>`;
+}
+
+// ---------- 그리기 ----------
+function body() {
+  switch (state) {
+    case 'list': case 'edit': case 'cats': case 'bit': case 'bit-empty': return vList(false);
+    case 'order': return vList(true);
+    case 'count': return vCount();
+    case 'print': return vPrint();
+    case 'in-check': return vInCheck(false);
+    case 'in-manual': return vInCheck(true);
+    case 'in-list': case 'in-photo': return vInList();
+    case 'excel': return vExcel('form');
+    case 'excel-own': return vExcel('own');
+    case 'month': return vMonth();
+    case 'empty': return vEmpty();
+  }
+  return '';
+}
+function render() {
+  document.getElementById('picks').innerHTML = STATES.map(([k, l]) => `<button type="button" class="pick" data-s="${k}" aria-pressed="${k === state}">${l}</button>`).join('');
+  document.getElementById('cap').innerHTML = CAPS[state];
+  const app = document.getElementById('app');
+  if (state === 'dash') {
+    app.innerHTML = header() + tabs('dash') + `<main class="main" id="main"><div class="wa">${vDash()}</div></main>`;
+  } else {
+    app.innerHTML = header() + tabs('inv') + `<main class="main" id="main"><div class="wa">
+      <h1 class="pg-h1">재고</h1>${toolRow(TOOL_OF[state])}<div class="tbody">${body()}</div></div></main>`
+      + (state === 'edit' ? editSheet() : '') + (state === 'cats' ? catsSheet() : '') + (state === 'in-photo' ? photoDialog() : '') + (state === 'bit' || state === 'bit-empty' ? bitDialog(state === 'bit-empty') : '');
+  }
+  fitPaper();
+  bindDrag();
+}
+function fitPaper() {
+  const pw = document.getElementById('pw'), a4 = document.getElementById('a4');
+  if (!pw || !a4) return;
+  const avail = pw.clientWidth - parseFloat(getComputedStyle(pw).paddingLeft) * 2;
+  a4.style.zoom = Math.min(1, avail / 796);
+}
+window.addEventListener('resize', fitPaper);
+
+// 끌어서 옮기기(1-2)
+let dragId = null;
+function bindDrag() {
+  const tb = document.getElementById('itemtb');
+  if (!tb || state !== 'order') return;
+  tb.querySelectorAll('tr[draggable]').forEach((tr) => {
+    tr.addEventListener('dragstart', (e) => { dragId = +tr.dataset.id; tr.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+    tr.addEventListener('dragend', () => { dragId = null; render(); });
+    tr.addEventListener('dragover', (e) => {
+      const a = ITEMS.find((i) => i.id === dragId), b = ITEMS.find((i) => i.id === +tr.dataset.id);
+      if (!a || !b || a.cat !== b.cat) return;
+      e.preventDefault(); tb.querySelectorAll('.drop').forEach((x) => x.classList.remove('drop')); tr.classList.add('drop');
+    });
+    tr.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const from = ITEMS.findIndex((i) => i.id === dragId), to = ITEMS.findIndex((i) => i.id === +tr.dataset.id);
+      if (from < 0 || to < 0) return;
+      const [m] = ITEMS.splice(from, 1); ITEMS.splice(to, 0, m);
+    });
+  });
+}
+function move(id, d) {
+  const it = ITEMS.find((i) => i.id === id);
+  const same = visible().filter((i) => i.cat === it.cat);
+  const k = same.indexOf(it), other = same[k + d];
+  if (!other) return;
+  const a = ITEMS.indexOf(it), b = ITEMS.indexOf(other);
+  [ITEMS[a], ITEMS[b]] = [ITEMS[b], ITEMS[a]];
+  render();
+}
+
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-s],[data-go],[data-order],[data-unorder],[data-mv],[data-hid],[data-open],[data-print],[data-xf],[data-unhide]');
+  if (!t) return;
+  if (t.matches('a')) e.preventDefault();
+  if (t.getAttribute('aria-disabled') === 'true') return;
+  if (t.dataset.unhide) { ITEMS.find((i) => i.id === +t.dataset.unhide).hidden = false; return render(); }
+  if (t.dataset.xf) { xFilter = t.dataset.xf; return render(); }
+  if (t.dataset.s) return go(t.dataset.s);
+  if (t.dataset.go) return go(t.dataset.go);
+  if (t.dataset.order) { ordered[t.dataset.order] = sl(TODAY); return render(); }
+  if (t.dataset.unorder) { delete ordered[t.dataset.unorder]; return render(); }
+  if (t.dataset.mv) return move(+t.dataset.mv, +t.dataset.d);
+  if (t.hasAttribute('data-hid')) { showHidden = !showHidden; return render(); }
+  if (t.dataset.open) { openRec[t.dataset.open] = !openRec[t.dataset.open]; return render(); }
+  if (t.hasAttribute('data-print')) return window.print();
+});
+// 비트 코드: 찾기·고른 개수
+document.addEventListener('input', (e) => {
+  if (e.target.id !== 'bit-q') return;
+  const q = e.target.value.trim().toLowerCase();
+  let shown = 0;
+  document.querySelectorAll('.bit-l tbody tr').forEach((tr) => { const ok = !q || tr.dataset.q.includes(q); tr.hidden = !ok; if (ok) shown++; });
+  document.getElementById('bit-none').hidden = shown > 0;
+});
+document.addEventListener('change', (e) => {
+  if (!e.target.classList.contains('bit-ck')) return;
+  const n = document.querySelectorAll('.bit-ck:checked').length;
+  const b = document.getElementById('bit-go');
+  b.textContent = n + '개 더하기';
+  b.setAttribute('aria-disabled', n ? 'false' : 'true');
+});
+// 세기 칸: 적으면 경고·적은 개수만 다시 쓴다(칸 초점 유지)
+document.addEventListener('input', (e) => {
+  const id = e.target.dataset && e.target.dataset.cnt;
+  if (!id) return;
+  const it = ITEMS.find((i) => i.id === +id);
+  it.cnt = e.target.value.replace(/[^0-9]/g, '');
+  const over = overCount(it);
+  e.target.classList.toggle('warn', over);
+  document.getElementById('cr' + id).classList.toggle('has-w', over);
+  document.getElementById('cw' + id).hidden = !over;
+  if (over) document.getElementById('cwt' + id).textContent = warnMsg(it);
+  const list = ITEMS.filter((i) => !i.hidden), filled = list.filter((i) => i.cnt !== '').length;
+  document.getElementById('cfill').innerHTML = `<b>${list.length}개 가운데 ${filled}개</b> 적었어요 · 비운 ${list.length - filled}개는 그대로예요`;
+});
+render();
+</script>
+</body>
+</html>
