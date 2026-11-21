@@ -179,8 +179,8 @@
 - Phase: 4
 - AC: AC-7422.1, AC-7422.2, AC-7424.12
 - REQ: REQ-7422, REQ-7424
-- Files: src/components/dashboard/notices/**, src/components/dashboard/summary/LiveDashboard.tsx, src/components/dashboard/summary/LiveDashboard.test.tsx, src/components/dashboard/live/BitDashboard.tsx, src/components/dashboard/live/BitDashboard.test.tsx
-- Tests: src/components/dashboard/notices/RuleAlert.test.tsx, src/components/dashboard/notices/NoticesCard.test.tsx
+- Files: src/components/dashboard/notices/**, src/components/dashboard/summary/LiveDashboard.tsx, src/components/dashboard/summary/LiveDashboard.test.tsx, src/components/dashboard/live/BitDashboard.tsx, src/components/dashboard/live/BitDashboard.test.tsx, src/app/(app)/dashboard/page.test.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx
+- Tests: src/components/dashboard/notices/RuleAlert.test.tsx, src/components/dashboard/notices/NoticesCard.test.tsx, src/app/(app)/dashboard/page.test.tsx, src/components/dashboard/summary/DashboardAnalysis.test.tsx
 - TDD: required
 
 ## TASK-21: 자동 실행 경로 · 문지기 · Cron 설정

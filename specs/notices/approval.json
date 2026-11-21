@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "notices",
-  "approved_at": "2026-11-21T05:26:15Z",
+  "approved_at": "2026-11-21T06:54:01Z",
   "approved_via": "user-prompt",
   "session_id": "564f910f-c538-4591-ad30-a3552610b06c",
-  "spec_sha256": "bef6a9de47cc46a55f01c195061c091733e068d5b4285c954914fe99319491d7",
+  "spec_sha256": "c1d8d028ac75bb7a0d181fc9bc971b31c557e9b80b5b882b8432db028d1691cf",
   "scope": [
     "CLAUDE.md",
     "docs/ADR.md",
@@ -16,6 +16,7 @@
     "package-lock.json",
     "package.json",
     "plan.md",
+    "src/app/(app)/dashboard/page.test.tsx",
     "src/app/(app)/notReadyPages.test.tsx",
     "src/app/(app)/notices/page.tsx",
     "src/app/(app)/notices/week/page.tsx",
@@ -67,6 +68,7 @@
     "src/components/dashboard/notices/**",
     "src/components/dashboard/notices/NoticesCard.test.tsx",
     "src/components/dashboard/notices/RuleAlert.test.tsx",
+    "src/components/dashboard/summary/DashboardAnalysis.test.tsx",
     "src/components/dashboard/summary/LiveDashboard.test.tsx",
     "src/components/dashboard/summary/LiveDashboard.tsx",
     "src/components/notices/detail/**",

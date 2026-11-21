@@ -82,7 +82,7 @@ export async function runCollector(deps: CollectorDeps): Promise<RunReport | 'bu
 - 요약: `waiting(40)`(최근 글부터). 바로 갈 것 = `posted_on ≥ 오늘 − 2일` 또는 `tries ≥ 1`. 붙임은 묶음의 출처 글 붙임에서 받고(`kind: 'file'`) `sniffFile` → `planReading`. 바로는 동시에 3개. 일괄은 `submitBatch`가 담지 못한 것을 `wait` 그대로 둔다.
 - 일괄 거두기: `openBatches()`의 id마다 `readBatch`. `processing`이고 24시간 안이면 둔다.
 - 지난 글: `cursor` = `{ "page": n }`(공지) · `{ "01": n, "02": n, "09": n, "10": n, "done": ["01"] }`(심사기준).
-- 주간 모음: 지난 월요일(오늘이 월요일이면 7일 전)을 구해 `weekExists`가 거짓이면 `weekNotices` → 0개면 `{ top3: [] }`, 아니면 `weeklyRequest` → `callClaude` → `parseWeekly`. 월요일 첫 실행(아침)이 만든다.
+- 주간 모음: 지난 월요일(오늘이 월요일이면 7일 전)을 구해 `weekExists`가 거짓이면 `weekNotices` → 0개면 `{ top3: [] }`, 아니면 `weeklyRequest` → `callClaude` → `parseWeekly`. 월요일 첫 실행(아침)이 만든다. 단, `weekPending(weekStart)`(그 주 `posted_on`의 `wait`·`batch` 글이 있나)가 참이면 만들지 않고 다음 실행으로 미룬다(기본값 22). 모음을 만드는 주는 늘 '지난주'라서 일요일이 지나면 그 주는 다시 보지 않는다.
 - 사용량: 부름마다 `addRunUsage`(바로 = `costMicroUsd`, 일괄 = 절반 버림). `counts` = `{ new: {source: n}, stopped: [source], summarized, batched, collected, failed }`.
 - 로그: `console.error('[notices/collect]', code)`만(`E-NOTICE-SRC-<source>`·`E-NOTICE-SUMMARY`·`E-NOTICE-BATCH`·`E-NOTICE-WEEK`).
 - 처음 채우기 어림: 심평원 요청 약 4,000번(공지 글 ~900 + 붙임 ~1,300, 심사기준 팝업 ~1,500, 목록 ~250) ÷ 실행마다 ~600번(초당 약 3번 × ~200초) → 7번쯤 = 첫날 안. 일괄 결과는 두 시간 뒤 실행이 거둔다 → 시안 글 '하루쯤'.
@@ -178,6 +178,7 @@ export interface CollectorStore {
   markBatch(ids: string[], batchId: string): Promise<boolean>
   openBatches(): Promise<{ batchId: string; ids: string[]; oldest: string }[]>
   weekExists(weekStart: string): Promise<boolean>
+  weekPending(weekStart: string): Promise<boolean>   // 2026-11-21 더함: 그 주(월~일) posted_on 글 가운데 state가 wait·batch인 것이 있나. 실패는 던짐
   weekNotices(weekStart: string): Promise<WeekInput[]>
   saveWeek(d: { weekStart: string; top3: WeekTop[] }): Promise<boolean>
 }
