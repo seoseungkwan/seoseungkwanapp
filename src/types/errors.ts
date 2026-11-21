@@ -58,5 +58,7 @@ export type ErrorCode =
   | 'E-CLINIC-READ-FAILED' | 'E-CLINIC-SAVE-FAILED' | 'E-CLINIC-LOGO-FAILED'
   // 처음 질문 저장 실패(specs/clinic-profile AC-6614.8)
   | 'E-FIRST-RUN-SAVE-FAILED'
+  // 고시·공지 탭(specs/notices requirements 기본값 12): 목록·글 읽기 실패 · 별표·메모·규칙 확인 저장 실패
+  | 'E-NOTICE-READ' | 'E-NOTICE-SAVE'
 
 export type ErrorInfo = { what: string; fix: string }

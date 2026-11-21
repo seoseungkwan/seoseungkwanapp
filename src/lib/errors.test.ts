@@ -99,6 +99,8 @@ const ALL_CODES = [
   'E-CLINIC-SAVE-FAILED',
   'E-CLINIC-LOGO-FAILED',
   'E-FIRST-RUN-SAVE-FAILED',
+  'E-NOTICE-READ',
+  'E-NOTICE-SAVE',
 ] as const satisfies readonly ErrorCode[]
 
 // '병원' 낱말 예외(AC-409.1): 명세가 글자를 정한 번호만. 데스크 메일 둘은 '병원 계정'·'다른 병원'이라고 말해야 뜻이 산다(desk-feedback design.md 표, AC-6304.3).
@@ -1116,5 +1118,36 @@ describe('AC-6602.7·AC-6614.8 병원 정보·처음 질문 오류 번호', () =
     const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
     const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
     for (const code of Object.keys(CLINIC)) expect(union).toContain(`'${code}'`)
+  })
+})
+
+// 고시·공지 탭(specs/notices requirements 기본값 12). 목록·글 읽기 실패는 [다시 읽기], 별표·메모·규칙 확인 저장 실패는 적은 메모가 그대로
+const NOTICE = {
+  'E-NOTICE-READ': {
+    what: '고시·공지를 읽지 못했어요',
+    fix: '인터넷 연결을 확인하고 [다시 읽기]를 눌러 주세요',
+  },
+  'E-NOTICE-SAVE': {
+    what: '저장하지 못했어요',
+    fix: '잠시 뒤 다시 눌러 주세요. 적은 메모는 그대로 있어요',
+  },
+} as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
+
+describe('AC-7401.1 고시·공지 오류 번호', () => {
+  it.each(Object.keys(NOTICE) as Array<keyof typeof NOTICE>)('AC-7401.1: errorInfo(%s)는 기본값 12의 무엇이·어떻게 글 그대로다', (code) => {
+    expect(isErrorCode(code), code).toBe(true)
+    expect(ALL_CODES, code).toContain(code)
+    expect(errorInfo(code)).toEqual(NOTICE[code])
+  })
+
+  it('AC-7401.1: 이 명세가 더하는 번호는 E-NOTICE-READ·E-NOTICE-SAVE 둘뿐이다', () => {
+    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-NOTICE-')).sort()).toEqual(Object.keys(NOTICE).sort())
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
+  it('AC-7401.1: 두 번호가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    for (const code of Object.keys(NOTICE)) expect(union).toContain(`'${code}'`)
   })
 })
