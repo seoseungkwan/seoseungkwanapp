@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "inventory",
-  "approved_at": "2026-11-21T03:02:54Z",
+  "approved_at": "2026-11-21T05:16:21Z",
   "approved_via": "auto",
   "session_id": "81f40a65-8944-4188-b6d0-80ee9b36878e",
-  "spec_sha256": "5d1f5283d3ea5cd66d2f8e53e69651f27bedd16bfe0df424b579145b2322ffc2",
+  "spec_sha256": "76d4d8a89e1125eb9b076ce9f003cc60cfe0f44de20973fabbe17d681b11e5f3",
   "scope": [
     "CLAUDE.md",
     "docs/ADR.md",

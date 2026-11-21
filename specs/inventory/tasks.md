@@ -87,7 +87,7 @@
 
 ## TASK-11: 엑셀 양식 받기·올리기 화면
 - Phase: 2
-- AC: AC-7509.1, AC-7509.2, AC-7509.3, AC-7509.4
+- AC: AC-7509.1, AC-7509.2, AC-7509.3, AC-7509.4, AC-7509.5
 - REQ: REQ-7509
 - Files: src/components/inventory/ExcelImport.tsx, src/components/inventory/ExcelImport.test.tsx, src/components/inventory/columnsClient.ts, src/components/inventory/columnsClient.test.ts
 - Tests: src/components/inventory/ExcelImport.test.tsx, src/components/inventory/columnsClient.test.ts
