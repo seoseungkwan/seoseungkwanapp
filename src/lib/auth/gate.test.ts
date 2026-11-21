@@ -20,6 +20,50 @@ describe('isPublicPath()', () => {
   )
 })
 
+// specs/notices REQ-7416: Vercel Cron이 세션 없이 부르는 모으기 경로 하나만 공개로 더한다(지키는 것은 경로의 CRON_SECRET 검사, ADR-034)
+const COLLECT = '/api/ai/notices/collect'
+
+describe('고시·공지 모으기 경로 (notices AC-7416.3)', () => {
+  it('AC-7416.3: /api/ai/notices/collect는 공개 경로다', () => {
+    expect(isPublicPath(COLLECT)).toBe(true)
+  })
+
+  it('AC-7416.3: 로그인 안 한 요청의 /api/ai/notices/collect는 /login으로 보내지 않는다(병원 상태·관리자 여부와 상관없이)', () => {
+    for (const hospital of ALL_STATES) {
+      for (const isAdmin of [true, false]) {
+        expect(decideRoute({ path: COLLECT, signedIn: false, hospital, isAdmin })).toBeNull()
+      }
+    }
+  })
+
+  it("AC-7416.3: middleware(병원 상태 'unknown')는 로그인한 요청의 /api/ai/notices/collect도 그대로 연다", () => {
+    expect(decideRoute(signedIn(COLLECT, 'unknown'))).toBeNull()
+  })
+
+  it.each([
+    '/api/ai/notices/collect/',
+    '/api/ai/notices/collect/x',
+    '/api/ai/notices/collectx',
+    '/api/ai/notices/collect?x=1',
+    '/API/ai/notices/collect',
+    '/api/ai/notices',
+    '/api/ai/notices/ask',
+    '/api/ai/report',
+    '/api/ai/forms',
+    '/api',
+  ])('AC-7416.3: %s는 공개 경로가 아니고 로그인 안 하면 지금처럼 /login으로 보낸다', (path) => {
+    expect(isPublicPath(path)).toBe(false)
+    for (const hospital of ALL_STATES) {
+      expect(decideRoute({ path, signedIn: false, hospital, isAdmin: false })).toBe('/login')
+    }
+  })
+
+  it('AC-7416.3: 공개 경로는 /, /login, /auth/callback과 모으기 경로 넷뿐이다', () => {
+    const candidates = ['/', '/login', '/auth/callback', COLLECT, '/signup', '/pending', '/dashboard', '/admin', '/notices', '/api/ai/notices/ask']
+    expect(candidates.filter(isPublicPath)).toEqual(['/', '/login', '/auth/callback', COLLECT])
+  })
+})
+
 describe('decideRoute() — 로그인 안 함', () => {
   it.each(['/', '/login', '/auth/callback'])('AC-002.1: %s는 그대로 연다', (path) => {
     for (const hospital of ALL_STATES) {

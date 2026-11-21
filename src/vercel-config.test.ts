@@ -26,6 +26,38 @@ describe('vercel.json', () => {
     expect(config.regions).toEqual(['icn1'])
     expect(config.git?.deploymentEnabled).toBe(false)
   })
+
+  // specs/notices REQ-7416, design 1절·ADR-034: 무료판 Cron은 식마다 하루 한 번(그 시간 안 아무 때). 같은 경로를 아홉 식으로 건다
+  const COLLECT = '/api/ai/notices/collect'
+  const SCHEDULES = ['0 22 * * *', '0 0 * * *', '0 2 * * *', '0 4 * * *', '0 6 * * *', '0 8 * * *', '0 10 * * *', '0 12 * * *', '0 14 * * *']
+
+  it('AC-7416.4: crons는 모으기 경로 아홉 개(한국 07시대 아침 0 22 + 09~23시대 두 시간마다)다', () => {
+    const config = JSON.parse(readText('vercel.json'))
+    expect(config.crons).toEqual(SCHEDULES.map((schedule) => ({ path: COLLECT, schedule })))
+  })
+
+  it('AC-7416.4: 식마다 하루 한 번(분·시가 숫자 하나, 나머지 *)이고 겹치는 시각이 없다', () => {
+    const config = JSON.parse(readText('vercel.json')) as { crons: { path: string; schedule: string }[] }
+    const hours = config.crons.map(({ schedule }) => {
+      const m = /^0 (\d{1,2}) \* \* \*$/.exec(schedule)
+      expect(m, schedule).not.toBeNull()
+      const hour = Number(m![1])
+      expect(hour).toBeGreaterThanOrEqual(0)
+      expect(hour).toBeLessThanOrEqual(23)
+      return hour
+    })
+    expect(new Set(hours).size).toBe(hours.length)
+    // 첫 식(아침)은 한국 07시 = UTC 전날 22시
+    expect((hours[0] + 9) % 24).toBe(7)
+  })
+
+  it('AC-7416.4: 모으기 경로 파일이 있고, 설정 칸은 $schema·framework·regions·git·crons뿐이다', () => {
+    expect(readText('src/app/api/ai/notices/collect/route.ts')).toMatch(/export async function GET\b/)
+    const config = JSON.parse(readText('vercel.json'))
+    expect(Object.keys(config).sort()).toEqual(['$schema', 'crons', 'framework', 'git', 'regions'])
+    expect(config.$schema).toBe('https://openapi.vercel.sh/vercel.json')
+    expect(config.git).toEqual({ deploymentEnabled: false })
+  })
 })
 
 describe('.vercelignore', () => {
