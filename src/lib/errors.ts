@@ -454,6 +454,12 @@ export const ERRORS: Record<KnownErrorCode, ErrorInfo> = {
     what: '낱말을 저장하지 못했어요',
     fix: '잠시 뒤 다시 눌러 주세요. 고른 낱말은 그대로 있어요',
   },
+  // 점검 규칙 저절로 바꾸기(specs/rule-auto requirements 기본값 13 글자 그대로): 글 화면 [되돌리기]·[다시 적용] 저장 실패.
+  // 카드 안 오류 상자이고 카드 모양은 누르기 전 그대로다. 규칙 상자 읽기 실패는 E-NOTICE-READ를 그대로 쓴다
+  'E-RULE-AUTO-SAVE': {
+    what: '점검 규칙을 바꾸지 못했어요',
+    fix: '잠시 뒤 다시 눌러 주세요. 지금은 누르기 전 규칙 그대로 점검해요',
+  },
   // 재고 탭(specs/inventory design.md 4절). E-AI-BUSY·E-AI-LIMIT·E-AI-FAILED는 위 문구를 그대로 쓴다.
   // 이름 겹침은 물품·분류 둘 다에 뜬다(안 쓰는 물품도 이름을 차지한다)
   'E-INV-READ-FAILED': {

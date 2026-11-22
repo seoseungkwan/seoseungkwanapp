@@ -1,4 +1,4 @@
-import type { Automatable, Confidence, Grade, RuleStage, RuleType, Tables } from '@/types/precheck'
+import type { Automatable, Confidence, Grade, RuleDef, RuleStage, RuleType, Tables } from '@/types/precheck'
 
 // 점검 표 네 개의 모양 검사(순수 함수, REQ-007). 표를 불러오는 곳은 workers/precheck/tables.ts 하나다(AC-007.4).
 // 원본에서 옮긴 표가 이 모양을 벗어나면 던지고, Worker는 점검을 시작하지 않는다(E-RULES-LOAD-FAILED, AC-007.5).
@@ -67,6 +67,19 @@ function checkRule(rule: unknown, where: string) {
   if (typeof rule.enabled_default !== 'boolean') fail(`${where}.enabled_default`)
   if (!isDateOrNull(rule.effective_from) || !isDateOrNull(rule.effective_to)) fail(`${where}.effective`)
   if (!isText(rule.notes)) fail(`${where}.notes`)
+}
+
+/**
+ * 규칙 한 줄이 규칙표 검사(checkTables)가 규칙마다 하는 검사를 지나는지(참·거짓, 던지지 않음).
+ * 고시로 바꾼 규칙 검사(ruleUpdates.ts, specs/rule-auto AC-7802.5)가 쓴다. 규칙끼리 id 겹침은 표 검사만 본다
+ */
+export function checkRuleShape(x: unknown): x is RuleDef {
+  try {
+    checkRule(x, 'rule')
+    return true
+  } catch {
+    return false
+  }
 }
 
 function checkRules(rules: unknown) {

@@ -9,7 +9,7 @@ import { listNotices, NOTICES_CHANGED, sourceStates, unreadCount } from '@/lib/s
 import type { NoticeFilter, NoticeView, SourceView } from '@/types/notices'
 import { ArrowIcon } from './icons'
 
-// 대시보드 '고시·공지' 칸(specs/notices AC-7422.2 · AC-7424.12 · 기본값 1·9·11·21, 시안 ?s=dashboard .dsec·.ncard). BitDashboard가 일별 현황 바로 아래에 놓는다
+// 대시보드 '고시·공지' 칸(specs/notices AC-7422.2 · AC-7424.12 · 기본값 1·9·11·21 · specs/rule-auto AC-7815.2, 시안 ?s=dashboard .dsec·.ncard). BitDashboard가 일별 현황 바로 아래에 놓는다
 // (숫자가 있는 화면에서만 — 연결 전·읽는 중에는 놓지 않는다).
 // 수는 unreadCount(안 읽은 관련 글 + 꼭 볼 글), 줄은 관련 글만 첫 쪽(listNotices) 가운데 안 읽은 글 3개까지, 0건 글의 시각은 출처 상태(sourceStates)의 가장 늦은 확인이다.
 // 화면은 받은 줄을 related로 다시 거르지 않는다(꼭 볼 글은 DB가 넣는다, AC-7424.12). 줄에 꼭 볼 글 칩은 없다(기본값 21).
@@ -62,8 +62,10 @@ function emptyText(checkedAt: string | null): string {
   return when === '' ? '새 관련 글이 없어요' : `새 관련 글이 없어요 · ${when} 확인`
 }
 
+// 칸 줄 칩은 `점검 규칙 확인 필요` 하나뿐: AI가 사람이 봐야 함으로 판정한 규칙이 남고 아직 [확인했어요] 전인 글만(specs/rule-auto AC-7815.2).
+// 바뀜·살펴보는 중 칩은 칸에 없다. ruleTally가 없거나 null(판정 줄 읽기 실패)이면 칩이 없다
 function Row({ n }: { n: NoticeView }) {
-  const needsCheck = n.ruleHits.length > 0 && !n.mark.rulesCheckedAt
+  const needsCheck = (n.ruleTally?.human ?? 0) > 0 && !n.mark.rulesCheckedAt
   return (
     <li className="border-b border-line last:border-b-0">
       <Link

@@ -95,6 +95,8 @@ specs/<기능ID>/          # SDD 명세·TDD 기록
        → [내 배경으로 저장]만 form_backgrounds(RLS) + Storage form-backgrounds → 안내문 theme = bg-<id> (ADR-029)
 [고시·공지] Vercel Cron(한국 07시대 + 09~23시대 두 시간마다) → GET /api/ai/notices/collect(CRON_SECRET) → 모으기 계정 로그인(anon 열쇠 + 비밀번호)
        → 심평원 공지·심사기준·복지부 RSS(정해 둔 주소만) → 고시 번호로 묶기 → 붙임 글자 → Claude 요약(바로 또는 일괄) → 공용 표(notices 등) (ADR-036~038)
+       ② 규칙 살피기(일괄 결과 거두기 바로 뒤): 규칙표 판 날짜 뒤에 올라온 고시가 근거인 점검 규칙마다 새 고시 글 + 규칙 JSON → Claude(effort high) → 앱 검사를 지난 판만 rule_changes(공용 표), 못 지나면 '사람이 봐야 함' (ADR-040)
+       청구 화면 → RLS로 살아 있는 판 읽기(rule_changes − 내 병원 되돌림 rule_change_marks) → Worker 설정 묶음 ruleUpdates → Worker가 다시 검사·합쳐 진료일에 맞는 판으로 점검(네트워크 없음)
        화면(/notices · ?id= · /notices/week) → lib/storage/notices.ts → RLS(승인된 원장만). 읽음·별표·메모·규칙 확인 → notice_marks, 내 낱말 → notice_keywords
        [묻기] 질문(1~300자) → 환자 정보 모양 검사(화면·서버) → POST /api/ai/notices/ask → 하루 20번 표(take_notice_ask) → DB의 글 + 질문 → Claude → 답(글자로만, 저장 안 함)
 [백업] [백업 내려받기] → 브라우저가 내 병원 모든 표 읽기 → JSON 파일 하나

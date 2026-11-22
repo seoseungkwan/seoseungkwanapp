@@ -192,6 +192,34 @@ describe('AC-3509.3 effort 칸', () => {
   })
 })
 
+// 점검 규칙 저절로 바꾸기(specs/rule-auto TASK-4): 규칙 JSON을 고치는 일이라 effort high로 부른다. 지금 부르는 곳(low·medium·없음)은 그대로
+describe('AC-7808.4 effort high', () => {
+  it("AC-7808.4 effort 'high'를 주면 output_config.effort가 high이고, 나머지 칸은 그대로다", async () => {
+    const { client, calls } = fakeClient(message())
+    const req: ClaudeRequest = { ...REQ, effort: 'high' }
+    await callClaude(req, { client, apiKey: FAKE_KEY })
+    expect(calls).toHaveLength(1)
+    const p = calls[0]
+    expect(p.output_config).toEqual({ effort: 'high', format: { type: 'json_schema', schema: REQ.schema } })
+    expect(p.model).toBe('claude-opus-5-5')
+    expect(p.max_tokens).toBe(16000)
+    expect(p.betas).toEqual(['server-side-fallback-2026-07-01'])
+    expect(p.fallbacks).toBe('default')
+    expect(p.system).toBe('지시문')
+    expect(p.messages).toEqual([{ role: 'user', content: '{"month":"2026-10"}' }])
+    expect(p).not.toHaveProperty('thinking')
+  })
+
+  it('AC-7808.4 지금 부르는 곳(low·medium·칸 없음)은 그대로 low·medium·medium이다', async () => {
+    const { client, calls } = fakeClient(message())
+    await callClaude({ ...REQ, effort: 'low' }, { client, apiKey: FAKE_KEY })
+    await callClaude({ ...REQ, effort: 'medium' }, { client, apiKey: FAKE_KEY })
+    await callClaude(REQ, { client, apiKey: FAKE_KEY })
+    await callClaude({ ...REQ, effort: 'high' }, { client, apiKey: FAKE_KEY })
+    expect(calls.map((p) => p.output_config?.effort)).toEqual(['low', 'medium', 'medium', 'high'])
+  })
+})
+
 // 재고 탭 명세서 읽기(specs/inventory TASK-6): 사진을 주면 user 내용이 [사진 블록, 글 블록]이다. 칸이 없으면 지금처럼 글자 하나
 describe('AC-7505.2 사진 칸', () => {
   const IMAGE = { mediaType: 'image/jpeg', data: '/9j/4AAQSkZJRgABAQ==' } as const

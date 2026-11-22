@@ -331,10 +331,20 @@ export type RuleSummary = Pick<RuleDef, 'id' | 'title' | 'domain' | 'grade' | 'b
 export type SavedRuleSettings = { schema: 1; off: string[]; on: string[]; grade: [string, Grade][] }
 
 /**
- * 점검에 쓰는 설정 묶음(환자 정보 아님). 도우미 설정 사본(store.save {settings}, AC-015.7·AC-013.9)도 이 모양이다.
- * phrases는 claim_hospital_settings.phrases(줄이 없으면 null), dxLinks는 상병 연결표
+ * 고시로 바뀐 규칙 판 하나(specs/rule-auto design 3절, rule_changes의 live change 줄). rule은 검사 전 값이다 —
+ * Worker가 withRuleUpdates에서 checkRuleChange로 다시 거른다. from = 이 판이 쓰이는 첫 진료일 'YYYY-MM-DD', baseVersion = 그때 규칙표 version
  */
-export type CheckSettings = { rules: SavedRuleSettings; phrases: object | null; dxLinks: DxLink[] }
+export type RuleUpdate = { changeId: string; ruleId: string; from: string; baseVersion: string; rule: unknown }
+
+/** 바꾼 규칙 검사 결과(lib/precheck/ruleUpdates.ts checkRuleChange, AC-7802.1). 'ok'만 쓸 수 있고 'same'은 바뀐 것 없음, 나머지는 걸린 까닭 */
+export type RuleChangeCheck = 'ok' | 'same' | 'no-auto' | 'fixed' | 'shape' | 'size' | 'names' | 'removed' | 'grade' | 'status'
+
+/**
+ * 점검에 쓰는 설정 묶음(환자 정보 아님). 도우미 설정 사본(store.save {settings}, AC-015.7·AC-013.9)도 이 모양이다.
+ * phrases는 claim_hospital_settings.phrases(줄이 없으면 null), dxLinks는 상병 연결표.
+ * ruleUpdates는 고시로 바뀐 규칙 판(내 병원이 되돌린 것은 뺌, specs/rule-auto). 칸이 없으면(옛 사본) 빈 목록으로 본다
+ */
+export type CheckSettings = { rules: SavedRuleSettings; phrases: object | null; dxLinks: DxLink[]; ruleUpdates?: RuleUpdate[] }
 
 /**
  * 화면 → Worker. loadStart·month·loadPart: 한 달 불러오기 / memoReloadStart·loadPart의 run: 비트 메모 다시 불러오기 / ruleList: 설정 화면용 규칙 목록

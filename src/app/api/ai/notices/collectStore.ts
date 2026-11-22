@@ -13,19 +13,22 @@ import type {
   NoticeSummary,
   PostRow,
   ReadMode,
+  RuleHit,
   SourceError,
   SourceRow,
   WaitingNotice,
   WeekInput,
 } from '@/types/notices'
+import type { LiveChange, ReviewNotice, RuleChangeRow, RuleReviewStore } from '@/types/ruleAuto'
 import type { BatchNotice, BatchReadingStore } from './collector'
 import { WEEK_ITEMS_MAX } from './weeklyPrompt'
 
 // 고시·공지 모으기의 DB 쪽(specs/notices REQ-7415, design 3·4절, ADR-036).
 // 모으기 계정(notice_collectors에 있는 Supabase 로그인 계정)이 공개 열쇠로 비밀번호 로그인한 클라이언트로만 쓴다 — 다른 열쇠는 읽지 않는다.
-// 공용 표 넷(notices·notice_posts·notice_sources·notice_weeks)과 실행 기록 함수 셋(notice_start_run·notice_add_run_usage·notice_finish_run)만 쓰고
+// 공용 표 넷(notices·notice_posts·notice_sources·notice_weeks)과 실행 기록 함수 셋(notice_start_run·notice_add_run_usage·notice_finish_run),
+// 규칙 살피기(specs/rule-auto REQ-7811, design 7·10절)의 공용 표 rule_changes와 함수 둘(rule_review_waiting·rule_review_failed)만 쓰고
 // 병원 조건은 넣지 않는다(공용 표다, ADR-037). 지우기는 없다.
-// 오류 내용은 버린다: 쓰기는 false, 읽기(startRun 포함)는 고정 글 STORE_READ_FAILED로 던진다
+// 오류 내용은 버린다: 쓰기는 false(고친 수를 주는 쓰기는 -1), 읽기(startRun 포함)는 고정 글 STORE_READ_FAILED로 던진다
 
 /** 읽기 실패(DB 오류·던짐·줄 모양이 틀림)의 고정 글. 받은 오류 글은 담지 않는다 */
 export const STORE_READ_FAILED = 'notices store read failed'
@@ -131,8 +134,18 @@ async function writing(work: () => Promise<boolean>): Promise<boolean> {
     return false
   }
 }
+// 고친 수를 주는 쓰기: 오류·던짐·모양이 틀린 답은 -1
+async function counting(work: () => Promise<number>): Promise<number> {
+  try {
+    return await work()
+  } catch {
+    return -1
+  }
+}
 // 고치기는 RLS가 막으면 오류 없이 0줄이다 → 고친 줄 수를 받아 센다
 const rowsOk = (res: Res, count = 1): boolean => !res.error && Array.isArray(res.data) && res.data.length === count
+// 여러 줄 고치기의 고친 줄 수(고친 줄을 select로 받아 센다). 오류·목록이 아니면 -1
+const rowCount = (res: Res): number => (!res.error && Array.isArray(res.data) ? res.data.length : -1)
 
 // ── 줄 ↔ 모양 ──────────────────────────────────────────────
 
@@ -216,6 +229,7 @@ function batchNoticeOf(v: unknown): BatchNotice | null {
     return {
       id: textOf(r.id),
       noticeNo: textOrNull(r.notice_no),
+      postedOn: dayOf(r.posted_on),
       body: textOf(r.body),
       readMode: r.read_mode === null ? null : oneOf(READ_MODES, r.read_mode),
       attachText: textOf(r.attach_text),
@@ -225,11 +239,66 @@ function batchNoticeOf(v: unknown): BatchNotice | null {
   }
 }
 
+function ruleHitsOf(v: unknown): RuleHit[] {
+  return listOf(v).map((h) => {
+    const r = recordOf(h)
+    return { id: textOf(r.id), title: textOf(r.title) }
+  })
+}
+
+// rule_review_waiting 글 하나(jsonb, 칸 이름은 specs/rule-auto AC-7806.1). 모양이 틀린 글은 null(뺀다 — 다른 글은 그대로 살핀다)
+function reviewNoticeOf(v: unknown): ReviewNotice | null {
+  try {
+    const r = recordOf(v)
+    const summary = r.summary === null ? null : summaryOf(r.summary)
+    if (r.summary !== null && summary === null) throw new BadRow()
+    return {
+      id: textOf(r.id),
+      title: textOf(r.title),
+      noticeNo: textOrNull(r.noticeNo),
+      postedOn: dayOf(r.postedOn),
+      kind: oneOf(KINDS, r.kind),
+      body: textOf(r.body),
+      attachText: textOf(r.attachText),
+      summary,
+      url: textOrNull(r.url),
+      source: r.source === null ? null : oneOf(SOURCES, r.source),
+      ruleHits: ruleHitsOf(r.ruleHits),
+      pending: listOf(r.pending).map((id) => textOf(id)),
+      tries: intOf(r.tries),
+    }
+  } catch {
+    return null
+  }
+}
+
+// 살아 있는 바뀐 판 한 줄. rule은 검사 전 값 그대로(모으기 흐름이 checkRuleShape로 거른다)
+function liveChangeOf(v: unknown): LiveChange {
+  const r = recordOf(v)
+  return { ruleId: textOf(r.rule_id), effectiveFrom: dayOf(r.effective_from), rule: r.rule }
+}
+
+// rule_changes에 넣는 칸(design 7절 grant insert 칸 그대로)
+const ruleChangeDb = (row: RuleChangeRow) => ({
+  notice_id: row.noticeId,
+  rule_id: row.ruleId,
+  base_version: row.baseVersion,
+  verdict: row.verdict,
+  by_ai: row.byAi,
+  check_code: row.checkCode,
+  why: row.why,
+  before_text: row.before,
+  after_text: row.after,
+  effective_from: row.effectiveFrom,
+  rule: row.rule,
+})
+
 // ── 가게 ───────────────────────────────────────────────────
 
-/** 모으기 흐름(collector.ts)이 쓰는 DB 쪽(일괄 글의 읽기 결과 둘 포함). supabase는 collectorClient()가 준 클라이언트 */
-export function collectorStore(supabase: SupabaseClient): CollectorStore & BatchReadingStore {
+/** 모으기 흐름(collector.ts)이 쓰는 DB 쪽(일괄 글의 읽기 결과 둘·규칙 살피기 여섯 포함). supabase는 collectorClient()가 준 클라이언트 */
+export function collectorStore(supabase: SupabaseClient): CollectorStore & BatchReadingStore & RuleReviewStore {
   const notices = () => supabase.from('notices')
+  const ruleChanges = () => supabase.from('rule_changes')
 
   return {
     // 실행 시작. 다른 실행이 돌면 null. 오류는 읽기처럼 던진다(null은 '돎'만 뜻한다)
@@ -490,15 +559,76 @@ export function collectorStore(supabase: SupabaseClient): CollectorStore & Batch
         return rowsOk(res)
       }),
 
-    // 일괄을 거둘 때 그 글들(상태 상관없음). 없는 id는 빠지고 모양이 틀린 줄은 건너뛴다
+    // 일괄을 거둘 때 그 글들(상태 상관없음). 없는 id는 빠지고 모양이 틀린 줄은 건너뛴다.
+    // 올라온 날은 규칙 연결을 규칙표 날짜 뒤 글로만 하려고 읽는다(specs/rule-auto AC-7807.2)
     batchNotices: (ids) =>
       reading(async () => {
         const unique = [...new Set(ids)]
         if (unique.length === 0) return []
-        const res = await notices().select('id, notice_no, body, read_mode, attach_text').in('id', unique)
+        const res = await notices().select('id, notice_no, posted_on, body, read_mode, attach_text').in('id', unique)
         return listOf(dataOf(res))
           .map(batchNoticeOf)
           .filter((n): n is BatchNotice => n !== null)
+      }),
+
+    // ── 규칙 살피기(specs/rule-auto REQ-7811, design 10절) ──
+
+    // 규칙표 날짜(cutoff)까지 올라온 글의 규칙 연결을 지운다(규칙표가 이미 담은 고시). 날짜가 아니면 부르지 않는다
+    clearOldRuleHits: (cutoff) =>
+      counting(async () => {
+        if (!isYmd(cutoff)) return -1
+        const res = await notices().update({ rule_hits: [] }).lte('posted_on', cutoff).gt('rule_count', 0).select('id')
+        return rowCount(res)
+      }),
+
+    // 다른 규칙표 판의 살아 있는 줄을 old로(되살릴 수 없다 — 빈 판 이름이면 모두 old가 되므로 base_version 제약 밖 값은 부르지 않는다)
+    retireOldChanges: (version) =>
+      counting(async () => {
+        if (!fits(version, 1, 40)) return -1
+        const res = await ruleChanges().update({ state: 'old' }).eq('state', 'live').neq('base_version', version).select('id')
+        return rowCount(res)
+      }),
+
+    // 살필 글(최근 글부터 limit개, DB가 1~20으로 맞춤). 살필 글이 없으면(null) 빈 목록
+    reviewWaiting: (cutoff, limit) =>
+      reading(async () => {
+        const data = dataOf(await supabase.rpc('rule_review_waiting', { p_cutoff: cutoff, p_limit: limit }))
+        if (data === null) return []
+        return listOf(data)
+          .map(reviewNoticeOf)
+          .filter((n): n is ReviewNotice => n !== null)
+      }),
+
+    // 그 규칙들의 같은 규칙표 판 살아 있는 change 줄. 같은 번호는 한 번 묻고, 묻지 않은 규칙 줄은 뺀다
+    liveChanges: (ruleIds, version) =>
+      reading(async () => {
+        const wanted = [...new Set(ruleIds)]
+        if (wanted.length === 0) return []
+        const res = await ruleChanges()
+          .select('rule_id, effective_from, rule')
+          .eq('verdict', 'change')
+          .eq('state', 'live')
+          .eq('base_version', version)
+          .in('rule_id', wanted)
+        return listOf(dataOf(res))
+          .map(liveChangeOf)
+          .filter((c) => wanted.includes(c.ruleId))
+      }),
+
+    // (notice_id, rule_id)가 이미 있으면 건너뛰는 넣기(ON CONFLICT DO NOTHING)
+    saveRuleChanges: (rows) =>
+      writing(async () => {
+        if (rows.length === 0) return true
+        const res = await ruleChanges().upsert(rows.map(ruleChangeDb), { onConflict: 'notice_id,rule_id', ignoreDuplicates: true })
+        return !res.error
+      }),
+
+    // 그 글의 살피기 실패 수 + 1(3에서 멈춤) → 새 값
+    reviewFailed: (noticeId) =>
+      counting(async () => {
+        const res = await supabase.rpc('rule_review_failed', { p_notice: noticeId })
+        if (res.error || typeof res.data !== 'number' || !Number.isInteger(res.data)) return -1
+        return res.data
       }),
   }
 }

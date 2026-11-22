@@ -9,6 +9,7 @@ import { settingsChanged, type SettingsBundle } from '@/lib/precheck/settingsCha
 import { readDayCounts, type ClaimDayCount } from '@/lib/storage/claimCounts'
 import { closeDays, readClosedDays, reopenDays } from '@/lib/storage/claimDayCloses'
 import { readHospitalSettings, readInputMode, readRuleSettings, saveInputMode, type SavedInputMode } from '@/lib/storage/claimSettings'
+import { readRuleUpdates } from '@/lib/storage/ruleChanges'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { DateRange } from '@/types/dates'
 import type { CheckSettings } from '@/types/precheck'
@@ -35,14 +36,19 @@ import { useCountsUpload } from './useCountsUpload'
 // 날짜별 건수(REQ-019)는 Worker가 끝날 때마다 보내고 useCountsUpload가 올린다. 날짜 목록은 날짜 칸으로 돌아올 때·날짜 칸에서 창 초점이 올 때·건수를 올린 뒤에 다시 묻는다(AC-013.1): 그래야 오후에 온 환자가 보이고 [입력 안 된 날짜 모두]가 끝난 날을 건너뛴다. 불러오는 중·입력 중에는 묻지 않고, 묻지 못하면 보던 목록을 둔다. 고른 기간은 바꾸지 않는다
 
 const NO_TEMPLATES: SettingsBundle['templates'] = [] // 문자 문구는 TASK-25가 잇는다
+/** 견줄 묶음. 설정의 ruleUpdates(고시로 바뀐 규칙 판)도 그대로 실려 견준다(rule-auto AC-7813.2): 판 칸이 없는 옛 사본은 빈 목록으로 본다(settingsChanged) */
 const bundle = (settings: CheckSettings): SettingsBundle => ({ ...settings, templates: NO_TEMPLATES })
 
-/** 서버 설정. 읽지 못하면 null이다: Worker가 도우미 사본으로 점검한다(AC-013.9). 원래 오류는 버린다 */
+/**
+ * 서버 설정: 규칙 설정 · 병원 설정 · 고시로 바뀐 규칙 판(내 병원이 되돌린 것은 뺌, rule-auto AC-7813.1)을 같은 클라이언트로 함께 읽는다.
+ * 셋 가운데 하나라도 못 읽으면 null이다: Worker가 도우미 사본으로 점검한다(AC-013.9). 바뀐 판이 200개·600,000바이트를 넘어도 readRuleUpdates가 던져 null이다
+ * (도우미 사본 한 메시지 한도 안, design 6절). 원래 오류는 버린다
+ */
 async function readServerSettings(): Promise<CheckSettings | null> {
   try {
     const sb = supabaseBrowser()
-    const [rules, hospital] = await Promise.all([readRuleSettings(sb), readHospitalSettings(sb)])
-    return { rules, phrases: hospital?.phrases ?? null, dxLinks: hospital?.dxLinks ?? [] }
+    const [rules, hospital, ruleUpdates] = await Promise.all([readRuleSettings(sb), readHospitalSettings(sb), readRuleUpdates(sb)])
+    return { rules, phrases: hospital?.phrases ?? null, dxLinks: hospital?.dxLinks ?? [], ruleUpdates }
   } catch {
     return null
   }

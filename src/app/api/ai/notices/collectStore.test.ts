@@ -3,11 +3,13 @@ import { fileURLToPath } from 'node:url'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CollectorStore, GroupRow, NoticeSummary, PostRow, SourceRow } from '@/types/notices'
+import type { RuleDef } from '@/types/precheck'
+import type { LiveChange, ReviewNotice, RuleChangeRow, RuleReviewStore } from '@/types/ruleAuto'
 import type { BatchNotice, BatchReadingStore } from './collector'
 import { STORE_READ_FAILED, collectorClient, collectorStore } from './collectStore'
 
-// 모으기 흐름(collector.ts)이 받는 가게 모양 그대로
-type Store = CollectorStore & BatchReadingStore
+// 모으기 흐름(collector.ts)이 받는 가게 모양 그대로(규칙 살피기 쪽 RuleReviewStore 포함, specs/rule-auto REQ-7811)
+type Store = CollectorStore & BatchReadingStore & RuleReviewStore
 
 // 진짜 Supabase에 붙지 않는다. collectorClient 시험은 createClient를 가짜로 바꾸고,
 // store 시험은 from·rpc만 있는 가짜 클라이언트(fakeDb)에 부른 표·칸·조건·값을 모두 남긴다
@@ -62,7 +64,9 @@ function fakeDb(respond: Responder) {
       update: write('update'),
       upsert: write('upsert'),
       eq: filter('eq'),
+      neq: filter('neq'),
       in: filter('in'),
+      gt: filter('gt'),
       gte: filter('gte'),
       lte: filter('lte'),
       order: filter('order'),
@@ -713,16 +717,16 @@ describe('collectorStore — 표·칸 (AC-7415.2)', () => {
     expect(calls).toHaveLength(0)
   })
 
-  it('AC-7415.2: batchNotices는 그 id들의 글(상태 상관없음)을 id로 읽어 id·고시 번호·본문·읽은 방법·붙임 글자를 돌려준다', async () => {
+  it('AC-7415.2 · AC-7807.2: batchNotices는 그 id들의 글(상태 상관없음)을 id로 읽어 id·고시 번호·올라온 날·본문·읽은 방법·붙임 글자를 돌려준다', async () => {
     const { store, calls } = fakeDb(() =>
       ok([
-        { id: NOTICE_ID, notice_no: '2026-218', body: '[복지부 고시 글]\n본문', read_mode: 'full', attach_text: '붙임.pdf\n글자' },
-        { id: NOTICE_ID2, notice_no: null, body: '', read_mode: null, attach_text: '' },
+        { id: NOTICE_ID, notice_no: '2026-218', posted_on: '2026-11-20', body: '[복지부 고시 글]\n본문', read_mode: 'full', attach_text: '붙임.pdf\n글자' },
+        { id: NOTICE_ID2, notice_no: null, posted_on: '2026-10-19', body: '', read_mode: null, attach_text: '' },
       ]),
     )
     expect(await store.batchNotices([NOTICE_ID, NOTICE_ID2, NOTICE_ID])).toEqual([
-      { id: NOTICE_ID, noticeNo: '2026-218', body: '[복지부 고시 글]\n본문', readMode: 'full', attachText: '붙임.pdf\n글자' },
-      { id: NOTICE_ID2, noticeNo: null, body: '', readMode: null, attachText: '' },
+      { id: NOTICE_ID, noticeNo: '2026-218', postedOn: '2026-11-20', body: '[복지부 고시 글]\n본문', readMode: 'full', attachText: '붙임.pdf\n글자' },
+      { id: NOTICE_ID2, noticeNo: null, postedOn: '2026-10-19', body: '', readMode: null, attachText: '' },
     ] satisfies BatchNotice[])
     expect(calls).toHaveLength(1)
     expect(calls[0]).toMatchObject({ table: 'notices', op: 'select', single: null })
@@ -730,7 +734,7 @@ describe('collectorStore — 표·칸 (AC-7415.2)', () => {
       selectedColumns('notices', calls[0].columns as string)
         .map(([, c]) => c)
         .sort(),
-    ).toEqual(['attach_text', 'body', 'id', 'notice_no', 'read_mode'])
+    ).toEqual(['attach_text', 'body', 'id', 'notice_no', 'posted_on', 'read_mode'])
     // 상태 조건 없이 id로만(같은 id는 한 번)
     expect(calls[0].filters).toEqual([{ name: 'in', args: ['id', [NOTICE_ID, NOTICE_ID2]] }])
   })
@@ -741,8 +745,8 @@ describe('collectorStore — 표·칸 (AC-7415.2)', () => {
     expect(calls).toHaveLength(0)
   })
 
-  it('AC-7415.2: batchNotices는 모양이 틀린 줄을 건너뛴다(그 글은 거둘 때 없는 글이 된다)', async () => {
-    const good = { id: NOTICE_ID, notice_no: '2026-218', body: '본문', read_mode: 'text', attach_text: '붙임' }
+  it('AC-7415.2 · AC-7807.2: batchNotices는 모양이 틀린 줄(올라온 날이 날짜가 아님 포함)을 건너뛴다(그 글은 거둘 때 없는 글이 된다)', async () => {
+    const good = { id: NOTICE_ID, notice_no: '2026-218', posted_on: '2026-11-20', body: '본문', read_mode: 'text', attach_text: '붙임' }
     const { store } = fakeDb(() =>
       ok([
         { ...good, id: 42 },
@@ -750,12 +754,17 @@ describe('collectorStore — 표·칸 (AC-7415.2)', () => {
         { ...good, body: null },
         { ...good, attach_text: undefined },
         { ...good, notice_no: 218 },
+        { ...good, posted_on: '2026-13-01' },
+        { ...good, posted_on: null },
+        { ...good, posted_on: undefined },
         null,
         'row',
         good,
       ]),
     )
-    expect(await store.batchNotices([NOTICE_ID])).toEqual([{ id: NOTICE_ID, noticeNo: '2026-218', body: '본문', readMode: 'text', attachText: '붙임' }])
+    expect(await store.batchNotices([NOTICE_ID])).toEqual([
+      { id: NOTICE_ID, noticeNo: '2026-218', postedOn: '2026-11-20', body: '본문', readMode: 'text', attachText: '붙임' },
+    ])
   })
 })
 
@@ -808,6 +817,391 @@ describe('collectorStore — 오류 (AC-7415.3)', () => {
     ['batchNotices(목록이 아님)', (s: Store) => s.batchNotices([NOTICE_ID]), ok({ not: 'array' })],
     ['weekPending(목록이 아님)', (s: Store) => s.weekPending('2026-11-16'), ok({ id: NOTICE_ID })],
   ])('AC-7415.3: 읽은 줄 모양이 틀리면(%s) 고정 글로 던진다', async (_name, run, answer) => {
+    const { store } = fakeDb(() => answer)
+    await expect(run(store)).rejects.toThrow(new Error(STORE_READ_FAILED))
+  })
+})
+
+// ── RuleReviewStore: 규칙 살피기 쪽(specs/rule-auto REQ-7811) ──
+
+const BASE_VERSION = '2026-10-19'
+const CUTOFF = '2026-10-19'
+
+// rule_changes 칸과 grant(specs/rule-auto design 7절 그대로). 넣기는 정한 칸만, 고치기는 state만
+const RULE_CHANGE_INSERT = ['notice_id', 'rule_id', 'base_version', 'verdict', 'by_ai', 'check_code', 'why', 'before_text', 'after_text', 'effective_from', 'rule']
+const RULE_READ_COLUMNS: Record<string, string[]> = {
+  notices: READ_COLUMNS.notices,
+  rule_changes: [...RULE_CHANGE_INSERT, 'id', 'state', 'created_at'],
+}
+const RULE_INSERT_COLUMNS: Record<string, string[]> = { rule_changes: RULE_CHANGE_INSERT }
+// notices는 이 쪽에서 rule_hits만 고친다(clearOldRuleHits)
+const RULE_UPDATE_COLUMNS: Record<string, string[]> = { notices: ['rule_hits'], rule_changes: ['state'] }
+const RULE_RPCS = ['rule_review_waiting', 'rule_review_failed']
+
+// rule_review_waiting이 돌려주는 jsonb 글 하나(AC-7806.1 칸 이름 그대로)
+const dbReview = (over: Record<string, unknown> = {}) => ({
+  id: NOTICE_ID,
+  title: '복지부 고시 글',
+  noticeNo: '2026-218',
+  postedOn: '2026-11-19',
+  kind: 'gosi',
+  body: '[복지부 고시 글]\n본문',
+  attachText: '붙임.pdf\n글자',
+  summary: SUMMARY,
+  url: MOHW_URL,
+  source: 'mohw_rss',
+  ruleHits: [
+    { id: 'ES-04', title: '충격파 횟수' },
+    { id: 'DX-01', title: '상병 규칙' },
+  ],
+  pending: ['ES-04', 'DX-01'],
+  tries: 1,
+  ...over,
+})
+const REVIEW: ReviewNotice = {
+  id: NOTICE_ID,
+  title: '복지부 고시 글',
+  noticeNo: '2026-218',
+  postedOn: '2026-11-19',
+  kind: 'gosi',
+  body: '[복지부 고시 글]\n본문',
+  attachText: '붙임.pdf\n글자',
+  summary: SUMMARY,
+  url: MOHW_URL,
+  source: 'mohw_rss',
+  ruleHits: [
+    { id: 'ES-04', title: '충격파 횟수' },
+    { id: 'DX-01', title: '상병 규칙' },
+  ],
+  pending: ['ES-04', 'DX-01'],
+  tries: 1,
+}
+
+const RULE_DEF = {
+  id: 'ES-04',
+  title: '충격파 한 달 6번',
+  message: '충격파는 한 달 6번까지예요',
+  params: { limit: 6 },
+  effective_from: '2026-12-01',
+  effective_to: null,
+} as unknown as RuleDef
+const DB_LIVE = { rule_id: 'ES-04', effective_from: '2026-12-01', rule: { id: 'ES-04', title: '충격파 한 달 6번' } }
+
+const CHANGE_ROW: RuleChangeRow = {
+  noticeId: NOTICE_ID,
+  ruleId: 'ES-04',
+  baseVersion: BASE_VERSION,
+  verdict: 'change',
+  byAi: true,
+  checkCode: null,
+  why: '충격파 횟수가 늘었어요',
+  before: '한 달 4번까지 봐요',
+  after: '한 달 6번까지 봐요',
+  effectiveFrom: '2026-12-01',
+  rule: RULE_DEF,
+}
+const TRIES_ROW: RuleChangeRow = {
+  noticeId: NOTICE_ID,
+  ruleId: 'DX-01',
+  baseVersion: BASE_VERSION,
+  verdict: 'human',
+  byAi: false,
+  checkCode: 'tries',
+  why: 'AI가 세 번 못 살폈어요',
+  before: '',
+  after: '',
+  effectiveFrom: null,
+  rule: null,
+}
+const DB_CHANGE_ROW = {
+  notice_id: NOTICE_ID,
+  rule_id: 'ES-04',
+  base_version: BASE_VERSION,
+  verdict: 'change',
+  by_ai: true,
+  check_code: null,
+  why: '충격파 횟수가 늘었어요',
+  before_text: '한 달 4번까지 봐요',
+  after_text: '한 달 6번까지 봐요',
+  effective_from: '2026-12-01',
+  rule: RULE_DEF,
+}
+const DB_TRIES_ROW = {
+  notice_id: NOTICE_ID,
+  rule_id: 'DX-01',
+  base_version: BASE_VERSION,
+  verdict: 'human',
+  by_ai: false,
+  check_code: 'tries',
+  why: 'AI가 세 번 못 살폈어요',
+  before_text: '',
+  after_text: '',
+  effective_from: null,
+  rule: null,
+}
+
+// 여섯 함수가 끝까지 가도록 모양이 맞는 답
+function ruleHappy(call: Call): Answer {
+  if (call.op === 'rpc') return ok(call.fn === 'rule_review_waiting' ? [dbReview()] : 2)
+  if (call.op === 'update') return ok([{ id: NOTICE_ID }, { id: NOTICE_ID2 }])
+  if (call.table === 'rule_changes' && call.op === 'select') return ok([DB_LIVE])
+  return ok(null)
+}
+
+// 고친 수를 주는 쓰기(-1) · 참거짓 쓰기(false) · 읽기(던짐)
+const RULE_COUNTS: [string, (s: Store) => Promise<number>][] = [
+  ['clearOldRuleHits', (s) => s.clearOldRuleHits(CUTOFF)],
+  ['retireOldChanges', (s) => s.retireOldChanges(BASE_VERSION)],
+  ['reviewFailed', (s) => s.reviewFailed(NOTICE_ID)],
+]
+const RULE_WRITES: [string, (s: Store) => Promise<boolean>][] = [['saveRuleChanges', (s) => s.saveRuleChanges([CHANGE_ROW, TRIES_ROW])]]
+const RULE_READS: [string, (s: Store) => Promise<unknown>][] = [
+  ['reviewWaiting', (s) => s.reviewWaiting(CUTOFF, 3)],
+  ['liveChanges', (s) => s.liveChanges(['ES-04', 'DX-01'], BASE_VERSION)],
+]
+
+describe('collectorStore — 규칙 살피기 표·칸 (AC-7811.1)', () => {
+  it('AC-7811.1: 여섯 함수가 design 7절의 표·칸·함수만 쓰고, 넣는 칸·고치는 칸은 grant 칸뿐이며, 병원 조건·지우기가 없다', async () => {
+    const { store, calls } = fakeDb(ruleHappy)
+    for (const [, run] of RULE_COUNTS) expect(await run(store)).toBeGreaterThanOrEqual(0)
+    for (const [, run] of RULE_WRITES) expect(await run(store)).toBe(true)
+    for (const [, run] of RULE_READS) await run(store)
+
+    expect(calls.length).toBeGreaterThan(0)
+    for (const call of calls) {
+      if (call.op === 'rpc') {
+        expect(RULE_RPCS).toContain(call.fn)
+        continue
+      }
+      const table = call.table as string
+      expect(Object.keys(RULE_READ_COLUMNS)).toContain(table)
+      if (call.columns !== null) {
+        for (const [t, c] of selectedColumns(table, call.columns)) expect(RULE_READ_COLUMNS[t] ?? [], `${t}.${c}`).toContain(c)
+      }
+      if (call.op === 'insert' || call.op === 'upsert') for (const k of keysOf(call.payload)) expect(RULE_INSERT_COLUMNS[table] ?? [], `${table}.${k}`).toContain(k)
+      if (call.op === 'update') for (const k of keysOf(call.payload)) expect(RULE_UPDATE_COLUMNS[table] ?? [], `${table}.${k}`).toContain(k)
+      for (const f of call.filters) {
+        if (f.name === 'limit') continue
+        expect(RULE_READ_COLUMNS[table], `${f.name}(${String(f.args[0])})`).toContain(f.args[0])
+      }
+    }
+    // 병원마다 표시(rule_change_marks)·실패 수 표(rule_review_tries)는 직접 다루지 않는다
+    expect(calls.map((c) => c.table)).not.toContain('rule_change_marks')
+    expect(calls.map((c) => c.table)).not.toContain('rule_review_tries')
+    expect(JSON.stringify(calls)).not.toMatch(/hospital/)
+  })
+
+  it('AC-7811.1: clearOldRuleHits는 규칙표 날짜까지 올라온 글 가운데 규칙 연결이 있는 글의 rule_hits를 빈 목록으로 고치고 고친 수를 준다', async () => {
+    const { store, calls } = fakeDb(() => ok([{ id: NOTICE_ID }, { id: NOTICE_ID2 }]))
+    expect(await store.clearOldRuleHits(CUTOFF)).toBe(2)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ table: 'notices', op: 'update', payload: { rule_hits: [] }, columns: 'id' })
+    expect(calls[0].filters).toEqual(
+      expect.arrayContaining([
+        { name: 'lte', args: ['posted_on', CUTOFF] },
+        { name: 'gt', args: ['rule_count', 0] },
+      ]),
+    )
+    expect(calls[0].filters).toHaveLength(2)
+
+    const none = fakeDb(() => ok([]))
+    expect(await none.store.clearOldRuleHits(CUTOFF)).toBe(0)
+  })
+
+  it('AC-7811.1: retireOldChanges는 다른 규칙표 판(base_version)의 살아 있는 줄을 old로 고치고 고친 수를 준다', async () => {
+    const { store, calls } = fakeDb(() => ok([{ id: NOTICE_ID }]))
+    expect(await store.retireOldChanges(BASE_VERSION)).toBe(1)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ table: 'rule_changes', op: 'update', payload: { state: 'old' }, columns: 'id' })
+    expect(calls[0].filters).toEqual(
+      expect.arrayContaining([
+        { name: 'eq', args: ['state', 'live'] },
+        { name: 'neq', args: ['base_version', BASE_VERSION] },
+      ]),
+    )
+    expect(calls[0].filters).toHaveLength(2)
+
+    const none = fakeDb(() => ok([]))
+    expect(await none.store.retireOldChanges(BASE_VERSION)).toBe(0)
+  })
+
+  it('AC-7811.1: reviewWaiting은 DB 함수 rule_review_waiting(p_cutoff, p_limit)을 불러 글을 ReviewNotice로 바꾼다(정한 칸만 담는다)', async () => {
+    const { store, calls } = fakeDb(() =>
+      ok([
+        dbReview({ extra: 'x', ruleHits: [{ id: 'ES-04', title: '충격파 횟수', extra: 'x' }, { id: 'DX-01', title: '상병 규칙' }] }),
+        dbReview({ id: NOTICE_ID2, noticeNo: null, summary: null, url: null, source: null, pending: [], tries: 0 }),
+      ]),
+    )
+    expect(await store.reviewWaiting(CUTOFF, 3)).toEqual([
+      REVIEW,
+      { ...REVIEW, id: NOTICE_ID2, noticeNo: null, summary: null, url: null, source: null, pending: [], tries: 0 },
+    ] satisfies ReviewNotice[])
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ op: 'rpc', fn: 'rule_review_waiting', args: { p_cutoff: CUTOFF, p_limit: 3 } })
+  })
+
+  it('AC-7811.1: reviewWaiting은 살필 글이 없으면(빈 목록·null) 빈 목록이다', async () => {
+    expect(await fakeDb(() => ok([])).store.reviewWaiting(CUTOFF, 3)).toEqual([])
+    expect(await fakeDb(() => ok(null)).store.reviewWaiting(CUTOFF, 3)).toEqual([])
+  })
+
+  it('AC-7811.1: reviewWaiting은 모양이 틀린 글을 뺀다(다른 글은 그대로 살핀다)', async () => {
+    const { store } = fakeDb(() =>
+      ok([
+        dbReview({ id: 42 }),
+        dbReview({ title: null }),
+        dbReview({ noticeNo: 218 }),
+        dbReview({ postedOn: 'yesterday' }),
+        dbReview({ kind: 'memo' }),
+        dbReview({ body: null }),
+        dbReview({ attachText: undefined }),
+        dbReview({ summary: { what: 1 } }),
+        dbReview({ url: 42 }),
+        dbReview({ source: 'kma' }),
+        dbReview({ ruleHits: 'ES-04' }),
+        dbReview({ ruleHits: [{ id: 'ES-04' }] }),
+        dbReview({ pending: 'ES-04' }),
+        dbReview({ pending: ['ES-04', 4] }),
+        dbReview({ tries: 1.5 }),
+        dbReview({ tries: '1' }),
+        null,
+        'row',
+        dbReview(),
+      ]),
+    )
+    expect(await store.reviewWaiting(CUTOFF, 3)).toEqual([REVIEW])
+  })
+
+  it('AC-7811.1: liveChanges는 그 규칙들의 같은 규칙표 판 살아 있는 change 줄의 규칙 번호·시행일·규칙을 읽는다', async () => {
+    const { store, calls } = fakeDb(() => ok([DB_LIVE, { rule_id: 'DX-01', effective_from: '2027-01-01', rule: { id: 'DX-01' } }]))
+    expect(await store.liveChanges(['ES-04', 'DX-01', 'ES-04'], BASE_VERSION)).toEqual([
+      { ruleId: 'ES-04', effectiveFrom: '2026-12-01', rule: { id: 'ES-04', title: '충격파 한 달 6번' } },
+      { ruleId: 'DX-01', effectiveFrom: '2027-01-01', rule: { id: 'DX-01' } },
+    ] satisfies LiveChange[])
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ table: 'rule_changes', op: 'select', single: null })
+    expect(
+      selectedColumns('rule_changes', calls[0].columns as string)
+        .map(([, c]) => c)
+        .sort(),
+    ).toEqual(['effective_from', 'rule', 'rule_id'])
+    expect(calls[0].filters).toEqual(
+      expect.arrayContaining([
+        { name: 'eq', args: ['verdict', 'change'] },
+        { name: 'eq', args: ['state', 'live'] },
+        { name: 'eq', args: ['base_version', BASE_VERSION] },
+        // 같은 번호는 한 번
+        { name: 'in', args: ['rule_id', ['ES-04', 'DX-01']] },
+      ]),
+    )
+    expect(calls[0].filters).toHaveLength(4)
+  })
+
+  it('AC-7811.1: liveChanges는 빈 목록이면 DB를 부르지 않고 빈 목록이고, 묻지 않은 규칙 줄은 뺀다', async () => {
+    const empty = fakeDb(ruleHappy)
+    expect(await empty.store.liveChanges([], BASE_VERSION)).toEqual([])
+    expect(empty.calls).toHaveLength(0)
+
+    const { store } = fakeDb(() => ok([DB_LIVE, { rule_id: 'XX-99', effective_from: '2026-12-01', rule: {} }]))
+    expect(await store.liveChanges(['ES-04'], BASE_VERSION)).toEqual([{ ruleId: 'ES-04', effectiveFrom: '2026-12-01', rule: DB_LIVE.rule }])
+  })
+
+  it('AC-7811.1: saveRuleChanges는 rule_changes에 정한 칸만 (notice_id,rule_id)가 겹치면 건너뛰는 넣기로 쓴다', async () => {
+    const { store, calls } = fakeDb(() => ok(null))
+    expect(await store.saveRuleChanges([CHANGE_ROW, TRIES_ROW])).toBe(true)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ table: 'rule_changes', op: 'upsert', options: { onConflict: 'notice_id,rule_id', ignoreDuplicates: true } })
+    expect(calls[0].payload).toEqual([DB_CHANGE_ROW, DB_TRIES_ROW])
+  })
+
+  it('AC-7811.1: saveRuleChanges는 빈 목록이면 DB를 부르지 않고 true다', async () => {
+    const { store, calls } = fakeDb(ruleHappy)
+    expect(await store.saveRuleChanges([])).toBe(true)
+    expect(calls).toHaveLength(0)
+  })
+
+  it('AC-7811.1: reviewFailed는 DB 함수 rule_review_failed(p_notice)를 불러 새 실패 수를 준다', async () => {
+    const { store, calls } = fakeDb(() => ok(3))
+    expect(await store.reviewFailed(NOTICE_ID)).toBe(3)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ op: 'rpc', fn: 'rule_review_failed', args: { p_notice: NOTICE_ID } })
+  })
+})
+
+describe('collectorStore — 규칙 살피기 오류 (AC-7811.2)', () => {
+  const throwing: Responder = () => {
+    throw new Error(`thrown ${SECRET}`)
+  }
+  const consoleSpies = () => (['error', 'warn', 'log', 'info'] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => {}))
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  describe.each([
+    ['DB 오류', dbError as Responder],
+    ['던짐', throwing],
+  ])('%s', (_name, respond) => {
+    it.each(RULE_COUNTS)('AC-7811.2: 고친 수를 주는 %s는 -1이다', async (_fn, run) => {
+      const spies = consoleSpies()
+      const { store } = fakeDb(respond)
+      await expect(run(store)).resolves.toBe(-1)
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled()
+    })
+
+    it.each(RULE_WRITES)('AC-7811.2: 쓰기 %s는 false다', async (_fn, run) => {
+      const spies = consoleSpies()
+      const { store } = fakeDb(respond)
+      await expect(run(store)).resolves.toBe(false)
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled()
+    })
+
+    it.each(RULE_READS)('AC-7811.2: 읽기 %s는 고정 글로 던지고 받은 오류 글은 담지 않는다', async (_fn, run) => {
+      const spies = consoleSpies()
+      const { store } = fakeDb(respond)
+      const error = await run(store).then(
+        () => null,
+        (e: unknown) => e,
+      )
+      expect(error).toBeInstanceOf(Error)
+      expect((error as Error).message).toBe(STORE_READ_FAILED)
+      expect(JSON.stringify(error)).not.toContain('secret')
+      expect((error as Error).cause).toBeUndefined()
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled()
+    })
+  })
+
+  it.each([
+    ['clearOldRuleHits(목록이 아님)', (s: Store) => s.clearOldRuleHits(CUTOFF), ok({ id: NOTICE_ID })],
+    ['retireOldChanges(목록이 아님)', (s: Store) => s.retireOldChanges(BASE_VERSION), ok(null)],
+    ['reviewFailed(정수가 아님)', (s: Store) => s.reviewFailed(NOTICE_ID), ok('2')],
+    ['reviewFailed(null)', (s: Store) => s.reviewFailed(NOTICE_ID), ok(null)],
+    ['reviewFailed(소수)', (s: Store) => s.reviewFailed(NOTICE_ID), ok(1.5)],
+  ])('AC-7811.2: 고친 수 답 모양이 틀리면(%s) -1이다', async (_name, run, answer) => {
+    const { store } = fakeDb(() => answer)
+    await expect(run(store)).resolves.toBe(-1)
+  })
+
+  it.each([
+    ['날짜가 아닌 cutoff', (s: Store) => s.clearOldRuleHits('2026-10-1')],
+    ['빈 cutoff', (s: Store) => s.clearOldRuleHits('')],
+    // 빈 판 이름이면 살아 있는 줄이 모두 old가 된다(되살릴 수 없다)
+    ['빈 판 이름', (s: Store) => s.retireOldChanges('')],
+    ['41자 판 이름', (s: Store) => s.retireOldChanges('v'.repeat(41))],
+  ])('AC-7811.2: 여러 줄을 고치는 함수는 값이 틀리면(%s) DB를 부르지 않고 -1이다', async (_name, run) => {
+    const { store, calls } = fakeDb(ruleHappy)
+    await expect(run(store)).resolves.toBe(-1)
+    expect(calls).toHaveLength(0)
+  })
+
+  it.each([
+    ['reviewWaiting(목록이 아님)', (s: Store) => s.reviewWaiting(CUTOFF, 3), ok({ not: 'array' })],
+    ['reviewWaiting(글자)', (s: Store) => s.reviewWaiting(CUTOFF, 3), ok('[]')],
+    ['liveChanges(목록이 아님)', (s: Store) => s.liveChanges(['ES-04'], BASE_VERSION), ok({ not: 'array' })],
+    ['liveChanges(시행일이 날짜가 아님)', (s: Store) => s.liveChanges(['ES-04'], BASE_VERSION), ok([{ ...DB_LIVE, effective_from: 'soon' }])],
+    ['liveChanges(규칙 번호가 글자가 아님)', (s: Store) => s.liveChanges(['ES-04'], BASE_VERSION), ok([{ ...DB_LIVE, rule_id: 4 }])],
+    ['liveChanges(줄이 객체가 아님)', (s: Store) => s.liveChanges(['ES-04'], BASE_VERSION), ok(['ES-04'])],
+  ])('AC-7811.2: 읽은 모양이 틀리면(%s) 고정 글로 던진다', async (_name, run, answer) => {
     const { store } = fakeDb(() => answer)
     await expect(run(store)).rejects.toThrow(new Error(STORE_READ_FAILED))
   })

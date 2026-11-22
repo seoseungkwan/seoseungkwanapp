@@ -109,6 +109,7 @@ const ALL_CODES = [
   'E-NOTICE-READ',
   'E-NOTICE-SAVE',
   'E-NOTICE-WORDS',
+  'E-RULE-AUTO-SAVE',
   'E-INV-READ-FAILED',
   'E-INV-SAVE-FAILED',
   'E-INV-DUPLICATE',
@@ -1252,6 +1253,41 @@ describe('AC-7424.2 내 낱말 오류 번호', () => {
     const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
     const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
     expect(union).toContain(`'E-NOTICE-WORDS'`)
+  })
+})
+
+// 점검 규칙 저절로 바꾸기(specs/rule-auto requirements 기본값 13, 시안 notes.md '저장 실패(카드 안)' 글자 그대로).
+// [되돌리기]·[다시 적용] 저장 실패는 카드 안 오류 상자이고, 규칙 상자 읽기 실패는 지금 E-NOTICE-READ를 그대로 쓴다
+const RULE_AUTO = {
+  'E-RULE-AUTO-SAVE': {
+    what: '점검 규칙을 바꾸지 못했어요',
+    fix: '잠시 뒤 다시 눌러 주세요. 지금은 누르기 전 규칙 그대로 점검해요',
+  },
+} as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
+
+describe('AC-7801.1 점검 규칙 저절로 바꾸기 오류 번호', () => {
+  it('AC-7801.1: errorInfo(E-RULE-AUTO-SAVE)는 기본값 13의 무엇이·어떻게 글 그대로다', () => {
+    expect(isErrorCode('E-RULE-AUTO-SAVE')).toBe(true)
+    expect(ALL_CODES).toContain('E-RULE-AUTO-SAVE')
+    expect(errorInfo('E-RULE-AUTO-SAVE')).toEqual(RULE_AUTO['E-RULE-AUTO-SAVE'])
+  })
+
+  it('AC-7801.1: 이 명세가 더하는 E-RULE-AUTO- 번호는 E-RULE-AUTO-SAVE 하나뿐이다(모으기 기록 번호 E-RULE-AUTO·-CHECK·-CLEAN은 화면 글이 없다)', () => {
+    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-RULE-AUTO')).sort()).toEqual(Object.keys(RULE_AUTO).sort())
+  })
+
+  it('AC-7801.1: 그 밖 번호의 글은 그대로다 — 규칙 상자가 함께 쓰는 E-NOTICE-READ·E-NOTICE-SAVE와 점검 표 번호 E-RULES-LOAD-FAILED', () => {
+    expect(errorInfo('E-NOTICE-READ')).toEqual(NOTICE['E-NOTICE-READ'])
+    expect(errorInfo('E-NOTICE-SAVE')).toEqual(NOTICE['E-NOTICE-SAVE'])
+    expect(errorInfo('E-RULES-LOAD-FAILED').what.trim()).not.toBe('')
+    expect(Object.keys(ERRORS)).toHaveLength(ALL_CODES.length)
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
+  it('AC-7801.1: E-RULE-AUTO-SAVE가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    expect(union).toContain(`'E-RULE-AUTO-SAVE'`)
   })
 })
 

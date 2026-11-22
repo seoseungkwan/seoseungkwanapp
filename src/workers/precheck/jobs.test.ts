@@ -4,15 +4,22 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as XLSX from 'xlsx'
 import type { Outcome } from '@/types/parse'
-import type { CatalogCode, CheckSettings, ClaimMemosJson, ClaimMonth, ClaimView, DxLink, InputSelection, MemoRowRaw, MemoScreenView, MemoState, MemoStateOptions, PrecheckFromScreen, PrecheckToPort, PrecheckToScreen, StoreLoadJson, StoreMonthJson, Tables, Visit } from '@/types/precheck'
+import type { CatalogCode, CheckSettings, ClaimMemosJson, ClaimMonth, ClaimView, DxLink, InputSelection, MemoRowRaw, MemoScreenView, MemoState, MemoStateOptions, PrecheckFromScreen, PrecheckToPort, PrecheckToScreen, RuleDef, RuleUpdate, StoreLoadJson, StoreMonthJson, Tables, Visit } from '@/types/precheck'
 import { defaultPhrases, neutralPhrases, ourClinicPhrases, validatePhrases, type MemoCode, type Phrases } from '@/lib/precheck/memo'
-import { checkMonth, loadMonth, loadStore, createPrecheckJobs, dxViews, memoViews, ruleList } from './jobs'
+import { runRules } from '@/lib/precheck/rules/engine'
+import { checkMonth, claimView, loadMonth, loadStore, createPrecheckJobs, dxViews, memoViews, readCheckSettings, ruleList } from './jobs'
 import { loadTables } from './tables'
 
 // 검사 함수는 그대로 돌리고 몇 번 불렸는지만 본다(코드 사전을 사람마다 다시 검사하지 않는다)
 vi.mock('@/lib/precheck/memo', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/precheck/memo')>()
   return { ...actual, validatePhrases: vi.fn(actual.validatePhrases) }
+})
+
+// 규칙 엔진도 그대로 돌리고 어떤 표를 받았는지만 본다(바뀐 규칙 판을 합친 표, AC-7804.2)
+vi.mock('@/lib/precheck/rules/engine', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/precheck/rules/engine')>()
+  return { ...actual, runRules: vi.fn(actual.runRules) }
 })
 
 // Worker가 부르는 일(REQ-009). 통로 포트로 온 조각을 모아(assemble) 한 번만 풀고(loadMonth) 점검용 모양을 만든다.
@@ -707,6 +714,228 @@ describe('AC-013 점검 메시지 check·excel', { timeout: 30_000 }, () => {
       reversed.posts.length = 0
       await askCheck(reversed.jobs, { settings: null })
       expect(viewOf(answerOf(reversed.posts)).visits.find((v) => v.key === 'm05')!.memo).toMatchObject({ edited: true })
+    })
+  })
+
+  // 고시로 바뀐 규칙 판(specs/rule-auto REQ-7804, design 6절). 가짜 달에서 IJ-13(스테로이드 주사 허가 효능 상병)은
+  // 10/5(m60)·10/9(m61)·10/12(m22 등)·10/17(m62) 진료에 걸린다. 새 판은 10월 10일 진료부터 제목·글만 바꾼다(규칙 검사 'ok')
+  describe('AC-7804 바뀐 규칙 판으로 점검', () => {
+    const FROM = '2026-10-10'
+    const tablesNow = async () => {
+      const tables = await loadTables()
+      if (!tables.ok) throw new Error(tables.code)
+      return tables.value
+    }
+    const ij13 = (tables: Tables) => tables.rules.rules.find((rule) => rule.id === 'IJ-13')!
+    const nextIj13 = (tables: Tables, from = FROM): RuleDef => ({
+      ...ij13(tables),
+      title: '스테로이드 주사 허가 효능 상병(새 고시)',
+      message: '새 고시로 바뀐 글(가짜)이에요. 상병을 확인하세요.',
+      effective_from: from,
+      effective_to: null,
+    })
+    /** 판 하나. DB 줄(rule_changes)처럼 changeId 하나에 날짜·규칙이 하나다(넣은 뒤 state만 바뀐다) */
+    const updateOf = (tables: Tables, patch: Partial<RuleUpdate> = {}, from = FROM): RuleUpdate => ({
+      changeId: `c-ij13-${from}`,
+      ruleId: 'IJ-13',
+      from,
+      baseVersion: tables.rules.version,
+      rule: nextIj13(tables, from),
+      ...patch,
+    })
+    const withUpdates = (updates: unknown): CheckSettings => ({ ...SETTINGS, ruleUpdates: updates as RuleUpdate[] })
+    /** 진료 → 그 진료에 걸린 IJ-13 경고 글들 */
+    const ij13Messages = (view: ClaimView) =>
+      Object.fromEntries(view.visits.map((visit) => [visit.key, visit.findings.filter((f) => f.ruleId === 'IJ-13').map((f) => f.message)]))
+    const monthOf = () => {
+      const month = loadMonth(MEMO_MONTH)
+      if (!month.ok) throw new Error(month.code)
+      return month.value
+    }
+    /** 새 판 기준 점검의 IJ-13 글(전날까지는 원래 글, 그날부터는 새 글) */
+    function expectMerged(view: ClaimView, tables: Tables) {
+      const messages = ij13Messages(view)
+      for (const key of ['m60', 'm61']) expect(messages[key]).toEqual([ij13(tables).message])
+      for (const key of ['m22', 'm23', 'm24', 'm62']) expect(messages[key]).toEqual([nextIj13(tables).message])
+    }
+    function expectOriginal(view: ClaimView, tables: Tables) {
+      const messages = ij13Messages(view)
+      for (const key of ['m60', 'm61', 'm22', 'm23', 'm24', 'm62']) expect(messages[key]).toEqual([ij13(tables).message])
+    }
+
+    describe('AC-7804.1 readCheckSettings', () => {
+      it('AC-7804.1: ruleUpdates가 없거나 배열이면 받고 칸을 그대로 둔다(판 하나하나는 거르지 않는다)', () => {
+        expect(readCheckSettings(SETTINGS)).toEqual(SETTINGS)
+        expect(readCheckSettings(SETTINGS)).not.toHaveProperty('ruleUpdates')
+        expect(readCheckSettings({ ...SETTINGS, ruleUpdates: undefined })).not.toBeNull()
+        expect(readCheckSettings(withUpdates([]))).toEqual(withUpdates([]))
+        const junk = withUpdates([null, 7, { changeId: 'c-junk' }])
+        expect(readCheckSettings(junk)).toEqual(junk)
+      })
+
+      it.each<[string, unknown]>([
+        ['글자', 'x'],
+        ['객체', { changeId: 'c1' }],
+        ['null', null],
+        ['숫자', 3],
+      ])('AC-7804.1: ruleUpdates가 배열이 아니면(%s) null이다', (_name, value) => {
+        expect(readCheckSettings({ ...SETTINGS, ruleUpdates: value })).toBeNull()
+      })
+
+      it('AC-7804.1: ruleUpdates가 배열이 아닌 사본은 사본 없음(null)이다', () => {
+        expect(loadStore(JSON.stringify(storeWith({ ...SETTINGS, ruleUpdates: 'x' })))).toMatchObject({ ok: true, value: { settings: null } })
+        expect(loadStore(JSON.stringify(storeWith({ ...SETTINGS, ruleUpdates: [] })))).toMatchObject({ ok: true, value: { settings: { ruleUpdates: [] } } })
+      })
+
+      it('AC-7804.1: 서버 설정의 ruleUpdates가 배열이 아니면 점검하지 않고 E-SETTINGS-FAILED, 사본도 덮어쓰지 않는다', async () => {
+        const { jobs, posts, sent } = await loaded()
+        await askCheck(jobs, { settings: withUpdates('x') })
+        expect(answerOf(posts)).toEqual({ type: 'check', check: 1, load: 1, ok: false, code: 'E-SETTINGS-FAILED' })
+        expect(sent).toEqual([])
+      })
+
+      it('AC-7804.1: 쓸 수 없는 판은 withRuleUpdates가 버리고 원래 규칙으로 점검한다', async () => {
+        const tables = await tablesNow()
+        const { jobs, posts } = await loaded()
+        await askCheck(jobs, { settings: withUpdates([null, 7, { changeId: 'c-junk' }, updateOf(tables, { baseVersion: '2000-01-01' }), updateOf(tables, { ruleId: 'ZZ-99' })]) })
+        expectOriginal(viewOf(answerOf(posts)), tables)
+      })
+    })
+
+    describe('AC-7804.2 claimView는 합친 표로 점검한다', () => {
+      it('AC-7804.2: 판 날짜와 같거나 뒤인 진료는 새 판의 글로, 그 전 진료는 원래 규칙의 글로 점검한다(한 진료에 한 번)', async () => {
+        const tables = await tablesNow()
+        const { jobs, posts } = await loaded()
+        await askCheck(jobs, { settings: withUpdates([updateOf(tables)]) })
+        const view = viewOf(answerOf(posts))
+        expectMerged(view, tables)
+        // 걸린 진료는 판이 없을 때와 같다(규칙 기준은 그대로)
+        const plain = await loaded()
+        await askCheck(plain.jobs)
+        const hit = (v: ClaimView) => Object.entries(ij13Messages(v)).flatMap(([key, list]) => (list.length ? [[key, list.length]] : []))
+        expect(hit(view)).toEqual(hit(viewOf(answerOf(plain.posts))))
+        // 규칙별 묶음에는 번호가 한 번이고 머리 제목은 가장 늦은 판의 것
+        const groups = view.groups.filter((group) => group.ruleId === 'IJ-13')
+        expect(groups).toHaveLength(1)
+        expect(groups[0].title).toBe(nextIj13(tables).title)
+      })
+
+      it('AC-7804.2: 진료가 모두 판 날짜 전이면 원래 규칙의 글 그대로다', async () => {
+        const tables = await tablesNow()
+        const { jobs, posts } = await loaded()
+        await askCheck(jobs, { settings: withUpdates([updateOf(tables, {}, '2026-11-01')]) })
+        expectOriginal(viewOf(answerOf(posts)), tables)
+      })
+
+      it('AC-7804.2: claimView는 withRuleUpdates(표, ruleUpdates ?? [])로 합친 표를 엔진에 준다 — 칸이 없거나 빈 목록이거나 쓸 판이 없으면 원래 표 그대로', async () => {
+        const tables = await tablesNow()
+        const month = monthOf()
+        const engine = vi.mocked(runRules)
+        const tableOfRun = (settings: CheckSettings) => {
+          engine.mockClear()
+          const view = claimView(month, tables, settings, new Map(), OCTOBER)
+          expect(view.ok).toBe(true)
+          expect(engine).toHaveBeenCalledTimes(1)
+          return engine.mock.calls[0][1]
+        }
+        expect(tableOfRun(SETTINGS)).toBe(tables)
+        expect(tableOfRun(withUpdates([]))).toBe(tables)
+        expect(tableOfRun(withUpdates([updateOf(tables, { baseVersion: '2000-01-01' })]))).toBe(tables)
+
+        const merged = tableOfRun(withUpdates([updateOf(tables)]))
+        expect(merged).not.toBe(tables)
+        expect(merged.rules.rules.filter((rule) => rule.id === 'IJ-13').map((rule) => [rule.effective_from, rule.effective_to, rule.message])).toEqual([
+          [null, '2026-10-09', ij13(tables).message],
+          [FROM, null, nextIj13(tables).message],
+        ])
+        // 받은 표는 바뀌지 않는다
+        expect(tables.rules.rules.filter((rule) => rule.id === 'IJ-13')).toEqual([ij13(tables)])
+        expect(ij13(tables).effective_to).toBeNull()
+      })
+
+      it('AC-7804.2: 같은 판들(applied)이면 마지막 합친 표를 다시 쓰고, 판이 바뀌면 새로 합친다', async () => {
+        const tables = await tablesNow()
+        const month = monthOf()
+        const engine = vi.mocked(runRules)
+        const tableOfRun = (settings: CheckSettings) => {
+          engine.mockClear()
+          claimView(month, tables, settings, new Map(), OCTOBER)
+          return engine.mock.calls[0][1]
+        }
+        const first = tableOfRun(withUpdates([updateOf(tables)]))
+        // 다시 읽어 새로 만든 같은 판(다른 객체)이고, 쓸 수 없는 판이 섞여도 쓴 판이 같으면 같은 표
+        expect(tableOfRun(withUpdates(structuredClone([updateOf(tables)])))).toBe(first)
+        expect(tableOfRun(withUpdates([null, updateOf(tables)]))).toBe(first)
+        const other = tableOfRun(withUpdates([updateOf(tables, { changeId: 'c-ij13-2' }, '2026-10-11')]))
+        expect(other).not.toBe(first)
+        expect(other.rules.rules.filter((rule) => rule.id === 'IJ-13').map((rule) => rule.effective_from)).toEqual([null, '2026-10-11'])
+        expect(tableOfRun(SETTINGS)).toBe(tables)
+      })
+
+      it('AC-7804.2: 켜진 규칙 수와 설정 화면 규칙 목록은 원래 규칙표로 센다(판 때문에 늘지 않는다)', async () => {
+        const tables = await tablesNow()
+        const count = tables.rules.rules.length
+        const { jobs, posts } = await loaded()
+        await askCheck(jobs, { settings: withUpdates([updateOf(tables)]) })
+        const view = viewOf(answerOf(posts))
+        expectMerged(view, tables) // 판을 쓴 점검이다
+        expect(view.enabledRules).toBe(tables.rules.rules.filter((rule) => rule.enabled_default !== false).length)
+
+        posts.length = 0
+        await jobs.fromScreen({ type: 'ruleList' })
+        const reply = posts.find((m) => m.type === 'ruleList')
+        if (!reply || reply.type !== 'ruleList' || !reply.ok) throw new Error('ruleList 답이 없다')
+        expect(reply.rules).toHaveLength(count)
+        expect(reply.rules).toEqual(ruleList(tables))
+        expect(reply.rules.filter((rule) => rule.id === 'IJ-13').map((rule) => rule.title)).toEqual([ij13(tables).title])
+        expect(tables.rules.rules).toHaveLength(count)
+      })
+    })
+
+    describe('AC-7804.3 설정 사본에 판이 같이 간다', () => {
+      it('AC-7804.3: 서버 설정으로 점검하면 store.save의 settings에 ruleUpdates가 함께 간다', async () => {
+        const tables = await tablesNow()
+        const settings = withUpdates([updateOf(tables)])
+        const { jobs, posts, sent } = await loaded()
+        await askCheck(jobs, { settings })
+        expect(answerOf(posts)).toMatchObject({ ok: true, usedCopy: null })
+        expect(sent).toEqual([{ type: 'send', ticket: expect.any(Number), cmd: 'store.save', payload: JSON.stringify({ settings }) }])
+        const payload = JSON.parse((sent[0] as { payload: string }).payload) as { settings: CheckSettings }
+        expect(payload.settings.ruleUpdates).toEqual(JSON.parse(JSON.stringify([updateOf(tables)])))
+      })
+
+      it('AC-7804.3: 서버를 못 읽으면 store.load로 받은 사본의 ruleUpdates로 합쳐 점검하고 그 사본을 답한다', async () => {
+        const tables = await tablesNow()
+        const settings = withUpdates([updateOf(tables)])
+        const { jobs, posts, sent } = await loaded()
+        await giveStore(jobs, storeWith(settings))
+        posts.length = 0
+        await askCheck(jobs, { settings: null })
+        const answer = answerOf(posts)
+        expect(answer).toMatchObject({ ok: true, usedCopy: JSON.parse(JSON.stringify(settings)) })
+        expectMerged(viewOf(answer), tables)
+        expect(sent).toEqual([])
+      })
+
+      it('AC-7804.3: 저장이 됐다는 답을 받은 사본으로 점검할 때도 그 ruleUpdates로 합친다', async () => {
+        const tables = await tablesNow()
+        const { jobs, posts, sent } = await loaded()
+        await askCheck(jobs, { settings: withUpdates([updateOf(tables)]) })
+        const { ticket } = sent[0] as { ticket: number }
+        await jobs.fromPort({ type: 'sent', ticket, ok: true })
+        posts.length = 0
+        await askCheck(jobs, { check: 2, settings: null })
+        expectMerged(viewOf(answerOf(posts)), tables)
+      })
+
+      it('AC-7804.3: ruleUpdates 칸이 없는 옛 사본은 빈 목록으로 보고 원래 규칙으로 점검한다', async () => {
+        const tables = await tablesNow()
+        const { jobs, posts } = await loaded()
+        await giveStore(jobs, storeWith(SETTINGS))
+        posts.length = 0
+        await askCheck(jobs, { settings: null })
+        expectOriginal(viewOf(answerOf(posts)), tables)
+      })
     })
   })
 

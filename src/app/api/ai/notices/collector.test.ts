@@ -1,8 +1,11 @@
 import { strToU8, zipSync } from 'fflate'
-import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 import { addDays } from '@/lib/analytics/dates'
 import { costMicroUsd } from '@/lib/ai/cost'
 import type { AiUsage } from '@/types/aiReport'
+import type { RuleDef, RulesFile } from '@/types/precheck'
+import type { RuleAnswer, RuleChangeRow, RuleReport, ReviewNotice } from '@/types/ruleAuto'
+import { loadTables } from '@/workers/precheck/tables'
 import type {
   Attachment,
   CrtrTab,
@@ -28,10 +31,14 @@ import {
   BATCH_PREP_UNTIL_MS,
   DIRECT_UNTIL_MS,
   LOG_TAG,
+  RULE_CALLS_MAX,
+  RULE_UNTIL_MS,
   runCollector,
   type CollectorDeps,
   type RunReport,
 } from './collector'
+import { REASON_TEXT } from './ruleAuto/decide'
+import { REVIEW_SYSTEM } from './ruleAuto/prompt'
 import type { RuleBasisIndex } from './ruleMatch'
 import { CRTR_LIST_URL } from './sources/hiraCrtr'
 import { hiraNoticeListUrl } from './sources/hiraNotice'
@@ -40,9 +47,13 @@ import { SUMMARY_SYSTEM } from './summaryPrompt'
 import { WEEKLY_SYSTEM } from './weeklyPrompt'
 
 // 모으기 흐름(specs/notices REQ-7414 AC-7414.1~7414.9, design 4절, TASK-14).
-// 사이트·Claude·일괄·DB는 모두 시험이 넣는 가짜다(진짜 사이트·Claude·Supabase에 붙지 않는다).
+// 점검 규칙 살피기(specs/rule-auto REQ-7807 AC-7807.2·AC-7807.3, REQ-7810 AC-7810.1~AC-7810.6, design 10절, TASK-13)도 여기서 본다.
+// 사이트·Claude·일괄·DB는 모두 시험이 넣는 가짜다(진짜 사이트·Claude·Supabase에 붙지 않는다). 시계도 가짜(nowMs)다.
 // 가짜 DB는 collectStore.ts(TASK-13)와 같이 움직인다: saveSummary = done·일괄 id 지움, failSummary = tries+1·3이면 failed 아니면 wait·일괄 id 지움,
-// markBatch = 모든 id를 고쳤을 때만 true, openBatches.oldest = 그 일괄 글의 가장 이른 updated_at. 사이트 쪽 글은 지어낸 짧은 HTML이다
+// markBatch = 모든 id를 고쳤을 때만 true, openBatches.oldest = 그 일괄 글의 가장 이른 updated_at. 사이트 쪽 글은 지어낸 짧은 HTML이다.
+// 규칙 살피기 쪽 가짜는 DB 함수(specs/rule-auto design 7절)처럼 움직인다: reviewWaiting = done·요약 있음·posted_on > cutoff·판정 줄 없는 규칙이 있음·
+// 실패 수 3 미만인 글을 최근 글부터, saveRuleChanges = (글, 규칙)이 있으면 건너뜀·살아 있는 change 판의 (규칙, 시행일)이 겹치면 거부, reviewFailed = 실패 수 +1(3에서 멈춤).
+// 규칙표는 workers/precheck/tables.ts의 loadTables로만 부른다(AC-007.4). 규칙 색인(RULES)은 요약 저장을 보는 지어낸 값이다
 
 const NOW = new Date('2026-11-21T07:10:00+09:00') // 토요일, 한국 07시대 아침 실행
 const NOW_ISO = NOW.toISOString()
@@ -144,7 +155,11 @@ type Seed = {
   summary?: NoticeSummary | null
   readMode?: ReadMode | null
   attachText?: string
+  ruleHits?: RuleHit[]
 }
+
+/** 가짜 rule_changes 줄 */
+type DbRuleChange = RuleChangeRow & { state: 'live' | 'old' }
 
 const groupPost = (p: PostRow): GroupPost => ({
   source: p.source,
@@ -176,6 +191,8 @@ function makeStore(log: string[]) {
     weeks: new Map<string, WeekTop[]>([[LAST_WEEK, []]]),
     usage: [] as { runId: string; u: RunUsage }[],
     finished: [] as { runId: string; counts: Record<string, unknown> }[],
+    ruleChanges: [] as DbRuleChange[],
+    reviewTries: new Map<string, number>(),
   }
   const hooks: Partial<Record<string, () => void>> = {}
   const enter = (name: string) => {
@@ -204,6 +221,23 @@ function makeStore(log: string[]) {
     body: n.body,
     tries: n.tries,
     posts: n.posts.map(groupPost),
+  })
+  // 판정 줄(state 상관없음)이 없는 규칙 = 살펴볼 규칙(rule_hits 차례)
+  const pendingOf = (n: DbNotice) => n.ruleHits.map((h) => h.id).filter((id) => !db.ruleChanges.some((c) => c.noticeId === n.id && c.ruleId === id))
+  const toReview = (n: DbNotice, pending: string[]): ReviewNotice => ({
+    id: n.id,
+    title: n.title,
+    noticeNo: n.noticeNo,
+    postedOn: n.postedOn,
+    kind: n.kind,
+    body: n.body,
+    attachText: n.attachText,
+    summary: n.summary === null ? null : structuredClone(n.summary),
+    url: n.posts[0]?.url ?? null,
+    source: n.posts[0]?.source ?? null,
+    ruleHits: structuredClone(n.ruleHits),
+    pending,
+    tries: db.reviewTries.get(n.id) ?? 0,
   })
 
   const store: CollectorDeps['store'] = {
@@ -375,7 +409,51 @@ function makeStore(log: string[]) {
       enter('batchNotices')
       return db.notices
         .filter((n) => ids.includes(n.id))
-        .map((n) => ({ id: n.id, noticeNo: n.noticeNo, body: n.body, readMode: n.readMode, attachText: n.attachText }))
+        .map((n) => ({ id: n.id, noticeNo: n.noticeNo, postedOn: n.postedOn, body: n.body, readMode: n.readMode, attachText: n.attachText }))
+    },
+    clearOldRuleHits: async (cutoff) => {
+      enter('clearOldRuleHits')
+      const old = db.notices.filter((n) => n.postedOn <= cutoff && n.ruleHits.length > 0)
+      for (const n of old) n.ruleHits = []
+      return old.length
+    },
+    retireOldChanges: async (version) => {
+      enter('retireOldChanges')
+      const old = db.ruleChanges.filter((c) => c.state === 'live' && c.baseVersion !== version)
+      for (const c of old) c.state = 'old'
+      return old.length
+    },
+    reviewWaiting: async (cutoff, limit) => {
+      enter('reviewWaiting')
+      return db.notices
+        .filter((n) => n.state === 'done' && n.summary !== null && n.postedOn > cutoff && (db.reviewTries.get(n.id) ?? 0) < 3)
+        .map((n) => ({ n, pending: pendingOf(n) }))
+        .filter(({ pending }) => pending.length > 0)
+        .sort((a, b) => b.n.postedOn.localeCompare(a.n.postedOn) || b.n.seq - a.n.seq)
+        .slice(0, Math.min(Math.max(limit, 1), 20))
+        .map(({ n, pending }) => toReview(n, pending))
+    },
+    liveChanges: async (ruleIds, version) => {
+      enter('liveChanges')
+      return db.ruleChanges
+        .filter((c) => c.verdict === 'change' && c.state === 'live' && c.baseVersion === version && ruleIds.includes(c.ruleId))
+        .map((c) => ({ ruleId: c.ruleId, effectiveFrom: c.effectiveFrom as string, rule: structuredClone(c.rule) }))
+    },
+    saveRuleChanges: async (rows) => {
+      enter('saveRuleChanges')
+      const fresh = rows.filter((r) => !db.ruleChanges.some((c) => c.noticeId === r.noticeId && c.ruleId === r.ruleId))
+      const clash = (r: RuleChangeRow) =>
+        r.verdict === 'change' &&
+        db.ruleChanges.some((c) => c.verdict === 'change' && c.state === 'live' && c.ruleId === r.ruleId && c.effectiveFrom === r.effectiveFrom)
+      if (fresh.some(clash)) return false
+      db.ruleChanges.push(...fresh.map((r) => ({ ...structuredClone(r), state: 'live' as const })))
+      return true
+    },
+    reviewFailed: async (noticeId) => {
+      enter('reviewFailed')
+      const tries = Math.min((db.reviewTries.get(noticeId) ?? 0) + 1, 3)
+      db.reviewTries.set(noticeId, tries)
+      return tries
     },
   }
 
@@ -402,7 +480,7 @@ function makeStore(log: string[]) {
       related: over.summary ? over.summary.related : null,
       readMode: over.readMode ?? null,
       attachText: over.attachText ?? '',
-      ruleHits: [],
+      ruleHits: over.ruleHits ?? [],
       posts: [{ source: 'hira_notice', sourceKey: String(key), title, url: viewUrl(key), postedOn, attachments: over.attachments ?? [] }],
     }
     db.notices.push(n)
@@ -436,12 +514,77 @@ function makeSite(log: string[]) {
 
 const answer = (value: unknown) => ({ ok: true as const, text: JSON.stringify(value), usage: USAGE })
 
+// ── 규칙 살피기 ────────────────────────────────────────────
+
+let file: RulesFile
+beforeAll(async () => {
+  const loaded = await loadTables()
+  if (!loaded.ok) throw new Error(loaded.code)
+  file = loaded.value.rules
+}, 60_000) // 약 표 JSON이 커서 바쁜 기계에서는 첫 읽기가 10초를 넘는다
+
+/** 실제 규칙표 판 날짜(rules.json version 2026-10-19) */
+const CUTOFF = '2026-10-19'
+/** 살피기 글이 올라온 날과 AI가 준 시행일(기본값 6 창 안) */
+const REVIEW_POSTED = '2026-11-20'
+const EFF = '2026-12-01'
+/** 저절로 바꿀 수 있는 횟수 규칙들(실제 규칙표, thresholds[0].at가 있음) */
+const AUTO_IDS = ['LA-18', 'LA-16', 'LA-35', 'LA-36', 'IJ-02', 'IJ-04', 'HY-06', 'HY-07', 'HY-13', 'HY-14', 'HY-15', 'PH-08']
+
+const ruleOf = (id: string): RuleDef => {
+  const rule = file.rules.find((r) => r.id === id)
+  if (!rule) throw new Error(`규칙표에 ${id}가 없다`)
+  return rule
+}
+const hitsOf = (ids: readonly string[]): RuleHit[] => ids.map((id) => ({ id, title: ruleOf(id).title }))
+type Rec = Record<string, unknown>
+/** 횟수 규칙의 첫 기준 횟수만 n으로 바꾼 params */
+const atParams = (rule: RuleDef, n: number): Rec => {
+  const params = structuredClone(rule.params) as Rec
+  ;(params.thresholds as Rec[])[0].at = n
+  return params
+}
+
+/** 요청 ③ <rules> 안 규칙 번호(보낸 차례) */
+const ruleIdsOf = (req: ClaudeRequest) => [...userText(req).matchAll(/<rule id="([^"]+)" auto="(?:yes|no)">/g)].map((m) => m[1])
+/** 요청 ③의 그 규칙 JSON(꺾쇠 바꿈을 되돌려 읽는다) */
+function sentRule(req: ClaudeRequest, id: string): Rec {
+  const m = new RegExp(`<rule id="${id}" auto="(?:yes|no)">(.*)</rule>`).exec(userText(req))
+  if (!m) throw new Error(`요청에 ${id}가 없다`)
+  return JSON.parse(m[1].replace(/‹/g, '<').replace(/›/g, '>')) as Rec
+}
+const isReview = (req: ClaudeRequest) => req.system === REVIEW_SYSTEM
+const postedOf = (req: ClaudeRequest) => /<notice[^>]* posted="([^"]+)">/.exec(userText(req))?.[1] ?? ''
+
+/** AI 답 한 줄: 바뀔 것 없음 */
+const sameAnswer = (id: string): RuleAnswer => ({ id, verdict: 'same', why: '이 글은 이 규칙의 기준을 바꾸지 않아요.', before: '', after: '', effectiveFrom: '', ruleJson: '' })
+/** AI 답 한 줄: 횟수만 n으로 바꿈 */
+const changeAnswer = (id: string, n: number, over: Partial<RuleAnswer> = {}, from: RuleDef = ruleOf(id)): RuleAnswer => ({
+  id,
+  verdict: 'change',
+  why: `기준 횟수가 ${n}회로 바뀌었어요.`,
+  before: '기준 횟수째부터 알려요.',
+  after: `${n}회째부터 알려요.`,
+  effectiveFrom: EFF,
+  ruleJson: JSON.stringify({ title: from.title, message: from.message, params: atParams(from, n) }),
+  ...over,
+})
+/** 보낸 규칙마다 answers에 있으면 그 답, 없으면 '바뀔 것 없음' */
+const reviewReply = (req: ClaudeRequest, answers: Record<string, Partial<RuleAnswer> & { verdict?: RuleAnswer['verdict'] }> = {}) =>
+  answer({ rules: ruleIdsOf(req).map((id) => ({ ...sameAnswer(id), ...answers[id] })) })
+
+const NO_RULES: RuleReport = { cleared: 0, retired: 0, reviewed: 0, changed: 0, human: 0, failed: 0 }
+
 function world() {
   const log: string[] = []
   const { store, db, hooks, seed } = makeStore(log)
   const site = makeSite(log)
   let ms = 0
   const claude = vi.fn<typeof callClaude>(async (req) => {
+    if (isReview(req)) {
+      log.push('claude rules')
+      return reviewReply(req)
+    }
     const week = req.system === WEEKLY_SYSTEM
     log.push(week ? 'claude week' : 'claude summary')
     return week ? answer({ top3: [TOP] }) : answer(SUMMARY)
@@ -461,10 +604,19 @@ function world() {
     submitBatch: submit,
     readBatch: read,
     ruleIndex: RULES,
+    rules: file,
     nowMs: () => ms,
     now: () => NOW,
   }
   const setSource = (source: NoticeSource, over: Partial<SourceRow>) => db.sources.set(source, sourceRow(source, over))
+  /** 요약이 끝나 규칙과 이어진 글(살필 글). over.tries는 살피기 실패 수(rule_review_tries)로 넣는다 */
+  const reviewSeed = (ids: readonly string[], over: Seed = {}) => {
+    const n = seed({ state: 'done', postedOn: REVIEW_POSTED, noticeNo: '2026-251', summary: SUMMARY, ...over, tries: 0, ruleHits: hitsOf(ids) })
+    if (over.tries) db.reviewTries.set(n.id, over.tries)
+    return n
+  }
+  const rowsOf = (noticeId: string) => db.ruleChanges.filter((c) => c.noticeId === noticeId)
+  const reviewCalls = () => claude.mock.calls.map(([req]) => req).filter(isReview)
   const keys = (source: NoticeSource) => db.notices.flatMap((n) => n.posts.filter((p) => p.source === source).map((p) => p.sourceKey))
   const byKey = (source: NoticeSource, key: string | number) =>
     db.notices.find((n) => n.posts.some((p) => p.source === source && p.sourceKey === String(key)))
@@ -481,6 +633,9 @@ function world() {
     setSource,
     keys,
     byKey,
+    reviewSeed,
+    rowsOf,
+    reviewCalls,
     setMs: (v: number) => {
       ms = v
     },
@@ -928,7 +1083,7 @@ describe('AC-7414.5 요약', () => {
     expect(report.summarized).toBe(6)
   })
 
-  it('AC-7414.5: 붙임을 file로 받아 글자를 뽑아 보내고 요약·read_mode·attach_text·규칙 연결을 저장한다(글 자신의 번호는 뺌)', async () => {
+  it('AC-7414.5 · AC-7807.2: 붙임을 file로 받아 글자를 뽑아 보내고 요약·read_mode·attach_text·규칙 연결(규칙표 날짜 뒤 글)을 저장한다(글 자신의 번호는 뺌)', async () => {
     const w = world()
     const n = w.seed({
       postedOn: '2026-11-21',
@@ -1052,7 +1207,7 @@ describe('AC-7414.6 일괄 보내기 · 거두기', () => {
     expect(logged()).toContain('E-NOTICE-BATCH')
   })
 
-  it('AC-7414.6: 거두기에서 성공은 done(보낼 때 적은 read_mode·attach_text, 규칙 연결), 실패·빠짐은 tries+1·wait다', async () => {
+  it('AC-7414.6 · AC-7807.2: 거두기에서 성공은 done(보낼 때 적은 read_mode·attach_text, 규칙표 날짜 뒤 글의 규칙 연결), 실패·빠짐은 tries+1·wait다', async () => {
     const w = world()
     const hourAgo = new Date(NOW.getTime() - HOUR).toISOString()
     const p = w.seed({
@@ -1375,7 +1530,7 @@ describe('AC-7414.9 사용량 · 실행 기록 · 로그', () => {
     ])
   })
 
-  it('AC-7414.9: 실행 줄에는 출처별 건수·멈춘 출처·숫자만 남고 글 내용은 없다(돌려주는 값도 같다)', async () => {
+  it('AC-7414.9 · AC-7810.6: 실행 줄에는 출처별 건수·멈춘 출처·숫자(규칙 살피기 숫자 포함)만 남고 글 내용은 없다(돌려주는 값도 같다)', async () => {
     const w = world()
     w.setSource('hira_notice', { checkedAt: null })
     w.setSource('hira_crtr', { checkedAt: null })
@@ -1398,6 +1553,7 @@ describe('AC-7414.9 사용량 · 실행 기록 · 로그', () => {
       batched: 1,
       collected: 0,
       failed: 0,
+      rules: NO_RULES,
     }
     expect(report).toEqual(expected)
     expect(w.db.finished).toEqual([{ runId: 'run-1', counts: expected }])
@@ -1440,5 +1596,508 @@ describe('AC-7414.9 사용량 · 실행 기록 · 로그', () => {
     expect(w.db.finished).toHaveLength(1)
     expect(w.site.fetchSite).not.toHaveBeenCalled()
     expect(logged()).toEqual(expect.arrayContaining(['E-NOTICE-BATCH', 'E-NOTICE-WEEK', 'E-NOTICE-SUMMARY']))
+  })
+})
+
+// ── specs/rule-auto: 규칙표 날짜 · 규칙 살피기 ─────────────────
+
+type World = ReturnType<typeof world>
+type Reply = (req: ClaudeRequest) => Awaited<ReturnType<typeof callClaude>>
+const AI_FAILED = { ok: false as const, code: 'E-AI-FAILED' as const, usage: null }
+
+/** 가짜 rule_changes 줄(다른 글이 남긴 판정·판) */
+const dbRow = (noticeId: string, ruleId: string, over: Partial<DbRuleChange> = {}): DbRuleChange => ({
+  noticeId,
+  ruleId,
+  baseVersion: file.version,
+  verdict: 'same',
+  byAi: true,
+  checkCode: null,
+  why: '바뀔 것 없어요.',
+  before: '',
+  after: '',
+  effectiveFrom: null,
+  rule: null,
+  state: 'live',
+  ...over,
+})
+/** 횟수만 n으로 바꾼 살아 있는 판 */
+const versionOf = (id: string, n: number, from: string): RuleDef => ({ ...ruleOf(id), params: atParams(ruleOf(id), n), effective_from: from, effective_to: null })
+
+describe('AC-7807.2 규칙표 날짜까지 올라온 글은 규칙과 잇지 않는다', () => {
+  it('AC-7807.2: 바로 요약은 posted_on이 규칙표 날짜(2026-10-19) 이하면 빈 연결, 그보다 뒤면 matchRules 결과다', async () => {
+    const w = world()
+    const onCutoff = w.seed({ postedOn: CUTOFF, tries: 1 })
+    const before = w.seed({ postedOn: '2026-03-02', tries: 1 })
+    const after = w.seed({ postedOn: addDays(CUTOFF, 1), tries: 1 })
+    await runReport(w.deps)
+    for (const n of [onCutoff, before]) expect(w.db.notices.find((x) => x.id === n.id)).toMatchObject({ state: 'done', summary: SUMMARY, ruleHits: [] })
+    expect(w.db.notices.find((x) => x.id === after.id)).toMatchObject({ state: 'done', ruleHits: [{ id: 'R-01', title: '규칙 하나' }] })
+  })
+
+  it.each([
+    ['규칙표 판 이름이 날짜가 아님', (f: RulesFile): RulesFile | null => ({ ...f, version: 'next-rules' })],
+    ['규칙표가 없음(null)', (): RulesFile | null => null],
+  ])('AC-7807.2: cutoff가 없으면(%s) 요약은 저장하되 규칙 연결은 빈 목록이다', async (_name, rulesOf) => {
+    const w = world()
+    w.deps.rules = rulesOf(file)
+    const n = w.seed({ postedOn: '2026-11-21' })
+    await runReport(w.deps)
+    expect(w.db.notices.find((x) => x.id === n.id)).toMatchObject({ state: 'done', summary: SUMMARY, ruleHits: [] })
+  })
+
+  it('AC-7807.2: 일괄 거두기도 batchNotices가 준 postedOn으로 규칙표 날짜 이하 글은 빈 연결, 뒤 글은 matchRules 결과다', async () => {
+    const w = world()
+    const hourAgo = new Date(NOW.getTime() - HOUR).toISOString()
+    const old = w.seed({ state: 'batch', batchId: 'msgbatch_a', updatedAt: hourAgo, postedOn: CUTOFF, readMode: 'body' })
+    const fresh = w.seed({ state: 'batch', batchId: 'msgbatch_a', updatedAt: hourAgo, postedOn: addDays(CUTOFF, 1), readMode: 'body' })
+    w.read.mockResolvedValue(
+      new Map<string, BatchOutcome>([
+        [old.id, { ok: true, text: JSON.stringify(SUMMARY), usage: USAGE }],
+        [fresh.id, { ok: true, text: JSON.stringify(SUMMARY), usage: USAGE }],
+      ]),
+    )
+    w.hooks.sources = () => w.setMs(DIRECT_UNTIL_MS + 1) // 거둔 뒤 바로 요약이 다시 집지 않게
+    const report = await runReport(w.deps)
+    expect(report.collected).toBe(2)
+    expect(w.db.notices.find((x) => x.id === old.id)).toMatchObject({ state: 'done', ruleHits: [] })
+    expect(w.db.notices.find((x) => x.id === fresh.id)).toMatchObject({ state: 'done', ruleHits: [{ id: 'R-01', title: '규칙 하나' }] })
+  })
+})
+
+describe('AC-7807.3 지난 연결 지우기 · 옛 규칙표 판 줄', () => {
+  it('AC-7807.3: 살피기를 시작할 때 한 번 clearOldRuleHits(규칙표 날짜)·retireOldChanges(규칙표 판)를 부르고 고친 수를 실행 숫자에 남긴다', async () => {
+    const w = world()
+    const old = w.seed({ state: 'done', postedOn: CUTOFF, summary: SUMMARY, ruleHits: hitsOf(['LA-18']) })
+    const kept = w.seed({ state: 'done', postedOn: '2026-11-01', summary: SUMMARY, ruleHits: hitsOf(['LA-18']) })
+    const other = w.seed({ state: 'done', postedOn: '2026-11-02', summary: SUMMARY })
+    w.db.ruleChanges.push(
+      dbRow(other.id, 'LA-16', { baseVersion: '2026-09-01' }),
+      dbRow(other.id, 'LA-35', { baseVersion: '2026-09-01', state: 'old' }),
+      dbRow(other.id, 'LA-36'),
+    )
+    const clear = vi.spyOn(w.deps.store, 'clearOldRuleHits')
+    const retire = vi.spyOn(w.deps.store, 'retireOldChanges')
+    const report = await runReport(w.deps)
+    expect(clear.mock.calls).toEqual([[CUTOFF]])
+    expect(retire.mock.calls).toEqual([[file.version]])
+    for (const step of ['clearOldRuleHits', 'retireOldChanges']) expect(w.log.indexOf(step)).toBeLessThan(w.log.indexOf('reviewWaiting'))
+    expect(w.db.notices.find((x) => x.id === old.id)?.ruleHits).toEqual([])
+    expect(w.db.notices.find((x) => x.id === kept.id)?.ruleHits).toEqual(hitsOf(['LA-18']))
+    expect(w.rowsOf(other.id).map((c) => [c.ruleId, c.state])).toEqual([
+      ['LA-16', 'old'],
+      ['LA-35', 'old'],
+      ['LA-36', 'live'],
+    ])
+    expect(report.rules).toMatchObject({ cleared: 1, retired: 1 })
+    expect(logged()).not.toContain('E-RULE-AUTO-CLEAN')
+  })
+
+  it.each([
+    ['clearOldRuleHits', 'cleared'],
+    ['retireOldChanges', 'retired'],
+  ] as const)('AC-7807.3: %s가 실패하면(-1) E-RULE-AUTO-CLEAN을 남기고(숫자는 0) 규칙 살피기를 이어 간다', async (fn, key) => {
+    const w = world()
+    const n = w.reviewSeed(['LA-18'])
+    w.deps.store[fn] = async () => -1
+    const report = await runReport(w.deps)
+    expect(logged()).toContain('E-RULE-AUTO-CLEAN')
+    expect(report.rules[key]).toBe(0)
+    expect(w.reviewCalls()).toHaveLength(1)
+    expect(w.rowsOf(n.id).map((c) => c.verdict)).toEqual(['same'])
+  })
+})
+
+describe('AC-7810.1 규칙 살피기 자리', () => {
+  it('AC-7810.1: 일괄 결과 거두기 → 규칙 살피기 → 새 글 확인 → 지난주 모음 → 요약 → 지난 글 채우기 → 마감 차례다', async () => {
+    const w = world()
+    w.seed({ state: 'batch', batchId: 'msgbatch_old', updatedAt: new Date(NOW.getTime() - HOUR).toISOString() })
+    const known = w.seed({ state: 'done', postedOn: '2026-11-10', summary: SUMMARY })
+    w.seed({ postedOn: '2026-11-21' })
+    w.seed({ postedOn: '2026-03-02' })
+    w.reviewSeed(['LA-18'])
+    w.db.weeks.delete(LAST_WEEK)
+    w.setSource('hira_notice', { checkedAt: YESTERDAY_2300, backfillDone: false, cursor: { page: 5 } })
+    w.site.page(hiraNoticeListUrl(1), noticeList([{ key: Number(known.posts[0].sourceKey), date: '2026-11-10' }]))
+    w.site.page(hiraNoticeListUrl(6), noticeList([{ key: 50, date: '2025-12-20' }]))
+
+    await runReport(w.deps)
+
+    const at = (label: string) => {
+      const i = w.log.indexOf(label)
+      expect(i, label).toBeGreaterThanOrEqual(0)
+      return i
+    }
+    const order = [
+      at('readBatch'),
+      at('clearOldRuleHits'),
+      at('retireOldChanges'),
+      at('reviewWaiting'),
+      at('liveChanges'),
+      at('claude rules'),
+      at('saveRuleChanges'),
+      at(`site ${hiraNoticeListUrl(1)}`),
+      at('claude week'),
+      at('claude summary'),
+      at('submitBatch'),
+      at(`site ${hiraNoticeListUrl(6)}`),
+      at('finishRun'),
+    ]
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+    expect(w.log.lastIndexOf('saveRuleChanges')).toBeLessThan(at(`site ${hiraNoticeListUrl(1)}`))
+    expect(w.log.at(-1)).toBe('finishRun')
+  })
+
+  it.each([
+    ['규칙표가 없음(rules null)', (w: World) => (w.deps.rules = null)],
+    ['규칙 색인이 없음(ruleIndex null)', (w: World) => (w.deps.ruleIndex = null)],
+    ['규칙표 판 이름이 날짜가 아님(cutoff 없음)', (w: World) => (w.deps.rules = { ...file, version: 'next-rules' })],
+  ])('AC-7810.1: %s이면 규칙 살피기를 건너뛰고 E-RULE-AUTO를 남기며 다음 단계로 간다', async (_name, setup) => {
+    const w = world()
+    const n = w.reviewSeed(['LA-18'])
+    w.setSource('mohw_rss', { checkedAt: null })
+    w.site.page(MOHW_RSS_URL, rss([{ no: 5, title: '복지부 글', date: 'Fri, 20 Nov 2026 01:00:00 GMT' }]))
+    setup(w)
+    await runReport(w.deps)
+    for (const step of ['clearOldRuleHits', 'retireOldChanges', 'reviewWaiting', 'liveChanges', 'saveRuleChanges', 'reviewFailed']) {
+      expect(w.log, step).not.toContain(step)
+    }
+    expect(w.reviewCalls()).toHaveLength(0)
+    expect(w.rowsOf(n.id)).toEqual([])
+    expect(logged()).toContain('E-RULE-AUTO')
+    expect(w.site.asked()).toEqual([MOHW_RSS_URL])
+    expect(w.keys('mohw_rss')).toEqual(['5'])
+    expect(w.log.at(-1)).toBe('finishRun')
+  })
+})
+
+describe('AC-7810.2 살필 글 · 묶음 · 동시 · 부름 수 · 시간', () => {
+  it('AC-7810.2: rule_review_waiting(규칙표 날짜, 3)의 글을 최근 글부터 하나씩, pending을 rule_hits 차례로 4개씩 묶어 부른다', async () => {
+    const w = world()
+    const older = w.reviewSeed(AUTO_IDS.slice(0, 6), { postedOn: '2026-11-19' })
+    const newer = w.reviewSeed(['LA-18'], { postedOn: '2026-11-21' })
+    const waiting = vi.spyOn(w.deps.store, 'reviewWaiting')
+    await runReport(w.deps)
+    expect(waiting.mock.calls).toEqual([[CUTOFF, 3]])
+    const calls = w.reviewCalls()
+    expect(calls.map(postedOf)).toEqual(['2026-11-21', '2026-11-19', '2026-11-19'])
+    expect(calls.map(ruleIdsOf)).toEqual([['LA-18'], AUTO_IDS.slice(0, 4), AUTO_IDS.slice(4, 6)])
+    expect(calls.every((req) => req.effort === 'high')).toBe(true)
+    expect(w.rowsOf(newer.id).map((c) => c.ruleId)).toEqual(['LA-18'])
+    expect(w.rowsOf(older.id).map((c) => c.ruleId).sort()).toEqual(AUTO_IDS.slice(0, 6).sort())
+  })
+
+  it('AC-7810.2: 한 글의 묶음은 동시에 2번까지 부른다', async () => {
+    const w = world()
+    const n = w.reviewSeed(AUTO_IDS) // 12개 = 묶음 셋
+    let active = 0
+    let peak = 0
+    w.claude.mockImplementation(async (req) => {
+      active += 1
+      peak = Math.max(peak, active)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      active -= 1
+      return reviewReply(req)
+    })
+    await runReport(w.deps)
+    expect(w.reviewCalls()).toHaveLength(3)
+    expect(peak).toBe(2)
+    expect(w.rowsOf(n.id)).toHaveLength(12)
+  })
+
+  it('AC-7810.2: 한 실행에 Claude 부름은 4번까지이고 남은 규칙은 판정 없이 둔다(실패 수도 그대로 — 다음 실행이 살핀다)', async () => {
+    const w = world()
+    const list = ['2026-11-21', '2026-11-20', '2026-11-19'].map((postedOn) => w.reviewSeed(AUTO_IDS.slice(0, 8), { postedOn }))
+    const report = await runReport(w.deps)
+    expect(RULE_CALLS_MAX).toBe(4)
+    expect(w.reviewCalls()).toHaveLength(4)
+    expect(w.rowsOf(list[0].id)).toHaveLength(8)
+    expect(w.rowsOf(list[1].id)).toHaveLength(8)
+    expect(w.rowsOf(list[2].id)).toEqual([])
+    expect(w.log).not.toContain('reviewFailed')
+    expect(report.rules).toEqual({ ...NO_RULES, reviewed: 16 })
+  })
+
+  it('AC-7810.2: 실행 시작부터 60초가 지나면 새 부름을 시작하지 않고(남은 글은 판정 없이), 뒤 단계 요약은 한다', async () => {
+    const w = world()
+    const a = w.reviewSeed(['LA-18'], { postedOn: '2026-11-21' })
+    const b = w.reviewSeed(['LA-16'], { postedOn: '2026-11-20' })
+    const wait = w.seed({ postedOn: '2026-11-21' })
+    w.claude.mockImplementation(async (req) => {
+      if (!isReview(req)) return answer(SUMMARY)
+      await Promise.resolve()
+      w.setMs(RULE_UNTIL_MS) // 첫 부름이 끝났을 때 60초
+      return reviewReply(req)
+    })
+    await runReport(w.deps)
+    expect(RULE_UNTIL_MS).toBe(60_000)
+    expect(w.reviewCalls().map(postedOf)).toEqual(['2026-11-21'])
+    expect(w.rowsOf(a.id)).toHaveLength(1)
+    expect(w.rowsOf(b.id)).toEqual([])
+    expect(w.log).not.toContain('reviewFailed')
+    expect(w.db.notices.find((x) => x.id === wait.id)?.state).toBe('done')
+  })
+
+  it('AC-7810.2: 살피기를 시작할 때 이미 60초가 지났으면 Claude를 부르지 않는다(지난 연결 지우기는 한다)', async () => {
+    const w = world()
+    const n = w.reviewSeed(['LA-18'])
+    w.hooks.retireOldChanges = () => w.setMs(RULE_UNTIL_MS + 1)
+    await runReport(w.deps)
+    expect(w.log).toContain('clearOldRuleHits')
+    expect(w.reviewCalls()).toHaveLength(0)
+    expect(w.rowsOf(n.id)).toEqual([])
+    expect(w.log).not.toContain('reviewFailed')
+  })
+})
+
+describe('AC-7810.3 지금 판(current)', () => {
+  it('AC-7810.3: liveChanges(pending, 규칙표 판)로 읽은 가장 늦은 판을 AI에 보내고, 판이 없는 규칙은 원래 규칙을 보낸다', async () => {
+    const w = world()
+    const o1 = w.seed({ state: 'done', postedOn: '2026-10-25', summary: SUMMARY })
+    const o2 = w.seed({ state: 'done', postedOn: '2026-11-05', summary: SUMMARY })
+    const v5 = versionOf('LA-18', 5, '2026-11-01')
+    const v6 = versionOf('LA-18', 6, '2026-11-15')
+    w.db.ruleChanges.push(
+      dbRow(o2.id, 'LA-18', { verdict: 'change', effectiveFrom: '2026-11-15', rule: v6 }),
+      dbRow(o1.id, 'LA-18', { verdict: 'change', effectiveFrom: '2026-11-01', rule: v5 }),
+    )
+    const n = w.reviewSeed(['LA-18', 'LA-16'])
+    const live = vi.spyOn(w.deps.store, 'liveChanges')
+    w.claude.mockImplementation(async (req) => reviewReply(req, { 'LA-18': changeAnswer('LA-18', 7, {}, v6) }))
+    await runReport(w.deps)
+    expect(live.mock.calls).toEqual([[['LA-18', 'LA-16'], file.version]])
+    const [req] = w.reviewCalls()
+    expect(sentRule(req, 'LA-18')).toEqual(v6)
+    expect(sentRule(req, 'LA-16')).toEqual(ruleOf('LA-16'))
+    const row = w.rowsOf(n.id).find((c) => c.ruleId === 'LA-18')
+    expect(row).toMatchObject({ verdict: 'change', effectiveFrom: EFF })
+    expect(row?.rule?.params).toEqual(atParams(ruleOf('LA-18'), 7))
+    expect(row?.rule?.basis.slice(0, -1)).toEqual(v6.basis)
+  })
+
+  it('AC-7810.3: 지금 판의 날짜와 같거나 이른 시행일은 human·date다', async () => {
+    const w = world()
+    const o1 = w.seed({ state: 'done', postedOn: '2026-10-25', summary: SUMMARY })
+    const v5 = versionOf('LA-18', 5, '2026-11-01')
+    w.db.ruleChanges.push(dbRow(o1.id, 'LA-18', { verdict: 'change', effectiveFrom: '2026-11-01', rule: v5 }))
+    const n = w.reviewSeed(['LA-18'])
+    w.claude.mockImplementation(async (req) => reviewReply(req, { 'LA-18': changeAnswer('LA-18', 6, { effectiveFrom: '2026-11-01' }, v5) }))
+    await runReport(w.deps)
+    expect(w.rowsOf(n.id)).toEqual([
+      expect.objectContaining({ ruleId: 'LA-18', verdict: 'human', checkCode: 'date', why: REASON_TEXT.date, rule: null, effectiveFrom: null }),
+    ])
+  })
+
+  it('AC-7810.3: 가장 늦은 판의 규칙이 점검 규칙 모양이 아니면 원래 규칙을 보낸다', async () => {
+    const w = world()
+    const o1 = w.seed({ state: 'done', postedOn: '2026-10-25', summary: SUMMARY })
+    w.db.ruleChanges.push(dbRow(o1.id, 'LA-18', { verdict: 'change', effectiveFrom: '2026-11-01', rule: { id: 'LA-18', title: '' } as unknown as RuleDef }))
+    w.reviewSeed(['LA-18'])
+    await runReport(w.deps)
+    expect(sentRule(w.reviewCalls()[0], 'LA-18')).toEqual(ruleOf('LA-18'))
+  })
+
+  it('AC-7810.3: 저절로 못 바꾸는 규칙은 auto="no", 그 밖은 auto="yes"로 보낸다', async () => {
+    const w = world()
+    w.reviewSeed(['HY-12', 'LA-18', 'VF-01'])
+    await runReport(w.deps)
+    const text = userText(w.reviewCalls()[0])
+    expect(text).toContain('<rule id="HY-12" auto="no">')
+    expect(text).toContain('<rule id="LA-18" auto="yes">')
+    expect(text).toContain('<rule id="VF-01" auto="no">')
+  })
+})
+
+describe('AC-7810.4 답 → 판정 줄 · 숫자 · 사용량', () => {
+  it('AC-7810.4: parseReview → 규칙마다 decideRule → saveRuleChanges이고 실행 숫자(reviewed·changed·human)와 사용량(바로 부름 값)을 더한다', async () => {
+    const w = world()
+    const n = w.reviewSeed(['LA-18', 'LA-16', 'HY-12', 'LA-35'])
+    const hy12 = ruleOf('HY-12')
+    w.claude.mockImplementation(async (req) =>
+      reviewReply(req, {
+        'LA-18': changeAnswer('LA-18', 5),
+        'LA-16': { verdict: 'none', why: '이 글은 이 규칙과 상관없어요.' },
+        'HY-12': { ...changeAnswer('LA-18', 5), id: 'HY-12', ruleJson: JSON.stringify({ title: hy12.title, message: hy12.message, params: hy12.params }) },
+        'LA-35': { verdict: 'human', why: '새 기준을 규칙으로 나타낼 수 없어요.' },
+      }),
+    )
+    const report = await runReport(w.deps)
+    const rows = w.rowsOf(n.id)
+    expect(rows.map((c) => [c.ruleId, c.verdict, c.checkCode, c.byAi])).toEqual([
+      ['LA-18', 'change', null, true],
+      ['LA-16', 'none', null, true],
+      ['HY-12', 'human', 'no-auto', true],
+      ['LA-35', 'human', null, true],
+    ])
+    expect(rows[0]).toMatchObject({
+      noticeId: n.id,
+      baseVersion: file.version,
+      effectiveFrom: EFF,
+      why: '기준 횟수가 5회로 바뀌었어요.',
+      before: '기준 횟수째부터 알려요.',
+      after: '5회째부터 알려요.',
+    })
+    expect(rows[0].rule).toMatchObject({ id: 'LA-18', effective_from: EFF, effective_to: null, params: atParams(ruleOf('LA-18'), 5) })
+    expect(rows[1].why).toBe('이 글은 이 규칙과 상관없어요.')
+    expect(rows[2].why).toBe(REASON_TEXT.noAuto)
+    expect(report.rules).toEqual({ ...NO_RULES, reviewed: 4, changed: 1, human: 2 })
+    expect(w.db.usage).toEqual([{ runId: 'run-1', u: { inputTokens: 1000, outputTokens: 200, costMicroUsd: costMicroUsd(USAGE) } }])
+  })
+})
+
+describe('AC-7810.5 실패', () => {
+  it.each([
+    ['부름 실패(E-AI-FAILED)', (): ReturnType<Reply> => AI_FAILED],
+    ['답이 JSON이 아님', (): ReturnType<Reply> => ({ ok: true, text: '살핀 답 아님', usage: USAGE })],
+    ['보낸 규칙의 답이 빠짐', (): ReturnType<Reply> => answer({ rules: [sameAnswer('LA-18')] })],
+  ])('AC-7810.5: %s이면 rule_review_failed로 실패 수를 올리고 E-RULE-AUTO를 남긴다(판정 줄 없음)', async (_name, reply) => {
+    const w = world()
+    const n = w.reviewSeed(['LA-18', 'LA-16'])
+    w.claude.mockImplementation(async () => reply())
+    const report = await runReport(w.deps)
+    expect(w.db.reviewTries.get(n.id)).toBe(1)
+    expect(w.rowsOf(n.id)).toEqual([])
+    expect(report.rules).toEqual({ ...NO_RULES, failed: 1 })
+    expect(logged()).toContain('E-RULE-AUTO')
+  })
+
+  it('AC-7810.5: 저장이 실패하면 실패 수를 올리고 E-RULE-AUTO를 남긴다(부름 사용량은 더한다)', async () => {
+    const w = world()
+    const n = w.reviewSeed(['LA-18'])
+    w.deps.store.saveRuleChanges = async () => false
+    const report = await runReport(w.deps)
+    expect(w.db.reviewTries.get(n.id)).toBe(1)
+    expect(report.rules).toEqual({ ...NO_RULES, failed: 1 })
+    expect(logged()).toContain('E-RULE-AUTO')
+    expect(w.db.usage).toHaveLength(1)
+  })
+
+  it('AC-7810.5: 실패 수가 3이 되면 그 글의 남은 규칙(이번에 저장하지 못한 것)을 triesRows(세 번 실패 줄)로 저장한다', async () => {
+    const w = world()
+    const ids = AUTO_IDS.slice(0, 8)
+    const n = w.reviewSeed(ids, { tries: 2 })
+    w.claude.mockImplementation(async (req) => (ruleIdsOf(req).includes(ids[4]) ? AI_FAILED : reviewReply(req)))
+    const report = await runReport(w.deps)
+    const rows = w.rowsOf(n.id)
+    expect(rows.filter((c) => c.byAi).map((c) => c.ruleId)).toEqual(ids.slice(0, 4))
+    expect(rows.filter((c) => !c.byAi)).toEqual(
+      ids.slice(4).map((ruleId) => ({
+        noticeId: n.id,
+        ruleId,
+        baseVersion: file.version,
+        verdict: 'human',
+        byAi: false,
+        checkCode: 'tries',
+        why: REASON_TEXT.tries,
+        before: '',
+        after: '',
+        effectiveFrom: null,
+        rule: null,
+        state: 'live',
+      })),
+    )
+    expect(w.db.reviewTries.get(n.id)).toBe(3)
+    expect(report.rules).toEqual({ ...NO_RULES, reviewed: 4, human: 4, failed: 1 })
+  })
+
+  it('AC-7810.5: 실패 수가 3이 되면 그 글의 남은 묶음은 부르지 않고 남은 규칙 모두를 세 번 실패 줄로 둔다', async () => {
+    const w = world()
+    const n = w.reviewSeed(AUTO_IDS, { tries: 2 }) // 묶음 셋
+    w.claude.mockResolvedValue(AI_FAILED)
+    const report = await runReport(w.deps)
+    expect(w.reviewCalls()).toHaveLength(2) // 동시에 부른 둘이 실패 → 셋째 묶음은 부르지 않음
+    expect(w.rowsOf(n.id).map((c) => [c.ruleId, c.checkCode, c.byAi])).toEqual(AUTO_IDS.map((id) => [id, 'tries', false]))
+    expect(report.rules).toEqual({ ...NO_RULES, human: 12, failed: 2 })
+  })
+
+  it('AC-7810.5: E-AI-LIMIT이면 실패 수를 올리지 않고 이번 실행의 Claude 부름을 모두 멈춘다(지난주 모음·요약도 따른다)', async () => {
+    const w = world()
+    const a = w.reviewSeed(['LA-18'], { postedOn: '2026-11-21' })
+    const b = w.reviewSeed(['LA-16'], { postedOn: '2026-11-20' })
+    const wait = w.seed({ postedOn: '2026-11-21' })
+    w.db.weeks.delete(LAST_WEEK)
+    w.seed({ state: 'done', postedOn: '2026-11-10', summary: SUMMARY })
+    w.claude.mockResolvedValue({ ok: false, code: 'E-AI-LIMIT', usage: null })
+    const report = await runReport(w.deps)
+    expect(w.claude).toHaveBeenCalledTimes(1)
+    expect(w.reviewCalls()).toHaveLength(1)
+    expect(w.log).not.toContain('reviewFailed')
+    expect(w.db.reviewTries.size).toBe(0)
+    for (const n of [a, b]) expect(w.rowsOf(n.id)).toEqual([])
+    expect(w.db.notices.find((x) => x.id === wait.id)).toMatchObject({ state: 'wait', tries: 0 })
+    expect(w.db.weeks.has(LAST_WEEK)).toBe(false)
+    expect(report.rules.failed).toBe(0)
+  })
+
+  it('AC-7810.5: 규칙표에 없는 규칙(옛 규칙표의 연결)은 AI에 보내지 않고 세 번 실패 줄로 두어 살필 글 창을 막지 않는다', async () => {
+    const w = world()
+    const n = w.seed({ state: 'done', postedOn: REVIEW_POSTED, summary: SUMMARY, ruleHits: [{ id: 'ZZ-99', title: '없어진 규칙' }, ...hitsOf(['LA-18'])] })
+    const report = await runReport(w.deps)
+    expect(w.reviewCalls().map(ruleIdsOf)).toEqual([['LA-18']])
+    expect(w.rowsOf(n.id).map((c) => [c.ruleId, c.verdict, c.checkCode, c.byAi])).toEqual(
+      expect.arrayContaining([
+        ['ZZ-99', 'human', 'tries', false],
+        ['LA-18', 'same', null, true],
+      ]),
+    )
+    expect(report.rules).toMatchObject({ reviewed: 1, human: 1, failed: 0 })
+  })
+})
+
+describe('AC-7810.6 실행 기록 · 로그', () => {
+  it('AC-7810.6: counts.rules는 { cleared, retired, reviewed, changed, human, failed } 숫자뿐이고 실행 줄에 글·규칙 내용이 없다', async () => {
+    const w = world()
+    w.seed({ state: 'done', postedOn: CUTOFF, summary: SUMMARY, ruleHits: hitsOf(['LA-36']) })
+    w.reviewSeed(['LA-18', 'LA-16'], { title: '비밀 같은 글 제목', body: '본문 글자' })
+    w.reviewSeed(AUTO_IDS.slice(4, 8), { postedOn: '2026-11-19', tries: 2 })
+    w.claude.mockImplementation(async (req) => {
+      if (postedOf(req) === '2026-11-19') return AI_FAILED
+      return reviewReply(req, { 'LA-18': changeAnswer('LA-18', 5), 'LA-16': { verdict: 'human', why: '사람이 봐야 해요.' } })
+    })
+    const report = await runReport(w.deps)
+    expect(report.rules).toEqual({ cleared: 1, retired: 0, reviewed: 2, changed: 1, human: 5, failed: 1 })
+    for (const v of Object.values(report.rules)) expect(Number.isInteger(v)).toBe(true)
+    expect(w.db.finished).toEqual([{ runId: 'run-1', counts: report }])
+    const text = JSON.stringify(w.db.finished)
+    for (const word of ['비밀', '본문', 'LA-18', '기준 횟수', '사람이 봐야']) expect(text).not.toContain(word)
+  })
+
+  it('AC-7810.6: console에는 [notices/collect]와 E-RULE-AUTO·E-RULE-AUTO-CHECK·E-RULE-AUTO-CLEAN이 한 줄씩만 남고 글·규칙 내용은 없다', async () => {
+    const w = world()
+    const n = w.reviewSeed(['LA-18', 'LA-16'], { postedOn: '2026-11-21', title: '로그에 없을 제목' })
+    w.reviewSeed(['LA-35'], { postedOn: '2026-11-20' })
+    w.reviewSeed(['LA-36'], { postedOn: '2026-11-19' })
+    w.deps.store.clearOldRuleHits = async () => -1
+    w.deps.store.retireOldChanges = async () => -1
+    w.claude.mockImplementation(async (req) => {
+      if (postedOf(req) !== '2026-11-21') return AI_FAILED
+      return reviewReply(req, {
+        'LA-18': changeAnswer('LA-18', 5, { ruleJson: '{"title":"모양 틀림"}' }), // shape
+        'LA-16': changeAnswer('LA-16', 5, { effectiveFrom: '2030-01-01' }), // date
+      })
+    })
+    await runReport(w.deps)
+    expect(w.rowsOf(n.id).map((c) => [c.ruleId, c.verdict, c.checkCode])).toEqual([
+      ['LA-18', 'human', 'shape'],
+      ['LA-16', 'human', 'date'],
+    ])
+    for (const call of errors.mock.calls) {
+      expect(call).toHaveLength(2)
+      expect(call[0]).toBe(LOG_TAG)
+      expect(call[1]).toMatch(/^E-(RULE-AUTO(-CHECK|-CLEAN)?|NOTICE-[A-Za-z_-]+)$/)
+    }
+    expect(logged().filter((c) => c.startsWith('E-RULE-AUTO')).sort()).toEqual(['E-RULE-AUTO', 'E-RULE-AUTO-CHECK', 'E-RULE-AUTO-CLEAN'])
+    expect(new Set(logged()).size).toBe(logged().length)
+    const printed = JSON.stringify(errors.mock.calls)
+    for (const word of ['LA-18', '기준 횟수', '로그에 없을 제목', '모양 틀림']) expect(printed).not.toContain(word)
+  })
+
+  it('AC-7810.6: 살피기가 모두 성공하고 검사에 걸린 줄이 없으면 E-RULE-AUTO 번호를 남기지 않는다', async () => {
+    const w = world()
+    w.reviewSeed(['LA-18', 'LA-16'])
+    w.claude.mockImplementation(async (req) => reviewReply(req, { 'LA-18': changeAnswer('LA-18', 5) }))
+    const report = await runReport(w.deps)
+    expect(report.rules).toEqual({ ...NO_RULES, reviewed: 2, changed: 1 })
+    expect(logged().filter((c) => c.startsWith('E-RULE-AUTO'))).toEqual([])
   })
 })
