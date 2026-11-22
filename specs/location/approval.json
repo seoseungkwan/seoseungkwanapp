@@ -1,15 +1,12 @@
 {
   "status": "approved",
   "feature": "location",
-  "approved_at": "2026-11-22T10:38:29Z",
+  "approved_at": "2026-11-22T10:38:41Z",
   "approved_via": "auto",
   "session_id": "d6645c74-6bc0-4844-b534-4aaafe727366",
-  "spec_sha256": "3c1d5dffe9ddf3e2a3edf5363ba99a75768c610341555196afde6238f2a15a49",
+  "spec_sha256": "f95838c5c5aab2ccbcdc0d9dabc111e5f6606fb8229e4d127cc53be53c0cc5a6",
   "scope": [
-    "(188줄",
-    "(TASK-52",
     "CLAUDE.md",
-    "WatchCandidate에",
     "docs/ADR.md",
     "docs/ARCHITECTURE.md",
     "fixtures/location/api/**",
@@ -27,7 +24,6 @@
     "fixtures/location/api/trades/**",
     "fixtures/location/api/welfare/**",
     "fixtures/location/dongs/**",
-    "name만",
     "next.config.ts",
     "plan.md",
     "public/location/dongs/**",
@@ -198,15 +194,6 @@
     "src/types/errors.ts",
     "src/types/location.ts",
     "supabase/location.rls.test.ts",
-    "supabase/migrations/20261122000000_location.sql",
-    "견본",
-    "고침)",
-    "다섯",
-    "더함)",
-    "맞게",
-    "몸통",
-    "몸통에",
-    "새",
-    "줄만"
+    "supabase/migrations/20261122000000_location.sql"
   ]
 }
