@@ -10,17 +10,20 @@ import { BitDashboard } from '@/components/dashboard/live/BitDashboard'
 import { DashboardSkeleton } from '@/components/dashboard/live/DashboardSkeleton'
 import { LOOKBACK_DAYS, readBitDays, type ReadResult } from '@/components/dashboard/live/readBitDays'
 import { readDashboardGroups, type DashboardGroups } from '@/components/dashboard/live/rxGroups'
+import { queryLocation } from '@/components/location/clients'
 import { RoleProvider } from '@/components/shell/role'
 import { ds } from '@/components/ui/classes'
 import { addDays } from '@/lib/analytics/dates'
 import { errorInfo } from '@/lib/errors'
 import { ContactsStorageError, listWarrantySoon } from '@/lib/storage/contacts'
 import { loadInventory } from '@/lib/storage/inventory'
+import { addEvents, listUnseenEvents, listWatchCandidates, markEventsSeen, setWatchChecked } from '@/lib/storage/location'
 import { ruleAlerts, unreadCount } from '@/lib/storage/notices'
 import { readDays, StorageError } from '@/lib/storage/stats'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { WarrantyItem } from '@/types/contacts'
 import type { InvInventory } from '@/types/inventory'
+import type { LocationEvent } from '@/types/location'
 import type { DayPayload } from '@/types/payload'
 import { DashboardAnalysis } from './DashboardAnalysis'
 import { LiveDashboard, SAVED_READ_TIMEOUT_MS } from './LiveDashboard'
@@ -66,6 +69,13 @@ vi.mock('@/lib/storage/contacts', async (importOriginal) => {
   return { ...real, listWarrantySoon: vi.fn() }
 })
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: vi.fn() }))
+// 새 경쟁 의원 알림(location AC-7915.1~AC-7915.3): 알림 저장 함수와 바깥 자료 부르기(queryLocation)도 잡아 둔다. 진짜 Supabase·서버 경로에 붙지 않는다.
+// 기본은 관리자 아님(isAdmin 없음)이라 아무것도 부르지 않는다 — 이 파일의 다른 시험은 지금 그대로다
+vi.mock('@/lib/storage/location', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/storage/location')>()
+  return { ...real, listWatchCandidates: vi.fn(), addEvents: vi.fn(), setWatchChecked: vi.fn(), listUnseenEvents: vi.fn(), markEventsSeen: vi.fn() }
+})
+vi.mock('@/components/location/clients', () => ({ queryLocation: vi.fn() }))
 
 type SavedResult = Awaited<ReturnType<typeof readDays>>
 
@@ -1378,5 +1388,163 @@ describe('AC-7512.4: 대시보드 재고 칸 — 뼈대·읽기 실패 카드', 
     await settle()
     expect(inventoryCards()).toHaveLength(0)
     expect(savedCard()).not.toBeNull()
+  })
+})
+
+// ── location: 대시보드 새 경쟁 의원 알림 (REQ-7915, design.md 12절, 시안 docs/mockups/location/index.html ?s=dashboard) ──
+// LiveDashboard가 관리자일 때만 화면을 열 때 한 번 확인·읽고(useLocationWatch, 20초 한도) BitDashboard에 locationNotice로 넘긴다.
+// 자리는 무상 수리 알림 바로 아래이고, 저장 숫자·비트 읽기는 이 읽기를 기다리지 않는다. 의원·후보는 지어낸 값이다
+describe('입지 알림: LiveDashboard가 관리자일 때 한 번 읽어 무상 수리 알림 아래에 둔다 (location AC-7915.1~AC-7915.3)', () => {
+  const NAME = '입지 알림'
+  const CLIENT = { from: vi.fn(), rpc: vi.fn(), storage: {} }
+  const CAND = '11111111-1111-4111-8111-111111111111'
+  const ev = (n: number, kind: 'open' | 'close', clinicName: string, eventOn: string): LocationEvent => ({
+    id: `e0000000-0000-4000-8000-00000000000${n}`,
+    candidateId: CAND,
+    kind,
+    clinicName,
+    dept: '정형외과',
+    eventOn,
+    distM: 950,
+    seenAt: null,
+    createdAt: '2026-11-02T00:00:00.000Z',
+  })
+  const EVENTS = [ev(1, 'open', '예시★★정형외과', '2026-10-28'), ev(2, 'close', '예시▼▼정형외과', '2026-10-20')]
+  const WARRANTY: WarrantyItem[] = [{ equipmentId: 'e-shock', companyId: 'c-medi', companyName: '예시메디칼', name: '충격파 기계', warrantyUntil: '2026-11-14' }]
+  const box = () => screen.getByRole('status', { name: NAME })
+  const noBox = () => expect(screen.queryByRole('status', { name: NAME })).toBeNull()
+  const rows = () => within(box()).getAllByRole('link')
+  const headerH1 = () => screen.getByRole('heading', { level: 1, name: HEADER_H1 })
+  const todaySection = () => screen.getByRole('region', { name: '오늘 하루 분석' })
+  const reads = [listWatchCandidates, listUnseenEvents, queryLocation, addEvents, setWatchChecked] as const
+  const drawAdmin = (isAdmin: boolean | PromiseLike<boolean> = true) => render(<LiveDashboard today={TODAY} isAdmin={isAdmin} />)
+  // 안 본 줄 읽기를 잡아 둔다(시험이 답을 준다)
+  const holdUnseen = () => {
+    const held: Array<(events: LocationEvent[]) => void> = []
+    vi.mocked(listUnseenEvents).mockImplementation(() => new Promise((resolve) => held.push(resolve)))
+    return (events: LocationEvent[]) =>
+      act(async () => {
+        held.at(-1)!(events)
+      })
+  }
+  const settle = () =>
+    act(async () => {
+      for (let i = 0; i < 30; i += 1) await Promise.resolve()
+    })
+
+  beforeEach(() => {
+    vi.mocked(supabaseBrowser).mockReset()
+    vi.mocked(supabaseBrowser).mockReturnValue(CLIENT as never)
+    for (const fn of reads) vi.mocked(fn).mockReset()
+    vi.mocked(listWatchCandidates).mockResolvedValue([]) // 확인할 후보 없음 → 바깥 자료는 부르지 않는다
+    vi.mocked(listUnseenEvents).mockResolvedValue(EVENTS)
+    vi.mocked(markEventsSeen).mockReset()
+    vi.mocked(markEventsSeen).mockResolvedValue(undefined)
+  })
+
+  it.each([
+    ['isAdmin 없음', undefined],
+    ['isAdmin 거짓', false],
+  ])('AC-7915.3: 관리자가 아니면(%s) 아무것도 부르지 않고 알림 자리에 아무것도 없다', async (_name, isAdmin) => {
+    notBitPc()
+    render(<LiveDashboard today={TODAY} {...(isAdmin === undefined ? {} : { isAdmin })} />)
+    await savedAnswer(SAVED_ROWS)
+    await settle()
+    await wait(20_000)
+    for (const fn of reads) expect(fn).not.toHaveBeenCalled()
+    noBox()
+    expect(bigLine().textContent).toBe(SAVED_H1)
+  })
+
+  it('AC-7915.2: 관리자면 화면을 열 때 한 번 읽어, 숫자 화면에서 머리 줄 → 무상 수리 알림 → 입지 알림 → 오늘 하루 분석 차례로 그린다(누르면 /location?c=…&tab=detail)', async () => {
+    notBitPc()
+    drawAdmin()
+    await settle()
+    await warrantyAnswer(WARRANTY)
+    await savedAnswer(SAVED_ROWS)
+    const warranty = screen.getByRole('status', { name: '무상 수리 알림' })
+    expect(box().previousElementSibling).toBe(warranty)
+    expectOrder(headerH1(), warranty, box(), todaySection())
+    expect(rows().map((a) => a.getAttribute('href'))).toEqual([`/location?c=${CAND}&tab=detail`, `/location?c=${CAND}&tab=detail`])
+    expect(vi.mocked(listWatchCandidates).mock.calls).toEqual([[CLIENT]])
+    expect(listUnseenEvents).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-7915.2: 페이지가 넘긴 문지기 값(참으로 끝나는 약속)도 받는다 — 연결 전이면 날짜 줄 아래 · 큰 문장 앞이다', async () => {
+    notBitPc()
+    drawAdmin(Promise.resolve(true))
+    await savedAnswer([])
+    await settle()
+    const h1 = screen.getByRole('heading', { level: 1, name: CONNECT_H1 })
+    expect(box().nextElementSibling).toBe(h1)
+    expect(rows()).toHaveLength(2)
+  })
+
+  it('AC-7915.3: 알림 읽기를 기다리지 않는다 — 저장 숫자로 그리고 비트 읽기를 시작하며, 비트 숫자도 알림 없이 그린다', async () => {
+    const release = holdUnseen()
+    onBitPc()
+    drawAdmin()
+    await savedAnswer(SAVED_ROWS)
+    expect(bigLine().textContent).toBe(SAVED_H1)
+    expect(bitReads).toHaveLength(1)
+    await bitAnswer(bitDays())
+    expect(bigLine().textContent).toBe(BIT_H1)
+    noBox()
+    await settle()
+    expect(listUnseenEvents).toHaveBeenCalledTimes(1)
+    await release(EVENTS)
+    expectOrder(headerH1(), box(), todaySection())
+    expect(bigLine().textContent).toBe(BIT_H1)
+  })
+
+  it('AC-7915.3: 확인·읽기가 실패하면 알림 묶음도 오류 카드도 없고 나머지 대시보드는 그대로다', async () => {
+    vi.mocked(listWatchCandidates).mockRejectedValue(new Error('후보 읽기 실패'))
+    vi.mocked(listUnseenEvents).mockRejectedValue(new Error('알림 읽기 실패'))
+    notBitPc()
+    drawAdmin()
+    await savedAnswer(SAVED_ROWS)
+    await settle()
+    noBox()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByText(/E-LOC/)).toBeNull()
+    expect(bigLine().textContent).toBe(SAVED_H1)
+  })
+
+  it('AC-7915.3: 20초 한도를 넘기면 그리지 않고, 늦게 온 답도 버린다', async () => {
+    const release = holdUnseen()
+    notBitPc()
+    drawAdmin()
+    await savedAnswer(SAVED_ROWS)
+    await settle()
+    await wait(20_000)
+    await release(EVENTS)
+    noBox()
+    expect(bigLine().textContent).toBe(SAVED_H1)
+  })
+
+  it('AC-7915.2: 저장 숫자 다시 읽기로 BitDashboard가 다시 놓여도 다시 읽지 않고, [닫기]는 그 줄만 감추고 본 것으로 적는다', async () => {
+    notBitPc()
+    drawAdmin()
+    await settle()
+    await savedFail()
+    expect(rows()).toHaveLength(2)
+    fireEvent.click(retryButton())
+    await savedAnswer(SAVED_ROWS)
+    expect(rows()).toHaveLength(2)
+    expect(listUnseenEvents).toHaveBeenCalledTimes(1)
+    fireEvent.click(within(box()).getByRole('button', { name: '예시★★정형외과 알림 닫기' }))
+    expect(rows().map((a) => a.querySelector('small')?.textContent)).toEqual(['예시▼▼정형외과 · 950m · 10월 20일'])
+    await settle()
+    expect(vi.mocked(markEventsSeen).mock.calls).toEqual([[CLIENT, [EVENTS[0]!.id]]])
+    fireEvent.click(within(box()).getByRole('button', { name: '예시▼▼정형외과 알림 닫기' }))
+    noBox()
+    expect(listUnseenEvents).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-7915.2: LiveDashboard 소스는 useLocationWatch(isAdmin, today)를 부르고 BitDashboard에 locationNotice로 LocationAlert를 넘긴다 — Supabase·저장 함수를 직접 쓰지 않는다', () => {
+    const text = readFileSync(join(process.cwd(), 'src/components/dashboard/summary/LiveDashboard.tsx'), 'utf8')
+    expect(text).toMatch(/useLocationWatch\(isAdmin, today\)/)
+    expect(text).toMatch(/locationNotice=\{<LocationAlert events=\{watch\.events\} onClose=\{watch\.close\} \/>\}/)
+    expect(text).not.toMatch(/listWatchCandidates|listUnseenEvents|storage\/location|queryLocation|lib\/supabase/)
   })
 })
