@@ -23,9 +23,10 @@ import { alertLines, type AlertLine } from './alertLines'
 // 관리자 대시보드를 열 때 한 번, 20초 한도로:
 //   ⓪ 과목 고르기 설정(readDeptRule — 줄이 없으면 처음 값)을 읽는다. 경쟁 과목이 0개면 확인도 알림 줄도 없다(바깥 자료를 부르지 않음).
 //      설정을 못 읽으면(null·던짐) 그번 확인(①)을 건너뛴다 — 처음 값으로 확인하고 확인 날을 고치면 고른 과목의 줄을 놓친다(design.md 12절).
-//   ① 확인할 후보(내려놓지 않았고 마지막 확인이 30일 넘음·없음, 만든 차례 5곳 — dueCandidates)를 같은 기간·같은 주소 앞부분끼리 묶어,
+//   ① 확인할 후보(내려놓지 않았고 지역을 알며 마지막 확인이 30일 넘음·없음, 만든 차례 5곳 — dueCandidates)를 같은 기간·같은 주소 앞부분끼리 묶어,
 //      묶음마다 clinic-license 개업·폐업을 한 번씩 받고(주소 앞부분 addr = 후보 그날 값 place의 '{시도} {시군구}', 세종처럼 둘이 같으면 하나 —
-//      place가 없으면 addr 없이) 후보 범위 안 경쟁 의원 줄(pickEvents, 그 설정의 경쟁 과목 = 대표 과목)을 넣은 뒤
+//      place가 없거나 주소 앞부분을 못 만드는 후보는 고르지 않는다. 전국으로 부르지 않는다) 후보 범위 안 경쟁 의원 줄
+//      (pickEvents, 그 설정의 경쟁 과목 = 대표 과목, 업태로 가른 줄은 과목 글 앞에 업태 글)을 넣은 뒤
 //      (같은 줄은 DB가 한 번만 둔다) 그 후보들의 확인 날을 오늘로 고친다.
 //      묶음의 답 하나라도 못 받으면(열쇠 없음·활용 신청 안 됨·실패·틀린 모양) 그 묶음은 넣지도 확인 날을 고치지도 않는다 → 다음에 같은 기간을 다시 본다.
 //      답이 한도에 잘렸으면(capped) 찾은 줄은 넣되 확인 날을 고치지 않는다(빠진 줄을 다음에 다시 본다).
@@ -71,21 +72,21 @@ function licenseRows(value: unknown): LicenseRow[] | null {
   })
 }
 
-/** 기간 하나(+ 주소 앞부분)의 개업 또는 폐업과 답이 한도에 잘렸는지(capped). 못 받으면 null */
-async function license(kind: 'open' | 'close', from: string, to: string, addr: string | null): Promise<(LicenseFound & { capped: boolean }) | null> {
-  const base = { kind: 'clinic-license', event: kind, from, to } as const
-  const reply = await queryLocation(addr === null ? base : { ...base, addr })
+/** 기간 하나 + 주소 앞부분의 개업 또는 폐업과 답이 한도에 잘렸는지(capped). 못 받으면 null */
+async function license(kind: 'open' | 'close', from: string, to: string, addr: string): Promise<(LicenseFound & { capped: boolean }) | null> {
+  const reply = await queryLocation({ kind: 'clinic-license', event: kind, from, to, addr })
   if (!reply.ok) return null
   const rows = licenseRows(reply.value)
   return rows === null ? null : { kind, from, to, rows, capped: isRecord(reply.value) && reply.value.capped === true }
 }
 
-/** 같은 기간 묶음을 주소 앞부분(addr, 없으면 null)마다 나눈다(처음 나온 차례) */
-type AddrGroup = WatchGroup & { addr: string | null }
+/** 같은 기간 묶음을 주소 앞부분(addr)마다 나눈다(처음 나온 차례). 주소 앞부분이 없는 후보는 dueCandidates가 이미 뺐다 — 여기서도 부르지 않는다 */
+type AddrGroup = WatchGroup & { addr: string }
 function byAddr(group: WatchGroup): AddrGroup[] {
-  const out = new Map<string | null, AddrGroup>()
+  const out = new Map<string, AddrGroup>()
   for (const c of group.candidates) {
     const addr = c.place ? placeAddr(c.place) : null
+    if (addr === null) continue
     const seen = out.get(addr)
     if (seen) seen.candidates.push(c)
     else out.set(addr, { from: group.from, to: group.to, addr, candidates: [c] })

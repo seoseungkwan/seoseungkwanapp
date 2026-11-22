@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_DEPT_RULE } from '@/lib/location/depts'
-import type { DeptRule, LocationEvent } from '@/types/location'
+import { DEFAULT_DEPT_RULE, DEPTS, deptOfText } from '@/lib/location/depts'
+import { pickEvents } from '@/lib/location/watch'
+import type { DeptRule, LicenseRow, LocationEvent, WatchCandidate, WatchEvent } from '@/types/location'
 import { alertLines } from './alertLines'
 
 // 대시보드 알림 줄 만들기 (specs/location REQ-7915 AC-7915.2, REQ-7921 AC-7921.4, design.md 12·18절,
@@ -93,9 +94,86 @@ describe('alertLines: 고른 과목 — 대표 과목 짧은 이름, 경쟁 과�
     expect(alertLines([event(CAND_A, '예시★★정형외과의원', '정형외과'), event(CAND_A, '예시의원', '')], CANDS, rule([]))).toEqual([])
   })
 
+  it('AC-7915.1·AC-7921.4: 업태로 가른 한의원(과목 글 한방내과·한방재활의학과·침구과)은 경쟁이 한의원·정형외과일 때 내과로 세지 않고 한의원으로 보인다(줄이 사라지지 않음)', () => {
+    const [line] = alertLines([event(CAND_A, '예시다온한의원', '한의원,한방내과,한방재활의학과,침구과')], CANDS, rule(['korean', 'ortho']))
+    expect(line?.deptShort).toBe('한의원')
+    // 과목 글이 빈 한의원·치과의원도 과목 이름이 보인다
+    expect(alertLines([event(CAND_A, '예시한결의원', '한의원')], CANDS, rule(['korean'])).map((l) => l.deptShort)).toEqual(['한의원'])
+    expect(alertLines([event(CAND_A, '예시미소의원', '치과의원')], CANDS, rule(['dental'])).map((l) => l.deptShort)).toEqual(['치과'])
+  })
+
   it('AC-7915.2: 소스는 순수 함수다 — 대표 과목은 lib/location/depts 한 곳, 읽기·저장·Supabase·console을 쓰지 않는다', () => {
     const text = readFileSync(join(process.cwd(), 'src/components/dashboard/location/alertLines.ts'), 'utf8')
     expect(text).toMatch(/import \{[^}]*\bdeptOfText\b[^}]*\} from '@\/lib\/location\/depts'/)
     expect(text).not.toMatch(/lib\/supabase|lib\/storage|components\/location\/clients|\bfetch\(|localStorage|sessionStorage|console\.|^'use client'/m)
+  })
+})
+
+// 넣는 셈(watch.ts pickEvents — 인허가 줄의 이름·과목 글·업태 글로 deptOfText)과 그리는 셈(alertLines — 저장한 줄로 다시 셈)이
+// 같은 과목을 내는지 본다(design.md 12절, TASK-87). 넣은 줄은 그날 설정이면 반드시 보이고, 보이는 과목은 넣을 때 센 과목이다
+describe('alertLines: 넣는 셈과 그리는 셈이 같다 (AC-7915.1·AC-7921.4)', () => {
+  const PERIOD = { from: '2026-10-24', to: '2026-11-20' }
+  const CAND: WatchCandidate = {
+    id: CAND_A,
+    name: '예시빌딩 3층',
+    status: 'watching',
+    lat: 37.5,
+    lng: 127,
+    radiusM: 1000,
+    watchCheckedOn: null,
+    createdAt: '2026-11-01T00:00:00+00:00',
+    place: { sidoName: '서울특별시', sggName: '예시구' },
+  }
+  const license = (name: string, dept: string, type?: string): LicenseRow => ({
+    name,
+    dept,
+    openedOn: '2026-11-10',
+    closedOn: null,
+    point: { lat: 37.5045, lng: 127 },
+    ...(type === undefined ? {} : { type }),
+  })
+  const ROWS: [string, LicenseRow][] = [
+    ['한의원(업태 한의원)', license('예시다온한의원', '한방내과,한방재활의학과,침구과', '한의원')],
+    ['한의원(과목 글 빔)', license('예시한결의원', '', '한의원')],
+    ['치과의원(업태 치과의원)', license('예시미소치과의원', '구강악안면외과,구강내과', '치과의원')],
+    ['치과의원(과목 글 빔)', license('예시가람의원', '', '치과의원')],
+    ['의원(업태 의원)', license('예시바른의원', '정형외과, 재활의학과', '의원')],
+    ['업태 없는 옛 줄(한방 과목 글)', license('예시솔빛한의원', '한방내과, 침구과')],
+    ['업태 없는 옛 줄(치과 과목 글)', license('예시하늘치과의원', '치과보철과,치주과')],
+    ['업태 없는 옛 줄(정형외과)', license('예시튼튼정형외과의원', '정형외과,마취통증의학과')],
+  ]
+  const RULES: [string, DeptRule][] = [
+    ['처음 설정', DEFAULT_DEPT_RULE],
+    ['한의원·정형외과', rule(['korean', 'ortho'])],
+    ['재활·한의원', rule(['rehab', 'korean'])],
+    ['내과·외과·치과', rule(['im', 'gs', 'dental'])],
+    ['한의원(치과 안 보기)', rule(['korean'], ['dental'])],
+    ['정형외과·재활(한의원 안 보기)', rule(['ortho', 'rehab'], ['korean'])],
+  ]
+  const SHORT = new Map(DEPTS.map((d) => [d.id, d.short]))
+  const stored = (e: WatchEvent): LocationEvent => ({ ...e, id: 'e0000000-0000-4000-8000-0000000000ff', seenAt: null, createdAt: '2026-11-22T01:00:00.000Z' })
+
+  it.each(ROWS.flatMap(([rowName, r]) => RULES.map(([ruleName, rl]) => [rowName, ruleName, r, rl] as const)))(
+    'AC-7915.1·AC-7921.4: %s · 경쟁 %s — 넣은 줄은 넣을 때 센 과목으로 보인다',
+    (_rowName, _ruleName, r, rl) => {
+      const id = deptOfText({ name: r.name, subjects: r.dept, type: r.type ?? '' }, rl) // 넣는 셈(design.md 18절)
+      const events = pickEvents({ kind: 'open', ...PERIOD, rows: [r] }, CAND, rl)
+      if (id === null || !rl.rival.includes(id)) {
+        expect(events).toEqual([])
+        return
+      }
+      expect(events).toHaveLength(1)
+      const lines = alertLines(events.map(stored), CANDS, rl)
+      expect(lines.map((l) => l.deptShort)).toEqual([SHORT.get(id)])
+    },
+  )
+
+  it('AC-7915.1·AC-7921.4: 표 시험의 넣는 셈이 뜻한 과목이다 — 업태로 가른 줄은 업태, 옛 줄은 과목 글', () => {
+    const idOf = (r: LicenseRow, rl: DeptRule) => deptOfText({ name: r.name, subjects: r.dept, type: r.type ?? '' }, rl)
+    const byName = new Map(ROWS)
+    expect(idOf(byName.get('한의원(업태 한의원)')!, rule(['rehab', 'korean']))).toBe('korean')
+    expect(idOf(byName.get('치과의원(업태 치과의원)')!, rule(['im', 'gs', 'dental']))).toBe('dental')
+    expect(idOf(byName.get('업태 없는 옛 줄(한방 과목 글)')!, rule(['im']))).toBe('im')
+    expect(idOf(byName.get('업태 없는 옛 줄(치과 과목 글)')!, rule(['dental']))).toBe('dental')
   })
 })

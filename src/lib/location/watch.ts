@@ -2,6 +2,7 @@ import { addDays, compareYmd, diffDays, isYmd } from '@/lib/analytics/dates'
 import type { DeptRule, LicenseRow, WatchCandidate, WatchEvent, WatchStatus } from '@/types/location'
 import { distM } from './coords'
 import { DEFAULT_DEPT_RULE, deptOfText } from './depts'
+import { placeAddr } from './snapshot'
 
 // 새 경쟁 의원 알림 판정(design.md 12절). 관리자가 대시보드를 열 때 브라우저가 부른다(Cron 아님, ADR-042).
 // 오늘은 부르는 쪽이 한국 날짜(todayInKorea)로 넘긴다 — 시계를 읽지 않는다.
@@ -25,8 +26,12 @@ export type WatchGroup<T extends WatchCandidate = WatchCandidate> = { from: stri
 /** 한 기간의 clinic-license 답(open이면 개업, close면 폐업 자료) */
 export type LicenseFound = { kind: 'open' | 'close'; from: string; to: string; rows: readonly LicenseRow[] }
 
+// 그날 값 place로 주소 앞부분('{시도} {시군구}', snapshot.ts placeAddr)을 만들 수 있어야 지역을 안다.
+// 모르면 고르지 않는다 — 전국으로 부르면 한 달도 거의 늘 잘려(capped) 확인 날이 바뀌지 않고 5곳 자리를 계속 차지한다
+const knowsRegion = (c: WatchCandidate): boolean => c.place != null && placeAddr(c.place) !== null
+
 function isDue(c: WatchCandidate, today: string): boolean {
-  if (c.status === 'dropped') return false
+  if (c.status === 'dropped' || !knowsRegion(c)) return false
   return c.watchCheckedOn === null || diffDays(c.watchCheckedOn, today) > WATCH_EVERY_DAYS
 }
 
@@ -39,7 +44,7 @@ function periodStart(c: WatchCandidate, today: string): string {
 const byCreated = (a: WatchCandidate, b: WatchCandidate) =>
   a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0
 
-/** 내려놓지 않았고 확인한 적 없거나 30일 넘은 후보를 만든 차례로 5곳까지, 같은 기간끼리 묶는다(묶음 차례 = 후보 차례) */
+/** 내려놓지 않았고 지역(그날 값 place)을 알고 확인한 적 없거나 30일 넘은 후보를 만든 차례로 5곳까지, 같은 기간끼리 묶는다(묶음 차례 = 후보 차례) */
 export function dueCandidates<T extends WatchCandidate>(rows: readonly T[], today: string): WatchGroup<T>[] {
   const to = addDays(today, -WATCH_LAG_DAYS)
   const picked = rows.filter((c) => isDue(c, today)).sort(byCreated).slice(0, WATCH_MAX_CANDIDATES)
@@ -62,6 +67,28 @@ function isRival(r: LicenseRow, rule: DeptRule): boolean {
   return id !== null && rule.rival.includes(id)
 }
 
+// 업태만 보고 가르는지: 이름·과목 글을 비우고 아무 과목도 고르지 않은 설정이면 deptOfText는 업태로 가를 때만 과목을 낸다(depts.ts 한 곳의 셈)
+const NO_PICK: DeptRule = { v: 1, rival: [], hide: [] }
+const splitsByType = (type: string): boolean => type !== '' && deptOfText({ name: '', subjects: '', type }, NO_PICK) !== null
+
+/** 저장하는 과목 글(location_events.dept, 50자까지). 업태로 가른 줄(치과의원·한의원)이면 업태 글을 앞에 붙인다
+ * (`한의원,한방내과,…`, 과목 글이 비면 업태 글만 — design.md 12절). 알림 줄에는 업태 칸이 없어 그리는 쪽이 eventDeptRow로 되찾는다 */
+function storedDept(r: LicenseRow): string {
+  const dept = r.dept.trim()
+  const type = (r.type ?? '').trim()
+  if (!splitsByType(type)) return clip(dept, DEPT_MAX)
+  return clip(dept === '' ? type : `${type},${dept}`, DEPT_MAX)
+}
+
+/** 저장한 알림 줄(이름·과목 글)을 대표 과목 셈(deptOfText)에 넣을 모양으로 되돌린다. 과목 글 첫 조각(쉼표 앞)이 업태로 가르는 글이면
+ * 그것이 업태 글이고 나머지가 과목 글이다(storedDept가 붙인 것). 아니면 업태 없이 과목 글 그대로 — 넣을 때와 같은 과목을 얻는다 */
+export function eventDeptRow(e: Pick<WatchEvent, 'clinicName' | 'dept'>): { name: string; subjects: string; type: string } {
+  const cut = e.dept.indexOf(',')
+  const head = (cut === -1 ? e.dept : e.dept.slice(0, cut)).trim()
+  if (!splitsByType(head)) return { name: e.clinicName, subjects: e.dept, type: '' }
+  return { name: e.clinicName, subjects: cut === -1 ? '' : e.dept.slice(cut + 1), type: head }
+}
+
 /** 한 기간 답에서 후보 범위 안(버린 거리 ≤ 범위) 경쟁 의원(대표 과목이 rule의 경쟁 과목)의 개업·폐업 줄.
  * 날짜가 기간 밖·모양 틀림, 점·이름 없음은 뺀다. 경쟁 과목이 0개면 빈 목록. rule을 못 받으면 처음 설정 */
 export function pickEvents(found: LicenseFound, cand: WatchCandidate, rule: DeptRule = DEFAULT_DEPT_RULE): WatchEvent[] {
@@ -79,7 +106,7 @@ export function pickEvents(found: LicenseFound, cand: WatchCandidate, rule: Dept
     const key = `${found.kind}\n${clinicName}\n${eventOn}`
     if (seen.has(key)) continue
     seen.add(key)
-    events.push({ candidateId: cand.id, kind: found.kind, clinicName, dept: clip(r.dept.trim(), DEPT_MAX), eventOn, distM: d })
+    events.push({ candidateId: cand.id, kind: found.kind, clinicName, dept: storedDept(r), eventOn, distM: d })
   }
   return events
 }
