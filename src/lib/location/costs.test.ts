@@ -114,14 +114,14 @@ describe('AC-7913.1 비용 칸', () => {
   })
 
   it('AC-7913.1: 시안 예시 숫자로 처음 드는 돈·내 돈·한 달 고정비·손익분기(하루 34.1명)를 design.md 식으로 센다', () => {
-    // 넓이 171.90㎡ = 51.99975평 → 인테리어 = 버림(2,500,000 × 51.99975)
+    // 넓이 171.90㎡ = 화면 52평(m2ToPyeong, 시안 '× 전용 52평') → 인테리어 = 2,500,000 × 52
     const r = calcCosts(EXAMPLE, 171.9)
-    expect(r.interiorTotal).toBe(129_999_375)
+    expect(r.interiorTotal).toBe(130_000_000)
     expect(r.interest).toBe(1_300_000) // 300,000,000 × 520 ÷ 120,000
     expect(r.monthlyFixed).toBe(37_280_000) // 5,200,000 + 780,000 + 26,000,000 + 4,000,000 + 1,300,000
     expect(r.sixMonths).toBe(223_680_000)
-    expect(r.startTotal).toBe(773_679_375) // 100,000,000 + 0 + 129,999,375 + 320,000,000 + 223,680,000
-    expect(r.mine).toBe(473_679_375)
+    expect(r.startTotal).toBe(773_680_000) // 100,000,000 + 0 + 130,000,000 + 320,000,000 + 223,680,000
+    expect(r.mine).toBe(473_680_000)
     expect(r.loanOver).toBe(false)
     expect(r.breakEven).toBe(34.1) // 버림(37,280,000 × 10 ÷ (42,000 × 26)) ÷ 10
     expect(r.blanks).toBe(1) // otherStart
@@ -151,9 +151,11 @@ describe('AC-7913.1 비용 칸', () => {
     expect(r.startTotal).toBe(3_000_000)
   })
 
-  it('AC-7913.1: 인테리어는 평당 값 × 평(㎡ × 121 ÷ 400)을 버리고, 넓이나 평당 값이 없으면 없음이다', () => {
+  it('AC-7913.1: 인테리어는 버림(평당 값 × 화면 평 m2ToPyeong)이고, 넓이나 평당 값이 없으면 없음이다', () => {
     expect(calcCosts({ interior: 2_500_000 }, 400).interiorTotal).toBe(302_500_000) // 121평
-    expect(calcCosts({ interior: 1_000_001 }, 0.01).interiorTotal).toBe(3_025) // 0.003025평 × 1,000,001 = 3,025.003…
+    expect(calcCosts({ interior: 2_500_000 }, 99.17).interiorTotal).toBe(75_000_000) // 30평으로 적어 저장한 99.17㎡ = 30평
+    expect(calcCosts({ interior: 1_000_001 }, 0.33).interiorTotal).toBe(100_000) // 0.1평 × 1,000,001 = 100,000.1
+    expect(calcCosts({ interior: 1_000_001 }, 0.01).interiorTotal).toBe(0) // 0.1평이 안 되면 0평
     expect(calcCosts({ interior: 2_500_000 }, null).interiorTotal).toBeNull()
     expect(calcCosts({ interior: 2_500_000 }, 0).interiorTotal).toBeNull()
     expect(calcCosts({}, 400).interiorTotal).toBeNull()
@@ -163,8 +165,8 @@ describe('AC-7913.1 비용 칸', () => {
 
   it('AC-7913.1: 아주 큰 평당 값 × 넓이도 원 정수로 버린다', () => {
     const r = calcCosts({ interior: 9_999_999_999 }, 999_999.99)
-    // 9,999,999,999 × 99,999,999 × 121 ÷ 40,000 = 3,024,999,969,447,500.003… → 버림(곱은 2^53을 넘는다)
-    expect(r.interiorTotal).toBe(3_024_999_969_447_500)
+    // 999,999.99㎡ = 302,499.9평 → 9,999,999,999 × 3,024,999 ÷ 10 = 3,024,998,999,697,500.1 → 버림(곱은 2^53을 넘는다)
+    expect(r.interiorTotal).toBe(3_024_998_999_697_500)
   })
 
   it('AC-7913.1: 손익분기 하루 환자는 소수 첫째 자리까지 버린다', () => {

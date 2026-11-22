@@ -2,6 +2,7 @@
 // 저장·계산은 원 정수이고 반올림하지 않고 버린다. 빈칸은 열쇠가 없는 것('아직 모름', 0이 아님) —
 // 합계는 적은 칸만 더하고(빈칸은 0으로 셈) 빈칸 수를 함께 낸다. 기본값은 없다(사용자 2026-11-22).
 // 매물의 보증금·월세는 화면이 칸 옆 참고 글로만 보이고 여기 값을 채우지 않는다.
+import { m2ToPyeong } from './area'
 
 /** `location_candidates.costs` 열쇠. 만 원 칸은 × 10,000 원, `interior`는 평당 값(원), `rateBp`는 연 이자 0.01% 단위, `workDays`는 날 수 */
 export const COST_KEYS = [
@@ -50,7 +51,6 @@ const MAN = 10_000
 const WON_MAX = 9_999_999_999
 const RATE_BP_MAX = 3_000 // 연 30%
 const WORK_DAYS_MAX = 31
-const PYEONG_PER_M2 = { num: 121, den: 400 } // 평 = ㎡ × 121 ÷ 400 (design.md 5절)
 
 const UNIT: Record<CostKey, Unit> = {
   deposit: 'man',
@@ -145,14 +145,11 @@ function sumKnown(parts: readonly (number | null | undefined)[]): number | null 
   return known.length === 0 ? null : known.reduce((s, v) => s + v, 0)
 }
 
-// 버림(평당 값 × ㎡ × 121 ÷ 400). 저장 넓이는 ㎡ 소수 둘째 자리(numeric(8,2))라 0.01㎡ 단위 정수로 바꾼다 —
-// 소수 둘째 자리 아래는 버리고, 1e-6은 171.9 × 100 = 17189.999…처럼 2진 소수 오차만 메운다.
-// 곱이 2^53을 넘을 수 있어 BigInt로 센 뒤 한 번만 버린다
+// 버림(평당 값 × 화면 평). 평은 area.ts m2ToPyeong 한 곳(30평으로 적은 99.17㎡는 30평, 시안 '× 전용 52평')이고
+// 0.1평 수(정수)로 바꿔 센다. 곱이 2^53을 넘을 수 있어 BigInt로 센 뒤 한 번만 버린다
 function interiorWon(perPyeong: number, areaM2: number): number {
-  const hundredths = Math.floor(areaM2 * 100 + 1e-6)
-  const total =
-    (BigInt(perPyeong) * BigInt(hundredths) * BigInt(PYEONG_PER_M2.num)) / BigInt(PYEONG_PER_M2.den * 100)
-  return Number(total)
+  const tenths = Math.round(m2ToPyeong(areaM2) * 10)
+  return Number((BigInt(perPyeong) * BigInt(tenths)) / BigInt(10))
 }
 
 /**

@@ -3,7 +3,7 @@ import type { Query, QueryKind } from '@/types/location'
 import { KIND_KEY, QUERY_KINDS, checkQuery } from './query'
 
 // 입지 분석 몸통 검사(specs/location REQ-7903 AC-7903.2, design.md 4절). 화면과 서버가 같은 검사를 쓴다.
-// 정해 둔 종류 27개 · 종류마다 정해 둔 칸만(빠짐·더함 없음) · 칸마다 범위. 맞으면 정리한 몸통, 아니면 null
+// 정해 둔 종류 28개 · 종류마다 정해 둔 칸만(빠짐·더함 없음) · 칸마다 범위. 맞으면 정리한 몸통, 아니면 null
 
 const AT = { lat: 37.566535, lng: 126.977969 }
 
@@ -36,6 +36,7 @@ const VALID: { [K in QueryKind]: Extract<Query, { kind: K }> } = {
   senior: { kind: 'senior', sggName: '수원시 장안구' },
   market: { kind: 'market', sggName: '종로구' },
   school: { kind: 'school', sggName: '종로구' },
+  welfare: { kind: 'welfare', sgg: '11110' },
 }
 
 const KINDS = Object.keys(VALID) as QueryKind[]
@@ -47,14 +48,15 @@ const withoutField = (kind: QueryKind, field: string) => {
   return copy
 }
 
-describe('AC-7903.2 정해 둔 종류 27개', () => {
-  it('AC-7903.2: 종류 목록은 design.md 4절 27개이고 겹치지 않는다', () => {
-    expect(QUERY_KINDS).toHaveLength(27)
-    expect(new Set(QUERY_KINDS).size).toBe(27)
+describe('AC-7903.2 정해 둔 종류 28개', () => {
+  it('AC-7903.2: 종류 목록은 design.md 4절 28개(의료급여·차상위 welfare가 28개째)이고 겹치지 않는다', () => {
+    expect(QUERY_KINDS).toHaveLength(28)
+    expect(new Set(QUERY_KINDS).size).toBe(28)
+    expect(QUERY_KINDS[27]).toBe('welfare')
     expect([...QUERY_KINDS].sort()).toEqual([...KINDS].sort())
   })
 
-  it('AC-7903.2: 열쇠 종류는 카카오 넷(k-*)과 공공데이터포털 스물셋이다', () => {
+  it('AC-7903.2: 열쇠 종류는 카카오 넷(k-*)과 공공데이터포털 스물넷이다(welfare도 공공데이터포털 열쇠)', () => {
     expect(Object.keys(KIND_KEY).sort()).toEqual([...KINDS].sort())
     for (const kind of QUERY_KINDS) expect(KIND_KEY[kind], kind).toBe(kind.startsWith('k-') ? 'kakao' : 'data')
     expect(QUERY_KINDS.filter((k) => KIND_KEY[k] === 'kakao')).toEqual(['k-address', 'k-point', 'k-near', 'k-keyword'])
@@ -236,6 +238,14 @@ describe('AC-7903.2 칸 범위', () => {
     expect(checkQuery({ ...VALID['clinic-license'], from: '2026-11-23', to: '2026-11-22' })).toBeNull()
     for (const day of ['2026-02-30', '2026-11-1', '20261122', '2026/11/22', null])
       expect(checkQuery(withField('clinic-license', 'to', day)), String(day)).toBeNull()
+  })
+
+  it('AC-7903.2: 의료급여·차상위(welfare)는 시군구 5자리 하나만 받는다(후보 시군구 한 줄)', () => {
+    expect(checkQuery({ kind: 'welfare', sgg: '52111' })).toEqual({ kind: 'welfare', sgg: '52111' })
+    for (const sgg of ['1111', '111100', 'abcde', '11A10', 11110, '', null])
+      expect(checkQuery(withField('welfare', 'sgg', sgg)), String(sgg)).toBeNull()
+    expect(checkQuery({ kind: 'welfare', sgg: '11110', sggName: '종로구' })).toBeNull()
+    expect(checkQuery({ kind: 'welfare', sidoName: '서울특별시', sggName: '종로구' })).toBeNull()
   })
 
   it('AC-7903.2: 받은 몸통은 정해 둔 칸만 담은 새 객체다(원본과 따로)', () => {

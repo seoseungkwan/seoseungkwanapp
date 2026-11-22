@@ -33,6 +33,7 @@ export const KIND_KEY: Readonly<Record<QueryKind, KeyKind>> = {
   senior: 'data',
   market: 'data',
   school: 'data',
+  welfare: 'data', // 의료급여·차상위(한국사회보장정보원, api.odcloud.kr) — 28개째
 }
 
 export const QUERY_KINDS: readonly QueryKind[] = Object.keys(KIND_KEY) as QueryKind[]
@@ -153,6 +154,7 @@ const SPECS: Readonly<Record<QueryKind, Spec>> = {
   senior: { fields: { sggName: name } },
   market: { fields: { sggName: name } },
   school: { fields: { sggName: name } },
+  welfare: { fields: { sgg: SGG } },
 }
 
 const isKind = (v: unknown): v is QueryKind => typeof v === 'string' && Object.hasOwn(SPECS, v)

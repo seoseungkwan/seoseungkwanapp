@@ -11,7 +11,7 @@ export type KeyKind = 'data' | 'kakao'
 export type KeyState = 'ok' | 'missing' | 'rejected' | 'failed'
 export type KeysReply = { data: KeyState; kakao: KeyState }
 
-// ── 자료 종류 · 몸통 (design.md 4절, 27개) ─────────────────
+// ── 자료 종류 · 몸통 (design.md 4절, 28개 — 28개째 welfare는 의료급여·차상위) ──
 
 export type QueryKind =
   | 'k-address'
@@ -41,6 +41,7 @@ export type QueryKind =
   | 'senior'
   | 'market'
   | 'school'
+  | 'welfare'
 
 // WGS84 점. lat 33~39 · lng 124~132, 소수 6자리까지
 export type Point = { lat: number; lng: number }
@@ -85,6 +86,7 @@ export type Query =
   | { kind: 'senior'; sggName: string }
   | { kind: 'market'; sggName: string }
   | { kind: 'school'; sggName: string }
+  | { kind: 'welfare'; sgg: string } // 후보 시군구 5자리(한국사회보장정보원 시군구별 수급권자 현황, api.odcloud.kr)
 
 // 종류 하나의 몸통. Extract 대신 종류 → 몸통 판을 써서 Adapter<'k-address'>를 Adapter(모든 종류)로 넘길 수 있게 한다
 // (조건 타입은 K를 고정으로 봐서 넘길 수 없다)
@@ -184,7 +186,103 @@ export type Snapshot = {
     floors: { label: string; usage: string; m2: number }[]
   }>
   stores: Got<{ floor: string; count: number }[]> // 후보 30m 안 가게를 층마다
+  welfare: Got<{
+    sggName: string
+    ym: string // 그 판 기준 연월
+    medical: number // 기초 의료급여 수급권자(기초생활보장 의료급여만)
+    basic: number // 기초생활보장 수급권자 합계
+    nearPoor: number // 차상위 3종(본인부담경감·자활·장애인) 합 — 겹칠 수 있다
+    population: number | null // 같은 연월 그 시군구 주민등록 인구(pop-age 합), 못 받으면 null(비율 없음)
+  }> // 후보 시군구 하나
 }
+
+// 그날 값 칸 이름(판 번호·시각·범위 뺌)과 그 칸이 되었을 때의 값
+export type SnapshotKey = Exclude<keyof Snapshot, 'v' | 'at' | 'radiusM'>
+export type SnapshotValue<K extends SnapshotKey> = Extract<Snapshot[K], { ok: true }>['v']
+
+// ── 계산 입력 (lib/location의 점수·위험 신호·알림·매물 견주기가 읽는 칸, design.md 8·9·11·12절) ──
+
+// 위험 신호(lib/location/flags.ts)가 읽는 그날 값 칸. 못 받은 칸은 null
+export type FlagFacts = {
+  rivals: Pick<Rival, 'name' | 'kind' | 'distM' | 'doctors' | 'openedYear'>[] | null // 한의원 포함
+  history: SnapshotValue<'history'> | null // 3년 개폐업
+  building: Pick<SnapshotValue<'building'>, 'approvedOn' | 'totalM2' | 'elevators'> | null
+  people: Pick<SnapshotValue<'people'>, 'total' | 'bands'> | null // 10세 나이대 11칸
+  station: SnapshotValue<'station'> | null // 가장 가까운 역
+  bus: SnapshotValue<'bus'> | null // 400m 안 버스 정류장 수
+}
+
+/** 점수(lib/location/score.ts)에 쓰는 값. 빈칸(undefined)·null·숫자가 아닌 값은 '자료 없음'이다.
+ * 후보는 그날 값·후보 줄·매물에서, 동네 훑기는 그 동 값에서 부르는 쪽이 채운다 */
+export type ScoreFacts = {
+  /** 범위 넓이 ㎡ — 후보 = π × 반지름², 동네 훑기 = 그 동 넓이 */
+  areaM2?: number | null
+  /** 범위 안 사는 사람(그날 값 people.v 모양). bands = 10세 나이대 11칸 인구(AGE_BANDS 차례) */
+  people?: { total: number; bands: readonly number[]; households: number } | null
+  /** 범위 안 아파트 세대 합 */
+  apartments?: number | null
+  /** 범위 안 입주 예정 세대 합 */
+  presale?: number | null
+  /** 해마다 10월 인구(2022-10부터) */
+  trend?: readonly { ym: string; total: number }[] | null
+  /** 범위 안 교통사고 다발 지점 수 */
+  accidentSpots?: number | null
+  /** 후보 시군구 산업단지 고용 인원 합 */
+  industryEmployees?: number | null
+  /** 범위 안 초·중·고 수 */
+  schools?: number | null
+  /** 범위 안 경로당 수 */
+  seniorCenters?: number | null
+  /** 범위 안 체력단련장 수 */
+  gyms?: number | null
+  /** 후보 시군구 (기초 의료급여 + 차상위 3종) ÷ 주민등록 인구 × 100(%, 소수 첫째 자리 버림) — 그날 값 welfare에서 부르는 쪽이 채운다 */
+  welfareRate?: number | null
+  /** n = 범위 안 정형외과·마취통증의학과·재활의학과 수(한의원 뺌) */
+  rivals?: number | null
+  /** 개설일이 3년 안인 경쟁 의원 수 */
+  newRivals?: number | null
+  /** 진료 시간 빈틈 칸 수(월~토) */
+  gapCells?: number | null
+  /** 경쟁 의원 체외충격파 평균 값(원) */
+  rivalEswt?: number | null
+  /** 지금 의원 체외충격파 값(원, location_settings.home_eswt) */
+  homeEswt?: number | null
+  /** 가장 가까운 역까지 m(훑기는 동 가운데에서) */
+  stationM?: number | null
+  /** 400m 안 버스 정류장 수(훑기는 동 가운데에서) */
+  stops?: number | null
+  /** 범위 안 하루 평균 승하차 합 */
+  flow?: number | null
+  /** 후보 층 글(floor_label) */
+  floorLabel?: string | null
+  elevators?: number | null
+  parking?: number | null
+  /** 사용승인 뒤 햇수 */
+  buildingAge?: number | null
+  /** 후보 30m 안 약국 수 */
+  pharmacies?: number | null
+  /** 간판 보임(사용자가 고름) */
+  sign?: YesNo | null
+  /** 위반 건축물(사용자가 고름) */
+  violation?: YesNo | null
+  /** 후보 매물 평당 월세(원) */
+  rentPerPy?: number | null
+  /** 후보 매물 보증금(원) */
+  deposit?: number | null
+  /** 후보 매물 권리금(원) */
+  premium?: number | null
+  /** 넓이·월세가 있는 저장 매물 모두의 평당 월세(후보 매물 포함) — 2개 미만이면 k-vsAvg 없음 */
+  savedRentsPerPy?: readonly number[] | null
+}
+
+// 새 경쟁 의원 알림(lib/location/watch.ts): 후보 줄에서 읽는 칸 · clinic-license 한 줄(WGS84 점, 못 바꾼 점은 null) · 넣을 알림 줄
+export type WatchStatus = CandidateStatus
+export type WatchCandidate = Pick<Candidate, 'id' | 'status' | 'lat' | 'lng' | 'radiusM' | 'watchCheckedOn' | 'createdAt'>
+export type LicenseRow = { name: string; dept: string; openedOn: string | null; closedOn: string | null; point: Point | null }
+export type WatchEvent = Pick<LocationEvent, 'candidateId' | 'kind' | 'clinicName' | 'dept' | 'eventOn' | 'distM'>
+
+// 매물 견주기(lib/location/listings.ts)가 읽는 매물 칸
+export type ListingNumbers = Pick<Listing, 'id' | 'areaM2' | 'rent' | 'deposit'>
 
 // ── 표 줄 (design.md 7절, 앱 쪽 모양 — lib/storage/location.ts가 DB 칸 이름과 바꾼다) ──
 
