@@ -1,0 +1,1608 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>입지 분석 탭 시안</title>
+<!--
+  입지 분석 탭(location) 시안. 새로 개원할 자리 찾기: 동네 훑기 → 후보 깊게 보기 → 매물 → 후보 견주기 → 개원 준비 → 한 장 보고서. 결정·물을 것은 notes.md.
+  ?s=scan(기본) · candidate · listings · compare · plan · plan-filled · report · sources · add · menu · dashboard · empty · no-key
+  &c=A|B|C 로 볼 후보를 고른다(대시보드 알림 링크가 쓴다).
+  색·글자는 앱 토큰(src/app/globals.css :root)만 쓴다. 지도는 손으로 그린 그림이고, 동·건물·의원·사람 이름(예시○○)과 번호, 숫자는 모두 지어낸 값이다.
+  오늘은 2026-11-22 (일) 10:40으로 고정. 어디로도 보내지 않는다.
+-->
+<style>
+@font-face { font-family: 'AppPretendard'; font-weight: 400; src: url('../../../src/app/fonts/Pretendard-Regular.subset.woff2') format('woff2'); }
+@font-face { font-family: 'AppPretendard'; font-weight: 500; src: url('../../../src/app/fonts/Pretendard-Medium.subset.woff2') format('woff2'); }
+@font-face { font-family: 'AppPretendard'; font-weight: 600; src: url('../../../src/app/fonts/Pretendard-SemiBold.subset.woff2') format('woff2'); }
+/* 앱 토큰(src/app/globals.css :root) */
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB; --faint: #9CA3AF;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-strong: #1D4ED8; --accent-soft: #EAF1FE;
+  --positive: #15803D; --positive-soft: #ECF7EF; --negative: #C2410C; --negative-soft: #FDF0EA;
+  --warning: #B45309; --warning-soft: #FDF4E3; --r: 4px; --r-float: 8px;
+  --chart-1: #DBE7FD; --chart-2: #B4CDFA; --chart-3: #8DB0F4; --chart-4: #2563EB; --chart-5: #1D4ED8;
+  --elev: 0 1px 2px rgb(17 24 39 / 6%), 0 6px 16px rgb(17 24 39 / 10%);
+  --ui: 'AppPretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface); color: var(--ink); font: 400 14px/22px var(--ui); word-break: keep-all; overflow-x: clip; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: inherit; }
+.num { font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+h1, h2, h3, h4, p { margin: 0; }
+svg { flex: none; }
+.mut { color: var(--muted); }
+.sm { font-size: 13px; line-height: 20px; }
+
+/* 시안 머리(앱 밖) */
+.mhead { background: #E9ECF0; border-bottom: 1px solid var(--line-strong); }
+.mhead-in { max-width: 1280px; margin: 0 auto; padding: 12px 24px; display: grid; gap: 6px; }
+.mhead b { color: var(--ink); font-size: 15px; font-weight: 600; }
+.mhead .ex { margin-left: 6px; padding: 1px 7px; border-radius: 4px; background: #FEF3C7; color: #92400E; font-size: 12px; font-weight: 600; }
+.mdesc { font-size: 13px; color: var(--muted); }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg a { padding: 3px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); font-size: 12px; line-height: 18px; color: var(--ink-2); text-decoration: none; white-space: nowrap; }
+.seg a[aria-current="true"] { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+.mnote { font-size: 12px; line-height: 18px; color: var(--ink-2); }
+.mnote b { font-size: 12px; }
+
+/* 앱 틀 */
+.app { position: relative; background: var(--surface); }
+.top { background: var(--surface); border-bottom: 1px solid var(--line); }
+.top-in { max-width: 1280px; margin: 0 auto; height: 56px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 16px; font-weight: 600; color: var(--ink); }
+.brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-r { display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--muted); }
+.acct { height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); display: inline-flex; align-items: center; color: var(--ink-2); font-weight: 500; white-space: nowrap; }
+.tabsbar { background: var(--surface); border-bottom: 1px solid var(--line); }
+.tabs-in { position: relative; max-width: 1280px; margin: 0 auto; padding: 0 12px; display: flex; }
+.tabs { display: flex; overflow-x: auto; scrollbar-width: none; min-width: 0; flex: 1; }
+.tabs a, .more { position: relative; height: 44px; padding: 0 12px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--ink-2); font-weight: 500; text-decoration: none; flex: none; border: 0; background: none; }
+.tabs a[aria-current="page"], .more.on { color: var(--ink); font-weight: 600; }
+.tabs a[aria-current="page"]::after, .more.on::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; background: var(--accent); }
+.more { margin-left: auto; }
+.mpop { position: absolute; right: 12px; top: 44px; z-index: 15; width: 248px; padding: 6px 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-float); box-shadow: var(--elev); }
+.mpop a { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 40px; padding: 0 16px; color: var(--ink-2); text-decoration: none; font-weight: 500; }
+.mpop a:hover { background: var(--canvas); }
+.mpop a[aria-current="page"] { color: var(--ink); font-weight: 600; background: var(--accent-soft); }
+.mpop .newi { outline: 2px dashed #F59E0B; outline-offset: -3px; }
+main { max-width: 1280px; margin: 0 auto; padding: 24px 24px 48px; }
+main > * { min-width: 0; }
+
+/* 단추 */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink); font-size: 14px; font-weight: 500; white-space: nowrap; text-decoration: none; }
+.btn:hover:not(:disabled) { background: var(--canvas); }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn.sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.btn.lg { height: 44px; padding: 0 20px; font-weight: 600; }
+.btn.primary { border-color: transparent; background: var(--accent); color: #fff; }
+.btn.primary:hover:not(:disabled) { background: var(--accent-strong); }
+.btn.ghost { border-color: transparent; background: none; color: var(--ink-2); }
+.tbtn { display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 4px; border: 0; background: none; color: var(--accent); font-size: 13px; font-weight: 500; white-space: nowrap; border-radius: var(--r); text-decoration: none; }
+.tbtn:hover { text-decoration: underline; }
+.tbtn.mut { color: var(--ink-2); }
+.tbtn.danger { color: var(--negative); }
+
+/* 칩 */
+.chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--r); font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap; vertical-align: 1px; }
+.chip.neutral { background: var(--canvas); border-color: var(--line); color: var(--ink-2); }
+.chip.accent { background: var(--accent-soft); color: var(--accent-strong); }
+.chip.warn { background: var(--warning-soft); color: var(--warning); }
+.chip.neg { background: var(--negative-soft); color: var(--negative); }
+.chip.pos { background: var(--positive-soft); color: var(--positive); }
+
+/* 입력 */
+.field { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.field > label, .field > .lb { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; }
+.field .req { font-size: 12px; font-weight: 400; color: var(--muted); }
+.help { font-size: 12px; line-height: 16px; color: var(--muted); }
+.ferr { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--negative); }
+.inp { width: 100%; min-width: 0; height: 44px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font-size: 14px; color: var(--ink); }
+.inp::placeholder { color: var(--faint); }
+.inp:hover { border-color: var(--muted); }
+.inp:focus { outline: 1px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+.inp[aria-invalid="true"] { border-color: var(--negative); }
+.inp.sm { height: 36px; font-size: 13px; padding: 0 8px; }
+textarea.inp { height: 88px; padding: 10px 12px; line-height: 22px; resize: vertical; }
+select.inp { padding-right: 8px; }
+.suf { position: relative; }
+.suf .inp { padding-right: 52px; text-align: right; font-variant-numeric: tabular-nums; }
+.suf span { position: absolute; right: 12px; top: 11px; color: var(--muted); font-size: 14px; pointer-events: none; }
+.ob { margin: 0; height: 36px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink); font-size: 14px; white-space: nowrap; }
+.ob:hover { background: var(--canvas); }
+.ob[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; box-shadow: inset 0 0 0 1px var(--accent); }
+.ob .n { margin-left: 4px; color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+.ob[aria-pressed="true"] .n { color: var(--accent-strong); }
+.opts { display: flex; flex-wrap: wrap; gap: 6px; }
+input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; height: 24px; }
+input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); flex: none; }
+
+/* 출처 줄 */
+.src { display: block; margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--muted); text-decoration: none; }
+.src:hover { color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; }
+.src.in { display: inline; margin: 0; }
+.nodata { color: var(--muted); }
+
+/* 입지 분석 머리 · 안쪽 탭 · 후보 고르기 */
+.ltop { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; }
+.tl { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tl h1 { font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); }
+.tl .cnt { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tools .when { font-size: 12px; line-height: 16px; color: var(--muted); }
+.subtabs { margin-top: 12px; display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.subtabs button { position: relative; flex: none; height: 40px; padding: 0 12px; border: 0; background: none; color: var(--ink-2); font-weight: 500; white-space: nowrap; }
+.subtabs button:hover { color: var(--ink); }
+.subtabs button[aria-current="page"] { color: var(--ink); font-weight: 600; }
+.subtabs button[aria-current="page"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; background: var(--accent); }
+.subtabs .n { margin-left: 4px; color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+.candbar { margin-top: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.candbar .cbl { font-size: 13px; color: var(--muted); margin-right: 4px; }
+.cb { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink-2); white-space: nowrap; }
+.cb:hover { background: var(--canvas); }
+.cb .lt { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: var(--r); background: var(--ink); color: #fff; font-size: 12px; font-weight: 600; }
+.cb .nm { color: var(--ink); font-weight: 500; }
+.cb .sc { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.cb[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.cb[aria-pressed="true"] .nm { font-weight: 600; }
+
+/* 묶음 머리 */
+.sh { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line-strong); }
+.sh h2, .sh h3 { font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.sh h3 .n, .sh h2 .n { font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 4px; }
+.sh .aside { font-size: 13px; line-height: 20px; color: var(--muted); }
+.lead { font-size: 13px; line-height: 20px; color: var(--ink-2); margin-top: 8px; max-width: 760px; }
+
+/* 숫자 칸 */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+.stats.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.stat { padding: 12px 16px; border-left: 1px solid var(--line); min-width: 0; }
+.stat:first-child, .stats.c3 .stat:nth-child(3n+1), .stats.wrap4 .stat:nth-child(4n+1) { border-left: 0; padding-left: 0; }
+.stats.c3 .stat:nth-child(n+4), .stats.wrap4 .stat:nth-child(n+5) { border-top: 1px solid var(--line); }
+.stat .l { font-size: 13px; line-height: 20px; color: var(--muted); }
+.stat .v { margin-top: 2px; font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: -.01em; color: var(--ink); font-variant-numeric: tabular-nums; }
+.stat .v small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 2px; letter-spacing: 0; }
+.stat .v.t { font-size: 16px; line-height: 24px; letter-spacing: 0; }
+.stat .e { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.up { color: var(--positive); font-weight: 500; }
+.down { color: var(--negative); font-weight: 500; }
+
+/* 정보 줄 */
+.info { margin: 0; }
+.info > div { display: grid; grid-template-columns: 148px minmax(0, 1fr); align-items: baseline; gap: 4px 12px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.info dt { font-size: 13px; line-height: 22px; color: var(--muted); }
+.info dd { margin: 0; min-width: 0; color: var(--ink); overflow-wrap: anywhere; }
+.info dd .x { color: var(--ink-2); font-size: 13px; }
+
+/* 표 */
+.tw { overflow-x: auto; }
+table.t { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 20px; }
+table.t th { height: 40px; padding: 0 12px; text-align: left; font-weight: 500; color: var(--muted); border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: middle; }
+table.t td { height: 44px; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; color: var(--ink); }
+table.t th:first-child, table.t td:first-child { padding-left: 0; }
+table.t th:last-child, table.t td:last-child { padding-right: 0; }
+table.t .r { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.t .c { text-align: center; }
+table.t td.nw, table.t .nw { white-space: nowrap; }
+table.t tbody tr:hover td { background: var(--canvas); }
+table.t td b { font-weight: 600; }
+table.t td .s2 { display: block; font-size: 12px; line-height: 16px; color: var(--muted); }
+table.t tr.me td { background: var(--accent-soft); }
+.eqs { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+
+/* 막대 */
+.hb { position: relative; height: 8px; background: var(--canvas); box-shadow: inset 0 0 0 1px var(--line); }
+.hb > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); }
+.hb.soft > i { background: var(--chart-3); }
+
+/* 동네 훑기 */
+.scanbar { margin-top: 16px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; }
+.scanbar .field { width: 180px; }
+.scanbar .when { margin-left: auto; font-size: 12px; line-height: 16px; color: var(--muted); text-align: right; }
+.scan { margin-top: 16px; display: grid; grid-template-columns: minmax(0, 1fr) 384px; gap: 24px 32px; align-items: start; }
+.mapbox { position: relative; background: var(--canvas); border: 1px solid var(--line); border-radius: var(--r); }
+.mapbox svg { display: block; width: 100%; height: auto; }
+.mapbox .cap { position: absolute; left: 12px; top: 10px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.dong { cursor: pointer; }
+.dong path { stroke: var(--surface); stroke-width: 2; }
+.dong:hover path { stroke: var(--ink); stroke-width: 2; }
+.dong.sel path { stroke: var(--ink); stroke-width: 3; }
+.dong text { pointer-events: none; font-family: var(--ui); }
+.legend { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12px; line-height: 16px; color: var(--ink-2); }
+.legend i { display: inline-block; width: 14px; height: 10px; margin-right: 4px; vertical-align: -1px; box-shadow: inset 0 0 0 1px rgb(17 24 39 / 12%); }
+.dsel { margin-top: 16px; border-top: 1px solid var(--line-strong); padding-top: 12px; display: grid; gap: 12px; }
+.dsel-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.dsel-h h3 { font-size: 16px; line-height: 24px; font-weight: 600; }
+.dsel-h .sc { font-size: 24px; line-height: 32px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dsel-h .sc small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 2px; }
+.dsel-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.ibars { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px 16px; }
+.ibar .l { display: flex; justify-content: space-between; gap: 4px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.ibar .l b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ibar .hb { margin-top: 4px; }
+.rank { list-style: none; margin: 0; padding: 0; }
+.rank li { border-bottom: 1px solid var(--line); }
+.rank button { width: 100%; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: baseline; gap: 2px 8px; padding: 10px 8px 10px 0; border: 0; background: none; text-align: left; color: inherit; }
+.rank button:hover { background: var(--canvas); }
+.rank button[aria-current="true"] { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+.rank .no { font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+.rank .nm { font-weight: 600; color: var(--ink); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.rank .sc { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.rank .sc small { font-size: 12px; font-weight: 500; color: var(--muted); }
+.rank .why { grid-column: 2 / -1; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.rank .hb { grid-column: 2 / -1; margin-top: 4px; height: 6px; }
+.wts { margin-top: 24px; }
+.wrow { display: grid; grid-template-columns: 112px minmax(0, 1fr) 40px; align-items: center; gap: 12px; padding: 6px 0; }
+.wrow label { font-size: 13px; line-height: 20px; color: var(--ink-2); font-weight: 500; }
+.wrow output { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.wsum { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; margin-top: 4px; font-size: 12px; line-height: 16px; color: var(--muted); }
+
+/* 후보 자세히 */
+.chead { margin-top: 20px; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px 16px; }
+.chead .ct { min-width: 0; }
+.chead .ctop { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.chead h2 { margin-top: 6px; font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: -.01em; }
+.chead .addr { margin-top: 2px; color: var(--ink-2); }
+.chead .frz { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.cacts { display: flex; flex-wrap: wrap; gap: 8px; }
+.cgrid { margin-top: 20px; display: grid; grid-template-columns: 176px minmax(0, 1fr); gap: 32px; align-items: start; }
+.toc { position: sticky; top: 16px; display: grid; border-top: 1px solid var(--line-strong); }
+.toc a { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 34px; padding: 6px 8px 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; line-height: 20px; color: var(--ink-2); text-decoration: none; }
+.toc a:hover { color: var(--ink); background: var(--canvas); }
+.toc a .chip { height: 18px; padding: 0 5px; }
+.cmain { min-width: 0; display: grid; gap: 40px; }
+.csec { min-width: 0; scroll-margin-top: 16px; }
+.csec > .body { margin-top: 12px; display: grid; gap: 16px; min-width: 0; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 32px; align-items: start; }
+.flags { padding: 4px 16px; background: var(--negative-soft); border-radius: var(--r); }
+.flag { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; padding: 10px 0; }
+.flag + .flag { border-top: 1px solid rgb(194 65 12 / 18%); }
+.flag svg { margin-top: 3px; color: var(--negative); }
+.flag b { font-weight: 600; color: var(--negative); }
+.flag p { color: var(--ink); }
+.flag .d { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.flag .src { color: var(--ink-2); }
+.scorebox { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px 32px; align-items: start; }
+.bigscore { display: flex; align-items: baseline; gap: 8px; }
+.bigscore b { font-size: 48px; line-height: 56px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.bigscore span { font-size: 16px; color: var(--muted); }
+.irows { margin-top: 8px; border-top: 1px solid var(--line); }
+.irow { display: grid; grid-template-columns: 120px minmax(0, 1fr) 72px; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; line-height: 20px; }
+.irow .l { color: var(--ink-2); }
+.irow .p { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+.irow .p b { color: var(--ink); font-weight: 600; }
+.range { display: grid; gap: 4px; }
+.range .rh { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.range .rh b { font-size: 20px; line-height: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.range .ticks { display: flex; justify-content: space-between; font-size: 12px; line-height: 16px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.minimap { margin-top: 8px; background: var(--canvas); border: 1px solid var(--line); border-radius: var(--r); }
+.minimap svg { display: block; width: 100%; height: auto; }
+.minimap .cap { padding: 6px 10px; border-top: 1px solid var(--line); font-size: 12px; line-height: 16px; color: var(--muted); }
+.ages { display: grid; gap: 6px; }
+.age { display: grid; grid-template-columns: 64px minmax(0, 1fr) 96px; align-items: center; gap: 8px; font-size: 13px; line-height: 20px; }
+.age .r { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.cols { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; align-items: end; height: 120px; padding-top: 8px; border-bottom: 1px solid var(--line-strong); }
+.cols > div { display: grid; align-content: end; justify-items: center; gap: 4px; height: 100%; }
+.cols i { display: block; width: 60%; max-width: 32px; background: var(--chart-3); }
+.cols > div:last-child i { background: var(--accent); }
+.cols span { font-size: 12px; line-height: 16px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.colsx { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-top: 4px; text-align: center; font-size: 12px; line-height: 16px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.kbox { padding: 12px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.kgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 24px; border-top: 1px solid var(--line); }
+.kbox .l { font-size: 13px; line-height: 20px; color: var(--muted); }
+.kbox .v { font-size: 18px; line-height: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.kbox .v small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 2px; }
+.kbox .e { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.hours { width: 100%; border-collapse: separate; border-spacing: 3px; font-size: 13px; line-height: 20px; }
+.hours th { font-weight: 500; color: var(--muted); height: 28px; padding: 0 6px; white-space: nowrap; }
+.hours th.rl { text-align: left; width: 112px; }
+.hours td { height: 36px; text-align: center; background: var(--canvas); color: var(--ink-2); font-variant-numeric: tabular-nums; border-radius: 2px; }
+.hours td.z { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; box-shadow: inset 0 0 0 1px #BFD3FB; }
+.gapline { padding: 10px 12px; background: var(--accent-soft); border-radius: var(--r); color: var(--ink); }
+.gapline b { font-weight: 600; color: var(--accent-strong); }
+.strip { position: relative; height: 56px; margin: 4px 8px 0; }
+.strip .ax { position: absolute; left: 0; right: 0; top: 24px; height: 1px; background: var(--line-strong); }
+.strip .dt { position: absolute; top: 18px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--chart-3); box-shadow: 0 0 0 2px var(--surface); }
+.strip .avg { position: absolute; top: 12px; width: 2px; height: 24px; margin-left: -1px; background: var(--ink-2); }
+.strip .me { position: absolute; top: 14px; width: 0; height: 0; margin-left: -7px; border-left: 7px solid transparent; border-right: 7px solid transparent; border-top: 10px solid var(--accent); }
+.strip .tk { position: absolute; top: 34px; transform: translateX(-50%); font-size: 12px; line-height: 16px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pkey { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; line-height: 16px; color: var(--ink-2); }
+.pkey i { display: inline-block; vertical-align: -1px; margin-right: 4px; }
+.pkey .k1 { width: 10px; height: 10px; border-radius: 50%; background: var(--chart-3); }
+.pkey .k2 { width: 2px; height: 12px; background: var(--ink-2); }
+.pkey .k3 { width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 9px solid var(--accent); }
+.phbox { display: grid; place-items: center; align-content: center; gap: 4px; min-height: 240px; padding: 16px; background: var(--line); border-radius: var(--r); color: var(--ink-2); text-align: center; }
+.phbox b { font-weight: 600; color: var(--ink); }
+.phbox small { font-size: 12px; line-height: 16px; color: var(--muted); }
+.ox { display: inline-grid; place-items: center; min-width: 28px; height: 24px; padding: 0 6px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); font-weight: 600; font-size: 13px; }
+.ox.o { color: var(--positive); border-color: #A7D7B5; background: var(--positive-soft); }
+.ox.x { color: var(--negative); border-color: #F1C4AE; background: var(--negative-soft); }
+.ox.q { color: var(--ink-2); }
+.tline { list-style: none; margin: 0; padding: 0; }
+.tline li { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 4px 16px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.tline .w { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* 매물 */
+.lgrid { margin-top: 20px; display: grid; gap: 40px; }
+.findn { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; margin-top: 12px; }
+.findn .field { width: 200px; }
+.whybox { margin-top: 12px; padding: 10px 12px; background: var(--canvas); border-radius: var(--r); font-size: 13px; line-height: 20px; color: var(--ink-2); max-width: 880px; }
+.pform { margin-top: 12px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 12px; }
+.pform .w2 { grid-column: span 2; }
+.pform .w4 { grid-column: 1 / -1; }
+.pfoot { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.ck { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; line-height: 20px; color: var(--ink-2); cursor: pointer; }
+.cmpbar { position: relative; height: 20px; min-width: 160px; }
+.cmpbar .ax { position: absolute; left: 0; right: 0; top: 9px; height: 2px; background: var(--line); }
+.cmpbar .avg { position: absolute; top: 2px; width: 2px; height: 16px; margin-left: -1px; background: var(--ink-2); }
+.cmpbar .dt { position: absolute; top: 4px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--surface); }
+.cmpbar .dt.hi { background: var(--warning); }
+.lo-t { color: var(--positive); font-weight: 500; }
+.hi-t { color: var(--warning); font-weight: 500; }
+.neg td { vertical-align: top; }
+.neg .nc { display: grid; gap: 6px; }
+.neg .nc label { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.neg td:first-child b { display: block; font-weight: 600; }
+
+/* 견주기 */
+.cmp th.cand { vertical-align: bottom; padding-top: 8px; padding-bottom: 8px; height: auto; }
+.cmp .ch { display: grid; gap: 2px; white-space: normal; }
+.cmp .ch .t1 { display: flex; align-items: center; gap: 6px; color: var(--ink); font-weight: 600; font-size: 14px; }
+.cmp td.pt { min-width: 200px; }
+.cmp .ptv { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.cmp .ptv b { font-size: 15px; }
+.cmp .best { color: var(--accent-strong); }
+.cmp .hb { margin-top: 4px; }
+.cmp tr.sum td { border-top: 1px solid var(--line-strong); }
+.cmp tr.sum b { font-size: 24px; line-height: 32px; }
+.cmp tr.grp td { height: 36px; padding-top: 16px; font-size: 12px; font-weight: 600; color: var(--muted); background: none !important; }
+.stp { display: flex; }
+.stp button { flex: 1 1 0; min-width: 0; height: 32px; padding: 0 6px; border: 1px solid var(--line-strong); margin-left: -1px; background: var(--surface); color: var(--ink-2); font-size: 12px; white-space: nowrap; }
+.stp button:first-child { margin-left: 0; border-radius: var(--r) 0 0 var(--r); }
+.stp button:last-child { border-radius: 0 var(--r) var(--r) 0; }
+.stp button.done { background: var(--accent-soft); color: var(--accent-strong); }
+.stp button.cur { position: relative; z-index: 1; background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.prog { display: grid; grid-template-columns: 220px minmax(0, 1fr) auto; align-items: center; gap: 12px 24px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.prog .who { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.prog .who b { font-weight: 600; }
+.prog .when { font-size: 12px; line-height: 16px; color: var(--muted); }
+details.drop summary { cursor: pointer; padding: 10px 0; color: var(--ink-2); font-weight: 500; border-bottom: 1px solid var(--line); }
+details.drop .dr { display: grid; grid-template-columns: 220px minmax(0, 1fr) auto; gap: 12px 24px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); color: var(--ink-2); }
+
+/* 개원 준비 */
+.pgrid { margin-top: 20px; display: grid; gap: 40px; }
+.est { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0; border-bottom: 1px solid var(--line); }
+.est > div { padding: 12px 24px 16px; border-left: 1px solid var(--line); min-width: 0; }
+.est > div:first-child { border-left: 0; padding-left: 0; }
+.est h4 { font-size: 14px; line-height: 22px; font-weight: 600; }
+.est .big { margin-top: 4px; font-size: 32px; line-height: 40px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.est .big small { font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 2px; letter-spacing: 0; }
+.calc { margin-top: 8px; border-top: 1px solid var(--line); }
+.calc > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; line-height: 20px; }
+.calc dt { color: var(--ink-2); }
+.calc dd { margin: 0; text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.calc .src { grid-column: 1 / -1; margin-top: 0; }
+.calc .f { grid-column: 1 / -1; color: var(--ink); font-variant-numeric: tabular-nums; }
+.note { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; padding: 10px 12px; border-radius: var(--r); background: var(--canvas); color: var(--ink-2); font-size: 13px; line-height: 20px; }
+.note svg { margin-top: 2px; color: var(--muted); }
+.note.warn { background: var(--warning-soft); color: var(--ink); }
+.note.warn svg { color: var(--warning); }
+.note.warn b { color: var(--warning); font-weight: 600; }
+.cost { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px 40px; align-items: start; }
+.crow { display: grid; grid-template-columns: 180px 200px minmax(0, 1fr); align-items: center; gap: 4px 16px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.crow > label { font-size: 13px; line-height: 20px; font-weight: 600; }
+.crow .help { align-self: center; }
+.crow .auto { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; padding-right: 12px; }
+.crow.sub2 { background: var(--canvas); padding-left: 12px; padding-right: 12px; }
+.sumbox { position: sticky; top: 16px; padding: 16px 20px; border: 1px solid var(--line); border-radius: var(--r); display: grid; gap: 8px; }
+.sumbox h4 { font-size: 14px; line-height: 22px; font-weight: 600; }
+.sumbox .row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.sumbox .row b { font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sumbox .tot { padding-top: 8px; border-top: 1px solid var(--line); }
+.sumbox .tot b { font-size: 20px; line-height: 28px; font-weight: 600; }
+.sumbox .be { padding-top: 8px; border-top: 1px solid var(--line); }
+.sumbox .be .v { font-size: 28px; line-height: 36px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sumbox .be .v small { font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 2px; }
+.sched td.dd { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sched tr.done td { color: var(--muted); }
+.sched tr.done td .tk { text-decoration: line-through; }
+.req td:nth-child(3) { white-space: nowrap; }
+.oxb { border: 0; background: none; padding: 0; }
+.regi { counter-reset: s; list-style: none; margin: 12px 0 0; padding: 0; border-top: 1px solid var(--line); }
+.regi li { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.regi li::before { counter-increment: s; content: counter(s); font-weight: 600; color: var(--accent-strong); font-variant-numeric: tabular-nums; }
+.regi li b { color: var(--ink); font-weight: 600; }
+.cklist { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 32px; border-top: 1px solid var(--line); }
+.cklist label { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; line-height: 20px; color: var(--ink-2); cursor: pointer; }
+.cklist label input { margin-top: 2px; }
+.cklist label.on { color: var(--muted); }
+.photos { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+.ph { width: 152px; }
+.ph .im { display: grid; place-items: center; height: 104px; border-radius: var(--r); background: var(--line); color: var(--muted); font-size: 12px; overflow: clip; }
+.ph .im img { width: 100%; height: 100%; object-fit: cover; }
+.ph .cp { margin-top: 4px; font-size: 12px; line-height: 16px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ph .cp small { display: block; color: var(--muted); }
+.ph.addp { display: grid; place-items: center; align-content: center; gap: 4px; height: 104px; border: 1px dashed var(--line-strong); border-radius: var(--r); color: var(--accent); font-size: 13px; font-weight: 500; cursor: pointer; background: var(--surface); }
+.ph.addp:hover { background: var(--canvas); }
+.memos { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.memos li { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 4px 16px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.memos .d { font-size: 13px; line-height: 22px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.memoadd { display: grid; grid-template-columns: 160px minmax(0, 1fr) auto; gap: 8px; align-items: start; margin-top: 12px; }
+
+/* 보고서 */
+.rbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.paperwrap { margin-top: 16px; padding: 32px; background: var(--canvas); border-radius: var(--r); }
+.paper { width: 794px; max-width: 100%; margin: 0 auto; padding: 44px 52px; background: #fff; border: 1px solid var(--line); font-size: 12px; line-height: 18px; color: var(--ink); }
+.paper .ph1 { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--ink); }
+.paper .ph1 h1 { font-size: 22px; line-height: 30px; font-weight: 600; }
+.paper .ph1 .k { font-size: 12px; color: var(--muted); }
+.paper .ph1 .sc { text-align: right; }
+.paper .ph1 .sc b { display: block; font-size: 36px; line-height: 40px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.paper h2 { margin-top: 16px; padding-bottom: 4px; font-size: 13px; line-height: 20px; font-weight: 600; border-bottom: 1px solid var(--line-strong); }
+.paper .pf { margin-top: 6px; display: grid; gap: 4px; }
+.paper .pf p { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 6px; }
+.paper .pf p::before { content: "!"; display: grid; place-items: center; width: 14px; height: 14px; margin-top: 2px; border-radius: 2px; background: var(--negative); color: #fff; font-size: 10px; font-weight: 600; line-height: 14px; }
+.paper .p2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 24px; }
+.paper dl { margin: 6px 0 0; }
+.paper dl > div { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--line); }
+.paper dt { color: var(--muted); }
+.paper dd { margin: 0; font-variant-numeric: tabular-nums; }
+.paper .pi { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; margin-top: 6px; border-bottom: 1px solid var(--line); }
+.paper .pi div { padding: 4px 8px; border-left: 1px solid var(--line); }
+.paper .pi div:first-child { border-left: 0; padding-left: 0; }
+.paper .pi b { display: block; font-size: 16px; line-height: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.paper .pi span { color: var(--muted); }
+.paper .foot { margin-top: 16px; padding-top: 8px; border-top: 1px solid var(--line-strong); font-size: 10px; line-height: 15px; color: var(--muted); }
+
+/* 근거와 출처 */
+.sgrid { margin-top: 20px; display: grid; gap: 40px; }
+.srct td { vertical-align: top; }
+.srct td:first-child { font-weight: 600; min-width: 168px; }
+.srct tr.hit td { background: var(--warning-soft) !important; }
+.srct .via { color: var(--ink-2); }
+.lawt td:nth-child(2) b { font-weight: 600; }
+.sgrid section.hit > .sh { background: var(--warning-soft); }
+.slot { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border: 1px dashed var(--line-strong); border-radius: var(--r); color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+/* 처음 · 열쇠 */
+.empty { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--line-strong); max-width: 720px; }
+.empty h2 { font-size: 20px; line-height: 28px; font-weight: 600; }
+.empty .lead2 { margin-top: 8px; font-size: 16px; line-height: 24px; color: var(--ink-2); }
+.steps { margin: 20px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.steps li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.steps li > span { font-weight: 600; color: var(--accent-strong); font-variant-numeric: tabular-nums; }
+.steps li b { display: block; font-weight: 600; }
+.steps li small { display: block; font-size: 13px; line-height: 20px; color: var(--muted); }
+.empty .acts { margin-top: 24px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.keys { margin-top: 24px; display: grid; gap: 32px; max-width: 960px; }
+.key { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px 32px; padding-top: 16px; border-top: 1px solid var(--line-strong); }
+.key h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 16px; line-height: 24px; font-weight: 600; }
+.key .gets { margin-top: 6px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.key .kin { display: grid; gap: 8px; align-content: start; }
+.key .kin .row { display: flex; gap: 8px; }
+.key ol { margin: 10px 0 0; padding: 0 0 0 20px; font-size: 13px; line-height: 22px; color: var(--ink-2); }
+.key ol li { padding: 2px 0; }
+.safe { margin-top: 8px; max-width: 960px; }
+
+/* 옆 판 · 알림 */
+.scrim { position: fixed; inset: 0; z-index: 20; background: rgb(17 24 39 / 36%); }
+.drawer { position: fixed; z-index: 21; top: 0; right: 0; bottom: 0; width: 560px; max-width: 100%; background: var(--surface); border-left: 1px solid var(--line-strong); box-shadow: var(--elev); display: flex; flex-direction: column; }
+.dwh { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 10px 24px; border-bottom: 1px solid var(--line); }
+.dwh h3 { font-size: 16px; line-height: 24px; font-weight: 600; }
+.dwb { flex: 1; overflow-y: auto; padding: 20px 24px 24px; display: grid; align-content: start; gap: 20px; }
+.dwf { padding: 12px 24px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.dwf .need { flex: 1 1 200px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.f2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px 12px; }
+.ares { border-top: 1px solid var(--line); }
+.ares label { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.ares label input { margin-top: 3px; accent-color: var(--accent); }
+.ares small { display: block; font-size: 12px; line-height: 16px; color: var(--muted); }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 40; padding: 10px 16px; border-radius: var(--r-float); background: var(--ink); color: #fff; font-size: 13px; line-height: 20px; box-shadow: var(--elev); max-width: calc(100vw - 32px); }
+.toast:empty { display: none; }
+
+/* 대시보드(잘라 보기) */
+.dh-head { margin-top: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.dh-head h1 { font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: -.01em; }
+.dh-when { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.dh-when svg { color: var(--muted); }
+.dh-sp { margin-left: auto; display: flex; gap: 8px; }
+.wnote { margin-top: 12px; max-width: 520px; border-radius: var(--r); background: var(--canvas); }
+.wnote + .wnote { margin-top: 8px; }
+.wn { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: start; gap: 8px; padding: 12px 16px; color: var(--ink-2); text-decoration: none; }
+.wn + .wn { border-top: 1px solid var(--line); }
+.wn > svg { margin-top: 3px; color: var(--warning); }
+.wn .wt { color: var(--ink); }
+.wn .wt b { font-weight: 600; color: var(--warning); }
+.wn .wt small { display: block; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.wn .go { display: inline-flex; align-items: center; gap: 2px; font-size: 13px; line-height: 22px; font-weight: 500; color: var(--accent); white-space: nowrap; }
+.wn:hover .wt { text-decoration: underline; text-underline-offset: 3px; }
+.mark-new { outline: 2px dashed #F59E0B; outline-offset: 4px; }
+.mark-tag { display: inline-block; margin-top: 10px; padding: 1px 7px; border-radius: 4px; background: #FEF3C7; color: #92400E; font-size: 12px; font-weight: 600; }
+.cut { margin-top: 24px; padding: 8px 12px; border: 1px dashed #D6B656; border-radius: 4px; background: #FFFBEB; color: #92400E; font-size: 12px; line-height: 18px; text-align: center; }
+
+/* 인쇄: 보고서 종이만 */
+@media print {
+  @page { size: A4; margin: 12mm; }
+  .mhead, .top, .tabsbar, .rbar, .toast, #layer, .ltop, .subtabs, .candbar { display: none !important; }
+  main { padding: 0; max-width: none; }
+  .paperwrap { margin: 0; padding: 0; background: none; }
+  .paper { width: auto; border: 0; padding: 0; }
+}
+</style>
+</head>
+<body>
+<div class="mhead"><div class="mhead-in">
+  <div><b>입지 분석 탭 시안</b><span class="ex">예시</span> <span class="mdesc">지도는 손으로 그린 그림이에요. 동·건물·의원·사람 이름(예시○○)·번호·숫자는 모두 지어낸 값이고, 출처 이름은 가안이에요(조사 뒤 맞춰요). 오늘은 11월 22일 (일)로 정해 두었어요.</span></div>
+  <div class="seg" id="seg"></div>
+  <div class="mnote" id="mnote"></div>
+</div></div>
+
+<div class="app" id="app">
+  <header class="top"><div class="top-in">
+    <div class="brand"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 30 30"><rect x="3" y="3" width="24" height="24" rx="6" fill="none" stroke="#14C8BA" stroke-width="2.4"/><path d="M13.5 8h3a1 1 0 0 1 1 1v3.5H21a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3.5V21a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3.5H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3.5V9a1 1 0 0 1 1-1z" fill="#6D5DF5"/></svg><span>샘플정형외과의원</span></div>
+    <div class="top-r"><time>2026년 11월 22일 (일) 10:40 (KST)</time><span class="acct">계정 ▾</span></div>
+  </div></header>
+  <nav class="tabsbar" aria-label="메뉴"><div class="tabs-in" id="tabs"></div></nav>
+  <main id="main"></main>
+  <div id="layer"></div>
+</div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<input type="file" id="photoIn" accept="image/*" multiple hidden>
+
+<script>
+/* ───────── 상태 고르기 ───────── */
+const STATES = [
+  ['scan', '동네 훑기 (기본)', "시·구를 고르면 행정동마다 점수 색을 칠해요(진한 파랑일수록 좋음). 오른쪽은 추천 동 순위와 동마다 까닭 한 줄, 그 아래 점수 무게 막대예요. 막대를 움직이면 지도 색·순위·점수가 바로 바뀌어요. 지도나 순위에서 동을 누르면 지도 아래에 그 동 점수가 열려요."],
+  ['candidate', '후보 자세히', "후보 A(예시빌딩 3층)를 깊게 본 모습이에요. 맨 위 빨간 깃발이 위험 신호, 그 아래 종합 점수와 살필 범위 막대(300m~3km)예요. 범위를 바꾸면 사는 사람·경쟁 의원·둘레 시설·진료 시간 빈틈이 다시 세어져요. 왼쪽 목차로 묶음을 건너뛰어요. 숫자마다 아래 작은 글씨가 출처와 기준 날짜이고, 누르면 '근거와 출처'로 가요."],
+  ['listings', '매물', "부동산 사이트 매물은 저절로 가져올 수 없어서(사이트 약관·법) [네이버 부동산에서 보기]로 새 창을 열고, 마음에 드는 매물만 붙여 넣어요. 평수로 거르고, 평당 월세를 상권 평균과 견주고, 맨 아래 후보끼리 임대 조건 협상표를 적어요."],
+  ['compare', '후보 견주기', "후보 3곳을 나란히 놓은 점수표예요. 무게는 동네 훑기에서 정한 무게를 그대로 써요. 진행 상태(보는 중 → 중개사 연락 → 보러 감 → 계약 검토)는 단계를 눌러 바꾸고, [내려놓기]로 빼요."],
+  ['plan', '개원 준비', "후보 A의 개원 준비예요. 예상 환자 두 계산 나란히, 개원 비용 계산(빈칸에서 직접), 손익분기, 개원일에서 거꾸로 센 일정표, 건물 요건 ○✕ 표, 계약 전 위험, 보러 갈 때 점검표와 사진, 진행 메모예요. 위 후보 단추로 후보 C를 고르면 두 계산이 크게 달라 조심 표시가 떠요."],
+  ['plan-filled', '개원 준비 · 숫자 넣은 뒤', "개원 비용 칸에 예시 숫자를 넣은 뒤예요(실제 화면은 늘 빈칸에서 시작). 합계·내 돈·한 달 고정비·손익분기(하루 몇 명)가 계산돼요."],
+  ['report', '한 장 보고서', "후보 하나를 종이 한 장으로 정리한 모습이에요. [인쇄]는 인쇄 창을 열고, [PDF로 저장]은 인쇄 창에서 'PDF로 저장'을 고르게 안내해요. 인쇄하면 앱 틀은 빠지고 종이만 나와요."],
+  ['sources', '근거와 출처', "화면에 나온 숫자마다 어디서 온 자료인지(기관·자료 이름·기준 날짜·고쳐지는 주기)와 왜 보는지 근거 한 줄이에요. 아래에 점수 매기는 법, 법 근거(법 이름 적는 자리)가 있어요. 출처 이름은 가안이에요."],
+  ['add', '후보 더하기', "[후보 더하기]를 누른 모습이에요. 주소로 찾기 · 지도에서 찍기 · 붙여 넣은 매물에서 고르기 세 가지 길이 있어요. 저장하면 그날 받은 자료로 굳혀 두고 기준 날짜를 함께 남겨요."],
+  ['menu', '더보기 판', "앱 탭 줄 [더보기]를 연 모습이에요. '입지 분석'은 주소록 다음, 설정 앞에 들어가요(점선이 새로 생기는 줄). 관리자 계정에만 보여요."],
+  ['dashboard', '대시보드 알림', "대시보드 맨 위 머리 줄 바로 아래(무상 수리 알림 밑)에 붙는 입지 알림만 잘랐어요. 저장한 후보 둘레에 정형외과가 새로 열거나 닫으면 한 달에 한 번 알려 줘요. 줄을 누르면 그 후보로 가요."],
+  ['empty', '후보 없음 (처음)', "자료 열쇠는 넣었고 후보가 하나도 없는 처음 화면이에요."],
+  ['no-key', '자료 열쇠 없음', "자료 열쇠를 아직 안 넣었을 때예요. 공공데이터포털 열쇠와 카카오 지도 열쇠, 둘 다 무료예요. 받는 법은 한 단계씩 따로 안내해 드려요."],
+]
+const Q = new URLSearchParams(location.search)
+let S = Q.get('s'); if (!STATES.some(x => x[0] === S)) S = 'scan'
+const TODAY = '2026-11-22'
+
+document.getElementById('seg').innerHTML = STATES.map(([k, t]) => `<a href="?s=${k}" aria-current="${k === S}">${t}</a>`).join('')
+function setNote(k) { const c = STATES.find(x => x[0] === k) || STATES[0]; document.getElementById('mnote').innerHTML = `<b>${c[1]}</b> — ${c[2]}` }
+setNote(S)
+
+/* ───────── 도움 ───────── */
+const $ = s => document.querySelector(s)
+const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const nf = n => Number(n).toLocaleString('ko-KR')
+const won = n => `${nf(Math.floor(n))}원`
+// 만 원 단위 숫자 → '1억 5,000만 원'
+function man(n) {
+  if (n == null || n === '' || isNaN(n)) return '–'
+  n = Math.floor(n)
+  if (n === 0) return '없음'
+  const e = Math.floor(n / 10000), r = n % 10000
+  return (e ? `${nf(e)}억${r ? ' ' : ''}` : '') + (r ? `${nf(r)}만` : '') + ' 원'
+}
+const pct1 = x => Math.floor(x * 10 + 1e-9) / 10
+const dist = d => d < 1 ? `${Math.floor(d * 1000 + 1e-9)}m` : `${Math.floor(d * 10 + 1e-9) / 10}km`
+const md = s => { const [y, m, d] = s.split('-').map(Number); return `${m}월 ${d}일` }
+const ymd = s => { const [y, m, d] = s.split('-').map(Number); return `${y}년 ${m}월 ${d}일` }
+const dayNum = s => { const [y, m, d] = s.split('-').map(Number); return Date.UTC(y, m - 1, d) / 86400000 }
+const fromNum = n => new Date(n * 86400000).toISOString().slice(0, 10)
+const WD = ['일', '월', '화', '수', '목', '금', '토']
+const wd = s => WD[new Date(dayNum(s) * 86400000).getUTCDay()]
+const eul = w => { const c = String(w).trim().slice(-1).charCodeAt(0); if (c < 0xAC00 || c > 0xD7A3) return '을(를)'; return (c - 0xAC00) % 28 ? '을' : '를' }
+function rng(seed) { let a = seed >>> 0; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296 } }
+function hash(s) { let h = 2166136261; for (const ch of s) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) } return h >>> 0 }
+
+const ICON = {
+  plus: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>',
+  close: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
+  left: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg>',
+  right: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg>',
+  chev: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>',
+  ext: '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M9 2.5h4.5V7M13.5 2.5 7 9M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/></svg>',
+  flag: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5v13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M4 2.2h8.6l-1.9 3.1 1.9 3.1H4z" fill="currentColor"/></svg>',
+  info: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v4M8 4.8v.2" stroke-linecap="round"/></svg>',
+  warn: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 15 14H1z" fill="currentColor"/><path d="M8 6v3.6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.7" r=".9" fill="#fff"/></svg>',
+  print: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4.5 6V2h7v4M4.5 11.5h-2v-5h11v5h-2"/><path d="M4.5 9.5h7V14h-7z"/></svg>',
+  download: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2.5v8M5 7.5l3 3 3-3M2.5 10v2.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V10"/></svg>',
+  pin: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 15s-5-4.6-5-8.4A5 5 0 0 1 13 6.6C13 10.4 8 15 8 15z" fill="currentColor"/><circle cx="8" cy="6.5" r="1.8" fill="#fff"/></svg>',
+  wrench: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10.6 2.3a3.3 3.3 0 0 0-4 4.3l-4.2 4.2a1.4 1.4 0 0 0 2 2l4.2-4.2a3.3 3.3 0 0 0 4.3-4l-2 2-1.8-.5-.5-1.8z"/></svg>',
+  clock: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.8V8l2.2 1.4"/></svg>',
+  key: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="5" cy="10.5" r="3"/><path d="M7.2 8.3 13.5 2M11 4.5l1.8 1.8M9.5 6l1.3 1.3"/></svg>',
+  camera: '<svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 5.2h2.6L5.8 3.5h4.4l1.2 1.7H14v8H2z"/><circle cx="8" cy="9" r="2.4"/></svg>',
+  arrow: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg>',
+}
+
+/* ───────── 출처(가안) ───────── */
+// short: 숫자 아래 작은 글씨 · date: 기준 날짜 · cycle: 고쳐지는 주기 · unit: 단위 · why: 왜 보나 · via: 받는 길
+const SRC = {
+  pop: { org: '행정안전부', name: '주민등록 인구통계', short: '행정안전부 주민등록 인구', date: '2026년 10월', cycle: '달마다', unit: '행정동 → 살필 범위 안 동 넓이 비율로 나눠 더함', why: '의원에 올 사람이 둘레에 얼마나 사는지, 어떤 나이대가 많은지 봐요.', via: '공공데이터포털', shows: '사는 사람 · 세대 수 · 1인 세대 · 나이대 · 60대 이상 · 5년 추세' },
+  income: { org: '국세청', name: '국세통계(지역별 근로소득)', short: '국세청 국세통계(시·군·구 기준)', date: '2024년 귀속', cycle: '해마다', unit: '시·군·구 (동 단위 자료는 없어요)', why: '도수치료 같은 비급여 진료를 받을 쓸 힘을 짐작해요.', via: '파일로 받아 넣음(해마다)', shows: '평균 소득' },
+  apt: { org: '국토교통부', name: '공동주택 단지 정보', short: '국토교통부 공동주택 단지 정보', date: '2026년 10월', cycle: '달마다', unit: '단지', why: '둘레 아파트 세대 수와 지은 해로 홍보할 차례를 정해요.', via: '공공데이터포털', shows: '아파트 단지 · 세대 수 · 지은 해' },
+  subscr: { org: '한국부동산원', name: '청약홈 분양 정보', short: '한국부동산원 청약홈', date: '2026년 11월', cycle: '새 분양이 올라올 때마다', unit: '단지', why: '곧 늘어날 사람(입주 예정)을 미리 봐요.', via: '공공데이터포털', shows: '입주 예정 단지 · 세대 수 · 입주 때' },
+  deal: { org: '국토교통부', name: '아파트 매매 실거래가', short: '국토교통부 실거래가', date: '2026년 10월', cycle: '날마다(거래 뒤 30일 안 신고)', unit: '단지 → 살필 범위 평균', why: '집값으로 동네의 쓸 힘을 짐작해요.', via: '공공데이터포털', shows: '아파트 거래가 · 거래 건수' },
+  rent: { org: '한국부동산원', name: '상업용부동산 임대동향조사', short: '한국부동산원 임대동향조사', date: '2026년 3분기', cycle: '석 달마다', unit: '상권 (조사하는 상권만)', why: '매물 값이 비싼지, 빈 가게가 많은 상권인지 봐요.', via: '부동산통계정보(명세 때 확인)', shows: '공실률 · 평당 임대료 시세(상권 평균)' },
+  store: { org: '소상공인시장진흥공단', name: '상가(상권)정보', short: '소상공인시장진흥공단 상가정보', date: '2026년 9월', cycle: '석 달마다', unit: '가게 하나하나(층 포함)', why: '층마다 어떤 가게가 있는지 보고 빈 층을 짐작해요.', via: '공공데이터포털', shows: '층마다 가게 · 빈 층 짐작 · 헬스장·필라테스' },
+  bld: { org: '국토교통부', name: '건축물대장', short: '국토교통부 건축물대장', date: '2026년 11월 15일 받음', cycle: '바뀔 때마다', unit: '건물 · 층', why: '가지 않고 층 용도·넓이·지은 해·엘리베이터·주차·위반 건축물을 확인해요.', via: '공공데이터포털', shows: '층마다 용도·넓이 · 지은 해 · 엘리베이터 · 주차 · 위반 건축물' },
+  land: { org: '국토교통부', name: '토지이음(토지이용계획)', short: '토지이음', date: '2026년 11월 15일 받음', cycle: '바뀔 때마다', unit: '땅(필지)', why: '땅 쓰임(용도지역)과 재개발·도로 계획을 봐요.', via: '공공데이터포털 + 토지이음 링크', shows: '용도지역 · 지구단위계획 · 도로 계획 · 재개발' },
+  hira: { org: '건강보험심사평가원', name: '병원정보서비스', short: '심평원 병원정보서비스', date: '2026년 11월', cycle: '달마다', unit: '의원 하나하나', why: '둘레 의원의 과목·의사 수·물리치료사 수·장비·진료 시간을 봐요.', via: '공공데이터포털', shows: '경쟁 의원 · 의사 수 · 물리치료사 수 · 장비 · 진료 시간 · 문 연 해' },
+  price: { org: '건강보험심사평가원', name: '비급여 진료비 정보', short: '심평원 비급여 진료비 정보', date: '2026년 6월 공개', cycle: '해마다', unit: '의원 하나하나', why: '도수치료·충격파 값을 둘레 의원과 견줘요.', via: '공공데이터포털', shows: '도수치료 · 체외충격파 1회 값' },
+  permit: { org: '행정안전부', name: '지방행정 인허가 자료(의원)', short: '행정안전부 인허가 자료', date: '2026년 11월', cycle: '날마다', unit: '의원 하나하나', why: '3년 사이 문 연 곳·닫은 곳, 이 자리에 전에 의원이 있었는지 봐요.', via: '공공데이터포털', shows: '3년 개폐업 · 전에 의원 문 닫은 자리 · 대시보드 알림' },
+  kakao: { org: '카카오', name: '카카오맵(지도·로드뷰·장소)', short: '카카오맵', date: '2026년 11월 15일 받음', cycle: '볼 때마다', unit: '장소 하나하나', why: '역·정류장·약국·마트·시장·큰 병원까지 거리와 거리 사진을 봐요.', via: '카카오 지도 열쇠', shows: '지도 · 로드뷰 · 하늘 사진 · 역·정류장·약국·마트·시장·큰 병원 거리' },
+  acc: { org: '한국도로교통공단', name: '교통사고 정보', short: '한국도로교통공단 교통사고 정보', date: '2025년', cycle: '해마다', unit: '사고 지점 → 살필 범위 안', why: '교통사고 환자도 정형외과에 와요.', via: '명세 때 확인(따로 열쇠가 필요할 수 있음)', shows: '교통사고 건수' },
+  dis: { org: '건강보험심사평가원', name: '보건의료빅데이터개방시스템(질병·진료 통계)', short: '보건의료빅데이터개방시스템', date: '2025년', cycle: '해마다', unit: '시·군·구', why: '뼈·관절 환자가 많은 동네인지, 정형외과를 얼마나 다니는지(이용률) 봐요.', via: '공공데이터포털', shows: '뼈·관절 환자 · 정형외과 이용률' },
+  live: { org: '서울특별시', name: '서울 생활인구', short: '서울시 생활인구', date: '2026년 10월', cycle: '달마다', unit: '행정동 (서울만 — 다른 곳은 \'이 지역은 자료 없음\')', why: '낮에 일하러·배우러 오는 사람도 환자가 돼요.', via: '서울 열린데이터광장(명세 때 확인)', shows: '낮 인구 · 밤 인구' },
+  my: { org: '이 앱', name: '통계 탭 하루 평균 환자', short: '이 앱 통계 탭(지난 3달)', date: '2026년 11월 21일까지', cycle: '날마다', unit: '지금 의원', why: '지금 의원에 실제로 오는 환자 수로 예상 환자를 맞춰요.', via: '이 앱 안', shows: '지금 의원 하루 평균 환자' },
+  wage: { org: '고용노동부', name: '고용24 구인 공고', short: '고용24 구인 공고(가안)', date: '2026년 11월', cycle: '날마다', unit: '시·군·구', why: '물리치료사·간호조무사 월급 수준을 보고 직원 비용을 적어요.', via: '명세 때 확인', shows: '물리치료사·간호조무사 월급 수준' },
+  listing: { org: '내가 적은 값', name: '붙여 넣은 매물', short: '내가 붙여 넣은 매물', date: '적은 날', cycle: '내가 고칠 때', unit: '매물', why: '중개사·부동산 사이트에서 본 값을 그대로 적어 둬요.', via: '직접 적기', shows: '평수 · 층 · 보증금 · 월세 · 권리금 · 관리비 · 중개사' },
+}
+function src(k, extra) { const s = SRC[k]; return `<a class="src" href="?s=sources#src-${k}" data-act="src" data-k="${k}">${esc(s.short)} · ${esc(s.date)}${extra ? ` · ${esc(extra)}` : ''}</a>` }
+function srcIn(k) { const s = SRC[k]; return `<a class="src in" href="?s=sources#src-${k}" data-act="src" data-k="${k}">${esc(s.short)} · ${esc(s.date)}</a>` }
+
+/* ───────── 점수 ───────── */
+const ITEMS = ['사는 사람·수요', '경쟁', '교통·흐름', '자리', '비용']
+const DEF_W = [30, 25, 20, 15, 10]
+// 항목 점수 = 0~100 값 × 무게 ÷ 무게 합 (항목마다 버림), 합계 = 항목 점수의 합
+function pts(sub, w) { const sum = w.reduce((a, b) => a + b, 0) || 1; return sub.map((s, i) => Math.floor(s * w[i] / sum + 1e-9)) }
+const maxPts = w => { const sum = w.reduce((a, b) => a + b, 0) || 1; return w.map(x => Math.floor(x * 100 / sum + 1e-9)) }
+const total = (sub, w) => pts(sub, w).reduce((a, b) => a + b, 0)
+const bin = s => s >= 80 ? 4 : s >= 75 ? 3 : s >= 70 ? 2 : s >= 60 ? 1 : 0
+const BIN_LABEL = ['59 아래', '60~69', '70~74', '75~79', '80 넘게']
+const BIN_FILL = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)']
+
+/* ───────── 지어낸 자료: 동 ───────── */
+// sub: 사는 사람·수요 · 경쟁 · 교통·흐름 · 자리 · 비용 (0~100)
+const DONGS = [
+  { n: '나래동', sub: [92, 58, 70, 72, 64], pop: 41200, why: '2027년 새 아파트 1,120세대가 들어오지만 정형외과가 이미 5곳이에요.' },
+  { n: '하늘동', sub: [90, 72, 82, 74, 56], pop: 38900, why: '5년 사이 사람이 9% 늘었고 갈아타는 역이 가까워요. 임대료는 비싼 편이에요.' },
+  { n: '새솔동', sub: [84, 66, 78, 82, 60], pop: 35600, why: '새 상가 건물이 많아 엘리베이터·주차가 좋아요. 경쟁은 보통이에요.' },
+  { n: '차미동', sub: [44, 82, 46, 50, 90], pop: 18200, why: '임대료는 가장 싸지만 사는 사람이 적고 역에서 멀어요.' },
+  { n: '마루1동', sub: [80, 74, 72, 64, 72], pop: 33100, why: '오래된 아파트가 많아 60대 이상이 26%예요. 상가 건물이 낡은 편이에요.' },
+  { n: '가람동', sub: [88, 80, 86, 78, 70], pop: 36400, why: '60대 이상이 많고(23%) 역 바로 앞이에요. 정형외과는 사람 1.2만 명당 1곳이에요.' },
+  { n: '라온동', sub: [64, 62, 92, 70, 48], pop: 27500, why: '갈아타는 역이라 사람 흐름은 가장 많지만 임대료가 비싸요.' },
+  { n: '아름동', sub: [52, 76, 50, 54, 82], pop: 21900, why: '경쟁 의원이 적고 싸지만 사는 사람이 적어요.' },
+  { n: '마루2동', sub: [76, 70, 58, 60, 80], pop: 30200, why: '사는 사람은 많은데 버스만 다녀요. 임대료는 싼 편이에요.' },
+  { n: '다온동', sub: [70, 90, 60, 66, 86], pop: 29800, why: '경쟁 의원이 거의 없고 임대료가 싸요. 역까지 걸어서 12분이에요.' },
+  { n: '바름동', sub: [58, 84, 54, 58, 88], pop: 22700, why: '경쟁 의원이 적지만 젊은 1인 세대가 많아요.' },
+  { n: '자람동', sub: [66, 48, 64, 62, 66], pop: 26300, why: '큰 정형외과(MRI 있음)가 두 곳이라 경쟁이 세요.' },
+]
+
+/* ───────── 지어낸 자료: 후보 ───────── */
+// d: km, h: 진료 시간 { wk:[시작,끝], lunch, night:{요일:끝}, sat, sun }
+const CANDS = [
+  { id: 'A', name: '예시빌딩 3층', dong: '가람동', region: '서울특별시 예시구', addr: '서울특별시 예시구 가람로 123, 예시빌딩 3층', seoul: true, status: 2, saved: '2026-11-15', listing: 'L1', mapAt: [5, -34, -30],
+    sub: [87, 68, 90, 80, 90],
+    flags: [
+      { t: '같은 건물 2층에 정형외과가 있어요', d: '예시○○정형외과 · 2021년 문 엶 · 의사 2명 · 충격파·도수치료 함', k: 'hira' },
+      { t: '이 자리(3층)에서 2024년 3월에 의원이 문을 닫았어요', d: '예시▣▣의원(가정의학과) · 3년 운영. 왜 닫았는지 중개사에게 물어봐요.', k: 'permit' },
+      { t: '건축물대장에 위반 건축물로 올라 있어요', d: '옥상 무단 증축(2019년 적발). 3층과는 상관없지만 보건소 신고 전에 꼭 물어봐요.', k: 'bld' },
+    ],
+    pop: { n: 48210, hh: 21340, solo: 31, ages: [15, 26, 36, 23], trend: [46720, 47050, 47310, 47640, 47920, 48210],
+      apts: [{ n: '예시파크 1단지', hh: 1840, y: 2004, d: 0.35, old: 27 }, { n: '예시힐스', hh: 1210, y: 2011, d: 0.5, old: 24 }, { n: '예시마을 2단지', hh: 960, y: 1998, d: 0.65, old: 31 }, { n: '예시캐슬', hh: 2320, y: 2018, d: 0.9, old: 14 }, { n: '예시그린', hh: 780, y: 2001, d: 1.2, old: 29 }, { n: '예시타운', hh: 1500, y: 2015, d: 1.7, old: 18 }],
+      soon: [{ n: '예시힐 (가칭)', hh: 1120, when: '2027년 3월', d: 0.8 }, { n: '예시파크 3단지 (가칭)', hh: 640, when: '2028년 9월', d: 1.6 }] },
+    income: { avg: 4210, base: 4480, baseN: '서울 평균', deal: 92000, dealBase: 87000, dealBaseN: '예시구 평균', dealN: 38 },
+    demand: { joint: 312, jointBase: 287, jointBaseN: '서울 평균', welfare: [{ n: '예시노인복지관', d: 0.4 }, { n: '예시구 노인종합복지관', d: 1.6 }], kyung: 14, gym: 23, acc: 312, ind: '가장 가까운 산업단지 4.2km — 범위 밖', school: [3, 2, 2], sport: 3, live: [62400, 48900] },
+    comps: [
+      { n: '예시○○정형외과', k: '정형외과', d: 0.02, where: '같은 건물 2층', doc: 2, pt: 4, eq: ['충격파', '도수치료'], y: 2021, h: { wk: [9, 18.5], lunch: 1, night: { 수: 20 }, sat: [9, 13] }, ht: '평일 9~18:30 · 수 ~20시 · 토 9~13시', p: [120000, 90000] },
+      { n: '예시□□정형외과', k: '정형외과', d: 0.35, doc: 1, pt: 3, eq: ['충격파', '도수치료'], y: 2026, isNew: '2026-11-03', h: { wk: [9, 18], lunch: 1, sat: [9, 13] }, ht: '평일 9~18시 · 토 9~13시', p: [100000, 70000] },
+      { n: '예시☆☆한의원', k: '한의원', d: 0.4, doc: 1, pt: 0, eq: [], y: 2018, h: { wk: [9.5, 19], lunch: 1, night: { 화: 21, 금: 21 }, sat: [9.5, 15] }, ht: '평일 9:30~19시 · 화·금 ~21시 · 토 9:30~15시', p: null },
+      { n: '예시△△마취통증의학과', k: '마취통증의학과', d: 0.6, doc: 1, pt: 2, eq: ['충격파'], y: 2019, h: { wk: [9, 18], lunch: 1, night: { 월: 20, 목: 20 }, sat: [9, 14] }, ht: '평일 9~18시 · 월·목 ~20시 · 토 9~14시', p: [90000, 60000] },
+      { n: '예시◇◇정형외과', k: '정형외과', d: 0.85, doc: 3, pt: 6, eq: ['MRI', 'CT', '충격파', '도수치료'], y: 2015, h: { wk: [8.5, 18], lunch: 1, sat: [8.5, 13] }, ht: '평일 8:30~18시 · 토 8:30~13시', p: [150000, 100000] },
+      { n: '예시◎◎재활의학과', k: '재활의학과', d: 1.3, doc: 2, pt: 5, eq: ['충격파', '도수치료'], y: 2025, h: { wk: [9, 18], lunch: 1, sat: [9, 13] }, ht: '평일 9~18시 · 토 9~13시', p: [110000, 80000] },
+      { n: '예시▽▽정형외과', k: '정형외과', d: 1.8, doc: 1, pt: 2, eq: ['충격파'], y: 2012, h: { wk: [9, 18], lunch: 1, sat: [9, 13] }, ht: '평일 9~18시 · 토 9~13시', p: [80000, 50000] },
+      { n: '예시◁◁한의원', k: '한의원', d: 2.4, doc: 1, pt: 0, eq: [], y: 2022, h: { wk: [10, 19], sat: [10, 14], sun: [10, 14] }, ht: '평일 10~19시 · 토·일 10~14시', p: null },
+      { n: '예시▷▷정형외과', k: '정형외과', d: 2.9, doc: 2, pt: 4, eq: ['MRI', '충격파', '도수치료'], y: 2017, h: { wk: [9, 19], lunch: 1, night: { 화: 20 }, sat: [9, 13], sun: [10, 13] }, ht: '평일 9~19시 · 화 ~20시 · 토 9~13시 · 일 10~13시', p: [130000, 90000] },
+    ],
+    events: [
+      { date: '2026-11-03', kind: 'open', n: '예시□□정형외과', d: 0.35 },
+      { date: '2025-05-12', kind: 'close', n: '예시▤▤정형외과', d: 0.7 },
+      { date: '2025-02-17', kind: 'open', n: '예시◎◎재활의학과', d: 1.3 },
+      { date: '2024-03-29', kind: 'close', n: '예시▣▣의원(가정의학과)', d: 0, where: '이 자리 · 3층' },
+    ],
+    traffic: { station: { n: '예시역 2번 출구', d: 0.18, walk: 3, lines: '지하철 1개 노선' }, bus: [4, 11], market: { n: '예시시장', d: 0.45 },
+      pharm: [{ n: '예시약국', d: 0.04, where: '같은 건물 1층' }, { n: '예시가람약국', d: 0.2 }, { n: '예시한빛약국', d: 0.38 }, { n: '예시큰약국', d: 1.1 }],
+      mart: [{ n: '예시마트', d: 0.3 }, { n: '예시마켓', d: 0.8 }], big: { n: '예시대학교병원', d: 2.1 }, others: 17 },
+    building: { name: '예시빌딩', year: 2009, struct: '철근콘크리트', scale: '지하 2층 · 지상 7층', area: 3980, elev: '승객용 1대 · 비상용 1대(침대가 들어가는 크기)', park: '42대 (법으로 정한 대수 38대)', viol: '있음 — 옥상 무단 증축(2019년 적발)', use: '제1종·제2종 근린생활시설',
+      floors: [['7층', '제2종 근린생활시설(사무소)', 412, '예시세무회계 · 예시법무사'], ['6층', '제2종 근린생활시설(학원)', 412, '예시수학학원'], ['5층', '제2종 근린생활시설(사무소)', 412, ''], ['4층', '제1종 근린생활시설(의원)', 412, '예시치과의원'], ['3층', '제1종 근린생활시설(의원)', 412, '', '2024년 3월까지 예시▣▣의원'], ['2층', '제1종 근린생활시설(의원)', 412, '예시○○정형외과'], ['1층', '제1종 근린생활시설(소매점·약국)', 380, '예시약국 · 예시카페'], ['지하 1~2층', '주차장', 760, '주차장']],
+      me: '3층', pyeong: 52 },
+    vac: { rate: 11.2, rateBase: 9.8, rateN: '예시역 상권 중대형 상가', rentPy: 106000 },
+    land: { zone: '일반상업지역', plan: '예시역 둘레 지구단위계획구역', road: '건물 앞 도로를 넓히는 계획은 없어요', redev: '예시1구역 재개발 — 650m, 2025년 정비구역 지정' },
+    future: [['2021→2026', '사는 사람 5년 사이 +3.1%', 'pop'], ['2027년 3월', '예시힐 1,120세대 입주 · 800m', 'subscr', 0.8], ['2028년 9월', '예시파크 3단지 640세대 입주 · 1.6km', 'subscr', 1.6], ['2030년쯤', '예시1구역 재개발 2,300세대(계획) · 650m', 'land', 0.65]],
+    est: { pop: 48210, comp: 4, rate: 6.8 },
+    memos: [['2026-11-21', '보러 감 — 3층 창이 커서 밝아요. 승객용 엘리베이터는 좁아요(휠체어 하나 겨우). 전기가 30킬로와트라 늘려야 한대요(관리사무소).'], ['2026-11-18', '중개사 김예시와 통화 — 무상 기간 2개월까지 된대요. 3개월 다시 물어보기.'], ['2026-11-15', '후보로 저장(이날 자료로 굳힘).'], ['2026-11-12', '네이버 부동산에서 보고 매물 붙여 넣음.']],
+    photos: [['입구', '2026-11-21'], ['3층 복도', '2026-11-21'], ['배전반', '2026-11-21']],
+    checks: [0, 1, 2, 3, 5, 6],
+  },
+  { id: 'B', name: '예시타워 2층', dong: '하늘동', region: '서울특별시 예시구', addr: '서울특별시 예시구 하늘로 45, 예시타워 2층', seoul: true, status: 1, saved: '2026-11-16', listing: 'L2', mapAt: [1, 30, -26],
+    sub: [90, 60, 84, 86, 50],
+    flags: [
+      { t: '새 건물인데 권리금 5,000만 원을 달라고 해요', d: '중개사 말로는 \'바닥 권리금\'이래요. 깎을 수 있는지 협상표에 적어 둬요.', k: 'listing' },
+      { t: '평당 월세가 상권 평균보다 10% 비싸요', d: '이 매물 112,500원 · 상권 평균 102,000원', k: 'rent' },
+      { t: '2028년에 건물 앞 도로 넓히기 공사가 잡혀 있어요', d: '하늘로 4차로 → 6차로. 공사하는 동안 드나들기 힘들 수 있어요.', k: 'land' },
+    ],
+    pop: { n: 56800, hh: 24100, solo: 28, ages: [19, 24, 37, 20], trend: [52100, 52900, 53800, 54700, 55900, 56800],
+      apts: [{ n: '예시센트럴', hh: 2840, y: 2021, d: 0.2, old: 11 }, { n: '예시하늘마을', hh: 1320, y: 2008, d: 0.45, old: 22 }, { n: '예시리버', hh: 980, y: 2003, d: 0.7, old: 28 }, { n: '예시포레', hh: 1960, y: 2023, d: 0.9, old: 9 }, { n: '예시빌리지', hh: 620, y: 1996, d: 1.4, old: 33 }],
+      soon: [{ n: '예시하늘 2차 (가칭)', hh: 1120, when: '2027년 6월', d: 0.6 }] },
+    income: { avg: 4210, base: 4480, baseN: '서울 평균', deal: 98000, dealBase: 87000, dealBaseN: '예시구 평균', dealN: 52 },
+    demand: { joint: 312, jointBase: 287, jointBaseN: '서울 평균', welfare: [{ n: '예시하늘복지관', d: 0.7 }], kyung: 9, gym: 31, acc: 280, ind: '가장 가까운 산업단지 5.1km — 범위 밖', school: [2, 2, 1], sport: 2, live: [61200, 56800] },
+    comps: [
+      { n: '예시■■정형외과', k: '정형외과', d: 0.25, doc: 2, pt: 4, eq: ['충격파', '도수치료'], y: 2019, h: { wk: [9, 19], lunch: 1, sat: [9, 14] }, ht: '평일 9~19시 · 토 9~14시', p: [110000, 80000] },
+      { n: '예시♠♠한의원', k: '한의원', d: 0.3, doc: 1, pt: 0, eq: [], y: 2015, h: { wk: [9.5, 19.5], sat: [9.5, 14] }, ht: '평일 9:30~19:30 · 토 9:30~14시', p: null },
+      { n: '예시▲▲정형외과', k: '정형외과', d: 0.5, doc: 3, pt: 7, eq: ['MRI', '충격파', '도수치료'], y: 2016, h: { wk: [8.5, 18.5], lunch: 1, night: { 화: 20.5, 목: 20.5 }, sat: [8.5, 13.5] }, ht: '평일 8:30~18:30 · 화·목 ~20:30 · 토 8:30~13:30', p: [160000, 110000] },
+      { n: '예시♣♣한의원', k: '한의원', d: 0.6, doc: 1, pt: 0, eq: [], y: 2020, h: { wk: [10, 20], sat: [10, 15] }, ht: '평일 10~20시 · 토 10~15시', p: null },
+      { n: '예시●●마취통증의학과', k: '마취통증의학과', d: 0.7, doc: 1, pt: 2, eq: ['충격파'], y: 2022, h: { wk: [9, 18], lunch: 1, sat: [9, 13] }, ht: '평일 9~18시 · 토 9~13시', p: [90000, 70000] },
+      { n: '예시◆◆재활의학과', k: '재활의학과', d: 0.8, doc: 2, pt: 5, eq: ['충격파', '도수치료'], y: 2021, h: { wk: [9, 18], lunch: 1, sat: [9, 13] }, ht: '평일 9~18시 · 토 9~13시', p: [120000, 90000] },
+      { n: '예시★★정형외과', k: '정형외과', d: 0.95, doc: 1, pt: 3, eq: ['충격파', '도수치료'], y: 2024, h: { wk: [9, 18], lunch: 1, night: { 월: 21, 수: 21 }, sat: [9, 15], sun: [10, 13] }, ht: '평일 9~18시 · 월·수 ~21시 · 토 9~15시 · 일 10~13시', p: [100000, 70000] },
+      { n: '예시♥♥정형외과', k: '정형외과', d: 1.6, doc: 1, pt: 2, eq: ['충격파'], y: 2010, h: { wk: [9, 18], lunch: 1, sat: [9, 13] }, ht: '평일 9~18시 · 토 9~13시', p: [80000, 60000] },
+      { n: '예시♦♦정형외과', k: '정형외과', d: 2.2, doc: 2, pt: 4, eq: ['CT', '충격파', '도수치료'], y: 2018, h: { wk: [9, 18], lunch: 1, sat: [9, 13] }, ht: '평일 9~18시 · 토 9~13시', p: [120000, 80000] },
+    ],
+    events: [{ date: '2026-10-20', kind: 'close', n: '예시▼▼정형외과', d: 0.7 }, { date: '2024-04-15', kind: 'open', n: '예시★★정형외과', d: 0.95 }],
+    traffic: { station: { n: '예시중앙역 5번 출구', d: 0.42, walk: 7, lines: '두 노선 갈아타는 역' }, bus: [6, 17], market: { n: '예시하늘시장', d: 0.9 },
+      pharm: [{ n: '예시하늘약국', d: 0.01, where: '같은 건물 1층' }, { n: '예시별약국', d: 0.3 }], mart: [{ n: '예시대형마트', d: 0.6 }], big: { n: '예시의료원', d: 1.2 }, others: 22 },
+    building: { name: '예시타워', year: 2021, struct: '철골철근콘크리트', scale: '지하 4층 · 지상 12층', area: 18400, elev: '승객용 3대 · 비상용 1대', park: '210대 (법으로 정한 대수 180대)', viol: '없음', use: '제1종·제2종 근린생활시설 · 업무시설',
+      floors: [['4~12층', '업무시설(오피스텔)', 12600, '사무소·집'], ['3층', '제1종 근린생활시설(의원)', 1420, '예시치과의원 · 예시이비인후과의원'], ['2층', '제1종 근린생활시설', 1420, '', '6칸 가운데 3칸 가게 없음'], ['1층', '제1종 근린생활시설(소매점·약국)', 1380, '예시하늘약국 · 예시편의점 · 예시빵집'], ['지하 1~4층', '주차장', 5600, '주차장']],
+      me: '2층', pyeong: 64 },
+    vac: { rate: 8.4, rateBase: 9.8, rateN: '예시중앙역 상권 중대형 상가', rentPy: 102000 },
+    land: { zone: '준주거지역', plan: '하늘로 지구단위계획구역', road: '2028년 하늘로 넓히기 공사 계획(4차로 → 6차로)', redev: '범위 안 재개발 계획 없음' },
+    future: [['2021→2026', '사는 사람 5년 사이 +9.0%', 'pop'], ['2027년 6월', '예시하늘 2차 1,120세대 입주 · 600m', 'subscr', 0.6], ['2028년', '하늘로 넓히기 공사(건물 앞)', 'land', 0]],
+    est: { pop: 56800, comp: 5, rate: 6.5 },
+    memos: [['2026-11-16', '중개사 이예시와 통화 — 권리금은 3,000만 원까지 깎을 수 있대요.'], ['2026-11-16', '후보로 저장.'], ['2026-11-12', '네이버 부동산에서 보고 매물 붙여 넣음.']],
+    photos: [], checks: [],
+  },
+  { id: 'C', name: '예시프라자 4층', dong: '새빛동', region: '경기도 예시시', addr: '경기도 예시시 새빛로 8, 예시프라자 4층', seoul: false, status: 0, saved: '2026-11-14', listing: 'L5', mapAt: null,
+    sub: [62, 78, 46, 60, 84],
+    flags: [
+      { t: '역까지 1.4km예요 — 걸어서 21분', d: '버스 정류장 3곳 · 노선 6개뿐이에요. 어르신은 차나 버스로 와야 해요.', k: 'kakao' },
+      { t: '60대 이상이 11%뿐이에요', d: '새 아파트 동네라 30~40대가 많아요. 정형외과 이용률이 나라 평균보다 낮게 잡혀요.', k: 'pop' },
+    ],
+    pop: { n: 31400, hh: 12800, solo: 22, ages: [26, 33, 30, 11], trend: [24100, 25900, 27800, 29300, 30600, 31400],
+      apts: [{ n: '예시새빛 1단지', hh: 1620, y: 2020, d: 0.3, old: 8 }, { n: '예시새빛 2단지', hh: 1480, y: 2021, d: 0.6, old: 9 }, { n: '예시푸른', hh: 1100, y: 2019, d: 0.9, old: 10 }, { n: '예시새빛 5단지', hh: 2010, y: 2022, d: 1.5, old: 7 }],
+      soon: [{ n: '예시새빛 7단지 (가칭)', hh: 1340, when: '2027년 9월', d: 0.7 }] },
+    income: { avg: 3950, base: 4050, baseN: '경기 평균', deal: 61000, dealBase: 58000, dealBaseN: '예시시 평균', dealN: 44 },
+    demand: { joint: 241, jointBase: 265, jointBaseN: '경기 평균', welfare: [], kyung: 4, gym: 18, acc: 190, ind: '예시일반산업단지 1.8km — 범위 밖', school: [3, 1, 1], sport: 4, live: null },
+    comps: [
+      { n: '예시②②한의원', k: '한의원', d: 0.5, doc: 1, pt: 0, eq: [], y: 2019, h: { wk: [9.5, 19], sat: [9.5, 14] }, ht: '평일 9:30~19시 · 토 9:30~14시', p: null },
+      { n: '예시①①정형외과', k: '정형외과', d: 0.7, doc: 1, pt: 2, eq: ['충격파'], y: 2014, h: { wk: [9, 18], lunch: 1, sat: [9, 13] }, ht: '평일 9~18시 · 토 9~13시', p: [80000, 50000] },
+      { n: '예시③③정형외과', k: '정형외과', d: 1.4, doc: 2, pt: 3, eq: ['충격파', '도수치료'], y: 2016, h: { wk: [9, 18.5], lunch: 1, sat: [9, 13] }, ht: '평일 9~18:30 · 토 9~13시', p: [100000, 70000] },
+      { n: '예시④④마취통증의학과', k: '마취통증의학과', d: 1.9, doc: 1, pt: 1, eq: ['충격파'], y: 2021, h: { wk: [9, 18], lunch: 1, sat: [9, 13] }, ht: '평일 9~18시 · 토 9~13시', p: [90000, 60000] },
+      { n: '예시⑤⑤정형외과', k: '정형외과', d: 2.6, doc: 1, pt: 2, eq: ['충격파'], y: 2023, h: { wk: [9, 19], lunch: 1, sat: [9, 14] }, ht: '평일 9~19시 · 토 9~14시', p: [90000, 60000] },
+    ],
+    events: [{ date: '2025-07-31', kind: 'close', n: '예시⑥⑥의원(내과)', d: 0.8 }, { date: '2023-03-02', kind: 'open', n: '예시⑤⑤정형외과', d: 2.6 }],
+    traffic: { station: { n: '예시새빛역', d: 1.4, walk: 21, lines: '지하철 1개 노선' }, bus: [3, 6], market: null,
+      pharm: [{ n: '예시새빛약국', d: 0.01, where: '같은 건물 1층' }, { n: '예시푸른약국', d: 0.6 }], mart: [{ n: '예시마트 새빛점', d: 0.5 }], big: { n: '예시시립병원', d: 4.8 }, others: 9 },
+    building: { name: '예시프라자', year: 2020, struct: '철근콘크리트', scale: '지하 3층 · 지상 8층', area: 9200, elev: '승객용 2대', park: '96대 (법으로 정한 대수 88대)', viol: '없음', use: '제1종·제2종 근린생활시설',
+      floors: [['5~8층', '제2종 근린생활시설(학원·사무소)', 4400, '예시영어학원 외 6곳'], ['4층', '제1종 근린생활시설', 1100, '', '지은 뒤 들어온 가게 없음'], ['3층', '제1종 근린생활시설(의원)', 1100, '예시소아청소년과의원 · 예시내과의원'], ['2층', '제2종 근린생활시설(학원)', 1100, '예시피아노학원'], ['1층', '제1종 근린생활시설(소매점·약국)', 1050, '예시새빛약국 · 예시편의점'], ['지하 1~3층', '주차장', 3300, '주차장']],
+      me: '4층', pyeong: 45 },
+    vac: { rate: null, rateBase: 13.9, rateN: '예시시 평균(이 상권은 조사 밖)', rentPy: 71000 },
+    land: { zone: '일반상업지역', plan: '새빛지구 택지개발지구', road: '건물 앞 도로를 넓히는 계획은 없어요', redev: '범위 안 재개발 계획 없음' },
+    future: [['2021→2026', '사는 사람 5년 사이 +30.2%(새 도시)', 'pop'], ['2027년 9월', '예시새빛 7단지 1,340세대 입주 · 700m', 'subscr', 0.7]],
+    est: { pop: 31400, comp: 1, rate: 4.1 },
+    memos: [['2026-11-14', '후보로 저장. 값은 싸지만 역에서 멀어요.']],
+    photos: [], checks: [],
+  },
+]
+const DROPPED = [{ name: '예시상가 2층', dong: '나래동', date: '2026-11-10', why: '반경 1km에 정형외과가 이미 5곳' }]
+const STEPS = ['보는 중', '중개사 연락', '보러 감', '계약 검토']
+const MY = { day: 86, pop: 52300, comp: 4, perVisit: 42000 } // 지금 의원(샘플정형외과의원)
+const OUR_PRICE = [100000, 80000] // 지금 의원 도수치료·충격파 값(설정에 직접 적은 값)
+
+/* ───────── 지어낸 자료: 붙여 넣은 매물 ───────── */
+const AREA_AVG = { 가람동: 106000, 하늘동: 102000, 새솔동: 124000, 새빛동: 71000, 다온동: 83000 }
+const LISTINGS = [
+  { id: 'L1', bld: '예시빌딩', floor: '3층', dong: '가람동', py: 52, dep: 10000, rent: 520, mgmt: 78, key: 0, agent: '예시부동산 김예시', tel: '010-0000-0011', cand: 'A', at: '2026-11-12' },
+  { id: 'L2', bld: '예시타워', floor: '2층', dong: '하늘동', py: 64, dep: 15000, rent: 720, mgmt: 96, key: 5000, agent: '예시공인중개사 이예시', tel: '010-0000-0012', cand: 'B', at: '2026-11-12' },
+  { id: 'L3', bld: '예시센터', floor: '5층', dong: '가람동', py: 38, dep: 5000, rent: 330, mgmt: 50, key: 0, agent: '예시부동산 김예시', tel: '010-0000-0011', cand: null, at: '2026-11-13' },
+  { id: 'L4', bld: '예시스퀘어', floor: '2층', dong: '새솔동', py: 71, dep: 20000, rent: 980, mgmt: 120, key: 8000, agent: '예시중개 박예시', tel: '010-0000-0013', cand: null, at: '2026-11-13' },
+  { id: 'L5', bld: '예시프라자', floor: '4층', dong: '새빛동', py: 45, dep: 5000, rent: 290, mgmt: 45, key: 0, agent: '예시새빛부동산 최예시', tel: '010-0000-0014', cand: 'C', at: '2026-11-14' },
+  { id: 'L6', bld: '예시메디컬빌딩', floor: '4층', dong: '다온동', py: 55, dep: 8000, rent: 440, mgmt: 70, key: 2000, agent: '예시중개 박예시', tel: '010-0000-0013', cand: null, at: '2026-11-17' },
+]
+const perPy = l => Math.floor(l.rent * 10000 / l.py)
+const NEGO = [
+  ['무상 기간', '공사하는 동안 월세를 안 내는 기간', [['2개월', '3개월 (공사 8주 + 장비 설치)'], ['1개월', '3개월'], ['3개월', '3개월']]],
+  ['관리비', '평당 얼마인지, 전기·물값이 들어 있는지', [['78만 원 (평당 1.5만)', '그대로 · 전기는 따로'], ['96만 원', '80만 원'], ['45만 원', '']]],
+  ['월세 올리는 비율', '해마다인지 2년마다인지', [['해마다 5%', '2년마다 5%'], ['2년마다 5%', '2년마다 3%'], ['법 한도(5%)', '']]],
+  ['원상 복구', '나갈 때 어디까지 되돌려 놓나', [['전부 (방사선 벽 포함)', '방사선 벽·바닥은 빼기'], ['서로 정하기', '들어올 때 모습까지만'], ['없음 (빈 칸 그대로)', '']]],
+  ['계약 기간', '처음 몇 년, 더 살 권리', [['5년', '5년 + 5년 더'], ['3년', '5년'], ['2년', '5년']]],
+  ['권리금', '바닥 권리금·시설 권리금', [['없음', ''], ['5,000만 원', '3,000만 원'], ['없음', '']]],
+]
+
+/* ───────── 화면 상태 ───────── */
+const clone = o => JSON.parse(JSON.stringify(o))
+const VIEW_OF = { scan: 'scan', candidate: 'candidate', listings: 'listings', compare: 'compare', plan: 'plan', 'plan-filled': 'plan', report: 'report', sources: 'sources', add: 'scan', menu: 'scan', dashboard: 'dashboard', empty: 'empty', 'no-key': 'no-key' }
+const st = {
+  view: VIEW_OF[S], cand: ['A', 'B', 'C'].includes(Q.get('c')) ? Q.get('c') : 'A',
+  w: DEF_W.slice(), dong: 5, allDongs: false,
+  radius: { A: 1000, B: 1000, C: 1000 }, kind: 'all',
+  status: { A: 2, B: 1, C: 0 }, dropped: {},
+  listings: clone(LISTINGS), pyF: 'all',
+  nego: clone(NEGO.map(r => r[2])),
+  cost: {}, open: '2027-05-03', sdone: {}, req: {},
+  checks: Object.fromEntries(CANDS.map(c => [c.id, c.checks.slice()])),
+  memos: Object.fromEntries(CANDS.map(c => [c.id, clone(c.memos)])),
+  photos: Object.fromEntries(CANDS.map(c => [c.id, clone(c.photos)])),
+  drawer: S === 'add' ? { tab: 'addr' } : null, menu: S === 'menu',
+  srcHit: (h => h.startsWith('src-') ? h.slice(4) : h)((location.hash || '').slice(1)),
+}
+if (S === 'plan-filled') st.cost = { dep: '10,000', key: '0', intPy: '250', equip: '32,000', staff: '2,600', rentM: '598', etc: '400', loan: '30,000', rate: '5.2', visit: '42,000', days: '26' }
+const curC = () => CANDS.find(c => c.id === st.cand)
+const candTotal = c => total(c.sub, st.w)
+
+/* ───────── 그리기: 틀 ───────── */
+function tabsHtml() {
+  const TABS = ['대시보드', '통계', '청구', '고시·공지', '환자', '업무일지', '수납일지', '예약']
+  const dash = st.view === 'dashboard'
+  const more = ['AI 리포트', '서식', '직원', '재고', '주소록', '입지 분석', '설정']
+  return `<div class="tabs">${TABS.map(t => `<a href="${t === '대시보드' ? '?s=dashboard' : '#'}" ${dash && t === '대시보드' ? 'aria-current="page"' : ''}>${t}</a>`).join('')}</div>`
+    + `<button class="more ${dash ? '' : 'on'}" data-act="menu" aria-expanded="${st.menu}">${dash ? '더보기' : '더보기 · 입지 분석'}${ICON.chev}</button>`
+    + (st.menu ? `<div class="mpop" role="menu">${more.map(m => `<a href="${m === '입지 분석' ? '?s=scan' : '#'}" role="menuitem" class="${m === '입지 분석' ? 'newi' : ''}" ${m === '입지 분석' && !dash ? 'aria-current="page"' : ''}><span>${m}</span>${m === '입지 분석' ? '<span class="chip neutral">관리자만</span>' : ''}</a>`).join('')}</div>` : '')
+}
+const SUBTABS = [['scan', '동네 훑기'], ['candidate', '후보 자세히'], ['listings', '매물'], ['compare', '후보 견주기'], ['plan', '개원 준비'], ['sources', '근거와 출처']]
+function headHtml() {
+  const live = CANDS.filter(c => !st.dropped[c.id])
+  return `<div class="ltop"><div class="tl"><h1>입지 분석</h1><span class="chip neutral">관리자만 보여요</span><span class="cnt">후보 ${live.length}곳</span></div>
+    <div class="tools"><span class="when">자료는 볼 때 받아요 · 후보는 저장한 날 값으로 굳혀 둬요</span><button class="btn" data-act="add">${ICON.plus}후보 더하기</button></div></div>
+    <nav class="subtabs" aria-label="입지 분석 안 메뉴">${SUBTABS.map(([k, t]) => `<button data-act="view" data-v="${k}" ${st.view === k || (st.view === 'report' && k === 'candidate') ? 'aria-current="page"' : ''}>${t}${k === 'listings' ? `<span class="n">${st.listings.length}</span>` : k === 'compare' ? `<span class="n">${live.length}</span>` : ''}</button>`).join('')}</nav>`
+}
+function candBar() {
+  return `<div class="candbar" role="group" aria-label="후보 고르기"><span class="cbl">후보</span>${CANDS.filter(c => !st.dropped[c.id]).map(c => `<button class="cb" data-act="cand" data-id="${c.id}" aria-pressed="${c.id === st.cand}"><span class="lt">${c.id}</span><span class="nm">${esc(c.name)}</span><span class="mut sm">${esc(c.dong)}</span><span class="sc">${candTotal(c)}점</span></button>`).join('')}</div>`
+}
+
+/* ───────── 그리기: 동네 훑기 ───────── */
+let GEOM = null
+function mapGeom() {
+  if (GEOM) return GEOM
+  const xs = [24, 200, 372, 540, 696], ys = [24, 168, 316, 452]
+  const R = rng(11)
+  const V = ys.map((y, r) => xs.map((x, c) => {
+    const ex = c === 0 || c === 4, ey = r === 0 || r === 3
+    return [x + (R() - .5) * (ex ? 16 : 64), y + (R() - .5) * (ey ? 16 : 52)]
+  }))
+  const cache = {}
+  const mid = (ka, a, kb, b) => {
+    const fwd = ka < kb, key = fwd ? ka + '|' + kb : kb + '|' + ka
+    if (!cache[key]) {
+      const [p, q] = fwd ? [a, b] : [b, a]
+      const R2 = rng(hash(key)), dx = q[0] - p[0], dy = q[1] - p[1], len = Math.hypot(dx, dy), nx = -dy / len, ny = dx / len
+      cache[key] = [0.28, 0.52, 0.76].map(t => { const o = (R2() - .5) * len * 0.14; return [p[0] + dx * t + nx * o, p[1] + dy * t + ny * o] })
+    }
+    return fwd ? cache[key] : cache[key].slice().reverse()
+  }
+  const cells = []
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) {
+    const cs = [[r, c], [r, c + 1], [r + 1, c + 1], [r + 1, c]]
+    let pts = []
+    cs.forEach((v, i) => { const w = cs[(i + 1) % 4]; pts.push(V[v[0]][v[1]]); pts = pts.concat(mid(v.join(','), V[v[0]][v[1]], w.join(','), V[w[0]][w[1]])) })
+    const cx = cs.reduce((a, v) => a + V[v[0]][v[1]][0], 0) / 4, cy = cs.reduce((a, v) => a + V[v[0]][v[1]][1], 0) / 4
+    cells.push({ d: 'M' + pts.map(p => p.map(n => n.toFixed(1)).join(' ')).join('L') + 'Z', cx, cy })
+  }
+  GEOM = cells
+  return cells
+}
+function dongScores() { return DONGS.map((d, i) => ({ i, ...d, sc: total(d.sub, st.w) })) }
+function mapSvg() {
+  const g = mapGeom(), sc = dongScores()
+  const st1 = [g[4], g[5], g[6], g[7]].map((c, i) => [c.cx + (i === 0 ? -40 : 0), c.cy + 34])
+  const st2 = [[g[2].cx + 46, g[2].cy + 34], [g[6].cx + 52, g[6].cy + 34], [g[10].cx + 50, g[10].cy + 34]]
+  const line = p => 'M' + p.map(x => x.map(n => n.toFixed(1)).join(' ')).join('L')
+  const stations = [[st1[1], '예시역'], [st1[2], '예시중앙역'], [st2[0], '새솔역']]
+  return `<svg viewBox="0 0 720 476" role="img" aria-label="예시구 행정동 점수 지도(손으로 그린 그림)">
+    ${g.map((c, i) => { const s = sc[i], b = bin(s.sc), light = b >= 3; return `<g class="dong ${st.dong === i ? 'sel' : ''}" data-act="dong" data-i="${i}" role="button" aria-label="${s.n} ${s.sc}점"><path d="${c.d}" fill="${BIN_FILL[b]}"/><text x="${c.cx.toFixed(1)}" y="${(c.cy - 4).toFixed(1)}" text-anchor="middle" font-size="14" font-weight="600" fill="${light ? '#fff' : '#111827'}">${s.n}</text><text x="${c.cx.toFixed(1)}" y="${(c.cy + 14).toFixed(1)}" text-anchor="middle" font-size="13" font-weight="500" fill="${light ? '#fff' : '#374151'}">${s.sc}점</text></g>` }).join('')}
+    <path d="${line(st1)}" fill="none" stroke="#374151" stroke-width="3" stroke-dasharray="1 0" opacity=".55" pointer-events="none"/>
+    <path d="${line(st2)}" fill="none" stroke="#374151" stroke-width="3" stroke-dasharray="8 5" opacity=".55" pointer-events="none"/>
+    ${stations.map(([p, n]) => `<g pointer-events="none"><circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="5.5" fill="#fff" stroke="#374151" stroke-width="2"/><text x="${(p[0] + 9).toFixed(1)}" y="${(p[1] + 4).toFixed(1)}" font-size="11" font-weight="500" fill="#111827" paint-order="stroke" stroke="#fff" stroke-width="3">${n}</text></g>`).join('')}
+    ${CANDS.filter(c => c.mapAt && !st.dropped[c.id]).map(c => { const cell = g[c.mapAt[0]], x = cell.cx + c.mapAt[1], y = cell.cy + c.mapAt[2]; return `<g pointer-events="none"><path d="M${x} ${y + 14}l-6 -8h12z" fill="#111827"/><circle cx="${x}" cy="${y}" r="11" fill="#111827" stroke="#fff" stroke-width="2"/><text x="${x}" y="${y + 4}" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">${c.id}</text></g>` }).join('')}
+  </svg>`
+}
+const candIn = n => CANDS.filter(c => c.dong === n && !st.dropped[c.id]).map(c => `<span class="chip accent">후보 ${c.id}</span>`).join('')
+function scanLeft() {
+  const sc = dongScores(), mx = maxPts(st.w), sel = sc[st.dong], selPts = pts(sel.sub, st.w)
+  return `<div class="mapbox">${mapSvg()}</div>
+      <div class="legend"><span>점수</span>${BIN_LABEL.map((l, i) => `<span><i style="background:${BIN_FILL[i]}"></i>${l}</span>`).join('')}<span>·</span><span>검은 표시 = 저장한 후보 (후보 C는 경기도 예시시라 이 지도에 없어요)</span><span>·</span><span>실선·점선 = 지하철</span><span>·</span><span>손으로 그린 동 모양이에요(진짜 지도 아님)</span></div>
+      <section class="dsel" aria-label="고른 동">
+        <div class="dsel-h"><h3>${sel.n}</h3><span class="sc">${sel.sc}<small>점</small></span>${candIn(sel.n)}<span class="mut sm">사는 사람 ${nf(sel.pop)}명 ${srcIn('pop')}</span></div>
+        <p>${esc(sel.why)}</p>
+        <div class="ibars">${ITEMS.map((t, i) => `<div class="ibar"><div class="l"><span>${t}</span><b>${selPts[i]}<span class="mut" style="font-weight:500">/${mx[i]}</span></b></div><div class="hb"><i style="width:${sel.sub[i]}%"></i></div></div>`).join('')}</div>
+        <div class="dsel-acts"><button class="btn primary" data-act="add">${ICON.plus}${sel.n}에서 후보 더하기</button><button class="btn" data-act="naver" data-d="${sel.n}">네이버 부동산에서 ${sel.n} 매물 보기${ICON.ext}</button></div>
+        <p class="help">동 점수는 동 전체 값으로 매겨요. 후보를 저장하면 그 자리 둘레(살필 범위)로 다시 매겨요.</p>
+      </section>`
+}
+function scanRank() {
+  const sc = dongScores(), sorted = sc.slice().sort((a, b) => b.sc - a.sc || a.i - b.i)
+  const list = st.allDongs ? sorted : sorted.slice(0, 6)
+  return `<ol class="rank">${list.map((d, k) => `<li><button data-act="dong" data-i="${d.i}" aria-current="${st.dong === d.i}"><span class="no">${k + 1}</span><span class="nm">${d.n}${candIn(d.n)}</span><span class="sc">${d.sc}<small>점</small></span><span class="why">${esc(d.why)}</span><span class="hb"><i style="width:${d.sc}%"></i></span></button></li>`).join('')}</ol>
+      <button class="tbtn" data-act="alldongs">${st.allDongs ? '여섯 곳만 보기' : `모든 동 ${sc.length}곳 보기`}</button>`
+}
+function scanHtml() {
+  const wsum = st.w.reduce((a, b) => a + b, 0)
+  return headHtml() + `
+  <div class="scanbar">
+    <div class="field"><label for="sido">시·도</label><select id="sido" class="inp" data-act="region"><option>서울특별시</option><option>경기도</option><option>인천광역시</option><option>부산광역시</option></select></div>
+    <div class="field"><label for="sgg">시·군·구</label><select id="sgg" class="inp" data-act="region"><option>예시구</option><option>예시2구</option><option>예시3구</option></select></div>
+    <p class="when">행정동 12곳 · 2026년 11월 22일 10:40에 받은 자료로 매겼어요<br><a class="tbtn" href="?s=sources" data-act="view" data-v="sources" style="height:auto;padding:0">점수 매기는 법과 출처 보기</a></p>
+  </div>
+  <div class="scan">
+    <div id="scanL">${scanLeft()}</div>
+    <aside>
+      <div class="sh"><h2>추천 동 순위</h2><span class="aside">점수 높은 차례</span></div>
+      <div id="scanR">${scanRank()}</div>
+      <div class="wts">
+        <div class="sh"><h2>점수 무게</h2><button class="tbtn mut" data-act="wreset" style="height:24px">기본 무게로</button></div>
+        <p class="help" style="margin-top:6px">중요하게 볼 것을 무겁게 해요. 지도 색·순위·후보 점수가 바로 바뀌어요.</p>
+        ${ITEMS.map((t, i) => `<div class="wrow"><label for="w${i}">${t}</label><input type="range" id="w${i}" min="0" max="50" step="5" value="${st.w[i]}" data-act="weight" data-i="${i}"><output class="num" id="wo${i}">${st.w[i]}</output></div>`).join('')}
+        <p class="wsum"><span>무게 합계 <b class="num" id="wsum" style="color:var(--ink)">${wsum}</b> · 합이 100이 아니어도 비율로 계산해요</span></p>
+      </div>
+    </aside>
+  </div>`
+}
+
+/* ───────── 계산: 살필 범위 ───────── */
+const RADII = [300, 500, 700, 1000, 1500, 2000, 3000]
+const rLabel = m => m < 1000 ? `${m}m` : `${m / 1000}km`
+const diffPct = (a, b) => Math.floor(Math.abs(a - b) / b * 100 + 1e-9)
+function calc(c) {
+  const r = st.radius[c.id] / 1000, f = Math.pow(r, 1.6), sc = k => Math.floor(k * f + 1e-9)
+  const n = sc(c.pop.n)
+  const comps = c.comps.filter(x => x.d <= r), rivals = comps.filter(x => x.k !== '한의원')
+  return {
+    r, f, sc, n, hh: sc(c.pop.hh), old: Math.floor(n * c.pop.ages[3] / 100), trend: c.pop.trend.map(sc),
+    apts: c.pop.apts.filter(a => a.d <= r), soon: c.pop.soon.filter(a => a.d <= r),
+    comps, rivals, events: c.events.filter(e => e.d <= r),
+    pharm: c.traffic.pharm.filter(p => p.d <= r), mart: c.traffic.mart.filter(p => p.d <= r),
+    welfare: c.demand.welfare.filter(p => p.d <= r),
+  }
+}
+const DAYS = ['월', '화', '수', '목', '금', '토', '일']
+const SLOTS = [[8, 9, '아침 8~9시'], [9, 13, '오전 9~13시'], [13, 14, '점심 13~14시'], [14, 18, '오후 14~18시'], [18, 19, '저녁 18~19시'], [19, 20, '저녁 19~20시'], [20, 21, '밤 20~21시']]
+function openAt(h, day, s, e) {
+  const weekday = day !== '토' && day !== '일'
+  const rg = day === '토' ? h.sat : day === '일' ? h.sun : (h.wk ? [h.wk[0], (h.night && h.night[day]) || h.wk[1]] : null)
+  if (!rg) return false
+  if (h.lunch && weekday && s === 13) return false
+  return rg[0] <= s + 0.5 && rg[1] >= e - 0.5
+}
+function hoursGrid(list) { return SLOTS.map(([s, e]) => DAYS.map(d => list.filter(x => openAt(x.h, d, s, e)).length)) }
+function gapText(g) {
+  const parts = []
+  const wk = [0, 1, 2, 3, 4]
+  for (const [si, name] of [[0, '아침 8~9시'], [2, '점심 13~14시'], [5, '저녁 19~20시'], [6, '밤 20~21시']]) {
+    const z = wk.filter(d => g[si][d] === 0)
+    if (z.length === 5) parts.push(`평일 ${name}`); else if (z.length) parts.push(`${z.map(d => DAYS[d]).join('·')}요일 ${name}`)
+  }
+  if (g[3][5] === 0) parts.push('토요일 오후')
+  if (g[1][6] === 0) parts.push('일요일')
+  return parts
+}
+
+/* ───────── 그리기: 후보 자세히 ───────── */
+const sec = (id, title, aside, body) => `<section class="csec" id="sec-${id}"><div class="sh"><h3>${title}</h3>${aside ? `<span class="aside">${aside}</span>` : ''}</div><div class="body">${body}</div></section>`
+const stat = (l, v, unit, e, s) => `<div class="stat"><p class="l">${l}</p><p class="v">${v}${unit ? `<small>${unit}</small>` : ''}</p>${e ? `<p class="e">${e}</p>` : ''}${s || ''}</div>`
+const kbox = (l, v, unit, e, s) => `<div class="kbox"><p class="l">${l}</p><p class="v">${v}${unit ? `<small>${unit}</small>` : ''}</p>${e ? `<p class="e">${e}</p>` : ''}${s || ''}</div>`
+const row = (dt, dd, s) => `<div><dt>${dt}</dt><dd>${dd}${s || ''}</dd></div>`
+function cmpText(a, b, bn, more = '많아요', less = '적어요') { const p = diffPct(a, b); return p === 0 ? `${bn}과 같아요` : `${bn}보다 ${p}% ${a > b ? more : less}` }
+
+function miniMap(c, v) {
+  const W = 360, H = 232, cx = 180, cy = 116, R = 88, r = v.r
+  const pos = (name, d) => { const a = (hash(name) % 360) * Math.PI / 180, p = Math.min(d / r, 1.28) * R; return [cx + Math.cos(a) * p, cy + Math.sin(a) * p * .92] }
+  const pins = c.comps.filter(x => x.d <= r * 1.28).map((x, i) => { const [x1, y1] = pos(x.n, x.d === 0.02 ? 0.06 * r : x.d); const rival = x.k !== '한의원'; return `<circle cx="${x1.toFixed(1)}" cy="${y1.toFixed(1)}" r="5" fill="${rival ? '#C2410C' : '#6B7280'}" stroke="#fff" stroke-width="1.5" opacity="${x.d <= r ? 1 : .35}"/>` }).join('')
+  const s = c.traffic.station, [sx, sy] = pos(s.n + 'st', s.d)
+  return `<div class="minimap"><svg viewBox="0 0 ${W} ${H}" aria-hidden="true">
+    <path d="M0 ${cy + 30} L${W} ${cy - 10}" stroke="#fff" stroke-width="10"/><path d="M${cx - 60} 0 L${cx - 20} ${H}" stroke="#fff" stroke-width="8"/><path d="M${cx + 110} 0 L${cx + 70} ${H}" stroke="#fff" stroke-width="6"/>
+    <circle cx="${cx}" cy="${cy}" r="${R}" fill="rgb(37 99 235 / 7%)" stroke="#2563EB" stroke-width="1.5" stroke-dasharray="5 4"/>
+    ${s.d <= r * 1.28 ? `<rect x="${(sx - 6).toFixed(1)}" y="${(sy - 6).toFixed(1)}" width="12" height="12" fill="#111827" opacity="${s.d <= r ? 1 : .4}"/><text x="${(sx + 9).toFixed(1)}" y="${(sy + 4).toFixed(1)}" font-size="11" fill="#111827" paint-order="stroke" stroke="#fff" stroke-width="3">${esc(s.n.split(' ')[0])}</text>` : ''}
+    ${pins}
+    <path d="M${cx} ${cy + 2} l-7 -10 a8 8 0 1 1 14 0z" fill="#2563EB" stroke="#fff" stroke-width="1.5"/><text x="${cx}" y="${cy - 9}" text-anchor="middle" font-size="9" font-weight="600" fill="#fff">${c.id}</text>
+    <text x="${cx + R - 4}" y="${cy - R + 10}" text-anchor="end" font-size="11" fill="#1D4ED8">${rLabel(st.radius[c.id])}</text>
+  </svg><p class="cap">카카오 지도가 여기에 보여요(시안은 그림) · 파란 표시 = 후보 · 주황 점 = 정형외과·통증·재활 · 회색 점 = 한의원 · 검은 네모 = 역 · 흐린 점 = 범위 밖</p></div>`
+}
+
+function candTop(c) {
+  const l = st.listings.find(x => x.id === c.listing)
+  return `${candBar()}
+  <div class="chead"><div class="ct"><div class="ctop"><span class="chip accent">후보 ${c.id}</span><span class="chip neutral">${st.dropped[c.id] ? '내려놓음' : STEPS[st.status[c.id]]}</span></div>
+    <h2>${esc(c.name)}</h2><p class="addr">${esc(c.addr)}${l ? ` · 전용 ${l.py}평 · 보증금 ${man(l.dep)} / 월세 ${man(l.rent)}` : ''}</p>
+    <p class="frz">${ICON.clock}<span>${ymd(c.saved)}에 받은 값으로 굳혀 두었어요(저장한 날)</span><button class="tbtn" data-act="refresh">오늘 값으로 다시 받기</button></p></div>
+    <div class="cacts"><button class="btn" data-act="view" data-v="report">${ICON.print}한 장 보고서</button><button class="btn" data-act="view" data-v="plan">개원 준비</button><button class="btn" data-act="view" data-v="listings">매물 보기</button></div></div>`
+}
+function tocHtml(c, v) {
+  const items = [['flags', '위험 신호', c.flags.length ? `<span class="chip neg">${c.flags.length}</span>` : ''], ['score', '종합 점수', `<span class="num mut">${candTotal(c)}</span>`], ['people', '사는 사람'], ['income', '소득·쓸 힘'], ['demand', '정형외과 수요'], ['comp', '경쟁 의원', `<span class="num mut">${v.rivals.length}</span>`], ['price', '경쟁 의원 진료비'], ['hours', '진료 시간 빈틈'], ['traffic', '교통·둘레 시설'], ['photo', '거리 사진'], ['bld', '건물 서류'], ['vac', '빈 칸 짐작'], ['land', '땅 쓰임·계획'], ['future', '앞으로 바뀔 것']]
+  return items.map(([id, t, x]) => `<a href="#sec-${id}" data-act="toc" data-id="${id}"><span>${t}</span>${x || ''}</a>`).join('')
+}
+function flagsSec(c) {
+  return sec('flags', `위험 신호 <span class="n">${c.flags.length}</span>`, '빨간 깃발은 계약 전에 꼭 풀어야 할 것이에요', c.flags.length
+    ? `<div class="flags" role="list">${c.flags.map(f => `<div class="flag" role="listitem">${ICON.flag}<div><p><b>${esc(f.t)}</b></p><p class="d">${esc(f.d)}</p>${src(f.k)}</div></div>`).join('')}</div>`
+    : `<p class="mut">찾은 위험 신호가 없어요.</p>`)
+}
+function scoreSec(c, v) {
+  const p = pts(c.sub, st.w), mx = maxPts(st.w), ri = RADII.indexOf(st.radius[c.id])
+  return sec('score', '종합 점수', '무게는 동네 훑기에서 정한 무게를 따라요', `<div class="scorebox">
+    <div><div class="bigscore"><b>${candTotal(c)}</b><span>/ 100점</span></div>
+      <div class="irows">${ITEMS.map((t, i) => `<div class="irow"><span class="l">${t}</span><div class="hb"><i style="width:${c.sub[i]}%"></i></div><span class="p"><b>${p[i]}</b> / ${mx[i]}</span></div>`).join('')}</div>
+      <p class="help" style="margin-top:8px">항목마다 0~100으로 바꾼 뒤 무게를 곱해 더해요. 항목 점수는 버린 뒤 더해요. <a class="tbtn" href="?s=sources#src-score" data-act="src" data-k="score" style="height:auto;padding:0;font-size:12px">매기는 법</a></p></div>
+    <div><div class="range"><div class="rh"><label for="rad" class="sm" style="font-weight:600">살필 범위</label><b class="num" id="radv">${rLabel(st.radius[c.id])}</b></div>
+      <input type="range" id="rad" min="0" max="${RADII.length - 1}" step="1" value="${ri}" data-act="radius" aria-valuetext="${rLabel(st.radius[c.id])}">
+      <div class="ticks"><span>300m</span><span>1km</span><span>3km</span></div>
+      <p class="help">범위를 바꾸면 사는 사람·경쟁 의원·둘레 시설·진료 시간 빈틈을 다시 세요. 후보마다 따로 기억해요.</p></div>
+      <div id="mmap">${miniMap(c, v)}</div></div></div>`)
+}
+function restSecs(c, v) {
+  const rl = rLabel(st.radius[c.id])
+  const t0 = v.trend[0], t5 = v.trend[5], tp = pct1((c.pop.trend[5] - c.pop.trend[0]) / c.pop.trend[0] * 100)
+  const tmax = Math.max(...v.trend)
+  const AG = ['0~19세', '20~39세', '40~59세', '60세 이상']
+  const aptRank = v.apts.map(a => ({ ...a, s: a.hh * (1 + a.old / 50) / (0.3 + a.d) })).sort((a, b) => b.s - a.s)
+  const aptWhy = a => [a.d <= 0.5 ? '가까워요' : '', a.old >= 25 ? '어르신이 많아요' : '', a.hh >= 1500 ? '세대가 많아요' : '', a.y <= 2005 ? '오래돼 어르신이 오래 살아요' : ''].filter(Boolean).slice(0, 2).join(' · ') || '범위 안 단지'
+  const aptSum = v.apts.reduce((a, b) => a + b.hh, 0)
+  const kinds = ['정형외과', '마취통증의학과', '재활의학과', '한의원']
+  const kc = k => v.comps.filter(x => x.k === k).length
+  const shown = st.kind === 'all' ? v.comps : v.comps.filter(x => x.k === st.kind)
+  const per = v.rivals.length ? Math.floor(v.n / v.rivals.length) : null
+  const opened = v.events.filter(e => e.kind === 'open').length, closed = v.events.filter(e => e.kind === 'close').length
+  const g = hoursGrid(v.rivals), gaps = gapText(g)
+  const priced = v.comps.filter(x => x.p)
+  const strip = (i, label) => {
+    const ps = priced.map(x => x.p[i]); if (!ps.length) return `<p class="mut">범위 안에 값을 올린 의원이 없어요.</p>`
+    const avg = Math.floor(ps.reduce((a, b) => a + b, 0) / ps.length), lo = Math.min(...ps), hi = Math.max(...ps), our = OUR_PRICE[i]
+    const X = p => ((p - 40000) / 130000 * 100).toFixed(2)
+    return `<div><p style="font-weight:600">${label} <span class="mut sm" style="font-weight:400">1회 · 범위 안 ${ps.length}곳</span></p>
+      <div class="strip" aria-hidden="true"><span class="ax"></span>${ps.map(p => `<span class="dt" style="left:${X(p)}%"></span>`).join('')}<span class="avg" style="left:${X(avg)}%"></span><span class="me" style="left:${X(our)}%"></span>${[50000, 100000, 150000].map(t => `<span class="tk" style="left:${X(t)}%">${nf(t / 10000)}만</span>`).join('')}</div>
+      <p class="sm">가장 싼 곳 <b class="num">${won(lo)}</b> · 평균 <b class="num">${won(avg)}</b> · 가장 비싼 곳 <b class="num">${won(hi)}</b> · 지금 의원 <b class="num">${won(our)}</b> (${our === avg ? '평균과 같아요' : `평균보다 ${diffPct(our, avg)}% ${our > avg ? '비싸요' : '싸요'}`})</p></div>`
+  }
+  const bl = c.building
+  const py = m2 => Math.floor(m2 / 3.3058 + 1e-9)
+  const empt = bl.floors.filter(f => !f[3] && f[1] !== '주차장')
+  const fl = c.demand
+  return [
+    sec('people', '사는 사람', `범위 ${rl} 안`, `
+      <div class="stats">${stat('사는 사람', nf(v.n), '명', '', src('pop'))}${stat('세대 수', nf(v.hh), '세대', `1인 세대 ${c.pop.solo}%`, src('pop'))}${stat('60대 이상', nf(v.old), '명', `사는 사람의 ${c.pop.ages[3]}%`, src('pop'))}${stat('아파트', nf(aptSum), '세대', `${v.apts.length}개 단지`, src('apt'))}</div>
+      <div class="two"><div><p class="sm" style="font-weight:600;margin-bottom:8px">나이대</p><div class="ages">${c.pop.ages.map((a, i) => `<div class="age"><span class="sm">${AG[i]}</span><div class="hb ${i === 3 ? '' : 'soft'}"><i style="width:${a * 2}%"></i></div><span class="r">${a}% · ${nf(Math.floor(v.n * a / 100))}명</span></div>`).join('')}</div>${src('pop')}</div>
+        <div><p class="sm" style="font-weight:600">5년 추세 <span class="${tp >= 0 ? 'up' : 'down'}">${tp >= 0 ? '▲' : '▼'} ${tp >= 0 ? '+' : '−'}${Math.abs(tp)}%</span> <span class="mut" style="font-weight:400">(해마다 10월)</span></p>
+          <div class="cols" aria-hidden="true">${v.trend.map(t => `<div><span>${t >= 10000 ? `${Math.floor(t / 1000) / 10}만` : nf(t)}</span><i style="height:${(40 + (t - t0 * .9) / (tmax - t0 * .9) * 50).toFixed(1)}px"></i></div>`).join('')}</div>
+          <div class="colsx">${[2021, 2022, 2023, 2024, 2025, 2026].map(y => `<span>${y}</span>`).join('')}</div>${src('pop')}</div></div>
+      <div><p class="sm" style="font-weight:600">홍보할 아파트 차례 <span class="mut" style="font-weight:400">가까움 · 세대 수 · 어르신 비율로 정해요</span></p>
+        ${v.apts.length ? `<div class="tw"><table class="t"><thead><tr><th>차례</th><th>단지</th><th class="r">세대</th><th class="r">지은 해</th><th class="r">거리</th><th class="r">60대 이상</th><th>까닭</th></tr></thead><tbody>${aptRank.map((a, i) => `<tr><td class="num">${i + 1}</td><td><b>${esc(a.n)}</b></td><td class="r">${nf(a.hh)}</td><td class="r">${a.y}년</td><td class="r">${dist(a.d)}</td><td class="r">${a.old}%</td><td>${aptWhy(a)}</td></tr>`).join('')}</tbody></table></div>` : `<p class="mut sm">범위 안에 아파트 단지가 없어요.</p>`}
+        ${src('apt')}</div>
+      <div><p class="sm" style="font-weight:600">입주 예정</p>${v.soon.length ? `<dl class="info">${v.soon.map(a => row(a.when, `${esc(a.n)} · <b class="num">${nf(a.hh)}세대</b> <span class="x">· ${dist(a.d)}</span>`)).join('')}</dl>` : `<p class="mut sm">범위 안에 입주 예정 단지가 없어요.</p>`}${src('subscr')}</div>`),
+    sec('income', '소득·쓸 힘', '', `<dl class="info">
+      ${row('평균 소득(한 해)', `<b class="num">${man(c.income.avg)}</b> <span class="x">· ${cmpText(c.income.avg, c.income.base, c.income.baseN)}</span>`, `${src('income')}<p class="help" style="margin-top:2px">소득은 동 단위 자료가 없어 ${esc(c.region)} 전체 값이에요.</p>`)}
+      ${row('아파트 거래가(84㎡)', `<b class="num">${man(c.income.deal)}</b> <span class="x">· ${cmpText(c.income.deal, c.income.dealBase, c.income.dealBaseN, '높아요', '낮아요')} · 최근 6개월 ${c.income.dealN}건</span>`, src('deal'))}</dl>`),
+    sec('demand', '정형외과 수요', `범위 ${rl} 안 (뼈·관절 환자는 시·군·구 값)`, `<div class="kgrid">
+      ${kbox('뼈·관절 환자', `1,000명당 ${nf(fl.joint)}`, '명', cmpText(fl.joint, fl.jointBase, fl.jointBaseN), src('dis', '시·군·구'))}
+      ${kbox('60대 이상', nf(v.old), '명', `사는 사람의 ${c.pop.ages[3]}%`, src('pop'))}
+      ${kbox('노인복지관·경로당', `${v.welfare.length}곳 · ${v.sc(fl.kyung)}곳`, '', v.welfare[0] ? `가장 가까운 복지관 ${esc(v.welfare[0].n)} ${dist(v.welfare[0].d)}` : '범위 안에 복지관이 없어요', src('kakao'))}
+      ${kbox('헬스장·필라테스', nf(v.sc(fl.gym)), '곳', '운동하다 다친 사람이 와요', src('store'))}
+      ${kbox('교통사고', nf(v.sc(fl.acc)), '건', '2025년 한 해 · 교통사고 환자도 정형외과에 와요', src('acc'))}
+      ${kbox('산업단지', '<span style="font-size:15px">' + esc(fl.ind) + '</span>', '', '일하다 다친 사람(산재)이 와요', src('land'))}
+      ${kbox('학교', `초 ${v.sc(fl.school[0])} · 중 ${v.sc(fl.school[1])} · 고 ${v.sc(fl.school[2])}`, '', '운동하다 다친 학생이 와요', src('kakao'))}
+      ${kbox('체육 시설', nf(v.sc(fl.sport)), '곳', '운동장·수영장·체육관', src('kakao'))}
+      ${fl.live ? kbox('낮 인구(평일 오후 2시)', nf(v.sc(fl.live[0])), '명', `밤보다 ${nf(v.sc(fl.live[0]) - v.sc(fl.live[1]))}명 많아요(직장인·학생)`, src('live')) : kbox('낮 인구', '<span class="nodata" style="font-size:15px;font-weight:500">이 지역은 자료 없음</span>', '', '서울시 생활인구는 서울만 있어요', src('live'))}</div>`),
+    sec('comp', `경쟁 의원 <span class="n">${v.rivals.length}</span>`, `범위 ${rl} 안 · 한의원은 따로 세요`, `
+      <p>정형외과 <b>${kc('정형외과')}</b> · 마취통증의학과 <b>${kc('마취통증의학과')}</b> · 재활의학과 <b>${kc('재활의학과')}</b> · 한의원 <b>${kc('한의원')}</b>${per ? ` → 정형외과·통증·재활 1곳당 사는 사람 <b class="num">${nf(per)}명</b>` : ' → 범위 안에 정형외과·통증·재활 의원이 없어요'}</p>
+      <div class="opts" role="group" aria-label="과목 거르기">${[['all', '전체', v.comps.length], ...kinds.map(k => [k, k, kc(k)])].map(([k, t, n]) => `<button class="ob" data-act="kind" data-k="${k}" aria-pressed="${st.kind === k}">${t}<span class="n">${n}</span></button>`).join('')}</div>
+      ${shown.length ? `<div class="tw"><table class="t"><thead><tr><th>의원</th><th>과목</th><th class="r">거리</th><th class="r">의사</th><th class="r">물리치료사</th><th>장비</th><th class="r">문 연 해</th><th>진료 시간</th></tr></thead><tbody>${shown.map(x => `<tr><td><b>${esc(x.n)}</b>${x.where ? `<span class="s2">${esc(x.where)}</span>` : ''}</td><td class="nw">${x.k}</td><td class="r">${x.where ? '같은 건물' : dist(x.d)}</td><td class="r">${x.doc}명</td><td class="r">${x.pt ? x.pt + '명' : '–'}</td><td><span class="eqs">${x.eq.length ? x.eq.map(e => `<span class="chip neutral">${e}</span>`).join('') : '<span class="mut">–</span>'}</span></td><td class="r">${x.y}년${x.isNew ? `<span class="s2"><span class="chip warn">새로 엶 ${md(x.isNew)}</span></span>` : ''}</td><td class="sm">${esc(x.ht)}</td></tr>`).join('')}</tbody></table></div>` : `<p class="mut">이 과목 의원이 범위 안에 없어요.</p>`}
+      ${src('hira')}
+      <div><p class="sm" style="font-weight:600">3년 사이 문 열고 닫은 곳 <span class="mut" style="font-weight:400">문 엶 ${opened} · 문 닫음 ${closed}</span></p>
+        ${v.events.length ? `<div class="tw"><table class="t"><thead><tr><th>날짜</th><th>무엇</th><th>의원</th><th class="r">거리</th></tr></thead><tbody>${v.events.map(e => `<tr><td class="num nw">${ymd(e.date)}</td><td>${e.kind === 'open' ? '<span class="chip warn">문 엶</span>' : '<span class="chip neutral">문 닫음</span>'}</td><td><b>${esc(e.n)}</b></td><td class="r">${e.where ? esc(e.where) : dist(e.d)}</td></tr>`).join('')}</tbody></table></div>` : `<p class="mut sm">범위 안에서 3년 사이 문 열거나 닫은 의원이 없어요.</p>`}
+        ${src('permit')}</div>`),
+    sec('price', '경쟁 의원 진료비', '건강보험이 안 되는 진료(비급여) · 의원마다 올린 값', `
+      <p class="pkey"><span><i class="k1"></i>둘레 의원</span><span><i class="k2"></i>평균</span><span><i class="k3"></i>지금 의원 값(설정에 적은 값)</span></p>
+      ${strip(0, '도수치료')}${strip(1, '체외충격파')}
+      ${src('price')}<p class="help">의원마다 1회 기준(시간·부위)이 다를 수 있어요.</p>`),
+    sec('hours', '진료 시간 빈틈', `범위 ${rl} 안 정형외과·통증·재활 ${v.rivals.length}곳 · 칸 숫자 = 문 연 의원 수`, `
+      ${gaps.length ? `<p class="gapline"><b>${gaps.join(' · ')}</b>에 문 연 의원이 없어요. 이 시간에 문을 열면 환자를 모을 수 있어요.</p>` : `<p class="gapline">빈 시간이 없어요. 모든 시간에 문 연 의원이 있어요.</p>`}
+      <div class="tw"><table class="hours"><thead><tr><th class="rl">시간</th>${DAYS.map(d => `<th>${d}</th>`).join('')}</tr></thead><tbody>${SLOTS.map((s, i) => `<tr><th class="rl">${s[2]}</th>${g[i].map(n => n === 0 ? `<td class="z">빈틈</td>` : `<td>${n}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+      ${src('hira')}<p class="help">공휴일 진료는 의원마다 그때그때 달라 세지 않아요.</p>`),
+    sec('traffic', '교통·둘레 시설', `범위 ${rl} 안`, `<dl class="info">
+      ${row('지하철역', `<b>${esc(c.traffic.station.n)}</b> · ${dist(c.traffic.station.d)} · 걸어서 ${c.traffic.station.walk}분 <span class="x">· ${esc(c.traffic.station.lines)}</span>`, src('kakao'))}
+      ${row('버스 정류장', `걸어서 5분 안 <b class="num">${c.traffic.bus[0]}곳</b> · 노선 ${c.traffic.bus[1]}개`, src('kakao'))}
+      ${row('시장', c.traffic.market && c.traffic.market.d <= v.r ? `${esc(c.traffic.market.n)} · ${dist(c.traffic.market.d)}` : '<span class="mut">범위 안에 시장이 없어요</span>', src('kakao'))}
+      ${row('약국', v.pharm.length ? `<b class="num">${v.pharm.length}곳</b> · 가장 가까운 곳 ${esc(v.pharm[0].n)}${v.pharm[0].where ? ` (${esc(v.pharm[0].where)})` : ` ${dist(v.pharm[0].d)}`}` : '<span class="mut">범위 안에 약국이 없어요</span>', src('kakao'))}
+      ${row('마트', v.mart.length ? `<b class="num">${v.mart.length}곳</b> · 가장 가까운 곳 ${esc(v.mart[0].n)} ${dist(v.mart[0].d)}` : '<span class="mut">범위 안에 마트가 없어요</span>', src('kakao'))}
+      ${row('큰 병원', `${esc(c.traffic.big.n)} · ${dist(c.traffic.big.d)} <span class="x">· 범위와 상관없이 가장 가까운 곳(수술 보낼 곳)</span>`, src('kakao'))}
+      ${row('다른 과 의원', `<b class="num">${v.sc(c.traffic.others)}곳</b> <span class="x">· 내과·소아과 등 — 사람이 모이는 의원 거리예요</span>`, src('hira'))}</dl>`),
+    sec('photo', '거리 사진', '가지 않고 둘레를 봐요', `<div class="two">
+      <div class="phbox"><b>카카오 로드뷰가 여기에 보여요</b><small>마우스로 끌어 둘레를 돌려 봐요 · 찍은 때가 함께 보여요</small></div>
+      <div class="phbox"><b>하늘에서 본 사진이 여기에 보여요</b><small>건물 모양·주차장 들어가는 길·둘레 건물</small></div></div>
+      ${src('kakao')}
+      <div class="field"><span class="lb">길에서 간판 자리가 보이나요? <span class="req">로드뷰나 보러 가서 직접 골라요</span></span><div class="opts" role="group" aria-label="간판 보임">${['보여요', '가려요', '모르겠어요'].map(o => `<button class="ob" data-act="sign" data-v="${o}" aria-pressed="${(st.sign?.[c.id] || (c.id === 'A' ? '보여요' : '모르겠어요')) === o}">${o}</button>`).join('')}</div></div>`),
+    sec('bld', '건물 서류', `${esc(bl.name)} 건축물대장`, `<div class="two">
+      <dl class="info">
+        ${row('지은 해', `${bl.year}년 <span class="x">· ${2026 - bl.year}년 됐어요</span>`)}
+        ${row('구조 · 층수', `${esc(bl.struct)} · ${esc(bl.scale)}`)}
+        ${row('연면적', `${nf(bl.area)}㎡ <span class="x">(${nf(py(bl.area))}평)</span>`)}
+        ${row('엘리베이터', esc(bl.elev))}
+        ${row('주차', esc(bl.park))}
+        ${row('위반 건축물', bl.viol === '없음' ? '없음' : `<b style="color:var(--negative)">${esc(bl.viol)}</b>`)}
+        ${row('용도', esc(bl.use))}</dl>
+      <div><div class="tw"><table class="t"><thead><tr><th>층</th><th>용도</th><th class="r">넓이</th></tr></thead><tbody>${bl.floors.map(f => `<tr class="${f[0] === bl.me ? 'me' : ''}"><td class="nw"><b>${f[0]}</b>${f[0] === bl.me ? ' <span class="chip accent">이 자리</span>' : ''}</td><td>${esc(f[1])}</td><td class="r">${nf(f[2])}㎡<span class="s2">${nf(py(f[2]))}평</span></td></tr>`).join('')}</tbody></table></div><p class="help" style="margin-top:6px">이 자리는 ${bl.me} 가운데 전용 ${bl.pyeong}평이에요(매물에 적은 값).</p></div></div>
+      ${src('bld')}`),
+    sec('vac', '빈 칸 짐작', '층마다 가게를 보고 빈 층을 짐작해요', `
+      <div class="two"><div><div class="tw"><table class="t"><thead><tr><th>층</th><th>지금 가게</th><th>짐작</th></tr></thead><tbody>${bl.floors.filter(f => f[1] !== '주차장').map(f => `<tr class="${f[0] === bl.me ? 'me' : ''}"><td class="nw"><b>${f[0]}</b></td><td>${f[3] ? esc(f[3]) : '<span class="mut">가게 없음</span>'}${f[4] ? `<span class="s2">${esc(f[4])}</span>` : ''}</td><td class="nw">${f[3] ? '<span class="mut">쓰는 중</span>' : '<span class="chip warn">빈 층 같아요</span>'}${f[0] === bl.me ? ' <span class="chip accent">이 자리</span>' : ''}</td></tr>`).join('')}</tbody></table></div>
+        <p class="sm" style="margin-top:8px">${bl.floors.filter(f => f[1] !== '주차장').length}개 층 가운데 <b>${empt.length}개 층</b>이 빈 것 같아요.</p>${src('store')}</div>
+      <div class="stats c3" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+        ${c.vac.rate != null ? stat('상권 공실률', c.vac.rate, '%', `${esc(c.vac.rateN)} · 서울 평균 ${c.vac.rateBase}%`, src('rent')) : stat('상권 공실률', '<span class="nodata" style="font-size:15px;font-weight:500">이 상권은 자료 없음</span>', '', `${esc(c.vac.rateN)} ${c.vac.rateBase}%`, src('rent'))}
+        ${stat('임대료 시세', nf(c.vac.rentPy), '원', '평당 한 달 · 상권 평균', src('rent'))}</div></div>
+      <p class="note">${ICON.info}<span>가게 정보에 없는 층은 빈 층일 수도 있고, 가게 정보가 늦게 고쳐졌을 수도 있어요. 로드뷰와 함께 보고, 보러 가서 확인해요.</span></p>`),
+    sec('land', '땅 쓰임·계획', '', `<dl class="info">
+      ${row('용도지역', esc(c.land.zone))}${row('지구단위계획', esc(c.land.plan))}${row('도로 계획', esc(c.land.road))}${row('재개발', esc(c.land.redev))}</dl>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px"><button class="btn sm" data-act="ext" data-v="토지이음">토지이음에서 이 땅 보기${ICON.ext}</button>${src('land')}</div>`),
+    sec('future', '앞으로 바뀔 것', `범위 ${rl} 안`, `<ul class="tline">${c.future.filter(f => f[3] == null || f[3] <= v.r).map(f => `<li><span class="w">${esc(f[0])}</span><div>${esc(f[1])}${src(f[2])}</div></li>`).join('')}
+      ${c.demand.live ? `<li><span class="w">평일 낮</span><div>직장인·학생 등 낮에 ${nf(v.sc(c.demand.live[0]) - v.sc(c.demand.live[1]))}명이 더 와요${src('live')}</div></li>` : ''}</ul>`),
+  ].join('')
+}
+function candidateHtml() {
+  const c = curC(), v = calc(c)
+  return headHtml() + candTop(c) + `<div class="cgrid"><nav class="toc" id="toc" aria-label="묶음 목차">${tocHtml(c, v)}</nav>
+    <div class="cmain">${flagsSec(c)}<div id="scoreS">${scoreSec(c, v)}</div><div id="restS" style="display:grid;gap:40px">${restSecs(c, v)}</div></div></div>`
+}
+
+/* ───────── 그리기: 매물 ───────── */
+const PYF = [['all', '전체', () => true], ['u30', '30평 아래', p => p < 30], ['30', '30~50평', p => p >= 30 && p < 50], ['50', '50~70평', p => p >= 50 && p < 70], ['70', '70평 넘게', p => p >= 70]]
+function listingsHtml() {
+  const f = PYF.find(x => x[0] === st.pyF)[2]
+  const shown = st.listings.filter(l => f(l.py))
+  const live = CANDS.filter(c => !st.dropped[c.id])
+  const vs = l => { const a = AREA_AVG[l.dong]; if (!a) return '<span class="mut">상권 평균 없음</span>'; const p = perPy(l), d = diffPct(p, a); return d === 0 ? '평균과 같아요' : `<span class="${p > a ? 'hi-t' : 'lo-t'}">${p > a ? '▲' : '▼'} 평균보다 ${d}% ${p > a ? '비싸요' : '싸요'}</span>` }
+  const X = p => ((p - 50000) / 100000 * 100).toFixed(2)
+  return headHtml() + `<div class="lgrid">
+  <section><div class="sh"><h2>매물 찾기</h2><span class="aside">부동산 사이트에서 보고 마음에 드는 것만 붙여 넣어요</span></div>
+    <div class="findn"><div class="field"><label for="ndong">어느 동 매물을 볼까요</label><select id="ndong" class="inp">${['가람동', '하늘동', '새솔동', '다온동', '라온동', '마루1동'].map(d => `<option>${d}</option>`).join('')}</select></div>
+      <button class="btn lg" data-act="naver">네이버 부동산에서 보기${ICON.ext}</button><span class="help" style="align-self:center">새 창에서 그 동 상가 매물 지도가 열려요</span></div>
+    <p class="whybox">부동산 사이트의 매물을 이 앱이 저절로 가져오는 것은 사이트 약관과 법으로 막혀 있어요. 그래서 새 창에서 보고, 마음에 드는 매물의 주소(링크)와 숫자만 아래에 붙여 넣어요.</p></section>
+
+  <section><div class="sh"><h2>매물 붙여 넣기</h2><span class="aside">링크를 붙이고 숫자는 보고 적어요 · 금액은 만 원</span></div>
+    <form class="pform" id="pform" onsubmit="return false">
+      <div class="field w2"><label for="p-link">매물 링크</label><input id="p-link" name="link" class="inp" placeholder="네이버 부동산 매물 화면 주소를 붙여 넣어요"></div>
+      <div class="field"><label for="p-bld">건물 이름 <span class="req">필수</span></label><input id="p-bld" name="bld" class="inp" placeholder="예: 예시빌딩"><p class="ferr" data-err="bld" hidden></p></div>
+      <div class="field"><label for="p-floor">층</label><input id="p-floor" name="floor" class="inp" placeholder="예: 3층"></div>
+      <div class="field"><label for="p-dong">동</label><input id="p-dong" name="dong" class="inp" placeholder="예: 가람동"></div>
+      <div class="field"><label for="p-py">전용 평수 <span class="req">필수</span></label><div class="suf"><input id="p-py" name="py" class="inp" inputmode="decimal" placeholder="52"><span>평</span></div><p class="ferr" data-err="py" hidden></p></div>
+      <div class="field"><label for="p-dep">보증금</label><div class="suf"><input id="p-dep" name="dep" class="inp" inputmode="numeric" placeholder="10,000"><span>만 원</span></div></div>
+      <div class="field"><label for="p-rent">월세 <span class="req">필수</span></label><div class="suf"><input id="p-rent" name="rent" class="inp" inputmode="numeric" placeholder="520"><span>만 원</span></div><p class="ferr" data-err="rent" hidden></p></div>
+      <div class="field"><label for="p-key">권리금</label><div class="suf"><input id="p-key" name="key" class="inp" inputmode="numeric" placeholder="없으면 0"><span>만 원</span></div></div>
+      <div class="field"><label for="p-mgmt">관리비(한 달)</label><div class="suf"><input id="p-mgmt" name="mgmt" class="inp" inputmode="numeric" placeholder="78"><span>만 원</span></div></div>
+      <div class="field"><label for="p-agent">중개사 이름</label><input id="p-agent" name="agent" class="inp" placeholder="예: 예시부동산 김예시"></div>
+      <div class="field"><label for="p-tel">중개사 전화</label><input id="p-tel" name="tel" class="inp" inputmode="tel" placeholder="010-0000-0000"></div>
+      <div class="pfoot"><label class="ck"><input type="checkbox" id="p-book" checked>중개사를 주소록(기타)에도 넣어요</label><button class="btn primary" data-act="psave">매물 저장</button></div>
+    </form></section>
+
+  <section><div class="sh"><h2>저장한 매물 <span class="n">${st.listings.length}</span></h2><span class="aside">평당 월세 = 월세 ÷ 전용 평수</span></div>
+    <div class="opts" role="group" aria-label="평수로 거르기" style="margin-top:12px">${PYF.map(([k, t, fn]) => `<button class="ob" data-act="pyf" data-k="${k}" aria-pressed="${st.pyF === k}">${t}<span class="n">${st.listings.filter(l => fn(l.py)).length}</span></button>`).join('')}</div>
+    ${shown.length ? `<div class="tw" style="margin-top:8px"><table class="t"><thead><tr><th>매물</th><th class="r">전용 평수</th><th class="r">보증금</th><th class="r">월세</th><th class="r">관리비</th><th class="r">권리금</th><th class="r">평당 월세</th><th>상권 평균과</th><th>중개사</th><th>후보</th></tr></thead><tbody>
+      ${shown.map(l => `<tr><td><b>${esc(l.bld)} ${esc(l.floor)}</b> <button class="tbtn" data-act="ext" data-v="매물 화면" style="height:20px;vertical-align:-4px" aria-label="매물 화면 열기">${ICON.ext}</button><span class="s2">${esc(l.dong || '동 모름')} · ${md(l.at)} 적음</span></td><td class="r">${l.py}평</td><td class="r">${man(l.dep)}</td><td class="r">${man(l.rent)}</td><td class="r">${man(l.mgmt)}</td><td class="r">${man(l.key)}</td><td class="r"><b>${won(perPy(l))}</b></td><td class="nw">${vs(l)}</td><td>${esc(l.agent || '–')}<span class="s2 num">${esc(l.tel || '')}</span></td><td class="nw">${l.cand ? `<span class="chip accent">후보 ${l.cand}</span>` : `<button class="btn sm" data-act="tocand" data-id="${l.id}">후보로 저장</button>`}</td></tr>`).join('')}</tbody></table></div>` : `<p class="mut" style="padding:12px 0">이 평수 매물이 없어요.</p>`}
+    ${src('listing')}</section>
+
+  <section><div class="sh"><h2>매물 값 견주기</h2><span class="aside">평당 월세(점)와 그 상권 평균(세로 선)</span></div>
+    <div style="margin-top:12px;display:grid;gap:0">${shown.filter(l => AREA_AVG[l.dong]).map(l => { const p = perPy(l), a = AREA_AVG[l.dong]; return `<div style="display:grid;grid-template-columns:200px minmax(0,1fr) 220px;align-items:center;gap:16px;padding:8px 0;border-bottom:1px solid var(--line)"><span class="sm"><b>${esc(l.bld)} ${esc(l.floor)}</b> <span class="mut">${esc(l.dong)}</span></span><div class="cmpbar" aria-hidden="true"><span class="ax"></span><span class="avg" style="left:${X(a)}%"></span><span class="dt ${p > a ? 'hi' : ''}" style="left:${X(p)}%"></span></div><span class="sm num">${won(p)} / 평균 ${won(a)}</span></div>` }).join('')}
+      <div style="display:grid;grid-template-columns:200px minmax(0,1fr) 220px;gap:16px"><span></span><div class="ticks" style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)" aria-hidden="true"><span>5만</span><span>7.5만</span><span>10만</span><span>12.5만</span><span>15만</span></div><span></span></div></div>
+    ${src('rent')}</section>
+
+  <section><div class="sh"><h2>임대 조건 협상표</h2><span class="aside">중개사가 말한 것(제안)과 우리가 바라는 것(바람)을 후보끼리 나란히 적어요</span></div>
+    <div class="tw" style="margin-top:8px"><table class="t neg"><thead><tr><th style="width:200px">조건</th>${live.map(c => `<th><span class="chip accent">후보 ${c.id}</span> ${esc(c.name)}</th>`).join('')}</tr></thead><tbody>
+      ${NEGO.map((r, i) => `<tr><td><b>${r[0]}</b><span class="s2" style="font-size:12px;color:var(--muted)">${r[1]}</span></td>${live.map(c => { const ci = CANDS.indexOf(c), v = st.nego[i][ci]; return `<td><div class="nc"><label>제안<input class="inp sm" data-act="nego" data-i="${i}" data-c="${ci}" data-k="0" value="${esc(v[0])}"></label><label>바람<input class="inp sm" data-act="nego" data-i="${i}" data-c="${ci}" data-k="1" value="${esc(v[1])}" placeholder="바라는 것"></label></div></td>` }).join('')}</tr>`).join('')}</tbody></table></div>
+    <p class="help" style="margin-top:6px">적은 것은 개원 준비의 '계약 전 위험 · 임대 조건 메모'와 한 장 보고서에도 나와요. 월세 올리는 비율·계약 기간은 법에 한도가 있어요(근거와 출처 › 법 근거).</p></section>
+  </div>`
+}
+
+/* ───────── 그리기: 후보 견주기 ───────── */
+function estimate(c) {
+  const e = c.est
+  const r1 = MY.day * (e.pop / MY.pop) * ((MY.comp + 1) / (e.comp + 1))
+  const r2 = e.pop * e.rate / 1000 / (e.comp + 1)
+  const a = Math.floor(r1 + 1e-9), b = Math.floor(r2 + 1e-9)
+  const diff = Math.floor(Math.abs(a - b) / Math.min(a, b) * 100 + 1e-9)
+  return { a, b, diff, warn: diff >= 30 }
+}
+function compareHtml() {
+  const live = CANDS.filter(c => !st.dropped[c.id]), mx = maxPts(st.w)
+  const P = live.map(c => pts(c.sub, st.w)), T = live.map(c => candTotal(c))
+  const best = i => Math.max(...P.map(p => p[i])), bestT = Math.max(...T)
+  const L = c => st.listings.find(x => x.id === c.listing)
+  const V = live.map(c => calc(c))
+  const numRow = (t, f, note) => `<tr><td>${t}${note ? `<span class="s2">${note}</span>` : ''}</td><td></td>${live.map((c, k) => `<td>${f(c, V[k], L(c))}</td>`).join('')}</tr>`
+  return headHtml() + `<div class="lgrid">
+  <section><div class="sh"><h2>후보 점수표</h2><span class="aside">무게 ${ITEMS.map((t, i) => `${t} ${st.w[i]}`).join(' · ')} · <button class="tbtn" data-act="view" data-v="scan" style="height:auto;padding:0">무게 바꾸기</button></span></div>
+    <div class="tw"><table class="t cmp"><thead><tr><th style="width:200px">항목</th><th class="r" style="width:64px">무게</th>${live.map(c => `<th class="cand"><div class="ch"><span class="t1"><span class="chip accent">후보 ${c.id}</span>${esc(c.name)}</span><span class="sm mut" style="font-weight:400">${esc(c.dong)} · ${STEPS[st.status[c.id]]}</span></div></th>`).join('')}</tr></thead><tbody>
+      ${ITEMS.map((t, i) => `<tr><td>${t}</td><td class="r">${st.w[i]}</td>${live.map((c, k) => `<td class="pt"><div class="ptv"><b class="${P[k][i] === best(i) ? 'best' : ''}">${P[k][i]}점</b><span class="mut sm">/ ${mx[i]}${P[k][i] === best(i) ? ' · 가장 높음' : ''}</span></div><div class="hb"><i style="width:${c.sub[i]}%"></i></div></td>`).join('')}</tr>`).join('')}
+      <tr class="sum"><td style="font-weight:600">합계</td><td class="r">${st.w.reduce((a, b) => a + b, 0)}</td>${live.map((c, k) => `<td><b class="num ${T[k] === bestT ? 'best' : ''}">${T[k]}점</b> <span class="mut sm">${T.filter(x => x > T[k]).length + 1}등</span></td>`).join('')}</tr>
+      <tr class="grp"><td colspan="${2 + live.length}">숫자로 견주기 (후보마다 살필 범위 안)</td></tr>
+      ${numRow('살필 범위', c => rLabel(st.radius[c.id]))}
+      ${numRow('사는 사람', (c, v) => `${nf(v.n)}명`)}
+      ${numRow('60대 이상', c => `${c.pop.ages[3]}%`)}
+      ${numRow('정형외과·통증·재활', (c, v) => `${v.rivals.length}곳`, '한의원 뺌')}
+      ${numRow('1곳당 사는 사람', (c, v) => v.rivals.length ? `${nf(Math.floor(v.n / v.rivals.length))}명` : '경쟁 의원 없음')}
+      ${numRow('역까지', c => `${dist(c.traffic.station.d)} · 걸어서 ${c.traffic.station.walk}분`)}
+      ${numRow('층 · 전용 평수', (c, v, l) => `${c.building.me} · ${l.py}평`)}
+      ${numRow('보증금 / 월세', (c, v, l) => `${man(l.dep)} / ${man(l.rent)}`)}
+      ${numRow('평당 월세', (c, v, l) => `${won(perPy(l))}<span class="s2">상권 평균 ${won(AREA_AVG[l.dong])}</span>`)}
+      ${numRow('권리금', (c, v, l) => man(l.key))}
+      ${numRow('위험 신호', c => `<span class="chip neg">${c.flags.length}개</span>`)}
+      ${numRow('하루 예상 환자', c => { const e = estimate(c); return `${Math.min(e.a, e.b)}~${Math.max(e.a, e.b)}명${e.warn ? ' <span class="chip warn">두 계산이 크게 달라요</span>' : ''}` }, '두 계산(개원 준비)')}
+    </tbody></table></div>
+    <p class="help" style="margin-top:6px">각 후보 숫자는 그 후보를 저장한 날 값이에요(A 11월 15일 · B 11월 16일 · C 11월 14일).</p></section>
+
+  <section><div class="sh"><h2>진행 상태</h2><span class="aside">단계를 누르면 바뀌고 진행 메모에 날짜가 남아요</span></div>
+    ${live.map(c => `<div class="prog"><div class="who"><span class="cb" style="height:auto;padding:0;border:0;background:none"><span class="lt">${c.id}</span></span><div><b>${esc(c.name)}</b><p class="when">${esc(c.dong)} · 저장 ${md(c.saved)}</p></div></div>
+      <div class="stp" role="group" aria-label="${esc(c.name)} 진행 상태">${STEPS.map((s, i) => `<button data-act="step" data-id="${c.id}" data-i="${i}" class="${i < st.status[c.id] ? 'done' : i === st.status[c.id] ? 'cur' : ''}" aria-pressed="${i === st.status[c.id]}">${i + 1}. ${s}</button>`).join('')}</div>
+      <button class="btn sm" data-act="drop" data-id="${c.id}">내려놓기</button></div>`).join('')}
+    <details class="drop"><summary>내려놓은 후보 ${DROPPED.length + Object.keys(st.dropped).length}곳</summary>
+      ${DROPPED.map(d => `<div class="dr"><span><b>${esc(d.name)}</b> <span class="mut sm">${esc(d.dong)}</span></span><span class="sm">${md(d.date)} 내려놓음 · ${esc(d.why)}</span><button class="btn sm" data-act="toast" data-msg="시안에서는 다시 올리지 않아요.">다시 올리기</button></div>`).join('')}
+      ${CANDS.filter(c => st.dropped[c.id]).map(c => `<div class="dr"><span><b>${esc(c.name)}</b> <span class="mut sm">${esc(c.dong)}</span></span><span class="sm">오늘 내려놓음</span><button class="btn sm" data-act="undrop" data-id="${c.id}">다시 올리기</button></div>`).join('')}</details></section>
+  </div>`
+}
+
+/* ───────── 그리기: 개원 준비 ───────── */
+const TASKS = [
+  [150, '자리 정하고 계약하기', '특약: 의원 개설 신고가 안 되면 계약을 없던 일로'], [140, '대출 상담·받기', ''], [130, '인테리어 설계 맡기기', '엑스레이실·물리치료실 자리부터'],
+  [120, '장비 고르고 주문하기', '엑스레이는 들어오는 데 오래 걸려요'], [90, '인테리어 공사 시작', '보통 8~10주'], [60, '전기 용량 늘리기 신청', '한국전력 · 건물 관리사무소'],
+  [60, '직원 뽑기 공고', '물리치료사·간호조무사·접수'], [30, '간판·홍보물·홈페이지', '홍보할 아파트 차례(후보 자세히)'], [30, '방사선 장비 설치 신고 준비', ''],
+  [10, '의원 개설 신고(보건소)', ''], [7, '요양기관 신고(심평원)', '개설 신고 뒤'], [5, '방사선 장비 검사 받고 신고', ''], [3, '직원 교육·모의 진료', ''], [0, '개원', ''],
+]
+const REQS = [
+  ['엑스레이실 방사선 막는 벽', '벽·문에 납을 넣는 공사, 설치 뒤 검사', 'xray'],
+  ['전기 용량', '엑스레이·물리치료 기계를 함께 켤 만큼(장비 업체에 물어 정해요)', null],
+  ['천장 높이', '엑스레이 기계를 달 높이(장비 업체 기준)', null],
+  ['바닥이 견디는 무게', '엑스레이·견인 치료기 무게', null],
+  ['장애인 경사로·출입구', '건물 입구에 턱이 없거나 경사로', 'bf'],
+  ['장애인 화장실', '의원이 있는 층이나 건물 안', 'bf'],
+  ['화장실', '층 안에 남녀 따로', null],
+  ['엘리베이터', '휠체어·들것이 들어가는 크기', null],
+  ['건물 용도', '제1종 근린생활시설(의원) 또는 의료시설', 'use'],
+  ['보건소 신고 조건', '진료실·처치실·엑스레이실·물리치료실을 나눔, 위반 건축물이 아님', 'open'],
+]
+const REQ_DEF = {
+  A: [['q', '직접 봐야 해요 — 인테리어 업체가 공사'], ['x', '지금 30킬로와트 — 늘려야 해요(관리사무소 말, 11월 21일 메모)'], ['q', '보러 가서 재요'], ['q', '구조 계산서를 건물주에게 받아요(철근콘크리트)'], ['o', '1층 입구에 경사로 있음(로드뷰)'], ['x', '1층에만 있어요 — 3층엔 없음'], ['o', '3층 복도에 남녀 따로(보러 가서 봄)'], ['o', '비상용 1대가 침대 크기(건축물대장)'], ['o', '3층 제1종 근린생활시설(의원)(건축물대장)'], ['x', '건물에 위반 건축물 있음(옥상) — 보건소에 물어봐요']],
+  B: [['q', '아직 확인 안 했어요'], ['q', '아직 확인 안 했어요'], ['q', '아직 확인 안 했어요'], ['o', '2021년 새 건물(건축물대장)'], ['o', '1층 입구에 턱 없음(로드뷰)'], ['o', '2층 복도에 있음(건축물대장 도면)'], ['o', '층 안에 남녀 따로'], ['o', '승객용 3대 · 비상용 1대'], ['o', '2층 제1종 근린생활시설'], ['q', '위반 건축물 없음 · 방 나눔은 설계 때']],
+  C: [['q', '아직 확인 안 했어요'], ['q', '아직 확인 안 했어요'], ['q', '아직 확인 안 했어요'], ['q', '아직 확인 안 했어요'], ['o', '1층 입구에 경사로 있음(로드뷰)'], ['q', '아직 확인 안 했어요'], ['o', '층 안에 남녀 따로'], ['q', '승객용 2대 — 크기 확인'], ['o', '4층 제1종 근린생활시설'], ['q', '위반 건축물 없음 · 방 나눔은 설계 때']],
+}
+const OX = { o: '○', x: '✕', q: '?' }
+const VISIT = ['길 건너에서 간판 자리가 보여요', '1층 입구에 턱이 없거나 경사로가 있어요', '엘리베이터에 휠체어·들것이 들어가요', '층 안에 남녀 화장실이 따로 있어요', '천장 높이를 쟀어요(엑스레이 기계)', '배전반 사진을 찍었어요(전기 용량)', '창문 방향·햇빛·바깥 소리를 봤어요', '주차장 들어가는 길이 어르신에게 쉬워요', '평일 낮과 저녁에 지나가는 사람을 봤어요', '같은 건물 가게에 관리비·관리 상태를 물어봤어요']
+const CLAUSES = ['의원 개설 신고가 안 되면 계약을 없던 일로 해요(특약)', '무상 기간이 공사 기간과 장비 설치까지 들어가요', '나갈 때 원상 복구 범위(방사선 벽·바닥)를 적어요', '권리금 계약서를 따로 써요', '전기 용량 늘리는 공사를 누가 하고 누가 내는지 적어요']
+const COST = [
+  ['dep', '보증금', '만 원', l => `매물에 적은 값: ${man(l.dep)}`],
+  ['key', '권리금', '만 원', l => `매물에 적은 값: ${man(l.key)}`],
+  ['intPy', '인테리어(평당)', '만 원', l => `× 전용 ${l.py}평`, 'interior'],
+  ['equip', '장비', '만 원', () => '엑스레이·충격파·물리치료 기계 등 합계'],
+  ['staff', '직원 월급(한 달 합계)', '만 원', () => `이 동네 구인 공고: 물리치료사 월 300~340만 원 · 간호조무사 월 250~280만 원`, null, 'wage'],
+  ['rentM', '월세 + 관리비(한 달)', '만 원', l => `매물: 월세 ${man(l.rent)} + 관리비 ${man(l.mgmt)}`],
+  ['etc', '그 밖의 운영비(한 달)', '만 원', () => '소모품·약·전기·보험·광고 등'],
+  ['loan', '대출', '만 원', () => '처음에 드는 돈에서 빼요'],
+  ['rate', '대출 이자(해마다)', '%', () => '한 달 이자로 바꿔 고정비에 넣어요', 'interest'],
+]
+const numOf = k => { const x = String(st.cost[k] ?? '').replace(/[^0-9.]/g, ''); return x === '' ? null : Number(x) }
+const sumN = a => { const f = a.filter(x => x != null); return f.length ? f.reduce((s, x) => s + x, 0) : null }
+function costCalc(l) {
+  const interior = numOf('intPy') != null ? Math.floor(numOf('intPy') * l.py) : null
+  const monthly = sumN([numOf('staff'), numOf('rentM'), numOf('etc')])
+  const six = monthly != null ? monthly * 6 : null
+  const parts = [numOf('dep'), numOf('key'), interior, numOf('equip'), six]
+  const total = sumN(parts)
+  const loan = numOf('loan'), interest = loan != null && numOf('rate') != null ? Math.floor(loan * numOf('rate') / 100 / 12) : null
+  const fixed = sumN([monthly, interest])
+  const visit = numOf('visit'), days = numOf('days')
+  const be = fixed != null && visit && days ? fixed * 10000 / days / visit : null
+  return { interior, monthly, six, total, filled: parts.filter(x => x != null).length, loan, interest, mine: total != null ? total - (loan || 0) : null, fixed, be }
+}
+function sumboxHtml(c) {
+  const l = st.listings.find(x => x.id === c.listing), k = costCalc(l), e = estimate(c), lo = Math.min(e.a, e.b)
+  const r = (t, v) => `<div class="row"><span>${t}</span><b>${v}</b></div>`
+  return `<h4>합계</h4>
+    ${r('보증금 + 권리금', man(sumN([numOf('dep'), numOf('key')])))}${r('인테리어', man(k.interior))}${r('장비', man(numOf('equip')))}${r('6개월 운영비', man(k.six))}
+    <div class="row tot"><span>처음에 드는 돈</span><b>${man(k.total)}</b></div>
+    ${r('대출 빼면 내 돈', man(k.mine))}
+    <p class="help">${k.filled ? `적은 칸 ${k.filled}개를 더했어요. 빈칸은 0이 아니라 '아직 모름'이에요.` : '칸을 채우면 여기서 더해요.'}</p>
+    <div class="be"><p class="sm" style="font-weight:600">손익분기</p>
+      ${r('한 달 고정비', man(k.fixed))}
+      ${k.be != null ? `<p class="v">하루 ${pct1(k.be)}<small>명</small></p><p class="sm">이만큼 와야 고정비를 넘겨요. 예상 환자(두 계산 가운데 작은 값 ${lo}명)${lo > k.be ? '보다 적어요.' : '보다 많아요 — 조심해요.'}</p>` : `<p class="v mut" style="font-size:20px">–</p><p class="help">월급·월세·운영비와 아래 두 칸을 채우면 계산돼요.</p>`}
+      <p class="help">원장 몫(원장 월급)은 들어 있지 않아요.</p></div>`
+}
+function planHtml() {
+  const c = curC(), l = st.listings.find(x => x.id === c.listing), e = estimate(c), k = costCalc(l)
+  if (!st.req[c.id]) st.req[c.id] = REQ_DEF[c.id].map(x => x[0])
+  const rl = '1km'
+  const opn = st.open, on = dayNum(opn)
+  const ci = CANDS.indexOf(c)
+  return headHtml() + candBar() + `<div class="pgrid">
+  <section><div class="sh"><h2>하루 예상 환자 수</h2><span class="aside">두 길로 따로 셈해 나란히 봐요 · 살필 범위 ${rl} 기준</span></div>
+    <div class="est" style="margin-top:12px">
+      <div><h4>① 지금 의원에 맞춘 비율</h4><p class="big">${e.a}<small>명</small></p>
+        <dl class="calc">
+          <div><dt>지금 의원 하루 평균 환자</dt><dd>${MY.day}명</dd>${src('my')}</div>
+          <div><dt>사는 사람 (지금 의원 둘레 → 후보 둘레)</dt><dd>${nf(MY.pop)}명 → ${nf(c.est.pop)}명</dd>${src('pop')}</div>
+          <div><dt>정형외과·통증·재활 (지금 의원 둘레 → 후보 둘레)</dt><dd>${MY.comp}곳 → ${c.est.comp}곳</dd>${src('hira')}</div>
+          <div><p class="f">${MY.day} × (${nf(c.est.pop)} ÷ ${nf(MY.pop)}) × ((${MY.comp} + 1) ÷ (${c.est.comp} + 1)) = <b>${e.a}명</b></p></div></dl></div>
+      <div><h4>② 나라 통계 이용률 ÷ 경쟁 수</h4><p class="big">${e.b}<small>명</small></p>
+        <dl class="calc">
+          <div><dt>후보 둘레 사는 사람</dt><dd>${nf(c.est.pop)}명</dd>${src('pop')}</div>
+          <div><dt>정형외과 하루 이용률(이 동네 나이대로 고친 값)</dt><dd>1,000명당 ${c.est.rate}명</dd>${src('dis')}</div>
+          <div><dt>나눠 가질 의원 (경쟁 + 우리)</dt><dd>${c.est.comp} + 1 = ${c.est.comp + 1}곳</dd>${src('hira')}</div>
+          <div><p class="f">${nf(c.est.pop)} × ${c.est.rate} ÷ 1,000 ÷ ${c.est.comp + 1} = <b>${e.b}명</b></p></div></dl></div></div>
+    ${e.warn ? `<p class="note warn" style="margin-top:12px">${ICON.warn}<span><b>두 계산이 크게 달라요(${e.diff}%).</b> 이 동네는 지금 의원 둘레와 나이대·경쟁이 많이 달라서, 한쪽 계산이 맞지 않을 수 있어요. 작은 값(${Math.min(e.a, e.b)}명)으로 보고, 보러 가서 사람 흐름을 꼭 확인해요.</span></p>`
+      : `<p class="note" style="margin-top:12px">${ICON.info}<span>두 계산이 ${e.diff}% 달라요. 30%보다 적어 비슷하다고 봐요. 개원 첫해는 이보다 적게 올 수 있어요.</span></p>`}</section>
+
+  <section><div class="sh"><h2>개원 비용 계산</h2><span class="aside">빈칸에서 직접 적어요 · 금액은 만 원</span></div>
+    <div class="cost" style="margin-top:4px"><div>
+      ${COST.map(([key, t, u, help, auto, sk]) => `<div class="crow"><label for="c-${key}">${t}</label><div class="suf"><input id="c-${key}" class="inp" inputmode="decimal" data-act="cost" data-k="${key}" value="${esc(st.cost[key] ?? '')}"><span>${u}</span></div><div><p class="help">${help(l)}</p>${sk ? src(sk) : ''}${auto === 'interior' ? `<p class="sm">인테리어 합계 <b class="num" id="a-interior">${man(k.interior)}</b></p>` : auto === 'interest' ? `<p class="sm">한 달 이자 <b class="num" id="a-interest">${man(k.interest)}</b></p>` : ''}</div></div>`).join('')}
+      <div class="crow sub2"><label>6개월 운영비</label><span class="auto" id="a-six">${man(k.six)}</span><p class="help">(직원 월급 + 월세·관리비 + 그 밖의 운영비) × 6</p></div>
+      <div style="margin-top:20px" class="sh"><h3>손익분기에 쓰는 두 칸</h3></div>
+      <div class="crow"><label for="c-visit">환자 1명당 평균 진료비</label><div class="suf"><input id="c-visit" class="inp" inputmode="numeric" data-act="cost" data-k="visit" value="${esc(st.cost.visit ?? '')}"><span>원</span></div><div><p class="help">지금 의원: ${won(MY.perVisit)}</p>${src('my')}</div></div>
+      <div class="crow"><label for="c-days">한 달 진료일</label><div class="suf"><input id="c-days" class="inp" inputmode="numeric" data-act="cost" data-k="days" value="${esc(st.cost.days ?? '')}"><span>일</span></div><p class="help">예: 평일 22일 + 토요일 4일</p></div>
+      ${!Object.values(st.cost).some(x => String(x ?? '') !== '') ? `<p style="margin-top:12px"><button class="btn sm" data-act="fill">시안에서만: 예시 숫자 넣어 보기</button></p>` : ''}
+    </div><aside class="sumbox" id="sumbox" aria-live="polite">${sumboxHtml(c)}</aside></div></section>
+
+  <section><div class="sh"><h2>개원 일정표</h2><span class="aside">개원일에서 거꾸로 세요</span></div>
+    <div class="findn"><div class="field"><label for="opendate">개원일</label><input type="date" id="opendate" class="inp" value="${opn}" data-act="opendate"></div><p class="help" style="align-self:center">오늘(${ymd(TODAY)})부터 ${on - dayNum(TODAY)}일 남았어요.</p></div>
+    <div class="tw" id="schedT" style="margin-top:8px"><table class="t sched"><thead><tr><th style="width:44px">했음</th><th>할 일</th><th>날짜</th><th class="r">개원까지</th><th>메모</th></tr></thead><tbody>
+      ${TASKS.map(([d, t, m], i) => { const dt = fromNum(on - d), past = dayNum(dt) < dayNum(TODAY), done = st.sdone[i]; return `<tr class="${done ? 'done' : ''}"><td><input type="checkbox" data-act="sdone" data-i="${i}" ${done ? 'checked' : ''} aria-label="${t} 했음"></td><td><span class="tk">${d === 0 ? `<b>${t}</b>` : t}</span></td><td class="dd">${ymd(dt)} (${wd(dt)})</td><td class="r">${d === 0 ? '당일' : `${d}일 전`}</td><td class="sm">${m ? esc(m) : ''}${past && !done ? ' <span class="chip warn">날짜가 지났어요</span>' : ''}</td></tr>` }).join('')}</tbody></table></div></section>
+
+  <section><div class="sh"><h2>건물 요건 표</h2><span class="aside">○ 됨 · ✕ 안 됨 · ? 모름 — 칸을 누르면 바뀌어요</span></div>
+    <div class="tw" style="margin-top:8px"><table class="t req"><thead><tr><th>요건</th><th>있어야 하는 것</th><th class="c">이 자리</th><th>어떻게 알았나</th><th>법 근거</th></tr></thead><tbody>
+      ${REQS.map((r, i) => { const v = st.req[c.id][i]; return `<tr><td><b>${r[0]}</b></td><td class="sm">${r[1]}</td><td class="c"><button class="oxb" data-act="ox" data-i="${i}" aria-label="${r[0]}: ${v === 'o' ? '됨' : v === 'x' ? '안 됨' : '모름'} (누르면 바뀜)"><span class="ox ${v}">${OX[v]}</span></button></td><td class="sm">${esc(REQ_DEF[c.id][i][1])}</td><td class="sm">${r[2] ? `<a class="tbtn" href="?s=sources#law-${r[2]}" data-act="law" data-k="${r[2]}" style="height:auto;padding:0;font-size:13px">${LAWS.find(x => x[0] === r[2])[1]}</a>` : '<span class="mut">–</span>'}</td></tr>` }).join('')}</tbody></table></div>
+    <p class="sm" style="margin-top:8px">○ ${st.req[c.id].filter(x => x === 'o').length} · ✕ ${st.req[c.id].filter(x => x === 'x').length} · ? ${st.req[c.id].filter(x => x === 'q').length}</p></section>
+
+  <section><div class="sh"><h2>계약 전 위험</h2></div>
+    <div class="two" style="margin-top:12px"><div>
+      <p style="font-weight:600">등기부 확인 — 계약하기 전에 꼭</p>
+      <ol class="regi"><li><span><b>인터넷등기소에서 건물 등기부를 떼요.</b> 한 통에 몇백 원이고 누구나 뗄 수 있어요.</span></li><li><span><b>소유자</b> 이름이 계약하는 사람(건물주)과 같은지 봐요.</span></li><li><span><b>근저당(건물을 맡기고 빌린 돈)</b>이 얼마인지 봐요. 보증금보다 많이 잡혀 있으면 보증금을 못 돌려받을 수 있어요.</span></li><li><span><b>압류·가압류·경매</b> 글자가 있으면 계약하지 않아요.</span></li><li><span>계약하는 날 한 번 더 떼서 그사이 바뀐 것이 없는지 봐요.</span></li></ol>
+      <p style="margin-top:12px"><button class="btn" data-act="ext" data-v="인터넷등기소">인터넷등기소 바로 가기${ICON.ext}</button></p></div>
+      <div><div class="field"><label for="leasememo">임대 조건 메모</label><textarea id="leasememo" class="inp" style="height:120px" placeholder="중개사와 말한 것, 건물주에게 물을 것">${ci === 0 ? '무상 기간 3개월 다시 물어보기. 원상 복구에서 방사선 벽·바닥 빼 달라고 하기. 전기 증설 비용 건물주와 반반?' : ''}</textarea><p class="help">임대 조건 협상표(매물)에 적은 것: ${NEGO.map((r, i) => `${r[0]} ${st.nego[i][ci][1] || st.nego[i][ci][0] || '–'}`).slice(0, 3).join(' · ')} …</p></div>
+        <p class="sm" style="font-weight:600;margin-top:16px">계약서에 꼭 넣을 것</p>
+        <div class="cklist" style="grid-template-columns:1fr;margin-top:6px">${CLAUSES.map((t, i) => `<label><input type="checkbox" ${ci === 0 && i < 2 ? 'checked' : ''}>${t}</label>`).join('')}</div></div></div></section>
+
+  <section><div class="sh"><h2>보러 갈 때 점검표</h2><span class="aside">${st.checks[c.id].length} / ${VISIT.length} 했어요</span></div>
+    <div class="cklist" style="margin-top:12px">${VISIT.map((t, i) => { const on2 = st.checks[c.id].includes(i); return `<label class="${on2 ? 'on' : ''}"><input type="checkbox" data-act="visit" data-i="${i}" ${on2 ? 'checked' : ''}>${t}</label>` }).join('')}</div>
+    <p class="sm" style="font-weight:600;margin-top:20px">사진 <span class="mut" style="font-weight:400">${st.photos[c.id].length}장 · 이 후보에만 붙어요</span></p>
+    <div class="photos" style="margin-top:8px">${st.photos[c.id].map(p => `<div class="ph"><div class="im">${p[2] ? `<img src="${p[2]}" alt="${esc(p[0])}">` : '사진'}</div><p class="cp">${esc(p[0])}<small>${md(p[1])}</small></p></div>`).join('')}<button class="ph addp" data-act="photo">${ICON.camera}<span>사진 올리기</span></button></div></section>
+
+  <section><div class="sh"><h2>진행 메모</h2><span class="aside">날짜별 · 새것이 위</span></div>
+    <ul class="memos" style="margin-top:12px">${st.memos[c.id].map(m => `<li><span class="d">${m[0]}</span><span>${esc(m[1])}</span></li>`).join('')}</ul>
+    <div class="memoadd"><input type="date" class="inp" id="mdate" value="${TODAY}" aria-label="메모 날짜"><input class="inp" id="mtext" placeholder="예: 중개사와 통화 — 무상 기간 3개월 됨" aria-label="메모"><button class="btn" data-act="memo">메모 더하기</button></div></section>
+  </div>`
+}
+
+/* ───────── 그리기: 한 장 보고서 ───────── */
+function reportHtml() {
+  const c = curC(), v = calc(c), l = st.listings.find(x => x.id === c.listing), e = estimate(c), p = pts(c.sub, st.w), mx = maxPts(st.w)
+  const g = hoursGrid(v.rivals), gaps = gapText(g), ci = CANDS.indexOf(c)
+  const used = ['pop', 'apt', 'income', 'deal', 'dis', 'hira', 'price', 'permit', 'kakao', 'bld', 'store', 'rent', 'land', 'subscr'].concat(c.seoul ? ['live'] : [])
+  const d = (t, x) => `<div><dt>${t}</dt><dd>${x}</dd></div>`
+  return headHtml() + candBar() + `<div class="rbar" style="margin-top:16px"><button class="btn" data-act="view" data-v="candidate">${ICON.left}후보 ${c.id}로 돌아가기</button><div class="tools"><span class="help">A4 한 장 · 인쇄하면 앱 틀은 빠지고 종이만 나와요</span><button class="btn" data-act="pdf">${ICON.download}PDF로 저장</button><button class="btn primary" data-act="print">${ICON.print}인쇄</button></div></div>
+  <div class="paperwrap"><article class="paper" aria-label="한 장 보고서">
+    <div class="ph1"><div><p class="k">입지 분석 보고서 · 후보 ${c.id} · ${STEPS[st.status[c.id]]}</p><h1>${esc(c.name)}</h1><p>${esc(c.addr)}</p><p class="k">${ymd(TODAY)} 뽑음 · 자료는 ${ymd(c.saved)}(저장한 날) 값 · 살필 범위 ${rLabel(st.radius[c.id])} · 샘플정형외과의원</p></div>
+      <div class="sc"><span class="k">종합 점수</span><b>${candTotal(c)}</b><span class="k">/ 100점</span></div></div>
+    <div class="pi">${ITEMS.map((t, i) => `<div><span>${t}</span><b>${p[i]}<span style="font-size:11px;font-weight:500;color:var(--muted)">/${mx[i]}</span></b></div>`).join('')}</div>
+    <h2>위험 신호 ${c.flags.length}개</h2><div class="pf">${c.flags.map(f => `<p><span><b>${esc(f.t)}</b> — ${esc(f.d)}</span></p>`).join('')}</div>
+    <div class="p2"><div><h2>사는 사람·수요</h2><dl>${d('사는 사람', `${nf(v.n)}명 · ${nf(v.hh)}세대`)}${d('60대 이상', `${nf(v.old)}명 (${c.pop.ages[3]}%)`)}${d('5년 추세', `${pct1((c.pop.trend[5] - c.pop.trend[0]) / c.pop.trend[0] * 100)}% 늘어남`)}${d('입주 예정', v.soon.length ? v.soon.map(a => `${a.when} ${nf(a.hh)}세대`).join(', ') : '없음')}${d('뼈·관절 환자', `1,000명당 ${c.demand.joint}명(시·군·구)`)}${d('낮 인구', c.demand.live ? `${nf(v.sc(c.demand.live[0]))}명` : '이 지역은 자료 없음')}</dl></div>
+      <div><h2>경쟁</h2><dl>${d('정형외과·통증·재활', `${v.rivals.length}곳 · 1곳당 ${v.rivals.length ? nf(Math.floor(v.n / v.rivals.length)) + '명' : '–'}`)}${d('한의원', `${v.comps.length - v.rivals.length}곳`)}${d('3년 개폐업', `문 엶 ${v.events.filter(x => x.kind === 'open').length} · 문 닫음 ${v.events.filter(x => x.kind === 'close').length}`)}${d('진료 시간 빈틈', gaps.length ? gaps.join(', ') : '없음')}${d('도수치료 평균', (() => { const ps = v.comps.filter(x => x.p).map(x => x.p[0]); return ps.length ? won(Math.floor(ps.reduce((a, b) => a + b, 0) / ps.length)) : '–' })())}</dl></div>
+      <div><h2>자리·교통</h2><dl>${d('역', `${esc(c.traffic.station.n)} ${dist(c.traffic.station.d)} (걸어서 ${c.traffic.station.walk}분)`)}${d('버스', `정류장 ${c.traffic.bus[0]}곳 · 노선 ${c.traffic.bus[1]}개`)}${d('건물', `${c.building.year}년 · ${esc(c.building.scale)}`)}${d('엘리베이터·주차', `${esc(c.building.elev.split('(')[0])} · ${esc(c.building.park.split(' (')[0])}`)}${d('위반 건축물', esc(c.building.viol))}${d('빈 층', `${c.building.floors.filter(f => !f[3] && f[1] !== '주차장').length}개 층(짐작)`)}</dl></div>
+      <div><h2>매물·비용</h2><dl>${d('층 · 전용', `${c.building.me} · ${l.py}평`)}${d('보증금 / 월세', `${man(l.dep)} / ${man(l.rent)}`)}${d('관리비 · 권리금', `${man(l.mgmt)} · ${man(l.key)}`)}${d('평당 월세', `${won(perPy(l))} (상권 평균 ${won(AREA_AVG[l.dong])})`)}${d('하루 예상 환자', `${Math.min(e.a, e.b)}~${Math.max(e.a, e.b)}명${e.warn ? ' (두 계산이 크게 달라요)' : ''}`)}${d('중개사', `${esc(l.agent)} ${esc(l.tel)}`)}</dl></div></div>
+    <h2>임대 조건(제안 → 바람)</h2>${(() => { const items = NEGO.map((r, i) => d(r[0], `${esc(st.nego[i][ci][0] || '–')}${st.nego[i][ci][1] ? ` → ${esc(st.nego[i][ci][1])}` : ''}`)); return `<div class="p2"><dl>${items.slice(0, 3).join('')}</dl><dl>${items.slice(3).join('')}</dl></div>` })()}
+    <h2>진행 메모</h2><dl>${st.memos[c.id].slice(0, 2).map(m => d(m[0], esc(m[1]))).join('')}</dl>
+    <p class="foot">출처(가안): ${used.map(k => `${SRC[k].short} ${SRC[k].date}`).join(' · ')}. 숫자는 저장한 날 값이고 버림으로 적었어요. 예상 환자는 짐작이에요.</p>
+  </article></div>`
+}
+
+/* ───────── 그리기: 근거와 출처 ───────── */
+const LAWS = [
+  ['open', '의원 개설 신고', '의료법 · 의료법 시행규칙(의료기관의 시설기준)', '건물 요건 표 › 보건소 신고 조건 · 개원 일정표 › 의원 개설 신고'],
+  ['xray', '방사선 장치', '진단용 방사선 발생장치의 안전관리에 관한 규칙', '건물 요건 표 › 엑스레이실 방사선 막는 벽 · 개원 일정표 › 방사선 장비 신고'],
+  ['bf', '장애인 편의시설', '장애인·노인·임산부 등의 편의증진 보장에 관한 법률', '건물 요건 표 › 장애인 경사로·출입구, 장애인 화장실'],
+  ['use', '건물 용도', '건축법 · 건축법 시행령(용도별 건축물의 종류)', '건물 서류 › 용도 · 건물 요건 표 › 건물 용도'],
+  ['lease', '임대 조건', '상가건물 임대차보호법', '임대 조건 협상표 › 월세 올리는 비율 · 계약 기간'],
+]
+const SRC_GROUPS = [['사는 사람·수요', ['pop', 'live', 'apt', 'subscr', 'dis', 'acc']], ['소득·쓸 힘', ['income', 'deal']], ['경쟁 의원', ['hira', 'price', 'permit']], ['자리·건물·땅', ['bld', 'store', 'rent', 'land', 'kakao']], ['매물·개원 준비', ['listing', 'my', 'wage']]]
+function sourcesHtml() {
+  const W = st.w
+  return headHtml() + `<div class="sgrid">
+  <section><div class="sh"><h2>숫자가 어디서 왔나</h2><span class="aside">출처 이름은 가안이에요 · 조사 뒤 맞춰요</span></div>
+    <p class="lead">화면의 숫자 아래 작은 글씨를 누르면 이 표의 그 줄로 와요. 자료는 볼 때 받고, 후보를 저장할 때 그날 값으로 굳혀 둬요(기준 날짜가 함께 남아요).</p>
+    <div class="tw" style="margin-top:12px"><table class="t srct"><colgroup><col style="width:210px"><col style="width:190px"><col style="width:128px"><col style="width:116px"><col style="width:180px"><col><col style="width:150px"></colgroup><thead><tr><th>화면에 나온 숫자</th><th>기관 · 자료 이름</th><th>기준 날짜</th><th>고쳐지는 주기</th><th>단위</th><th>왜 보나(근거)</th><th>받는 길</th></tr></thead><tbody>
+      ${SRC_GROUPS.map(([gname, ks]) => `<tr class="grp"><td colspan="7" style="height:36px;padding-top:16px;font-size:12px;font-weight:600;color:var(--muted);background:none">${gname}</td></tr>` + ks.map(k => { const s = SRC[k]; return `<tr id="src-${k}" class="${st.srcHit === k ? 'hit' : ''}"><td>${esc(s.shows)}</td><td>${esc(s.org)}<span class="s2">${esc(s.name)}</span></td><td class="nw">${esc(s.date)}</td><td>${esc(s.cycle)}</td><td class="sm">${esc(s.unit)}</td><td class="sm">${esc(s.why)}</td><td class="sm via">${esc(s.via)}</td></tr>` }).join('')).join('')}</tbody></table></div></section>
+
+  <section id="src-score" class="${st.srcHit === 'score' ? 'hit' : ''}"><div class="sh"><h2>점수는 이렇게 매겨요</h2><span class="aside">지금 무게 ${W.join(' · ')}</span></div>
+    <div class="tw" style="margin-top:8px"><table class="t"><thead><tr><th>항목</th><th class="r">무게</th><th>들어가는 숫자</th><th>왜</th></tr></thead><tbody>
+      <tr><td><b>사는 사람·수요</b></td><td class="r">${W[0]}</td><td class="sm">사는 사람 수 · 60대 이상 비율 · 뼈·관절 환자 비율 · 5년 추세 · 입주 예정 · 낮 인구</td><td class="sm">정형외과 환자는 어르신과 뼈·관절 환자가 많아요</td></tr>
+      <tr><td><b>경쟁</b></td><td class="r">${W[1]}</td><td class="sm">정형외과·통증·재활 1곳당 사는 사람 · 3년 개폐업 · MRI 있는 큰 의원 거리 · 진료 시간 빈틈</td><td class="sm">나눠 가질 환자가 많은지 봐요</td></tr>
+      <tr><td><b>교통·흐름</b></td><td class="r">${W[2]}</td><td class="sm">역 거리 · 정류장·노선 수 · 시장·마트 거리</td><td class="sm">걸어서·버스로 오기 쉬운지 봐요</td></tr>
+      <tr><td><b>자리</b></td><td class="r">${W[3]}</td><td class="sm">층 · 엘리베이터 · 주차 · 간판 보임 · 위반 건축물 · 전에 의원이 닫은 자리 (동 점수는 그 동 상가 건물 평균)</td><td class="sm">어르신이 오르내리기 쉽고, 신고에 걸림이 없는지 봐요</td></tr>
+      <tr><td><b>비용</b></td><td class="r">${W[4]}</td><td class="sm">평당 월세 ÷ 상권 평균 · 권리금 (동 점수는 상권 임대료 시세)</td><td class="sm">같은 환자 수라면 싼 곳이 남아요</td></tr></tbody></table></div>
+    <p class="help" style="margin-top:6px">항목마다 둘레 다른 동·후보와 견줘 0~100으로 바꾼 뒤 무게를 곱해 더해요. 보이는 점수는 항목마다 버린 뒤 더해요.</p></section>
+
+  <section><div class="sh"><h2>법 근거</h2><span class="aside">법 이름 적는 자리 · 조항은 조사 뒤 적어요</span></div>
+    <div class="tw" style="margin-top:8px"><table class="t lawt"><thead><tr><th>무엇</th><th>법 이름</th><th>조항</th><th>화면에서 쓰는 곳</th></tr></thead><tbody>
+      ${LAWS.map(x => `<tr id="law-${x[0]}" class="${st.srcHit === 'law-' + x[0] ? 'hit' : ''}"><td><b>${x[1]}</b></td><td>${esc(x[2])}</td><td><span class="slot">조사 뒤 적어요</span></td><td class="sm">${esc(x[3])}</td></tr>`).join('')}</tbody></table></div>
+    <p class="help" style="margin-top:6px">건물 요건 표의 ○✕는 법을 대신 판단하지 않아요. 보건소·장비 업체·인테리어 업체에 확인하는 차례표예요.</p></section>
+  </div>`
+}
+
+/* ───────── 그리기: 대시보드 · 처음 · 열쇠 없음 ───────── */
+function dashHtml() {
+  const A = CANDS[0], B = CANDS[1], ea = A.events[0], eb = B.events[0]
+  return `<div class="dh-head"><h1>대시보드</h1><span class="chip pos">비트에서 읽은 숫자</span><span class="dh-when">${ICON.clock}<span>비트에서 읽은 시각 11월 21일 (토) 오후 1:05</span></span><span class="dh-sp"><button class="btn sm">비트에서 다시 읽기</button></span></div>
+    <div class="wnote" role="status" aria-label="무상 수리 알림"><a class="wn" href="#" data-act="toast" data-msg="주소록 알림(지금 있는 것)이에요.">${ICON.wrench}<span class="wt">충격파 기계 무상 수리 <b>11일 남음</b> · 예시메디칼</span><span class="go"><span>주소록에서 보기</span>${ICON.right}</span></a></div>
+    <div class="wnote mark-new" role="status" aria-label="입지 알림">
+      <a class="wn" href="?s=candidate&c=A#sec-comp">${ICON.pin}<span class="wt">저장한 후보 둘레에 정형외과가 <b>새로 문을 열었어요</b><small>후보 A ${esc(A.name)} · ${esc(ea.n)} · ${dist(ea.d)} · ${md(ea.date)}</small></span><span class="go"><span>입지 분석에서 보기</span>${ICON.right}</span></a>
+      <a class="wn" href="?s=candidate&c=B#sec-comp">${ICON.pin}<span class="wt">저장한 후보 둘레에서 정형외과가 <b>문을 닫았어요</b><small>후보 B ${esc(B.name)} · ${esc(eb.n)} · ${dist(eb.d)} · ${md(eb.date)}</small></span><span class="go"><span>입지 분석에서 보기</span>${ICON.right}</span></a></div>
+    <span class="mark-tag">새로 생기는 줄 · 관리자 계정에만</span>
+    <p class="cut">여기부터 아래(오늘 하루 분석 · 보고 문장 · AI 요약 · 기간별 흐름 · 바로 가기 · 기능 목차)는 지금 대시보드 그대로예요</p>`
+}
+const regionSel = () => `<div class="field" style="width:168px"><label for="e-sido">시·도</label><select id="e-sido" class="inp" data-act="region"><option>서울특별시</option><option>경기도</option><option>인천광역시</option></select></div><div class="field" style="width:168px"><label for="e-sgg">시·군·구</label><select id="e-sgg" class="inp" data-act="region"><option>예시구</option><option>예시2구</option></select></div>`
+function emptyHtml() {
+  return `<div class="ltop"><div class="tl"><h1>입지 분석</h1><span class="chip neutral">관리자만 보여요</span></div></div>
+  <div class="empty"><h2>아직 후보가 없어요</h2>
+    <p class="lead2">새로 개원할 자리를 넓게 훑고 깊게 봐요. 시·구를 고르면 동마다 점수를 매겨 좋은 동을 먼저 알려 주고, 마음에 드는 자리를 후보로 저장하면 그 둘레를 깊게 살펴봐요.</p>
+    <ol class="steps">
+      <li><span>1</span><div><b>동네 훑기</b><small>시·구를 고르면 행정동마다 점수 색을 칠해 보여 주고, 좋은 동 차례와 까닭을 알려 줘요.</small></div></li>
+      <li><span>2</span><div><b>후보 더하기</b><small>주소를 넣거나, 지도에서 찍거나, 네이버 부동산에서 본 매물을 붙여 넣어 후보로 저장해요.</small></div></li>
+      <li><span>3</span><div><b>깊게 보고 견주기</b><small>위험 신호·경쟁 의원·진료 시간 빈틈·건물 서류를 가지 않고 보고, 후보끼리 점수표로 견줘요.</small></div></li>
+      <li><span>4</span><div><b>개원 준비</b><small>예상 환자·개원 비용·일정표·건물 요건을 챙기고, 한 장 보고서로 뽑아요.</small></div></li></ol>
+    <div class="acts">${regionSel()}<button class="btn primary lg" data-act="start">동네 훑기 시작</button></div>
+    <div class="acts" style="margin-top:12px"><button class="btn" data-act="add">${ICON.plus}주소로 후보 더하기</button><button class="btn" data-act="start" data-v="listings">매물 붙여 넣기</button></div>
+    <p class="help" style="margin-top:12px">자료 열쇠 두 개(공공데이터포털 · 카카오 지도)가 들어 있어요.</p></div>`
+}
+function nokeyHtml() {
+  const key = (id, name, gets, steps, site) => `<div class="key"><div><h3>${ICON.key}${name}<span class="chip neutral">아직 안 넣었어요</span></h3><p class="gets"><b>받는 자료:</b> ${gets}</p><ol>${steps.map(s => `<li>${s}</li>`).join('')}</ol></div>
+    <div class="kin"><div class="field"><label for="k-${id}">열쇠 붙여 넣기</label><div class="row"><input id="k-${id}" class="inp" type="password" autocomplete="off" placeholder="복사한 열쇠를 붙여 넣어요"><button class="btn" data-act="kshow" data-id="k-${id}">보기</button></div><p class="help">넣으면 자료 하나를 받아 보고 맞는 열쇠인지 바로 알려 줘요.</p></div>
+      <div class="row" style="display:flex;flex-wrap:wrap;gap:8px"><button class="btn" data-act="kin">넣고 확인하기</button><button class="btn ghost" data-act="ext" data-v="${site}">${site} 열기${ICON.ext}</button></div></div></div>`
+  return `<div class="ltop"><div class="tl"><h1>입지 분석</h1><span class="chip neutral">관리자만 보여요</span></div></div>
+  <div class="empty" style="max-width:960px"><h2>자료 열쇠를 넣으면 시작할 수 있어요</h2>
+    <p class="lead2">입지 분석은 나라가 공개한 자료(인구·건물·병원·가게·집값)와 카카오 지도를 받아 와서 보여 줘요. 받아 오려면 '자료 열쇠'가 두 개 있어야 해요.</p>
+    <p class="note" style="margin-top:16px">${ICON.info}<span><b style="color:var(--ink)">자료 열쇠</b>는 자료를 주는 사이트가 '이 앱이 받아 가도 돼요'라고 내어 주는 긴 비밀번호예요. 둘 다 무료이고, 가입한 뒤 신청하면 받아요. 받는 법은 한 단계씩 따로 안내해 드려요.</span></p>
+    <div class="keys">
+      ${key('data', '공공데이터포털 열쇠', '사는 사람·세대, 아파트·입주 예정, 실거래가, 건물 서류, 땅 쓰임, 둘레 병원·진료 시간·장비, 진료비, 가게, 개폐업, 질병 통계', ['공공데이터포털(data.go.kr)에 가입해요.', '받을 자료마다 [활용 신청]을 눌러요 — 열 가지쯤이고 거의 다 바로 승인돼요(신청할 목록은 따로 드려요).', '[마이페이지 › 인증키]에서 \'일반 인증키\'를 복사해요.', '오른쪽 칸에 붙여 넣고 [넣고 확인하기]를 눌러요.'], '공공데이터포털')}
+      ${key('kakao', '카카오 지도 열쇠', '지도, 거리 사진(로드뷰)·하늘 사진, 둘레 시설(역·정류장·약국·마트·시장·큰 병원)', ['카카오 개발자 사이트(developers.kakao.com)에 카카오 계정으로 들어가요.', '[내 애플리케이션 › 애플리케이션 추가하기]로 하나 만들어요(이름은 아무거나).', '[플랫폼 › 웹]에 이 앱 주소(seoseungkwanapp.vercel.app)를 적어요.', '[앱 키]의 \'자바스크립트 키\'를 복사해 오른쪽 칸에 넣어요.'], '카카오 개발자 사이트')}
+    </div>
+    <p class="note safe" style="margin-top:24px">${ICON.key}<span>열쇠는 메신저·메일로 보내거나 다른 곳에 붙이지 말고 이 칸에만 직접 넣어요. 넣은 열쇠는 가려서 보이고, 관리자만 바꿀 수 있어요. 같은 공공데이터포털 열쇠를 나중에 수가·약값 대조에도 써요.</span></p>
+    <p class="help" style="margin-top:8px">열쇠 없이도 되는 것: 매물 붙여 넣기 · 진행 메모 · 개원 비용 계산. 일부 자료(서울시 생활인구·교통사고)는 따로 열쇠가 필요한지 만들 때 확인해요.</p></div>`
+}
+
+/* ───────── 옆 판: 후보 더하기 ───────── */
+function layerHtml() {
+  if (!st.drawer) return ''
+  const t = st.drawer.tab
+  const free = st.listings.filter(l => !l.cand)
+  const sel = st.drawer.listing || (free[0] && free[0].id)
+  const body = t === 'addr' ? `
+      <div class="field"><label for="a-q">주소 <span class="req">필수</span></label><input id="a-q" class="inp" value="가람로 123"><p class="help">도로명·지번·건물 이름으로 찾아요(카카오 주소 찾기).</p></div>
+      <div class="ares" role="radiogroup" aria-label="찾은 주소"><label><input type="radio" name="ar" checked><span><b>서울특별시 예시구 가람로 123</b><small>예시빌딩 · 가람동 · 지하 2층 · 지상 7층</small></span></label><label><input type="radio" name="ar"><span><b>서울특별시 예시구 가람로 123-4</b><small>예시상가 · 가람동 · 지상 3층</small></span></label></div>
+      <div class="f2"><div class="field"><label for="a-f">층</label><input id="a-f" class="inp" value="3층"></div><div class="field"><label for="a-n">부르는 이름</label><input id="a-n" class="inp" value="예시빌딩 3층"></div></div>`
+    : t === 'map' ? `
+      <div class="phbox" style="min-height:280px"><b>카카오 지도가 여기에 보여요</b><small>지도에서 자리를 누르면 주소와 건물이 채워져요</small></div>
+      <dl class="info"><div><dt>고른 자리</dt><dd>서울특별시 예시구 가람로 140 · 예시센터</dd></div></dl>
+      <div class="f2"><div class="field"><label for="a-f2">층</label><input id="a-f2" class="inp" placeholder="예: 5층"></div><div class="field"><label for="a-n2">부르는 이름</label><input id="a-n2" class="inp" value="예시센터"></div></div>`
+    : `
+      <p class="sm">매물 탭에 붙여 넣은 매물 가운데 아직 후보가 아닌 것이에요.</p>
+      <div class="ares" role="radiogroup" aria-label="붙여 넣은 매물">${free.length ? free.map(l => `<label><input type="radio" name="al" ${l.id === sel ? 'checked' : ''}><span><b>${esc(l.bld)} ${esc(l.floor)}</b> <span class="mut sm">${esc(l.dong)}</span><small>전용 ${l.py}평 · 보증금 ${man(l.dep)} / 월세 ${man(l.rent)} · ${esc(l.agent)}</small></span></label>`).join('') : '<p class="mut" style="padding:10px 0">후보가 아닌 매물이 없어요.</p>'}</div>`
+  return `<div class="scrim" data-act="close"></div><aside class="drawer" role="dialog" aria-modal="true" aria-label="후보 더하기">
+    <div class="dwh"><h3>후보 더하기</h3><button class="btn ghost" data-act="close" aria-label="닫기" style="width:36px;padding:0">${ICON.close}</button></div>
+    <div class="dwb"><div class="opts" role="group" aria-label="더하는 길">${[['addr', '주소로 찾기'], ['map', '지도에서 찍기'], ['listing', '붙여 넣은 매물에서']].map(([k, n]) => `<button class="ob" data-act="dtab" data-v="${k}" aria-pressed="${t === k}">${n}</button>`).join('')}</div>
+      ${body}
+      <div class="range"><div class="rh"><span class="sm" style="font-weight:600">살필 범위</span><b class="num">1km</b></div><input type="range" min="0" max="6" value="3" aria-label="살필 범위" disabled><div class="ticks"><span>300m</span><span>1km</span><span>3km</span></div><p class="help">저장한 뒤 후보 자세히에서 바꿔요.</p></div>
+      <div class="field"><label for="a-m">메모</label><textarea id="a-m" class="inp" placeholder="예: 네이버 부동산에서 봄, 중개사 김예시"></textarea></div></div>
+    <div class="dwf"><p class="need">저장하면 오늘(${md(TODAY)}) 받은 자료로 굳혀 두고 기준 날짜를 함께 남겨요.</p><button class="btn" data-act="close">그만두기</button><button class="btn primary" data-act="csave">후보로 저장</button></div></aside>`
+}
+
+/* ───────── 그리기 · 옮기기 ───────── */
+function render() {
+  $('#tabs').innerHTML = tabsHtml()
+  const V = st.view
+  $('#main').innerHTML = V === 'scan' ? scanHtml() : V === 'candidate' ? candidateHtml() : V === 'listings' ? listingsHtml() : V === 'compare' ? compareHtml() : V === 'plan' ? planHtml() : V === 'report' ? reportHtml() : V === 'sources' ? sourcesHtml() : V === 'dashboard' ? dashHtml() : V === 'empty' ? emptyHtml() : nokeyHtml()
+  $('#layer').innerHTML = layerHtml()
+}
+function rerender() { const y = window.scrollY; render(); window.scrollTo(0, y) }
+function setView(v, hashEl) {
+  st.view = v; st.menu = false
+  history.replaceState(null, '', `?s=${v}${['candidate', 'plan', 'report'].includes(v) ? `&c=${st.cand}` : ''}`)
+  document.querySelectorAll('#seg a').forEach(a => a.setAttribute('aria-current', String(a.getAttribute('href') === `?s=${v}`)))
+  setNote(v)
+  render()
+  const el = hashEl && document.getElementById(hashEl)
+  if (el) el.scrollIntoView({ block: 'center' }); else window.scrollTo(0, 0)
+}
+let toastT
+function toast(msg) { const t = $('#toast'); t.textContent = msg; clearTimeout(toastT); toastT = setTimeout(() => { t.textContent = '' }, 3600) }
+const ga = w => { const c = String(w).trim().slice(-1).charCodeAt(0); if (c < 0xAC00 || c > 0xD7A3) return '이(가)'; return (c - 0xAC00) % 28 ? '이' : '가' }
+const EXAMPLE_COST = { dep: '10,000', key: '0', intPy: '250', equip: '32,000', staff: '2,600', rentM: '598', etc: '400', loan: '30,000', rate: '5.2', visit: '42,000', days: '26' }
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-act]')
+  if (!t) { if (st.menu && !e.target.closest('.mpop')) { st.menu = false; $('#tabs').innerHTML = tabsHtml() } return }
+  const act = t.dataset.act, c = curC()
+  switch (act) {
+    case 'view': e.preventDefault(); setView(t.dataset.v); break
+    case 'menu': st.menu = !st.menu; $('#tabs').innerHTML = tabsHtml(); break
+    case 'cand': st.cand = t.dataset.id; history.replaceState(null, '', `?s=${st.view}&c=${st.cand}`); rerender(); break
+    case 'dong': st.dong = +t.dataset.i; $('#scanL').innerHTML = scanLeft(); $('#scanR').innerHTML = scanRank(); break
+    case 'alldongs': st.allDongs = !st.allDongs; $('#scanR').innerHTML = scanRank(); break
+    case 'wreset': st.w = DEF_W.slice(); rerender(); break
+    case 'add': st.drawer = { tab: 'addr' }; $('#layer').innerHTML = layerHtml(); break
+    case 'tocand': st.drawer = { tab: 'listing', listing: t.dataset.id }; $('#layer').innerHTML = layerHtml(); break
+    case 'dtab': st.drawer.tab = t.dataset.v; $('#layer').innerHTML = layerHtml(); break
+    case 'close': st.drawer = null; $('#layer').innerHTML = ''; break
+    case 'csave': st.drawer = null; $('#layer').innerHTML = ''; toast('후보로 저장했어요. 오늘 받은 자료로 굳혀 두었어요. (시안이라 목록에는 더하지 않아요)'); break
+    case 'naver': { const d = t.dataset.d || $('#ndong')?.value || '가람동'; toast(`새 창에서 네이버 부동산 상가 매물 지도(${d})가 열려요. 시안이라 열지 않아요.`); break }
+    case 'ext': e.preventDefault(); toast(`${t.dataset.v}${ga(t.dataset.v)} 새 창으로 열려요. 시안이라 열지 않아요.`); break
+    case 'refresh': toast('다시 받으면 굳혀 둔 값과 무엇이 바뀌었는지 먼저 보여 드려요. (시안이라 받지 않아요)'); break
+    case 'src': e.preventDefault(); st.srcHit = t.dataset.k; setView('sources', 'src-' + t.dataset.k); break
+    case 'law': e.preventDefault(); st.srcHit = 'law-' + t.dataset.k; setView('sources', 'law-' + t.dataset.k); break
+    case 'toc': e.preventDefault(); document.getElementById('sec-' + t.dataset.id)?.scrollIntoView({ block: 'start' }); break
+    case 'kind': st.kind = t.dataset.k; rerender(); break
+    case 'sign': st.sign = st.sign || {}; st.sign[c.id] = t.dataset.v; rerender(); break
+    case 'pyf': st.pyF = t.dataset.k; rerender(); break
+    case 'psave': {
+      const f = $('#pform'), val = n => f.querySelector(`[name="${n}"]`).value.trim(), num = n => { const x = val(n).replace(/[^0-9.]/g, ''); return x === '' ? null : Number(x) }
+      f.querySelectorAll('.ferr').forEach(p => { p.hidden = true }); f.querySelectorAll('[aria-invalid]').forEach(i => i.removeAttribute('aria-invalid'))
+      const errs = []
+      if (!val('bld')) errs.push(['bld', '건물 이름을 적어 주세요.'])
+      if (!num('py')) errs.push(['py', '전용 평수를 숫자로 적어 주세요.'])
+      if (num('rent') == null) errs.push(['rent', '월세를 숫자로 적어 주세요(만 원).'])
+      if (errs.length) { errs.forEach(([n, m]) => { const p = f.querySelector(`[data-err="${n}"]`); p.textContent = m; p.hidden = false; f.querySelector(`[name="${n}"]`).setAttribute('aria-invalid', 'true') }); f.querySelector(`[name="${errs[0][0]}"]`).focus(); break }
+      const agent = val('agent')
+      st.listings.push({ id: 'L' + (st.listings.length + 1), bld: val('bld'), floor: val('floor'), dong: val('dong'), py: num('py'), dep: num('dep') ?? 0, rent: num('rent'), mgmt: num('mgmt') ?? 0, key: num('key') ?? 0, agent, tel: val('tel'), cand: null, at: TODAY })
+      const book = $('#p-book').checked && agent
+      rerender(); toast(`매물을 저장했어요.${book ? ` 중개사 ${agent}${eul(agent)} 주소록(기타)에도 넣었어요.` : ''}`); break
+    }
+    case 'step': { const id = t.dataset.id, i = +t.dataset.i; if (st.status[id] === i) break; st.status[id] = i; st.memos[id].unshift([TODAY, `진행 상태를 '${STEPS[i]}'(으)로 바꿨어요.`]); rerender(); toast(`후보 ${id}: ${STEPS[i]}`); break }
+    case 'drop': { const id = t.dataset.id; st.dropped[id] = true; if (st.cand === id) st.cand = CANDS.find(x => !st.dropped[x.id])?.id || 'A'; rerender(); toast(`후보 ${id}${ga(id)} 내려놓음으로 갔어요. 아래 '내려놓은 후보'에서 다시 올릴 수 있어요.`); break }
+    case 'undrop': delete st.dropped[t.dataset.id]; rerender(); break
+    case 'ox': { const a = st.req[c.id], i = +t.dataset.i; a[i] = a[i] === 'o' ? 'x' : a[i] === 'x' ? 'q' : 'o'; rerender(); break }
+    case 'sdone': st.sdone[t.dataset.i] = !st.sdone[t.dataset.i]; rerender(); break
+    case 'visit': { const a = st.checks[c.id], i = +t.dataset.i, k = a.indexOf(i); if (k >= 0) a.splice(k, 1); else a.push(i); rerender(); break }
+    case 'photo': $('#photoIn').click(); break
+    case 'memo': { const tx = $('#mtext').value.trim(); if (!tx) { $('#mtext').focus(); toast('메모를 적어 주세요.'); break } st.memos[c.id].unshift([$('#mdate').value || TODAY, tx]); st.memos[c.id].sort((a, b) => b[0].localeCompare(a[0])); rerender(); toast('메모를 더했어요.'); break }
+    case 'fill': st.cost = { ...EXAMPLE_COST }; rerender(); break
+    case 'print': window.print(); break
+    case 'pdf': toast("인쇄 창이 열리면 프린터(대상)를 'PDF로 저장'으로 골라요."); setTimeout(() => window.print(), 600); break
+    case 'toast': e.preventDefault(); toast(t.dataset.msg); break
+    case 'kshow': { const i = document.getElementById(t.dataset.id); const on = i.type === 'password'; i.type = on ? 'text' : 'password'; t.textContent = on ? '가리기' : '보기'; break }
+    case 'kin': toast('넣으면 자료 하나를 받아 보고 맞는 열쇠인지 알려 줘요. (시안이라 넣지 않아요)'); break
+    case 'start': location.href = `?s=${t.dataset.v || 'scan'}`; break
+  }
+})
+document.addEventListener('input', e => {
+  const t = e.target, act = t.dataset && t.dataset.act
+  if (act === 'weight') {
+    st.w[+t.dataset.i] = +t.value; $('#wo' + t.dataset.i).textContent = t.value; $('#wsum').textContent = st.w.reduce((a, b) => a + b, 0)
+    $('#scanL').innerHTML = scanLeft(); $('#scanR').innerHTML = scanRank()
+  } else if (act === 'radius') {
+    const c = curC(); st.radius[c.id] = RADII[+t.value]; const v = calc(c)
+    $('#radv').textContent = rLabel(st.radius[c.id]); t.setAttribute('aria-valuetext', rLabel(st.radius[c.id]))
+    $('#mmap').innerHTML = miniMap(c, v); $('#restS').innerHTML = restSecs(c, v); $('#toc').innerHTML = tocHtml(c, v)
+  } else if (act === 'cost') {
+    st.cost[t.dataset.k] = t.value
+    const c = curC(), l = st.listings.find(x => x.id === c.listing), k = costCalc(l)
+    $('#sumbox').innerHTML = sumboxHtml(c)
+    if ($('#a-interior')) $('#a-interior').textContent = man(k.interior)
+    if ($('#a-interest')) $('#a-interest').textContent = man(k.interest)
+    $('#a-six').textContent = man(k.six)
+  } else if (act === 'nego') {
+    st.nego[+t.dataset.i][+t.dataset.c][+t.dataset.k] = t.value
+  }
+})
+document.addEventListener('change', e => {
+  const t = e.target, act = t.dataset && t.dataset.act
+  if (act === 'opendate' && t.value) { st.open = t.value; rerender() }
+  else if (act === 'region') toast('시안은 서울특별시 예시구만 그려요.')
+  else if (t.id === 'photoIn' && t.files.length) {
+    const c = curC()
+    for (const f of t.files) st.photos[c.id].push([f.name.replace(/\.[^.]+$/, ''), TODAY, URL.createObjectURL(f)])
+    toast(`사진 ${t.files.length}장을 올렸어요. (시안은 이 화면에서만 보여요)`); t.value = ''; rerender()
+  }
+})
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && (st.drawer || st.menu)) { st.drawer = null; st.menu = false; render() } })
+
+render()
+{ const h = (location.hash || '').slice(1); const el = h && document.getElementById(h); if (el) el.scrollIntoView({ block: S === 'sources' ? 'center' : 'start' }) }
+</script>
+</body>
+</html>
