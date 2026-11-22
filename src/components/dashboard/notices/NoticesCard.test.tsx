@@ -59,6 +59,8 @@ const GOSI = view({
     { id: 'INJ-01', title: '스테로이드 관절강내주사 같은 관절 1년 횟수' },
     { id: 'INJ-02', title: '스테로이드 관절강내주사 1개월 관절 수' },
   ],
+  // AI가 두 규칙 모두 사람이 봐야 함으로 판정(specs/rule-auto AC-7815.2)
+  ruleTally: { changed: 0, human: 2, pending: 0 },
   posts: [
     { source: 'hira_crtr', title: '관절강내 주사', url: CRTR_URL, postedOn: '2026-11-20', attachments: [] },
     { source: 'mohw_rss', title: '보건복지부 고시 제2026-218호', url: MOHW_URL, postedOn: '2026-11-20', attachments: [] },
@@ -80,6 +82,7 @@ const CHECKED = view({
   postedOn: '2026-11-18',
   noticeNo: '2026-214',
   ruleHits: [{ id: 'PT-01', title: '표층열 + 심층열' }],
+  ruleTally: { changed: 0, human: 1, pending: 0 },
   posts: [{ source: 'mohw_rss', title: '물리치료', url: MOHW_URL, postedOn: '2026-11-18', attachments: [] }],
   mark: { readAt: null, starred: false, memo: '', memoAt: null, rulesCheckedAt: '2026-11-18T23:40:00Z' },
 })
@@ -147,7 +150,7 @@ afterEach(() => {
 })
 
 describe("NoticesCard — 대시보드 '고시·공지' 칸 (AC-7422.2)", () => {
-  it('AC-7422.2: 칸 `고시·공지` · `새 관련 글 {n}건` · `고시·공지 열기`(/notices)와 안 읽은 관련 글 줄(날짜·제목·출처, 확인 안 한 규칙 연결이면 `점검 규칙 확인 필요` 칩, 누르면 그 글)이다', async () => {
+  it('AC-7422.2·AC-7815.2: 칸 `고시·공지` · `새 관련 글 {n}건` · `고시·공지 열기`(/notices)와 안 읽은 관련 글 줄(날짜·제목·출처, 사람이 봐야 함이 남고 확인 전이면 `점검 규칙 확인 필요` 칩, 누르면 그 글)이다', async () => {
     given(2, [GOSI, NEWS])
     draw()
     await settle()
@@ -190,7 +193,7 @@ describe("NoticesCard — 대시보드 '고시·공지' 칸 (AC-7422.2)", () => 
     for (const ul of lists) expect(classes(ul)).toContain('list-none')
   })
 
-  it('AC-7422.2: 관련 글만(전체 출처·별표 없음·찾기 없음·첫 쪽)을 읽고, 안 읽은 글만 차례대로 줄로 놓는다(읽은 글·규칙을 확인한 글의 칩은 없음)', async () => {
+  it('AC-7422.2·AC-7815.2: 관련 글만(전체 출처·별표 없음·찾기 없음·첫 쪽)을 읽고, 안 읽은 글만 차례대로 줄로 놓는다(읽은 글·규칙을 확인한 글의 칩은 없음)', async () => {
     given(2, [GOSI, READ, CHECKED])
     draw()
     await settle()
@@ -330,5 +333,66 @@ describe("NoticesCard — 대시보드 '고시·공지' 칸 (AC-7422.2)", () => 
     expect(count).not.toHaveBeenCalled()
     expect(list).not.toHaveBeenCalled()
     expect(states).not.toHaveBeenCalled()
+  })
+})
+
+// specs/rule-auto REQ-7815 · 시안 docs/mockups/rule-auto ?v=dashboard .ncard. 칸 줄 칩은 사람이 봐야 함이 남은 글만(AI 판정 수 ruleTally로)
+describe("NoticesCard — '고시·공지' 칸 규칙 칩 (AC-7815.2)", () => {
+  // 규칙 둘이 이어진 예시 고시(안 읽음)
+  const ruled = (n: number, over: Partial<NoticeView>) =>
+    view({
+      id: id(250 + n),
+      title: `「요양급여의 적용기준 및 방법에 관한 세부사항」 일부개정 ${n}`,
+      kind: 'gosi',
+      postedOn: '2026-11-20',
+      noticeNo: `2026-${250 + n}`,
+      ruleHits: [
+        { id: 'ES-04', title: '체외충격파 같은 부위 횟수' },
+        { id: 'MN-03', title: '도수치료와 함께 못 하는 열치료' },
+      ],
+      posts: [{ source: 'mohw_rss', title: `보건복지부 고시 제2026-${250 + n}호`, url: MOHW_URL, postedOn: '2026-11-20', attachments: [] }],
+      ...over,
+    })
+  const chipsIn = (li: HTMLElement) => Array.from(li.querySelectorAll('a > span:last-child > span')).map((s) => s.textContent)
+
+  it('AC-7815.2: 사람이 봐야 함이 남고 확인 전이면 `점검 규칙 확인 필요`(노랑) 하나뿐이다 — 바뀜·살펴보는 중 칩은 칸에 없다', async () => {
+    given(1, [ruled(1, { ruleTally: { changed: 2, human: 1, pending: 3 } })])
+    draw()
+    await settle()
+    const [row] = rows() as [HTMLElement]
+    expect(within(row).getByText('점검 규칙 확인 필요').className).toBe(ds.chip.warning)
+    expect(chipsIn(row)).toEqual(['보건복지부', '점검 규칙 확인 필요'])
+    expect(within(row).queryByText(/바뀜/)).toBeNull()
+    expect(within(row).queryByText('점검 규칙 살펴보는 중')).toBeNull()
+  })
+
+  it('AC-7815.2: 사람이 봐야 함이 없으면(바뀜·살펴보는 중·바꿀 것 없음만) 규칙 연결이 있어도 칩이 없다', async () => {
+    given(3, [
+      ruled(1, { ruleTally: { changed: 2, human: 0, pending: 0 } }),
+      ruled(2, { ruleTally: { changed: 0, human: 0, pending: 2 } }),
+      ruled(3, { ruleTally: { changed: 0, human: 0, pending: 0 } }),
+    ])
+    draw()
+    await settle()
+    expect(rows()).toHaveLength(3)
+    for (const row of rows()) expect(chipsIn(row), row.textContent ?? '').toEqual(['보건복지부'])
+  })
+
+  it('AC-7815.2: ruleTally가 null(판정 줄 읽기 실패)이거나 없으면 규칙 연결이 있어도 칩이 없다', async () => {
+    given(2, [ruled(1, { ruleTally: null }), ruled(2, {})])
+    draw()
+    await settle()
+    expect(rows()).toHaveLength(2)
+    for (const row of rows()) expect(chipsIn(row), row.textContent ?? '').toEqual(['보건복지부'])
+  })
+
+  it('AC-7815.2: [확인했어요]를 누른 글은 사람이 봐야 함이 있어도 칩이 없다(`점검 규칙 확인함`도 칸에 없음)', async () => {
+    const mark = { readAt: null, starred: false, memo: '', memoAt: null, rulesCheckedAt: '2026-11-21T00:10:00Z' }
+    given(1, [ruled(1, { ruleTally: { changed: 1, human: 2, pending: 0 }, mark })])
+    draw()
+    await settle()
+    const [row] = rows() as [HTMLElement]
+    expect(chipsIn(row)).toEqual(['보건복지부'])
+    expect(within(row).queryByText('점검 규칙 확인함')).toBeNull()
   })
 })

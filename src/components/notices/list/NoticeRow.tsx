@@ -1,11 +1,13 @@
 import Link from 'next/link'
 import { ds } from '@/components/ui/classes'
 import { mustSeeText } from '@/lib/notices/keywords'
+import { ruleChips, type RuleChip } from '@/lib/notices/ruleView'
 import { attachmentsOf, dateText, numberSlot, sourcesText } from '@/lib/notices/view'
 import type { NoticeView } from '@/types/notices'
 import { FlagIcon, StarIcon } from './icons'
 
 // 글 목록 한 줄(specs/notices AC-7419.2·AC-7419.3·AC-7424.10, 시안 .item). 줄을 누르면 /notices?id=<id>로 글을 연다.
+// 규칙 칩은 연결 수가 아니라 AI 판정 수(ruleTally)로 ruleChips가 고른다(specs/rule-auto AC-7815.1, 시안 rule-auto ?v=list).
 // 제목·요약은 바깥 글과 AI 글이라 글자 노드로만 그린다(HTML로 해석하지 않음).
 // 줄 링크는 밑줄 없이(no-underline) ink로 두고 안의 글마다 시안 색을 준다 — 앱에는 a 밑줄·파랑을 지우는 바탕 규칙이 없다(시안 a { color: inherit; text-decoration: none })
 
@@ -18,16 +20,17 @@ const MUST_CHIP =
 
 type Chip = { text: string; className: string; flag?: boolean }
 
-// 칩 차례(시안 chips): 꼭 볼 글 → 요약 만드는 중 → 정형외과 의원 관련 → 점검 규칙 확인 필요·확인함 → 붙임 파일 {n}개
+// 규칙 칩 색: w 노랑 · a 파랑 · n 회색(시안 .chip.w·.a·.n)
+const RULE_CHIP: Record<RuleChip['tone'], string> = { w: ds.chip.warning, a: ds.chip.accent, n: ds.chip.neutral }
+
+// 칩 차례(시안 chips): 꼭 볼 글 → 요약 만드는 중 → 정형외과 의원 관련 → 규칙 칩(확인 필요·확인함 → {n}개 바뀜, 또는 살펴보는 중) → 붙임 파일 {n}개
 function chipsOf(n: NoticeView): Chip[] {
   const chips: Chip[] = []
   const must = mustSeeText(n.keywords, 2)
   if (must) chips.push({ text: must, className: MUST_CHIP, flag: true })
   if (n.summary === null && n.state !== 'failed') chips.push({ text: '요약 만드는 중', className: ds.chip.neutral })
   if (n.related === true) chips.push({ text: '정형외과 의원 관련', className: ds.chip.accent })
-  if (n.ruleHits.length > 0) {
-    chips.push(n.mark.rulesCheckedAt ? { text: '점검 규칙 확인함', className: ds.chip.neutral } : { text: '점검 규칙 확인 필요', className: ds.chip.warning })
-  }
+  for (const chip of ruleChips(n.ruleTally, n.mark.rulesCheckedAt)) chips.push({ text: chip.text, className: RULE_CHIP[chip.tone] })
   const files = attachmentsOf(n.posts).length
   if (files > 0) chips.push({ text: `붙임 파일 ${files}개`, className: ds.chip.neutral })
   return chips
