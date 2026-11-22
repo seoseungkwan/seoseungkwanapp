@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ESLint } from 'eslint'
+import ts from 'typescript'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 // 실제 파일을 만들지 않고, 경로만 빌려 eslint.config.mjs가 그 자리에 거는 규칙을 확인한다
@@ -484,6 +486,43 @@ describe('AC-004.2 src/lib/precheck/**도 환자 자료 구역 규칙 아래 있
     const messages = (await lint("fetch('x')", PRECHECK)).map((m) => m.message).join('\n')
     expect(messages).toContain('lib/precheck')
     expect(messages).toContain('lib/bridge')
+  })
+})
+
+// 고시로 바꾼 규칙 검사와 판 합치기(specs/rule-auto). 서버(모으기)도 import하지만 파일은 환자 자료 구역 안에 있다
+describe('AC-7802.6 src/lib/precheck/ruleUpdates.ts(바꾼 규칙 검사)도 환자 자료 구역 울타리 아래 있다', SLOW, () => {
+  const RULE_UPDATES = 'src/lib/precheck/ruleUpdates.ts'
+
+  it.each([
+    ["fetch('x')", 'no-restricted-globals'],
+    ["globalThis.fetch('x')", 'no-restricted-properties'],
+    ["new XMLHttpRequest()", 'no-restricted-globals'],
+    ['console.log(1)', 'no-console'],
+    ['globalThis.console.log(1)', 'no-restricted-properties'],
+    ['const c = console; c.log(1)', 'no-restricted-globals'],
+    ["localStorage.setItem('k', 'v')", 'no-restricted-globals'],
+    ["import { createClient } from '@supabase/supabase-js'", 'no-restricted-imports'],
+    ["import { createBrowserClient } from '@supabase/ssr'", 'no-restricted-imports'],
+    ["import { readRuleUpdates } from '@/lib/storage/ruleChanges'", 'no-restricted-imports'],
+    ["import x from '../storage/ruleChanges'", 'no-restricted-imports'],
+    ["import { supabaseBrowser } from '@/lib/supabase/browser'", 'no-restricted-imports'],
+    ["import React from 'react'", 'no-restricted-imports'],
+    ["export const load = async () => await import('@supabase/supabase-js')", 'no-restricted-syntax'],
+    ["export const load = async () => await import('@/lib/storage/ruleChanges')", 'no-restricted-syntax'],
+    ['export const load = async (name: string) => await import(name)', 'no-restricted-syntax'],
+  ])('AC-7802.6: %s → %s', async (code, rule) => {
+    expect(await errorRules(code, RULE_UPDATES)).toContain(rule)
+  })
+
+  it('AC-7802.6: 실제 ruleUpdates.ts의 import는 @/types/precheck·@/lib/precheck/**·@/lib/analytics/dates뿐이고 울타리에 걸리는 것이 없다', async () => {
+    const text = readFileSync(join(root, RULE_UPDATES), 'utf-8')
+    // import·export from·import()·import type을 모두 센다
+    const specifiers = ts.preProcessFile(text, true, true).importedFiles.map((f) => f.fileName)
+    expect(specifiers.length).toBeGreaterThan(0)
+    expect(specifiers.filter((s) => !/^@\/types\/precheck$|^@\/lib\/precheck\/[\w/.-]+$|^@\/lib\/analytics\/dates$/.test(s))).toEqual([])
+    expect(specifiers.filter((s) => s.includes('..') || s.includes('/data/'))).toEqual([]) // 규칙표 파일은 부르지 않는다(AC-007.4)
+    const [result] = await eslint.lintFiles([RULE_UPDATES])
+    expect(result.messages.map((m) => `${m.line} ${m.ruleId}`)).toEqual([])
   })
 })
 

@@ -1,0 +1,578 @@
+import { beforeAll, describe, expect, it } from 'vitest'
+import { monthOf } from '@/lib/analytics/dates'
+import type { ClaimMonth, RuleDef, RuleUpdate, RxLine, Tables, Visit } from '@/types/precheck'
+import { loadTables } from '@/workers/precheck/tables'
+import { NO_SETTINGS, runRules } from './rules/engine'
+import { statusesOf } from './rules/status'
+import { checkRuleChange, NAME_KEYS, nameKindOf, noAutoRuleIds, rulesCutoff, withRuleUpdates } from './ruleUpdates'
+
+// 고시로 바꾼 규칙 검사와 진료일별 판 합치기(specs/rule-auto REQ-7802·REQ-7803·AC-7807.1) [환자 자료 구역 안 순수 함수].
+// 규칙표는 workers/precheck/tables.ts의 loadTables로만 부른다(AC-007.4). 진료는 손으로 만든 가짜(가상환자)다
+
+let tables: Tables
+beforeAll(async () => {
+  const loaded = await loadTables()
+  if (!loaded.ok) throw new Error(loaded.code)
+  tables = loaded.value
+}, 60_000) // 약 표 JSON이 커서 바쁜 기계에서는 첫 읽기가 10초를 넘는다
+
+type Rec = Record<string, unknown>
+const FROM = '2026-12-01'
+
+const ruleOf = (id: string): RuleDef => {
+  const rule = tables.rules.rules.find((r) => r.id === id)
+  if (!rule) throw new Error(`규칙표에 ${id}가 없다`)
+  return rule
+}
+/** 고시로 고친 규칙 모양: 기본은 제목만 바꾸고 시행일을 넣는다(effective_to는 비움) */
+const changed = (id: string, patch: Partial<RuleDef> = {}, from = FROM): RuleDef => ({
+  ...ruleOf(id),
+  title: `${ruleOf(id).title} (고시 반영)`,
+  effective_from: from,
+  effective_to: null,
+  ...patch,
+})
+/** params 일부만 바꾼 사본(깊은 사본 위에 고친다) */
+const withParams = (id: string, edit: (p: Rec) => void, patch: Partial<RuleDef> = {}): RuleDef => {
+  const params = structuredClone(ruleOf(id).params) as Rec
+  edit(params)
+  return changed(id, { params, ...patch })
+}
+const check = (next: unknown, id = (next as RuleDef).id, current?: RuleDef) => checkRuleChange(tables.rules, ruleOf(id), current ?? ruleOf(id), next)
+const update = (changeId: string, rule: RuleDef, patch: Partial<RuleUpdate> = {}): RuleUpdate => ({
+  changeId,
+  ruleId: rule.id,
+  from: rule.effective_from as string,
+  baseVersion: tables.rules.version,
+  rule,
+  ...patch,
+})
+
+/** params 안 첫 이름(이름 칸 값이나 regions. 길)을 없는 이름으로 바꾼 사본. 이름이 없으면 null */
+function breakFirstName(params: Rec): Rec | null {
+  const copy = structuredClone(params)
+  let done = false
+  const walk = (node: unknown, key: string | null): unknown => {
+    if (done) return node
+    if (typeof node === 'string') {
+      if (key !== null && nameKindOf(key)) {
+        done = true
+        return 'zz_no_such_name'
+      }
+      if (node.startsWith('regions.')) {
+        done = true
+        return 'regions.zz_no_such_path'
+      }
+      return node
+    }
+    if (Array.isArray(node)) return node.map((x) => walk(x, key))
+    if (node && typeof node === 'object') {
+      for (const [k, v] of Object.entries(node)) (node as Rec)[k] = walk(v, k)
+    }
+    return node
+  }
+  walk(copy, null)
+  return done ? copy : null
+}
+
+describe('AC-7802.4 noAutoRuleIds — 저절로 못 바꾸는 규칙', () => {
+  it('AC-7802.4: HY-12·DX-08·LA-23과 visit_fee·dx_master·claim_code 종류 규칙 모두가 들고 다른 규칙은 없다', () => {
+    const expected = new Set(['HY-12', 'DX-08', 'LA-23'])
+    for (const rule of tables.rules.rules) if (['visit_fee', 'dx_master', 'claim_code'].includes(rule.type)) expected.add(rule.id)
+    expect(new Set(noAutoRuleIds(tables.rules))).toEqual(expected)
+    expect(expected.size).toBeGreaterThan(40)
+  })
+
+  it('AC-7802.4: 다른 규칙이 exclude_pairs_covered_by로 가리키는 규칙(LA-24 → LA-23)이 들어 있다', () => {
+    expect(ruleOf('LA-24').params.exclude_pairs_covered_by).toEqual(['LA-23'])
+    expect(noAutoRuleIds(tables.rules).has('LA-23')).toBe(true)
+    expect(noAutoRuleIds(tables.rules).has('LA-24')).toBe(false)
+  })
+
+  it("AC-7802.4·AC-7802.1: 저절로 못 바꾸는 규칙은 새 규칙이 무엇이든(이상한 값이어도) 먼저 'no-auto'다", () => {
+    for (const id of ['HY-12', 'DX-08', 'LA-23', 'VF-01', 'DX-01', 'CL-01']) {
+      expect(check(changed(id), id), id).toBe('no-auto')
+      expect(check(null, id), id).toBe('no-auto')
+    }
+  })
+})
+
+describe('AC-7802.1 checkRuleChange — 검사 차례와 까닭 번호', () => {
+  it("AC-7802.1: 제목만 바꾸고 시행일을 넣은 규칙은 'ok'이다", () => {
+    expect(check(changed('LA-18'))).toBe('ok')
+  })
+
+  it.each([
+    ['id', { id: 'LA-19' }],
+    ['domain', { domain: '다른 분야' }],
+    ['type', { type: 'interval' }],
+    ['grade', { grade: '확인필요' }],
+    ['confidence', { confidence: '하' }],
+    ['data_needed', { data_needed: [] }],
+    ['automatable', { automatable: 'no' }],
+    ['stage', { stage: ['memo'] }],
+    ['enabled_default', { enabled_default: false }],
+    ['notes', { notes: '고친 메모' }],
+  ] as [string, Partial<RuleDef>][])("AC-7802.1: 바꾸지 못하는 칸 %s가 원래 규칙과 다르면 'fixed'다", (_name, patch) => {
+    expect(check(changed('LA-18', patch), 'LA-18')).toBe('fixed')
+  })
+
+  it("AC-7802.1: 규칙이 객체가 아니거나 바꾸지 못하는 칸이 빠지면 'fixed'다(던지지 않는다)", () => {
+    for (const next of [null, undefined, 1, 'LA-18', [], {}]) expect(check(next, 'LA-18')).toBe('fixed')
+    const missing = changed('LA-18') as Partial<RuleDef>
+    delete missing.notes
+    expect(check(missing, 'LA-18')).toBe('fixed')
+  })
+
+  it.each([
+    ['effective_to가 null이 아님', { effective_to: '2027-12-31' }],
+    ['effective_from이 null', { effective_from: null }],
+    ['effective_from이 실제 날짜가 아님(2월 30일)', { effective_from: '2026-02-30' }],
+    ['제목이 빈 글자', { title: ' ' }],
+    ['params가 객체가 아님', { params: [] as unknown as Rec }],
+    ['basis 모양이 다름', { basis: [{ doc: '고시' }] as unknown as RuleDef['basis'] }],
+  ] as [string, Partial<RuleDef>][])("AC-7802.1: %s이면 'shape'다", (_name, patch) => {
+    expect(check(changed('LA-18', patch), 'LA-18')).toBe('shape')
+  })
+
+  it("AC-7802.1: 16칸 밖의 칸이 있으면 'shape'다", () => {
+    expect(check({ ...changed('LA-18'), extra: 1 }, 'LA-18')).toBe('shape')
+  })
+
+  it("AC-7802.1: 크기(기본값 14) — 제목 80자·글 300자까지는 지나고, 넘거나 params 4,000바이트·규칙 8,000바이트를 넘으면 'size'다", () => {
+    expect(check(changed('LA-18', { title: '가'.repeat(80), message: '나'.repeat(300) }))).toBe('ok')
+    expect(check(changed('LA-18', { title: '가'.repeat(81) }))).toBe('size')
+    expect(check(changed('LA-18', { message: '나'.repeat(301) }))).toBe('size')
+    // 크기는 이름 검사보다 먼저 본다(긴 낱말이라도 'names' 전에 'size')
+    expect(check(withParams('LA-18', (p) => (p.count_unit = '다'.repeat(1400))))).toBe('size') // UTF-8 3바이트 × 1,400
+    const basis = Array.from({ length: 80 }, (_, i) => ({ doc: `가짜 고시 ${'라'.repeat(20)}`, number: `제2026-${i}호` }))
+    expect(check(changed('LA-18', { basis }))).toBe('size')
+  })
+
+  it("AC-7802.1: 여러 곳이 틀리면 정한 차례의 처음 것이다(fixed → shape → size → names)", () => {
+    expect(check(changed('LA-18', { grade: '확인필요', effective_to: '2027-01-01', title: '가'.repeat(81) }), 'LA-18')).toBe('fixed')
+    expect(check(changed('LA-18', { effective_to: '2027-01-01', title: '가'.repeat(81) }))).toBe('shape')
+    expect(check(withParams('LA-18', (p) => (p.count_unit = 'dose'), { title: '가'.repeat(81) }))).toBe('size')
+    expect(check(withParams('LA-18', (p) => ((p.thresholds = []), (p.count_unit = 'dose'))))).toBe('names')
+  })
+
+  it("AC-7802.1: 제목·글·params가 지금 판과 칸 차례만 다르고 같으면 'same'이다", () => {
+    const base = ruleOf('LA-18')
+    const reordered = Object.fromEntries(Object.entries(structuredClone(base.params)).reverse())
+    ;(reordered.window as Rec) = { days: 7, type: 'rolling_days' }
+    expect(check({ ...base, params: reordered, effective_from: FROM, effective_to: null })).toBe('same')
+    // 지금 판(current)과 견준다: 원래 규칙과 같아도 지금 판과 다르면 'same'이 아니다
+    const current = withParams('LA-18', (p) => ((p.thresholds as Rec[])[0].at = 5))
+    expect(check({ ...current, effective_from: '2027-01-01' }, 'LA-18', current)).toBe('same')
+    expect(check({ ...base, effective_from: '2027-01-01', effective_to: null }, 'LA-18', current)).toBe('ok')
+  })
+})
+
+describe('AC-7802.2 checkRuleChange — 이름·칸 검사(names)', () => {
+  it('AC-7802.2: 실제 규칙표의 저절로 바꿀 수 있는 규칙 모두는 제목만 바꾼 자기 자신이면 ok이다', () => {
+    const noAuto = noAutoRuleIds(tables.rules)
+    const auto = tables.rules.rules.filter((rule) => !noAuto.has(rule.id))
+    const odd = auto.map((rule) => [rule.id, check(changed(rule.id))]).filter(([, code]) => code !== 'ok')
+    expect(odd).toEqual([])
+    expect(auto.length).toBeGreaterThan(200)
+  })
+
+  it("AC-7802.2: 그 규칙들의 이름 칸 하나를 없는 이름으로 바꾸면 모두 'names'다", () => {
+    const noAuto = noAutoRuleIds(tables.rules)
+    const broken = tables.rules.rules
+      .filter((rule) => !noAuto.has(rule.id))
+      .flatMap((rule) => {
+        const params = breakFirstName(rule.params)
+        return params ? [[rule.id, check(changed(rule.id, { params }))]] : []
+      })
+    expect(broken.filter(([, code]) => code !== 'names')).toEqual([])
+    expect(broken.length).toBeGreaterThan(150)
+  })
+
+  it('AC-7802.2: NAME_KEYS가 실제 규칙표에서 값이 모두 이름표(코드 묶음·약 분류·아래 분류)에 있는 칸을 다 덮는다', () => {
+    const file = tables.rules
+    const groups = new Set(Object.keys(file.code_groups))
+    const subs = new Set<string>()
+    const classes = new Set(Object.keys(file.drug_classes))
+    for (const [name, spec] of Object.entries(file.drug_classes)) {
+      const subgroups = (spec as Rec).subgroups
+      if (subgroups && typeof subgroups === 'object') {
+        for (const sub of Object.keys(subgroups)) {
+          subs.add(sub)
+          classes.add(`${name}.${sub}`)
+        }
+      }
+    }
+    // 칸 이름 → 그 칸의 글자 값(글자 하나 또는 글자 목록)
+    const values = new Map<string, string[]>()
+    const walk = (node: unknown) => {
+      if (Array.isArray(node)) node.forEach(walk)
+      else if (node && typeof node === 'object') {
+        for (const [k, v] of Object.entries(node)) {
+          const list = typeof v === 'string' ? [v] : Array.isArray(v) && v.every((x) => typeof x === 'string') ? v : []
+          values.set(k, [...(values.get(k) ?? []), ...list])
+          walk(v)
+        }
+      }
+    }
+    for (const rule of file.rules) walk(rule.params)
+    const nameKeys: [string, string][] = []
+    for (const [key, list] of values) {
+      if (!list.length) continue
+      if (list.every((x) => groups.has(x))) nameKeys.push([key, 'group'])
+      else if (list.every((x) => classes.has(x))) nameKeys.push([key, 'class'])
+      else if (list.every((x) => subs.has(x))) nameKeys.push([key, 'sub'])
+    }
+    expect(nameKeys.filter(([key, kind]) => nameKindOf(key) !== kind)).toEqual([])
+    expect(nameKeys.length).toBeGreaterThan(15)
+    // design 4절의 이름 칸
+    expect(NAME_KEYS.group).toEqual(['code_groups', 'code_groups_any', 'codes_any_group', 'codes_any_groups', 'pairs_group'])
+    for (const key of ['drug_class', 'drug_classes', 'drug_classes_any', 'require_drug_classes_any', 'forbidden_drug_classes_any']) expect(nameKindOf(key)).toBe('class')
+    expect(nameKindOf('subgroups')).toBe('sub')
+    for (const key of ['codes', 'target', 'for', 'regex_key', 'dx_prefixes']) expect(nameKindOf(key)).toBeNull()
+  })
+
+  it("AC-7802.2 (a): 맨 위 칸이 같은 종류 규칙들이 쓰지 않는 칸이거나, 원래 칸의 JSON 종류가 다르면 'names'다", () => {
+    const countWindowKeys = new Set(tables.rules.rules.filter((r) => r.type === 'count_window').flatMap((r) => Object.keys(r.params)))
+    expect(countWindowKeys.has('days')).toBe(false) // 'days'는 LA-18 window 안에만 있는 낱말
+    expect(check(withParams('LA-18', (p) => (p.days = 14)))).toBe('names')
+    expect(check(withParams('LA-18', (p) => (p.thresholds = {})))).toBe('names')
+    expect(check(withParams('LA-18', (p) => (p.window = [])))).toBe('names')
+    expect(check(withParams('LA-18', (p) => (p.count_unit = 1)))).toBe('names')
+    expect(check(withParams('LA-18', (p) => (p.group_by = null)))).toBe('names')
+  })
+
+  it("AC-7802.2 (b): 없는 코드 묶음·약 분류·아래 분류·pairs 없는 묶음·찾을 수 없는 regions. 길이면 'names'다", () => {
+    expect(check(withParams('LA-18', (p) => ((p.target as Rec).code_groups = ['la_all', 'zz_group'])))).toBe('names')
+    expect(check(withParams('IJ-02', (p) => ((p.drug_condition as Rec).drug_classes_any = ['steroid_injection', 'zz_class'])))).toBe('names')
+    expect(check(withParams('OP-05', (p) => ((p.target as Rec).drug_classes = ['osteoporosis.zz_sub'])))).toBe('names')
+    expect(check(withParams('IJ-05', (p) => (p.acceptable_with = ['steroid_injection', 'zz_class'])))).toBe('names')
+    // 아래 분류는 그 규칙이 고른 약 분류(gi_protectant)의 것이어야 한다(osteoporosis의 bisphosphonate는 아님)
+    expect(check(withParams('DR-12', (p) => (p.subgroups = [...(p.subgroups as string[]), 'bisphosphonate'])))).toBe('names')
+    expect(check(withParams('DR-12', (p) => (p.subgroups = (p.subgroups as string[]).slice(0, 3))))).not.toBe('names')
+    // pairs_group은 pairs가 있는 묶음만(la_all에는 pairs가 없다)
+    expect(check(withParams('LA-10', (p) => (p.pairs_group = 'la_all')))).toBe('names')
+    expect(check(withParams('LA-10', (p) => (p.pairs_group = 'la_subblock_pairs')))).not.toBe('names')
+    expect(check(withParams('LA-22', (p) => (((p.required_all as Rec[])[0].regex_key = 'regions.chart_keywords.zz_none'))))).toBe('names')
+    expect(check(withParams('LA-22', (p) => (((p.required_all as Rec[])[0].regex_key = 'regions.constructor'))))).toBe('names')
+    // 이름 칸 값이 글자가 아니면 'names'
+    expect(check(withParams('LA-18', (p) => ((p.target as Rec).code_groups = ['la_all', { name: 'tfesi' }])))).toBe('names')
+  })
+
+  it("AC-7802.2 (b)·(e): 'regions.'로 시작하는 설명 글(길 모양이 아님)은 길로 찾지 않고, 원래 있던 글 그대로일 때만 지난다", () => {
+    expect(ruleOf('IJ-17').params.dx_region).toBe('regions.kcd_prefix_map + kcd_fifth_char_rules')
+    expect(check(changed('IJ-17'))).toBe('ok')
+    expect(check(withParams('IJ-17', (p) => (p.dx_region = 'regions.kcd_prefix_map + 새 설명')))).toBe('names')
+    expect(check(withParams('IJ-17', (p) => (p.procedure_region = 'regions.chart_site_map 그리고 더')))).toBe('names')
+    // 길 모양이면 찾아져야 한다
+    expect(check(withParams('IJ-17', (p) => (p.dx_region = 'regions.kcd_prefix_map')))).toBe('ok')
+    expect(check(withParams('IJ-17', (p) => (p.dx_region = 'regions.kcd_prefix_mapp')))).toBe('names')
+  })
+
+  it("AC-7802.2 (b): 코드 묶음·약 분류를 더하는 것은 지난다(약 분류.아래 분류 이름 포함)", () => {
+    expect(check(withParams('LA-18', (p) => ((p.target as Rec).code_groups = ['la_all', 'tfesi', 'la_carm_required'])))).toBe('ok')
+    expect(check(withParams('OP-05', (p) => ((p.target as Rec).drug_classes = ['osteoporosis.denosumab', 'osteoporosis.zoledronic_acid'])))).toBe('ok')
+  })
+
+  it("AC-7802.2 (c): codes는 규칙표가 아는 코드(대문자로 맞춤)만, 상병 앞자리는 ^[A-Z][0-9A-Z]{0,5}$만 지난다", () => {
+    expect(check(withParams('IJ-02', (p) => ((p.target as Rec).codes = ['KK090', 'ZZ999'])))).toBe('names')
+    expect(check(withParams('IJ-02', (p) => ((p.target as Rec).codes = ['KK090', 'kk062'])))).toBe('ok') // KK062는 IJ-05가 쓰는 코드
+    expect(check(withParams('IJ-02', (p) => ((p.target as Rec).codes = 'KK090')))).toBe('names')
+    expect(check(withParams('LA-26', (p) => (p.dx_prefixes = [...(p.dx_prefixes as string[]), 'M54'])))).toBe('ok')
+    for (const bad of ['m54', 'M54.5', 'M5456789', '5M4', '', 1]) {
+      expect(check(withParams('LA-26', (p) => (p.dx_prefixes = [...(p.dx_prefixes as string[]), bad]))), String(bad)).toBe('names')
+    }
+    // 객체 안 목록도 본다(ES-03 forbidden_dx_prefixes: 이름 → 앞자리 목록)
+    expect(check(withParams('ES-03', (p) => ((p.forbidden_dx_prefixes as Rec)['악성 종양'] = ['C', 'D0'])))).toBe('ok')
+    expect(check(withParams('ES-03', (p) => ((p.forbidden_dx_prefixes as Rec)['악성 종양'] = ['c'])))).toBe('names')
+    expect(check(withParams('ES-03', (p) => ((p.forbidden_dx_prefixes as Rec)['새 금기'] = ['C'])))).toBe('names') // 새 열쇠 낱말(e)
+  })
+
+  it("AC-7802.2 (d): regex로 끝나는 칸은 (?i)를 뗀 뒤 정규식으로 만들어지고 300자 이하여야 지난다", () => {
+    const set = (value: unknown) => withParams('PH-15', (p) => ((p.target as Rec).name_regex = value))
+    expect(check(set('(?i)이온|ionto|새로운낱말'))).toBe('ok')
+    expect(check(set('(?i)이온삼투('))).toBe('names')
+    expect(check(set('a'.repeat(301)))).toBe('names')
+    expect(check(set('a'.repeat(300)))).toBe('ok')
+    expect(check(set(3))).toBe('names')
+  })
+
+  it("AC-7802.2 (e): 새 낱말(글자 값·객체 열쇠)은 원래 규칙이나 지금 판 params 어딘가에 이미 있어야 한다", () => {
+    expect(check(withParams('LA-18', (p) => (p.count_unit = 'dose')))).toBe('names') // 다른 규칙의 낱말이라도 이 규칙에 없으면
+    expect(check(withParams('LA-18', (p) => ((p.window as Rec).new_key = 7)))).toBe('names')
+    expect(check(withParams('LA-18', (p) => ((p.thresholds as Rec[])[0].message = '새로 지은 글')))).toBe('names')
+    expect(check(withParams('LA-18', (p) => (p.group_by = 'visit_day')))).toBe('ok') // 이 규칙 안의 낱말은 된다
+    // 지금 판(current)에 있는 낱말도 된다
+    const current = withParams('LA-18', (p) => (p.count_unit = 'dose'), { effective_from: '2026-11-01' })
+    const next = withParams('LA-18', (p) => (p.count_unit = 'dose'), { title: '다시 고친 제목' })
+    expect(check(next, 'LA-18')).toBe('names')
+    expect(check(next, 'LA-18', current)).toBe('ok')
+  })
+})
+
+describe('AC-7802.3 checkRuleChange — 뺀 것(removed)·등급(grade)', () => {
+  it("AC-7802.3: 숫자(횟수·날짜 수·개월)만 바꾸면 지난다", () => {
+    expect(check(withParams('LA-18', (p) => ((p.thresholds as Rec[])[0].at = 5)))).toBe('ok')
+    expect(check(withParams('LA-18', (p) => ((p.window as Rec).days = 14)))).toBe('ok')
+    expect(check(withParams('HY-08', (p) => (p.min_days = 14)))).toBe('ok')
+  })
+
+  it("AC-7802.3: 규칙이 보던 코드·묶음·약 분류·차트 낱말 길·상병 앞자리를 빼면 'removed'다", () => {
+    expect(check(withParams('LA-18', (p) => ((p.target as Rec).code_groups = ['la_all'])))).toBe('removed')
+    expect(check(withParams('IJ-05', (p) => ((p.target as Rec).codes = ['KK090'])))).toBe('removed')
+    expect(check(withParams('IJ-05', (p) => (p.acceptable_with = ['steroid_injection'])))).toBe('removed')
+    expect(check(withParams('LA-26', (p) => (p.dx_prefixes = (p.dx_prefixes as string[]).slice(1))))).toBe('removed')
+    // 있는 다른 길로 바꿔도 원래 길이 빠지면 뺀 것이다
+    expect(check(withParams('LA-22', (p) => ((p.required_all as Rec[])[0].regex_key = 'regions.chart_keywords.response_prev')))).toBe('removed')
+    // 묶음을 칸 사이로 옮기는 것은 빼는 것이 아니다
+    expect(check(withParams('LA-18', (p) => ((p.target as Rec).code_groups = ['tfesi', 'la_all'])))).toBe('ok')
+  })
+
+  it("AC-7802.3: 지금 판(current)에 더해진 이름을 다시 빼도 'removed'다", () => {
+    const current = withParams('LA-18', (p) => ((p.target as Rec).code_groups = ['la_all', 'tfesi', 'la_carm_required']), { effective_from: '2026-11-01' })
+    expect(check(changed('LA-18'), 'LA-18', current)).toBe('removed')
+  })
+
+  it("AC-7802.3: params 안 grade 값들을 정렬한 목록이 원래 규칙과 다르면 'grade'다(자리만 바꾸면 지난다)", () => {
+    const thresholds = (p: Rec) => p.thresholds as Rec[]
+    expect(check(withParams('IJ-02', (p) => thresholds(p).forEach((t) => (t.grade = '확인필요'))))).toBe('grade')
+    expect(check(withParams('IJ-02', (p) => (p.thresholds = [thresholds(p)[0]])))).toBe('grade') // 기준 하나를 빼면 등급 목록이 준다
+    expect(check(withParams('IJ-02', (p) => ([thresholds(p)[0].grade, thresholds(p)[1].grade] = [thresholds(p)[1].grade, thresholds(p)[0].grade])))).toBe('ok')
+  })
+})
+
+describe('AC-7802.4 checkRuleChange — 자동 점검 상태(status)', () => {
+  it("AC-7802.4: 새 규칙의 상태가 원래 규칙과 다르면 'status'다(count_window 기준에서 횟수 at를 비우면 이력 점검 → 수동)", () => {
+    expect(statusesOf(tables.rules).get('LA-18')).toBe('hist')
+    // thresholds를 통째로 비우면 그 안의 grade도 빠져 차례상 'grade'가 먼저 걸린다(둘 다 사람 확인)
+    expect(check(withParams('LA-18', (p) => (p.thresholds = [])))).toBe('grade')
+    expect(check(withParams('LA-18', (p) => (p.thresholds = [{ grade: '알림' }])))).toBe('status')
+  })
+})
+
+describe('AC-7807.1 rulesCutoff — 규칙표 날짜', () => {
+  it("AC-7807.1: 실제 rules.json은 '2026-10-19'이다", () => {
+    expect(rulesCutoff(tables.rules.version)).toBe('2026-10-19')
+  })
+
+  it.each([
+    ['2026-10-19', '2026-10-19'],
+    ['2026-10-19b', '2026-10-19'],
+    ['2026-10-19 조사', '2026-10-19'],
+    ['2026-02-30', null],
+    ['20261019', null],
+    ['v1', null],
+    ['', null],
+  ])('AC-7807.1: version %s → %s', (version, cutoff) => {
+    expect(rulesCutoff(version)).toBe(cutoff)
+  })
+
+  it('AC-7807.1: 글자가 아니어도 던지지 않고 null이다', () => {
+    expect(rulesCutoff(null as unknown as string)).toBeNull()
+  })
+})
+
+// 손으로 만든 진료(가상환자)로 점검 모양을 만든다(engine.test.ts와 같은 틀)
+type VisitSeed = { key: string; chart: string; date: string }
+function month(seeds: VisitSeed[]): ClaimMonth {
+  const rxByDay: ClaimMonth['rxByDay'] = new Map()
+  const rxDayOrder: ClaimMonth['rxDayOrder'] = []
+  const visits: Visit[] = seeds.map(({ key, chart, date }) => {
+    const rx: RxLine[] = [{ code: 'KR006', name: '도수치료', qty: 1, benefit: true, pay: '급여' }]
+    const days = rxByDay.get(chart) ?? new Map<string, RxLine[]>()
+    days.set(date, rx)
+    rxByDay.set(chart, days)
+    rxDayOrder.push(rx)
+    return {
+      key,
+      chart,
+      date,
+      month: monthOf(date),
+      name: '가상환자01',
+      lines: ['도수'],
+      hints: [null],
+      rx,
+      dx: [{ c: 'M5456', n: '', m: true, s: '', d: '', t: '' }],
+      memosInBit: [],
+    }
+  })
+  return {
+    period: { from: '2026-10-01', to: '2026-10-31' },
+    visits,
+    history: new Map(),
+    historyRange: { from: '2025-10-01', to: '2026-10-31' },
+    rxByDay,
+    rxDayOrder,
+    dxTrend: { from: '2025-11-01', to: '2026-11-01', visits: 0, codes: new Map(), suggestions: [] },
+    catalog: { codes: [], la: [] },
+    hasDx: true,
+  }
+}
+
+describe('AC-7803.1·AC-7803.4 withRuleUpdates — 쓸 판 거르기', () => {
+  const okRule = () => withParams('LA-18', (p) => ((p.thresholds as Rec[])[0].at = 5))
+  const good = () => update('c-ok', okRule())
+
+  it('AC-7803.1: 규칙표 판·규칙 번호·날짜·규칙 모양·검사(ok)가 맞는 판만 쓰고 applied는 쓴 판의 changeId다. 나머지는 던지지 않고 버린다', () => {
+    const ok = good()
+    const rule = okRule()
+    const list = [
+      ok,
+      { ...ok, changeId: 'c-version', baseVersion: '2099-01-01' },
+      { ...ok, changeId: 'c-unknown', ruleId: 'ZZ-99', rule: { ...rule, id: 'ZZ-99' } },
+      { ...ok, changeId: 'c-date', from: '2026-02-30', rule: { ...rule, effective_from: '2026-02-30' } },
+      { ...ok, changeId: 'c-rule-id', ruleId: 'LA-36' },
+      { ...ok, changeId: 'c-from', from: '2026-12-02' },
+      update('c-no-auto', changed('HY-12')),
+      update('c-same', { ...ruleOf('LA-36'), effective_from: FROM, effective_to: null }),
+      update('c-grade', withParams('IJ-02', (p) => (p.thresholds as Rec[]).forEach((t) => (t.grade = '확인필요')))),
+      update('c-to', changed('LA-35', { effective_to: '2027-01-01' })),
+      { ...ok, changeId: 'c-null-rule', rule: null },
+      { ...ok, changeId: 'c-text-rule', rule: JSON.stringify(rule) },
+      null,
+      7,
+      { changeId: 'c-junk' },
+    ] as unknown as RuleUpdate[]
+    const before = JSON.stringify(list)
+    const la18 = ruleOf('LA-18')
+    const la18Before = JSON.stringify(la18)
+    const out = withRuleUpdates(tables, list)
+    expect(out.applied).toEqual(['c-ok'])
+    expect(out.tables).not.toBe(tables)
+    expect(out.tables.rules.rules.filter((r) => r.id === 'LA-18').map((r) => (r.params.thresholds as Rec[])[0].at)).toEqual([4, 5])
+    // 받은 표·판은 바뀌지 않는다
+    expect(JSON.stringify(list)).toBe(before)
+    expect(JSON.stringify(la18)).toBe(la18Before)
+    expect(tables.rules.rules).toHaveLength(262)
+    expect(ruleOf('LA-18')).toBe(la18)
+  })
+
+  it('AC-7803.4: 빈 목록이나 쓸 판이 없으면 받은 tables 객체 그대로다', () => {
+    expect(withRuleUpdates(tables, [])).toEqual({ tables, applied: [] })
+    expect(withRuleUpdates(tables, []).tables).toBe(tables)
+    const none = withRuleUpdates(tables, [{ ...good(), baseVersion: 'old' }, update('n', changed('VF-01'))])
+    expect(none.tables).toBe(tables)
+    expect(none.applied).toEqual([])
+    expect(withRuleUpdates(tables, 'x' as unknown as RuleUpdate[]).tables).toBe(tables)
+  })
+})
+
+describe('AC-7803.2 withRuleUpdates — 날짜 창 나누기', () => {
+  const at = (n: number, from: string) => withParams('LA-18', (p) => ((p.thresholds as Rec[])[0].at = n), { effective_from: from })
+  const rows = (t: Tables) =>
+    t.rules.rules.filter((r) => r.id === 'LA-18').map((r) => [r.effective_from, r.effective_to, (r.params.thresholds as Rec[])[0].at])
+
+  it('AC-7803.2: 판들을 날짜 차례로 원래 규칙 바로 뒤에 두고, 같은 날짜는 목록 뒤의 것 하나만, 다른 규칙 줄은 같은 객체다', () => {
+    const v1 = update('v1', at(5, '2026-11-01'))
+    const v2 = update('v2', at(6, '2026-12-01'))
+    const v3 = update('v3', at(7, '2026-11-01')) // v1과 같은 날짜 → 뒤의 v3만
+    const out = withRuleUpdates(tables, [v2, v1, v3])
+    expect(out.applied).toEqual(['v3', 'v2'])
+    const merged = out.tables.rules.rules
+    expect(merged).toHaveLength(262 + 2)
+    const index = merged.findIndex((r) => r.id === 'LA-18')
+    expect(merged.slice(index, index + 3).map((r) => r.id)).toEqual(['LA-18', 'LA-18', 'LA-18'])
+    expect(rows(out.tables)).toEqual([
+      [null, '2026-10-31', 4],
+      ['2026-11-01', '2026-11-30', 7],
+      ['2026-12-01', null, 6],
+    ])
+    // 판 줄은 새 객체(받은 판을 고치지 않음), 다른 규칙 줄은 같은 객체
+    expect(merged[index + 1]).not.toBe(v3.rule)
+    expect((v3.rule as RuleDef).effective_to).toBeNull()
+    const others = merged.filter((r) => r.id !== 'LA-18')
+    expect(others).toHaveLength(261)
+    const originals = tables.rules.rules.filter((r) => r.id !== 'LA-18')
+    others.forEach((rule, i) => expect(rule).toBe(originals[i]))
+    // 표의 다른 칸도 그대로
+    expect(out.tables.dxFlags).toBe(tables.dxFlags)
+    expect(out.tables.rules.code_groups).toBe(tables.rules.code_groups)
+    expect(out.tables.rules.version).toBe(tables.rules.version)
+  })
+
+  it('AC-7803.2: 원래 규칙의 effective_to가 있으면 마지막 판도 그날까지이고, 그보다 늦은 판은 버린다', () => {
+    const base = { ...ruleOf('LA-18'), effective_to: '2026-12-31' }
+    const own: Tables = { ...tables, rules: { ...tables.rules, rules: tables.rules.rules.map((r) => (r.id === 'LA-18' ? base : r)) } }
+    const out = withRuleUpdates(own, [update('late', at(8, '2027-01-01')), update('last-day', at(6, '2026-12-31')), update('mid', at(5, '2026-11-15'))])
+    expect(out.applied).toEqual(['mid', 'last-day'])
+    expect(rows(out.tables)).toEqual([
+      [null, '2026-11-14', 4],
+      ['2026-11-15', '2026-12-30', 5],
+      ['2026-12-31', '2026-12-31', 6],
+    ])
+    expect(base.effective_to).toBe('2026-12-31')
+  })
+
+  it('AC-7803.2: 여러 규칙의 판은 규칙마다 따로 나뉜다', () => {
+    const la36 = withParams('LA-36', (p) => ((p.window as Rec).days = 21), { effective_from: '2026-11-20' })
+    const out = withRuleUpdates(tables, [update('b', la36), update('a', at(5, '2026-11-01'))])
+    // applied는 규칙표 차례(LA-18이 LA-36보다 앞)
+    expect(tables.rules.rules.findIndex((r) => r.id === 'LA-18')).toBeLessThan(tables.rules.rules.findIndex((r) => r.id === 'LA-36'))
+    expect(out.applied).toEqual(['a', 'b'])
+    expect(out.tables.rules.rules.filter((r) => r.id === 'LA-36').map((r) => [r.effective_from, r.effective_to])).toEqual([
+      [null, '2026-11-19'],
+      ['2026-11-20', null],
+    ])
+    expect(rows(out.tables)).toEqual([
+      [null, '2026-10-31', 4],
+      ['2026-11-01', null, 5],
+    ])
+  })
+})
+
+describe('AC-7803.3 합친 표로 엔진(runRules)을 돌리면 진료일에 맞는 판이 걸린다', () => {
+  // MN-03 도수치료 주 2회(월~일, 같은 주 3회째부터 확인필요). 새 판: 10월 15일(목)부터 주 3회(4회째부터)
+  const D = '2026-10-15'
+  const nextRule = () =>
+    withParams('MN-03', (p) => ((p.thresholds as Rec[])[0].at = 4), {
+      title: '도수치료 주 3회(월~일)',
+      message: '도수치료는 같은 주 3회까지예요(새 고시)',
+      basis: [...ruleOf('MN-03').basis, { doc: '가짜 고시 도수치료 횟수', number: '보건복지부 고시 제2026-999호', effective: D }],
+      effective_from: D,
+    })
+  // 가상환자 A: 월·화·수(전날, 3회째)·목(당일, 4회째) / 가상환자 B: 화·수·목(당일, 3회째)
+  const m = () =>
+    month([
+      { key: 'a1', chart: '900001', date: '2026-10-12' },
+      { key: 'a2', chart: '900001', date: '2026-10-13' },
+      { key: 'a3', chart: '900001', date: '2026-10-14' },
+      { key: 'a4', chart: '900001', date: D },
+      { key: 'b1', chart: '900002', date: '2026-10-13' },
+      { key: 'b2', chart: '900002', date: '2026-10-14' },
+      { key: 'b3', chart: '900002', date: D },
+    ])
+  const mn03 = (result: ReturnType<typeof runRules>, key: string) => result.perVisit.get(key)!.hits.filter((h) => h.ruleId === 'MN-03')
+
+  it('AC-7803.3: 전날 진료는 원래 규칙(주 2회)으로, 당일 진료는 새 판(주 3회)의 기준·글·근거로 걸리고 묶음에는 규칙 번호가 한 번이다', () => {
+    const base = ruleOf('MN-03')
+    expect(check(nextRule())).toBe('ok')
+    const merged = withRuleUpdates(tables, [update('mn', nextRule())])
+    expect(merged.applied).toEqual(['mn'])
+    // 합치지 않은 표: 3회째인 B의 당일 진료도 걸린다(대조)
+    expect(mn03(runRules(m(), tables, NO_SETTINGS), 'b3')).toHaveLength(1)
+
+    const result = runRules(m(), merged.tables, NO_SETTINGS)
+    const before = mn03(result, 'a3')
+    expect(before).toHaveLength(1)
+    expect(before[0]).toMatchObject({ grade: '확인필요', message: base.message, detail: '3회째', basis: base.basis })
+    const after = mn03(result, 'a4')
+    expect(after).toHaveLength(1)
+    expect(after[0]).toMatchObject({ grade: '확인필요', message: nextRule().message, detail: '4회째', basis: nextRule().basis })
+    expect(mn03(result, 'b3')).toEqual([]) // 새 판 기준으로는 3회째가 걸리지 않는다
+    expect(mn03(result, 'a2')).toEqual([])
+
+    const groups = result.groups.filter((g) => g.ruleId === 'MN-03')
+    expect(groups).toHaveLength(1)
+    expect(groups[0].visits.map((v) => v.visitKey)).toEqual(['a3', 'a4'])
+    expect(groups[0].rule.effective_from).toBe(D) // 가장 늦은 판
+    expect(groups[0].rule.title).toBe('도수치료 주 3회(월~일)')
+  })
+
+  it('AC-7803.3: 병원 설정(끄기·등급)은 모든 판에 같이 걸린다', () => {
+    const merged = withRuleUpdates(tables, [update('mn', nextRule())]).tables
+    const off = runRules(m(), merged, { ...NO_SETTINGS, off: ['MN-03'] })
+    expect(['a3', 'a4'].flatMap((key) => mn03(off, key))).toEqual([])
+    const graded = runRules(m(), merged, { ...NO_SETTINGS, grade: { 'MN-03': '참고' } })
+    expect(['a3', 'a4'].flatMap((key) => mn03(graded, key)).map((h) => h.grade)).toEqual(['참고', '참고'])
+  })
+})

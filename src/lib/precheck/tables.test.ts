@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { CodeMap, DrugInfo, DxFlags, RulesFile, Tables } from '@/types/precheck'
+import { loadTables } from '@/workers/precheck/tables'
 
 // 원본에서 옮긴 표 네 개(src/lib/precheck/data, REQ-007)가 원본(seoseungkwan/shared@2a1069b)과 같은지 본다.
 // 원본은 저장소 밖이라 시험은 원본에서 따로 센 개수·값과 지문(SHA-256)을 상수로 둔다.
@@ -238,5 +239,86 @@ describe('AC-007.1·AC-007.5 checkTables는 표 모양을 검사한다', () => {
   ])('AC-007.1·AC-007.5: %s이면 던진다', async (_name, make) => {
     const { checkTables } = await loadChecker()
     expect(() => checkTables(make())).toThrow()
+  })
+})
+
+// 바꾼 규칙 검사(specs/rule-auto REQ-7802)가 쓰는 규칙 한 줄 검사. 표 전체 검사(checkTables)가 규칙 한 줄에 하는 검사와 같다
+describe('AC-7802.5 checkRuleShape는 규칙 한 줄을 checkTables와 같게 검사하고 던지지 않는다', () => {
+  it('AC-7802.5: 실제 규칙표(loadTables)의 규칙 262개는 모두 참이다', async () => {
+    const { checkRuleShape } = await loadChecker()
+    const loaded = await loadTables()
+    if (!loaded.ok) throw new Error(loaded.code)
+    // 돌려주는 글을 boolean으로 적어 거르는 함수가 타입 좁히기(never)로 읽히지 않게 한다
+    const odd = loaded.value.rules.rules.filter((rule): boolean => !checkRuleShape(rule)).map((rule) => rule.id)
+    expect(odd).toEqual([])
+  }, 60_000) // 약 표 JSON이 커서 바쁜 기계에서는 첫 읽기가 10초를 넘는다
+
+  it('AC-7802.5: 모양이 맞는 작은 규칙은 참이고, 검사는 규칙을 고치지 않는다', async () => {
+    const { checkRuleShape } = await loadChecker()
+    const rule = tinyTables().rules.rules[0]
+    const before = JSON.stringify(rule)
+    expect(checkRuleShape(rule)).toBe(true)
+    expect(JSON.stringify(rule)).toBe(before)
+  })
+
+  // 규칙 한 줄을 망가뜨리는 것들: checkTables는 던지고 checkRuleShape는 거짓이어야 같은 검사다
+  it.each([
+    ['규칙 id 모양이 다름(LA-1)', (rule: Rec) => (rule.id = 'LA-1')],
+    ['규칙 id 모양이 다름(끝 소문자 둘)', (rule: Rec) => (rule.id = 'ZZ-01ab')],
+    ['규칙 id가 글자가 아님', (rule: Rec) => (rule.id = 1)],
+    ['제목이 빈 글자', (rule: Rec) => (rule.title = ' ')],
+    ['안내 글이 없음(null)', (rule: Rec) => (rule.message = null)],
+    ['분야가 빈 글자', (rule: Rec) => (rule.domain = '')],
+    ['등급이 셋 밖', (rule: Rec) => (rule.grade = '나쁨')],
+    ['조건 종류가 18가지 밖', (rule: Rec) => (rule.type = 'unknown_kind')],
+    ['params가 배열', (rule: Rec) => (rule.params = [])],
+    ['basis가 배열이 아님', (rule: Rec) => (rule.basis = {})],
+    ['basis에 number가 없음', (rule: Rec) => delete (rule.basis as Rec[])[0].number],
+    ['basis url이 글자가 아님', (rule: Rec) => ((rule.basis as Rec[])[0].url = 1)],
+    ['basis에 정한 밖의 칸이 있음', (rule: Rec) => ((rule.basis as Rec[])[0].extra = 'x')],
+    ['신뢰도가 셋 밖', (rule: Rec) => (rule.confidence = '최상')],
+    ['필요 자료가 글자 목록이 아님', (rule: Rec) => (rule.data_needed = [1])],
+    ['자동 점검 여부가 셋 밖', (rule: Rec) => (rule.automatable = 'maybe')],
+    ['점검 단계가 셋 밖', (rule: Rec) => (rule.stage = ['memo', 'xray'])],
+    ['enabled_default가 참거짓이 아님', (rule: Rec) => (rule.enabled_default = 'true')],
+    ['effective_from이 날짜 모양이 아님', (rule: Rec) => (rule.effective_from = '2026/01/01')],
+    ['effective_to가 날짜 모양이 아님', (rule: Rec) => (rule.effective_to = 20261231)],
+    ['notes가 글자가 아님', (rule: Rec) => (rule.notes = null)],
+    ['16칸 중 하나가 빠짐', (rule: Rec) => delete rule.notes],
+    ['16칸 밖의 칸이 있음', (rule: Rec) => (rule.extra = 1)],
+  ])('AC-7802.5: %s이면 checkTables는 던지고 checkRuleShape는 거짓이다', async (_name, change) => {
+    const { checkRuleShape, checkTables } = await loadChecker()
+    const t = broken((_t, rule) => change(rule)) as Loose
+    expect(() => checkTables(t)).toThrow()
+    expect(checkRuleShape(t.rules.rules[0])).toBe(false)
+  })
+
+  it('AC-7802.5: 규칙이 아닌 값·읽으면 던지는 값도 던지지 않고 거짓이다', async () => {
+    const { checkRuleShape } = await loadChecker()
+    const throwing = new Proxy(
+      {},
+      {
+        get: () => {
+          throw new Error('읽기 막힘')
+        },
+        getOwnPropertyDescriptor: () => {
+          throw new Error('읽기 막힘')
+        },
+        ownKeys: () => {
+          throw new Error('읽기 막힘')
+        },
+      },
+    )
+    for (const x of [null, undefined, 0, 'ZZ-01', [], {}, [tinyTables().rules.rules[0]], throwing]) {
+      expect(() => checkRuleShape(x)).not.toThrow()
+      expect(checkRuleShape(x)).toBe(false)
+    }
+  })
+
+  it('AC-7802.5: checkTables의 동작은 그대로다 — 규칙 한 줄이 맞아도 id가 겹치면 표 검사만 던진다', async () => {
+    const { checkRuleShape, checkTables } = await loadChecker()
+    const t = broken((t, rule) => t.rules.rules.push({ ...rule }))
+    expect(() => checkTables(t)).toThrow()
+    expect((t as Loose).rules.rules.every((rule) => checkRuleShape(rule))).toBe(true)
   })
 })
