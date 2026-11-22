@@ -1,0 +1,12 @@
+{
+  "Response": {
+    "head": {
+      "resultCode": "0",
+      "resultMsg": "NORMAL_SERVICE",
+      "totalCount": "0",
+      "numOfRows": "1000",
+      "pageNo": "1"
+    },
+    "items": ""
+  }
+}
