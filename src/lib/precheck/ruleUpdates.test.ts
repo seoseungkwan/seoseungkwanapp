@@ -527,8 +527,11 @@ describe('AC-7802.3 checkRuleChange — 뺀 것(removed)·등급(grade)', () => 
   it("AC-7802.3 (5): 숫자 한도 — 바뀐 숫자는 원래 규칙 값의 절반~2배(끝 값 포함)여야 지나고, 밖이면 'removed'다", () => {
     const at = (n: number) => withParams('LA-18', (p) => ((p.thresholds as Rec[])[0].at = n))
     expect((ruleOf('LA-18').params.thresholds as Rec[])[0].at).toBe(4)
-    for (const n of [2, 3, 5, 8]) expect(check(at(n)), String(n)).toBe('ok') // 0.5배·2배 끝 값 포함
+    // 0.5배 끝 값 포함(LA-18 at 8은 2배지만 7일 안 8회라 (6)(c)로 막힌다 — 2배 끝 값은 아래 HY-08·LA-17)
+    for (const n of [2, 3, 5, 7]) expect(check(at(n)), String(n)).toBe('ok')
     for (const n of [400, 1, 9, 1.9, 0, -4]) expect(check(at(n)), String(n)).toBe('removed')
+    expect(check(withParams('HY-08', (p) => (p.min_days = 14)))).toBe('ok') // 7 → 14(2배)
+    expect(check(withParams('HY-08', (p) => (p.min_days = 15)))).toBe('removed')
     // 객체 안 숫자도(LA-17 max_period.calendar_months 2 → 1·4는 지나고 5는 아님)
     const months = (n: number) => withParams('LA-17', (p) => ((p.max_period as Rec).calendar_months = n))
     expect(check(months(1))).toBe('ok')
@@ -540,14 +543,54 @@ describe('AC-7802.3 checkRuleChange — 뺀 것(removed)·등급(grade)', () => 
   })
 
   it("AC-7802.3 (5): 숫자 한도는 지금 판이 아니라 늘 원래 규칙과 견준다 — 앞 판이 2배로 늘린 뒤 다시 2배(원래의 4배)는 'removed'다", () => {
-    const at = (n: number, patch: Partial<RuleDef> = {}) => withParams('LA-18', (p) => ((p.thresholds as Rec[])[0].at = n), patch)
-    const current = at(8, { effective_from: '2026-11-01' })
+    // LA-18 window.days 7: 앞 판 14(2배) → 다음 판 28(원래의 4배)
+    const days = (n: number, patch: Partial<RuleDef> = {}) => withParams('LA-18', (p) => ((p.window as Rec).days = n), patch)
+    const current = days(14, { effective_from: '2026-11-01' })
     expect(check(current)).toBe('ok')
-    expect(check(at(16, { title: '다시 고친 제목' }), 'LA-18', current)).toBe('removed')
-    expect(check(at(6, { title: '다시 고친 제목' }), 'LA-18', current)).toBe('ok')
+    expect(check(days(28, { title: '다시 고친 제목' }), 'LA-18', current)).toBe('removed')
+    expect(check(days(10, { title: '다시 고친 제목' }), 'LA-18', current)).toBe('ok')
     // 원래 규칙에 없는 자리의 숫자를 바꾸면(지금 판에만 있는 칸) 'removed'
     const extra = withParams('LA-18', (p) => ((p.window as Rec).at = 3), { effective_from: '2026-11-01' })
     expect(check(withParams('LA-18', (p) => ((p.window as Rec).at = 4), { title: '다시 고친 제목' }), 'LA-18', extra)).toBe('removed')
+  })
+
+  it("AC-7802.3 (6)(a): 원래 값이 정수인 숫자를 소수로 바꾸면 'removed'다(엔진 날짜 계산이 정수만 받는다)", () => {
+    expect(check(withParams('LA-36', (p) => ((p.window as Rec).days = 14.5)))).toBe('removed')
+    expect(check(withParams('HY-04', (p) => (p.min_months = 6.5)))).toBe('removed')
+    // 정수로 바꾸면 된다(대조)
+    expect(check(withParams('LA-36', (p) => ((p.window as Rec).days = 15)))).toBe('ok')
+    expect(check(withParams('HY-04', (p) => (p.min_months = 7)))).toBe('ok')
+  })
+
+  it("AC-7802.3 (6)(b): multiplier_cap 규칙의 숫자와 expected·table 아래 숫자(맞아야 하는 값)는 절반~2배 안이어도 바꾸면 'removed'다", () => {
+    // IJ-11 expected 1 ↔ 2 바꿈
+    expect(ruleOf('IJ-11').params.expected).toEqual({ unilateral: 1, bilateral: 2 })
+    expect(check(withParams('IJ-11', (p) => (p.expected = { unilateral: 2, bilateral: 1 })))).toBe('removed')
+    // LA-03 table 숫자(편측 2분절 1.5 → 2)
+    expect(check(withParams('LA-03', (p) => (((p.table as Rec).unilateral as Rec)['2'] = 2)))).toBe('removed')
+    // LA-05 cap.per_side(expected·table 밖이지만 multiplier_cap 종류) 2 → 3
+    expect(check(withParams('LA-05', (p) => ((p.cap as Rec).per_side = 3)))).toBe('removed')
+    expect(check(withParams('IJ-11', (p) => (p.unit_per_side = 2)))).toBe('removed')
+    // 제목만 바꾸면 된다(대조)
+    for (const id of ['IJ-11', 'LA-03', 'LA-05']) expect(check(changed(id)), id).toBe('ok')
+  })
+
+  it("AC-7802.3 (6)(c): count_window·visit_day 규칙에서 그 기간(rolling_days 날 수·calendar_week 7일)보다 큰 횟수 at는 'removed'다", () => {
+    const at = (id: string, n: number, edit: (p: Rec) => void = () => {}) =>
+      withParams(id, (p) => {
+        ;(p.thresholds as Rec[])[0].at = n
+        edit(p)
+      })
+    // LA-18 7일 안 8회는 걸릴 수 없다, 7회는 된다
+    expect(check(at('LA-18', 8))).toBe('removed')
+    expect(check(at('LA-18', 7))).toBe('ok')
+    // LA-36: 14일 안 8회는 되지만, 날 수를 14 → 7로 함께 줄이면 걸릴 수 없다
+    expect(check(at('LA-36', 8))).toBe('ok')
+    expect(check(at('LA-36', 8, (p) => ((p.window as Rec).days = 7)))).toBe('removed')
+    // calendar_week(PH-17 주 7일): at 4 → 8(2배)은 걸릴 수 없다, 7은 된다
+    expect((ruleOf('PH-17').params.window as Rec).type).toBe('calendar_week')
+    expect(check(at('PH-17', 8))).toBe('removed')
+    expect(check(at('PH-17', 7))).toBe('ok')
   })
 })
 

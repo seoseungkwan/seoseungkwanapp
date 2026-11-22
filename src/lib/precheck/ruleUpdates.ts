@@ -1,6 +1,8 @@
 import { addDays, compareYmd, isYmd } from '@/lib/analytics/dates'
 import { up } from '@/lib/precheck/rules/compile'
+import { windowsOf } from '@/lib/precheck/rules/past'
 import { ruleStatusIn } from '@/lib/precheck/rules/status'
+import type { RuleParams } from '@/lib/precheck/rules/types'
 import { checkRuleShape } from '@/lib/precheck/tables'
 import type { RuleChangeCheck, RuleDef, RuleUpdate, RulesFile, Tables } from '@/types/precheck'
 
@@ -338,9 +340,10 @@ function boolsOk(next: unknown, base: unknown, current: unknown): boolean {
  * 허용 모양(AC-7802.3 (4), 사용자 결정 '숫자·글만 저절로'): next가 was(지금 판, Worker는 원래 규칙)와 같은 열쇠 길·같은 모양이고
  * 다른 곳은 비켜 주는 칸 밖 숫자 잎 값뿐인가. 칸이 생기거나 없어짐·글자·참거짓·null 바뀜·배열 길이·값 종류 바뀜은 모두 다른 모양이다.
  * 글자만 든 배열은 차례를 무시하고, 객체·숫자가 든 배열은 같은 자리끼리 본다. 칸 차례는 보지 않는다.
- * 숫자 한도(AC-7802.3 (5), 사용자 결정 '절반~2배까지만'): 바뀐 숫자는 origin(늘 원래 규칙)의 같은 길 값의 절반~2배(0이면 0)여야 한다
+ * 숫자 한도(AC-7802.3 (5), 사용자 결정 '절반~2배까지만'): 바뀐 숫자는 origin(늘 원래 규칙)의 같은 길 값의 절반~2배(0이면 0)여야 한다.
+ * 숫자 뜻(AC-7802.3 (6)(a)·(b)): 정수였던 숫자는 정수로만, 맞아야 하는 값(frozen)은 원래 값 그대로
  */
-function sameShape(next: unknown, was: unknown, origin: unknown, inWaiver = false): boolean {
+function sameShape(next: unknown, was: unknown, origin: unknown, zone: Zone): boolean {
   if (Array.isArray(next) || Array.isArray(was)) {
     if (!Array.isArray(next) || !Array.isArray(was) || next.length !== was.length) return false
     if (next.every(isText) && was.every(isText)) {
@@ -348,17 +351,30 @@ function sameShape(next: unknown, was: unknown, origin: unknown, inWaiver = fals
       const before = [...was].sort()
       return after.every((text, i) => text === before[i])
     }
-    return next.every((item, i) => sameShape(item, was[i], Array.isArray(origin) ? origin[i] : undefined, inWaiver))
+    return next.every((item, i) => sameShape(item, was[i], Array.isArray(origin) ? origin[i] : undefined, zone))
   }
   if (isRecord(next) || isRecord(was)) {
     if (!isRecord(next) || !isRecord(was)) return false
     const keys = Object.keys(next)
     if (keys.length !== Object.keys(was).length || !keys.every((key) => Object.hasOwn(was, key))) return false
     const at = (key: string) => (isRecord(origin) && Object.hasOwn(origin, key) ? origin[key] : undefined)
-    return keys.every((key) => sameShape(next[key], was[key], at(key), inWaiver || isWaiver(key)))
+    const inner = (key: string): Zone => ({ waiver: zone.waiver || isWaiver(key), frozen: zone.frozen || FROZEN_KEYS.includes(key) })
+    return keys.every((key) => sameShape(next[key], was[key], at(key), inner(key)))
   }
-  if (typeof next === 'number' && typeof was === 'number') return next === was || (!inWaiver && withinBounds(next, origin))
+  if (typeof next === 'number' && typeof was === 'number') return next === was || numberOk(next, origin, zone)
   return next === was
+}
+
+/** sameShape가 내려가며 아는 것: 비켜 주는 칸 안인가 · 맞아야 하는 값(multiplier_cap 규칙 전부, expected·table 칸 아래)인가 */
+type Zone = { waiver: boolean; frozen: boolean }
+/** 열쇠 이름이 이것이면 그 아래 숫자는 맞아야 하는 값이다(AC-7802.3 (6)(b)) */
+const FROZEN_KEYS: readonly string[] = ['expected', 'table']
+
+/** 바뀐 숫자 n과 원래 규칙의 같은 길 값 b */
+function numberOk(n: number, b: unknown, zone: Zone): boolean {
+  if (zone.frozen) return n === b // (6)(b) 맞아야 하는 값은 원래 값 그대로
+  if (zone.waiver || !withinBounds(n, b)) return false
+  return !(Number.isInteger(b) && !Number.isInteger(n)) // (6)(a) 날짜 계산(addDays·addMonths)은 정수만 받는다
 }
 
 /** 숫자 한도: 원래 값 b가 숫자이고, b가 0이면 n도 0, 아니면 n÷b가 0.5 이상 2 이하(원래 규칙에 그 길이 없으면 안 됨) */
@@ -367,6 +383,19 @@ function withinBounds(n: number, b: unknown): boolean {
   if (b === 0) return n === 0
   const ratio = n / b
   return ratio >= 0.5 && ratio <= 2
+}
+
+/**
+ * 숫자 뜻(AC-7802.3 (6)(c)) 걸릴 수 없는 횟수: count_window 규칙에서 count_unit이 visit_day로 시작하면 windowsOf(past.ts) 기간마다
+ * d = rolling_days의 days · calendar_week의 7을 구해 그 기간 at(있는 것만)이 모두 d 이하인가. 다른 기간 종류는 보지 않는다
+ */
+function reachable(rule: RuleDef): boolean {
+  const unit = rule.params.count_unit
+  if (rule.type !== 'count_window' || !isText(unit) || !unit.startsWith('visit_day')) return true
+  return windowsOf(rule.params as RuleParams).every(({ window, thresholds }) => {
+    const d = window?.type === 'rolling_days' ? window.days : window?.type === 'calendar_week' ? 7 : undefined
+    return typeof d !== 'number' || thresholds.every((t) => typeof t.at !== 'number' || t.at <= d)
+  })
 }
 
 /** 열쇠 이름이 grade로 끝나는 칸(깊이 상관없음)의 값(JSON)을 정렬한 목록 */
@@ -419,7 +448,7 @@ function judge(file: RulesFile, base: RuleDef, current: RuleDef, next: unknown):
   const before = new Set([...scan(file, base.params).names, ...scan(file, current.params).names])
   if ([...before].some((name) => !seen.names.has(name))) return 'removed'
   if (!guardedOk(next.params, base.params, current.params) || !boolsOk(next.params, base.params, current.params)) return 'removed'
-  if (!sameShape(next.params, current.params, base.params)) return 'removed'
+  if (!sameShape(next.params, current.params, base.params, { waiver: false, frozen: next.type === 'multiplier_cap' }) || !reachable(next)) return 'removed'
   if (stable(gradesOf(next.params)) !== stable(gradesOf(base.params))) return 'grade'
   if (ruleStatusIn(file, next) !== ruleStatusIn(file, base)) return 'status'
   const shown = (rule: RuleDef) => stable({ title: rule.title, message: rule.message, params: rule.params })
