@@ -11,7 +11,7 @@ import { NOT_READY_FEATURES } from '@/components/common/notReadyFeatures'
 import { DASHBOARD_FEATURES, type FeatureStatus } from '@/components/dashboard/briefing/features'
 import { BitDashboard } from '@/components/dashboard/live/BitDashboard'
 import { AppShell } from '@/components/shell/AppShell'
-import { MENU, MORE_MENU } from '@/components/shell/menu'
+import { LOCATION_TAB, MENU, MORE_MENU } from '@/components/shell/menu'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { decideRoute } from '@/lib/auth/gate'
 import DashboardPage from './dashboard/page'
@@ -342,6 +342,53 @@ describe('바탕 표시 지움 (ui-90 AC-404.2)', () => {
     const before = inShell(<BitDashboard today={todayInKorea()} initial={{ kind: 'none' }} />)
     expect(before).toContain('오늘 브리핑')
     expect(before).not.toContain('data-page-surface')
+  })
+})
+
+// specs/location REQ-7901: 입지 분석은 관리자만 보는 탭이라 MENU 밖 상수 LOCATION_TAB 하나다 — 세 곳(menu · features · notReady)은 그대로다
+describe('입지 분석 탭 — 관리자만, 목차·준비 중 그대로 (location REQ-7901)', () => {
+  it('AC-7901.1: LOCATION_TAB은 MENU 밖이라 세 곳이 그대로다 — MENU 14개, 목차 = MENU에서 대시보드를 뺀 칸, 준비 중 자료·[더보기] 준비 중 수 그대로이고 어디에도 입지 분석·/location이 없다', () => {
+    expect(LOCATION_TAB).toMatchObject({ label: '입지 분석', path: '/location', href: '/location', ready: true, primary: false })
+    expect(MENU).toHaveLength(14)
+    expect(MENU).not.toContain(LOCATION_TAB)
+    expect(MORE_MENU).not.toContain(LOCATION_TAB)
+    expect(DASHBOARD_FEATURES).toHaveLength(MENU.length - 1)
+    expect(DASHBOARD_FEATURES.map((f) => f.name)).toEqual(MENU.filter((m) => m.label !== '대시보드').map((m) => m.label))
+    for (const names of [MENU.map((m) => m.label as string), DASHBOARD_FEATURES.map((f) => f.name as string), NOT_READY_FEATURES.map((f) => f.name as string)]) {
+      expect(names).not.toContain('입지 분석')
+    }
+    for (const paths of [MENU.map((m) => m.path as string), DASHBOARD_FEATURES.map((f) => f.href as string), NOT_READY_FEATURES.map((f) => f.path as string)]) {
+      expect(paths).not.toContain('/location')
+    }
+    expect(MORE_MENU.filter((m) => !m.ready)).toHaveLength(NOT_READY_FEATURES.length)
+  })
+
+  it('AC-7901.1: 관리자 앱 틀을 /location에서 그리면 [더보기] 단추가 "더보기 · 입지 분석"이고, 관리자 아닌 원장의 앱 틀은 같은 주소에서도 "더보기"다(입지 분석 글이 없다). 다른 탭(/dashboard)에서는 둘 다 "더보기"다', () => {
+    const shellAs = (isAdmin: boolean) =>
+      plain(
+        renderToStaticMarkup(
+          <AppShell hospitalName="가나 정형외과의원" email="manager@example.com" isAdmin={isAdmin}>
+            <p>본문</p>
+          </AppShell>,
+        ),
+      )
+    pathname.mockReturnValue('/location')
+    expect(shellAs(true)).toContain('더보기 · 입지 분석')
+    expect(shellAs(false)).not.toContain('입지 분석')
+    pathname.mockReturnValue('/dashboard')
+    for (const isAdmin of [true, false]) {
+      expect(shellAs(isAdmin)).toContain('더보기')
+      expect(shellAs(isAdmin)).not.toContain('입지 분석')
+    }
+  })
+
+  it('AC-7901.2: /location과 그 아래는 /admin과 같이 관리자 경로 — 관리자는 연다, 관리자 아닌 원장 /dashboard, 데스크 /sunap, 로그인 안 함 /login', () => {
+    for (const path of ['/admin', '/location', '/location/x']) {
+      expect(decideRoute({ path, signedIn: true, hospital: 'approved', isAdmin: true }), path).toBeNull()
+      expect(decideRoute({ path, signedIn: true, hospital: 'approved', isAdmin: false }), path).toBe('/dashboard')
+      expect(decideRoute({ path, signedIn: true, hospital: 'desk', isAdmin: false }), path).toBe('/sunap')
+      expect(decideRoute({ path, signedIn: false, hospital: 'unknown', isAdmin: false }), path).toBe('/login')
+    }
   })
 })
 

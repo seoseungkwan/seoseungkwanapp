@@ -18,7 +18,7 @@ const SKIP_LINK =
 // 안쪽 감싸개 셋(띠·탭 줄·본문)은 같은 1280 폭·가운데·좌우 24px(폰 16px). 폰은 서랍 없음.
 // 넓힘(claim-memo-fit REQ-4801): 뿌리는 이름 붙은 묶음 group/app(이름 없는 group은 안쪽 group-hover를 앱 전체에 걸어 쓰지 않는다).
 // 1024px 이상에서 앱 안에 [data-wide-page](메모 칸)가 있으면 감싸개 넷(띠 안쪽·탭 줄 둘·본문 안쪽)이 같이 1280 제한을 풀어 왼쪽 끝이 맞는다.
-// 관리자 여부는 계정 메뉴([가입 승인])에만 넘긴다(탭 줄에는 관리자 탭이 없다, tab-frame REQ-303·304)
+// 관리자 여부는 계정 메뉴([가입 승인])와 탭 줄에 넘긴다. 탭 줄은 [더보기] 판의 입지 분석에만 쓴다(탭 띠에는 관리자 탭이 없다, tab-frame REQ-303·304, specs/location AC-7901.1)
 // 데스크 계정(desk 참, desk-feedback REQ-6306): 탭 셋·계정 칩 '데스크', 본문은 RoleProvider desk(useDesk 참) + DeskGate(주소마다 본문·막힌 화면·수납일지로 바꾸기).
 // desk가 없거나 거짓이면 지금 그대로다(감싸개 없음)
 export function AppShell({
@@ -64,7 +64,7 @@ export function AppShell({
             </div>
           </div>
         </header>
-        <TabBar desk={desk} />
+        <TabBar desk={desk} isAdmin={isAdmin} />
       </div>
       {/* 건너뛰기 링크가 가리키는 본문. 초점을 받을 수 있게 tabIndex -1(Tab 차례에는 들지 않는다).
           옮겨도 첫 줄이 붙는 묶음에 가리지 않게 scroll-margin = 묶음 높이: 띠 57(56 + 아래 선 1) + 탭 줄 45(44 + 아래 선 1) = 102px,

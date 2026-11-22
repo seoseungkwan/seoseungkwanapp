@@ -1,10 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useId, useRef, useState, type MouseEvent } from 'react'
+import { useEffect, useId, useRef, useState, type AnchorHTMLAttributes, type MouseEvent } from 'react'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
-import { MORE_MENU, type MenuLabel } from './menu'
+import { LOCATION_TAB, MORE_MENU, isUnder, type MenuItem, type MenuLabel } from './menu'
 
 // [더보기] (dashboard-ux REQ-2702 AC-2702.1~2702.5, design.md §3, 시안 docs/mockups/dashboard-ux .more·.morewrap·.morepanel).
 // 탭 띠 오른쪽(띠 밖)에 모든 폭에서 보이는 단추. 누르면 주요 메뉴 여섯 밖의 나머지(MORE_MENU, MENU 차례)를 판으로 펼친다.
@@ -14,10 +14,27 @@ import { MORE_MENU, type MenuLabel } from './menu'
 // 768px 미만은 감싸개가 static이라 판이 nav(relative) 기준으로 탭 줄 바로 아래 전체 폭 두 칸이다.
 // 판은 열릴 때만 그린다: 나타날 때만 흐림 → 보임(starting:, 기본 transition 150ms)이고 닫으면 바로 사라진다. 꺾쇠는 열린 동안 180° 돈다.
 // 닫힘: 단추 다시 누름 · Esc(초점은 단추로) · 판 안 링크 누름 · 판 밖 누름 · 경로 바뀜. 열 때 초점은 단추에 남는다(펼침 단추)
+// 관리자(isAdmin)면 판에 입지 분석(LOCATION_TAB)을 주소록 다음·설정 앞에 끼우고 이름 뒤에 중립 칩 '관리자만'을 붙인다(specs/location AC-7901.1, 시안 menu)
 
-// 머리 글자의 숫자는 MORE_MENU에서 센다(탭이 화면을 가지면 menu.ts의 ready만 바꾼다)
-const OTHERS = MORE_MENU.length
-const NOT_READY = MORE_MENU.filter((m) => !m.ready).length
+// 셸 링크 하나(탭 띠·[더보기] 판이 같이 쓴다, specs/location AC-7901.1). /location만 자기 CSP(카카오 origin, next.config.ts)를 쓴다.
+// Next <Link>는 문서를 새로 받지 않고 옮겨 첫 문서의 CSP가 그대로 남는다 — 다른 탭에서 넘어가면 지도가 막히고, /location에서 떠나면 넓은 CSP가 남는다.
+// 그래서 /location으로 가는 링크와 /location(그 아래) 화면 안의 링크는 평범한 <a>다(브라우저가 새 문서를 받아 그 주소의 머리를 쓴다). 나머지는 지금처럼 <Link>
+const opensNewDocument = (from: string, href: string) => isUnder(href, LOCATION_TAB.path) || isUnder(from, LOCATION_TAB.path)
+
+export function ShellLink({
+  from,
+  href,
+  ...rest
+}: {
+  /** 지금 경로 */
+  from: string
+  href: string
+} & Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'href'>) {
+  return opensNewDocument(from, href) ? <a href={href} {...rest} /> : <Link href={href} {...rest} />
+}
+
+// 관리자 판: MORE_MENU 차례에서 주소록 다음에 입지 분석을 끼운다(MENU·준비 중 수는 그대로)
+const ADMIN_MORE: readonly MenuItem[] = MORE_MENU.flatMap((item) => (item.path === '/contacts' ? [item, LOCATION_TAB] : [item]))
 
 // 감싸개: 단추가 nav 높이만큼 늘어난다. 768px 미만은 static → 판의 기준이 nav가 된다(그 폭 배치는 그대로)
 const wrapClass = 'relative flex shrink-0 md:mr-3 max-md:static'
@@ -42,14 +59,13 @@ const itemIdle = `${itemBase} font-medium text-ink`
 // 지금 항목: accent-strong 600 + 왼쪽 2px accent 막대(20px, 안쪽 여백만큼 왼쪽으로 당긴다)
 const itemCurrent = `${itemBase} font-semibold text-accent-strong before:-ml-1 before:h-5 before:w-0.5 before:shrink-0 before:bg-accent`
 
-const inMore = (label: MenuLabel | null) => MORE_MENU.find((m) => m.label === label) ?? null
-
 export function MoreMenu({
   pathname,
   current,
   shown,
   pending,
   onPress,
+  isAdmin = false,
 }: {
   /** 지금 경로. 바뀌면 판을 닫는다 */
   pathname: string
@@ -61,7 +77,14 @@ export function MoreMenu({
   pending: MenuLabel | null
   /** 판 링크 누름 — TabBar가 누른 탭을 정한다 */
   onPress: (e: MouseEvent<HTMLAnchorElement>, href: string) => void
+  /** 관리자 계정(입지 분석 칸을 더한다). 없으면 거짓 */
+  isAdmin?: boolean
 }) {
+  // 머리 글자의 숫자는 판 목록(MORE_MENU, 관리자는 입지 분석을 더한 목록)에서 센다(탭이 화면을 가지면 menu.ts의 ready만 바꾼다)
+  const items = isAdmin ? ADMIN_MORE : MORE_MENU
+  const others = items.length
+  const notReady = items.filter((m) => !m.ready).length
+  const inMore = (label: MenuLabel | null) => items.find((m) => m.label === label) ?? null
   // 판을 연 경로. 지금 경로에서 연 판만 열린 판이다 → 경로가 바뀌면 닫히고, 그 경로로 돌아와도 다시 열리지 않게 지운다
   const [openAt, setOpenAt] = useState<string | null>(null)
   if (openAt !== null && openAt !== pathname) setOpenAt(null)
@@ -107,13 +130,14 @@ export function MoreMenu({
       {open && (
         <div ref={panelRef} id={panelId} className={panelClass}>
           <p className="flex justify-between py-2 text-small text-muted">
-            <span>{`다른 메뉴 ${OTHERS}개`}</span>
-            {NOT_READY > 0 && <span>{`준비 중 ${NOT_READY}개`}</span>}
+            <span>{`다른 메뉴 ${others}개`}</span>
+            {notReady > 0 && <span>{`준비 중 ${notReady}개`}</span>}
           </p>
           <ul className={listClass}>
-            {MORE_MENU.map((item) => (
+            {items.map((item) => (
               <li key={item.label} className={itemWrap}>
-                <Link
+                <ShellLink
+                  from={pathname}
                   href={item.path}
                   aria-current={current === item.label ? 'page' : undefined}
                   onClick={(e) => {
@@ -130,7 +154,13 @@ export function MoreMenu({
                       <span className={ds.chip.neutral}>준비 중</span>
                     </>
                   )}
-                </Link>
+                  {item === LOCATION_TAB && (
+                    <>
+                      {' '}
+                      <span className={ds.chip.neutral}>관리자만</span>
+                    </>
+                  )}
+                </ShellLink>
               </li>
             ))}
           </ul>

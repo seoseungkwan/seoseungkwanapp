@@ -3,6 +3,9 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { NextRouter } from 'next/dist/shared/lib/router/router'
+import { RouterContext } from 'next/dist/shared/lib/router-context.shared-runtime'
+import type { ReactNode } from 'react'
 import { hydrateRoot, type Root } from 'react-dom/client'
 import { renderToStaticMarkup, renderToString } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -13,7 +16,7 @@ import { AccountMenu } from './AccountMenu'
 import { AppShell } from './AppShell'
 import { KstClock } from './KstClock'
 import * as menuModule from './menu'
-import { ADMIN_LINK, DESK_HOME, DESK_MENU, MENU, MORE_MENU, PRIMARY_MENU, currentMenuLabel, isDeskPath } from './menu'
+import { ADMIN_LINK, DESK_HOME, DESK_MENU, LOCATION_TAB, MENU, MORE_MENU, PRIMARY_MENU, currentMenuLabel, isDeskPath } from './menu'
 import { useDesk } from './role'
 import { TabBar } from './TabBar'
 
@@ -322,13 +325,17 @@ describe('TabBar', () => {
     expect(within(nav()).getAllByRole('link')).toEqual(links)
   })
 
-  it('AC-303.4·AC-2702.1: 탭 줄에 [관리자] 링크와 세로 구분선이 없다 — TabBar는 관리자 여부를 받지 않는다', () => {
+  // 관리자 값은 [더보기] 판의 입지 분석에만 쓴다(location AC-7901.1). 탭 띠에는 관리자 탭이 없다
+  it('AC-303.4·AC-2702.1·AC-7901.1: 관리자여도 탭 줄에 [관리자] 링크와 세로 구분선이 없다 — TabBar는 값 없이도 그린다(관리자 값은 [더보기] 판의 입지 분석에만 쓴다)', () => {
     expect(TabBar.length).toBe(0)
-    render(<TabBar />)
-    expect(within(nav()).queryByText('관리자')).toBeNull()
-    expect(within(nav()).queryByRole('link', { name: '관리자' })).toBeNull()
-    expect(nav().querySelectorAll('[aria-hidden="true"].w-px')).toHaveLength(0)
-    expect(tabItems().map((el) => el.textContent)).toEqual(PRIMARY)
+    for (const ui of [<TabBar key="no" />, <TabBar key="admin" isAdmin />]) {
+      render(ui)
+      expect(within(nav()).queryByText('관리자')).toBeNull()
+      expect(within(nav()).queryByRole('link', { name: '관리자' })).toBeNull()
+      expect(nav().querySelectorAll('[aria-hidden="true"].w-px')).toHaveLength(0)
+      expect(tabItems().map((el) => el.textContent)).toEqual(PRIMARY)
+      cleanup()
+    }
   })
 
   it.each(['/claim', '/claim/close'])('AC-006.4·AC-034.1: %s에서는 [청구] /claim 링크가 지금 탭(aria-current="page")이고 하나뿐이다', (path) => {
@@ -1944,5 +1951,246 @@ describe('AppShell 인쇄', () => {
     hasAll(inner, 'print:p-0')
     hasNone(main, 'print:hidden')
     hasNone(inner, 'print:hidden')
+  })
+})
+
+// ── location REQ-7901: 입지 분석 탭(관리자만). MENU 밖 상수 LOCATION_TAB 하나를 관리자 [더보기] 판의 주소록 다음·설정 앞에 끼운다.
+// /location만 자기 CSP(카카오 origin, next.config.ts)를 쓴다. Next <Link>는 문서를 새로 받지 않고 옮기므로 첫 문서의 CSP가 그대로 남는다
+// (다른 탭에서 넘어가면 지도가 막히고, /location에서 떠나면 넓은 CSP가 남는다) → 입지 분석으로 가는 링크와 /location 화면 안의 셸 링크는
+// 평범한 <a>다(브라우저가 새 문서를 받아 그 주소의 머리를 쓴다)
+describe('입지 분석 탭 (location REQ-7901)', () => {
+  // 관리자 [더보기] 판 차례: MORE_MENU의 주소록 다음에 입지 분석
+  const AT = MORE_PATHS.findIndex(([label]) => label === '주소록') + 1
+  const ADMIN_MORE_PATHS = [...MORE_PATHS.slice(0, AT), ['입지 분석', '/location'] as const, ...MORE_PATHS.slice(AT)]
+  const panelLinks = () => within(within(panel() as HTMLElement).getByRole('list')).getAllByRole('link')
+  const panelHead = () => (panel() as HTMLElement).firstElementChild as HTMLElement
+  const locationLink = () => (panel() as HTMLElement).querySelector<HTMLAnchorElement>('a[href="/location"]')
+
+  // 진짜 next/link에 Next 길잡이(router)를 준다 → <Link>는 누르면 기본 이동을 막고 push로 이 창 안에서 옮긴다(새 문서 없음 → CSP 그대로).
+  // 평범한 <a>는 push를 부르지 않고 기본 이동(브라우저가 새 문서를 받음)을 막지 않는다
+  const nextRouter = {
+    push: vi.fn<(href: string) => Promise<boolean>>(async () => true),
+    replace: vi.fn(async () => true),
+    prefetch: vi.fn(async () => undefined),
+    pathname: '/',
+    asPath: '/',
+  }
+  const withRouter = (ui: ReactNode) => <RouterContext.Provider value={nextRouter as unknown as NextRouter}>{ui}</RouterContext.Provider>
+  beforeEach(() => {
+    nextRouter.push.mockClear()
+    nextRouter.prefetch.mockClear()
+  })
+
+  // 링크를 누른 결과: 'next' = Next가 이 창 안에서 옮김, 'document' = 브라우저가 새 문서를 받음.
+  // jsdom은 페이지를 옮기지 않는다 → 문서까지 올라온 누름에서 기본 이동이 막혔는지만 적고 기본 이동은 막는다
+  async function press(user: ReturnType<typeof userEvent.setup>, link: HTMLElement): Promise<'next' | 'document'> {
+    nextRouter.push.mockClear()
+    const prevented: boolean[] = []
+    const onClick = (e: MouseEvent) => {
+      prevented.push(e.defaultPrevented)
+      e.preventDefault()
+    }
+    document.addEventListener('click', onClick)
+    try {
+      await user.click(link)
+    } finally {
+      document.removeEventListener('click', onClick)
+    }
+    expect(prevented).toHaveLength(1)
+    if (nextRouter.push.mock.calls.length > 0) {
+      expect(prevented).toEqual([true])
+      return 'next'
+    }
+    expect(prevented).toEqual([false])
+    return 'document'
+  }
+
+  it("AC-7901.1: LOCATION_TAB = { label: '입지 분석', path: '/location', href: '/location', ready: true, primary: false } 하나이고 MENU·PRIMARY_MENU·MORE_MENU·DESK_MENU 밖이다(MENU 14개 그대로). 데스크 주소가 아니다", () => {
+    expect(LOCATION_TAB).toEqual({ label: '입지 분석', path: '/location', href: '/location', ready: true, primary: false })
+    for (const list of [MENU, PRIMARY_MENU, MORE_MENU, DESK_MENU]) {
+      expect(list.map((m) => m.label as string)).not.toContain('입지 분석')
+      expect(list.map((m) => m.path as string)).not.toContain('/location')
+      expect(list).not.toContain(LOCATION_TAB)
+    }
+    expect(MENU.map((m) => [m.label, m.path])).toEqual(PATHS)
+    expect(MORE_MENU.map((m) => [m.label, m.path])).toEqual(MORE_PATHS)
+    for (const path of ['/location', '/location/x']) expect(isDeskPath(path), path).toBe(false)
+  })
+
+  it("AC-7901.1: 지금 탭 — /location과 그 아래는 '입지 분석'이고 /locations·/location-x·/locationx는 아니다", () => {
+    expect(currentMenuLabel('/location')).toBe('입지 분석')
+    expect(currentMenuLabel('/location/report')).toBe('입지 분석')
+    for (const path of ['/locations', '/location-x', '/locationx']) expect(currentMenuLabel(path), path).toBeNull()
+  })
+
+  it('AC-7901.1: 관리자면 [더보기] 판이 일곱 — 주소록 다음·설정 앞에 입지 분석(/location), 머리 "다른 메뉴 7개"·준비 중 수 그대로. 입지 분석 칸만 이름 뒤 중립 칩 "관리자만"(시안)이고 링크 모양은 다른 칸과 같다. 탭 띠는 그대로다', async () => {
+    const user = userEvent.setup()
+    render(<TabBar isAdmin />)
+    expect(tabItems().map((el) => el.textContent)).toEqual(PRIMARY)
+    expect(moreButton().textContent).toBe('더보기')
+    await user.click(moreButton())
+    expect(Array.from(panelHead().children).map((s) => s.textContent)).toEqual(
+      NOT_READY_FEATURES.length === 0
+        ? [`다른 메뉴 ${ADMIN_MORE_PATHS.length}개`]
+        : [`다른 메뉴 ${ADMIN_MORE_PATHS.length}개`, `준비 중 ${NOT_READY_FEATURES.length}개`],
+    )
+    expect(panelHead().textContent).toContain('다른 메뉴 7개')
+    expect(within(panel() as HTMLElement).queryAllByText('준비 중')).toHaveLength(NOT_READY_FEATURES.length)
+    const links = panelLinks()
+    expect(links.map((a) => [a.firstElementChild?.textContent, a.getAttribute('href')])).toEqual(ADMIN_MORE_PATHS)
+    expect(within(within(panel() as HTMLElement).getByRole('list')).getAllByRole('listitem')).toHaveLength(ADMIN_MORE_PATHS.length)
+    const location = links[AT] as HTMLElement
+    expect(location).toBe(locationLink())
+    expect(location.children).toHaveLength(2)
+    const chip = location.lastElementChild as HTMLElement
+    expect(chip.tagName).toBe('SPAN')
+    expect(chip.textContent).toBe('관리자만')
+    hasAll(chip, ds.chip.neutral)
+    // 칩은 링크 글자 안이다 → 링크 이름이 "입지 분석 관리자만"
+    expect(within(panel() as HTMLElement).getByRole('link', { name: '입지 분석 관리자만' })).toBe(location)
+    hasAll(location, 'flex h-11 items-center no-underline text-ink font-medium focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent')
+    expect(location.hasAttribute('aria-current')).toBe(false)
+    // 다른 칸에는 "관리자만" 칩이 없다
+    for (const a of links.filter((x) => x !== location)) expect(a.textContent, a.getAttribute('href') ?? '').not.toContain('관리자만')
+  })
+
+  it('AC-7901.1: 관리자가 아닌 원장(isAdmin 없음·거짓)의 [더보기] 판에는 입지 분석이 없고 지금과 같다("다른 메뉴 6개"). 데스크는 관리자 값이 참이어도 [더보기]·입지 분석이 없다', async () => {
+    const user = userEvent.setup()
+    for (const ui of [<TabBar key="none" />, <TabBar key="false" isAdmin={false} />]) {
+      render(ui)
+      await user.click(moreButton())
+      expect(panel()?.textContent).not.toContain('입지 분석')
+      expect(locationLink()).toBeNull()
+      expect(panelLinks().map((a) => [a.firstElementChild?.textContent, a.getAttribute('href')])).toEqual(MORE_PATHS)
+      expect(panelHead().firstElementChild?.textContent).toBe(`다른 메뉴 ${MORE_PATHS.length}개`)
+      cleanup()
+    }
+    for (const path of ['/sunap', '/location']) {
+      pathname.mockReturnValue(path)
+      render(<TabBar desk isAdmin />)
+      expect(within(nav()).queryAllByRole('button')).toEqual([])
+      expect(nav().textContent).not.toContain('입지 분석')
+      expect(nav().querySelector('a[href="/location"]')).toBeNull()
+      cleanup()
+    }
+  })
+
+  it.each(['/location', '/location/x'])('AC-7901.1: 관리자가 %s에 있으면 [더보기] 단추가 "더보기 · 입지 분석"·지금 탭 모양이고 판 안 입지 분석에만 aria-current="page"다(탭 띠에는 지금 탭 없음)', async (path) => {
+    pathname.mockReturnValue(path)
+    const user = userEvent.setup()
+    render(<TabBar isAdmin />)
+    expect(moreButton().textContent).toBe('더보기 · 입지 분석')
+    hasAll(moreButton(), `${CURRENT_LOOK} relative after:inset-x-3`)
+    expect(strip().querySelectorAll('[aria-current]')).toHaveLength(0)
+    await user.click(moreButton())
+    const current = panelLinks().filter((a) => a.getAttribute('aria-current') === 'page')
+    expect(current.map((a) => a.getAttribute('href'))).toEqual(['/location'])
+    hasAll(current[0] as HTMLElement, 'text-accent-strong font-semibold before:h-5 before:w-0.5 before:bg-accent')
+    expect(nav().querySelectorAll('[aria-current]')).toHaveLength(1)
+  })
+
+  it('AC-7901.1: 다른 탭(/dashboard)에서 [더보기] 판의 입지 분석은 평범한 <a href="/location"> — 누르면 Next가 이 창 안에서 옮기지 않고 브라우저가 새 문서를 받는다(그 문서의 카카오 CSP를 쓴다). 탭 띠·판의 다른 링크는 지금처럼 Next가 옮긴다', async () => {
+    const user = userEvent.setup()
+    render(withRouter(<TabBar isAdmin />))
+    // 시험이 둘을 가려 낸다: Next 길잡이가 있으면 <Link>는 이 창 안에서 옮긴다
+    for (const [label, href] of PRIMARY_PATHS) {
+      const link = within(strip()).getByRole('link', { name: label })
+      expect(link.getAttribute('href')).toBe(href)
+      expect(await press(user, link), label).toBe('next')
+      expect(nextRouter.push.mock.calls[0]?.[0], label).toBe(href)
+    }
+    for (const [label, href] of ADMIN_MORE_PATHS) {
+      await user.click(moreButton())
+      const link = (panel() as HTMLElement).querySelector<HTMLAnchorElement>(`a[href="${href}"]`) as HTMLAnchorElement
+      expect(link.firstElementChild?.textContent).toBe(label)
+      expect(await press(user, link), label).toBe(href === '/location' ? 'document' : 'next')
+      // 판 안 링크를 누르면 판이 닫힌다(새 문서로 가는 링크도)
+      expect(panel(), label).toBeNull()
+    }
+  })
+
+  it.each(['/location', '/location/x'])('AC-7901.1: %s에서는 셸의 탭 링크가 모두 평범한 <a> — 탭 띠 여덟·[더보기] 판 일곱 어느 것을 눌러도 Next가 옮기지 않고 브라우저가 새 문서를 받는다(넓은 CSP가 다른 탭에 남지 않는다)', async (path) => {
+    pathname.mockReturnValue(path)
+    const user = userEvent.setup()
+    render(withRouter(<TabBar isAdmin />))
+    for (const [label, href] of PRIMARY_PATHS) {
+      const link = within(strip()).getByRole('link', { name: label })
+      expect(link.getAttribute('href')).toBe(href)
+      expect(await press(user, link), label).toBe('document')
+    }
+    for (const [label, href] of ADMIN_MORE_PATHS) {
+      await user.click(moreButton())
+      const link = (panel() as HTMLElement).querySelector<HTMLAnchorElement>(`a[href="${href}"]`) as HTMLAnchorElement
+      expect(link.firstElementChild?.textContent).toBe(label)
+      expect(await press(user, link), label).toBe('document')
+    }
+    expect(nextRouter.push).not.toHaveBeenCalled()
+  })
+
+  it('AC-7901.1·AC-2702.5: [더보기] 판의 입지 분석을 누르면 판이 닫히고 [더보기]가 누른 탭("더보기 · 입지 분석"·data-pending·지금 탭 모양)이 되며 불러오기 줄이 찬다 — 새 문서를 받는 동안 보인다', async () => {
+    const stop = (e: MouseEvent) => e.preventDefault()
+    document.addEventListener('click', stop)
+    try {
+      const user = userEvent.setup()
+      render(<TabBar isAdmin />)
+      await user.click(moreButton())
+      await user.click(locationLink() as HTMLAnchorElement)
+      expect(panel()).toBeNull()
+      expect(moreButton().textContent).toBe('더보기 · 입지 분석')
+      expect(moreButton().getAttribute('data-pending')).toBe('true')
+      hasAll(moreButton(), CURRENT_LOOK)
+      hasAll(within(strip()).getByRole('link', { name: '대시보드' }), IDLE_LOOK)
+      hasAll(loadBar(), 'scale-x-80 duration-700 ease-out')
+    } finally {
+      document.removeEventListener('click', stop)
+    }
+  })
+
+  it('AC-7901.1: 새 문서로 떠난 뒤 뒤로 가기로 이 화면이 그대로 돌아오면(pageshow persisted) 누른 탭·불러오기 줄을 거둔다. 처음 문서를 열 때의 pageshow(persisted 아님)는 그대로 둔다', async () => {
+    pathname.mockReturnValue('/location')
+    const stop = (e: MouseEvent) => e.preventDefault()
+    document.addEventListener('click', stop)
+    try {
+      const user = userEvent.setup()
+      render(<TabBar isAdmin />)
+      await user.click(within(strip()).getByRole('link', { name: '통계' }))
+      expect(within(strip()).getByRole('link', { name: '통계' }).getAttribute('data-pending')).toBe('true')
+      act(() => {
+        window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: false }))
+      })
+      expect(within(strip()).getByRole('link', { name: '통계' }).getAttribute('data-pending')).toBe('true')
+      act(() => {
+        window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+      })
+      expect(document.querySelectorAll('[data-pending]')).toHaveLength(0)
+      expect(moreButton().textContent).toBe('더보기 · 입지 분석')
+      hasAll(loadBar(), 'opacity-0')
+    } finally {
+      document.removeEventListener('click', stop)
+    }
+  })
+
+  it('AC-7901.1: AppShell은 관리자 값을 탭 줄에도 넘긴다 — 관리자면 [더보기] 판에 입지 분석이 있고, 관리자가 아니면 없다. 데스크는 관리자 값이 참이어도 [더보기]·입지 분석이 없다', async () => {
+    const user = userEvent.setup()
+    for (const isAdmin of [true, false]) {
+      render(
+        <AppShell hospitalName={HOSPITAL} email={EMAIL} isAdmin={isAdmin}>
+          <h1>본문 제목</h1>
+        </AppShell>,
+      )
+      await user.click(moreButton())
+      expect(locationLink() !== null, `관리자 ${isAdmin}`).toBe(isAdmin)
+      expect(panelLinks().map((a) => a.getAttribute('href'))).toEqual((isAdmin ? ADMIN_MORE_PATHS : MORE_PATHS).map(([, href]) => href))
+      cleanup()
+    }
+    pathname.mockReturnValue('/sunap')
+    render(
+      <AppShell hospitalName={HOSPITAL} email={EMAIL} isAdmin desk>
+        <h1>본문 제목</h1>
+      </AppShell>,
+    )
+    expect(within(nav()).queryAllByRole('button')).toEqual([])
+    expect(nav().textContent).not.toContain('입지 분석')
+    expect(document.querySelector('a[href="/location"]')).toBeNull()
   })
 })

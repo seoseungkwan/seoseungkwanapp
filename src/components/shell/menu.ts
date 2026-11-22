@@ -2,7 +2,8 @@
 // 탭 띠에는 주요 메뉴 여덟(primary)만 있고, 나머지는 [더보기] 판에 MENU 차례로 있다(dashboard-ux REQ-2702, 고시·공지가 더해짐 notices AC-7423.1).
 // 매출 탭은 통계 매출 칸으로 옮겨 없앴다. 옛 주소 /revenue는 next.config.ts가 /stats로 넘긴다(stats-revenue AC-4110.1·AC-4110.2).
 // 화면이 아직 없는 기능은 그 주소의 '준비 중' 화면이다. 비트 PC 연결 화면(/claim/setup)은 설정 탭 자리에 속한다(owns).
-// 관리자 화면은 탭이 아니라 계정 메뉴의 [가입 승인](ADMIN_LINK)이다
+// 관리자 화면은 탭이 아니라 계정 메뉴의 [가입 승인](ADMIN_LINK)이다.
+// 입지 분석(/location)은 관리자만 보는 탭이라 MENU 밖 상수 LOCATION_TAB 하나다 — [더보기] 판이 관리자에게만 주소록 다음에 끼운다(specs/location AC-7901.1)
 export type MenuLabel =
   | '대시보드'
   | '통계'
@@ -17,6 +18,7 @@ export type MenuLabel =
   | '업무일지'
   | '재고'
   | '주소록'
+  | '입지 분석'
   | '설정'
 export type MenuPath =
   | '/dashboard'
@@ -32,9 +34,10 @@ export type MenuPath =
   | '/worklog'
   | '/inventory'
   | '/contacts'
+  | '/location'
   | '/settings'
 /** 기능 자신의 화면이 있는 주소. 다음 명세가 화면을 만들면 여기에 더한다 */
-export type MenuHref = '/dashboard' | '/stats' | '/claim' | '/notices' | '/patients' | '/sunap' | '/calendar' | '/ai-report' | '/forms' | '/staff' | '/inventory' | '/worklog' | '/contacts' | '/settings'
+export type MenuHref = '/dashboard' | '/stats' | '/claim' | '/notices' | '/patients' | '/sunap' | '/calendar' | '/ai-report' | '/forms' | '/staff' | '/inventory' | '/worklog' | '/contacts' | '/location' | '/settings'
 
 export type MenuItem = {
   label: MenuLabel
@@ -84,6 +87,11 @@ export const PRIMARY_MENU: readonly MenuItem[] = MENU.filter((item) => item.prim
 /** [더보기] 판의 나머지(MENU 차례) */
 export const MORE_MENU: readonly MenuItem[] = MENU.filter((item) => !item.primary)
 
+// 입지 분석 /location — 관리자(승인된 병원 + admins 줄)만 보는 탭(specs/location AC-7901.1). MENU·목차·준비 중 목록 밖이다.
+// [더보기] 판이 관리자에게만 주소록 다음·설정 앞에 끼우고(데스크는 늘 없음), 그 경로는 문지기가 관리자 경로로 본다(lib/auth/gate.ts, AC-7901.2).
+// /location만 자기 CSP(카카오 origin)를 쓰므로 이 탭을 오가는 셸 링크는 평범한 <a>다(MoreMenu.tsx ShellLink)
+export const LOCATION_TAB: MenuItem = { label: '입지 분석', path: '/location', href: '/location', ready: true, primary: false }
+
 // 관리자만, 계정 메뉴 첫 항목(REQ-304)
 export const ADMIN_LINK: { label: '가입 승인'; href: '/admin' } = { label: '가입 승인', href: '/admin' }
 
@@ -102,10 +110,10 @@ const DESK_EXTRA: readonly string[] = ['/claim/setup']
 /** 데스크가 열 수 있는 주소: 세 탭 주소와 비트 PC 연결 화면, 그 아래 */
 export const isDeskPath = (pathname: string) => [...DESK_PATHS, ...DESK_EXTRA].some((base) => isUnder(pathname, base))
 
-/** 지금 화면의 탭 이름. 탭의 path·owns 중 가장 길게 맞는 경로가 이긴다(/claim/setup은 청구 /claim보다 설정 /claim/setup이 길게 맞는다, AC-302.4) */
+/** 지금 화면의 탭 이름. 탭(MENU와 LOCATION_TAB)의 path·owns 중 가장 길게 맞는 경로가 이긴다(/claim/setup은 청구 /claim보다 설정 /claim/setup이 길게 맞는다, AC-302.4) */
 export function currentMenuLabel(pathname: string): MenuLabel | null {
   let best: { label: MenuLabel; length: number } | null = null
-  for (const item of MENU) {
+  for (const item of [...MENU, LOCATION_TAB]) {
     for (const base of [item.path, ...(item.owns ?? [])]) {
       if (isUnder(pathname, base) && (best === null || base.length > best.length)) {
         best = { label: item.label, length: base.length }

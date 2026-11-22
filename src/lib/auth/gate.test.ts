@@ -150,6 +150,51 @@ describe('decideRoute() — 랜딩·콜백', () => {
   })
 })
 
+// specs/location REQ-7901: 입지 분석(/location과 그 아래)은 /admin과 같이 관리자 경로다
+describe('decideRoute() — 입지 분석 /location (location AC-7901.2)', () => {
+  const LOCATION_PATHS = ['/location', '/location/x', '/location/report/1']
+
+  it.each(LOCATION_PATHS)('AC-7901.2: 승인된 병원의 관리자는 %s를 연다(null)', (path) => {
+    expect(decideRoute(signedIn(path, 'approved', true))).toBeNull()
+  })
+
+  it.each(LOCATION_PATHS)('AC-7901.2: 관리자가 아닌 원장은 %s에서 /dashboard로 간다', (path) => {
+    expect(decideRoute(signedIn(path, 'approved', false))).toBe('/dashboard')
+  })
+
+  it.each(LOCATION_PATHS)('AC-7901.2: 데스크는 %s에서 /sunap으로 간다(관리자 값과 상관없이)', (path) => {
+    expect(decideRoute(signedIn(path, 'desk'))).toBe('/sunap')
+    expect(decideRoute(signedIn(path, 'desk', true))).toBe('/sunap')
+  })
+
+  it.each(LOCATION_PATHS)('AC-7901.2: 로그인 안 했으면 %s에서 /login으로 간다(공개 경로가 아니다)', (path) => {
+    expect(isPublicPath(path)).toBe(false)
+    for (const hospital of ALL_STATES) {
+      for (const isAdmin of [true, false]) expect(decideRoute({ path, signedIn: false, hospital, isAdmin })).toBe('/login')
+    }
+  })
+
+  it.each(LOCATION_PATHS)("AC-7901.2: middleware(병원 상태 'unknown')는 %s를 페이지 guard에 맡기고(null), 승인 대기·병원 줄 없음은 지금처럼 /pending·/signup", (path) => {
+    expect(decideRoute(signedIn(path, 'unknown'))).toBeNull()
+    expect(decideRoute(signedIn(path, 'pending', true))).toBe('/pending')
+    expect(decideRoute(signedIn(path, 'none', true))).toBe('/signup')
+  })
+
+  it.each(['/locations', '/location-x', '/locationx', '/api/ai/location/query', '/api/ai/location/keys'])(
+    'AC-7901.2: %s 같은 이름·서버 경로는 관리자 화면 경로로 보지 않는다(서버 경로는 스스로 관리자를 본다)',
+    (path) => {
+      expect(decideRoute(signedIn(path, 'approved', false))).toBeNull()
+      expect(decideRoute(signedIn(path, 'desk'))).toBeNull()
+    },
+  )
+
+  it('AC-7901.2: /admin은 그대로 관리자 경로다', () => {
+    expect(decideRoute(signedIn('/admin', 'approved', false))).toBe('/dashboard')
+    expect(decideRoute(signedIn('/admin', 'approved', true))).toBeNull()
+    expect(decideRoute(signedIn('/admin', 'desk'))).toBe('/sunap')
+  })
+})
+
 // middleware는 DB를 읽지 않으므로 병원 상태를 'unknown'으로 넘긴다
 describe("decideRoute() — 병원 상태 'unknown'(middleware)", () => {
   it('AC-002.4: 로그인한 사람이 /login을 열면 /dashboard로 보낸다', () => {
