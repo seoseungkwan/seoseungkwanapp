@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- 지어낸 견본: 자료 쪽 오류 답(정상 번호 00이 아님) -->
+<response>
+  <header>
+    <resultCode>99</resultCode>
+    <resultMsg>SERVICE ERROR.</resultMsg>
+  </header>
+</response>

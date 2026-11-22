@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- 지어낸 견본: 위치 조회의 빈 쪽(더 줄 의원이 없음). 빈 답은 실패가 아니다 -->
+<response>
+  <header>
+    <resultCode>00</resultCode>
+    <resultMsg>NORMAL SERVICE.</resultMsg>
+  </header>
+  <body>
+    <items/>
+    <numOfRows>100</numOfRows>
+    <pageNo>3</pageNo>
+    <totalCount>7</totalCount>
+  </body>
+</response>

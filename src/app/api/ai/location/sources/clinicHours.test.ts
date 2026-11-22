@@ -1,0 +1,211 @@
+import { readFileSync } from 'node:fs'
+import { describe, expect, it, vi } from 'vitest'
+import { SOURCES } from '@/lib/location/sources'
+import type { QueryOf } from '@/types/location'
+import { createFetchSource, type SourceFetch } from '../fetchSource'
+import { HOURS_PAGES, HOURS_ROWS, HOURS_URL, clinicHours, hoursFor, minutesOf, type ClinicHours } from './clinicHours'
+
+// 바깥 자료 — 진료 시간(specs/location TASK-17, REQ-7904, design.md 4절 `hosp-hours`).
+// 견본 fixtures/location/api/clinicHours/는 국립중앙의료원 전국 병·의원 찾기(15000736) 위치 조회 모양을 본떠 지어낸 것이다
+// (의원 이름·주소·전화·기관 번호 모두 지어냄). 진짜 사이트는 부르지 않는다
+
+const fixture = (name: string) =>
+  readFileSync(new URL(`../../../../../../fixtures/location/api/clinicHours/${name}`, import.meta.url), 'utf8')
+
+const TODAY = '2026-11-22'
+const Q: QueryOf<'hosp-hours'> = { kind: 'hosp-hours', at: { lat: 37.5, lng: 127.03 } }
+// 위도 1도 ≈ 111,195m(지구 반지름 6,371,008.8m) — 북쪽으로 몇 m 옮긴 점
+const north = (at: { lat: number; lng: number }, m: number) => ({ lat: at.lat + m / 111_195, lng: at.lng })
+
+const WEEKDAY = (open: number, close: number) => Array.from({ length: 5 }, () => [open, close] as [number, number])
+
+const PAGE_ROWS: ClinicHours[] = [
+  {
+    name: '푸른숲정형외과의원',
+    at: { lat: 37.5003, lng: 127.0301 },
+    week: [...WEEKDAY(540, 1110), [540, 780], null, null],
+  },
+  {
+    name: '새벽별 마취통증의학과 의원',
+    at: { lat: 37.5008, lng: 127.0295 },
+    week: [...WEEKDAY(510, 1260), [540, 900], [600, 780], [600, 780]],
+  },
+  {
+    name: '튼튼&바른한의원',
+    at: { lat: 37.4991, lng: 127.0312 },
+    week: [...WEEKDAY(570, 1170), [570, 840], null, null],
+  },
+  // 진료 시간 칸이 하나도 없는 의원 = 진료 시간 자료 없음(요일마다 닫음이 아니다)
+  { name: '다솜재활의학과의원', at: { lat: 37.4985, lng: 127.0283 }, week: null },
+  // '자리모름의원'(좌표 없음)은 뺀다
+]
+
+const PAGE2_ROWS: ClinicHours[] = [
+  {
+    name: '들쭉 날쭉 정형외과의원',
+    at: { lat: 37.5021, lng: 127.0334 },
+    // 월 0000~2400 · 화 닫는 시각 빔 · 수 닫는 시각이 여는 시각보다 이름 · 목 '930' · 금 '2460' · 토 '2500' · 일 빈 칸 · 공휴일 앞뒤 공백
+    week: [[0, 1440], null, null, null, null, null, null, [540, 720]],
+  },
+  // 이름이 빈 줄은 뺀다
+]
+
+const pageXml = (items: string) =>
+  `<?xml version="1.0" encoding="UTF-8"?><response><header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>` +
+  `<body><items>${items}</items><numOfRows>100</numOfRows><pageNo>1</pageNo><totalCount>1</totalCount></body></response>`
+
+describe('AC-7904.1 hosp-hours 요청: 정해 둔 주소·칸', () => {
+  it('AC-7904.1: 읽는 곳은 hosp-hours · 공공데이터포털 열쇠 · SOURCES에 있는 출처 id다', () => {
+    expect(clinicHours.kind).toBe('hosp-hours')
+    expect(clinicHours.key).toBe('data')
+    expect(clinicHours.src).toBe('hosp-hours')
+    const row = SOURCES.find((s) => s.id === clinicHours.src)
+    expect(row?.key).toBe('data')
+  })
+
+  it('AC-7904.1: 점 하나로 국립중앙의료원 위치 조회를 3쪽(쪽마다 100줄) 부르고 주소에 열쇠를 넣지 않는다', () => {
+    expect(HOURS_URL).toBe('https://apis.data.go.kr/B552657/HsptlAsembySearchService/getHsptlMdcncLcinfoInqire')
+    expect(HOURS_PAGES).toBe(3)
+    expect(HOURS_ROWS).toBe(100)
+    const reqs = clinicHours.requests(Q)
+    expect(reqs).toHaveLength(3)
+    reqs.forEach((req, i) => {
+      const url = new URL(req.url)
+      expect(`${url.origin}${url.pathname}`).toBe(HOURS_URL)
+      expect([...url.searchParams]).toEqual([
+        ['WGS84_LON', '127.03'],
+        ['WGS84_LAT', '37.5'],
+        ['pageNo', String(i + 1)],
+        ['numOfRows', '100'],
+      ])
+      expect(req.url.toLowerCase()).not.toContain('servicekey')
+    })
+  })
+
+  it('AC-7904.1: 만든 요청은 바깥 부르기 규칙(정해 둔 host)을 지나고 serviceKey 하나만 붙는다', async () => {
+    const seen: string[] = []
+    const fetchImpl = vi.fn<SourceFetch>(async (url) => {
+      seen.push(url)
+      return new Response(fixture('empty.xml'))
+    })
+    const call = createFetchSource({ fetchImpl })
+    for (const req of clinicHours.requests(Q)) {
+      const got = await call(req, { kind: 'data', value: 'DATA+FAKE/key==0017' })
+      expect(got.ok).toBe(true)
+    }
+    expect(seen).toHaveLength(3)
+    for (const url of seen) expect(new URL(url).searchParams.getAll('serviceKey')).toEqual(['DATA+FAKE/key==0017'])
+  })
+})
+
+describe('AC-7904.1 hosp-hours 답 읽기: 이름·점·요일 7칸 + 공휴일 [열·닫] 분', () => {
+  it("AC-7904.1: '0900' 같은 네 자리 글자를 0시부터 센 분으로 바꾼다(24:00까지, 그 밖은 null)", () => {
+    expect(minutesOf('0900')).toBe(540)
+    expect(minutesOf('1830')).toBe(1110)
+    expect(minutesOf('0000')).toBe(0)
+    expect(minutesOf('2400')).toBe(1440)
+    expect(minutesOf(' 0930 ')).toBe(570)
+    for (const bad of ['', '930', '09:00', 'abcd', '2401', '2460', '2500', '1260', '09000', '-900']) {
+      expect(minutesOf(bad)).toBeNull()
+    }
+  })
+
+  it('AC-7904.1: 쪽 차례대로 의원마다 이름·점·8칸(월~일 + 공휴일)을 돌려주고, 빈 요일은 null이다', () => {
+    const got = clinicHours.parse([fixture('page1.xml'), fixture('page2.xml'), fixture('empty.xml')], Q, TODAY)
+    expect(got).toEqual({ ok: true, value: [...PAGE_ROWS, ...PAGE2_ROWS], asOf: TODAY })
+    if (got.ok) for (const row of got.value) if (row.week) expect(row.week).toHaveLength(8)
+  })
+
+  it('AC-7904.1: 자료에 날짜가 없어 기준 날짜는 받은 한국 날짜다', () => {
+    const got = clinicHours.parse([fixture('page1.xml')], Q, '2026-12-01')
+    expect(got.ok && got.asOf).toBe('2026-12-01')
+  })
+
+  it('AC-7904.1: 이름이 비었거나 좌표가 없거나 범위 밖인 줄은 빼고, 이름의 XML 글자(&amp;·CDATA)는 푼다', () => {
+    const item = (name: string, lat: string, lng: string) =>
+      `<item><dutyName>${name}</dutyName><dutyTime1s>0900</dutyTime1s><dutyTime1c>1800</dutyTime1c>` +
+      `<latitude>${lat}</latitude><longitude>${lng}</longitude></item>`
+    const text = pageXml(
+      [
+        item('가온&amp;나래의원', '37.51', '127.02'),
+        item('<![CDATA[별빛 정형외과의원]]>', '37.512345678', '127.0212344'),
+        item('바다의원', '0', '0'),
+        item('구름의원', '37.51', 'abc'),
+        item('', '37.51', '127.02'),
+        `<item><dutyName>안개의원</dutyName></item>`,
+      ].join(''),
+    )
+    const got = clinicHours.parse([text], Q, TODAY)
+    expect(got.ok).toBe(true)
+    if (!got.ok) return
+    expect(got.value.map((r) => [r.name, r.at])).toEqual([
+      ['가온&나래의원', { lat: 37.51, lng: 127.02 }],
+      ['별빛 정형외과의원', { lat: 37.512346, lng: 127.021234 }],
+    ])
+    expect(got.value[0].week).toEqual([[540, 1080], null, null, null, null, null, null, null])
+  })
+})
+
+describe('AC-7904.2 hosp-hours 빈 답 · 활용신청 안 됨 · 모양 틀림', () => {
+  it('AC-7904.2: 빈 답은 실패가 아니라 빈 목록이다', () => {
+    expect(clinicHours.parse([fixture('empty.xml')], Q, TODAY)).toEqual({ ok: true, value: [], asOf: TODAY })
+    expect(clinicHours.parse([fixture('empty.xml'), fixture('empty.xml'), fixture('empty.xml')], Q, TODAY)).toEqual({
+      ok: true,
+      value: [],
+      asOf: TODAY,
+    })
+    expect(clinicHours.parse([pageXml('')], Q, TODAY)).toEqual({ ok: true, value: [], asOf: TODAY })
+  })
+
+  it('AC-7904.2: 미등록 열쇠 답은 not-applied다(다른 쪽이 정상이어도)', () => {
+    expect(clinicHours.parse([fixture('not-registered.xml')], Q, TODAY)).toEqual({ ok: false, code: 'not-applied' })
+    expect(clinicHours.parse([fixture('page1.xml'), fixture('not-registered.xml'), fixture('empty.xml')], Q, TODAY)).toEqual({
+      ok: false,
+      code: 'not-applied',
+    })
+  })
+
+  it('AC-7904.2: 모양이 틀린 답(오류 번호·XML 아님·몸통 없음·쪽 없음)은 failed다', () => {
+    const bad = [
+      fixture('error.xml'),
+      '점검 중입니다',
+      '<html><body><p>점검 중</p></body></html>',
+      '{"response":{"header":{"resultCode":"00"}}}',
+      '<response><header><resultCode>00</resultCode></header></response>',
+      '<response><header><resultMsg>NORMAL SERVICE.</resultMsg></header><body><items/></body></response>',
+    ]
+    for (const text of bad) expect(clinicHours.parse([text], Q, TODAY)).toEqual({ ok: false, code: 'failed' })
+    expect(clinicHours.parse([fixture('page1.xml'), fixture('error.xml')], Q, TODAY)).toEqual({ ok: false, code: 'failed' })
+    expect(clinicHours.parse([], Q, TODAY)).toEqual({ ok: false, code: 'failed' })
+  })
+})
+
+describe('AC-7904.1 의원 맞추기: 이름(공백·의원 빼고 같음) + 50m 안', () => {
+  const rows = PAGE_ROWS
+  const first = PAGE_ROWS[0]
+
+  it("AC-7904.1: 공백·'의원'을 뺀 이름이 같고 50m 안이면 그 의원의 8칸을 돌려준다", () => {
+    expect(hoursFor({ name: '푸른숲 정형외과', at: north(first.at, 40) }, rows)).toEqual(first.week)
+    expect(hoursFor({ name: '푸른숲 정형외과 의원', at: north(first.at, 48) }, rows)).toEqual(first.week)
+    expect(hoursFor({ name: '새벽별마취통증의학과의원', at: PAGE_ROWS[1].at }, rows)).toEqual(PAGE_ROWS[1].week)
+  })
+
+  it('AC-7904.1: 50m를 넘거나 이름이 다르면 못 맞추고 진료 시간은 null이다', () => {
+    expect(hoursFor({ name: '푸른숲정형외과의원', at: north(first.at, 60) }, rows)).toBeNull()
+    expect(hoursFor({ name: '푸른숲내과의원', at: first.at }, rows)).toBeNull()
+    expect(hoursFor({ name: '푸른숲정형외과의원', at: first.at }, [])).toBeNull()
+  })
+
+  it('AC-7904.1: 맞춘 의원에 진료 시간 자료가 없으면 null이다', () => {
+    expect(hoursFor({ name: '다솜 재활의학과', at: PAGE_ROWS[3].at }, rows)).toBeNull()
+  })
+
+  it('AC-7904.1: 같은 이름이 여럿이면 가장 가까운 곳, 빼고 나면 이름이 비는 경우는 맞추지 않는다', () => {
+    const at = { lat: 37.51, lng: 127.02 }
+    const near: ClinicHours = { name: '가온정형외과의원', at: north(at, 10), week: [[540, 1080], null, null, null, null, null, null, null] }
+    const far: ClinicHours = { name: '가온 정형외과', at: north(at, 30), week: [[600, 1200], null, null, null, null, null, null, null] }
+    expect(hoursFor({ name: '가온정형외과', at }, [far, near])).toEqual(near.week)
+    const blank: ClinicHours = { name: '의원', at, week: near.week }
+    expect(hoursFor({ name: ' 의원 ', at }, [blank])).toBeNull()
+  })
+})
