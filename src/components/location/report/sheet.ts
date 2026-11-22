@@ -1,22 +1,31 @@
-// 한 장 보고서 종이에 적을 글(specs/location TASK-40 · AC-7914.2, 시안 ?s=report 자리 그대로). 순수 함수 — 읽기·저장·부르기 없음.
-// 점수는 score.ts scoreItems(받은 설정), 위험 신호는 flags.ts pickFlags, 비용은 costs.ts calcCosts, 평당 월세는 listings.ts를 그대로 부른다.
-// 돈은 wonText, 거리는 distText, 넓이는 areaText, 날짜는 asOfText 한 곳씩만 쓴다. 숫자는 버림(CLAUDE.md).
+// 한 장 보고서 종이 두 장에 적을 글(specs/location TASK-40·TASK-75 · AC-7914.2·AC-7920.5·AC-7905.7, 시안 ?s=report 자리 그대로). 순수 함수 — 읽기·저장·부르기 없음.
+// 첫 장: 점수 값·위험 신호 입력은 lib/location/facts.ts(scoreFactsOf·flagInputOf, 과목 고르기 설정 포함)를 부르고 점수는 score.ts scoreItems(받은 설정),
+// 위험 신호는 flags.ts pickFlags, 비용은 costs.ts calcCosts, 평당 월세는 listings.ts, 빈 층은 빈 칸 짐작 묶음과 같은 vacancyOf,
+// 진료 시간 빈틈은 hours.ts gapTable을 그대로 부른다(따로 세지 않음). 경쟁 줄은 고른 과목(depts.ts, 대표 과목으로 셈)을 따른다.
+// 둘째 장 '이렇게 분석했어요': 글은 method.ts(REPORT·reportHead·reportRows·fillWeights) 한 곳 — 이 파일에 새로 적지 않는다.
+// 돈은 만 원 칸 금액(보증금·월세·관리비·권리금·처음에 드는 돈)이 manText, 원 칸·평당 값은 wonText, 거리는 distText, 넓이는 areaText,
+// 날짜는 asOfText 한 곳씩만 쓴다. 숫자는 버림(CLAUDE.md).
 // 그날 값 칸은 받았으면 그 값, 못 받았으면 지난 값(prev), 그것도 없으면 그 칸에 자료 없음 글(design.md 15절)이다.
 // 예상 환자 줄은 없다(사용자 2026-11-22) — 손익분기(비용 칸과 직접 적은 환자 1명당 평균 수입)만 적는다
 
 import { asOfText, sourceText, whyText } from '@/components/location/common/text'
+import { vacancyOf } from '@/components/location/detail/site/floors'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { areaText } from '@/lib/location/area'
 import { distText } from '@/lib/location/coords'
 import { calcCosts, checkCosts } from '@/lib/location/costs'
+import { deptOf, deptOfText, deptRole, rivalShortText } from '@/lib/location/depts'
+import { candidateListing, flagInputOf, rivalCount, scoreFactsOf, shownAsOf, shownValue, sourceAsOf } from '@/lib/location/facts'
 import { pickFlags } from '@/lib/location/flags'
 import { GAP_DAYS, GAP_SLOTS, gapTable } from '@/lib/location/hours'
 import { compareListings, perPyeongOf } from '@/lib/location/listings'
-import { commaText, wonText } from '@/lib/location/money'
+import { fillWeights, REPORT, reportHead, reportRows, type HowCtx, type ReportRow } from '@/lib/location/method'
+import { commaText, manText, wonText } from '@/lib/location/money'
 import { AGE_BANDS, fillScoreRule, SCORE_GROUPS, scoreItems, type ScoreRule } from '@/lib/location/score'
 import type {
   Candidate,
   CandidateStatus,
+  DeptRule,
   Got,
   Listing,
   LocationNote,
@@ -25,22 +34,40 @@ import type {
   Snapshot,
   SnapshotKey,
   SnapshotValue,
+  SourceId,
   YesNo,
 } from '@/types/location'
 
 export type SheetInput = {
   candidate: Candidate
-  listing: Listing | null
+  /** 후보 글자(후보 고르기 줄과 같은 A·B·C…) — 두 장 머리에 쓴다. 비면 그 조각을 뺀다 */
+  letter: string
+  /** 저장한 매물 모두(후보 매물 = 이 후보에 이어진 매물 가운데 마지막으로 고친 것, 평당 월세 평균 견주기) */
   listings: readonly Listing[]
   notes: readonly LocationNote[]
-  facts: ScoreFacts
+  /** 점수 설정(location_settings.score_rule) */
   rule: ScoreRule
+  /** 의원 과목 고르기(location_settings.dept_rule, fillDeptRule을 거친 값) */
+  deptRule: DeptRule
+  /** 지금 의원 체외충격파 값(원, location_settings.home_eswt) */
+  homeEswt: number | null
+  /** 한국 날짜 'YYYY-MM-DD' */
   today: string
   hospitalName?: string
 }
 
 export type SheetRow = { label: string; value: string }
 export type SheetItem = { name: string; points: number | null; max: number | null; empty: string }
+/** 둘째 장 '이렇게 분석했어요' */
+export type Basis = {
+  head: { kicker: string; title: string; sub: string }
+  scoringTitle: string
+  scoring: SheetRow[]
+  tableTitle: string
+  columns: readonly string[]
+  rows: ReportRow[]
+  always: string
+}
 export type Sheet = {
   kicker: string
   name: string
@@ -56,12 +83,18 @@ export type Sheet = {
   terms: [SheetRow[], SheetRow[]]
   notes: SheetRow[]
   foot: string
+  basis: Basis
 }
 
+/** 보고서 위 도움말(requirements 승인 3 · 시안 .rbar .help) — 둘째 장 제목은 method.ts REPORT에서 */
+export const HELP = `A4 한 장 + 둘째 장 '${REPORT.head.title}' · 인쇄하면 앱 틀은 빠지고 종이만 나와요`
 export const EMPTY = '–'
 export const NO_SCORE = '점수 없음'
 const NO_VALUE = '값 없음'
 const NO_LISTING = '매물 없음'
+// 경쟁 과목이 0개일 때(requirements '고른 과목을 따르는 글' 하나도 안 고름 · design.md 18절)
+const NO_DEPT = '과목 없음'
+const NO_DEPT_GAPS = '경쟁 의원 과목을 고르면 보여요.'
 const MINUS = '−'
 const FOOT_END = '숫자는 저장한 날 값이고 버림으로 적었어요.'
 const PRESALE_SHOWN = 3
@@ -113,6 +146,10 @@ const SNAPSHOT_FIELDS = [
   'welfare',
 ] as const satisfies readonly SnapshotKey[]
 
+// 비급여(체외충격파 값)·진료 시간은 모을 때 의원 목록(rivals) 칸의 의원마다 detail로 담긴다 — 그날 값에 따로 칸이 없어
+// 둘째 장 기준 날짜는 그 값이 든 rivals 칸의 기준 날짜를 쓴다
+const IN_RIVALS: ReadonlySet<SourceId> = new Set(['nonpay', 'hosp-hours'])
+
 const VIOLATION_TEXT: Record<YesNo, string> = {
   yes: '있음',
   no: '없음',
@@ -151,7 +188,9 @@ function cell<K extends SnapshotKey>(s: Snapshot | null, key: K, make: (v: Snaps
 
 // ── 글자 조각 ───────────────────────────────────────────
 
-const won = (n: number | null | undefined) => (typeof n === 'number' && Number.isSafeInteger(n) ? wonText(n) : EMPTY)
+const isWon = (n: number | null | undefined): n is number => typeof n === 'number' && Number.isSafeInteger(n)
+/** 만 원 칸 금액(매물·개원 비용, AC-7905.7) */
+const man = (n: number | null | undefined) => (isWon(n) ? manText(n) : EMPTY)
 const count = (n: number | null, unit: string) => (n === null ? EMPTY : `${commaText(n)}${unit}`)
 
 /** 소수 첫째 자리까지 버린 수(0.1 수 → 글자, 끝 .0 뺌) */
@@ -160,11 +199,11 @@ function tenthsText(tenths: number): string {
   return tenths % 10 === 0 ? int : `${int}.${tenths % 10}`
 }
 
-/** ISO 시각 → 한국 날짜 글자. 틀린 시각이면 null */
-function isoDayText(iso: string | null | undefined): string | null {
+/** ISO 시각 → 한국 날짜 'YYYY-MM-DD'. 틀린 시각이면 null */
+function isoDay(iso: string | null | undefined): string | null {
   if (typeof iso !== 'string') return null
   const at = new Date(iso)
-  return Number.isNaN(at.getTime()) ? null : asOfText(todayInKorea(at))
+  return Number.isNaN(at.getTime()) ? null : todayInKorea(at)
 }
 
 /** 고른 나이대 이름: 끝(100세 이상)까지 이어진 나이대면 `{n}세 이상`, 아니면 `고른 나이대` */
@@ -191,16 +230,35 @@ function presaleText(rows: SnapshotValue<'presale'>): string {
   return `${shown.join(', ')}${more > 0 ? ` 외 ${commaText(more)}곳` : ''}`
 }
 
-const clinicsOf = (rivals: readonly Rival[]) => rivals.filter((r) => r.kind !== 'korean')
+// ── 경쟁(과목 고르기 설정, design.md 18절) ───────────────
+
+/** 그날 값을 받은 범위(그날 값이 없으면 후보 줄의 범위) — facts.ts와 같다 */
+const radiusOf = (c: Candidate) => c.snapshot?.radiusM ?? c.radiusM
+
+/** 범위 안에서 대표 과목이 경쟁 과목인 의원 */
+function competitorsOf(rivals: readonly Rival[], radiusM: number, rule: DeptRule): Rival[] {
+  return rivals.filter((r) => {
+    if (r.distM > radiusM) return false
+    const dept = deptOf(r, rule)
+    return dept !== null && deptRole(dept, rule) === 'rival'
+  })
+}
+
+/** 3년 개폐업 줄이 경쟁 과목인가(인허가 줄 대표 과목, watch.ts와 같은 셈 — 업태 칸이 없어 비워 둔다) */
+function isRivalEvent(row: SnapshotValue<'history'>[number], rule: DeptRule): boolean {
+  const dept = deptOfText({ name: row.name, subjects: row.dept, type: '' }, rule)
+  return dept !== null && deptRole(dept, rule) === 'rival'
+}
 
 // 진료 시간 빈틈 글(시안 gapText): 평일 아침·점심·저녁 19~20시·밤, 토요일 오후, 일요일
 const WEEKDAYS = [0, 1, 2, 3, 4]
 const SAT = 5
 const SUN = 6
 const slotAt = (id: string) => GAP_SLOTS.findIndex((s) => s.id === id)
-function gapsText(rivals: readonly Rival[]): string {
-  const table = gapTable(rivals)
-  if (clinicsOf(rivals).length > 0 && table.counted === 0) return EMPTY
+/** 경쟁 의원 가운데 모을 때 진료 시간을 받은(detail) 곳으로 센 빈틈. 경쟁 의원이 있는데 진료 시간을 하나도 모르면 – */
+function gapsText(comps: readonly Rival[]): string {
+  const table = gapTable(comps.map((r) => r.detail ?? {}))
+  if (comps.length > 0 && table.counted === 0) return EMPTY
   const parts: string[] = []
   for (const id of ['early', 'lunch', 'late', 'night']) {
     const si = slotAt(id)
@@ -213,26 +271,16 @@ function gapsText(rivals: readonly Rival[]): string {
   return parts.length > 0 ? parts.join(', ') : '없음'
 }
 
-function eswtText(rivals: readonly Rival[], home: number | null | undefined): string {
-  const prices = clinicsOf(rivals)
-    .map((r) => r.eswt)
-    .filter((v): v is number => typeof v === 'number' && Number.isSafeInteger(v))
-  if (prices.length === 0) return EMPTY
-  const avg = Math.floor(prices.reduce((a, b) => a + b, 0) / prices.length)
-  const mine = typeof home === 'number' && Number.isSafeInteger(home) && home > 0 ? ` (지금 의원 ${wonText(home)})` : ''
+/** 체외충격파 평균(원 칸 → wonText): facts.ts가 비급여를 받은 경쟁 의원으로 낸 평균 + 지금 의원 값 */
+function eswtText(avg: number | null | undefined, home: number | null | undefined): string {
+  if (!isWon(avg)) return EMPTY
+  const mine = isWon(home) && home > 0 ? ` (지금 의원 ${wonText(home)})` : ''
   return `${wonText(avg)}${mine}`
 }
 
 function buildingText(b: SnapshotValue<'building'>): string {
   const parts = [b.approvedOn ? `${b.approvedOn.slice(0, 4)}년` : null, b.below > 0 ? `지하 ${commaText(b.below)}층` : null, `지상 ${commaText(b.above)}층`]
   return parts.filter((p) => p !== null).join(' · ')
-}
-
-/** 빈 층 짐작: 건축물대장 층 가운데(주차장 뺌) 30m 안 가게가 하나도 없는 층 수(상가정보만, 공실률 아님) */
-function emptyFloors(b: SnapshotValue<'building'>, stores: SnapshotValue<'stores'>): number {
-  const busy = new Set(stores.filter((s) => s.count > 0).map((s) => s.floor.trim()))
-  const floors = new Set(b.floors.filter((f) => !f.usage.includes('주차장')).map((f) => f.label.trim()))
-  return [...floors].filter((label) => !busy.has(label)).length
 }
 
 function termText(raw: unknown): string {
@@ -262,28 +310,47 @@ function peopleRows(s: Snapshot | null, rule: ScoreRule, density: number | null)
   ]
 }
 
-function rivalRows(s: Snapshot | null, home: number | null | undefined): SheetRow[] {
+/** 경쟁 묶음: `경쟁 의원({짧은 이름})` · (한의원이 둘레로 보기면) `한의원(따로)` · 3년 개폐업(경쟁 과목만) · 진료 시간 빈틈 · 체외충격파 평균 */
+function rivalRows(c: Candidate, rule: DeptRule, facts: ScoreFacts): SheetRow[] {
+  const s = c.snapshot
+  const got = field(s, 'rivals')
+  const all = shownOf(got)?.v ?? null
+  const r = radiusOf(c)
+  const none = rule.rival.length === 0
   const total = valueOf(s, 'people')?.total ?? null
-  return [
+  const n = rivalCount(c, rule)
+  const rows: SheetRow[] = [
     {
-      label: '정형외과·통증·재활',
-      value: cell(s, 'rivals', (rivals) => {
-        const n = clinicsOf(rivals).length
-        const per = n > 0 && total !== null ? `${commaText(Math.floor(total / n))}명` : EMPTY
-        return `${commaText(n)}곳 · 1곳당 ${per}`
-      }),
+      label: `경쟁 의원(${rivalShortText(rule)})`,
+      value: none
+        ? EMPTY
+        : n === null
+          ? missText(got)
+          : `${commaText(n)}곳 · 1곳당 ${n > 0 && total !== null ? `${commaText(Math.floor(total / n))}명` : EMPTY}`,
     },
-    { label: '한의원', value: cell(s, 'rivals', (rivals) => `${commaText(rivals.length - clinicsOf(rivals).length)}곳`) },
+  ]
+  if (deptRole('korean', rule) === 'around') {
+    const korean = all === null ? null : all.filter((x) => x.distM <= r && deptOf(x, rule) === 'korean').length
+    rows.push({ label: '한의원(따로)', value: korean === null ? missText(got) : `${commaText(korean)}곳` })
+  }
+  rows.push(
     {
       label: '3년 개폐업',
-      value: cell(s, 'history', (h) => `문 엶 ${h.filter((x) => x.kind === 'open').length} · 문 닫음 ${h.filter((x) => x.kind === 'close').length}`),
+      value: none
+        ? EMPTY
+        : cell(s, 'history', (h) => {
+            const mine = h.filter((x) => isRivalEvent(x, rule))
+            return `문 엶 ${mine.filter((x) => x.kind === 'open').length} · 문 닫음 ${mine.filter((x) => x.kind === 'close').length}`
+          }),
     },
-    { label: '진료 시간 빈틈', value: cell(s, 'rivals', gapsText) },
-    { label: '체외충격파 평균', value: cell(s, 'rivals', (rivals) => eswtText(rivals, home)) },
-  ]
+    { label: '진료 시간 빈틈', value: none ? NO_DEPT_GAPS : all === null ? missText(got) : gapsText(competitorsOf(all, r, rule)) },
+    { label: '체외충격파 평균', value: !none && all === null ? missText(got) : eswtText(facts.rivalEswt, facts.homeEswt) },
+  )
+  return rows
 }
 
-function siteRows(s: Snapshot | null, violation: YesNo | null): SheetRow[] {
+function siteRows(c: Candidate): SheetRow[] {
+  const s = c.snapshot
   const building = valueOf(s, 'building')
   const stores = valueOf(s, 'stores')
   return [
@@ -292,16 +359,21 @@ function siteRows(s: Snapshot | null, violation: YesNo | null): SheetRow[] {
     { label: '사람 흐름', value: cell(s, 'flow', (f) => `하루 ${commaText(f.total)}명 타고 내림(교통카드)`) },
     { label: '건물', value: cell(s, 'building', buildingText) },
     { label: '엘리베이터·주차', value: cell(s, 'building', (b) => `엘리베이터 ${count(b.elevators, '대')} · 주차 ${count(b.parking, '대')}`) },
-    { label: '위반 건축물', value: violation ? VIOLATION_TEXT[violation] : VIOLATION_UNPICKED },
+    { label: '위반 건축물', value: c.violation ? VIOLATION_TEXT[c.violation] : VIOLATION_UNPICKED },
     {
       label: '빈 층',
-      value: building && stores ? `${emptyFloors(building, stores)}개 층(짐작)` : building ? missText(field(s, 'stores')) : missText(field(s, 'building')),
+      value:
+        building && stores
+          ? `${vacancyOf(building.floors, stores, c.floorLabel).empty}개 층(짐작)`
+          : building
+            ? missText(field(s, 'stores'))
+            : missText(field(s, 'building')),
     },
   ]
 }
 
-function moneyRows(input: SheetInput): SheetRow[] {
-  const { candidate: c, listing: l } = input
+function moneyRows(input: SheetInput, l: Listing | null): SheetRow[] {
+  const c = input.candidate
   const floor = c.floorLabel.trim() || l?.floorLabel.trim() || EMPTY
   const area = c.areaM2 ?? l?.areaM2 ?? null
   const perPy = l ? perPyeongOf(l.rent, l.areaM2) : null
@@ -309,10 +381,10 @@ function moneyRows(input: SheetInput): SheetRow[] {
   const costs = calcCosts(checkCosts(c.costs), area)
   return [
     { label: '층 · 전용', value: `${floor} · ${area !== null ? areaText(area) : EMPTY}` },
-    { label: '보증금 / 월세', value: l ? `${won(l.deposit)} / ${won(l.rent)}` : EMPTY },
-    { label: '관리비 · 권리금', value: l ? `${won(l.mgmt)} · ${won(l.premium)}` : EMPTY },
+    { label: '보증금 / 월세', value: l ? `${man(l.deposit)} / ${man(l.rent)}` : EMPTY },
+    { label: '관리비 · 권리금', value: l ? `${man(l.mgmt)} · ${man(l.premium)}` : EMPTY },
     { label: '평당 월세', value: perPy !== null ? `${wonText(perPy)}${avg !== null ? ` (저장한 매물 평균 ${wonText(avg)})` : ''}` : EMPTY },
-    { label: '처음에 드는 돈', value: won(costs.startTotal) },
+    { label: '처음에 드는 돈', value: man(costs.startTotal) },
     { label: '손익분기', value: costs.breakEven !== null ? `하루 ${tenthsText(Math.round(costs.breakEven * 10))}명` : EMPTY },
     { label: '중개사', value: l?.brokerNote.trim() || EMPTY },
   ]
@@ -326,6 +398,7 @@ function noteRows(candidateId: string, notes: readonly LocationNote[]): SheetRow
     .map((n) => ({ label: asOfText(n.day), value: n.body }))
 }
 
+/** 첫 장 맨 아래: 출처 줄 + 끝 문장 + `어떻게 분석했는지는 둘째 장에 있어요.`(REPORT.firstPageEnd) */
 function footText(s: Snapshot | null): string {
   const lines: string[] = []
   for (const key of SNAPSHOT_FIELDS) {
@@ -337,57 +410,69 @@ function footText(s: Snapshot | null): string {
   }
   const user = sourceText('user')
   if (user !== null) lines.push(user)
-  return `출처: ${lines.join(' / ')}. ${FOOT_END}`
+  return `출처: ${lines.join(' / ')}. ${FOOT_END} ${REPORT.firstPageEnd}`
 }
 
-/** 보고서 한 장의 글을 모두 만든다 */
+/** 둘째 장 '이렇게 분석했어요': 머리·점수 매기는 법(지금 무게)·묶음마다 본 자료 표(그 후보 그날 값의 출처별 기준 날짜, {경쟁})·늘 못 보는 셋 */
+function basisOf(input: SheetInput, rule: ScoreRule, saved: string | null): Basis {
+  const c = input.candidate
+  const s = c.snapshot
+  const ctx: HowCtx = {
+    asOf: (src) => sourceAsOf(s, src) ?? (IN_RIVALS.has(src) ? shownAsOf(s?.rivals) : null),
+    radiusM: c.radiusM,
+    sggName: shownValue(s?.place)?.sggName ?? null,
+    rivalShort: rivalShortText(input.deptRule),
+  }
+  const head = reportHead({ id: input.letter.trim(), name: c.name, saved, radiusM: c.radiusM })
+  return {
+    // 글자가 비면 `후보  {이름}`의 빈 칸을 하나로
+    head: { ...head, kicker: head.kicker.replace(/ {2,}/g, ' ') },
+    scoringTitle: REPORT.scoringTitle,
+    scoring: REPORT.scoring.map((x) => ({ label: x.label, value: fillWeights(x.text, rule.weights) })),
+    tableTitle: REPORT.tableTitle,
+    columns: REPORT.columns,
+    rows: reportRows(ctx),
+    always: REPORT.always,
+  }
+}
+
+/** 보고서 두 장의 글을 모두 만든다 */
 export function buildSheet(input: SheetInput): Sheet {
-  const { candidate: c, listing, today } = input
+  const { candidate: c, today, deptRule } = input
   const s = c.snapshot
   const rule = fillScoreRule(input.rule)
-  const score = scoreItems(input.facts, rule, 'candidate')
+  const listing = candidateListing(c.id, input.listings)
+  const facts = scoreFactsOf({ candidate: c, listings: input.listings, homeEswt: input.homeEswt, today, deptRule })
+  const score = scoreItems(facts, rule, 'candidate')
   const scored = score.groups.reduce((sum, g) => (g.score === null ? sum : sum + rule.weights[g.id]), 0)
   const items = SCORE_GROUPS.map((g) => {
     const got = score.groups.find((x) => x.id === g.id)
     const points = got?.points ?? null
-    return {
-      name: g.name,
-      points,
-      max: points !== null && scored > 0 ? Math.floor((rule.weights[g.id] * 100) / scored) : null,
-      empty: g.id === 'cost' && listing === null ? NO_LISTING : NO_VALUE,
-    }
+    const empty = g.id === 'cost' && listing === null ? NO_LISTING : g.id === 'rivals' && deptRule.rival.length === 0 ? NO_DEPT : NO_VALUE
+    return { name: g.name, points, max: points !== null && scored > 0 ? Math.floor((rule.weights[g.id] * 100) / scored) : null, empty }
   })
   const density = score.groups.find((g) => g.id === 'people')?.subs.find((x) => x.id === 'p-density')?.value ?? null
 
-  const flags = pickFlags({
-    rivals: valueOf(s, 'rivals'),
-    history: valueOf(s, 'history'),
-    building: valueOf(s, 'building'),
-    people: valueOf(s, 'people'),
-    station: valueOf(s, 'station'),
-    bus: valueOf(s, 'bus'),
-    today,
-    radiusM: c.radiusM,
-    violation: c.violation,
-    floorLabel: c.floorLabel.trim() || null,
-    listing,
-    listings: [...input.listings],
-  }).map((f) => ({ title: `${f.title}${f.level === 'check' ? ' (확인 필요)' : ''}`, detail: f.detail }))
+  const flags = pickFlags(flagInputOf({ candidate: c, listings: input.listings, today, deptRule })).map((f) => ({
+    title: `${f.title}${f.level === 'check' ? ' (확인 필요)' : ''}`,
+    detail: f.detail,
+  }))
 
-  const saved = isoDayText(s?.at)
+  const saved = isoDay(s?.at)
   const made = [
     `${asOfText(today)} 뽑음`,
-    saved ? `자료는 ${saved}(저장한 날) 값` : null,
+    saved ? `자료는 ${asOfText(saved)}(저장한 날) 값` : null,
     `살필 범위 ${distText(c.radiusM)}`,
     input.hospitalName?.trim() || null,
   ]
     .filter((p) => p !== null)
     .join(' · ')
 
+  const letter = input.letter.trim()
   const termRows = TERMS.map(([key, label]) => ({ label, value: termText(c.terms[key]) }))
 
   return {
-    kicker: `입지 분석 보고서 · ${STATUS_TEXT[c.status]}`,
+    kicker: ['입지 분석 보고서', letter ? `후보 ${letter}` : null, STATUS_TEXT[c.status]].filter((p) => p !== null).join(' · '),
     name: c.name,
     address: c.addressNote.trim(),
     made,
@@ -395,11 +480,12 @@ export function buildSheet(input: SheetInput): Sheet {
     items,
     flags,
     people: peopleRows(s, rule, density),
-    rivals: rivalRows(s, input.facts.homeEswt),
-    site: siteRows(s, c.violation),
-    money: moneyRows(input),
+    rivals: rivalRows(c, deptRule, facts),
+    site: siteRows(c),
+    money: moneyRows(input, listing),
     terms: [termRows.slice(0, 3), termRows.slice(3)],
     notes: noteRows(c.id, input.notes),
     foot: footText(s),
+    basis: basisOf(input, rule, saved),
   }
 }

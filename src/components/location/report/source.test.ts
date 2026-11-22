@@ -51,4 +51,29 @@ describe('AC-7914.2: 한 장 보고서 소스', () => {
   it('AC-7914.2: 색은 토큰만 — 16진수·rgb( 색을 쓰지 않는다', () => {
     expect(FILES.filter((file) => /#[0-9a-fA-F]{3,8}\b|rgba?\(|hsl\(/.test(read(file)))).toEqual([])
   })
+
+  it('AC-7914.2: PC 모양 하나 — 폭 따라 바뀌는 클래스가 든 공용 묶음(ds.button·ds.input·ds.textButton)을 쓰지 않는다', () => {
+    expect(FILES.filter((file) => /\bds\.(?:button|input|textButton)\b/.test(read(file)))).toEqual([])
+  })
+})
+
+describe('AC-7920.5: 둘째 장 글·셈은 lib 한 곳', () => {
+  const sheet = () => read(`${DIR}/sheet.ts`)
+
+  it("AC-7920.5: 둘째 장 글은 method.ts(REPORT·reportHead·reportRows·fillWeights)에서 오고 부품 안에 따로 적지 않는다", () => {
+    expect(sheet()).toMatch(/\breportHead\(/)
+    expect(sheet()).toMatch(/\breportRows\(/)
+    expect(sheet()).toMatch(/\bfillWeights\(/)
+    const own = ['이렇게 분석했어요', '점수 매기는 법', '묶음마다 본 자료', '늘 못 보는 것', '어떻게 분석했는지는 둘째 장에 있어요', '무게는 내가 정해요']
+    expect(FILES.flatMap((file) => own.filter((t) => read(file).includes(t)).map((t) => `${file}: ${t}`))).toEqual([])
+  })
+
+  it('AC-7914.2: 점수 값·위험 신호 입력은 lib facts.ts(scoreFactsOf·flagInputOf)를 부르고, 빈 층·빈틈은 다른 부품과 같은 함수(vacancyOf·gapTable)를 부른다', () => {
+    const code = sheet()
+    for (const fn of ['scoreFactsOf', 'flagInputOf', 'pickFlags', 'candidateListing', 'vacancyOf', 'gapTable', 'rivalShortText', 'manText']) {
+      expect(code, fn).toMatch(new RegExp(`\\b${fn}\\(`))
+    }
+    // 옛 따로 셈(빈 층 세기·한의원 거르기)이 남아 있지 않다
+    expect(code).not.toMatch(/function emptyFloors|function clinicsOf|\.kind !== 'korean'/)
+  })
 })

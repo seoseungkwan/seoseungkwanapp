@@ -1,19 +1,21 @@
 'use client'
 
-// 입지 분석 › 한 장 보고서(specs/location TASK-40 · REQ-7914 · AC-7914.2, 시안 docs/mockups/location ?s=report 자리 그대로).
-// 후보 하나를 A4 한 장으로: 머리(진행 상태·이름·주소·뽑은 날·저장한 날·범위) · 종합 점수 · 항목 다섯 · 위험 신호 · 사는 사람·수요 ·
-// 경쟁 · 자리·교통 · 매물·비용(처음에 드는 돈·손익분기) · 임대 조건 · 진행 메모(최근 2개) · 출처 기준 날짜. 예상 환자 줄은 없다.
+// 입지 분석 › 한 장 보고서(specs/location TASK-40·TASK-75 · REQ-7914·REQ-7920 · AC-7914.2·AC-7920.5, 시안 docs/mockups/location ?s=report 자리 그대로).
+// 첫 장 — 후보 하나를 A4 한 장으로: 머리(후보 글자·진행 상태·이름·주소·뽑은 날·저장한 날·범위) · 종합 점수 · 항목 다섯 · 위험 신호 · 사는 사람·수요 ·
+// 경쟁(고른 과목) · 자리·교통 · 매물·비용(처음에 드는 돈·손익분기) · 임대 조건 · 진행 메모(최근 2개) · 출처 기준 날짜. 예상 환자 줄은 없다.
+// 둘째 장 '이렇게 분석했어요'(article.paper2) — 머리 · 점수 매기는 법 세 줄 · 묶음마다 본 자료 표 열넷 · 늘 못 보는 셋(글은 method.ts REPORT).
 // 글은 sheet.ts가 만들고 이 파일은 그리기만 한다. props·콜백만 받는다(읽기·저장·부르기 없음, 보고서는 저장하지 않는다).
 // [인쇄]는 window.print(), [PDF로 저장]은 인쇄 창에서 'PDF로 저장'을 고르라는 안내를 먼저 보이고 잠시 뒤 window.print()(시안과 같음).
 // 서버 PDF·새 패키지 없음(ADR-011과 같은 브라우저 인쇄). 인쇄 때: 앱 위쪽 띠·탭 줄은 AppShell이 print:hidden으로 숨기고,
-// 이 부품의 도구 줄·안내 줄도 print:hidden, 종이 감싸개·종이는 여백·테두리·바탕을 뺀다. 입지 분석 머리·안쪽 탭·후보 고르기 줄은
+// 이 부품의 도구 줄·안내 줄도 print:hidden, 종이 감싸개·종이는 여백·테두리·바탕을 뺀다. 둘째 장은 새 쪽에서 시작하고(break-before: page),
+// 두 장 모두 A4 한 쪽에 들게 인쇄 때 92%로 줄인다(시안 .paper zoom). 입지 분석 머리·안쪽 탭·후보 고르기 줄은
 // 그것을 그리는 화면(잇기)이 print:hidden을 붙인다. 종이 크기(@page)는 이 화면이 붙어 있을 때만 쓰이게 부품 안 <style>로 둔다
-// (고시·공지 주간 모음과 같은 방식). PC 모양 하나(폰 전용 모양 없음) — 좁은 창에서는 종이 감싸개 안에서만 옆으로 밀린다
+// (고시·공지 주간 모음과 같은 방식). PC 모양 하나(폰 전용 모양 없음, 폭 따라 바뀌는 공용 묶음도 안 씀) — 좁은 창에서는 종이 감싸개 안에서만 옆으로 밀린다
 
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { ds } from '@/components/ui/classes'
 import { DownloadIcon, LeftIcon, PrintIcon } from './icons'
-import { buildSheet, NO_SCORE, type SheetInput, type SheetItem, type SheetRow } from './sheet'
+import { buildSheet, HELP, NO_SCORE, type Basis, type SheetInput, type SheetItem, type SheetRow } from './sheet'
 
 export type OnePageReportProps = SheetInput & {
   /** [후보로 돌아가기] */
@@ -25,22 +27,25 @@ const PRINT_PAGE = '@media print { @page { size: A4 portrait; margin: 12mm } }'
 const PDF_HINT = "인쇄 창이 열리면 프린터(대상)를 'PDF로 저장'으로 골라요."
 const PDF_DELAY_MS = 600
 
-// ds 묶음에서 768px 미만에서만 바뀌는 클래스를 뺀다(폰 전용 모양 없음, 사용자 규칙 2026-11-21).
-// 앞말 글자를 통째로 적지 않는다(source.test가 소스에서 화면 폭 앞말을 찾는다) → 뒤에 쌍점이 오는지만 본다
-const PHONE_ONLY = /^max-md(?=:)/
-const pc = (classes: string) =>
-  classes
-    .split(/\s+/)
-    .filter((c) => c !== '' && !PHONE_ONLY.test(c))
-    .join(' ')
-const BUTTON = pc(ds.button.secondary)
-const PRIMARY = pc(ds.button.primary)
+// 단추(시안 .btn · .btn.primary): 36px · 좌우 16px · body 500 · 4px 모서리 — PC 모양 하나라 폭 따라 바뀌는 공용 단추 묶음 대신 값을 적는다
+const BUTTON_BASE = `inline-flex h-9 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-control border px-4 text-body font-medium transition ${ds.focusRing}`
+const BUTTON = `${BUTTON_BASE} border-line-strong bg-surface text-ink hover:bg-canvas`
+const PRIMARY = `${BUTTON_BASE} border-transparent bg-accent text-surface hover:bg-accent-strong`
 
-// 종이(시안 .paper): 794px(= 210mm) 흰 종이, 안쪽 44px 52px, 글자 12px
-const PAPER = 'mx-auto w-[210mm] border border-line bg-surface px-13 py-11 text-caption text-ink print:w-auto print:border-0 print:p-0'
+// 종이(시안 .paper): 794px(= 210mm) 흰 종이, 안쪽 44px 52px, 글자 12px. 인쇄 때 92%(시안 @media print .paper zoom)
+const PAPER =
+  'mx-auto w-[210mm] border border-line bg-surface px-13 py-11 text-caption text-ink print:w-auto print:border-0 print:p-0 print:[zoom:0.92]'
+// 둘째 장(시안 .paper2 · .paper + .paper): 화면에서는 첫 장과 24px 띄우고, 인쇄하면 새 쪽에서 시작
+const PAPER2 = `${PAPER} mt-6 print:mt-0 print:break-before-page`
 const WRAP = 'mt-4 overflow-x-auto rounded-control bg-canvas p-8 print:m-0 print:overflow-visible print:bg-transparent print:p-0'
 const H3 = 'mt-4 border-b border-line-strong pb-1 text-small font-semibold text-ink'
 const ROW = 'grid grid-cols-[112px_minmax(0,1fr)] gap-2 border-b border-line py-0.5'
+// 점수 매기는 법 줄(시안 .bl p): 이름 88px · 글
+const LINE = 'grid grid-cols-[88px_minmax(0,1fr)] gap-2'
+// 묶음마다 본 자료 표(시안 .bt): 칸 넓이 92 · 150 · 96 · 나머지 · 150px, 머리 muted 600 · 아래 진한 선, 몸 위쪽 맞춤 · 아래 선
+const BT_COLS = ['w-23', 'w-[150px]', 'w-24', '', 'w-[150px]'] as const
+const BT_TH = 'whitespace-nowrap border-b border-line-strong px-1.5 py-1 text-left font-semibold text-muted first:pl-0'
+const BT_TD = 'border-b border-line px-1.5 py-1 align-top first:pl-0'
 // 위험 신호 앞 '!' 네모(시안 .pf p::before). 인쇄는 바탕색이 빠지므로 테두리·글자색으로 바꾼다
 const FLAG =
   "grid grid-cols-[14px_minmax(0,1fr)] gap-1.5 before:mt-0.5 before:grid before:size-3.5 before:place-items-center before:rounded-control before:bg-negative before:text-caption before:font-semibold before:text-surface before:content-['!'] print:before:border print:before:border-negative print:before:bg-surface print:before:text-negative"
@@ -77,7 +82,7 @@ export function OnePageReport({ onBack, ...input }: OnePageReportProps) {
           후보로 돌아가기
         </button>
         <div className="flex flex-wrap items-center gap-2">
-          <span className={ds.help}>A4 한 장 · 인쇄하면 앱 틀은 빠지고 종이만 나와요</span>
+          <span className={ds.help}>{HELP}</span>
           <button type="button" onClick={savePdf} className={BUTTON}>
             <DownloadIcon />
             PDF로 저장
@@ -153,8 +158,65 @@ export function OnePageReport({ onBack, ...input }: OnePageReportProps) {
 
           <footer className="mt-4 border-t border-line-strong pt-2 text-caption text-muted">{sheet.foot}</footer>
         </article>
+        <BasisPaper basis={sheet.basis} />
       </div>
     </div>
+  )
+}
+
+// 둘째 장 '이렇게 분석했어요'(시안 reportBasisHtml): 머리 · 점수 매기는 법 세 줄 · 묶음마다 본 자료 표 · 늘 못 보는 셋
+function BasisPaper({ basis }: { basis: Basis }) {
+  return (
+    <article aria-label={basis.head.title} className={PAPER2}>
+      <header className="border-b border-ink pb-3">
+        <p className="text-muted">{basis.head.kicker}</p>
+        <h2 className="text-title font-semibold text-ink">{basis.head.title}</h2>
+        <p className="text-muted">{basis.head.sub}</p>
+      </header>
+
+      <Block title={basis.scoringTitle}>
+        <dl className="mt-1.5 grid min-w-0 gap-1">
+          {basis.scoring.map((r) => (
+            <div key={r.label} className={LINE}>
+              <dt className="font-semibold text-ink">{r.label}</dt>
+              <dd className="min-w-0">{r.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </Block>
+
+      <Block title={basis.tableTitle}>
+        <table className="mt-2 w-full border-collapse text-caption">
+          <colgroup>
+            {BT_COLS.map((w, i) => (
+              <col key={i} className={w || undefined} />
+            ))}
+          </colgroup>
+          <thead>
+            <tr>
+              {basis.columns.map((c) => (
+                <th key={c} scope="col" className={BT_TH}>
+                  {c}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {basis.rows.map((r) => (
+              <tr key={r.id}>
+                <td className={`${BT_TD} whitespace-nowrap font-semibold`}>{r.name}</td>
+                <td className={BT_TD}>{r.orgs}</td>
+                <td className={`${BT_TD} whitespace-nowrap tabular-nums`}>{r.dates}</td>
+                <td className={BT_TD}>{r.method}</td>
+                <td className={`${BT_TD} text-ink-2`}>{r.missing}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Block>
+
+      <footer className="mt-4 border-t border-line-strong pt-2 text-caption text-muted">{basis.always}</footer>
+    </article>
   )
 }
 
