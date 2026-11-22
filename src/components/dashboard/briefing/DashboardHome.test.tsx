@@ -1011,3 +1011,80 @@ describe('DashboardHome: 무상 수리 알림 자리 (contacts AC-6507.1)', () =
     }
   })
 })
+
+// ── location: 대시보드 새 경쟁 의원 알림 자리 (REQ-7915, design.md 12절, 시안 docs/mockups/location/index.html ?s=dashboard) ──
+// 알림 묶음은 LiveDashboard가 읽어(useLocationWatch) BitDashboard를 거쳐 locationNotice로 넘긴다. 여기서는 받은 노드를
+// 무상 수리 알림 바로 아래(같은 네 자리)에 두는지만 본다(그림은 components/dashboard/location/LocationAlert.test.tsx)
+describe('DashboardHome: 입지 알림 자리 (location AC-7915.2)', () => {
+  const NOTICE_NAME = '무상 수리 알림'
+  const LOCATION_NAME = '입지 알림'
+  const notice = <div role="status" aria-label={NOTICE_NAME} data-testid="notice">가짜 무상 수리 알림</div>
+  const watch = <div role="status" aria-label={LOCATION_NAME} data-testid="watch">가짜 입지 알림</div>
+  const noticeEl = () => screen.getByTestId('notice')
+  const watchEl = () => screen.getByTestId('watch')
+  const block = (
+    <div data-testid="block">
+      <h1>비트에서 오늘 숫자를 읽고 있어요</h1>
+    </div>
+  )
+
+  it('AC-7915.2: 연결 뒤(report 있음)는 무상 수리 알림 바로 다음 · 분석 앞이고 브리핑 칸의 마지막이다', () => {
+    render(<DashboardHome today={TODAY} report={report} analysis={analysis} dateLine={null} notice={notice} locationNotice={watch} />)
+    expect(watchEl().previousElementSibling).toBe(noticeEl())
+    expect(watchEl().nextElementSibling).toBeNull()
+    expect(brief().contains(watchEl())).toBe(true)
+    expectOrder(screen.getByTestId('report'), noticeEl(), watchEl(), screen.getByTestId('analysis'), sectionNamed('기능 목차'))
+  })
+
+  it('AC-7915.2: 연결 뒤 읽는 중·실패 모양은 그 블록 → 무상 수리 알림 → 입지 알림 차례다', () => {
+    render(<DashboardHome today={TODAY} report={block} analysis={analysis} notice={notice} locationNotice={watch} />)
+    expectOrder(dateLineEl(), screen.getByTestId('block'), noticeEl(), watchEl(), screen.getByTestId('analysis'))
+    expect(watchEl().previousElementSibling).toBe(noticeEl())
+  })
+
+  it('AC-7915.2: 비트 병원 연결 전은 날짜 줄 → 무상 수리 알림 → 입지 알림 → 큰 문장(h1) 차례다', () => {
+    render(<DashboardHome today={TODAY} report={null} analysis={analysis} notice={notice} locationNotice={watch} />)
+    expect(noticeEl().previousElementSibling).toBe(dateLineEl())
+    expect(watchEl().previousElementSibling).toBe(noticeEl())
+    expect(watchEl().nextElementSibling).toBe(screen.getByRole('heading', { level: 1, name: H1 }))
+    expect(briefLeft().contains(watchEl())).toBe(true)
+  })
+
+  it.each(['uisarang', 'egis', 'other'] as const)('AC-7915.2: 비트가 아닌 EMR(%s) 연결 전도 무상 수리 알림 바로 다음 · 안내 제목(h1) 앞이다', (emr) => {
+    const { container } = render(<DashboardHome today={TODAY} report={null} analysis={analysis} emr={emr} notice={notice} locationNotice={watch} />)
+    expect(watchEl().previousElementSibling).toBe(noticeEl())
+    expect(watchEl().nextElementSibling).toBe(container.querySelector('h1'))
+  })
+
+  it('AC-7915.2: 무상 수리 알림이 없으면 그 자리(머리 줄·블록·날짜 줄 바로 다음)에 온다', () => {
+    render(<DashboardHome today={TODAY} report={report} analysis={analysis} dateLine={null} locationNotice={watch} />)
+    expect(watchEl().previousElementSibling).toBe(screen.getByTestId('report'))
+    cleanup()
+    render(<DashboardHome today={TODAY} report={block} analysis={analysis} locationNotice={watch} />)
+    expect(watchEl().previousElementSibling).toBe(screen.getByTestId('block'))
+    cleanup()
+    render(<DashboardHome today={TODAY} report={null} analysis={analysis} locationNotice={watch} />)
+    expect(watchEl().previousElementSibling).toBe(dateLineEl())
+    expect(watchEl().nextElementSibling).toBe(screen.getByRole('heading', { level: 1, name: H1 }))
+  })
+
+  it('AC-7915.2: 입지 알림 묶음은 하나만 그린다(연결 전·뒤 모두)', () => {
+    for (const node of [null, report, block]) {
+      render(<DashboardHome today={TODAY} report={node} analysis={analysis} notice={notice} locationNotice={watch} />)
+      expect(screen.getAllByRole('status', { name: LOCATION_NAME })).toHaveLength(1)
+      cleanup()
+    }
+  })
+
+  it('AC-7915.3: locationNotice를 주지 않거나 null이면 지금 그대로다(빈 자리·빈 상자 없음)', () => {
+    for (const emr of ['bit', 'uisarang'] as const) {
+      for (const node of [null, report]) {
+        for (const n of [undefined, notice]) {
+          const plain = renderToStaticMarkup(<DashboardHome today={TODAY} report={node} analysis={analysis} emr={emr} notice={n} />)
+          expect(renderToStaticMarkup(<DashboardHome today={TODAY} report={node} analysis={analysis} emr={emr} notice={n} locationNotice={null} />)).toBe(plain)
+          expect(renderToStaticMarkup(<DashboardHome today={TODAY} report={node} analysis={analysis} emr={emr} notice={n} locationNotice={undefined} />)).toBe(plain)
+        }
+      }
+    }
+  })
+})

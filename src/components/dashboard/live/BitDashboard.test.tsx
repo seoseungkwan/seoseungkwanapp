@@ -2740,3 +2740,84 @@ describe('AC-7512.4: 대시보드 재고 칸 자리', () => {
     expect(report.parentElement).toBe(todaySection())
   })
 })
+
+// ── location: 대시보드 새 경쟁 의원 알림 (REQ-7915, design.md 12절, 시안 docs/mockups/location/index.html ?s=dashboard) ──
+// 알림은 LiveDashboard가 읽어(useLocationWatch) locationNotice로 넘긴다. BitDashboard는 받은 노드를 DashboardHome에 그대로 넘기기만 한다(읽지 않음) —
+// 자리는 상태마다 무상 수리 알림 바로 아래(없으면 그 자리)
+describe('입지 알림 자리 (location AC-7915.2)', () => {
+  const NOTICE_NAME = '무상 수리 알림'
+  const LOCATION_NAME = '입지 알림'
+  const NOTICE = (
+    <div role="status" aria-label={NOTICE_NAME}>
+      가짜 무상 수리 알림
+    </div>
+  )
+  const WATCH = (
+    <div role="status" aria-label={LOCATION_NAME}>
+      가짜 입지 알림
+    </div>
+  )
+  const noticeEl = () => screen.getByRole('status', { name: NOTICE_NAME })
+  const watchEl = () => screen.getByRole('status', { name: LOCATION_NAME })
+  const headerH1 = () => screen.getByRole('heading', { level: 1, name: HEADER_H1 })
+
+  it('AC-7915.2: 숫자가 있으면 머리 줄 → 무상 수리 알림 → 입지 알림 → 오늘 하루 분석 차례다', () => {
+    notBitPc()
+    render(<BitDashboard today={TODAY} initial={SAVED} notice={NOTICE} locationNotice={WATCH} />)
+    expect(watchEl().previousElementSibling).toBe(noticeEl())
+    expectOrder(headerH1(), noticeEl(), watchEl(), todaySection(), flow())
+    expect(region('오늘 브리핑').contains(watchEl())).toBe(true)
+  })
+
+  it('AC-7915.2: 무상 수리 알림이 없으면 머리 줄 바로 아래다', () => {
+    notBitPc()
+    render(<BitDashboard today={TODAY} initial={SAVED} locationNotice={WATCH} />)
+    expect(watchEl().previousElementSibling).toBe(headerH1().parentElement)
+    expectOrder(headerH1(), watchEl(), todaySection())
+  })
+
+  it('AC-7915.2: 숫자 없이 읽는 중·실패면 그 블록 → 무상 수리 알림 → 입지 알림 차례다', async () => {
+    onBitPc()
+    render(<BitDashboard today={TODAY} initial={NONE} notice={NOTICE} locationNotice={WATCH} />)
+    const reading = screen.getByRole('heading', { level: 1, name: READ_H1 })
+    expectOrder(reading, screen.getByRole('progressbar'), noticeEl(), watchEl(), todaySection())
+    await answer(failed('E-BIT-READ-FAILED'))
+    expect(watchEl().previousElementSibling).toBe(noticeEl())
+    expectOrder(screen.getByRole('alert'), noticeEl(), watchEl(), todaySection())
+  })
+
+  it('AC-7915.2: 연결 전(비트)은 날짜 줄 → 무상 수리 알림 → 입지 알림 → 큰 문장 차례다', () => {
+    notBitPc()
+    render(<BitDashboard today={TODAY} initial={NONE} notice={NOTICE} locationNotice={WATCH} />)
+    const h1 = screen.getByRole('heading', { level: 1, name: CONNECT_H1 })
+    expect(watchEl().previousElementSibling).toBe(noticeEl())
+    expect(watchEl().nextElementSibling).toBe(h1)
+  })
+
+  it('AC-7915.2: 비트 숫자가 와 화면이 바뀌어도 입지 알림은 그대로 한 묶음이다', async () => {
+    onBitPc()
+    render(<BitDashboard today={TODAY} initial={SAVED} notice={NOTICE} locationNotice={WATCH} />)
+    expect(screen.getAllByRole('status', { name: LOCATION_NAME })).toHaveLength(1)
+    await answer(days())
+    expect(screen.getAllByRole('status', { name: LOCATION_NAME })).toHaveLength(1)
+    expectOrder(headerH1(), noticeEl(), watchEl(), todaySection())
+  })
+
+  it('AC-7915.3: locationNotice를 주지 않거나 null이면 지금 그대로다(서버 그림 · 연결 전 · 숫자 화면)', () => {
+    notBitPc()
+    for (const initial of [NONE, SAVED]) {
+      expect(renderToStaticMarkup(<BitDashboard today={TODAY} initial={initial} notice={NOTICE} locationNotice={null} />)).toBe(
+        renderToStaticMarkup(<BitDashboard today={TODAY} initial={initial} notice={NOTICE} />),
+      )
+    }
+  })
+
+  it('AC-7915.3: BitDashboard는 입지 알림을 읽지 않는다 — 훅을 부르지 않고 저장 함수·바깥 자료·Supabase를 불러오지 않으며, 받은 locationNotice를 DashboardHome에 넘기기만 한다', () => {
+    const text = readFileSync(join(process.cwd(), 'src/components/dashboard/live/BitDashboard.tsx'), 'utf8')
+    expect(text).not.toMatch(/useLocationWatch\(|storage\/location|components\/location|lib\/supabase/)
+    expect(text).toMatch(/locationNotice=\{locationNotice\}/)
+    // LiveDashboard(summary 폴더의 불러오기 울타리)가 쓰도록 거쳐 내보내기만 한다(재고 칸 InventoryAlertCard와 같다)
+    expect(text).toMatch(/^export \{ LocationAlert \} from '@\/components\/dashboard\/location\/LocationAlert'$/m)
+    expect(text).toMatch(/^export \{ useLocationWatch \} from '@\/components\/dashboard\/location\/useLocationWatch'$/m)
+  })
+})

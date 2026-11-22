@@ -118,6 +118,7 @@ function emptyLook(status: Status, honorific: Honorific): EmptyLook {
  * initial이 새 값으로 바뀌면(새로고침 성공) 다시 놓지 않고 화면 숫자만 바꾼다 — 고른 날·AI 요약이 그대로이고 비트 읽기를 새로 시작하지 않는다
  * inventoryOnTop: 숫자가 없는 모양에서 재고 칸을 맨 위에 둔다(기본 참). LiveDashboard가 오류 카드 위에 이미 둘 때 거짓(AC-7512.4)
  * notice: 맨 위 줄 바로 아래 알림(contacts AC-6507.1, 무상 수리). LiveDashboard가 읽어 넘기고 여기서는 DashboardHome에 그대로 넘기기만 한다(읽지 않음)
+ * locationNotice: notice 바로 아래 새 경쟁 의원 알림(location AC-7915.2, 관리자만). notice와 같이 LiveDashboard가 읽어 넘기고 그대로 넘기기만 한다(읽지 않음)
  */
 export function BitDashboard({
   today,
@@ -129,6 +130,7 @@ export function BitDashboard({
   savedRefresh,
   inventoryOnTop = true,
   notice,
+  locationNotice,
 }: {
   today: string
   initial: SummarySource
@@ -139,6 +141,7 @@ export function BitDashboard({
   savedRefresh?: SavedRefresh
   inventoryOnTop?: boolean
   notice?: ReactNode
+  locationNotice?: ReactNode
 }) {
   const [status, setStatus] = useState(() => firstStatus(initial))
   // 새 처음 자료가 오면(저장 숫자 새로고침 성공) 그리는 중에 상태를 맞춘다 — 다시 놓지 않는다(AC-2701.8)
@@ -272,6 +275,7 @@ export function BitDashboard({
       }
       analysis={analysis}
       notice={notice}
+      locationNotice={locationNotice}
     />
   )
   // 숫자가 없는 모양: 재고 칸이 대시보드 내용 맨 위(AC-7512.4). 자리는 모양과 상관없이 늘 두어(숫자가 있으면 빈 자리)
@@ -286,3 +290,6 @@ export function BitDashboard({
 
 // LiveDashboard(summary 폴더)는 정해 둔 곳만 불러온다(DashboardAnalysis.test AC-311.8) → 뼈대·오류 카드 위 재고 칸은 이 파일을 거쳐 쓴다
 export { InventoryAlertCard }
+// 새 경쟁 의원 알림(location AC-7915.2)도 같은 까닭으로 이 파일을 거친다: 읽기 훅과 줄 그림은 LiveDashboard가 쓰고, 여기서는 내보내기만 한다(부르지 않음)
+export { LocationAlert } from '@/components/dashboard/location/LocationAlert'
+export { useLocationWatch } from '@/components/dashboard/location/useLocationWatch'

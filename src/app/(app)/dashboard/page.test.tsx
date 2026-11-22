@@ -19,10 +19,13 @@ import { FlowSection } from '@/components/dashboard/summary/FlowSection'
 import { ReportBlock } from '@/components/dashboard/summary/ReportBlock'
 import type { SummarySource } from '@/components/dashboard/summary/source'
 import { addDays } from '@/lib/analytics/dates'
+import type { Me } from '@/lib/auth/hospital.server'
 import { listWarrantySoon } from '@/lib/storage/contacts'
 import { loadInventory } from '@/lib/storage/inventory'
+import { listUnseenEvents, listWatchCandidates } from '@/lib/storage/location'
 import { readDays } from '@/lib/storage/stats'
 import { supabaseBrowser } from '@/lib/supabase/browser'
+import { queryLocation } from '@/components/location/clients'
 import type { InvInventory } from '@/types/inventory'
 import type { DayPayload } from '@/types/payload'
 import DashboardPage, { dynamic } from './page'
@@ -62,6 +65,29 @@ vi.mock('@/lib/supabase/browser', () => ({
     throw new Error('NEXT_PUBLIC_SUPABASE_URL이 비었어요')
   }),
 }))
+// 새 경쟁 의원 알림(location AC-7915.1·AC-7915.3): 페이지는 앱 틀과 같은 요청의 문지기 값(currentMe)에서 관리자인지만 넘긴다 → 문지기는 가짜.
+// 기본은 관리자가 아닌 원장(알림을 부르지 않음)이라 이 파일의 다른 시험은 지금 그대로다. 알림 저장 함수·바깥 자료 부르기도 잡아 둔다(진짜 Supabase·서버 경로에 붙지 않는다)
+const { currentMe } = vi.hoisted(() => ({ currentMe: vi.fn<() => Promise<Me>>() }))
+vi.mock('../currentMe.server', () => ({ currentMe }))
+vi.mock('@/lib/storage/location', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/storage/location')>()
+  return { ...real, listWatchCandidates: vi.fn(async () => []), listUnseenEvents: vi.fn(async () => []), addEvents: vi.fn(), setWatchChecked: vi.fn(), markEventsSeen: vi.fn() }
+})
+vi.mock('@/components/location/clients', () => ({ queryLocation: vi.fn() }))
+const HOSPITAL: NonNullable<Me['hospital']> = {
+  id: 'h1',
+  name: '가나 정형외과의원',
+  applicantName: '홍길동',
+  phone: null,
+  email: 'manager@example.com',
+  status: 'approved',
+  createdAt: '2026-10-28T01:23:45+00:00',
+}
+const OWNER: Me = { email: 'manager@example.com', isAdmin: false, hospital: HOSPITAL }
+beforeEach(() => {
+  currentMe.mockReset()
+  currentMe.mockResolvedValue(OWNER)
+})
 
 // /dashboard 페이지 (tab-frame REQ-306, design.md '대시보드 짜임'·'대시보드 페이지 조립'). 문지기와 앱 틀(위쪽 띠·탭·<main>)은 (app)/layout이 준다(layout.test.tsx).
 // 여기서는 오늘 한국 날짜로 대시보드(DashboardHome)를 그리는지, 자료 읽는 자리(저장 숫자 읽기) 하나로 연결 전·뒤 분석·보고 문장을 끼우는지 본다(AC-307.5·307.6)
@@ -167,7 +193,7 @@ describe('/dashboard 화면', () => {
   })
 
   it('AC-601.14·AC-516.1: 페이지는 LiveDashboard 하나를 오늘 한국 날짜로 놓고, 통계 표·통계 저장을 읽지 않는다(서버 코드)', () => {
-    expect(SOURCE).toContain('<LiveDashboard today={todayInKorea()} />')
+    expect(SOURCE).toContain('<LiveDashboard today={todayInKorea()} isAdmin={adminOfMe()} />')
     expect(SOURCE).not.toMatch(/readDays|storage\/stats|stats_days|summary\/source|dashboardSummarySource/)
   })
 })
@@ -270,7 +296,7 @@ describe('/dashboard 조립 — 지금 자리(늘 자료 없음) (AC-307.5)', ()
   })
 
   it('AC-601.1·AC-601.14: 페이지는 오늘을 LiveDashboard에 넘기고, 저장 숫자 읽기·비트 읽기는 그 아래 화면이 맡는다', () => {
-    expect(SOURCE).toMatch(/<LiveDashboard today=\{todayInKorea\(\)\} \/>/)
+    expect(SOURCE).toMatch(/<LiveDashboard today=\{todayInKorea\(\)\} isAdmin=\{adminOfMe\(\)\} \/>/)
     expect(SOURCE).not.toMatch(/<BitDashboard\b|readBitDays|chrome/)
   })
 
@@ -611,5 +637,76 @@ describe('/dashboard 재고 칸 (AC-7512.4)', () => {
       ['재고', titles[0]!.index],
       ['기간별 흐름', placeOf(html, 'h2', '기간별 흐름')],
     ])
+  })
+})
+
+// ── location: 대시보드 새 경쟁 의원 알림 (REQ-7915, design.md 12절) ──
+// 페이지는 앱 틀((app)/layout)이 같은 요청에서 이미 읽은 문지기 값(currentMe, 요청마다 한 번)의 '관리자인지'만 LiveDashboard에 넘긴다.
+// 페이지는 그 값을 기다리지 않는다(약속으로 넘김) — 서버 그림(뼈대)은 지금처럼 바로 나오고, 다른 숫자도 기다리지 않는다
+describe('/dashboard 입지 알림: 관리자인지만 넘긴다 (location AC-7915.1·AC-7915.3)', () => {
+  const CLIENT = { from: vi.fn(), rpc: vi.fn(), storage: {} }
+  const ADMIN: Me = { ...OWNER, isAdmin: true }
+  const DESK: Me = { email: 'desk@example.com', isAdmin: true, hospital: null, desk: { hospitalId: 'h1', hospitalName: '가나 정형외과의원' } }
+  const settle = () =>
+    act(async () => {
+      for (let i = 0; i < 30; i += 1) await Promise.resolve()
+    })
+  const drawPage = async () => {
+    vi.mocked(readDays).mockResolvedValueOnce({ rows: [], dropped: 0, latest: null, fromFile: false })
+    render(<DashboardPage />)
+    await settle()
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(AT_TODAY))
+    vi.mocked(readDays).mockReset()
+    vi.mocked(listWatchCandidates).mockClear()
+    vi.mocked(listUnseenEvents).mockClear()
+    vi.mocked(queryLocation).mockClear()
+    vi.mocked(supabaseBrowser).mockReturnValue(CLIENT as never)
+  })
+
+  afterEach(() => {
+    vi.mocked(supabaseBrowser).mockReset()
+    vi.mocked(supabaseBrowser).mockImplementation(() => {
+      throw new Error('NEXT_PUBLIC_SUPABASE_URL이 비었어요')
+    })
+    vi.useRealTimers()
+  })
+
+  it('AC-7915.1: 관리자 원장이 /dashboard를 열면 currentMe()를 한 번 보고 알림을 한 번 확인·읽는다', async () => {
+    currentMe.mockResolvedValue(ADMIN)
+    await drawPage()
+    expect(currentMe).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(listWatchCandidates).mock.calls).toEqual([[CLIENT]])
+    expect(listUnseenEvents).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['관리자가 아닌 원장', () => currentMe.mockResolvedValue(OWNER)],
+    ['데스크(내 병원 줄 없음 — 앱 틀처럼 관리자가 아니다)', () => currentMe.mockResolvedValue(DESK)],
+    ['문지기 값을 못 읽음', () => currentMe.mockRejectedValue(new Error('읽기 실패'))],
+  ])('AC-7915.3: %s이면 알림을 하나도 부르지 않고 대시보드는 그대로다', async (_name, arrange) => {
+    arrange()
+    await drawPage()
+    expect(listWatchCandidates).not.toHaveBeenCalled()
+    expect(listUnseenEvents).not.toHaveBeenCalled()
+    expect(queryLocation).not.toHaveBeenCalled()
+    expect(document.body.innerHTML).toContain(H1)
+    expect(document.body.innerHTML).not.toContain('입지 알림')
+  })
+
+  it('AC-7915.3: 서버 그림은 문지기 값을 기다리지 않는다 — 값이 오지 않아도 뼈대가 바로 나오고 알림은 없다', () => {
+    currentMe.mockReturnValue(new Promise<Me>(() => {}))
+    const server = renderAt(AT_TODAY)
+    expect(server).toBe(renderToStaticMarkup(<DashboardSkeleton />))
+    expect(listWatchCandidates).not.toHaveBeenCalled()
+  })
+
+  it('AC-7915.1·AC-7915.3: page.tsx는 currentMe를 앱 틀과 같은 곳(../currentMe.server)에서 부르고 기다리지 않는다(async·await 없음), 관리자 여부는 isAdmin과 내 병원 줄로 정한다', () => {
+    expect(SOURCE).toMatch(/import \{ currentMe \} from '\.\.\/currentMe\.server'/)
+    expect(SOURCE).not.toMatch(/\basync\b|\bawait\b/)
+    expect(SOURCE).toMatch(/me\.isAdmin && me\.hospital !== null/)
   })
 })

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
-import { BitDashboard, InventoryAlertCard } from '@/components/dashboard/live/BitDashboard'
+import { BitDashboard, InventoryAlertCard, LocationAlert, useLocationWatch } from '@/components/dashboard/live/BitDashboard'
 import { DashboardSkeleton } from '@/components/dashboard/live/DashboardSkeleton'
 import { LOOKBACK_DAYS } from '@/components/dashboard/live/readBitDays'
 import { readDashboardGroups, type DashboardGroups } from '@/components/dashboard/live/rxGroups'
@@ -28,6 +28,9 @@ import { toSummarySource, type OlderDays, type SummarySource } from './source'
 // 숫자가 있으면 BitDashboard가 보고 문장 오른쪽에 둔다. 알림이 없으면 칸이 그리지 않아 지금 그대로다
 // 무상 수리 알림(contacts AC-6507.1·AC-6507.2, design.md '대시보드 알림')도 여기서 화면을 열 때 한 번 읽어(useWarrantySoon, 10초 한도) BitDashboard에 notice로 넘긴다.
 // 여기서 읽으므로 BitDashboard가 key로 다시 놓여도 다시 읽지 않는다. 저장 숫자·비트 읽기는 그 읽기를 기다리지 않고, 실패는 조용히 비운다(오류 카드 없음)
+// 새 경쟁 의원 알림(location AC-7915.1~AC-7915.3, design.md 12절)도 같다: 관리자(isAdmin — 페이지가 문지기 값에서 넘긴 참·거짓 또는 그 약속)일 때만
+// 화면을 열 때 한 번 확인·읽어(useLocationWatch, 20초 한도) locationNotice로 넘긴다(자리는 무상 수리 알림 바로 아래). 관리자가 아니면 아무것도 부르지 않는다.
+// 훅과 줄 그림은 이 폴더의 불러오기 울타리(DashboardAnalysis.test AC-311.8) 때문에 재고 칸처럼 BitDashboard 파일을 거쳐 불러온다
 
 export const SAVED_READ_TIMEOUT_MS = 10_000
 
@@ -76,7 +79,7 @@ function withAnswer(state: Drawn | null, result: SavedResult | null): Drawn {
     : { ...state, initial, savedAt, round: state.round + 1, failed: false, retrying: false }
 }
 
-export function LiveDashboard({ today }: { today: string }) {
+export function LiveDashboard({ today, isAdmin = false }: { today: string; isAdmin?: boolean | PromiseLike<boolean> }) {
   const [drawn, setDrawn] = useState<Drawn | null>(null) // null = 저장 숫자를 읽는 중
   const [groups, setGroups] = useState<DashboardGroups | null | undefined>(undefined) // undefined = 묶음을 읽는 중, null = 읽지 못함(AC-606.5)
   // [다시 읽기] 하나만 돌게 하는 표시(AC-2701.5). 상태는 다음 그림 때 바뀌어 같은 틱에 두 번 누르면 둘 다 지나가므로 ref로 막는다
@@ -84,6 +87,7 @@ export function LiveDashboard({ today }: { today: string }) {
   // 날짜가 바뀌거나 떠날 때 올린다. 그 전에 시작한 [다시 읽기]의 늦은 답은 버린다(AC-2701.6)
   const era = useRef(0)
   const warranty = useWarrantySoon(today)
+  const watch = useLocationWatch(isAdmin, today)
 
   // 묶음은 화면을 열 때 한 번만 읽는다(같은 10초 한도). 날짜가 바뀌어도 다시 읽지 않는다
   useEffect(() => {
@@ -167,6 +171,7 @@ export function LiveDashboard({ today }: { today: string }) {
         savedRefresh={showsSaved ? { refreshing: drawn.retrying, failed: drawn.failed, onRefresh: readAgain } : undefined}
         inventoryOnTop={!failedCard}
         notice={<WarrantyNotice items={warranty} today={today} />}
+        locationNotice={<LocationAlert events={watch.events} onClose={watch.close} />}
       />
     </>
   )
