@@ -5,6 +5,7 @@ import { dxContext, visitDxView } from '@/lib/precheck/dx/recommend'
 import { inputTargets, isPlainExclusion, isWriteStuck, NOT_ACCEPTED, NOT_DONE, reasonKind } from '@/lib/precheck/inputTargets'
 import { createMemoEngine, unfinished, validatePhrases, type PhraseCheck, type Phrases } from '@/lib/precheck/memo'
 import { bitMemoOf, compareMemo, dayMemoCounts, inputPlan, isBlankMemo, joinedMemo, readBitMemos, replacesOf, trimMemoEnd, visitMemos } from '@/lib/precheck/memoCompare'
+import { withRuleUpdates } from '@/lib/precheck/ruleUpdates'
 import { runRules } from '@/lib/precheck/rules/engine'
 import { PrecheckError, shapeClaimMonth } from '@/lib/precheck/shape'
 import type { DateRange } from '@/types/dates'
@@ -74,9 +75,13 @@ const noWork = (): StoredWork => ({ saved: new Map(), journal: new Map(), done: 
 
 const isStrings = (x: unknown) => Array.isArray(x) && x.every((value) => typeof value === 'string')
 
-/** 설정 묶음 모양 검사(AC-013.9). 안쪽(연결표 줄)은 dxViews가, 병원 문구는 validatePhrases가 본다. 틀리면 null */
+/**
+ * 설정 묶음 모양 검사(AC-013.9). 안쪽(연결표 줄)은 dxViews가, 병원 문구는 validatePhrases가 본다. 틀리면 null.
+ * 고시로 바뀐 규칙 판(ruleUpdates)은 없거나 배열이어야 하고 칸을 그대로 둔다(AC-7804.1) — 사본에 함께 저장되고, 판 하나하나는 claimView의 withRuleUpdates가 거른다
+ */
 export function readCheckSettings(x: unknown): CheckSettings | null {
   if (!isRecord(x) || !Array.isArray(x.dxLinks) || !(x.phrases === null || isRecord(x.phrases))) return null
+  if (x.ruleUpdates !== undefined && !Array.isArray(x.ruleUpdates)) return null
   const { rules } = x
   if (!isRecord(rules) || !isStrings(rules.off) || !isStrings(rules.on) || !Array.isArray(rules.grade)) return null
   return x as CheckSettings
@@ -220,12 +225,30 @@ function enabledRules(tables: Tables, rules: SavedRuleSettings): number {
 /** 원본 collect 차례: 등급 차례, 같은 등급이면 건수 많은 차례 */
 const byGradeThenCount = (a: CheckGroup, b: CheckGroup) => GRADE_ORDER.indexOf(a.grade) - GRADE_ORDER.indexOf(b.grade) || b.visitKeys.length - a.visitKeys.length
 
+/** 원래 표 → 마지막으로 합친 표와 그때 쓴 판(applied, 쉼표 이음). 엔진의 규칙 준비(compiled·statusesOf)가 표마다 한 번이라 같은 판들이면 다시 쓴다(rule-auto design 5절) */
+const lastMerged = new WeakMap<Tables, { applied: string; tables: Tables }>()
+
+/**
+ * 고시로 바뀐 판을 합친 점검 표(AC-7804.2). 쓸 판이 없으면 받은 표 그대로다.
+ * 판 줄(changeId)은 넣은 뒤 내용이 바뀌지 않으므로 쓴 판의 changeId가 같으면 같은 표다
+ */
+function mergedTables(tables: Tables, updates: CheckSettings['ruleUpdates']): Tables {
+  const merged = withRuleUpdates(tables, updates ?? [])
+  if (merged.tables === tables) return tables
+  const applied = merged.applied.join(',')
+  const last = lastMerged.get(tables)
+  if (last?.applied === applied) return last.tables
+  lastMerged.set(tables, { applied, tables: merged.tables })
+  return merged.tables
+}
+
 /**
  * 화면으로 보내는 점검 결과(AC-013.3·AC-013.13·AC-013.14). 계산은 읽은 달 전체로 하고(내원 간격, AC-014.6) 보기 모양은 고른 기간으로 자른다(design.md 19-9).
- * dxViews에는 메모 결과를 넘긴다(AC-014.13). 틀린 연결표로 던지면 상병 경고만 빠진 결과가 '문제 없음'처럼 보이지 않게 결과 없이 E-SETTINGS-FAILED다
+ * dxViews에는 메모 결과를 넘긴다(AC-014.13). 틀린 연결표로 던지면 상병 경고만 빠진 결과가 '문제 없음'처럼 보이지 않게 결과 없이 E-SETTINGS-FAILED다.
+ * 규칙은 고시로 바뀐 판을 합친 표로 돌리고(진료일에 맞는 판이 걸린다), 켜진 규칙 수는 원래 표로 센다 — 판 줄 때문에 늘지 않게(AC-7804.2)
  */
 export function claimView(month: ClaimMonth, tables: Tables, settings: CheckSettings, saved: ReadonlyMap<string, string>, visible: DateRange): Outcome<ClaimView> {
-  const checked = checkMonth(month, tables, settings.rules, { phrases: settings.phrases, saved })
+  const checked = checkMonth(month, mergedTables(tables, settings.ruleUpdates), settings.rules, { phrases: settings.phrases, saved })
   const memos: MemoViews = { memoBlocked: checked.memoBlocked, memos: checked.visits.flatMap((visit) => (visit.memo ? [visit.memo] : [])) }
   let dx: VisitDxView[]
   try {
