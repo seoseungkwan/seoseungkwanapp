@@ -25,8 +25,8 @@ export const look = {
   org: 'grid grid-cols-[112px_minmax(0,1fr)] gap-x-3 gap-y-0.5 border-b border-line py-1 text-small last:border-b-0',
   orgGroup: 'font-semibold text-ink',
   orgText: 'text-ink-2',
-  // 줄들(ul·li b)
-  bullets: 'grid gap-1.5 text-small text-ink-2',
+  // 줄들(ul·li b): 목록 점 없음(시안 .mrow ul list-style none — 앱은 Preflight가 없어 브라우저 기본 점이 남는다)
+  bullets: 'grid list-none gap-1.5 text-small text-ink-2',
   bulletLead: 'font-semibold text-ink',
   // 예: 출처 줄(.eg .src)
   example: 'mt-0.5 block w-fit rounded-control bg-canvas px-2 py-0.5 text-caption text-muted',

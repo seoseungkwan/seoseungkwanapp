@@ -112,6 +112,8 @@
 - 진한 색(`bg-cal-*`·`border-cal-*`)은 예약 칸 왼쪽 3px 띠·폰 목록 띠·설정의 색 표시에, 옅은 바탕 `cal-*-soft`(그 색 13% + `surface`, `color-mix`는 `:root` 안에서만)는 예약 칸·휴무 칩 바탕에 쓴다. 칸 안쪽 1px 테두리는 진한 색 25%(`ring-cal-*/25`)
 - 칸 글은 색과 상관없이 `ink`·`ink-2`·`muted`다(옅은 바탕 위 4.5:1 이상). 색만으로 뜻을 주지 않는다: 시행자는 칸 글의 `(표시)`, 도착은 ✓·!·'취소' 표시가 함께 말한다
 - 빗금(안 옴·비트 예약 칸)은 그라데이션이 아니라 SVG 45° 선이다(차트 빗금과 같은 방식)
+- 빌림 예외(직원 탭): 휴가 칩(`components/staff/labels.ts`)이 휴가 종류 색으로 `cal-blue`·`cal-teal`·`cal-purple`·`cal-pink`·`cal-forest`·`cal-gray`와 옅은 바탕을, 근무표 바꾼 날 점(`components/staff/schedule/WeekTable.tsx`)이 `cal-orange`를 빌린다(시안 leave.html '휴가 종류 색'). 클래스 이름은 그 파일에 통째로 적는다
+- 빌림 예외(입지 분석 지도): 둘레 다른 과 의원 점(`components/location/map/KakaoMap.tsx`)이 `cal-lavender` 바탕 + `cal-purple/50` 테두리를 빌린다 — 앱 토큰에 연보라는 이 둘뿐이다(spec location). 색은 시안 그대로 두고 빌림만 여기 적는다
 
 ### 대비 (흰 바탕)
 - 글자 색 ink·ink-2·muted·accent·negative·warning은 4.5:1 이상이다. positive는 옅은 바탕 위에서 4.58:1로 겨우 넘는다 → 칩 글자는 500 이상

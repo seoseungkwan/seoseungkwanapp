@@ -57,7 +57,8 @@ export type RivalsSectionProps = {
 type Filter = 'all' | DeptId
 
 const FILTER_BTN = `group inline-flex h-9 cursor-pointer items-center whitespace-nowrap rounded-control border border-line-strong bg-surface px-3 text-body text-ink transition hover:bg-canvas aria-pressed:border-accent aria-pressed:bg-accent-soft aria-pressed:font-semibold aria-pressed:text-accent-strong aria-pressed:ring-1 aria-pressed:ring-inset aria-pressed:ring-accent ${ds.focusRing}`
-const FILTER_N = 'font-medium tabular-nums text-muted group-aria-pressed:text-accent-strong'
+// 수 앞 4px(시안 .ob .n): 단추가 inline-flex라 이름과 수 사이 빈칸은 화면에서 지워진다
+const FILTER_N = 'ml-1 font-medium tabular-nums text-muted group-aria-pressed:text-accent-strong'
 const SUB_HEAD = 'text-small font-semibold text-ink'
 // 시안 .kwarn: 노란 바탕 · 선 · 14px 500 · 왼쪽 주의 표 · 오른쪽 [과목 고르기]
 const WARN = 'flex flex-wrap items-center gap-2 rounded-control border border-line-strong bg-warning-soft px-3 py-2.5 text-body font-medium text-ink'

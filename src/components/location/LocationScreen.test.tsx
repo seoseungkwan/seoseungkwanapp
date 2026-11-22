@@ -358,9 +358,13 @@ describe('진행 상태 · 개원 준비 (AC-7913.4 · AC-7914.1)', () => {
 })
 
 describe('PC 배치 · 링크 · 같은 id (AC-7901.4)', () => {
-  it('AC-7901.4: 동네 훑기·후보 자세히 두 칸 틀은 최소 폭 1,024px이고 넘치면 제 감싸개 안에서만 옆으로 밀린다', async () => {
+  it('AC-7901.4: 동네 훑기·후보 자세히 두 칸 틀은 최소 폭 976px(창 1024 − 셸 좌우 여백 24px×2)이고 넘치면 제 감싸개 안에서만 옆으로 밀린다', async () => {
+    // 셸(AppShell)은 옆 막대 없이 위 막대만 있고, 본문 감싸개 좌우 여백이 px-6(24px)씩이다 → 창 1024에서 본문 폭 976px(시안처럼 딱 맞음)
+    const shell = readFileSync(join(process.cwd(), 'src/components/shell/AppShell.tsx'), 'utf8')
+    expect(shell).toMatch(/<div className="mx-auto w-full max-w-7xl px-6 /)
+    expect(SOURCE).not.toMatch(/min-w-\[1024px\]/)
     await open({ tab: 'detail', candidateId: CAND_ID })
-    const wide = (el: Element | null) => el?.closest('.min-w-\\[1024px\\]') ?? null
+    const wide = (el: Element | null) => el?.closest('.min-w-\\[976px\\]') ?? null
     const frame = wide(screen.getByRole('heading', { level: 2, name: '예시빌딩 3층' }))
     expect(frame).not.toBeNull()
     expect(frame!.parentElement!.className).toContain('overflow-x-auto')
@@ -368,6 +372,28 @@ describe('PC 배치 · 링크 · 같은 id (AC-7901.4)', () => {
     const scan = wide(screen.getByRole('slider', { name: '경쟁' }))
     expect(scan).not.toBeNull()
     expect(scan!.parentElement!.className).toContain('overflow-x-auto')
+  })
+
+  it('AC-7901.4: 안쪽 탭·후보 고르기 단추 글자는 text-body(14px, 시안 .subtabs·.cb) — 물려받은 큰 글자가 아니다', async () => {
+    await open({ tab: 'detail', candidateId: CAND_ID })
+    const tabButtons = within(tabs()).getAllByRole('button')
+    expect(tabButtons).toHaveLength(6)
+    for (const b of tabButtons) expect(b.className.split(/\s+/), b.textContent ?? '').toContain('text-body')
+    const candButtons = within(candBar()).getAllByRole('button')
+    expect(candButtons.length).toBeGreaterThan(0)
+    for (const b of candButtons) expect(b.className.split(/\s+/), b.textContent ?? '').toContain('text-body')
+  })
+
+  it('AC-7909.3: 지도 둘레 다른 과 점이 빌려 쓰는 예약 색판(cal-lavender)은 UI_GUIDE 예약 색판 절에 빌림 예외 두 줄(직원 탭·입지 지도)로 적혀 있고, 색은 그대로다', () => {
+    const guide = readFileSync(join(process.cwd(), 'docs/UI_GUIDE.md'), 'utf8')
+    const part = guide.split(/^### /m).find((s) => s.startsWith('예약 색판')) ?? ''
+    const borrow = part.split(/\r?\n/).filter((l) => l.startsWith('- 빌림 예외'))
+    expect(borrow).toHaveLength(2)
+    expect(borrow[0]).toContain('components/staff/labels.ts')
+    expect(borrow[1]).toContain('components/location/map/KakaoMap.tsx')
+    expect(borrow[1]).toContain('cal-lavender')
+    const map = readFileSync(join(process.cwd(), 'src/components/location/map/KakaoMap.tsx'), 'utf8')
+    expect(map).toContain("other: 'block size-1.5 rounded-full bg-cal-lavender ring-1 ring-cal-purple/50'")
   })
 
   it('AC-7901.4: 화면·훅 소스에 폰 전용 모양(max-md:)·폰 모양이 든 공용 묶음·Next Link가 없다 — /location 안에서 다른 탭으로 가는 링크는 평범한 <a href>', () => {

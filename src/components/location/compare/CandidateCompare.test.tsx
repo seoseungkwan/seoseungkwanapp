@@ -495,6 +495,21 @@ describe('AC-7914.1: 진행 상태 — 단계 바꾸기·내려놓기·다시 �
     expect(screen.getByText('가람동 · 저장 11월 15일')).toBeTruthy()
   })
 
+  it('AC-7914.1: 단계 칸 색은 세 모양 — 지금 파랑 바탕·흰 글자, 지난 옅은 파랑·짙은 파랑 글자, 남은 흰 바탕·회색 글자(기본 칸 색이 덮지 않는다)', () => {
+    setup()
+    const g = screen.getByRole('group', { name: '예시빌딩 3층 진행 상태' })
+    const [done, cur, ...todo] = within(g).getAllByRole('button').map((b) => b.className.split(/\s+/))
+    expect(cur).toEqual(expect.arrayContaining(['bg-accent', 'border-accent', 'text-surface', 'font-semibold']))
+    for (const other of ['bg-surface', 'bg-accent-soft', 'text-ink-2', 'text-accent-strong', 'border-line-strong']) expect(cur, other).not.toContain(other)
+    expect(done).toEqual(expect.arrayContaining(['bg-accent-soft', 'text-accent-strong', 'border-line-strong']))
+    for (const other of ['bg-surface', 'bg-accent', 'text-ink-2', 'text-surface']) expect(done, other).not.toContain(other)
+    expect(todo).toHaveLength(2)
+    for (const t of todo) {
+      expect(t).toEqual(expect.arrayContaining(['bg-surface', 'text-ink-2', 'border-line-strong']))
+      for (const other of ['bg-accent', 'bg-accent-soft', 'text-surface', 'text-accent-strong']) expect(t, other).not.toContain(other)
+    }
+  })
+
   it('AC-7914.1: 다른 단계를 누르면 onStatus(id, 그 단계), 지금 단계를 다시 누르면 부르지 않는다', () => {
     const { onStatus } = setup()
     const g = screen.getByRole('group', { name: '나래상가 2층 진행 상태' })

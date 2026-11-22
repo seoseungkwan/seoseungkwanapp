@@ -65,8 +65,10 @@ const GROUP_TD = 'h-9 border-b border-line pt-4 text-caption font-semibold text-
 const SUB = 'block text-caption text-muted'
 const BAR = 'relative mt-1 h-2 bg-canvas ring-1 ring-inset ring-line'
 const BAR_FILL = 'absolute inset-y-0 left-0 bg-accent'
-const STEP = 'h-8 min-w-0 flex-1 cursor-pointer whitespace-nowrap border border-line-strong bg-surface px-1.5 text-caption text-ink-2 -ml-px first:ml-0 first:rounded-l-control last:rounded-r-control focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent'
-const STEP_DONE = `${STEP} bg-accent-soft text-accent-strong`
+// 단계 칸: 공통 모양에는 색을 두지 않고 남은·지난·지금 세 모양이 제 색만 가진다(같은 칸에 바탕색 둘이면 CSS 차례로 흰 바탕이 이겨 지금 단계가 흰 바탕에 흰 글씨가 됐다)
+const STEP = 'h-8 min-w-0 flex-1 cursor-pointer whitespace-nowrap border px-1.5 text-caption -ml-px first:ml-0 first:rounded-l-control last:rounded-r-control focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent'
+const STEP_TODO = `${STEP} border-line-strong bg-surface text-ink-2`
+const STEP_DONE = `${STEP} border-line-strong bg-accent-soft text-accent-strong`
 const STEP_CUR = `${STEP} relative z-10 border-accent bg-accent font-semibold text-surface`
 const PROG = 'grid grid-cols-[220px_minmax(0,1fr)_auto] items-center gap-x-6 gap-y-3 border-b border-line py-3'
 const SUMMARY = 'cursor-pointer border-b border-line py-2 font-medium text-ink-2'
@@ -472,7 +474,7 @@ function Progress({ candidate: c, letter, onStatus }: { candidate: Candidate; le
           <button
             key={s}
             type="button"
-            className={i === cur ? STEP_CUR : i < cur ? STEP_DONE : STEP}
+            className={i === cur ? STEP_CUR : i < cur ? STEP_DONE : STEP_TODO}
             aria-pressed={i === cur}
             data-done={i < cur ? 'true' : undefined}
             onClick={() => {

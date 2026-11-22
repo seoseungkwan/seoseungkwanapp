@@ -168,9 +168,13 @@ function Marker({ className = '' }: { className?: string }) {
 }
 
 // 값 띠(시안 .strip, 그림만 — 숫자는 아래 글이 말한다): 의원마다 점 · 평균 세로 막대 · 지금 의원 세모 · 눈금 `{n}만`
+// 눈금 글자는 띠 안에 머문다: 맨 왼쪽(0%)은 왼쪽 맞춤, 맨 오른쪽(100%)은 오른쪽 맞춤, 나머지는 가운데
+// (끝 글자를 가운데로 두면 띠 여백 8px보다 글자 반쪽이 커서 오른쪽으로 삐져 후보 자세히 감싸개에 가로 막대가 생겼다)
 function Strip({ values, avg, home }: { values: readonly number[]; avg: number; home: number | null }) {
   const { from, to, ticks } = priceScale(home === null ? values : [...values, home])
-  const at = (p: number) => ({ left: `${(((p - from) / (to - from)) * 100).toFixed(2)}%` })
+  const pct = (p: number) => ((p - from) / (to - from)) * 100
+  const at = (p: number) => ({ left: `${pct(p).toFixed(2)}%` })
+  const tickShift = (t: number) => (pct(t) <= 0 ? '' : pct(t) >= 100 ? '-translate-x-full' : '-translate-x-1/2')
   return (
     <div className="relative mx-2 mt-1 h-14" aria-hidden="true">
       <span className="absolute inset-x-0 top-6 h-px bg-line-strong" />
@@ -184,7 +188,7 @@ function Strip({ values, avg, home }: { values: readonly number[]; avg: number; 
         </span>
       )}
       {ticks.map((t) => (
-        <span key={t} className="absolute top-8.5 -translate-x-1/2 whitespace-nowrap text-caption tabular-nums text-muted" style={at(t)}>
+        <span key={t} className={`absolute top-8.5 ${tickShift(t)} whitespace-nowrap text-caption tabular-nums text-muted`} style={at(t)}>
           {t === 0 ? '0' : `${commaText(t / 10_000)}만`}
         </span>
       ))}
