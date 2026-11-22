@@ -436,7 +436,7 @@
 - TDD: required — 화면 사진 확인(2026-11-23, 사진 `scratchpad/location-shots/`) 결과. (1) 창 1024에서 후보 자세히 오른쪽 약 48px이 잘림: 화면 감싸개의 `min-w-[1024px]`를 셸 옆 막대를 뺀 실제 너비에 맞춰 시안처럼 1024 창에 딱 맞게(더 좁으면 제 감싸개 안에서만 옆으로 밀림 — AC-7901.4 그대로) (2) 탭·후보 고르기 단추 글자 `text-body`(14px, 시안) (3) 견주기 '진행 상태' 지금 단계가 흰 바탕에 흰 글씨: 기본 칸 색을 빼고 지금·지난·남은 세 모양으로(지난 단계 옅은 파랑, 시안) (4) 진료비 축 글자가 오른쪽으로 5px 삐져 가로 막대가 생김(`PriceSection` 축) (5) 경쟁 의원 거르기 단추 이름과 수 사이 띄어쓰기(`전체 4`) (6) 분석 방법 글머리 목록 `list-none`(점 두 번) (7) 지도 '둘레 다른 과' 점이 예약 색판 `--cal-lavender`를 빌려 씀 — `docs/UI_GUIDE.md` 예약 색판 절에 빌림 예외 두 줄(직원 휴가 칩 `staff/labels.ts`, 입지 지도 둘레 다른 과 점 `location/map/KakaoMap.tsx`)을 적음(색은 그대로, 문서만)
 
 ## TASK-85: 검토 고침 잇기 — 의원 목록 잘림 곁글·3년 개폐업 업태를 화면·보고서에
-- REQ: REQ-7909, REQ-7914 · AC-7909.3, AC-7914.1
+- REQ: REQ-7909, REQ-7914, REQ-7921 · AC-7909.3, AC-7914.2, AC-7921.6
 - Files: src/components/location/detail/rivals/**, src/components/location/report/**
 - Tests: src/components/location/detail/rivals/, src/components/location/report/
 - TDD: required — TASK-81이 그날 값에 남긴 것을 화면이 읽게. (1) `rivals/text.ts` `isCapped`가 그날 값 `rivals`의 `capped: true`도 보아(줄 수 200도 그대로) 경쟁 의원·둘레 다른 과 묶음이 `200곳 넘게 있을 수 있어요. 가까운 200곳만 셌어요.`를 보임(design 6절 의원 목록 200곳). (2) `rivals/text.ts`(3년 개폐업 과목 가르기)와 `report/sheet.ts`가 `deptOfText`에 `type: ''` 대신 그 줄의 업태 `type`(옛 줄은 `''`)을 넘겨 치과의원·한의원을 업태로 가름
