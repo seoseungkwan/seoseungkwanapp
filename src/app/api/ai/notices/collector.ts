@@ -1,15 +1,19 @@
 import 'server-only'
-import { addDays, todayInKorea, weekStartOf } from '@/lib/analytics/dates'
+import { addDays, compareYmd, todayInKorea, weekStartOf } from '@/lib/analytics/dates'
 import { costMicroUsd } from '@/lib/ai/cost'
+import { noAutoRuleIds, rulesCutoff } from '@/lib/precheck/ruleUpdates'
+import { checkRuleShape } from '@/lib/precheck/tables'
 import type { AiUsage } from '@/types/aiReport'
 import type {
   CollectorStore,
   CrtrTab,
   ListItem,
   NoticeSource,
+  NoticeSummary,
   PostDetail,
   ReadMode,
   Reading,
+  RuleHit,
   SiteRequest,
   SiteResult,
   SourceError,
@@ -17,10 +21,14 @@ import type {
   WaitingNotice,
   WeekTop,
 } from '@/types/notices'
+import type { RuleDef, RulesFile } from '@/types/precheck'
+import type { LiveChange, ReviewNotice, RuleChangeRow, RuleReport, RuleReviewStore } from '@/types/ruleAuto'
 import type { callClaude } from '../claude'
 import { planReading, sniffFile, type GotFile } from './attachText'
 import { BATCH_MAX_BYTES, batchCostMicroUsd, type BatchItem, type BatchOutcome, type readBatch, type submitBatch } from './batch'
 import { groupKeyOf, mergeGroup } from './noticeNo'
+import { decideRule, triesRows, type DecideCtx } from './ruleAuto/decide'
+import { parseReview, reviewRequest } from './ruleAuto/prompt'
 import { matchRules, type RuleBasisIndex } from './ruleMatch'
 import { CRTR_TABS, crtrListRequest, parseHiraCrtrList, parseHiraCrtrPopup } from './sources/hiraCrtr'
 import { hiraNoticeListUrl, parseHiraNoticeList, parseHiraNoticeView } from './sources/hiraNotice'
@@ -29,7 +37,9 @@ import { parseSummary, summaryRequest } from './summaryPrompt'
 import { parseWeekly, weeklyRequest } from './weeklyPrompt'
 
 // 고시·공지 모으기 흐름(specs/notices REQ-7414, design 4절, ADR-036·038). 하루 아홉 번 같은 흐름이 돈다:
-// ① 일괄 결과 거두기 ② 새 글 확인(오늘 확인 안 한 출처만) ③ 지난주 모음 ④ 요약(바로 또는 일괄) ⑤ 지난 글 채우기 ⑥ 실행 마감.
+// ① 일괄 결과 거두기 ② 규칙 살피기(specs/rule-auto REQ-7810, design 10절) ③ 새 글 확인(오늘 확인 안 한 출처만) ④ 지난주 모음
+// ⑤ 요약(바로 또는 일괄) ⑥ 지난 글 채우기 ⑦ 실행 마감.
+// 요약을 저장할 때 규칙표 날짜(rules.json version 앞 10자)까지 올라온 글은 규칙과 잇지 않는다(규칙표가 이미 담은 고시, AC-7807.2).
 // 사이트·Claude·일괄·DB는 모두 deps로 받는다(시험이 가짜를 넣는다). 시간은 nowMs로 재고, 한국 날짜는 lib/analytics/dates로 낸다.
 // 300초(Vercel 무료판) 안에 끝내려고 정해 둔 때가 지나면 새 일을 시작하지 않고 남은 일은 다음 실행이 잇는다(작은 단위로 이어 하기).
 // 로그는 console.error(LOG_TAG, 오류 번호) 한 줄씩만(같은 번호는 실행마다 한 번). 글·질문·주소·오류 내용은 로그와 실행 줄에 남기지 않는다
@@ -41,6 +51,10 @@ export const DIRECT_UNTIL_MS = 170_000
 export const BATCH_PREP_UNTIL_MS = 230_000
 /** 이때가 지나면 사이트 쪽(지난 글 채우기, 그리고 새 글 확인의 목록·글 쪽)을 새로 부르지 않는다 */
 export const BACKFILL_UNTIL_MS = 250_000
+/** 이때가 지나면 규칙 살피기 부름을 새로 시작하지 않는다(뒤 단계 요약이 쓸 시간을 남기려고). 부름 한도 100초라 160초 안에 끝난다 */
+export const RULE_UNTIL_MS = 60_000
+/** 한 실행의 규칙 살피기 Claude 부름 수 한도 */
+export const RULE_CALLS_MAX = 4
 
 /** 이 날보다 앞 글은 넣지 않는다(DB notices.posted_on 제약과 같다) */
 export const FIRST_DAY = '2026-01-01'
@@ -59,6 +73,12 @@ export const LOG_TAG = '[notices/collect]'
 // 글·팝업 쪽은 2개씩(fetchSite가 host마다 동시 2개로 줄 세운다), 일괄 준비도 2개씩
 const DETAIL_PARALLEL = 2
 const PREP_PARALLEL = 2
+// 규칙 살피기: 한 번에 읽는 살필 글 수 · 부름 하나에 보내는 규칙 수(prompt.ts는 이 한도를 막지 않는다) · 한 글의 묶음을 동시에 ·
+// 이만큼 실패한 글의 남은 규칙은 사람이 본다(DB rule_review_tries 제약과 같다)
+const RULE_NOTICES = 3
+const RULE_CHUNK = 4
+const RULE_PARALLEL = 2
+const RULE_TRIES_MAX = 3
 // 한 묶음에서 받는 붙임 수 한도와 'PDF가 이만큼이면 더 받지 않음'(planReading이 PDF 먼저 3개까지 고른다)
 const FILES_MAX = 10
 const PDFS_ENOUGH = 3
@@ -83,10 +103,12 @@ export type RunReport = {
   collected: number
   /** 요약 실패로 tries+1 한 수(바로·일괄·24시간 지난 일괄) */
   failed: number
+  /** 규칙 살피기 숫자(specs/rule-auto AC-7810.6) */
+  rules: RuleReport
 }
 
-/** 일괄 거두기 때 읽는 글(보낼 때 적어 둔 읽기 결과와 규칙 연결에 쓰는 본문·번호) */
-export type BatchNotice = { id: string; noticeNo: string | null; body: string; readMode: ReadMode | null; attachText: string }
+/** 일괄 거두기 때 읽는 글(보낼 때 적어 둔 읽기 결과와 규칙 연결에 쓰는 본문·번호·올라온 날) */
+export type BatchNotice = { id: string; noticeNo: string | null; postedOn: string; body: string; readMode: ReadMode | null; attachText: string }
 
 /**
  * 일괄 글의 읽기 결과를 맡겨 두는 DB 쪽(design 11절 CollectorStore에 더한 둘). 일괄 결과에는 글 id와 답만 오고
@@ -100,13 +122,18 @@ export interface BatchReadingStore {
 }
 
 export type CollectorDeps = {
-  store: CollectorStore & BatchReadingStore
+  store: CollectorStore & BatchReadingStore & RuleReviewStore
   fetchSite: (req: SiteRequest) => Promise<SiteResult>
   callClaude: typeof callClaude
   submitBatch: typeof submitBatch
   readBatch: typeof readBatch
   /** 점검 규칙 색인(`await defaultRuleIndex()`). null(불러오기 실패)이면 요약을 만들지도 거두지도 않는다 — 규칙 연결 없는 요약을 저장하지 않게 */
   ruleIndex: RuleBasisIndex | null
+  /**
+   * 점검 규칙표(loadTables의 rules). null(불러오기 실패)이거나 판 이름에 날짜가 없으면 규칙 살피기를 건너뛰고
+   * 요약의 규칙 연결은 빈 목록이다(규칙표 날짜를 모르면 새 연결을 만들지 않는다)
+   */
+  rules: RulesFile | null
   /** 시간 재기(ms) */
   nowMs: () => number
   /** 지금(한국 날짜·저장 시각) */
@@ -117,6 +144,7 @@ type OpenBatch = Awaited<ReturnType<CollectorStore['openBatches']>>[number]
 type SiteFail = Extract<SiteResult, { ok: false }>['fail']
 type Detail = PostDetail | null | 'failed' | 'cut'
 type Prepared = { item: BatchItem; reading: Reading }
+type ChunkResult = 'saved' | 'failed' | 'limit'
 
 // 목록 읽기 실패 → 출처 오류(AC-7414.4). 0줄은 shape
 const SOURCE_ERROR: Readonly<Record<SiteFail, SourceError>> = {
@@ -216,6 +244,20 @@ function oneAtATime(): <T>(work: () => Promise<T>) => Promise<T> {
 
 const pageText = (res: SiteResult): string | null => (res.ok && 'text' in res ? res.text : null)
 
+/**
+ * 규칙 하나를 정할 바탕(AC-7810.3): 지금 판 = 같은 규칙표 판의 살아 있는 change 판 가운데 가장 늦은 날짜의 것, 없으면 원래 규칙.
+ * 그 판의 규칙이 점검 규칙 모양이 아니면 원래 규칙을 보내되 날짜는 그 판 날짜로 둔다(새 판은 살아 있는 판보다 뒤여야 한다)
+ */
+function decideCtx(file: RulesFile, notice: ReviewNotice, base: RuleDef, live: readonly LiveChange[]): DecideCtx {
+  let latest: LiveChange | null = null
+  for (const c of live) if (c.ruleId === base.id && (latest === null || compareYmd(c.effectiveFrom, latest.effectiveFrom) > 0)) latest = c
+  if (latest === null) return { file, notice, base, current: base, currentFrom: null }
+  return { file, notice, base, current: checkRuleShape(latest.rule) ? latest.rule : base, currentFrom: latest.effectiveFrom }
+}
+
+/** 앱이 검사로 사람에게 돌린 줄(세 번 실패 줄은 빼고) */
+const checkFailed = (row: RuleChangeRow) => row.verdict === 'human' && row.checkCode !== null && row.checkCode !== 'tries'
+
 // 보낼 요청 크기 어림(바이트): PDF base64 + 글자(한글 UTF-8 3바이트)
 function requestSize(n: WaitingNotice, r: Reading): number {
   const pdfs = r.pdfs.reduce((sum, p) => sum + p.base64.length, 0)
@@ -233,6 +275,7 @@ class CollectRun {
     batched: 0,
     collected: 0,
     failed: 0,
+    rules: { cleared: 0, retired: 0, reviewed: 0, changed: 0, human: 0, failed: 0 },
   }
   private readonly deps: CollectorDeps
   private readonly runId: string
@@ -243,12 +286,16 @@ class CollectRun {
   private readonly noBackfill = new Set<NoticeSource>()
   private rows: Map<NoticeSource, SourceRow> | null = null
   private aiLimit = false
+  /** 규칙표 날짜(기본값 1). 이 날짜까지 올라온 글은 규칙과 잇지 않는다. null이면 새 연결을 만들지 않는다 */
+  private readonly cutoff: string | null
+  private ruleCalls = 0
 
   constructor(deps: CollectorDeps, runId: string, started: number) {
     this.deps = deps
     this.runId = runId
     this.started = started
     this.today = todayInKorea(deps.now())
+    this.cutoff = deps.rules ? rulesCutoff(deps.rules.version) : null
   }
 
   private past(limitMs: number): boolean {
@@ -268,6 +315,12 @@ class CollectRun {
   private async addUsage(u: AiUsage, batch: boolean): Promise<void> {
     const cost = batch ? batchCostMicroUsd(u) : costMicroUsd(u)
     await this.deps.store.addRunUsage(this.runId, { inputTokens: u.inputTokens, outputTokens: u.outputTokens, costMicroUsd: cost })
+  }
+
+  /** 요약 저장의 규칙 연결(AC-7807.2): 규칙표 날짜보다 뒤에 올라온 글만 matchRules, 그 밖은 빈 목록 */
+  private ruleHits(summary: NoticeSummary, n: { body: string; noticeNo: string | null; postedOn: string }, index: RuleBasisIndex): RuleHit[] {
+    if (this.cutoff === null || compareYmd(n.postedOn, this.cutoff) <= 0) return []
+    return matchRules(summary.amends, n.body, n.noticeNo, index)
   }
 
   // ① 일괄 결과 거두기 ────────────────────────────────────
@@ -312,7 +365,7 @@ class CollectRun {
         summary,
         readMode: notice.readMode,
         attachText: notice.attachText,
-        ruleHits: matchRules(summary.amends, notice.body, notice.noticeNo, index),
+        ruleHits: this.ruleHits(summary, notice, index),
       })
       if (saved) this.counts.collected += 1
       else this.log('E-NOTICE-BATCH')
@@ -324,7 +377,133 @@ class CollectRun {
     return failed
   }
 
-  // ② 새 글 확인 ───────────────────────────────────────────
+  // ② 규칙 살피기 ─────────────────────────────────────────
+
+  /**
+   * 규칙표 날짜까지 올라온 글의 연결을 지우고 옛 규칙표 판 줄을 old로 돌린 뒤(AC-7807.3), 살필 글을 최근 글부터 하나씩 살핀다(AC-7810.2).
+   * 규칙표·색인·규칙표 날짜 가운데 하나라도 없으면 건너뛴다(AC-7810.1). 이 단계의 오류는 삼켜 다음 단계로 간다
+   */
+  async reviewRules(): Promise<void> {
+    const { rules, ruleIndex, store } = this.deps
+    const cutoff = this.cutoff
+    if (rules === null || ruleIndex === null || cutoff === null) return this.log('E-RULE-AUTO')
+    try {
+      const cleared = await store.clearOldRuleHits(cutoff)
+      const retired = await store.retireOldChanges(rules.version)
+      if (cleared < 0 || retired < 0) this.log('E-RULE-AUTO-CLEAN')
+      this.counts.rules.cleared = Math.max(cleared, 0)
+      this.counts.rules.retired = Math.max(retired, 0)
+      if (!this.canReview()) return
+      for (const notice of await store.reviewWaiting(cutoff, RULE_NOTICES)) {
+        if (!this.canReview()) return
+        await this.reviewNotice(notice, rules)
+      }
+    } catch {
+      this.log('E-RULE-AUTO')
+    }
+  }
+
+  // 새 부름을 시작해도 되나: AI 사용 한도 전 · 실행당 4번 안 · 실행 시작 60초 전
+  private canReview(): boolean {
+    return !this.aiLimit && this.ruleCalls < RULE_CALLS_MAX && !this.past(RULE_UNTIL_MS)
+  }
+
+  /**
+   * 글 하나: 그 글 규칙들의 살아 있는 판을 읽어 지금 판을 고르고(AC-7810.3), pending을 rule_hits 차례로 4개씩 묶어 동시에 2번까지 부른다.
+   * 실패 수가 3이 되면 그 글의 묶음을 더 부르지 않고, 이번에 저장하지 못한 규칙을 모두 세 번 실패 줄로 저장한다(AC-7810.5).
+   * 규칙표에 없는 규칙(옛 규칙표 판의 연결)은 AI가 살필 수 없어 바로 세 번 실패 줄로 둔다 — 두면 그 글이 살필 글 창을 계속 차지한다
+   */
+  private async reviewNotice(notice: ReviewNotice, rules: RulesFile): Promise<void> {
+    const rank = new Map(notice.ruleHits.map((h, i) => [h.id, i]))
+    const at = (id: string) => rank.get(id) ?? rank.size
+    const pending = [...new Set(notice.pending)].sort((a, b) => at(a) - at(b))
+    const bases: RuleDef[] = []
+    const unknown: string[] = []
+    for (const id of pending) {
+      const base = rules.rules.find((r) => r.id === id)
+      if (base) bases.push(base)
+      else unknown.push(id)
+    }
+    const saved = new Set<string>()
+    if (await this.saveTries(notice, unknown, rules.version)) for (const id of unknown) saved.add(id)
+    if (bases.length === 0) return
+
+    let live: LiveChange[]
+    try {
+      live = await this.deps.store.liveChanges(
+        bases.map((b) => b.id),
+        rules.version,
+      )
+    } catch {
+      return this.log('E-RULE-AUTO')
+    }
+    const ctxs = bases.map((base) => decideCtx(rules, notice, base, live))
+    const chunks: DecideCtx[][] = []
+    for (let i = 0; i < ctxs.length; i += RULE_CHUNK) chunks.push(ctxs.slice(i, i + RULE_CHUNK))
+
+    let tries = notice.tries
+    await eachLimit(chunks, RULE_PARALLEL, async (chunk) => {
+      if (tries >= RULE_TRIES_MAX || !this.canReview()) return
+      this.ruleCalls += 1
+      const result = await this.reviewChunk(notice, chunk, rules)
+      if (result === 'saved') for (const c of chunk) saved.add(c.base.id)
+      if (result !== 'failed') return
+      this.counts.rules.failed += 1
+      this.log('E-RULE-AUTO')
+      const now = await this.deps.store.reviewFailed(notice.id)
+      if (now > tries) tries = now
+    })
+    if (tries >= RULE_TRIES_MAX) await this.saveTries(notice, pending.filter((id) => !saved.has(id)), rules.version)
+  }
+
+  /**
+   * 부름 하나(AC-7810.4): 요청 → Claude → 사용량(바로 부름 값) → 답 검사 → 규칙마다 decideRule → 저장.
+   * 답은 보낸 차례로 온다(parseReview). E-AI-LIMIT은 글 탓이 아니라 'limit'(이번 실행의 Claude 부름을 모두 멈춘다)
+   */
+  private async reviewChunk(notice: ReviewNotice, chunk: readonly DecideCtx[], rules: RulesFile): Promise<ChunkResult> {
+    const noAuto = noAutoRuleIds(rules)
+    const req = reviewRequest(
+      notice,
+      chunk.map((c) => ({ rule: c.current, auto: !noAuto.has(c.base.id) })),
+      rules,
+    )
+    const res = await this.deps.callClaude(req)
+    if (res.usage) await this.addUsage(res.usage, false)
+    if (!res.ok && res.code === 'E-AI-LIMIT') {
+      this.aiLimit = true
+      this.log('E-RULE-AUTO')
+      return 'limit'
+    }
+    const answers = res.ok
+      ? parseReview(
+          res.text,
+          chunk.map((c) => c.base.id),
+        )
+      : null
+    if (answers === null) return 'failed'
+    const rows = answers.map((a, i) => decideRule(chunk[i], a))
+    if (!(await this.deps.store.saveRuleChanges(rows))) return 'failed'
+    const counts = this.counts.rules
+    counts.reviewed += rows.length
+    counts.changed += rows.filter((r) => r.verdict === 'change').length
+    counts.human += rows.filter((r) => r.verdict === 'human').length
+    if (rows.some(checkFailed)) this.log('E-RULE-AUTO-CHECK')
+    return 'saved'
+  }
+
+  // 남은 규칙을 세 번 실패 줄(사람이 봐야 함)로 저장한다. 저장했으면(또는 남은 것이 없으면) true
+  private async saveTries(notice: ReviewNotice, ids: readonly string[], version: string): Promise<boolean> {
+    if (ids.length === 0) return true
+    const rows = triesRows(notice, ids, version)
+    if (!(await this.deps.store.saveRuleChanges(rows))) {
+      this.log('E-RULE-AUTO')
+      return false
+    }
+    this.counts.rules.human += rows.length
+    return true
+  }
+
+  // ③ 새 글 확인 ───────────────────────────────────────────
 
   async checkNew(): Promise<void> {
     let list: SourceRow[]
@@ -444,7 +623,7 @@ class CollectRun {
     })
   }
 
-  // ③ 지난주 모음 ─────────────────────────────────────────
+  // ④ 지난주 모음 ─────────────────────────────────────────
 
   async weekly(): Promise<void> {
     const { store } = this.deps
@@ -472,7 +651,7 @@ class CollectRun {
     }
   }
 
-  // ④ 요약 ─────────────────────────────────────────────────
+  // ⑤ 요약 ─────────────────────────────────────────────────
 
   /**
    * 요약 전 글을 최근 글부터 40개씩 읽어, 3일 안이거나 tries ≥ 1이면 바로(동시에 3개), 아니면 일괄로 모아 보낸다.
@@ -547,7 +726,7 @@ class CollectRun {
       summary,
       readMode: reading.mode,
       attachText: reading.attachText,
-      ruleHits: matchRules(summary.amends, n.body, n.noticeNo, index),
+      ruleHits: this.ruleHits(summary, n, index),
     })
     if (!saved) return this.log('E-NOTICE-SUMMARY')
     this.counts.summarized += 1
@@ -586,7 +765,7 @@ class CollectRun {
     for (const id of sent.sent) stillWaiting.delete(id)
   }
 
-  // ⑤ 지난 글 채우기 ──────────────────────────────────────
+  // ⑥ 지난 글 채우기 ──────────────────────────────────────
 
   async backfill(): Promise<void> {
     const rows = this.rows
@@ -641,7 +820,7 @@ class CollectRun {
     return 'ok'
   }
 
-  // ⑥ 실행 마감 ────────────────────────────────────────────
+  // ⑦ 실행 마감 ────────────────────────────────────────────
 
   async finish(): Promise<RunReport> {
     this.counts.stopped.sort((a, b) => SOURCES.indexOf(a) - SOURCES.indexOf(b))
@@ -669,6 +848,7 @@ export async function runCollector(deps: CollectorDeps): Promise<RunReport | 'bu
   if (runId === null) return 'busy'
   const run = new CollectRun(deps, runId, started)
   await run.collectBatches()
+  await run.reviewRules()
   await run.checkNew()
   await run.weekly()
   await run.summarize()

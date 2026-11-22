@@ -229,6 +229,7 @@ function batchNoticeOf(v: unknown): BatchNotice | null {
     return {
       id: textOf(r.id),
       noticeNo: textOrNull(r.notice_no),
+      postedOn: dayOf(r.posted_on),
       body: textOf(r.body),
       readMode: r.read_mode === null ? null : oneOf(READ_MODES, r.read_mode),
       attachText: textOf(r.attach_text),
@@ -558,12 +559,13 @@ export function collectorStore(supabase: SupabaseClient): CollectorStore & Batch
         return rowsOk(res)
       }),
 
-    // 일괄을 거둘 때 그 글들(상태 상관없음). 없는 id는 빠지고 모양이 틀린 줄은 건너뛴다
+    // 일괄을 거둘 때 그 글들(상태 상관없음). 없는 id는 빠지고 모양이 틀린 줄은 건너뛴다.
+    // 올라온 날은 규칙 연결을 규칙표 날짜 뒤 글로만 하려고 읽는다(specs/rule-auto AC-7807.2)
     batchNotices: (ids) =>
       reading(async () => {
         const unique = [...new Set(ids)]
         if (unique.length === 0) return []
-        const res = await notices().select('id, notice_no, body, read_mode, attach_text').in('id', unique)
+        const res = await notices().select('id, notice_no, posted_on, body, read_mode, attach_text').in('id', unique)
         return listOf(dataOf(res))
           .map(batchNoticeOf)
           .filter((n): n is BatchNotice => n !== null)

@@ -717,16 +717,16 @@ describe('collectorStore — 표·칸 (AC-7415.2)', () => {
     expect(calls).toHaveLength(0)
   })
 
-  it('AC-7415.2: batchNotices는 그 id들의 글(상태 상관없음)을 id로 읽어 id·고시 번호·본문·읽은 방법·붙임 글자를 돌려준다', async () => {
+  it('AC-7415.2 · AC-7807.2: batchNotices는 그 id들의 글(상태 상관없음)을 id로 읽어 id·고시 번호·올라온 날·본문·읽은 방법·붙임 글자를 돌려준다', async () => {
     const { store, calls } = fakeDb(() =>
       ok([
-        { id: NOTICE_ID, notice_no: '2026-218', body: '[복지부 고시 글]\n본문', read_mode: 'full', attach_text: '붙임.pdf\n글자' },
-        { id: NOTICE_ID2, notice_no: null, body: '', read_mode: null, attach_text: '' },
+        { id: NOTICE_ID, notice_no: '2026-218', posted_on: '2026-11-20', body: '[복지부 고시 글]\n본문', read_mode: 'full', attach_text: '붙임.pdf\n글자' },
+        { id: NOTICE_ID2, notice_no: null, posted_on: '2026-10-19', body: '', read_mode: null, attach_text: '' },
       ]),
     )
     expect(await store.batchNotices([NOTICE_ID, NOTICE_ID2, NOTICE_ID])).toEqual([
-      { id: NOTICE_ID, noticeNo: '2026-218', body: '[복지부 고시 글]\n본문', readMode: 'full', attachText: '붙임.pdf\n글자' },
-      { id: NOTICE_ID2, noticeNo: null, body: '', readMode: null, attachText: '' },
+      { id: NOTICE_ID, noticeNo: '2026-218', postedOn: '2026-11-20', body: '[복지부 고시 글]\n본문', readMode: 'full', attachText: '붙임.pdf\n글자' },
+      { id: NOTICE_ID2, noticeNo: null, postedOn: '2026-10-19', body: '', readMode: null, attachText: '' },
     ] satisfies BatchNotice[])
     expect(calls).toHaveLength(1)
     expect(calls[0]).toMatchObject({ table: 'notices', op: 'select', single: null })
@@ -734,7 +734,7 @@ describe('collectorStore — 표·칸 (AC-7415.2)', () => {
       selectedColumns('notices', calls[0].columns as string)
         .map(([, c]) => c)
         .sort(),
-    ).toEqual(['attach_text', 'body', 'id', 'notice_no', 'read_mode'])
+    ).toEqual(['attach_text', 'body', 'id', 'notice_no', 'posted_on', 'read_mode'])
     // 상태 조건 없이 id로만(같은 id는 한 번)
     expect(calls[0].filters).toEqual([{ name: 'in', args: ['id', [NOTICE_ID, NOTICE_ID2]] }])
   })
@@ -745,8 +745,8 @@ describe('collectorStore — 표·칸 (AC-7415.2)', () => {
     expect(calls).toHaveLength(0)
   })
 
-  it('AC-7415.2: batchNotices는 모양이 틀린 줄을 건너뛴다(그 글은 거둘 때 없는 글이 된다)', async () => {
-    const good = { id: NOTICE_ID, notice_no: '2026-218', body: '본문', read_mode: 'text', attach_text: '붙임' }
+  it('AC-7415.2 · AC-7807.2: batchNotices는 모양이 틀린 줄(올라온 날이 날짜가 아님 포함)을 건너뛴다(그 글은 거둘 때 없는 글이 된다)', async () => {
+    const good = { id: NOTICE_ID, notice_no: '2026-218', posted_on: '2026-11-20', body: '본문', read_mode: 'text', attach_text: '붙임' }
     const { store } = fakeDb(() =>
       ok([
         { ...good, id: 42 },
@@ -754,12 +754,17 @@ describe('collectorStore — 표·칸 (AC-7415.2)', () => {
         { ...good, body: null },
         { ...good, attach_text: undefined },
         { ...good, notice_no: 218 },
+        { ...good, posted_on: '2026-13-01' },
+        { ...good, posted_on: null },
+        { ...good, posted_on: undefined },
         null,
         'row',
         good,
       ]),
     )
-    expect(await store.batchNotices([NOTICE_ID])).toEqual([{ id: NOTICE_ID, noticeNo: '2026-218', body: '본문', readMode: 'text', attachText: '붙임' }])
+    expect(await store.batchNotices([NOTICE_ID])).toEqual([
+      { id: NOTICE_ID, noticeNo: '2026-218', postedOn: '2026-11-20', body: '본문', readMode: 'text', attachText: '붙임' },
+    ])
   })
 })
 
