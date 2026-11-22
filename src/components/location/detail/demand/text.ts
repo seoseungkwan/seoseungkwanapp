@@ -1,8 +1,10 @@
 // 후보 자세히 › 정형외과 수요·교통·둘레 시설 묶음의 글자(spec location AC-7909.6, requirements '화면 글 기본값' 후보 자세히).
 // 거리는 coords의 distText, 쉼표는 money의 commaText만 쓴다. 하루 예상 환자 수는 세지 않는다(사용자가 뺌 2026-11-22)
 import { distText } from '@/lib/location/coords'
+import { deptOf, deptRole } from '@/lib/location/depts'
 import { FLOW_LIST_MAX, type FlowValue } from '@/lib/location/flow'
 import { commaText } from '@/lib/location/money'
+import type { DeptRule, Rival } from '@/types/location'
 
 const BAND_LAST = 10 // 10세 나이대 11칸(0~9세 … 100세 이상)
 
@@ -69,6 +71,19 @@ export const FLOW_NOTE = '교통카드 찍은 사람 수예요(걷는 사람 수
 
 /** 묶음 머리 곁글 `범위 {거리} 안` */
 export const rangeText = (radiusM: number) => `범위 ${distText(radiusM)} 안`
+
+/** 교통·둘레 시설 '다른 과 의원' 수(AC-7921.6, design.md 18절): 범위 안 의원 가운데 대표 과목(deptOf, 지금 설정)이 둘레로 보기이고
+ * 한의원이 아닌 곳. 경쟁·안 보기 과목은 세지 않는다 — 설정을 바꾸면 다시 부르지 않고 이 셈만 다시 한다 */
+export function othersCount(clinics: readonly Pick<Rival, 'name' | 'depts' | 'distM'>[], rule: DeptRule, radiusM: number): number {
+  return clinics.filter((c) => {
+    if (c.distM > radiusM) return false
+    const id = deptOf(c, rule)
+    return id !== null && id !== 'korean' && deptRole(id, rule) === 'around'
+  }).length
+}
+
+/** 다른 과 의원 줄 곁글(시안 그대로, 앞의 `{n}곳`은 굵게) */
+export const OTHERS_NOTE = "· 과목마다 수는 위 '둘레 다른 과 의원'에 있어요"
 
 /** 카카오 값(볼 때만)의 출처 줄 덧붙임 — 기준 날짜 대신(시안 카카오맵 출처 줄) */
 export const KAKAO_FRESH = '열 때마다 새로 불러와요, 저장하지 않아요'

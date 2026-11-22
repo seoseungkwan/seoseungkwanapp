@@ -8,14 +8,15 @@ import { KAKAO_FRESH, LOADING } from './text'
 
 // 두 묶음이 같이 쓰는 조각: 묶음 틀(시안 sec()) · 카카오 값 자리(불러오는 중 · 못 받음 · 값) · 카카오 출처 줄
 
-/** 묶음 틀: 닻 id(목차가 건너뜀) · 제목 · 곁글 · 몸통 */
-export function Section({ id, title, aside, children }: { id: string; title: string; aside: string; children: ReactNode }) {
+/** 묶음 틀: 닻 id(목차가 건너뜀, 화면에 한 번 — 틀은 id를 그리지 않음) · 제목 · 곁글 · 제목 바로 아래 '이렇게 봤어요'(how) · 몸통 */
+export function Section({ id, title, aside, how, children }: { id: string; title: string; aside: string; how: ReactNode; children: ReactNode }) {
   return (
     <section id={id} className={look.section}>
       <div className={look.head}>
         <h3 className={look.title}>{title}</h3>
         <span className={look.aside}>{aside}</span>
       </div>
+      {how}
       <div className={look.body}>{children}</div>
     </section>
   )

@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react'
+import { HowLine } from '@/components/location/common/HowLine'
 import { SourceLine } from '@/components/location/common/SourceLine'
 import { WhyLine } from '@/components/location/common/WhyLine'
 import { distText } from '@/lib/location/coords'
+import { filledHow, type HowCtx } from '@/lib/location/method'
 import { commaText } from '@/lib/location/money'
 import type { Got, Snapshot, SourceId } from '@/types/location'
 import { look } from './look'
@@ -9,10 +11,12 @@ import { KAKAO_SRC, nearest, shownOf, type Near, type NearKind } from './near'
 import { KakaoSource, NearValue, Section } from './parts'
 import { areaKm2Text, bandsLabel, densityPerKm2, pickedPeople, rangeText, sharePct } from './text'
 
-// 후보 자세히 › 정형외과 수요(spec location AC-7909.6, 시안 ?s=candidate #sec-demand).
+// 후보 자세히 › 정형외과 수요(spec location AC-7909.6 · AC-7920.2, 시안 ?s=candidate #sec-demand).
+// 제목 바로 아래 '이렇게 봤어요'(method.ts HOW.demand를 받은 howCtx로 채움 — 채울 값·펼침은 부르는 쪽이 쥠).
 // 고른 나이대 인구·1km²당 밀도(하루 환자 수 어림은 없음) · 경로당 · 체력단련장 · 교통사고 다발 · 산업단지 · 학교.
 // 숫자는 그날 값(Snapshot), 산업단지 이름·위치만 카카오(볼 때만, 저장 안 함)이고 고용 인원은 시군구 합이다.
 // props·콜백만 받는다(읽기·저장·부르기 없음). 못 받은 칸은 그 칸에만 design.md 15절 글이 보이고 다른 칸은 그대로다
+// (경로당·학교·교통사고 다발은 진짜 답이 실패로 올 수 있다 — 그 칸만 `지금 받지 못했어요.` + [다시 받기])
 
 /** 이 묶음이 읽는 그날 값 칸(그날 값 전체를 그대로 넘겨도 된다) */
 export type DemandFacts = Pick<Snapshot, 'radiusM' | 'people' | 'seniors' | 'gyms' | 'accidents' | 'industry' | 'schools'>
@@ -30,6 +34,12 @@ export type DemandSectionProps = {
   onRetryNear?: (kind: NearKind) => void
   /** 출처 줄을 누르면(주지 않으면 '근거와 출처' 주소로 간다) */
   onOpenSource?: (id: SourceId) => void
+  /** '이렇게 봤어요' 채울 값(그 후보 그날 값의 출처별 기준 날짜 · 범위 · 시군구 · 고른 경쟁 과목) — 묶음 열셋이 같은 값을 받는다 */
+  howCtx: HowCtx
+  /** '이렇게 봤어요'를 펼쳤나 — 부르는 쪽이 묶음마다 쥔다(범위를 바꿔 다시 그려도 그대로) */
+  howOpen: boolean
+  /** [더 보기]/[접기]를 누르면 */
+  onHow: () => void
 }
 
 export const DEMAND_SECTION_ID = 'sec-demand'
@@ -67,14 +77,20 @@ function Box<T>({ label, got, value, unit, note, extra, onRetry, onOpenSource }:
   )
 }
 
-export function DemandSection({ snapshot, bands, near, onRetry, onRetryNear, onOpenSource }: DemandSectionProps) {
+export function DemandSection({ snapshot, bands, near, onRetry, onRetryNear, onOpenSource, howCtx, howOpen, onHow }: DemandSectionProps) {
   const r = snapshot.radiusM
   const ages = bandsLabel(bands)
   const retry = (key: DemandKey) => (onRetry ? () => onRetry(key) : undefined)
   const picked = (v: { bands: readonly number[] }) => pickedPeople(v.bands, bands)
   const count = (n: number) => commaText(n)
+  const how = filledHow('demand', howCtx)
   return (
-    <Section id={DEMAND_SECTION_ID} title="정형외과 수요" aside={rangeText(r)}>
+    <Section
+      id={DEMAND_SECTION_ID}
+      title="정형외과 수요"
+      aside={rangeText(r)}
+      how={<HowLine {...how} open={howOpen} onToggle={onHow} />}
+    >
       <div className={look.grid}>
         <Box
           label={ages}
