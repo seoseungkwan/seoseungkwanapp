@@ -1,7 +1,7 @@
 -- 입지 분석 서버 표: 설정(location_settings)·후보(location_candidates)·매물(location_listings)·메모(location_notes)·
 -- 사진 줄(location_photos)·새 경쟁 의원 알림(location_events) 여섯, 점수 설정 검사 함수(location_score_rule_ok),
 -- 의원 과목 고르기 검사 함수(location_dept_rule_ok — 설정 칸 dept_rule), 사진 바구니(Storage) location-photos
--- (spec location REQ-7902·REQ-7919·REQ-7921, design.md 7·8·18절, ADR-042~044)
+-- (spec location REQ-7902·REQ-7919·REQ-7921, design.md 7·8·18절, ADR-045~047)
 --
 -- 이 파일을 dept_rule 칸이 생기기 전에 한 번 붙여 넣었어도 다시 붙이면 된다: 설정 표에 dept_rule 칸만 더하고(add column if not exists)
 -- 이미 있던 설정 줄은 그 칸에 처음 값(경쟁 = 정형외과·신경외과·마취통증의학과·재활의학과)을 받는다.
@@ -17,7 +17,7 @@
 --
 -- 무엇을 왜: 새로 개원할 자리를 찾는 관리자가 후보 자리(직접 고른 점·적은 이름·적은 주소 글)·붙여 넣은 매물·메모·현장 사진·
 -- 개원 준비 값(비용·협상표·점검표·일정 다 함)과 후보를 저장한 날의 공공 자료 숫자(snapshot)를 둔다. 환자 정보는 없다.
--- 카카오에서 받은 주소 글·좌표·장소 목록·거리·로드뷰는 저장하지 않는다(카카오 운영정책, ADR-044).
+-- 카카오에서 받은 주소 글·좌표·장소 목록·거리·로드뷰는 저장하지 않는다(카카오 운영정책, ADR-047).
 -- jsonb 크기는 jsonb 글자(::text — 열쇠 뒤 ': '·항목 사이 ', '의 빈칸 포함)의 바이트로 잰다. 앱도 같은 모양으로 재서 줄인다.
 -- 바깥 키는 (hospital_id, 부모 id) 둘로 건다(바깥 키 검사는 RLS를 보지 않아, 남의 병원 후보·업체 id를 알아도 그 밑에 못 달게).
 -- 후보를 지우면 그 메모·사진 줄·알림 줄이 함께 지워지고, 매물은 남되 후보 칸만 빈다. 주소록 업체를 지우면 매물의 중개사 칸만 빈다.

@@ -1,6 +1,6 @@
 'use client'
 
-// 입지 분석 화면의 읽기·저장·부르기 한 곳(spec location TASK-44 · REQ-7908·REQ-7917·REQ-7919, design.md 6·12·14절, ADR-044).
+// 입지 분석 화면의 읽기·저장·부르기 한 곳(spec location TASK-44 · REQ-7908·REQ-7917·REQ-7919, design.md 6·12·14절, ADR-047).
 // 열 때: 표 여섯(loadLocation)·열쇠 상태(readKeys)·동 경계 목록(readDongIndex)을 한 번씩만 읽는다. 지금 의원 환자 숫자는 읽지 않는다.
 // 저장(후보 더하기·다시 받기): collect(점, 범위, deps) → fitSnapshot(mergeSnapshot(새 값, checkSnapshot(옛 값))) 그대로 저장한다.
 // 카카오 자료(주소 글·필지 번호·약국·마트·큰 병원·산업단지)는 후보를 열 때마다 새로 부르고 이 훅의 상태에만 둔다 — 저장 함수로 넘기지 않는다.

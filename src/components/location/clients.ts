@@ -3,7 +3,7 @@ import { checkQuery } from '@/lib/location/query'
 import type { DongFile, DongIndex } from '@/lib/location/regions'
 import type { KeyKind, KeyState, KeysReply, Query, QueryKind, QueryReply, ReplyCode } from '@/types/location'
 
-// 입지 분석 화면의 부르기(specs/location design.md 1·3·5절, ADR-042). 던지지 않는다.
+// 입지 분석 화면의 부르기(specs/location design.md 1·3·5절, ADR-045). 던지지 않는다.
 // 바깥 자료는 같은 origin 서버 경로(POST /api/ai/location/query)로만 부른다 — 몸통은 checkQuery를 지난 칸만(못 지나면 보내지 않음).
 // 열쇠 상태는 GET /api/ai/location/keys. 동 경계·정류장·역 좌표는 같은 origin 정적 파일(/location/dongs·/location/transit)이다.
 // 모두 redirect: 'error'(로그인이 끊겨 돌려보내는 답은 따라가지 않고 실패) · 한도를 넘으면 끊는다 — 기본 10초,

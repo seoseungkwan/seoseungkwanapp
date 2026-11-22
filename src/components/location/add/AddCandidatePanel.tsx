@@ -1,6 +1,6 @@
 'use client'
 
-// 후보 더하기 판 (spec location REQ-7908 AC-7908.1·AC-7908.2, design.md 6·14절, ADR-044, 시안 ?s=add 오른쪽 판).
+// 후보 더하기 판 (spec location REQ-7908 AC-7908.1·AC-7908.2, design.md 6·14절, ADR-047, 시안 ?s=add 오른쪽 판).
 // 세 길로 점을 정한다: 주소로 찾기(카카오 k-address 결과 고르기) · 지도에서 찍기(KakaoMap onPick) · 붙여 넣은 매물에서(점이 없는 매물은 주소로 찾아 고름).
 // 그다음 층·부르는 이름(1~40자)·살필 범위(일곱 값, 처음 1,000m)·메모를 정해 [후보로 저장] → onSave(몸통).
 // 부품은 props·콜백만 쓴다: 주소 찾기·그 자리 주소는 부르는 쪽 콜백(onFind·onSpot)이 받고, 저장도 onSave가 한다.

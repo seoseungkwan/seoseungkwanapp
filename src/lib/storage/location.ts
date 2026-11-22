@@ -21,7 +21,7 @@ import type {
   YesNo,
 } from '@/types/location'
 
-// 입지 분석 저장 (specs/location REQ-7908·REQ-7913·REQ-7915·REQ-7919·REQ-7921, design.md 6·7·12·18절, ADR-044). 브라우저 → Supabase, 권한은 RLS가 막는다(ADR-004).
+// 입지 분석 저장 (specs/location REQ-7908·REQ-7913·REQ-7915·REQ-7919·REQ-7921, design.md 6·7·12·18절, ADR-047). 브라우저 → Supabase, 권한은 RLS가 막는다(ADR-004).
 // 표 여섯 location_settings·location_candidates·location_listings·location_notes·location_photos·location_events와
 // 비공개 사진 저장소 location-photos('<병원 id>/<후보 id>/<uuid>.jpg') (migration 20261122000000_location.sql).
 // 보내는 몸통은 칸 권한에 있는 칸만 골라 새로 만든다({ ...받은 값 } 금지). id·hospital_id·시각은 DB가 정하고 어느 병원 줄인지는 RLS가 고른다.
@@ -116,7 +116,7 @@ const SNAPSHOT_KEYS = Object.keys({
   people: 1, trend: 1, flow: 1, income: 1, aptPrice: 1, bizPrice: 1, apts: 1, presale: 1, seniors: 1, gyms: 1, schools: 1, accidents: 1,
   industry: 1, pharmacies: 1, rivals: 1, place: 1, sggAvg: 1, history: 1, station: 1, bus: 1, market: 1, building: 1, stores: 1, welfare: 1,
 } satisfies Record<SnapshotKey, 1>) as SnapshotKey[]
-// 카카오 출처(SOURCES의 kakao-local·kakao-map). 카카오 답은 그날 값에 넣지 않는다(ADR-044)
+// 카카오 출처(SOURCES의 kakao-local·kakao-map). 카카오 답은 그날 값에 넣지 않는다(ADR-047)
 const KAKAO_SOURCE = /^kakao-/
 
 const UUID_TEXT = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'

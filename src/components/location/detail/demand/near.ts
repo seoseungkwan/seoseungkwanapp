@@ -1,4 +1,4 @@
-// 카카오 장소 찾기 값(약국·마트·큰 병원·산업단지) — 볼 때만(spec location AC-7908.4·AC-7909.6, ADR-044).
+// 카카오 장소 찾기 값(약국·마트·큰 병원·산업단지) — 볼 때만(spec location AC-7908.4·AC-7909.6, ADR-047).
 // 부르는 쪽(LocationScreen)이 후보를 열 때마다 k-near·k-keyword를 새로 불러 그 답(queryLocation의 QueryReply)을 그대로 넘긴다.
 // 이 부품은 받은 값을 그리기만 하고, 저장하는 콜백으로 넘기지 않는다(콜백에는 종류 이름만 간다)
 import type { Got, QueryReply, Why } from '@/types/location'

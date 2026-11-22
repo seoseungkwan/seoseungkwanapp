@@ -8,7 +8,7 @@ import { useKakaoSdk } from './useKakaoSdk'
 
 // 로드뷰(거리 사진) 부품(specs/location REQ-7916 AC-7916.1·AC-7909.5, design.md 13절). props만 받는다(읽기·저장 없음).
 // 그 점 50m 안 가장 가까운 거리 사진(RoadviewClient.getNearestPanoId)을 띄우고, 없으면 그 자리에 없음 글이다.
-// 카카오에서 받은 것(사진 번호)은 어디에도 두지 않는다(ADR-044)
+// 카카오에서 받은 것(사진 번호)은 어디에도 두지 않는다(ADR-047)
 
 export const NO_ROADVIEW = '이 자리 50m 안에는 거리 사진이 없어요'
 const PANO_RADIUS_M = 50
