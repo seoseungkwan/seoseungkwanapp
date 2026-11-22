@@ -1,6 +1,10 @@
 -- 입지 분석 서버 표: 설정(location_settings)·후보(location_candidates)·매물(location_listings)·메모(location_notes)·
--- 사진 줄(location_photos)·새 경쟁 의원 알림(location_events) 여섯, 점수 설정 검사 함수(location_score_rule_ok), 사진 바구니(Storage) location-photos
--- (spec location REQ-7902·REQ-7919, design.md 7·8절, ADR-042~044)
+-- 사진 줄(location_photos)·새 경쟁 의원 알림(location_events) 여섯, 점수 설정 검사 함수(location_score_rule_ok),
+-- 의원 과목 고르기 검사 함수(location_dept_rule_ok — 설정 칸 dept_rule), 사진 바구니(Storage) location-photos
+-- (spec location REQ-7902·REQ-7919·REQ-7921, design.md 7·8·18절, ADR-042~044)
+--
+-- 이 파일을 dept_rule 칸이 생기기 전에 한 번 붙여 넣었어도 다시 붙이면 된다: 설정 표에 dept_rule 칸만 더하고(add column if not exists)
+-- 이미 있던 설정 줄은 그 칸에 처음 값(경쟁 = 정형외과·신경외과·마취통증의학과·재활의학과)을 받는다.
 --
 -- 실행: 운영자가 Supabase 관리 화면 → SQL Editor에 이 파일 전체를 붙여 한 번 실행한다(앱·CLI는 실행하지 않는다).
 -- 먼저 20261028000000_auth.sql(병원·관리자 표)·20261030000000_precheck_settings.sql(my_hospital_id())·
@@ -24,6 +28,42 @@
 -- 관리자가 아닌 원장·데스크·승인 대기·거절·병원 없는 사용자는 관리자 줄이 있어도 아무 줄도 못 보고 못 바꾼다(데스크 정책 없음).
 -- id·hospital_id·created_at·updated_at은 칸 권한이 없어 DB(기본값·트리거)만 정한다.
 -- 사진은 관리자가 자기 병원 폴더('<병원 id>/<후보 id>/<uuid>.jpg') 것만 읽고 올리고 지운다(고치기 없음)
+
+-- 의원 과목 고르기 검사(design.md 18절 모양). { "v": 1, "rival": [과목 id], "hide": [과목 id] } — 경쟁 의원 · 안 보기(둘 다 아니면 둘레로 보기).
+-- 과목 id는 아래 스물하나(앱 lib/location/depts.ts DEPTS와 차례까지 같다 — 시험이 견준다) 가운데 글자, 한 목록에 같은 id 두 번 없음,
+-- rival과 hide에 같은 과목 없음, 열쇠가 더 있거나 모자라면 false. 빈 목록(경쟁 0개)은 된다. 크기(1,000바이트)는 표 제약이 본다.
+-- or는 앞에서부터 끊긴다는 보장이 없어 종류 검사와 값 검사를 나눈다
+create or replace function public.location_dept_rule_ok(p_rule jsonb) returns boolean language plpgsql immutable security invoker set search_path = ''
+as $$
+declare
+  ids constant text[] := array['im', 'neuro', 'psy', 'gs', 'ortho', 'ns', 'cs', 'plastic', 'pain', 'obgy', 'ped', 'eye', 'ent', 'derm', 'uro', 'rad', 'rehab', 'fm', 'oem', 'dental', 'korean'];
+  k text;
+  x jsonb;
+begin
+  if p_rule is null or jsonb_typeof(p_rule) <> 'object' then return false; end if;
+  if (select count(*) from jsonb_object_keys(p_rule)) <> 3 or not (p_rule ?& array['v', 'rival', 'hide']) then return false; end if;
+  if p_rule -> 'v' is distinct from '1'::jsonb then return false; end if;
+
+  -- 경쟁 의원(rival)·안 보기(hide): 과목 id 글자의 배열, 한 목록 안에 되풀이 없음
+  foreach k in array array['rival', 'hide'] loop
+    if jsonb_typeof(p_rule -> k) <> 'array' then return false; end if;
+    for x in select value from jsonb_array_elements(p_rule -> k) loop
+      if jsonb_typeof(x) <> 'string' then return false; end if;
+      if not ((x #>> '{}') = any (ids)) then return false; end if;
+    end loop;
+    if (select count(distinct value) from jsonb_array_elements(p_rule -> k)) <> jsonb_array_length(p_rule -> k) then return false; end if;
+  end loop;
+
+  -- 같은 과목을 경쟁과 안 보기에 함께 두지 않는다
+  if exists (select 1 from jsonb_array_elements(p_rule -> 'rival') r join jsonb_array_elements(p_rule -> 'hide') h on r.value = h.value) then
+    return false;
+  end if;
+  return true;
+end
+$$;
+-- 표 검사가 넣는 사람 권한으로 부르므로 authenticated에 준다(public·anon에서는 거둔다)
+revoke all on function public.location_dept_rule_ok(jsonb) from public, anon;
+grant execute on function public.location_dept_rule_ok(jsonb) to authenticated;
 
 -- 점수 설정 검사(design.md 8절 모양). { "v": 1, "weights": {항목 다섯: 0~100 정수}, "bands": [0~10 정수 1~11개, 겹침 없음],
 -- "items": {세부 id: {"w": 0~100 정수, "full": 1 이상 정수} 또는 {"w", "best", "worst": 정수, best < worst}} }. 열쇠가 더 있거나 모자라면 false.
@@ -83,7 +123,9 @@ $$;
 revoke all on function public.location_score_rule_ok(jsonb) from public, anon;
 grant execute on function public.location_score_rule_ok(jsonb) to authenticated;
 
--- (1) 설정: 병원마다 한 줄. 점수 설정(바깥 무게·세부 무게·기준·나이대, 처음 값은 design.md 8절 표)과 지금 의원 체외충격파 1회 값(원)
+-- (1) 설정: 병원마다 한 줄. 점수 설정(바깥 무게·세부 무게·기준·나이대, 처음 값은 design.md 8절 표)과 지금 의원 체외충격파 1회 값(원),
+-- 의원 과목 고르기(처음 값 = 앱 lib/location/depts.ts DEFAULT_DEPT_RULE과 글자까지 같다). dept_rule은 맨 끝 칸이라
+-- 먼저 붙인 표에 아래 add column으로 더해도 새로 만든 표와 칸 차례가 같다
 create table if not exists public.location_settings (
   hospital_id uuid primary key default public.my_hospital_id() references public.hospitals (id) on delete cascade,
   score_rule jsonb not null default '{
@@ -100,14 +142,17 @@ create table if not exists public.location_settings (
       "t-station": {"w": 40, "best": 200, "worst": 1500}, "t-stops": {"w": 20, "full": 10}, "t-flow": {"w": 40, "full": 30000},
       "s-floor": {"w": 25, "best": 1, "worst": 5}, "s-elevator": {"w": 20, "full": 1}, "s-parking": {"w": 15, "full": 30},
       "s-age": {"w": 10, "best": 5, "worst": 30}, "s-neighbors": {"w": 10, "full": 1}, "s-sign": {"w": 10, "full": 1},
-      "s-violation": {"w": 10, "full": 1},
+      "s-violation": {"w": 10, "full": 1}, "s-clinics": {"w": 0, "full": 3},
       "k-rentPy": {"w": 35, "best": 50000, "worst": 200000}, "k-deposit": {"w": 15, "best": 30000000, "worst": 200000000},
       "k-premium": {"w": 20, "best": 0, "worst": 100000000}, "k-vsAvg": {"w": 30, "best": -20, "worst": 20}
     }
   }'::jsonb check (public.location_score_rule_ok(score_rule) and octet_length(score_rule::text) <= 4000),
   home_eswt bigint check (home_eswt between 0 and 9999999999),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  dept_rule jsonb not null default '{"v": 1, "rival": ["ortho", "ns", "pain", "rehab"], "hide": []}'::jsonb check (public.location_dept_rule_ok(dept_rule) and octet_length(dept_rule::text) <= 1000)
 );
+-- dept_rule 칸이 생기기 전에 만든 표: 칸만 더한다(위 칸 정의와 글자까지 같게. 이미 있으면 건너뛴다)
+alter table public.location_settings add column if not exists dept_rule jsonb not null default '{"v": 1, "rival": ["ortho", "ns", "pain", "rehab"], "hide": []}'::jsonb check (public.location_dept_rule_ok(dept_rule) and octet_length(dept_rule::text) <= 1000);
 
 -- (2) 후보 자리: 사용자가 고른 점(위도 33~39·경도 124~132)·적은 이름·적은 주소 글·살필 범위(일곱 값, m)·진행 상태 다섯,
 -- 층·넓이(㎡)·간판 보임·위반 건축물 고름, 비용(원 정수 열쇠들)·협상표·점검표·목표 개원일·다 한 할 일,
@@ -259,7 +304,7 @@ revoke all on table public.location_events from public, anon, authenticated;
 
 -- 설정: 읽기 + 값 칸 넣기·고치기(병원마다 한 줄 upsert, on conflict (hospital_id)). 지우기 없음([기본값으로]는 처음 값을 저장한다)
 grant select on table public.location_settings to authenticated;
-grant insert (score_rule, home_eswt), update (score_rule, home_eswt) on table public.location_settings to authenticated;
+grant insert (score_rule, home_eswt, dept_rule), update (score_rule, home_eswt, dept_rule) on table public.location_settings to authenticated;
 
 grant select, delete on table public.location_candidates to authenticated;
 grant insert (name, address_note, lat, lng, radius_m, status, floor_label, area_m2, sign_visible, violation, costs, terms, checks, open_on,

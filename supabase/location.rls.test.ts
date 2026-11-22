@@ -3,10 +3,11 @@ import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { DEFAULT_DEPT_RULE, DEPTS } from '@/lib/location/depts'
 import { DEFAULT_SCORE_RULE } from '@/lib/location/score'
 
-// 입지 분석 표 여섯·칸 권한·점수 설정 검사 함수·사진 30줄 트리거·사진 바구니 location-photos
-// (location REQ-7902·REQ-7919 AC-7919.5, design.md 7·8절, TASK-1).
+// 입지 분석 표 여섯·칸 권한·점수 설정 검사 함수·의원 과목 고르기 검사 함수·사진 30줄 트리거·사진 바구니 location-photos
+// (location REQ-7902·REQ-7919 AC-7919.5·REQ-7921 AC-7921.3, design.md 7·8·18절, TASK-1·TASK-60).
 // contacts.rls.test.ts·inventory.rls.test.ts와 같은 방법: 진짜 Postgres(PGlite, WASM)에서 운영자가 SQL Editor에 붙일 migration 파일을
 // 차례로(auth → … → 데스크 → 병원 정보 → 주소록 → 재고 → 이 파일) 그대로 돌린다. 실제 Supabase에는 붙지 않는다.
 // Supabase가 미리 갖춘 것(역할·auth·storage)만 흉내 낸다. 병원·후보·매물·의원·메일은 모두 지어낸 것이다.
@@ -136,7 +137,7 @@ const TABLES = [
   'location_events',
 ] as const
 type Table = (typeof TABLES)[number]
-const FUNCTIONS = ['location_photo_limit()', 'location_score_rule_ok(jsonb)', 'location_touch()']
+const FUNCTIONS = ['location_dept_rule_ok(jsonb)', 'location_photo_limit()', 'location_score_rule_ok(jsonb)', 'location_touch()']
 const BUCKET = 'location-photos'
 const OTHER_BUCKET = 'other-bucket'
 const OTHER_ID = '00000000-0000-4000-8000-000000000999'
@@ -151,6 +152,10 @@ type Rule = {
   items: Record<string, { w: number; full?: number; best?: number; worst?: number }>
 }
 const DEFAULT_RULE: Rule = structuredClone(DEFAULT_SCORE_RULE)
+// 의원 과목 고르기 처음 값은 lib/location/depts.ts의 DEFAULT_DEPT_RULE 한 곳이다(design.md 18절). 과목 id 스물하나는 DEPTS 차례
+type DeptRuleRow = { v: number; rival: string[]; hide: string[] }
+const DEFAULT_DEPTS: DeptRuleRow = structuredClone(DEFAULT_DEPT_RULE) as DeptRuleRow
+const DEPT_IDS = DEPTS.map((d) => d.id as string)
 
 // 칸 [이름, 타입, 비울 수 있음, 기본값] (design.md 7절). 기본값 null = 없음
 const ID: unknown[] = ['id', 'uuid', 'NO', 'gen_random_uuid()']
@@ -167,6 +172,8 @@ const COLUMNS: Record<Table, unknown[][]> = {
     ['score_rule', 'jsonb', 'NO', 'RULE_DEFAULT'], // 아래 시험이 처음 값 글자로 바꿔 견준다
     nullable('home_eswt', 'int8'),
     UPDATED,
+    // 맨 끝(TASK-60): 먼저 붙인 표에 add column으로 더해도 새로 만든 표와 칸 차례가 같다
+    ['dept_rule', 'jsonb', 'NO', 'DEPT_DEFAULT'],
   ],
   location_candidates: [
     ID,
@@ -274,7 +281,7 @@ const LISTING_VALUES = [
   'lng',
 ]
 const WRITES: Record<Table, { insert: string[]; update: string[] }> = {
-  location_settings: { insert: ['score_rule', 'home_eswt'], update: ['score_rule', 'home_eswt'] },
+  location_settings: { insert: ['score_rule', 'home_eswt', 'dept_rule'], update: ['score_rule', 'home_eswt', 'dept_rule'] },
   location_candidates: { insert: CANDIDATE_VALUES, update: CANDIDATE_VALUES },
   location_listings: { insert: LISTING_VALUES, update: LISTING_VALUES },
   location_notes: { insert: ['candidate_id', 'day', 'body'], update: [] },
@@ -363,11 +370,18 @@ function insertInto(table: string, values: Row, suffix = 'returning *') {
     columns.map((column) => toParam(column, values[column])),
   )
 }
-const JSONB_COLUMNS = new Set(['score_rule', 'costs', 'terms', 'checks', 'tasks_done', 'snapshot'])
+const JSONB_COLUMNS = new Set(['score_rule', 'dept_rule', 'costs', 'terms', 'checks', 'tasks_done', 'snapshot'])
 const toParam = (column: string, value: unknown) =>
   value === null || value === undefined ? null : JSONB_COLUMNS.has(column) || typeof value === 'object' ? JSON.stringify(value) : value
 /** 지금 역할로 점수 설정 줄 넣기(JSON null·글자도 jsonb 값으로 보낸다) */
 const insertRule = (rule: unknown) => rows(`insert into public.location_settings (score_rule) values ($1::jsonb)`, [JSON.stringify(rule)])
+/** 과목 고르기 값의 JSON 글자. { raw }는 JSON 글자 그대로(1.000처럼 JSON.stringify가 바꾸는 숫자 모양을 보내려고) */
+type RawJson = { raw: string }
+const isRaw = (value: unknown): value is RawJson =>
+  typeof value === 'object' && value !== null && Object.keys(value).length === 1 && typeof (value as RawJson).raw === 'string'
+const deptsText = (value: unknown) => (isRaw(value) ? value.raw : JSON.stringify(value))
+/** 지금 역할로 과목 고르기 줄 넣기 */
+const insertDepts = (rule: unknown) => rows(`insert into public.location_settings (dept_rule) values ($1::jsonb)`, [deptsText(rule)])
 
 /** 운영자가 줄 하나를 넣고 넣은 줄을 돌려준다(칸 권한·RLS를 건너뛴다) */
 async function seedRow(table: Table | 'contacts_companies', owner: string, values: Row) {
@@ -443,6 +457,19 @@ async function ruleOfBytes(bytes: number) {
 async function ruleOk(value: unknown) {
   await operator()
   return (await rows(`select public.location_score_rule_ok($1::jsonb) as ok`, [JSON.stringify(value)]))[0].ok
+}
+/** 과목 고르기 검사 함수(글자는 JSON 글자 그대로) */
+async function deptsOk(value: unknown) {
+  await operator()
+  return (await rows(`select public.location_dept_rule_ok($1::jsonb) as ok`, [deptsText(value)]))[0].ok
+}
+/** 모양은 맞고(v = 1.000…, jsonb는 숫자의 소수 자리를 그대로 둔다) jsonb 글자가 꼭 bytes바이트인 과목 고르기.
+ * 과목 id는 스물하나뿐이라 모양이 맞는 값으로는 1,000바이트에 못 닿는다 — 크기 제약만 따로 보려고 판 번호 자리를 늘린다 */
+async function deptsOfBytes(bytes: number): Promise<RawJson> {
+  const make = (zeros: number) => `{"v": 1.${'0'.repeat(zeros)}, "rival": [], "hide": []}`
+  await operator()
+  const base = (await rows(`select octet_length($1::jsonb::text) as n`, [make(1)]))[0].n as number
+  return { raw: make(1 + bytes - base) }
 }
 
 // 이 파일이 손댈 수 있는 것 전부: public 표의 칸·제약·권한(표·칸)·트리거·색인, 모든 정책, public 함수, 버킷
@@ -532,6 +559,8 @@ describe('AC-7902.1 파일', SLOW, () => {
       'Private',
       'ADR-042~044',
       '카카오',
+      'location_dept_rule_ok',
+      'dept_rule',
     ]) {
       expect(head, word).toContain(word)
     }
@@ -543,6 +572,26 @@ describe('AC-7902.1 파일', SLOW, () => {
     expect(found?.[1].replace(/\s+/g, '')).toBe(JSON.stringify(DEFAULT_SCORE_RULE))
     // 의료급여·차상위 비율도 처음 값(무게 0·많을수록 5%)으로 들어 있다
     expect(found?.[1]).toContain('"p-welfare": {"w": 0, "full": 5}')
+    // 같은 건물·옆 건물 의원 수도 처음 값(무게 0·많을수록 3곳)으로 자리 맨 끝에 들어 있다
+    expect(found?.[1]).toContain('"s-violation": {"w": 10, "full": 1}, "s-clinics": {"w": 0, "full": 3}')
+  })
+
+  it('AC-7921.3: dept_rule 처음 값 글자는 DEFAULT_DEPT_RULE의 JSON과 같고, create table과 add column 두 곳이 글자까지 같다', () => {
+    const defs = [...LOCATION_SQL.matchAll(/dept_rule jsonb not null default '([^']*)'::jsonb\s+check \(([^\n]*)\)/g)]
+    expect(defs).toHaveLength(2)
+    for (const [, json] of defs) expect(json.replace(/\s+/g, '')).toBe(JSON.stringify(DEFAULT_DEPT_RULE))
+    expect(defs[0][0]).toBe(defs[1][0])
+    expect(defs[0][2]).toBe('public.location_dept_rule_ok(dept_rule) and octet_length(dept_rule::text) <= 1000')
+    expect(JSON.stringify(DEFAULT_DEPT_RULE)).toBe('{"v":1,"rival":["ortho","ns","pain","rehab"],"hide":[]}')
+  })
+
+  it('AC-7921.3: location_dept_rule_ok의 과목 id 목록은 DEPTS id 스물하나와 차례까지 같다', () => {
+    const body = /function public\.location_dept_rule_ok\(p_rule jsonb\)[\s\S]*?\$\$([\s\S]*?)\$\$/.exec(LOCATION_SQL)?.[1] ?? ''
+    expect(body).not.toBe('')
+    const list = /ids constant text\[\] := array\[([^\]]*)\]/.exec(body)?.[1] ?? ''
+    const ids = list.split(',').map((x) => x.trim().replace(/^'|'$/g, ''))
+    expect(ids).toEqual(DEPT_IDS)
+    expect(ids).toHaveLength(21)
   })
 
   it('AC-7902.1: 두 번 돌려도 되는 문장만 쓴다(표·색인은 if not exists, 함수·트리거는 or replace, 정책은 지우고 다시 만들기, 지우기 없음)', () => {
@@ -558,6 +607,10 @@ describe('AC-7902.1 파일', SLOW, () => {
     expect(count(/create\s+policy/gi)).toBe(TABLES.length + 3)
     expect(count(/drop\s+policy\s+if\s+exists/gi)).toBe(TABLES.length + 3)
     for (const [, target] of LOCATION_TOP.matchAll(/^\s*alter table\s+(\S+)/gim)) expect(TABLES.map((t) => `public.${t}`)).toContain(target)
+    // 먼저 붙인 설정 표에 칸을 더하는 것은 add column if not exists 한 줄뿐이다(AC-7921.3 dept_rule)
+    expect(count(/add\s+column\s+if\s+not\s+exists\s+dept_rule\b/gi)).toBe(1)
+    expect(LOCATION_TOP).not.toMatch(/add\s+column\s+(?!if\s+not\s+exists)/i)
+    expect(LOCATION_TOP).toMatch(/alter table public\.location_settings add column if not exists dept_rule /)
     // my_hospital_id()·touch_updated_at()은 앞 migration 것이고 여기서 만들지 않는다. 데스크 정책·정의자 함수 없음
     expect(LOCATION_SQL).not.toMatch(/function\s+public\.(my_hospital_id|touch_updated_at)\b/i)
     expect(LOCATION_SQL).not.toMatch(/my_desk_hospital_id|my_clinic_hospital_id/)
@@ -582,8 +635,9 @@ describe('AC-7902.1 표 여섯의 칸·열쇠·권한·정책', SLOW, () => {
         [table],
       )
     ).map((c) => [c.column_name, c.udt_name, c.is_nullable, c.column_default])
-    const ruleDefault = `'${(await rows(`select $1::jsonb::text as t`, [JSON.stringify(DEFAULT_RULE)]))[0].t}'::jsonb`
-    expect(found).toEqual(COLUMNS[table].map((column) => (column[3] === 'RULE_DEFAULT' ? [...column.slice(0, 3), ruleDefault] : column)))
+    const jsonbDefault = async (value: unknown) => `'${(await rows(`select $1::jsonb::text as t`, [JSON.stringify(value)]))[0].t}'::jsonb`
+    const defaults: Record<string, string> = { RULE_DEFAULT: await jsonbDefault(DEFAULT_RULE), DEPT_DEFAULT: await jsonbDefault(DEFAULT_DEPTS) }
+    expect(found).toEqual(COLUMNS[table].map((column) => (String(column[3]) in defaults ? [...column.slice(0, 3), defaults[String(column[3])]] : column)))
   })
 
   it('AC-7902.1: 넓이 칸은 numeric(8,2)다', async () => {
@@ -724,7 +778,7 @@ describe('AC-7902.1 표 여섯의 칸·열쇠·권한·정책', SLOW, () => {
     expect(def.location_photo_limit).toMatch(new RegExp(` BEFORE INSERT ON (public\\.)?location_photos FOR EACH ROW ${fn('location_photo_limit')}`))
   })
 
-  it('AC-7902.1: 함수 셋은 부른 사람 권한(security invoker)·search_path 빔이고, 점수 검사만 authenticated가 부르며(표 검사가 부름) 트리거 함수는 아무도 못 부른다', async () => {
+  it('AC-7902.1: 함수 넷은 부른 사람 권한(security invoker)·search_path 빔이고, 점수·과목 고르기 검사만 authenticated가 부르며(표 검사가 부름) 트리거 함수는 아무도 못 부른다', async () => {
     const found = await rows(
       `select p.oid::regprocedure::text as fn, t.typname as returns, l.lanname as lang, p.prosecdef as definer, p.provolatile as volatile,
               p.proconfig as config
@@ -732,18 +786,20 @@ describe('AC-7902.1 표 여섯의 칸·열쇠·권한·정책', SLOW, () => {
        where p.pronamespace = 'public'::regnamespace and p.proname like 'location%' order by 1`,
     )
     expect(found).toEqual([
+      { fn: 'location_dept_rule_ok(jsonb)', returns: 'bool', lang: 'plpgsql', definer: false, volatile: 'i', config: ['search_path=""'] },
       { fn: 'location_photo_limit()', returns: 'trigger', lang: 'plpgsql', definer: false, volatile: 'v', config: ['search_path=""'] },
       { fn: 'location_score_rule_ok(jsonb)', returns: 'bool', lang: 'plpgsql', definer: false, volatile: 'i', config: ['search_path=""'] },
       { fn: 'location_touch()', returns: 'trigger', lang: 'plpgsql', definer: false, volatile: 'v', config: ['search_path=""'] },
     ])
     const can = async (role: string, fn: string) => (await rows(`select has_function_privilege($1, $2, 'EXECUTE') as ok`, [role, `public.${fn}`]))[0].ok
-    expect(await can('authenticated', 'location_score_rule_ok(jsonb)')).toBe(true)
-    expect(await can('anon', 'location_score_rule_ok(jsonb)')).toBe(false)
+    for (const fn of ['location_score_rule_ok(jsonb)', 'location_dept_rule_ok(jsonb)']) {
+      expect([fn, await can('authenticated', fn), await can('anon', fn)]).toEqual([fn, true, false])
+    }
     for (const fn of ['location_touch()', 'location_photo_limit()']) {
       expect([fn, await can('authenticated', fn), await can('anon', fn)]).toEqual([fn, false, false])
     }
     const acl = await rows(`select proname, coalesce(array_to_string(proacl, ','), '') as acl from pg_proc where proname like 'location%' order by 1`)
-    expect(acl).toHaveLength(3)
+    expect(acl).toHaveLength(4)
     for (const { proname, acl: list } of acl) expect(String(list), String(proname)).not.toMatch(/(^|,)=/) // PUBLIC 몫 없음
   })
 
@@ -757,7 +813,7 @@ describe('AC-7902.1 표 여섯의 칸·열쇠·권한·정책', SLOW, () => {
 })
 
 describe('AC-7902.1 다른 것은 그대로', SLOW, () => {
-  it('AC-7902.1: 표 여섯·함수 셋·사진 바구니와 그 정책 셋만 더하고, my_hospital_id()·다른 표·함수·정책·Storage 정책·버킷은 그대로다', () => {
+  it('AC-7902.1: 표 여섯·함수 넷·사진 바구니와 그 정책 셋만 더하고, my_hospital_id()·다른 표·함수·정책·Storage 정책·버킷은 그대로다', () => {
     expect(before.columns.some((c) => isOurs(c.table_name))).toBe(false)
     expect(withoutLocation(after)).toEqual(before)
     expect(after.access.filter((t) => isOurs(t.relname)).map((t) => t.relname)).toEqual([...TABLES].sort())
@@ -778,7 +834,7 @@ describe('AC-7902.2 관리자는 자기 병원 줄만', SLOW, () => {
     const company = await seedCompany(A)
     await become(A)
     const [settings] = await insertInto('public.location_settings', { home_eswt: 50000 })
-    expect(settings).toMatchObject({ hospital_id: hospital[A], score_rule: DEFAULT_RULE, home_eswt: 50000 })
+    expect(settings).toMatchObject({ hospital_id: hospital[A], score_rule: DEFAULT_RULE, dept_rule: DEFAULT_DEPTS, home_eswt: 50000 })
     const [candidate] = await insertInto('public.location_candidates', CANDIDATE)
     expect(candidate).toMatchObject({
       id: expect.any(String),
@@ -1370,6 +1426,139 @@ describe('AC-7919.5 점수 설정 검사 location_score_rule_ok', SLOW, () => {
   })
 })
 
+describe('AC-7921.3 의원 과목 고르기 dept_rule · 검사 location_dept_rule_ok', SLOW, () => {
+  const deptsWith = (change: (rule: DeptRuleRow) => void) => {
+    const rule = structuredClone(DEFAULT_DEPTS)
+    change(rule)
+    return rule
+  }
+
+  it('AC-7921.3: 처음 값은 통과하고, 설정 줄을 값 없이 넣으면 그 처음 값(경쟁 = 정형외과·신경외과·마취통증·재활, 안 보기 없음)이 든다', async () => {
+    expect(DEFAULT_DEPTS).toEqual({ v: 1, rival: ['ortho', 'ns', 'pain', 'rehab'], hide: [] })
+    expect(await deptsOk(DEFAULT_DEPTS)).toBe(true)
+    await become(A)
+    await insertInto('public.location_settings', {})
+    expect(await rows(`select dept_rule from public.location_settings`)).toEqual([{ dept_rule: DEFAULT_DEPTS }])
+  })
+
+  it('AC-7921.3: dept_rule 칸 검사는 모양 함수와 1,000바이트를 함께 보는 check 하나다', async () => {
+    const found = await rows(
+      `select pg_get_constraintdef(oid) as def from pg_constraint
+       where conrelid = 'public.location_settings'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%dept_rule%'`,
+    )
+    expect(found).toHaveLength(1)
+    expect(squash(found[0].def)).toMatch(/^CHECK \(\((public\.)?location_dept_rule_ok\(dept_rule\) AND \(octet_length\(\(dept_rule\)::text\) <= 1000\)\)\)$/)
+  })
+
+  const GOOD: [string, () => unknown][] = [
+    ['경쟁 0개(rival: [])', () => ({ v: 1, rival: [], hide: [] })],
+    ['과목 스물하나 모두 경쟁', () => ({ v: 1, rival: DEPT_IDS, hide: [] })],
+    ['과목 스물하나 모두 안 보기', () => ({ v: 1, rival: [], hide: DEPT_IDS })],
+    ['경쟁·안 보기 나눔(한의원·치과도 경쟁)', () => ({ v: 1, rival: ['korean', 'dental', 'ortho'], hide: ['psy', 'obgy'] })],
+    ['차례 섞임', () => ({ v: 1, rival: ['rehab', 'im', 'ortho'], hide: ['oem'] })],
+    ['1,000바이트', () => deptsOfBytes(1000)],
+  ]
+
+  it.each(GOOD)('AC-7921.3: %s → 통과하고 넣기·고치기가 된다', async (_name, make) => {
+    const rule = await make()
+    expect(await deptsOk(rule)).toBe(true)
+    await become(A)
+    await insertDepts(rule)
+    expect(await affected(`update public.location_settings set dept_rule = $1::jsonb`, [deptsText(rule)])).toBe(1)
+    expect(await countOf('location_settings', A)).toBe(1)
+  })
+
+  it('AC-7921.3: 경쟁 0개(rival: [])는 그대로 저장되고 읽힌다', async () => {
+    await become(A)
+    await insertDepts({ v: 1, rival: [], hide: ['dental'] })
+    expect(await rows(`select dept_rule from public.location_settings`)).toEqual([{ dept_rule: { v: 1, rival: [], hide: ['dental'] } }])
+  })
+
+  const BAD: [string, () => unknown][] = [
+    ['모르는 과목 id', () => deptsWith((r) => r.rival.push('xray'))],
+    ['대문자 id', () => deptsWith((r) => (r.rival = ['ORTHO']))],
+    ['빈 글자 id', () => deptsWith((r) => (r.hide = ['']))],
+    ['경쟁과 안 보기 겹침', () => deptsWith((r) => (r.hide = ['psy', 'ortho']))],
+    ['경쟁에 같은 id 두 번', () => deptsWith((r) => r.rival.push('ortho'))],
+    ['안 보기에 같은 id 두 번', () => deptsWith((r) => (r.hide = ['psy', 'psy']))],
+    ['경쟁이 배열 아님(글자)', () => ({ v: 1, rival: 'ortho', hide: [] })],
+    ['경쟁이 객체', () => ({ v: 1, rival: { ortho: true }, hide: [] })],
+    ['경쟁이 null', () => ({ v: 1, rival: null, hide: [] })],
+    ['안 보기가 배열 아님', () => ({ v: 1, rival: [], hide: 'psy' })],
+    ['id가 숫자', () => ({ v: 1, rival: [5], hide: [] })],
+    ['id가 null', () => ({ v: 1, rival: [null], hide: [] })],
+    ['id가 배열', () => ({ v: 1, rival: [['ortho']], hide: [] })],
+    ['판 번호 2', () => deptsWith((r) => (r.v = 2))],
+    ['판 번호 글자', () => ({ v: '1', rival: [], hide: [] })],
+    ['판 번호 없음', () => ({ rival: [], hide: [] })],
+    ['경쟁 칸 없음', () => ({ v: 1, hide: [] })],
+    ['안 보기 칸 없음', () => ({ v: 1, rival: [] })],
+    ['맨 위 열쇠 더함', () => ({ ...DEFAULT_DEPTS, around: [] })],
+    ['배열', () => [DEFAULT_DEPTS]],
+    ['글자', () => 'ortho'],
+    ['JSON null', () => null],
+    ['1,001바이트', () => deptsOfBytes(1001)],
+  ]
+
+  it.each(BAD.filter(([name]) => name !== '1,001바이트'))('AC-7921.3: %s → 검사 함수가 false', async (_name, make) => {
+    expect(await deptsOk(await make())).toBe(false)
+  })
+
+  it.each(BAD)('AC-7921.3: %s → 설정 줄 넣기·고치기가 거부(23514)되고 줄은 그대로다', async (_name, make) => {
+    const rule = await make()
+    await become(A)
+    await expect(insertDepts(rule)).rejects.toMatchObject(CHECK)
+    await seedRow('location_settings', A, {})
+    await become(A)
+    await expect(db.query(`update public.location_settings set dept_rule = $1::jsonb`, [deptsText(rule)])).rejects.toMatchObject(CHECK)
+    await operator()
+    expect(await rows(`select dept_rule from public.location_settings`)).toEqual([{ dept_rule: DEFAULT_DEPTS }])
+  })
+
+  it('AC-7921.3: 1,001바이트 과목 고르기는 모양이 맞아 검사 함수는 통과하지만 표 제약이 거부한다(시험 값이 꼭 그 크기다)', async () => {
+    for (const bytes of [1000, 1001]) {
+      const value = await deptsOfBytes(bytes)
+      expect([bytes, (await rows(`select octet_length($1::jsonb::text) as n`, [deptsText(value)]))[0].n]).toEqual([bytes, bytes])
+      expect([bytes, await deptsOk(value)]).toEqual([bytes, true])
+    }
+  })
+
+  it('AC-7921.3: 과목 고르기 칸을 비우면(null) 거부(23502)된다', async () => {
+    await become(A)
+    await expect(rows(`insert into public.location_settings (dept_rule) values (null)`)).rejects.toMatchObject(NOT_NULL)
+    expect(await countOf('location_settings', A)).toBe(0)
+  })
+
+  it('AC-7921.3·AC-7902.2: 관리자만 dept_rule을 읽고 쓴다(병원마다 한 줄 upsert, dept_rule 칸만 보내도 된다)', async () => {
+    const rule = { v: 1, rival: ['ortho', 'korean'], hide: ['dental'] }
+    const upsert = `insert into public.location_settings (dept_rule) values ($1::jsonb)
+                    on conflict (hospital_id) do update set dept_rule = excluded.dept_rule`
+    await become(A)
+    expect(await affected(upsert, [JSON.stringify(DEFAULT_DEPTS)])).toBe(1)
+    expect(await affected(upsert, [JSON.stringify(rule)])).toBe(1)
+    expect(await rows(`select dept_rule, score_rule from public.location_settings`)).toEqual([{ dept_rule: rule, score_rule: DEFAULT_RULE }])
+    expect(await affected(`update public.location_settings set dept_rule = $1::jsonb`, [JSON.stringify({ v: 1, rival: [], hide: [] })])).toBe(1)
+    expect(await rows(`select dept_rule from public.location_settings`)).toEqual([{ dept_rule: { v: 1, rival: [], hide: [] } }])
+    const old = await dump()
+    // 다른 병원 관리자·관리자 아닌 원장·승인 대기·거절·병원 없음·데스크는 A 줄을 못 보고 못 고친다
+    for (const user of [B, ...OUTSIDERS.map(([, u]) => u)]) {
+      await become(user)
+      expect([user, await rows(`select dept_rule from public.location_settings`)]).toEqual([user, []])
+      expect([user, await affected(`update public.location_settings set dept_rule = $1::jsonb`, [JSON.stringify(DEFAULT_DEPTS)])]).toEqual([user, 0])
+    }
+    for (const [label, user] of OUTSIDERS) {
+      await become(user)
+      await expect(insertDepts(DEFAULT_DEPTS), label).rejects.toMatchObject(NO_HOSPITAL)
+    }
+    await becomeAnon()
+    await expect(db.query(`select dept_rule from public.location_settings`)).rejects.toMatchObject(DENIED)
+    await expect(insertDepts(DEFAULT_DEPTS)).rejects.toMatchObject(DENIED)
+    await becomeAnon()
+    await expect(db.query(`update public.location_settings set dept_rule = dept_rule`)).rejects.toMatchObject(DENIED)
+    expect(await dump()).toEqual(old)
+  })
+})
+
 describe('AC-7902.5 사진 바구니 location-photos', SLOW, () => {
   const objectOf = (owner: string, candidate = OTHER_ID, id = '0f8fad5b-d9cb-469f-a165-70867728950e') => `${hospital[owner]}/${candidate}/${id}.jpg`
   const upload = (name: string, bucket = BUCKET) =>
@@ -1502,5 +1691,42 @@ describe('AC-7902.1 두 번 붙여 넣기', SLOW, () => {
     await become(A)
     await insertInto('public.location_notes', { candidate_id: mine.candidate, day: DAY, body: '다시 붙인 뒤' })
     expect(await countOf('location_notes', A)).toBe(2)
+  }, 120_000)
+})
+
+describe('AC-7921.3 dept_rule 칸이 없던 설정 표에 다시 붙여 넣기', SLOW, () => {
+  it('AC-7921.3: 전 파일로 만든 설정 표(dept_rule 없음)에 다시 붙이면 칸이 새 표와 같은 모양으로 더해지고 있던 줄은 처음 값을 받는다', async () => {
+    await seedAll(A)
+    await operator()
+    const custom = ruleWith((r) => (r.weights.cost = 0))
+    await db.query(`update public.location_settings set score_rule = $1::jsonb, home_eswt = 70000 where hospital_id = $2`, [
+      JSON.stringify(custom),
+      hospital[A],
+    ])
+    await db.exec('alter table public.location_settings drop column dept_rule')
+    const has = async () =>
+      (
+        await rows(
+          `select count(*)::int as n from information_schema.columns
+           where table_schema = 'public' and table_name = 'location_settings' and column_name = 'dept_rule'`,
+        )
+      )[0].n
+    expect(await has()).toBe(0)
+
+    await db.exec(LOCATION_MIGRATION)
+
+    expect(await has()).toBe(1)
+    expect(await shapeOf(db)).toEqual(after)
+    await operator()
+    expect(await rows(`select score_rule, home_eswt, dept_rule from public.location_settings`)).toEqual([
+      { score_rule: custom, home_eswt: 70000, dept_rule: DEFAULT_DEPTS },
+    ])
+    // 더한 칸에도 검사·칸 권한이 그대로 걸린다
+    await become(A)
+    await expect(
+      db.query(`update public.location_settings set dept_rule = $1::jsonb`, [JSON.stringify({ v: 1, rival: ['ortho'], hide: ['ortho'] })]),
+    ).rejects.toMatchObject(CHECK)
+    await become(A)
+    expect(await affected(`update public.location_settings set dept_rule = $1::jsonb`, [JSON.stringify({ v: 1, rival: [], hide: [] })])).toBe(1)
   }, 120_000)
 })
