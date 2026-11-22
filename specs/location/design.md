@@ -279,7 +279,7 @@ type Snapshot = { v: 1; at: string; radiusM: number
 - 부품은 props·콜백만(읽기·저장·fetch 없음): `weights/`(바깥 무게 막대·[기본 무게로] + 항목마다 [세부 ▾] 세부 무게·기준 칸·나이대·`p-welfare` 방향 고르기·[기본값으로]·칸 검사 글, 8절) · `scan/`(시도·시군구 고르기·색 지도·순위·`weights/` 자리·동 자세히) · `detail/frame/`(위험 신호·종합·점수 풀이·범위·목차·[오늘 값으로 다시 받기], 묶음은 칸(slot)으로 받아 직접 부르지 않음. **칸 감싸개는 id를 두지 않고 ref·tabIndex만**(목차는 ref로 건너뜀) — 묶음이 제 머리 h3와 닻 id `sec-…`를 한 번만 그린다(TASK-44: 같은 id 다섯 `sec-people`·`sec-income`·`sec-future`·`sec-demand`·`sec-traffic`이 두 번 나왔음). 점수 입력 셈은 `lib/location/facts.ts`를 부른다) · `detail/{people,demand,rivals,site}/`(묶음 열셋을 넷으로: 사는 사람·소득(의료급여·차상위 포함)·앞으로 / 수요·교통·둘레 시설 / 경쟁 의원·**둘레 다른 과 의원**·진료비·빈틈 / 거리 사진·건물·빈 칸·땅 — 묶음마다 제목 아래 '이렇게 봤어요'(`common/HowLine` + `method.ts`)) · `listings/`(목록·거르기·견주기 글·붙여 넣기 칸·협상표·[주소록에 넣기]) · `add/`(세 길 판) · `compare/` · `report/`(`print:` 클래스로 앱 틀 숨김, A4) · `prep/plan/`(비용·손익분기·일정) · `prep/visit/`(건물 요건·어떻게 알았나·계약 전 위험·임대 조건 메모·점검표·사진·메모·진행 상태) · `common/`(숫자 칸 `Fact`·출처 줄 `SourceLine`·자료 없음 글 `WhyLine`·'이렇게 봤어요' 한 줄 `HowLine`) · `sources/` · `start/`(처음 화면에 처음 안내 장을 끼움) · `method/`(처음 안내 장·[분석 방법] 판) · `kinds/`(과목 고르기 판).
 - [주소록에 넣기]: `lib/storage/contacts.ts`의 업체·담당자 저장 함수를 그대로 부른다(분류 `other`, 하는 일 `부동산 중개`, 겹침 `duplicate`면 그 업체를 찾아 잇기). 주소록 코드는 고치지 않는다.
 - 사진: `components/inventory/photo.ts`의 `shrinkPhoto`(긴 변 1,600px JPEG)를 불러 쓴다(고치지 않음).
-- PC 배치 하나: 지도·두 칸 틀은 최소 폭 1,024px, 좁으면 그 감싸개 안에서 `overflow-x: auto`. `max-md:` 없음. 색·글꼴은 앱 토큰(`docs/UI_GUIDE.md`).
+- PC 배치 하나: 지도·두 칸 틀은 최소 폭 976px(창 1024 − 셸 본문 좌우 여백 24px씩 — 시안처럼 창 1024에 딱 맞음, TASK-84), 좁으면 그 감싸개 안에서 `overflow-x: auto`. `max-md:` 없음. 색·글꼴은 앱 토큰(`docs/UI_GUIDE.md`).
 
 ## 15. 오류 · 자료 없음 글
 | 번호 | what | fix |
