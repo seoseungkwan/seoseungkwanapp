@@ -1,14 +1,17 @@
 import 'server-only'
-import type { KeyKind, SiteRequest, SourceFail, SourceResult } from '@/types/location'
+import type { KeyKind, SiteRequest, SourceFail } from '@/types/location'
 
-// 입지 분석 바깥 부르기 규칙(specs/location design.md 3절, ADR-042, AC-7903.3·AC-7903.4).
-// 정해 둔 host만(열쇠 종류와 맞는 host) · https · GET · 돌려보내기 안 따라감(redirect: 'error') · 8초 · 2,000,000바이트 · 브라우저 모양 UA ·
-// 쿠키·캐시 없음. 열쇠는 여기서만 싣는다: 카카오는 Authorization: KakaoAK <열쇠>, 공공은 serviceKey=<디코딩 열쇠>(URLSearchParams가 인코딩).
+// 입지 분석 바깥 부르기 규칙(specs/location design.md 3절, ADR-042, AC-7903.3·AC-7903.4·AC-7922.2).
+// 정해 둔 host만(열쇠 종류와 맞는 host) · https · GET · 돌려보내기 안 따라감(redirect: 'error') · 시간 한도(기본 8초, 읽는 곳의 timeoutMs —
+// 최대 60초) · 2,000,000바이트 · 브라우저 모양 UA · 쿠키·캐시 없음. 열쇠는 여기서만 싣는다: 카카오는 Authorization: KakaoAK <열쇠>,
+// 공공은 serviceKey=<디코딩 열쇠>(URLSearchParams가 인코딩). 공공 열쇠의 401·403 답은 몸통(같은 한도)을 읽어 미등록 열쇠 답이면 not-applied.
 // 결과에는 실패 종류(http면 상태 번호)만 담는다(오류 글·주소·열쇠 없음). 아무것도 담아 두지 않고, 이 파일은 console을 쓰지 않는다
 
 export const SOURCE_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
 export const SOURCE_TIMEOUT_MS = 8_000
+// 읽는 곳이 정할 수 있는 가장 긴 한도(비급여 nonpay 60초, design.md 3절)
+export const SOURCE_MAX_TIMEOUT_MS = 60_000
 export const SOURCE_MAX_BYTES = 2_000_000
 
 // 열쇠 종류마다 부를 수 있는 host(사람 흐름도 apis.data.go.kr, design.md 3절)
@@ -19,9 +22,18 @@ const HOSTS: Readonly<Record<KeyKind, readonly string[]>> = {
 
 export type SourceFetch = (url: string, init: RequestInit) => Promise<Response>
 export type SourceKey = { kind: KeyKind; value: string }
+// 부르기 결과. 실패 종류에 '활용신청 안 됨'(공공 열쇠 401·403 + 미등록 몸통)을 더한다 — 상태 번호·몸통 글은 담지 않는다
+export type FetchFail = SourceFail | 'not-applied'
+export type FetchResult = { ok: true; text: string } | { ok: false; fail: FetchFail; status?: number }
 
-const fail = (kind: SourceFail, status?: number): SourceResult =>
+const fail = (kind: FetchFail, status?: number): FetchResult =>
   status === undefined ? { ok: false, fail: kind } : { ok: false, fail: kind, status }
+
+/** 부르기 하나의 시간 한도: 주지 않았거나 0·음수·숫자 아님이면 8초, 60초를 넘으면 60초 */
+function limitOf(timeoutMs: number | undefined): number {
+  if (typeof timeoutMs !== 'number' || !Number.isFinite(timeoutMs) || timeoutMs <= 0) return SOURCE_TIMEOUT_MS
+  return Math.min(timeoutMs, SOURCE_MAX_TIMEOUT_MS)
+}
 
 /** 열쇠는 서버 환경 변수 둘에서만 읽는다(앞뒤 공백 뺌). 비었으면 null */
 export function readKey(kind: KeyKind): string | null {
@@ -96,25 +108,35 @@ async function readCapped(reader: ReadableStreamDefaultReader<Uint8Array>): Prom
   return out
 }
 
-async function callOnce(fetchImpl: SourceFetch, href: string, key: SourceKey): Promise<SourceResult> {
+async function callOnce(fetchImpl: SourceFetch, href: string, key: SourceKey, limitMs: number): Promise<FetchResult> {
   const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
   // 시간 한도는 답 머리와 몸통 받기 모두에 건다. 넘으면 부름을 끊는다
+  // (끊기 전에 먼저 '넘음'을 알린다 — 끊긴 fetch가 던지는 것보다 앞서 timeout으로 읽히게)
   const expired = new Promise<'expired'>((resolve) => {
     timer = setTimeout(() => {
-      controller.abort()
       resolve('expired')
-    }, SOURCE_TIMEOUT_MS)
+      controller.abort()
+    }, limitMs)
   })
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
+  // 몸통을 한도(크기·시간) 안에서 읽는다
+  const readBody = async (res: Response): Promise<Uint8Array | 'too-big' | 'expired'> => {
+    if (declaredTooBig(res.headers)) return 'too-big'
+    return reader ? Promise.race([readCapped(reader), expired]) : new Uint8Array(0)
+  }
   try {
     const res = await Promise.race([fetchImpl(href, requestInit(key, controller.signal)), expired])
     if (res === 'expired') return fail('timeout')
     reader = res.body?.getReader()
+    // 공공 열쇠의 401·403은 몸통을 보고 미등록 열쇠 답이면 활용신청 안 됨. 한도 안에 다 못 읽었거나 다른 몸통이면 http
+    if (key.kind === 'data' && (res.status === 401 || res.status === 403) && !res.redirected) {
+      const body = await readBody(res)
+      return typeof body !== 'string' && isNotRegistered(new TextDecoder().decode(body)) ? fail('not-applied') : fail('http', res.status)
+    }
     // 돌려보내기(3xx)·돌려보내진 답도 여기서 끝난다
     if (res.status !== 200 || res.redirected) return fail('http', res.status)
-    if (declaredTooBig(res.headers)) return fail('too-big')
-    const bytes = reader ? await Promise.race([readCapped(reader), expired]) : new Uint8Array(0)
+    const bytes = await readBody(res)
     if (bytes === 'expired') return fail('timeout')
     if (bytes === 'too-big') return fail('too-big')
     return { ok: true, text: new TextDecoder().decode(bytes) }
@@ -127,13 +149,16 @@ async function callOnce(fetchImpl: SourceFetch, href: string, key: SourceKey): P
   }
 }
 
+/** 바깥 부르기 하나: 요청 · 열쇠 · 시간 한도(ms, 읽는 곳의 timeoutMs — 없으면 8초, 최대 60초) */
+export type FetchSource = (req: SiteRequest, key: SourceKey, timeoutMs?: number) => Promise<FetchResult>
+
 /** 정해 둔 규칙으로 바깥을 부르는 함수를 만든다(시험은 가짜 fetch를 넣는다). 부를 때마다 새로 부르고 아무것도 담아 두지 않는다 */
-export function createFetchSource(deps: { fetchImpl?: SourceFetch } = {}): (req: SiteRequest, key: SourceKey) => Promise<SourceResult> {
+export function createFetchSource(deps: { fetchImpl?: SourceFetch } = {}): FetchSource {
   const fetchImpl: SourceFetch = deps.fetchImpl ?? ((url, init) => fetch(url, init))
-  return async (req, key) => {
+  return async (req, key, timeoutMs) => {
     const href = targetOf(req, key)
     if (href === null) return fail('blocked-url')
-    return callOnce(fetchImpl, href, key)
+    return callOnce(fetchImpl, href, key, limitOf(timeoutMs))
   }
 }
 
