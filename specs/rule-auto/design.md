@@ -116,7 +116,8 @@ export type RuleReport = { cleared: number; retired: number; reviewed: number; c
 - 새 낱말 금지(e): 위 칸 밖의 글자 값과 객체 열쇠는 base ∪ current `params`(깊이 상관없음)의 글자 모음 안이어야 한다. `regex`로 끝나는 칸의 글은 예외(만들어지는지·300자 이하만 봄).
 - 칸 이름(a): 같은 `type` 규칙들의 `params` 맨 위 칸 이름 모음(`WeakMap`), base에 있는 칸이면 JSON 종류가 같아야 함.
 - 뺀 것(`removed`): 이름 모음 = `kind:값`(`group:`·`class:`·`sub:`·`region:`·`code:`·`dx:`) 집합. next ⊇ base ∪ current.
-- 비켜 주는 칸(`WAIVER_KEYS`, 2026-11-22 독립 검토로 더함): 열쇠 이름이 `acceptable`·`allow`·`exception`·`exclu`·`exempt`·`skip`·`unless`·`pass_if`·`not_in_set`로 시작하는 칸(깊이 상관없음. 지금 규칙표: `acceptable_with`·`allowed_*`·`exception*`·`exclude*`·`excluded`·`exempt_regex`·`skip_*`·`unless*`·`pass_if_regex`·`not_in_set_a`). 이 칸들은 값이 늘면 경고가 줄어든다. 열쇠 이름마다 next의 잎 값(글자·숫자·참거짓, 배열·객체 안 포함)이 base ∪ current의 같은 열쇠 이름 칸 잎 값 안이어야 한다. 아니면 `removed`. 빼는 것은 지난다.
+- 비켜 주는 칸(`WAIVER_KEYS`, 2026-11-22 독립 검토로 더함): 열쇠 이름 어디에든 `acceptable`·`allow`·`exception`·`exclu`·`exempt`·`skip`·`unless`·`pass_if`·`not_`·`downgrade`·`uncertain`·`waive`·`ignore`가 든 칸(깊이 상관없음. 지금 규칙표: `acceptable_with`·`allowed_*`·`exception*`·`exclude*`·`excluded`·`exclusions`·`exempt_regex`·`exemption`·`region_split_exempt`·`no_reason_exemption`·`skip_*`·`unless*`·`pass_if_regex`·`not_applicable`·`not_in_set_a`·`dx_prefixes_not_counting`·`downgrade_if_…`·`dx_uncertain`·`uncertain*`·`switch_allowed_within_2y` 등). 이 칸들은 값이 늘거나 바뀌면 경고가 줄 수 있다. 열쇠 이름마다 next의 잎 값(글자·숫자·참거짓·null, 배열·객체 안 포함)이 base ∪ current의 같은 열쇠 이름 칸 잎 값 안이어야 한다. 아니면 `removed`. 빼는 것은 지난다(조이는 쪽이 사람에게 가는 것은 받아들인다 — 안전 쪽).
+- 참거짓 칸: `params` 안 어디든 참거짓 잎 값이 base·current의 같은 자리 값과 다르면 `removed`(켜고 끄는 칸은 앱이 방향을 모른다).
 - 정규식 칸: 열쇠 이름이 `regex`로 끝나는 글은 base·current의 같은 열쇠 이름 칸 글 가운데 하나와 같아야 한다. 아니면 `removed`(정규식은 넓히는지 좁히는지 앱이 알 수 없다).
 - 등급(`grade`): `params` 안 열쇠 이름이 `grade`로 끝나는 칸(`exception_grade` 등, 깊이 상관없음)의 값을 정렬한 목록이 base와 같아야 함.
 - 상태(`status`): `ruleStatusIn(file, next) === ruleStatusIn(file, base)`. 엔진의 `statusesOf`는 규칙 번호로 상태를 하나만 갖기 때문에 판마다 같아야 한다.
@@ -131,7 +132,7 @@ export type RuleReport = { cleared: number; retired: number; reviewed: number; c
 ```ts
 export function withRuleUpdates(tables: Tables, updates: readonly RuleUpdate[]): { tables: Tables; applied: string[] }
 ```
-1. 거르기(AC-7803.1): `baseVersion === tables.rules.version` · 규칙표에 있는 `ruleId` · `isYmd(from)` · `rule.id === ruleId` · `rule.effective_from === from` · `checkRuleChange(file, base, base, rule) === 'ok'`(Worker는 판끼리의 사슬을 모르므로 base에 대해 다시 본다 — 저장 전 검사(current 기준)보다 약하지 않은 쪽만 남음: 모든 판은 base의 이름을 다 담는다).
+1. 거르기(AC-7803.1): `baseVersion === tables.rules.version` · 규칙표에 있는 `ruleId` · `isYmd(from)` · `rule.id === ruleId` · `rule.effective_from === from` · `checkRuleChange(file, base, base, rule)`이 `'ok'` 또는 `'same'`(원래 규칙으로 돌아가는 판도 쓴다, AC-7803.1)(Worker는 판끼리의 사슬을 모르므로 base에 대해 다시 본다 — 저장 전 검사(current 기준)보다 약하지 않은 쪽만 남음: 모든 판은 base의 이름을 다 담는다).
 2. 규칙마다 날짜 차례 정렬, 같은 날짜는 목록 뒤의 것 하나, `base.effective_to`보다 늦은 판은 버림.
 3. 날짜 창: base는 `effective_to = min(base.effective_to, addDays(첫 from, -1))`, 판 i는 `effective_from = from_i`, `effective_to = 다음 판 from − 1일`(마지막은 `base.effective_to`). 판 객체는 새로 만든다(받은 값을 고치지 않음).
 4. 규칙 목록: 원래 차례대로, 판이 있는 규칙은 바로 뒤에 판들을 놓는다. `{ ...tables, rules: { ...tables.rules, rules } }`. 쓸 판이 없으면 받은 `tables` 그대로.
