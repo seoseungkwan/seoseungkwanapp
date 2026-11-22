@@ -167,7 +167,7 @@ type Snapshot = { v: 1; at: string; radiusM: number
 }
 ```
 - `snapshot.ts`: `checkSnapshot`(모양 — 새 칸 `place`·`sggAvg`·`Rival.at`·`Rival.detail`·`station.at`·`welfare.basis`도 본다) · `fitSnapshot`(65,536바이트 안: 목록을 뒤에서부터 줄임 — 의원 목록은 `detail`이 없는 먼 의원부터) · `mergeSnapshot(new, old)`(새로 실패한 칸은 옛 값을 `prev`로) · `welfareRate`(비율 셈 한 곳 — 화면 `detail/people`도 이것을 부른다). `snapshotFacts`는 지우고 `facts.ts` `scoreFactsOf` 하나로 센다(TASK-44가 화면을 이것으로 맞춤: 새 의원 기준은 개설 연도 `> 올해 − 3`, 경쟁 0곳이면 빈틈 칸 = 모든 칸).
-- 의원 목록 200곳: 받은 목록이 200곳이면 화면이 `200곳 넘게 있을 수 있어요. 가까운 200곳만 셌어요.`를 붙인다(따로 표시 칸 없음). 경쟁 과목 의원(`detail` 있음)은 줄이지 않는다.
+- 의원 목록 200곳: 그날 값 `rivals`에 `capped: true`가 있거나(바깥 답이 한도에 잘림·가까운 200곳으로 자름·저장 크기로 줄임 — TASK-81) 받은 목록이 200곳이면 화면(경쟁 의원·둘레 다른 과)이 `200곳 넘게 있을 수 있어요. 가까운 200곳만 셌어요.`를 붙인다. 동네 훑기(`collectScan`)는 잘림을 따로 보이지 않는다(알려진 한계). 경쟁 과목 의원(`detail` 있음)은 줄이지 않는다.
 - **저장하는 것**(ADR-044): 사용자가 고른 후보 점·적은 이름·적은 주소 글·범위 · 붙여 넣은 매물 · 메모 · 점검표·건물 요건(어떻게 알았나 글 포함)·위반 건축물·간판 고름 · 비용 · 무게 · 의원 과목 고르기 · 협상표·임대 조건 메모 · 일정 다 함 표시 · 사진 · 지금 의원 체외충격파 값 · 위 그날 값(공공 자료로 만든 숫자, 심평원 의원 좌표·주소, 좌표 파일의 역 좌표, 동 경계 파일의 행정동 이름) · 알림 줄(행안부 공공 자료).
 - **저장하지 않는 것**: 카카오에서 받은 주소 글·좌표·장소 목록·거리·로드뷰·법정동 코드, 동네 훑기 결과, 보고서.
 
@@ -263,7 +263,7 @@ type Snapshot = { v: 1; at: string; radiusM: number
 
 ## 12. 새 경쟁 의원 알림 (`watch.ts` + `components/dashboard/location/`)
 - 고름: Cron이 아니라 **관리자가 대시보드를 열 때** 브라우저가 한다. 까닭: (1) Cron에는 로그인 세션이 없어 관리자 표를 RLS로 못 읽는다 → 고시·공지처럼 모으기 계정·비밀번호·공개 경로가 또 생긴다 (2) 알림은 대시보드에서만 보이므로 열 때 확인해도 같은 날 보인다 (3) 서버는 지금처럼 바깥 자료만 대신 부른다. 대가: 대시보드를 한 달 넘게 안 열면 늦는다.
-- `dueCandidates(rows, today)`: `status ≠ dropped`이고 `watch_checked_on`이 null이거나 30일 넘음, 만든 차례 앞 5곳. 기간 = 지난 확인 기간 끝(확인 날 − 2일)의 다음 날(= 확인 날 − 1일, 처음이면 오늘 − 30일) ~ 오늘 − 2일(자료가 2일 늦음). 후보 그날 값 `place`의 `'{시도} {시군구}'`(세종처럼 둘이 같으면 하나)를 `addr`로 실어 부르고, 답이 한도에 잘렸으면(`capped`) 그 후보의 확인 날을 고치지 않는다. 과목 설정을 못 읽으면 그번 확인을 건너뛴다(처음 값으로 확인하지 않음). 같은 기간 `clinic-license` open·close를 한 번씩 받아 후보끼리 나눠 쓴다.
+- `dueCandidates(rows, today)`: `status ≠ dropped`이고 `watch_checked_on`이 null이거나 30일 넘음, 만든 차례 앞 5곳. 기간 = 지난 확인 기간 끝(확인 날 − 2일)의 다음 날(= 확인 날 − 1일, 처음이면 오늘 − 29일 — `watch.ts` 그대로) ~ 오늘 − 2일(자료가 2일 늦음). 후보 그날 값 `place`의 `'{시도} {시군구}'`(세종처럼 둘이 같으면 하나)를 `addr`로 실어 부르고, 답이 한도에 잘렸으면(`capped`) 그 후보의 확인 날을 고치지 않는다. 과목 설정을 못 읽으면 그번 확인을 건너뛴다(처음 값으로 확인하지 않음). 같은 기간 `clinic-license` open·close를 한 번씩 받아 후보끼리 나눠 쓴다.
 - `pickEvents(found, cand, rule)`: 범위 안 + 대표 과목(`deptOfText(이름, 과목 글, 업태 글, rule)`, 18절)이 경쟁 과목 → 줄(같은 줄은 DB unique로 한 번). 다 넣은 뒤 `watch_checked_on = 오늘`. 경쟁 과목이 0개면 부르지 않는다. 설정은 `useLocationWatch`가 `location_settings`에서 함께 읽는다(못 읽으면 처음 값). `listWatchCandidates`는 후보 `name`도 읽는다(알림 아래 줄).
 - `useLocationWatch(isAdmin, today)`: 대시보드가 열릴 때 한 번, 20초 한도, 실패는 조용히. `LocationAlert`: 안 본 줄을 최근 차례 셋 + `… {n}건 더`. 자리는 `WarrantyNotice` 바로 아래(같은 네 자리). `dashboard/page.tsx`가 `currentMe()`의 `isAdmin`을 넘긴다. 후보 화면을 열면 그 후보 줄의, 줄의 [닫기]를 누르면 **그 줄 하나**의 `seen_at`을 채운다(시안대로 줄마다 [닫기], 사용자 2026-11-22 시안 승인 때 [닫기]를 두기로 함 — 다음 확인에서 새 줄이 생기면 다시 뜬다). 글은 requirements '화면 글 기본값'의 새 경쟁 의원 알림(후보 이름·고른 과목).
 
