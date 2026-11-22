@@ -1,6 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type MouseEvent } from 'react'
+import { Icon } from '@/components/common/Icon'
+import { MethodCard, type MethodCardProps } from '@/components/location/method/MethodCard'
+import { METHOD } from '@/lib/location/method'
 import type { DongIndex } from '@/lib/location/regions'
 import type { KeysReply } from '@/types/location'
 import { PlusIcon } from './icons'
@@ -11,7 +14,13 @@ import { StartHead } from './StartHead'
 
 // 처음(후보 없음) 화면(spec location AC-7917.1, 시안 ?s=empty 자리·글, 열쇠 글은 requirements '화면 글 기본값'·design.md 15절).
 // 동 목록(index, 동 경계 index.json)은 받아서 쓰고, 고른 시군구는 onScan(시군구 5자리)으로 넘긴다(읽기·저장 없음).
-// 열쇠가 셋 다 들어 있으면 한 줄, 아니면 열쇠 셋 줄과 상태를 보인다(지도 열쇠만 없으면 지도 글도). 열쇠 넣는 칸은 없다
+// 열쇠가 셋 다 들어 있으면 한 줄, 아니면 열쇠 셋 줄과 상태를 보인다(지도 열쇠만 없으면 지도 글도). 열쇠 넣는 칸은 없다.
+// 시작 단계·단추·열쇠 글 아래에 처음 안내 '이 탭은 이렇게 분석해요' 한 장(AC-7920.1, 시안 ?s=empty #method)을 끼우고,
+// 머리 [분석 방법]은 판을 열지 않고 그 장으로 내려가 초점을 옮긴다(평범한 #닻 링크, Ctrl 누르기 등은 브라우저에 맡김).
+// 한 장이 받는 것(지금 무게·경쟁 과목 짧은 이름·근거와 출처로 가기)은 그대로 넘긴다
+
+// 처음 안내 한 장 자리 id(머리 [분석 방법] 링크의 #닻)
+const METHOD_SPOT = 'loc-method'
 
 const STEPS: [string, string][] = [
   ['동네 훑기', '시·구를 고르면 행정동마다 점수 색을 칠해 보여 주고, 좋은 동 차례와 까닭을 알려 줘요.'],
@@ -20,7 +29,7 @@ const STEPS: [string, string][] = [
   ['개원 준비', '개원 비용·손익분기·일정표·건물 요건을 챙기고, 한 장 보고서로 뽑아요.'],
 ]
 
-type Props = {
+type Props = MethodCardProps & {
   index: DongIndex | null
   keys: KeysReply
   mapKey: MapKeyState
@@ -29,7 +38,19 @@ type Props = {
   onOpen: (to: FreeTool) => void
 }
 
-export function EmptyScreen({ index, keys, mapKey, onScan, onAdd, onOpen }: Props) {
+const plainClick = (e: MouseEvent) => e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey
+
+// 머리 [분석 방법]: 한 장으로 내려가 초점을 둔다(주소 #닻은 쓰지 않음 — 시안 toc-method)
+function toMethod(e: MouseEvent<HTMLAnchorElement>) {
+  if (!plainClick(e)) return
+  const spot = document.getElementById(METHOD_SPOT)
+  if (spot === null) return
+  e.preventDefault()
+  spot.scrollIntoView({ block: 'start' })
+  spot.focus({ preventScroll: true })
+}
+
+export function EmptyScreen({ index, keys, mapKey, onScan, onAdd, onOpen, ...method }: Props) {
   const sidos = index?.sidos ?? []
   const [sidoCode, setSidoCode] = useState<string | null>(null)
   const [sggCode, setSggCode] = useState<string | null>(null)
@@ -41,7 +62,12 @@ export function EmptyScreen({ index, keys, mapKey, onScan, onAdd, onOpen }: Prop
 
   return (
     <div>
-      <StartHead />
+      <StartHead>
+        <a href={`#${METHOD_SPOT}`} className={look.methodLink} onClick={toMethod}>
+          <Icon name="info" />
+          {METHOD.button}
+        </a>
+      </StartHead>
       <div className="mt-6 max-w-[720px] border-t border-line-strong pt-6">
         <h2 className="text-title font-semibold text-ink">아직 후보가 없어요</h2>
         <p className="mt-2 text-lead text-ink-2">
@@ -120,6 +146,9 @@ export function EmptyScreen({ index, keys, mapKey, onScan, onAdd, onOpen }: Prop
             {mapKey === 'missing' && <p className={`${look.help} mt-3`}>카카오 지도 열쇠를 넣으면 지도가 보여요. 숫자는 지도 없이도 볼 수 있어요.</p>}
           </>
         )}
+      </div>
+      <div id={METHOD_SPOT} tabIndex={-1} className={look.methodSpot}>
+        <MethodCard {...method} />
       </div>
     </div>
   )

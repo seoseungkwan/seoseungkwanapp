@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DongIndex } from '@/lib/location/regions'
-import type { KeysReply, KeyState } from '@/types/location'
+import { DEFAULT_SCORE_RULE, type GroupId } from '@/lib/location/score'
+import type { KeysReply, KeyState, SourceId } from '@/types/location'
 import { EmptyScreen } from './EmptyScreen'
 import { KeyStatusList } from './KeyStatusList'
 import { NoKeyScreen } from './NoKeyScreen'
@@ -10,6 +11,7 @@ import { KEY_ROWS, KEY_STATE_TEXT, showNoKey, type FreeTool } from './keys'
 
 // 처음(후보 없음)·열쇠 없음 화면(spec location AC-7917.1, design.md 14·15절, requirements '화면 글 기본값' 열쇠 상태,
 // 시안 docs/mockups/location/index.html ?s=empty·?s=no-key). 글은 명세 글 그대로 적어 견준다(시안 글과 다른 곳은 명세가 이긴다).
+// 처음 화면 시작 단계 아래 처음 안내 한 장·머리 [분석 방법](AC-7920.1, 시안 ?s=empty) — 한 장 글 자체는 method/method.test.tsx가 본다.
 // 동 목록은 지어낸 이름만(fixtures/location/dongs/index.json과 같은 모양)
 
 afterEach(cleanup)
@@ -63,7 +65,8 @@ const INDEX: DongIndex = {
 }
 
 // 화면 글·보조 글(aria-label·title·placeholder·alt)의 로마자 낱말. 명세가 허락한 이름·단위만 남아도 된다
-const ALLOWED_LATIN = ['SGIS', 'TASIS', 'KTX', 'MRI', 'CT', 'km', 'PDF', 'A4']
+// (AC-7917.1 허용 목록 — sources.test와 같음. 처음 안내 한 장의 '살필 범위 300m~3km'에 m이 나온다)
+const ALLOWED_LATIN = ['SGIS', 'TASIS', 'KTX', 'MRI', 'CT', 'km', 'm', 'PDF', 'A4', 'SZ084']
 const latinWords = (root: HTMLElement) => {
   const attrs = [...root.querySelectorAll('*')].flatMap((el) =>
     ['aria-label', 'title', 'placeholder', 'alt'].map((name) => el.getAttribute(name) ?? ''),
@@ -171,17 +174,20 @@ describe('AC-7917.1: 열쇠 없음 화면', () => {
   })
 })
 
-describe('AC-7917.1: 처음(후보 없음) 화면', () => {
-  type Shown = Pick<Parameters<typeof EmptyScreen>[0], 'index' | 'keys' | 'mapKey'>
-  const renderEmpty = (over: Partial<Shown> = {}) => {
-    const props = {
-      onScan: vi.fn<(code5: string) => void>(),
-      onAdd: vi.fn<() => void>(),
-      onOpen: vi.fn<(to: FreeTool) => void>(),
-    }
-    const shown: Shown = { index: INDEX, keys: ALL_OK, mapKey: 'ok', ...over }
-    return { ...render(<EmptyScreen {...shown} {...props} />), props }
+type Shown = Pick<Parameters<typeof EmptyScreen>[0], 'index' | 'keys' | 'mapKey' | 'weights' | 'rivalShort'>
+const renderEmpty = (over: Partial<Shown> = {}) => {
+  const props = {
+    onScan: vi.fn<(code5: string) => void>(),
+    onAdd: vi.fn<() => void>(),
+    onOpen: vi.fn<(to: FreeTool) => void>(),
+    onOpenSources: vi.fn<() => void>(),
+    onOpenSource: vi.fn<(id: SourceId) => void>(),
   }
+  const shown: Shown = { index: INDEX, keys: ALL_OK, mapKey: 'ok', weights: DEFAULT_SCORE_RULE.weights, rivalShort: '정형외과·신경외과·마취통증·재활', ...over }
+  return { ...render(<EmptyScreen {...shown} {...props} />), props }
+}
+
+describe('AC-7917.1: 처음(후보 없음) 화면', () => {
   const optionNames = (label: string) =>
     within(screen.getByLabelText(label)).getAllByRole('option').map((option) => option.textContent)
 
@@ -266,5 +272,63 @@ describe('AC-7917.1: 처음(후보 없음) 화면', () => {
   it('AC-7917.1: PC 모양 하나 — 화면 폭 따라 바뀌는 클래스가 없다', () => {
     const { container } = renderEmpty({ keys: { data: 'ok', kakao: 'failed' }, mapKey: 'missing' })
     expect(widthClasses(container)).toEqual([])
+  })
+})
+
+describe('AC-7920.1: 처음 화면의 처음 안내 한 장·머리 [분석 방법]', () => {
+  const METHOD_TITLE = '이 탭은 이렇게 분석해요'
+  const CHANGED: Record<GroupId, number> = { people: 40, rivals: 20, transit: 20, site: 10, cost: 10 }
+  const card = () => screen.getByRole('region', { name: METHOD_TITLE })
+  const follows = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+
+  beforeEach(() => {
+    Object.defineProperty(Element.prototype, 'scrollIntoView', { value: vi.fn(), configurable: true, writable: true })
+  })
+  afterEach(() => {
+    delete (Element.prototype as Partial<Element>).scrollIntoView
+  })
+
+  it("AC-7920.1: 시작 단계 아래에 '이 탭은 이렇게 분석해요' 한 장 — 시작 단추·열쇠 글 다음", () => {
+    renderEmpty()
+    const steps = screen.getByRole('list', { name: '시작하는 차례' })
+    expect(follows(steps, card())).toBe(true)
+    expect(follows(screen.getByRole('button', { name: '매물 붙여 넣기' }), card())).toBe(true)
+    expect(follows(screen.getByText('자료 열쇠(공공데이터포털 · 카카오 지도 · 카카오 장소 찾기)가 들어 있어요.'), card())).toBe(true)
+    expect(within(card()).getByRole('heading', { level: 2, name: METHOD_TITLE })).toBeTruthy()
+    expect(within(card()).getAllByRole('heading', { level: 3 })).toHaveLength(5)
+  })
+
+  it('AC-7920.1: 한 장의 셋째 줄 무게는 받은 지금 무게', () => {
+    renderEmpty({ weights: CHANGED })
+    expect(within(card()).getByText('사는 사람·수요 40 · 경쟁 20 · 교통·흐름 20 · 자리 10 · 비용 10.', { exact: false })).toBeTruthy()
+    expect(card().textContent).not.toContain('(처음 무게)')
+  })
+
+  it('AC-7920.1: 머리 [분석 방법]은 글 단추(링크) — 누르면 판을 열지 않고 그 장으로 내려간다', () => {
+    renderEmpty()
+    const link = screen.getByRole('link', { name: '분석 방법' })
+    const head = screen.getByRole('heading', { level: 1, name: '입지 분석' }).closest('div')!.parentElement!
+    expect(head.contains(link)).toBe(true)
+    const target = document.getElementById(link.getAttribute('href')!.slice(1))!
+    expect(link.getAttribute('href')).toMatch(/^#[\w-]+$/)
+    expect(target.contains(card())).toBe(true)
+    expect(fireEvent.click(link)).toBe(false)
+    expect(vi.mocked(Element.prototype.scrollIntoView).mock.contexts).toEqual([target])
+    expect(document.activeElement).toBe(target)
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('AC-7920.1: 한 장의 [근거와 출처 모두 보기]·예시 출처 줄은 받은 콜백으로', () => {
+    const { props } = renderEmpty()
+    fireEvent.click(within(card()).getByRole('link', { name: '근거와 출처 모두 보기' }))
+    fireEvent.click(within(card()).getByRole('link', { name: '행정안전부 행정동별(통반단위) 성/연령별 주민등록 인구수' }))
+    expect(props.onOpenSources).toHaveBeenCalledTimes(1)
+    expect(props.onOpenSource.mock.calls).toEqual([['pop-age']])
+  })
+
+  it('AC-7920.1: 열쇠 없음 화면에는 처음 안내 한 장·[분석 방법]이 없다(시안 ?s=no-key)', () => {
+    render(<NoKeyScreen keys={MISSING} mapKey="missing" onOpen={vi.fn()} />)
+    expect(screen.queryByRole('region', { name: METHOD_TITLE })).toBeNull()
+    expect(screen.queryByRole('link', { name: '분석 방법' })).toBeNull()
   })
 })
