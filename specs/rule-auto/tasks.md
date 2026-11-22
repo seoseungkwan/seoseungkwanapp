@@ -144,16 +144,18 @@
 - Phase: 4
 - AC: AC-7813.1, AC-7813.2
 - REQ: REQ-7813
-- Files: src/components/claim/ClaimScreen.tsx, src/components/claim/ClaimScreen.test.tsx
-- Tests: src/components/claim/ClaimScreen.test.tsx
+- Files: src/components/claim/ClaimScreen.tsx, src/components/claim/ClaimScreen.test.tsx, src/components/claim/memo/MemoPanel.test.tsx
+- Tests: src/components/claim/ClaimScreen.test.tsx, src/components/claim/memo/MemoPanel.test.tsx
 - TDD: required
 - 할 것: design 6절 `readServerSettings`·`bundle`. 읽기 하나라도 실패면 사본 점검(지금 동작) 시험, 되돌림으로 판이 바뀌면 '설정이 바뀌었어요' 띠 시험.
+- 더함(2026-11-22 전체 검사): `MemoPanel.test.tsx`가 진짜 `ClaimScreen`을 그려 가짜 supabase가 `rule_changes`·`rule_change_marks`를 모른다 → 그 시험 파일의 가짜에 `eq`·`order`·`limit`과 두 표의 빈 답(`{ data: [], error: null }`)만 더한다(시험 뜻은 그대로).
 
 ## TASK-15: 문서
 - Phase: 5
 - AC: AC-7818.1, AC-7818.2, AC-7818.3
 - REQ: REQ-7818
-- Files: docs/ADR.md, CLAUDE.md, plan.md, docs/ARCHITECTURE.md, src/lib/notices/ruleAutoDocs.test.ts
-- Tests: src/lib/notices/ruleAutoDocs.test.ts
+- Files: docs/ADR.md, CLAUDE.md, plan.md, docs/ARCHITECTURE.md, src/lib/notices/ruleAutoDocs.test.ts, src/components/staff/pay/PaySlip.test.tsx, supabase/staff.rls.test.ts
+- Tests: src/lib/notices/ruleAutoDocs.test.ts, src/components/staff/pay/PaySlip.test.tsx, supabase/staff.rls.test.ts
+- 더함(2026-11-22 전체 검사): 직원 시험 둘(`PaySlip.test.tsx` AC-7615.10, `supabase/staff.rls.test.ts` AC-7601.1)이 'ADR-039가 문서 맨 끝'을 본다 → ADR-039 글을 다음 `### ADR-` 앞에서 잘라 보게만 고친다(시험 뜻은 그대로).
 - TDD: required
 - 할 것: design 12절 ADR-040을 `docs/ADR.md`에 옮기고 ADR-038 '점검 규칙 연결' 줄 끝에 `(ADR-040이 바꿈)`, `CLAUDE.md`에 예외 한 줄, `plan.md`·`docs/ARCHITECTURE.md`에 design 12절 '다른 문서' 줄만. 시험은 `src/lib/inventory/inventoryDocs.test.ts`와 같은 틀(글자로 읽기).
