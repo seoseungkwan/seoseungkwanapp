@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- 지어낸 견본: 국립중앙의료원 전국 병·의원 찾기(15000736) 위치 조회 1쪽 모양. 의원 이름·주소·전화·기관 번호는 모두 지어낸 값이다 -->
+<response>
+  <header>
+    <resultCode>00</resultCode>
+    <resultMsg>NORMAL SERVICE.</resultMsg>
+  </header>
+  <body>
+    <items>
+      <item>
+        <cnt>1</cnt>
+        <distance>0.03</distance>
+        <dutyAddr>가상도 가람구 푸른로 12, 3층 (나래동)</dutyAddr>
+        <dutyDiv>C</dutyDiv>
+        <dutyDivName>의원</dutyDivName>
+        <dutyName>푸른숲정형외과의원</dutyName>
+        <dutyTel1>000-0000-0001</dutyTel1>
+        <dutyTime1c>1830</dutyTime1c>
+        <dutyTime1s>0900</dutyTime1s>
+        <dutyTime2c>1830</dutyTime2c>
+        <dutyTime2s>0900</dutyTime2s>
+        <dutyTime3c>1830</dutyTime3c>
+        <dutyTime3s>0900</dutyTime3s>
+        <dutyTime4c>1830</dutyTime4c>
+        <dutyTime4s>0900</dutyTime4s>
+        <dutyTime5c>1830</dutyTime5c>
+        <dutyTime5s>0900</dutyTime5s>
+        <dutyTime6c>1300</dutyTime6c>
+        <dutyTime6s>0900</dutyTime6s>
+        <endTime>1830</endTime>
+        <hpid>F0000001</hpid>
+        <latitude>37.5003</latitude>
+        <longitude>127.0301</longitude>
+        <rnum>1</rnum>
+        <startTime>0900</startTime>
+      </item>
+      <item>
+        <cnt>2</cnt>
+        <distance>0.07</distance>
+        <dutyAddr>가상도 가람구 새벽길 5, 2층 (나래동)</dutyAddr>
+        <dutyDiv>C</dutyDiv>
+        <dutyDivName>의원</dutyDivName>
+        <dutyName>새벽별 마취통증의학과 의원</dutyName>
+        <dutyTel1>000-0000-0002</dutyTel1>
+        <dutyTime1c>2100</dutyTime1c>
+        <dutyTime1s>0830</dutyTime1s>
+        <dutyTime2c>2100</dutyTime2c>
+        <dutyTime2s>0830</dutyTime2s>
+        <dutyTime3c>2100</dutyTime3c>
+        <dutyTime3s>0830</dutyTime3s>
+        <dutyTime4c>2100</dutyTime4c>
+        <dutyTime4s>0830</dutyTime4s>
+        <dutyTime5c>2100</dutyTime5c>
+        <dutyTime5s>0830</dutyTime5s>
+        <dutyTime6c>1500</dutyTime6c>
+        <dutyTime6s>0900</dutyTime6s>
+        <dutyTime7c>1300</dutyTime7c>
+        <dutyTime7s>1000</dutyTime7s>
+        <dutyTime8c>1300</dutyTime8c>
+        <dutyTime8s>1000</dutyTime8s>
+        <endTime>2100</endTime>
+        <hpid>F0000002</hpid>
+        <latitude>37.5008</latitude>
+        <longitude>127.0295</longitude>
+        <rnum>2</rnum>
+        <startTime>0830</startTime>
+      </item>
+      <item>
+        <cnt>3</cnt>
+        <distance>0.12</distance>
+        <dutyAddr>가상도 가람구 하늘로 30 (나래동)</dutyAddr>
+        <dutyDiv>G</dutyDiv>
+        <dutyDivName>한의원</dutyDivName>
+        <dutyName>튼튼&amp;바른한의원</dutyName>
+        <dutyTel1>000-0000-0003</dutyTel1>
+        <dutyTime1c>1930</dutyTime1c>
+        <dutyTime1s>0930</dutyTime1s>
+        <dutyTime2c>1930</dutyTime2c>
+        <dutyTime2s>0930</dutyTime2s>
+        <dutyTime3c>1930</dutyTime3c>
+        <dutyTime3s>0930</dutyTime3s>
+        <dutyTime4c>1930</dutyTime4c>
+        <dutyTime4s>0930</dutyTime4s>
+        <dutyTime5c>1930</dutyTime5c>
+        <dutyTime5s>0930</dutyTime5s>
+        <dutyTime6c>1400</dutyTime6c>
+        <dutyTime6s>0930</dutyTime6s>
+        <endTime>1930</endTime>
+        <hpid>F0000003</hpid>
+        <latitude>37.4991</latitude>
+        <longitude>127.0312</longitude>
+        <rnum>3</rnum>
+        <startTime>0930</startTime>
+      </item>
+      <item>
+        <cnt>4</cnt>
+        <distance>0.2</distance>
+        <dutyAddr>가상도 가람구 다솜로 8 (가람동)</dutyAddr>
+        <dutyDiv>C</dutyDiv>
+        <dutyDivName>의원</dutyDivName>
+        <dutyName>다솜재활의학과의원</dutyName>
+        <dutyTel1>000-0000-0004</dutyTel1>
+        <hpid>F0000004</hpid>
+        <latitude>37.4985</latitude>
+        <longitude>127.0283</longitude>
+        <rnum>4</rnum>
+      </item>
+      <item>
+        <cnt>5</cnt>
+        <distance>0.25</distance>
+        <dutyAddr>가상도 가람구 이름로 1 (가람동)</dutyAddr>
+        <dutyDiv>C</dutyDiv>
+        <dutyDivName>의원</dutyDivName>
+        <dutyName>자리모름의원</dutyName>
+        <dutyTel1>000-0000-0005</dutyTel1>
+        <dutyTime1c>1800</dutyTime1c>
+        <dutyTime1s>0900</dutyTime1s>
+        <hpid>F0000005</hpid>
+        <rnum>5</rnum>
+      </item>
+    </items>
+    <numOfRows>100</numOfRows>
+    <pageNo>1</pageNo>
+    <totalCount>7</totalCount>
+  </body>
+</response>
