@@ -421,18 +421,13 @@ function base(deps: CollectDeps) {
       return got({ bands, total: sum(bands) }, pop.asOf)
     })
 
-  // 경로당·학교·시장 몸통: 시군구 이름 + 시도 이름(design.md 17절 10 — 경로당 제공기관·학교 교육청은 시도 이름이 없으면 요청이 0개).
-  // query.ts는 선택 칸 sidoName을 받지만 몸통 모양(types/location.ts)의 이 셋에는 아직 칸이 없어 변수로 만들어 넘긴다
-  const bySido = (kind: 'senior' | 'school' | 'market', s: Sgg): Query => {
-    const q = { kind, sggName: s.name, sidoName: s.sido.name }
-    return q
-  }
-  // 시군구 이름으로 받는 시설(후보·견줄 값·훑기가 같은 몸통으로 나눠 쓴다)
+  // 시군구 이름으로 받는 시설(후보·견줄 값·훑기가 같은 몸통으로 나눠 쓴다). 몸통은 시군구 이름 + 시도 이름
+  // (design.md 17절 10 — 경로당 제공기관·학교 교육청은 시도 이름이 없으면 요청이 0개)
   const facilities = {
-    senior: (s: Sgg) => ask(bySido('senior', s), READ.places),
+    senior: (s: Sgg) => ask({ kind: 'senior', sggName: s.name, sidoName: s.sido.name }, READ.places),
     gym: (s: Sgg) => ask({ kind: 'gym', sggName: s.name, sidoName: s.sido.name }, READ.gyms),
-    school: (s: Sgg) => ask(bySido('school', s), READ.places),
-    market: (s: Sgg) => ask(bySido('market', s), READ.places),
+    school: (s: Sgg) => ask({ kind: 'school', sggName: s.name, sidoName: s.sido.name }, READ.places),
+    market: (s: Sgg) => ask({ kind: 'market', sggName: s.name, sidoName: s.sido.name }, READ.places),
     accident: (s: Sgg) => ask({ kind: 'accident', sidoName: s.sido.name, sggName: s.name }, READ.accidents),
   }
 

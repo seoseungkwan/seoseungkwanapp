@@ -56,10 +56,12 @@ const LINE_TABLE = tableAfter('근거 나눔:')
 const MORE_TABLE = tableAfter('[더 보기] 네 줄:')
 const REPORT_TABLE = tableAfter("**한 장 보고서 둘째 장 '이렇게 분석했어요'**")
 
-// 명세(requirements 승인 3 '소득·쓸 힘 묶음 줄의 한국사회보장정보원은 이렇게 봤어요·보고서 둘째 장에도 한 마디 더한다')가 더한 말
-const WELFARE_LINE = ' · 한국사회보장정보원 의료급여·차상위'
-const WELFARE_MORE = ' · 한국사회보장정보원 복지사업 시군구별 수급권자 현황(의료급여·차상위, 시·군·구)'
+// 명세(requirements 승인 3 '소득·쓸 힘 묶음 줄의 한국사회보장정보원은 이렇게 봤어요·보고서 둘째 장에도 한 마디 더한다')가 더한 말.
+// 기준 날짜 열쇠 [[welfare]](출처 welfare)는 tasks.md TASK-48 (c)가 더했다 — 한 줄·[더 보기]·보고서 기준 날짜 칸에 의료급여 날짜가 나온다
+const WELFARE_LINE = ' · 한국사회보장정보원 의료급여·차상위([[welfare]])'
+const WELFARE_MORE = ' · 한국사회보장정보원 복지사업 시군구별 수급권자 현황(의료급여·차상위, 시·군·구, [[welfare]])'
 const WELFARE_ORG = ' · 한국사회보장정보원'
+const WELFARE_DATE = ' · [[welfare:d]]'
 
 const RIVAL4 = '정형외과·신경외과·마취통증·재활'
 const ctxOf = (over: Partial<HowCtx> = {}): HowCtx => ({
@@ -181,6 +183,26 @@ describe('AC-7920.2 묶음 열셋 — 이렇게 봤어요 한 줄·[더 보기] 
     expect(HOW.income.line.what).toContain('한국사회보장정보원')
     expect(HOW.income.more.what).toContain('한국사회보장정보원')
     expect(REPORT.rows.find((r) => r.id === 'income')!.orgs).toBe(`국세청 · 국토교통부${WELFARE_ORG}`)
+  })
+
+  it('AC-7920.2·AC-7920.5: 의료급여·차상위 기준 날짜 — [[welfare]]는 welfare 출처 날짜로 채워 소득·쓸 힘 한 줄·[더 보기]·보고서 기준 날짜 칸에 나오고, 날짜가 없으면 표시만 빠진다', () => {
+    const asked: string[] = []
+    const ctx = ctxOf({
+      asOf: (src) => {
+        asked.push(src)
+        return src === 'welfare' ? '2025-12-01' : null
+      },
+    })
+    const h = filledHow('income', ctx)
+    expect(asked).toContain('welfare')
+    expect(h.line.what).toBe('국세청 근로소득 · 국토교통부 실거래가 · 한국사회보장정보원 의료급여·차상위(기준 2025년 12월 1일)')
+    expect(h.more.what).toContain('한국사회보장정보원 복지사업 시군구별 수급권자 현황(의료급여·차상위, 시·군·구, 기준 2025년 12월 1일)')
+    expect(reportRows(ctx).find((r) => r.id === 'income')!.dates).toBe('2025년 12월 1일')
+    const all = ctxOf({ asOf: (src) => ({ income: '2024-12-31', 'apt-trade': '2026-10-31', welfare: '2025-12-01' })[src as string] ?? null })
+    expect(reportRows(all).find((r) => r.id === 'income')!.dates).toBe('2024년 12월 31일 · 2026년 10월 31일 · 2025년 12월 1일')
+    const none = filledHow('income', ctxOf())
+    expect(none.line.what).toBe('국세청 근로소득 · 국토교통부 실거래가 · 한국사회보장정보원 의료급여·차상위')
+    expect(none.more.what).toContain('(의료급여·차상위, 시·군·구)')
   })
 })
 
@@ -350,7 +372,7 @@ describe('AC-7920.5 보고서 둘째 장 — 이렇게 분석했어요', () => {
   it('AC-7920.5: 기준 날짜 칸은 그 후보 그날 값의 출처별 기준 날짜(같은 묶음 여럿은 ` · `), 없으면 `–`', () => {
     expect(REPORT.rows.map((r) => r.dates)).toEqual([
       '[[pop:d]]',
-      '[[income:d]] · [[deal:d]]',
+      `[[income:d]] · [[deal:d]]${WELFARE_DATE}`,
       '[[acc:d]] · [[ind:d]]',
       '[[hira:d]] · [[permit:d]]',
       '[[hira:d]]',
@@ -386,8 +408,10 @@ describe('AC-7920.5 보고서 둘째 장 — 이렇게 분석했어요', () => {
 })
 
 describe('AC-7920.6 글 한 곳 — 출처 표시·근거·영어 낱말', () => {
-  it('AC-7920.6: 열쇠 → 출처 id 표가 requirements 그대로이고 모두 SOURCES에 있다', () => {
+  it('AC-7920.6: 열쇠 → 출처 id 표가 requirements 그대로(+ TASK-48 (c)의 welfare)이고 모두 SOURCES에 있다', () => {
     expect(HOW_KEYS).toEqual({
+      // 의료급여·차상위 기준 날짜(tasks.md TASK-48 (c))
+      welfare: 'welfare',
       pop: 'pop-age',
       sgis: 'dongs',
       apt: 'apt-info',

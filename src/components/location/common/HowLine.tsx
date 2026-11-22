@@ -1,36 +1,20 @@
 import { useId } from 'react'
 import { ds } from '@/components/ui/classes'
+import { CHIP_TEXT, HOW_TEXT, type HowChip } from '@/lib/location/method'
 
 // 묶음마다 '이렇게 봤어요'(시안 ?s=candidate .how, AC-7920.2): 묶음 제목 바로 아래 한 줄
 // `이렇게 봤어요 {무엇을 봤나} · {어떻게 셌나} · {왜 중요한가}` + 근거 칩 + [더 보기]/[접기], 펼치면 네 줄(무엇을 봤나·어떻게 셌나·왜 중요한가·근거).
-// 글은 만들지 않는다 — 부르는 묶음이 method.ts `HOW` 글을 `fillHow`로 채워 넘긴 글만 그린다.
+// 묶음 글은 만들지 않는다 — 부르는 묶음이 method.ts `HOW` 글을 `fillHow`로 채워 넘긴 글만 그린다.
+// 칩 종류·칩 글·머리·단추·네 줄 이름도 method.ts 한 곳(HowChip·CHIP_TEXT·HOW_TEXT)에서 온다(TASK-48 (d)).
 // 펼침도 제 상태로 두지 않는다(props) — 범위를 바꿔 다시 그려도 부르는 쪽이 쥔 값 그대로다
-
-/** 근거 칩(design.md 19절): 연구 근거 · 법 근거 · 법 근거 + 흔히 보는 기준(칩 둘) · 흔히 보는 기준 */
-export type HowChip = 'research' | 'law' | 'law-common' | 'common'
 
 type Tone = 'accent' | 'neutral'
 
-// 연구·법 = 파란 칩, 흔히 보는 기준 = 회색 칩
-const CHIPS: Readonly<Record<HowChip, readonly (readonly [Tone, string])[]>> = {
-  research: [['accent', '연구 근거']],
-  law: [['accent', '법 근거']],
-  'law-common': [
-    ['accent', '법 근거'],
-    ['neutral', '흔히 보는 기준'],
-  ],
-  common: [['neutral', '흔히 보는 기준']],
-}
+// 연구·법 = 파란 칩, 흔히 보는 기준 = 회색 칩(그 칩 글은 CHIP_TEXT.common 하나뿐)
+const COMMON = new Set(CHIP_TEXT.common)
+const toneOf = (label: string): Tone => (COMMON.has(label) ? 'neutral' : 'accent')
 
-const HEAD = '이렇게 봤어요'
-const MORE = '더 보기'
-const LESS = '접기'
-const ROWS = [
-  ['what', '무엇을 봤나'],
-  ['how', '어떻게 셌나'],
-  ['why', '왜 중요한가'],
-  ['basis', '근거'],
-] as const
+const ROWS = (['what', 'how', 'why', 'basis'] as const).map((key) => [key, HOW_TEXT.rows[key]] as const)
 
 // 시안 .how(13px/20px · ink-2 · 위 8px · 폭 980px까지) · .how-l .tbtn(20px · 좌우 2px · 왼쪽 4px) · .how-more(위 선 · 줄마다 104px 이름 | 글, 아래 선)
 const WRAP = 'mt-2 max-w-[980px] text-small text-ink-2'
@@ -55,18 +39,18 @@ export function HowLine({ chip, line, more, open, onToggle }: HowLineProps) {
   return (
     <div className={WRAP}>
       <p>
-        <b className="mr-1 font-semibold text-ink">{HEAD}</b> {line.what}
+        <b className="mr-1 font-semibold text-ink">{HOW_TEXT.label}</b> {line.what}
         <Sep />
         {line.how}
         <Sep />
         {line.why}
-        {CHIPS[chip].map(([tone, label]) => (
-          <span key={label} data-chip={tone} className={`ml-1.5 ${ds.chip[tone]}`}>
+        {CHIP_TEXT[chip].map((label) => (
+          <span key={label} data-chip={toneOf(label)} className={`ml-1.5 ${ds.chip[toneOf(label)]}`}>
             {label}
           </span>
         ))}
         <button type="button" className={TOGGLE} aria-expanded={open} aria-controls={listId} onClick={onToggle}>
-          {open ? LESS : MORE}
+          {open ? HOW_TEXT.less : HOW_TEXT.more}
         </button>
       </p>
       <dl id={listId} className={LIST} hidden={!open}>

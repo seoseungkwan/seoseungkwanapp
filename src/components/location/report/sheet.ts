@@ -15,7 +15,7 @@ import { areaText } from '@/lib/location/area'
 import { distText } from '@/lib/location/coords'
 import { calcCosts, checkCosts } from '@/lib/location/costs'
 import { deptOf, deptOfText, deptRole, rivalShortText } from '@/lib/location/depts'
-import { candidateListing, flagInputOf, rivalCount, scoreFactsOf, shownAsOf, shownValue, sourceAsOf } from '@/lib/location/facts'
+import { candidateListing, flagInputOf, rivalCount, scoreFactsOf, shownValue, sourceAsOf } from '@/lib/location/facts'
 import { pickFlags } from '@/lib/location/flags'
 import { GAP_DAYS, GAP_SLOTS, gapTable } from '@/lib/location/hours'
 import { compareListings, perPyeongOf } from '@/lib/location/listings'
@@ -34,7 +34,6 @@ import type {
   Snapshot,
   SnapshotKey,
   SnapshotValue,
-  SourceId,
   YesNo,
 } from '@/types/location'
 
@@ -145,10 +144,6 @@ const SNAPSHOT_FIELDS = [
   'stores',
   'welfare',
 ] as const satisfies readonly SnapshotKey[]
-
-// 비급여(체외충격파 값)·진료 시간은 모을 때 의원 목록(rivals) 칸의 의원마다 detail로 담긴다 — 그날 값에 따로 칸이 없어
-// 둘째 장 기준 날짜는 그 값이 든 rivals 칸의 기준 날짜를 쓴다
-const IN_RIVALS: ReadonlySet<SourceId> = new Set(['nonpay', 'hosp-hours'])
 
 const VIOLATION_TEXT: Record<YesNo, string> = {
   yes: '있음',
@@ -418,7 +413,8 @@ function basisOf(input: SheetInput, rule: ScoreRule, saved: string | null): Basi
   const c = input.candidate
   const s = c.snapshot
   const ctx: HowCtx = {
-    asOf: (src) => sourceAsOf(s, src) ?? (IN_RIVALS.has(src) ? shownAsOf(s?.rivals) : null),
+    // 제 칸이 없는 출처(진료비·진료 시간·의원 상세 → 의원 목록 칸, 아파트 기본 정보 → 아파트 목록 칸)는 sourceAsOf가 담은 칸 날짜로 잇는다
+    asOf: (src) => sourceAsOf(s, src),
     radiusM: c.radiusM,
     sggName: shownValue(s?.place)?.sggName ?? null,
     rivalShort: rivalShortText(input.deptRule),

@@ -121,16 +121,14 @@ function fakeAsk(q: Query): Promise<QueryReply> {
 }
 
 /** checkSnapshot을 지나는 그날 값(기준 날짜를 모두 'YYYY-MM-DD'로) — 저장된 값은 이 모양이다.
- * 출처 id는 모으기가 적는 것(collect.ts SRC, 모두 SOURCES에 있음)으로 맞춘다 — frame.test.data의 옛 id(senior-centers 등)는 SOURCES에 없다 */
+ * 출처 id는 frame.test.data 그대로(모으기 collect.ts SRC와 같은 id, 모두 SOURCES에 있음) */
 const ymdOf = (s: string) => (s.length === 4 ? `${s}-12-31` : s.length === 7 ? `${s}-01` : s)
-const SRC_FIX: Partial<Record<string, string>> = { seniors: 'senior', gyms: 'gym', accidents: 'accident', apts: 'apt-list' }
 function validSnapshot(): Snapshot {
   const s = makeSnapshot()
   const out: Record<string, unknown> = { ...s }
   for (const key of SNAPSHOT_KEYS) {
     const got = s[key]
-    const src = SRC_FIX[key] ?? got.src
-    out[key] = got.ok ? { ...got, src, asOf: ymdOf(got.asOf) } : { ...got, src }
+    out[key] = got.ok ? { ...got, asOf: ymdOf(got.asOf) } : got
   }
   return out as Snapshot
 }

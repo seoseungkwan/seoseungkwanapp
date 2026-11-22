@@ -52,8 +52,7 @@ const DESIGN_HOSTS: Readonly<Record<KeyKind, readonly string[]>> = {
 const AT = { lat: 37.5665, lng: 126.978 }
 const LOT = { sgg: '11110', bjdong: '10100', bun: '0001', ji: '0000', plat: '0' as const }
 // 경로당·학교·시장은 시도 이름으로 거른다(design.md 17절 10 — 경로당·학교는 시도 이름이 없으면 요청이 0개다).
-// query.ts는 선택 칸 sidoName을 받지만 몸통 모양(types/location.ts)의 이 셋에는 아직 칸이 없어 따로 붙인다
-const SIDO = { sidoName: '서울특별시' }
+// 몸통 모양(types/location.ts Query)의 이 셋에도 선택 칸 sidoName이 있다(TASK-48 (a))
 const SAMPLES: Readonly<Record<QueryKind, Query>> = {
   'k-address': { kind: 'k-address', q: '서울특별시청' },
   'k-point': { kind: 'k-point', at: AT },
@@ -79,9 +78,9 @@ const SAMPLES: Readonly<Record<QueryKind, Query>> = {
   nonpay: { kind: 'nonpay', ykiho: 'FAKEYKIHO123', item: 'MM045' },
   'clinic-license': { kind: 'clinic-license', event: 'open', from: '2025-10-01', to: '2025-10-31' },
   gym: { kind: 'gym', sggName: '종로구' },
-  senior: { kind: 'senior', sggName: '종로구', ...SIDO },
-  market: { kind: 'market', sggName: '종로구', ...SIDO },
-  school: { kind: 'school', sggName: '종로구', ...SIDO },
+  senior: { kind: 'senior', sggName: '종로구', sidoName: '서울특별시' },
+  market: { kind: 'market', sggName: '종로구', sidoName: '서울특별시' },
+  school: { kind: 'school', sggName: '종로구', sidoName: '서울특별시' },
   welfare: { kind: 'welfare', sgg: '11110', sidoNames: ['서울특별시'], sggNames: ['종로구'] },
 }
 

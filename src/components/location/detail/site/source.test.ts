@@ -37,6 +37,10 @@ describe('AC-7909.4·AC-7909.5: 부품 소스', () => {
     expect(FILES.filter((file) => banned.test(read(file)))).toEqual([])
   })
 
+  it('AC-7909.4: /location 안 링크(법 근거 → 근거와 출처)는 평범한 <a> — next/link를 쓰지 않는다(지도 CSP는 새 문서에서만 바뀐다, 셸 ShellLink와 같은 까닭)', () => {
+    expect(FILES.filter((file) => /from\s+['"]next\/link['"]/.test(read(file)))).toEqual([])
+  })
+
   it('AC-7909.4: 바깥 링크(target)는 NEW_TAB(새 창 · noopener noreferrer)으로만 연다', () => {
     const raw = FILES.filter((file) => /target\s*=|_blank/.test(read(file)))
     expect(raw).toEqual([])

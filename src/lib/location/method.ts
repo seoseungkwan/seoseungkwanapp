@@ -52,8 +52,9 @@ export const HOW_FRAME: Readonly<Record<HowId, string>> = {
   future: 'future',
 }
 
-/** 글 속 [[열쇠]] → SOURCES id(requirements 승인 3 표 그대로) */
+/** 글 속 [[열쇠]] → SOURCES id(requirements 승인 3 표 그대로 + 의료급여·차상위 welfare — tasks.md TASK-48 (c)) */
 export const HOW_KEYS: Readonly<Record<string, SourceId>> = {
+  welfare: 'welfare',
   pop: 'pop-age',
   sgis: 'dongs',
   apt: 'apt-info',
@@ -112,12 +113,12 @@ export const HOW: Readonly<Record<HowId, HowText>> = {
     name: '소득·쓸 힘',
     chip: 'common',
     line: {
-      what: '국세청 근로소득([[income]]) · 국토교통부 실거래가([[deal]]) · 한국사회보장정보원 의료급여·차상위',
+      what: '국세청 근로소득([[income]]) · 국토교통부 실거래가([[deal]]) · 한국사회보장정보원 의료급여·차상위([[welfare]])',
       how: '소득은 동 단위가 없어 시·군·구 평균, 거래가는 범위 법정동의 지난 6달 ㎡당 평균이에요',
       why: '건강보험이 안 되는 진료(비급여)를 받을 형편을 짐작해요',
     },
     more: {
-      what: '국세청 근로소득 연말정산 신고현황(시·군·구, 사는 곳 기준, [[income]]) · 국토교통부 아파트·상업업무용 매매 실거래가([[deal]], 지난 6달) · 한국사회보장정보원 복지사업 시군구별 수급권자 현황(의료급여·차상위, 시·군·구)',
+      what: '국세청 근로소득 연말정산 신고현황(시·군·구, 사는 곳 기준, [[income]]) · 국토교통부 아파트·상업업무용 매매 실거래가([[deal]], 지난 6달) · 한국사회보장정보원 복지사업 시군구별 수급권자 현황(의료급여·차상위, 시·군·구, [[welfare]])',
       how: '소득은 동 단위 공개 자료가 없어 {시군구} 평균을 그대로 보이고 시·도 평균과 견줘요. 거래가는 범위에 걸친 법정동의 지난 6달 거래를 ㎡당으로 평균 내 시·군·구 평균과 견줘요.',
       why: '체외충격파·도수치료처럼 환자가 다 내는 진료는 동네 형편에 따라 찾는 정도가 달라요.',
       basis: '흔히 보는 기준이에요. 소득과 정형외과 이용을 이은 연구는 찾지 못해 점수에는 넣지 않고 보여만 줘요.',
@@ -435,7 +436,7 @@ const REPORT_ROWS: readonly ReportRow[] = [
     id: 'income',
     name: HOW.income.name,
     orgs: '국세청 · 국토교통부 · 한국사회보장정보원',
-    dates: '[[income:d]] · [[deal:d]]',
+    dates: '[[income:d]] · [[deal:d]] · [[welfare:d]]',
     method: '소득은 시·군·구 평균, 거래가는 범위 법정동 6달 ㎡당 평균',
     missing: '동 단위 소득',
   },

@@ -706,6 +706,16 @@ describe("AC-7920.5: 둘째 장 '이렇게 분석했어요'", () => {
     })
   })
 
+  it('AC-7920.5: 의료급여·차상위를 받았으면 소득·쓸 힘 기준 날짜 칸 끝에 그 기준 날짜(welfare 칸)가 붙는다', () => {
+    const welfare = ok(
+      { sggName: '예시구', ym: '2025-12', medical: 9000, basic: 12000, nearPoor: 4000, population: 400000, basis: null },
+      'welfare',
+      '2025-12-01',
+    )
+    render(<OnePageReport {...baseProps({ candidate: { ...CANDIDATE, snapshot: { ...SNAP, welfare } } })} />)
+    expect(basisRow('소득·쓸 힘')[2]).toBe('2025년 12월 31일 · 2026년 10월 31일 · 2025년 12월 1일')
+  })
+
   it('AC-7920.5: 그날 값이 없으면 출처 날짜 칸은 `–`이고 글로 정한 칸(열 때마다·링크만·적은 날)은 그대로다', () => {
     render(<OnePageReport {...baseProps({ candidate: { ...CANDIDATE, snapshot: null, snapshotAt: null } })} />)
     const dates = basisRows().map((r) => r[2])

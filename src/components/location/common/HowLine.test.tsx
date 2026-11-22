@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { type HowChip, HowLine, type HowLineProps } from './HowLine'
+import { CHIP_TEXT, HOW_TEXT, type HowChip } from '@/lib/location/method'
+import { HowLine, type HowLineProps } from './HowLine'
 
 afterEach(cleanup)
 
@@ -133,9 +134,26 @@ describe("AC-7920.2: '이렇게 봤어요' 한 줄 HowLine", () => {
     }
   })
 
-  it('AC-7920.2: 소스는 props·콜백만 — method.ts를 부르지 않고, 제 상태·저장·부르기·폰 전용 모양(max-md:)·ds.textButton·토큰 밖 색이 없다', () => {
+  it('AC-7920.2: 칩 종류·칩 글·머리·단추·네 줄 이름은 method.ts 한 곳(HowChip·CHIP_TEXT·HOW_TEXT) — HowLine 소스에 따로 적지 않고, 그린 글이 그 값 그대로다', () => {
     const src = readFileSync(join(process.cwd(), 'src/components/location/common/HowLine.tsx'), 'utf8')
-    expect(src).not.toMatch(/@\/lib\/location\/method|from '\.\.?\/.*method'/)
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:\\])\/\/[^\n]*/g, '$1')
+    expect(code).toMatch(/from '@\/lib\/location\/method'/)
+    expect(code).not.toMatch(/export type HowChip\b|type HowChip\s*=/)
+    for (const own of ['연구 근거', '법 근거', '흔히 보는 기준', '이렇게 봤어요', '더 보기', '접기', '무엇을 봤나', '어떻게 셌나', '왜 중요한가', "'근거'"]) {
+      expect(code, own).not.toContain(own)
+    }
+    for (const chip of Object.keys(CHIP_TEXT) as HowChip[]) {
+      render(<HowLine {...props({ chip, open: true })} />)
+      expect(Array.from(lineOf().querySelectorAll('[data-chip]')).map((c) => c.textContent), chip).toEqual(CHIP_TEXT[chip])
+      expect(screen.getByText(HOW_TEXT.label).tagName).toBe('B')
+      expect(screen.getByRole('button').textContent).toBe(HOW_TEXT.less)
+      expect(Array.from(document.querySelectorAll('dt')).map((dt) => dt.textContent)).toEqual(Object.values(HOW_TEXT.rows))
+      cleanup()
+    }
+  })
+
+  it('AC-7920.2: 소스는 props·콜백만 — 제 상태·저장·부르기·폰 전용 모양(max-md:)·ds.textButton·토큰 밖 색이 없다', () => {
+    const src = readFileSync(join(process.cwd(), 'src/components/location/common/HowLine.tsx'), 'utf8')
     expect(src).not.toMatch(/useState|useReducer|useEffect/)
     expect(src).not.toMatch(/supabase|fetch\(|localStorage|sessionStorage|console\./)
     expect(src).not.toContain('max-md:')

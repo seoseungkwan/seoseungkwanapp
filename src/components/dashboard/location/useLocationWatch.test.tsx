@@ -234,6 +234,26 @@ describe('useLocationWatch: 확인하고 줄을 넣는다 (AC-7915.1)', () => {
     expect(result.current.events).toEqual([])
   })
 
+  it('AC-7915.1: 인허가 줄의 업태(type)도 옮긴다 — 치과의원·한의원을 경쟁으로 고르면 이름·과목 글에 과목이 없어도 업태로 잡혀 줄로 넣는다', async () => {
+    vi.mocked(readDeptRule).mockResolvedValue(rule(['dental', 'korean']))
+    answerLicense({
+      [`open ${FIRST.from} ${FIRST.to}`]: ok([
+        { ...row('예시미소의원', '', { openedOn: '2026-11-06' }, NEAR), type: '치과의원' },
+        { ...row('예시한결의원', '', { openedOn: '2026-11-07' }, NEAR), type: '한의원' },
+        { ...row('예시바른의원', '', { openedOn: '2026-11-08' }, NEAR), type: '의원' }, // 업태가 의원이면 경쟁 아님
+      ]),
+      [`close ${FIRST.from} ${FIRST.to}`]: ok([]),
+    })
+    draw()
+    await flush()
+    expect(vi.mocked(addEvents).mock.calls[0]![1].map((e) => [e.candidateId, e.kind, e.clinicName])).toEqual([
+      [A.id, 'open', '예시미소의원'],
+      [A.id, 'open', '예시한결의원'],
+      [B.id, 'open', '예시미소의원'],
+      [B.id, 'open', '예시한결의원'],
+    ])
+  })
+
   it('AC-7915.1: 경쟁 과목이 0개면 clinic-license를 부르지 않고, 넣기·확인 날 고치기도 없으며 알림 줄도 없다', async () => {
     const spies = consoleSpies()
     vi.mocked(readDeptRule).mockResolvedValue(rule([]))
