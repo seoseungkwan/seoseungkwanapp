@@ -1,6 +1,6 @@
 # 설계: 입지 분석
 
-> 값과 동작의 기준은 requirements.md다. 이 문서는 어디에 무엇을 두는지와 정한 값을 적는다. 화면 글자·자리는 승인된 시안(`docs/mockups/location/`, 2026-11-22)을 따른다. ADR 글은 16절(TASK-1이 `docs/ADR.md`로 옮김). '(Claude 판단)'은 고쳐도 되는 값이다.
+> 값과 동작의 기준은 requirements.md다. 이 문서는 어디에 무엇을 두는지와 정한 값을 적는다. 화면 자리는 승인된 시안(`docs/mockups/location/`, 2026-11-22·승인 2)을 따르고, 화면 글은 requirements.md '화면 글 기본값'이 먼저다. ADR 글은 16절(TASK-1이 `docs/ADR.md`로 옮김). '(Claude 판단)'은 고쳐도 되는 값이다.
 
 ## 1. 한눈에
 ```
@@ -24,7 +24,7 @@
 | `src/types/location.ts` | 종류·몸통·답(`QueryKind`·`Query`·`QueryReply`)·그날 값(`Snapshot`·`Got`)·표 줄 모양 |
 | `src/lib/location/query.ts` | 종류 목록·몸통 검사 `checkQuery`(화면·서버 같이 씀) |
 | `src/lib/location/sources.ts` | `SOURCES`(출처)·`LAW_BASIS`(법 근거)·`MISSING`(없는 자료 글) — 한 곳 |
-| `src/lib/location/{coords,regions,area,money}.ts` | EPSG:5174 바꾸기·거리·표본 점·동 찾기·동 몫·코드 만들기·평/㎡·돈 글자 |
+| `src/lib/location/{coords,regions,area,money}.ts` | EPSG:5174 바꾸기·거리·거리 글자(`distText`)·표본 점·동 찾기·동 몫·코드 만들기·평/㎡·돈 글자 — 거리·평·돈은 이 넷에만 두고 다른 파일은 불러 쓴다 |
 | `src/lib/location/{score,flags}.ts` | 점수·위험 신호 |
 | `src/lib/location/{costs,schedule,checklist,hours,links,watch,listings}.ts` | 비용·일정·점검 항목·진료 시간 빈틈·바깥 링크·알림 판정·매물 견주기 |
 | `src/lib/location/{collect,snapshot}.ts` | 자료 모으기 흐름·그날 값 검사·크기 줄이기 |
@@ -34,7 +34,7 @@
 | `public/location/transit/` | `index.json` + `bus/<시군구 5자리>.json`(버스 정류장 좌표 15067528) + `rail.json`(도시철도역 좌표 15013205)(TASK-30) |
 | `src/lib/storage/location.ts` | 표 여섯 읽기·쓰기 + 사진 올리기·지우기 |
 | `src/app/api/ai/location/{guard,fetchSource,registry}.ts` | 관리자 확인·바깥 부르기·종류 → 읽는 곳 |
-| `src/app/api/ai/location/sources/{kakao,people,homes,trades,clinics,clinicHours,nonpay,licenses,buildings,stores,facilities,flow}.ts` | 묶음마다 `Adapter`(요청 만들기·답 읽기, 순수). 묶음 = 4절 표의 종류 묶음(TASK 하나씩) |
+| `src/app/api/ai/location/sources/{kakao,people,homes,trades,clinics,clinicHours,nonpay,licenses,buildings,stores,facilities,flow,welfare}.ts` | 묶음마다 `Adapter`(요청 만들기·답 읽기, 순수). 묶음 = 4절 표의 종류 묶음(TASK 하나씩) |
 | `src/app/api/ai/location/{query,keys}/route.ts` | `POST` 바깥 자료 · `GET` 열쇠 상태 |
 | `src/components/location/map/**` | 카카오 SDK 불러오기·지도·하늘 사진·로드뷰 |
 | `src/components/location/{common,sources,start}/**`·`clients.ts` | 숫자 칸·출처 줄·자료 없음 글 · 근거와 출처 · 처음/열쇠 없음 · 부르기(같은 origin, `redirect: 'error'`) |
@@ -46,13 +46,13 @@
 | `supabase/migrations/20261122000000_location.sql`·`supabase/location.rls.test.ts` | 표·권한·사진 칸 |
 | `fixtures/location/api/<묶음>/`·`fixtures/location/dongs/` | 가짜 응답(지어낸 이름만)·동 경계 견본 |
 
-`SOURCES` 칸: `id` · `org`(기관 — 통계청은 '국가데이터처') · `name` · `url`(자료 쪽) · `via`(`api`·`file`·`link`·`app`·`user`) · `key`(`data`·`kakao`·null — 사람 흐름 자료가 다른 열쇠를 쓰면 그때 더함) · `cycle` · `unit` · `terms`(이용 조건·출처 문구) · `why`(왜 보나) · `noneText`(없을 때 글) · `checked`(`직접`·`검색만`). `LAW_BASIS` 칸: `id`·`law`·`article`·`summary`·`url`(국가법령정보센터 `https://www.law.go.kr/법령/<법 이름>/<조>`)·`checked`. 값은 조사 1~3 표 그대로(조사 3 B의 아홉 줄: 의료법 33조·시행규칙 25·34조 / 의료법 37조·방사선 안전관리 규칙 3·4조·별표 2 / 장애인등편의법 시행령 별표 1·2 / 건축법 시행령 별표 1 3호 라목 / 건축법 79조 / 소득세법 168조·부가가치세법 8조 / 국민건강보험법 43조·시행규칙 12조 / 진료권 연구 이선경 외 2009).
+`SOURCES` 칸: `id` · `org`(기관 — 통계청은 '국가데이터처') · `name` · `url`(자료 쪽) · `via`(`api`·`file`·`link`·`app`·`user`) · `key`(`data`·`kakao`·null — 사람 흐름 자료가 다른 열쇠를 쓰면 그때 더함) · `cycle` · `unit` · `terms`(이용 조건·출처 문구) · `why`(왜 보나) · `noneText`(없을 때 글) · `checked`(`직접`·`검색만`). `LAW_BASIS` 칸: `id`·`law`·`article`·`summary`·`url`(국가법령정보센터 `https://www.law.go.kr/법령/<법 이름>/<조>`)·`checked`. 값은 조사 1~3·5 표 그대로. `LAW_BASIS` id 아홉(TASK-3이 정함): `open`(의료법 33조·시행규칙 25·34조) · `xray`(의료법 37조·방사선 안전관리 규칙 3·4조·별표 2) · `bf`(장애인등편의법 시행령 별표 1·2) · `use`(건축법 시행령 별표 1 3호 라목) · `violation`(건축법 79조) · `bizreg`(소득세법 168조·부가가치세법 8조) · `nhis`(국민건강보험법 43조·시행규칙 12조) · `catchment`(진료권 연구 이선경 외 2009) · `lease`(상가건물 임대차보호법 10·11조). 쉬운 한 줄은 requirements '화면 글 기본값'. 출처 id도 TASK-3이 정함: 카카오 `kakao-local` · 건축물대장 `building` · 좌표 파일 `bus-stops`·`rail-stations` · `dongs`·`income`·`industry` · 나머지는 종류 이름 그대로(`welfare` 포함).
 
 ## 3. 서버 경로
 - `POST /api/ai/location/query`(`runtime = 'nodejs'`, `maxDuration = 30`): `guard` → 몸통 `checkQuery` → `registry[kind]` → 열쇠 확인 → `adapter.requests(q, key)` 차례로 `fetchSource` → `adapter.parse(texts, q, today)` → `{ ok: true, value, src, asOf }`. 답 머리 `Cache-Control: no-store`.
 - `GET /api/ai/location/keys`: `guard` → 열쇠마다 비었으면 `missing`, 있으면 작은 부르기 하나(카카오 `k-address` '서울특별시청', 공공 `household` 1줄(행정동 코드 하나))로 `ok`·`rejected`(401·403·미등록 코드)·`failed`.
 - `guard.ts`: `readMe()` → 로그인 안 함 401, `hospital?.status !== 'approved' || !isAdmin || desk` 403. 둘 다 몸통 없음, 바깥 부르기 전.
-- `fetchSource.ts`: host 허용 `dapi.kakao.com`·`apis.data.go.kr`·`api.data.go.kr`·`api.odcloud.kr` — 그 밖은 부르지 않음(사람 흐름도 `apis.data.go.kr`, 조사 4). `redirect: 'error'`, 8초, 2,000,000바이트, 브라우저 모양 UA, 카카오는 `Authorization: KakaoAK <키>`, 공공은 `serviceKey=<디코딩 키>`(URLSearchParams가 인코딩). 결과 `{ ok: true, text } | { ok: false, fail: 'http' | 'timeout' | 'too-big' | 'blocked-url' }`.
+- `fetchSource.ts`: host 허용 `dapi.kakao.com`·`apis.data.go.kr`·`api.data.go.kr`·`api.odcloud.kr` — 그 밖은 부르지 않음(사람 흐름도 `apis.data.go.kr`, 조사 4 · 의료급여·차상위 `welfare`는 `api.odcloud.kr`, 조사 5). `redirect: 'error'`, 8초, 2,000,000바이트, 브라우저 모양 UA, 카카오는 `Authorization: KakaoAK <키>`, 공공은 `serviceKey=<디코딩 키>`(URLSearchParams가 인코딩). 결과 `{ ok: true, text } | { ok: false, fail: 'http' | 'timeout' | 'too-big' | 'blocked-url' }`.
 - 공공데이터포털 미등록 열쇠 답(`SERVICE_KEY_IS_NOT_REGISTERED_ERROR`·`resultCode` 30 등)은 `not-applied`, 열쇠 거절은 `no-key`가 아니라 `failed`로 보고 `keys`가 `rejected`를 알린다.
 - 서버는 아무것도 담아 두지 않는다(메모리 보관 없음). 역·정류장 좌표는 정적 파일이다. 카카오 답은 어디에도 담아 두지 않는다.
 - 로그: `console.error('[api/ai/location]', code, kind)`만(`E-LOC-SOURCE`, 활용신청 안 됨은 `not-applied`). 좌표·주소·답 글자·열쇠 없음.
@@ -60,7 +60,7 @@
 
 ## 4. 자료 종류 (`QueryKind`)
 `Adapter = { kind; src: SourceId; key: 'data' | 'kakao'; requests(q, key): SiteRequest[]; parse(texts: string[], q, today): Parsed }`. 점은 `{ lat: 33~39, lng: 124~132 }`(소수 6자리), r은 m. `SourceId`는 `types/location.ts`에서 `string`이다(`SOURCES`에 있는 id인지는 시험이 본다 — 두 파일을 같은 Phase에 따로 만들려고).
-- 묶음 → 파일: `kakao`(k-*) · `people`(pop-age·household) · `flow`(flow-volume·flow-bus·flow-rail) · `homes`(apt-list·apt-info·presale) · `trades`(apt-trade·biz-trade) · `clinics`(hosp-list·hosp-detail) · `clinicHours`(hosp-hours) · `nonpay` · `licenses`(clinic-license) · `buildings`(bld-title·bld-floor) · `stores` · `facilities`(market·senior·gym·accident·school). 학교(`SC4`)·산업단지는 카카오 묶음.
+- 묶음 → 파일: `kakao`(k-*) · `people`(pop-age·household) · `flow`(flow-volume·flow-bus·flow-rail) · `homes`(apt-list·apt-info·presale) · `trades`(apt-trade·biz-trade) · `clinics`(hosp-list·hosp-detail) · `clinicHours`(hosp-hours) · `nonpay` · `licenses`(clinic-license) · `buildings`(bld-title·bld-floor) · `stores` · `facilities`(market·senior·gym·accident·school) · `welfare`. 산업단지 이름·위치는 카카오 묶음. 종류는 모두 28개.
 
 | 종류 | 열쇠 | 자료(data.go.kr 번호) | 넣는 값 | 내놓는 값 (쪽) | 그날 값에 |
 |---|---|---|---|---|---|
@@ -91,11 +91,13 @@
 | `senior` | data | 마을회관·경로당 15114136 | 시군구 이름 | 이름·점 (5) | 범위 안 수 |
 | `market` | data | 전통시장 15012894 | 시군구 이름 | 이름·점 (3) | 가장 가까운 시장·거리 |
 | `school` | data | 전국초중등학교위치표준데이터 15021148 | 시군구 이름 | 학교 이름·급(초·중·고)·점 (5) | 범위 안 수 |
+| `welfare` | data | 한국사회보장정보원 복지사업 시군구별 수급권자 현황 15062448(`api.odcloud.kr/api/15062448/v1/<해마다 판>`) | 시군구 5자리 | 그 시군구 한 줄: 이름·기준 연월·기초 의료급여·기초생활보장 합계·차상위 본인부담경감·자활·장애인 수급권자 수 (1, 한 쪽에 전국 줄) | 넣음(+ 인구) |
 - 소득(`income`)·산업단지 고용 인원(`industry`, 한국산업단지공단 전국산업단지현황통계 15085886, 분기, 단지 소재지를 시군구로 묶어 합)은 파일로 받은 값을 앱에 둔다(부르기 없음). 하루 이용률 파일(15072876)·직원 월급 자료(실태조사·구인 시세)는 쓰지 않는다(사용자가 뺌 2026-11-22).
 - `hosp-hours`는 이름(공백·'의원' 빼고 같음)과 50m 안으로 `hosp-list`에 맞춘다. 못 맞추면 진료 시간 없음.
 - 과목: 정형외과·마취통증의학과·재활의학과를 '경쟁 의원'(`ortho`·`pain`·`rehab`), 한의원은 따로(`korean`). 코드는 확인할 것 1.
 - 사람 흐름(사용자 2026-11-22 '승하차만, 전국', 조사 4, 이용허락범위 제한 없음): 후보 저장·[오늘 값으로 다시 받기] 때만 부른다(동네 훑기·화면 열기에는 안 부름 — 개발 계정 하루 1,000번). 후보 시군구의 지난달(없으면 두 달 전까지) 한 달 치를 `flow-volume`으로 받고 → `flow-bus`·`flow-rail`로 이름을 붙이고 → 정류장은 ARS 번호, ARS가 빈 곳은 이름(공백 빼고 같음)+시군구로, 역은 역 이름(괄호·'역' 빼고)+노선으로 좌표 파일에 잇고 → 범위 안 정류장·역마다 하루 평균(승차+하차)÷날 수 버림을 더한다(`lib/location/flow.ts`). 한 모으기 안에서 같은 시군구·같은 달은 한 번만 받는다. 후보 시군구에 정류장 좌표 파일이 없으면(버스정보시스템 없는 군 지역) `why: 'outside'` → `이 지역은 자료 없음`. 쪽 한도를 넘으면 `failed`. 화면 글 `교통카드 찍은 사람 수예요(걷는 사람 수와 달라요)`. 점수는 교통·흐름 세부 `t-flow`(후보만, 8절).
 - 가장 가까운 역·400m 안 정류장 수는 부르지 않고 좌표 파일(`rail.json`·`bus/<시군구>.json`, 경계 근처는 `sggsTouching`으로 이웃 시군구도)에서 센다.
+- 의료급여·차상위(사용자 2026-11-22, 조사 5, 이용 제한 없음): 후보 저장·[오늘 값으로 다시 받기] 때 후보 시군구 하나만 받는다(동네 훑기에는 안 부름). 판은 해마다 하나(최신 2025-12 기준)라 가장 새 판 주소 하나를 상수로 두고 고친다(확인할 것 9). 시군구 코드 칸으로 잇고, 없으면 시도+시군구 이름(전라북도·전북특별자치도 둘 다, 일반구까지). 기초 의료급여는 기초생활보장 의료급여만 센다(다른 법 의료급여는 빠짐). 차상위 3종 합은 겹칠 수 있다. 비율의 인구는 그 판 기준 연월의 `pop-age`를 그 시군구 행정동 모두(동 경계 파일 목록, 40개씩)에 불러 더한 값이다(못 받으면 비율 없음).
 - 비급여 견주기 항목: 체외충격파(코드는 확인할 것 2). 도수치료는 비급여 답에 있으면 보이고, 없으면 `도수치료는 2026년 7월부터 관리급여라 견주지 않아요`.
 
 ## 5. 좌표 · 지역 · 넓이
@@ -106,8 +108,9 @@
 - 정류장·역 좌표 파일(TASK-30): `transit/index.json` = `{ asOf, sggs: string[] }`(정류장 파일이 있는 시군구), `bus/<code5>.json` = `{ asOf, src, stops: [{ no, name, ars: string | null, lng, lat }] }`(정류장 시군구는 동 경계로 나눔), `rail.json` = `{ asOf, src, stations: [{ name, line, lng, lat }] }`. KTX·일반 기차역은 없다.
 - 행정동·법정동 잇기: 행정동은 동 경계 파일, 법정동은 표본 점 가운데 19개까지 `k-point`(그때만, 저장 안 함). 시군구 5자리 = 두 코드의 앞 5자리. 실거래는 시군구로 받아 법정동 이름으로 거른다. 인구는 행정동, 단지·실거래는 법정동 기준이라 화면 칸 아래 기준을 적는다.
 - 건축물대장 열쇠: 시군구 = 법정동 코드 앞 5, 법정동 = 뒤 5, 번 = 본번 4자리(앞 0), 지 = 부번 4자리, 대지 구분 = 산이면 `1` 아니면 `0`. PNU = 법정동 코드 10 + (산 `2` / 아님 `1`) + 본번 4 + 부번 4.
-- 넓이: 평 = ㎡ × 121 ÷ 400. 화면 `{평 소수 1자리 버림}평 ({㎡ 소수 2자리 버림}㎡)`. 입력은 평·㎡ 고르기, 저장은 ㎡(numeric(8,2), 버림).
-- 돈 글자 `wonText`: 10,000원으로 나눠떨어지고 1,000,000원 이상이면 `n억 m만 원`(0인 쪽 뺌), 아니면 `#,###원`. 계산은 늘 원 정수.
+- 넓이(`area.ts`, TASK-5가 정함): 평 = ㎡ × 121 ÷ 400. 저장은 ㎡(numeric(8,2), 소수 2자리 버림), 입력은 평·㎡ 고르기. 화면 평 `m2ToPyeong` = 저장한 ㎡ 이상 ~ 0.01㎡ 더한 값 미만에서 가장 큰 0.1평(30평으로 적으면 99.17㎡로 저장되고 다시 `30평`으로 보임 — 그냥 버리면 29.9평). 화면 `areaText` `{평}평 ({㎡}㎡)`, 끝 0 뺌(`30평 (99.17㎡)`·`30.1평 (99.8㎡)`). 평당 값(월세·인테리어)의 평도 `m2ToPyeong`이다.
+- 거리 글자 `distText`(`coords.ts`): 1,000m 미만 `{m}m`, 이상 `{0.1km 버림}km`(끝 `.0` 뺌).
+- 돈 글자 `wonText`: 10,000원으로 나눠떨어지고 1,000,000원 이상이면 `n억 m만 원`(0인 쪽 뺌), 아니면 `#,###원`(`780,000원`·`0원`, 음수는 `−`). 값이 없으면 `–`. 계산은 늘 원 정수. 쉼표는 `commaText`.
 
 ## 6. 그날 값 · 저장하는 것
 ```ts
@@ -135,10 +138,12 @@ type Snapshot = { v: 1; at: string; radiusM: number
   building: Got<{ usage: string; structure: string; above: number; below: number; totalM2: number; approvedOn: string | null
     elevators: number | null; parking: number | null; floors: { label: string; usage: string; m2: number }[] }>
   stores: Got<{ floor: string; count: number }[]>    // 후보 30m 안 가게를 층마다
+  welfare: Got<{ sggName: string; ym: string; medical: number; basic: number; nearPoor: number  // 후보 시군구, nearPoor = 차상위 3종 합
+    population: number | null }>                    // 같은 연월 주민등록 인구(4절), 없으면 비율 없음
 }
 ```
 - `snapshot.ts`: `checkSnapshot`(모양) · `fitSnapshot`(65,536바이트 안: 목록을 뒤에서부터 줄임) · `mergeSnapshot(new, old)`(새로 실패한 칸은 옛 값을 `prev`로).
-- **저장하는 것**(ADR-044): 사용자가 고른 후보 점·적은 이름·적은 주소 글·범위 · 붙여 넣은 매물 · 메모 · 점검표·건물 요건·위반 건축물·간판 고름 · 비용 · 무게 · 협상표 · 일정 다 함 표시 · 사진 · 지금 의원 체외충격파 값 · 위 그날 값(공공 자료로 만든 숫자) · 알림 줄(행안부 공공 자료).
+- **저장하는 것**(ADR-044): 사용자가 고른 후보 점·적은 이름·적은 주소 글·범위 · 붙여 넣은 매물 · 메모 · 점검표·건물 요건(어떻게 알았나 글 포함)·위반 건축물·간판 고름 · 비용 · 무게 · 협상표·임대 조건 메모 · 일정 다 함 표시 · 사진 · 지금 의원 체외충격파 값 · 위 그날 값(공공 자료로 만든 숫자) · 알림 줄(행안부 공공 자료).
 - **저장하지 않는 것**: 카카오에서 받은 주소 글·좌표·장소 목록·거리·로드뷰·법정동 코드, 동네 훑기 결과, 보고서.
 
 ## 7. DB (`supabase/migrations/20261122000000_location.sql`, 사용자가 SQL Editor에 붙여 넣음)
@@ -148,7 +153,7 @@ type Snapshot = { v: 1; at: string; radiusM: number
 | 표 | 칸 · 제약 | 권한(authenticated) |
 |---|---|---|
 | `location_settings` | `hospital_id` pk 기본 `my_hospital_id()` → hospitals cascade · `score_rule` jsonb 기본 = 8절 처음 값(`{ v: 1, weights: {다섯}, bands: [4..10], items: {세부 id: {w, full} 또는 {w, best, worst}} }`, ≤ 4,000바이트, 검사 함수 `location_score_rule_ok`: 무게 정수 0~100 · 나이대 0~10 정수 1~11개 겹침 없음 · `full` 정수 > 0 · `best` < `worst` 정수) · `home_eswt` bigint 0~9,999,999,999 null · `updated_at` | select · insert·update(값 칸) |
-| `location_candidates` | `id` uuid pk · `hospital_id` · `name` 1~40(빈칸 없음) · `address_note` ≤ 100 기본 '' · `lat`·`lng`(같은 범위) · `radius_m` in (300,500,700,1000,1500,2000,3000) · `status` in (`watching`,`contacted`,`visited`,`reviewing`,`dropped`) 기본 `watching` · `floor_label` ≤ 20 · `area_m2` numeric(8,2) > 0 null · `sign_visible`·`violation` in (`yes`,`no`,`unknown`) null · `costs` jsonb 객체 ≤ 2,000바이트 · `terms`·`checks` jsonb 객체 ≤ 4,000 · `open_on` date null · `tasks_done` jsonb 배열 ≤ 2,000 · `snapshot` jsonb 객체 null ≤ 65,536 · `snapshot_at` · `watch_checked_on` date null · `created_at` · `updated_at`(트리거) · unique(`hospital_id`,`id`) | select·insert·update(값 칸)·delete |
+| `location_candidates` | `id` uuid pk · `hospital_id` · `name` 1~40(빈칸 없음) · `address_note` ≤ 100 기본 '' · `lat`·`lng`(같은 범위) · `radius_m` in (300,500,700,1000,1500,2000,3000) · `status` in (`watching`,`contacted`,`visited`,`reviewing`,`dropped`) 기본 `watching` · `floor_label` ≤ 20 · `area_m2` numeric(8,2) > 0 null · `sign_visible`·`violation` in (`yes`,`no`,`unknown`) null · `costs` jsonb 객체 ≤ 2,000바이트 · `terms` jsonb 객체 ≤ 6,000(협상표 + 임대 조건 메모) · `checks` jsonb 객체 ≤ 4,000 · `open_on` date null · `tasks_done` jsonb 배열 ≤ 2,000 · `snapshot` jsonb 객체 null ≤ 65,536 · `snapshot_at` · `watch_checked_on` date null · `created_at` · `updated_at`(트리거) · unique(`hospital_id`,`id`) | select·insert·update(값 칸)·delete |
 | `location_listings` | `id` · `hospital_id` · `candidate_id` null, 바깥 키 (`hospital_id`,`candidate_id`) → candidates on delete set null (`candidate_id`) · `title` 1~40 · `url` '' 또는 `^https://` ≤ 500 · `area_m2` > 0 null · `floor_label` ≤ 20 · `deposit`·`rent`·`premium`·`mgmt` bigint 0~9,999,999,999 null · `broker_id` null, 바깥 키 (`hospital_id`,`broker_id`) → `contacts_companies`(`hospital_id`,`id`) on delete set null (`broker_id`) · `broker_note` ≤ 40 · `memo` ≤ 500 · `lat`·`lng` null 짝 · 시각 둘 | select·insert·update·delete |
 | `location_notes` | `id` · `hospital_id` · `candidate_id` → candidates cascade(두 칸 키) · `day` date · `body` 1~500 · `created_at` | select·insert·delete |
 | `location_photos` | `id` · `hospital_id` · `candidate_id` cascade · `path` unique = `<hospital_id>/<candidate_id>/<uuid>.jpg`(검사) · `label` ≤ 40 · `taken_on` date · `created_at` · 후보마다 30줄(트리거 `location_photo_limit`, 넘으면 23514) | select·insert·delete |
@@ -157,11 +162,12 @@ type Snapshot = { v: 1; at: string; radiusM: number
 - 백업 목록(`lib/backup/tables.ts`)은 아직 없다 → 생기면 여섯 표를 넣는다(그 명세가 할 일).
 
 ## 8. 점수 (`score.ts` — 기본값 `DEFAULT_SCORE_RULE`, 설정 `location_settings.score_rule`, '근거와 출처'가 그린다)
-- 사용자 2026-11-22: 항목 다섯마다 [세부 ▾]를 펼쳐 **세부 무게 막대와 만점 기준 칸**을 직접 정한다. 병원마다 설정 하나, 관리자만, [기본값으로]는 바깥 무게·세부 무게·기준·나이대를 모두 되돌린다. 동네 훑기도 같은 설정을 쓴다. 아래 처음 값은 Claude 판단이다.
+- 사용자 2026-11-22: 항목 다섯마다 [세부 ▾]를 펼쳐 **세부 무게 막대와 만점 기준 칸**을 직접 정한다(시안 승인 2). 병원마다 설정 하나, 관리자만, [기본 무게로]는 바깥 무게 다섯, 항목마다 [기본값으로]는 그 항목 세부 무게·기준(사는 사람·수요는 나이대도)을 되돌린다. 막대는 0~50, 5씩(저장 모양은 0~100 정수 — 처음 값은 모두 그 안). 동네 훑기도 같은 설정을 쓴다. 아래 처음 값은 Claude 판단이고 **시안의 숫자보다 먼저**다. 이름은 requirements '화면 글 기본값'.
+- 고르는 값(`s-sign`·`s-violation`)은 `{w, full: 1}`로 두고 기준 칸 없이 글만 보인다. `p-welfare`만 방향을 고른다: `{w, full}`(많을수록) 또는 `{w, best, worst}`(적을수록) 둘 다 받는다(`checkScoreRule`·`fillScoreRule`이 이 id만).
 - 세부 점수: **많을수록 좋음**(기준 하나 `full`) = 버림(min(100, max(0, 값) × 100 ÷ full)). **적을수록 좋음**(기준 둘 `best` < `worst`) = 값 ≤ best → 100, 값 ≥ worst → 0, 그 사이 버림((worst − 값) × 100 ÷ (worst − best)).
 - 항목 점수 = Σ 버림(세부 점수 × 세부 무게 ÷ 값 있는 세부 무게 합). 종합 = Σ 버림(항목 점수 × 무게 ÷ 값 있는 항목 무게 합). 자료가 없는 세부 항목·항목은 빼고 남은 무게로 다시 나눈다. 다 없거나 무게 합 0이면 '값 없음'('점수 없음').
 - 바깥 무게 처음 값: 사는 사람·수요 30 · 경쟁 25 · 교통·흐름 20 · 자리 15 · 비용 10(사용자 인터뷰).
-- 기준 칸 검사: `full`·`best`·`worst`는 정수, `full` > 0, `best` < `worst`, 빈칸 안 됨 → 어기면 저장하지 않고 칸 아래 `0보다 큰 숫자를 적어 주세요. 비우면 저장되지 않아요.`·`'100점' 값이 '0점' 값보다 작아야 해요.` 나이대는 하나 이상(`나이대를 하나 이상 골라 주세요.`). 무게는 0~100 정수.
+- 기준 칸 검사: `full`·`best`·`worst`는 정수, `full` > 0, `best` < `worst`, 빈칸 안 됨 → 어기면 저장하지 않고 칸 아래 `0보다 큰 숫자를 적어 주세요. 비우면 저장되지 않아요.`·`'100점' 값이 '0점' 값보다 작아야 해요.` 기준 둘 가운데 빈칸은 `숫자를 적어 주세요. 비우면 저장되지 않아요.` 나이대는 하나 이상(`나이대를 하나 이상 골라 주세요.`). 무게는 0~100 정수(`무게는 0부터 100까지 정수로 정해 주세요.`). 칸 검사 글은 `score.ts` `RULE_TEXT` 한 곳(TASK-6).
 - 범위 안 개수 기준은 범위가 넓을수록 커진다 — 처음 값은 기본 범위 1km(약 3.14km²) 기준이고 화면에 그렇게 적는다. 동네 훑기의 '범위'는 그 동(동 넓이가 저마다 다름)이다.
 
 | 세부 id | 값 | 방향 · 처음 기준 | 처음 무게 · 까닭 | 훑기 |
@@ -176,6 +182,7 @@ type Snapshot = { v: 1; at: string; radiusM: number
 | `p-industry` | 후보 시군구의 산업단지 고용 인원 합(15085886, 단지 위치가 없어 시군구 단위) | 많을수록 · 20,000명 | 5 · 일하다 다치는 환자. 시군구 단위라 거칠어 낮게 | ○ |
 | `p-schools` | 범위 안 초·중·고 수(15021148) | 많을수록 · 5곳 | 5 · 학생 운동 손상·학부모 | ○ |
 | `p-facilities` | 범위 안 경로당 + 체력단련장 | 많을수록 · 30곳 | 5 · 노년·운동하는 사람 신호. 경로당은 단지마다 있어 흔하다 | ○ |
+| `p-welfare` | 후보 시군구 (기초 의료급여 + 차상위 3종) ÷ 주민등록 인구 × 100(%, 0.1 버림) | 많을수록 · 5%(적을수록으로 바꾸면 1% 100 · 5% 0) | **0** · 사용자가 정한다(조사 5). 전국 어림 3.5%쯤보다 조금 위 | ✕(시군구 값이라 동마다 같음) |
 | **경쟁** | n = 범위 안 정형외과·마취통증의학과·재활의학과(한의원 뺌) | | | |
 | `c-count` | n | 적을수록 · 0곳 이하 100 · 6곳 이상 0 | 30 · 시안 위험 신호 '경쟁 5곳 이상'보다 조금 넉넉하게 | ○ |
 | `c-perRival` | 범위 인구 ÷ (n + 1) | 많을수록 · 20,000명 | 35 · 의원 하나가 버티는 인구 어림(앞 판 그대로) | ○ |
@@ -191,7 +198,7 @@ type Snapshot = { v: 1; at: string; radiusM: number
 | `s-elevator` | 건물 승강기 수 | 많을수록 · 1대 | 20 · 2층 이상이면 꼭 필요 | — |
 | `s-parking` | 건물 주차 대수(건축물대장) | 많을수록 · 30대 | 15 · 노년 환자는 차로 온다 | — |
 | `s-age` | 사용승인 뒤 햇수 | 적을수록 · 5년 100 · 30년 0 | 10 · 오래된 건물은 전기·방사선 공사가 어렵다 | — |
-| `s-neighbors` | 후보 30m 안 약국 수(상가정보 업종) | 많을수록 · 1곳 | 10 · 1층 약국은 처방 환자 동선 | — |
+| `s-neighbors` | 후보 30m 안 약국 수(상가정보 업종, 이름 `이웃 약국(30m 안)`) | 많을수록 · 1곳 | 10 · 1층 약국은 처방 환자 동선 | — |
 | `s-sign` | 간판 보임(보여요 1 · 가려요 0 · 모름 값 없음) | 많을수록 · 1 | 10 · 사용자가 거리 사진으로 고름 | — |
 | `s-violation` | 위반 건축물(없음 1 · 있음 0 · 모름 값 없음) | 많을수록 · 1 | 10 · 있으면 개설 신고가 막힐 수 있다 | — |
 | **비용**(후보만, 후보 매물) | | | | |
@@ -201,24 +208,31 @@ type Snapshot = { v: 1; at: string; radiusM: number
 | `k-vsAvg` | 평당 월세가 저장한 매물 평균보다 몇 % 비싼지(11절, 2개 미만이면 값 없음) | 적을수록 · −20% 100 · +20% 0 | 30 · 같은 눈높이로 고른 매물끼리 견줌 | — |
 - 동네 훑기는 항목 셋(사는 사람·수요 · 경쟁 · 교통·흐름)만, '훑기 ○' 세부 항목만 쓴다(설정 화면에 '후보에서만' 표시). 훑기 동 단위 값: 범위 = 그 동(넓이·인구·동 안 의원·동 안 시설 개수), 산업단지는 그 시군구.
 - 후보 매물 = 그 후보에 이어진 매물 가운데 마지막으로 고친 것. 설정이 바뀌면 다시 부르지 않고 그날 값·훑기 값으로 바로 다시 센다.
+- `location_settings.score_rule`의 DB 처음 값은 `DEFAULT_SCORE_RULE`의 JSON과 글자까지 같다(`score.test` 첫 시험의 JSON, TASK-51이 SQL을 맞춤). 예전 설정에 없는 세부 항목은 `fillScoreRule`이 처음 값으로 채운다.
 
 ## 9. 위험 신호 (`flags.ts`, 차례 그대로, 맞는 것만)
-1. `violation-yes` 위반 건축물 '있음'(사용자가 고름) — 빨강, 근거 건축법 79조 2. `violation-check` 안 고름·모름 — `확인 필요`(건축물대장을 떼어 확인) 3. `same-building` 경쟁 의원이 30m 안 4. `closed-here` 3년 안 30m 안에서 의원 폐업 5. `rent-high` 후보 매물 평당 월세 > 저장한 매물 평균 × 1.3(매물 2개 이상일 때) 6. `premium-new` 사용승인 3년 안인데 권리금 > 0 7. `many-rivals` 범위 안 경쟁 의원 5곳 이상 8. `few-seniors` 60세 이상 15% 미만 9. `far-station` 가장 가까운 역 1,000m 넘음 10. `barrier` 연면적 또는 매물 넓이 500㎡ 이상·2층 이상·승강기 0(장애인등편의법 시행령 별표 2). 글은 시안, 수치는 Claude 판단.
+1. `violation-yes` 위반 건축물 '있음'(사용자가 고름) 2. `violation-check` 안 고름·모름 — 수준 `check`(`확인 필요`)는 **이것 하나뿐**, 나머지는 `red` 3. `same-building` 경쟁 의원(한의원 뺌)이 후보에서 30m 안(같은 건물로 봄, 가까운 차례 첫째) 4. `closed-here` 3년 안 30m 안에서 의원 폐업 5. `rent-high` 후보 매물 평당 월세 > 저장한 매물 평균 × 1.3(매물 2개 이상일 때) 6. `premium-new` 사용승인 3년 안인데 권리금 > 0 7. `many-rivals` 범위 안 경쟁 의원 5곳 이상 8. `few-seniors` 60세 이상 15% 미만 9. `far-station` 가장 가까운 역 1,000m 넘음 10. `barrier` 후보 층(`floor_label`의 숫자, 지하 뺌) 2층 이상 · 건물 승강기 0 · 연면적 또는 매물 넓이 500㎡ 이상(장애인등편의법 시행령 별표 2).
+- 근거: 1·2 법 id `violation`, 10 `bf`, 나머지는 출처 id(`hosp-list`·`clinic-license`·`user`(붙여 넣은 매물)·`pop-age`·`rail-stations` 등, 화면이 출처 줄로 그림 — `Flag`에 `src` 칸). 층 읽기는 `score.ts`의 `floorNumber`, 평당 월세는 `listings.ts`, 돈은 `wonText`, 거리는 `distText`를 불러 쓴다(TASK-51). 제목·설명 글은 requirements '화면 글 기본값', 수치는 Claude 판단.
 
 ## 10. 예상 환자 — 뺌 (사용자 2026-11-22)
 - 하루 예상 환자 계산·지금 의원 하루 평균 환자 읽기(`stats_days`)·나라 통계 이용률 파일·'조심' 표시·지금 의원 자리 찍기는 없다. 손익분기는 11절(비용 칸과 직접 적는 환자 1명당 평균 수입만).
 
 ## 11. 개원 준비 계산
-- 칸 모양·단위는 승인된 시안 그대로(만 원 칸은 × 10,000, 인테리어는 평당 값 × 평 버림, 이자는 연 %). 저장·계산은 원 정수. 매물의 보증금·월세는 칸 옆 참고 글로만 보인다(칸을 채우지 않음).
+- 칸 모양·단위는 승인된 시안 그대로(만 원 칸은 × 10,000, 이자는 연 %). 인테리어는 **평당 값**으로 저장하고 합계 = 버림(평당 값 × 후보 넓이의 화면 평 `m2ToPyeong`)(넓이가 없으면 합계 없음). 저장·계산은 원 정수. 매물의 보증금·월세는 칸 옆 참고 글로만 보인다(칸을 채우지 않음).
 - `costs` 열쇠(원 정수 0~9,999,999,999, 빈칸 = 없음): `deposit` 보증금 · `premium` 권리금 · `interior` 인테리어 · `equipment` 장비 · `otherStart` 그 밖 준비 · `rent` 월세 · `mgmt` 관리비 · `payroll` 인건비 · `otherMonth` 그 밖 한 달 · `loan` 대출 · `rateBp` 연 이자(0.01% 단위 0~3,000) · `perPatient` 환자 1명당 수입 · `workDays` 한 달 진료일 1~31.
   - 한 달 이자 = 버림(loan × rateBp ÷ 120,000) · 한 달 고정비 = rent + mgmt + payroll + otherMonth + 이자(빈칸은 0으로 더하고 빈칸 수를 보임)
   - 처음 드는 돈 = deposit + premium + interior + equipment + otherStart + 6 × 한 달 고정비 · 내 돈 = 처음 드는 돈 − loan(음수면 그대로, `대출이 더 많아요`)
   - 손익분기 하루 환자 = 버림(한 달 고정비 × 10 ÷ (perPatient × workDays)) ÷ 10(소수 첫째 자리, 시안 `하루 34.1명`), 둘 중 하나 비면 없음. `perPatient`(환자 1명당 평균 수입)는 사용자가 직접 적는 빈칸이다. `원장 몫은 들어 있지 않아요` 한 줄. 예상 환자와 견주는 글은 없다
 - `schedule.ts` 할 일 열넷(시안 `TASKS` 글·날수 그대로, D = 목표 개원일, 법 근거 id): D−150 자리 정하고 계약(특약: 개설 신고가 안 되면 없던 일로) · D−140 대출 · D−130 인테리어 설계(방사선 방어벽·장애인 편의) · D−120 장비 주문 · D−90 공사 시작 · D−60 전기 용량 · D−60 직원 공고 · D−30 간판·홍보 · D−30 방사선 장비 설치 신고 준비 · D−10 의원 개설 신고(의료법 33조) · D−7 요양기관 신고(국민건강보험법 43조) · D−5 방사선 장비 검사·신고(쓰기 3일 전까지) · D−3 직원 교육 · D 개원. 개원일을 고치면 모두 다시 센다. 날짜는 `addDays`, 지난 할 일은 회색. 차례는 조문에서 끌어낸 어림(업계 3~6개월)이라 화면에 그렇게 적는다.
-- `checklist.ts`: `BUILDING_CHECKS`(방사선 방어벽·제어실 / 전기 용량 / 천장 높이 / 바닥 무게 / 장애인 편의 / 건물 용도 제1종 근린생활시설 / 보건소 신고 조건 / 위반 건축물, 줄마다 근거 id 또는 '법 기준 없음 — 관리사무소에 물어요') · `RISK_CHECKS`(등기부 근저당·소유자와 임대인 같음·용도·원상 복구·관리비 내역) · `VISIT_CHECKS`(간판 자리·승강기 크기·화장실·주차 입구·배전반·창과 빛·소음·냄새·둘레 빈 가게). 값 `checks[id] = 'yes' | 'no' | 'unknown'`. 줄 글은 시안.
-- `hours.ts` 빈틈 표: 요일 7 × 칸 7(아침 8~9 · 오전 9~13 · 점심 13~14 · 오후 14~18 · 저녁 18~19 · 저녁 19~20 · 밤 20~21). 그 칸 전체에 문을 연 경쟁 의원 수, 0이면 빈틈. 점심 쉼은 자료에 없어 연 것으로 센다(화면에 적음). 공휴일은 세지 않는다.
-- `listings.ts` 매물 견주기: 평당 월세 = 버림(rent ÷ 평), 평균 = 넓이·월세가 있는 저장 매물 모두의 평당 월세 평균(버림). 매물 2개 이상일 때만 차이 % = 버림((값 − 평균) × 100 ÷ 평균) → `저장한 매물 평균보다 {n}% 비싸요`·`싸요`·|n| < 1이면 `평균과 같아요`. 보증금도 같은 셈. 평수 거르기 `{from, to}` 평(둘 다 비우면 다).
-- 협상표 `terms` 열쇠 여섯(`freeRent`·`mgmt`·`raise`·`restore`·`period`·`premium`) × `{ now, want }` 글 100자.
+- `checklist.ts`(줄 글은 시안 그대로, id는 TASK-10이 정함, `id · 요건 · 있어야 하는 것 · 법 id`). 위반 건축물은 점검 줄이 아니라 후보 칸 `violation`이다.
+  - `BUILDING_CHECKS` 건물 요건 10줄(○·✕·? — 누를 때마다 차례로): `b-xray` 엑스레이실 방사선 막는 벽 · 벽·문에 납을 넣는 공사, 설치 뒤 검사 · `xray` / `b-power` 전기 용량 · 엑스레이·물리치료 기계를 함께 켤 만큼(장비 업체에 물어 정해요) / `b-ceiling` 천장 높이 · 엑스레이 기계를 달 높이(장비 업체 기준) / `b-load` 바닥이 견디는 무게 · 엑스레이·견인 치료기 무게 / `b-ramp` 장애인 경사로·출입구 · 건물 입구에 턱이 없거나 경사로 · `bf` / `b-bf-toilet` 장애인 화장실 · 의원 넓이가 500㎡ 이상이면 꼭 있어야 해요 · `bf` / `b-toilet` 화장실 · 층 안에 남녀 따로 / `b-elevator` 엘리베이터 · 휠체어·들것이 들어가는 크기 / `b-use` 건물 용도 · 제1종 근린생활시설(의원) 또는 의료시설 · `use` / `b-report` 보건소 신고 조건 · 시설 기준대로 방을 나눔 · 위반 건축물이면 막힐 수 있어요 · `open`. 법 id가 없는 줄은 `법 기준 없음 — 관리사무소에 물어요`. 줄마다 `어떻게 알았나` 글 40자(`checks.how[id]`, 빈칸 허용).
+  - `RISK_CHECKS` 계약서에 꼭 넣을 것 5줄(체크 칸): `r-cancel` 의원 개설 신고가 안 되면 계약을 없던 일로 해요(특약) · `open` / `r-free-rent` 무상 기간이 공사 기간과 장비 설치까지 들어가요 / `r-restore` 나갈 때 원상 복구 범위(방사선 벽·바닥)를 적어요 / `r-premium` 권리금 계약서를 따로 써요 / `r-power` 전기 용량 늘리는 공사를 누가 하고 누가 내는지 적어요.
+  - `VISIT_CHECKS` 보러 갈 때 10줄(체크 칸): `v-sign` 길 건너에서 간판 자리가 보여요 / `v-entrance` 1층 입구에 턱이 없거나 경사로가 있어요 · `bf` / `v-elevator` 엘리베이터에 휠체어·들것이 들어가요 / `v-toilet` 층 안에 남녀 화장실이 따로 있어요 / `v-ceiling` 천장 높이를 쟀어요(엑스레이 기계) / `v-panel` 배전반 사진을 찍었어요(전기 용량) / `v-window` 창문 방향·햇빛·바깥 소리를 봤어요 / `v-parking` 주차장 들어가는 길이 어르신에게 쉬워요 / `v-passers` 평일 낮과 저녁에 지나가는 사람을 봤어요 / `v-mgmt` 같은 건물 가게에 관리비·관리 상태를 물어봤어요.
+  - 값 `checks[id] = 'yes' | 'no' | 'unknown'`(체크 칸은 켬 = `yes`, 끔 = `unknown`) + `checks.how = { 건물 요건 id: 글 }`. `cleanChecks`는 `how`도 남긴다(40자 넘거나 글이 아니면 버림).
+- `hours.ts` 빈틈 표: 요일 7 × 칸 7(아침 8~9 · 오전 9~13 · 점심 13~14 · 오후 14~18 · 저녁 18~19 · 저녁 19~20 · 밤 20~21). 그 칸 **전체**에 문을 연(여는 시각 ≤ 칸 시작, 닫는 시각 ≥ 칸 끝) 경쟁 의원 수, 0이면 빈틈. 점심 쉼은 자료에 없어 연 것으로 센다(화면 글은 requirements '화면 글 기본값'). 공휴일은 세지 않는다. 의원 모양은 `types/location.ts`의 `Rival`.
+- `listings.ts` 매물 견주기: 평당 월세 = 버림(rent ÷ 화면 평 `m2ToPyeong`), 평균 = 넓이·월세가 있는 저장 매물 모두의 평당 월세 평균(버림). 매물 2개 이상일 때만 차이 % = 버림((값 − 평균) × 100 ÷ 평균) → `저장한 매물 평균보다 {n}% 비싸요`·`싸요`·|n| < 1이면 `평균과 같아요`. 보증금도 같은 셈. 평수 거르기 `{from, to}` 평(둘 다 비우면 다).
+- 협상표 `terms` 열쇠 여섯(`freeRent`·`mgmt`·`raise`·`restore`·`period`·`premium`) × `{ now, want }` 글 100자 + `terms.memo` 임대 조건 메모 글 300자(계약 전 위험 칸).
+- 타입 한 곳: 일꾼이 파일마다 따로 둔 모양(`FlagInput`의 그날 값 부분·`GapRival`→`Rival`·`WatchCandidate`·`LicenseRow`·`WatchEvent`·`WatchStatus`·`ListingNumbers`·`ScoreFacts`)은 `src/types/location.ts`로 모은다(TASK-51). 거리 `distM`은 `coords.ts`, ㎡↔평은 `area.ts`, 돈 글자는 `money.ts`, 층 읽기는 `score.ts`(`floorNumber` 내보냄) 하나만 쓴다.
 
 ## 12. 새 경쟁 의원 알림 (`watch.ts` + `components/dashboard/location/`)
 - 고름: Cron이 아니라 **관리자가 대시보드를 열 때** 브라우저가 한다. 까닭: (1) Cron에는 로그인 세션이 없어 관리자 표를 RLS로 못 읽는다 → 고시·공지처럼 모으기 계정·비밀번호·공개 경로가 또 생긴다 (2) 알림은 대시보드에서만 보이므로 열 때 확인해도 같은 날 보인다 (3) 서버는 지금처럼 바깥 자료만 대신 부른다. 대가: 대시보드를 한 달 넘게 안 열면 늦는다.
@@ -235,7 +249,7 @@ type Snapshot = { v: 1; at: string; radiusM: number
 - `(app)/location/page.tsx`: `guardPage('/location')`, 탭 이름 `입지 분석`, `searchParams`의 `tab`(일곱 가운데)·`c`(uuid)를 넘긴다. `gate.ts` `isAdminPath`에 `/location` 더함.
 - 탭: `menu.ts`에 `LOCATION_TAB = { label: '입지 분석', path: '/location', href: '/location', ready: true, primary: false }`(MENU 밖). `MoreMenu`가 관리자일 때 '주소록' 다음에 끼우고, `currentMenuLabel`도 본다. `AppShell`이 `isAdmin`을 넘긴다(데스크는 늘 없음).
 - `LocationScreen`: 머리(h1·`관리자만 보여요`·[후보 더하기]) · 안쪽 탭 여섯(동네 훑기·후보 자세히·매물·후보 견주기·개원 준비·근거와 출처) · 후보 고르기 · 처음(후보 없음) · 열쇠 없음(`keys`가 data·kakao 둘 다 `missing`) · 보고서(`tab=report`). `useLocation`이 표 여섯·`keys`를 열 때 한 번 읽고(지금 의원 환자 숫자는 읽지 않음), 모으기는 동시에 4개(진행 `자료 {n}/{m}`).
-- 부품은 props·콜백만(읽기·저장·fetch 없음): `weights/`(바깥 무게 막대 + 항목마다 [세부 ▾] 세부 무게·기준 칸·나이대·[기본값으로]·칸 검사 글, 8절) · `scan/`(시도·시군구 고르기·색 지도·순위·`weights/` 자리·동 자세히) · `detail/frame/`(위험 신호·종합·범위·목차·[오늘 값으로 다시 받기], 묶음은 칸(slot)으로 받아 직접 부르지 않음) · `detail/{people,demand,rivals,site}/`(묶음 열둘을 넷으로: 사는 사람·소득·앞으로 / 수요·교통·둘레 시설 / 경쟁 의원·진료비·빈틈 / 거리 사진·건물·빈 칸·땅) · `listings/`(목록·거르기·견주기 글·붙여 넣기 칸·협상표·[주소록에 넣기]) · `add/`(세 길 판) · `compare/` · `report/`(`print:` 클래스로 앱 틀 숨김, A4) · `prep/plan/`(비용·손익분기·일정) · `prep/visit/`(건물 요건·계약 전 위험·점검표·사진·메모·진행 상태) · `common/`(숫자 칸 `Fact`·출처 줄 `SourceLine`·자료 없음 글 `WhyLine`) · `sources/` · `start/`.
+- 부품은 props·콜백만(읽기·저장·fetch 없음): `weights/`(바깥 무게 막대·[기본 무게로] + 항목마다 [세부 ▾] 세부 무게·기준 칸·나이대·`p-welfare` 방향 고르기·[기본값으로]·칸 검사 글, 8절) · `scan/`(시도·시군구 고르기·색 지도·순위·`weights/` 자리·동 자세히) · `detail/frame/`(위험 신호·종합·범위·목차·[오늘 값으로 다시 받기], 묶음은 칸(slot)으로 받아 직접 부르지 않음) · `detail/{people,demand,rivals,site}/`(묶음 열둘을 넷으로: 사는 사람·소득(의료급여·차상위 포함)·앞으로 / 수요·교통·둘레 시설 / 경쟁 의원·진료비·빈틈 / 거리 사진·건물·빈 칸·땅) · `listings/`(목록·거르기·견주기 글·붙여 넣기 칸·협상표·[주소록에 넣기]) · `add/`(세 길 판) · `compare/` · `report/`(`print:` 클래스로 앱 틀 숨김, A4) · `prep/plan/`(비용·손익분기·일정) · `prep/visit/`(건물 요건·어떻게 알았나·계약 전 위험·임대 조건 메모·점검표·사진·메모·진행 상태) · `common/`(숫자 칸 `Fact`·출처 줄 `SourceLine`·자료 없음 글 `WhyLine`) · `sources/` · `start/`.
 - [주소록에 넣기]: `lib/storage/contacts.ts`의 업체·담당자 저장 함수를 그대로 부른다(분류 `other`, 하는 일 `부동산 중개`, 겹침 `duplicate`면 그 업체를 찾아 잇기). 주소록 코드는 고치지 않는다.
 - 사진: `components/inventory/photo.ts`의 `shrinkPhoto`(긴 변 1,600px JPEG)를 불러 쓴다(고치지 않음).
 - PC 배치 하나: 지도·두 칸 틀은 최소 폭 1,024px, 좁으면 그 감싸개 안에서 `overflow-x: auto`. `max-md:` 없음. 색·글꼴은 앱 토큰(`docs/UI_GUIDE.md`).
@@ -247,9 +261,9 @@ type Snapshot = { v: 1; at: string; radiusM: number
 | `E-LOC-SAVE-FAILED` | 저장하지 못했어요 | 적은 값은 그대로 있어요. 인터넷 연결을 확인하고 잠시 뒤 다시 해 주세요. |
 | `E-LOC-SOURCE` | 바깥 자료를 받지 못했어요 | 잠시 뒤 [다시 받기]를 눌러 주세요. 저장한 후보는 지난 값을 그대로 보여 줘요. |
 | `E-LOC-MAP` | 지도를 불러오지 못했어요 | 카카오 개발자 화면에 이 사이트 주소가 등록됐는지, 지도 열쇠가 맞는지 확인해 주세요. 숫자는 지도 없이도 볼 수 있어요. |
-| `E-LOC-PHOTO` | 사진을 올리지 못했어요 | JPEG·PNG·WEBP 사진만, 후보마다 30장까지 올릴 수 있어요. 잠시 뒤 다시 올려 주세요. |
+| `E-LOC-PHOTO` | 사진을 올리지 못했어요 | 사진 파일만, 후보마다 30장까지 올릴 수 있어요. 잠시 뒤 다시 올려 주세요. |
 - 칸 글(`WhyLine`): `no-key` `{자료 이름}: 열쇠를 넣으면 보여요.`(카카오는 그 열쇠 이름) · `not-applied` `공공데이터포털에서 '{자료 이름}' 활용신청을 하면 보여요.` · `failed` `지금 받지 못했어요.` [다시 받기](옛 값이 있으면 `지난 값 · 기준 {날짜}`) · `none` `SOURCES.noneText` · `outside` `이 지역은 자료 없음` · `capped` `{n}곳 넘게 있어요. 가까운 {n}곳만 셌어요.`
-- 열쇠 없음 화면: `자료 열쇠를 넣으면 시작할 수 있어요` / `공공데이터포털 열쇠와 카카오 열쇠는 Vercel 환경 변수에 넣어요. 넣는 법은 Claude가 한 단계씩 안내해요. 열쇠는 대화창에 붙이지 마세요.` / `열쇠 없이도 되는 것: 매물 붙여 넣기 · 진행 메모 · 개원 비용 계산.` 지도 열쇠만 없음: `카카오 지도 열쇠를 넣으면 지도가 보여요. 숫자는 지도 없이도 볼 수 있어요.`
+- 열쇠 없음 화면: `자료 열쇠를 넣으면 시작할 수 있어요` / `공공데이터포털 열쇠와 카카오 열쇠는 사이트 서버 설정에 넣어요. 넣기 어려우면 관리자에게 알려 주세요. 열쇠는 대화창이나 메신저에 붙이지 마세요.` / 열쇠 셋 줄(requirements '화면 글 기본값') / 알림 `자료 열쇠는 자료를 주는 사이트가 '이 앱이 받아 가도 돼요'라고 내어 주는 긴 비밀번호예요. 셋 다 무료예요. 이 화면에는 열쇠 넣는 칸이 없어요. 열쇠는 사이트 서버 설정에 넣고, 여기서는 넣었는지만 보여요.` / `열쇠 없이도 되는 것: 매물 붙여 넣기 · 진행 메모 · 개원 비용 계산.` 화면 글에는 영어 사이트·도구 이름을 쓰지 않는다. 지도 열쇠만 없음: `카카오 지도 열쇠를 넣으면 지도가 보여요. 숫자는 지도 없이도 볼 수 있어요.`
 
 ## 16. ADR 글 (TASK-1이 `docs/ADR.md` 끝에 넣음. 다른 갈래가 먼저 042~044를 쓰면 다음 번호로 바꾸고 이 글의 번호만 고친다)
 
@@ -257,9 +271,9 @@ type Snapshot = { v: 1; at: string; radiusM: number
 **맥락**: 입지 분석(specs/location)은 공공데이터포털·카카오 로컬 자료가 필요하고 둘 다 열쇠가 있어야 한다. 열쇠를 브라우저에 두면 드러나고, 공공데이터포털은 브라우저 부르기(CORS)도 막는다. 서버 코드는 `app/api/ai/` 하나뿐이다(ADR-004).
 **결정** (호출한 쪽 설계 결정 + Claude 판단, 2026-11-22):
 - `POST /api/ai/location/query`·`GET /api/ai/location/keys` 두 경로를 `app/api/ai/location/` 아래 둔다. Claude는 부르지 않는다 — AI 폴더를 서버 코드 자리로 쓰는 예외다.
-- 열쇠 `DATA_GO_KR_KEY`(디코딩 열쇠)·`KAKAO_REST_KEY`는 Vercel 환경 변수와 `.env.local`에만. 앱 화면에 열쇠 칸을 두지 않는다.
+- 열쇠 `DATA_GO_KR_KEY`(디코딩 열쇠)·`KAKAO_REST_KEY`는 Vercel 환경 변수와 `.env.local`에만. 앱 화면에 열쇠 칸을 두지 않는다. 공공데이터포털 열쇠 하나로 `apis.data.go.kr`·`api.data.go.kr`과 `api.odcloud.kr`(파일 자료를 API로 주는 곳 — 의료급여·차상위 15062448, 2026-11-22 더함)을 부른다.
 - 서버가 로그인·승인된 병원·`admins` 줄을 확인한다. 아니면 401·403이고 바깥에 부르지 않는다.
-- 정해 둔 종류·칸만 받고 정해 둔 host만 부른다(redirect 없음, 8초, 2MB). 서버는 DB에 쓰지 않는다(저장은 브라우저가 RLS로). 카카오 답은 서버에도 담아 두지 않는다. 서버 메모리 보관도 없다(역·정류장 좌표는 정적 파일).
+- 정해 둔 종류·칸만 받고 정해 둔 host 넷(`dapi.kakao.com`·`apis.data.go.kr`·`api.data.go.kr`·`api.odcloud.kr`)만 부른다(redirect 없음, 8초, 2MB). 서버는 DB에 쓰지 않는다(저장은 브라우저가 RLS로). 카카오 답은 서버에도 담아 두지 않는다. 서버 메모리 보관도 없다(역·정류장 좌표는 정적 파일).
 - 로그는 오류 번호·종류만. 좌표·주소·답은 남기지 않는다.
 - 새 경쟁 의원 확인은 Vercel Cron이 아니라 관리자가 대시보드를 열 때 브라우저가 한다(후보마다 30일에 한 번).
 **대안**: (1) 브라우저가 바로 부름 — 열쇠가 드러나고 CORS에 막힌다. (2) Cron — 세션이 없어 관리자 표를 못 읽는다 → 모으기 계정이 또 필요하다(ADR-036 같은 장치). (3) 카카오 JS SDK의 주소 찾기 — REST 열쇠를 서버에 두는 쪽으로 통일했다.

@@ -1,6 +1,6 @@
 # 작업 분할: 입지 분석
-> TASK-8(예상 환자)은 사용자가 계산을 빼서 지웠다(2026-11-22, 번호는 다시 매기지 않음). TASK-49(점수 세부 설정 판)는 나중에 더해 Phase 3에 둔다. 형식: `## Phase n` 아래 `## TASK-n: 제목` · `- REQ:`(REQ · AC) · `- Files:`(수정 범위, glob 허용) · `- Tests:` · `- TDD:`. 승인되면 Files/Tests 경로만 고친다. TASK마다 일꾼 하나(각자 git worktree). **Phase 안 TASK(step)는 모두 동시에 하고 Files가 서로 겹치지 않는다**(Phase 머리에 겹침 확인, 2026-11-22). 다음 Phase는 앞 Phase를 모두 합친 뒤. 여러 TASK가 같이 쓰는 것(DB·타입·종류 검사·서버 공통·출처 목록)은 Phase 1에 둔다. 같은 Phase에서 만드는 파일은 서로 부르지 않는다(Phase 1 계산 파일은 자기 입력·출력 타입을 스스로 내보낸다).
-> **검토는 마지막 Phase 6에서 한 번만**(화면 사진 확인 + 독립 검토, 재검토는 사용자에게 묻고). 중간 Phase에 검토 TASK는 없고 일꾼은 자기 시험만, 합칠 때 그 Phase 시험만 돌린다. **시험 먼저(TDD)**: 시험 이름에 AC ID, 실패를 본 뒤 만든다. 바깥 자료는 **가짜 응답으로 먼저**(`fixtures/location/api/<묶음>/`, 지어낸 이름만), 진짜 열쇠는 TASK-47. **화면 TASK(26~29·31~44·46·49)는 승인된 시안(`docs/mockups/location/`, 사용자 승인 2026-11-22) 글자·자리 그대로**(명세와 다른 곳은 requirements.md 머리 규칙), 폰 전용 모양 없음(`max-md:` 금지, 폰 폭 사진 없음), 화면 부품은 props·콜백만(design.md 14절).
+> TASK-8(예상 환자)은 사용자가 계산을 빼서 지웠다(2026-11-22, 번호는 다시 매기지 않음). 나중에 더한 TASK: 49(점수 세부 설정 판, Phase 3) · 51(Phase 1 맞추기)·50(의료급여·차상위)(둘 다 Phase 2). 형식: `## Phase n` 아래 `## TASK-n: 제목` · `- REQ:`(REQ · AC) · `- Files:`(수정 범위, glob 허용) · `- Tests:` · `- TDD:`. 승인되면 Files/Tests 경로만 고친다. TASK마다 일꾼 하나(각자 git worktree). **Phase 안 TASK(step)는 모두 동시에 하고 Files가 서로 겹치지 않는다**(Phase 머리에 겹침 확인, 2026-11-22). 다음 Phase는 앞 Phase를 모두 합친 뒤. 여러 TASK가 같이 쓰는 것(DB·타입·종류 검사·서버 공통·출처 목록)은 Phase 1에 둔다. 같은 Phase에서 만드는 파일은 서로 부르지 않는다(Phase 1 계산 파일은 자기 입력·출력 타입을 스스로 내보낸다).
+> **검토는 마지막 Phase 6에서 한 번만**(화면 사진 확인 + 독립 검토, 재검토는 사용자에게 묻고). 중간 Phase에 검토 TASK는 없고 일꾼은 자기 시험만, 합칠 때 그 Phase 시험만 돌린다. **시험 먼저(TDD)**: 시험 이름에 AC ID, 실패를 본 뒤 만든다. 바깥 자료는 **가짜 응답으로 먼저**(`fixtures/location/api/<묶음>/`, 지어낸 이름만), 진짜 열쇠는 TASK-47. **화면 TASK(26~29·31~44·46·49)는 승인된 시안(`docs/mockups/location/`, 사용자 승인 2026-11-22·승인 2) 자리 그대로, 글은 requirements.md '화면 글 기본값'이 먼저**(점수 처음 값은 design.md 8절이 먼저, 그 밖은 requirements.md 머리 규칙), 폰 전용 모양 없음(`max-md:` 금지, 폰 폭 사진 없음), 화면 부품은 props·콜백만(design.md 14절).
 > **사용자 단계**: (1) 시안 승인 (2) `/sdd approve location` (3) 공공데이터포털 활용신청(design.md 4절)·카카오 앱·사이트 도메인 등록 (4) 열쇠를 `.env.local`·Vercel 환경 변수에 직접(Claude가 한 단계씩 안내, 대화에 붙이지 않음) (5) 배포 전 `supabase/migrations/20261122000000_location.sql`을 SQL Editor에 붙여 넣고 Storage `location-photos`가 Private인지 보기. 배포·합치기(운영 갈래)는 사용자가 말할 때만. 다른 갈래와 겹칠 수 있는 파일(`docs/ADR.md`·`CLAUDE.md`·`plan.md`·errors·`csp.ts`·`next.config.ts`·셸·대시보드)은 합칠 때 앞 갈래를 먼저 받고 번호·수만 맞춘다.
 ## Phase 1 — 같이 쓰는 바탕 (10명 동시 · 겹침 없음: supabase·문서 / 타입·종류 검사·서버 공통 / 출처·오류 / `lib/location/` 파일이 TASK마다 따로)
 ## TASK-1: DB 표 여섯·사진 칸·ADR-042~044·문서
@@ -53,7 +53,12 @@
 - Files: src/lib/location/links.ts, src/lib/location/links.test.ts, src/lib/location/watch.ts, src/lib/location/watch.test.ts, src/lib/location/listings.ts, src/lib/location/listings.test.ts
 - Tests: src/lib/location/links.test.ts, src/lib/location/watch.test.ts, src/lib/location/listings.test.ts
 - TDD: required — design.md 11·12·13절. 네이버 두 모양 + 고르는 상수 하나(확정은 TASK-47), 토지이음 PNU·등기소·법령 주소 `encodeURI`. 알림: 5곳·30일·기간 끝 오늘 − 2일·과목 거르기·범위. 매물: 평당 월세·보증금 평균, 2개 미만이면 견주지 않음, `{n}% 비싸요`·`싸요`·`평균과 같아요`, 평수 거르기
-## Phase 2 — 바깥 자료 열두 묶음 (12명 동시 · 겹침 없음: `app/api/ai/location/sources/<묶음>.ts`·`fixtures/location/api/<묶음>/`이 하나씩, TASK-23만 `lib/location/flow*`를 더함)
+## Phase 2 — Phase 1 맞추기 + 바깥 자료 열세 묶음 (14명 동시 · 겹침 없음: TASK-51 `types/location.ts`·`lib/location/{query,flags,watch,listings,costs,hours,checklist,coords,score}*`·SQL / `app/api/ai/location/sources/<묶음>.ts`·`fixtures/location/api/<묶음>/`이 하나씩, TASK-23만 `lib/location/flow*`, TASK-50만 `lib/location/sources*`·`docs/ADR.md`를 더함)
+## TASK-51: Phase 1 맞추기(법 id·겹친 계산·타입 한 곳·글·SQL 처음 값) + 의료급여 칸 자리
+- REQ: REQ-7911, REQ-7913, REQ-7909, REQ-7910, REQ-7915, REQ-7905, REQ-7919, REQ-7902 · AC-7911.3, AC-7911.4, AC-7913.1, AC-7913.5, AC-7909.3, AC-7910.2, AC-7915.1, AC-7905.6, AC-7919.6, AC-7902.1
+- Files: src/types/location.ts, src/lib/location/query.ts, src/lib/location/query.test.ts, src/lib/location/flags.ts, src/lib/location/flags.test.ts, src/lib/location/watch.ts, src/lib/location/watch.test.ts, src/lib/location/listings.ts, src/lib/location/listings.test.ts, src/lib/location/costs.ts, src/lib/location/costs.test.ts, src/lib/location/hours.ts, src/lib/location/hours.test.ts, src/lib/location/checklist.ts, src/lib/location/checklist.test.ts, src/lib/location/coords.ts, src/lib/location/coords.test.ts, src/lib/location/score.ts, src/lib/location/score.test.ts, supabase/migrations/20261122000000_location.sql, supabase/location.rls.test.ts
+- Tests: src/lib/location/query.test.ts, src/lib/location/flags.test.ts, src/lib/location/watch.test.ts, src/lib/location/listings.test.ts, src/lib/location/costs.test.ts, src/lib/location/hours.test.ts, src/lib/location/checklist.test.ts, src/lib/location/coords.test.ts, src/lib/location/score.test.ts, supabase/location.rls.test.ts
+- TDD: required — 합칠 때 모은 메모 `~/.claude/state/handoff/location-merge-notes.md` '맞출 것'. 시험을 먼저 고쳐 깨지는 것을 본 뒤: (1) `FLAG_LAW` → `{ violation: 'violation', barrier: 'bf' }`, 위험 신호 글·`src` 칸은 requirements '화면 글 기본값'(AC-7911.4), `barrier`는 후보 층 2층 이상 (2) 겹친 계산을 한 곳으로 — watch `distM` → `coords.ts`, listings·flags·costs ㎡↔평 → `area.ts` `m2ToPyeong`, flags 돈 → `money.ts`, flags 층 읽기 → `score.ts` `floorNumber`(내보냄), 거리 글자 `distText`를 `coords.ts`에 더함 (3) 파일마다 둔 타입을 `types/location.ts`로(`FlagInput`의 그날 값 부분·`GapRival`→`Rival`·`WatchCandidate`·`LicenseRow`·`WatchEvent`·`WatchStatus`·`ListingNumbers`·`ScoreFacts`) — 있던 이름은 바꾸지 않는다(같은 Phase 바깥 자료 TASK가 씀) (4) 점검 줄·`checks.how`·`LUNCH_NOTE`를 design.md 11절·'화면 글 기본값'으로 (5) 의료급여 자리: 종류 `'welfare'`(28개째, `checkQuery`)·`Snapshot.welfare`·`ScoreFacts.welfareRate`·`p-welfare` 줄(design.md 8절, 이 id만 방향 두 모양) (6) SQL: `score_rule` 처음 값 = `DEFAULT_SCORE_RULE` JSON(`score.test` 첫 시험과 글자까지 같음), `terms` ≤ 6,000바이트. 동작이 그대로인 옮김은 원래 시험이 그대로 통과한다
 ## TASK-12: 바깥 자료 — 카카오 로컬(주소·좌표·장소·학교·산업단지)
 - REQ: REQ-7904 · AC-7904.1, AC-7904.2, AC-7904.3
 - Files: src/app/api/ai/location/sources/kakao.ts, src/app/api/ai/location/sources/kakao.test.ts, fixtures/location/api/kakao/**
@@ -114,6 +119,11 @@
 - Files: src/app/api/ai/location/sources/flow.ts, src/app/api/ai/location/sources/flow.test.ts, fixtures/location/api/flow/**, src/lib/location/flow.ts, src/lib/location/flow.test.ts
 - Tests: src/app/api/ai/location/sources/flow.test.ts, src/lib/location/flow.test.ts
 - TDD: required — design.md 4절, 조사 4. `flow-volume`(15142066, 시도·시군구 번호·연월, 30쪽, 승차·하차·날 수)·`flow-bus`(15142032, 이름·ARS)·`flow-rail`(15142034, 역 이름·노선). `lib/location/flow.ts`(순수): ID → 이름 → 좌표(정류장은 ARS, 빈 곳은 이름+시군구 · 역은 이름+노선) → 범위 안 하루 평균(버림)·합·못 이은 수. 좌표 파일 모양은 design.md 5절(시험은 지어낸 견본을 이 시험 안에). 정류장 좌표 파일이 없는 시군구 → `outside`(`이 지역은 자료 없음`)
+## TASK-50: 바깥 자료 — 의료급여·차상위(+출처 줄·없는 자료 줄·ADR-042 한 줄)
+- REQ: REQ-7904, REQ-7906 · AC-7904.1, AC-7904.2, AC-7906.1
+- Files: src/app/api/ai/location/sources/welfare.ts, src/app/api/ai/location/sources/welfare.test.ts, fixtures/location/api/welfare/**, src/lib/location/sources.ts, src/lib/location/sources.test.ts, docs/ADR.md
+- Tests: src/app/api/ai/location/sources/welfare.test.ts, src/lib/location/sources.test.ts
+- TDD: required — design.md 4절·조사 5. `welfare`(15062448, `api.odcloud.kr`, 공공데이터포털 열쇠, 판 주소는 상수 하나): 시군구 코드(없으면 시도+시군구 이름, 전라북도·전북특별자치도 둘 다, 일반구까지)로 한 줄을 골라 기초 의료급여·기초생활보장 합계·차상위 3종 합·기준 연월, 없는 시군구 = 빈 값, 미등록 열쇠 = `not-applied`. 가짜 응답은 지어낸 지역 이름. `SOURCES`에 `welfare` 한 줄(한국사회보장정보원·이용 제한 없음·해마다·시군구), `MISSING`에 열두째 줄. `LAW_BASIS` 쉬운 한 줄 아홉·`MISSING` 열둘의 글을 requirements '화면 글 기본값' 그대로 맞춘다(지금 글과 다른 곳은 시험을 먼저 고침). `docs/ADR.md` ADR-042에 design.md 16절의 `api.odcloud.kr` 한 줄. 종류 이름 `'welfare'`는 같은 Phase TASK-51이 타입에 더한다 — 이 파일은 `Adapter` 모양을 따르고 타입 검사(tsc)는 합친 뒤 본다
 ## Phase 3 — 저장 · 모으기 · 공용 화면 · 무게 판 · 지도 · 진짜 자료 파일 (8명 동시 · 겹침 없음: `lib/storage/location*`·`clients*` / `lib/location/{collect,snapshot}*` / `components/location/`의 폴더 하나씩 / `csp*`·`next.config.ts` / `public/location/`·`lib/location/data/`)
 ## TASK-24: 저장 함수·부르기
 - REQ: REQ-7908, REQ-7913, REQ-7919 · AC-7908.2, AC-7913.4, AC-7919.4
@@ -124,7 +134,7 @@
 - REQ: REQ-7908 · AC-7908.2, AC-7908.3
 - Files: src/lib/location/collect.ts, src/lib/location/collect.test.ts, src/lib/location/snapshot.ts, src/lib/location/snapshot.test.ts
 - Tests: src/lib/location/collect.test.ts, src/lib/location/snapshot.test.ts
-- TDD: required — design.md 6절. `collect(point, radius, deps)`는 부르는 함수·동 파일 읽기를 받는다(동시에 4개, 진행 수). 실패 종류는 `ok: false`, 카카오 답은 그날 값에 넣지 않는다. 가장 가까운 역·400m 안 정류장 수는 좌표 파일(경계 근처는 이웃 시군구도), 사람 흐름은 `flow-volume` → `flow-bus`·`flow-rail` → `lib/location/flow.ts`(같은 시군구·달은 한 번, 지난달 없으면 두 달 전까지). `fitSnapshot` 65,536바이트, `mergeSnapshot`의 `prev`. 점수 세부 값에 쓰는 학교·산업단지 고용(시군구)·30m 안 약국(상가정보)도 담는다. 동네 훑기 값 `collectScan(시군구, deps)`도 여기(동마다 design.md 8절 '훑기 ○' 세부 값, 저장 안 함)
+- TDD: required — design.md 6절. `collect(point, radius, deps)`는 부르는 함수·동 파일 읽기를 받는다(동시에 4개, 진행 수). 실패 종류는 `ok: false`, 카카오 답은 그날 값에 넣지 않는다. 가장 가까운 역·400m 안 정류장 수는 좌표 파일(경계 근처는 이웃 시군구도), 사람 흐름은 `flow-volume` → `flow-bus`·`flow-rail` → `lib/location/flow.ts`(같은 시군구·달은 한 번, 지난달 없으면 두 달 전까지). `fitSnapshot` 65,536바이트, `mergeSnapshot`의 `prev`. 점수 세부 값에 쓰는 학교·산업단지 고용(시군구)·30m 안 약국(상가정보)도 담는다. 의료급여 `welfare`는 후보 시군구 하나, 비율 인구는 그 판 연월 `pop-age`를 그 시군구 모든 행정동(동 경계 파일)에 40개씩 불러 더한다(못 받으면 `population: null`). 동네 훑기 값 `collectScan(시군구, deps)`도 여기(동마다 design.md 8절 '훑기 ○' 세부 값, 저장 안 함)
 ## TASK-26: 공용 화면 부품(숫자 칸·출처 줄·자료 없음 글)
 - REQ: REQ-7906, REQ-7917 · AC-7906.2, AC-7917.2
 - Files: src/components/location/common/**
@@ -144,17 +154,17 @@
 - REQ: REQ-7917 · AC-7917.1
 - Files: src/components/location/start/**
 - Tests: src/components/location/start/
-- TDD: required — design.md 15절 글. 열쇠 상태(`ok`·`missing`·`rejected`·`failed`)마다 글, **열쇠 입력 칸이 없음**, 열쇠 없이 되는 것 세 가지 단추
+- TDD: required — design.md 15절 글. 열쇠 셋 줄(받는 자료)과 상태(`ok`·`missing`·`rejected`·`failed`)마다 글('화면 글 기본값'), **열쇠 입력 칸이 없음**, 영어 사이트·도구 이름 없음, 열쇠 없이 되는 것 세 가지 단추
 ## TASK-30: 진짜 자료 파일 — 동 경계·소득·정류장·역 좌표
 - REQ: REQ-7918 · AC-7918.1, AC-7918.2, AC-7918.5
 - Files: public/location/dongs/**, public/location/transit/**, src/lib/location/data/**
 - Tests: src/lib/location/data/
 - TDD: required — design.md 5절. 시험(`data.test.ts`)이 먼저 모양·시군구 수·동 넓이 > 0·못 이은 동 수·소득·산업단지 고용 시군구 코드 5자리·정류장 파일 시군구 목록·정류장/역 점 범위(33~39·124~132)를 본다. 원본(SGIS 경계 15129688·국세청 TASIS 4-2-15·산업단지현황통계 15085886(단지 소재지를 시군구로 묶어 고용 인원 합)·버스정류장 위치 CSV 15067528·도시철도역사 XLSX 15013205)은 저장소 밖에서 받아 저장소 밖 스크립트로 줄인다(스크립트·원본은 넣지 않음). 정류장은 동 경계로 시군구를 나눈다. 받기가 로그인에 막히면 사용자에게 파일을 부탁한다. 전체 40MB 안, 파일 하나 2MB 안
 ## TASK-49: 점수 무게 판(바깥 무게·항목마다 [세부 ▾]·기준 칸·나이대·[기본값으로])
-- REQ: REQ-7919, REQ-7907 · AC-7919.1, AC-7919.4, AC-7907.2
+- REQ: REQ-7919, REQ-7907 · AC-7919.1, AC-7919.4, AC-7919.6, AC-7907.2
 - Files: src/components/location/weights/**
 - Tests: src/components/location/weights/
-- TDD: required — design.md 8절 표 그대로(설정은 props, 바뀐 설정·저장은 콜백). 많을수록 좋음은 칸 하나·적을수록 좋음은 칸 둘, `후보에서만` 표시, 0·빈칸·100점 값 ≥ 0점 값·나이대 0개면 저장 콜백을 부르지 않고 안내 글, [기본값으로]는 `DEFAULT_SCORE_RULE` 전부. **시안에 이 판이 아직 없다 — 시안에 더해 사용자 승인을 받은 뒤 시작**
+- TDD: required — 시안 `?s=weights`(승인 2) 자리 + design.md 8절 처음 값(설정은 props, 바뀐 설정·저장은 콜백). 막대 0~50·5씩, 많을수록 좋음은 칸 하나·적을수록 좋음은 칸 둘·고르는 값은 글만, `p-welfare` 방향 고르기, `후보에서만` 표시, 0·빈칸·100점 값 ≥ 0점 값·나이대 0개면 저장 콜백을 부르지 않고 안내 글, [기본 무게로]는 바깥 무게만·항목 [기본값으로]는 그 항목만(`DEFAULT_SCORE_RULE`에서). 글은 '화면 글 기본값'
 ## Phase 4 — 화면 묶음 열둘 (12명 동시 · 겹침 없음: `components/location/`의 폴더 하나씩)
 ## TASK-31: 동네 훑기 화면
 - REQ: REQ-7907, REQ-7919 · AC-7907.1, AC-7907.2, AC-7907.3, AC-7907.4, AC-7919.3
@@ -167,10 +177,10 @@
 - Tests: src/components/location/detail/frame/
 - TDD: required — 묶음 열둘은 칸(slot)으로 받아 차례대로 놓기만 한다(묶음 부품을 부르지 않음). 위험 신호 맨 위, 범위 일곱 값, [오늘 값으로 다시 받기]·기준 날짜, 목차 건너뛰기
 ## TASK-33: 후보 자세히 — 사는 사람·소득·앞으로 바뀔 것
-- REQ: REQ-7909 · AC-7909.2
+- REQ: REQ-7909 · AC-7909.2, AC-7909.7
 - Files: src/components/location/detail/people/**
 - Tests: src/components/location/detail/people/
-- TDD: required — 나이대 넷·60세 이상 비율·세대 수·4년 추세·아파트·홍보할 차례(가까움·세대·지은 해)·입주 예정, 소득은 `동 단위 자료가 없어요`, 동 기준(행정동·법정동) 아래 글
+- TDD: required — 나이대 넷·60세 이상 비율·세대 수·4년 추세·아파트·홍보할 차례(가까움·세대·지은 해)·입주 예정, 소득은 `동 단위 자료가 없어요`, 의료급여·차상위 세 줄·비율·머리 글(AC-7909.7), 동 기준(행정동·법정동) 아래 글
 ## TASK-34: 후보 자세히 — 정형외과 수요·교통·사람 흐름·둘레 시설
 - REQ: REQ-7909, REQ-7908 · AC-7909.1, AC-7909.6, AC-7908.4
 - Files: src/components/location/detail/demand/**
@@ -212,10 +222,10 @@
 - Tests: src/components/location/prep/plan/
 - TDD: required — 비용 칸 모두 빈칸으로 열림(기본 숫자 없음)·정수만·빈칸 수·직원 인건비는 직접 적는 빈칸(월급 안내 없음)·매물 값은 참고 글로만, 손익분기는 비용과 직접 적는 '환자 1명당 평균 수입'만으로·`원장 몫` 글(예상 환자 칸·견주는 글 없음), 일정표·다 함 표시
 ## TASK-42: 개원 준비 — 건물 요건·계약 전 위험·점검표·사진·메모·진행 상태
-- REQ: REQ-7913 · AC-7913.3, AC-7913.4
+- REQ: REQ-7913 · AC-7913.3, AC-7913.4, AC-7913.5
 - Files: src/components/location/prep/visit/**
 - Tests: src/components/location/prep/visit/
-- TDD: required — 세 점검표 값(○·✕·모름)·법 근거 링크, 등기부 안내·등기소 링크, 사진 올리기(30장 넘으면 `E-LOC-PHOTO`, `shrinkPhoto` 흉내)·지우기, 날짜별 메모, 진행 상태 다섯
+- TDD: required — 건물 요건 ○·✕·?·`어떻게 알았나` 40자, 계약서·보러 갈 때는 체크 칸, 임대 조건 메모 300자(`terms.memo`), 법 근거 링크, 등기부 안내·등기소 링크, 사진 올리기(30장 넘으면 `E-LOC-PHOTO`, `shrinkPhoto` 흉내)·지우기, 날짜별 메모, 진행 상태 다섯
 ## Phase 5 — 잇기 · 알림 · 진짜 열쇠 (5명 동시 · 겹침 없음: 셸·문지기 / 화면 맨 위 파일·페이지·`titles.test` / `registry*` / 대시보드 / `sources/**`·`fixtures/location/api/**`·`lib/location/{flow,links}*`)
 ## TASK-43: 탭 열기·관리자 문지기
 - REQ: REQ-7901 · AC-7901.1, AC-7901.2
@@ -231,7 +241,7 @@
 - REQ: REQ-7903, REQ-7904 · AC-7903.2, AC-7904.1
 - Files: src/app/api/ai/location/registry.ts, src/app/api/ai/location/registry.test.ts
 - Tests: src/app/api/ai/location/registry.test.ts
-- TDD: required — 열두 묶음을 이어 종류 27개가 빠짐없이 하나씩, 열쇠 종류가 design.md 4절과 같음을 본다
+- TDD: required — 열세 묶음을 이어 종류 28개(의료급여 `welfare` 포함)가 빠짐없이 하나씩, 열쇠 종류가 design.md 4절과 같음을 본다
 ## TASK-46: 대시보드 새 경쟁 의원 알림
 - REQ: REQ-7915 · AC-7915.1, AC-7915.2, AC-7915.3
 - Files: src/components/dashboard/location/**, src/components/dashboard/summary/LiveDashboard.tsx, src/components/dashboard/summary/LiveDashboard.test.tsx, src/components/dashboard/live/BitDashboard.tsx, src/components/dashboard/live/BitDashboard.test.tsx, src/components/dashboard/briefing/DashboardHome.tsx, src/components/dashboard/briefing/DashboardHome.test.tsx, src/app/(app)/dashboard/page.tsx, src/app/(app)/dashboard/page.test.tsx
@@ -241,7 +251,7 @@
 - REQ: REQ-7918, REQ-7904 · AC-7918.3, AC-7918.4, AC-7904.1
 - Files: src/app/api/ai/location/sources/**, fixtures/location/api/**, src/lib/location/flow.ts, src/lib/location/flow.test.ts, src/lib/location/links.ts, src/lib/location/links.test.ts
 - Tests: src/app/api/ai/location/sources/, src/lib/location/flow.test.ts, src/lib/location/links.test.ts
-- TDD: required — 사용자가 `.env.local`에 열쇠를 넣은 뒤. 종류마다 한 번씩 불러 답을 저장소 밖에 받고, 이름·주소를 지어낸 값으로 바꿔 잘라 가짜 응답을 고친다(시험이 먼저 깨짐) → 읽는 코드를 고친다. 확인할 것 1~6을 design.md에 적는다. 네이버 링크 둘을 사용자에게 눌러 보게 해 하나로. 지도·하늘 사진·로드뷰를 띄워 CSP 위반 기록을 모아 TASK-48에 넘긴다. 열쇠는 대화·로그·파일·가짜 응답에 남기지 않는다
+- TDD: required — 사용자가 `.env.local`에 열쇠를 넣은 뒤. 종류마다 한 번씩 불러 답을 저장소 밖에 받고, 이름·주소를 지어낸 값으로 바꿔 잘라 가짜 응답을 고친다(시험이 먼저 깨짐) → 읽는 코드를 고친다. 확인할 것 1~6·9를 design.md에 적는다. 네이버 링크 둘을 사용자에게 눌러 보게 해 하나로. 지도·하늘 사진·로드뷰를 띄워 CSP 위반 기록을 모아 TASK-48에 넘긴다. 열쇠는 대화·로그·파일·가짜 응답에 남기지 않는다
 ## Phase 6 — 마무리 (1명, 이 기능의 유일한 검토)
 ## TASK-48: 전체 검사·화면 사진 확인·독립 검토 한 번
 - REQ: REQ-7901, REQ-7914, REQ-7916 · AC-7901.4, AC-7914.2, AC-7916.2
