@@ -1,9 +1,27 @@
-import { describe, expect, it } from 'vitest'
-import type { Query, QueryKind } from '@/types/location'
+import { describe, expect, expectTypeOf, it } from 'vitest'
+import type {
+  Adapter,
+  ClinicDeptId,
+  DeptId,
+  DeptRule,
+  FlagFacts,
+  HospGroup,
+  LocationSettings,
+  Point,
+  Query,
+  QueryKind,
+  QueryOf,
+  Rival,
+  RivalKind,
+  ScoreFacts,
+  SggAvg,
+  SnapshotValue,
+  WatchCandidate,
+} from '@/types/location'
 import { KIND_KEY, QUERY_KINDS, checkQuery } from './query'
 
-// 입지 분석 몸통 검사(specs/location REQ-7903 AC-7903.2, design.md 4절). 화면과 서버가 같은 검사를 쓴다.
-// 정해 둔 종류 28개 · 종류마다 정해 둔 칸만(빠짐·더함 없음) · 칸마다 범위. 맞으면 정리한 몸통, 아니면 null
+// 입지 분석 몸통 검사(specs/location REQ-7903 AC-7903.2 · REQ-7922 AC-7922.1, design.md 4절). 화면과 서버가 같은 검사를 쓴다.
+// 정해 둔 종류 28개 · 종류마다 정해 둔 칸만(빠짐·더함 없음, 선택 칸은 빠져도 됨) · 칸마다 범위. 맞으면 정리한 몸통, 아니면 null
 
 const AT = { lat: 37.566535, lng: 126.977969 }
 
@@ -15,9 +33,9 @@ const VALID: { [K in QueryKind]: Extract<Query, { kind: K }> } = {
   'k-keyword': { kind: 'k-keyword', at: AT, r: 3000, q: '산업단지' },
   'pop-age': { kind: 'pop-age', dongs: ['1111051500', '1111053000'], ym: '2026-09' },
   household: { kind: 'household', dongs: ['1111051500'], ym: '2022-10' },
-  'flow-volume': { kind: 'flow-volume', sido: '11', sgg: '11110', ym: '2026-10' },
-  'flow-bus': { kind: 'flow-bus', sgg: '11110' },
-  'flow-rail': { kind: 'flow-rail', sgg: '11110' },
+  'flow-volume': { kind: 'flow-volume', sido: '11', sgg: '11110', ym: '2026-10', part: 3 },
+  'flow-bus': { kind: 'flow-bus', sgg: '11110', ym: '2026-09' },
+  'flow-rail': { kind: 'flow-rail', sgg: '11110', ym: '2026-09' },
   accident: { kind: 'accident', sidoName: '서울특별시', sggName: '종로구' },
   'apt-list': { kind: 'apt-list', bjd: '1111010100' },
   'apt-info': { kind: 'apt-info', complex: 'A10027875' },
@@ -27,16 +45,23 @@ const VALID: { [K in QueryKind]: Extract<Query, { kind: K }> } = {
   stores: { kind: 'stores', at: AT, r: 30 },
   'bld-title': { kind: 'bld-title', sgg: '11110', bjdong: '10100', bun: '0012', ji: '0000', plat: '0' },
   'bld-floor': { kind: 'bld-floor', sgg: '11110', bjdong: '10100', bun: '0012', ji: '0003', plat: '1' },
-  'hosp-list': { kind: 'hosp-list', at: AT, r: 1500, group: 'clinic' },
+  'hosp-list': { kind: 'hosp-list', at: AT, r: 1500, group: 'clinic', depts: ['ortho', 'ns', 'pain', 'rehab'] },
   'hosp-detail': { kind: 'hosp-detail', ykiho: 'JDQ4MTg4MSM1MSMkMSMkMCMkODkkMzgxMzUx+/=' },
-  'hosp-hours': { kind: 'hosp-hours', at: AT },
+  'hosp-hours': { kind: 'hosp-hours', sidoName: '서울특별시', sggName: '종로구' },
   nonpay: { kind: 'nonpay', ykiho: 'JDQ4MTg4MSM1MSMk', item: 'MX122' },
-  'clinic-license': { kind: 'clinic-license', event: 'open', from: '2023-11-22', to: '2026-11-22' },
-  gym: { kind: 'gym', sggName: '종로구' },
+  'clinic-license': { kind: 'clinic-license', event: 'open', from: '2023-11-22', to: '2026-11-22', addr: '서울특별시 종로구' },
+  gym: { kind: 'gym', sggName: '종로구', sidoName: '서울특별시' },
   senior: { kind: 'senior', sggName: '수원시 장안구' },
   market: { kind: 'market', sggName: '종로구' },
   school: { kind: 'school', sggName: '종로구' },
-  welfare: { kind: 'welfare', sgg: '11110' },
+  welfare: { kind: 'welfare', sgg: '11110', sidoNames: ['서울특별시'], sggNames: ['종로구'] },
+}
+
+// 빠져도 되는 칸(AC-7922.1): 승하차 쪽(빼면 0) · 인허가 주소 앞부분 · 체력단련장 시도 이름
+const OPTIONAL: Partial<Record<QueryKind, readonly string[]>> = {
+  'flow-volume': ['part'],
+  'clinic-license': ['addr'],
+  gym: ['sidoName'],
 }
 
 const KINDS = Object.keys(VALID) as QueryKind[]
@@ -85,9 +110,9 @@ describe('AC-7903.2 정해 둔 종류 28개', () => {
       expect(checkQuery(body), JSON.stringify(body) ?? String(body)).toBeNull()
   })
 
-  it('AC-7903.2: 정해 둔 칸이 하나라도 빠지거나 더 있으면 받지 않는다', () => {
+  it('AC-7903.2: 정해 둔 칸이 하나라도 빠지거나 더 있으면 받지 않는다(선택 칸은 빠져도 된다)', () => {
     for (const kind of KINDS) {
-      for (const field of Object.keys(VALID[kind]).filter((f) => f !== 'kind'))
+      for (const field of Object.keys(VALID[kind]).filter((f) => f !== 'kind' && !OPTIONAL[kind]?.includes(f)))
         expect(checkQuery(withoutField(kind, field)), `${kind} - ${field}`).toBeNull()
       expect(checkQuery({ ...VALID[kind], extra: 1 }), `${kind} + extra`).toBeNull()
       expect(checkQuery({ ...VALID[kind], serviceKey: 'abc' }), `${kind} + serviceKey`).toBeNull()
@@ -121,7 +146,7 @@ describe('AC-7903.2 칸 범위', () => {
     ]
     for (const at of bad) expect(checkQuery({ kind: 'k-point', at }), JSON.stringify(at)).toBeNull()
     // 점이 있는 다른 종류도 같은 검사
-    for (const kind of ['k-near', 'k-keyword', 'stores', 'hosp-list', 'hosp-hours'] as const)
+    for (const kind of ['k-near', 'k-keyword', 'stores', 'hosp-list'] as const)
       expect(checkQuery(withField(kind, 'at', { lat: 40, lng: 127 })), kind).toBeNull()
   })
 
@@ -212,9 +237,11 @@ describe('AC-7903.2 칸 범위', () => {
     }
   })
 
-  it('AC-7903.2: 의원 목록은 r 1~20,000m와 무리 clinic·korean·big', () => {
-    for (const group of ['clinic', 'korean', 'big']) expect(checkQuery(withField('hosp-list', 'group', group)), group).not.toBeNull()
-    for (const group of ['hospital', '', 'CLINIC']) expect(checkQuery(withField('hosp-list', 'group', group)), group).toBeNull()
+  it('AC-7903.2: 의원 목록은 r 1~20,000m와 무리 clinic(+과목)·dental·korean·big', () => {
+    for (const group of ['dental', 'korean', 'big'])
+      expect(checkQuery({ kind: 'hosp-list', at: AT, r: 1500, group }), group).toEqual({ kind: 'hosp-list', at: AT, r: 1500, group })
+    for (const group of ['hospital', '', 'CLINIC', 'DENTAL', null])
+      expect(checkQuery({ kind: 'hosp-list', at: AT, r: 1500, group }), String(group)).toBeNull()
     for (const r of [0, 20_001]) expect(checkQuery(withField('hosp-list', 'r', r)), String(r)).toBeNull()
   })
 
@@ -240,12 +267,9 @@ describe('AC-7903.2 칸 범위', () => {
       expect(checkQuery(withField('clinic-license', 'to', day)), String(day)).toBeNull()
   })
 
-  it('AC-7903.2: 의료급여·차상위(welfare)는 시군구 5자리 하나만 받는다(후보 시군구 한 줄)', () => {
-    expect(checkQuery({ kind: 'welfare', sgg: '52111' })).toEqual({ kind: 'welfare', sgg: '52111' })
+  it('AC-7903.2: 의료급여·차상위(welfare)의 시군구는 5자리 숫자다', () => {
     for (const sgg of ['1111', '111100', 'abcde', '11A10', 11110, '', null])
       expect(checkQuery(withField('welfare', 'sgg', sgg)), String(sgg)).toBeNull()
-    expect(checkQuery({ kind: 'welfare', sgg: '11110', sggName: '종로구' })).toBeNull()
-    expect(checkQuery({ kind: 'welfare', sidoName: '서울특별시', sggName: '종로구' })).toBeNull()
   })
 
   it('AC-7903.2: 받은 몸통은 정해 둔 칸만 담은 새 객체다(원본과 따로)', () => {
@@ -259,5 +283,199 @@ describe('AC-7903.2 칸 범위', () => {
     const pop = checkQuery({ kind: 'pop-age', dongs, ym: '2026-09' })
     if (pop === null || pop.kind !== 'pop-age') throw new Error('pop-age가 아니다')
     expect(pop.dongs).not.toBe(dongs)
+  })
+})
+
+// ── 진짜 열쇠 결과로 바뀐 몸통(TASK-47 보고 '바꿀 것', design.md 4절) ──
+describe('AC-7922.1 바뀐 몸통', () => {
+  it('AC-7922.1: 종류는 그대로 28개이고 바뀐 몸통도 그대로 받는다', () => {
+    expect(QUERY_KINDS).toHaveLength(28)
+    for (const kind of KINDS) expect(checkQuery(VALID[kind]), kind).toEqual(VALID[kind])
+  })
+
+  it('AC-7922.1: 승하차(flow-volume) part는 0~11 정수이고 빼면 0으로 채운다', () => {
+    const base = { kind: 'flow-volume', sido: '11', sgg: '11110', ym: '2026-09' }
+    expect(checkQuery(base)).toEqual({ ...base, part: 0 })
+    for (const part of [0, 1, 11]) expect(checkQuery({ ...base, part }), String(part)).toEqual({ ...base, part })
+    for (const part of [-1, 12, 1.5, '1', null, Number.NaN, true]) expect(checkQuery({ ...base, part }), String(part)).toBeNull()
+    expect(checkQuery({ ...base, sido: '26', part: 0 })).toBeNull()
+  })
+
+  it('AC-7922.1: 버스정류장·도시철도역(flow-bus·flow-rail)은 연월 ym(YYYY-MM, 2022-10부터)이 꼭 있다', () => {
+    for (const kind of ['flow-bus', 'flow-rail'] as const) {
+      expect(checkQuery({ kind, sgg: '11110', ym: '2022-10' }), kind).toEqual({ kind, sgg: '11110', ym: '2022-10' })
+      expect(checkQuery({ kind, sgg: '11110' }), `${kind} ym 없음`).toBeNull()
+      for (const ym of ['2022-09', '2026-13', '2026-9', '202609', '2026-09-01', '', null, 202609])
+        expect(checkQuery({ kind, sgg: '11110', ym }), `${kind} ${String(ym)}`).toBeNull()
+    }
+  })
+
+  it('AC-7922.1: 진료 시간(hosp-hours)은 점이 아니라 시도·시군구 이름(1~20자)으로 받는다', () => {
+    const ok = [
+      ['서울특별시', '종로구'],
+      ['경기도', '수원시 장안구'],
+      ['전남광주통합특별시', '북구'],
+      ['세종특별자치시', '세종시'],
+    ]
+    for (const [sidoName, sggName] of ok)
+      expect(checkQuery({ kind: 'hosp-hours', sidoName, sggName }), sggName).toEqual({ kind: 'hosp-hours', sidoName, sggName })
+    expect(checkQuery(withField('hosp-hours', 'sggName', '가'.repeat(20)))).not.toBeNull()
+    expect(checkQuery({ kind: 'hosp-hours', at: AT })).toBeNull()
+    expect(checkQuery({ kind: 'hosp-hours', at: AT, sidoName: '서울특별시', sggName: '종로구' })).toBeNull()
+    for (const name of ['', '가'.repeat(21), ' 종로구', '종로구 ', '수원시  장안구', 'Jongno', '종로구;', '종로\n구', null, 11110])
+      for (const field of ['sidoName', 'sggName'])
+        expect(checkQuery(withField('hosp-hours', field, name)), `${field} ${JSON.stringify(name)}`).toBeNull()
+  })
+
+  it('AC-7922.1: 의료급여(welfare)는 시군구 5자리와 판에서 찾을 이름 — 시도 1~2개·시군구 1~4개(각 1~20자, 되풀이 없음)', () => {
+    const merged = { kind: 'welfare', sgg: '12170', sidoNames: ['광주광역시', '전라남도'], sggNames: ['북구'] }
+    expect(checkQuery(merged)).toEqual(merged)
+    const group = { kind: 'welfare', sgg: '28125', sidoNames: ['인천광역시'], sggNames: ['중구', '동구'] }
+    expect(checkQuery(group)).toEqual(group)
+    const four = ['중구', '동구', '서구', '남구']
+    expect(checkQuery({ ...VALID.welfare, sggNames: four })).not.toBeNull()
+    const bad: [string, unknown][] = [
+      ['sidoNames', []],
+      ['sidoNames', ['서울특별시', '경기도', '인천광역시']],
+      ['sidoNames', ['서울특별시', '서울특별시']],
+      ['sidoNames', '서울특별시'],
+      ['sidoNames', [11]],
+      ['sidoNames', ['가'.repeat(21)]],
+      ['sggNames', []],
+      ['sggNames', [...four, '북구']],
+      ['sggNames', ['중구', '중구']],
+      ['sggNames', '종로구'],
+      ['sggNames', ['']],
+      ['sggNames', ['종로구;']],
+      ['sggNames', ['Jongno']],
+      ['sggNames', ['가'.repeat(21)]],
+      ['sggNames', null],
+    ]
+    for (const [field, value] of bad) expect(checkQuery(withField('welfare', field, value)), `${field} ${JSON.stringify(value)}`).toBeNull()
+    // 옛 몸통(시군구 코드만 · 이름 하나씩)은 받지 않는다
+    expect(checkQuery({ kind: 'welfare', sgg: '11110' })).toBeNull()
+    expect(checkQuery({ kind: 'welfare', sgg: '11110', sidoName: '서울특별시', sggName: '종로구' })).toBeNull()
+  })
+
+  it('AC-7922.1: 받은 의료급여 몸통의 이름 목록은 원본과 따로인 새 배열이다', () => {
+    const sggNames = ['중구', '동구']
+    const q = checkQuery({ kind: 'welfare', sgg: '28125', sidoNames: ['인천광역시'], sggNames })
+    if (q === null || q.kind !== 'welfare') throw new Error('welfare가 아니다')
+    expect(q.sggNames).toEqual(sggNames)
+    expect(q.sggNames).not.toBe(sggNames)
+  })
+
+  it('AC-7922.1: 의원 인허가(clinic-license)는 선택 addr — 한글 덩이를 공백 하나로 이은 2~40자', () => {
+    const base = { kind: 'clinic-license', event: 'close', from: '2023-11-22', to: '2026-11-22' }
+    expect(checkQuery(base)).toEqual(base)
+    for (const addr of ['서울특별시 종로구', '경기도 수원시 장안구', '세종특별자치시', '가나', '가'.repeat(40)])
+      expect(checkQuery({ ...base, addr }), addr).toEqual({ ...base, addr })
+    for (const addr of ['가', '가'.repeat(41), '', ' 서울특별시', '서울특별시 ', '서울특별시  종로구', '서울 종로구 1', 'Seoul', '서울%', '서울_종로구', "서울'", '서울\n종로구', null, 1])
+      expect(checkQuery({ ...base, addr }), JSON.stringify(addr)).toBeNull()
+  })
+
+  it('AC-7922.1: 체력단련장(gym)은 선택 sidoName(시도·시군구 이름 규칙), 다른 시설 종류에는 없다', () => {
+    expect(checkQuery({ kind: 'gym', sggName: '종로구' })).toEqual({ kind: 'gym', sggName: '종로구' })
+    const withSido = { kind: 'gym', sggName: '북구', sidoName: '전남광주통합특별시' }
+    expect(checkQuery(withSido)).toEqual(withSido)
+    for (const sidoName of ['', '서', 'Seoul', '서울특별시;', null, 11])
+      expect(checkQuery({ kind: 'gym', sggName: '종로구', sidoName }), String(sidoName)).toBeNull()
+    for (const kind of ['senior', 'market', 'school'] as const)
+      expect(checkQuery({ kind, sggName: '종로구', sidoName: '서울특별시' }), kind).toBeNull()
+  })
+
+  it('AC-7922.1: 의원 목록 clinic은 과목 depts(의원 과목 id 1~19개, 되풀이 없음, 치과·한의원 아님)가 꼭 있다', () => {
+    const base = { kind: 'hosp-list', at: AT, r: 1000, group: 'clinic' }
+    const nineteen = ['im', 'neuro', 'psy', 'gs', 'ortho', 'ns', 'cs', 'plastic', 'pain', 'obgy', 'ped', 'eye', 'ent', 'derm', 'uro', 'rad', 'rehab', 'fm', 'oem']
+    for (const depts of [['ortho'], ['rehab', 'ortho'], nineteen]) expect(checkQuery({ ...base, depts }), depts.join(',')).toEqual({ ...base, depts })
+    expect(checkQuery(base)).toBeNull()
+    for (const depts of [[], ['dental'], ['korean'], ['ortho', 'korean'], ['ortho', 'ortho'], ['orthopedics'], ['ORTHO'], [5], 'ortho', null, [...nineteen, 'ortho']])
+      expect(checkQuery({ ...base, depts }), JSON.stringify(depts)).toBeNull()
+  })
+
+  it('AC-7922.1: 의원 목록 dental·korean·big은 과목 depts를 받지 않는다', () => {
+    for (const group of ['dental', 'korean', 'big']) {
+      expect(checkQuery({ kind: 'hosp-list', at: AT, r: 1000, group }), group).not.toBeNull()
+      expect(checkQuery({ kind: 'hosp-list', at: AT, r: 1000, group, depts: ['ortho'] }), `${group} + depts`).toBeNull()
+    }
+  })
+
+  it('AC-7922.1: 받은 과목 목록은 원본과 따로인 새 배열이다', () => {
+    const depts = ['ortho', 'pain']
+    const q = checkQuery({ kind: 'hosp-list', at: AT, r: 1000, group: 'clinic', depts })
+    if (q === null || q.kind !== 'hosp-list' || q.group !== 'clinic') throw new Error('clinic 목록이 아니다')
+    expect(q.depts).toEqual(depts)
+    expect(q.depts).not.toBe(depts)
+  })
+})
+
+// ── 공용 모양(types/location.ts, design.md 6·18·19절). 모양은 tsc가 보고(expectTypeOf), 시험은 그 모양으로 만든 값이 칸을 담는지 본다 ──
+describe('AC-7922.4·AC-7908.2 공용 모양', () => {
+  it('AC-7922.4: 의원은 kind 대신 찾은 과목 depts·심평원 좌표 at·주소 address와 경쟁 의원만의 detail을 담는다', () => {
+    const near: Rival = {
+      name: '지어낸정형외과의원',
+      depts: ['ortho', 'pain'],
+      at: { lat: 37.5701, lng: 126.9822 },
+      distM: 12,
+      sameBuilding: true,
+      address: '서울특별시 종로구 지어낸로 1',
+      doctors: 2,
+      openedYear: 2019,
+      detail: { therapists: 3, mri: false, ct: null, week: [[540, 1080], null, null, null, null, null, null, null], priced: true, eswt: 50_000, manual: null },
+    }
+    const far: Rival = { name: '지어낸내과의원', depts: ['im'], at: { lat: 37.58, lng: 126.99 }, distM: 900, sameBuilding: false, address: '', doctors: null, openedYear: null }
+    expect(Object.keys(near).sort()).toEqual(['address', 'at', 'depts', 'detail', 'distM', 'doctors', 'name', 'openedYear', 'sameBuilding'])
+    expect(Object.keys(near.detail ?? {}).sort()).toEqual(['ct', 'eswt', 'manual', 'mri', 'priced', 'therapists', 'week'])
+    expect(far.detail).toBeUndefined()
+    expectTypeOf<Rival>().not.toHaveProperty('kind')
+    expectTypeOf<Rival['at']>().toEqualTypeOf<Point>()
+    expectTypeOf<Rival['depts']>().toEqualTypeOf<DeptId[]>()
+    expectTypeOf<NonNullable<Rival['detail']>['priced']>().toEqualTypeOf<boolean>()
+    expectTypeOf<NonNullable<Rival['detail']>['manual']>().toEqualTypeOf<number | null>()
+  })
+
+  it('AC-7922.4: 그날 값에 행정동 place·견줄 값 sggAvg·역 좌표 station.at·의료급여 basis가 있다', () => {
+    const place: SnapshotValue<'place'> = { sido: '11', sidoName: '서울특별시', sgg: '11110', sggName: '종로구', dong: '1111051500', dongName: '지어낸동' }
+    const avg: SggAvg = {
+      sggName: '종로구',
+      areaM2: 23_910_000,
+      total: 139_000,
+      bands: [9, 10, 18, 22, 20, 21, 18, 12, 6, 2, 1],
+      trendPct: -3.1,
+      accidents: 12,
+      schools: 30,
+      seniors: 90,
+      gyms: null,
+      stationM: 640,
+      stops: 7,
+    }
+    const station: SnapshotValue<'station'> = { name: '지어낸역', line: '3호선', distM: 420, at: { lat: 37.57, lng: 126.98 } }
+    const welfare: SnapshotValue<'welfare'> = { sggName: '중구', ym: '2025-12', medical: 10, basic: 20, nearPoor: 5, population: 1000, basis: '옛 중구·동구' }
+    expect(place.dongName).toBe('지어낸동')
+    expect(avg.bands).toHaveLength(11)
+    expect(station.at).toEqual({ lat: 37.57, lng: 126.98 })
+    expect(welfare.basis).toBe('옛 중구·동구')
+    expectTypeOf<SnapshotValue<'sggAvg'>>().toEqualTypeOf<SggAvg>()
+    expectTypeOf<SnapshotValue<'place'>['dong']>().toEqualTypeOf<string | null>()
+    expectTypeOf<SnapshotValue<'welfare'>['basis']>().toEqualTypeOf<string | null>()
+    expectTypeOf<SggAvg['trendPct']>().toEqualTypeOf<number | null>()
+  })
+
+  it('AC-7908.2: 설정·알림·점수·읽는 곳 모양 — deptRule · 후보 이름 · 30m 안 의원 수 · 시간 한도 · 치과 무리', () => {
+    const rule: DeptRule = { v: 1, rival: ['ortho', 'ns', 'pain', 'rehab'], hide: [] }
+    const settings: LocationSettings = { scoreRule: null, deptRule: rule, homeEswt: null, updatedAt: null }
+    const watch: WatchCandidate = { id: 'c1', name: '후보 가', status: 'watching', lat: 37.5, lng: 127, radiusM: 1000, watchCheckedOn: null, createdAt: '2026-11-22T00:00:00Z' }
+    const facts: ScoreFacts = { clinicsNear: 3 }
+    expect(settings.deptRule).toBe(rule)
+    expect(watch.name).toBe('후보 가')
+    expect(facts.clinicsNear).toBe(3)
+    expectTypeOf<HospGroup>().toEqualTypeOf<'clinic' | 'dental' | 'korean' | 'big'>()
+    expectTypeOf<Adapter['timeoutMs']>().toEqualTypeOf<number | undefined>()
+    expectTypeOf<RivalKind>().toEqualTypeOf<DeptId>()
+    expectTypeOf<ClinicDeptId>().toEqualTypeOf<Exclude<DeptId, 'dental' | 'korean'>>()
+    expectTypeOf<NonNullable<FlagFacts['rivals']>[number]>().toHaveProperty('depts')
+    expectTypeOf<Extract<QueryOf<'hosp-list'>, { group: 'clinic' }>['depts']>().toEqualTypeOf<ClinicDeptId[]>()
+    expectTypeOf<QueryOf<'flow-volume'>['part']>().toEqualTypeOf<number | undefined>()
+    expectTypeOf<QueryOf<'welfare'>['sggNames']>().toEqualTypeOf<string[]>()
   })
 })

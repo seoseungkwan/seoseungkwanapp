@@ -47,8 +47,38 @@ export type QueryKind =
 export type Point = { lat: number; lng: number }
 // 카카오 카테고리: 지하철역 · 대형마트 · 약국 · 병원 · 학원(학교는 공공 school)
 export type KakaoCategory = 'SW8' | 'MT1' | 'PM9' | 'HP8' | 'AG2'
-// 심평원 병원 목록 무리: 의원 · 한의원 · 종합병원 이상
-export type HospGroup = 'clinic' | 'korean' | 'big'
+// 심평원 병원 목록 무리: 의원(과목마다) · 치과의원(종별 51) · 한의원(종별 93) · 종합병원 이상
+export type HospGroup = 'clinic' | 'dental' | 'korean' | 'big'
+
+// ── 의원 과목 (design.md 18절, 목록·이름·코드는 lib/location/depts.ts DEPTS 한 곳) ──
+
+// 과목 스물하나(DEPTS 차례): 심평원 의원 진료과목 열아홉 + 치과의원 · 한의원
+export type DeptId =
+  | 'im'
+  | 'neuro'
+  | 'psy'
+  | 'gs'
+  | 'ortho'
+  | 'ns'
+  | 'cs'
+  | 'plastic'
+  | 'pain'
+  | 'obgy'
+  | 'ped'
+  | 'eye'
+  | 'ent'
+  | 'derm'
+  | 'uro'
+  | 'rad'
+  | 'rehab'
+  | 'fm'
+  | 'oem'
+  | 'dental'
+  | 'korean'
+// 의원 과목 열아홉(hosp-list clinic의 depts) — 치과의원·한의원은 종별 목록(dental·korean)으로 찾는다
+export type ClinicDeptId = Exclude<DeptId, 'dental' | 'korean'>
+// 의원 과목 고르기(location_settings.dept_rule): 경쟁 · 안 보기, 둘 다 아닌 과목은 둘레로 보기
+export type DeptRule = { v: 1; rival: DeptId[]; hide: DeptId[] }
 // 건축물대장 대지 구분: 산이면 '1', 아니면 '0'(design.md 5절)
 export type PlatKind = '0' | '1'
 
@@ -57,7 +87,8 @@ type BuildingKey = { sgg: string; bjdong: string; bun: string; ji: string; plat:
 
 // POST /api/ai/location/query 몸통. 종류마다 이 칸만 받는다(lib/location/query.ts checkQuery가 본다).
 // 코드: dongs = 행정동 10자리(1~40개) · bjd = 법정동 10자리 · sgg = 시군구 5자리 · sido = 시도 2자리.
-// 이름(sidoName·sggName)은 한글·숫자 2~40자. ym = 'YYYY-MM'. r = m 정수(k-near·k-keyword·hosp-list 1~20,000, stores 30~2,000)
+// 이름(sidoName·sggName)은 한글·숫자 2~40자(hosp-hours·welfare는 1~20자). ym = 'YYYY-MM'.
+// r = m 정수(k-near·k-keyword·hosp-list 1~20,000, stores 30~2,000)
 export type Query =
   | { kind: 'k-address'; q: string } // 2~100자(앞뒤 공백 뺌)
   | { kind: 'k-point'; at: Point }
@@ -65,9 +96,9 @@ export type Query =
   | { kind: 'k-keyword'; at: Point; r: number; q: '산업단지' }
   | { kind: 'pop-age'; dongs: string[]; ym: string } // 2022-10부터
   | { kind: 'household'; dongs: string[]; ym: string } // 2022-10부터
-  | { kind: 'flow-volume'; sido: string; sgg: string; ym: string } // sgg는 그 시도 안
-  | { kind: 'flow-bus'; sgg: string }
-  | { kind: 'flow-rail'; sgg: string }
+  | { kind: 'flow-volume'; sido: string; sgg: string; ym: string; part?: number } // sgg는 그 시도 안. part = 10쪽(1만 줄) 묶음 0~11, 빼면 0
+  | { kind: 'flow-bus'; sgg: string; ym: string } // 2022-10부터(그 달 1일로 보냄)
+  | { kind: 'flow-rail'; sgg: string; ym: string } // 2022-10부터
   | { kind: 'accident'; sidoName: string; sggName: string }
   | { kind: 'apt-list'; bjd: string }
   | { kind: 'apt-info'; complex: string } // 단지 코드(영문·숫자 1~20자)
@@ -77,16 +108,20 @@ export type Query =
   | { kind: 'stores'; at: Point; r: number }
   | ({ kind: 'bld-title' } & BuildingKey)
   | ({ kind: 'bld-floor' } & BuildingKey)
-  | { kind: 'hosp-list'; at: Point; r: number; group: HospGroup }
+  | { kind: 'hosp-list'; at: Point; r: number; group: 'clinic'; depts: ClinicDeptId[] } // 의원 과목 1~19개(되풀이 없음) — 과목마다 목록 하나
+  | { kind: 'hosp-list'; at: Point; r: number; group: Exclude<HospGroup, 'clinic'> }
   | { kind: 'hosp-detail'; ykiho: string } // 심평원 암호화 기관 기호(영문·숫자·+/= 1~200자)
-  | { kind: 'hosp-hours'; at: Point }
+  | { kind: 'hosp-hours'; sidoName: string; sggName: string } // 동 경계 목록 이름(카카오 아님)
   | { kind: 'nonpay'; ykiho: string; item: string } // 항목 코드(영문·숫자 1~20자)
-  | { kind: 'clinic-license'; event: 'open' | 'close'; from: string; to: string } // 날짜 둘, from ≤ to ≤ from + 3년
-  | { kind: 'gym'; sggName: string }
+  // 날짜 둘, from ≤ to ≤ from + 3년. addr = 도로명 주소 앞부분 '{시도} {시군구}'(한글 덩이를 공백 하나로, 2~40자)
+  | { kind: 'clinic-license'; event: 'open' | 'close'; from: string; to: string; addr?: string }
+  | { kind: 'gym'; sggName: string; sidoName?: string }
   | { kind: 'senior'; sggName: string }
   | { kind: 'market'; sggName: string }
   | { kind: 'school'; sggName: string }
-  | { kind: 'welfare'; sgg: string } // 후보 시군구 5자리(한국사회보장정보원 시군구별 수급권자 현황, api.odcloud.kr)
+  // 한국사회보장정보원 시군구별 수급권자 현황(api.odcloud.kr) — 판에 코드 칸이 없어 이름으로 찾는다.
+  // 후보 시군구 5자리 · 판의 시도 이름 1~2개(전남광주는 옛 둘) · 시군구 이름 1~4개(옛 구 묶음이면 옛 이름들), 되풀이 없음
+  | { kind: 'welfare'; sgg: string; sidoNames: string[]; sggNames: string[] }
 
 // 종류 하나의 몸통. Extract 대신 종류 → 몸통 판을 써서 Adapter<'k-address'>를 Adapter(모든 종류)로 넘길 수 있게 한다
 // (조건 타입은 K를 고정으로 봐서 넘길 수 없다)
@@ -112,11 +147,13 @@ export type SourceResult = { ok: true; text: string } | { ok: false; fail: Sourc
 export type Parsed<V = unknown> = { ok: true; value: V; asOf: string } | { ok: false; code: 'not-applied' | 'failed' }
 
 // 종류 하나를 읽는 곳(app/api/ai/location/sources/<묶음>.ts, 순수). requests는 정해 둔 쪽 수까지 요청을 만들고,
-// parse는 그 차례대로 받은 답 글자를 읽는다. 열쇠는 받지 않는다(fetchSource가 넣는다)
+// parse는 그 차례대로 받은 답 글자를 읽는다. 열쇠는 받지 않는다(fetchSource가 넣는다).
+// timeoutMs = 바깥 부르기 하나의 시간 한도(ms, 최대 60,000) — 없으면 fetchSource 기본 8초(비급여 nonpay만 60,000)
 export type Adapter<K extends QueryKind = QueryKind, V = unknown> = {
   kind: K
   src: SourceId
   key: KeyKind
+  timeoutMs?: number
   requests(q: QueryOf<K>): SiteRequest[]
   parse(texts: string[], q: QueryOf<K>, today: string): Parsed<V>
 }
@@ -130,19 +167,45 @@ export type Got<T> =
   | { ok: true; v: T; src: SourceId; asOf: string }
   | { ok: false; why: Why; src: SourceId; prev?: { v: T; asOf: string } }
 
-export type RivalKind = 'ortho' | 'pain' | 'rehab' | 'korean'
+// 옛 이름(경쟁 의원 종류) — 이제 과목 id와 같다
+export type RivalKind = DeptId
+// 범위 안 의원 하나(심평원 의원 목록). 대표 과목은 늘 lib/location/depts.ts deptOf(이름, depts, 설정)로 센다
 export type Rival = {
   name: string
-  kind: RivalKind
-  doctors: number | null
-  therapists: number | null
-  mri: boolean | null
-  ct: boolean | null
-  openedYear: number | null
+  depts: DeptId[] // 찾은 과목(DEPTS 차례). 치과의원·한의원은 ['dental']·['korean']
+  at: Point // 심평원 좌표(공공 자료, 카카오 아님)
   distM: number
-  sameBuilding: boolean
-  week: ([number, number] | null)[] | null // 월~일 + 공휴일 8칸, [열·닫] 분
-  eswt: number | null
+  sameBuilding: boolean // 30m 안
+  address: string // 심평원 주소 — 30m 안 의원만, 아니면 ''
+  doctors: number | null
+  openedYear: number | null
+  // 모을 때 경쟁 과목이던 의원만. 없으면 '새로 경쟁에 넣은 과목'(AC-7921.5)
+  detail?: {
+    therapists: number | null
+    mri: boolean | null
+    ct: boolean | null
+    week: ([number, number] | null)[] | null // 월~일 + 공휴일 8칸, [열·닫] 분
+    priced: boolean // 비급여를 받았나 — false면 eswt·manual은 '지금 받지 못했어요'
+    eswt: number | null // 체외충격파 값(원)
+    manual: number | null // 도수치료 1회 값(원)
+  }
+}
+
+// 점수 풀이 견줄 값(design.md 19절): 후보 시군구 전체, 모을 때 한 번, 공공 자료만. 못 센 칸은 null
+export type SggAvg = {
+  sggName: string
+  areaM2: number // 동 경계 넓이 합
+  total: number
+  bands: number[] // 10세 나이대 11칸, 시군구 행정동 모두의 pop-age 합(의료급여 인구와 같은 부름을 나눠 씀)
+  trendPct: number | null // (최근 10월 − 2022-10) ÷ 2022-10 × 100, 0.1 버림
+  // 시군구 이름으로 받은 목록 수(동네 훑기와 같은 셈)
+  accidents: number | null
+  schools: number | null
+  seniors: number | null
+  gyms: number | null
+  // 행정동 가운데 점마다 가장 가까운 역 거리 · 400m 안 정류장 수의 평균, 버림
+  stationM: number | null
+  stops: number | null
 }
 
 export type Snapshot = {
@@ -169,9 +232,13 @@ export type Snapshot = {
   accidents: Got<{ spots: number; cases: number }>
   industry: Got<{ sggName: string; employees: number; parks: number; quarter: string }>
   pharmacies: Got<number> // 약국 = 후보 30m 안(상가정보)
-  rivals: Got<Rival[]> // 80개까지, 가까운 차례
+  // 이름은 옛 그대로지만 '안 보기'가 아닌 모든 과목 의원(한의원·치과 포함), 가까운 차례 200곳까지(경쟁 과목 의원은 다 남김)
+  rivals: Got<Rival[]>
+  // 후보 점의 행정동(동 경계 파일, src 'dongs'). 동 밖이면 dong·dongName null
+  place: Got<{ sido: string; sidoName: string; sgg: string; sggName: string; dong: string | null; dongName: string | null }>
+  sggAvg: Got<SggAvg> // 점수 풀이 견줄 값(src 'pop-age')
   history: Got<{ kind: 'open' | 'close'; name: string; dept: string; on: string; distM: number }[]> // 3년, 60개까지
-  station: Got<{ name: string; line: string; distM: number }> // 좌표 파일에서
+  station: Got<{ name: string; line: string; distM: number; at: Point }> // 좌표 파일에서(at = rail.json 좌표)
   bus: Got<number>
   market: Got<{ name: string; distM: number }>
   building: Got<{
@@ -193,7 +260,8 @@ export type Snapshot = {
     basic: number // 기초생활보장 수급권자 합계
     nearPoor: number // 차상위 3종(본인부담경감·자활·장애인) 합 — 겹칠 수 있다
     population: number | null // 같은 연월 그 시군구 주민등록 인구(pop-age 합), 못 받으면 null(비율 없음)
-  }> // 후보 시군구 하나
+    basis: string | null // 옛 구 묶음 값이면 '옛 중구·동구' 모양(design.md 5절), 아니면 null
+  }> // 후보 시군구 하나(또는 옛 구 묶음)
 }
 
 // 그날 값 칸 이름(판 번호·시각·범위 뺌)과 그 칸이 되었을 때의 값
@@ -204,7 +272,7 @@ export type SnapshotValue<K extends SnapshotKey> = Extract<Snapshot[K], { ok: tr
 
 // 위험 신호(lib/location/flags.ts)가 읽는 그날 값 칸. 못 받은 칸은 null
 export type FlagFacts = {
-  rivals: Pick<Rival, 'name' | 'kind' | 'distM' | 'doctors' | 'openedYear'>[] | null // 한의원 포함
+  rivals: Pick<Rival, 'name' | 'depts' | 'distM' | 'doctors' | 'openedYear'>[] | null // 그날 값 의원 모두(대표 과목은 부르는 쪽이 설정으로 셈)
   history: SnapshotValue<'history'> | null // 3년 개폐업
   building: Pick<SnapshotValue<'building'>, 'approvedOn' | 'totalM2' | 'elevators'> | null
   people: Pick<SnapshotValue<'people'>, 'total' | 'bands'> | null // 10세 나이대 11칸
@@ -237,7 +305,7 @@ export type ScoreFacts = {
   gyms?: number | null
   /** 후보 시군구 (기초 의료급여 + 차상위 3종) ÷ 주민등록 인구 × 100(%, 소수 첫째 자리 버림) — 그날 값 welfare에서 부르는 쪽이 채운다 */
   welfareRate?: number | null
-  /** n = 범위 안 정형외과·마취통증의학과·재활의학과 수(한의원 뺌) */
+  /** n = 범위 안 경쟁 의원 수(대표 과목이 설정의 경쟁 과목인 의원) */
   rivals?: number | null
   /** 개설일이 3년 안인 경쟁 의원 수 */
   newRivals?: number | null
@@ -261,6 +329,8 @@ export type ScoreFacts = {
   buildingAge?: number | null
   /** 후보 30m 안 약국 수 */
   pharmacies?: number | null
+  /** 후보 30m 안 의원 수(안 보기 뺌, 경쟁 포함) — 같은 건물·옆 건물을 나누지 않아 카카오 없이 센다 */
+  clinicsNear?: number | null
   /** 간판 보임(사용자가 고름) */
   sign?: YesNo | null
   /** 위반 건축물(사용자가 고름) */
@@ -277,7 +347,7 @@ export type ScoreFacts = {
 
 // 새 경쟁 의원 알림(lib/location/watch.ts): 후보 줄에서 읽는 칸 · clinic-license 한 줄(WGS84 점, 못 바꾼 점은 null) · 넣을 알림 줄
 export type WatchStatus = CandidateStatus
-export type WatchCandidate = Pick<Candidate, 'id' | 'status' | 'lat' | 'lng' | 'radiusM' | 'watchCheckedOn' | 'createdAt'>
+export type WatchCandidate = Pick<Candidate, 'id' | 'name' | 'status' | 'lat' | 'lng' | 'radiusM' | 'watchCheckedOn' | 'createdAt'>
 export type LicenseRow = { name: string; dept: string; openedOn: string | null; closedOn: string | null; point: Point | null }
 export type WatchEvent = Pick<LocationEvent, 'candidateId' | 'kind' | 'clinicName' | 'dept' | 'eventOn' | 'distM'>
 
@@ -290,8 +360,9 @@ export type RadiusM = 300 | 500 | 700 | 1000 | 1500 | 2000 | 3000
 export type CandidateStatus = 'watching' | 'contacted' | 'visited' | 'reviewing' | 'dropped'
 export type YesNo = 'yes' | 'no' | 'unknown'
 
-// location_settings: 병원마다 한 줄. scoreRule은 score.ts가 검사해 쓴다(같은 Phase라 그 모양을 여기서 부르지 않는다)
-export type LocationSettings = { scoreRule: unknown; homeEswt: number | null; updatedAt: string | null }
+// location_settings: 병원마다 한 줄. scoreRule은 score.ts가 검사해 쓴다(같은 Phase라 그 모양을 여기서 부르지 않는다).
+// deptRule은 읽을 때 depts.ts fillDeptRule을 거친 값(칸이 없던 옛 줄은 처음 값)
+export type LocationSettings = { scoreRule: unknown; deptRule: DeptRule; homeEswt: number | null; updatedAt: string | null }
 
 export type Candidate = {
   id: string
