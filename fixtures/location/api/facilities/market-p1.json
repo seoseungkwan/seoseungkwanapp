@@ -1,0 +1,75 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL_SERVICE", "type": "json" },
+    "body": {
+      "items": [
+        {
+          "mrktNm": "하늘별빛시장",
+          "mrktType": "상설장",
+          "rdnmadr": "가상도 가람구 하늘로 12",
+          "lnmadr": "가상도 가람구 하늘동 100",
+          "latitude": "37.5101234",
+          "longitude": "127.0051234",
+          "referenceDate": "2025-09-25"
+        },
+        {
+          "mrktNm": "바다오일장",
+          "mrktType": "정기장",
+          "rdnmadr": "",
+          "lnmadr": "가상도 가람구 바다동 7-3",
+          "latitude": "37.512",
+          "longitude": "127.015",
+          "referenceDate": "2025-08-01"
+        },
+        {
+          "mrktNm": "나래골목시장",
+          "mrktType": "상설장",
+          "rdnmadr": "가상도 나래구 나래로 3",
+          "lnmadr": "가상도 나래구 나래동 5",
+          "latitude": "37.511",
+          "longitude": "127.04",
+          "referenceDate": "2025-10-01"
+        },
+        {
+          "mrktNm": "좌표없는시장",
+          "mrktType": "상설장",
+          "rdnmadr": "가상도 가람구 하늘로 50",
+          "lnmadr": "",
+          "latitude": "0",
+          "longitude": "0",
+          "referenceDate": "2025-10-01"
+        },
+        {
+          "mrktNm": "빈좌표시장",
+          "mrktType": "상설장",
+          "rdnmadr": "가상도 가람구 하늘로 51",
+          "lnmadr": "",
+          "latitude": "",
+          "longitude": "",
+          "referenceDate": "2025-10-01"
+        },
+        {
+          "mrktNm": "  ",
+          "mrktType": "상설장",
+          "rdnmadr": "가상도 가람구 하늘로 52",
+          "lnmadr": "",
+          "latitude": "37.513",
+          "longitude": "127.006",
+          "referenceDate": "2025-10-01"
+        },
+        {
+          "mrktNm": "가람구로시장",
+          "mrktType": "상설장",
+          "rdnmadr": "가상도 다솜구 가람구로 9",
+          "lnmadr": "가상도 다솜구 다솜동 9",
+          "latitude": "37.53",
+          "longitude": "127.08",
+          "referenceDate": "2025-10-01"
+        }
+      ],
+      "totalCount": "7",
+      "numOfRows": "1000",
+      "pageNo": "1"
+    }
+  }
+}

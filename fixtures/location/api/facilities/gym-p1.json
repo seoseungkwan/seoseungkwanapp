@@ -1,0 +1,84 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL_SERVICE" },
+    "body": {
+      "items": {
+        "item": [
+          {
+            "bplcNm": "하늘튼튼헬스",
+            "trdStateGbn": "01",
+            "trdStateNm": "영업/정상",
+            "x": "198000.0",
+            "y": "451600.0",
+            "rdnWhlAddr": "가상도 가람구 하늘로 20",
+            "siteWhlAddr": "가상도 가람구 하늘동 120",
+            "updateDt": "2026-11-20 03:12:45"
+          },
+          {
+            "bplcNm": "바다근력짐",
+            "trdStateGbn": "02",
+            "trdStateNm": "휴업",
+            "x": "198150.5",
+            "y": "451720.25",
+            "rdnWhlAddr": "",
+            "siteWhlAddr": "가상도 가람구 바다동 55",
+            "updateDt": "2026-11-18 10:00:00"
+          },
+          {
+            "bplcNm": "별빛피트니스",
+            "trdStateGbn": "03",
+            "trdStateNm": "폐업",
+            "x": "198200",
+            "y": "451650",
+            "rdnWhlAddr": "가상도 가람구 별빛로 3",
+            "siteWhlAddr": "가상도 가람구 별빛동 3",
+            "updateDt": "2026-11-21 09:00:00"
+          },
+          {
+            "bplcNm": "누리체육관",
+            "trdStateGbn": "04",
+            "trdStateNm": "취소/말소/만료/정지/중지",
+            "x": "198250",
+            "y": "451680",
+            "rdnWhlAddr": "가상도 가람구 누리로 4",
+            "siteWhlAddr": "가상도 가람구 누리동 4",
+            "updateDt": "2026-11-21 09:00:00"
+          },
+          {
+            "bplcNm": "좌표없는짐",
+            "trdStateGbn": "01",
+            "trdStateNm": "영업/정상",
+            "x": "0",
+            "y": "0",
+            "rdnWhlAddr": "가상도 가람구 하늘로 22",
+            "siteWhlAddr": "",
+            "updateDt": "2026-11-21 09:00:00"
+          },
+          {
+            "bplcNm": "빈좌표짐",
+            "trdStateGbn": "01",
+            "trdStateNm": "영업/정상",
+            "x": "",
+            "y": "",
+            "rdnWhlAddr": "가상도 가람구 하늘로 23",
+            "siteWhlAddr": "",
+            "updateDt": "2026-11-21 09:00:00"
+          },
+          {
+            "bplcNm": "나래헬스",
+            "trdStateGbn": "01",
+            "trdStateNm": "영업/정상",
+            "x": "198300",
+            "y": "451800",
+            "rdnWhlAddr": "가상도 나래구 나래로 9",
+            "siteWhlAddr": "가상도 나래구 나래동 9",
+            "updateDt": "2026-11-21 09:00:00"
+          }
+        ]
+      },
+      "numOfRows": 1000,
+      "pageNo": 1,
+      "totalCount": 7
+    }
+  }
+}

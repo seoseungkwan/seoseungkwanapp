@@ -1,0 +1,47 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL_SERVICE", "type": "json" },
+    "body": {
+      "items": [
+        {
+          "fcltyNm": "하늘동경로당",
+          "rdnmadr": "가상도 가람구 하늘로 30",
+          "lnmadr": "가상도 가람구 하늘동 130",
+          "latitude": "37.505",
+          "longitude": "127.004"
+        },
+        {
+          "fcltyNm": "바다마을회관",
+          "rdnmadr": "",
+          "lnmadr": "가상도 가람구 바다동 21",
+          "latitude": "37.5155554",
+          "longitude": "127.0200009"
+        },
+        {
+          "fcltyNm": "나래경로당",
+          "rdnmadr": "가상도 나래구 나래로 8",
+          "lnmadr": "가상도 나래구 나래동 8",
+          "latitude": "37.51",
+          "longitude": "127.045"
+        },
+        {
+          "fcltyNm": "좌표없는경로당",
+          "rdnmadr": "가상도 가람구 하늘로 31",
+          "lnmadr": "",
+          "latitude": 0,
+          "longitude": 0
+        },
+        {
+          "fcltyNm": "자리틀린경로당",
+          "rdnmadr": "가상도 가람구 하늘로 32",
+          "lnmadr": "",
+          "latitude": "127.004",
+          "longitude": "37.505"
+        }
+      ],
+      "totalCount": "5",
+      "numOfRows": "1000",
+      "pageNo": "1"
+    }
+  }
+}
