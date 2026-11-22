@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { SOURCES } from '@/lib/location/sources'
 import type { QueryOf } from '@/types/location'
 import { createFetchSource, type SourceFetch } from '../fetchSource'
+import * as hoursModule from './clinicHours'
 import {
-  HOURS_NEAR_URL,
   HOURS_PAGES,
   HOURS_ROWS,
   HOURS_URL,
@@ -18,15 +18,17 @@ import {
 // 견본 fixtures/location/api/clinicHours/는 국립중앙의료원 전국 병·의원 찾기(15000736) 목록 조회 모양을 본떠 지어낸 것이다
 // (의원 이름·주소·전화·기관 번호 모두 지어냄). 진짜 사이트는 부르지 않는다.
 // TASK-47(2026-11-22 진짜 열쇠): 위치 조회 답에는 요일 칸(dutyTime1s~8c)이 없고 오늘 하루 startTime·endTime만 온다 →
-// 요일 칸이 오는 목록 조회(Q0 시도·Q1 시군구 이름·QZ 종별)로 바꿨다. 목록 조회는 한 쪽 1,000줄까지 받는다
+// 요일 칸이 오는 목록 조회(Q0 시도·Q1 시군구 이름·QZ 종별)로 바꿨다. 목록 조회는 한 쪽 1,000줄까지 받는다.
+// TASK-55(2026-11-22 진짜 열쇠, 확인할 것 11): 치과의원 기관 구분 QZ=N이 된다(강남구 522곳, dutyDivNam '치과의원') → 1쪽 더 부른다.
+// 진료과목 거르기 QD(D008 정형외과 199곳 · D009 신경외과 112 · D016 재활 134 · D017 마취통증 205, 강남구 의원 C 모두 2,128)도 되지만
+// 몸통(sidoName·sggName)에 과목 칸이 없어 쓰지 않는다. dental.xml은 그 진짜 답의 칸 차례를 빌려 값만 지어낸 것이다
 
 const fixture = (name: string) =>
   readFileSync(new URL(`../../../../../../fixtures/location/api/clinicHours/${name}`, import.meta.url), 'utf8')
 
 const TODAY = '2026-11-22'
-// 몸통의 시도·시군구 이름은 모으기가 카카오 주소에서 실어 보낸다(query.ts에 칸을 더해야 한다 — TASK-47 보고)
-const Q = { kind: 'hosp-hours', at: { lat: 37.5, lng: 127.03 }, sidoName: '가상도', sggName: '가람구' } as QueryOf<'hosp-hours'>
-const NEAR_ONLY: QueryOf<'hosp-hours'> = { kind: 'hosp-hours', at: { lat: 37.5, lng: 127.03 } }
+// 몸통의 시도·시군구 이름은 모으기가 동 경계 목록 이름으로 실어 보낸다(카카오 아님, design.md 4절)
+const Q: QueryOf<'hosp-hours'> = { kind: 'hosp-hours', sidoName: '가상도', sggName: '가람구' }
 // 위도 1도 ≈ 111,195m(지구 반지름 6,371,008.8m) — 북쪽으로 몇 m 옮긴 점
 const north = (at: { lat: number; lng: number }, m: number) => ({ lat: at.lat + m / 111_195, lng: at.lng })
 
@@ -76,7 +78,7 @@ describe('AC-7904.1 hosp-hours 요청: 정해 둔 주소·칸', () => {
     expect(row?.key).toBe('data')
   })
 
-  it('AC-7904.1: 시도·시군구 이름으로 목록 조회를 의원(C) 3쪽 + 한의원(G) 1쪽(쪽마다 1,000줄) 부르고 주소에 열쇠를 넣지 않는다', () => {
+  it('AC-7904.1: 몸통 이름 둘(시도·시군구)로 목록 조회를 의원(C) 3쪽 + 한의원(G) 1쪽 + 치과의원(N) 1쪽(쪽마다 1,000줄) 부르고 주소에 열쇠를 넣지 않는다', () => {
     expect(HOURS_URL).toBe('https://apis.data.go.kr/B552657/HsptlAsembySearchService/getHsptlMdcncListInfoInqire')
     expect(HOURS_PAGES).toBe(3)
     expect(HOURS_ROWS).toBe(1000)
@@ -103,24 +105,23 @@ describe('AC-7904.1 hosp-hours 요청: 정해 둔 주소·칸', () => {
         ['pageNo', '1'],
         ['numOfRows', '1000'],
       ],
+      [
+        ['Q0', '가상도'],
+        ['Q1', '가람구'],
+        ['QZ', 'N'],
+        ['pageNo', '1'],
+        ['numOfRows', '1000'],
+      ],
     ])
   })
 
-  it('AC-7904.1: 몸통에 시도·시군구 이름이 없으면 예전처럼 점 하나로 위치 조회 3쪽(쪽마다 100줄)을 부른다 — 이 답엔 요일 칸이 없어 진료 시간은 모두 null', () => {
-    expect(HOURS_NEAR_URL).toBe('https://apis.data.go.kr/B552657/HsptlAsembySearchService/getHsptlMdcncLcinfoInqire')
-    const reqs = clinicHours.requests(NEAR_ONLY)
-    expect(reqs).toHaveLength(3)
-    reqs.forEach((req, i) => {
-      const url = new URL(req.url)
-      expect(`${url.origin}${url.pathname}`).toBe(HOURS_NEAR_URL)
-      expect([...url.searchParams]).toEqual([
-        ['WGS84_LON', '127.03'],
-        ['WGS84_LAT', '37.5'],
-        ['pageNo', String(i + 1)],
-        ['numOfRows', '100'],
-      ])
-      expect(req.url.toLowerCase()).not.toContain('servicekey')
-    })
+  it('AC-7922.1: 점 하나로 부르던 위치 조회 길은 없다 — 그 답엔 요일 칸이 없고, 몸통은 이름 둘뿐이다', () => {
+    expect(hoursModule).not.toHaveProperty('HOURS_NEAR_URL')
+    for (const req of clinicHours.requests(Q)) expect(req.url).not.toContain('getHsptlMdcncLcinfoInqire')
+    // 다른 이름이면 그 이름으로
+    const other = clinicHours.requests({ kind: 'hosp-hours', sidoName: '전남광주통합특별시', sggName: '광산구' })
+    expect(other.map((req) => new URL(req.url).searchParams.get('Q0'))).toEqual(Array(5).fill('전남광주통합특별시'))
+    expect(other.map((req) => new URL(req.url).searchParams.get('Q1'))).toEqual(Array(5).fill('광산구'))
   })
 
   it('AC-7904.1: 만든 요청은 바깥 부르기 규칙(정해 둔 host)을 지나고 serviceKey 하나만 붙는다', async () => {
@@ -134,7 +135,7 @@ describe('AC-7904.1 hosp-hours 요청: 정해 둔 주소·칸', () => {
       const got = await call(req, { kind: 'data', value: 'DATA+FAKE/key==0017' })
       expect(got.ok).toBe(true)
     }
-    expect(seen).toHaveLength(4)
+    expect(seen).toHaveLength(5)
     for (const url of seen) expect(new URL(url).searchParams.getAll('serviceKey')).toEqual(['DATA+FAKE/key==0017'])
   })
 })
@@ -155,6 +156,24 @@ describe('AC-7904.1 hosp-hours 답 읽기: 이름·점·요일 7칸 + 공휴일 
     const got = clinicHours.parse([fixture('page1.xml'), fixture('page2.xml'), fixture('empty.xml')], Q, TODAY)
     expect(got).toEqual({ ok: true, value: [...PAGE_ROWS, ...PAGE2_ROWS], asOf: TODAY })
     if (got.ok) for (const row of got.value) if (row.week) expect(row.week).toHaveLength(8)
+  })
+
+  it('AC-7918.3: 치과의원(QZ=N) 진짜 답 모양(한 줄 XML · 칸 차례 그대로 · 좌표 소수 13자리)을 읽는다', () => {
+    expect(clinicHours.parse([fixture('dental.xml')], Q, TODAY)).toEqual({
+      ok: true,
+      asOf: TODAY,
+      value: [
+        { name: '견본하얀치과의원', at: { lat: 37.510501, lng: 127.015912 }, week: [...WEEKDAY(570, 1110), [570, 840], null, null] },
+        { name: '견본미소치과의원', at: { lat: 37.5082, lng: 127.0213 }, week: [...WEEKDAY(600, 1140), null, null, null] },
+      ],
+    })
+    // 의원 C 3쪽 + 한의원 G 1쪽 + 치과의원 N 1쪽을 쪽 차례대로 잇는다
+    const all = clinicHours.parse(
+      [fixture('page1.xml'), fixture('page2.xml'), fixture('empty.xml'), fixture('empty.xml'), fixture('dental.xml')],
+      Q,
+      TODAY,
+    )
+    expect(all.ok && all.value.map((r) => r.name)).toEqual([...PAGE_ROWS, ...PAGE2_ROWS].map((r) => r.name).concat(['견본하얀치과의원', '견본미소치과의원']))
   })
 
   it('AC-7904.1: 자료에 날짜가 없어 기준 날짜는 받은 한국 날짜다', () => {

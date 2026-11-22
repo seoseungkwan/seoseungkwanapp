@@ -1,0 +1,82 @@
+{
+  "response": {
+    "header": {
+      "resultCode": "00",
+      "resultMsg": "NORMAL SERVICE."
+    },
+    "body": {
+      "items": {
+        "item": [
+          {
+            "addr": "가상도 가람구 견본로 11, 3층 (나무동)",
+            "clCd": 51,
+            "clCdNm": "치과의원",
+            "cmdcGdrCnt": 0,
+            "cmdcIntnCnt": 0,
+            "cmdcResdntCnt": 0,
+            "cmdcSdrCnt": 0,
+            "detyGdrCnt": 0,
+            "detyIntnCnt": 0,
+            "detyResdntCnt": 0,
+            "detySdrCnt": 0,
+            "distance": "95.12",
+            "drTotCnt": 1,
+            "emdongNm": "나무동",
+            "estbDd": 20180402,
+            "hospUrl": "https://fake.invalid",
+            "mdeptGdrCnt": 0,
+            "mdeptIntnCnt": 0,
+            "mdeptResdntCnt": 0,
+            "mdeptSdrCnt": 1,
+            "pnursCnt": 0,
+            "postNo": "99110",
+            "sgguCd": 990101,
+            "sgguCdNm": "가람구",
+            "sidoCd": 990000,
+            "sidoCdNm": "가상도",
+            "telno": "000-0000-0401",
+            "XPos": 127.0159,
+            "YPos": 37.5105,
+            "yadmNm": "견본하얀치과의원",
+            "ykiho": "FAKEhira0401"
+          },
+          {
+            "addr": "가상도 가람구 시험로 40 (나무동)",
+            "clCd": 51,
+            "clCdNm": "치과의원",
+            "cmdcGdrCnt": 0,
+            "cmdcIntnCnt": 0,
+            "cmdcResdntCnt": 0,
+            "cmdcSdrCnt": 0,
+            "detyGdrCnt": 0,
+            "detyIntnCnt": 0,
+            "detyResdntCnt": 0,
+            "detySdrCnt": 0,
+            "distance": "611.40",
+            "drTotCnt": 2,
+            "emdongNm": "나무동",
+            "estbDd": 20120917,
+            "mdeptGdrCnt": 1,
+            "mdeptIntnCnt": 0,
+            "mdeptResdntCnt": 0,
+            "mdeptSdrCnt": 1,
+            "pnursCnt": 0,
+            "postNo": "99112",
+            "sgguCd": 990101,
+            "sgguCdNm": "가람구",
+            "sidoCd": 990000,
+            "sidoCdNm": "가상도",
+            "telno": "000-0000-0402",
+            "XPos": "127.0213",
+            "YPos": 37.5082,
+            "yadmNm": "견본미소치과의원",
+            "ykiho": "FAKEhira0402"
+          }
+        ]
+      },
+      "numOfRows": 500,
+      "pageNo": 1,
+      "totalCount": 2
+    }
+  }
+}

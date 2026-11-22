@@ -28,6 +28,8 @@ const P1 = fixture('category-p1.json')
 const P2 = fixture('category-p2.json')
 const P3 = fixture('category-p3.json')
 const SMALL = fixture('category-small.json')
+// 약국(PM9) 진짜 답(2026-11-22 TASK-55) 칸 차례·값 모양을 빌려 이름·주소·전화·id·좌표를 지어낸 견본(같은 도로명 둘 · 빈 도로명 하나)
+const PM9 = fixture('category-pm9.json')
 const NEAR_EMPTY = fixture('category-empty.json')
 const KEYWORD = fixture('keyword.json')
 const ERROR = fixture('error.json')
@@ -221,7 +223,7 @@ describe('AC-7904.1·AC-7904.3 k-near 카테고리 장소', () => {
     ])
   })
 
-  it('AC-7904.1: 답 → 이름·분류·점·거리(정수 m), 가까운 차례. 거리 칸이 비면 하버사인으로 센다', () => {
+  it('AC-7904.1: 답 → 이름·분류·점·거리(정수 m)·도로명 주소(빈 글자면 null), 가까운 차례. 거리 칸이 비면 하버사인으로 센다', () => {
     // 카카오는 마지막 쪽 뒤를 부르면 같은 쪽을 다시 줄 수 있다 — 끝 쪽(is_end) 뒤는 읽지 않는다
     expect(kakaoNear.parse([SMALL, SMALL, SMALL], NEAR_Q, TODAY)).toEqual({
       ok: true,
@@ -229,10 +231,10 @@ describe('AC-7904.1·AC-7904.3 k-near 카테고리 장소', () => {
       value: {
         capped: false,
         places: [
-          { name: '나래내과의원', category: '의료,건강 > 병원 > 내과', at: { lat: 37.5103, lng: 127.0059 }, distM: 85 },
-          { name: '가람종합병원', category: '의료,건강 > 병원 > 종합병원', at: { lat: 37.5108, lng: 127.0086 }, distM: 320 },
-          { name: '다온요양병원', category: '의료,건강 > 병원 > 요양병원', at: { lat: 37.5163, lng: 127.005 }, distM: 700 },
-          { name: '하늘대학병원', category: '의료,건강 > 병원 > 대학병원', at: { lat: 37.5045, lng: 127.0187 }, distM: 1210 },
+          { name: '나래내과의원', category: '의료,건강 > 병원 > 내과', at: { lat: 37.5103, lng: 127.0059 }, distM: 85, road: '가상도 가람구 하늘로 60' },
+          { name: '가람종합병원', category: '의료,건강 > 병원 > 종합병원', at: { lat: 37.5108, lng: 127.0086 }, distM: 320, road: '가상도 가람구 하늘로 120' },
+          { name: '다온요양병원', category: '의료,건강 > 병원 > 요양병원', at: { lat: 37.5163, lng: 127.005 }, distM: 700, road: null },
+          { name: '하늘대학병원', category: '의료,건강 > 병원 > 대학병원', at: { lat: 37.5045, lng: 127.0187 }, distM: 1210, road: '가상도 가람구 바다로 9' },
         ],
       },
     })
@@ -247,7 +249,13 @@ describe('AC-7904.1·AC-7904.3 k-near 카테고리 장소', () => {
     const value = got.value as { places: { name: string; distM: number }[]; capped: boolean }
     expect(value.capped).toBe(true)
     expect(value.places).toHaveLength(45)
-    expect(value.places[0]).toEqual({ name: '가상약국 1호', category: '의료,건강 > 약국', at: { lat: 37.5101, lng: 127.005 }, distM: 11 })
+    expect(value.places[0]).toEqual({
+      name: '가상약국 1호',
+      category: '의료,건강 > 약국',
+      at: { lat: 37.5101, lng: 127.005 },
+      distM: 11,
+      road: '가상도 가람구 하늘로 1',
+    })
     expect(value.places[44].name).toBe('가상약국 45호')
     expect(value.places.every((p) => Number.isInteger(p.distM))).toBe(true)
   })
@@ -262,6 +270,33 @@ describe('AC-7904.1·AC-7904.3 k-near 카테고리 장소', () => {
     const got = kakaoNear.parse([big, big, big], NEAR_Q, TODAY)
     expect(got.ok && (got.value as { places: unknown[] }).places).toHaveLength(45)
     expect(got.ok && (got.value as { capped: boolean }).capped).toBe(true)
+  })
+
+  it('AC-7921.6: 약국(PM9) 진짜 답 모양(2026-11-22 TASK-55)의 도로명 주소를 장소마다 road로 돌려준다 — 같은 건물 견주기는 볼 때만(저장 안 함)', () => {
+    const q: QueryOf<'k-near'> = { ...NEAR_Q, r: 300 }
+    expect(kakaoNear.parse([PM9, PM9, PM9], q, TODAY)).toEqual({
+      ok: true,
+      asOf: TODAY,
+      value: {
+        capped: false,
+        places: [
+          { name: '가상하늘약국', category: '의료,건강 > 약국', at: { lat: 37.5101, lng: 127.0051 }, distM: 12, road: '가상도 가람구 하늘로 45' },
+          { name: '가상바른약국', category: '의료,건강 > 약국', at: { lat: 37.51015, lng: 127.0052 }, distM: 18, road: '가상도 가람구 하늘로 45' },
+          // 도로명 주소가 빈 글자인 곳(진짜 답에 있음)은 null — 화면은 '30m 안' 한 줄로 합친다
+          { name: '가상지하약국', category: '의료,건강 > 약국', at: { lat: 37.5102, lng: 127.00525 }, distM: 26, road: null },
+        ],
+      },
+    })
+    // 도로명 주소 칸이 없어도 null(모양 틀림 아님), 글자가 아니면 모양 틀림
+    const noRoad = edited(PM9, (b) => {
+      delete b.documents[0].road_address_name
+    })
+    const got = kakaoNear.parse([noRoad, noRoad, noRoad], q, TODAY)
+    expect(got.ok && (got.value as { places: { road: string | null }[] }).places[0].road).toBeNull()
+    const badRoad = edited(PM9, (b) => {
+      b.documents[0].road_address_name = 45
+    })
+    expect(kakaoNear.parse([badRoad, badRoad, badRoad], q, TODAY)).toEqual({ ok: false, code: 'failed' })
   })
 
   it('AC-7904.3: 같은 곳이 두 쪽에 나오면 한 번만 센다', () => {
@@ -338,6 +373,13 @@ describe('AC-7904.1·AC-7904.3 k-keyword 산업단지', () => {
         ],
       },
     })
+  })
+
+  it('AC-7904.1: 산업단지 장소에는 도로명 주소(road)를 담지 않는다 — road는 약국 같은 건물 견주기(k-near)에만 쓴다', () => {
+    const got = kakaoKeyword.parse([KEYWORD, KEYWORD, KEYWORD], KEYWORD_Q, TODAY)
+    expect(got.ok).toBe(true)
+    if (!got.ok) return
+    for (const p of (got.value as { places: object[] }).places) expect(p).not.toHaveProperty('road')
   })
 
   it('AC-7904.3: 45곳을 넘으면 45곳과 capped: true', () => {

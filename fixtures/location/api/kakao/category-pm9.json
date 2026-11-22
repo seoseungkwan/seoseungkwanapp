@@ -1,0 +1,52 @@
+{
+  "documents": [
+    {
+      "address_name": "가상도 가람구 하늘동 120-3",
+      "category_group_code": "PM9",
+      "category_group_name": "약국",
+      "category_name": "의료,건강 > 약국",
+      "distance": "12",
+      "id": "92000001",
+      "phone": "099-200-0001",
+      "place_name": "가상하늘약국",
+      "place_url": "http://place.map.kakao.com/92000001",
+      "road_address_name": "가상도 가람구 하늘로 45",
+      "x": "127.0051",
+      "y": "37.5101"
+    },
+    {
+      "address_name": "가상도 가람구 하늘동 120-3",
+      "category_group_code": "PM9",
+      "category_group_name": "약국",
+      "category_name": "의료,건강 > 약국",
+      "distance": "18",
+      "id": "92000002",
+      "phone": "099-200-0002",
+      "place_name": "가상바른약국",
+      "place_url": "http://place.map.kakao.com/92000002",
+      "road_address_name": "가상도 가람구 하늘로 45",
+      "x": "127.0052",
+      "y": "37.51015"
+    },
+    {
+      "address_name": "가상도 가람구 하늘동 121",
+      "category_group_code": "PM9",
+      "category_group_name": "약국",
+      "category_name": "의료,건강 > 약국",
+      "distance": "26",
+      "id": "92000003",
+      "phone": "",
+      "place_name": "가상지하약국",
+      "place_url": "http://place.map.kakao.com/92000003",
+      "road_address_name": "",
+      "x": "127.00525",
+      "y": "37.5102"
+    }
+  ],
+  "meta": {
+    "is_end": true,
+    "pageable_count": 3,
+    "same_name": null,
+    "total_count": 3
+  }
+}
