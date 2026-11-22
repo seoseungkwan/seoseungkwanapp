@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useEffect, useId, useRef, useState, type MouseEvent } from 'react'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
-import { MORE_MENU, type MenuLabel } from './menu'
+import { MORE_MENU, type MenuItem, type MenuLabel, type MenuPath } from './menu'
 
 // [더보기] (dashboard-ux REQ-2702 AC-2702.1~2702.5, design.md §3, 시안 docs/mockups/dashboard-ux .more·.morewrap·.morepanel).
 // 탭 띠 오른쪽(띠 밖)에 모든 폭에서 보이는 단추. 누르면 주요 메뉴 여섯 밖의 나머지(MORE_MENU, MENU 차례)를 판으로 펼친다.
@@ -15,9 +15,8 @@ import { MORE_MENU, type MenuLabel } from './menu'
 // 판은 열릴 때만 그린다: 나타날 때만 흐림 → 보임(starting:, 기본 transition 150ms)이고 닫으면 바로 사라진다. 꺾쇠는 열린 동안 180° 돈다.
 // 닫힘: 단추 다시 누름 · Esc(초점은 단추로) · 판 안 링크 누름 · 판 밖 누름 · 경로 바뀜. 열 때 초점은 단추에 남는다(펼침 단추)
 
-// 머리 글자의 숫자는 MORE_MENU에서 센다(탭이 화면을 가지면 menu.ts의 ready만 바꾼다)
-const OTHERS = MORE_MENU.length
-const NOT_READY = MORE_MENU.filter((m) => !m.ready).length
+// 머리 글자의 숫자는 판에 보이는 항목(MORE_MENU에서 숨긴 탭을 뺀 것)에서 센다(탭이 화면을 가지면 menu.ts의 ready만 바꾼다).
+// 관리자만 보는 탭(hidden, multi-admin AC-7706.3)은 판 목록·수·지금 항목에서 빠진다. 판에는 늘 설정이 있어 비지 않는다
 
 // 감싸개: 단추가 nav 높이만큼 늘어난다. 768px 미만은 static → 판의 기준이 nav가 된다(그 폭 배치는 그대로)
 const wrapClass = 'relative flex shrink-0 md:mr-3 max-md:static'
@@ -42,7 +41,7 @@ const itemIdle = `${itemBase} font-medium text-ink`
 // 지금 항목: accent-strong 600 + 왼쪽 2px accent 막대(20px, 안쪽 여백만큼 왼쪽으로 당긴다)
 const itemCurrent = `${itemBase} font-semibold text-accent-strong before:-ml-1 before:h-5 before:w-0.5 before:shrink-0 before:bg-accent`
 
-const inMore = (label: MenuLabel | null) => MORE_MENU.find((m) => m.label === label) ?? null
+const inMore = (items: readonly MenuItem[], label: MenuLabel | null) => items.find((m) => m.label === label) ?? null
 
 export function MoreMenu({
   pathname,
@@ -50,6 +49,7 @@ export function MoreMenu({
   shown,
   pending,
   onPress,
+  hidden = [],
 }: {
   /** 지금 경로. 바뀌면 판을 닫는다 */
   pathname: string
@@ -61,7 +61,13 @@ export function MoreMenu({
   pending: MenuLabel | null
   /** 판 링크 누름 — TabBar가 누른 탭을 정한다 */
   onPress: (e: MouseEvent<HTMLAnchorElement>, href: string) => void
+  /** 숨긴 탭(multi-admin). 없으면 빈 목록 = 지금 그대로 */
+  hidden?: readonly MenuPath[]
 }) {
+  // 판에 보이는 항목(MORE_MENU 차례)과 머리 숫자
+  const items = MORE_MENU.filter((item) => !hidden.includes(item.path))
+  const others = items.length
+  const notReady = items.filter((m) => !m.ready).length
   // 판을 연 경로. 지금 경로에서 연 판만 열린 판이다 → 경로가 바뀌면 닫히고, 그 경로로 돌아와도 다시 열리지 않게 지운다
   const [openAt, setOpenAt] = useState<string | null>(null)
   if (openAt !== null && openAt !== pathname) setOpenAt(null)
@@ -69,7 +75,7 @@ export function MoreMenu({
   const buttonRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const panelId = useId()
-  const shownItem = inMore(shown)
+  const shownItem = inMore(items, shown)
 
   useEffect(() => {
     if (!open) return
@@ -97,7 +103,7 @@ export function MoreMenu({
         type="button"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        data-pending={inMore(pending) !== null ? 'true' : undefined}
+        data-pending={inMore(items, pending) !== null ? 'true' : undefined}
         onClick={() => setOpenAt(open ? null : pathname)}
         className={shownItem !== null ? buttonCurrent : buttonIdle}
       >
@@ -107,11 +113,11 @@ export function MoreMenu({
       {open && (
         <div ref={panelRef} id={panelId} className={panelClass}>
           <p className="flex justify-between py-2 text-small text-muted">
-            <span>{`다른 메뉴 ${OTHERS}개`}</span>
-            {NOT_READY > 0 && <span>{`준비 중 ${NOT_READY}개`}</span>}
+            <span>{`다른 메뉴 ${others}개`}</span>
+            {notReady > 0 && <span>{`준비 중 ${notReady}개`}</span>}
           </p>
           <ul className={listClass}>
-            {MORE_MENU.map((item) => (
+            {items.map((item) => (
               <li key={item.label} className={itemWrap}>
                 <Link
                   href={item.path}
