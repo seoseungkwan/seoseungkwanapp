@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>점검 규칙 저절로 바꾸기 시안</title>
+<!--
+  점검 규칙 저절로 바꾸기(specs/rule-auto) 시안. 결정은 notes.md.
+  상태 ?s= : changed(바뀜 있음, 기본) · human(사람이 봐야 함) · reverted(되돌림) · none(바꿀 것 없음)
+  화면 ?v= : dashboard(대시보드 맨 위 알림, 기본) · detail(글 화면 규칙 상자) · list(글 목록 칩) · settings(설정 → 점검 규칙)
+  PC 화면 하나만 그린다(폰 전용 모양 없음, 2026-11-21 사용자 지시). 색·크기는 앱 토큰(src/app/globals.css :root)과 고시·공지 시안 그대로.
+  고시 번호·규칙 번호·규칙 제목·숫자는 모두 지어낸 예시다. 환자 자료는 없다. 어디로도 보내지 않는다.
+  화면 글자는 아래 T(앱 글자)에 모았다. 시안 표시(.mhead·.anno)는 앱 글자가 아니다.
+-->
+<style>
+@font-face{font-family:'Pretendard';font-weight:400;src:url(../../../src/app/fonts/Pretendard-Regular.subset.woff2) format('woff2')}
+@font-face{font-family:'Pretendard';font-weight:500;src:url(../../../src/app/fonts/Pretendard-Medium.subset.woff2) format('woff2')}
+@font-face{font-family:'Pretendard';font-weight:600;src:url(../../../src/app/fonts/Pretendard-SemiBold.subset.woff2) format('woff2')}
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB; --faint: #9CA3AF;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827; --accent: #2563EB; --accent-strong: #1D4ED8; --accent-soft: #EAF1FE;
+  --positive: #15803D; --positive-soft: #ECF7EF; --negative: #C2410C; --negative-soft: #FDF0EA;
+  --warning: #B45309; --warning-soft: #FDF4E3;
+  --r: 4px; --r-float: 8px;
+  --ui: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface); color: var(--ink); font: 14px/22px var(--ui); word-break: keep-all; font-variant-numeric: tabular-nums; }
+button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; padding: 0; }
+a { color: inherit; text-decoration: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h1, h2, h3, p, ul, ol, dl, dd { margin: 0; padding: 0; }
+ul, ol { list-style: none; }
+svg { flex: none; }
+
+/* 시안 머리(앱 밖) */
+.mhead { background: #E9ECF0; border-bottom: 1px solid var(--line-strong); }
+.mhead-in { max-width: 1280px; margin: 0 auto; padding: 12px 24px; display: grid; gap: 8px; }
+.mhead b { color: var(--ink); font-size: 15px; }
+.mhead .ex { margin-left: 6px; padding: 1px 7px; border-radius: 4px; background: #FEF3C7; color: #92400E; font-size: 12px; font-weight: 600; }
+.mhead .mnote { font-size: 13px; color: var(--muted); }
+.switch { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.switch .lab { font-size: 12px; font-weight: 600; color: var(--ink-2); margin: 0 4px 0 8px; }
+.switch .lab:first-child { margin-left: 0; }
+.switch a { padding: 3px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.switch a[aria-current="true"] { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+.anno { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border: 1px dashed #A78BFA; border-radius: 999px; background: #F5F3FF; color: #6D28D9; font-size: 11px; font-weight: 600; white-space: nowrap; }
+
+/* 앱 머리 · 탭 줄 */
+.top { background: var(--surface); border-bottom: 1px solid var(--line); }
+.top-in { max-width: 1280px; margin: 0 auto; height: 56px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 12px; font-size: 16px; font-weight: 600; }
+.top-r { display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.acct { height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r); display: inline-flex; align-items: center; color: var(--ink-2); font-weight: 500; }
+nav.tabs { background: var(--surface); border-bottom: 1px solid var(--line); }
+.tabs-in { max-width: 1280px; margin: 0 auto; display: flex; padding: 0 12px; }
+.tab { position: relative; height: 44px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; color: var(--ink-2); font-weight: 500; }
+.tab[aria-current="page"] { color: var(--ink); font-weight: 600; }
+.tab[aria-current="page"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; background: var(--accent); }
+.badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 11px; line-height: 18px; font-weight: 600; text-align: center; }
+
+main { max-width: 1280px; margin: 0 auto; padding: 24px 24px 48px; }
+
+/* 공통 모양 (classes.ts ds 옮김) */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--ink); font-size: 14px; font-weight: 500; white-space: nowrap; transition: background-color .15s; }
+.btn:hover { background: var(--canvas); }
+.btn.sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.txt { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-weight: 500; text-underline-offset: 3px; white-space: nowrap; }
+.txt:hover { text-decoration: underline; }
+.chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--r); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.chip.n { border-color: var(--line); background: var(--canvas); color: var(--ink-2); }
+.chip.a { background: var(--accent-soft); color: var(--accent-strong); }
+.chip.w { background: var(--warning-soft); color: var(--warning); }
+.panel { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); min-width: 0; }
+.muted { color: var(--muted); }
+.err { display: grid; gap: 2px; padding: 10px 14px; border-radius: var(--r); background: var(--negative-soft); border: 1px solid #F5C9B3; font-size: 13px; line-height: 20px; }
+.err b { color: var(--negative); font-weight: 600; }
+.err span { color: var(--ink-2); }
+
+/* 대시보드 맨 위 알림 */
+.bands { display: grid; gap: 8px; }
+.dwarn { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 10px 16px; border-radius: var(--r); background: var(--warning-soft); border: 1px solid #F3D9A8; font-size: 14px; color: var(--ink-2); }
+.dwarn > svg { color: var(--warning); }
+.dwarn b { color: #78350F; font-weight: 600; }
+.dwarn .grow { flex: 1 1 320px; min-width: 0; }
+.dchg { background: var(--accent-soft); border-color: #C7D7F8; }
+.dchg > svg { color: var(--accent); }
+.dchg b { color: var(--accent-strong); }
+.dline { margin-top: 20px; font-size: 13px; color: var(--muted); }
+.dline b { color: var(--ink); font-weight: 600; }
+.dh { margin-top: 4px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding-bottom: 16px; border-bottom: 1px solid var(--line-strong); }
+.dh h1 { font-size: 24px; line-height: 32px; font-weight: 600; }
+.dim { opacity: .45; filter: grayscale(.4); pointer-events: none; }
+.kpis { margin-top: 12px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+.kpi { padding: 16px 20px; border-left: 1px solid var(--line); }
+.kpi:first-child { border-left: 0; padding-left: 0; }
+.kpi .l { font-size: 13px; color: var(--muted); }
+.kpi .v { font-size: 28px; line-height: 36px; font-weight: 600; }
+.kpi .v small { font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 2px; }
+.dsec { margin-top: 32px; }
+.dsec .shh { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-bottom: 12px; }
+.dsec h2 { font-size: 20px; line-height: 28px; font-weight: 600; }
+.dsec .cntb { font-size: 14px; font-weight: 600; color: var(--accent-strong); }
+.dsec .sp { flex: 1; }
+.ncard { padding: 4px 20px; }
+.ncard li { border-bottom: 1px solid var(--line); }
+.ncard li:last-child { border-bottom: 0; }
+.ncard a { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 2px 12px; padding: 12px 0; }
+.ncard .nd { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.ncard .nt { font-weight: 600; color: var(--ink); }
+.ncard .nm { grid-column: 2; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 12px; color: var(--muted); }
+.ghost-blk { height: 100px; border-radius: var(--r-float); background: var(--canvas); display: grid; place-items: center; color: var(--muted); font-size: 13px; }
+
+/* 글 화면 */
+.back { display: inline-flex; align-items: center; gap: 4px; height: 32px; color: var(--ink-2); font-weight: 500; }
+.dgrid { margin-top: 8px; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px 32px; align-items: start; }
+.dmain, .dside { display: grid; gap: 16px; min-width: 0; }
+.dhead { display: grid; gap: 8px; padding-bottom: 16px; border-bottom: 1px solid var(--line-strong); }
+.dmeta { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: 13px; color: var(--muted); }
+.dmeta .srcl { color: var(--ink-2); font-weight: 600; }
+.dtitle { font-size: 22px; line-height: 31px; font-weight: 600; letter-spacing: -.01em; }
+.dsub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; color: var(--ink-2); }
+
+/* 규칙 상자 넷: 사람이 봐야 함(노랑) · 바뀜(파랑) · 살펴보는 중 · 바꿀 것 없음(회색) */
+.rule { padding: 16px 20px; border-radius: var(--r); display: grid; gap: 10px; border: 1px solid; }
+.rule h2 { display: flex; gap: 8px; align-items: flex-start; font-size: 15px; line-height: 23px; font-weight: 600; }
+.rule h2 svg { margin-top: 3px; }
+.rule > p { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.rule .acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.rule.hum { background: var(--warning-soft); border-color: #F3D9A8; }
+.rule.hum h2 { color: #78350F; }
+.rule.hum h2 svg { color: var(--warning); }
+.rule.chg { background: var(--accent-soft); border-color: #C7D7F8; }
+.rule.chg h2 { color: var(--accent-strong); }
+.rule.chg h2 svg { color: var(--accent); }
+.rule.calm { background: var(--canvas); border-color: var(--line); }
+.rule.calm h2 { color: var(--ink-2); }
+.rule.calm h2 svg { color: var(--muted); }
+.rule.done h2 svg { color: var(--positive); }
+.rlist { display: grid; gap: 4px; }
+.rlist li { display: grid; gap: 2px; padding: 6px 10px; border-radius: var(--r); background: rgb(255 255 255 / .7); }
+.rlist li > b { font-size: 14px; color: var(--ink); font-weight: 500; }
+.rlist li > b small { margin-left: 6px; font-size: 12px; color: var(--muted); font-weight: 400; }
+.rlist li > span { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.hd { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.hd .txt { font-size: 13px; }
+
+.ccard { padding: 12px 14px; border-radius: var(--r); background: var(--surface); box-shadow: inset 0 0 0 1px #D6E2FB; display: grid; gap: 8px; }
+.ccard.off { box-shadow: inset 0 0 0 1px var(--line); background: rgb(255 255 255 / .6); }
+.chead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.chead b { font-size: 15px; line-height: 23px; font-weight: 600; color: var(--ink); }
+.chead .rid { font-size: 12px; color: var(--muted); }
+.chead .sp { flex: 1; }
+.bfa { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 4px 12px; }
+.bfa dt { font-size: 12px; line-height: 22px; font-weight: 600; color: var(--muted); }
+.bfa dd { font-size: 14px; line-height: 22px; color: var(--ink); }
+.bfa dd.was { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--faint); }
+.bfa dd.now { font-weight: 600; }
+.ccard.off .bfa dd.was { color: var(--ink); text-decoration: none; font-weight: 600; }
+.ccard.off .bfa dd.now { color: var(--muted); font-weight: 400; text-decoration: line-through; text-decoration-color: var(--faint); }
+.cfoot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12px; line-height: 18px; color: var(--muted); }
+.cfoot b { color: var(--ink-2); font-weight: 600; }
+.caution { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; line-height: 18px; color: var(--muted); }
+.caution svg { margin-top: 1px; }
+
+.sum { padding: 20px; display: grid; gap: 14px; }
+.sum h2 { font-size: 16px; line-height: 24px; font-weight: 600; }
+.three { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px 16px; }
+.three dt { font-size: 13px; font-weight: 600; color: var(--muted); }
+.three dd { font-size: 15px; color: var(--ink); }
+.sblock { padding: 16px 20px; display: grid; gap: 10px; }
+.sblock h2 { font-size: 15px; font-weight: 600; }
+
+/* 글 목록 */
+.phead h1 { font-size: 24px; line-height: 32px; font-weight: 600; }
+.phead .lede { margin-top: 4px; color: var(--ink-2); }
+.list { margin-top: 16px; }
+.list > li.month { padding: 14px 0 6px; font-size: 12px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--line); }
+.item { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 0 12px; padding: 14px 0 14px 8px; border-bottom: 1px solid var(--line); }
+.idate { font-size: 13px; color: var(--muted); }
+.ibody { display: grid; gap: 4px; min-width: 0; }
+.ititle { font-size: 15px; line-height: 23px; font-weight: 600; }
+.iline { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.imeta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12px; line-height: 20px; color: var(--muted); }
+.imeta .srcl { color: var(--ink-2); font-weight: 500; }
+
+/* 설정 → 점검 규칙 */
+.stitle { font-size: 24px; line-height: 32px; font-weight: 600; }
+.spanel { margin-top: 16px; }
+.spanel .ph { display: flex; align-items: baseline; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+.spanel .ph h2 { font-size: 16px; font-weight: 600; }
+.spanel .ph span { font-size: 13px; color: var(--muted); }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--line); background: var(--canvas); white-space: nowrap; }
+td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 14px; }
+td.sub { font-size: 13px; color: var(--ink-2); }
+td .rid2 { display: block; font-size: 12px; color: var(--muted); }
+td .tline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.cbox { width: 18px; height: 18px; border-radius: 4px; background: var(--accent); display: grid; place-items: center; color: #fff; }
+.sel { height: 32px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r); display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.dfl { display: block; margin-top: 4px; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="mhead"><div class="mhead-in">
+  <div><b>점검 규칙 저절로 바꾸기 시안</b><span class="ex">예시</span> <span class="mnote">고시 번호·규칙 번호·규칙 제목·숫자는 모두 지어낸 예시예요. 환자 정보는 없어요. PC 화면만 그렸어요.</span></div>
+  <div class="switch" id="switch"></div>
+</div></div>
+
+<header class="top"><div class="top-in">
+  <div class="brand"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 30 30"><rect x="3" y="3" width="24" height="24" rx="6" fill="none" stroke="#14C8BA" stroke-width="2.4"/><path d="M13.5 8h3a1 1 0 0 1 1 1v3.5H21a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3.5V21a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3.5H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3.5V9a1 1 0 0 1 1-1z" fill="#6D5DF5"/></svg><span>샘플정형외과의원</span></div>
+  <div class="top-r"><time>2026년 11월 22일 (일) 09:20 (KST)</time><span class="acct">계정 ▾</span></div>
+</div></header>
+<nav class="tabs" aria-label="메뉴"><div class="tabs-in" id="tabs"></div></nav>
+
+<main id="app"></main>
+
+<script>
+/* ───────── 화면 글자(앱 글자). notes.md '화면 글자'와 한 글자도 다르면 안 된다 ───────── */
+const T = {
+  // 대시보드 맨 위 — 저절로 바뀜(파랑)
+  chgBandTitle: '점검 규칙이 바뀌었어요',
+  chgBandOne: (n, no) => `새 고시(${no})로 점검 규칙 ${n}개가 저절로 바뀌었어요. 틀려 보이면 글 화면에서 되돌릴 수 있어요.`,
+  chgBandNoNo: (n) => `새 글로 점검 규칙 ${n}개가 저절로 바뀌었어요. 틀려 보이면 글 화면에서 되돌릴 수 있어요.`,
+  chgBandMany: (k, n) => `새 고시 ${k}개로 점검 규칙 ${n}개가 저절로 바뀌었어요. 틀려 보이면 글 화면에서 되돌릴 수 있어요.`,
+  chgBandLink: '바뀐 내용 보기',
+  // 대시보드 맨 위 — 사람이 봐야 함(노랑)
+  humBandTitle: '점검 규칙 확인 필요',
+  humBandOne: (n, no) => `새 고시(${no})가 점검 규칙 ${n}개를 바꿨는데, 저절로 고칠 수 없는 내용이라 직접 확인해야 해요.`,
+  humBandNoNo: (n) => `새 글이 점검 규칙 ${n}개를 바꿨는데, 저절로 고칠 수 없는 내용이라 직접 확인해야 해요.`,
+  humBandMany: (k, n) => `새 고시 ${k}개가 점검 규칙 ${n}개를 바꿨는데, 저절로 고칠 수 없는 내용이라 직접 확인해야 해요.`,
+  humBandLink: '글 보기',
+
+  // 글 화면 — 사람이 봐야 함 상자
+  humTitle: (n) => `이 글이 점검 규칙 ${n}개를 바꿔요 — 확인 필요`,
+  humBody: '저절로 고칠 수 없는 내용이에요. 아래 규칙이 새 기준과 맞는지 설정 → 점검 규칙에서 확인해 주세요.',
+  humOpen: '점검 규칙 보기',
+  humDoneBtn: '확인했어요',
+  humDoneTitle: (n) => `점검 규칙 ${n}개 확인함`,
+  humDoneWhen: (at) => `${at}에 확인했어요.`,
+  // 글 화면 — 저절로 바뀜 상자
+  chgTitle: (n) => `이 글로 점검 규칙 ${n}개가 저절로 바뀌었어요`,
+  chgBody: 'AI가 새 고시를 읽고 규칙을 고쳤어요. 틀려 보이면 ‘되돌리기’를 누르세요. 우리 병원만 전 규칙으로 돌아가요.',
+  before: '전', after: '후', why: '까닭',
+  from: (d) => `${d} 진료부터 적용`,
+  revert: '되돌리기', reapply: '다시 적용',
+  revertLabel: (id) => `${id} 되돌리기`, reapplyLabel: (id) => `${id} 다시 적용`,
+  revertedChip: '우리 병원은 되돌림',
+  revertedWhen: (at) => `${at}에 되돌렸어요. 우리 병원은 전 규칙으로 점검해요.`,
+  chgNote: 'AI가 고친 규칙이라 틀릴 수 있어요. 바뀐 내용은 고시 원문과 꼭 맞춰 보세요.',
+  // 글 화면 — 살펴보는 중 · 바꿀 것 없음
+  pendTitle: (n) => `AI가 점검 규칙 ${n}개를 살펴보는 중이에요`,
+  pendBody: '이 글이 근거를 바꾸는 규칙이에요. 바꿀지 AI가 살펴보고 있어요. 끝나면 여기와 대시보드에 알려요.',
+  sameTitle: (n) => `살펴봤는데 바꿀 것 없는 점검 규칙 ${n}개`,
+  sameShow: '보기', sameHide: '접기',
+  // 오류(lib/errors.ts 한 곳)
+  saveErrWhat: '점검 규칙을 바꾸지 못했어요',
+  saveErrFix: '잠시 뒤 다시 눌러 주세요. 지금은 누르기 전 규칙 그대로 점검해요',
+
+  // 글 목록·대시보드 칸 칩
+  chipChanged: (n) => `점검 규칙 ${n}개 바뀜`,
+  chipHuman: '점검 규칙 확인 필요',
+  chipHumanDone: '점검 규칙 확인함',
+  chipPending: '점검 규칙 살펴보는 중',
+
+  // 설정 → 점검 규칙
+  badgeChanged: (d) => `고시로 바뀜 · ${d}부터`,
+  badgeReverted: '고시 변경 되돌림',
+}
+
+/* ───────── 예시 자료(지어낸 것) ───────── */
+const NOW_TEXT = '11월 22일 (일) 09:12'
+const NO = '보건복지부 고시 제2026-251호'
+const BASE = {
+  title: '「요양급여의 적용기준 및 방법에 관한 세부사항」 일부개정(체외충격파·도수치료)',
+  src: '보건복지부 · 심평원 공지', posted: '11월 20일 (금)',
+}
+const C_ES = { id: 'ES-04', title: '체외충격파 같은 부위 1년 6회', oldTitle: '체외충격파 같은 부위 1년 5회',
+  before: '같은 부위는 1년에 5회까지 인정해요', after: '같은 부위는 1년에 6회까지 인정해요',
+  why: '고시가 체외충격파 인정 횟수를 같은 부위 1년 6회로 늘렸어요.', from: '12월 1일' }
+const C_MN = { id: 'MN-03', title: '도수치료 같은 날 열치료 함께 청구', oldTitle: '도수치료 같은 날 열치료 함께 청구',
+  before: '같은 날 표층열치료와 함께 청구하면 알려요', after: '같은 날 표층열치료·심층열치료와 함께 청구하면 알려요',
+  why: '고시가 도수치료와 함께 청구할 수 없는 열치료에 심층열치료를 더했어요.', from: '11월 20일' }
+const H_LA = { id: 'LA-31', title: '요추 경막외 신경차단술 산정', why: '새 수가 코드가 생겨 지금 규칙표에 없는 코드를 봐야 해요.' }
+const H_HY = { id: 'HY-12', title: '히알루론산 기준 밖 약값 U항', why: '이 규칙은 앱 안 계산으로 돌아 저절로 바꿀 수 없어요.' }
+const S_ES1 = { id: 'ES-01', title: '체외충격파 급여 입력', why: '이 고시와 상관없어요.' }
+const S_PH = { id: 'PH-02', title: '물리치료 하루 산정 개수', why: '관련 있지만 규칙이 보는 숫자·코드는 그대로예요.' }
+const S_MN1 = { id: 'MN-01', title: '도수치료 차트 기록', why: '관련 있지만 규칙이 보는 숫자·코드는 그대로예요.' }
+
+const STATES = {
+  changed: { label: '바뀜 있음', changes: [C_ES, C_MN], human: [], same: [S_ES1, S_PH, S_MN1], reverted: [], pendingOther: true },
+  human: { label: '사람이 봐야 함', changes: [C_ES], human: [H_LA, H_HY], same: [S_ES1], reverted: [], pendingOther: false },
+  reverted: { label: '되돌림', changes: [C_ES, C_MN], human: [], same: [S_ES1, S_PH, S_MN1], reverted: ['ES-04'], pendingOther: false, seen: true },
+  none: { label: '바꿀 것 없음', changes: [], human: [], same: [S_ES1, S_PH, S_MN1], reverted: [], pendingOther: false },
+}
+const VIEWS = { dashboard: '대시보드', detail: '글 화면', list: '글 목록', settings: '설정 → 점검 규칙' }
+const q = new URLSearchParams(location.search)
+const S = STATES[q.get('s')] ? q.get('s') : 'changed'
+const V = VIEWS[q.get('v')] ? q.get('v') : 'dashboard'
+const st = STATES[S]
+let sameOpen = q.get('open') === '1'
+let humDone = false
+let revertedIds = new Set(st.reverted)
+let saveFail = q.get('fail') === '1' ? 'MN-03' : null
+
+const I = {
+  warn: '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M10 3 18 17H2z"/><path d="M10 8v4M10 14.5v.5"/></svg>',
+  spark: '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5 9.3 6.7 14.5 8 9.3 9.3 8 14.5 6.7 9.3 1.5 8l5.2-1.3z"/></svg>',
+  clock: '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4.8V8l2.2 1.4"/></svg>',
+  checkC: '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7.5"/><path d="m6.8 10.2 2.2 2.2 4.2-4.6"/></svg>',
+  check: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3.5 8.5 3 3 6-7"/></svg>',
+  info: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 7.2v3.8M8 5v.4"/></svg>',
+  arrow: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8h10M9 4l4 4-4 4"/></svg>',
+  left: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg>',
+  undo: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 3.5 2.5 6.5l3 3"/><path d="M2.5 6.5h7a4 4 0 0 1 0 8H7"/></svg>',
+  redo: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m10.5 3.5 3 3-3 3"/><path d="M13.5 6.5h-7a4 4 0 0 0 0 8H9"/></svg>',
+  down: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4.5 6.5 8 10l3.5-3.5"/></svg>',
+}
+
+const href = (s, v, extra = '') => `?s=${s}&v=${v}${extra}`
+
+function renderSwitch() {
+  const sw = document.getElementById('switch')
+  sw.innerHTML = '<span class="lab">상태</span>' +
+    Object.entries(STATES).map(([k, x]) => `<a href="${href(k, V)}" aria-current="${k === S}">${x.label}</a>`).join('') +
+    '<span class="lab">화면</span>' +
+    Object.entries(VIEWS).map(([k, x]) => `<a href="${href(S, k)}" aria-current="${k === V}">${x}</a>`).join('')
+}
+function renderTabs() {
+  const tabs = [['대시보드', 'dashboard'], ['환자 통계', ''], ['매출', ''], ['청구', ''], ['고시·공지', 'list'], ['환자', ''], ['업무일지', ''], ['설정', 'settings']]
+  const cur = V === 'detail' ? 'list' : V
+  document.getElementById('tabs').innerHTML = tabs.map(([name, v]) => `<a class="tab" ${v ? `href="${href(S, v)}"` : ''} aria-current="${v && v === cur ? 'page' : 'false'}">${name}${name === '고시·공지' ? '<span class="badge">1</span>' : ''}</a>`).join('')
+}
+
+/* ───────── 대시보드 ───────── */
+function bands() {
+  const out = []
+  if (st.human.length && !humDone) {
+    out.push(`<div class="dwarn" role="status">${I.warn}<span class="grow"><b>${T.humBandTitle}</b> · ${T.humBandOne(st.human.length, NO)}</span><a class="txt" href="${href(S, 'detail')}">${T.humBandLink}${I.arrow}</a></div>`)
+  }
+  const unseen = st.seen ? [] : st.changes.filter((c) => !revertedIds.has(c.id))
+  if (unseen.length) {
+    out.push(`<div class="dwarn dchg" role="status">${I.spark}<span class="grow"><b>${T.chgBandTitle}</b> · ${T.chgBandOne(unseen.length, NO)}</span><a class="txt" href="${href(S, 'detail')}">${T.chgBandLink}${I.arrow}</a></div>`)
+  }
+  if (!out.length) return '<p class="muted" style="font-size:13px"><span class="anno">시안: 알릴 것이 없으면 맨 위 띠가 없어요</span></p>'
+  return `<div class="bands">${out.join('')}</div>`
+}
+function dashboardPage() {
+  const chip = st.human.length && !humDone ? `<span class="chip w">${T.chipHuman}</span>` : ''
+  return `${bands()}
+    <p class="dline"><b>11월 22일 (일)</b></p>
+    <div class="dh dim"><h1>대시보드</h1><span class="muted" style="font-size:13px">오늘 오전 9:18 비트에서 읽음</span></div>
+    <div class="dim"><div class="kpis">
+      <div class="kpi"><div class="l">오늘 환자 수</div><div class="v">0<small>명</small></div></div>
+      <div class="kpi"><div class="l">신환</div><div class="v">0<small>명</small></div></div>
+      <div class="kpi"><div class="l">재진</div><div class="v">0<small>명</small></div></div>
+      <div class="kpi"><div class="l">지난주 같은 요일보다</div><div class="v" style="font-size:20px">—</div></div>
+    </div></div>
+    <section class="dsec"><div class="shh"><h2>고시·공지</h2><span class="cntb">새 관련 글 1건</span><span class="sp"></span><a class="txt" href="${href(S, 'list')}">고시·공지 열기${I.arrow}</a></div>
+      <ul class="panel ncard"><li><a href="${href(S, 'detail')}"><span class="nd">11월 20일 (금)</span><span class="nt">${BASE.title}</span><span class="nm"><span>${BASE.src}</span>${chip}</span></a></li></ul>
+    </section>
+    <section class="dsec dim"><div class="shh"><h2>우리 병원 AI 경영 리포트</h2></div><div class="ghost-blk">지금 대시보드 그대로 (줄인 모습)</div></section>`
+}
+
+/* ───────── 글 화면 규칙 상자 ───────── */
+function humBox() {
+  if (!st.human.length) return ''
+  const items = `<ul class="rlist">${st.human.map((h) => `<li><b>${h.title}<small>${h.id}</small></b><span>${h.why}</span></li>`).join('')}</ul>`
+  if (humDone) {
+    return `<section class="rule calm done"><h2>${I.checkC}<span>${T.humDoneTitle(st.human.length)}</span></h2>${items}<p>${T.humDoneWhen(NOW_TEXT)}</p></section>`
+  }
+  return `<section class="rule hum"><h2>${I.warn}<span>${T.humTitle(st.human.length)}</span></h2><p>${T.humBody}</p>${items}
+    <div class="acts"><a class="btn sm" href="${href(S, 'settings')}">${T.humOpen}${I.arrow}</a><button class="btn sm" data-act="humdone">${I.check}${T.humDoneBtn}</button></div></section>`
+}
+function changeCard(c) {
+  const off = revertedIds.has(c.id)
+  const fail = saveFail === c.id ? `<div class="err" role="alert"><b>${T.saveErrWhat}</b><span>${T.saveErrFix}</span></div>` : ''
+  const btn = off
+    ? `<button class="btn sm" data-act="reapply" data-id="${c.id}" aria-label="${T.reapplyLabel(c.id)}">${I.redo}${T.reapply}</button>`
+    : `<button class="btn sm" data-act="revert" data-id="${c.id}" aria-label="${T.revertLabel(c.id)}">${I.undo}${T.revert}</button>`
+  return `<li class="ccard${off ? ' off' : ''}">
+    <div class="chead"><b>${off ? c.oldTitle : c.title}</b><span class="rid">${c.id}</span>${off ? `<span class="chip n">${T.revertedChip}</span>` : ''}<span class="sp"></span>${btn}</div>
+    <dl class="bfa"><dt>${T.before}</dt><dd class="was">${c.before}</dd><dt>${T.after}</dt><dd class="now">${c.after}</dd><dt>${T.why}</dt><dd>${c.why}</dd></dl>
+    <p class="cfoot"><b>${T.from(c.from)}</b>${off ? `<span>${T.revertedWhen(NOW_TEXT)}</span>` : ''}</p>${fail}</li>`
+}
+function chgBox() {
+  if (!st.changes.length) return ''
+  return `<section class="rule chg"><h2>${I.spark}<span>${T.chgTitle(st.changes.length)}</span></h2><p>${T.chgBody}</p>
+    <ul class="rlist" style="gap:8px">${st.changes.map(changeCard).join('')}</ul>
+    <p class="caution">${I.info}<span>${T.chgNote}</span></p></section>`
+}
+function sameBox() {
+  if (!st.same.length) return ''
+  const list = sameOpen ? `<ul class="rlist">${st.same.map((x) => `<li><b>${x.title}<small>${x.id}</small></b><span>${x.why}</span></li>`).join('')}</ul>` : ''
+  return `<section class="rule calm"><div class="hd"><h2>${I.checkC}<span>${T.sameTitle(st.same.length)}</span></h2><button class="txt" data-act="same" aria-expanded="${sameOpen}">${sameOpen ? T.sameHide : T.sameShow}${I.down}</button></div>${list}</section>`
+}
+function detailPage() {
+  return `<a class="back" href="${href(S, 'list')}">${I.left}글 목록으로</a>
+  <div class="dgrid"><article class="dmain">
+    <header class="dhead"><p class="dmeta"><span class="srcl">${BASE.src}</span><span>${BASE.posted} 올라옴</span></p>
+      <h1 class="dtitle">${BASE.title}</h1><p class="dsub"><span>${NO}</span><span class="chip a">정형외과 의원 관련</span></p></header>
+    ${humBox()}${chgBox()}${sameBox()}
+    <section class="panel sum dim"><h2>AI 세 줄 요약</h2><dl class="three"><dt>무엇이 바뀌나</dt><dd>체외충격파 인정 횟수가 늘고 도수치료와 함께 못 하는 열치료가 하나 늘어요.</dd><dt>언제부터</dt><dd>2026년 12월 1일 진료부터예요.</dd><dt>누구 대상</dt><dd>모든 요양기관이에요.</dd></dl></section>
+  </article><aside class="dside dim"><section class="panel sblock"><h2>우리 병원 메모</h2><div class="ghost-blk">지금 글 화면 그대로</div></section><section class="panel sblock"><h2>올라온 곳</h2><div class="ghost-blk">지금 글 화면 그대로</div></section></aside></div>`
+}
+
+/* ───────── 글 목록 ───────── */
+function ruleChips() {
+  const out = []
+  const live = st.changes.length
+  if (st.human.length) out.push(humDone ? `<span class="chip n">${T.chipHumanDone}</span>` : `<span class="chip w">${T.chipHuman}</span>`)
+  if (live) out.push(`<span class="chip a">${T.chipChanged(live)}</span>`)
+  return out.join('')
+}
+function listPage() {
+  const rows = [
+    { d: '11월 21일 (토)', t: '「건강보험 행위 급여·비급여 목록표」 일부개정(초음파)', src: '보건복지부', line: '근골격 초음파 일부 항목의 표기가 바뀌어요.', chips: st.pendingOther ? `<span class="chip n">${T.chipPending}</span>` : '', no: '보건복지부 고시 제2026-255호' },
+    { d: '11월 20일 (금)', t: BASE.title, src: BASE.src, line: '체외충격파 인정 횟수가 늘고 도수치료와 함께 못 하는 열치료가 하나 늘어요.', chips: ruleChips(), no: NO },
+    { d: '11월 19일 (목)', t: '2026년 12월 요양급여비용 청구 일정 안내', src: '심평원 공지', line: '12월 청구 마감일이 하루 당겨져요.', chips: '', no: '' },
+  ]
+  return `<div class="phead"><h1>고시·공지</h1><p class="lede">심평원·보건복지부 새 글을 매일 아침 모아 AI가 요약해요.</p></div>
+    <p style="margin-top:12px"><span class="anno">시안: 고르기 줄·찾기·출처 칩은 지금 화면 그대로라 줄였어요</span></p>
+    <ul class="list"><li class="month">11월</li>${rows.map((r) => `<li class="item"><span class="idate">${r.d}</span><span class="ibody">
+      <span class="imeta"><span class="srcl">${r.src}</span>${r.no ? `<span>${r.no}</span>` : ''}<span class="chip a">정형외과 의원 관련</span>${r.chips}</span>
+      <a class="ititle" href="${r.t === BASE.title ? href(S, 'detail') : '#'}">${r.t}</a><span class="iline">${r.line}</span></span></li>`).join('')}</ul>`
+}
+
+/* ───────── 설정 → 점검 규칙 ───────── */
+function settingsPage() {
+  const today = '2026-11-22'
+  const fromYmd = { 'ES-04': '2026-12-01', 'MN-03': '2026-11-20' }
+  const rules = [
+    { id: 'ES-01', title: '체외충격파 급여 입력', dom: '체외충격파', g: '확인필요', basis: '보건복지부 고시 제2025-249호' },
+    { id: 'ES-04', title: '체외충격파 같은 부위 1년 5회', dom: '체외충격파', g: '확인필요', basis: '보건복지부 고시 제2024-136호', ch: C_ES },
+    { id: 'LA-31', title: '요추 경막외 신경차단술 산정', dom: '신경차단술', g: '확인필요', basis: '보건복지부 고시 제2023-242호' },
+    { id: 'MN-01', title: '도수치료 차트 기록', dom: '도수치료', g: '알림', basis: '보건복지부 고시 제2024-136호' },
+    { id: 'MN-03', title: '도수치료 같은 날 열치료 함께 청구', dom: '도수치료', g: '알림', basis: '보건복지부 고시 제2024-136호', ch: S === 'none' ? null : C_MN },
+    { id: 'PH-02', title: '물리치료 하루 산정 개수', dom: '물리치료', g: '알림', basis: '보건복지부 고시 제2023-56호' },
+  ]
+  const rowsHtml = rules.map((r) => {
+    let badge = ''
+    let title = r.title
+    let basis = r.basis
+    const c = S === 'none' || S === 'human' && r.id === 'MN-03' ? null : r.ch
+    if (c) {
+      if (revertedIds.has(r.id)) badge = `<span class="chip n">${T.badgeReverted}</span>`
+      else {
+        badge = `<span class="chip a">${T.badgeChanged(c.from)}</span>`
+        if (fromYmd[r.id] <= today) { title = c.title; basis = `${r.basis} · ${NO}` }
+      }
+    }
+    return `<tr><td><span class="cbox">${I.check}</span></td><td><span class="rid2">${r.id}</span><span class="tline"><span>${title}</span>${badge}</span></td>
+      <td><span class="chip n">${r.dom}</span></td><td><span class="sel">${r.g} ${I.down}</span><span class="dfl">기본: ${r.g}</span></td>
+      <td class="sub">${basis}</td><td class="sub">—</td><td><span class="txt" style="color:var(--faint)">기본값으로</span></td></tr>`
+  }).join('')
+  return `<h1 class="stitle">설정</h1>
+    <section class="panel spanel"><div class="ph"><h2>점검 규칙</h2><span>262개 · 켜짐 250 · 꺼짐 12</span><span class="anno">시안: 찾기·묶음 고르기는 지금 화면 그대로라 줄였어요</span></div>
+    <table><thead><tr><th>켜기</th><th>규칙</th><th>묶음</th><th>등급</th><th>고시 근거</th><th>바꾼 날</th><th>기본값</th></tr></thead><tbody>${rowsHtml}</tbody></table></section>`
+}
+
+/* ───────── 그리기·누름 ───────── */
+const app = document.getElementById('app')
+function render() {
+  renderSwitch()
+  renderTabs()
+  app.innerHTML = V === 'detail' ? detailPage() : V === 'list' ? listPage() : V === 'settings' ? settingsPage() : dashboardPage()
+}
+app.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act]')
+  if (!b) return
+  const act = b.dataset.act
+  if (act === 'same') sameOpen = !sameOpen
+  else if (act === 'humdone') humDone = true
+  else if (act === 'revert') { revertedIds.add(b.dataset.id); saveFail = null }
+  else if (act === 'reapply') { revertedIds.delete(b.dataset.id); saveFail = null }
+  render()
+})
+render()
+</script>
+</body>
+</html>
