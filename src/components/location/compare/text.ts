@@ -1,6 +1,6 @@
 import type { CandidateStatus } from '@/types/location'
 
-// 후보 견주기 화면 글(시안 ?s=compare 글 그대로 — requirements '화면 글 기본값'에 이 화면 글은 없다).
+// 후보 견주기 화면 글(시안 ?s=compare 글 그대로. requirements '화면 글 기본값'의 '고른 과목을 따르는 글' 표: 후보 견주기 = 줄 이름 `경쟁 의원` + 작은 글 고른 과목 짧은 이름).
 // 진행 상태 이름은 requirements '이미 정한 것' 11(보는 중 → 중개사 연락 → 보러 감 → 계약 검토 / 내려놓음)
 
 /** 진행 상태 다섯 이름 */
@@ -31,14 +31,16 @@ export const COMPARE_TEXT = {
   best: '가장 높음',
   rank: (n: number) => `${n}등`,
   noValue: '값 없음',
+  /** 경쟁 과목을 하나도 안 고르면 점수의 '경쟁'(requirements '하나도 안 고름', 시안 NOL_T) */
+  noDept: '과목 없음',
   noListing: '매물 없음',
   noScore: '점수 없음',
   numbers: '숫자로 견주기 (후보마다 살필 범위 안)',
   rowRadius: '살필 범위',
   rowPeople: '사는 사람',
   rowSeniors: '60세 이상',
-  rowRivals: '정형외과·통증·재활',
-  rowRivalsNote: '한의원 뺌',
+  /** 작은 글은 depts.ts rivalShortText(고른 과목 짧은 이름, 없으면 '고른 과목 없음') */
+  rowRivals: '경쟁 의원',
   rowPerRival: '1곳당 사는 사람',
   rowStation: '가장 가까운 역',
   rowSite: '층 · 전용 평수',
