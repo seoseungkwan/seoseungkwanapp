@@ -116,7 +116,9 @@ export type RuleReport = { cleared: number; retired: number; reviewed: number; c
 - 새 낱말 금지(e): 위 칸 밖의 글자 값과 객체 열쇠는 base ∪ current `params`(깊이 상관없음)의 글자 모음 안이어야 한다. `regex`로 끝나는 칸의 글은 예외(만들어지는지·300자 이하만 봄).
 - 칸 이름(a): 같은 `type` 규칙들의 `params` 맨 위 칸 이름 모음(`WeakMap`), base에 있는 칸이면 JSON 종류가 같아야 함.
 - 뺀 것(`removed`): 이름 모음 = `kind:값`(`group:`·`class:`·`sub:`·`region:`·`code:`·`dx:`) 집합. next ⊇ base ∪ current.
-- 등급(`grade`): `params` 안 모든 `grade` 열쇠 값(깊이 상관없음)을 정렬한 목록이 base와 같아야 함.
+- 비켜 주는 칸(`WAIVER_KEYS`, 2026-11-22 독립 검토로 더함): 열쇠 이름이 `acceptable`·`allow`·`exception`·`exclu`·`exempt`·`skip`·`unless`·`pass_if`·`not_in_set`로 시작하는 칸(깊이 상관없음. 지금 규칙표: `acceptable_with`·`allowed_*`·`exception*`·`exclude*`·`excluded`·`exempt_regex`·`skip_*`·`unless*`·`pass_if_regex`·`not_in_set_a`). 이 칸들은 값이 늘면 경고가 줄어든다. 열쇠 이름마다 next의 잎 값(글자·숫자·참거짓, 배열·객체 안 포함)이 base ∪ current의 같은 열쇠 이름 칸 잎 값 안이어야 한다. 아니면 `removed`. 빼는 것은 지난다.
+- 정규식 칸: 열쇠 이름이 `regex`로 끝나는 글은 base·current의 같은 열쇠 이름 칸 글 가운데 하나와 같아야 한다. 아니면 `removed`(정규식은 넓히는지 좁히는지 앱이 알 수 없다).
+- 등급(`grade`): `params` 안 열쇠 이름이 `grade`로 끝나는 칸(`exception_grade` 등, 깊이 상관없음)의 값을 정렬한 목록이 base와 같아야 함.
 - 상태(`status`): `ruleStatusIn(file, next) === ruleStatusIn(file, base)`. 엔진의 `statusesOf`는 규칙 번호로 상태를 하나만 갖기 때문에 판마다 같아야 한다.
 - 크기(`size`): `title` 1~80자, `message` 1~300자, `params` JSON 4,000바이트, 규칙 JSON 8,000바이트(UTF-8, `TextEncoder`). 지금 규칙표 최대는 제목 34자·글 110자·`params` 1,288바이트·규칙 3,224바이트다.
 - 모양(`shape`): `checkRuleShape(next)`(규칙표 검사와 같음) · `next.effective_to === null` · `isYmd(next.effective_from)`.
