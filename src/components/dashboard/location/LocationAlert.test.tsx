@@ -4,12 +4,12 @@ import { join } from 'node:path'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import type { AnchorHTMLAttributes } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { LocationEvent } from '@/types/location'
+import type { AlertLine } from './alertLines'
 import { LocationAlert } from './LocationAlert'
 
-// 대시보드 새 경쟁 의원 알림 줄 (specs/location REQ-7915 AC-7915.2·AC-7915.3, design.md 12절,
-// 시안 docs/mockups/location/index.html ?s=dashboard의 .wnote·.wnr·.wn·[닫기]). 읽기는 useLocationWatch 몫이고 이 부품은 받은 줄만 그린다.
-// 의원·후보는 모두 지어낸 값이다.
+// 대시보드 새 경쟁 의원 알림 줄 (specs/location REQ-7915 AC-7915.2·AC-7915.3, design.md 12절, requirements '화면 글 기본값' 새 경쟁 의원 알림,
+// 시안 docs/mockups/location/index.html ?s=dashboard의 .wnote·.wnr·.wn·[닫기]). 읽기·후보 이름·대표 과목·경쟁 과목 거르기는 useLocationWatch(alertLines) 몫이고
+// 이 부품은 받은 줄만 그린다. 의원·후보는 모두 지어낸 값이다.
 // Next <Link>를 흉내 내 표시를 단다: 알림 줄이 <Link>를 쓰면 표시가 붙어 시험이 잡는다(입지 화면만 카카오 CSP라 새 문서로 불러와야 한다)
 vi.mock('next/link', () => ({
   default: (props: AnchorHTMLAttributes<HTMLAnchorElement>) => <a data-next-link="" {...props} />,
@@ -17,28 +17,43 @@ vi.mock('next/link', () => ({
 
 const CAND_A = '11111111-1111-4111-8111-111111111111'
 const CAND_B = '22222222-2222-4222-8222-222222222222'
+const NAME_A = '예시빌딩 3층'
+const NAME_B = '예시타워 1층'
+const NAMES: Record<string, string> = { [CAND_A]: NAME_A, [CAND_B]: NAME_B }
 const event = (
   id: string,
   candidateId: string,
   kind: 'open' | 'close',
   clinicName: string,
-  dept: string,
+  deptShort: string | null,
   eventOn: string,
   distM: number,
   createdAt = '2026-11-22T01:00:00.000Z',
-): LocationEvent => ({ id, candidateId, kind, clinicName, dept, eventOn, distM, seenAt: null, createdAt })
+): AlertLine => ({
+  id,
+  candidateId,
+  kind,
+  clinicName,
+  dept: deptShort ?? '',
+  eventOn,
+  distM,
+  seenAt: null,
+  createdAt,
+  candidateName: NAMES[candidateId] ?? null,
+  deptShort,
+})
 
 // 시안 두 줄: 후보 A 둘레 새로 엶 / 후보 B 둘레 닫음
 const OPENED = event('e0000000-0000-4000-8000-000000000001', CAND_A, 'open', '예시★★정형외과', '정형외과', '2026-11-10', 950)
 const CLOSED = event('e0000000-0000-4000-8000-000000000002', CAND_B, 'close', '예시▼▼정형외과', '정형외과', '2026-11-05', 700)
-const PAIN = event('e0000000-0000-4000-8000-000000000003', CAND_A, 'open', '예시◆◆통증의원', '마취통증의학과', '2026-11-03', 1450)
-const REHAB = event('e0000000-0000-4000-8000-000000000004', CAND_B, 'close', '예시■■의원', '재활의학과', '2026-10-28', 2000)
+const PAIN = event('e0000000-0000-4000-8000-000000000003', CAND_A, 'open', '예시◆◆통증의원', '마취통증', '2026-11-03', 1450)
+const REHAB = event('e0000000-0000-4000-8000-000000000004', CAND_B, 'close', '예시■■의원', '재활', '2026-10-28', 2000)
 const OLDEST = event('e0000000-0000-4000-8000-000000000005', CAND_A, 'open', '예시●●의원', '정형외과', '2026-10-25', 300)
 
 const box = () => screen.getByRole('status', { name: '입지 알림' })
 const links = () => within(box()).getAllByRole('link')
 const closes = () => within(box()).queryAllByRole('button')
-const draw = (events: readonly LocationEvent[], onClose: (id: string) => void = vi.fn()) => render(<LocationAlert events={events} onClose={onClose} />)
+const draw = (events: readonly AlertLine[], onClose: (id: string) => void = vi.fn()) => render(<LocationAlert events={events} onClose={onClose} />)
 const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
 const SOURCE = () => readFileSync(join(process.cwd(), 'src/components/dashboard/location/LocationAlert.tsx'), 'utf8')
 
@@ -47,27 +62,36 @@ afterEach(() => {
 })
 
 describe('LocationAlert: 줄 글자·차례·주소 (AC-7915.2)', () => {
-  it('AC-7915.2: 개업은 "저장한 후보 둘레에 {과목}가 새로 문을 열었어요", 폐업은 "…둘레에서 {과목}가 문을 닫았어요" + 아래 "{의원 이름} · {거리} · {M월 D일}" + 오른쪽 "입지 분석에서 보기"', () => {
+  it('AC-7915.2: 개업은 "저장한 후보 둘레에 경쟁 의원({과목})이 새로 문을 열었어요", 폐업은 "…둘레에서 경쟁 의원({과목})이 문을 닫았어요" + 아래 "{후보 이름} · {의원 이름} · {거리} · {M월 D일}" + 오른쪽 "입지 분석에서 보기"', () => {
     draw([CLOSED, OPENED])
     expect(links().map((a) => a.textContent)).toEqual([
-      '저장한 후보 둘레에 정형외과가 새로 문을 열었어요예시★★정형외과 · 950m · 11월 10일입지 분석에서 보기',
-      '저장한 후보 둘레에서 정형외과가 문을 닫았어요예시▼▼정형외과 · 700m · 11월 5일입지 분석에서 보기',
+      '저장한 후보 둘레에 경쟁 의원(정형외과)이 새로 문을 열었어요예시빌딩 3층 · 예시★★정형외과 · 950m · 11월 10일입지 분석에서 보기',
+      '저장한 후보 둘레에서 경쟁 의원(정형외과)이 문을 닫았어요예시타워 1층 · 예시▼▼정형외과 · 700m · 11월 5일입지 분석에서 보기',
+    ])
+    expect(links().map((a) => a.querySelector('small')?.textContent)).toEqual([
+      `${NAME_A} · 예시★★정형외과 · 950m · 11월 10일`,
+      `${NAME_B} · 예시▼▼정형외과 · 700m · 11월 5일`,
     ])
     for (const a of links()) expect(within(a).getByText('입지 분석에서 보기')).toBeTruthy()
   })
 
-  it('AC-7915.2: 과목 글은 줄의 과목(없으면 이름)에 든 정형외과·마취통증의학과·재활의학과이고, 거리는 AC-7905.6 모양(1.4km·2km)이다', () => {
-    draw([PAIN, REHAB, event('e0000000-0000-4000-8000-000000000009', CAND_A, 'open', '예시재활의학과의원', '', '2026-11-01', 0)])
+  it('AC-7915.2: {과목}은 받은 대표 과목 짧은 이름(마취통증·재활) 그대로이고, 거리는 AC-7905.6 모양(1.4km·2km·0m)이다', () => {
+    draw([PAIN, REHAB, event('e0000000-0000-4000-8000-000000000009', CAND_A, 'open', '예시재활의학과의원', '재활', '2026-11-01', 0)])
     expect(links().map((a) => a.textContent)).toEqual([
-      '저장한 후보 둘레에 마취통증의학과가 새로 문을 열었어요예시◆◆통증의원 · 1.4km · 11월 3일입지 분석에서 보기',
-      '저장한 후보 둘레에 재활의학과가 새로 문을 열었어요예시재활의학과의원 · 0m · 11월 1일입지 분석에서 보기',
-      '저장한 후보 둘레에서 재활의학과가 문을 닫았어요예시■■의원 · 2km · 10월 28일입지 분석에서 보기',
+      '저장한 후보 둘레에 경쟁 의원(마취통증)이 새로 문을 열었어요예시빌딩 3층 · 예시◆◆통증의원 · 1.4km · 11월 3일입지 분석에서 보기',
+      '저장한 후보 둘레에 경쟁 의원(재활)이 새로 문을 열었어요예시빌딩 3층 · 예시재활의학과의원 · 0m · 11월 1일입지 분석에서 보기',
+      '저장한 후보 둘레에서 경쟁 의원(재활)이 문을 닫았어요예시타워 1층 · 예시■■의원 · 2km · 10월 28일입지 분석에서 보기',
     ])
   })
 
-  it('AC-7915.2: 과목·이름에서 과목을 찾지 못하면 "경쟁 의원이"라고 쓴다(그려지다 멈추지 않는다)', () => {
-    draw([event('e0000000-0000-4000-8000-00000000000a', CAND_A, 'close', '예시의원', '', '2026-11-02', 120)])
-    expect(links()[0]!.textContent).toBe('저장한 후보 둘레에서 경쟁 의원이 문을 닫았어요예시의원 · 120m · 11월 2일입지 분석에서 보기')
+  it('AC-7915.2: 대표 과목을 모르면(null) "경쟁 의원이 …"라고 쓴다(그려지다 멈추지 않는다)', () => {
+    draw([event('e0000000-0000-4000-8000-00000000000a', CAND_A, 'close', '예시의원', null, '2026-11-02', 120)])
+    expect(links()[0]!.textContent).toBe('저장한 후보 둘레에서 경쟁 의원이 문을 닫았어요예시빌딩 3층 · 예시의원 · 120m · 11월 2일입지 분석에서 보기')
+  })
+
+  it('AC-7915.2: 후보 이름을 못 받으면(null) 아래 줄에서 그 조각만 뺀다', () => {
+    draw([{ ...OPENED, candidateName: null }])
+    expect(links()[0]!.querySelector('small')?.textContent).toBe('예시★★정형외과 · 950m · 11월 10일')
   })
 
   it('AC-7915.2: 개업·폐업 글자만 주황(font-semibold text-warning)이고, 핀 그림은 꾸밈(aria-hidden)이다', () => {
@@ -76,6 +100,7 @@ describe('LocationAlert: 줄 글자·차례·주소 (AC-7915.2)', () => {
       expect(tokens(screen.getByText(text))).toEqual(expect.arrayContaining(['font-semibold', 'text-warning']))
     }
     expect(tokens(screen.getByText(/예시★★정형외과 ·/))).not.toContain('text-warning')
+    expect(tokens(screen.getByText(/예시★★정형외과 ·/))).toEqual(expect.arrayContaining(['block', 'text-small', 'text-ink-2']))
     for (const svg of box().querySelectorAll('svg')) expect(svg.getAttribute('aria-hidden')).toBe('true')
   })
 
@@ -92,9 +117,9 @@ describe('LocationAlert: 줄 글자·차례·주소 (AC-7915.2)', () => {
     const sameDayLater = event('e0000000-0000-4000-8000-00000000000c', CAND_B, 'open', '예시나중정형외과', '정형외과', '2026-11-10', 400, '2026-11-22T02:00:00.000Z')
     draw([OLDEST, CLOSED, OPENED, sameDayLater])
     expect(links().map((a) => a.querySelector('small')?.textContent)).toEqual([
-      '예시나중정형외과 · 400m · 11월 10일',
-      '예시★★정형외과 · 950m · 11월 10일',
-      '예시▼▼정형외과 · 700m · 11월 5일',
+      `${NAME_B} · 예시나중정형외과 · 400m · 11월 10일`,
+      `${NAME_A} · 예시★★정형외과 · 950m · 11월 10일`,
+      `${NAME_B} · 예시▼▼정형외과 · 700m · 11월 5일`,
       undefined, // 넷째 줄은 나머지 수(아래 줄 없음)
     ])
   })
@@ -118,23 +143,39 @@ describe('LocationAlert: 줄 글자·차례·주소 (AC-7915.2)', () => {
 })
 
 describe('LocationAlert: [닫기] (AC-7915.2)', () => {
-  it('AC-7915.2: 보이는 줄마다 오른쪽에 [닫기]가 있고(이름 "{의원 이름} 알림 닫기"), "… {n}건 더" 줄에는 없다', () => {
+  it('AC-7915.2: 보이는 줄마다 오른쪽에 [닫기]가 있고(이름 "{후보 이름} 알림 닫기"), "… {n}건 더" 줄에는 없다', () => {
     draw([OLDEST, REHAB, PAIN, CLOSED, OPENED])
     expect(closes().map((b) => [b.textContent, b.getAttribute('aria-label')])).toEqual([
-      ['닫기', '예시★★정형외과 알림 닫기'],
-      ['닫기', '예시▼▼정형외과 알림 닫기'],
-      ['닫기', '예시◆◆통증의원 알림 닫기'],
+      ['닫기', `${NAME_A} 알림 닫기`],
+      ['닫기', `${NAME_B} 알림 닫기`],
+      ['닫기', `${NAME_A} 알림 닫기`],
     ])
     for (const b of closes()) expect(b.getAttribute('type')).toBe('button')
     // [닫기]는 링크 밖(누르면 입지 화면으로 가지 않는다)
     for (const a of links()) expect(within(a).queryByRole('button')).toBeNull()
   })
 
+  it('AC-7915.2: 후보 이름을 못 받은 줄의 [닫기] 이름은 "{의원 이름} 알림 닫기"다', () => {
+    draw([{ ...OPENED, candidateName: null }])
+    expect(closes().map((b) => b.getAttribute('aria-label'))).toEqual(['예시★★정형외과 알림 닫기'])
+  })
+
   it('AC-7915.2: [닫기]를 누르면 그 줄의 id로 onClose를 한 번 부른다(그 줄을 본 것으로 적는 일은 부르는 쪽)', () => {
     const onClose = vi.fn()
     draw([OPENED, CLOSED], onClose)
-    fireEvent.click(screen.getByRole('button', { name: '예시▼▼정형외과 알림 닫기' }))
+    fireEvent.click(screen.getByRole('button', { name: `${NAME_B} 알림 닫기` }))
     expect(onClose.mock.calls).toEqual([[CLOSED.id]])
+  })
+
+  it('AC-7915.2: [닫기]는 줄마다 따로다 — 같은 후보의 두 줄 가운데 하나를 누르면 그 줄 id 하나만 넘긴다(그 후보의 다른 줄·다른 후보 줄 id는 없음)', () => {
+    const onClose = vi.fn()
+    draw([OPENED, CLOSED, PAIN], onClose) // OPENED·PAIN = 후보 A
+    const sameCandidate = screen.getAllByRole('button', { name: `${NAME_A} 알림 닫기` })
+    expect(sameCandidate).toHaveLength(2)
+    fireEvent.click(sameCandidate[1]!) // 아래쪽 = PAIN(11월 3일)
+    expect(onClose.mock.calls).toEqual([[PAIN.id]])
+    fireEvent.click(sameCandidate[0]!)
+    expect(onClose.mock.calls).toEqual([[PAIN.id], [OPENED.id]])
   })
 })
 
@@ -221,5 +262,8 @@ describe('LocationAlert: 모양 (AC-7915.2, 시안 .wnote·.wnr)', () => {
     expect(text).not.toMatch(/max-md:|max-sm:/)
     expect(text).not.toMatch(/lib\/supabase|lib\/storage|components\/location\/clients|\bfetch\(|localStorage|sessionStorage|indexedDB|console\./)
     expect(text).toMatch(/from '@\/lib\/location\/coords'/) // 거리 글은 distText 한 곳
+    // 과목 글은 받은 대표 과목 짧은 이름만 쓴다(예전 경쟁 과목 고정 목록 WATCH_DEPTS로 찾지 않음 — 고르기는 alertLines)
+    expect(text).not.toMatch(/WATCH_DEPTS|lib\/location\/watch|lib\/location\/depts/)
+    expect(text).toMatch(/import type \{ AlertLine \} from '\.\/alertLines'/)
   })
 })
