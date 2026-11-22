@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ds } from '@/components/ui/classes'
 import type { ClaimRuleSettingRow } from '@/types/db'
 import type { RuleSummary } from '@/types/precheck'
+import type { RuleBadge } from '@/types/ruleAuto'
 import { RuleSettings } from './RuleSettings'
 
 // 시험 내용과 상관없이, PC가 바쁠 때 기본 5초를 넘겨 실패하는 일만 막는다
@@ -63,6 +64,19 @@ const { db, supabaseBrowser } = vi.hoisted(() => {
 })
 vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser }))
 
+// 고시로 바뀐 규칙 칩(specs/rule-auto AC-7817): readRuleBadges가 무엇을 읽는지는 lib/storage/ruleChanges.test.ts가 본다.
+// 여기서는 그 답(규칙 id → RuleBadge, 'failed')을 화면이 어떻게 그리는지만 본다. 'throw'는 약속 밖(던짐)
+const { badges } = vi.hoisted(() => ({
+  badges: { answer: new Map() as Map<string, RuleBadge> | 'failed' | 'throw', calls: 0 },
+}))
+vi.mock('@/lib/storage/ruleChanges', () => ({
+  readRuleBadges: async () => {
+    badges.calls += 1
+    if (badges.answer === 'throw') throw new Error('rule_changes 읽기 실패')
+    return badges.answer
+  },
+}))
+
 type WorkerAnswer = { ok: true; rules: RuleSummary[] } | { ok: false; code: string } | 'crash' | 'silent'
 
 class FakeWorker {
@@ -118,6 +132,8 @@ beforeEach(() => {
   db.calls = []
   db.fail = { select: false, upsert: false, upsertLost: false, delete: false }
   db.hold = null
+  badges.answer = new Map()
+  badges.calls = 0
   FakeWorker.instances = []
   FakeWorker.answer = { ok: true, rules: RULES }
   vi.stubGlobal('Worker', FakeWorker)
@@ -867,6 +883,157 @@ describe('AC-012.6 찾기·거르기', () => {
     expect(visibleIds()).toEqual(['PT-02'])
     await user.click(saveButton())
     await waitFor(() => expect(db.upserts).toEqual([[{ rule_id: 'LA-01', enabled: false, grade: null }]]))
+  })
+})
+
+// 시안 docs/mockups/rule-auto ?v=settings: 규칙 칸 제목 옆 칩, 오늘 쓰이는 판이면 제목·고시 근거도 그 판 것(기본값 12)
+describe('AC-7817 고시로 바뀐 규칙 칩', () => {
+  const NEW_BASIS = [
+    { doc: '심사기준', number: '심사기준 2024-7' },
+    { doc: '보건복지부 고시', number: '보건복지부 고시 제2026-251호' },
+  ]
+  /** 아직 날짜가 안 온 판뿐(오늘 쓰이는 판 없음) */
+  const LATER: RuleBadge = { from: '2026-12-01', title: null, basis: null, reverted: false }
+  /** 오늘 이미 쓰이는 판 */
+  const TODAY: RuleBadge = { from: '2026-11-20', title: '같은 날 물리치료 4가지', basis: NEW_BASIS, reverted: false }
+  /** 우리 병원이 판을 모두 되돌림 */
+  const REVERTED: RuleBadge = { from: '2026-11-20', title: null, basis: null, reverted: true }
+  const ANY_CHIP = /고시로 바뀜|고시 변경 되돌림/
+
+  it('AC-7817.1: 바뀐 판이 있는 규칙은 규칙 칸 제목 옆(같은 줄, 제목 뒤)에 `고시로 바뀜 · {날짜}부터` 파랑 칩이다. 바뀐 판이 없는 규칙은 칩이 없다', async () => {
+    badges.answer = new Map([['LA-01', LATER]])
+    await renderReady()
+    const line = within(ruleRow('LA-01'))
+    const chip = await line.findByText('고시로 바뀜 · 12월 1일부터')
+    expect(chip.className).toBe(ds.chip.accent)
+    const title = line.getByText('신경차단술 12개월 횟수')
+    expect(chip.parentElement).toBe(title.parentElement)
+    expect(title.compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(chip.closest('td')?.querySelector('[data-rule-id]')?.textContent).toBe('LA-01')
+    expect(within(ruleRow('PT-02')).queryByText(ANY_CHIP)).toBeNull()
+    expect(within(ruleRow('MT-03')).queryByText(ANY_CHIP)).toBeNull()
+  })
+
+  it('AC-7817.1: 아직 날짜가 안 온 판뿐이면 칩만 있고 제목·고시 근거는 원래 규칙 것이다', async () => {
+    badges.answer = new Map([['LA-01', LATER]])
+    await renderReady()
+    const line = within(ruleRow('LA-01'))
+    await line.findByText('고시로 바뀜 · 12월 1일부터')
+    expect(line.getByText('신경차단술 12개월 횟수')).toBeTruthy()
+    expect(line.getByText('고시 제2025-001호')).toBeTruthy()
+  })
+
+  it("AC-7817.1: 오늘 쓰이는 판이 있으면 제목과 '고시 근거' 칸이 그 판의 것이다. 다른 칸은 그대로다", async () => {
+    badges.answer = new Map([['PT-02', TODAY]])
+    await renderReady()
+    const line = within(ruleRow('PT-02'))
+    expect((await line.findByText('고시로 바뀜 · 11월 20일부터')).className).toBe(ds.chip.accent)
+    expect(line.getByText('같은 날 물리치료 4가지')).toBeTruthy()
+    expect(line.queryByText('같은 날 물리치료 3가지')).toBeNull()
+    expect(line.getByText('심사기준 2024-7 · 보건복지부 고시 제2026-251호')).toBeTruthy()
+    expect(line.getByText('물리치료')).toBeTruthy()
+    expect(line.getByText('기본: 알림')).toBeTruthy()
+    expect(line.getByText('—')).toBeTruthy()
+    // 다른 규칙은 원래 것
+    expect(within(ruleRow('LA-01')).getByText('고시 제2025-001호')).toBeTruthy()
+  })
+
+  it('AC-7817.1: 판을 모두 되돌린 규칙은 `고시 변경 되돌림` 회색 칩이고 제목·고시 근거는 원래 규칙 것이다', async () => {
+    badges.answer = new Map([['MT-03', REVERTED]])
+    await renderReady()
+    const line = within(ruleRow('MT-03'))
+    const chip = await line.findByText('고시 변경 되돌림')
+    expect(chip.className).toBe(ds.chip.neutral)
+    expect(chip.parentElement).toBe(line.getByText('도수치료 주 횟수').parentElement)
+    expect(line.queryByText(/고시로 바뀜/)).toBeNull()
+    expect(line.getByText('고시 제2024-9호')).toBeTruthy()
+  })
+
+  it('AC-7817.1: 찾기는 보이는 제목으로 찾는다 — 오늘 판의 제목으로 찾히고 옛 제목으로는 안 찾힌다. 번호로도 찾힌다', async () => {
+    badges.answer = new Map([['PT-02', TODAY]])
+    const user = await renderReady()
+    await within(ruleRow('PT-02')).findByText('고시로 바뀜 · 11월 20일부터')
+    const search = screen.getByRole('searchbox', { name: '규칙 찾기' })
+    await user.type(search, '4가지')
+    expect(visibleIds()).toEqual(['PT-02'])
+    await user.clear(search)
+    await user.type(search, '3가지')
+    expect(screen.getByText('찾는 규칙이 없어요.')).toBeTruthy()
+    await user.clear(search)
+    await user.type(search, 'pt-02')
+    expect(visibleIds()).toEqual(['PT-02'])
+  })
+
+  it('AC-7817.1: 판의 제목·고시 근거는 글자로만 그린다(HTML로 읽지 않는다)', async () => {
+    badges.answer = new Map([['PT-02', { ...TODAY, title: '<img src=x onerror=alert(1)>제목', basis: [{ doc: '문서', number: '<b>고시</b>' }] }]])
+    await renderReady()
+    const line = within(ruleRow('PT-02'))
+    expect(await line.findByText('<img src=x onerror=alert(1)>제목')).toBeTruthy()
+    expect(line.getByText('<b>고시</b>')).toBeTruthy()
+    expect(document.querySelector('tbody img')).toBeNull()
+    expect(document.querySelector('tbody b')).toBeNull()
+  })
+
+  it('AC-7817.1: 칩이 있는 규칙도 켜기·등급·기본값으로·저장이 그 규칙 번호에 그대로 걸린다', async () => {
+    badges.answer = new Map([['PT-02', TODAY]])
+    const user = await renderReady()
+    await within(ruleRow('PT-02')).findByText('고시로 바뀜 · 11월 20일부터')
+    await user.click(toggle('PT-02'))
+    await user.selectOptions(gradeBox('PT-02'), '참고')
+    expect(screen.getByText('바꾼 것 1개')).toBeTruthy()
+    expect(resetButton('PT-02').disabled).toBe(false)
+    await user.click(saveButton())
+    await waitFor(() => expect(db.upserts).toEqual([[{ rule_id: 'PT-02', enabled: false, grade: '참고' }]]))
+    await waitFor(() => expect(screen.getByText('바꾼 것 0개')).toBeTruthy())
+    expect(within(ruleRow('PT-02')).getByText('고시로 바뀜 · 11월 20일부터')).toBeTruthy()
+  })
+
+  it('AC-7817.1: readRuleBadges는 화면을 열 때 한 번만 읽는다 — 저장해도 다시 읽지 않는다', async () => {
+    badges.answer = new Map([['LA-01', LATER]])
+    const user = await renderReady()
+    await within(ruleRow('LA-01')).findByText('고시로 바뀜 · 12월 1일부터')
+    await user.click(toggle('MT-03'))
+    await user.click(saveButton())
+    await waitFor(() => expect(screen.getByText('바꾼 것 0개')).toBeTruthy())
+    expect(badges.calls).toBe(1)
+  })
+
+  it.each([
+    ["'failed'", 'failed' as const],
+    ['던짐(약속 밖)', 'throw' as const],
+  ])('AC-7817.2: readRuleBadges가 %s이면 칩 없이 지금 표 그대로이고 오류 상자가 없다', async (_name, answer) => {
+    badges.answer = answer
+    await renderReady()
+    await waitFor(() => expect(badges.calls).toBe(1))
+    await act(async () => {})
+    expect(screen.queryByText(ANY_CHIP)).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(within(ruleRow('PT-02')).getByText('같은 날 물리치료 3가지')).toBeTruthy()
+    expect(within(ruleRow('PT-02')).getByText('심사기준 2024-7')).toBeTruthy()
+    expect(screen.getByText('3개 · 켜짐 2 · 꺼짐 1')).toBeTruthy()
+    expect(screen.getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['켜기', '규칙', '묶음', '등급', '고시 근거', '바꾼 날', '기본값'])
+  })
+
+  it('AC-7817.2: readRuleBadges가 실패해도 켜기·등급·기본값으로·저장은 그대로다', async () => {
+    badges.answer = 'failed'
+    db.rows = [row('LA-01', false)]
+    const user = await renderReady()
+    await waitFor(() => expect(badges.calls).toBe(1))
+    await user.click(toggle('PT-02'))
+    await user.selectOptions(gradeBox('MT-03'), '확인필요')
+    await user.click(resetButton('LA-01'))
+    expect(screen.getByText('바꾼 것 3개')).toBeTruthy()
+    await user.click(saveButton())
+    await waitFor(() => expect(db.deletes).toEqual([['LA-01']]))
+    expect(db.upserts).toHaveLength(1)
+    expect(db.upserts[0]).toEqual(
+      expect.arrayContaining([
+        { rule_id: 'PT-02', enabled: false, grade: null },
+        { rule_id: 'MT-03', enabled: false, grade: '확인필요' },
+      ]),
+    )
+    await waitFor(() => expect(screen.getByText('바꾼 것 0개')).toBeTruthy())
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })
 
