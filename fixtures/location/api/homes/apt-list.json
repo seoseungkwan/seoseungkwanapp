@@ -1,0 +1,15 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE" },
+    "body": {
+      "items": [
+        { "as1": "가상도", "as2": "가람구", "as3": "하늘동", "as4": null, "bjdCode": "9911010100", "kaptCode": "A99000001", "kaptName": "가람마을 1단지" },
+        { "as1": "가상도", "as2": "가람구", "as3": "하늘동", "as4": null, "bjdCode": "9911010100", "kaptCode": "A99000002", "kaptName": "누리뜰" },
+        { "as1": "가상도", "as2": "가람구", "as3": "하늘동", "as4": null, "bjdCode": "9911010100", "kaptCode": "A99000003", "kaptName": "다솜채 2단지" }
+      ],
+      "numOfRows": "100",
+      "pageNo": "1",
+      "totalCount": "3"
+    }
+  }
+}
