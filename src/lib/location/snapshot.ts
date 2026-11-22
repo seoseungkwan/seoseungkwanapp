@@ -1,11 +1,12 @@
-import type { Got, ScoreFacts, Snapshot, SnapshotKey, SnapshotValue } from '@/types/location'
-import { gapTable } from './hours'
+import type { Got, Rival, Snapshot, SnapshotKey, SnapshotValue } from '@/types/location'
+import { DEPTS } from './depts'
 
-// 그날 값(specs/location design.md 6절, REQ-7908): 모양 검사 · 크기 줄이기 · 다시 받은 값으로 덮기 · 점수 세부 값 꺼내기.
-// 순수 함수만 둔다(부르기·저장·console 없음). 그날 값은 공공 자료로 만든 숫자뿐이다 — 카카오 답은 넣지 않는다(ADR-044).
-// 그래서 모양 검사는 정해 둔 칸만 받는다(칸이 더 있으면 틀린 모양): 다른 자료가 몰래 섞여 저장되지 않게
+// 그날 값(specs/location design.md 6절, REQ-7908·7922): 모양 검사 · 크기 줄이기 · 다시 받은 값으로 덮기 · 의료급여 비율.
+// 순수 함수만 둔다(부르기·저장·console 없음). 그날 값은 공공 자료로 만든 숫자와 공공 자료의 좌표·이름뿐이다 — 카카오 답은 넣지 않는다(ADR-044).
+// 그래서 모양 검사는 정해 둔 칸만 받는다(칸이 더 있으면 틀린 모양): 다른 자료가 몰래 섞여 저장되지 않게.
+// 점수 값 꺼내기는 lib/location/facts.ts scoreFactsOf 한 곳이 한다(TASK-59)
 
-/** 그날 값 칸 22개(design.md 6절 차례) */
+/** 그날 값 칸 24개(design.md 6절 차례) */
 export const SNAPSHOT_KEYS = [
   'people',
   'trend',
@@ -22,6 +23,8 @@ export const SNAPSHOT_KEYS = [
   'industry',
   'pharmacies',
   'rivals',
+  'place',
+  'sggAvg',
   'history',
   'station',
   'bus',
@@ -59,7 +62,12 @@ type Check = (v: unknown) => boolean
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const int: Check = (v) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0
 const num: Check = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0
+const real: Check = (v) => typeof v === 'number' && Number.isFinite(v) // 음수도(인구 추세 %)
 const str: Check = (v) => typeof v === 'string'
+const code =
+  (digits: number): Check =>
+  (v) =>
+    typeof v === 'string' && v.length === digits && /^\d+$/.test(v)
 const bool: Check = (v) => typeof v === 'boolean'
 const ymd: Check = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
 const ym: Check = (v) => typeof v === 'string' && /^\d{4}-\d{2}$/.test(v)
@@ -75,6 +83,10 @@ const list =
   (c: Check, length?: number): Check =>
   (v) =>
     Array.isArray(v) && (length === undefined || v.length === length) && v.every(c)
+const nonEmpty =
+  (c: Check): Check =>
+  (v) =>
+    Array.isArray(v) && v.length > 0 && c(v)
 // 정해 둔 칸만(빠짐·더함 없음). 고를 칸(?)은 없어도 된다
 function shape(fields: Readonly<Record<string, Check>>, optional: readonly string[] = []): Check {
   const names = Object.keys(fields)
@@ -87,6 +99,34 @@ function shape(fields: Readonly<Record<string, Check>>, optional: readonly strin
 
 const open: Check = list(int, 2)
 const WEEK = orNull(list(orNull(open), 8)) // 월~일 + 공휴일 8칸, [열·닫] 분
+const POINT = shape({ lat: real, lng: real }) // 심평원 좌표·좌표 파일 좌표(공공 자료)
+// 찾은 과목(DEPTS id, 하나 이상)
+const DEPT_IDS: readonly string[] = DEPTS.map((d) => d.id)
+const DEPT_LIST = nonEmpty(list(oneOf(...DEPT_IDS)))
+// 경쟁 과목 의원만 담는 자세한 칸(design.md 6절) — 없으면 '새로 경쟁에 넣은 과목'
+const DETAIL = shape({
+  therapists: orNull(int),
+  mri: orNull(bool),
+  ct: orNull(bool),
+  week: WEEK,
+  priced: bool,
+  eswt: orNull(int),
+  manual: orNull(int),
+})
+const RIVAL = shape(
+  {
+    name: str,
+    depts: DEPT_LIST,
+    at: POINT,
+    distM: int,
+    sameBuilding: bool,
+    address: str,
+    doctors: orNull(int),
+    openedYear: orNull(int),
+    detail: DETAIL,
+  },
+  ['detail'],
+)
 
 const VALUE: Readonly<Record<SnapshotKey, Check>> = {
   people: shape({ total: int, bands: list(int, 11), households: int, unmatched: int }),
@@ -109,23 +149,23 @@ const VALUE: Readonly<Record<SnapshotKey, Check>> = {
   accidents: shape({ spots: int, cases: int }),
   industry: shape({ sggName: str, employees: int, parks: int, quarter: str }),
   pharmacies: int,
-  rivals: list(
-    shape({
-      name: str,
-      kind: oneOf('ortho', 'pain', 'rehab', 'korean'),
-      doctors: orNull(int),
-      therapists: orNull(int),
-      mri: orNull(bool),
-      ct: orNull(bool),
-      openedYear: orNull(int),
-      distM: int,
-      sameBuilding: bool,
-      week: WEEK,
-      eswt: orNull(int),
-    }),
-  ),
+  rivals: list(RIVAL),
+  place: shape({ sido: code(2), sidoName: str, sgg: code(5), sggName: str, dong: orNull(code(10)), dongName: orNull(str) }),
+  sggAvg: shape({
+    sggName: str,
+    areaM2: num,
+    total: int,
+    bands: list(int, 11),
+    trendPct: orNull(real),
+    accidents: orNull(int),
+    schools: orNull(int),
+    seniors: orNull(int),
+    gyms: orNull(int),
+    stationM: orNull(int),
+    stops: orNull(int),
+  }),
   history: list(shape({ kind: oneOf('open', 'close'), name: str, dept: str, on: ymd, distM: int })),
-  station: shape({ name: str, line: str, distM: int }),
+  station: shape({ name: str, line: str, distM: int, at: POINT }),
   bus: int,
   market: shape({ name: str, distM: int }),
   building: shape({
@@ -140,7 +180,7 @@ const VALUE: Readonly<Record<SnapshotKey, Check>> = {
     floors: list(shape({ label: str, usage: str, m2: num })),
   }),
   stores: list(shape({ floor: str, count: int })),
-  welfare: shape({ sggName: str, ym, medical: int, basic: int, nearPoor: int, population: orNull(int) }),
+  welfare: shape({ sggName: str, ym, medical: int, basic: int, nearPoor: int, population: orNull(int), basis: orNull(str) }),
 }
 
 const WHY = oneOf('no-key', 'not-applied', 'failed', 'none', 'outside')
@@ -165,55 +205,70 @@ export function checkSnapshot(raw: unknown): Snapshot | null {
 
 // ── 크기 줄이기 ──────────────────────────────────────────
 
-// 줄일 수 있는 목록(그날 값·지난 값 모두). 목록 안의 작은 배열(나이대·요일)은 줄이지 않는다
-function listsOf(s: Snapshot): unknown[][] {
-  const out: unknown[][] = []
-  const each = <K extends SnapshotKey>(key: K, pick: (v: SnapshotValue<K>) => unknown[][]) => {
+// 줄일 수 있는 목록 하나(그날 값·지난 값 모두). keep = 처음에는 남기는 줄(의원 목록의 경쟁 과목 의원 — detail이 있음).
+// 목록 안의 작은 배열(나이대·요일)은 줄이지 않는다
+type Trim = { items: unknown[]; keep: (item: unknown) => boolean }
+const NEVER = () => false
+const hasDetail = (item: unknown) => (item as Rival).detail !== undefined
+
+function trimsOf(s: Snapshot): Trim[] {
+  const out: Trim[] = []
+  const each = <K extends SnapshotKey>(key: K, pick: (v: SnapshotValue<K>) => Trim[]) => {
     const got = s[key] as Got<SnapshotValue<K>>
     if (got.ok) out.push(...pick(got.v))
     else if (got.prev) out.push(...pick(got.prev.v))
   }
-  each('trend', (v) => [v])
-  each('flow', (v) => [v.stations, v.stops])
-  each('apts', (v) => [v])
-  each('presale', (v) => [v])
-  each('rivals', (v) => [v])
-  each('history', (v) => [v])
-  each('building', (v) => [v.floors])
-  each('stores', (v) => [v])
+  const plain = (items: unknown[]): Trim => ({ items, keep: NEVER })
+  each('trend', (v) => [plain(v)])
+  each('flow', (v) => [plain(v.stations), plain(v.stops)])
+  each('apts', (v) => [plain(v)])
+  each('presale', (v) => [plain(v)])
+  each('rivals', (v) => [{ items: v, keep: hasDetail }])
+  each('history', (v) => [plain(v)])
+  each('building', (v) => [plain(v.floors)])
+  each('stores', (v) => [plain(v)])
   return out
 }
 
+/** 지울 수 있는 줄 자리(뒤 = 먼·덜 중요한 줄부터). force면 남기는 줄도 */
+const removable = (t: Trim, force: boolean) => t.items.flatMap((item, i) => (force || !t.keep(item) ? [i] : [])).reverse()
+
+/** 가장 큰 목록의 뒤에서부터 줄여 한도 안에 넣는다(넘친 만큼을 한 줄 크기로 나눠 한 번에 여러 줄). 다 줄여도 넘치면 그대로 둔다 */
+function shrink(out: Snapshot, force: boolean): number {
+  const trims = trimsOf(out)
+  let size = snapshotBytes(out)
+  while (size > SNAPSHOT_MAX_BYTES) {
+    let biggest: { trim: Trim; at: number[]; bytes: number } | null = null
+    for (const trim of trims) {
+      const at = removable(trim, force)
+      if (at.length === 0) continue
+      const bytes = snapshotBytes(at.map((i) => trim.items[i]))
+      if (biggest === null || bytes > biggest.bytes) biggest = { trim, at, bytes }
+    }
+    if (biggest === null) break
+    const perItem = biggest.bytes / biggest.at.length
+    const drop = Math.min(biggest.at.length, Math.max(1, Math.ceil((size - SNAPSHOT_MAX_BYTES) / perItem)))
+    // 자리는 뒤에서부터라 앞 자리가 밀리지 않는다
+    for (const i of biggest.at.slice(0, drop)) biggest.trim.items.splice(i, 1)
+    size = snapshotBytes(out)
+  }
+  return size
+}
+
 /**
- * 65,536바이트(jsonb 글자) 안에 넣는다: 가장 큰 목록의 뒤에서부터 줄인다(목록은 가까운·중요한 차례라 앞이 남는다).
- * 받은 값은 고치지 않고 새 값을 돌려준다. 목록을 다 비워도 넘치면 지난 값(prev)을 뺀다
+ * 65,536바이트(jsonb 글자) 안에 넣는다(design.md 6절): 가장 큰 목록의 뒤에서부터 줄인다(목록은 가까운·중요한 차례라 앞이 남는다).
+ * 의원 목록은 detail이 없는 먼 의원부터 줄이고 경쟁 과목 의원(detail 있음)은 남긴다. 그래도 넘치면 지난 값(prev)을 빼고,
+ * 마지막으로 먼 경쟁 과목 의원까지 줄인다(저장이 늘 되게). 받은 값은 고치지 않고 새 값을 돌려준다
  */
 export function fitSnapshot(s: Snapshot): Snapshot {
   if (snapshotBytes(s) <= SNAPSHOT_MAX_BYTES) return s
   const out = JSON.parse(JSON.stringify(s)) as Snapshot
-  const lists = listsOf(out)
-  let size = snapshotBytes(out)
-  while (size > SNAPSHOT_MAX_BYTES) {
-    let biggest: unknown[] | null = null
-    let biggestBytes = 0
-    for (const items of lists) {
-      if (items.length === 0) continue
-      const bytes = snapshotBytes(items)
-      if (bytes > biggestBytes) [biggest, biggestBytes] = [items, bytes]
-    }
-    if (biggest === null) break
-    // 넘친 만큼을 한 줄 크기로 나눠 한 번에 여러 줄을 뺀다(한 줄씩 빼면 느리다). 모자라면 다음 바퀴에 더 뺀다
-    const perItem = biggestBytes / biggest.length
-    const drop = Math.min(biggest.length, Math.max(1, Math.ceil((size - SNAPSHOT_MAX_BYTES) / perItem)))
-    biggest.splice(biggest.length - drop, drop)
-    size = snapshotBytes(out)
+  if (shrink(out, false) <= SNAPSHOT_MAX_BYTES) return out
+  for (const key of SNAPSHOT_KEYS) {
+    const got = out[key] as { ok: boolean; prev?: unknown }
+    if (!got.ok) delete got.prev
   }
-  if (size > SNAPSHOT_MAX_BYTES) {
-    for (const key of SNAPSHOT_KEYS) {
-      const got = out[key] as { ok: boolean; prev?: unknown }
-      if (!got.ok) delete got.prev
-    }
-  }
+  shrink(out, true)
   return out
 }
 
@@ -237,78 +292,11 @@ export function mergeSnapshot(next: Snapshot, old: Snapshot | null): Snapshot {
   return out
 }
 
-// ── 점수 세부 값 꺼내기(score.ts ScoreFacts, design.md 8절) ──────────
+// ── 의료급여 비율(화면 detail/people·점수 facts.ts가 부르는 한 곳) ──────────
 
 /** 의료급여·차상위 비율 %: (기초 의료급여 + 차상위 3종) ÷ 주민등록 인구 × 100, 소수 첫째 자리 버림. 인구가 없으면 null */
 export function welfareRate(v: { medical: number; nearPoor: number; population: number | null }): number | null {
   if (v.population === null || !(v.population > 0)) return null
   // 정수로만 센다(× 1,000 ÷ 인구를 버림 → 10으로 나눔): 소수 곱셈의 어긋남이 버림을 틀리게 하지 않는다
   return Math.floor(((v.medical + v.nearPoor) * 1000) / v.population) / 10
-}
-
-// 그 칸 값: 받았으면 그 값, 못 받았으면 화면에 '지난 값'으로 보이는 prev, 그것도 없으면 null
-function valueOf<K extends SnapshotKey>(s: Snapshot, key: K): SnapshotValue<K> | null {
-  const got = s[key] as Got<SnapshotValue<K>>
-  if (got.ok) return got.v
-  return got.prev ? got.prev.v : null
-}
-
-const yearOf = (day: string) => Number(day.slice(0, 4))
-/** 사용승인 뒤 꽉 찬 햇수(오늘이 그해 승인일 앞이면 하나 덜) */
-function fullYears(from: string, today: string): number {
-  const years = yearOf(today) - yearOf(from) - (today.slice(5) < from.slice(5) ? 1 : 0)
-  return Math.max(0, years)
-}
-
-/** 새로 연 경쟁 의원으로 보는 해: 그날 값에는 개설 연도만 있어 올해 − 3년부터 센다(그해가 일부만 3년 안이어도 센다) */
-const NEW_OPEN_YEARS = 3
-const GAP_WEEKDAYS = 6 // 월~토
-
-/**
- * 그날 값에서 점수 세부 값(ScoreFacts)을 꺼낸다. 후보 줄(층·간판·위반)·매물·지금 의원 체외충격파 값은 부르는 쪽이 더한다
- */
-export function snapshotFacts(s: Snapshot, today: string): ScoreFacts {
-  const people = valueOf(s, 'people')
-  const apts = valueOf(s, 'apts')
-  const presale = valueOf(s, 'presale')
-  const accidents = valueOf(s, 'accidents')
-  const industry = valueOf(s, 'industry')
-  const welfare = valueOf(s, 'welfare')
-  const rivals = valueOf(s, 'rivals')
-  const station = valueOf(s, 'station')
-  const flow = valueOf(s, 'flow')
-  const building = valueOf(s, 'building')
-
-  const clinics = rivals?.filter((r) => r.kind !== 'korean') ?? null
-  const eswt = clinics?.map((r) => r.eswt).filter((v): v is number => v !== null) ?? []
-  let gapCells: number | null = null
-  if (rivals) {
-    const table = gapTable(rivals)
-    if (table.counted > 0) gapCells = table.counts.reduce((n, row) => n + row.slice(0, GAP_WEEKDAYS).filter((c) => c === 0).length, 0)
-  }
-
-  return {
-    areaM2: Math.PI * s.radiusM * s.radiusM,
-    people: people ? { total: people.total, bands: people.bands, households: people.households } : null,
-    apartments: apts ? apts.reduce((n, a) => n + a.households, 0) : null,
-    presale: presale ? presale.reduce((n, p) => n + p.households, 0) : null,
-    trend: valueOf(s, 'trend'),
-    accidentSpots: accidents?.spots ?? null,
-    industryEmployees: industry?.employees ?? null,
-    schools: valueOf(s, 'schools'),
-    seniorCenters: valueOf(s, 'seniors'),
-    gyms: valueOf(s, 'gyms'),
-    welfareRate: welfare ? welfareRate(welfare) : null,
-    rivals: clinics?.length ?? null,
-    newRivals: clinics ? clinics.filter((r) => r.openedYear !== null && r.openedYear >= yearOf(today) - NEW_OPEN_YEARS).length : null,
-    gapCells,
-    rivalEswt: eswt.length > 0 ? Math.floor(eswt.reduce((a, b) => a + b, 0) / eswt.length) : null,
-    stationM: station?.distM ?? null,
-    stops: valueOf(s, 'bus'),
-    flow: flow?.total ?? null,
-    elevators: building?.elevators ?? null,
-    parking: building?.parking ?? null,
-    buildingAge: building?.approvedOn ? fullYears(building.approvedOn, today) : null,
-    pharmacies: valueOf(s, 'pharmacies'),
-  }
 }
