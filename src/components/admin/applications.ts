@@ -1,5 +1,5 @@
 import { todayInKorea } from '@/lib/analytics/dates'
-import type { Application } from '@/lib/auth/admin'
+import type { AdminMark, Application } from '@/lib/auth/admin'
 
 // 관리자 화면의 순수 계산(탭·칸 글자·완료 문구). 탭·순서는 승인된 목업 docs/mockups/auth/Admin.dc.html,
 // 말끝은 ui-90 시안 말투 "~요"(ui-90 AC-417.1)
@@ -43,6 +43,37 @@ const DONE: Record<Tab, string> = {
 
 export function doneMessage(name: string, status: Tab): string {
   return `${name} ${DONE[status]}`
+}
+
+// ── 관리자 표시 (spec multi-admin REQ-7703·REQ-7704). '내 줄'·'주 관리자 줄'은 화면이 따로 알지 않고 admin_hospitals()의
+// is_me·is_owner(DB)로만 안다 — set_admin이 거부하는 기준과 같다(design.md 기본값 4)
+export type AdminRole = 'mine' | 'owner' | 'admin' | 'none'
+
+/** 그 병원 줄의 동작 칸 표시: 내 병원 'mine'(주 관리자 자신 포함), 그 밖의 주 관리자 병원 'owner', 다른 관리자 'admin', 아니면 'none' */
+export function adminRoleOf(marks: readonly AdminMark[], hospitalId: string): AdminRole {
+  const mark = marks.find((m) => m.hospitalId === hospitalId)
+  if (mark === undefined) return 'none'
+  if (mark.mine) return 'mine'
+  return mark.owner ? 'owner' : 'admin'
+}
+
+/** 의원 이름 뒤 표 글자: 주 관리자 병원 '주 관리자', 다른 관리자 병원 '관리자'(내 줄 포함), 아니면 null */
+export function adminBadgeOf(marks: readonly AdminMark[], hospitalId: string): '주 관리자' | '관리자' | null {
+  const mark = marks.find((m) => m.hospitalId === hospitalId)
+  if (mark === undefined) return null
+  return mark.owner ? '주 관리자' : '관리자'
+}
+
+/** 정함: 없으면 { hospitalId, mine: false, owner: false }를 끝에 더함 / 뺌: 그 id를 뺌. 받은 목록은 그대로 두고 늘 새 목록 */
+export function withAdmin(marks: readonly AdminMark[], hospitalId: string, admin: boolean): AdminMark[] {
+  if (!admin) return marks.filter((m) => m.hospitalId !== hospitalId)
+  if (marks.some((m) => m.hospitalId === hospitalId)) return [...marks]
+  return [...marks, { hospitalId, mine: false, owner: false }]
+}
+
+/** 끝 알림: '{의원 이름} 계정을 관리자로 정했어요.' / '{의원 이름} 계정을 관리자에서 뺐어요.' */
+export function adminDoneMessage(name: string, admin: boolean): string {
+  return admin ? `${name} 계정을 관리자로 정했어요.` : `${name} 계정을 관리자에서 뺐어요.`
 }
 
 /** 신청일: DB 시각(UTC) → 한국 날짜 'YYYY-MM-DD' (dates.ts 한 곳) */

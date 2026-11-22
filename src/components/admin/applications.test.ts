@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import type { Application } from '@/lib/auth/admin'
-import { appliedOn, countByTab, doneMessage, EMPTY, phoneText, rowsOf, TABS, withStatus } from './applications'
+import type { AdminMark, Application } from '@/lib/auth/admin'
+import {
+  adminBadgeOf,
+  adminDoneMessage,
+  adminRoleOf,
+  appliedOn,
+  countByTab,
+  doneMessage,
+  EMPTY,
+  phoneText,
+  rowsOf,
+  TABS,
+  withAdmin,
+  withStatus,
+} from './applications'
 
 // 관리자 화면의 순수 계산 (REQ-007, design.md '인터페이스' components/admin/applications.ts).
 // 문구는 ui-90 시안 말투(~요, REQ-417 AC-417.1). 탭·칸·순서는 목업 docs/mockups/auth/Admin.dc.html
@@ -112,5 +125,72 @@ describe('빈 탭 안내', () => {
     ]
     expect(texts).toHaveLength(9)
     for (const text of texts) expect(text).not.toMatch(/니다|병원 이름/)
+  })
+})
+
+// multi-admin: '승인' 탭 관리자 표시(design.md ''승인' 탭 화면'). 표시는 admin_hospitals()의 is_me·is_owner(DB)로만 안다
+describe('관리자 표시 (multi-admin)', () => {
+  // 주 관리자(h5, 내 병원)가 볼 때: 다른 관리자 h3
+  const OWNER_VIEW: AdminMark[] = [
+    { hospitalId: 'h5', mine: true, owner: true },
+    { hospitalId: 'h3', mine: false, owner: false },
+  ]
+  // 다른 관리자(h3, 내 병원)가 볼 때: 주 관리자 h5
+  const OTHER_VIEW: AdminMark[] = [
+    { hospitalId: 'h5', mine: false, owner: true },
+    { hospitalId: 'h3', mine: true, owner: false },
+  ]
+
+  it("AC-7703.3: adminRoleOf — 내 병원 'mine'(주 관리자 자신 포함), 그 밖의 주 관리자 병원 'owner', 다른 관리자 'admin', 아니면 'none'", () => {
+    expect(adminRoleOf(OWNER_VIEW, 'h5')).toBe('mine')
+    expect(adminRoleOf(OWNER_VIEW, 'h3')).toBe('admin')
+    expect(adminRoleOf(OWNER_VIEW, 'h1')).toBe('none')
+    expect(adminRoleOf(OTHER_VIEW, 'h5')).toBe('owner')
+    expect(adminRoleOf(OTHER_VIEW, 'h3')).toBe('mine')
+    expect(adminRoleOf([], 'h1')).toBe('none')
+  })
+
+  it("AC-7703.3: adminBadgeOf — 주 관리자 병원 '주 관리자', 그 밖의 관리자 병원(내 줄 포함) '관리자', 아니면 null", () => {
+    expect(adminBadgeOf(OWNER_VIEW, 'h5')).toBe('주 관리자')
+    expect(adminBadgeOf(OWNER_VIEW, 'h3')).toBe('관리자')
+    expect(adminBadgeOf(OTHER_VIEW, 'h5')).toBe('주 관리자')
+    expect(adminBadgeOf(OTHER_VIEW, 'h3')).toBe('관리자')
+    expect(adminBadgeOf(OWNER_VIEW, 'h1')).toBeNull()
+    expect(adminBadgeOf([], 'h1')).toBeNull()
+  })
+
+  it('AC-7704.3: withAdmin(정함) — 없으면 { hospitalId, mine: false, owner: false }를 끝에 더한 새 목록, 받은 목록은 그대로', () => {
+    const before = structuredClone(OWNER_VIEW)
+    const after = withAdmin(OWNER_VIEW, 'h1', true)
+    expect(OWNER_VIEW).toEqual(before)
+    expect(after).not.toBe(OWNER_VIEW)
+    expect(after).toEqual([...OWNER_VIEW, { hospitalId: 'h1', mine: false, owner: false }])
+    expect(adminRoleOf(after, 'h1')).toBe('admin')
+    expect(adminBadgeOf(after, 'h1')).toBe('관리자')
+  })
+
+  it('AC-7704.3: withAdmin(정함) — 이미 관리자면 같은 줄들의 새 목록(둘이 되지 않는다)', () => {
+    const after = withAdmin(OWNER_VIEW, 'h3', true)
+    expect(after).not.toBe(OWNER_VIEW)
+    expect(after).toEqual(OWNER_VIEW)
+  })
+
+  it('AC-7704.3: withAdmin(뺌) — 그 병원 줄만 뺀 새 목록, 받은 목록은 그대로. 없는 병원이면 같은 줄들', () => {
+    const before = structuredClone(OWNER_VIEW)
+    const after = withAdmin(OWNER_VIEW, 'h3', false)
+    expect(OWNER_VIEW).toEqual(before)
+    expect(after).not.toBe(OWNER_VIEW)
+    expect(after).toEqual([{ hospitalId: 'h5', mine: true, owner: true }])
+    expect(adminRoleOf(after, 'h3')).toBe('none')
+    expect(adminBadgeOf(after, 'h3')).toBeNull()
+    const same = withAdmin(OWNER_VIEW, 'h1', false)
+    expect(same).not.toBe(OWNER_VIEW)
+    expect(same).toEqual(OWNER_VIEW)
+  })
+
+  it("AC-7704.3: adminDoneMessage — '{의원 이름} 계정을 관리자로 정했어요.' / '{의원 이름} 계정을 관리자에서 뺐어요.'", () => {
+    expect(adminDoneMessage('바른정형외과의원', true)).toBe('바른정형외과의원 계정을 관리자로 정했어요.')
+    expect(adminDoneMessage('새봄재활의학과의원', false)).toBe('새봄재활의학과의원 계정을 관리자에서 뺐어요.')
+    for (const admin of [true, false]) expect(adminDoneMessage('가나 정형외과의원', admin)).not.toMatch(/니다|병원 이름/)
   })
 })
