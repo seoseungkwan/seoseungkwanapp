@@ -264,26 +264,27 @@ describe('AC-7802.2 checkRuleChange — 이름·칸 검사(names)', () => {
     expect(check(changed('IJ-17'))).toBe('ok')
     expect(check(withParams('IJ-17', (p) => (p.dx_region = 'regions.kcd_prefix_map + 새 설명')))).toBe('names')
     expect(check(withParams('IJ-17', (p) => (p.procedure_region = 'regions.chart_site_map 그리고 더')))).toBe('names')
-    // 길 모양이면 찾아져야 한다
-    expect(check(withParams('IJ-17', (p) => (p.dx_region = 'regions.kcd_prefix_map')))).toBe('ok')
+    // 길 모양이면 찾아져야 한다(찾아지는 길은 names를 지나고, 글자 잎 바꿈이라 허용 모양(AC-7802.3 (4))의 'removed'에서 멈춘다)
+    expect(check(withParams('IJ-17', (p) => (p.dx_region = 'regions.kcd_prefix_map')))).toBe('removed')
     expect(check(withParams('IJ-17', (p) => (p.dx_region = 'regions.kcd_prefix_mapp')))).toBe('names')
   })
 
-  it("AC-7802.2 (b): 코드 묶음·약 분류를 더하는 것은 지난다(약 분류.아래 분류 이름 포함)", () => {
-    expect(check(withParams('LA-18', (p) => ((p.target as Rec).code_groups = ['la_all', 'tfesi', 'la_carm_required'])))).toBe('ok')
-    expect(check(withParams('OP-05', (p) => ((p.target as Rec).drug_classes = ['osteoporosis.denosumab', 'osteoporosis.zoledronic_acid'])))).toBe('ok')
+  it("AC-7802.2 (b): 이름표에 있는 코드 묶음·약 분류(약 분류.아래 분류 포함)를 더하면 names는 지나고, 허용 모양(AC-7802.3 (4))에서 'removed'다", () => {
+    expect(check(withParams('LA-18', (p) => ((p.target as Rec).code_groups = ['la_all', 'tfesi', 'la_carm_required'])))).toBe('removed')
+    expect(check(withParams('OP-05', (p) => ((p.target as Rec).drug_classes = ['osteoporosis.denosumab', 'osteoporosis.zoledronic_acid'])))).toBe('removed')
   })
 
   it("AC-7802.2 (c): codes는 규칙표가 아는 코드(대문자로 맞춤)만, 상병 앞자리는 ^[A-Z][0-9A-Z]{0,5}$만 지난다", () => {
     expect(check(withParams('IJ-02', (p) => ((p.target as Rec).codes = ['KK090', 'ZZ999'])))).toBe('names')
-    expect(check(withParams('IJ-02', (p) => ((p.target as Rec).codes = ['KK090', 'kk062'])))).toBe('ok') // KK062는 IJ-05가 쓰는 코드
+    // 아는 코드·맞는 앞자리는 names를 지나고, 목록이 늘어 허용 모양(AC-7802.3 (4))의 'removed'다
+    expect(check(withParams('IJ-02', (p) => ((p.target as Rec).codes = ['KK090', 'kk062'])))).toBe('removed') // KK062는 IJ-05가 쓰는 코드
     expect(check(withParams('IJ-02', (p) => ((p.target as Rec).codes = 'KK090')))).toBe('names')
-    expect(check(withParams('LA-26', (p) => (p.dx_prefixes = [...(p.dx_prefixes as string[]), 'M54'])))).toBe('ok')
+    expect(check(withParams('LA-26', (p) => (p.dx_prefixes = [...(p.dx_prefixes as string[]), 'M54'])))).toBe('removed')
     for (const bad of ['m54', 'M54.5', 'M5456789', '5M4', '', 1]) {
       expect(check(withParams('LA-26', (p) => (p.dx_prefixes = [...(p.dx_prefixes as string[]), bad]))), String(bad)).toBe('names')
     }
     // 객체 안 목록도 본다(ES-03 forbidden_dx_prefixes: 이름 → 앞자리 목록)
-    expect(check(withParams('ES-03', (p) => ((p.forbidden_dx_prefixes as Rec)['악성 종양'] = ['C', 'D0'])))).toBe('ok')
+    expect(check(withParams('ES-03', (p) => ((p.forbidden_dx_prefixes as Rec)['악성 종양'] = ['C', 'D0'])))).toBe('removed')
     expect(check(withParams('ES-03', (p) => ((p.forbidden_dx_prefixes as Rec)['악성 종양'] = ['c'])))).toBe('names')
     expect(check(withParams('ES-03', (p) => ((p.forbidden_dx_prefixes as Rec)['새 금기'] = ['C'])))).toBe('names') // 새 열쇠 낱말(e)
   })
@@ -303,7 +304,8 @@ describe('AC-7802.2 checkRuleChange — 이름·칸 검사(names)', () => {
     expect(check(withParams('LA-18', (p) => (p.count_unit = 'dose')))).toBe('names') // 다른 규칙의 낱말이라도 이 규칙에 없으면
     expect(check(withParams('LA-18', (p) => ((p.window as Rec).new_key = 7)))).toBe('names')
     expect(check(withParams('LA-18', (p) => ((p.thresholds as Rec[])[0].message = '새로 지은 글')))).toBe('names')
-    expect(check(withParams('LA-18', (p) => (p.group_by = 'visit_day')))).toBe('ok') // 이 규칙 안의 낱말은 된다
+    // 이 규칙 안의 낱말이면 names는 지나고, 글자 잎 바꿈이라 허용 모양(AC-7802.3 (4))의 'removed'다
+    expect(check(withParams('LA-18', (p) => (p.group_by = 'visit_day')))).toBe('removed')
     // 지금 판(current)에 있는 낱말도 된다
     const current = withParams('LA-18', (p) => (p.count_unit = 'dose'), { effective_from: '2026-11-01' })
     const next = withParams('LA-18', (p) => (p.count_unit = 'dose'), { title: '다시 고친 제목' })
@@ -335,27 +337,31 @@ describe('AC-7802.3 checkRuleChange — 뺀 것(removed)·등급(grade)', () => 
     expect(check(changed('LA-18'), 'LA-18', current)).toBe('removed')
   })
 
-  it("AC-7802.3: params 안 grade 값들을 정렬한 목록이 원래 규칙과 다르면 'grade'다(자리만 바꾸면 지난다)", () => {
+  it("AC-7802.3: params 안 grade 값들을 정렬한 목록이 원래 규칙과 다르면 'grade'다 — 등급 글을 바꾸거나 기준을 빼면 허용 모양(4)이 먼저 'removed'", () => {
     const thresholds = (p: Rec) => p.thresholds as Rec[]
-    expect(check(withParams('IJ-02', (p) => thresholds(p).forEach((t) => (t.grade = '확인필요'))))).toBe('grade')
-    expect(check(withParams('IJ-02', (p) => (p.thresholds = [thresholds(p)[0]])))).toBe('grade') // 기준 하나를 빼면 등급 목록이 준다
-    expect(check(withParams('IJ-02', (p) => ([thresholds(p)[0].grade, thresholds(p)[1].grade] = [thresholds(p)[1].grade, thresholds(p)[0].grade])))).toBe('ok')
+    const graded = (p: Rec) => thresholds(p).forEach((t) => (t.grade = '확인필요'))
+    expect(check(withParams('IJ-02', graded))).toBe('removed') // 글자 잎 바꿈
+    expect(check(withParams('IJ-02', (p) => (p.thresholds = [thresholds(p)[0]])))).toBe('removed') // 배열 길이 바뀜
+    expect(check(withParams('IJ-02', (p) => ([thresholds(p)[0].grade, thresholds(p)[1].grade] = [thresholds(p)[1].grade, thresholds(p)[0].grade])))).toBe('removed') // 객체 배열은 자리끼리
+    // 등급은 지금 판이 아니라 원래 규칙과 견준다: 지금 판이 이미 다른 등급이면(모양은 지금 판과 같아도) 'grade'
+    const current = withParams('IJ-02', graded, { effective_from: '2026-11-01' })
+    expect(check(withParams('IJ-02', graded, { title: '다시 고친 제목' }), 'IJ-02', current)).toBe('grade')
   })
 
   it("AC-7802.3: 열쇠 이름이 grade로 끝나는 칸(exception_grade·older_history_grade 등)도 등급 목록에 들어 다르면 'grade'다", () => {
     // LA-17 예외 상병일 때 등급(exception_grade)을 바꾸면 'ok'가 아니다(새 낱말이라 차례상 names가 먼저 걸린다)
     expect(ruleOf('LA-17').params.exception_grade).toBe('참고')
     expect(check(withParams('LA-17', (p) => (p.exception_grade = '확인필요')))).not.toBe('ok')
-    // 그 칸을 빼도 등급 목록이 달라진다
-    expect(
-      check(
-        withParams('LA-17', (p) => {
-          delete p.exception_grade
-        }),
-      ),
-    ).toBe('grade')
-    // HD-02 오래된 이력 등급 참고 → 확인필요('확인필요'는 이 규칙 안의 낱말이라 names를 지난다)
-    expect(check(withParams('HD-02', (p) => ((p.window as Rec).older_history_grade = '확인필요')))).toBe('grade')
+    // 그 칸을 빼면 칸이 없어져 'removed'
+    const dropped = (p: Rec) => {
+      delete p.exception_grade
+    }
+    expect(check(withParams('LA-17', dropped))).toBe('removed')
+    // HD-02 오래된 이력 등급 참고 → 확인필요: 글자 잎 바꿈이라 'removed'. 지금 판이 이미 그 등급이면 원래 규칙과 견주어 'grade'
+    const older = (p: Rec) => ((p.window as Rec).older_history_grade = '확인필요')
+    expect(check(withParams('HD-02', older))).toBe('removed')
+    expect(check(withParams('HD-02', older, { title: '다시 고친 제목' }), 'HD-02', withParams('HD-02', older, { effective_from: '2026-11-01' }))).toBe('grade')
+    expect(check(withParams('LA-17', dropped, { title: '다시 고친 제목' }), 'LA-17', withParams('LA-17', dropped, { effective_from: '2026-11-01' }))).toBe('grade')
   })
 
   it('AC-7802.3: WAIVER_KEYS는 design 4절의 낱말 열셋이다(열쇠 이름 어디에든 들면 비켜 주는 칸)', () => {
@@ -385,8 +391,8 @@ describe('AC-7802.3 checkRuleChange — 뺀 것(removed)·등급(grade)', () => 
     expect(ruleOf('LA-28').params.downgrade_if_chart_symptom_matches_procedure_region).toBe('참고')
     expect(check(withParams('LA-28', (p) => (p.downgrade_if_chart_symptom_matches_procedure_region = '알림')))).not.toBe('ok')
     expect(check(withParams('LA-28', (p) => (p.downgrade_if_chart_symptom_matches_procedure_region = 'main')))).toBe('removed')
-    // 빼는 것은 지난다(조이는 쪽, 안전)
-    expect(check(withParams('LA-15', (p) => (p.not_applicable = ['LA358'])))).toBe('ok')
+    // 빼는 것은 비켜 주는 칸 검사는 지나지만 배열 길이가 바뀌어 허용 모양(4)의 'removed'다
+    expect(check(withParams('LA-15', (p) => (p.not_applicable = ['LA358'])))).toBe('removed')
   })
 
   it("AC-7802.3 (2-2): params 안 어디든 참거짓 값이 원래 규칙·지금 판의 같은 자리 값과 다르면 'removed'다", () => {
@@ -450,10 +456,10 @@ describe('AC-7802.3 checkRuleChange — 뺀 것(removed)·등급(grade)', () => 
     ).toBe('removed')
   })
 
-  it('AC-7802.3: 비켜 주는 칸에서 값을 빼거나 자리만 바꾸면 지나고, 지금 판(current)의 같은 이름 칸에 있던 값도 된다', () => {
-    expect(check(withParams('LA-21', (p) => ((p.required_all as Rec[])[1].skip_for_midline = ['LA321', 'LA322'])))).toBe('ok')
-    expect(check(withParams('HY-02', (p) => (p.allowed_sites = ['knee'])))).toBe('ok')
-    expect(check(withParams('PH-01', (p) => (p.not_in_set_a = (p.not_in_set_a as string[]).slice(1))))).toBe('ok')
+  it('AC-7802.3: 비켜 주는 칸에서 자리만 바꾸면 지나고 지금 판(current)의 같은 칸 값도 되지만, 값을 빼면 허용 모양(4)의 removed다', () => {
+    expect(check(withParams('LA-21', (p) => ((p.required_all as Rec[])[1].skip_for_midline = ['LA321', 'LA322'])))).toBe('removed')
+    expect(check(withParams('HY-02', (p) => (p.allowed_sites = ['knee'])))).toBe('removed')
+    expect(check(withParams('PH-01', (p) => (p.not_in_set_a = (p.not_in_set_a as string[]).slice(1))))).toBe('removed')
     expect(check(withParams('IJ-05', (p) => (p.acceptable_with = ['viscosupplement_any', 'steroid_injection'])))).toBe('ok')
     const wider = (p: Rec) => (p.acceptable_with = ['steroid_injection', 'viscosupplement_any', 'local_anesthetic'])
     const current = withParams('IJ-05', wider, { effective_from: '2026-11-01' })
@@ -473,14 +479,61 @@ describe('AC-7802.3 checkRuleChange — 뺀 것(removed)·등급(grade)', () => 
     const current = pass('(?i)각각|따로', { effective_from: '2026-11-01' })
     expect(check(pass('(?i)각각|따로', { title: '다시 고친 제목' }), 'XR-01', current)).toBe('ok')
   })
+
+  it("AC-7802.3 (4): 허용 모양 — 코드 묶음 더함·참거짓 칸 지움·목록 줄임은 'removed'다(숫자·글만 저절로)", () => {
+    // MN-08 같은 날 짝(set_b) 묶음에 이름표에 있는 묶음을 더함
+    expect((ruleOf('MN-08').params.set_b as Rec).code_groups).toEqual(['pt_exercise'])
+    expect(check(withParams('MN-08', (p) => ((p.set_b as Rec).code_groups = ['pt_exercise', 'eswt_clinic'])))).toBe('removed')
+    // IJ-11 좌우 기록 없으면 걸던 참거짓 칸을 지움
+    expect(ruleOf('IJ-11').params.flag_if_side_missing).toBe(true)
+    const noFlag = (p: Rec) => {
+      delete p.flag_if_side_missing
+    }
+    expect(check(withParams('IJ-11', noFlag))).toBe('removed')
+    // IJ-09 이름 칸이 아닌 목록(joint_sites) 줄임
+    expect(check(withParams('IJ-09', (p) => (p.joint_sites = (p.joint_sites as string[]).slice(0, 2))))).toBe('removed')
+    // LA-29 비켜 주는 칸 목록 줄임(M81을 다시 필수 상병으로 셈)
+    expect(check(withParams('LA-29', (p) => (p.dx_prefixes_not_counting = ['M80'])))).toBe('removed')
+    // 이 규칙 안 낱말로 칸을 더해도(names는 지남) 칸이 생겨 'removed'
+    expect(check(withParams('LA-18', (p) => ((p.window as Rec).group_by = 'lesion_group')))).toBe('removed')
+    // 숫자를 null로(값 종류 바뀜)
+    expect(check(withParams('LA-18', (p) => ((p.window as Rec).days = null)))).toBe('removed')
+    // 객체 배열에 기준을 더함(배열 길이 바뀜)
+    expect(check(withParams('MN-03', (p) => (p.thresholds = [...(p.thresholds as Rec[]), { at: 4, grade: '확인필요' }])))).toBe('removed')
+  })
+
+  it("AC-7802.3 (4): 허용 모양 — 비켜 주는 칸 밖 숫자만 바꾸거나, 글자만 든 목록 차례·칸 차례만 바꾸면 지난다", () => {
+    // 숫자 여럿을 한꺼번에(객체 배열 안 at 포함)
+    expect(
+      check(
+        withParams('IJ-02', (p) => {
+          ;(p.window as Rec).days = 180
+          ;(p.thresholds as Rec[])[0].at = 3
+          ;(p.thresholds as Rec[])[1].at = 4
+        }),
+      ),
+    ).toBe('ok')
+    expect(check(withParams('MN-03', (p) => ((p.thresholds as Rec[])[0].at = 4)))).toBe('ok')
+    expect(check(withParams('LA-17', (p) => ((p.max_period as Rec).calendar_months = 3)))).toBe('ok')
+    // 글자만 든 목록은 차례를 무시한다
+    expect(check(withParams('IJ-09', (p) => (p.joint_sites = [...(p.joint_sites as string[])].reverse())))).toBe('ok')
+    // 비켜 주는 칸 안 숫자는 안 된다(PH-19 exception.max_days_from_first)
+    expect(check(withParams('PH-19', (p) => ((p.exception as Rec).max_days_from_first = 7)))).toBe('removed')
+    // 지금 판과 견준다: 지금 판의 숫자에서 다시 숫자만 바꾸면 지난다
+    const current = withParams('IJ-02', (p) => ((p.window as Rec).days = 180), { effective_from: '2026-11-01' })
+    expect(check(withParams('IJ-02', (p) => ((p.window as Rec).days = 120)), 'IJ-02', current)).toBe('ok')
+  })
 })
 
 describe('AC-7802.4 checkRuleChange — 자동 점검 상태(status)', () => {
   it("AC-7802.4: 새 규칙의 상태가 원래 규칙과 다르면 'status'다(count_window 기준에서 횟수 at를 비우면 이력 점검 → 수동)", () => {
     expect(statusesOf(tables.rules).get('LA-18')).toBe('hist')
-    // thresholds를 통째로 비우면 그 안의 grade도 빠져 차례상 'grade'가 먼저 걸린다(둘 다 사람 확인)
-    expect(check(withParams('LA-18', (p) => (p.thresholds = [])))).toBe('grade')
-    expect(check(withParams('LA-18', (p) => (p.thresholds = [{ grade: '알림' }])))).toBe('status')
+    // 원래 규칙에서 thresholds를 비우거나 at를 빼면 배열 길이·칸이 바뀌어 차례상 허용 모양(AC-7802.3 (4))의 'removed'가 먼저다(둘 다 사람 확인)
+    const noAt = (p: Rec) => (p.thresholds = [{ grade: '알림' }])
+    expect(check(withParams('LA-18', (p) => (p.thresholds = [])))).toBe('removed')
+    expect(check(withParams('LA-18', noAt))).toBe('removed')
+    // 상태는 지금 판이 아니라 원래 규칙과 견준다: 지금 판이 이미 at 없는 모양이면(모양은 지금 판과 같아도) 'status'
+    expect(check(withParams('LA-18', noAt, { title: '다시 고친 제목' }), 'LA-18', withParams('LA-18', noAt, { effective_from: '2026-11-01' }))).toBe('status')
   })
 })
 
@@ -561,8 +614,9 @@ describe('AC-7803.1·AC-7803.4 withRuleUpdates — 쓸 판 거르기', () => {
       // 원래 규칙과 같은 판('same')은 쓴다(앞 판을 끝내는 되돌림 판일 수 있다)
       update('c-same', { ...ruleOf('LA-36'), effective_from: FROM, effective_to: null }),
       update('c-grade', withParams('IJ-02', (p) => (p.thresholds as Rec[]).forEach((t) => (t.grade = '확인필요')))),
-      // 비켜 주는 칸에 이름을 더한 판은 Worker도 버린다(AC-7802.3)
+      // 비켜 주는 칸에 이름을 더한 판, 숫자 밖 모양이 원래 규칙과 다른 판은 Worker도 버린다(AC-7802.3)
       update('c-waiver', withParams('IJ-05', (p) => (p.acceptable_with = ['steroid_injection', 'viscosupplement_any', 'local_anesthetic']))),
+      update('c-list', withParams('IJ-09', (p) => (p.joint_sites = (p.joint_sites as string[]).slice(0, 2)))),
       update('c-to', changed('LA-35', { effective_to: '2027-01-01' })),
       { ...ok, changeId: 'c-null-rule', rule: null },
       { ...ok, changeId: 'c-text-rule', rule: JSON.stringify(rule) },

@@ -225,13 +225,21 @@ describe('AC-7809.3 decideRule — 검사 실패는 human 줄(까닭 번호·기
   })
 
   it.each([
-    ['names', 'LA-18', (p: Rec) => ((p.target as Rec).code_groups = ['la_all', 'tfesi', 'zz_no_such_group'])],
-    // IJ-02는 기준 둘(참고·확인필요)을 둔다 — 등급 낱말이 이미 params에 있어 새 낱말 검사(names)보다 grade가 걸린다
-    ['grade', 'IJ-02', (p: Rec) => thresholds(p).forEach((t) => (t.grade = '확인필요'))],
-    ['status', 'LA-18', (p: Rec) => (p.thresholds = [{ grade: '알림' }])],
-  ] as const)('AC-7809.3: checkRuleChange가 %s이면(%s) human 줄이고 check_code가 그 번호다', (code, id, edit) => {
-    const a = answer(id, { ruleJson: ruleJson(ruleOf(id), edit) })
-    expect(decideRule(ctxOf(id), a)).toEqual(humanRow(id, code, CHECK_TEXT))
+    ['names', 'LA-18', (p: Rec) => ((p.target as Rec).code_groups = ['la_all', 'tfesi', 'zz_no_such_group']), false],
+    // IJ-02는 기준 둘(참고·확인필요)을 둔다 — 등급 낱말이 이미 params에 있어 names는 지나고, 글자 잎 바꿈이라 허용 모양(AC-7802.3 (4))의 removed다
+    ['removed', 'IJ-02', (p: Rec) => thresholds(p).forEach((t) => (t.grade = '확인필요')), false],
+    // grade·status는 원래 규칙과 견준다: 살아 있는 판이 이미 그 모양이고 답이 제목만 다시 고치면(모양은 지금 판과 같음) 그 번호다
+    ['grade', 'IJ-02', (p: Rec) => thresholds(p).forEach((t) => (t.grade = '확인필요')), true],
+    ['status', 'LA-18', (p: Rec) => (p.thresholds = [{ grade: '알림' }]), true],
+  ] as const)('AC-7809.3: checkRuleChange가 %s이면(%s) human 줄이고 check_code가 그 번호다', (code, id, edit, live) => {
+    const base = ruleOf(id)
+    if (!live) {
+      expect(decideRule(ctxOf(id), answer(id, { ruleJson: ruleJson(base, edit) }))).toEqual(humanRow(id, code, CHECK_TEXT))
+      return
+    }
+    const current: RuleDef = { ...base, params: paramsOf(base, edit), effective_from: '2026-11-01', effective_to: null }
+    const a = answer(id, { ruleJson: ruleJson(current, () => {}, { title: '다시 고친 제목' }) })
+    expect(decideRule(ctxOf(id, { current, currentFrom: '2026-11-01' }), a)).toEqual(humanRow(id, code, CHECK_TEXT))
   })
 
   it('AC-7809.3: 글이 너무 긴 규칙(message 301자)은 human·size다', () => {

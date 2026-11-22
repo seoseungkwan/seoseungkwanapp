@@ -52,8 +52,10 @@ export type NameKind = 'group' | 'class' | 'sub'
  */
 export const WAIVER_KEYS = ['acceptable', 'allow', 'exception', 'exclu', 'exempt', 'skip', 'unless', 'pass_if', 'not_', 'downgrade', 'uncertain', 'waive', 'ignore'] as const
 
+const isWaiver = (key: string) => WAIVER_KEYS.some((word) => key.includes(word))
+
 /** 값이 원래 규칙·지금 판의 같은 이름 칸에 이미 있던 것이어야 하는 칸: 비켜 주는 칸과 regex로 끝나는 칸(정규식은 넓히는지 좁히는지 알 수 없다) */
-const guarded = (key: string) => key.endsWith('regex') || WAIVER_KEYS.some((word) => key.includes(word))
+const guarded = (key: string) => key.endsWith('regex') || isWaiver(key)
 
 /** 칸 이름 → 그 칸이 가리키는 이름표(이름 칸이 아니면 null) */
 export function nameKindOf(key: string): NameKind | null {
@@ -332,6 +334,31 @@ function boolsOk(next: unknown, base: unknown, current: unknown): boolean {
   return [...boolsAt(next)].every(([path, value]) => was.some((at) => at.get(path) === value))
 }
 
+/**
+ * 허용 모양(AC-7802.3 (4), 사용자 결정 '숫자·글만 저절로'): next가 was(지금 판, Worker는 원래 규칙)와 같은 열쇠 길·같은 모양이고
+ * 다른 곳은 비켜 주는 칸 밖 숫자 잎 값뿐인가. 칸이 생기거나 없어짐·글자·참거짓·null 바뀜·배열 길이·값 종류 바뀜은 모두 다른 모양이다.
+ * 글자만 든 배열은 차례를 무시하고, 객체·숫자가 든 배열은 같은 자리끼리 본다. 칸 차례는 보지 않는다
+ */
+function sameShape(next: unknown, was: unknown, inWaiver = false): boolean {
+  if (Array.isArray(next) || Array.isArray(was)) {
+    if (!Array.isArray(next) || !Array.isArray(was) || next.length !== was.length) return false
+    if (next.every(isText) && was.every(isText)) {
+      const after = [...next].sort()
+      const before = [...was].sort()
+      return after.every((text, i) => text === before[i])
+    }
+    return next.every((item, i) => sameShape(item, was[i], inWaiver))
+  }
+  if (isRecord(next) || isRecord(was)) {
+    if (!isRecord(next) || !isRecord(was)) return false
+    const keys = Object.keys(next)
+    if (keys.length !== Object.keys(was).length || !keys.every((key) => Object.hasOwn(was, key))) return false
+    return keys.every((key) => sameShape(next[key], was[key], inWaiver || isWaiver(key)))
+  }
+  if (typeof next === 'number' && typeof was === 'number') return !inWaiver || next === was
+  return next === was
+}
+
 /** 열쇠 이름이 grade로 끝나는 칸(깊이 상관없음)의 값(JSON)을 정렬한 목록 */
 function gradesOf(params: unknown): string[] {
   const out: string[] = []
@@ -382,6 +409,7 @@ function judge(file: RulesFile, base: RuleDef, current: RuleDef, next: unknown):
   const before = new Set([...scan(file, base.params).names, ...scan(file, current.params).names])
   if ([...before].some((name) => !seen.names.has(name))) return 'removed'
   if (!guardedOk(next.params, base.params, current.params) || !boolsOk(next.params, base.params, current.params)) return 'removed'
+  if (!sameShape(next.params, current.params)) return 'removed'
   if (stable(gradesOf(next.params)) !== stable(gradesOf(base.params))) return 'grade'
   if (ruleStatusIn(file, next) !== ruleStatusIn(file, base)) return 'status'
   const shown = (rule: RuleDef) => stable({ title: rule.title, message: rule.message, params: rule.params })
