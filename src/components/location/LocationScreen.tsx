@@ -12,7 +12,8 @@
 // - '이렇게 봤어요' 펼침은 묶음 id마다 이 화면이 쥔다(범위를 바꿔 다시 받아도 그대로)
 // - 카카오 값(도로명·30m 안 약국)은 후보를 볼 때만 받아 묶음에 넘기고 저장하지 않는다(ADR-044)
 // - 열쇠 없음·처음 화면은 머리를 스스로 그리므로 이 화면의 머리는 그리지 않는다
-// - PC 배치 하나: 두 칸 틀(훑기·후보 자세히)은 최소 폭 1,024px, 좁으면 그 감싸개 안에서만 옆으로 밀린다(폰 전용 모양 없음)
+// - PC 배치 하나: 두 칸 틀(훑기·후보 자세히)은 최소 폭 976px(창 1024 − 셸 본문 좌우 여백 px-6 24px×2, 셸은 옆 막대 없음 — 시안처럼 1024 창에 딱 맞음),
+//   좁으면 그 감싸개 안에서만 옆으로 밀린다(폰 전용 모양 없음)
 // - 인쇄(보고서): 머리·안쪽 탭·후보 고르기는 print:hidden
 // - /location 안에서 다른 탭으로 가는 링크는 평범한 <a href>다(Next Link 없음, design.md 1절 CSP)
 import { useMemo, useState, type ReactNode } from 'react'
@@ -100,14 +101,14 @@ const T = {
 
 // 모양(시안 .ltop·.subtabs·.candbar·.cb·.btn 값). 폰 전용 모양 없음 — 폭 따라 바뀌는 공용 묶음은 쓰지 않는다
 const BUTTON = `inline-flex h-9 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-control border border-line-strong bg-surface px-4 text-body font-medium text-ink transition hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-40 ${ds.focusRing}`
-const TAB = `relative h-10 shrink-0 cursor-pointer whitespace-nowrap px-3 font-medium text-ink-2 hover:text-ink aria-[current=page]:font-semibold aria-[current=page]:text-ink aria-[current=page]:after:absolute aria-[current=page]:after:inset-x-3 aria-[current=page]:after:bottom-0 aria-[current=page]:after:h-0.5 aria-[current=page]:after:bg-accent ${ds.focusRing}`
-const CAND = `inline-flex h-10 cursor-pointer items-center gap-2 whitespace-nowrap rounded-control border border-line-strong bg-surface px-3 text-ink-2 hover:bg-canvas aria-pressed:border-accent aria-pressed:bg-accent-soft aria-pressed:shadow-[inset_0_0_0_1px_var(--accent)] ${ds.focusRing}`
+const TAB = `relative h-10 shrink-0 cursor-pointer whitespace-nowrap px-3 text-body font-medium text-ink-2 hover:text-ink aria-[current=page]:font-semibold aria-[current=page]:text-ink aria-[current=page]:after:absolute aria-[current=page]:after:inset-x-3 aria-[current=page]:after:bottom-0 aria-[current=page]:after:h-0.5 aria-[current=page]:after:bg-accent ${ds.focusRing}`
+const CAND = `inline-flex h-10 cursor-pointer items-center gap-2 whitespace-nowrap rounded-control border border-line-strong bg-surface px-3 text-body text-ink-2 hover:bg-canvas aria-pressed:border-accent aria-pressed:bg-accent-soft aria-pressed:shadow-[inset_0_0_0_1px_var(--accent)] ${ds.focusRing}`
 const LETTER = 'inline-grid size-5.5 place-items-center rounded-control bg-ink text-caption font-semibold text-surface'
-/** 두 칸 틀 감싸개: 최소 폭 1,024px, 좁으면 이 안에서만 옆으로 밀린다(AC-7901.4) */
+/** 두 칸 틀 감싸개: 최소 폭 976px(창 1024에서 셸 본문 폭), 좁으면 이 안에서만 옆으로 밀린다(AC-7901.4) */
 function Wide({ children }: { children: ReactNode }) {
   return (
     <div className="mt-5 overflow-x-auto">
-      <div className="min-w-[1024px]">{children}</div>
+      <div className="min-w-[976px]">{children}</div>
     </div>
   )
 }

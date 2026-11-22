@@ -142,6 +142,18 @@ describe('AC-7920.1: 처음 안내 한 장(MethodCard)', () => {
     expect(props.onOpenSource).not.toHaveBeenCalled()
   })
 
+  it('AC-7920.1: 줄 목록에 목록 점이 없다(list-none, 시안 .mrow ul) — 한 장과 판 모두', () => {
+    render(<MethodCard {...cardProps()} />)
+    const lists = [...screen.getByRole('region', { name: TITLE }).querySelectorAll('ul')]
+    expect(lists).toHaveLength(4)
+    for (const ul of lists) expect(ul.className.split(/\s+/)).toContain('list-none')
+    cleanup()
+    render(<MethodPanel open onClose={vi.fn()} {...cardProps()} />)
+    const inPanel = [...screen.getByRole('dialog').querySelectorAll('ul')]
+    expect(inPanel).toHaveLength(4)
+    for (const ul of inPanel) expect(ul.className.split(/\s+/)).toContain('list-none')
+  })
+
   it('AC-7920.1: 한 장에는 판 아래 글·[닫기]가 없다(판에만)', () => {
     render(<MethodCard {...cardProps()} />)
     expect(screen.queryByText(PANEL_NOTE)).toBeNull()

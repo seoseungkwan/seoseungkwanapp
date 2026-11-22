@@ -180,6 +180,17 @@ describe('AC-7909.3: 경쟁 의원 표 — 의사·물리치료사·장비·문 
     expect(within(section('sec-comp')).getByText('이 과목 의원이 범위 안에 없어요.')).toBeTruthy()
   })
 
+  it('AC-7909.3: 거르기 단추 이름과 수 사이가 4px 띄어진다(시안 .ob .n — 단추가 inline-flex라 글 사이 빈칸은 화면에서 지워진다)', () => {
+    rivals()
+    const buttons = within(screen.getByRole('group', { name: '과목 거르기' })).getAllByRole('button')
+    expect(buttons.length).toBeGreaterThan(1)
+    for (const b of buttons) {
+      const n = b.querySelector('span')
+      expect(n, text(b)).not.toBeNull()
+      expect(n!.className.split(/\s+/), text(b)).toContain('ml-1')
+    }
+  })
+
   it('AC-7909.3: 출처 줄 셋 — 의원·과목·의사 수·문 연 해 / MRI·CT·물리치료사 / 진료 시간, 기준 날짜와 함께', () => {
     const onOpenSource = vi.fn()
     rivals({ onOpenSource })
@@ -328,6 +339,20 @@ describe('AC-7909.3: 경쟁 의원 진료비 — 체외충격파 최저·최고�
     cleanup()
     price({ homeEswt: 80000 })
     expect(text(screen.getByTestId('price-eswt'))).toContain('지금 의원 80,000원 (평균과 같아요)')
+  })
+
+  it.each([null, 72000])('AC-7909.3: 값 띠 눈금 글자는 띠 안에 머문다 — 맨 왼쪽은 왼쪽 맞춤, 맨 오른쪽은 오른쪽 맞춤, 가운데는 가운데(지금 의원 값 %s)', (homeEswt) => {
+    price({ homeEswt })
+    const ticks = [...section('sec-price').querySelectorAll('[aria-hidden="true"] span')].filter((s) => /^(?:0|[\d,]+만)$/.test(s.textContent ?? '')) as HTMLElement[]
+    expect(ticks.map((t) => t.textContent)).toEqual(['5만', '6만', '7만', '8만', '9만', '10만', '11만'])
+    const first = ticks[0]!
+    const last = ticks.at(-1)!
+    expect(parseFloat(first.style.left)).toBe(0)
+    expect(parseFloat(last.style.left)).toBe(100)
+    expect(first.className.split(/\s+/)).not.toEqual(expect.arrayContaining([expect.stringMatching(/translate-x/)]))
+    expect(last.className.split(/\s+/)).toContain('-translate-x-full')
+    expect(last.className.split(/\s+/)).not.toContain('-translate-x-1/2')
+    for (const t of ticks.slice(1, -1)) expect(t.className.split(/\s+/), t.textContent ?? '').toContain('-translate-x-1/2')
   })
 
   it('AC-7909.3: 지금 의원 값이 없으면 [지금 의원 값은 개원 준비에서 적어요]를 누르면 적기 콜백을 부른다', () => {
