@@ -1,29 +1,35 @@
 import 'server-only'
-import { compareYmd, diffDays, isYmd } from '@/lib/analytics/dates'
+import { addDays, compareYmd, diffDays, isYmd } from '@/lib/analytics/dates'
 import { from5174 } from '@/lib/location/coords'
 import type { Adapter, Parsed, Point, QueryOf, SiteRequest } from '@/types/location'
 import { isNotRegistered } from '../fetchSource'
 
 // 의원 개업·폐업(specs/location REQ-7904 AC-7904.1~4, design.md 4절 `clinic-license`, 조사 3).
-// 행정안전부 건강_의원 조회서비스(data.go.kr 15154874, 공공데이터포털 열쇠). 전국 의원을 개업(open)은 인허가일, 폐업(close)은 폐업일 기간으로 찾는다.
-// 기간은 최대 3년(checkQuery가 본다). 쪽은 기간 37일마다 하나, 30쪽까지(3년 = 30쪽), 한 쪽 500줄. 전체 수가 받은 줄보다 많으면 capped.
+// 행정안전부 건강_의원 조회서비스(data.go.kr 15154874, 공공데이터포털 열쇠). 의원·치과의원·한의원을 개업(open)은 인허가일 기간으로,
+// 폐업(close)은 영업 상태 03(폐업) + 갱신 시각(기간 첫날 이상)으로 찾고 폐업일은 답에서 거른다 — 사이트 조건 칸은
+// LCPMT_YMD(GTE·LT)·SALS_STTS_CD(EQ)·DAT_UPDT_PNT(GTE·LT)·ROAD_NM_ADDR(LIKE)·BPLC_NM·MDLCR_INST_BTP_NM뿐이고 폐업일 칸이 없다(TASK-47 진짜 답).
+// 몸통에 주소 앞부분 addr('시도 시군구')가 있으면 도로명 주소로 거른다(없으면 전국 — 전국 3년은 쪽 한도를 넘는다).
+// 기간은 최대 3년(checkQuery가 본다). 쪽은 기간 37일마다 하나, 30쪽까지(3년 = 30쪽), 한 쪽 100줄(사이트 한도). 전체 수가 받은 줄보다 많으면 capped.
 // 좌표 EPSG:5174 → WGS84(coords.from5174). 좌표가 비었거나 0·글자·한국 밖인 줄, 이름이 빈 줄, 그 날짜가 기간 밖인 줄은 뺀다
 // (from5174(0, 0)은 바다 위 점을 내놓아 0은 따로 뺀다). 자료 안에 기준 날짜가 없어 기준 날짜는 받은 한국 날짜다.
-// 주소·조회 칸·답 칸 이름은 진짜 답으로 아직 확인하지 않았다(requirements 확인할 것 3, TASK-47이 고친다) — 아래 상수만 고치면 된다.
 // 답 칸 이름은 대·소문자·밑줄을 가리지 않고, 표준 이름(BPLC_NM·LCPMT_YMD…)과 옛 인허가 자료 이름(BPLCNM·APVPERMYMD·DCBYMD…) 둘 다 읽는다
 
 export const LICENSE_URL = 'https://apis.data.go.kr/1741000/clinics/info'
-export const LICENSE_PAGE_ROWS = 500
+export const LICENSE_PAGE_ROWS = 100
 export const LICENSE_MAX_PAGES = 30
 export const LICENSE_DAYS_PER_PAGE = 37
 
-// 기간을 거르는 날짜 칸: 개업 = 인허가일 · 폐업 = 폐업일
-const DATE_FIELD = { open: 'LCPMT_YMD', close: 'CLSBIZ_YMD' } as const
+// 요청 조건 칸: 개업 = 인허가일 기간 · 폐업 = 영업 상태 03 + 갱신 시각 · 주소 = 도로명 주소 부분 일치
+const OPENED_ON = 'LCPMT_YMD'
+const STATUS = 'SALS_STTS_CD'
+const CLOSED = '03'
+const UPDATED_AT = 'DAT_UPDT_PNT'
+const ROAD = 'ROAD_NM_ADDR'
 
 // 답 칸(대문자·밑줄 뺀 이름). 앞 이름이 있으면 그것을 쓴다
 const FIELDS = {
   name: ['BPLCNM'], // 사업장명
-  dept: ['DGSBJTCNNM', 'TREATSBJTCNTNNM'], // 진료과목내용명
+  dept: ['MDEXMSBJCTCNNM', 'DGSBJTCNNM', 'TREATSBJTCNTNNM'], // 진료과목내용명
   openedOn: ['LCPMTYMD', 'APVPERMYMD'], // 인허가일자
   closedOn: ['CLSBIZYMD', 'DCBYMD'], // 폐업일자
   road: ['ROADNMADDR', 'RDNWHLADDR'], // 도로명 주소
@@ -50,12 +56,26 @@ type Row = Record<string, unknown>
 const pageCount = (q: Q) =>
   Math.min(LICENSE_MAX_PAGES, Math.max(1, Math.ceil((diffDays(q.from, q.to) + 1) / LICENSE_DAYS_PER_PAGE)))
 
+const compact = (ymd: string) => ymd.replaceAll('-', '')
+// 몸통에 TASK-47이 더할 칸(query.ts가 아직 모르면 없는 것으로 본다): 주소 앞부분 '시도 시군구'
+const addrOf = (q: Q): string => {
+  const v = (q as { addr?: unknown }).addr
+  return typeof v === 'string' ? v.trim() : ''
+}
+
 function requests(q: Q): SiteRequest[] {
-  const field = DATE_FIELD[q.event]
+  const addr = addrOf(q)
   return Array.from({ length: pageCount(q) }, (_, i) => {
     const params = new URLSearchParams({ pageNo: String(i + 1), numOfRows: String(LICENSE_PAGE_ROWS), returnType: 'json' })
-    params.append(`cond[${field}::GTE]`, q.from.replaceAll('-', ''))
-    params.append(`cond[${field}::LTE]`, q.to.replaceAll('-', ''))
+    if (q.event === 'open') {
+      params.append(`cond[${OPENED_ON}::GTE]`, compact(q.from))
+      params.append(`cond[${OPENED_ON}::LT]`, compact(addDays(q.to, 1)))
+    } else {
+      // 폐업한 날 뒤에야 갱신되므로 갱신 시각이 기간 첫날 앞인 줄은 기간 안에 폐업했을 수 없다
+      params.append(`cond[${STATUS}::EQ]`, CLOSED)
+      params.append(`cond[${UPDATED_AT}::GTE]`, `${compact(q.from)}000000`)
+    }
+    if (addr !== '') params.append(`cond[${ROAD}::LIKE]`, addr)
     return { url: `${LICENSE_URL}?${params}` }
   })
 }

@@ -5,15 +5,16 @@ import { isNotRegistered } from '../fetchSource'
 
 // 입지 분석 바깥 자료 — 사는 사람(specs/location REQ-7904, design.md 4절, TASK-13). 행정안전부 주민등록 인구 API 둘(공공데이터포털 열쇠).
 //   pop-age   15108072 행정동별(통반단위) 성/연령별 주민등록 인구수 → 동마다 10세 나이대 11칸(0~9세 … 90~99세 · 100세 이상, 남+여)
-//   household 15108071 법정동별(행정동 통반단위) 인구 및 세대현황 → 동마다 세대 수(한 행정동이 법정동 여럿에 걸친 줄은 더함)
+//   household 행정동별(통반단위) 주민등록 인구 및 세대현황(포털 번호 15108073으로 보임, 미확인) → 동마다 세대 수(같은 동 줄이 여럿이면 더함)
 // 몸통은 행정동 코드 1~40개 · 연월 하나. 서버 경로가 한 요청에 30번까지만 부르므로 동마다가 아니라 시군구마다 한 번 부르고
 // (시군구 코드 = 행정동 코드 앞 5자리 + 00000, 읍면동 단위 줄) 물은 동만 골라 물은 차례로 돌려준다.
 // 기준 날짜는 그 연월 말일(자료 안의 연월). 그 달 줄이 하나도 없으면 받은 한국 날짜다.
-// 주소·칸 이름은 공개 문서 기준이고 진짜 답 모양은 TASK-47이 열쇠로 확인한다(requirements 확인할 것 5 — 15108071 조회 열쇠)
+// TASK-47(2026-11-22 진짜 열쇠): pop-age는 진짜 답으로 확인했다(자료 없음 결과 코드는 '3'). household는 법정동 자료(15108071)가
+// 행정동 코드 칸(admmCd)이 비어 와서 행정동 자료(admmPpltnHhStus)로 바꿨다 — 이 열쇠는 아직 활용신청 전이라(미등록 답) 답 모양은 pop-age와 같다고 보고 읽는다
 
 const BASE = 'https://apis.data.go.kr/1741000'
 const POP_AGE_PATH = `${BASE}/admmSexdAgePpltn/selectAdmmSexdAgePpltn`
-const HOUSEHOLD_PATH = `${BASE}/stdgPpltnHhStus/selectStdgPpltnHhStus`
+const HOUSEHOLD_PATH = `${BASE}/admmPpltnHhStus/selectAdmmPpltnHhStus`
 // 읍면동 단위(3) · 등록 구분 전체(1: 거주자 + 거주불명자 + 재외국민) · 한 쪽 1,000줄(시군구 하나의 동은 이 안)
 const LEVEL_DONG = '3'
 const REG_ALL = '1'
@@ -38,7 +39,7 @@ function sggsOf(dongs: readonly string[]): string[] {
   return [...new Set(dongs.map((d) => d.slice(0, 5)))]
 }
 
-function requestsFor(path: string, codeField: 'admmCd' | 'stdgCd', q: PeopleQuery): SiteRequest[] {
+function requestsFor(path: string, codeField: 'admmCd', q: PeopleQuery): SiteRequest[] {
   const ym = q.ym.replace('-', '')
   return sggsOf(q.dongs).map((sgg) => {
     const params = new URLSearchParams({
@@ -67,7 +68,7 @@ function rowsOf(text: string): unknown[] | null {
   const root = json.Response ?? json.response
   if (!isObject(root) || !isObject(root.head)) return null
   const code = String(root.head.resultCode ?? '')
-  if (code === '03') return []
+  if (code === '3' || code === '03') return []
   if (code !== '0' && code !== '00') return null
   const items = root.items
   if (items === undefined || items === null || items === '') return []
@@ -167,6 +168,6 @@ export const householdAdapter: Adapter<'household', DongHouseholds[]> = {
   kind: 'household',
   src: 'household',
   key: 'data',
-  requests: (q) => requestsFor(HOUSEHOLD_PATH, 'stdgCd', q),
+  requests: (q) => requestsFor(HOUSEHOLD_PATH, 'admmCd', q),
   parse: parseHousehold,
 }

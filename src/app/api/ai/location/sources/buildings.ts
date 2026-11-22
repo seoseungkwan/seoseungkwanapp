@@ -86,11 +86,11 @@ function m2Of(v: unknown): number {
   return toStoredM2(n, 'm2') ?? Math.floor(n)
 }
 
-/** 주용도(기타 용도). 하나만 있으면 그것, 같으면 하나 */
+/** 주용도(기타 용도). 하나만 있으면 그것, 같거나 기타 용도가 주용도를 품으면(진짜 답 '제1종근린생활시설(지역자치센터)') 기타 용도 */
 function usageOf(row: Row): string {
   const main = textOf(row.mainPurpsCdNm)
   const etc = textOf(row.etcPurps)
-  if (main === '' || etc === '' || main === etc) return main || etc
+  if (main === '' || etc === '' || etc.includes(main)) return etc || main
   return `${main}(${etc})`
 }
 

@@ -1,19 +1,98 @@
 {
-  "response": {
-    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
-    "body": {
-      "items": {
-        "item": [
-          { "sttnId": "99000001", "emdNm": "하늘동", "tfcmnNm": "버스", "tzon": "07", "rideNope": 3000, "alghNope": 2900, "dayCnt": 31 },
-          { "sttnId": "99000001", "emdNm": "하늘동", "tfcmnNm": "버스", "tzon": "08", "rideNope": 100, "alghNope": 10, "dayCnt": 31 },
-          { "sttnId": "99000002", "emdNm": "하늘동", "tfcmnNm": "버스", "tzon": "07", "rideNope": "1,000", "alghNope": "1001", "dayCnt": "31" },
-          { "sttnId": "99100001", "emdNm": "바다동", "tfcmnNm": "지하철", "tzon": "07", "rideNope": 30000, "alghNope": 29000, "dayCnt": 30 },
-          { "sttnId": "99100001", "emdNm": "바다동", "tfcmnNm": "지하철", "tzon": "08", "rideNope": 1000, "alghNope": 0, "dayCnt": 31 }
-        ]
-      },
-      "numOfRows": 1000,
-      "pageNo": 1,
-      "totalCount": 5
-    }
+ "Response": {
+  "header": {
+   "resultCode": "200",
+   "resultMsg": "SUCCESS"
+  },
+  "body": {
+   "items": {
+    "item": [
+     {
+      "opr_ym": "202610",
+      "ctpv_cd": "99",
+      "ctpv_nm": "가상도",
+      "sgg_cd": "99110",
+      "sgg_nm": "가람구",
+      "emd_cd": "9911010100",
+      "emd_nm": "하늘동",
+      "sttn_id": "9900001",
+      "users_type_cd": "01",
+      "users_type_nm": "일반인",
+      "trfc_mns_se_cd": "B",
+      "tzon": "07",
+      "ride_nope": 3000,
+      "goff_nope": 2900
+     },
+     {
+      "opr_ym": "202610",
+      "ctpv_cd": "99",
+      "ctpv_nm": "가상도",
+      "sgg_cd": "99110",
+      "sgg_nm": "가람구",
+      "emd_cd": "9911010100",
+      "emd_nm": "하늘동",
+      "sttn_id": "9900001",
+      "users_type_cd": "04",
+      "users_type_nm": "경로",
+      "trfc_mns_se_cd": "B",
+      "tzon": "08",
+      "ride_nope": 100,
+      "goff_nope": 10
+     },
+     {
+      "opr_ym": "202610",
+      "ctpv_cd": "99",
+      "ctpv_nm": "가상도",
+      "sgg_cd": "99110",
+      "sgg_nm": "가람구",
+      "emd_cd": "9911010100",
+      "emd_nm": "하늘동",
+      "sttn_id": "9900002",
+      "users_type_cd": "01",
+      "users_type_nm": "일반인",
+      "trfc_mns_se_cd": "B",
+      "tzon": "07",
+      "ride_nope": 1000,
+      "goff_nope": "1,001"
+     },
+     {
+      "opr_ym": "202610",
+      "ctpv_cd": "99",
+      "ctpv_nm": "가상도",
+      "sgg_cd": "99110",
+      "sgg_nm": "가람구",
+      "emd_cd": "9911010100",
+      "emd_nm": "하늘동",
+      "sttn_id": "9901",
+      "users_type_cd": "01",
+      "users_type_nm": "일반인",
+      "trfc_mns_se_cd": "T",
+      "tzon": "08",
+      "ride_nope": 30000,
+      "goff_nope": 28000
+     },
+     {
+      "opr_ym": "202610",
+      "ctpv_cd": "99",
+      "ctpv_nm": "가상도",
+      "sgg_cd": "99110",
+      "sgg_nm": "가람구",
+      "emd_cd": "9911010100",
+      "emd_nm": "하늘동",
+      "sttn_id": "9901",
+      "users_type_cd": "02",
+      "users_type_nm": "청소년",
+      "trfc_mns_se_cd": "T",
+      "tzon": "18",
+      "ride_nope": "1000",
+      "goff_nope": 1000
+     }
+    ]
+   },
+   "dataType": "JSON",
+   "pageNo": 1,
+   "numOfRows": 1000,
+   "totalCount": 5
   }
+ }
 }

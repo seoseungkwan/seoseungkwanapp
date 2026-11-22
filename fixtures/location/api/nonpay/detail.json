@@ -1,64 +1,125 @@
 {
-  "response": {
-    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
-    "body": {
-      "items": {
-        "item": [
-          {
-            "ykiho": "FAKEykiho0001+/=",
-            "yadmNm": "가상바른정형외과의원",
-            "clCdNm": "의원",
-            "npayCd": "MM045",
-            "npayKorNm": "체외충격파치료",
-            "yadmNpayCdNm": "체외충격파(1회)",
-            "curAmt": "50,000",
-            "adtFrDd": "20250301"
-          },
-          {
-            "ykiho": "FAKEykiho0001+/=",
-            "yadmNm": "가상바른정형외과의원",
-            "clCdNm": "의원",
-            "npayCd": "MM045",
-            "npayKorNm": "체외충격파치료",
-            "yadmNpayCdNm": "",
-            "curAmt": 80000.9,
-            "adtFrDd": "20250301"
-          },
-          {
-            "ykiho": "FAKEykiho0001+/=",
-            "yadmNm": "가상바른정형외과의원",
-            "clCdNm": "의원",
-            "npayCd": "MM045",
-            "npayKorNm": "체외충격파치료",
-            "yadmNpayCdNm": "체외충격파(값 미정)",
-            "curAmt": "",
-            "adtFrDd": "20250301"
-          },
-          {
-            "ykiho": "FAKEykiho0001+/=",
-            "yadmNm": "가상바른정형외과의원",
-            "clCdNm": "의원",
-            "npayCd": "MX122",
-            "npayKorNm": "도수치료",
-            "yadmNpayCdNm": "도수치료(30분)",
-            "curAmt": "120000",
-            "adtFrDd": "20240901"
-          },
-          {
-            "ykiho": "FAKEykiho0001+/=",
-            "yadmNm": "가상바른정형외과의원",
-            "clCdNm": "의원",
-            "npayCd": "QZ001",
-            "npayKorNm": "지어낸 다른 항목",
-            "yadmNpayCdNm": "지어낸 다른 항목",
-            "curAmt": "30000",
-            "adtFrDd": "20240901"
-          }
-        ]
-      },
-      "numOfRows": 1000,
-      "pageNo": 1,
-      "totalCount": 5
-    }
+ "response": {
+  "header": {
+   "resultCode": "00",
+   "resultMsg": "NORMAL SERVICE."
+  },
+  "body": {
+   "items": {
+    "item": [
+     {
+      "adtEndDd": 99991231,
+      "adtFrDd": 20260903,
+      "clCd": 31,
+      "clCdNm": "의원",
+      "curAmt": 50000,
+      "npayCd": "SZ0840000",
+      "npayKorNm": "처치 및 수술료(근골)/체외충격파치료[근골격계질환]",
+      "sgguCd": 990010,
+      "sgguCdNm": "가람구",
+      "sidoCd": 990000,
+      "sidoCdNm": "가상",
+      "sno": 1,
+      "urlAddr": "",
+      "yadmNm": "가상바른정형외과의원",
+      "yadmNpayCdNm": "체외충격파치료(편측당)[근골격계질환]",
+      "ykiho": "FAKEykiho0001+/="
+     },
+     {
+      "adtEndDd": 99991231,
+      "adtFrDd": 20260903,
+      "clCd": 31,
+      "clCdNm": "의원",
+      "curAmt": 80000.9,
+      "npayCd": "SZ0840000",
+      "npayKorNm": "처치 및 수술료(근골)/체외충격파치료[근골격계질환]",
+      "sgguCd": 990010,
+      "sgguCdNm": "가람구",
+      "sidoCd": 990000,
+      "sidoCdNm": "가상",
+      "sno": 2,
+      "urlAddr": "",
+      "yadmNm": "가상바른정형외과의원",
+      "yadmNpayCdNm": "",
+      "ykiho": "FAKEykiho0001+/="
+     },
+     {
+      "adtEndDd": 99991231,
+      "adtFrDd": 20260903,
+      "clCd": 31,
+      "clCdNm": "의원",
+      "curAmt": "",
+      "npayCd": "SZ0840000",
+      "npayKorNm": "처치 및 수술료(근골)/체외충격파치료[근골격계질환]",
+      "sgguCd": 990010,
+      "sgguCdNm": "가람구",
+      "sidoCd": 990000,
+      "sidoCdNm": "가상",
+      "sno": 3,
+      "urlAddr": "",
+      "yadmNm": "가상바른정형외과의원",
+      "yadmNpayCdNm": "체외충격파(값 미정)",
+      "ykiho": "FAKEykiho0001+/="
+     },
+     {
+      "adtEndDd": 99991231,
+      "adtFrDd": 20240901,
+      "clCd": 31,
+      "clCdNm": "의원",
+      "curAmt": "120,000",
+      "npayCd": "MX1220000",
+      "npayKorNm": "처치 및 수술료(근골)/도수치료",
+      "sgguCd": 990010,
+      "sgguCdNm": "가람구",
+      "sidoCd": 990000,
+      "sidoCdNm": "가상",
+      "sno": 4,
+      "urlAddr": "",
+      "yadmNm": "가상바른정형외과의원",
+      "yadmNpayCdNm": "도수치료(30분)",
+      "ykiho": "FAKEykiho0001+/="
+     },
+     {
+      "adtEndDd": 99991231,
+      "adtFrDd": 20240901,
+      "clCd": 31,
+      "clCdNm": "의원",
+      "curAmt": 30000,
+      "npayCd": "SZ6340000",
+      "npayKorNm": "처치 및 수술료(신경)/경피적 경막외강 신경성형술",
+      "sgguCd": 990010,
+      "sgguCdNm": "가람구",
+      "sidoCd": 990000,
+      "sidoCdNm": "가상",
+      "sno": 5,
+      "urlAddr": "",
+      "yadmNm": "가상바른정형외과의원",
+      "yadmNpayCdNm": "경막외강 신경성형술(지어냄)",
+      "ykiho": "FAKEykiho0001+/="
+     },
+     {
+      "adtEndDd": 99991231,
+      "adtFrDd": 20240901,
+      "clCd": 31,
+      "clCdNm": "의원",
+      "curAmt": 90000,
+      "npayCd": "ABZ010001",
+      "npayKorNm": "상급병실료/1인실",
+      "sgguCd": 990010,
+      "sgguCdNm": "가람구",
+      "sidoCd": 990000,
+      "sidoCdNm": "가상",
+      "sno": 6,
+      "urlAddr": "",
+      "yadmNm": "가상바른정형외과의원",
+      "yadmNpayCdNm": "1인실 실료차",
+      "ykiho": "FAKEykiho0001+/="
+     }
+    ]
+   },
+   "numOfRows": 1000,
+   "pageNo": 1,
+   "totalCount": 6
   }
+ }
 }

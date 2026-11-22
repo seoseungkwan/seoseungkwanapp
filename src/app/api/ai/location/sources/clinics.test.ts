@@ -6,7 +6,7 @@ import { DEPT_CODE, LIST_ROWS, TYPE_CODE, hospDetail, hospList } from './clinics
 
 // 바깥 자료 — 의원 목록·상세(specs/location REQ-7904 AC-7904.1~3, design.md 4절, TASK-16).
 // 진짜 사이트는 부르지 않는다. 답은 fixtures/location/api/clinics/의 지어낸 견본(의원 이름·주소·기호 모두 지어냄)이다.
-// 칸 이름은 심평원 문서·검색으로 짐작한 모양이고, 진짜 답으로 맞추는 것은 TASK-47이다
+// TASK-47(2026-11-22 진짜 열쇠): 목록·장비 칸은 진짜 답과 같았고, 상세는 2.8판, 기타인력 칸은 dtlGnlNopCdNm·gnlNopCnt로 고쳤다
 
 const fixture = (name: string) =>
   readFileSync(new URL(`../../../../../../fixtures/location/api/clinics/${name}`, import.meta.url), 'utf8')
@@ -17,7 +17,7 @@ const listQ = (group: HospGroup, r = 1000): QueryOf<'hosp-list'> => ({ kind: 'ho
 const detailQ = (ykiho = 'FAKEhira0001+/='): QueryOf<'hosp-detail'> => ({ kind: 'hosp-detail', ykiho })
 
 const LIST_PATH = '/B551182/hospInfoServicev2/getHospBasisList'
-const DETAIL_PATH = '/B551182/MadmDtlInfoService2.7'
+const DETAIL_PATH = '/B551182/MadmDtlInfoService2.8' // 2.7은 2026-11-22 진짜 답이 '서비스가 없거나 폐기됨'(12)
 
 function parts(url: string) {
   const u = new URL(url)
@@ -236,12 +236,12 @@ describe('hosp-list — 심평원 병원정보서비스(의원·한의원·큰 �
 
   it('AC-7904.2: 활용신청 안 됨(미등록 열쇠 답)은 not-applied다 — 한 쪽만 그래도, 다른 쪽이 모양 틀림이어도', () => {
     const notApplied = { ok: false, code: 'not-applied' }
-    expect(hospList.parse([fixture('not-registered.xml')], listQ('korean'), TODAY)).toEqual(notApplied)
+    expect(hospList.parse([fixture('not-registered.json')], listQ('korean'), TODAY)).toEqual(notApplied)
     expect(
-      hospList.parse([fixture('list-ortho.json'), fixture('not-registered.xml'), fixture('list-rehab.json')], listQ('clinic'), TODAY),
+      hospList.parse([fixture('list-ortho.json'), fixture('not-registered.json'), fixture('list-rehab.json')], listQ('clinic'), TODAY),
     ).toEqual(notApplied)
     expect(
-      hospList.parse([fixture('broken.html'), fixture('not-registered.xml'), fixture('list-rehab.json')], listQ('clinic'), TODAY),
+      hospList.parse([fixture('broken.html'), fixture('not-registered.json'), fixture('list-rehab.json')], listQ('clinic'), TODAY),
     ).toEqual(notApplied)
   })
 
@@ -311,8 +311,8 @@ describe('hosp-detail — 심평원 의료기관별상세정보서비스(장비�
     const urls = hospDetail.requests(detailQ()).map((req) => req.url)
     const params = { ykiho: 'FAKEhira0001+/=', pageNo: '1', numOfRows: '100', _type: 'json' }
     expect(urls.map(parts)).toEqual([
-      { origin: 'https://apis.data.go.kr', path: `${DETAIL_PATH}/getMedOftInfo2.7`, params },
-      { origin: 'https://apis.data.go.kr', path: `${DETAIL_PATH}/getEtcHstInfo2.7`, params },
+      { origin: 'https://apis.data.go.kr', path: `${DETAIL_PATH}/getMedOftInfo2.8`, params },
+      { origin: 'https://apis.data.go.kr', path: `${DETAIL_PATH}/getEtcHstInfo2.8`, params },
     ])
     for (const url of urls) {
       expect(url).toContain('ykiho=FAKEhira0001%2B%2F%3D')
@@ -354,8 +354,8 @@ describe('hosp-detail — 심평원 의료기관별상세정보서비스(장비�
 
   it('AC-7904.2: 활용신청 안 됨(미등록 열쇠 답)은 not-applied다', () => {
     const notApplied = { ok: false, code: 'not-applied' }
-    expect(hospDetail.parse([fixture('not-registered.xml'), fixture('detail-staff.json')], detailQ(), TODAY)).toEqual(notApplied)
-    expect(hospDetail.parse([fixture('detail-equip.json'), fixture('not-registered.xml')], detailQ(), TODAY)).toEqual(notApplied)
+    expect(hospDetail.parse([fixture('not-registered.json'), fixture('detail-staff.json')], detailQ(), TODAY)).toEqual(notApplied)
+    expect(hospDetail.parse([fixture('detail-equip.json'), fixture('not-registered.json')], detailQ(), TODAY)).toEqual(notApplied)
   })
 
   it('AC-7904.2: 모양 틀림(JSON 아님 · 결과 코드 오류 · 칸 빠짐 · 답 수 다름)은 failed다', () => {

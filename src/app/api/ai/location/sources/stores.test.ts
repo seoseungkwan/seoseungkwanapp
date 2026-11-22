@@ -150,7 +150,7 @@ describe('AC-7904.2: 빈 답 · 활용신청 안 됨 · 모양 틀림', () => {
   })
 
   it('AC-7904.2: 미등록 열쇠 답(XML·JSON)은 어느 쪽에 있어도 not-applied다', () => {
-    expect(parse(tenPages([fixture('not-registered.xml')]))).toEqual({ ok: false, code: 'not-applied' })
+    expect(parse(tenPages([fixture('not-registered.json')]))).toEqual({ ok: false, code: 'not-applied' })
     expect(parse(tenPages([fixture('page1.json'), fixture('not-registered.json')]))).toEqual({ ok: false, code: 'not-applied' })
   })
 

@@ -16,7 +16,9 @@ import {
 } from './licenses'
 
 // 의원 개업·폐업 읽는 곳(specs/location REQ-7904 AC-7904.1~4, design.md 4절 `clinic-license`, 조사 3).
-// 가짜 응답은 fixtures/location/api/licenses/의 지어낸 파일(의원 이름·주소 모두 지어냄)이다. 바깥 사이트는 부르지 않는다
+// 가짜 응답은 fixtures/location/api/licenses/의 지어낸 파일(의원 이름·주소 모두 지어냄)이다. 바깥 사이트는 부르지 않는다.
+// TASK-47(2026-11-22 진짜 열쇠): 한 쪽 100줄이 사이트 한도, 조건 칸은 LCPMT_YMD(GTE·LT)·SALS_STTS_CD(EQ)·DAT_UPDT_PNT(GTE·LT)·ROAD_NM_ADDR(LIKE)뿐이라
+// 폐업일(CLSBIZ_YMD) 조건은 없다 → 폐업은 영업 상태 03 + 갱신 시각으로 부르고 폐업일은 답에서 거른다. 과목 칸은 MDEXM_SBJCT_CN_NM
 const FIXTURES = new URL('../../../../../../fixtures/location/api/licenses/', import.meta.url)
 const fixture = (name: string) => readFileSync(fileURLToPath(new URL(name, FIXTURES)), 'utf-8')
 
@@ -26,6 +28,8 @@ const OPEN: QueryOf<'clinic-license'> = { kind: 'clinic-license', event: 'open',
 const CLOSE: QueryOf<'clinic-license'> = { kind: 'clinic-license', event: 'close', from: '2026-10-15', to: '2026-11-20' }
 // 3년(checkQuery가 받는 가장 긴 기간)
 const THREE_YEARS: QueryOf<'clinic-license'> = { kind: 'clinic-license', event: 'open', from: '2023-11-22', to: '2026-11-22' }
+// 몸통에 주소 앞부분(시도 시군구)이 있으면 도로명 주소로 거른다(query.ts에 칸을 더해야 한다 — TASK-47 보고)
+const withAddr = (q: QueryOf<'clinic-license'>, addr: string) => ({ ...q, addr }) as QueryOf<'clinic-license'>
 
 function value(texts: string[], q: QueryOf<'clinic-license'>): LicenseValue {
   const got = clinicLicense.parse(texts, q, TODAY)
@@ -54,30 +58,38 @@ describe('clinic-license 읽는 곳 — 모양', () => {
 })
 
 describe('clinic-license 요청 — AC-7904.1·AC-7904.3', () => {
-  it('AC-7904.1: 개업은 인허가일 기간으로 정해 둔 주소·칸에 요청한다(열쇠는 싣지 않음)', () => {
+  it('AC-7904.1: 개업은 인허가일 기간(첫날 이상 · 끝날 다음 날 미만)으로 정해 둔 주소·칸에 요청한다(열쇠는 싣지 않음)', () => {
     expect(clinicLicense.requests(OPEN)).toEqual([
       {
         url:
           `${LICENSE_URL}?pageNo=1&numOfRows=${LICENSE_PAGE_ROWS}&returnType=json` +
-          '&cond%5BLCPMT_YMD%3A%3AGTE%5D=20261015&cond%5BLCPMT_YMD%3A%3ALTE%5D=20261120',
+          '&cond%5BLCPMT_YMD%3A%3AGTE%5D=20261015&cond%5BLCPMT_YMD%3A%3ALT%5D=20261121',
       },
     ])
     expect(LICENSE_URL).toBe('https://apis.data.go.kr/1741000/clinics/info')
-    expect(LICENSE_PAGE_ROWS).toBe(500)
+    expect(LICENSE_PAGE_ROWS).toBe(100)
   })
 
-  it('AC-7904.1: 폐업은 폐업일 기간으로 요청한다', () => {
+  it('AC-7904.1: 폐업은 영업 상태 03(폐업)과 갱신 시각(기간 첫날 0시 이상)으로 요청한다 — 폐업일 조건 칸은 사이트에 없다', () => {
     const [only, ...rest] = clinicLicense.requests(CLOSE)
     expect(rest).toEqual([])
     const url = new URL(only.url)
     expect(`${url.origin}${url.pathname}`).toBe(LICENSE_URL)
     expect(Object.fromEntries(url.searchParams)).toEqual({
       pageNo: '1',
-      numOfRows: '500',
+      numOfRows: '100',
       returnType: 'json',
-      'cond[CLSBIZ_YMD::GTE]': '20261015',
-      'cond[CLSBIZ_YMD::LTE]': '20261120',
+      'cond[SALS_STTS_CD::EQ]': '03',
+      'cond[DAT_UPDT_PNT::GTE]': '20261015000000',
     })
+  })
+
+  it('AC-7904.1: 몸통에 주소 앞부분(시도 시군구)이 있으면 도로명 주소 칸으로 거르고, 없으면 전국이다', () => {
+    for (const q of [OPEN, CLOSE]) {
+      const params = new URL(clinicLicense.requests(withAddr(q, '가상도 가람구'))[0].url).searchParams
+      expect(params.get('cond[ROAD_NM_ADDR::LIKE]')).toBe('가상도 가람구')
+      expect(new URL(clinicLicense.requests(q)[0].url).searchParams.has('cond[ROAD_NM_ADDR::LIKE]')).toBe(false)
+    }
   })
 
   it('AC-7904.1: 요청 주소는 fetchSource의 정해 둔 host 규칙을 지나고 열쇠는 거기서만 붙는다', async () => {
@@ -130,7 +142,7 @@ describe('clinic-license 답 읽기 — AC-7904.1·AC-7904.4', () => {
           {
             // 도로명 주소가 비면 지번 주소, 숫자 좌표도 읽는다
             name: '나래재활의학과의원',
-            dept: '재활의학과,정형외과',
+            dept: '재활의학과, 정형외과',
             openedOn: '2026-11-03',
             closedOn: null,
             address: '가상도 가람구 물빛동 56',
@@ -206,8 +218,8 @@ describe('clinic-license 빈 답·활용신청 안 됨·모양 틀림 — AC-790
   })
 
   it('AC-7904.2: 활용신청 안 된 열쇠 답은 not-applied다(한 쪽이라도)', () => {
-    expect(clinicLicense.parse([fixture('not-registered.xml')], OPEN, TODAY)).toEqual({ ok: false, code: 'not-applied' })
-    const texts = clinicLicense.requests(THREE_YEARS).map((_, i) => (i === 7 ? fixture('not-registered.xml') : fixture('many.json')))
+    expect(clinicLicense.parse([fixture('not-registered.json')], OPEN, TODAY)).toEqual({ ok: false, code: 'not-applied' })
+    const texts = clinicLicense.requests(THREE_YEARS).map((_, i) => (i === 7 ? fixture('not-registered.json') : fixture('many.json')))
     expect(clinicLicense.parse(texts, THREE_YEARS, TODAY)).toEqual({ ok: false, code: 'not-applied' })
   })
 
@@ -235,7 +247,7 @@ describe('clinic-license 쪽 한도 — AC-7904.3', () => {
     expect(value([fixture('open.json')], OPEN).capped).toBe(false)
   })
 
-  it('AC-7904.3: 전체 수 칸이 없으면 마지막 쪽이 꽉 찼을 때(500줄) capped: true다', () => {
+  it('AC-7904.3: 전체 수 칸이 없으면 마지막 쪽이 꽉 찼을 때(100줄) capped: true다', () => {
     expect(value([pageOf(LICENSE_PAGE_ROWS)], OPEN).capped).toBe(true)
     expect(value([pageOf(LICENSE_PAGE_ROWS - 1)], OPEN).capped).toBe(false)
   })

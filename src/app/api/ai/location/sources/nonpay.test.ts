@@ -7,7 +7,9 @@ import { createFetchSource, type SourceFetch } from '../fetchSource'
 import { ESWT_ITEM, MANUAL_ITEM, nonpay } from './nonpay'
 
 // 입지 분석 바깥 자료 — 비급여 진료비(specs/location TASK-18, REQ-7904, design.md 4절).
-// 진짜 사이트는 부르지 않는다. 답은 fixtures/location/api/nonpay의 지어낸 가짜 응답(의원 이름·기관 기호 모두 지어냄)이다
+// 진짜 사이트는 부르지 않는다. 답은 fixtures/location/api/nonpay의 가짜 응답(의원 이름·기관 기호 모두 지어냄)이다.
+// TASK-47(2026-11-22 진짜 열쇠): 줄 모양(npayCd 9글자 'SZ0840000'·값 숫자·적용일 숫자)은 진짜 답 모양이다. 체외충격파 = SZ084(진짜 줄로 확인),
+// 도수치료 = MX122는 진짜 줄을 못 봤다(2026-07부터 관리급여라 답에 없을 수 있음) — 코드 앞글자 또는 이름 '도수치료'로 고른다
 
 const TODAY = '2026-11-22'
 const fixture = (name: string) =>
@@ -54,7 +56,9 @@ describe('nonpay 읽는 곳 (TASK-18)', () => {
     expect(url.searchParams.get('ykiho')).toBe(YKIHO)
   })
 
-  it('AC-7904.1: 체외충격파 코드는 한 곳 상수이고 몸통 검사를 지나는 항목 코드다', () => {
+  it('AC-7904.1: 체외충격파 코드는 한 곳 상수(SZ084, 진짜 줄은 SZ0840000)이고 몸통 검사를 지나는 항목 코드다', () => {
+    expect(ESWT_ITEM).toBe('SZ084')
+    expect(MANUAL_ITEM).toBe('MX122')
     expect(ESWT_ITEM).toMatch(/^[A-Za-z0-9]{1,20}$/)
     expect(MANUAL_ITEM).toMatch(/^[A-Za-z0-9]{1,20}$/)
     expect(ESWT_ITEM).not.toBe(MANUAL_ITEM)
@@ -66,9 +70,9 @@ describe('nonpay 읽는 곳 (TASK-18)', () => {
       ok: true,
       value: {
         rows: [
-          { name: '체외충격파(1회)', won: 50_000 },
-          // 의원이 붙인 이름이 비면 심평원 항목 이름
-          { name: '체외충격파치료', won: 80_000 },
+          { name: '체외충격파치료(편측당)[근골격계질환]', won: 50_000 },
+          // 의원이 붙인 이름이 비면 심평원 항목 이름(앞의 '갈래/'는 뺀다)
+          { name: '체외충격파치료[근골격계질환]', won: 80_000 },
           // 값이 빈 줄은 뺀다
         ],
         manual: [{ name: '도수치료(30분)', won: 120_000 }],
@@ -77,9 +81,18 @@ describe('nonpay 읽는 곳 (TASK-18)', () => {
     })
   })
 
-  it('AC-7904.1: 다른 항목 코드를 물으면 그 코드 줄만 고른다', () => {
-    const got = read([fixture('detail.json')], 'QZ001')
-    expect(got.ok && got.value.rows).toEqual([{ name: '지어낸 다른 항목', won: 30_000 }])
+  it('AC-7904.1: 다른 항목 코드를 물으면 그 코드로 시작하는 줄만 고른다(9글자 코드 그대로 물어도 된다)', () => {
+    const got = read([fixture('detail.json')], 'SZ634')
+    expect(got.ok && got.value.rows).toEqual([{ name: '경막외강 신경성형술(지어냄)', won: 30_000 }])
+    const exact = read([fixture('detail.json')], 'SZ0840000')
+    expect(exact.ok && exact.value.rows.map((r) => r.won)).toEqual([50_000, 80_000])
+  })
+
+  it('AC-7904.1: 도수치료 줄은 코드가 MX122로 시작하거나 심평원 항목 이름에 도수치료가 든 줄이다', () => {
+    const doc = JSON.parse(fixture('detail.json')) as { response: { body: { items: { item: Record<string, unknown>[] } } } }
+    doc.response.body.items.item[3].npayCd = 'MX9990000' // 코드가 달라도 이름으로
+    const got = read([JSON.stringify(doc)])
+    expect(got.ok && got.value.manual).toEqual([{ name: '도수치료(30분)', won: 120_000 }])
   })
 
   it('AC-7904.1: 도수치료 줄이 없으면 manual = null로 그 사실을 돌려준다(줄 하나짜리 답도 읽는다)', () => {
@@ -97,7 +110,7 @@ describe('nonpay 읽는 곳 (TASK-18)', () => {
   })
 
   it('AC-7904.2: 활용신청 안 된 열쇠 답은 not-applied다', () => {
-    expect(read([fixture('not-applied.xml')])).toEqual({ ok: false, code: 'not-applied' })
+    expect(read([fixture('not-applied.json')])).toEqual({ ok: false, code: 'not-applied' })
     expect(read(['{"response":{"header":{"resultCode":"30","resultMsg":"SERVICE_KEY_IS_NOT_REGISTERED_ERROR"}}}'])).toEqual({
       ok: false,
       code: 'not-applied',

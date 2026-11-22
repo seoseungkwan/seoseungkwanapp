@@ -1,22 +1,33 @@
 {
-  "response": {
-    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
-    "body": {
-      "items": {
-        "item": {
-          "ykiho": "FAKEykiho0002",
-          "yadmNm": "가상튼튼한의원",
-          "clCdNm": "한의원",
-          "npayCd": "MM045",
-          "npayKorNm": "체외충격파치료",
-          "yadmNpayCdNm": "충격파 치료",
-          "curAmt": "45000",
-          "adtFrDd": "20251101"
-        }
-      },
-      "numOfRows": 1000,
-      "pageNo": 1,
-      "totalCount": 1
+ "response": {
+  "header": {
+   "resultCode": "00",
+   "resultMsg": "NORMAL SERVICE."
+  },
+  "body": {
+   "items": {
+    "item": {
+     "adtEndDd": 99991231,
+     "adtFrDd": 20251101,
+     "clCd": 93,
+     "clCdNm": "한의원",
+     "curAmt": 45000,
+     "npayCd": "SZ0840000",
+     "npayKorNm": "처치 및 수술료(근골)/체외충격파치료[근골격계질환]",
+     "sgguCd": 990010,
+     "sgguCdNm": "가람구",
+     "sidoCd": 990000,
+     "sidoCdNm": "가상",
+     "sno": 1,
+     "urlAddr": "",
+     "yadmNm": "가상튼튼한의원",
+     "yadmNpayCdNm": "충격파 치료",
+     "ykiho": "FAKEykiho0002"
     }
+   },
+   "numOfRows": 1000,
+   "pageNo": 1,
+   "totalCount": 1
   }
+ }
 }

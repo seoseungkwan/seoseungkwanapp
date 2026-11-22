@@ -1,16 +1,36 @@
 {
-  "response": {
-    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
-    "body": {
-      "items": {
-        "item": [
-          { "sttnId": "99100001", "sttnNm": "가람역(가람대)", "lineNm": "가상1호선" },
-          { "sttnId": "99100002", "sttnNm": "가람", "lineNm": "가상 2호선" }
-        ]
-      },
-      "numOfRows": 1000,
-      "pageNo": 1,
-      "totalCount": 2
-    }
+ "Response": {
+  "header": {
+   "resultCode": "200",
+   "resultMsg": "SUCCESS"
+  },
+  "body": {
+   "items": {
+    "item": [
+     {
+      "opr_ymd": "20261001",
+      "sarea_nm": "가상권",
+      "rte_id": "901",
+      "rte_nm": "가상1호선",
+      "sttn_nm": "가람(가람대) [가상1호선]",
+      "sttn_id": "9901",
+      "sttn_seq": 1
+     },
+     {
+      "opr_ymd": "20261001",
+      "sarea_nm": "가상권",
+      "rte_id": "901",
+      "rte_nm": "가상 2호선",
+      "sttn_nm": "가람 [가상 2호선]",
+      "sttn_id": "9902",
+      "sttn_seq": 1
+     }
+    ]
+   },
+   "dataType": "JSON",
+   "pageNo": 1,
+   "numOfRows": 1000,
+   "totalCount": 2
   }
+ }
 }

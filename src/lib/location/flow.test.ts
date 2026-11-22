@@ -42,7 +42,7 @@ const BUS: BusFile = {
   ],
 }
 // 도시철도역 좌표 파일 견본(rail.json, 전국 한 파일)
-const S = { garam1: east(400), garam2: east(420), far: east(5000) }
+const S = { garam1: east(400), garam2: east(420), far: east(5000), twinA: east(450), twinB: east(3000) }
 const RAIL: RailFile = {
   asOf: '2024-12-31',
   src: 'rail-stations',
@@ -50,6 +50,9 @@ const RAIL: RailFile = {
     { name: '가람', line: '가상1호선', ...S.garam1 },
     { name: '가람', line: '가상2호선', ...S.garam2 },
     { name: '먼들', line: '가상1호선', ...S.far },
+    // 같은 이름 역 둘이 멀리 떨어짐(다른 도시) → 노선이 안 맞으면 어느 역인지 몰라 잇지 않는다
+    { name: '두물', line: '가상1호선', ...S.twinA },
+    { name: '두물', line: '가상3호선', ...S.twinB },
   ],
 }
 
@@ -142,18 +145,70 @@ describe('AC-7909.6 사람 흐름: 범위 안 역·정류장마다 하루 평균
     })
   })
 
-  it('AC-7909.6: 역은 이름(괄호·끝 역 뺌)과 노선이 둘 다 맞아야 잇는다 — 이름만 같고 노선이 다르면 못 이음', () => {
+  it('AC-7909.6: 역은 이름(괄호·[노선]·끝 역 뺌)과 노선이 맞으면 그 역, 노선이 다르면 같은 이름 역이 모두 500m 안에 모여 있을 때만 첫 역으로 잇는다', () => {
+    // 진짜 목록(15142034)은 서울역 남쪽 1호선 역을 '1호선'으로, 좌표 파일(15013205)은 '경부선'으로 적는다 — 노선 이름이 달라도 같은 역이다
     const got = joinFlow({
       ...INPUT,
-      volume: { ym: '2026-10', rows: [{ id: 'C1', mode: 'rail', board: 30, alight: 0, days: 30 }, { id: 'C2', mode: 'rail', board: 30, alight: 0, days: 30 }] },
+      volume: {
+        ym: '2026-10',
+        rows: [
+          { id: 'C1', mode: 'rail', board: 30, alight: 0, days: 30 },
+          { id: 'C2', mode: 'rail', board: 60, alight: 0, days: 30 },
+          { id: 'C3', mode: 'rail', board: 90, alight: 0, days: 30 },
+          { id: 'C4', mode: 'rail', board: 90, alight: 0, days: 30 },
+        ],
+      },
       railNames: [
         { id: 'C1', name: ' 가람 역 ', line: '가상2호선' },
-        { id: 'C2', name: '가람역', line: '가상9호선' },
+        { id: 'C2', name: '가람역 [가상9호선]', line: '가상9호선' }, // 노선이 없는 이름 → 모여 있는 가람 두 역 가운데 첫 역
+        { id: 'C3', name: '두물', line: '가상3호선' }, // 이름·노선이 맞음(멀리 있는 두물) → 범위 밖
+        { id: 'C4', name: '두물', line: '가상9호선' }, // 같은 이름이 멀리 떨어진 두 곳 → 못 이음
       ],
     })
     expect(got).toEqual({
       ok: true,
-      v: { ym: '2026-10', stations: [{ name: '가람', line: '가상2호선', distM: d(S.garam2), perDay: 1 }], stops: [], total: 1, unmatched: 1 },
+      v: {
+        ym: '2026-10',
+        stations: [
+          { name: '가람', line: '가상1호선', distM: d(S.garam1), perDay: 2 },
+          { name: '가람', line: '가상2호선', distM: d(S.garam2), perDay: 1 },
+        ],
+        stops: [],
+        total: 3,
+        unmatched: 1,
+      },
+    })
+  })
+
+  it('AC-7909.6: ARS 번호는 앞의 0·줄표·공백을 빼고 견준다(목록 01762 = 좌표 파일 1762), 숫자가 아닌 ARS(~)는 이름으로 잇는다', () => {
+    const got = joinFlow({
+      ...INPUT,
+      volume: { ym: '2026-10', rows: [{ id: 'D1', mode: 'bus', board: 31, alight: 0, days: 31 }, { id: 'D2', mode: 'bus', board: 62, alight: 0, days: 31 }] },
+      busNames: [
+        { id: 'D1', name: '다른 이름', ars: '099001' },
+        { id: 'D2', name: '누리초등학교', ars: '~' },
+      ],
+    })
+    expect(got.ok && got.v.stops).toEqual([
+      { name: '가람시장 입구', distM: d(P.market), perDay: 1 },
+      { name: '누리초등학교', distM: d(P.school), perDay: 2 },
+    ])
+  })
+
+  it('AC-7909.6: 같은 정류장 ID 줄이 여럿(이용량을 묶음으로 나눠 받음)이면 승차·하차를 더해 한 곳으로 센다', () => {
+    const got = joinFlow({
+      ...INPUT,
+      volume: {
+        ym: '2026-10',
+        rows: [
+          { id: '99000001', mode: 'bus', board: 31, alight: 0, days: 31 },
+          { id: '99000001', mode: 'bus', board: 0, alight: 31, days: 31 },
+        ],
+      },
+    })
+    expect(got).toEqual({
+      ok: true,
+      v: { ym: '2026-10', stations: [], stops: [{ name: '가람시장 입구', distM: d(P.market), perDay: 2 }], total: 2, unmatched: 0 },
     })
   })
 

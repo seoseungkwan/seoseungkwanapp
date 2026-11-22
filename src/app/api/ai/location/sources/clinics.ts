@@ -8,7 +8,8 @@ import { isNotRegistered } from '../fetchSource'
 // hosp-list: 병원정보서비스(15001698) getHospBasisList — 점·반경·종별·진료과목으로 찾는다.
 // hosp-detail: 의료기관별상세정보서비스(15001699) — 의료장비(MRI·CT)·기타인력(물리치료사).
 // 답은 JSON(_type=json, data.go.kr 모양 response.header·body.items.item — 항목 하나면 객체로 온다). 자료 안에 기준 날짜가 없어 받은 날이 기준이다.
-// 칸 이름·코드는 심평원 문서·검색으로 정한 처음 값이다(확인할 것 1) — 진짜 답으로 맞추는 것은 TASK-47
+// TASK-47(2026-11-22 진짜 열쇠): 목록 칸·종별·과목 코드(05 정형외과 · 09 마취통증 · 21 재활 · 31 의원 · 93 한의원 · 11 종합병원)는 진짜 답과 맞았다.
+// 상세 2.7판은 '서비스가 없거나 폐기됨'(12)이라 2.8판으로 바꿨고, 기타인력 칸은 dtlGnlNopCdNm(인력 이름)·gnlNopCnt(수)다
 
 // ── 코드 (확인할 것 1, 한 곳) ───────────────────────────
 
@@ -22,13 +23,13 @@ export const LIST_ROWS = 500
 const DETAIL_ROWS = 100
 
 const LIST_URL = 'https://apis.data.go.kr/B551182/hospInfoServicev2/getHospBasisList'
-const DETAIL_URL = 'https://apis.data.go.kr/B551182/MadmDtlInfoService2.7'
+const DETAIL_URL = 'https://apis.data.go.kr/B551182/MadmDtlInfoService2.8'
 // 상세 두 가지: 의료장비 · 기타인력(이 차례로 답을 읽는다)
-const DETAIL_OPS = ['getMedOftInfo2.7', 'getEtcHstInfo2.7'] as const
+const DETAIL_OPS = ['getMedOftInfo2.8', 'getEtcHstInfo2.8'] as const
 
 // 의료장비 줄: 장비 이름·대수. 기타인력 줄: 인력 이름·수
 const EQUIP = { name: 'oftCdNm', count: 'oftCnt' } as const
-const STAFF = { name: 'hstCdNm', count: 'hstCnt' } as const
+const STAFF = { name: 'dtlGnlNopCdNm', count: 'gnlNopCnt' } as const
 const MRI = /MRI|자기공명/
 const CT = /CT|전산화단층/
 const THERAPIST = '물리치료사'

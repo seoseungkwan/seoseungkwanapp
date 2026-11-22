@@ -3,17 +3,30 @@ import { describe, expect, it, vi } from 'vitest'
 import { SOURCES } from '@/lib/location/sources'
 import type { QueryOf } from '@/types/location'
 import { createFetchSource, type SourceFetch } from '../fetchSource'
-import { HOURS_PAGES, HOURS_ROWS, HOURS_URL, clinicHours, hoursFor, minutesOf, type ClinicHours } from './clinicHours'
+import {
+  HOURS_NEAR_URL,
+  HOURS_PAGES,
+  HOURS_ROWS,
+  HOURS_URL,
+  clinicHours,
+  hoursFor,
+  minutesOf,
+  type ClinicHours,
+} from './clinicHours'
 
 // 바깥 자료 — 진료 시간(specs/location TASK-17, REQ-7904, design.md 4절 `hosp-hours`).
-// 견본 fixtures/location/api/clinicHours/는 국립중앙의료원 전국 병·의원 찾기(15000736) 위치 조회 모양을 본떠 지어낸 것이다
-// (의원 이름·주소·전화·기관 번호 모두 지어냄). 진짜 사이트는 부르지 않는다
+// 견본 fixtures/location/api/clinicHours/는 국립중앙의료원 전국 병·의원 찾기(15000736) 목록 조회 모양을 본떠 지어낸 것이다
+// (의원 이름·주소·전화·기관 번호 모두 지어냄). 진짜 사이트는 부르지 않는다.
+// TASK-47(2026-11-22 진짜 열쇠): 위치 조회 답에는 요일 칸(dutyTime1s~8c)이 없고 오늘 하루 startTime·endTime만 온다 →
+// 요일 칸이 오는 목록 조회(Q0 시도·Q1 시군구 이름·QZ 종별)로 바꿨다. 목록 조회는 한 쪽 1,000줄까지 받는다
 
 const fixture = (name: string) =>
   readFileSync(new URL(`../../../../../../fixtures/location/api/clinicHours/${name}`, import.meta.url), 'utf8')
 
 const TODAY = '2026-11-22'
-const Q: QueryOf<'hosp-hours'> = { kind: 'hosp-hours', at: { lat: 37.5, lng: 127.03 } }
+// 몸통의 시도·시군구 이름은 모으기가 카카오 주소에서 실어 보낸다(query.ts에 칸을 더해야 한다 — TASK-47 보고)
+const Q = { kind: 'hosp-hours', at: { lat: 37.5, lng: 127.03 }, sidoName: '가상도', sggName: '가람구' } as QueryOf<'hosp-hours'>
+const NEAR_ONLY: QueryOf<'hosp-hours'> = { kind: 'hosp-hours', at: { lat: 37.5, lng: 127.03 } }
 // 위도 1도 ≈ 111,195m(지구 반지름 6,371,008.8m) — 북쪽으로 몇 m 옮긴 점
 const north = (at: { lat: number; lng: number }, m: number) => ({ lat: at.lat + m / 111_195, lng: at.lng })
 
@@ -63,15 +76,43 @@ describe('AC-7904.1 hosp-hours 요청: 정해 둔 주소·칸', () => {
     expect(row?.key).toBe('data')
   })
 
-  it('AC-7904.1: 점 하나로 국립중앙의료원 위치 조회를 3쪽(쪽마다 100줄) 부르고 주소에 열쇠를 넣지 않는다', () => {
-    expect(HOURS_URL).toBe('https://apis.data.go.kr/B552657/HsptlAsembySearchService/getHsptlMdcncLcinfoInqire')
+  it('AC-7904.1: 시도·시군구 이름으로 목록 조회를 의원(C) 3쪽 + 한의원(G) 1쪽(쪽마다 1,000줄) 부르고 주소에 열쇠를 넣지 않는다', () => {
+    expect(HOURS_URL).toBe('https://apis.data.go.kr/B552657/HsptlAsembySearchService/getHsptlMdcncListInfoInqire')
     expect(HOURS_PAGES).toBe(3)
-    expect(HOURS_ROWS).toBe(100)
+    expect(HOURS_ROWS).toBe(1000)
     const reqs = clinicHours.requests(Q)
+    expect(
+      reqs.map((req) => {
+        const url = new URL(req.url)
+        expect(`${url.origin}${url.pathname}`).toBe(HOURS_URL)
+        expect(req.url.toLowerCase()).not.toContain('servicekey')
+        return [...url.searchParams]
+      }),
+    ).toEqual([
+      ...[1, 2, 3].map((page) => [
+        ['Q0', '가상도'],
+        ['Q1', '가람구'],
+        ['QZ', 'C'],
+        ['pageNo', String(page)],
+        ['numOfRows', '1000'],
+      ]),
+      [
+        ['Q0', '가상도'],
+        ['Q1', '가람구'],
+        ['QZ', 'G'],
+        ['pageNo', '1'],
+        ['numOfRows', '1000'],
+      ],
+    ])
+  })
+
+  it('AC-7904.1: 몸통에 시도·시군구 이름이 없으면 예전처럼 점 하나로 위치 조회 3쪽(쪽마다 100줄)을 부른다 — 이 답엔 요일 칸이 없어 진료 시간은 모두 null', () => {
+    expect(HOURS_NEAR_URL).toBe('https://apis.data.go.kr/B552657/HsptlAsembySearchService/getHsptlMdcncLcinfoInqire')
+    const reqs = clinicHours.requests(NEAR_ONLY)
     expect(reqs).toHaveLength(3)
     reqs.forEach((req, i) => {
       const url = new URL(req.url)
-      expect(`${url.origin}${url.pathname}`).toBe(HOURS_URL)
+      expect(`${url.origin}${url.pathname}`).toBe(HOURS_NEAR_URL)
       expect([...url.searchParams]).toEqual([
         ['WGS84_LON', '127.03'],
         ['WGS84_LAT', '37.5'],
@@ -93,7 +134,7 @@ describe('AC-7904.1 hosp-hours 요청: 정해 둔 주소·칸', () => {
       const got = await call(req, { kind: 'data', value: 'DATA+FAKE/key==0017' })
       expect(got.ok).toBe(true)
     }
-    expect(seen).toHaveLength(3)
+    expect(seen).toHaveLength(4)
     for (const url of seen) expect(new URL(url).searchParams.getAll('serviceKey')).toEqual(['DATA+FAKE/key==0017'])
   })
 })
@@ -158,8 +199,8 @@ describe('AC-7904.2 hosp-hours 빈 답 · 활용신청 안 됨 · 모양 틀림'
   })
 
   it('AC-7904.2: 미등록 열쇠 답은 not-applied다(다른 쪽이 정상이어도)', () => {
-    expect(clinicHours.parse([fixture('not-registered.xml')], Q, TODAY)).toEqual({ ok: false, code: 'not-applied' })
-    expect(clinicHours.parse([fixture('page1.xml'), fixture('not-registered.xml'), fixture('empty.xml')], Q, TODAY)).toEqual({
+    expect(clinicHours.parse([fixture('not-registered.json')], Q, TODAY)).toEqual({ ok: false, code: 'not-applied' })
+    expect(clinicHours.parse([fixture('page1.xml'), fixture('not-registered.json'), fixture('empty.xml')], Q, TODAY)).toEqual({
       ok: false,
       code: 'not-applied',
     })

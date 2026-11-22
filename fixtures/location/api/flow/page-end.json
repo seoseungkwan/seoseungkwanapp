@@ -1,6 +1,6 @@
 {
-  "response": {
-    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
-    "body": { "items": "", "numOfRows": 1000, "pageNo": 2, "totalCount": 5 }
-  }
+ "Error": {
+  "code": "50",
+  "message": "NO_DATA_FOUND"
+ }
 }
