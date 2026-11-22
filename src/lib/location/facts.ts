@@ -41,7 +41,15 @@ export function shownAsOf(got: Got<unknown> | null | undefined): string | null {
 
 const isGot = (v: unknown): v is Got<unknown> => typeof v === 'object' && v !== null && 'src' in v && 'ok' in v
 
-/** 그날 값에서 그 출처 id 칸의 기준 날짜(위험 신호·묶음의 출처 줄). 없으면 null */
+// 그날 값에 제 칸이 없는 출처 → 그 값을 함께 담은 칸(모으기가 의원 목록에 상세·진료 시간·비급여를, 아파트 목록에 기본 정보를 붙인다)
+const HELD_IN: Readonly<Partial<Record<string, 'rivals' | 'apts'>>> = {
+  'hosp-detail': 'rivals',
+  'hosp-hours': 'rivals',
+  nonpay: 'rivals',
+  'apt-info': 'apts',
+}
+
+/** 그날 값에서 그 출처 id 칸의 기준 날짜(위험 신호·묶음의 출처 줄·'이렇게 봤어요'·보고서). 제 칸이 없는 출처는 담은 칸의 날짜. 없으면 null */
 export function sourceAsOf(s: Snapshot | null, src: string): string | null {
   if (!s) return null
   for (const v of Object.values(s)) {
@@ -49,7 +57,8 @@ export function sourceAsOf(s: Snapshot | null, src: string): string | null {
     const asOf = shownAsOf(v)
     if (asOf) return asOf
   }
-  return null
+  const holder = HELD_IN[src]
+  return holder ? shownAsOf(s[holder]) : null
 }
 
 /** 후보 매물 = 그 후보에 이어진 매물 가운데 마지막으로 고친 것 */

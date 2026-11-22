@@ -5,6 +5,7 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { incomeOf, industryOf } from '@/lib/location/data'
 import { collect, collectScan } from '@/lib/location/collect'
+import { DEFAULT_DEPT_RULE, fillDeptRule } from '@/lib/location/depts'
 import { DEFAULT_SCORE_RULE, fillScoreRule } from '@/lib/location/score'
 import { checkSnapshot, fitSnapshot, mergeSnapshot, SNAPSHOT_KEYS } from '@/lib/location/snapshot'
 import { addCompany, addPerson, loadContacts } from '@/lib/storage/contacts'
@@ -16,13 +17,15 @@ import {
   LocationStorageError,
   markCandidateEventsSeen,
   readPhoto,
+  resetDeptRule,
+  saveDeptRule,
   saveScoreRule,
   updateCandidate,
   updateListing,
   type LocationData,
 } from '@/lib/storage/location'
 import type { Company, ContactBook, Person } from '@/types/contacts'
-import type { Candidate, Listing, LocationNote, LocationPhoto, Query, QueryReply, Snapshot } from '@/types/location'
+import type { Candidate, DeptRule, Listing, LocationNote, LocationPhoto, Query, QueryReply, Snapshot } from '@/types/location'
 import { queryLocation, readBus, readDongIndex, readDongs, readKeys, readRail, readTransitIndex } from './clients'
 import { CAND_ID, makeCandidate, makeListing, makeSnapshot, OTHER_LISTING, TODAY } from './detail/frame/frame.test.data'
 import { DONGS, INDEX, scanData } from './scan/scanData.test.data'
@@ -42,6 +45,8 @@ vi.mock('@/lib/storage/location', async (importOriginal) => {
     loadLocation: vi.fn(),
     saveScoreRule: vi.fn(),
     resetScoreRule: vi.fn(),
+    saveDeptRule: vi.fn(),
+    resetDeptRule: vi.fn(),
     saveHomeEswt: vi.fn(),
     addCandidate: vi.fn(),
     updateCandidate: vi.fn(),
@@ -87,7 +92,7 @@ vi.mock('@/lib/location/snapshot', async (importOriginal) => {
 const ROAD = '예시로 12'
 const JIBUN = '예시구 가람동 1-2'
 const LOT = { bcode: '1199951000', main: 1, sub: 2, san: false }
-const PLACE = (name: string, category: string, distM: number) => ({ name, category, at: { lat: 37.5, lng: 127 }, distM })
+const PLACE = (name: string, category: string, distM: number, road: string | null = null) => ({ name, category, at: { lat: 37.5, lng: 127 }, distM, road })
 
 /** 바깥 자료 흉내: 카카오만 답하고 공공 자료는 모두 '받지 못함' */
 function fakeAsk(q: Query): Promise<QueryReply> {
@@ -98,7 +103,7 @@ function fakeAsk(q: Query): Promise<QueryReply> {
     case 'k-address':
       return Promise.resolve(ok([{ at: { lat: 37.501, lng: 127.002 }, road: ROAD, jibun: JIBUN, bjd: LOT.bcode, lot: LOT }]))
     case 'k-near':
-      if (q.cat === 'PM9') return Promise.resolve(ok({ places: [PLACE('예시온약국', '의료,건강 > 약국', 20)], capped: false }))
+      if (q.cat === 'PM9') return Promise.resolve(ok({ places: [PLACE('예시온약국', '의료,건강 > 약국', 20, ROAD)], capped: false }))
       if (q.cat === 'MT1') return Promise.resolve(ok({ places: [PLACE('예시마트', '가정,생활 > 마트', 300)], capped: false }))
       return Promise.resolve(
         ok({
@@ -115,21 +120,24 @@ function fakeAsk(q: Query): Promise<QueryReply> {
   }
 }
 
-/** checkSnapshot을 지나는 그날 값(기준 날짜를 모두 'YYYY-MM-DD'로) — 저장된 값은 이 모양이다 */
+/** checkSnapshot을 지나는 그날 값(기준 날짜를 모두 'YYYY-MM-DD'로) — 저장된 값은 이 모양이다.
+ * 출처 id는 모으기가 적는 것(collect.ts SRC, 모두 SOURCES에 있음)으로 맞춘다 — frame.test.data의 옛 id(senior-centers 등)는 SOURCES에 없다 */
 const ymdOf = (s: string) => (s.length === 4 ? `${s}-12-31` : s.length === 7 ? `${s}-01` : s)
+const SRC_FIX: Partial<Record<string, string>> = { seniors: 'senior', gyms: 'gym', accidents: 'accident', apts: 'apt-list' }
 function validSnapshot(): Snapshot {
   const s = makeSnapshot()
   const out: Record<string, unknown> = { ...s }
   for (const key of SNAPSHOT_KEYS) {
     const got = s[key]
-    out[key] = got.ok ? { ...got, asOf: ymdOf(got.asOf) } : got
+    const src = SRC_FIX[key] ?? got.src
+    out[key] = got.ok ? { ...got, src, asOf: ymdOf(got.asOf) } : { ...got, src }
   }
   return out as Snapshot
 }
 
 function data(over: Partial<LocationData> = {}): LocationData {
   return {
-    settings: { scoreRule: fillScoreRule(null), homeEswt: null, updatedAt: null },
+    settings: { scoreRule: fillScoreRule(null), deptRule: fillDeptRule(null), homeEswt: null, updatedAt: null },
     candidates: [makeCandidate({ snapshot: validSnapshot() })],
     listings: [makeListing(), OTHER_LISTING],
     notes: [],
@@ -378,9 +386,34 @@ describe('후보를 열 때 — 카카오는 볼 때만 (AC-7908.4 · AC-7915.2)
     act(() => result.current.openCandidate(CAND_ID))
     await waitFor(() => expect(result.current.viewed?.address).toBeNull())
     expect(result.current.viewed?.pnu).toBeNull()
+    expect(result.current.viewed?.road).toBeNull()
     expect(result.current.viewed?.near.pharmacy).toEqual({ ok: false, code: 'no-key', key: 'kakao' })
+    await waitFor(() => expect(result.current.viewed?.pharmacies).toBeNull())
     expect(vi.mocked(queryLocation).mock.calls.filter(([q]) => q.kind === 'k-point')).toHaveLength(2)
     expect(markCandidateEventsSeen).toHaveBeenCalledTimes(2)
+  })
+
+  it('AC-7921.6·AC-7908.4: 후보를 열면 카카오 도로명(road)과 30m 안 약국(이름·거리·도로명)을 볼 때만 받는다 — 저장 함수에는 넘기지 않는다', async () => {
+    const pharmacy = (places: ReturnType<typeof PLACE>[]): QueryReply => ({ ok: true, value: { places, capped: false }, src: 'kakao-local', asOf: TODAY })
+    vi.mocked(queryLocation).mockImplementation(((q: Query) =>
+      q.kind === 'k-near' && q.cat === 'PM9'
+        ? Promise.resolve(
+            pharmacy([
+              PLACE('예시온약국', '의료,건강 > 약국', 20, ROAD),
+              PLACE('예시먼약국', '의료,건강 > 약국', 300, '예시로 99'),
+              PLACE('예시곁약국', '의료,건강 > 약국', 30),
+            ]),
+          )
+        : fakeAsk(q)) as never)
+    const { result } = await ready()
+    act(() => result.current.openCandidate(CAND_ID))
+    await waitFor(() => expect(result.current.viewed?.pharmacies).toBeDefined())
+    await waitFor(() => expect(result.current.viewed?.road).toBe(ROAD))
+    expect(result.current.viewed?.pharmacies).toEqual([
+      { name: '예시온약국', distM: 20, road: ROAD },
+      { name: '예시곁약국', distM: 30, road: null },
+    ])
+    for (const save of [updateCandidate, addCandidate, addNote, updateListing, addListing]) expect(save).not.toHaveBeenCalled()
   })
 
   it('AC-7908.1: 주소 찾기(k-address)·찍은 자리(k-point)는 화면에 보일 글만 돌려준다', async () => {
@@ -414,7 +447,7 @@ describe('점수 설정 (AC-7919.3 · AC-7919.4)', () => {
 
   it('AC-7919.4: 저장(saveRule)은 saveScoreRule 하나로 하고, 실패하면 저장 실패 알림(E-LOC-SAVE-FAILED)을 켠다', async () => {
     const next = { ...DEFAULT_SCORE_RULE, weights: { ...DEFAULT_SCORE_RULE.weights, rivals: 5 } }
-    vi.mocked(saveScoreRule).mockResolvedValueOnce({ scoreRule: next, homeEswt: null, updatedAt: '2026-11-22T01:41:00Z' })
+    vi.mocked(saveScoreRule).mockResolvedValueOnce({ scoreRule: next, deptRule: fillDeptRule(null), homeEswt: null, updatedAt: '2026-11-22T01:41:00Z' })
     const { result } = await ready()
     await act(async () => result.current.saveRule(next))
     expect(saveScoreRule).toHaveBeenCalledWith(CLIENT, next)
@@ -424,6 +457,59 @@ describe('점수 설정 (AC-7919.3 · AC-7919.4)', () => {
     await waitFor(() => expect(result.current.saveError).toBe(true))
     act(() => result.current.clearSaveError())
     expect(result.current.saveError).toBe(false)
+  })
+})
+
+describe('의원 과목 고르기 (AC-7921.2)', () => {
+  const MINE: DeptRule = { v: 1, rival: ['ortho', 'korean'], hide: ['derm'] }
+  const savedSettings = (deptRule: DeptRule) => ({ scoreRule: fillScoreRule(null), deptRule, homeEswt: null, updatedAt: '2026-11-22T01:41:00Z' })
+  const DRAFT = { name: '예시빌딩 2층', addressNote: '예시구 가람동', lat: 37.501, lng: 127.002, radiusM: 700 as const, floorLabel: '', memo: '', listingId: null }
+
+  it('AC-7921.2: 열 때 loadLocation의 settings.deptRule을 쥐고, changeDeptRule은 다시 부르지도 저장하지도 않고 손에 든 설정만 바꾼다', async () => {
+    vi.mocked(loadLocation).mockResolvedValue(data({ settings: { ...data().settings, deptRule: MINE } }))
+    const { result } = await ready()
+    expect(result.current.deptRule).toEqual(MINE)
+    const next: DeptRule = { v: 1, rival: ['pain'], hide: [] }
+    act(() => result.current.changeDeptRule(next))
+    expect(result.current.deptRule).toBe(next)
+    expect(loadLocation).toHaveBeenCalledTimes(1)
+    expect(queryLocation).not.toHaveBeenCalled()
+    expect(collect).not.toHaveBeenCalled()
+    expect(saveDeptRule).not.toHaveBeenCalled()
+  })
+
+  it('AC-7921.2: 저장(saveDeptRule)은 storage saveDeptRule 하나로 하고, 처음 값([기본값으로])이면 resetDeptRule로 되돌린다. 실패하면 저장 실패 알림(E-LOC-SAVE-FAILED)', async () => {
+    vi.mocked(saveDeptRule).mockImplementation(async (_c, r) => savedSettings(r))
+    vi.mocked(resetDeptRule).mockResolvedValue(savedSettings(fillDeptRule(null)))
+    const { result } = await ready()
+    await act(async () => result.current.saveDeptRule(MINE))
+    expect(saveDeptRule).toHaveBeenCalledWith(CLIENT, MINE)
+    expect(resetDeptRule).not.toHaveBeenCalled()
+    expect(result.current.settings?.deptRule).toEqual(MINE)
+    await act(async () => result.current.saveDeptRule(fillDeptRule(DEFAULT_DEPT_RULE)))
+    expect(resetDeptRule).toHaveBeenCalledWith(CLIENT)
+    expect(saveDeptRule).toHaveBeenCalledTimes(1)
+    expect(result.current.settings?.deptRule).toEqual(DEFAULT_DEPT_RULE)
+    expect(result.current.saveError).toBe(false)
+    vi.mocked(saveDeptRule).mockRejectedValueOnce(new LocationStorageError('E-LOC-SAVE-FAILED'))
+    await act(async () => result.current.saveDeptRule(MINE))
+    await waitFor(() => expect(result.current.saveError).toBe(true))
+  })
+
+  it('AC-7921.2·AC-7908.3: 후보 더하기·[다시 받기]·동네 훑기 모으기는 지금 손에 든 과목 고르기(deps.deptRule)로 부른다', async () => {
+    vi.mocked(addCandidate).mockImplementation(async (_c, f) => savedCandidate({ ...f, snapshot: f.snapshot ?? null }))
+    vi.mocked(updateCandidate).mockImplementation(async (_c, id, ch) => makeCandidate({ id, ...ch }))
+    vi.mocked(collectScan).mockResolvedValueOnce({ ok: false, why: 'failed' } as never)
+    const { result } = await ready()
+    act(() => result.current.changeDeptRule(MINE))
+    await act(async () => {
+      await result.current.addCandidate(DRAFT)
+    })
+    await act(async () => result.current.refresh(CAND_ID))
+    act(() => result.current.pickSgg('11999'))
+    await waitFor(() => expect(collectScan).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(collect).mock.calls.map(([, , deps]) => deps.deptRule)).toEqual([MINE, MINE])
+    expect(vi.mocked(collectScan).mock.calls[0]![1].deptRule).toEqual(MINE)
   })
 })
 

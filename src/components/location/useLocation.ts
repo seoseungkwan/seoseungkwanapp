@@ -5,15 +5,18 @@
 // 저장(후보 더하기·다시 받기): collect(점, 범위, deps) → fitSnapshot(mergeSnapshot(새 값, checkSnapshot(옛 값))) 그대로 저장한다.
 // 카카오 자료(주소 글·필지 번호·약국·마트·큰 병원·산업단지)는 후보를 열 때마다 새로 부르고 이 훅의 상태에만 둔다 — 저장 함수로 넘기지 않는다.
 // 점수 설정은 손에 든 값(rule)만 바꾸고(다시 부르지 않음, 점수는 부품이 다시 센다) 저장은 saveScoreRule 하나로 한다.
+// 과목 고르기(deptRule)도 같다: 손에 든 값만 바꾸고 다시 부르지 않으며, 저장은 saveDeptRule(처음 값이면 resetDeptRule) 하나로 한다.
+// 모으기(후보 더하기·다시 받기·동네 훑기)는 그때 손에 든 과목 고르기로 부른다(바꾼 뒤 저절로 다시 부르지는 않는다).
 // 저장이 실패하면 saveError를 켠다(화면이 E-LOC-SAVE-FAILED를 보임). 매물·사진·메모처럼 부품이 오류를 직접 보이는 저장은 던진다
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { cleanText } from '@/lib/contacts/fields'
-import { collect, collectScan, industryParks, type CollectDeps, type CollectProgress, type ScanResult } from '@/lib/location/collect'
+import { collect, collectScan, industryParks, SAME_BUILDING_M, type CollectDeps, type CollectProgress, type ScanResult } from '@/lib/location/collect'
 import { industryOf, incomeOf } from '@/lib/location/data'
+import { DEFAULT_DEPT_RULE, fillDeptRule } from '@/lib/location/depts'
 import { landCodes, type Dong, type DongFile, type DongIndex } from '@/lib/location/regions'
 import { fillScoreRule, type ScoreRule } from '@/lib/location/score'
-import { checkSnapshot, fitSnapshot, mergeSnapshot } from '@/lib/location/snapshot'
+import { checkSnapshot, fitSnapshot, mergeSnapshot, SNAPSHOT_KEYS } from '@/lib/location/snapshot'
 import { addCompany, addPerson, loadContacts } from '@/lib/storage/contacts'
 import {
   addCandidate as addCandidateRow,
@@ -25,6 +28,8 @@ import {
   loadLocation,
   markCandidateEventsSeen,
   readPhoto as readPhotoFile,
+  resetDeptRule as resetDeptRuleRow,
+  saveDeptRule as saveDeptRuleRow,
   saveHomeEswt as saveHomeEswtRow,
   saveScoreRule,
   updateCandidate,
@@ -36,16 +41,25 @@ import {
 } from '@/lib/storage/location'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { CompanyFields, PersonFields } from '@/types/contacts'
-import type { Candidate, CandidateStatus, KeysReply, Listing, LocationPhoto, Point, Query, QueryReply, RadiusM } from '@/types/location'
+import type { Candidate, CandidateStatus, DeptRule, KeysReply, Listing, LocationPhoto, Point, Query, QueryReply, RadiusM } from '@/types/location'
 import type { AddressFind, CandidateDraft, SpotFind } from './add/AddCandidatePanel'
 import { queryLocation, readBus, readDongIndex, readDongs, readKeys, readRail, readTransitIndex } from './clients'
 import type { Near, NearKind, NearPlace, NearReply } from './detail/demand/near'
 import { STATUS_TEXT } from './detail/frame/text'
+import type { NearPharmacy } from './detail/rivals/OthersSection'
 
 export type LoadState = { status: 'loading' } | { status: 'ready' } | { status: 'failed' }
 export type Progress = CollectProgress
-/** 후보를 열 때 카카오에서 새로 받은 것(저장하지 않음). undefined = 받는 중, null = 못 받음 */
-export type Viewed = { candidateId: string; address: string | null | undefined; pnu: string | null | undefined; near: Near }
+/** 후보를 열 때 카카오에서 새로 받은 것(저장하지 않음). undefined = 받는 중, null = 못 받음.
+ * address = 머리에 보일 주소 글(도로명 → 지번), road = 도로명만(같은 건물 견주기), pharmacies = 30m 안 약국(이름·거리·도로명) */
+export type Viewed = {
+  candidateId: string
+  address: string | null | undefined
+  road: string | null | undefined
+  pnu: string | null | undefined
+  near: Near
+  pharmacies: NearPharmacy[] | null | undefined
+}
 export type ScanState = { sgg: string | null; dongs: readonly Dong[] | null; result: ScanResult | null; progress: Progress | null }
 export type BrokerBody = { company: CompanyFields; person: PersonFields | null }
 export type ListingFields = Omit<Listing, 'id' | 'createdAt' | 'updatedAt'>
@@ -53,8 +67,8 @@ export type ListingFields = Omit<Listing, 'id' | 'createdAt' | 'updatedAt'>
 /** 진행 상태를 바꾸면 남기는 날짜 메모 한 줄(견주기 곁글 '진행 메모에 날짜가 남아요') */
 export const statusNote = (from: CandidateStatus, to: CandidateStatus) => `진행 상태를 바꿨어요: ${STATUS_TEXT[from]} → ${STATUS_TEXT[to]}`
 
-/** 모으기 진행 처음 값(그날 값 칸 22개) */
-const START: Progress = { done: 0, total: 22 }
+/** 모으기 진행 처음 값(그날 값 칸 수) */
+const START: Progress = { done: 0, total: SNAPSHOT_KEYS.length }
 
 const round6 = (v: number) => Math.round(v * 1e6) / 1e6
 const at6 = (p: Point): Point => ({ lat: round6(p.lat), lng: round6(p.lng) })
@@ -76,15 +90,22 @@ function spotOf(v: unknown): { road: string | null; jibun: string | null; pnu: s
   return { road: textOr(v.road), jibun: textOr(v.jibun), pnu: codes?.pnu ?? null }
 }
 
-type Place = { name: string; category: string; at: Point; distM: number }
+type Place = { name: string; category: string; at: Point; distM: number; road: string | null }
 function placesOf(v: unknown): { places: Place[]; capped: boolean } | null {
   if (!isRow(v) || !Array.isArray(v.places)) return null
   const places = v.places.flatMap((p: unknown) => {
     if (!isRow(p) || typeof p.name !== 'string' || !isNum(p.distM)) return []
     const at = pointOf(p.at) ?? { lat: 0, lng: 0 }
-    return [{ name: p.name, category: typeof p.category === 'string' ? p.category : '', at, distM: p.distM }]
+    return [{ name: p.name, category: typeof p.category === 'string' ? p.category : '', at, distM: p.distM, road: textOr(p.road) }]
   })
   return { places, capped: v.capped === true }
+}
+
+/** 약국 답 → 30m 안 약국(같은 건물·옆 건물 견주기, 볼 때만). 못 받았으면 null */
+function pharmaciesOf(reply: QueryReply): NearPharmacy[] | null {
+  const got = reply.ok ? placesOf(reply.value) : null
+  if (got === null) return null
+  return got.places.filter((p) => p.distM <= SAME_BUILDING_M).map((p) => ({ name: p.name, distM: p.distM, road: p.road }))
 }
 
 // 큰 병원: 카카오 병원 분류(HP8) 가운데 종합병원·대학병원·상급종합(분류 글 또는 이름)
@@ -111,6 +132,9 @@ function nearReplyOf(kind: NearKind, reply: QueryReply): NearReply {
 
 const why = (reply: QueryReply): 'no-key' | 'failed' => (!reply.ok && reply.code === 'no-key' ? 'no-key' : 'failed')
 
+/** 처음 값([기본값으로])인가 — 차례·모르는 id는 fillDeptRule로 맞춰 견준다 */
+const isDefaultDept = (rule: DeptRule) => JSON.stringify(fillDeptRule(rule)) === JSON.stringify(fillDeptRule(DEFAULT_DEPT_RULE))
+
 /** 바뀐 줄 하나를 id로 바꿔 끼운다 */
 const swap = <T extends { id: string }>(rows: readonly T[], row: T): T[] => rows.map((r) => (r.id === row.id ? row : r))
 const fieldsOf = (l: Listing): ListingFields => {
@@ -129,6 +153,9 @@ export function useLocation() {
   const [keys, setKeys] = useState<KeysReply | null>(null)
   const [index, setIndex] = useState<DongIndex | null>(null)
   const [rule, setRule] = useState<ScoreRule>(() => fillScoreRule(null))
+  const [deptRule, setDeptRule] = useState<DeptRule>(() => fillDeptRule(null))
+  // 모으기가 그때 손에 든 과목 고르기를 읽게(부르기 함수를 다시 만들지 않는다)
+  const deptNow = useRef<DeptRule>(deptRule)
   const [saveError, setSaveError] = useState(false)
   const [adding, setAdding] = useState<Progress | null>(null)
   const [refreshing, setRefreshing] = useState<Record<string, Progress>>({})
@@ -162,6 +189,9 @@ export function useLocation() {
         latest.current = d
         setData(d)
         setRule(fillScoreRule(d.settings.scoreRule))
+        const dept = fillDeptRule(d.settings.deptRule)
+        deptNow.current = dept
+        setDeptRule(dept)
         setLoad({ status: 'ready' })
       },
       () => {
@@ -228,6 +258,7 @@ export function useLocation() {
         return g.ok ? { v: g.v, asOf: g.asOf } : null
       },
       now: new Date().toISOString(),
+      deptRule: deptNow.current,
       onProgress,
     }),
     [dongFile],
@@ -309,7 +340,11 @@ export function useLocation() {
   const askNear = useCallback((kind: NearKind, at: Point, r: number, ticket: number, candidateId: string) => {
     void queryLocation(NEAR_QUERY[kind](at, r)).then((reply) => {
       if (ticket !== openTicket.current) return
-      setViewed((v) => (v && v.candidateId === candidateId ? { ...v, near: { ...v.near, [kind]: nearReplyOf(kind, reply) } } : v))
+      setViewed((v) => {
+        if (!v || v.candidateId !== candidateId) return v
+        const next = { ...v, near: { ...v.near, [kind]: nearReplyOf(kind, reply) } }
+        return kind === 'pharmacy' ? { ...next, pharmacies: pharmaciesOf(reply) } : next
+      })
     })
   }, [])
   const placeOf = (c: Candidate) => ({ at: { lat: c.lat, lng: c.lng }, r: c.snapshot?.radiusM ?? c.radiusM })
@@ -318,13 +353,15 @@ export function useLocation() {
       const c = latest.current?.candidates.find((x) => x.id === id)
       if (!c) return
       const ticket = ++openTicket.current
-      setViewed({ candidateId: id, address: undefined, pnu: undefined, near: {} })
+      setViewed({ candidateId: id, address: undefined, road: undefined, pnu: undefined, near: {}, pharmacies: undefined })
       markCandidateEventsSeen(client, id).catch(() => undefined) // 조용히(다음에 다시 읽음으로 한다)
       const { at, r } = placeOf(c)
       void queryLocation({ kind: 'k-point', at }).then((reply) => {
         if (ticket !== openTicket.current) return
         const spot = reply.ok ? spotOf(reply.value) : null
-        setViewed((v) => (v && v.candidateId === id ? { ...v, address: spot ? (spot.road ?? spot.jibun) : null, pnu: spot?.pnu ?? null } : v))
+        setViewed((v) =>
+          v && v.candidateId === id ? { ...v, address: spot ? (spot.road ?? spot.jibun) : null, road: spot?.road ?? null, pnu: spot?.pnu ?? null } : v,
+        )
       })
       for (const kind of NEAR_KINDS) askNear(kind, at, r, ticket, id)
     },
@@ -335,7 +372,11 @@ export function useLocation() {
       const v = viewed
       const c = v ? latest.current?.candidates.find((x) => x.id === v.candidateId) : undefined
       if (!v || !c) return
-      setViewed((cur) => (cur && cur.candidateId === c.id ? { ...cur, near: { ...cur.near, [kind]: undefined } } : cur))
+      setViewed((cur) =>
+        cur && cur.candidateId === c.id
+          ? { ...cur, near: { ...cur.near, [kind]: undefined }, ...(kind === 'pharmacy' ? { pharmacies: undefined } : {}) }
+          : cur,
+      )
       const { at, r } = placeOf(c)
       askNear(kind, at, r, openTicket.current, c.id)
     },
@@ -366,6 +407,22 @@ export function useLocation() {
     async (next: ScoreRule) => {
       try {
         const s = await saveScoreRule(client, next)
+        patch((d) => ({ ...d, settings: s }))
+      } catch {
+        setSaveError(true)
+      }
+    },
+    [client, patch],
+  )
+  // ── 의원 과목 고르기(AC-7921.2): 바꾸면 손에 든 값만, 저장은 saveDeptRule([기본값으로]는 resetDeptRule) ──
+  const changeDeptRule = useCallback((next: DeptRule) => {
+    deptNow.current = next
+    setDeptRule(next)
+  }, [])
+  const saveDeptRule = useCallback(
+    async (next: DeptRule) => {
+      try {
+        const s = isDefaultDept(next) ? await resetDeptRuleRow(client) : await saveDeptRuleRow(client, next)
         patch((d) => ({ ...d, settings: s }))
       } catch {
         setSaveError(true)
@@ -548,6 +605,9 @@ export function useLocation() {
     rule,
     changeRule,
     saveRule,
+    deptRule,
+    changeDeptRule,
+    saveDeptRule,
     saveHomeEswt,
     saveError,
     clearSaveError: useCallback(() => setSaveError(false), []),

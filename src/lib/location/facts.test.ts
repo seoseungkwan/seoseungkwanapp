@@ -100,7 +100,7 @@ function makeSnapshot(over: Partial<Snapshot> = {}): Snapshot {
         { name: '예시가람아파트', households: 1200, builtYear: 2005, bdongName: '가람동' },
         { name: '예시하늘아파트', households: 800, builtYear: 2015, bdongName: '하늘동' },
       ],
-      'apt-info',
+      'apt-list', // 모으기가 아파트 칸에 적는 출처(collect.ts SRC.apts)
       '2026-11-15',
     ),
     presale: ok([{ name: '예시새솔아파트', households: 500, moveIn: '2027-06' }], 'presale', '2026-11-15'),
@@ -338,6 +338,24 @@ describe('AC-7911.1: 후보 점수 값(scoreFactsOf) — 옛 화면 셈 그대�
     expect(sourceAsOf(snapshot, 'dongs')).toBe('2026-10-31')
     expect(sourceAsOf(snapshot, 'user')).toBeNull()
     expect(sourceAsOf(null, 'hosp-list')).toBeNull()
+  })
+
+  it("AC-7920.2: '이렇게 봤어요'·보고서가 묻는 진료 시간(hosp-hours)·비급여(nonpay)·의원 상세(hosp-detail)는 그날 값 rivals 칸 기준 날짜, 아파트 기본 정보(apt-info)는 apt-list 칸 기준 날짜", () => {
+    const snapshot = makeSnapshot({ apts: ok([], 'apt-list', '2026-11-14') })
+    for (const src of ['hosp-hours', 'nonpay', 'hosp-detail']) expect(sourceAsOf(snapshot, src), src).toBe('2026-11-15')
+    expect(sourceAsOf(snapshot, 'apt-info')).toBe('2026-11-14')
+    expect(sourceAsOf(snapshot, 'apt-list')).toBe('2026-11-14')
+  })
+
+  it('AC-7920.2: 그 칸을 받다가 실패했으면 지난 값 날짜, 지난 값도 없으면 null(기준 날짜 조각을 뺀다)', () => {
+    const snapshot = makeSnapshot({
+      rivals: { ok: false, why: 'failed', src: 'hosp-list', prev: { v: [], asOf: '2026-10-02' } },
+      apts: { ok: false, why: 'failed', src: 'apt-list' },
+    })
+    expect(sourceAsOf(snapshot, 'hosp-hours')).toBe('2026-10-02')
+    expect(sourceAsOf(snapshot, 'nonpay')).toBe('2026-10-02')
+    expect(sourceAsOf(snapshot, 'apt-info')).toBeNull()
+    expect(sourceAsOf(null, 'hosp-hours')).toBeNull()
   })
 })
 
