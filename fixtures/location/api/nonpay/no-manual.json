@@ -1,0 +1,22 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": {
+      "items": {
+        "item": {
+          "ykiho": "FAKEykiho0002",
+          "yadmNm": "가상튼튼한의원",
+          "clCdNm": "한의원",
+          "npayCd": "MM045",
+          "npayKorNm": "체외충격파치료",
+          "yadmNpayCdNm": "충격파 치료",
+          "curAmt": "45000",
+          "adtFrDd": "20251101"
+        }
+      },
+      "numOfRows": 1000,
+      "pageNo": 1,
+      "totalCount": 1
+    }
+  }
+}
