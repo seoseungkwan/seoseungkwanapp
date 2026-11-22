@@ -2568,11 +2568,13 @@ describe('AC-7601.1 · ADR-039 문서', () => {
   const repo = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), 'utf-8')
   const TITLE = '### ADR-039: 직원 자료(연락처·주소·생일·계좌·근무·휴가·급여·서류 파일)를 Supabase에 원장만 보게 둔다. 주민번호는 두지 않는다'
 
-  it('AC-7601.1: docs/ADR.md 맨 끝에 ADR-039 하나가 design.md 2절 글로 있다', () => {
+  it('AC-7601.1: docs/ADR.md에 ADR-039 하나가 design.md 2절 글로 있다', () => {
     const doc = repo('docs/ADR.md')
     expect(doc.split(/\r?\n/).filter((line) => line.startsWith('### ADR-039:'))).toEqual([TITLE])
-    const body = doc.slice(doc.indexOf(TITLE))
-    expect(body.slice(TITLE.length)).not.toMatch(/^### /m)
+    // ADR-039 칸 = 머리부터 다음 '### ' 머리 앞까지(뒤에 ADR-040~044 같은 다른 결정이 붙어도 그 칸만 본다 — PaySlip.test와 같음)
+    const rest = doc.slice(doc.indexOf(TITLE) + TITLE.length)
+    const next = rest.search(/^### /m)
+    const body = TITLE + (next < 0 ? rest : rest.slice(0, next))
     for (const part of [
       "- plan.md 4절 '서버로 가는 것: 직원 이름·직종·금액'을 넓힌다. 표마다 RLS `my_hospital_id()`(승인된 원장) 하나, 데스크 정책 없음. 서류·세무사 파일은 비공개 바구니 `staff-files`.",
       "- 휴가 → 예약 '휴무'는 앱이 아니라 DB 트리거가 잇는다(휴가와 종일 줄이 어긋나지 않게). `calendar_allday`에 `part`·`leave_id`를 더한다.",
