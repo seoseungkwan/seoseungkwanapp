@@ -1,0 +1,41 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": {
+      "items": {
+        "item": {
+          "rnum": 1,
+          "platPlc": "가상도 가람구 나래동 산 7번지",
+          "sigunguCd": "99110",
+          "bjdongCd": "10100",
+          "platGbCd": "1",
+          "bun": "0007",
+          "ji": "0000",
+          "mgmBldrgstPk": "99110-100000003",
+          "regstrGbCdNm": "일반",
+          "regstrKindCdNm": "일반건축물",
+          "bldNm": "",
+          "dongNm": "",
+          "mainAtchGbCd": "0",
+          "totArea": "456.789",
+          "strctCdNm": "",
+          "etcStrct": "벽돌조",
+          "mainPurpsCdNm": "",
+          "etcPurps": "근린생활시설",
+          "grndFlrCnt": "3",
+          "ugrndFlrCnt": "",
+          "rideUseElvtCnt": "",
+          "indrMechUtcnt": "0",
+          "oudrMechUtcnt": "0",
+          "indrAutoUtcnt": "0",
+          "oudrAutoUtcnt": "0",
+          "useAprDay": " ",
+          "crtnDay": "19990505"
+        }
+      },
+      "numOfRows": 100,
+      "pageNo": 1,
+      "totalCount": 1
+    }
+  }
+}

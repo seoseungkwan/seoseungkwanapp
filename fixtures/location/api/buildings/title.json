@@ -1,0 +1,75 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": {
+      "items": {
+        "item": [
+          {
+            "rnum": 1,
+            "platPlc": "가상도 가람구 나래동 12-3번지",
+            "newPlatPlc": "가상도 가람구 솔빛로 45",
+            "sigunguCd": "99110",
+            "bjdongCd": "10100",
+            "platGbCd": "0",
+            "bun": "0012",
+            "ji": "0003",
+            "mgmBldrgstPk": "99110-100000001",
+            "regstrGbCdNm": "일반",
+            "regstrKindCdNm": "일반건축물",
+            "bldNm": "솔빛창고",
+            "dongNm": "",
+            "mainAtchGbCd": "1",
+            "mainAtchGbCdNm": "부속건축물",
+            "totArea": 30.5,
+            "strctCdNm": "경량철골구조",
+            "etcStrct": "",
+            "mainPurpsCdNm": "창고시설",
+            "etcPurps": "창고",
+            "grndFlrCnt": 1,
+            "ugrndFlrCnt": 0,
+            "useAprDay": "20160102",
+            "crtnDay": "20160110"
+          },
+          {
+            "rnum": 2,
+            "platPlc": "가상도 가람구 나래동 12-3번지",
+            "newPlatPlc": "가상도 가람구 솔빛로 45",
+            "sigunguCd": "99110",
+            "bjdongCd": "10100",
+            "platGbCd": "0",
+            "bun": "0012",
+            "ji": "0003",
+            "mgmBldrgstPk": "99110-100000002",
+            "regstrGbCdNm": "일반",
+            "regstrKindCdNm": "일반건축물",
+            "bldNm": "해솔빌딩",
+            "dongNm": "",
+            "mainAtchGbCd": "0",
+            "mainAtchGbCdNm": "주건축물",
+            "platArea": 450.2,
+            "archArea": 270.1,
+            "totArea": 1234.567,
+            "strctCdNm": "철근콘크리트구조",
+            "etcStrct": "철근콘크리트조",
+            "mainPurpsCdNm": "제1종근린생활시설",
+            "etcPurps": "의원,소매점,사무소",
+            "grndFlrCnt": 5,
+            "ugrndFlrCnt": 2,
+            "rideUseElvtCnt": 1,
+            "emgenUseElvtCnt": 1,
+            "indrMechUtcnt": 0,
+            "oudrMechUtcnt": 0,
+            "indrAutoUtcnt": 8,
+            "oudrAutoUtcnt": 4,
+            "useAprDay": "20150310",
+            "crtnDay": "20150320",
+            "vltnBldYn": "Y"
+          }
+        ]
+      },
+      "numOfRows": 100,
+      "pageNo": 1,
+      "totalCount": 2
+    }
+  }
+}
