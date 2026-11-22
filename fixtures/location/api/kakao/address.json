@@ -1,0 +1,81 @@
+{
+  "meta": { "total_count": 3, "pageable_count": 3, "is_end": true },
+  "documents": [
+    {
+      "address_name": "가상도 가람구 하늘로 45",
+      "address_type": "ROAD_ADDR",
+      "x": "127.0051234",
+      "y": "37.5109876",
+      "address": {
+        "address_name": "가상도 가람구 하늘동 120-3",
+        "region_1depth_name": "가상도",
+        "region_2depth_name": "가람구",
+        "region_3depth_name": "하늘동",
+        "region_3depth_h_name": "하늘동",
+        "h_code": "9911051000",
+        "b_code": "9911010100",
+        "mountain_yn": "N",
+        "main_address_no": "120",
+        "sub_address_no": "3",
+        "x": "127.0051234",
+        "y": "37.5109876"
+      },
+      "road_address": {
+        "address_name": "가상도 가람구 하늘로 45",
+        "region_1depth_name": "가상도",
+        "region_2depth_name": "가람구",
+        "region_3depth_name": "하늘동",
+        "road_name": "하늘로",
+        "underground_yn": "N",
+        "main_building_no": "45",
+        "sub_building_no": "",
+        "building_name": "가나빌딩",
+        "zone_no": "99001",
+        "x": "127.0051234",
+        "y": "37.5109876"
+      }
+    },
+    {
+      "address_name": "가상도 가람구 바다동 산 7",
+      "address_type": "REGION_ADDR",
+      "x": "127.0152",
+      "y": "37.5031",
+      "address": {
+        "address_name": "가상도 가람구 바다동 산 7",
+        "region_1depth_name": "가상도",
+        "region_2depth_name": "가람구",
+        "region_3depth_name": "바다동",
+        "region_3depth_h_name": "바다동",
+        "h_code": "9911052000",
+        "b_code": "9911010200",
+        "mountain_yn": "Y",
+        "main_address_no": "7",
+        "sub_address_no": "",
+        "x": "127.0152",
+        "y": "37.5031"
+      },
+      "road_address": null
+    },
+    {
+      "address_name": "가상도 가람구 하늘동",
+      "address_type": "REGION",
+      "x": "127.005",
+      "y": "37.51",
+      "address": {
+        "address_name": "가상도 가람구 하늘동",
+        "region_1depth_name": "가상도",
+        "region_2depth_name": "가람구",
+        "region_3depth_name": "하늘동",
+        "region_3depth_h_name": "",
+        "h_code": "",
+        "b_code": "9911010100",
+        "mountain_yn": "N",
+        "main_address_no": "",
+        "sub_address_no": "",
+        "x": "127.005",
+        "y": "37.51"
+      },
+      "road_address": null
+    }
+  ]
+}

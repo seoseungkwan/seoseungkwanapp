@@ -1,0 +1,61 @@
+{
+  "meta": { "same_name": null, "pageable_count": 4, "total_count": 4, "is_end": true },
+  "documents": [
+    {
+      "place_name": "나래내과의원",
+      "distance": "85",
+      "place_url": "http://place.map.kakao.com/91000001",
+      "category_name": "의료,건강 > 병원 > 내과",
+      "address_name": "가상도 가람구 하늘동 130",
+      "road_address_name": "가상도 가람구 하늘로 60",
+      "id": "91000001",
+      "phone": "099-100-0001",
+      "category_group_code": "HP8",
+      "category_group_name": "병원",
+      "x": "127.0059",
+      "y": "37.5103"
+    },
+    {
+      "place_name": "가람종합병원",
+      "distance": "320",
+      "place_url": "http://place.map.kakao.com/91000002",
+      "category_name": "의료,건강 > 병원 > 종합병원",
+      "address_name": "가상도 가람구 하늘동 200",
+      "road_address_name": "가상도 가람구 하늘로 120",
+      "id": "91000002",
+      "phone": "099-100-0002",
+      "category_group_code": "HP8",
+      "category_group_name": "병원",
+      "x": "127.0086",
+      "y": "37.5108"
+    },
+    {
+      "place_name": "다온요양병원",
+      "distance": "",
+      "place_url": "http://place.map.kakao.com/91000003",
+      "category_name": "의료,건강 > 병원 > 요양병원",
+      "address_name": "가상도 가람구 바다동 15",
+      "road_address_name": "",
+      "id": "91000003",
+      "phone": "",
+      "category_group_code": "HP8",
+      "category_group_name": "병원",
+      "x": "127.005",
+      "y": "37.5163"
+    },
+    {
+      "place_name": "하늘대학병원",
+      "distance": "1210",
+      "place_url": "http://place.map.kakao.com/91000004",
+      "category_name": "의료,건강 > 병원 > 대학병원",
+      "address_name": "가상도 가람구 바다동 300",
+      "road_address_name": "가상도 가람구 바다로 9",
+      "id": "91000004",
+      "phone": "099-100-0004",
+      "category_group_code": "HP8",
+      "category_group_name": "병원",
+      "x": "127.0187",
+      "y": "37.5045"
+    }
+  ]
+}

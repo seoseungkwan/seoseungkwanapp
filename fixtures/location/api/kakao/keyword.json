@@ -1,0 +1,52 @@
+{
+  "meta": {
+    "same_name": { "region": [], "keyword": "산업단지", "selected_region": "" },
+    "pageable_count": 3,
+    "total_count": 3,
+    "is_end": true
+  },
+  "documents": [
+    {
+      "place_name": "가람일반산업단지",
+      "distance": "2350",
+      "place_url": "http://place.map.kakao.com/92000001",
+      "category_name": "부동산 > 산업단지",
+      "address_name": "가상도 가람구 바다동 500",
+      "road_address_name": "",
+      "id": "92000001",
+      "phone": "",
+      "category_group_code": "",
+      "category_group_name": "",
+      "x": "127.0311",
+      "y": "37.5012"
+    },
+    {
+      "place_name": "가람일반산업단지 관리사무소",
+      "distance": "2410",
+      "place_url": "http://place.map.kakao.com/92000002",
+      "category_name": "사회,공공기관 > 단체,협회",
+      "address_name": "가상도 가람구 바다동 501",
+      "road_address_name": "가상도 가람구 공단로 1",
+      "id": "92000002",
+      "phone": "099-200-0002",
+      "category_group_code": "",
+      "category_group_name": "",
+      "x": "127.0318",
+      "y": "37.5009"
+    },
+    {
+      "place_name": "나래국가산업단지",
+      "distance": "8800",
+      "place_url": "http://place.map.kakao.com/92000003",
+      "category_name": "부동산 > 산업단지",
+      "address_name": "가상도 나래구 마루동 1",
+      "road_address_name": "",
+      "id": "92000003",
+      "phone": "",
+      "category_group_code": "",
+      "category_group_name": "",
+      "x": "127.1",
+      "y": "37.52"
+    }
+  ]
+}

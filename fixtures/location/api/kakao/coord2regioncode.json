@@ -1,0 +1,27 @@
+{
+  "meta": { "total_count": 2 },
+  "documents": [
+    {
+      "region_type": "B",
+      "address_name": "가상도 가람구 하늘동",
+      "region_1depth_name": "가상도",
+      "region_2depth_name": "가람구",
+      "region_3depth_name": "하늘동",
+      "region_4depth_name": "",
+      "code": "9911010100",
+      "x": 127.0049,
+      "y": 37.5101
+    },
+    {
+      "region_type": "H",
+      "address_name": "가상도 가람구 하늘동",
+      "region_1depth_name": "가상도",
+      "region_2depth_name": "가람구",
+      "region_3depth_name": "하늘동",
+      "region_4depth_name": "",
+      "code": "9911051000",
+      "x": 127.005,
+      "y": 37.51
+    }
+  ]
+}
