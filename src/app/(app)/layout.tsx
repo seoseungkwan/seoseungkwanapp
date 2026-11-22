@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import { AppShell } from '@/components/shell/AppShell'
 import { IdleLogout } from '@/components/shell/IdleLogout'
+import { adminOnlyTabs } from '@/components/shell/menu'
+import { readTabAccessRows } from '@/lib/auth/tabAccess.server'
 import { currentMe } from './currentMe.server'
 
 // 앱 화면((app)/*) 공통 틀: 그리기 전에 guard가 병원 상태를 본다(design.md '데이터 흐름').
@@ -10,6 +12,8 @@ import { currentMe } from './currentMe.server'
 // 레이아웃은 지금 경로를 받지 못하고, 옆 화면으로 옮겨 갈 때는 다시 그려지지 않는다 → 경로와 상관없는 앱 공통 판정만 한다
 // (승인된 사람의 앱 경로 = '/dashboard'와 같은 판정). 관리자만 여는 /admin은 그 페이지가 따로 본다
 // 읽기는 currentMe() = 요청 안에서 한 번 캐시한 guardPage('/dashboard')다. 그리기와 탭 이름(generateMetadata)이 같이 쓴다 (ui-90 AC-402.3)
+// 관리자만 보는 탭(multi-admin AC-7706.2, ADR-042): 관리자가 아닌 원장·데스크를 그릴 때만 탭 목록(readTabAccessRows)을 한 번 읽어 숨길 탭을 AppShell에 넘긴다.
+// 관리자는 읽지 않고 숨김이 없다. 읽기 실패는 던진다 → 오류 화면(막는 쪽). generateMetadata는 읽지 않는다(탭 이름에 쓰지 않음)
 
 // 요청의 로그인 세션으로만 그릴 수 있다 → 빌드 때 미리 그리지 않는다
 export const dynamic = 'force-dynamic'
@@ -33,10 +37,11 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const me = await approvedMe()
+  const hiddenTabs = me.isAdmin ? [] : adminOnlyTabs(await readTabAccessRows())
   return (
     <>
       <IdleLogout />
-      <AppShell hospitalName={me.name} email={me.email} isAdmin={me.isAdmin} desk={me.desk}>
+      <AppShell hospitalName={me.name} email={me.email} isAdmin={me.isAdmin} desk={me.desk} hiddenTabs={hiddenTabs}>
         {children}
       </AppShell>
     </>

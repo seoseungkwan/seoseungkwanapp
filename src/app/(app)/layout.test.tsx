@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppShell } from '@/components/shell/AppShell'
 import { guardPage } from '@/lib/auth/guard.server'
 import { HospitalReadError, NotSignedInError, readMe, type Hospital, type Me } from '@/lib/auth/hospital.server'
+import { TabAccessReadError, readTabAccessRows } from '@/lib/auth/tabAccess.server'
+import type { TabAccessRow } from '@/components/shell/menu'
 import { currentMe } from './currentMe.server'
 import AppLayout, { generateMetadata } from './layout'
 
@@ -15,6 +17,12 @@ import AppLayout, { generateMetadata } from './layout'
 vi.mock('@/lib/auth/hospital.server', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/auth/hospital.server')>()),
   readMe: vi.fn(),
+}))
+// 관리자만 보는 탭 목록 읽기(multi-admin AC-7706.2)도 흉내 낸다 — 실제 Supabase에 붙지 않는다.
+// 기본값은 migration 씨앗 12줄 '모두에게'(숨김 없음)라 아래 지금 시험들은 그대로 지난다
+vi.mock('@/lib/auth/tabAccess.server', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/auth/tabAccess.server')>()),
+  readTabAccessRows: vi.fn(),
 }))
 // 진짜 guardPage를 감싸 어떤 경로로 불렀는지만 본다
 vi.mock('@/lib/auth/guard.server', async (importOriginal) => {
@@ -47,6 +55,10 @@ vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: () => ({ auth: { sig
 vi.mock('@/components/shell/IdleLogout', () => ({ IdleLogout: () => <span data-testid="idle-logout" /> }))
 
 const read = vi.mocked(readMe)
+const readTabs = vi.mocked(readTabAccessRows)
+// migration 씨앗: 지금 탭 12개 모두 '모두에게'(multi-admin AC-7705.3)
+const SEED_PATHS = ['/stats', '/claim', '/notices', '/patients', '/worklog', '/sunap', '/calendar', '/ai-report', '/forms', '/staff', '/inventory', '/contacts']
+const SEED: TabAccessRow[] = SEED_PATHS.map((path) => ({ path, adminOnly: false }))
 const guard = vi.mocked(guardPage)
 const current = vi.mocked(currentMe)
 const shell = vi.mocked(AppShell)
@@ -69,6 +81,8 @@ const me = (status: Hospital['status'] | null, isAdmin = false): Me => ({
 beforeEach(() => {
   read.mockReset()
   read.mockResolvedValue(me('approved'))
+  readTabs.mockReset()
+  readTabs.mockResolvedValue(SEED)
   guard.mockClear()
   current.mockClear()
   shell.mockClear()
@@ -276,5 +290,102 @@ describe('(app) 레이아웃 — 데스크 (desk-feedback AC-6305.3)', () => {
       await expect(generateMetadata(), status).rejects.toThrow()
     }
     expect(shell).not.toHaveBeenCalled()
+  })
+})
+
+// multi-admin REQ-7706 AC-7706.2: 관리자만 보는 탭 — 레이아웃이 관리자가 아닌 원장·데스크를 그릴 때 tab_access를 한 번 읽어
+// adminOnlyTabs 결과를 AppShell의 hiddenTabs로 넘긴다. 관리자는 읽지 않고 숨김이 없다. 읽기 실패는 던진다 → 오류 화면(E-PAGE-FAILED).
+// generateMetadata는 목록을 읽지 않는다(design.md '앱 틀'·기본값 18~21)
+describe('(app) 레이아웃 — 관리자만 보는 탭 (multi-admin AC-7706.2)', () => {
+  const DESK = { hospitalId: 'h1', hospitalName: '가나 정형외과의원' }
+  const deskMe = (isAdmin = false): Me => ({ email: 'desk@example.com', hospital: null, isAdmin, desk: DESK })
+  const shellProps = () => {
+    expect(shell).toHaveBeenCalled()
+    return shell.mock.calls[shell.mock.calls.length - 1]![0]
+  }
+  // 통계·직원은 관리자만(참), 주소록은 줄 없음(= 관리자만), 목록 밖 줄은 버린다
+  const ROWS: TabAccessRow[] = [
+    ...SEED.filter((row) => !['/stats', '/staff', '/contacts'].includes(row.path)),
+    { path: '/stats', adminOnly: true },
+    { path: '/staff', adminOnly: true },
+    { path: '/new-tab', adminOnly: true },
+  ]
+  const tabsOf = () => within(screen.getByRole('navigation', { name: '메뉴' })).getAllByRole('link').map((a) => a.textContent)
+
+  it('AC-7706.2: 관리자(데스크 아님)면 목록을 읽지 않고 숨김 없이 그린다 — 탭 띠는 지금 그대로', async () => {
+    read.mockResolvedValue(me('approved', true))
+    readTabs.mockResolvedValue(ROWS)
+    render(await AppLayout({ children: page }))
+    expect(readTabs).not.toHaveBeenCalled()
+    expect(shellProps().hiddenTabs ?? []).toEqual([])
+    expect(tabsOf()).toContain('통계')
+    expect(within(screen.getByRole('main')).getByRole('heading', { level: 1 }).textContent).toBe('페이지')
+  })
+
+  it('AC-7706.2: 관리자가 아닌 원장이면 목록을 한 번 읽어 adminOnlyTabs 결과(MENU 차례)를 hiddenTabs로 넘긴다 — 탭 띠에서 통계가 빠진다', async () => {
+    readTabs.mockResolvedValue(ROWS)
+    render(await AppLayout({ children: page }))
+    expect(readTabs).toHaveBeenCalledTimes(1)
+    expect(readTabs).toHaveBeenCalledWith()
+    expect(shellProps()).toMatchObject({ isAdmin: false, hiddenTabs: ['/stats', '/staff', '/contacts'] })
+    expect(tabsOf()).not.toContain('통계')
+    expect(tabsOf()).toContain('대시보드')
+    // 대시보드는 숨긴 탭 자리가 아니라 본문을 그대로 그린다
+    expect(within(screen.getByRole('main')).getByRole('heading', { level: 1 }).textContent).toBe('페이지')
+  })
+
+  it('AC-7706.2: 씨앗 12줄이 모두 모두에게면 관리자가 아닌 원장도 숨김이 없다(hiddenTabs 빈 목록) — 지금 탭 띠 그대로', async () => {
+    render(await AppLayout({ children: page }))
+    expect(readTabs).toHaveBeenCalledTimes(1)
+    expect(shellProps().hiddenTabs).toEqual([])
+    expect(tabsOf()).toEqual(['대시보드', '통계', '청구', '고시·공지', '환자', '업무일지', '수납일지', '예약'])
+  })
+
+  it('AC-7706.2: 그리기마다 한 번 읽는다(두 번 그리면 두 번)', async () => {
+    readTabs.mockResolvedValue(ROWS)
+    render(await AppLayout({ children: page }))
+    cleanup()
+    render(await AppLayout({ children: page }))
+    expect(readTabs).toHaveBeenCalledTimes(2)
+  })
+
+  it('AC-7706.2: 데스크면(admins에 있는 데스크도 관리자 거짓) 목록을 한 번 읽어 hiddenTabs로 넘긴다 — 수납일지를 숨기면 탭 띠에서 빠지고 /dashboard는 업무일지로 간다', async () => {
+    for (const isAdmin of [false, true]) {
+      read.mockResolvedValue(deskMe(isAdmin))
+      readTabs.mockReset()
+      readTabs.mockResolvedValue([...SEED.filter((row) => row.path !== '/sunap'), { path: '/sunap', adminOnly: true }])
+      router.replace.mockClear()
+      pathname.mockReturnValue('/dashboard')
+      render(await AppLayout({ children: page }))
+      expect(readTabs, String(isAdmin)).toHaveBeenCalledTimes(1)
+      expect(shellProps(), String(isAdmin)).toMatchObject({ desk: true, isAdmin: false, hiddenTabs: ['/sunap'] })
+      expect(tabsOf(), String(isAdmin)).toEqual(['업무일지', '예약'])
+      expect(router.replace, String(isAdmin)).toHaveBeenCalledExactlyOnceWith('/worklog')
+      cleanup()
+    }
+  })
+
+  it('AC-7706.2: 목록 읽기가 실패하면 숨김 없이 그리지 않고 그대로 던진다 → 오류 화면(E-PAGE-FAILED). 돌려보내지 않는다', async () => {
+    readTabs.mockRejectedValue(new TabAccessReadError('관리자만 보는 탭 목록을 읽지 못했어요'))
+    await expect(AppLayout({ children: page })).rejects.toBeInstanceOf(TabAccessReadError)
+    expect(shell).not.toHaveBeenCalled()
+    expect(redirect).not.toHaveBeenCalled()
+    read.mockResolvedValue(deskMe())
+    await expect(AppLayout({ children: page })).rejects.toBeInstanceOf(TabAccessReadError)
+    expect(shell).not.toHaveBeenCalled()
+  })
+
+  it('AC-7706.2: generateMetadata는 목록을 읽지 않는다(관리자가 아닌 원장·데스크 모두)', async () => {
+    await generateMetadata()
+    read.mockResolvedValue(deskMe())
+    await generateMetadata()
+    expect(readTabs).not.toHaveBeenCalled()
+  })
+
+  it('AC-7706.2: 레이아웃 소스는 tabAccess.server의 readTabAccessRows와 menu의 adminOnlyTabs를 쓴다(목록을 직접 읽지 않는다)', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/(app)/layout.tsx'), 'utf8')
+    expect(source).toMatch(/import \{[^}]*\breadTabAccessRows\b[^}]*\} from '@\/lib\/auth\/tabAccess\.server'/)
+    expect(source).toMatch(/\badminOnlyTabs\(/)
+    expect(source).not.toMatch(/tab_access|supabase/)
   })
 })

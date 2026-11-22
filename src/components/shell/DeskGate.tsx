@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, type ReactNode } from 'react'
 import { ds } from '@/components/ui/classes'
-import { DESK_HOME, isDeskPath } from './menu'
+import { DESK_HOME, deskHomeOf, isDeskPath, type MenuPath } from './menu'
 
 // 데스크 문지기 (desk-feedback AC-6306.3, design.md '④ 데스크 화면', 시안 docs/mockups/desk-feedback ④).
 // (app) 레이아웃은 지금 주소를 모르고 옆 화면으로 옮길 때 다시 그려지지 않는다 → 이 부품이 주소(usePathname)마다 바로 거른다.
@@ -12,6 +12,9 @@ import { DESK_HOME, isDeskPath } from './menu'
 // - 세 탭(업무일지·수납일지·예약)과 그 아래: 본문 그대로
 // - 그 밖: 본문 대신 막힌 화면. 화면 막기일 뿐이고 자료는 서버 RLS가 주지 않는다(ADR-031)
 // AppShell이 desk일 때만 그린다(원장 화면에는 없다)
+// 관리자만 보는 탭(multi-admin AC-7706.4, design.md 기본값 22): /dashboard는 숨기지 않은 첫 데스크 탭(deskHomeOf — 수납일지 → 업무일지 → 예약)으로 바꾼다.
+// 숨긴 데스크 탭 주소는 TabGate가 /dashboard로 보내고 여기서 그 첫 탭으로 간다. 셋 다 숨기면 /dashboard에서 막힌 화면(끝없이 돌지 않는다).
+// hidden이 없거나 비면 지금 그대로(수납일지)
 
 const FIRST_PATH = '/dashboard'
 
@@ -28,16 +31,24 @@ function DeskBlocked() {
   )
 }
 
-export function DeskGate({ children }: { children: ReactNode }) {
+export function DeskGate({
+  hidden = [],
+  children,
+}: {
+  /** 관리자만 보는 탭(숨긴 탭, multi-admin). 없으면 빈 목록 = 지금 그대로 */
+  hidden?: readonly MenuPath[]
+  children: ReactNode
+}) {
   const pathname = usePathname()
   const router = useRouter()
-  const first = pathname === FIRST_PATH
+  // /dashboard에서 바꿀 곳. 데스크 탭을 셋 다 숨겼으면 null → 아래 막힌 화면(/dashboard는 데스크 주소가 아니다)
+  const home = pathname === FIRST_PATH ? deskHomeOf(hidden) : null
 
   useEffect(() => {
-    if (first) router.replace(DESK_HOME)
-  }, [first, router])
+    if (home !== null) router.replace(home)
+  }, [home, router])
 
-  if (first) return null
+  if (home !== null) return null
   if (!isDeskPath(pathname)) return <DeskBlocked />
   return <>{children}</>
 }
