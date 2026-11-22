@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { KEY_TEXT, LAW_BASIS, MISSING, SOURCE_GROUPS, SOURCES, VIA_TEXT, isLawId, isSourceId, lawOf, sourceOf } from './sources'
 
 // 입지 분석 출처·법 근거·없는 자료 목록(specs/location design.md 2절, requirements '자료가 없는 것', tasks.md TASK-3).
-// 사실(기관·번호·이용 조건·주기)은 조사 1~4(specs/location/research)를 따른다
+// 사실(기관·번호·이용 조건·주기)은 조사 1~5(specs/location/research)를 따른다. 법 근거 쉬운 한 줄·없는 자료 글은 requirements '화면 글 기본값' 그대로다(TASK-50)
 
-// 조사 1~4 표의 기관 · 공공데이터포털 번호. 번호는 url의 /data/<번호>/로 본다.
+// 조사 1~5 표의 기관 · 공공데이터포털 번호. 번호는 url의 /data/<번호>/로 본다.
 // 표준데이터 다섯(역사·사고 다발·경로당·전통시장·학교)은 조사가 기관 이름을 적지 않아 '공공데이터포털'로 적는다
 const PORTAL = {
   'pop-age': ['행정안전부', '15108072'],
@@ -33,6 +33,7 @@ const PORTAL = {
   school: ['공공데이터포털', '15021148'],
   industry: ['한국산업단지공단', '15085886'],
   dongs: ['국가데이터처', '15129688'],
+  welfare: ['한국사회보장정보원', '15062448'],
 } as const
 
 // 공공데이터포털 밖 출처(조사 1·2): 기관 · 받는 길 · 열쇠 · 자료 쪽 주소
@@ -49,7 +50,7 @@ const OTHER = {
 // 파일로 받아 앱에 두는 것(부르기 없음): 정류장·역 좌표(TASK-30 public/location/transit) · 동 경계 · 소득 · 산업단지 고용
 const FILES = ['bus-stops', 'rail-stations', 'income', 'industry', 'dongs']
 
-// design.md 4절 종류 27개 → 그 종류가 다는 출처 id. 바깥 자료 읽는 곳(TASK-12~23)의 Adapter.src가 이 글자다
+// design.md 4절 종류 28개 → 그 종류가 다는 출처 id. 바깥 자료 읽는 곳(TASK-12~23)의 Adapter.src가 이 글자다
 const KIND_SOURCE = {
   'k-address': 'kakao-local',
   'k-point': 'kakao-local',
@@ -78,6 +79,7 @@ const KIND_SOURCE = {
   senior: 'senior',
   market: 'market',
   school: 'school',
+  welfare: 'welfare',
 } as const
 
 // design.md 6절 그날 값(Snapshot)의 숫자 칸마다 쓰는 출처 id. 화면의 숫자 칸(Fact)은 이 출처 id를 단다
@@ -103,6 +105,8 @@ const SNAPSHOT_SOURCES = {
   market: ['market'],
   building: ['building'],
   stores: ['stores'],
+  // 의료급여·차상위(후보 시군구) + 비율의 주민등록 인구(그 판 연월 pop-age, design.md 4절)
+  welfare: ['welfare', 'pop-age'],
 } as const
 
 // 그날 값이 아닌 화면 숫자: 지도·로드뷰(카카오), 붙여 넣은 매물·비용·지금 의원 체외충격파 값(사용자), 링크(토지이음·등기소·네이버)
@@ -239,8 +243,30 @@ describe('AC-7906.1 SOURCES — 출처 목록', () => {
     expect(isSourceId(id)).toBe(true)
   })
 
-  it('AC-7906.1: 종류는 design.md 4절의 27개다', () => {
-    expect(Object.keys(KIND_SOURCE)).toHaveLength(27)
+  it('AC-7906.1: 종류는 design.md 4절의 28개다(의료급여·차상위 welfare 포함)', () => {
+    expect(Object.keys(KIND_SOURCE)).toHaveLength(28)
+  })
+
+  it("AC-7906.1: 의료급여·차상위(welfare)는 조사 5 그대로 — 한국사회보장정보원 · '소득·쓸 힘' · 볼 때 받음(공공데이터포털 열쇠) · 이용 제한 없음 · 해마다 · 시·군·구", () => {
+    const source = sourceOf('welfare')
+    expect(source?.group).toBe('소득·쓸 힘')
+    expect(source?.org).toBe('한국사회보장정보원')
+    // 포털 제목 '한국사회보장정보원_복지사업 시군구별 수급권자 현황'에서 기관 이름을 뺀 것(활용신청 안내 글에 그대로 쓴다)
+    expect(source?.name).toBe('복지사업 시군구별 수급권자 현황')
+    // 파일 자료를 API(api.odcloud.kr)로 주는 곳이라 자료 쪽은 fileData
+    expect(source?.url).toBe('https://www.data.go.kr/data/15062448/fileData.do')
+    expect(source?.via).toBe('api')
+    expect(source?.key).toBe('data')
+    expect(source?.terms).toBe('이용허락범위 제한 없음')
+    expect(source?.cycle).toContain('해마다')
+    expect(source?.unit).toContain('시·군·구')
+    expect(source?.unit).toContain('일반구')
+    // 기초 의료급여는 기초생활보장 의료급여만 센다(다른 법 의료급여는 빠짐) · 동 단위는 없다(조사 5)
+    expect(source?.unit).toContain('기초생활보장 의료급여')
+    expect(source?.unit).toContain('동 단위 자료는 없어요')
+    expect(source?.checked).toBe('직접')
+    // 1종·2종 나눔(15150882)·동 단위 파일은 쓰지 않는다
+    expect(allText(SOURCES)).not.toContain('15150882')
   })
 
   it.each(Object.entries(SNAPSHOT_SOURCES))('AC-7906.1: 그날 값 칸 %s의 숫자는 있는 출처 id(%j)를 가진다', (_field, ids) => {
@@ -277,6 +303,19 @@ describe('AC-7906.1 SOURCES — 출처 목록', () => {
 // 법 근거 아홉 줄: 조사 3 B의 여덟(design.md 2절 목록) + 승인된 시안의 '임대 조건'(상가건물 임대차보호법).
 // id 넷(open·xray·bf·use)과 lease는 시안 LAWS 글자 그대로다(시안이 '#law-<id>'로 건다)
 const LAW_IDS = ['open', 'xray', 'bf', 'use', 'violation', 'bizreg', 'nhis', 'catchment', 'lease']
+
+// requirements '화면 글 기본값' › 법 근거 쉬운 한 줄(글자 그대로)
+const LAW_SUMMARY = {
+  open: '의원은 허가가 아니라 구청(보건소)에 신고해요. 정부24 기준 10일 걸려요. 물리치료실·엑스레이는 의원에 꼭 있어야 하는 것은 아니에요. 평면도와 구조 설명서를 내면 구청이 시설·소방·다른 법의 제한을 확인해요. 의원 시설 기준은 별표 3·4에 있어요.',
+  xray: '쓰기 3일 전까지 신고하고, 장치 검사와 방어시설 검사를 받아요. 벽·천장·바닥에 방어벽을 두고, 2차 방어벽은 2m 이상, 조작하는 방은 1.5㎡ 이상에 검사대와 2m 넘게 떨어져야 해요.',
+  bf: '의원은 넓이와 상관없이 대상이에요. 500㎡ 이상이면 접근로·전용 주차·턱 없애기·출입문·복도·계단이나 엘리베이터·장애인 화장실이 꼭 있어야 하고, 500㎡ 아래면 접근로·턱 없애기·출입문만 꼭 있어야 해요. 기존 건물에서 100㎡ 아래로 용도를 바꿔 들어가면 대상이 아니에요.',
+  use: '의원은 넓이와 상관없이 제1종 근린생활시설이에요.',
+  violation: '구청은 위반 건축물에 다른 법의 허가·신고를 해 주지 말라고 요청할 수 있고, 요청받은 곳은 따라야 해요. 그래서 개설 신고가 막힐 수 있어요. 위반 건축물인지 알려 주는 공개 자료는 없어서, 건축물대장을 떼어 확인하세요.',
+  bizreg: '사업을 시작하고 20일 안에 해요. 시작하기 전에도 할 수 있어요.',
+  nhis: '개설 신고를 한 뒤 요양기관 현황을 신고해요. 차례는 조문에서 끌어낸 것이에요.',
+  catchment: "정형외과 자리는 낮에 오가는 사람보다 사는 사람과 더 관련이 있었어요. 환자가 오는 거리를 뒷받침하는 연구는 찾지 못해 범위는 직접 정해요(300m~3km). 그래서 기본 무게에서 '사는 사람·수요'를 '교통·흐름'보다 무겁게 둬요.",
+  lease: '계약 기간(갱신)과 월세 올리는 비율에 한도가 있어요. 내 계약에 맞는지는 조문을 열어 확인해요.',
+}
 
 // 줄마다 법 이름·조항에 꼭 있어야 할 글자(조사 3 B)
 const LAW_TEXT = {
@@ -319,7 +358,11 @@ describe('AC-7906.1 LAW_BASIS — 법 근거', () => {
     expect(lawOf('nhis')?.url).toBe('https://www.law.go.kr/법령/국민건강보험법/제43조')
   })
 
-  it('AC-7906.1: 조사 3 B의 값(의원은 신고 · 3일 전 · 500㎡ · 제1종 근린생활시설 · 막힐 수 있음 · 20일 · 사는 인구)이 요약에 있다', () => {
+  it("AC-7906.1: 쉬운 한 줄(summary) 아홉은 requirements '화면 글 기본값' 글자 그대로다", () => {
+    expect(Object.fromEntries(LAW_BASIS.map((l) => [l.id, l.summary]))).toEqual(LAW_SUMMARY)
+  })
+
+  it('AC-7906.1: 조사 3 B의 값(의원은 신고 · 3일 전 · 500㎡ · 제1종 근린생활시설 · 막힐 수 있음 · 20일 · 사는 사람)이 요약에 있다', () => {
     expect(lawOf('open')?.summary).toContain('신고')
     expect(lawOf('open')?.summary).toContain('10일')
     expect(lawOf('xray')?.summary).toContain('3일 전')
@@ -329,7 +372,7 @@ describe('AC-7906.1 LAW_BASIS — 법 근거', () => {
     expect(lawOf('use')?.summary).toContain('제1종 근린생활시설')
     expect(lawOf('violation')?.summary).toContain('막힐 수 있어요')
     expect(lawOf('bizreg')?.summary).toContain('20일')
-    expect(lawOf('catchment')?.summary).toContain('사는 인구')
+    expect(lawOf('catchment')?.summary).toContain('사는 사람')
   })
 
   it("AC-7906.1: 확인은 조사 3 B대로 '직접'이고, 조사 밖에서 더한 임대 조건(lease)만 '확인 전'이다", () => {
@@ -344,51 +387,53 @@ describe('AC-7906.1 LAW_BASIS — 법 근거', () => {
   })
 })
 
-// requirements.md '자료가 없는 것' 열한 줄(차례 그대로)
-const MISSING_IDS = [
-  'dong-income',
-  'violation',
-  'flow-gaps',
-  'senior-sports',
-  'subway-exit',
-  'industry-area',
-  'therapists',
-  'manual-therapy',
-  'naver',
-  'no-api',
-  'dong-accidents',
-]
+// requirements '화면 글 기본값' › 없는 자료 표 열둘(차례 · 무엇 · 대신, 글자 그대로). id는 TASK-3이 정했고 열둘째(의료급여·차상위)는 TASK-50이 더한다
+const MISSING_ROWS = [
+  ['dong-income', '동 단위 소득', "국세청 시·군·구 평균(주소지 기준, 귀속 연도)을 보이고 '동 단위 자료가 없어요'라고 적어요"],
+  ['violation', '위반 건축물', '공개 자료가 없어요. 건축물대장을 떼어 확인하라는 안내와 직접 고르는 칸(있음·없음·모름)만 둬요'],
+  [
+    'flow-gaps',
+    '사람 흐름(승하차 인원)',
+    "버스정보시스템이 없는 군 지역은 정류장 위치가 없어 '이 지역은 자료 없음' · KTX·일반 기차역은 없어요 · 현금으로 타거나 내릴 때 카드를 안 찍는 곳은 적게 잡혀요",
+  ],
+  ['senior-sports', '노인복지관 전국 목록 · 공공 체육 시설 위치', '경로당(표준데이터)과 체력단련장(행정안전부)으로 대신해요'],
+  ['subway-exit', '지하철 출구 위치', '역 이름과 역까지 거리만 보여요'],
+  ['industry-area', '산업단지 경계', '공공누리 4유형이라 쓰지 않아요. 이름·위치(볼 때 카카오 찾기)만 봐요 · 고용 인원은 시군구 합이에요'],
+  ['therapists', '물리치료사 수', "의원이 올리지 않으면 '자료 없음'이에요"],
+  ['manual-therapy', '도수치료 값', '2026년 7월부터 관리급여라 공개 자료에 값이 있을 때만 보여요. 견주기는 체외충격파 중심이에요'],
+  ['naver', '네이버 부동산', '링크만 걸어요'],
+  [
+    'no-api',
+    '1인 세대 수 · 2022년 10월 전 나이대 · 재개발 위치(서울 밖) · 직장인 수',
+    '세대 수만 · 4년 추세(2022년 10월부터) · 토지이음 링크 · 사람 흐름(승하차)으로 대신해요',
+  ],
+  ['dong-accidents', '동 단위 교통사고 건수', '교통사고 다발 지점 수와 그 지점 사고 수로 대신해요'],
+  [
+    'dong-welfare',
+    '동 단위 의료급여·차상위 인원 · 의료급여 1종·2종',
+    '시군구 값만 보여요(동 단위 파일은 서울·일부 시군뿐) · 1종·2종 나눔은 2024년 한 번뿐이고 빠진 지역이 있어 넣지 않아요',
+  ],
+] as const
 
 describe('AC-7906.1 MISSING — 자료가 없는 것', () => {
-  it("AC-7906.1: requirements '자료가 없는 것' 열한 줄이 차례대로 있고 줄마다 무엇이·대신 무엇을 보이나가 있다", () => {
-    expect(MISSING.map((m) => m.id)).toEqual(MISSING_IDS)
+  it("AC-7906.1: requirements '없는 자료 표' 열두 줄이 차례대로 있고 줄마다 무엇이·대신 무엇을 보이나가 있다", () => {
+    expect(MISSING.map((m) => m.id)).toEqual(MISSING_ROWS.map(([id]) => id))
     for (const item of MISSING) {
       expect(item.what.trim(), item.id).not.toBe('')
       expect(item.instead.trim(), item.id).not.toBe('')
     }
   })
 
-  it('AC-7906.1: 줄마다 requirements의 대신 보이는 것이 그대로 적혀 있다', () => {
-    const of = (id: string) => MISSING.find((m) => m.id === id)
-    expect(of('dong-income')?.instead).toContain('국세청 시·군·구 평균(주소지 기준, 귀속 연도)')
-    expect(of('dong-income')?.instead).toContain('동 단위 자료가 없어요')
-    expect(of('violation')?.instead).toContain('건축물대장을 떼어 직접 확인')
-    expect(of('violation')?.instead).toContain('있음·없음·모름')
-    expect(of('flow-gaps')?.instead).toContain('이 지역은 자료 없음')
-    expect(of('flow-gaps')?.instead).toContain('KTX·일반 기차역')
-    expect(of('flow-gaps')?.instead).toContain('적게 잡혀요')
-    expect(of('senior-sports')?.instead).toContain('경로당')
-    expect(of('senior-sports')?.instead).toContain('체력단련장업')
-    expect(of('subway-exit')?.instead).toContain('역까지 거리')
-    expect(of('industry-area')?.instead).toContain('공공누리 제4유형')
-    expect(of('industry-area')?.instead).toContain('시·군·구 합')
-    expect(of('therapists')?.instead).toContain('자료 없음')
-    expect(of('manual-therapy')?.instead).toContain('관리급여')
-    expect(of('manual-therapy')?.instead).toContain('체외충격파')
-    expect(of('naver')?.instead).toContain('링크만')
-    expect(of('no-api')?.what).toContain('1인 세대 수')
-    expect(of('no-api')?.instead).toContain('2022년 10월부터')
-    expect(of('no-api')?.instead).toContain('토지이음 링크')
-    expect(of('dong-accidents')?.instead).toContain('다발 지점 수')
+  it.each(MISSING_ROWS)("AC-7906.1: %s 줄의 무엇·대신은 '화면 글 기본값' 글자 그대로다", (id, what, instead) => {
+    const item = MISSING.find((m) => m.id === id)
+    expect(item?.what).toBe(what)
+    expect(item?.instead).toBe(instead)
+  })
+
+  it('AC-7906.1: 열둘째 줄(의료급여·차상위)은 시군구 값만 보이고 1종·2종 나눔은 넣지 않는다고 적는다(조사 5)', () => {
+    const item = MISSING[MISSING.length - 1]
+    expect(item.id).toBe('dong-welfare')
+    expect(item.instead).toContain('시군구 값만')
+    expect(item.instead).toContain('넣지 않아요')
   })
 })
