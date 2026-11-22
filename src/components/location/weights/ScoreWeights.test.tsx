@@ -3,10 +3,11 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AGE_BANDS, DEFAULT_SCORE_RULE, RULE_TEXT, type ScoreRule } from '@/lib/location/score'
+import { AGE_BANDS, DEFAULT_SCORE_RULE, RULE_TEXT, SCORE_GROUPS, type ScoreRule } from '@/lib/location/score'
 import { SAVE_DELAY_MS, ScoreWeights, type ScoreWeightsProps } from './ScoreWeights'
+import { SUB_TEXT } from './text'
 
-// 점수 무게 판 (spec location REQ-7919 AC-7919.1·AC-7919.4·AC-7919.6, REQ-7907 AC-7907.2, design.md 8절, 시안 ?s=weights 승인 2).
+// 점수 무게 판 (spec location REQ-7919 AC-7919.1·AC-7919.4·AC-7919.6, REQ-7907 AC-7907.2, REQ-7921 AC-7921.1·AC-7921.7, design.md 8·18절, 시안 ?s=weights 승인 2·3).
 // 설정은 props(rule), 바뀐 설정은 onChange(바로), 저장은 onSave(마지막으로 고친 뒤 SAVE_DELAY_MS). 처음 값은 design.md 8절 표를 손으로 옮겨 적어 견준다
 
 const fresh = (): ScoreRule => structuredClone(DEFAULT_SCORE_RULE) as ScoreRule
@@ -75,6 +76,7 @@ const TABLE: readonly (readonly [string, string, number, string])[] = [
   ['자리', '이웃 약국(30m 안)', 10, '[1]곳이면 100점'],
   ['자리', '간판 보임', 10, "고른 값이 '보여요'이면 100점"],
   ['자리', '위반 건축물', 10, "고른 값이 '없음'이면 100점"],
+  ['자리', '같은 건물·옆 건물 의원 수', 0, '[3]곳이면 100점'],
   ['비용', '평당 월세', 35, '[50,000]원 이하면 100점 · [200,000]원 이상이면 0점'],
   ['비용', '보증금', 15, '[3,000]만 원 이하면 100점 · [20,000]만 원 이상이면 0점'],
   ['비용', '권리금', 20, '[0]만 원 이하면 100점 · [10,000]만 원 이상이면 0점'],
@@ -452,5 +454,108 @@ describe('AC-7919.6: 의료급여·차상위 비율(p-welfare) 방향 고르기'
     openGroup('사는 사람·수요')
     expect((slider('의료급여·차상위 비율') as HTMLInputElement).value).toBe('0')
     expect(ruleLine('의료급여·차상위 비율')).toBe('[5]%면 100점')
+  })
+})
+
+describe('AC-7921.7: 자리 [세부] 맨 아래 같은 건물·옆 건물 의원 수(s-clinics)', () => {
+  it('AC-7921.7: 세부 이름은 score.ts label 한 곳에서 오고 requirements 화면 글 기본값(표 TABLE)과 같다', () => {
+    expect(SCORE_GROUPS.flatMap((g) => g.subs.map((s) => s.label))).toEqual(TABLE.map(([, name]) => name))
+  })
+
+  it('AC-7921.7: 화면 글 표(SUB_TEXT)는 세부 항목 모두를 갖는다(빠지면 판이 그려지지 않는다)', () => {
+    expect(Object.keys(SUB_TEXT).sort()).toEqual(SCORE_GROUPS.flatMap((g) => g.subs.map((s) => s.id)).sort())
+  })
+
+  it('AC-7921.7: 자리 세부 판 맨 아래 줄이 "같은 건물·옆 건물 의원 수"이고 처음 무게 0·"[3]곳이면 100점"·후보에서만 칩 없음', () => {
+    setup()
+    openGroup('자리')
+    const panel = document.getElementById(screen.getByRole('button', { name: '자리 세부' }).getAttribute('aria-controls') ?? '') as HTMLElement
+    const names = within(panel)
+      .getAllByRole('slider')
+      .map((s) => s.getAttribute('id'))
+      .map((id) => panel.querySelector(`label[for="${id}"]`)?.textContent)
+    expect(names.at(-1)).toBe('같은 건물·옆 건물 의원 수')
+    expect((slider('같은 건물·옆 건물 의원 수') as HTMLInputElement).value).toBe('0')
+    expect(ruleLine('같은 건물·옆 건물 의원 수')).toBe('[3]곳이면 100점')
+    expect(within(row('같은 건물·옆 건물 의원 수')).queryByText('후보에서만')).toBeNull()
+    expect(screen.getByRole('textbox', { name: '같은 건물·옆 건물 의원 수 만점 기준' })).toBeTruthy()
+  })
+
+  it('AC-7921.7: 무게·기준을 바꾸면 s-clinics만 바뀐 설정이 저장된다', () => {
+    const { onSave } = setup()
+    openGroup('자리')
+    move('같은 건물·옆 건물 의원 수', 15)
+    type('같은 건물·옆 건물 의원 수 만점 기준', '5')
+    settle()
+    expect(onSave).toHaveBeenCalledTimes(1)
+    const want = fresh()
+    want.items['s-clinics'] = { w: 15, full: 5 }
+    expect(onSave).toHaveBeenCalledWith(want)
+    expect(screen.getByText(/^세부 무게 합계/).textContent).toBe('세부 무게 합계 115 · 비율로 계산해요')
+  })
+
+  it('AC-7921.7: 예전 설정에 s-clinics가 없으면 처음 값(무게 0·3곳)으로 채워 그린다', () => {
+    const old = fresh() as unknown as { items: Record<string, unknown> }
+    delete old.items['s-clinics']
+    setup({ rule: old as unknown as ScoreRule })
+    openGroup('자리')
+    expect((slider('같은 건물·옆 건물 의원 수') as HTMLInputElement).value).toBe('0')
+    expect(ruleLine('같은 건물·옆 건물 의원 수')).toBe('[3]곳이면 100점')
+  })
+})
+
+describe('AC-7921.1: 점수 무게 판의 [과목 고르기] — 판 머리 · 경쟁 [세부] 맨 위 줄', () => {
+  const pickBtns = () => screen.queryAllByRole('button', { name: '과목 고르기' })
+
+  it('AC-7921.1: onPickDepts를 주면 판 머리 [기본 무게로] 앞에 [과목 고르기]가 있고 누르면 onPickDepts를 부른다', () => {
+    const onPickDepts = vi.fn()
+    setup({ onPickDepts, rivalShort: '정형외과·신경외과·마취통증·재활' })
+    const head = screen.getByRole('heading', { name: '점수 무게' }).parentElement as HTMLElement
+    const btns = within(head).getAllByRole('button')
+    expect(btns.map((b) => b.textContent)).toEqual(['과목 고르기', '기본 무게로'])
+    expect(btns[0].getAttribute('aria-haspopup')).toBe('dialog')
+    fireEvent.click(btns[0])
+    expect(onPickDepts).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-7921.1: 경쟁 [세부] 맨 위 줄은 `경쟁 의원으로 보는 과목 {짧은 이름들}` + [과목 고르기]다', () => {
+    const onPickDepts = vi.fn()
+    setup({ onPickDepts, rivalShort: '정형외과·신경외과·마취통증·재활' })
+    openGroup('경쟁')
+    const panel = document.getElementById(screen.getByRole('button', { name: '경쟁 세부' }).getAttribute('aria-controls') ?? '') as HTMLElement
+    const first = panel.firstElementChild as HTMLElement
+    expect(first.textContent).toBe('경쟁 의원으로 보는 과목 정형외과·신경외과·마취통증·재활과목 고르기')
+    const btn = within(first).getByRole('button', { name: '과목 고르기' })
+    expect(btn.getAttribute('aria-haspopup')).toBe('dialog')
+    fireEvent.click(btn)
+    expect(onPickDepts).toHaveBeenCalledTimes(1)
+    expect(pickBtns()).toHaveLength(2)
+  })
+
+  it('AC-7921.1: 경쟁 과목 글이 비면 "없음"이다(시안)', () => {
+    setup({ onPickDepts: vi.fn(), rivalShort: '' })
+    openGroup('경쟁')
+    expect(screen.getByText((_, el) => el?.tagName === 'P' && (el.textContent ?? '').startsWith('경쟁 의원으로 보는 과목')).textContent).toBe(
+      '경쟁 의원으로 보는 과목 없음과목 고르기',
+    )
+  })
+
+  it('AC-7921.1: 그 줄은 경쟁 세부 판에만 있다', () => {
+    setup({ onPickDepts: vi.fn(), rivalShort: '정형외과' })
+    for (const g of GROUP_NAMES) openGroup(g)
+    expect(screen.getAllByText('경쟁 의원으로 보는 과목', { exact: false })).toHaveLength(1)
+    expect(pickBtns()).toHaveLength(2)
+  })
+
+  it('AC-7921.1: onPickDepts가 없으면 [과목 고르기] 단추가 어디에도 없다(줄 글은 rivalShort가 있을 때만)', () => {
+    setup()
+    for (const g of GROUP_NAMES) openGroup(g)
+    expect(pickBtns()).toHaveLength(0)
+    expect(screen.queryByText('경쟁 의원으로 보는 과목', { exact: false })).toBeNull()
+    cleanup()
+    setup({ rivalShort: '재활' })
+    openGroup('경쟁')
+    expect(pickBtns()).toHaveLength(0)
+    expect(screen.getByText('경쟁 의원으로 보는 과목', { exact: false }).textContent).toBe('경쟁 의원으로 보는 과목 재활')
   })
 })
