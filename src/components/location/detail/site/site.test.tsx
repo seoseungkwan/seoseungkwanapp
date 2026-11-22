@@ -249,6 +249,17 @@ describe('AC-7909.4: 건물 서류', () => {
     expect(law.getAttribute('href')).toBe('/location?tab=sources#law-violation')
   })
 
+  it('AC-7906.2: 건물 서류의 법 근거 링크는 밑줄이 없고(시안) 마우스를 올리면 밑줄', () => {
+    render(docs())
+    const links = screen.getAllByRole('link', { name: '법 근거' })
+    expect(links.length).toBeGreaterThan(0)
+    for (const a of links) {
+      const classes = a.className.split(/\s+/)
+      expect(classes).toContain('no-underline')
+      expect(classes).toContain('hover:underline')
+    }
+  })
+
   it('AC-7909.4: 위반 건축물을 고르면 저장 콜백(yes·no·unknown), 고른 값을 다시 누르면 부르지 않는다', () => {
     const onViolation = vi.fn()
     render(docs({ violation: 'no', onViolation }))
@@ -313,6 +324,27 @@ describe('AC-7909.4: 빈 칸 짐작', () => {
     render(vac({ stores: { ok: false, why: 'failed', src: 'stores', prev } }))
     expect(screen.getByText('지난 값 · 기준 2026년 9월 30일')).toBeTruthy()
     expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === '4개 층 가운데 3개 층이 빈 것 같아요.')).toBeTruthy()
+  })
+
+  it('AC-7917.2: 건축물대장을 지난 값으로 세면 그 자리에 못 받은 글([다시 받기])과 `지난 값 · 기준 {날짜}` — 짐작 표는 그대로', () => {
+    const onRetry = vi.fn()
+    render(vac({ building: { ok: false, why: 'failed', src: 'building', prev: { v: BLD, asOf: '2026-10-01' } }, onRetry }))
+    expect(screen.getByRole('table', { name: '층마다 가게' })).toBeTruthy()
+    expect(screen.getByText('지금 받지 못했어요.')).toBeTruthy()
+    expect(screen.getByText('지난 값 · 기준 2026년 10월 1일')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '다시 받기' }))
+    expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-7917.2: 건축물대장·상가정보 둘 다 지난 값이면 줄도 둘(날짜마다)', () => {
+    render(
+      vac({
+        building: { ok: false, why: 'failed', src: 'building', prev: { v: BLD, asOf: '2026-10-01' } },
+        stores: { ok: false, why: 'failed', src: 'stores', prev: { v: [{ floor: '3', count: 1 }], asOf: '2026-09-30' } },
+      }),
+    )
+    expect(screen.getByText('지난 값 · 기준 2026년 10월 1일')).toBeTruthy()
+    expect(screen.getByText('지난 값 · 기준 2026년 9월 30일')).toBeTruthy()
   })
 })
 

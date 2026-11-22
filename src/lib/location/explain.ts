@@ -141,7 +141,7 @@ const SUB_TEXT: Readonly<Record<string, SubText>> = {
   'k-premium': { unit: '', money: 'man', value: (v) => manText(Math.floor(v)) },
   'k-vsAvg': {
     unit: '%',
-    value: (v) => (Math.abs(v) < 1 ? '저장한 매물 평균과 같아요' : `평균보다 ${commaText(Math.abs(Math.trunc(v)))}% ${v > 0 ? '비싸요' : '싸요'}`),
+    value: (v) => (Math.abs(v) < 1 ? '저장한 매물 평균과 같아요' : `저장한 매물 평균보다 ${commaText(Math.abs(Math.trunc(v)))}% ${v > 0 ? '비싸요' : '싸요'}`),
   },
 }
 

@@ -35,4 +35,8 @@ describe('AC-7913.1·AC-7913.2: 개원 준비 부품 소스', () => {
       /\bfetch\s*\(|supabase|localStorage|sessionStorage|indexedDB|@\/lib\/storage|\.\.\/\.\.\/clients|XMLHttpRequest|process\.env|new Date\(|Date\.now|todayInKorea/
     expect(FILES.filter((file) => banned.test(read(file)))).toEqual([])
   })
+
+  it("AC-7906.2: /location 안 링크(출처 줄·법 근거·'근거와 출처')는 평범한 <a href> — next/link를 쓰지 않는다(이 화면은 주소 tab을 처음에만 읽는다)", () => {
+    expect(FILES.filter((file) => /['"]next\/link['"]/.test(read(file)))).toEqual([])
+  })
 })

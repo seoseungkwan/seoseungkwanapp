@@ -18,7 +18,7 @@ import { DownloadIcon, LeftIcon, PrintIcon } from './icons'
 import { buildSheet, HELP, NO_SCORE, type Basis, type SheetInput, type SheetItem, type SheetRow } from './sheet'
 
 export type OnePageReportProps = SheetInput & {
-  /** [후보로 돌아가기] */
+  /** [후보 {글자}로 돌아가기](글자가 없으면 [후보로 돌아가기]) */
   onBack: () => void
 }
 
@@ -79,7 +79,7 @@ export function OnePageReport({ onBack, ...input }: OnePageReportProps) {
       <div role="group" aria-label="보고서 도구" className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 print:hidden">
         <button type="button" onClick={onBack} className={BUTTON}>
           <LeftIcon />
-          후보로 돌아가기
+          {input.letter ? `후보 ${input.letter}로 돌아가기` : '후보로 돌아가기'}
         </button>
         <div className="flex flex-wrap items-center gap-2">
           <span className={ds.help}>{HELP}</span>

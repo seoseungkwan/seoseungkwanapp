@@ -62,5 +62,6 @@ export const look = {
   check: `size-4 shrink-0 cursor-pointer accent-accent ${ds.focusRing}`,
   note: 'flex flex-wrap items-center gap-x-2 gap-y-1',
   chip: ds.chip.warning,
-  link: `rounded-control text-accent underline-offset-3 hover:underline ${ds.focusRing}`,
+  // 법 근거 링크(시안 .tbtn): 밑줄 없음, 올리면 밑줄. 평범한 <a>라 브라우저 기본 밑줄을 지운다
+  link: `rounded-control text-accent no-underline underline-offset-3 hover:underline ${ds.focusRing}`,
 } as const

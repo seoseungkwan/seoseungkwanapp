@@ -12,6 +12,7 @@
 //   값이 없는 세부 항목·항목은 빼고 남은 무게로 다시 나눈다. 다 없거나 무게 합이 0이면 null('값 없음'·'점수 없음')
 
 import type { ScoreFacts, YesNo } from '@/types/location'
+import { vsAverage as listingVsAverage } from './listings'
 
 // 점수에 쓰는 값(ScoreFacts)과 고르는 값(YesNo)은 types/location.ts 한 곳에 둔다(예전 import 길을 위해 여기서도 내보낸다)
 export type { ScoreFacts, YesNo }
@@ -104,13 +105,14 @@ export function floorNumber(label: string | null | undefined): number | null {
   return n
 }
 
+/** 평당 월세가 저장한 매물 평균(버림)보다 몇 % 다른가 — 매물 화면(listings.ts vsAverage)과 같은 0 쪽 버림 정수(점수 풀이 글과 점수가 어긋나지 않게) */
 function vsAverage(f: ScoreFacts): number | null {
   const mine = num(f.rentPerPy)
   const all = (f.savedRentsPerPy ?? []).map(num).filter((v): v is number => v !== null)
   if (mine === null || all.length < 2) return null
   const avg = Math.floor(all.reduce((a, b) => a + b, 0) / all.length)
   if (avg <= 0) return null
-  return ((mine - avg) * 100) / avg
+  return listingVsAverage(mine, avg)?.pct ?? null
 }
 
 const pick = (v: YesNo | null | undefined, good: 'yes' | 'no'): number | null => (v === good ? 1 : v === 'yes' || v === 'no' ? 0 : null)

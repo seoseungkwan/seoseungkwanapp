@@ -31,7 +31,7 @@ export function Vacancy({ building, stores, floorLabel, onRetry, onOpenSource, h
   return (
     <Section id="vac" title="빈 칸 짐작" aside="층마다 들어선 가게로 빈 층을 짐작해요" head={head} howCtx={howCtx} howOpen={howOpen} onHow={onHow}>
       <div className="grid max-w-180 min-w-0 gap-1.5">
-        {!building.ok && !bld ? <WhyLine why={building.why} src={building.src} onRetry={onRetry} place="value" /> : null}
+        {!building.ok ? <WhyLine why={building.why} src={building.src} prevAsOf={bld?.asOf} onRetry={onRetry} place={bld ? 'line' : 'value'} /> : null}
         {!stores.ok ? <WhyLine why={stores.why} src={stores.src} prevAsOf={got?.asOf} onRetry={onRetry} place={got ? 'line' : 'value'} /> : null}
         {view && view.rows.length === 0 ? <p className="text-body text-muted">층마다 나눈 건물 자료가 없어요.</p> : null}
         {view && view.rows.length > 0 ? (

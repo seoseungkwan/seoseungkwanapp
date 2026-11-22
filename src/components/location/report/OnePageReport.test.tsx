@@ -773,14 +773,22 @@ describe('AC-7914.2: [인쇄]·[PDF로 저장]은 브라우저 인쇄 창만', (
     expect(printSpy).not.toHaveBeenCalled()
   })
 
-  it("AC-7920.5: 도구 줄 도움말이 `A4 한 장 + 둘째 장 '이렇게 분석했어요' · 인쇄하면 앱 틀은 빠지고 종이만 나와요`이고 [후보로 돌아가기]를 누르면 돌아가기 콜백", () => {
+  it("AC-7920.5: 도구 줄 도움말이 `A4 한 장 + 둘째 장 '이렇게 분석했어요' · 인쇄하면 앱 틀은 빠지고 종이만 나와요`이고 [후보 {글자}로 돌아가기]를 누르면 돌아가기 콜백", () => {
     const onBack = vi.fn()
     render(<OnePageReport {...baseProps({ onBack })} />)
     const tools = screen.getByRole('group', { name: '보고서 도구' })
     expect(text(tools)).toContain("A4 한 장 + 둘째 장 '이렇게 분석했어요' · 인쇄하면 앱 틀은 빠지고 종이만 나와요")
-    fireEvent.click(within(tools).getByRole('button', { name: '후보로 돌아가기' }))
+    fireEvent.click(within(tools).getByRole('button', { name: '후보 A로 돌아가기' }))
     expect(onBack).toHaveBeenCalledTimes(1)
     expect(printSpy).not.toHaveBeenCalled()
+  })
+
+  it('AC-7914.2: 돌아가기 단추는 시안대로 `후보 {글자}로 돌아가기`, 후보 글자가 없으면 `후보로 돌아가기`', () => {
+    const { unmount } = render(<OnePageReport {...baseProps({ letter: 'B' })} />)
+    expect(within(screen.getByRole('group', { name: '보고서 도구' })).getAllByRole('button')[0]!.textContent).toBe('후보 B로 돌아가기')
+    unmount()
+    render(<OnePageReport {...baseProps({ letter: '' })} />)
+    expect(within(screen.getByRole('group', { name: '보고서 도구' })).getAllByRole('button')[0]!.textContent).toBe('후보로 돌아가기')
   })
 })
 
@@ -817,9 +825,9 @@ describe('AC-7914.2: 인쇄에서 앱 틀은 빠지고 종이 두 장만 A4로',
     expect(text(style)).toMatch(/@media print\s*\{\s*@page\s*\{\s*size:\s*A4 portrait;\s*margin:\s*12mm\s*\}\s*\}/)
   })
 
-  it('AC-7914.2: 화면에 보고서 저장·서버로 보내기 단추가 없다([후보로 돌아가기]·[PDF로 저장]·[인쇄] 셋뿐)', () => {
+  it('AC-7914.2: 화면에 보고서 저장·서버로 보내기 단추가 없다([후보 {글자}로 돌아가기]·[PDF로 저장]·[인쇄] 셋뿐)', () => {
     render(<OnePageReport {...baseProps()} />)
-    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['후보로 돌아가기', 'PDF로 저장', '인쇄'])
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['후보 A로 돌아가기', 'PDF로 저장', '인쇄'])
     expect(screen.queryAllByRole('link')).toEqual([])
   })
 })

@@ -441,6 +441,24 @@ describe('AC-7913.2: 개원 일정표 — 개원일에서 거꾸로 센 할 일�
     expect(screen.getAllByRole('link', { name: '법 근거' })).toHaveLength(3)
   })
 
+  it("AC-7906.2: 일정표 법 근거 링크는 밑줄이 없고(시안 .tbtn) 마우스를 올리면 밑줄 — 그냥 눌러도 막지 않는 평범한 <a>('근거와 출처'로 주소가 바뀜)", () => {
+    schedule()
+    for (const a of screen.getAllByRole('link', { name: '법 근거' })) {
+      const classes = a.className.split(/\s+/)
+      expect(classes).toContain('no-underline')
+      expect(classes).toContain('hover:underline')
+    }
+    let prevented: boolean | null = null
+    const look = (e: Event) => {
+      prevented = e.defaultPrevented
+      e.preventDefault()
+    }
+    document.addEventListener('click', look)
+    fireEvent.click(within(rowOf('의원 개설 신고(보건소)')).getByRole('link', { name: '법 근거' }))
+    document.removeEventListener('click', look)
+    expect(prevented).toBe(false)
+  })
+
   it('AC-7913.2: 지난 할 일 가운데 안 한 것에 `날짜가 지났어요`가 붙는다', () => {
     schedule({ openOn: '2027-01-01', done: ['contract'] })
     expect(screen.getByText('오늘(2026년 11월 22일)부터 40일 남았어요.')).toBeTruthy()
