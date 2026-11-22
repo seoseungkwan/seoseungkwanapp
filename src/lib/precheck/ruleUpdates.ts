@@ -386,16 +386,32 @@ function withinBounds(n: number, b: unknown): boolean {
 }
 
 /**
- * 숫자 뜻(AC-7802.3 (6)(c)) 걸릴 수 없는 횟수: count_window 규칙에서 count_unit이 visit_day로 시작하면 windowsOf(past.ts) 기간마다
- * d = rolling_days의 days · calendar_week의 7을 구해 그 기간 at(있는 것만)이 모두 d 이하인가. 다른 기간 종류는 보지 않는다
+ * 숫자 뜻(AC-7802.3 (6)(c)): count_window 규칙의 windowsOf(past.ts) 기간마다(기간이 없으면 엔진처럼 params.window).
+ * 날짜 수를 세는 단위(count_unit이 비었거나 qty·cycle·episode로 시작하지 않음)이고 기간이 rolling_days(d = days)·calendar_week(d = 7)이면
+ * 그 기간 at(있는 것만)이 모두 d 이하(걸릴 수 없는 횟수 막기). 그 밖이면 걸릴 수 있는지 앱이 셀 수 없으므로 그 기간의 at과 window 안 숫자가 base와 같아야 한다
  */
-function reachable(rule: RuleDef): boolean {
-  const unit = rule.params.count_unit
-  if (rule.type !== 'count_window' || !isText(unit) || !unit.startsWith('visit_day')) return true
-  return windowsOf(rule.params as RuleParams).every(({ window, thresholds }) => {
-    const d = window?.type === 'rolling_days' ? window.days : window?.type === 'calendar_week' ? 7 : undefined
-    return typeof d !== 'number' || thresholds.every((t) => typeof t.at !== 'number' || t.at <= d)
+function windowsOk(rule: RuleDef, base: RuleDef): boolean {
+  if (rule.type !== 'count_window') return true
+  const p = rule.params as RuleParams
+  const dates = !/^(qty|cycle|episode)/.test(String(p.count_unit || ''))
+  const was = windowsOf(base.params as RuleParams)
+  return windowsOf(p).every(({ window, thresholds }, i) => {
+    const win = window || p.window
+    const d = win?.type === 'calendar_week' ? 7 : win?.type === 'rolling_days' ? win.days : undefined
+    if (dates && typeof d === 'number') return thresholds.every((t) => typeof t?.at !== 'number' || t.at <= d)
+    const old = was[i]
+    if (!old) return false
+    const ats = (list: readonly { at?: number }[]) => stable(list.map((t) => t?.at))
+    return ats(thresholds) === ats(old.thresholds) && stable(numbersIn(win)) === stable(numbersIn(old.window || base.params.window))
   })
+}
+
+/** 값 안 숫자 잎 모두: [열쇠·번호 길, 숫자] */
+function numbersIn(node: unknown, path: (string | number)[] = []): [(string | number)[], number][] {
+  if (typeof node === 'number') return [[path, node]]
+  if (Array.isArray(node)) return node.flatMap((x, i) => numbersIn(x, [...path, i]))
+  if (isRecord(node)) return Object.entries(node).flatMap(([key, value]) => numbersIn(value, [...path, key]))
+  return []
 }
 
 /** 열쇠 이름이 grade로 끝나는 칸(깊이 상관없음)의 값(JSON)을 정렬한 목록 */
@@ -448,7 +464,7 @@ function judge(file: RulesFile, base: RuleDef, current: RuleDef, next: unknown):
   const before = new Set([...scan(file, base.params).names, ...scan(file, current.params).names])
   if ([...before].some((name) => !seen.names.has(name))) return 'removed'
   if (!guardedOk(next.params, base.params, current.params) || !boolsOk(next.params, base.params, current.params)) return 'removed'
-  if (!sameShape(next.params, current.params, base.params, { waiver: false, frozen: next.type === 'multiplier_cap' }) || !reachable(next)) return 'removed'
+  if (!sameShape(next.params, current.params, base.params, { waiver: false, frozen: next.type === 'multiplier_cap' }) || !windowsOk(next, base)) return 'removed'
   if (stable(gradesOf(next.params)) !== stable(gradesOf(base.params))) return 'grade'
   if (ruleStatusIn(file, next) !== ruleStatusIn(file, base)) return 'status'
   const shown = (rule: RuleDef) => stable({ title: rule.title, message: rule.message, params: rule.params })

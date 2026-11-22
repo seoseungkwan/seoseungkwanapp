@@ -592,6 +592,33 @@ describe('AC-7802.3 checkRuleChange — 뺀 것(removed)·등급(grade)', () => 
     expect(check(at('PH-17', 8))).toBe('removed')
     expect(check(at('PH-17', 7))).toBe('ok')
   })
+
+  it("AC-7802.3 (6)(c): 날짜 수를 세지 않는 단위(qty·cycle·episode)나 rolling_days·calendar_week 밖 기간은 그 기간의 at·window 숫자를 바꾸면 'removed'다", () => {
+    const at0 = (id: string, n: number, edit: (p: Rec) => void = () => {}) =>
+      withParams(id, (p) => {
+        ;(p.thresholds as Rec[])[0].at = n
+        edit(p)
+      })
+    // LA-35 묶음(episode) 단위: 1년 3묶음 → 6묶음, 기간 365 → 183과 함께 3 → 4, 기간만 365 → 300
+    expect(ruleOf('LA-35').params.count_unit).toBe('episode')
+    expect(check(at0('LA-35', 6))).toBe('removed')
+    expect(check(at0('LA-35', 4, (p) => ((p.window as Rec).days = 183)))).toBe('removed')
+    expect(check(withParams('LA-35', (p) => ((p.window as Rec).days = 300)))).toBe('removed')
+    // HY-15 주기(cycle…6개월) 단위 2 → 4, IJ-04 qty(관절 수) 단위 4 → 5
+    expect(check(at0('HY-15', 4))).toBe('removed')
+    expect(check(at0('IJ-04', 5))).toBe('removed')
+    // MN-04 회계연도(fiscal_year) 기간 16 → 20
+    expect(check(at0('MN-04', 20))).toBe('removed')
+    // OP-09 기간이 없는 기준(window 없음, p.window도 없음)도 그 밖이다
+    expect(check(withParams('OP-09', (p) => ((p.windows as Rec[])[0].at = 3)))).toBe('removed')
+    // 기간마다 따로 본다: HY-13 dose 단위 — 7일(rolling_days) 기간의 at 2 → 3·날 수 7 → 10은 되고, 주기(cycle) 기간의 at 6 → 7은 안 된다
+    expect(check(withParams('HY-13', (p) => ((p.additional_windows as Rec[])[0].at = 3)))).toBe('ok')
+    expect(check(withParams('HY-13', (p) => (((p.additional_windows as Rec[])[0].window as Rec).days = 10)))).toBe('ok')
+    expect(check(at0('HY-13', 7))).toBe('removed')
+    // ES-04 count_unit 없음(날짜 수): calendar_week 기간 at 2 → 3은 되고, rolling_from_first 기간 at 7 → 8은 안 된다
+    expect(check(withParams('ES-04', (p) => ((p.windows as Rec[])[2].at = 3)))).toBe('ok')
+    expect(check(withParams('ES-04', (p) => ((p.windows as Rec[])[0].at = 8)))).toBe('removed')
+  })
 })
 
 describe('AC-7802.4 checkRuleChange — 자동 점검 상태(status)', () => {
