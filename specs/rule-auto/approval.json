@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "rule-auto",
-  "approved_at": "2026-11-22T00:43:21Z",
+  "approved_at": "2026-11-22T02:30:54Z",
   "approved_via": "user-prompt",
   "session_id": "564f910f-c538-4591-ad30-a3552610b06c",
-  "spec_sha256": "eadd2f6a2514a50167e27e29f73eaf045c21b46461f396db6d6d980f07b3bbd3",
+  "spec_sha256": "c433eae057cfb9da258a9d6c00c81a79feed771b9acbfc125beb1f02e851820c",
   "scope": [
     "CLAUDE.md",
     "docs/ADR.md",
@@ -26,6 +26,7 @@
     "src/app/api/ai/notices/ruleAuto/typeGuide.ts",
     "src/components/claim/ClaimScreen.test.tsx",
     "src/components/claim/ClaimScreen.tsx",
+    "src/components/claim/memo/MemoPanel.test.tsx",
     "src/components/dashboard/notices/NoticesCard.test.tsx",
     "src/components/dashboard/notices/NoticesCard.tsx",
     "src/components/dashboard/notices/RuleAlert.test.tsx",
@@ -39,6 +40,7 @@
     "src/components/notices/list/NoticesScreen.test.tsx",
     "src/components/settings/RuleSettings.test.tsx",
     "src/components/settings/RuleSettings.tsx",
+    "src/components/staff/pay/PaySlip.test.tsx",
     "src/guardrails.test.ts",
     "src/lib/errors.test.ts",
     "src/lib/errors.ts",
@@ -64,6 +66,7 @@
     "src/workers/precheck/jobs.test.ts",
     "src/workers/precheck/jobs.ts",
     "supabase/migrations/20261122000000_rule_auto.sql",
-    "supabase/ruleAuto.rls.test.ts"
+    "supabase/ruleAuto.rls.test.ts",
+    "supabase/staff.rls.test.ts"
   ]
 }
