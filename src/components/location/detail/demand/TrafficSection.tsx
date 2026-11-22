@@ -1,26 +1,38 @@
 import type { ReactNode } from 'react'
+import { HowLine } from '@/components/location/common/HowLine'
 import { SourceLine } from '@/components/location/common/SourceLine'
 import { WhyLine } from '@/components/location/common/WhyLine'
 import { asOfText } from '@/components/location/common/text'
 import { distText } from '@/lib/location/coords'
+import { filledHow, type HowCtx } from '@/lib/location/method'
 import { commaText } from '@/lib/location/money'
-import type { Got, Snapshot, SourceId } from '@/types/location'
+import type { DeptRule, Got, Snapshot, SourceId } from '@/types/location'
 import { look } from './look'
 import { inRange, KAKAO_SRC, nearest, shownOf, type Near, type NearKind, type NearPlace } from './near'
 import { KakaoSource, NearValue, Section } from './parts'
-import { FLOW_NOTE, flowCapped, rangeText, stationsText, stopsText } from './text'
+import { FLOW_NOTE, OTHERS_NOTE, flowCapped, othersCount, rangeText, stationsText, stopsText } from './text'
 
-// 후보 자세히 › 교통·둘레 시설(spec location AC-7909.6 · AC-7908.4, 시안 ?s=candidate #sec-traffic).
+// 후보 자세히 › 교통·둘레 시설(spec location AC-7909.6 · AC-7908.4 · AC-7921.6 · AC-7920.2, 시안 ?s=candidate #sec-traffic).
+// 제목 바로 아래 '이렇게 봤어요'(method.ts HOW.traffic을 받은 howCtx로 채움 — 채울 값·펼침은 부르는 쪽이 쥠).
 // 가장 가까운 역(출구 없음) · 400m 안 정류장 · 사람 흐름(범위 안 역·정류장마다 하루 평균 승하차와 합, 교통카드 안내) · 시장은 그날 값,
-// 약국·마트·큰 병원은 카카오(볼 때만 — 부르는 쪽이 열 때마다 새로 불러 넘기고, 이 부품은 저장하는 콜백에 넘기지 않음).
+// 약국·마트·큰 병원은 카카오(볼 때만 — 부르는 쪽이 열 때마다 새로 불러 넘기고, 이 부품은 저장하는 콜백에 넘기지 않음),
+// 다른 과 의원은 그날 값 의원 목록을 지금 과목 고르기(deptRule)로 센 수(과목마다 수는 '둘레 다른 과 의원' 묶음에 있음).
 // 승하차 자료가 없는 지역은 그 칸만 `이 지역은 자료 없음`이고 다른 칸은 그대로다. props·콜백만 받는다
 
 /** 이 묶음이 읽는 그날 값 칸(그날 값 전체를 그대로 넘겨도 된다) */
-export type TrafficFacts = Pick<Snapshot, 'radiusM' | 'station' | 'bus' | 'flow' | 'market'>
+export type TrafficFacts = Pick<Snapshot, 'radiusM' | 'station' | 'bus' | 'flow' | 'market' | 'rivals'>
 export type TrafficKey = Exclude<keyof TrafficFacts, 'radiusM'>
 
 export type TrafficSectionProps = {
   snapshot: TrafficFacts
+  /** 의원 과목 고르기 설정 — '다른 과 의원' 수를 이것으로 센다(바꾸면 다시 부르지 않고 바로 다시 셈) */
+  deptRule: DeptRule
+  /** '이렇게 봤어요' 채울 값(그 후보 그날 값의 출처별 기준 날짜 · 범위 · 시군구 · 고른 경쟁 과목) — 묶음 열셋이 같은 값을 받는다 */
+  howCtx: HowCtx
+  /** '이렇게 봤어요'를 펼쳤나 — 부르는 쪽이 묶음마다 쥔다(범위를 바꿔 다시 그려도 그대로) */
+  howOpen: boolean
+  /** [더 보기]/[접기]를 누르면 */
+  onHow: () => void
   /** 카카오 장소 찾기 답(약국·마트·큰 병원을 읽음). 빈 칸은 불러오는 중 */
   near: Near
   /** 못 받은 칸의 [다시 받기] — 그날 값 칸 이름만 넘긴다 */
@@ -107,11 +119,17 @@ function InRangeCount({ places, capped, radiusM, empty }: { places: readonly Nea
   )
 }
 
-export function TrafficSection({ snapshot, near, onRetry, onRetryNear, onOpenSource }: TrafficSectionProps) {
+export function TrafficSection({ snapshot, deptRule, howCtx, howOpen, onHow, near, onRetry, onRetryNear, onOpenSource }: TrafficSectionProps) {
   const r = snapshot.radiusM
   const retry = (key: TrafficKey) => (onRetry ? () => onRetry(key) : undefined)
+  const how = filledHow('traffic', howCtx)
   return (
-    <Section id={TRAFFIC_SECTION_ID} title="교통·둘레 시설" aside={rangeText(r)}>
+    <Section
+      id={TRAFFIC_SECTION_ID}
+      title="교통·둘레 시설"
+      aside={rangeText(r)}
+      how={<HowLine {...how} open={howOpen} onToggle={onHow} />}
+    >
       <dl className={look.rows}>
         <GotRow
           label="가장 가까운 역"
@@ -195,6 +213,18 @@ export function TrafficSection({ snapshot, near, onRetry, onRetryNear, onOpenSou
             )
           }}
           onRetryNear={onRetryNear}
+          onOpenSource={onOpenSource}
+        />
+        <GotRow
+          label="다른 과 의원"
+          got={snapshot.rivals}
+          render={(clinics) => (
+            <>
+              <b className={look.strong}>{`${commaText(othersCount(clinics, deptRule, r))}곳`}</b>{' '}
+              <span className={look.aside2}>{OTHERS_NOTE}</span>
+            </>
+          )}
+          onRetry={retry('rivals')}
           onOpenSource={onOpenSource}
         />
       </dl>
