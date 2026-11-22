@@ -1,0 +1,64 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": {
+      "items": {
+        "item": [
+          {
+            "ykiho": "FAKEykiho0001+/=",
+            "yadmNm": "가상바른정형외과의원",
+            "clCdNm": "의원",
+            "npayCd": "MM045",
+            "npayKorNm": "체외충격파치료",
+            "yadmNpayCdNm": "체외충격파(1회)",
+            "curAmt": "50,000",
+            "adtFrDd": "20250301"
+          },
+          {
+            "ykiho": "FAKEykiho0001+/=",
+            "yadmNm": "가상바른정형외과의원",
+            "clCdNm": "의원",
+            "npayCd": "MM045",
+            "npayKorNm": "체외충격파치료",
+            "yadmNpayCdNm": "",
+            "curAmt": 80000.9,
+            "adtFrDd": "20250301"
+          },
+          {
+            "ykiho": "FAKEykiho0001+/=",
+            "yadmNm": "가상바른정형외과의원",
+            "clCdNm": "의원",
+            "npayCd": "MM045",
+            "npayKorNm": "체외충격파치료",
+            "yadmNpayCdNm": "체외충격파(값 미정)",
+            "curAmt": "",
+            "adtFrDd": "20250301"
+          },
+          {
+            "ykiho": "FAKEykiho0001+/=",
+            "yadmNm": "가상바른정형외과의원",
+            "clCdNm": "의원",
+            "npayCd": "MX122",
+            "npayKorNm": "도수치료",
+            "yadmNpayCdNm": "도수치료(30분)",
+            "curAmt": "120000",
+            "adtFrDd": "20240901"
+          },
+          {
+            "ykiho": "FAKEykiho0001+/=",
+            "yadmNm": "가상바른정형외과의원",
+            "clCdNm": "의원",
+            "npayCd": "QZ001",
+            "npayKorNm": "지어낸 다른 항목",
+            "yadmNpayCdNm": "지어낸 다른 항목",
+            "curAmt": "30000",
+            "adtFrDd": "20240901"
+          }
+        ]
+      },
+      "numOfRows": 1000,
+      "pageNo": 1,
+      "totalCount": 5
+    }
+  }
+}

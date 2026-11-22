@@ -1,0 +1,6 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": { "items": { "item": ["체외충격파치료 50000"] }, "numOfRows": 1000, "pageNo": 1, "totalCount": 1 }
+  }
+}
