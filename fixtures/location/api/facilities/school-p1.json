@@ -1,0 +1,82 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL_SERVICE", "type": "json" },
+    "body": {
+      "items": [
+        {
+          "schoolNm": "가람하늘초등학교",
+          "schoolSe": "초등학교",
+          "operSttus": "운영",
+          "rdnmadr": "가상도 가람구 하늘로 40",
+          "lnmadr": "가상도 가람구 하늘동 140",
+          "latitude": "37.506",
+          "longitude": "127.003",
+          "referenceDate": "2026-03-01"
+        },
+        {
+          "schoolNm": "가람바다중학교",
+          "schoolSe": "중학교",
+          "operSttus": "운영",
+          "rdnmadr": "",
+          "lnmadr": "가상도 가람구 바다동 41",
+          "latitude": "37.511",
+          "longitude": "127.016",
+          "referenceDate": "2026-03-01"
+        },
+        {
+          "schoolNm": "가람별빛고등학교",
+          "schoolSe": "고등학교",
+          "operSttus": "운영",
+          "rdnmadr": "가상도 가람구 별빛로 42",
+          "lnmadr": "가상도 가람구 별빛동 42",
+          "latitude": "37.518",
+          "longitude": "127.012",
+          "referenceDate": "2025-03-01"
+        },
+        {
+          "schoolNm": "가람누리학교",
+          "schoolSe": "특수학교",
+          "operSttus": "운영",
+          "rdnmadr": "가상도 가람구 누리로 43",
+          "lnmadr": "",
+          "latitude": "37.509",
+          "longitude": "127.008",
+          "referenceDate": "2026-04-01"
+        },
+        {
+          "schoolNm": "가람옛초등학교",
+          "schoolSe": "초등학교",
+          "operSttus": "폐교",
+          "rdnmadr": "가상도 가람구 하늘로 44",
+          "lnmadr": "",
+          "latitude": "37.503",
+          "longitude": "127.002",
+          "referenceDate": "2026-04-01"
+        },
+        {
+          "schoolNm": "나래초등학교",
+          "schoolSe": "초등학교",
+          "operSttus": "운영",
+          "rdnmadr": "가상도 나래구 나래로 45",
+          "lnmadr": "가상도 나래구 나래동 45",
+          "latitude": "37.51",
+          "longitude": "127.05",
+          "referenceDate": "2026-04-01"
+        },
+        {
+          "schoolNm": "가람솔초등학교",
+          "schoolSe": "초등학교",
+          "operSttus": "운영",
+          "rdnmadr": "가상도 가람구 솔로 46",
+          "lnmadr": "",
+          "latitude": "0",
+          "longitude": "0",
+          "referenceDate": "2026-04-01"
+        }
+      ],
+      "totalCount": "7",
+      "numOfRows": "1000",
+      "pageNo": "1"
+    }
+  }
+}
