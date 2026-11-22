@@ -1,0 +1,81 @@
+{
+  "response": {
+    "header": {
+      "resultCode": "00",
+      "resultMsg": "NORMAL SERVICE."
+    },
+    "body": {
+      "items": {
+        "item": [
+          {
+            "addr": "가상도 가람구 견본로 11, 2층 (나무동)",
+            "clCd": 31,
+            "clCdNm": "의원",
+            "cmdcGdrCnt": 0,
+            "cmdcIntnCnt": 0,
+            "cmdcResdntCnt": 0,
+            "cmdcSdrCnt": 0,
+            "detyGdrCnt": 0,
+            "detyIntnCnt": 0,
+            "detyResdntCnt": 0,
+            "detySdrCnt": 0,
+            "distance": "90.33",
+            "drTotCnt": 2,
+            "emdongNm": "나무동",
+            "estbDd": 20240315,
+            "mdeptGdrCnt": 0,
+            "mdeptIntnCnt": 0,
+            "mdeptResdntCnt": 0,
+            "mdeptSdrCnt": 2,
+            "pnursCnt": 0,
+            "postNo": "99110",
+            "sgguCd": 990101,
+            "sgguCdNm": "가람구",
+            "sidoCd": 990000,
+            "sidoCdNm": "가상도",
+            "telno": "000-0000-0001",
+            "XPos": 127.0159,
+            "YPos": 37.5104,
+            "yadmNm": "견본바른정형외과의원",
+            "ykiho": "FAKEhira0001+/="
+          },
+          {
+            "addr": "가상도 가람구 든든로 5, 4층 (구름동)",
+            "clCd": 31,
+            "clCdNm": "의원",
+            "cmdcGdrCnt": 0,
+            "cmdcIntnCnt": 0,
+            "cmdcResdntCnt": 0,
+            "cmdcSdrCnt": 0,
+            "detyGdrCnt": 0,
+            "detyIntnCnt": 0,
+            "detyResdntCnt": 0,
+            "detySdrCnt": 0,
+            "distance": "352.80",
+            "drTotCnt": 1,
+            "emdongNm": "나무동",
+            "estbDd": 20210601,
+            "mdeptGdrCnt": 0,
+            "mdeptIntnCnt": 0,
+            "mdeptResdntCnt": 0,
+            "mdeptSdrCnt": 1,
+            "pnursCnt": 0,
+            "postNo": "99113",
+            "sgguCd": 990101,
+            "sgguCdNm": "가람구",
+            "sidoCd": 990000,
+            "sidoCdNm": "가상도",
+            "telno": "000-0000-0501",
+            "XPos": 127.0112,
+            "YPos": 37.5117,
+            "yadmNm": "견본든든신경외과의원",
+            "ykiho": "FAKEhira0501"
+          }
+        ]
+      },
+      "numOfRows": 500,
+      "pageNo": 1,
+      "totalCount": 2
+    }
+  }
+}

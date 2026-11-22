@@ -1,0 +1,89 @@
+{
+  "response": {
+    "header": {
+      "resultCode": "00",
+      "resultMsg": "NORMAL SERVICE."
+    },
+    "body": {
+      "items": {
+        "item": [
+          {
+            "adtEndDd": 99991231,
+            "adtFrDd": 20250301,
+            "clCd": 31,
+            "clCdNm": "의원",
+            "curAmt": 70000,
+            "npayCd": "SZ0840000",
+            "npayKorNm": "처치 및 수술료(근골)/체외충격파치료[근골격계질환]",
+            "sgguCd": 990101,
+            "sgguCdNm": "가람구",
+            "sidoCd": 990000,
+            "sidoCdNm": "가상도",
+            "sno": 1,
+            "urlAddr": "https://fake.invalid",
+            "yadmNm": "견본바른정형외과의원",
+            "yadmNpayCdNm": "체외충격파치료(편측당)[근골격계질환]",
+            "ykiho": "FAKE+ykiho/0001=="
+          },
+          {
+            "adtEndDd": 99991231,
+            "adtFrDd": 20250301,
+            "clCd": 31,
+            "clCdNm": "의원",
+            "curAmt": 150000,
+            "npayCd": "SZ0840000",
+            "npayKorNm": "처치 및 수술료(근골)/체외충격파치료[근골격계질환]",
+            "sgguCd": 990101,
+            "sgguCdNm": "가람구",
+            "sidoCd": 990000,
+            "sidoCdNm": "가상도",
+            "sno": 2,
+            "urlAddr": "https://fake.invalid",
+            "yadmNm": "견본바른정형외과의원",
+            "yadmNpayCdNm": "체외충격파치료 고에너지(편측당)[근골격계질환]",
+            "ykiho": "FAKE+ykiho/0001=="
+          },
+          {
+            "adtEndDd": 99991231,
+            "adtFrDd": 20240102,
+            "clCd": 31,
+            "clCdNm": "의원",
+            "curAmt": 30000,
+            "npayCd": "ABZ010001",
+            "npayKorNm": "상급병실료/1인실",
+            "sgguCd": 990101,
+            "sgguCdNm": "가람구",
+            "sidoCd": 990000,
+            "sidoCdNm": "가상도",
+            "sno": 3,
+            "urlAddr": "https://fake.invalid",
+            "yadmNm": "견본바른정형외과의원",
+            "yadmNpayCdNm": "",
+            "ykiho": "FAKE+ykiho/0001=="
+          },
+          {
+            "adtEndDd": 99991231,
+            "adtFrDd": 20240102,
+            "clCd": 31,
+            "clCdNm": "의원",
+            "curAmt": 15000,
+            "npayCd": "CZ3940000",
+            "npayKorNm": "검체검사료/인플루엔자 A·B 바이러스항원검사[현장검사]",
+            "sgguCd": 990101,
+            "sgguCdNm": "가람구",
+            "sidoCd": 990000,
+            "sidoCdNm": "가상도",
+            "sno": 4,
+            "urlAddr": "https://fake.invalid",
+            "yadmNm": "견본바른정형외과의원",
+            "yadmNpayCdNm": "견본 항목(지어냄)",
+            "ykiho": "FAKE+ykiho/0001=="
+          }
+        ]
+      },
+      "numOfRows": 300,
+      "pageNo": 1,
+      "totalCount": 4
+    }
+  }
+}

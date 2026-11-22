@@ -30,15 +30,20 @@ describe('nonpay 읽는 곳 (TASK-18)', () => {
     expect(source?.key).toBe(nonpay.key)
   })
 
-  it('AC-7904.1: 심평원 비급여 병원별 상세를 기관 기호 하나로 한 번 부른다(열쇠는 주소에 넣지 않는다)', () => {
+  it('AC-7922.2: 심평원 비급여 병원별 상세를 기관 기호 하나로 한 번(300줄) 부른다(열쇠는 주소에 넣지 않는다)', () => {
     const requests = nonpay.requests(ask())
     expect(requests).toHaveLength(1)
     const url = new URL(requests[0].url)
     expect(url.origin + url.pathname).toBe(
       'https://apis.data.go.kr/B551182/nonPaymentDamtInfoService/getNonPaymentItemHospDtlList',
     )
-    // 항목 코드로 거르지 않는다 — 같은 답에서 도수치료 줄이 있는지도 봐야 한다
-    expect(Object.fromEntries(url.searchParams)).toEqual({ ykiho: YKIHO, pageNo: '1', numOfRows: '1000', _type: 'json' })
+    // 항목 코드로 거르지 않는다 — 같은 답에서 도수치료 줄이 있는지도 봐야 한다.
+    // 1,000줄은 20초를 넘기거나 504였다(TASK-47) → 300줄(2026-11-22 진짜 답: 의원 하나 185줄이 한 쪽에 다 옴)
+    expect(Object.fromEntries(url.searchParams)).toEqual({ ykiho: YKIHO, pageNo: '1', numOfRows: '300', _type: 'json' })
+  })
+
+  it('AC-7922.2: 사이트가 아주 느려 이 종류만 바깥 부르기 한도가 60초다(나머지는 fetchSource 기본 8초)', () => {
+    expect(nonpay.timeoutMs).toBe(60_000)
   })
 
   it('AC-7904.1: 만든 요청은 바깥 부르기 규칙(정해 둔 host)을 지나고 열쇠는 거기서만 붙는다', async () => {
@@ -79,6 +84,23 @@ describe('nonpay 읽는 곳 (TASK-18)', () => {
       },
       asOf: TODAY,
     })
+  })
+
+  it('AC-7918.3: 진짜 답 모양(2026-11-22 TASK-55, 300줄로 부름 · 숫자 칸은 정수)을 읽는다 — 체외충격파 SZ084 두 줄, 도수치료 줄 없음 → manual null', () => {
+    expect(read([fixture('real-300.json')])).toEqual({
+      ok: true,
+      value: {
+        rows: [
+          { name: '체외충격파치료(편측당)[근골격계질환]', won: 70_000 },
+          { name: '체외충격파치료 고에너지(편측당)[근골격계질환]', won: 150_000 },
+        ],
+        manual: null,
+      },
+      asOf: TODAY,
+    })
+    // 다른 항목도 같은 답에서 고를 수 있다(의원 이름이 비면 심평원 항목 이름에서 갈래를 뺀 이름)
+    const room = read([fixture('real-300.json')], 'ABZ01')
+    expect(room.ok && room.value.rows).toEqual([{ name: '1인실', won: 30_000 }])
   })
 
   it('AC-7904.1: 다른 항목 코드를 물으면 그 코드로 시작하는 줄만 고른다(9글자 코드 그대로 물어도 된다)', () => {

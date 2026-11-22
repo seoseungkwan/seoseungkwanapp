@@ -1,22 +1,24 @@
 import 'server-only'
 import { isYmd } from '@/lib/analytics/dates'
 import { distM } from '@/lib/location/coords'
-import type { Adapter, HospGroup, Parsed, Point, QueryOf, RivalKind, SiteRequest } from '@/types/location'
+import { DEPTS } from '@/lib/location/depts'
+import type { Adapter, DeptId, Parsed, Point, QueryOf, SiteRequest } from '@/types/location'
 import { isNotRegistered } from '../fetchSource'
 
-// 바깥 자료 — 심평원 의원 목록·상세(specs/location REQ-7904, design.md 4절, TASK-16). 요청 만들기·답 읽기만 하는 순수 읽는 곳.
+// 바깥 자료 — 심평원 의원 목록·상세(specs/location REQ-7904, design.md 4·17·18절, TASK-16 · TASK-55). 요청 만들기·답 읽기만 하는 순수 읽는 곳.
 // hosp-list: 병원정보서비스(15001698) getHospBasisList — 점·반경·종별·진료과목으로 찾는다.
 // hosp-detail: 의료기관별상세정보서비스(15001699) — 의료장비(MRI·CT)·기타인력(물리치료사).
 // 답은 JSON(_type=json, data.go.kr 모양 response.header·body.items.item — 항목 하나면 객체로 온다). 자료 안에 기준 날짜가 없어 받은 날이 기준이다.
 // TASK-47(2026-11-22 진짜 열쇠): 목록 칸·종별·과목 코드(05 정형외과 · 09 마취통증 · 21 재활 · 31 의원 · 93 한의원 · 11 종합병원)는 진짜 답과 맞았다.
-// 상세 2.7판은 '서비스가 없거나 폐기됨'(12)이라 2.8판으로 바꿨고, 기타인력 칸은 dtlGnlNopCdNm(인력 이름)·gnlNopCnt(수)다
+// 상세 2.7판은 '서비스가 없거나 폐기됨'(12)이라 2.8판으로 바꿨고, 기타인력 칸은 dtlGnlNopCdNm(인력 이름)·gnlNopCnt(수)다.
+// TASK-55(2026-11-22 진짜 열쇠): 의원 과목 코드 열아홉(depts.ts DEPTS, 진료과목정보 getDgsbjtInfo2.8의 코드 ↔ 이름으로 확인)·치과의원 51·
+// 상급종합 01도 맞았다. 과목 목록 검색은 부과목까지 찾는다(한 의원이 여러 과목 목록에 온다 → 기호로 합쳐 depts에 모은다).
+// 줄은 가까운 차례가 아니라 이름 차례로 온다 — 한 목록이 LIST_ROWS를 넘으면(capped) 빠지는 의원은 먼 곳이 아니라 이름 뒤쪽이다
 
-// ── 코드 (확인할 것 1, 한 곳) ───────────────────────────
+// ── 코드 (한 곳) ──────────────────────────────────────
 
-// 심평원 진료과목 코드: 경쟁 의원 셋(design.md 4절)
-export const DEPT_CODE: Readonly<Record<Exclude<RivalKind, 'korean'>, string>> = { ortho: '05', pain: '09', rehab: '21' }
-// 심평원 종별 코드: 의원 · 한의원 · 종합병원 이상(상급종합 · 종합병원)
-export const TYPE_CODE = { clinic: '31', korean: '93', big: ['01', '11'] } as const
+// 심평원 종별 코드: 의원 · 치과의원 · 한의원 · 종합병원 이상(상급종합 · 종합병원). 의원 진료과목 코드는 depts.ts DEPTS의 dgsbjtCd
+export const TYPE_CODE = { clinic: '31', dental: '51', korean: '93', big: ['01', '11'] } as const
 
 // 한 목록에서 받는 줄 수(Claude 판단). 부르기는 미리 다 만들어 두므로 목록마다 첫 쪽 하나만 넉넉히 받고, 남으면 capped다
 export const LIST_ROWS = 500
@@ -40,16 +42,16 @@ const NO_DATA = '03'
 
 // ── 내놓는 값 ─────────────────────────────────────────
 
-// 둘레 의료기관 하나. kind = 찾은 과목(의원 무리) · 'korean'(한의원) · 'big'(종합병원 이상). 거리는 찾은 점에서 m(버림)
-export type HospKind = RivalKind | 'big'
+// 둘레 의료기관 하나. depts = 찾은 과목(그 기관이 나온 목록의 과목, DEPTS 차례) — 치과의원 ['dental'] · 한의원 ['korean'] ·
+// 종합병원 이상 [](과목 목록이 아님). 대표 과목은 고르지 않는다(늘 depts.ts deptOf가 설정으로 센다). 거리는 찾은 점에서 m(버림)
 export type HospItem = {
   ykiho: string
   name: string
   typeName: string
-  kind: HospKind
+  depts: DeptId[]
   doctors: number | null
   openedOn: string | null // 'YYYY-MM-DD'
-  at: Point
+  at: Point // 심평원 XPos·YPos(공공 자료, 카카오 아님)
   address: string
   distM: number
 }
@@ -138,16 +140,24 @@ function readPages(texts: string[], expected: number): Page[] | 'not-applied' | 
 
 // ── hosp-list ─────────────────────────────────────────
 
-type ListPlan = { kind: HospKind; clCd: string; dgsbjtCd?: string }
+// 목록 하나: 그 목록에서 찾은 기관에 붙일 과목(없으면 종합병원 이상) · 종별 · 진료과목 코드(의원 과목 목록만)
+type ListPlan = { dept: DeptId | null; clCd: string; dgsbjtCd?: string }
 
-// 무리 → 목록(이 차례로 요청하고 답을 읽는다)
-function plansOf(group: HospGroup): ListPlan[] {
-  if (group === 'clinic') {
-    return (['ortho', 'pain', 'rehab'] as const).map((kind) => ({ kind, clCd: TYPE_CODE.clinic, dgsbjtCd: DEPT_CODE[kind] }))
+// 무리 → 목록(이 차례로 요청하고 답을 읽는다). 의원은 고른 과목마다 하나, DEPTS 차례(몸통 차례와 상관없음)
+function plansOf(q: QueryOf<'hosp-list'>): ListPlan[] {
+  if (q.group === 'clinic') {
+    const asked = new Set<DeptId>(q.depts)
+    return DEPTS.flatMap((d) =>
+      d.dgsbjtCd !== null && asked.has(d.id) ? [{ dept: d.id, clCd: TYPE_CODE.clinic, dgsbjtCd: d.dgsbjtCd }] : [],
+    )
   }
-  if (group === 'korean') return [{ kind: 'korean', clCd: TYPE_CODE.korean }]
-  return TYPE_CODE.big.map((clCd) => ({ kind: 'big', clCd }))
+  if (q.group === 'dental') return [{ dept: 'dental', clCd: TYPE_CODE.dental }]
+  if (q.group === 'korean') return [{ dept: 'korean', clCd: TYPE_CODE.korean }]
+  return TYPE_CODE.big.map((clCd) => ({ dept: null, clCd }))
 }
+
+const ORDER: ReadonlyMap<DeptId, number> = new Map(DEPTS.map((d, i) => [d.id, i]))
+const byOrder = (a: DeptId, b: DeptId) => (ORDER.get(a) ?? 0) - (ORDER.get(b) ?? 0)
 
 function listUrl(q: QueryOf<'hosp-list'>, plan: ListPlan): string {
   const params = new URLSearchParams({
@@ -163,14 +173,8 @@ function listUrl(q: QueryOf<'hosp-list'>, plan: ListPlan): string {
   return `${LIST_URL}?${params}`
 }
 
-// 두 과목 목록에 같이 나온 의원: 이름에 그 과목이 있으면 그 과목, 없으면 먼저 나온 목록(정형외과 → 마취통증 → 재활)
-const NAME_HINT: Readonly<Partial<Record<HospKind, string>>> = { ortho: '정형외과', pain: '마취통증', rehab: '재활의학' }
-function pickKind(name: string, kinds: HospKind[]): HospKind {
-  return kinds.find((k) => NAME_HINT[k] !== undefined && name.includes(NAME_HINT[k])) ?? kinds[0]
-}
-
-// 기호·이름·점이 없거나 범위(r) 밖이면 null
-function itemOf(row: Row, q: QueryOf<'hosp-list'>, kind: HospKind): HospItem | null {
+// 기호·이름·점이 없거나 범위(r) 밖이면 null. 찾은 과목은 그 목록의 과목 하나(합칠 때 모은다)
+function itemOf(row: Row, q: QueryOf<'hosp-list'>, dept: DeptId | null): HospItem | null {
   const ykiho = text(row.ykiho)
   const name = text(row.yadmNm)
   const at = pointOf(row)
@@ -181,7 +185,7 @@ function itemOf(row: Row, q: QueryOf<'hosp-list'>, kind: HospKind): HospItem | n
     ykiho,
     name,
     typeName: text(row.clCdNm),
-    kind,
+    depts: dept === null ? [] : [dept],
     doctors: count(row.drTotCnt),
     openedOn: dayOf(row.estbDd),
     at,
@@ -191,25 +195,26 @@ function itemOf(row: Row, q: QueryOf<'hosp-list'>, kind: HospKind): HospItem | n
 }
 
 function readList(texts: string[], q: QueryOf<'hosp-list'>, today: string): Parsed<HospList> {
-  const plans = plansOf(q.group)
+  const plans = plansOf(q)
   const pages = readPages(texts, plans.length)
   if (pages === 'not-applied') return NOT_APPLIED
   if (pages === 'failed') return FAILED
-  const found = new Map<string, { item: HospItem; kinds: HospKind[] }>()
+  // 같은 기관 기호는 한 줄: 칸은 먼저 나온 목록(DEPTS 차례) 것, 과목은 나온 목록 모두
+  const found = new Map<string, HospItem>()
   let capped = false
   pages.forEach((page, i) => {
     const got = page.rows.length
     if (page.total === null ? got >= LIST_ROWS : page.total > got) capped = true
     for (const row of page.rows) {
-      const item = itemOf(row, q, plans[i].kind)
+      const item = itemOf(row, q, plans[i].dept)
       if (item === null) continue
       const seen = found.get(item.ykiho)
-      if (seen === undefined) found.set(item.ykiho, { item, kinds: [item.kind] })
-      else if (!seen.kinds.includes(item.kind)) seen.kinds.push(item.kind)
+      if (seen === undefined) found.set(item.ykiho, item)
+      else for (const d of item.depts) if (!seen.depts.includes(d)) seen.depts.push(d)
     }
   })
   const items = [...found.values()]
-    .map(({ item, kinds }) => ({ ...item, kind: pickKind(item.name, kinds) }))
+    .map((item) => ({ ...item, depts: [...item.depts].sort(byOrder) }))
     .sort((a, b) => a.distM - b.distM || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   return { ok: true, value: { items, capped }, asOf: today }
 }
@@ -218,7 +223,7 @@ export const hospList: Adapter<'hosp-list', HospList> = {
   kind: 'hosp-list',
   src: 'hosp-list',
   key: 'data',
-  requests: (q): SiteRequest[] => plansOf(q.group).map((plan) => ({ url: listUrl(q, plan) })),
+  requests: (q): SiteRequest[] => plansOf(q).map((plan) => ({ url: listUrl(q, plan) })),
   parse: readList,
 }
 

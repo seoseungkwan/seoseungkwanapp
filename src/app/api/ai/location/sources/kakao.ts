@@ -25,8 +25,11 @@ export type KakaoAddress = { at: Point; road: string | null; jibun: string | nul
 export type KakaoSpot = { road: string | null; jibun: string | null; bjd: string | null; hjd: string | null; lot: KakaoLot | null }
 /** 장소 하나: 이름 · 카카오 분류 글 · 점 · 거리(m 정수) */
 export type KakaoPlace = { name: string; category: string; at: Point; distM: number }
+/** 카테고리 장소(k-near) 하나: + 도로명 주소 글(없거나 빈 글자면 null). 약국 같은 건물·옆 건물 견주기에 화면이 볼 때만 쓰고
+ * 저장하지 않는다(design.md 18절, ADR-044) */
+export type KakaoNearPlace = KakaoPlace & { road: string | null }
 /** 가까운 차례 45곳까지. 더 있으면 capped(화면: '{n}곳 넘게 있어요. 가까운 {n}곳만 셌어요.') */
-export type KakaoPlaces = { places: KakaoPlace[]; capped: boolean }
+export type KakaoPlaces<P extends KakaoPlace = KakaoPlace> = { places: P[]; capped: boolean }
 
 // ── 요청 ────────────────────────────────────────────────
 
@@ -113,10 +116,11 @@ function readAll<V>(texts: string[], count: number, today: string, read: (texts:
 }
 
 // 장소 찾기 쪽들: 끝 쪽(is_end) 뒤는 읽지 않고(카카오가 같은 쪽을 다시 줄 수 있다), 같은 곳(id)은 한 번만,
-// 가까운 차례 45곳까지. 첫 쪽의 모두 수(total_count)가 받은 곳보다 많거나 45곳을 넘게 받으면 capped
-function readPlaces(texts: string[], at: Point): KakaoPlaces {
+// 가까운 차례 45곳까지. 첫 쪽의 모두 수(total_count)가 받은 곳보다 많거나 45곳을 넘게 받으면 capped.
+// more = 장소 줄에 더 담을 칸(k-near의 도로명 주소)
+function readPlaces<P extends KakaoPlace>(texts: string[], at: Point, more: (doc: Row, place: KakaoPlace) => P): KakaoPlaces<P> {
   const seen = new Set<string>()
-  const found: KakaoPlace[] = []
+  const found: P[] = []
   let total = 0
   for (const [i, raw] of texts.entries()) {
     const body = json(raw)
@@ -128,7 +132,12 @@ function readPlaces(texts: string[], at: Point): KakaoPlaces {
     for (const doc of documents(body)) {
       const id = str(doc.id)
       const point = pointOf(doc.x, doc.y)
-      const place = { name: str(doc.place_name).trim(), category: str(doc.category_name).trim(), at: point, distM: distanceOf(doc.distance, at, point) }
+      const place = more(doc, {
+        name: str(doc.place_name).trim(),
+        category: str(doc.category_name).trim(),
+        at: point,
+        distM: distanceOf(doc.distance, at, point),
+      })
       if (seen.has(id)) continue
       seen.add(id)
       found.push(place)
@@ -213,13 +222,18 @@ export const kakaoPoint: Adapter<'k-point', KakaoSpot> = {
     }),
 }
 
-/** k-near: 카테고리 장소(지하철역·대형마트·약국·병원·중개업소), 15곳씩 3쪽 */
-export const kakaoNear: Adapter<'k-near', KakaoPlaces> = {
+// 장소 줄 그대로(산업단지)
+const plain = (_doc: Row, place: KakaoPlace): KakaoPlace => place
+// + 도로명 주소(road_address_name: 없거나 빈 글자면 null, 글자가 아니면 모양 틀림 — 진짜 답에도 빈 글자가 있다, TASK-55)
+const withRoad = (doc: Row, place: KakaoPlace): KakaoNearPlace => ({ ...place, road: text(doc.road_address_name) })
+
+/** k-near: 카테고리 장소(지하철역·대형마트·약국·병원·중개업소), 15곳씩 3쪽. 장소마다 도로명 주소(road)도 담는다 */
+export const kakaoNear: Adapter<'k-near', KakaoPlaces<KakaoNearPlace>> = {
   kind: 'k-near',
   src: SRC,
   key: 'kakao',
   requests: (q: QueryOf<'k-near'>) => placePages('/v2/local/search/category.json', ['category_group_code', q.cat], q.at, q.r),
-  parse: (texts, q, today) => readAll(texts, KAKAO_PAGES, today, (all) => readPlaces(all, q.at)),
+  parse: (texts, q, today) => readAll(texts, KAKAO_PAGES, today, (all) => readPlaces(all, q.at, withRoad)),
 }
 
 /** k-keyword: 키워드 장소(찾는 말은 '산업단지'만), 15곳씩 3쪽. 분류 글은 카카오 그대로(거르기는 쓰는 쪽이) */
@@ -228,5 +242,5 @@ export const kakaoKeyword: Adapter<'k-keyword', KakaoPlaces> = {
   src: SRC,
   key: 'kakao',
   requests: (q: QueryOf<'k-keyword'>) => placePages('/v2/local/search/keyword.json', ['query', q.q], q.at, q.r),
-  parse: (texts, q, today) => readAll(texts, KAKAO_PAGES, today, (all) => readPlaces(all, q.at)),
+  parse: (texts, q, today) => readAll(texts, KAKAO_PAGES, today, (all) => readPlaces(all, q.at, plain)),
 }

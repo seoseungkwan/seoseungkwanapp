@@ -18,8 +18,11 @@ export const MANUAL_ITEM = 'MX122'
 const MANUAL_NAME = '도수치료'
 
 const URL_DETAIL = 'https://apis.data.go.kr/B551182/nonPaymentDamtInfoService/getNonPaymentItemHospDtlList'
-// 의원 하나의 비급여 줄은 이 안에 든다(쪽 하나)
-const ROWS = 1000
+// 의원 하나의 비급여 줄은 이 안에 든다(쪽 하나). 1,000줄은 20초를 넘기거나 504였다(TASK-47) → 300줄
+// (TASK-55 2026-11-22 진짜 답: 정형외과 의원 하나 185줄이 한 쪽에 다 옴, 그날은 0.4초)
+const ROWS = 300
+/** 바깥 부르기 하나의 시간 한도(ms) — 이 사이트만 아주 느려(50줄에도 60초쯤 걸린 날이 있음) fetchSource 기본 8초 대신 60초 */
+const TIMEOUT_MS = 60_000
 
 /** 비급여 줄 하나: 의원이 붙인 이름(비면 심평원 항목 이름)·값(원 정수, 원 미만 버림) */
 export type NonpayRow = { name: string; won: number }
@@ -85,6 +88,7 @@ export const nonpay: Adapter<'nonpay', NonpayValue> = {
   kind: 'nonpay',
   src: 'nonpay',
   key: 'data',
+  timeoutMs: TIMEOUT_MS,
   requests(q) {
     const params = new URLSearchParams({ ykiho: q.ykiho, pageNo: '1', numOfRows: String(ROWS), _type: 'json' })
     return [{ url: `${URL_DETAIL}?${params.toString()}` }]
