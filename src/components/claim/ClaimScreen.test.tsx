@@ -32,6 +32,11 @@ const db = vi.hoisted(() => ({
   ruleReads: 0,
   /** 있으면 설정 표 읽기가 이것을 기다린다(건수 표는 그대로) */
   settingsGate: null as Promise<void> | null,
+  /** 고시로 바뀐 규칙 판(rule-auto): 살아 있는 change 줄(rule_changes)과 내 병원이 되돌린 표시(rule_change_marks) */
+  changes: [] as unknown[],
+  marks: [] as unknown[],
+  /** 이 표 읽기만 실패한다 */
+  failTable: null as string | null,
 }))
 
 vi.mock('@/lib/supabase/browser', () => ({
@@ -42,7 +47,9 @@ vi.mock('@/lib/supabase/browser', () => ({
       const answer = () => {
         if (table === 'claim_day_counts') return db.failCounts ? { data: null, error: { code: '500', message: 'x' }, status: 500 } : { data: db.counts, error: null, status: 200 }
         if (table === 'claim_day_closes') return db.closesError ? { data: null, error: db.closesError, status: db.closesError.status } : { data: db.closes, error: null, status: 200 }
-        if (db.failSettings) return { data: null, error: { message: 'x' } }
+        if (db.failSettings || db.failTable === table) return { data: null, error: { message: 'x' } }
+        if (table === 'rule_changes') return { data: db.changes, error: null }
+        if (table === 'rule_change_marks') return { data: db.marks, error: null }
         return table === 'claim_rule_settings' ? { data: db.rules, error: null } : { data: db.hospital, error: null }
       }
       const gate = table === 'claim_day_counts' || table === 'claim_day_closes' ? null : db.settingsGate
@@ -50,6 +57,10 @@ vi.mock('@/lib/supabase/browser', () => ({
       const query = {
         gte: (_column: string, value: unknown) => (db.ranges.push({ table, op: 'gte', value }), query),
         lte: (_column: string, value: unknown) => (db.ranges.push({ table, op: 'lte', value }), query),
+        // 바뀐 판 읽기(lib/storage/ruleChanges readRuleUpdates)의 거르기·차례·상한. 가짜 표에는 살아 있는 change 줄·되돌린 표시만 둔다
+        eq: () => query,
+        order: () => query,
+        limit: () => query,
         maybeSingle: read,
         then: (ok: (value: unknown) => unknown, no: (reason: unknown) => unknown) => read().then(ok, no),
       }
@@ -235,6 +246,9 @@ beforeEach(() => {
   db.userId = 'user-1'
   db.ruleReads = 0
   db.settingsGate = null
+  db.changes = []
+  db.marks = []
+  db.failTable = null
 })
 afterEach(() => {
   cleanup()
@@ -1165,17 +1179,17 @@ describe('AC-013.6 설정이 바뀌었을 때', () => {
 describe('AC-013.9 서버 설정을 읽지 못했을 때', () => {
   const COPY: CheckSettings = { rules: { schema: 1, off: [], on: [], grade: [] }, phrases: null, dxLinks: [] }
 
-  it('AC-013.9: 서버 설정을 읽으면 그 설정을 Worker에 넘긴다', async () => {
+  it('AC-013.9·AC-7813.1: 서버 설정을 읽으면 그 설정을 Worker에 넘긴다(바뀐 규칙 판이 없으면 ruleUpdates는 빈 목록)', async () => {
     db.hospital = { phrases: { a: 1 }, dx_links: [['A', 'B', 'C', 0, 't']] }
     const worker = fakeWorker()
     await toResult(worker)
-    expect(worker.of('check')[0].settings).toEqual({ rules: { schema: 1, off: [], on: [], grade: [] }, phrases: { a: 1 }, dxLinks: [['A', 'B', 'C', 0, 't']] })
+    expect(worker.of('check')[0].settings).toEqual({ rules: { schema: 1, off: [], on: [], grade: [] }, phrases: { a: 1 }, dxLinks: [['A', 'B', 'C', 0, 't']], ruleUpdates: [] })
   })
 
-  it('AC-013.9: 병원 설정 줄이 없으면 phrases는 null, 연결표는 비어 있다', async () => {
+  it('AC-013.9·AC-7813.1: 병원 설정 줄이 없으면 phrases는 null, 연결표는 비어 있다', async () => {
     const worker = fakeWorker()
     await toResult(worker)
-    expect(worker.of('check')[0].settings).toEqual({ rules: { schema: 1, off: [], on: [], grade: [] }, phrases: null, dxLinks: [] })
+    expect(worker.of('check')[0].settings).toEqual({ rules: { schema: 1, off: [], on: [], grade: [] }, phrases: null, dxLinks: [], ruleUpdates: [] })
   })
 
   it('AC-013.9: 못 읽으면 settings: null로 묻고, 사본으로 점검했다는 답이면 안내를 보인다', async () => {
@@ -1203,6 +1217,151 @@ describe('AC-013.9 서버 설정을 읽지 못했을 때', () => {
     db.rules = [{ rule_id: 'IJ-05', enabled: false, grade: null, updated_at: '2026-10-28T00:00:00+00:00' }]
     window.dispatchEvent(new Event('focus'))
     expect(await screen.findByText('설정이 바뀌었어요, 다시 점검하세요')).toBeTruthy()
+  })
+})
+
+describe('AC-7813 청구 화면이 고시로 바뀐 규칙 판을 Worker에 넘긴다(rule-auto REQ-7813)', () => {
+  const band = '설정이 바뀌었어요, 다시 점검하세요'
+  const COPY: CheckSettings = { rules: { schema: 1, off: [], on: [], grade: [] }, phrases: null, dxLinks: [] }
+  const focus = () => window.dispatchEvent(new Event('focus'))
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 10))
+  /** rule_changes의 살아 있는 change 줄 하나(규칙 내용은 Worker가 다시 거르므로 여기서는 모양만) */
+  const change = (n: number, over: Record<string, unknown> = {}) => ({
+    id: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
+    rule_id: 'IJ-05',
+    effective_from: '2026-11-01',
+    base_version: '2026-10-19',
+    rule: { id: 'IJ-05', title: `관절 주사 간격 판 ${n}`, effective_from: '2026-11-01' },
+    ...over,
+  })
+  /** 그 줄이 Worker로 가는 모양(RuleUpdate) */
+  const updateOf = (row: ReturnType<typeof change>) => ({ changeId: row.id, ruleId: row.rule_id, from: row.effective_from, baseVersion: row.base_version, rule: row.rule })
+  const C1 = change(1)
+  const C2 = change(2, { rule_id: 'PT-01', effective_from: '2026-12-01', rule: { id: 'PT-01', title: '물리치료 판', effective_from: '2026-12-01' } })
+  const C3 = change(3, { effective_from: '2027-01-01', rule: { id: 'IJ-05', title: '관절 주사 간격 판 3', effective_from: '2027-01-01' } })
+  const copyWorker = () => fakeWorker({ check: (m) => ({ type: 'check', check: m.check, load: m.load, ok: true, view: VIEW, usedCopy: COPY }) })
+
+  it('AC-7813.1: 규칙 설정·병원 설정과 함께 바뀐 판(내 병원이 되돌린 것은 뺌)을 settings.ruleUpdates에 담아 check로 보낸다', async () => {
+    db.hospital = { phrases: { a: 1 }, dx_links: [] }
+    db.changes = [C1, C2]
+    db.marks = [{ change_id: C2.id }]
+    const worker = fakeWorker()
+    await toResult(worker)
+    expect(worker.of('check')[0].settings).toEqual({ rules: { schema: 1, off: [], on: [], grade: [] }, phrases: { a: 1 }, dxLinks: [], ruleUpdates: [updateOf(C1)] })
+    expect(screen.queryByText('서버에 닿지 않아 마지막으로 받은 설정을 씁니다')).toBeNull()
+  })
+
+  it.each([
+    ['규칙 설정', 'claim_rule_settings'],
+    ['병원 설정', 'claim_hospital_settings'],
+    ['바뀐 판', 'rule_changes'],
+    ['되돌린 표시', 'rule_change_marks'],
+  ])('AC-7813.1: %s 읽기 하나만 실패해도 settings: null로 물어 도우미 사본으로 점검한다(지금 동작)', async (_, table) => {
+    db.changes = [C1]
+    db.failTable = table
+    const worker = copyWorker()
+    await toResult(worker)
+    expect(worker.of('check')[0].settings).toBeNull()
+    expect(screen.getByText('서버에 닿지 않아 마지막으로 받은 설정을 씁니다')).toBeTruthy()
+  })
+
+  it('AC-7813.1: 바뀐 판이 200개를 넘으면 서버 판을 쓰지 않고 사본으로 점검한다', async () => {
+    db.changes = Array.from({ length: 201 }, (_, i) => change(i + 1))
+    const worker = copyWorker()
+    await toResult(worker)
+    expect(worker.of('check')[0].settings).toBeNull()
+  })
+
+  it('AC-7813.1: 바뀐 판이 200개면 그대로 넘긴다', async () => {
+    db.changes = Array.from({ length: 200 }, (_, i) => change(i + 1))
+    const worker = fakeWorker()
+    await toResult(worker)
+    expect(worker.of('check')[0].settings?.ruleUpdates).toHaveLength(200)
+  })
+
+  it('AC-7813.1: 넘길 판의 JSON이 600,000바이트를 넘으면 서버 판을 쓰지 않고 사본으로 점검한다(도우미 한 메시지 한도)', async () => {
+    db.changes = Array.from({ length: 100 }, (_, i) => change(i + 1, { rule: { id: 'IJ-05', effective_from: '2026-11-01', message: '가'.repeat(2100) } }))
+    const worker = copyWorker()
+    await toResult(worker)
+    expect(worker.of('check')[0].settings).toBeNull()
+  })
+
+  it("AC-7813.2: 점검 뒤 우리 병원의 다른 계정이 판을 되돌리면 창 초점에 '설정이 바뀌었어요' 띠가 뜨고, [다시 점검]은 그 판 없이 점검한다", async () => {
+    db.changes = [C1, C2]
+    const worker = fakeWorker()
+    const link = bridge()
+    const { user } = await toResult(worker, link)
+    expect(screen.queryByText(band)).toBeNull()
+    db.marks = [{ change_id: C1.id }]
+    focus()
+    await screen.findByText(band)
+    const streamed = link.stream.mock.calls.length
+    await user.click(screen.getByRole('button', { name: '다시 점검' }))
+    await waitFor(() => expect(screen.queryByText(band)).toBeNull())
+    expect(link.stream.mock.calls.length).toBe(streamed)
+    const checks = worker.of('check')
+    expect(checks).toHaveLength(2)
+    expect(checks[0].settings?.ruleUpdates).toEqual([updateOf(C1), updateOf(C2)])
+    expect(checks[1].settings?.ruleUpdates).toEqual([updateOf(C2)])
+  })
+
+  it('AC-7813.2: 점검 뒤 새 판이 생기면 띠가 뜬다', async () => {
+    db.changes = [C1]
+    await toResult()
+    db.changes = [C1, C3]
+    focus()
+    expect(await screen.findByText(band)).toBeTruthy()
+  })
+
+  it('AC-7813.2: 되돌린 판을 다시 적용해 점검 때와 같아지면 띠가 사라진다', async () => {
+    db.changes = [C1]
+    await toResult()
+    db.marks = [{ change_id: C1.id }]
+    focus()
+    await screen.findByText(band)
+    db.marks = []
+    focus()
+    await waitFor(() => expect(screen.queryByText(band)).toBeNull())
+  })
+
+  it('AC-7813.2: 판의 차례만 달라지면 띠가 없다', async () => {
+    db.changes = [C1, C2]
+    await toResult()
+    db.changes = [C2, C1]
+    focus()
+    await settle()
+    expect(screen.queryByText(band)).toBeNull()
+  })
+
+  it('AC-7813.2: 다시 읽을 때 바뀐 판만 읽지 못하면 띠를 그대로 둔다(띠 없음)', async () => {
+    db.changes = [C1]
+    await toResult()
+    db.changes = [C1, C3]
+    db.failTable = 'rule_changes'
+    focus()
+    await settle()
+    expect(screen.queryByText(band)).toBeNull()
+  })
+
+  it('AC-7813.2: 판 칸이 없는 옛 사본으로 점검한 뒤 서버에 판이 생겼으면 띠가 뜨고, 서버에도 판이 없으면 띠가 없다', async () => {
+    db.failSettings = true
+    await toResult(copyWorker())
+    db.failSettings = false
+    focus()
+    await settle()
+    expect(screen.queryByText(band)).toBeNull()
+    db.changes = [C1]
+    focus()
+    expect(await screen.findByText(band)).toBeTruthy()
+  })
+
+  it('AC-7813.2: 다른 탭에 다녀오는 사이 판이 되돌려졌으면 돌아올 때 창 초점 없이 띠가 뜬다', async () => {
+    db.changes = [C1, C2]
+    const made = await toResult()
+    made.unmount()
+    db.marks = [{ change_id: C2.id }]
+    show(made.worker, made.link)
+    expect(await screen.findByText(band)).toBeTruthy()
   })
 })
 
