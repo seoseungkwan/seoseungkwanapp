@@ -1,0 +1,23 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": {
+      "items": {
+        "item": {
+          "addr": "가상도 가람구 모의길 3 (구름동)",
+          "clCd": 31,
+          "clCdNm": "의원",
+          "drTotCnt": 3,
+          "estbDd": 20101101,
+          "XPos": 127.0102,
+          "YPos": 37.5121,
+          "yadmNm": "견본튼튼재활의학과의원",
+          "ykiho": "FAKEhira0003"
+        }
+      },
+      "numOfRows": 500,
+      "pageNo": 1,
+      "totalCount": 1
+    }
+  }
+}

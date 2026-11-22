@@ -1,0 +1,35 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": {
+      "items": {
+        "item": [
+          {
+            "addr": "가상도 가람구 솔길 8 (나무동)",
+            "clCd": 93,
+            "clCdNm": "한의원",
+            "drTotCnt": 1,
+            "estbDd": 20151120,
+            "XPos": 127.0133,
+            "YPos": 37.5112,
+            "yadmNm": "견본솔한의원",
+            "ykiho": "FAKEhira0101"
+          },
+          {
+            "addr": "가상도 가람구 솔길 9 (나무동)",
+            "clCd": 93,
+            "clCdNm": "한의원",
+            "drTotCnt": 1,
+            "estbDd": 20180101,
+            "XPos": 127.0134,
+            "YPos": 37.5113,
+            "yadmNm": "견본기호없는한의원"
+          }
+        ]
+      },
+      "numOfRows": 500,
+      "pageNo": 1,
+      "totalCount": 2
+    }
+  }
+}

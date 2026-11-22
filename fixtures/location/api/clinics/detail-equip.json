@@ -1,0 +1,18 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": {
+      "items": {
+        "item": [
+          { "oftCd": "FAKE01", "oftCdNm": "MRI", "oftCnt": 1 },
+          { "oftCd": "FAKE02", "oftCdNm": "CT", "oftCnt": "1" },
+          { "oftCd": "FAKE03", "oftCdNm": "골밀도검사기", "oftCnt": 1 },
+          { "oftCd": "FAKE04", "oftCdNm": "초음파영상진단기", "oftCnt": 2 }
+        ]
+      },
+      "numOfRows": 100,
+      "pageNo": 1,
+      "totalCount": 4
+    }
+  }
+}
