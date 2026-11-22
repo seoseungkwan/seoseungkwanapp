@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { wonText } from './money'
+import { manText, wonText } from './money'
 
 // 돈 글자 (specs/location design.md 5절, AC-7905.5). 금액은 원 단위 정수다.
 // 10,000원으로 나눠떨어지고 1,000,000원 이상이면 `n억 m만 원`(0인 쪽 뺌), 아니면 `#,###원`
@@ -40,6 +40,48 @@ describe('wonText — 돈 글자 (AC-7905.5)', () => {
   it('AC-7905.5: 소수 금액·숫자 아님·안전한 정수 밖은 거부한다', () => {
     for (const bad of [1.5, 112_500.5, 0.1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 2 ** 53]) {
       expect(() => wonText(bad)).toThrow(RangeError)
+    }
+  })
+})
+
+// 만 원 칸 금액 글 (design.md 5절, requirements 이 명세가 정한 것 20). 0이면 `없음`, 없으면 `–`,
+// 10,000원으로 나눠떨어지면 100만 원 아래도 `n억 m만 원`, 아니면 wonText 그대로
+describe('manText — 만 원 칸 금액 글 (AC-7905.7)', () => {
+  it('AC-7905.7: 780,000 → 78만 원 · 150,000,000 → 1억 5,000만 원 · 100,000,000 → 1억 원', () => {
+    expect(manText(780_000)).toBe('78만 원')
+    expect(manText(150_000_000)).toBe('1억 5,000만 원')
+    expect(manText(100_000_000)).toBe('1억 원')
+  })
+
+  it('AC-7905.7: 0은 없음, 값이 없으면 –', () => {
+    expect(manText(0)).toBe('없음')
+    expect(manText(-0)).toBe('없음')
+    expect(manText(null)).toBe('–')
+    expect(manText(undefined)).toBe('–')
+  })
+
+  it('AC-7905.7: 만 원으로 나눠떨어지면 100만 원 아래도 만 원 글자, 억·만 가운데 0인 쪽은 뺀다', () => {
+    expect(manText(10_000)).toBe('1만 원')
+    expect(manText(990_000)).toBe('99만 원')
+    expect(manText(1_000_000)).toBe('100만 원')
+    expect(manText(50_000_000)).toBe('5,000만 원')
+    expect(manText(1_234_560_000_000)).toBe('12,345억 6,000만 원')
+  })
+
+  it('AC-7905.7: 만 원으로 안 나눠지면 wonText 그대로(112,500 → 112,500원)', () => {
+    for (const won of [112_500, 999, 1_005_000, 150_000_001, -112_500]) expect(manText(won)).toBe(wonText(won))
+    expect(manText(112_500)).toBe('112,500원')
+  })
+
+  it('AC-7905.7: 음수는 wonText처럼 앞에 빼기 표시 −(U+2212)', () => {
+    expect(manText(-780_000)).toBe('−78만 원')
+    expect(manText(-150_000_000)).toBe('−1억 5,000만 원')
+    expect(manText(-112_500)).toBe('−112,500원')
+  })
+
+  it('AC-7905.7: 소수 금액·숫자 아님·안전한 정수 밖은 wonText처럼 거부한다', () => {
+    for (const bad of [1.5, 780_000.5, 0.1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 2 ** 53]) {
+      expect(() => manText(bad)).toThrow(RangeError)
     }
   })
 })
