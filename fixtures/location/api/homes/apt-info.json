@@ -1,0 +1,30 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE" },
+    "body": {
+      "item": {
+        "kaptCode": "A99000001",
+        "kaptName": "가람마을 1단지",
+        "kaptAddr": "가상도 가람구 하늘동 101 가람마을 1단지",
+        "codeSaleNm": "분양",
+        "codeHeatNm": "지역난방",
+        "kaptTarea": 98765.43,
+        "kaptDongCnt": "12",
+        "kaptdaCnt": "1234",
+        "kaptBcompany": "가상건설",
+        "kaptAcompany": "가상개발",
+        "kaptTel": "",
+        "kaptUrl": "",
+        "codeAptNm": "아파트",
+        "doroJuso": "가상도 가람구 하늘로 10",
+        "hoCnt": 1234,
+        "codeMgrNm": "위탁관리",
+        "codeHallNm": "계단식",
+        "kaptUsedate": "20090315",
+        "kaptFax": "",
+        "bjdCode": "9911010100",
+        "zipcode": "99999"
+      }
+    }
+  }
+}
