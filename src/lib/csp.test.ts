@@ -168,7 +168,8 @@ const DEV_CSP =
   "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 
 // 입지 분석(/location)만 더하는 카카오 지도 origin(specs/location design.md 13절 처음 목록, 와일드카드 없음)
-const KAKAO_SCRIPT = ['https://dapi.kakao.com', 'https://t1.daumcdn.net']
+// + 진짜 브라우저 CSP 위반 기록으로 찾은 kakaocdn.net·rv.map.kakao.com(TASK-48 확인 7 — 지금 지도 본체는 kakaocdn.net에서 온다)
+const KAKAO_SCRIPT = ['https://dapi.kakao.com', 'https://t1.daumcdn.net', 'https://t1.kakaocdn.net']
 const KAKAO_IMG = [
   'https://t1.daumcdn.net',
   'https://map0.daumcdn.net',
@@ -177,8 +178,12 @@ const KAKAO_IMG = [
   'https://map3.daumcdn.net',
   'https://mts.daumcdn.net',
   'https://s1.daumcdn.net',
+  'https://mts.kakaocdn.net',
+  'https://map.kakaocdn.net',
+  'https://t1.kakaocdn.net',
+  'https://ssl.kakaocdn.net',
 ]
-const KAKAO_CONNECT = ['https://dapi.kakao.com']
+const KAKAO_CONNECT = ['https://dapi.kakao.com', 'https://rv.map.kakao.com', 'https://ssl.kakaocdn.net']
 
 describe('AC-7916.2 buildCsp 셋째 인자 { kakao: true }', () => {
   const kakao = directives(buildCsp(false, SUPABASE, { kakao: true }))
@@ -213,6 +218,18 @@ describe('AC-7916.2 buildCsp 셋째 인자 { kakao: true }', () => {
       expect(new URL(origin).origin).toBe(origin)
       expect(origin.startsWith('https://')).toBe(true)
     }
+  })
+
+  it('AC-7916.2 지금 카카오 지도 본체·조각 그림·로드뷰 주소(kakaocdn.net·rv.map.kakao.com)를 하나씩 더하고, 있던 dapi.kakao.com·t1.daumcdn.net은 그대로다', () => {
+    expect(kakao['script-src']).toEqual(expect.arrayContaining(['https://dapi.kakao.com', 'https://t1.daumcdn.net', 'https://t1.kakaocdn.net']))
+    expect(kakao['img-src']).toEqual(
+      expect.arrayContaining(['https://t1.daumcdn.net', 'https://mts.kakaocdn.net', 'https://map.kakaocdn.net', 'https://t1.kakaocdn.net', 'https://ssl.kakaocdn.net']),
+    )
+    expect(kakao['connect-src']).toEqual(expect.arrayContaining(['https://dapi.kakao.com', 'https://rv.map.kakao.com', 'https://ssl.kakaocdn.net']))
+    // 같은 지시어 안에 같은 값이 두 번 들지 않는다
+    for (const name of ['script-src', 'img-src', 'connect-src']) expect(new Set(kakao[name]).size, name).toBe(kakao[name]!.length)
+    // /location이 아닌 경로(셋째 인자 없음)에는 카카오 주소가 하나도 없다
+    for (const isDev of [false, true]) expect(buildCsp(isDev, SUPABASE)).not.toMatch(/kakao|daumcdn/)
   })
 
   it("AC-7916.2 개발에도 같은 origin을 더하고 'unsafe-eval'·ws:는 개발 그대로다", () => {

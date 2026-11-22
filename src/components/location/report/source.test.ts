@@ -76,4 +76,10 @@ describe('AC-7920.5: 둘째 장 글·셈은 lib 한 곳', () => {
     // 옛 따로 셈(빈 층 세기·한의원 거르기)이 남아 있지 않다
     expect(code).not.toMatch(/function emptyFloors|function clinicsOf|\.kind !== 'korean'/)
   })
+
+  it('AC-7920.5: 둘째 장 기준 날짜는 lib facts.ts sourceAsOf 하나로 묻는다 — 진료비·진료 시간을 의원 목록 칸에 잇는 따로 둔 판(IN_RIVALS)이 없다', () => {
+    const code = sheet()
+    expect(code).toMatch(/asOf:\s*\(src\)\s*=>\s*sourceAsOf\(s,\s*src\)\s*,/)
+    expect(code).not.toMatch(/IN_RIVALS|HELD_IN/)
+  })
 })

@@ -1,11 +1,12 @@
 'use client'
 
-import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { useEffect, useId, useRef, useState } from 'react'
 import { SignOutButton } from '@/components/auth/SignOutButton'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
 import { ADMIN_LINK } from './menu'
+import { ShellLink } from './MoreMenu'
 
 // 위쪽 띠 오른쪽 계정 단추와 메뉴 (AC-008.3·008.7, b2b-redesign AC-218.3, UI_GUIDE '앱 화면' 앱 틀·폰).
 // 단추에는 로그인한 구글 이메일(plan.md §6-4, design.md '계정 단추에는 이메일'). 폰은 44×44 아이콘만, 이메일은 aria-label.
@@ -13,6 +14,7 @@ import { ADMIN_LINK } from './menu'
 // 열면 첫 항목에 초점, ↓·↑로 항목 사이를 돈다. 바깥 누름·Esc·Tab으로 닫힌다
 // 데스크 계정(desk 참, desk-feedback AC-6306.2): 단추 안 메일 앞(폰에서도)과 메뉴 머리에 warning 칩 '데스크'. [가입 승인]·'관리자 계정'은 없다.
 // 데스크 메뉴 항목은 [비트 PC 연결](/claim/setup, 꾸밈 Icon monitor, desk-setup AC-7003.1) → [로그아웃]
+// 링크 둘은 셸 링크(ShellLink)다: 지금 /location(그 아래)이면 평범한 <a>(새 문서 — 그 화면의 넓은 CSP가 남지 않게, specs/location AC-7901.1), 아니면 Next <Link>
 
 // PC: 보조 작은 단추(32px·1px line-strong·4px·small 500) 안에 사람 아이콘 16 · 이메일 · 아래 화살표.
 // 폰: 44×44 아이콘 단추·테두리 없음·아이콘 ink-2. 올림과 열린 동안 바탕 canvas(색 150ms, UI_GUIDE '짧은 반응 허용')
@@ -38,6 +40,7 @@ export function AccountMenu({
 }) {
   // 데스크는 관리자 메뉴를 보이지 않는다(데스크의 관리자 값은 늘 거짓이지만, 받은 값과 상관없이)
   const admin = isAdmin && !desk
+  const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -113,17 +116,17 @@ export function AccountMenu({
           <div ref={menuRef} id={menuId} role="menu" aria-label="계정" aria-describedby={headId} className="border-t border-line pt-1">
             {admin && (
               // 관리자만: 가입 승인 화면(/admin). 누르면 메뉴를 닫고 링크로 간다
-              <Link href={ADMIN_LINK.href} role="menuitem" className={itemClass} onClick={() => setOpen(false)}>
+              <ShellLink from={pathname} href={ADMIN_LINK.href} role="menuitem" className={itemClass} onClick={() => setOpen(false)}>
                 <Icon name="userCheck" className="shrink-0 text-ink-2" />
                 {ADMIN_LINK.label}
-              </Link>
+              </ShellLink>
             )}
             {desk && (
               // 데스크만: 비트 PC 연결 화면(/claim/setup, desk-setup AC-7003.1 — 탭에는 없다). 누르면 메뉴를 닫고 링크로 간다
-              <Link href="/claim/setup" role="menuitem" className={itemClass} onClick={() => setOpen(false)}>
+              <ShellLink from={pathname} href="/claim/setup" role="menuitem" className={itemClass} onClick={() => setOpen(false)}>
                 <Icon name="monitor" className="shrink-0 text-ink-2" />
                 비트 PC 연결
-              </Link>
+              </ShellLink>
             )}
             <SignOutButton className={itemClass}>
               <Icon name="logout" className="shrink-0 text-ink-2" />

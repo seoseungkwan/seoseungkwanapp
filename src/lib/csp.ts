@@ -1,11 +1,12 @@
 import { supabaseOrigin } from './supabase/env'
 
 // 입지 분석(/location)만 더하는 카카오 지도 origin(specs/location design.md 13절 처음 목록, ADR-043). 와일드카드 없이 하나씩 적는다.
-// 지도·하늘 사진·로드뷰가 실제로 부르는 곳은 브라우저 CSP 위반 기록으로 확인해 맞춘다(requirements '확인할 것' 7, TASK-47·48)
+// 지도·하늘 사진·로드뷰가 실제로 부르는 곳은 브라우저 CSP 위반 기록으로 확인해 맞춘다(requirements '확인할 것' 7, TASK-47·48).
+// TASK-48 진짜 브라우저 확인: 지금 지도 본체는 daumcdn.net이 아니라 kakaocdn.net에서 오고, 로드뷰는 rv.map.kakao.com을 부른다 → 하나씩 더함(옛 daumcdn 줄은 그대로)
 const KAKAO: Record<'script-src' | 'img-src' | 'connect-src', string[]> = {
-  // SDK 입구(dapi)와 SDK가 불러오는 지도 본체(t1)
-  'script-src': ['https://dapi.kakao.com', 'https://t1.daumcdn.net'],
-  // 지도 조각 그림 map0~map3은 넷 따로
+  // SDK 입구(dapi)와 SDK가 불러오는 지도 본체(옛 t1.daumcdn · 지금 t1.kakaocdn)
+  'script-src': ['https://dapi.kakao.com', 'https://t1.daumcdn.net', 'https://t1.kakaocdn.net'],
+  // 지도 조각 그림 map0~map3은 넷 따로 · 지금 조각·하늘 사진·표시 그림은 kakaocdn 넷
   'img-src': [
     'https://t1.daumcdn.net',
     'https://map0.daumcdn.net',
@@ -14,8 +15,13 @@ const KAKAO: Record<'script-src' | 'img-src' | 'connect-src', string[]> = {
     'https://map3.daumcdn.net',
     'https://mts.daumcdn.net',
     'https://s1.daumcdn.net',
+    'https://mts.kakaocdn.net',
+    'https://map.kakaocdn.net',
+    'https://t1.kakaocdn.net',
+    'https://ssl.kakaocdn.net',
   ],
-  'connect-src': ['https://dapi.kakao.com'],
+  // SDK 입구 · 로드뷰 자료(rv.map.kakao.com) · kakaocdn 자료 읽기
+  'connect-src': ['https://dapi.kakao.com', 'https://rv.map.kakao.com', 'https://ssl.kakaocdn.net'],
 }
 
 // 브라우저가 쓸 수 있는 주소 목록(파일럿 그대로 + media-src). next.config.ts가 불러 쓴다

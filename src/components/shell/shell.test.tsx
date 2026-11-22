@@ -2193,4 +2193,42 @@ describe('입지 분석 탭 (location REQ-7901)', () => {
     expect(nav().textContent).not.toContain('입지 분석')
     expect(document.querySelector('a[href="/location"]')).toBeNull()
   })
+
+  // 계정 메뉴의 링크 둘(관리자 [가입 승인] /admin · 데스크 [비트 PC 연결] /claim/setup)도 셸 링크(ShellLink)와 같은 까닭으로
+  // /location(그 아래)에서는 평범한 <a>다 — Next가 옮기면 /location의 넓은 CSP가 그 화면에 남는다
+  const ACCOUNT_LINKS = [
+    [{ isAdmin: true }, ADMIN_LINK.label, ADMIN_LINK.href],
+    [{ isAdmin: false, desk: true }, '비트 PC 연결', '/claim/setup'],
+  ] as const
+  const accountButton = () => screen.getByRole('button', { name: new RegExp(EMAIL) })
+
+  it.each(['/location', '/location/x'])('AC-7901.1: %s에서는 계정 메뉴의 [가입 승인]·[비트 PC 연결]도 평범한 <a> — 누르면 Next가 옮기지 않고 브라우저가 새 문서를 받으며 메뉴가 닫힌다', async (path) => {
+    pathname.mockReturnValue(path)
+    const user = userEvent.setup()
+    for (const [props, name, href] of ACCOUNT_LINKS) {
+      render(withRouter(<AccountMenu email={EMAIL} hospitalName={HOSPITAL} {...props} />))
+      await user.click(accountButton())
+      const link = screen.getByRole('menuitem', { name })
+      expect(link.tagName).toBe('A')
+      expect(link.getAttribute('href')).toBe(href)
+      expect(await press(user, link), name).toBe('document')
+      expect(screen.queryByRole('menu'), name).toBeNull()
+      cleanup()
+    }
+    expect(nextRouter.push).not.toHaveBeenCalled()
+  })
+
+  it.each(['/dashboard', '/locations'])('AC-7901.1: %s에서는 계정 메뉴의 [가입 승인]·[비트 PC 연결]이 지금처럼 Next가 이 창 안에서 옮긴다', async (path) => {
+    pathname.mockReturnValue(path)
+    const user = userEvent.setup()
+    for (const [props, name, href] of ACCOUNT_LINKS) {
+      render(withRouter(<AccountMenu email={EMAIL} hospitalName={HOSPITAL} {...props} />))
+      await user.click(accountButton())
+      const link = screen.getByRole('menuitem', { name })
+      expect(await press(user, link), name).toBe('next')
+      expect(nextRouter.push.mock.calls[0]?.[0], name).toBe(href)
+      expect(screen.queryByRole('menu'), name).toBeNull()
+      cleanup()
+    }
+  })
 })

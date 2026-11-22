@@ -115,10 +115,11 @@ export type Query =
   | { kind: 'nonpay'; ykiho: string; item: string } // 항목 코드(영문·숫자 1~20자)
   // 날짜 둘, from ≤ to ≤ from + 3년. addr = 도로명 주소 앞부분 '{시도} {시군구}'(한글 덩이를 공백 하나로, 2~40자)
   | { kind: 'clinic-license'; event: 'open' | 'close'; from: string; to: string; addr?: string }
+  // 시설 넷: 시군구 이름 + 선택 시도 이름(design.md 17절 10 — 경로당 제공기관·학교 교육청은 시도 이름이 없으면 요청이 0개)
   | { kind: 'gym'; sggName: string; sidoName?: string }
-  | { kind: 'senior'; sggName: string }
-  | { kind: 'market'; sggName: string }
-  | { kind: 'school'; sggName: string }
+  | { kind: 'senior'; sggName: string; sidoName?: string }
+  | { kind: 'market'; sggName: string; sidoName?: string }
+  | { kind: 'school'; sggName: string; sidoName?: string }
   // 한국사회보장정보원 시군구별 수급권자 현황(api.odcloud.kr) — 판에 코드 칸이 없어 이름으로 찾는다.
   // 후보 시군구 5자리 · 판의 시도 이름 1~2개(전남광주는 옛 둘) · 시군구 이름 1~4개(옛 구 묶음이면 옛 이름들), 되풀이 없음
   | { kind: 'welfare'; sgg: string; sidoNames: string[]; sggNames: string[] }

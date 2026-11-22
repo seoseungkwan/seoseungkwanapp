@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import type { MouseEvent, ReactNode } from 'react'
 import { HowLine } from '@/components/location/common/HowLine'
 import { ds } from '@/components/ui/classes'
@@ -144,10 +143,11 @@ export function LawLink({ id, onOpen }: { id: string; onOpen?: (id: string) => v
         onOpen(id)
       }
     : undefined
+  // 평범한 <a>(next/link 아님): /location 안 링크도 Next가 옮기지 않게 둔다(셸 ShellLink·틀 TabLink와 같음)
   return (
-    <Link href={lawHref(id)} prefetch={false} className={LAW} onClick={onClick}>
+    <a href={lawHref(id)} className={LAW} onClick={onClick}>
       법 근거
-    </Link>
+    </a>
   )
 }
 

@@ -54,13 +54,16 @@ function pointOf(v: unknown): LicenseRow['point'] | undefined {
   return isRecord(v) && Number.isFinite(v.lat) && Number.isFinite(v.lng) ? { lat: v.lat as number, lng: v.lng as number } : undefined
 }
 
-/** 답 값({ rows, capped })에서 줄만 새로 담는다. 모양이 틀린 줄은 빼고(날짜·점은 pickEvents가 다시 본다), 값 모양이 틀리면 null */
+/** 답 값({ rows, capped })에서 줄만 새로 담는다. 모양이 틀린 줄은 빼고(날짜·점은 pickEvents가 다시 본다), 값 모양이 틀리면 null.
+ * 업태 글(type)이 글자면 함께 옮긴다 — 치과의원·한의원은 업태로만 가른다(watch.ts deptOfText). 없거나 글자가 아니면 뺀다 */
 function licenseRows(value: unknown): LicenseRow[] | null {
   if (!isRecord(value) || !Array.isArray(value.rows)) return null
   return value.rows.flatMap((r: unknown): LicenseRow[] => {
     if (!isRecord(r) || typeof r.name !== 'string' || typeof r.dept !== 'string' || !isTextOrNull(r.openedOn) || !isTextOrNull(r.closedOn)) return []
     const point = pointOf(r.point)
-    return point === undefined ? [] : [{ name: r.name, dept: r.dept, openedOn: r.openedOn, closedOn: r.closedOn, point }]
+    if (point === undefined) return []
+    const type = typeof r.type === 'string' ? { type: r.type } : {}
+    return [{ name: r.name, dept: r.dept, openedOn: r.openedOn, closedOn: r.closedOn, point, ...type }]
   })
 }
 
