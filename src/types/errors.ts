@@ -68,5 +68,7 @@ export type ErrorCode =
   // 주소록(specs/contacts design.md '오류 번호'): 읽기 · 저장·지우기 · [넣기] 실패 · 올린 엑셀이 양식 아님 · xlsx 아님 · 비밀번호 걸림 · 적힌 줄 없음 · 너무 큼
   | 'E-CONTACTS-READ-FAILED' | 'E-CONTACTS-SAVE-FAILED' | 'E-CONTACTS-IMPORT-FAILED'
   | 'E-CONTACTS-FILE-FORM' | 'E-CONTACTS-FILE-NOT-XLSX' | 'E-CONTACTS-FILE-LOCKED' | 'E-CONTACTS-FILE-EMPTY' | 'E-CONTACTS-FILE-BIG'
+  // 입지 분석(specs/location design.md 15절): 읽기 · 저장 · 바깥 자료 · 지도 · 사진 올리기 실패
+  | 'E-LOC-READ-FAILED' | 'E-LOC-SAVE-FAILED' | 'E-LOC-SOURCE' | 'E-LOC-MAP' | 'E-LOC-PHOTO'
 
 export type ErrorInfo = { what: string; fix: string }

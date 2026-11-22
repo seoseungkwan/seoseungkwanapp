@@ -126,6 +126,11 @@ const ALL_CODES = [
   'E-CONTACTS-FILE-LOCKED',
   'E-CONTACTS-FILE-EMPTY',
   'E-CONTACTS-FILE-BIG',
+  'E-LOC-READ-FAILED',
+  'E-LOC-SAVE-FAILED',
+  'E-LOC-SOURCE',
+  'E-LOC-MAP',
+  'E-LOC-PHOTO',
 ] as const satisfies readonly ErrorCode[]
 
 // '병원' 낱말 예외(AC-409.1): 명세가 글자를 정한 번호만. 데스크 메일 둘은 '병원 계정'·'다른 병원'이라고 말해야 뜻이 산다(desk-feedback design.md 표, AC-6304.3).
@@ -1354,5 +1359,55 @@ describe('AC-7503.6 재고 오류 번호', () => {
     expect(errorInfo('E-AI-BUSY')).toEqual({ what: 'AI가 지금 바빠서 답하지 못했어요', fix: '1~2분 뒤 [다시 분석]을 눌러 주세요.' })
     expect(errorInfo('E-AI-LIMIT').what).toBe('이번 달 AI 사용 한도에 닿았어요')
     expect(errorInfo('E-AI-FAILED').what).toBe('AI 리포트를 만들지 못했어요')
+  })
+})
+
+// 입지 분석(specs/location design.md 15절 표, TASK-3). 글은 그 표 글자 그대로다.
+// 읽기·저장 실패는 오류 카드, 바깥 자료·지도·사진 실패는 그 칸 자리에 뜬다(AC-7917.2)
+const LOCATION = {
+  'E-LOC-READ-FAILED': {
+    what: '입지 분석 자료를 읽지 못했어요',
+    fix: '인터넷 연결을 확인하고 [다시 읽기]를 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
+  'E-LOC-SAVE-FAILED': { what: '저장하지 못했어요', fix: '적은 값은 그대로 있어요. 인터넷 연결을 확인하고 잠시 뒤 다시 해 주세요.' },
+  'E-LOC-SOURCE': {
+    what: '바깥 자료를 받지 못했어요',
+    fix: '잠시 뒤 [다시 받기]를 눌러 주세요. 저장한 후보는 지난 값을 그대로 보여 줘요.',
+  },
+  'E-LOC-MAP': {
+    what: '지도를 불러오지 못했어요',
+    fix: '카카오 개발자 화면에 이 사이트 주소가 등록됐는지, 지도 열쇠가 맞는지 확인해 주세요. 숫자는 지도 없이도 볼 수 있어요.',
+  },
+  'E-LOC-PHOTO': {
+    what: '사진을 올리지 못했어요',
+    fix: 'JPEG·PNG·WEBP 사진만, 후보마다 30장까지 올릴 수 있어요. 잠시 뒤 다시 올려 주세요.',
+  },
+} as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
+
+describe('AC-7917.3 입지 분석 오류 번호 다섯', () => {
+  it.each(Object.keys(LOCATION) as Array<keyof typeof LOCATION>)(
+    'AC-7917.3: %s는 번호가 있고 무엇이·어떻게 고치나가 design.md 15절 글자 그대로다',
+    (code) => {
+      expect(isErrorCode(code), code).toBe(true)
+      expect(ALL_CODES, code).toContain(code)
+      expect(errorInfo(code)).toEqual(LOCATION[code])
+    },
+  )
+
+  it('AC-7917.3: 이 명세가 더하는 E-LOC- 번호는 design.md 15절의 다섯뿐이다', () => {
+    expect(Object.keys(ERRORS).filter((code) => code.startsWith('E-LOC-')).sort()).toEqual(Object.keys(LOCATION).sort())
+  })
+
+  it('AC-7917.3: 바깥 자료 실패 글은 저장한 후보가 지난 값을 보인다고, 지도 실패 글은 숫자는 지도 없이도 보인다고 알린다', () => {
+    expect(errorInfo('E-LOC-SOURCE').fix).toContain('지난 값을 그대로')
+    expect(errorInfo('E-LOC-MAP').fix).toContain('숫자는 지도 없이도')
+    expect(errorInfo('E-LOC-PHOTO').fix).toContain('30장까지')
+  })
+
+  // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
+  it('AC-7917.3: 다섯 번호가 번호 타입 ErrorCode(src/types/errors.ts)에도 있다', () => {
+    const types = readFileSync(join(process.cwd(), 'src/types/errors.ts'), 'utf8')
+    const union = types.slice(types.indexOf('export type ErrorCode ='), types.indexOf('export type ErrorInfo'))
+    for (const code of Object.keys(LOCATION)) expect(union).toContain(`'${code}'`)
   })
 })
