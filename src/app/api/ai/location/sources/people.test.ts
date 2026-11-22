@@ -7,8 +7,10 @@ import { householdAdapter, popAgeAdapter } from './people'
 // 입지 분석 바깥 자료 — 사는 사람(specs/location REQ-7904, design.md 4절 `pop-age`·`household`, TASK-13).
 // 가짜 응답은 fixtures/location/api/people/(지어낸 시도·시군구·동 이름과 코드만). TASK-47이 진짜 답 모양으로 고쳤다:
 // pop-age·빈 답(자료 없음 코드 '3')·미등록 열쇠(JSON, HTTP 403)는 진짜 답 모양이다. household는 15108071(법정동 기준)이
-// 읍면동 단위 줄에 행정동 코드를 비워 보내 행정동별 세대 수를 줄 수 없어서, 같은 행정안전부 묶음의 행정동 기준 인구·세대 API로 바꿨다
-// (그 API는 활용신청 전이라 답 모양은 같은 묶음 진짜 답을 따라 지은 것이다)
+// 읍면동 단위 줄에 행정동 코드를 비워 보내 행정동별 세대 수를 줄 수 없어서, 같은 행정안전부 묶음의 행정동 기준 인구·세대 API
+// (행정동별(통반단위) 주민등록 인구 및 세대현황 15108065)로 바꿨다. TASK-57(2026-11-22 활용신청 뒤 진짜 열쇠)이 진짜 답으로 확인했다:
+// Response.head·items.item, 행정동마다 한 줄(시군구 합계 줄 없음), 칸 hhCnt·admmCd·statsYm, 2026 새 코드(제물포구 28125)도 답한다
+// household.json은 그 진짜 답 모양(이름·코드만 지어냄)이다
 const fixture = (name: string) =>
   readFileSync(new URL(`../../../../../../fixtures/location/api/people/${name}`, import.meta.url), 'utf8')
 const POP_AGE = fixture('pop-age.json')
@@ -142,7 +144,13 @@ describe('AC-7904.1 household 요청 · 답 읽기', () => {
     expect(adapter.requests).toBeTypeOf('function')
   })
 
-  it('AC-7904.1: 동마다 세대 수 — 같은 동 줄이 둘이면 더한다 · 기준 날짜는 그 연월 말일', () => {
+  it('AC-7904.1: 2026 새 행정동 코드(인천 제물포구 28125)도 같은 모양으로 부른다(진짜 답 18개 동 확인)', () => {
+    const [req] = householdAdapter.requests(household(['2812551000', '2812568000'], '2026-10'))
+    expect(new URL(req.url).searchParams.get('admmCd')).toBe('2812500000')
+    expect(new URL(req.url).searchParams.get('srchFrYm')).toBe('202610')
+  })
+
+  it('AC-7904.1: 동마다 세대 수(진짜 답처럼 동마다 한 줄, 인구·남녀 칸은 읽지 않음) · 기준 날짜는 그 연월 말일', () => {
     expect(householdAdapter.parse([HOUSEHOLD], household([HANEUL, BADA, BYEOL, NARAE]), TODAY)).toEqual({
       ok: true,
       value: [
@@ -150,6 +158,15 @@ describe('AC-7904.1 household 요청 · 답 읽기', () => {
         { dong: BADA, households: 3500 },
         { dong: BYEOL, households: 1020 },
       ],
+      asOf: '2026-09-30',
+    })
+  })
+
+  it('AC-7904.1: 같은 동 줄이 둘이면(통·반 줄처럼) 세대 수를 더한다', () => {
+    const hhRow = (hhCnt: string, tong: string) => ({ statsYm: '202609', admmCd: HANEUL, dongNm: '하늘동', tong, ban: '', hhCnt })
+    expect(householdAdapter.parse([reply([hhRow('2100', '1'), hhRow('1400', '2')])], household([HANEUL]), TODAY)).toEqual({
+      ok: true,
+      value: [{ dong: HANEUL, households: 3500 }],
       asOf: '2026-09-30',
     })
   })

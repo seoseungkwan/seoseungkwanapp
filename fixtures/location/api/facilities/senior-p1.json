@@ -1,47 +1,92 @@
 {
-  "response": {
-    "header": { "resultCode": "00", "resultMsg": "NORMAL_SERVICE", "type": "json" },
-    "body": {
-      "items": [
+  "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+  "body": {
+    "items": {
+      "item": [
         {
-          "fcltyNm": "하늘동경로당",
-          "rdnmadr": "가상도 가람구 하늘로 30",
-          "lnmadr": "가상도 가람구 하늘동 130",
-          "latitude": "37.505",
-          "longitude": "127.004"
+          "flctNm": "하늘동경로당",
+          "flctTyp": "경로당",
+          "lctnRoadNmAddr": "가상도 가람구 하늘로 30",
+          "lctnLotnoAddr": "가상도 가람구 하늘동 130",
+          "lat": "37.505",
+          "lot": "127.004",
+          "busiCodNm": "영업",
+          "telno": "",
+          "builYmd": "1993-05-31",
+          "builArea": "120.5",
+          "mngInstNm": "가상도 가람구청",
+          "crtrYmd": "2026-10-15",
+          "insttCode": "9990000",
+          "insttNm": "가상도 가람구"
         },
         {
-          "fcltyNm": "바다마을회관",
-          "rdnmadr": "",
-          "lnmadr": "가상도 가람구 바다동 21",
-          "latitude": "37.5155554",
-          "longitude": "127.0200009"
+          "flctNm": "바다마을회관",
+          "flctTyp": "마을회관및경로당",
+          "lctnRoadNmAddr": "",
+          "lctnLotnoAddr": "가상도 가람구 바다동 55",
+          "lat": "37.5155554",
+          "lot": "127.0200014",
+          "busiCodNm": "영업",
+          "telno": "",
+          "builYmd": "2001-03-02",
+          "builArea": "88",
+          "mngInstNm": "가상도 가람구청",
+          "crtrYmd": "2026-06-02",
+          "insttCode": "9990000",
+          "insttNm": "가상도 가람구"
         },
         {
-          "fcltyNm": "나래경로당",
-          "rdnmadr": "가상도 나래구 나래로 8",
-          "lnmadr": "가상도 나래구 나래동 8",
-          "latitude": "37.51",
-          "longitude": "127.045"
+          "flctNm": "별빛경로당",
+          "flctTyp": "경로당",
+          "lctnRoadNmAddr": "가상도 가람구 별빛로 7",
+          "lctnLotnoAddr": "가상도 가람구 별빛동 7",
+          "lat": "37.507",
+          "lot": "127.008",
+          "busiCodNm": "폐업",
+          "telno": "",
+          "builYmd": "1988-01-01",
+          "builArea": "60",
+          "mngInstNm": "가상도 가람구청",
+          "crtrYmd": "2026-11-01",
+          "insttCode": "9990000",
+          "insttNm": "가상도 가람구"
         },
         {
-          "fcltyNm": "좌표없는경로당",
-          "rdnmadr": "가상도 가람구 하늘로 31",
-          "lnmadr": "",
-          "latitude": 0,
-          "longitude": 0
+          "flctNm": "나래동경로당",
+          "flctTyp": "경로당",
+          "lctnRoadNmAddr": "가상도 나래구 나래로 8",
+          "lctnLotnoAddr": "가상도 나래구 나래동 8",
+          "lat": "37.52",
+          "lot": "127.04",
+          "busiCodNm": "영업",
+          "telno": "",
+          "builYmd": "1995-07-01",
+          "builArea": "75",
+          "mngInstNm": "가상도 가람구청",
+          "crtrYmd": "2026-10-15",
+          "insttCode": "9990000",
+          "insttNm": "가상도 가람구"
         },
         {
-          "fcltyNm": "자리틀린경로당",
-          "rdnmadr": "가상도 가람구 하늘로 32",
-          "lnmadr": "",
-          "latitude": "127.004",
-          "longitude": "37.505"
+          "flctNm": "누리경로당",
+          "flctTyp": "경로당",
+          "lctnRoadNmAddr": "가상도 가람구 누리로 2",
+          "lctnLotnoAddr": "가상도 가람구 누리동 2",
+          "lat": "",
+          "lot": "",
+          "busiCodNm": "영업",
+          "telno": "",
+          "builYmd": "",
+          "builArea": "",
+          "mngInstNm": "가상도 가람구청",
+          "crtrYmd": "2026-10-15",
+          "insttCode": "9990000",
+          "insttNm": "가상도 가람구"
         }
-      ],
-      "totalCount": "5",
-      "numOfRows": "1000",
-      "pageNo": "1"
-    }
+      ]
+    },
+    "numOfRows": 1000,
+    "pageNo": 1,
+    "totalCount": 5
   }
 }
