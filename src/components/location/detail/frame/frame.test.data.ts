@@ -1,0 +1,190 @@
+import { pyeongToM2 } from '@/lib/location/area'
+import type { Candidate, Got, Listing, Rival, Snapshot, SnapshotValue } from '@/types/location'
+
+// 후보 자세히 틀 시험용 가짜 후보·그날 값·매물(지어낸 이름만). 오늘 = 2026-11-22(시안과 같음)
+
+export const TODAY = '2026-11-22'
+export const CAND_ID = '11111111-1111-4111-8111-111111111111'
+export const OTHER_ID = '22222222-2222-4222-8222-222222222222'
+
+export const ok = <T>(v: T, src: string, asOf: string): Got<T> => ({ ok: true, v, src, asOf })
+
+const WEEKDAY: [number, number] = [540, 1110] // 9:00~18:30
+const SATURDAY: [number, number] = [540, 780] // 9:00~13:00
+
+export const RIVALS: Rival[] = [
+  {
+    name: '예시가람정형외과',
+    kind: 'ortho',
+    doctors: 2,
+    therapists: null,
+    mri: true,
+    ct: false,
+    openedYear: 2019,
+    distM: 20,
+    sameBuilding: true,
+    week: [WEEKDAY, WEEKDAY, WEEKDAY, WEEKDAY, WEEKDAY, SATURDAY, null, null],
+    eswt: 50000,
+  },
+  {
+    name: '예시하늘통증의학과',
+    kind: 'pain',
+    doctors: 1,
+    therapists: 2,
+    mri: false,
+    ct: false,
+    openedYear: 2025,
+    distM: 400,
+    sameBuilding: false,
+    week: null,
+    eswt: 70000,
+  },
+  {
+    name: '예시다온한의원',
+    kind: 'korean',
+    doctors: 1,
+    therapists: null,
+    mri: null,
+    ct: null,
+    openedYear: 2024,
+    distM: 10,
+    sameBuilding: true,
+    week: null,
+    eswt: 10000,
+  },
+]
+
+export const BANDS = [1000, 1500, 2000, 2500, 3000, 3000, 2500, 2000, 1500, 700, 300] // 합 20,000 · 60세 이상 7,000(35%)
+export const TREND = [
+  { ym: '2022-10', total: 19000 },
+  { ym: '2023-10', total: 19300 },
+  { ym: '2024-10', total: 19600 },
+  { ym: '2025-10', total: 19800 },
+  { ym: '2026-10', total: 20000 },
+]
+
+export const BUILDING: SnapshotValue<'building'> = {
+  usage: '제1종 근린생활시설',
+  structure: '철근콘크리트구조',
+  above: 5,
+  below: 1,
+  totalM2: 1200,
+  approvedOn: '2008-05-20',
+  elevators: 1,
+  parking: 20,
+  floors: [{ label: '3', usage: '제1종 근린생활시설', m2: 240 }],
+}
+
+export function makeSnapshot(over: Partial<Snapshot> = {}): Snapshot {
+  return {
+    v: 1,
+    at: '2026-11-15T01:00:00.000Z',
+    radiusM: 1000,
+    people: ok({ total: 20000, bands: BANDS, households: 9000, unmatched: 0 }, 'pop-age', '2026-10-31'),
+    trend: ok(TREND, 'pop-age', '2026-10-31'),
+    flow: ok(
+      {
+        ym: '2026-09',
+        stations: [{ name: '예시가람역', line: '2호선', distM: 450, perDay: 12000 }],
+        stops: [{ name: '예시가람시장 정류장', distM: 100, perDay: 3000 }],
+        total: 15000,
+        unmatched: 0,
+      },
+      'flow-volume',
+      '2026-09',
+    ),
+    income: ok({ sggName: '예시구', won: 45_000_000, year: 2024 }, 'income', '2024'),
+    aptPrice: ok({ perM2: 8_000_000, deals: 30 }, 'apt-trade', '2026-11-15'),
+    bizPrice: ok({ perM2: 6_000_000, deals: 5 }, 'biz-trade', '2026-11-15'),
+    apts: ok(
+      [
+        { name: '예시가람아파트', households: 1200, builtYear: 2005, bdongName: '가람동' },
+        { name: '예시하늘아파트', households: 800, builtYear: 2015, bdongName: '하늘동' },
+      ],
+      'apt-info',
+      '2026-11-15',
+    ),
+    presale: ok([{ name: '예시새솔아파트', households: 500, moveIn: '2027-06' }], 'presale', '2026-11-15'),
+    seniors: ok(12, 'senior-centers', '2026-11-15'),
+    gyms: ok(8, 'gyms', '2026-11-15'),
+    schools: ok(4, 'school', '2026-11-15'),
+    accidents: ok({ spots: 2, cases: 14 }, 'accidents', '2025'),
+    industry: ok({ sggName: '예시구', employees: 5000, parks: 1, quarter: '2025-2' }, 'industry', '2025-06'),
+    pharmacies: ok(1, 'stores', '2026-09-30'),
+    rivals: ok(RIVALS, 'hosp-list', '2026-11-15'),
+    history: ok([{ kind: 'close', name: '예시새솔정형외과의원', dept: '정형외과', on: '2025-03-10', distM: 5 }], 'clinic-license', '2026-11-13'),
+    station: ok({ name: '예시가람역', line: '2호선', distM: 450 }, 'rail-stations', '2026-06-30'),
+    bus: ok(6, 'bus-stops', '2026-06-30'),
+    market: ok({ name: '예시가람시장', distM: 600 }, 'market', '2026-11-15'),
+    building: ok(BUILDING, 'building', '2026-11-15'),
+    stores: ok([{ floor: '1', count: 3 }], 'stores', '2026-09-30'),
+    welfare: ok(
+      { sggName: '예시구', ym: '2025-12', medical: 9000, basic: 12000, nearPoor: 4000, population: 400000 },
+      'welfare',
+      '2025-12',
+    ),
+    ...over,
+  }
+}
+
+export function makeCandidate(over: Partial<Candidate> = {}): Candidate {
+  const snapshot = over.snapshot === undefined ? makeSnapshot() : over.snapshot
+  return {
+    id: CAND_ID,
+    name: '예시빌딩 3층',
+    addressNote: '예시구 가람동 123-4',
+    lat: 37.5,
+    lng: 127.0,
+    radiusM: 1000,
+    status: 'watching',
+    floorLabel: '3층',
+    areaM2: pyeongToM2(52),
+    signVisible: 'yes',
+    violation: null,
+    costs: {},
+    terms: {},
+    checks: {},
+    openOn: null,
+    tasksDone: [],
+    snapshot,
+    snapshotAt: snapshot ? snapshot.at : null,
+    watchCheckedOn: null,
+    createdAt: '2026-11-15T00:30:00.000Z',
+    updatedAt: '2026-11-15T01:00:00.000Z',
+    ...over,
+  }
+}
+
+export function makeListing(over: Partial<Listing> = {}): Listing {
+  return {
+    id: '33333333-3333-4333-8333-333333333333',
+    candidateId: CAND_ID,
+    title: '예시빌딩 3층',
+    url: '',
+    areaM2: pyeongToM2(52),
+    floorLabel: '3층',
+    deposit: 100_000_000,
+    rent: 5_200_000,
+    premium: 0,
+    mgmt: 780_000,
+    brokerId: null,
+    brokerNote: '',
+    memo: '',
+    lat: null,
+    lng: null,
+    createdAt: '2026-11-14T00:00:00.000Z',
+    updatedAt: '2026-11-14T00:00:00.000Z',
+    ...over,
+  }
+}
+
+/** 후보와 이어지지 않은 저장 매물(30평 · 월세 240만 원 = 평당 8만 원) */
+export const OTHER_LISTING = makeListing({
+  id: '44444444-4444-4444-8444-444444444444',
+  candidateId: null,
+  title: '예시타워 2층',
+  areaM2: pyeongToM2(30),
+  rent: 2_400_000,
+  deposit: 50_000_000,
+  premium: 30_000_000,
+})
