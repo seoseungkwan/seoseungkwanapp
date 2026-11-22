@@ -1,0 +1,14 @@
+{
+  "header": {
+    "description": "소상공인시장진흥공단 상가업소정보",
+    "stdrYm": "202509",
+    "resultCode": "00",
+    "resultMsg": "NORMAL SERVICE."
+  },
+  "body": {
+    "items": [],
+    "numOfRows": 100,
+    "pageNo": 1,
+    "totalCount": 0
+  }
+}

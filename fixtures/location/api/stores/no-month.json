@@ -1,0 +1,24 @@
+{
+  "header": {
+    "resultCode": "00",
+    "resultMsg": "NORMAL SERVICE."
+  },
+  "body": {
+    "items": [
+      {
+        "bizesId": "FAKE0000000000000009",
+        "bizesNm": "아라꽃집",
+        "brchNm": "",
+        "indsLclsNm": "소매",
+        "indsMclsNm": "식물 소매",
+        "indsSclsNm": "꽃집",
+        "flrNo": "  ",
+        "lon": 127.0109,
+        "lat": 37.5109
+      }
+    ],
+    "numOfRows": 100,
+    "pageNo": 1,
+    "totalCount": 1
+  }
+}
