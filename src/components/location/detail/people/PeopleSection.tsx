@@ -1,19 +1,21 @@
 // 후보 자세히 › 사는 사람 묶음(spec location AC-7909.2, 시안 ?s=candidate #sec-people).
 // 범위 인구·세대 수·60세 이상(비율)·아파트 세대 → 나이대 넷 · 4년 추세(해마다 10월) → 홍보할 아파트 차례 → 입주 예정.
-// 인구·세대는 행정동, 단지는 법정동 기준이라 칸 아래 기준을 적는다(design.md 5절). 그날 값(Snapshot)만 받는다(props·콜백만, 읽기·저장·부르기 없음)
+// 인구·세대는 행정동, 단지는 법정동 기준이라 칸 아래 기준을 적는다(design.md 5절). 그날 값(Snapshot)만 받는다(props·콜백만, 읽기·저장·부르기 없음).
+// 제목 아래 '이렇게 봤어요'(AC-7920.2): method.ts HOW.people을 부르는 쪽이 준 howCtx로 채움, 펼침도 props(howOpen·onHow)
 import { Fact, Facts } from '@/components/location/common/Fact'
 import { WhyLine } from '@/components/location/common/WhyLine'
 import { asOfText } from '@/components/location/common/text'
 import { distText } from '@/lib/location/coords'
 import { commaText } from '@/lib/location/money'
 import type { Got, Snapshot, SnapshotValue } from '@/types/location'
-import { GotView, INFO, INFO_DD, INFO_DT, INFO_ROW, type Pass, Section, SubHead } from './Section'
+import { GotView, type HowProps, INFO, INFO_DD, INFO_DT, INFO_ROW, type Pass, Section, SubHead } from './Section'
 import { ageGroups, changeText, countShort, promoOrder, shownOf, trendChange } from './text'
 
-export type PeopleSectionProps = Pass & {
-  /** 그날 값(전체 Snapshot을 그대로 넘겨도 된다) */
-  snapshot: Pick<Snapshot, 'radiusM' | 'people' | 'trend' | 'apts' | 'presale'>
-}
+export type PeopleSectionProps = Pass &
+  HowProps & {
+    /** 그날 값(전체 Snapshot을 그대로 넘겨도 된다) */
+    snapshot: Pick<Snapshot, 'radiusM' | 'people' | 'trend' | 'apts' | 'presale'>
+  }
 
 type People = SnapshotValue<'people'>
 type Trend = SnapshotValue<'trend'>
@@ -21,11 +23,11 @@ type Trend = SnapshotValue<'trend'>
 const pctText = (pct: number | null) => (pct === null ? '–' : `${pct}%`)
 const seniorsOf = (v: People) => ageGroups(v)?.[3] ?? null
 
-export function PeopleSection({ snapshot: s, onRetry, onOpenSource }: PeopleSectionProps) {
+export function PeopleSection({ snapshot: s, howCtx, howOpen, onHow, onRetry, onOpenSource }: PeopleSectionProps) {
   const pass: Pass = { onRetry, onOpenSource }
   const unmatched = shownOf(s.people)?.v.unmatched ?? 0
   return (
-    <Section id="people" title="사는 사람" aside={`범위 ${distText(s.radiusM)} 안`}>
+    <Section id="people" title="사는 사람" aside={`범위 ${distText(s.radiusM)} 안`} howCtx={howCtx} howOpen={howOpen} onHow={onHow}>
       <div className="min-w-0">
         <Facts cols={4}>
           <Fact label="사는 사람" got={s.people} value={(v) => commaText(v.total)} unit="명" note="행정동 기준" {...pass} />

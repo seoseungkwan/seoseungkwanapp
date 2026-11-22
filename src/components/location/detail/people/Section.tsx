@@ -1,14 +1,41 @@
 import type { ReactNode } from 'react'
+import { HowLine } from '@/components/location/common/HowLine'
 import { SourceLine } from '@/components/location/common/SourceLine'
 import { WhyLine } from '@/components/location/common/WhyLine'
+import { filledHow, type HowCtx } from '@/lib/location/method'
 import type { Got, SourceId } from '@/types/location'
 import { shownOf } from './text'
 
-// 후보 자세히 묶음 틀(시안 .csec · .sh): 머리(h3 + 곁글)와 몸(칸 사이 16px).
-// 닻 id는 `sec-{묶음}`(시안 그대로) — 틀(detail/frame)의 목차가 이 닻으로 건너뛴다
+// 후보 자세히 묶음 틀(시안 .csec · .sh · .how · .body): 머리(h3 + 곁글) → '이렇게 봤어요' 한 줄 → 몸(칸 사이 16px).
+// 닻 id는 `sec-{묶음}`(시안 그대로)를 묶음이 한 번만 그린다 — 틀(detail/frame)은 감싸개에 id를 두지 않고 ref로 건너뛴다
 const HEAD = 'flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-line-strong pb-1.5'
 
-export function Section({ id, title, aside, children }: { id: string; title: string; aside?: string; children: ReactNode }) {
+/** '이렇게 봤어요'(AC-7920.2) — 글은 method.ts HOW[묶음]을 howCtx로 채우고, 펼침은 부르는 쪽(LocationScreen)이 묶음마다 쥔다(범위를 바꿔 다시 그려도 그대로) */
+export type HowProps = {
+  /** 채울 값: 그 후보 그날 값의 출처별 기준 날짜 · 살필 범위 · 후보 시·군·구 · 고른 경쟁 과목(method.ts HowCtx) */
+  howCtx: HowCtx
+  /** [더 보기]를 펼쳤나 */
+  howOpen: boolean
+  /** [더 보기]/[접기]를 누르면 */
+  onHow: () => void
+}
+
+type SectionId = 'people' | 'income' | 'future'
+
+export function Section({
+  id,
+  title,
+  aside,
+  howCtx,
+  howOpen,
+  onHow,
+  children,
+}: HowProps & {
+  id: SectionId
+  title: string
+  aside?: string
+  children: ReactNode
+}) {
   const headId = `sec-${id}-h`
   return (
     <section id={`sec-${id}`} aria-labelledby={headId} className="min-w-0 scroll-mt-4">
@@ -18,6 +45,7 @@ export function Section({ id, title, aside, children }: { id: string; title: str
         </h3>
         {aside && <span className="text-small text-muted">{aside}</span>}
       </div>
+      <HowLine {...filledHow(id, howCtx)} open={howOpen} onToggle={onHow} />
       <div className="mt-3 grid min-w-0 gap-4">{children}</div>
     </section>
   )

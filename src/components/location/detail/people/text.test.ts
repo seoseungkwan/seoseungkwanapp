@@ -1,6 +1,10 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { oldGroupOf } from '@/lib/location/regions'
+import { welfareRate } from '@/lib/location/snapshot'
 import { BANDS, SNAP } from './fixture.test.data'
-import { ageGroups, changeText, countShort, promoOrder, rateText, tenthsText, trendChange, welfareLines } from './text'
+import { ageGroups, changeText, countShort, promoOrder, rateText, tenthsText, trendChange, welfareLines, welfareNote } from './text'
 
 describe('AC-7909.2: 나이대 넷 · 60세 이상 비율', () => {
   it('AC-7909.2: 10세 나이대 11칸을 0~19·20~39·40~59·60세 이상 넷으로 묶고 % 는 버림 정수', () => {
@@ -75,20 +79,56 @@ describe('AC-7909.2: 홍보할 아파트 차례(가까움 · 세대 수 · 지�
 })
 
 describe('AC-7909.7: 의료급여·차상위 세 줄과 비율', () => {
-  it('AC-7909.7: 의료급여(기초)·기초생활보장 합계·차상위 3종 합계와 주민등록 인구 대비 비율(소수 첫째 자리 버림)', () => {
+  it('AC-7909.7: 의료급여(기초)·기초생활보장 합계·차상위 3종 합계와 주민등록 인구 대비 비율(소수 첫째 자리 버림 %)', () => {
     const v = SNAP.welfare.ok ? SNAP.welfare.v : null
     expect(welfareLines(v!)).toEqual([
-      { label: '의료급여(기초) 수급권자', count: 9876, tenths: 23 },
-      { label: '기초생활보장 수급권자 합계', count: 14321, tenths: 34 },
-      { label: '차상위 3종 합계', count: 5432, tenths: 13 },
+      { label: '의료급여(기초) 수급권자', count: 9876, rate: 2.3 },
+      { label: '기초생활보장 수급권자 합계', count: 14321, rate: 3.4 },
+      { label: '차상위 3종 합계', count: 5432, rate: 1.3 },
     ])
   })
 
-  it('AC-7909.7: 인구가 없으면 비율은 없고 글자는 `–`', () => {
-    const lines = welfareLines({ sggName: '가상구', ym: '2025-12', medical: 10, basic: 20, nearPoor: 30, population: null })
-    expect(lines.map((l) => l.tenths)).toEqual([null, null, null])
+  it('AC-7909.7: 비율은 snapshot.ts welfareRate 한 곳으로 센다 — 줄마다 welfareRate와 같은 값', () => {
+    for (const population of [412_345, 7, 1_000_000, 3]) {
+      const v = { sggName: '가상구', ym: '2025-12', medical: 9876, basic: 14321, nearPoor: 5432, population, basis: null }
+      const [medical, basic, nearPoor] = welfareLines(v).map((l) => l.rate)
+      expect(medical).toBe(welfareRate({ medical: 9876, nearPoor: 0, population }))
+      expect(basic).toBe(welfareRate({ medical: 14321, nearPoor: 0, population }))
+      expect(nearPoor).toBe(welfareRate({ medical: 0, nearPoor: 5432, population }))
+    }
+  })
+
+  it('AC-7909.7: text.ts에는 비율 셈이 따로 없다(welfareRate를 부른다)', () => {
+    const src = readFileSync(join(process.cwd(), 'src/components/location/detail/people/text.ts'), 'utf8')
+    expect(src).toMatch(/import \{[^}]*\bwelfareRate\b[^}]*\} from '@\/lib\/location\/snapshot'/)
+    expect(src).not.toMatch(/\/ ?v\.population|population\s*>\s*0/)
+  })
+
+  it('AC-7909.7: 인구가 없거나 0이면 비율은 없고 글자는 `–`', () => {
+    for (const population of [null, 0]) {
+      const lines = welfareLines({ sggName: '가상구', ym: '2025-12', medical: 10, basic: 20, nearPoor: 30, population, basis: null })
+      expect(lines.map((l) => l.rate)).toEqual([null, null, null])
+    }
     expect(rateText(null)).toBe('–')
-    expect(rateText(23)).toBe('2.3%')
-    expect(rateText(30)).toBe('3%')
+    expect(rateText(2.3)).toBe('2.3%')
+    expect(rateText(3)).toBe('3%')
+    expect(rateText(0)).toBe('0%')
+    expect(rateText(welfareRate({ medical: 1, nearPoor: 0, population: 3 }))).toBe('33.3%')
+  })
+
+  it('AC-7909.7: 머리 글 — 옛 구 묶음 값이 아니면 `시군구 기준 · 기초생활보장 의료급여 기준 · 겹칠 수 있어요`', () => {
+    expect(welfareNote(null)).toBe('시군구 기준 · 기초생활보장 의료급여 기준 · 겹칠 수 있어요')
+    expect(welfareNote('')).toBe('시군구 기준 · 기초생활보장 의료급여 기준 · 겹칠 수 있어요')
+  })
+
+  it('AC-7909.7: 머리 글 — 옛 구 묶음 값(basis)이면 끝에 ` · 옛 {구} 기준`(design.md 5절 표 셋)', () => {
+    const head = '시군구 기준 · 기초생활보장 의료급여 기준 · 겹칠 수 있어요'
+    expect(welfareNote(oldGroupOf('28125')!.label)).toBe(`${head} · 옛 중구·동구 기준`)
+    expect(welfareNote(oldGroupOf('28155')!.label)).toBe(`${head} · 옛 중구·동구 기준`)
+    expect(welfareNote(oldGroupOf('28275')!.label)).toBe(`${head} · 옛 서구 기준`)
+    expect(welfareNote(oldGroupOf('28290')!.label)).toBe(`${head} · 옛 서구 기준`)
+    expect(welfareNote(oldGroupOf('41593')!.label)).toBe(`${head} · 옛 화성시 기준`)
+    // '옛'이 빠진 이름이 와도 글 모양은 같다
+    expect(welfareNote('중구·동구')).toBe(`${head} · 옛 중구·동구 기준`)
   })
 })
