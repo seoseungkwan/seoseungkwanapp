@@ -267,18 +267,60 @@ describe('useLocationWatch: 확인하고 줄을 넣는다 (AC-7915.1)', () => {
     for (const spy of spies) expect(spy).not.toHaveBeenCalled()
   })
 
-  it('AC-7915.1: 설정 읽기가 던져도 처음 값(정형외과·신경외과·마취통증·재활)으로 확인하고 그린다', async () => {
-    vi.mocked(readDeptRule).mockRejectedValue(new Error('설정 읽기 실패'))
+  it.each([
+    ['못 읽었다고 알림(null)', () => vi.mocked(readDeptRule).mockResolvedValue(null)],
+    ['던짐', () => vi.mocked(readDeptRule).mockRejectedValue(new Error('설정 읽기 실패'))],
+  ])('AC-7915.1: 과목 설정을 못 읽으면(%s) 그번 확인을 건너뛴다 — 부르기·넣기·확인 날 고치기 없음, 안 본 줄은 처음 값으로 그린다', async (_name, arrange) => {
+    const spies = consoleSpies()
+    arrange()
     const { result } = draw()
     await flush()
-    expect(vi.mocked(addEvents).mock.calls[0]![1].map((e) => e.clinicName)).toEqual([
-      '예시★★정형외과의원',
-      '예시◆◆통증의원',
-      '예시▼▼재활의학과의원',
-      '예시★★정형외과의원',
-      '예시▼▼재활의학과의원',
-    ])
+    expect(queryLocation).not.toHaveBeenCalled()
+    expect(addEvents).not.toHaveBeenCalled()
+    expect(setWatchChecked).not.toHaveBeenCalled()
     expect(result.current.events).toEqual(LINES)
+    for (const spy of spies) expect(spy).not.toHaveBeenCalled()
+  })
+
+  it("AC-7915.1: 후보 그날 값 place의 '{시도} {시군구}'를 addr로 실어 부른다 — 세종처럼 둘이 같으면 하나, 주소가 다른 후보는 따로, place가 없으면 addr 없이", async () => {
+    vi.mocked(listWatchCandidates).mockResolvedValue([
+      { ...A, place: { sidoName: '서울특별시', sggName: '예시구' } },
+      { ...B, place: { sidoName: '세종특별자치시', sggName: '세종특별자치시' } },
+      cand('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', { createdAt: '2026-11-03T00:00:00.000Z', place: { sidoName: '서울특별시', sggName: '예시구' } }),
+      cand('ffffffff-ffff-4fff-8fff-ffffffffffff', { createdAt: '2026-11-04T00:00:00.000Z', place: null }),
+    ])
+    vi.mocked(queryLocation).mockResolvedValue(ok([]))
+    draw()
+    await flush()
+    expect(queries()).toEqual([
+      { kind: 'clinic-license', event: 'open', from: FIRST.from, to: FIRST.to, addr: '서울특별시 예시구' },
+      { kind: 'clinic-license', event: 'close', from: FIRST.from, to: FIRST.to, addr: '서울특별시 예시구' },
+      { kind: 'clinic-license', event: 'open', from: FIRST.from, to: FIRST.to, addr: '세종특별자치시' },
+      { kind: 'clinic-license', event: 'close', from: FIRST.from, to: FIRST.to, addr: '세종특별자치시' },
+      { kind: 'clinic-license', event: 'open', from: FIRST.from, to: FIRST.to },
+      { kind: 'clinic-license', event: 'close', from: FIRST.from, to: FIRST.to },
+    ])
+    expect(setWatchChecked).toHaveBeenCalledTimes(4)
+  })
+
+  it('AC-7915.1: 답이 한도에 잘렸으면(capped) 그 주소의 후보는 찾은 줄은 넣되 확인 날을 고치지 않는다 — 다른 주소 후보는 고친다', async () => {
+    vi.mocked(listWatchCandidates).mockResolvedValue([
+      { ...A, place: { sidoName: '서울특별시', sggName: '예시구' } },
+      { ...B, place: { sidoName: '서울특별시', sggName: '다른구' } },
+    ])
+    vi.mocked(queryLocation).mockImplementation(async (q: Query) => {
+      if (q.kind !== 'clinic-license') return { ok: false, code: 'failed' }
+      if (q.addr === '서울특별시 예시구') return q.event === 'open' ? ok(OPEN_ROWS, true) : ok(CLOSE_ROWS)
+      return ok([])
+    })
+    draw()
+    await flush()
+    expect(vi.mocked(addEvents).mock.calls.flatMap(([, events]) => events.map((e) => [e.candidateId, e.clinicName]))).toEqual([
+      [A.id, '예시★★정형외과의원'],
+      [A.id, '예시◆◆통증의원'],
+      [A.id, '예시▼▼재활의학과의원'],
+    ])
+    expect(vi.mocked(setWatchChecked).mock.calls).toEqual([[CLIENT, B.id, TODAY]])
   })
 
   it('AC-7915.1: 새 줄이 없으면 넣지 않고 확인 날만 고친다', async () => {

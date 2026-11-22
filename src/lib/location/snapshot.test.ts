@@ -358,6 +358,76 @@ describe('AC-7908.3 다시 받은 값으로 덮기(mergeSnapshot)', () => {
   })
 })
 
+describe('AC-7918.2·AC-7909.3 검토 고침 칸 — 소득 시·도 평균 · 개폐업 업태 · 의원 목록 잘림', () => {
+  it('AC-7918.2: 소득 칸은 시·도 이름·평균(sidoName·sidoWon, 없으면 null)을 받고, 두 칸이 없는 옛 값도 받는다', () => {
+    const s = sample()
+    const income = valueOf(s, 'income')
+    const withSido = { ...s, income: ok({ ...income, sidoName: '가람도', sidoWon: 40_000_000 }, 'income', '2024-12-31') }
+    expect(checkSnapshot(clone(withSido))).toEqual(withSido)
+    const nulls = { ...s, income: ok({ ...income, sidoName: null, sidoWon: null }, 'income', '2024-12-31') }
+    expect(checkSnapshot(clone(nulls))).toEqual(nulls)
+    expect(checkSnapshot(clone(s))).toEqual(s) // 옛 값(두 칸 없음)
+    for (const bad of [{ sidoWon: '40000000' }, { sidoWon: -1 }, { sidoWon: 1.5 }, { sidoName: 3 }, { sidoAvg: 1 }]) {
+      expect(checkSnapshot(clone({ ...s, income: ok({ ...income, sidoName: '가람도', sidoWon: 1, ...bad }, 'income') })), JSON.stringify(bad)).toBeNull()
+    }
+  })
+
+  it('AC-7909.3: 3년 개폐업 줄은 업태 글(type)을 받고, type이 없는 옛 줄도 받는다 — 글자가 아니면 틀린 모양', () => {
+    const s = sample()
+    const row = { kind: 'open' as const, name: '가람미소의원', dept: '', type: '치과의원', on: '2025-05-01', distM: 100 }
+    const t = { ...s, history: ok([row, ...valueOf(s, 'history')], 'clinic-license') }
+    expect(checkSnapshot(clone(t))).toEqual(t)
+    expect(checkSnapshot(clone({ ...s, history: ok([{ ...row, type: 7 }], 'clinic-license') }))).toBeNull()
+  })
+
+  it('AC-7909.3: 의원 목록만 capped: true를 받는다(값·지난 값) — 다른 칸의 capped·capped: false는 틀린 모양', () => {
+    const s = sample()
+    const capped = { ...s, rivals: { ...s.rivals, capped: true } }
+    expect(checkSnapshot(clone(capped))).toEqual(capped)
+    const prevCapped = { ...s, rivals: { ok: false, why: 'failed', src: 'hosp-list', prev: { v: [rival(1)], asOf: '2026-10-01', capped: true } } }
+    expect(checkSnapshot(clone(prevCapped))).toEqual(prevCapped)
+    expect(checkSnapshot(clone({ ...s, rivals: { ...s.rivals, capped: false } }))).toBeNull()
+    expect(checkSnapshot(clone({ ...s, apts: { ...s.apts, capped: true } }))).toBeNull()
+  })
+
+  it('AC-7909.3: 새로 실패한 의원 목록은 잘린 전 값의 capped를 지난 값(prev)에 이어 둔다', () => {
+    const old = { ...sample(), rivals: { ...sample().rivals, capped: true as const } }
+    const merged = mergeSnapshot({ ...sample(), rivals: { ok: false, why: 'failed', src: 'hosp-list' } }, old)
+    expect(merged.rivals).toEqual({ ok: false, why: 'failed', src: 'hosp-list', prev: { v: valueOf(old, 'rivals'), asOf: '2026-11-22', capped: true } })
+    const again = mergeSnapshot({ ...sample(), rivals: { ok: false, why: 'no-key', src: 'hosp-list' } }, merged)
+    expect(again.rivals).toEqual({ ok: false, why: 'no-key', src: 'hosp-list', prev: { v: valueOf(old, 'rivals'), asOf: '2026-11-22', capped: true } })
+    // 잘리지 않은 전 값은 capped 없이
+    const plainMerged = mergeSnapshot({ ...sample(), rivals: { ok: false, why: 'failed', src: 'hosp-list' } }, sample())
+    expect(plainMerged.rivals).toEqual({ ok: false, why: 'failed', src: 'hosp-list', prev: { v: valueOf(sample(), 'rivals'), asOf: '2026-11-22' } })
+    expect(checkSnapshot(clone(merged))).toEqual(merged)
+  })
+
+  it('AC-7909.3: fitSnapshot이 의원 목록을 줄이면 capped: true를 남기고(지난 값도), 다른 목록만 줄이면 의원 목록은 그대로다', () => {
+    const s = sample()
+    const many = Array.from({ length: 2000 }, (_, i) => plain(i))
+    const fitted = fitSnapshot({ ...s, rivals: ok(many, 'hosp-list') })
+    expect(fitted.rivals).toMatchObject({ ok: true, capped: true })
+    expect(checkSnapshot(clone(fitted))).toEqual(fitted)
+
+    const prevFitted = fitSnapshot({ ...s, rivals: { ok: false, why: 'failed', src: 'hosp-list', prev: { v: many, asOf: '2026-10-01' } } })
+    expect(prevFitted.rivals).toMatchObject({ ok: false, prev: { asOf: '2026-10-01', capped: true } })
+
+    const apts = Array.from({ length: 2000 }, (_, i) => ({ name: `다솜마을${i}단지`, households: 100, builtYear: 2001, bdongName: '다솜동' }))
+    const other = fitSnapshot({ ...s, apts: ok(apts, 'apt-list') })
+    expect(valueOf(other, 'apts').length).toBeLessThan(apts.length)
+    expect(other.rivals).toEqual(s.rivals)
+  })
+
+  it('AC-7909.3: placeAddr — 그날 값 place의 시도·시군구 → 인허가 주소 앞부분, 둘이 같으면(세종) 하나, 모양 밖이면 null', () => {
+    expect(snapshotModule.placeAddr({ sidoName: '가람도', sggName: '나래시 다솜구' })).toBe('가람도 나래시 다솜구')
+    expect(snapshotModule.placeAddr({ sidoName: '세종특별자치시', sggName: '세종특별자치시' })).toBe('세종특별자치시')
+    expect(snapshotModule.placeAddr({ sidoName: ' 가람도 ', sggName: ' 나래시  다솜구 ' })).toBe('가람도 나래시 다솜구')
+    expect(snapshotModule.placeAddr({ sidoName: '가람도', sggName: '' })).toBeNull()
+    expect(snapshotModule.placeAddr({ sidoName: 'Seoul', sggName: '가람구' })).toBeNull()
+    expect(snapshotModule.placeAddr({ sidoName: '가'.repeat(30), sggName: '나'.repeat(30) })).toBeNull()
+  })
+})
+
 describe('AC-7909.7 의료급여 비율(welfareRate — 화면·점수가 부르는 한 곳)', () => {
   it('AC-7909.7: 의료급여·차상위 비율은 (기초 의료급여 + 차상위 3종) ÷ 인구 × 100, 소수 첫째 자리 버림', () => {
     expect(welfareRate({ medical: 300, nearPoor: 200, population: 13_337 })).toBe(3.7) // 3.7489…

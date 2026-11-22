@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -201,10 +202,53 @@ describe('AC-7918.2 시군구 평균 소득·산업단지 고용 인원(src/lib/
     }
   })
 
+  it('AC-7918.2: income.json 시군구 값은 시·도 평균을 더한 뒤에도 한 원도 바뀌지 않았다(252곳 · 합계 · 지문)', async () => {
+    const { INCOME } = await data()
+    const entries = Object.entries(INCOME.sggs)
+    expect(entries.length).toBe(252)
+    expect(entries.reduce((s, [, v]) => s + v.won, 0)).toBe(10_475_026_808)
+    expect(INCOME.sggs['11110']).toEqual({ name: '종로구', won: 57_360_891 })
+    expect(createHash('sha256').update(JSON.stringify(INCOME.sggs)).digest('hex')).toBe('bcd44e1f8b834f5d9ccf16bdc018c4c56fb06c6418b2dd23b821a2401e070952')
+  })
+
+  it('AC-7918.2: income.json sidos — 동 경계 목록의 시도(코드 2자리)마다 같은 이름과 시·도 평균(합계 금액 ÷ 합계 인원, 원 미만 버림)', async () => {
+    const { INCOME } = await data()
+    const sidos = Object.entries(INCOME.sidos)
+    expect(sidos.map(([code2]) => code2).sort()).toEqual(index().sidos.map((s) => s.code2).sort())
+    for (const sido of index().sidos) {
+      const v = INCOME.sidos[sido.code2]
+      expect(v?.name, sido.code2).toBe(sido.name)
+      expect(Number.isInteger(v?.won) && v!.won >= 10_000_000 && v!.won <= 200_000_000, sido.code2).toBe(true)
+    }
+    // TASIS 4-2-15(2024년 귀속) 시·도 소계 줄: 금액(백만 원) × 1,000,000 ÷ 인원
+    expect(INCOME.sidos['11']).toEqual({ name: '서울특별시', won: 52_532_691 }) // 215,044,988 ÷ 4,093,546
+    expect(INCOME.sidos['36']).toEqual({ name: '세종특별자치시', won: 51_488_172 }) // 9,109,133 ÷ 176,917
+    // 전남광주통합특별시 = 옛 광주 + 전남 소계를 더해 나눔
+    expect(INCOME.sidos['12']).toEqual({ name: '전남광주통합특별시', won: 41_299_784 }) // (23,216,574 + 25,130,812) ÷ (560,950 + 609,695)
+  })
+
+  it('AC-7918.2: incomeOf — 그 시군구 값에 시·도 이름·평균(코드 앞 2자리, 없으면 null)을 붙인다', async () => {
+    const { INCOME, incomeOf } = await data()
+    expect(incomeOf('11110')).toEqual({
+      ok: true,
+      v: { sggName: '종로구', won: 57_360_891, year: INCOME.year, sidoName: '서울특별시', sidoWon: 52_532_691 },
+      src: 'income',
+      asOf: INCOME.asOf,
+    })
+    const sejong = incomeOf('36110')
+    expect(sejong.ok && [sejong.v.sidoName, sejong.v.sidoWon]).toEqual(['세종특별자치시', 51_488_172])
+  })
+
   it('AC-7918.2: incomeOf·industryOf — 있는 시군구는 값·출처 id·기준 날짜, 없는 시군구는 none(자료 없음)', async () => {
     const { INCOME, INDUSTRY, incomeOf, industryOf } = await data()
     const [code5, v] = Object.entries(INCOME.sggs)[0]
-    expect(incomeOf(code5)).toEqual({ ok: true, v: { sggName: v.name, won: v.won, year: INCOME.year }, src: 'income', asOf: INCOME.asOf })
+    const sido = INCOME.sidos[code5.slice(0, 2)] ?? null
+    expect(incomeOf(code5)).toEqual({
+      ok: true,
+      v: { sggName: v.name, won: v.won, year: INCOME.year, sidoName: sido?.name ?? null, sidoWon: sido?.won ?? null },
+      src: 'income',
+      asOf: INCOME.asOf,
+    })
     expect(incomeOf('99999')).toEqual({ ok: false, why: 'none', src: 'income' })
     expect(incomeOf('abc')).toEqual({ ok: false, why: 'none', src: 'income' })
 

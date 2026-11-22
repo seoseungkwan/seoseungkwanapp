@@ -1,7 +1,7 @@
 // 후보 자세히 — 사는 사람·소득·앞으로 바뀔 것의 계산과 글자(spec location AC-7909.2·AC-7909.7, 순수 함수).
 // 숫자 글자는 money.ts(commaText)·common/text.ts(asOfText)를 불러 쓴다. %는 정수로만 센다(× 100 또는 × 1,000 ÷ 값의 버림).
 // 의료급여·차상위 비율은 snapshot.ts welfareRate 한 곳(점수 facts.ts와 같은 셈)을 부른다
-import { commaText } from '@/lib/location/money'
+import { commaText, wonText } from '@/lib/location/money'
 import { welfareRate } from '@/lib/location/snapshot'
 import type { Got, SnapshotValue } from '@/types/location'
 
@@ -31,6 +31,20 @@ export function changeText(tenths: number): string {
 /** 비율 글자(welfareRate 값 — 0.1% 단위로 버린 %): 2.3 → '2.3%' · 3 → '3%' · 비율이 없으면 '–' */
 export function rateText(pct: number | null): string {
   return pct === null ? '–' : `${tenthsText(Math.round(pct * 10))}%`
+}
+
+/**
+ * 시·도 평균과 견준 글(시안 cmpText): ' · {시도} 평균 {금액}보다 {n}% 많아요/적어요' — n = 차이 ÷ 시·도 평균의 % 버림, 0이면 '과 같아요'.
+ * 시·도 이름이 없으면 '시·도 평균'. 시·도 평균이 없는(옛) 값은 견주지 않는다(null)
+ */
+export function sidoCompareText(v: { won: number; sidoName?: string | null; sidoWon?: number | null }): string | null {
+  const base = v.sidoWon
+  if (typeof base !== 'number' || !Number.isInteger(base) || base <= 0) return null
+  const name = v.sidoName ? `${v.sidoName} 평균` : '시·도 평균'
+  const avg = `${name} ${wonText(base)}`
+  const pct = Math.floor((Math.abs(Math.floor(v.won) - base) * 100) / base)
+  if (pct === 0) return ` · ${avg}과 같아요`
+  return ` · ${avg}보다 ${pct}% ${v.won > base ? '많아요' : '적어요'}`
 }
 
 /** 막대 위 숫자: 1만 이상이면 0.1만 버림 '1.8만', 아니면 쉼표 '9,999' */

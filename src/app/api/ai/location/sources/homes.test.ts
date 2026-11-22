@@ -108,9 +108,9 @@ describe('AC-7904.1 apt-list 공동주택 단지 목록', () => {
       ok: true,
       value: {
         complexes: [
-          { code: 'A99000001', name: '가람마을 1단지' },
-          { code: 'A99000002', name: '누리뜰' },
-          { code: 'A99000003', name: '다솜채 2단지' },
+          { code: 'A99000001', name: '가람마을 1단지', bdongName: '하늘동' },
+          { code: 'A99000002', name: '누리뜰', bdongName: '하늘동' },
+          { code: 'A99000003', name: '다솜채 2단지', bdongName: '하늘동' },
         ],
         capped: false,
       },
@@ -126,9 +126,29 @@ describe('AC-7904.1 apt-list 공동주택 단지 목록', () => {
     const got = aptListAdapter.parse([page1, page2, page3], LIST_Q, TODAY)
     expect(got).toEqual({
       ok: true,
-      value: { complexes: [{ code: 'A99000001', name: '가상 1단지' }, { code: 'A99000005', name: '가상 5단지' }], capped: false },
+      value: {
+        complexes: [
+          { code: 'A99000001', name: '가상 1단지', bdongName: '' },
+          { code: 'A99000005', name: '가상 5단지', bdongName: '' },
+        ],
+        capped: false,
+      },
       asOf: TODAY,
     })
+  })
+
+  it('AC-7908.2: 단지마다 공공 답의 읍면동 이름(as3, 리가 있으면 as3 + as4)을 bdongName으로 담는다 — 카카오 주소 글에서 떼지 않는다', () => {
+    const rows = [
+      { ...complexRow(1), as1: '가상도', as2: '가람구', as3: ' 하늘동 ', as4: null },
+      { ...complexRow(2), as1: '가상도', as2: '가람군', as3: '누리면', as4: '바다리' },
+      { ...complexRow(3), as1: '가상도', as2: '가람군', as3: '', as4: '' },
+    ]
+    const got = aptListAdapter.parse([listPage(rows, '3'), APT_LIST_AFTER, APT_LIST_AFTER], LIST_Q, TODAY)
+    expect(got.ok && got.value.complexes.map((c) => [c.code, c.bdongName])).toEqual([
+      ['A99000001', '하늘동'],
+      ['A99000002', '누리면 바다리'],
+      ['A99000003', ''],
+    ])
   })
 
   it('AC-7904.1: 단지 목록 답에 좌표 칸이 없다', () => {

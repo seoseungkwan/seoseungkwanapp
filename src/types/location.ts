@@ -209,6 +209,12 @@ export type SggAvg = {
   stops: number | null
 }
 
+// 의원 목록 칸: 바깥 답이 한도에 잘렸거나 가까운 200곳·저장 크기로 줄였으면 capped: true(받은 것보다 의원이 더 있을 수 있음 —
+// 화면이 '200곳 넘게 있을 수 있어요…'를 붙인다, 조용히 적게 세지 않게). 실패 칸이면 지난 값(prev)에 그대로 붙는다
+export type RivalsGot =
+  | { ok: true; v: Rival[]; src: SourceId; asOf: string; capped?: true }
+  | { ok: false; why: Why; src: SourceId; prev?: { v: Rival[]; asOf: string; capped?: true } }
+
 export type Snapshot = {
   v: 1
   at: string
@@ -222,7 +228,8 @@ export type Snapshot = {
     total: number
     unmatched: number // 좌표를 못 이은 정류장 수
   }> // 60개씩까지
-  income: Got<{ sggName: string; won: number; year: number }>
+  // sidoName·sidoWon = income.json 시·도 평균(시·도 합계 금액 ÷ 합계 인원, 사용자 2026-11-23). 그 칸이 없는 옛 값은 견주지 않는다
+  income: Got<{ sggName: string; won: number; year: number; sidoName?: string | null; sidoWon?: number | null }>
   aptPrice: Got<{ perM2: number; deals: number }> // 지난 6달
   bizPrice: Got<{ perM2: number; deals: number }>
   apts: Got<{ name: string; households: number; builtYear: number | null; bdongName: string }[]> // 60개까지
@@ -234,11 +241,12 @@ export type Snapshot = {
   industry: Got<{ sggName: string; employees: number; parks: number; quarter: string }>
   pharmacies: Got<number> // 약국 = 후보 30m 안(상가정보)
   // 이름은 옛 그대로지만 '안 보기'가 아닌 모든 과목 의원(한의원·치과 포함), 가까운 차례 200곳까지(경쟁 과목 의원은 다 남김)
-  rivals: Got<Rival[]>
+  rivals: RivalsGot
   // 후보 점의 행정동(동 경계 파일, src 'dongs'). 동 밖이면 dong·dongName null
   place: Got<{ sido: string; sidoName: string; sgg: string; sggName: string; dong: string | null; dongName: string | null }>
   sggAvg: Got<SggAvg> // 점수 풀이 견줄 값(src 'pop-age')
-  history: Got<{ kind: 'open' | 'close'; name: string; dept: string; on: string; distM: number }[]> // 3년, 60개까지
+  // 3년, 60개까지. type = 인허가 업태 글(의원·치과의원·한의원 — 치과·한의원을 업태로 가름), 그 칸이 없는 옛 줄은 빈 글자로 본다
+  history: Got<{ kind: 'open' | 'close'; name: string; dept: string; type?: string; on: string; distM: number }[]>
   station: Got<{ name: string; line: string; distM: number; at: Point }> // 좌표 파일에서(at = rail.json 좌표)
   bus: Got<number>
   market: Got<{ name: string; distM: number }>
@@ -348,7 +356,10 @@ export type ScoreFacts = {
 
 // 새 경쟁 의원 알림(lib/location/watch.ts): 후보 줄에서 읽는 칸 · clinic-license 한 줄(WGS84 점, 못 바꾼 점은 null) · 넣을 알림 줄
 export type WatchStatus = CandidateStatus
-export type WatchCandidate = Pick<Candidate, 'id' | 'name' | 'status' | 'lat' | 'lng' | 'radiusM' | 'watchCheckedOn' | 'createdAt'>
+// place = 그날 값 place의 시도·시군구 이름(인허가 주소 앞부분 addr을 만든다, design.md 12절) — 그날 값이 없거나 동 경계 밖이면 null
+export type WatchCandidate = Pick<Candidate, 'id' | 'name' | 'status' | 'lat' | 'lng' | 'radiusM' | 'watchCheckedOn' | 'createdAt'> & {
+  place?: { sidoName: string; sggName: string } | null
+}
 export type LicenseRow = { name: string; dept: string; openedOn: string | null; closedOn: string | null; point: Point | null; type?: string }
 export type WatchEvent = Pick<LocationEvent, 'candidateId' | 'kind' | 'clinicName' | 'dept' | 'eventOn' | 'distM'>
 
