@@ -1,0 +1,37 @@
+{
+  "header": {
+    "description": "소상공인시장진흥공단 상가업소정보",
+    "stdrYm": "202509",
+    "resultCode": "00",
+    "resultMsg": "NORMAL SERVICE."
+  },
+  "body": {
+    "items": [
+      {
+        "bizesId": "FAKE0000000000000003",
+        "bizesNm": "다온헬스",
+        "brchNm": "누리점",
+        "indsLclsNm": "예술·스포츠",
+        "indsMclsNm": "스포츠 서비스",
+        "indsSclsNm": "헬스장",
+        "flrNo": "B1",
+        "lon": 127.0103,
+        "lat": 37.5103
+      },
+      {
+        "bizesId": "FAKE0000000000000007",
+        "bizesNm": "사랑체력단련원",
+        "brchNm": "",
+        "indsLclsNm": "예술·스포츠",
+        "indsMclsNm": "스포츠 서비스",
+        "indsSclsNm": "헬스클럽",
+        "flrNo": "지하2",
+        "lon": 127.0107,
+        "lat": 37.5107
+      }
+    ],
+    "numOfRows": 100,
+    "pageNo": 2,
+    "totalCount": 8
+  }
+}
