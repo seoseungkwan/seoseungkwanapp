@@ -3,12 +3,15 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { errorInfo } from '@/lib/errors'
 import { askLeft, checkRules, markRead, openNotice, saveMemo, setStar } from '@/lib/storage/notices'
+import { readNoticeRules, seeRuleChanges, setRuleReverted } from '@/lib/storage/ruleChanges'
 import type { ErrorCode } from '@/types/errors'
-import type { GroupPost, NoticeView } from '@/types/notices'
+import type { GroupPost, NoticeView, RuleHit } from '@/types/notices'
+import type { RuleCheckView } from '@/types/ruleAuto'
 import { NoticeDetail } from './NoticeDetail'
 
 // 글 화면 (specs/notices TASK-18, REQ-7420 · AC-7424.11, design 10절, 승인 시안 docs/mockups/notices ?s=detail·detail-mohw·ask-answer).
-// 저장소 함수만 가짜로 바꾼다. 글자 도구(lib/notices/view·keywords·askCheck)와 오류 안내(errors.ts)는 진짜를 쓴다.
+// 규칙 상자는 specs/rule-auto REQ-7814(notices AC-7420.2를 대체, 승인 시안 docs/mockups/rule-auto ?v=detail) — 자세한 시험은 RuleBox.test.tsx.
+// 저장소 함수만 가짜로 바꾼다. 글자 도구(lib/notices/view·keywords·askCheck·ruleView)와 오류 안내(errors.ts)는 진짜를 쓴다.
 // 글 제목·고시 번호·요약은 시안의 지어낸 예시다(실제 고시가 아니다)
 vi.mock('@/lib/storage/notices', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/storage/notices')>()),
@@ -18,6 +21,12 @@ vi.mock('@/lib/storage/notices', async (importOriginal) => ({
   saveMemo: vi.fn(),
   checkRules: vi.fn(),
   askLeft: vi.fn(),
+}))
+vi.mock('@/lib/storage/ruleChanges', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/storage/ruleChanges')>()),
+  readNoticeRules: vi.fn(),
+  setRuleReverted: vi.fn(),
+  seeRuleChanges: vi.fn(),
 }))
 // 진짜 함수가 Supabase에 닿지 않게 한다
 const { supabaseBrowser } = vi.hoisted(() => ({ supabaseBrowser: vi.fn() }))
@@ -29,6 +38,9 @@ const star = vi.mocked(setStar)
 const memoSave = vi.mocked(saveMemo)
 const rulesCheck = vi.mocked(checkRules)
 const left = vi.mocked(askLeft)
+const rulesRead = vi.mocked(readNoticeRules)
+const revert = vi.mocked(setRuleReverted)
+const see = vi.mocked(seeRuleChanges)
 
 const ID = '3f2c9a10-5b7d-4e21-9c8a-1d2e3f4a5b6c'
 const TITLE = '「요양급여의 적용기준 및 방법에 관한 세부사항」 일부개정 — 관절강내 주사 인정기준'
@@ -85,7 +97,28 @@ async function show(view: NoticeView | null | 'failed' = notice()) {
   return result
 }
 
+// 규칙 상자 읽기 가짜(기본): 연결된 규칙이 모두 '사람이 봐야 함' 줄이다
+const HUMAN_WHY = '새 수가 코드가 생겨 지금 규칙표에 없는 코드를 봐야 해요.'
+const changeUuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
+function humanRow(hit: RuleHit, i: number): RuleCheckView {
+  return {
+    changeId: changeUuid(i + 1),
+    ruleId: hit.id,
+    verdict: 'human',
+    why: HUMAN_WHY,
+    before: '',
+    after: '',
+    from: null,
+    title: hit.title,
+    seen: false,
+    reverted: false,
+    revertedAt: null,
+  }
+}
+const HUMAN_BOX = '이 글이 점검 규칙 2개를 바꿔요 — 확인 필요'
+
 const region = (name: string | RegExp) => screen.getByRole('region', { name })
+const findRegion = (name: string | RegExp) => screen.findByRole('region', { name })
 const textOf = (el: Element) => el.textContent ?? ''
 const before = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
 // 그 글을 가진 가장 안쪽 요소(아이콘 svg가 곁에 있어도 찾는다)
@@ -111,6 +144,11 @@ beforeEach(() => {
   rulesCheck.mockReset()
   left.mockReset()
   left.mockResolvedValue(17)
+  rulesRead.mockReset()
+  rulesRead.mockImplementation(async (_id, hits) => ({ rows: hits.map(humanRow), pending: [] }))
+  revert.mockReset()
+  see.mockReset()
+  see.mockResolvedValue(true)
   supabaseBrowser.mockReset()
 })
 
@@ -152,7 +190,7 @@ describe('AC-7420.1: 글 머리 · 읽음 · 두 칸 배치', () => {
     const main = container.querySelector('article')
     const side = container.querySelector('aside')
     if (main === null || side === null) throw new Error('두 칸이 없다')
-    const rule = region('이 글이 점검 규칙 2개의 근거를 바꿔요 — 확인 필요')
+    const rule = await findRegion(HUMAN_BOX)
     const summary = region('AI 세 줄 요약')
     const ask = region('AI에게 묻기')
     const memo = region('우리 병원 메모')
@@ -190,54 +228,99 @@ describe('AC-7420.1: 글 머리 · 읽음 · 두 칸 배치', () => {
   })
 })
 
-describe('AC-7420.2: 점검 규칙 상자', () => {
-  it('AC-7420.2: 규칙 연결이 있고 확인이 없으면 제목 · 안내 · 규칙 제목 목록 · 점검 규칙 보기(설정 점검 규칙 칸) · 확인했어요다', async () => {
+// notices AC-7420.2(규칙 상자 전부)를 rule-auto AC-7814가 대체한다 — 글 화면에 놓였을 때의 시험. 상자마다 자세한 시험은 RuleBox.test.tsx
+describe('AC-7814: 점검 규칙 상자 (notices AC-7420.2 대체)', () => {
+  it('AC-7814.1·AC-7814.2: 규칙 연결이 있으면 readNoticeRules(글 id, ruleHits)로 읽어 확인 필요 상자 · 안내 · 규칙마다 제목·번호·까닭 · 점검 규칙 보기 · 확인했어요다', async () => {
     await show()
-    const box = region('이 글이 점검 규칙 2개의 근거를 바꿔요 — 확인 필요')
+    const box = await findRegion(HUMAN_BOX)
+    expect(rulesRead).toHaveBeenCalledWith(ID, notice().ruleHits)
+    expect(rulesRead).toHaveBeenCalledTimes(1)
     expect(
-      within(box).getByText(
-        '점검 규칙은 저절로 바뀌지 않아요. 아래 규칙이 새 기준과 맞는지 설정 → 점검 규칙에서 확인해 주세요.',
-      ),
+      within(box).getByText('저절로 고칠 수 없는 내용이에요. 아래 규칙이 새 기준과 맞는지 설정 → 점검 규칙에서 확인해 주세요.'),
     ).toBeTruthy()
-    expect(within(box).getAllByRole('listitem').map(textOf)).toEqual([RULE1, RULE2])
+    expect(within(box).getAllByRole('listitem').map(textOf)).toEqual([`${RULE1}rule-1${HUMAN_WHY}`, `${RULE2}rule-2${HUMAN_WHY}`])
     expect(within(box).getByRole('link', { name: '점검 규칙 보기' }).getAttribute('href')).toBe('/settings#rule-settings-title')
     expect(within(box).getByRole('button', { name: '확인했어요' })).toBeTruthy()
+    expect(screen.queryByText(/점검 규칙은 저절로 바뀌지 않아요/)).toBeNull()
   })
 
-  it('AC-7420.2: 확인했어요를 누르면 checkRules 저장 뒤 점검 규칙 {n}개 확인함 · {날짜 시각}에 확인했어요.이고 규칙 목록은 그대로다', async () => {
+  it('AC-7814.2: 확인했어요를 누르면 checkRules 저장 뒤 점검 규칙 {n}개 확인함 · {날짜 시각}에 확인했어요.이고 규칙 목록은 그대로다', async () => {
     rulesCheck.mockResolvedValue(true)
     await show()
+    await findRegion(HUMAN_BOX)
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(NOW)
     fireEvent.click(screen.getByRole('button', { name: '확인했어요' }))
-    const done = await screen.findByRole('region', { name: '점검 규칙 2개 확인함' })
+    const done = await findRegion('점검 규칙 2개 확인함')
     expect(rulesCheck).toHaveBeenCalledWith(ID)
     expect(within(done).getByText('11월 21일 (토) 09:20에 확인했어요.')).toBeTruthy()
-    expect(within(done).getAllByRole('listitem').map(textOf)).toEqual([RULE1, RULE2])
+    expect(within(done).getAllByRole('listitem').map(textOf)).toEqual([`${RULE1}rule-1${HUMAN_WHY}`, `${RULE2}rule-2${HUMAN_WHY}`])
     expect(screen.queryByRole('button', { name: '확인했어요' })).toBeNull()
     expect(screen.queryByText(/확인 필요/)).toBeNull()
   })
 
-  it('AC-7420.2: 이미 확인한 글은 처음부터 확인함과 그 시각이다', async () => {
+  it('AC-7814.2: 이미 확인한 글은 처음부터 확인함과 그 시각이다', async () => {
     await show(notice({ mark: { readAt: null, starred: false, memo: '', memoAt: null, rulesCheckedAt: '2026-11-16T23:40:00.000Z' } }))
-    const done = region('점검 규칙 2개 확인함')
+    const done = await findRegion('점검 규칙 2개 확인함')
     expect(within(done).getByText('11월 17일 (화) 08:40에 확인했어요.')).toBeTruthy()
     expect(screen.queryByRole('button', { name: '확인했어요' })).toBeNull()
   })
 
-  it('AC-7420.2: 확인 저장이 실패하면 E-NOTICE-SAVE이고 확인 필요 상자가 그대로다', async () => {
+  it('AC-7814.2: 확인 저장이 실패하면 E-NOTICE-SAVE이고 확인 필요 상자가 그대로다', async () => {
     rulesCheck.mockResolvedValue(false)
     await show()
-    fireEvent.click(screen.getByRole('button', { name: '확인했어요' }))
-    const box = region('이 글이 점검 규칙 2개의 근거를 바꿔요 — 확인 필요')
+    fireEvent.click(within(await findRegion(HUMAN_BOX)).getByRole('button', { name: '확인했어요' }))
+    const box = region(HUMAN_BOX)
     await within(box).findByRole('alert')
     expectErrorCard('E-NOTICE-SAVE', box)
     expect(within(box).getByRole('button', { name: '확인했어요' })).toBeTruthy()
   })
 
-  it('AC-7420.2: 규칙 연결이 없으면 규칙 상자가 없다', async () => {
+  it('AC-7814.3·AC-7814.7: 바뀐 규칙이 있으면 요약 앞에 저절로 바뀜 상자이고, 안 본 판이면 seeRuleChanges(글 id)를 한 번 부른다', async () => {
+    rulesRead.mockResolvedValue({
+      rows: [
+        {
+          ...humanRow({ id: 'rule-1', title: '스테로이드 관절강내주사 같은 관절 1년 4회' }, 0),
+          verdict: 'change',
+          why: '고시가 같은 관절 1년 인정 횟수를 4회로 줄였어요.',
+          before: '같은 관절은 1년에 6회까지 인정해요',
+          after: '같은 관절은 1년에 4회까지 인정해요',
+          from: '2026-12-01',
+        },
+      ],
+      pending: [{ id: 'rule-2', title: RULE2 }],
+    })
+    await show()
+    const change = await findRegion('이 글로 점검 규칙 1개가 저절로 바뀌었어요')
+    const pending = region('AI가 점검 규칙 1개를 살펴보는 중이에요')
+    expect(within(change).getByRole('button', { name: 'rule-1 되돌리기' })).toBeTruthy()
+    expect(within(change).getByText('12월 1일 진료부터 적용')).toBeTruthy()
+    expect(within(pending).getAllByRole('listitem').map(textOf)).toEqual([RULE2])
+    expect(before(change, pending)).toBe(true)
+    expect(before(pending, region('AI 세 줄 요약'))).toBe(true)
+    await waitFor(() => expect(see).toHaveBeenCalledWith(ID))
+    expect(see).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-7814.8: 규칙 상자 읽기가 실패하면 그 자리에 E-NOTICE-READ와 다시 읽기이고 글 화면 나머지는 그대로다', async () => {
+    rulesRead.mockResolvedValueOnce('failed')
+    await show()
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain(errorInfo('E-NOTICE-READ').what)
+    expect(before(alert, region('AI 세 줄 요약'))).toBe(true)
+    expect(region('우리 병원 메모')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '다시 읽기' }))
+    expect(await findRegion(HUMAN_BOX)).toBeTruthy()
+    expect(rulesRead).toHaveBeenCalledTimes(2)
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('AC-7814.1: 규칙 연결이 없으면 읽지 않고 규칙 상자가 없다', async () => {
     await show(notice({ ruleHits: [] }))
     expect(screen.queryByText(/점검 규칙/)).toBeNull()
+    expect(rulesRead).not.toHaveBeenCalled()
+    expect(see).not.toHaveBeenCalled()
   })
 })
 
@@ -465,10 +548,11 @@ describe('AC-7420.10: 글자로만 · 읽기 실패', () => {
         mark: { readAt: null, starred: false, memo: `메모 ${tag}`, memoAt: null, rulesCheckedAt: null },
       }),
     )
+    // 규칙 제목은 규칙 상자(AC-7814.8)가 읽은 뒤 그린다
+    expect(await screen.findByText(`규칙 ${tag}`)).toBeTruthy()
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(`제목 ${tag}`)
     expect(screen.getByText(`무엇 ${tag}`)).toBeTruthy()
     expect(screen.getByText(`우리 ${tag}`)).toBeTruthy()
-    expect(screen.getByText(`규칙 ${tag}`)).toBeTruthy()
     expect((within(region('우리 병원 메모')).getByRole('textbox') as HTMLTextAreaElement).value).toBe(`메모 ${tag}`)
     expect(container.querySelector('b > b, h1 b, dd b')).toBeNull()
     expect(container.innerHTML).not.toContain('<b>x</b>')
@@ -515,10 +599,10 @@ describe('AC-7424.11: 꼭 볼 글 칩', () => {
 })
 
 // 앱에는 링크 밑줄·목록 점을 지우는 초기화가 없다 → 시안(밑줄·점 없음)처럼 요소마다 no-underline·list-none을 직접 준다
-describe('AC-7420.1·AC-7420.2·AC-7420.3·AC-7420.5: 시안 모양(밑줄·점·글자 크기)', () => {
+describe('AC-7420.1·AC-7814.2·AC-7420.3·AC-7420.5: 시안 모양(밑줄·점·글자 크기)', () => {
   const classesOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/)
 
-  it('AC-7420.1·AC-7420.2·AC-7420.3·AC-7420.5: 모든 링크에 밑줄이 없고(no-underline) 모든 목록에 점이 없다(list-none)', async () => {
+  it('AC-7420.1·AC-7814.2·AC-7420.3·AC-7420.5: 모든 링크에 밑줄이 없고(no-underline) 모든 목록에 점이 없다(list-none)', async () => {
     const plain = { name: '붙임3. 바깥 주소.pdf', url: 'https://example.com/x.pdf' }
     // [글, 링크 수]: 확인 전 = 글 목록으로 · 점검 규칙 보기 · 원문 보기 · 붙임 둘 / 확인함 = 글 목록으로 · 원문 보기 · 붙임 하나(바깥 주소는 링크 아님)
     const views: [NoticeView, number][] = [
@@ -533,6 +617,7 @@ describe('AC-7420.1·AC-7420.2·AC-7420.3·AC-7420.5: 시안 모양(밑줄·점�
     ]
     for (const [view, linkCount] of views) {
       const { container } = await show(view)
+      await findRegion(/^(?:이 글이 점검 규칙 2개를 바꿔요 — 확인 필요|점검 규칙 2개 확인함)$/)
       const links = Array.from(container.querySelectorAll('a'))
       expect(links).toHaveLength(linkCount)
       for (const a of links) expect(classesOf(a), textOf(a)).toContain('no-underline')
