@@ -421,7 +421,7 @@
 - REQ: REQ-7906, REQ-7920, REQ-7914, REQ-7917, REQ-7919 · AC-7906.2, AC-7906.3, AC-7920.3, AC-7917.2
 - Files: src/lib/location/explain.ts, src/lib/location/explain.test.ts, src/lib/location/score.ts, src/lib/location/score.test.ts, src/components/location/common/**, src/components/location/scan/**, src/components/location/listings/**, src/components/location/prep/**, src/components/location/sources/**, src/components/location/weights/**, src/components/location/report/**, src/components/location/add/**, src/components/location/detail/site/**
 - Tests: src/lib/location/explain.test.ts, src/lib/location/score.test.ts, src/components/location/common/, src/components/location/scan/, src/components/location/listings/, src/components/location/prep/, src/components/location/sources/, src/components/location/report/, src/components/location/add/, src/components/location/detail/site/
-- TDD: required — 검토 4~10 + 정확성 둘. (4) 점수 풀이 `k-vsAvg` 글 `저장한 매물 평균보다 {n}% 비싸요`/`싸요`(requirements 점수 풀이 글). (5) 출처 줄을 누르면 '근거와 출처' 탭으로 바뀜: `SourceLine`의 콜백 없는 기본 길을 평범한 `<a href>`로(이 화면은 주소 `tab`을 처음에만 읽음) — `scan`·`listings`(PriceCompare·SavedListings)·`prep`(OpenSchedule·visit) 모두. (6) '근거와 출처' 점수 표 만점 기준 글을 requirements '화면 글 기본값'(`1km²에 [10,000]명이면 100점` 등, 고르기 항목은 `고른 값이 '보여요'이면 100점`)으로 — `weights/text.ts`의 앞말·뒷말·고르기 글을 함께 씀. (7) 훑기 무게 판 `rivalShort`: 경쟁 0개면 `''`. (8) 법 근거 곁글 끝 ` · 아홉 줄`(시안). (9) 보고서 단추 `후보 {글자}로 돌아가기`(글자 없으면 `후보로 돌아가기`). (10) 후보 더하기 범위 도움말 `저장한 뒤 후보 자세히에서 바꿔요.`(시안). (정확성) `score.ts` `k-vsAvg` 차이 %를 화면(`listings.ts`)과 같은 버림으로. (정확성) 빈 칸 짐작이 건축물대장 지난 값으로 셀 때 `지난 값 · 기준 {날짜}` 줄(AC-7917.2). (화면 사진 2026-11-23) 동네 훑기 추천 동 순위 목록에 `list-none`(숫자 두 번), 훑기 범례에 시안의 검은 표시·지하철 선 설명, 창 1024에서 훑기 오른쪽이 잘리지 않게(시안처럼 맞음), 출처 줄 링크 밑줄 없음(시안), 무게 판 '무게 합계' 줄 벌어짐을 시안대로
+- TDD: required — 검토 4~10 + 정확성 둘. (4) 점수 풀이 `k-vsAvg` 글 `저장한 매물 평균보다 {n}% 비싸요`/`싸요`(requirements 점수 풀이 글). (5) 출처 줄을 누르면 '근거와 출처' 탭으로 바뀜: `SourceLine`의 콜백 없는 기본 길을 평범한 `<a href>`로(이 화면은 주소 `tab`을 처음에만 읽음) — `scan`·`listings`(PriceCompare·SavedListings)·`prep`(OpenSchedule·visit) 모두. (6) '근거와 출처' 점수 표 만점 기준 글을 requirements '화면 글 기본값'(`1km²에 [10,000]명이면 100점` 등, 고르기 항목은 `고른 값이 '보여요'이면 100점`)으로 — `weights/text.ts`의 앞말·뒷말·고르기 글을 함께 씀. (7) 훑기 무게 판 `rivalShort`: 경쟁 0개면 `''`. (8) 법 근거 곁글 끝 ` · 아홉 줄`(시안). (9) 보고서 단추 `후보 {글자}로 돌아가기`(글자 없으면 `후보로 돌아가기`). (10) 후보 더하기 범위 도움말 `저장한 뒤 후보 자세히에서 바꿔요.`(시안). (정확성) `score.ts` `k-vsAvg` 차이 %를 화면(`listings.ts`)과 같은 버림으로. (정확성) 빈 칸 짐작이 건축물대장 지난 값으로 셀 때 `지난 값 · 기준 {날짜}` 줄(AC-7917.2). (화면 사진 2026-11-23) 동네 훑기 추천 동 순위 목록에 `list-none`(숫자 두 번), 훑기 범례(앱 지도는 후보를 파랗게 그리고 지하철 선이 없어 `파란 표시 = 저장한 후보` 그대로 둠 — 시안 글은 틀린 말이 됨, 검토 2026-11-23), 창 1024에서 훑기 오른쪽이 잘리지 않게(시안처럼 맞음), 출처 줄 링크 밑줄 없음(시안), 무게 판 '무게 합계' 줄 벌어짐을 시안대로
 
 ## TASK-83: 검토 고침 — 사진 30장 동시 넣기 잠금·3년 개폐업 부르기 한도
 - REQ: REQ-7913, REQ-7909 · AC-7913.4, AC-7909.3
@@ -440,3 +440,17 @@
 - Files: src/components/location/detail/rivals/**, src/components/location/report/**
 - Tests: src/components/location/detail/rivals/, src/components/location/report/
 - TDD: required — TASK-81이 그날 값에 남긴 것을 화면이 읽게. (1) `rivals/text.ts` `isCapped`가 그날 값 `rivals`의 `capped: true`도 보아(줄 수 200도 그대로) 경쟁 의원·둘레 다른 과 묶음이 `200곳 넘게 있을 수 있어요. 가까운 200곳만 셌어요.`를 보임(design 6절 의원 목록 200곳). (2) `rivals/text.ts`(3년 개폐업 과목 가르기)와 `report/sheet.ts`가 `deptOfText`에 `type: ''` 대신 그 줄의 업태 `type`(옛 줄은 `''`)을 넘겨 치과의원·한의원을 업태로 가름
+
+## Phase 12 — 다시 검토 고침 (2명 동시 · 겹침 없음. 검토 2026-11-23 '고친 곳만' FIX 둘 + 고치면 좋음 셋)
+
+## TASK-86: 넓이는 평만 — 화면 넓이 글에서 ㎡ 떼기
+- REQ: REQ-7905 · AC-7905.5
+- Files: src/lib/location/area.ts, src/lib/location/area.test.ts, src/components/location/compare/**, src/components/location/detail/site/**, src/components/location/listings/**, src/components/location/report/**, src/lib/location/listings.test.ts
+- Tests: src/lib/location/area.test.ts, src/lib/location/listings.test.ts, src/components/location/compare/, src/components/location/detail/site/, src/components/location/listings/, src/components/location/report/
+- TDD: required — `areaText`가 `30평`·`30.1평`(㎡ 없음, AC-7905.5). 이 글을 쓰는 곳(CandidateCompare·BuildingDocs·SavedListings·report/sheet 등)의 시험 기댓값을 맞춤. 법 기준 글(`flags.ts` 등)의 ㎡와 매물 붙여 넣기 입력의 평·㎡ 고르기는 그대로
+
+## TASK-87: 알림 — 업태로 가른 줄이 대시보드에서 빠짐·지역 모르는 후보·한도 여유
+- REQ: REQ-7915, REQ-7921 · AC-7915.1, AC-7921.2
+- Files: src/lib/location/watch.ts, src/lib/location/watch.test.ts, src/components/dashboard/location/**, src/components/location/clients.ts, src/components/location/clients.test.ts
+- Tests: src/lib/location/watch.test.ts, src/components/dashboard/location/, src/components/location/clients.test.ts
+- TDD: required — (1) 업태로 경쟁에 든 줄(예 업태 `한의원`, 과목 글 `한방내과,한방재활의학과,침구과`)을 저장할 때 과목 글 앞에 업태 글을 붙여(design 12절) `alertLines`가 같은 과목(한의원)으로 그려 줄이 사라지지 않음 — 넣는 셈과 그리는 셈이 같음을 시험. (2) `dueCandidates`가 그날 값 `place`가 없는 후보를 고르지 않음(전국으로 부르지 않음, 5곳 자리를 차지하지 않음). (3) `clients.ts` `clinic-license` 한도 125초(design 4절)
