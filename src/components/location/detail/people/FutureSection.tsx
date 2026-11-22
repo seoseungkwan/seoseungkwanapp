@@ -1,6 +1,7 @@
 // 후보 자세히 › 앞으로 바뀔 것 묶음(spec location AC-7909.1·AC-7909.2, 시안 ?s=candidate #sec-future).
 // 줄 차례: 사는 사람 4년 추세(`2022→2026` · `사는 사람 4년 사이 +x%`) → 입주 예정 단지(입주 연월마다) → 재개발·도로(토지이음에서 봐요).
-// 재개발·도로 계획은 이 앱이 받아 오지 않는다(토지이음 링크는 땅 쓰임·계획 묶음). 그날 값(Snapshot)만 받는다(props·콜백만)
+// 재개발·도로 계획은 이 앱이 받아 오지 않는다(토지이음 링크는 땅 쓰임·계획 묶음). 그날 값(Snapshot)만 받는다(props·콜백만).
+// 제목 아래 '이렇게 봤어요'(AC-7920.2): method.ts HOW.future를 부르는 쪽이 준 howCtx로 채움, 펼침도 props(howOpen·onHow)
 import type { ReactNode } from 'react'
 import { SourceLine } from '@/components/location/common/SourceLine'
 import { WhyLine } from '@/components/location/common/WhyLine'
@@ -8,18 +9,19 @@ import { asOfText } from '@/components/location/common/text'
 import { distText } from '@/lib/location/coords'
 import { commaText } from '@/lib/location/money'
 import type { Got, Snapshot, SnapshotValue } from '@/types/location'
-import { GotView, type Pass, Section } from './Section'
+import { GotView, type HowProps, type Pass, Section } from './Section'
 import { changeText, shownOf, trendChange } from './text'
 
-export type FutureSectionProps = Pass & {
-  /** 그날 값(전체 Snapshot을 그대로 넘겨도 된다) */
-  snapshot: Pick<Snapshot, 'radiusM' | 'trend' | 'presale'>
-}
+export type FutureSectionProps = Pass &
+  HowProps & {
+    /** 그날 값(전체 Snapshot을 그대로 넘겨도 된다) */
+    snapshot: Pick<Snapshot, 'radiusM' | 'trend' | 'presale'>
+  }
 
-export function FutureSection({ snapshot: s, onRetry, onOpenSource }: FutureSectionProps) {
+export function FutureSection({ snapshot: s, howCtx, howOpen, onHow, onRetry, onOpenSource }: FutureSectionProps) {
   const pass: Pass = { onRetry, onOpenSource }
   return (
-    <Section id="future" title="앞으로 바뀔 것" aside={`범위 ${distText(s.radiusM)} 안`}>
+    <Section id="future" title="앞으로 바뀔 것" aside={`범위 ${distText(s.radiusM)} 안`} howCtx={howCtx} howOpen={howOpen} onHow={onHow}>
       <ul className="m-0 list-none p-0">
         <TrendItem got={s.trend} {...pass} />
         <PresaleItems got={s.presale} {...pass} />

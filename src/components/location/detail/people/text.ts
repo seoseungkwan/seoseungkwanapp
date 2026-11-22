@@ -1,6 +1,8 @@
 // 후보 자세히 — 사는 사람·소득·앞으로 바뀔 것의 계산과 글자(spec location AC-7909.2·AC-7909.7, 순수 함수).
-// 숫자 글자는 money.ts(commaText)·common/text.ts(asOfText)를 불러 쓴다. %는 정수로만 센다(× 100 또는 × 1,000 ÷ 값의 버림)
+// 숫자 글자는 money.ts(commaText)·common/text.ts(asOfText)를 불러 쓴다. %는 정수로만 센다(× 100 또는 × 1,000 ÷ 값의 버림).
+// 의료급여·차상위 비율은 snapshot.ts welfareRate 한 곳(점수 facts.ts와 같은 셈)을 부른다
 import { commaText } from '@/lib/location/money'
+import { welfareRate } from '@/lib/location/snapshot'
 import type { Got, SnapshotValue } from '@/types/location'
 
 // ── 그날 값 칸 ──
@@ -26,9 +28,9 @@ export function changeText(tenths: number): string {
   return `${tenths < 0 ? '−' : '+'}${tenthsText(tenths)}%`
 }
 
-/** 비율 글자: '2.3%' · 비율이 없으면 '–' */
-export function rateText(tenths: number | null): string {
-  return tenths === null ? '–' : `${tenthsText(tenths)}%`
+/** 비율 글자(welfareRate 값 — 0.1% 단위로 버린 %): 2.3 → '2.3%' · 3 → '3%' · 비율이 없으면 '–' */
+export function rateText(pct: number | null): string {
+  return pct === null ? '–' : `${tenthsText(Math.round(pct * 10))}%`
 }
 
 /** 막대 위 숫자: 1만 이상이면 0.1만 버림 '1.8만', 아니면 쉼표 '9,999' */
@@ -122,14 +124,28 @@ export function promoOrder(apts: readonly Apt[]): PromoRow[] {
 
 // ── 의료급여·차상위 ──
 
-export type WelfareLine = { label: string; count: number; tenths: number | null }
+export type WelfareLine = { label: string; count: number; rate: number | null }
 
-/** 세 줄: 수와 그 시군구 주민등록 인구 대비 비율(0.1% 단위 버림, 인구가 없으면 null) */
+/**
+ * 세 줄: 수와 그 시군구 주민등록 인구 대비 비율(% 소수 첫째 자리 버림, 인구가 없거나 0이면 null).
+ * 비율은 welfareRate 한 곳으로 센다 — 줄마다 그 줄의 수 하나만 넣는다(다른 칸은 0)
+ */
 export function welfareLines(v: SnapshotValue<'welfare'>): WelfareLine[] {
-  const rate = (n: number) => (v.population !== null && v.population > 0 ? Math.floor((n * 1000) / v.population) : null)
+  const rate = (n: number) => welfareRate({ medical: n, nearPoor: 0, population: v.population })
   return [
-    { label: '의료급여(기초) 수급권자', count: v.medical, tenths: rate(v.medical) },
-    { label: '기초생활보장 수급권자 합계', count: v.basic, tenths: rate(v.basic) },
-    { label: '차상위 3종 합계', count: v.nearPoor, tenths: rate(v.nearPoor) },
+    { label: '의료급여(기초) 수급권자', count: v.medical, rate: rate(v.medical) },
+    { label: '기초생활보장 수급권자 합계', count: v.basic, rate: rate(v.basic) },
+    { label: '차상위 3종 합계', count: v.nearPoor, rate: rate(v.nearPoor) },
   ]
+}
+
+const WELFARE_NOTE = '시군구 기준 · 기초생활보장 의료급여 기준 · 겹칠 수 있어요'
+
+/**
+ * 의료급여·차상위 머리 곁글. 판에 옛 구로만 있는 새 시군구(basis = regions.ts OLD_SGG_GROUPS 이름 '옛 중구·동구' 모양)면
+ * 끝에 ` · 옛 {구} 기준`(requirements '화면 글 기본값', 이 명세가 정한 것 18)
+ */
+export function welfareNote(basis: string | null): string {
+  if (!basis) return WELFARE_NOTE
+  return `${WELFARE_NOTE} · ${basis.startsWith('옛 ') ? basis : `옛 ${basis}`} 기준`
 }
