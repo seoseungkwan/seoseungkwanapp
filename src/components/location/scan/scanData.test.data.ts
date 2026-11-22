@@ -1,7 +1,8 @@
 // 동네 훑기 시험 자료(지어낸 시군구·동 이름만). 시험 파일이 같이 쓴다 — 이 파일은 시험으로 잡히지 않는다(.test.data.ts)
+import type { ScanDong, ScanPart, ScanPartState } from '@/lib/location/collect'
 import type { Dong, DongIndex, LngLat } from '@/lib/location/regions'
-import type { ScoreFacts } from '@/types/location'
-import type { ScanData, ScanDong, ScanPartState } from './ScanView'
+import type { ScoreFacts, SourceId } from '@/types/location'
+import type { ScanData } from './ScanView'
 
 export const INDEX: DongIndex = {
   asOf: '2026-06-30',
@@ -93,9 +94,9 @@ export const CHAMI_FACTS: ScoreFacts = {
 
 export const AT = '2026-11-22T01:40:00.000Z' // 한국 시각 10:40
 
-const okPart = (src: string, asOf: string): ScanPartState => ({ ok: true, src, asOf })
+const okPart = (src: SourceId, asOf: string): ScanPartState => ({ ok: true, src, asOf })
 
-export const PARTS: Record<string, ScanPartState> = {
+export const PARTS: Record<ScanPart, ScanPartState> = {
   people: okPart('pop-age', '2026-10-31'),
   trend: okPart('pop-age', '2026-10-31'),
   accidents: okPart('accident', '2025-09-25'),
@@ -127,5 +128,13 @@ export function noTransit(): ScanData {
       station: { ok: false, src: 'rail-stations', why: 'failed' },
       bus: { ok: false, src: 'bus-stops', why: 'outside' },
     },
+  })
+}
+
+/** 경쟁 과목이 0개로 모은 훑기(collectScan이 의원을 부르지 않음 — 경쟁 수 null, parts.rivals why 'none') */
+export function noRivals(): ScanData {
+  return scanData({
+    dongs: SCAN_DONGS.map((d) => ({ ...d, facts: { ...d.facts, rivals: null, newRivals: null } })),
+    parts: { ...PARTS, rivals: { ok: false, src: 'hosp-list', why: 'none' } },
   })
 }

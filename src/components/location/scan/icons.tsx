@@ -1,4 +1,15 @@
-// 동네 훑기 그림 둘(시안 docs/mockups/location/index.html ICON.plus·ext 그대로). 늘 꾸밈이다(aria-hidden). 색은 글자색(currentColor)
+// 동네 훑기 그림 셋(시안 docs/mockups/location/index.html ICON.plus·ext·warn 그대로). 늘 꾸밈이다(aria-hidden). 색은 글자색(currentColor)
+// — 경고 세모 안의 느낌표만 바탕색 토큰(text-surface)
+
+export function WarnIcon() {
+  return (
+    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" className="shrink-0 text-warning">
+      <path d="M8 1.8 15 14H1z" fill="currentColor" />
+      <path d="M8 6v3.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" className="text-surface" />
+      <circle cx="8" cy="11.7" r=".9" fill="currentColor" className="text-surface" />
+    </svg>
+  )
+}
 
 export function PlusIcon() {
   return (
