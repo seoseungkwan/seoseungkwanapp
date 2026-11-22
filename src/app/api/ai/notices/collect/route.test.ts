@@ -1,13 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // GET /api/ai/notices/collect — Vercel Cron이 부르는 고시·공지 모으기(specs/notices REQ-7416 AC-7416.1·AC-7416.2, design 4절·ADR-036, TASK-21).
-// collectorClient·collectorStore·runCollector·규칙 색인·사이트·Claude·일괄은 모두 가짜다. 실제 사이트·Claude·Supabase에 붙지 않는다.
+// 규칙 살피기용 규칙표(deps.rules, specs/rule-auto AC-7810.1, design 10절)는 loadTables로 채운다.
+// collectorClient·collectorStore·runCollector·규칙 색인·규칙표 불러오기·사이트·Claude·일괄은 모두 가짜다. 실제 사이트·Claude·Supabase에 붙지 않는다.
 // node:crypto는 진짜를 쓰되 timingSafeEqual만 지켜본다(같은 시간 비교를 쓰는지)
 const mocks = vi.hoisted(() => ({
   collectorClient: vi.fn(),
   collectorStore: vi.fn(),
   runCollector: vi.fn(),
   defaultRuleIndex: vi.fn(),
+  loadTables: vi.fn(),
   fetchSite: vi.fn(),
   callClaude: vi.fn(),
   submitBatch: vi.fn(),
@@ -16,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../collectStore', () => ({ collectorClient: mocks.collectorClient, collectorStore: mocks.collectorStore }))
 vi.mock('../collector', () => ({ runCollector: mocks.runCollector }))
 vi.mock('../ruleMatch', () => ({ defaultRuleIndex: mocks.defaultRuleIndex }))
+vi.mock('@/workers/precheck/tables', () => ({ loadTables: mocks.loadTables }))
 vi.mock('../fetchSite', () => ({ fetchSite: mocks.fetchSite }))
 vi.mock('../../claude', () => ({ callClaude: mocks.callClaude }))
 vi.mock('../batch', () => ({ submitBatch: mocks.submitBatch, readBatch: mocks.readBatch }))
@@ -33,6 +36,8 @@ const SECRET = 'cron-secret-abcdefghijklmnopqrstuvwxyz-0123456789'
 const CLIENT = { tag: 'fake-collector-client' }
 const STORE = { tag: 'fake-collector-store' }
 const RULES = new Map([['2026-100', [{ id: 'R-01', title: '규칙 하나' }]]])
+const RULES_FILE = { version: '2026-10-19', tag: 'fake-rules-file' }
+const TABLES = { ok: true, value: { rules: RULES_FILE, dxFlags: {}, drugInfo: {}, codeMap: {} } }
 const REPORT = {
   new: { hira_notice: 3, hira_crtr: 1, mohw_rss: 0 },
   stopped: ['mohw_rss'],
@@ -71,6 +76,7 @@ beforeEach(() => {
   mocks.collectorClient.mockResolvedValue(CLIENT)
   mocks.collectorStore.mockReturnValue(STORE)
   mocks.defaultRuleIndex.mockResolvedValue(RULES)
+  mocks.loadTables.mockResolvedValue(TABLES)
   mocks.runCollector.mockResolvedValue(REPORT)
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   otherSpies = (['log', 'warn', 'info', 'debug'] as const).map((k) => vi.spyOn(console, k).mockImplementation(() => {}))
@@ -100,6 +106,13 @@ describe('경로 설정', () => {
     expect(collector.BATCH_PREP_UNTIL_MS + batch.BATCH_CALL_TIMEOUT_MS).toBeLessThanOrEqual(limitMs)
     expect(collector.BACKFILL_UNTIL_MS).toBeLessThan(limitMs)
     // 진짜 collector는 붙임 읽기 패키지(unpdf·fflate)까지 불러와 다른 시험과 함께 돌면 느리다
+  }, 60_000)
+
+  it('AC-7810.2 규칙 살피기의 마지막 부름(60초 + 부름 한도)은 바로 요약을 새로 시작하지 않는 때(170초) 안에 끝난다', async () => {
+    const collector = await vi.importActual<typeof import('../collector')>('../collector')
+    const claude = await vi.importActual<typeof import('../../claude')>('../../claude')
+    expect(collector.RULE_UNTIL_MS).toBe(60_000)
+    expect(collector.RULE_UNTIL_MS + claude.CALL_TIMEOUT_MS).toBeLessThanOrEqual(collector.DIRECT_UNTIL_MS)
   }, 60_000)
 })
 
@@ -162,7 +175,7 @@ describe('AC-7416.1 비밀 머리 검사', () => {
 })
 
 describe('AC-7416.2 맞는 머리 → 모으기', () => {
-  it('AC-7416.2 모으기 계정 클라이언트로 store를 만들어 runCollector를 한 번 돌리고 200 { ok: true, 숫자·출처 이름 }이다', async () => {
+  it('AC-7416.2 · AC-7810.1 모으기 계정 클라이언트로 store를 만들어 runCollector를 한 번 돌리고(규칙표 포함) 200 { ok: true, 숫자·출처 이름 }이다', async () => {
     const res = await authed()
     expect(res.status).toBe(200)
     expect(await bodyOf(res)).toEqual({ ok: true, ...REPORT })
@@ -173,13 +186,28 @@ describe('AC-7416.2 맞는 머리 → 모으기', () => {
     expect(mocks.runCollector).toHaveBeenCalledTimes(1)
     const deps = mocks.runCollector.mock.calls[0][0]
     expect(Object.keys(deps).sort()).toEqual(
-      ['callClaude', 'fetchSite', 'now', 'nowMs', 'readBatch', 'ruleIndex', 'store', 'submitBatch'].sort(),
+      ['callClaude', 'fetchSite', 'now', 'nowMs', 'readBatch', 'ruleIndex', 'rules', 'store', 'submitBatch'].sort(),
     )
     expect(deps.store).toBe(STORE)
     expect(deps.fetchSite).toBe(mocks.fetchSite)
     expect(deps.callClaude).toBe(mocks.callClaude)
     expect(deps.submitBatch).toBe(mocks.submitBatch)
     expect(deps.readBatch).toBe(mocks.readBatch)
+    expect(deps.ruleIndex).toBe(RULES)
+    expect(deps.rules).toBe(RULES_FILE)
+    expect(mocks.loadTables).toHaveBeenCalled()
+    expect(errorSpy).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['불러오기 실패', () => mocks.loadTables.mockResolvedValue({ ok: false, code: 'E-RULES-LOAD-FAILED' })],
+    ['불러오기가 던짐', () => mocks.loadTables.mockRejectedValue(new Error('rules.json at C:\\secret\\path'))],
+  ])('AC-7810.1 규칙표를 못 불러오면(%s) rules를 null로 넘기고 모으기는 돈다(로그 없음)', async (_name, setup) => {
+    setup()
+    const res = await authed()
+    expect(res.status).toBe(200)
+    const deps = mocks.runCollector.mock.calls[0][0]
+    expect(deps.rules).toBeNull()
     expect(deps.ruleIndex).toBe(RULES)
     expect(errorSpy).not.toHaveBeenCalled()
   })
