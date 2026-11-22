@@ -124,6 +124,54 @@ describe('queryLocation — POST /api/ai/location/query', () => {
     expect(done).toEqual(FAILED)
     expect(lastCall().init.signal.aborted).toBe(true)
   })
+
+  const HOSP_CLINIC: Query = { kind: 'hosp-list', at: { lat: 37.5, lng: 127 }, r: 1000, group: 'clinic', depts: ['ortho', 'ns', 'pain', 'rehab'] }
+  const HOSP_KOREAN: Query = { kind: 'hosp-list', at: { lat: 37.5, lng: 127 }, r: 1000, group: 'korean' }
+  const NONPAY: Query = { kind: 'nonpay', ykiho: 'JDQ4MTYxMiM1MSMk', item: 'SZ084' }
+  const HOSP_DETAIL: Query = { kind: 'hosp-detail', ykiho: 'JDQ4MTYxMiM1MSMk' }
+
+  it.each([
+    ['hosp-list 의원(과목 넷)', 60_000, HOSP_CLINIC],
+    ['hosp-list 한의원', 60_000, HOSP_KOREAN],
+    ['nonpay(서버 한도 60초보다 길게)', 70_000, NONPAY],
+    ['hosp-detail(기본)', 10_000, HOSP_DETAIL],
+    ['pop-age(기본)', 10_000, POP],
+  ] as const)('AC-7922.2: 한도는 종류마다 — %s는 %i ms가 지나야 끊고 failed', async (_name, limitMs, q) => {
+    vi.useFakeTimers()
+    hang()
+    let done: unknown = 'waiting'
+    void queryLocation(q).then((r) => (done = r))
+    await vi.advanceTimersByTimeAsync(limitMs - 1)
+    expect(done).toBe('waiting')
+    expect(lastCall().init.signal.aborted).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(done).toEqual(FAILED)
+    expect(lastCall().init.signal.aborted).toBe(true)
+  })
+
+  it('AC-7922.2: 느린 비급여 답(65초)·의원 목록 답(55초)은 끊지 않고 받는다', async () => {
+    vi.useFakeTimers()
+    const value = { ok: true, value: { eswt: 50000, manual: null }, src: 'nonpay', asOf: '2026-11-22' }
+    for (const [q, afterMs] of [
+      [NONPAY, 65_000],
+      [HOSP_CLINIC, 55_000],
+    ] as const) {
+      fetchMock.mockReset()
+      // 끊기면(abort) 던지고, 아니면 afterMs 뒤에 답한다
+      fetchMock.mockImplementation(
+        (_input, init) =>
+          new Promise<Response>((resolve, reject) => {
+            init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+            setTimeout(() => resolve(new Response(JSON.stringify(value), { status: 200 })), afterMs)
+          }),
+      )
+      let done: unknown = 'waiting'
+      void queryLocation(q).then((r) => (done = r))
+      await vi.advanceTimersByTimeAsync(afterMs)
+      expect(done).toEqual(value)
+      expect(lastCall().init.signal.aborted).toBe(false)
+    }
+  })
 })
 
 describe('readKeys — GET /api/ai/location/keys', () => {

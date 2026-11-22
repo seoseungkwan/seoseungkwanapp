@@ -1,12 +1,13 @@
 import type { BusFile, RailFile, TransitIndex } from '@/lib/location/flow'
 import { checkQuery } from '@/lib/location/query'
 import type { DongFile, DongIndex } from '@/lib/location/regions'
-import type { KeyKind, KeyState, KeysReply, Query, QueryReply, ReplyCode } from '@/types/location'
+import type { KeyKind, KeyState, KeysReply, Query, QueryKind, QueryReply, ReplyCode } from '@/types/location'
 
 // 입지 분석 화면의 부르기(specs/location design.md 1·3·5절, ADR-042). 던지지 않는다.
 // 바깥 자료는 같은 origin 서버 경로(POST /api/ai/location/query)로만 부른다 — 몸통은 checkQuery를 지난 칸만(못 지나면 보내지 않음).
 // 열쇠 상태는 GET /api/ai/location/keys. 동 경계·정류장·역 좌표는 같은 origin 정적 파일(/location/dongs·/location/transit)이다.
-// 모두 redirect: 'error'(로그인이 끊겨 돌려보내는 답은 따라가지 않고 실패) · 10초 넘으면 끊는다.
+// 모두 redirect: 'error'(로그인이 끊겨 돌려보내는 답은 따라가지 않고 실패) · 한도를 넘으면 끊는다 — 기본 10초,
+// 바깥 자료 가운데 의원 목록(hosp-list, 과목 열아홉을 둘씩) 60초 · 비급여(nonpay, 서버 한도 60초보다 길게) 70초(design.md 3절).
 // 답은 정해 둔 칸만 새로 담는다. 바깥 오류 글은 담지 않고 어디에도 남기지 않는다(저장·console 없음)
 
 const QUERY_PATH = '/api/ai/location/query'
@@ -14,6 +15,8 @@ const KEYS_PATH = '/api/ai/location/keys'
 const DONGS_DIR = '/location/dongs'
 const TRANSIT_DIR = '/location/transit'
 export const CLIENT_TIMEOUT_MS = 10_000
+// 서버가 오래 붙잡는 종류만 더 기다린다(서버 경로 maxDuration 120초 안)
+const SLOW_QUERY_MS: Readonly<Partial<Record<QueryKind, number>>> = { 'hosp-list': 60_000, nonpay: 70_000 }
 
 const REPLY_CODES: readonly ReplyCode[] = ['no-key', 'not-applied', 'failed']
 const KEY_KINDS: readonly KeyKind[] = ['data', 'kakao']
@@ -42,10 +45,10 @@ function jsonOf(text: string): unknown {
   }
 }
 
-/** 같은 origin 경로 하나를 부르고 상태·JSON을 받는다. redirect는 따라가지 않고, 10초 넘으면 끊는다. 실패는 null */
-async function call(path: string, init: RequestInit): Promise<Got | null> {
+/** 같은 origin 경로 하나를 부르고 상태·JSON을 받는다. redirect는 따라가지 않고, 한도(기본 10초)를 넘으면 끊는다. 실패는 null */
+async function call(path: string, init: RequestInit, timeoutMs = CLIENT_TIMEOUT_MS): Promise<Got | null> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS)
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const response = await fetch(path, { ...init, redirect: 'error', signal: controller.signal })
     const text = await response.text()
@@ -73,16 +76,18 @@ function replyOf<V>(got: Got | null): QueryReply<V> {
   return { ok: false, code: b.code }
 }
 
-/** 바깥 자료 하나(종류마다 몸통 칸은 checkQuery). 못 지나는 몸통(정해 두지 않은 칸 포함)은 보내지 않고 failed */
+/** 바깥 자료 하나(종류마다 몸통 칸은 checkQuery). 못 지나는 몸통(정해 두지 않은 칸 포함)은 보내지 않고 failed.
+ * 한도는 종류마다(SLOW_QUERY_MS, 없으면 10초) */
 export async function queryLocation<V = unknown>(q: Query): Promise<QueryReply<V>> {
   const body = checkQuery(q)
   if (body === null) return failed()
-  const got = await call(QUERY_PATH, {
+  const init: RequestInit = {
     method: 'POST',
     cache: 'no-store',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  })
+  }
+  const got = await call(QUERY_PATH, init, SLOW_QUERY_MS[body.kind] ?? CLIENT_TIMEOUT_MS)
   return replyOf<V>(got)
 }
 
