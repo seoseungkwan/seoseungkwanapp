@@ -1,13 +1,16 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { Query, QueryKind, QueryOf, QueryReply, Snapshot } from '@/types/location'
-import { COLLECT_LIMIT, ESWT_ITEM, collect, collectScan, industryParks, type CollectDeps, type CollectProgress } from './collect'
+import type { DeptId, DeptRule, Point, Query, QueryKind, QueryOf, QueryReply, Rival, Snapshot } from '@/types/location'
+import { COLLECT_LIMIT, ESWT_ITEM, RIVAL_MAX, collect, collectScan, industryParks, type CollectDeps, type CollectProgress } from './collect'
 import { EARTH_R, distM, type LatLng } from './coords'
+import { DEPTS } from './depts'
 import type { BusFile, RailFile, TransitIndex } from './flow'
 import type { DongFile, DongIndex, LngLat } from './regions'
 import { SNAPSHOT_KEYS, checkSnapshot } from './snapshot'
 import { isSourceId } from './sources'
 
-// 모으기(specs/location TASK-25, design.md 4·5·6·8절, REQ-7908). 바깥 사이트는 부르지 않는다 — 부르는 함수·파일 읽기는 가짜다.
+// 모으기(specs/location TASK-25·58, design.md 4·5·6·8·18·19절, REQ-7908·7921·7922). 바깥 사이트는 부르지 않는다 — 부르는 함수·파일 읽기는 가짜다.
 // 지역·이름은 모두 지어낸 것이다
 
 // ── 가짜 세상 ─────────────────────────────────────────────
@@ -20,7 +23,7 @@ const RAD = Math.PI / 180
 const M_PER_LAT = EARTH_R * RAD
 const r6 = (v: number) => Math.round(v * 1e6) / 1e6
 /** from에서 북쪽 north m · 동쪽 east m 옮긴 점(소수 6자리) */
-function moved(north: number, east: number, from: LatLng = AT): LatLng {
+function moved(north: number, east: number, from: LatLng = AT): Point {
   return { lat: r6(from.lat + north / M_PER_LAT), lng: r6(from.lng + east / (M_PER_LAT * Math.cos(from.lat * RAD))) }
 }
 const d = (p: LatLng, from: LatLng = AT) => distM(from, p)
@@ -59,7 +62,7 @@ function baseIndex(): DongIndex {
 function baseDongs(): Record<string, DongFile> {
   return {
     '41111': {
-      asOf: '2026-07-01',
+      asOf: '2026-07-02',
       dongs: [
         { code10: D1, name: '다솜1동', areaM2: 10_000, center: [126.996, 37.5], rings: square(126.99, 37.49, 127.002, 37.51) },
         { code10: D2, name: '다솜2동', areaM2: 10_000, center: [127.006, 37.5], rings: square(127.002, 37.49, 127.01, 37.51) },
@@ -67,7 +70,7 @@ function baseDongs(): Record<string, DongFile> {
       ],
     },
     '41113': {
-      asOf: '2026-07-01',
+      asOf: '2026-07-02',
       dongs: [{ code10: '4111351000', name: '별빛1동', areaM2: 10_000, center: [127.02, 37.5], rings: square(127.01, 37.49, 127.03, 37.51) }],
     },
   }
@@ -114,13 +117,35 @@ const sum = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0)
 const addBands = (a: readonly number[], b: readonly number[]) => a.map((n, i) => n + b[i])
 
 const WEEK = [[540, 1080], [540, 1080], [540, 1080], [540, 1080], [540, 1080], [540, 780], null, null]
-const R1 = moved(25, 0)
-const R2 = moved(0, 300)
-const K1 = moved(100, 0)
+const WEEK2 = [[600, 1200], [600, 1200], [600, 1200], [600, 1200], [600, 1200], null, null, null]
+
+// 심평원 의원(지어낸 이름·주소). 점은 심평원 좌표
+const T1 = moved(10, 0) // 치과 — 같은 건물
+const R1 = moved(25, 0) // 정형외과 — 같은 건물
+const I1 = moved(-40, 0) // 내과 — 30m 밖
+const K1 = moved(100, 0) // 한의원
+const N1 = moved(0, -200) // 신경외과
+const R2 = moved(0, 300) // 마취통증·재활
+const FAR = moved(0, 900) // 범위 밖 정형외과
+type FakeClinic = { ykiho: string; name: string; depts: DeptId[]; doctors: number | null; openedOn: string | null; at: Point; address: string }
+const CLINICS: FakeClinic[] = [
+  { ykiho: 'Y1', name: '가람정형외과의원', depts: ['ortho'], doctors: 2, openedOn: '2024-03-01', at: R1, address: '가람도 나래시 다솜구 다솜대로 7, 2층' },
+  { ykiho: 'Y2', name: '나래마취통증의학과의원', depts: ['pain', 'rehab'], doctors: 1, openedOn: null, at: R2, address: '가람도 나래시 별빛구 별빛로 3' },
+  { ykiho: 'Y5', name: '다솜내과의원', depts: ['im'], doctors: 1, openedOn: '2019-05-01', at: I1, address: '가람도 나래시 다솜구 다솜대로 9' },
+  { ykiho: 'Y6', name: '별빛신경외과의원', depts: ['ns'], doctors: 3, openedOn: '2020-01-01', at: N1, address: '가람도 나래시 다솜구 다솜대로 30' },
+  { ykiho: 'Y8', name: '먼정형외과의원', depts: ['ortho'], doctors: 1, openedOn: '2025-01-01', at: FAR, address: '가람도 나래시 별빛구 먼길 1' },
+]
+const KOREAN: FakeClinic = { ykiho: 'Y3', name: '다솜한의원', depts: ['korean'], doctors: 1, openedOn: '2010-01-01', at: K1, address: '가람도 나래시 다솜구 다솜대로 11' }
+const DENTAL: FakeClinic = { ykiho: 'Y7', name: '가람치과의원', depts: ['dental'], doctors: 1, openedOn: '2015-04-01', at: T1, address: '가람도 나래시 다솜구 다솜대로 7, 1층' }
+const CLINIC_IDS = DEPTS.filter((x) => x.dgsbjtCd !== null).map((x) => x.id)
+// 카카오 좌표→주소 답에 섞여 온 점(그날 값에 들면 안 된다)
+const KAKAO_AT: Point = { lat: 37.432109, lng: 127.123456 }
 
 const ok = (value: unknown, asOf = '2026-11-22'): QueryReply => ({ ok: true, value, src: 'x', asOf })
 const FAIL: QueryReply = { ok: false, code: 'failed' }
 const places = <T>(items: T[]) => ({ items, capped: false })
+/** 의원 목록 답 한 줄(서버 hosp-list 모양): 물은 과목만 depts에 */
+const hospItem = (c: FakeClinic, from: Point, depts: DeptId[] = c.depts) => ({ ...c, typeName: '의원', depts, distM: d(c.at, from) })
 
 type Handlers = { [K in QueryKind]?: (q: QueryOf<K>) => QueryReply | Promise<QueryReply> }
 
@@ -133,25 +158,25 @@ function baseHandlers(): Handlers {
         jibun: east ? '가람도 나래시 다솜구 별동 5' : '가람도 나래시 다솜구 다솜동 12-3',
         bjd: east ? '4111110200' : '4111110100',
         hjd: east ? D2 : D1,
+        at: KAKAO_AT,
         lot: east ? { bcode: '4111110200', main: 5, sub: 0, san: false } : { bcode: '4111110100', main: 12, sub: 3, san: false },
       })
     },
     'pop-age': (q) => ok(q.dongs.map((dong) => ({ dong, bands: popBands(dong, q.ym) })), `${q.ym}-15`),
     household: (q) => ok(q.dongs.map((dong) => ({ dong, households: dong === D1 ? 200 : dong === D2 ? 30 : 5 })), `${q.ym}-15`),
-    'flow-volume': (q) =>
-      ok(
-        q.ym === '2026-09'
-          ? {
-              ym: q.ym,
-              rows: [
-                { id: 'B1', mode: 'bus', board: 3000, alight: 3000, days: 30 },
-                { id: 'R1', mode: 'rail', board: 9000, alight: 9000, days: 30 },
-                { id: 'B9', mode: 'bus', board: 1, alight: 1, days: 1 },
-              ],
-            }
-          : { ym: q.ym, rows: [] },
-        `${q.ym}-30`,
-      ),
+    // 2026-09만 줄이 있다: 1만 줄 묶음 셋(part 0·1·2). 같은 정류장이 두 묶음에 나뉘어 온다
+    'flow-volume': (q) => {
+      if (q.ym !== '2026-09') return ok({ ym: q.ym, total: 0, parts: 0, rows: [] }, `${q.ym}-30`)
+      const parts = [
+        [{ id: 'B1', mode: 'bus', board: 1000, alight: 1000, days: 30 }],
+        [
+          { id: 'B1', mode: 'bus', board: 2000, alight: 2000, days: 30 },
+          { id: 'R1', mode: 'rail', board: 9000, alight: 9000, days: 30 },
+        ],
+        [{ id: 'B9', mode: 'bus', board: 1, alight: 1, days: 1 }],
+      ]
+      return ok({ ym: q.ym, total: 25_000, parts: 3, rows: parts[q.part ?? 0] ?? [] }, `${q.ym}-30`)
+    },
     'flow-bus': () => ok([{ id: 'B1', name: '다솜정류장', ars: '11-001' }]),
     'flow-rail': () => ok([{ id: 'R1', name: '가람역', line: '1호선' }]),
     'apt-trade': (q) =>
@@ -283,32 +308,45 @@ function baseHandlers(): Handlers {
       ok({
         items:
           q.group === 'clinic'
-            ? [
-                { ykiho: 'Y1', name: '가람정형외과의원', typeName: '의원', kind: 'ortho', doctors: 2, openedOn: '2024-03-01', at: R1, address: '', distM: d(R1) },
-                { ykiho: 'Y2', name: '나래마취통증의학과의원', typeName: '의원', kind: 'pain', doctors: 1, openedOn: null, at: R2, address: '', distM: d(R2) },
-              ]
+            ? CLINICS.flatMap((c) => {
+                const ds = c.depts.filter((x) => (q.depts as readonly string[]).includes(x))
+                return ds.length > 0 ? [hospItem(c, q.at, ds)] : []
+              })
             : q.group === 'korean'
-              ? [{ ykiho: 'Y3', name: '다솜한의원', typeName: '한의원', kind: 'korean', doctors: 1, openedOn: '2010-01-01', at: K1, address: '', distM: d(K1) }]
-              : [],
+              ? [hospItem(KOREAN, q.at)]
+              : q.group === 'dental'
+                ? [hospItem(DENTAL, q.at)]
+                : [],
         capped: false,
       }),
-    'hosp-detail': (q) => (q.ykiho === 'Y1' ? ok({ mri: true, ct: false, therapists: 3 }) : FAIL),
+    'hosp-detail': (q) => (q.ykiho === 'Y1' ? ok({ mri: true, ct: false, therapists: 3 }) : q.ykiho === 'Y6' ? ok({ mri: false, ct: true, therapists: null }) : FAIL),
     nonpay: (q) =>
-      ok({
-        rows:
-          q.ykiho === 'Y1'
-            ? [
-                { name: '체외충격파(고강도)', won: 80_000 },
-                { name: '체외충격파', won: 50_000 },
-              ]
+      q.ykiho === 'Y1'
+        ? ok({
+            rows: [
+              { name: '체외충격파(고강도)', won: 80_000 },
+              { name: '체외충격파', won: 50_000 },
+            ],
+            manual: [
+              { name: '도수치료 60분', won: 150_000 },
+              { name: '도수치료', won: 120_000 },
+            ],
+          })
+        : q.ykiho === 'Y6'
+          ? ok({ rows: [], manual: null })
+          : FAIL,
+    // 진료 시간은 시군구 이름으로 받는다(국립중앙의료원 목록). 점은 그 자료의 점 — 그날 값에는 심평원 점만 남는다
+    'hosp-hours': (q) =>
+      ok(
+        q.sggName === '나래시 다솜구'
+          ? [
+              { name: '가람 정형외과', at: moved(30, 0), week: WEEK },
+              { name: '다른의원', at: R2, week: WEEK },
+            ]
+          : q.sggName === '나래시 별빛구'
+            ? [{ name: '별빛신경외과', at: moved(5, -200), week: WEEK2 }]
             : [],
-        manual: null,
-      }),
-    'hosp-hours': () =>
-      ok([
-        { name: '가람 정형외과', at: moved(30, 0), week: WEEK },
-        { name: '다른의원', at: R2, week: WEEK },
-      ]),
+      ),
     'clinic-license': (q) =>
       ok({
         rows:
@@ -337,9 +375,9 @@ function baseHandlers(): Handlers {
         ],
         capped: false,
       }),
-    welfare: () =>
+    welfare: (q) =>
       ok(
-        { sggName: '나래시 다솜구', ym: '2025-12', medical: 300, basic: 500, nearPoor: 200, nearPoorBy: { copay: 100, selfSupport: 50, disabled: 50 } },
+        { sggName: q.sggNames.join('·'), ym: '2025-12', medical: 300, basic: 500, nearPoor: 200, nearPoorBy: { copay: 100, selfSupport: 50, disabled: 50 } },
         '2025-12-31',
       ),
   }
@@ -389,16 +427,28 @@ const whyOf = (s: Snapshot, key: (typeof SNAPSHOT_KEYS)[number]) => {
   const got = s[key]
   return got.ok ? 'ok' : got.why
 }
+const rivalsOf = (s: Snapshot) => vOf(s, 'rivals') as Rival[]
+const pick = (lat: number, lng: number): Point => ({ lat, lng })
+
+// 그날 값 안의 점(lat·lng가 둘 다 숫자인 객체) 모두
+function pointsIn(v: unknown): Point[] {
+  if (Array.isArray(v)) return v.flatMap(pointsIn)
+  if (typeof v !== 'object' || v === null) return []
+  const o = v as Record<string, unknown>
+  const here = typeof o.lat === 'number' && typeof o.lng === 'number' ? [pick(o.lat, o.lng)] : []
+  return [...here, ...Object.values(o).flatMap(pointsIn)]
+}
 
 // ── 시험 ─────────────────────────────────────────────────
 
 describe('AC-7908.2 collect — 그날 값 모으기', () => {
-  it('AC-7908.2: 22칸이 design.md 6절 모양·출처 id·기준 날짜로 채워지고 모양 검사를 지난다', async () => {
+  it('AC-7908.2: 24칸이 design.md 6절 모양·출처 id·기준 날짜로 채워지고 모양 검사를 지난다', async () => {
     const { deps } = world()
     const s = await collect(AT, R, deps)
     expect(s.v).toBe(1)
     expect(s.at).toBe(NOW)
     expect(s.radiusM).toBe(R)
+    expect(SNAPSHOT_KEYS.length).toBe(24)
     expect(checkSnapshot(JSON.parse(JSON.stringify(s)))).toEqual(s)
     for (const key of SNAPSHOT_KEYS) {
       expect(s[key].ok, key).toBe(true)
@@ -420,6 +470,8 @@ describe('AC-7908.2 collect — 그날 값 모으기', () => {
       industry: 'industry',
       pharmacies: 'stores',
       rivals: 'hosp-list',
+      place: 'dongs',
+      sggAvg: 'pop-age',
       history: 'clinic-license',
       station: 'rail-stations',
       bus: 'bus-stops',
@@ -464,23 +516,42 @@ describe('AC-7908.2 collect — 그날 값 모으기', () => {
     for (const q of askedOf('pop-age')) expect(q.dongs).not.toContain(D2)
   })
 
-  it('AC-7908.2: 사람 흐름은 후보 시군구 지난달이 없으면 두 달 전, 같은 시군구·달은 한 번만 받아 flow.ts로 잇는다', async () => {
+  it('AC-7922.1: 사람 흐름은 달마다 part 0을 부르고 답의 parts만큼 1…parts−1을 더 불러 잇는다 · 정류장·역 이름은 그 달(ym)로', async () => {
     const { deps, askedOf } = world()
     const s = await collect(AT, R, deps)
     expect(vOf(s, 'flow')).toEqual({
       ym: '2026-09',
       stations: [{ name: '가람역', line: '1호선', distM: d(STATION_A), perDay: 600 }],
-      stops: [{ name: '다솜정류장', distM: d(S1), perDay: 200 }],
+      stops: [{ name: '다솜정류장', distM: d(S1), perDay: 200 }], // 두 묶음에 나뉜 B1을 더함: (3,000 + 3,000) ÷ 30
       total: 800,
       unmatched: 1,
     })
     expect(s.flow.ok && s.flow.asOf).toBe('2026-09-30')
     expect(askedOf('flow-volume')).toEqual([
-      { kind: 'flow-volume', sido: '41', sgg: '41111', ym: '2026-10' },
-      { kind: 'flow-volume', sido: '41', sgg: '41111', ym: '2026-09' },
+      { kind: 'flow-volume', sido: '41', sgg: '41111', ym: '2026-10', part: 0 },
+      { kind: 'flow-volume', sido: '41', sgg: '41111', ym: '2026-09', part: 0 },
+      { kind: 'flow-volume', sido: '41', sgg: '41111', ym: '2026-09', part: 1 },
+      { kind: 'flow-volume', sido: '41', sgg: '41111', ym: '2026-09', part: 2 },
     ])
-    expect(askedOf('flow-bus')).toEqual([{ kind: 'flow-bus', sgg: '41111' }])
-    expect(askedOf('flow-rail')).toEqual([{ kind: 'flow-rail', sgg: '41111' }])
+    // 줄이 없는 달(2026-10)은 이름을 부르지 않는다
+    expect(askedOf('flow-bus')).toEqual([{ kind: 'flow-bus', sgg: '41111', ym: '2026-09' }])
+    expect(askedOf('flow-rail')).toEqual([{ kind: 'flow-rail', sgg: '41111', ym: '2026-09' }])
+  })
+
+  it('AC-7922.1: 묶음이 12개를 넘거나 한 묶음이라도 못 받으면 흐름은 그 까닭이고 나머지 묶음은 부르지 않는다', async () => {
+    const many = world({ handlers: { 'flow-volume': (q) => ok({ ym: q.ym, total: 130_000, parts: 13, rows: [{ id: 'B1', mode: 'bus', board: 1, alight: 1, days: 30 }] }, `${q.ym}-30`) } })
+    const s = await collect(AT, R, many.deps)
+    expect(whyOf(s, 'flow')).toBe('failed')
+    expect(many.askedOf('flow-volume').map((q) => q.part)).toEqual([0])
+
+    const broken = world({
+      handlers: {
+        'flow-volume': (q) =>
+          q.part === 1 ? { ok: false, code: 'not-applied' } : ok({ ym: q.ym, total: 20_000, parts: 2, rows: [{ id: 'B1', mode: 'bus', board: 1, alight: 1, days: 30 }] }, `${q.ym}-30`),
+      },
+    })
+    const t = await collect(AT, R, broken.deps)
+    expect(whyOf(t, 'flow')).toBe('not-applied')
   })
 
   it('AC-7908.2: 정류장 좌표 파일이 없는 시군구면 흐름·정류장은 outside이고 흐름 자료를 부르지 않는다', async () => {
@@ -492,10 +563,10 @@ describe('AC-7908.2 collect — 그날 값 모으기', () => {
     expect(askedOf('flow-bus')).toEqual([])
   })
 
-  it('AC-7908.2: 가장 가까운 역과 400m 안 정류장 수는 좌표 파일에서 센다(경계 근처는 이웃 시군구 파일도)', async () => {
+  it('AC-7922.4: 가장 가까운 역(좌표 파일의 점 at 포함)과 400m 안 정류장 수는 좌표 파일에서 센다(경계 근처는 이웃 시군구 파일도)', async () => {
     const { deps } = world()
     const s = await collect(AT, R, deps)
-    expect(vOf(s, 'station')).toEqual({ name: '가람역', line: '1호선', distM: d(STATION_A) })
+    expect(vOf(s, 'station')).toEqual({ name: '가람역', line: '1호선', distM: d(STATION_A), at: pick(STATION_A.lat, STATION_A.lng) })
     expect(s.station.ok && s.station.asOf).toBe('2026-06-01')
     expect(vOf(s, 'bus')).toBe(2) // S1(224m) + 이웃 시군구 S3(300m), S2(600m)는 밖
     expect(s.bus.ok && s.bus.asOf).toBe('2026-06-01') // 파일 가운데 가장 새 날짜
@@ -526,7 +597,7 @@ describe('AC-7908.2 collect — 그날 값 모으기', () => {
     expect(askedOf('presale')).toEqual([{ kind: 'presale', sidoName: '가람도', from: '2023-11', to: '2026-11' }])
   })
 
-  it('AC-7908.2: 시설·사고는 범위 안만 세고(겹침 한 번, 체력단련장은 영업 중만), 시장은 가장 가까운 곳', async () => {
+  it('AC-7922.1: 시설·사고는 범위 안만 세고(겹침 한 번, 체력단련장은 영업 중만, 시도 이름도 보냄), 시장은 가장 가까운 곳', async () => {
     const { deps, askedOf } = world()
     const s = await collect(AT, R, deps)
     expect(vOf(s, 'seniors')).toBe(3)
@@ -537,6 +608,13 @@ describe('AC-7908.2 collect — 그날 값 모으기', () => {
     expect(askedOf('senior').map((q) => q.sggName).sort()).toEqual(['나래시 다솜구', '나래시 별빛구'])
     expect(askedOf('accident')).toContainEqual({ kind: 'accident', sidoName: '가람도', sggName: '나래시 다솜구' })
     expect(askedOf('senior').map((q) => q.sggName)).not.toContain('나래시 먼구')
+    expect(askedOf('gym')).toEqual(
+      expect.arrayContaining([
+        { kind: 'gym', sggName: '나래시 다솜구', sidoName: '가람도' },
+        { kind: 'gym', sggName: '나래시 별빛구', sidoName: '가람도' },
+      ]),
+    )
+    expect(askedOf('gym').length).toBe(2)
   })
 
   it('AC-7908.2: 30m 안 가게는 층마다 세고 약국 수(상가정보)도 담는다', async () => {
@@ -552,36 +630,164 @@ describe('AC-7908.2 collect — 그날 값 모으기', () => {
     expect(askedOf('stores')).toEqual([{ kind: 'stores', at: AT, r: 30 }])
   })
 
-  it('AC-7908.2: 경쟁 의원은 가까운 차례로 상세·체외충격파·진료 시간을 붙이고(한의원은 상세를 부르지 않음), 30m 안이면 같은 건물', async () => {
+  it('AC-7921.5: 의원은 안 보기가 아닌 과목 모두(의원 과목 열아홉 + 치과 + 한의원)를 부르고, 경쟁 과목 의원만 상세·진료 시간·비급여를 붙인다', async () => {
     const { deps, askedOf } = world()
     const s = await collect(AT, R, deps)
-    expect(vOf(s, 'rivals')).toEqual([
-      { name: '가람정형외과의원', kind: 'ortho', doctors: 2, therapists: 3, mri: true, ct: false, openedYear: 2024, distM: d(R1), sameBuilding: true, week: WEEK, eswt: 50_000 },
-      { name: '다솜한의원', kind: 'korean', doctors: 1, therapists: null, mri: null, ct: null, openedYear: 2010, distM: d(K1), sameBuilding: false, week: null, eswt: null },
-      { name: '나래마취통증의학과의원', kind: 'pain', doctors: 1, therapists: null, mri: null, ct: null, openedYear: null, distM: d(R2), sameBuilding: false, week: null, eswt: null },
+    expect(rivalsOf(s)).toEqual([
+      { name: '가람치과의원', depts: ['dental'], at: T1, distM: d(T1), sameBuilding: true, address: '가람도 나래시 다솜구 다솜대로 7, 1층', doctors: 1, openedYear: 2015 },
+      {
+        name: '가람정형외과의원',
+        depts: ['ortho'],
+        at: R1,
+        distM: d(R1),
+        sameBuilding: true,
+        address: '가람도 나래시 다솜구 다솜대로 7, 2층',
+        doctors: 2,
+        openedYear: 2024,
+        detail: { therapists: 3, mri: true, ct: false, week: WEEK, priced: true, eswt: 50_000, manual: 120_000 },
+      },
+      { name: '다솜내과의원', depts: ['im'], at: I1, distM: d(I1), sameBuilding: false, address: '', doctors: 1, openedYear: 2019 },
+      { name: '다솜한의원', depts: ['korean'], at: K1, distM: d(K1), sameBuilding: false, address: '', doctors: 1, openedYear: 2010 },
+      {
+        name: '별빛신경외과의원',
+        depts: ['ns'],
+        at: N1,
+        distM: d(N1),
+        sameBuilding: false,
+        address: '',
+        doctors: 3,
+        openedYear: 2020,
+        // 진료 시간은 이웃 시군구(별빛구) 목록에서 맞춤
+        detail: { therapists: null, mri: false, ct: true, week: WEEK2, priced: true, eswt: null, manual: null },
+      },
+      {
+        name: '나래마취통증의학과의원',
+        depts: ['pain', 'rehab'],
+        at: R2,
+        distM: d(R2),
+        sameBuilding: false,
+        address: '',
+        doctors: 1,
+        openedYear: null,
+        detail: { therapists: null, mri: null, ct: null, week: null, priced: false, eswt: null, manual: null },
+      },
     ])
-    expect(askedOf('hosp-list').map((q) => q.group).sort()).toEqual(['clinic', 'korean'])
-    expect(askedOf('hosp-detail').map((q) => q.ykiho).sort()).toEqual(['Y1', 'Y2'])
-    expect(askedOf('nonpay')).toEqual(
-      expect.arrayContaining([
-        { kind: 'nonpay', ykiho: 'Y1', item: ESWT_ITEM },
-        { kind: 'nonpay', ykiho: 'Y2', item: ESWT_ITEM },
-      ]),
-    )
-    expect(askedOf('nonpay').length).toBe(2)
-    expect(ESWT_ITEM).toBe('MM045')
+    for (const r of rivalsOf(s)) for (const id of r.depts) expect(DEPTS.map((x) => x.id)).toContain(id)
+    expect(askedOf('hosp-list')).toEqual([
+      { kind: 'hosp-list', at: AT, r: R, group: 'clinic', depts: CLINIC_IDS },
+      { kind: 'hosp-list', at: AT, r: R, group: 'dental' },
+      { kind: 'hosp-list', at: AT, r: R, group: 'korean' },
+    ])
+    expect(CLINIC_IDS.length).toBe(19)
+    // 상세·비급여는 경쟁 과목(처음 설정: 정형외과·신경외과·마취통증·재활) 의원만, 의원마다 따로
+    expect(askedOf('hosp-detail').map((q) => q.ykiho).sort()).toEqual(['Y1', 'Y2', 'Y6'])
+    expect(askedOf('nonpay').sort((a, b) => (a.ykiho < b.ykiho ? -1 : 1))).toEqual([
+      { kind: 'nonpay', ykiho: 'Y1', item: 'SZ084' },
+      { kind: 'nonpay', ykiho: 'Y2', item: 'SZ084' },
+      { kind: 'nonpay', ykiho: 'Y6', item: 'SZ084' },
+    ])
   })
 
-  it('AC-7908.2: 3년 개폐업은 범위 안 의원만, 기간은 이틀 전까지 3년', async () => {
+  it('AC-7922.1: 진료 시간은 범위가 닿는 시군구(4곳까지)마다 동 경계 목록 이름으로 부른다', async () => {
+    const a = world()
+    await collect(AT, R, a.deps)
+    expect(a.askedOf('hosp-hours')).toEqual([
+      { kind: 'hosp-hours', sidoName: '가람도', sggName: '나래시 다솜구' },
+      { kind: 'hosp-hours', sidoName: '가람도', sggName: '나래시 별빛구' },
+    ])
+
+    const index = baseIndex()
+    const box: [number, number, number, number] = [126.99, 37.49, 127.01, 37.51]
+    index.sidos[0].sggs = ['다솜구', '별빛구', '샛별구', '노을구', '바람구'].map((name, i) => ({ code5: `4112${i}`, name: `나래시 ${name}`, bbox: box }))
+    const b = world({ index })
+    await collect(AT, R, b.deps)
+    expect(b.askedOf('hosp-hours').map((q) => q.sggName)).toEqual(['나래시 다솜구', '나래시 별빛구', '나래시 샛별구', '나래시 노을구'])
+  })
+
+  it('AC-7922.2: 체외충격파 항목 코드는 SZ084 하나 — 서버 읽는 곳(nonpay.ts)의 값과 같다', () => {
+    expect(ESWT_ITEM).toBe('SZ084')
+    const server = readFileSync(join(process.cwd(), 'src/app/api/ai/location/sources/nonpay.ts'), 'utf8')
+    expect(/export const ESWT_ITEM = '([A-Za-z0-9]+)'/.exec(server)?.[1]).toBe(ESWT_ITEM)
+  })
+
+  it('AC-7922.2: 비급여는 가까운 경쟁 의원 20곳까지만 · 의원 목록은 가까운 차례 200곳까지(경쟁 과목 의원은 다 남김)', async () => {
+    const around: FakeClinic[] = Array.from({ length: 230 }, (_, i) => ({
+      ykiho: `A${i}`,
+      name: `둘레내과의원${String(i).padStart(3, '0')}`,
+      depts: ['im'],
+      doctors: 1,
+      openedOn: null,
+      at: moved(50 + i, 0),
+      address: '가람도 나래시 다솜구 둘레로 1',
+    }))
+    const rivals: FakeClinic[] = Array.from({ length: 25 }, (_, i) => ({
+      ykiho: `B${i}`,
+      name: `먼정형외과의원${String(i).padStart(2, '0')}`,
+      depts: ['ortho'],
+      doctors: 1,
+      openedOn: null,
+      at: moved(0, 300 + i * 5),
+      address: '가람도 나래시 별빛구 먼길 2',
+    }))
+    const { deps, askedOf } = world({
+      handlers: {
+        'hosp-list': (q) => ok({ items: q.group === 'clinic' ? [...around, ...rivals].map((c) => hospItem(c, q.at)) : [], capped: false }),
+        'hosp-detail': () => ok({ mri: false, ct: false, therapists: null }),
+        nonpay: () => ok({ rows: [{ name: '체외충격파', won: 40_000 }], manual: null }),
+      },
+    })
+    const s = await collect(AT, R, deps)
+    const list = rivalsOf(s)
+    expect(RIVAL_MAX).toBe(200)
+    expect(list.length).toBe(200)
+    expect(list.map((x) => x.name)).toEqual([...around.slice(0, 175), ...rivals].map((c) => c.name))
+    expect(list.filter((x) => x.detail).length).toBe(25)
+    expect(askedOf('hosp-detail').length).toBe(25)
+    expect(askedOf('nonpay').map((q) => q.ykiho).sort()).toEqual(rivals.slice(0, 20).map((c) => c.ykiho).sort())
+    const priced = list.filter((x) => x.detail).map((x) => [x.name, x.detail?.priced, x.detail?.eswt])
+    expect(priced).toEqual(rivals.map((c, i) => [c.name, i < 20, i < 20 ? 40_000 : null]))
+  })
+
+  it('AC-7921.5: 과목 고르기를 따른다 — 안 보기는 부르지 않고, 한의원을 경쟁으로 고르면 한의원도 상세·비급여를 붙인다', async () => {
+    const rule: DeptRule = { v: 1, rival: ['ortho', 'korean'], hide: ['im', 'dental'] }
+    const { deps, askedOf } = world({ deps: { deptRule: rule } })
+    const s = await collect(AT, R, deps)
+    expect(askedOf('hosp-list')).toEqual([
+      { kind: 'hosp-list', at: AT, r: R, group: 'clinic', depts: CLINIC_IDS.filter((x) => x !== 'im') },
+      { kind: 'hosp-list', at: AT, r: R, group: 'korean' },
+    ])
+    const list = rivalsOf(s)
+    expect(list.map((x) => [x.name, x.detail !== undefined])).toEqual([
+      ['가람정형외과의원', true],
+      ['다솜한의원', true],
+      ['별빛신경외과의원', false],
+      ['나래마취통증의학과의원', false],
+    ])
+    expect(askedOf('hosp-detail').map((q) => q.ykiho).sort()).toEqual(['Y1', 'Y3'])
+    expect(askedOf('nonpay').map((q) => q.ykiho).sort()).toEqual(['Y1', 'Y3'])
+
+    // 경쟁 0개: 목록은 받지만 상세·진료 시간·비급여는 부르지 않는다
+    const none = world({ deps: { deptRule: { v: 1, rival: [], hide: [] } } })
+    const t = await collect(AT, R, none.deps)
+    expect(rivalsOf(t).length).toBe(6)
+    expect(rivalsOf(t).every((x) => x.detail === undefined)).toBe(true)
+    expect(none.askedOf('hosp-detail')).toEqual([])
+    expect(none.askedOf('nonpay')).toEqual([])
+    expect(none.askedOf('hosp-hours')).toEqual([])
+  })
+
+  it('AC-7922.1: 3년 개폐업은 범위가 닿는 시군구마다 주소 앞부분(addr)으로 부르고, 같은 줄은 한 번 · 기간은 이틀 전까지 3년', async () => {
     const { deps, askedOf } = world()
     const s = await collect(AT, R, deps)
     expect(vOf(s, 'history')).toEqual([
       { kind: 'close', name: '닫은의원', dept: '내과', on: '2024-01-10', distM: d(moved(20, 0)) },
       { kind: 'open', name: '새정형외과의원', dept: '정형외과', on: '2025-05-01', distM: d(moved(100, 0)) },
     ])
-    expect(askedOf('clinic-license').map((q) => `${q.event} ${q.from}~${q.to}`).sort()).toEqual([
-      'close 2023-11-21~2026-11-20',
-      'open 2023-11-21~2026-11-20',
+    expect(askedOf('clinic-license').map((q) => `${q.event} ${q.from}~${q.to} ${q.addr}`).sort()).toEqual([
+      'close 2023-11-21~2026-11-20 가람도 나래시 다솜구',
+      'close 2023-11-21~2026-11-20 가람도 나래시 별빛구',
+      'open 2023-11-21~2026-11-20 가람도 나래시 다솜구',
+      'open 2023-11-21~2026-11-20 가람도 나래시 별빛구',
     ])
   })
 
@@ -622,7 +828,7 @@ describe('AC-7908.2 collect — 그날 값 모으기', () => {
     expect(askedOf('bld-title')).toEqual([])
   })
 
-  it('AC-7908.2: 소득·산업단지 고용은 파일 값(후보 시군구), 의료급여는 후보 시군구 하나 + 그 판 연월 인구', async () => {
+  it('AC-7909.7: 소득·산업단지 고용은 파일 값(후보 시군구), 의료급여는 후보 시군구 이름으로 한 줄 + 그 판 연월 인구', async () => {
     const { deps, askedOf } = world()
     const s = await collect(AT, R, deps)
     expect(vOf(s, 'income')).toEqual({ sggName: '나래시 다솜구', won: 42_000_000, year: 2024 })
@@ -635,8 +841,9 @@ describe('AC-7908.2 collect — 그날 값 모으기', () => {
       basic: 500,
       nearPoor: 200,
       population: sum(popBands(D1, '2025-12')) + sum(popBands(D2, '2025-12')),
+      basis: null,
     })
-    expect(askedOf('welfare')).toEqual([{ kind: 'welfare', sgg: '41111' }])
+    expect(askedOf('welfare')).toEqual([{ kind: 'welfare', sgg: '41111', sidoNames: ['가람도'], sggNames: ['나래시 다솜구'] }])
     expect(askedOf('pop-age').filter((q) => q.ym === '2025-12').flatMap((q) => q.dongs).sort()).toEqual([D1, D2])
   })
 
@@ -670,17 +877,140 @@ describe('AC-7908.2 collect — 그날 값 모으기', () => {
     expect(t.welfare.ok && t.welfare.v.population).toBeNull()
   })
 
+  it('AC-7922.3: 판에 없는 새 시군구(제물포구)는 옛 구 묶음 이름으로 찾고 basis를 담으며, 비율 인구는 묶음 새 시군구 행정동 모두의 합', async () => {
+    const bbox: [number, number, number, number] = [126.99, 37.49, 127.01, 37.51]
+    const index: DongIndex = {
+      asOf: '2026-11-01',
+      sidos: [
+        {
+          code2: '28',
+          name: '인천광역시',
+          sggs: [
+            { code5: '28125', name: '제물포구', bbox },
+            { code5: '28155', name: '영종구', bbox: [126.4, 37.4, 126.6, 37.6] },
+          ],
+        },
+      ],
+    }
+    const dongs: Record<string, DongFile> = {
+      '28125': {
+        asOf: '2026-11-01',
+        dongs: [
+          { code10: '2812551000', name: '가온동', areaM2: 10_000, center: [126.996, 37.5], rings: square(126.99, 37.49, 127.002, 37.51) },
+          { code10: '2812552000', name: '나린동', areaM2: 10_000, center: [127.006, 37.5], rings: square(127.002, 37.49, 127.01, 37.51) },
+        ],
+      },
+      '28155': {
+        asOf: '2026-11-01',
+        dongs: ['2815551000', '2815552000', '2815553000'].map((code10, i) => ({ code10, name: `섬${i}동`, areaM2: 50_000, center: [126.5, 37.5] as LngLat, rings: square(126.4 + i * 0.05, 37.4, 126.45 + i * 0.05, 37.6) })),
+      },
+    }
+    const { deps, askedOf } = world({ index, dongs })
+    const s = await collect(AT, R, deps)
+    expect(askedOf('welfare')).toEqual([{ kind: 'welfare', sgg: '28125', sidoNames: ['인천광역시'], sggNames: ['중구', '동구'] }])
+    expect(vOf(s, 'welfare')).toEqual({
+      sggName: '중구·동구',
+      ym: '2025-12',
+      medical: 300,
+      basic: 500,
+      nearPoor: 200,
+      population: 5 * sum(popBands('x', '2025-12')),
+      basis: '옛 중구·동구',
+    })
+    expect(askedOf('pop-age').filter((q) => q.ym === '2025-12').flatMap((q) => q.dongs).sort()).toEqual([
+      '2812551000',
+      '2812552000',
+      '2815551000',
+      '2815552000',
+      '2815553000',
+    ])
+  })
+
+  it('AC-7922.3: 전남광주통합특별시는 옛 시도 이름(광주광역시·전라남도)으로 찾는다', async () => {
+    const index = baseIndex()
+    index.sidos[0] = { code2: '12', name: '전남광주통합특별시', sggs: [{ code5: '12110', name: '동구', bbox: [126.99, 37.49, 127.01, 37.51] }] }
+    const { deps, askedOf } = world({ index, dongs: { '12110': { ...baseDongs()['41111'] } } })
+    const s = await collect(AT, R, deps)
+    expect(askedOf('welfare')).toEqual([{ kind: 'welfare', sgg: '12110', sidoNames: ['광주광역시', '전라남도'], sggNames: ['동구'] }])
+    expect(s.welfare.ok && s.welfare.v.basis).toBeNull()
+  })
+
   it('AC-7908.2: 의료급여 답에 그 시군구 줄이 없으면 none', async () => {
     const { deps } = world({ handlers: { welfare: () => ok(null, '2025-12-31') } })
     const s = await collect(AT, R, deps)
     expect(whyOf(s, 'welfare')).toBe('none')
   })
 
+  it('AC-7922.4: place는 후보 점의 행정동(동 경계 파일)과 동 경계 목록의 시군구·시도 이름이다', async () => {
+    const { deps } = world()
+    const s = await collect(AT, R, deps)
+    expect(s.place).toEqual({
+      ok: true,
+      v: { sido: '41', sidoName: '가람도', sgg: '41111', sggName: '나래시 다솜구', dong: D1, dongName: '다솜1동' },
+      src: 'dongs',
+      asOf: '2026-07-02',
+    })
+    // 동 경계 밖(시군구 네모 안)이면 동은 null, 어느 시군구에도 없으면 outside
+    const outside = await collect(moved(9000, 0), R, world().deps)
+    expect(whyOf(outside, 'place')).toBe('outside')
+    const dongs = baseDongs()
+    dongs['41111'].dongs = dongs['41111'].dongs.map((x) => ({ ...x, rings: null }))
+    const t = await collect(AT, R, world({ dongs }).deps)
+    expect(t.place.ok && t.place.v).toEqual({ sido: '41', sidoName: '가람도', sgg: '41111', sggName: '나래시 다솜구', dong: null, dongName: null })
+  })
+
+  it('AC-7922.4: sggAvg는 후보 시군구 전체의 견줄 값 — 인구는 의료급여 인구와 같은 부름을 나눠 쓴다', async () => {
+    const { deps, askedOf } = world()
+    const s = await collect(AT, R, deps)
+    const ym = '2025-12'
+    const centers: LatLng[] = [
+      { lat: 37.5, lng: 126.996 },
+      { lat: 37.5, lng: 127.006 },
+      { lat: 37.509, lng: 127.009 },
+    ]
+    const stopsAt = (c: LatLng) => [S1, S2, S3].filter((p) => d(p, c) <= 400).length
+    const nearestRail = (c: LatLng) => Math.min(d(STATION_A, c), d(STATION_B, c))
+    const base = sum(popBands(D1, '2022-10')) + sum(popBands(D2, '2022-10'))
+    const last = sum(popBands(D1, '2026-10')) + sum(popBands(D2, '2026-10'))
+    expect(s.sggAvg).toEqual({
+      ok: true,
+      v: {
+        sggName: '나래시 다솜구',
+        areaM2: 30_000,
+        total: sum(popBands(D1, ym)) + sum(popBands(D2, ym)),
+        bands: addBands(popBands(D1, ym), popBands(D2, ym)),
+        trendPct: Math.trunc(((last - base) * 1000) / base) / 10,
+        accidents: 2, // 다솜구 목록 가운데 동 경계 안(먼길은 밖)
+        schools: 2,
+        seniors: 3,
+        gyms: 1, // 영업 중만
+        stationM: Math.floor(sum(centers.map(nearestRail)) / 3),
+        stops: Math.floor(sum(centers.map(stopsAt)) / 3),
+      },
+      src: 'pop-age',
+      asOf: '2025-12-15',
+    })
+    expect(s.sggAvg.ok && s.sggAvg.v.trendPct).toBe(1.5)
+    // 의료급여 인구와 같은 몸통이라 2025-12는 한 번만
+    expect(askedOf('pop-age').filter((q) => q.ym === '2025-12').length).toBe(1)
+  })
+
+  it('AC-7908.2: 그날 값의 좌표는 모두 심평원 답·좌표 파일 값이고 카카오 답 값이 아니다(진료 시간 자료의 점도 아님)', async () => {
+    const { deps } = world()
+    const s = await collect(AT, R, deps)
+    const points = pointsIn(JSON.parse(JSON.stringify(s)))
+    const allowed = [...CLINICS, KOREAN, DENTAL].map((c) => pick(c.at.lat, c.at.lng)).concat(RAIL.stations.map((x) => pick(x.lat, x.lng)))
+    expect(points.length).toBe(7) // 의원 여섯 + 가장 가까운 역
+    for (const p of points) expect(allowed).toContainEqual(p)
+    expect(points).not.toContainEqual(KAKAO_AT)
+    expect(points).not.toContainEqual(moved(30, 0)) // 진료 시간 자료의 점
+  })
+
   it('AC-7908.2: 카카오 답(주소 글·좌표·장소·거리)은 그날 값에 넣지 않고, 장소 찾기·주소 찾기는 부르지 않는다', async () => {
     const { deps, asked } = world()
     const s = await collect(AT, R, deps)
     const text = JSON.stringify(s)
-    for (const word of ['가람로', '다솜동 12-3', '별동 5', 'kakao', 'hjd', 'lot', 'road', 'jibun', '4111110100', 'P1', 'pk', 'ykiho', 'Y1']) {
+    for (const word of ['가람로', '다솜동 12-3', '별동 5', 'kakao', 'hjd', 'lot', 'road', 'jibun', '4111110100', 'P1', 'pk', 'ykiho', 'Y1', String(KAKAO_AT.lat)]) {
       expect(text, word).not.toContain(word)
     }
     const kinds = new Set(asked.map((q) => q.kind))
@@ -690,11 +1020,11 @@ describe('AC-7908.2 collect — 그날 값 모으기', () => {
   it('AC-7908.2: 실패 종류는 ok: false — 열쇠 없음·활용신청 안 됨·던짐은 그 칸만, 파일 값은 그대로', async () => {
     const noKey = world({ deps: { ask: async (q) => ({ ok: false, code: 'no-key', key: q.kind.startsWith('k-') ? 'kakao' : 'data' }) } })
     const s = await collect(AT, R, noKey.deps)
-    for (const key of ['people', 'trend', 'flow', 'aptPrice', 'bizPrice', 'apts', 'presale', 'seniors', 'gyms', 'schools', 'accidents', 'pharmacies', 'rivals', 'history', 'market', 'building', 'stores', 'welfare'] as const) {
+    for (const key of ['people', 'trend', 'flow', 'aptPrice', 'bizPrice', 'apts', 'presale', 'seniors', 'gyms', 'schools', 'accidents', 'pharmacies', 'rivals', 'sggAvg', 'history', 'market', 'building', 'stores', 'welfare'] as const) {
       expect(whyOf(s, key), key).toBe('no-key')
       expect('v' in s[key], key).toBe(false)
     }
-    for (const key of ['income', 'industry', 'station', 'bus'] as const) expect(whyOf(s, key), key).toBe('ok')
+    for (const key of ['income', 'industry', 'station', 'bus', 'place'] as const) expect(whyOf(s, key), key).toBe('ok')
     expect(checkSnapshot(JSON.parse(JSON.stringify(s)))).toEqual(s)
 
     const thrown = world({ deps: { ask: async () => Promise.reject(new Error('바깥이 끊겼어요')) } })
@@ -707,16 +1037,21 @@ describe('AC-7908.2 collect — 그날 값 모으기', () => {
     const u = await collect(AT, R, notApplied.deps)
     expect(whyOf(u, 'welfare')).toBe('not-applied')
     expect(whyOf(u, 'people')).toBe('ok')
+    // 의료급여를 못 받으면 견줄 값 인구는 가장 새 달로
+    expect(u.sggAvg.ok && u.sggAvg.asOf).toBe('2026-10-15')
   })
 
-  it('AC-7908.2: 동 경계 목록을 못 읽으면 지역이 필요한 칸만 failed이고 모으기는 던지지 않는다', async () => {
-    const { deps } = world({ deps: { dongIndex: async () => Promise.reject(new Error('파일 없음')) } })
+  it('AC-7908.2: 동 경계 목록을 못 읽으면 지역이 필요한 칸만 failed이고 모으기는 던지지 않는다(의원 목록은 진료 시간 없이 받음)', async () => {
+    const { deps, askedOf } = world({ deps: { dongIndex: async () => Promise.reject(new Error('파일 없음')) } })
     const s = await collect(AT, R, deps)
-    for (const key of ['people', 'trend', 'flow', 'income', 'industry', 'seniors', 'market', 'bus', 'welfare', 'presale'] as const) expect(whyOf(s, key), key).toBe('failed')
-    for (const key of ['rivals', 'history', 'building', 'stores', 'station', 'aptPrice', 'apts'] as const) expect(whyOf(s, key), key).toBe('ok')
+    for (const key of ['people', 'trend', 'flow', 'income', 'industry', 'seniors', 'market', 'bus', 'welfare', 'presale', 'place', 'sggAvg', 'history'] as const)
+      expect(whyOf(s, key), key).toBe('failed')
+    for (const key of ['rivals', 'building', 'stores', 'station', 'aptPrice', 'apts'] as const) expect(whyOf(s, key), key).toBe('ok')
+    expect(rivalsOf(s).find((x) => x.name === '가람정형외과의원')?.detail?.week).toBeNull()
+    expect(askedOf('hosp-hours')).toEqual([])
   })
 
-  it(`AC-7908.2: 바깥 부르기는 동시에 ${COLLECT_LIMIT}개까지이고 진행 수(칸 n/22)를 알린다`, async () => {
+  it(`AC-7908.2: 바깥 부르기는 동시에 ${COLLECT_LIMIT}개까지이고 진행 수(칸 n/24)를 알린다`, async () => {
     const base = world()
     let inFlight = 0
     let most = 0
@@ -736,9 +1071,9 @@ describe('AC-7908.2 collect — 그날 값 모으기', () => {
     await collect(AT, R, deps)
     expect(COLLECT_LIMIT).toBe(4)
     expect(most).toBe(4)
-    expect(progress.length).toBe(22)
-    expect(progress.map((p) => p.done)).toEqual(Array.from({ length: 22 }, (_, i) => i + 1))
-    expect(progress.every((p) => p.total === 22)).toBe(true)
+    expect(progress.length).toBe(24)
+    expect(progress.map((p) => p.done)).toEqual(Array.from({ length: 24 }, (_, i) => i + 1))
+    expect(progress.every((p) => p.total === 24)).toBe(true)
   })
 })
 
@@ -759,7 +1094,7 @@ describe('AC-7908.2 카카오 산업단지 찾기 결과 거르기(볼 때만, �
 })
 
 describe('AC-7908.2 collectScan — 동네 훑기 값(동마다, 저장 안 함)', () => {
-  it("AC-7908.2: 시군구의 동마다 design.md 8절 '훑기 ○' 세부 값을 낸다(범위 = 그 동)", async () => {
+  it("AC-7908.2: 시군구의 동마다 design.md 8절 '훑기 ○' 세부 값을 낸다(범위 = 그 동, 경쟁 수는 경쟁 과목 의원만)", async () => {
     const { deps, asked, askedOf } = world()
     const scan = await collectScan('41111', deps)
     expect(scan.ok).toBe(true)
@@ -787,7 +1122,7 @@ describe('AC-7908.2 collectScan — 동네 훑기 값(동마다, 저장 안 함)
         schools: 2,
         seniorCenters: 3,
         gyms: 1,
-        rivals: 1,
+        rivals: 2, // 정형외과(R1) + 신경외과(N1) — 내과(I1)는 둘레로 보기라 안 셈
         newRivals: 1,
         stationM: Math.min(d(STATION_A, c1), d(STATION_B, c1)),
         stops: 1,
@@ -802,7 +1137,7 @@ describe('AC-7908.2 collectScan — 동네 훑기 값(동마다, 저장 안 함)
       schools: 0,
       seniorCenters: 0,
       gyms: 0,
-      rivals: 1,
+      rivals: 1, // 마취통증(R2)
       newRivals: 0,
       stationM: d(STATION_A, c2),
       stops: 1, // 이웃 시군구 파일의 S3
@@ -814,12 +1149,31 @@ describe('AC-7908.2 collectScan — 동네 훑기 값(동마다, 저장 안 함)
     const allowed = new Set<QueryKind>(['pop-age', 'household', 'accident', 'school', 'senior', 'gym', 'hosp-list'])
     for (const q of asked) expect(allowed.has(q.kind), q.kind).toBe(true)
     const list = askedOf('hosp-list')
+    // 같은 몸통 규칙: 의원은 안 보기가 아닌 과목 모두(대표 과목을 세려고), 치과·한의원은 경쟁 과목일 때만
     expect(list.map((q) => q.group)).toEqual(['clinic'])
+    expect(list[0].group === 'clinic' && list[0].depts).toEqual(CLINIC_IDS)
     expect(list[0].at).toEqual({ lat: 37.5, lng: 127 })
     expect(list[0].r).toBeGreaterThanOrEqual(d({ lat: 37.49, lng: 126.99 }, { lat: 37.5, lng: 127 }))
     expect(list[0].r).toBeLessThanOrEqual(20_000)
     for (const q of askedOf('pop-age')) expect(q.dongs).not.toContain(LOST)
+    expect(askedOf('gym')).toEqual([{ kind: 'gym', sggName: '나래시 다솜구', sidoName: '가람도' }])
     expect(scan.parts.people).toEqual({ ok: true, src: 'pop-age', asOf: '2026-10-15' })
+  })
+
+  it('AC-7921.5: 훑기 경쟁 수는 과목 고르기를 따른다 — 한의원만 경쟁이면 한의원 목록만, 경쟁 0개면 부르지 않고 값 없음', async () => {
+    const a = world({ deps: { deptRule: { v: 1, rival: ['korean'], hide: [] } } })
+    const scan = await collectScan('41111', a.deps)
+    if (!scan.ok) throw new Error('훑기가 실패했어요')
+    expect(a.askedOf('hosp-list').map((q) => q.group)).toEqual(['korean'])
+    expect(scan.dongs.find((x) => x.code10 === D1)?.facts.rivals).toBe(1)
+    expect(scan.dongs.find((x) => x.code10 === D2)?.facts.rivals).toBe(0)
+
+    const b = world({ deps: { deptRule: { v: 1, rival: [], hide: [] } } })
+    const none = await collectScan('41111', b.deps)
+    if (!none.ok) throw new Error('훑기가 실패했어요')
+    expect(b.askedOf('hosp-list')).toEqual([])
+    for (const dong of none.dongs) expect(dong.facts.rivals).toBeNull()
+    expect(none.parts.rivals).toEqual({ ok: false, src: 'hosp-list', why: 'none' })
   })
 
   it('AC-7908.2: 자료 하나가 실패하면 그 값만 null이고 그 자료 상태에 까닭이 남는다', async () => {

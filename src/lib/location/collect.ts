@@ -1,11 +1,15 @@
 import { addDays, addMonths, addMonthsToDay, monthOf, todayInKorea } from '@/lib/analytics/dates'
 import type {
+  ClinicDeptId,
+  DeptId,
+  DeptRule,
   Point,
   Query,
+  QueryOf,
   QueryReply,
   Rival,
-  RivalKind,
   ScoreFacts,
+  SggAvg,
   Snapshot,
   SnapshotKey,
   SnapshotValue,
@@ -13,16 +17,32 @@ import type {
   Why,
 } from '@/types/location'
 import { distM, samplePoints, type LatLng } from './coords'
-import { joinFlow, type BusFile, type FlowBusName, type FlowRailName, type FlowVolume, type RailFile, type TransitIndex } from './flow'
-import { dongOf, dongShares, landCodes, rangeValue, sggsTouching, type Dong, type DongFile, type DongIndex, type DongIndexSgg, type DongShare } from './regions'
+import { DEFAULT_DEPT_RULE, DEPTS, deptOf, deptRole, fillDeptRule } from './depts'
+import { joinFlow, type BusFile, type FlowBusName, type FlowRailName, type FlowVolume, type FlowVolumeRow, type RailFile, type TransitIndex } from './flow'
+import {
+  dongOf,
+  dongShares,
+  landCodes,
+  oldGroupOf,
+  rangeValue,
+  sggsTouching,
+  sidoNamesOf,
+  type Dong,
+  type DongFile,
+  type DongIndex,
+  type DongIndexSgg,
+  type DongShare,
+} from './regions'
 import { SNAPSHOT_KEYS } from './snapshot'
 
-// 자료 모으기(specs/location TASK-25, design.md 4·5·6·8절, REQ-7908). 부르는 함수·파일 읽기를 밖에서 받는 순수 흐름이다 —
+// 자료 모으기(specs/location TASK-25·58, design.md 4·5·6·8·18·19절, REQ-7908·7921·7922). 부르는 함수·파일 읽기를 밖에서 받는 순수 흐름이다 —
 // 이 파일은 바깥을 직접 부르지 않는다(부르기는 deps.ask = POST /api/ai/location/query, 파일은 public/location/의 정적 파일).
-//   collect(점, 범위, deps)   → 후보 그날 값(Snapshot 22칸). 저장 전에 mergeSnapshot(새 값, 옛 값) → fitSnapshot으로 줄인다(snapshot.ts)
+//   collect(점, 범위, deps)   → 후보 그날 값(Snapshot 24칸). 저장 전에 mergeSnapshot(새 값, 옛 값) → fitSnapshot으로 줄인다(snapshot.ts)
 //   collectScan(시군구, deps) → 동네 훑기 동마다 '훑기 ○' 세부 값(score.ts ScoreFacts). 저장하지 않는다
+// 의원은 과목 고르기(deps.deptRule, 없으면 처음 값)를 따른다: 안 보기가 아닌 과목을 모두 부르고, 경쟁 과목 의원만 상세·진료 시간·비급여를 붙인다.
 // 카카오 답은 그날 값에 넣지 않는다(ADR-044): k-point는 범위 법정동 코드·이름과 후보 지번(건축물대장 열쇠)을 알려고만 부르고
 // 주소 글·좌표는 버린다. 장소 찾기(k-near·k-keyword)·주소 찾기(k-address)는 부르지 않는다(화면이 볼 때 부른다).
+// 그날 값의 좌표는 심평원 의원 좌표와 좌표 파일의 역 좌표뿐이고, 행정동 이름은 동 경계 파일에서 센다(공공 자료).
 // 실패는 그 칸만 { ok: false, why }다: 열쇠 없음·활용신청 안 됨·바깥 실패는 답 코드 그대로, 던진 오류·틀린 답 모양은 failed,
 // 좌표·정류장 파일이 없는 지역은 outside, 받았지만 자료가 없으면 none
 
@@ -30,11 +50,11 @@ import { SNAPSHOT_KEYS } from './snapshot'
 
 /** 바깥 부르기·파일 읽기를 동시에 이만큼까지(design.md 14절 '동시에 4개') */
 export const COLLECT_LIMIT = 4
-/** 체외충격파 비급여 항목 코드 — app/api/ai/location/sources/nonpay.ts의 ESWT_ITEM과 같은 값(서버 전용 파일이라 불러오지 못해 여기 둔다, 확인할 것 2) */
-export const ESWT_ITEM = 'MM045'
+/** 체외충격파 비급여 항목 코드 — app/api/ai/location/sources/nonpay.ts의 ESWT_ITEM과 같은 값(서버 전용 파일이라 불러오지 못해 여기 둔다, 시험이 같음을 본다) */
+export const ESWT_ITEM = 'SZ084'
 /** 법정동을 알려고 k-point를 부르는 표본 점 수(가운데부터, design.md 5절) */
 export const KPOINT_MAX = 19
-/** 이 거리 안 경쟁 의원은 같은 건물로 본다(flags.ts 위험 신호와 같은 30m) */
+/** 이 거리 안 의원은 같은 건물로 보고 심평원 주소를 남긴다(flags.ts 위험 신호와 같은 30m) */
 export const SAME_BUILDING_M = 30
 /** 진료 시간 자료를 심평원 목록 의원에 맞추는 거리(app/api/ai/location/sources/clinicHours.ts MATCH_M과 같은 값) */
 export const HOURS_MATCH_M = 50
@@ -45,7 +65,14 @@ export const SHOP_NEAR_M = 30
 /** 목록 한도(design.md 6절) */
 export const APT_MAX = 60
 export const PRESALE_MAX = 30
-export const RIVAL_MAX = 80
+/** 의원 목록은 가까운 차례 이만큼까지(경쟁 과목 의원은 다 남김, design.md 6절) */
+export const RIVAL_MAX = 200
+/** 비급여(아주 느림)는 가까운 경쟁 과목 의원 이만큼까지, 의원마다 따로(design.md 4절) */
+export const NONPAY_MAX = 20
+/** 진료 시간(목록 조회)은 범위가 닿는 시군구 이만큼까지(design.md 4절) */
+export const HOURS_SGG_MAX = 4
+/** 승하차 한 달은 1만 줄 묶음 이만큼까지 — 넘으면 failed(design.md 4절) */
+export const FLOW_PARTS_MAX = 12
 export const HISTORY_MAX = 60
 /** 실거래 ㎡당 평균은 지난 6달(이번 달은 아직 신고가 덜 들어와 뺀다) */
 export const TRADE_MONTHS = 6
@@ -88,6 +115,8 @@ export type CollectDeps = {
   industry: (sgg: string) => Promise<FileValue<SnapshotValue<'industry'>> | null>
   /** 받은 시각(ISO). Snapshot.at이고 한국 날짜(오늘)도 여기서 센다 */
   now: string
+  /** 의원 과목 고르기(location_settings.dept_rule) — 없으면 처음 값(DEFAULT_DEPT_RULE) */
+  deptRule?: DeptRule
   onProgress?: (p: CollectProgress) => void
 }
 
@@ -199,9 +228,13 @@ type PresaleItem = { name: string; households: number | null; moveIn: string | n
 type Place = { name: string; lat: number; lng: number }
 type GymPlace = Place & { status: string }
 type AccidentSpot = Place & { cases: number }
-type HospItem = { ykiho: string; name: string; kind: string; doctors: number | null; openedOn: string | null; at: Point; distM: number }
+// 심평원 의원 목록 한 줄. depts = 그 목록에서 찾은 과목(서버가 같은 기관 기호를 한 줄로 합쳐 모음). 옛 답의 kind도 과목 하나로 읽는다
+type HospItem = { ykiho: string; name: string; depts: string[]; doctors: number | null; openedOn: string | null; at: Point; address: string }
 type HospDetail = { mri: boolean; ct: boolean; therapists: number | null }
-type ClinicHours = { name: string; at: Point; week: Rival['week'] }
+type Week = NonNullable<Rival['detail']>['week']
+type ClinicHours = { name: string; at: Point; week: Week }
+type NonpayRow = { name: string; won: number }
+type Nonpay = { rows: NonpayRow[]; manual: NonpayRow[] | null }
 type LicenseItem = { name: string; dept: string; openedOn: string | null; closedOn: string | null; point: Point }
 type Title = Omit<SnapshotValue<'building'>, 'floors'> & { pk: string }
 type Floor = { pk: string; label: string; usage: string; m2: number }
@@ -212,13 +245,15 @@ const READ = {
   spot: (v: unknown) => rec<Spot>(v, { jibun: orNull(isStr), bjd: orNull(isStr), lot: LOT }),
   bands: (v: unknown) => listOf(v, (x) => rec<Bands>(x, { dong: isStr, bands: (b) => Array.isArray(b) && b.length === 11 && b.every(isInt) })),
   households: (v: unknown) => listOf(v, (x) => rec<Households>(x, { dong: isStr, households: isInt })),
-  volume: (v: unknown): FlowVolume | Bad => {
+  // 한 묶음(1만 줄). parts = 그 달 묶음 수(없으면 하나)
+  volume: (v: unknown): (FlowVolume & { parts: number }) | Bad => {
     const rows = listOf(inside(v, 'rows'), (x) =>
-      rec<FlowVolume['rows'][number]>(x, { id: isStr, mode: (m) => m === 'bus' || m === 'rail', board: isInt, alight: isInt, days: isInt }),
+      rec<FlowVolumeRow>(x, { id: isStr, mode: (m) => m === 'bus' || m === 'rail', board: isInt, alight: isInt, days: isInt }),
     )
     const ym = inside(v, 'ym')
-    if (rows === BAD || typeof ym !== 'string') return BAD
-    return { ym, rows: rows.filter((r) => r.days > 0) } // 날 수 0인 줄은 하루 평균을 낼 수 없어 뺀다
+    const parts = inside(v, 'parts')
+    if (rows === BAD || typeof ym !== 'string' || (parts !== undefined && !isInt(parts))) return BAD
+    return { ym, rows: rows.filter((r) => r.days > 0), parts: (parts as number | undefined) ?? 1 } // 날 수 0인 줄은 하루 평균을 낼 수 없어 뺀다
   },
   busNames: (v: unknown) => listOf(v, (x) => rec<FlowBusName>(x, { id: isStr, name: isStr, ars: orNull(isStr) })),
   railNames: (v: unknown) => listOf(v, (x) => rec<FlowRailName>(x, { id: isStr, name: isStr, line: isStr })),
@@ -236,11 +271,25 @@ const READ = {
     return floors === BAD || !isInt(pharmacies) ? BAD : { floors, pharmacies: pharmacies as number }
   },
   hospList: (v: unknown) =>
-    listOf(inside(v, 'items'), (x) =>
-      rec<HospItem>(x, { ykiho: isStr, name: isStr, kind: isStr, doctors: orNull(isInt), openedOn: orNull(isStr), at: isPoint, distM: isInt }),
-    ),
+    listOf(inside(v, 'items'), (x): HospItem | Bad => {
+      const item = rec<Omit<HospItem, 'depts' | 'address'>>(x, { ykiho: isStr, name: isStr, doctors: orNull(isInt), openedOn: orNull(isStr), at: isPoint })
+      if (item === BAD) return BAD
+      const depts = inside(x, 'depts')
+      const kind = inside(x, 'kind')
+      const address = inside(x, 'address')
+      if ((depts !== undefined && !(Array.isArray(depts) && depts.every(isStr))) || (address !== undefined && !isStr(address))) return BAD
+      const found = Array.isArray(depts) ? (depts as string[]) : isStr(kind) ? [kind as string] : []
+      // 점은 lat·lng만 옮긴다(답에 다른 칸이 섞여도 그날 값에 들지 않게)
+      return { ...item, at: { lat: item.at.lat, lng: item.at.lng }, depts: found, address: (address as string | undefined) ?? '' }
+    }),
   hospDetail: (v: unknown) => rec<HospDetail>(v, { mri: isBool, ct: isBool, therapists: orNull(isInt) }),
-  nonpay: (v: unknown) => listOf(inside(v, 'rows'), (x) => rec<{ name: string; won: number }>(x, { name: isStr, won: isInt })),
+  nonpay: (v: unknown): Nonpay | Bad => {
+    const row = (x: unknown) => rec<NonpayRow>(x, { name: isStr, won: isInt })
+    const rows = listOf(inside(v, 'rows'), row)
+    const manual = inside(v, 'manual')
+    const manualRows = manual === undefined || manual === null ? null : listOf(manual, row)
+    return rows === BAD || manualRows === BAD ? BAD : { rows, manual: manualRows }
+  },
   hours: (v: unknown) => listOf(v, (x) => rec<ClinicHours>(x, { name: isStr, at: isPoint, week: isWeek })),
   license: (v: unknown) =>
     listOf(inside(v, 'rows'), (x) =>
@@ -357,6 +406,31 @@ function base(deps: CollectDeps) {
     return got(out, latest(parts.map((p) => (p.ok ? p.asOf : ''))))
   }
 
+  /** 시군구 하나의 행정동 모두(동 경계 파일, 못 이은 동 뺌) 10세 나이대 합 — 의료급여 비율 인구·견줄 값이 같은 부름을 나눠 쓴다 */
+  const sggPop = (code5: string, ym: string) =>
+    once(`sggpop ${code5} ${ym}`, async (): Promise<Res<{ bands: number[]; total: number }>> => {
+      const f = await dongFile(code5)
+      if (!f.ok) return no('failed')
+      const codes = (f.v?.dongs ?? []).filter(codeOk).map((x) => x.code10)
+      if (codes.length === 0) return no('none')
+      const pop = await popAge(codes, ym)
+      if (!pop.ok) return pop
+      if (pop.v.size === 0) return no('none')
+      const rows = [...pop.v.values()]
+      const bands = Array.from({ length: 11 }, (_, i) => sum(rows.map((x) => x[i] ?? 0)))
+      return got({ bands, total: sum(bands) }, pop.asOf)
+    })
+
+  // 시군구 이름으로 받는 시설(후보·견줄 값·훑기가 같은 몸통으로 나눠 쓴다)
+  const facilities = {
+    senior: (s: Sgg) => ask({ kind: 'senior', sggName: s.name }, READ.places),
+    gym: (s: Sgg) => ask({ kind: 'gym', sggName: s.name, sidoName: s.sido.name }, READ.gyms),
+    school: (s: Sgg) => ask({ kind: 'school', sggName: s.name }, READ.places),
+    market: (s: Sgg) => ask({ kind: 'market', sggName: s.name }, READ.places),
+    accident: (s: Sgg) => ask({ kind: 'accident', sidoName: s.sido.name, sggName: s.name }, READ.accidents),
+  }
+
+  const rule = deps.deptRule ? fillDeptRule(deps.deptRule) : DEFAULT_DEPT_RULE
   const today = todayInKorea(new Date(deps.now))
   const thisMonth = monthOf(today)
   const lastMonth = addMonths(thisMonth, -1)
@@ -395,7 +469,28 @@ function base(deps: CollectDeps) {
     }
   }
 
-  return { ask, index, dongFile, transit, busFile, rail, fileRow, popAge, households, latestPop, octobers, sggOfIndex, touching, today, thisMonth, lastMonth, progress }
+  return {
+    ask,
+    index,
+    dongFile,
+    transit,
+    busFile,
+    rail,
+    fileRow,
+    popAge,
+    households,
+    latestPop,
+    sggPop,
+    facilities,
+    octobers,
+    sggOfIndex,
+    touching,
+    rule,
+    today,
+    thisMonth,
+    lastMonth,
+    progress,
+  }
 }
 
 type Base = ReturnType<typeof base>
@@ -425,22 +520,81 @@ async function stopsNear(b: Base, idx: DongIndex, transit: TransitIndex, c: LatL
   return days.length === 0 ? null : got(count, latest(days))
 }
 
-function nearestStation(rail: RailFile, c: LatLng): { name: string; line: string; distM: number } | null {
-  let best: { name: string; line: string; distM: number } | null = null
+/** 가장 가까운 역(좌표 파일 rail.json — 점도 그 파일 값) */
+function nearestStation(rail: RailFile, c: LatLng): SnapshotValue<'station'> | null {
+  let best: SnapshotValue<'station'> | null = null
   for (const s of rail.stations) {
     if (!Number.isFinite(s.lat) || !Number.isFinite(s.lng)) continue
     const m = distM(c, s)
-    if (best === null || m < best.distM) best = { name: s.name, line: s.line, distM: m }
+    if (best === null || m < best.distM) best = { name: s.name, line: s.line, distM: m, at: { lat: s.lat, lng: s.lng } }
   }
   return best
 }
 
-const RIVAL_KINDS: readonly RivalKind[] = ['ortho', 'pain', 'rehab', 'korean']
-const isRivalKind = (k: string): k is RivalKind => (RIVAL_KINDS as readonly string[]).includes(k)
+const YM = /^\d{4}-\d{2}$/
+/** 의원 인허가 주소 앞부분 '{시도} {시군구}' — query.ts 몸통 검사와 같은 모양(한글 덩이를 공백 하나로, 2~40자) */
+const ADDR = /^(?=.{2,40}$)[가-힣]+(?: [가-힣]+)*$/
+const FIRST_OCTOBER = `${TREND_FIRST_YEAR}-10`
+/** 값 있는 것만의 평균, 버림. 하나도 없으면 null */
+function floorAverage(values: readonly (number | null)[]): number | null {
+  const xs = values.filter((v): v is number => v !== null)
+  return xs.length === 0 ? null : Math.floor(sum(xs) / xs.length)
+}
+
+/** 의료급여 몸통(design.md 4·5절): 판에 없는 새 시군구는 옛 구 묶음 이름들, 시도는 판이 아는 옛 이름(전남광주 → 둘) */
+function welfareQuery(home: Sgg): QueryOf<'welfare'> {
+  const group = oldGroupOf(home.code5)
+  if (group) return { kind: 'welfare', sgg: home.code5, sidoNames: [...new Set(group.names.map((n) => n.sido))], sggNames: group.names.map((n) => n.sgg) }
+  return { kind: 'welfare', sgg: home.code5, sidoNames: sidoNamesOf(home.sido.name), sggNames: [home.name] }
+}
+
+// ── 의원 목록(design.md 18절) ─────────────────────────────
+
+/** 범위 안 의원 하나(같은 기관 기호는 한 줄, 찾은 과목은 DEPTS 차례) */
+type Clinic = Omit<HospItem, 'depts'> & { depts: DeptId[] }
+
+const DEPT_ORDER: ReadonlyMap<DeptId, number> = new Map(DEPTS.map((x, i) => [x.id, i]))
+const byDeptOrder = (a: DeptId, b: DeptId) => (DEPT_ORDER.get(a) ?? 0) - (DEPT_ORDER.get(b) ?? 0)
+/** 의원 과목 열아홉(hosp-list clinic의 depts) — 치과의원·한의원은 종별 목록 */
+const CLINIC_DEPTS: readonly ClinicDeptId[] = DEPTS.filter((x) => x.dgsbjtCd !== null).map((x) => x.id as ClinicDeptId)
+
+/**
+ * 의원 목록을 부른다. mode 'all'(그날 값) = 안 보기가 아닌 과목 모두(의원 과목 한 번 + 치과의원 + 한의원).
+ * mode 'rival'(동네 훑기 경쟁 수) = 같은 몸통 규칙이되 경쟁 과목 의원이 나올 수 있는 목록만(의원 과목은 대표 과목을 세려고 안 보기가 아닌 과목 모두,
+ * 치과의원·한의원은 경쟁일 때만). 같은 기관 기호는 한 줄로 합쳐 찾은 과목을 모은다. 부를 목록이 없으면 null
+ */
+async function clinicsAround(b: Base, at: Point, r: number, mode: 'all' | 'rival'): Promise<Res<Clinic[]> | null> {
+  const shown = (id: DeptId) => deptRole(id, b.rule) !== 'hide'
+  const wanted = (id: DeptId) => (mode === 'all' ? shown(id) : deptRole(id, b.rule) === 'rival')
+  const clinicDepts = CLINIC_DEPTS.filter(shown)
+  const asks: { group: 'clinic' | 'dental' | 'korean'; reply: Promise<Res<HospItem[]>> }[] = []
+  if (clinicDepts.length > 0 && CLINIC_DEPTS.some(wanted)) {
+    asks.push({ group: 'clinic', reply: b.ask({ kind: 'hosp-list', at, r, group: 'clinic', depts: clinicDepts }, READ.hospList) })
+  }
+  for (const group of ['dental', 'korean'] as const) if (wanted(group)) asks.push({ group, reply: b.ask({ kind: 'hosp-list', at, r, group }, READ.hospList) })
+  if (asks.length === 0) return null
+
+  const replies = await Promise.all(asks.map((a) => a.reply))
+  const asked: readonly string[] = clinicDepts
+  const byYkiho = new Map<string, Clinic>()
+  for (const [i, reply] of replies.entries()) {
+    if (!reply.ok) return reply
+    const group = asks[i].group
+    for (const x of reply.v) {
+      // 의원 목록은 물은 과목만(안 보기 과목이 섞여 와도 버림), 치과의원·한의원은 그 종별 하나
+      const found: DeptId[] = group === 'clinic' ? x.depts.filter((id): id is ClinicDeptId => asked.includes(id)) : [group]
+      const seen = byYkiho.get(x.ykiho)
+      const depts = [...new Set([...(seen?.depts ?? []), ...found])].sort(byDeptOrder)
+      byYkiho.set(x.ykiho, { ...(seen ?? x), depts })
+    }
+  }
+  return got([...byYkiho.values()], latest(replies.map((x) => (x.ok ? x.asOf : ''))))
+}
+
 const hoursKey = (name: string) => name.replace(/\s+/g, '').replaceAll('의원', '')
 
 /** 진료 시간 자료를 의원에 맞춘다: 이름(공백·'의원' 뺌)이 같고 50m 안, 여럿이면 가장 가까운 곳 */
-function weekFor(item: { name: string; at: Point }, rows: readonly ClinicHours[]): Rival['week'] {
+function weekFor(item: { name: string; at: Point }, rows: readonly ClinicHours[]): Week {
   const key = hoursKey(item.name)
   if (key === '') return null
   let best: ClinicHours | null = null
@@ -481,6 +635,8 @@ const SRC: Readonly<Record<SnapshotKey, SourceId>> = {
   industry: 'industry',
   pharmacies: 'stores',
   rivals: 'hosp-list',
+  place: 'dongs',
+  sggAvg: 'pop-age',
   history: 'clinic-license',
   station: 'rail-stations',
   bus: 'bus-stops',
@@ -494,6 +650,8 @@ type Region = {
   idx: DongIndex
   touching: Sgg[]
   home: Sgg | null
+  homeDong: Dong | null // 후보 점이 든 행정동(경계 밖이면 null)
+  homeAsOf: string // 후보 시군구 동 경계 파일의 기준 날짜(없으면 목록 날짜)
   homeDongs: Dong[]
   shares: DongShare[]
   codes: string[] // 범위 안 이을 수 있는 행정동
@@ -503,7 +661,7 @@ type Bdong = { bjd: string; sgg: string; name: string | null }
 
 /**
  * 후보 그날 값(design.md 6절)을 모은다. 칸마다 따로 받고(동시에 4개), 못 받은 칸은 { ok: false, why }다. 던지지 않는다
- * (잘못된 now만 던진다). 진행은 칸 하나가 끝날 때마다 { done, total: 22 }
+ * (잘못된 now만 던진다). 진행은 칸 하나가 끝날 때마다 { done, total: 24 }
  */
 export async function collect(point: Point, radiusM: number, deps: CollectDeps): Promise<Snapshot> {
   const b = base(deps)
@@ -532,11 +690,14 @@ export async function collect(point: Point, radiusM: number, deps: CollectDeps):
     const shares = dongShares(samplePoints(at, radiusM), all, radiusM)
     const byCode = new Map(all.map((d) => [d.code10, d] as const))
     const inRange = shares.map((s) => byCode.get(s.code10)).filter((d): d is Dong => d !== undefined)
+    const homeFile = home ? files[touching.indexOf(home)] : undefined
     return got(
       {
         idx: idx.v,
         touching,
         home,
+        homeDong: home && homeDong && bySgg.get(home.code5)?.includes(homeDong) ? homeDong : null,
+        homeAsOf: (homeFile?.ok && homeFile.v?.asOf) || idx.v.asOf,
         homeDongs: home ? (bySgg.get(home.code5) ?? []) : [],
         shares,
         codes: inRange.filter(codeOk).map((d) => d.code10),
@@ -626,12 +787,40 @@ export async function collect(point: Point, radiusM: number, deps: CollectDeps):
   const count = async <P extends Place>(list: Res<P[]>, keep: (p: P) => boolean = () => true): Promise<Res<number>> =>
     list.ok ? got(list.v.filter((p) => keep(p) && within(p)).length, list.asOf) : list
 
-  const seniors = once(() => facility((s) => b.ask({ kind: 'senior', sggName: s.name }, READ.places)))
-  const gyms = once(() => facility((s) => b.ask({ kind: 'gym', sggName: s.name }, READ.gyms)))
-  const schools = once(() => facility((s) => b.ask({ kind: 'school', sggName: s.name }, READ.places)))
-  const markets = once(() => facility((s) => b.ask({ kind: 'market', sggName: s.name }, READ.places)))
-  const accidents = once(() => facility((s) => b.ask({ kind: 'accident', sidoName: s.sido.name, sggName: s.name }, READ.accidents)))
+  const seniors = once(() => facility(b.facilities.senior))
+  const gyms = once(() => facility(b.facilities.gym))
+  const schools = once(() => facility(b.facilities.school))
+  const markets = once(() => facility(b.facilities.market))
+  const accidents = once(() => facility(b.facilities.accident))
   const shops = once(() => b.ask({ kind: 'stores', at, r: SHOP_NEAR_M }, READ.stores))
+
+  // 진료 시간: 범위가 닿는 시군구(후보 시군구 먼저, 4곳까지)마다 동 경계 목록 이름으로 받아 모은다. 못 받은 시군구는 빈 목록
+  const hours = once(async (): Promise<ClinicHours[]> => {
+    const r = await region()
+    if (!r.ok) return []
+    const { home, touching } = r.v
+    const sggs = [...(home ? [home] : []), ...touching.filter((s) => s !== home)].slice(0, HOURS_SGG_MAX)
+    const replies = await Promise.all(sggs.map((s) => b.ask({ kind: 'hosp-hours', sidoName: s.sido.name, sggName: s.name }, READ.hours)))
+    return replies.flatMap((x) => (x.ok ? x.v : []))
+  })
+
+  // 승하차 한 달: 묶음 part 0 → 답의 parts만큼 1…parts−1을 더 불러 정류장(역) ID마다 더한다(묶음 사이에 나뉜 줄도)
+  const volumeOf = async (home: Sgg, ym: string): Promise<Res<FlowVolume>> => {
+    const q = { kind: 'flow-volume', sido: home.sido.code2, sgg: home.code5, ym } as const
+    const first = await b.ask({ ...q, part: 0 }, READ.volume)
+    if (!first.ok) return first
+    if (first.v.parts > FLOW_PARTS_MAX) return no('failed')
+    const rest = await Promise.all(Array.from({ length: Math.max(0, first.v.parts - 1) }, (_, i) => b.ask({ ...q, part: i + 1 }, READ.volume)))
+    const byId = new Map<string, FlowVolumeRow>()
+    for (const part of [first, ...rest]) {
+      if (!part.ok) return part
+      for (const row of part.v.rows) {
+        const seen = byId.get(row.id)
+        byId.set(row.id, seen ? { ...seen, board: seen.board + row.board, alight: seen.alight + row.alight, days: Math.max(seen.days, row.days) } : { ...row })
+      }
+    }
+    return got({ ym, rows: [...byId.values()] }, latest([first, ...rest].map((x) => (x.ok ? x.asOf : ''))))
+  }
 
   const fields: { [K in SnapshotKey]: () => Promise<Res<SnapshotValue<K>>> } = {
     people: () =>
@@ -673,7 +862,7 @@ export async function collect(point: Point, radiusM: number, deps: CollectDeps):
         return out.length === 0 ? no('none') : got(out, latest(years.map((y) => (y.ok ? y.asOf : ''))))
       }),
 
-    // 사람 흐름: 후보 시군구 지난달(그 달 줄이 없으면 두 달 전) → flow-bus·flow-rail로 이름 → 좌표 파일로 잇기(flow.ts)
+    // 사람 흐름: 후보 시군구 지난달(그 달 줄이 없으면 두 달 전) 묶음을 모두 → 그 달(ym)의 flow-bus·flow-rail로 이름 → 좌표 파일로 잇기(flow.ts)
     flow: () =>
       withHome(async (_r, home) => {
         const transit = await b.transit()
@@ -683,16 +872,17 @@ export async function collect(point: Point, radiusM: number, deps: CollectDeps):
         if (!bus.ok) return no('failed')
         if (bus.v === null) return no('outside')
         if (!home.code5.startsWith(home.sido.code2)) return no('failed')
-        const [busNames, railNames, rail] = await Promise.all([
-          b.ask({ kind: 'flow-bus', sgg: home.code5 }, READ.busNames),
-          b.ask({ kind: 'flow-rail', sgg: home.code5 }, READ.railNames),
-          b.rail(),
-        ])
-        if (!busNames.ok) return busNames
-        if (!railNames.ok) return railNames
+        const rail = await b.rail()
         for (const ym of [b.lastMonth, addMonths(b.lastMonth, -1)]) {
-          const volume = await b.ask({ kind: 'flow-volume', sido: home.sido.code2, sgg: home.code5, ym }, READ.volume)
+          const volume = await volumeOf(home, ym)
           if (!volume.ok) return volume
+          if (volume.v.rows.length === 0) continue // 아직 줄이 없는 달은 이름을 부르지 않는다
+          const [busNames, railNames] = await Promise.all([
+            b.ask({ kind: 'flow-bus', sgg: home.code5, ym }, READ.busNames),
+            b.ask({ kind: 'flow-rail', sgg: home.code5, ym }, READ.railNames),
+          ])
+          if (!busNames.ok) return busNames
+          if (!railNames.ok) return railNames
           const joined = joinFlow({
             at,
             radiusM,
@@ -780,72 +970,173 @@ export async function collect(point: Point, radiusM: number, deps: CollectDeps):
       return s.ok ? got(s.v.pharmacies, s.asOf) : s
     },
 
-    // 경쟁 의원: 정형외과·마취통증·재활(의원) + 한의원, 가까운 차례 80곳. 의원은 상세(MRI·CT·물리치료사)·체외충격파 값을 붙인다
-    // (한의원은 상세를 부르지 않는다). 상세·값·진료 시간은 못 받아도 그 칸만 null(목록은 그대로)
+    // 의원(design.md 18절): 안 보기가 아닌 과목 모두를 가까운 차례 200곳까지(경쟁 과목 의원은 다 남김). 점·주소는 심평원 값(주소는 30m 안만).
+    // 경쟁 과목 의원만 detail(상세·진료 시간·비급여) — 비급여는 가까운 20곳만 의원마다 따로, 못 받은 의원은 priced: false(목록은 그대로)
     rivals: async () => {
-      const [clinic, korean] = await Promise.all([
-        b.ask({ kind: 'hosp-list', at, r: radiusM, group: 'clinic' }, READ.hospList),
-        b.ask({ kind: 'hosp-list', at, r: radiusM, group: 'korean' }, READ.hospList),
-      ])
-      if (!clinic.ok) return clinic
-      if (!korean.ok) return korean
-      // 같은 기관 기호는 한 번(의원 목록이 먼저)
-      const byYkiho = new Map<string, HospItem & { kind: RivalKind }>()
-      for (const x of [...clinic.v, ...korean.v]) {
-        if (isRivalKind(x.kind) && x.distM <= radiusM && !byYkiho.has(x.ykiho)) byYkiho.set(x.ykiho, { ...x, kind: x.kind })
-      }
-      const items = [...byYkiho.values()].sort((x, y) => x.distM - y.distM || byName(x.name, y.name)).slice(0, RIVAL_MAX)
-      const hours = await b.ask({ kind: 'hosp-hours', at }, READ.hours)
-      const hourRows = hours.ok ? hours.v : []
+      const list = await clinicsAround(b, at, radiusM, 'all')
+      if (list === null) return got([], b.today)
+      if (!list.ok) return list
+      const near = list.v
+        .map((x) => {
+          const id = deptOf(x, b.rule)
+          return { ...x, distM: distM(at, x.at), role: id === null ? null : deptRole(id, b.rule) }
+        })
+        .filter((x) => x.distM <= radiusM && (x.role === 'rival' || x.role === 'around'))
+        .sort((x, y) => x.distM - y.distM || byName(x.name, y.name))
+      let room = RIVAL_MAX - near.filter((x) => x.role === 'rival').length
+      const kept = near.filter((x) => {
+        if (x.role === 'rival') return true
+        room -= 1
+        return room >= 0
+      })
+      const rivals = kept.filter((x) => x.role === 'rival')
+      const hourRows = rivals.length > 0 ? await hours() : []
+      const priced = new Set(rivals.slice(0, NONPAY_MAX).map((x) => x.ykiho))
+      const lowest = (rows: readonly NonpayRow[] | null | undefined) => (rows && rows.length > 0 ? Math.min(...rows.map((p) => p.won)) : null)
       const out = await Promise.all(
-        items.map(async (x): Promise<Rival> => {
-          const korean = x.kind === 'korean'
-          const [detail, price] = korean
-            ? [null, null]
-            : await Promise.all([b.ask({ kind: 'hosp-detail', ykiho: x.ykiho }, READ.hospDetail), b.ask({ kind: 'nonpay', ykiho: x.ykiho, item: ESWT_ITEM }, READ.nonpay)])
-          const d = detail?.ok ? detail.v : null
-          const prices = price?.ok ? price.v.map((p) => p.won) : []
-          const year = x.openedOn !== null && /^\d{4}/.test(x.openedOn) ? Number(x.openedOn.slice(0, 4)) : null
-          return {
+        kept.map(async (x): Promise<Rival> => {
+          const same = x.distM <= SAME_BUILDING_M
+          const row: Rival = {
             name: x.name,
-            kind: x.kind,
-            doctors: x.doctors,
-            therapists: d?.therapists ?? null,
-            mri: d?.mri ?? null,
-            ct: d?.ct ?? null,
-            openedYear: year,
+            depts: x.depts,
+            at: x.at,
             distM: x.distM,
-            sameBuilding: x.distM <= SAME_BUILDING_M,
-            week: weekFor(x, hourRows),
-            eswt: prices.length > 0 ? Math.min(...prices) : null, // 한 의원이 여러 줄이면 가장 싼 값(1회 기본 값)
+            sameBuilding: same,
+            address: same ? x.address : '',
+            doctors: x.doctors,
+            openedYear: x.openedOn !== null && /^\d{4}/.test(x.openedOn) ? Number(x.openedOn.slice(0, 4)) : null,
+          }
+          if (x.role !== 'rival') return row
+          const [detail, price] = await Promise.all([
+            b.ask({ kind: 'hosp-detail', ykiho: x.ykiho }, READ.hospDetail),
+            priced.has(x.ykiho) ? b.ask({ kind: 'nonpay', ykiho: x.ykiho, item: ESWT_ITEM }, READ.nonpay) : Promise.resolve(null),
+          ])
+          const d = detail.ok ? detail.v : null
+          const p = price?.ok ? price.v : null
+          return {
+            ...row,
+            detail: {
+              therapists: d?.therapists ?? null,
+              mri: d?.mri ?? null,
+              ct: d?.ct ?? null,
+              week: weekFor(x, hourRows),
+              priced: p !== null,
+              eswt: lowest(p?.rows), // 한 의원이 여러 줄이면 가장 싼 값(1회 기본 값)
+              manual: lowest(p?.manual), // 도수치료도 여럿이면 가장 낮은 값
+            },
           }
         }),
       )
-      return got(out, latest([clinic.asOf, korean.asOf]))
+      return got(out, list.asOf)
     },
 
-    // 3년 개폐업: 이틀 전까지 3년 기간을 개업·폐업 한 번씩, 범위 안 의원(과목 상관없음)
-    history: async () => {
-      const to = addDays(b.today, -HISTORY_LAG_DAYS)
-      const from = addDays(addMonthsToDay(to, -HISTORY_MONTHS), 1)
-      const [opened, closed] = await Promise.all([
-        b.ask({ kind: 'clinic-license', event: 'open', from, to }, READ.license),
-        b.ask({ kind: 'clinic-license', event: 'close', from, to }, READ.license),
-      ])
-      if (!opened.ok) return opened
-      if (!closed.ok) return closed
-      const rows = [
-        ...opened.v.map((x) => ({ kind: 'open' as const, x, on: x.openedOn })),
-        ...closed.v.map((x) => ({ kind: 'close' as const, x, on: x.closedOn })),
-      ].flatMap(({ kind, x, on }) => {
-        if (on === null) return []
-        const m = distM(at, x.point)
-        return m <= radiusM ? [{ kind, name: x.name, dept: x.dept, on, distM: m }] : []
-      })
-      rows.sort((x, y) => x.distM - y.distM || byName(y.on, x.on))
-      return got(rows.slice(0, HISTORY_MAX), latest([opened.asOf, closed.asOf]))
-    },
+    // 후보 점의 행정동(동 경계 파일)과 시군구·시도(동 경계 목록 이름) — 카카오 값이 아니다
+    place: () =>
+      withRegion(async (r) => {
+        const home = r.home
+        if (!home) return no('outside')
+        if (!/^\d{2}$/.test(home.sido.code2) || !/^\d{5}$/.test(home.code5)) return no('failed')
+        const dong = r.homeDong && /^\d{10}$/.test(r.homeDong.code10) ? r.homeDong : null
+        return got(
+          { sido: home.sido.code2, sidoName: home.sido.name, sgg: home.code5, sggName: home.name, dong: dong?.code10 ?? null, dongName: dong?.name ?? null },
+          r.homeAsOf,
+        )
+      }),
 
+    // 점수 풀이 견줄 값(design.md 19절): 후보 시군구 전체, 공공 자료만. 인구는 의료급여 비율 인구와 같은 부름(그 판 연월)을 나눠 쓰고,
+    // 의료급여를 못 받으면 가장 새 달. 추세는 후보 추세와 같은 마지막 10월. 시설은 시군구 이름 목록 가운데 동 경계 안(훑기와 같은 셈)
+    sggAvg: () =>
+      withHome(async (r, home) => {
+        const welfare = await b.ask(welfareQuery(home), READ.welfare)
+        let ym = welfare.ok && welfare.v !== null && YM.test(welfare.v.ym) ? welfare.v.ym : null
+        if (ym === null) {
+          const codes = r.homeDongs.filter(codeOk).map((x) => x.code10)
+          if (codes.length === 0) return no('none')
+          const newest = await b.latestPop(codes)
+          if (!newest.ok) return newest
+          ym = newest.v.ym
+        }
+        const pop = await b.sggPop(home.code5, ym)
+        if (!pop.ok) return pop
+
+        const candidate = r.codes.length > 0 ? await b.latestPop(r.codes) : null
+        const lastOctober = b.octobers(candidate?.ok ? candidate.v.ym : b.lastMonth).at(-1)
+        let trendPct: number | null = null
+        if (lastOctober !== undefined && lastOctober > FIRST_OCTOBER) {
+          const [first, last] = await Promise.all([b.sggPop(home.code5, FIRST_OCTOBER), b.sggPop(home.code5, lastOctober)])
+          if (first.ok && last.ok && first.v.total > 0) trendPct = Math.trunc(((last.v.total - first.v.total) * 1000) / first.v.total) / 10
+        }
+
+        const polygons = r.homeDongs.filter((x) => x.rings !== null)
+        const countIn = async <P extends Place>(reply: Promise<Res<P[]>>, keep: (p: P) => boolean = () => true) => {
+          const list = await reply
+          return list.ok ? list.v.filter((p) => keep(p) && dongOf(p, polygons) !== null).length : null
+        }
+        const centers = r.homeDongs.map(centerOf)
+        const [accidents, schools, seniors, gyms, rail, transit] = await Promise.all([
+          countIn(b.facilities.accident(home)),
+          countIn(b.facilities.school(home)),
+          countIn(b.facilities.senior(home)),
+          countIn(b.facilities.gym(home), (g) => g.status === 'open'),
+          b.rail(),
+          b.transit(),
+        ])
+        const stationM = rail.ok ? floorAverage(centers.map((c) => nearestStation(rail.v, c)?.distM ?? null)) : null
+        let stops: number | null = null
+        if (transit.ok) {
+          const counted = await Promise.all(centers.map((c) => stopsNear(b, r.idx, transit.v, c)))
+          stops = counted.some((x) => x !== null && !x.ok) ? null : floorAverage(counted.map((x) => (x?.ok ? x.v : null)))
+        }
+        const value: SggAvg = {
+          sggName: home.name,
+          areaM2: sum(r.homeDongs.map((x) => x.areaM2)),
+          total: pop.v.total,
+          bands: pop.v.bands,
+          trendPct,
+          accidents,
+          schools,
+          seniors,
+          gyms,
+          stationM,
+          stops,
+        }
+        return got(value, pop.asOf)
+      }),
+
+    // 3년 개폐업: 이틀 전까지 3년 기간을 개업·폐업 한 번씩, 범위가 닿는 시군구마다 도로명 주소 앞부분('{시도} {시군구}')으로 거름
+    // (전국 3년은 3,000줄 한도를 넘음). 범위 안 의원(과목 상관없음), 같은 줄은 한 번
+    history: () =>
+      withRegion(async (r) => {
+        if (r.touching.length === 0) return no('outside')
+        const to = addDays(b.today, -HISTORY_LAG_DAYS)
+        const from = addDays(addMonthsToDay(to, -HISTORY_MONTHS), 1)
+        const addrs = [...new Set(r.touching.map((s) => `${s.sido.name} ${s.name}`))].filter((x) => ADDR.test(x))
+        const asks = (addrs.length > 0 ? addrs : [null]).flatMap((addr) => (['open', 'close'] as const).map((event) => ({ event, addr })))
+        const replies = await Promise.all(
+          asks.map(({ event, addr }) =>
+            b.ask(addr === null ? { kind: 'clinic-license', event, from, to } : { kind: 'clinic-license', event, from, to, addr }, READ.license),
+          ),
+        )
+        const seen = new Set<string>()
+        const rows: SnapshotValue<'history'> = []
+        for (const [i, reply] of replies.entries()) {
+          if (!reply.ok) return reply
+          const kind = asks[i].event
+          for (const x of reply.v) {
+            const on = kind === 'open' ? x.openedOn : x.closedOn
+            if (on === null) continue
+            const m = distM(at, x.point)
+            const key = `${kind}|${x.name}|${on}|${x.point.lat}|${x.point.lng}`
+            if (m > radiusM || seen.has(key)) continue
+            seen.add(key)
+            rows.push({ kind, name: x.name, dept: x.dept, on, distM: m })
+          }
+        }
+        rows.sort((x, y) => x.distM - y.distM || byName(y.on, x.on))
+        return got(rows.slice(0, HISTORY_MAX), latest(replies.map((x) => (x.ok ? x.asOf : ''))))
+      }),
+
+    // 가장 가까운 역: 좌표 파일(rail.json)의 이름·노선·좌표
     station: async () => {
       const rail = await b.rail()
       if (!rail.ok) return no('failed')
@@ -901,17 +1192,21 @@ export async function collect(point: Point, radiusM: number, deps: CollectDeps):
       return got(out, s.asOf)
     },
 
-    // 의료급여·차상위: 후보 시군구 한 줄 + 비율 인구(그 판 연월 pop-age를 그 시군구 모든 행정동에 40개씩, 못 받으면 null)
+    // 의료급여·차상위: 후보 시군구 이름으로 한 줄(판에 없는 새 시군구는 옛 구 묶음 이름들, 전남광주는 옛 시도 둘) + 비율 인구
+    // (그 판 연월 pop-age를 그 시군구 — 옛 구 묶음이면 묶음 새 시군구 모두 — 행정동에 40개씩, 하나라도 못 받으면 null)
     welfare: () =>
-      withHome(async (r, home) => {
-        const reply = await b.ask({ kind: 'welfare', sgg: home.code5 }, READ.welfare)
+      withHome(async (_r, home) => {
+        const reply = await b.ask(welfareQuery(home), READ.welfare)
         if (!reply.ok) return reply
         const w = reply.v
         if (w === null) return no('none')
-        const codes = r.homeDongs.filter(codeOk).map((d) => d.code10)
-        const pop = codes.length > 0 && /^\d{4}-\d{2}$/.test(w.ym) ? await b.popAge(codes, w.ym) : no('none')
-        const population = pop.ok && pop.v.size > 0 ? sum([...pop.v.values()].map(sum)) : null
-        return got({ sggName: w.sggName, ym: w.ym, medical: w.medical, basic: w.basic, nearPoor: w.nearPoor, population }, reply.asOf)
+        const group = oldGroupOf(home.code5)
+        const pops = YM.test(w.ym) ? await Promise.all((group ? group.sggs : [home.code5]).map((code5) => b.sggPop(code5, w.ym))) : []
+        const population = pops.length > 0 && pops.every((p) => p.ok) ? sum(pops.map((p) => (p.ok ? p.v.total : 0))) : null
+        return got(
+          { sggName: w.sggName, ym: w.ym, medical: w.medical, basic: w.basic, nearPoor: w.nearPoor, population, basis: group?.label ?? null },
+          reply.asOf,
+        )
       }),
   }
 
@@ -985,7 +1280,8 @@ const SCAN_PARTS = Object.keys(SCAN_SRC) as ScanPart[]
 type ByDong<T> = Map<string, T>
 
 /**
- * 동네 훑기 값: 그 시군구 동마다 범위 = 그 동(넓이·인구·동 안 의원·동 안 시설), 산업단지 고용은 그 시군구, 역·정류장은 동 가운데에서.
+ * 동네 훑기 값: 그 시군구 동마다 범위 = 그 동(넓이·인구·동 안 경쟁 의원·동 안 시설), 산업단지 고용은 그 시군구, 역·정류장은 동 가운데에서.
+ * 의원 몸통·과목 규칙은 그날 값과 같다(deps.deptRule).
  * 흐름·의료급여·아파트·진료 시간·건물·카카오는 부르지 않는다(후보에서만). 자료 하나가 실패하면 그 값만 null, parts에 까닭
  */
 export async function collectScan(sgg: string, deps: CollectDeps): Promise<ScanResult> {
@@ -1043,25 +1339,26 @@ export async function collectScan(sgg: string, deps: CollectDeps): Promise<ScanR
       }
       return out.size === 0 ? no('none') : got(out, latest(years.map((y) => (y.ok ? y.asOf : ''))))
     },
-    accidents: () => placeCount(b.ask({ kind: 'accident', sidoName: info.sido.name, sggName: info.name }, READ.accidents)),
-    schools: () => placeCount(b.ask({ kind: 'school', sggName: info.name }, READ.places)),
-    seniors: () => placeCount(b.ask({ kind: 'senior', sggName: info.name }, READ.places)),
-    gyms: () => placeCount(b.ask({ kind: 'gym', sggName: info.name }, READ.gyms), (g) => g.status === 'open'),
+    accidents: () => placeCount(b.facilities.accident(info)),
+    schools: () => placeCount(b.facilities.school(info)),
+    seniors: () => placeCount(b.facilities.senior(info)),
+    gyms: () => placeCount(b.facilities.gym(info), (g) => g.status === 'open'),
     industry: () => b.fileRow(`industry/${sgg}`, () => deps.industry(sgg)),
-    // 시군구 네모 가운데에서 네모 모서리까지(20km 한도)로 한 번 찾아 동에 넣는다. 새 의원 = 개설일이 3년 안
+    // 시군구 네모 가운데에서 네모 모서리까지(20km 한도)로 한 번 찾아 동에 넣는다. 경쟁 = 대표 과목이 설정의 경쟁 과목인 의원(design.md 18절),
+    // 새 의원 = 개설일이 3년 안. 경쟁 과목이 없으면 부르지 않고 값 없음(none)
     rivals: async (): Promise<Res<ByDong<{ rivals: number; newRivals: number }>>> => {
       const [w, s, e, n] = info.bbox
       const c = at6({ lat: (s + n) / 2, lng: (w + e) / 2 })
       const corner = Math.max(...[[w, s], [w, n], [e, s], [e, n]].map(([lng, lat]) => distM(c, { lat, lng })))
       const r = Math.max(1, Math.min(SCAN_MAX_R, Math.ceil(corner)))
-      const list = await b.ask({ kind: 'hosp-list', at: c, r, group: 'clinic' }, READ.hospList)
+      const list = await clinicsAround(b, c, r, 'rival')
+      if (list === null) return no('none')
       if (!list.ok) return list
       const since = addMonthsToDay(today, -HISTORY_MONTHS)
       const out = new Map<string, { rivals: number; newRivals: number }>(polygons.map((d) => [d.code10, { rivals: 0, newRivals: 0 }]))
-      const seen = new Set<string>()
       for (const x of list.v) {
-        if (x.kind === 'korean' || !isRivalKind(x.kind) || seen.has(x.ykiho)) continue
-        seen.add(x.ykiho)
+        const id = deptOf(x, b.rule)
+        if (id === null || deptRole(id, b.rule) !== 'rival') continue
         const d = dongOf(x.at, polygons)
         const row = d ? out.get(d.code10) : undefined
         if (!row) continue
