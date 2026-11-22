@@ -5,14 +5,14 @@ import { areaText } from '@/lib/location/area'
 import { IROS_URL, NEW_TAB } from '@/lib/location/links'
 import type { Snapshot, SnapshotValue, SourceId, YesNo } from '@/types/location'
 import { buildingAge, floorRows, floorText } from './floors'
-import { ExtIcon, InfoList, InfoRow, LawLink, LINK_BUTTON, Picks, Section, shownOf, SIDE, TABLE, type HeadProp } from './parts'
+import { ExtIcon, InfoList, InfoRow, LawLink, LINK_BUTTON, Picks, Section, shownOf, SIDE, TABLE, type HeadProp, type HowProp } from './parts'
 
 // 후보 자세히 › 건물 서류(specs/location AC-7909.4, 시안 ?s=candidate 'bld' 묶음, 글은 requirements '화면 글 기본값').
 // 건축물대장 표제(지은 해·구조·층수·연면적·엘리베이터·주차·용도) · 층별(위층부터, 후보 층에 '이 자리') · 출처 줄 ·
 // 등기부(인터넷등기소 첫 화면 새 창 — AC-7909.4가 이 묶음에 둔다) · 위반 건축물 고르는 칸(공개 자료가 없어 직접 고름, 법 근거 violation).
 // 그날 값(building)을 못 받으면 표제·층별 자리만 자료 없음 글이고, 등기부·위반 건축물 칸은 그대로다. props·콜백만 받는다
 
-export type BuildingDocsProps = HeadProp & {
+export type BuildingDocsProps = HeadProp & HowProp & {
   building: Snapshot['building']
   /** 후보 층 글(location_candidates.floor_label, 안 적었으면 '') */
   floorLabel: string
@@ -124,11 +124,25 @@ function FloorTable({ v, floorLabel, areaM2 }: { v: SnapshotValue<'building'>; f
   )
 }
 
-export function BuildingDocs({ building, floorLabel, areaM2, today, violation, onViolation, onRetry, onOpenSource, onOpenLaw, head }: BuildingDocsProps) {
+export function BuildingDocs({
+  building,
+  floorLabel,
+  areaM2,
+  today,
+  violation,
+  onViolation,
+  onRetry,
+  onOpenSource,
+  onOpenLaw,
+  head,
+  howCtx,
+  howOpen,
+  onHow,
+}: BuildingDocsProps) {
   const shown = shownOf(building)
   const help = VIOLATION_HELP[violation ?? 'none']
   return (
-    <Section id="bld" title="건물 서류" aside="건축물대장" head={head}>
+    <Section id="bld" title="건물 서류" aside="건축물대장" head={head} howCtx={howCtx} howOpen={howOpen} onHow={onHow}>
       {shown ? (
         <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start gap-x-8 gap-y-4">
           <InfoList>

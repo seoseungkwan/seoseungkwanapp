@@ -4,13 +4,13 @@ import { SourceLine } from '@/components/location/common/SourceLine'
 import { KakaoMap, type MapMark } from '@/components/location/map/KakaoMap'
 import { Roadview } from '@/components/location/map/Roadview'
 import type { Point, SourceId, YesNo } from '@/types/location'
-import { Picks, Section, type HeadProp } from './parts'
+import { Picks, Section, type HeadProp, type HowProp } from './parts'
 
 // 후보 자세히 › 거리 사진(specs/location AC-7909.5, 시안 ?s=candidate 'photo' 묶음).
 // 왼쪽 로드뷰(그 점 50m 안 가장 가까운 거리 사진, map/Roadview) · 오른쪽 하늘 사진(map/KakaoMap 하늘 사진 보기, 후보 표시) · 출처 줄 · 간판 보임 고르기.
 // 카카오 것(사진·지도)은 열 때마다 새로 받고 저장하지 않는다(ADR-044). 저장하는 것은 사용자가 고른 간판 보임뿐 — 콜백(onSign)으로 넘긴다
 
-export type StreetPhotosProps = HeadProp & {
+export type StreetPhotosProps = HeadProp & HowProp & {
   /** 후보 점(사용자가 고른 점) */
   at: Point
   /** 하늘 사진의 후보 표시 안 글자(시안 'A' 등) */
@@ -31,10 +31,10 @@ const SIGN_OPTIONS = [
 const PHOTO_HEIGHT = 240
 const CAPTION = 'mt-1 text-caption text-muted'
 
-export function StreetPhotos({ at, markLabel = '', sign, onSign, onOpenSource, head }: StreetPhotosProps) {
+export function StreetPhotos({ at, markLabel = '', sign, onSign, onOpenSource, head, howCtx, howOpen, onHow }: StreetPhotosProps) {
   const marks: MapMark[] = [{ id: 'candidate', kind: 'candidate', at, label: markLabel }]
   return (
-    <Section id="photo" title="거리 사진" aside="가지 않고 둘레를 봐요" head={head}>
+    <Section id="photo" title="거리 사진" aside="가지 않고 둘레를 봐요" head={head} howCtx={howCtx} howOpen={howOpen} onHow={onHow}>
       <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start gap-x-8 gap-y-4">
         <div className="min-w-0">
           <Roadview at={at} label="로드뷰" height={PHOTO_HEIGHT} />

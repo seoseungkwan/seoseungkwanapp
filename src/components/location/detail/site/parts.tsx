@@ -1,21 +1,56 @@
 import Link from 'next/link'
 import type { MouseEvent, ReactNode } from 'react'
+import { HowLine } from '@/components/location/common/HowLine'
 import { ds } from '@/components/ui/classes'
+import { filledHow, type HowCtx } from '@/lib/location/method'
 import type { Got, YesNo } from '@/types/location'
 
-// 거리 사진·건물 서류·빈 칸 짐작·땅 쓰임이 같이 쓰는 모양(시안 docs/mockups/location/index.html의 .csec·.sh·.field·.opts·.ob·.btn.sm·.info·.note·.tbtn 값).
+// 거리 사진·건물 서류·빈 칸 짐작·땅 쓰임이 같이 쓰는 모양(시안 docs/mockups/location/index.html의 .csec·.sh·.how·.field·.opts·.ob·.btn.sm·.info·.note·.tbtn 값).
 // PC 모양 하나: 폭 따라 바뀌는 ds 묶음(단추·입력·글자 단추)은 쓰지 않고 같은 값을 여기 적는다. 색·글자·모서리는 토큰 클래스만
 
-// ── 묶음 틀(시안 sec(): 머리 h3 + 곁글, 아래 선, 몸) ──
+// ── 묶음 틀(시안 sec(): 머리 h3 + 곁글, 아래 선, '이렇게 봤어요', 몸) ──
 
 export type HeadProp = {
-  /** false면 머리·닻(id) 없이 몸만 그린다(틀이 머리를 따로 그릴 때). 처음 true */
+  /** false면 머리·닻(id) 없이 '이렇게 봤어요'와 몸만 그린다(틀이 머리를 따로 그릴 때). 처음 true */
   head?: boolean
 }
 
-export function Section({ id, title, aside, head = true, children }: { id: string; title: string; aside?: ReactNode; children: ReactNode } & HeadProp) {
-  const body = <div className="grid min-w-0 gap-4">{children}</div>
-  if (!head) return body
+/** '이렇게 봤어요'(AC-7920.2) — 글은 method.ts HOW를 howCtx로 채우고, 펼침은 부르는 쪽이 쥔다 */
+export type HowProp = {
+  /** 채울 값: 그 후보 그날 값의 출처별 기준 날짜 · 살필 범위 · 시·군·구 · 고른 경쟁 과목(method.ts HowCtx) */
+  howCtx: HowCtx
+  /** [더 보기]를 펼쳤나 — 범위를 바꿔 다시 그려도 부르는 쪽이 쥔 값 그대로 */
+  howOpen: boolean
+  /** [더 보기]/[접기]를 누르면 */
+  onHow: () => void
+}
+
+/** 이 폴더 묶음 넷(= method.ts HOW id = 닻 sec-{id}) */
+export type SiteId = 'photo' | 'bld' | 'vac' | 'land'
+
+export function Section({
+  id,
+  title,
+  aside,
+  head = true,
+  howCtx,
+  howOpen,
+  onHow,
+  children,
+}: { id: SiteId; title: string; aside?: ReactNode; children: ReactNode } & HeadProp & HowProp) {
+  const how = <HowLine {...filledHow(id, howCtx)} open={howOpen} onToggle={onHow} />
+  const body = (
+    <div className="mt-3">
+      <div className="grid min-w-0 gap-4">{children}</div>
+    </div>
+  )
+  if (!head)
+    return (
+      <div className="min-w-0">
+        {how}
+        {body}
+      </div>
+    )
   return (
     <section id={`sec-${id}`} aria-labelledby={`sec-${id}-title`} className="min-w-0 scroll-mt-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-line-strong pb-1.5">
@@ -24,7 +59,8 @@ export function Section({ id, title, aside, head = true, children }: { id: strin
         </h3>
         {aside ? <span className="text-small text-muted">{aside}</span> : null}
       </div>
-      <div className="mt-3">{body}</div>
+      {how}
+      {body}
     </section>
   )
 }
