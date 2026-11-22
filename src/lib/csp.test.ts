@@ -183,7 +183,8 @@ const KAKAO_IMG = [
   'https://t1.kakaocdn.net',
   'https://ssl.kakaocdn.net',
 ]
-const KAKAO_CONNECT = ['https://dapi.kakao.com', 'https://rv.map.kakao.com', 'https://ssl.kakaocdn.net']
+// 로드뷰 설정 자료는 t1.kakaocdn.net에서도 읽는다(TASK-48 운영 흉내 다시 확인)
+const KAKAO_CONNECT = ['https://dapi.kakao.com', 'https://rv.map.kakao.com', 'https://ssl.kakaocdn.net', 'https://t1.kakaocdn.net']
 
 describe('AC-7916.2 buildCsp 셋째 인자 { kakao: true }', () => {
   const kakao = directives(buildCsp(false, SUPABASE, { kakao: true }))

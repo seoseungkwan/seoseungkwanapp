@@ -20,8 +20,8 @@ const KAKAO: Record<'script-src' | 'img-src' | 'connect-src', string[]> = {
     'https://t1.kakaocdn.net',
     'https://ssl.kakaocdn.net',
   ],
-  // SDK 입구 · 로드뷰 자료(rv.map.kakao.com) · kakaocdn 자료 읽기
-  'connect-src': ['https://dapi.kakao.com', 'https://rv.map.kakao.com', 'https://ssl.kakaocdn.net'],
+  // SDK 입구 · 로드뷰 자료(rv.map.kakao.com) · kakaocdn 자료 읽기(로드뷰 설정은 ssl·t1 둘 다)
+  'connect-src': ['https://dapi.kakao.com', 'https://rv.map.kakao.com', 'https://ssl.kakaocdn.net', 'https://t1.kakaocdn.net'],
 }
 
 // 브라우저가 쓸 수 있는 주소 목록(파일럿 그대로 + media-src). next.config.ts가 불러 쓴다
