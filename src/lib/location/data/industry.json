@@ -1,0 +1,707 @@
+{
+ "src": "industry",
+ "quarter": "2025년 2분기",
+ "asOf": "2025-06-30",
+ "sggs": {
+  "11500": {
+   "name": "강서구",
+   "employees": 38873,
+   "parks": 1
+  },
+  "11530": {
+   "name": "구로구",
+   "employees": 1507,
+   "parks": 1
+  },
+  "26350": {
+   "name": "해운대구",
+   "employees": 11795,
+   "parks": 1
+  },
+  "26380": {
+   "name": "사하구",
+   "employees": 14387,
+   "parks": 2
+  },
+  "26440": {
+   "name": "강서구",
+   "employees": 35095,
+   "parks": 13
+  },
+  "26530": {
+   "name": "사상구",
+   "employees": 12351,
+   "parks": 1
+  },
+  "26710": {
+   "name": "기장군",
+   "employees": 13890,
+   "parks": 9
+  },
+  "27140": {
+   "name": "동구",
+   "employees": 1584,
+   "parks": 1
+  },
+  "27170": {
+   "name": "서구",
+   "employees": 21165,
+   "parks": 2
+  },
+  "27230": {
+   "name": "북구",
+   "employees": 16423,
+   "parks": 2
+  },
+  "27290": {
+   "name": "달서구",
+   "employees": 45394,
+   "parks": 5
+  },
+  "27710": {
+   "name": "달성군",
+   "employees": 24886,
+   "parks": 5
+  },
+  "28177": {
+   "name": "미추홀구",
+   "employees": 9997,
+   "parks": 2
+  },
+  "28185": {
+   "name": "연수구",
+   "employees": 9307,
+   "parks": 1
+  },
+  "28245": {
+   "name": "계양구",
+   "employees": 4964,
+   "parks": 1
+  },
+  "28260": {
+   "name": "서구",
+   "employees": 16710,
+   "parks": 5
+  },
+  "28710": {
+   "name": "강화군",
+   "employees": 1023,
+   "parks": 2
+  },
+  "29155": {
+   "name": "남구",
+   "employees": 1508,
+   "parks": 1
+  },
+  "29170": {
+   "name": "북구",
+   "employees": 2098,
+   "parks": 1
+  },
+  "29200": {
+   "name": "광산구",
+   "employees": 45651,
+   "parks": 6
+  },
+  "30110": {
+   "name": "동구",
+   "employees": 566,
+   "parks": 1
+  },
+  "30230": {
+   "name": "대덕구",
+   "employees": 6520,
+   "parks": 3
+  },
+  "31140": {
+   "name": "남구",
+   "employees": 3092,
+   "parks": 1
+  },
+  "31200": {
+   "name": "북구",
+   "employees": 6898,
+   "parks": 7
+  },
+  "31710": {
+   "name": "울주군",
+   "employees": 11021,
+   "parks": 11
+  },
+  "36110": {
+   "name": "세종특별자치시",
+   "employees": 10891,
+   "parks": 7
+  },
+  "41111": {
+   "name": "수원시",
+   "employees": 18790,
+   "parks": 3
+  },
+  "41113": {
+   "name": "수원시",
+   "employees": 18790,
+   "parks": 3
+  },
+  "41115": {
+   "name": "수원시",
+   "employees": 18790,
+   "parks": 3
+  },
+  "41117": {
+   "name": "수원시",
+   "employees": 18790,
+   "parks": 3
+  },
+  "41131": {
+   "name": "성남시",
+   "employees": 42608,
+   "parks": 1
+  },
+  "41133": {
+   "name": "성남시",
+   "employees": 42608,
+   "parks": 1
+  },
+  "41135": {
+   "name": "성남시",
+   "employees": 42608,
+   "parks": 1
+  },
+  "41150": {
+   "name": "의정부시",
+   "employees": 2310,
+   "parks": 1
+  },
+  "41192": {
+   "name": "부천시",
+   "employees": 2696,
+   "parks": 1
+  },
+  "41194": {
+   "name": "부천시",
+   "employees": 2696,
+   "parks": 1
+  },
+  "41196": {
+   "name": "부천시",
+   "employees": 2696,
+   "parks": 1
+  },
+  "41220": {
+   "name": "평택시",
+   "employees": 24665,
+   "parks": 13
+  },
+  "41250": {
+   "name": "동두천시",
+   "employees": 2655,
+   "parks": 3
+  },
+  "41271": {
+   "name": "안산시",
+   "employees": 1080,
+   "parks": 1
+  },
+  "41273": {
+   "name": "안산시",
+   "employees": 1080,
+   "parks": 1
+  },
+  "41360": {
+   "name": "남양주시",
+   "employees": 3440,
+   "parks": 3
+  },
+  "41370": {
+   "name": "오산시",
+   "employees": 10337,
+   "parks": 4
+  },
+  "41390": {
+   "name": "시흥시",
+   "employees": 3621,
+   "parks": 1
+  },
+  "41410": {
+   "name": "군포시",
+   "employees": 3215,
+   "parks": 1
+  },
+  "41430": {
+   "name": "의왕시",
+   "employees": 2216,
+   "parks": 1
+  },
+  "41461": {
+   "name": "용인시",
+   "employees": 3452,
+   "parks": 4
+  },
+  "41463": {
+   "name": "용인시",
+   "employees": 3452,
+   "parks": 4
+  },
+  "41465": {
+   "name": "용인시",
+   "employees": 3452,
+   "parks": 4
+  },
+  "41480": {
+   "name": "파주시",
+   "employees": 35771,
+   "parks": 14
+  },
+  "41500": {
+   "name": "이천시",
+   "employees": 491,
+   "parks": 4
+  },
+  "41550": {
+   "name": "안성시",
+   "employees": 14682,
+   "parks": 21
+  },
+  "41570": {
+   "name": "김포시",
+   "employees": 23378,
+   "parks": 13
+  },
+  "41590": {
+   "name": "화성시",
+   "employees": 46962,
+   "parks": 12
+  },
+  "41630": {
+   "name": "양주시",
+   "employees": 3598,
+   "parks": 4
+  },
+  "41650": {
+   "name": "포천시",
+   "employees": 5052,
+   "parks": 5
+  },
+  "41670": {
+   "name": "여주시",
+   "employees": 126,
+   "parks": 1
+  },
+  "41800": {
+   "name": "연천군",
+   "employees": 1208,
+   "parks": 2
+  },
+  "41820": {
+   "name": "가평군",
+   "employees": 248,
+   "parks": 1
+  },
+  "43111": {
+   "name": "청주시",
+   "employees": 59416,
+   "parks": 9
+  },
+  "43112": {
+   "name": "청주시",
+   "employees": 59416,
+   "parks": 9
+  },
+  "43113": {
+   "name": "청주시",
+   "employees": 59416,
+   "parks": 9
+  },
+  "43114": {
+   "name": "청주시",
+   "employees": 59416,
+   "parks": 9
+  },
+  "43130": {
+   "name": "충주시",
+   "employees": 13232,
+   "parks": 8
+  },
+  "43150": {
+   "name": "제천시",
+   "employees": 5928,
+   "parks": 3
+  },
+  "43720": {
+   "name": "보은군",
+   "employees": 678,
+   "parks": 1
+  },
+  "43730": {
+   "name": "옥천군",
+   "employees": 191,
+   "parks": 2
+  },
+  "43740": {
+   "name": "영동군",
+   "employees": 576,
+   "parks": 1
+  },
+  "43745": {
+   "name": "증평군",
+   "employees": 1597,
+   "parks": 2
+  },
+  "43750": {
+   "name": "진천군",
+   "employees": 9472,
+   "parks": 8
+  },
+  "43760": {
+   "name": "괴산군",
+   "employees": 2364,
+   "parks": 4
+  },
+  "43770": {
+   "name": "음성군",
+   "employees": 15203,
+   "parks": 13
+  },
+  "43800": {
+   "name": "단양군",
+   "employees": 189,
+   "parks": 1
+  },
+  "44131": {
+   "name": "천안시",
+   "employees": 33322,
+   "parks": 10
+  },
+  "44133": {
+   "name": "천안시",
+   "employees": 33322,
+   "parks": 10
+  },
+  "44150": {
+   "name": "공주시",
+   "employees": 1208,
+   "parks": 3
+  },
+  "44180": {
+   "name": "보령시",
+   "employees": 1931,
+   "parks": 2
+  },
+  "44200": {
+   "name": "아산시",
+   "employees": 30532,
+   "parks": 10
+  },
+  "44210": {
+   "name": "서산시",
+   "employees": 10286,
+   "parks": 7
+  },
+  "44230": {
+   "name": "논산시",
+   "employees": 1963,
+   "parks": 3
+  },
+  "44250": {
+   "name": "계룡시",
+   "employees": 619,
+   "parks": 1
+  },
+  "44270": {
+   "name": "당진시",
+   "employees": 4615,
+   "parks": 5
+  },
+  "44800": {
+   "name": "홍성군",
+   "employees": 643,
+   "parks": 1
+  },
+  "44810": {
+   "name": "예산군",
+   "employees": 4080,
+   "parks": 3
+  },
+  "46110": {
+   "name": "목포시",
+   "employees": 2115,
+   "parks": 3
+  },
+  "46130": {
+   "name": "여수시",
+   "employees": 6119,
+   "parks": 2
+  },
+  "46150": {
+   "name": "순천시",
+   "employees": 2017,
+   "parks": 3
+  },
+  "46170": {
+   "name": "나주시",
+   "employees": 2820,
+   "parks": 4
+  },
+  "46230": {
+   "name": "광양시",
+   "employees": 1165,
+   "parks": 3
+  },
+  "46710": {
+   "name": "담양군",
+   "employees": 840,
+   "parks": 1
+  },
+  "46790": {
+   "name": "화순군",
+   "employees": 595,
+   "parks": 1
+  },
+  "46800": {
+   "name": "장흥군",
+   "employees": 642,
+   "parks": 1
+  },
+  "46810": {
+   "name": "강진군",
+   "employees": 89,
+   "parks": 1
+  },
+  "46860": {
+   "name": "함평군",
+   "employees": 323,
+   "parks": 1
+  },
+  "46870": {
+   "name": "영광군",
+   "employees": 540,
+   "parks": 1
+  },
+  "46880": {
+   "name": "장성군",
+   "employees": 1858,
+   "parks": 1
+  },
+  "47111": {
+   "name": "포항시",
+   "employees": 3839,
+   "parks": 6
+  },
+  "47113": {
+   "name": "포항시",
+   "employees": 3839,
+   "parks": 6
+  },
+  "47130": {
+   "name": "경주시",
+   "employees": 10939,
+   "parks": 17
+  },
+  "47150": {
+   "name": "김천시",
+   "employees": 3457,
+   "parks": 2
+  },
+  "47170": {
+   "name": "안동시",
+   "employees": 1032,
+   "parks": 1
+  },
+  "47210": {
+   "name": "영주시",
+   "employees": 1156,
+   "parks": 4
+  },
+  "47230": {
+   "name": "영천시",
+   "employees": 2430,
+   "parks": 1
+  },
+  "47250": {
+   "name": "상주시",
+   "employees": 396,
+   "parks": 2
+  },
+  "47280": {
+   "name": "문경시",
+   "employees": 426,
+   "parks": 2
+  },
+  "47290": {
+   "name": "경산시",
+   "employees": 15133,
+   "parks": 4
+  },
+  "47830": {
+   "name": "고령군",
+   "employees": 3895,
+   "parks": 4
+  },
+  "47840": {
+   "name": "성주군",
+   "employees": 2174,
+   "parks": 3
+  },
+  "47850": {
+   "name": "칠곡군",
+   "employees": 9004,
+   "parks": 4
+  },
+  "48121": {
+   "name": "창원시",
+   "employees": 7314,
+   "parks": 10
+  },
+  "48123": {
+   "name": "창원시",
+   "employees": 7314,
+   "parks": 10
+  },
+  "48125": {
+   "name": "창원시",
+   "employees": 7314,
+   "parks": 10
+  },
+  "48127": {
+   "name": "창원시",
+   "employees": 7314,
+   "parks": 10
+  },
+  "48129": {
+   "name": "창원시",
+   "employees": 7314,
+   "parks": 10
+  },
+  "48170": {
+   "name": "진주시",
+   "employees": 9890,
+   "parks": 4
+  },
+  "48240": {
+   "name": "사천시",
+   "employees": 12291,
+   "parks": 5
+  },
+  "48250": {
+   "name": "김해시",
+   "employees": 11985,
+   "parks": 10
+  },
+  "48270": {
+   "name": "밀양시",
+   "employees": 2435,
+   "parks": 3
+  },
+  "48310": {
+   "name": "거제시",
+   "employees": 324,
+   "parks": 1
+  },
+  "48330": {
+   "name": "양산시",
+   "employees": 23215,
+   "parks": 9
+  },
+  "48730": {
+   "name": "함안군",
+   "employees": 7976,
+   "parks": 7
+  },
+  "48740": {
+   "name": "창녕군",
+   "employees": 968,
+   "parks": 1
+  },
+  "48820": {
+   "name": "고성군",
+   "employees": 138,
+   "parks": 1
+  },
+  "48860": {
+   "name": "산청군",
+   "employees": 70,
+   "parks": 1
+  },
+  "48880": {
+   "name": "거창군",
+   "employees": 776,
+   "parks": 1
+  },
+  "50110": {
+   "name": "제주시",
+   "employees": 184,
+   "parks": 1
+  },
+  "51110": {
+   "name": "춘천시",
+   "employees": 2498,
+   "parks": 4
+  },
+  "51130": {
+   "name": "원주시",
+   "employees": 4357,
+   "parks": 6
+  },
+  "51150": {
+   "name": "강릉시",
+   "employees": 2261,
+   "parks": 2
+  },
+  "51190": {
+   "name": "태백시",
+   "employees": 25,
+   "parks": 1
+  },
+  "51730": {
+   "name": "횡성군",
+   "employees": 856,
+   "parks": 1
+  },
+  "52111": {
+   "name": "전주시",
+   "employees": 5434,
+   "parks": 5
+  },
+  "52113": {
+   "name": "전주시",
+   "employees": 5434,
+   "parks": 5
+  },
+  "52130": {
+   "name": "군산시",
+   "employees": 4874,
+   "parks": 1
+  },
+  "52140": {
+   "name": "익산시",
+   "employees": 12524,
+   "parks": 4
+  },
+  "52180": {
+   "name": "정읍시",
+   "employees": 4470,
+   "parks": 4
+  },
+  "52190": {
+   "name": "남원시",
+   "employees": 36,
+   "parks": 1
+  },
+  "52210": {
+   "name": "김제시",
+   "employees": 3573,
+   "parks": 3
+  },
+  "52710": {
+   "name": "완주군",
+   "employees": 19525,
+   "parks": 4
+  },
+  "52790": {
+   "name": "고창군",
+   "employees": 37,
+   "parks": 1
+  }
+ }
+}
