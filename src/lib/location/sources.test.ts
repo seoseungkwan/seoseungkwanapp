@@ -8,7 +8,7 @@ import { KEY_TEXT, LAW_BASIS, MISSING, SOURCE_GROUPS, SOURCES, VIA_TEXT, isLawId
 // 표준데이터 다섯(역사·사고 다발·경로당·전통시장·학교)은 조사가 기관 이름을 적지 않아 '공공데이터포털'로 적는다
 const PORTAL = {
   'pop-age': ['행정안전부', '15108072'],
-  household: ['행정안전부', '15108071'],
+  household: ['행정안전부', '15108065'],
   'apt-list': ['국토교통부', '15057332'],
   'apt-info': ['국토교통부', '15058453'],
   presale: ['한국부동산원', '15098547'],
@@ -198,8 +198,8 @@ describe('AC-7906.1 SOURCES — 출처 목록', () => {
     expect(sourceOf('rail-stations')?.name).toBe('전국도시철도역사정보표준데이터')
     // 승하차는 걷는 사람 수가 아니다(조사 4) — 왜 보나에 적는다
     expect(sourceOf('flow-volume')?.why).toContain('걷는 사람 수와 달라요')
-    // 버스 정류장 좌표 파일은 TAGO와 이어진 지자체만 있다(조사 2·4)
-    expect(sourceOf('bus-stops')?.unit).toContain('TAGO')
+    // 버스 정류장 좌표 파일은 국가대중교통정보센터와 이어진 지자체만 있다(조사 2·4, 화면 글은 영어 이름 대신 우리말 — TASK-63)
+    expect(sourceOf('bus-stops')?.unit).toContain('국가대중교통정보센터')
   })
 
   it('AC-7906.1·AC-7906.3: 심평원 자료(공공누리 1유형)는 이용 조건에 출처 문구가 있다', () => {
@@ -279,7 +279,9 @@ describe('AC-7906.1 SOURCES — 출처 목록', () => {
   })
 
   it("AC-7906.1·AC-7906.3: 묶음은 '근거와 출처' 표의 차례이고 줄마다 그 가운데 하나, 묶음마다 줄이 있다", () => {
-    expect(SOURCE_GROUPS).toEqual(['사는 사람·수요', '소득·쓸 힘', '경쟁 의원', '교통·흐름', '자리·건물·땅', '매물·개원 준비'])
+    // 묶음 이름은 requirements 승인 3 '묶음별 기관 표' 여섯 줄 그대로(경쟁 의원 묶음은 둘레 다른 과 의원도 같은 심평원 자료라 '경쟁 의원·다른 과 의원', TASK-63)
+    expect(SOURCE_GROUPS).toEqual(['사는 사람·수요', '소득·쓸 힘', '경쟁 의원·다른 과 의원', '교통·흐름', '자리·건물·땅', '매물·개원 준비'])
+    expect(sourceOf('hosp-list')?.group).toBe('경쟁 의원·다른 과 의원')
     for (const source of SOURCES) expect(SOURCE_GROUPS, source.id).toContain(source.group)
     for (const group of SOURCE_GROUPS) expect(SOURCES.some((s) => s.group === group), group).toBe(true)
   })
@@ -288,6 +290,26 @@ describe('AC-7906.1 SOURCES — 출처 목록', () => {
     for (const via of ['api', 'file', 'link', 'app', 'user'] as const) expect(VIA_TEXT[via].trim(), via).not.toBe('')
     expect(KEY_TEXT.data).toContain('공공데이터포털')
     expect(KEY_TEXT.kakao).toContain('카카오')
+  })
+
+  it("AC-7906.3·AC-7917.1: 열쇠 이름은 requirements '화면 글 기본값' 열쇠 상태 글 그대로다(카카오는 '장소 찾기 열쇠')", () => {
+    expect(KEY_TEXT).toEqual({ data: '공공데이터포털 열쇠', kakao: '카카오 장소 찾기 열쇠' })
+  })
+
+  it('AC-7906.1: 세대 수(household)는 행정안전부 행정동별(통반단위) 주민등록 인구 및 세대현황(15108065)이다', () => {
+    const source = sourceOf('household')
+    expect(source?.org).toBe('행정안전부')
+    expect(source?.name).toBe('행정동별(통반단위) 주민등록 인구 및 세대현황')
+    expect(source?.url).toBe('https://www.data.go.kr/data/15108065/openapi.do')
+    // 법정동 자료(15108071)는 쓰지 않는다
+    expect(allText(SOURCES)).not.toContain('15108071')
+  })
+
+  it('AC-7906.1·AC-7906.3: 진료비(nonpay) 줄은 체외충격파 항목 SZ084를 보고, 도수치료는 값이 있을 때만이라고 적는다', () => {
+    const source = sourceOf('nonpay')
+    expect(source?.unit).toContain('체외충격파 SZ084')
+    expect(source?.unit).toContain('도수치료는 있을 때만')
+    expect(source?.shows).toContain('도수치료 값(공개 자료에 있을 때만)')
   })
 
   it('AC-7906.1: sourceOf·isSourceId는 목록에 있는 id만 찾는다', () => {
@@ -435,5 +457,50 @@ describe('AC-7906.1 MISSING — 자료가 없는 것', () => {
     expect(item.id).toBe('dong-welfare')
     expect(item.instead).toContain('시군구 값만')
     expect(item.instead).toContain('넣지 않아요')
+  })
+})
+
+// AC-7917.1: 화면 글에 영어 낱말(사이트·도구 이름 등)이 없다. 된다: SGIS·TASIS·KTX·MRI·CT·km·PDF·A4 같은 이름·단위(m·km·㎡·km²).
+// SZ084는 심평원 체외충격파 항목 번호라 이름처럼 둔다(TASK-63이 nonpay 줄에 적으라 함). 주소(url)·id·받는 길(via)·열쇠(key)는 화면 글이 아니다
+const ALLOWED_LATIN = ['SGIS', 'TASIS', 'KTX', 'MRI', 'CT', 'km', 'm', 'PDF', 'A4', 'SZ084']
+const latinWords = (text: string) => (text.match(/[A-Za-z][A-Za-z0-9]*/g) ?? []).filter((w) => !ALLOWED_LATIN.includes(w))
+
+// 화면에 보이는 글: 출처(기관·자료·주기·단위·이용 조건·왜 보나·없을 때 글·화면 숫자) · 법 근거 · 없는 자료 · 열쇠·받는 길 · 묶음 이름
+const SHOWN: [string, string][] = [
+  ...SOURCES.flatMap((s) =>
+    (['org', 'name', 'cycle', 'unit', 'terms', 'why', 'noneText', 'shows'] as const).map((f): [string, string] => [`${s.id}.${f}`, s[f]]),
+  ),
+  ...LAW_BASIS.flatMap((l) => (['topic', 'law', 'article', 'summary', 'usedIn'] as const).map((f): [string, string] => [`law ${l.id}.${f}`, l[f]])),
+  ...MISSING.flatMap((m) => (['what', 'instead'] as const).map((f): [string, string] => [`missing ${m.id}.${f}`, m[f]])),
+  ...Object.entries(KEY_TEXT).map(([k, v]): [string, string] => [`KEY_TEXT.${k}`, v]),
+  ...Object.entries(VIA_TEXT).map(([k, v]): [string, string] => [`VIA_TEXT.${k}`, v]),
+  ...SOURCE_GROUPS.map((g): [string, string] => [`SOURCE_GROUPS ${g}`, g]),
+]
+
+describe('AC-7917.1 화면 글에 영어 낱말이 없다', () => {
+  it.each(SHOWN)('AC-7917.1: %s에 허용 목록 밖 로마자가 없다', (_where, text) => {
+    expect(latinWords(text)).toEqual([])
+  })
+
+  it('AC-7917.1: 허용 목록 검사는 영어 낱말을 잡고, 이름·단위는 지나간다(검사 자체 확인)', () => {
+    expect(latinWords('하루 API마다 · 웹 SDK · robots.txt · EPSG:5174 · K-apt')).toEqual(['API', 'SDK', 'robots', 'txt', 'EPSG', 'K', 'apt'])
+    expect(latinWords('SGIS 경계 · KTX · MRI·CT · 300m~3km · 1.5㎡ · km² · A4 · PDF · TASIS · SZ084')).toEqual([])
+  })
+
+  it('AC-7917.1: 영어 이름은 우리말로 — 건축물대장·공동주택관리정보시스템·필지 번호·옛 좌표계·국가대중교통정보센터·정류장 번호·웹 지도·사이트가 막아 둠', () => {
+    const building = sourceOf('building')
+    expect(building?.name).toBe('건축물대장정보 서비스')
+    // 출처 줄은 '{기관} {자료}'
+    expect(`${building?.org} ${building?.name}`).toBe('국토교통부 건축물대장정보 서비스')
+    expect(sourceOf('apt-info')?.unit).toContain('공동주택관리정보시스템')
+    expect(sourceOf('land')?.unit).toContain('필지 번호 19자리')
+    expect(sourceOf('gym')?.unit).toContain('옛 좌표계')
+    expect(sourceOf('clinic-license')?.unit).toContain('옛 좌표계')
+    expect(sourceOf('bus-stops')?.unit).toContain('국가대중교통정보센터')
+    expect(sourceOf('bus-stops')?.unit).toContain('정류장 번호')
+    expect(sourceOf('flow-bus')?.unit).toContain('정류장 번호')
+    expect(sourceOf('kakao-map')?.terms).toContain('웹 지도')
+    expect(sourceOf('kakao-local')?.terms).toContain('자료마다 하루 100,000건')
+    expect(sourceOf('naver')?.terms).toContain('사이트가 막아 둠')
   })
 })

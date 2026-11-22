@@ -1378,10 +1378,7 @@ const LOCATION = {
     what: '지도를 불러오지 못했어요',
     fix: '카카오 개발자 화면에 이 사이트 주소가 등록됐는지, 지도 열쇠가 맞는지 확인해 주세요. 숫자는 지도 없이도 볼 수 있어요.',
   },
-  'E-LOC-PHOTO': {
-    what: '사진을 올리지 못했어요',
-    fix: 'JPEG·PNG·WEBP 사진만, 후보마다 30장까지 올릴 수 있어요. 잠시 뒤 다시 올려 주세요.',
-  },
+  'E-LOC-PHOTO': { what: '사진을 올리지 못했어요', fix: '사진 파일만, 후보마다 30장까지 올릴 수 있어요. 잠시 뒤 다시 올려 주세요.' },
 } as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
 
 describe('AC-7917.3 입지 분석 오류 번호 다섯', () => {
@@ -1402,6 +1399,14 @@ describe('AC-7917.3 입지 분석 오류 번호 다섯', () => {
     expect(errorInfo('E-LOC-SOURCE').fix).toContain('지난 값을 그대로')
     expect(errorInfo('E-LOC-MAP').fix).toContain('숫자는 지도 없이도')
     expect(errorInfo('E-LOC-PHOTO').fix).toContain('30장까지')
+  })
+
+  it('AC-7917.1·AC-7917.3: E-LOC- 다섯 글(무엇이·어떻게 고치나)에 영어 낱말이 없다(사진 글은 파일 형식 이름 대신 사진 파일만)', () => {
+    for (const code of Object.keys(LOCATION) as Array<keyof typeof LOCATION>) {
+      const { what, fix } = errorInfo(code)
+      expect(`${what} ${fix}`.match(/[A-Za-z]+/g), code).toBeNull()
+    }
+    expect(errorInfo('E-LOC-PHOTO').fix.startsWith('사진 파일만,')).toBe(true)
   })
 
   // vitest는 타입을 보지 않는다 → 타입 파일 글자로 본다(AC-3507.5와 같은 방법)
