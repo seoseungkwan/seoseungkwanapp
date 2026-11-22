@@ -5,7 +5,7 @@
 
 // SOURCES(lib/location/sources.ts)의 id. 두 파일을 같은 Phase에 따로 만들려고 글자로 둔다(SOURCES에 있는 id인지는 시험이 본다)
 export type SourceId = string
-// 열쇠 종류: 공공데이터포털(DATA_GO_KR_KEY) · 카카오 REST(KAKAO_REST_KEY). 둘 다 서버 환경 변수에만 있다(ADR-045)
+// 열쇠 종류: 공공데이터포털(DATA_GO_KR_KEY) · 카카오 REST(KAKAO_REST_KEY). 둘 다 서버 환경 변수에만 있다(ADR-043)
 export type KeyKind = 'data' | 'kakao'
 // GET /api/ai/location/keys 답의 열쇠 하나: 됨 · 비었음 · 거절(401·403·미등록 열쇠) · 확인 못 함
 export type KeyState = 'ok' | 'missing' | 'rejected' | 'failed'

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import nextConfig from '../next.config'
 import { buildCsp } from './lib/csp'
 
-// 입지 분석(/location)만 카카오 지도 CSP·Referrer를 넓힌다(specs/location REQ-7916 AC-7916.2, design.md 13절, ADR-046).
+// 입지 분석(/location)만 카카오 지도 CSP·Referrer를 넓힌다(specs/location REQ-7916 AC-7916.2, design.md 13절, ADR-044).
 // next.config.ts headers()를 불러, Next가 하듯 경로에 맞는 줄을 차례대로 적용해 본다(같은 이름 머리는 뒤 줄이 덮는다).
 // 줄 맞추기는 Next 자신의 path-to-regexp 맞추기(getPathMatch, Next 서버와 같은 strict)로 한다. 끝 '/'는 Next가 먼저 떼어 넘기므로 보지 않는다
 

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { KakaoMaps, KakaoWindow } from './kakao'
 
-// 카카오 지도 SDK 불러오기(specs/location REQ-7916 AC-7916.1, design.md 13절, ADR-046).
+// 카카오 지도 SDK 불러오기(specs/location REQ-7916 AC-7916.1, design.md 13절, ADR-044).
 // 지도를 그리는 부품이 처음 쓸 때 한 번만 <script src=…sdk.js?appkey=…&autoload=false>를 넣고 kakao.maps.load를 기다린다.
 // 열쇠가 비면 넣지 않는다. 받기 실패·지도 본체가 끝내 안 옴(CSP에 막힘 등)은 failed → 부품이 E-LOC-MAP을 그린다.
 // 같은 페이지 안 여러 부품(지도·하늘 사진·로드뷰)은 같은 약속(promise)을 나눠 쓴다. 실패한 script는 지워 다음에 다시 부를 수 있게 한다
@@ -14,7 +14,7 @@ const SDK_BASE = 'https://dapi.kakao.com/v2/maps/sdk.js'
 export const sdkUrl = (key: string) => `${SDK_BASE}?appkey=${encodeURIComponent(key)}&autoload=false`
 
 /**
- * 지도 JavaScript 키(사이트 잠금된 공개 키, 비밀값 아님 — ADR-046). 빌드 때 글자로 들어간다:
+ * 지도 JavaScript 키(사이트 잠금된 공개 키, 비밀값 아님 — ADR-044). 빌드 때 글자로 들어간다:
  * Next는 process.env.NEXT_PUBLIC_KAKAO_MAP_KEY를 통째로 적은 곳만 바꿔 넣으므로 이 모양 그대로 둔다
  */
 const mapKey = () => (process.env.NEXT_PUBLIC_KAKAO_MAP_KEY ?? '').trim()

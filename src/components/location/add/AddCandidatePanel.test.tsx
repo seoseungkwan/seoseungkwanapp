@@ -5,7 +5,7 @@ import type { Point } from '@/types/location'
 import { AddCandidatePanel, type AddCandidatePanelProps, type AddListing, type AddressFind, type AddressHit, type CandidateDraft, type SpotFind } from './AddCandidatePanel'
 import { RADII } from './addDraft'
 
-// 후보 더하기 판(spec location REQ-7908 AC-7908.1·AC-7908.2, design.md 6·14절, ADR-047, 시안 docs/mockups/location/index.html ?s=add).
+// 후보 더하기 판(spec location REQ-7908 AC-7908.1·AC-7908.2, design.md 6·14절, ADR-045, 시안 docs/mockups/location/index.html ?s=add).
 // 세 길(주소로 찾기 결과 고르기 · 지도 찍기 · 붙여 넣은 매물 고르기)로 점을 정하고 이름(1~40자)·범위(일곱 값, 기본 1,000m)를 정해 저장 콜백을 부른다.
 // 저장 몸통에는 사용자가 고른 점·적은 이름·적은 주소 글만 있고 카카오에서 받은 주소 글은 없다.
 // 카카오 지도는 흉내 낸다(찍기 단추 하나). 이름·주소는 모두 지어낸 값
@@ -382,7 +382,7 @@ describe('AC-7908.1: 살필 범위 일곱 값(기본 1,000m)', () => {
   })
 })
 
-describe('AC-7908.2: 저장 몸통에 카카오 주소 글이 없다(ADR-047)', () => {
+describe('AC-7908.2: 저장 몸통에 카카오 주소 글이 없다(ADR-045)', () => {
   it('AC-7908.2: 주소로 찾기 — 몸통은 정해 둔 칸 여덟뿐이고 카카오 도로명·지번 글이 어디에도 없다(적은 주소 글만)', async () => {
     const { onSave } = setup()
     await findAddress('가람로 123')

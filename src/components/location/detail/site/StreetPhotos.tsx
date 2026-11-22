@@ -8,7 +8,7 @@ import { Picks, Section, type HeadProp, type HowProp } from './parts'
 
 // 후보 자세히 › 거리 사진(specs/location AC-7909.5, 시안 ?s=candidate 'photo' 묶음).
 // 왼쪽 로드뷰(그 점 50m 안 가장 가까운 거리 사진, map/Roadview) · 오른쪽 하늘 사진(map/KakaoMap 하늘 사진 보기, 후보 표시) · 출처 줄 · 간판 보임 고르기.
-// 카카오 것(사진·지도)은 열 때마다 새로 받고 저장하지 않는다(ADR-047). 저장하는 것은 사용자가 고른 간판 보임뿐 — 콜백(onSign)으로 넘긴다
+// 카카오 것(사진·지도)은 열 때마다 새로 받고 저장하지 않는다(ADR-045). 저장하는 것은 사용자가 고른 간판 보임뿐 — 콜백(onSign)으로 넘긴다
 
 export type StreetPhotosProps = HeadProp & HowProp & {
   /** 후보 점(사용자가 고른 점) */

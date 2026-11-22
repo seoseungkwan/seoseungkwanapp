@@ -40,7 +40,7 @@ import { SNAPSHOT_KEYS, placeAddr } from './snapshot'
 //   collect(점, 범위, deps)   → 후보 그날 값(Snapshot 24칸). 저장 전에 mergeSnapshot(새 값, 옛 값) → fitSnapshot으로 줄인다(snapshot.ts)
 //   collectScan(시군구, deps) → 동네 훑기 동마다 '훑기 ○' 세부 값(score.ts ScoreFacts). 저장하지 않는다
 // 의원은 과목 고르기(deps.deptRule, 없으면 처음 값)를 따른다: 안 보기가 아닌 과목을 모두 부르고, 경쟁 과목 의원만 상세·진료 시간·비급여를 붙인다.
-// 카카오 답은 그날 값에 넣지 않는다(ADR-047): k-point는 범위 법정동 코드·이름과 후보 지번(건축물대장 열쇠)을 알려고만 부르고
+// 카카오 답은 그날 값에 넣지 않는다(ADR-045): k-point는 범위 법정동 코드·이름과 후보 지번(건축물대장 열쇠)을 알려고만 부르고
 // 주소 글·좌표는 버린다. 장소 찾기(k-near·k-keyword)·주소 찾기(k-address)는 부르지 않는다(화면이 볼 때 부른다).
 // 그날 값의 좌표는 심평원 의원 좌표와 좌표 파일의 역 좌표뿐이고, 행정동 이름은 동 경계 파일에서 센다(공공 자료).
 // 실패는 그 칸만 { ok: false, why }다: 열쇠 없음·활용신청 안 됨·바깥 실패는 답 코드 그대로, 던진 오류·틀린 답 모양은 failed,
@@ -171,7 +171,7 @@ function hasPhrase(text: string, phrase: string): boolean {
 const lastWord = (s: string) => words(s).at(-1) ?? ''
 
 /** 카카오 지번 주소 글 → 법정동(리) 이름: 끝의 번지·'산'을 떼고 남은 끝 낱말이 동·리·가·로로 끝나면 그것. 주소 글은 버린다.
- * 실거래·입주 예정을 범위 법정동으로 거르는 데만 쓰고 그날 값에는 넣지 않는다(아파트 법정동 이름은 단지 목록 답의 공공 값, ADR-047) */
+ * 실거래·입주 예정을 범위 법정동으로 거르는 데만 쓰고 그날 값에는 넣지 않는다(아파트 법정동 이름은 단지 목록 답의 공공 값, ADR-045) */
 function bdongNameOf(jibun: string | null): string | null {
   const parts = words(jibun ?? '')
   while (parts.length > 0 && /^(?:산|산?\d+(?:-\d+)?)$/.test(parts[parts.length - 1])) parts.pop()
@@ -923,7 +923,7 @@ export async function collect(point: Point, radiusM: number, deps: CollectDeps):
     bizPrice: trades('biz-trade'),
 
     // 아파트: 범위 법정동마다 단지 목록 → 단지마다 기본 정보(가까운 법정동부터 60곳까지). 세대 수가 없는 단지는 거른다.
-    // 법정동 이름은 단지 목록 답의 읍면동 이름(공공 값) — 카카오 지번 글에서 뗀 이름은 넣지 않는다(ADR-047)
+    // 법정동 이름은 단지 목록 답의 읍면동 이름(공공 값) — 카카오 지번 글에서 뗀 이름은 넣지 않는다(ADR-045)
     apts: async () => {
       const ld = await bdongs()
       if (!ld.ok) return ld

@@ -1,7 +1,7 @@
 import 'server-only'
 import type { KeyKind, SiteRequest, SourceFail } from '@/types/location'
 
-// 입지 분석 바깥 부르기 규칙(specs/location design.md 3절, ADR-045, AC-7903.3·AC-7903.4·AC-7922.2).
+// 입지 분석 바깥 부르기 규칙(specs/location design.md 3절, ADR-043, AC-7903.3·AC-7903.4·AC-7922.2).
 // 정해 둔 host만(열쇠 종류와 맞는 host) · https · GET · 돌려보내기 안 따라감(redirect: 'error') · 시간 한도(기본 8초, 읽는 곳의 timeoutMs —
 // 최대 60초) · 2,000,000바이트 · 브라우저 모양 UA · 쿠키·캐시 없음. 열쇠는 여기서만 싣는다: 카카오는 Authorization: KakaoAK <열쇠>,
 // 공공은 serviceKey=<디코딩 열쇠>(URLSearchParams가 인코딩). 공공 열쇠의 401·403 답은 몸통(같은 한도)을 읽어 미등록 열쇠 답이면 not-applied.

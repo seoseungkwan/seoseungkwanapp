@@ -1,6 +1,6 @@
 import type { Point, RadiusM } from '@/types/location'
 
-// 후보 더하기 판의 저장 몸통 만들기(spec location AC-7908.1·AC-7908.2, design.md 6·7절, ADR-047). 순수 함수만.
+// 후보 더하기 판의 저장 몸통 만들기(spec location AC-7908.1·AC-7908.2, design.md 6·7절, ADR-045). 순수 함수만.
 // 몸통 칸은 사용자가 고른 점 · 적은 이름 · 적은 주소 글 · 범위 · 적은 층 · 메모 · 고른 매물 id뿐이다.
 // 카카오에서 받은 주소 글은 이 파일로 들어오지 않는다(판이 점만 넘긴다) — 시험이 이 파일 글자로 본다
 
@@ -17,7 +17,7 @@ export const MEMO_MAX = 500
 export const QUERY_MIN = 2
 export const QUERY_MAX = 100
 
-/** 저장 콜백에 넘기는 몸통(ADR-047 — 카카오 글 없음). memo가 빈칸이 아니면 부르는 쪽이 그날 메모 한 줄로 저장한다 */
+/** 저장 콜백에 넘기는 몸통(ADR-045 — 카카오 글 없음). memo가 빈칸이 아니면 부르는 쪽이 그날 메모 한 줄로 저장한다 */
 export type CandidateDraft = {
   name: string
   addressNote: string

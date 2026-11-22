@@ -6,7 +6,7 @@ import { ExtIcon, LINK_BUTTON, Section, type HeadProp, type HowProp } from './pa
 
 // 후보 자세히 › 땅 쓰임·계획(specs/location AC-7909.4, 시안 ?s=candidate 'land' 묶음, 글은 requirements '화면 글 기본값').
 // 땅 쓰임(용도지역)·지구단위계획·도로 계획·재개발은 받아 오지 않고, 그 필지(PNU 19자리)의 토지이음 화면을 새 창으로 연다.
-// 필지 번호는 카카오 좌표→주소(k-point)에서 열 때마다 만든다(저장 안 함, ADR-047) — 부르는 쪽이 넘긴다. props만 받는다
+// 필지 번호는 카카오 좌표→주소(k-point)에서 열 때마다 만든다(저장 안 함, ADR-045) — 부르는 쪽이 넘긴다. props만 받는다
 
 export type LandUseProps = HeadProp & HowProp & {
   /** 후보 필지 번호(PNU 19자리). undefined = 아직 찾는 중, null = 만들지 못함(그 자리에 SOURCES 없음 글) */

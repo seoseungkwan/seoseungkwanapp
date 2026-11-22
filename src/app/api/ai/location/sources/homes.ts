@@ -50,7 +50,7 @@ export const PRESALE_MERGED: Readonly<Record<string, readonly string[]>> = { 전
 const areasOf = (sidoName: string): readonly string[] =>
   Object.hasOwn(PRESALE_MERGED, sidoName) ? PRESALE_MERGED[sidoName] : [areaOf(sidoName)]
 
-/** bdongName = 단지 목록 답의 읍면동 이름(as3, 리가 있으면 'as3 as4') — 그날 값 apts의 법정동 이름은 이 공공 값만 쓴다(ADR-047) */
+/** bdongName = 단지 목록 답의 읍면동 이름(as3, 리가 있으면 'as3 as4') — 그날 값 apts의 법정동 이름은 이 공공 값만 쓴다(ADR-045) */
 export type Complex = { code: string; name: string; bdongName: string }
 export type AptList = { complexes: Complex[]; capped: boolean }
 /** 단지 기본 정보. 그 단지 자료가 없으면(빈 답) null */

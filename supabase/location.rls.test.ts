@@ -543,7 +543,7 @@ afterAll(async () => {
 beforeEach(resetData)
 
 describe('AC-7902.1 파일', SLOW, () => {
-  it('AC-7902.1: 파일이 있고 줄 끝이 LF이며, 머리 주석에 붙여 넣는 방법·먼저 들어갈 파일(주소록 포함)·두 번 붙여도 된다는 말·사이트보다 먼저·바구니 Private 확인·ADR-045~047가 있다', () => {
+  it('AC-7902.1: 파일이 있고 줄 끝이 LF이며, 머리 주석에 붙여 넣는 방법·먼저 들어갈 파일(주소록 포함)·두 번 붙여도 된다는 말·사이트보다 먼저·바구니 Private 확인·ADR-043~045가 있다', () => {
     expect(LOCATION_MIGRATION).not.toBe('')
     expect(LOCATION_MIGRATION).not.toContain('\r')
     const lines = LOCATION_MIGRATION.split('\n')
@@ -557,7 +557,7 @@ describe('AC-7902.1 파일', SLOW, () => {
       '이 파일을 먼저 붙여 넣고 그다음 사이트에 올린다',
       'location-photos',
       'Private',
-      'ADR-045~047',
+      'ADR-043~045',
       '카카오',
       'location_dept_rule_ok',
       'dept_rule',

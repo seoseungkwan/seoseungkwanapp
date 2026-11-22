@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
   async headers() {
     const isDev = process.env.NODE_ENV === 'development'
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
-    // 입지 분석(/location·/location/…)만 카카오 지도 origin을 더한 CSP와, 카카오가 사이트를 알아보게 사이트 이름만 보내는 Referrer(ADR-046).
+    // 입지 분석(/location·/location/…)만 카카오 지도 origin을 더한 CSP와, 카카오가 사이트를 알아보게 사이트 이름만 보내는 Referrer(ADR-044).
     // 전체 줄 뒤에 둔다 — Next는 같은 이름 머리를 뒤 줄로 덮는다. nosniff·DENY는 전체 줄 그대로
     const location = [
       { key: 'Content-Security-Policy', value: buildCsp(isDev, supabaseUrl, { kakao: true }) },

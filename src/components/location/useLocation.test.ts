@@ -31,7 +31,7 @@ import { CAND_ID, makeCandidate, makeListing, makeSnapshot, OTHER_LISTING, TODAY
 import { DONGS, INDEX, scanData } from './scan/scanData.test.data'
 import { usePhotoUrls, useLocation } from './useLocation'
 
-// 입지 분석 잇기(spec location TASK-44 · REQ-7908·REQ-7917·REQ-7919, design.md 6·12·14절, ADR-047).
+// 입지 분석 잇기(spec location TASK-44 · REQ-7908·REQ-7917·REQ-7919, design.md 6·12·14절, ADR-045).
 // 저장 함수·주소록 저장·부르기(clients)·supabaseBrowser는 흉내 낸다(실제 Supabase·바깥 사이트를 부르지 않는다).
 // 모으기(collect·collectScan)와 그날 값 합치기(mergeSnapshot·fitSnapshot)는 진짜 함수를 그대로 돌리고 부른 값만 엿본다.
 // 이름·주소는 모두 지어낸 것이다. 오늘은 2026-11-22(한국)
@@ -248,7 +248,7 @@ describe('후보 더하기 · 그날 값 굳히기 (AC-7908.1 · AC-7908.2)', ()
     expect(body).toMatchObject({ name: '예시빌딩 2층', addressNote: '예시구 가람동', lat: 37.501, lng: 127.002, radiusM: 700 })
     expect(body.snapshot).toBe(vi.mocked(fitSnapshot).mock.results[0]!.value)
     expect(Object.keys(body.snapshot!).sort()).toEqual(['at', 'radiusM', 'v', ...SNAPSHOT_KEYS].sort())
-    // 모으기가 k-point를 불렀어도 카카오 주소 글·지번은 몸통 어디에도 없다(ADR-047)
+    // 모으기가 k-point를 불렀어도 카카오 주소 글·지번은 몸통 어디에도 없다(ADR-045)
     const text = JSON.stringify(body)
     for (const kakao of [ROAD, JIBUN, '예시온약국', '예시마트', '예시종합병원']) expect(text).not.toContain(kakao)
     expect(result.current.candidates.map((c) => c.id)).toEqual([CAND_ID, NEW_ID])

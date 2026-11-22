@@ -5,7 +5,7 @@ import { fetchSource, isNotRegistered, readKey, type SourceKey } from '../fetchS
 import { emptyReply, guardAdmin, jsonReply } from '../guard'
 import { REGISTRY } from '../registry'
 
-// POST /api/ai/location/query (specs/location REQ-7903, design.md 3·4절, ADR-045). 관리자 화면 대신 바깥 공개 자료를 부른다.
+// POST /api/ai/location/query (specs/location REQ-7903, design.md 3·4절, ADR-043). 관리자 화면 대신 바깥 공개 자료를 부른다.
 // 관리자 확인 → 몸통 검사 → 종류의 읽는 곳 → 열쇠(서버 환경 변수) → 요청을 동시에 2개씩 정해 둔 host로 → 답 읽기 → { ok, value, src, asOf }.
 // Claude는 부르지 않고, DB에 쓰지 않고, 아무것도 담아 두지 않는다(카카오 답 포함). 400·401·403·500은 몸통 없음, 나머지는 200 + 몸통.
 // 로그는 console.error('[api/ai/location]', 오류 번호, 종류) 한 줄만 — 좌표·주소·답 글자·열쇠는 남기지 않는다.

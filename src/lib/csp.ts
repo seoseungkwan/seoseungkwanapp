@@ -1,6 +1,6 @@
 import { supabaseOrigin } from './supabase/env'
 
-// 입지 분석(/location)만 더하는 카카오 지도 origin(specs/location design.md 13절 처음 목록, ADR-046). 와일드카드 없이 하나씩 적는다.
+// 입지 분석(/location)만 더하는 카카오 지도 origin(specs/location design.md 13절 처음 목록, ADR-044). 와일드카드 없이 하나씩 적는다.
 // 지도·하늘 사진·로드뷰가 실제로 부르는 곳은 브라우저 CSP 위반 기록으로 확인해 맞춘다(requirements '확인할 것' 7, TASK-47·48).
 // TASK-48 진짜 브라우저 확인: 지금 지도 본체는 daumcdn.net이 아니라 kakaocdn.net에서 오고, 로드뷰는 rv.map.kakao.com을 부른다 → 하나씩 더함(옛 daumcdn 줄은 그대로)
 const KAKAO: Record<'script-src' | 'img-src' | 'connect-src', string[]> = {

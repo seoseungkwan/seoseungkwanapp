@@ -2,7 +2,7 @@ import type { Got, Rival, RivalsGot, Snapshot, SnapshotKey, SnapshotValue } from
 import { DEPTS } from './depts'
 
 // 그날 값(specs/location design.md 6절, REQ-7908·7922): 모양 검사 · 크기 줄이기 · 다시 받은 값으로 덮기 · 의료급여 비율.
-// 순수 함수만 둔다(부르기·저장·console 없음). 그날 값은 공공 자료로 만든 숫자와 공공 자료의 좌표·이름뿐이다 — 카카오 답은 넣지 않는다(ADR-047).
+// 순수 함수만 둔다(부르기·저장·console 없음). 그날 값은 공공 자료로 만든 숫자와 공공 자료의 좌표·이름뿐이다 — 카카오 답은 넣지 않는다(ADR-045).
 // 그래서 모양 검사는 정해 둔 칸만 받는다(칸이 더 있으면 틀린 모양): 다른 자료가 몰래 섞여 저장되지 않게.
 // 점수 값 꺼내기는 lib/location/facts.ts scoreFactsOf 한 곳이 한다(TASK-59)
 

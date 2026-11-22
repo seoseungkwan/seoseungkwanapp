@@ -4,7 +4,7 @@ import { distM } from './coords'
 import { DEFAULT_DEPT_RULE, deptOfText } from './depts'
 import { placeAddr } from './snapshot'
 
-// 새 경쟁 의원 알림 판정(design.md 12절). 관리자가 대시보드를 열 때 브라우저가 부른다(Cron 아님, ADR-045).
+// 새 경쟁 의원 알림 판정(design.md 12절). 관리자가 대시보드를 열 때 브라우저가 부른다(Cron 아님, ADR-043).
 // 오늘은 부르는 쪽이 한국 날짜(todayInKorea)로 넘긴다 — 시계를 읽지 않는다.
 // 경쟁 의원 = 인허가 줄의 대표 과목(depts.ts deptOfText)이 설정(location_settings.dept_rule)의 경쟁 과목인 의원(design.md 18절).
 // 후보·인허가·알림 줄 모양은 types/location.ts 한 곳이다(예전 import 길을 위해 여기서도 내보낸다)

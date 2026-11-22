@@ -4,7 +4,7 @@ import type { Adapter, Parsed, Point, QueryOf, SiteRequest } from '@/types/locat
 
 // 카카오 로컬 읽는 곳(specs/location REQ-7904, design.md 4절): 주소 찾기 k-address · 좌표→주소·지역 코드 k-point ·
 // 카테고리 장소 k-near · 키워드 장소 k-keyword(산업단지). 요청 만들기·답 읽기만 하는 순수 함수다 — 열쇠는 fetchSource가
-// Authorization 머리로 넣고, 받은 답은 어디에도 담아 두지 않는다(ADR-047, 카카오 운영정책 제5조). 그날 값에도 넣지 않는다.
+// Authorization 머리로 넣고, 받은 답은 어디에도 담아 두지 않는다(ADR-045, 카카오 운영정책 제5조). 그날 값에도 넣지 않는다.
 // 카카오에는 활용신청이 없어 not-applied를 쓰지 않는다 — 오류 몸통·모양이 다른 답은 모두 failed다. 기준 날짜는 받은 한국 날짜
 
 const BASE = 'https://dapi.kakao.com'
@@ -26,7 +26,7 @@ export type KakaoSpot = { road: string | null; jibun: string | null; bjd: string
 /** 장소 하나: 이름 · 카카오 분류 글 · 점 · 거리(m 정수) */
 export type KakaoPlace = { name: string; category: string; at: Point; distM: number }
 /** 카테고리 장소(k-near) 하나: + 도로명 주소 글(없거나 빈 글자면 null). 약국 같은 건물·옆 건물 견주기에 화면이 볼 때만 쓰고
- * 저장하지 않는다(design.md 18절, ADR-047) */
+ * 저장하지 않는다(design.md 18절, ADR-045) */
 export type KakaoNearPlace = KakaoPlace & { road: string | null }
 /** 가까운 차례 45곳까지. 더 있으면 capped(화면: '{n}곳 넘게 있어요. 가까운 {n}곳만 셌어요.') */
 export type KakaoPlaces<P extends KakaoPlace = KakaoPlace> = { places: P[]; capped: boolean }

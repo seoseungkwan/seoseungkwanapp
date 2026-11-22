@@ -16,7 +16,7 @@
    └ 지도: 카카오 지도 SDK(NEXT_PUBLIC_KAKAO_MAP_KEY) — /location 경로만 CSP·Referrer 넓힘
 [대시보드(관리자)] useLocationWatch → 30일 넘은 후보 → query clinic-license → location_events → 한 줄 알림
 ```
-- 서버 코드는 `src/app/api/ai/location/` 아래만 늘고, 새 파일 첫 줄은 `import 'server-only'`(boundary.test AC-513.2). Claude는 부르지 않는다(ADR-045).
+- 서버 코드는 `src/app/api/ai/location/` 아래만 늘고, 새 파일 첫 줄은 `import 'server-only'`(boundary.test AC-513.2). Claude는 부르지 않는다(ADR-043).
 - `src/lib/location/`은 순수 함수만 둔다(supabase·React·Next·fetch·브라우저 저장소·console 없음, `source.test.ts`가 소스 글자로 본다). 환자 자료 구역이 아니다(환자 자료 없음). 날짜는 `lib/analytics/dates.ts`만 부른다.
 
 ## 2. 파일
@@ -148,7 +148,7 @@ type Snapshot = { v: 1; at: string; radiusM: number
     stops: { name: string; distM: number; perDay: number }[]; total: number; unmatched: number }>     // 60개씩까지, unmatched = 좌표를 못 이은 정류장 수
   income: Got<{ sggName: string; won: number; year: number; sidoName: string | null; sidoWon: number | null }>  // sidoWon = income.json 시·도 평균(사용자 2026-11-23)
   aptPrice: Got<{ perM2: number; deals: number }>; bizPrice: Got<{ perM2: number; deals: number }>   // 지난 6달
-  apts: Got<{ name: string; households: number; builtYear: number | null; bdongName: string }[]>  // 60개까지 · bdongName은 공공 답(공동주택 단지 목록·기본 정보의 읍면동 이름)에서만 — 카카오 주소 글에서 떼지 않는다(ADR-047, 검토 2026-11-23)
+  apts: Got<{ name: string; households: number; builtYear: number | null; bdongName: string }[]>  // 60개까지 · bdongName은 공공 답(공동주택 단지 목록·기본 정보의 읍면동 이름)에서만 — 카카오 주소 글에서 떼지 않는다(ADR-045, 검토 2026-11-23)
   presale: Got<{ name: string; households: number; moveIn: string }[]>                              // 30개까지
   seniors: Got<number>; gyms: Got<number>; schools: Got<number>; accidents: Got<{ spots: number; cases: number }>
   industry: Got<{ sggName: string; employees: number; parks: number; quarter: string }>; pharmacies: Got<number>  // 약국 = 후보 30m 안(상가정보)
@@ -168,7 +168,7 @@ type Snapshot = { v: 1; at: string; radiusM: number
 ```
 - `snapshot.ts`: `checkSnapshot`(모양 — 새 칸 `place`·`sggAvg`·`Rival.at`·`Rival.detail`·`station.at`·`welfare.basis`도 본다) · `fitSnapshot`(65,536바이트 안: 목록을 뒤에서부터 줄임 — 의원 목록은 `detail`이 없는 먼 의원부터) · `mergeSnapshot(new, old)`(새로 실패한 칸은 옛 값을 `prev`로) · `welfareRate`(비율 셈 한 곳 — 화면 `detail/people`도 이것을 부른다). `snapshotFacts`는 지우고 `facts.ts` `scoreFactsOf` 하나로 센다(TASK-44가 화면을 이것으로 맞춤: 새 의원 기준은 개설 연도 `> 올해 − 3`, 경쟁 0곳이면 빈틈 칸 = 모든 칸).
 - 의원 목록 200곳: 그날 값 `rivals`에 `capped: true`가 있거나(바깥 답이 한도에 잘림·가까운 200곳으로 자름·저장 크기로 줄임 — TASK-81) 받은 목록이 200곳이면 화면(경쟁 의원·둘레 다른 과)이 `200곳 넘게 있을 수 있어요. 가까운 200곳만 셌어요.`를 붙인다. 동네 훑기(`collectScan`)는 잘림을 따로 보이지 않는다(알려진 한계). 경쟁 과목 의원(`detail` 있음)은 줄이지 않는다.
-- **저장하는 것**(ADR-047): 사용자가 고른 후보 점·적은 이름·적은 주소 글·범위 · 붙여 넣은 매물 · 메모 · 점검표·건물 요건(어떻게 알았나 글 포함)·위반 건축물·간판 고름 · 비용 · 무게 · 의원 과목 고르기 · 협상표·임대 조건 메모 · 일정 다 함 표시 · 사진 · 지금 의원 체외충격파 값 · 위 그날 값(공공 자료로 만든 숫자, 심평원 의원 좌표·주소, 좌표 파일의 역 좌표, 동 경계 파일의 행정동 이름) · 알림 줄(행안부 공공 자료).
+- **저장하는 것**(ADR-045): 사용자가 고른 후보 점·적은 이름·적은 주소 글·범위 · 붙여 넣은 매물 · 메모 · 점검표·건물 요건(어떻게 알았나 글 포함)·위반 건축물·간판 고름 · 비용 · 무게 · 의원 과목 고르기 · 협상표·임대 조건 메모 · 일정 다 함 표시 · 사진 · 지금 의원 체외충격파 값 · 위 그날 값(공공 자료로 만든 숫자, 심평원 의원 좌표·주소, 좌표 파일의 역 좌표, 동 경계 파일의 행정동 이름) · 알림 줄(행안부 공공 자료).
 - **저장하지 않는 것**: 카카오에서 받은 주소 글·좌표·장소 목록·거리·로드뷰·법정동 코드, 동네 훑기 결과, 보고서.
 
 ## 7. DB (`supabase/migrations/20261122000000_location.sql`, 사용자가 SQL Editor에 붙여 넣음)
@@ -294,9 +294,9 @@ type Snapshot = { v: 1; at: string; radiusM: number
 - 칸 글(`WhyLine`): `no-key` `{자료 이름}: 열쇠를 넣으면 보여요.`(카카오는 그 열쇠 이름) · `not-applied` `공공데이터포털에서 '{자료 이름}' 활용신청을 하면 보여요.` · `failed` `지금 받지 못했어요.` [다시 받기](옛 값이 있으면 `지난 값 · 기준 {날짜}`) · `none` `SOURCES.noneText` · `outside` `이 지역은 자료 없음` · `capped` `{n}곳 넘게 있어요. 가까운 {n}곳만 셌어요.`
 - 열쇠 없음 화면: `자료 열쇠를 넣으면 시작할 수 있어요` / `공공데이터포털 열쇠와 카카오 열쇠는 사이트 서버 설정에 넣어요. 넣기 어려우면 관리자에게 알려 주세요. 열쇠는 대화창이나 메신저에 붙이지 마세요.` / 열쇠 셋 줄(requirements '화면 글 기본값') / 알림 `자료 열쇠는 자료를 주는 사이트가 '이 앱이 받아 가도 돼요'라고 내어 주는 긴 비밀번호예요. 셋 다 무료예요. 이 화면에는 열쇠 넣는 칸이 없어요. 열쇠는 사이트 서버 설정에 넣고, 여기서는 넣었는지만 보여요.` / `열쇠 없이도 되는 것: 매물 붙여 넣기 · 진행 메모 · 개원 비용 계산.` 화면 글에는 영어 사이트·도구 이름을 쓰지 않는다. 지도 열쇠만 없음: `카카오 지도 열쇠를 넣으면 지도가 보여요. 숫자는 지도 없이도 볼 수 있어요.`
 
-## 16. ADR 글 (TASK-1이 `docs/ADR.md` 끝에 넣음. 다른 갈래가 먼저 042~044를 써서 2026-11-23 합칠 때 045~047로 바꿈)
+## 16. ADR 글 (TASK-1이 `docs/ADR.md` 끝에 넣음. 처음 042~044였는데 운영 갈래가 040~042를 먼저 써서 2026-11-23 합칠 때 043~045로 바꿈)
 
-### ADR-045: 입지 분석은 서버 경로가 바깥 공개 자료를 대신 부른다 (관리자만, Claude 아님)
+### ADR-043: 입지 분석은 서버 경로가 바깥 공개 자료를 대신 부른다 (관리자만, Claude 아님)
 **맥락**: 입지 분석(specs/location)은 공공데이터포털·카카오 로컬 자료가 필요하고 둘 다 열쇠가 있어야 한다. 열쇠를 브라우저에 두면 드러나고, 공공데이터포털은 브라우저 부르기(CORS)도 막는다. 서버 코드는 `app/api/ai/` 하나뿐이다(ADR-004).
 **결정** (호출한 쪽 설계 결정 + Claude 판단, 2026-11-22):
 - `POST /api/ai/location/query`·`GET /api/ai/location/keys` 두 경로를 `app/api/ai/location/` 아래 둔다. Claude는 부르지 않는다 — AI 폴더를 서버 코드 자리로 쓰는 예외다.
@@ -308,20 +308,20 @@ type Snapshot = { v: 1; at: string; radiusM: number
 **대안**: (1) 브라우저가 바로 부름 — 열쇠가 드러나고 CORS에 막힌다. (2) Cron — 세션이 없어 관리자 표를 못 읽는다 → 모으기 계정이 또 필요하다(ADR-036 같은 장치). (3) 카카오 JS SDK의 주소 찾기 — REST 열쇠를 서버에 두는 쪽으로 통일했다.
 **트레이드오프**: 대시보드를 한 달 넘게 안 열면 알림이 늦다. 바깥 응답 모양이 바뀌면 그 종류만 '못 받음'이고 코드를 고친다. 무료 한도(카카오 로컬 하루 10만 건, 공공데이터포털 자료마다 개발 1만 건)를 넘기면 그날은 못 받는다.
 
-### ADR-046: 카카오 지도 JavaScript 키는 `NEXT_PUBLIC_KAKAO_MAP_KEY`에 둔다 — 비밀값이 아니다. `/location`만 CSP·Referrer를 넓힌다
+### ADR-044: 카카오 지도 JavaScript 키는 `NEXT_PUBLIC_KAKAO_MAP_KEY`에 둔다 — 비밀값이 아니다. `/location`만 CSP·Referrer를 넓힌다
 **맥락**: CLAUDE.md는 `NEXT_PUBLIC_*`에 비밀값을 넣지 않게 한다. 카카오 지도 SDK는 브라우저가 주소에 `appkey=`로 키를 실어 부른다. 앱은 `Referrer-Policy: no-referrer`인데 카카오는 요청이 등록한 사이트에서 왔는지 본다.
 **결정**:
-- JavaScript 키는 카카오가 웹 페이지에 드러나도록 만든 키이고, 카카오 개발자 화면에 등록한 사이트(`https://seoseungkwanapp.vercel.app`, 개발 `http://localhost:3000`)에서 온 요청만 받는다. 그래서 비밀값이 아니라 공개 이름표로 보고 `NEXT_PUBLIC_KAKAO_MAP_KEY`에 둔다. 사이트 잠금이 없는 REST 키는 비밀값이라 서버에만 둔다(ADR-045). '비밀값을 NEXT_PUBLIC에 넣지 않는다' 규칙과 부딪히지 않는다.
+- JavaScript 키는 카카오가 웹 페이지에 드러나도록 만든 키이고, 카카오 개발자 화면에 등록한 사이트(`https://seoseungkwanapp.vercel.app`, 개발 `http://localhost:3000`)에서 온 요청만 받는다. 그래서 비밀값이 아니라 공개 이름표로 보고 `NEXT_PUBLIC_KAKAO_MAP_KEY`에 둔다. 사이트 잠금이 없는 REST 키는 비밀값이라 서버에만 둔다(ADR-043). '비밀값을 NEXT_PUBLIC에 넣지 않는다' 규칙과 부딪히지 않는다.
 - `/location`·`/location/…`에만 카카오 origin을 정확한 이름으로 CSP에 더하고(와일드카드 없음) `Referrer-Policy: strict-origin-when-cross-origin`(사이트 이름만 보내고 주소 뒤쪽은 안 보냄). 다른 화면은 그대로다.
 **대안**: (1) JS 키도 서버 뒤 — SDK가 브라우저에서 키를 쓰므로 안 된다. (2) 정적 지도 그림 — 로드뷰·하늘 사진·움직이는 지도가 없다. (3) 모든 경로에 넓힘 — 지도 없는 화면까지 바깥 스크립트를 허락한다.
 **트레이드오프**: 우리 사이트 안에서는 키가 보인다(다른 사이트는 못 씀). 무료 한도는 카카오 계정의 첫 번째 앱에만 준다. `/location`에서만 카카오 스크립트가 돌고 Referrer를 사이트 이름만큼 연다. 키를 바꾸면 다시 배포해야 한다(빌드 때 들어감).
 
-### ADR-047: 카카오 결과는 저장하지 않고, 공공 자료는 후보를 저장한 날의 값으로 굳힌다
+### ADR-045: 카카오 결과는 저장하지 않고, 공공 자료는 후보를 저장한 날의 값으로 굳힌다
 **맥락**: 카카오 운영정책 제5조는 결과 묶어 두기·다시 팔기를 막고, 카카오 직원 답(데브톡 2026-10-29)은 받은 주소·좌표를 업무 자료로 오래 저장하면 안 되고 사용자가 직접 정한 위치 좌표는 된다고 했다. 사용자는 '볼 때 받고 저장 때 그날 값으로 굳힘 + 기준 날짜'를 골랐다.
 **결정**: 저장하는 것은 design.md 6절 '저장하는 것' 목록뿐이다. 카카오에서 받은 주소 글·좌표·장소 목록·거리·로드뷰·법정동 코드는 저장하지 않고 열 때마다 부른다. 점수는 공공 자료(역·정류장 포함)만 써서 굳힌다. 공공 자료의 좌표·이름은 저장해도 된다 — 심평원 의원 좌표·주소(지도 점·같은 건물), 좌표 파일의 역 좌표, 동 경계 파일로 센 후보 자리의 행정동 이름(2026-11-22 더함, 카카오 값이 아님을 시험이 본다). 숫자마다 출처 id·기준 날짜를 달고, 출처·법 근거·없는 자료 목록은 `lib/location/sources.ts` 한 곳이다. 동 경계는 국가데이터처 SGIS 경계(이용 제한 없음)를 줄여 `public/location/dongs/`에 둔다(반기마다 사람이 바꿈). 역·정류장 좌표(국토교통부 버스정류장 위치 15067528·도시철도역사 15013205, 이용 제한 없음)도 `public/location/transit/`에 둔다(해마다 사람이 바꿈).
 **대안**: (1) 둘레 시설도 저장 — 정책 위반. (2) 아무것도 굳히지 않음 — 견줄 때마다 값이 바뀐다. (3) 동 경계를 그때마다 바깥에서 — 공개 API가 없거나 따로 가입해야 한다.
 **트레이드오프**: 둘레 시설·거리 사진은 카카오 열쇠가 없으면 안 보이고 열 때마다 바뀐다. 동 경계·소득·정류장·역 좌표 파일은 사람이 새로 넣기 전까지 옛 기준 날짜를 보인다.
-**바꾸는 것**: `plan.md` §2에 '2-12. 입지 분석' 몇 줄, §4 '서버로 가는 것'에 입지 분석 저장 목록, §5 DB 표에 `location_*` 한 줄. `docs/ARCHITECTURE.md` 폴더·흐름·DB 표 한 줄씩. `CLAUDE.md` 아키텍처 규칙에 '예외 (ADR-045~047)' 한 줄.
+**바꾸는 것**: `plan.md` §2에 '2-12. 입지 분석' 몇 줄, §4 '서버로 가는 것'에 입지 분석 저장 목록, §5 DB 표에 `location_*` 한 줄. `docs/ARCHITECTURE.md` 폴더·흐름·DB 표 한 줄씩. `CLAUDE.md` 아키텍처 규칙에 '예외 (ADR-043~045)' 한 줄.
 
 ## 17. 확인할 것 결과 (TASK-47 진짜 열쇠, 2026-11-22 · 보고 `~/.claude/state/handoff/location-t47-report.md`)
 새 host 없음. 진짜 답 원문(열쇠 지움)은 저장소 밖에만 있다.
