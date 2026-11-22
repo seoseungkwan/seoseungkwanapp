@@ -45,6 +45,15 @@ export const NAME_KEYS = {
 
 export type NameKind = 'group' | 'class' | 'sub'
 
+/**
+ * 비켜 주는 칸(design 4절, 2026-11-22 독립 검토): 열쇠 이름이 이 글자로 시작하는 params 칸(깊이 상관없음).
+ * 값이 늘면 경고가 줄어든다(지금 규칙표: acceptable_with·allowed_*·exception*·exclude*·excluded·exempt_regex·skip_*·unless*·pass_if_regex·not_in_set_a)
+ */
+export const WAIVER_KEYS = ['acceptable', 'allow', 'exception', 'exclu', 'exempt', 'skip', 'unless', 'pass_if', 'not_in_set'] as const
+
+/** 값이 원래 규칙·지금 판의 같은 이름 칸에 이미 있던 것이어야 하는 칸: 비켜 주는 칸과 regex로 끝나는 칸(정규식은 넓히는지 좁히는지 알 수 없다) */
+const guarded = (key: string) => key.endsWith('regex') || WAIVER_KEYS.some((head) => key.startsWith(head))
+
 /** 칸 이름 → 그 칸이 가리키는 이름표(이름 칸이 아니면 null) */
 export function nameKindOf(key: string): NameKind | null {
   if ((NAME_KEYS.group as readonly string[]).includes(key)) return 'group'
@@ -156,13 +165,11 @@ type Scan = {
   names: Set<string>
   /** 새 낱말 검사(e)를 받을 글자 값·객체 열쇠 */
   words: string[]
-  /** params 안 grade 열쇠 값(JSON) */
-  grades: string[]
 }
 
-/** params를 한 번 돌며 이름 칸(b)·코드와 상병 앞자리(c)·정규식(d)을 보고, 이름 모음·새 낱말 후보·등급을 모은다 */
+/** params를 한 번 돌며 이름 칸(b)·코드와 상병 앞자리(c)·정규식(d)을 보고, 이름 모음·새 낱말 후보를 모은다 */
 function scan(file: RulesFile, params: unknown): Scan {
-  const s: Scan = { ok: true, names: new Set(), words: [], grades: [] }
+  const s: Scan = { ok: true, names: new Set(), words: [] }
   const classes = new Set<string>()
   const subs: string[] = []
   const codes = knownCodesOf(file)
@@ -233,7 +240,6 @@ function scan(file: RulesFile, params: unknown): Scan {
     else if (isRecord(node)) {
       for (const [key, value] of Object.entries(node)) {
         s.words.push(key)
-        if (key === 'grade') s.grades.push(stable(value))
         const kind = nameKindOf(key)
         if (kind) names(kind, key, value)
         else if (key === 'codes') codeList(value)
@@ -267,6 +273,51 @@ function vocabulary(...list: unknown[]): Set<string> {
   }
   list.forEach(walk)
   return out
+}
+
+/** params(깊이 상관없음)의 모든 객체 칸을 돈다 */
+function eachEntry(node: unknown, visit: (key: string, value: unknown) => void): void {
+  if (Array.isArray(node)) node.forEach((x) => eachEntry(x, visit))
+  else if (isRecord(node)) {
+    for (const [key, value] of Object.entries(node)) {
+      visit(key, value)
+      eachEntry(value, visit)
+    }
+  }
+}
+
+/** 값 아래 잎 값(글자·숫자·참거짓 등, 배열·객체 안 포함)을 JSON으로 모은다 */
+function leavesInto(into: Set<string>, node: unknown): void {
+  if (Array.isArray(node)) node.forEach((x) => leavesInto(into, x))
+  else if (isRecord(node)) Object.values(node).forEach((x) => leavesInto(into, x))
+  else into.add(stable(node))
+}
+
+/** 비켜 주는 칸·regex 칸의 열쇠 이름 → 그 이름 칸들 아래 잎 값 모음 */
+function guardedLeaves(...list: unknown[]): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>()
+  for (const params of list) {
+    eachEntry(params, (key, value) => {
+      if (!guarded(key)) return
+      const into = out.get(key) ?? new Set<string>()
+      leavesInto(into, value)
+      out.set(key, into)
+    })
+  }
+  return out
+}
+
+/** next의 비켜 주는 칸·regex 칸 잎 값이 모두 base ∪ current의 같은 이름 칸에 있던 값인가(빼는 것은 된다) */
+function guardedOk(next: unknown, base: unknown, current: unknown): boolean {
+  const before = guardedLeaves(base, current)
+  return [...guardedLeaves(next)].every(([key, values]) => [...values].every((value) => before.get(key)?.has(value) === true))
+}
+
+/** 열쇠 이름이 grade로 끝나는 칸(깊이 상관없음)의 값(JSON)을 정렬한 목록 */
+function gradesOf(params: unknown): string[] {
+  const out: string[] = []
+  eachEntry(params, (key, value) => key.endsWith('grade') && out.push(stable(value)))
+  return out.sort()
 }
 
 const jsonKind = (x: unknown) => (Array.isArray(x) ? 'array' : x === null ? 'null' : typeof x)
@@ -309,10 +360,10 @@ function judge(file: RulesFile, base: RuleDef, current: RuleDef, next: unknown):
   const seen = scan(file, next.params)
   const words = vocabulary(base.params, current.params)
   if (!seen.ok || !topKeysOk(file, base, next.params) || !seen.words.every((word) => words.has(word))) return 'names'
-  const was = scan(file, base.params)
-  const before = new Set([...was.names, ...scan(file, current.params).names])
+  const before = new Set([...scan(file, base.params).names, ...scan(file, current.params).names])
   if ([...before].some((name) => !seen.names.has(name))) return 'removed'
-  if (stable([...seen.grades].sort()) !== stable([...was.grades].sort())) return 'grade'
+  if (!guardedOk(next.params, base.params, current.params)) return 'removed'
+  if (stable(gradesOf(next.params)) !== stable(gradesOf(base.params))) return 'grade'
   if (ruleStatusIn(file, next) !== ruleStatusIn(file, base)) return 'status'
   const shown = (rule: RuleDef) => stable({ title: rule.title, message: rule.message, params: rule.params })
   if (shown(next) === shown(current)) return 'same'
@@ -346,8 +397,11 @@ function usable(file: RulesFile, byId: ReadonlyMap<string, RuleDef>, u: unknown)
   const base = byId.get(u.ruleId)
   const rule = u.rule
   if (!base || !isYmd(u.from) || !isRecord(rule) || rule.id !== u.ruleId || rule.effective_from !== u.from) return null
-  // Worker는 판끼리의 사슬을 모르므로 원래 규칙에 대해 다시 본다(모든 판은 원래 규칙의 이름을 다 담는다)
-  if (!checkRuleShape(rule) || checkRuleChange(file, base, base, rule) !== 'ok') return null
+  // Worker는 판끼리의 사슬을 모르므로 원래 규칙에 대해 다시 본다(모든 판은 원래 규칙의 이름을 다 담는다).
+  // 'same'(원래 규칙으로 돌아가는 판)도 쓴다 — 앞 판이 그날 끝나야 한다
+  if (!checkRuleShape(rule)) return null
+  const check = checkRuleChange(file, base, base, rule)
+  if (check !== 'ok' && check !== 'same') return null
   if (base.effective_to !== null && compareYmd(u.from, base.effective_to) > 0) return null // 원래 규칙이 끝난 뒤의 판
   return { changeId: u.changeId, from: u.from, rule }
 }
