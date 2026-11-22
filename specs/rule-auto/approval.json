@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "rule-auto",
-  "approved_at": "2026-11-22T03:22:13Z",
+  "approved_at": "2026-11-22T04:05:45Z",
   "approved_via": "user-prompt",
   "session_id": "564f910f-c538-4591-ad30-a3552610b06c",
-  "spec_sha256": "12cb4b314e0b8825e28426cdd2665b93aa9ee7a083e2e62a0cc5827f4d9cbc87",
+  "spec_sha256": "8a41772923be7bac58a1e2f744816f4b2edf720a8fb7cd2bf32dc13387a4cfd9",
   "scope": [
     "CLAUDE.md",
     "docs/ADR.md",
