@@ -1,10 +1,9 @@
-// 동네 훑기 동 점수·색 칸·순위(spec location REQ-7907, design.md 8절, 시안 ?s=scan). 순수 함수 — 읽기·저장·부르기 없음.
+// 동네 훑기 동 점수·색 칸·순위(spec location REQ-7907, REQ-7921 AC-7921.7, design.md 8절, 시안 ?s=scan). 순수 함수 — 읽기·저장·부르기 없음.
 // 점수는 score.ts scoreItems(그 동 값, 받은 설정, 'scan') 그대로다(세 항목·'훑기 ○' 세부 항목만). 설정을 바꾸면 같은 값으로 다시 센다
+import type { ScanDong } from '@/lib/location/collect'
 import { fillScoreRule, scoreItems, type ScoreResult, type ScoreRule } from '@/lib/location/score'
-import type { ScoreFacts } from '@/types/location'
 
-/** 훑기 동 하나(lib/location/collect.ts collectScan의 동 모양). unmatched = 행안부 코드와 못 이어 인구 값이 없는 동 */
-export type ScanDong = { code10: string; name: string; unmatched: boolean; facts: ScoreFacts }
+export type { ScanDong }
 
 export type DongScore = { code10: string; name: string; unmatched: boolean; result: ScoreResult; total: number | null }
 
@@ -14,6 +13,11 @@ export function scoreDongs(dongs: readonly ScanDong[], rule: ScoreRule): DongSco
     const result = scoreItems(d.facts, rule, 'scan')
     return { code10: d.code10, name: d.name, unmatched: d.unmatched, result, total: result.total }
   })
+}
+
+/** 경쟁 과목이 0개일 때(AC-7921.7): 경쟁 수를 값 없음으로 — '경쟁' 항목이 값 없는 항목처럼 빠지고 남은 무게로 매긴다. 다시 부르지 않는다 */
+export function withoutRivals(dongs: readonly ScanDong[]): ScanDong[] {
+  return dongs.map((d) => ({ ...d, facts: { ...d.facts, rivals: null, newRivals: null } }))
 }
 
 /** 점수 높은 차례(같으면 받은 차례), 점수 없는 동은 맨 뒤 */

@@ -31,6 +31,14 @@ export const SCAN_TEXT = {
   allDongs: (count: number) => `모든 동 ${count}곳 보기`,
   sixOnly: '여섯 곳만 보기',
   candidate: (label: string) => `후보 ${label}`,
+  // 점수 풀이(requirements '화면 글 기본값' › 점수 풀이 끝 줄 — 동네 훑기 순위)
+  up: '올린 것',
+  down: '내린 것',
+  rankHelp: '올린 것·내린 것은 이 시·군·구 행정동 평균보다 점수를 가장 많이·가장 덜 받은 세부 항목이에요.',
+  // 경쟁 의원 과목을 하나도 안 골랐을 때(requirements '고른 과목을 따르는 글' › 하나도 안 고름, AC-7921.7)
+  noDepts: '과목 없음',
+  noDeptsNote: '경쟁 의원 과목을 하나 이상 골라 주세요. 지금은 경쟁 점수를 셀 수 없어요',
+  pickDepts: '과목 고르기',
 } as const
 
 // h23: 자정을 '24:00'이 아니라 '00:00'으로

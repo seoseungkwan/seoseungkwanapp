@@ -3,10 +3,11 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { KakaoMapProps } from '@/components/location/map/KakaoMap'
 import { naverLandUrl } from '@/lib/location/links'
-import { DEFAULT_SCORE_RULE, type ScoreRule } from '@/lib/location/score'
-import { SAVE_DELAY_MS } from '@/components/location/weights/ScoreWeights'
+import { DEFAULT_SCORE_RULE, SCORE_GROUPS, type ScoreRule } from '@/lib/location/score'
+import { SAVE_DELAY_MS, ScoreWeights } from '@/components/location/weights/ScoreWeights'
+import type { DeptRule } from '@/types/location'
 import { ScanView, type ScanViewProps } from './ScanView'
-import { CHAMI, DONGS, GARAM, HANEUL, INDEX, noTransit, SCAN_DONGS, scanData } from './scanData.test.data'
+import { CHAMI, DONGS, GARAM, GARAM_FACTS, HANEUL, INDEX, noRivals, noTransit, SCAN_DONGS, scanData } from './scanData.test.data'
 
 // 동네 훑기 화면(spec location REQ-7907 AC-7907.1~4, REQ-7919 AC-7919.3, design.md 8·14절, 시안 ?s=scan).
 // 부품은 props·콜백만: 시도·시군구를 고르면 onPickSgg(부르기)만, 무게를 바꾸면 다시 부르지 않고 색·순위·점수가 바로 바뀐다.
@@ -33,6 +34,12 @@ vi.mock('@/components/location/map/KakaoMap', () => ({
     </div>
   ),
 }))
+
+// 점수 무게 판은 진짜 부품 그대로 그리고, 받은 props만 엿본다(rivalShort·onPickDepts — TASK-67이 판에서 쓴다)
+vi.mock('@/components/location/weights/ScoreWeights', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/components/location/weights/ScoreWeights')>()
+  return { ...real, ScoreWeights: vi.fn((p: Parameters<typeof real.ScoreWeights>[0]) => real.ScoreWeights(p)) }
+})
 
 const fresh = (): ScoreRule => structuredClone(DEFAULT_SCORE_RULE) as ScoreRule
 
@@ -66,10 +73,21 @@ const area = (code: string) => screen.getByTestId('map').querySelector<HTMLEleme
 const picked = () => screen.getByRole('region', { name: '고른 동' })
 const bar = (group: string) => picked().querySelector<HTMLElement>(`[data-group="${group}"]`)!
 const move = (name: string, value: number) => fireEvent.change(screen.getByRole('slider', { name }), { target: { value: String(value) } })
+/** 순위 줄의 올린 것·내린 것 줄(없으면 null) */
+const ud = (code: string) => rankItem(code).querySelector<HTMLElement>('[data-ud]')
+/** 세부 항목 이름은 score.ts 한 곳(explainScan이 그 이름을 쓴다) */
+const LABEL = new Map<string, string>(SCORE_GROUPS.flatMap((g) => g.subs.map((s) => [s.id as string, s.label])))
+const label = (id: string) => LABEL.get(id)!
+/** 점수 무게 판이 마지막으로 받은 props */
+const weightsProps = () => vi.mocked(ScoreWeights).mock.lastCall![0] as Record<string, unknown>
+const RANK_HELP = '올린 것·내린 것은 이 시·군·구 행정동 평균보다 점수를 가장 많이·가장 덜 받은 세부 항목이에요.'
+const NO_DEPTS = '경쟁 의원 과목을 하나 이상 골라 주세요. 지금은 경쟁 점수를 셀 수 없어요'
+const ZERO: DeptRule = { v: 1, rival: [], hide: [] }
 
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
+  vi.mocked(ScoreWeights).mockClear()
 })
 
 describe('AC-7907.1: 시·도 → 시·군·구를 고르면 동마다 색·순위·까닭·받은 시각', () => {
@@ -299,5 +317,111 @@ describe('AC-7907.4: 자료 하나가 실패·열쇠 없음이면 그 항목만 
   it('AC-7907.4: 다 받았으면 받지 못한 자료 목록이 없다', () => {
     setup()
     expect(screen.queryByRole('list', { name: '받지 못한 자료' })).toBeNull()
+  })
+})
+
+describe('AC-7920.4: 순위 줄마다 올린 것 1·내린 것 1(이 시·군·구 행정동 평균보다)', () => {
+  it('AC-7920.4: 줄마다 `올린 것 {이름} {값 글} · 내린 것 {이름} {값 글}`이고 없는 쪽은 안 쓴다', () => {
+    setup()
+    // 역까지 거리 세부 점수 평균(값 있는 동) (100 + 7 + 61) ÷ 3 = 56 → 가람동 +7.8점(가장 큼) · 하늘동 −8.7점(가장 작음)
+    expect(ud(GARAM)?.textContent).toBe(`올린 것 ${label('t-station')} 200m`)
+    expect(ud(HANEUL)?.textContent).toBe(`내린 것 ${label('t-station')} 1.4km`)
+    // 차미동(못 이은 동도 점수가 있으면 씀): 경쟁 의원 수 +5.0점 · 경로당·체력단련장 −2.3점
+    expect(ud(CHAMI)?.textContent).toBe(`올린 것 ${label('c-count')} 0곳 · 내린 것 ${label('p-facilities')} 6곳`)
+  })
+
+  it('AC-7920.4: 올린 것은 좋음 색, 내린 것은 나쁨 색(토큰)이고 까닭 한 줄 아래에 있다', () => {
+    setup()
+    const line = ud(CHAMI)!
+    expect(within(line).getByText('올린 것').className).toContain('text-positive')
+    expect(within(line).getByText('내린 것').className).toContain('text-negative')
+    const why = within(rankItem(CHAMI)).getByText('이 동은 인구 자료와 잇지 못했어요')
+    expect(why.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('AC-7920.4: 순위 아래 도움말이 있다', () => {
+    setup()
+    const help = screen.getByText(RANK_HELP)
+    expect(rankList().compareDocumentPosition(help) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('AC-7920.4: 동 값이 모두 같으면 평균과 차이가 없어 그 줄을 쓰지 않는다(도움말은 그대로)', () => {
+    const same = Array.from({ length: 3 }, (_, i) => ({ ...SCAN_DONGS[0], code10: `11999${510 + i}00`, name: `예시${i + 1}동` }))
+    setup({ result: { ok: true, ...scanData({ dongs: same }) } })
+    expect(rankOrder().map((code) => ud(code!))).toEqual([null, null, null])
+    expect(within(rankList()).queryByText('올린 것')).toBeNull()
+    expect(screen.getByText(RANK_HELP)).toBeTruthy()
+  })
+
+  it('AC-7920.4: 무게를 바꾸면 다시 부르지 않고 그 줄도 바로 바뀐다', () => {
+    const { onPickSgg } = setup()
+    move('교통·흐름', 0)
+    // 교통·흐름이 빠지면 가람동은 고른 나이대 인구 밀도(100점 · 평균 60점)를 가장 많이 받았다
+    expect(ud(GARAM)?.textContent).toBe(`올린 것 ${label('p-density')} 1km²에 10,000명`)
+    expect(onPickSgg).not.toHaveBeenCalled()
+  })
+
+  it('AC-7920.4: 줄어든 인구는 그 동 값으로 `4년 사이 −5%`(점수가 0에서 멈춰도 본래 값)', () => {
+    const trend = (last: number) => [
+      { ym: '2022-10', total: 10_000 },
+      { ym: '2026-10', total: last },
+    ]
+    const dongs = [
+      { code10: GARAM, name: '가람동', unmatched: false, facts: { ...GARAM_FACTS, trend: trend(10_500) } },
+      { code10: HANEUL, name: '하늘동', unmatched: false, facts: { ...GARAM_FACTS, trend: trend(10_500) } },
+      { code10: CHAMI, name: '차미동', unmatched: false, facts: { ...GARAM_FACTS, trend: trend(9500) } },
+    ]
+    setup({ result: { ok: true, ...scanData({ dongs }) } })
+    expect(ud(CHAMI)?.textContent).toBe(`내린 것 ${label('p-trend')} 4년 사이 −5%`)
+    expect(ud(GARAM)?.textContent).toBe(`올린 것 ${label('p-trend')} 4년 사이 +5%`)
+  })
+})
+
+describe('AC-7921.2: 과목 고르기를 따른다(바깥 자료를 다시 부르지 않고 바로)', () => {
+  it('AC-7921.2: 점수 무게 판에 고른 경쟁 과목 짧은 이름(rivalShort)과 [과목 고르기](onPickDepts)를 넘긴다 — 설정이 없으면 처음 값', () => {
+    const onPickDepts = vi.fn()
+    setup({ onPickDepts })
+    expect(weightsProps()).toMatchObject({ rivalShort: '정형외과·신경외과·마취통증·재활', onPickDepts })
+  })
+
+  it('AC-7921.2: 과목 설정이 바뀌면 rivalShort가 바로 바뀌고 다시 부르지 않는다', () => {
+    const view = setup({ deptRule: { v: 1, rival: ['ortho', 'ns'], hide: [] } })
+    expect(weightsProps().rivalShort).toBe('정형외과·신경외과')
+    view.rerender(<ScanView {...view.props} deptRule={{ v: 1, rival: ['korean'], hide: [] }} />)
+    expect(weightsProps().rivalShort).toBe('한의원')
+    expect(view.onPickSgg).not.toHaveBeenCalled()
+  })
+
+  it('AC-7921.2: 경쟁 과목 0개로 모은 훑기(rivals none) — 경쟁은 `과목 없음`으로 빠지고 남은 두 항목으로, 노란 안내 + [과목 고르기]', () => {
+    const onPickDepts = vi.fn()
+    setup({ deptRule: ZERO, onPickDepts, result: { ok: true, ...noRivals() } })
+    // 가람동 = 사는 사람·수요 96 · 교통·흐름 99 → 버림(96 × 30 ÷ 50) + 버림(99 × 20 ÷ 50) = 57 + 39 = 96점
+    expect(area(GARAM).textContent).toBe('가람동 96점')
+    expect(['people', 'rivals', 'transit'].map((g) => bar(g).textContent)).toEqual(['사는 사람·수요57/60', '경쟁과목 없음', '교통·흐름39/40'])
+    expect(within(picked()).getByText('2개 항목으로 매겼어요')).toBeTruthy()
+    const note = screen.getByText(NO_DEPTS).parentElement!
+    fireEvent.click(within(note).getByRole('button', { name: '과목 고르기' }))
+    expect(onPickDepts).toHaveBeenCalledTimes(1)
+    // 의원을 부르지 않은 것은 받지 못한 자료가 아니다('범위 안에서 찾은 의원이 없어요.'를 쓰지 않음)
+    expect(screen.queryByRole('list', { name: '받지 못한 자료' })).toBeNull()
+    expect(screen.queryByText(/찾은 의원이 없어요/)).toBeNull()
+    expect(weightsProps().rivalShort).toBe('고른 과목 없음')
+  })
+
+  it('AC-7921.2: [과목 고르기]를 주지 않으면 노란 안내 글만', () => {
+    setup({ deptRule: ZERO, result: { ok: true, ...noRivals() } })
+    const note = screen.getByText(NO_DEPTS).parentElement!
+    expect(within(note).queryByRole('button')).toBeNull()
+  })
+
+  it('AC-7921.2: 받은 뒤 경쟁 과목을 모두 빼면 다시 부르지 않고 경쟁이 바로 `과목 없음`으로 빠진다', () => {
+    const view = setup()
+    expect(area(GARAM).textContent).toBe('가람동 89점')
+    expect(screen.queryByText(NO_DEPTS)).toBeNull()
+    view.rerender(<ScanView {...view.props} deptRule={ZERO} />)
+    expect(area(GARAM).textContent).toBe('가람동 96점')
+    expect(bar('rivals').textContent).toBe('경쟁과목 없음')
+    expect(screen.getByText(NO_DEPTS)).toBeTruthy()
+    expect(view.onPickSgg).not.toHaveBeenCalled()
   })
 })
