@@ -1,11 +1,10 @@
 'use client'
 
-import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from 'react'
 import { LoadBar } from './LoadBar'
-import { DESK_MENU, MENU, PRIMARY_MENU, currentMenuLabel } from './menu'
-import { MoreMenu } from './MoreMenu'
+import { DESK_MENU, LOCATION_TAB, MENU, PRIMARY_MENU, currentMenuLabel } from './menu'
+import { MoreMenu, ShellLink } from './MoreMenu'
 import { NoticeBadge } from './NoticeBadge'
 
 // 탭 줄 (tab-frame REQ-303, AC-008.7, b2b-redesign AC-218.2, ui-90 REQ-405, dashboard-ux REQ-2702, UI_GUIDE '앱 화면' 탭 줄·누른 탭 먼저).
@@ -15,7 +14,9 @@ import { NoticeBadge } from './NoticeBadge'
 // 감싸개는 자리 기준(position)이 아니어서 768px 미만 판은 그대로 nav 기준 전체 폭이다.
 // 모두 자기 주소로 가는 링크다. 화면이 아직 없는 기능은 [더보기] 판에 있고, 준비 중임은 판의 칩과 그 주소의 준비 중 화면이 알린다.
 // 1024px 미만은 탭 띠만 옆으로 밀린다(얇은 스크롤바·줄바꿈 없음, [더보기] 글자가 길어 넘칠 때). 띠 끝 흐림은 넣지 않는다(UI_GUIDE '탭 줄', 시안의 끝 흐림과 다르다)
-// 데스크 계정(desk 참, desk-feedback AC-6306.2): 탭 띠 = 업무일지·수납일지·예약(DESK_MENU)뿐이고 [더보기]가 없다. 관리자 여부는 여전히 받지 않는다
+// 데스크 계정(desk 참, desk-feedback AC-6306.2): 탭 띠 = 업무일지·수납일지·예약(DESK_MENU)뿐이고 [더보기]가 없다.
+// 관리자 값(isAdmin)은 [더보기] 판의 입지 분석에만 쓴다(specs/location AC-7901.1). 탭 띠에는 관리자 탭이 없다(데스크는 [더보기]가 없어 늘 없음).
+// 입지 분석(/location)을 오가는 링크는 평범한 <a>라 브라우저가 새 문서를 받는다(ShellLink). 누른 탭·불러오기 줄은 그동안 보인다
 
 // 탭 공통: 모든 폭 44px·좌우 12px·body, 키보드 초점은 탭 안쪽 2px accent 고리(4px 모서리). 올림 글자색은 짧게 바뀐다(transition 150ms, UI_GUIDE '짧은 반응 허용').
 // 굵기·글자색은 종류마다 하나씩 준다. 전역 a 규칙·브라우저 기본 밑줄에 기대지 않게 글자색·no-underline을 직접 준다
@@ -41,6 +42,7 @@ function TabLabel({ label }: { label: string }) {
 function TabLink({
   label,
   href,
+  from,
   current,
   shown,
   pending,
@@ -50,6 +52,8 @@ function TabLink({
 }: {
   label: string
   href: string
+  /** 지금 경로(입지 분석을 오가는 링크인지 ShellLink가 본다) */
+  from: string
   /** 지금 경로의 탭(aria-current). 경로가 바뀔 때만 옮겨진다 */
   current: boolean
   /** 지금 탭 모양으로 보인다(누른 탭이 있으면 그 탭, 없으면 지금 탭) */
@@ -62,7 +66,8 @@ function TabLink({
   badge?: ReactNode
 }) {
   return (
-    <Link
+    <ShellLink
+      from={from}
       href={href}
       aria-current={current ? 'page' : undefined}
       data-pending={pending ? 'true' : undefined}
@@ -72,7 +77,7 @@ function TabLink({
     >
       <TabLabel label={label} />
       {badge}
-    </Link>
+    </ShellLink>
   )
 }
 
@@ -89,7 +94,10 @@ function revealInStrip(strip: HTMLElement | null, item: Element | null | undefin
 // 새 탭·새 창으로 여는 누름(보조키·왼쪽 아닌 단추)은 이 창의 경로를 바꾸지 않는다 → 누른 탭으로 정하지 않는다
 const opensElsewhere = (e: MouseEvent) => e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey
 
-export function TabBar({ desk = false }: { desk?: boolean } = {}) {
+// 누른 주소의 탭을 찾는 곳: MENU와 관리자의 입지 분석
+const TABS = [...MENU, LOCATION_TAB]
+
+export function TabBar({ desk = false, isAdmin = false }: { desk?: boolean; isAdmin?: boolean } = {}) {
   const pathname = usePathname()
   const tabs = desk ? DESK_MENU : PRIMARY_MENU
   const stripRef = useRef<HTMLDivElement>(null)
@@ -101,7 +109,7 @@ export function TabBar({ desk = false }: { desk?: boolean } = {}) {
   if (pending !== null && pending.from !== pathname) setPending(null)
   const pendingHref = pending?.href ?? null
   // 누른 주소의 탭 이름과, 지금 탭 모양으로 보일 이름(누른 탭이 있으면 그것, 없으면 지금 탭) — [더보기] 단추가 쓴다
-  const pendingLabel = pendingHref === null ? null : (MENU.find((item) => item.path === pendingHref)?.label ?? null)
+  const pendingLabel = pendingHref === null ? null : (TABS.find((item) => item.path === pendingHref)?.label ?? null)
   const shownLabel = pendingHref === null ? current : pendingLabel
   // 누를 때마다 새 불러오기 줄을 그려 0에서 다시 차오르게 한다(LoadBar)
   const [presses, setPresses] = useState(0)
@@ -117,6 +125,16 @@ export function TabBar({ desk = false }: { desk?: boolean } = {}) {
     setPending({ href, from: pathname })
     setPresses((n) => n + 1)
   }
+
+  // 새 문서로 떠난 뒤(입지 분석을 오가는 링크) 뒤로 가기로 이 화면이 그대로 돌아오면(뒤로 가기 캐시, pageshow persisted)
+  // 경로가 그대로라 누른 탭·불러오기 줄이 남는다 → 거둔다
+  useEffect(() => {
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) setPending(null)
+    }
+    window.addEventListener('pageshow', onPageShow)
+    return () => window.removeEventListener('pageshow', onPageShow)
+  }, [])
 
   // 지금 탭(누른 탭이 있으면 그 탭)이 밀려 안 보이면 보이게 옮긴다(AC-008.7)
   useEffect(() => {
@@ -138,6 +156,7 @@ export function TabBar({ desk = false }: { desk?: boolean } = {}) {
                 key={item.label}
                 label={item.label}
                 href={item.path}
+                from={pathname}
                 current={current === item.label}
                 shown={pendingHref === null ? current === item.label : pendingHref === item.path}
                 pending={pendingHref === item.path}
@@ -148,7 +167,7 @@ export function TabBar({ desk = false }: { desk?: boolean } = {}) {
             ))}
           </div>
         </div>
-        {!desk && <MoreMenu pathname={pathname} current={current} shown={shownLabel} pending={pendingLabel} onPress={press} />}
+        {!desk && <MoreMenu pathname={pathname} current={current} shown={shownLabel} pending={pendingLabel} onPress={press} isAdmin={isAdmin} />}
       </div>
       <LoadBar key={presses} active={pending !== null} />
     </nav>

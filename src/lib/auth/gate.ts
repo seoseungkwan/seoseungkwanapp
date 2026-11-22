@@ -14,8 +14,11 @@ export function isPublicPath(path: string): boolean {
   return PUBLIC_PATHS.has(path)
 }
 
+// 관리자만 여는 화면: 가입 승인(/admin)과 입지 분석(/location, specs/location AC-7901.2). 그 주소와 그 아래만(비슷한 이름은 아니다)
+const ADMIN_PATHS = ['/admin', '/location']
+
 function isAdminPath(path: string): boolean {
-  return path === '/admin' || path.startsWith('/admin/')
+  return ADMIN_PATHS.some((base) => path === base || path.startsWith(`${base}/`))
 }
 
 /** null = 그대로 연다, 문자열 = 보낼 경로. 정해 둔 경로 밖은 막는 쪽으로 정한다. */
