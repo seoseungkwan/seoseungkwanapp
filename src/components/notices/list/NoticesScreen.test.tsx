@@ -2,6 +2,7 @@
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ds } from '@/components/ui/classes'
 import { fillProgress, listNotices, setStar, sourceStates } from '@/lib/storage/notices'
 import type { FillProgress, NoticeFilter, NoticePage, NoticeView, SourceView } from '@/types/notices'
 import { NoticesScreen } from './NoticesScreen'
@@ -64,6 +65,8 @@ const GOSI = view({
     { id: 'INJ-01', title: '스테로이드 관절강내주사 같은 관절 1년 횟수' },
     { id: 'INJ-02', title: '스테로이드 관절강내주사 1개월 관절 수' },
   ],
+  // AI가 두 규칙 모두 사람이 봐야 함으로 판정(specs/rule-auto AC-7815.1)
+  ruleTally: { changed: 0, human: 2, pending: 0 },
   posts: [
     { source: 'hira_crtr', title: '관절강내 주사', url: 'https://www.hira.or.kr/rc/insu/insuadtcrtr/InsuAdtCrtrPopup.do?mtgHmeDd=1&sno=1&mtgMtrRegSno=1', postedOn: '2026-11-20', attachments: [file(1), file(2)] },
     { source: 'mohw_rss', title: '보건복지부 고시 제2026-218호', url: MOHW_URL, postedOn: '2026-11-20', attachments: [] },
@@ -104,6 +107,7 @@ const CHECKED = view({
   postedOn: '2026-11-16',
   noticeNo: '2026-214',
   ruleHits: [{ id: 'PT-01', title: '표층열 + 심층열' }],
+  ruleTally: { changed: 0, human: 1, pending: 0 },
   posts: [{ source: 'mohw_rss', title: '물리치료', url: MOHW_URL, postedOn: '2026-11-16', attachments: [] }],
   mark: { readAt: '2026-11-17T00:00:00Z', starred: false, memo: '', memoAt: null, rulesCheckedAt: '2026-11-16T23:40:00Z' },
 })
@@ -304,7 +308,7 @@ describe('AC-7419.2: 건수 · 달 머리 줄 · 글 줄', () => {
     expect(texts.indexOf('6월')).toBeGreaterThan(texts.findIndex((t) => t.includes(CHECKED.title)))
   })
 
-  it('AC-7419.2: 줄마다 날짜 · 출처(` · `) · 글 번호 자리 · 칩 차례(정형외과 의원 관련 → 점검 규칙 확인 필요 → 붙임 파일 {n}개) · 제목 · 무엇이 바뀌나', async () => {
+  it('AC-7419.2·AC-7815.1: 줄마다 날짜 · 출처(` · `) · 글 번호 자리 · 칩 차례(정형외과 의원 관련 → 점검 규칙 확인 필요(사람이 봐야 함 판정) → 붙임 파일 {n}개) · 제목 · 무엇이 바뀌나', async () => {
     await shown()
     const row = rowOf(GOSI.title)
     expect(within(row).getByText('11월 20일 (금)')).toBeTruthy()
@@ -315,7 +319,7 @@ describe('AC-7419.2: 건수 · 달 머리 줄 · 글 줄', () => {
     expect(chips).toEqual(['꼭 볼 글 · 관절강내 주사', '정형외과 의원 관련', '점검 규칙 확인 필요', '붙임 파일 2개'])
   })
 
-  it('AC-7419.2: 확인한 규칙은 `점검 규칙 확인함`, 심사기준 종류는 글 번호 자리, 번호 없는 공지는 빈 자리다', async () => {
+  it('AC-7419.2·AC-7815.1: 사람이 봐야 함을 확인한 글은 `점검 규칙 확인함`, 심사기준 종류는 글 번호 자리, 번호 없는 공지는 빈 자리다', async () => {
     await shown()
     const checked = rowOf(CHECKED.title)
     expect(within(checked).getAllByTestId('notice-chip').map((c) => c.textContent)).toEqual(['정형외과 의원 관련', '점검 규칙 확인함'])
@@ -374,6 +378,83 @@ describe('AC-7419.2: 건수 · 달 머리 줄 · 글 줄', () => {
     expect(screen.getByText('<img src=x onerror=alert(1)> 바뀌어요')).toBeTruthy()
     expect(container.querySelector('em')).toBeNull()
     expect(container.querySelector('img')).toBeNull()
+  })
+})
+
+// specs/rule-auto REQ-7815 · 시안 docs/mockups/rule-auto ?v=list. 규칙 칩은 연결 수(ruleHits)가 아니라 AI 판정 수(ruleTally)로 고른다
+describe('AC-7815.1: 글 목록 규칙 칩(ruleTally)', () => {
+  // 규칙 둘이 이어진 예시 고시(붙임 1개). 칩 자리 밖 칩(정형외과 의원 관련 · 붙임 파일)은 그대로 있어야 한다
+  const ruled = (over: Partial<NoticeView>) =>
+    view({
+      id: id(251),
+      title: '「요양급여의 적용기준 및 방법에 관한 세부사항」 일부개정 — 체외충격파·도수치료',
+      kind: 'gosi',
+      postedOn: '2026-11-20',
+      noticeNo: '2026-251',
+      ruleHits: [
+        { id: 'ES-04', title: '체외충격파 같은 부위 횟수' },
+        { id: 'MN-03', title: '도수치료와 함께 못 하는 열치료' },
+      ],
+      posts: [{ source: 'mohw_rss', title: '보건복지부 고시 제2026-251호', url: MOHW_URL, postedOn: '2026-11-20', attachments: [file(5)] }],
+      ...over,
+    })
+  const chipsOf = (title: string) => within(rowOf(title)).queryAllByTestId('notice-chip').map((c) => [c.textContent, c.className])
+
+  async function drawn(row: NoticeView) {
+    list.mockResolvedValue(pageOf([GOSI, row]))
+    await shown()
+    return chipsOf(row.title)
+  }
+
+  it('AC-7815.1: 사람이 봐야 함 → 바뀜 차례로 `점검 규칙 확인 필요`(노랑) · `점검 규칙 {n}개 바뀜`(파랑)이고, 살펴보는 중은 없으며 다른 칩·차례는 그대로다', async () => {
+    const chips = await drawn(ruled({ ruleTally: { changed: 2, human: 1, pending: 3 } }))
+    expect(chips).toEqual([
+      ['정형외과 의원 관련', ds.chip.accent],
+      ['점검 규칙 확인 필요', ds.chip.warning],
+      ['점검 규칙 2개 바뀜', ds.chip.accent],
+      ['붙임 파일 1개', ds.chip.neutral],
+    ])
+  })
+
+  it('AC-7815.1: [확인했어요]를 누른 글은 `점검 규칙 확인함`(회색) 뒤에 바뀜 칩이다', async () => {
+    const mark = { readAt: '2026-11-21T00:00:00Z', starred: false, memo: '', memoAt: null, rulesCheckedAt: '2026-11-21T00:10:00Z' }
+    const chips = await drawn(ruled({ ruleTally: { changed: 1, human: 2, pending: 0 }, mark }))
+    expect(chips).toEqual([
+      ['정형외과 의원 관련', ds.chip.accent],
+      ['점검 규칙 확인함', ds.chip.neutral],
+      ['점검 규칙 1개 바뀜', ds.chip.accent],
+      ['붙임 파일 1개', ds.chip.neutral],
+    ])
+  })
+
+  it('AC-7815.1: 바뀜만 있으면 확인 칩 없이 `점검 규칙 {n}개 바뀜`(파랑) 하나다(살펴보는 중이 남아도 그 칩은 없음)', async () => {
+    const chips = await drawn(ruled({ ruleTally: { changed: 2, human: 0, pending: 1 } }))
+    expect(chips).toEqual([
+      ['정형외과 의원 관련', ds.chip.accent],
+      ['점검 규칙 2개 바뀜', ds.chip.accent],
+      ['붙임 파일 1개', ds.chip.neutral],
+    ])
+  })
+
+  it('AC-7815.1: 사람이 봐야 함·바뀜이 없고 살펴보는 중만 있으면 `점검 규칙 살펴보는 중`(회색)이다', async () => {
+    const chips = await drawn(ruled({ ruleTally: { changed: 0, human: 0, pending: 2 } }))
+    expect(chips).toEqual([
+      ['정형외과 의원 관련', ds.chip.accent],
+      ['점검 규칙 살펴보는 중', ds.chip.neutral],
+      ['붙임 파일 1개', ds.chip.neutral],
+    ])
+  })
+
+  it.each([
+    ['바꿀 것 없음만(모두 0)', { ruleTally: { changed: 0, human: 0, pending: 0 } }],
+    ['ruleTally null(판정 줄 읽기 실패)', { ruleTally: null }],
+    ['ruleTally 없음', {}],
+  ] as const)('AC-7815.1: %s이면 규칙 연결이 있어도 규칙 칩이 없다(다른 칩은 그대로)', async (_, over) => {
+    const chips = await drawn(ruled(over))
+    expect(chips).toEqual([
+      ['정형외과 의원 관련', ds.chip.accent],
+      ['붙임 파일 1개', ds.chip.neutral],
+    ])
   })
 })
 
