@@ -149,6 +149,46 @@ describe('queryLocation — POST /api/ai/location/query', () => {
     expect(lastCall().init.signal.aborted).toBe(true)
   })
 
+  // 3년 개폐업: 30쪽(37일마다 한 쪽)을 서버가 둘씩, 쪽마다 8초까지 → 15번 × 8초 = 서버 경로 한도 120초
+  const LICENSE_3Y: Query = { kind: 'clinic-license', event: 'open', from: '2023-11-21', to: '2026-11-20', addr: '가나도 가나시' }
+  const LICENSE_MONTH: Query = { kind: 'clinic-license', event: 'close', from: '2026-10-21', to: '2026-11-20' }
+
+  it.each([
+    ['3년(30쪽)', LICENSE_3Y],
+    ['한 달(알림 확인)', LICENSE_MONTH],
+  ] as const)('AC-7909.3: 3년 개폐업(clinic-license) %s은 10초에 끊지 않고 서버 경로 한도 120초가 지나야 끊고 failed', async (_name, q) => {
+    vi.useFakeTimers()
+    hang()
+    let done: unknown = 'waiting'
+    void queryLocation(q).then((r) => (done = r))
+    await vi.advanceTimersByTimeAsync(119_999)
+    expect(done).toBe('waiting')
+    expect(lastCall().init.signal.aborted).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(done).toEqual(FAILED)
+    expect(lastCall().init.signal.aborted).toBe(true)
+  })
+
+  it('AC-7909.3: 느린 3년 개폐업 답(11초·70초·115초)은 끊지 않고 받는다', async () => {
+    vi.useFakeTimers()
+    const value = { ok: true, value: { rows: [], capped: false }, src: 'clinic-license', asOf: '2026-11-22' }
+    for (const afterMs of [11_000, 70_000, 115_000]) {
+      fetchMock.mockReset()
+      fetchMock.mockImplementation(
+        (_input, init) =>
+          new Promise<Response>((resolve, reject) => {
+            init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+            setTimeout(() => resolve(new Response(JSON.stringify(value), { status: 200 })), afterMs)
+          }),
+      )
+      let done: unknown = 'waiting'
+      void queryLocation(LICENSE_3Y).then((r) => (done = r))
+      await vi.advanceTimersByTimeAsync(afterMs)
+      expect([afterMs, done]).toEqual([afterMs, value])
+      expect(lastCall().init.signal.aborted).toBe(false)
+    }
+  })
+
   it('AC-7922.2: 느린 비급여 답(65초)·의원 목록 답(55초)은 끊지 않고 받는다', async () => {
     vi.useFakeTimers()
     const value = { ok: true, value: { eswt: 50000, manual: null }, src: 'nonpay', asOf: '2026-11-22' }

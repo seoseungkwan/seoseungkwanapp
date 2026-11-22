@@ -7,7 +7,8 @@ import type { KeyKind, KeyState, KeysReply, Query, QueryKind, QueryReply, ReplyC
 // 바깥 자료는 같은 origin 서버 경로(POST /api/ai/location/query)로만 부른다 — 몸통은 checkQuery를 지난 칸만(못 지나면 보내지 않음).
 // 열쇠 상태는 GET /api/ai/location/keys. 동 경계·정류장·역 좌표는 같은 origin 정적 파일(/location/dongs·/location/transit)이다.
 // 모두 redirect: 'error'(로그인이 끊겨 돌려보내는 답은 따라가지 않고 실패) · 한도를 넘으면 끊는다 — 기본 10초,
-// 바깥 자료 가운데 의원 목록(hosp-list, 과목 열아홉을 둘씩) 60초 · 비급여(nonpay, 서버 한도 60초보다 길게) 70초(design.md 3절).
+// 바깥 자료 가운데 의원 목록(hosp-list, 과목 열아홉을 둘씩) 60초 · 비급여(nonpay, 서버 한도 60초보다 길게) 70초(design.md 3절) ·
+// 3년 개폐업(clinic-license, 30쪽을 서버가 둘씩·쪽마다 8초 = 15번 × 8초) 120초 = 서버 경로 한도(maxDuration)를 다 기다린다.
 // 답은 정해 둔 칸만 새로 담는다. 바깥 오류 글은 담지 않고 어디에도 남기지 않는다(저장·console 없음)
 
 const QUERY_PATH = '/api/ai/location/query'
@@ -16,7 +17,7 @@ const DONGS_DIR = '/location/dongs'
 const TRANSIT_DIR = '/location/transit'
 export const CLIENT_TIMEOUT_MS = 10_000
 // 서버가 오래 붙잡는 종류만 더 기다린다(서버 경로 maxDuration 120초 안)
-const SLOW_QUERY_MS: Readonly<Partial<Record<QueryKind, number>>> = { 'hosp-list': 60_000, nonpay: 70_000 }
+const SLOW_QUERY_MS: Readonly<Partial<Record<QueryKind, number>>> = { 'hosp-list': 60_000, nonpay: 70_000, 'clinic-license': 120_000 }
 
 const REPLY_CODES: readonly ReplyCode[] = ['no-key', 'not-applied', 'failed']
 const KEY_KINDS: readonly KeyKind[] = ['data', 'kakao']

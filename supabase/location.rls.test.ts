@@ -1330,6 +1330,39 @@ describe('AC-7902.4 후보·업체를 지우면', SLOW, () => {
       { candidate_id: full, n: 30 },
     ])
   })
+
+  // PGlite는 연결이 하나라 두 탭이 같은 때 넣기를 흉내 낼 수 없다. 대신 넣는 동안 잡은 잠금(pg_locks)과 함수 몸통의 차례를 본다.
+  // 같은 후보에 둘째 탭이 넣으면 첫 탭이 끝날 때까지 기다린 뒤 새로 세어(첫 탭 줄이 보임) 30장이면 거부된다(본보기 notice_keywords_cap)
+  it('AC-7913.4: 사진 줄을 넣으면 그 후보로 잠근 뒤 센다 — 같은 후보에 두 탭이 같은 때 넣어도 31장이 되지 않게', async () => {
+    const first = await seedCandidate(A)
+    const second = await seedCandidate(A, { name: '두 번째 후보' })
+    const held = async () =>
+      (await rows(`select classid::text || ':' || objid::text as k from pg_locks where locktype = 'advisory' and granted order by 1`)).map((r) => r.k)
+    await become(A)
+    expect(await held()).toEqual([])
+    await db.exec('begin')
+    try {
+      await insertInto('public.location_photos', { candidate_id: first, path: photoPath(A, first) })
+      const one = await held()
+      expect(one).toHaveLength(1) // 첫 후보 잠금 하나
+      await insertInto('public.location_photos', { candidate_id: first, path: photoPath(A, first) })
+      expect(await held()).toEqual(one) // 같은 후보는 같은 잠금
+      await insertInto('public.location_photos', { candidate_id: second, path: photoPath(A, second) })
+      const two = await held()
+      expect(two).toHaveLength(2) // 다른 후보는 따로 잠근다(다른 후보 넣기를 막지 않음)
+      expect(two).toEqual(expect.arrayContaining(one))
+    } finally {
+      await db.exec('commit')
+    }
+    expect(await held()).toEqual([]) // 문장 묶음(트랜잭션)이 끝나면 풀린다
+    await operator()
+    const [found] = await rows(`select pg_get_functiondef(to_regprocedure('public.location_photo_limit()')) as def`)
+    const def = String(found.def)
+    const lock = def.search(/perform\s+pg_advisory_xact_lock\(/)
+    expect(lock).toBeGreaterThan(-1)
+    expect(lock).toBeLessThan(def.search(/count\(\*\)/)) // 잠근 뒤에 센다
+    expect(def).toMatch(/>=\s*30/)
+  })
 })
 
 describe('AC-7919.5 점수 설정 검사 location_score_rule_ok', SLOW, () => {
