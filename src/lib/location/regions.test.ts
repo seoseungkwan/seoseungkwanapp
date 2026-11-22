@@ -5,9 +5,12 @@ import {
   dongOf,
   dongShares,
   landCodes,
+  OLD_SGG_GROUPS,
+  oldGroupOf,
   rangeValue,
   sggOf,
   sggsTouching,
+  sidoNamesOf,
   type Dong,
   type DongFile,
   type DongIndex,
@@ -197,5 +200,68 @@ describe('AC-7905.4 코드 만들기', () => {
     expect(landCodes({ bcode: '9911010100', main: -1, sub: 0, san: false })).toBeNull()
     expect(landCodes({ bcode: '9911010100', main: 1.5, sub: 0, san: false })).toBeNull()
     expect(landCodes({ bcode: '9911010100', main: 1, sub: Number.NaN, san: false })).toBeNull()
+  })
+})
+
+// 2026 행정 개편(design.md 5절): 의료급여 판은 옛 시도·시군구 이름만 안다. 새 구는 옛 구 묶음 줄들을 더해 쓴다
+describe('AC-7922.3 옛 구 묶음', () => {
+  it('AC-7922.3: OLD_SGG_GROUPS는 design.md 5절 표 셋 그대로', () => {
+    expect(OLD_SGG_GROUPS).toEqual([
+      {
+        label: '옛 중구·동구',
+        names: [
+          { sido: '인천광역시', sgg: '중구' },
+          { sido: '인천광역시', sgg: '동구' },
+        ],
+        sggs: ['28125', '28155'],
+      },
+      { label: '옛 서구', names: [{ sido: '인천광역시', sgg: '서구' }], sggs: ['28275', '28290'] },
+      { label: '옛 화성시', names: [{ sido: '경기도', sgg: '화성시' }], sggs: ['41591', '41593', '41595', '41597'] },
+    ])
+  })
+
+  it('AC-7922.3: 글은 옛 이름을 ·로 이은 것이고, 새 구 하나는 묶음 하나에만 든다', () => {
+    for (const g of OLD_SGG_GROUPS) expect(g.label).toBe(`옛 ${g.names.map((n) => n.sgg).join('·')}`)
+    const all = OLD_SGG_GROUPS.flatMap((g) => g.sggs)
+    expect(new Set(all).size).toBe(all.length)
+  })
+
+  it('AC-7922.3: oldGroupOf — 새 구 코드는 그 묶음, 제물포·영종은 같은 묶음', () => {
+    expect(oldGroupOf('28125')?.label).toBe('옛 중구·동구')
+    expect(oldGroupOf('28155')).toEqual(oldGroupOf('28125'))
+    expect(oldGroupOf('28155')?.names).toEqual([
+      { sido: '인천광역시', sgg: '중구' },
+      { sido: '인천광역시', sgg: '동구' },
+    ])
+    expect(oldGroupOf('28275')?.label).toBe('옛 서구')
+    expect(oldGroupOf('28290')?.sggs).toEqual(['28275', '28290'])
+    for (const code5 of ['41591', '41593', '41595', '41597']) {
+      expect(oldGroupOf(code5)).toEqual({
+        label: '옛 화성시',
+        names: [{ sido: '경기도', sgg: '화성시' }],
+        sggs: ['41591', '41593', '41595', '41597'],
+      })
+    }
+  })
+
+  it('AC-7922.3: oldGroupOf — 판에 있는 시군구·옛 코드·모양이 틀린 값은 null', () => {
+    for (const code5 of ['28110', '28140', '28260', '41590', '11110', '12110', '99110', '', '2812', '281250']) {
+      expect(oldGroupOf(code5)).toBeNull()
+    }
+  })
+
+  it('AC-7922.3: sidoNamesOf — 전남광주통합특별시는 옛 광주광역시·전라남도로 찾는다', () => {
+    expect(sidoNamesOf('전남광주통합특별시')).toEqual(['광주광역시', '전라남도'])
+  })
+
+  it('AC-7922.3: sidoNamesOf — 전북특별자치도와 전라북도는 서로 둘 다(받은 이름 먼저)', () => {
+    expect(sidoNamesOf('전북특별자치도')).toEqual(['전북특별자치도', '전라북도'])
+    expect(sidoNamesOf('전라북도')).toEqual(['전라북도', '전북특별자치도'])
+  })
+
+  it('AC-7922.3: sidoNamesOf — 나머지 시도는 받은 이름 하나', () => {
+    expect(sidoNamesOf('인천광역시')).toEqual(['인천광역시'])
+    expect(sidoNamesOf('경기도')).toEqual(['경기도'])
+    expect(sidoNamesOf('가상도')).toEqual(['가상도'])
   })
 })

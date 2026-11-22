@@ -92,6 +92,46 @@ export function rangeValue(shares: readonly DongShare[], values: Readonly<Record
   return Math.floor(sum + FLOAT_SLACK)
 }
 
+/** 옛 시도·시군구 이름 한 쌍(의료급여 판에서 찾는 이름) */
+export type SidoSgg = { sido: string; sgg: string }
+
+/** 2026 행정 개편 옛 구 묶음 하나: 글(`옛 중구·동구`) · 판에서 찾는 옛 이름 · 이 묶음에 드는 새 시군구 5자리 */
+export type OldSggGroup = { label: string; names: readonly SidoSgg[]; sggs: readonly string[] }
+
+/**
+ * 옛 구 묶음(design.md 5절 표, 의료급여에 씀). 판에 없는 새 시군구는 옛 구 줄들을 더하고
+ * 비율 인구는 묶음 새 시군구 행정동 모두의 합이다. 새 구 하나는 묶음 하나에만 든다
+ */
+export const OLD_SGG_GROUPS: readonly OldSggGroup[] = [
+  {
+    label: '옛 중구·동구',
+    names: [
+      { sido: '인천광역시', sgg: '중구' },
+      { sido: '인천광역시', sgg: '동구' },
+    ],
+    sggs: ['28125', '28155'], // 제물포구 · 영종구
+  },
+  { label: '옛 서구', names: [{ sido: '인천광역시', sgg: '서구' }], sggs: ['28275', '28290'] }, // 서해구 · 검단구
+  { label: '옛 화성시', names: [{ sido: '경기도', sgg: '화성시' }], sggs: ['41591', '41593', '41595', '41597'] }, // 화성시 일반구 넷
+]
+
+/** 새 시군구 5자리가 든 옛 구 묶음. 판에 그대로 있는 시군구는 null */
+export function oldGroupOf(code5: string): OldSggGroup | null {
+  return OLD_SGG_GROUPS.find((g) => g.sggs.includes(code5)) ?? null
+}
+
+/** 새 시도 이름 → 옛 이름만 아는 판(의료급여)에서 찾을 시도 이름들 */
+const SIDO_NAMES: Readonly<Record<string, readonly string[]>> = {
+  전남광주통합특별시: ['광주광역시', '전라남도'],
+  전북특별자치도: ['전북특별자치도', '전라북도'],
+  전라북도: ['전라북도', '전북특별자치도'],
+}
+
+/** 판에서 찾을 시도 이름(전남광주통합특별시 → 광주광역시·전라남도, 전북특별자치도 ↔ 전라북도 둘 다, 나머지는 그 이름 하나) */
+export function sidoNamesOf(name: string): string[] {
+  return [...(SIDO_NAMES[name] ?? [name])]
+}
+
 /** 시군구 5자리 = 행정동·법정동 코드(10자리) 앞 5자리 */
 export function sggOf(code10: string): string | null {
   return /^\d{10}$/.test(code10) ? code10.slice(0, 5) : null
