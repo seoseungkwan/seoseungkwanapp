@@ -1,0 +1,24 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": {
+      "items": [
+        {
+          "MGTNO": "PHMB320269990000021",
+          "BPLCNM": "온누리정형외과의원",
+          "APVPERMYMD": "20261020",
+          "TRDSTATENM": "폐업",
+          "DCBYMD": "20261118",
+          "TREATSBJTCNTNNM": "정형외과",
+          "RDNWHLADDR": "가상도 가람구 바다로 12, 2층",
+          "SITEWHLADDR": "가상도 가람구 물빛동 34-5",
+          "X": "198120.4",
+          "Y": "451733.9"
+        }
+      ],
+      "numOfRows": 500,
+      "pageNo": 1,
+      "totalCount": 1
+    }
+  }
+}
