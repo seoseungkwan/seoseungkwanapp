@@ -12,7 +12,8 @@ import { isNotRegistered } from '../fetchSource'
 // 기간은 최대 3년(checkQuery가 본다). 쪽은 기간 37일마다 하나, 30쪽까지(3년 = 30쪽), 한 쪽 100줄(사이트 한도). 전체 수가 받은 줄보다 많으면 capped.
 // 좌표 EPSG:5174 → WGS84(coords.from5174). 좌표가 비었거나 0·글자·한국 밖인 줄, 이름이 빈 줄, 그 날짜가 기간 밖인 줄은 뺀다
 // (from5174(0, 0)은 바다 위 점을 내놓아 0은 따로 뺀다). 자료 안에 기준 날짜가 없어 기준 날짜는 받은 한국 날짜다.
-// 답 칸 이름은 대·소문자·밑줄을 가리지 않고, 표준 이름(BPLC_NM·LCPMT_YMD…)과 옛 인허가 자료 이름(BPLCNM·APVPERMYMD·DCBYMD…) 둘 다 읽는다
+// 답 칸 이름은 대·소문자·밑줄을 가리지 않고, 표준 이름(BPLC_NM·LCPMT_YMD…)과 옛 인허가 자료 이름(BPLCNM·APVPERMYMD·DCBYMD…) 둘 다 읽는다.
+// 치과의원·한의원이 섞여 와 업태 칸(MDLCR_INST_BTP_NM, TASK-80)을 type으로 담는다 — watch.ts가 deptOfText로 가른다
 
 export const LICENSE_URL = 'https://apis.data.go.kr/1741000/clinics/info'
 export const LICENSE_PAGE_ROWS = 100
@@ -30,6 +31,8 @@ const ROAD = 'ROAD_NM_ADDR'
 const FIELDS = {
   name: ['BPLCNM'], // 사업장명
   dept: ['MDEXMSBJCTCNNM', 'DGSBJTCNNM', 'TREATSBJTCNTNNM'], // 진료과목내용명
+  // 업태(의료기관 종별: 의원·치과의원·한의원 — design.md 17절 3). 비면 업태구분명(옛 자료 UPTAENM)
+  type: ['MDLCRINSTBTPNM', 'BZSTATSENM', 'UPTAENM'],
   openedOn: ['LCPMTYMD', 'APVPERMYMD'], // 인허가일자
   closedOn: ['CLSBIZYMD', 'DCBYMD'], // 폐업일자
   road: ['ROADNMADDR', 'RDNWHLADDR'], // 도로명 주소
@@ -39,10 +42,11 @@ const FIELDS = {
 } as const
 type Field = keyof typeof FIELDS
 
-/** 의원 한 줄 — watch.ts LicenseRow로 그대로 넘긴다(점은 늘 있음) */
+/** 의원 한 줄 — watch.ts LicenseRow로 그대로 넘긴다(점은 늘 있음). type = 업태 글(없으면 빈 글자, 치과의원·한의원을 가름) */
 export type LicenseItem = {
   name: string
   dept: string
+  type: string
   openedOn: string | null
   closedOn: string | null
   address: string
@@ -159,7 +163,7 @@ function itemOf(row: Row, q: Q): LicenseItem | null {
   const point = x === null || y === null ? null : from5174(x, y)
   if (point === null) return null
   const road = textOf(get('road'))
-  return { name, dept: textOf(get('dept')), openedOn, closedOn, address: road !== '' ? road : textOf(get('lot')), point }
+  return { name, dept: textOf(get('dept')), type: textOf(get('type')), openedOn, closedOn, address: road !== '' ? road : textOf(get('lot')), point }
 }
 
 function parse(texts: string[], q: Q, today: string): Parsed<LicenseValue> {

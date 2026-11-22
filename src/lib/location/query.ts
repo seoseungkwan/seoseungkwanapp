@@ -144,6 +144,8 @@ type Spec = {
 }
 const str = (v: unknown) => v as string
 
+const SGG_FACILITY: Spec = { fields: { sggName: name }, optional: { sidoName: name } }
+
 const SPECS: Readonly<Record<QueryKind, Spec>> = {
   'k-address': { fields: { q: address } },
   'k-point': { fields: { at: AT } },
@@ -184,10 +186,12 @@ const SPECS: Readonly<Record<QueryKind, Spec>> = {
     optional: { addr: ADDR },
     also: (q) => str(q.from) <= str(q.to) && str(q.to) <= addMonthsToDay(str(q.from), 36),
   },
-  gym: { fields: { sggName: name }, optional: { sidoName: name } },
-  senior: { fields: { sggName: name } },
-  market: { fields: { sggName: name } },
-  school: { fields: { sggName: name } },
+  // 시설은 시군구 이름 + 선택 시도 이름. 경로당(제공기관)·학교(교육청)는 시도 이름이 없으면 부르지 못하고,
+  // 시장·체력단련장은 다른 시도의 같은 이름 시군구를 뺀다(design.md 17절 10)
+  gym: SGG_FACILITY,
+  senior: SGG_FACILITY,
+  market: SGG_FACILITY,
+  school: SGG_FACILITY,
   // 판에 코드 칸이 없어 이름으로 찾는다: 시도 1~2개(전남광주는 옛 둘) · 시군구 1~4개(옛 구 묶음이면 옛 이름들)
   welfare: { fields: { sgg: SGG, sidoNames: listOf(shortName, 1, 2), sggNames: listOf(shortName, 1, 4) } },
 }

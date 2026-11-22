@@ -1,0 +1,101 @@
+{
+ "response": {
+  "body": {
+   "dataType": "JSON",
+   "items": {
+    "item": [
+     {
+      "MNG_NO": "PHMB320269990000031",
+      "BPLC_NM": "가람미소치과의원",
+      "LCPMT_YMD": "20261028",
+      "CLSBIZ_YMD": "",
+      "MDLCR_INST_BTP_NM": "치과의원",
+      "BZSTAT_SE_NM": "치과의원",
+      "MDEXM_SBJCT_CN_NM": "구강악안면외과",
+      "ROAD_NM_ADDR": "가상도 가람구 바다로 14, 3층",
+      "LOTNO_ADDR": "가상도 가람구 물빛동 35",
+      "CRD_INFO_X": "198140",
+      "CRD_INFO_Y": "451750",
+      "SALS_STTS_CD": "01",
+      "SALS_STTS_NM": "영업/정상",
+      "DAT_UPDT_PNT": "2026-11-21 22:00:05",
+      "DAT_UPDT_SE": "I"
+     },
+     {
+      "MNG_NO": "PHMB320269990000032",
+      "BPLC_NM": "다온한의원",
+      "LCPMT_YMD": "20261105",
+      "CLSBIZ_YMD": "",
+      "MDLCR_INST_BTP_NM": "한의원",
+      "BZSTAT_SE_NM": "한의원",
+      "MDEXM_SBJCT_CN_NM": "한방내과, 침구과",
+      "ROAD_NM_ADDR": "가상도 가람구 바다로 21",
+      "LOTNO_ADDR": "가상도 가람구 물빛동 40",
+      "CRD_INFO_X": "198200",
+      "CRD_INFO_Y": "451700",
+      "SALS_STTS_CD": "01",
+      "SALS_STTS_NM": "영업/정상",
+      "DAT_UPDT_PNT": "2026-11-21 22:00:05",
+      "DAT_UPDT_SE": "I"
+     },
+     {
+      "MNG_NO": "PHMB320269990000033",
+      "BPLC_NM": "바른정형외과의원",
+      "LCPMT_YMD": "20261111",
+      "CLSBIZ_YMD": "",
+      "MDLCR_INST_BTP_NM": "의원",
+      "BZSTAT_SE_NM": "의원",
+      "MDEXM_SBJCT_CN_NM": "정형외과",
+      "ROAD_NM_ADDR": "가상도 가람구 바다로 25, 2층",
+      "LOTNO_ADDR": "가상도 가람구 물빛동 42",
+      "CRD_INFO_X": "198250",
+      "CRD_INFO_Y": "451650",
+      "SALS_STTS_CD": "01",
+      "SALS_STTS_NM": "영업/정상",
+      "DAT_UPDT_PNT": "2026-11-21 22:00:05",
+      "DAT_UPDT_SE": "I"
+     },
+     {
+      "MNG_NO": "PHMB320269990000034",
+      "BPLC_NM": "솔빛한의원",
+      "LCPMT_YMD": "20261112",
+      "CLSBIZ_YMD": "",
+      "MDLCR_INST_BTP_NM": "",
+      "BZSTAT_SE_NM": "한의원",
+      "MDEXM_SBJCT_CN_NM": "한방부인과",
+      "ROAD_NM_ADDR": "가상도 가람구 바다로 33",
+      "LOTNO_ADDR": "가상도 가람구 물빛동 47",
+      "CRD_INFO_X": "198300",
+      "CRD_INFO_Y": "451600",
+      "SALS_STTS_CD": "01",
+      "SALS_STTS_NM": "영업/정상",
+      "DAT_UPDT_PNT": "2026-11-21 22:00:05",
+      "DAT_UPDT_SE": "I"
+     },
+     {
+      "MNG_NO": "PHMB320269990000035",
+      "BPLC_NM": "새봄의원",
+      "LCPMT_YMD": "20261113",
+      "CLSBIZ_YMD": "",
+      "MDEXM_SBJCT_CN_NM": "내과",
+      "ROAD_NM_ADDR": "가상도 가람구 바다로 38",
+      "LOTNO_ADDR": "가상도 가람구 물빛동 51",
+      "CRD_INFO_X": "198350",
+      "CRD_INFO_Y": "451550",
+      "SALS_STTS_CD": "01",
+      "SALS_STTS_NM": "영업/정상",
+      "DAT_UPDT_PNT": "2026-11-21 22:00:05",
+      "DAT_UPDT_SE": "I"
+     }
+    ]
+   },
+   "numOfRows": 100,
+   "pageNo": 1,
+   "totalCount": 5
+  },
+  "header": {
+   "resultCode": "0",
+   "resultMsg": "정상"
+  }
+ }
+}

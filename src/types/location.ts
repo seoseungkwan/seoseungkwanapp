@@ -348,7 +348,7 @@ export type ScoreFacts = {
 // 새 경쟁 의원 알림(lib/location/watch.ts): 후보 줄에서 읽는 칸 · clinic-license 한 줄(WGS84 점, 못 바꾼 점은 null) · 넣을 알림 줄
 export type WatchStatus = CandidateStatus
 export type WatchCandidate = Pick<Candidate, 'id' | 'name' | 'status' | 'lat' | 'lng' | 'radiusM' | 'watchCheckedOn' | 'createdAt'>
-export type LicenseRow = { name: string; dept: string; openedOn: string | null; closedOn: string | null; point: Point | null }
+export type LicenseRow = { name: string; dept: string; openedOn: string | null; closedOn: string | null; point: Point | null; type?: string }
 export type WatchEvent = Pick<LocationEvent, 'candidateId' | 'kind' | 'clinicName' | 'dept' | 'eventOn' | 'distM'>
 
 // 매물 견주기(lib/location/listings.ts)가 읽는 매물 칸

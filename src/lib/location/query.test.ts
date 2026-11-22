@@ -57,7 +57,7 @@ const VALID: { [K in QueryKind]: Extract<Query, { kind: K }> } = {
   welfare: { kind: 'welfare', sgg: '11110', sidoNames: ['서울특별시'], sggNames: ['종로구'] },
 }
 
-// 빠져도 되는 칸(AC-7922.1): 승하차 쪽(빼면 0) · 인허가 주소 앞부분 · 체력단련장 시도 이름
+// 빠져도 되는 칸(AC-7922.1 · AC-7918.3): 승하차 쪽(빼면 0) · 인허가 주소 앞부분 · 시설(체력단련장·경로당·학교·시장) 시도 이름
 const OPTIONAL: Partial<Record<QueryKind, readonly string[]>> = {
   'flow-volume': ['part'],
   'clinic-license': ['addr'],
@@ -374,14 +374,30 @@ describe('AC-7922.1 바뀐 몸통', () => {
       expect(checkQuery({ ...base, addr }), JSON.stringify(addr)).toBeNull()
   })
 
-  it('AC-7922.1: 체력단련장(gym)은 선택 sidoName(시도·시군구 이름 규칙), 다른 시설 종류에는 없다', () => {
+  it('AC-7922.1: 체력단련장(gym)은 선택 sidoName(시도·시군구 이름 규칙)', () => {
     expect(checkQuery({ kind: 'gym', sggName: '종로구' })).toEqual({ kind: 'gym', sggName: '종로구' })
     const withSido = { kind: 'gym', sggName: '북구', sidoName: '전남광주통합특별시' }
     expect(checkQuery(withSido)).toEqual(withSido)
     for (const sidoName of ['', '서', 'Seoul', '서울특별시;', null, 11])
       expect(checkQuery({ kind: 'gym', sggName: '종로구', sidoName }), String(sidoName)).toBeNull()
-    for (const kind of ['senior', 'market', 'school'] as const)
-      expect(checkQuery({ kind, sggName: '종로구', sidoName: '서울특별시' }), kind).toBeNull()
+  })
+
+  it('AC-7918.3: 경로당·학교·시장(senior·school·market)도 선택 sidoName — 빼도 되고, 있으면 시도·시군구 이름 규칙(design.md 17절 10)', () => {
+    const named = [
+      ['서울특별시', '종로구'],
+      ['경기도', '수원시 장안구'],
+      ['전남광주통합특별시', '북구'],
+      ['세종특별자치시', '세종특별자치시'],
+    ]
+    for (const kind of ['senior', 'school', 'market'] as const) {
+      expect(checkQuery({ kind, sggName: '종로구' }), kind).toEqual({ kind, sggName: '종로구' })
+      for (const [sidoName, sggName] of named)
+        expect(checkQuery({ kind, sggName, sidoName }), `${kind} ${sidoName} ${sggName}`).toEqual({ kind, sggName, sidoName })
+      for (const sidoName of ['', '서', ' 서울특별시', '서울특별시 ', '서울  특별시', 'Seoul', '서울특별시;', '가'.repeat(41), null, 11])
+        expect(checkQuery({ kind, sggName: '종로구', sidoName }), `${kind} ${JSON.stringify(sidoName)}`).toBeNull()
+      // 시군구 이름은 그대로 꼭 있다
+      expect(checkQuery({ kind, sidoName: '서울특별시' }), `${kind} 시군구 없음`).toBeNull()
+    }
   })
 
   it('AC-7922.1: 의원 목록 clinic은 과목 depts(의원 과목 id 1~19개, 되풀이 없음, 치과·한의원 아님)가 꼭 있다', () => {

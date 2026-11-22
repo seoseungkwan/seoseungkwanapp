@@ -55,9 +55,10 @@ export function dueCandidates<T extends WatchCandidate>(rows: readonly T[], toda
 
 const clip = (s: string, max: number) => Array.from(s).slice(0, max).join('')
 
-// 인허가 줄(LicenseRow)에는 업태 칸이 없어 업태 글은 비워 둔다 — 이름 낱말 → 과목 글(경쟁 → 둘레로 보기) 차례로만 센다
+// 업태 글(type, 인허가 MDLCR_INST_BTP_NM)에 치과·한의가 들면 치과의원·한의원, 아니면 이름 낱말 → 과목 글(경쟁 → 둘레로 보기) 차례로 센다.
+// 업태 글이 없는 줄(옛 모양)은 빈 글자로 본다
 function isRival(r: LicenseRow, rule: DeptRule): boolean {
-  const id = deptOfText({ name: r.name, subjects: r.dept, type: '' }, rule)
+  const id = deptOfText({ name: r.name, subjects: r.dept, type: r.type ?? '' }, rule)
   return id !== null && rule.rival.includes(id)
 }
 
