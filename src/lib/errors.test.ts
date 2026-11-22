@@ -19,6 +19,7 @@ const ALL_CODES = [
   'E-AUTH-START',
   'E-SIGNUP-FAILED',
   'E-ADMIN-FAILED',
+  'E-ADMIN-ROLE',
   'E-PAGE-FAILED',
   'E-EXT-MISSING',
   'E-HELPER-MISSING',
@@ -151,6 +152,7 @@ const AUTH_CODES = [
   'E-AUTH-START',
   'E-SIGNUP-FAILED',
   'E-ADMIN-FAILED',
+  'E-ADMIN-ROLE',
   'E-PAGE-FAILED',
 ] as const satisfies readonly ErrorCode[]
 
@@ -207,6 +209,13 @@ describe('AC-012.1 인증 오류 문구', () => {
     const info = errorInfo('E-ADMIN-FAILED')
     expect(info.what).toBe('신청 상태를 바꾸지 못했어요')
     expect(info.fix).toContain('다시 눌러 주세요')
+  })
+
+  it('AC-7702.3: E-ADMIN-ROLE은 관리자를 정하거나 빼지 못했다고 알린다(시안 notes.md 글 그대로)', () => {
+    expect(errorInfo('E-ADMIN-ROLE')).toEqual({
+      what: '관리자를 정하거나 빼지 못했어요',
+      fix: '인터넷 연결을 확인하고 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+    })
   })
 
   it('AC-012.1: E-PAGE-FAILED는 화면을 열지 못했다고 알리고 [다시 시도]를 안내한다', () => {

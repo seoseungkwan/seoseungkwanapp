@@ -56,6 +56,11 @@ export const ERRORS: Record<KnownErrorCode, ErrorInfo> = {
     what: '신청 상태를 바꾸지 못했어요',
     fix: '인터넷 연결을 확인하고 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
   },
+  // 가입 승인 '승인' 탭의 관리자 정하기·빼기 실패(spec multi-admin AC-7702.3). 글은 승인된 시안 docs/mockups/multi-admin/notes.md
+  'E-ADMIN-ROLE': {
+    what: '관리자를 정하거나 빼지 못했어요',
+    fix: '인터넷 연결을 확인하고 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
   'E-PAGE-FAILED': {
     what: '화면을 열지 못했어요',
     fix: '잠시 뒤 [다시 시도]를 눌러 주세요. 계속되면 아래 오류 번호를 관리자에게 메일로 알려 주세요.',

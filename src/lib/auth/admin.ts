@@ -53,3 +53,47 @@ export async function setHospitalStatus(id: string, status: 'approved' | 'reject
   }
   if (error) throw new AdminError('신청 상태를 바꾸지 못했어요', { cause: error })
 }
+
+// 관리자 여럿(spec multi-admin REQ-7702). 둘 다 정의자 함수 하나만 부른다 — admins 표 쓰기 권한은 아무에게도 없고,
+// 함수가 부른 사람이 관리자인지·자기 자신·주 관리자 병원·승인 안 된 병원인지 본다(supabase/multiAdmin.rls.test.ts가 증명)
+/** 주인이 관리자인 승인된 병원 하나. mine = 내(부른 관리자) 병원, owner = 주 관리자 병원 */
+export type AdminMark = { hospitalId: string; mine: boolean; owner: boolean }
+
+// 답은 믿지 않는다: 줄 하나라도 모양이 틀리면 틀린 표시로 그리지 않고 막는다
+function toAdminMark(row: unknown): AdminMark | null {
+  if (typeof row !== 'object' || row === null) return null
+  const { hospital_id, is_me, is_owner } = row as Record<string, unknown>
+  if (typeof hospital_id !== 'string' || typeof is_me !== 'boolean' || typeof is_owner !== 'boolean') return null
+  return { hospitalId: hospital_id, mine: is_me, owner: is_owner }
+}
+
+/** '승인' 탭 관리자 표시. rpc('admin_hospitals') 한 번, 받은 차례 그대로. 실패·모양 틀림 → AdminError */
+export async function listAdminHospitals(): Promise<AdminMark[]> {
+  let result: { data: unknown; error: unknown }
+  try {
+    result = await supabaseBrowser().rpc('admin_hospitals')
+  } catch (cause) {
+    throw new AdminError('관리자 목록을 읽지 못했어요', { cause })
+  }
+  if (result.error) throw new AdminError('관리자 목록을 읽지 못했어요', { cause: result.error })
+  if (!Array.isArray(result.data)) throw new AdminError('관리자 목록을 읽지 못했어요')
+  const marks: AdminMark[] = []
+  for (const row of result.data) {
+    const mark = toAdminMark(row)
+    if (!mark) throw new AdminError('관리자 목록을 읽지 못했어요')
+    marks.push(mark)
+  }
+  return marks
+}
+
+/** 정하기(true)·빼기(false). rpc('set_admin') 한 번, 저절로 다시 부르지 않는다. 실패 → AdminError */
+export async function setAdmin(hospitalId: string, admin: boolean): Promise<void> {
+  let error: unknown
+  try {
+    const result = await supabaseBrowser().rpc('set_admin', { p_hospital_id: hospitalId, p_admin: admin })
+    error = result.error
+  } catch (cause) {
+    throw new AdminError('관리자를 바꾸지 못했어요', { cause })
+  }
+  if (error) throw new AdminError('관리자를 바꾸지 못했어요', { cause: error })
+}
