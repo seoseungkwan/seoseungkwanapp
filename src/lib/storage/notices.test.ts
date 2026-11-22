@@ -168,6 +168,9 @@ function listRow(over: Record<string, unknown> = {}): Record<string, unknown> {
   }
 }
 
+// 규칙 칩 숫자(specs/rule-auto AC-7812.5): 연결 규칙이 없는 글은 모두 0, 판정 줄이 아직 없는 규칙 하나는 pending 1
+const ZERO_TALLY = { changed: 0, human: 0, pending: 0 }
+
 const VIEW1: NoticeView = {
   id: ID1,
   title: '도수치료 급여기준 개정',
@@ -183,6 +186,7 @@ const VIEW1: NoticeView = {
   mark: MARK,
   unread: true,
   keywords: ['도수치료'],
+  ruleTally: { changed: 0, human: 0, pending: 1 },
 }
 
 // 요약 전 글(요약·읽는 방법 없음, 규칙 연결 없음, 내 표시 없음, 맞은 낱말 없음)
@@ -216,9 +220,15 @@ const WAIT_VIEW: NoticeView = {
   mark: EMPTY_MARK,
   unread: false,
   keywords: [],
+  ruleTally: ZERO_TALLY,
 }
 
 const page = (rows: unknown[], total = rows.length, unread = 1) => ({ total, unread, rows })
+/** notice_list는 그 쪽, 판정 줄(rule_changes)은 changes로 답한다(AC-7812.5의 ruleTallies 읽기) */
+const listReply =
+  (data: unknown, changes: unknown = []) =>
+  (call: Call): Reply =>
+    call.name === 'rule_changes' ? { data: changes } : { data }
 /** 그 열쇠들을 뺀 얕은 사본 */
 const without = (obj: object, ...keys: string[]) => Object.fromEntries(Object.entries(obj).filter(([key]) => !keys.includes(key)))
 const FILTER: NoticeFilter = { related: true, sources: ['hira_notice', 'hira_crtr', 'mohw_rss'], starred: false, q: '', offset: 0 }
@@ -273,11 +283,12 @@ function expectNoConsole() {
 // ── AC-7418.1 목록 · 글 하나 ───────────────────────────────
 
 describe('AC-7418.1 listNotices · openNotice', () => {
-  it('AC-7418.1: 찾는 말이 없으면 notice_list를 거르기 그대로 50개씩 한 번 부르고 NoticeView 목록과 total·unread를 돌려준다', async () => {
+  it('AC-7418.1 AC-7812.5: 찾는 말이 없으면 notice_list를 거르기 그대로 50개씩 한 번 부르고 NoticeView 목록과 total·unread를 돌려준다(규칙이 있는 줄만 판정 줄을 한 번 더 읽는다)', async () => {
     const calls = fakeClient((call) => (call.name === 'notice_list' ? { data: page([listRow(), WAIT_ROW], 120, 7) } : { data: [] }))
     const result = await listNotices(FILTER)
     expect(result).toEqual({ total: 120, unread: 7, rows: [VIEW1, WAIT_VIEW] })
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
+    expect(calls[1]).toMatchObject({ kind: 'from', name: 'rule_changes', op: 'select', filters: [['in', 'notice_id', [ID1]]] })
     expect(calls[0]).toMatchObject({ kind: 'rpc', name: 'notice_list' })
     expect(calls[0].args).toEqual({
       p_related: true,
@@ -297,16 +308,15 @@ describe('AC-7418.1 listNotices · openNotice', () => {
     expect(calls[0].args).toEqual({ p_related: false, p_sources: ['mohw_rss'], p_starred: true, p_ids: null, p_unread_only: false, p_limit: 50, p_offset: 50 })
   })
 
-  it('AC-7418.1: 찾는 말이 있으면 앞뒤 공백을 뗀 말로 notice_search를 부르고 그 id로 notice_list를 거른다', async () => {
-    const calls = fakeClient((call) => {
-      if (call.name === 'notice_search') return { data: [ID1, ID3] }
-      return { data: page([listRow()], 1, 1) }
-    })
+  it('AC-7418.1 AC-7812.5: 찾는 말이 있으면 앞뒤 공백을 뗀 말로 notice_search를 부르고 그 id로 notice_list를 거른다', async () => {
+    const list = listReply(page([listRow()], 1, 1))
+    const calls = fakeClient((call) => (call.name === 'notice_search' ? { data: [ID1, ID3] } : list(call)))
     const result = await listNotices({ ...FILTER, q: '  도수 횟수 ', offset: 50 })
     expect(result).toEqual({ total: 1, unread: 1, rows: [VIEW1] })
     expect(calls.map((c) => [c.kind, c.name])).toEqual([
       ['rpc', 'notice_search'],
       ['rpc', 'notice_list'],
+      ['from', 'rule_changes'],
     ])
     expect(calls[0].args).toEqual({ p_q: '도수 횟수' })
     expect(calls[1].args).toEqual({
@@ -335,14 +345,14 @@ describe('AC-7418.1 listNotices · openNotice', () => {
     expect(calls.map((c) => c.name)).toEqual(['notice_search'])
   })
 
-  it('AC-7418.1: 줄의 정해 둔 칸만 새로 만들어 담는다(본문·붙임 글자 같은 다른 칸은 옮기지 않는다)', async () => {
-    fakeClient(() => ({ data: page([listRow({ body: SECRET, attachText: SECRET, groupKey: SECRET })]) }))
+  it('AC-7418.1 AC-7812.5: 줄의 정해 둔 칸만 새로 만들어 담는다(본문·붙임 글자 같은 다른 칸은 옮기지 않는다)', async () => {
+    fakeClient(listReply(page([listRow({ body: SECRET, attachText: SECRET, groupKey: SECRET })])))
     const result = await listNotices(FILTER)
     expect(result).toEqual({ total: 1, unread: 1, rows: [VIEW1] })
     expect(JSON.stringify(result)).not.toContain(SECRET)
   })
 
-  it('AC-7418.1: 모양이 틀린 줄(id·제목·종류·날짜·상태·안 읽음)은 뺀다', async () => {
+  it('AC-7418.1 AC-7812.5: 모양이 틀린 줄(id·제목·종류·날짜·상태·안 읽음)은 뺀다', async () => {
     const bad = [
       listRow({ id: 1 }),
       listRow({ id: '' }),
@@ -355,30 +365,32 @@ describe('AC-7418.1 listNotices · openNotice', () => {
       [listRow()],
       'row',
     ]
-    fakeClient(() => ({ data: page([...bad, listRow()], 11, 1) }))
+    fakeClient(listReply(page([...bad, listRow()], 11, 1)))
     expect(await listNotices(FILTER)).toEqual({ total: 11, unread: 1, rows: [VIEW1] })
   })
 
-  it('AC-7418.1: 안쪽 칸이 틀리면 그 칸만 빈 값으로 둔다(요약·읽는 방법·관련·번호·규칙·출처 글·붙임·내 표시)', async () => {
-    fakeClient(() => ({
-      data: page([
-        listRow({
-          noticeNo: 2026,
-          related: 'true',
-          summary: { what: '무엇' }, // 칸이 모자람
-          readMode: 'pdf',
-          ruleHits: [{ id: 'r1', title: '규칙 하나' }, { id: 2, title: 'x' }, null],
-          posts: [
-            { ...POSTS[0], attachments: [{ name: '붙임', url: 1 }, { name: '좋은 붙임', url: 'https://www.mohw.go.kr/a' }] },
-            { ...POSTS[1], source: 'kma' },
-            null,
-          ],
-          mark: { readAt: 5, starred: 'no', memo: null, memoAt: '2026-11-20T03:00:00+00:00', rulesCheckedAt: null },
-          keywords: ['도수치료', 3, null, '체외충격파'],
-        }),
-        listRow({ id: ID3, ruleHits: 'x', posts: null, mark: null, keywords: 'x', summary: [] }),
-      ]),
-    }))
+  it('AC-7418.1 AC-7812.5: 안쪽 칸이 틀리면 그 칸만 빈 값으로 둔다(요약·읽는 방법·관련·번호·규칙·출처 글·붙임·내 표시)', async () => {
+    fakeClient(
+      listReply(
+        page([
+          listRow({
+            noticeNo: 2026,
+            related: 'true',
+            summary: { what: '무엇' }, // 칸이 모자람
+            readMode: 'pdf',
+            ruleHits: [{ id: 'r1', title: '규칙 하나' }, { id: 2, title: 'x' }, null],
+            posts: [
+              { ...POSTS[0], attachments: [{ name: '붙임', url: 1 }, { name: '좋은 붙임', url: 'https://www.mohw.go.kr/a' }] },
+              { ...POSTS[1], source: 'kma' },
+              null,
+            ],
+            mark: { readAt: 5, starred: 'no', memo: null, memoAt: '2026-11-20T03:00:00+00:00', rulesCheckedAt: null },
+            keywords: ['도수치료', 3, null, '체외충격파'],
+          }),
+          listRow({ id: ID3, ruleHits: 'x', posts: null, mark: null, keywords: 'x', summary: [] }),
+        ]),
+      ),
+    )
     const result = await listNotices(FILTER)
     if (result === 'failed') throw new Error('목록을 읽어야 한다')
     expect(result.rows[0]).toEqual({
@@ -392,7 +404,7 @@ describe('AC-7418.1 listNotices · openNotice', () => {
       mark: { readAt: null, starred: false, memo: '', memoAt: '2026-11-20T03:00:00+00:00', rulesCheckedAt: null },
       keywords: ['도수치료', '체외충격파'],
     })
-    expect(result.rows[1]).toEqual({ ...VIEW1, id: ID3, ruleHits: [], posts: [], mark: EMPTY_MARK, keywords: [], summary: null })
+    expect(result.rows[1]).toEqual({ ...VIEW1, id: ID3, ruleHits: [], posts: [], mark: EMPTY_MARK, keywords: [], summary: null, ruleTally: ZERO_TALLY })
   })
 
   it('AC-7418.1: 요약의 amends가 없거나 틀리면 빈 목록, 요약 안 related가 없으면 줄의 related를 쓴다', async () => {
@@ -404,10 +416,11 @@ describe('AC-7418.1 listNotices · openNotice', () => {
     expect(result.rows[1].summary).toEqual({ ...SUMMARY, related: false, amends: [] })
   })
 
-  it('AC-7418.1: openNotice(id)는 그 id 하나만 notice_list로 거르고(관련·출처·별표 거르기 없음) 그 글이다', async () => {
-    const calls = fakeClient(() => ({ data: page([listRow()]) }))
+  it('AC-7418.1 AC-7812.5: openNotice(id)는 그 id 하나만 notice_list로 거르고(관련·출처·별표 거르기 없음) 그 글이다(규칙이 있으면 판정 줄을 한 번 더 읽는다)', async () => {
+    const calls = fakeClient(listReply(page([listRow()])))
     expect(await openNotice(ID1)).toEqual(VIEW1)
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
+    expect(calls[1]).toMatchObject({ kind: 'from', name: 'rule_changes', filters: [['in', 'notice_id', [ID1]]] })
     expect(calls[0]).toMatchObject({ kind: 'rpc', name: 'notice_list' })
     expect(calls[0].args).toEqual({ p_related: false, p_sources: null, p_starred: false, p_ids: [ID1], p_unread_only: false, p_limit: 1, p_offset: 0 })
   })
@@ -427,18 +440,105 @@ describe('AC-7418.1 listNotices · openNotice', () => {
 // ── AC-7424.7 목록 줄의 내 낱말 ──────────────────────────────
 
 describe('AC-7424.7 NoticeView.keywords', () => {
-  it('AC-7424.7: listNotices·openNotice 줄의 keywords는 notice_list 줄의 keywords(넣은 차례 그대로)다', async () => {
-    fakeClient(() => ({ data: page([listRow({ keywords: ['체외충격파', '도수치료'] })]) }))
+  it('AC-7424.7 AC-7812.5: listNotices·openNotice 줄의 keywords는 notice_list 줄의 keywords(넣은 차례 그대로)다', async () => {
+    fakeClient(listReply(page([listRow({ keywords: ['체외충격파', '도수치료'] })])))
     const list = await listNotices(FILTER)
     if (list === 'failed') throw new Error('목록을 읽어야 한다')
     expect(list.rows[0].keywords).toEqual(['체외충격파', '도수치료'])
     expect(await openNotice(ID1)).toEqual({ ...VIEW1, keywords: ['체외충격파', '도수치료'] })
   })
 
-  it('AC-7424.7: 줄에 keywords 칸이 없으면(낱말 migration 전) 빈 목록이다', async () => {
-    fakeClient(() => ({ data: page([without(listRow(), 'keywords')]) }))
+  it('AC-7424.7 AC-7812.5: 줄에 keywords 칸이 없으면(낱말 migration 전) 빈 목록이다', async () => {
+    fakeClient(listReply(page([without(listRow(), 'keywords')])))
     expect(await openNotice(ID1)).toEqual({ ...VIEW1, keywords: [] })
   })
+})
+
+// ── AC-7812.5 목록 줄의 규칙 칩 숫자(specs/rule-auto) ───────────────
+
+describe('AC-7812.5 NoticeView.ruleTally', () => {
+  const HITS = [
+    { id: 'MT-03', title: '도수치료 횟수' },
+    { id: 'IN-12', title: '주사 간격' },
+    { id: 'DX-02', title: '상병 확인' },
+    { id: 'LA-05', title: '검사 주기' },
+    { id: 'PT-07', title: '물리치료 묶음' },
+  ]
+  const judged = (noticeId: string, ruleId: string, verdict: string, state = 'live') => ({ notice_id: noticeId, rule_id: ruleId, verdict, state })
+  const CHANGES = [
+    judged(ID1, 'MT-03', 'change'),
+    judged(ID1, 'IN-12', 'human'),
+    judged(ID1, 'DX-02', 'none'),
+    judged(ID1, 'LA-05', 'change', 'old'), // old 줄은 세지 않지만 판정 줄이 있는 규칙이다(살펴보는 중 아님)
+    judged(ID1, 'PT-07', 'maybe'), // 판정이 틀린 줄은 버린다 → PT-07은 살펴보는 중
+    judged(ID3, 'MT-03', 'change'), // 내 병원이 되돌린 판이어도 센다(내 표시는 읽지 않는다)
+    judged(ID3, 'IN-12', 'same'),
+    null,
+  ]
+  const ROWS = () => [listRow({ ruleHits: HITS }), WAIT_ROW, listRow({ id: ID3, ruleHits: HITS.slice(0, 2) })]
+
+  it('AC-7812.5: 규칙이 있는 줄들의 판정 줄을 한 번에 읽어 changed·human(live 줄 수)·pending(판정 줄이 없는 규칙 수)을 채우고, 규칙이 없는 줄은 모두 0이다', async () => {
+    const calls = fakeClient(listReply(page(ROWS(), 3, 1), structuredClone(CHANGES)))
+    const result = await listNotices(FILTER)
+    if (result === 'failed') throw new Error('목록을 읽어야 한다')
+    expect(result.rows.map((row) => [row.id, row.ruleTally])).toEqual([
+      [ID1, { changed: 1, human: 1, pending: 1 }],
+      [ID2, ZERO_TALLY],
+      [ID3, { changed: 1, human: 0, pending: 0 }],
+    ])
+    expect(calls.map((c) => [c.kind, c.name])).toEqual([
+      ['rpc', 'notice_list'],
+      ['from', 'rule_changes'],
+    ])
+    expect(calls[1]).toMatchObject({ op: 'select', filters: [['in', 'notice_id', [ID1, ID3]]] })
+    expect(calls[1].columns?.toSorted()).toEqual(['notice_id', 'rule_id', 'state', 'verdict'])
+  })
+
+  it('AC-7812.5: 규칙이 있는 줄이 하나도 없으면 판정 줄을 읽지 않고 모두 0이다', async () => {
+    const calls = fakeClient(listReply(page([WAIT_ROW, listRow({ id: ID3, ruleHits: [] })])))
+    const result = await listNotices(FILTER)
+    if (result === 'failed') throw new Error('목록을 읽어야 한다')
+    expect(result.rows.map((row) => row.ruleTally)).toEqual([ZERO_TALLY, ZERO_TALLY])
+    expect(calls.map((c) => c.name)).toEqual(['notice_list'])
+  })
+
+  it('AC-7812.5: openNotice도 그 글 하나의 판정 줄을 읽어 ruleTally를 채운다. 글이 없으면 판정 줄을 읽지 않는다', async () => {
+    const calls = fakeClient(listReply(page([listRow({ ruleHits: HITS })]), structuredClone(CHANGES)))
+    const view = await openNotice(ID1)
+    expect(view).toMatchObject({ id: ID1, ruleTally: { changed: 1, human: 1, pending: 1 } })
+    expect(calls[1]).toMatchObject({ name: 'rule_changes', filters: [['in', 'notice_id', [ID1]]] })
+    const none = fakeClient(listReply(page([listRow({ id: ID2 })])))
+    expect(await openNotice(ID1)).toBeNull()
+    expect(none.map((c) => c.name)).toEqual(['notice_list'])
+  })
+
+  const TALLY_FAILS: [string, Reply | 'throw'][] = [
+    ['오류 답', { error: RAW_ERROR }],
+    ['답이 목록이 아님', { data: { notice_id: ID1 } }],
+    ['한 번 읽기 상한(1000줄)만큼 꽉 차게 옴(잘렸을 수 있음)', { data: Array.from({ length: 1000 }, () => judged(ID1, 'MT-03', 'change')) }],
+    ['보내다 예외(네트워크)', 'throw'],
+  ]
+  for (const [name, tally] of TALLY_FAILS) {
+    it(`AC-7812.5: 판정 줄 읽기만 ${name}면 그 줄들의 ruleTally는 null이고 목록·글은 그대로다(console 없음)`, async () => {
+      const reply = (call: Call): Reply => {
+        if (call.name !== 'rule_changes') return { data: page(ROWS(), 3, 1) }
+        if (tally === 'throw') throw new Error(SECRET)
+        return tally
+      }
+      fakeClient(reply)
+      const result = await listNotices(FILTER)
+      if (result === 'failed') throw new Error('목록은 그대로 읽어야 한다')
+      expect(result.total).toBe(3)
+      expect(result.rows.map((row) => [row.id, row.ruleTally])).toEqual([
+        [ID1, null],
+        [ID2, ZERO_TALLY],
+        [ID3, null],
+      ])
+      fakeClient(reply)
+      expect(await openNotice(ID1)).toMatchObject({ id: ID1, title: '도수치료 급여기준 개정', ruleTally: null })
+      expectNoConsole()
+    })
+  }
 })
 
 // ── AC-7418.2 내 표시 쓰기 ──────────────────────────────────
