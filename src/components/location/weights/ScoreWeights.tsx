@@ -178,9 +178,12 @@ export function ScoreWeights({ rule, onChange, onSave, defaultOpen = [], rivalSh
           </Fragment>
         )
       })}
+      {/* 시안 .wsum: 글을 span 하나로 묶어 양끝 벌림(justify-between)에 낱낱이 흩어지지 않게 */}
       <p className={`mt-1 ${SUM}`}>
-        무게 합계 <b className={SUM_NUM}>{sum}</b>
-        {T.sumTail}
+        <span>
+          무게 합계 <b className={SUM_NUM}>{sum}</b>
+          {T.sumTail}
+        </span>
       </p>
     </section>
   )

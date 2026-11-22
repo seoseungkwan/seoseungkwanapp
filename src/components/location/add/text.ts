@@ -40,7 +40,7 @@ export const ADD_TEXT = {
   // 살필 범위 · 메모
   range: '살필 범위',
   ticks: ['300m', '1km', '3km'],
-  rangeHelp: '저장한 뒤에도 후보 자세히에서 바꿀 수 있어요.',
+  rangeHelp: '저장한 뒤 후보 자세히에서 바꿔요.',
   memo: '메모',
   memoHolder: '예: 네이버 부동산에서 봄, 중개사 김예시',
   // 발

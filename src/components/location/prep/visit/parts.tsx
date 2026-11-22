@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import type { MouseEvent, ReactNode } from 'react'
 import { NO_LAW_TEXT, type CheckItem, type CheckValue } from '@/lib/location/checklist'
 import { lawOf } from '@/lib/location/sources'
@@ -25,6 +24,7 @@ export const lawHref = (id: string) => `/location?tab=sources#law-${id}`
 /**
  * 법 근거 링크(시안 lawLink): 글은 LAW_BASIS 이름, 누르면 '근거와 출처'의 그 법 줄로 간다.
  * 여는 콜백(onOpen)을 주면 그냥 누를 때 주소 이동 대신 그 콜백을 부른다(새 탭 누르기는 그대로 — SourceLine과 같음).
+ * 평범한 <a href>다(next/link 아님 — 이 화면은 주소 tab을 처음에만 읽어, 콜백이 없으면 주소 이동으로 '근거와 출처'를 새로 연다).
  * 법이 없는 줄(law null)이나 LAW_BASIS에 없는 id는 noLaw가 참이면 `법 기준 없음` 글, 아니면 아무것도 그리지 않는다
  */
 export function LawLink({ law, onOpen, noLaw = false }: { law: string | null; onOpen?: (id: string) => void; noLaw?: boolean }) {
@@ -38,9 +38,9 @@ export function LawLink({ law, onOpen, noLaw = false }: { law: string | null; on
       }
     : undefined
   return (
-    <Link href={lawHref(basis.id)} prefetch={false} className={look.lawLink} onClick={onClick}>
+    <a href={lawHref(basis.id)} className={look.lawLink} onClick={onClick}>
       {basis.topic}
-    </Link>
+    </a>
   )
 }
 

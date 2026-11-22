@@ -47,4 +47,8 @@ describe('AC-7913.3: 개원 준비(점검·사진·메모) 부품 소스', () =>
     expect(src).toContain('IROS_URL')
     expect(src).toContain('NEW_TAB')
   })
+
+  it("AC-7906.2: /location 안 링크(출처 줄·법 근거·'근거와 출처')는 평범한 <a href> — next/link를 쓰지 않는다(이 화면은 주소 tab을 처음에만 읽는다)", () => {
+    expect(FILES.filter((file) => /['"]next\/link['"]/.test(read(file)))).toEqual([])
+  })
 })

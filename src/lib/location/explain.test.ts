@@ -121,7 +121,7 @@ describe('AC-7920.3: 후보 점수 풀이(explainCandidate)', () => {
       {
         id: 'k-vsAvg',
         label: labelOf('k-vsAvg'),
-        valueText: '평균보다 11% 비싸요',
+        valueText: '저장한 매물 평균보다 11% 비싸요',
         groupLabel: '비용',
         sub: 22,
         fullText: '−20% 이하면 100점 · 20% 이상이면 0점',
@@ -215,8 +215,8 @@ describe('AC-7920.3: 값 글 · 만점 기준 글 · 견줄 값 글', () => {
       ['k-deposit', 30_500_000, '3,050만 원'],
       ['k-premium', 0, '없음'],
       ['k-premium', 50_000_000, '5,000만 원'],
-      ['k-vsAvg', 11.11, '평균보다 11% 비싸요'],
-      ['k-vsAvg', -25.5, '평균보다 25% 싸요'],
+      ['k-vsAvg', 11.11, '저장한 매물 평균보다 11% 비싸요'],
+      ['k-vsAvg', -25.5, '저장한 매물 평균보다 25% 싸요'],
       ['k-vsAvg', 0.5, '저장한 매물 평균과 같아요'],
     ]
     for (const [id, value, text] of cases) expect([id, subValueText(id, value)]).toEqual([id, text])

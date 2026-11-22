@@ -405,7 +405,8 @@ describe('AC-7921.2: 과목 고르기를 따른다(바깥 자료를 다시 부�
     // 의원을 부르지 않은 것은 받지 못한 자료가 아니다('범위 안에서 찾은 의원이 없어요.'를 쓰지 않음)
     expect(screen.queryByRole('list', { name: '받지 못한 자료' })).toBeNull()
     expect(screen.queryByText(/찾은 의원이 없어요/)).toBeNull()
-    expect(weightsProps().rivalShort).toBe('고른 과목 없음')
+    // 경쟁 과목이 0개면 빈 글 — 무게 판이 '경쟁' [세부] 맨 위 줄에 '없음'(시안)을 쓴다
+    expect(weightsProps().rivalShort).toBe('')
   })
 
   it('AC-7921.2: [과목 고르기]를 주지 않으면 노란 안내 글만', () => {
@@ -423,5 +424,46 @@ describe('AC-7921.2: 과목 고르기를 따른다(바깥 자료를 다시 부�
     expect(bar('rivals').textContent).toBe('경쟁과목 없음')
     expect(screen.getByText(NO_DEPTS)).toBeTruthy()
     expect(view.onPickSgg).not.toHaveBeenCalled()
+  })
+})
+
+describe('AC-7907.1·AC-7906.2: 화면 사진(2026-11-23)과 시안 견주기 고침', () => {
+  it('AC-7907.1: 추천 동 순위 목록은 글머리 번호를 지운다(list-none — 줄 번호는 줄 안 칸에 있어 두 번 보이지 않게)', () => {
+    setup()
+    expect(rankList().tagName).toBe('OL')
+    expect(rankList().className.split(/\s+/)).toContain('list-none')
+  })
+
+  it('AC-7906.2: 훑기의 링크(점수 매기는 법과 출처 보기·네이버 부동산·출처 줄)는 밑줄이 없다(시안), 글 링크는 마우스를 올리면 밑줄', () => {
+    setup()
+    const links = screen.getAllByRole('link')
+    expect(links.map((a) => a.textContent)).toEqual(
+      expect.arrayContaining(['점수 매기는 법과 출처 보기', '네이버 부동산에서 가람동 매물 보기']),
+    )
+    for (const a of links) expect(a.className.split(/\s+/), a.textContent ?? '').toContain('no-underline')
+    expect(screen.getByRole('link', { name: '점수 매기는 법과 출처 보기' }).className.split(/\s+/)).toContain('hover:underline')
+  })
+
+  it("AC-7906.2: [점수 매기는 법과 출처 보기]는 여는 콜백이 없으면 그냥 눌러도 막지 않는 평범한 링크('근거와 출처'로 주소가 바뀜)", () => {
+    setup()
+    let prevented: boolean | null = null
+    const look = (e: Event) => {
+      prevented = e.defaultPrevented
+      e.preventDefault()
+    }
+    document.addEventListener('click', look)
+    fireEvent.click(screen.getByRole('link', { name: '점수 매기는 법과 출처 보기' }))
+    document.removeEventListener('click', look)
+    expect(prevented).toBe(false)
+  })
+
+  it("AC-7919.1: 점수 무게 판 '무게 합계 {n} · 합이 100이 아니어도 비율로 계산해요'는 한 덩이로 붙어 있다(시안 .wsum 안 span — 줄 양끝으로 벌어지지 않게)", () => {
+    setup()
+    const sum = screen.getByText(/^무게 합계/)
+    expect(sum.tagName).toBe('SPAN')
+    expect(sum.textContent).toBe('무게 합계 100 · 합이 100이 아니어도 비율로 계산해요')
+    const row = sum.parentElement!
+    expect([...row.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim()).length).toBe(0)
+    expect(row.children).toHaveLength(1)
   })
 })

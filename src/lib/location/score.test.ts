@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { vsAverage as listingVsAverage } from './listings'
 import {
   AGE_BANDS,
   DEFAULT_SCORE_RULE,
@@ -450,11 +451,27 @@ describe('AC-7919.2 세부 값 만들기', () => {
   it('AC-7919.2: 매물이 1개뿐이면 k-vsAvg는 값 없음, 2개 이상이면 평균(버림) 대비 %', () => {
     expect(sub(scoreItems({ rentPerPy: 80000, savedRentsPerPy: [80000] }, DEFAULT_SCORE_RULE), 'k-vsAvg')?.value).toBeNull()
     expect(sub(scoreItems({ rentPerPy: 80000, savedRentsPerPy: [] }, DEFAULT_SCORE_RULE), 'k-vsAvg')?.value).toBeNull()
-    // 평균 70,000 → 14.28% 비쌈 → (20 − 14.28) × 100 ÷ 40 = 14.28
-    expect(sub(scoreItems({ rentPerPy: 80000, savedRentsPerPy: [80000, 60000] }, DEFAULT_SCORE_RULE), 'k-vsAvg')?.score).toBe(14)
+    // 평균 70,000 → 14.28% 비쌈 → 화면(listings.ts)과 같이 0 쪽 버림 14% → (20 − 14) × 100 ÷ 40 = 15
+    expect(sub(scoreItems({ rentPerPy: 80000, savedRentsPerPy: [80000, 60000] }, DEFAULT_SCORE_RULE), 'k-vsAvg')).toEqual({ id: 'k-vsAvg', value: 14, score: 15 })
     // 평균 70,000.5 → 버림 70,000 · 30% 싸면 100
     expect(sub(scoreItems({ rentPerPy: 49000, savedRentsPerPy: [80000, 60001] }, DEFAULT_SCORE_RULE), 'k-vsAvg')).toEqual({ id: 'k-vsAvg', value: -30, score: 100 })
     expect(sub(scoreItems({ rentPerPy: null, savedRentsPerPy: [80000, 60000] }, DEFAULT_SCORE_RULE), 'k-vsAvg')?.value).toBeNull()
+  })
+
+  it('AC-7920.3: k-vsAvg 차이 %는 매물 화면(listings.ts vsAverage)과 같은 0 쪽 버림 — 점수 풀이 글과 점수가 1점 어긋나지 않는다', () => {
+    const cases: [number, number[]][] = [
+      [80000, [80000, 60000]], // +14.28 → 14
+      [59999, [80000, 60000]], // −14.28 → −14(0 쪽)
+      [70000, [70000, 70001]], // 평균 70,000(버림) → 0
+      [69999, [70000, 70000]], // −0.0014 → 0(−0 아님)
+      [91000, [80000, 60000]], // +30
+    ]
+    for (const [mine, saved] of cases) {
+      const avg = Math.floor(saved.reduce((a, b) => a + b, 0) / saved.length)
+      const value = sub(scoreItems({ rentPerPy: mine, savedRentsPerPy: saved }, DEFAULT_SCORE_RULE), 'k-vsAvg')?.value
+      expect([mine, value], String(mine)).toEqual([mine, listingVsAverage(mine, avg)!.pct])
+      expect(Object.is(value, -0), String(mine)).toBe(false)
+    }
   })
 })
 

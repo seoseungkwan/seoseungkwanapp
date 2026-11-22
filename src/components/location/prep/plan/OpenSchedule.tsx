@@ -5,7 +5,6 @@
 // 법 근거가 있는 할 일(open·nhis·xray)은 '근거와 출처'의 그 법 근거 줄(#law-<id>)로 가는 링크를 단다.
 // 지난 할 일은 회색이고, 안 했으면 `날짜가 지났어요`가 붙는다. 다 함 표시는 할 일 id 배열(location_candidates.tasks_done)로 onDone에 넘긴다.
 // 부품은 props·콜백만 쓴다. 오늘은 부르는 쪽이 한국 날짜로 넘긴다(시계를 읽지 않는다)
-import Link from 'next/link'
 import { useId, type MouseEvent } from 'react'
 import { asOfText } from '@/components/location/common/text'
 import { isYmd, weekdayOf } from '@/lib/analytics/dates'
@@ -113,9 +112,9 @@ export function OpenSchedule({ openOn, today, done, onOpenOn, onDone, onOpenLaw 
                     <div className={look.note}>
                       {row.note !== '' && <span>{row.note}</span>}
                       {row.law !== null && (
-                        <Link href={lawHref(row.law)} prefetch={false} className={look.link} onClick={openLaw?.(row.law)}>
+                        <a href={lawHref(row.law)} className={look.link} onClick={openLaw?.(row.law)}>
                           {T.law}
-                        </Link>
+                        </a>
                       )}
                       {row.past && !row.done && <span className={look.chip}>{T.past}</span>}
                     </div>

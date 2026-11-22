@@ -33,7 +33,8 @@ const tdNum = `${td} text-right tabular-nums`
 const groupCell = 'h-9 px-0 pt-4 pb-1 align-bottom text-caption font-semibold text-muted'
 const sub = 'block text-caption text-muted'
 const now = 'block text-caption font-medium text-accent-strong'
-const link = `rounded-control text-accent underline-offset-3 hover:underline ${ds.focusRing}`
+// 자료·법 이름 링크: 밑줄 없음, 올리면 밑줄(앱은 브라우저 기본 초기화를 넣지 않아 기본 밑줄을 지운다)
+const link = `rounded-control text-accent no-underline underline-offset-3 hover:underline ${ds.focusRing}`
 const hitBg = 'bg-warning-soft'
 
 function OutLink({ href, children }: { href: string; children: ReactNode }) {
@@ -222,9 +223,9 @@ function ScoreTable({ hit, rule }: { hit: string | null; rule: ScoreRule | undef
                         {changed && changed.w !== item.w && <Now>{changed.w}</Now>}
                       </td>
                       <td className={td}>
-                        {itemRuleText(item, s.unit)}
+                        {itemRuleText(item, s)}
                         {s.flip && <span className={sub}>적을수록 좋음으로 고르면 {lessText(s.flip.best, s.flip.worst, s.unit)}</span>}
-                        {changed && itemRuleText(changed, s.unit) !== itemRuleText(item, s.unit) && <Now>{itemRuleText(changed, s.unit)}</Now>}
+                        {changed && itemRuleText(changed, s) !== itemRuleText(item, s) && <Now>{itemRuleText(changed, s)}</Now>}
                       </td>
                       <td className={`${td} text-ink-2`}>{s.why}</td>
                     </tr>
@@ -249,7 +250,7 @@ function LawTable({ hit }: { hit: string | null }) {
         <h2 id="law-head" className={h2}>
           법 근거
         </h2>
-        <span className={aside}>조문을 열어 확인하고 쉬운 말로 줄였어요</span>
+        <span className={aside}>조문을 열어 확인하고 쉬운 말로 줄였어요 · 아홉 줄</span>
       </div>
       <div className={tableWrap}>
         <table className={`${ds.table.table} min-w-240`}>

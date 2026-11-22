@@ -137,6 +137,22 @@ describe('AC-7906.3: 법 근거 — LAW_BASIS를 그 목록 그대로', () => {
     expect(LAW_BASIS.find((l) => l.id === 'catchment')?.url).toBeNull()
   })
 
+  it("AC-7906.3: 법 근거 머리 곁글은 시안 그대로 '조문을 열어 확인하고 쉬운 말로 줄였어요 · 아홉 줄'", () => {
+    render(<SourcesView />)
+    expect(within(region('법 근거')).getByText('조문을 열어 확인하고 쉬운 말로 줄였어요 · 아홉 줄')).toBeTruthy()
+  })
+
+  it('AC-7906.3: 자료·법 이름 링크는 밑줄이 없고(시안) 마우스를 올리면 밑줄', () => {
+    render(<SourcesView />)
+    const links = screen.getAllByRole('link')
+    expect(links.length).toBeGreaterThan(0)
+    for (const a of links) {
+      const classes = a.className.split(/\s+/)
+      expect(classes, text(a)).toContain('no-underline')
+      expect(classes, text(a)).toContain('hover:underline')
+    }
+  })
+
   it('AC-7906.3: 아래 글은 시안 그대로다', () => {
     render(<SourcesView />)
     expect(
@@ -177,17 +193,20 @@ describe('AC-7906.3: 점수는 이렇게 매겨요 — DEFAULT_SCORE_RULE(+ 지�
     }
   })
 
-  it('AC-7906.3: 만점 기준 글 — 많을수록 하나, 적을수록 둘, 돈은 돈 글자, 음수는 −', () => {
+  it("AC-7906.3: 만점 기준 글은 '화면 글 기본값' 기준 글(점수 무게 판과 같은 앞말·뒷말·고르기 글, 칸 대신 값) — 많을수록 하나, 적을수록 둘, 돈은 돈 글자, 음수는 −", () => {
     render(<SourcesView />)
     const rule = (id: string) => cellTexts(rowOf(`score-${id}`))[2]
-    expect(rule('p-density')).toBe('10,000명/km²면 100점')
+    expect(rule('p-density')).toBe('1km²에 10,000명이면 100점')
+    expect(rule('p-trend')).toBe('4년 사이 5% 늘면 100점')
+    expect(rule('c-price')).toBe('둘레 평균이 20% 비싸면 100점')
     expect(rule('p-senior')).toBe('25%면 100점')
     expect(rule('p-households')).toBe('20,000세대면 100점')
     expect(rule('p-accidents')).toBe('3곳이면 100점')
     expect(rule('c-perRival')).toBe('20,000명이면 100점')
     expect(rule('c-gaps')).toBe('10칸이면 100점')
     expect(rule('s-elevator')).toBe('1대면 100점')
-    expect(rule('s-sign')).toBe('1이면 100점')
+    expect(rule('s-sign')).toBe("고른 값이 '보여요'이면 100점")
+    expect(rule('s-violation')).toBe("고른 값이 '없음'이면 100점")
     expect(rule('c-count')).toBe('0곳 이하면 100점 · 6곳 이상이면 0점')
     expect(rule('t-station')).toBe('200m 이하면 100점 · 1,500m 이상이면 0점')
     expect(rule('s-floor')).toBe('1층 이하면 100점 · 5층 이상이면 0점')
@@ -222,12 +241,12 @@ describe('AC-7906.3: 점수는 이렇게 매겨요 — DEFAULT_SCORE_RULE(+ 지�
     expect(within(box).getByText('지금 무게 40 · 25 · 20 · 15 · 10')).toBeTruthy()
     const nowOf = (id: string) => [...rowOf(`score-${id}`).querySelectorAll('[data-now]')].map(text)
     expect(nowOf('people')).toEqual(['지금 40', `지금 ${now.bands.map((i) => AGE_BANDS[i]).join(' · ')}`])
-    expect(nowOf('p-density')).toEqual(['지금 20', '지금 8,000명/km²면 100점'])
+    expect(nowOf('p-density')).toEqual(['지금 20', '지금 1km²에 8,000명이면 100점'])
     expect(nowOf('c-count')).toEqual(['지금 1곳 이하면 100점 · 8곳 이상이면 0점'])
     expect(nowOf('k-deposit')).toEqual(['지금 5,000만 원 이하면 100점 · 3억 원 이상이면 0점'])
     expect(nowOf('p-welfare')).toEqual(['지금 10', '지금 2% 이하면 100점 · 6% 이상이면 0점'])
     // 처음 값은 그대로 보인다
-    expect(cellTexts(rowOf('score-p-density')).slice(1, 3)).toEqual(['40지금 20', '10,000명/km²면 100점지금 8,000명/km²면 100점'])
+    expect(cellTexts(rowOf('score-p-density')).slice(1, 3)).toEqual(['40지금 20', '1km²에 10,000명이면 100점지금 1km²에 8,000명이면 100점'])
     // 바꾸지 않은 칸에는 지금 줄이 없다
     expect(nowOf('rivals')).toEqual([])
     expect(nowOf('p-senior')).toEqual([])

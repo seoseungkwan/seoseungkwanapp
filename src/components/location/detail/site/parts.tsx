@@ -132,7 +132,7 @@ export function ExtIcon() {
 // ── 법 근거 글자 링크(시안 lawLink → '근거와 출처'의 #law-<id>, TASK-28 닻) ──
 
 export const lawHref = (id: string) => `/location?tab=sources#law-${id}`
-const LAW = `rounded-control text-small font-medium text-accent underline-offset-3 hover:underline ${ds.focusRing}`
+const LAW = `rounded-control text-small font-medium text-accent no-underline underline-offset-3 hover:underline ${ds.focusRing}`
 const plainClick = (e: MouseEvent) => e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey
 
 export function LawLink({ id, onOpen }: { id: string; onOpen?: (id: string) => void }) {

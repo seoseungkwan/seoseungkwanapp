@@ -7,7 +7,6 @@
 // 받은 값으로 바로 다시 세고 onPickSgg는 부르지 않는다. 경쟁 과목 글은 depts.ts rivalShortText(과목 고르기 설정).
 // 경쟁 과목이 0개면(설정이 비었거나 모으기가 의원을 부르지 않음 — parts.rivals why 'none') '경쟁'은 `과목 없음`으로 빠지고 노란 안내가 뜬다.
 // 바뀐 설정은 onRuleChange(바로)·onRuleSave(멈춘 뒤 한 번, ScoreWeights)로 넘긴다. 훑기 결과는 저장하지 않는다
-import Link from 'next/link'
 import { useId, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { SourceLine } from '@/components/location/common/SourceLine'
@@ -248,8 +247,9 @@ export function ScanView({
   }
 
   const shown = allDongs ? ranked : ranked.slice(0, RANK_SHORT)
-  // rivalShort·onPickDepts는 TASK-67이 ScoreWeights props에 더한다. 펼쳐 넘겨, 더하기 전에는 판이 쓰지 않고 더한 뒤에는 그 타입으로 검사된다
-  const deptProps = { rivalShort: rivalShortText(deptRule), onPickDepts }
+  // rivalShort·onPickDepts는 TASK-67이 ScoreWeights props에 더한다. 펼쳐 넘겨, 더하기 전에는 판이 쓰지 않고 더한 뒤에는 그 타입으로 검사된다.
+  // 경쟁 과목이 0개면 빈 글 — 판이 '경쟁' [세부] 맨 위 줄에 '없음'(시안)을 쓴다
+  const deptProps = { rivalShort: deptRule.rival.length === 0 ? '' : rivalShortText(deptRule), onPickDepts }
 
   return (
     <div className="min-w-0">
@@ -292,9 +292,8 @@ export function ScanView({
           <p className="ml-auto text-right text-caption text-muted">
             {T.when(ready.dongs.length, atText(ready.at))}
             <br />
-            <Link
+            <a
               href={SOURCES_HREF}
-              prefetch={false}
               className={look.textLink}
               onClick={
                 onOpenSources
@@ -307,7 +306,7 @@ export function ScanView({
               }
             >
               {T.sourcesLink}
-            </Link>
+            </a>
           </p>
         ) : null}
       </div>
@@ -323,7 +322,7 @@ export function ScanView({
                 </h2>
                 <span className="text-small text-muted">{T.rankAside}</span>
               </div>
-              <ol aria-labelledby={rankId}>
+              <ol aria-labelledby={rankId} className="list-none">
                 {shown.map((r, k) => {
                   const why = whys.get(r.code10) ?? ''
                   const ex = explains.get(r.code10)

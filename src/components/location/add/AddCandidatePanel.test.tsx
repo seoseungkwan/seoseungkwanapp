@@ -363,7 +363,8 @@ describe('AC-7908.1: 살필 범위 일곱 값(기본 1,000m)', () => {
     expect(screen.getByTestId('add-radius').textContent).toBe('1km')
     expect(screen.getByText('300m')).toBeTruthy()
     expect(screen.getByText('3km')).toBeTruthy()
-    expect(screen.getByText('저장한 뒤에도 후보 자세히에서 바꿀 수 있어요.')).toBeTruthy()
+    // 도움말은 시안 그대로
+    expect(screen.getByText('저장한 뒤 후보 자세히에서 바꿔요.')).toBeTruthy()
   })
 
   it('AC-7908.1: 막대를 옮기면 글이 바뀌고(300m~3km) 고른 범위로 저장한다', async () => {
