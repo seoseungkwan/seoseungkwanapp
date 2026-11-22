@@ -1,10 +1,13 @@
 'use client'
 
-// 후보 견주기 (spec location REQ-7914 AC-7914.1 · AC-7919.3, design.md 14절, 시안 ?s=compare).
-// 후보 2~4곳을 나란히: 항목 점수(종합에 보탠 점수 / 그 항목 만점 + 막대) · 합계와 등수 · 숫자로 견주기(범위·사람·경쟁·역·층·매물 값·평당 월세·위험 신호 수)
+// 후보 견주기 (spec location REQ-7914 AC-7914.1 · AC-7919.3 · AC-7921.2, design.md 14·18절, 시안 ?s=compare).
+// 후보 2~4곳을 나란히: 항목 점수(종합에 보탠 점수 / 그 항목 만점 + 막대) · 합계와 등수 · 숫자로 견주기(범위·사람·경쟁 의원·역·층·매물 값·평당 월세·위험 신호 수)
 // · 진행 상태 단계 단추·[내려놓기] · 접힌 '내려놓은 후보'와 [다시 올리기].
-// 부품은 props·콜백만 쓴다(읽기·저장·바깥 부르기 없음). 점수는 받은 설정(rule — 동네 훑기와 같은 location_settings.score_rule)을
-// 그대로 score.ts scoreItems에 넣어 여기서 센다 → 설정이 바뀌면 다시 부르지 않고 바로 다시 센다.
+// 부품은 props·콜백만 쓴다(읽기·저장·바깥 부르기 없음). 점수 값·경쟁 수·위험 신호·후보 매물은 후보 자세히와 같은 셈 한 곳
+// lib/location/facts.ts(scoreFactsOf·rivalCount·flagInputOf → flags.ts pickFlags·candidateListing)에 받은 과목 고르기(deptRule)를 넣어 여기서 세고,
+// 점수는 받은 설정(rule — 동네 훑기와 같은 location_settings.score_rule)을 그대로 score.ts scoreItems에 넣는다
+// → 무게·과목 고르기가 바뀌면 다시 부르지 않고 바로 다시 센다. 경쟁 줄 이름은 `경쟁 의원` + 작은 글 고른 과목 짧은 이름(depts.ts rivalShortText).
+// 만 원 칸에서 온 금액(보증금·월세·권리금)은 manText, 평당 월세는 wonText(design.md 5절).
 // 진행 단계 바꾸기·내려놓기·다시 올리기는 모두 onStatus(후보 id, 새 상태) 하나로 넘긴다(다시 올리기 = 보는 중).
 // 견줄 후보 고르기(2~4곳)는 이 화면에서만 쓰는 고름이라 저장하지 않는다
 import { useMemo, useState, type ReactNode } from 'react'
@@ -12,32 +15,28 @@ import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { areaText } from '@/lib/location/area'
 import { distText } from '@/lib/location/coords'
-import type { Flag } from '@/lib/location/flags'
+import { rivalShortText } from '@/lib/location/depts'
+import { candidateListing, flagInputOf, rivalCount, scoreFactsOf, shownValue } from '@/lib/location/facts'
+import { pickFlags, type Flag } from '@/lib/location/flags'
 import { compareListings, perPyeongOf, vsAverage } from '@/lib/location/listings'
-import { commaText, wonText } from '@/lib/location/money'
+import { commaText, manText, wonText } from '@/lib/location/money'
 import { fillScoreRule, scoreItems, SCORE_GROUPS, type GroupScore, type ScoreRule } from '@/lib/location/score'
-import type { Candidate, CandidateStatus, Got, Listing, ScoreFacts } from '@/types/location'
+import type { Candidate, CandidateStatus, DeptRule, Listing, ScoreFacts } from '@/types/location'
 import { COMPARE_TEXT as T, letterOf, MAX_PICK, MIN_PICK, STATUS_TEXT, STEPS } from './text'
-
-/** 후보 하나. 점수에 쓰는 값·위험 신호는 후보 자세히와 같은 것을 부르는 쪽이 만들어 넘긴다 */
-export type CompareRow = {
-  /** 후보 줄(이름·적은 주소 글·범위·진행 상태·층·넓이·그날 값·저장 시각) */
-  candidate: Candidate
-  /** 점수에 쓰는 값(그날 값·후보 줄·후보 매물에서 부르는 쪽이 채운다) */
-  facts: ScoreFacts
-  /** 위험 신호(flags.ts pickFlags 결과). 수만 보인다(확인 필요 포함) */
-  flags: readonly Flag[]
-  /** 후보 매물(그 후보에 이어진 매물 가운데 마지막으로 고친 것), 없으면 null */
-  listing: Listing | null
-}
 
 export type CandidateCompareProps = {
   /** 모든 후보(내려놓은 후보 포함). 이 차례로 글자 A·B·C …를 붙이고, 처음에는 내려놓지 않은 앞 4곳을 견준다 */
-  rows: readonly CompareRow[]
-  /** 저장한 매물 모두 — 평당 월세를 저장한 매물 평균과 견준다(2개보다 적으면 견주지 않음) */
+  candidates: readonly Candidate[]
+  /** 저장한 매물 모두 — 후보 매물(facts.ts candidateListing)·점수 값을 고르고, 평당 월세를 저장한 매물 평균과 견준다(2개보다 적으면 견주지 않음) */
   listings: readonly Listing[]
   /** 점수 설정(동네 훑기와 같은 것). 틀린 칸은 처음 값으로 본다 */
   rule: ScoreRule
+  /** 의원 과목 고르기(location_settings.dept_rule, fillDeptRule을 거친 값) — 경쟁 수·점수·위험 신호·경쟁 줄 작은 글이 따른다 */
+  deptRule: DeptRule
+  /** 지금 의원 체외충격파 값(원, location_settings.home_eswt) — 점수 '경쟁'의 진료비 차이 */
+  homeEswt: number | null
+  /** 한국 날짜 'YYYY-MM-DD'(새로 연 경쟁 의원·건물 햇수·위험 신호) */
+  today: string
   /** 진행 단계를 바꾸거나(watching·contacted·visited·reviewing) 내려놓거나(dropped) 다시 올릴 때(watching) */
   onStatus: (id: string, status: CandidateStatus) => void
   /** [무게 바꾸기](동네 훑기의 무게 판으로). 없으면 단추도 없다 */
@@ -77,9 +76,8 @@ const count = (v: unknown): number | null => {
   const n = num(v)
   return n !== null && n >= 0 ? Math.floor(n) : null
 }
-/** 원 정수만 글자로(아니면 '–') */
-const won = (n: number | null | undefined) => (typeof n === 'number' && Number.isSafeInteger(n) ? wonText(n) : T.dash)
-const gotValue = <V,>(g: Got<V> | undefined): V | null => (g ? (g.ok ? g.v : (g.prev?.v ?? null)) : null)
+/** 만 원 칸에서 온 금액 글(manText: 0 `없음`, 없음 `–`). 원 정수가 아니면 '–' */
+const man = (n: number | null | undefined) => (n == null || Number.isSafeInteger(n) ? manText(n) : T.dash)
 
 /** ISO 시각 → 한국 날짜 'M월 D일'. 못 읽으면 null */
 function dayText(iso: string | null | undefined): string | null {
@@ -90,13 +88,10 @@ function dayText(iso: string | null | undefined): string | null {
   return `${Number(ymd.slice(5, 7))}월 ${Number(ymd.slice(8, 10))}일`
 }
 
-const SENIOR_BAND = 6 // 10세 나이대 11칸의 6~10칸 = 60세 이상
-function seniorPct(f: ScoreFacts): number | null {
-  const total = num(f.people?.total)
-  const bands = f.people?.bands
-  if (total === null || total <= 0 || !Array.isArray(bands)) return null
-  const seniors = bands.slice(SENIOR_BAND).reduce<number>((a, b) => a + (num(b) ?? 0), 0)
-  return Math.floor((seniors * 100) / total)
+/** 60세 이상 %(버림) — score.ts가 센 세부 항목 'p-senior' 값 그대로(따로 셈 없음) */
+function seniorPct(groups: readonly GroupScore[]): number | null {
+  const v = groups.flatMap((g) => g.subs).find((x) => x.id === 'p-senior')?.value ?? null
+  return v === null ? null : Math.floor(v)
 }
 
 /** 보이는 후보 id: 고른 적이 없으면 앞 4곳, 고른 뒤에는 고른 것(내려놓은 후보는 빠짐) — 모자라면 2곳까지 앞에서 채운다 */
@@ -110,26 +105,44 @@ function shownIds(live: readonly string[], chosen: readonly string[] | null): st
   return live.filter((id) => kept.includes(id))
 }
 
+/** 견주는 후보 하나 — 점수 값·위험 신호·후보 매물·경쟁 수는 facts.ts가 받은 과목 고르기로 센 값 */
+type CompareRow = {
+  candidate: Candidate
+  facts: ScoreFacts
+  flags: readonly Flag[]
+  listing: Listing | null
+  /** 범위 안 경쟁 의원 수. 경쟁 과목을 하나도 안 고르면 0, 의원 목록을 못 받았으면 null */
+  rivals: number | null
+}
+
 type Scored = { row: CompareRow; letter: string; groups: GroupScore[]; total: number | null; max: Map<string, number> }
 
-export function CandidateCompare({ rows, listings, rule, onStatus, onEditWeights }: CandidateCompareProps) {
+export function CandidateCompare({ candidates, listings, rule, deptRule, homeEswt, today, onStatus, onEditWeights }: CandidateCompareProps) {
   const [chosen, setChosen] = useState<readonly string[] | null>(null)
   const filled = useMemo(() => fillScoreRule(rule), [rule])
   const rents = useMemo(() => compareListings(listings), [listings])
+  const noDept = deptRule.rival.length === 0
 
-  const letters = new Map(rows.map((r, i) => [r.candidate.id, letterOf(i)]))
-  const live = rows.filter((r) => r.candidate.status !== 'dropped')
-  const dropped = rows.filter((r) => r.candidate.status === 'dropped')
-  const liveIds = live.map((r) => r.candidate.id)
+  const letters = new Map(candidates.map((c, i) => [c.id, letterOf(i)]))
+  const live = candidates.filter((c) => c.status !== 'dropped')
+  const dropped = candidates.filter((c) => c.status === 'dropped')
+  const liveIds = live.map((c) => c.id)
   const shown = shownIds(liveIds, chosen)
 
   const scored: Scored[] = live
-    .filter((r) => shown.includes(r.candidate.id))
-    .map((row) => {
+    .filter((c) => shown.includes(c.id))
+    .map((c) => {
+      const row: CompareRow = {
+        candidate: c,
+        facts: scoreFactsOf({ candidate: c, listings, homeEswt, today, deptRule }),
+        flags: pickFlags(flagInputOf({ candidate: c, listings, today, deptRule })),
+        listing: candidateListing(c.id, listings),
+        rivals: rivalCount(c, deptRule) ?? (noDept ? 0 : null),
+      }
       const result = scoreItems(row.facts, filled, 'candidate')
       const sum = result.groups.reduce((a, g) => (g.score === null ? a : a + filled.weights[g.id]), 0)
       const max = new Map(result.groups.map((g) => [g.id, sum > 0 ? Math.floor((filled.weights[g.id] * 100) / sum) : 0]))
-      return { row, letter: letters.get(row.candidate.id) ?? '', groups: result.groups, total: result.total, max }
+      return { row, letter: letters.get(c.id) ?? '', groups: result.groups, total: result.total, max }
     })
 
   function toggle(id: string) {
@@ -162,7 +175,7 @@ export function CandidateCompare({ rows, listings, rule, onStatus, onEditWeights
         {live.length > MIN_PICK && <Picker live={live} letters={letters} shown={shown} onToggle={toggle} />}
         {scored.length >= MIN_PICK ? (
           <>
-            <ScoreTable scored={scored} filled={filled} weightSum={weightSum} rents={rents} />
+            <ScoreTable scored={scored} filled={filled} weightSum={weightSum} rents={rents} rivalShort={rivalShortText(deptRule)} noDept={noDept} />
             <p className="mt-1.5 text-caption text-muted">
               {T.savedValues(scored.map((s) => `${s.letter} ${dayText(s.row.candidate.snapshotAt ?? s.row.candidate.snapshot?.at) ?? T.noSnapshot}`))}
             </p>
@@ -178,13 +191,13 @@ export function CandidateCompare({ rows, listings, rule, onStatus, onEditWeights
             <h2 className={H2}>{T.progressTitle}</h2>
             <span className={ASIDE}>{T.progressAside}</span>
           </div>
-          {live.map((r) => (
-            <Progress key={r.candidate.id} candidate={r.candidate} letter={letters.get(r.candidate.id) ?? ''} onStatus={onStatus} />
+          {live.map((c) => (
+            <Progress key={c.id} candidate={c} letter={letters.get(c.id) ?? ''} onStatus={onStatus} />
           ))}
           {dropped.length > 0 && (
             <details>
               <summary className={SUMMARY}>{T.dropped(dropped.length)}</summary>
-              {dropped.map(({ candidate: c }) => (
+              {dropped.map((c) => (
                 <div key={c.id} className={`${PROG} text-ink-2`}>
                   <span className="min-w-0">
                     <b className="font-semibold text-ink">{c.name}</b>
@@ -215,7 +228,7 @@ function Picker({
   shown,
   onToggle,
 }: {
-  live: readonly CompareRow[]
+  live: readonly Candidate[]
   letters: ReadonlyMap<string, string>
   shown: readonly string[]
   onToggle: (id: string) => void
@@ -223,7 +236,7 @@ function Picker({
   return (
     <div role="group" aria-label={T.pick} className="mt-4 flex flex-wrap items-center gap-2">
       <span className="mr-1 text-small text-muted">{T.pick}</span>
-      {live.map(({ candidate: c }) => {
+      {live.map((c) => {
         const on = shown.includes(c.id)
         const locked = on ? shown.length <= MIN_PICK : shown.length >= MAX_PICK
         return (
@@ -242,11 +255,17 @@ function ScoreTable({
   filled,
   weightSum,
   rents,
+  rivalShort,
+  noDept,
 }: {
   scored: readonly Scored[]
   filled: ScoreRule
   weightSum: number
   rents: ReturnType<typeof compareListings>
+  /** 경쟁 줄 작은 글 — 고른 과목 짧은 이름(없으면 '고른 과목 없음') */
+  rivalShort: string
+  /** 경쟁 과목을 하나도 안 골랐나 — 점수 '경쟁'이 값 없으면 '과목 없음' */
+  noDept: boolean
 }) {
   const totals = scored.map((s) => s.total).filter((t): t is number => t !== null)
   const bestTotal = totals.length > 0 ? Math.max(...totals) : null
@@ -314,7 +333,9 @@ function ScoreTable({
                   return (
                     <td key={s.row.candidate.id} className={TD_SCORE}>
                       {p === null ? (
-                        <div className="font-medium text-muted">{g.id === 'cost' && s.row.listing === null ? T.noListing : T.noValue}</div>
+                        <div className="font-medium text-muted">
+                          {g.id === 'cost' && s.row.listing === null ? T.noListing : g.id === 'rivals' && noDept ? T.noDept : T.noValue}
+                        </div>
                       ) : (
                         <div className="flex items-baseline justify-between gap-2">
                           <b className={`text-body font-semibold tabular-nums ${top ? 'text-accent-strong' : 'text-ink'}`}>{T.points(p)}</b>{' '}
@@ -362,26 +383,26 @@ function ScoreTable({
             return n === null ? <NoData /> : `${commaText(n)}명`
           })}
           {numberRow(T.rowSeniors, (s) => {
-            const pct = seniorPct(s.row.facts)
+            const pct = seniorPct(s.groups)
             return pct === null ? <NoData /> : `${pct}%`
           })}
           {numberRow(
             T.rowRivals,
             (s) => {
-              const n = count(s.row.facts.rivals)
+              const n = s.row.rivals
               return n === null ? <NoData /> : `${commaText(n)}곳`
             },
-            T.rowRivalsNote,
+            rivalShort,
           )}
           {numberRow(T.rowPerRival, (s) => {
-            const n = count(s.row.facts.rivals)
+            const n = s.row.rivals
             const people = count(s.row.facts.people?.total)
             if (n === 0) return T.noRival
             if (n === null || people === null) return <NoData />
             return `${commaText(Math.floor(people / n))}명`
           })}
           {numberRow(T.rowStation, (s) => {
-            const st = gotValue(s.row.candidate.snapshot?.station)
+            const st = shownValue(s.row.candidate.snapshot?.station)
             const d = num(st?.distM)
             return st && d !== null && d >= 0 ? `${st.name} · ${distText(d)}` : <NoData />
           })}
@@ -390,7 +411,7 @@ function ScoreTable({
             const parts = [s.row.candidate.floorLabel.trim(), area !== null && area > 0 ? areaText(area) : ''].filter((t) => t !== '')
             return parts.length > 0 ? parts.join(' · ') : T.dash
           })}
-          {numberRow(T.rowMoney, (s) => (s.row.listing === null ? <NoListing /> : `${won(s.row.listing.deposit)} / ${won(s.row.listing.rent)}`))}
+          {numberRow(T.rowMoney, (s) => (s.row.listing === null ? <NoListing /> : `${man(s.row.listing.deposit)} / ${man(s.row.listing.rent)}`))}
           {numberRow(T.rowRentPy, (s) => {
             const l = s.row.listing
             if (l === null) return <NoListing />
@@ -410,7 +431,7 @@ function ScoreTable({
               </>
             )
           })}
-          {numberRow(T.rowPremium, (s) => (s.row.listing === null ? <NoListing /> : won(s.row.listing.premium)))}
+          {numberRow(T.rowPremium, (s) => (s.row.listing === null ? <NoListing /> : man(s.row.listing.premium)))}
           {numberRow(T.rowFlags, (s) =>
             s.row.flags.length > 0 ? <span className={ds.chip.negative}>{T.flagCount(s.row.flags.length)}</span> : <span className="text-muted">{T.noFlag}</span>,
           )}

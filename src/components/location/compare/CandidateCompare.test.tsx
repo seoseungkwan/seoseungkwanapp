@@ -4,27 +4,40 @@ import { join } from 'node:path'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ds } from '@/components/ui/classes'
-import type { Flag } from '@/lib/location/flags'
+import { DEFAULT_DEPT_RULE } from '@/lib/location/depts'
+import { flagInputOf, rivalCount, scoreFactsOf } from '@/lib/location/facts'
+import { pickFlags } from '@/lib/location/flags'
 import { DEFAULT_SCORE_RULE, scoreItems, type ScoreRule } from '@/lib/location/score'
-import type { Candidate, CandidateStatus, Got, Listing, ScoreFacts, Snapshot } from '@/types/location'
-import { CandidateCompare, type CandidateCompareProps, type CompareRow } from './CandidateCompare'
+import type { Candidate, CandidateStatus, DeptRule, Got, Listing, Rival, Snapshot } from '@/types/location'
+import { CandidateCompare, type CandidateCompareProps } from './CandidateCompare'
 
-// 후보 견주기 (spec location REQ-7914 AC-7914.1, REQ-7919 AC-7919.3, design.md 14절, 시안 ?s=compare).
-// 부품은 props·콜백만: 후보 줄·점수에 쓰는 값·위험 신호·후보 매물(rows), 저장한 매물(listings), 설정(rule)을 받고
-// 진행 단계 바꾸기·내려놓기·다시 올리기는 onStatus, [무게 바꾸기]는 onEditWeights로 넘긴다.
-// 점수는 받은 설정 그대로 score.ts scoreItems로 센다(동네 훑기와 같은 설정 → 무게를 바꾸면 바로 다시 센다)
+// 후보 견주기 (spec location REQ-7914 AC-7914.1, REQ-7919 AC-7919.3, REQ-7921 AC-7921.2, design.md 14·18절, 시안 ?s=compare).
+// 부품은 props·콜백만: 후보 줄(candidates), 저장한 매물(listings), 점수 설정(rule), 과목 고르기(deptRule), 지금 의원 체외충격파 값(homeEswt),
+// 오늘(today)을 받고 진행 단계 바꾸기·내려놓기·다시 올리기는 onStatus, [무게 바꾸기]는 onEditWeights로 넘긴다.
+// 점수 값·경쟁 수·위험 신호·후보 매물은 lib/location/facts.ts(scoreFactsOf·rivalCount·flagInputOf·candidateListing)에 받은 deptRule을 넣어
+// 부품 안에서 센다 → 무게·과목 고르기를 바꾸면 다시 부르지 않고 바로 다시 센다. 만 원 칸 금액은 manText
 
+const TODAY = '2026-11-22'
+const HOME_ESWT = 50_000
 const freshRule = (): ScoreRule => structuredClone(DEFAULT_SCORE_RULE) as ScoreRule
+const firstDepts = (): DeptRule => structuredClone(DEFAULT_DEPT_RULE) as DeptRule
+const deptRule = (rival: DeptRule['rival']): DeptRule => ({ v: 1, rival, hide: [] })
 
 const SNAPSHOT_KEYS = [
-  'people', 'trend', 'flow', 'income', 'aptPrice', 'bizPrice', 'apts', 'presale', 'seniors', 'gyms', 'schools',
-  'accidents', 'industry', 'pharmacies', 'rivals', 'history', 'station', 'bus', 'market', 'building', 'stores', 'welfare',
+  'people', 'trend', 'flow', 'income', 'aptPrice', 'bizPrice', 'apts', 'presale', 'seniors', 'gyms', 'schools', 'accidents',
+  'industry', 'pharmacies', 'rivals', 'place', 'sggAvg', 'history', 'station', 'bus', 'market', 'building', 'stores', 'welfare',
 ] as const
-const NONE: Got<never> = { ok: false, why: 'none', src: 'rail-stations' }
-function snap(at: string, over: Partial<Snapshot> = {}): Snapshot {
-  return { v: 1, at, radiusM: 1000, ...Object.fromEntries(SNAPSHOT_KEYS.map((k) => [k, NONE])), ...over } as Snapshot
+const NONE: Got<never> = { ok: false, why: 'none', src: 'hosp-list' }
+const ok = <T,>(v: T, src: string): Got<T> => ({ ok: true, v, src, asOf: '2026-11-01' })
+function snap(at: string, radiusM: number, over: Partial<Snapshot> = {}): Snapshot {
+  return { v: 1, at, radiusM, ...Object.fromEntries(SNAPSHOT_KEYS.map((k) => [k, NONE])), ...over } as Snapshot
 }
-const station = (name: string, distM: number): Snapshot['station'] => ({ ok: true, v: { name, line: '2호선', distM }, src: 'rail-stations', asOf: '2026-11-01' })
+const peopleOf = (bands: number[], households: number): Snapshot['people'] =>
+  ok({ total: bands.reduce((a, b) => a + b, 0), bands, households, unmatched: 0 }, 'pop-age')
+const stationOf = (name: string, distM: number): Snapshot['station'] => ok({ name, line: '2호선', distM, at: { lat: 37.5, lng: 127 } }, 'rail-stations')
+function clinic(name: string, depts: Rival['depts'], distM: number, over: Partial<Rival> = {}): Rival {
+  return { name, depts, at: { lat: 37.5, lng: 127 }, distM, sameBuilding: distM <= 30, address: '', doctors: 1, openedYear: 2015, ...over }
+}
 
 function cand(id: string, name: string, over: Partial<Candidate> = {}): Candidate {
   return {
@@ -76,114 +89,126 @@ function listing(id: string, over: Partial<Listing> = {}): Listing {
   }
 }
 
-const flag = (id: Flag['id'], level: Flag['level'] = 'red'): Flag => ({ id, level, title: '제목', detail: '설명', law: null, src: null })
-
 // ── 시안 ?s=compare 같은 후보 셋 + 내려놓은 후보 하나 ──
 // 매물: A 30평 월세 300만 원(평당 100,000원) · B 40평 월세 320만 원(평당 80,000원) · 이어지지 않은 매물 30평 360만 원(평당 120,000원) → 평균 100,000원
 const LA = listing('l-a', { candidateId: 'id-a', areaM2: 99.17, deposit: 50_000_000, rent: 3_000_000, premium: 30_000_000 })
 const LB = listing('l-b', { candidateId: 'id-b', areaM2: 132.23, deposit: 30_000_000, rent: 3_200_000, premium: 0 })
 const LX = listing('l-x', { areaM2: 99.17, deposit: 40_000_000, rent: 3_600_000 })
 const LISTINGS = [LA, LB, LX]
-const SAVED = [100_000, 80_000, 120_000]
 
 const A_BANDS = [2000, 2500, 3000, 3500, 4000, 4500, 4000, 3000, 2000, 1000, 500] // 30,000명 · 60세 이상 10,500명(35%)
-const B_BANDS = [2000, 2000, 2500, 3000, 3000, 3500, 1000, 500, 300, 150, 50] // 18,000명 · 60세 이상 2,000명(11%)
+const B_BANDS = [2000, 2000, 2000, 2500, 2500, 3000, 1500, 1200, 800, 400, 100] // 18,000명 · 60세 이상 4,000명(22%)
 
-const A: CompareRow = {
-  candidate: cand('id-a', '예시빌딩 3층', {
-    addressNote: '가람동',
-    status: 'contacted',
-    floorLabel: '3층',
-    snapshot: snap('2026-11-15T01:00:00.000Z', { station: station('가람역', 400) }),
-    snapshotAt: '2026-11-15T01:00:00.000Z',
-    createdAt: '2026-11-15T01:00:00.000Z',
+// A 범위 1km 안 의원: 처음 경쟁(정형외과·신경외과·마취통증·재활) 5곳 + 내과·한의원(둘레로 보기) + 범위 밖 정형외과 1곳
+// → 처음 설정: 경쟁 5곳(위험 신호 '경쟁 5곳 이상') · 내과·정형외과만 경쟁이면 3곳
+const A_RIVALS: Rival[] = [
+  clinic('가람내과의원', ['im'], 200),
+  clinic('가람정형외과의원', ['ortho'], 300, {
+    openedYear: 2025,
+    detail: { therapists: 2, mri: false, ct: false, week: null, priced: true, eswt: 60_000, manual: null },
   }),
-  facts: {
-    areaM2: Math.PI * 1000 * 1000,
-    people: { total: 30_000, bands: A_BANDS, households: 12_000 },
-    rivals: 3,
-    newRivals: 1,
-    stationM: 400,
-    stops: 8,
-    floorLabel: '3층',
-    elevators: 1,
-    rentPerPy: 100_000,
-    deposit: 50_000_000,
-    premium: 30_000_000,
-    savedRentsPerPy: SAVED,
-  },
-  flags: [flag('violation-check', 'check'), flag('many-rivals')],
-  listing: LA,
-}
-const B: CompareRow = {
-  candidate: cand('id-b', '나래상가 2층', {
-    addressNote: '나래동',
-    radiusM: 500,
-    floorLabel: '2층',
-    snapshot: snap('2026-11-16T05:00:00.000Z', { station: station('나래역', 1400) }),
-    snapshotAt: '2026-11-16T05:00:00.000Z',
-    createdAt: '2026-11-16T05:00:00.000Z',
+  clinic('가람한의원', ['korean'], 400),
+  clinic('가람신경외과의원', ['ns'], 500),
+  clinic('바른정형외과의원', ['ortho'], 600),
+  clinic('편한마취통증의학과의원', ['pain'], 700),
+  clinic('튼튼재활의학과의원', ['rehab'], 900),
+  clinic('먼정형외과의원', ['ortho'], 1200),
+]
+// B 범위 500m 안: 내과 1곳(처음엔 둘레로 보기) · 정형외과는 범위 밖 → 처음 설정 경쟁 0곳, 내과·정형외과면 1곳
+const B_RIVALS: Rival[] = [clinic('나래내과의원', ['im'], 100), clinic('나래정형외과의원', ['ortho'], 700)]
+
+const A = cand('id-a', '예시빌딩 3층', {
+  addressNote: '가람동',
+  status: 'contacted',
+  floorLabel: '3층',
+  snapshot: snap('2026-11-15T01:00:00.000Z', 1000, {
+    people: peopleOf(A_BANDS, 12_000),
+    rivals: ok(A_RIVALS, 'hosp-list'),
+    station: stationOf('가람역', 400),
+    bus: ok(8, 'bus-stops'),
   }),
-  facts: {
-    areaM2: Math.PI * 500 * 500,
-    people: { total: 18_000, bands: B_BANDS, households: 7_000 },
-    rivals: 0,
-    newRivals: 0,
-    stationM: 1400,
-    stops: 3,
-    floorLabel: '2층',
-    elevators: 2,
-    rentPerPy: 80_000,
-    deposit: 30_000_000,
-    premium: 0,
-    savedRentsPerPy: SAVED,
-  },
-  flags: [],
-  listing: LB,
-}
+  snapshotAt: '2026-11-15T01:00:00.000Z',
+  createdAt: '2026-11-15T01:00:00.000Z',
+})
+const B = cand('id-b', '나래상가 2층', {
+  addressNote: '나래동',
+  radiusM: 500,
+  floorLabel: '2층',
+  violation: 'no',
+  snapshot: snap('2026-11-16T05:00:00.000Z', 500, {
+    people: peopleOf(B_BANDS, 7_000),
+    rivals: ok(B_RIVALS, 'hosp-list'),
+    station: stationOf('나래역', 800),
+    bus: ok(3, 'bus-stops'),
+  }),
+  snapshotAt: '2026-11-16T05:00:00.000Z',
+  createdAt: '2026-11-16T05:00:00.000Z',
+})
 // 교통·흐름 값만 있는 후보(손으로 센다): 역 200m → 100점 · 정류장 10곳 → 100점 · 승하차 없음 →
 // 교통·흐름 = 버림(100 × 40 ÷ 60) + 버림(100 × 20 ÷ 60) = 66 + 33 = 99점, 종합 = 버림(99 × 20 ÷ 20) = 99점 / 만점 100
-const C: CompareRow = {
-  candidate: cand('id-c', '다온타워 4층', {
-    addressNote: '다온동',
-    status: 'visited',
-    radiusM: 1500,
-    floorLabel: '4층',
-    snapshot: snap('2026-11-14T03:00:00.000Z'),
-    snapshotAt: '2026-11-14T03:00:00.000Z',
-    createdAt: '2026-11-14T03:00:00.000Z',
-  }),
-  facts: { stationM: 200, stops: 10 },
-  flags: [flag('far-station')],
-  listing: null,
-}
-const D: CompareRow = {
-  candidate: cand('id-d', '예시상가 2층', { addressNote: '바다동', status: 'dropped' }),
-  facts: {},
-  flags: [],
-  listing: null,
-}
-const ROWS = [A, B, C, D]
+const C = cand('id-c', '다온타워 4층', {
+  addressNote: '다온동',
+  status: 'visited',
+  radiusM: 1500,
+  snapshot: snap('2026-11-14T03:00:00.000Z', 1500, { station: stationOf('다온역', 200), bus: ok(10, 'bus-stops') }),
+  snapshotAt: '2026-11-14T03:00:00.000Z',
+  createdAt: '2026-11-14T03:00:00.000Z',
+})
+const D = cand('id-d', '예시상가 2층', { addressNote: '바다동', status: 'dropped' })
+const CANDS = [A, B, C, D]
+
+const factsOf = (c: Candidate, rule: DeptRule = firstDepts(), listings: readonly Listing[] = LISTINGS) =>
+  scoreFactsOf({ candidate: c, listings, homeEswt: HOME_ESWT, today: TODAY, deptRule: rule })
 
 function setup(over: Partial<CandidateCompareProps> = {}) {
   const onStatus = vi.fn<(id: string, status: CandidateStatus) => void>()
   const onEditWeights = vi.fn<() => void>()
-  const props: CandidateCompareProps = { rows: ROWS, listings: LISTINGS, rule: freshRule(), onStatus, onEditWeights, ...over }
+  const props: CandidateCompareProps = {
+    candidates: CANDS,
+    listings: LISTINGS,
+    rule: freshRule(),
+    deptRule: firstDepts(),
+    homeEswt: HOME_ESWT,
+    today: TODAY,
+    onStatus,
+    onEditWeights,
+    ...over,
+  }
   const view = render(<CandidateCompare {...props} />)
   return { onStatus, onEditWeights, props, ...view }
 }
 
 const table = () => screen.getByRole('table')
-/** 몸 줄 이름(첫 칸 머리)으로 줄을 찾아 칸 글자를 — 무게 칸 뒤 후보 칸들만 */
-function cells(rowName: string): string[] {
-  const row = within(table()).getByRole('rowheader', { name: new RegExp(`^${rowName}(?: |$)`) }).closest('tr')!
-  return within(row as HTMLElement).getAllByRole('cell').slice(1).map((c) => (c.textContent ?? '').replace(/\s+/g, ' ').trim())
+const clean = (t: string | null) => (t ?? '').replace(/\s+/g, ' ').trim()
+/** 몸 줄 머리(이름 그대로 또는 정규식)로 줄을 찾는다 */
+const rowHeader = (name: string | RegExp) => within(table()).getByRole('rowheader', { name })
+/** 그 줄의 칸 글자 — 무게 칸 뒤 후보 칸들만 */
+function cells(name: string | RegExp): string[] {
+  const row = rowHeader(name).closest('tr') as HTMLElement
+  return within(row).getAllByRole('cell').slice(1).map((c) => clean(c.textContent))
 }
-function weightCell(rowName: string): string {
-  const row = within(table()).getByRole('rowheader', { name: new RegExp(`^${rowName}(?: |$)`) }).closest('tr')!
-  return (within(row as HTMLElement).getAllByRole('cell')[0].textContent ?? '').trim()
+function weightCell(name: string): string {
+  const row = rowHeader(name).closest('tr') as HTMLElement
+  return clean(within(row).getAllByRole('cell')[0].textContent)
 }
-const heads = () => within(table()).getAllByRole('columnheader').map((h) => (h.textContent ?? '').replace(/\s+/g, ' ').trim())
+const heads = () => within(table()).getAllByRole('columnheader').map((h) => clean(h.textContent))
+const RIVAL_ROW = /^경쟁 의원/
+const GROUP_NAMES = ['사는 사람·수요', '경쟁', '교통·흐름', '자리', '비용']
+const GROUP_IDS = ['people', 'rivals', 'transit', 'site', 'cost'] as const
+
+/** 받은 값·설정으로 센 항목 점수 칸 글(부품과 같은 모양: '{점}점 / {만점}' + 가장 높음) */
+function expectedScoreCells(rows: readonly Candidate[], rule: ScoreRule, depts: DeptRule, gi: number): (string | null)[] {
+  const results = rows.map((c) => scoreItems(factsOf(c, depts), rule, 'candidate'))
+  const pts = results.map((r) => r.groups[gi].points)
+  const best = Math.max(...pts.map((p) => p ?? -1))
+  return results.map((r) => {
+    const g = r.groups[gi]
+    if (g.points === null) return null
+    const sum = r.groups.reduce((a, x, i) => (x.score === null ? a : a + rule.weights[GROUP_IDS[i]]), 0)
+    const max = Math.floor((rule.weights[g.id] * 100) / sum)
+    return `${g.points}점 / ${max}${g.points === best && best > 0 ? ' · 가장 높음' : ''}`
+  })
+}
 
 afterEach(() => {
   cleanup()
@@ -202,9 +227,9 @@ describe('AC-7914.1: 후보 2~4곳을 나란히 놓는다', () => {
   })
 
   it('AC-7914.1: 후보가 다섯 곳이면 처음에는 앞 4곳만 견주고, 다섯째는 4곳을 고른 동안 고를 수 없다', () => {
-    const E: CompareRow = { ...C, candidate: cand('id-e', '바람빌딩 5층') }
-    const F: CompareRow = { ...C, candidate: cand('id-f', '하늘빌딩 1층') }
-    setup({ rows: [A, B, C, E, F] })
+    const E = cand('id-e', '바람빌딩 5층')
+    const F = cand('id-f', '하늘빌딩 1층')
+    setup({ candidates: [A, B, C, E, F] })
     expect(heads().slice(2).map((h) => h.split(' ').slice(0, 3).join(' '))).toEqual(['후보 A 예시빌딩', '후보 B 나래상가', '후보 C 다온타워', '후보 D 바람빌딩'])
     const pick = screen.getByRole('group', { name: '견줄 후보' })
     expect(within(pick).getByText('2곳에서 4곳까지 골라 견줘요')).toBeTruthy()
@@ -240,13 +265,13 @@ describe('AC-7914.1: 후보 2~4곳을 나란히 놓는다', () => {
 
   it('AC-7914.1: 고른 후보를 내려놓으면(다시 그림) 칸에서 빠지고 남은 후보로 견준다', () => {
     const { rerender, props } = setup()
-    const next = [A, { ...B, candidate: { ...B.candidate, status: 'dropped' as const } }, C, D]
-    rerender(<CandidateCompare {...props} rows={next} />)
+    const next = [A, { ...B, status: 'dropped' as const }, C, D]
+    rerender(<CandidateCompare {...props} candidates={next} />)
     expect(heads().slice(2).map((h) => h.split(' ').slice(0, 3).join(' '))).toEqual(['후보 A 예시빌딩', '후보 C 다온타워'])
   })
 
   it('AC-7914.1: 견줄 후보가 2곳보다 적으면 점수표 대신 안내 글이고, 진행 상태는 그대로 있다', () => {
-    setup({ rows: [A, D] })
+    setup({ candidates: [A, D] })
     expect(screen.queryByRole('table')).toBeNull()
     expect(screen.getByText('후보를 2곳 이상 저장하면 나란히 견줘 드려요')).toBeTruthy()
     expect(screen.getByRole('group', { name: '예시빌딩 3층 진행 상태' })).toBeTruthy()
@@ -256,7 +281,7 @@ describe('AC-7914.1: 후보 2~4곳을 나란히 놓는다', () => {
 describe('AC-7914.1·AC-7919.3: 항목 점수·종합은 받은 설정(무게) 그대로', () => {
   it('AC-7914.1: 무게 칸과 머리 글은 받은 무게 그대로이고, 합계 줄은 무게 합이다', () => {
     setup()
-    expect(['사는 사람·수요', '경쟁', '교통·흐름', '자리', '비용'].map(weightCell)).toEqual(['30', '25', '20', '15', '10'])
+    expect(GROUP_NAMES.map(weightCell)).toEqual(['30', '25', '20', '15', '10'])
     expect(weightCell('합계')).toBe('100')
     expect(screen.getByText(/무게 사는 사람·수요 30 · 경쟁 25 · 교통·흐름 20 · 자리 15 · 비용 10/)).toBeTruthy()
   })
@@ -265,36 +290,41 @@ describe('AC-7914.1·AC-7919.3: 항목 점수·종합은 받은 설정(무게) �
     setup()
     expect(cells('교통·흐름')[2]).toBe('99점 / 100 · 가장 높음')
     expect(cells('사는 사람·수요')[2]).toBe('값 없음')
+    expect(cells('경쟁')[2]).toBe('값 없음')
     expect(cells('비용')[2]).toBe('매물 없음')
     expect(cells('합계')[2]).toMatch(/^99점/)
   })
 
-  it('AC-7914.1: 점수는 score.ts scoreItems(받은 값, 받은 설정)와 같고, 가장 높은 점수·등수가 보인다', () => {
+  it('AC-7914.1: 점수는 scoreItems(facts.ts scoreFactsOf(후보·매물·지금 의원 값·오늘·과목 고르기), 받은 설정)와 같고, 가장 높은 점수·등수가 보인다', () => {
     setup()
     const rule = freshRule()
-    const results = [A, B, C].map((r) => scoreItems(r.facts, rule, 'candidate'))
-    const names = ['사는 사람·수요', '경쟁', '교통·흐름', '자리', '비용']
-    names.forEach((name, gi) => {
-      const pts = results.map((r) => r.groups[gi].points)
-      const best = Math.max(...pts.map((p) => p ?? -1))
+    GROUP_NAMES.forEach((name, gi) => {
+      const want = expectedScoreCells([A, B, C], rule, firstDepts(), gi)
       const shown = cells(name)
-      results.forEach((r, k) => {
-        const g = r.groups[gi]
-        if (g.points === null) return
-        const sum = r.groups.reduce((a, x, i) => (x.score === null ? a : a + rule.weights[(['people', 'rivals', 'transit', 'site', 'cost'] as const)[i]]), 0)
-        const max = Math.floor((rule.weights[g.id] * 100) / sum)
-        expect(shown[k], `${name} ${k}`).toBe(`${g.points}점 / ${max}${g.points === best && best > 0 ? ' · 가장 높음' : ''}`)
+      want.forEach((w, k) => {
+        if (w !== null) expect(shown[k], `${name} ${k}`).toBe(w)
       })
     })
-    const totals = results.map((r) => r.total!)
+    const totals = [A, B, C].map((c) => scoreItems(factsOf(c), rule, 'candidate').total!)
     const rank = (t: number) => totals.filter((x) => x > t).length + 1
     expect(cells('합계')).toEqual(totals.map((t) => `${t}점 ${rank(t)}등`))
   })
 
+  it('AC-7914.1: 경쟁 점수는 지금 의원 체외충격파 값(homeEswt)과 오늘(today)도 받아 센다', () => {
+    const rule = freshRule()
+    const withHome = scoreItems(factsOf(A), rule, 'candidate').groups[1].points
+    const noHome = scoreItems(scoreFactsOf({ candidate: A, listings: LISTINGS, homeEswt: null, today: TODAY, deptRule: firstDepts() }), rule, 'candidate').groups[1].points
+    expect(withHome).not.toBe(noHome) // 시험 준비: 값이 달라야 받은 것을 알 수 있다
+    const { rerender, props } = setup()
+    expect(cells('경쟁')[0]).toMatch(new RegExp(`^${withHome}점`))
+    rerender(<CandidateCompare {...props} homeEswt={null} />)
+    expect(cells('경쟁')[0]).toMatch(new RegExp(`^${noHome}점`))
+  })
+
   it('AC-7914.1: 항목 막대 길이는 그 항목 점수(0~100)다', () => {
     setup()
-    const row = within(table()).getByRole('rowheader', { name: /^교통·흐름/ }).closest('tr')!
-    const bar = within(row as HTMLElement).getAllByRole('cell')[3].querySelector('[data-bar] > i') as HTMLElement
+    const row = rowHeader('교통·흐름').closest('tr') as HTMLElement
+    const bar = within(row).getAllByRole('cell')[3].querySelector('[data-bar] > i') as HTMLElement
     expect(bar.style.width).toBe('99%')
   })
 
@@ -309,7 +339,7 @@ describe('AC-7914.1·AC-7919.3: 항목 점수·종합은 받은 설정(무게) �
     expect(weightCell('합계')).toBe('100')
     expect(screen.getByText(/무게 사는 사람·수요 50 · 경쟁 25 · 교통·흐름 0/)).toBeTruthy()
     expect(cells('합계')[2]).toBe('점수 없음')
-    const a = scoreItems(A.facts, rule, 'candidate')
+    const a = scoreItems(factsOf(A), rule, 'candidate')
     expect(cells('합계')[0]).toMatch(new RegExp(`^${a.total}점`))
     expect(onStatus).not.toHaveBeenCalled()
     expect(onEditWeights).not.toHaveBeenCalled()
@@ -327,24 +357,98 @@ describe('AC-7914.1·AC-7919.3: 항목 점수·종합은 받은 설정(무게) �
   })
 })
 
+describe('AC-7921.2: 과목 고르기(deptRule)를 따른다 — 줄 이름 경쟁 의원 + 고른 과목 짧은 이름', () => {
+  it('AC-7921.2: 경쟁 줄 이름은 `경쟁 의원`, 작은 글은 고른 과목 짧은 이름(목록 차례, ·로 이음)이고 옛 이름·한의원 뺌 글이 없다', () => {
+    setup()
+    expect(clean(rowHeader(RIVAL_ROW).textContent)).toBe('경쟁 의원 정형외과·신경외과·마취통증·재활')
+    expect(rowHeader(RIVAL_ROW).querySelector('span')?.textContent).toBe('정형외과·신경외과·마취통증·재활')
+    expect(document.body.textContent).not.toMatch(/정형외과·통증·재활|한의원 뺌/)
+  })
+
+  it('AC-7921.2: 경쟁 수는 facts.ts rivalCount(후보, 과목 고르기)와 같고 1곳당 사는 사람 = 사는 사람 ÷ 경쟁 수(버림)', () => {
+    setup()
+    expect([A, B, C].map((c) => rivalCount(c, firstDepts()))).toEqual([5, 0, null]) // 시험 준비
+    expect(cells(RIVAL_ROW)).toEqual(['5곳', '0곳', '자료 없음'])
+    expect(cells('1곳당 사는 사람')).toEqual(['6,000명', '경쟁 의원 없음', '자료 없음'])
+  })
+
+  it('AC-7921.2: 위험 신호 수는 pickFlags(flagInputOf(…과목 고르기))와 같다', () => {
+    setup()
+    const want = [A, B, C].map((c) => pickFlags(flagInputOf({ candidate: c, listings: LISTINGS, today: TODAY, deptRule: firstDepts() })).length)
+    expect(want).toEqual([2, 0, 1]) // 시험 준비: A = 위반 건축물인지 + 경쟁 5곳 이상
+    expect(cells('위험 신호')).toEqual(['2개', '없음', '1개'])
+  })
+
+  it('AC-7921.2: 과목 고르기를 바꾼 설정을 받으면 다시 부르지 않고 줄 작은 글·경쟁 수·1곳당·경쟁 점수·종합·위험 신호 수가 바로 다시 그려진다', () => {
+    const { rerender, props, onStatus, onEditWeights } = setup()
+    const next = deptRule(['ortho', 'im'])
+    rerender(<CandidateCompare {...props} deptRule={next} />)
+    expect(clean(rowHeader(RIVAL_ROW).textContent)).toBe('경쟁 의원 내과·정형외과')
+    expect([A, B, C].map((c) => rivalCount(c, next))).toEqual([3, 1, null])
+    expect(cells(RIVAL_ROW)).toEqual(['3곳', '1곳', '자료 없음'])
+    expect(cells('1곳당 사는 사람')).toEqual(['10,000명', '18,000명', '자료 없음'])
+    expect(cells('위험 신호')).toEqual(['1개', '없음', '1개'])
+    const rule = freshRule()
+    const want = expectedScoreCells([A, B, C], rule, next, 1)
+    expect(want.slice(0, 2)).not.toEqual(expectedScoreCells([A, B, C], rule, firstDepts(), 1).slice(0, 2)) // 시험 준비: 경쟁 점수가 달라진다
+    expect(cells('경쟁').slice(0, 2)).toEqual(want.slice(0, 2))
+    expect(cells('합계')[0]).toMatch(new RegExp(`^${scoreItems(factsOf(A, next), rule, 'candidate').total}점`))
+    expect(onStatus).not.toHaveBeenCalled()
+    expect(onEditWeights).not.toHaveBeenCalled()
+  })
+
+  it('AC-7921.2: 경쟁 과목을 하나도 안 고르면 작은 글 `고른 과목 없음`, 경쟁 0곳·경쟁 의원 없음, 점수의 경쟁은 `과목 없음`(값 없는 항목처럼 빠짐)', () => {
+    setup({ deptRule: deptRule([]) })
+    expect(clean(rowHeader(RIVAL_ROW).textContent)).toBe('경쟁 의원 고른 과목 없음')
+    expect(cells(RIVAL_ROW)).toEqual(['0곳', '0곳', '0곳'])
+    expect(cells('1곳당 사는 사람')).toEqual(['경쟁 의원 없음', '경쟁 의원 없음', '경쟁 의원 없음'])
+    expect(cells('경쟁')).toEqual(['과목 없음', '과목 없음', '과목 없음'])
+    const a = scoreItems(factsOf(A, deptRule([])), freshRule(), 'candidate')
+    expect(a.groups[1].score).toBeNull() // 시험 준비
+    expect(cells('합계')[0]).toMatch(new RegExp(`^${a.total}점`))
+    expect(cells('위험 신호')).toEqual(['1개', '없음', '1개'])
+  })
+})
+
 describe('AC-7914.1: 숫자로 견주기 — 평당 월세·위험 신호 수 등', () => {
-  it('AC-7914.1: 무리 줄과 살필 범위·사는 사람·60세 이상·경쟁 수·1곳당 사는 사람·가장 가까운 역', () => {
+  it('AC-7914.1: 무리 줄과 살필 범위·사는 사람·60세 이상·가장 가까운 역(그날 값)', () => {
     setup()
     expect(within(table()).getByText('숫자로 견주기 (후보마다 살필 범위 안)')).toBeTruthy()
     expect(cells('살필 범위')).toEqual(['1km', '500m', '1.5km'])
     expect(cells('사는 사람')).toEqual(['30,000명', '18,000명', '자료 없음'])
-    expect(cells('60세 이상')).toEqual(['35%', '11%', '자료 없음'])
-    expect(cells('정형외과·통증·재활')).toEqual(['3곳', '0곳', '자료 없음'])
-    expect(within(table()).getByRole('rowheader', { name: /^정형외과·통증·재활/ }).textContent).toContain('한의원 뺌')
-    expect(cells('1곳당 사는 사람')).toEqual(['10,000명', '경쟁 의원 없음', '자료 없음'])
-    expect(cells('가장 가까운 역')).toEqual(['가람역 · 400m', '나래역 · 1.4km', '자료 없음'])
+    expect(cells('60세 이상')).toEqual(['35%', '22%', '자료 없음'])
+    expect(cells('가장 가까운 역')).toEqual(['가람역 · 400m', '나래역 · 800m', '다온역 · 200m'])
   })
 
-  it('AC-7914.1: 층·넓이(평과 ㎡)·보증금·월세·권리금 — 매물이 없으면 매물 없음', () => {
+  it('AC-7914.1: 받다가 실패한 칸은 지난 값(prev)을 보인다(facts.ts와 같음)', () => {
+    const failed = { ok: false, why: 'failed', src: 'rail-stations', prev: { v: { name: '옛가람역', line: '2호선', distM: 450, at: { lat: 37.5, lng: 127 } }, asOf: '2026-10-01' } } as const
+    const A2 = { ...A, snapshot: { ...A.snapshot!, station: failed } } as Candidate
+    setup({ candidates: [A2, B] })
+    expect(cells('가장 가까운 역')).toEqual(['옛가람역 · 450m', '나래역 · 800m'])
+  })
+
+  it('AC-7914.1: 층·넓이(평과 ㎡)·보증금·월세·권리금 — 만 원 칸 금액은 manText(0이면 없음), 매물이 없으면 매물 없음', () => {
     setup()
-    expect(cells('층 · 전용 평수')).toEqual(['3층 · 30평 (99.17㎡)', '2층 · 40평 (132.23㎡)', '4층'])
+    expect(cells('층 · 전용 평수')).toEqual(['3층 · 30평 (99.17㎡)', '2층 · 40평 (132.23㎡)', '–'])
     expect(cells('보증금 / 월세')).toEqual(['5,000만 원 / 300만 원', '3,000만 원 / 320만 원', '매물 없음'])
-    expect(cells('권리금')).toEqual(['3,000만 원', '0원', '매물 없음'])
+    expect(cells('권리금')).toEqual(['3,000만 원', '없음', '매물 없음'])
+  })
+
+  it('AC-7914.1: 만 원 칸 금액은 100만 원 아래도 `78만 원`, 만 원으로 안 나눠지면 원 글, 값이 없으면 –', () => {
+    const E = cand('id-e', '바람빌딩 5층')
+    const F = cand('id-f', '하늘빌딩 1층')
+    const LE = listing('l-e', { candidateId: 'id-e', areaM2: 99.17, deposit: 0, rent: 780_000, premium: 150_000_000 })
+    const LF = listing('l-f', { candidateId: 'id-f', areaM2: 99.17, deposit: 5_000_000, rent: 785_500, premium: null })
+    setup({ candidates: [E, F], listings: [LE, LF] })
+    expect(cells('보증금 / 월세')).toEqual(['없음 / 78만 원', '500만 원 / 785,500원'])
+    expect(cells('권리금')).toEqual(['1억 5,000만 원', '–'])
+    expect(cells('평당 월세')).toEqual(['26,000원 평균과 같아요', '26,183원 평균과 같아요'])
+  })
+
+  it('AC-7914.1: 후보 매물은 그 후보에 이어진 매물 가운데 마지막으로 고친 것(facts.ts candidateListing)', () => {
+    const old = listing('l-a-old', { candidateId: 'id-a', areaM2: 99.17, deposit: 10_000_000, rent: 1_000_000, premium: 0, updatedAt: '2026-11-01T01:00:00.000Z' })
+    setup({ listings: [old, ...LISTINGS] })
+    expect(cells('보증금 / 월세')[0]).toBe('5,000만 원 / 300만 원')
   })
 
   it('AC-7914.1: 평당 월세와 저장한 매물 평균 견주기 글(listings.ts)', () => {
@@ -353,8 +457,9 @@ describe('AC-7914.1: 숫자로 견주기 — 평당 월세·위험 신호 수 �
   })
 
   it('AC-7914.1: 저장한 매물이 2개보다 적으면 평당 월세만 보이고 견주는 글은 없다', () => {
-    setup({ listings: [LA] })
-    expect(cells('평당 월세')).toEqual(['100,000원', '80,000원', '매물 없음'])
+    // B 매물은 넓이가 없어 평당 월세를 셀 수 없다 → 평당 월세가 있는 매물은 A 하나
+    setup({ listings: [LA, { ...LB, areaM2: null }] })
+    expect(cells('평당 월세')).toEqual(['100,000원', '–', '매물 없음'])
   })
 
   it('AC-7914.1: 위험 신호 수(확인 필요 포함), 없으면 없음', () => {
@@ -368,8 +473,8 @@ describe('AC-7914.1: 숫자로 견주기 — 평당 월세·위험 신호 수 �
   })
 
   it('AC-7914.1: 그날 값이 없는 후보는 받은 값 없음', () => {
-    const E: CompareRow = { ...C, candidate: cand('id-e', '바람빌딩 5층') }
-    setup({ rows: [A, E] })
+    const E = cand('id-e', '바람빌딩 5층')
+    setup({ candidates: [A, E] })
     expect(screen.getByText('각 후보 숫자는 그 후보를 저장한 날 값이에요(A 11월 15일 · B 받은 값 없음)')).toBeTruthy()
   })
 
@@ -420,7 +525,7 @@ describe('AC-7914.1: 진행 상태 — 단계 바꾸기·내려놓기·다시 �
   })
 
   it('AC-7914.1: 내려놓은 후보가 없으면 접힌 목록도 없다', () => {
-    setup({ rows: [A, B, C] })
+    setup({ candidates: [A, B, C] })
     expect(screen.queryByText(/내려놓은 후보/)).toBeNull()
   })
 
@@ -439,7 +544,7 @@ describe('AC-7914.1: 화면 글 — 영어 낱말 없음', () => {
   })
 })
 
-// ── 소스 글자: props·콜백만 · PC 모양 하나 ──
+// ── 소스 글자: props·콜백만 · 셈은 lib 한 곳 · PC 모양 하나 ──
 const DIR = 'src/components/location/compare'
 const FILES = readdirSync(join(process.cwd(), DIR)).filter((f) => /\.tsx?$/.test(f) && !/\.test\./.test(f))
 const withoutComments = (code: string) => code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:\\])\/\/[^\n]*/g, '$1')
@@ -455,11 +560,22 @@ describe('AC-7914.1: 견주기 부품 소스', () => {
     expect(FILES.filter((f) => banned.test(read(f)))).toEqual([])
   })
 
-  it('AC-7914.1: PC 모양 하나 — 화면 폭 앞말(max-md: 등)이 없고, 가져다 쓰는 ds 묶음에도 없다', () => {
+  it('AC-7921.2: 점수 값·경쟁 수·위험 신호·후보 매물은 lib/location/facts.ts(과목 고르기)로 — snapshotFacts·옛 화면 셈을 쓰지 않는다', () => {
+    const code = read('CandidateCompare.tsx')
+    expect(code).toMatch(/from '@\/lib\/location\/facts'/)
+    for (const fn of ['scoreFactsOf', 'flagInputOf', 'rivalCount', 'candidateListing', 'shownValue', 'pickFlags', 'rivalShortText', 'manText']) {
+      expect(code, fn).toMatch(new RegExp(`\\b${fn}\\(`))
+    }
+    const all = FILES.map(read).join('\n')
+    expect(all).not.toMatch(/snapshotFacts|detail\/frame\/facts|SENIOR_BAND|\.bands\b/)
+  })
+
+  it('AC-7914.1: PC 모양 하나 — 화면 폭 앞말(max-md: 등)이 없고, 가져다 쓰는 ds 묶음에도 없다(ds.button·ds.input·ds.textButton 안 씀)', () => {
     const variant = /(?<![\w\-[])(?:(?:max-|min-)?(?:sm|md|lg|\d*xl)|(?:min|max)-\[[^\]\s]*\]):/
     for (const f of FILES) {
       const code = read(f)
       expect(code, f).not.toMatch(variant)
+      expect(code, f).not.toMatch(/\bds\.(?:button|input|textButton)\b/)
       for (const m of code.matchAll(/\bds\.([A-Za-z]\w*(?:\.[A-Za-z]\w*)*)/g)) {
         const value = m[1].split('.').reduce<unknown>((v, k) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined), ds)
         expect(typeof value, `ds.${m[1]}`).toBe('string')
@@ -474,10 +590,10 @@ describe('AC-7914.1: 견주기 부품 소스', () => {
   })
 })
 
-// 시험 준비 확인: 위 후보 값이 scoreItems에서 기대한 모양인지(시험 자체가 틀리지 않게)
+// 시험 준비 확인: 위 후보 값이 facts.ts·score.ts에서 기대한 모양인지(시험 자체가 틀리지 않게)
 describe('AC-7914.1: 시험 준비', () => {
   it('AC-7914.1: 교통·흐름만 있는 후보는 99점, 매물 없는 후보는 비용 값 없음', () => {
-    const r = scoreItems(C.facts as ScoreFacts, freshRule(), 'candidate')
+    const r = scoreItems(factsOf(C), freshRule(), 'candidate')
     expect(r.total).toBe(99)
     expect(r.groups.find((g) => g.id === 'cost')!.score).toBeNull()
   })
