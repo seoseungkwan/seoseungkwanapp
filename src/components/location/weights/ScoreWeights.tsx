@@ -1,13 +1,15 @@
 'use client'
 
-// 점수 무게 판 (spec location REQ-7919·AC-7907.2, design.md 8절, 시안 ?s=weights 승인 2).
+// 점수 무게 판 (spec location REQ-7919·AC-7907.2·AC-7921.1·AC-7921.7, design.md 8·18절, 시안 ?s=weights 승인 2·3).
 // 바깥 무게 막대 다섯 + [기본 무게로], 항목마다 [세부 ▾]를 펼치면 세부 무게 막대·만점 기준 칸(사는 사람·수요는 셀 나이대, p-welfare는 방향 고르기)·[기본값으로].
+// 세부 줄은 SCORE_GROUPS 차례 그대로(자리 맨 아래 s-clinics '같은 건물·옆 건물 의원 수'도 저절로), 이름은 score.ts label 한 곳.
+// onPickDepts를 주면 판 머리와 '경쟁' [세부] 맨 위 줄에 [과목 고르기](판은 부르는 쪽이 연다). 그 줄 글은 rivalShort(경쟁 과목 짧은 이름)가 있을 때만.
 // 부품은 props·콜백만 쓴다: 설정은 rule로 받고, 칸 검사(score.ts checkScoreRule)를 모두 통과한 바뀐 설정만
 //   onChange — 고칠 때마다 바로(부모가 지도 색·순위·점수를 다시 셈, 바깥 자료를 다시 부르지 않음)
-//   onSave   — 마지막으로 고친 뒤 SAVE_DELAY_MS가 지나면 한 번(판이 사라지면 기다리던 것을 바로). 칸이 틀어지면 기다리던 저장도 버린다
+//   onSave   — 마지막으로 고친 뒤 SAVE_DELAY_MS가 지나면 한 번(saveLater.ts, 판이 사라지면 기다리던 것을 바로). 칸이 틀어지면 기다리던 저장도 버린다
 // 로 넘긴다. 틀린 칸은 그 칸 아래 RULE_TEXT 글이 보이고 둘 다 부르지 않는다.
 // 밖에서 내용이 다른 설정이 오면(불러오기 등) 그 값으로 다시 그리고, 판이 넘긴 것과 같은 설정이면 고치던 칸을 그대로 둔다
-import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useId, useState, type ReactNode } from 'react'
 import { ds } from '@/components/ui/classes'
 import { AGE_BANDS, SCORE_GROUPS, type GroupId, type RuleProblem, type ScoreGroupDef, type ScoreRule, type ScoreSubDef } from '@/lib/location/score'
 import {
@@ -24,10 +26,10 @@ import {
   type CriterionField,
   type Draft,
 } from './draft'
+import { useSaveLater } from './saveLater'
 import { SUB_TEXT, WEIGHTS_TEXT as T } from './text'
 
-/** 마지막으로 고친 뒤 저장까지 기다리는 시간(막대를 끄는 동안 저장이 몰리지 않게) */
-export const SAVE_DELAY_MS = 800
+export { SAVE_DELAY_MS } from './saveLater'
 
 export type ScoreWeightsProps = {
   /** 지금 설정(location_settings.score_rule). 틀린 칸·빠진 세부 항목은 처음 값으로 본다 */
@@ -38,6 +40,10 @@ export type ScoreWeightsProps = {
   onSave: (rule: ScoreRule) => void
   /** 처음에 펼쳐 둘 항목(시안 ?s=weights는 다섯 모두) */
   defaultOpen?: readonly GroupId[]
+  /** 경쟁 과목 짧은 이름을 ·로 이은 글(depts.ts rivalShortText) — '경쟁' [세부] 맨 위 줄. 빈 글이면 '없음'(시안), 안 주면 그 줄이 없다 */
+  rivalShort?: string
+  /** [과목 고르기](판 머리 · '경쟁' [세부] 맨 위 줄)를 누름 — 과목 고르기 판은 부르는 쪽이 연다. 안 주면 단추가 없다 */
+  onPickDepts?: () => void
 }
 
 const SLIDER_MAX = 50
@@ -47,6 +53,8 @@ const HEAD = 'flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 bord
 const TEXT_BTN = `inline-flex cursor-pointer items-center whitespace-nowrap rounded-control px-1 font-medium hover:underline ${ds.focusRing}`
 const RESET_BTN = `${TEXT_BTN} h-6 text-small text-ink-2`
 const DETAIL_BTN = `${TEXT_BTN} h-7 text-caption text-accent`
+const PICK_BTN = `${TEXT_BTN} h-6 text-small text-accent`
+const PICK_INLINE = `ml-1.5 inline-flex h-5 cursor-pointer items-center whitespace-nowrap rounded-control px-0.5 align-baseline text-caption font-medium text-accent hover:underline ${ds.focusRing}`
 const SLIDER = `h-6 w-full min-w-0 cursor-pointer accent-accent ${ds.focusRing}`
 const GROUP_ROW = 'grid grid-cols-[104px_minmax(0,1fr)_28px_auto] items-center gap-3 py-1.5'
 const PANEL = 'mt-0.5 mb-3 grid gap-3 rounded-control border border-line bg-canvas p-3'
@@ -62,32 +70,15 @@ const SEG_BTN = `h-6 cursor-pointer border-l border-line-strong px-2 text-captio
 const SEG_ON = `${SEG_BTN} bg-accent-soft font-semibold text-accent-strong`
 const SEG_OFF = `${SEG_BTN} font-medium text-ink-2 hover:bg-canvas`
 
-type Saver = { timer: ReturnType<typeof setTimeout> | null; pending: ScoreRule | null; onSave: (rule: ScoreRule) => void }
-function flush(s: Saver) {
-  if (s.timer !== null) clearTimeout(s.timer)
-  s.timer = null
-  const rule = s.pending
-  s.pending = null
-  if (rule) s.onSave(rule)
-}
-
 const inGroup = (g: ScoreGroupDef, p: RuleProblem) => p.at === g.id || g.subs.some((s) => s.id === p.at) || (g.id === 'people' && p.at === 'bands')
 const textsOf = (problems: readonly RuleProblem[]) => [...new Set(problems.map((p) => p.text))].join(' ')
 
-export function ScoreWeights({ rule, onChange, onSave, defaultOpen = [] }: ScoreWeightsProps) {
+export function ScoreWeights({ rule, onChange, onSave, defaultOpen = [], rivalShort, onPickDepts }: ScoreWeightsProps) {
   const uid = useId()
   const [draft, setDraft] = useState(() => toDraft(rule))
   const [seen, setSeen] = useState(() => ({ rule, key: ruleKey(rule) }))
   const [open, setOpen] = useState<ReadonlySet<GroupId>>(() => new Set(defaultOpen))
-  const saver = useRef<Saver>({ timer: null, pending: null, onSave })
-
-  useEffect(() => {
-    saver.current.onSave = onSave
-  })
-  useEffect(() => {
-    const s = saver.current
-    return () => flush(s)
-  }, [])
+  const save = useSaveLater(onSave)
 
   // 밖에서 다른 설정이 오면 그 값으로(판이 넘긴 설정과 같으면 고치던 칸을 지우지 않는다)
   if (rule !== seen.rule) {
@@ -100,15 +91,11 @@ export function ScoreWeights({ rule, onChange, onSave, defaultOpen = [] }: Score
 
   function apply(next: Draft) {
     setDraft(next)
-    const s = saver.current
-    if (s.timer !== null) clearTimeout(s.timer)
-    s.timer = null
     const out = readDraft(next).rule
-    s.pending = out
+    save.later(out)
     if (!out) return
     setSeen((prev) => ({ rule: prev.rule, key: ruleKey(out) }))
     onChange?.(out)
-    s.timer = setTimeout(() => flush(s), SAVE_DELAY_MS)
   }
 
   function toggle(g: ScoreGroupDef) {
@@ -130,9 +117,16 @@ export function ScoreWeights({ rule, onChange, onSave, defaultOpen = [] }: Score
         <h2 id={titleId} className="text-subtitle font-semibold text-ink">
           {T.title}
         </h2>
-        <button type="button" className={RESET_BTN} onClick={() => apply(resetWeights(draft))}>
-          {T.resetWeights}
-        </button>
+        <span className="flex items-center gap-3">
+          {onPickDepts ? (
+            <button type="button" className={PICK_BTN} aria-haspopup="dialog" onClick={onPickDepts}>
+              {T.pickDepts}
+            </button>
+          ) : null}
+          <button type="button" className={RESET_BTN} onClick={() => apply(resetWeights(draft))}>
+            {T.resetWeights}
+          </button>
+        </span>
       </div>
       <p className="mt-1.5 text-caption text-muted">{T.help}</p>
       {SCORE_GROUPS.map((g) => {
@@ -169,7 +163,18 @@ export function ScoreWeights({ rule, onChange, onSave, defaultOpen = [] }: Score
                 {`${T.detail} ${isOpen ? '▴' : '▾'}`}
               </button>
             </div>
-            {isOpen ? <GroupDetail id={panelId} uid={uid} group={g} draft={draft} problems={problems} apply={apply} /> : null}
+            {isOpen ? (
+              <GroupDetail
+                id={panelId}
+                uid={uid}
+                group={g}
+                draft={draft}
+                problems={problems}
+                apply={apply}
+                rivalShort={rivalShort}
+                onPickDepts={onPickDepts}
+              />
+            ) : null}
           </Fragment>
         )
       })}
@@ -181,14 +186,33 @@ export function ScoreWeights({ rule, onChange, onSave, defaultOpen = [] }: Score
   )
 }
 
-type DetailProps = { id: string; uid: string; group: ScoreGroupDef; draft: Draft; problems: readonly RuleProblem[]; apply: (next: Draft) => void }
+type DetailProps = {
+  id: string
+  uid: string
+  group: ScoreGroupDef
+  draft: Draft
+  problems: readonly RuleProblem[]
+  apply: (next: Draft) => void
+  rivalShort?: string
+  onPickDepts?: () => void
+}
 
-function GroupDetail({ id, uid, group, draft, problems, apply }: DetailProps) {
+function GroupDetail({ id, uid, group, draft, problems, apply, rivalShort, onPickDepts }: DetailProps) {
   const bandsBad = group.id === 'people' ? problems.filter((p) => p.at === 'bands') : []
   const bandsErrId = `${uid}-bands-error`
   const subSum = group.subs.reduce((a, s) => a + draft.items[s.id].w, 0)
   return (
     <div id={id} className={PANEL}>
+      {group.id === 'rivals' && rivalShort !== undefined ? (
+        <p className={PANEL_HEAD}>
+          {T.rivalDepts} <span className={PANEL_NOTE}>{rivalShort === '' ? T.noRival : rivalShort}</span>
+          {onPickDepts ? (
+            <button type="button" className={PICK_INLINE} aria-haspopup="dialog" onClick={onPickDepts}>
+              {T.pickDepts}
+            </button>
+          ) : null}
+        </p>
+      ) : null}
       {group.id === 'people' ? (
         <fieldset className="min-w-0" aria-describedby={bandsBad.length > 0 ? bandsErrId : undefined}>
           <legend className={PANEL_HEAD}>
@@ -234,6 +258,7 @@ type RowProps = { uid: string; group: ScoreGroupDef; sub: ScoreSubDef; draft: Dr
 
 function SubRow({ uid, group, sub, draft, problems, apply }: RowProps) {
   const text = SUB_TEXT[sub.id]
+  const name = sub.label
   const item = draft.items[sub.id]
   const sliderId = `${uid}-${sub.id}`
   const labelId = `${sliderId}-label`
@@ -245,7 +270,7 @@ function SubRow({ uid, group, sub, draft, problems, apply }: RowProps) {
       type="text"
       inputMode="numeric"
       className={BOX}
-      aria-label={`${text.name} ${label}`}
+      aria-label={`${name} ${label}`}
       value={item[field]}
       aria-invalid={bad(field) || undefined}
       aria-describedby={bad(field) ? errId : undefined}
@@ -278,7 +303,7 @@ function SubRow({ uid, group, sub, draft, problems, apply }: RowProps) {
       <div className="flex items-center justify-between gap-2">
         <span className="flex min-w-0 items-center gap-1.5">
           <label id={labelId} htmlFor={sliderId} className="text-caption font-medium text-ink-2">
-            {text.name}
+            {name}
           </label>
           {group.scan && !sub.scan ? <span className={ds.chip.neutral}>{T.candidateSub}</span> : null}
         </span>
@@ -297,7 +322,7 @@ function SubRow({ uid, group, sub, draft, problems, apply }: RowProps) {
         onChange={(e) => apply(setSubWeight(draft, sub.id, Number(e.target.value)))}
       />
       {sub.flip ? (
-        <div role="group" aria-label={`${text.name} 방향`} className={`mt-0.5 ${SEG}`}>
+        <div role="group" aria-label={`${name} 방향`} className={`mt-0.5 ${SEG}`}>
           <button type="button" className={item.less ? SEG_OFF : SEG_ON} aria-pressed={!item.less} onClick={() => apply(setLess(draft, sub.id, false))}>
             {T.more}
           </button>
