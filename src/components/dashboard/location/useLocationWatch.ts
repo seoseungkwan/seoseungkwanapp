@@ -3,29 +3,43 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { queryLocation } from '@/components/location/clients'
 import { addDays, addMonthsToDay, compareYmd } from '@/lib/analytics/dates'
+import { DEFAULT_DEPT_RULE } from '@/lib/location/depts'
 import { dueCandidates, pickEvents, type LicenseFound, type WatchGroup } from '@/lib/location/watch'
-import { addEvents, listUnseenEvents, listWatchCandidates, markEventsSeen, setWatchChecked, type LocationClient } from '@/lib/storage/location'
+import {
+  addEvents,
+  listUnseenEvents,
+  listWatchCandidates,
+  markEventsSeen,
+  readDeptRule,
+  setWatchChecked,
+  type LocationClient,
+} from '@/lib/storage/location'
 import { supabaseBrowser } from '@/lib/supabase/browser'
-import type { LicenseRow, LocationEvent } from '@/types/location'
+import type { DeptRule, LicenseRow, WatchCandidate } from '@/types/location'
+import { alertLines, type AlertLine } from './alertLines'
 
 // 대시보드 새 경쟁 의원 알림 읽기 (specs/location REQ-7915 AC-7915.1~AC-7915.3, design.md 12절, 본보기 dashboard/warranty/useWarrantySoon).
 // 관리자 대시보드를 열 때 한 번, 20초 한도로:
+//   ⓪ 과목 고르기 설정(readDeptRule — 줄이 없거나 못 읽으면 처음 값)을 읽는다. 경쟁 과목이 0개면 확인도 알림 줄도 없다(바깥 자료를 부르지 않음).
 //   ① 확인할 후보(내려놓지 않았고 마지막 확인이 30일 넘음·없음, 만든 차례 5곳 — dueCandidates)를 같은 기간끼리 묶어, 묶음마다
-//      clinic-license 개업·폐업을 한 번씩 받고 후보 범위 안 경쟁 의원 줄(pickEvents)을 넣은 뒤(같은 줄은 DB가 한 번만 둔다) 그 후보들의 확인 날을 오늘로 고친다.
+//      clinic-license 개업·폐업을 한 번씩 받고 후보 범위 안 경쟁 의원 줄(pickEvents, 그 설정의 경쟁 과목 = 대표 과목)을 넣은 뒤
+//      (같은 줄은 DB가 한 번만 둔다) 그 후보들의 확인 날을 오늘로 고친다.
 //      묶음의 답 하나라도 못 받으면(열쇠 없음·활용 신청 안 됨·실패·틀린 모양) 그 묶음은 넣지도 확인 날을 고치지도 않는다 → 다음에 같은 기간을 다시 본다.
 //      줄 넣기가 실패해도 확인 날을 고치지 않는다. 기간이 받을 수 있는 가장 긴 기간(36달)을 넘으면 앞을 당긴다(오래 내려놓았다 되살린 후보가 막히지 않게).
-//   ② 안 본 알림 줄을 읽는다(①이 실패해도 읽는다).
+//   ② 안 본 알림 줄을 읽어(①이 실패해도 읽는다) 후보 이름·대표 과목 짧은 이름을 붙이고 지금 설정의 경쟁 과목 줄만 남긴다(alertLines).
+//      후보 이름은 ①에서 읽은 후보 목록에서 찾는다(후보 읽기가 실패하면 이름 없이).
 // 관리자가 아니면(페이지가 넘긴 값이 거짓이거나 못 읽음) 아무것도 부르지 않는다. 한도·실패·클라이언트를 못 만듦·떠난 뒤 늦은 답은 모두 빈 목록이고,
 // 오류를 밖으로 던지거나 글로 남기지 않는다. 다른 대시보드 숫자는 이 읽기를 기다리지 않는다(LiveDashboard가 따로 둔다).
-// 다시 그려지거나 날짜가 바뀌어도 다시 읽지 않는다(다음에 대시보드를 열 때 새로 읽음). close(id)는 그 줄을 바로 감추고 본 것으로 적는다(실패해도 조용히)
+// 다시 그려지거나 날짜가 바뀌어도 다시 읽지 않는다(다음에 대시보드를 열 때 새로 읽음).
+// close(id)는 그 줄 하나만 바로 감추고 그 줄 하나만 본 것으로 적는다(같은 후보의 다른 줄은 그대로, 실패해도 조용히)
 
 export const LOCATION_WATCH_TIMEOUT_MS = 20_000
 /** clinic-license 한 번에 받는 기간 한도: 끝 ≤ 앞 + 36달(query.ts checkQuery) */
 const MAX_MONTHS = 36
 
-const NONE: readonly LocationEvent[] = []
+const NONE: readonly AlertLine[] = []
 
-export type LocationWatch = { events: readonly LocationEvent[]; close: (id: string) => void }
+export type LocationWatch = { events: readonly AlertLine[]; close: (id: string) => void }
 
 /** from이 있는 클라이언트일 때만 읽는다. 다른 화면 시험처럼 { auth }만 있는 흉내는 읽지 않는다 */
 const canRead = (client: unknown): client is LocationClient => typeof (client as { from?: unknown } | null)?.from === 'function'
@@ -64,34 +78,40 @@ function clampFrom(from: string, to: string): string {
   return compareYmd(from, earliest) < 0 ? earliest : from
 }
 
-async function checkGroup(client: LocationClient, group: WatchGroup, today: string): Promise<void> {
+async function checkGroup(client: LocationClient, group: WatchGroup, rule: DeptRule, today: string): Promise<void> {
   const from = clampFrom(group.from, group.to)
   const [opened, closed] = await Promise.all([license('open', from, group.to), license('close', from, group.to)])
   if (opened === null || closed === null) return
-  const events = group.candidates.flatMap((c) => [...pickEvents(opened, c), ...pickEvents(closed, c)])
+  const events = group.candidates.flatMap((c) => [...pickEvents(opened, c, rule), ...pickEvents(closed, c, rule)])
   if (events.length > 0) await addEvents(client, events)
   await Promise.all(group.candidates.map((c) => setWatchChecked(client, c.id, today).catch(() => undefined)))
 }
 
 /** ① 확인. 묶음마다 따로 실패한다(한 묶음이 실패해도 다른 묶음은 그대로) */
-async function checkDue(client: LocationClient, today: string): Promise<void> {
-  const groups = dueCandidates(await listWatchCandidates(client), today)
-  await Promise.all(groups.map((group) => checkGroup(client, group, today).catch(() => undefined)))
+async function checkDue(client: LocationClient, candidates: readonly WatchCandidate[], rule: DeptRule, today: string): Promise<void> {
+  const groups = dueCandidates(candidates, today)
+  await Promise.all(groups.map((group) => checkGroup(client, group, rule, today).catch(() => undefined)))
 }
 
-/** ① 확인 → ② 안 본 줄 읽기 */
-async function readWatch(today: string): Promise<readonly LocationEvent[]> {
+/** ⓪ 설정. readDeptRule은 던지지 않지만, 무엇이든 못 읽으면 처음 값 */
+const readRule = (client: LocationClient): Promise<DeptRule> => Promise.resolve().then(() => readDeptRule(client)).catch(() => DEFAULT_DEPT_RULE)
+
+/** ⓪ 설정 → ① 확인 → ② 안 본 줄 읽기·줄 만들기 */
+async function readWatch(today: string): Promise<readonly AlertLine[]> {
   const client = supabaseBrowser()
   if (!canRead(client)) return NONE
-  await checkDue(client, today).catch(() => undefined)
-  return listUnseenEvents(client)
+  const rule = await readRule(client)
+  if (rule.rival.length === 0) return NONE
+  const candidates = await listWatchCandidates(client).catch(() => null)
+  if (candidates !== null) await checkDue(client, candidates, rule, today).catch(() => undefined)
+  return alertLines(await listUnseenEvents(client), candidates ?? [], rule)
 }
 
 /** 한 번 읽기. 한도가 먼저 오거나 무엇이든 실패하면 빈 목록이고, 한도 뒤 늦게 온 답은 버린다 */
-function readWithinLimit(today: string): Promise<readonly LocationEvent[]> {
+function readWithinLimit(today: string): Promise<readonly AlertLine[]> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(NONE), LOCATION_WATCH_TIMEOUT_MS)
-    const settle = (events: readonly LocationEvent[]) => {
+    const settle = (events: readonly AlertLine[]) => {
       clearTimeout(timer)
       resolve(events)
     }
@@ -117,7 +137,7 @@ function markSeen(id: string): Promise<void> {
  */
 export function useLocationWatch(isAdmin: boolean | PromiseLike<boolean>, today: string): LocationWatch {
   const [opened] = useState(() => ({ isAdmin, today }))
-  const [events, setEvents] = useState<readonly LocationEvent[]>(NONE)
+  const [events, setEvents] = useState<readonly AlertLine[]>(NONE)
   const [closedIds, setClosedIds] = useState<readonly string[]>([])
 
   useEffect(() => {

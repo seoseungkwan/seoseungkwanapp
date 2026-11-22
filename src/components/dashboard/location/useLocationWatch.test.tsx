@@ -5,9 +5,20 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { queryLocation } from '@/components/location/clients'
-import { addEvents, listUnseenEvents, listWatchCandidates, LocationStorageError, markEventsSeen, setWatchChecked } from '@/lib/storage/location'
+import { DEFAULT_DEPT_RULE } from '@/lib/location/depts'
+import {
+  addEvents,
+  listUnseenEvents,
+  listWatchCandidates,
+  LocationStorageError,
+  markCandidateEventsSeen,
+  markEventsSeen,
+  readDeptRule,
+  setWatchChecked,
+} from '@/lib/storage/location'
 import { supabaseBrowser } from '@/lib/supabase/browser'
-import type { LicenseRow, LocationEvent, Query, QueryReply, WatchCandidate } from '@/types/location'
+import type { DeptRule, LicenseRow, LocationEvent, Query, QueryReply, WatchCandidate } from '@/types/location'
+import type { AlertLine } from './alertLines'
 import { LOCATION_WATCH_TIMEOUT_MS, useLocationWatch } from './useLocationWatch'
 
 // 대시보드 새 경쟁 의원 알림 읽기 훅 (specs/location REQ-7915 AC-7915.1·AC-7915.2·AC-7915.3, design.md 12절).
@@ -22,6 +33,8 @@ vi.mock('@/lib/storage/location', async (importOriginal) => {
     setWatchChecked: vi.fn(),
     listUnseenEvents: vi.fn(),
     markEventsSeen: vi.fn(),
+    markCandidateEventsSeen: vi.fn(),
+    readDeptRule: vi.fn(),
   }
 })
 vi.mock('@/components/location/clients', () => ({ queryLocation: vi.fn() }))
@@ -33,6 +46,7 @@ const CLIENT = { from: vi.fn(), rpc: vi.fn(), storage: {} } as unknown as Supaba
 // 후보 A(서울 어딘가, 범위 1km)·B(범위 500m): 확인한 적 없음. C: 10일 전에 확인. D: 내려놓음
 const cand = (id: string, over: Partial<WatchCandidate> = {}): WatchCandidate => ({
   id,
+  name: `예시후보 ${id.slice(0, 1).toUpperCase()}`,
   status: 'watching',
   lat: 37.5,
   lng: 127.0,
@@ -41,8 +55,8 @@ const cand = (id: string, over: Partial<WatchCandidate> = {}): WatchCandidate =>
   createdAt: '2026-11-01T00:00:00.000Z',
   ...over,
 })
-const A = cand('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { createdAt: '2026-11-01T00:00:00.000Z' })
-const B = cand('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', { radiusM: 500, createdAt: '2026-11-02T00:00:00.000Z' })
+const A = cand('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { name: '예시빌딩 3층', createdAt: '2026-11-01T00:00:00.000Z' })
+const B = cand('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', { name: '예시타워 1층', radiusM: 500, createdAt: '2026-11-02T00:00:00.000Z' })
 const C = cand('cccccccc-cccc-4ccc-8ccc-cccccccccccc', { watchCheckedOn: '2026-11-12', createdAt: '2026-11-03T00:00:00.000Z' })
 const D = cand('dddddddd-dddd-4ddd-8ddd-dddddddddddd', { status: 'dropped', createdAt: '2026-11-04T00:00:00.000Z' })
 
@@ -92,6 +106,12 @@ const UNSEEN: LocationEvent[] = [
     createdAt: '2026-11-22T01:00:00.000Z',
   },
 ]
+// 훅이 돌려주는 줄 = 안 본 줄 + 후보 이름 + 대표 과목 짧은 이름(처음 설정)
+const LINES: AlertLine[] = [
+  { ...UNSEEN[0]!, candidateName: '예시빌딩 3층', deptShort: '정형외과' },
+  { ...UNSEEN[1]!, candidateName: '예시타워 1층', deptShort: '재활' },
+]
+const rule = (rival: DeptRule['rival'], hide: DeptRule['hide'] = []): DeptRule => ({ v: 1, rival, hide })
 
 const flush = () =>
   act(async () => {
@@ -126,6 +146,10 @@ beforeEach(() => {
   vi.mocked(listUnseenEvents).mockResolvedValue(UNSEEN)
   vi.mocked(markEventsSeen).mockReset()
   vi.mocked(markEventsSeen).mockResolvedValue(undefined)
+  vi.mocked(markCandidateEventsSeen).mockReset()
+  vi.mocked(markCandidateEventsSeen).mockResolvedValue(undefined)
+  vi.mocked(readDeptRule).mockReset()
+  vi.mocked(readDeptRule).mockResolvedValue(DEFAULT_DEPT_RULE)
   vi.mocked(queryLocation).mockReset()
   answerLicense({ [`open ${FIRST.from} ${FIRST.to}`]: ok(OPEN_ROWS), [`close ${FIRST.from} ${FIRST.to}`]: ok(CLOSE_ROWS) })
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
@@ -149,7 +173,7 @@ describe('useLocationWatch: 관리자 아님 (AC-7915.3)', () => {
     await flush()
     await wait(LOCATION_WATCH_TIMEOUT_MS)
     expect(supabaseBrowser).not.toHaveBeenCalled()
-    for (const fn of [listWatchCandidates, queryLocation, addEvents, setWatchChecked, listUnseenEvents, markEventsSeen]) expect(fn).not.toHaveBeenCalled()
+    for (const fn of [readDeptRule, listWatchCandidates, queryLocation, addEvents, setWatchChecked, listUnseenEvents, markEventsSeen]) expect(fn).not.toHaveBeenCalled()
     expect(result.current.events).toEqual([])
     for (const spy of spies) expect(spy).not.toHaveBeenCalled()
   })
@@ -158,7 +182,7 @@ describe('useLocationWatch: 관리자 아님 (AC-7915.3)', () => {
     const { result } = draw(Promise.resolve(true))
     await flush()
     expect(listWatchCandidates).toHaveBeenCalledTimes(1)
-    expect(result.current.events).toEqual(UNSEEN)
+    expect(result.current.events).toEqual(LINES)
   })
 })
 
@@ -194,6 +218,47 @@ describe('useLocationWatch: 확인하고 줄을 넣는다 (AC-7915.1)', () => {
     ])
     // 확인 날 고치기는 줄을 넣은 뒤다
     expect(vi.mocked(addEvents).mock.invocationCallOrder[0]!).toBeLessThan(Math.min(...vi.mocked(setWatchChecked).mock.invocationCallOrder))
+  })
+
+  it('AC-7915.1: 과목 고르기 설정을 readDeptRule(client)로 한 번 읽어 그 경쟁 과목(대표 과목)만 넣는다 — 치과만 경쟁이면 치과 줄만', async () => {
+    vi.mocked(readDeptRule).mockResolvedValue(rule(['dental']))
+    const { result } = draw()
+    await flush()
+    expect(vi.mocked(readDeptRule).mock.calls).toEqual([[CLIENT]])
+    expect(vi.mocked(addEvents).mock.calls[0]![1].map((e) => [e.candidateId, e.kind, e.clinicName])).toEqual([
+      [A.id, 'open', '예시치과의원'],
+      [B.id, 'open', '예시치과의원'],
+    ])
+    expect(setWatchChecked).toHaveBeenCalledTimes(2)
+    // 안 본 줄(정형외과·재활)도 지금 설정의 경쟁 과목이 아니라 보이지 않는다
+    expect(result.current.events).toEqual([])
+  })
+
+  it('AC-7915.1: 경쟁 과목이 0개면 clinic-license를 부르지 않고, 넣기·확인 날 고치기도 없으며 알림 줄도 없다', async () => {
+    const spies = consoleSpies()
+    vi.mocked(readDeptRule).mockResolvedValue(rule([]))
+    const { result } = draw()
+    await flush()
+    await wait(LOCATION_WATCH_TIMEOUT_MS)
+    expect(queryLocation).not.toHaveBeenCalled()
+    expect(addEvents).not.toHaveBeenCalled()
+    expect(setWatchChecked).not.toHaveBeenCalled()
+    expect(result.current.events).toEqual([])
+    for (const spy of spies) expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('AC-7915.1: 설정 읽기가 던져도 처음 값(정형외과·신경외과·마취통증·재활)으로 확인하고 그린다', async () => {
+    vi.mocked(readDeptRule).mockRejectedValue(new Error('설정 읽기 실패'))
+    const { result } = draw()
+    await flush()
+    expect(vi.mocked(addEvents).mock.calls[0]![1].map((e) => e.clinicName)).toEqual([
+      '예시★★정형외과의원',
+      '예시◆◆통증의원',
+      '예시▼▼재활의학과의원',
+      '예시★★정형외과의원',
+      '예시▼▼재활의학과의원',
+    ])
+    expect(result.current.events).toEqual(LINES)
   })
 
   it('AC-7915.1: 새 줄이 없으면 넣지 않고 확인 날만 고친다', async () => {
@@ -279,7 +344,7 @@ describe('useLocationWatch: 확인 실패는 조용히 (AC-7915.3)', () => {
     await flush()
     expect(addEvents).not.toHaveBeenCalled()
     expect(setWatchChecked).not.toHaveBeenCalled()
-    expect(result.current.events).toEqual(UNSEEN)
+    expect(result.current.events).toEqual(LINES)
     for (const spy of spies) expect(spy).not.toHaveBeenCalled()
   })
 
@@ -297,22 +362,22 @@ describe('useLocationWatch: 확인 실패는 조용히 (AC-7915.3)', () => {
     await flush()
     expect(addEvents).toHaveBeenCalledTimes(1)
     expect(setWatchChecked).not.toHaveBeenCalled()
-    expect(result.current.events).toEqual(UNSEEN)
+    expect(result.current.events).toEqual(LINES)
   })
 
   it('AC-7915.3: 확인 날 고치기가 실패해도 조용히 넘어가고 안 본 줄을 읽는다', async () => {
     vi.mocked(setWatchChecked).mockRejectedValue(new LocationStorageError('E-LOC-SAVE-FAILED'))
     const { result } = draw()
     await flush()
-    expect(result.current.events).toEqual(UNSEEN)
+    expect(result.current.events).toEqual(LINES)
   })
 
-  it('AC-7915.3: 후보 읽기가 실패하면 부르지 않고, 안 본 줄은 그대로 읽는다', async () => {
+  it('AC-7915.3: 후보 읽기가 실패하면 부르지 않고, 안 본 줄은 그대로 읽는다(후보 이름만 null)', async () => {
     vi.mocked(listWatchCandidates).mockRejectedValue(new LocationStorageError('E-LOC-READ-FAILED'))
     const { result } = draw()
     await flush()
     expect(queryLocation).not.toHaveBeenCalled()
-    expect(result.current.events).toEqual(UNSEEN)
+    expect(result.current.events).toEqual(LINES.map((l) => ({ ...l, candidateName: null })))
   })
 
   it('AC-7915.3: 안 본 줄 읽기가 실패하면 빈 목록이고 오류를 밖으로 던지지 않으며 console을 쓰지 않는다', async () => {
@@ -350,7 +415,7 @@ describe('useLocationWatch: 확인 실패는 조용히 (AC-7915.3)', () => {
     await flush()
     await wait(LOCATION_WATCH_TIMEOUT_MS - 1)
     await act(async () => release(UNSEEN))
-    expect(result.current.events).toEqual(UNSEEN)
+    expect(result.current.events).toEqual(LINES)
   })
 
   it('AC-7915.3: 20초 한도를 넘기면 빈 목록이고, 한도 뒤 늦게 온 답은 버린다(확인이 오래 걸려도 같다)', async () => {
@@ -382,7 +447,7 @@ describe('useLocationWatch: 한 번만 · [닫기] (AC-7915.2)', () => {
   it('AC-7915.2: 처음 한 번 읽고, 다시 그려도·오늘이 바뀌어도 다시 읽지 않는다(다음에 대시보드를 열 때 새로 읽음)', async () => {
     const { result, rerender, unmount } = draw()
     await flush()
-    expect(result.current.events).toEqual(UNSEEN)
+    expect(result.current.events).toEqual(LINES)
     rerender({ admin: true, day: TODAY })
     rerender({ admin: true, day: '2026-11-23' })
     await flush()
@@ -398,10 +463,43 @@ describe('useLocationWatch: 한 번만 · [닫기] (AC-7915.2)', () => {
     const { result } = draw()
     await flush()
     act(() => result.current.close(UNSEEN[0]!.id))
-    expect(result.current.events).toEqual([UNSEEN[1]])
+    expect(result.current.events).toEqual([LINES[1]])
     await flush()
     expect(vi.mocked(markEventsSeen).mock.calls).toEqual([[CLIENT, [UNSEEN[0]!.id]]])
     expect(listUnseenEvents).toHaveBeenCalledTimes(1) // 다시 읽지 않는다
+  })
+
+  it('AC-7915.2: [닫기]는 줄마다 따로다 — 같은 후보의 두 줄 가운데 하나를 닫으면 그 줄 id 하나만 본 것으로 적고 그 후보의 다른 줄은 남는다(후보 줄 모두 적기는 부르지 않음)', async () => {
+    const PAIN_A: LocationEvent = { ...UNSEEN[0]!, id: 'e0000000-0000-4000-8000-000000000003', clinicName: '예시◆◆통증의원', dept: '마취통증의학과', eventOn: '2026-11-03' }
+    vi.mocked(listUnseenEvents).mockResolvedValue([...UNSEEN, PAIN_A])
+    const { result } = draw()
+    await flush()
+    expect(result.current.events.map((l) => [l.id, l.candidateName])).toEqual([
+      [UNSEEN[0]!.id, '예시빌딩 3층'],
+      [UNSEEN[1]!.id, '예시타워 1층'],
+      [PAIN_A.id, '예시빌딩 3층'],
+    ])
+    act(() => result.current.close(PAIN_A.id))
+    expect(result.current.events).toEqual(LINES)
+    await flush()
+    expect(vi.mocked(markEventsSeen).mock.calls).toEqual([[CLIENT, [PAIN_A.id]]])
+    expect(markCandidateEventsSeen).not.toHaveBeenCalled()
+    act(() => result.current.close(UNSEEN[0]!.id))
+    await flush()
+    expect(result.current.events).toEqual([LINES[1]])
+    expect(vi.mocked(markEventsSeen).mock.calls).toEqual([
+      [CLIENT, [PAIN_A.id]],
+      [CLIENT, [UNSEEN[0]!.id]],
+    ])
+  })
+
+  it('AC-7915.2: 보이는 줄은 지금 설정의 경쟁 과목만이다 — 재활을 둘레로 보기로 바꾸면 재활 줄은 빠지고 나머지는 후보 이름·짧은 이름이 붙는다', async () => {
+    vi.mocked(readDeptRule).mockResolvedValue(rule(['ortho', 'ns', 'pain']))
+    const { result } = draw()
+    await flush()
+    expect(result.current.events).toEqual([LINES[0]])
+    // 새로 넣는 줄도 같은 설정이다(재활 폐업 줄 없음)
+    expect(vi.mocked(addEvents).mock.calls[0]![1].map((e) => e.dept)).toEqual(['정형외과', '마취통증의학과', '정형외과'])
   })
 
   it('AC-7915.2: 본 것으로 적기가 실패해도 줄은 감춘 채이고 조용하다(다음에 열면 다시 뜬다)', async () => {
@@ -411,7 +509,7 @@ describe('useLocationWatch: 한 번만 · [닫기] (AC-7915.2)', () => {
     await flush()
     act(() => result.current.close(UNSEEN[1]!.id))
     await flush()
-    expect(result.current.events).toEqual([UNSEEN[0]])
+    expect(result.current.events).toEqual([LINES[0]])
     for (const spy of spies) expect(spy).not.toHaveBeenCalled()
   })
 })
@@ -425,6 +523,9 @@ describe('useLocationWatch: 소스 (AC-7915.1·AC-7915.3)', () => {
     expect(source).toMatch(/import \{[^}]*\bqueryLocation\b[^}]*\} from '@\/components\/location\/clients'/)
     expect(source).toMatch(/import \{[^}]*\bdueCandidates\b[^}]*\bpickEvents\b[^}]*\} from '@\/lib\/location\/watch'/)
     expect(source).toMatch(/import \{[^}]*\blistWatchCandidates\b[^}]*\} from '@\/lib\/storage\/location'/)
+    expect(source).toMatch(/import \{[^}]*\breadDeptRule\b[^}]*\} from '@\/lib\/storage\/location'/)
+    expect(source).toMatch(/import \{[^}]*\balertLines\b[^}]*\} from '\.\/alertLines'/)
+    expect(source).not.toMatch(/WATCH_DEPTS/)
     expect(source).not.toMatch(/console\.|\bfetch\(|XMLHttpRequest|sendBeacon|localStorage|sessionStorage|indexedDB|document\.cookie|\.from\(/)
   })
 })

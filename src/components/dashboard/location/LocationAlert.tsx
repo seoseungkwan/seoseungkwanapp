@@ -1,13 +1,17 @@
 import { ds } from '@/components/ui/classes'
 import { distText } from '@/lib/location/coords'
-import { WATCH_DEPTS } from '@/lib/location/watch'
-import type { LocationEvent } from '@/types/location'
+import type { AlertLine } from './alertLines'
 
-// 대시보드 새 경쟁 의원 알림 줄 (specs/location REQ-7915 AC-7915.2, design.md 12절, 시안 docs/mockups/location/index.html ?s=dashboard의
-// .wnote·.wnr·.wn·[닫기]). 받은 안 본 줄만 그린다(읽기·본 것 적기는 useLocationWatch, 자리는 무상 수리 알림 바로 아래 — DashboardHome).
-// 최근 차례(일어난 날 → 넣은 시각이 늦은 것 먼저) 셋까지, 넷 이상이면 넷째 줄이 '… {n}건 더'다. 줄마다 오른쪽 [닫기](시안 승인 때 더함)는 그 줄만 닫는다.
+// 대시보드 새 경쟁 의원 알림 줄 (specs/location REQ-7915 AC-7915.2, design.md 12절, requirements '화면 글 기본값' 새 경쟁 의원 알림,
+// 시안 docs/mockups/location/index.html ?s=dashboard의 .wnote·.wnr·.wn·[닫기]). 받은 안 본 줄만 그린다(읽기·본 것 적기·후보 이름·대표 과목·
+// 경쟁 과목 거르기는 useLocationWatch와 alertLines, 자리는 무상 수리 알림 바로 아래 — DashboardHome).
+// 첫 줄 '저장한 후보 둘레에 경쟁 의원({과목})이 새로 문을 열었어요'·'…둘레에서 경쟁 의원({과목})이 문을 닫았어요'({과목} = 대표 과목 짧은 이름,
+// 모르면 '경쟁 의원이 …'), 아래 줄 '{후보 이름} · {의원 이름} · {거리} · {M월 D일}'.
+// 최근 차례(일어난 날 → 넣은 시각이 늦은 것 먼저) 셋까지, 넷 이상이면 넷째 줄이 '… {n}건 더'다. 줄마다 오른쪽 [닫기]('{후보 이름} 알림 닫기',
+// 시안 승인 때 더함)는 그 줄 하나의 id만 넘긴다(같은 후보의 다른 줄은 그대로).
 // 줄 링크는 Next의 화면 안 이동 링크 부품이 아니라 평범한 a 링크다: 입지 화면만 카카오 CSP라, 화면 안에서 넘어가면 첫 문서의 CSP가 남아
-// 지도가 막힌다(design.md 13절) → 문서를 새로 불러온다. 후보 이름은 받지 않는다(알림 확인용 후보 읽기에 이름 칸이 없다) — 의원 이름·거리·날짜로 쓴다.
+// 지도가 막힌다(design.md 13절) → 문서를 새로 불러온다.
+// 후보 이름을 못 받은 줄(후보 읽기 실패)은 아래 줄에서 그 조각을 빼고, [닫기] 이름은 의원 이름으로 쓴다.
 // 모양은 무상 수리 알림(WarrantyNotice)과 같은 옅은 회색 바탕·폭이고, 그 묶음 바로 뒤면 위 간격만 8px(시안 .wnote + .wnote)다. PC 모양 하나
 
 const SHOWN = 3
@@ -23,20 +27,20 @@ const MORE = `${LINK} px-4`
 const CLOSE = `mt-3 mr-3 inline-flex h-5.5 cursor-pointer items-center rounded-control px-1 text-small font-medium whitespace-nowrap text-ink-2 underline-offset-3 hover:underline ${ds.focusRing}`
 const TEXT = 'min-w-0 text-ink underline-offset-3 group-hover:underline'
 
-/** 줄의 과목(없으면 이름)에 든 경쟁 과목 + 조사. 못 찾으면 '경쟁 의원이' */
-function subjectOf(e: LocationEvent): string {
-  const dept = WATCH_DEPTS.find((d) => e.dept.includes(d)) ?? WATCH_DEPTS.find((d) => e.clinicName.includes(d))
-  return dept === undefined ? '경쟁 의원이' : `${dept}가`
-}
+/** '경쟁 의원({과목})이', 과목을 모르면 '경쟁 의원이' */
+const subjectOf = (e: AlertLine) => (e.deptShort === null ? '경쟁 의원이' : `경쟁 의원(${e.deptShort})이`)
 
 /** 'YYYY-MM-DD' → 'M월 D일' */
 const dayText = (ymd: string) => `${Number(ymd.slice(5, 7))}월 ${Number(ymd.slice(8, 10))}일`
 
-/** 아래 줄: 의원 이름 · 거리(AC-7905.6) · 날짜. 거리가 틀린 값이면 그 조각만 뺀다(그리다 멈추지 않게) */
-const detailOf = (e: LocationEvent) => [e.clinicName, Number.isFinite(e.distM) && e.distM >= 0 ? distText(e.distM) : null, dayText(e.eventOn)].filter((part) => part !== null).join(' · ')
+/** 아래 줄: 후보 이름 · 의원 이름 · 거리(AC-7905.6) · 날짜. 후보 이름이 없거나 거리가 틀린 값이면 그 조각만 뺀다(그리다 멈추지 않게) */
+const detailOf = (e: AlertLine) =>
+  [e.candidateName, e.clinicName, Number.isFinite(e.distM) && e.distM >= 0 ? distText(e.distM) : null, dayText(e.eventOn)]
+    .filter((part) => part !== null)
+    .join(' · ')
 
 const order = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
-const recentFirst = (a: LocationEvent, b: LocationEvent) => order(b.eventOn, a.eventOn) || order(b.createdAt, a.createdAt) || order(b.id, a.id)
+const recentFirst = (a: AlertLine, b: AlertLine) => order(b.eventOn, a.eventOn) || order(b.createdAt, a.createdAt) || order(b.id, a.id)
 
 const detailHref = (candidateId: string) => `/location?c=${encodeURIComponent(candidateId)}&tab=detail`
 
@@ -64,7 +68,7 @@ function Go() {
   )
 }
 
-export function LocationAlert({ events, onClose }: { events: readonly LocationEvent[]; onClose: (id: string) => void }) {
+export function LocationAlert({ events, onClose }: { events: readonly AlertLine[]; onClose: (id: string) => void }) {
   if (events.length === 0) return null
   const lines = [...events].sort(recentFirst)
   const rest = lines.length - SHOWN
@@ -81,7 +85,7 @@ export function LocationAlert({ events, onClose }: { events: readonly LocationEv
             </span>
             <Go />
           </a>
-          <button type="button" className={CLOSE} aria-label={`${e.clinicName} 알림 닫기`} onClick={() => onClose(e.id)}>
+          <button type="button" className={CLOSE} aria-label={`${e.candidateName ?? e.clinicName} 알림 닫기`} onClick={() => onClose(e.id)}>
             닫기
           </button>
         </div>
