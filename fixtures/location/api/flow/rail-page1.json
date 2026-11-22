@@ -1,0 +1,16 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": {
+      "items": {
+        "item": [
+          { "sttnId": "99100001", "sttnNm": "가람역(가람대)", "lineNm": "가상1호선" },
+          { "sttnId": "99100002", "sttnNm": "가람", "lineNm": "가상 2호선" }
+        ]
+      },
+      "numOfRows": 1000,
+      "pageNo": 1,
+      "totalCount": 2
+    }
+  }
+}

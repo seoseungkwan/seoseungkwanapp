@@ -1,0 +1,19 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": {
+      "items": {
+        "item": [
+          { "sttnId": "99000001", "emdNm": "하늘동", "tfcmnNm": "버스", "tzon": "07", "rideNope": 3000, "alghNope": 2900, "dayCnt": 31 },
+          { "sttnId": "99000001", "emdNm": "하늘동", "tfcmnNm": "버스", "tzon": "08", "rideNope": 100, "alghNope": 10, "dayCnt": 31 },
+          { "sttnId": "99000002", "emdNm": "하늘동", "tfcmnNm": "버스", "tzon": "07", "rideNope": "1,000", "alghNope": "1001", "dayCnt": "31" },
+          { "sttnId": "99100001", "emdNm": "바다동", "tfcmnNm": "지하철", "tzon": "07", "rideNope": 30000, "alghNope": 29000, "dayCnt": 30 },
+          { "sttnId": "99100001", "emdNm": "바다동", "tfcmnNm": "지하철", "tzon": "08", "rideNope": 1000, "alghNope": 0, "dayCnt": 31 }
+        ]
+      },
+      "numOfRows": 1000,
+      "pageNo": 1,
+      "totalCount": 5
+    }
+  }
+}

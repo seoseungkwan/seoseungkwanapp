@@ -1,0 +1,11 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": {
+      "items": { "item": [{ "sttnId": "99100001", "sttnNm": "가람역", "lineNm": "" }] },
+      "numOfRows": 1000,
+      "pageNo": 1,
+      "totalCount": 1
+    }
+  }
+}
