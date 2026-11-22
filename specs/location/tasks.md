@@ -325,7 +325,7 @@
 - Files: src/components/location/common/**
 - Tests: src/components/location/common/
 - TDD: required — 시안 `?s=candidate` 묶음 제목 아래 모양. `HowLine({ chip, line: { what, how, why }, more: { what, how, why, basis }, open, onToggle })` — 한 줄 `이렇게 봤어요 {무엇} · {어떻게} · {왜}` + 칩(연구 근거·법 근거 = 파란 칩, 흔히 보는 기준 = 회색 칩, `law-common`은 둘) + [더 보기]/[접기], 펼치면 네 줄. 펼침 상태는 props(부르는 쪽이 범위를 바꿔도 지킴). 글을 만들지 않고 받은 글만 그림(`method.ts`를 부르지 않음 — 같은 Phase). props·콜백만, `max-md:`·`ds.textButton` 안 씀
-## Phase 8 — 덧붙임 화면 부품 (13명 동시 · 겹침 없음: `components/location/`의 폴더 하나씩, `method/`+`start/` · `kinds/`+`weights/` · `listings/`+`prep/plan/`+`add/`는 한 TASK, 대시보드 `components/dashboard/location/`)
+## Phase 8 — 덧붙임 화면 부품 (14명 동시 · 겹침 없음: TASK-80은 화면 아닌 `query`·`collect`·`licenses`·`watch`·types 파일 · `components/location/`의 폴더 하나씩, `method/`+`start/` · `kinds/`+`weights/` · `listings/`+`prep/plan/`+`add/`는 한 TASK, 대시보드 `components/dashboard/location/`)
 ## TASK-66: 처음 안내 장·[분석 방법] 판
 - REQ: REQ-7920 · AC-7920.1
 - Files: src/components/location/method/**, src/components/location/start/**
@@ -391,6 +391,11 @@
 - Files: src/components/location/map/**
 - Tests: src/components/location/map/
 - TDD: required — `KakaoMap` 표시 종류에 `other`(연보라 작은 점, 경쟁 주황·한의원 회색보다 작게, 앱 토큰 색), 범례 글 시안 그대로. 가짜 `window.kakao`로 종류마다 그려짐을 봄
+## TASK-80: 경로당·학교·시장 시도 이름 넘기기·인허가 업태 칸
+- REQ: REQ-7918, REQ-7915, REQ-7921 · AC-7918.3, AC-7915.1, AC-7921.4
+- Files: src/lib/location/query.ts, src/lib/location/query.test.ts, src/lib/location/collect.ts, src/lib/location/collect.test.ts, src/app/api/ai/location/registry.test.ts, src/app/api/ai/location/sources/licenses.ts, src/app/api/ai/location/sources/licenses.test.ts, fixtures/location/api/licenses/**, src/types/location.ts, src/lib/location/watch.ts, src/lib/location/watch.test.ts
+- Tests: src/lib/location/query.test.ts, src/lib/location/collect.test.ts, src/app/api/ai/location/registry.test.ts, src/app/api/ai/location/sources/licenses.test.ts, src/lib/location/watch.test.ts
+- TDD: required — design.md 17절 10. (1) `query.ts`의 `senior`·`school`·`market`에 선택 칸 `sidoName`(이름 글). (2) `collect.ts`가 후보 모으기와 동네 훑기 둘 다에서 이 셋에 `sidoName`(그 시군구의 시도 이름)을 넣어 부름 — 경로당·학교는 시도 이름 없이는 요청 0개라 늘 실패하던 것을 고침. (3) `registry.test.ts` 견본 몸통에 `sidoName`. (4) 인허가 줄에 업태 칸(`MDLCR_INST_BTP_NM`)을 읽어 `LicenseRow`에 선택 칸 `type?: string`(없으면 빈 글자)으로 더하고, `watch.ts`의 `deptOfText`에 넘겨 치과의원·한의원을 경쟁으로 골랐을 때 새 의원 알림에 잡히게 함(design.md 18절 `deptOfText`). 가짜 응답의 이름·주소는 지어낸 값
 ## Phase 9 — 덧붙임 잇기 (1명)
 ## TASK-79: 입지 분석 화면 잇기 — 분석 방법·과목 고르기·지도 점·닻 id·점수 셈 한 곳
 - REQ: REQ-7901, REQ-7909, REQ-7916, REQ-7920, REQ-7921, REQ-7908 · AC-7909.1, AC-7916.1, AC-7920.1, AC-7920.2, AC-7921.1, AC-7921.2, AC-7908.2, AC-7908.3
