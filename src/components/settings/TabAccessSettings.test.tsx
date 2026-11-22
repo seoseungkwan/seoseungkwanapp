@@ -292,7 +292,8 @@ describe('AC-7707.5 클래스(시안 settings.html)', () => {
   const PANEL = `${ds.panel} flex flex-col gap-4 p-5 max-md:p-4`
   const HEAD = 'flex flex-col gap-1'
   const DESC_CLASS = 'text-small text-ink-2'
-  const LIST = 'flex max-w-90 flex-col rounded-control border border-line'
+  // list-none: 앱 초기화(.app-ui)는 목록 점을 지우지 않는다 → 줄마다 기본 점이 틀 밖에 찍혔다(TASK-7 화면 확인, 시안은 list-style:none)
+  const LIST = 'flex max-w-90 list-none flex-col rounded-control border border-line'
   const ITEM = 'border-b border-line last:border-b-0'
   const LABEL = 'flex cursor-pointer items-center gap-2 px-3 py-2 text-body text-ink hover:bg-canvas'
 

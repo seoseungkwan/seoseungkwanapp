@@ -121,7 +121,7 @@ export function TabAccessSettings() {
       )}
       {load === 'ready' && (
         <>
-          <ul aria-labelledby={titleId} className="flex max-w-90 flex-col rounded-control border border-line">
+          <ul aria-labelledby={titleId} className="flex max-w-90 list-none flex-col rounded-control border border-line">
             {TAB_ACCESS_MENU.map((item) => (
               <li key={item.path} className="border-b border-line last:border-b-0">
                 <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-body text-ink hover:bg-canvas">
