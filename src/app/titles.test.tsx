@@ -64,7 +64,8 @@ describe('AC-402.2: 입구 페이지의 탭 이름', () => {
   })
 })
 
-// 앱 페이지 16개 (탭 14개 + /claim/setup + /admin). 매출 탭은 없다(/revenue는 next.config가 /stats로 넘긴다, stats-revenue AC-4110.2)
+// 앱 페이지 17개 (탭 14개 + /claim/setup + /admin + 관리자만 보는 /location). 매출 탭은 없다(/revenue는 next.config가 /stats로 넘긴다, stats-revenue AC-4110.2)
+// /location은 MENU 밖이라 글자로 더한다(같은 Phase의 LOCATION_TAB을 부르지 않음, location TASK-44)
 const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ metadata?: Metadata }> }> = [
   { path: '/dashboard', title: '대시보드', load: () => import('./(app)/dashboard/page') },
   { path: '/stats', title: '통계', load: () => import('./(app)/stats/page') },
@@ -83,6 +84,7 @@ const APP_PAGES: Array<{ path: string; title: string; load: () => Promise<{ meta
   { path: '/claim/setup', title: '비트 PC 연결', load: () => import('./(app)/claim/setup/page') },
   { path: '/settings', title: '설정', load: () => import('./(app)/settings/page') },
   { path: '/admin', title: '가입 승인', load: () => import('./(app)/admin/page') },
+  { path: '/location', title: '입지 분석', load: () => import('./(app)/location/page') }, // 관리자만(location AC-7901.2)
 ]
 
 describe('AC-402.4: 앱 페이지의 탭 이름', () => {
@@ -90,12 +92,12 @@ describe('AC-402.4: 앱 페이지의 탭 이름', () => {
     expect(await staticTitle(load)).toBe(title)
   })
 
-  it('AC-402.4·AC-4110.1·AC-4907.2·AC-5905.10: 앱 페이지 표는 MENU의 탭 주소와 /claim/setup·/admin이 빠짐없이 있고, 16개의 탭 이름은 모두 다르다(매출 없음)', async () => {
-    expect(APP_PAGES.map((p) => p.path).sort()).toEqual([...MENU.map((m) => m.path), '/claim/setup', '/admin'].sort())
+  it('AC-402.4·AC-4110.1·AC-4907.2·AC-5905.10·AC-7901.2: 앱 페이지 표는 MENU의 탭 주소와 /claim/setup·/admin·/location이 빠짐없이 있고, 17개의 탭 이름은 모두 다르다(매출 없음)', async () => {
+    expect(APP_PAGES.map((p) => p.path).sort()).toEqual([...MENU.map((m) => m.path), '/claim/setup', '/admin', '/location'].sort())
     const titles = await Promise.all(APP_PAGES.map(({ load }) => staticTitle(load)))
-    expect(titles).toHaveLength(16)
+    expect(titles).toHaveLength(17)
     expect(titles.every((t) => typeof t === 'string' && t !== '')).toBe(true)
-    expect(new Set(titles).size).toBe(16)
+    expect(new Set(titles).size).toBe(17)
     expect(titles).not.toContain('매출')
   })
 
