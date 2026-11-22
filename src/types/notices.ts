@@ -1,5 +1,6 @@
 // 고시·공지 탭의 공용 모양(specs/notices design.md 11절). 서버(모으기·묻기)와 화면이 함께 쓴다.
 // 날짜 칸(postedOn·weekStart)은 한국 날짜 'YYYY-MM-DD', 시각 칸(...At·oldest)은 ISO 글자다
+import type { RuleTally } from '@/types/ruleAuto'
 
 export type NoticeSource = 'hira_notice' | 'hira_crtr' | 'mohw_rss'
 export type NoticeKind = 'gosi' | 'notice' | 'interp' | 'guide' | 'case'
@@ -112,6 +113,8 @@ export type NoticeView = {
   unread: boolean
   // 내 병원 낱말 가운데 이 글에 맞은 것(넣은 차례, design 15절). 없으면 []
   keywords: string[]
+  // 규칙 칩 숫자(specs/rule-auto AC-7812.5). 없음·null(판정 줄 읽기 실패)이면 규칙 칩을 그리지 않는다
+  ruleTally?: RuleTally | null
 }
 export type NoticeFilter = { related: boolean; sources: NoticeSource[]; starred: boolean; q: string; offset: number }
 export type NoticePage = { total: number; unread: number; rows: NoticeView[] }
