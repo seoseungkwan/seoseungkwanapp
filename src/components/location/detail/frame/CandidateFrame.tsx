@@ -1,9 +1,11 @@
 'use client'
 
-// 후보 자세히 — 틀(spec location TASK-32 · AC-7909.1·AC-7911.3·AC-7908.3·AC-7908.4, design.md 9·14절, 시안 ?s=candidate).
-// 차례: 머리([오늘 값으로 다시 받기]·기준 날짜) → 왼쪽 목차 | 위험 신호 → 종합 점수 + 살필 범위(지도 칸) → 묶음 열둘.
-// 묶음 열둘은 칸(sections)으로 받아 차례대로 놓기만 한다 — 묶음 부품을 부르지 않고, 칸이 제 머리(제목·곁글)와 몸을 그린다.
-// 위험 신호(flags.ts)·점수(score.ts, 받은 설정 그대로)는 후보 줄·그날 값·매물로 여기서 센다. 설정이 바뀌면 다시 받지 않고 바로 다시 센다.
+// 후보 자세히 — 틀(spec location TASK-32 · TASK-68 · AC-7909.1·AC-7911.1·AC-7911.3·AC-7920.3·AC-7908.3·AC-7908.4, design.md 9·14·18·19절, 시안 ?s=candidate).
+// 차례: 머리([오늘 값으로 다시 받기]·기준 날짜) → 왼쪽 목차 | 위험 신호 → 종합 점수 + 점수 풀이 + 살필 범위(지도 칸) → 묶음 열셋.
+// 묶음 열셋은 칸(sections)으로 받아 차례대로 놓기만 한다 — 묶음 부품을 부르지 않고, 칸이 제 머리(제목·곁글)·닻 id(`sec-…`)와 몸을 그린다.
+// 칸 감싸개는 id 없이 ref·tabIndex만 둔다(목차는 ref로 건너뜀) — 같은 닻 id가 두 번 나오지 않게(AC-7909.1).
+// 위험 신호(flags.ts)·점수(score.ts)·점수 풀이(explain.ts)는 후보 줄·그날 값·매물·설정으로 여기서 센다. 점수 입력은 lib/location/facts.ts 한 곳,
+// 경쟁 의원 = 지금 과목 고르기(deptRule)의 경쟁 과목(18절). 설정이 바뀌면 다시 받지 않고 바로 다시 센다.
 // 부품은 props·콜백만 받는다(읽기·저장·바깥 부르기 없음):
 //   onOpen(후보 id)     — 후보를 열 때마다 한 번(카카오 주소 글·둘레 시설·로드뷰를 새로 부르라는 뜻, 저장하지 않음 · AC-7908.4)
 //   onRefresh(후보 id)  — [오늘 값으로 다시 받기](AC-7908.3)
@@ -13,11 +15,13 @@
 import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { todayInKorea } from '@/lib/analytics/dates'
 import { m2ToPyeong, MAX_M2 } from '@/lib/location/area'
+import { deptOf, deptRole } from '@/lib/location/depts'
+import { explainCandidate, listingAverages } from '@/lib/location/explain'
+import { candidateListing, flagInputOf, rivalCount, scoreFactsOf, shownValue, sourceAsOf } from '@/lib/location/facts'
 import { pickFlags } from '@/lib/location/flags'
-import { wonText } from '@/lib/location/money'
+import { manText } from '@/lib/location/money'
 import { fillScoreRule, scoreItems, type ScoreRule } from '@/lib/location/score'
-import type { Candidate, Listing, RadiusM, SourceId } from '@/types/location'
-import { candidateListing, flagInputOf, rivalCount, scoreFactsOf, sourceAsOf } from './facts'
+import type { Candidate, DeptRule, Listing, RadiusM, SggAvg, SourceId } from '@/types/location'
 import { FlagList } from './FlagList'
 import { FrameHead, type FrameTab } from './FrameHead'
 import { look } from './look'
@@ -39,16 +43,22 @@ export type CandidateFrameProps = {
   listings: readonly Listing[]
   /** 점수 설정(location_settings.score_rule) — 받은 값 그대로 쓴다 */
   rule: ScoreRule
+  /** 의원 과목 고르기(location_settings.dept_rule, fillDeptRule을 거친 값) — 경쟁 수·위험 신호·점수가 따른다 */
+  deptRule: DeptRule
+  /** 점수 풀이 견줄 값(후보 시군구 전체). 주지 않으면 그날 값의 sggAvg, null이면 견줄 값 없음 */
+  sggAvg?: SggAvg | null
   /** 지금 의원 체외충격파 값(원) */
   homeEswt: number | null
   /** 한국 날짜 'YYYY-MM-DD' */
   today: string
   /** 자료를 받는 중이면 `자료 {done}/{total}` — 다시 받기·범위를 막는다 */
   progress?: { done: number; total: number } | null
-  /** 묶음 열둘(칸). 주지 않은 칸은 본문·목차에서 빠진다 */
+  /** 묶음 열셋(칸). 주지 않은 칸은 본문·목차에서 빠진다 */
   sections: Partial<Record<SectionId, ReactNode>>
   /** 살필 범위 아래 지도 칸 */
   map?: ReactNode
+  /** 지도 범례 글(고른 과목을 따르는 글). 없으면 처음 글 */
+  mapLegend?: string
   onOpen: (candidateId: string) => void
   onRefresh: (candidateId: string) => void
   onRadius: (candidateId: string, radiusM: RadiusM) => void
@@ -65,17 +75,28 @@ function koreanDay(at: string | null): string | null {
   return todayInKorea(new Date(at))
 }
 
-/** 머리 한 줄: 주소 · 전용 {평}평 · 보증금 {금액} / 월세 {금액} */
+/** 머리 한 줄: 주소 · 전용 {평}평 · 보증금 {금액} / 월세 {금액}(만 원 칸 금액 글 manText) */
 function headLine(address: string, listing: Listing | null): string {
   const parts = address === '' ? [] : [address]
   if (listing) {
     const a = listing.areaM2
     if (a !== null && a > 0 && a <= MAX_M2) parts.push(`전용 ${m2ToPyeong(a)}평`)
-    const money = [listing.deposit !== null ? `보증금 ${wonText(listing.deposit)}` : null, listing.rent !== null ? `월세 ${wonText(listing.rent)}` : null]
+    const money = [listing.deposit !== null ? `보증금 ${manText(listing.deposit)}` : null, listing.rent !== null ? `월세 ${manText(listing.rent)}` : null]
     const m = money.filter((x) => x !== null).join(' / ')
     if (m !== '') parts.push(m)
   }
   return parts.join(' · ')
+}
+
+/** 둘레 다른 과 의원 수(목차 표시, design.md 18절): 범위 안 의원 가운데 대표 과목이 둘레로 보기이고 한의원이 아닌 곳. 못 받았으면 null */
+function aroundCount(c: Candidate, rule: DeptRule): number | null {
+  const all = shownValue(c.snapshot?.rivals)
+  if (all === null) return null
+  const r = c.snapshot?.radiusM ?? c.radiusM
+  return all.filter((x) => {
+    const dept = x.distM <= r ? deptOf(x, rule) : null
+    return dept !== null && dept !== 'korean' && deptRole(dept, rule) === 'around'
+  }).length
 }
 
 function SectionHead({ title, count, aside }: { title: string; count?: number; aside: string }) {
@@ -95,8 +116,10 @@ function SectionHead({ title, count, aside }: { title: string; count?: number; a
   )
 }
 
+const countBadge = (n: number | null) => (n !== null ? <span className="tabular-nums text-muted">{n}</span> : undefined)
+
 export function CandidateFrame(props: CandidateFrameProps) {
-  const { candidate: c, listings, rule, homeEswt, today, progress, sections, onOpenSource } = props
+  const { candidate: c, listings, rule, deptRule, homeEswt, today, progress, sections, onOpenSource } = props
 
   // 후보를 열 때마다 한 번(같은 후보를 다시 그릴 때는 부르지 않는다). 콜백이 새로 와도 다시 부르지 않게 마지막 것을 담아 둔다
   const latest = useRef(props)
@@ -107,11 +130,15 @@ export function CandidateFrame(props: CandidateFrameProps) {
     latest.current.onOpen(c.id)
   }, [c.id])
 
-  const flags = useMemo(() => pickFlags(flagInputOf({ candidate: c, listings, today })), [c, listings, today])
+  const flags = useMemo(() => pickFlags(flagInputOf({ candidate: c, listings, today, deptRule })), [c, listings, today, deptRule])
   const filled = useMemo(() => fillScoreRule(rule), [rule])
-  const score = useMemo(() => scoreItems(scoreFactsOf({ candidate: c, listings, homeEswt, today }), filled), [c, listings, homeEswt, today, filled])
+  const facts = useMemo(() => scoreFactsOf({ candidate: c, listings, homeEswt, today, deptRule }), [c, listings, homeEswt, today, deptRule])
+  const score = useMemo(() => scoreItems(facts, filled), [facts, filled])
+  const sgg = props.sggAvg !== undefined ? props.sggAvg : shownValue(c.snapshot?.sggAvg)
+  const explain = useMemo(() => explainCandidate(facts, filled, { sgg, listings: listingAverages(listings) }), [facts, filled, sgg, listings])
   const listing = candidateListing(c.id, listings)
-  const rivals = rivalCount(c)
+  const rivals = rivalCount(c, deptRule)
+  const around = aroundCount(c, deptRule)
 
   const day = koreanDay(c.snapshot ? (c.snapshotAt ?? c.snapshot.at) : null)
   const frozen = day === null ? T.noSnapshot : T.frozen(day, day !== koreanDay(c.createdAt))
@@ -121,15 +148,16 @@ export function CandidateFrame(props: CandidateFrameProps) {
   const shown = SECTIONS.filter((s) => sections[s.id] != null && sections[s.id] !== false)
   const toc: TocItem[] = [
     { id: 'flags', title: T.flagsTitle, badge: flags.length > 0 ? <span className={look.chipNegative}>{flags.length}</span> : undefined },
-    { id: 'score', title: T.scoreTitle, badge: score.total !== null ? <span className="tabular-nums text-muted">{score.total}</span> : undefined },
+    { id: 'score', title: T.scoreTitle, badge: countBadge(score.total) },
     ...shown.map((s) => ({
       id: s.id,
       title: s.title,
-      badge: s.id === 'rivals' && rivals !== null ? <span className="tabular-nums text-muted">{rivals}</span> : undefined,
+      anchor: s.anchor,
+      badge: s.id === 'rivals' ? countBadge(rivals) : s.id === 'others' ? countBadge(around) : undefined,
     })),
   ]
 
-  // 목차가 건너뛸 자리(칸 안에 같은 닻이 있어도 틀의 자리로 간다)
+  // 목차가 건너뛸 자리(칸 감싸개 — id 없이 ref로만)
   const spots = useRef(new Map<string, HTMLElement>())
   const spot = (id: string) => (el: HTMLElement | null) => {
     if (el) spots.current.set(id, el)
@@ -173,6 +201,8 @@ export function CandidateFrame(props: CandidateFrameProps) {
             <div className={look.sectionBody}>
               <ScorePanel
                 score={score}
+                explain={explain}
+                noDepts={deptRule.rival.length === 0}
                 weights={filled.weights}
                 hasListing={listing !== null}
                 candidateId={c.id}
@@ -180,14 +210,15 @@ export function CandidateFrame(props: CandidateFrameProps) {
                 busy={busy}
                 onRadius={props.onRadius}
                 map={props.map}
+                mapLegend={props.mapLegend}
                 onOpenSource={onOpenSource}
               />
             </div>
           </section>
           {shown.map((s) => (
-            <section key={s.id} id={`sec-${s.id}`} ref={spot(s.id)} tabIndex={-1} className={look.section} aria-label={s.title}>
+            <div key={s.id} ref={spot(s.id)} tabIndex={-1} className={look.section}>
               {sections[s.id]}
-            </section>
+            </div>
           ))}
         </div>
       </div>

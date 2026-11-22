@@ -2,22 +2,26 @@ import { asOfText } from '@/components/location/common/text'
 import type { CandidateStatus, RadiusM } from '@/types/location'
 
 // 후보 자세히 틀의 화면 글(승인된 시안 docs/mockups/location/ ?s=candidate 그대로 — requirements '화면 글 기본값'에 없는 글).
-// 묶음 열둘의 차례·이름은 AC-7909.1, 목차 글은 시안 TOC 그대로
+// 묶음 열셋의 차례·이름은 AC-7909.1, 목차 글은 시안 TOC 그대로. 점수 풀이 글은 requirements '화면 글 기본값' 점수 풀이
 
-/** 묶음 열둘(AC-7909.1 차례). id는 칸(slot) 이름이자 닻 `#sec-{id}` */
+/**
+ * 묶음 열셋(AC-7909.1 차례). id = 칸(slot) 이름, anchor = 묶음이 스스로 그리는 닻 `#sec-{anchor}`(시안 그대로, design.md 19절 묶음 id).
+ * 틀은 칸 감싸개에 id를 두지 않는다(목차는 ref로 건너뜀) — 닻 id는 묶음이 한 번만 그린다
+ */
 export const SECTIONS = [
-  { id: 'people', title: '사는 사람' },
-  { id: 'income', title: '소득·쓸 힘' },
-  { id: 'demand', title: '정형외과 수요' },
-  { id: 'rivals', title: '경쟁 의원' },
-  { id: 'price', title: '경쟁 의원 진료비' },
-  { id: 'hours', title: '진료 시간 빈틈' },
-  { id: 'traffic', title: '교통·둘레 시설' },
-  { id: 'photo', title: '거리 사진' },
-  { id: 'building', title: '건물 서류' },
-  { id: 'vacancy', title: '빈 칸 짐작' },
-  { id: 'land', title: '땅 쓰임·계획' },
-  { id: 'future', title: '앞으로 바뀔 것' },
+  { id: 'people', title: '사는 사람', anchor: 'people' },
+  { id: 'income', title: '소득·쓸 힘', anchor: 'income' },
+  { id: 'demand', title: '정형외과 수요', anchor: 'demand' },
+  { id: 'rivals', title: '경쟁 의원', anchor: 'comp' },
+  { id: 'others', title: '둘레 다른 과 의원', anchor: 'others' },
+  { id: 'price', title: '경쟁 의원 진료비', anchor: 'price' },
+  { id: 'hours', title: '진료 시간 빈틈', anchor: 'hours' },
+  { id: 'traffic', title: '교통·둘레 시설', anchor: 'traffic' },
+  { id: 'photo', title: '거리 사진', anchor: 'photo' },
+  { id: 'building', title: '건물 서류', anchor: 'bld' },
+  { id: 'vacancy', title: '빈 칸 짐작', anchor: 'vac' },
+  { id: 'land', title: '땅 쓰임·계획', anchor: 'land' },
+  { id: 'future', title: '앞으로 바뀔 것', anchor: 'future' },
 ] as const
 export type SectionId = (typeof SECTIONS)[number]['id']
 
@@ -56,11 +60,26 @@ export const FRAME_TEXT = {
   noScore: '점수 없음',
   noValue: '값 없음',
   noListing: '매물 없음',
+  noDepts: '과목 없음',
   scoreHelp:
     '항목마다 0~100으로 바꾼 뒤 무게를 곱해 더해요. 항목 점수는 버린 뒤 더해요. 세부 무게와 만점 기준은 동네 훑기의 점수 무게 판 [세부]에서 정해요.',
   scoreHow: '매기는 법',
 
+  explain: '점수 풀이',
+  explainAside: '세부 항목 가운데 많이 올린 것 3 · 많이 내린 것 3',
+  upTitle: '점수를 올린 것',
+  upAside: '종합 점수에 보탠 점수',
+  downTitle: '점수를 내린 것',
+  downAside: '만점이었다면 더 받았을 점수',
+  upNone: '세부 점수가 50점을 넘은 항목이 없어요.',
+  downNone: '모든 세부 항목이 50점을 넘었어요.',
+  subLine: (sub: number, full: string) => `세부 ${sub}점 · ${full}`,
+  compareLine: (text: string) => `견줄 값 ${text}`,
+  explainHelp:
+    '세부 점수 50점 이상은 올린 것, 아래는 내린 것으로 나눠요. 항목마다 버림해 더해서 줄의 점수를 더하면 종합 점수와 조금 다를 수 있어요. 견줄 값은 지금 자료로 셀 수 있는 것만 붙여요.',
+
   range: '살필 범위',
   rangeHelp: '범위를 바꾸면 사는 사람·경쟁 의원·둘레 시설·진료 시간 빈틈을 다시 세요. 후보마다 따로 기억해요.',
+  // 범례 글을 받지 못했을 때의 처음 글(고른 과목을 따르는 글은 부르는 쪽이 mapLegend로 넘김)
   mapLegend: '파란 표시 = 후보 · 주황 점 = 정형외과·통증·재활 · 회색 점 = 한의원 · 검은 네모 = 역 · 흐린 점 = 범위 밖',
 } as const
