@@ -6,6 +6,7 @@ import { COLLECT_LIMIT, ESWT_ITEM, RIVAL_MAX, collect, collectScan, industryPark
 import { EARTH_R, distM, type LatLng } from './coords'
 import { DEPTS } from './depts'
 import type { BusFile, RailFile, TransitIndex } from './flow'
+import { checkQuery } from './query'
 import type { DongFile, DongIndex, LngLat } from './regions'
 import { SNAPSHOT_KEYS, checkSnapshot } from './snapshot'
 import { isSourceId } from './sources'
@@ -617,6 +618,20 @@ describe('AC-7908.2 collect — 그날 값 모으기', () => {
     expect(askedOf('gym').length).toBe(2)
   })
 
+  it('AC-7918.3: 경로당·학교·시장도 시군구마다 시도 이름을 보내고(design.md 17절 10), 보낸 몸통은 모두 checkQuery를 지난다', async () => {
+    const { deps, asked, askedOf } = world()
+    await collect(AT, R, deps)
+    for (const kind of ['senior', 'school', 'market'] as const) {
+      const sent = askedOf(kind).sort((a, b) => (a.sggName < b.sggName ? -1 : 1))
+      expect(sent, kind).toEqual([
+        { kind, sggName: '나래시 다솜구', sidoName: '가람도' },
+        { kind, sggName: '나래시 별빛구', sidoName: '가람도' },
+      ])
+    }
+    // 서버 경로가 거절하는 몸통(모르는 칸·범위 밖)을 보내지 않는다
+    for (const q of asked) expect(checkQuery(q), q.kind).toEqual(q)
+  })
+
   it('AC-7908.2: 30m 안 가게는 층마다 세고 약국 수(상가정보)도 담는다', async () => {
     const { deps, askedOf } = world()
     const s = await collect(AT, R, deps)
@@ -1158,6 +1173,15 @@ describe('AC-7908.2 collectScan — 동네 훑기 값(동마다, 저장 안 함)
     for (const q of askedOf('pop-age')) expect(q.dongs).not.toContain(LOST)
     expect(askedOf('gym')).toEqual([{ kind: 'gym', sggName: '나래시 다솜구', sidoName: '가람도' }])
     expect(scan.parts.people).toEqual({ ok: true, src: 'pop-age', asOf: '2026-10-15' })
+  })
+
+  it('AC-7918.3: 훑기도 경로당·학교에 시도 이름을 보내고, 보낸 몸통은 모두 checkQuery를 지난다', async () => {
+    const { deps, asked, askedOf } = world()
+    const scan = await collectScan('41111', deps)
+    if (!scan.ok) throw new Error('훑기가 실패했어요')
+    expect(askedOf('senior')).toEqual([{ kind: 'senior', sggName: '나래시 다솜구', sidoName: '가람도' }])
+    expect(askedOf('school')).toEqual([{ kind: 'school', sggName: '나래시 다솜구', sidoName: '가람도' }])
+    for (const q of asked) expect(checkQuery(q), q.kind).toEqual(q)
   })
 
   it('AC-7921.5: 훑기 경쟁 수는 과목 고르기를 따른다 — 한의원만 경쟁이면 한의원 목록만, 경쟁 0개면 부르지 않고 값 없음', async () => {

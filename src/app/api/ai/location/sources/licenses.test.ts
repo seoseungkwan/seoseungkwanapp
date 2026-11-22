@@ -19,6 +19,7 @@ import {
 // 가짜 응답은 fixtures/location/api/licenses/의 지어낸 파일(의원 이름·주소 모두 지어냄)이다. 바깥 사이트는 부르지 않는다.
 // TASK-47(2026-11-22 진짜 열쇠): 한 쪽 100줄이 사이트 한도, 조건 칸은 LCPMT_YMD(GTE·LT)·SALS_STTS_CD(EQ)·DAT_UPDT_PNT(GTE·LT)·ROAD_NM_ADDR(LIKE)뿐이라
 // 폐업일(CLSBIZ_YMD) 조건은 없다 → 폐업은 영업 상태 03 + 갱신 시각으로 부르고 폐업일은 답에서 거른다. 과목 칸은 MDEXM_SBJCT_CN_NM
+// TASK-80(design.md 17절 3): 업태 칸 MDLCR_INST_BTP_NM(치과의원·한의원이 섞여 와 업태로 가름)을 type으로 읽는다
 const FIXTURES = new URL('../../../../../../fixtures/location/api/licenses/', import.meta.url)
 const fixture = (name: string) => readFileSync(fileURLToPath(new URL(name, FIXTURES)), 'utf-8')
 
@@ -123,7 +124,7 @@ describe('clinic-license 요청 — AC-7904.1·AC-7904.3', () => {
 })
 
 describe('clinic-license 답 읽기 — AC-7904.1·AC-7904.4', () => {
-  it('AC-7904.1: 이름·과목·인허가일·폐업일·주소·점을 돌려주고 기준 날짜는 받은 한국 날짜다', () => {
+  it('AC-7904.1: 이름·과목·업태·인허가일·폐업일·주소·점을 돌려주고 기준 날짜는 받은 한국 날짜다', () => {
     const got = clinicLicense.parse([fixture('open.json')], OPEN, TODAY)
     expect(got).toEqual({
       ok: true,
@@ -134,6 +135,7 @@ describe('clinic-license 답 읽기 — AC-7904.1·AC-7904.4', () => {
           {
             name: '가람정형외과의원',
             dept: '정형외과',
+            type: '의원', // 업태 칸이 없는 줄은 업태구분(BZSTAT_SE_NM)
             openedOn: '2026-10-20',
             closedOn: null,
             address: '가상도 가람구 바다로 12, 2층',
@@ -143,6 +145,7 @@ describe('clinic-license 답 읽기 — AC-7904.1·AC-7904.4', () => {
             // 도로명 주소가 비면 지번 주소, 숫자 좌표도 읽는다
             name: '나래재활의학과의원',
             dept: '재활의학과, 정형외과',
+            type: '의원',
             openedOn: '2026-11-03',
             closedOn: null,
             address: '가상도 가람구 물빛동 56',
@@ -167,6 +170,7 @@ describe('clinic-license 답 읽기 — AC-7904.1·AC-7904.4', () => {
       {
         name: '온누리정형외과의원',
         dept: '정형외과',
+        type: '', // 업태 칸이 없으면 빈 글자
         openedOn: '2026-10-20',
         closedOn: '2026-11-18',
         address: '가상도 가람구 바다로 12, 2층',
@@ -207,6 +211,40 @@ describe('clinic-license 답 읽기 — AC-7904.1·AC-7904.4', () => {
     expect(from5174(0, 0)).not.toBeNull()
     for (const gone of ['다솜내과의원', '라온의원', '바다통증의학과의원', '새솔의원', '마루가정의학과의원', '']) expect(names).not.toContain(gone)
     expect(names).toEqual(['가람정형외과의원', '나래재활의학과의원'])
+  })
+})
+
+describe('clinic-license 업태 칸 — AC-7921.4·AC-7915.1', () => {
+  // 후보 = 가람정형외과의원 자리(서울 기준점 옆), 범위 1km — types.json 다섯 곳은 모두 300m 안이다
+  const near = from5174(198120.4, 451733.9)!
+  const cand: WatchCandidate = { id: 'cand-t', name: '예시후보', status: 'watching', ...near, radiusM: 1000, watchCheckedOn: null, createdAt: '2026-10-01T00:00:00Z' }
+
+  it('AC-7921.4: 업태 칸(MDLCR_INST_BTP_NM)을 type으로 읽고, 비면 업태구분(BZSTAT_SE_NM), 둘 다 없으면 빈 글자다', () => {
+    expect(value([fixture('types.json')], OPEN).rows.map((r) => [r.name, r.dept, r.type])).toEqual([
+      ['가람미소치과의원', '구강악안면외과', '치과의원'],
+      ['다온한의원', '한방내과, 침구과', '한의원'],
+      ['바른정형외과의원', '정형외과', '의원'],
+      ['솔빛한의원', '한방부인과', '한의원'],
+      ['새봄의원', '내과', ''],
+    ])
+    expect(value([fixture('old-names.json')], OPEN).rows.map((r) => r.type)).toEqual([''])
+  })
+
+  it('AC-7915.1: 업태를 담은 줄을 알림 판정에 넘기면 치과의원·한의원을 경쟁으로 골랐을 때 새 의원 알림에 잡힌다', () => {
+    const rows: readonly LicenseRow[] = value([fixture('types.json')], OPEN).rows
+    const found = { kind: 'open' as const, from: OPEN.from, to: OPEN.to, rows }
+    for (const r of rows) expect(distM(cand, r.point!), r.name).toBeLessThan(300)
+    expect(pickEvents(found, cand, { v: 1, rival: ['dental', 'korean'], hide: [] }).map((e) => [e.clinicName, e.eventOn])).toEqual([
+      ['가람미소치과의원', '2026-10-28'],
+      ['다온한의원', '2026-11-05'],
+      ['솔빛한의원', '2026-11-12'],
+    ])
+  })
+
+  it('AC-7921.4: 업태로 가른 치과의원은 과목 글(구강악안면외과)의 외과로 세지 않는다', () => {
+    const rows: readonly LicenseRow[] = value([fixture('types.json')], OPEN).rows
+    const found = { kind: 'open' as const, from: OPEN.from, to: OPEN.to, rows }
+    expect(pickEvents(found, cand, { v: 1, rival: ['gs', 'ortho'], hide: [] }).map((e) => e.clinicName)).toEqual(['바른정형외과의원'])
   })
 })
 

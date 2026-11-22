@@ -143,6 +143,25 @@ describe('AC-7915.1 pickEvents', () => {
     ])
   })
 
+  it('AC-7921.4: 인허가 줄의 업태 글(type)을 대표 과목에 넘긴다 — 치과의원·한의원을 경쟁으로 고르면 새 의원 알림에 잡힌다', () => {
+    const rows = [
+      row('예시미소치과의원', { dept: '구강악안면외과', type: '치과의원' }),
+      row('예시다온한의원', { dept: '한방내과, 침구과', type: '한의원' }),
+      row('예시바른정형외과의원', { type: '의원' }),
+      // 업태 글이 없는 줄(옛 모양)은 이름 낱말·과목 글로만 센다 — 치과·한의원은 업태로만 가른다
+      row('예시솔빛치과의원', { dept: '구강악안면외과' }),
+    ]
+    const found = { kind: 'open' as const, ...PERIOD, rows }
+    expect(pickEvents(found, cand('a'), ruleOf(['dental', 'korean'])).map((e) => [e.clinicName, e.dept])).toEqual([
+      ['예시미소치과의원', '구강악안면외과'],
+      ['예시다온한의원', '한방내과, 침구과'],
+    ])
+    // 업태로 가른 치과의원은 과목 글(구강악안면외과)의 외과로 세지 않는다
+    expect(pickEvents(found, cand('a'), ruleOf(['gs', 'ortho'])).map((e) => e.clinicName)).toEqual(['예시바른정형외과의원', '예시솔빛치과의원'])
+    // 업태로 가른 과목이 안 보기면 알리지 않는다
+    expect(pickEvents(found, cand('a'), ruleOf(['korean'], ['dental'])).map((e) => e.clinicName)).toEqual(['예시다온한의원'])
+  })
+
   it('AC-7915.1: 경쟁 과목은 설정을 따른다 — 내과만 고르면 내과 의원만 알린다', () => {
     const rows = [row('예시정형외과의원'), row('예시다온내과의원', { dept: '내과' }), row('예시하늘의원', { dept: '정형외과, 내과' })]
     expect(pickEvents({ kind: 'open', ...PERIOD, rows }, cand('a'), ruleOf(['im'])).map((e) => e.clinicName)).toEqual([

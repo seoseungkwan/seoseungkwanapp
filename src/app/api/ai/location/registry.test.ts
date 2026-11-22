@@ -51,6 +51,9 @@ const DESIGN_HOSTS: Readonly<Record<KeyKind, readonly string[]>> = {
 // 종류마다 checkQuery를 통과하는 몸통 하나(지어낸 값)
 const AT = { lat: 37.5665, lng: 126.978 }
 const LOT = { sgg: '11110', bjdong: '10100', bun: '0001', ji: '0000', plat: '0' as const }
+// 경로당·학교·시장은 시도 이름으로 거른다(design.md 17절 10 — 경로당·학교는 시도 이름이 없으면 요청이 0개다).
+// query.ts는 선택 칸 sidoName을 받지만 몸통 모양(types/location.ts)의 이 셋에는 아직 칸이 없어 따로 붙인다
+const SIDO = { sidoName: '서울특별시' }
 const SAMPLES: Readonly<Record<QueryKind, Query>> = {
   'k-address': { kind: 'k-address', q: '서울특별시청' },
   'k-point': { kind: 'k-point', at: AT },
@@ -76,9 +79,9 @@ const SAMPLES: Readonly<Record<QueryKind, Query>> = {
   nonpay: { kind: 'nonpay', ykiho: 'FAKEYKIHO123', item: 'MM045' },
   'clinic-license': { kind: 'clinic-license', event: 'open', from: '2025-10-01', to: '2025-10-31' },
   gym: { kind: 'gym', sggName: '종로구' },
-  senior: { kind: 'senior', sggName: '종로구' },
-  market: { kind: 'market', sggName: '종로구' },
-  school: { kind: 'school', sggName: '종로구' },
+  senior: { kind: 'senior', sggName: '종로구', ...SIDO },
+  market: { kind: 'market', sggName: '종로구', ...SIDO },
+  school: { kind: 'school', sggName: '종로구', ...SIDO },
   welfare: { kind: 'welfare', sgg: '11110', sidoNames: ['서울특별시'], sggNames: ['종로구'] },
 }
 
@@ -174,5 +177,13 @@ describe('종류 잇기(registry)', () => {
         expect([...url.searchParams.keys()].map((n) => n.toLowerCase()), k).not.toContain('servicekey')
       }
     }
+  })
+
+  it('AC-7918.3: 경로당·학교 견본 몸통은 시도 이름을 담아 그 시도로 거른 요청을 만든다(시도 이름이 없으면 요청 0개)', () => {
+    const params = (k: 'senior' | 'school') => (registered(k)?.requests(SAMPLES[k]) ?? []).map((r) => new URL(r.url).searchParams)
+    expect(params('senior').map((p) => p.get('instt_nm'))).toContain('서울특별시 종로구')
+    expect(params('school').length).toBeGreaterThan(0)
+    for (const p of params('school')) expect(p.get('cddcNm')).toBe('서울특별시교육청')
+    for (const k of ['senior', 'school'] as const) expect(registered(k)?.requests({ kind: k, sggName: '종로구' }), k).toEqual([])
   })
 })
