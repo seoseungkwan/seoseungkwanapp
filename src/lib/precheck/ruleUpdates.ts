@@ -46,13 +46,14 @@ export const NAME_KEYS = {
 export type NameKind = 'group' | 'class' | 'sub'
 
 /**
- * 비켜 주는 칸(design 4절, 2026-11-22 독립 검토): 열쇠 이름이 이 글자로 시작하는 params 칸(깊이 상관없음).
- * 값이 늘면 경고가 줄어든다(지금 규칙표: acceptable_with·allowed_*·exception*·exclude*·excluded·exempt_regex·skip_*·unless*·pass_if_regex·not_in_set_a)
+ * 비켜 주는 칸(design 4절, 2026-11-22 독립 검토): 열쇠 이름 어디에든 이 낱말이 든 params 칸(깊이 상관없음).
+ * 값이 늘거나 바뀌면 경고가 줄 수 있다(지금 규칙표: acceptable_with·allowed_*·exception*·exclude*·exemption·region_split_exempt·
+ * skip_*·unless*·pass_if_regex·not_applicable·not_in_set_a·dx_prefixes_not_counting·downgrade_if_…·dx_uncertain·uncertain* 등)
  */
-export const WAIVER_KEYS = ['acceptable', 'allow', 'exception', 'exclu', 'exempt', 'skip', 'unless', 'pass_if', 'not_in_set'] as const
+export const WAIVER_KEYS = ['acceptable', 'allow', 'exception', 'exclu', 'exempt', 'skip', 'unless', 'pass_if', 'not_', 'downgrade', 'uncertain', 'waive', 'ignore'] as const
 
 /** 값이 원래 규칙·지금 판의 같은 이름 칸에 이미 있던 것이어야 하는 칸: 비켜 주는 칸과 regex로 끝나는 칸(정규식은 넓히는지 좁히는지 알 수 없다) */
-const guarded = (key: string) => key.endsWith('regex') || WAIVER_KEYS.some((head) => key.startsWith(head))
+const guarded = (key: string) => key.endsWith('regex') || WAIVER_KEYS.some((word) => key.includes(word))
 
 /** 칸 이름 → 그 칸이 가리키는 이름표(이름 칸이 아니면 null) */
 export function nameKindOf(key: string): NameKind | null {
@@ -313,6 +314,24 @@ function guardedOk(next: unknown, base: unknown, current: unknown): boolean {
   return [...guardedLeaves(next)].every(([key, values]) => [...values].every((value) => before.get(key)?.has(value) === true))
 }
 
+/** params 안 참거짓 잎 값: 자리(열쇠·번호 길의 JSON) → 값 */
+function boolsAt(params: unknown): Map<string, boolean> {
+  const out = new Map<string, boolean>()
+  const walk = (node: unknown, path: (string | number)[]) => {
+    if (typeof node === 'boolean') out.set(JSON.stringify(path), node)
+    else if (Array.isArray(node)) node.forEach((x, i) => walk(x, [...path, i]))
+    else if (isRecord(node)) for (const [key, value] of Object.entries(node)) walk(value, [...path, key])
+  }
+  walk(params, [])
+  return out
+}
+
+/** next의 참거짓 값이 모두 base나 current의 같은 자리 값과 같은가(켜고 끄는 칸은 앱이 방향을 모른다) */
+function boolsOk(next: unknown, base: unknown, current: unknown): boolean {
+  const was = [boolsAt(base), boolsAt(current)]
+  return [...boolsAt(next)].every(([path, value]) => was.some((at) => at.get(path) === value))
+}
+
 /** 열쇠 이름이 grade로 끝나는 칸(깊이 상관없음)의 값(JSON)을 정렬한 목록 */
 function gradesOf(params: unknown): string[] {
   const out: string[] = []
@@ -362,7 +381,7 @@ function judge(file: RulesFile, base: RuleDef, current: RuleDef, next: unknown):
   if (!seen.ok || !topKeysOk(file, base, next.params) || !seen.words.every((word) => words.has(word))) return 'names'
   const before = new Set([...scan(file, base.params).names, ...scan(file, current.params).names])
   if ([...before].some((name) => !seen.names.has(name))) return 'removed'
-  if (!guardedOk(next.params, base.params, current.params)) return 'removed'
+  if (!guardedOk(next.params, base.params, current.params) || !boolsOk(next.params, base.params, current.params)) return 'removed'
   if (stable(gradesOf(next.params)) !== stable(gradesOf(base.params))) return 'grade'
   if (ruleStatusIn(file, next) !== ruleStatusIn(file, base)) return 'status'
   const shown = (rule: RuleDef) => stable({ title: rule.title, message: rule.message, params: rule.params })

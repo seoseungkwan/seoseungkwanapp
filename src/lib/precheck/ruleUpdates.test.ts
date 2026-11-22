@@ -358,8 +358,74 @@ describe('AC-7802.3 checkRuleChange — 뺀 것(removed)·등급(grade)', () => 
     expect(check(withParams('HD-02', (p) => ((p.window as Rec).older_history_grade = '확인필요')))).toBe('grade')
   })
 
-  it('AC-7802.3: WAIVER_KEYS는 design 4절의 열쇠 이름 머리 아홉이다', () => {
-    expect(WAIVER_KEYS).toEqual(['acceptable', 'allow', 'exception', 'exclu', 'exempt', 'skip', 'unless', 'pass_if', 'not_in_set'])
+  it('AC-7802.3: WAIVER_KEYS는 design 4절의 낱말 열셋이다(열쇠 이름 어디에든 들면 비켜 주는 칸)', () => {
+    expect(WAIVER_KEYS).toEqual(['acceptable', 'allow', 'exception', 'exclu', 'exempt', 'skip', 'unless', 'pass_if', 'not_', 'downgrade', 'uncertain', 'waive', 'ignore'])
+  })
+
+  it("AC-7802.3: 이름 가운데에 그 낱말이 든 칸(not_applicable·region_split_exempt·dx_uncertain·dx_prefixes_not_counting·downgrade_…)도 값을 늘리거나 바꾸면 'ok'가 아니다", () => {
+    // 이 규칙에 없던 낱말이면 차례상 names가 먼저, 이 규칙 안에 이미 있는 낱말이면(names를 지나면) 비켜 주는 칸 검사의 'removed'다
+    // LA-15 조영제 요건에서 빼 주는 코드(not_applicable)
+    expect(ruleOf('LA-15').params.not_applicable).toEqual(['LA358', 'LA352'])
+    expect(check(withParams('LA-15', (p) => (p.not_applicable = ['LA358', 'LA352', 'LA351'])))).not.toBe('ok')
+    expect(check(withParams('LA-15', (p) => (p.not_applicable = ['LA358', 'LA352', 'contrast'])))).toBe('removed')
+    // LA-04 부위 나눔에서 빼 주는 코드(region_split_exempt)
+    expect(ruleOf('LA-04').params.region_split_exempt).toEqual(['LA357'])
+    expect(check(withParams('LA-04', (p) => (p.region_split_exempt = ['LA357', 'LA358'])))).not.toBe('ok')
+    expect(check(withParams('LA-04', (p) => (p.region_split_exempt = ['LA357', 'LS'])))).toBe('removed')
+    // LA-29 필수 상병으로 세지 않는 앞자리(dx_prefixes_not_counting): 더함·바꿈
+    expect(ruleOf('LA-29').params.dx_prefixes_not_counting).toEqual(['M80', 'M81'])
+    expect(check(withParams('LA-29', (p) => (p.dx_prefixes_not_counting = ['M80', 'M81', 'M85'])))).not.toBe('ok')
+    expect(check(withParams('LA-29', (p) => (p.dx_prefixes_not_counting = ['M80', 'M81', 'R51'])))).toBe('removed')
+    expect(check(withParams('LA-29', (p) => (p.dx_prefixes_not_counting = ['R52', 'M81'])))).toBe('removed')
+    // VD-01·OP-07 상병 불확실(dx_uncertain): 참 → 거짓
+    expect(ruleOf('VD-01').params.dx_uncertain).toBe(true)
+    expect(check(withParams('VD-01', (p) => (p.dx_uncertain = false)))).toBe('removed')
+    expect(check(withParams('OP-07', (p) => ((p.any_evidence as Rec).dx_uncertain = false)))).toBe('removed')
+    // LA-28 차트 증상이 시술 부위와 맞으면 낮추는 칸(downgrade_…): 값 바꿈
+    expect(ruleOf('LA-28').params.downgrade_if_chart_symptom_matches_procedure_region).toBe('참고')
+    expect(check(withParams('LA-28', (p) => (p.downgrade_if_chart_symptom_matches_procedure_region = '알림')))).not.toBe('ok')
+    expect(check(withParams('LA-28', (p) => (p.downgrade_if_chart_symptom_matches_procedure_region = 'main')))).toBe('removed')
+    // 빼는 것은 지난다(조이는 쪽, 안전)
+    expect(check(withParams('LA-15', (p) => (p.not_applicable = ['LA358'])))).toBe('ok')
+  })
+
+  it("AC-7802.3 (2-2): params 안 어디든 참거짓 값이 원래 규칙·지금 판의 같은 자리 값과 다르면 'removed'다", () => {
+    expect(check(withParams('LA-26', (p) => (p.gosi_strict = true)))).toBe('removed') // 거짓 → 참
+    expect(check(withParams('HY-01', (p) => (p.gosi_strict = false)))).toBe('removed') // 참 → 거짓
+    expect(check(withParams('LA-16', (p) => ((p.sam_check as Rec).flag_if_count_le_15_and_Z = false)))).toBe('removed') // 객체 안
+    expect(check(withParams('IJ-20', (p) => ((p.condition as Rec).kk090_absent = false)))).toBe('removed')
+    // 참거짓이 없던 자리에 참거짓(LA-16 sam_check.code_length 8 → 참)
+    expect(check(withParams('LA-16', (p) => ((p.sam_check as Rec).code_length = true)))).toBe('removed')
+    // 같은 자리 같은 값이면 지나고, 지금 판의 같은 자리 값과 같아도 된다
+    expect(check(withParams('LA-16', (p) => ((p.sam_check as Rec).position = 7)))).toBe('ok')
+    const current = withParams('LA-26', (p) => (p.gosi_strict = true), { effective_from: '2026-11-01' })
+    expect(check(withParams('LA-26', (p) => (p.gosi_strict = true), { title: '다시 고친 제목' }), 'LA-26', current)).toBe('ok')
+  })
+
+  it("AC-7802.3 (2-2): 실제 규칙표의 저절로 바꿀 수 있는 규칙 안 참거짓 값 하나를 뒤집으면 모두 'removed'다", () => {
+    const noAuto = noAutoRuleIds(tables.rules)
+    // params 안 참거짓 자리(열쇠·번호 길) 모두
+    const boolPaths = (node: unknown, path: (string | number)[] = []): (string | number)[][] => {
+      if (typeof node === 'boolean') return [path]
+      if (Array.isArray(node)) return node.flatMap((x, i) => boolPaths(x, [...path, i]))
+      if (node && typeof node === 'object') return Object.entries(node).flatMap(([k, v]) => boolPaths(v, [...path, k]))
+      return []
+    }
+    const flipped = tables.rules.rules
+      .filter((rule) => !noAuto.has(rule.id))
+      .flatMap((rule) =>
+        boolPaths(rule.params).map((path) => {
+          const next = withParams(rule.id, (p) => {
+            let node = p as Record<string | number, unknown>
+            for (const step of path.slice(0, -1)) node = node[step] as Record<string | number, unknown>
+            const last = path[path.length - 1]
+            node[last] = !node[last]
+          })
+          return [`${rule.id}:${path.join('.')}`, check(next)]
+        }),
+      )
+    expect(flipped.filter(([, code]) => code !== 'removed')).toEqual([])
+    expect(flipped.length).toBeGreaterThan(60)
   })
 
   it("AC-7802.3: 비켜 주는 칸(WAIVER_KEYS)에 원래 규칙·지금 판의 같은 이름 칸에 없던 잎 값이 있으면 'removed'다 — 이름 더함·숫자 바꿈·참으로 바꿈", () => {
