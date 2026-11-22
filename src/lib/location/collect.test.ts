@@ -1,0 +1,844 @@
+import { describe, expect, it } from 'vitest'
+import type { Query, QueryKind, QueryOf, QueryReply, Snapshot } from '@/types/location'
+import { COLLECT_LIMIT, ESWT_ITEM, collect, collectScan, industryParks, type CollectDeps, type CollectProgress } from './collect'
+import { EARTH_R, distM, type LatLng } from './coords'
+import type { BusFile, RailFile, TransitIndex } from './flow'
+import type { DongFile, DongIndex, LngLat } from './regions'
+import { SNAPSHOT_KEYS, checkSnapshot } from './snapshot'
+import { isSourceId } from './sources'
+
+// 모으기(specs/location TASK-25, design.md 4·5·6·8절, REQ-7908). 바깥 사이트는 부르지 않는다 — 부르는 함수·파일 읽기는 가짜다.
+// 지역·이름은 모두 지어낸 것이다
+
+// ── 가짜 세상 ─────────────────────────────────────────────
+
+const NOW = '2026-11-22T03:00:00.000Z' // 한국 2026-11-22 12:00
+const AT: LatLng = { lat: 37.5, lng: 127.0 }
+const R = 500
+
+const RAD = Math.PI / 180
+const M_PER_LAT = EARTH_R * RAD
+const r6 = (v: number) => Math.round(v * 1e6) / 1e6
+/** from에서 북쪽 north m · 동쪽 east m 옮긴 점(소수 6자리) */
+function moved(north: number, east: number, from: LatLng = AT): LatLng {
+  return { lat: r6(from.lat + north / M_PER_LAT), lng: r6(from.lng + east / (M_PER_LAT * Math.cos(from.lat * RAD))) }
+}
+const d = (p: LatLng, from: LatLng = AT) => distM(from, p)
+
+const square = (w: number, s: number, e: number, n: number): LngLat[][] => [
+  [
+    [w, s],
+    [e, s],
+    [e, n],
+    [w, n],
+    [w, s],
+  ],
+]
+
+const D1 = '4111151000'
+const D2 = '4111152000'
+const LOST = '4111159999'
+
+function baseIndex(): DongIndex {
+  return {
+    asOf: '2026-07-01',
+    sidos: [
+      {
+        code2: '41',
+        name: '가람도',
+        sggs: [
+          { code5: '41111', name: '나래시 다솜구', bbox: [126.99, 37.49, 127.01, 37.51] },
+          { code5: '41113', name: '나래시 별빛구', bbox: [127.004, 37.49, 127.03, 37.51] },
+          { code5: '41115', name: '나래시 먼구', bbox: [127.2, 37.7, 127.3, 37.8] },
+        ],
+      },
+    ],
+  }
+}
+
+function baseDongs(): Record<string, DongFile> {
+  return {
+    '41111': {
+      asOf: '2026-07-01',
+      dongs: [
+        { code10: D1, name: '다솜1동', areaM2: 10_000, center: [126.996, 37.5], rings: square(126.99, 37.49, 127.002, 37.51) },
+        { code10: D2, name: '다솜2동', areaM2: 10_000, center: [127.006, 37.5], rings: square(127.002, 37.49, 127.01, 37.51) },
+        { code10: LOST, name: '못이은동', areaM2: 10_000, center: [127.009, 37.509], rings: null, unmatched: true },
+      ],
+    },
+    '41113': {
+      asOf: '2026-07-01',
+      dongs: [{ code10: '4111351000', name: '별빛1동', areaM2: 10_000, center: [127.02, 37.5], rings: square(127.01, 37.49, 127.03, 37.51) }],
+    },
+  }
+}
+
+const S1 = moved(200, -100) // 다솜정류장 — 후보에서 224m · 다솜1동 가운데에서 323m
+const S2 = moved(600, 0) // 먼정류장 — 400m 밖
+const S3 = moved(0, 300) // 별빛정류장(이웃 시군구 파일) — 후보에서 300m · 다솜2동 가운데에서 229m
+const STATION_A = moved(-450, 0) // 가람역 — 범위 안
+const STATION_B = moved(-2000, 0) // 나래역
+
+const TRANSIT: TransitIndex = { asOf: '2026-06-01', sggs: ['41111', '41113'] }
+function baseBus(): Record<string, BusFile> {
+  return {
+    '41111': {
+      asOf: '2026-06-01',
+      src: 'bus-stops',
+      stops: [
+        { no: 'S1', name: '다솜정류장', ars: '11001', ...S1 },
+        { no: 'S2', name: '먼정류장', ars: '11002', ...S2 },
+      ],
+    },
+    '41113': { asOf: '2026-05-01', src: 'bus-stops', stops: [{ no: 'S3', name: '별빛정류장', ars: '22001', ...S3 }] },
+  }
+}
+const RAIL: RailFile = {
+  asOf: '2026-06-01',
+  src: 'rail-stations',
+  stations: [
+    { name: '가람역', line: '1호선', ...STATION_A },
+    { name: '나래역', line: '2호선', ...STATION_B },
+  ],
+}
+
+const BASE_BANDS: Record<string, number[]> = {
+  [D1]: [10, 20, 30, 40, 50, 60, 70, 80, 90, 5, 1],
+  [D2]: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+}
+function popBands(dong: string, ym: string): number[] {
+  const base = BASE_BANDS[dong] ?? [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+  return base.map((n, i) => (i === 0 ? n + Number(ym.slice(0, 4)) - 2022 : n))
+}
+const sum = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0)
+const addBands = (a: readonly number[], b: readonly number[]) => a.map((n, i) => n + b[i])
+
+const WEEK = [[540, 1080], [540, 1080], [540, 1080], [540, 1080], [540, 1080], [540, 780], null, null]
+const R1 = moved(25, 0)
+const R2 = moved(0, 300)
+const K1 = moved(100, 0)
+
+const ok = (value: unknown, asOf = '2026-11-22'): QueryReply => ({ ok: true, value, src: 'x', asOf })
+const FAIL: QueryReply = { ok: false, code: 'failed' }
+const places = <T>(items: T[]) => ({ items, capped: false })
+
+type Handlers = { [K in QueryKind]?: (q: QueryOf<K>) => QueryReply | Promise<QueryReply> }
+
+function baseHandlers(): Handlers {
+  return {
+    'k-point': (q) => {
+      const east = q.at.lng > 127.002
+      return ok({
+        road: '가람도 나래시 다솜구 가람로 1',
+        jibun: east ? '가람도 나래시 다솜구 별동 5' : '가람도 나래시 다솜구 다솜동 12-3',
+        bjd: east ? '4111110200' : '4111110100',
+        hjd: east ? D2 : D1,
+        lot: east ? { bcode: '4111110200', main: 5, sub: 0, san: false } : { bcode: '4111110100', main: 12, sub: 3, san: false },
+      })
+    },
+    'pop-age': (q) => ok(q.dongs.map((dong) => ({ dong, bands: popBands(dong, q.ym) })), `${q.ym}-15`),
+    household: (q) => ok(q.dongs.map((dong) => ({ dong, households: dong === D1 ? 200 : dong === D2 ? 30 : 5 })), `${q.ym}-15`),
+    'flow-volume': (q) =>
+      ok(
+        q.ym === '2026-09'
+          ? {
+              ym: q.ym,
+              rows: [
+                { id: 'B1', mode: 'bus', board: 3000, alight: 3000, days: 30 },
+                { id: 'R1', mode: 'rail', board: 9000, alight: 9000, days: 30 },
+                { id: 'B9', mode: 'bus', board: 1, alight: 1, days: 1 },
+              ],
+            }
+          : { ym: q.ym, rows: [] },
+        `${q.ym}-30`,
+      ),
+    'flow-bus': () => ok([{ id: 'B1', name: '다솜정류장', ars: '11-001' }]),
+    'flow-rail': () => ok([{ id: 'R1', name: '가람역', line: '1호선' }]),
+    'apt-trade': (q) =>
+      ok({
+        deals:
+          q.ym === '2026-10'
+            ? [
+                { bdongName: '다솜동', m2: 84.5, won: 845_000_000, floor: 5, on: '2026-10-03' },
+                { bdongName: '먼동', m2: 50, won: 100_000_000, floor: 1, on: '2026-10-04' },
+              ]
+            : q.ym === '2026-09'
+              ? [{ bdongName: '나래읍 별동', m2: 100, won: 500_000_000, floor: 3, on: '2026-09-09' }]
+              : q.ym === '2026-04'
+                ? [{ bdongName: '다솜동', m2: 10, won: 999_999_999, floor: 1, on: '2026-04-01' }]
+                : [],
+        capped: false,
+      }),
+    'biz-trade': (q) =>
+      ok({ deals: q.ym === '2026-08' ? [{ bdongName: '다솜동', usage: '제2종근린생활시설', m2: 200, won: 1_000_000_000 }] : [], capped: false }),
+    'apt-list': (q) =>
+      ok({
+        complexes:
+          q.bjd === '4111110100'
+            ? [
+                { code: 'A1', name: '다솜마을1단지' },
+                { code: 'A2', name: '다솜빌' },
+              ]
+            : [
+                { code: 'A3', name: '별동아파트' },
+                { code: 'A4', name: '별동주공' },
+              ],
+        capped: false,
+      }),
+    'apt-info': (q) =>
+      ok(
+        q.complex === 'A1'
+          ? { code: 'A1', name: '다솜마을1단지', households: 1000, builtYear: 2010, buildings: 10 }
+          : q.complex === 'A3'
+            ? { code: 'A3', name: '별동아파트', households: 500, builtYear: null, buildings: 5 }
+            : q.complex === 'A4'
+              ? { code: 'A4', name: '별동주공', households: null, builtYear: 1990, buildings: 3 }
+              : null,
+      ),
+    presale: () =>
+      ok({
+        items: [
+          { name: '다솜 새아파트', households: 800, moveIn: '2027-03', address: '가람도 나래시 다솜구 다솜동 일원' },
+          { name: '이번달 입주', households: 50, moveIn: '2026-11', address: '가람도 나래시 다솜구 별동 3' },
+          { name: '옛 입주', households: 300, moveIn: '2026-10', address: '가람도 나래시 다솜구 다솜동 1' },
+          { name: '먼 아파트', households: 900, moveIn: '2028-01', address: '가람도 나래시 별빛구 먼동 1' },
+          { name: '다른 구 같은 동', households: 70, moveIn: '2028-01', address: '가람도 나래시 먼구 다솜동 1' },
+          { name: '세대 모름', households: null, moveIn: '2027-01', address: '가람도 나래시 다솜구 별동 2' },
+          { name: '날 모름', households: 100, moveIn: null, address: '가람도 나래시 다솜구 별동 2' },
+        ],
+        capped: false,
+      }),
+    senior: (q) =>
+      ok(
+        places(
+          q.sggName === '나래시 다솜구'
+            ? [
+                { name: '다솜경로당', ...moved(100, 0) },
+                { name: '둘경로당', ...moved(-100, 100) },
+                { name: '먼경로당', ...moved(900, 0) },
+              ]
+            : [
+                { name: '별빛경로당', ...moved(0, 350) },
+                { name: '다솜경로당', ...moved(100, 0) },
+              ],
+        ),
+      ),
+    gym: (q) =>
+      ok(
+        places(
+          q.sggName === '나래시 다솜구'
+            ? [
+                { name: '헬스1', status: 'open', ...moved(50, 0) },
+                { name: '쉬는헬스', status: 'paused', ...moved(60, 0) },
+                { name: '먼헬스', status: 'open', ...moved(0, 2000) },
+              ]
+            : [],
+        ),
+      ),
+    school: (q) =>
+      ok(
+        places(
+          q.sggName === '나래시 다솜구'
+            ? [
+                { name: '다솜초', level: '초', ...moved(300, 0) },
+                { name: '다솜중', level: '중', ...moved(-300, 0) },
+              ]
+            : [],
+        ),
+      ),
+    accident: (q) =>
+      ok(
+        q.sggName === '나래시 다솜구'
+          ? {
+              year: 2024,
+              capped: false,
+              items: [
+                { name: '사거리', cases: 5, ...moved(10, 10) },
+                { name: '고개', cases: 3, ...moved(-200, 0) },
+                { name: '먼길', cases: 7, ...moved(3000, 0) },
+              ],
+            }
+          : { year: null, capped: false, items: [] },
+      ),
+    market: (q) =>
+      ok(
+        places(
+          q.sggName === '나래시 다솜구'
+            ? [
+                { name: '다솜시장', ...moved(0, 700) },
+                { name: '먼시장', ...moved(3000, 0) },
+              ]
+            : [],
+        ),
+      ),
+    stores: () =>
+      ok({
+        stores: ['1', '1', '지1', '2', '층 모름'].map((floor, i) => ({ name: `가게${i}`, big: '소매', mid: '약국', floor, at: AT })),
+        total: 5,
+        capped: false,
+        fitness: { gym: 0, pilates: 0 },
+        pharmacies: 1,
+      }),
+    'hosp-list': (q) =>
+      ok({
+        items:
+          q.group === 'clinic'
+            ? [
+                { ykiho: 'Y1', name: '가람정형외과의원', typeName: '의원', kind: 'ortho', doctors: 2, openedOn: '2024-03-01', at: R1, address: '', distM: d(R1) },
+                { ykiho: 'Y2', name: '나래마취통증의학과의원', typeName: '의원', kind: 'pain', doctors: 1, openedOn: null, at: R2, address: '', distM: d(R2) },
+              ]
+            : q.group === 'korean'
+              ? [{ ykiho: 'Y3', name: '다솜한의원', typeName: '한의원', kind: 'korean', doctors: 1, openedOn: '2010-01-01', at: K1, address: '', distM: d(K1) }]
+              : [],
+        capped: false,
+      }),
+    'hosp-detail': (q) => (q.ykiho === 'Y1' ? ok({ mri: true, ct: false, therapists: 3 }) : FAIL),
+    nonpay: (q) =>
+      ok({
+        rows:
+          q.ykiho === 'Y1'
+            ? [
+                { name: '체외충격파(고강도)', won: 80_000 },
+                { name: '체외충격파', won: 50_000 },
+              ]
+            : [],
+        manual: null,
+      }),
+    'hosp-hours': () =>
+      ok([
+        { name: '가람 정형외과', at: moved(30, 0), week: WEEK },
+        { name: '다른의원', at: R2, week: WEEK },
+      ]),
+    'clinic-license': (q) =>
+      ok({
+        rows:
+          q.event === 'open'
+            ? [
+                { name: '새정형외과의원', dept: '정형외과', openedOn: '2025-05-01', closedOn: null, address: '', point: moved(100, 0) },
+                { name: '먼의원', dept: '내과', openedOn: '2025-06-01', closedOn: null, address: '', point: moved(5000, 0) },
+              ]
+            : [{ name: '닫은의원', dept: '내과', openedOn: '2015-01-01', closedOn: '2024-01-10', address: '', point: moved(20, 0) }],
+        capped: false,
+      }),
+    'bld-title': () =>
+      ok({
+        buildings: [
+          { pk: 'P1', usage: '제1종근린생활시설', structure: '철근콘크리트구조', above: 5, below: 1, totalM2: 1200.5, approvedOn: '2015-06-30', elevators: 1, parking: 10 },
+          { pk: 'P2', usage: '창고시설', structure: '경량철골구조', above: 1, below: 0, totalM2: 50, approvedOn: null, elevators: null, parking: null },
+        ],
+        capped: false,
+      }),
+    'bld-floor': () =>
+      ok({
+        floors: [
+          { pk: 'P1', label: '지1', usage: '주차장', m2: 300 },
+          { pk: 'P2', label: '1', usage: '창고', m2: 50 },
+          { pk: 'P1', label: '1', usage: '의원', m2: 250.25 },
+        ],
+        capped: false,
+      }),
+    welfare: () =>
+      ok(
+        { sggName: '나래시 다솜구', ym: '2025-12', medical: 300, basic: 500, nearPoor: 200, nearPoorBy: { copay: 100, selfSupport: 50, disabled: 50 } },
+        '2025-12-31',
+      ),
+  }
+}
+
+type WorldOptions = {
+  handlers?: Handlers
+  index?: DongIndex
+  dongs?: Record<string, DongFile>
+  transit?: TransitIndex
+  bus?: Record<string, BusFile>
+  deps?: Partial<CollectDeps>
+}
+
+function world(opts: WorldOptions = {}) {
+  const handlers: Handlers = { ...baseHandlers(), ...opts.handlers }
+  const asked: Query[] = []
+  const index = opts.index ?? baseIndex()
+  const dongs = opts.dongs ?? baseDongs()
+  const bus = opts.bus ?? baseBus()
+  const deps: CollectDeps = {
+    ask: async (q) => {
+      asked.push(q)
+      const h = handlers[q.kind] as ((q: Query) => QueryReply | Promise<QueryReply>) | undefined
+      return h ? h(q) : FAIL
+    },
+    dongIndex: async () => index,
+    dongFile: async (sgg) => dongs[sgg] ?? null,
+    transitIndex: async () => opts.transit ?? TRANSIT,
+    busFile: async (sgg) => bus[sgg] ?? null,
+    railFile: async () => RAIL,
+    income: async (sgg) => (sgg === '41111' ? { v: { sggName: '나래시 다솜구', won: 42_000_000, year: 2024 }, asOf: '2025-12-31' } : null),
+    industry: async (sgg) => (sgg === '41111' ? { v: { sggName: '나래시 다솜구', employees: 12_000, parks: 3, quarter: '2026-2' }, asOf: '2026-06-30' } : null),
+    now: NOW,
+    ...opts.deps,
+  }
+  const askedOf = <K extends QueryKind>(kind: K) => asked.filter((q): q is QueryOf<K> => q.kind === kind)
+  return { deps, asked, askedOf }
+}
+
+const vOf = <K extends keyof Snapshot>(s: Snapshot, key: K) => {
+  const got = s[key] as { ok: boolean; v?: unknown }
+  if (!got.ok) throw new Error(`${String(key)} 칸을 못 받았어요: ${JSON.stringify(got)}`)
+  return got.v
+}
+const whyOf = (s: Snapshot, key: (typeof SNAPSHOT_KEYS)[number]) => {
+  const got = s[key]
+  return got.ok ? 'ok' : got.why
+}
+
+// ── 시험 ─────────────────────────────────────────────────
+
+describe('AC-7908.2 collect — 그날 값 모으기', () => {
+  it('AC-7908.2: 22칸이 design.md 6절 모양·출처 id·기준 날짜로 채워지고 모양 검사를 지난다', async () => {
+    const { deps } = world()
+    const s = await collect(AT, R, deps)
+    expect(s.v).toBe(1)
+    expect(s.at).toBe(NOW)
+    expect(s.radiusM).toBe(R)
+    expect(checkSnapshot(JSON.parse(JSON.stringify(s)))).toEqual(s)
+    for (const key of SNAPSHOT_KEYS) {
+      expect(s[key].ok, key).toBe(true)
+      expect(isSourceId(s[key].src), `${key} ${s[key].src}`).toBe(true)
+    }
+    expect(Object.fromEntries(SNAPSHOT_KEYS.map((k) => [k, s[k].src]))).toEqual({
+      people: 'pop-age',
+      trend: 'pop-age',
+      flow: 'flow-volume',
+      income: 'income',
+      aptPrice: 'apt-trade',
+      bizPrice: 'biz-trade',
+      apts: 'apt-list',
+      presale: 'presale',
+      seniors: 'senior',
+      gyms: 'gym',
+      schools: 'school',
+      accidents: 'accident',
+      industry: 'industry',
+      pharmacies: 'stores',
+      rivals: 'hosp-list',
+      history: 'clinic-license',
+      station: 'rail-stations',
+      bus: 'bus-stops',
+      market: 'market',
+      building: 'building',
+      stores: 'stores',
+      welfare: 'welfare',
+    })
+  })
+
+  it('AC-7908.2: 사는 사람은 범위 안 동 몫으로 더하고(못 이은 동은 부르지 않음), 추세는 2022-10부터 해마다 10월', async () => {
+    const { deps, askedOf } = world()
+    const s = await collect(AT, R, deps)
+    const ym = '2026-10'
+    expect(vOf(s, 'people')).toEqual({
+      total: sum(popBands(D1, ym)) + sum(popBands(D2, ym)),
+      bands: addBands(popBands(D1, ym), popBands(D2, ym)),
+      households: 230,
+      unmatched: 0,
+    })
+    expect(s.people.ok && s.people.asOf).toBe('2026-10-15')
+    expect(vOf(s, 'trend')).toEqual(
+      ['2022-10', '2023-10', '2024-10', '2025-10', '2026-10'].map((m) => ({ ym: m, total: sum(popBands(D1, m)) + sum(popBands(D2, m)) })),
+    )
+    for (const q of askedOf('pop-age')) expect(q.dongs).not.toContain(LOST)
+    // 같은 몸통은 한 모으기 안에서 한 번만 부른다
+    const keys = askedOf('pop-age').map((q) => `${q.ym}|${q.dongs.join(',')}`)
+    expect(new Set(keys).size).toBe(keys.length)
+  })
+
+  it('AC-7908.2: 범위 안 동이 못 이은 동이면 세고(unmatched) 그 동은 부르지 않는다 · 지난달 인구가 비면 두 달 전', async () => {
+    const dongs = baseDongs()
+    dongs['41111'].dongs[1] = { ...dongs['41111'].dongs[1], unmatched: true }
+    const { deps, askedOf } = world({
+      dongs,
+      handlers: { 'pop-age': (q) => ok(q.ym === '2026-10' ? [] : q.dongs.map((dong) => ({ dong, bands: popBands(dong, q.ym) })), `${q.ym}-15`) },
+    })
+    const s = await collect(AT, R, deps)
+    expect(vOf(s, 'people')).toEqual({ total: sum(popBands(D1, '2026-09')), bands: popBands(D1, '2026-09'), households: 200, unmatched: 1 })
+    expect(s.people.ok && s.people.asOf).toBe('2026-09-15')
+    expect(askedOf('household').map((q) => q.ym)).toContain('2026-09')
+    for (const q of askedOf('pop-age')) expect(q.dongs).not.toContain(D2)
+  })
+
+  it('AC-7908.2: 사람 흐름은 후보 시군구 지난달이 없으면 두 달 전, 같은 시군구·달은 한 번만 받아 flow.ts로 잇는다', async () => {
+    const { deps, askedOf } = world()
+    const s = await collect(AT, R, deps)
+    expect(vOf(s, 'flow')).toEqual({
+      ym: '2026-09',
+      stations: [{ name: '가람역', line: '1호선', distM: d(STATION_A), perDay: 600 }],
+      stops: [{ name: '다솜정류장', distM: d(S1), perDay: 200 }],
+      total: 800,
+      unmatched: 1,
+    })
+    expect(s.flow.ok && s.flow.asOf).toBe('2026-09-30')
+    expect(askedOf('flow-volume')).toEqual([
+      { kind: 'flow-volume', sido: '41', sgg: '41111', ym: '2026-10' },
+      { kind: 'flow-volume', sido: '41', sgg: '41111', ym: '2026-09' },
+    ])
+    expect(askedOf('flow-bus')).toEqual([{ kind: 'flow-bus', sgg: '41111' }])
+    expect(askedOf('flow-rail')).toEqual([{ kind: 'flow-rail', sgg: '41111' }])
+  })
+
+  it('AC-7908.2: 정류장 좌표 파일이 없는 시군구면 흐름·정류장은 outside이고 흐름 자료를 부르지 않는다', async () => {
+    const { deps, askedOf } = world({ transit: { asOf: '2026-06-01', sggs: [] } })
+    const s = await collect(AT, R, deps)
+    expect(whyOf(s, 'flow')).toBe('outside')
+    expect(whyOf(s, 'bus')).toBe('outside')
+    expect(askedOf('flow-volume')).toEqual([])
+    expect(askedOf('flow-bus')).toEqual([])
+  })
+
+  it('AC-7908.2: 가장 가까운 역과 400m 안 정류장 수는 좌표 파일에서 센다(경계 근처는 이웃 시군구 파일도)', async () => {
+    const { deps } = world()
+    const s = await collect(AT, R, deps)
+    expect(vOf(s, 'station')).toEqual({ name: '가람역', line: '1호선', distM: d(STATION_A) })
+    expect(s.station.ok && s.station.asOf).toBe('2026-06-01')
+    expect(vOf(s, 'bus')).toBe(2) // S1(224m) + 이웃 시군구 S3(300m), S2(600m)는 밖
+    expect(s.bus.ok && s.bus.asOf).toBe('2026-06-01') // 파일 가운데 가장 새 날짜
+  })
+
+  it('AC-7908.2: 실거래는 범위 법정동(표본 점 k-point)만, 지난 6달 ㎡당 평균·건수', async () => {
+    const { deps, askedOf } = world()
+    const s = await collect(AT, R, deps)
+    expect(vOf(s, 'aptPrice')).toEqual({ perM2: 7_500_000, deals: 2 }) // (10,000,000 + 5,000,000) ÷ 2, 먼동·5월 전은 뺌
+    expect(vOf(s, 'bizPrice')).toEqual({ perM2: 5_000_000, deals: 1 })
+    const months = ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10']
+    expect(askedOf('apt-trade').map((q) => `${q.sgg}|${q.ym}`).sort()).toEqual(months.map((m) => `41111|${m}`))
+    expect(askedOf('biz-trade').map((q) => q.ym).sort()).toEqual(months)
+    expect(askedOf('k-point').length).toBeLessThanOrEqual(19)
+  })
+
+  it('AC-7908.2: 아파트는 칸이 null인 단지를 거르고, 입주 예정은 지난 입주·범위 밖 동·빈칸을 뺀다', async () => {
+    const { deps, askedOf } = world()
+    const s = await collect(AT, R, deps)
+    expect(vOf(s, 'apts')).toEqual([
+      { name: '다솜마을1단지', households: 1000, builtYear: 2010, bdongName: '다솜동' },
+      { name: '별동아파트', households: 500, builtYear: null, bdongName: '별동' },
+    ])
+    expect(vOf(s, 'presale')).toEqual([
+      { name: '이번달 입주', households: 50, moveIn: '2026-11' },
+      { name: '다솜 새아파트', households: 800, moveIn: '2027-03' },
+    ])
+    expect(askedOf('presale')).toEqual([{ kind: 'presale', sidoName: '가람도', from: '2023-11', to: '2026-11' }])
+  })
+
+  it('AC-7908.2: 시설·사고는 범위 안만 세고(겹침 한 번, 체력단련장은 영업 중만), 시장은 가장 가까운 곳', async () => {
+    const { deps, askedOf } = world()
+    const s = await collect(AT, R, deps)
+    expect(vOf(s, 'seniors')).toBe(3)
+    expect(vOf(s, 'gyms')).toBe(1)
+    expect(vOf(s, 'schools')).toBe(2)
+    expect(vOf(s, 'accidents')).toEqual({ spots: 2, cases: 8 })
+    expect(vOf(s, 'market')).toEqual({ name: '다솜시장', distM: d(moved(0, 700)) })
+    expect(askedOf('senior').map((q) => q.sggName).sort()).toEqual(['나래시 다솜구', '나래시 별빛구'])
+    expect(askedOf('accident')).toContainEqual({ kind: 'accident', sidoName: '가람도', sggName: '나래시 다솜구' })
+    expect(askedOf('senior').map((q) => q.sggName)).not.toContain('나래시 먼구')
+  })
+
+  it('AC-7908.2: 30m 안 가게는 층마다 세고 약국 수(상가정보)도 담는다', async () => {
+    const { deps, askedOf } = world()
+    const s = await collect(AT, R, deps)
+    expect(vOf(s, 'stores')).toEqual([
+      { floor: '지1', count: 1 },
+      { floor: '1', count: 2 },
+      { floor: '2', count: 1 },
+      { floor: '층 모름', count: 1 },
+    ])
+    expect(vOf(s, 'pharmacies')).toBe(1)
+    expect(askedOf('stores')).toEqual([{ kind: 'stores', at: AT, r: 30 }])
+  })
+
+  it('AC-7908.2: 경쟁 의원은 가까운 차례로 상세·체외충격파·진료 시간을 붙이고(한의원은 상세를 부르지 않음), 30m 안이면 같은 건물', async () => {
+    const { deps, askedOf } = world()
+    const s = await collect(AT, R, deps)
+    expect(vOf(s, 'rivals')).toEqual([
+      { name: '가람정형외과의원', kind: 'ortho', doctors: 2, therapists: 3, mri: true, ct: false, openedYear: 2024, distM: d(R1), sameBuilding: true, week: WEEK, eswt: 50_000 },
+      { name: '다솜한의원', kind: 'korean', doctors: 1, therapists: null, mri: null, ct: null, openedYear: 2010, distM: d(K1), sameBuilding: false, week: null, eswt: null },
+      { name: '나래마취통증의학과의원', kind: 'pain', doctors: 1, therapists: null, mri: null, ct: null, openedYear: null, distM: d(R2), sameBuilding: false, week: null, eswt: null },
+    ])
+    expect(askedOf('hosp-list').map((q) => q.group).sort()).toEqual(['clinic', 'korean'])
+    expect(askedOf('hosp-detail').map((q) => q.ykiho).sort()).toEqual(['Y1', 'Y2'])
+    expect(askedOf('nonpay')).toEqual(
+      expect.arrayContaining([
+        { kind: 'nonpay', ykiho: 'Y1', item: ESWT_ITEM },
+        { kind: 'nonpay', ykiho: 'Y2', item: ESWT_ITEM },
+      ]),
+    )
+    expect(askedOf('nonpay').length).toBe(2)
+    expect(ESWT_ITEM).toBe('MM045')
+  })
+
+  it('AC-7908.2: 3년 개폐업은 범위 안 의원만, 기간은 이틀 전까지 3년', async () => {
+    const { deps, askedOf } = world()
+    const s = await collect(AT, R, deps)
+    expect(vOf(s, 'history')).toEqual([
+      { kind: 'close', name: '닫은의원', dept: '내과', on: '2024-01-10', distM: d(moved(20, 0)) },
+      { kind: 'open', name: '새정형외과의원', dept: '정형외과', on: '2025-05-01', distM: d(moved(100, 0)) },
+    ])
+    expect(askedOf('clinic-license').map((q) => `${q.event} ${q.from}~${q.to}`).sort()).toEqual([
+      'close 2023-11-21~2026-11-20',
+      'open 2023-11-21~2026-11-20',
+    ])
+  })
+
+  it('AC-7908.2: 건축물대장은 후보 지번으로 부르고 첫째 건물의 pk 층만 골라 합친다(pk는 버림)', async () => {
+    const { deps, askedOf } = world()
+    const s = await collect(AT, R, deps)
+    expect(vOf(s, 'building')).toEqual({
+      usage: '제1종근린생활시설',
+      structure: '철근콘크리트구조',
+      above: 5,
+      below: 1,
+      totalM2: 1200.5,
+      approvedOn: '2015-06-30',
+      elevators: 1,
+      parking: 10,
+      floors: [
+        { label: '지1', usage: '주차장', m2: 300 },
+        { label: '1', usage: '의원', m2: 250.25 },
+      ],
+    })
+    const key = { sgg: '41111', bjdong: '10100', bun: '0012', ji: '0003', plat: '0' }
+    expect(askedOf('bld-title')).toEqual([{ kind: 'bld-title', ...key }])
+    expect(askedOf('bld-floor')).toEqual([{ kind: 'bld-floor', ...key }])
+  })
+
+  it('AC-7908.2: 후보 자리에 지번이 없으면 건물은 none이고 건축물대장을 부르지 않는다', async () => {
+    const base = baseHandlers()
+    const { deps, askedOf } = world({
+      handlers: {
+        'k-point': async (q) => {
+          const reply = await base['k-point']!(q)
+          return reply.ok && q.at.lat === AT.lat && q.at.lng === AT.lng ? ok({ ...(reply.value as object), lot: null }) : reply
+        },
+      },
+    })
+    const s = await collect(AT, R, deps)
+    expect(whyOf(s, 'building')).toBe('none')
+    expect(askedOf('bld-title')).toEqual([])
+  })
+
+  it('AC-7908.2: 소득·산업단지 고용은 파일 값(후보 시군구), 의료급여는 후보 시군구 하나 + 그 판 연월 인구', async () => {
+    const { deps, askedOf } = world()
+    const s = await collect(AT, R, deps)
+    expect(vOf(s, 'income')).toEqual({ sggName: '나래시 다솜구', won: 42_000_000, year: 2024 })
+    expect(s.income.ok && s.income.asOf).toBe('2025-12-31')
+    expect(vOf(s, 'industry')).toEqual({ sggName: '나래시 다솜구', employees: 12_000, parks: 3, quarter: '2026-2' })
+    expect(vOf(s, 'welfare')).toEqual({
+      sggName: '나래시 다솜구',
+      ym: '2025-12',
+      medical: 300,
+      basic: 500,
+      nearPoor: 200,
+      population: sum(popBands(D1, '2025-12')) + sum(popBands(D2, '2025-12')),
+    })
+    expect(askedOf('welfare')).toEqual([{ kind: 'welfare', sgg: '41111' }])
+    expect(askedOf('pop-age').filter((q) => q.ym === '2025-12').flatMap((q) => q.dongs).sort()).toEqual([D1, D2])
+  })
+
+  it('AC-7908.2: 의료급여 인구는 그 시군구 모든 행정동을 40개씩 불러 더하고, 못 받으면 population: null', async () => {
+    // 45동 시군구(0.001도 네모 9 × 5) — 후보는 그 가운데 한 동에 있다
+    const grid: DongFile = {
+      asOf: '2026-07-01',
+      dongs: Array.from({ length: 45 }, (_, i) => {
+        const w = 126.9955 + (i % 9) * 0.001
+        const s = 37.4985 + Math.floor(i / 9) * 0.001
+        return { code10: `4111150${String(i).padStart(3, '0')}`, name: `칸${i}동`, areaM2: 9_800, center: [w + 0.0005, s + 0.0005] as LngLat, rings: square(w, s, w + 0.001, s + 0.001) }
+      }),
+    }
+    const index: DongIndex = { asOf: '2026-07-01', sidos: [{ code2: '41', name: '가람도', sggs: [{ code5: '41111', name: '나래시 다솜구', bbox: [126.9955, 37.4985, 127.0045, 37.5035] }] }] }
+    const codes = grid.dongs.map((x) => x.code10)
+
+    const a = world({ index, dongs: { '41111': grid } })
+    const s = await collect(AT, 300, a.deps)
+    const welfareAsks = a.askedOf('pop-age').filter((q) => q.ym === '2025-12')
+    expect(welfareAsks.map((q) => q.dongs.length).sort((x, y) => y - x)).toEqual([40, 5])
+    expect(welfareAsks.flatMap((q) => q.dongs).sort()).toEqual([...codes].sort())
+    expect(s.welfare.ok && s.welfare.v.population).toBe(45 * sum(popBands('x', '2025-12')))
+
+    const b = world({
+      index,
+      dongs: { '41111': grid },
+      handlers: { 'pop-age': (q) => (q.ym === '2025-12' ? FAIL : ok(q.dongs.map((dong) => ({ dong, bands: popBands(dong, q.ym) })), `${q.ym}-15`)) },
+    })
+    const t = await collect(AT, 300, b.deps)
+    expect(t.welfare.ok).toBe(true)
+    expect(t.welfare.ok && t.welfare.v.population).toBeNull()
+  })
+
+  it('AC-7908.2: 의료급여 답에 그 시군구 줄이 없으면 none', async () => {
+    const { deps } = world({ handlers: { welfare: () => ok(null, '2025-12-31') } })
+    const s = await collect(AT, R, deps)
+    expect(whyOf(s, 'welfare')).toBe('none')
+  })
+
+  it('AC-7908.2: 카카오 답(주소 글·좌표·장소·거리)은 그날 값에 넣지 않고, 장소 찾기·주소 찾기는 부르지 않는다', async () => {
+    const { deps, asked } = world()
+    const s = await collect(AT, R, deps)
+    const text = JSON.stringify(s)
+    for (const word of ['가람로', '다솜동 12-3', '별동 5', 'kakao', 'hjd', 'lot', 'road', 'jibun', '4111110100', 'P1', 'pk', 'ykiho', 'Y1']) {
+      expect(text, word).not.toContain(word)
+    }
+    const kinds = new Set(asked.map((q) => q.kind))
+    for (const kind of ['k-address', 'k-near', 'k-keyword'] as const) expect(kinds.has(kind), kind).toBe(false)
+  })
+
+  it('AC-7908.2: 실패 종류는 ok: false — 열쇠 없음·활용신청 안 됨·던짐은 그 칸만, 파일 값은 그대로', async () => {
+    const noKey = world({ deps: { ask: async (q) => ({ ok: false, code: 'no-key', key: q.kind.startsWith('k-') ? 'kakao' : 'data' }) } })
+    const s = await collect(AT, R, noKey.deps)
+    for (const key of ['people', 'trend', 'flow', 'aptPrice', 'bizPrice', 'apts', 'presale', 'seniors', 'gyms', 'schools', 'accidents', 'pharmacies', 'rivals', 'history', 'market', 'building', 'stores', 'welfare'] as const) {
+      expect(whyOf(s, key), key).toBe('no-key')
+      expect('v' in s[key], key).toBe(false)
+    }
+    for (const key of ['income', 'industry', 'station', 'bus'] as const) expect(whyOf(s, key), key).toBe('ok')
+    expect(checkSnapshot(JSON.parse(JSON.stringify(s)))).toEqual(s)
+
+    const thrown = world({ deps: { ask: async () => Promise.reject(new Error('바깥이 끊겼어요')) } })
+    const t = await collect(AT, R, thrown.deps)
+    expect(whyOf(t, 'people')).toBe('failed')
+    expect(whyOf(t, 'rivals')).toBe('failed')
+    expect(whyOf(t, 'station')).toBe('ok')
+
+    const notApplied = world({ handlers: { welfare: () => ({ ok: false, code: 'not-applied' }) } })
+    const u = await collect(AT, R, notApplied.deps)
+    expect(whyOf(u, 'welfare')).toBe('not-applied')
+    expect(whyOf(u, 'people')).toBe('ok')
+  })
+
+  it('AC-7908.2: 동 경계 목록을 못 읽으면 지역이 필요한 칸만 failed이고 모으기는 던지지 않는다', async () => {
+    const { deps } = world({ deps: { dongIndex: async () => Promise.reject(new Error('파일 없음')) } })
+    const s = await collect(AT, R, deps)
+    for (const key of ['people', 'trend', 'flow', 'income', 'industry', 'seniors', 'market', 'bus', 'welfare', 'presale'] as const) expect(whyOf(s, key), key).toBe('failed')
+    for (const key of ['rivals', 'history', 'building', 'stores', 'station', 'aptPrice', 'apts'] as const) expect(whyOf(s, key), key).toBe('ok')
+  })
+
+  it(`AC-7908.2: 바깥 부르기는 동시에 ${COLLECT_LIMIT}개까지이고 진행 수(칸 n/22)를 알린다`, async () => {
+    const base = world()
+    let inFlight = 0
+    let most = 0
+    const progress: CollectProgress[] = []
+    const { deps } = world({
+      deps: {
+        ask: async (q) => {
+          inFlight += 1
+          most = Math.max(most, inFlight)
+          await new Promise((resolve) => setTimeout(resolve, 1))
+          inFlight -= 1
+          return base.deps.ask(q)
+        },
+        onProgress: (p) => progress.push(p),
+      },
+    })
+    await collect(AT, R, deps)
+    expect(COLLECT_LIMIT).toBe(4)
+    expect(most).toBe(4)
+    expect(progress.length).toBe(22)
+    expect(progress.map((p) => p.done)).toEqual(Array.from({ length: 22 }, (_, i) => i + 1))
+    expect(progress.every((p) => p.total === 22)).toBe(true)
+  })
+})
+
+describe('AC-7908.2 카카오 산업단지 찾기 결과 거르기(볼 때만, 그날 값에 넣지 않음)', () => {
+  it('AC-7908.2: 산업단지 분류·이름인 곳만 남기고 정류장·식당·관리사무소·같은 이름은 뺀다', () => {
+    const p = (name: string, category: string, m: number) => ({ name, category, at: moved(m, 0), distM: m })
+    const found = [
+      p('가람일반산업단지', '부동산 > 산업단지', 1200),
+      p('가람산업단지입구', '교통,수송 > 교통시설 > 버스정류장', 1250),
+      p('산업단지식당', '음식점 > 한식', 1300),
+      p('나래국가산업단지 관리사무소', '사회,공공기관 > 단체,협회', 1400),
+      p('가람일반산업단지', '부동산 > 산업단지', 1500),
+      p('다솜농공단지', '부동산 > 산업단지 > 농공단지', 1600),
+      p('별빛국가산업단지(별빛공단)', '지역명', 1700),
+    ]
+    expect(industryParks(found).map((x) => x.name)).toEqual(['가람일반산업단지', '다솜농공단지', '별빛국가산업단지(별빛공단)'])
+  })
+})
+
+describe('AC-7908.2 collectScan — 동네 훑기 값(동마다, 저장 안 함)', () => {
+  it("AC-7908.2: 시군구의 동마다 design.md 8절 '훑기 ○' 세부 값을 낸다(범위 = 그 동)", async () => {
+    const { deps, asked, askedOf } = world()
+    const scan = await collectScan('41111', deps)
+    expect(scan.ok).toBe(true)
+    if (!scan.ok) return
+    expect(scan.sgg).toBe('41111')
+    expect(scan.sggName).toBe('나래시 다솜구')
+    expect(scan.at).toBe(NOW)
+    const byCode = Object.fromEntries(scan.dongs.map((x) => [x.code10, x]))
+    expect(Object.keys(byCode).sort()).toEqual([D1, D2, LOST].sort())
+
+    const ym = '2026-10'
+    const trendOf = (dong: string) => ['2022-10', '2023-10', '2024-10', '2025-10', '2026-10'].map((m) => ({ ym: m, total: sum(popBands(dong, m)) }))
+    const c1: LatLng = { lat: 37.5, lng: 126.996 }
+    const c2: LatLng = { lat: 37.5, lng: 127.006 }
+    expect(byCode[D1]).toEqual({
+      code10: D1,
+      name: '다솜1동',
+      unmatched: false,
+      facts: {
+        areaM2: 10_000,
+        people: { total: sum(popBands(D1, ym)), bands: popBands(D1, ym), households: 200 },
+        trend: trendOf(D1),
+        accidentSpots: 2,
+        industryEmployees: 12_000,
+        schools: 2,
+        seniorCenters: 3,
+        gyms: 1,
+        rivals: 1,
+        newRivals: 1,
+        stationM: Math.min(d(STATION_A, c1), d(STATION_B, c1)),
+        stops: 1,
+      },
+    })
+    expect(byCode[D2].facts).toEqual({
+      areaM2: 10_000,
+      people: { total: sum(popBands(D2, ym)), bands: popBands(D2, ym), households: 30 },
+      trend: trendOf(D2),
+      accidentSpots: 0,
+      industryEmployees: 12_000,
+      schools: 0,
+      seniorCenters: 0,
+      gyms: 0,
+      rivals: 1,
+      newRivals: 0,
+      stationM: d(STATION_A, c2),
+      stops: 1, // 이웃 시군구 파일의 S3
+    })
+    expect(byCode[LOST].unmatched).toBe(true)
+    expect(byCode[LOST].facts.people).toBeNull()
+
+    // 훑기는 후보에서만 쓰는 자료·카카오를 부르지 않는다
+    const allowed = new Set<QueryKind>(['pop-age', 'household', 'accident', 'school', 'senior', 'gym', 'hosp-list'])
+    for (const q of asked) expect(allowed.has(q.kind), q.kind).toBe(true)
+    const list = askedOf('hosp-list')
+    expect(list.map((q) => q.group)).toEqual(['clinic'])
+    expect(list[0].at).toEqual({ lat: 37.5, lng: 127 })
+    expect(list[0].r).toBeGreaterThanOrEqual(d({ lat: 37.49, lng: 126.99 }, { lat: 37.5, lng: 127 }))
+    expect(list[0].r).toBeLessThanOrEqual(20_000)
+    for (const q of askedOf('pop-age')) expect(q.dongs).not.toContain(LOST)
+    expect(scan.parts.people).toEqual({ ok: true, src: 'pop-age', asOf: '2026-10-15' })
+  })
+
+  it('AC-7908.2: 자료 하나가 실패하면 그 값만 null이고 그 자료 상태에 까닭이 남는다', async () => {
+    const progress: CollectProgress[] = []
+    const { deps } = world({ handlers: { 'hosp-list': () => ({ ok: false, code: 'no-key', key: 'data' }) }, deps: { onProgress: (p) => progress.push(p) } })
+    const scan = await collectScan('41111', deps)
+    if (!scan.ok) throw new Error('훑기가 실패했어요')
+    for (const dong of scan.dongs) {
+      expect(dong.facts.rivals).toBeNull()
+      expect(dong.facts.newRivals).toBeNull()
+    }
+    expect(scan.parts.rivals).toEqual({ ok: false, src: 'hosp-list', why: 'no-key' })
+    expect(scan.dongs.find((x) => x.code10 === D1)?.facts.schools).toBe(2)
+    expect(progress.at(-1)).toEqual({ done: progress.length, total: progress.length })
+  })
+
+  it('AC-7908.2: 동 경계 목록에 없는 시군구는 outside, 파일을 못 읽으면 failed', async () => {
+    expect(await collectScan('99999', world().deps)).toEqual({ ok: false, why: 'outside' })
+    const broken = world({ deps: { dongFile: async () => Promise.reject(new Error('x')) } })
+    expect(await collectScan('41111', broken.deps)).toEqual({ ok: false, why: 'failed' })
+  })
+})
