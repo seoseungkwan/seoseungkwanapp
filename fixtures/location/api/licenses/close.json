@@ -1,0 +1,60 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": {
+      "items": {
+        "item": [
+          {
+            "MNG_NO": "PHMB320199990000011",
+            "BPLC_NM": "하늘정형외과의원",
+            "LCPMT_YMD": "20190305",
+            "SALS_STTS_NM": "폐업",
+            "CLSBIZ_YMD": "20261105",
+            "DGSBJT_CN_NM": "정형외과",
+            "ROAD_NM_ADDR": "가상도 나래구 구름로 7, 3층",
+            "LOTNO_ADDR": "가상도 나래구 별빛동 12",
+            "CRD_INFO_X": "205000",
+            "CRD_INFO_Y": "448000"
+          },
+          {
+            "MNG_NO": "PHMB320219990000012",
+            "BPLC_NM": "푸른마취통증의학과의원",
+            "LCPMT_YMD": "20210712",
+            "SALS_STTS_NM": "폐업",
+            "CLSBIZ_YMD": "2026-11-19",
+            "DGSBJT_CN_NM": "마취통증의학과",
+            "ROAD_NM_ADDR": "가상도 가람구 바다로 3",
+            "LOTNO_ADDR": "가상도 가람구 물빛동 1",
+            "CRD_INFO_X": "198000",
+            "CRD_INFO_Y": "451600"
+          },
+          {
+            "MNG_NO": "PHMB320229990000013",
+            "BPLC_NM": "별빛의원",
+            "LCPMT_YMD": "20220404",
+            "SALS_STTS_NM": "폐업",
+            "CLSBIZ_YMD": "20261121",
+            "DGSBJT_CN_NM": "내과",
+            "ROAD_NM_ADDR": "가상도 가람구 바다로 90",
+            "CRD_INFO_X": "198500",
+            "CRD_INFO_Y": "451700"
+          },
+          {
+            "MNG_NO": "PHMB320239990000014",
+            "BPLC_NM": "구름의원",
+            "LCPMT_YMD": "20230808",
+            "SALS_STTS_NM": "폐업",
+            "CLSBIZ_YMD": "",
+            "DGSBJT_CN_NM": "내과",
+            "ROAD_NM_ADDR": "가상도 가람구 바다로 95",
+            "CRD_INFO_X": "198600",
+            "CRD_INFO_Y": "451800"
+          }
+        ]
+      },
+      "numOfRows": 500,
+      "pageNo": 1,
+      "totalCount": 4
+    }
+  }
+}
