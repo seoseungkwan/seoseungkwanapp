@@ -1,7 +1,7 @@
 // 입지 분석 점수(specs/location design.md 8절 · REQ-7911·REQ-7919). 순수 함수 — 바깥 부르기·저장·시계·console 없음
 //
 // 세부 항목은 아래 GROUPS 한 곳에만 적는다. 새 세부 항목(예: 의료급여·차상위 비율)을 더하려면
-//   1) ScoreFacts에 값 칸 하나  2) GROUPS의 그 항목 subs에 줄 하나(id·값 설명·방향·처음 기준·무게·까닭·훑기·read)
+//   1) ScoreFacts(types/location.ts)에 값 칸 하나  2) GROUPS의 그 항목 subs에 줄 하나(id·값 설명·방향·처음 기준·무게·까닭·훑기·read)
 // 만 고치면 처음 설정(DEFAULT_SCORE_RULE)·칸 검사(checkScoreRule)·채우기(fillScoreRule)·매기기(scoreItems)가 모두 따라온다.
 // 예전에 저장한 설정에 새 세부 항목이 없으면 fillScoreRule이 처음 값으로 채운다
 //
@@ -11,68 +11,10 @@
 //   항목 점수 = Σ 버림(세부 점수 × 세부 무게 ÷ 값 있는 세부 무게 합) · 종합 = Σ 버림(항목 점수 × 무게 ÷ 값 있는 항목 무게 합)
 //   값이 없는 세부 항목·항목은 빼고 남은 무게로 다시 나눈다. 다 없거나 무게 합이 0이면 null('값 없음'·'점수 없음')
 
-export type YesNo = 'yes' | 'no' | 'unknown'
+import type { ScoreFacts, YesNo } from '@/types/location'
 
-/** 점수에 쓰는 값. 빈칸(undefined)·null·숫자가 아닌 값은 '자료 없음'이다.
- * 후보는 그날 값·후보 줄·매물에서, 동네 훑기는 그 동 값에서 부르는 쪽이 채운다(같은 Phase 파일을 부르지 않으려고 모양을 여기서 정함) */
-export type ScoreFacts = {
-  /** 범위 넓이 ㎡ — 후보 = π × 반지름², 동네 훑기 = 그 동 넓이 */
-  areaM2?: number | null
-  /** 범위 안 사는 사람(그날 값 people.v 모양). bands = 10세 나이대 11칸 인구(AGE_BANDS 차례) */
-  people?: { total: number; bands: readonly number[]; households: number } | null
-  /** 범위 안 아파트 세대 합 */
-  apartments?: number | null
-  /** 범위 안 입주 예정 세대 합 */
-  presale?: number | null
-  /** 해마다 10월 인구(2022-10부터) */
-  trend?: readonly { ym: string; total: number }[] | null
-  /** 범위 안 교통사고 다발 지점 수 */
-  accidentSpots?: number | null
-  /** 후보 시군구 산업단지 고용 인원 합 */
-  industryEmployees?: number | null
-  /** 범위 안 초·중·고 수 */
-  schools?: number | null
-  /** 범위 안 경로당 수 */
-  seniorCenters?: number | null
-  /** 범위 안 체력단련장 수 */
-  gyms?: number | null
-  /** n = 범위 안 정형외과·마취통증의학과·재활의학과 수(한의원 뺌) */
-  rivals?: number | null
-  /** 개설일이 3년 안인 경쟁 의원 수 */
-  newRivals?: number | null
-  /** 진료 시간 빈틈 칸 수(월~토) */
-  gapCells?: number | null
-  /** 경쟁 의원 체외충격파 평균 값(원) */
-  rivalEswt?: number | null
-  /** 지금 의원 체외충격파 값(원, location_settings.home_eswt) */
-  homeEswt?: number | null
-  /** 가장 가까운 역까지 m(훑기는 동 가운데에서) */
-  stationM?: number | null
-  /** 400m 안 버스 정류장 수(훑기는 동 가운데에서) */
-  stops?: number | null
-  /** 범위 안 하루 평균 승하차 합 */
-  flow?: number | null
-  /** 후보 층 글(floor_label) */
-  floorLabel?: string | null
-  elevators?: number | null
-  parking?: number | null
-  /** 사용승인 뒤 햇수 */
-  buildingAge?: number | null
-  /** 후보 30m 안 약국 수 */
-  pharmacies?: number | null
-  /** 간판 보임(사용자가 고름) */
-  sign?: YesNo | null
-  /** 위반 건축물(사용자가 고름) */
-  violation?: YesNo | null
-  /** 후보 매물 평당 월세(원) */
-  rentPerPy?: number | null
-  /** 후보 매물 보증금(원) */
-  deposit?: number | null
-  /** 후보 매물 권리금(원) */
-  premium?: number | null
-  /** 넓이·월세가 있는 저장 매물 모두의 평당 월세(후보 매물 포함) — 2개 미만이면 k-vsAvg 없음 */
-  savedRentsPerPy?: readonly number[] | null
-}
+// 점수에 쓰는 값(ScoreFacts)과 고르는 값(YesNo)은 types/location.ts 한 곳에 둔다(예전 import 길을 위해 여기서도 내보낸다)
+export type { ScoreFacts, YesNo }
 
 type Reader = (f: ScoreFacts, bands: readonly number[]) => number | null
 type SubBase = {
@@ -89,6 +31,8 @@ type SubBase = {
   read: Reader
   /** 이 값이면 기준과 상관없이 0점(지하층) */
   zero?: (v: number) => boolean
+  /** 방향을 고를 수 있는 세부 항목만(p-welfare): 적을수록 좋음으로 바꿀 때의 처음 기준. 설정은 {w, full}·{w, best, worst} 둘 다 받는다 */
+  flip?: { best: number; worst: number }
 }
 type SubDefRaw = SubBase & ({ dir: 'more'; full: number } | { dir: 'less'; best: number; worst: number })
 type GroupDefRaw = { id: string; name: string; w: number; scan: boolean; note: string; subs: readonly SubDefRaw[] }
@@ -148,8 +92,9 @@ function priceGap(f: ScoreFacts): number | null {
   return Math.max(0, ((rival - home) * 100) / home)
 }
 
-/** 층 글의 숫자. 지하('지'로 시작, '지상'은 빼고 · 'B1'도)는 음수(숫자가 없으면 −1), 숫자가 없으면 null */
-function floorNumber(label: string | null | undefined): number | null {
+/** 층 글의 숫자. 지하('지'로 시작, '지상'은 빼고 · 'B1'도)는 음수(숫자가 없으면 −1), 숫자가 없으면 null.
+ * 점수(s-floor)와 위험 신호(flags.ts barrier)가 같이 쓴다 */
+export function floorNumber(label: string | null | undefined): number | null {
   if (typeof label !== 'string') return null
   const text = label.trim()
   const digits = /\d+/.exec(text)
@@ -188,6 +133,7 @@ const GROUPS = [
       { id: 'p-industry', label: '후보 시군구의 산업단지 고용 인원 합(단지 위치가 없어 시군구 단위)', unit: '명', dir: 'more', full: 20000, w: 5, why: '일하다 다치는 환자. 시군구 단위라 거칠어 낮게', scan: true, read: (f) => num(f.industryEmployees) },
       { id: 'p-schools', label: '범위 안 초·중·고 수', unit: '곳', dir: 'more', full: 5, w: 5, why: '학생 운동 손상·학부모', scan: true, read: (f) => num(f.schools) },
       { id: 'p-facilities', label: '범위 안 경로당 + 체력단련장', unit: '곳', dir: 'more', full: 30, w: 5, why: '노년·운동하는 사람 신호. 경로당은 단지마다 있어 흔하다', scan: true, read: (f) => sumPresent(f.seniorCenters, f.gyms) },
+      { id: 'p-welfare', label: '후보 시군구 (기초 의료급여 + 차상위 3종) ÷ 주민등록 인구 × 100(%)', unit: '%', dir: 'more', full: 5, w: 0, why: '의료급여·차상위가 많으면 근골격 진료 수요가 많을 수도, 비급여를 덜 쓸 수도 있어 방향과 무게는 사용자가 정한다. 전국 어림 3.5%쯤', scan: false, read: (f) => num(f.welfareRate), flip: { best: 1, worst: 5 } },
     ],
   },
   {
@@ -312,7 +258,11 @@ function bandsOk(bands: unknown): boolean {
   return Array.isArray(bands) && bands.length > 0 && bands.length <= BAND_COUNT && bands.every(isBand) && new Set(bands).size === bands.length
 }
 
-/** 저장해도 되는지 칸마다 본다(빈 배열 = 저장해도 됨). 무게 판은 문제가 하나라도 있으면 저장 콜백을 부르지 않는다 */
+/** 방향을 고르는 세부 항목(flip)에서 적을수록 모양인가: full 칸이 없고 best·worst 칸 중 하나라도 있으면 */
+const lessShape = (item: Record<string, unknown>) => !('full' in item) && ('best' in item || 'worst' in item)
+
+/** 저장해도 되는지 칸마다 본다(빈 배열 = 저장해도 됨). 무게 판은 문제가 하나라도 있으면 저장 콜백을 부르지 않는다.
+ * 방향을 고르는 세부 항목(p-welfare)만 {w, full}·{w, best, worst} 둘 다 받는다 */
 export function checkScoreRule(rule: ScoreRuleDraft): RuleProblem[] {
   const out: RuleProblem[] = []
   const weights: Record<string, unknown> = isRecord(rule.weights) ? rule.weights : {}
@@ -324,7 +274,7 @@ export function checkScoreRule(rule: ScoreRuleDraft): RuleProblem[] {
       const raw = items[s.id]
       const item: Record<string, unknown> = isRecord(raw) ? raw : {}
       if (!isWeight(item.w)) out.push({ at: s.id, field: 'w', text: RULE_TEXT.weight })
-      if (s.dir === 'more') {
+      if (s.dir === 'more' && !(s.flip && lessShape(item))) {
         if (!(isInt(item.full) && item.full > 0)) out.push({ at: s.id, field: 'full', text: RULE_TEXT.full })
         continue
       }
@@ -337,7 +287,8 @@ export function checkScoreRule(rule: ScoreRuleDraft): RuleProblem[] {
   return out
 }
 
-/** 저장된 설정(DB jsonb)을 다 갖춘 설정으로: 맞는 칸은 남기고, 빠지거나 틀린 칸·나중에 더한 세부 항목은 처음 값, 모르는 id는 버린다 */
+/** 저장된 설정(DB jsonb)을 다 갖춘 설정으로: 맞는 칸은 남기고, 빠지거나 틀린 칸·나중에 더한 세부 항목은 처음 값, 모르는 id는 버린다.
+ * 방향을 고르는 세부 항목은 저장된 모양(많을수록·적을수록)을 따르고, 기준이 틀리면 그 모양의 처음 기준이다 */
 export function fillScoreRule(raw: unknown): ScoreRule {
   const rule = buildDefault()
   if (!isRecord(raw)) return rule
@@ -355,7 +306,10 @@ export function fillScoreRule(raw: unknown): ScoreRule {
     const item = items[s.id]
     if (!isRecord(item)) continue
     const w = isWeight(item.w) ? item.w : s.w
-    if (s.dir === 'more') rule.items[s.id] = { w, full: isInt(item.full) && item.full > 0 ? item.full : s.full }
+    if (s.flip && lessShape(item)) {
+      const ok = isInt(item.best) && isInt(item.worst) && item.best < item.worst
+      rule.items[s.id] = ok ? { w, best: item.best as number, worst: item.worst as number } : { w, best: s.flip.best, worst: s.flip.worst }
+    } else if (s.dir === 'more') rule.items[s.id] = { w, full: isInt(item.full) && item.full > 0 ? item.full : s.full }
     else if (isInt(item.best) && isInt(item.worst) && item.best < item.worst) rule.items[s.id] = { w, best: item.best, worst: item.worst }
     else rule.items[s.id] = { w, best: s.best, worst: s.worst }
   }

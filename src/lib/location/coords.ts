@@ -135,6 +135,20 @@ export function distM(a: LatLng, b: LatLng): number {
   return Math.floor(2 * EARTH_R * Math.asin(Math.min(1, Math.sqrt(h))))
 }
 
+/**
+ * 거리 글(AC-7905.6): m를 버린 뒤 1,000m 미만은 '850m', 그 위는 0.1km 버림에 끝 .0을 뺀 '1.4km'·'2km'.
+ * 음수·숫자 아님은 RangeError
+ */
+export function distText(m: number): string {
+  if (!Number.isFinite(m) || m < 0) throw new RangeError('거리는 0 이상의 숫자여야 해요')
+  const whole = Math.floor(m)
+  if (whole < 1000) return `${whole}m`
+  const tenths = Math.floor(whole / 100)
+  const km = Math.floor(tenths / 10)
+  const frac = tenths % 10
+  return frac === 0 ? `${km}km` : `${km}.${frac}km`
+}
+
 /** 고리마다 점 수: 가운데 1개 + 6·12(19개), +18(37개), +24(61개) */
 const RINGS = [6, 12, 18, 24]
 

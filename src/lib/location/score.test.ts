@@ -6,6 +6,7 @@ import {
   SCORE_GROUPS,
   checkScoreRule,
   fillScoreRule,
+  floorNumber,
   scoreItems,
   subScore,
   type ScoreFacts,
@@ -37,6 +38,7 @@ const FULL: ScoreFacts = {
   schools: 2, // 40
   seniorCenters: 10, // + 체력단련장 5 = 15곳 → 50
   gyms: 5,
+  welfareRate: 4.2, // 많을수록 · 5% → 84(처음 무게 0이라 항목 점수는 그대로)
   rivals: 3, // 적을수록 0~6 → 50 · 1곳당 16,000 ÷ 4 = 4,000명 → 20
   newRivals: 1, // 적을수록 0~3 → 66
   gapCells: 5, // 50
@@ -74,6 +76,7 @@ describe('AC-7911.1 DEFAULT_SCORE_RULE·SCORE_GROUPS — design.md 8절 표 그�
         'p-industry': { w: 5, full: 20000 },
         'p-schools': { w: 5, full: 5 },
         'p-facilities': { w: 5, full: 30 },
+        'p-welfare': { w: 0, full: 5 },
         'c-count': { w: 30, best: 0, worst: 6 },
         'c-perRival': { w: 35, full: 20000 },
         'c-newOpen': { w: 15, best: 0, worst: 3 },
@@ -218,6 +221,7 @@ describe('AC-7911.1·AC-7919.2 scoreItems — 후보(항목 다섯)', () => {
       'p-industry': 5000,
       'p-schools': 2,
       'p-facilities': 15,
+      'p-welfare': 4.2,
       'c-count': 3,
       'c-perRival': 4000,
       'c-newOpen': 1,
@@ -253,6 +257,7 @@ describe('AC-7911.1·AC-7919.2 scoreItems — 후보(항목 다섯)', () => {
       'p-industry': 25,
       'p-schools': 40,
       'p-facilities': 50,
+      'p-welfare': 84,
       'c-count': 50,
       'c-perRival': 20,
       'c-newOpen': 66,
@@ -273,7 +278,7 @@ describe('AC-7911.1·AC-7919.2 scoreItems — 후보(항목 다섯)', () => {
       'k-premium': 80,
       'k-vsAvg': 50,
     })
-    // 사는 사람 32+15+1+4+8+1+1+2+2 · 경쟁 15+7+9+5+10 · 교통(흐름 없음 → 무게 60) 33+13 · 자리(위반 모름 → 무게 90) 13+22+6+8+0+11 · 비용 28+13+16+15
+    // 사는 사람 32+15+1+4+8+1+1+2+2(+의료급여 무게 0) · 경쟁 15+7+9+5+10 · 교통(흐름 없음 → 무게 60) 33+13 · 자리(위반 모름 → 무게 90) 13+22+6+8+0+11 · 비용 28+13+16+15
     expect(r.groups.map((g) => [g.id, g.score])).toEqual([
       ['people', 66],
       ['rivals', 46],
@@ -600,5 +605,94 @@ describe('AC-7919.2 fillScoreRule — 저장된 설정에 빠진 칸은 처음 �
     const rule = clone(DEFAULT_SCORE_RULE)
     rule.items['p-schools'] = { w: 5, full: 0 }
     expect(sub(scoreItems({ schools: 2 }, rule), 'p-schools')?.score).toBe(40)
+  })
+})
+
+describe('AC-7911.4 floorNumber — 층 읽기 한 곳(점수 s-floor·위험 신호 barrier가 같이 씀)', () => {
+  it('AC-7911.4: 층 글의 숫자, 지하는 음수(숫자 없으면 −1), 숫자가 없으면 null', () => {
+    expect(floorNumber('3층')).toBe(3)
+    expect(floorNumber(' 2층 ')).toBe(2)
+    expect(floorNumber('지상 2층')).toBe(2)
+    expect(floorNumber('지1층')).toBe(-1)
+    expect(floorNumber('지하 2층')).toBe(-2)
+    expect(floorNumber('지하')).toBe(-1)
+    expect(floorNumber('B1')).toBe(-1)
+    expect(floorNumber('b 2')).toBe(-2)
+    for (const label of ['', '옥탑', null, undefined]) expect(floorNumber(label), String(label)).toBeNull()
+  })
+})
+
+describe('AC-7919.6 p-welfare 의료급여·차상위 비율 — 이 세부 항목만 방향 두 모양', () => {
+  const welfare = (rule: ScoreRule, welfareRate: number | null) => sub(scoreItems({ welfareRate }, rule), 'p-welfare')
+  const less = () => {
+    const rule = clone(DEFAULT_SCORE_RULE)
+    rule.items['p-welfare'] = { w: 10, best: 1, worst: 5 }
+    return rule
+  }
+
+  it('AC-7919.6: 처음 설정은 무게 0·많을수록 좋음·5%면 100점이고, 사는 사람·수요 항목의 열째 세부 항목이다', () => {
+    expect(DEFAULT_SCORE_RULE.items['p-welfare']).toEqual({ w: 0, full: 5 })
+    const people = SCORE_GROUPS.find((g) => g.id === 'people')
+    expect(people?.subs.map((s) => s.id).indexOf('p-welfare')).toBe(9)
+    const def = people?.subs.find((s) => s.id === 'p-welfare')
+    expect(def).toMatchObject({ dir: 'more', full: 5, w: 0, scan: false, unit: '%' })
+  })
+
+  it('AC-7919.6: 적을수록 좋음으로 바꿀 때의 처음 기준은 1% 이하면 100점 · 5% 이상이면 0점이다', () => {
+    const def = SCORE_GROUPS.flatMap((g) => g.subs).find((s) => s.id === 'p-welfare')
+    expect(def?.flip).toEqual({ best: 1, worst: 5 })
+    // 다른 세부 항목은 방향을 고르지 않는다
+    expect(SCORE_GROUPS.flatMap((g) => g.subs).filter((s) => s.flip !== undefined).map((s) => s.id)).toEqual(['p-welfare'])
+  })
+
+  it('AC-7919.6: 많을수록 좋음 = 버림(비율 × 100 ÷ 5), 적을수록 좋음 = 1%~5% 곧은 줄', () => {
+    expect(welfare(DEFAULT_SCORE_RULE, 4.2)).toEqual({ id: 'p-welfare', value: 4.2, score: 84 })
+    expect(welfare(DEFAULT_SCORE_RULE, 6)?.score).toBe(100)
+    expect(welfare(less(), 3)).toEqual({ id: 'p-welfare', value: 3, score: 50 })
+    expect(welfare(less(), 0.5)?.score).toBe(100)
+    expect(welfare(less(), 5)?.score).toBe(0)
+    expect(welfare(less(), null)).toEqual({ id: 'p-welfare', value: null, score: null })
+  })
+
+  it('AC-7919.6: 처음 무게 0이라 값이 있어도 사는 사람·수요 점수가 그대로이고, 무게를 주면 들어간다', () => {
+    const base = group(scoreItems({ schools: 2 }, DEFAULT_SCORE_RULE), 'people')?.score
+    expect(group(scoreItems({ schools: 2, welfareRate: 0 }, DEFAULT_SCORE_RULE), 'people')?.score).toBe(base)
+    expect(group(scoreItems({ welfareRate: 4 }, DEFAULT_SCORE_RULE), 'people')?.score).toBeNull()
+    // 학교 40점(무게 5) + 적을수록 의료급여 3% → 50점(무게 10): 버림(40×5/15) + 버림(50×10/15) = 13 + 33
+    expect(group(scoreItems({ schools: 2, welfareRate: 3 }, less()), 'people')?.score).toBe(46)
+  })
+
+  it('AC-7919.6: 동네 훑기에서는 쓰지 않는다(시군구 값이라 동마다 같음 — 후보에서만)', () => {
+    const r = scoreItems({ welfareRate: 3 }, less(), 'scan')
+    expect(r.groups.flatMap((g) => g.subs.map((s) => s.id))).not.toContain('p-welfare')
+  })
+
+  it('AC-7919.6: 칸 검사는 p-welfare만 두 모양을 받는다(다른 세부 항목은 바꾼 모양이면 빈칸 글)', () => {
+    expect(checkScoreRule(less())).toEqual([])
+    const flipped = clone(less())
+    flipped.items['p-welfare'] = { w: 10, best: 5, worst: 1 }
+    expect(checkScoreRule(flipped)).toEqual([{ at: 'p-welfare', text: RULE_TEXT.order }])
+    const zero = clone(DEFAULT_SCORE_RULE)
+    zero.items['p-welfare'] = { w: 0, full: 0 }
+    expect(checkScoreRule(zero)).toEqual([{ at: 'p-welfare', field: 'full', text: RULE_TEXT.full }])
+    const blank = clone(DEFAULT_SCORE_RULE)
+    ;(blank.items as Record<string, unknown>)['p-welfare'] = { w: 10, best: null, worst: 5 }
+    expect(checkScoreRule(blank)).toEqual([{ at: 'p-welfare', field: 'best', text: RULE_TEXT.blank }])
+    const other = clone(DEFAULT_SCORE_RULE)
+    other.items['p-senior'] = { w: 15, best: 1, worst: 5 }
+    expect(checkScoreRule(other)).toEqual([{ at: 'p-senior', field: 'full', text: RULE_TEXT.full }])
+  })
+
+  it('AC-7919.6: 고른 방향이 저장된 설정에서 그대로 남고, 예전 설정에 없으면 처음 값(많을수록 5%)으로 채운다', () => {
+    expect(fillScoreRule(less()).items['p-welfare']).toEqual({ w: 10, best: 1, worst: 5 })
+    expect(fillScoreRule({ items: { 'p-welfare': { w: 20, full: 8 } } }).items['p-welfare']).toEqual({ w: 20, full: 8 })
+    const old = structuredClone(DEFAULT_SCORE_RULE) as unknown as { items: Record<string, unknown> }
+    delete old.items['p-welfare']
+    expect(fillScoreRule(old).items['p-welfare']).toEqual({ w: 0, full: 5 })
+    // 적을수록 모양인데 기준이 틀리면 적을수록 처음 기준, 많을수록 모양인데 기준이 틀리면 많을수록 처음 기준
+    expect(fillScoreRule({ items: { 'p-welfare': { w: 10, best: 5, worst: 1 } } }).items['p-welfare']).toEqual({ w: 10, best: 1, worst: 5 })
+    expect(fillScoreRule({ items: { 'p-welfare': { w: 10, full: 0 } } }).items['p-welfare']).toEqual({ w: 10, full: 5 })
+    // 다른 세부 항목은 바꾼 모양을 받지 않고 처음 모양으로
+    expect(fillScoreRule({ items: { 'p-senior': { w: 15, best: 1, worst: 5 } } }).items['p-senior']).toEqual({ w: 15, full: 25 })
   })
 })

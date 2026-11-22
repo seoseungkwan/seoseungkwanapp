@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { Rival } from '@/types/location'
 import { GAP_DAYS, GAP_SLOTS, HOLIDAY_NOTE, LUNCH_NOTE, gapTable, type GapRival } from './hours'
 
 // 진료 시간 빈틈 표(design.md 11절 hours.ts): 요일 7 × 칸 7, 칸 전체에 문을 연 경쟁 의원 수, 0이면 빈틈
@@ -65,7 +66,11 @@ describe('AC-7909.3 진료 시간 빈틈 표', () => {
     const t = gapTable([ortho(weekOf(span(900, 1800)))])
     expect(t.counts[2]).toEqual([1, 1, 1, 1, 1, 0, 0])
     expect(GAP_SLOTS.filter((s) => s.lunchUnknown).map((s) => s.id)).toEqual(['lunch'])
-    expect(LUNCH_NOTE).toBe('점심 쉬는 시간은 자료에 없어 문을 연 것으로 셌어요.')
+    // requirements '화면 글 기본값'(후보 자세히 › 진료 시간 빈틈 아래)
+    expect(LUNCH_NOTE).toBe('점심 쉬는 시간은 자료에 없어 문을 연 것으로 세요.')
+    expect(`${LUNCH_NOTE} ${HOLIDAY_NOTE}`).toBe(
+      '점심 쉬는 시간은 자료에 없어 문을 연 것으로 세요. 공휴일 진료는 의원마다 그때그때 달라 세지 않아요.',
+    )
   })
 
   it('AC-7909.3: 공휴일 칸(8번째)은 세지 않는다', () => {
@@ -90,5 +95,25 @@ describe('AC-7909.3 진료 시간 빈틈 표', () => {
   it('AC-7909.3: 여는 시각이 닫는 시각보다 늦은 틀린 칸은 어느 칸에도 세지 않는다', () => {
     const t = gapTable([ortho(weekOf([h(1800), h(900)]))])
     expect(t.counts).toEqual(zeros())
+  })
+
+  it('AC-7909.3: 그날 값의 경쟁 의원(types/location.ts Rival) 그대로 넣어 센다', () => {
+    const full: Rival = {
+      name: '예시정형외과의원',
+      kind: 'ortho',
+      doctors: 2,
+      therapists: null,
+      mri: true,
+      ct: null,
+      openedYear: 2020,
+      distM: 300,
+      sameBuilding: false,
+      week: weekOf(span(900, 1800)),
+      eswt: null,
+    }
+    const rivals: Rival[] = [full, { ...full, kind: 'korean' }, { ...full, week: null }]
+    const t = gapTable(rivals)
+    expect(t.counts[1]).toEqual([1, 1, 1, 1, 1, 0, 0])
+    expect([t.counted, t.noHours]).toEqual([1, 1])
   })
 })

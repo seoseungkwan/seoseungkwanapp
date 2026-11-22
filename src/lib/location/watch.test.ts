@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { distM } from './coords'
 import {
   WATCH_DEPTS,
   WATCH_EVERY_DAYS,
@@ -136,6 +138,19 @@ describe('AC-7915.1 pickEvents', () => {
     expect(
       pickEvents({ kind: 'open', ...PERIOD, rows: [row('예시정형외과', { point: { lat: CENTER.lat, lng: CENTER.lng } })] }, small),
     ).toEqual([{ candidateId: 's', kind: 'open', clinicName: '예시정형외과', dept: '정형외과', eventOn: '2026-11-10', distM: 0 }])
+  })
+
+  it('AC-7915.1: 거리는 coords.ts의 distM 하나로 센다(watch.ts 안에 거리 식을 다시 두지 않는다)', () => {
+    const points = [
+      { lat: CENTER.lat + 0.0031, lng: CENTER.lng + 0.0042 },
+      { lat: CENTER.lat - 0.0057, lng: CENTER.lng - 0.0013 },
+      { lat: CENTER.lat + 0.0002, lng: CENTER.lng - 0.0088 },
+    ]
+    const rows = points.map((point, i) => row(`예시${i}정형외과`, { point }))
+    expect(pickEvents({ kind: 'open', ...PERIOD, rows }, cand('a')).map((e) => e.distM)).toEqual(points.map((p) => distM(CENTER, p)))
+    const code = readFileSync(new URL('./watch.ts', import.meta.url), 'utf8')
+    expect(code).toMatch(/import \{[^}]*\bdistM\b[^}]*\} from '\.\/coords'/)
+    expect(code).not.toMatch(/Math\.asin|6_?371_?008/)
   })
 
   it('AC-7915.1: 폐업은 폐업일로 줄을 만들고, 그 날짜가 없으면 뺀다', () => {

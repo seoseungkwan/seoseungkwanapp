@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { DEFAULT_SCORE_RULE } from '@/lib/location/score'
 
 // 입지 분석 표 여섯·칸 권한·점수 설정 검사 함수·사진 30줄 트리거·사진 바구니 location-photos
 // (location REQ-7902·REQ-7919 AC-7919.5, design.md 7·8절, TASK-1).
@@ -142,43 +143,14 @@ const OTHER_ID = '00000000-0000-4000-8000-000000000999'
 const OLD = '2001-01-01T00:00:00.000Z' // 운영자가 심는 옛 시각(DB가 바꿨는지 보려고)
 const DAY = '2026-11-22'
 
-// 점수 설정 처음 값(design.md 8절 표 그대로). 바깥 무게 열쇠 다섯의 이름은 lib/location/score.ts의 DEFAULT_SCORE_RULE과 맞춘다
-const DEFAULT_RULE = {
-  v: 1,
-  weights: { people: 30, rivals: 25, transit: 20, site: 15, cost: 10 },
-  bands: [4, 5, 6, 7, 8, 9, 10],
-  items: {
-    'p-density': { w: 40, full: 10000 },
-    'p-senior': { w: 15, full: 25 },
-    'p-households': { w: 5, full: 20000 },
-    'p-apts': { w: 10, full: 10000 },
-    'p-trend': { w: 10, full: 5 },
-    'p-accidents': { w: 5, full: 3 },
-    'p-industry': { w: 5, full: 20000 },
-    'p-schools': { w: 5, full: 5 },
-    'p-facilities': { w: 5, full: 30 },
-    'c-count': { w: 30, best: 0, worst: 6 },
-    'c-perRival': { w: 35, full: 20000 },
-    'c-newOpen': { w: 15, best: 0, worst: 3 },
-    'c-gaps': { w: 10, full: 10 },
-    'c-price': { w: 10, full: 20 },
-    't-station': { w: 40, best: 200, worst: 1500 },
-    't-stops': { w: 20, full: 10 },
-    't-flow': { w: 40, full: 30000 },
-    's-floor': { w: 25, best: 1, worst: 5 },
-    's-elevator': { w: 20, full: 1 },
-    's-parking': { w: 15, full: 30 },
-    's-age': { w: 10, best: 5, worst: 30 },
-    's-neighbors': { w: 10, full: 1 },
-    's-sign': { w: 10, full: 1 },
-    's-violation': { w: 10, full: 1 },
-    'k-rentPy': { w: 35, best: 50000, worst: 200000 },
-    'k-deposit': { w: 15, best: 30000000, worst: 200000000 },
-    'k-premium': { w: 20, best: 0, worst: 100000000 },
-    'k-vsAvg': { w: 30, best: -20, worst: 20 },
-  } as Record<string, { w: number; full?: number; best?: number; worst?: number }>,
+// 점수 설정 처음 값은 lib/location/score.ts의 DEFAULT_SCORE_RULE 한 곳이다(design.md 8절 표). 시험에서 칸을 바꿔 보려고 얼리지 않은 복사본을 쓴다
+type Rule = {
+  v: number
+  weights: { people: number; rivals: number; transit: number; site: number; cost: number }
+  bands: number[]
+  items: Record<string, { w: number; full?: number; best?: number; worst?: number }>
 }
-type Rule = typeof DEFAULT_RULE
+const DEFAULT_RULE: Rule = structuredClone(DEFAULT_SCORE_RULE)
 
 // 칸 [이름, 타입, 비울 수 있음, 기본값] (design.md 7절). 기본값 null = 없음
 const ID: unknown[] = ['id', 'uuid', 'NO', 'gen_random_uuid()']
@@ -563,6 +535,14 @@ describe('AC-7902.1 파일', SLOW, () => {
     ]) {
       expect(head, word).toContain(word)
     }
+  })
+
+  it('AC-7902.1: score_rule 처음 값 글자는 DEFAULT_SCORE_RULE의 JSON과 같다(빈칸·줄바꿈만 다름 — 열쇠 차례·숫자 모양까지)', () => {
+    const found = /score_rule jsonb not null default '([^']*)'::jsonb/.exec(LOCATION_MIGRATION)
+    expect(found).not.toBeNull()
+    expect(found?.[1].replace(/\s+/g, '')).toBe(JSON.stringify(DEFAULT_SCORE_RULE))
+    // 의료급여·차상위 비율도 처음 값(무게 0·많을수록 5%)으로 들어 있다
+    expect(found?.[1]).toContain('"p-welfare": {"w": 0, "full": 5}')
   })
 
   it('AC-7902.1: 두 번 돌려도 되는 문장만 쓴다(표·색인은 if not exists, 함수·트리거는 or replace, 정책은 지우고 다시 만들기, 지우기 없음)', () => {
@@ -1118,7 +1098,7 @@ describe('AC-7902.3 값 제약', SLOW, () => {
     ['비용 배열', 'location_candidates', candidateCase({ costs: [] }), CHECK],
     ['비용 2,001바이트', 'location_candidates', candidateCase({ costs: sized('object', 2001) }), CHECK],
     ['비용 null', 'location_candidates', candidateCase({ costs: null }), NOT_NULL],
-    ['협상표 4,001바이트', 'location_candidates', candidateCase({ terms: sized('object', 4001) }), CHECK],
+    ['협상표 6,001바이트', 'location_candidates', candidateCase({ terms: sized('object', 6001) }), CHECK],
     ['협상표 배열', 'location_candidates', candidateCase({ terms: ['x'] }), CHECK],
     ['점검표 4,001바이트', 'location_candidates', candidateCase({ checks: sized('object', 4001) }), CHECK],
     ['점검표 글자', 'location_candidates', candidateCase({ checks: 'yes' }), CHECK],
@@ -1181,7 +1161,7 @@ describe('AC-7902.3 값 제약', SLOW, () => {
   })
 
   it('AC-7902.3: jsonb 크기는 jsonb 글자(::text)의 바이트로 잰다(시험이 만드는 값이 꼭 그 크기다)', async () => {
-    for (const bytes of [2000, 2001, 4000, 65536]) {
+    for (const bytes of [2000, 2001, 4000, 6000, 6001, 65536]) {
       expect([bytes, await textBytes(sized('object', bytes))]).toEqual([bytes, bytes])
       expect([bytes, await textBytes(sized('array', bytes))]).toEqual([bytes, bytes])
     }
@@ -1195,7 +1175,7 @@ describe('AC-7902.3 값 제약', SLOW, () => {
     const corners: Row[] = [
       { name: word(40), lat: 33, lng: 124, radius_m: 300, status: 'dropped', address_note: word(100), floor_label: word(20), area_m2: 0.01 },
       { name: word(40, '🏥'), lat: 39, lng: 132, radius_m: 3000, status: 'reviewing', sign_visible: 'unknown', violation: 'yes' },
-      { name: '가', costs: sized('object', 2000), terms: sized('object', 4000), checks: sized('object', 4000), tasks_done: sized('array', 2000) },
+      { name: '가', costs: sized('object', 2000), terms: sized('object', 6000), checks: sized('object', 4000), tasks_done: sized('array', 2000) },
       { name: '나', snapshot: sized('object', 65536), area_m2: 999999.99 },
     ]
     for (const radius of [500, 700, 1000, 1500, 2000]) corners.push({ name: `범위 ${radius}`, radius_m: radius })

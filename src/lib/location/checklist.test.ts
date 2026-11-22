@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest'
 import {
   BUILDING_CHECKS,
   CHECK_VALUES,
+  HOW_MAX,
   NO_LAW_TEXT,
   RISK_CHECKS,
   VISIT_CHECKS,
   checkOf,
   cleanChecks,
   countChecks,
+  howOf,
   nextCheck,
 } from './checklist'
 
@@ -33,14 +35,26 @@ describe('AC-7913.3 건물 요건 표', () => {
     for (const c of BUILDING_CHECKS) expect(c.need.length).toBeGreaterThan(0)
   })
 
-  it('AC-7913.3: 있어야 하는 것은 조사 3 B의 법 기준을 따른다(방어벽·제어실, 장애인 화장실은 500㎡ 이상, 제1종 근린생활시설)', () => {
-    const need = (id: string) => BUILDING_CHECKS.find((c) => c.id === id)?.need ?? ''
-    expect(need('b-xray')).toContain('제어실 1.5㎡ 이상')
-    expect(need('b-xray')).toContain('검사대와 2m 이상')
-    expect(need('b-bf-toilet')).toContain('500㎡ 이상')
-    expect(need('b-ramp')).toBe('건물 입구에 턱이 없거나 경사로')
-    expect(need('b-use')).toBe('제1종 근린생활시설(의원) 또는 의료시설')
-    expect(need('b-report')).toBe('진료실·처치실·엑스레이실·물리치료실을 나눔, 위반 건축물이 아님')
+  it('AC-7913.5: 있어야 하는 것은 design.md 11절 글 그대로다(방사선 벽·장애인 화장실 500㎡·제1종 근린생활시설·위반 건축물)', () => {
+    expect(BUILDING_CHECKS.map((c) => [c.id, c.need])).toEqual([
+      ['b-xray', '벽·문에 납을 넣는 공사, 설치 뒤 검사'],
+      ['b-power', '엑스레이·물리치료 기계를 함께 켤 만큼(장비 업체에 물어 정해요)'],
+      ['b-ceiling', '엑스레이 기계를 달 높이(장비 업체 기준)'],
+      ['b-load', '엑스레이·견인 치료기 무게'],
+      ['b-ramp', '건물 입구에 턱이 없거나 경사로'],
+      ['b-bf-toilet', '의원 넓이가 500㎡ 이상이면 꼭 있어야 해요'],
+      ['b-toilet', '층 안에 남녀 따로'],
+      ['b-elevator', '휠체어·들것이 들어가는 크기'],
+      ['b-use', '제1종 근린생활시설(의원) 또는 의료시설'],
+      ['b-report', '시설 기준대로 방을 나눔 · 위반 건축물이면 막힐 수 있어요'],
+    ])
+  })
+
+  it('AC-7913.5: 위반 건축물은 점검 줄이 아니라 후보 칸(violation)이다 — 세 목록 어디에도 위반 건축물 줄이 없다', () => {
+    for (const c of ALL) {
+      expect(c.id).not.toMatch(/violation/)
+      expect(c.label).not.toContain('위반 건축물')
+    }
   })
 
   it("AC-7913.3: 법 근거가 없는 줄에 쓰는 글은 '법 기준 없음 — 관리사무소에 물어요'다", () => {
@@ -102,6 +116,38 @@ describe('AC-7913.3 값 세 가지', () => {
     expect(nextCheck('unknown')).toBe('yes')
     expect(nextCheck('yes')).toBe('no')
     expect(nextCheck('no')).toBe('unknown')
+  })
+
+  it("AC-7913.5: 건물 요건 줄마다 '어떻게 알았나' 글(checks.how[id], 40자까지)을 읽는다 — 없으면 빈 글", () => {
+    expect(HOW_MAX).toBe(40)
+    const checks = { 'b-xray': 'yes', how: { 'b-xray': '중개사가 공사했다고 함', 'b-power': '' } }
+    expect(howOf(checks, 'b-xray')).toBe('중개사가 공사했다고 함')
+    expect(howOf(checks, 'b-power')).toBe('')
+    expect(howOf(checks, 'b-use')).toBe('')
+    expect(howOf({ how: { 'b-xray': 3 } }, 'b-xray')).toBe('')
+    expect(howOf({ how: 'x' }, 'b-xray')).toBe('')
+    expect(howOf(null, 'b-xray')).toBe('')
+    // '어떻게 알았나'는 건물 요건 줄만이다
+    expect(howOf({ how: { 'v-sign': '봤어요' } }, 'v-sign')).toBe('')
+  })
+
+  it("AC-7913.5: 저장할 checks는 '어떻게 알았나'(how)도 남긴다 — 건물 요건 id의 40자까지 글만, 빈 글·40자 넘음·글 아님은 버린다", () => {
+    const forty = '가'.repeat(40)
+    expect(
+      cleanChecks({
+        'b-xray': 'yes',
+        'v-sign': 'yes',
+        how: { 'b-xray': '엑스레이 업체에 물어봄', 'b-power': forty, 'b-load': `${forty}가`, 'b-use': 7, 'b-ramp': '', 'v-sign': '봄', 'b-gone': '글' },
+      }),
+    ).toEqual({ 'b-xray': 'yes', 'v-sign': 'yes', how: { 'b-xray': '엑스레이 업체에 물어봄', 'b-power': forty } })
+    // 40자는 코드포인트로 센다(DB char_length와 같게)
+    expect(cleanChecks({ how: { 'b-xray': '🏥'.repeat(40) } })).toEqual({ how: { 'b-xray': '🏥'.repeat(40) } })
+    expect(cleanChecks({ how: { 'b-xray': '🏥'.repeat(41) } })).toEqual({})
+    // 남는 글이 없거나 how가 객체가 아니면 how 칸을 두지 않는다
+    expect(cleanChecks({ 'b-xray': 'no', how: { 'b-xray': '' } })).toEqual({ 'b-xray': 'no' })
+    expect(cleanChecks({ how: ['b-xray'] })).toEqual({})
+    expect(cleanChecks({ how: 'b-xray' })).toEqual({})
+    expect(cleanChecks({ how: JSON.parse('{"__proto__":"x","constructor":"y"}') })).toEqual({})
   })
 
   it('AC-7913.3: 저장할 checks는 세 목록에 있는 id와 세 값만 남긴다', () => {

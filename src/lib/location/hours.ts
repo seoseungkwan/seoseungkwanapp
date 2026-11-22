@@ -1,11 +1,10 @@
+import type { Rival } from '@/types/location'
+
 // 진료 시간 빈틈 표(design.md 11절, AC-7909.3): 요일 7 × 칸 7, 칸마다 그 칸 전체에 문을 연 경쟁 의원 수(0이면 빈틈).
 // 칸 이름은 승인된 시안(docs/mockups/location/ 후보 자세히 › 진료 시간 빈틈) 그대로.
 
-/** 경쟁 의원 한 곳에서 이 표가 읽는 칸(types/location.ts Rival의 일부). week = 월~일 + 공휴일 8칸, 분. null 칸 = 그날 닫음 */
-export type GapRival = {
-  kind: string
-  week: readonly (readonly [number, number] | null)[] | null
-}
+/** 경쟁 의원 한 곳에서 이 표가 읽는 칸(types/location.ts Rival의 일부 — 그날 값 rivals를 그대로 넣는다). week = 월~일 + 공휴일 8칸, 분. null 칸 = 그날 닫음 */
+export type GapRival = Pick<Rival, 'kind' | 'week'>
 
 export type GapSlot = { id: string; from: number; to: number; label: string; lunchUnknown: boolean }
 
@@ -21,7 +20,7 @@ export const GAP_SLOTS: readonly GapSlot[] = [
 
 export const GAP_DAYS = ['월', '화', '수', '목', '금', '토', '일'] as const
 
-export const LUNCH_NOTE = '점심 쉬는 시간은 자료에 없어 문을 연 것으로 셌어요.'
+export const LUNCH_NOTE = '점심 쉬는 시간은 자료에 없어 문을 연 것으로 세요.' // requirements '화면 글 기본값'
 export const HOLIDAY_NOTE = '공휴일 진료는 의원마다 그때그때 달라 세지 않아요.'
 
 /** counts[칸][요일] · counted = 센 의원 수 · noHours = 진료 시간 자료가 없어 못 센 의원 수. 한의원은 세지 않는다 */

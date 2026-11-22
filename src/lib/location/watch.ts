@@ -1,8 +1,11 @@
 import { addDays, compareYmd, diffDays, isYmd } from '@/lib/analytics/dates'
+import type { LicenseRow, WatchCandidate, WatchEvent, WatchStatus } from '@/types/location'
+import { distM } from './coords'
 
 // 새 경쟁 의원 알림 판정(design.md 12절). 관리자가 대시보드를 열 때 브라우저가 부른다(Cron 아님, ADR-042).
 // 오늘은 부르는 쪽이 한국 날짜(todayInKorea)로 넘긴다 — 시계를 읽지 않는다.
-// 후보·인허가 줄 모양은 types/location.ts(TASK-2)가 생기기 전이라 여기서 필요한 칸만 둔다(합칠 때 맞춤)
+// 후보·인허가·알림 줄 모양은 types/location.ts 한 곳이다(예전 import 길을 위해 여기서도 내보낸다)
+export type { LicenseRow, WatchCandidate, WatchEvent, WatchStatus }
 
 /** 한 번에 확인하는 후보 수 */
 export const WATCH_MAX_CANDIDATES = 5
@@ -16,44 +19,11 @@ export const WATCH_DEPTS = ['정형외과', '마취통증의학과', '재활의�
 const NAME_MAX = 100 // location_events.clinic_name 1~100
 const DEPT_MAX = 50 // location_events.dept ≤ 50
 
-export type WatchStatus = 'watching' | 'contacted' | 'visited' | 'reviewing' | 'dropped'
-
-export type WatchCandidate = {
-  id: string
-  status: WatchStatus
-  lat: number
-  lng: number
-  radiusM: number
-  /** 'YYYY-MM-DD' 또는 아직 확인 안 함 */
-  watchCheckedOn: string | null
-  /** 만든 시각(ISO 글자, 같은 모양끼리 글자 차례 = 시각 차례) */
-  createdAt: string
-}
-
 /** 같은 기간을 보는 후보 묶음 — clinic-license open·close를 기간마다 한 번씩 받아 나눠 쓴다 */
 export type WatchGroup<T extends WatchCandidate = WatchCandidate> = { from: string; to: string; candidates: T[] }
 
-/** clinic-license 한 줄(WGS84 점, 못 바꾼 점은 null) */
-export type LicenseRow = {
-  name: string
-  dept: string
-  openedOn: string | null
-  closedOn: string | null
-  point: { lat: number; lng: number } | null
-}
-
 /** 한 기간의 clinic-license 답(open이면 개업, close면 폐업 자료) */
 export type LicenseFound = { kind: 'open' | 'close'; from: string; to: string; rows: readonly LicenseRow[] }
-
-/** location_events에 넣을 줄 */
-export type WatchEvent = {
-  candidateId: string
-  kind: 'open' | 'close'
-  clinicName: string
-  dept: string
-  eventOn: string
-  distM: number
-}
 
 function isDue(c: WatchCandidate, today: string): boolean {
   if (c.status === 'dropped') return false
@@ -83,14 +53,6 @@ export function dueCandidates<T extends WatchCandidate>(rows: readonly T[], toda
   return groups
 }
 
-// 하버사인(지구 반지름 6,371,008.8m) 버림 — coords.ts(TASK-4) distM과 같은 식(합칠 때 그쪽으로 바꿈)
-const EARTH_M = 6_371_008.8
-const rad = (deg: number) => (deg * Math.PI) / 180
-function distM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-  const h = Math.sin(rad(b.lat - a.lat) / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(rad(b.lng - a.lng) / 2) ** 2
-  return Math.floor(2 * EARTH_M * Math.asin(Math.min(1, Math.sqrt(h))))
-}
-
 const clip = (s: string, max: number) => Array.from(s).slice(0, max).join('')
 const isRival = (r: LicenseRow) => WATCH_DEPTS.some((dept) => r.dept.includes(dept) || r.name.includes(dept))
 
@@ -104,7 +66,7 @@ export function pickEvents(found: LicenseFound, cand: WatchCandidate): WatchEven
     if (compareYmd(eventOn, found.from) < 0 || compareYmd(eventOn, found.to) > 0) continue
     const clinicName = clip(r.name.trim(), NAME_MAX)
     if (clinicName === '' || r.point === null || !isRival(r)) continue
-    const d = distM(cand, r.point)
+    const d = distM(cand, r.point) // coords.ts 하버사인 버림
     if (d > cand.radiusM) continue
     const key = `${found.kind}\n${clinicName}\n${eventOn}`
     if (seen.has(key)) continue

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { distM, from5174, samplePoints, type LatLng } from './coords'
+import { distM, distText, from5174, samplePoints, type LatLng } from './coords'
 
 // 좌표 바꾸기·거리·표본 점(specs/location REQ-7905, design.md 5절)
 // 기준점 다섯: 저장소 밖에서 따로 짠 계산(크뤼거 급수 횡메르카토르 역산 + PROJ towgs84 7변수, 수치 적분·왕복으로 맞춤 확인)으로
@@ -63,6 +63,31 @@ describe('AC-7905.1 distM', () => {
     const b = { lat: 35.1796, lng: 129.0756 }
     expect(distM(a, a)).toBe(0)
     expect(distM(a, b)).toBe(distM(b, a))
+  })
+})
+
+describe('AC-7905.6 distText', () => {
+  it('AC-7905.6: 1,000m 미만은 m 그대로(850m·0m·999m)', () => {
+    expect(distText(850)).toBe('850m')
+    expect(distText(0)).toBe('0m')
+    expect(distText(999)).toBe('999m')
+  })
+
+  it('AC-7905.6: 1,000m 이상은 0.1km 버림에 끝 .0을 뺀 km(1.4km·2km)', () => {
+    expect(distText(1000)).toBe('1km')
+    expect(distText(1400)).toBe('1.4km')
+    expect(distText(1499)).toBe('1.4km')
+    expect(distText(2000)).toBe('2km')
+    expect(distText(2099)).toBe('2km')
+    expect(distText(12_345)).toBe('12.3km')
+  })
+
+  it('AC-7905.6: 소수 m는 버리고, 음수·숫자 아님은 RangeError다', () => {
+    expect(distText(850.9)).toBe('850m')
+    expect(distText(999.99)).toBe('999m')
+    expect(() => distText(-1)).toThrow(RangeError)
+    expect(() => distText(Number.NaN)).toThrow(RangeError)
+    expect(() => distText(Number.POSITIVE_INFINITY)).toThrow(RangeError)
   })
 })
 
