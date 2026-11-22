@@ -1,7 +1,7 @@
 'use client'
 
 // 저장한 매물 (spec location AC-7910.2·AC-7910.4, 시안 ?s=listings '저장한 매물').
-// 평수 칩(○평~○평, listings.ts filterByPyeong — 화면 평으로 양 끝 넣음) · 표(넓이 areaText · 돈 wonText · 평당 월세 compareListings) ·
+// 평수 칩(○평~○평, listings.ts filterByPyeong — 화면 평으로 양 끝 넣음) · 표(넓이 areaText · 만 원 칸 돈 manText · 평당 월세 compareListings는 wonText) ·
 // 줄마다 [매물 화면 열기](새 창) · 중개사 [주소록에 넣기](매물 중개사 글로 만든 주소록 몸통) · [후보로 저장](후보 더하기 판을 부르는 쪽이 연다)
 import { useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
@@ -9,7 +9,7 @@ import { todayInKorea } from '@/lib/analytics/dates'
 import { areaText } from '@/lib/location/area'
 import { filterByPyeong, type ListingComparison, type PyeongRange } from '@/lib/location/listings'
 import { NEW_TAB } from '@/lib/location/links'
-import { wonText } from '@/lib/location/money'
+import { manText, wonText } from '@/lib/location/money'
 import type { Listing } from '@/types/location'
 import { SourceLine } from '../common/SourceLine'
 import { brokerBody, brokerFromNote, type BrokerBody } from './broker'
@@ -30,7 +30,6 @@ export const PYEONG_CHIPS: readonly { id: PyeongChipId; label: string; range: Py
 export type AddBroker = (listingId: string, broker: BrokerBody) => Promise<void> | void
 
 const DASH = '–'
-const money = (won: number | null) => (won === null ? DASH : wonText(won))
 export const listingName = (l: Pick<Listing, 'title' | 'floorLabel'>) => `${l.title} ${l.floorLabel}`.trim()
 
 /** 적은 날(한국 날짜) `11월 12일 적음` */
@@ -145,12 +144,12 @@ export function SavedListings({
                       )}
                     </td>
                     <td className={look.tdNum}>{l.areaM2 === null ? DASH : areaText(l.areaM2)}</td>
-                    <td className={look.tdNum}>{money(l.deposit)}</td>
-                    <td className={look.tdNum}>{money(l.rent)}</td>
-                    <td className={look.tdNum}>{money(l.mgmt)}</td>
-                    <td className={look.tdNum}>{money(l.premium)}</td>
+                    <td className={look.tdNum}>{manText(l.deposit)}</td>
+                    <td className={look.tdNum}>{manText(l.rent)}</td>
+                    <td className={look.tdNum}>{manText(l.mgmt)}</td>
+                    <td className={look.tdNum}>{manText(l.premium)}</td>
                     <td className={look.tdNum}>
-                      <b className={look.strong}>{money(perPy)}</b>
+                      <b className={look.strong}>{perPy === null ? DASH : wonText(perPy)}</b>
                     </td>
                     <td className={look.td}>
                       {l.brokerNote === '' ? DASH : <span className="block">{l.brokerNote}</span>}

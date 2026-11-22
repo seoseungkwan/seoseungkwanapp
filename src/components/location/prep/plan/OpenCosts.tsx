@@ -6,12 +6,14 @@
 // 합계·손익분기는 calcCosts(design.md 식) 한 곳에서 센다 — 적는 동안 바로 바뀐다. 손익분기는 한 달 고정비와 직접 적는
 // '환자 1명당 평균 수입'·'한 달 진료일'로만 세고 원장 몫은 들어 있지 않다(예상 환자 칸·견주는 글 없음).
 // 매물의 보증금·권리금·월세·관리비는 칸 옆 참고 글로만 보이고 칸을 채우지 않는다.
+// 금액 글(design.md 5절, AC-7905.7): 만 원 칸에서 온 값(참고 글·합계 판·6개월 고정비·한 달 고정비)은 manText(0 `없음`),
+// 셈한 인테리어 합계(평 × 평당)·한 달 이자는 wonText. 셈은 원 정수 그대로(calcCosts)
 // 부품은 props·콜백만 쓴다: 칸을 떠날 때 바뀐 비용이 있으면 onSave(아는 열쇠·칸 범위의 원 정수만)를 한 번 부른다.
 // 밖에서 다른 비용이 오면(다른 후보) 그 값으로 다시 그리고, 넘긴 비용이 그대로 되돌아오면 고치던 칸을 그대로 둔다
 import { useId, useState } from 'react'
 import { m2ToPyeong } from '@/lib/location/area'
 import { COST_KEYS, calcCosts, checkCosts, costFieldText, parseCostInput, type CostKey, type Costs } from '@/lib/location/costs'
-import { commaText, wonText } from '@/lib/location/money'
+import { commaText, manText, wonText } from '@/lib/location/money'
 import type { Listing } from '@/types/location'
 import { look } from './look'
 import { BREAK_EVEN_FIELDS, COST_FIELDS, EMPTY, PLAN_TEXT as T, UNIT_ERROR, UNIT_TEXT, type CostField } from './text'
@@ -60,7 +62,8 @@ function draftOf(texts: Texts, base: Costs): Costs {
   return out
 }
 
-const money = (won: number | null) => (won === null ? EMPTY : wonText(won))
+/** 셈한 값(인테리어 합계·한 달 이자) */
+const won = (n: number | null) => (n === null ? EMPTY : wonText(n))
 const has = (v: number | undefined): v is number => v !== undefined
 // 적은 칸만 더한다. 둘 다 비면 없음
 const sum2 = (a: number | undefined, b: number | undefined) => (has(a) || has(b) ? (a ?? 0) + (b ?? 0) : null)
@@ -103,7 +106,7 @@ export function OpenCosts({ costs, areaM2, listing, onSave }: OpenCostsProps) {
 
   const refText = (field: CostField) => {
     if (!field.ref || listing === null) return null
-    return T.listingRef(money(listing[field.ref]))
+    return T.listingRef(manText(listing[field.ref]))
   }
 
   const fieldRow = (field: CostField) => {
@@ -153,13 +156,13 @@ export function OpenCosts({ costs, areaM2, listing, onSave }: OpenCostsProps) {
           {field.extra === 'interior' && (
             <p className={look.extra}>
               {`${T.interiorTotal} `}
-              <b className={look.extraNum}>{money(sum.interiorTotal)}</b>
+              <b className={look.extraNum}>{won(sum.interiorTotal)}</b>
             </p>
           )}
           {field.extra === 'interest' && (
             <p className={look.extra}>
               {`${T.interest} `}
-              <b className={look.extraNum}>{money(sum.interest)}</b>
+              <b className={look.extraNum}>{won(sum.interest)}</b>
             </p>
           )}
           {bad && (
@@ -195,7 +198,7 @@ export function OpenCosts({ costs, areaM2, listing, onSave }: OpenCostsProps) {
           {COST_FIELDS.map(fieldRow)}
           <div className={look.autoRow}>
             <span className={look.label}>{T.sixMonths}</span>
-            <span className={look.auto}>{money(sum.sixMonths)}</span>
+            <span className={look.auto}>{manText(sum.sixMonths)}</span>
             <p className={look.help}>{T.sixMonthsHelp}</p>
           </div>
           <div className={look.subHead}>
@@ -209,19 +212,19 @@ export function OpenCosts({ costs, areaM2, listing, onSave }: OpenCostsProps) {
           <h3 id={sumId} className={look.sumTitle}>
             {T.sumTitle}
           </h3>
-          {sumRow(T.sumDepositPremium, money(sum2(draft.deposit, draft.premium)))}
-          {sumRow(T.sumInterior, money(sum.interiorTotal))}
-          {sumRow(T.sumEquipment, money(sum2(draft.equipment, draft.otherStart)))}
-          {sumRow(T.sixMonths, money(sum.sixMonths))}
+          {sumRow(T.sumDepositPremium, manText(sum2(draft.deposit, draft.premium)))}
+          {sumRow(T.sumInterior, won(sum.interiorTotal))}
+          {sumRow(T.sumEquipment, manText(sum2(draft.equipment, draft.otherStart)))}
+          {sumRow(T.sixMonths, manText(sum.sixMonths))}
           <div className={look.sumTotal}>
             <span>{T.sumStart}</span>
-            <b className={look.sumTotalNum}>{money(sum.startTotal)}</b>
+            <b className={look.sumTotalNum}>{manText(sum.startTotal)}</b>
           </div>
-          {sumRow(T.sumMine, sum.loanOver ? T.loanOver : money(sum.mine))}
+          {sumRow(T.sumMine, sum.loanOver ? T.loanOver : manText(sum.mine))}
           <p className={look.help}>{sum.blanks === COST_KEYS.length ? T.allBlank : T.blanks(sum.blanks)}</p>
           <div className={look.breakEven}>
             <p className={look.breakEvenHead}>{T.breakEven}</p>
-            {sumRow(T.monthlyFixed, money(sum.monthlyFixed))}
+            {sumRow(T.monthlyFixed, manText(sum.monthlyFixed))}
             {sum.breakEven !== null ? (
               <>
                 <p className={look.breakEvenNum}>

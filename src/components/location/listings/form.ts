@@ -1,6 +1,6 @@
 import { cleanText } from '@/lib/contacts/fields'
 import { toStoredM2, type AreaUnit } from '@/lib/location/area'
-import { wonText } from '@/lib/location/money'
+import { manText } from '@/lib/location/money'
 import type { Listing } from '@/types/location'
 import { BROKER_NOTE_MAX, brokerBody, brokerNote, type BrokerBody } from './broker'
 
@@ -79,7 +79,7 @@ const MONEY_WORDS: Record<MoneyField, readonly [string, string, string]> = {
 }
 export function moneyText(field: MoneyField, kind: 'bad' | 'big'): string {
   const [name, object, topic] = MONEY_WORDS[field]
-  return kind === 'bad' ? `${name}${object} 숫자로 적어 주세요(만 원).` : `${name}${topic} ${wonText(MAX_MAN * WON_PER_MAN)}까지 적을 수 있어요.`
+  return kind === 'bad' ? `${name}${object} 숫자로 적어 주세요(만 원).` : `${name}${topic} ${manText(MAX_MAN * WON_PER_MAN)}까지 적을 수 있어요.`
 }
 
 // lib/storage/location.ts와 같은 규칙: https:// 뒤에 빈칸·제어 문자가 없는 글자 하나 이상
