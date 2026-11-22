@@ -9,7 +9,7 @@ import { REPORT, weightsText } from '@/lib/location/method'
 import { manText } from '@/lib/location/money'
 import { DEFAULT_SCORE_RULE, SCORE_GROUPS, scoreItems, type ScoreRule } from '@/lib/location/score'
 import { sourceText } from '@/components/location/common/text'
-import type { Candidate, DeptRule, Listing, LocationNote, Rival, Snapshot } from '@/types/location'
+import type { Candidate, DeptRule, Listing, LocationNote, Rival, Snapshot, SnapshotValue } from '@/types/location'
 import { OnePageReport, type OnePageReportProps } from './OnePageReport'
 
 // 한 장 보고서(specs/location TASK-40·TASK-75 · REQ-7914·REQ-7920·REQ-7905 · AC-7914.2·AC-7920.5·AC-7905.7, 시안 docs/mockups/location ?s=report).
@@ -418,6 +418,23 @@ describe('AC-7914.2: A4 한 장 — 경쟁 줄은 고른 과목(과목 고르기
     expect(dd(r, '진료 시간 빈틈')).toBe('평일 아침 8~9시, 평일 저녁 19~20시, 평일 밤 20~21시, 토요일 오후, 일요일')
     expect(dd(r, '체외충격파 평균')).toBe('60,000원 (지금 의원 80,000원)')
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('AC-7914.2: 3년 개폐업은 그 줄의 업태(type)로 치과의원·한의원을 가른다 — 업태 칸이 없는 옛 줄은 과목 글로 센다', () => {
+    // 외과까지 경쟁: 업태가 없으면 '구강악안면외과'는 외과, '한방재활의학과'는 재활로 센다
+    const history = ok<SnapshotValue<'history'>>(
+      [
+        { kind: 'open', name: '예시튼튼한의원', dept: '한방재활의학과', type: '한의원', on: '2026-01-05', distM: 200 },
+        { kind: 'close', name: '예시미소치과의원', dept: '구강악안면외과', type: '치과의원', on: '2025-09-01', distM: 300 },
+        { kind: 'open', name: '예시바른정형외과의원', dept: '정형외과', type: '의원', on: '2025-06-01', distM: 350 },
+        { kind: 'open', name: '예시옛한의원', dept: '한방재활의학과', on: '2025-03-01', distM: 400 },
+      ],
+      'clinic-license',
+      '2026-11-20',
+    )
+    const candidate: Candidate = { ...CANDIDATE, snapshot: { ...SNAP, history } }
+    render(<OnePageReport {...baseProps({ candidate, deptRule: deptRuleOf(['gs', 'ortho', 'ns', 'pain', 'rehab']) })} />)
+    expect(dd(region('경쟁'), '3년 개폐업')).toBe('문 엶 2 · 문 닫음 0')
   })
 
   it('AC-7914.2: 경쟁 과목이 하나도 없으면 `경쟁 의원(고른 과목 없음)`이고 경쟁 칸은 `–`, 빈틈은 과목을 고르라는 글이다', () => {

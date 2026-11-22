@@ -8,7 +8,7 @@ import { WhyLine } from '@/components/location/common/WhyLine'
 import { distText } from '@/lib/location/coords'
 import { deptRole, rivalShortText } from '@/lib/location/depts'
 import { commaText } from '@/lib/location/money'
-import type { DeptId, DeptRule, Got, Rival, SnapshotValue, SourceId } from '@/types/location'
+import type { DeptId, DeptRule, Got, RivalsGot, SnapshotValue, SourceId } from '@/types/location'
 import { type HowProps, MUTED, PICK_BTN, Section, SMALL_BTN, TABLE } from './Section'
 import {
   CAP_TEXT,
@@ -34,8 +34,8 @@ import {
 export type RivalsSectionProps = {
   /** 살필 범위 m */
   radiusM: number
-  /** 그날 값 rivals(안 보기가 아닌 모든 과목 의원, 가까운 차례 200곳까지) */
-  rivals: Got<Rival[]>
+  /** 그날 값 rivals(안 보기가 아닌 모든 과목 의원, 가까운 차례 200곳까지)(잘렸으면 capped: true) */
+  rivals: RivalsGot
   /** 그날 값 history(3년 개업·폐업) */
   history: Got<SnapshotValue<'history'>>
   /** 그날 값 people — 1곳당 사는 사람에 total만 쓴다 */
@@ -158,7 +158,7 @@ export function RivalsSection({
                   {`'–'인 ${commaText(fresh)}곳은 새로 경쟁 의원에 넣은 과목이에요. [다시 받기]를 누르면 의사 수·장비·진료비가 채워져요.`}
                 </p>
               )}
-              {isCapped(shown.v) && <p className={ds.help}>{CAP_TEXT}</p>}
+              {isCapped(rivals) && <p className={ds.help}>{CAP_TEXT}</p>}
             </>
           )}
           {!rivals.ok && <WhyLine why={rivals.why} src={rivals.src} prevAsOf={shown.asOf} onRetry={onRetry} />}

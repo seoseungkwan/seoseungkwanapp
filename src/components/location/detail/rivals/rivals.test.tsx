@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Got, Rival } from '@/types/location'
+import type { Got, Rival, SnapshotValue } from '@/types/location'
 import { HoursSection } from './HoursSection'
 import { OthersSection } from './OthersSection'
 import { PriceSection } from './PriceSection'
@@ -235,6 +235,20 @@ describe('AC-7909.3: 경쟁 의원 표 — 의사·물리치료사·장비·문 
     rivals()
     expect(screen.queryByText('200곳 넘게 있을 수 있어요. 가까운 200곳만 셌어요.')).toBeNull()
   })
+
+  it('AC-7909.3: 그날 값 rivals에 `capped: true`가 있으면(바깥 답 잘림·저장 크기로 줄임) 200곳보다 적어도 `200곳 넘게 있을 수 있어요…`', () => {
+    rivals({ rivals: { ...okRivals, capped: true } })
+    expect(within(section('sec-comp')).getByText('200곳 넘게 있을 수 있어요. 가까운 200곳만 셌어요.')).toBeTruthy()
+  })
+
+  it('AC-7909.3: 못 받아 지난 값을 그릴 때는 지난 값의 `capped`를 본다', () => {
+    const prev = { v: CLINICS.slice(0, 5), asOf: '2026-10-01' }
+    rivals({ rivals: { ok: false, why: 'failed', src: 'hosp-list', prev: { ...prev, capped: true } } })
+    expect(within(section('sec-comp')).getByText('200곳 넘게 있을 수 있어요. 가까운 200곳만 셌어요.')).toBeTruthy()
+    cleanup()
+    rivals({ rivals: { ok: false, why: 'failed', src: 'hosp-list', prev } })
+    expect(screen.queryByText('200곳 넘게 있을 수 있어요. 가까운 200곳만 셌어요.')).toBeNull()
+  })
 })
 
 describe('AC-7921.5: 새로 경쟁 의원에 넣은 과목 — 자세한 칸 `–`와 표 아래 글', () => {
@@ -300,6 +314,20 @@ describe('AC-7909.3: 3년 개폐업 — 경쟁 과목만, 이 자리 폐업은 �
     rivals({ history: { ok: false, why: 'no-key', src: 'clinic-license' } })
     expect(screen.getByText('건강_의원 조회서비스: 열쇠를 넣으면 보여요.')).toBeTruthy()
     expect(screen.getAllByRole('table').length).toBe(1)
+  })
+
+  it('AC-7909.3: 그 줄의 업태(type)로 치과의원·한의원을 가른다 — 과목 글이 경쟁 과목이어도 업태가 한의원·치과의원이면 경쟁이 아니고, 업태 칸이 없는 옛 줄은 과목 글로 센다', () => {
+    // 외과까지 경쟁: 업태가 없으면 '구강악안면외과'는 외과, '한방재활의학과'는 재활로 센다
+    const history: SnapshotValue<'history'> = [
+      { kind: 'open', name: '예시튼튼한의원', dept: '한방재활의학과', type: '한의원', on: '2026-01-05', distM: 200 },
+      { kind: 'close', name: '예시미소치과의원', dept: '구강악안면외과', type: '치과의원', on: '2025-09-01', distM: 300 },
+      { kind: 'open', name: '예시바른정형외과의원', dept: '정형외과', type: '의원', on: '2025-06-01', distM: 350 },
+      { kind: 'open', name: '예시옛한의원', dept: '한방재활의학과', on: '2025-03-01', distM: 400 },
+    ]
+    rivals({ history: { ...okHistory, v: history }, deptRule: rule({ rival: ['gs', 'ortho', 'ns', 'pain', 'rehab'] }) })
+    const table = within(section('sec-comp')).getAllByRole('table')[1]!
+    expect(bodyRows(table).map((r) => cellsOf(r)[2])).toEqual(['예시바른정형외과의원', '예시옛한의원'])
+    expect(text(screen.getByTestId('rival-history-head'))).toBe('3년 사이 문 열고 닫은 곳 경쟁 의원 · 문 엶 2 · 문 닫음 0')
   })
 })
 

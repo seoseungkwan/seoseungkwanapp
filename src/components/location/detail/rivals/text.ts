@@ -5,7 +5,7 @@ import { NONPAY_MAX, RIVAL_MAX, SAME_BUILDING_M } from '@/lib/location/collect'
 import { DEPTS, deptOf, deptOfText, deptRole } from '@/lib/location/depts'
 import { GAP_DAYS, GAP_SLOTS } from '@/lib/location/hours'
 import { vsAverage } from '@/lib/location/listings'
-import type { DeptId, DeptRule, Got, Rival, SnapshotValue } from '@/types/location'
+import type { DeptId, DeptRule, Got, Rival, RivalsGot, SnapshotValue } from '@/types/location'
 
 export { NONPAY_MAX, RIVAL_MAX, SAME_BUILDING_M }
 
@@ -76,19 +76,22 @@ export function spotOf(address: string | null | undefined, roadKey: string | nul
   return address && buildingKey(address) === roadKey ? 'same' : 'next'
 }
 
-/** 받은 의원 목록이 200곳이면(design.md 6절) */
+/** 의원 목록이 잘렸을 수 있으면(design.md 6절): 보일 값(되면 그 값, 못 됐으면 지난 값)에 capped: true가 있거나(TASK-81) 받은 목록이 200곳 */
 export const CAP_TEXT = `${RIVAL_MAX}곳 넘게 있을 수 있어요. 가까운 ${RIVAL_MAX}곳만 셌어요.`
-export const isCapped = (rows: readonly unknown[]) => rows.length >= RIVAL_MAX
+export function isCapped(rivals: RivalsGot): boolean {
+  const shown = rivals.ok ? rivals : rivals.prev
+  return shown !== undefined && (shown.capped === true || shown.v.length >= RIVAL_MAX)
+}
 
 // ── 3년 개폐업(경쟁 과목만 + 이 자리 폐업은 과목과 상관없이) ──
 
 export type HistoryRow = SnapshotValue<'history'>[number] & { here: boolean; rival: boolean }
 
-/** 범위 안 개폐업 가운데 경쟁 과목(인허가 과목 글로 대표 과목) 또는 이 자리(30m 안) 폐업, 새 날짜부터 */
+/** 범위 안 개폐업 가운데 경쟁 과목(인허가 업태·과목 글로 대표 과목 — 업태 칸이 없는 옛 줄은 빈 글자) 또는 이 자리(30m 안) 폐업, 새 날짜부터 */
 export function historyRows(list: SnapshotValue<'history'>, radiusM: number, rule: DeptRule): HistoryRow[] {
   return inRange(list, radiusM)
     .map((e) => {
-      const dept = deptOfText({ name: e.name, subjects: e.dept, type: '' }, rule)
+      const dept = deptOfText({ name: e.name, subjects: e.dept, type: e.type ?? '' }, rule)
       return { ...e, here: e.kind === 'close' && e.distM <= SAME_BUILDING_M, rival: dept !== null && deptRole(dept, rule) === 'rival' }
     })
     .filter((e) => e.rival || e.here)

@@ -239,9 +239,9 @@ function competitorsOf(rivals: readonly Rival[], radiusM: number, rule: DeptRule
   })
 }
 
-/** 3년 개폐업 줄이 경쟁 과목인가(인허가 줄 대표 과목, watch.ts와 같은 셈 — 업태 칸이 없어 비워 둔다) */
+/** 3년 개폐업 줄이 경쟁 과목인가(인허가 줄 대표 과목, watch.ts와 같은 셈 — 업태 칸이 없는 옛 줄은 빈 글자) */
 function isRivalEvent(row: SnapshotValue<'history'>[number], rule: DeptRule): boolean {
-  const dept = deptOfText({ name: row.name, subjects: row.dept, type: '' }, rule)
+  const dept = deptOfText({ name: row.name, subjects: row.dept, type: row.type ?? '' }, rule)
   return dept !== null && deptRole(dept, rule) === 'rival'
 }
 

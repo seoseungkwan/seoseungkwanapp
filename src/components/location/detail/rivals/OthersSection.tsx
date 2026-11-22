@@ -4,7 +4,7 @@ import { WhyLine } from '@/components/location/common/WhyLine'
 import { distText } from '@/lib/location/coords'
 import { DEPTS } from '@/lib/location/depts'
 import { commaText } from '@/lib/location/money'
-import type { DeptId, DeptRule, Got, Rival, SourceId } from '@/types/location'
+import type { DeptId, DeptRule, Rival, RivalsGot, SourceId } from '@/types/location'
 import { type HowProps, MUTED, Section, TABLE } from './Section'
 import {
   CAP_TEXT,
@@ -32,8 +32,8 @@ export type NearPharmacy = { name: string; distM: number; road?: string | null }
 
 export type OthersSectionProps = {
   radiusM: number
-  /** 그날 값 rivals(안 보기가 아닌 모든 과목 의원) */
-  rivals: Got<Rival[]>
+  /** 그날 값 rivals(안 보기가 아닌 모든 과목 의원)(잘렸으면 capped: true) */
+  rivals: RivalsGot
   /** 의원 과목 고르기 설정 */
   deptRule: DeptRule
   /** 후보 도로명 주소(카카오 k-point, 볼 때만·저장 안 함) */
@@ -173,7 +173,7 @@ export function OthersSection({
           ) : (
             <p className={`text-body ${MUTED}`}>둘레로 보기 과목 의원이 범위 안에 없어요.</p>
           )}
-          {isCapped(shown.v) && <p className={ds.help}>{CAP_TEXT}</p>}
+          {isCapped(rivals) && <p className={ds.help}>{CAP_TEXT}</p>}
           {!rivals.ok && <WhyLine why={rivals.why} src={rivals.src} prevAsOf={shown.asOf} onRetry={onRetry} />}
         </>
       ) : (

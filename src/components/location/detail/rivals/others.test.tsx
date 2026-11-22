@@ -120,6 +120,17 @@ describe('AC-7921.6: 둘레로 보기 과목 표', () => {
     expect(within(section()).getByText('200곳 넘게 있을 수 있어요. 가까운 200곳만 셌어요.')).toBeTruthy()
   })
 
+  it('AC-7921.6: 그날 값 rivals에 `capped: true`가 있으면 200곳보다 적어도 표 아래 `200곳 넘게 있을 수 있어요…`(지난 값이면 지난 값의 capped)', () => {
+    others()
+    expect(within(section()).queryByText('200곳 넘게 있을 수 있어요. 가까운 200곳만 셌어요.')).toBeNull()
+    cleanup()
+    others({ rivals: { ...okRivals, capped: true } })
+    expect(within(section()).getByText('200곳 넘게 있을 수 있어요. 가까운 200곳만 셌어요.')).toBeTruthy()
+    cleanup()
+    others({ rivals: { ok: false, why: 'failed', src: 'hosp-list', prev: { v: CLINICS, asOf: '2026-10-01', capped: true } } })
+    expect(within(section()).getByText('200곳 넘게 있을 수 있어요. 가까운 200곳만 셌어요.')).toBeTruthy()
+  })
+
   it('AC-7921.6: 의원 목록을 못 받았으면 그 자리에 까닭 글과 [다시 받기]', () => {
     const onRetry = vi.fn()
     others({ rivals: { ok: false, why: 'failed', src: 'hosp-list' }, onRetry })
