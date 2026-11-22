@@ -1,10 +1,12 @@
-// 입지 분석 저장 (specs/location TASK-24, REQ-7908·REQ-7913·REQ-7919 · AC-7908.2·AC-7913.4·AC-7919.4, design.md 6·7절). 실제 Supabase에 붙지 않는다.
+// 입지 분석 저장 (specs/location TASK-24·TASK-62, REQ-7908·REQ-7913·REQ-7915·REQ-7919·REQ-7921 · AC-7908.2·AC-7913.4·AC-7915.2·AC-7919.4·AC-7921.2,
+// design.md 6·7·12·18절). 실제 Supabase에 붙지 않는다.
 // 가짜 클라이언트가 표·DB 함수(rpc)·사진 저장소(location-photos)에 무엇이 어떤 차례로 나갔는지 적어 둔다.
 // 표 권한·RLS·검사 함수·사진 30장 트리거·Storage 정책은 supabase/location.rls.test.ts(TASK-1)가 진짜 Postgres로 본다.
 // id·이름·주소·숫자·그림 바이트는 모두 지어낸 값이다
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_DEPT_RULE } from '@/lib/location/depts'
 import { DEFAULT_SCORE_RULE, type ScoreRule } from '@/lib/location/score'
-import type { Snapshot, WatchEvent } from '@/types/location'
+import type { DeptRule, Snapshot, WatchEvent } from '@/types/location'
 import {
   addCandidate,
   addEvents,
@@ -21,9 +23,12 @@ import {
   LocationStorageError,
   markCandidateEventsSeen,
   markEventsSeen,
+  readDeptRule,
   readPhoto,
   removePhotos,
+  resetDeptRule,
   resetScoreRule,
+  saveDeptRule,
   saveHomeEswt,
   saveScoreRule,
   setWatchChecked,
@@ -52,7 +57,7 @@ const T1 = '2026-11-22T01:02:03.456789+00:00'
 const T2 = '2026-11-22T05:06:07.000000+00:00'
 const NOW = new Date('2026-11-22T03:00:00.000Z')
 
-const SETTINGS_COLUMNS = 'score_rule, home_eswt, updated_at'
+const SETTINGS_COLUMNS = 'score_rule, dept_rule, home_eswt, updated_at'
 const CANDIDATE_COLUMNS =
   'id, name, address_note, lat, lng, radius_m, status, floor_label, area_m2, sign_visible, violation, costs, terms, checks, open_on, tasks_done, snapshot, snapshot_at, watch_checked_on, created_at, updated_at'
 const LISTING_COLUMNS =
@@ -60,7 +65,7 @@ const LISTING_COLUMNS =
 const NOTE_COLUMNS = 'id, candidate_id, day, body, created_at'
 const PHOTO_COLUMNS = 'id, candidate_id, path, label, taken_on, created_at'
 const EVENT_COLUMNS = 'id, candidate_id, kind, clinic_name, dept, event_on, dist_m, seen_at, created_at'
-const WATCH_COLUMNS = 'id, status, lat, lng, radius_m, watch_checked_on, created_at'
+const WATCH_COLUMNS = 'id, name, status, lat, lng, radius_m, watch_checked_on, created_at'
 
 // 칸 권한(migration grant)에 있는 칸
 const CANDIDATE_WRITABLE = [
@@ -71,10 +76,10 @@ const LISTING_KEYS = [
   'area_m2', 'broker_id', 'broker_note', 'candidate_id', 'deposit', 'floor_label', 'lat', 'lng', 'memo', 'mgmt', 'premium', 'rent', 'title', 'url',
 ]
 
-// 그날 값 칸 스물둘(design.md 6절)
+// 그날 값 칸 스물넷(design.md 6절 — 행정동 place·견줄 값 sggAvg 포함)
 const SNAPSHOT_KEYS = [
   'people', 'trend', 'flow', 'income', 'aptPrice', 'bizPrice', 'apts', 'presale', 'seniors', 'gyms', 'schools', 'accidents', 'industry',
-  'pharmacies', 'rivals', 'history', 'station', 'bus', 'market', 'building', 'stores', 'welfare',
+  'pharmacies', 'rivals', 'place', 'sggAvg', 'history', 'station', 'bus', 'market', 'building', 'stores', 'welfare',
 ]
 
 // JPEG 머리(FF D8 FF)로 시작하는 가짜 그림 바이트
@@ -183,7 +188,13 @@ const eventRow = (over: Record<string, unknown> = {}) => ({
   created_at: T1,
   ...over,
 })
-const settingsRow = (over: Record<string, unknown> = {}) => ({ score_rule: DEFAULT_SCORE_RULE, home_eswt: null, updated_at: T1, ...over })
+const settingsRow = (over: Record<string, unknown> = {}) => ({
+  score_rule: DEFAULT_SCORE_RULE,
+  dept_rule: DEFAULT_DEPT_RULE,
+  home_eswt: null,
+  updated_at: T1,
+  ...over,
+})
 
 const BASE_ROW: Record<string, () => Record<string, unknown>> = {
   location_settings: settingsRow,
@@ -192,6 +203,32 @@ const BASE_ROW: Record<string, () => Record<string, unknown>> = {
   location_notes: noteRow,
   location_photos: photoRow,
   location_events: eventRow,
+}
+
+// 후보 점의 행정동(동 경계 파일)과 시군구 견줄 값(공공 자료만) — 지어낸 코드·이름·숫자
+const PLACE = {
+  ok: true,
+  v: { sido: '99', sidoName: '가나도', sgg: '99910', sggName: '가나시', dong: '9991051000', dongName: '가동' },
+  src: 'dongs',
+  asOf: '2025-06-30',
+}
+const SGG_AVG = {
+  ok: true,
+  v: {
+    sggName: '가나시',
+    areaM2: 24000000,
+    total: 300000,
+    bands: [20000, 24000, 28000, 34000, 40000, 46000, 42000, 34000, 20000, 10000, 2000],
+    trendPct: -1.2,
+    accidents: 12,
+    schools: 40,
+    seniors: 120,
+    gyms: 60,
+    stationM: 640,
+    stops: 5,
+  },
+  src: 'pop-age',
+  asOf: '2026-10-31',
 }
 
 /** 맞는 그날 값(지어낸 숫자). 못 받은 칸은 failed, 하나는 지난 값(prev)이 있다 */
@@ -209,6 +246,8 @@ function makeSnapshot(over: Record<string, unknown> = {}): Snapshot {
       asOf: '2026-10-31',
     },
     seniors: { ok: false, why: 'failed', src: 'senior', prev: { v: 3, asOf: '2026-10-01' } },
+    place: PLACE,
+    sggAvg: SGG_AVG,
     building: {
       ok: true,
       v: { usage: '근린생활시설', structure: '철근콘크리트', above: 5, below: 1, totalM2: 1200.5, approvedOn: '2005-04-01', elevators: 1, parking: 8, floors: [] },
@@ -363,11 +402,12 @@ afterEach(() => {
 // ── 읽기 ─────────────────────────────────────────────────────
 
 describe('loadLocation — 표 여섯 읽기', () => {
-  it('AC-7908.2·AC-7913.4·AC-7919.4: 표 여섯을 정해 둔 칸으로 읽어(목록은 1,000줄씩) 앱 모양으로 바꾼다', async () => {
+  it('AC-7908.2·AC-7913.4·AC-7919.4·AC-7921.2: 표 여섯을 정해 둔 칸으로 읽어(목록은 1,000줄씩) 앱 모양으로 바꾼다', async () => {
     const snapshot = makeSnapshot()
+    const deptRule: DeptRule = { v: 1, rival: ['ortho', 'rehab', 'korean'], hide: ['dental'] }
     const { client, calls } = fakeClient(
       by({
-        'location_settings:select': () => ({ data: settingsRow({ home_eswt: 50000 }) }),
+        'location_settings:select': () => ({ data: settingsRow({ home_eswt: 50000, dept_rule: deptRule }) }),
         'location_candidates:select': () => ({ data: [candidateRow({ snapshot, snapshot_at: T2 })] }),
         'location_listings:select': () => ({ data: [listingRow()] }),
         'location_notes:select': () => ({ data: [noteRow()] }),
@@ -393,7 +433,7 @@ describe('loadLocation — 표 여섯 읽기', () => {
     expect(byTable.location_photos).toMatchObject({ columns: PHOTO_COLUMNS, range: [0, 999] })
     expect(byTable.location_events).toMatchObject({ columns: EVENT_COLUMNS, range: [0, 999] })
 
-    expect(data.settings).toEqual({ scoreRule: DEFAULT_SCORE_RULE, homeEswt: 50000, updatedAt: T1 })
+    expect(data.settings).toEqual({ scoreRule: DEFAULT_SCORE_RULE, deptRule, homeEswt: 50000, updatedAt: T1 })
     expect(data.candidates).toEqual([
       {
         id: CAND,
@@ -459,7 +499,7 @@ describe('loadLocation — 표 여섯 읽기', () => {
 
   it('AC-7919.4: 설정 줄이 없으면 처음 설정이고, 예전 설정은 fillScoreRule로 채운다(빠진 p-welfare = 처음 값)', async () => {
     const empty = await loadLocation(fakeClient().client)
-    expect(empty.settings).toEqual({ scoreRule: DEFAULT_SCORE_RULE, homeEswt: null, updatedAt: null })
+    expect(empty.settings).toEqual({ scoreRule: DEFAULT_SCORE_RULE, deptRule: DEFAULT_DEPT_RULE, homeEswt: null, updatedAt: null })
 
     const old = structuredClone(DEFAULT_SCORE_RULE) as ScoreRule
     old.weights.people = 50
@@ -468,6 +508,27 @@ describe('loadLocation — 표 여섯 읽기', () => {
     const { settings } = await loadLocation(client)
     expect(settings.scoreRule.weights.people).toBe(50)
     expect(settings.scoreRule.items['p-welfare']).toEqual(DEFAULT_SCORE_RULE.items['p-welfare'])
+  })
+
+  it('AC-7921.2: 과목 고르기는 fillDeptRule을 거친다 — 칸이 없거나 못 읽으면 처음 값, 모르는 id·되풀이는 빼고 목록 차례로', async () => {
+    const cases: [unknown, DeptRule][] = [
+      [undefined, DEFAULT_DEPT_RULE], // 칸이 없던 옛 줄
+      [null, DEFAULT_DEPT_RULE],
+      ['ortho', DEFAULT_DEPT_RULE],
+      [{ v: 2, rival: [], hide: [] }, DEFAULT_DEPT_RULE],
+      [{ v: 1 }, DEFAULT_DEPT_RULE], // 경쟁 칸이 없으면 처음 경쟁, 안 보기 칸이 없으면 없음
+      [{ v: 1, rival: [], hide: [] }, { v: 1, rival: [], hide: [] }], // 경쟁 0개도 그대로
+      [{ v: 1, rival: ['rehab', 'x-unknown', 'ortho', 'ortho'], hide: ['korean', 'ortho'] }, { v: 1, rival: ['ortho', 'rehab'], hide: ['korean'] }],
+    ]
+    for (const [raw, expected] of cases) {
+      const row = settingsRow({ dept_rule: raw })
+      if (raw === undefined) delete (row as Record<string, unknown>).dept_rule
+      const { client } = fakeClient(by({ 'location_settings:select': () => ({ data: row }) }))
+      const { settings } = await loadLocation(client)
+      expect(settings.deptRule).toEqual(expected)
+      expect(settings.scoreRule).toEqual(DEFAULT_SCORE_RULE) // 과목 고르기가 틀려도 줄은 그대로 읽는다
+      expect(Object.isFrozen(settings.deptRule)).toBe(false) // 화면이 고쳐 쓸 새 값(얼린 처음 값이 아님)
+    }
   })
 
   it('AC-7913.4: 1,000줄이 차면 다음 쪽까지 읽는다(사진 줄)', async () => {
@@ -562,6 +623,8 @@ describe('addCandidate · updateCandidate · deleteCandidate — 후보 줄', ()
     expect(Object.keys(sent).sort()).toEqual(['at', 'radiusM', 'v', ...SNAPSHOT_KEYS].sort())
     expect(sent.people).toEqual(makeSnapshot().people)
     expect(sent.seniors).toEqual({ ok: false, why: 'failed', src: 'senior', prev: { v: 3, asOf: '2026-10-01' } })
+    expect(sent.place).toEqual(PLACE) // 행정동 이름(동 경계 파일) — 카카오 주소 글이 아니다
+    expect(sent.sggAvg).toEqual(SGG_AVG)
     const text = JSON.stringify(body)
     for (const leak of [kakao.roadAddress, kakao.jibunAddress, kakao.bcode, '마바약국', 'kakao', 'distance']) expect(text).not.toContain(leak)
 
@@ -569,12 +632,18 @@ describe('addCandidate · updateCandidate · deleteCandidate — 후보 줄', ()
     expect(saved.snapshot).toEqual(sent)
   })
 
-  it('AC-7908.2: 그날 값 칸의 출처가 카카오면(카카오 답은 저장하지 않음) 보내지 않는다', async () => {
+  it('AC-7908.2: 그날 값 칸의 출처가 카카오면(카카오 답은 저장하지 않음 — 새 칸 place·sggAvg도) 보내지 않는다', async () => {
     for (const src of ['kakao-local', 'kakao-map']) {
-      const { client, calls } = fakeClient()
-      const snapshot = makeSnapshot({ pharmacies: { ok: true, v: 2, src, asOf: '2026-11-22' } })
-      await expectFail(addCandidate(client, { name: '역앞', addressNote: '', lat: 37.5, lng: 127, radiusM: 500, snapshot }), 'E-LOC-SAVE-FAILED')
-      expect(calls).toEqual([])
+      for (const over of [
+        { pharmacies: { ok: true, v: 2, src, asOf: '2026-11-22' } },
+        { place: { ...PLACE, src } },
+        { sggAvg: { ok: false, why: 'failed', src } },
+      ]) {
+        const { client, calls } = fakeClient()
+        const snapshot = makeSnapshot(over)
+        await expectFail(addCandidate(client, { name: '역앞', addressNote: '', lat: 37.5, lng: 127, radiusM: 500, snapshot }), 'E-LOC-SAVE-FAILED')
+        expect(calls).toEqual([])
+      }
     }
   })
 
@@ -594,6 +663,8 @@ describe('addCandidate · updateCandidate · deleteCandidate — 후보 줄', ()
       { ...ok, snapshot: makeSnapshot({ people: { ok: true, src: 'pop-age', asOf: '2026-10-31' } }) }, // v 없음
       { ...ok, snapshot: makeSnapshot({ trend: { ok: false, why: 'gone', src: 'pop-age' } }) },
       { ...ok, snapshot: makeSnapshot({ trend: undefined }) },
+      { ...ok, snapshot: makeSnapshot({ place: undefined }) }, // 새 칸이 빠진 옛 모양
+      { ...ok, snapshot: makeSnapshot({ sggAvg: { ok: true, src: 'pop-age', asOf: '2026-10-31' } }) },
       null,
     ]
     for (const fields of bad) {
@@ -931,7 +1002,7 @@ describe('saveScoreRule · resetScoreRule · saveHomeEswt — 병원마다 설�
     const call = onlyTable(calls)
     expect(call).toMatchObject({ table: 'location_settings', op: 'upsert', options: { onConflict: 'hospital_id' }, columns: SETTINGS_COLUMNS, single: true })
     expect(call.body).toEqual({ score_rule: rule })
-    expect(saved).toEqual({ scoreRule: rule, homeEswt: null, updatedAt: T1 })
+    expect(saved).toEqual({ scoreRule: rule, deptRule: DEFAULT_DEPT_RULE, homeEswt: null, updatedAt: T1 })
   })
 
   it('AC-7919.4·AC-7919.6: p-welfare만 적을수록 좋음(기준 둘) 모양도 저장된다', async () => {
@@ -1010,6 +1081,82 @@ describe('saveScoreRule · resetScoreRule · saveHomeEswt — 병원마다 설�
   })
 })
 
+describe('saveDeptRule · resetDeptRule · readDeptRule — 의원 과목 고르기(dept_rule)', () => {
+  it('AC-7921.2: 과목 고르기는 병원마다 한 줄 upsert(on conflict hospital_id) — dept_rule 칸 하나만, 목록 차례로 새로 만들어 보낸다', async () => {
+    const { client, calls } = fakeClient()
+    const saved = await saveDeptRule(client, { v: 1, rival: ['rehab', 'korean', 'ortho'], hide: ['dental', 'derm'] })
+    const call = onlyTable(calls)
+    expect(call).toMatchObject({ table: 'location_settings', op: 'upsert', options: { onConflict: 'hospital_id' }, columns: SETTINGS_COLUMNS, single: true })
+    const sent = { v: 1, rival: ['ortho', 'rehab', 'korean'], hide: ['derm', 'dental'] }
+    expect(call.body).toEqual({ dept_rule: sent })
+    expect(Object.keys(call.body as object)).toEqual(['dept_rule'])
+    expect(saved).toEqual({ scoreRule: DEFAULT_SCORE_RULE, deptRule: sent, homeEswt: null, updatedAt: T1 })
+  })
+
+  it('AC-7921.2: 경쟁 0개(rival: [])도 저장된다', async () => {
+    const { client, calls } = fakeClient()
+    const saved = await saveDeptRule(client, { v: 1, rival: [], hide: ['im'] })
+    expect(bodyOf(calls)).toEqual({ dept_rule: { v: 1, rival: [], hide: ['im'] } })
+    expect(saved.deptRule).toEqual({ v: 1, rival: [], hide: ['im'] })
+  })
+
+  it('AC-7921.2: 모르는 과목 id·경쟁과 안 보기 겹침·되풀이·판 2·더한 칸·배열 아님이면 보내지 않는다(checkDeptRule)', async () => {
+    const bad: unknown[] = [
+      { v: 1, rival: ['ortho', 'x-unknown'], hide: [] },
+      { v: 1, rival: ['ortho'], hide: ['ortho'] },
+      { v: 1, rival: ['ortho', 'ortho'], hide: [] },
+      { v: 2, rival: ['ortho'], hide: [] },
+      { v: 1, rival: ['ortho'], hide: [], extra: SECRET },
+      { v: 1, rival: 'ortho', hide: [] },
+      { v: 1, rival: ['ortho'] },
+      null,
+      'rule',
+      [],
+    ]
+    for (const rule of bad) {
+      const { client, calls } = fakeClient()
+      await expectFail(saveDeptRule(client, rule as never), 'E-LOC-SAVE-FAILED')
+      expect(calls).toEqual([])
+    }
+  })
+
+  it('AC-7921.2: [기본값으로]는 처음 값(경쟁 = 정형외과·신경외과·마취통증의학과·재활의학과, 안 보기 없음)을 같은 upsert로 저장한다', async () => {
+    const { client, calls } = fakeClient()
+    const saved = await resetDeptRule(client)
+    const call = onlyTable(calls)
+    expect(call).toMatchObject({ table: 'location_settings', op: 'upsert', options: { onConflict: 'hospital_id' } })
+    expect(call.body).toEqual({ dept_rule: { v: 1, rival: ['ortho', 'ns', 'pain', 'rehab'], hide: [] } })
+    expect(JSON.stringify((call.body as Record<string, unknown>).dept_rule)).toBe(JSON.stringify(DEFAULT_DEPT_RULE))
+    expect(saved.deptRule).toEqual(DEFAULT_DEPT_RULE)
+  })
+
+  it('AC-7921.2·AC-7915.2: 알림 쪽 readDeptRule은 설정 줄의 dept_rule 칸 하나만 읽어 fillDeptRule로 돌려준다', async () => {
+    const { client, calls } = fakeClient(
+      by({ 'location_settings:select': () => ({ data: { dept_rule: { v: 1, rival: ['pain', 'ortho', 'nope'], hide: ['korean'] } } }) }),
+    )
+    expect(await readDeptRule(client)).toEqual({ v: 1, rival: ['ortho', 'pain'], hide: ['korean'] })
+    expect(onlyTable(calls)).toMatchObject({ table: 'location_settings', op: 'select', columns: 'dept_rule', single: true })
+  })
+
+  it('AC-7921.2·AC-7915.2: readDeptRule은 줄이 없거나 못 읽으면(오류 답·예외·틀린 모양) 던지지 않고 처음 값', async () => {
+    const replies: ((call: Call) => Reply)[] = [
+      () => ({ data: null }),
+      () => ({ error: RAW_ERROR }),
+      () => ({ data: 'row' }),
+      () => ({ data: { dept_rule: 'ortho' } }),
+      () => ({ data: {} }),
+      () => {
+        throw new Error(SECRET)
+      },
+    ]
+    for (const reply of replies) {
+      const rule = await readDeptRule(fakeClient(reply).client)
+      expect(rule).toEqual(DEFAULT_DEPT_RULE)
+      expect(Object.isFrozen(rule)).toBe(false)
+    }
+  })
+})
+
 // ── 매물 ─────────────────────────────────────────────────────
 
 describe('addListing · updateListing · deleteListing — 붙여 넣은 매물', () => {
@@ -1077,21 +1224,37 @@ describe('addListing · updateListing · deleteListing — 붙여 넣은 매물'
 // ── 새 경쟁 의원 알림(대시보드) ──────────────────────────────
 
 describe('새 경쟁 의원 알림 줄 — 대시보드가 부름', () => {
-  it('AC-7915.1: 알림 확인할 후보는 알림에 쓰는 칸만 읽는다(그날 값·이름 없음)', async () => {
+  it('AC-7915.1·AC-7915.2: 알림 확인할 후보는 알림에 쓰는 칸만 읽는다(그날 값 없음 · 후보 이름은 알림 아래 줄에 씀)', async () => {
+    const watchRow = (over: Record<string, unknown> = {}) => ({
+      id: CAND,
+      name: '역앞 자리',
+      status: 'watching',
+      lat: 37.5,
+      lng: 127,
+      radius_m: 1000,
+      watch_checked_on: '2026-10-01',
+      created_at: T1,
+      ...over,
+    })
     const { client, calls } = fakeClient(
       by({
         'location_candidates:select': () => ({
           data: [
-            { id: CAND, status: 'watching', lat: 37.5, lng: 127, radius_m: 1000, watch_checked_on: '2026-10-01', created_at: T1 },
-            { id: CAND2, status: 'gone', lat: 37.5, lng: 127, radius_m: 1000, watch_checked_on: null, created_at: T1 },
+            watchRow(),
+            watchRow({ id: CAND2, status: 'gone', watch_checked_on: null }),
+            watchRow({ id: 'no-name', name: '' }),
+            watchRow({ id: 'name-missing', name: undefined }),
+            watchRow({ id: 'name-number', name: 7 }),
           ],
         }),
       }),
     )
     expect(await listWatchCandidates(client)).toEqual([
-      { id: CAND, status: 'watching', lat: 37.5, lng: 127, radiusM: 1000, watchCheckedOn: '2026-10-01', createdAt: T1 },
+      { id: CAND, name: '역앞 자리', status: 'watching', lat: 37.5, lng: 127, radiusM: 1000, watchCheckedOn: '2026-10-01', createdAt: T1 },
     ])
-    expect(onlyTable(calls)).toMatchObject({ columns: WATCH_COLUMNS, range: [0, 999] })
+    const call = onlyTable(calls)
+    expect(call).toMatchObject({ table: 'location_candidates', op: 'select', columns: WATCH_COLUMNS, range: [0, 999] })
+    expect(call.columns).not.toMatch(/snapshot/)
   })
 
   it('AC-7915.1: 알림 줄 넣기는 같은 줄을 건너뛰는 넣기(on conflict do nothing)만 쓰고, 틀린 줄은 빼고 넣는다', async () => {
@@ -1193,6 +1356,8 @@ describe('실패 — 오류 번호만, Supabase 글·입력값 없음', () => {
     ['saveScoreRule', (c) => saveScoreRule(c, rule), 'E-LOC-SAVE-FAILED'],
     ['resetScoreRule', (c) => resetScoreRule(c), 'E-LOC-SAVE-FAILED'],
     ['saveHomeEswt', (c) => saveHomeEswt(c, 50000), 'E-LOC-SAVE-FAILED'],
+    ['saveDeptRule', (c) => saveDeptRule(c, DEFAULT_DEPT_RULE), 'E-LOC-SAVE-FAILED'],
+    ['resetDeptRule', (c) => resetDeptRule(c), 'E-LOC-SAVE-FAILED'],
     ['listWatchCandidates', (c) => listWatchCandidates(c), 'E-LOC-READ-FAILED'],
     ['listUnseenEvents', (c) => listUnseenEvents(c), 'E-LOC-READ-FAILED'],
     ['addEvents', (c) => addEvents(c, [{ candidateId: CAND, kind: 'open', clinicName: '가나의원', dept: '', eventOn: '2026-11-01', distM: 0 }]), 'E-LOC-SAVE-FAILED'],
@@ -1201,7 +1366,7 @@ describe('실패 — 오류 번호만, Supabase 글·입력값 없음', () => {
     ['markCandidateEventsSeen', (c) => markCandidateEventsSeen(c, CAND), 'E-LOC-SAVE-FAILED'],
   ]
 
-  it.each(runs)('AC-7913.4·AC-7919.4: %s — 오류 답·예외·틀린 답 줄이면 그 오류 번호로 던진다', async (_name, run, code) => {
+  it.each(runs)('AC-7913.4·AC-7919.4·AC-7921.2: %s — 오류 답·예외·틀린 답 줄이면 그 오류 번호로 던진다', async (_name, run, code) => {
     await expectFail(run(fakeClient(() => ({ error: RAW_ERROR })).client), code)
     await expectFail(run(fakeClient((call) => ({ ...okReply(call), error: RAW_ERROR })).client), code)
     await expectFail(
@@ -1219,5 +1384,6 @@ describe('실패 — 오류 번호만, Supabase 글·입력값 없음', () => {
     await expectFail(addCandidate(wrong.client, { name: '역앞', addressNote: '', lat: 37.5, lng: 127, radiusM: 1000 }), 'E-LOC-SAVE-FAILED')
     await expectFail(addNote(wrong.client, CAND, { day: '2026-11-22', body: '메모' }), 'E-LOC-SAVE-FAILED')
     await expectFail(saveScoreRule(wrong.client, rule), 'E-LOC-SAVE-FAILED')
+    await expectFail(saveDeptRule(wrong.client, DEFAULT_DEPT_RULE), 'E-LOC-SAVE-FAILED')
   })
 })
