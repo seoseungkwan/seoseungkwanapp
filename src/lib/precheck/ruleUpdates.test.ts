@@ -507,7 +507,7 @@ describe('AC-7802.3 checkRuleChange — 뺀 것(removed)·등급(grade)', () => 
     expect(
       check(
         withParams('IJ-02', (p) => {
-          ;(p.window as Rec).days = 180
+          ;(p.window as Rec).days = 300
           ;(p.thresholds as Rec[])[0].at = 3
           ;(p.thresholds as Rec[])[1].at = 4
         }),
@@ -519,9 +519,35 @@ describe('AC-7802.3 checkRuleChange — 뺀 것(removed)·등급(grade)', () => 
     expect(check(withParams('IJ-09', (p) => (p.joint_sites = [...(p.joint_sites as string[])].reverse())))).toBe('ok')
     // 비켜 주는 칸 안 숫자는 안 된다(PH-19 exception.max_days_from_first)
     expect(check(withParams('PH-19', (p) => ((p.exception as Rec).max_days_from_first = 7)))).toBe('removed')
-    // 지금 판과 견준다: 지금 판의 숫자에서 다시 숫자만 바꾸면 지난다
-    const current = withParams('IJ-02', (p) => ((p.window as Rec).days = 180), { effective_from: '2026-11-01' })
-    expect(check(withParams('IJ-02', (p) => ((p.window as Rec).days = 120)), 'IJ-02', current)).toBe('ok')
+    // 지금 판과 견준다: 지금 판의 숫자에서 다시 숫자만 바꾸면 지난다(숫자 한도 (5) 안)
+    const current = withParams('IJ-02', (p) => ((p.window as Rec).days = 300), { effective_from: '2026-11-01' })
+    expect(check(withParams('IJ-02', (p) => ((p.window as Rec).days = 250)), 'IJ-02', current)).toBe('ok')
+  })
+
+  it("AC-7802.3 (5): 숫자 한도 — 바뀐 숫자는 원래 규칙 값의 절반~2배(끝 값 포함)여야 지나고, 밖이면 'removed'다", () => {
+    const at = (n: number) => withParams('LA-18', (p) => ((p.thresholds as Rec[])[0].at = n))
+    expect((ruleOf('LA-18').params.thresholds as Rec[])[0].at).toBe(4)
+    for (const n of [2, 3, 5, 8]) expect(check(at(n)), String(n)).toBe('ok') // 0.5배·2배 끝 값 포함
+    for (const n of [400, 1, 9, 1.9, 0, -4]) expect(check(at(n)), String(n)).toBe('removed')
+    // 객체 안 숫자도(LA-17 max_period.calendar_months 2 → 1·4는 지나고 5는 아님)
+    const months = (n: number) => withParams('LA-17', (p) => ((p.max_period as Rec).calendar_months = n))
+    expect(check(months(1))).toBe('ok')
+    expect(check(months(4))).toBe('ok')
+    expect(check(months(5))).toBe('removed')
+    // 원래 값이 0이면 0이어야 한다(LA-03 tolerance)
+    expect(ruleOf('LA-03').params.tolerance).toBe(0)
+    expect(check(withParams('LA-03', (p) => (p.tolerance = 0.1)))).toBe('removed')
+  })
+
+  it("AC-7802.3 (5): 숫자 한도는 지금 판이 아니라 늘 원래 규칙과 견준다 — 앞 판이 2배로 늘린 뒤 다시 2배(원래의 4배)는 'removed'다", () => {
+    const at = (n: number, patch: Partial<RuleDef> = {}) => withParams('LA-18', (p) => ((p.thresholds as Rec[])[0].at = n), patch)
+    const current = at(8, { effective_from: '2026-11-01' })
+    expect(check(current)).toBe('ok')
+    expect(check(at(16, { title: '다시 고친 제목' }), 'LA-18', current)).toBe('removed')
+    expect(check(at(6, { title: '다시 고친 제목' }), 'LA-18', current)).toBe('ok')
+    // 원래 규칙에 없는 자리의 숫자를 바꾸면(지금 판에만 있는 칸) 'removed'
+    const extra = withParams('LA-18', (p) => ((p.window as Rec).at = 3), { effective_from: '2026-11-01' })
+    expect(check(withParams('LA-18', (p) => ((p.window as Rec).at = 4), { title: '다시 고친 제목' }), 'LA-18', extra)).toBe('removed')
   })
 })
 
@@ -617,6 +643,8 @@ describe('AC-7803.1·AC-7803.4 withRuleUpdates — 쓸 판 거르기', () => {
       // 비켜 주는 칸에 이름을 더한 판, 숫자 밖 모양이 원래 규칙과 다른 판은 Worker도 버린다(AC-7802.3)
       update('c-waiver', withParams('IJ-05', (p) => (p.acceptable_with = ['steroid_injection', 'viscosupplement_any', 'local_anesthetic']))),
       update('c-list', withParams('IJ-09', (p) => (p.joint_sites = (p.joint_sites as string[]).slice(0, 2)))),
+      // 숫자 한도(절반~2배) 밖의 판도 버린다(LA-36 window.days 14 → 400)
+      update('c-far', withParams('LA-36', (p) => ((p.window as Rec).days = 400))),
       update('c-to', changed('LA-35', { effective_to: '2027-01-01' })),
       { ...ok, changeId: 'c-null-rule', rule: null },
       { ...ok, changeId: 'c-text-rule', rule: JSON.stringify(rule) },
