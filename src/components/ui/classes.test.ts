@@ -1559,6 +1559,10 @@ describe('AC-221.2·AC-204.7: 틀째 그린 앱 화면 전부에 상자 안 상�
   })
 
   it('AC-204.7: REQ-218·REQ-220 앱 틀 + 관리자(세 탭·확인 창·계정 메뉴)', async () => {
+    // 관리자 화면은 관리자 표시(rpc admin_hospitals, multi-admin)도 읽는다 → 빈 목록. 바꾸기 rpc는 지금처럼
+    rpc.mockImplementation(async (name: string) =>
+      name === 'admin_hospitals' ? { data: [], error: null, status: 200 } : { data: null, error: null, status: 204 },
+    )
     const user = userEvent.setup()
     render(adminPage())
     await screen.findByRole('tablist', { name: '신청 상태' })

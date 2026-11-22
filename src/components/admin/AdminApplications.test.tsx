@@ -13,12 +13,19 @@ import { AdminApplications } from './AdminApplications'
 // 관리자 · 가입 승인 (REQ-007, ui-90 REQ-417, design.md '관리자', UI_GUIDE '관리자' 화면 안 탭·표·칩·확인 창·폰).
 // 순서는 목업 docs/mockups/auth/Admin.dc.html, 이름·문구(~요)는 ui-90 시안 docs/mockups/ui-90/app/gen.py admin_body. 실제 Supabase에 붙지 않는다 — 진짜 listApplications·setHospitalStatus를 거쳐
 // hospitals 읽기와 set_hospital_status 호출이 어떤 값으로 몇 번 나가는지만 본다. jsdom은 CSS를 계산하지 않는다 → 모양은 클래스로 본다
-const { from, select, order, rpc } = vi.hoisted(() => {
+const { from, select, order, rpc, marksRpc } = vi.hoisted(() => {
   const order = vi.fn()
   const select = vi.fn(() => ({ order }))
-  return { order, select, from: vi.fn(() => ({ select })), rpc: vi.fn() }
+  return { order, select, from: vi.fn(() => ({ select })), rpc: vi.fn(), marksRpc: vi.fn() }
 })
-vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: () => ({ from, rpc }) }))
+// rpc 흉내는 이름으로 나눠 답한다(multi-admin design.md '시험 계획'): 관리자 표시 읽기 admin_hospitals → marksRpc,
+// 바꾸기(set_hospital_status·set_admin) → rpc. 그래서 rpc를 세는 시험은 바꾸기 부르기만 센다
+vi.mock('@/lib/supabase/browser', () => ({
+  supabaseBrowser: () => ({
+    from,
+    rpc: (name: string, ...args: unknown[]) => (name === 'admin_hospitals' ? marksRpc(name, ...args) : rpc(name, ...args)),
+  }),
+}))
 
 const RAW = 'permission denied for function set_hospital_status secret-detail'
 // DB가 신청일 내림차순으로 준다(order는 listApplications가 건다)
@@ -29,7 +36,8 @@ const DB_ROWS = [
   { id: 'r3', name: '마바 정형외과의원', applicant_name: '이영희', phone: '0212345678', email: 'younghee@example.com', status: 'approved', created_at: '2026-10-20T03:00:00+00:00' },
 ]
 const COLUMNS = ['신청일', '의원 이름', 'EMR', '신청자', '이메일', '연락처', '동작']
-const INTRO = '승인하면 그 계정은 바로 대시보드를 쓸 수 있어요. 거절한 신청은 거절 탭에서 되돌릴 수 있어요.'
+// multi-admin requirements.md '화면 글자' INTRO 전체(지금 두 문장 끝에 한 문장을 더함)
+const INTRO = '승인하면 그 계정은 바로 대시보드를 쓸 수 있어요. 거절한 신청은 거절 탭에서 되돌릴 수 있어요. 승인 탭에서 관리자를 정하거나 뺄 수 있어요.'
 // 시안에 없는 거절 확인 창 문구는 말끝만 "~요"로 바꾼다(design.md '시안과 다른 점' 11)
 const CONFIRM_BODY = '거절하면 이 계정은 대시보드를 쓸 수 없어요. 거절 탭에서 언제든 되돌릴 수 있어요.'
 
@@ -45,8 +53,9 @@ const tabNamed = (label: '대기' | '승인' | '거절') => screen.getByRole('ta
 const tabNames = () => within(tablist()).getAllByRole('tab').map((t) => t.textContent?.replace(/\s+/g, ' ').trim())
 const table = () => screen.getByRole('table')
 const bodyRows = () => within(table()).getAllByRole('row').slice(1) // 첫 줄은 머리
+// 의원 이름 칸(title = 의원 이름)으로 줄을 찾는다 — 관리자 표가 붙은 줄은 칸 글자에 '관리자'·'주 관리자'가 더해진다(multi-admin)
 const rowOf = (clinic: string) => {
-  const tr = screen.getByRole('cell', { name: clinic }).closest('tr')
+  const tr = within(table()).getAllByRole('cell').find((c) => c.getAttribute('title') === clinic)?.closest('tr') ?? null
   if (tr === null) throw new Error(`${clinic} 줄 없음`)
   return tr
 }
@@ -69,6 +78,8 @@ beforeEach(() => {
   from.mockClear()
   rpc.mockReset()
   rpc.mockResolvedValue({ data: null, error: null, status: 204 })
+  marksRpc.mockReset()
+  marksRpc.mockResolvedValue({ data: [], error: null, status: 200 })
 })
 
 afterEach(() => {
@@ -359,14 +370,13 @@ describe('AdminApplications: 되돌리기·승인 줄', () => {
     expect(screen.queryByRole('dialog')).toBeNull() // 되돌리기는 확인 창 없이 바로
   })
 
-  it('AC-007.4: 승인 줄에는 동작 단추가 없고 "승인됨" 완료 칩만 있다', async () => {
+  it('AC-007.4·AC-7703.3: 승인 줄(관리자 아님)의 동작 칸은 [관리자로 정하기] 하나뿐이고 "승인됨" 완료 칩은 없다', async () => {
     const user = await renderLoaded()
     await user.click(tabNamed('승인'))
     const cell = actionCell(rowOf('마바 정형외과의원'))
-    expect(within(cell).queryAllByRole('button')).toEqual([])
-    const chip = within(cell).getByText('승인됨')
-    hasAll(chip, ds.chip.positive)
-    expect(chip.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
+    expect(within(cell).getAllByRole('button').map((b) => b.textContent)).toEqual(['관리자로 정하기'])
+    expect(within(cell).queryByText('승인됨')).toBeNull()
+    expect(cell.querySelector('span')).toBeNull()
   })
 
   it('AC-007.2·AC-007.4: 대기 줄은 [승인]·[거절] 두 단추(그 순서)', async () => {
@@ -508,7 +518,7 @@ describe('AdminApplications: 폰(768px 미만)', () => {
     expect(screen.queryByText('연락처 없음')).toBeNull()
   })
 
-  it('AC-220.1·AC-220.2: 줄에 상태 칩(대기·거절됨)이 없다(탭이 상태다). 승인 줄의 "승인됨" 완료 칩은 PC·폰 모두 그대로', async () => {
+  it('AC-220.1·AC-220.2·AC-7703.3: 줄에 상태 칩(대기·거절됨)이 없다(탭이 상태다). 승인 줄의 "승인됨" 완료 칩도 없다 — 관리자가 아닌 줄에는 칩이 하나도 없다', async () => {
     const user = await renderLoaded()
     const chipKeys = Object.values(ds.chip)
     const chipsIn = (el: Element) => Array.from(el.querySelectorAll('span')).filter((s) => chipKeys.some((c) => tokens(c).every((t) => classesOf(s).includes(t))))
@@ -518,9 +528,8 @@ describe('AdminApplications: 폰(768px 미만)', () => {
     expect(chipsIn(table())).toEqual([])
     expect(within(table()).queryAllByText('거절됨')).toEqual([])
     await user.click(tabNamed('승인'))
-    const done = within(actionCell(rowOf('마바 정형외과의원'))).getByText('승인됨')
-    expect(chipsIn(table())).toEqual([done])
-    hasNone(done, 'md:hidden max-md:hidden hidden')
+    expect(chipsIn(table())).toEqual([])
+    expect(within(table()).queryAllByText('승인됨')).toEqual([])
   })
 
   it('AC-007.7·AC-013.4: 동작 단추는 폰에서 오른쪽에 나란히, 높이 44px(max-md:h-11)', async () => {
@@ -617,7 +626,7 @@ describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
     hasAll(within(table()).getAllByRole('columnheader')[6], 'md:text-right')
     hasAll(within(action).getByRole('button', { name: '승인' }).parentElement as Element, 'flex justify-end')
     await user.click(tabNamed('승인'))
-    hasAll(within(actionCell(rowOf('마바 정형외과의원'))).getByText('승인됨').parentElement as Element, 'flex justify-end')
+    hasAll(within(actionCell(rowOf('마바 정형외과의원'))).getByRole('button', { name: '관리자로 정하기' }).parentElement as Element, 'flex justify-end')
   })
 
   it('AC-220.1: 표 아래 "대기 중인 신청 N건" 줄은 두지 않는다(개수는 탭에 있다)', async () => {
@@ -626,7 +635,7 @@ describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
     expect(screen.getByRole('tabpanel').lastElementChild).toBe(table().parentElement)
   })
 
-  it('AC-007.1·AC-220.1: PC 표는 칸 폭을 정해 둔다(table-fixed) — 승인으로 줄이 바뀌거나 탭이 비어도 칸 자리가 움직이지 않는다', async () => {
+  it('AC-007.1·AC-220.1·AC-7703.4: PC 표는 칸 폭을 정해 둔다(table-fixed) — 승인으로 줄이 바뀌거나 탭이 비어도 칸 자리가 움직이지 않는다', async () => {
     const user = await renderLoaded()
     const widths = () =>
       within(table()).getAllByRole('columnheader').map((th) => classesOf(th).filter((t) => /^(max-|md:)?w-/.test(t)))
@@ -635,12 +644,13 @@ describe('AdminApplications: 모양 (UI_GUIDE 앱 화면)', () => {
     hasAll(table(), 'md:table-fixed')
     expect(widths()).toEqual(FIXED)
     // AC-222.1(TASK-24): 768~1023px(본문 720~975px)에서도 모든 칸·단추가 옆으로 밀지 않고 보인다 —
-    // 표에 최소 폭이 없고, 정한 칸은 글자 폭에 맞춰 줄인다(신청일 116 · EMR 96 · 신청자 80 · 연락처 136 · 동작 140)
+    // 표에 최소 폭이 없고, 정한 칸은 글자 폭에 맞춰 줄인다(신청일 116 · EMR 96 · 신청자 80 · 연락처 136).
+    // 동작 칸은 1023px 이하에서도 150px 그대로다 — 140px이면 [관리자로 정하기]가 겨우 들어간다(multi-admin AC-7703.4, 시안 notes.md '칸 폭')
     expect(classesOf(table()).filter((t) => /min-w-/.test(t))).toEqual([])
     const tabletWidths = within(table())
       .getAllByRole('columnheader')
       .map((th) => classesOf(th).filter((t) => /^max-lg:w-/.test(t)))
-    expect(tabletWidths).toEqual([['max-lg:w-29'], [], ['max-lg:w-24'], ['max-lg:w-20'], [], ['max-lg:w-34'], ['max-lg:w-35']])
+    expect(tabletWidths).toEqual([['max-lg:w-29'], [], ['max-lg:w-24'], ['max-lg:w-20'], [], ['max-lg:w-34'], []])
     // 정한 폭이 없는 두 칸은 PC에서 넘치면 말줄임(옆 칸을 덮지 않는다). 폰은 줄바꿈 그대로
     const cells = within(rowOf('가나 정형외과의원')).getAllByRole('cell')
     for (const c of [cells[1], cells[3], cells[4]]) expect(classesOf(c).some((t) => t === 'truncate' || t === 'md:truncate')).toBe(true)
@@ -895,5 +905,512 @@ describe('AC-7304.1 가입 신청 EMR 칸 (emr-signup)', () => {
     expect(cells).toHaveLength(7)
     hasAll(cells[2], `${ds.table.tdSub} md:text-body`)
     expect(within(cells[6]).getAllByRole('button').map((b) => b.textContent)).toEqual(['승인', '거절'])
+  })
+})
+
+// ── multi-admin: '승인' 탭에서 관리자 정하기·빼기 (REQ-7703·REQ-7704, 시안 docs/mockups/multi-admin/index.html · notes.md).
+// 자료는 시안의 지어낸 값이다(의원 이름·사람 이름·@example.com 메일). 주 관리자(원장님 계정) = 한결정형외과의원(h5), 다른 관리자 = 새봄재활의학과의원(h3)
+const MA_ROWS = [
+  { id: 'p1', name: '맑은정형외과의원', applicant_name: '윤맑음', phone: '0215559876', email: 'malgeum@example.com', status: 'pending', emr: 'bit', created_at: '2026-11-21T01:00:00+00:00' },
+  { id: 'h1', name: '바른정형외과의원', applicant_name: '김바른', phone: '0255512345', email: 'barun@example.com', status: 'approved', emr: 'bit', created_at: '2026-11-20T01:00:00+00:00' },
+  { id: 'h2', name: '하늘마취통증의학과의원', applicant_name: '이하늘', phone: '03177723456', email: 'haneul.pain@example.com', status: 'approved', emr: 'uisarang', created_at: '2026-11-14T01:00:00+00:00' },
+  { id: 'h3', name: '새봄재활의학과의원', applicant_name: '정새봄', phone: '0425558899', email: 'saebom@example.com', status: 'approved', emr: 'egis', created_at: '2026-11-06T01:00:00+00:00' },
+  { id: 'r1', name: '시험정형외과', applicant_name: '오시험', phone: null, email: 'test@example.com', status: 'rejected', emr: 'other', created_at: '2026-11-02T01:00:00+00:00' },
+  { id: 'h5', name: '한결정형외과의원', applicant_name: '최한결', phone: '01012345678', email: 'hangyeol@example.com', status: 'approved', emr: 'bit', created_at: '2026-10-28T01:00:00+00:00' },
+]
+// admin_hospitals() 답(주인이 관리자인 승인된 병원만). 주 관리자(한결)가 볼 때 = 시안 ?s=list
+const MARKS_OWNER = [
+  { hospital_id: 'h5', is_me: true, is_owner: true },
+  { hospital_id: 'h3', is_me: false, is_owner: false },
+]
+// 다른 관리자(새봄)가 볼 때 = 시안 ?s=other
+const MARKS_OTHER = [
+  { hospital_id: 'h5', is_me: false, is_owner: true },
+  { hospital_id: 'h3', is_me: true, is_owner: false },
+]
+const ADD_TITLE = '이 계정을 관리자로 정할까요?'
+const ADD_BODY = '관리자는 가입 승인·거절, 설치 파일 올리기, 관리자 정하기·빼기를 할 수 있어요.'
+const REMOVE_TITLE = '관리자에서 뺄까요?'
+const REMOVE_BODY = '빼도 이 계정은 지금처럼 대시보드를 써요. 가입 승인 화면만 열 수 없어요.'
+const ROLE_RAW = 'permission denied for function set_admin secret-detail'
+
+const clinicCell = (tr: HTMLElement) => within(tr).getAllByRole('cell')[1]
+const actionButtons = (clinic: string) => within(actionCell(rowOf(clinic))).queryAllByRole('button').map((b) => b.textContent)
+// 의원 이름 뒤 표(ds.chip.accent): 그 줄 의원 이름 칸 안의 칩 글자. 없으면 null
+const badgeOf = (clinic: string) => {
+  const chips = Array.from(clinicCell(rowOf(clinic)).querySelectorAll('span')).filter((s) => tokens(ds.chip.accent).every((t) => classesOf(s).includes(t)))
+  expect(chips.length, clinic).toBeLessThanOrEqual(1)
+  return chips[0]?.textContent ?? null
+}
+const addDialog = () => screen.getByRole('dialog', { name: ADD_TITLE })
+const removeDialog = () => screen.getByRole('dialog', { name: REMOVE_TITLE })
+const rowButton = (clinic: string, name: '관리자로 정하기' | '관리자 빼기') =>
+  within(actionCell(rowOf(clinic))).getByRole<HTMLButtonElement>('button', { name })
+
+async function renderApproved(marks: readonly object[] = MARKS_OWNER) {
+  order.mockResolvedValue({ data: MA_ROWS, error: null, status: 200 })
+  marksRpc.mockResolvedValue({ data: marks, error: null, status: 200 })
+  const user = await renderLoaded()
+  await user.click(tabNamed('승인'))
+  return user
+}
+
+describe('AC-7703.1·AC-7703.2 가입 승인 화면 안내·읽기 (multi-admin)', () => {
+  it('AC-7703.1: 안내 글은 화면 글자 INTRO 전체와 글자 하나까지 같다(끝에 "승인 탭에서 관리자를 정하거나 뺄 수 있어요."), 제목 묶음·탭은 그대로', async () => {
+    await renderLoaded()
+    const intro = screen.getByRole('heading', { level: 1 }).nextElementSibling
+    expect(intro?.textContent).toBe('승인하면 그 계정은 바로 대시보드를 쓸 수 있어요. 거절한 신청은 거절 탭에서 되돌릴 수 있어요. 승인 탭에서 관리자를 정하거나 뺄 수 있어요.')
+    expect(screen.getByRole('heading', { level: 1 }).previousElementSibling?.textContent).toBe('관리자')
+    expect(tabNames()).toEqual(['대기 2', '승인 1', '거절 1'])
+  })
+
+  it('AC-7703.2: 신청 목록(hospitals)과 관리자 표시(rpc admin_hospitals, 인자 없음)를 한 번씩 읽는다 — 관리자 표시가 오기 전에는 탭·표를 그리지 않는다', async () => {
+    let resolve: (v: unknown) => void = () => {}
+    marksRpc.mockReturnValue(new Promise((r) => (resolve = r)))
+    const { container } = render(<AdminApplications />)
+    await waitFor(() => expect(order).toHaveBeenCalledTimes(1))
+    await act(async () => {})
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('가입 승인')
+    expect(screen.queryByRole('tablist')).toBeNull()
+    expect(screen.queryByRole('table')).toBeNull()
+    expect(container.firstElementChild?.getAttribute('aria-busy')).toBe('true')
+    await act(async () => resolve({ data: MARKS_OWNER, error: null, status: 200 }))
+    expect(tablist()).toBeTruthy()
+    expect(container.firstElementChild?.getAttribute('aria-busy')).toBe('false')
+    expect(from).toHaveBeenCalledExactlyOnceWith('hospitals')
+    expect(order).toHaveBeenCalledTimes(1)
+    expect(marksRpc).toHaveBeenCalledExactlyOnceWith('admin_hospitals')
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('AC-7703.2: 신청 목록이 늦게 와도 둘 다 온 뒤에 그린다(관리자 표시만 먼저 와도 탭·표 없음)', async () => {
+    let resolve: (v: unknown) => void = () => {}
+    order.mockReturnValue(new Promise((r) => (resolve = r)))
+    render(<AdminApplications />)
+    await waitFor(() => expect(marksRpc).toHaveBeenCalledTimes(1))
+    await act(async () => {})
+    expect(screen.queryByRole('tablist')).toBeNull()
+    await act(async () => resolve({ data: DB_ROWS, error: null, status: 200 }))
+    expect(tablist()).toBeTruthy()
+  })
+
+  it.each([
+    ['답 오류', { data: null, error: { code: '42501', message: ROLE_RAW }, status: 403 }],
+    ['목록이 아님', { data: { hospital_id: 'h5' }, error: null, status: 200 }],
+    ['줄 모양 틀림', { data: [{ hospital_id: 'h5', is_me: true }], error: null, status: 200 }],
+  ])('AC-7703.2: 관리자 표시를 읽지 못하면(%s) 신청 목록 읽기 실패와 같이 던진다 → 화면 오류(E-PAGE-FAILED + [다시 시도])', async (_label, answer) => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    marksRpc.mockResolvedValue(answer)
+    let caught: unknown = null
+    class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+      state = { failed: false }
+      static getDerivedStateFromError() {
+        return { failed: true }
+      }
+      componentDidCatch(error: unknown) {
+        caught = error
+      }
+      render() {
+        return this.state.failed ? <p>오류 화면</p> : this.props.children
+      }
+    }
+    render(
+      <Boundary>
+        <AdminApplications />
+      </Boundary>,
+    )
+    expect(await screen.findByText('오류 화면')).toBeTruthy()
+    expect(caught).toBeInstanceOf(AdminError)
+    expect(document.body.textContent).not.toContain('secret-detail')
+  })
+
+  it('AC-7703.2: 화면을 떠난 뒤 관리자 표시가 와도 오류 없이 버린다', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let resolve: (v: unknown) => void = () => {}
+    marksRpc.mockReturnValue(new Promise((r) => (resolve = r)))
+    const { unmount } = render(<AdminApplications />)
+    await waitFor(() => expect(marksRpc).toHaveBeenCalledTimes(1))
+    unmount()
+    await act(async () => resolve({ data: MARKS_OWNER, error: null, status: 200 }))
+    expect(error).not.toHaveBeenCalled()
+  })
+})
+
+describe('AC-7703.3·AC-7703.4 승인 탭 줄의 관리자 표시·단추 (multi-admin)', () => {
+  it('AC-7703.3: 주 관리자가 볼 때(시안 ?s=list) — 내 줄 `주 관리자` 표 + 흐린 `내 계정`, 다른 관리자 `관리자` 표 + [관리자 빼기], 나머지 [관리자로 정하기]', async () => {
+    await renderApproved(MARKS_OWNER)
+    expect(bodyRows().map((tr) => clinicCell(tr).getAttribute('title'))).toEqual(['바른정형외과의원', '하늘마취통증의학과의원', '새봄재활의학과의원', '한결정형외과의원'])
+    expect(badgeOf('한결정형외과의원')).toBe('주 관리자')
+    expect(actionButtons('한결정형외과의원')).toEqual([])
+    expect(actionCell(rowOf('한결정형외과의원')).textContent).toBe('내 계정')
+    expect(badgeOf('새봄재활의학과의원')).toBe('관리자')
+    expect(actionButtons('새봄재활의학과의원')).toEqual(['관리자 빼기'])
+    for (const clinic of ['바른정형외과의원', '하늘마취통증의학과의원']) {
+      expect(badgeOf(clinic), clinic).toBeNull()
+      expect(actionButtons(clinic), clinic).toEqual(['관리자로 정하기'])
+    }
+    expect(within(table()).queryAllByText('승인됨')).toEqual([])
+  })
+
+  it('AC-7703.3: 다른 관리자가 볼 때(시안 ?s=other) — 주 관리자 줄 `주 관리자` 표 + 동작 칸 비움, 내 줄 `관리자` 표 + `내 계정`, 나머지 [관리자로 정하기]', async () => {
+    await renderApproved(MARKS_OTHER)
+    expect(badgeOf('한결정형외과의원')).toBe('주 관리자')
+    const ownerAction = actionCell(rowOf('한결정형외과의원'))
+    expect(ownerAction.textContent).toBe('')
+    expect(within(ownerAction).queryAllByRole('button')).toEqual([])
+    expect(ownerAction.childElementCount).toBe(0) // 단추·글자 없이 칸(td)만
+    expect(badgeOf('새봄재활의학과의원')).toBe('관리자')
+    expect(actionButtons('새봄재활의학과의원')).toEqual([])
+    expect(actionCell(rowOf('새봄재활의학과의원')).textContent).toBe('내 계정')
+    for (const clinic of ['바른정형외과의원', '하늘마취통증의학과의원']) {
+      expect(badgeOf(clinic), clinic).toBeNull()
+      expect(actionButtons(clinic), clinic).toEqual(['관리자로 정하기'])
+    }
+  })
+
+  it('AC-7703.3: `내 계정`은 단추가 아닌 small muted 글자, 줄 단추 둘은 보조 작은 단추(ds.button.secondarySmall), 오른쪽 끝', async () => {
+    await renderApproved(MARKS_OWNER)
+    const mine = within(actionCell(rowOf('한결정형외과의원'))).getByText('내 계정')
+    expect(mine.tagName).toBe('SPAN')
+    hasAll(mine, 'text-small text-muted')
+    hasAll(mine.parentElement as Element, 'flex justify-end gap-2')
+    for (const [clinic, name] of [['바른정형외과의원', '관리자로 정하기'], ['새봄재활의학과의원', '관리자 빼기']] as const) {
+      const b = rowButton(clinic, name)
+      hasAll(b, ds.button.secondarySmall)
+      hasAll(b.parentElement as Element, 'flex justify-end gap-2')
+    }
+    cleanup()
+    await renderApproved(MARKS_OTHER)
+    hasAll(within(actionCell(rowOf('새봄재활의학과의원'))).getByText('내 계정'), 'text-small text-muted')
+  })
+
+  it('AC-7703.3: 표는 의원 이름 바로 뒤(사이 6px) ds.chip.accent — 이름만 말줄임되고 표는 늘 보인다. 칸 클래스·title(이름)은 관리자가 아닌 줄과 같다', async () => {
+    await renderApproved(MARKS_OWNER)
+    const plain = clinicCell(rowOf('바른정형외과의원'))
+    expect(plain.textContent).toBe('바른정형외과의원')
+    expect(plain.childElementCount).toBe(0) // 관리자가 아닌 줄은 지금 그대로(글자만)
+    for (const [clinic, badge] of [['새봄재활의학과의원', '관리자'], ['한결정형외과의원', '주 관리자']] as const) {
+      const cell = clinicCell(rowOf(clinic))
+      expect(cell.getAttribute('title')).toBe(clinic)
+      expect(classesOf(cell)).toEqual(classesOf(plain))
+      expect(cell.children).toHaveLength(1)
+      const group = cell.firstElementChild as Element
+      hasAll(group, 'flex min-w-0 items-center gap-1.5')
+      const [name, chip] = Array.from(group.children)
+      expect([name.tagName, name.textContent]).toEqual(['SPAN', clinic])
+      hasAll(name, 'truncate')
+      expect([chip.tagName, chip.textContent]).toEqual(['SPAN', badge])
+      hasAll(chip, ds.chip.accent)
+      hasNone(chip, 'truncate hidden')
+      expect(group.children).toHaveLength(2)
+    }
+  })
+
+  it('AC-7703.3: 대기·거절 탭 줄·단추는 그대로다(관리자 표 없음, [승인]·[거절] / [되돌리기])', async () => {
+    const user = await renderApproved(MARKS_OWNER)
+    await user.click(tabNamed('대기'))
+    expect(actionButtons('맑은정형외과의원')).toEqual(['승인', '거절'])
+    expect(badgeOf('맑은정형외과의원')).toBeNull()
+    expect(clinicCell(rowOf('맑은정형외과의원')).childElementCount).toBe(0)
+    await user.click(tabNamed('거절'))
+    expect(actionButtons('시험정형외과')).toEqual(['되돌리기'])
+    expect(badgeOf('시험정형외과')).toBeNull()
+  })
+
+  it('AC-7703.3·AC-204.7: 관리자 표가 있는 승인 탭에도 상자 안 상자가 없다', async () => {
+    await renderApproved(MARKS_OWNER)
+    expect(nestedBoxes(document.body)).toEqual([])
+  })
+
+  it('AC-7703.4: 새 요소(관리자·주 관리자 표·이름 묶음·`내 계정`)에는 max-md: 클래스가 없고, 줄 단추 둘의 max-md:는 ds 단추 값에 이미 든 것뿐이다', async () => {
+    await renderApproved(MARKS_OWNER)
+    const phoneTokens = (el: Element) => classesOf(el).filter((t) => t.startsWith('max-md:'))
+    for (const clinic of ['새봄재활의학과의원', '한결정형외과의원']) {
+      const group = clinicCell(rowOf(clinic)).firstElementChild as Element
+      for (const el of [group, ...Array.from(group.children)]) expect(phoneTokens(el), `${clinic} ${el.textContent}`).toEqual([])
+    }
+    expect(phoneTokens(within(actionCell(rowOf('한결정형외과의원'))).getByText('내 계정'))).toEqual([])
+    const allowed = tokens(ds.button.secondarySmall).filter((t) => t.startsWith('max-md:'))
+    for (const b of [rowButton('바른정형외과의원', '관리자로 정하기'), rowButton('새봄재활의학과의원', '관리자 빼기')]) {
+      for (const t of phoneTokens(b)) expect(allowed, `${b.textContent} ${t}`).toContain(t)
+    }
+    // 칸(td)·줄(tr) 클래스는 관리자 표가 있어도 다른 줄과 같다(폰 모양 그대로)
+    const plain = rowOf('바른정형외과의원')
+    for (const clinic of ['새봄재활의학과의원', '한결정형외과의원']) {
+      const tr = rowOf(clinic)
+      expect(classesOf(tr)).toEqual(classesOf(plain))
+      within(tr)
+        .getAllByRole('cell')
+        .forEach((c, i) => expect(classesOf(c), `${clinic} ${i}`).toEqual(classesOf(within(plain).getAllByRole('cell')[i])))
+    }
+  })
+
+  it('AC-7703.4: 두 확인 창의 가림막·창 틀·제목·신청 내용 칸·본문·단추 줄·[취소] 클래스는 거절 창과 같고, 확인 단추만 정하기 ds.button.primary · 빼기 ds.button.danger다', async () => {
+    const user = await renderApproved(MARKS_OWNER)
+    const shape = (d: HTMLElement) => {
+      const [title, summary, body, buttons] = Array.from(d.children)
+      const [cancel, confirm] = within(d).getAllByRole('button')
+      return {
+        frame: { scrim: classesOf(d.parentElement as Element), dialog: classesOf(d), title: classesOf(title), summary: classesOf(summary), summaryLines: Array.from(summary.children).map(classesOf), body: classesOf(body), buttons: classesOf(buttons), cancel: classesOf(cancel) },
+        confirm: classesOf(confirm),
+        tags: Array.from(d.children).map((c) => c.tagName),
+      }
+    }
+    await user.click(tabNamed('대기'))
+    await user.click(within(rowOf('맑은정형외과의원')).getByRole('button', { name: '거절' }))
+    const reject = shape(dialog())
+    await user.keyboard('{Escape}')
+    await user.click(tabNamed('승인'))
+    await user.click(rowButton('바른정형외과의원', '관리자로 정하기'))
+    const add = shape(addDialog())
+    await user.keyboard('{Escape}')
+    await user.click(rowButton('새봄재활의학과의원', '관리자 빼기'))
+    const remove = shape(removeDialog())
+    await user.keyboard('{Escape}')
+    expect(add.frame).toEqual(reject.frame)
+    expect(remove.frame).toEqual(reject.frame)
+    expect(add.tags).toEqual(reject.tags)
+    expect(remove.tags).toEqual(reject.tags)
+    expect(reject.confirm).toEqual(tokens(`${ds.button.danger} max-md:flex-1`))
+    expect(add.confirm).toEqual(tokens(`${ds.button.primary} max-md:flex-1`))
+    expect(remove.confirm).toEqual(tokens(`${ds.button.danger} max-md:flex-1`))
+    expect(add.frame.cancel).toEqual(tokens(`${ds.button.secondary} max-md:flex-1`))
+  })
+
+  it('AC-7703.4: 동작 칸은 1023px 이하에서도 150px(w-37.5만, max-lg:·max-md: 폭 없음), 다른 칸 폭은 그대로', async () => {
+    await renderApproved(MARKS_OWNER)
+    const heads = within(table()).getAllByRole('columnheader')
+    expect(classesOf(heads[6]).filter((t) => /(?:^|:)w-/.test(t))).toEqual(['w-37.5'])
+    hasAll(heads[6], 'md:text-right')
+    expect(heads.map((th) => classesOf(th).filter((t) => /(?:^|:)w-/.test(t)))).toEqual([
+      ['w-30', 'max-lg:w-29'],
+      [],
+      ['w-28', 'max-lg:w-24'],
+      ['w-30', 'max-lg:w-20'],
+      [],
+      ['w-37.5', 'max-lg:w-34'],
+      ['w-37.5'],
+    ])
+  })
+})
+
+describe('AC-7704.1·AC-7704.2 정하기·빼기 확인 창 (multi-admin)', () => {
+  it('AC-7704.1: [관리자로 정하기] → 정하기 확인 창(dialog·aria-modal, 제목으로 이름·본문으로 설명), 신청 내용 칸, [취소] [관리자로 정하기] 주 단추 오른쪽 끝, 처음 초점 [취소], 아직 함수를 부르지 않는다', async () => {
+    const user = await renderApproved(MARKS_OWNER)
+    await user.click(rowButton('바른정형외과의원', '관리자로 정하기'))
+    const d = addDialog()
+    expect(d.getAttribute('aria-modal')).toBe('true')
+    expect(within(d).getByRole('heading', { level: 2 }).textContent).toBe(ADD_TITLE)
+    expect(document.getElementById(d.getAttribute('aria-labelledby') ?? '')?.textContent).toBe(ADD_TITLE)
+    expect(document.getElementById(d.getAttribute('aria-describedby') ?? '')?.textContent).toBe(ADD_BODY)
+    expect(within(d).getByText('바른정형외과의원')).toBeTruthy()
+    expect(within(d).getByText('김바른 · barun@example.com')).toBeTruthy()
+    expect(within(d).getAllByRole('button').map((b) => b.textContent)).toEqual(['취소', '관리자로 정하기'])
+    const [cancel, confirm] = within(d).getAllByRole('button')
+    hasAll(cancel, ds.button.secondary)
+    hasAll(confirm, ds.button.primary)
+    hasAll(cancel.parentElement as Element, 'flex justify-end gap-2')
+    expect(document.activeElement).toBe(cancel)
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('AC-7704.1: [관리자 빼기] → 빼기 확인 창(제목·신청 내용·본문), [취소] [빼기] 위험 단추, 처음 초점 [취소], 아직 함수를 부르지 않는다', async () => {
+    const user = await renderApproved(MARKS_OWNER)
+    await user.click(rowButton('새봄재활의학과의원', '관리자 빼기'))
+    const d = removeDialog()
+    expect(d.getAttribute('aria-modal')).toBe('true')
+    expect(document.getElementById(d.getAttribute('aria-describedby') ?? '')?.textContent).toBe(REMOVE_BODY)
+    expect(within(d).getByText('새봄재활의학과의원')).toBeTruthy()
+    expect(within(d).getByText('정새봄 · saebom@example.com')).toBeTruthy()
+    expect(within(d).getAllByRole('button').map((b) => b.textContent)).toEqual(['취소', '빼기'])
+    hasAll(within(d).getByRole('button', { name: '빼기' }), ds.button.danger)
+    expect(document.activeElement).toBe(within(d).getByRole('button', { name: '취소' }))
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['정하기', '바른정형외과의원', '관리자로 정하기', ADD_TITLE, ADD_BODY],
+    ['빼기', '새봄재활의학과의원', '관리자 빼기', REMOVE_TITLE, REMOVE_BODY],
+  ] as const)('AC-7704.1: %s 창 — Tab·Shift+Tab은 두 단추 사이만 돌고, 창 안 빈 곳을 눌러도 초점이 창에 남는다(거절 창과 같다)', async (_label, clinic, opener, title, body) => {
+    const user = await renderApproved(MARKS_OWNER)
+    await user.click(rowButton(clinic, opener))
+    const d = screen.getByRole('dialog', { name: title })
+    expect(d.getAttribute('tabindex')).toBe('-1')
+    const [cancel, confirm] = within(d).getAllByRole('button')
+    await user.tab()
+    expect(document.activeElement).toBe(confirm)
+    await user.tab()
+    expect(document.activeElement).toBe(cancel)
+    await user.tab({ shift: true })
+    expect(document.activeElement).toBe(confirm)
+    await user.click(within(d).getByText(body))
+    expect(d.contains(document.activeElement)).toBe(true)
+    await user.tab({ shift: true })
+    expect(document.activeElement).toBe(confirm)
+    await user.click(within(d).getByText(body))
+    await user.tab()
+    expect(document.activeElement).toBe(cancel)
+    hasAll(d, 'outline-hidden')
+  })
+
+  it.each([
+    ['정하기 [취소]', '바른정형외과의원', '관리자로 정하기', 'cancel'],
+    ['정하기 Esc', '바른정형외과의원', '관리자로 정하기', 'escape'],
+    ['빼기 [취소]', '새봄재활의학과의원', '관리자 빼기', 'cancel'],
+    ['빼기 Esc', '새봄재활의학과의원', '관리자 빼기', 'escape'],
+  ] as const)('AC-7704.2: %s — 창이 닫히고 아무 함수도 부르지 않으며 줄은 그대로, 초점은 누른 줄 단추로 돌아간다', async (_label, clinic, opener, how) => {
+    const user = await renderApproved(MARKS_OWNER)
+    const button = rowButton(clinic, opener)
+    const before = { badge: badgeOf(clinic), buttons: actionButtons(clinic) }
+    await user.click(button)
+    if (how === 'cancel') await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '취소' }))
+    else await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(rpc).not.toHaveBeenCalled()
+    expect({ badge: badgeOf(clinic), buttons: actionButtons(clinic) }).toEqual(before)
+    expect(status().textContent).toBe('')
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(document.activeElement).toBe(button)
+  })
+})
+
+describe('AC-7704.3·AC-7704.4 정하기·빼기 보내기·끝 알림·실패 (multi-admin)', () => {
+  it('AC-7704.3: 정하기 확인 → set_admin(그 병원, true) 한 번, 줄은 승인 탭에 그대로 `관리자` 표 + [관리자 빼기], 끝 알림, 초점은 지금 탭, 목록을 다시 읽지 않는다', async () => {
+    const user = await renderApproved(MARKS_OWNER)
+    await user.click(rowButton('바른정형외과의원', '관리자로 정하기'))
+    await user.click(within(addDialog()).getByRole('button', { name: '관리자로 정하기' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(rpc).toHaveBeenCalledExactlyOnceWith('set_admin', { p_hospital_id: 'h1', p_admin: true })
+    expect(badgeOf('바른정형외과의원')).toBe('관리자')
+    expect(actionButtons('바른정형외과의원')).toEqual(['관리자 빼기'])
+    expect(status().textContent).toBe('바른정형외과의원 계정을 관리자로 정했어요.')
+    hasAll(status(), 'flex items-center text-small text-positive')
+    expect(status().querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(document.activeElement).toBe(tabNamed('승인'))
+    expect(tabNames()).toEqual(['대기 1', '승인 4', '거절 1'])
+    expect(table().getAttribute('aria-label')).toBe('승인 신청')
+    // 다른 줄은 그대로
+    expect(badgeOf('하늘마취통증의학과의원')).toBeNull()
+    expect(actionButtons('하늘마취통증의학과의원')).toEqual(['관리자로 정하기'])
+    expect(badgeOf('새봄재활의학과의원')).toBe('관리자')
+    expect(badgeOf('한결정형외과의원')).toBe('주 관리자')
+    // 다시 읽지 않는다
+    expect(order).toHaveBeenCalledTimes(1)
+    expect(marksRpc).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-7704.3: 빼기 확인 → set_admin(그 병원, false) 한 번, 표 없음 + [관리자로 정하기], 끝 알림, 초점은 지금 탭, 다시 읽지 않는다', async () => {
+    const user = await renderApproved(MARKS_OWNER)
+    await user.click(rowButton('새봄재활의학과의원', '관리자 빼기'))
+    await user.click(within(removeDialog()).getByRole('button', { name: '빼기' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(rpc).toHaveBeenCalledExactlyOnceWith('set_admin', { p_hospital_id: 'h3', p_admin: false })
+    expect(badgeOf('새봄재활의학과의원')).toBeNull()
+    expect(clinicCell(rowOf('새봄재활의학과의원')).childElementCount).toBe(0)
+    expect(actionButtons('새봄재활의학과의원')).toEqual(['관리자로 정하기'])
+    expect(status().textContent).toBe('새봄재활의학과의원 계정을 관리자에서 뺐어요.')
+    expect(document.activeElement).toBe(tabNamed('승인'))
+    expect(badgeOf('한결정형외과의원')).toBe('주 관리자')
+    expect(order).toHaveBeenCalledTimes(1)
+    expect(marksRpc).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-7704.3: 정한 줄을 다시 빼면 처음 모양으로 돌아온다. 확인 창이 떠 있는 동안 앞 끝 알림은 그대로다', async () => {
+    const user = await renderApproved(MARKS_OWNER)
+    await user.click(rowButton('바른정형외과의원', '관리자로 정하기'))
+    await user.click(within(addDialog()).getByRole('button', { name: '관리자로 정하기' }))
+    await user.click(rowButton('바른정형외과의원', '관리자 빼기'))
+    expect(removeDialog()).toBeTruthy()
+    expect(status().textContent).toBe('바른정형외과의원 계정을 관리자로 정했어요.')
+    await user.click(within(removeDialog()).getByRole('button', { name: '빼기' }))
+    expect(rpc.mock.calls).toEqual([
+      ['set_admin', { p_hospital_id: 'h1', p_admin: true }],
+      ['set_admin', { p_hospital_id: 'h1', p_admin: false }],
+    ])
+    expect(badgeOf('바른정형외과의원')).toBeNull()
+    expect(actionButtons('바른정형외과의원')).toEqual(['관리자로 정하기'])
+    expect(status().textContent).toBe('바른정형외과의원 계정을 관리자에서 뺐어요.')
+  })
+
+  it('AC-7704.3: 보내는 동안 표의 동작 단추가 모두 막히고(두 번 보내지 않음), 끝나면 풀린다', async () => {
+    let resolve: (v: unknown) => void = () => {}
+    rpc.mockReturnValue(new Promise((r) => (resolve = r)))
+    const user = await renderApproved(MARKS_OWNER)
+    const button = rowButton('바른정형외과의원', '관리자로 정하기')
+    await user.click(button)
+    await user.click(within(addDialog()).getByRole('button', { name: '관리자로 정하기' }))
+    const buttons = within(table()).getAllByRole<HTMLButtonElement>('button')
+    expect(buttons.map((b) => b.textContent)).toEqual(['관리자로 정하기', '관리자로 정하기', '관리자 빼기'])
+    for (const b of buttons) expect(b.disabled, b.textContent ?? '').toBe(true)
+    await user.click(button)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(rpc).toHaveBeenCalledTimes(1)
+    await act(async () => resolve({ data: null, error: null, status: 204 }))
+    for (const b of within(table()).getAllByRole<HTMLButtonElement>('button')) expect(b.disabled).toBe(false)
+  })
+
+  it('AC-7704.4: set_admin이 실패하면 줄·표시·단추는 그대로, 탭 줄과 표 사이에 E-ADMIN-ROLE 카드(원래 오류 글 없음), 초점은 처음 누른 줄 단추, 저절로 다시 보내지 않는다', async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: '42501', message: ROLE_RAW }, status: 403 })
+    const user = await renderApproved(MARKS_OWNER)
+    const opener = rowButton('바른정형외과의원', '관리자로 정하기')
+    await user.click(opener)
+    await user.click(within(addDialog()).getByRole('button', { name: '관리자로 정하기' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    const card = screen.getByRole('alert')
+    expect(card.textContent).toContain('관리자를 정하거나 빼지 못했어요')
+    expect(card.textContent).toContain('인터넷 연결을 확인하고 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.')
+    expect(card.textContent).toContain('오류 번호 E-ADMIN-ROLE')
+    expect(card.textContent).toContain(errorInfo('E-ADMIN-ROLE').what)
+    expect(card.textContent).not.toContain('E-ADMIN-FAILED')
+    expect(document.body.textContent).not.toContain('secret-detail')
+    expect(tablist().compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(card.compareDocumentPosition(table()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(status().textContent).toBe('')
+    expect(badgeOf('바른정형외과의원')).toBeNull()
+    expect(actionButtons('바른정형외과의원')).toEqual(['관리자로 정하기'])
+    expect(document.activeElement).toBe(opener)
+    expect(rpc).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-7704.4: 빼기가 던져도(연결 끊김) 줄은 그대로 E-ADMIN-ROLE 카드, 다시 해서 되면 카드가 끝 알림으로 바뀐다', async () => {
+    rpc.mockRejectedValueOnce(new Error(`fetch failed ${ROLE_RAW}`))
+    const user = await renderApproved(MARKS_OWNER)
+    const opener = rowButton('새봄재활의학과의원', '관리자 빼기')
+    await user.click(opener)
+    await user.click(within(removeDialog()).getByRole('button', { name: '빼기' }))
+    expect(screen.getByRole('alert').textContent).toContain('오류 번호 E-ADMIN-ROLE')
+    expect(badgeOf('새봄재활의학과의원')).toBe('관리자')
+    expect(actionButtons('새봄재활의학과의원')).toEqual(['관리자 빼기'])
+    expect(document.activeElement).toBe(opener)
+    expect(document.body.textContent).not.toContain('secret-detail')
+    await user.click(rowButton('새봄재활의학과의원', '관리자 빼기'))
+    await user.click(within(removeDialog()).getByRole('button', { name: '빼기' }))
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(status().textContent).toBe('새봄재활의학과의원 계정을 관리자에서 뺐어요.')
+    expect(badgeOf('새봄재활의학과의원')).toBeNull()
+    expect(rpc).toHaveBeenCalledTimes(2)
+  })
+
+  it('AC-7704.4: 탭을 바꾸면 끝 알림·E-ADMIN-ROLE 카드가 지워진다. 가입 상태 바꾸기 실패는 지금처럼 E-ADMIN-FAILED다', async () => {
+    rpc.mockResolvedValueOnce({ data: null, error: { code: '', message: ROLE_RAW }, status: 0 })
+    const user = await renderApproved(MARKS_OWNER)
+    await user.click(rowButton('바른정형외과의원', '관리자로 정하기'))
+    await user.click(within(addDialog()).getByRole('button', { name: '관리자로 정하기' }))
+    expect(screen.getByRole('alert').textContent).toContain('오류 번호 E-ADMIN-ROLE')
+    await user.click(tabNamed('대기'))
+    expect(screen.queryByRole('alert')).toBeNull()
+    await user.click(tabNamed('승인'))
+    await user.click(rowButton('바른정형외과의원', '관리자로 정하기'))
+    await user.click(within(addDialog()).getByRole('button', { name: '관리자로 정하기' }))
+    expect(status().textContent).toBe('바른정형외과의원 계정을 관리자로 정했어요.')
+    await user.click(tabNamed('대기'))
+    expect(status().textContent).toBe('')
+    rpc.mockResolvedValueOnce({ data: null, error: { code: '42501', message: RAW }, status: 403 })
+    await user.click(within(rowOf('맑은정형외과의원')).getByRole('button', { name: '승인' }))
+    const cards = screen.getAllByRole('alert')
+    expect(cards).toHaveLength(1)
+    expect(cards[0].textContent).toContain('오류 번호 E-ADMIN-FAILED')
+    expect(cards[0].textContent).not.toContain('E-ADMIN-ROLE')
   })
 })
