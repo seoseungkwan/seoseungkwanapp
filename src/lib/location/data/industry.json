@@ -13,6 +13,81 @@
    "employees": 1507,
    "parks": 1
   },
+  "12110": {
+   "name": "목포시",
+   "employees": 2115,
+   "parks": 3
+  },
+  "12130": {
+   "name": "여수시",
+   "employees": 6119,
+   "parks": 2
+  },
+  "12150": {
+   "name": "순천시",
+   "employees": 2017,
+   "parks": 3
+  },
+  "12170": {
+   "name": "나주시",
+   "employees": 2820,
+   "parks": 4
+  },
+  "12190": {
+   "name": "광양시",
+   "employees": 1165,
+   "parks": 3
+  },
+  "12270": {
+   "name": "남구",
+   "employees": 1508,
+   "parks": 1
+  },
+  "12300": {
+   "name": "북구",
+   "employees": 2098,
+   "parks": 1
+  },
+  "12330": {
+   "name": "광산구",
+   "employees": 45651,
+   "parks": 6
+  },
+  "12710": {
+   "name": "담양군",
+   "employees": 840,
+   "parks": 1
+  },
+  "12760": {
+   "name": "화순군",
+   "employees": 595,
+   "parks": 1
+  },
+  "12770": {
+   "name": "장흥군",
+   "employees": 642,
+   "parks": 1
+  },
+  "12780": {
+   "name": "강진군",
+   "employees": 89,
+   "parks": 1
+  },
+  "12820": {
+   "name": "함평군",
+   "employees": 323,
+   "parks": 1
+  },
+  "12830": {
+   "name": "영광군",
+   "employees": 540,
+   "parks": 1
+  },
+  "12840": {
+   "name": "장성군",
+   "employees": 1858,
+   "parks": 1
+  },
   "26350": {
    "name": "해운대구",
    "employees": 11795,
@@ -78,30 +153,10 @@
    "employees": 4964,
    "parks": 1
   },
-  "28260": {
-   "name": "서구",
-   "employees": 16710,
-   "parks": 5
-  },
   "28710": {
    "name": "강화군",
    "employees": 1023,
    "parks": 2
-  },
-  "29155": {
-   "name": "남구",
-   "employees": 1508,
-   "parks": 1
-  },
-  "29170": {
-   "name": "북구",
-   "employees": 2098,
-   "parks": 1
-  },
-  "29200": {
-   "name": "광산구",
-   "employees": 45651,
-   "parks": 6
   },
   "30110": {
    "name": "동구",
@@ -268,7 +323,22 @@
    "employees": 23378,
    "parks": 13
   },
-  "41590": {
+  "41591": {
+   "name": "화성시",
+   "employees": 46962,
+   "parks": 12
+  },
+  "41593": {
+   "name": "화성시",
+   "employees": 46962,
+   "parks": 12
+  },
+  "41595": {
+   "name": "화성시",
+   "employees": 46962,
+   "parks": 12
+  },
+  "41597": {
    "name": "화성시",
    "employees": 46962,
    "parks": 12
@@ -422,66 +492,6 @@
    "name": "예산군",
    "employees": 4080,
    "parks": 3
-  },
-  "46110": {
-   "name": "목포시",
-   "employees": 2115,
-   "parks": 3
-  },
-  "46130": {
-   "name": "여수시",
-   "employees": 6119,
-   "parks": 2
-  },
-  "46150": {
-   "name": "순천시",
-   "employees": 2017,
-   "parks": 3
-  },
-  "46170": {
-   "name": "나주시",
-   "employees": 2820,
-   "parks": 4
-  },
-  "46230": {
-   "name": "광양시",
-   "employees": 1165,
-   "parks": 3
-  },
-  "46710": {
-   "name": "담양군",
-   "employees": 840,
-   "parks": 1
-  },
-  "46790": {
-   "name": "화순군",
-   "employees": 595,
-   "parks": 1
-  },
-  "46800": {
-   "name": "장흥군",
-   "employees": 642,
-   "parks": 1
-  },
-  "46810": {
-   "name": "강진군",
-   "employees": 89,
-   "parks": 1
-  },
-  "46860": {
-   "name": "함평군",
-   "employees": 323,
-   "parks": 1
-  },
-  "46870": {
-   "name": "영광군",
-   "employees": 540,
-   "parks": 1
-  },
-  "46880": {
-   "name": "장성군",
-   "employees": 1858,
-   "parks": 1
   },
   "47111": {
    "name": "포항시",
