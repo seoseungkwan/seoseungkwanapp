@@ -1,6 +1,7 @@
 // 입지 분석의 출처(SOURCES)·법 근거(LAW_BASIS)·없는 자료(MISSING) — 한 곳(specs/location design.md 2절, requirements 이 명세가 정한 것 4).
 // 화면 숫자 칸·'근거와 출처'·위험 신호·점검표·일정이 이 목록만 읽어 그린다. 사실(기관·번호·이용 조건·주기)은 조사 1~5(specs/location/research) 그대로다.
 // 법 근거 쉬운 한 줄(summary)·없는 자료 글은 requirements '화면 글 기본값' 글자 그대로다.
+// 화면에 보이는 글에는 영어 낱말을 쓰지 않는다(AC-7917.1 — SGIS·TASIS·KTX·MRI·CT·km·PDF·A4 같은 이름·단위와 심평원 항목 번호 SZ084만 된다).
 // 출처 id는 types/location.ts의 SourceId(= string, TASK-2)와 같은 글자다. 같은 Phase에서 따로 만들어 여기서는 string으로 둔다
 
 /** 받는 길: api = 서버 경로가 볼 때 부름 · file = 파일로 받아 앱에 넣음(public/location·lib/location/data) · link = 링크만(새 창) · app = 화면이 바로 불러옴(카카오 지도 SDK) · user = 사용자가 적음 */
@@ -10,8 +11,9 @@ export type SourceKey = 'data' | 'kakao'
 /** 조사가 확인한 방법. '직접' = 페이지·조문을 열어 봄(조사 2의 '포털 기록' 포함) · '검색만' = 검색 결과로만 봄 */
 export type Checked = '직접' | '검색만'
 
-// '근거와 출처' 표의 묶음 차례(시안 SRC_GROUPS + 사람 흐름 '교통·흐름')
-export const SOURCE_GROUPS = ['사는 사람·수요', '소득·쓸 힘', '경쟁 의원', '교통·흐름', '자리·건물·땅', '매물·개원 준비'] as const
+// '근거와 출처' 표의 묶음 차례(시안 SRC_GROUPS + 사람 흐름 '교통·흐름'). 이름은 requirements 승인 3 '묶음별 기관 표' 그대로
+// (둘레 다른 과 의원도 같은 심평원 자료라 '경쟁 의원·다른 과 의원', TASK-63)
+export const SOURCE_GROUPS = ['사는 사람·수요', '소득·쓸 힘', '경쟁 의원·다른 과 의원', '교통·흐름', '자리·건물·땅', '매물·개원 준비'] as const
 export type SourceGroup = (typeof SOURCE_GROUPS)[number]
 
 export type Source = {
@@ -65,8 +67,8 @@ export const SOURCES: readonly Source[] = [
     id: 'household',
     group: '사는 사람·수요',
     org: '행정안전부',
-    name: '법정동별(행정동 통반단위) 인구 및 세대현황',
-    url: portal('15108071', 'openapi'),
+    name: '행정동별(통반단위) 주민등록 인구 및 세대현황',
+    url: portal('15108065', 'openapi'),
     via: 'api',
     key: 'data',
     cycle: '달마다(말일 기준)',
@@ -118,7 +120,7 @@ export const SOURCES: readonly Source[] = [
     via: 'api',
     key: 'data',
     cycle: '수시(포털 표시: 실시간)',
-    unit: '단지(K-apt에 든 단지만, 좌표 없음)',
+    unit: '단지(공동주택관리정보시스템에 든 단지만, 좌표 없음)',
     terms: FREE,
     why: '둘레 아파트 세대 수와 지은 해로 홍보할 차례를 정해요.',
     noneText: '이 단지의 기본 정보가 없어요.',
@@ -198,7 +200,7 @@ export const SOURCES: readonly Source[] = [
     via: 'api',
     key: 'data',
     cycle: '날마다',
-    unit: '체력단련장 좌표(EPSG:5174를 바꿈) → 살필 범위 안 수, 필라테스는 빠질 수 있음',
+    unit: '체력단련장 좌표(옛 좌표계를 바꿈) → 살필 범위 안 수, 필라테스는 빠질 수 있음',
     terms: FREE,
     why: '운동하다 다치는 사람이 많은 동네인지 짐작해요.',
     noneText: '범위 안에 체력단련장이 없어요.',
@@ -289,7 +291,7 @@ export const SOURCES: readonly Source[] = [
   // ── 경쟁 의원 ──
   {
     id: 'hosp-list',
-    group: '경쟁 의원',
+    group: '경쟁 의원·다른 과 의원',
     org: '건강보험심사평가원',
     name: '병원정보서비스',
     url: portal('15001698', 'openapi'),
@@ -305,7 +307,7 @@ export const SOURCES: readonly Source[] = [
   },
   {
     id: 'hosp-detail',
-    group: '경쟁 의원',
+    group: '경쟁 의원·다른 과 의원',
     org: '건강보험심사평가원',
     name: '의료기관별상세정보서비스',
     url: portal('15001699', 'openapi'),
@@ -321,7 +323,7 @@ export const SOURCES: readonly Source[] = [
   },
   {
     id: 'hosp-hours',
-    group: '경쟁 의원',
+    group: '경쟁 의원·다른 과 의원',
     org: '국립중앙의료원',
     name: '전국 병·의원 찾기 서비스',
     url: portal('15000736', 'openapi'),
@@ -337,14 +339,14 @@ export const SOURCES: readonly Source[] = [
   },
   {
     id: 'nonpay',
-    group: '경쟁 의원',
+    group: '경쟁 의원·다른 과 의원',
     org: '건강보험심사평가원',
     name: '비급여진료비정보조회서비스',
     url: portal('15001700', 'openapi'),
     via: 'api',
     key: 'data',
     cycle: '수시(포털 표시: 실시간)',
-    unit: '의원 × 항목',
+    unit: '의원 × 항목(체외충격파 SZ084 · 도수치료는 있을 때만)',
     terms: hiraTerms('비급여진료비정보조회서비스'),
     why: '체외충격파 값을 둘레 의원과 견줘요.',
     noneText: '이 의원이 올린 비급여 값이 없어요.',
@@ -353,14 +355,14 @@ export const SOURCES: readonly Source[] = [
   },
   {
     id: 'clinic-license',
-    group: '경쟁 의원',
+    group: '경쟁 의원·다른 과 의원',
     org: '행정안전부',
     name: '건강_의원 조회서비스',
     url: portal('15154874', 'openapi'),
     via: 'api',
     key: 'data',
     cycle: '날마다(2일 늦음)',
-    unit: '의원 하나하나(인허가일·폐업일, 좌표 EPSG:5174를 바꿈)',
+    unit: '의원 하나하나(인허가일·폐업일, 옛 좌표계 좌표를 바꿈)',
     terms: FREE,
     why: '3년 사이 문 연 곳·닫은 곳, 이 자리에 전에 의원이 있었는지 봐요.',
     noneText: '3년 사이 범위 안에서 문 열거나 닫은 의원이 없어요.',
@@ -393,7 +395,7 @@ export const SOURCES: readonly Source[] = [
     via: 'api',
     key: 'data',
     cycle: '모름',
-    unit: '정류장(번호 → 이름·ARS 번호, 좌표 없음)',
+    unit: '정류장(번호 → 이름·정류장 번호, 좌표 없음)',
     terms: FREE,
     why: '승하차 숫자의 정류장 번호에 이름을 붙여 좌표 파일과 이어요.',
     noneText: '정류장 이름 자료가 없어요.',
@@ -425,7 +427,7 @@ export const SOURCES: readonly Source[] = [
     via: 'file',
     key: null,
     cycle: '해마다(최근 2026-11-09)',
-    unit: '정류장 좌표(TAGO와 이어진 지자체만, ARS 번호는 빈 곳이 있음)',
+    unit: '정류장 좌표(국가대중교통정보센터와 이어진 지자체만, 정류장 번호는 빈 곳이 있음)',
     terms: FREE,
     why: '정류장 자리를 알아 범위 안 승하차와 정류장 수를 세요.',
     noneText: '범위 안에 버스 정류장이 없어요.',
@@ -469,7 +471,7 @@ export const SOURCES: readonly Source[] = [
     id: 'building',
     group: '자리·건물·땅',
     org: '국토교통부',
-    name: '건축HUB 건축물대장정보 서비스',
+    name: '건축물대장정보 서비스',
     url: portal('15134735', 'openapi'),
     via: 'api',
     key: 'data',
@@ -506,7 +508,7 @@ export const SOURCES: readonly Source[] = [
     via: 'link',
     key: null,
     cycle: '볼 때마다(링크)',
-    unit: '땅(필지, PNU 19자리)',
+    unit: '땅(필지, 필지 번호 19자리)',
     terms: '링크만 걸어요(새 창)',
     why: '땅 쓰임(용도지역)과 도로·재개발 계획을 봐요.',
     noneText: '이 자리의 필지 번호를 만들지 못해 링크가 없어요.',
@@ -539,7 +541,7 @@ export const SOURCES: readonly Source[] = [
     key: 'kakao',
     cycle: '볼 때마다 새로 받음',
     unit: '장소 하나하나(한 번에 45곳까지)',
-    terms: '하루 API마다 100,000건 · 받은 주소·좌표·장소 목록은 담아 두지 않아요(카카오 운영정책 제5조)',
+    terms: '자료마다 하루 100,000건 · 받은 주소·좌표·장소 목록은 담아 두지 않아요(카카오 운영정책 제5조)',
     why: '주소로 자리를 찾고, 둘레 역·약국·마트·큰 병원·중개업소와 산업단지를 지도에 보여요.',
     noneText: '이 범위에서 찾은 곳이 없어요.',
     shows: '주소 찾기 · 지도의 역·약국·마트·큰 병원·중개업소 · 산업단지 이름·위치',
@@ -555,7 +557,7 @@ export const SOURCES: readonly Source[] = [
     key: null,
     cycle: '볼 때마다',
     unit: '지도·거리 사진',
-    terms: '하루 300,000건(웹 SDK) · 개발자 계정의 첫 앱에만 무료 · 담아 두기·재판매·다른 곳에 주기 금지(카카오 운영정책 제5조)',
+    terms: '하루 300,000건(웹 지도) · 개발자 계정의 첫 앱에만 무료 · 담아 두기·재판매·다른 곳에 주기 금지(카카오 운영정책 제5조)',
     why: '가지 않고 지도·하늘 사진·거리 사진으로 자리를 봐요.',
     noneText: '이 자리 50m 안에는 거리 사진이 없어요',
     shows: '지도 · 하늘 사진 · 거리 사진(로드뷰)',
@@ -572,7 +574,7 @@ export const SOURCES: readonly Source[] = [
     key: null,
     cycle: '볼 때마다(링크)',
     unit: '매물(링크만)',
-    terms: '링크만 걸어요. 자동으로 긁어 오지 않아요(약관·robots.txt).',
+    terms: '링크만 걸어요. 자동으로 긁어 오지 않아요(약관·사이트가 막아 둠).',
     why: '마음에 드는 매물을 찾아 붙여 넣어요.',
     noneText: '매물은 붙여 넣은 것만 보여요.',
     shows: '매물 보기(링크)',
@@ -605,10 +607,10 @@ export const VIA_TEXT: Record<SourceVia, string> = {
   user: '직접 적기',
 }
 
-/** 열쇠 이름(열쇠 없음 글·'근거와 출처' 받는 길) */
+/** 열쇠 이름(열쇠 없음 글·'근거와 출처' 받는 길) — requirements '화면 글 기본값' 열쇠 상태 글 그대로 */
 export const KEY_TEXT: Record<SourceKey, string> = {
   data: '공공데이터포털 열쇠',
-  kakao: '카카오 REST 열쇠',
+  kakao: '카카오 장소 찾기 열쇠',
 }
 
 export function sourceOf(id: string): Source | undefined {

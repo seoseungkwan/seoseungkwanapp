@@ -546,7 +546,7 @@ export const ERRORS: Record<KnownErrorCode, ErrorInfo> = {
   },
   'E-LOC-PHOTO': {
     what: '사진을 올리지 못했어요',
-    fix: 'JPEG·PNG·WEBP 사진만, 후보마다 30장까지 올릴 수 있어요. 잠시 뒤 다시 올려 주세요.',
+    fix: '사진 파일만, 후보마다 30장까지 올릴 수 있어요. 잠시 뒤 다시 올려 주세요.',
   },
 }
 
