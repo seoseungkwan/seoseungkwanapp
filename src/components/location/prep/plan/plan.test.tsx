@@ -165,17 +165,27 @@ describe('AC-7913.1: 개원 비용 칸 — 빈칸으로 열리고 원 정수만 
     expect(onSave).toHaveBeenLastCalledWith({ deposit: 100_000_000, rent: 5_200_000 })
   })
 
-  it('AC-7913.1: 매물의 보증금·권리금·월세·관리비는 칸 옆 참고 글로만 보이고 칸을 채우지 않는다', () => {
+  it('AC-7913.1·AC-7905.7: 매물의 보증금·권리금·월세·관리비는 칸 옆 참고 글(manText)로만 보이고 칸을 채우지 않는다', () => {
     const { onSave } = costs({ listing: { deposit: 100_000_000, premium: null, rent: 5_200_000, mgmt: 780_000 } })
     expect(screen.getAllByText(/^매물에 적은 값: /).map((el) => el.textContent)).toEqual([
       '매물에 적은 값: 1억 원',
       '매물에 적은 값: –',
       '매물에 적은 값: 520만 원',
-      '매물에 적은 값: 780,000원',
+      '매물에 적은 값: 78만 원',
     ])
     for (const label of ['보증금', '권리금', '월세(한 달)', '관리비(한 달)']) expect(box(label).value).toBe('')
     expect(sumValue('처음에 드는 돈')).toBe('–')
     expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it('AC-7913.1·AC-7905.7: 매물에 적은 값이 0이면 `없음`, 100만 원 아래도 `n만 원`이다', () => {
+    costs({ listing: { deposit: 5_000_000, premium: 0, rent: 950_000, mgmt: 0 } })
+    expect(screen.getAllByText(/^매물에 적은 값: /).map((el) => el.textContent)).toEqual([
+      '매물에 적은 값: 500만 원',
+      '매물에 적은 값: 없음',
+      '매물에 적은 값: 95만 원',
+      '매물에 적은 값: 없음',
+    ])
   })
 
   it('AC-7913.1: 매물이 없으면 참고 글이 없다', () => {
@@ -261,6 +271,39 @@ describe('AC-7913.1: 합계·손익분기 — design.md 식, 빈칸 수, 원장 
     fill('한 달 진료일', '26')
     // 버림(26,000,000 × 10 ÷ (42,000 × 26)) ÷ 10 = 23.8
     expect(within(sumBox()).getByText(/^하루/).textContent).toBe('하루 23.8명')
+  })
+
+  it('AC-7913.1·AC-7905.7: 합계 판·6개월 고정비 금액은 manText — 100만 원 아래도 `n만 원`, 0은 `없음`', () => {
+    costs()
+    fill('보증금', '0')
+    fill('권리금', '0')
+    expect(sumValue('보증금 + 권리금')).toBe('없음')
+    expect(sumValue('처음에 드는 돈')).toBe('없음')
+    expect(sumValue('대출 빼면 내 돈')).toBe('없음')
+    fill('장비', '60')
+    fill('그 밖의 준비 비용', '30')
+    expect(sumValue('장비 · 그 밖의 준비')).toBe('90만 원')
+    expect(sumValue('처음에 드는 돈')).toBe('90만 원')
+    expect(sumValue('대출 빼면 내 돈')).toBe('90만 원')
+    fill('관리비(한 달)', '15')
+    expect(sumValue('한 달 고정비')).toBe('15만 원')
+    expect(sumValue('6개월 고정비')).toBe('90만 원')
+    expect(screen.getByText('(월세 + 관리비 + 직원 인건비 + 그 밖의 운영비 + 한 달 이자) × 6').previousElementSibling?.textContent).toBe('90만 원')
+    expect(sumValue('처음에 드는 돈')).toBe('180만 원')
+  })
+
+  it('AC-7913.1·AC-7905.7: 인테리어 합계(평 × 평당)·한 달 이자는 셈한 값이라 wonText', () => {
+    costs()
+    fill('인테리어(평당)', '1')
+    // 버림(10,000원 × 52.0평) = 520,000원
+    expect(lineOf(/^인테리어 합계$/)).toBe('인테리어 합계 520,000원')
+    expect(sumValue('인테리어')).toBe('520,000원')
+    fill('대출', '3,000')
+    fill('대출 이자(해마다)', '4')
+    // 버림(30,000,000원 × 400 ÷ 120,000) = 100,000원
+    expect(lineOf(/^한 달 이자$/)).toBe('한 달 이자 100,000원')
+    // 한 달 고정비(이자만)는 합계 판이라 manText
+    expect(sumValue('한 달 고정비')).toBe('10만 원')
   })
 
   it('AC-7913.1: 대출이 처음에 드는 돈보다 많으면 `대출이 더 많아요`', () => {

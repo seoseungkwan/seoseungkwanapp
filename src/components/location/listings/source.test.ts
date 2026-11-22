@@ -50,7 +50,7 @@ describe('AC-7910.1~4: 매물 부품 소스', () => {
     }
   })
 
-  it('AC-7910.2: 금액 글은 money.ts wonText, 넓이 글은 area.ts 함수만 쓴다(파일 안에서 다시 세지 않음)', () => {
+  it('AC-7910.2·AC-7905.7: 금액 글은 money.ts(만 원 칸 manText · 평당 값 wonText), 넓이 글은 area.ts 함수만 쓴다(파일 안에서 다시 세지 않음)', () => {
     const code = FILES.map(read).join('\n')
     expect(code).not.toMatch(/toLocaleString|Intl\.NumberFormat|121\s*\/\s*400|400\s*\/\s*121|40_?000\s*\/\s*121/)
   })

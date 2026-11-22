@@ -5,7 +5,7 @@ import { errorInfo } from '@/lib/errors'
 import { areaText, pyeongToM2 } from '@/lib/location/area'
 import { compareListings, FEW_LISTINGS_TEXT } from '@/lib/location/listings'
 import { naverLandUrl } from '@/lib/location/links'
-import { wonText } from '@/lib/location/money'
+import { manText, wonText } from '@/lib/location/money'
 import type { Listing } from '@/types/location'
 import { ListingsView, type ListingCandidate, type ListingsViewProps } from './ListingsView'
 import { TERM_ROWS } from './terms'
@@ -101,7 +101,7 @@ describe('AC-7910.1: [네이버 부동산에서 보기]', () => {
   it('AC-7910.1: 고른 점의 네이버 부동산 링크를 새 창(noopener noreferrer)으로 연다', () => {
     setup()
     const link = within(region('매물 찾기')).getByRole('link', { name: '네이버 부동산에서 보기' })
-    expect(link.getAttribute('href')).toBe('https://m.land.naver.com/map/37.500000:127.000000:16/SG:SMS/A1:B2')
+    expect(link.getAttribute('href')).toBe('https://fin.land.naver.com/map?center=127.000000-37.500000&zoom=16')
     expect(link.getAttribute('href')).toBe(naverLandUrl(PLACES[0]!.point))
     expect(link.getAttribute('target')).toBe('_blank')
     expect(link.getAttribute('rel')).toBe('noopener noreferrer')
@@ -230,25 +230,33 @@ describe('AC-7910.2: 붙여 넣기 칸 · 목록 · 평수 거르기 · 견주�
     expect(box(/^월세/).value).toBe('520')
   })
 
-  it('AC-7910.2: 저장한 매물이 목록에 든다 — 넓이·돈 글은 area·money 함수, 평당 월세, 적은 날', () => {
+  it('AC-7910.2·AC-7905.7: 저장한 매물이 목록에 든다 — 넓이는 area 함수, 만 원 칸 돈은 manText, 평당 월세는 wonText, 적은 날', () => {
     setup({ listings: SIX, candidates: CANDS })
     expect(region('저장한 매물').querySelector('h2')?.textContent).toBe('저장한 매물6')
     const r1 = rowOf(/예시빌딩/)
     const cells = within(r1).getAllByRole('cell').map((c) => c.textContent)
     expect(cells.slice(1, 7)).toEqual([
       areaText(pyeongToM2(52)),
-      wonText(100_000_000),
-      wonText(5_200_000),
-      wonText(780_000),
-      wonText(0),
+      manText(100_000_000),
+      manText(5_200_000),
+      manText(780_000),
+      manText(0),
       wonText(compareListings(SIX).items.l1!.rent!.perPy),
     ])
-    expect(cells[1]).toBe('52평 (171.9㎡)')
-    expect(cells[6]).toBe('100,000원')
+    expect(cells.slice(1, 7)).toEqual(['52평 (171.9㎡)', '1억 원', '520만 원', '78만 원', '없음', '100,000원'])
     expect(within(r1).getByText('11월 12일 적음')).toBeTruthy()
     // 값이 없는 칸은 '–'
     const r6 = within(rowOf(/예시메디컬빌딩/)).getAllByRole('cell').map((c) => c.textContent)
     expect([r6[1], r6[2], r6[6]]).toEqual(['–', '–', '–'])
+  })
+
+  it('AC-7910.2·AC-7905.7: 만 원 칸 돈(보증금·월세·관리비·권리금)은 100만 원 아래도 `n만 원`, 0은 `없음`, 없으면 `–`', () => {
+    setup({ listings: SIX, candidates: CANDS })
+    const money = (name: RegExp) => within(rowOf(name)).getAllByRole('cell').map((c) => c.textContent).slice(2, 6)
+    expect(money(/예시타워/)).toEqual(['1억 5,000만 원', '860만 원', '96만 원', '5,000만 원'])
+    expect(money(/예시센터/)).toEqual(['5,000만 원', '330만 원', '50만 원', '없음'])
+    expect(money(/예시프라자/)).toEqual(['5,000만 원', '290만 원', '–', '–'])
+    expect(money(/예시메디컬빌딩/)).toEqual(['–', '440만 원', '–', '–'])
   })
 
   it('AC-7910.2: 평수 거르기(○평~○평) — 칩마다 수가 보이고 누르면 그 평수 매물만(넓이 없는 매물은 전체에서만)', () => {

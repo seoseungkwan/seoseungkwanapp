@@ -1,5 +1,5 @@
 import { MAX_M2, m2ToPyeong } from '@/lib/location/area'
-import { commaText, wonText } from '@/lib/location/money'
+import { commaText, manText } from '@/lib/location/money'
 import type { Listing } from '@/types/location'
 
 // 후보 더하기 판 화면 글(시안 docs/mockups/location/index.html ?s=add 글 그대로 + 시안에 없던 안내 몇 줄).
@@ -65,9 +65,9 @@ export function progressText(done: number, total: number): string {
   return `자료 ${done}/${total}`
 }
 
-/** 매물 한 줄 아래 글(시안): `전용 {평}평 · 보증금 {금액} / 월세 {금액} · {중개사}` — 없는 조각은 뺀다 */
+/** 매물 한 줄 아래 글(시안): `전용 {평}평 · 보증금 {금액} / 월세 {금액} · {중개사}` — 없는 조각은 뺀다. 금액은 만 원 칸 글 manText(0 `없음`) */
 export function listingLine(l: Pick<Listing, 'areaM2' | 'deposit' | 'rent' | 'brokerNote'>): string {
-  const money = (won: number | null) => (won !== null && Number.isSafeInteger(won) ? wonText(won) : '–')
+  const money = (won: number | null) => (won !== null && Number.isSafeInteger(won) ? manText(won) : '–')
   const parts: string[] = []
   if (l.areaM2 !== null && Number.isFinite(l.areaM2) && l.areaM2 > 0 && l.areaM2 <= MAX_M2) parts.push(`전용 ${commaText(m2ToPyeong(l.areaM2))}평`)
   if (l.deposit !== null || l.rent !== null) parts.push(`보증금 ${money(l.deposit)} / 월세 ${money(l.rent)}`)

@@ -266,6 +266,19 @@ describe('AC-7908.1: 붙여 넣은 매물에서 고르기', () => {
     expect(within(group).getByText('예시타워 2층')).toBeTruthy()
   })
 
+  it('AC-7905.7: 매물 줄의 보증금·월세는 manText — 100만 원 아래도 `n만 원`, 0은 `없음`, 없으면 `–`', () => {
+    setup({
+      way: 'listing',
+      listings: [
+        { ...LISTINGS[0]!, id: 'm1', title: '예시센터', deposit: 0, rent: 780_000, brokerNote: '' },
+        { ...LISTINGS[0]!, id: 'm2', title: '예시스퀘어', deposit: 150_000_000, rent: null, brokerNote: '' },
+      ],
+    })
+    const group = screen.getByRole('radiogroup', { name: '붙여 넣은 매물' })
+    expect(within(group).getByText('전용 30평 · 보증금 없음 / 월세 78만 원')).toBeTruthy()
+    expect(within(group).getByText('전용 30평 · 보증금 1억 5,000만 원 / 월세 –')).toBeTruthy()
+  })
+
   it('AC-7908.1: 점이 있는 매물을 고르면 매물 점·층·매물 id로 저장하고 처음 이름은 매물 이름 + 층이다', async () => {
     const { onSave, onFind } = setup({ way: 'listing' })
     fireEvent.click(screen.getByRole('radio', { name: /예시빌딩 3층/ }))
