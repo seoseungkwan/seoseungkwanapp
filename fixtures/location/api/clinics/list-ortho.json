@@ -1,0 +1,82 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": {
+      "items": {
+        "item": [
+          {
+            "addr": "가상도 가람구 견본로 11, 2층 (나무동)",
+            "clCd": 31,
+            "clCdNm": "의원",
+            "drTotCnt": 2,
+            "estbDd": 20240315,
+            "mdeptSdrCnt": 2,
+            "postNo": "99110",
+            "sgguCdNm": "가람구",
+            "sidoCdNm": "가상도",
+            "XPos": 127.0159,
+            "YPos": 37.5104,
+            "yadmNm": "견본바른정형외과의원",
+            "ykiho": "FAKEhira0001+/="
+          },
+          {
+            "addr": "가상도 가람구 시험로 22 (나무동)",
+            "clCd": 31,
+            "clCdNm": "의원",
+            "drTotCnt": 1,
+            "estbDd": "20190702",
+            "XPos": 127.018,
+            "YPos": 37.5091,
+            "yadmNm": "견본하늘의원",
+            "ykiho": "FAKEhira0002"
+          },
+          {
+            "addr": "가상도 가람구 모의길 3 (구름동)",
+            "clCd": 31,
+            "clCdNm": "의원",
+            "drTotCnt": 3,
+            "estbDd": 20101101,
+            "XPos": 127.0102,
+            "YPos": 37.5121,
+            "yadmNm": "견본튼튼재활의학과의원",
+            "ykiho": "FAKEhira0003"
+          },
+          {
+            "addr": "가상도 나래구 먼길 9 (바다동)",
+            "clCd": 31,
+            "clCdNm": "의원",
+            "drTotCnt": 1,
+            "estbDd": 20200101,
+            "XPos": 127.035,
+            "YPos": 37.52,
+            "yadmNm": "견본먼정형외과의원",
+            "ykiho": "FAKEhira0004"
+          },
+          {
+            "addr": "가상도 가람구 견본로 40 (나무동)",
+            "clCd": 31,
+            "clCdNm": "의원",
+            "drTotCnt": 1,
+            "estbDd": 20220505,
+            "yadmNm": "견본좌표없는정형외과의원",
+            "ykiho": "FAKEhira0005"
+          },
+          {
+            "addr": "가상도 가람구 끝길 1 (구름동)",
+            "clCd": 31,
+            "clCdNm": "의원",
+            "drTotCnt": 0,
+            "estbDd": 20250910,
+            "XPos": 127.015,
+            "YPos": 37.519,
+            "yadmNm": "견본끝정형외과의원",
+            "ykiho": "FAKEhira0007"
+          }
+        ]
+      },
+      "numOfRows": 500,
+      "pageNo": 1,
+      "totalCount": 6
+    }
+  }
+}

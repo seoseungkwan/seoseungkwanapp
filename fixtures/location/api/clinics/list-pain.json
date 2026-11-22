@@ -1,0 +1,35 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": {
+      "items": {
+        "item": [
+          {
+            "addr": "가상도 가람구 시험로 22 (나무동)",
+            "clCd": "31",
+            "clCdNm": "의원",
+            "drTotCnt": "1",
+            "estbDd": "20190702",
+            "XPos": "127.018",
+            "YPos": "37.5091",
+            "yadmNm": "견본하늘의원",
+            "ykiho": "FAKEhira0002"
+          },
+          {
+            "addr": "가상도 가람구 편한로 6 (나무동)",
+            "clCd": "31",
+            "clCdNm": "의원",
+            "estbDd": "20231340",
+            "XPos": "127.0151",
+            "YPos": "37.5162",
+            "yadmNm": "견본편한마취통증의학과의원",
+            "ykiho": "FAKEhira0006"
+          }
+        ]
+      },
+      "numOfRows": 500,
+      "pageNo": 1,
+      "totalCount": 2
+    }
+  }
+}

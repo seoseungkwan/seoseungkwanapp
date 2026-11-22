@@ -1,0 +1,36 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": {
+      "items": {
+        "item": [
+          {
+            "addr": "가상도 가람구 많은길 1 (나무동)",
+            "clCd": 93,
+            "clCdNm": "한의원",
+            "drTotCnt": 1,
+            "estbDd": 20120601,
+            "XPos": 127.0161,
+            "YPos": 37.5106,
+            "yadmNm": "견본첫째한의원",
+            "ykiho": "FAKEhira0301"
+          },
+          {
+            "addr": "가상도 가람구 많은길 2 (나무동)",
+            "clCd": 93,
+            "clCdNm": "한의원",
+            "drTotCnt": 2,
+            "estbDd": 20130701,
+            "XPos": 127.0122,
+            "YPos": 37.5133,
+            "yadmNm": "견본둘째한의원",
+            "ykiho": "FAKEhira0302"
+          }
+        ]
+      },
+      "numOfRows": 2,
+      "pageNo": 1,
+      "totalCount": 812
+    }
+  }
+}

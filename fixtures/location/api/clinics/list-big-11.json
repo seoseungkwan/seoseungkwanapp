@@ -1,0 +1,23 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": {
+      "items": {
+        "item": {
+          "addr": "가상도 가람구 큰길 100 (바다동)",
+          "clCd": 11,
+          "clCdNm": "종합병원",
+          "drTotCnt": 120,
+          "estbDd": 19980301,
+          "XPos": 127.021,
+          "YPos": 37.5035,
+          "yadmNm": "견본가상종합병원",
+          "ykiho": "FAKEhira0201"
+        }
+      },
+      "numOfRows": 500,
+      "pageNo": 1,
+      "totalCount": 1
+    }
+  }
+}
