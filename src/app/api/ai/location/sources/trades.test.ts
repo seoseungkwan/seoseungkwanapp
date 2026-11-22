@@ -113,7 +113,7 @@ describe('아파트 매매 답 읽기', () => {
   })
 
   it('AC-7904.2: 활용신청 안 된 열쇠의 답은 not-applied다(뒤 쪽 하나만 그래도)', () => {
-    expect(aptTrade.parse(same(APT_TRADE_PAGES, fx('not-registered.xml')), APT_Q, TODAY)).toEqual({ ok: false, code: 'not-applied' })
+    expect(aptTrade.parse(same(APT_TRADE_PAGES, fx('not-registered.json')), APT_Q, TODAY)).toEqual({ ok: false, code: 'not-applied' })
     const later = aptPages()
     later[3] = '{"response":{"header":{"resultCode":"30","resultMsg":"SERVICE_KEY_IS_NOT_REGISTERED_ERROR"}}}'
     expect(aptTrade.parse(later, APT_Q, TODAY)).toEqual({ ok: false, code: 'not-applied' })
@@ -186,7 +186,7 @@ describe('상업업무용 매매 답 읽기', () => {
       asOf: TODAY,
       value: { capped: false, deals: [] },
     })
-    expect(bizTrade.parse(same(BIZ_TRADE_PAGES, fx('not-registered.xml')), BIZ_Q, TODAY)).toEqual({ ok: false, code: 'not-applied' })
+    expect(bizTrade.parse(same(BIZ_TRADE_PAGES, fx('not-registered.json')), BIZ_Q, TODAY)).toEqual({ ok: false, code: 'not-applied' })
     const p1 = fx('biz-p1.xml')
     const broken: [string, string][] = [
       ['요청 한도 넘음(22)', fx('limit.xml')],

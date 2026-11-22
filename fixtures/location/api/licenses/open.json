@@ -1,107 +1,150 @@
 {
-  "response": {
-    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
-    "body": {
-      "items": {
-        "item": [
-          {
-            "MNG_NO": "PHMB320269990000001",
-            "OPN_SVC_NM": "의원",
-            "BPLC_NM": "가람정형외과의원",
-            "LCPMT_YMD": "20261020",
-            "SALS_STTS_NM": "영업/정상",
-            "CLSBIZ_YMD": "",
-            "DGSBJT_CN_NM": "정형외과",
-            "ROAD_NM_ADDR": "가상도 가람구 바다로 12, 2층",
-            "LOTNO_ADDR": "가상도 가람구 물빛동 34-5",
-            "CRD_INFO_X": "198120.4",
-            "CRD_INFO_Y": "451733.9"
-          },
-          {
-            "MNG_NO": "PHMB320269990000002",
-            "OPN_SVC_NM": "의원",
-            "BPLC_NM": "나래재활의학과의원",
-            "LCPMT_YMD": "2026-11-03",
-            "SALS_STTS_NM": "영업/정상",
-            "CLSBIZ_YMD": null,
-            "DGSBJT_CN_NM": "재활의학과,정형외과",
-            "ROAD_NM_ADDR": "",
-            "LOTNO_ADDR": "가상도 가람구 물빛동 56",
-            "CRD_INFO_X": 198410,
-            "CRD_INFO_Y": 451390
-          },
-          {
-            "MNG_NO": "PHMB320269990000003",
-            "BPLC_NM": "다솜내과의원",
-            "LCPMT_YMD": "20261025",
-            "DGSBJT_CN_NM": "내과",
-            "ROAD_NM_ADDR": "가상도 가람구 바다로 30",
-            "CRD_INFO_X": "",
-            "CRD_INFO_Y": ""
-          },
-          {
-            "MNG_NO": "PHMB320269990000004",
-            "BPLC_NM": "라온의원",
-            "LCPMT_YMD": "20261101",
-            "DGSBJT_CN_NM": "가정의학과",
-            "ROAD_NM_ADDR": "가상도 가람구 바다로 44",
-            "CRD_INFO_X": "0",
-            "CRD_INFO_Y": "0"
-          },
-          {
-            "MNG_NO": "PHMB320269990000005",
-            "BPLC_NM": "마루가정의학과의원",
-            "LCPMT_YMD": "20260930",
-            "DGSBJT_CN_NM": "가정의학과",
-            "ROAD_NM_ADDR": "가상도 가람구 바다로 50",
-            "CRD_INFO_X": "198300",
-            "CRD_INFO_Y": "451500"
-          },
-          {
-            "MNG_NO": "PHMB320269990000006",
-            "BPLC_NM": "바다통증의학과의원",
-            "LCPMT_YMD": "20261110",
-            "DGSBJT_CN_NM": "마취통증의학과",
-            "ROAD_NM_ADDR": "가상도 가람구 바다로 61",
-            "CRD_INFO_X": "좌표없음",
-            "CRD_INFO_Y": "451390"
-          },
-          {
-            "MNG_NO": "PHMB320269990000007",
-            "BPLC_NM": "새솔의원",
-            "LCPMT_YMD": "20261112",
-            "DGSBJT_CN_NM": "내과",
-            "ROAD_NM_ADDR": "가상도 가람구 바다로 70",
-            "CRD_INFO_X": "5000000",
-            "CRD_INFO_Y": "451600"
-          },
-          {
-            "MNG_NO": "PHMB320269990000008",
-            "BPLC_NM": "  ",
-            "LCPMT_YMD": "20261113",
-            "DGSBJT_CN_NM": "내과",
-            "ROAD_NM_ADDR": "가상도 가람구 바다로 80",
-            "CRD_INFO_X": "198200",
-            "CRD_INFO_Y": "451600"
-          },
-          {
-            "MNG_NO": "PHMB320269990000001",
-            "OPN_SVC_NM": "의원",
-            "BPLC_NM": "가람정형외과의원",
-            "LCPMT_YMD": "20261020",
-            "SALS_STTS_NM": "영업/정상",
-            "CLSBIZ_YMD": "",
-            "DGSBJT_CN_NM": "정형외과",
-            "ROAD_NM_ADDR": "가상도 가람구 바다로 12, 2층",
-            "LOTNO_ADDR": "가상도 가람구 물빛동 34-5",
-            "CRD_INFO_X": "198120.4",
-            "CRD_INFO_Y": "451733.9"
-          }
-        ]
-      },
-      "numOfRows": 500,
-      "pageNo": 1,
-      "totalCount": 9
-    }
+ "response": {
+  "body": {
+   "dataType": "JSON",
+   "items": {
+    "item": [
+     {
+      "MNG_NO": "PHMB320269990000001",
+      "BZSTAT_SE_NM": "의원",
+      "BPLC_NM": "가람정형외과의원",
+      "LCPMT_YMD": "20261020",
+      "CLSBIZ_YMD": "",
+      "MDEXM_SBJCT_CN_NM": "정형외과",
+      "ROAD_NM_ADDR": "가상도 가람구 바다로 12, 2층",
+      "LOTNO_ADDR": "가상도 가람구 물빛동 34-5",
+      "CRD_INFO_X": "198120.4",
+      "CRD_INFO_Y": "451733.9",
+      "SALS_STTS_CD": "01",
+      "SALS_STTS_NM": "영업/정상",
+      "DAT_UPDT_PNT": "2026-11-21 22:00:05",
+      "DAT_UPDT_SE": "U"
+     },
+     {
+      "MNG_NO": "PHMB320269990000002",
+      "BZSTAT_SE_NM": "의원",
+      "BPLC_NM": "나래재활의학과의원",
+      "LCPMT_YMD": "2026-11-03",
+      "CLSBIZ_YMD": null,
+      "MDEXM_SBJCT_CN_NM": "재활의학과, 정형외과",
+      "ROAD_NM_ADDR": "",
+      "LOTNO_ADDR": "가상도 가람구 물빛동 56",
+      "CRD_INFO_X": 198410,
+      "CRD_INFO_Y": 451390,
+      "SALS_STTS_CD": "01",
+      "SALS_STTS_NM": "영업/정상",
+      "DAT_UPDT_PNT": "2026-11-21 22:00:05",
+      "DAT_UPDT_SE": "U"
+     },
+     {
+      "MNG_NO": "PHMB320269990000003",
+      "BPLC_NM": "다솜내과의원",
+      "LCPMT_YMD": "20261025",
+      "MDEXM_SBJCT_CN_NM": "내과",
+      "ROAD_NM_ADDR": "가상도 가람구 바다로 30",
+      "CRD_INFO_X": "",
+      "CRD_INFO_Y": "",
+      "BZSTAT_SE_NM": "의원",
+      "SALS_STTS_CD": "01",
+      "SALS_STTS_NM": "영업/정상",
+      "DAT_UPDT_PNT": "2026-11-21 22:00:05",
+      "DAT_UPDT_SE": "U"
+     },
+     {
+      "MNG_NO": "PHMB320269990000004",
+      "BPLC_NM": "라온의원",
+      "LCPMT_YMD": "20261101",
+      "MDEXM_SBJCT_CN_NM": "가정의학과",
+      "ROAD_NM_ADDR": "가상도 가람구 바다로 44",
+      "CRD_INFO_X": "0",
+      "CRD_INFO_Y": "0",
+      "BZSTAT_SE_NM": "의원",
+      "SALS_STTS_CD": "01",
+      "SALS_STTS_NM": "영업/정상",
+      "DAT_UPDT_PNT": "2026-11-21 22:00:05",
+      "DAT_UPDT_SE": "U"
+     },
+     {
+      "MNG_NO": "PHMB320269990000005",
+      "BPLC_NM": "마루가정의학과의원",
+      "LCPMT_YMD": "20260930",
+      "MDEXM_SBJCT_CN_NM": "가정의학과",
+      "ROAD_NM_ADDR": "가상도 가람구 바다로 50",
+      "CRD_INFO_X": "198300",
+      "CRD_INFO_Y": "451500",
+      "BZSTAT_SE_NM": "의원",
+      "SALS_STTS_CD": "01",
+      "SALS_STTS_NM": "영업/정상",
+      "DAT_UPDT_PNT": "2026-11-21 22:00:05",
+      "DAT_UPDT_SE": "U"
+     },
+     {
+      "MNG_NO": "PHMB320269990000006",
+      "BPLC_NM": "바다통증의학과의원",
+      "LCPMT_YMD": "20261110",
+      "MDEXM_SBJCT_CN_NM": "마취통증의학과",
+      "ROAD_NM_ADDR": "가상도 가람구 바다로 61",
+      "CRD_INFO_X": "좌표없음",
+      "CRD_INFO_Y": "451390",
+      "BZSTAT_SE_NM": "의원",
+      "SALS_STTS_CD": "01",
+      "SALS_STTS_NM": "영업/정상",
+      "DAT_UPDT_PNT": "2026-11-21 22:00:05",
+      "DAT_UPDT_SE": "U"
+     },
+     {
+      "MNG_NO": "PHMB320269990000007",
+      "BPLC_NM": "새솔의원",
+      "LCPMT_YMD": "20261112",
+      "MDEXM_SBJCT_CN_NM": "내과",
+      "ROAD_NM_ADDR": "가상도 가람구 바다로 70",
+      "CRD_INFO_X": "5000000",
+      "CRD_INFO_Y": "451600",
+      "BZSTAT_SE_NM": "의원",
+      "SALS_STTS_CD": "01",
+      "SALS_STTS_NM": "영업/정상",
+      "DAT_UPDT_PNT": "2026-11-21 22:00:05",
+      "DAT_UPDT_SE": "U"
+     },
+     {
+      "MNG_NO": "PHMB320269990000008",
+      "BPLC_NM": "  ",
+      "LCPMT_YMD": "20261113",
+      "MDEXM_SBJCT_CN_NM": "내과",
+      "ROAD_NM_ADDR": "가상도 가람구 바다로 80",
+      "CRD_INFO_X": "198200",
+      "CRD_INFO_Y": "451600",
+      "BZSTAT_SE_NM": "의원",
+      "SALS_STTS_CD": "01",
+      "SALS_STTS_NM": "영업/정상",
+      "DAT_UPDT_PNT": "2026-11-21 22:00:05",
+      "DAT_UPDT_SE": "U"
+     },
+     {
+      "MNG_NO": "PHMB320269990000001",
+      "BZSTAT_SE_NM": "의원",
+      "BPLC_NM": "가람정형외과의원",
+      "LCPMT_YMD": "20261020",
+      "CLSBIZ_YMD": "",
+      "MDEXM_SBJCT_CN_NM": "정형외과",
+      "ROAD_NM_ADDR": "가상도 가람구 바다로 12, 2층",
+      "LOTNO_ADDR": "가상도 가람구 물빛동 34-5",
+      "CRD_INFO_X": "198120.4",
+      "CRD_INFO_Y": "451733.9",
+      "SALS_STTS_CD": "01",
+      "SALS_STTS_NM": "영업/정상",
+      "DAT_UPDT_PNT": "2026-11-21 22:00:05",
+      "DAT_UPDT_SE": "U"
+     }
+    ]
+   },
+   "numOfRows": 100,
+   "pageNo": 1,
+   "totalCount": 9
+  },
+  "header": {
+   "resultCode": "0",
+   "resultMsg": "정상"
   }
+ }
 }

@@ -154,6 +154,18 @@ describe('AC-7904.1 표제부 읽기', () => {
     })
   })
 
+  it('AC-7904.1: 기타 용도가 주용도를 품으면(진짜 답 주용도 제1종근린생활시설 · 기타 용도 제1종근린생활시설(지역자치센터)) 기타 용도만 쓴다 — 층별개요도 같다', () => {
+    const rows = [
+      { mgmBldrgstPk: 'A', mainAtchGbCd: '0', totArea: 100, mainPurpsCdNm: '제1종근린생활시설', etcPurps: '제1종근린생활시설(지역자치센터)' },
+      { mgmBldrgstPk: 'B', mainAtchGbCd: '0', totArea: 50, mainPurpsCdNm: '제1종근린생활시설', etcPurps: '파출소' },
+    ]
+    const got = bldTitle.parse([page(rows, 2)], TITLE_Q, TODAY)
+    expect(got.ok && got.value.buildings.map((b) => b.usage)).toEqual(['제1종근린생활시설(지역자치센터)', '제1종근린생활시설(파출소)'])
+    const floors = [{ mgmBldrgstPk: 'A', flrGbCd: '20', flrNo: 1, mainPurpsCdNm: '지역자치센터', etcPurps: '제1종근린생활시설(지역자치센터)', area: 10 }]
+    const floor = bldFloor.parse([page(floors, 1), fixture('floor-empty.json'), fixture('floor-empty.json')], FLOOR_Q, TODAY)
+    expect(floor.ok && floor.value.floors.map((f) => f.usage)).toEqual(['제1종근린생활시설(지역자치센터)'])
+  })
+
   it('AC-7904.1: 없는 날짜(20230230)·0인 사용승인일은 null이고, 승강기 칸이 하나만 있으면 그 값이다', () => {
     const rows = [
       { mgmBldrgstPk: 'A', mainAtchGbCd: '0', totArea: 100, useAprDay: '20230230', rideUseElvtCnt: '3' },
@@ -272,7 +284,7 @@ describe('AC-7904.2 빈 답 · 활용신청 안 됨 · 모양 틀림', () => {
   })
 
   it('AC-7904.2: 활용신청 안 됨(미등록 열쇠) 답은 not-applied다', () => {
-    const xml = fixture('not-registered.xml')
+    const xml = fixture('not-registered.json')
     expect(bldTitle.parse([xml], TITLE_Q, TODAY)).toStrictEqual({ ok: false, code: 'not-applied' })
     expect(bldFloor.parse([fixture('floor-1.json'), xml, xml], FLOOR_Q, TODAY)).toStrictEqual({ ok: false, code: 'not-applied' })
     const json = JSON.stringify({ response: { header: { resultCode: '30', resultMsg: 'SERVICE_KEY_IS_NOT_REGISTERED_ERROR' } } })

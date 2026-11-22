@@ -1,8 +1,12 @@
 {
-  "Response": {
-    "head": {
-      "resultCode": "03",
-      "resultMsg": "NODATA_ERROR"
+    "Response": {
+        "head": {
+            "pageNo": "1",
+            "resultCode": "3",
+            "totalCount": "0",
+            "numOfRows": "1000",
+            "resultMsg": "NODATA_ERROR"
+        },
+        "items": ""
     }
-  }
 }

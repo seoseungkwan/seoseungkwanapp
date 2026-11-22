@@ -21,7 +21,7 @@ const APT_LIST = fixture('apt-list.json')
 const APT_LIST_AFTER = fixture('apt-list-after.json')
 const APT_LIST_EMPTY = fixture('apt-list-empty.json')
 const NODATA = fixture('nodata.json')
-const NOT_REGISTERED = fixture('not-registered.xml')
+const NOT_REGISTERED = fixture('not-registered.json')
 const APT_INFO = fixture('apt-info.json')
 const APT_INFO_EMPTY = fixture('apt-info-empty.json')
 const PRESALE = fixture('presale.json')
@@ -95,7 +95,7 @@ describe('AC-7904.1 apt-list 공동주택 단지 목록', () => {
     expect(reqs).toHaveLength(3)
     expect(reqs.map((r) => params(r.url))).toEqual(
       [1, 2, 3].map((page) => ({
-        base: 'https://apis.data.go.kr/1613000/AptListService3/getLegaldongAptList3',
+        base: 'https://apis.data.go.kr/1613000/AptListService4/getLegaldongAptList4',
         query: { bjdCode: '9911010100', pageNo: String(page), numOfRows: '100', _type: 'json' },
       })),
     )
@@ -142,7 +142,7 @@ describe('AC-7904.1 apt-info 공동주택 기본 정보', () => {
   it('AC-7904.1: 단지 코드 하나를 정해 둔 주소·칸으로 한 번 요청하고, 주소에 열쇠는 없다', () => {
     const reqs = aptInfoAdapter.requests(INFO_Q)
     expect(reqs.map((r) => params(r.url))).toEqual([
-      { base: 'https://apis.data.go.kr/1613000/AptBasisInfoServiceV4/getAphusBassInfoV4', query: { kaptCode: 'A99000001', _type: 'json' } },
+      { base: 'https://apis.data.go.kr/1613000/AptBasisInfoServiceV5/getAphusBassInfoV5', query: { kaptCode: 'A99000001', _type: 'json' } },
     ])
     expect(reqs[0].url.toLowerCase()).not.toContain('servicekey')
   })
@@ -288,6 +288,39 @@ describe('AC-7904.1 presale 청약홈 분양정보(입주 예정)', () => {
     const rows = presaleRows().map((r) => ({ ...r, SUBSCRPT_AREA_CODE_NM: short }))
     const got = presaleAdapter.parse([presalePage(rows, 3), PRESALE_AFTER, PRESALE_AFTER], { ...PRESALE_Q, sidoName: full }, TODAY)
     expect(got.ok && (got.value as { items: unknown[] }).items).toHaveLength(3)
+  })
+
+  it('AC-7904.1: 2026 행정 개편의 전남광주통합특별시는 청약홈이 아직 광주(500)·전남(513) 두 공급지역으로 나눠 적어(2026-11-22 진짜 답) 두 지역을 3쪽씩 부르고 둘 다 남긴다', () => {
+    const q = { ...PRESALE_Q, sidoName: '전남광주통합특별시' }
+    const sent = presaleAdapter.requests(q).map((r) => {
+      const u = new URL(r.url).searchParams
+      return [u.get('cond[SUBSCRPT_AREA_CODE_NM::EQ]'), u.get('page')]
+    })
+    expect(sent).toEqual([
+      ['광주', '1'],
+      ['광주', '2'],
+      ['광주', '3'],
+      ['전남', '1'],
+      ['전남', '2'],
+      ['전남', '3'],
+    ])
+    const [a] = presaleRows()
+    const gwangju = presalePage([{ ...a, SUBSCRPT_AREA_CODE_NM: '광주', HOUSE_MANAGE_NO: '2099000001', HOUSE_NM: '가상 광주 단지' }], 1)
+    const jeonnam = presalePage(
+      [
+        { ...a, SUBSCRPT_AREA_CODE_NM: '전남', HOUSE_MANAGE_NO: '2099000002', HOUSE_NM: '가상 전남 단지' },
+        { ...a, SUBSCRPT_AREA_CODE_NM: '경기', HOUSE_MANAGE_NO: '2099000003', HOUSE_NM: '다른 지역 단지' },
+      ],
+      2,
+    )
+    const got = presaleAdapter.parse([gwangju, PRESALE_AFTER, PRESALE_AFTER, jeonnam, PRESALE_AFTER, PRESALE_AFTER], q, TODAY)
+    expect(got.ok && got.value.items.map((i) => i.name)).toEqual(['가상 광주 단지', '가상 전남 단지'])
+    expect(got.ok && got.value.capped).toBe(false)
+    // 한 지역의 공고가 3쪽 × 200줄을 넘으면 capped
+    const over = presaleAdapter.parse([gwangju, PRESALE_AFTER, PRESALE_AFTER, presalePage([], PRESALE_PAGES * PRESALE_ROWS + 1), PRESALE_AFTER, PRESALE_AFTER], q, TODAY)
+    expect(over.ok && over.value.capped).toBe(true)
+    // 쪽 수가 모자라면 failed
+    expect(presaleAdapter.parse([gwangju, PRESALE_AFTER, PRESALE_AFTER], q, TODAY)).toEqual({ ok: false, code: 'failed' })
   })
 
   it('AC-7904.1: 입주 예정 답에 좌표 칸이 없다', () => {

@@ -1,117 +1,75 @@
 {
-  "Response": {
-    "head": {
-      "resultCode": "0",
-      "resultMsg": "NORMAL_SERVICE",
-      "totalCount": "6",
-      "numOfRows": "1000",
-      "pageNo": "1"
-    },
-    "items": {
-      "item": [
-        {
-          "statsYm": "202609",
-          "stdgCd": "9911000000",
-          "stdgNm": "",
-          "ctpvNm": "가상도",
-          "sggNm": "가람구",
-          "admmCd": "9911000000",
-          "dongNm": "",
-          "tong": "",
-          "ban": "",
-          "totNmprCnt": "21054",
-          "hhCnt": "9570",
-          "hhNmpr": "2.20",
-          "maleNmprCnt": "10105",
-          "femlNmprCnt": "10949",
-          "maleFemlRate": "0.92"
+    "Response": {
+        "head": {
+            "pageNo": "1",
+            "resultCode": "0",
+            "totalCount": "4",
+            "numOfRows": "1000",
+            "resultMsg": "NORMAL_SERVICE"
         },
-        {
-          "statsYm": "202609",
-          "stdgCd": "9911010100",
-          "stdgNm": "푸른동",
-          "ctpvNm": "가상도",
-          "sggNm": "가람구",
-          "admmCd": "9911051000",
-          "dongNm": "하늘동",
-          "tong": "",
-          "ban": "",
-          "totNmprCnt": "7040",
-          "hhCnt": "3200",
-          "hhNmpr": "2.20",
-          "maleNmprCnt": "3379",
-          "femlNmprCnt": "3661",
-          "maleFemlRate": "0.92"
-        },
-        {
-          "statsYm": "202609",
-          "stdgCd": "9911010200",
-          "stdgNm": "맑은동",
-          "ctpvNm": "가상도",
-          "sggNm": "가람구",
-          "admmCd": "9911051000",
-          "dongNm": "하늘동",
-          "tong": "",
-          "ban": "",
-          "totNmprCnt": "4070",
-          "hhCnt": "1850",
-          "hhNmpr": "2.20",
-          "maleNmprCnt": "1953",
-          "femlNmprCnt": "2117",
-          "maleFemlRate": "0.92"
-        },
-        {
-          "statsYm": "202609",
-          "stdgCd": "9911010200",
-          "stdgNm": "맑은동",
-          "ctpvNm": "가상도",
-          "sggNm": "가람구",
-          "admmCd": "9911052000",
-          "dongNm": "바다동",
-          "tong": "",
-          "ban": "",
-          "totNmprCnt": "4620",
-          "hhCnt": "2100",
-          "hhNmpr": "2.20",
-          "maleNmprCnt": "2217",
-          "femlNmprCnt": "2403",
-          "maleFemlRate": "0.92"
-        },
-        {
-          "statsYm": "202609",
-          "stdgCd": "9911010300",
-          "stdgNm": "고운동",
-          "ctpvNm": "가상도",
-          "sggNm": "가람구",
-          "admmCd": "9911052000",
-          "dongNm": "바다동",
-          "tong": "",
-          "ban": "",
-          "totNmprCnt": "3080",
-          "hhCnt": "1400",
-          "hhNmpr": "2.20",
-          "maleNmprCnt": "1478",
-          "femlNmprCnt": "1602",
-          "maleFemlRate": "0.92"
-        },
-        {
-          "statsYm": "202609",
-          "stdgCd": "9911010400",
-          "stdgNm": "새솔동",
-          "ctpvNm": "가상도",
-          "sggNm": "가람구",
-          "admmCd": "9911053000",
-          "dongNm": "별빛동",
-          "tong": "",
-          "ban": "",
-          "totNmprCnt": "2244",
-          "hhCnt": "1020",
-          "hhNmpr": "2.20",
-          "maleNmprCnt": "1077",
-          "femlNmprCnt": "1167",
-          "maleFemlRate": "0.92"
+        "items": {
+            "item": [
+                {
+                    "hhCnt": "5050",
+                    "tong": "",
+                    "femlNmprCnt": "",
+                    "ctpvNm": "가상도",
+                    "maleNmprCnt": "",
+                    "sggNm": "가람구",
+                    "dongNm": "하늘동",
+                    "hhNmpr": "2.20",
+                    "admmCd": "9911051000",
+                    "ban": "",
+                    "totNmprCnt": "11110",
+                    "maleFemlRate": "0.95",
+                    "statsYm": "202609"
+                },
+                {
+                    "hhCnt": "2100",
+                    "tong": "",
+                    "femlNmprCnt": "",
+                    "ctpvNm": "가상도",
+                    "maleNmprCnt": "",
+                    "sggNm": "가람구",
+                    "dongNm": "바다동",
+                    "hhNmpr": "2.20",
+                    "admmCd": "9911052000",
+                    "ban": "",
+                    "totNmprCnt": "4620",
+                    "maleFemlRate": "0.95",
+                    "statsYm": "202609"
+                },
+                {
+                    "hhCnt": "1400",
+                    "tong": "",
+                    "femlNmprCnt": "",
+                    "ctpvNm": "가상도",
+                    "maleNmprCnt": "",
+                    "sggNm": "가람구",
+                    "dongNm": "바다동",
+                    "hhNmpr": "2.20",
+                    "admmCd": "9911052000",
+                    "ban": "",
+                    "totNmprCnt": "3080",
+                    "maleFemlRate": "0.95",
+                    "statsYm": "202609"
+                },
+                {
+                    "hhCnt": "1020",
+                    "tong": "",
+                    "femlNmprCnt": "",
+                    "ctpvNm": "가상도",
+                    "maleNmprCnt": "",
+                    "sggNm": "가람구",
+                    "dongNm": "별빛동",
+                    "hhNmpr": "2.20",
+                    "admmCd": "9911053000",
+                    "ban": "",
+                    "totNmprCnt": "2244",
+                    "maleFemlRate": "0.95",
+                    "statsYm": "202609"
+                }
+            ]
         }
-      ]
     }
-  }
 }

@@ -14,7 +14,8 @@ import {
 
 // 바깥 자료 — 시설·사고(specs/location REQ-7904, design.md 4절, TASK-22): market·senior·gym·accident·school.
 // 진짜 사이트는 부르지 않는다. 답은 fixtures/location/api/facilities/의 지어낸 가짜 응답이다(지어낸 시·도 '가상도'의 '가람구'·'나래구'·'다솜구').
-// 칸 이름·거르는 칸은 진짜 응답을 아직 못 봐서 공공데이터포털 표준데이터 모양으로 적었다 — TASK-47이 진짜 답으로 맞춘다
+// TASK-47(2026-11-22 진짜 열쇠): gym(15155077)은 진짜 답 모양(대문자 칸·결과 코드 '0'·한 쪽 100줄)으로 고쳤다. 미등록 열쇠 답도 진짜 모양(JSON)이다.
+// 표준데이터 넷(market·senior·school·accident)은 열쇠가 활용신청 전이라(미등록 답) 진짜 줄을 못 봤다 — 칸 이름은 그대로 확인 전이다
 
 const fx = (name: string) =>
   readFileSync(new URL(`../../../../../../fixtures/location/api/facilities/${name}`, import.meta.url), 'utf8')
@@ -74,7 +75,7 @@ describe('AC-7904.1 요청 — 정해 둔 주소·칸, 시군구 이름으로 �
   it('AC-7904.1: senior는 마을회관·경로당 표준데이터를 5쪽까지 부른다', () => {
     expect(seniorAdapter.requests(SENIOR).map(parts)).toEqual(
       pagesOf(5).map((pageNo) => ({
-        at: 'https://api.data.go.kr/openapi/tn_pubr_public_vlg_hall_snctr_api',
+        at: 'https://api.data.go.kr/openapi/tn_pubr_public_vill_hall_sen_cent_api',
         params: { pageNo, numOfRows: '1000', type: 'json', rdnmadr: '가람구' },
       })),
     )
@@ -98,13 +99,16 @@ describe('AC-7904.1 요청 — 정해 둔 주소·칸, 시군구 이름으로 �
     )
   })
 
-  it('AC-7904.1: gym은 행정안전부 생활_체력단련장업(15155077)을 5쪽까지, 도로명 전체 주소 칸으로 부른다', () => {
+  it('AC-7904.1: gym은 행정안전부 생활_체력단련장업(15155077)을 5쪽까지(한 쪽 100줄이 사이트 한도), 영업 중(01)만, 도로명 주소 칸으로 부른다', () => {
     expect(gymAdapter.requests(GYM).map(parts)).toEqual(
       pagesOf(5).map((pageNo) => ({
-        at: 'https://apis.data.go.kr/1741000/fitness_center/info',
-        params: { pageNo, numOfRows: '1000', type: 'json', rdnWhlAddr: '가람구' },
+        at: 'https://apis.data.go.kr/1741000/fitness_centers/info',
+        params: { pageNo, numOfRows: '100', returnType: 'json', 'cond[ROAD_NM_ADDR::LIKE]': '가람구', 'cond[SALS_STTS_CD::EQ]': '01' },
       })),
     )
+    // 몸통에 시도 이름이 있으면 '시도 시군구'로 거른다('중구'처럼 여러 시도에 있는 이름)
+    const withSido = { ...GYM, sidoName: '가상도' } as QueryOf<'gym'>
+    expect(parts(gymAdapter.requests(withSido)[0]).params['cond[ROAD_NM_ADDR::LIKE]']).toBe('가상도 가람구')
   })
 
   it('AC-7904.1: 요청 주소에 열쇠 칸(serviceKey)을 넣지 않는다 — fetchSource가 싣는다', () => {
@@ -195,14 +199,14 @@ describe('AC-7904.1 답 읽기 — 정해 둔 모양 값·기준 날짜', () => 
     })
   })
 
-  it('AC-7904.1: gym은 폐업·취소 줄을 빼고 영업은 open·휴업은 paused로, 기준 날짜는 자료 안 갱신일 가운데 가장 새 날이다', () => {
+  it('AC-7904.1: gym은 영업 중(01) 줄만 open으로 남기고(폐업 줄은 빼고) 다른 시군구 줄도 뺀다, 기준 날짜는 남긴 줄의 데이터 갱신 날 가운데 가장 새 날이다', () => {
     const got = gymAdapter.parse(withEmptyRest(fx('gym-p1.json'), 5), GYM, TODAY)
     if (!got.ok) throw new Error('읽기 실패')
     expect(got.asOf).toBe('2026-11-20')
     expect(got.value.capped).toBe(false)
     expect(got.value.items.map(({ name, status }) => ({ name, status }))).toEqual([
       { name: '하늘튼튼헬스', status: 'open' },
-      { name: '바다근력짐', status: 'paused' },
+      { name: '바다근력짐', status: 'open' },
     ])
   })
 })
@@ -222,17 +226,17 @@ describe('AC-7904.4 EPSG:5174 좌표 자료(체력단련장)는 WGS84로 바꿔 
     if (!got.ok) throw new Error('읽기 실패')
     expect(got.value.items).toEqual([
       { name: '하늘튼튼헬스', status: 'open', ...from5174(198000, 451600)! },
-      { name: '바다근력짐', status: 'paused', ...from5174(198150.5, 451720.25)! },
+      { name: '바다근력짐', status: 'open', ...from5174(198150.5, 451720.25)! },
     ])
   })
 })
 
 const ALL = [
-  { kind: 'market', pages: 3, run: (texts: string[]) => marketAdapter.parse(texts, MARKET, TODAY) },
-  { kind: 'senior', pages: 5, run: (texts: string[]) => seniorAdapter.parse(texts, SENIOR, TODAY) },
-  { kind: 'gym', pages: 5, run: (texts: string[]) => gymAdapter.parse(texts, GYM, TODAY) },
-  { kind: 'accident', pages: 5, run: (texts: string[]) => accidentAdapter.parse(texts, ACCIDENT, TODAY) },
-  { kind: 'school', pages: 5, run: (texts: string[]) => schoolAdapter.parse(texts, SCHOOL, TODAY) },
+  { kind: 'market', pages: 3, rows: 1000, run: (texts: string[]) => marketAdapter.parse(texts, MARKET, TODAY) },
+  { kind: 'senior', pages: 5, rows: 1000, run: (texts: string[]) => seniorAdapter.parse(texts, SENIOR, TODAY) },
+  { kind: 'gym', pages: 5, rows: 100, run: (texts: string[]) => gymAdapter.parse(texts, GYM, TODAY) },
+  { kind: 'accident', pages: 5, rows: 1000, run: (texts: string[]) => accidentAdapter.parse(texts, ACCIDENT, TODAY) },
+  { kind: 'school', pages: 5, rows: 1000, run: (texts: string[]) => schoolAdapter.parse(texts, SCHOOL, TODAY) },
 ] as const
 
 describe('AC-7904.2 빈 답 · 활용신청 안 됨 · 모양 틀림', () => {
@@ -246,8 +250,8 @@ describe('AC-7904.2 빈 답 · 활용신청 안 됨 · 모양 틀림', () => {
       expect(got.value.capped).toBe(false)
     })
 
-    it(`AC-7904.2: ${kind} — 미등록 열쇠 답(XML·JSON)은 not-applied다`, () => {
-      expect(run(withEmptyRest(fx('not-registered.xml'), pages))).toEqual({ ok: false, code: 'not-applied' })
+    it(`AC-7904.2: ${kind} — 미등록 열쇠 답(진짜 모양 JSON)은 not-applied다`, () => {
+      expect(run(withEmptyRest(fx('not-registered.json'), pages))).toEqual({ ok: false, code: 'not-applied' })
       expect(run([...withEmptyRest(fx(`${kind}-p1.json`), pages - 1), fx('not-registered.json')])).toEqual({
         ok: false,
         code: 'not-applied',
@@ -267,10 +271,10 @@ describe('AC-7904.2 빈 답 · 활용신청 안 됨 · 모양 틀림', () => {
 })
 
 describe('AC-7904.3 여러 쪽 자료는 정해 둔 쪽 수까지만 받고 넘으면 capped', () => {
-  for (const { kind, pages, run } of ALL) {
-    it(`AC-7904.3: ${kind} — 전체 건수가 ${pages}쪽 × 1,000줄을 넘으면 capped: true, 딱 맞으면 false다`, () => {
-      const over = run(withEmptyRest(withTotal(fx(`${kind}-p1.json`), pages * 1000 + 1), pages))
-      const exact = run(withEmptyRest(withTotal(fx(`${kind}-p1.json`), pages * 1000), pages))
+  for (const { kind, pages, rows, run } of ALL) {
+    it(`AC-7904.3: ${kind} — 전체 건수가 ${pages}쪽 × ${rows}줄을 넘으면 capped: true, 딱 맞으면 false다`, () => {
+      const over = run(withEmptyRest(withTotal(fx(`${kind}-p1.json`), pages * rows + 1), pages))
+      const exact = run(withEmptyRest(withTotal(fx(`${kind}-p1.json`), pages * rows), pages))
       expect(over.ok && over.value.capped).toBe(true)
       expect(exact.ok && exact.value.capped).toBe(false)
       if (over.ok && exact.ok) expect(over.value.items).toEqual(exact.value.items)

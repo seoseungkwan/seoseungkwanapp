@@ -13,10 +13,13 @@ import { isNotRegistered } from '../fetchSource'
 // 역·정류장은 부르지 않는다(좌표 파일에서 센다, TASK-30). 모두 공공데이터포털 열쇠이고, 열쇠는 fetchSource가 싣는다.
 // 시군구 이름으로 요청 칸에서 한 번 거르고, 받은 줄의 주소(낱말 단위)에서 한 번 더 거른다(다른 시군구 줄·길 이름만 같은 줄을 뺀다).
 // 좌표가 비었거나 (0,0)이거나 한국 밖인 줄, 이름이 빈 줄은 뺀다. 빈 답(NODATA·빈 items)은 빈 목록이다.
-// 확인할 것(TASK-47이 진짜 답으로 맞춤): 주소 끝·칸 이름·거르는 칸이 부분 일치로 걸러 주는지·영업 상태 번호·사고 연도 칸
+// TASK-47(2026-11-22 진짜 열쇠): gym은 진짜 답으로 맞췄다(주소 fitness_centers/info · 대문자 칸 · 결과 코드 '0' · 한 쪽 100줄 ·
+// 조건 칸 cond[ROAD_NM_ADDR::LIKE]·cond[SALS_STTS_CD::EQ]). 표준데이터 넷(market·senior·school·accident)은 열쇠가 활용신청 전이라
+// (미등록 답, HTTP 403) 줄 모양을 못 봤다 — senior 주소만 포털 문서(tn_pubr_public_vill_hall_sen_cent_api)로 고쳤고 칸 이름은 확인 전이다
 
-/** 한 쪽에 받는 줄 수 */
+/** 한 쪽에 받는 줄 수(체력단련장은 사이트 한도 100줄) */
 export const FACILITY_ROWS = 1000
+const ROWS_OF = { market: FACILITY_ROWS, senior: FACILITY_ROWS, school: FACILITY_ROWS, accident: FACILITY_ROWS, gym: 100 } as const
 /** 종류마다 받는 쪽 수(design.md 4절 표 '쪽'). 전체 건수가 쪽 수 × 줄 수를 넘으면 capped */
 export const FACILITY_PAGES = { market: 3, senior: 5, school: 5, accident: 5, gym: 5 } as const
 
@@ -25,10 +28,10 @@ type FacilityKind = keyof typeof FACILITY_PAGES
 const STD = 'https://api.data.go.kr/openapi'
 const URLS: Readonly<Record<FacilityKind, string>> = {
   market: `${STD}/tn_pubr_public_trdit_mrkt_api`,
-  senior: `${STD}/tn_pubr_public_vlg_hall_snctr_api`,
+  senior: `${STD}/tn_pubr_public_vill_hall_sen_cent_api`,
   school: `${STD}/tn_pubr_public_elesch_mskul_lc_api`,
   accident: `${STD}/tn_pubr_public_acdnt_area_api`,
-  gym: 'https://apis.data.go.kr/1741000/fitness_center/info',
+  gym: 'https://apis.data.go.kr/1741000/fitness_centers/info',
 }
 
 // ── 돌려주는 값 ─────────────────────────────────────────
@@ -115,9 +118,11 @@ export function inSgg(sggName: string, ...addresses: unknown[]): boolean {
 
 // ── 요청 · 답 쪽 읽기 ─────────────────────────────────────
 
+// 표준데이터는 type=json, 행정안전부 새 조회(gym)는 returnType=json
 function pageRequests(kind: FacilityKind, filter: Record<string, string>): SiteRequest[] {
+  const typeKey = kind === 'gym' ? 'returnType' : 'type'
   return Array.from({ length: FACILITY_PAGES[kind] }, (_, i) => {
-    const params = new URLSearchParams({ pageNo: String(i + 1), numOfRows: String(FACILITY_ROWS), type: 'json', ...filter })
+    const params = new URLSearchParams({ pageNo: String(i + 1), numOfRows: String(ROWS_OF[kind]), [typeKey]: 'json', ...filter })
     return { url: `${URLS[kind]}?${params.toString()}` }
   })
 }
@@ -138,7 +143,7 @@ function rowsOf(items: unknown): Row[] | null {
 }
 
 // 공공데이터포털 답 한 쪽: { response: { header: { resultCode }, body: { items, totalCount } } }.
-// 미등록 열쇠(30·20) = not-applied, NODATA(03) = 빈 쪽, 00 밖의 번호·JSON 아님·모양 틀림 = failed
+// 미등록 열쇠(30·20) = not-applied, NODATA(03) = 빈 쪽, 정상(00 · 새 조회는 0) 밖의 번호·JSON 아님·모양 틀림 = failed
 function readPage(text: string): Page | PageFail {
   if (isNotRegistered(text)) return 'not-applied'
   let json: unknown
@@ -151,7 +156,7 @@ function readPage(text: string): Page | PageFail {
   if (!isRow(response) || !isRow(response.header)) return 'failed'
   const code = textOf(response.header.resultCode)
   if (code === '03') return { rows: [], total: 0 }
-  if (code !== '00' || !isRow(response.body)) return 'failed'
+  if ((code !== '00' && code !== '0') || !isRow(response.body)) return 'failed'
   const rows = rowsOf(response.body.items)
   if (rows === null) return 'failed'
   return { rows, total: countOf(response.body.totalCount) ?? 0 }
@@ -182,7 +187,7 @@ function readKept<T>(kind: FacilityKind, texts: string[], toItem: (row: Row) => 
     const one = toItem(row)
     return one === null ? [] : [one]
   })
-  return { kept, capped: got.total > FACILITY_PAGES[kind] * FACILITY_ROWS }
+  return { kept, capped: got.total > FACILITY_PAGES[kind] * ROWS_OF[kind] }
 }
 
 // 기준 날짜 = 남긴 줄의 자료 안 날짜 가운데 가장 새 날, 없으면 받은 한국 날짜
@@ -273,20 +278,31 @@ export const accidentAdapter: Adapter<'accident', AccidentList> = {
   },
 }
 
-// 영업 상태 구분 번호: 01 영업/정상 · 02 휴업 · 그 밖(03 폐업 · 04 취소/말소 등)은 뺀다
+// 영업 상태 번호(SALS_STTS_CD): 01 영업/정상 · 02 휴업 · 그 밖(03 폐업 등)은 뺀다. 요청은 01만 거른다(휴업 줄은 진짜 답에서 못 봤다)
 const GYM_STATUS: Readonly<Record<string, GymStatus>> = { '01': 'open', '02': 'paused' }
+const GYM_OPEN = '01'
+
+// 몸통에 시도 이름이 있으면 '시도 시군구'로 거른다('중구'처럼 여러 시도에 있는 이름). query.ts에 칸을 더해야 한다(TASK-47 보고)
+const sidoOf = (q: object): string => {
+  const v = (q as { sidoName?: unknown }).sidoName
+  return typeof v === 'string' ? v.trim() : ''
+}
 
 export const gymAdapter: Adapter<'gym', PlaceList<GymPlace>> = {
   kind: 'gym',
   src: 'gym',
   key: 'data',
-  requests: (q) => pageRequests('gym', { rdnWhlAddr: q.sggName }),
+  requests: (q) =>
+    pageRequests('gym', {
+      'cond[ROAD_NM_ADDR::LIKE]': [sidoOf(q), q.sggName].filter((w) => w !== '').join(' '),
+      'cond[SALS_STTS_CD::EQ]': GYM_OPEN,
+    }),
   parse: (texts, q, today) =>
     placeList('gym', texts, today, (row) => {
-      const code = textOf(row.trdStateGbn)
-      if (!Object.hasOwn(GYM_STATUS, code) || !inSgg(q.sggName, row.rdnWhlAddr, row.siteWhlAddr)) return null
-      const place = placeOf(row.bplcNm, tmPoint(row.x, row.y))
-      return place === null ? null : { item: { ...place, status: GYM_STATUS[code] }, day: dayOf(row.updateDt) }
+      const code = textOf(row.SALS_STTS_CD)
+      if (!Object.hasOwn(GYM_STATUS, code) || !inSgg(q.sggName, row.ROAD_NM_ADDR, row.LOTNO_ADDR)) return null
+      const place = placeOf(row.BPLC_NM, tmPoint(row.CRD_INFO_X, row.CRD_INFO_Y))
+      return place === null ? null : { item: { ...place, status: GYM_STATUS[code] }, day: dayOf(row.DAT_UPDT_PNT) }
     }),
 }
 

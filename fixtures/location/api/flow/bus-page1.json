@@ -1,17 +1,54 @@
 {
-  "response": {
-    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
-    "body": {
-      "items": {
-        "item": [
-          { "sttnId": "99000001", "sttnNm": "가람시장앞", "arsNo": "99001" },
-          { "sttnId": "99000002", "sttnNm": " 누리 초등학교 ", "arsNo": "" },
-          { "sttnId": 99000004, "sttnNm": "별빛마을" }
-        ]
-      },
-      "numOfRows": 1000,
-      "pageNo": 1,
-      "totalCount": 3
-    }
+ "Response": {
+  "header": {
+   "resultCode": "200",
+   "resultMsg": "SUCCESS"
+  },
+  "body": {
+   "items": {
+    "item": [
+     {
+      "opr_ymd": "20261001",
+      "sttn_id": "9900001",
+      "sttn_nm": "가람시장앞",
+      "sttn_ars_no": "99001",
+      "ctpv_cd": "99",
+      "sgg_cd": "99110",
+      "emd_cd": "9911010100",
+      "ctpv_nm": "가상도",
+      "sgg_nm": "가람구",
+      "emd_nm": "하늘동"
+     },
+     {
+      "opr_ymd": "20261001",
+      "sttn_id": "9900002",
+      "sttn_nm": " 누리 초등학교 ",
+      "sttn_ars_no": "~",
+      "ctpv_cd": "99",
+      "sgg_cd": "99110",
+      "emd_cd": "9911010100",
+      "ctpv_nm": "가상도",
+      "sgg_nm": "가람구",
+      "emd_nm": "하늘동"
+     },
+     {
+      "opr_ymd": "20261001",
+      "sttn_id": "9900004",
+      "sttn_nm": "별빛마을",
+      "sttn_ars_no": "",
+      "ctpv_cd": "99",
+      "sgg_cd": "99110",
+      "emd_cd": "9911010100",
+      "ctpv_nm": "가상도",
+      "sgg_nm": "가람구",
+      "emd_nm": "하늘동"
+     }
+    ]
+   },
+   "dataType": "JSON",
+   "pageNo": 1,
+   "numOfRows": 1000,
+   "totalCount": 3
   }
+ }
 }

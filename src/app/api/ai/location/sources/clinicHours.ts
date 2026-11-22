@@ -4,15 +4,25 @@ import type { Adapter, Point, Rival } from '@/types/location'
 import { isNotRegistered } from '../fetchSource'
 
 // 바깥 자료 — 진료 시간(specs/location TASK-17, REQ-7904, design.md 4절 `hosp-hours`). 순수 함수만 둔다(부르기는 fetchSource).
-// 국립중앙의료원 전국 병·의원 찾기 서비스(data.go.kr 15000736)의 위치 조회: 점 하나 → 가까운 차례 병·의원, 3쪽까지.
+// 국립중앙의료원 전국 병·의원 찾기 서비스(data.go.kr 15000736)의 목록 조회: 시도·시군구 이름 + 종별 → 그 시군구 병·의원.
 // 의원마다 이름·점·요일 7칸 + 공휴일 [열·닫](0시부터 센 분). 답은 XML이다.
-// 위치 조회 답에 요일 칸(dutyTime1s~8c)이 실제로 오는지·쪽 줄 수 한도는 진짜 열쇠로 TASK-47이 확인한다
+// TASK-47(2026-11-22 진짜 열쇠): 위치 조회(점 하나) 답에는 요일 칸(dutyTime1s~8c)이 없고 오늘 하루 startTime·endTime만 와서
+// 요일 칸이 오는 목록 조회로 바꿨다(한 쪽 1,000줄까지, 종로구 의원 203곳). 시도 이름은 새 이름(전남광주통합특별시)으로 찾는다.
+// 몸통에 시도·시군구 이름이 없으면(모으기가 아직 싣지 않음) 예전 위치 조회를 부른다 — 그 답은 요일 칸이 없어 진료 시간이 모두 null이다
 
-/** 위치 조회 주소(공공데이터포털, 열쇠는 fetchSource가 serviceKey로 붙인다) */
-export const HOURS_URL = 'https://apis.data.go.kr/B552657/HsptlAsembySearchService/getHsptlMdcncLcinfoInqire'
-/** 부르는 쪽 수(design.md 4절 '쪽')와 쪽마다 줄 수(Claude 판단) */
+/** 목록 조회 주소(공공데이터포털, 열쇠는 fetchSource가 serviceKey로 붙인다) */
+export const HOURS_URL = 'https://apis.data.go.kr/B552657/HsptlAsembySearchService/getHsptlMdcncListInfoInqire'
+/** 위치 조회 주소(몸통에 이름이 없을 때) */
+export const HOURS_NEAR_URL = 'https://apis.data.go.kr/B552657/HsptlAsembySearchService/getHsptlMdcncLcinfoInqire'
+/** 의원(C) 쪽 수와 쪽마다 줄 수(사이트 한도). 한의원(G)은 한 쪽 */
 export const HOURS_PAGES = 3
-export const HOURS_ROWS = 100
+export const HOURS_ROWS = 1000
+const HOURS_PLAN = [
+  { kind: 'C', pages: HOURS_PAGES },
+  { kind: 'G', pages: 1 },
+] as const
+const NEAR_PAGES = 3
+const NEAR_ROWS = 100
 /** 심평원 의원 목록과 같은 의원으로 보는 거리(m, 이 값까지) */
 export const MATCH_M = 50
 
@@ -143,20 +153,36 @@ export function hoursFor(clinic: { name: string; at: Point }, rows: readonly Cli
 
 // ── 읽는 곳 ──────────────────────────────────────────────
 
+// 몸통의 시도·시군구 이름(query.ts에 칸을 더해야 한다 — TASK-47 보고). 없으면 ''
+const nameOf = (q: object, key: 'sidoName' | 'sggName'): string => {
+  const v = (q as Record<string, unknown>)[key]
+  return typeof v === 'string' ? v.trim() : ''
+}
+
 export const clinicHours: Adapter<'hosp-hours', ClinicHours[]> = {
   kind: 'hosp-hours',
   src: 'hosp-hours',
   key: 'data',
   requests(q) {
-    return Array.from({ length: HOURS_PAGES }, (_, i) => {
-      const params = new URLSearchParams({
-        WGS84_LON: String(q.at.lng),
-        WGS84_LAT: String(q.at.lat),
-        pageNo: String(i + 1),
-        numOfRows: String(HOURS_ROWS),
+    const sido = nameOf(q, 'sidoName')
+    const sgg = nameOf(q, 'sggName')
+    if (sido === '' || sgg === '') {
+      return Array.from({ length: NEAR_PAGES }, (_, i) => {
+        const params = new URLSearchParams({
+          WGS84_LON: String(q.at.lng),
+          WGS84_LAT: String(q.at.lat),
+          pageNo: String(i + 1),
+          numOfRows: String(NEAR_ROWS),
+        })
+        return { url: `${HOURS_NEAR_URL}?${params}` }
       })
-      return { url: `${HOURS_URL}?${params}` }
-    })
+    }
+    return HOURS_PLAN.flatMap(({ kind, pages }) =>
+      Array.from({ length: pages }, (_, i) => {
+        const params = new URLSearchParams({ Q0: sido, Q1: sgg, QZ: kind, pageNo: String(i + 1), numOfRows: String(HOURS_ROWS) })
+        return { url: `${HOURS_URL}?${params}` }
+      }),
+    )
   },
   // 자료 안에 날짜가 없어 기준 날짜는 받은 한국 날짜(today)다
   parse(texts, _q, today) {

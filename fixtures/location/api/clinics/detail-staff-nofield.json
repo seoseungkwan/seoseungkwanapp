@@ -1,11 +1,23 @@
 {
-  "response": {
-    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
-    "body": {
-      "items": { "item": [{ "hstCd": "FAKE11", "hstCdNm": "물리치료사" }] },
-      "numOfRows": 100,
-      "pageNo": 1,
-      "totalCount": 1
-    }
+ "response": {
+  "header": {
+   "resultCode": "00",
+   "resultMsg": "NORMAL SERVICE."
+  },
+  "body": {
+   "items": {
+    "item": [
+     {
+      "dtlGnlNopCdNm": "물리치료사",
+      "gnlNopDtlCd": 100,
+      "yadmNm": "견본바른정형외과의원",
+      "ykiho": "FAKEhira0001+/="
+     }
+    ]
+   },
+   "numOfRows": 100,
+   "pageNo": 1,
+   "totalCount": 1
   }
+ }
 }

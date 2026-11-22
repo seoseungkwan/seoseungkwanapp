@@ -1,11 +1,34 @@
 {
-  "response": {
-    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
-    "body": {
-      "items": { "item": [{ "sttnId": "99000001", "emdNm": "하늘동", "tfcmnNm": "버스", "tzon": "07", "rideNope": 1, "alghNope": 1, "dayCnt": 31 }] },
-      "numOfRows": 1000,
-      "pageNo": 1,
-      "totalCount": 30001
-    }
+ "Response": {
+  "header": {
+   "resultCode": "200",
+   "resultMsg": "SUCCESS"
+  },
+  "body": {
+   "items": {
+    "item": [
+     {
+      "opr_ym": "202610",
+      "ctpv_cd": "99",
+      "ctpv_nm": "가상도",
+      "sgg_cd": "99110",
+      "sgg_nm": "가람구",
+      "emd_cd": "9911010100",
+      "emd_nm": "하늘동",
+      "sttn_id": "9900001",
+      "users_type_cd": "01",
+      "users_type_nm": "일반인",
+      "trfc_mns_se_cd": "B",
+      "tzon": "07",
+      "ride_nope": 1,
+      "goff_nope": 1
+     }
+    ]
+   },
+   "dataType": "JSON",
+   "pageNo": 1,
+   "numOfRows": 1000,
+   "totalCount": 10001
   }
+ }
 }

@@ -5,14 +5,17 @@ import type { Adapter } from '@/types/location'
 import { householdAdapter, popAgeAdapter } from './people'
 
 // 입지 분석 바깥 자료 — 사는 사람(specs/location REQ-7904, design.md 4절 `pop-age`·`household`, TASK-13).
-// 가짜 응답은 fixtures/location/api/people/(지어낸 시도·시군구·동 이름과 코드만, 진짜 답 모양 확인은 TASK-47)
+// 가짜 응답은 fixtures/location/api/people/(지어낸 시도·시군구·동 이름과 코드만). TASK-47이 진짜 답 모양으로 고쳤다:
+// pop-age·빈 답(자료 없음 코드 '3')·미등록 열쇠(JSON, HTTP 403)는 진짜 답 모양이다. household는 15108071(법정동 기준)이
+// 읍면동 단위 줄에 행정동 코드를 비워 보내 행정동별 세대 수를 줄 수 없어서, 같은 행정안전부 묶음의 행정동 기준 인구·세대 API로 바꿨다
+// (그 API는 활용신청 전이라 답 모양은 같은 묶음 진짜 답을 따라 지은 것이다)
 const fixture = (name: string) =>
   readFileSync(new URL(`../../../../../../fixtures/location/api/people/${name}`, import.meta.url), 'utf8')
 const POP_AGE = fixture('pop-age.json')
 const HOUSEHOLD = fixture('household.json')
 const EMPTY = fixture('empty.json')
 const NO_DATA = fixture('no-data.json')
-const NOT_REGISTERED = fixture('not-registered.xml')
+const NOT_REGISTERED = fixture('not-registered.json')
 const ERROR = fixture('error.json')
 
 const TODAY = '2026-11-22'
@@ -114,19 +117,19 @@ describe('AC-7904.1 pop-age 답 읽기', () => {
 })
 
 describe('AC-7904.1 household 요청 · 답 읽기', () => {
-  it('AC-7904.1: 시군구마다 요청 하나 — 법정동별(행정동 통반단위) 인구·세대 주소·칸, 열쇠는 주소에 없다', () => {
+  it('AC-7904.1: 시군구마다 요청 하나 — 행정동별(통반단위) 인구·세대 주소·칸(행정동 코드 칸 admmCd), 열쇠는 주소에 없다', () => {
     expect(householdAdapter.kind).toBe('household')
     expect(householdAdapter.key).toBe('data')
     expect(householdAdapter.requests(household([BADA, NARAE, HANEUL]))).toEqual([
       {
         url:
-          'https://apis.data.go.kr/1741000/stdgPpltnHhStus/selectStdgPpltnHhStus' +
-          '?stdgCd=9911000000&srchFrYm=202609&srchToYm=202609&lv=3&regSeCd=1&type=JSON&numOfRows=1000&pageNo=1',
+          'https://apis.data.go.kr/1741000/admmPpltnHhStus/selectAdmmPpltnHhStus' +
+          '?admmCd=9911000000&srchFrYm=202609&srchToYm=202609&lv=3&regSeCd=1&type=JSON&numOfRows=1000&pageNo=1',
       },
       {
         url:
-          'https://apis.data.go.kr/1741000/stdgPpltnHhStus/selectStdgPpltnHhStus' +
-          '?stdgCd=9912000000&srchFrYm=202609&srchToYm=202609&lv=3&regSeCd=1&type=JSON&numOfRows=1000&pageNo=1',
+          'https://apis.data.go.kr/1741000/admmPpltnHhStus/selectAdmmPpltnHhStus' +
+          '?admmCd=9912000000&srchFrYm=202609&srchToYm=202609&lv=3&regSeCd=1&type=JSON&numOfRows=1000&pageNo=1',
       },
     ])
     for (const { url } of householdAdapter.requests(household([HANEUL]))) expect(url.toLowerCase()).not.toContain('servicekey')
@@ -139,7 +142,7 @@ describe('AC-7904.1 household 요청 · 답 읽기', () => {
     expect(adapter.requests).toBeTypeOf('function')
   })
 
-  it('AC-7904.1: 동마다 세대 수 — 한 행정동이 법정동 둘에 걸친 줄은 더한다 · 기준 날짜는 그 연월 말일', () => {
+  it('AC-7904.1: 동마다 세대 수 — 같은 동 줄이 둘이면 더한다 · 기준 날짜는 그 연월 말일', () => {
     expect(householdAdapter.parse([HOUSEHOLD], household([HANEUL, BADA, BYEOL, NARAE]), TODAY)).toEqual({
       ok: true,
       value: [
@@ -153,11 +156,16 @@ describe('AC-7904.1 household 요청 · 답 읽기', () => {
 })
 
 describe('AC-7904.2 빈 답 · 활용신청 안 됨 · 모양 틀림', () => {
-  it('AC-7904.2: 빈 답(0건 · 자료 없음 코드 03)은 실패가 아니라 빈 목록이고, 기준 날짜는 받은 한국 날짜다', () => {
-    for (const text of [EMPTY, NO_DATA]) {
+  it('AC-7904.2: 빈 답(0건 · 자료 없음 코드 3·03)은 실패가 아니라 빈 목록이고, 기준 날짜는 받은 한국 날짜다', () => {
+    for (const text of [EMPTY, NO_DATA, reply([], '03')]) {
       expect(popAgeAdapter.parse([text], popAge([HANEUL]), TODAY)).toEqual({ ok: true, value: [], asOf: TODAY })
       expect(householdAdapter.parse([text], household([HANEUL]), TODAY)).toEqual({ ok: true, value: [], asOf: TODAY })
     }
+  })
+
+  it('AC-7904.2: 법정동 기준 답처럼 행정동 코드 칸이 빈 줄은 동으로 세지 않는다', () => {
+    const stdgRow = { hhCnt: '827', stdgCd: '9911010100', stdgNm: '푸른동', dongNm: '', admmCd: '', statsYm: '202609' }
+    expect(householdAdapter.parse([reply([stdgRow])], household([HANEUL]), TODAY)).toEqual({ ok: true, value: [], asOf: '2026-09-30' })
   })
 
   it('AC-7904.2: 물은 동이 답에 하나도 없으면 빈 목록(기준 날짜는 답의 연월 말일)', () => {

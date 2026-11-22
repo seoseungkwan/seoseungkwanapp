@@ -8,10 +8,12 @@ import { isNotRegistered } from '../fetchSource'
 // - apt-info: 국토교통부 공동주택 기본 정보(15058453) — 단지 코드 → 세대 수·지은 해(사용승인일의 해)·동 수
 // - presale: 한국부동산원 청약홈 분양정보(15098547, api.odcloud.kr) — 시·도 + 모집공고 기간 → 단지 이름·세대·입주 연월·주소 (3쪽)
 // 세 자료 모두 좌표가 없어 점을 돌려주지 않는다(조사 1). 자료 안에 기준 날짜가 없어 기준 날짜는 받은 날(today)이다.
-// 주소·칸 이름은 포털 문서 모양으로 정했다. 진짜 열쇠로 맞추는 것은 TASK-47이다(바뀌면 아래 상수만 고친다)
+// TASK-47(2026-11-22 진짜 열쇠): 단지 목록은 4판(AptListService4), 기본 정보는 V5판(AptBasisInfoServiceV5)이 지금 판이다.
+// 칸 이름은 진짜 답과 같았다(세대 수 kaptdaCnt는 220.0 같은 소수 모양 숫자로 온다). 청약홈 공급지역은 2026 행정 개편 뒤에도
+// 광주(500)·전남(513)으로 나뉘어 와서 전남광주통합특별시는 두 지역을 다 부른다
 
-export const APT_LIST_URL = 'https://apis.data.go.kr/1613000/AptListService3/getLegaldongAptList3'
-export const APT_INFO_URL = 'https://apis.data.go.kr/1613000/AptBasisInfoServiceV4/getAphusBassInfoV4'
+export const APT_LIST_URL = 'https://apis.data.go.kr/1613000/AptListService4/getLegaldongAptList4'
+export const APT_INFO_URL = 'https://apis.data.go.kr/1613000/AptBasisInfoServiceV5/getAphusBassInfoV5'
 export const PRESALE_URL = 'https://api.odcloud.kr/api/ApplyhomeInfoDetailSvc/v1/getAPTLttotPblancDetail'
 
 // 쪽 수(design.md 4절 표 '쪽')와 한 쪽 줄 수. 요청은 답을 보기 전에 다 만들므로 정해 둔 쪽을 늘 다 부른다
@@ -43,6 +45,10 @@ export const PRESALE_AREA: Readonly<Record<string, string>> = {
   제주특별자치도: '제주',
 }
 const areaOf = (sidoName: string) => (Object.hasOwn(PRESALE_AREA, sidoName) ? PRESALE_AREA[sidoName] : sidoName)
+/** 행정 개편으로 합친 시·도: 청약홈은 아직 옛 공급지역 둘로 적는다(2026-11-22 진짜 답) — 지역마다 PRESALE_PAGES쪽씩 부른다 */
+export const PRESALE_MERGED: Readonly<Record<string, readonly string[]>> = { 전남광주통합특별시: ['광주', '전남'] }
+const areasOf = (sidoName: string): readonly string[] =>
+  Object.hasOwn(PRESALE_MERGED, sidoName) ? PRESALE_MERGED[sidoName] : [areaOf(sidoName)]
 
 export type Complex = { code: string; name: string }
 export type AptList = { complexes: Complex[]; capped: boolean }
@@ -208,41 +214,47 @@ export const presaleAdapter: Adapter<'presale', Presale> = {
   key: 'data',
   // 기간 = 모집공고일 연월(from 1일 ~ to 말일). 입주 연월로는 거르지 않는다(입주 연월은 답 칸이라 모으기가 고른다)
   requests: (q) =>
-    pageNumbers(PRESALE_PAGES).map((page) =>
-      withParams(PRESALE_URL, {
-        page: String(page),
-        perPage: String(PRESALE_ROWS),
-        returnType: 'JSON',
-        'cond[SUBSCRPT_AREA_CODE_NM::EQ]': areaOf(q.sidoName),
-        'cond[RCRIT_PBLANC_DE::GTE]': monthRange(q.from).from,
-        'cond[RCRIT_PBLANC_DE::LTE]': monthRange(q.to).to,
-      }),
+    areasOf(q.sidoName).flatMap((area) =>
+      pageNumbers(PRESALE_PAGES).map((page) =>
+        withParams(PRESALE_URL, {
+          page: String(page),
+          perPage: String(PRESALE_ROWS),
+          returnType: 'JSON',
+          'cond[SUBSCRPT_AREA_CODE_NM::EQ]': area,
+          'cond[RCRIT_PBLANC_DE::GTE]': monthRange(q.from).from,
+          'cond[RCRIT_PBLANC_DE::LTE]': monthRange(q.to).to,
+        }),
+      ),
     ),
   parse(texts, q, today): Parsed<Presale> {
-    if (texts.length !== PRESALE_PAGES) return FAILED
+    const areas = areasOf(q.sidoName)
+    if (texts.length !== PRESALE_PAGES * areas.length) return FAILED
     if (texts.some(isNotRegistered)) return NOT_APPLIED
-    const area = areaOf(q.sidoName)
     const items: PresaleItem[] = []
     const seen = new Set<string>()
-    let matched = 0
-    for (const text of texts) {
-      const got = readJson(text)
-      if (!got.ok || !isObj(got.doc)) return FAILED
-      const doc = got.doc
-      if (!Array.isArray(doc.data)) return doc.code === ODCLOUD_NOT_REGISTERED ? NOT_APPLIED : FAILED
-      matched = Math.max(matched, wholeOf(doc.matchCount) ?? wholeOf(doc.totalCount) ?? 0)
-      for (const row of doc.data.filter(isObj)) {
-        // 다른 공급지역 줄은 뺀다(조건이 듣지 않아도 그 시·도만)
-        if (textOf(row.SUBSCRPT_AREA_CODE_NM) !== area) continue
-        const name = textOf(row.HOUSE_NM)
-        if (name === '') continue
-        const address = textOf(row.HSSPLY_ADRES)
-        const id = textOf(row.HOUSE_MANAGE_NO) || textOf(row.PBLANC_NO) || `${name}\u0000${address}`
-        if (seen.has(id)) continue
-        seen.add(id)
-        items.push({ name, households: wholeOf(row.TOT_SUPLY_HSHLDCO), moveIn: moveInOf(row.MVN_PREARNGE_YM), address })
+    let capped = false
+    for (const [a, area] of areas.entries()) {
+      let matched = 0
+      for (const text of texts.slice(a * PRESALE_PAGES, (a + 1) * PRESALE_PAGES)) {
+        const got = readJson(text)
+        if (!got.ok || !isObj(got.doc)) return FAILED
+        const doc = got.doc
+        if (!Array.isArray(doc.data)) return doc.code === ODCLOUD_NOT_REGISTERED ? NOT_APPLIED : FAILED
+        matched = Math.max(matched, wholeOf(doc.matchCount) ?? wholeOf(doc.totalCount) ?? 0)
+        for (const row of doc.data.filter(isObj)) {
+          // 다른 공급지역 줄은 뺀다(조건이 듣지 않아도 그 시·도만)
+          if (textOf(row.SUBSCRPT_AREA_CODE_NM) !== area) continue
+          const name = textOf(row.HOUSE_NM)
+          if (name === '') continue
+          const address = textOf(row.HSSPLY_ADRES)
+          const id = textOf(row.HOUSE_MANAGE_NO) || textOf(row.PBLANC_NO) || `${name}\u0000${address}`
+          if (seen.has(id)) continue
+          seen.add(id)
+          items.push({ name, households: wholeOf(row.TOT_SUPLY_HSHLDCO), moveIn: moveInOf(row.MVN_PREARNGE_YM), address })
+        }
       }
+      if (matched > PRESALE_PAGES * PRESALE_ROWS) capped = true
     }
-    return { ok: true, value: { items, capped: matched > PRESALE_PAGES * PRESALE_ROWS }, asOf: today }
+    return { ok: true, value: { items, capped }, asOf: today }
   },
 }

@@ -7,12 +7,15 @@ import { isNotRegistered } from '../fetchSource'
 // 물은 항목 코드의 줄(이름·값)과 도수치료 줄을 돌려준다. 도수치료는 2026-07부터 관리급여라 답에 없을 수 있다 → 없으면 manual = null
 // (화면 글은 design.md 4절 `도수치료는 2026년 7월부터 관리급여라 견주지 않아요`, 화면이 그린다).
 // 항목 코드로 거르지 않고 부른다 — 거르면 같은 답에서 도수치료 줄이 있는지 볼 수 없다.
-// 주소·칸 이름·코드는 확인 전이다(확인할 것 2: 진짜 응답과 코드 목록으로 확인하고 가짜 응답과 함께 고친다). 순수 함수, 열쇠는 fetchSource가 넣는다
+// TASK-47(2026-11-22 진짜 열쇠): 주소·칸 이름은 진짜 답과 맞았다. 항목 코드(npayCd)는 9글자('SZ0840000')라 물은 코드로 시작하는 줄을 고른다.
+// 체외충격파 = SZ084(진짜 줄 '처치 및 수술료(근골)/체외충격파치료[근골격계질환]'). 도수치료 MX122는 진짜 줄을 못 봤다 →
+// 코드가 MX122로 시작하거나 심평원 항목 이름에 '도수치료'가 든 줄. 사이트가 느리다(의원 하나 20초 넘게 걸린 적 있음). 순수 함수, 열쇠는 fetchSource가 넣는다
 
-/** 체외충격파 비급여 항목 코드 — 한 곳 상수(확인할 것 2, 확인 전 값). 모으기가 `nonpay` 몸통의 item으로 보낸다 */
-export const ESWT_ITEM = 'MM045'
-/** 도수치료 비급여 항목 코드 — 한 곳 상수(확인할 것 2, 확인 전 값). 이 코드 줄이 답에 있는지 본다 */
+/** 체외충격파 비급여 항목 코드(앞 5글자) — 한 곳 상수. 모으기가 `nonpay` 몸통의 item으로 보낸다(lib/location/collect.ts의 ESWT_ITEM도 같아야 한다) */
+export const ESWT_ITEM = 'SZ084'
+/** 도수치료 비급여 항목 코드(앞 5글자, 진짜 줄 확인 전) — 이 코드로 시작하거나 이름에 MANUAL_NAME이 든 줄이 답에 있는지 본다 */
 export const MANUAL_ITEM = 'MX122'
+const MANUAL_NAME = '도수치료'
 
 const URL_DETAIL = 'https://apis.data.go.kr/B551182/nonPaymentDamtInfoService/getNonPaymentItemHospDtlList'
 // 의원 하나의 비급여 줄은 이 안에 든다(쪽 하나)
@@ -63,15 +66,20 @@ function wonOf(v: unknown): number | null {
   return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : null
 }
 
-// 그 코드의 줄들(값이 빈 줄은 뺀다)
-function rowsFor(items: Item[], code: string): NonpayRow[] {
+// 심평원 항목 이름은 '갈래/이름'이다 — 의원 이름이 비면 갈래를 뗀 이름
+const kindName = (item: Item) => textOf(item.npayKorNm).replace(/^[^/]*\//, '')
+
+// 고른 줄들(값이 빈 줄은 뺀다)
+function rowsWhere(items: Item[], pick: (item: Item) => boolean): NonpayRow[] {
   return items.flatMap((item) => {
-    if (textOf(item.npayCd) !== code) return []
+    if (!pick(item)) return []
     const won = wonOf(item.curAmt)
     if (won === null) return []
-    return [{ name: textOf(item.yadmNpayCdNm) || textOf(item.npayKorNm), won }]
+    return [{ name: textOf(item.yadmNpayCdNm) || kindName(item), won }]
   })
 }
+const startsWith = (code: string) => (item: Item) => code !== '' && textOf(item.npayCd).toUpperCase().startsWith(code.toUpperCase())
+const isManual = (item: Item) => startsWith(MANUAL_ITEM)(item) || textOf(item.npayKorNm).includes(MANUAL_NAME)
 
 export const nonpay: Adapter<'nonpay', NonpayValue> = {
   kind: 'nonpay',
@@ -86,8 +94,8 @@ export const nonpay: Adapter<'nonpay', NonpayValue> = {
     if (isNotRegistered(texts[0])) return { ok: false, code: 'not-applied' }
     const items = itemsOf(texts[0])
     if (items === null) return FAILED
-    const manual = rowsFor(items, MANUAL_ITEM)
+    const manual = rowsWhere(items, isManual)
     // 기준 날짜: 이 자료는 지금 값을 주고 자료 기준일 칸이 없다(적용일은 값이 바뀐 날이라 기준 날짜가 아니다) → 받은 한국 날짜
-    return { ok: true, value: { rows: rowsFor(items, q.item), manual: manual.length > 0 ? manual : null }, asOf: today }
+    return { ok: true, value: { rows: rowsWhere(items, startsWith(q.item)), manual: manual.length > 0 ? manual : null }, asOf: today }
   },
 }

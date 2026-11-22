@@ -11,7 +11,8 @@ import { distM, type LatLng } from './coords'
 export type FlowMode = 'bus' | 'rail'
 /** flow-volume 한 줄: 정류장(역) ID마다 한 달 승차·하차와 날 수 */
 export type FlowVolumeRow = { id: string; mode: FlowMode; board: number; alight: number; days: number }
-export type FlowVolume = { ym: string; rows: FlowVolumeRow[] }
+/** total = 그 달 그 시군구 이용량 줄 수(유형·시간대 줄), parts = 1만 줄 묶음 수 — 나눠 부를 때 모으기가 쓴다(TASK-47) */
+export type FlowVolume = { ym: string; rows: FlowVolumeRow[]; total?: number; parts?: number }
 /** flow-bus 한 줄: 정류장 ID → 이름·ARS 번호(없으면 null) */
 export type FlowBusName = { id: string; name: string; ars: string | null }
 /** flow-rail 한 줄: 역 ID → 역 이름·노선 */
@@ -50,15 +51,21 @@ export type FlowResult = { ok: true; v: FlowValue } | { ok: false; why: 'outside
 export const FLOW_LIST_MAX = 60
 /** 같은 이름 정류장이 여럿이면 모두 이 거리 안에 모여 있을 때만(길 건너 짝) 첫 곳으로 잇는다 */
 export const SAME_NAME_M = 200
+/** 노선 이름이 좌표 파일과 다르면(목록 '1호선' · 좌표 파일 '경부선') 같은 이름 역이 모두 이 거리 안에 모여 있을 때만 첫 역으로 잇는다 */
+export const SAME_STATION_M = 500
 
 type Coord = LatLng
 const isCoord = (p: { lat: number; lng: number }) => Number.isFinite(p.lat) && Number.isFinite(p.lng)
 
-// 정류장 이름: 공백을 모두 뺀다. ARS 번호: 공백·줄표를 뺀다('99-001' = '99001')
+// 정류장 이름: 공백을 모두 뺀다. ARS 번호: 공백·줄표·앞의 0을 뺀다('99-001' = '99001', 목록 '01762' = 좌표 파일 '1762'), 숫자가 아니면('~') 없음
 const stopKey = (name: string) => name.replace(/\s+/g, '')
-const arsKey = (ars: string | null) => (ars ?? '').replace(/[\s-]+/g, '')
-// 역 이름: 괄호 안·공백을 빼고 끝의 '역'을 뺀다('가람역(가람대)' = '가람'). 노선: 공백을 뺀다
-const stationKey = (name: string) => name.replace(/\([^)]*\)/g, '').replace(/\s+/g, '').replace(/역$/, '')
+function arsKey(ars: string | null): string {
+  const digits = (ars ?? '').replace(/[\s-]+/g, '')
+  return /^\d+$/.test(digits) ? digits.replace(/^0+(?=\d)/, '') : ''
+}
+// 역 이름: 괄호 안·대괄호 안('[1호선]')·공백을 빼고 끝의 '역'을 뺀다('가람역(가람대)' = '가람'). 노선: 공백을 뺀다
+const stationKey = (name: string) =>
+  name.replace(/\([^)]*\)/g, '').replace(/\[[^\]]*\]/g, '').replace(/\s+/g, '').replace(/역$/, '')
 const lineKey = (line: string) => line.replace(/\s+/g, '')
 
 // 같은 열쇠의 첫 값만 둔다
@@ -71,21 +78,31 @@ function firstBy<T>(items: readonly T[], keyOf: (item: T) => string): Map<string
   return map
 }
 
-type BusStop = BusFile['stops'][number]
-
-// 이름 → 좌표. 같은 이름이 여럿이면 모두 첫 곳에서 SAME_NAME_M 안일 때만 첫 곳, 아니면 어느 곳인지 몰라 null
-function stopsByName(stops: readonly BusStop[]): Map<string, BusStop | null> {
-  const groups = new Map<string, BusStop[]>()
-  for (const stop of stops) {
-    const key = stopKey(stop.name)
+// 이름 → 좌표. 같은 이름이 여럿이면 모두 첫 곳에서 nearM 안일 때만 첫 곳, 아니면 어느 곳인지 몰라 null
+function byNameNear<T extends Coord>(items: readonly T[], keyOf: (item: T) => string, nearM: number): Map<string, T | null> {
+  const groups = new Map<string, T[]>()
+  for (const item of items) {
+    const key = keyOf(item)
     if (key === '') continue
     const group = groups.get(key)
-    if (group) group.push(stop)
-    else groups.set(key, [stop])
+    if (group) group.push(item)
+    else groups.set(key, [item])
   }
-  const out = new Map<string, BusStop | null>()
-  for (const [key, group] of groups) out.set(key, group.every((s) => distM(group[0], s) <= SAME_NAME_M) ? group[0] : null)
+  const out = new Map<string, T | null>()
+  for (const [key, group] of groups) out.set(key, group.every((s) => distM(group[0], s) <= nearM) ? group[0] : null)
   return out
+}
+
+// 같은 정류장(역) ID 줄이 여럿이면(이용량을 묶음으로 나눠 받음) 승차·하차를 더하고 날 수는 가장 큰 값. 차례는 처음 나온 차례
+function mergeRows(rows: readonly FlowVolumeRow[]): FlowVolumeRow[] {
+  const byId = new Map<string, FlowVolumeRow>()
+  for (const row of rows) {
+    const key = `${row.mode}|${row.id}`
+    const seen = byId.get(key)
+    if (seen) byId.set(key, { ...seen, board: seen.board + row.board, alight: seen.alight + row.alight, days: Math.max(seen.days, row.days) })
+    else byId.set(key, row)
+  }
+  return [...byId.values()]
 }
 
 type Placed = { name: string; line: string; at: Coord }
@@ -97,11 +114,12 @@ export function joinFlow(input: FlowInput): FlowResult {
 
   const fileStops = input.bus.stops.filter(isCoord)
   const byArs = firstBy(fileStops, (s) => arsKey(s.ars))
-  const byStopName = stopsByName(fileStops)
+  const byStopName = byNameNear(fileStops, (s) => stopKey(s.name), SAME_NAME_M)
   const busNames = firstBy(input.busNames, (n) => n.id)
 
   const fileStations = (input.rail?.stations ?? []).filter(isCoord)
   const byStation = firstBy(fileStations, (s) => `${stationKey(s.name)}|${lineKey(s.line)}`)
+  const byStationName = byNameNear(fileStations, (s) => stationKey(s.name), SAME_STATION_M)
   const railNames = firstBy(input.railNames, (n) => n.id)
 
   // 정류장: ARS 번호가 먼저, 없거나 파일에 없으면 이름(공백 뺌) — 정류장 파일이 후보 시군구 것이라 이름은 그 시군구 안에서 찾는다
@@ -112,11 +130,12 @@ export function joinFlow(input: FlowInput): FlowResult {
     const stop = (ars !== '' ? byArs.get(ars) : undefined) ?? byStopName.get(stopKey(named.name)) ?? null
     return stop ? { name: stop.name, line: '', at: stop } : null
   }
-  // 역: 이름(괄호·끝 '역' 뺌)과 노선이 둘 다 맞아야 한다
+  // 역: 이름(괄호·[노선]·끝 '역' 뺌)과 노선이 맞는 역, 노선이 안 맞으면 같은 이름 역이 한곳에 모여 있을 때만 첫 역
   const placeStation = (id: string): Placed | null => {
     const named = railNames.get(id)
     if (!named) return null
-    const station = byStation.get(`${stationKey(named.name)}|${lineKey(named.line)}`)
+    const key = stationKey(named.name)
+    const station = byStation.get(`${key}|${lineKey(named.line)}`) ?? byStationName.get(key) ?? null
     return station ? { name: station.name, line: station.line, at: station } : null
   }
 
@@ -124,7 +143,7 @@ export function joinFlow(input: FlowInput): FlowResult {
   const stops: FlowValue['stops'] = []
   let total = 0
   let unmatched = 0
-  for (const row of input.volume.rows) {
+  for (const row of mergeRows(input.volume.rows)) {
     const placed = row.mode === 'rail' ? placeStation(row.id) : placeStop(row.id)
     if (placed === null) {
       unmatched += 1
