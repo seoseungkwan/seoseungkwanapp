@@ -1,14 +1,15 @@
 {
   "status": "approved",
   "feature": "location",
-  "approved_at": "2026-11-22T13:04:40Z",
+  "approved_at": "2026-11-22T13:12:37Z",
   "approved_via": "auto",
   "session_id": "d6645c74-6bc0-4844-b534-4aaafe727366",
-  "spec_sha256": "dccd8a597107e0deb07a942e26604810f6c545292410290bf4f84fa8eae759d9",
+  "spec_sha256": "1d862ee92e0b73d69468523eb4641fc7215bc4f0b59914285f194b152004efd6",
   "scope": [
     "CLAUDE.md",
     "docs/ADR.md",
     "docs/ARCHITECTURE.md",
+    "docs/UI_GUIDE.md",
     "fixtures/location/api/**",
     "fixtures/location/api/buildings/**",
     "fixtures/location/api/clinicHours/**",
