@@ -1,20 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import type { FlagFacts } from '@/types/location'
+import type { DeptId, DeptRule, FlagFacts } from '@/types/location'
+import { DEFAULT_DEPT_RULE } from './depts'
 import { FLAG_LAW, FLAG_ORDER, pickFlags, type FlagInput } from './flags'
 import { isLawId, isSourceId } from './sources'
 
 // 위험 신호(specs/location design.md 9절, AC-7911.3·AC-7911.4). 오늘은 2026-11-22로 고정, 3년 전 = 2023-11-22.
-// 제목·설명 글은 requirements '화면 글 기본값' 그대로다
+// 제목·설명 글은 requirements '화면 글 기본값' 그대로다. 경쟁 의원 = 대표 과목(depts.ts deptOf)이 설정(deptRule)의 경쟁 과목인 의원
 const TODAY = '2026-11-22'
+const ruleOf = (rival: DeptId[], hide: DeptId[] = []): DeptRule => ({ v: 1, rival, hide })
+const STATION_AT = { lat: 37.5, lng: 127 } // 역 좌표(rail.json) — 위험 신호는 거리만 본다
 
 type FlagRival = NonNullable<FlagFacts['rivals']>[number]
 
 // 40㎡ = 화면 12.1평이라 월세 = 평당 월세 × 12.1 (평당 월세는 10원 단위로 주면 월세가 정수)
 const at40 = (perPy: number) => ({ areaM2: 40, rent: (perPy * 121) / 10 })
 
-const rival = (distM: number, kind: FlagRival['kind'] = 'ortho', name = `예시${distM}정형외과`): FlagRival => ({
+// 이름에 과목 낱말이 없는 의원(대표 과목 = 찾은 과목 하나)
+const rival = (distM: number, dept: DeptId = 'ortho', name = `예시${distM}의원`): FlagRival => ({
   name,
-  kind,
+  depts: [dept],
   distM,
   doctors: null,
   openedYear: null,
@@ -30,6 +34,7 @@ const peopleOf = (total: number, seniors: number) => ({
 const SAFE: FlagInput = {
   today: TODAY,
   radiusM: 1000,
+  deptRule: DEFAULT_DEPT_RULE,
   violation: 'no',
   floorLabel: '1층',
   rivals: [],
@@ -38,7 +43,7 @@ const SAFE: FlagInput = {
   listings: [],
   building: { approvedOn: '2000-01-01', totalM2: 300, elevators: 1 },
   people: peopleOf(1000, 300),
-  station: { name: '예시역', line: '예시선', distM: 300 },
+  station: { name: '예시역', line: '예시선', distM: 300, at: STATION_AT },
   bus: 5,
 }
 const ids = (input: Partial<FlagInput>) => pickFlags({ ...SAFE, ...input }).map((f) => f.id)
@@ -48,6 +53,7 @@ const flagOf = (input: Partial<FlagInput>, id: string) => pickFlags({ ...SAFE, .
 const ALL: FlagInput = {
   today: TODAY,
   radiusM: 1000,
+  deptRule: DEFAULT_DEPT_RULE,
   violation: 'yes',
   floorLabel: '3층',
   rivals: [rival(12), rival(200, 'pain'), rival(400, 'rehab'), rival(600), rival(900), rival(50, 'korean', '예시한의원')],
@@ -56,7 +62,7 @@ const ALL: FlagInput = {
   listings: [at40(130_010), at40(85_000), at40(85_000)],
   building: { approvedOn: '2025-06-01', totalM2: 820.5, elevators: 0 },
   people: peopleOf(1000, 110),
-  station: { name: '예시역', line: '예시선', distM: 1400 },
+  station: { name: '예시역', line: '예시선', distM: 1400, at: STATION_AT },
   bus: 3,
 }
 
@@ -106,6 +112,7 @@ describe('AC-7911.3 위험 신호 고르기', () => {
     const none: FlagInput = {
       today: TODAY,
       radiusM: 1000,
+      deptRule: DEFAULT_DEPT_RULE,
       violation: null,
       floorLabel: null,
       rivals: null,
@@ -190,16 +197,49 @@ describe('AC-7911.3 경쟁 의원 30m 안(same-building)', () => {
     expect(ids({ rivals: [rival(31)] })).toEqual([])
   })
 
-  it('AC-7911.3: 한의원은 경쟁 의원이 아니라 30m 안이어도 안 나온다', () => {
-    expect(ids({ rivals: [rival(5, 'korean', '예시한의원')] })).toEqual([])
+  it('AC-7911.3: 처음 설정에서 한의원·내과(둘레로 보기)는 경쟁 의원이 아니라 30m 안이어도 안 나온다', () => {
+    expect(ids({ rivals: [rival(5, 'korean', '예시한의원'), rival(8, 'im')] })).toEqual([])
   })
 
-  it('AC-7911.4: 글은 가장 가까운 의원의 과목·이름·문 연 해·의사 수(모르는 값은 뺌)', () => {
+  it('AC-7911.3: 처음 설정의 경쟁 과목 넷(정형외과·신경외과·마취통증의학과·재활의학과)은 모두 나온다', () => {
+    for (const dept of ['ortho', 'ns', 'pain', 'rehab'] as const) expect(ids({ rivals: [rival(10, dept)] }), dept).toEqual(['same-building'])
+  })
+
+  it('AC-7911.3: 경쟁 과목은 설정을 따른다 — 내과를 경쟁으로 고르면 내과가, 정형외과를 빼면 정형외과는 안 나온다', () => {
+    const rule = ruleOf(['im'])
+    expect(flagOf({ deptRule: rule, rivals: [rival(5), rival(20, 'im')] }, 'same-building')).toMatchObject({
+      title: '30m 안에 내과가 있어요',
+      detail: '예시20의원',
+    })
+    expect(ids({ deptRule: rule, rivals: [rival(5)] })).toEqual([])
+  })
+
+  it('AC-7911.3: 경쟁 과목이 0개면 30m 안 의원이 있어도 안 나온다', () => {
+    expect(ids({ deptRule: ruleOf([]), rivals: [rival(5), rival(6, 'ns'), rival(7, 'korean', '예시한의원')] })).toEqual([])
+  })
+
+  it('AC-7921.4: 대표 과목은 이름에 든 과목이 먼저다 — 정형외과도 찾았지만 이름이 내과인 의원은 경쟁이 아니다', () => {
+    const both = (name: string): FlagRival => ({ name, depts: ['im', 'ortho'], distM: 10, doctors: null, openedYear: null })
+    expect(ids({ rivals: [both('예시하늘내과의원')] })).toEqual([])
+    expect(flagOf({ rivals: [both('예시하늘정형외과의원')] }, 'same-building')?.title).toBe('30m 안에 정형외과가 있어요')
+    // 이름에 과목이 없으면 찾은 과목 가운데 경쟁 과목(목록 차례)
+    expect(flagOf({ rivals: [both('예시하늘의원')] }, 'same-building')?.title).toBe('30m 안에 정형외과가 있어요')
+  })
+
+  it('AC-7921.4: 이름의 과목이 안 보기면 건너뛰고 찾은 과목 가운데 경쟁 과목으로 센다, 모두 안 보기면 세지 않는다', () => {
+    const rule = ruleOf(['ortho'], ['im'])
+    const r: FlagRival = { name: '예시하늘내과의원', depts: ['im', 'ortho'], distM: 10, doctors: null, openedYear: null }
+    expect(flagOf({ deptRule: rule, rivals: [r] }, 'same-building')?.title).toBe('30m 안에 정형외과가 있어요')
+    expect(ids({ deptRule: rule, rivals: [{ ...r, depts: ['im'] }] })).toEqual([])
+  })
+
+  it('AC-7911.4: 글은 가장 가까운 경쟁 의원의 대표 과목 이름·이름·문 연 해·의사 수(모르는 값은 뺌)', () => {
     const flag = flagOf(
       {
         rivals: [
-          { name: '예시재활의학과의원', kind: 'rehab', distM: 25, doctors: null, openedYear: null },
-          { name: '예시○○정형외과', kind: 'ortho', distM: 8, doctors: 2, openedYear: 2021 },
+          { name: '예시재활의학과의원', depts: ['rehab'], distM: 25, doctors: null, openedYear: null },
+          { name: '예시○○내과', depts: ['im'], distM: 2, doctors: 3, openedYear: 2010 },
+          { name: '예시○○정형외과', depts: ['ortho'], distM: 8, doctors: 2, openedYear: 2021 },
         ],
       },
       'same-building',
@@ -216,8 +256,15 @@ describe('AC-7911.3 경쟁 의원 30m 안(same-building)', () => {
       detail: '예시통증의원',
     })
     expect(
-      flagOf({ rivals: [{ name: '예시재활의원', kind: 'rehab', distM: 3, doctors: 1, openedYear: null }] }, 'same-building'),
+      flagOf({ rivals: [{ name: '예시재활의원', depts: ['rehab'], distM: 3, doctors: 1, openedYear: null }] }, 'same-building'),
     ).toMatchObject({ title: '30m 안에 재활의학과가 있어요', detail: '예시재활의원 · 의사 1명' })
+    expect(flagOf({ rivals: [rival(3, 'ns')] }, 'same-building')?.title).toBe('30m 안에 신경외과가 있어요')
+  })
+
+  it("AC-7911.4: {과목} 뒤 토씨는 받침을 따른다 — 한의원·치과의원을 경쟁으로 고르면 '이'", () => {
+    const rule = ruleOf(['dental', 'korean'])
+    expect(flagOf({ deptRule: rule, rivals: [rival(5, 'korean', '예시한의원')] }, 'same-building')?.title).toBe('30m 안에 한의원이 있어요')
+    expect(flagOf({ deptRule: rule, rivals: [rival(5, 'dental', '예시치과')] }, 'same-building')?.title).toBe('30m 안에 치과의원이 있어요')
   })
 })
 
@@ -244,6 +291,11 @@ describe('AC-7911.3 3년 안 30m 안 의원 폐업(closed-here)', () => {
       law: null,
       src: 'clinic-license',
     })
+  })
+
+  it('AC-7911.3: 이 자리 폐업은 과목 고르기와 상관없이 나온다(경쟁 과목 0개여도)', () => {
+    expect(ids({ deptRule: ruleOf([]), history: [close('2024-03-15')] })).toEqual(['closed-here'])
+    expect(ids({ deptRule: ruleOf(['im'], ['fm']), history: [close('2024-03-15')] })).toEqual(['closed-here'])
   })
 
   it("AC-7911.4: 후보 층을 안 적었으면 '이 자리에서'다", () => {
@@ -348,29 +400,42 @@ describe('AC-7911.3 새 건물 권리금(premium-new)', () => {
 describe('AC-7911.3 범위 안 경쟁 의원 5곳(many-rivals)', () => {
   const far = [rival(100), rival(200), rival(300), rival(400)]
 
-  it('AC-7911.3: 범위 안 정형외과·마취통증의학과·재활의학과가 5곳이면 나오고 4곳이면 안 나온다', () => {
+  it('AC-7911.3: 범위 안 경쟁 의원(대표 과목이 경쟁 과목)이 5곳이면 나오고 4곳이면 안 나온다', () => {
     expect(ids({ rivals: [...far, rival(500, 'pain')] })).toEqual(['many-rivals'])
+    expect(ids({ rivals: [...far, rival(500, 'ns')] })).toEqual(['many-rivals'])
     expect(ids({ rivals: far })).toEqual([])
   })
 
-  it('AC-7911.3: 한의원·범위 밖 의원은 세지 않는다', () => {
-    expect(ids({ rivals: [...far, rival(500, 'korean', '예시한의원')] })).toEqual([])
+  it('AC-7911.3: 경쟁 과목이 아닌 의원(처음 설정의 한의원·내과)·범위 밖 의원은 세지 않는다', () => {
+    expect(ids({ rivals: [...far, rival(500, 'korean', '예시한의원'), rival(600, 'im')] })).toEqual([])
     expect(ids({ radiusM: 700, rivals: [...far, rival(701)] })).toEqual([])
     expect(ids({ radiusM: 700, rivals: [...far, rival(700)] })).toEqual(['many-rivals'])
   })
 
-  it('AC-7911.4: 글은 경쟁 의원 수와 1곳당 사는 사람(버림), 사는 사람을 모르면 그 부분은 뺀다', () => {
+  it('AC-7911.3: 경쟁 과목은 설정을 따르고, 0개면 의원이 많아도 안 나온다', () => {
+    const fiveIm = [rival(100, 'im'), rival(200, 'im'), rival(300, 'im'), rival(400, 'im'), rival(500, 'im')]
+    expect(ids({ rivals: fiveIm })).toEqual([])
+    expect(ids({ deptRule: ruleOf(['im']), rivals: fiveIm })).toEqual(['many-rivals'])
+    expect(ids({ deptRule: ruleOf(['im']), rivals: [...far, rival(500)] })).toEqual([])
+    expect(ids({ deptRule: ruleOf([]), rivals: [...far, rival(500), ...fiveIm] })).toEqual([])
+  })
+
+  it('AC-7911.4: 글은 경쟁 의원 수·고른 과목 짧은 이름(rivalShortText)·경쟁 의원 1곳당 사는 사람(버림), 사는 사람을 모르면 그 부분은 뺀다', () => {
     expect(flagOf({ radiusM: 1500, rivals: [...far, rival(500, 'pain'), rival(900, 'rehab')] }, 'many-rivals')).toMatchObject({
       level: 'red',
-      title: '범위 안에 정형외과·통증·재활 의원이 6곳이에요',
-      detail: '5곳 이상이면 알려 드려요 · 1곳당 사는 사람 166명',
+      title: '범위 안에 경쟁 의원이 6곳이에요 (정형외과·신경외과·마취통증·재활)',
+      detail: '5곳 이상이면 알려 드려요 · 경쟁 의원 1곳당 사는 사람 166명',
       law: null,
       src: 'hosp-list',
     })
     expect(flagOf({ people: peopleOf(31_400, 10_000), rivals: [...far, rival(500)] }, 'many-rivals')?.detail).toBe(
-      '5곳 이상이면 알려 드려요 · 1곳당 사는 사람 6,280명',
+      '5곳 이상이면 알려 드려요 · 경쟁 의원 1곳당 사는 사람 6,280명',
     )
     expect(flagOf({ people: null, rivals: [...far, rival(500)] }, 'many-rivals')?.detail).toBe('5곳 이상이면 알려 드려요')
+    // 짧은 이름은 고른 차례가 아니라 목록 차례
+    expect(flagOf({ deptRule: ruleOf(['ortho', 'im']), rivals: [...far, rival(500, 'im')] }, 'many-rivals')?.title).toBe(
+      '범위 안에 경쟁 의원이 5곳이에요 (내과·정형외과)',
+    )
   })
 })
 
@@ -397,7 +462,7 @@ describe('AC-7911.3 60세 이상 15%(few-seniors)', () => {
 })
 
 describe('AC-7911.3 역 1,000m(far-station)', () => {
-  const station = (distM: number) => ({ name: '예시역', line: '예시선', distM })
+  const station = (distM: number) => ({ name: '예시역', line: '예시선', distM, at: STATION_AT })
 
   it('AC-7911.3: 가장 가까운 역이 1,000m면 안 나오고 넘으면 나온다', () => {
     expect(ids({ station: station(1000) })).toEqual([])

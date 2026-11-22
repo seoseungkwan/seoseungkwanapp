@@ -1,8 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import type { DeptId, DeptRule } from '@/types/location'
 import { distM } from './coords'
+import { DEFAULT_DEPT_RULE } from './depts'
+import * as watch from './watch'
 import {
-  WATCH_DEPTS,
   WATCH_EVERY_DAYS,
   WATCH_LAG_DAYS,
   WATCH_MAX_CANDIDATES,
@@ -13,11 +15,15 @@ import {
 } from './watch'
 
 // 새 경쟁 의원 알림 판정(design.md 12절). 오늘은 부르는 쪽이 한국 날짜로 넘긴다. 이름은 모두 지어낸 것
+// 경쟁 의원 = 인허가 줄의 대표 과목(depts.ts deptOfText)이 설정(dept_rule)의 경쟁 과목인 의원
 const TODAY = '2026-11-22'
 const CENTER = { lat: 37.5, lng: 127 }
+const RULE = DEFAULT_DEPT_RULE
+const ruleOf = (rival: DeptId[], hide: DeptId[] = []): DeptRule => ({ v: 1, rival, hide })
 
 const cand = (id: string, over: Partial<WatchCandidate> = {}): WatchCandidate => ({
   id,
+  name: `예시후보${id}`,
   status: 'watching',
   lat: CENTER.lat,
   lng: CENTER.lng,
@@ -101,25 +107,61 @@ describe('AC-7915.1 dueCandidates', () => {
 describe('AC-7915.1 pickEvents', () => {
   const PERIOD = { from: '2026-10-24', to: '2026-11-20' }
 
-  it('AC-7915.1: 정형외과·마취통증의학과·재활의학과만 본다', () => {
-    expect(WATCH_DEPTS).toEqual(['정형외과', '마취통증의학과', '재활의학과'])
+  it('AC-7915.1: 고정한 과목 목록(WATCH_DEPTS)은 없다 — 경쟁 과목은 설정(dept_rule)이 정한다', () => {
+    expect('WATCH_DEPTS' in watch).toBe(false)
+    const code = readFileSync(new URL('./watch.ts', import.meta.url), 'utf8')
+    expect(code).toMatch(/import \{[^}]*\bdeptOfText\b[^}]*\} from '\.\/depts'/)
   })
 
-  it('AC-7915.1: 과목이나 이름에 세 과목이 있는 의원의 개업을 줄로 만든다', () => {
+  it('AC-7915.1: 처음 설정이면 대표 과목이 정형외과·신경외과·마취통증의학과·재활의학과인 의원의 개업을 줄로 만든다', () => {
     const rows = [
       row('예시정형외과의원'),
       row('예시가람의원', { dept: '마취통증의학과' }),
       row('예시재활의학과의원', { dept: '' }),
-      row('예시하늘내과의원', { dept: '내과, 정형외과' }),
+      row('예시바른의원', { dept: '내과, 신경외과' }),
       row('예시다온내과의원', { dept: '내과' }),
       row('예시소아청소년과의원', { dept: '소아청소년과, 가정의학과' }),
+      row('예시튼튼의원', { dept: '' }),
     ]
-    expect(pickEvents({ kind: 'open', ...PERIOD, rows }, cand('a'))).toEqual([
+    expect(pickEvents({ kind: 'open', ...PERIOD, rows }, cand('a'), RULE)).toEqual([
       { candidateId: 'a', kind: 'open', clinicName: '예시정형외과의원', dept: '정형외과', eventOn: '2026-11-10', distM: 500 },
       { candidateId: 'a', kind: 'open', clinicName: '예시가람의원', dept: '마취통증의학과', eventOn: '2026-11-10', distM: 500 },
       { candidateId: 'a', kind: 'open', clinicName: '예시재활의학과의원', dept: '', eventOn: '2026-11-10', distM: 500 },
-      { candidateId: 'a', kind: 'open', clinicName: '예시하늘내과의원', dept: '내과, 정형외과', eventOn: '2026-11-10', distM: 500 },
+      { candidateId: 'a', kind: 'open', clinicName: '예시바른의원', dept: '내과, 신경외과', eventOn: '2026-11-10', distM: 500 },
     ])
+  })
+
+  it('AC-7921.4: 대표 과목은 이름에 든 과목이 먼저다 — 과목 글에 정형외과가 있어도 이름이 내과인 의원은 알리지 않는다', () => {
+    const rows = [row('예시하늘내과의원', { dept: '내과, 정형외과' }), row('예시하늘의원', { dept: '내과, 정형외과' })]
+    expect(pickEvents({ kind: 'open', ...PERIOD, rows }, cand('a'), RULE).map((e) => e.clinicName)).toEqual(['예시하늘의원'])
+  })
+
+  it('AC-7921.4: 이름의 과목이 안 보기면 과목 글 가운데 경쟁 과목으로 세고, 모두 안 보기면 알리지 않는다', () => {
+    const rows = [row('예시하늘내과의원', { dept: '내과, 정형외과' }), row('예시다온내과의원', { dept: '내과' })]
+    expect(pickEvents({ kind: 'open', ...PERIOD, rows }, cand('a'), ruleOf(['ortho'], ['im'])).map((e) => e.clinicName)).toEqual([
+      '예시하늘내과의원',
+    ])
+  })
+
+  it('AC-7915.1: 경쟁 과목은 설정을 따른다 — 내과만 고르면 내과 의원만 알린다', () => {
+    const rows = [row('예시정형외과의원'), row('예시다온내과의원', { dept: '내과' }), row('예시하늘의원', { dept: '정형외과, 내과' })]
+    expect(pickEvents({ kind: 'open', ...PERIOD, rows }, cand('a'), ruleOf(['im'])).map((e) => e.clinicName)).toEqual([
+      '예시다온내과의원',
+      '예시하늘의원',
+    ])
+  })
+
+  it('AC-7915.1: 경쟁 과목이 하나도 없으면 빈 목록이다', () => {
+    const rows = [row('예시정형외과의원'), row('예시다온내과의원', { dept: '내과' })]
+    expect(pickEvents({ kind: 'open', ...PERIOD, rows }, cand('a'), ruleOf([]))).toEqual([])
+    expect(pickEvents({ kind: 'close', ...PERIOD, rows: [row('예시정형외과의원', { closedOn: '2026-11-03' })] }, cand('a'), ruleOf([]))).toEqual([])
+  })
+
+  it('AC-7915.1: 설정을 넘기지 않으면 처음 설정(DEFAULT_DEPT_RULE)으로 센다', () => {
+    const rows = [row('예시정형외과의원'), row('예시다온내과의원', { dept: '내과' }), row('예시바른의원', { dept: '신경외과' })]
+    const found = { kind: 'open' as const, ...PERIOD, rows }
+    expect(pickEvents(found, cand('a'))).toEqual(pickEvents(found, cand('a'), DEFAULT_DEPT_RULE))
+    expect(pickEvents(found, cand('a')).map((e) => e.clinicName)).toEqual(['예시정형외과의원', '예시바른의원'])
   })
 
   it('AC-7915.1: 후보 범위 안(버린 거리 ≤ 범위)만 넣고, 점이 없으면 뺀다', () => {
@@ -129,14 +171,14 @@ describe('AC-7915.1 pickEvents', () => {
       row('예시바깥정형외과', { point: { lat: CENTER.lat + 0.0091, lng: CENTER.lng } }), // 1011.87m
       row('예시점없는정형외과', { point: null }),
     ]
-    expect(pickEvents({ kind: 'open', ...PERIOD, rows }, cand('a')).map((e) => [e.clinicName, e.distM])).toEqual([
+    expect(pickEvents({ kind: 'open', ...PERIOD, rows }, cand('a'), RULE).map((e) => [e.clinicName, e.distM])).toEqual([
       ['예시안쪽정형외과', 999],
       ['예시경계정형외과', 1000],
     ])
     const small = cand('s', { radiusM: 300 })
-    expect(pickEvents({ kind: 'open', ...PERIOD, rows: [row('예시정형외과')] }, small)).toEqual([])
+    expect(pickEvents({ kind: 'open', ...PERIOD, rows: [row('예시정형외과')] }, small, RULE)).toEqual([])
     expect(
-      pickEvents({ kind: 'open', ...PERIOD, rows: [row('예시정형외과', { point: { lat: CENTER.lat, lng: CENTER.lng } })] }, small),
+      pickEvents({ kind: 'open', ...PERIOD, rows: [row('예시정형외과', { point: { lat: CENTER.lat, lng: CENTER.lng } })] }, small, RULE),
     ).toEqual([{ candidateId: 's', kind: 'open', clinicName: '예시정형외과', dept: '정형외과', eventOn: '2026-11-10', distM: 0 }])
   })
 
@@ -147,7 +189,7 @@ describe('AC-7915.1 pickEvents', () => {
       { lat: CENTER.lat + 0.0002, lng: CENTER.lng - 0.0088 },
     ]
     const rows = points.map((point, i) => row(`예시${i}정형외과`, { point }))
-    expect(pickEvents({ kind: 'open', ...PERIOD, rows }, cand('a')).map((e) => e.distM)).toEqual(points.map((p) => distM(CENTER, p)))
+    expect(pickEvents({ kind: 'open', ...PERIOD, rows }, cand('a'), RULE).map((e) => e.distM)).toEqual(points.map((p) => distM(CENTER, p)))
     const code = readFileSync(new URL('./watch.ts', import.meta.url), 'utf8')
     expect(code).toMatch(/import \{[^}]*\bdistM\b[^}]*\} from '\.\/coords'/)
     expect(code).not.toMatch(/Math\.asin|6_?371_?008/)
@@ -158,7 +200,7 @@ describe('AC-7915.1 pickEvents', () => {
       row('예시닫은정형외과', { openedOn: '2015-03-02', closedOn: '2026-11-03' }),
       row('예시연정형외과', { openedOn: '2026-11-03', closedOn: null }),
     ]
-    expect(pickEvents({ kind: 'close', ...PERIOD, rows }, cand('a'))).toEqual([
+    expect(pickEvents({ kind: 'close', ...PERIOD, rows }, cand('a'), RULE)).toEqual([
       { candidateId: 'a', kind: 'close', clinicName: '예시닫은정형외과', dept: '정형외과', eventOn: '2026-11-03', distM: 500 },
     ])
   })
@@ -172,7 +214,7 @@ describe('AC-7915.1 pickEvents', () => {
       row('예시오래된정형외과', { openedOn: '2019-05-01' }),
       row('예시날짜틀린정형외과', { openedOn: '2026-11-31' }),
     ]
-    expect(pickEvents({ kind: 'open', ...PERIOD, rows }, cand('a')).map((e) => e.clinicName)).toEqual([
+    expect(pickEvents({ kind: 'open', ...PERIOD, rows }, cand('a'), RULE).map((e) => e.clinicName)).toEqual([
       '예시처음날정형외과',
       '예시끝날정형외과',
     ])
@@ -180,7 +222,7 @@ describe('AC-7915.1 pickEvents', () => {
 
   it('AC-7915.1: 같은 줄(종류·이름·날짜)은 한 번만 넣는다', () => {
     const rows = [row('예시정형외과의원'), row('예시정형외과의원', { dept: '정형외과, 재활의학과' }), row('예시정형외과의원', { openedOn: '2026-11-11' })]
-    expect(pickEvents({ kind: 'open', ...PERIOD, rows }, cand('a')).map((e) => [e.clinicName, e.eventOn])).toEqual([
+    expect(pickEvents({ kind: 'open', ...PERIOD, rows }, cand('a'), RULE).map((e) => [e.clinicName, e.eventOn])).toEqual([
       ['예시정형외과의원', '2026-11-10'],
       ['예시정형외과의원', '2026-11-11'],
     ])
@@ -190,13 +232,13 @@ describe('AC-7915.1 pickEvents', () => {
     const longName = `예시${'가'.repeat(120)}정형외과`
     const longDept = `정형외과, ${'나'.repeat(80)}`
     const rows = [row(`  ${longName}  `, { dept: longDept }), row('   ', { dept: '정형외과' })]
-    const events = pickEvents({ kind: 'open', ...PERIOD, rows }, cand('a'))
+    const events = pickEvents({ kind: 'open', ...PERIOD, rows }, cand('a'), RULE)
     expect(events).toHaveLength(1)
     expect(events[0].clinicName).toBe(longName.slice(0, 100))
     expect(events[0].dept).toBe(longDept.slice(0, 50))
   })
 
   it('AC-7915.1: 받은 줄이 없으면 빈 목록이다', () => {
-    expect(pickEvents({ kind: 'open', ...PERIOD, rows: [] }, cand('a'))).toEqual([])
+    expect(pickEvents({ kind: 'open', ...PERIOD, rows: [] }, cand('a'), RULE)).toEqual([])
   })
 })

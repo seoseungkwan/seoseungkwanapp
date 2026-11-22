@@ -185,7 +185,7 @@ describe('clinic-license 답 읽기 — AC-7904.1·AC-7904.4', () => {
     const rows: readonly LicenseRow[] = value([fixture('open.json')], OPEN).rows
     const near = from5174(198120.4, 451733.9)!
     // 나래재활의학과의원은 약 450m 떨어져 있다
-    const cand: WatchCandidate = { id: 'cand-1', status: 'watching', ...near, radiusM: 500, watchCheckedOn: null, createdAt: '2026-10-01T00:00:00Z' }
+    const cand: WatchCandidate = { id: 'cand-1', name: '예시후보', status: 'watching', ...near, radiusM: 500, watchCheckedOn: null, createdAt: '2026-10-01T00:00:00Z' }
     const events = pickEvents({ kind: 'open', from: OPEN.from, to: OPEN.to, rows }, cand)
     expect(events.map((e) => [e.clinicName, e.eventOn])).toEqual([
       ['가람정형외과의원', '2026-10-20'],
