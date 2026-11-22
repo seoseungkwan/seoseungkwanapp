@@ -1,18 +1,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { SiteRequest, SourceResult } from '@/types/location'
+import type { SiteRequest } from '@/types/location'
 import {
   SOURCE_MAX_BYTES,
+  SOURCE_MAX_TIMEOUT_MS,
   SOURCE_TIMEOUT_MS,
   SOURCE_USER_AGENT,
   createFetchSource,
   fetchSource,
   isNotRegistered,
   readKey,
+  type FetchResult,
   type SourceFetch,
   type SourceKey,
 } from './fetchSource'
 
-// 입지 분석 바깥 부르기(specs/location REQ-7903 AC-7903.2~4, design.md 3절).
+// 입지 분석 바깥 부르기(specs/location REQ-7903 AC-7903.2~4·REQ-7922 AC-7922.2, design.md 3절).
 // 진짜 사이트는 부르지 않는다. fetch는 시험이 넣는 가짜이고, 시간은 가짜 시계로 잰다. 열쇠는 지어낸 글자다
 
 const KAKAO_KEY = 'kakao-rest-FAKE-0001'
@@ -39,7 +41,7 @@ function fake(answer: (call: number) => Response | Promise<Response> = () => new
   return { fn, seen }
 }
 
-async function run(req: SiteRequest, key: SourceKey, answer: (call: number) => Response | Promise<Response>): Promise<SourceResult> {
+async function run(req: SiteRequest, key: SourceKey, answer: (call: number) => Response | Promise<Response>): Promise<FetchResult> {
   return createFetchSource({ fetchImpl: fake(answer).fn })(req, key)
 }
 
@@ -229,7 +231,7 @@ describe('AC-7903.3 바깥 실패(HTTP·8초·2MB)', () => {
       signal = init.signal ?? undefined
       return new Promise<Response>(() => {})
     })
-    let result: SourceResult | undefined
+    let result: FetchResult | undefined
     void createFetchSource({ fetchImpl })({ url: DATA_URL }, DATA).then((r) => {
       result = r
     })
@@ -251,7 +253,7 @@ describe('AC-7903.3 바깥 실패(HTTP·8초·2MB)', () => {
         state.cancelled = true
       },
     })
-    let result: SourceResult | undefined
+    let result: FetchResult | undefined
     void run({ url: KAKAO_URL }, KAKAO, () => new Response(stream)).then((r) => {
       result = r
     })
@@ -351,5 +353,225 @@ describe('AC-7903.2 열쇠는 서버 환경 변수 둘에서만', () => {
       expect(hasKey(await run({ url: KAKAO_URL }, KAKAO, answer))).toBe(false)
     }
     expect(hasKey(await run({ url: 'https://evil.example.com/x' }, DATA, () => new Response('x')))).toBe(false)
+  })
+})
+
+describe('AC-7903.3 공공 열쇠 미등록 답(401·403 + 몸통)은 not-applied', () => {
+  // TASK-47 진짜 답 모양: 활용신청 안 된 열쇠는 HTTP 403(또는 401) + JSON 몸통으로 온다
+  const NOT_REGISTERED_JSON = '{"response":{"header":{"resultCode":"30","resultMsg":"SERVICE_KEY_IS_NOT_REGISTERED_ERROR"}}}'
+  const NOT_REGISTERED_BODIES = [
+    NOT_REGISTERED_JSON,
+    '<OpenAPI_ServiceResponse><cmmMsgHeader><errMsg>SERVICE ERROR</errMsg><returnAuthMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR</returnAuthMsg><returnReasonCode>30</returnReasonCode></cmmMsgHeader></OpenAPI_ServiceResponse>',
+    'SERVICE_KEY_IS_NOT_REGISTERED_ERROR',
+  ]
+  const refused = (body: BodyInit | null, status: number, headers: HeadersInit = { 'content-type': 'application/json;charset=UTF-8' }) =>
+    new Response(body, { status, headers })
+
+  it('AC-7903.3: 공공 열쇠의 401·403 답이 미등록 몸통이면 { ok: false, fail: not-applied }(상태 번호·몸통 글 없음)', async () => {
+    for (const status of [401, 403])
+      for (const body of NOT_REGISTERED_BODIES)
+        for (const url of [DATA_URL, STD_URL, ODCLOUD_URL]) {
+          const result = await run({ url }, DATA, () => refused(body, status))
+          expect(result, `${status} ${url} ${body}`).toEqual({ ok: false, fail: 'not-applied' })
+          expect(JSON.stringify(result)).not.toContain('SERVICE_KEY')
+        }
+  })
+
+  it('AC-7903.3: 공공 열쇠의 401·403이라도 몸통이 미등록 답이 아니면 http와 상태 번호', async () => {
+    const others: (string | null)[] = [
+      'Forbidden',
+      '{"response":{"header":{"resultCode":"22","resultMsg":"LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR"}}}',
+      `<error>bad key ${DATA_KEY}</error>`,
+      '',
+      null,
+    ]
+    for (const status of [401, 403])
+      for (const body of others) {
+        const result = await run({ url: DATA_URL }, DATA, () => refused(body, status))
+        expect(result, `${status} ${body}`).toEqual({ ok: false, fail: 'http', status })
+        expect(hasKey(result)).toBe(false)
+      }
+  })
+
+  it('AC-7903.3: 401·403 밖의 상태는 미등록 몸통이어도 http(몸통을 보지 않는다)', async () => {
+    for (const status of [400, 404, 429, 500, 502, 503, 504])
+      expect(await run({ url: DATA_URL }, DATA, () => refused(NOT_REGISTERED_JSON, status)), String(status)).toEqual({
+        ok: false,
+        fail: 'http',
+        status,
+      })
+  })
+
+  it('AC-7903.3: 카카오 열쇠는 401·403에 미등록 몸통이 와도 늘 http', async () => {
+    for (const status of [401, 403])
+      for (const body of NOT_REGISTERED_BODIES)
+        expect(await run({ url: KAKAO_URL }, KAKAO, () => refused(body, status)), `${status} ${body}`).toEqual({ ok: false, fail: 'http', status })
+  })
+
+  it('AC-7903.3: 401·403 몸통도 2,000,000바이트 한도 — 크기 머리가 넘으면 읽지 않고 http', async () => {
+    const { stream, state } = endless()
+    const result = await run({ url: DATA_URL }, DATA, () => refused(stream, 403, { 'content-length': '2000001' }))
+    expect(result).toEqual({ ok: false, fail: 'http', status: 403 })
+    expect(state.pulls).toBeLessThanOrEqual(1)
+  })
+
+  it('AC-7903.3: 401·403 몸통을 읽다 2,000,000바이트를 넘으면 그만 읽고(끊음) http — 앞에 미등록 글이 있어도', async () => {
+    const state = { pulls: 0, cancelled: false }
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new TextEncoder().encode(NOT_REGISTERED_JSON))
+      },
+      pull(c) {
+        state.pulls += 1
+        c.enqueue(new Uint8Array(500_000))
+      },
+      cancel() {
+        state.cancelled = true
+      },
+    })
+    expect(await run({ url: DATA_URL }, DATA, () => refused(stream, 403))).toEqual({ ok: false, fail: 'http', status: 403 })
+    expect(state.pulls).toBeLessThanOrEqual(6)
+    expect(state.cancelled).toBe(true)
+  })
+
+  it('AC-7903.3: 401·403 몸통도 시간 한도 안에 다 오지 않으면 그만 읽고(끊음) http', async () => {
+    vi.useFakeTimers({ now: 0 })
+    const state = { cancelled: false }
+    let signal: AbortSignal | undefined
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new TextEncoder().encode('{"response":{"header":{"resultCode":"3'))
+      },
+      cancel() {
+        state.cancelled = true
+      },
+    })
+    const fetchImpl = vi.fn<SourceFetch>(async (_url, init) => {
+      signal = init.signal ?? undefined
+      return refused(stream, 403)
+    })
+    let result: FetchResult | undefined
+    void createFetchSource({ fetchImpl })({ url: DATA_URL }, DATA).then((r) => {
+      result = r
+    })
+    await vi.advanceTimersByTimeAsync(SOURCE_TIMEOUT_MS - 1)
+    expect(result).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(result).toEqual({ ok: false, fail: 'http', status: 403 })
+    expect(state.cancelled).toBe(true)
+    expect(signal?.aborted).toBe(true)
+  })
+})
+
+describe('AC-7922.2 시간 한도 — 기본 8초 · 읽는 곳이 정한 값(비급여 60초, 최대 60초)', () => {
+  // 진짜 fetch처럼 끊기면(abort) 던지고, 그 전에는 답하지 않는 가짜
+  function hanging() {
+    const signals: AbortSignal[] = []
+    const fetchImpl = vi.fn<SourceFetch>(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init.signal as AbortSignal
+          signals.push(signal)
+          signal.addEventListener('abort', () => reject(new DOMException('This operation was aborted', 'AbortError')))
+        }),
+    )
+    return { fetchImpl, signals }
+  }
+
+  async function expectLimit(call: (fetchImpl: SourceFetch) => Promise<FetchResult>, limit: number, label: string) {
+    const { fetchImpl, signals } = hanging()
+    let result: FetchResult | undefined
+    void call(fetchImpl).then((r) => {
+      result = r
+    })
+    await vi.advanceTimersByTimeAsync(limit - 1)
+    expect(result, label).toBeUndefined()
+    expect(signals[0]?.aborted, label).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(result, label).toEqual({ ok: false, fail: 'timeout' })
+    expect(signals[0]?.aborted, label).toBe(true)
+  }
+
+  // 공공 열쇠로 한도를 주어 부른다
+  const runWithin = (answer: () => Response, timeoutMs: number): Promise<FetchResult> =>
+    createFetchSource({ fetchImpl: fake(answer).fn })({ url: DATA_URL }, DATA, timeoutMs)
+
+  it('AC-7922.2: 한도를 주지 않으면 8초, 주면 그 값(비급여 60,000)까지 기다리고 60,000을 넘는 값은 60초', async () => {
+    vi.useFakeTimers({ now: 0 })
+    expect(SOURCE_TIMEOUT_MS).toBe(8_000)
+    expect(SOURCE_MAX_TIMEOUT_MS).toBe(60_000)
+    const cases: [number | undefined, number][] = [
+      [undefined, 8_000],
+      [20_000, 20_000],
+      [60_000, 60_000],
+      [120_000, 60_000],
+    ]
+    for (const [given, limit] of cases)
+      for (const [url, key] of [
+        [DATA_URL, DATA],
+        [KAKAO_URL, KAKAO],
+      ] as const)
+        await expectLimit((fetchImpl) => createFetchSource({ fetchImpl })({ url }, key, given), limit, `${given} ${key.kind}`)
+  })
+
+  it('AC-7922.2: 0·음수·숫자 아님은 기본 8초', async () => {
+    vi.useFakeTimers({ now: 0 })
+    for (const given of [0, -1, Number.NaN, Number.POSITIVE_INFINITY])
+      await expectLimit((fetchImpl) => createFetchSource({ fetchImpl })({ url: DATA_URL }, DATA, given), SOURCE_TIMEOUT_MS, String(given))
+  })
+
+  it('AC-7922.2: 몸통 받기에도 같은 한도 — 60초 한도면 8초가 지나도 끊지 않고, 다 오면 받는다', async () => {
+    vi.useFakeTimers({ now: 0 })
+    let control: ReadableStreamDefaultController<Uint8Array> | undefined
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        control = c
+        c.enqueue(new TextEncoder().encode('{"items":['))
+      },
+    })
+    let result: FetchResult | undefined
+    void runWithin(() => new Response(stream), 60_000).then((r) => {
+      result = r
+    })
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(result).toBeUndefined()
+    control?.enqueue(new TextEncoder().encode(']}'))
+    control?.close()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(result).toEqual({ ok: true, text: '{"items":[]}' })
+  })
+
+  it('AC-7922.2: 몸통이 60초 한도 안에 다 오지 않으면 60초에 timeout이고 끊는다', async () => {
+    vi.useFakeTimers({ now: 0 })
+    const state = { cancelled: false }
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new TextEncoder().encode('{"items":['))
+      },
+      cancel() {
+        state.cancelled = true
+      },
+    })
+    let result: FetchResult | undefined
+    void runWithin(() => new Response(stream), 60_000).then((r) => {
+      result = r
+    })
+    await vi.advanceTimersByTimeAsync(59_999)
+    expect(result).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(result).toEqual({ ok: false, fail: 'timeout' })
+    expect(state.cancelled).toBe(true)
+  })
+
+  it('AC-7922.2: 기본 fetchSource도 세 번째 칸으로 한도를 받는다', async () => {
+    vi.useFakeTimers({ now: 0 })
+    await expectLimit(
+      (fetchImpl) => {
+        vi.stubGlobal('fetch', fetchImpl)
+        return fetchSource({ url: DATA_URL }, DATA, 60_000)
+      },
+      60_000,
+      'fetchSource',
+    )
   })
 })

@@ -3,7 +3,7 @@ import type { Adapter, QueryOf } from '@/types/location'
 import { checkQuery } from '@/lib/location/query'
 
 // GET /api/ai/location/keys — 열쇠 상태(specs/location REQ-7903 AC-7903.1·AC-7903.5, design.md 3절).
-// 열쇠마다 비었으면 missing, 있으면 작은 부르기 하나(카카오 k-address '서울특별시청', 공공 household 행정동 하나)로 ok·rejected·failed.
+// 열쇠마다 비었으면 missing, 있으면 작은 부르기 하나(카카오 k-address '서울특별시청', 공공 활용신청이 된 pop-age 행정동 하나 1111051500·2025-10)로 ok·rejected·failed.
 // readMe·registry는 가짜, 바깥 fetch는 전역 가짜. 아무것도 저장하지 않는다
 const mocks = vi.hoisted(() => ({
   readMe: vi.fn(),
@@ -47,6 +47,18 @@ function kakaoAddress(): Adapter<'k-address'> {
     parse: vi.fn(() => ({ ok: true as const, value: null, asOf: '2026-11-22' })),
   }
 }
+function popAge(): Adapter<'pop-age'> {
+  return {
+    kind: 'pop-age',
+    src: 'mois-pop-age',
+    key: 'data',
+    requests: vi.fn((q: QueryOf<'pop-age'>) =>
+      q.dongs.map((dong) => ({ url: `https://apis.data.go.kr/1741000/admmSexdAgePpltn/selectAdmmSexdAgePpltn?admmCd=${dong}&numOfRows=1&type=JSON` })),
+    ),
+    parse: vi.fn(() => ({ ok: true as const, value: null, asOf: '2025-10-31' })),
+  }
+}
+// 세대 수(household)는 활용신청 전 미등록 답이 '열쇠가 맞지 않아요'로 잘못 보여 확인에 쓰지 않는다(design.md 3절)
 function household(): Adapter<'household'> {
   return {
     kind: 'household',
@@ -55,7 +67,7 @@ function household(): Adapter<'household'> {
     requests: vi.fn((q: QueryOf<'household'>) =>
       q.dongs.map((dong) => ({ url: `https://apis.data.go.kr/1741000/admmPpltnHhStus/selectAdmmPpltnHhStus?admmCd=${dong}&numOfRows=1&type=JSON` })),
     ),
-    parse: vi.fn(() => ({ ok: true as const, value: null, asOf: '2026-10-31' })),
+    parse: vi.fn(() => ({ ok: true as const, value: null, asOf: '2025-10-31' })),
   }
 }
 
@@ -103,7 +115,7 @@ beforeEach(() => {
   mocks.readMe.mockResolvedValue(ADMIN)
   vi.stubEnv('KAKAO_REST_KEY', KAKAO_KEY)
   vi.stubEnv('DATA_GO_KR_KEY', DATA_KEY)
-  setRegistry(kakaoAddress(), household())
+  setRegistry(kakaoAddress(), popAge())
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   otherSpies = (['log', 'warn', 'info', 'debug'] as const).map((k) => vi.spyOn(console, k).mockImplementation(() => {}))
 })
@@ -155,7 +167,7 @@ describe('AC-7903.5 열쇠마다 ok · missing · rejected · failed', () => {
   it('AC-7903.5: 둘 다 되면 { data: ok, kakao: ok }이고 열쇠마다 작은 부르기 하나뿐이다', async () => {
     const f = answers(KAKAO_OK, DATA_OK)
     const kakao = kakaoAddress()
-    const data = household()
+    const data = popAge()
     setRegistry(kakao, data)
     const res = await get()
     expect(res.status).toBe(200)
@@ -163,11 +175,12 @@ describe('AC-7903.5 열쇠마다 ok · missing · rejected · failed', () => {
     expect(await bodyOf(res)).toEqual({ data: 'ok', kakao: 'ok' })
     expect(f.fn).toHaveBeenCalledTimes(2)
     expect(f.seen.filter((s) => isKakao(s.url))).toHaveLength(1)
-    // 카카오는 '서울특별시청' 주소 찾기, 공공은 행정동 하나의 세대 수 — 둘 다 정해 둔 몸통 검사를 지나는 몸통
+    // 카카오는 '서울특별시청' 주소 찾기, 공공은 활용신청이 된 pop-age 행정동 하나(종로구 청운효자동 1111051500·2025-10)
+    // — 둘 다 정해 둔 몸통 검사를 지나는 몸통
     expect(kakao.requests).toHaveBeenCalledWith({ kind: 'k-address', q: '서울특별시청' })
+    expect(data.requests).toHaveBeenCalledTimes(1)
     const dataQ = vi.mocked(data.requests).mock.calls[0][0]
-    expect(dataQ.kind).toBe('household')
-    expect(dataQ.dongs).toHaveLength(1)
+    expect(dataQ).toEqual({ kind: 'pop-age', dongs: ['1111051500'], ym: '2025-10' })
     expect(checkQuery(dataQ)).toEqual(dataQ)
     expect(checkQuery({ kind: 'k-address', q: '서울특별시청' })).not.toBeNull()
     // 열쇠는 머리·주소로만 가고 답을 읽지는 않는다
@@ -203,6 +216,30 @@ describe('AC-7903.5 열쇠마다 ok · missing · rejected · failed', () => {
     expect(await bodyOf(await get())).toEqual({ data: 'rejected', kakao: 'ok' })
   })
 
+  it('AC-7903.5: 공공 401·403 + 미등록 몸통(TASK-47 진짜 답 모양)·몸통이 다른 401·403은 모두 rejected, 몸통 글은 답에 없다', async () => {
+    const NOT_REGISTERED_JSON = '{"response":{"header":{"resultCode":"30","resultMsg":"SERVICE_KEY_IS_NOT_REGISTERED_ERROR"}}}'
+    for (const status of [401, 403]) {
+      answers(KAKAO_OK, () => new Response(NOT_REGISTERED_JSON, { status, headers: { 'content-type': 'application/json' } }))
+      const text = await (await get()).text()
+      expect(JSON.parse(text), String(status)).toEqual({ data: 'rejected', kakao: 'ok' })
+      expect(text).not.toContain('SERVICE_KEY')
+      answers(KAKAO_OK, () => new Response('{"response":{"header":{"resultCode":"22"}}}', { status }))
+      expect(await bodyOf(await get()), String(status)).toEqual({ data: 'rejected', kakao: 'ok' })
+    }
+    // 카카오 401·403은 몸통과 상관없이 rejected
+    answers(() => new Response(NOT_REGISTERED_JSON, { status: 403 }), DATA_OK)
+    expect(await bodyOf(await get())).toEqual({ data: 'ok', kakao: 'rejected' })
+  })
+
+  it('AC-7903.5: 공공 확인은 pop-age로만 — 세대 수(household) 읽는 곳만 있으면 부르지 않고 failed', async () => {
+    const f = answers(KAKAO_OK, DATA_OK)
+    const onlyHousehold = household()
+    setRegistry(kakaoAddress(), onlyHousehold)
+    expect(await bodyOf(await get())).toEqual({ data: 'failed', kakao: 'ok' })
+    expect(onlyHousehold.requests).not.toHaveBeenCalled()
+    expect(f.seen.every((s) => isKakao(s.url))).toBe(true)
+  })
+
   it('AC-7903.5: 다른 HTTP 실패·연결 끊김·읽는 곳이 아직 없음은 failed(바깥 오류 글은 답에 없다)', async () => {
     answers(
       () => new Response(`server error ${KAKAO_KEY}`, { status: 500 }),
@@ -225,11 +262,11 @@ describe('AC-7903.5 열쇠마다 ok · missing · rejected · failed', () => {
     const f = answers(KAKAO_OK, DATA_OK)
     const wrongKey = kakaoAddress()
     wrongKey.key = 'data'
-    const offHost = household()
+    const offHost = popAge()
     offHost.requests = vi.fn(() => [{ url: 'https://evil.example.com/x?admmCd=1' }])
     setRegistry(wrongKey, offHost)
     expect(await bodyOf(await get())).toEqual({ data: 'failed', kakao: 'failed' })
-    const empty = household()
+    const empty = popAge()
     empty.requests = vi.fn(() => [])
     setRegistry(kakaoAddress(), empty)
     expect(await bodyOf(await get())).toEqual({ data: 'failed', kakao: 'ok' })

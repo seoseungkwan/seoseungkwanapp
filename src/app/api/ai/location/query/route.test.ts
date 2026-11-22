@@ -86,6 +86,29 @@ function site(answer: (url: string, n: number) => Response | Promise<Response> =
   return { fn, seen }
 }
 
+// 답을 시험이 정한 차례로 주는 가짜 fetch. 끊기면(abort) 진짜 fetch처럼 던진다
+type Pending = { url: string; signal: AbortSignal; answer: (res: Response) => void; fail: () => void }
+function gate(): Pending[] {
+  const pending: Pending[] = []
+  const fn = vi.fn(
+    (url: string, init: RequestInit) =>
+      new Promise<Response>((resolve, reject) => {
+        const signal = init.signal as AbortSignal
+        signal.addEventListener('abort', () => reject(new DOMException('This operation was aborted', 'AbortError')))
+        pending.push({ url, signal, answer: resolve, fail: () => reject(new TypeError('fetch failed')) })
+      }),
+  )
+  vi.stubGlobal('fetch', fn)
+  return pending
+}
+// 진짜 차례 넘김(setImmediate는 가짜 시계가 아니다)으로 약속을 다 풀어 준다
+const settle = async () => {
+  for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r))
+}
+
+// TASK-47 진짜 미등록 답 모양(HTTP 403 또는 401 + JSON 몸통)
+const NOT_REGISTERED_JSON = '{"response":{"header":{"resultCode":"30","resultMsg":"SERVICE_KEY_IS_NOT_REGISTERED_ERROR"}}}'
+
 function post(body: unknown, raw = false): Request {
   return new Request('http://localhost/api/ai/location/query', {
     method: 'POST',
@@ -142,9 +165,9 @@ function expectNoSecrets(...texts: string[]) {
 }
 
 describe('경로 설정', () => {
-  it('AC-7903.4: nodejs 런타임 · 30초 · Next가 아는 이름(POST·runtime·maxDuration)만 내보낸다', () => {
+  it('AC-7903.5: nodejs 런타임 · 120초(비급여 한 번 60초 + 의원 목록) · Next가 아는 이름(POST·runtime·maxDuration)만 내보낸다', () => {
     expect(route.runtime).toBe('nodejs')
-    expect(route.maxDuration).toBe(30)
+    expect(route.maxDuration).toBe(120)
     expect(Object.keys(route).sort()).toEqual(['POST', 'maxDuration', 'runtime'])
   })
 })
@@ -285,6 +308,111 @@ describe('AC-7903.3 답 모양', () => {
     expect(await bodyOf(res)).toEqual({ ok: false, code: 'not-applied' })
     expect(adapter.parse).not.toHaveBeenCalled()
     expect(errorSpy.mock.calls).toEqual([[LOG, 'not-applied', 'pop-age']])
+  })
+
+  it('AC-7903.3: 공공 열쇠의 401·403 + 미등록 몸통(TASK-47 진짜 답 모양)도 not-applied이고 읽는 곳에 넘기지 않는다', async () => {
+    for (const status of [401, 403]) {
+      site(() => new Response(NOT_REGISTERED_JSON, { status, headers: { 'content-type': 'application/json' } }))
+      const adapter = popAge(3)
+      setRegistry(adapter)
+      const res = await POST(post(POP_Q))
+      expect(res.status).toBe(200)
+      const text = await res.text()
+      expect(JSON.parse(text)).toEqual({ ok: false, code: 'not-applied' })
+      expect(text).not.toContain('SERVICE_KEY')
+      expect(adapter.parse).not.toHaveBeenCalled()
+    }
+    expect(errorSpy.mock.calls).toEqual([
+      [LOG, 'not-applied', 'pop-age'],
+      [LOG, 'not-applied', 'pop-age'],
+    ])
+    expectNoSecrets(JSON.stringify(errorSpy.mock.calls))
+  })
+
+  it('AC-7903.3: 401·403이라도 몸통이 미등록 답이 아니거나 카카오 열쇠면 failed', async () => {
+    site(() => new Response('{"response":{"header":{"resultCode":"22","resultMsg":"LIMITED"}}}', { status: 403 }))
+    expect(await bodyOf(await POST(post(POP_Q)))).toEqual({ ok: false, code: 'failed' })
+    site(() => new Response(NOT_REGISTERED_JSON, { status: 401 }))
+    expect(await bodyOf(await POST(post(ADDRESS_Q)))).toEqual({ ok: false, code: 'failed' })
+    expect(errorSpy.mock.calls).toEqual([
+      [LOG, 'E-LOC-SOURCE', 'pop-age'],
+      [LOG, 'E-LOC-SOURCE', 'k-address'],
+    ])
+  })
+
+  it('AC-7903.3: not-applied는 failed보다 먼저 — 다른 하위 부르기가 실패해도 미등록 답이 하나라도 오면 not-applied', async () => {
+    const orders: [string, (p: Pending[]) => void][] = [
+      [
+        '실패 먼저, 403 미등록 뒤',
+        (p) => {
+          p[0].answer(new Response('x', { status: 500 }))
+          p[1].answer(new Response(NOT_REGISTERED_JSON, { status: 403 }))
+        },
+      ],
+      [
+        '403 미등록 먼저, 실패 뒤',
+        (p) => {
+          p[0].answer(new Response(NOT_REGISTERED_JSON, { status: 403 }))
+          p[1].answer(new Response('x', { status: 502 }))
+        },
+      ],
+      [
+        '끊김 먼저, 200 미등록 코드 뒤',
+        (p) => {
+          p[0].fail()
+          p[1].answer(new Response(NOT_REGISTERED_JSON))
+        },
+      ],
+    ]
+    for (const [label, play] of orders) {
+      errorSpy.mockClear()
+      const pending = gate()
+      const adapter = popAge(4)
+      setRegistry(adapter)
+      const done = POST(post(POP_Q))
+      await settle()
+      expect(pending, label).toHaveLength(2)
+      play(pending)
+      const res = await done
+      expect(await bodyOf(res), label).toEqual({ ok: false, code: 'not-applied' })
+      // 남은 쪽은 새로 부르지 않는다
+      expect(pending, label).toHaveLength(2)
+      expect(adapter.parse).not.toHaveBeenCalled()
+      expect(errorSpy.mock.calls, label).toEqual([[LOG, 'not-applied', 'pop-age']])
+    }
+  })
+
+  it('AC-7922.2: 하위 부르기는 읽는 곳의 timeoutMs(비급여 60초)로 끊고, 없으면 8초로 끊는다', async () => {
+    vi.useRealTimers()
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'], now: new Date('2026-11-21T16:00:00Z') })
+    for (const [timeoutMs, limit] of [
+      [undefined, 8_000],
+      [60_000, 60_000],
+    ] as const) {
+      const pending = gate()
+      const adapter = popAge(1)
+      if (timeoutMs !== undefined) adapter.timeoutMs = timeoutMs
+      setRegistry(adapter)
+      let res: Response | undefined
+      void POST(post(POP_Q)).then((r) => {
+        res = r
+      })
+      await settle()
+      expect(pending).toHaveLength(1)
+      await vi.advanceTimersByTimeAsync(limit - 1)
+      await settle()
+      expect(res, String(timeoutMs)).toBeUndefined()
+      expect(pending[0].signal.aborted, String(timeoutMs)).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      await settle()
+      expect(pending[0].signal.aborted, String(timeoutMs)).toBe(true)
+      expect(res, String(timeoutMs)).toBeDefined()
+      if (res) expect(await bodyOf(res)).toEqual({ ok: false, code: 'failed' })
+    }
+    expect(errorSpy.mock.calls).toEqual([
+      [LOG, 'E-LOC-SOURCE', 'pop-age'],
+      [LOG, 'E-LOC-SOURCE', 'pop-age'],
+    ])
   })
 
   it('AC-7903.3: 읽는 곳이 not-applied·failed라고 하면 그대로 알린다', async () => {

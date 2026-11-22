@@ -4,8 +4,10 @@ import { guardAdmin, jsonReply } from '../guard'
 import { REGISTRY } from '../registry'
 
 // GET /api/ai/location/keys (specs/location REQ-7903 AC-7903.5, design.md 3절). 열쇠 둘의 상태만 알린다.
-// 비었으면 missing. 있으면 작은 부르기 하나(카카오 k-address '서울특별시청', 공공 household 행정동 하나의 첫 요청)로
-// 됨 ok · 거절(401·403·공공데이터포털 미등록 열쇠 답) rejected · 그 밖의 실패 failed. 답은 읽지 않고 아무것도 저장·로그하지 않는다.
+// 비었으면 missing. 있으면 작은 부르기 하나(카카오 k-address '서울특별시청', 공공 pop-age 행정동 하나의 첫 요청)로
+// 됨 ok · 거절(401·403·공공데이터포털 미등록 열쇠 답 — 200 + 코드 20·30이든 401·403 + 미등록 몸통이든) rejected · 그 밖의 실패 failed.
+// 공공은 활용신청이 된 pop-age로 본다(처음엔 household였으나 활용신청 전 미등록 답이 '열쇠가 맞지 않아요'로 잘못 보여 바꿈).
+// 답은 읽지 않고 아무것도 저장·로그하지 않는다.
 // 이 파일은 Next가 아는 이름(GET·runtime·maxDuration)만 export한다
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -13,7 +15,7 @@ export const maxDuration = 30
 // 열쇠마다 확인에 쓰는 몸통(몸통 검사 checkQuery를 지나는 모양). 행정동은 서울 종로구 청운효자동
 const CHECKS: Readonly<Record<KeyKind, Query>> = {
   kakao: { kind: 'k-address', q: '서울특별시청' },
-  data: { kind: 'household', dongs: ['1111051500'], ym: '2025-10' },
+  data: { kind: 'pop-age', dongs: ['1111051500'], ym: '2025-10' },
 }
 
 async function check(kind: KeyKind, registry: Registry): Promise<KeyState> {
@@ -30,7 +32,10 @@ async function check(kind: KeyKind, registry: Registry): Promise<KeyState> {
   }
   if (first === undefined) return 'failed'
   const got = await fetchSource(first, { kind, value })
-  if (!got.ok) return got.fail === 'http' && (got.status === 401 || got.status === 403) ? 'rejected' : 'failed'
+  if (!got.ok) {
+    if (got.fail === 'not-applied') return 'rejected'
+    return got.fail === 'http' && (got.status === 401 || got.status === 403) ? 'rejected' : 'failed'
+  }
   return kind === 'data' && isNotRegistered(got.text) ? 'rejected' : 'ok'
 }
 
