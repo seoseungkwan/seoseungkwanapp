@@ -202,12 +202,12 @@ function baseHandlers(): Handlers {
         complexes:
           q.bjd === '4111110100'
             ? [
-                { code: 'A1', name: '다솜마을1단지' },
-                { code: 'A2', name: '다솜빌' },
+                { code: 'A1', name: '다솜마을1단지', bdongName: '다솜동' },
+                { code: 'A2', name: '다솜빌', bdongName: '다솜동' },
               ]
             : [
-                { code: 'A3', name: '별동아파트' },
-                { code: 'A4', name: '별동주공' },
+                { code: 'A3', name: '별동아파트', bdongName: '별동' },
+                { code: 'A4', name: '별동주공', bdongName: '별동' },
               ],
         capped: false,
       }),
@@ -353,10 +353,10 @@ function baseHandlers(): Handlers {
         rows:
           q.event === 'open'
             ? [
-                { name: '새정형외과의원', dept: '정형외과', openedOn: '2025-05-01', closedOn: null, address: '', point: moved(100, 0) },
-                { name: '먼의원', dept: '내과', openedOn: '2025-06-01', closedOn: null, address: '', point: moved(5000, 0) },
+                { name: '새정형외과의원', dept: '정형외과', type: '의원', openedOn: '2025-05-01', closedOn: null, address: '', point: moved(100, 0) },
+                { name: '먼의원', dept: '내과', type: '의원', openedOn: '2025-06-01', closedOn: null, address: '', point: moved(5000, 0) },
               ]
-            : [{ name: '닫은의원', dept: '내과', openedOn: '2015-01-01', closedOn: '2024-01-10', address: '', point: moved(20, 0) }],
+            : [{ name: '닫은의원', dept: '내과', type: '의원', openedOn: '2015-01-01', closedOn: '2024-01-10', address: '', point: moved(20, 0) }],
         capped: false,
       }),
     'bld-title': () =>
@@ -795,8 +795,8 @@ describe('AC-7908.2 collect — 그날 값 모으기', () => {
     const { deps, askedOf } = world()
     const s = await collect(AT, R, deps)
     expect(vOf(s, 'history')).toEqual([
-      { kind: 'close', name: '닫은의원', dept: '내과', on: '2024-01-10', distM: d(moved(20, 0)) },
-      { kind: 'open', name: '새정형외과의원', dept: '정형외과', on: '2025-05-01', distM: d(moved(100, 0)) },
+      { kind: 'close', name: '닫은의원', dept: '내과', type: '의원', on: '2024-01-10', distM: d(moved(20, 0)) },
+      { kind: 'open', name: '새정형외과의원', dept: '정형외과', type: '의원', on: '2025-05-01', distM: d(moved(100, 0)) },
     ])
     expect(askedOf('clinic-license').map((q) => `${q.event} ${q.from}~${q.to} ${q.addr}`).sort()).toEqual([
       'close 2023-11-21~2026-11-20 가람도 나래시 다솜구',
@@ -804,6 +804,124 @@ describe('AC-7908.2 collect — 그날 값 모으기', () => {
       'open 2023-11-21~2026-11-20 가람도 나래시 다솜구',
       'open 2023-11-21~2026-11-20 가람도 나래시 별빛구',
     ])
+  })
+
+  it('AC-7908.2: 아파트 법정동 이름은 공공 답(단지 목록의 읍면동 이름)에서만 담고, 카카오 지번 글의 동 이름은 그날 값 어디에도 없다', async () => {
+    const { deps } = world({
+      handlers: {
+        // 카카오는 지어낸 다른 동 이름을 준다 — 범위 법정동 코드는 같다
+        'k-point': (q) => {
+          const east = q.at.lng > 127.002
+          return ok({
+            road: '가람도 나래시 다솜구 가람로 1',
+            jibun: east ? '가람도 나래시 다솜구 카카오별동 5' : '가람도 나래시 다솜구 카카오솜동 12-3',
+            bjd: east ? '4111110200' : '4111110100',
+            hjd: east ? D2 : D1,
+            at: KAKAO_AT,
+            lot: east ? { bcode: '4111110200', main: 5, sub: 0, san: false } : { bcode: '4111110100', main: 12, sub: 3, san: false },
+          })
+        },
+        'apt-list': (q) =>
+          ok({
+            complexes:
+              q.bjd === '4111110100'
+                ? [{ code: 'A1', name: '다솜마을1단지', bdongName: '공공다솜동' }]
+                : [
+                    { code: 'A3', name: '별동아파트', bdongName: '공공별동' },
+                    { code: 'A5', name: '옛답아파트' }, // 칸이 없는 옛 답은 빈 글자
+                  ],
+            capped: false,
+          }),
+        'apt-info': (q) => ok({ code: q.complex, name: '', households: 100, builtYear: 2000, buildings: 1 }),
+      },
+    })
+    const s = await collect(AT, R, deps)
+    expect((vOf(s, 'apts') as { name: string; bdongName: string }[]).map((a) => [a.name, a.bdongName])).toEqual([
+      ['다솜마을1단지', '공공다솜동'],
+      ['별동아파트', '공공별동'],
+      ['옛답아파트', ''],
+    ])
+    const text = JSON.stringify(s)
+    for (const word of ['카카오솜동', '카카오별동', '카카오']) expect(text, word).not.toContain(word)
+  })
+
+  it('AC-7909.3: 3년 개폐업 주소 앞부분은 시도 이름과 시군구 이름이 같으면(세종) 하나만 보낸다', async () => {
+    const index: DongIndex = {
+      asOf: '2026-07-01',
+      sidos: [{ code2: '36', name: '세종특별자치시', sggs: [{ code5: '36110', name: '세종특별자치시', bbox: [126.99, 37.49, 127.03, 37.51] }] }],
+    }
+    const dongs: Record<string, DongFile> = {
+      '36110': {
+        asOf: '2026-07-02',
+        dongs: [{ code10: '3611051000', name: '다솜동', areaM2: 10_000, center: [127.0, 37.5], rings: square(126.99, 37.49, 127.03, 37.51) }],
+      },
+    }
+    const { deps, askedOf } = world({ index, dongs })
+    const s = await collect(AT, R, deps)
+    expect(askedOf('clinic-license').map((q) => `${q.event} ${q.addr}`).sort()).toEqual(['close 세종특별자치시', 'open 세종특별자치시'])
+    for (const q of askedOf('clinic-license')) expect(checkQuery(q), JSON.stringify(q)).toEqual(q)
+    expect(whyOf(s, 'history')).toBe('ok')
+  })
+
+  it('AC-7909.3: 3년 개폐업 줄에 업태 글(type)을 남겨 치과의원·한의원을 업태로 가를 수 있다(업태가 없는 옛 답은 빈 글자)', async () => {
+    const { deps } = world({
+      handlers: {
+        'clinic-license': (q) =>
+          ok({
+            rows:
+              q.event === 'open'
+                ? [
+                    { name: '가람미소의원', dept: '', type: '치과의원', openedOn: '2025-05-01', closedOn: null, address: '', point: moved(100, 0) },
+                    { name: '다솜한결의원', dept: '', type: '한의원', openedOn: '2025-04-01', closedOn: null, address: '', point: moved(150, 0) },
+                  ]
+                : [{ name: '옛답의원', dept: '내과', openedOn: '2015-01-01', closedOn: '2024-01-10', address: '', point: moved(20, 0) }],
+            capped: false,
+          }),
+      },
+    })
+    const s = await collect(AT, R, deps)
+    expect((vOf(s, 'history') as { name: string; type?: string }[]).map((x) => [x.name, x.type])).toEqual([
+      ['옛답의원', ''],
+      ['가람미소의원', '치과의원'],
+      ['다솜한결의원', '한의원'],
+    ])
+    expect(checkSnapshot(JSON.parse(JSON.stringify(s)))).toEqual(s)
+  })
+
+  it('AC-7909.3: 의원 목록 답이 한도에 잘렸으면(capped) rivals에 capped: true를 남긴다 — 잘리지 않았으면 그 칸이 없다', async () => {
+    const plainRun = await collect(AT, R, world().deps)
+    expect(plainRun.rivals.ok).toBe(true)
+    expect('capped' in plainRun.rivals).toBe(false)
+
+    const base = baseHandlers()['hosp-list']!
+    const { deps } = world({
+      handlers: {
+        'hosp-list': async (q) => {
+          const reply = await base(q)
+          return reply.ok && q.group === 'korean' ? { ...reply, value: { ...(reply.value as object), capped: true } } : reply
+        },
+      },
+    })
+    const s = await collect(AT, R, deps)
+    expect(s.rivals).toMatchObject({ ok: true, capped: true, src: 'hosp-list' })
+    expect(rivalsOf(s).length).toBeGreaterThan(0)
+    expect(checkSnapshot(JSON.parse(JSON.stringify(s)))).toEqual(s)
+  })
+
+  it('AC-7909.3: 가까운 200곳으로 자른 의원 목록도 capped: true다(조용히 적게 세지 않음)', async () => {
+    const around: FakeClinic[] = Array.from({ length: 201 }, (_, i) => ({
+      ykiho: `A${i}`,
+      name: `둘레내과의원${String(i).padStart(3, '0')}`,
+      depts: ['im'],
+      doctors: 1,
+      openedOn: null,
+      at: moved(50 + i, 0),
+      address: '가람도 나래시 다솜구 둘레로 1',
+    }))
+    const { deps } = world({ handlers: { 'hosp-list': (q) => ok({ items: q.group === 'clinic' ? around.map((c) => hospItem(c, q.at)) : [], capped: false }) } })
+    const s = await collect(AT, R, deps)
+    expect(rivalsOf(s).length).toBe(RIVAL_MAX)
+    expect(s.rivals).toMatchObject({ ok: true, capped: true })
   })
 
   it('AC-7908.2: 건축물대장은 후보 지번으로 부르고 첫째 건물의 pk 층만 골라 합친다(pk는 버림)', async () => {

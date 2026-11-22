@@ -1,5 +1,5 @@
 // 후보 자세히 › 소득·쓸 힘 묶음(spec location AC-7909.7, 시안 ?s=candidate #sec-income).
-// 평균 근로소득(시군구, 귀속 연도 · `동 단위 자료가 없어요.`) · 아파트·상가 ㎡당 거래가(지난 6달, 법정동 기준) →
+// 평균 근로소득(시군구, 귀속 연도 · 시·도 평균과 견줌 · `동 단위 자료가 없어요.`) · 아파트·상가 ㎡당 거래가(지난 6달, 법정동 기준) →
 // 의료급여·차상위(후보 시군구, 머리 `시군구 기준 · 기초생활보장 의료급여 기준 · 겹칠 수 있어요` — 옛 구 묶음 값이면 끝에 ` · 옛 {구} 기준`,
 // 세 줄 수·비율(snapshot.ts welfareRate) + 출처 줄). 자료가 없으면 그 칸만 design.md 15절 글이다. 그날 값(Snapshot)만 받는다(props·콜백만).
 // 제목 아래 '이렇게 봤어요'(AC-7920.2): method.ts HOW.income을 부르는 쪽이 준 howCtx로 채움, 펼침도 props(howOpen·onHow)
@@ -7,7 +7,7 @@ import type { ReactNode } from 'react'
 import { commaText, wonText } from '@/lib/location/money'
 import type { Got, Snapshot, SnapshotValue } from '@/types/location'
 import { GotView, type HowProps, INFO, INFO_DD, INFO_DT, INFO_ROW, type Pass, Section, SubHead } from './Section'
-import { rateText, shownOf, welfareLines, welfareNote } from './text'
+import { rateText, shownOf, sidoCompareText, welfareLines, welfareNote } from './text'
 
 export type IncomeSectionProps = Pass &
   HowProps & {
@@ -30,7 +30,7 @@ export function IncomeSection({ snapshot: s, howCtx, howOpen, onHow, onRetry, on
           <GotView got={s.income} {...pass}>
             {(v) => (
               <p>
-                <b className={BIG}>{won(v.won)}</b> <span className={AFTER}>{`· ${v.year}년 귀속`}</span>
+                <b className={BIG}>{won(v.won)}</b> <span className={AFTER}>{`· ${v.year}년 귀속${sidoCompareText(v) ?? ''}`}</span>
               </p>
             )}
           </GotView>

@@ -205,6 +205,36 @@ describe('AC-7909.7: 소득·쓸 힘 묶음', () => {
     expect(within(s).getByText('동 단위 자료가 없어요. 가상구 평균이에요(사는 곳 기준).')).toBeTruthy()
   })
 
+  it('AC-7909.7·AC-7918.2: 시·도 평균과 견준다 — `{시도} 평균 {금액}보다 {n}% 많아요/적어요`(차이 % 버림, 1% 안이면 `과 같아요`)', () => {
+    const income = (won: number, sidoName: string | null, sidoWon: number | null) => ({
+      ...SNAP,
+      income: { ok: true as const, v: { sggName: '가상구', won, year: 2024, sidoName, sidoWon }, src: 'income', asOf: '2024-12-31' },
+    })
+    const line = () => flat(rowOf(section('income'), '평균 근로소득(한 해)'))
+    render(<IncomeSection {...closed} snapshot={income(45_120_000, '가상도', 48_000_000)} />)
+    expect(line()).toContain('4,512만 원 · 2024년 귀속 · 가상도 평균 4,800만 원보다 6% 적어요') // 2,880,000 ÷ 48,000,000 = 6%
+    cleanup()
+    render(<IncomeSection {...closed} snapshot={income(50_000_000, '가상도', 48_000_000)} />)
+    expect(line()).toContain('5,000만 원 · 2024년 귀속 · 가상도 평균 4,800만 원보다 4% 많아요') // 4.16…% → 4%
+    cleanup()
+    render(<IncomeSection {...closed} snapshot={income(48_400_000, '가상도', 48_000_000)} />)
+    expect(line()).toContain('가상도 평균 4,800만 원과 같아요') // 0.83…% → 0%
+    cleanup()
+    // 시·도 이름이 없으면 `시·도 평균`
+    render(<IncomeSection {...closed} snapshot={income(45_120_000, null, 48_000_000)} />)
+    expect(line()).toContain('· 시·도 평균 4,800만 원보다 6% 적어요')
+    cleanup()
+    // 시·도 평균이 없는(옛) 값은 견주지 않는다
+    const compared = /평균 [\d,억만 ]+원(?:보다|과 같아요)/
+    render(<IncomeSection {...closed} snapshot={income(45_120_000, '가상도', null)} />)
+    expect(line()).toContain('4,512만 원 · 2024년 귀속')
+    expect(line()).not.toMatch(compared)
+    cleanup()
+    render(<IncomeSection {...closed} snapshot={SNAP} />)
+    expect(line()).toContain('4,512만 원 · 2024년 귀속')
+    expect(line()).not.toMatch(compared)
+  })
+
   it('AC-7909.7: 소득 자료가 없어도 `동 단위 자료가 없어요.`는 남는다', () => {
     render(<IncomeSection {...closed} snapshot={{ ...SNAP, income: { ok: false, why: 'none', src: 'income' } }} />)
     const s = section('income')

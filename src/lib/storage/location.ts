@@ -84,7 +84,8 @@ const LISTING_COLUMNS =
 const NOTE_COLUMNS = 'id, candidate_id, day, body, created_at'
 const PHOTO_COLUMNS = 'id, candidate_id, path, label, taken_on, created_at'
 const EVENT_COLUMNS = 'id, candidate_id, kind, clinic_name, dept, event_on, dist_m, seen_at, created_at'
-const WATCH_COLUMNS = 'id, name, status, lat, lng, radius_m, watch_checked_on, created_at' // 알림 확인: 그날 값 없음, 이름은 알림 아래 줄에
+// 알림 확인: 이름은 알림 아래 줄에, 그날 값은 place 칸 하나만(시도·시군구 이름 → 인허가 주소 앞부분, design.md 12절)
+const WATCH_COLUMNS = 'id, name, status, lat, lng, radius_m, watch_checked_on, created_at, place:snapshot->place'
 const EVENT_UNIQUE = 'candidate_id,kind,clinic_name,event_on' // 같은 줄은 한 번(on conflict do nothing — 넣기 권한만 씀)
 
 const READ: LocationStorageCode = 'E-LOC-READ-FAILED'
@@ -415,13 +416,21 @@ function toEvent(row: unknown): LocationEvent | null {
   }
 }
 
+/** 그날 값 place 칸(받은 값, 실패면 지난 값)의 시도·시군구 이름. 없거나 이름이 빈 글자·글자가 아니면 null */
+function placeOf(got: unknown): WatchCandidate['place'] {
+  if (!isRecord(got)) return null
+  const v = got.ok === true ? got.v : isRecord(got.prev) ? got.prev.v : undefined
+  if (!isRecord(v) || !isFilled(v.sidoName) || !isFilled(v.sggName)) return null
+  return { sidoName: v.sidoName, sggName: v.sggName }
+}
+
 function toWatch(row: unknown): WatchCandidate | null {
   if (!isRecord(row)) return null
   const { id, name, status, lat, lng, radius_m: radiusM, watch_checked_on: watchCheckedOn, created_at: createdAt } = row
   if (!isFilled(id) || !isFilled(name) || !isOneOf(STATUSES, status)) return null
   if (!inRange(lat, 33, 39) || !inRange(lng, 124, 132) || !isOneOf(RADII, radiusM)) return null
   if (!orNull(watchCheckedOn, isDay) || !isString(createdAt)) return null
-  return { id, name, status, lat, lng, radiusM, watchCheckedOn: watchCheckedOn as string | null, createdAt }
+  return { id, name, status, lat, lng, radiusM, watchCheckedOn: watchCheckedOn as string | null, createdAt, place: placeOf(row.place) }
 }
 
 /** 넣기·고치기 답 줄 하나를 읽기와 같은 검사로 바꾼다(틀리면 그 번호로 실패) */
@@ -486,13 +495,15 @@ export async function resetDeptRule(client: LocationClient): Promise<SavedSettin
   return saveDeptRule(client, DEFAULT_DEPT_RULE)
 }
 
-/** 알림 쪽(대시보드 useLocationWatch)이 과목 고르기만 읽는다(dept_rule 칸 하나). 줄이 없거나 못 읽으면 던지지 않고 처음 값 */
-export async function readDeptRule(client: LocationClient): Promise<DeptRule> {
+/** 알림 쪽(대시보드 useLocationWatch)이 과목 고르기만 읽는다(dept_rule 칸 하나). 줄이 없거나 그 칸이 없으면(예전 줄) 처음 값,
+ * 못 읽으면(오류 답·예외·줄 아닌 답) 던지지 않고 null — 알림 확인이 처음 값으로 확인하고 확인 날을 고치지 않게(design.md 12절) */
+export async function readDeptRule(client: LocationClient): Promise<DeptRule | null> {
   try {
     const row = await send(READ, () => client.from(SETTINGS).select('dept_rule').maybeSingle())
-    return fillDeptRule(isRecord(row) ? row.dept_rule : null)
+    if (row === null) return fillDeptRule(null)
+    return isRecord(row) ? fillDeptRule(row.dept_rule) : null
   } catch {
-    return fillDeptRule(null)
+    return null
   }
 }
 
@@ -721,7 +732,7 @@ export async function readPhoto(client: LocationClient, path: string): Promise<B
 
 // ── 새 경쟁 의원 알림 (대시보드 useLocationWatch · 후보 화면) ──
 
-/** 알림을 확인할 후보: 알림에 쓰는 칸만(그날 값 없음 — 후보 이름은 알림 아래 줄, AC-7915.2), 만든 차례 */
+/** 알림을 확인할 후보: 알림에 쓰는 칸만(그날 값은 place의 시도·시군구 이름만 — 후보 이름은 알림 아래 줄, AC-7915.2), 만든 차례 */
 export async function listWatchCandidates(client: LocationClient): Promise<WatchCandidate[]> {
   const rows = await readAll(READ, (first, last) =>
     client.from(CANDIDATES).select(WATCH_COLUMNS).order('created_at', ASC).order('id', ASC).range(first, last),

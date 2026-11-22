@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { queryLocation } from '@/components/location/clients'
 import { addDays, addMonthsToDay, compareYmd } from '@/lib/analytics/dates'
 import { DEFAULT_DEPT_RULE } from '@/lib/location/depts'
+import { placeAddr } from '@/lib/location/snapshot'
 import { dueCandidates, pickEvents, type LicenseFound, type WatchGroup } from '@/lib/location/watch'
 import {
   addEvents,
@@ -20,11 +21,14 @@ import { alertLines, type AlertLine } from './alertLines'
 
 // 대시보드 새 경쟁 의원 알림 읽기 (specs/location REQ-7915 AC-7915.1~AC-7915.3, design.md 12절, 본보기 dashboard/warranty/useWarrantySoon).
 // 관리자 대시보드를 열 때 한 번, 20초 한도로:
-//   ⓪ 과목 고르기 설정(readDeptRule — 줄이 없거나 못 읽으면 처음 값)을 읽는다. 경쟁 과목이 0개면 확인도 알림 줄도 없다(바깥 자료를 부르지 않음).
-//   ① 확인할 후보(내려놓지 않았고 마지막 확인이 30일 넘음·없음, 만든 차례 5곳 — dueCandidates)를 같은 기간끼리 묶어, 묶음마다
-//      clinic-license 개업·폐업을 한 번씩 받고 후보 범위 안 경쟁 의원 줄(pickEvents, 그 설정의 경쟁 과목 = 대표 과목)을 넣은 뒤
+//   ⓪ 과목 고르기 설정(readDeptRule — 줄이 없으면 처음 값)을 읽는다. 경쟁 과목이 0개면 확인도 알림 줄도 없다(바깥 자료를 부르지 않음).
+//      설정을 못 읽으면(null·던짐) 그번 확인(①)을 건너뛴다 — 처음 값으로 확인하고 확인 날을 고치면 고른 과목의 줄을 놓친다(design.md 12절).
+//   ① 확인할 후보(내려놓지 않았고 마지막 확인이 30일 넘음·없음, 만든 차례 5곳 — dueCandidates)를 같은 기간·같은 주소 앞부분끼리 묶어,
+//      묶음마다 clinic-license 개업·폐업을 한 번씩 받고(주소 앞부분 addr = 후보 그날 값 place의 '{시도} {시군구}', 세종처럼 둘이 같으면 하나 —
+//      place가 없으면 addr 없이) 후보 범위 안 경쟁 의원 줄(pickEvents, 그 설정의 경쟁 과목 = 대표 과목)을 넣은 뒤
 //      (같은 줄은 DB가 한 번만 둔다) 그 후보들의 확인 날을 오늘로 고친다.
 //      묶음의 답 하나라도 못 받으면(열쇠 없음·활용 신청 안 됨·실패·틀린 모양) 그 묶음은 넣지도 확인 날을 고치지도 않는다 → 다음에 같은 기간을 다시 본다.
+//      답이 한도에 잘렸으면(capped) 찾은 줄은 넣되 확인 날을 고치지 않는다(빠진 줄을 다음에 다시 본다).
 //      줄 넣기가 실패해도 확인 날을 고치지 않는다. 기간이 받을 수 있는 가장 긴 기간(36달)을 넘으면 앞을 당긴다(오래 내려놓았다 되살린 후보가 막히지 않게).
 //   ② 안 본 알림 줄을 읽어(①이 실패해도 읽는다) 후보 이름·대표 과목 짧은 이름을 붙이고 지금 설정의 경쟁 과목 줄만 남긴다(alertLines).
 //      후보 이름은 ①에서 읽은 후보 목록에서 찾는다(후보 읽기가 실패하면 이름 없이).
@@ -67,12 +71,26 @@ function licenseRows(value: unknown): LicenseRow[] | null {
   })
 }
 
-/** 기간 하나의 개업 또는 폐업. 못 받으면 null */
-async function license(kind: 'open' | 'close', from: string, to: string): Promise<LicenseFound | null> {
-  const reply = await queryLocation({ kind: 'clinic-license', event: kind, from, to })
+/** 기간 하나(+ 주소 앞부분)의 개업 또는 폐업과 답이 한도에 잘렸는지(capped). 못 받으면 null */
+async function license(kind: 'open' | 'close', from: string, to: string, addr: string | null): Promise<(LicenseFound & { capped: boolean }) | null> {
+  const base = { kind: 'clinic-license', event: kind, from, to } as const
+  const reply = await queryLocation(addr === null ? base : { ...base, addr })
   if (!reply.ok) return null
   const rows = licenseRows(reply.value)
-  return rows === null ? null : { kind, from, to, rows }
+  return rows === null ? null : { kind, from, to, rows, capped: isRecord(reply.value) && reply.value.capped === true }
+}
+
+/** 같은 기간 묶음을 주소 앞부분(addr, 없으면 null)마다 나눈다(처음 나온 차례) */
+type AddrGroup = WatchGroup & { addr: string | null }
+function byAddr(group: WatchGroup): AddrGroup[] {
+  const out = new Map<string | null, AddrGroup>()
+  for (const c of group.candidates) {
+    const addr = c.place ? placeAddr(c.place) : null
+    const seen = out.get(addr)
+    if (seen) seen.candidates.push(c)
+    else out.set(addr, { from: group.from, to: group.to, addr, candidates: [c] })
+  }
+  return [...out.values()]
 }
 
 /** 기간 앞이 끝에서 36달보다 앞이면 당긴다(하루 뒤로 — 그 날 + 36달이 말일 때문에 끝보다 앞이 되지 않게) */
@@ -81,32 +99,37 @@ function clampFrom(from: string, to: string): string {
   return compareYmd(from, earliest) < 0 ? earliest : from
 }
 
-async function checkGroup(client: LocationClient, group: WatchGroup, rule: DeptRule, today: string): Promise<void> {
+async function checkGroup(client: LocationClient, group: AddrGroup, rule: DeptRule, today: string): Promise<void> {
   const from = clampFrom(group.from, group.to)
-  const [opened, closed] = await Promise.all([license('open', from, group.to), license('close', from, group.to)])
+  const [opened, closed] = await Promise.all([license('open', from, group.to, group.addr), license('close', from, group.to, group.addr)])
   if (opened === null || closed === null) return
   const events = group.candidates.flatMap((c) => [...pickEvents(opened, c, rule), ...pickEvents(closed, c, rule)])
   if (events.length > 0) await addEvents(client, events)
+  if (opened.capped || closed.capped) return // 잘린 답: 확인 날을 고치지 않는다(다음에 같은 기간을 다시 본다)
   await Promise.all(group.candidates.map((c) => setWatchChecked(client, c.id, today).catch(() => undefined)))
 }
 
 /** ① 확인. 묶음마다 따로 실패한다(한 묶음이 실패해도 다른 묶음은 그대로) */
 async function checkDue(client: LocationClient, candidates: readonly WatchCandidate[], rule: DeptRule, today: string): Promise<void> {
-  const groups = dueCandidates(candidates, today)
+  const groups = dueCandidates(candidates, today).flatMap(byAddr)
   await Promise.all(groups.map((group) => checkGroup(client, group, rule, today).catch(() => undefined)))
 }
 
-/** ⓪ 설정. readDeptRule은 던지지 않지만, 무엇이든 못 읽으면 처음 값 */
-const readRule = (client: LocationClient): Promise<DeptRule> => Promise.resolve().then(() => readDeptRule(client)).catch(() => DEFAULT_DEPT_RULE)
+/** ⓪ 설정. 못 읽으면(readDeptRule이 null을 주거나 던짐) null */
+const readRule = (client: LocationClient): Promise<DeptRule | null> =>
+  Promise.resolve()
+    .then(() => readDeptRule(client))
+    .catch(() => null)
 
-/** ⓪ 설정 → ① 확인 → ② 안 본 줄 읽기·줄 만들기 */
+/** ⓪ 설정 → ① 확인(설정을 못 읽으면 건너뜀) → ② 안 본 줄 읽기·줄 만들기(설정을 못 읽었으면 처음 값으로 거름) */
 async function readWatch(today: string): Promise<readonly AlertLine[]> {
   const client = supabaseBrowser()
   if (!canRead(client)) return NONE
-  const rule = await readRule(client)
+  const read = await readRule(client)
+  const rule = read ?? DEFAULT_DEPT_RULE
   if (rule.rival.length === 0) return NONE
   const candidates = await listWatchCandidates(client).catch(() => null)
-  if (candidates !== null) await checkDue(client, candidates, rule, today).catch(() => undefined)
+  if (read !== null && candidates !== null) await checkDue(client, candidates, rule, today).catch(() => undefined)
   return alertLines(await listUnseenEvents(client), candidates ?? [], rule)
 }
 

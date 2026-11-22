@@ -50,7 +50,8 @@ export const PRESALE_MERGED: Readonly<Record<string, readonly string[]>> = { 전
 const areasOf = (sidoName: string): readonly string[] =>
   Object.hasOwn(PRESALE_MERGED, sidoName) ? PRESALE_MERGED[sidoName] : [areaOf(sidoName)]
 
-export type Complex = { code: string; name: string }
+/** bdongName = 단지 목록 답의 읍면동 이름(as3, 리가 있으면 'as3 as4') — 그날 값 apts의 법정동 이름은 이 공공 값만 쓴다(ADR-044) */
+export type Complex = { code: string; name: string; bdongName: string }
 export type AptList = { complexes: Complex[]; capped: boolean }
 /** 단지 기본 정보. 그 단지 자료가 없으면(빈 답) null */
 export type AptInfo = { code: string; name: string; households: number | null; builtYear: number | null; buildings: number | null } | null
@@ -166,7 +167,8 @@ export const aptListAdapter: Adapter<'apt-list', AptList> = {
         const name = textOf(row.kaptName)
         if (!COMPLEX_CODE.test(code) || name === '' || seen.has(code)) continue
         seen.add(code)
-        complexes.push({ code, name })
+        const bdongName = [textOf(row.as3), textOf(row.as4)].filter((x) => x !== '').join(' ')
+        complexes.push({ code, name, bdongName })
       }
     }
     return { ok: true, value: { complexes, capped: total > APT_LIST_PAGES * APT_LIST_ROWS }, asOf: today }

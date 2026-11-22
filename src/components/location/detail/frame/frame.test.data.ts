@@ -102,7 +102,7 @@ export function makeSnapshot(over: Partial<Snapshot> = {}): Snapshot {
       'flow-volume',
       '2026-09-01',
     ),
-    income: ok({ sggName: '예시구', won: 45_000_000, year: 2024 }, 'income', '2024-12-31'),
+    income: ok({ sggName: '예시구', won: 45_000_000, year: 2024, sidoName: '예시도', sidoWon: 48_000_000 }, 'income', '2024-12-31'),
     aptPrice: ok({ perM2: 8_000_000, deals: 30 }, 'apt-trade', '2026-11-15'),
     bizPrice: ok({ perM2: 6_000_000, deals: 5 }, 'biz-trade', '2026-11-15'),
     apts: ok(

@@ -65,7 +65,7 @@ const LISTING_COLUMNS =
 const NOTE_COLUMNS = 'id, candidate_id, day, body, created_at'
 const PHOTO_COLUMNS = 'id, candidate_id, path, label, taken_on, created_at'
 const EVENT_COLUMNS = 'id, candidate_id, kind, clinic_name, dept, event_on, dist_m, seen_at, created_at'
-const WATCH_COLUMNS = 'id, name, status, lat, lng, radius_m, watch_checked_on, created_at'
+const WATCH_COLUMNS = 'id, name, status, lat, lng, radius_m, watch_checked_on, created_at, place:snapshot->place'
 
 // 칸 권한(migration grant)에 있는 칸
 const CANDIDATE_WRITABLE = [
@@ -1138,22 +1138,25 @@ describe('saveDeptRule · resetDeptRule · readDeptRule — 의원 과목 고르
     expect(onlyTable(calls)).toMatchObject({ table: 'location_settings', op: 'select', columns: 'dept_rule', single: true })
   })
 
-  it('AC-7921.2·AC-7915.2: readDeptRule은 줄이 없거나 못 읽으면(오류 답·예외·틀린 모양) 던지지 않고 처음 값', async () => {
-    const replies: ((call: Call) => Reply)[] = [
-      () => ({ data: null }),
-      () => ({ error: RAW_ERROR }),
-      () => ({ data: 'row' }),
-      () => ({ data: { dept_rule: 'ortho' } }),
-      () => ({ data: {} }),
-      () => {
-        throw new Error(SECRET)
-      },
-    ]
+  it('AC-7921.2·AC-7915.1: readDeptRule은 줄이 없거나 줄에 과목 칸이 없으면(예전 줄·틀린 칸 모양) 처음 값', async () => {
+    const replies: ((call: Call) => Reply)[] = [() => ({ data: null }), () => ({ data: { dept_rule: 'ortho' } }), () => ({ data: {} })]
     for (const reply of replies) {
       const rule = await readDeptRule(fakeClient(reply).client)
       expect(rule).toEqual(DEFAULT_DEPT_RULE)
       expect(Object.isFrozen(rule)).toBe(false)
     }
+  })
+
+  it('AC-7915.1: readDeptRule은 못 읽으면(오류 답·예외·줄 아닌 답) 던지지 않고 null — 알림 확인이 처음 값으로 확인하지 않게 실패를 알린다', async () => {
+    const replies: ((call: Call) => Reply)[] = [
+      () => ({ error: RAW_ERROR }),
+      () => ({ data: 'row' }),
+      () => ({ data: [] }),
+      () => {
+        throw new Error(SECRET)
+      },
+    ]
+    for (const reply of replies) expect(await readDeptRule(fakeClient(reply).client)).toBeNull()
   })
 })
 
@@ -1250,11 +1253,46 @@ describe('새 경쟁 의원 알림 줄 — 대시보드가 부름', () => {
       }),
     )
     expect(await listWatchCandidates(client)).toEqual([
-      { id: CAND, name: '역앞 자리', status: 'watching', lat: 37.5, lng: 127, radiusM: 1000, watchCheckedOn: '2026-10-01', createdAt: T1 },
+      { id: CAND, name: '역앞 자리', status: 'watching', lat: 37.5, lng: 127, radiusM: 1000, watchCheckedOn: '2026-10-01', createdAt: T1, place: null },
     ])
     const call = onlyTable(calls)
     expect(call).toMatchObject({ table: 'location_candidates', op: 'select', columns: WATCH_COLUMNS, range: [0, 999] })
-    expect(call.columns).not.toMatch(/snapshot/)
+    // 그날 값은 place 칸 하나만(시도·시군구 이름 — 인허가 주소 앞부분), 몸통 전체는 읽지 않는다
+    expect(String(call.columns).replace('place:snapshot->place', '')).not.toMatch(/snapshot/)
+  })
+
+  it('AC-7915.1: 알림 확인할 후보는 그날 값 place(받은 값, 실패면 지난 값)의 시도·시군구 이름을 함께 읽고, 없거나 모양이 틀리면 null', async () => {
+    const place = (v: unknown) => ({ ok: true, v, src: 'dongs', asOf: '2026-07-01' })
+    const V = { sido: '36', sidoName: '세종특별자치시', sgg: '36110', sggName: '세종특별자치시', dong: null, dongName: null }
+    const rows = [
+      { place: place(V) },
+      { place: { ok: false, why: 'failed', src: 'dongs', prev: { v: { ...V, sidoName: '가람도', sggName: '나래시 다솜구' }, asOf: '2026-07-01' } } },
+      { place: { ok: false, why: 'outside', src: 'dongs' } },
+      { place: place({ ...V, sidoName: 3 }) },
+      { place: place({ ...V, sggName: '' }) },
+      { place: 'x' },
+      {},
+    ].map((over, i) => ({
+      id: `aaaaaaaa-0000-4000-8000-00000000010${i}`,
+      name: `자리 ${i}`,
+      status: 'watching',
+      lat: 37.5,
+      lng: 127,
+      radius_m: 1000,
+      watch_checked_on: null,
+      created_at: T1,
+      ...over,
+    }))
+    const { client } = fakeClient(by({ 'location_candidates:select': () => ({ data: rows }) }))
+    expect((await listWatchCandidates(client)).map((c) => c.place)).toEqual([
+      { sidoName: '세종특별자치시', sggName: '세종특별자치시' },
+      { sidoName: '가람도', sggName: '나래시 다솜구' },
+      null,
+      null,
+      null,
+      null,
+      null,
+    ])
   })
 
   it('AC-7915.1: 알림 줄 넣기는 같은 줄을 건너뛰는 넣기(on conflict do nothing)만 쓰고, 틀린 줄은 빼고 넣는다', async () => {
