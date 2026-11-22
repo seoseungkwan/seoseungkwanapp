@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>가입 승인 · 관리자 정하기 시안</title>
+<!--
+  multi-admin 시안: 가입 승인(/admin) '승인' 탭에서 다른 원장 계정을 관리자로 정하고 뺀다. 결정·화면 글자 목록은 notes.md.
+  ?s=list(기본, 주 관리자가 볼 때) · add · remove · done · removed · error · other(다른 관리자가 볼 때)
+  모양은 지금 화면(src/components/admin/AdminApplications.tsx · ds 클래스 · globals.css :root 토큰) 그대로 옮겼다. 새 색은 없다.
+  PC 화면만이다(폰 전용 모양 없음). 의원 이름·사람 이름·메일(@example.com)·번호는 모두 지어낸 값이다. 어디로도 보내지 않는다.
+-->
+<style>
+@font-face { font-family: 'AppPretendard'; font-weight: 400; src: url('../../../src/app/fonts/Pretendard-Regular.subset.woff2') format('woff2'); }
+@font-face { font-family: 'AppPretendard'; font-weight: 500; src: url('../../../src/app/fonts/Pretendard-Medium.subset.woff2') format('woff2'); }
+@font-face { font-family: 'AppPretendard'; font-weight: 600; src: url('../../../src/app/fonts/Pretendard-SemiBold.subset.woff2') format('woff2'); }
+
+/* 앱 토큰(src/app/globals.css :root) */
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827;
+  --accent: #2563EB; --accent-strong: #1D4ED8; --accent-soft: #EAF1FE;
+  --positive: #15803D; --positive-soft: #ECF7EF; --negative: #C2410C; --negative-soft: #FDF0EA;
+  --r-control: 4px; --r-float: 8px;
+  --elev-float: 0 1px 2px rgb(17 24 39 / 0.06), 0 6px 16px rgb(17 24 39 / 0.1);
+  --ui: 'AppPretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  color-scheme: light;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; border: 0 solid; }
+html { background: var(--surface); }
+body { background: var(--surface); color: var(--ink); font: 400 14px/22px var(--ui); font-variant-numeric: tabular-nums; word-break: keep-all; }
+button { font: inherit; color: inherit; letter-spacing: inherit; background-color: transparent; cursor: pointer; }
+a { color: inherit; }
+svg { flex: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }
+
+/* ── 시안 고르기 띠(앱 밖, 검토용) ── */
+.mbar { background: var(--canvas); border-bottom: 1px solid var(--line-strong); }
+.mbar-in { max-width: 1280px; margin: 0 auto; padding: 8px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 12px; line-height: 18px; color: var(--muted); }
+.mbar b { font-size: 13px; font-weight: 600; color: var(--ink); }
+.mseg { display: flex; flex-wrap: wrap; gap: 4px; }
+.mseg a { padding: 2px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--ink-2); text-decoration: none; white-space: nowrap; }
+.mseg a[aria-current="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); font-weight: 600; }
+.mfail { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
+
+/* ── 앱 틀(AppShell · TabBar · MoreMenu · AccountMenu) ── */
+.top { border-bottom: 1px solid var(--line); background: var(--surface); }
+.top-in { max-width: 1280px; margin: 0 auto; height: 56px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand span { min-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.top-r { display: flex; flex-shrink: 0; align-items: center; gap: 16px; }
+.clock { white-space: nowrap; font-size: 13px; line-height: 20px; color: var(--muted); }
+.acct span { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.tabsbar { display: flex; border-bottom: 1px solid var(--line); background: var(--surface); }
+.tabs-in { display: flex; flex: 1; min-width: 0; max-width: 1280px; margin: 0 auto; }
+.strip { flex: 1; min-width: 0; }
+.strip-row { display: flex; align-items: stretch; padding: 0 24px; }
+.strip-row > :first-child { margin-left: -12px; }
+.atab, .more { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; height: 44px; padding: 0 12px; border-radius: var(--r-control); white-space: nowrap; font-size: 14px; line-height: 22px; font-weight: 500; color: var(--ink-2); text-decoration: none; transition: color .15s; }
+.atab:hover, .more:hover { color: var(--ink); }
+.more-wrap { position: relative; display: flex; flex-shrink: 0; margin-right: 12px; }
+
+main { background: var(--surface); }
+.main-in { max-width: 1280px; margin: 0 auto; padding: 24px 24px 48px; }
+
+/* ── 공통 모양 ds(src/components/ui/classes.ts) ── */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; border-radius: var(--r-control); border-width: 1px; transition: background-color .15s, color .15s; }
+.btn:not(:disabled):active { transform: translateY(1px); }
+.btn:disabled { cursor: not-allowed; opacity: .4; }
+.btn-md { height: 36px; padding: 0 16px; font-size: 14px; line-height: 22px; font-weight: 500; }
+.btn-sm { height: 32px; padding: 0 12px; font-size: 13px; line-height: 20px; font-weight: 500; }
+.btn-sm-b { height: 32px; padding: 0 12px; font-size: 13px; line-height: 20px; font-weight: 600; }
+.t-primary { border-color: transparent; background: var(--accent); color: var(--surface); }
+.t-primary:not(:disabled):hover { background: var(--accent-strong); }
+.t-secondary { border-color: var(--line-strong); background: var(--surface); color: var(--ink); }
+.t-secondary:not(:disabled):hover { background: var(--canvas); }
+.t-danger { border-color: var(--line-strong); background: var(--surface); color: var(--negative); }
+.t-danger:not(:disabled):hover { background: var(--canvas); }
+.t-accent-outline { border-color: var(--accent); background: var(--surface); color: var(--accent); }
+.t-accent-outline:not(:disabled):hover { background: var(--accent-soft); }
+
+.chip { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; height: 20px; padding: 0 6px; white-space: nowrap; border-radius: var(--r-control); border: 1px solid transparent; font-size: 12px; line-height: 16px; font-weight: 500; }
+.chip-accent { background: var(--accent-soft); color: var(--accent-strong); }   /* ds.chip.accent */
+.chip-positive { background: var(--positive-soft); color: var(--positive); }    /* ds.chip.positive */
+
+.panel { min-width: 0; border: 1px solid var(--line); border-radius: var(--r-control); background: var(--surface); }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px 0; }
+.panel-title { font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.panel-desc { padding: 4px 20px 0; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+
+.twrap { min-width: 0; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 20px; }
+th { height: 40px; white-space: nowrap; border-bottom: 1px solid var(--line); padding: 0 12px; text-align: left; font-weight: 500; color: var(--muted); }
+td { height: 44px; white-space: nowrap; border-bottom: 1px solid var(--line); padding: 0 12px; color: var(--ink); }
+th:first-child, td:first-child { padding-left: 20px; }
+th:last-child, td:last-child { padding-right: 20px; }
+tbody tr:hover { background: var(--canvas); }
+tbody tr:last-child > * { border-bottom-width: 0; }
+td.sub { color: var(--ink-2); }
+
+/* ── 관리자 · 가입 승인(AdminApplications) ── */
+.admin { display: flex; flex-direction: column; gap: 16px; }
+.head { display: flex; flex-direction: column; gap: 4px; }
+.loc { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--muted); }
+h1 { font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); }
+.intro { max-width: 560px; font-size: 14px; line-height: 22px; color: var(--ink-2); }
+.install { display: flex; flex-direction: column; gap: 12px; }
+.install .twrap { padding-top: 12px; }
+.install td.up { text-align: right; }
+
+.itabs { display: flex; border-bottom: 1px solid var(--line); }
+.itab { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; gap: 6px; height: 40px; padding: 0 12px; border-radius: var(--r-control); white-space: nowrap; font-size: 14px; line-height: 22px; font-weight: 500; color: var(--ink-2); }
+.itab:first-child { margin-left: -12px; }
+.itab:hover { color: var(--ink); }
+.itab:focus-visible { outline-offset: -2px; }
+.itab[aria-selected="true"] { font-weight: 600; color: var(--ink); }
+.itab[aria-selected="true"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; background: var(--accent); }
+/* 굵기가 바뀌어도 폭이 흔들리지 않게 600 글자 폭을 미리 잡는다 */
+.itab .lb { display: inline-flex; flex-direction: column; align-items: center; }
+.itab .lb::after { content: attr(data-label); visibility: hidden; height: 0; overflow: hidden; font-weight: 600; }
+.itab .n { font-weight: 500; color: var(--muted); }
+
+.status { display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 20px; color: var(--positive); }
+.status:empty { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+
+.ecard { display: flex; align-items: flex-start; gap: 8px; border-radius: var(--r-control); background: var(--negative-soft); padding: 12px 16px; }
+.ecard svg { margin-top: 2px; color: var(--negative); }
+.ecard .tx { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.ecard .w { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--negative); }
+.ecard .f { font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.ecard .c { font-size: 12px; line-height: 16px; color: var(--ink-2); }
+
+.apps { table-layout: fixed; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface); }
+.apps tbody tr { height: 56px; }
+.apps td { font-size: 14px; line-height: 22px; }
+.apps td.act { font-size: 13px; line-height: 20px; }
+.apps td.clinic { font-weight: 600; }
+.apps td.trunc { overflow: hidden; text-overflow: ellipsis; }
+.apps td .dt { color: var(--muted); }
+/* 칸 폭(지금 화면 COLUMNS, 1024px 이상): 신청일·신청자 120 · EMR 112 · 연락처 150 · 동작 150 → 이 시안은 동작만 notes.md '칸 폭'대로 */
+.apps col.c-date, .apps col.c-who { width: 120px; }
+.apps col.c-emr { width: 112px; }
+.apps col.c-tel { width: 150px; }
+.apps col.c-act { width: 150px; }
+.apps th.r { text-align: right; }
+/* 새: 의원 이름 + '관리자' 칩. 이름만 말줄임되고 칩은 늘 보인다 */
+.nm { display: flex; min-width: 0; align-items: center; gap: 6px; }
+.nm > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.acts { display: flex; justify-content: flex-end; gap: 8px; }
+.mine { font-size: 13px; line-height: 20px; color: var(--muted); }   /* 새: 내 줄 '내 계정' */
+
+/* 확인 창(RejectDialog 틀): 가림막 ink 36% · ds.layer · 폭 400 · 안쪽 24 */
+.scrim { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgb(17 24 39 / 0.36); }
+.dlg { display: flex; width: 100%; max-width: 400px; flex-direction: column; gap: 16px; padding: 24px; border: 1px solid var(--line); border-radius: var(--r-float); background: var(--surface); box-shadow: var(--elev-float); outline: none; }
+.dlg h2 { font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.dlg .who { display: flex; flex-direction: column; gap: 2px; border-radius: var(--r-control); background: var(--canvas); padding: 8px 12px; }
+.dlg .who b { font-size: 14px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.dlg .who span { word-break: break-all; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.dlg p { font-size: 14px; line-height: 22px; color: var(--ink-2); }
+.dlg .row { display: flex; justify-content: flex-end; gap: 8px; }
+</style>
+</head>
+<body>
+
+<div class="mbar"><div class="mbar-in">
+  <b>가입 승인 · 관리자 정하기·빼기 시안</b>
+  <nav class="mseg" aria-label="시안 상태" id="mseg"></nav>
+  <label class="mfail"><input type="checkbox" id="failNext"> 확인 단추를 실패로</label>
+</div></div>
+
+<div class="app">
+  <div class="top"><div class="top-in">
+    <div class="brand">
+      <svg aria-hidden="true" width="24" height="24" viewBox="0 0 30 30"><rect x="3" y="3" width="24" height="24" rx="6" fill="none" stroke="#14C8BA" stroke-width="2.4"/><path d="M13.5 8h3a1 1 0 0 1 1 1v3.5H21a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3.5V21a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3.5H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3.5V9a1 1 0 0 1 1-1z" fill="#6D5DF5"/></svg>
+      <span id="brandName">한결정형외과의원</span>
+    </div>
+    <div class="top-r">
+      <time class="clock">2026년 11월 22일 (일) 14:05 (KST)</time>
+      <button type="button" class="btn btn-sm t-secondary acct" aria-expanded="false">
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="5.5" r="2.75"/><path d="M2.75 14c.6-2.5 2.7-3.9 5.25-3.9s4.65 1.4 5.25 3.9"/></svg>
+        <span id="acctEmail">hangyeol@example.com</span>
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4.75 6.25 3.25 3.25 3.25-3.25"/></svg>
+      </button>
+    </div>
+  </div></div>
+  <nav class="tabsbar" aria-label="메뉴"><div class="tabs-in">
+    <div class="strip"><div class="strip-row">
+      <a class="atab" href="#">대시보드</a><a class="atab" href="#">통계</a><a class="atab" href="#">청구</a><a class="atab" href="#">고시·공지</a><a class="atab" href="#">환자</a><a class="atab" href="#">업무일지</a><a class="atab" href="#">수납일지</a><a class="atab" href="#">예약</a>
+    </div></div>
+    <div class="more-wrap"><button type="button" class="more" aria-expanded="false">더보기<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4.75 6.25 3.25 3.25 3.25-3.25"/></svg></button></div>
+  </div></nav>
+
+  <main id="main" tabindex="-1"><div class="main-in"><div class="admin" id="admin"></div></div></main>
+</div>
+
+<div id="layer"></div>
+
+<script>
+(() => {
+  // ── 화면 글자(브리프 multi-admin-brief.md '화면 글자' 그대로) ──
+  const INTRO = '승인하면 그 계정은 바로 대시보드를 쓸 수 있어요. 거절한 신청은 거절 탭에서 되돌릴 수 있어요. 승인 탭에서 관리자를 정하거나 뺄 수 있어요.';
+  const T = {
+    badge: '관리자',
+    owner: '주 관리자',
+    add: '관리자로 정하기',
+    remove: '관리자 빼기',
+    mine: '내 계정',
+    addTitle: '이 계정을 관리자로 정할까요?',
+    addBody: '관리자는 가입 승인·거절, 설치 파일 올리기, 관리자 정하기·빼기를 할 수 있어요.',
+    addOk: '관리자로 정하기',
+    removeTitle: '관리자에서 뺄까요?',
+    removeBody: '빼도 이 계정은 지금처럼 대시보드를 써요. 가입 승인 화면만 열 수 없어요.',
+    removeOk: '빼기',
+    cancel: '취소',
+    doneAdd: (n) => `${n} 계정을 관리자로 정했어요.`,
+    doneRemove: (n) => `${n} 계정을 관리자에서 뺐어요.`,
+  };
+  // 실패 카드: 새 번호 E-ADMIN-ROLE(브리프). 무엇이·어떻게 고치나 글은 브리프에 없어 이 시안이 정함(notes.md '브리프와 다른 곳')
+  const ERR = { code: 'E-ADMIN-ROLE', what: '관리자를 정하거나 빼지 못했어요', fix: '인터넷 연결을 확인하고 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.' };
+
+  const EMR = { bit: '비트', uisarang: '의사랑', egis: '이지스', other: '그 밖의 EMR' };
+  const TABS = [{ key: 'pending', label: '대기' }, { key: 'approved', label: '승인' }, { key: 'rejected', label: '거절' }];
+  const EMPTY = { pending: ['대기 중인 신청이 없어요', '새 가입 신청이 오면 여기에 보여요.'], approved: ['승인한 신청이 없어요', '승인한 계정이 여기에 모여요.'], rejected: ['거절한 신청이 없어요', '거절한 신청은 여기에서 되돌릴 수 있어요.'] };
+
+  // 합성 자료(신청일 내림차순 = DB가 주는 차례). OWNER = 주 관리자(원장님 계정)의 병원.
+  // 보는 사람(st.me): 기본은 주 관리자 자신, s=other는 다른 관리자(새봄재활의학과의원)
+  const OWNER = 'h5';
+  const OTHER_VIEWER = 'h3';
+  const ROWS = [
+    { id: 'p1', status: 'pending', date: '2026-11-21', name: '맑은정형외과의원', emr: 'bit', who: '윤맑음', email: 'malgeum@example.com', tel: '0215559876' },
+    { id: 'p2', status: 'pending', date: '2026-11-21', name: '푸른통증의학과의원', emr: 'uisarang', who: '한푸른', email: 'pureun@example.com', tel: null },
+    { id: 'h1', status: 'approved', date: '2026-11-20', name: '바른정형외과의원', emr: 'bit', who: '김바른', email: 'barun@example.com', tel: '0255512345' },
+    { id: 'h2', status: 'approved', date: '2026-11-14', name: '하늘마취통증의학과의원', emr: 'uisarang', who: '이하늘', email: 'haneul.pain@example.com', tel: '03177723456' },
+    { id: 'h3', status: 'approved', date: '2026-11-06', name: '새봄재활의학과의원', emr: 'egis', who: '정새봄', email: 'saebom@example.com', tel: '0425558899' },
+    { id: 'h4', status: 'approved', date: '2026-10-30', name: '튼튼정형외과의원', emr: 'other', who: '박튼튼', email: 'teunteun@example.com', tel: null },
+    { id: 'h5', status: 'approved', date: '2026-10-28', name: '한결정형외과의원', emr: 'bit', who: '최한결', email: 'hangyeol@example.com', tel: '01012345678' },
+    { id: 'r1', status: 'rejected', date: '2026-11-02', name: '시험정형외과', emr: 'other', who: '오시험', email: 'test@example.com', tel: null },
+  ];
+  const byId = (id) => ROWS.find((r) => r.id === id);
+
+  const STATES = [
+    ['list', '목록'], ['add', '정하기 확인'], ['remove', '빼기 확인'], ['done', '정한 뒤'], ['removed', '뺀 뒤'], ['error', '실패'], ['other', '다른 관리자가 볼 때'],
+  ];
+
+  // 상태
+  let st;
+  function fromQuery(s) {
+    const base = { tab: 'approved', admins: new Set([OWNER, 'h3']), dialog: null, message: '', failed: false, me: s === 'other' ? OTHER_VIEWER : OWNER };
+    if (s === 'add') base.dialog = { kind: 'add', id: 'h1' };
+    if (s === 'remove') base.dialog = { kind: 'remove', id: 'h3' };
+    if (s === 'done') { base.admins.add('h1'); base.message = T.doneAdd(byId('h1').name); }
+    if (s === 'removed') { base.admins.delete('h3'); base.message = T.doneRemove(byId('h3').name); }
+    if (s === 'error') base.failed = true;
+    return base;
+  }
+  function stateName() {
+    // 다른 관리자 화면에서 누르며 옮겨 다닐 때는 주소를 s=other로 둔다(주소의 다른 상태는 주 관리자가 보는 화면)
+    if (st.me !== OWNER) return 'other';
+    if (st.dialog) return st.dialog.kind;
+    if (st.failed) return 'error';
+    if (st.message) return st.message.endsWith('뺐어요.') ? 'removed' : 'done';
+    return 'list';
+  }
+
+  // ── 그림 조각 ──
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const svg16 = (inner, extra = '') => `<svg aria-hidden="true" ${extra} width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+  const ICON_USERCHECK = `<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6.5" cy="5.25" r="2.5"/><path d="M1.75 13.5c.5-2.4 2.4-3.75 4.75-3.75 1.15 0 2.2.3 3.05.9"/><path d="m10 12 1.6 1.6 3-3.35"/></svg>`;
+  const ICON_UPLOAD = svg16('<path d="M8 10.25V2.75M5 5.5l3-2.75 3 2.75M2.75 10.5v2.75h10.5V10.5"/>');
+  const check = (size) => `<svg aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
+  const ICON_RESTORE = `<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5v5h5"/><path d="M4.5 10A8 8 0 1 1 6 16.5"/></svg>`;
+  const ICON_ALERT = `<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5"/><path d="M12 16.5h.01"/></svg>`;
+
+  function phoneText(p) {
+    if (!p) return '—';
+    const head = p.startsWith('02') ? 2 : 3;
+    return `${p.slice(0, head)}-${p.slice(head, -4)}-${p.slice(-4)}`;
+  }
+
+  function actionCell(r) {
+    if (r.status === 'pending') return `<button type="button" class="btn btn-sm-b t-accent-outline">승인</button><button type="button" class="btn btn-sm t-secondary">거절</button>`;
+    if (r.status === 'rejected') return `<button type="button" class="btn btn-sm t-secondary">${ICON_RESTORE}되돌리기</button>`;
+    // 승인 탭(새): 내 줄 = 흐린 글자 / 주 관리자 줄(남이 볼 때) = 비움 / 다른 관리자 = [관리자 빼기] / 관리자 아님 = [관리자로 정하기] — 모두 보조 작은 단추
+    if (r.id === st.me) return `<span class="mine">${T.mine}</span>`;
+    if (r.id === OWNER) return '';
+    if (st.admins.has(r.id)) return `<button type="button" class="btn btn-sm t-secondary" data-act="ask-remove" data-id="${r.id}">${T.remove}</button>`;
+    return `<button type="button" class="btn btn-sm t-secondary" data-act="ask-add" data-id="${r.id}">${T.add}</button>`;
+  }
+
+  function clinicCell(r) {
+    const isAdmin = r.status === 'approved' && st.admins.has(r.id);
+    if (!isAdmin) return `<td class="clinic trunc" title="${esc(r.name)}">${esc(r.name)}</td>`;
+    // 주 관리자 줄은 '관리자' 대신 '주 관리자' 칩(같은 ds.chip.accent)
+    return `<td class="clinic" title="${esc(r.name)}"><div class="nm"><span>${esc(r.name)}</span><span class="chip chip-accent">${r.id === OWNER ? T.owner : T.badge}</span></div></td>`;
+  }
+
+  function render() {
+    const counts = { pending: 0, approved: 0, rejected: 0 };
+    ROWS.forEach((r) => { counts[r.status] += 1; });
+    const list = ROWS.filter((r) => r.status === st.tab);
+    const label = TABS.find((t) => t.key === st.tab).label;
+
+    const tabs = TABS.map((t) => {
+      const on = t.key === st.tab;
+      return `<button type="button" role="tab" class="itab" id="tab-${t.key}" aria-selected="${on}" aria-controls="panel" tabindex="${on ? 0 : -1}" data-act="tab" data-tab="${t.key}"><span class="lb" data-label="${t.label}">${t.label}</span><span class="n">${counts[t.key]}</span></button>`;
+    }).join('');
+
+    const body = list.length === 0
+      ? `<tr><td colspan="7" style="height:48px;padding-top:12px;padding-bottom:12px;color:var(--muted);white-space:normal"><p style="font-weight:500">${EMPTY[st.tab][0]}</p><p>${EMPTY[st.tab][1]}</p></td></tr>`
+      : list.map((r) => `<tr>
+          <td><span class="dt">${r.date}</span></td>
+          ${clinicCell(r)}
+          <td class="sub">${EMR[r.emr]}</td>
+          <td class="trunc" title="${esc(r.who)}">${esc(r.who)}</td>
+          <td class="sub trunc" title="${esc(r.email)}">${esc(r.email)}</td>
+          <td class="sub">${phoneText(r.tel)}</td>
+          <td class="act"><div class="acts">${actionCell(r)}</div></td>
+        </tr>`).join('');
+
+    document.getElementById('admin').innerHTML = `
+      <div class="head">
+        <p class="loc">${ICON_USERCHECK}관리자</p>
+        <h1>가입 승인</h1>
+        <p class="intro">${INTRO}</p>
+      </div>
+
+      <div class="install">
+        <section class="panel" aria-labelledby="install-title">
+          <div class="panel-head"><h2 class="panel-title" id="install-title">설치 파일</h2></div>
+          <p class="panel-desc">비트 PC 연결 화면의 [내려받기] 단추가 여기 올린 파일을 줘요. 로그인하고 승인된 사람만 받을 수 있어요.</p>
+          <div class="twrap"><table aria-label="설치 파일">
+            <thead><tr><th>종류</th><th>지금 판</th><th>크기</th><th>올린 날</th><th aria-label="올리기"></th></tr></thead>
+            <tbody>
+              <tr><td style="font-weight:600">도우미</td><td>0.9.0</td><td class="sub">1.2MB</td><td class="sub">11월 9일</td><td class="up"><button type="button" class="btn btn-md t-secondary">${ICON_UPLOAD}새 파일 올리기</button></td></tr>
+              <tr><td style="font-weight:600">크롬 확장</td><td>0.3.0</td><td class="sub">48KB</td><td class="sub">11월 1일</td><td class="up"><button type="button" class="btn btn-md t-secondary">${ICON_UPLOAD}새 파일 올리기</button></td></tr>
+            </tbody>
+          </table></div>
+        </section>
+      </div>
+
+      <div role="tablist" aria-label="신청 상태" class="itabs" id="tablist">${tabs}</div>
+
+      <p role="status" class="status">${st.message ? `${check(16)}${esc(st.message)}` : ''}</p>
+      ${st.failed ? `<div role="alert" class="ecard">${ICON_ALERT}<div class="tx"><p class="w">${ERR.what}</p><p class="f">${ERR.fix}</p><p class="c">오류 번호 ${ERR.code}</p></div></div>` : ''}
+
+      <div role="tabpanel" id="panel" aria-labelledby="tab-${st.tab}">
+        <div class="twrap">
+          <table class="apps" aria-label="${label} 신청">
+            <colgroup><col class="c-date"><col><col class="c-emr"><col class="c-who"><col><col class="c-tel"><col class="c-act"></colgroup>
+            <thead><tr><th>신청일</th><th>의원 이름</th><th>EMR</th><th>신청자</th><th>이메일</th><th>연락처</th><th class="r">동작</th></tr></thead>
+            <tbody>${body}</tbody>
+          </table>
+        </div>
+      </div>`;
+
+    // 위쪽 띠: 보는 사람의 의원 이름·메일
+    document.getElementById('brandName').textContent = byId(st.me).name;
+    document.getElementById('acctEmail').textContent = byId(st.me).email;
+
+    renderDialog();
+    renderSwitcher();
+    const url = new URL(location.href);
+    url.searchParams.set('s', stateName());
+    history.replaceState(null, '', url);
+  }
+
+  function renderDialog() {
+    const layer = document.getElementById('layer');
+    if (!st.dialog) { layer.innerHTML = ''; return; }
+    const r = byId(st.dialog.id);
+    const add = st.dialog.kind === 'add';
+    layer.innerHTML = `
+      <div class="scrim">
+        <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlg-title" aria-describedby="dlg-body" tabindex="-1" id="dlg">
+          <h2 id="dlg-title">${add ? T.addTitle : T.removeTitle}</h2>
+          <div class="who"><b>${esc(r.name)}</b><span>${esc(`${r.who} · ${r.email}`)}</span></div>
+          <p id="dlg-body">${add ? T.addBody : T.removeBody}</p>
+          <div class="row">
+            <button type="button" class="btn btn-md t-secondary" data-act="cancel" id="dlg-cancel">${T.cancel}</button>
+            <button type="button" class="btn btn-md ${add ? 't-primary' : 't-danger'}" data-act="confirm" id="dlg-ok">${add ? T.addOk : T.removeOk}</button>
+          </div>
+        </div>
+      </div>`;
+    // 처음 초점 [취소](RejectDialog와 같다). 주소(?s=)로 바로 연 창은 누른 단추가 없어 초점을 옮기지 않는다
+    if (opener !== null) document.getElementById('dlg-cancel').focus({ preventScroll: true });
+  }
+
+  function renderSwitcher() {
+    const cur = stateName();
+    document.getElementById('mseg').innerHTML = STATES.map(([k, t]) => `<a href="?s=${k}" aria-current="${k === cur}">${t}</a>`).join('');
+  }
+
+  // ── 누름 ──
+  let opener = null;
+  function focusLater(fn) { requestAnimationFrame(() => { const el = fn(); if (el) el.focus({ preventScroll: true }); }); }
+
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-act]');
+    if (!el) return;
+    const act = el.dataset.act;
+    if (act === 'tab') {
+      st.tab = el.dataset.tab; st.message = ''; st.failed = false; render();
+      focusLater(() => document.getElementById(`tab-${st.tab}`));
+    } else if (act === 'ask-add' || act === 'ask-remove') {
+      opener = el.dataset.id;
+      st.dialog = { kind: act === 'ask-add' ? 'add' : 'remove', id: el.dataset.id };
+      render();
+    } else if (act === 'cancel') {
+      cancel();
+    } else if (act === 'confirm') {
+      const { kind, id } = st.dialog;
+      const origin = opener ?? id;
+      st.dialog = null;
+      if (document.getElementById('failNext').checked) {
+        // 실패: 줄은 그대로, 완료 줄은 비우고 오류 카드. 초점은 처음 누른 단추로
+        st.message = ''; st.failed = true; render();
+        focusLater(() => document.querySelector(`[data-id="${origin}"]`));
+      } else {
+        if (kind === 'add') st.admins.add(id); else st.admins.delete(id);
+        st.failed = false;
+        st.message = kind === 'add' ? T.doneAdd(byId(id).name) : T.doneRemove(byId(id).name);
+        render();
+        focusLater(() => document.getElementById(`tab-${st.tab}`));
+      }
+    }
+  });
+
+  function cancel() {
+    const back = opener ?? st.dialog?.id;
+    st.dialog = null; render();
+    focusLater(() => document.querySelector(`[data-id="${back}"]`));
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (st.dialog) {
+      if (e.key === 'Escape') { e.preventDefault(); cancel(); return; }
+      if (e.key === 'Tab') {
+        const first = document.getElementById('dlg-cancel');
+        const last = document.getElementById('dlg-ok');
+        const a = document.activeElement;
+        const box = document.getElementById('dlg');
+        if (e.shiftKey && (a === first || a === box)) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && (a === last || a === box)) { e.preventDefault(); first.focus(); }
+      }
+      return;
+    }
+    // 화면 안 탭: ←·→·Home·End
+    if (e.target.closest && e.target.closest('#tablist')) {
+      const i = TABS.findIndex((t) => t.key === st.tab);
+      const last = TABS.length - 1;
+      const moves = { ArrowRight: i === last ? 0 : i + 1, ArrowLeft: i === 0 ? last : i - 1, Home: 0, End: last };
+      if (!(e.key in moves)) return;
+      e.preventDefault();
+      st.tab = TABS[moves[e.key]].key; st.message = ''; st.failed = false; render();
+      focusLater(() => document.getElementById(`tab-${st.tab}`));
+    }
+  });
+
+  st = fromQuery(new URLSearchParams(location.search).get('s') || 'list');
+  render();
+})();
+</script>
+</body>
+</html>

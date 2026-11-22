@@ -122,3 +122,50 @@ export function currentMenuLabel(pathname: string): MenuLabel | null {
   }
   return best?.label ?? null
 }
+
+// 관리자만 보는 탭 (multi-admin REQ-7706, design.md '탭 목록 함수', ADR-042). 주 관리자가 설정에서 고른 탭은 관리자가 아닌
+// 원장·데스크 계정의 메뉴에서 빠지고, 주소로 와도 대시보드로 돌아간다. 목록은 공용 표 tab_access(경로·관리자만 참거짓)이고
+// DB에 줄이 없는 탭은 관리자만이다(새로 생긴 탭은 처음엔 관리자만). 보이기만 막는다 — 자료 권한(RLS)은 그대로다
+const ALWAYS_SHOWN: readonly MenuPath[] = ['/dashboard', '/settings']
+/** '관리자만 보는 탭' 목록(MENU 차례, 대시보드·설정 뺌 — 늘 보임). 12개 */
+export const TAB_ACCESS_MENU: readonly MenuItem[] = MENU.filter((item) => !ALWAYS_SHOWN.includes(item.path))
+
+/** tab_access 한 줄 */
+export type TabAccessRow = { path: string; adminOnly: boolean }
+
+/** 답 모양 검사: [{ path: string, admin_only: boolean }]만 → TabAccessRow[](두 칸만 옮김), 하나라도 틀리면 null(막는 쪽) */
+export function toTabAccessRows(data: unknown): TabAccessRow[] | null {
+  if (!Array.isArray(data)) return null
+  const rows: TabAccessRow[] = []
+  for (const row of data as unknown[]) {
+    if (typeof row !== 'object' || row === null || Array.isArray(row)) return null
+    const { path, admin_only: adminOnly } = row as Record<string, unknown>
+    if (typeof path !== 'string' || typeof adminOnly !== 'boolean') return null
+    rows.push({ path, adminOnly })
+  }
+  return rows
+}
+
+/** 관리자가 아닌 계정에게 숨길 탭: TAB_ACCESS_MENU 가운데 줄이 없거나 adminOnly 참(MENU 차례). 목록 밖 줄은 버린다.
+ *  같은 경로에 참·거짓 줄이 함께 오면 숨긴다(막는 쪽) */
+export function adminOnlyTabs(rows: readonly TabAccessRow[]): MenuPath[] {
+  const shown = (path: MenuPath) => {
+    const mine = rows.filter((row) => row.path === path)
+    return mine.length > 0 && mine.every((row) => !row.adminOnly)
+  }
+  return TAB_ACCESS_MENU.filter((item) => !shown(item.path)).map((item) => item.path)
+}
+
+/** 지금 주소가 숨긴 탭 자리인가 — path·owns 중 가장 길게 맞는 자리(currentMenuLabel이 고르는 탭)가 숨긴 탭이면 참.
+ *  /claim/setup은 설정 탭 자리라 청구를 숨겨도 거짓, 대시보드·설정·가입 승인·탭 밖 주소는 늘 거짓 */
+export function isHiddenPath(pathname: string, hidden: readonly MenuPath[]): boolean {
+  const label = currentMenuLabel(pathname)
+  const tab = TAB_ACCESS_MENU.find((item) => item.label === label)
+  return tab !== undefined && hidden.includes(tab.path)
+}
+
+/** 데스크 첫 화면: DESK_HOME, 숨겼으면 DESK_MENU 차례로 숨기지 않은 첫 탭(수납일지 → 업무일지 → 예약). 셋 다 숨김이면 null */
+export function deskHomeOf(hidden: readonly MenuPath[]): MenuPath | null {
+  const order = [DESK_HOME, ...DESK_MENU.map((item) => item.path).filter((path) => path !== DESK_HOME)]
+  return order.find((path) => !hidden.includes(path)) ?? null
+}

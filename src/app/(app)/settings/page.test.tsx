@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { TAB_ACCESS_MENU } from '@/components/shell/menu'
 import { RoleProvider } from '@/components/shell/role'
 import type { RuleSummary } from '@/types/precheck'
 import SettingsRoute, { metadata } from './page'
@@ -36,6 +37,14 @@ vi.mock('@/lib/storage/clinicProfile', async (importOriginal) => ({
   removeLogo: vi.fn(),
 }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }) }))
+// '관리자만 보는 탭' 칸(multi-admin AC-7707.2)의 읽기·저장은 흉내 낸다. 기본은 주 관리자가 아님(지금 시험 그대로), 목록은 씨앗 12줄 '모두에게'
+const tabs = vi.hoisted(() => ({ owner: vi.fn(), read: vi.fn(), save: vi.fn() }))
+vi.mock('@/lib/storage/tabAccess', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/storage/tabAccess')>()),
+  readTabOwner: tabs.owner,
+  readTabAccess: tabs.read,
+  saveTabAccess: tabs.save,
+}))
 
 const RULE: RuleSummary = {
   id: 'LA-01',
@@ -60,6 +69,9 @@ beforeEach(() => {
   vi.stubGlobal('Worker', FakeWorker)
   clinic.load.mockClear()
   clinic.signup.mockClear()
+  tabs.owner.mockReset().mockResolvedValue(false)
+  tabs.read.mockReset().mockResolvedValue(TAB_ACCESS_MENU.map((item) => ({ path: item.path, adminOnly: false })))
+  tabs.save.mockReset().mockResolvedValue(undefined)
 })
 afterEach(() => {
   cleanup()
@@ -101,6 +113,20 @@ describe('/settings 페이지', () => {
     await screen.findByRole('textbox', { name: '데스크 구글 메일' })
     expect(desk.list).toHaveBeenCalled()
     expect(desk.add).not.toHaveBeenCalled()
+  })
+
+  it("AC-7707.2: 주 관리자에게는 맨 아래 칸이 '관리자만 보는 탭'이다(데스크 계정 다음)", async () => {
+    tabs.owner.mockResolvedValue(true)
+    render(<SettingsRoute />)
+    await screen.findByRole('heading', { level: 2, name: '관리자만 보는 탭' })
+    await screen.findByRole('textbox', { name: '데스크 구글 메일' })
+    const titles = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
+    expect(titles.at(-1)).toBe('관리자만 보는 탭')
+    expect(titles.at(-2)).toBe('데스크 계정')
+    expect(titles.filter((t) => t === '관리자만 보는 탭')).toHaveLength(1)
+    expect(tabs.owner).toHaveBeenCalledTimes(1)
+    expect(tabs.read).toHaveBeenCalledTimes(1)
+    expect(tabs.save).not.toHaveBeenCalled()
   })
 
   it("AC-6602.1: 원장에게는 맨 위(설치 파일 칸 앞) 첫 칸이 '병원 정보'다", async () => {

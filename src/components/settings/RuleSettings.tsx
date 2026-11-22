@@ -4,14 +4,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ErrorCard } from '@/components/common/ErrorCard'
 import { ds } from '@/components/ui/classes'
 import { todayInKorea } from '@/lib/analytics/dates'
+import { badgeText } from '@/lib/notices/ruleView'
 import { changedRuleIds, readRuleRows, readRuleSettings, toRuleChoices, toRuleSettings, withRulesFrom, writeRuleSettings } from '@/lib/storage/claimSettings'
+import { readRuleBadges } from '@/lib/storage/ruleChanges'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import type { ErrorCode } from '@/types/errors'
 import type { Grade, PrecheckFromScreen, PrecheckToScreen, RuleSummary, SavedRuleSettings } from '@/types/precheck'
+import type { RuleBadge } from '@/types/ruleAuto'
 
 // 설정 화면 '점검 규칙' 칸 (precheck REQ-012 AC-012.6, 목업 화면 10). 이 청구 화면들은 나중에 다시 디자인한다(사용자 2026-10-31) → 동작과 상태를 맞추고 모양은 공통 묶음(ds)만 쓴다.
 // 규칙 목록은 Worker에 ruleList로 받는다(표 JSON을 화면이 불러오지 않는다, AC-007.4). 고른 값은 원본 저장 모양 그대로 들고 있다가 [저장] 때 바뀐 줄만 보낸다.
 // 줄이 있다 = 규칙표 기본값과 다르다. 기본값으로 돌아오면 줄이 없는 것으로 본다 → [저장]이 그 줄을 지운다
+// 고시로 바뀐 규칙(specs/rule-auto REQ-7817, 시안 ?v=settings): readRuleBadges를 화면을 열 때 한 번 읽어 규칙 칸 제목 옆에 칩, 오늘 쓰이는 판이면 제목·고시 근거도 그 판 것.
+// 못 읽으면 칩 없이 지금 표 그대로다(오류 상자 없음). 켜기·등급·기본값은 원래 규칙 그대로 걸린다
 
 const GRADES: readonly Grade[] = ['확인필요', '알림', '참고']
 // 값은 DB·규칙표 글자 그대로, 보이는 글자만 목업대로
@@ -90,6 +95,12 @@ function monthDay(iso: string): string {
 
 function datesOf(rows: readonly { rule_id: string; updated_at: string }[]): Map<string, string> {
   return new Map(rows.map((r) => [r.rule_id, monthDay(r.updated_at)]))
+}
+
+/** 보이는 규칙: 오늘 쓰이는 판이 있으면 제목·고시 근거를 그 판 것으로(rule-auto 기본값 12). 번호·등급·기본 켜짐은 원래 규칙 그대로 */
+function shownRule(rule: RuleSummary, badge: RuleBadge | undefined): RuleSummary {
+  if (!badge) return rule
+  return { ...rule, title: badge.title ?? rule.title, basis: badge.basis ?? rule.basis }
 }
 
 // ── 상태 ──────────────────────────────────────────────────
@@ -184,6 +195,27 @@ function useRuleSettings() {
   return { view, retryLoad, draft, setDraft, choices, changed, dates, saving, saveFailed, save, undo }
 }
 
+const NO_BADGES: ReadonlyMap<string, RuleBadge> = new Map()
+
+/** 고시로 바뀐 규칙 칩(AC-7817): 화면을 열 때 한 번 읽는다. 실패('failed')·던짐은 칩 없음 — 오류 상자를 보이지 않는다. 떠난 뒤 온 답은 버린다 */
+function useRuleBadges(): ReadonlyMap<string, RuleBadge> {
+  const [badges, setBadges] = useState<ReadonlyMap<string, RuleBadge>>(NO_BADGES)
+  useEffect(() => {
+    let left = false
+    const load = async () => {
+      try {
+        const answer = await readRuleBadges()
+        if (!left && answer !== 'failed') setBadges(answer)
+      } catch {}
+    }
+    void load()
+    return () => {
+      left = true
+    }
+  }, [])
+  return badges
+}
+
 // ── 그리기 ────────────────────────────────────────────────
 
 // 폰(768px 미만): 표 머리를 숨기고 줄마다 세로로 쌓는다(옆으로 밀지 않아도 모든 칸이 보인다). 첫 칸(켜기) 옆 칸에 나머지가 차례로 온다
@@ -194,9 +226,16 @@ const cellWrap = `${cellClass} whitespace-normal`
 const cellSub = `${ds.table.tdSub} ${cellPhone} whitespace-normal`
 const checkCell = `${ds.table.check} max-md:col-start-1 max-md:row-span-5 max-md:row-start-1 max-md:h-auto max-md:border-b-0 max-md:p-0`
 const COLUMNS = ['켜기', '규칙', '묶음', '등급', '고시 근거', '바꾼 날', '기본값']
+const REVERTED_TEXT = '고시 변경 되돌림' // 시안 notes.md '설정 → 점검 규칙'
+
+/** 규칙 칸 제목 옆 칩: 되돌리지 않은 판이 있으면 `고시로 바뀜 · {날짜}부터`(파랑), 모두 되돌렸으면 `고시 변경 되돌림`(회색) */
+function BadgeChip({ badge }: { badge: RuleBadge }) {
+  return badge.reverted ? <span className={ds.chip.neutral}>{REVERTED_TEXT}</span> : <span className={ds.chip.accent}>{badgeText(badge.from)}</span>
+}
 
 function RuleRow({
   rule,
+  badge,
   choice,
   changed,
   date,
@@ -204,6 +243,7 @@ function RuleRow({
   onReset,
 }: {
   rule: RuleSummary
+  badge: RuleBadge | undefined
   choice: RuleChoice | undefined
   changed: boolean
   date: string | undefined
@@ -234,7 +274,10 @@ function RuleRow({
         <span data-rule-id className="block text-caption tabular-nums text-muted">
           {rule.id}
         </span>
-        <span className={enabled ? 'text-ink' : 'text-muted'}>{rule.title}</span>
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className={enabled ? 'text-ink' : 'text-muted'}>{rule.title}</span>
+          {badge && <BadgeChip badge={badge} />}
+        </span>
       </td>
       <td className={cellClass}>
         <span className={ds.chip.neutral}>{rule.domain}</span>
@@ -274,9 +317,12 @@ function RuleRow({
 export function RuleSettings() {
   const state = useRuleSettings()
   const { view, draft, setDraft, choices, changed, dates, saving, saveFailed, save, undo } = state
+  const badges = useRuleBadges()
   const [filter, setFilter] = useState<Filter>(NO_FILTER)
   const [shown, setShown] = useState(PAGE_SIZE)
-  const rules = view.kind === 'ready' ? view.rules : null
+  const listed = view.kind === 'ready' ? view.rules : null
+  // 찾기·그리기는 보이는 제목·근거로(AC-7817.1)
+  const rules = useMemo(() => listed?.map((r) => shownRule(r, badges.get(r.id))) ?? null, [listed, badges])
 
   const groups = useMemo(() => [...new Set((rules ?? []).map((r) => r.domain))], [rules])
   const found = useMemo(
@@ -380,6 +426,7 @@ export function RuleSettings() {
                   <RuleRow
                     key={rule.id}
                     rule={rule}
+                    badge={badges.get(rule.id)}
                     choice={choices.get(rule.id)}
                     changed={changed.has(rule.id)}
                     date={dates.get(rule.id)}

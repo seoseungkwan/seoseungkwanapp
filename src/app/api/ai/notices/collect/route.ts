@@ -1,4 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
+import type { RulesFile } from '@/types/precheck'
+import { loadTables } from '@/workers/precheck/tables'
 import { callClaude } from '../../claude'
 import { readBatch, submitBatch } from '../batch'
 import { collectorClient, collectorStore } from '../collectStore'
@@ -10,6 +12,7 @@ import { defaultRuleIndex, type RuleBasisIndex } from '../ruleMatch'
 // 세션 없이 오므로 문지기(lib/auth/gate.ts)가 이 주소만 공개로 두고, 여기서 `Authorization: Bearer <CRON_SECRET>`를 같은 시간 비교로 본다.
 // CRON_SECRET이 비었거나 머리가 다르면 401(몸통 없음)이고 사이트·DB·Claude를 부르지 않는다.
 // 맞으면 모으기 계정으로 로그인해 runCollector를 한 번 돌리고 숫자와 출처 이름만 돌려준다.
+// 규칙 살피기(specs/rule-auto design 10절)에 쓰는 규칙표는 loadTables로만 부른다(AC-007.4).
 // 로그는 { code }로 답할 때 console.error('[api/ai/notices/collect]', code) 한 줄뿐이다(비밀·머리·결과·오류 내용은 남기지 않는다).
 // 이 파일은 Next가 아는 이름(GET·runtime·maxDuration·dynamic)만 export한다
 export const runtime = 'nodejs'
@@ -45,6 +48,16 @@ async function ruleIndex(): Promise<RuleBasisIndex | null> {
   }
 }
 
+// 규칙표를 못 불러오면 null — 모으기는 규칙 살피기를 건너뛰고 요약의 규칙 연결을 비운다(오류 내용은 버린다)
+async function rulesFile(): Promise<RulesFile | null> {
+  try {
+    const tables = await loadTables()
+    return tables.ok ? tables.value.rules : null
+  } catch {
+    return null
+  }
+}
+
 // 실행 결과에서 숫자 칸과 출처 이름만 옮긴다(다른 칸이 와도 내보내지 않는다)
 function reportBody(r: RunReport) {
   return {
@@ -73,6 +86,7 @@ export async function GET(request: Request): Promise<Response> {
       submitBatch,
       readBatch,
       ruleIndex: await ruleIndex(),
+      rules: await rulesFile(),
       nowMs: () => Date.now(),
       now: () => new Date(),
     })

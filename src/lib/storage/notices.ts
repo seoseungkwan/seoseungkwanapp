@@ -23,6 +23,7 @@ import type {
   WeekItem,
   WeekTop,
 } from '@/types/notices'
+import { ruleTallies } from './ruleChanges'
 
 // 고시·공지 화면의 읽기·쓰기(specs/notices REQ-7418 · AC-7424.7, design 3절·15절). 브라우저 Supabase 클라이언트 + RLS로만 한다(ADR-004).
 // 공용 글(notices·notice_posts·notice_sources·notice_weeks)은 승인된 원장만 읽고, 내 병원 표시(notice_marks)·낱말(notice_keywords)은
@@ -176,6 +177,12 @@ async function callList(args: ListArgs): Promise<NoticePage | null> {
   return error ? null : toPage(data)
 }
 
+/** 규칙 칩 숫자를 붙인다(specs/rule-auto AC-7812.5). 판정 줄 읽기만 실패하면 그 줄들의 ruleTally가 null이고 줄은 그대로다 */
+async function withTallies(rows: NoticeView[]): Promise<NoticeView[]> {
+  const tallies = await ruleTallies(rows)
+  return rows.map((row) => ({ ...row, ruleTally: tallies.get(row.id) ?? null }))
+}
+
 /**
  * 글 목록 한 쪽(50개). q(앞뒤 공백 뗌)가 있으면 notice_search가 준 id 안에서, 없으면 거르기 그대로 notice_list를 부른다.
  * 찾은 글이 없으면 notice_list를 부르지 않고 빈 쪽이다. 화면은 받은 줄을 related로 다시 거르지 않는다(꼭 볼 글은 DB가 넣는다)
@@ -200,7 +207,7 @@ export async function listNotices(filter: NoticeFilter): Promise<NoticePage | 'f
       p_limit: PAGE_SIZE,
       p_offset: isCount(filter.offset) ? filter.offset : 0,
     })
-    return page ?? 'failed'
+    return page === null ? 'failed' : { ...page, rows: await withTallies(page.rows) }
   } catch {
     return 'failed'
   }
@@ -212,7 +219,8 @@ export async function openNotice(id: string): Promise<NoticeView | null | 'faile
   try {
     const page = await callList({ p_related: false, p_sources: null, p_starred: false, p_ids: [id], p_unread_only: false, p_limit: 1, p_offset: 0 })
     if (page === null) return 'failed'
-    return page.rows.find((row) => row.id.toLowerCase() === id.toLowerCase()) ?? null
+    const row = page.rows.find((r) => r.id.toLowerCase() === id.toLowerCase())
+    return row === undefined ? null : ((await withTallies([row]))[0] ?? null)
   } catch {
     return 'failed'
   }
@@ -282,7 +290,7 @@ function toAlert(v: unknown): RuleAlert | null {
   return { id: v.id, noticeNo: textOrNull(v.notice_no), title: v.title, ruleCount: v.rule_count }
 }
 
-/** 대시보드 맨 위 경고: 규칙 연결이 있고 내가 확인하지 않은 글(최근 글부터) */
+/** 대시보드 맨 위 노랑 띠: 사람이 봐야 함 판정 줄이 있고 내가 확인하지 않은 글(최근 글부터, rule_count = 그 줄 수 — specs/rule-auto AC-7806.4) */
 export async function ruleAlerts(): Promise<RuleAlert[] | 'failed'> {
   try {
     const { data, error } = await supabaseBrowser().rpc(ALERTS)

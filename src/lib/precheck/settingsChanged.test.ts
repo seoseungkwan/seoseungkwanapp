@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { RuleUpdate } from '@/types/precheck'
 import { settingsChanged, type SettingsBundle } from './settingsChanged'
 
 // 점검에 쓴 설정 묶음과 다시 읽은 묶음 견주기 (precheck REQ-012 AC-012.7, design.md 6-5). 청구 화면(TASK-13)의 "설정이 바뀌었어요" 띠가 쓴다.
@@ -98,6 +99,68 @@ describe('AC-012.7 settingsChanged', () => {
     const a = bundle()
     const b = bundle()
     b.rules.off.reverse()
+    const copy = structuredClone({ a, b })
+    settingsChanged(a, b)
+    expect({ a, b }).toEqual(copy)
+  })
+})
+
+// 고시로 바뀐 규칙 판(specs/rule-auto REQ-7804 AC-7804.4, design 6절). 판은 (changeId, from)으로만 견준다: 되돌리기·다시 적용·새 판이 이 모음을 바꾼다.
+// 칸이 없는 묶음(옛 사본·판을 읽기 전)은 빈 목록으로 본다
+describe('AC-7804.4 settingsChanged — 바뀐 규칙 판', () => {
+  const update = (changeId: string, from: string, patch: Partial<RuleUpdate> = {}): RuleUpdate => ({
+    changeId,
+    ruleId: 'IJ-13',
+    from,
+    baseVersion: '2026-10-19',
+    rule: { id: 'IJ-13', title: '가짜 판', effective_from: from },
+    ...patch,
+  })
+  const withUpdates = (list?: RuleUpdate[]): SettingsBundle => (list === undefined ? bundle() : { ...bundle(), ruleUpdates: list })
+  const both = (a: SettingsBundle, b: SettingsBundle) => [settingsChanged(a, b), settingsChanged(b, a)]
+
+  it('AC-7804.4: (changeId, from) 모음이 같으면 차례만 달라도 false', () => {
+    const list = [update('c1', '2026-12-01'), update('c2', '2026-11-15'), update('c3', '2027-01-01')]
+    expect(both(withUpdates(list), withUpdates([...list].reverse()))).toEqual([false, false])
+    expect(both(withUpdates(list), withUpdates(structuredClone(list)))).toEqual([false, false])
+  })
+
+  it('AC-7804.4: 한쪽에 칸이 없으면 빈 목록으로 본다', () => {
+    expect(both(withUpdates(), withUpdates([]))).toEqual([false, false])
+    expect(both(withUpdates(), withUpdates())).toEqual([false, false])
+    expect(both(withUpdates(), withUpdates([update('c1', '2026-12-01')]))).toEqual([true, true])
+  })
+
+  it.each<[string, RuleUpdate[]]>([
+    ['판이 하나 빠짐(되돌리기)', [update('c1', '2026-12-01')]],
+    ['판이 하나 더 있음(다시 적용·새 판)', [update('c1', '2026-12-01'), update('c2', '2026-11-15'), update('c3', '2027-01-01')]],
+    ['같은 changeId의 날짜가 다름', [update('c1', '2026-12-02'), update('c2', '2026-11-15')]],
+    ['같은 날짜의 changeId가 다름', [update('c1', '2026-12-01'), update('c9', '2026-11-15')]],
+  ])('AC-7804.4: (changeId, from) 모음이 다르면 true: %s', (_name, list) => {
+    const used = withUpdates([update('c1', '2026-12-01'), update('c2', '2026-11-15')])
+    expect(both(used, withUpdates(list))).toEqual([true, true])
+  })
+
+  it('AC-7804.4: changeId·from 밖의 칸(규칙 번호·규칙표 판·규칙 내용)은 견주지 않는다', () => {
+    const used = withUpdates([update('c1', '2026-12-01')])
+    const other = withUpdates([update('c1', '2026-12-01', { ruleId: 'LA-18', baseVersion: '2026-11-01', rule: { title: '다른 글' } })])
+    expect(both(used, other)).toEqual([false, false])
+  })
+
+  it('AC-7804.4: 그 밖 비교는 그대로다(판이 같아도 다른 칸이 다르면 true)', () => {
+    const list = [update('c1', '2026-12-01')]
+    const a = withUpdates(list)
+    const b = withUpdates(structuredClone(list))
+    b.rules.off.push('LA-03')
+    expect(both(a, b)).toEqual([true, true])
+    const c = withUpdates([...list].reverse())
+    c.rules.off.reverse()
+    expect(both(a, c)).toEqual([false, false])
+  })
+
+  it('AC-7804.4: 받은 묶음의 판 목록을 고치지 않는다(정렬은 사본으로)', () => {
+    const a = withUpdates([update('c2', '2026-12-01'), update('c1', '2026-11-15')])
+    const b = withUpdates([update('c1', '2026-11-15'), update('c2', '2026-12-01')])
     const copy = structuredClone({ a, b })
     settingsChanged(a, b)
     expect({ a, b }).toEqual(copy)

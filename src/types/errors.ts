@@ -1,7 +1,7 @@
 export type ErrorCode =
   | 'E-PARSE-COLUMN' | 'E-PARSE-ROW' | 'E-PARSE-EMPTY' | 'E-PARSE-TOO-BIG'
   | 'E-PARSE-RRN' | 'E-PARSE-UNREADABLE' | 'E-ANALYZE-TIMEOUT' | 'E-ANALYZE-FAILED'
-  | 'E-AUTH-CALLBACK' | 'E-AUTH-START' | 'E-SIGNUP-FAILED' | 'E-ADMIN-FAILED' | 'E-PAGE-FAILED'
+  | 'E-AUTH-CALLBACK' | 'E-AUTH-START' | 'E-SIGNUP-FAILED' | 'E-ADMIN-FAILED' | 'E-ADMIN-ROLE' | 'E-PAGE-FAILED'
   // 청구 사전점검 연결(확장·도우미·통로, spec precheck design.md 4-5)
   | 'E-EXT-MISSING' | 'E-HELPER-MISSING' | 'E-HELPER-OLD' | 'E-EXT-OLD' | 'E-BRIDGE-BUSY'
   | 'E-BRIDGE-DISCONNECTED' | 'E-BRIDGE-REJECTED' | 'E-BRIDGE-BAD-REPLY' | 'E-HELPER-BAD-MESSAGE' | 'E-HELPER-UNKNOWN-COMMAND'
@@ -62,6 +62,8 @@ export type ErrorCode =
   | 'E-FIRST-RUN-SAVE-FAILED'
   // 고시·공지 탭(specs/notices requirements 기본값 12·20): 목록·글 읽기 실패 · 별표·메모·규칙 확인 저장 실패 · 내 낱말 저장 실패
   | 'E-NOTICE-READ' | 'E-NOTICE-SAVE' | 'E-NOTICE-WORDS'
+  // 점검 규칙 저절로 바꾸기(specs/rule-auto requirements 기본값 13): 글 화면 [되돌리기]·[다시 적용] 저장 실패
+  | 'E-RULE-AUTO-SAVE'
   // 재고 탭(specs/inventory design.md 4절): 읽기 · 저장 · 이름 겹침 · 물품 있는 분류 · 세기 날짜 · 사진 · 명세서 줄 없음 · 엑셀 개인정보 모양 · 이름 칸 없음 · 엑셀 읽기
   | 'E-INV-READ-FAILED' | 'E-INV-SAVE-FAILED' | 'E-INV-DUPLICATE' | 'E-INV-IN-USE' | 'E-INV-COUNT-DATE'
   | 'E-INV-PHOTO' | 'E-INV-NO-LINES' | 'E-INV-PRIVATE' | 'E-INV-NO-NAME' | 'E-INV-EXCEL'

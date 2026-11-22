@@ -56,6 +56,11 @@ export const ERRORS: Record<KnownErrorCode, ErrorInfo> = {
     what: '신청 상태를 바꾸지 못했어요',
     fix: '인터넷 연결을 확인하고 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
   },
+  // 가입 승인 '승인' 탭의 관리자 정하기·빼기 실패(spec multi-admin AC-7702.3). 글은 승인된 시안 docs/mockups/multi-admin/notes.md
+  'E-ADMIN-ROLE': {
+    what: '관리자를 정하거나 빼지 못했어요',
+    fix: '인터넷 연결을 확인하고 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+  },
   'E-PAGE-FAILED': {
     what: '화면을 열지 못했어요',
     fix: '잠시 뒤 [다시 시도]를 눌러 주세요. 계속되면 아래 오류 번호를 관리자에게 메일로 알려 주세요.',
@@ -448,6 +453,12 @@ export const ERRORS: Record<KnownErrorCode, ErrorInfo> = {
   'E-NOTICE-WORDS': {
     what: '낱말을 저장하지 못했어요',
     fix: '잠시 뒤 다시 눌러 주세요. 고른 낱말은 그대로 있어요',
+  },
+  // 점검 규칙 저절로 바꾸기(specs/rule-auto requirements 기본값 13 글자 그대로): 글 화면 [되돌리기]·[다시 적용] 저장 실패.
+  // 카드 안 오류 상자이고 카드 모양은 누르기 전 그대로다. 규칙 상자 읽기 실패는 E-NOTICE-READ를 그대로 쓴다
+  'E-RULE-AUTO-SAVE': {
+    what: '점검 규칙을 바꾸지 못했어요',
+    fix: '잠시 뒤 다시 눌러 주세요. 지금은 누르기 전 규칙 그대로 점검해요',
   },
   // 재고 탭(specs/inventory design.md 4절). E-AI-BUSY·E-AI-LIMIT·E-AI-FAILED는 위 문구를 그대로 쓴다.
   // 이름 겹침은 물품·분류 둘 다에 뜬다(안 쓰는 물품도 이름을 차지한다)

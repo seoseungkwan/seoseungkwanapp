@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ds } from '@/components/ui/classes'
 import { nestedBoxes } from '@/testing/boxes'
 import { DeskGate } from './DeskGate'
-import { DESK_HOME, DESK_MENU, isDeskPath } from './menu'
+import { DESK_HOME, DESK_MENU, isDeskPath, type MenuPath } from './menu'
 import { RoleProvider, useDesk } from './role'
 
 // 데스크 문지기·막힌 화면 (desk-feedback REQ-6306 AC-6306.3, design.md '④ 데스크 화면', 시안 docs/mockups/desk-feedback ④).
@@ -173,5 +175,61 @@ describe('AC-6306.2 RoleProvider·useDesk', () => {
       </RoleProvider>,
     )
     expect(container.innerHTML).toBe('<p>본문</p>')
+  })
+})
+
+// 관리자만 보는 탭 (multi-admin AC-7706.4, design.md '앱 틀'·기본값 22): 데스크의 /dashboard는 숨기지 않은 첫 데스크 탭(deskHomeOf)으로 바꾼다.
+// 숨긴 데스크 탭 주소 → TabGate가 /dashboard → 여기서 그 첫 탭으로 간다. 셋 다 숨기면 /dashboard에서 지금 막힌 화면(끝없이 돌지 않는다).
+// hidden이 없거나 비면 위 지금 시험 그대로다
+describe('AC-7706.4 DeskGate hidden — 숨긴 탭이 있는 데스크의 첫 화면', () => {
+  const hiddenGate = (hidden: readonly MenuPath[]) => (
+    <DeskGate hidden={hidden}>
+      <p>본문</p>
+    </DeskGate>
+  )
+
+  it('AC-7706.4: hidden이 빈 목록이면 지금처럼 /dashboard → 수납일지(/sunap)', () => {
+    pathname.mockReturnValue('/dashboard')
+    const { container } = render(hiddenGate([]))
+    expect(container.innerHTML).toBe('')
+    expect(router.replace).toHaveBeenCalledExactlyOnceWith('/sunap')
+  })
+
+  it.each([
+    [['/sunap'], '/worklog'],
+    [['/sunap', '/worklog'], '/calendar'],
+    [['/worklog'], '/sunap'],
+    [['/stats', '/claim'], '/sunap'],
+  ] as const)('AC-7706.4: 숨김 %j면 /dashboard는 숨기지 않은 첫 데스크 탭(%s)으로 바꾸고(replace 한 번) 그동안 아무것도 그리지 않는다', (hidden, home) => {
+    pathname.mockReturnValue('/dashboard')
+    const { container } = render(hiddenGate(hidden))
+    expect(container.innerHTML).toBe('')
+    expect(router.replace).toHaveBeenCalledExactlyOnceWith(home)
+    expect(router.push).not.toHaveBeenCalled()
+  })
+
+  it('AC-7706.4: 세 데스크 탭을 모두 숨기면 /dashboard에서 바꾸지 않고 지금 막힌 화면(글·[수납일지로 가기] 그대로)을 그린다', () => {
+    pathname.mockReturnValue('/dashboard')
+    render(hiddenGate(['/worklog', '/sunap', '/calendar']))
+    expect(screen.queryByText('본문')).toBeNull()
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(TITLE)
+    expect(screen.getByText(LEAD).tagName).toBe('P')
+    expect(screen.getByRole('link', { name: '수납일지로 가기' }).getAttribute('href')).toBe('/sunap')
+    expect(router.replace).not.toHaveBeenCalled()
+  })
+
+  it('AC-7706.4: 숨김이 있어도 /dashboard 밖은 지금 그대로다 — 데스크 주소는 본문, 그 밖은 막힌 화면', () => {
+    pathname.mockReturnValue('/worklog')
+    const { container, rerender } = render(hiddenGate(['/sunap']))
+    expect(container.innerHTML).toBe('<p>본문</p>')
+    pathname.mockReturnValue('/stats')
+    rerender(hiddenGate(['/sunap']))
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(TITLE)
+    expect(router.replace).not.toHaveBeenCalled()
+  })
+
+  it('AC-7706.4: DeskGate 소스는 첫 화면을 deskHomeOf로 정한다', () => {
+    const src = readFileSync(join(process.cwd(), 'src/components/shell/DeskGate.tsx'), 'utf8')
+    expect(src).toMatch(/\bdeskHomeOf\(/)
   })
 })

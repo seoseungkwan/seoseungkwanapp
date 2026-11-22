@@ -171,12 +171,11 @@ describe('AC-7615.10: 간단 명세서', () => {
     const read = (rel: string) => readFileSync(join(process.cwd(), rel), 'utf8')
     const adr = read('docs/ADR.md')
     const title = '### ADR-039: 직원 자료(연락처·주소·생일·계좌·근무·휴가·급여·서류 파일)를 Supabase에 원장만 보게 둔다. 주민번호는 두지 않는다'
-    const from = adr.slice(adr.indexOf(title)).split(/\r?\n/)
-    expect(from[0]).toBe(title)
-    // ADR-039 칸 = 머리부터 다음 '### ' 머리 앞까지(뒤에 ADR-040~047 같은 다른 결정이 붙어도 그 칸만 본다).
-    // 첫 세 줄 뒤 넷째 줄이 명세서 그림 예외다(design.md 2절 글 그대로)
-    const end = from.findIndex((line, i) => i > 0 && line.startsWith('### '))
-    const body = end === -1 ? from : from.slice(0, end)
+    const start = adr.indexOf(title)
+    const afterAdr = adr.indexOf('\n### ADR-', start + title.length) // 뒤에 ADR-040(specs/rule-auto)부터 이어진다
+    const body = adr.slice(start, afterAdr === -1 ? undefined : afterAdr).split(/\r?\n/)
+    expect(body[0]).toBe(title)
+    // ADR-039 안에는 다른 머리가 없고, 첫 세 줄 뒤 넷째 줄이 명세서 그림 예외다(design.md 2절 글 그대로)
     expect(body.slice(1).some((line) => line.startsWith('### '))).toBe(false)
     expect(body[1]).toMatch(/^- plan\.md 4절 /)
     expect(body[2]).toMatch(/^- 휴가 → 예약 '휴무'는 /)

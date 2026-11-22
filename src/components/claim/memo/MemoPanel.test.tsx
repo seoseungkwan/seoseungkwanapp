@@ -24,10 +24,12 @@ vi.mock('@/lib/supabase/browser', () => ({
       const answer = () => {
         if (table === 'claim_day_counts') return { data: [], error: null, status: 200 }
         if (db.failSettings) return { data: null, error: { message: 'x' } }
+        // 바뀐 규칙 판(specs/rule-auto AC-7813.1): 이 시험에서는 늘 없다
+        if (table === 'rule_changes' || table === 'rule_change_marks') return { data: [], error: null }
         return table === 'claim_rule_settings' ? { data: [], error: null } : { data: db.hospital, error: null }
       }
       const read = () => (db.gate && table !== 'claim_day_counts' ? db.gate.then(answer) : Promise.resolve(answer()))
-      const query = { gte: () => query, lte: () => query, maybeSingle: read, then: (ok: (value: unknown) => unknown, no: (reason: unknown) => unknown) => read().then(ok, no) }
+      const query = { gte: () => query, lte: () => query, eq: () => query, order: () => query, limit: () => query, maybeSingle: read, then: (ok: (value: unknown) => unknown, no: (reason: unknown) => unknown) => read().then(ok, no) }
       return { select: () => query }
     },
   }),

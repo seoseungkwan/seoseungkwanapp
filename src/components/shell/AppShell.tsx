@@ -3,8 +3,10 @@ import { LogoMark } from '@/components/common/LogoMark'
 import { AccountMenu } from './AccountMenu'
 import { DeskGate } from './DeskGate'
 import { KstClock } from './KstClock'
+import type { MenuPath } from './menu'
 import { RoleProvider } from './role'
 import { TabBar } from './TabBar'
+import { TabGate } from './TabGate'
 
 // 건너뛰기 링크 모양(ui-90 AC-403.1, UI_GUIDE '앱 틀' 건너뛰기 링크): 44px·surface·1px line·rounded-float·shadow-float·body 600·2px accent 초점 고리
 const SKIP_LINK =
@@ -21,11 +23,15 @@ const SKIP_LINK =
 // 관리자 여부는 계정 메뉴([가입 승인])와 탭 줄에 넘긴다. 탭 줄은 [더보기] 판의 입지 분석에만 쓴다(탭 띠에는 관리자 탭이 없다, tab-frame REQ-303·304, specs/location AC-7901.1)
 // 데스크 계정(desk 참, desk-feedback REQ-6306): 탭 셋·계정 칩 '데스크', 본문은 RoleProvider desk(useDesk 참) + DeskGate(주소마다 본문·막힌 화면·수납일지로 바꾸기).
 // desk가 없거나 거짓이면 지금 그대로다(감싸개 없음)
+// 관리자만 보는 탭(hiddenTabs, multi-admin AC-7706.3·AC-7706.4): 레이아웃이 관리자가 아닌 원장·데스크에게 넘긴다. 탭 띠·[더보기]에서 빼고(TabBar),
+// 숨긴 탭이 있을 때만 TabGate가 본문을 감싸 숨긴 탭 주소를 /dashboard로 보낸다. 데스크 첫 화면은 DeskGate가 숨기지 않은 첫 데스크 탭으로 정한다.
+// 없거나 비면 지금 그대로다(TabGate 없음)
 export function AppShell({
   hospitalName,
   email,
   isAdmin,
   desk = false,
+  hiddenTabs = [],
   children,
 }: {
   hospitalName: string
@@ -33,15 +39,18 @@ export function AppShell({
   isAdmin: boolean
   /** 데스크 계정(desk-feedback). 없으면 거짓 */
   desk?: boolean
+  /** 관리자만 보는 탭(숨긴 탭, multi-admin). 없으면 빈 목록 */
+  hiddenTabs?: readonly MenuPath[]
   children: ReactNode
 }) {
-  const body = desk ? (
+  const page = desk ? (
     <RoleProvider desk>
-      <DeskGate>{children}</DeskGate>
+      <DeskGate hidden={hiddenTabs}>{children}</DeskGate>
     </RoleProvider>
   ) : (
     children
   )
+  const body = hiddenTabs.length > 0 ? <TabGate hidden={hiddenTabs}>{page}</TabGate> : page
   return (
     <div className="group/app app-ui flex min-h-dvh flex-col bg-surface text-ink">
       {/* 평소에는 화면 읽기에만. 키보드 초점이면 왼쪽 위 띠 위에 뜬다(시안 .skip: 위 6px·왼쪽 8px·붙는 묶음 z 10 위).
@@ -64,7 +73,7 @@ export function AppShell({
             </div>
           </div>
         </header>
-        <TabBar desk={desk} isAdmin={isAdmin} />
+        <TabBar desk={desk} isAdmin={isAdmin} hidden={hiddenTabs} />
       </div>
       {/* 건너뛰기 링크가 가리키는 본문. 초점을 받을 수 있게 tabIndex -1(Tab 차례에는 들지 않는다).
           옮겨도 첫 줄이 붙는 묶음에 가리지 않게 scroll-margin = 묶음 높이: 띠 57(56 + 아래 선 1) + 탭 줄 45(44 + 아래 선 1) = 102px,

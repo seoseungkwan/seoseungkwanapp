@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useEffect, useId, useRef, useState, type AnchorHTMLAttributes, type MouseEvent } from 'react'
 import { Icon } from '@/components/common/Icon'
 import { ds } from '@/components/ui/classes'
-import { LOCATION_TAB, MORE_MENU, isUnder, type MenuItem, type MenuLabel } from './menu'
+import { LOCATION_TAB, MORE_MENU, isUnder, type MenuItem, type MenuLabel, type MenuPath } from './menu'
 
 // [더보기] (dashboard-ux REQ-2702 AC-2702.1~2702.5, design.md §3, 시안 docs/mockups/dashboard-ux .more·.morewrap·.morepanel).
 // 탭 띠 오른쪽(띠 밖)에 모든 폭에서 보이는 단추. 누르면 주요 메뉴 여섯 밖의 나머지(MORE_MENU, MENU 차례)를 판으로 펼친다.
@@ -36,6 +36,9 @@ export function ShellLink({
 // 관리자 판: MORE_MENU 차례에서 주소록 다음에 입지 분석을 끼운다(MENU·준비 중 수는 그대로)
 const ADMIN_MORE: readonly MenuItem[] = MORE_MENU.flatMap((item) => (item.path === '/contacts' ? [item, LOCATION_TAB] : [item]))
 
+// 머리 글자의 숫자는 판에 보이는 항목(MORE_MENU — 관리자는 입지 분석을 더한 목록 — 에서 숨긴 탭을 뺀 것)에서 센다(탭이 화면을 가지면 menu.ts의 ready만 바꾼다).
+// 관리자만 보는 탭(hidden, multi-admin AC-7706.3)은 판 목록·수·지금 항목에서 빠진다. 판에는 늘 설정이 있어 비지 않는다
+
 // 감싸개: 단추가 nav 높이만큼 늘어난다. 768px 미만은 static → 판의 기준이 nav가 된다(그 폭 배치는 그대로)
 const wrapClass = 'relative flex shrink-0 md:mr-3 max-md:static'
 // 단추: 탭과 같은 크기(44px·좌우 12px·body), 키보드 초점은 단추 안쪽 2px accent 고리(4px 모서리). 올림 글자색은 짧게 바뀐다
@@ -59,6 +62,8 @@ const itemIdle = `${itemBase} font-medium text-ink`
 // 지금 항목: accent-strong 600 + 왼쪽 2px accent 막대(20px, 안쪽 여백만큼 왼쪽으로 당긴다)
 const itemCurrent = `${itemBase} font-semibold text-accent-strong before:-ml-1 before:h-5 before:w-0.5 before:shrink-0 before:bg-accent`
 
+const inMore = (items: readonly MenuItem[], label: MenuLabel | null) => items.find((m) => m.label === label) ?? null
+
 export function MoreMenu({
   pathname,
   current,
@@ -66,6 +71,7 @@ export function MoreMenu({
   pending,
   onPress,
   isAdmin = false,
+  hidden = [],
 }: {
   /** 지금 경로. 바뀌면 판을 닫는다 */
   pathname: string
@@ -79,12 +85,13 @@ export function MoreMenu({
   onPress: (e: MouseEvent<HTMLAnchorElement>, href: string) => void
   /** 관리자 계정(입지 분석 칸을 더한다). 없으면 거짓 */
   isAdmin?: boolean
+  /** 숨긴 탭(multi-admin). 없으면 빈 목록 = 지금 그대로 */
+  hidden?: readonly MenuPath[]
 }) {
-  // 머리 글자의 숫자는 판 목록(MORE_MENU, 관리자는 입지 분석을 더한 목록)에서 센다(탭이 화면을 가지면 menu.ts의 ready만 바꾼다)
-  const items = isAdmin ? ADMIN_MORE : MORE_MENU
+  // 판에 보이는 항목(MORE_MENU 차례, 관리자는 주소록 다음에 입지 분석)과 머리 숫자
+  const items = (isAdmin ? ADMIN_MORE : MORE_MENU).filter((item) => !hidden.includes(item.path))
   const others = items.length
   const notReady = items.filter((m) => !m.ready).length
-  const inMore = (label: MenuLabel | null) => items.find((m) => m.label === label) ?? null
   // 판을 연 경로. 지금 경로에서 연 판만 열린 판이다 → 경로가 바뀌면 닫히고, 그 경로로 돌아와도 다시 열리지 않게 지운다
   const [openAt, setOpenAt] = useState<string | null>(null)
   if (openAt !== null && openAt !== pathname) setOpenAt(null)
@@ -92,7 +99,7 @@ export function MoreMenu({
   const buttonRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const panelId = useId()
-  const shownItem = inMore(shown)
+  const shownItem = inMore(items, shown)
 
   useEffect(() => {
     if (!open) return
@@ -120,7 +127,7 @@ export function MoreMenu({
         type="button"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        data-pending={inMore(pending) !== null ? 'true' : undefined}
+        data-pending={inMore(items, pending) !== null ? 'true' : undefined}
         onClick={() => setOpenAt(open ? null : pathname)}
         className={shownItem !== null ? buttonCurrent : buttonIdle}
       >
