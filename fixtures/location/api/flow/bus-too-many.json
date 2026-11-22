@@ -1,0 +1,11 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": {
+      "items": { "item": [{ "sttnId": "99000001", "sttnNm": "가람시장앞", "arsNo": "99001" }] },
+      "numOfRows": 1000,
+      "pageNo": 1,
+      "totalCount": 20001
+    }
+  }
+}

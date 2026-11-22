@@ -1,0 +1,17 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": {
+      "items": {
+        "item": [
+          { "sttnId": "99000001", "sttnNm": "가람시장앞", "arsNo": "99001" },
+          { "sttnId": "99000002", "sttnNm": " 누리 초등학교 ", "arsNo": "" },
+          { "sttnId": 99000004, "sttnNm": "별빛마을" }
+        ]
+      },
+      "numOfRows": 1000,
+      "pageNo": 1,
+      "totalCount": 3
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "response": {
+    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
+    "body": {
+      "items": { "item": { "sttnId": "99000009", "emdNm": "하늘동", "tfcmnNm": "버스", "tzon": "09", "rideNope": 12, "alghNope": 8, "dayCnt": 31 } },
+      "numOfRows": 1000,
+      "pageNo": 1,
+      "totalCount": 1
+    }
+  }
+}
