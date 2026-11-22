@@ -54,6 +54,7 @@ const FULL: ScoreFacts = {
   pharmacies: 0, // 0
   sign: 'yes', // 100
   violation: 'unknown', // 값 없음
+  clinicsNear: 2, // 같은 건물·옆 건물 의원 2곳 → 66(처음 무게 0이라 자리 점수에는 안 들어감)
   rentPerPy: 80000, // 적을수록 5만~20만 → 80
   deposit: 50_000_000, // 적을수록 3,000만~2억 → 88
   premium: 20_000_000, // 적을수록 0~1억 → 80
@@ -92,6 +93,7 @@ describe('AC-7911.1 DEFAULT_SCORE_RULE·SCORE_GROUPS — design.md 8절 표 그�
         's-neighbors': { w: 10, full: 1 },
         's-sign': { w: 10, full: 1 },
         's-violation': { w: 10, full: 1 },
+        's-clinics': { w: 0, full: 3 },
         'k-rentPy': { w: 35, best: 50000, worst: 200000 },
         'k-deposit': { w: 15, best: 30_000_000, worst: 200_000_000 },
         'k-premium': { w: 20, best: 0, worst: 100_000_000 },
@@ -237,6 +239,7 @@ describe('AC-7911.1·AC-7919.2 scoreItems — 후보(항목 다섯)', () => {
       's-neighbors': 0,
       's-sign': 1,
       's-violation': null,
+      's-clinics': 2,
       'k-rentPy': 80000,
       'k-deposit': 50_000_000,
       'k-premium': 20_000_000,
@@ -273,12 +276,14 @@ describe('AC-7911.1·AC-7919.2 scoreItems — 후보(항목 다섯)', () => {
       's-neighbors': 0,
       's-sign': 100,
       's-violation': null,
+      's-clinics': 66,
       'k-rentPy': 80,
       'k-deposit': 88,
       'k-premium': 80,
       'k-vsAvg': 50,
     })
-    // 사는 사람 32+15+1+4+8+1+1+2+2(+의료급여 무게 0) · 경쟁 15+7+9+5+10 · 교통(흐름 없음 → 무게 60) 33+13 · 자리(위반 모름 → 무게 90) 13+22+6+8+0+11 · 비용 28+13+16+15
+    // 사는 사람 32+15+1+4+8+1+1+2+2(+의료급여 무게 0) · 경쟁 15+7+9+5+10 · 교통(흐름 없음 → 무게 60) 33+13
+    // 자리(위반 모름 → 무게 90, 같은 건물·옆 건물 의원 무게 0) 13+22+6+8+0+11+0 · 비용 28+13+16+15
     expect(r.groups.map((g) => [g.id, g.score])).toEqual([
       ['people', 66],
       ['rivals', 46],
@@ -694,5 +699,133 @@ describe('AC-7919.6 p-welfare 의료급여·차상위 비율 — 이 세부 항�
     expect(fillScoreRule({ items: { 'p-welfare': { w: 10, full: 0 } } }).items['p-welfare']).toEqual({ w: 10, full: 5 })
     // 다른 세부 항목은 바꾼 모양을 받지 않고 처음 모양으로
     expect(fillScoreRule({ items: { 'p-senior': { w: 15, best: 1, worst: 5 } } }).items['p-senior']).toEqual({ w: 15, full: 25 })
+  })
+})
+
+describe('AC-7919.1 세부 항목 이름 — requirements 화면 글 기본값 그대로(값 설명은 why로)', () => {
+  const subs = () => SCORE_GROUPS.flatMap((g) => g.subs)
+  const def = (id: SubId) => subs().find((s) => s.id === id)
+
+  it("AC-7919.1: 세부 항목 이름(label)은 '화면 글 기본값' 이름 그대로이고 design.md 8절 id 차례다", () => {
+    expect(subs().map((s) => [s.id, s.label])).toEqual([
+      ['p-density', '고른 나이대 인구 밀도'],
+      ['p-senior', '60세 이상 비율'],
+      ['p-households', '세대 수'],
+      ['p-apts', '아파트 세대(입주 예정 포함)'],
+      ['p-trend', '인구 추세(4년)'],
+      ['p-accidents', '교통사고 다발 지점'],
+      ['p-industry', '산업단지 고용 인원'],
+      ['p-schools', '학교 수'],
+      ['p-facilities', '경로당·체력단련장 수'],
+      ['p-welfare', '의료급여·차상위 비율'],
+      ['c-count', '경쟁 의원 수'],
+      ['c-perRival', '1곳당 사는 사람'],
+      ['c-newOpen', '3년 새로 연 곳'],
+      ['c-gaps', '진료 시간 빈틈'],
+      ['c-price', '진료비 차이(둘레 평균이 지금 의원보다)'],
+      ['t-station', '역까지 거리'],
+      ['t-stops', '400m 안 정류장 수'],
+      ['t-flow', '하루 승하차(사람 흐름)'],
+      ['s-floor', '층'],
+      ['s-elevator', '엘리베이터'],
+      ['s-parking', '주차'],
+      ['s-age', '지은 해(건물 나이)'],
+      ['s-neighbors', '이웃 약국(30m 안)'],
+      ['s-sign', '간판 보임'],
+      ['s-violation', '위반 건축물'],
+      ['s-clinics', '같은 건물·옆 건물 의원 수'],
+      ['k-rentPy', '평당 월세'],
+      ['k-deposit', '보증금'],
+      ['k-premium', '권리금'],
+      ['k-vsAvg', '저장 매물 평균과의 차이(평당 월세)'],
+    ])
+  })
+
+  it("AC-7919.1: 예전 이름에 들어 있던 값 설명(셈·출처)은 why로 옮겨 '근거와 출처'에 남는다", () => {
+    expect(def('s-neighbors')?.why).toContain('후보 30m 안 약국 수(상가정보 업종)')
+    expect(def('p-density')?.why).toContain('고른 나이대 인구 ÷ 범위 km²')
+    expect(def('p-welfare')?.why).toContain('(기초 의료급여 + 차상위 3종) ÷ 주민등록 인구 × 100(%)')
+    expect(def('s-floor')?.why).toContain("'지'로 시작하면 지하 = 0점")
+    expect(def('k-vsAvg')?.why).toContain('2개 미만이면 값 없음')
+    // 이름에는 셈 글자가 없다
+    for (const s of subs()) expect(s.label, s.id).not.toMatch(/[÷×+=]|\(%\)|\(n\)|\(원\)/)
+  })
+})
+
+describe('AC-7921.7 s-clinics 같은 건물·옆 건물 의원 수 — 자리 맨 아래, 처음 무게 0', () => {
+  const site = () => SCORE_GROUPS.find((g) => g.id === 'site')
+
+  it('AC-7921.7: 자리 세부 항목 맨 아래에 s-clinics(많을수록 좋음 · 3곳 · 처음 무게 0 · 후보에서만)가 있다', () => {
+    const last = site()?.subs.at(-1)
+    expect(last).toMatchObject({ id: 's-clinics', label: '같은 건물·옆 건물 의원 수', dir: 'more', full: 3, w: 0, unit: '곳', scan: false })
+    expect(last?.why).toContain('후보 30m 안 의원 수(안 보기 뺌, 경쟁 포함, 약국 뺌)')
+    expect(DEFAULT_SCORE_RULE.items['s-clinics']).toEqual({ w: 0, full: 3 })
+    // 처음 설정의 자리 세부 항목도 s-violation 다음 맨 끝
+    const keys = Object.keys(DEFAULT_SCORE_RULE.items).filter((id) => id.startsWith('s-'))
+    expect(keys.at(-1)).toBe('s-clinics')
+    expect(keys.at(-2)).toBe('s-violation')
+  })
+
+  it('AC-7921.7: 값은 clinicsNear(후보 30m 안 의원 수)이고, 많을수록 좋음 3곳이면 100점, 값이 없으면 값 없음', () => {
+    const one = (clinicsNear: number | null | undefined) => sub(scoreItems({ clinicsNear }, DEFAULT_SCORE_RULE), 's-clinics')
+    expect(one(0)).toEqual({ id: 's-clinics', value: 0, score: 0 })
+    expect(one(1)).toEqual({ id: 's-clinics', value: 1, score: 33 })
+    expect(one(3)).toEqual({ id: 's-clinics', value: 3, score: 100 })
+    expect(one(7)?.score).toBe(100)
+    expect(one(null)).toEqual({ id: 's-clinics', value: null, score: null })
+    expect(one(undefined)).toEqual({ id: 's-clinics', value: null, score: null })
+  })
+
+  it('AC-7921.7: 처음 무게가 0이라 값이 있어도 자리·종합 점수는 그대로이고, 무게를 주면 들어간다', () => {
+    const { clinicsNear: _skip, ...without } = FULL
+    expect(_skip).toBe(2)
+    const base = scoreItems(without, DEFAULT_SCORE_RULE)
+    for (const n of [0, 2, 3, 9]) {
+      const r = scoreItems({ ...without, clinicsNear: n }, DEFAULT_SCORE_RULE)
+      expect([n, group(r, 'site')?.score, r.total]).toEqual([n, group(base, 'site')?.score, base.total])
+    }
+    expect(group(base, 'site')?.score).toBe(60)
+    const rule = clone(DEFAULT_SCORE_RULE)
+    rule.items['s-clinics'] = { w: 10, full: 3 }
+    // 무게 합 100: 50×25 + 100×20 + 40×15 + 80×10 + 0×10 + 100×10 + 100×10(의원 3곳) → 12+20+6+8+0+10+10
+    expect(group(scoreItems({ ...without, clinicsNear: 3 }, rule), 'site')?.score).toBe(66)
+  })
+
+  it('AC-7921.7: 동네 훑기에서는 쓰지 않는다(자리 항목은 후보에서만)', () => {
+    const r = scoreItems({ clinicsNear: 3 }, DEFAULT_SCORE_RULE, 'scan')
+    expect(r.groups.flatMap((g) => g.subs.map((s) => s.id))).not.toContain('s-clinics')
+  })
+
+  it('AC-7921.7: 예전에 저장한 설정에 s-clinics가 없으면 처음 값(무게 0 · 3곳)으로 채우고, 저장한 값은 남긴다', () => {
+    const old = structuredClone(DEFAULT_SCORE_RULE) as unknown as { items: Record<string, unknown> }
+    delete old.items['s-clinics']
+    expect(fillScoreRule(old).items['s-clinics']).toEqual({ w: 0, full: 3 })
+    expect(fillScoreRule({ items: { 's-clinics': { w: 25, full: 5 } } }).items['s-clinics']).toEqual({ w: 25, full: 5 })
+    expect(fillScoreRule({ items: { 's-clinics': { w: 25, full: 0 } } }).items['s-clinics']).toEqual({ w: 25, full: 3 })
+    // 칸 검사: 기준 0은 그 칸 글
+    const zero = clone(DEFAULT_SCORE_RULE)
+    zero.items['s-clinics'] = { w: 0, full: 0 }
+    expect(checkScoreRule(zero)).toEqual([{ at: 's-clinics', field: 'full', text: RULE_TEXT.full }])
+  })
+
+  it("AC-7921.7: 경쟁 과목이 0개면(부르는 쪽이 경쟁 값을 비움) '경쟁' 항목은 값 없음으로 빠지고 남은 무게로 종합을 센다", () => {
+    const r = scoreItems({ ...FULL, rivals: null, newRivals: null, gapCells: null, rivalEswt: null }, DEFAULT_SCORE_RULE)
+    expect(group(r, 'rivals')).toMatchObject({ score: null, points: null })
+    expect(group(r, 'rivals')?.subs.every((s) => s.value === null)).toBe(true)
+    // 무게 합 75: 66×30/75=26.4 · 46×20/75=12.2 · 60×15/75=12 · 72×10/75=9.6
+    expect(r.groups.map((g) => g.points)).toEqual([26, null, 12, 12, 9])
+    expect(r.total).toBe(59)
+    expect(r.used).toBe(4)
+  })
+
+  it("AC-7921.7: 경쟁 항목 글은 과목 이름 대신 '경쟁 의원'이라 쓴다(어느 과목이 경쟁인지는 과목 고르기 설정이 정함)", () => {
+    const rivals = SCORE_GROUPS.find((g) => g.id === 'rivals')
+    expect(rivals?.note).toContain('경쟁 의원')
+    const texts = [rivals?.note ?? '', ...(rivals?.subs ?? []).flatMap((s) => [s.label, s.why])]
+    for (const t of texts) expect(t).not.toMatch(/정형외과|신경외과|마취통증|재활의학|한의원/)
+    for (const id of ['c-count', 'c-newOpen', 'c-gaps', 'c-price'] as const) {
+      const s = rivals?.subs.find((x) => x.id === id)
+      expect(`${s?.label} ${s?.why}`, id).toContain('경쟁 의원')
+    }
   })
 })

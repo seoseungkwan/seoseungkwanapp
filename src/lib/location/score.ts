@@ -19,12 +19,12 @@ export type { ScoreFacts, YesNo }
 type Reader = (f: ScoreFacts, bands: readonly number[]) => number | null
 type SubBase = {
   id: string
-  /** 값 — '근거와 출처'·무게 판이 그대로 그린다 */
+  /** 이름 — requirements '화면 글 기본값' 그대로('근거와 출처'·점수 풀이가 그린다). 값 설명은 why에 둔다 */
   label: string
   unit: string
   /** 처음 무게 */
   w: number
-  /** 까닭 */
+  /** 값 설명(어떻게 셌나) + 까닭 — '근거와 출처'의 '왜' 칸 */
   why: string
   /** 동네 훑기(동 단위)에서도 쓰나. false면 화면에 '후보에서만' */
   scan: boolean
@@ -124,16 +124,16 @@ const GROUPS = [
     scan: true,
     note: '나이대: 10세 11칸에서 고름, 처음 40세 이상(정형외과 환자는 40대부터 크게 는다)',
     subs: [
-      { id: 'p-density', label: '고른 나이대 인구 ÷ 범위 km²', unit: '명/km²', dir: 'more', full: 10000, w: 40, why: '진료권은 사는 인구가 가장 잘 맞는다(진료권 연구)', scan: true, read: density },
-      { id: 'p-senior', label: '60세 이상 ÷ 전체 × 100(%)', unit: '%', dir: 'more', full: 25, w: 15, why: '무릎·허리 등 오래 다니는 환자가 많은 나이(사용자 예시 값)', scan: true, read: seniorShare },
-      { id: 'p-households', label: '범위 안 세대 수', unit: '세대', dir: 'more', full: 20000, w: 5, why: '인구 밀도와 많이 겹쳐 낮게. 1km에 2만 세대 = 큰 도시 주거지', scan: true, read: (f) => num(f.people?.households) },
-      { id: 'p-apts', label: '범위 안 아파트 세대 + 입주 예정 세대', unit: '세대', dir: 'more', full: 10000, w: 10, why: '홍보가 닿기 쉽고 입주 예정은 앞으로의 수요. 1,000세대 단지 열 곳쯤', scan: false, read: (f) => sumPresent(f.apartments, f.presale) },
-      { id: 'p-trend', label: '(최근 10월 − 2022-10) ÷ 2022-10 × 100(%), 줄면 0', unit: '%', dir: 'more', full: 5, w: 10, why: '4년에 5% 넘게 느는 곳은 새 아파트가 드는 곳', scan: true, read: trendRate },
-      { id: 'p-accidents', label: '범위 안 교통사고 다발 지점 수', unit: '곳', dir: 'more', full: 3, w: 5, why: '자동차보험 환자. 다발 지점은 시군구에 몇 곳뿐이라 1km 안 3곳이면 많다', scan: true, read: (f) => num(f.accidentSpots) },
-      { id: 'p-industry', label: '후보 시군구의 산업단지 고용 인원 합(단지 위치가 없어 시군구 단위)', unit: '명', dir: 'more', full: 20000, w: 5, why: '일하다 다치는 환자. 시군구 단위라 거칠어 낮게', scan: true, read: (f) => num(f.industryEmployees) },
-      { id: 'p-schools', label: '범위 안 초·중·고 수', unit: '곳', dir: 'more', full: 5, w: 5, why: '학생 운동 손상·학부모', scan: true, read: (f) => num(f.schools) },
-      { id: 'p-facilities', label: '범위 안 경로당 + 체력단련장', unit: '곳', dir: 'more', full: 30, w: 5, why: '노년·운동하는 사람 신호. 경로당은 단지마다 있어 흔하다', scan: true, read: (f) => sumPresent(f.seniorCenters, f.gyms) },
-      { id: 'p-welfare', label: '후보 시군구 (기초 의료급여 + 차상위 3종) ÷ 주민등록 인구 × 100(%)', unit: '%', dir: 'more', full: 5, w: 0, why: '의료급여·차상위가 많으면 근골격 진료 수요가 많을 수도, 비급여를 덜 쓸 수도 있어 방향과 무게는 사용자가 정한다. 전국 어림 3.5%쯤', scan: false, read: (f) => num(f.welfareRate), flip: { best: 1, worst: 5 } },
+      { id: 'p-density', label: '고른 나이대 인구 밀도', unit: '명/km²', dir: 'more', full: 10000, w: 40, why: '고른 나이대 인구 ÷ 범위 km². 진료권은 사는 인구가 가장 잘 맞는다(진료권 연구)', scan: true, read: density },
+      { id: 'p-senior', label: '60세 이상 비율', unit: '%', dir: 'more', full: 25, w: 15, why: '60세 이상 ÷ 전체 × 100(%). 무릎·허리 등 오래 다니는 환자가 많은 나이(사용자 예시 값)', scan: true, read: seniorShare },
+      { id: 'p-households', label: '세대 수', unit: '세대', dir: 'more', full: 20000, w: 5, why: '범위 안 세대 수. 인구 밀도와 많이 겹쳐 낮게. 1km에 2만 세대 = 큰 도시 주거지', scan: true, read: (f) => num(f.people?.households) },
+      { id: 'p-apts', label: '아파트 세대(입주 예정 포함)', unit: '세대', dir: 'more', full: 10000, w: 10, why: '범위 안 아파트 세대 + 입주 예정 세대. 홍보가 닿기 쉽고 입주 예정은 앞으로의 수요. 1,000세대 단지 열 곳쯤', scan: false, read: (f) => sumPresent(f.apartments, f.presale) },
+      { id: 'p-trend', label: '인구 추세(4년)', unit: '%', dir: 'more', full: 5, w: 10, why: '(최근 10월 − 2022-10) ÷ 2022-10 × 100(%), 줄면 0. 4년에 5% 넘게 느는 곳은 새 아파트가 드는 곳', scan: true, read: trendRate },
+      { id: 'p-accidents', label: '교통사고 다발 지점', unit: '곳', dir: 'more', full: 3, w: 5, why: '범위 안 교통사고 다발 지점 수. 자동차보험 환자. 다발 지점은 시군구에 몇 곳뿐이라 1km 안 3곳이면 많다', scan: true, read: (f) => num(f.accidentSpots) },
+      { id: 'p-industry', label: '산업단지 고용 인원', unit: '명', dir: 'more', full: 20000, w: 5, why: '후보 시군구의 산업단지 고용 인원 합(단지 위치가 없어 시군구 단위). 일하다 다치는 환자. 시군구 단위라 거칠어 낮게', scan: true, read: (f) => num(f.industryEmployees) },
+      { id: 'p-schools', label: '학교 수', unit: '곳', dir: 'more', full: 5, w: 5, why: '범위 안 초·중·고 수. 학생 운동 손상·학부모', scan: true, read: (f) => num(f.schools) },
+      { id: 'p-facilities', label: '경로당·체력단련장 수', unit: '곳', dir: 'more', full: 30, w: 5, why: '범위 안 경로당 + 체력단련장. 노년·운동하는 사람 신호. 경로당은 단지마다 있어 흔하다', scan: true, read: (f) => sumPresent(f.seniorCenters, f.gyms) },
+      { id: 'p-welfare', label: '의료급여·차상위 비율', unit: '%', dir: 'more', full: 5, w: 0, why: '후보 시군구 (기초 의료급여 + 차상위 3종) ÷ 주민등록 인구 × 100(%). 의료급여·차상위가 많으면 근골격 진료 수요가 많을 수도, 비급여를 덜 쓸 수도 있어 방향과 무게는 사용자가 정한다. 전국 어림 3.5%쯤', scan: false, read: (f) => num(f.welfareRate), flip: { best: 1, worst: 5 } },
     ],
   },
   {
@@ -141,13 +141,13 @@ const GROUPS = [
     name: '경쟁',
     w: 25,
     scan: true,
-    note: 'n = 범위 안 정형외과·마취통증의학과·재활의학과(한의원 뺌)',
+    note: "n = 범위 안 경쟁 의원 수(과목 고르기에서 경쟁 의원으로 고른 과목, 대표 과목으로 셈). 경쟁 의원 과목을 하나도 안 고르면 이 항목은 '과목 없음'(값 없음)",
     subs: [
-      { id: 'c-count', label: '범위 안 경쟁 의원 수(n)', unit: '곳', dir: 'less', best: 0, worst: 6, w: 30, why: "시안 위험 신호 '경쟁 5곳 이상'보다 조금 넉넉하게", scan: true, read: (f) => num(f.rivals) },
-      { id: 'c-perRival', label: '범위 인구 ÷ (n + 1)', unit: '명', dir: 'more', full: 20000, w: 35, why: '의원 하나가 버티는 인구 어림(앞 판 그대로)', scan: true, read: perRival },
-      { id: 'c-newOpen', label: '개설일이 3년 안인 경쟁 의원 수', unit: '곳', dir: 'less', best: 0, worst: 3, w: 15, why: '새로 여는 곳이 많으면 이미 붐비는 동네', scan: true, read: (f) => num(f.newRivals) },
-      { id: 'c-gaps', label: '진료 시간 빈틈 칸 수(월~토)', unit: '칸', dir: 'more', full: 10, w: 10, why: '야간·주말 빈틈은 새 의원이 파고들 자리', scan: false, read: (f) => num(f.gapCells) },
-      { id: 'c-price', label: '(경쟁 평균 체외충격파 값 − 지금 의원 값) ÷ 지금 의원 값 × 100(%), 0 아래는 0', unit: '%', dir: 'more', full: 20, w: 10, why: '둘레가 비싸게 받으면 값으로 견줄 수 있다. 지금 의원 값을 안 적으면 값 없음', scan: false, read: priceGap },
+      { id: 'c-count', label: '경쟁 의원 수', unit: '곳', dir: 'less', best: 0, worst: 6, w: 30, why: "범위 안 경쟁 의원 수(n). 시안 위험 신호 '경쟁 5곳 이상'보다 조금 넉넉하게", scan: true, read: (f) => num(f.rivals) },
+      { id: 'c-perRival', label: '1곳당 사는 사람', unit: '명', dir: 'more', full: 20000, w: 35, why: '범위 인구 ÷ (경쟁 의원 수 + 1). 의원 하나가 버티는 인구 어림(앞 판 그대로)', scan: true, read: perRival },
+      { id: 'c-newOpen', label: '3년 새로 연 곳', unit: '곳', dir: 'less', best: 0, worst: 3, w: 15, why: '개설일이 3년 안인 경쟁 의원 수. 새로 여는 곳이 많으면 이미 붐비는 동네', scan: true, read: (f) => num(f.newRivals) },
+      { id: 'c-gaps', label: '진료 시간 빈틈', unit: '칸', dir: 'more', full: 10, w: 10, why: '경쟁 의원이 아무도 안 여는 진료 시간 칸 수(월~토). 야간·주말 빈틈은 새 의원이 파고들 자리', scan: false, read: (f) => num(f.gapCells) },
+      { id: 'c-price', label: '진료비 차이(둘레 평균이 지금 의원보다)', unit: '%', dir: 'more', full: 20, w: 10, why: '(경쟁 의원 평균 체외충격파 값 − 지금 의원 값) ÷ 지금 의원 값 × 100(%), 0 아래는 0. 둘레가 비싸게 받으면 값으로 견줄 수 있다. 지금 의원 값을 안 적으면 값 없음', scan: false, read: priceGap },
     ],
   },
   {
@@ -157,9 +157,9 @@ const GROUPS = [
     scan: true,
     note: '',
     subs: [
-      { id: 't-station', label: '가장 가까운 역까지 m(훑기는 동 가운데에서)', unit: 'm', dir: 'less', best: 200, worst: 1500, w: 40, why: '앞 판 그대로', scan: true, read: (f) => num(f.stationM) },
-      { id: 't-stops', label: '400m 안 버스 정류장 수(훑기는 동 가운데에서)', unit: '곳', dir: 'more', full: 10, w: 20, why: '앞 판 그대로', scan: true, read: (f) => num(f.stops) },
-      { id: 't-flow', label: '범위 안 하루 평균 승하차 합(교통카드 기준)', unit: '명', dir: 'more', full: 30000, w: 40, why: '사람이 실제로 지나는 양. 군 지역은 값 없음 → 남은 무게로', scan: false, read: (f) => num(f.flow) },
+      { id: 't-station', label: '역까지 거리', unit: 'm', dir: 'less', best: 200, worst: 1500, w: 40, why: '가장 가까운 역까지 m(훑기는 동 가운데에서). 앞 판 그대로', scan: true, read: (f) => num(f.stationM) },
+      { id: 't-stops', label: '400m 안 정류장 수', unit: '곳', dir: 'more', full: 10, w: 20, why: '400m 안 버스 정류장 수(훑기는 동 가운데에서). 앞 판 그대로', scan: true, read: (f) => num(f.stops) },
+      { id: 't-flow', label: '하루 승하차(사람 흐름)', unit: '명', dir: 'more', full: 30000, w: 40, why: '범위 안 하루 평균 승하차 합(교통카드 기준). 사람이 실제로 지나는 양. 군 지역은 값 없음 → 남은 무게로', scan: false, read: (f) => num(f.flow) },
     ],
   },
   {
@@ -169,13 +169,14 @@ const GROUPS = [
     scan: false,
     note: '후보만',
     subs: [
-      { id: 's-floor', label: "후보 층(층 글의 숫자, '지'로 시작하면 지하 = 0점)", unit: '층', dir: 'less', best: 1, worst: 5, w: 25, why: '무릎·허리 아픈 환자는 낮은 층', scan: false, read: (f) => floorNumber(f.floorLabel), zero: (v) => v < 0 },
-      { id: 's-elevator', label: '건물 승강기 수', unit: '대', dir: 'more', full: 1, w: 20, why: '2층 이상이면 꼭 필요', scan: false, read: (f) => num(f.elevators) },
-      { id: 's-parking', label: '건물 주차 대수(건축물대장)', unit: '대', dir: 'more', full: 30, w: 15, why: '노년 환자는 차로 온다', scan: false, read: (f) => num(f.parking) },
-      { id: 's-age', label: '사용승인 뒤 햇수', unit: '년', dir: 'less', best: 5, worst: 30, w: 10, why: '오래된 건물은 전기·방사선 공사가 어렵다', scan: false, read: (f) => num(f.buildingAge) },
-      { id: 's-neighbors', label: '후보 30m 안 약국 수(상가정보 업종)', unit: '곳', dir: 'more', full: 1, w: 10, why: '1층 약국은 처방 환자 동선', scan: false, read: (f) => num(f.pharmacies) },
-      { id: 's-sign', label: '간판 보임(보여요 1 · 가려요 0 · 모름 값 없음)', unit: '', dir: 'more', full: 1, w: 10, why: '사용자가 거리 사진으로 고름', scan: false, read: (f) => pick(f.sign, 'yes') },
-      { id: 's-violation', label: '위반 건축물(없음 1 · 있음 0 · 모름 값 없음)', unit: '', dir: 'more', full: 1, w: 10, why: '있으면 개설 신고가 막힐 수 있다', scan: false, read: (f) => pick(f.violation, 'no') },
+      { id: 's-floor', label: '층', unit: '층', dir: 'less', best: 1, worst: 5, w: 25, why: "후보 층(층 글의 숫자, '지'로 시작하면 지하 = 0점). 무릎·허리 아픈 환자는 낮은 층", scan: false, read: (f) => floorNumber(f.floorLabel), zero: (v) => v < 0 },
+      { id: 's-elevator', label: '엘리베이터', unit: '대', dir: 'more', full: 1, w: 20, why: '건물 승강기 수. 2층 이상이면 꼭 필요', scan: false, read: (f) => num(f.elevators) },
+      { id: 's-parking', label: '주차', unit: '대', dir: 'more', full: 30, w: 15, why: '건물 주차 대수(건축물대장). 노년 환자는 차로 온다', scan: false, read: (f) => num(f.parking) },
+      { id: 's-age', label: '지은 해(건물 나이)', unit: '년', dir: 'less', best: 5, worst: 30, w: 10, why: '사용승인 뒤 햇수. 오래된 건물은 전기·방사선 공사가 어렵다', scan: false, read: (f) => num(f.buildingAge) },
+      { id: 's-neighbors', label: '이웃 약국(30m 안)', unit: '곳', dir: 'more', full: 1, w: 10, why: '후보 30m 안 약국 수(상가정보 업종). 1층 약국은 처방 환자 동선', scan: false, read: (f) => num(f.pharmacies) },
+      { id: 's-sign', label: '간판 보임', unit: '', dir: 'more', full: 1, w: 10, why: '간판 보임(보여요 1 · 가려요 0 · 모름 값 없음). 사용자가 거리 사진으로 고름', scan: false, read: (f) => pick(f.sign, 'yes') },
+      { id: 's-violation', label: '위반 건축물', unit: '', dir: 'more', full: 1, w: 10, why: '위반 건축물(없음 1 · 있음 0 · 모름 값 없음). 있으면 개설 신고가 막힐 수 있다', scan: false, read: (f) => pick(f.violation, 'no') },
+      { id: 's-clinics', label: '같은 건물·옆 건물 의원 수', unit: '곳', dir: 'more', full: 3, w: 0, why: '후보 30m 안 의원 수(안 보기 뺌, 경쟁 포함, 약국 뺌). 다른 과 의원이 모이면 환자가 는다는 연구를 못 찾아 처음 무게는 0 — 사용자가 올린다', scan: false, read: (f) => num(f.clinicsNear) },
     ],
   },
   {
@@ -185,10 +186,10 @@ const GROUPS = [
     scan: false,
     note: '후보만, 후보 매물',
     subs: [
-      { id: 'k-rentPy', label: '평당 월세(원)', unit: '원', dir: 'less', best: 50000, worst: 200000, w: 35, why: '지방 주거지 ~ 서울 역세권 폭', scan: false, read: (f) => num(f.rentPerPy) },
-      { id: 'k-deposit', label: '보증금(원)', unit: '원', dir: 'less', best: 30_000_000, worst: 200_000_000, w: 15, why: '처음 드는 돈', scan: false, read: (f) => num(f.deposit) },
-      { id: 'k-premium', label: '권리금(원)', unit: '원', dir: 'less', best: 0, worst: 100_000_000, w: 20, why: '돌려받지 못하는 돈', scan: false, read: (f) => num(f.premium) },
-      { id: 'k-vsAvg', label: '평당 월세가 저장한 매물 평균보다 몇 % 비싼지(2개 미만이면 값 없음)', unit: '%', dir: 'less', best: -20, worst: 20, w: 30, why: '같은 눈높이로 고른 매물끼리 견줌', scan: false, read: vsAverage },
+      { id: 'k-rentPy', label: '평당 월세', unit: '원', dir: 'less', best: 50000, worst: 200000, w: 35, why: '평당 월세(원). 지방 주거지 ~ 서울 역세권 폭', scan: false, read: (f) => num(f.rentPerPy) },
+      { id: 'k-deposit', label: '보증금', unit: '원', dir: 'less', best: 30_000_000, worst: 200_000_000, w: 15, why: '보증금(원). 처음 드는 돈', scan: false, read: (f) => num(f.deposit) },
+      { id: 'k-premium', label: '권리금', unit: '원', dir: 'less', best: 0, worst: 100_000_000, w: 20, why: '권리금(원). 돌려받지 못하는 돈', scan: false, read: (f) => num(f.premium) },
+      { id: 'k-vsAvg', label: '저장 매물 평균과의 차이(평당 월세)', unit: '%', dir: 'less', best: -20, worst: 20, w: 30, why: '평당 월세가 저장한 매물 평균보다 몇 % 비싼지(2개 미만이면 값 없음). 같은 눈높이로 고른 매물끼리 견줌', scan: false, read: vsAverage },
     ],
   },
 ] as const satisfies readonly GroupDefRaw[]
