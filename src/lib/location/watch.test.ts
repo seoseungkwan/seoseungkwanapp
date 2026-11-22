@@ -21,6 +21,8 @@ const CENTER = { lat: 37.5, lng: 127 }
 const RULE = DEFAULT_DEPT_RULE
 const ruleOf = (rival: DeptId[], hide: DeptId[] = []): DeptRule => ({ v: 1, rival, hide })
 
+// 후보 그날 값 place(시도·시군구 이름) — 지역을 알아야 확인한다(TASK-87)
+const PLACE = { sidoName: '서울특별시', sggName: '예시구' }
 const cand = (id: string, over: Partial<WatchCandidate> = {}): WatchCandidate => ({
   id,
   name: `예시후보${id}`,
@@ -30,6 +32,7 @@ const cand = (id: string, over: Partial<WatchCandidate> = {}): WatchCandidate =>
   radiusM: 1000,
   watchCheckedOn: null,
   createdAt: `2026-11-01T00:00:0${id.length % 10}+00:00`,
+  place: PLACE,
   ...over,
 })
 
@@ -102,6 +105,23 @@ describe('AC-7915.1 dueCandidates', () => {
   it('AC-7915.1: 고를 후보가 없으면 빈 목록이다', () => {
     expect(dueCandidates([], TODAY)).toEqual([])
   })
+
+  it('AC-7915.1: 그날 값 place가 없거나 지역 글을 못 만드는 후보는 고르지 않는다 — 전국으로 부르지 않고 5곳 자리를 차지하지 않는다', () => {
+    // 지역을 모르는 후보(만든 차례가 가장 앞이어도 고르지 않음)
+    const unknown = [
+      cand('n1', { createdAt: '2026-10-01T00:00:00+00:00', place: undefined }),
+      cand('n2', { createdAt: '2026-10-02T00:00:00+00:00', place: null }),
+      cand('n3', { createdAt: '2026-10-03T00:00:00+00:00', place: { sidoName: '서울특별시', sggName: '' } }),
+      cand('n4', { createdAt: '2026-10-04T00:00:00+00:00', place: { sidoName: ' ', sggName: ' ' } }),
+      cand('n5', { createdAt: '2026-10-05T00:00:00+00:00', place: { sidoName: 'Seoul', sggName: 'Jongno' } }),
+    ]
+    const known = ['a', 'b', 'c', 'd', 'e', 'f'].map((id, i) => cand(id, { createdAt: `2026-11-0${i + 1}T00:00:00+00:00` }))
+    expect(dueCandidates([...unknown, ...known], TODAY).flatMap((group) => group.candidates.map((c) => c.id))).toEqual(['a', 'b', 'c', 'd', 'e'])
+    expect(dueCandidates(unknown, TODAY)).toEqual([])
+    // 세종처럼 시도·시군구가 같아도 지역을 아는 것이다
+    const sejong = cand('s', { place: { sidoName: '세종특별자치시', sggName: '세종특별자치시' } })
+    expect(dueCandidates([sejong], TODAY)).toEqual([{ from: '2026-10-24', to: '2026-11-20', candidates: [sejong] }])
+  })
 })
 
 describe('AC-7915.1 pickEvents', () => {
@@ -152,14 +172,36 @@ describe('AC-7915.1 pickEvents', () => {
       row('예시솔빛치과의원', { dept: '구강악안면외과' }),
     ]
     const found = { kind: 'open' as const, ...PERIOD, rows }
+    // 업태로 가른 줄은 저장하는 과목 글 앞에 업태 글을 붙인다(그리는 쪽이 같은 과목을 얻게 — TASK-87)
     expect(pickEvents(found, cand('a'), ruleOf(['dental', 'korean'])).map((e) => [e.clinicName, e.dept])).toEqual([
-      ['예시미소치과의원', '구강악안면외과'],
-      ['예시다온한의원', '한방내과, 침구과'],
+      ['예시미소치과의원', '치과의원,구강악안면외과'],
+      ['예시다온한의원', '한의원,한방내과, 침구과'],
     ])
     // 업태로 가른 치과의원은 과목 글(구강악안면외과)의 외과로 세지 않는다
     expect(pickEvents(found, cand('a'), ruleOf(['gs', 'ortho'])).map((e) => e.clinicName)).toEqual(['예시바른정형외과의원', '예시솔빛치과의원'])
     // 업태로 가른 과목이 안 보기면 알리지 않는다
     expect(pickEvents(found, cand('a'), ruleOf(['korean'], ['dental'])).map((e) => e.clinicName)).toEqual(['예시다온한의원'])
+  })
+
+  it('AC-7915.1·AC-7921.4: 업태로 가른 줄(치과의원·한의원)만 저장하는 과목 글 앞에 업태 글을 붙이고(과목 글이 비면 업태 글만), 나머지 줄은 과목 글 그대로다', () => {
+    const rows = [
+      row('예시다온한의원', { dept: '한방내과,한방재활의학과,침구과', type: '한의원' }),
+      row('예시한결한의원', { dept: '', type: ' 한의원 ' }),
+      row('예시미소치과의원', { dept: '  ', type: '치과의원' }),
+      row('예시바른정형외과의원', { dept: '정형외과, 재활의학과', type: '의원' }),
+      row('예시솔빛정형외과의원', { dept: '정형외과' }), // 업태 없는 옛 줄
+      row('예시긴한의원', { dept: `한방내과,${'다'.repeat(60)}`, type: '한의원' }),
+    ]
+    const events = pickEvents({ kind: 'open', ...PERIOD, rows }, cand('a'), ruleOf(['korean', 'dental', 'ortho']))
+    expect(events.map((e) => [e.clinicName, e.dept])).toEqual([
+      ['예시다온한의원', '한의원,한방내과,한방재활의학과,침구과'],
+      ['예시한결한의원', '한의원'],
+      ['예시미소치과의원', '치과의원'],
+      ['예시바른정형외과의원', '정형외과, 재활의학과'],
+      ['예시솔빛정형외과의원', '정형외과'],
+      ['예시긴한의원', `한의원,한방내과,${'다'.repeat(60)}`.slice(0, 50)],
+    ])
+    for (const e of events) expect(Array.from(e.dept).length).toBeLessThanOrEqual(50) // location_events.dept ≤ 50
   })
 
   it('AC-7915.1: 경쟁 과목은 설정을 따른다 — 내과만 고르면 내과 의원만 알린다', () => {

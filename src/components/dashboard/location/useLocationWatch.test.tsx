@@ -43,7 +43,10 @@ vi.mock('@/lib/supabase/browser', () => ({ supabaseBrowser: vi.fn() }))
 const TODAY = '2026-11-22'
 const CLIENT = { from: vi.fn(), rpc: vi.fn(), storage: {} } as unknown as SupabaseClient
 
-// 후보 A(서울 어딘가, 범위 1km)·B(범위 500m): 확인한 적 없음. C: 10일 전에 확인. D: 내려놓음
+// 후보 A(서울 어딘가, 범위 1km)·B(범위 500m): 확인한 적 없음. C: 10일 전에 확인. D: 내려놓음.
+// 후보는 그날 값 place(시도·시군구 이름)가 있어야 확인한다 — 처음 값은 모두 같은 주소 앞부분(ADDR)이다
+const PLACE = { sidoName: '서울특별시', sggName: '예시구' }
+const ADDR = '서울특별시 예시구'
 const cand = (id: string, over: Partial<WatchCandidate> = {}): WatchCandidate => ({
   id,
   name: `예시후보 ${id.slice(0, 1).toUpperCase()}`,
@@ -53,6 +56,7 @@ const cand = (id: string, over: Partial<WatchCandidate> = {}): WatchCandidate =>
   radiusM: 1000,
   watchCheckedOn: null,
   createdAt: '2026-11-01T00:00:00.000Z',
+  place: PLACE,
   ...over,
 })
 const A = cand('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { name: '예시빌딩 3층', createdAt: '2026-11-01T00:00:00.000Z' })
@@ -193,8 +197,8 @@ describe('useLocationWatch: 확인하고 줄을 넣는다 (AC-7915.1)', () => {
     expect(vi.mocked(listWatchCandidates).mock.calls).toEqual([[CLIENT]])
     // A·B는 확인한 적 없음(같은 기간 한 묶음), C는 10일 전 확인, D는 내려놓음 → 부르지 않음
     expect(queries()).toEqual([
-      { kind: 'clinic-license', event: 'open', from: FIRST.from, to: FIRST.to },
-      { kind: 'clinic-license', event: 'close', from: FIRST.from, to: FIRST.to },
+      { kind: 'clinic-license', event: 'open', from: FIRST.from, to: FIRST.to, addr: ADDR },
+      { kind: 'clinic-license', event: 'close', from: FIRST.from, to: FIRST.to, addr: ADDR },
     ])
   })
 
@@ -254,6 +258,31 @@ describe('useLocationWatch: 확인하고 줄을 넣는다 (AC-7915.1)', () => {
     ])
   })
 
+  it('AC-7915.1·AC-7921.4: 업태로 가른 한의원 줄은 과목 글 앞에 업태 글을 붙여 넣고, 그 줄을 다시 읽어 그리면 한의원으로 보인다(경쟁 한의원·정형외과 — 줄이 사라지지 않음)', async () => {
+    vi.mocked(readDeptRule).mockResolvedValue(rule(['korean', 'ortho']))
+    vi.mocked(listWatchCandidates).mockResolvedValue([A])
+    answerLicense({
+      [`open ${FIRST.from} ${FIRST.to}`]: ok([{ ...row('예시다온한의원', '한방내과,한방재활의학과,침구과', { openedOn: '2026-11-06' }, NEAR), type: '한의원' }]),
+      [`close ${FIRST.from} ${FIRST.to}`]: ok([{ ...row('예시한결한의원', '', { closedOn: '2026-11-07' }, NEAR), type: '한의원' }]),
+    })
+    // 넣은 줄을 그대로 안 본 줄로 돌려준다(DB가 담아 두었다가 읽힌 것처럼)
+    let saved: LocationEvent[] = []
+    vi.mocked(addEvents).mockImplementation(async (_client, events) => {
+      saved = events.map((e, i) => ({ ...e, id: `e0000000-0000-4000-8000-00000000010${i}`, seenAt: null, createdAt: '2026-11-22T01:00:00.000Z' }))
+    })
+    vi.mocked(listUnseenEvents).mockImplementation(async () => saved)
+    const { result } = draw()
+    await flush()
+    expect(vi.mocked(addEvents).mock.calls[0]![1].map((e) => [e.kind, e.clinicName, e.dept])).toEqual([
+      ['open', '예시다온한의원', '한의원,한방내과,한방재활의학과,침구과'],
+      ['close', '예시한결한의원', '한의원'],
+    ])
+    expect(result.current.events.map((l) => [l.clinicName, l.deptShort, l.candidateName])).toEqual([
+      ['예시다온한의원', '한의원', '예시빌딩 3층'],
+      ['예시한결한의원', '한의원', '예시빌딩 3층'],
+    ])
+  })
+
   it('AC-7915.1: 경쟁 과목이 0개면 clinic-license를 부르지 않고, 넣기·확인 날 고치기도 없으며 알림 줄도 없다', async () => {
     const spies = consoleSpies()
     vi.mocked(readDeptRule).mockResolvedValue(rule([]))
@@ -282,12 +311,18 @@ describe('useLocationWatch: 확인하고 줄을 넣는다 (AC-7915.1)', () => {
     for (const spy of spies) expect(spy).not.toHaveBeenCalled()
   })
 
-  it("AC-7915.1: 후보 그날 값 place의 '{시도} {시군구}'를 addr로 실어 부른다 — 세종처럼 둘이 같으면 하나, 주소가 다른 후보는 따로, place가 없으면 addr 없이", async () => {
+  it("AC-7915.1: 후보 그날 값 place의 '{시도} {시군구}'를 addr로 실어 부른다 — 세종처럼 둘이 같으면 하나, 주소가 다른 후보는 따로, place가 없거나 지역을 모르면 부르지 않는다(전국으로 부르지 않음)", async () => {
+    const E = cand('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', { createdAt: '2026-11-03T00:00:00.000Z', place: { sidoName: '서울특별시', sggName: '예시구' } })
+    const F = cand('ffffffff-ffff-4fff-8fff-ffffffffffff', { createdAt: '2026-10-04T00:00:00.000Z', place: null })
+    const G = cand('99999999-9999-4999-8999-999999999999', { createdAt: '2026-10-05T00:00:00.000Z', place: undefined })
+    const H = cand('88888888-8888-4888-8888-888888888888', { createdAt: '2026-10-06T00:00:00.000Z', place: { sidoName: '서울특별시', sggName: '' } })
     vi.mocked(listWatchCandidates).mockResolvedValue([
       { ...A, place: { sidoName: '서울특별시', sggName: '예시구' } },
       { ...B, place: { sidoName: '세종특별자치시', sggName: '세종특별자치시' } },
-      cand('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', { createdAt: '2026-11-03T00:00:00.000Z', place: { sidoName: '서울특별시', sggName: '예시구' } }),
-      cand('ffffffff-ffff-4fff-8fff-ffffffffffff', { createdAt: '2026-11-04T00:00:00.000Z', place: null }),
+      E,
+      F,
+      G,
+      H,
     ])
     vi.mocked(queryLocation).mockResolvedValue(ok([]))
     draw()
@@ -297,10 +332,9 @@ describe('useLocationWatch: 확인하고 줄을 넣는다 (AC-7915.1)', () => {
       { kind: 'clinic-license', event: 'close', from: FIRST.from, to: FIRST.to, addr: '서울특별시 예시구' },
       { kind: 'clinic-license', event: 'open', from: FIRST.from, to: FIRST.to, addr: '세종특별자치시' },
       { kind: 'clinic-license', event: 'close', from: FIRST.from, to: FIRST.to, addr: '세종특별자치시' },
-      { kind: 'clinic-license', event: 'open', from: FIRST.from, to: FIRST.to },
-      { kind: 'clinic-license', event: 'close', from: FIRST.from, to: FIRST.to },
     ])
-    expect(setWatchChecked).toHaveBeenCalledTimes(4)
+    // 지역을 모르는 후보(만든 차례가 앞이어도)는 확인 날도 고치지 않는다 — 5곳 자리를 차지하지 않는다
+    expect(vi.mocked(setWatchChecked).mock.calls.map(([, id]) => id).sort()).toEqual([A.id, B.id, E.id].sort())
   })
 
   it('AC-7915.1: 답이 한도에 잘렸으면(capped) 그 주소의 후보는 찾은 줄은 넣되 확인 날을 고치지 않는다 — 다른 주소 후보는 고친다', async () => {
@@ -354,10 +388,10 @@ describe('useLocationWatch: 확인하고 줄을 넣는다 (AC-7915.1)', () => {
     draw()
     await flush()
     expect(queries()).toEqual([
-      { kind: 'clinic-license', event: 'open', from: '2026-09-30', to: FIRST.to },
-      { kind: 'clinic-license', event: 'close', from: '2026-09-30', to: FIRST.to },
-      { kind: 'clinic-license', event: 'open', from: FIRST.from, to: FIRST.to },
-      { kind: 'clinic-license', event: 'close', from: FIRST.from, to: FIRST.to },
+      { kind: 'clinic-license', event: 'open', from: '2026-09-30', to: FIRST.to, addr: ADDR },
+      { kind: 'clinic-license', event: 'close', from: '2026-09-30', to: FIRST.to, addr: ADDR },
+      { kind: 'clinic-license', event: 'open', from: FIRST.from, to: FIRST.to, addr: ADDR },
+      { kind: 'clinic-license', event: 'close', from: FIRST.from, to: FIRST.to, addr: ADDR },
     ])
     // 여섯째(만든 차례 맨 뒤)는 다음 번에 본다
     expect(vi.mocked(setWatchChecked).mock.calls.map(([, id]) => id).sort()).toEqual(many.slice(0, 5).map((c) => c.id).sort())
@@ -369,8 +403,8 @@ describe('useLocationWatch: 확인하고 줄을 넣는다 (AC-7915.1)', () => {
     draw()
     await flush()
     expect(queries()).toEqual([
-      { kind: 'clinic-license', event: 'open', from: '2023-11-21', to: FIRST.to },
-      { kind: 'clinic-license', event: 'close', from: '2023-11-21', to: FIRST.to },
+      { kind: 'clinic-license', event: 'open', from: '2023-11-21', to: FIRST.to, addr: ADDR },
+      { kind: 'clinic-license', event: 'close', from: '2023-11-21', to: FIRST.to, addr: ADDR },
     ])
     expect(setWatchChecked).toHaveBeenCalledTimes(1)
   })
