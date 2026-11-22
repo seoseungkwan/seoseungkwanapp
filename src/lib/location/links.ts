@@ -12,25 +12,14 @@ function coords(p: LinkPoint): { lat: string; lng: string } {
   return { lat: p.lat.toFixed(6), lng: p.lng.toFixed(6) }
 }
 
-// 네이버 부동산 두 모양(조사 2): m.land는 200을 받았고, fin.land는 화면으로 확인하지 못했다
-export type NaverForm = 'm' | 'fin'
+// 네이버 부동산은 fin 모양 하나(AC-7918.4 — 사용자가 두 모양을 눌러 보고 fin을 고름, 2026-11-22. 다른 모양은 지움)
+export type NaverForm = 'fin'
+export const NAVER_FORM: NaverForm = 'fin'
 
-export const NAVER_FORMS: Record<NaverForm, (p: LinkPoint) => string> = {
-  m: (p) => {
-    const c = coords(p)
-    return `https://m.land.naver.com/map/${c.lat}:${c.lng}:16/SG:SMS/A1:B2`
-  },
-  fin: (p) => {
-    const c = coords(p)
-    return `https://fin.land.naver.com/map?center=${c.lng}-${c.lat}&zoom=16`
-  },
-}
-
-/** 고르는 상수 하나(AC-7918.4). 사람이 두 모양을 눌러 본 뒤 TASK-47이 맞는 하나만 남긴다 */
-export const NAVER_FORM: NaverForm = 'm'
-
-export function naverLandUrl(p: LinkPoint, form: NaverForm = NAVER_FORM): string {
-  return NAVER_FORMS[form](p)
+/** 네이버 부동산 지도: center=경도-위도, zoom=16 */
+export function naverLandUrl(p: LinkPoint): string {
+  const c = coords(p)
+  return `https://fin.land.naver.com/map?center=${c.lng}-${c.lat}&zoom=16`
 }
 
 // PNU = 법정동 코드 10 + 산 구분(아님 1 · 산 2) + 본번 4 + 부번 4(design.md 5절)

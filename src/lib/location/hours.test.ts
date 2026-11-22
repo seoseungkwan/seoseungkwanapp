@@ -2,15 +2,16 @@ import { describe, expect, it } from 'vitest'
 import type { Rival } from '@/types/location'
 import { GAP_DAYS, GAP_SLOTS, HOLIDAY_NOTE, LUNCH_NOTE, gapTable, type GapRival } from './hours'
 
-// 진료 시간 빈틈 표(design.md 11절 hours.ts): 요일 7 × 칸 7, 칸 전체에 문을 연 경쟁 의원 수, 0이면 빈틈
-// week = 월~일 + 공휴일 8칸, 분(0900 → 540). null 칸 = 그날 문 닫음, week null = 진료 시간 자료 없음
+// 진료 시간 빈틈 표(design.md 11절 hours.ts): 요일 7 × 칸 7, 칸 전체에 문을 연 의원 수, 0이면 빈틈.
+// 넣는 의원은 부르는 쪽이 고른다(범위 안 경쟁 과목 의원 가운데 detail이 있는 곳) — gapTable은 과목을 보지 않고 받은 의원을 다 센다.
+// week = 월~일 + 공휴일 8칸, 분(0900 → 540). null 칸 = 그날 문 닫음, week null·없음 = 진료 시간 자료 없음
 type Cell = [number, number] | null
 const h = (hhmm: number) => Math.floor(hhmm / 100) * 60 + (hhmm % 100)
 const span = (from: number, to: number): [number, number] => [h(from), h(to)]
 const weekOf = (weekday: Cell, sat: Cell = null, sun: Cell = null, holiday: Cell = null): Cell[] => [
   weekday, weekday, weekday, weekday, weekday, sat, sun, holiday,
 ]
-const ortho = (week: Cell[] | null): GapRival => ({ kind: 'ortho', week })
+const ortho = (week: Cell[] | null): GapRival => ({ week })
 const zeros = () => Array.from({ length: 7 }, () => [0, 0, 0, 0, 0, 0, 0])
 
 describe('AC-7909.3 진료 시간 빈틈 표', () => {
@@ -28,7 +29,7 @@ describe('AC-7909.3 진료 시간 빈틈 표', () => {
     expect(GAP_DAYS).toEqual(['월', '화', '수', '목', '금', '토', '일'])
   })
 
-  it('AC-7909.3: 표는 늘 7 × 7이고 경쟁 의원이 없으면 모든 칸이 0(빈틈)이다', () => {
+  it('AC-7909.3: 표는 늘 7 × 7이고 받은 의원이 없으면 모든 칸이 0(빈틈)이다', () => {
     const t = gapTable([])
     expect(t.counts).toEqual(zeros())
     expect(t.counted).toBe(0)
@@ -80,16 +81,18 @@ describe('AC-7909.3 진료 시간 빈틈 표', () => {
     expect(HOLIDAY_NOTE).toBe('공휴일 진료는 의원마다 그때그때 달라 세지 않아요.')
   })
 
-  it('AC-7909.3: 한의원은 세지 않고, 진료 시간 자료가 없는 의원은 noHours로 따로 센다', () => {
-    const t = gapTable([
-      { kind: 'korean', week: weekOf(span(900, 1800)) },
-      { kind: 'pain', week: weekOf(span(900, 1800)) },
-      { kind: 'rehab', week: weekOf(span(900, 1800)) },
-      ortho(null),
-    ])
+  it('AC-7909.3: 받은 의원은 과목을 보지 않고 다 센다 — 한의원 거르기는 부르는 쪽이 한다(옛 kind 칸이 따라와도 거르지 않음)', () => {
+    const oldKorean = { kind: 'korean', week: weekOf(span(900, 1800)) }
+    const t = gapTable([oldKorean, ortho(weekOf(span(900, 1800))), ortho(weekOf(span(900, 1800)))])
+    expect(t.counts[1]).toEqual([3, 3, 3, 3, 3, 0, 0])
+    expect(t.counted).toBe(3)
+  })
+
+  it('AC-7909.3: 진료 시간 자료가 없는 의원(week null·없음)은 noHours로 따로 센다', () => {
+    const t = gapTable([ortho(weekOf(span(900, 1800))), ortho(weekOf(span(900, 1800))), ortho(null), {}, { week: undefined }])
     expect(t.counts[1]).toEqual([2, 2, 2, 2, 2, 0, 0])
     expect(t.counted).toBe(2)
-    expect(t.noHours).toBe(1)
+    expect(t.noHours).toBe(3)
   })
 
   it('AC-7909.3: 여는 시각이 닫는 시각보다 늦은 틀린 칸은 어느 칸에도 세지 않는다', () => {
@@ -97,23 +100,24 @@ describe('AC-7909.3 진료 시간 빈틈 표', () => {
     expect(t.counts).toEqual(zeros())
   })
 
-  it('AC-7909.3: 그날 값의 경쟁 의원(types/location.ts Rival) 그대로 넣어 센다', () => {
+  it('AC-7909.3: 그날 값 의원(types/location.ts Rival)의 detail.week를 넣어 센다 — detail이 없는 의원은 noHours', () => {
     const full: Rival = {
       name: '예시정형외과의원',
-      kind: 'ortho',
-      doctors: 2,
-      therapists: null,
-      mri: true,
-      ct: null,
-      openedYear: 2020,
+      depts: ['ortho'],
+      at: { lat: 37.5, lng: 127 },
       distM: 300,
       sameBuilding: false,
-      week: weekOf(span(900, 1800)),
-      eswt: null,
+      address: '',
+      doctors: 2,
+      openedYear: 2020,
+      detail: { therapists: null, mri: true, ct: null, week: weekOf(span(900, 1800)), priced: false, eswt: null, manual: null },
     }
-    const rivals: Rival[] = [full, { ...full, kind: 'korean' }, { ...full, week: null }]
-    const t = gapTable(rivals)
+    const noDetail: Rival = { ...full, name: '예시새로넣은의원', detail: undefined }
+    const noWeek: Rival = { ...full, name: '예시시간없는의원', detail: { ...full.detail!, week: null } }
+    const t = gapTable([full, noDetail, noWeek].map((r) => ({ week: r.detail?.week })))
     expect(t.counts[1]).toEqual([1, 1, 1, 1, 1, 0, 0])
-    expect([t.counted, t.noHours]).toEqual([1, 1])
+    expect([t.counted, t.noHours]).toEqual([1, 2])
+    // detail 하나를 그대로 넣어도 된다
+    expect(gapTable([full.detail!]).counted).toBe(1)
   })
 })

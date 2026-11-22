@@ -1,31 +1,30 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { IROS_URL, NAVER_FORM, NAVER_FORMS, NEW_TAB, eumUrl, lawUrl, naverLandUrl } from './links'
+import * as links from './links'
+import { IROS_URL, NAVER_FORM, NEW_TAB, eumUrl, lawUrl, naverLandUrl } from './links'
 
 // 바깥 링크(design.md 13절). 앱은 글자로 주소만 만들고 바깥 사이트를 부르지 않는다
 const POINT = { lat: 37.566535, lng: 126.977969 }
 
-describe('AC-7918.4 네이버 부동산 링크 두 모양', () => {
-  it('AC-7918.4: m.land 모양은 위도:경도:16 지도 주소다(조사 2에서 200)', () => {
-    expect(NAVER_FORMS.m(POINT)).toBe('https://m.land.naver.com/map/37.566535:126.977969:16/SG:SMS/A1:B2')
+describe('AC-7918.4 네이버 부동산 링크 — fin 모양 하나', () => {
+  it('AC-7918.4: 사용자가 fin 모양을 골랐다(2026-11-22) — NAVER_FORM은 fin이다', () => {
+    expect(NAVER_FORM).toBe('fin')
   })
 
-  it('AC-7918.4: fin.land 모양은 center=경도-위도, zoom=16이다', () => {
-    expect(NAVER_FORMS.fin(POINT)).toBe('https://fin.land.naver.com/map?center=126.977969-37.566535&zoom=16')
+  it('AC-7918.4: 주소는 fin.land 지도 center=경도-위도, zoom=16이다', () => {
+    expect(naverLandUrl(POINT)).toBe('https://fin.land.naver.com/map?center=126.977969-37.566535&zoom=16')
   })
 
-  it('AC-7918.4: 고르는 상수는 하나이고 두 모양 가운데 하나다(확정은 사람이 눌러 본 뒤 TASK-47)', () => {
-    expect(Object.keys(NAVER_FORMS).sort()).toEqual(['fin', 'm'])
-    expect(['m', 'fin']).toContain(NAVER_FORM)
-    expect(naverLandUrl(POINT)).toBe(NAVER_FORMS[NAVER_FORM](POINT))
-    expect(naverLandUrl(POINT, 'fin')).toBe(NAVER_FORMS.fin(POINT))
-    expect(naverLandUrl(POINT, 'm')).toBe(NAVER_FORMS.m(POINT))
+  it('AC-7918.4: m 모양은 지웠다 — 고르는 판(NAVER_FORMS)·m.land 주소가 없다', () => {
+    expect('NAVER_FORMS' in links).toBe(false)
+    const code = readFileSync(new URL('./links.ts', import.meta.url), 'utf8')
+    expect(code).not.toContain('m.land.naver.com')
+    expect(naverLandUrl(POINT)).not.toContain('m.land')
   })
 
   it('AC-7918.4: 좌표는 소수 6자리로 적는다(0도 채움)', () => {
-    expect(naverLandUrl({ lat: 37.5, lng: 127 }, 'm')).toBe('https://m.land.naver.com/map/37.500000:127.000000:16/SG:SMS/A1:B2')
-    expect(naverLandUrl({ lat: 35.1234567, lng: 129.0000004 }, 'fin')).toBe(
-      'https://fin.land.naver.com/map?center=129.000000-35.123457&zoom=16',
-    )
+    expect(naverLandUrl({ lat: 37.5, lng: 127 })).toBe('https://fin.land.naver.com/map?center=127.000000-37.500000&zoom=16')
+    expect(naverLandUrl({ lat: 35.1234567, lng: 129.0000004 })).toBe('https://fin.land.naver.com/map?center=129.000000-35.123457&zoom=16')
   })
 
   it('AC-7918.4: 한국 밖·숫자가 아닌 점은 RangeError다(위도 33~39·경도 124~132)', () => {

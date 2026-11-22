@@ -1,6 +1,7 @@
 import { addMonthsToDay, isYmd } from '@/lib/analytics/dates'
-import type { FlagFacts, Listing, Rival, YesNo } from '@/types/location'
+import type { DeptId, DeptRule, FlagFacts, Listing, YesNo } from '@/types/location'
 import { distText } from './coords'
+import { DEPTS, deptOf, rivalShortText } from './depts'
 import { perPyeongOf, vsAverage } from './listings'
 import { commaText, wonText } from './money'
 import { floorNumber } from './score'
@@ -8,6 +9,8 @@ import { floorNumber } from './score'
 // 위험 신호(specs/location design.md 9절, AC-7911.3·AC-7911.4). 차례 그대로, 맞는 것만 낸다. 자료가 없는 칸(null)은 그 신호를 내지 않는다.
 // 순수 함수: 오늘은 받는다. 제목·설명은 requirements '화면 글 기본값' 그대로이고, 넓이·돈·거리 글은
 // area(listings의 평당 값)·money·coords의 한 함수만 쓴다. 층 읽기는 score.ts floorNumber 한 곳.
+// 경쟁 의원(3 same-building · 7 many-rivals) = 대표 과목(depts.ts deptOf)이 설정(deptRule)의 경쟁 과목인 의원(design.md 18절).
+// 경쟁 과목이 0개면 둘 다 없다. 이 자리 폐업(4 closed-here)은 과목과 상관없다.
 // 수치(30m·3년·1.3배·5곳·15%·1,000m·500㎡)는 Claude 판단
 
 export const FLAG_ORDER = [
@@ -34,6 +37,7 @@ export type Flag = { id: FlagId; level: 'red' | 'check'; title: string; detail: 
 export type FlagInput = FlagFacts & {
   today: string // 한국 날짜 'YYYY-MM-DD'
   radiusM: number // 살필 범위
+  deptRule: DeptRule // 의원 과목 고르기(location_settings.dept_rule, fillDeptRule을 거친 값)
   violation: YesNo | null // 사용자가 고름, null = 안 고름
   floorLabel: string | null // 후보 층 글자('3층'·'지1층')
   listing: Pick<Listing, 'areaM2' | 'rent' | 'premium'> | null // 후보 매물
@@ -53,14 +57,20 @@ const FAR_STATION_M = 1000
 const BARRIER_FLOOR = 2
 const BARRIER_M2 = 500
 
-const DEPT: Record<Rival['kind'], string> = {
-  ortho: '정형외과',
-  pain: '마취통증의학과',
-  rehab: '재활의학과',
-  korean: '한의원',
+const DEPT_NAME: ReadonlyMap<DeptId, string> = new Map(DEPTS.map((d) => [d.id, d.name]))
+
+/** 대표 과목이 경쟁 과목이면 그 과목 이름, 아니면 null(둘레로 보기·안 보기·대표 과목 없음) */
+function rivalDeptName(r: FlagRival, rule: DeptRule): string | null {
+  const id = deptOf(r, rule)
+  return id !== null && rule.rival.includes(id) ? (DEPT_NAME.get(id) ?? null) : null
 }
 
-const isRival = (r: FlagRival) => r.kind !== 'korean'
+// '{과목}가'의 토씨: 끝 글자에 받침이 있으면 '이'(한의원·치과의원), 없으면 '가'(…과)
+function subjectParticle(word: string): '이' | '가' {
+  const code = word.charCodeAt(word.length - 1) - 0xac00
+  return code >= 0 && code <= 0xd7a3 - 0xac00 && code % 28 !== 0 ? '이' : '가'
+}
+
 const within3Years = (ymd: string | null, today: string) =>
   ymd !== null && isYmd(ymd) && ymd >= addMonthsToDay(today, YEARS3_MONTHS)
 const red = (id: FlagId, title: string, detail: string, src: string): Flag => ({ id, level: 'red', title, detail, law: null, src })
@@ -86,11 +96,21 @@ function violationFlag(v: FlagInput['violation']): Flag | null {
   }
 }
 
-function sameBuildingFlag(rivals: FlagInput['rivals']): Flag | null {
-  const r = (rivals ?? []).filter((x) => isRival(x) && x.distM <= NEAR_M).sort((a, b) => a.distM - b.distM)[0]
-  if (!r) return null
+function sameBuildingFlag(input: FlagInput): Flag | null {
+  const near = (input.rivals ?? [])
+    .filter((x) => x.distM <= NEAR_M)
+    .map((r) => ({ r, dept: rivalDeptName(r, input.deptRule) }))
+    .filter((x): x is { r: FlagRival; dept: string } => x.dept !== null)
+    .sort((a, b) => a.r.distM - b.r.distM)[0]
+  if (!near) return null
+  const { r, dept } = near
   const parts = [r.name, r.openedYear !== null ? `${r.openedYear}년 문 엶` : null, r.doctors !== null ? `의사 ${commaText(r.doctors)}명` : null]
-  return red('same-building', `${NEAR_M}m 안에 ${DEPT[r.kind]}가 있어요`, parts.filter((p) => p !== null).join(' · '), 'hosp-list')
+  return red(
+    'same-building',
+    `${NEAR_M}m 안에 ${dept}${subjectParticle(dept)} 있어요`,
+    parts.filter((p) => p !== null).join(' · '),
+    'hosp-list',
+  )
 }
 
 function closedHereFlag(input: FlagInput): Flag | null {
@@ -132,11 +152,16 @@ function premiumNewFlag(input: FlagInput): Flag | null {
 }
 
 function manyRivalsFlag(input: FlagInput): Flag | null {
-  const n = (input.rivals ?? []).filter((r) => isRival(r) && r.distM <= input.radiusM).length
+  const n = (input.rivals ?? []).filter((r) => r.distM <= input.radiusM && rivalDeptName(r, input.deptRule) !== null).length
   if (n < MANY_RIVALS) return null
   const total = input.people?.total ?? 0
-  const perRival = total > 0 ? ` · 1곳당 사는 사람 ${commaText(Math.floor(total / n))}명` : ''
-  return red('many-rivals', `범위 안에 정형외과·통증·재활 의원이 ${n}곳이에요`, `${MANY_RIVALS}곳 이상이면 알려 드려요${perRival}`, 'hosp-list')
+  const perRival = total > 0 ? ` · 경쟁 의원 1곳당 사는 사람 ${commaText(Math.floor(total / n))}명` : ''
+  return red(
+    'many-rivals',
+    `범위 안에 경쟁 의원이 ${n}곳이에요 (${rivalShortText(input.deptRule)})`,
+    `${MANY_RIVALS}곳 이상이면 알려 드려요${perRival}`,
+    'hosp-list',
+  )
 }
 
 function fewSeniorsFlag(people: FlagInput['people']): Flag | null {
@@ -182,7 +207,7 @@ function barrierFlag(input: FlagInput): Flag | null {
 export function pickFlags(input: FlagInput): Flag[] {
   const flags = [
     violationFlag(input.violation),
-    sameBuildingFlag(input.rivals),
+    sameBuildingFlag(input),
     closedHereFlag(input),
     rentHighFlag(input),
     premiumNewFlag(input),
