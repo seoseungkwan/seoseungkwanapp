@@ -167,6 +167,76 @@ const DEV_CSP =
   "font-src 'self'; media-src 'self'; connect-src 'self' https://abcd.supabase.co ws:; worker-src 'self' blob:; " +
   "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 
+// 입지 분석(/location)만 더하는 카카오 지도 origin(specs/location design.md 13절 처음 목록, 와일드카드 없음)
+const KAKAO_SCRIPT = ['https://dapi.kakao.com', 'https://t1.daumcdn.net']
+const KAKAO_IMG = [
+  'https://t1.daumcdn.net',
+  'https://map0.daumcdn.net',
+  'https://map1.daumcdn.net',
+  'https://map2.daumcdn.net',
+  'https://map3.daumcdn.net',
+  'https://mts.daumcdn.net',
+  'https://s1.daumcdn.net',
+]
+const KAKAO_CONNECT = ['https://dapi.kakao.com']
+
+describe('AC-7916.2 buildCsp 셋째 인자 { kakao: true }', () => {
+  const kakao = directives(buildCsp(false, SUPABASE, { kakao: true }))
+  const plain = directives(buildCsp(false, SUPABASE))
+
+  it('AC-7916.2 지시어 12개와 차례는 그대로다', () => {
+    expect(Object.keys(kakao)).toEqual(DIRECTIVE_NAMES)
+  })
+
+  it('AC-7916.2 script-src·img-src·connect-src 끝에 정해 둔 카카오 origin만 더한다', () => {
+    expect(kakao['script-src']).toEqual([...plain['script-src']!, ...KAKAO_SCRIPT])
+    expect(kakao['img-src']).toEqual([...plain['img-src']!, ...KAKAO_IMG])
+    expect(kakao['connect-src']).toEqual([...plain['connect-src']!, ...KAKAO_CONNECT])
+  })
+
+  it('AC-7916.2 나머지 아홉 지시어는 옛 값과 같다(object-src none·frame-ancestors none·base-uri self 그대로)', () => {
+    const others = (d: Record<string, string[]>) =>
+      Object.entries(d).filter(([name]) => !['script-src', 'img-src', 'connect-src'].includes(name))
+    expect(others(kakao)).toEqual(others(plain))
+    expect(kakao['object-src']).toEqual(["'none'"])
+    expect(kakao['frame-ancestors']).toEqual(["'none'"])
+    expect(kakao['base-uri']).toEqual(["'self'"])
+  })
+
+  it('AC-7916.2 와일드카드·모든 https(https:)가 없고, 더한 값은 모두 https origin 그대로다(경로·검색어 없음)', () => {
+    for (const isDev of [false, true]) {
+      const csp = buildCsp(isDev, SUPABASE, { kakao: true })
+      expect(csp).not.toContain('*')
+      expect(Object.values(directives(csp)).flat()).not.toContain('https:')
+    }
+    for (const origin of [...KAKAO_SCRIPT, ...KAKAO_IMG, ...KAKAO_CONNECT]) {
+      expect(new URL(origin).origin).toBe(origin)
+      expect(origin.startsWith('https://')).toBe(true)
+    }
+  })
+
+  it("AC-7916.2 개발에도 같은 origin을 더하고 'unsafe-eval'·ws:는 개발 그대로다", () => {
+    const dev = directives(buildCsp(true, SUPABASE, { kakao: true }))
+    const devPlain = directives(buildCsp(true, SUPABASE))
+    expect(dev['script-src']).toEqual([...devPlain['script-src']!, ...KAKAO_SCRIPT])
+    expect(dev['connect-src']).toEqual([...devPlain['connect-src']!, ...KAKAO_CONNECT])
+    expect(dev['script-src']).toContain("'unsafe-eval'")
+    expect(dev['connect-src']).toContain('ws:')
+  })
+
+  it("AC-7916.2 Supabase 주소가 없어도 카카오 origin은 더하고 connect-src의 Supabase만 빠진다", () => {
+    expect(directives(buildCsp(false, '', { kakao: true }))['connect-src']).toEqual(["'self'", ...KAKAO_CONNECT])
+  })
+
+  it('AC-7916.2 셋째 인자가 없거나 kakao가 false면 옛 결과와 글자까지 같다', () => {
+    expect(buildCsp(false, SUPABASE)).toBe(PROD_CSP)
+    expect(buildCsp(true, SUPABASE)).toBe(DEV_CSP)
+    expect(buildCsp(false, SUPABASE, {})).toBe(PROD_CSP)
+    expect(buildCsp(false, SUPABASE, { kakao: false })).toBe(PROD_CSP)
+    expect(buildCsp(true, SUPABASE, { kakao: false })).toBe(DEV_CSP)
+  })
+})
+
 describe('AC-004.8 CSP는 청구 사전점검 전과 글자까지 같다', () => {
   it('AC-004.8 운영 값', () => {
     expect(buildCsp(false, SUPABASE)).toBe(PROD_CSP)
