@@ -230,7 +230,7 @@ describe('AC-7910.2: 붙여 넣기 칸 · 목록 · 평수 거르기 · 견주�
     expect(box(/^월세/).value).toBe('520')
   })
 
-  it('AC-7910.2·AC-7905.7: 저장한 매물이 목록에 든다 — 넓이는 area 함수, 만 원 칸 돈은 manText, 평당 월세는 wonText, 적은 날', () => {
+  it('AC-7910.2·AC-7905.7·AC-7905.5: 저장한 매물이 목록에 든다 — 넓이는 area 함수(평만, ㎡ 없음), 만 원 칸 돈은 manText, 평당 월세는 wonText, 적은 날', () => {
     setup({ listings: SIX, candidates: CANDS })
     expect(region('저장한 매물').querySelector('h2')?.textContent).toBe('저장한 매물6')
     const r1 = rowOf(/예시빌딩/)
@@ -243,7 +243,7 @@ describe('AC-7910.2: 붙여 넣기 칸 · 목록 · 평수 거르기 · 견주�
       manText(0),
       wonText(compareListings(SIX).items.l1!.rent!.perPy),
     ])
-    expect(cells.slice(1, 7)).toEqual(['52평 (171.9㎡)', '1억 원', '520만 원', '78만 원', '없음', '100,000원'])
+    expect(cells.slice(1, 7)).toEqual(['52평', '1억 원', '520만 원', '78만 원', '없음', '100,000원'])
     expect(within(r1).getByText('11월 12일 적음')).toBeTruthy()
     // 값이 없는 칸은 '–'
     const r6 = within(rowOf(/예시메디컬빌딩/)).getAllByRole('cell').map((c) => c.textContent)

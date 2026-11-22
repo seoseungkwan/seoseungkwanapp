@@ -1,7 +1,8 @@
 import { commaText } from './money'
 
 // 넓이 (specs/location design.md 5절, AC-7905.5). 1평 = 400/121㎡ → 평 = ㎡ × 121 ÷ 400.
-// 저장은 ㎡ 소수 2자리 버림(numeric(8,2)), 화면은 `{평 소수 1자리 버림}평 ({㎡ 소수 2자리 버림}㎡)`.
+// 저장은 ㎡ 소수 2자리 버림(numeric(8,2)), 화면은 `{평 소수 1자리 버림}평`만(사용자 2026-11-23 '평만' — ㎡는 붙이지 않는다.
+// 법 기준 글의 ㎡와 입력 칸의 평·㎡ 고르기는 그대로).
 // 셈은 0.01㎡ 수·0.1평 수(정수)로 한다. 부동소수 오차(99.83 × 100 = 9982.99…)는 버리기 전에 EPS로 받는다.
 // 평으로 적은 값은 저장할 때 0.01㎡ 미만이 버려진다(30평 → 99.17㎡, 그대로 되돌리면 29.99…평 → 29.9평).
 // 그래서 ㎡ → 평은 '저장 ㎡ 이상 ~ 0.01㎡ 더한 값 미만'(버리기 전 값이 있던 자리)에서 가장 큰 0.1평으로 버린다:
@@ -55,9 +56,8 @@ export function toStoredM2(value: number, unit: AreaUnit): number | null {
   return m2 > 0 && m2 <= MAX_M2 ? m2 : null
 }
 
-/** ㎡ → `30.2평 (99.83㎡)` */
+/** ㎡ → `30.2평`(㎡는 붙이지 않음). 99.83㎡ → `30.2평`, 30평으로 적어 저장한 99.17㎡ → `30평` */
 export function areaText(m2: number): string {
   checkArea(m2)
-  const h = m2Hundredths(m2)
-  return `${decimalText(pyeongTenths(h), 1)}평 (${decimalText(h, 2)}㎡)`
+  return `${decimalText(pyeongTenths(m2Hundredths(m2)), 1)}평`
 }

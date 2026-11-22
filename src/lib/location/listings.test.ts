@@ -160,7 +160,7 @@ describe('AC-7910.2 filterByPyeong', () => {
   })
 
   it('AC-7910.2: ○평~○평은 양 끝을 넣고, 화면에 보이는 평(m2ToPyeong)으로 거른다', () => {
-    // e1 99.16㎡ = 29.9평 · e2 132.24㎡ = 40평(화면 '40평 (132.24㎡)')이라 ~40평에 든다
+    // e1 99.16㎡ = 29.9평 · e2 132.24㎡ = 40평(화면 '40평')이라 ~40평에 든다
     expect(ids(filterByPyeong(rows, { from: 30, to: 40 }))).toEqual(['l1', 'l2', 'e2'])
     expect(ids(filterByPyeong(rows, { from: 30, to: null }))).toEqual(['l1', 'l2', 'e2'])
     expect(ids(filterByPyeong(rows, { from: null, to: 30 }))).toEqual(['l1', 'l3', 'e1'])

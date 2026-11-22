@@ -142,7 +142,7 @@ describe('AC-7909.4: 건물 서류', () => {
   const infoRows = () => screen.getAllByRole('term').map((dt) => [dt.textContent, dt.nextElementSibling?.textContent])
   const valueOf = (name: string) => screen.getAllByRole('term').find((dt) => dt.textContent === name)!.nextElementSibling as HTMLElement
 
-  it('AC-7909.4: 건축물대장 표제 — 지은 해·구조·층수·연면적(평과 ㎡)·엘리베이터·주차·용도와 출처 줄', () => {
+  it('AC-7909.4·AC-7905.5: 건축물대장 표제 — 지은 해·구조·층수·연면적(평만, ㎡ 없음)·엘리베이터·주차·용도와 출처 줄', () => {
     render(docs())
     expect(screen.getByRole('heading', { name: '건물 서류' })).toBeTruthy()
     expect(infoRows().slice(0, 6)).toEqual([
@@ -153,6 +153,7 @@ describe('AC-7909.4: 건물 서류', () => {
       ['주차', '42대'],
       ['용도', '제1종근린생활시설법 근거'],
     ])
+    expect(valueOf('연면적').textContent).toBe('1,203.9평') // 3,980㎡ — ㎡는 붙이지 않음
     expect(screen.getByRole('link', { name: '국토교통부 건축물대장정보 서비스 · 기준 2026년 11월 15일' })).toBeTruthy()
     // 용도의 법 근거(건축법 시행령 별표 1)
     expect(within(valueOf('용도')).getByRole('link', { name: '법 근거' }).getAttribute('href')).toBe('/location?tab=sources#law-use')
@@ -169,7 +170,7 @@ describe('AC-7909.4: 건물 서류', () => {
     ])
   })
 
-  it('AC-7909.4: 층별 — 위층부터 층·용도·넓이, 후보 층에 이 자리 표시와 전용 넓이 글', () => {
+  it('AC-7909.4·AC-7905.5: 층별 — 위층부터 층·용도·넓이(평만), 후보 층에 이 자리 표시와 전용 넓이 글', () => {
     render(docs())
     const table = screen.getByRole('table', { name: '층별 개요' })
     const body = within(table).getAllByRole('row').slice(1)
@@ -182,6 +183,8 @@ describe('AC-7909.4: 건물 서류', () => {
       ['지하 2층', '주차장', areaText(380)],
     ])
     expect(screen.getByText(`이 자리는 3층 가운데 전용 ${areaText(171.9)}이에요.`)).toBeTruthy()
+    expect(screen.getByText('이 자리는 3층 가운데 전용 52평이에요.')).toBeTruthy()
+    expect(table.textContent).not.toContain('㎡')
   })
 
   it('AC-7909.4: 후보 층을 안 적었으면 이 자리 표시·전용 넓이 글이 없다', () => {

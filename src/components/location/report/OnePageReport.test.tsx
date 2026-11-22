@@ -545,12 +545,12 @@ describe('AC-7914.2: A4 한 장 — 위험 신호', () => {
 })
 
 describe('AC-7905.7: A4 한 장 — 비용(만 원 칸 금액은 manText)', () => {
-  it('AC-7905.7: 매물·비용 묶음 — 층·전용(평과 ㎡)·보증금/월세·관리비·권리금(manText)·평당 월세(wonText)·처음에 드는 돈(manText)·손익분기·중개사', () => {
+  it('AC-7905.7·AC-7905.5: 매물·비용 묶음 — 층·전용(평만, ㎡ 없음)·보증금/월세·관리비·권리금(manText)·평당 월세(wonText)·처음에 드는 돈(manText)·손익분기·중개사', () => {
     render(<OnePageReport {...baseProps()} />)
     const r = region('매물·비용')
     const sum = calcCosts(checkCosts(CANDIDATE.costs), CANDIDATE.areaM2)
     expect(sum.startTotal).toBe(533_880_000)
-    expect(dd(r, '층 · 전용')).toBe('3층 · 52평 (171.9㎡)')
+    expect(dd(r, '층 · 전용')).toBe('3층 · 52평')
     // 후보에 이어진 매물 둘 가운데 마지막으로 고친 것(L1)
     expect(dd(r, '보증금 / 월세')).toBe('1억 원 / 520만 원')
     expect(dd(r, '관리비 · 권리금')).toBe('78만 원 · 없음')
@@ -569,10 +569,10 @@ describe('AC-7905.7: A4 한 장 — 비용(만 원 칸 금액은 manText)', () =
     expect(dd(r, '관리비 · 권리금')).toBe('112,500원 · 2,500만 원')
   })
 
-  it('AC-7914.2: 매물이 없고 비용 칸이 비면 그 값은 `–`이고, 매물 하나뿐이면 평균을 붙이지 않는다', () => {
+  it('AC-7914.2·AC-7905.5: 매물이 없고 비용 칸이 비면 그 값은 `–`이고(넓이는 평만), 매물 하나뿐이면 평균을 붙이지 않는다', () => {
     render(<OnePageReport {...baseProps({ listings: [], candidate: { ...CANDIDATE, costs: {} } })} />)
     const r = region('매물·비용')
-    expect(dd(r, '층 · 전용')).toBe('3층 · 52평 (171.9㎡)')
+    expect(dd(r, '층 · 전용')).toBe('3층 · 52평')
     for (const label of ['보증금 / 월세', '관리비 · 권리금', '평당 월세', '처음에 드는 돈', '손익분기', '중개사']) expect(dd(r, label), label).toBe('–')
     cleanup()
     render(<OnePageReport {...baseProps({ listings: [LISTING] })} />)
