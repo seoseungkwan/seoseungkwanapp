@@ -1,16 +1,48 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_DEPT_RULE } from '@/lib/location/depts'
+import { scoreFactsOf } from '@/lib/location/facts'
 import { DEFAULT_SCORE_RULE, scoreItems, type ScoreRule } from '@/lib/location/score'
-import type { Candidate, Listing } from '@/types/location'
+import type { Candidate, DeptRule, Listing } from '@/types/location'
 import { CandidateFrame, RADIUS_DELAY_MS, SECTIONS, type CandidateFrameProps, type SectionId } from './CandidateFrame'
-import { scoreFactsOf } from './facts'
-import { CAND_ID, OTHER_ID, OTHER_LISTING, TODAY, makeCandidate, makeListing, makeSnapshot } from './frame.test.data'
+import { CAND_ID, OTHER_ID, OTHER_LISTING, RIVALS, TODAY, makeCandidate, makeListing, makeRival, makeSnapshot, ok } from './frame.test.data'
 
-// 후보 자세히 틀(TASK-32): 위험 신호 → 종합 점수 → 살필 범위 → 묶음 열둘(칸으로 받음) · 왼쪽 목차 · [오늘 값으로 다시 받기]
+// 후보 자세히 틀(TASK-32 · TASK-68): 위험 신호 → 종합 점수(+ 점수 풀이) → 살필 범위 → 묶음 열셋(칸으로 받음) · 왼쪽 목차 · [오늘 값으로 다시 받기].
+// 점수·위험 신호·경쟁 수는 lib/location/facts.ts가 받은 과목 고르기(deptRule)로 센다
 
-const SECTION_ORDER: SectionId[] = ['people', 'income', 'demand', 'rivals', 'price', 'hours', 'traffic', 'photo', 'building', 'vacancy', 'land', 'future']
-const SECTION_TITLES = ['사는 사람', '소득·쓸 힘', '정형외과 수요', '경쟁 의원', '경쟁 의원 진료비', '진료 시간 빈틈', '교통·둘레 시설', '거리 사진', '건물 서류', '빈 칸 짐작', '땅 쓰임·계획', '앞으로 바뀔 것']
+const SECTION_ORDER: SectionId[] = [
+  'people',
+  'income',
+  'demand',
+  'rivals',
+  'others',
+  'price',
+  'hours',
+  'traffic',
+  'photo',
+  'building',
+  'vacancy',
+  'land',
+  'future',
+]
+const SECTION_TITLES = [
+  '사는 사람',
+  '소득·쓸 힘',
+  '정형외과 수요',
+  '경쟁 의원',
+  '둘레 다른 과 의원',
+  '경쟁 의원 진료비',
+  '진료 시간 빈틈',
+  '교통·둘레 시설',
+  '거리 사진',
+  '건물 서류',
+  '빈 칸 짐작',
+  '땅 쓰임·계획',
+  '앞으로 바뀔 것',
+]
+// 묶음이 그리는 닻 id(시안 그대로, design.md 19절 묶음 id): 칸 rivals → comp, building → bld, vacancy → vac
+const ANCHORS = ['people', 'income', 'demand', 'comp', 'others', 'price', 'hours', 'traffic', 'photo', 'bld', 'vac', 'land', 'future']
 
 const slots = (ids: readonly SectionId[] = SECTION_ORDER) =>
   Object.fromEntries(ids.map((id) => [id, <p key={id}>{`칸 ${id}`}</p>])) as CandidateFrameProps['sections']
@@ -23,6 +55,7 @@ function props(over: Partial<CandidateFrameProps> = {}): CandidateFrameProps {
     letter: 'A',
     listings: LISTINGS,
     rule: DEFAULT_SCORE_RULE,
+    deptRule: DEFAULT_DEPT_RULE,
     homeEswt: 50000,
     today: TODAY,
     sections: slots(),
@@ -34,10 +67,14 @@ function props(over: Partial<CandidateFrameProps> = {}): CandidateFrameProps {
   }
 }
 
-const expectedScore = (candidate: Candidate, listings: readonly Listing[], rule: ScoreRule = DEFAULT_SCORE_RULE) =>
-  scoreItems(scoreFactsOf({ candidate, listings, homeEswt: 50000, today: TODAY }), rule)
+const expectedScore = (candidate: Candidate, listings: readonly Listing[], rule: ScoreRule = DEFAULT_SCORE_RULE, deptRule: DeptRule = DEFAULT_DEPT_RULE) =>
+  scoreItems(scoreFactsOf({ candidate, listings, homeEswt: 50000, today: TODAY, deptRule }), rule)
 
-const sectionIds = (root: HTMLElement) => [...root.querySelectorAll('section[id^="sec-"]')].map((s) => s.id)
+/** 본문 차례: 틀이 그린 위험 신호·종합 점수는 닻 id, 칸 감싸개는 받은 칸 글 */
+const bodyOrder = (root: HTMLElement) => [...root.querySelector('#sec-score')!.parentElement!.children].map((el) => el.id || el.textContent)
+/** 칸 글을 감싼 감싸개(목차가 건너뛸 자리) */
+const slotOf = (id: SectionId) => screen.getByText(`칸 ${id}`).parentElement!
+const tocLinks = () => within(screen.getByRole('navigation', { name: '묶음 목차' })).getAllByRole('link')
 const flagItems = () => within(screen.getByRole('list', { name: '위험 신호 목록' })).getAllByRole('listitem')
 const slider = () => screen.getByRole('slider', { name: '살필 범위' })
 const refreshButton = () => screen.getByRole('button', { name: '오늘 값으로 다시 받기' })
@@ -51,58 +88,77 @@ afterEach(() => {
 })
 
 describe('AC-7909.1: 후보 자세히 차례 · 왼쪽 목차', () => {
-  it('AC-7909.1: 위험 신호 → 종합 점수 → 살필 범위 → 묶음 열둘 차례다', () => {
+  it('AC-7909.1: 위험 신호 → 종합 점수 → 살필 범위 → 묶음 열셋 차례다', () => {
     const { container } = render(<CandidateFrame {...props()} />)
-    expect(sectionIds(container)).toEqual(['sec-flags', 'sec-score', ...SECTION_ORDER.map((id) => `sec-${id}`)])
+    expect(bodyOrder(container)).toEqual(['sec-flags', 'sec-score', ...SECTION_ORDER.map((id) => `칸 ${id}`)])
     const score = container.querySelector('#sec-score')!
     const big = within(score as HTMLElement).getByTestId('score-total')
     const range = slider()
     expect(score.contains(range)).toBe(true)
     expect(big.compareDocumentPosition(range) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(range.compareDocumentPosition(container.querySelector('#sec-people')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(range.compareDocumentPosition(slotOf('people')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('AC-7909.1: 묶음 열셋 — 둘레 다른 과 의원(others)은 경쟁 의원 바로 다음 칸이다', () => {
+    expect(SECTIONS.map((s) => s.id)).toEqual(SECTION_ORDER)
+    expect(SECTIONS.map((s) => s.title)).toEqual(SECTION_TITLES)
+    expect(SECTIONS.map((s) => s.anchor)).toEqual(ANCHORS)
   })
 
   it('AC-7909.1: 묶음은 받은 칸을 그 자리에 그대로 놓는다(틀은 묶음 속을 그리지 않음)', () => {
-    const { container } = render(<CandidateFrame {...props()} />)
+    render(<CandidateFrame {...props()} />)
     SECTION_ORDER.forEach((id) => {
-      expect(container.querySelector(`#sec-${id}`)?.textContent).toBe(`칸 ${id}`)
+      expect(slotOf(id).textContent).toBe(`칸 ${id}`)
     })
-    expect(SECTIONS.map((s) => s.id)).toEqual(SECTION_ORDER)
-    expect(SECTIONS.map((s) => s.title)).toEqual(SECTION_TITLES)
   })
 
-  it('AC-7909.1: 왼쪽 목차는 위험 신호(수) · 종합 점수(점수) · 묶음 열둘(경쟁 의원 수) 차례로 그 자리를 가리킨다', () => {
+  it('AC-7909.1: 틀이 그린 칸 감싸개에는 sec- id가 없다 — 위험 신호·종합 점수 닻만 틀이 그린다', () => {
+    const { container } = render(<CandidateFrame {...props()} />)
+    expect([...container.querySelectorAll('[id^="sec-"]')].map((el) => el.id)).toEqual(['sec-flags', 'sec-score'])
+    SECTION_ORDER.forEach((id) => expect(slotOf(id).id).toBe(''))
+  })
+
+  it('AC-7909.1: 묶음이 제 닻 id를 그리면 화면에 닻 id가 한 번씩만 있다', () => {
+    const own = Object.fromEntries(
+      SECTION_ORDER.map((id, i) => [id, <section key={id} id={`sec-${ANCHORS[i]}`}>{`칸 ${id}`}</section>]),
+    ) as CandidateFrameProps['sections']
+    const { container } = render(<CandidateFrame {...props({ sections: own })} />)
+    const ids = [...container.querySelectorAll('[id]')].map((el) => el.id)
+    expect(ids.filter((id, i) => ids.indexOf(id) !== i)).toEqual([])
+    expect(ids.filter((id) => id.startsWith('sec-'))).toEqual(['sec-flags', 'sec-score', ...ANCHORS.map((a) => `sec-${a}`)])
+  })
+
+  it('AC-7909.1: 왼쪽 목차는 위험 신호(수) · 종합 점수(점수) · 묶음 열셋(경쟁 의원 수 · 둘레 다른 과 의원 수) 차례로 그 닻을 가리킨다', () => {
     render(<CandidateFrame {...props()} />)
-    const toc = screen.getByRole('navigation', { name: '묶음 목차' })
-    const links = within(toc).getAllByRole('link')
     const total = expectedScore(makeCandidate(), LISTINGS).total
-    expect(links.map((a) => a.textContent)).toEqual([
+    expect(tocLinks().map((a) => a.textContent)).toEqual([
       '위험 신호3',
       `종합 점수${total}`,
       '사는 사람',
       '소득·쓸 힘',
       '정형외과 수요',
       '경쟁 의원2',
-      ...SECTION_TITLES.slice(4),
+      '둘레 다른 과 의원0', // 한의원은 둘레로 보기여도 경쟁 묶음의 따로 한 줄이라 세지 않는다
+      ...SECTION_TITLES.slice(5),
     ])
-    expect(links.map((a) => a.getAttribute('href'))).toEqual(['#sec-flags', '#sec-score', ...SECTION_ORDER.map((id) => `#sec-${id}`)])
+    expect(tocLinks().map((a) => a.getAttribute('href'))).toEqual(['#sec-flags', '#sec-score', ...ANCHORS.map((a) => `#sec-${a}`)])
   })
 
-  it('AC-7909.1: 목차를 누르면 주소를 바꾸지 않고 그 묶음으로 건너뛴다', () => {
-    const { container } = render(<CandidateFrame {...props()} />)
+  it('AC-7909.1: 목차를 누르면 주소를 바꾸지 않고 그 칸 감싸개로 건너뛰어 초점을 옮긴다', () => {
+    render(<CandidateFrame {...props()} />)
     const scroll = vi.mocked(Element.prototype.scrollIntoView)
     const link = within(screen.getByRole('navigation', { name: '묶음 목차' })).getByRole('link', { name: '진료 시간 빈틈' })
     expect(fireEvent.click(link)).toBe(false) // 기본 동작(주소 바꾸기)을 막음
     expect(scroll).toHaveBeenCalledTimes(1)
-    expect(scroll.mock.contexts[0]).toBe(container.querySelector('#sec-hours'))
+    expect(scroll.mock.contexts[0]).toBe(slotOf('hours'))
     expect(scroll).toHaveBeenCalledWith({ block: 'start' })
+    expect(document.activeElement).toBe(slotOf('hours'))
   })
 
   it('AC-7909.1: 받지 않은 칸은 본문과 목차에서 함께 빠진다', () => {
-    const { container } = render(<CandidateFrame {...props({ sections: slots(['people', 'rivals', 'future']) })} />)
-    expect(sectionIds(container)).toEqual(['sec-flags', 'sec-score', 'sec-people', 'sec-rivals', 'sec-future'])
-    const toc = screen.getByRole('navigation', { name: '묶음 목차' })
-    expect(within(toc).getAllByRole('link')).toHaveLength(5)
+    const { container } = render(<CandidateFrame {...props({ sections: slots(['people', 'rivals', 'others', 'future']) })} />)
+    expect(bodyOrder(container)).toEqual(['sec-flags', 'sec-score', '칸 people', '칸 rivals', '칸 others', '칸 future'])
+    expect(tocLinks()).toHaveLength(6)
   })
 
   it('AC-7909.1: 머리 — 후보 표시·진행 상태·이름·주소·후보 매물 한 줄, 단추 셋은 그 화면으로 가는 콜백', () => {
@@ -118,6 +174,11 @@ describe('AC-7909.1: 후보 자세히 차례 · 왼쪽 목차', () => {
     expect(onGo.mock.calls).toEqual([['report'], ['prep'], ['listings']])
   })
 
+  it('AC-7909.1: 머리의 매물 보증금·월세는 만 원 칸 금액 글(manText) — 100만 원 아래도 `78만 원`, 0은 `없음`', () => {
+    render(<CandidateFrame {...props({ listings: [makeListing({ deposit: 0, rent: 780_000 })] })} />)
+    expect(screen.getByText('예시구 가람동 123-4 · 전용 52평 · 보증금 없음 / 월세 78만 원')).toBeTruthy()
+  })
+
   it('AC-7909.1: 내려놓은 후보는 진행 상태 자리에 `내려놓음`', () => {
     render(<CandidateFrame {...props({ candidate: makeCandidate({ status: 'dropped' }) })} />)
     expect(screen.getByText('내려놓음')).toBeTruthy()
@@ -130,6 +191,60 @@ describe('AC-7909.1: 후보 자세히 차례 · 왼쪽 목차', () => {
     expect(
       within(score).getByText('파란 표시 = 후보 · 주황 점 = 정형외과·통증·재활 · 회색 점 = 한의원 · 검은 네모 = 역 · 흐린 점 = 범위 밖'),
     ).toBeTruthy()
+  })
+
+  it('AC-7909.1: 범례 글을 받으면(고른 과목을 따르는 글) 그 글을 그린다', () => {
+    const mapLegend = '파란 표시 = 후보 · 주황 점 = 경쟁 의원 · 연보라 작은 점 = 둘레 다른 과 의원 · 검은 네모 = 역 · 흐린 점 = 범위 밖'
+    render(<CandidateFrame {...props({ map: <div data-testid="map-slot" />, mapLegend })} />)
+    const score = document.querySelector('#sec-score') as HTMLElement
+    expect(within(score).getByText(mapLegend)).toBeTruthy()
+    expect(within(score).queryByText(/정형외과·통증·재활/)).toBeNull()
+  })
+})
+
+describe('AC-7921.2: 경쟁 수·위험 신호·점수는 과목 고르기를 따른다', () => {
+  const NEURO_SURGERY = makeRival({ name: '예시나래신경외과', depts: ['ns'], distM: 600, openedYear: 2024 })
+  const INTERNAL = makeRival({ name: '예시새솔내과', depts: ['im'], distM: 300 })
+  const withClinics = (...more: ReturnType<typeof makeRival>[]) =>
+    makeCandidate({ snapshot: makeSnapshot({ rivals: ok([...RIVALS, ...more], 'hosp-list', '2026-11-15') }) })
+  const rule = (rival: DeptRule['rival'], hide: DeptRule['hide'] = []): DeptRule => ({ v: 1, rival, hide })
+  const tocText = (name: RegExp) => tocLinks().find((a) => name.test(a.textContent ?? ''))?.textContent
+  const flagTitles = () => flagItems().map((li) => li.querySelector('b')?.textContent)
+
+  it('AC-7921.2: 목차 경쟁 의원 수는 대표 과목이 경쟁 과목인 범위 안 의원(신경외과 포함), 둘레 다른 과 의원 수는 둘레로 보기 과목(한의원 뺌)', () => {
+    render(<CandidateFrame {...props({ candidate: withClinics(NEURO_SURGERY, INTERNAL) })} />)
+    expect(tocText(/^경쟁 의원/)).toBe('경쟁 의원3')
+    expect(tocText(/^둘레 다른 과 의원/)).toBe('둘레 다른 과 의원1')
+  })
+
+  it('AC-7921.2: 과목 고르기를 바꾸면 다시 받지 않고 경쟁 수·위험 신호·점수를 바로 다시 센다', () => {
+    const onRefresh = vi.fn()
+    const candidate = withClinics(INTERNAL)
+    const { rerender } = render(<CandidateFrame {...props({ candidate, onRefresh })} />)
+    expect(flagTitles()).toContain('30m 안에 정형외과가 있어요')
+    const korean = rule(['ortho', 'ns', 'pain', 'rehab', 'korean'])
+    rerender(<CandidateFrame {...props({ candidate, onRefresh, deptRule: korean })} />)
+    expect(tocText(/^경쟁 의원/)).toBe('경쟁 의원3')
+    expect(tocText(/^둘레 다른 과 의원/)).toBe('둘레 다른 과 의원1')
+    expect(flagTitles()).toContain('30m 안에 한의원이 있어요') // 가장 가까운 경쟁 의원(10m)
+    expect(screen.getByTestId('score-total').textContent).toBe(String(expectedScore(candidate, LISTINGS, DEFAULT_SCORE_RULE, korean).total))
+    const internal = rule(['im'], ['korean'])
+    rerender(<CandidateFrame {...props({ candidate, onRefresh, deptRule: internal })} />)
+    expect(tocText(/^경쟁 의원/)).toBe('경쟁 의원1')
+    expect(tocText(/^둘레 다른 과 의원/)).toBe('둘레 다른 과 의원2') // 정형외과·통증이 둘레로 보기
+    expect(flagTitles()).not.toContain('30m 안에 정형외과가 있어요')
+    expect(onRefresh).not.toHaveBeenCalled()
+  })
+
+  it('AC-7921.2: 경쟁 과목을 하나도 안 고르면 목차에 경쟁 수가 없고, 점수의 경쟁은 `과목 없음`(남은 무게로 매김)', () => {
+    const none = rule([])
+    render(<CandidateFrame {...props({ deptRule: none })} />)
+    expect(tocText(/^경쟁 의원/)).toBe('경쟁 의원')
+    expect(flagTitles()).not.toContain('30m 안에 정형외과가 있어요')
+    const rows = screen.getAllByTestId('score-row')
+    expect(rows[1]!.querySelector('[data-part="points"]')?.textContent).toBe('과목 없음')
+    expect(rows[0]!.querySelector('[data-part="points"]')?.textContent).toMatch(/ \/ 40$/) // 30 × 100 ÷ 75
+    expect(screen.getByTestId('score-total').textContent).toBe(String(expectedScore(makeCandidate(), LISTINGS, DEFAULT_SCORE_RULE, none).total))
   })
 })
 
@@ -168,8 +283,7 @@ describe('AC-7911.1·AC-7911.2: 종합 점수', () => {
     expect(screen.getByTestId('score-total').textContent).toBe('점수 없음')
     const points = screen.getAllByTestId('score-row').map((r) => r.querySelector('[data-part="points"]')?.textContent)
     expect(points).toEqual(['값 없음', '값 없음', '값 없음', '값 없음', '매물 없음'])
-    const toc = screen.getByRole('navigation', { name: '묶음 목차' })
-    expect(within(toc).getByRole('link', { name: '종합 점수' })).toBeTruthy()
+    expect(within(screen.getByRole('navigation', { name: '묶음 목차' })).getByRole('link', { name: '종합 점수' })).toBeTruthy()
   })
 
   it('AC-7911.1: 매기는 법은 근거와 출처의 점수 줄로 간다', () => {

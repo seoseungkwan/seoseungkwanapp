@@ -1,7 +1,9 @@
 import { pyeongToM2 } from '@/lib/location/area'
-import type { Candidate, Got, Listing, Rival, Snapshot, SnapshotValue } from '@/types/location'
+import type { Candidate, Got, Listing, Rival, SggAvg, Snapshot, SnapshotValue } from '@/types/location'
 
-// 후보 자세히 틀 시험용 가짜 후보·그날 값·매물(지어낸 이름만). 오늘 = 2026-11-22(시안과 같음)
+// 후보 자세히 틀 시험용 가짜 후보·그날 값·매물(지어낸 이름만). 오늘 = 2026-11-22(시안과 같음).
+// 그날 값은 저장된 모양 그대로(lib/location/snapshot.ts checkSnapshot이 받는 모양): 칸 24개, 기준 날짜는 모두 'YYYY-MM-DD',
+// 의원은 새 모양(찾은 과목 depts · 심평원 좌표 at · 30m 안 주소 · 경쟁 과목이던 의원만 detail)
 
 export const TODAY = '2026-11-22'
 export const CAND_ID = '11111111-1111-4111-8111-111111111111'
@@ -12,47 +14,54 @@ export const ok = <T>(v: T, src: string, asOf: string): Got<T> => ({ ok: true, v
 const WEEKDAY: [number, number] = [540, 1110] // 9:00~18:30
 const SATURDAY: [number, number] = [540, 780] // 9:00~13:00
 
+/** 의원 하나(새 모양). 30m 안이면 같은 건물로 본다 */
+export function makeRival(over: Partial<Rival> & Pick<Rival, 'name' | 'depts' | 'distM'>): Rival {
+  return { at: { lat: 37.5, lng: 127.0 }, sameBuilding: over.distM <= 30, address: '', doctors: 1, openedYear: 2015, ...over }
+}
+
+// 처음 과목 설정(경쟁 = 정형외과·신경외과·마취통증·재활)으로 모은 값: 경쟁 과목이던 둘은 detail이 있고, 한의원(둘레로 보기)은 없다
 export const RIVALS: Rival[] = [
-  {
+  makeRival({
     name: '예시가람정형외과',
-    kind: 'ortho',
-    doctors: 2,
-    therapists: null,
-    mri: true,
-    ct: false,
-    openedYear: 2019,
+    depts: ['ortho'],
     distM: 20,
-    sameBuilding: true,
-    week: [WEEKDAY, WEEKDAY, WEEKDAY, WEEKDAY, WEEKDAY, SATURDAY, null, null],
-    eswt: 50000,
-  },
-  {
+    address: '예시구 가람로 1',
+    doctors: 2,
+    openedYear: 2019,
+    detail: {
+      therapists: null,
+      mri: true,
+      ct: false,
+      week: [WEEKDAY, WEEKDAY, WEEKDAY, WEEKDAY, WEEKDAY, SATURDAY, null, null],
+      priced: true,
+      eswt: 50000,
+      manual: null,
+    },
+  }),
+  makeRival({
     name: '예시하늘통증의학과',
-    kind: 'pain',
-    doctors: 1,
-    therapists: 2,
-    mri: false,
-    ct: false,
-    openedYear: 2025,
+    depts: ['pain'],
     distM: 400,
-    sameBuilding: false,
-    week: null,
-    eswt: 70000,
-  },
-  {
-    name: '예시다온한의원',
-    kind: 'korean',
-    doctors: 1,
-    therapists: null,
-    mri: null,
-    ct: null,
-    openedYear: 2024,
-    distM: 10,
-    sameBuilding: true,
-    week: null,
-    eswt: 10000,
-  },
+    openedYear: 2025,
+    detail: { therapists: 2, mri: false, ct: false, week: null, priced: true, eswt: 70000, manual: null },
+  }),
+  makeRival({ name: '예시다온한의원', depts: ['korean'], distM: 10, address: '예시구 가람로 1', openedYear: 2024 }),
 ]
+
+/** 점수 풀이 견줄 값(후보 시군구 전체, 지어낸 값) */
+export const SGG_AVG: SggAvg = {
+  sggName: '예시구',
+  areaM2: 24_600_000,
+  total: 380000,
+  bands: [30000, 32000, 40000, 45000, 50000, 55000, 45000, 35000, 28000, 15000, 5000],
+  trendPct: 1.4,
+  accidents: 14,
+  schools: 52,
+  seniors: 168,
+  gyms: 142,
+  stationM: 620,
+  stops: 5,
+}
 
 export const BANDS = [1000, 1500, 2000, 2500, 3000, 3000, 2500, 2000, 1500, 700, 300] // 합 20,000 · 60세 이상 7,000(35%)
 export const TREND = [
@@ -91,9 +100,9 @@ export function makeSnapshot(over: Partial<Snapshot> = {}): Snapshot {
         unmatched: 0,
       },
       'flow-volume',
-      '2026-09',
+      '2026-09-01',
     ),
-    income: ok({ sggName: '예시구', won: 45_000_000, year: 2024 }, 'income', '2024'),
+    income: ok({ sggName: '예시구', won: 45_000_000, year: 2024 }, 'income', '2024-12-31'),
     aptPrice: ok({ perM2: 8_000_000, deals: 30 }, 'apt-trade', '2026-11-15'),
     bizPrice: ok({ perM2: 6_000_000, deals: 5 }, 'biz-trade', '2026-11-15'),
     apts: ok(
@@ -108,20 +117,22 @@ export function makeSnapshot(over: Partial<Snapshot> = {}): Snapshot {
     seniors: ok(12, 'senior-centers', '2026-11-15'),
     gyms: ok(8, 'gyms', '2026-11-15'),
     schools: ok(4, 'school', '2026-11-15'),
-    accidents: ok({ spots: 2, cases: 14 }, 'accidents', '2025'),
-    industry: ok({ sggName: '예시구', employees: 5000, parks: 1, quarter: '2025-2' }, 'industry', '2025-06'),
+    accidents: ok({ spots: 2, cases: 14 }, 'accidents', '2025-12-31'),
+    industry: ok({ sggName: '예시구', employees: 5000, parks: 1, quarter: '2025-2' }, 'industry', '2025-06-01'),
     pharmacies: ok(1, 'stores', '2026-09-30'),
     rivals: ok(RIVALS, 'hosp-list', '2026-11-15'),
+    place: ok({ sido: '11', sidoName: '서울특별시', sgg: '11110', sggName: '예시구', dong: '1111051500', dongName: '가람동' }, 'dongs', '2026-10-31'),
+    sggAvg: ok(SGG_AVG, 'pop-age', '2026-10-31'),
     history: ok([{ kind: 'close', name: '예시새솔정형외과의원', dept: '정형외과', on: '2025-03-10', distM: 5 }], 'clinic-license', '2026-11-13'),
-    station: ok({ name: '예시가람역', line: '2호선', distM: 450 }, 'rail-stations', '2026-06-30'),
+    station: ok({ name: '예시가람역', line: '2호선', distM: 450, at: { lat: 37.501, lng: 127.004 } }, 'rail-stations', '2026-06-30'),
     bus: ok(6, 'bus-stops', '2026-06-30'),
     market: ok({ name: '예시가람시장', distM: 600 }, 'market', '2026-11-15'),
     building: ok(BUILDING, 'building', '2026-11-15'),
     stores: ok([{ floor: '1', count: 3 }], 'stores', '2026-09-30'),
     welfare: ok(
-      { sggName: '예시구', ym: '2025-12', medical: 9000, basic: 12000, nearPoor: 4000, population: 400000 },
+      { sggName: '예시구', ym: '2025-12', medical: 9000, basic: 12000, nearPoor: 4000, population: 400000, basis: null },
       'welfare',
-      '2025-12',
+      '2025-12-01',
     ),
     ...over,
   }
