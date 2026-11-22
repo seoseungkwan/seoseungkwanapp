@@ -10,11 +10,12 @@ import { MapFallback } from './MapFallback'
 import { useKakaoSdk } from './useKakaoSdk'
 
 // 카카오 지도 부품(specs/location REQ-7916 AC-7916.1, design.md 13절). props·콜백만 받는다(읽기·저장·fetch 없음).
-// 가운데 · 범위 원 · 표시(후보 파랑·경쟁 의원 주황·한의원 회색·역 검은 네모, 범위 밖은 흐리게) · 동 다각형(점수 칸 색) · 찍기 · [지도]/[하늘 사진].
+// 가운데 · 범위 원 · 표시(후보 파랑·경쟁 의원 주황·한의원 회색·둘레 다른 과 의원 연보라 작은 점·역 검은 네모, 범위 밖은 흐리게) · 동 다각형(점수 칸 색) · 찍기 · [지도]/[하늘 사진].
 // 동이 있으면 동 전체에, 없고 범위가 있으면 범위 원에 맞춰 보여 준다. 열쇠가 비면 안내 글, SDK 실패는 E-LOC-MAP(MapFallback).
 // 색은 앱 토큰만: 표시는 토큰 클래스, 원·다각형은 그 자리에서 읽은 토큰 값. 표시·동 이름은 글자로만 넣는다(HTML로 읽지 않음)
 
-export type MarkKind = 'candidate' | 'rival' | 'korean' | 'station'
+/** 의원 점은 map/marks.ts clinicMarks가 그날 값 의원과 과목 고르기로 가른다: 경쟁(rival) · 둘레로 보기 한의원(korean) · 그 밖 둘레로 보기(other) */
+export type MarkKind = 'candidate' | 'rival' | 'korean' | 'other' | 'station'
 /** 지도 표시 하나. label: 후보는 표시 안 글자(A 등), 역은 옆 이름, 의원은 마우스를 올리면 보이는 이름. outside = 범위 밖(흐리게) */
 export type MapMark = { id: string; kind: MarkKind; at: Point; label: string; outside?: boolean }
 /** 동 다각형 하나(동 경계 파일 모양 그대로 [경도, 위도]). tone = 점수 칸 0~4(연한 → 진한 파랑), text = 이름 아래 글(점수 등) */
@@ -50,11 +51,14 @@ export type KakaoMapProps = {
 // 처음 확대 단계(카카오 1 가까움 ~ 14 멂). 범위·동이 없을 때만 그대로 쓴다
 const START_LEVEL = 4
 const TONE_TOKENS = ['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--chart-5'] as const
-const Z: Record<MarkKind, number> = { candidate: 4, station: 3, rival: 2, korean: 1 }
-// Tailwind가 소스 글자에서 찾으므로 클래스는 통째로 적는다
-const DOT: Record<'rival' | 'korean', string> = {
+// 겹치면 위: 후보 → 역 → 경쟁 의원 → 한의원 → 둘레 다른 과 의원(작은 점이 가장 아래, 시안 miniMap 차례)
+const Z: Record<MarkKind, number> = { candidate: 5, station: 4, rival: 3, korean: 2, other: 1 }
+// Tailwind가 소스 글자에서 찾으므로 클래스는 통째로 적는다.
+// 둘레 다른 과 의원 = 연보라 작은 점: 앱에 연보라 토큰은 예약 색판 --cal-lavender(연보라)·--cal-purple(보라)뿐이라 그것을 빌린다(직원 탭 휴가 색과 같은 길)
+const DOT: Record<'rival' | 'korean' | 'other', string> = {
   rival: 'block size-2.5 rounded-full border border-surface bg-negative',
   korean: 'block size-2.5 rounded-full border border-surface bg-muted',
+  other: 'block size-1.5 rounded-full bg-cal-lavender ring-1 ring-cal-purple/50',
 }
 const DIM = ' opacity-40'
 

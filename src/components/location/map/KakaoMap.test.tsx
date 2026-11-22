@@ -8,7 +8,7 @@ import { FakeLatLng, failSdk, finishSdk, makeFakeKakao, resetSdk, sdkScripts, ty
 import { KakaoMap, type MapArea, type MapMark } from './KakaoMap'
 import { NO_MAP_KEY } from './MapFallback'
 
-// 카카오 지도 부품(specs/location REQ-7916 AC-7916.1, design.md 13절): 가운데·범위 원·표시(후보 파랑·경쟁 의원 주황·한의원 회색·역 검은 네모)·
+// 카카오 지도 부품(specs/location REQ-7916 AC-7916.1, design.md 13절): 가운데·범위 원·표시(후보 파랑·경쟁 의원 주황·한의원 회색·둘레 다른 과 의원 연보라 작은 점·역 검은 네모)·
 // 동 다각형·찍기·지도/하늘 사진. 열쇠가 비면 지도 자리에 안내 글, 실패는 E-LOC-MAP. 가짜 window.kakao로만 본다(바깥 사이트 안 부름).
 // 색은 앱 토큰(:root CSS 변수)에서 읽는다 — 시험은 토큰 값을 이름 글자로 넣어 어느 토큰을 썼는지 본다
 
@@ -22,6 +22,8 @@ const MARKS: MapMark[] = [
   { id: 'k1', kind: 'korean', at: { lat: 37.499, lng: 127.029 }, label: '예시한의원' },
   { id: 's1', kind: 'station', at: { lat: 37.502, lng: 127.028 }, label: '예시중앙역' },
   { id: 'r2', kind: 'rival', at: { lat: 37.52, lng: 127.05 }, label: '예시재활의학과의원', outside: true },
+  { id: 'o1', kind: 'other', at: { lat: 37.4995, lng: 127.0305 }, label: '예시내과의원' },
+  { id: 'o2', kind: 'other', at: { lat: 37.53, lng: 127.06 }, label: '예시치과의원', outside: true },
 ]
 const AREAS: MapArea[] = [
   {
@@ -200,10 +202,48 @@ describe('AC-7916.1 KakaoMap 그리기', () => {
     expect(at('r1')).toEqual(new FakeLatLng(37.501, 127.031))
   })
 
+  it('AC-7916.1 둘레 다른 과 의원(other): 연보라(cal-lavender 토큰) 작은 점 — 경쟁 의원 주황·한의원 회색보다 작고 그 아래에 깔린다', async () => {
+    await ready(<KakaoMap label="후보 둘레 지도" center={CENTER} radiusM={1000} marks={MARKS} />)
+    const other = markEl('o1')
+    expect(other.dataset.kind).toBe('other')
+    expect(other.className).toContain('bg-cal-lavender')
+    expect(other.className).toContain('rounded-full')
+    expect(other.className).not.toContain('bg-negative')
+    expect(other.className).not.toContain('bg-muted')
+    expect(other.title).toBe('예시내과의원')
+    expect(other.textContent).toBe('')
+    // 색은 토큰 클래스만(색 글자를 안에 적지 않음)
+    expect(other.getAttribute('style')).toBeNull()
+
+    // 작게: 점 크기(size-n)가 경쟁 의원·한의원 점보다 작다
+    const size = (el: HTMLElement) => Number(/(?:^|\s)size-([\d.]+)(?:\s|$)/.exec(el.className)?.[1])
+    expect(size(other)).toBeGreaterThan(0)
+    expect(size(other)).toBeLessThan(size(markEl('r1')))
+    expect(size(other)).toBeLessThan(size(markEl('k1')))
+
+    // 겹치면 경쟁 의원·한의원·역·후보가 위(다른 과 점이 가장 아래)
+    const z = (id: string) => liveOverlays().find((o) => o.options.content.dataset.mark === id)!.options.zIndex!
+    for (const id of ['r1', 'k1', 's1', 'cand']) expect(z('o1')).toBeLessThan(z(id))
+
+    // 자리 = 그 점(심평원 좌표)
+    const at = liveOverlays().find((o) => o.options.content.dataset.mark === 'o1')!.options.position
+    expect(at).toEqual(new FakeLatLng(37.4995, 127.0305))
+  })
+
+  it('AC-7916.1 종류마다 하나씩 그려진다: 후보·경쟁 의원·한의원·둘레 다른 과 의원·역', async () => {
+    await ready(<KakaoMap label="후보 둘레 지도" center={CENTER} marks={MARKS} />)
+    const kinds = liveOverlays()
+      .map((o) => o.options.content.dataset.kind)
+      .filter(Boolean)
+    expect(new Set(kinds)).toEqual(new Set(['candidate', 'rival', 'korean', 'other', 'station']))
+  })
+
   it('AC-7916.1 범위 밖 표시는 흐리게, 범위 안은 그대로', async () => {
     await ready(<KakaoMap label="후보 둘레 지도" center={CENTER} marks={MARKS} />)
     expect(markEl('r2').className).toContain('opacity-40')
     expect(markEl('r1').className).not.toContain('opacity-40')
+    expect(markEl('o2').className).toContain('opacity-40')
+    expect(markEl('o1').className).not.toContain('opacity-40')
   })
 
   it('AC-7916.1 표시 글은 글자로만 넣는다(HTML로 읽지 않음)', async () => {
