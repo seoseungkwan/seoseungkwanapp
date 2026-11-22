@@ -263,10 +263,13 @@ end
 $$;
 
 -- 사진 줄 30개 한도: 그 후보의 줄이 이미 30개면 넣지 않는다. 넣는 사람 권한 그대로(RLS 적용) 세는데,
--- 후보는 바깥 키로 내 병원 것이므로 그 후보 줄은 모두 보인다
+-- 후보는 바깥 키로 내 병원 것이므로 그 후보 줄은 모두 보인다.
+-- 세기 전에 그 후보로 잠근다(문장 묶음이 끝날 때 풀림, 본보기 notice_keywords_cap): 두 탭이 같은 후보에 같은 때 넣어도
+-- 뒤 탭은 앞 탭이 끝날 때까지 기다린 뒤 새로 세어 31장이 되지 않는다. 다른 후보는 잠금이 달라 서로 기다리지 않는다
 create or replace function public.location_photo_limit() returns trigger language plpgsql security invoker set search_path = ''
 as $$
 begin
+  perform pg_advisory_xact_lock(hashtextextended('location_photos:' || new.candidate_id::text, 0));
   if (select count(*) from public.location_photos p where p.candidate_id = new.candidate_id) >= 30 then
     raise exception 'location photos limit 30' using errcode = '23514';
   end if;
