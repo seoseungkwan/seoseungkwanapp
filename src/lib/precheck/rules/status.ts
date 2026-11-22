@@ -94,6 +94,14 @@ function statusOf(rule: RuleDef, C: Compiled): RuleStatus {
   return !stage.includes('memo') && stage.includes('sam') ? 'sam' : 'manual'
 }
 
+/**
+ * 규칙 하나의 상태(statusesOf와 같은 계산, 기억하지 않음). 고시로 바꾼 판은 원래 규칙과 상태가 같아야 한다 —
+ * 엔진은 규칙 번호로 상태를 하나만 갖기 때문(specs/rule-auto AC-7802.4)
+ */
+export function ruleStatusIn(file: RulesFile, rule: RuleDef): RuleStatus {
+  return statusOf(rule, compiled(file))
+}
+
 const memo = new WeakMap<RulesFile, Map<string, RuleStatus>>()
 
 /** 규칙 번호 → 상태(규칙표 차례). 표마다 한 번만 만든다 */
