@@ -271,7 +271,7 @@ describe('AC-7916.1 KakaoMap 그리기', () => {
     expect(fake.made.circles).toHaveLength(1)
   })
 
-  it('AC-7916.1 동 다각형: [경도, 위도] 고리를 카카오 점으로, 점수 칸 색(chart 토큰)·고른 동은 진한 선, 이름·글은 글자로', async () => {
+  it('AC-7916.1 동 다각형: [경도, 위도] 고리를 카카오 점으로, 점수 칸 색(chart 토큰)·고른 동은 진한 선', async () => {
     await ready(<KakaoMap label="예시구 동 점수 지도" center={CENTER} areas={AREAS} />)
     const polys = fake.live(fake.made.polygons)
     expect(polys).toHaveLength(2)
@@ -284,13 +284,47 @@ describe('AC-7916.1 KakaoMap 그리기', () => {
     expect(polys[1]!.options.strokeColor).toBe('tok--ink')
     expect(polys[1]!.options.strokeWeight).toBeGreaterThan(polys[0]!.options.strokeWeight!)
 
-    const label = liveOverlays().find((o) => o.options.content.dataset.area === '1111051500')!
-    expect(label.options.position).toEqual(new FakeLatLng(37.503, 127.005))
-    expect(label.options.content.textContent).toBe('가람동82점')
     // 동이 있으면 동 전체에 맞춘다
     const lats = lastMap().bounds!.points.map((p) => p.lat)
     expect(Math.min(...lats)).toBe(37.5)
     expect(Math.max(...lats)).toBe(37.53)
+  })
+
+  // 작은 동이 모이면 글자가 겹쳐 깨져 보여서 이름·점수는 늘 띄우지 않는다(사용자 2026-11-23, TASK-89)
+  it('AC-7907.1·AC-7916.1 동 이름·점수 글은 그릴 때 얹지 않고, 마우스를 올리면 그 점 위에 뜨고 따라가다 벗어나면 사라진다', async () => {
+    const view = await ready(<KakaoMap label="예시구 동 점수 지도" center={CENTER} areas={AREAS} />)
+    const tips = () => liveOverlays().filter((o) => o.options.content.dataset.area !== undefined)
+    expect(tips()).toHaveLength(0)
+    const [garam, haneul] = fake.live(fake.made.polygons)
+    for (const type of ['mouseover', 'mousemove', 'mouseout']) {
+      expect(fake.made.listeners.filter((l) => l.target === garam && l.type === type), type).toHaveLength(1)
+    }
+
+    fake.fire(garam!, 'mouseover', new FakeLatLng(37.502, 127.004))
+    expect(tips()).toHaveLength(1)
+    const tip = tips()[0]!
+    expect(tip.options.content.dataset.area).toBe('1111051500')
+    expect(tip.options.content.textContent).toBe('가람동82점')
+    expect(tip.options.position).toEqual(new FakeLatLng(37.502, 127.004))
+    // 마우스를 가리지 않게 점 위쪽에, 마우스를 받지 않는 글
+    expect(tip.options.yAnchor).toBe(1)
+    expect(tip.options.content.className).toContain('pointer-events-none')
+    expect(tip.options.content.className).toContain('bg-surface')
+
+    fake.fire(garam!, 'mousemove', new FakeLatLng(37.503, 127.006))
+    expect(tips()).toHaveLength(1)
+    expect(tips()[0]!.options.position).toEqual(new FakeLatLng(37.503, 127.006))
+
+    fake.fire(garam!, 'mouseout')
+    expect(tips()).toHaveLength(0)
+
+    // 다른 동으로 옮기면 그 동 글 하나만(점수 글이 없으면 이름만)
+    fake.fire(haneul!, 'mouseover', new FakeLatLng(37.525, 127.025))
+    expect(tips().map((o) => o.options.content.textContent)).toEqual(['하늘동'])
+
+    view.unmount()
+    expect(fake.made.listeners).toHaveLength(0)
+    expect(tips()).toHaveLength(0)
   })
 
   it('AC-7916.1 동 다각형을 누르면 onArea(동 코드)', async () => {

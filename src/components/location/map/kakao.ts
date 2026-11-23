@@ -15,6 +15,10 @@ export type KMap = {
 export type KLayer = { setMap(map: KMap | null): void }
 export type KMouseEvent = { latLng: KLatLng }
 type KHandler = (e: KMouseEvent) => void
+/** 사용자 표시(CustomOverlay). 마우스를 따라가는 동 글이 자리를 옮긴다 */
+export type KOverlay = KLayer & { setPosition(p: KLatLng): void }
+/** 듣는 것: 누르기 · 동 다각형에 마우스 올림·움직임·벗어남 */
+export type KEventType = 'click' | 'mouseover' | 'mousemove' | 'mouseout'
 
 export type KCircleOptions = {
   center: KLatLng
@@ -49,11 +53,11 @@ export type KakaoMaps = {
   Map: new (container: HTMLElement, options: { center: KLatLng; level: number }) => KMap
   Circle: new (options: KCircleOptions) => KLayer
   Polygon: new (options: KPolygonOptions) => KLayer
-  CustomOverlay: new (options: KOverlayOptions) => KLayer
+  CustomOverlay: new (options: KOverlayOptions) => KOverlay
   MapTypeId: { ROADMAP: number; HYBRID: number }
   event: {
-    addListener(target: object, type: 'click', handler: KHandler): void
-    removeListener(target: object, type: 'click', handler: KHandler): void
+    addListener(target: object, type: KEventType, handler: KHandler): void
+    removeListener(target: object, type: KEventType, handler: KHandler): void
   }
   Roadview: new (container: HTMLElement) => { setPanoId(panoId: number, position: KLatLng): void }
   RoadviewClient: new () => {

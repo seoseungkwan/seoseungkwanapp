@@ -112,6 +112,9 @@ export function makeFakeKakao(opts: { pano?: number | null; mapThrows?: boolean 
         super(o)
         made.overlays.push(this)
       }
+      setPosition(p: FakeLatLng) {
+        this.options.position = p
+      }
     },
     MapTypeId: { ROADMAP: 1, SKYVIEW: 2, HYBRID: 3 },
     event: {
@@ -136,9 +139,13 @@ export function makeFakeKakao(opts: { pano?: number | null; mapThrows?: boolean 
   const click = (target: object, at?: FakeLatLng) => {
     for (const l of made.listeners.filter((x) => x.target === target && x.type === 'click')) l.fn({ latLng: at ?? new FakeLatLng(0, 0) })
   }
+  /** 지도·다각형에 걸린 type(mouseover·mousemove·mouseout 등) 듣기를 부른다 */
+  const fire = (target: object, type: string, at?: FakeLatLng) => {
+    for (const l of made.listeners.filter((x) => x.target === target && x.type === type)) l.fn({ latLng: at ?? new FakeLatLng(0, 0) })
+  }
   const live = <O>(list: FakeLayer<O>[]) => list.filter((x) => x.map !== null)
 
-  return { maps, made, click, live }
+  return { maps, made, click, fire, live }
 }
 
 export type FakeKakao = ReturnType<typeof makeFakeKakao>

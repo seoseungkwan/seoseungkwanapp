@@ -5,7 +5,7 @@ import { ds } from '@/components/ui/classes'
 import { EARTH_R } from '@/lib/location/coords'
 import type { LngLat } from '@/lib/location/regions'
 import type { Point } from '@/types/location'
-import { fromLatLng, toLatLng, tokenColor, type KLayer, type KMap, type KMouseEvent } from './kakao'
+import { fromLatLng, toLatLng, tokenColor, type KEventType, type KLayer, type KMap, type KMouseEvent } from './kakao'
 import { MapFallback } from './MapFallback'
 import { useKakaoSdk } from './useKakaoSdk'
 
@@ -18,7 +18,7 @@ import { useKakaoSdk } from './useKakaoSdk'
 export type MarkKind = 'candidate' | 'rival' | 'korean' | 'other' | 'station'
 /** 지도 표시 하나. label: 후보는 표시 안 글자(A 등), 역은 옆 이름, 의원은 마우스를 올리면 보이는 이름. outside = 범위 밖(흐리게) */
 export type MapMark = { id: string; kind: MarkKind; at: Point; label: string; outside?: boolean }
-/** 동 다각형 하나(동 경계 파일 모양 그대로 [경도, 위도]). tone = 점수 칸 0~4(연한 → 진한 파랑), text = 이름 아래 글(점수 등) */
+/** 동 다각형 하나(동 경계 파일 모양 그대로 [경도, 위도]). tone = 점수 칸 0~4(연한 → 진한 파랑), text = 마우스를 올리면 이름 아래 뜨는 글(점수 등) */
 export type MapArea = {
   id: string
   name: string
@@ -86,10 +86,12 @@ function markElement(mark: MapMark): HTMLElement {
   return el
 }
 
-function areaLabel(area: MapArea): HTMLElement {
+// 동 이름·점수 글: 마우스를 올린 동 위에만 뜬다(TASK-89). 마우스 점 위쪽 8px에 떠서 마우스를 가리지 않고, 마우스를 받지 않는다
+function areaTip(area: MapArea): HTMLElement {
   const el = document.createElement('div')
   el.dataset.area = area.id
-  el.className = `pointer-events-none flex flex-col items-center text-caption whitespace-nowrap ${area.tone >= 3 ? 'text-surface' : 'text-ink'}`
+  el.className =
+    'pointer-events-none mb-2 flex flex-col items-center whitespace-nowrap rounded-control border border-line bg-surface px-2 py-1 text-caption text-ink shadow-float'
   const name = document.createElement('span')
   name.className = 'font-semibold'
   name.textContent = area.name
@@ -226,11 +228,15 @@ export function KakaoMap({
     }
   }, [map, maps, marksKey])
 
-  // 동 다각형 + 이름
+  // 동 다각형 + 마우스를 올리면 뜨는 이름·점수
   useEffect(() => {
     if (!map || !maps) return
     const layers: KLayer[] = []
-    const clicks: { target: KLayer; handler: () => void }[] = []
+    const listens: { target: KLayer; type: KEventType; handler: (e: KMouseEvent) => void }[] = []
+    const listen = (target: KLayer, type: KEventType, handler: (e: KMouseEvent) => void) => {
+      maps.event.addListener(target, type, handler)
+      listens.push({ target, type, handler })
+    }
     for (const area of latest.current.areas) {
       const fill = tokenColor(TONE_TOKENS[area.tone])
       const stroke = tokenColor(area.selected ? '--ink' : '--surface')
@@ -244,23 +250,25 @@ export function KakaoMap({
       })
       polygon.setMap(map)
       layers.push(polygon)
-      if (areaClicks) {
-        const handler = () => latest.current.onArea?.(area.id)
-        maps.event.addListener(polygon, 'click', handler)
-        clicks.push({ target: polygon, handler })
-      }
-      const name = new maps.CustomOverlay({
+      if (areaClicks) listen(polygon, 'click', () => latest.current.onArea?.(area.id))
+      // 이름·점수 글은 늘 띄우지 않는다 — 작은 동이 모이면 글자가 겹쳐 깨져 보인다(사용자 2026-11-23 '글자 없이 올리면 보기', TASK-89)
+      const tip = new maps.CustomOverlay({
         position: new maps.LatLng(area.center[1], area.center[0]),
-        content: areaLabel(area),
+        content: areaTip(area),
         xAnchor: 0.5,
-        yAnchor: 0.5,
-        zIndex: 0,
+        yAnchor: 1,
+        zIndex: 10,
       })
-      name.setMap(map)
-      layers.push(name)
+      layers.push(tip)
+      listen(polygon, 'mouseover', (e) => {
+        tip.setPosition(e.latLng)
+        tip.setMap(map)
+      })
+      listen(polygon, 'mousemove', (e) => tip.setPosition(e.latLng))
+      listen(polygon, 'mouseout', () => tip.setMap(null))
     }
     return () => {
-      for (const { target, handler } of clicks) maps.event.removeListener(target, 'click', handler)
+      for (const { target, type, handler } of listens) maps.event.removeListener(target, type, handler)
       for (const layer of layers) layer.setMap(null)
     }
   }, [map, maps, areasKey, areaClicks])
