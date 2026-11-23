@@ -21,5 +21,10 @@ public sealed class ErpInstallationLocator : IBitLocator
     public ErpInstallationLocator(string appDirectory, Func<string?> rememberedRoot)
         => candidates = new InstallationLocator(appDirectory, rememberedRoot, probe);
 
-    public string Find() => ErpInstallRules.Choose(candidates.FindCandidates(), probe, NativeEnvironmentGuard.SystemDrive());
+    /// <summary>등록 단계 FIND를 적고(spec erp-bit-anywhere AC-3806.1) ERP 규칙으로 고른다.</summary>
+    public string Find()
+    {
+        ErpStage.Set(ErpStage.Find);
+        return ErpInstallRules.Choose(candidates.FindCandidates(), probe, NativeEnvironmentGuard.SystemDrive());
+    }
 }

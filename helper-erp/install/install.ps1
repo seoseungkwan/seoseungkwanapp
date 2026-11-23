@@ -66,22 +66,64 @@ catch {
 
 # 5. 이 PC 등록: 설치가 끝났을 때만. 등록 모드(--register)로 켜고 끝날 때까지 기다린다(PC 확인 창은 5분 뒤 저절로 닫힌다).
 #    종료 번호: 0 저장 · 1 취소 · 2 오류(그 밖 번호도 오류로 본다)
+#    오류면 도우미가 표준 출력에 오류 번호(E-…)와 멈춘 단계(STEP-…)를 한 줄씩 쓴다. 그것과 까닭을 창에 보여 사진으로 알 수 있게 한다(spec erp-bit-anywhere AC-3806.3)
 if ($installed) {
     Write-Host ''
     Write-Host '이 PC를 등록합니다. 비트 로그인 창이 뜨면 로그인하고, 병원을 확인한 뒤 [확인]을 누르세요.'
     $registerCode = 2
+    $registerOutput = @()
+    $launchError = $null
     try {
-        & $exePath '--register'
+        $registerOutput = @(& $exePath '--register')
         $registerCode = $LASTEXITCODE
     }
     catch {
         $registerCode = 2
+        $launchError = $_.Exception.Message
     }
+    $registerLines = @($registerOutput | ForEach-Object { "$_".Trim() })
+    $errorNumber = @($registerLines | Where-Object { $_ -cmatch '^E-[A-Z0-9-]+$' }) | Select-Object -Last 1
+    $stepLine = @($registerLines | Where-Object { $_ -cmatch '^STEP-[A-Z]+$' }) | Select-Object -Last 1
     Write-Host ''
     switch ($registerCode) {
         0 { Write-Host '이 PC를 등록했어요.' -ForegroundColor Green }
-        1 { Write-Host '등록을 취소했어요. 다시 하려면 install.cmd를 다시 실행하세요.' -ForegroundColor Yellow }
-        default { Write-Host '등록하지 못했어요. 비트가 깔린 PC인지 확인하고 다시 실행하세요.' -ForegroundColor Red }
+        1 {
+            Write-Host '등록을 취소했어요. 다시 하려면 install.cmd를 다시 실행하세요.' -ForegroundColor Yellow
+            Write-Host '직접 취소하지 않았는데 이 글이 나왔다면 이 창을 사진으로 찍어 보내 주세요.'
+        }
+        default {
+            Write-Host '등록하지 못했어요.' -ForegroundColor Red
+            if ($null -ne $launchError) {
+                Write-Host '도우미 프로그램을 켜지 못했어요. 백신이나 윈도우 보안(스마트 앱 컨트롤 등)이 막았을 수 있어요.'
+                Write-Host ('윈도우가 알린 내용: ' + $launchError)
+            }
+            elseif ($null -eq $errorNumber) {
+                Write-Host ('도우미가 오류 번호 없이 끝났어요(끝 번호 ' + $registerCode + '). 백신이 도우미를 멈췄을 수 있어요.')
+            }
+            elseif ($errorNumber -ceq 'E-BIT-NOT-FOUND') {
+                Write-Host '이 PC에서 비트를 찾지 못했어요. 이 PC에서 비트가 켜지는지 확인하세요. 다른 컴퓨터에 깔린 비트를 네트워크로 여는 PC는 안전 때문에 쓸 수 없어요.'
+            }
+            elseif ($errorNumber -ceq 'E-BIT-DB-FAILED') {
+                Write-Host '비트 자료(DB)에 연결하지 못했어요. 이 PC에서 비트가 켜지는지, 자료 서버 컴퓨터가 켜져 있는지 확인하세요. 병원 밖 인터넷 주소의 자료 서버는 안전 때문에 쓸 수 없어요.'
+            }
+            else {
+                Write-Host '비트를 확인하다가 문제가 생겼어요.'
+            }
+            if ($null -ne $stepLine) {
+                $step = $stepLine.Substring(5)
+                $stepName = switch -CaseSensitive ($step) {
+                    'FIND' { '비트 찾기' }
+                    'LOAD' { '비트 파일 불러오기' }
+                    'SERVER' { '자료 서버 주소 확인' }
+                    'CONNECT' { '자료 서버 연결' }
+                    'LOGIN' { '비트 로그인·병원 확인' }
+                    default { $step }
+                }
+                Write-Host ('멈춘 단계: ' + $stepName + ' (' + $step + ')')
+            }
+            if ($null -ne $errorNumber) { Write-Host ('오류 번호: ' + $errorNumber) }
+            Write-Host '이 창을 사진으로 찍어 보내 주세요.'
+        }
     }
     if ($registerCode -eq 0) {
         Write-Host '열어 둔 ERP 마감일지 화면이 있으면 새로고침(F5)하세요.'

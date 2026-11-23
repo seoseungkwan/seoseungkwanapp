@@ -10,11 +10,19 @@ using Precheck.Windows;
 namespace Erp.Helper;
 
 /// <summary>
-/// ERP 도우미 비트 DB 열기(spec erp-closing-fill design.md 3-4, AC-3611.4): 기존 ReadOnlyConnection(비트 DLL 접속 정보·서버 검사·ConnectTimeout=10) → ErpBitDb.
+/// ERP 도우미 비트 DB 열기(spec erp-closing-fill design.md 3-4, AC-3611.4): ERP 접속 부품 ErpReadOnlyConnection(비트 DLL 미리 불러오기·접속 정보·
+/// 병원 안 서버 검사·ConnectTimeout=10, spec erp-bit-anywhere AC-3804.3) → ErpBitDb. 열기 전후로 등록 단계(CONNECT·LOGIN, AC-3806.1)를 적는다.
 /// </summary>
 public sealed class ErpBitConnector : IBitConnector
 {
-    public IBitSession Open(string installPath) => ErpBitDb.Open(ReadOnlyConnection.Create(installPath));
+    public IBitSession Open(string installPath)
+    {
+        var info = ErpReadOnlyConnection.Create(installPath);
+        ErpStage.Set(ErpStage.Connect);
+        var session = ErpBitDb.Open(info);
+        ErpStage.Set(ErpStage.Login);
+        return session;
+    }
 }
 
 /// <summary>

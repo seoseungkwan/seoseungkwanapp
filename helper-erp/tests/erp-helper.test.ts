@@ -46,8 +46,29 @@ const REG_KEY = 'HKCU:\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.seos
 const REGISTER_MESSAGES = {
   saved: '이 PC를 등록했어요.',
   cancelled: '등록을 취소했어요. 다시 하려면 install.cmd를 다시 실행하세요.',
-  failed: '등록하지 못했어요. 비트가 깔린 PC인지 확인하고 다시 실행하세요.',
+  failed: '등록하지 못했어요.',
 }
+// spec erp-bit-anywhere AC-3806.3: 등록 실패 때 까닭·단계·오류 번호 글
+const REGISTER_REASONS = {
+  notFound: '이 PC에서 비트를 찾지 못했어요. 이 PC에서 비트가 켜지는지 확인하세요. 다른 컴퓨터에 깔린 비트를 네트워크로 여는 PC는 안전 때문에 쓸 수 없어요.',
+  dbFailed: '비트 자료(DB)에 연결하지 못했어요. 이 PC에서 비트가 켜지는지, 자료 서버 컴퓨터가 켜져 있는지 확인하세요. 병원 밖 인터넷 주소의 자료 서버는 안전 때문에 쓸 수 없어요.',
+  other: '비트를 확인하다가 문제가 생겼어요.',
+  launch: '도우미 프로그램을 켜지 못했어요. 백신이나 윈도우 보안(스마트 앱 컨트롤 등)이 막았을 수 있어요.',
+  launchDetail: '윈도우가 알린 내용: ',
+  noNumber: '도우미가 오류 번호 없이 끝났어요(끝 번호 ',
+  noNumberTail: '). 백신이 도우미를 멈췄을 수 있어요.',
+  step: '멈춘 단계: ',
+  number: '오류 번호: ',
+  photo: '이 창을 사진으로 찍어 보내 주세요.',
+  cancelHint: '직접 취소하지 않았는데 이 글이 나왔다면 이 창을 사진으로 찍어 보내 주세요.',
+}
+const STEP_NAMES = { FIND: '비트 찾기', LOAD: '비트 파일 불러오기', SERVER: '자료 서버 주소 확인', CONNECT: '자료 서버 연결', LOGIN: '비트 로그인·병원 확인' }
+const READ_ONLY = `${ERP_HELPER}/ErpReadOnlyConnection.cs`
+const PRELOAD = `${ERP_HELPER}/ErpVendorPreload.cs`
+const STAGE = `${ERP_HELPER}/ErpStage.cs`
+// ErpBitConnector.Open 몸통(AC-3804.3·AC-3806.1), csBody 모양
+const CONNECTOR_OPEN =
+  'public IBitSession Open(string installPath) { var info = ErpReadOnlyConnection.Create(installPath); ErpStage.Set(ErpStage.Connect); var session = ErpBitDb.Open(info); ErpStage.Set(ErpStage.Login); return session; }'
 // 기존 도우미 이름·폴더·크롬 등록(ERP 도우미는 읽지도 쓰지도 않는다)
 const OLD_NAMES = ['PrecheckHelper', 'com.seoseungkwan.precheck', 'Precheck.Helper']
 
@@ -407,7 +428,8 @@ describe('AC-3611.2 저장 자리: %LOCALAPPDATA%\\Seoseungkwan\\ErpHelper\\ 의
 
   it('AC-3611.2: Erp.Helper 코드·프로젝트에 기존 도우미 폴더·이름(PrecheckHelper·Precheck.Helper)이 없다', () => {
     const files = filesUnder(ERP_HELPER)
-    expect(files.sort()).toEqual([CSPROJ, BIT_DB, LOCATOR, LOG, SERVICES, PROGRAM].sort())
+    // spec erp-bit-anywhere AC-3804.3·AC-3805.1·AC-3806.1로 ERP 접속 부품·DLL 미리 불러오기·등록 단계 파일이 더해짐
+    expect(files.sort()).toEqual([CSPROJ, BIT_DB, LOCATOR, LOG, SERVICES, PROGRAM, READ_ONLY, PRELOAD, STAGE].sort())
     for (const file of files) {
       const text = read(file)
       for (const old of OLD_NAMES) expect(text, `${file}: ${old}`).not.toContain(old)
@@ -473,10 +495,10 @@ describe('AC-3801.3 ErpInstallationLocator: 기존 InstallationLocator 후보를
     expect(text.match(/\bnew \w+\(/g)).toEqual(['new LocalFileProbe(', 'new InstallationLocator('])
   })
 
-  it('AC-3801.3: Find는 ErpInstallRules.Choose(candidates.FindCandidates(), probe, NativeEnvironmentGuard.SystemDrive())이고 후보 부품은 FindCandidates만 쓴다', () => {
+  it('AC-3801.3: Find는 ErpInstallRules.Choose(candidates.FindCandidates(), probe, NativeEnvironmentGuard.SystemDrive())이고 후보 부품은 FindCandidates만 쓴다(첫 줄 단계 FIND는 AC-3806.1)', () => {
     const text = locator()
-    expect(text).toMatch(
-      /public string Find\(\)\s*=>\s*ErpInstallRules\.Choose\(candidates\.FindCandidates\(\), probe, NativeEnvironmentGuard\.SystemDrive\(\)\);/,
+    expect(csBody(methodBody(text, /public string Find\(\)/))).toBe(
+      '{ ErpStage.Set(ErpStage.Find); return ErpInstallRules.Choose(candidates.FindCandidates(), probe, NativeEnvironmentGuard.SystemDrive()); }',
     )
     expect([...text.matchAll(/\bcandidates\.(\w+)/g)].map((m) => m[1])).toEqual(['FindCandidates'])
     expect(text.match(/\bFind\(\)/g)).toHaveLength(1)
@@ -549,11 +571,10 @@ describe('AC-3611.4 ErpBitDb: 기존 SqlBitDb와 같은 규칙, 관문만 ErpRea
   const live = () => code(read('helper/src/Precheck.Windows/SqlBitDb.cs'))
   const SECONDS = /\s*private static int Seconds\(TimeSpan timeout\)\s*=>\s*([^;]+);/
 
-  it('AC-3611.4: ErpBitConnector는 기존 ReadOnlyConnection.Create(서버 검사·접속 10초)로 연다', () => {
+  it('AC-3611.4: ErpBitConnector는 ERP 접속 부품 ErpReadOnlyConnection.Create(병원 안 서버 검사·접속 10초)로 연다(spec erp-bit-anywhere AC-3804.3로 바뀜)', () => {
     expect(erp()).toMatch(/^namespace Erp\.Helper;$/m)
-    expect(erp()).toMatch(
-      /class ErpBitConnector : IBitConnector\s*\{\s*public IBitSession Open\(string installPath\) => ErpBitDb\.Open\(ReadOnlyConnection\.Create\(installPath\)\);\s*\}/,
-    )
+    const connector = methodBody(erp(), /class ErpBitConnector : IBitConnector/)
+    expect(csBody(connector)).toBe(`{ ${CONNECTOR_OPEN} }`)
     expect(erp()).toMatch(/class ErpBitDb : IBitSession/)
   })
 
@@ -595,6 +616,8 @@ describe('AC-3611.4 ErpBitDb: 기존 SqlBitDb와 같은 규칙, 관문만 ErpRea
       .replace(/\bReadOnlyGuard\.Require\(/g, 'ErpReadGuard.Require(')
       .replace(/\bSql\.ParametersOf\(/g, 'ErpReadGuard.ParametersOf(')
       .replace(/\bReadOnlyConnection\.Seconds\(/g, 'Seconds(')
+      // spec erp-bit-anywhere AC-3804.3·AC-3806.1: 여는 부품만 ERP 것(ErpReadOnlyConnection·단계)
+      .replace('public IBitSession Open(string installPath) => ErpBitDb.Open(ReadOnlyConnection.Create(installPath));', CONNECTOR_OPEN)
     const actual = csBody(erp().replace(SECONDS, ''))
     expect(actual).toBe(expected)
   })
@@ -690,9 +713,9 @@ describe('AC-3802 install.cmd: PATH와 상관없이 PowerShell을 부르고 실�
     expect(text.match(/"%SystemRoot%[^"\r\n]*"/g)).toHaveLength(1)
     // 지연 확장을 꺼서 폴더 이름의 !가 바뀌지 않는다
     expect(cmdLines()[1]).toBe('setlocal DisableDelayedExpansion')
-    // 설치 파일 목록과 install.ps1·uninstall.ps1·README.md는 그대로(갈래 시작 6754571c와 글자가 같다)
+    // 설치 파일 목록과 uninstall.ps1·README.md는 그대로(갈래 시작 6754571c와 글자가 같다). install.ps1은 AC-3806.3으로 등록 결과 글만 바뀐다
     expect(filesUnder(INSTALL).sort()).toEqual([INSTALL_CMD, INSTALL_PS1, MANIFEST, UNINSTALL_PS1, `${INSTALL}/README.md`].sort())
-    const diff = spawnSync('git', ['diff', '--quiet', '6754571c', '--', INSTALL_PS1, UNINSTALL_PS1, `${INSTALL}/README.md`], {
+    const diff = spawnSync('git', ['diff', '--quiet', '6754571c', '--', UNINSTALL_PS1, `${INSTALL}/README.md`], {
       cwd: ROOT,
       encoding: 'utf8',
     })
@@ -739,6 +762,199 @@ describe('AC-3802 install.cmd: PATH와 상관없이 PowerShell을 부르고 실�
     const run = runInstallCmd('exit 2', { folderName: 'x!y (1)&b', delayedExpansion: true })
     expect(run.code, run.text).toBe(2)
     expect(run.text).not.toMatch(PAUSED)
+  }, 90_000)
+})
+
+describe('AC-3804.3·AC-3805·AC-3806 ERP 접속 부품·받은 파일 표시·등록 결과 알림(spec erp-bit-anywhere TASK-4)', () => {
+  const readOnly = () => code(read(READ_ONLY))
+  const liveConnection = () => code(read('helper/src/Precheck.Windows/ReadOnlyConnection.cs'))
+  const HARDEN_LIVE = /public static ReadOnlyConnectionInfo Harden\(string sourceConnectionString, string installRoot, string machineName\)/
+  const HARDEN_ERP =
+    /public static ReadOnlyConnectionInfo Harden\(string sourceConnectionString, string installRoot, string machineName, Func<string, IReadOnlyList<IPAddress>> resolve, IReadOnlyList<ErpLocalNetwork> localNetworks\)/
+  const sources = () => filesUnder('helper-erp/src').filter((f) => f.endsWith('.cs'))
+  const install = () => psCode(read(INSTALL_PS1))
+
+  it('AC-3804.3: ErpReadOnlyConnection.Harden 몸통은 기존 Harden과 같고 서버 검사 줄(ErpServerRules·단계 SERVER)과 예비 서버 거절만 다르다', () => {
+    const expected = csBody(methodBody(liveConnection(), HARDEN_LIVE))
+      .replace('options.ApplicationName = ApplicationName;', 'options.ApplicationName = ReadOnlyConnection.ApplicationName;')
+      .replace(
+        'PrivateServer.Require(options.DataSource, machineName);',
+        'ErpStage.Set(ErpStage.Server); ErpServerRules.Require(options.DataSource, machineName, resolve, localNetworks); if (!string.IsNullOrEmpty(options.FailoverPartner)) throw new BitException(BitErrors.DbFailed);',
+      )
+    expect(expected).toContain('ErpServerRules.Require(')
+    expect(csBody(methodBody(readOnly(), HARDEN_ERP))).toBe(expected)
+    expect(readOnly()).toMatch(/^namespace Erp\.Helper;$/m)
+    expect(readOnly()).toMatch(/public static class ErpReadOnlyConnection\b/)
+  })
+
+  it('AC-3804.3: Create는 단계 LOAD → 비트 DLL 미리 불러오기 → 접속 글자 읽기 → Harden(이 PC 이름·Dns.GetHostAddresses·켜진 카드 IPv6 목록)', () => {
+    const create = methodBody(readOnly(), /public static ReadOnlyConnectionInfo Create\(string installRoot\)/)
+    expectOrder(
+      create,
+      ['ErpStage.Set(ErpStage.Load);', 'ErpVendorPreload.Load(installRoot);', 'VendorConnectionString(installRoot)', 'Environment.MachineName', 'Dns.GetHostAddresses', 'LocalNetworks()'],
+      'Create',
+    )
+    expect(create).toMatch(/return Harden\(/)
+    const networks = methodBody(readOnly(), /private static IReadOnlyList<ErpLocalNetwork> LocalNetworks\(\)/)
+    expectOrder(networks, ['NetworkInterface.GetAllNetworkInterfaces()', 'OperationalStatus.Up', 'UnicastAddresses', 'AddressFamily.InterNetworkV6', 'PrefixLength'], 'LocalNetworks')
+  })
+
+  it('AC-3804.3: 접속 글자 읽기는 기존 private VendorConnectionString과 같은 몸통(형 이름·상수만 ReadOnlyConnection.…)이다', () => {
+    const signature = /private static string VendorConnectionString\(string installRoot\)/
+    const expected = csBody(methodBody(liveConnection(), signature))
+      .replace('VendorRuntime.Load(installRoot, VendorAssembly).GetType(VendorType, true)', 'VendorRuntime.Load(installRoot, ReadOnlyConnection.VendorAssembly).GetType(ReadOnlyConnection.VendorType, true)')
+      .replace('return VendorConnectionString(type);', 'return ReadOnlyConnection.VendorConnectionString(type);')
+    expect(expected).toContain('ReadOnlyConnection.VendorConnectionString(type)')
+    expect(csBody(methodBody(readOnly(), signature))).toBe(expected)
+  })
+
+  it('AC-3804.3: helper-erp/src 안에 ReadOnlyConnection.Create·ReadOnlyConnection.Harden·PrivateServer.Require를 부르는 곳이 없다', () => {
+    for (const file of sources()) {
+      const text = code(read(file))
+      expect(text, file).not.toMatch(/\bReadOnlyConnection\.(Create|Harden)\(/)
+      expect(text, file).not.toMatch(/\bPrivateServer\.Require\(/)
+    }
+  })
+
+  it('AC-3805.1: ErpVendorPreload.Load는 VendorRuntime.Prepare 뒤 ERP DLL 둘(RequiredFiles)만 UnsafeLoadFrom으로 불러 두고, 그 밖 예외는 E-BIT-DB-FAILED', () => {
+    const text = code(read(PRELOAD))
+    expect(text).toMatch(/^namespace Erp\.Helper;$/m)
+    const load = methodBody(text, /public static void Load\(string installRoot\)/)
+    expectOrder(
+      load,
+      [
+        'VendorRuntime.Prepare(installRoot);',
+        'foreach (var file in ErpInstallRules.RequiredFiles)',
+        'Assembly.UnsafeLoadFrom(Path.Combine(installRoot, file));',
+        'catch (Exception e) when (!(e is BitException))',
+        'throw new BitException(BitErrors.DbFailed);',
+      ],
+      'ErpVendorPreload.Load',
+    )
+    expect(load.match(/UnsafeLoadFrom\(/g)).toHaveLength(1)
+    expect(load).not.toMatch(/\bLoadFrom\(|\bLoadFile\(|Load\(byte/)
+  })
+
+  it('AC-3805.2: UnsafeLoadFrom은 ErpVendorPreload.cs에만 있고 loadFromRemoteSources는 어디에도 없으며 실행 설정(csproj)은 그대로다', () => {
+    for (const file of sources()) {
+      const text = code(read(file))
+      if (file === PRELOAD) continue
+      expect(text, file).not.toMatch(/UnsafeLoadFrom/)
+    }
+    for (const file of filesUnder('helper-erp/src').filter((f) => /\.(cs|csproj|config|props)$/.test(f))) {
+      expect(read(file), file).not.toMatch(/loadFromRemoteSources/i)
+    }
+    const diff = spawnSync('git', ['diff', '--quiet', '6754571c', '--', CSPROJ], { cwd: ROOT, encoding: 'utf8' })
+    expect(diff.status, `${diff.stdout ?? ''}${diff.stderr ?? ''}${diff.error?.message ?? ''}`).toBe(0)
+  })
+
+  it('AC-3806.1: ErpStage는 ASCII 대문자 단계 다섯과 Set·Current이고, 단계는 정해 둔 다섯 자리에서만 적는다', () => {
+    const text = code(read(STAGE))
+    expect(text).toMatch(/^namespace Erp\.Helper;$/m)
+    const values = Object.fromEntries([...text.matchAll(/public const string (\w+) = "([^"]*)";/g)].map((m) => [m[1], m[2]]))
+    expect(values).toEqual({ Find: 'FIND', Load: 'LOAD', Server: 'SERVER', Connect: 'CONNECT', Login: 'LOGIN' })
+    expect(text).toMatch(/private static volatile string\? current;/)
+    expect(text).toMatch(/public static string\? Current => current;/)
+    expect(text).toMatch(/public static void Set\(string stage\) => current = stage;/)
+    const sets = sources().flatMap((file) => [...code(read(file)).matchAll(/ErpStage\.Set\(ErpStage\.(\w+)\)/g)].map((m) => `${path.basename(file)}:${m[1]}`))
+    expect(sets.sort()).toEqual(
+      ['ErpInstallationLocator.cs:Find', 'ErpReadOnlyConnection.cs:Load', 'ErpReadOnlyConnection.cs:Server', 'ErpBitDb.cs:Connect', 'ErpBitDb.cs:Login'].sort(),
+    )
+    // 단계는 기록 파일·크롬 응답에 넣지 않는다
+    expect(code(read(LOG))).not.toMatch(/ErpStage/)
+    for (const file of filesUnder('helper-erp/src/Erp.Core').filter((f) => f.endsWith('.cs'))) expect(read(file), file).not.toMatch(/ErpStage/)
+  })
+
+  it('AC-3806.2: 등록 오류면 기록 뒤 오류 번호·단계를 표준 출력에 ASCII로 쓰고(쓰기 실패는 무시) 2로 끝난다. 저장·취소 길에는 쓰지 않는다', () => {
+    const text = code(read(PROGRAM))
+    const register = methodBody(text, /static int Register\(ErpLog log\)/)
+    expectOrder(
+      register,
+      [
+        'return saved ? RegisterSaved : RegisterCancelled;',
+        'catch (HelperException e)',
+        'log.WriteRegister(e.Code);',
+        'WriteRegisterError(e.Code);',
+        'return RegisterFailed;',
+        'catch (Exception)',
+        'log.WriteRegister(ErrorCodes.Disconnected);',
+        'WriteRegisterError(ErrorCodes.Disconnected);',
+        'return RegisterFailed;',
+      ],
+      'Register',
+    )
+    expect(register.match(/WriteRegisterError\(/g)).toHaveLength(2)
+    const before = register.slice(0, register.indexOf('return saved ? RegisterSaved : RegisterCancelled;'))
+    expect(before).not.toMatch(/WriteRegisterError|OpenStandardOutput/)
+    const write = methodBody(text, /private static void WriteRegisterError\(string code\)/)
+    expectOrder(write, ['try', 'var stage = ErpStage.Current;', '"STEP-" + stage', 'Encoding.ASCII.GetBytes(', 'Console.OpenStandardOutput()', 'catch (Exception)'], 'WriteRegisterError')
+    // 표준 출력을 여는 곳은 이것과 크롬 메시지 고리 둘뿐이고, Main 첫 줄 버림은 그대로
+    expect(text.match(/Console\.OpenStandardOutput\(\)/g)).toHaveLength(2)
+    expect(methodBody(text, /static int Main\(string\[\] args\)/)).toMatch(/^\{\s*Console\.SetOut\(TextWriter\.Null\);/)
+  })
+
+  it('AC-3806.3: install.ps1은 도우미 출력을 받아(2>&1 없음) 오류 번호·단계 줄을 -cmatch로 고르고, 실행 예외 글을 둔다', () => {
+    const text = install()
+    expectOrder(
+      text,
+      [
+        '$registerOutput = @()',
+        '$launchError = $null',
+        "$registerOutput = @(& $exePath '--register')",
+        '$registerCode = $LASTEXITCODE',
+        '$registerCode = 2',
+        '$launchError = $_.Exception.Message',
+        "-cmatch '^E-[A-Z0-9-]+$'",
+        "-cmatch '^STEP-[A-Z]+$'",
+        'switch ($registerCode)',
+      ],
+      'install.ps1',
+    )
+    expect(text).not.toMatch(/2>&1/)
+    expect(text).not.toMatch(/-match\s+'\^(E|STEP)-/)
+  })
+
+  it('AC-3806.3: 등록 실패 글: 까닭 네 가지·실행 예외·번호 없음·멈춘 단계(이름 다섯)·오류 번호·사진, 취소에 덧줄, 끝 번호 0·1·2는 그대로', () => {
+    const text = install()
+    const failed = text.slice(text.indexOf('default {', text.indexOf('switch ($registerCode)')))
+    expectOrder(
+      failed,
+      [
+        `'${REGISTER_MESSAGES.failed}'`,
+        `'${REGISTER_REASONS.launch}'`,
+        `'${REGISTER_REASONS.launchDetail}'`,
+        `'${REGISTER_REASONS.noNumber}'`,
+        `'${REGISTER_REASONS.noNumberTail}'`,
+        "'E-BIT-NOT-FOUND'",
+        `'${REGISTER_REASONS.notFound}'`,
+        "'E-BIT-DB-FAILED'",
+        `'${REGISTER_REASONS.dbFailed}'`,
+        `'${REGISTER_REASONS.other}'`,
+        `'${REGISTER_REASONS.step}'`,
+        `'${REGISTER_REASONS.number}'`,
+        `'${REGISTER_REASONS.photo}'`,
+      ],
+      'install.ps1 default',
+    )
+    for (const [step, name] of Object.entries(STEP_NAMES)) expect(failed, step).toContain(`'${step}' { '${name}' }`)
+    expect(failed).toMatch(/-ceq 'E-BIT-NOT-FOUND'/)
+    expect(failed).toMatch(/-ceq 'E-BIT-DB-FAILED'/)
+    expectOrder(text, [`'${REGISTER_MESSAGES.cancelled}'`, `'${REGISTER_REASONS.cancelHint}'`, 'default {'], 'install.ps1 cancel')
+    // 끝 번호 계산은 그대로
+    expectOrder(text, ['if ($registerCode -eq 0) {', 'elseif ($registerCode -eq 1) {', '$exitCode = 1', 'else {', '$exitCode = 2', 'exit $exitCode'], 'install.ps1 exit')
+  })
+
+  it.runIf(process.platform === 'win32')('AC-3806.4: (윈도우) install.ps1은 PowerShell 5.1 글 검사에서 오류가 없다', () => {
+    const powershell = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+    const script =
+      '$t = $null; $e = $null; [void][System.Management.Automation.Language.Parser]::ParseFile($env:ERP_PS1_PATH, [ref]$t, [ref]$e); [Console]::Out.Write($e.Count)'
+    const run = spawnSync(powershell, ['-NoProfile', '-NonInteractive', '-Command', script], {
+      env: { ...process.env, ERP_PS1_PATH: path.join(ROOT, INSTALL_PS1) },
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 60_000,
+    })
+    expect(`${run.stdout}`.trim(), `${run.stderr}${run.error?.message ?? ''}`).toBe('0')
   }, 90_000)
 })
 
@@ -792,10 +1008,13 @@ describe('AC-3611.5 설치·지우기(helper-erp/install)', () => {
 
   it('AC-3611.5: 등록 종료 번호로 안내: 0 저장 · 1 취소 · 2(와 그 밖) 오류', () => {
     const text = install()
-    const arms = Object.fromEntries(
-      [...text.matchAll(/^\s*(\d+|default)\s*\{[^}\n]*?'([^']+)'[^}\n]*\}/gm)].map((m) => [m[1], m[2]]),
-    )
-    expect(arms).toEqual({ '0': REGISTER_MESSAGES.saved, '1': REGISTER_MESSAGES.cancelled, default: REGISTER_MESSAGES.failed })
+    // 가지마다 첫 Write-Host 글(spec erp-bit-anywhere AC-3806.3로 1·default 가지는 여러 줄이 됨)
+    const arm = (label: string) => new RegExp(`^\\s*${label}\\s*\\{\\s*Write-Host '([^']+)'`, 'm').exec(text)?.[1]
+    expect({ '0': arm('0'), '1': arm('1'), default: arm('default') }).toEqual({
+      '0': REGISTER_MESSAGES.saved,
+      '1': REGISTER_MESSAGES.cancelled,
+      default: REGISTER_MESSAGES.failed,
+    })
     expectOrder(text, ["& $exePath '--register'", '$LASTEXITCODE', 'switch ($registerCode)'], 'install.ps1')
   })
 

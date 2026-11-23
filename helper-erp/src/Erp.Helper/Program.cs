@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text;
 using Erp.Core;
 using Erp.Core.Closing;
 using Precheck.Core.Input;
@@ -71,12 +72,36 @@ internal static class Program
         catch (HelperException e)
         {
             log.WriteRegister(e.Code);
+            WriteRegisterError(e.Code);
             return RegisterFailed;
         }
         catch (Exception)
         {
             log.WriteRegister(ErrorCodes.Disconnected);
+            WriteRegisterError(ErrorCodes.Disconnected);
             return RegisterFailed;
+        }
+    }
+
+    /// <summary>
+    /// 등록 오류를 설치 창에 알린다(spec erp-bit-anywhere AC-3806.2): 표준 출력에 오류 번호 한 줄, 단계가 있으면 'STEP-단계' 한 줄(ASCII).
+    /// 등록 모드는 설치 파일(install.ps1)이 켜므로 표준 출력이 크롬 통로가 아니다. 쓰지 못해도 등록 결과(2)는 그대로 낸다.
+    /// </summary>
+    private static void WriteRegisterError(string code)
+    {
+        try
+        {
+            var text = code + "\r\n";
+            var stage = ErpStage.Current;
+            if (stage != null) text += "STEP-" + stage + "\r\n";
+            var bytes = Encoding.ASCII.GetBytes(text);
+            using var output = Console.OpenStandardOutput();
+            output.Write(bytes, 0, bytes.Length);
+            output.Flush();
+        }
+        catch (Exception)
+        {
+            // 창에 못 써도 등록 결과는 그대로
         }
     }
 }
