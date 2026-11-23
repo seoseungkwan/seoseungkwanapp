@@ -31,6 +31,29 @@
   - 이 범위에는 `helper/`의 `Precheck.Core`·`Precheck.Windows`가 들어간다.
   - ERP 도우미 판 번호(0.3.0)·`helper-erp/commands.json`·확장(`extension-erp/`)도 그대로다. 화면·오류 글은 새로 없다(시안 없음).
 
+### REQ-3802: 설치 시작 파일(`install.cmd`)이 PATH와 상관없이 PowerShell을 부르고, 실패하면 창을 열어 둔다
+배경: 2026-11-23 사용자 "도우미 설치가 경로 때문에 설치가 안 됐었어" · "창 나오고 경로를 그냥 못 찾았다 했다" · "압축 풀었어 이번엔 다른 경우야" · 질문 답 "install.cmd 누르자마자" · "다른 병원 PC". 그 PC의 실제 창 글자는 보지 못했다.
+- 2026-11-23 이 PC 시험:
+  - 지금 한 줄 `install.cmd`는 폴더 이름(한글·띄어쓰기·괄호·대괄호·`&`·`%`·`'`·`;`·`^`·`!`·226자 경로)과 상관없이 옆의 `install.ps1`을 잘 부른다.
+  - 지금 줄은 `powershell`을 PATH(윈도우가 프로그램을 찾는 경로 목록)에서 찾는다. PATH가 망가진 PC에서는 누르자마자 '…을(를) 찾을 수 없습니다'류 오류가 나고 창이 바로 닫힌다.
+  - 옆에 `install.ps1`이 없을 때도(압축 파일 안에서 바로 누름, 또는 백신이 `.ps1`을 지움) PowerShell이 "-File 매개 변수에 대한 '…install.ps1' 인수가 없습니다 … 경로 …"(영어 판 `… to the -File parameter does not exist`)를 내고 창이 바로 닫힌다.
+  - 전체 경로 `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`로 부르면 PATH를 `C:\nowhere`로 망가뜨려도 `install.ps1`의 끝 번호가 그대로 나왔다.
+  - 한글 안내를 `-EncodedCommand`로 띄우는 방식은 압축 임시 폴더(`…\Temp1_….zip\…`)에서 PowerShell이 멈춰 버렸다(백신 검사로 짐작). 백신이 의심하는 모양이라 쓰지 않는다.
+- AC-3802.1: Given `install.cmd`, When 실행하면, Then PowerShell을 PATH가 아닌 전체 경로로 부른다: `"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1"`. 그 끝 번호를 그대로 낸다.
+- AC-3802.2: Given PowerShell 끝 번호, Then 0·1·2면(`install.ps1`이 스스로 '엔터를 누르면 이 창이 닫힙니다'로 기다린 뒤) 더 기다리지 않는다. 그 밖의 번호면 윈도우 `pause`로 키를 누를 때까지 창을 열어 둔다. 이런 경우가 그 밖의 번호다.
+  - `install.ps1`이 옆에 없음
+  - `install.ps1` 글이 틀림
+  - PowerShell을 켜지 못함
+  - 그래서 그때 나온 오류 글이 창에 남아 사진으로 찍을 수 있다. 끝 번호는 PowerShell(또는 명령 창)이 낸 것 그대로다.
+- AC-3802.3: Given `helper-erp/install/install.cmd` 파일, Then 다음을 지킨다.
+  - 글자는 모두 ASCII다. `-EncodedCommand`, `goto`·`call :라벨`(LF 줄 끝에서 라벨 찾기가 틀릴 수 있다)은 쓰지 않는다.
+  - 경로는 늘 따옴표 안에서만 쓴다.
+  - 설치 파일 목록(`install.cmd`·`install.ps1`·`host-manifest.json`·`uninstall.ps1`·`README.md`)과 `install.ps1`·`uninstall.ps1`·`README.md`·기존 `helper/install/*`은 그대로다.
+  - 윈도우에서 도는 시험은 다음을 본다(임시 폴더 이름에 한글·괄호·띄어쓰기·`&`, 입력 없음, PATH = `C:\nowhere`).
+    - 가짜 `install.ps1`이 `exit 2`면 끝 번호 2이고 멈춤 글이 없다.
+    - `exit 5`면 끝 번호 5이고 멈춤 글이 있다.
+    - `install.ps1`이 없으면 끝 번호가 0·1·2가 아니고 멈춤 글이 있다.
+
 ## 범위 밖
 - 청구 도우미(`helper/`)와 웹앱(`src/`)의 비트 찾기. 이쪽은 `C:\DrBIT50`만 그대로다.
 - 네트워크 드라이브·다른 컴퓨터에 깔린 비트. 다른 컴퓨터의 프로그램 파일을 불러 실행하는 일이라 계속 막는다.
