@@ -98,7 +98,8 @@ public static class StatsMenu
 
 /// <summary>
 /// 표를 읽기 전 확인(원본 NativeReportAdapter: HospitalSecurity.Authorize + CheckPermissions).
-/// 비트 로그인 사용자의 병원 범위가 등록 범위와 같아야 하고(아니면 E-BIT-HOSPITAL-MISMATCH),
+/// 비트 로그인 사용자의 병원 범위를 하나로 읽었는데 등록 범위와 다르면 E-BIT-HOSPITAL-MISMATCH(하나로 못 읽으면 막지 않음 — AC-005.13,
+/// DB 안 의원이 하나뿐인지는 그 앞 매번 확인이 본다),
 /// 읽을 화면마다 메뉴에 보이는 항목이 있고 그 제목에 권한(UgaExeLvl이 D가 아님)이 있어야 한다(아니면 E-BIT-EXPORT-FAILED).
 /// </summary>
 public static class StatsAccess
@@ -108,7 +109,8 @@ public static class StatsAccess
         if (db == null) throw new ArgumentNullException(nameof(db));
         if (menu == null) throw new ArgumentNullException(nameof(menu));
         if (keys == null) throw new ArgumentNullException(nameof(keys));
-        if (!string.Equals(HospitalCheck.ReadUserScope(db, user), scope, StringComparison.Ordinal)) throw new BitException(BitErrors.HospitalMismatch);
+        var userScope = HospitalCheck.UserScopeOrNull(db, user);
+        if (userScope != null && !string.Equals(userScope, scope, StringComparison.Ordinal)) throw new BitException(BitErrors.HospitalMismatch);
 
         var titles = new List<string>();
         foreach (var key in keys)

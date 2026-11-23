@@ -93,6 +93,29 @@ public class StatsScreensTests
         Assert.DoesNotContain(Sql.UserPermissionsSql, db.Sqls);
     }
 
+    [Fact(DisplayName = "AC-005.13 계정 범위를 하나로 읽지 못하면(없음·둘·로그인 모양 틀림) 막지 않고 권한 확인으로 간다")]
+    public void AccessUnknownScopePasses()
+    {
+        var permissions = new[] { new object?[] { "전산자료 추출통계", "A" }, new object?[] { "처방별 환자 목록", "A" } };
+
+        var none = Db(permissions);
+        none.Answer(Sql.UserScopeSql);
+        StatsAccess.Check(none, User, Synthetic.Scope, Menu, StatsScreens.Keys);
+        Assert.Contains(Sql.UserPermissionsSql, none.Sqls);
+
+        var two = Db(permissions);
+        two.Answer(Sql.UserScopeSql, Synthetic.Scope, "OTHER");
+        StatsAccess.Check(two, User, Synthetic.Scope, Menu, StatsScreens.Keys);
+
+        var blank = Db(permissions);
+        blank.Answer(Sql.UserScopeSql, "  ");
+        StatsAccess.Check(blank, User, Synthetic.Scope, Menu, StatsScreens.Keys);
+
+        var badDay = Db(permissions);
+        StatsAccess.Check(badDay, new VendorUser("SYNUSER", "2026-10-30"), Synthetic.Scope, Menu, StatsScreens.Keys);
+        Assert.DoesNotContain(Sql.UserScopeSql, badDay.Sqls);
+    }
+
     public static IEnumerable<object?[]> MissingPermissions()
     {
         yield return new object?[] { new[] { new object?[] { "처방별 환자 목록", "A" } } };                                                   // 83 권한 없음
