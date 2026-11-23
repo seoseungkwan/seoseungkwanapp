@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "location",
-  "approved_at": "2026-11-23T01:37:45Z",
+  "approved_at": "2026-11-23T03:57:45Z",
   "approved_via": "auto",
   "session_id": "d6645c74-6bc0-4844-b534-4aaafe727366",
-  "spec_sha256": "5a93b5aef07f00b698de8316c1c88756a43f268b827ea0a36e22cef618a18dfa",
+  "spec_sha256": "a99034da92cbd9a864b485740dec36b512bb6db43080bcc49bb3d8406ebc2e80",
   "scope": [
     "CLAUDE.md",
     "docs/ADR.md",
@@ -218,7 +218,9 @@
     "src/types/errors.ts",
     "src/types/location.ts",
     "supabase/location.rls.test.ts",
+    "supabase/locationFlowCache.rls.test.ts",
     "supabase/migrations/20261122000000_location.sql",
+    "supabase/migrations/20261123000000_location_flow_cache.sql",
     "supabase/staff.rls.test.ts"
   ]
 }

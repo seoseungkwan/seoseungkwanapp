@@ -504,3 +504,9 @@
 - Files: src/components/location/common/RefreshBusy.ts, src/components/location/common/text.ts, src/components/location/common/WhyLine.tsx, src/components/location/common/WhyLine.test.tsx, src/components/location/detail/frame/CandidateFrame.tsx, src/components/location/detail/frame/CandidateFrame.test.tsx, src/components/location/detail/rivals/PriceSection.tsx, src/components/location/detail/rivals/rivals.test.tsx, src/components/location/useLocation.ts, src/components/location/useLocation.test.ts, docs/mockups/location/notes.md
 - Tests: src/components/location/common/WhyLine.test.tsx, src/components/location/detail/frame/CandidateFrame.test.tsx, src/components/location/detail/rivals/rivals.test.tsx, src/components/location/useLocation.test.ts
 - TDD: required — (1) `RefreshBusy` 문맥이 글이면 `WhyLine` failed + onRetry(카카오 출처 빼고)는 그 글만, 단추 없음. (2) `CandidateFrame`이 progress를 문맥으로 내려 준다. (3) `PriceSection` 못 받은 줄도 같은 글. (4) `refresh`는 같은 후보를 받는 중이면 다시 부르지 않는다(design 15절)
+
+## TASK-97: 같은 구 승하차는 한 번만 받기
+- REQ: REQ-7902, REQ-7908 · AC-7902.6, AC-7908.5
+- Files: supabase/migrations/20261123000000_location_flow_cache.sql, supabase/locationFlowCache.rls.test.ts, src/lib/storage/location.ts, src/lib/storage/location.test.ts, src/lib/location/collect.ts, src/lib/location/collect.test.ts, src/components/location/useLocation.ts, src/components/location/useLocation.test.ts
+- Tests: supabase/locationFlowCache.rls.test.ts, src/lib/storage/location.test.ts, src/lib/location/collect.test.ts, src/components/location/useLocation.test.ts
+- TDD: required — (1) migration: 표·칸·제약·RLS·권한(design 7절), 두 번 실행. (2) 저장: `readFlowCache`(없음·실패·틀린 줄 → null)·`saveFlowCache`(칸 넷만, 실패는 삼킴). (3) collect: `CollectDeps.flowCache`가 있으면 그 달 줄을 먼저 보고 있으면 `flow-volume`을 부르지 않음, 없으면 받아서 줄이 있을 때만 저장, 읽기·쓰기 던짐은 없는 것으로. (4) useLocation이 deps에 넣음. 화면은 그대로
