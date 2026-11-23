@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>다른 의원 보기 · 의원 비교 시안</title>
+<!--
+  admin-view 시안: 관리자가 다른 의원 화면을 읽기만 하고(다른 의원 보기), 관리자 화면에서 의원들을 견준다(의원 비교). 결정·화면 글자 목록은 notes.md.
+  ?s=viewing(기본) · admin-list · compare · compare-region · empty
+    viewing 덧붙임: &p=stats(통계 화면) · &open=1(위쪽 띠 '보는 의원' 판 열림)
+    empty 덧붙임: &e=month(그 달 자료 없음, 기본은 지역에 의원 없음)
+  모양은 지금 화면(AppShell·TabBar·AccountMenu · AdminApplications · StatsScreen·StatsToc·parts.tsx StatsCard · ds 클래스 · globals.css :root 토큰) 그대로 옮겼다. 새 색은 없다.
+  PC 화면만이다(폰 전용 모양 없음). 의원 이름·사람 이름·메일(@example.com)·번호·숫자는 모두 지어낸 값이다. 어디로도 보내지 않는다.
+-->
+<style>
+@font-face { font-family: 'AppPretendard'; font-weight: 400; src: url('../../../src/app/fonts/Pretendard-Regular.subset.woff2') format('woff2'); }
+@font-face { font-family: 'AppPretendard'; font-weight: 500; src: url('../../../src/app/fonts/Pretendard-Medium.subset.woff2') format('woff2'); }
+@font-face { font-family: 'AppPretendard'; font-weight: 600; src: url('../../../src/app/fonts/Pretendard-SemiBold.subset.woff2') format('woff2'); }
+
+/* 앱 토큰(src/app/globals.css :root) — 새 색 없음 */
+:root {
+  --canvas: #F7F8FA; --surface: #FFFFFF; --line: #E5E7EB; --line-strong: #D1D5DB; --faint: #9CA3AF;
+  --muted: #6B7280; --ink-2: #374151; --ink: #111827;
+  --accent: #2563EB; --accent-strong: #1D4ED8; --accent-soft: #EAF1FE;
+  --positive: #15803D; --positive-soft: #ECF7EF; --negative: #C2410C; --negative-soft: #FDF0EA;
+  --warning: #B45309; --warning-soft: #FDF4E3;
+  --chart-1: #DBE7FD; --chart-2: #B4CDFA; --chart-3: #8DB0F4; --chart-4: #2563EB; --chart-5: #1D4ED8; --chart-prev: #9CA3AF;
+  --cat-1: #2563EB; --cat-2: #0F766E; --cat-3: #B45309; --cat-4: #6D28D9; --cat-5: #6B7280;
+  --r-control: 4px; --r-float: 8px;
+  --elev-float: 0 1px 2px rgb(17 24 39 / 0.06), 0 6px 16px rgb(17 24 39 / 0.1);
+  /* 통계 화면 토큰(first90) */
+  --st-canvas: #F4F6F9; --st-ink: #172B4D; --st-ink-2: #3B4A63; --st-muted: #5B6B82; --st-line: #E5EAF1; --st-line-2: #CBD3DF;
+  --st-f90: #0D9488; --st-ret: #6B89BF; --st-ref: #B7791F; --st-warn-ink: #975A16;
+  --st-h0: #F1F4F8; --st-h1: #DCE8FC; --st-h2: #B5CEF8; --st-h3: #7FA9F1; --st-h4: #3F7BE6; --st-h5: #1D4ED8;
+  --st-r: 14px; --st-r-sm: 8px; --st-card-shadow: 0 1px 2px rgb(23 43 77 / 0.04);
+  --ui: 'AppPretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  color-scheme: light;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; border: 0 solid; }
+html { background: var(--surface); }
+body { background: var(--surface); color: var(--ink); font: 400 14px/22px var(--ui); font-variant-numeric: tabular-nums; word-break: keep-all; overflow-x: clip; }
+button, select, input { font: inherit; color: inherit; letter-spacing: inherit; background-color: transparent; }
+button { cursor: pointer; }
+a { color: inherit; }
+svg { flex: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }
+
+/* ── 시안 고르기 띠(앱 밖, 검토용) ── */
+.mbar { background: var(--canvas); border-bottom: 1px solid var(--line-strong); }
+.mbar-in { max-width: 1280px; margin: 0 auto; padding: 8px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 12px; line-height: 18px; color: var(--muted); }
+.mbar b { font-size: 13px; font-weight: 600; color: var(--ink); }
+.mseg { display: flex; flex-wrap: wrap; gap: 4px; }
+.mseg a { padding: 2px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--ink-2); text-decoration: none; white-space: nowrap; }
+.mseg a[aria-current="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); font-weight: 600; }
+.msub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding-left: 12px; border-left: 1px solid var(--line-strong); }
+.mchk { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
+
+/* ── 앱 틀(AppShell · TabBar · MoreMenu · AccountMenu) ── */
+.sticky { position: sticky; top: 0; z-index: 10; }
+/* 새: 보는 중 띠(위에 붙는 묶음 맨 위) */
+.band { background: var(--warning-soft); border-bottom: 1px solid var(--line); }
+.band-in { max-width: 1280px; margin: 0 auto; height: 44px; padding: 0 24px; display: flex; align-items: center; gap: 8px; }
+.band-in > svg { color: var(--warning); }
+.band-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 22px; color: var(--ink); }
+.band-t b { font-weight: 600; }
+.band-t .ro { font-weight: 600; color: var(--warning); }
+.band-h { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.band .btn { margin-left: auto; }
+
+.top { border-bottom: 1px solid var(--line); background: var(--surface); }
+.top-in { max-width: 1280px; margin: 0 auto; height: 56px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand span { min-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.top-r { display: flex; flex-shrink: 0; align-items: center; gap: 16px; }
+.clock { white-space: nowrap; font-size: 13px; line-height: 20px; color: var(--muted); }
+.acct span { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.tabsbar { display: flex; border-bottom: 1px solid var(--line); background: var(--surface); }
+.tabs-in { display: flex; flex: 1; min-width: 0; max-width: 1280px; margin: 0 auto; }
+.strip { flex: 1; min-width: 0; }
+.strip-row { display: flex; align-items: stretch; padding: 0 24px; }
+.strip-row > :first-child { margin-left: -12px; }
+.atab, .more { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; height: 44px; padding: 0 12px; border-radius: var(--r-control); white-space: nowrap; font-size: 14px; line-height: 22px; font-weight: 500; color: var(--ink-2); text-decoration: none; }
+.atab:hover, .more:hover { color: var(--ink); }
+.atab[aria-current="page"] { font-weight: 600; color: var(--ink); }
+.atab[aria-current="page"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; background: var(--accent); }
+.more-wrap { position: relative; display: flex; flex-shrink: 0; margin-right: 12px; }
+
+/* 새: 위쪽 띠 '보는 의원' 단추와 판(계정 메뉴와 같은 떠 있는 층) */
+.vp { position: relative; }
+.vp-panel { position: absolute; top: 100%; right: 0; z-index: 20; margin-top: 4px; width: 320px; padding: 4px; border: 1px solid var(--line); border-radius: var(--r-float); background: var(--surface); box-shadow: var(--elev-float); }
+.vp-head { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px 12px; }
+.vp-head b { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); }
+.vp-head span { font-size: 12px; line-height: 16px; color: var(--muted); }
+.vp-find { padding: 0 8px 8px; }
+.vp-find input { height: 36px; width: 100%; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); padding: 0 12px; font-size: 14px; color: var(--ink); }
+.vp-find input::placeholder { color: var(--muted); }
+.vp-list { max-height: 340px; overflow-y: auto; border-top: 1px solid var(--line); padding-top: 4px; }
+.vp-cap { padding: 8px 12px 4px; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--muted); }
+.vp-item { display: flex; width: 100%; height: 36px; align-items: center; gap: 8px; border-radius: var(--r-control); padding: 0 12px; text-align: left; font-size: 14px; line-height: 22px; color: var(--ink); }
+.vp-item:hover { background: var(--canvas); }
+.vp-item .nm { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-item .rg { flex-shrink: 0; font-size: 12px; line-height: 16px; color: var(--muted); }
+.vp-item .ck { width: 16px; color: var(--accent); }
+.vp-item[aria-current="true"] { font-weight: 600; color: var(--accent-strong); }
+.vp-empty { padding: 8px 12px 12px; font-size: 13px; color: var(--muted); }
+
+main { background: var(--surface); }
+main.st { background: var(--st-canvas); }
+.main-in { max-width: 1280px; margin: 0 auto; padding: 24px 24px 48px; }
+
+/* ── 공통 모양 ds(src/components/ui/classes.ts) ── */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; border-radius: var(--r-control); border-width: 1px; transition: background-color .15s, color .15s; }
+.btn:disabled { cursor: not-allowed; opacity: .4; }
+.btn-md { height: 36px; padding: 0 16px; font-size: 14px; line-height: 22px; font-weight: 500; }
+.btn-sm { height: 32px; padding: 0 12px; font-size: 13px; line-height: 20px; font-weight: 500; }
+.btn-sm-b { height: 32px; padding: 0 12px; font-size: 13px; line-height: 20px; font-weight: 600; }
+.t-primary { border-color: transparent; background: var(--accent); color: var(--surface); }
+.t-secondary { border-color: var(--line-strong); background: var(--surface); color: var(--ink); }
+.t-secondary:not(:disabled):hover, .t-secondary[aria-expanded="true"] { background: var(--canvas); }
+.t-accent-outline { border-color: var(--accent); background: var(--surface); color: var(--accent); }
+.t-accent-outline:not(:disabled):hover { background: var(--accent-soft); }
+.chip { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; height: 20px; padding: 0 6px; white-space: nowrap; border-radius: var(--r-control); border: 1px solid transparent; font-size: 12px; line-height: 16px; font-weight: 500; }
+.chip-neutral { border-color: var(--line); background: var(--canvas); color: var(--ink-2); }
+.chip-accent { background: var(--accent-soft); color: var(--accent-strong); }
+.chip-warning { background: var(--warning-soft); color: var(--warning); }
+.panel { min-width: 0; border: 1px solid var(--line); border-radius: var(--r-control); background: var(--surface); }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px 0; }
+.panel-title { font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.panel-desc { padding: 4px 20px 0; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.count { white-space: nowrap; font-size: 13px; line-height: 20px; color: var(--muted); }
+.twrap { min-width: 0; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 20px; }
+th { height: 40px; white-space: nowrap; border-bottom: 1px solid var(--line); padding: 0 12px; text-align: left; font-weight: 500; color: var(--muted); }
+td { height: 44px; white-space: nowrap; border-bottom: 1px solid var(--line); padding: 0 12px; color: var(--ink); }
+th:first-child, td:first-child { padding-left: 20px; }
+th:last-child, td:last-child { padding-right: 20px; }
+tbody tr:hover { background: var(--canvas); }
+tbody tr:last-child > * { border-bottom-width: 0; }
+td.sub { color: var(--ink-2); }
+.seg { display: inline-flex; flex-shrink: 0; overflow: clip; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); }
+.seg button { height: 30px; border-left: 1px solid var(--line-strong); padding: 0 12px; font-size: 13px; line-height: 20px; font-weight: 500; color: var(--ink-2); }
+.seg button:first-child { border-left: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); font-weight: 600; color: var(--accent-strong); }
+.stepbox { display: inline-flex; height: 32px; flex-shrink: 0; align-items: stretch; overflow: clip; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); }
+.stepbox button { display: flex; width: 32px; align-items: center; justify-content: center; color: var(--ink-2); }
+.stepbox button:not(:disabled):hover { background: var(--canvas); }
+.stepbox button:disabled { cursor: not-allowed; opacity: .4; }
+.stepbox span { display: flex; min-width: 120px; align-items: center; justify-content: center; white-space: nowrap; border-inline: 1px solid var(--line); padding: 0 8px; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink); }
+.sel { height: 32px; cursor: pointer; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface); padding: 0 6px; font-size: 13px; line-height: 20px; color: var(--ink); }
+.sel:hover { border-color: var(--muted); }
+.sel.unknown { color: var(--warning); font-weight: 500; }
+.cap { margin-bottom: 6px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.ecard { display: flex; align-items: flex-start; gap: 8px; border-radius: var(--r-control); background: var(--negative-soft); padding: 12px 16px; }
+.status { display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 20px; color: var(--positive); }
+.status:empty { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+
+/* ── 관리자 화면 머리(AdminApplications 머리 + 설정 안쪽 메뉴 모양) ── */
+.admin { display: flex; flex-direction: column; gap: 16px; }
+.ahead { display: flex; flex-direction: column; gap: 12px; }
+.ahead-t { display: flex; flex-direction: column; gap: 4px; }
+.loc { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--muted); }
+h1 { font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); }
+.intro { max-width: 560px; font-size: 14px; line-height: 22px; color: var(--ink-2); }
+.subnav { display: flex; border-bottom: 1px solid var(--line); }
+.subnav a { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; gap: 6px; height: 40px; padding: 0 12px; border-radius: var(--r-control); white-space: nowrap; font-size: 14px; line-height: 22px; font-weight: 500; color: var(--ink-2); text-decoration: none; }
+.subnav a:first-child { margin-left: -12px; }
+.subnav a:hover { color: var(--ink); }
+.subnav a[aria-current="page"] { font-weight: 600; color: var(--ink); }
+.subnav a[aria-current="page"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; background: var(--accent); }
+main.st .subnav { border-color: var(--st-line-2); }
+
+.itabs { display: flex; border-bottom: 1px solid var(--line); }
+.itab { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; gap: 6px; height: 40px; padding: 0 12px; border-radius: var(--r-control); white-space: nowrap; font-size: 14px; line-height: 22px; font-weight: 500; color: var(--ink-2); }
+.itab:first-child { margin-left: -12px; }
+.itab[aria-selected="true"] { font-weight: 600; color: var(--ink); }
+.itab[aria-selected="true"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; background: var(--accent); }
+.itab .n { font-weight: 500; color: var(--muted); }
+
+.apps { table-layout: fixed; min-width: 1120px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface); }
+.apps tbody tr { height: 56px; }
+.apps td { font-size: 14px; line-height: 22px; }
+.apps td.act { font-size: 13px; line-height: 20px; }
+.apps td.clinic { font-weight: 600; }
+.apps td.trunc { overflow: hidden; text-overflow: ellipsis; }
+.apps td .dt { color: var(--muted); }
+.apps col.c-date, .apps col.c-who { width: 120px; }
+.apps col.c-emr { width: 112px; }
+.apps col.c-region { width: 120px; }
+.apps col.c-tel { width: 150px; }
+.apps col.c-act { width: 150px; }
+.apps th.r { text-align: right; }
+.nm { display: flex; min-width: 0; align-items: center; gap: 6px; }
+.nm > .tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.acts { display: flex; justify-content: flex-end; gap: 8px; }
+.mine { font-size: 13px; line-height: 20px; color: var(--muted); }
+/* 새: 승인 줄 의원 이름 = 보기 링크 단추 */
+.vlink { display: inline-flex; min-width: 0; max-width: 100%; align-items: center; gap: 6px; border-radius: var(--r-control); font-weight: 600; color: var(--accent-strong); text-underline-offset: 3px; }
+.vlink:hover .tx { text-decoration: underline; }
+.vlink .tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.install .panel-desc { padding-bottom: 16px; }
+
+/* 본 기록 표 */
+.seen { table-layout: fixed; }
+.seen th:nth-child(1), .seen td:nth-child(1) { width: 220px; }
+.seen th:nth-child(3), .seen td:nth-child(3) { width: 40%; }
+.seen td .em { color: var(--muted); }
+
+/* ── 대시보드(BitDashboard · DailySection · FlowSection) ── */
+.dhead { margin-top: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.dhead h1 { font-size: 24px; line-height: 32px; letter-spacing: -0.01em; }
+.dhead .when { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+.dhead .when svg { color: var(--muted); }
+.dhead .r { margin-left: auto; display: flex; gap: 8px; }
+.dsec { margin-top: 48px; border-top: 1px solid var(--line-strong); padding-top: 20px; }
+.dsec-h { margin-bottom: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.dsec-h h2 { font-size: 20px; line-height: 28px; font-weight: 600; color: var(--ink); }
+.dsec-h .rt { margin-left: auto; white-space: nowrap; font-size: 13px; color: var(--muted); }
+.dctl { margin-bottom: 8px; }
+.dctl p { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--muted); }
+.dctl .row { margin-top: 4px; display: flex; align-items: center; gap: 4px 12px; }
+.dctl .pick { margin-left: -6px; display: flex; align-items: center; gap: 4px; }
+.dctl .stp { display: flex; width: 32px; height: 32px; align-items: center; justify-content: center; border-radius: var(--r-control); color: var(--ink-2); }
+.dctl .dt { display: inline-flex; height: 32px; align-items: center; gap: 6px; border: 1px solid var(--line-strong); border-radius: var(--r-control); padding: 0 10px; font-size: 13px; font-weight: 600; }
+.dctl .ap { font-size: 13px; color: var(--muted); }
+.kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+.kpi { min-width: 0; border-left: 1px solid var(--line); padding: 16px 20px; }
+.kpi:first-child { border-left: 0; padding-left: 0; }
+.kpi .l { display: block; height: 28px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.kpi .v { font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
+.kpi .v small { margin-left: 2px; font-size: 14px; font-weight: 500; letter-spacing: 0; color: var(--muted); }
+.kpi .v.d { font-size: 20px; line-height: 36px; color: var(--positive); }
+.kpi .d2 { font-size: 13px; color: var(--muted); }
+.rep { margin-top: 12px; }
+.rep-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.rep-h p { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--ink); }
+.rep-b { margin-top: 8px; max-width: 640px; font-size: 14px; line-height: 22px; color: var(--ink-2); }
+.rep-b b { font-weight: 600; color: var(--ink); }
+.flow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 32px; }
+.fbox h3 { font-size: 16px; line-height: 24px; font-weight: 600; color: var(--ink); }
+.fbox .ds { font-size: 13px; color: var(--muted); }
+.fbox svg.ch { display: block; width: 100%; height: 160px; margin-top: 12px; }
+.fbox .ax { display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px; color: var(--muted); }
+.ax.axg, .mc .ax.axg { display: grid; justify-content: stretch; text-align: center; }
+.lg { display: flex; gap: 12px; margin-top: 8px; font-size: 12px; line-height: 16px; color: var(--ink-2); }
+.lg i { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 2px; vertical-align: -1px; }
+.rv { margin-top: 12px; }
+.rv-row { display: grid; grid-template-columns: 72px minmax(0, 1fr) 64px; align-items: center; gap: 12px; border-top: 1px solid var(--line); padding: 10px 0; font-size: 13px; }
+.rv-row .bar { height: 10px; border-radius: 2px; background: var(--canvas); overflow: hidden; }
+.rv-row .bar i { display: block; height: 100%; background: var(--accent); }
+.rv-row b { text-align: right; font-weight: 600; }
+.top5 { margin-top: 12px; list-style: none; }
+.top5 li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 8px; border-top: 1px solid var(--line); padding: 9px 0; font-size: 13px; }
+.top5 li span:first-child { color: var(--muted); }
+.top5 li b { font-weight: 600; }
+
+/* ── 통계 화면(StatsScreen · StatsToc · parts.tsx StatsCard · SummaryCell) ── */
+.pline { margin-top: 24px; border-top: 1px solid var(--line-strong); padding-top: 16px; }
+.pline-r { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px 32px; }
+.pline .rng { margin-top: 12px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.pline .rng b { font-weight: 600; color: var(--ink); }
+.toc { position: sticky; top: 102px; z-index: 9; margin: 20px -24px 0; border-bottom: 1px solid var(--st-line); background: var(--st-canvas); padding: 8px 24px; }
+body.viewing .toc { top: 147px; }
+.toc-s { display: flex; min-width: 0; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.toc a { display: inline-flex; height: 36px; flex-shrink: 0; align-items: center; white-space: nowrap; border-radius: 999px; padding: 0 16px; font-size: 14px; line-height: 22px; font-weight: 600; text-decoration: none; color: var(--st-ink-2); }
+.toc a:hover { background: var(--st-line); }
+.toc a[aria-current="true"] { background: var(--st-ink); color: var(--surface); }
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.stack > :first-child { margin-top: 24px; }
+.stc { min-width: 0; border-radius: var(--st-r); background: var(--surface); padding: 20px 24px; box-shadow: var(--st-card-shadow); scroll-margin-top: 164px; }
+.stc-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.stc-h h2 { font-size: 18px; line-height: 28px; font-weight: 600; color: var(--st-ink); }
+.stc-h .d { font-size: 13px; line-height: 20px; color: var(--st-muted); }
+.stc-b { margin-top: 16px; }
+.stc-b > * + * { margin-top: 24px; border-top: 1px solid var(--st-line); padding-top: 20px; }
+.grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid4 > *, .grid2 > * { min-width: 0; border-left: 1px solid var(--st-line); padding: 0 20px; }
+.grid4 > :first-child, .grid2 > :first-child { border-left: 0; padding-left: 0; }
+.kc .l { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 13px; line-height: 20px; }
+.kc .l b { font-weight: 600; color: var(--st-ink-2); }
+.kc .l span { color: var(--st-muted); }
+.kc .v { margin-top: 4px; display: flex; align-items: baseline; gap: 2px; white-space: nowrap; }
+.kc .v b { font-size: 34px; line-height: 1.25; font-weight: 600; color: var(--st-ink); }
+.kc .v small { margin-left: 2px; font-size: 16px; font-weight: 600; color: var(--st-ink-2); }
+.kc .dl { margin-top: 4px; font-size: 13px; font-weight: 600; }
+.kc .dl.up { color: var(--positive); } .kc .dl.down { color: var(--negative); }
+.kc .dl span { font-weight: 400; color: var(--st-muted); }
+.kc .dl .ar { font-size: 12px; }
+.goalbar { position: relative; margin-top: 12px; height: 12px; border-radius: 999px; background: var(--st-h0); overflow: hidden; }
+.goalbar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 999px; }
+.goalbar u { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--st-ink); }
+.note { margin-top: 8px; font-size: 13px; line-height: 20px; color: var(--st-muted); }
+.rtabs { display: flex; gap: 24px; border-bottom: 1px solid var(--line); }
+.rtabs button { position: relative; height: 40px; font-size: 14px; font-weight: 500; color: var(--ink-2); }
+.rtabs button[aria-selected="true"] { font-weight: 600; color: var(--ink); }
+.rtabs button[aria-selected="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--accent); }
+svg.big { display: block; width: 100%; height: 200px; margin-top: 16px; }
+
+/* ── 새: 의원 비교 ── */
+.cmp-pick { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px 24px; }
+.cmp-pick .sel { min-width: 128px; }
+.rank-wrap { margin-top: 12px; overflow-x: auto; }
+.rank { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; line-height: 20px; }
+.rank th, .rank td { height: auto; border-bottom: 1px solid var(--st-line); padding: 10px 12px; white-space: nowrap; }
+.rank th { padding-top: 6px; padding-bottom: 6px; font-weight: 600; color: var(--st-muted); text-align: right; vertical-align: bottom; }
+.rank td { text-align: right; color: var(--st-ink-2); }
+.rank th:first-child, .rank td:first-child { padding-left: 0; }
+.rank th:last-child, .rank td:last-child { padding-right: 0; }
+.rank tbody tr:hover { background: transparent; }
+.rank tbody tr:hover > * { background: var(--st-canvas); }
+.rank tbody tr:last-child > * { border-bottom-width: 1px; }
+.rank .grp { text-align: left; border-bottom: 1px solid var(--st-line); border-left: 1px solid var(--st-line); padding: 8px 12px 6px; font-size: 12px; line-height: 16px; color: var(--st-ink-2); }
+.rank .gs { border-left: 1px solid var(--st-line); }
+.rank .stk { position: sticky; left: 0; z-index: 2; background: var(--surface); text-align: left; box-shadow: inset -1px 0 0 var(--st-line-2); padding-right: 16px; }
+.rank thead .stk { z-index: 3; }
+.rank td.stk { color: var(--st-ink); }
+.cn { display: flex; align-items: center; gap: 8px; }
+.cn .rk { display: inline-block; width: 20px; text-align: right; font-weight: 600; color: var(--st-muted); }
+.cn .nmt { font-weight: 600; color: var(--st-ink); }
+.cn .rg { font-size: 12px; color: var(--st-muted); }
+.sortb { display: inline-flex; align-items: center; justify-content: flex-end; gap: 2px; min-height: 28px; border-radius: var(--r-control); padding: 0 2px; margin-right: -2px; font-weight: 600; color: var(--st-muted); white-space: nowrap; }
+.sortb:hover { color: var(--st-ink); background: var(--st-canvas); }
+.sortb .ar { display: inline-flex; width: 14px; justify-content: center; }
+th[aria-sort="ascending"] .sortb, th[aria-sort="descending"] .sortb { color: var(--accent-strong); }
+.rank td.on { color: var(--st-ink); font-weight: 600; }
+.rank td.na { color: var(--st-muted); }
+.rank tfoot td { border-top: 1px solid var(--st-line-2); border-bottom: 0; font-weight: 600; color: var(--st-ink); }
+.rank tfoot td.stk { color: var(--st-ink); }
+.pay td { vertical-align: top; }
+.pay td .a { display: block; font-weight: 600; color: var(--st-ink); }
+.pay td .b { display: block; font-size: 12px; line-height: 16px; color: var(--st-muted); }
+.pay td.none { text-align: left; color: var(--st-muted); }
+.empty1 { margin-top: 12px; font-size: 14px; line-height: 22px; color: var(--ink-2); }
+.empty1 b { font-weight: 600; color: var(--ink); }
+.stc > .empty1:first-child { margin-top: 0; }
+
+/* 통계 나란히 보기: 카드 안 카드가 되지 않게 회색 바탕 위에 제목 + 옆으로 미는 칸 */
+.side { scroll-margin-top: 164px; }
+.side-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 8px 0 0; }
+.side-h h2 { font-size: 18px; line-height: 28px; font-weight: 600; color: var(--st-ink); }
+.side-h .d { font-size: 13px; line-height: 20px; color: var(--st-muted); }
+.side-s { margin-top: 12px; overflow-x: auto; padding-bottom: 8px; }
+.side-g { display: grid; gap: 12px; }
+.colh { display: flex; min-width: 0; flex-direction: column; gap: 2px; padding: 0 4px; }
+.colh b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; line-height: 24px; font-weight: 600; color: var(--st-ink); }
+.colh span { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: var(--st-muted); }
+.rowh { grid-column: 1 / -1; padding-top: 12px; }
+.rowh > div { position: sticky; left: 0; display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding-right: 8px; }
+.rowh h3 { font-size: 16px; line-height: 24px; font-weight: 600; color: var(--st-ink); }
+.rowh span { font-size: 13px; line-height: 20px; color: var(--st-muted); }
+.mc { min-width: 0; border-radius: var(--st-r); background: var(--surface); padding: 16px 20px; box-shadow: var(--st-card-shadow); }
+.mc .who { margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 16px; color: var(--st-muted); }
+.mc .sb + .sb { margin-top: 14px; border-top: 1px solid var(--st-line); padding-top: 12px; }
+.mc h4 { font-size: 15px; line-height: 24px; font-weight: 600; color: var(--st-ink); }
+.mc .mk { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; margin-top: 6px; }
+.mc .mk3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.mc .mk p { font-size: 12px; line-height: 16px; color: var(--st-ink-2); }
+.mc .mk strong { display: block; margin-top: 2px; white-space: nowrap; font-size: 18px; line-height: 26px; font-weight: 600; color: var(--st-ink); }
+.mc .mk strong small { margin-left: 1px; font-size: 12px; font-weight: 600; color: var(--st-ink-2); }
+.mc .ln { margin-top: 6px; font-size: 13px; line-height: 20px; color: var(--st-ink-2); }
+.mc .ln b { font-weight: 600; color: var(--st-ink); }
+.mc .al { margin-top: 6px; display: grid; gap: 6px; }
+.mc .al p { border: 1px solid var(--st-line); border-radius: var(--st-r-sm); padding: 6px 10px; font-size: 13px; line-height: 20px; color: var(--st-ink-2); }
+.mc .al .up { color: var(--positive); font-weight: 600; } .mc .al .down { color: var(--negative); font-weight: 600; }
+.mc svg.mini { display: block; width: 100%; height: 64px; margin-top: 8px; }
+.mc .ax { display: flex; justify-content: space-between; margin-top: 2px; font-size: 11px; line-height: 14px; color: var(--st-muted); }
+.hb { margin-top: 6px; display: grid; gap: 4px; }
+.hb div { display: grid; grid-template-columns: 76px minmax(0, 1fr) 52px; align-items: center; gap: 8px; font-size: 12px; line-height: 18px; color: var(--st-ink-2); }
+.hb i { display: block; height: 10px; border-radius: 2px; background: var(--accent); }
+.hb b { text-align: right; font-weight: 600; color: var(--st-ink); }
+.split { display: flex; height: 14px; margin-top: 8px; overflow: hidden; border-radius: 3px; }
+.split i { display: block; height: 100%; }
+.heat { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 2px; margin-top: 8px; }
+.heat i { height: 18px; border-radius: 2px; }
+.mc .na { margin-top: 6px; font-size: 13px; line-height: 20px; color: var(--st-muted); }
+.mt { margin-top: 6px; width: 100%; border-collapse: collapse; font-size: 12px; line-height: 18px; }
+.mt td { height: auto; border-bottom: 1px solid var(--st-line); padding: 4px 0; text-align: right; color: var(--st-ink-2); }
+.mt td:first-child { padding-left: 0; text-align: left; color: var(--st-ink); font-weight: 600; }
+.mt td:last-child { padding-right: 0; }
+.mt tr:last-child td { border-bottom: 0; }
+</style>
+</head>
+<body>
+
+<div class="mbar"><div class="mbar-in" id="mbar"></div></div>
+<div id="app"></div>
+
+<script>
+(() => {
+  // 조사 '로'·'으로': 받침이 없거나 ㄹ 받침이면 '로', 그 밖의 받침이면 '으로'
+  function ro(word) { const code = word.charCodeAt(word.length - 1) - 0xAC00; if (code < 0 || code > 11171) return '로'; const jong = code % 28; return jong === 0 || jong === 8 ? '로' : '으로'; }
+  // ─────────────────────────── 화면 글자(이 시안이 정함 — notes.md '화면 글자') ───────────────────────────
+  const T = {
+    pickBtn: '보는 의원',
+    pickTitle: '다른 의원 보기',
+    pickDesc: '고르면 그 의원 화면을 읽기만 해요. 예약·환자·청구 탭은 보이지 않아요.',
+    pickFind: '의원 이름으로 찾기',
+    pickMine: '내 의원',
+    pickOthers: (n) => `다른 의원 ${n}곳`,
+    pickNone: '찾는 의원이 없어요',
+    bandA: '보는 중',
+    bandRo: '읽기만',
+    bandHint: '예약·환자·청구 탭과 저장·고치기 단추는 숨겼어요',
+    bandBack: '내 의원으로',
+    viewTitle: (n) => `${n} 화면 보기 (읽기만)`,
+    adminIntro: '승인하면 그 계정은 바로 대시보드를 쓸 수 있어요. 거절한 신청은 거절 탭에서 되돌릴 수 있어요. 승인 탭에서 관리자를 정하거나 뺄 수 있어요. 의원 이름을 누르면 그 의원 화면을 읽기만 할 수 있어요.',
+    regionChanged: (n, r) => `${n} 지역을 ${r}${ro(r)} 바꿨어요.`,
+    regionUnknownTitle: '병원 정보에 주소가 없어 지역을 몰라요. 골라 주세요.',
+    seenTitle: '본 기록',
+    seenCount: (n) => `최근 30일 · ${n}번`,
+    seenDesc: '관리자가 다른 의원 화면을 열 때마다 적어요.',
+    seenCols: ['본 때', '본 관리자', '본 의원'],
+    cmpTitle: '의원 비교',
+    cmpIntro: '승인한 의원들의 한 달 숫자를 나란히 봐요. 의원마다 저장된 숫자로 세고, 환자 이름 같은 개인정보는 없어요.',
+    region: '지역', regionAll: '전체', month: '달',
+    toc: ['의원 순위', '통계 나란히 보기', '직군별 월급', '매출·환자 수'],
+    rankTitle: '의원 순위',
+    rankDesc: '칸 이름을 누르면 그 숫자로 줄을 세워요. 한 번 더 누르면 거꾸로예요.',
+    rankFoot: '–는 그 의원에 그 달 숫자가 없는 칸이에요. 줄을 세울 때 늘 맨 아래에 둬요.',
+    groups: ['매출·환자 수', '직군별 평균 월급', '통계 대표 숫자'],
+    sideTitle: '통계 나란히 보기',
+    sideDesc: '통계 탭 카드를 의원마다 나란히 · 같은 달 · 옆으로 밀어 봐요',
+    sideAll: ['지역을 골라 주세요', '지역을 고르면 그 지역 의원들의 통계 카드를 나란히 보여 줘요.'],
+    payTitle: '직군별 월급',
+    payDesc: '정규직·계약직 · 실수령 기준 · 평균과 가장 적은~많은',
+    payFoot: '파트타임은 일하는 시간이 달라 평균에 넣지 않고 사람 수만 적어요.',
+    payNone: (m) => `급여 없음 · ${m}월 급여를 적지 않았어요`,
+    salesTitle: '매출·환자 수',
+    salesDesc: '저장된 숫자 · 총진료비는 수납한 날 기준',
+    total: '전체',
+    mine: '내 의원',
+    emptyRegion: (r) => ['의원 없음', `${r}에 승인된 의원이 없어요. 지역을 바꾸거나 전체로 봐 주세요.`],
+    emptyMonth: (ym) => ['자료 없음', `${ym}에 저장된 숫자가 있는 의원이 없어요. 의원 PC에서 그 달 통계를 불러와 저장하면 채워져요.`],
+    emptyMonthPay: (ym) => ['급여 없음', `${ym} 급여를 적은 의원이 없어요.`],
+    noGoal: '목표를 적지 않았어요',
+    noCal: '예약 탭에 적은 예약이 없어요',
+    noSunap: '수납일지를 마감한 날이 없어요',
+  };
+
+  const REGIONS = ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주'];
+  const UNKNOWN = '지역 모름';
+  const JOBS = ['간호사', '간호조무사', '물리치료사', '방사선사', '원무', '기타'];
+  const OWN = 'gana';
+  const TODAY_CLOCK = '2026년 11월 24일 (화) 10:05 (KST)';
+  const LAST_MONTH = '2026-10'; // 지난달(기본)
+  const FIRST_MONTH = '2025-11'; // 고를 수 있는 가장 이른 달(최근 12달)
+  const DATA_FROM = '2026-05'; // 합성 자료: 이 달부터 저장된 숫자가 있다
+
+  // ─────────────────────────── 합성 자료(모두 지어낸 값) ───────────────────────────
+  // 승인된 의원(신청일 내림차순). region = 병원 정보 주소에서 정한 값(null = 주소 없음 → 지역 모름)
+  const CLINICS = [
+    { id: 'dara', name: '다라 정형외과의원', region: '서울', date: '2026-11-20', emr: '비트', who: '이다라', email: 'dara@example.com', tel: '0255502345' },
+    { id: 'reomeo', name: '러머 정형외과의원', region: null, date: '2026-11-17', emr: '비트', who: '오러머', email: 'reomeo@example.com', tel: null },
+    { id: 'maba', name: '마바 정형외과의원', region: '서울', date: '2026-11-14', emr: '비트', who: '박마바', email: 'maba@example.com', tel: '0255503456' },
+    { id: 'kata', name: '카타 통증의학과의원', region: '경기', date: '2026-11-10', emr: '비트', who: '최카타', email: 'kata@example.com', tel: '03155506789' },
+    { id: 'saa', name: '사아 재활의학과의원', region: '서울', date: '2026-11-06', emr: '비트', who: '정사아', email: 'saa@example.com', tel: '0255504567', admin: true },
+    { id: 'paha', name: '파하 정형외과의원', region: '부산', date: '2026-11-02', emr: '비트', who: '한파하', email: 'paha@example.com', tel: '05155507890' },
+    { id: 'geoneo', name: '거너 정형외과의원', region: '서울', date: '2026-10-29', emr: '비트', who: '유거너', email: 'geoneo@example.com', tel: '0255505678' },
+    { id: 'deoreo', name: '더러 정형외과의원', region: '대전', date: '2026-10-21', emr: '비트', who: '임더러', email: 'deoreo@example.com', tel: '04255508901' },
+    { id: 'jacha', name: '자차 정형외과의원', region: '경기', date: '2026-10-16', emr: '비트', who: '장자차', email: 'jacha@example.com', tel: '03155509012' },
+    { id: 'gana', name: '가나 정형외과의원', region: '서울', date: '2026-09-14', emr: '비트', who: '김가나', email: 'gana@example.com', tel: '01055501234', owner: true },
+  ];
+  const PENDING = [
+    { id: 'p1', name: '버서 정형외과의원', date: '2026-11-23', emr: '비트', who: '서버서', email: 'beoseo@example.com', tel: '0255501111' },
+    { id: 'p2', name: '어저 통증의학과의원', date: '2026-11-22', emr: '의사랑', who: '노어저', email: 'eojeo@example.com', tel: null },
+  ];
+  const REJECTED = [{ id: 'r1', name: '시험 정형외과', date: '2026-11-02', emr: '그 밖의 EMR', who: '오시험', email: 'test@example.com', tel: null }];
+  const byId = (id) => CLINICS.find((c) => c.id === id);
+
+  // 10월 숫자. rev 원 · visits 건 · days 진료한 날 · newp 신환 명 · f90 90일초진 건 · 비율 % · rsvCount 건 · goalWon 목표(원, null = 안 적음)
+  const OCT = {
+    gana:   { rev: 132_614_300, visits: 3412, days: 25, newp: 286, f90: 124, nonpay: 31.4, revisit: 46.2, rsv: 38.5, rsv90: 27.0, block: 22.1, rsvCount: 412, cancel: 6.1, moved: 9.2, noshow: 3.4, age: ['50대', 24.1], goalWon: 130_000_000, three: 41.3, docs: 2 },
+    dara:   { rev: 110_825_600, visits: 2986, days: 25, newp: 241, f90: 108, nonpay: 27.9, revisit: 41.8, rsv: 33.2, rsv90: 24.1, block: 18.4, rsvCount: 356, cancel: 7.3, moved: 8.1, noshow: 4.2, age: ['60대', 22.7], goalWon: 117_500_000, three: 37.9, docs: 2 },
+    maba:   { rev: 84_120_900, visits: 2140, days: 25, newp: 198, f90: 77, nonpay: 35.2, revisit: 39.5, rsv: 41.0, rsv90: 29.6, block: 25.6, rsvCount: 288, cancel: 5.2, moved: 7.4, noshow: 2.9, age: ['40대', 21.9], goalWon: 95_500_000, three: 35.2, docs: 1 },
+    saa:    { rev: 69_503_200, visits: 1872, days: 21, newp: 132, f90: 70, nonpay: 18.6, revisit: 52.3, rsv: 29.4, rsv90: 31.2, block: 12.0, rsvCount: null, cancel: null, moved: null, noshow: null, age: ['70대', 26.0], goalWon: null, three: 48.7, docs: 1 },
+    geoneo: { rev: 97_331_400, visits: 2455, days: 25, newp: 215, f90: 92, nonpay: 29.0, revisit: 44.0, rsv: 36.1, rsv90: 25.8, block: 20.3, rsvCount: 301, cancel: 6.6, moved: 8.8, noshow: 3.8, age: ['50대', 22.5], goalWon: 100_000_000, three: 39.0, docs: 2 },
+    jacha:  { rev: 145_207_800, visits: 3780, days: 25, newp: 352, f90: 141, nonpay: 33.8, revisit: 43.1, rsv: 40.2, rsv90: 28.4, block: 24.8, rsvCount: 498, cancel: 5.8, moved: 10.1, noshow: 3.1, age: ['40대', 23.0], goalWon: 137_500_000, three: 40.6, docs: 3 },
+    kata:   { rev: 72_884_500, visits: 1604, days: 24, newp: 121, f90: 58, nonpay: 46.1, revisit: 36.7, rsv: 27.5, rsv90: 22.0, block: 30.2, rsvCount: 190, cancel: 8.4, moved: 6.2, noshow: 5.1, age: ['50대', 25.3], goalWon: 80_000_000, three: 33.4, docs: 1 },
+    paha:   { rev: 99_052_700, visits: 2710, days: 25, newp: 230, f90: 101, nonpay: 24.4, revisit: 47.9, rsv: 35.0, rsv90: 26.3, block: 16.9, rsvCount: 330, cancel: 6.9, moved: 7.7, noshow: 3.6, age: ['60대', 24.8], goalWon: 99_800_000, three: 42.1, docs: 2 },
+    deoreo: { rev: 74_618_100, visits: 2033, days: 25, newp: 176, f90: 79, nonpay: 26.7, revisit: 40.2, rsv: 31.8, rsv90: 23.5, block: 19.5, rsvCount: 245, cancel: 7.0, moved: 8.4, noshow: 4.0, age: ['50대', 21.2], goalWon: 87_000_000, three: 36.8, docs: 1 },
+    reomeo: { rev: 46_309_000, visits: 1250, days: 25, newp: 104, f90: 46, nonpay: 22.0, revisit: 38.0, rsv: null, rsv90: null, block: null, rsvCount: null, cancel: null, moved: null, noshow: null, age: ['60대', 23.1], goalWon: null, three: 34.0, docs: 1 },
+  };
+  // 10월 급여(만 원): [사람 수, 평균, 가장 적은, 가장 많은]. null = 그 달 급여 없음. part = 파트타임 사람 수
+  const PAY = {
+    gana:   { 간호사: [1, 365], 간호조무사: [4, 252, 238, 271], 물리치료사: [5, 331, 305, 362], 방사선사: [1, 348], 원무: [2, 268, 255, 281], 기타: [1, 231], part: 2 },
+    dara:   { 간호사: [0], 간호조무사: [5, 247, 229, 266], 물리치료사: [4, 325, 301, 349], 방사선사: [1, 352], 원무: [2, 259, 250, 268], 기타: [0], part: 1 },
+    maba:   { 간호사: [1, 372], 간호조무사: [3, 241, 233, 255], 물리치료사: [3, 318, 302, 330], 방사선사: [1, 339], 원무: [1, 262], 기타: [1, 225], part: 0 },
+    saa:    null,
+    geoneo: { 간호사: [0], 간호조무사: [4, 256, 240, 279], 물리치료사: [4, 336, 312, 358], 방사선사: [1, 355], 원무: [2, 271, 262, 280], 기타: [0], part: 3 },
+    jacha:  { 간호사: [2, 368, 352, 384], 간호조무사: [6, 249, 226, 277], 물리치료사: [6, 329, 298, 366], 방사선사: [2, 344, 333, 355], 원무: [3, 264, 248, 286], 기타: [1, 238], part: 2 },
+    kata:   { 간호사: [1, 359], 간호조무사: [3, 236, 228, 247], 물리치료사: [2, 311, 304, 318], 방사선사: [0], 원무: [1, 255], 기타: [0], part: 1 },
+    paha:   { 간호사: [1, 348], 간호조무사: [4, 238, 224, 252], 물리치료사: [4, 315, 296, 333], 방사선사: [1, 331], 원무: [2, 249, 241, 257], 기타: [1, 219], part: 2 },
+    deoreo: { 간호사: [0], 간호조무사: [3, 232, 221, 244], 물리치료사: [3, 306, 291, 322], 방사선사: [1, 326], 원무: [1, 246], 기타: [0], part: 1 },
+    reomeo: { 간호사: [0], 간호조무사: [2, 228, 219, 237], 물리치료사: [2, 301, 294, 308], 방사선사: [0], 원무: [1, 241], 기타: [0], part: 0 },
+  };
+  // 본 기록(최근 30일)
+  const SEEN = [
+    ['11월 24일 (화) 09:12', 'gana', 'dara'],
+    ['11월 23일 (월) 17:40', 'saa', 'jacha'],
+    ['11월 23일 (월) 08:55', 'gana', 'maba'],
+    ['11월 21일 (토) 13:02', 'gana', 'paha'],
+    ['11월 20일 (금) 19:31', 'saa', 'gana'],
+    ['11월 18일 (수) 10:14', 'gana', 'kata'],
+    ['11월 12일 (목) 16:47', 'gana', 'dara'],
+    ['11월 3일 (화) 11:20', 'saa', 'deoreo'],
+  ];
+
+  // 달 숫자: 10월 숫자를 달마다 조금 바꿔 만든다(합성). DATA_FROM 앞 달은 자료 없음. 10월 사아는 급여 없음
+  function seeded(seed) { let x = seed % 2147483647; if (x <= 0) x += 2147483646; return () => (x = (x * 16807) % 2147483647) / 2147483647; }
+  const hash = (s) => [...s].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
+  function monthData(id, ym) {
+    if (ym < DATA_FROM || ym > LAST_MONTH) return null;
+    const base = OCT[id];
+    if (ym === LAST_MONTH) return base;
+    const r = seeded(hash(id + ym));
+    const f = 0.9 + r() * 0.16;
+    const g = (v) => (v === null ? null : Math.round(v * 10 * (0.94 + r() * 0.12)) / 10);
+    return { ...base, rev: Math.round(base.rev * f), visits: Math.round(base.visits * f), newp: Math.round(base.newp * (0.88 + r() * 0.2)), f90: Math.round(base.f90 * f), nonpay: g(base.nonpay), revisit: g(base.revisit), rsv: g(base.rsv), rsv90: g(base.rsv90), block: g(base.block), rsvCount: base.rsvCount === null ? null : Math.round(base.rsvCount * f), three: g(base.three), age: [base.age[0], g(base.age[1])] };
+  }
+  function monthPay(id, ym) {
+    if (ym < DATA_FROM || ym > LAST_MONTH) return null;
+    if (ym === LAST_MONTH) return PAY[id];
+    const p = PAY[id] ?? PAY.maba;
+    return p;
+  }
+
+  // ─────────────────────────── 글자 꼴 ───────────────────────────
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const fmt = (n) => Math.trunc(n).toLocaleString('ko-KR');
+  const one = (x) => (Math.trunc(x * 10 + 1e-9) / 10).toFixed(1);
+  const pct = (x) => (x === null || x === undefined ? null : `${one(x)}%`);
+  const won = (n) => `${fmt(n)}원`;
+  function manWon(n) {
+    const man = Math.trunc(n / 10000);
+    if (man === 0) return won(n);
+    const eok = Math.trunc(man / 10000), rest = man % 10000;
+    if (eok === 0) return `${fmt(rest)}만 원`;
+    return rest === 0 ? `${eok}억 원` : `${eok}억 ${fmt(rest)}만 원`;
+  }
+  const manOnly = (man) => `${fmt(man)}만 원`;
+  const ymText = (ym) => `${Number(ym.slice(0, 4))}년 ${Number(ym.slice(5, 7))}월`;
+  const mNum = (ym) => Number(ym.slice(5, 7));
+  const lastDayOf = (ym) => new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0).getDate();
+  function addMonth(ym, d) { let y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7)) + d; while (m < 1) { m += 12; y -= 1; } while (m > 12) { m -= 12; y += 1; } return `${y}-${String(m).padStart(2, '0')}`; }
+  const regionOf = (c) => st.regions[c.id] ?? UNKNOWN;
+
+  // ─────────────────────────── 아이콘(Icon.tsx 모양 · eye는 새 그림) ───────────────────────────
+  const ic = (inner, size = 16, extra = '') => `<svg aria-hidden="true" ${extra} width="${size}" height="${size}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+  const I = {
+    user: '<circle cx="8" cy="5.5" r="2.75"/><path d="M2.75 14c.6-2.5 2.7-3.9 5.25-3.9s4.65 1.4 5.25 3.9"/>',
+    chev: '<path d="m4.75 6.25 3.25 3.25 3.25-3.25"/>',
+    check: '<path d="m3.5 8.25 2.9 2.9 6.1-6.65"/>',
+    clock: '<circle cx="8" cy="8" r="6"/><path d="M8 4.75V8l2.25 1.5"/>',
+    userCheck: '<circle cx="6.5" cy="5.25" r="2.5"/><path d="M1.75 13.5c.5-2.4 2.4-3.75 4.75-3.75 1.15 0 2.2.3 3.05.9"/><path d="m10 12 1.6 1.6 3-3.35"/>',
+    upload: '<path d="M8 10.25V2.75M5 5.5l3-2.75 3 2.75M2.75 10.5v2.75h10.5V10.5"/>',
+    copy: '<rect x="5.25" y="5.25" width="8" height="8" rx="1"/><path d="M10.75 5.25V3.75a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1.5"/>',
+    reload: '<path d="M13.33 8a5.33 5.33 0 1 1-1.56-3.77"/><path d="M13.33 2.67v3.33h-3.33"/>',
+    cal: '<rect x="2.25" y="3.25" width="11.5" height="10.5" rx="1"/><path d="M2.25 6.5h11.5M5.5 1.75v3M10.5 1.75v3"/>',
+    eye: '<path d="M1.5 8s2.4-4.75 6.5-4.75S14.5 8 14.5 8 12.1 12.75 8 12.75 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/>',
+    up: '<path d="M8 13.25V2.75M4 6.75l4-4 4 4"/>',
+    down: '<path d="M8 2.75v10.5M4 9.25l4 4 4-4"/>',
+  };
+  const LOGO = '<svg aria-hidden="true" width="24" height="24" viewBox="0 0 30 30"><rect x="3" y="3" width="24" height="24" rx="6" fill="none" stroke="#14C8BA" stroke-width="2.4"/><path d="M13.5 8h3a1 1 0 0 1 1 1v3.5H21a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3.5V21a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3.5H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3.5V9a1 1 0 0 1 1-1z" fill="#6D5DF5"/></svg>';
+
+  // ─────────────────────────── 작은 그래프(합성, 인라인 SVG) ───────────────────────────
+  // 10월 진료한 날: 일요일·개천절(3일)·한글날(9일) 쉼. 토요일은 반나절
+  function octDays(id) {
+    const out = [];
+    for (let d = 1; d <= 31; d += 1) {
+      const wd = (d + 2) % 7; // 0 = 월 … 6 = 일 (10월 1일 = 목)
+      const closed = wd === 6 || d === 3 || d === 9 || (id === 'saa' && wd === 5) || (id === 'kata' && d === 16);
+      out.push({ d, wd, closed });
+    }
+    return out;
+  }
+  function dailySeries(id, m) {
+    const r = seeded(hash(id + 'daily'));
+    const all = octDays(id);
+    const open = all.filter((x) => !x.closed);
+    const weights = open.map((x) => (x.wd === 5 ? 0.6 : x.wd === 0 ? 1.25 : 1) * (0.88 + r() * 0.24));
+    const sum = weights.reduce((a, b) => a + b, 0);
+    return all.map((x) => {
+      if (x.closed) return { ...x, v: 0, n: 0 };
+      const w = weights[open.indexOf(x)];
+      const v = Math.round((m.visits * w) / sum);
+      return { ...x, v, n: Math.round((m.newp * w) / sum) };
+    });
+  }
+  // 막대: vals = [[아래, 위], …] 또는 [값, …]. 칸마다 쌓는다
+  function barSvg(vals, colors, { h = 64, cls = 'mini', max = null } = {}) {
+    const n = vals.length, W = n * 10;
+    const arr = vals.map((v) => (Array.isArray(v) ? v : [v]));
+    const top = max ?? Math.max(1, ...arr.map((v) => v.reduce((a, b) => a + b, 0)));
+    let s = '';
+    arr.forEach((v, i) => {
+      let y = h;
+      v.forEach((part, j) => {
+        const bh = (part / top) * (h - 2);
+        if (bh <= 0) return;
+        y -= bh;
+        s += `<rect x="${i * 10 + 1.5}" y="${y.toFixed(2)}" width="7" height="${bh.toFixed(2)}" fill="${colors[j]}"${j === v.length - 1 ? ' rx="1"' : ''}/>`;
+      });
+    });
+    return `<svg class="${cls}" viewBox="0 0 ${W} ${h}" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="${h - 0.5}" x2="${W}" y2="${h - 0.5}" stroke="var(--st-line-2)" stroke-width="1" vector-effect="non-scaling-stroke"/>${s}</svg>`;
+  }
+
+  // ─────────────────────────── 상태 ───────────────────────────
+  const q = new URLSearchParams(location.search);
+  const S = q.get('s') || 'viewing';
+  const st = {
+    s: S,
+    page: S === 'viewing' ? (q.get('p') === 'stats' ? 'stats' : 'dashboard') : S === 'admin-list' ? 'admin' : 'compare',
+    viewing: S === 'viewing' ? (q.get('c') || 'dara') : null,
+    pickerOpen: q.get('open') === '1',
+    find: '',
+    regions: Object.fromEntries(CLINICS.map((c) => [c.id, c.region])),
+    message: '',
+    cmpRegion: S === 'compare-region' ? '서울' : S === 'empty' ? (q.get('e') === 'month' ? '서울' : '제주') : '전체',
+    cmpMonth: S === 'empty' && q.get('e') === 'month' ? '2026-03' : LAST_MONTH,
+    sort: { key: 'rev', dir: 'desc' },
+    revTab: 0,
+  };
+  if (st.viewing === OWN) st.viewing = null;
+
+  // ─────────────────────────── 시안 고르기 띠 ───────────────────────────
+  const STATES = [['viewing', '다른 의원 보는 중'], ['admin-list', '관리자 · 의원 목록'], ['compare', '의원 비교 · 전체'], ['compare-region', '의원 비교 · 서울'], ['empty', '빈 자료']];
+  function renderBar() {
+    const link = (params, text, on) => `<a href="?${params}" aria-current="${on}">${text}</a>`;
+    let sub = '';
+    if (S === 'viewing') {
+      const p = q.get('p') === 'stats' ? 'stats' : 'dash';
+      const open = q.get('open') === '1';
+      sub = `<span class="msub">화면
+        <span class="mseg">${link('s=viewing' + (open ? '&open=1' : ''), '대시보드', p === 'dash')}${link('s=viewing&p=stats' + (open ? '&open=1' : ''), '통계', p === 'stats')}</span>
+        <label class="mchk"><input type="checkbox" id="mOpen" ${open ? 'checked' : ''}> 보는 의원 판 열기</label></span>`;
+    }
+    if (S === 'empty') {
+      const e = q.get('e') === 'month' ? 'month' : 'region';
+      sub = `<span class="msub"><span class="mseg">${link('s=empty', '지역에 의원 없음', e === 'region')}${link('s=empty&e=month', '그 달 자료 없음', e === 'month')}</span></span>`;
+    }
+    document.getElementById('mbar').innerHTML = `<b>다른 의원 보기 · 의원 비교 시안</b>
+      <nav class="mseg" aria-label="시안 상태">${STATES.map(([k, t]) => link('s=' + k, t, k === S)).join('')}</nav>${sub}`;
+    const box = document.getElementById('mOpen');
+    if (box) box.addEventListener('change', () => { const u = new URL(location.href); if (box.checked) u.searchParams.set('open', '1'); else u.searchParams.delete('open'); location.href = u.toString(); });
+  }
+
+  // ─────────────────────────── 앱 틀 ───────────────────────────
+  const PRIMARY = [['대시보드', 'dashboard'], ['통계', 'stats'], ['청구', 'claim'], ['고시·공지', 'notices'], ['환자', 'patients'], ['업무일지', 'worklog'], ['수납일지', 'sunap'], ['예약', 'calendar']];
+  const HIDDEN_WHEN_VIEWING = ['claim', 'patients', 'calendar']; // 예약·환자·청구(환자 개인정보)
+
+  function picker() {
+    const others = CLINICS.filter((c) => c.id !== OWN).slice().sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    const f = st.find.trim();
+    const match = (c) => f === '' || c.name.includes(f);
+    const item = (c, cur) => `<button type="button" class="vp-item" data-act="view" data-id="${c.id}" aria-current="${cur}">
+        <span class="ck">${cur ? ic(I.check) : ''}</span><span class="nm">${esc(c.name)}</span><span class="rg">${esc(regionOf(c))}</span></button>`;
+    const mine = byId(OWN);
+    const shown = others.filter(match);
+    return `<div class="vp-panel" role="dialog" aria-label="${T.pickTitle}">
+      <div class="vp-head"><b>${T.pickTitle}</b><span>${T.pickDesc}</span></div>
+      <div class="vp-find"><input type="search" id="vpFind" placeholder="${T.pickFind}" value="${esc(st.find)}" aria-label="${T.pickFind}"></div>
+      <div class="vp-list">
+        ${match(mine) ? `<p class="vp-cap">${T.pickMine}</p>${item(mine, st.viewing === null)}` : ''}
+        <p class="vp-cap">${T.pickOthers(others.length)}</p>
+        ${shown.length ? shown.map((c) => item(c, st.viewing === c.id)).join('') : `<p class="vp-empty">${T.pickNone}</p>`}
+      </div>
+    </div>`;
+  }
+
+  function shell(body, { canvas = false } = {}) {
+    const viewing = st.viewing !== null && st.page !== 'admin' && st.page !== 'compare';
+    const shownClinic = viewing ? byId(st.viewing) : byId(OWN);
+    const tabs = PRIMARY.filter(([, k]) => !(viewing && HIDDEN_WHEN_VIEWING.includes(k)));
+    const band = viewing ? `<div class="band" role="status"><div class="band-in">
+        ${ic(I.eye)}
+        <p class="band-t"><b>${esc(shownClinic.name)}</b> ${T.bandA} · <span class="ro">${T.bandRo}</span></p>
+        <p class="band-h">· ${T.bandHint}</p>
+        <button type="button" class="btn btn-sm t-secondary" data-act="back">${T.bandBack}</button>
+      </div></div>` : '';
+    document.body.classList.toggle('viewing', viewing);
+    return `
+      <div class="sticky">
+        ${band}
+        <div class="top"><div class="top-in">
+          <div class="brand">${LOGO}<span>${esc(shownClinic.name)}</span></div>
+          <div class="top-r">
+            <div class="vp">
+              <button type="button" class="btn btn-sm ${viewing ? 't-accent-outline' : 't-secondary'}" data-act="picker" aria-haspopup="dialog" aria-expanded="${st.pickerOpen}">${ic(I.eye)}<span>${T.pickBtn}</span>${ic(I.chev)}</button>
+              ${st.pickerOpen ? picker() : ''}
+            </div>
+            <time class="clock">${TODAY_CLOCK}</time>
+            <button type="button" class="btn btn-sm t-secondary acct" aria-expanded="false">${ic(I.user)}<span>${esc(byId(OWN).email)}</span>${ic(I.chev)}</button>
+          </div>
+        </div></div>
+        <nav class="tabsbar" aria-label="메뉴"><div class="tabs-in">
+          <div class="strip"><div class="strip-row">
+            ${tabs.map(([t, k]) => `<a class="atab" href="#" data-act="tab" data-page="${k}" ${st.page === k ? 'aria-current="page"' : ''}>${t}</a>`).join('')}
+          </div></div>
+          <div class="more-wrap"><button type="button" class="more" aria-expanded="false">더보기${ic(I.chev)}</button></div>
+        </div></nav>
+      </div>
+      <main id="main" class="${canvas ? 'st' : ''}"><div class="main-in">${body}</div></main>`;
+  }
+
+  // ─────────────────────────── 대시보드(보는 의원 · 저장된 숫자) ───────────────────────────
+  function pageDashboard() {
+    const id = st.viewing ?? OWN;
+    const c = byId(id);
+    const m = OCT[id];
+    const r = seeded(hash(id + 'dash'));
+    const day = Math.round((m.visits / m.days) * 1.04);
+    const newp = Math.round((m.newp / m.days) * 1.1);
+    const f90 = Math.round((m.f90 / m.days) * 1.05);
+    const ret = day - newp - f90;
+    const pt = Math.round(day * 0.43);
+    // 30일 흐름(10월 24일 – 11월 23일)
+    const flow = [];
+    for (let i = 0; i < 31; i += 1) {
+      const wd = (i + 5) % 7; // 10월 24일 = 토
+      if (wd === 6) { flow.push([0, 0]); continue; }
+      const f = (wd === 5 ? 0.6 : wd === 0 ? 1.25 : 1) * (0.86 + r() * 0.28);
+      const v = Math.round((m.visits / m.days) * f);
+      const n = Math.round((m.newp / m.days) * f * (0.8 + r() * 0.4));
+      flow.push([n, v - n]);
+    }
+    const week = [1.22, 1.05, 1.0, 0.98, 1.02, 0.62].map((f) => Math.round((m.visits / m.days) * f));
+    const rx = [['도수치료', 812], ['체외충격파', 344], ['주사', 298], ['물리치료 묶음', 1460], ['초음파', 206]].map(([n, v]) => [n, Math.round(v * m.visits / 3412)]).sort((a, b) => b[1] - a[1]);
+    return `
+      <div class="dhead">
+        <h1>대시보드</h1>
+        <span class="chip chip-neutral">저장된 숫자</span>
+        <p class="when">${ic(I.clock, 14)}<span>11월 23일 19:02에 저장한 숫자</span></p>
+        <div class="r"><button type="button" class="btn btn-sm t-secondary">${ic(I.reload, 14)}저장된 숫자 새로고침</button></div>
+      </div>
+
+      <section class="dsec">
+        <div class="dsec-h"><h2>11월 23일 하루 분석</h2></div>
+        <div class="dctl"><p>일별 현황 기준일</p>
+          <div class="row"><div class="pick"><span class="stp">${ic(I.chev, 16, 'style="transform:rotate(90deg)"')}</span><span class="dt">${ic(I.cal, 14)}11월 23일 (월)${ic(I.chev, 14, 'style="color:var(--muted)"')}</span><span class="stp" style="opacity:.4">${ic(I.chev, 16, 'style="transform:rotate(-90deg)"')}</span></div><span class="ap">숫자 6개와 보고 문장에 적용</span></div>
+        </div>
+        <div class="kpis">
+          <div class="kpi"><span class="l">환자 수</span><p class="v">${fmt(day)}<small>명</small></p></div>
+          <div class="kpi"><span class="l">신환</span><p class="v">${fmt(newp)}<small>명</small></p></div>
+          <div class="kpi"><span class="l">90일초진</span><p class="v">${fmt(f90)}<small>명</small></p></div>
+          <div class="kpi"><span class="l">재진</span><p class="v">${fmt(ret)}<small>명</small></p></div>
+          <div class="kpi"><span class="l">물리치료</span><p class="v">${fmt(pt)}<small>명</small></p></div>
+          <div class="kpi"><span class="l">지난주 같은 요일보다</span><p class="v d">▲ ${fmt(Math.round(day * 0.07))}명</p><p class="d2">지난주 ${fmt(day - Math.round(day * 0.07))}명</p></div>
+        </div>
+        <div class="rep">
+          <div class="rep-h"><p>원장님 보고 <span class="chip chip-neutral">자동 집계 요약</span></p><button type="button" class="btn btn-sm t-secondary" style="min-width:112px">${ic(I.copy, 14)}복사</button></div>
+          <p class="rep-b"><b>11월 23일(월) 환자 ${fmt(day)}명, 신환 ${fmt(newp)}명입니다.</b> 지난주 월요일보다 ${fmt(Math.round(day * 0.07))}명 많고, 물리치료는 ${fmt(pt)}명입니다. 가장 많은 처방은 ${rx[0][0]}입니다.</p>
+        </div>
+      </section>
+
+      <section class="dsec">
+        <div class="dsec-h"><h2>기간별 흐름</h2><span class="rt">10월 24일 – 11월 23일</span>
+          <div class="seg"><button type="button">7일</button><button type="button" aria-pressed="true">30일</button><button type="button">90일</button></div>
+        </div>
+        <div class="flow">
+          <div class="fbox"><h3>환자 수 추이</h3><p class="ds">하루씩 · 단위 명</p>${barSvg(flow, ['var(--accent)', 'var(--chart-3)'], { h: 160, cls: 'ch' })}<div class="ax"><span>10월 24일</span><span>11월 8일</span><span>11월 23일</span></div><div class="lg"><span><i style="background:var(--accent)"></i>신환</span><span><i style="background:var(--chart-3)"></i>재진</span></div></div>
+          <div class="fbox"><h3>신환 재방문율</h3><p class="ds">처음 온 환자가 7·14·30일 안에 다시 온 비율이에요.</p>
+            <div class="rv">${[['7일 안', m.revisit * 0.42], ['14일 안', m.revisit * 0.68], ['30일 안', m.revisit]].map(([l, v]) => `<div class="rv-row"><span>${l}</span><span class="bar"><i style="width:${v}%"></i></span><b>${one(v)}%</b></div>`).join('')}</div></div>
+          <div class="fbox"><h3>요일별 환자 수</h3><p class="ds">하루 평균, 요일마다 · 단위 명</p>${barSvg(week, ['var(--accent)'], { h: 160, cls: 'ch' })}<div class="ax axg" style="grid-template-columns:repeat(6,minmax(0,1fr))">${['월', '화', '수', '목', '금', '토'].map((d) => `<span>${d}</span>`).join('')}</div></div>
+          <div class="fbox"><h3>처방 상위</h3><p class="ds">통계 탭에서 묶은 치료를 많이 한 순서로 5가지까지 적어요.</p>
+            <ol class="top5">${rx.map(([n, v], i) => `<li><span>${i + 1}</span><span>${n}</span><b>${fmt(v)}건</b></li>`).join('')}</ol></div>
+        </div>
+      </section>`;
+  }
+
+  // ─────────────────────────── 통계(보는 의원 · 불러오기 상자 없음 · 고치기 단추 없음) ───────────────────────────
+  function pageStats() {
+    const id = st.viewing ?? OWN;
+    const m = OCT[id];
+    const series = dailySeries(id, m).filter((x) => !x.closed);
+    const revBars = series.map((x) => Math.round((x.v * m.rev) / m.visits));
+    const goal = m.goalWon;
+    const pace = 23 / 30 * 100;
+    const novRev = Math.round(m.rev * 0.8);
+    const REVTABS = ['매출 추이', '급여', '비급여', '기타', '건당 진료비', '신환 1명당'];
+    return `
+      <h1>통계</h1>
+      <div class="pline">
+        <div class="pline-r">
+          <div><p class="cap">빠르게 보기</p><div class="seg"><button type="button">최근 7일</button><button type="button" aria-pressed="true">최근 30일</button><button type="button">최근 90일</button><button type="button">최근 12개월</button></div></div>
+          <div><p class="cap">기간 골라 보기</p><div style="display:flex;gap:8px;align-items:center"><div class="seg"><button type="button">일별</button><button type="button">주별</button><button type="button">월별</button></div><div class="stepbox"><button type="button" aria-label="앞 달">${ic(I.chev, 16, 'style="transform:rotate(90deg)"')}</button><span style="font-weight:500;color:var(--muted)">2026년 11월</span><button type="button" aria-label="다음 달" disabled>${ic(I.chev, 16, 'style="transform:rotate(-90deg)"')}</button></div><button type="button" class="btn btn-sm t-secondary" style="color:var(--ink-2)">${ic(I.cal, 16)}직접 날짜</button></div></div>
+        </div>
+        <p class="rng"><b>최근 30일</b> · 10월 25일 – 11월 23일 · 증감은 지난 30일과 비교</p>
+      </div>
+      <nav class="toc" aria-label="통계 바로가기"><div class="toc-s">${['요약', '환자', '매출', '예약·전환', '예약', '처방', '진료 운영', '보고'].map((n, i) => `<a href="#" ${i === 0 ? 'aria-current="true"' : ''}>${n}</a>`).join('')}</div></nav>
+      <div class="stack">
+        <section class="stc"><div class="stc-h"><h2>환자 요약</h2><span class="d">하루 평균 · 신환·재진 합 · 증감은 지난 30일과 비교</span></div>
+          <div class="stc-b"><div class="grid4">
+            ${kcell('하루 평균 내원', '진료한 날 25일', one(m.visits / m.days), '건', 'up', '4.1%', '늘어남')}
+            ${kcell('신환', '처음 온 환자', fmt(m.newp), '명', 'up', '12명 (+4.3%)', '늘어남')}
+            ${kcell('90일초진', '90일 넘어 다시 온 내원', fmt(m.f90), '건', 'flat', '3건 (−2.3%)', '줄어듦')}
+            ${kcell('재진', '그 밖의 내원', fmt(m.visits - m.newp - m.f90), '건', 'flat', '96건 (+3.3%)', '늘어남')}
+          </div></div></section>
+        <section class="stc"><div class="stc-h"><h2>매출 요약</h2><span class="d">총진료비 · 수납한 날 기준</span></div>
+          <div class="stc-b"><div class="grid2">
+            ${kcell('총매출', null, manWon(m.rev).replace(' 원', ''), '원', 'up', '520만 원 (+4.1%)', '지난 30일보다 늘어남')}
+            ${kcell('건당 진료비', `매출 ÷ 접수 ${fmt(m.visits)}건`, fmt(Math.trunc(m.rev / m.visits)), '원', 'flat', '12원 (+0.0%)', '늘어남')}
+          </div></div></section>
+        <section class="stc"><div class="stc-h"><h2>이번 달 목표</h2><span class="d">11월 · 30일 가운데 23일 지남</span></div>
+          <div class="stc-b">${goal === null ? `<p class="empty1">${T.noGoal}</p>` : `<div>
+            <p class="ln" style="font-size:15px;line-height:24px;color:var(--st-ink-2)">지금까지 <b style="color:var(--st-ink)">${manWon(novRev)}</b> · 목표 ${manWon(goal)}의 <b style="color:var(--st-ink)">${one(novRev / goal * 100)}%</b> · 월말 예상 ${manWon(Math.round(novRev / 0.78))}</p>
+            <div class="goalbar"><i style="width:${Math.min(100, novRev / goal * 100)}%"></i><u style="left:${pace}%"></u></div>
+            <p class="note">세로줄은 이번 달이 지나간 만큼이에요. 월말 예상은 지금까지에 남은 날마다 지난 8주 같은 요일의 하루 평균을 더해요.</p></div>`}
+          </div></section>
+        <section class="stc"><div class="stc-h"><h2>매출</h2><span class="d">최근 30일 · 하루씩</span></div>
+          <div class="stc-b"><div>
+            <div class="rtabs" role="tablist" aria-label="매출 보기">${REVTABS.map((t, i) => `<button type="button" role="tab" aria-selected="${i === st.revTab}">${t}</button>`).join('')}</div>
+            <p class="ln" style="margin-top:12px;font-size:14px;color:var(--st-ink-2)">기간 합계 <b style="color:var(--st-ink)">${manWon(m.rev)}</b> · 하루 평균 ${manWon(Math.round(m.rev / m.days))}</p>
+            ${barSvg(revBars, ['var(--accent)'], { h: 200, cls: 'big' })}
+            <div class="ax" style="display:flex;justify-content:space-between;font-size:12px;color:var(--st-muted);margin-top:4px"><span>10월 25일</span><span>11월 9일</span><span>11월 23일</span></div>
+          </div></div></section>
+      </div>`;
+  }
+  function kcell(label, hint, value, unit, dir, text, tail) {
+    const tone = dir === 'up' ? 'up' : dir === 'down' ? 'down' : '';
+    const arrow = text.includes('−') ? '▼' : '▲';
+    return `<div class="kc"><p class="l"><b>${label}</b>${hint ? `<span>${hint}</span>` : ''}</p>
+      <p class="v"><b>${value}</b><small>${unit}</small></p>
+      <p class="dl ${tone}" style="${tone ? '' : 'color:var(--st-ink-2)'}"><span class="ar" style="color:inherit">${arrow}</span> ${text} <span>${tail}</span></p></div>`;
+  }
+
+  // ─────────────────────────── 관리자 머리 ───────────────────────────
+  function adminHead(cur) {
+    return `<div class="ahead">
+      <div class="ahead-t">
+        <p class="loc">${ic(I.userCheck, 14)}관리자</p>
+        <h1>${cur === 'admin' ? '가입 승인' : T.cmpTitle}</h1>
+      </div>
+      <nav class="subnav" aria-label="관리자 안 메뉴">
+        <a href="#" data-act="tab" data-page="admin" ${cur === 'admin' ? 'aria-current="page"' : ''}>가입 승인</a>
+        <a href="#" data-act="tab" data-page="compare" ${cur === 'compare' ? 'aria-current="page"' : ''}>${T.cmpTitle}</a>
+      </nav>
+    </div>`;
+  }
+
+  // ─────────────────────────── 관리자 · 가입 승인(승인 탭) ───────────────────────────
+  function phoneText(p) { if (!p) return '—'; const head = p.startsWith('02') ? 2 : 3; return `${p.slice(0, head)}-${p.slice(head, -4)}-${p.slice(-4)}`; }
+  function regionSelect(c) {
+    const v = st.regions[c.id];
+    const opts = [...REGIONS.map((r) => `<option ${v === r ? 'selected' : ''}>${r}</option>`), `<option value="" ${v ? '' : 'selected'}>${UNKNOWN}</option>`].join('');
+    return `<select class="sel${v ? '' : ' unknown'}" data-act="region" data-id="${c.id}" aria-label="${esc(c.name)} 지역" ${v ? '' : `title="${T.regionUnknownTitle}"`}>${opts}</select>`;
+  }
+  function pageAdmin() {
+    const rows = CLINICS.map((c) => {
+      const own = c.id === OWN;
+      const badge = c.owner ? '주 관리자' : c.admin ? '관리자' : null;
+      const chip = badge ? `<span class="chip chip-accent">${badge}</span>` : '';
+      const name = own
+        ? `<div class="nm"><span class="tx">${esc(c.name)}</span>${chip}</div>`
+        : `<div class="nm"><button type="button" class="vlink" data-act="view" data-id="${c.id}" title="${esc(T.viewTitle(c.name))}">${ic(I.eye, 14)}<span class="tx">${esc(c.name)}</span></button>${chip}</div>`;
+      const act = own ? `<span class="mine">내 계정</span>` : c.admin ? `<button type="button" class="btn btn-sm t-secondary">관리자 빼기</button>` : `<button type="button" class="btn btn-sm t-secondary">관리자로 정하기</button>`;
+      return `<tr>
+        <td><span class="dt">${c.date}</span></td>
+        <td class="clinic" title="${esc(c.name)}">${name}</td>
+        <td>${regionSelect(c)}</td>
+        <td class="sub">${c.emr}</td>
+        <td class="trunc">${esc(c.who)}</td>
+        <td class="sub trunc">${esc(c.email)}</td>
+        <td class="sub">${phoneText(c.tel)}</td>
+        <td class="act"><div class="acts">${act}</div></td>
+      </tr>`;
+    }).join('');
+    const seen = SEEN.map(([when, who, what]) => `<tr><td class="sub">${when}</td><td>${esc(byId(who).name)} <span class="em">· ${esc(byId(who).email)}</span></td><td>${esc(byId(what).name)}</td></tr>`).join('');
+    return `<div class="admin">
+      ${adminHead('admin')}
+      <p class="intro">${T.adminIntro}</p>
+      <section class="panel install"><div class="panel-head"><h2 class="panel-title">설치 파일</h2></div>
+        <p class="panel-desc">비트 PC 연결 화면의 [내려받기] 단추가 여기 올린 파일을 줘요. 로그인하고 승인된 사람만 받을 수 있어요. (이 시안에서는 줄였어요)</p></section>
+      <div role="tablist" aria-label="신청 상태" class="itabs">
+        <button type="button" role="tab" class="itab" aria-selected="false">대기 <span class="n">${PENDING.length}</span></button>
+        <button type="button" role="tab" class="itab" aria-selected="true">승인 <span class="n">${CLINICS.length}</span></button>
+        <button type="button" role="tab" class="itab" aria-selected="false">거절 <span class="n">${REJECTED.length}</span></button>
+      </div>
+      <p role="status" class="status">${st.message ? `${ic(I.check)}${esc(st.message)}` : ''}</p>
+      <div class="twrap">
+        <table class="apps" aria-label="승인 신청">
+          <colgroup><col class="c-date"><col><col class="c-region"><col class="c-emr"><col class="c-who"><col><col class="c-tel"><col class="c-act"></colgroup>
+          <thead><tr><th>신청일</th><th>의원 이름</th><th>지역</th><th>EMR</th><th>신청자</th><th>이메일</th><th>연락처</th><th class="r">동작</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <section class="panel" aria-labelledby="seen-t">
+        <div class="panel-head"><h2 class="panel-title" id="seen-t">${T.seenTitle}</h2><span class="count">${T.seenCount(SEEN.length)}</span></div>
+        <p class="panel-desc">${T.seenDesc}</p>
+        <div class="twrap" style="padding-top:12px"><table class="seen" aria-label="${T.seenTitle}">
+          <thead><tr>${T.seenCols.map((h) => `<th>${h}</th>`).join('')}</tr></thead>
+          <tbody>${seen}</tbody>
+        </table></div>
+      </section>
+    </div>`;
+  }
+
+  // ─────────────────────────── 관리자 · 의원 비교 ───────────────────────────
+  const REP = [
+    { key: 'nonpay', label: '비급여 비율', get: (m) => m.nonpay, text: (m) => pct(m.nonpay) },
+    { key: 'revisit', label: '신환 재방문율 (30일)', get: (m) => m.revisit, text: (m) => pct(m.revisit) },
+    { key: 'rsv', label: '신환 예약률', get: (m) => m.rsv, text: (m) => pct(m.rsv) },
+    { key: 'block', label: 'Block 전환율', get: (m) => m.block, text: (m) => pct(m.block) },
+    { key: 'rsvCount', label: '예약 수', get: (m) => m.rsvCount, text: (m) => (m.rsvCount === null ? null : `${fmt(m.rsvCount)}건`) },
+    { key: 'age', label: '가장 많은 나이대', get: (m) => m.age[1], text: (m) => `${m.age[0]} · ${pct(m.age[1])}` },
+    { key: 'goal', label: '목표 달성률', get: (m) => (m.goalWon === null ? null : (m.rev / m.goalWon) * 100), text: (m) => (m.goalWon === null ? null : pct((m.rev / m.goalWon) * 100)) },
+    { key: 'three', label: '3번 이상 받은 비율', get: (m) => m.three, text: (m) => pct(m.three) },
+  ];
+  const SALES = [
+    { key: 'rev', label: '총진료비', get: (m) => m.rev, text: (m) => manWon(m.rev) },
+    { key: 'visits', label: '내원 수', get: (m) => m.visits, text: (m) => `${fmt(m.visits)}건` },
+    { key: 'newp', label: '신환', get: (m) => m.newp, text: (m) => `${fmt(m.newp)}명` },
+    { key: 'ret', label: '재진', get: (m) => m.visits - m.newp - m.f90, text: (m) => `${fmt(m.visits - m.newp - m.f90)}건` },
+    { key: 'avg', label: '하루 평균 내원', get: (m) => m.visits / m.days, text: (m) => `${one(m.visits / m.days)}건` },
+  ];
+  const PAYCOLS = JOBS.map((j) => ({ key: 'pay:' + j, label: j, get: (m, p) => (p && p[j][0] > 0 ? p[j][1] : null), text: (m, p) => (p && p[j][0] > 0 ? manOnly(p[j][1]) : null) }));
+  const COLS = [...SALES.map((c) => ({ ...c, g: 0 })), ...PAYCOLS.map((c) => ({ ...c, g: 1 })), ...REP.map((c) => ({ ...c, g: 2 }))];
+
+  function cmpClinics() {
+    const list = st.cmpRegion === '전체' ? CLINICS : CLINICS.filter((c) => regionOf(c) === st.cmpRegion);
+    // 차례: 내 의원 먼저, 나머지는 이름 차례(순위 표만 고른 칸으로 줄을 세운다)
+    const ordered = list.slice().sort((a, b) => (a.id === OWN ? -1 : b.id === OWN ? 1 : a.name.localeCompare(b.name, 'ko')));
+    return ordered.map((c) => ({ c, m: monthData(c.id, st.cmpMonth), p: monthPay(c.id, st.cmpMonth) }));
+  }
+  function sortedRows(rows) {
+    const col = COLS.find((x) => x.key === st.sort.key);
+    const v = (r) => (r.m ? col.get(r.m, r.p) : null);
+    return rows.slice().sort((a, b) => {
+      const x = v(a), y = v(b);
+      if (x === null && y === null) return a.c.name.localeCompare(b.c.name, 'ko');
+      if (x === null) return 1;
+      if (y === null) return -1;
+      return st.sort.dir === 'asc' ? x - y : y - x;
+    });
+  }
+  function nameCell(c, i) {
+    const own = c.id === OWN;
+    return `<td class="stk"><div class="cn">${i !== null ? `<span class="rk">${i}</span>` : ''}<span class="nmt">${esc(c.name)}</span>${own ? `<span class="chip chip-accent">${T.mine}</span>` : ''}${st.cmpRegion === '전체' ? `<span class="rg">${esc(regionOf(c))}</span>` : ''}</div></td>`;
+  }
+  function emptyNote(pair) { return `<p class="empty1"><b>${pair[0]}</b> · ${pair[1]}</p>`; }
+
+  function rankCard(rows, empty) {
+    let body;
+    if (empty) body = emptyNote(empty);
+    else {
+      const head1 = `<tr><th class="stk" rowspan="2" style="vertical-align:bottom;text-align:left">의원</th>
+        <th class="grp" colspan="${SALES.length}">${T.groups[0]}</th><th class="grp" colspan="${PAYCOLS.length}">${T.groups[1]}</th><th class="grp" colspan="${REP.length}">${T.groups[2]}</th></tr>`;
+      const head2 = `<tr>${COLS.map((col, i) => {
+        const on = st.sort.key === col.key;
+        const aria = on ? (st.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none';
+        const arrow = on ? ic(st.sort.dir === 'asc' ? I.up : I.down, 12) : '';
+        const gs = i === 0 || COLS[i - 1].g !== col.g ? ' class="gs"' : '';
+        return `<th${gs} aria-sort="${aria}"><button type="button" class="sortb" data-act="sort" data-key="${col.key}">${col.label}<span class="ar">${arrow}</span></button></th>`;
+      }).join('')}</tr>`;
+      const sorted = sortedRows(rows);
+      const trs = sorted.map((r, i) => `<tr>${nameCell(r.c, i + 1)}${COLS.map((col, k) => {
+        const t = r.m ? col.text(r.m, r.p) : null;
+        const cls = [k === 0 || COLS[k - 1].g !== col.g ? 'gs' : '', st.sort.key === col.key ? 'on' : '', t === null ? 'na' : ''].filter(Boolean).join(' ');
+        return `<td${cls ? ` class="${cls}"` : ''}>${t ?? '–'}</td>`;
+      }).join('')}</tr>`).join('');
+      body = `<div class="rank-wrap"><table class="rank" aria-label="${T.rankTitle}"><thead>${head1}${head2}</thead><tbody>${trs}</tbody></table></div><p class="note">${T.rankFoot}</p>`;
+    }
+    return `<section class="stc" id="cmp-rank"><div class="stc-h"><h2>${T.rankTitle}</h2><span class="d">${empty ? ymText(st.cmpMonth) : `${ymText(st.cmpMonth)} · ${T.rankDesc}`}</span></div><div class="stc-b"><div>${body}</div></div></section>`;
+  }
+
+  function payCard(rows, empty) {
+    let body;
+    if (empty) body = emptyNote(empty);
+    else {
+      const head = `<tr><th class="stk" style="text-align:left">의원</th>${JOBS.map((j) => `<th style="text-align:left">${j}</th>`).join('')}<th style="text-align:left">파트타임</th></tr>`;
+      const trs = rows.map((r) => {
+        if (!r.p) return `<tr>${nameCell(r.c, null)}<td class="none" colspan="${JOBS.length + 1}">${T.payNone(mNum(st.cmpMonth))}</td></tr>`;
+        const cells = JOBS.map((j) => {
+          const [n, avg, lo, hi] = r.p[j];
+          if (n === 0) return `<td class="na" style="text-align:left">–</td>`;
+          if (n === 1) return `<td style="text-align:left"><span class="a">${manOnly(avg)}</span><span class="b">1명</span></td>`;
+          return `<td style="text-align:left"><span class="a">평균 ${manOnly(avg)}</span><span class="b">${n}명 · ${fmt(lo)}만~${fmt(hi)}만 원</span></td>`;
+        }).join('');
+        return `<tr>${nameCell(r.c, null)}${cells}<td style="text-align:left">${r.p.part > 0 ? `${r.p.part}명` : '<span style="color:var(--st-muted)">–</span>'}</td></tr>`;
+      }).join('');
+      // 전체: 직군마다 모든 사람 평균
+      const all = JOBS.map((j) => {
+        let n = 0, sum = 0, lo = Infinity, hi = -Infinity;
+        rows.forEach((r) => { if (!r.p) return; const [k, avg, l, h] = r.p[j]; if (k === 0) return; n += k; sum += avg * k; lo = Math.min(lo, l ?? avg); hi = Math.max(hi, h ?? avg); });
+        return n === 0 ? `<td class="na" style="text-align:left">–</td>` : `<td style="text-align:left"><span class="a">평균 ${manOnly(Math.round(sum / n))}</span><span class="b" style="font-weight:400">${n}명 · ${fmt(lo)}만~${fmt(hi)}만 원</span></td>`;
+      }).join('');
+      const parts = rows.reduce((a, r) => a + (r.p ? r.p.part : 0), 0);
+      body = `<div class="rank-wrap"><table class="rank pay" aria-label="${T.payTitle}"><thead>${head}</thead><tbody>${trs}</tbody>
+        <tfoot><tr><td class="stk">${T.total} ${rows.length}곳</td>${all}<td style="text-align:left">${parts}명</td></tr></tfoot></table></div><p class="note">${T.payFoot}</p>`;
+    }
+    return `<section class="stc" id="cmp-pay"><div class="stc-h"><h2>${T.payTitle}</h2><span class="d">${ymText(st.cmpMonth)} 급여 · ${T.payDesc}</span></div><div class="stc-b"><div>${body}</div></div></section>`;
+  }
+
+  function salesCard(rows, empty) {
+    let body;
+    if (empty) body = emptyNote(empty);
+    else {
+      const head = `<tr><th class="stk" style="text-align:left">의원</th>${SALES.map((s) => `<th>${s.label}</th>`).join('')}</tr>`;
+      const trs = rows.map((r) => `<tr>${nameCell(r.c, null)}${SALES.map((s) => (r.m ? `<td>${s.text(r.m)}</td>` : `<td class="na">–</td>`)).join('')}</tr>`).join('');
+      const has = rows.filter((r) => r.m);
+      const sum = (f) => has.reduce((a, r) => a + f(r.m), 0);
+      const foot = `<tr><td class="stk">${T.total} ${rows.length}곳</td><td>${manWon(sum((m) => m.rev))}</td><td>${fmt(sum((m) => m.visits))}건</td><td>${fmt(sum((m) => m.newp))}명</td><td>${fmt(sum((m) => m.visits - m.newp - m.f90))}건</td><td>의원 평균 ${one(sum((m) => m.visits / m.days) / Math.max(1, has.length))}건</td></tr>`;
+      body = `<div class="rank-wrap"><table class="rank" aria-label="${T.salesTitle}" style="width:100%"><thead>${head}</thead><tbody>${trs}</tbody><tfoot>${foot}</tfoot></table></div>`;
+    }
+    return `<section class="stc" id="cmp-sales"><div class="stc-h"><h2>${T.salesTitle}</h2><span class="d">${ymText(st.cmpMonth)} · ${T.salesDesc}</span></div><div class="stc-b"><div>${body}</div></div></section>`;
+  }
+
+  // 통계 나란히 보기: 줄 = 통계 탭 큰 카드, 칸 = 의원
+  const SIDE_ROWS = [
+    ['요약', '환자 요약 · 매출 요약 · 평소와 다른 것(그 달 마지막 주를 앞 4주와 견줌) · 이번 달 목표(그 달 목표)'],
+    ['환자', '일별 내원 · 환자 구성 · 신환 재방문율 · 몇 번까지 받나'],
+    ['매출', '매출 추이 · 급여·비급여·기타'],
+    ['예약·전환', '신환 예약률 · 90일 예약률 · Block 전환'],
+    ['예약', '예약 수 · 취소율 · 변경율 · 안 옴율'],
+    ['처방', '처방별 추세 · 처방별 신환·재진'],
+    ['진료 운영', '원장님별 · 시간대별 접수 · 요일별 내원 · 휴일에 따라'],
+  ];
+  function sideCard(rowIdx, c, m) {
+    const who = `<p class="who">${esc(c.name)}</p>`;
+    if (!m) return `<div class="mc">${who}<p class="na">자료 없음</p></div>`;
+    const r = seeded(hash(c.id + 'side' + rowIdx));
+    const days = dailySeries(c.id, m);
+    const sub = (title, inner) => `<div class="sb"><h4>${title}</h4>${inner}</div>`;
+    const ret = m.visits - m.newp - m.f90;
+    if (rowIdx === 0) {
+      const alerts = [
+        [r() > 0.4 ? 'up' : 'down', '신환', Math.round(10 + r() * 20)],
+        [r() > 0.5 ? 'up' : 'down', '물리치료', Math.round(15 + r() * 12)],
+      ];
+      return `<div class="mc">${who}
+        ${sub('환자 요약', `<div class="mk"><p>하루 평균 내원<strong>${one(m.visits / m.days)}<small>건</small></strong></p><p>신환<strong>${fmt(m.newp)}<small>명</small></strong></p><p>90일초진<strong>${fmt(m.f90)}<small>건</small></strong></p><p>재진<strong>${fmt(ret)}<small>건</small></strong></p></div>`)}
+        ${sub('매출 요약', `<div class="mk"><p>총매출<strong>${manWon(m.rev).replace(' 원', '')}<small>원</small></strong></p><p>건당 진료비<strong>${fmt(Math.trunc(m.rev / m.visits))}<small>원</small></strong></p></div>`)}
+        ${sub('평소와 다른 것', `<div class="al">${alerts.map(([d, n, v]) => `<p><span class="${d}">${d === 'up' ? '▲' : '▼'} ${v}%</span> ${n}${n === '신환' ? '이' : '가'} 평소보다 ${d === 'up' ? '많아요' : '적어요'}</p>`).join('')}</div>`)}
+        ${sub('이번 달 목표', m.goalWon === null ? `<p class="na">${T.noGoal}</p>` : `<p class="ln"><b>${one(m.rev / m.goalWon * 100)}%</b> · 목표 ${manWon(m.goalWon)}</p><div class="goalbar" style="height:8px;margin-top:8px"><i style="width:${Math.min(100, m.rev / m.goalWon * 100)}%"></i></div>`)}
+      </div>`;
+    }
+    if (rowIdx === 1) {
+      const bands = [[m.age[0], m.age[1]], ['40대', 17 + r() * 4], ['60대', 15 + r() * 4]].filter((x, i, a) => a.findIndex((y) => y[0] === x[0]) === i);
+      if (bands.length < 3) bands.push(['30대', 12 + r() * 3]);
+      const maxB = Math.max(...bands.map((b) => b[1]));
+      return `<div class="mc">${who}
+        ${sub('일별 내원', `${barSvg(days.map((x) => [x.n, x.v - x.n]), ['var(--accent)', 'var(--chart-3)'])}<div class="ax"><span>10월 1일</span><span>10월 31일</span></div>`)}
+        ${sub('환자 구성', `<div class="hb">${bands.map(([b, v]) => `<div><span>${b}</span><i style="width:${(v / maxB) * 100}%"></i><b>${one(v)}%</b></div>`).join('')}</div>`)}
+        ${sub('신환 재방문율', `<div class="mk mk3"><p>7일 안<strong>${one(m.revisit * 0.42)}<small>%</small></strong></p><p>14일 안<strong>${one(m.revisit * 0.68)}<small>%</small></strong></p><p>30일 안<strong>${one(m.revisit)}<small>%</small></strong></p></div>`)}
+        ${sub('몇 번까지 받나', `<div class="hb">${[['1번', 100], ['2번', 52 + r() * 22], ['3번 이상', m.three]].map(([b, v]) => `<div><span>${b}</span><i style="width:${v}%;background:var(--st-f90)"></i><b>${one(v)}%</b></div>`).join('')}</div>`)}
+      </div>`;
+    }
+    if (rowIdx === 2) {
+      const cov = 100 - m.nonpay - 4.2;
+      return `<div class="mc">${who}
+        ${sub('매출 추이', `${barSvg(days.map((x) => Math.round((x.v * m.rev) / m.visits)), ['var(--accent)'])}<div class="ax"><span>10월 1일</span><span>10월 31일</span></div><p class="ln">합계 <b>${manWon(m.rev)}</b></p>`)}
+        ${sub('급여·비급여·기타', `<div class="split"><i style="width:${cov}%;background:var(--cat-1)"></i><i style="width:${m.nonpay}%;background:var(--cat-2)"></i><i style="width:4.2%;background:var(--cat-3)"></i></div>
+          <div class="lg" style="flex-wrap:wrap"><span><i style="background:var(--cat-1)"></i>급여 ${one(cov)}%</span><span><i style="background:var(--cat-2)"></i>비급여 ${one(m.nonpay)}%</span><span><i style="background:var(--cat-3)"></i>기타 4.2%</span></div>`)}
+      </div>`;
+    }
+    if (rowIdx === 3) {
+      if (m.rsv === null) return `<div class="mc">${who}<p class="na">${T.noSunap}</p></div>`;
+      return `<div class="mc">${who}<div class="mk mk3" style="margin-top:0"><p>신환 예약률<strong>${one(m.rsv)}<small>%</small></strong></p><p>90일 예약률<strong>${one(m.rsv90)}<small>%</small></strong></p><p>Block 전환<strong>${one(m.block)}<small>%</small></strong></p></div><p class="na" style="font-size:12px">수납일지 마감한 날만</p></div>`;
+    }
+    if (rowIdx === 4) {
+      if (m.rsvCount === null) return `<div class="mc">${who}<p class="na">${T.noCal}</p></div>`;
+      return `<div class="mc">${who}<div class="mk" style="margin-top:0"><p>예약 수<strong>${fmt(m.rsvCount)}<small>건</small></strong></p><p>취소율<strong>${one(m.cancel)}<small>%</small></strong></p><p>변경율<strong>${one(m.moved)}<small>%</small></strong></p><p>안 옴율<strong>${one(m.noshow)}<small>%</small></strong></p></div></div>`;
+    }
+    if (rowIdx === 5) {
+      const k = m.visits / 3412;
+      const groups = [['물리치료 묶음', 1460], ['도수치료', 812], ['체외충격파', 344], ['주사', 298]].map(([n, v]) => [n, Math.round(v * k * (0.85 + r() * 0.3))]).sort((a, b) => b[1] - a[1]).slice(0, 3);
+      const maxG = groups[0][1];
+      return `<div class="mc">${who}
+        ${sub('처방별 추세', `<div class="hb">${groups.map(([n, v]) => `<div><span>${n}</span><i style="width:${(v / maxG) * 100}%;background:var(--st-ret)"></i><b>${fmt(v)}건</b></div>`).join('')}</div>`)}
+        ${sub('처방별 신환·재진', `<table class="mt"><tbody>${groups.map(([n, v]) => { const nn = Math.round(v * (0.08 + r() * 0.06)); return `<tr><td>${n}</td><td>신환 ${fmt(nn)}명</td><td>재진 ${fmt(v - nn)}건</td></tr>`; }).join('')}</tbody></table>`)}
+      </div>`;
+    }
+    // 진료 운영
+    const docs = Array.from({ length: m.docs }, (_, i) => i);
+    const share = m.docs === 1 ? [1] : m.docs === 2 ? [0.56, 0.44] : [0.41, 0.33, 0.26];
+    const hours = [0.9, 1.0, 0.95, 0.55, 0.35, 0.8, 0.7, 0.62, 0.5, 0.3].map((x) => x * (0.85 + r() * 0.3));
+    const heatColor = (x) => (x > 0.95 ? 'var(--st-h5)' : x > 0.8 ? 'var(--st-h4)' : x > 0.62 ? 'var(--st-h3)' : x > 0.45 ? 'var(--st-h2)' : 'var(--st-h1)');
+    const week = [1.22, 1.05, 1.0, 0.98, 1.02, c.id === 'saa' ? 0 : 0.6].map((f) => Math.round((m.visits / m.days) * f * (0.95 + r() * 0.1)));
+    return `<div class="mc">${who}
+      ${sub('원장님별', m.docs === 1 ? `<p class="na">원장님이 한 분이라 나누어 볼 것이 없어요.</p>` : `<table class="mt"><tbody>${docs.map((i) => `<tr><td>원장님 ${i + 1}</td><td>${fmt(Math.round(m.visits * share[i]))}건</td><td>${manWon(Math.round(m.rev * share[i]))}</td></tr>`).join('')}</tbody></table>`)}
+      ${sub('시간대별 접수', `<div class="heat">${hours.map((x) => `<i style="background:${heatColor(x)}"></i>`).join('')}</div><div class="ax"><span>9시</span><span>18시</span></div>`)}
+      ${sub('요일별 내원', `${barSvg(week, ['var(--accent)'], { h: 48 })}<div class="ax axg" style="grid-template-columns:repeat(6,minmax(0,1fr))">${['월', '화', '수', '목', '금', '토'].map((d) => `<span>${d}</span>`).join('')}</div>`)}
+      ${sub('휴일에 따라', `<table class="mt"><tbody><tr><td>공휴일 앞날</td><td>평소보다 +${Math.round(6 + r() * 12)}%</td></tr><tr><td>공휴일 다음 날</td><td>평소보다 +${Math.round(12 + r() * 14)}%</td></tr></tbody></table>`)}
+    </div>`;
+  }
+  function sideSection(rows, empty) {
+    let body;
+    if (empty) body = `<div class="stc" style="margin-top:12px">${emptyNote(empty)}</div>`;
+    else if (st.cmpRegion === '전체') body = `<div class="stc" style="margin-top:12px">${emptyNote(T.sideAll)}</div>`;
+    else {
+      const n = rows.length;
+      const head = rows.map(({ c }) => `<div class="colh"><b>${esc(c.name)}</b><span>${esc(regionOf(c))}${c.id === OWN ? ` <span class="chip chip-accent">${T.mine}</span>` : ''}</span></div>`).join('');
+      const grid = SIDE_ROWS.map(([t, d], i) => `<div class="rowh"><div><h3>${t}</h3><span>${d}</span></div></div>${rows.map(({ c, m }) => sideCard(i, c, m)).join('')}`).join('');
+      body = `<div class="side-s"><div class="side-g" style="grid-template-columns:repeat(${n}, 288px)">${head}${grid}</div></div>`;
+    }
+    return `<section class="side" id="cmp-side" aria-labelledby="side-t"><div class="side-h"><h2 id="side-t">${T.sideTitle}</h2><span class="d">${empty || st.cmpRegion === '전체' ? ymText(st.cmpMonth) : `${ymText(st.cmpMonth)} · ${st.cmpRegion} ${rows.length}곳 · ${T.sideDesc}`}</span></div>${body}</section>`;
+  }
+
+  function pageCompare() {
+    const rows = cmpClinics();
+    const noClinic = rows.length === 0;
+    const noData = !noClinic && rows.every((r) => r.m === null);
+    const empty = noClinic ? T.emptyRegion(st.cmpRegion) : noData ? T.emptyMonth(ymText(st.cmpMonth)) : null;
+    const payEmpty = noClinic ? T.emptyRegion(st.cmpRegion) : rows.every((r) => !r.p) ? T.emptyMonthPay(ymText(st.cmpMonth)) : null;
+    const prevOff = st.cmpMonth <= FIRST_MONTH, nextOff = st.cmpMonth >= LAST_MONTH;
+    const regionOpts = [`<option ${st.cmpRegion === '전체' ? 'selected' : ''}>${T.regionAll}</option>`, ...REGIONS.map((r) => `<option ${st.cmpRegion === r ? 'selected' : ''}>${r}</option>`)].join('');
+    const where = st.cmpRegion === '전체' ? `의원 ${rows.length}곳` : `${st.cmpRegion} 의원 ${rows.length}곳`;
+    return `<div class="admin" style="gap:0">
+      ${adminHead('compare')}
+      <p class="intro" style="margin-top:16px">${T.cmpIntro}</p>
+      <div class="pline">
+        <div class="cmp-pick">
+          <label><p class="cap">${T.region}</p><select class="sel" data-act="cmpRegion" aria-label="${T.region}">${regionOpts}</select></label>
+          <div><p class="cap">${T.month}</p><div class="stepbox" role="group" aria-label="달 옮기기"><button type="button" aria-label="앞 달" data-act="month" data-d="-1" ${prevOff ? 'disabled' : ''}>${ic(I.chev, 16, 'style="transform:rotate(90deg)"')}</button><span aria-live="polite">${ymText(st.cmpMonth)}</span><button type="button" aria-label="다음 달" data-act="month" data-d="1" ${nextOff ? 'disabled' : ''}>${ic(I.chev, 16, 'style="transform:rotate(-90deg)"')}</button></div></div>
+        </div>
+        <p class="rng"><b>${ymText(st.cmpMonth)}</b> · ${mNum(st.cmpMonth)}월 1일 – ${mNum(st.cmpMonth)}월 ${lastDayOf(st.cmpMonth)}일 · ${where}</p>
+      </div>
+      <nav class="toc" aria-label="의원 비교 바로가기"><div class="toc-s">${T.toc.map((n, i) => `<a href="#${['cmp-rank', 'cmp-side', 'cmp-pay', 'cmp-sales'][i]}" data-act="toc" ${i === 0 ? 'aria-current="true"' : ''}>${n}</a>`).join('')}</div></nav>
+      <div class="stack">
+        ${rankCard(rows, empty)}
+        ${sideSection(rows, empty)}
+        ${payCard(rows, payEmpty)}
+        ${salesCard(rows, empty)}
+      </div>
+    </div>`;
+  }
+
+  // ─────────────────────────── 그리기 · 누름 ───────────────────────────
+  function render() {
+    renderBar();
+    let body = '';
+    if (st.page === 'dashboard') body = pageDashboard();
+    else if (st.page === 'stats') body = pageStats();
+    else if (st.page === 'admin') body = pageAdmin();
+    else body = pageCompare();
+    document.getElementById('app').innerHTML = shell(body, { canvas: st.page === 'stats' || st.page === 'compare' });
+    const find = document.getElementById('vpFind');
+    if (find) find.addEventListener('input', (e) => { st.find = e.target.value; const pos = e.target.selectionStart; render(); const f = document.getElementById('vpFind'); f.focus(); f.setSelectionRange(pos, pos); });
+  }
+
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-act]');
+    if (!el) { if (st.pickerOpen && !e.target.closest('.vp')) { st.pickerOpen = false; render(); } return; }
+    const act = el.dataset.act;
+    if (act === 'picker') { st.pickerOpen = !st.pickerOpen; render(); if (st.pickerOpen) document.getElementById('vpFind')?.focus(); }
+    else if (act === 'view') {
+      e.preventDefault();
+      st.viewing = el.dataset.id === OWN ? null : el.dataset.id; st.pickerOpen = false; st.find = '';
+      if (st.page === 'admin' || st.page === 'compare') st.page = 'dashboard';
+      render(); window.scrollTo(0, 0);
+    } else if (act === 'back') { st.viewing = null; render(); }
+    else if (act === 'tab') {
+      e.preventDefault();
+      const p = el.dataset.page;
+      if (['dashboard', 'stats', 'admin', 'compare'].includes(p)) { st.page = p; st.pickerOpen = false; render(); window.scrollTo(0, 0); }
+    } else if (act === 'sort') {
+      const key = el.dataset.key;
+      st.sort = st.sort.key === key ? { key, dir: st.sort.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' };
+      render();
+      document.querySelector(`[data-act="sort"][data-key="${key}"]`)?.focus({ preventScroll: true });
+    } else if (act === 'month') {
+      st.cmpMonth = addMonth(st.cmpMonth, Number(el.dataset.d)); render();
+    } else if (act === 'toc') {
+      e.preventDefault();
+      document.querySelectorAll('.toc a').forEach((a) => a.removeAttribute('aria-current'));
+      el.setAttribute('aria-current', 'true');
+      document.querySelector(el.getAttribute('href'))?.scrollIntoView({ block: 'start' });
+    }
+  });
+  document.addEventListener('change', (e) => {
+    const el = e.target;
+    if (el.dataset.act === 'region') {
+      const c = byId(el.dataset.id);
+      st.regions[c.id] = el.value || null;
+      st.message = T.regionChanged(c.name, el.value || UNKNOWN);
+      render();
+    } else if (el.dataset.act === 'cmpRegion') { st.cmpRegion = el.value; render(); }
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && st.pickerOpen) { st.pickerOpen = false; render(); document.querySelector('[data-act="picker"]')?.focus(); } });
+
+  render();
+})();
+</script>
+</body>
+</html>

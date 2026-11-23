@@ -1,0 +1,161 @@
+# 작업 분할: 다른 의원 보기 · 의원 비교 (admin-view)
+
+> 형식: `## TASK-n: 제목` 아래에 `- Phase:`, `- AC:`, `- REQ:`, `- Files:`(수정 범위, glob 허용), `- Tests:`, `- TDD: required|exempt`.
+> 승인되면 Files/Tests에 적힌 경로만 고친다. TASK마다 일꾼 하나(각자 git worktree, ssk-parallel-workers). **Phase별로 step, 같은 Phase는 병렬이고 같은 Phase의 TASK끼리 파일이 겹치지 않는다.** Phase 1은 명세 승인 뒤, 다음 Phase는 앞 Phase를 모두 합친 뒤 시작한다. 같은 Phase에서 새로 만드는 파일은 서로 부르지 않는다(필요하면 자기 입력 타입을 스스로 둔다).
+> MVP 모드: 중간 검토 없이 Phase 끝마다 그 Phase 시험 파일만 돌리고, 마지막 TASK-16에서 전체 검사 → 화면 사진 → 독립 검토 한 번(재검토는 사용자에게 묻고). **시험 먼저(TDD)**: 시험 이름에 AC ID, 실패를 본 뒤 만든다. 가짜 이름·가짜 메일(`@fake.test`)만.
+> **화면 TASK(4·7~15)의 화면 글자·자리·모양은 승인된 시안 `docs/mockups/admin-view`(`index.html`·`notes.md`, 사용자 2026-11-24 "이대로 승인") 그대로**다 — 글은 design.md '화면 글자'(시안 글을 한 글자도 바꾸지 않고 옮김), 시안에 없는 글은 지금 코드 글자. **폰 전용 모양은 만들지 않는다**(사용자 규칙 2026-11-21 — `max-md:` 새 줄 없음, 폰 폭 사진 없음, 넓은 표는 표 칸만 옆으로 밀림).
+>
+> | Phase | TASK | 하는 일 |
+> |---|---|---|
+> | 1 | TASK-1 | DB: 보기 줄·지역 표·보기 함수·병원별 표 정책 둘씩·바구니 읽기·읽기 함수 여섯 다시 만들기·`admin_rows`(종류 열여덟) (SQL 하나) + RLS 시험 + ADR-046·047 · ARCHITECTURE · plan.md · CLAUDE.md |
+> | 1 | TASK-2 | 보기 열쇠 쿠키·요청 머리·브라우저 쓰기 거르기(관리자 화면은 거르지 않음) + 서버 읽기 `readAdminView` |
+> | 1 | TASK-3 | 보기·비교 브라우저 함수(`lib/auth/adminView.ts`·`lib/storage/adminRows.ts`) + 오류 번호 다섯 |
+> | 1 | TASK-4 | 읽기만 바탕(`viewing.tsx`)·빼는 탭·관리자 화면 주소(`viewPaths.ts`)·지역 읽기 17개(`lib/admin/region.ts`)·눈 아이콘 |
+> | 1 | TASK-5 | 의원 비교 계산(순수): 매출·월급·차례·불러오기 묶음 + 수납 합 내보내기 |
+> | 1 | TASK-6 | **통계 합계 저장**(사용자 "합계만 저장하게 더하기"): 날 줄 `sunap`·달 줄 `dropoff`, 처방별 신환·재진·나이대가 같은 숫자인지 못 박기 |
+> | 2 | TASK-7 | 앱 틀: 띠·`보는 의원` 판·`ViewGate`·이름·로그아웃 쿠키 지움·관리자 화면에선 띠 없음 + UI_GUIDE |
+> | 2 | TASK-8 | 읽기만: 통계·대시보드·비트 연결 끄기 |
+> | 2 | TASK-9 | 읽기만: 업무일지·수납일지(환자 칸 숨김)·직원(+ 예약 건수) |
+> | 2 | TASK-10 | 읽기만: 고시·공지·입지 분석·재고 |
+> | 2 | TASK-11 | 읽기만: 주소록(사이트 비밀번호 보임)·서식·AI 리포트·설정 |
+> | 2 | TASK-12 | 관리자 화면: 안쪽 메뉴·이름 눌러 보기·지역 칸·본 기록 |
+> | 2 | TASK-13 | 통계 나란히 보기: 칸 값(`statsInput`)·작은 칸(`CompareCells`)·판(`CompareStats`) |
+> | 2 | TASK-14 | 의원 비교 고르기·대표 숫자(`rank.ts`)·순위 표·직군별 월급 표·매출·환자 수 표 |
+> | 3 | TASK-15 | `/admin/compare` 페이지 잇기·불러오기(`useCompareData`) |
+> | 4 | TASK-16 | 전체 검사·진짜 Supabase 머리 확인(E2E)·화면 사진·독립 검토 한 번 |
+>
+> - 같은 Phase 파일 겹침 확인(2026-11-24, 시안 승인 뒤 다시 봄):
+>   - Phase 1 — TASK-1은 `supabase/migrations/20261124000000_admin_view.sql`·`supabase/adminView.rls.test.ts`·`docs/ADR.md`·`docs/ARCHITECTURE.md`·`plan.md`·`CLAUDE.md`, TASK-2는 `src/lib/supabase/`·`src/lib/auth/adminView.server*`, TASK-3은 `src/lib/auth/adminView.ts`·`adminView.test.ts`·`src/lib/storage/adminRows*`·`src/types/errors.ts`·`src/lib/errors*`, TASK-4는 `src/components/shell/viewing*`·`viewPaths*`·`src/lib/admin/region*`·`src/components/common/Icon*`, TASK-5는 `src/lib/admin/compare/{sales,pay,sort,load}*`·`src/components/stats/sections/SunapSection.tsx`, TASK-6은 `src/types/payload.ts`·`src/types/stats.ts`·`src/lib/payload/`의 정해 둔 파일·`src/lib/analytics/{dropoff,sunapRates}*`·`src/workers/stats/jobs*`·`src/workers/statsClient*`·`src/components/stats/{useStatsWorker,useStatsSunap,StatsScreen,loadPlan}*`·`src/lib/storage/stats*` → 겹침 없음. TASK-6이 '돌려 보기만' 하는 시험(`supabase/stats-rls.test.ts` 등)은 다른 TASK가 고치지 않는다. 코드 시험은 Supabase를 흉내 내므로 SQL 없이 돈다.
+>   - Phase 2 — TASK-7은 `src/app/(app)/layout*`·`currentMe.server.ts`·`src/components/shell/`의 정해 둔 파일·`src/components/clinic/useClinicProfile*`·`src/components/auth/SignOutButton*`·`docs/UI_GUIDE.md`, TASK-8은 `src/components/stats/`·`src/components/dashboard/`·`src/components/claim/useBridge*`, TASK-9는 `src/components/worklog/`·`sunap/`·`staff/`·`src/lib/storage/staff*`, TASK-10은 `src/components/notices/`·`location/`·`inventory/`, TASK-11은 `src/components/contacts/`·`forms/`·`ai-report/`·`settings/`, TASK-12는 `src/components/admin/`의 정해 둔 파일(`compare/` 밖)·`src/app/(app)/admin/page*`, TASK-13은 `src/components/admin/compare/{statsInput,CompareCells,CompareStats}*`, TASK-14는 `src/lib/admin/compare/rank*`·`src/components/admin/compare/{ComparePickers,RankTable,PayTable,SalesTable}*` → 겹침 없음. 모두 Phase 1 것을 쓰고 고치지 않는다. TASK-12는 `ViewPicker`(TASK-7)를 부르지 않고 같은 흐름(`startAdminView` → `setViewKey` → `location.assign`)을 스스로 쓴다. TASK-13은 통계 부품을 고치지 않고(TASK-8 몫) 통계 순수 함수·`components/charts`만 부른다. TASK-13·14는 서로의 새 파일을 부르지 않는다(같은 순수 함수를 각자 부름).
+>   - Phase 3 — TASK-15 하나. Phase 4 — TASK-16 하나.
+> - 고치지 않는 것: 앞 migration 파일들(통계 합계 저장도 SQL 없음), `src/lib/auth/hospital.server.ts`·`gate.ts`·`guard.server.ts`, `src/middleware.ts`·`src/lib/supabase/middleware.ts`(문지기는 늘 내 계정 기준), `src/components/shell/menu.ts`·`TabBar.tsx`·`MoreMenu.tsx`·`AccountMenu.tsx`(지금 `hidden` prop 그대로, 계정 메뉴에 의원 비교 없음), `src/app/api/ai/**`·`src/lib/ai/**`(design.md '위험'·'통계 합계 저장' 6), 도우미(`helper/`)·확장(`extension/`)·`src/lib/bridge/`, 예약·환자·청구 탭 파일(`src/components/calendar/`·`patients/`·`claim/`의 `useBridge*` 밖), `lib/storage`의 읽기 부르기 모양(`.eq('hospital_id')`를 더하지 않는다, design.md '내 병원 id를 따로 쓰는 곳'), `docs/mockups/admin-view/`(승인된 시안).
+> - 다른 갈래와 겹칠 수 있는 파일: `CLAUDE.md`·`docs/ADR.md`(번호 046·047)·`docs/ARCHITECTURE.md`·`plan.md`, `src/types/errors.ts`·`src/lib/errors.ts`·`src/lib/errors.test.ts`, `docs/UI_GUIDE.md`, `src/components/common/Icon.tsx`, `src/components/shell/AppShell.tsx`, `src/app/(app)/layout.tsx`, `src/lib/supabase/browser.ts`·`server.ts`, `src/components/admin/AdminApplications.tsx`, 통계 저장 길(`validate.ts`·`jobs.ts`·`StatsScreen.tsx`·`lib/storage/stats.ts`)과 통계·대시보드 부품, `src/app/titles.test.tsx`. 합칠 때 앞 갈래를 먼저 받고 번호·목록만 맞춘다. 다시 만드는 읽기 함수 여섯은 합칠 때 그 함수의 마지막 정의를 다시 옮긴다(design.md '위험').
+> - **사용자 단계**: (1) 시안 승인 — 끝(2026-11-24 "이대로 승인", design.md '화면 글자'·'대표 숫자 표'·'나란히 보기 칸 표'·'기본값'에 넣음). (2) `/sdd approve admin-view` — `CLAUDE.md` 인증 예외 줄 바꾸기와 새 예외 한 줄(design.md '문서 줄')도 이 승인에 든다. (3) 모두 합친 뒤 배포 전 `supabase/migrations/20261124000000_admin_view.sql`을 Supabase SQL Editor에 붙여 넣고 Run(SQL 먼저, 웹 다음 — design.md '배포 순서'). 멈추면 그 글을 Claude에게 알린다. Claude는 실제 Supabase에 붙지 않는다. (4) SQL 뒤 TASK-16의 E2E 한 번(시험 계정 둘). (5) 배포 뒤 의원 PC 통계 화면을 한 번 새로 고침하고 다시 불러와야 합계 숫자가 채워진다(그 전 달은 `–`). **배포·합치기(운영 갈래)는 사용자가 말할 때만** 한다. 도우미·확장 새 판은 없다.
+
+## TASK-1: DB — 보기 줄·지역 표·보기 함수·병원별 표 정책·바구니 읽기·비교 읽기 함수 · 문서
+- Phase: 1
+- AC: AC-8001.1, AC-8001.2, AC-8001.3, AC-8001.4, AC-8001.5, AC-8001.6, AC-8002.1, AC-8002.2, AC-8002.3, AC-8002.4, AC-8002.5, AC-8002.6, AC-8002.7, AC-8002.8, AC-8003.1, AC-8003.2, AC-8003.3, AC-8003.4
+- REQ: REQ-8001, REQ-8002, REQ-8003
+- Files: supabase/migrations/20261124000000_admin_view.sql, supabase/adminView.rls.test.ts, docs/ADR.md, docs/ARCHITECTURE.md, plan.md, CLAUDE.md
+- Tests: supabase/adminView.rls.test.ts
+- TDD: required — design.md 'DB' ①~⑧·'병원별 표'·'다시 만드는 읽기 함수'·'비교 읽기'·'시험 계획'. SQL은 Write 도구로 쓴다(머리 주석 모양은 `20261122000000_location.sql`, 차례 ①~⑧과 오류 번호는 design.md 그대로, 두 번 실행 안전, 지금 표·정책·권한은 하나도 바꾸지 않고 더하기만, `hospitals`·`admins`·`hospital_members`에 정책을 더하지 않음 — 42P17). 지역은 17개 이름 + `null`(지역 모름으로 정함), 본 기록은 최근 30일. 다시 만드는 읽기 함수 여섯은 지금 마지막 정의를 글자 그대로 옮기고 읽을 병원 자리만 `read_hospital_id()`로. `admin_rows` 종류 열여덟마다 jsonb 열쇠는 design.md '비교 읽기' 표 칸과 지금 `lib/storage`가 고르는 칸을 견주어 같게(이름·연락처·계좌·차트번호·메모 칸 없음, `stats_months`는 `rx`·`groups`·`dropoff`·`sections`만, `stats_day_totals`는 `totals`만). 시험은 `location.rls.test.ts`의 PGlite + Supabase·Storage 흉내를 옮기고 **지금 모든 migration**을 파일 이름 차례로(그 시험의 사슬 차례 예외를 따름) → 이 파일 → 이 파일(파일이 없으면 시험마다 실패 = RED, `existsSync`). 요청 머리는 `set_config('request.headers', '{"x-ssk-view":"…"}', false)`로, 12시간·30일 지남은 운영자 권한으로 `started_at`을 당겨 본다. AC-8002.5는 같은 읽기·쓰기를 이 파일 전 DB와 후 DB에서 돌려 결과를 견준다. AC-8002.8은 카탈로그(`information_schema.columns`에서 `hospital_id` 칸이 있는 `public` 표)와 시험 안 세 목록을 견준다. 옛 RLS 시험(`rls.test.ts`·`location.rls.test.ts`·`staff.rls.test.ts` 등)은 고치지 않고 지나야 한다. 문서는 `docs/ADR.md` 끝에 design.md 'ADR-046'·'ADR-047' 글, `docs/ARCHITECTURE.md`·`plan.md`·`CLAUDE.md`는 design.md '문서 줄'의 줄만(`CLAUDE.md`는 그 두 곳 말고 고치지 않는다 — 문서 시험 `b2b-merge.test.ts`·`inventoryDocs.test.ts`도 지나야 한다). **실제 Supabase에 붙여 넣지 않는다**
+
+## TASK-2: 보기 열쇠 쿠키 · 요청 머리 · 브라우저 쓰기 거르기 · 서버 읽기
+- Phase: 1
+- AC: AC-8004.1, AC-8004.2, AC-8004.3, AC-8004.4, AC-8004.5
+- REQ: REQ-8004
+- Files: src/lib/supabase/viewKey.ts, src/lib/supabase/viewKey.test.ts, src/lib/supabase/browser.ts, src/lib/supabase/browser.test.ts, src/lib/supabase/server.ts, src/lib/supabase/server.test.ts, src/lib/auth/adminView.server.ts, src/lib/auth/adminView.server.test.ts
+- Tests: src/lib/supabase/viewKey.test.ts, src/lib/supabase/browser.test.ts, src/lib/supabase/server.test.ts, src/lib/auth/adminView.server.test.ts
+- TDD: required — design.md '보기 열쇠 · 브라우저 쓰기 막기'. `readOnlyFetch`는 주소·방법 표를 `it.each`로(보냄·막음 모두, 막을 때 403 본문 `{"code":"E-VIEW-READONLY"}`이고 진짜 fetch를 부르지 않음). 지금 페이지가 `/admin`·`/admin/x`면 무엇이든 그대로 보내고 `/administrator`·`/location`은 거른다(`location.pathname` 흉내, 규칙은 `viewKey.ts` 안 — `viewPaths.ts`와 같은 주소 표로 시험). `browser.ts`는 쿠키가 없을 때 지금 `createBrowserClient(url, anonKey)` 부르기 모양 그대로(지금 시험이 고치지 않고 지나야 한다). `server.ts`는 쿠키 처리(`getAll`·`setAll`)를 그대로 두고 `global.headers`만 더한다. `adminView.server.ts` 첫 줄 `import 'server-only'`, 본보기 `tabAccess.server.ts`(가짜 `supabaseServer`). 이 TASK는 `lib/auth/adminView.ts`(TASK-3)를 부르지 않는다
+
+## TASK-3: 보기·비교 브라우저 함수 · 오류 번호
+- Phase: 1
+- AC: AC-8005.1, AC-8005.2, AC-8005.3
+- REQ: REQ-8005
+- Files: src/lib/auth/adminView.ts, src/lib/auth/adminView.test.ts, src/lib/storage/adminRows.ts, src/lib/storage/adminRows.test.ts, src/types/errors.ts, src/lib/errors.ts, src/lib/errors.test.ts
+- Tests: src/lib/auth/adminView.test.ts, src/lib/storage/adminRows.test.ts, src/lib/errors.test.ts
+- TDD: required — design.md '브라우저 함수'. 본보기 `lib/auth/admin.ts`(가짜 `supabaseBrowser`로 `rpc` 이름·인자·횟수를 그대로 견줌, 실패는 Supabase 글 없이 `AdminViewError`·`AdminRowsError`). `ViewHospital`에 `regionSet`·`region`(정했는데 `null` = 지역 모름). `readAdminRows`는 종류 열여덟을 받고 1,000줄 쪽이 꽉 차면 다음 `range`, 모자라면 멈춤(0줄·1,000줄·1,001줄 시험), 답 줄 모양이 틀리면 `AdminRowsError`. 오류 다섯의 글은 design.md '화면 글자' 오류 표 글자 그대로. `errors.test.ts`는 목록에 다섯 줄과 글 시험만 더한다. 화면 파일은 고치지 않는다
+
+## TASK-4: 읽기만 바탕 · 빼는 탭·관리자 화면 주소 · 지역 읽기 · 눈 아이콘
+- Phase: 1
+- AC: AC-8007.1, AC-8007.2, AC-8007.3, AC-8013.1, AC-8013.2, AC-8013.3
+- REQ: REQ-8007, REQ-8013
+- Files: src/components/shell/viewing.tsx, src/components/shell/viewing.test.tsx, src/components/shell/viewPaths.ts, src/components/shell/viewPaths.test.ts, src/lib/admin/region.ts, src/lib/admin/region.test.ts, src/components/common/Icon.tsx, src/components/common/Icon.test.tsx
+- Tests: src/components/shell/viewing.test.tsx, src/components/shell/viewPaths.test.ts, src/lib/admin/region.test.ts, src/components/common/Icon.test.tsx
+- TDD: required — design.md '읽기만 바탕'·'지역'. `viewing.tsx`는 네트워크·저장소·쿠키를 건드리지 않는 React 문맥만(환자 줄 구역에서도 import해도 되게). `WriteOnly`는 감싸는 요소 없이 children 그대로(`container.innerHTML` 견줌). `VIEW_HIDDEN_TABS` 차례는 `MENU` 차례와 같은지 `menu.ts`를 읽어 본다(고치지 않음). `isAdminScreen`은 `/admin`·`/admin/compare`만 참. 지역은 시안의 17개 차례, '지역' 이름 표의 이름마다 한 줄 + 우편번호·`대한민국`·붙은 꼴·쉼표·빈칸 여럿·`광주시 …`(→ `null`)·`경기 광주시 …`(→ 경기)·`광주 북구 …`(→ 광주)·`전라남도 순천시 …`(→ 전남)·`전남광주통합특별시 광산구 …`(→ 광주)·`전남광주통합특별시 순천시 …`(→ 전남)·`성남시 분당구 …`(→ `null`)·`전라북도`·`전북특별자치도`·`강원도`·`강원특별자치도`·저장소 안 예 넷(design.md '조사로 안 것' 10), `regionOf`(정한 줄 없음·정한 값·정한 `null`), `roParticle`(받침 없음·'ㄹ'·그 밖·`지역 모름`). `Icon.tsx`에는 시안의 눈 그림 `eye` 하나만 더한다(16칸·선 1.5, 다른 그림 그대로)
+
+## TASK-5: 의원 비교 계산 (순수) · 수납 합 내보내기
+- Phase: 1
+- AC: AC-8014.1, AC-8014.2, AC-8014.3
+- REQ: REQ-8014
+- Files: src/lib/admin/compare/sales.ts, src/lib/admin/compare/sales.test.ts, src/lib/admin/compare/pay.ts, src/lib/admin/compare/pay.test.ts, src/lib/admin/compare/sort.ts, src/lib/admin/compare/sort.test.ts, src/lib/admin/compare/load.ts, src/lib/admin/compare/load.test.ts, src/components/stats/sections/SunapSection.tsx
+- Tests: src/lib/admin/compare/sales.test.ts, src/lib/admin/compare/pay.test.ts, src/lib/admin/compare/sort.test.ts, src/lib/admin/compare/load.test.ts, src/components/stats/sections/SunapSection.test.tsx
+- TDD: required — design.md '의원 비교 — 계산'. 새 공식을 두지 않는다: 매출은 `lib/revenue/summary.ts`, 월급은 `lib/staff/pay.ts` `lineTotal`·`visibleItems`(실수령). 하루 평균 내원은 소수 첫째 자리 버림(시안 `136.4건`). 차례는 처음 총진료비 내림·다른 칸 처음 오름·빈 값 늘 맨 아래·`ownFirst` 내 의원 먼저. 수납 합 `sumClosed`·`sunapPct`는 `SunapSection.tsx`에서 `export`만 더한다(몸통·그리기 그대로, 지금 시험이 고치지 않고 지나야 한다). `load.ts`는 `read(kind, ids, from, to)` 함수를 받고 종류 열여덟 이름·기간(design.md 표)을 스스로 두며 줄은 jsonb 그대로 묶는다(TASK-3·6 파일을 import하지 않음 — TASK-15가 `readAdminRows`를 넘긴다). 시험 자료는 지어낸 숫자만
+
+## TASK-6: 통계 합계 저장 — 날 줄 `sunap` · 달 줄 `dropoff` (사용자 "합계만 저장하게 더하기")
+- Phase: 1
+- AC: AC-8018.1, AC-8018.2, AC-8018.3, AC-8018.4, AC-8018.5
+- REQ: REQ-8018
+- Files: src/types/payload.ts, src/types/stats.ts, src/lib/payload/validate.ts, src/lib/payload/validate.test.ts, src/lib/payload/statSums.ts, src/lib/payload/statSums.test.ts, src/lib/payload/toMonthPayload.test.ts, src/lib/analytics/dropoff.ts, src/lib/analytics/dropoff.test.ts, src/lib/analytics/sunapRates.ts, src/lib/analytics/sunapRates.test.ts, src/workers/stats/jobs.ts, src/workers/stats/jobs.test.ts, src/workers/statsClient.ts, src/workers/statsClient.test.ts, src/components/stats/useStatsWorker.ts, src/components/stats/useStatsWorker.test.ts, src/components/stats/useStatsSunap.ts, src/components/stats/StatsScreen.tsx, src/components/stats/StatsScreen.test.tsx, src/components/stats/loadPlan.ts, src/components/stats/loadPlan.test.ts, src/lib/storage/stats.ts, src/lib/storage/stats.test.ts
+- Tests: src/lib/payload/validate.test.ts, src/lib/payload/statSums.test.ts, src/lib/payload/toMonthPayload.test.ts, src/lib/payload/toDayPayloads.test.ts, src/lib/payload/toMonthSections.test.ts, src/lib/payload/groupCounts.test.ts, src/lib/analytics/dropoff.test.ts, src/lib/analytics/sunapRates.test.ts, src/workers/stats/jobs.test.ts, src/workers/stats/helperData.test.ts, src/workers/statsClient.test.ts, src/workers/analyzeFiles.test.ts, src/components/stats/useStatsWorker.test.ts, src/components/stats/useStatsData.test.ts, src/components/stats/StatsScreen.test.tsx, src/components/stats/loadPlan.test.ts, src/lib/storage/stats.test.ts, src/app/api/ai/generate.test.ts, src/app/api/ai/store.test.ts, src/lib/ai/input.test.ts, src/guardrails.test.ts, supabase/stats-rls.test.ts, supabase/statsSections.rls.test.ts
+- TDD: required — design.md '통계 합계 저장' 규칙 1~7. 화면 글자 없음(통계 탭 화면은 바뀌지 않음). 새 열쇠는 `validate.ts` `exactly()` 목록·`types/payload.ts`에 **있어도 되고 없어도 되는** 것으로만 더하고 `schemaVersion: 2`·DB는 그대로(SQL 없음). 새 순수 함수는 `lib/payload/statSums.ts`(날 `sunap`은 `sunapRates`의 날 나눔, 달 `dropoff`는 `dropoff()`를 첫 진료 달로 나눔 — `lib/analytics` 두 파일에는 나눔에 드는 작은 내보내기만), Worker `loadJob`이 기억 범위 안 달·날 줄에 붙이고, `partSave`는 확실하지 않은 조각에서 새 열쇠를 뺀다. Block·물리치료 묶음 정의는 `useStatsSunap`이 읽는 그 의원 설정을 `StatsLoadRequest`로 싣는다(`StatsScreen`·`useStatsWorker`·`statsClient`). 시험: 새 열쇠 있는 줄·없는 옛 줄 모두 통과(검사·저장·읽기), 날 `sunap` 합 = 같은 가짜 자료의 `sunapRates`, 달 `dropoff.lines` 합 = `dropoff()`, 그달 `payload.rx` = 그달 `rxVisitSplit`(다르면 같은 Files 안에서 `rxSplit` 열쇠를 더함 — design.md '위험'), 그달 `sections.mix` = 그달 `patientMix(…,'all')`, 64KB 넘는 날 줄은 `again`만 빠짐, 가짜 환자 이름·차트 글자가 저장 줄 어디에도 없음, AI 입력(`lib/ai/input`)·옛 시험·울타리 시험(`guardrails.test.ts`)은 고치지 않고 지남. 도우미·확장·`lib/bridge`는 고치지 않는다
+
+## TASK-7: 앱 틀 — 보는 중 띠 · `보는 의원` 판 · 메뉴에서 빼기 · 이름 · 로그아웃
+- Phase: 2
+- AC: AC-8006.1, AC-8006.2, AC-8006.3, AC-8006.4, AC-8006.5, AC-8006.6, AC-8006.7
+- REQ: REQ-8006
+- Files: src/app/(app)/layout.tsx, src/app/(app)/layout.test.tsx, src/app/(app)/currentMe.server.ts, src/components/shell/AppShell.tsx, src/components/shell/ViewBand.tsx, src/components/shell/ViewBand.test.tsx, src/components/shell/ViewPicker.tsx, src/components/shell/ViewPicker.test.tsx, src/components/shell/ViewGate.tsx, src/components/shell/ViewGate.test.tsx, src/components/shell/viewShell.test.tsx, src/components/clinic/useClinicProfile.ts, src/components/clinic/useClinicProfile.test.ts, src/components/auth/SignOutButton.tsx, src/components/auth/SignOutButton.test.tsx, src/components/shell/IdleLogout.tsx, src/components/shell/IdleLogout.test.tsx, docs/UI_GUIDE.md
+- Tests: src/app/(app)/layout.test.tsx, src/components/shell/ViewBand.test.tsx, src/components/shell/ViewPicker.test.tsx, src/components/shell/ViewGate.test.tsx, src/components/shell/viewShell.test.tsx, src/components/clinic/useClinicProfile.test.ts, src/components/auth/SignOutButton.test.tsx, src/components/shell/IdleLogout.test.tsx, src/components/shell/shell.test.tsx, src/components/shell/hiddenTabs.test.tsx, src/components/shell/TabGate.test.tsx, src/components/ui/classes.test.ts
+- TDD: required — design.md '앱 틀'·'흐름'·'기본값' 2~6·24. **화면 글자·자리·모양은 승인된 시안 그대로**(띠 44px·`warning-soft`·눈 아이콘·[내 의원으로] `secondarySmall`, `보는 의원` 단추 시계 왼쪽·켜짐 모양, 판 `ds.layer` 320·찾기 36px·묶음 `내 의원`/`다른 의원 {n}곳`·줄 36px·지역·체크, 글은 design.md '화면 글자'; 색은 `globals.css` 토큰만, `max-md:` 새 줄 없음). 관리자 화면(`isAdminScreen`)에서는 띠가 없고 `ViewingProvider`에 `null`을 넘긴다. `currentView`는 `cache`로 그리기와 `generateMetadata`가 한 번만 읽고, 데스크·관리자 아님·승인 전이면 `readAdminView`를 부르지 않는다(가짜로 횟수 견줌). `AppShell`의 새 prop은 선택이라 지금 `shell.test.tsx`·`hiddenTabs.test.tsx`·`TabGate.test.tsx`는 고치지 않고 지나야 한다. `location.assign`·`location.reload`·`document.cookie`는 시험에서 흉내 낸다. 새로 고침해도 보던 의원 그대로(쿠키가 남음 — 다시 그리기 시험). `useClinicProfile`은 보는 중이면 이름 = `viewing.name`(AC-8006.6), 아니면 지금 그대로. `classes.test.ts`는 돌려 보기만 한다. `docs/UI_GUIDE.md`는 띠·고르기 판 두 줄만
+
+## TASK-8: 읽기만 — 통계 · 대시보드 · 비트 연결 끄기
+- Phase: 2
+- AC: AC-8008.1, AC-8008.2, AC-8008.3, AC-8008.4
+- REQ: REQ-8008
+- Files: src/components/stats/**, src/components/dashboard/**, src/components/claim/useBridge.ts, src/components/claim/useBridge.test.ts
+- Tests: src/components/stats/, src/components/dashboard/, src/components/claim/useBridge.test.ts
+- TDD: required — design.md '탭마다 읽기만' 대시보드·통계 줄과 '비트 연결' 줄, '기본값' 7·9. 화면 글자는 승인된 시안 그대로(시안 `?s=viewing`·`&p=stats` — 불러오기 상자 없음, [목표 고치기] 없음, [비트에서 다시 읽기] 없음, [저장된 숫자 새로고침] 있음), 새 글 없음. 새 시험 `src/components/stats/viewMode.test.tsx`·`src/components/dashboard/viewMode.test.tsx`는 화면을 `ViewingProvider viewing={가짜}` 안에서 그려 그 줄의 단추·칸이 없고 저장·비트 읽기 흉내가 불리지 않는지, [저장된 숫자 새로고침]이 `stats_days` 읽기만 하는지, `viewing={null}`이면 지금과 같은지 본다. 단추는 `<WriteOnly>`로 감싸는 것이 기본(부품 모양은 바꾸지 않는다). 통계 예약 카드는 보는 중이면 `readAdminRows('calendar_counts', [viewing.hospitalId], …)` 줄을 지금 `CalCountRow` 검사로 받아 같은 부품에 넘기고, 다시 예약·예약 빈자리 작은 칸은 그리지 않는다(`listCalendarSlots`를 부르지 않음). `useBridge`는 `useReadOnly()`면 `chrome.runtime`을 건드리지 않는다. TASK-6이 고친 `StatsScreen.tsx`·`useStatsWorker.ts`·`loadPlan.ts`의 저장 길은 바꾸지 않는다. 지금 통계·대시보드 시험은 고치지 않고 지나야 한다(부르기 모양 시험 포함)
+
+## TASK-9: 읽기만 — 업무일지 · 수납일지(환자 칸 숨김) · 직원(+ 예약 건수)
+- Phase: 2
+- AC: AC-8009.1, AC-8009.2, AC-8009.3, AC-8009.4
+- REQ: REQ-8009
+- Files: src/components/worklog/**, src/components/sunap/**, src/components/staff/**, src/lib/storage/staff.ts, src/lib/storage/staff.test.ts
+- Tests: src/components/worklog/, src/components/sunap/, src/components/staff/, src/lib/storage/staff.test.ts
+- TDD: required — design.md '탭마다 읽기만' 업무일지·수납일지·직원 줄과 '환자 칸 숨김'. 화면 글자는 승인된 시안 그대로(시안에 없는 이 탭들의 글은 지금 코드 글자, 새 글 없음). 업무일지는 `useReadOnly()`면 지금 `viewOnly` 모양을 켠다(`WorklogScreen.tsx:72-85`, 새 모양을 만들지 않음 — `useBitFill`·저절로 저장 흉내 횟수 0). 수납일지는 `useReadOnly()`면 `SunapScreen.tsx:50-57·:424`의 장부 조건과 상관없이 늘 `RemoteView`(Worker·비트·PC 저장소를 만들지 않음 — 비트 준비·도우미 0.8.0·62일 안 조건을 흉내 내도 `LedgerRows`·`PaidRows`·`RsvPicker`의 `차트`·`이름` 글이 없음을 봄). 지출 메모는 보인다. 직원 금액 칸은 글자로만, 전화·생일·주소·계좌·메모·파일 목록은 보이고 [받기]·[인쇄·PDF]·[그림 파일]·[엑셀 받기]는 그대로. `countAppts`는 보기 의원 id를 받으면 `readAdminRows('calendar_counts')` 줄에서 같은 직원·취소 뺀 날 목록을 만들고, 안 받으면 지금 부르기 모양 그대로(지금 `staff.test.ts`가 고치지 않고 지나야 한다). 새 시험 `viewMode.test.tsx`는 세 폴더에 하나씩
+
+## TASK-10: 읽기만 — 고시·공지 · 입지 분석 · 재고
+- Phase: 2
+- AC: AC-8010.1, AC-8010.2, AC-8010.3
+- REQ: REQ-8010
+- Files: src/components/notices/**, src/components/location/**, src/components/inventory/**
+- Tests: src/components/notices/, src/components/location/, src/components/inventory/
+- TDD: required — design.md '탭마다 읽기만' 고시·공지·입지 분석·재고 줄. 화면 글자는 승인된 시안 그대로(이 탭들은 시안에 그리지 않아 지금 코드 글자, 새 글 없음). 저절로 쓰기 넷(`markRead`·`seeRuleChanges`·`markCandidateEventsSeen`·`saveFlowCache`)과 재고 처음 분류 넣기(보는 중 `loadInventory({ seed: false })`)는 흉내로 불리지 않음을 본다. 입지 분석의 바깥 자료 읽기(`/api/ai/location/*`)는 읽기라 그대로. 새 시험 `viewMode.test.tsx`는 세 폴더에 하나씩. 지금 시험은 고치지 않고 지나야 한다
+
+## TASK-11: 읽기만 — 주소록 · 서식 · AI 리포트 · 설정
+- Phase: 2
+- AC: AC-8011.1, AC-8011.2, AC-8011.3
+- REQ: REQ-8011
+- Files: src/components/contacts/**, src/components/forms/**, src/components/ai-report/**, src/components/settings/**
+- Tests: src/components/contacts/, src/components/forms/, src/components/ai-report/, src/components/settings/
+- TDD: required — design.md '탭마다 읽기만' 주소록·서식·AI 리포트·설정 줄. 화면 글자는 승인된 시안 그대로(이 탭들은 시안에 그리지 않아 지금 코드 글자, 새 글 없음). 입력 칸은 보는 중이면 글자로만(지금 부품에 `readOnly`·`disabled`가 있으면 그것). 주소록 사이트 비밀번호(`site_pw`)는 보인다(사용자 "비밀번호도 보이기"). 설정은 [비트 PC 연결]로 가는 길·'관리자만 보는 탭' 칸을 그리지 않고, 데스크 계정 칸은 목록만(보는 의원 것 — `desk_members`가 머리로 바뀐다). 새 시험 `viewMode.test.tsx`는 네 폴더에 하나씩. 지금 시험은 고치지 않고 지나야 한다
+
+## TASK-12: 관리자 화면 — 안쪽 메뉴 · 이름 눌러 보기 · 지역 칸 · 본 기록
+- Phase: 2
+- AC: AC-8012.1, AC-8012.2, AC-8012.3, AC-8012.4, AC-8012.5
+- REQ: REQ-8012
+- Files: src/components/admin/AdminApplications.tsx, src/components/admin/AdminApplications.test.tsx, src/components/admin/applications.ts, src/components/admin/applications.test.ts, src/components/admin/AdminViewLog.tsx, src/components/admin/AdminViewLog.test.tsx, src/components/admin/AdminNav.tsx, src/components/admin/AdminNav.test.tsx, src/app/(app)/admin/page.tsx, src/app/(app)/admin/page.test.tsx
+- Tests: src/components/admin/AdminApplications.test.tsx, src/components/admin/applications.test.ts, src/components/admin/AdminViewLog.test.tsx, src/components/admin/AdminNav.test.tsx, src/components/admin/InstallFilesAdmin.test.tsx, src/app/(app)/admin/page.test.tsx, src/components/ui/classes.test.ts
+- TDD: required — design.md '관리자 화면'. **화면 글자·자리·모양은 승인된 시안 그대로**(시안 `?s=admin-list` — 안쪽 메뉴 `가입 승인` | `의원 비교`(설정 화면 안쪽 메뉴와 같은 모양), 안내 끝 한 문장, 이름 = 눈 14 + `accent-strong` 600 단추·마우스 글, 지역 칸 120px·고르기 32px·`지역 모름` 주황 + 마우스 글·완료 줄(로/으로), 본 기록 `ds.panel`·`최근 30일 · {n}번`·칸 셋·때 모양; 글은 design.md '화면 글자'). 세 목록은 `Promise.all`로 한 번(AC-8012.5, 하나라도 실패면 지금 `E-PAGE-FAILED`). 지역 칸은 승인 탭만(대기·거절 탭 없음), 값은 `regionOf`(TASK-4), 고치면 손에 든 목록만 고침(다시 읽지 않음), 실패는 그 줄 `E-REGION-SAVE`. 관리자 화면은 보는 중이어도 숨김이 없다(AC-8012.4 — `InstallFilesAdmin`은 고치지 않고 그 시험을 돌려 보기만). `page.test.tsx`의 props 열쇠 시험은 새 자리(`bottom`)에 맞춰 고친다. 지금 승인·관리자 정하기 시험은 고치지 않고 지나야 한다
+
+## TASK-13: 통계 나란히 보기 — 칸 값 · 작은 칸 · 판
+- Phase: 2
+- AC: AC-8014.5, AC-8016.1, AC-8016.2, AC-8016.3, AC-8016.4
+- REQ: REQ-8014, REQ-8016
+- Files: src/components/admin/compare/statsInput.ts, src/components/admin/compare/statsInput.test.ts, src/components/admin/compare/CompareCells.tsx, src/components/admin/compare/CompareCells.test.tsx, src/components/admin/compare/CompareStats.tsx, src/components/admin/compare/CompareStats.test.tsx
+- Tests: src/components/admin/compare/statsInput.test.ts, src/components/admin/compare/CompareCells.test.tsx, src/components/admin/compare/CompareStats.test.tsx, src/components/ui/classes.test.ts
+- TDD: required — design.md '통계 나란히 보기 칸 표'·'통계 합계 저장'. **화면 글자·자리·모양은 승인된 시안 그대로**(시안 `?s=compare-region` — 줄 일곱·작은 칸 차례·288px 칸·작은 막대·띠·표·숫자 모양·`자료 없음`·`목표를 적지 않았어요`·`수납일지를 마감한 날이 없어요`·`예약 탭에 적은 예약이 없어요`·`수납일지 마감한 날만`·`원장님이 한 분이라 나누어 볼 것이 없어요.`, 전체일 때 안내 글; 글은 design.md '화면 글자'). `statsInput.ts`는 `load.ts`(TASK-5)의 날 줄을 지금 줄 검사 함수(`validate.ts` — TASK-6이 새 열쇠를 더한 것)로 받아 통계 탭과 같은 순수 함수로 칸 값을 만든다(새 공식 없음 — 같은 가짜 저장 숫자로 통계 탭 함수 값과 견줌, 합계 저장 전 달은 그 값만 `null`, 휴일 칸만 12달, 평소와 다른 것은 오늘 = 다음 달 1일). `CompareCells.tsx`는 칸 값으로 작은 칸을 그린다(`components/charts`의 지금 그림 부품만, 통계 부품 파일은 고치지 않음). `CompareStats.tsx`는 props만 받는 판(줄 = 시안 표, 칸 = 의원마다 'reading'·'failed'·값, `E-COMPARE-READ` + [다시 불러오기] 콜백, `ReadOnlyArea`, 첫 칸 `sticky left-0`, `overflow-x-auto`, 내 의원 먼저 + 이름 차례). AC-8016.4는 `TOC_LINKS`(`StatsToc.tsx`)를 읽어 줄 목록·'보고' 까닭을 견준다. 네트워크 없음
+
+## TASK-14: 의원 비교 — 고르기 · 대표 숫자 · 순위 표 · 직군별 월급 표 · 매출·환자 수 표
+- Phase: 2
+- AC: AC-8014.4, AC-8015.1, AC-8015.2, AC-8015.3, AC-8015.4, AC-8015.5, AC-8015.6
+- REQ: REQ-8014, REQ-8015
+- Files: src/lib/admin/compare/rank.ts, src/lib/admin/compare/rank.test.ts, src/components/admin/compare/ComparePickers.tsx, src/components/admin/compare/ComparePickers.test.tsx, src/components/admin/compare/RankTable.tsx, src/components/admin/compare/RankTable.test.tsx, src/components/admin/compare/PayTable.tsx, src/components/admin/compare/PayTable.test.tsx, src/components/admin/compare/SalesTable.tsx, src/components/admin/compare/SalesTable.test.tsx
+- Tests: src/lib/admin/compare/rank.test.ts, src/components/admin/compare/ComparePickers.test.tsx, src/components/admin/compare/RankTable.test.tsx, src/components/admin/compare/PayTable.test.tsx, src/components/admin/compare/SalesTable.test.tsx, src/components/ui/classes.test.ts
+- TDD: required — design.md '대표 숫자 표'·'의원 비교 — 계산'. **화면 글자·자리·모양은 승인된 시안 그대로**(시안 `?s=compare`·`empty`·`empty&e=month` — 제목·안내·고르기 `지역`/`달` ◀▶·아래 줄·바로가기 알약 넷(붙음)·순위 표 묶음 머리 셋·칸 이름·첫 칸 붙음·↑↓·`aria-sort`·`내 의원` 칩·아래 글, 값 모양 `1억 3,261만 원`·`3,412건`·`286명`·`136.4건`·`252만 원`·`31.4%`·`50대 · 24.1%`·`–`, 월급 표 `평균 252만 원`/`4명 · 238만~271만 원`·`급여 없음 · {M}월 급여를 적지 않았어요`·`전체 {n}곳`, 매출 표 `의원 평균 {x}건`, 빈 자료 글 셋; 글은 design.md '화면 글자'). `rank.ts`는 대표 숫자 여덟을 시안 차례로(건당 진료비 없음), `load.ts` 줄을 지금 줄 검사 함수로 받아 표의 함수만 쓴다(목표 달성률은 `goalPace`가 아니라 그달 총매출 ÷ 매출 목표). 표 부품은 props·콜백만(네트워크 없음), 차례는 `sortRows`·`nextSort`·`ownFirst`(TASK-5), 지역 목록은 `SIDO_LIST`(TASK-4). 달은 지난 12달만(오늘을 props로 받아 시험이 1월 → 지난해 12월, ▶·◀ 막힘을 본다). 순위 표 이름은 단추가 아니다. 바깥 틀 `overflow-x-auto`, `max-md:` 새 줄 없음
+
+## TASK-15: `/admin/compare` 페이지 잇기 · 불러오기
+- Phase: 3
+- AC: AC-8017.1, AC-8017.2, AC-8017.3, AC-8017.4
+- REQ: REQ-8017
+- Files: src/app/(app)/admin/compare/page.tsx, src/app/(app)/admin/compare/page.test.tsx, src/components/admin/compare/ComparePage.tsx, src/components/admin/compare/ComparePage.test.tsx, src/components/admin/compare/useCompareData.ts, src/components/admin/compare/useCompareData.test.tsx, src/app/titles.test.tsx, src/app/notFound.test.tsx, src/lib/auth/gate.test.ts
+- Tests: src/app/(app)/admin/compare/page.test.tsx, src/components/admin/compare/ComparePage.test.tsx, src/components/admin/compare/useCompareData.test.tsx, src/app/titles.test.tsx, src/app/notFound.test.tsx, src/lib/auth/gate.test.ts
+- TDD: required — design.md '의원 비교 — 불러오기와 한도'·'흐름'. **화면 글자·자리·모양은 승인된 시안 그대로**(통계 화면과 같은 회색 바탕 + 흰 큰 카드 넷, `AdminNav`(TASK-12) 안쪽 메뉴, 탭 이름 `의원 비교`; 글은 design.md '화면 글자'). 페이지는 `guardPage('/admin/compare')` 뒤 `ComparePage`만. `useCompareData`는 `listViewHospitals` 한 번 → 지역 거름(`전체` = 모두, 한도 없음) → `loadHospital(readAdminRows, …)`(TASK-5·3)을 동시에 3곳까지(가짜 읽기로 동시에 도는 수를 센다), 끝난 의원부터 칸, 같은 (의원, 달)은 다시 읽지 않음, 실패 의원만 `failed`, 나란히 보기 값은 지역을 골랐을 때만(AC-8017.3). 네 칸이 같은 지역·달(AC-8017.4), `Worker`·`useBridge`·`.insert/.update/.upsert/.delete`·쓰기 rpc를 부르지 않음을 흉내로 본다. `titles.test.tsx`는 앱 페이지 표에 한 줄(18개), `notFound.test.tsx`는 경로 파일 한 줄, `gate.test.ts`는 `/admin/compare` 관리자 경로 시험 한 줄만 더한다
+
+## TASK-16: 마무리 — 전체 검사 · 진짜 Supabase 머리 확인 · 화면 사진 · 독립 검토 한 번
+- Phase: 4
+- AC: AC-8002.2, AC-8002.4, AC-8004.2, AC-8006.7, AC-8015.5, AC-8017.4, AC-8018.5
+- REQ: REQ-8002, REQ-8004, REQ-8006, REQ-8015, REQ-8017, REQ-8018
+- Files: specs/admin-view/known-failures.md, e2e/adminView.spec.ts, src/components/shell/ViewBand.tsx, src/components/shell/ViewPicker.tsx, src/components/admin/compare/**, src/components/admin/AdminApplications.tsx, src/components/admin/AdminViewLog.tsx
+- Tests: e2e/adminView.spec.ts, src/components/shell/ViewBand.test.tsx, src/components/shell/ViewPicker.test.tsx, src/components/admin/compare/, src/components/admin/AdminApplications.test.tsx, src/components/admin/AdminViewLog.test.tsx
+- TDD: exempt — 검사·확인·검토 단계다. (1) 전체 검사(`npm test`·`npm run lint`·`npm run build`·`npx tsc --noEmit -p .`, ssk-finish-check — 이 PC에서 원래 나는 실패는 앞 갈래 known-failures와 견주고, 이번 결과는 `specs/admin-view/known-failures.md`에). (2) 사용자가 SQL을 붙인 뒤 `e2e/adminView.spec.ts` 한 번(`.env.local` 시험 계정 둘 — 관리자·다른 승인 의원, 진짜 Supabase에서 머리 `x-ssk-view`가 REST·RPC·Storage 서명에 먹는지, 보는 중 표 쓰기가 42501인지, 머리 없을 때 내 의원 그대로인지, 저장된 통계 줄에 환자 이름·차트 글자가 없는지). 머리가 안 먹으면 멈추고 사용자에게 알린다(명세를 고친 뒤 한다). (3) 화면 사진(ssk-screen-check: 로그인 없는 하네스, 가짜 의원 자료, **PC 1440·1024만**, 승인된 시안의 같은 상태와 견줌 — `viewing`·`viewing&open=1`·`viewing&p=stats`·`admin-list`·`compare`·`compare-region`·`empty`·`empty&e=month`, 탭마다 보는 중 한 장(쓰기 단추 없음, 수납일지 장부 없음). 폰 폭 사진은 찍지 않는다). (4) 독립 검토 한 번(코드를 주고 결론은 주지 않음). 고칠 것이 나오면 Files의 화면 파일만 고치고(시험 먼저), 그 밖이면 명세를 고친 뒤 한다
