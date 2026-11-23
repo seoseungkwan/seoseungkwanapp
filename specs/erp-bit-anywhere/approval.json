@@ -1,10 +1,10 @@
 {
   "status": "approved",
   "feature": "erp-bit-anywhere",
-  "approved_at": "2026-11-23T07:50:04Z",
-  "approved_via": "user-prompt",
-  "session_id": "1f87142b-df3a-4d9f-9bb5-532361cab0e1",
-  "spec_sha256": "d431bbca06ef75b2b3c30268ae1f2a260a738d617bd10b9c19036ad3536addc1",
+  "approved_at": "2026-11-23T08:04:57Z",
+  "approved_via": "auto",
+  "session_id": "d6645c74-6bc0-4844-b534-4aaafe727366",
+  "spec_sha256": "5b5227ef05bb0d39c9ec1cfcda944f1fc6f7da8f0a9150d24d7769e635799e72",
   "scope": [
     "helper-erp/install/install.cmd",
     "helper-erp/src/Erp.Core/ErpInstallRules.cs",

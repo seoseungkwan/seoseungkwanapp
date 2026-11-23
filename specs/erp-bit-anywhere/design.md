@@ -44,15 +44,16 @@
 - `helper-erp/install/install.cmd` (REQ-3802, 한 줄 → 여섯 줄, ASCII만)
   ```bat
   @echo off
-  setlocal
+  setlocal DisableDelayedExpansion
   "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1"
   set ERP_SETUP_CODE=%errorlevel%
-  if not "%ERP_SETUP_CODE%"=="0" if not "%ERP_SETUP_CODE%"=="1" if not "%ERP_SETUP_CODE%"=="2" pause
+  if not "%ERP_SETUP_CODE%"=="0" if not "%ERP_SETUP_CODE%"=="2" pause
   exit /b %ERP_SETUP_CODE%
   ```
   - 32비트 명령 창에서는 `System32`가 `SysWOW64`로 바뀌어 보이지만, 그곳에도 같은 PowerShell 5.1이 있다.
   - PowerShell 끝 번호는 바로 다음 줄에서 `ERP_SETUP_CODE`에 담는다. 그 뒤 `if`·`pause`가 `errorlevel`을 바꿔도 마지막 `exit /b`는 PowerShell 번호를 그대로 낸다. 2026-11-23 시험에서 끝에 `exit /b` 없이 `if`로 끝내니 끝 번호가 늘 0이었다.
   - 한 줄 `if … if … pause` 모양이라 `goto`·라벨·괄호 묶음이 없다.
+  - 0·2만 멈추지 않는다. 1은 `install.ps1`의 취소·설치 실패와 PowerShell 자체 실패(글 틀림·밖으로 나온 오류·보안 설정이 막음)가 같은 번호라서 멈춘다(마지막 검토, 2026-11-23).
   - 압축 파일 안에서 누르면 윈도우가 `install.cmd` 하나만 임시 폴더(`%TEMP%\Temp1_<zip 이름>\…`)에 꺼낸다. 그래서 옆에 `install.ps1`이 없다. 그때는 PowerShell 오류 글과 '계속하려면 아무 키나 누르십시오'가 남는다. 원래 zip을 찾아 대신 풀어 주는 길은 믿을 수 없어 두지 않는다.
   - 2026-11-23 시험 결과(폴더 `한글 폴더 (1)&b`, PATH = `C:\nowhere`, 입력 없음):
 

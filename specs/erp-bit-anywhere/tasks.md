@@ -42,6 +42,8 @@
   - 실행 시험 (윈도우에서만, `process.platform === 'win32'`, 다른 곳에서는 건너뜀 — AC-3802.2·3802.3)
     - 임시 폴더(이름에 한글·괄호·띄어쓰기·`&`)에 `install.cmd`를 둔다.
     - 탐색기에서 두 번 누를 때와 같은 따옴표로 실행한다: `cmd.exe /d /s /c ""<install.cmd 경로>""`(`windowsVerbatimArguments`, `windowsHide`, 입력 '', PATH = `C:\nowhere`). Node는 `.cmd`를 셸 없이 바로 켜지 못한다.
-    - 가짜 `install.ps1` `exit 2` → 2·멈춤 글 없음, `exit 5` → 5·멈춤 글 있음, 없음 → 0·1·2 아님·멈춤 글 있음
+    - 가짜 `install.ps1` `exit 0` → 0·멈춤 없음, `exit 2` → 2·멈춤 없음, `exit 1` → 1·멈춤 있음, 글 틀림(`if ( {`) → 1·멈춤 있음, `exit 5` → 5·멈춤 있음, 없음 → 0·2 아님·멈춤 있음
+    - `cmd /v:on`(지연 확장 켬)으로 `x!y (1)&b` 폴더에서 가짜 `exit 2` → 2·멈춤 없음
+    - `git diff --quiet 6754571c -- helper-erp/install/install.ps1 helper-erp/install/uninstall.ps1 helper-erp/install/README.md`가 0으로 끝난다
     - 실제 `install.ps1`은 돌리지 않는다. 멈춤 글은 '계속하려면' 또는 'Press any key'다.
 - 차례: Phase 2 Step 1 (TASK-1 합친 뒤, 리드)

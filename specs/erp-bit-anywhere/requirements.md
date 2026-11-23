@@ -40,19 +40,26 @@
   - 전체 경로 `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`로 부르면 PATH를 `C:\nowhere`로 망가뜨려도 `install.ps1`의 끝 번호가 그대로 나왔다.
   - 한글 안내를 `-EncodedCommand`로 띄우는 방식은 압축 임시 폴더(`…\Temp1_….zip\…`)에서 PowerShell이 멈춰 버렸다(백신 검사로 짐작). 백신이 의심하는 모양이라 쓰지 않는다.
 - AC-3802.1: Given `install.cmd`, When 실행하면, Then PowerShell을 PATH가 아닌 전체 경로로 부른다: `"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1"`. 그 끝 번호를 그대로 낸다.
-- AC-3802.2: Given PowerShell 끝 번호, Then 0·1·2면(`install.ps1`이 스스로 '엔터를 누르면 이 창이 닫힙니다'로 기다린 뒤) 더 기다리지 않는다. 그 밖의 번호면 윈도우 `pause`로 키를 누를 때까지 창을 열어 둔다. 이런 경우가 그 밖의 번호다.
+- AC-3802.2: Given PowerShell 끝 번호, Then 0(설치·등록 끝)·2(등록 오류)면 더 기다리지 않는다. 온전한 `install.ps1`에서는 이 둘이 스스로 '엔터를 누르면 이 창이 닫힙니다'로 기다린 뒤에만 나온다(파일이 비었거나 줄 경계에서 잘리면 0으로 바로 닫힐 수 있다 — `install.ps1`을 고치지 않는 한 막을 수 없다). 그 밖의 번호(1 포함)면 윈도우 `pause`로 키를 누를 때까지 창을 열어 둔다. 이런 경우가 그 밖의 번호다.
   - `install.ps1`이 옆에 없음
-  - `install.ps1` 글이 틀림
+  - `install.ps1` 글이 틀림(파일이 깨짐)
+  - `install.ps1` 밖으로 오류가 나옴
+  - 병원 PC 보안 설정이 스크립트 실행을 막음
   - PowerShell을 켜지 못함
   - 그래서 그때 나온 오류 글이 창에 남아 사진으로 찍을 수 있다. 끝 번호는 PowerShell(또는 명령 창)이 낸 것 그대로다.
+  - 1도 멈추는 까닭(2026-11-23 마지막 검토가 확인): 윈도우 PowerShell 5.1 `-File`은 글이 틀린 스크립트·밖으로 나온 오류에 1을 낸다. 이것은 `install.ps1`이 취소·설치 실패에 내는 1과 구별되지 않는다(`install.ps1`은 고치지 않는다). 그래서 1이면 멈춘다. 등록 취소·설치 실패 때 키를 한 번 더 눌러야 하는 것이 그 값이다.
 - AC-3802.3: Given `helper-erp/install/install.cmd` 파일, Then 다음을 지킨다.
   - 글자는 모두 ASCII다. `-EncodedCommand`, `goto`·`call :라벨`(LF 줄 끝에서 라벨 찾기가 틀릴 수 있다)은 쓰지 않는다.
   - 경로는 늘 따옴표 안에서만 쓴다.
-  - 설치 파일 목록(`install.cmd`·`install.ps1`·`host-manifest.json`·`uninstall.ps1`·`README.md`)과 `install.ps1`·`uninstall.ps1`·`README.md`·기존 `helper/install/*`은 그대로다.
+  - 지연 확장을 끈다(`setlocal DisableDelayedExpansion`). 레지스트리로 지연 확장이 켜진 PC에서도 폴더 이름의 `!`가 바뀌지 않게 하려는 것이다.
+  - 설치 파일 목록(`install.cmd`·`install.ps1`·`host-manifest.json`·`uninstall.ps1`·`README.md`)은 그대로다. `install.ps1`·`uninstall.ps1`·`README.md`·기존 `helper/install/*`도 그대로다(`git diff --quiet 6754571c`).
   - 윈도우에서 도는 시험은 다음을 본다(임시 폴더 이름에 한글·괄호·띄어쓰기·`&`, 입력 없음, PATH = `C:\nowhere`).
-    - 가짜 `install.ps1`이 `exit 2`면 끝 번호 2이고 멈춤 글이 없다.
+    - 가짜 `install.ps1`이 `exit 0`이면 끝 번호 0, `exit 2`면 끝 번호 2이고, 둘 다 멈춤 글이 없다.
+    - `exit 1`이면 끝 번호 1이고 멈춤 글이 있다.
+    - 글이 틀린 `install.ps1`(`if ( {`)이면 끝 번호 1이고 멈춤 글이 있다.
     - `exit 5`면 끝 번호 5이고 멈춤 글이 있다.
-    - `install.ps1`이 없으면 끝 번호가 0·1·2가 아니고 멈춤 글이 있다.
+    - `install.ps1`이 없으면 끝 번호가 0·2가 아니고 멈춤 글이 있다.
+    - 지연 확장을 켠 명령 창(`cmd /v:on`)에서 이름에 `!`가 든 폴더(`x!y (1)&b`)라도 가짜 `exit 2`가 돌아 끝 번호 2이고 멈춤 글이 없다.
 
 ## 범위 밖
 - 청구 도우미(`helper/`)와 웹앱(`src/`)의 비트 찾기. 이쪽은 `C:\DrBIT50`만 그대로다.
