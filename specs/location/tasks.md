@@ -454,3 +454,11 @@
 - Files: src/lib/location/watch.ts, src/lib/location/watch.test.ts, src/components/dashboard/location/**, src/components/location/clients.ts, src/components/location/clients.test.ts
 - Tests: src/lib/location/watch.test.ts, src/components/dashboard/location/, src/components/location/clients.test.ts
 - TDD: required — (1) 업태로 경쟁에 든 줄(예 업태 `한의원`, 과목 글 `한방내과,한방재활의학과,침구과`)을 저장할 때 과목 글 앞에 업태 글을 붙여(design 12절) `alertLines`가 같은 과목(한의원)으로 그려 줄이 사라지지 않음 — 넣는 셈과 그리는 셈이 같음을 시험. (2) `dueCandidates`가 그날 값 `place`가 없는 후보를 고르지 않음(전국으로 부르지 않음, 5곳 자리를 차지하지 않음). (3) `clients.ts` `clinic-license` 한도 125초(design 4절)
+
+## Phase 13 — 배포 뒤 고침 (1명. 사용자 2026-11-23: 의원 PC에서 '지금 받지 못했어요' 셋 → '기다림 늘리고 한 번 더')
+
+## TASK-88: 인구·체력단련장 기다림 늘리고 시간 넘은 부르기 한 번 더
+- REQ: REQ-7903 · AC-7903.3
+- Files: src/types/location.ts, src/app/api/ai/location/query/route.ts, src/app/api/ai/location/query/route.test.ts, src/app/api/ai/location/sources/people.ts, src/app/api/ai/location/sources/people.test.ts, src/app/api/ai/location/sources/facilities.ts, src/app/api/ai/location/sources/facilities.test.ts, src/components/location/clients.ts, src/components/location/clients.test.ts
+- Tests: src/app/api/ai/location/query/route.test.ts, src/app/api/ai/location/sources/people.test.ts, src/app/api/ai/location/sources/facilities.test.ts, src/components/location/clients.test.ts
+- TDD: required — (1) `Adapter`에 `retryTimeout?: boolean`. `popAgeAdapter` `timeoutMs` 20,000·`retryTimeout` 참, `gymAdapter` `timeoutMs` 15,000·`retryTimeout` 참(design 3절). (2) `route.ts` `fetchAll`: `retryTimeout`인 종류는 `fetchSource`가 `timeout`으로 실패한 하위 부르기만 같은 요청으로 한 번 더 부르고, 되면 그 답을 쓴다. 두 번째도 넘거나 다른 실패(http·too-big)는 지금처럼 `failed`, `retryTimeout`이 없는 종류는 다시 부르지 않음. (3) `clients.ts` 한도 `pop-age` 45초·`gym` 95초(AC-7903.3)
