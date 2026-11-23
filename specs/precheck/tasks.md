@@ -448,3 +448,12 @@
 - TDD: required
 - 처음 등록(`RegisterFlow`)·매번 확인(`HospitalCheck.VerifyCurrent`)·통계 화면 확인(`StatsAccess`)을 AC-005.13 기준으로 바꾸고, 기간 번호 확인(`VerifyPeriod`) 부름을 뺀다(AC-005.15 — 함수는 지우고 `Sql.PeriodIdentitySql` 상수·원본 사본 시험은 그대로). 원본 검사 함수(`ValidateScope`·`ValidateInstitutionNumbers`·`ReadUserScope` 등, AC-005.4 원본 시험 사례)는 그대로다. 기간 번호로 막던 시험(`ClaimDates`·`ClaimMonth`·`MemoRows`·`ContactTargets`)과 SQL 차례 시험은 새 뜻(부르지 않음·읽음)으로 고친다(지우지 않음)
 - 화면: 위 오류 상자(`SetupAlert`)는 그대로 `errorInfo(번호)`를 그린다. '이 PC' 요양기관기호 칸에 `번호 없음` 한 경우만 더한다. 도우미 판 번호·태그·릴리스와 `MIN_HELPER`·`LATEST_HELPER`는 사용자가 말할 때만(ssk-clinic-pc-files)
+
+## TASK-44: 도우미 0.13.1 내보내기 (TASK-43 판)
+- Step: 어느 Phase에도 속하지 않는 고침 (2026-11-23 사용자 'ㅇㅇ 여기로 줘' — 다른 의원 PC에 깔 판)
+- AC: AC-005.16
+- REQ: REQ-005
+- Files: helper/Directory.Build.props, src/lib/bridge/versions.ts, helper/tests/input-wiring.dotnet.test.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts, helper/tests/Precheck.Core.Tests/Calendar/CalendarTargets.test.cs, helper/tests/Precheck.Core.Tests/Revenue/RevenueCommands.test.cs, helper/tests/Precheck.Core.Tests/Stats/StatsExtra.test.cs, helper/tests/Precheck.Core.Tests/Stats/StatsReport.test.cs, helper/tests/Precheck.Core.Tests/Sunap/SunapTargets.test.cs
+- Tests: helper/tests/input-wiring.dotnet.test.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts
+- TDD: required
+- 판 번호가 박힌 시험(도우미 판 0.13.0)을 0.13.1로 고친다. `lib/revenue/sync.ts`의 `FULL_HELPER`('0.13.0 이상') 같은 '이 판부터' 값은 그대로다. 태그 `helper-v0.13.1`·릴리스는 ssk-clinic-pc-files 나), 웹 배포는 판이 나온 뒤 사용자가 말할 때만
