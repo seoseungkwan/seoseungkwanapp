@@ -350,7 +350,7 @@ create table public.contact_counts (
 ## 9. 도우미 안
 
 ### 9-1. 처음 등록과 매번 확인 (TASK-5)
-- 비트 찾기: 원본 `InstallationLocator.FindCandidates`·`NormalizeAndValidate`·`NativeEnvironmentGuard.Validate`(지원 위치는 원본처럼 `C:\DrBIT50`)
+- 비트 찾기: 원본 `InstallationLocator.FindCandidates`·`NormalizeAndValidate`·`NativeEnvironmentGuard.Validate`(지원 위치는 원본처럼 `C:\DrBIT50`였으나 TASK-45부터 위치 조건 없음 — 환경 파일 `Path`·`Bin`이 가리키는 로컬 설치면 어디든, 윈도우 드라이브에 환경 파일이 없으면 설치 드라이브의 것, AC-005.17. 비트 DLL·통계 화면·차트 창은 모두 고른 설치 위치를 쓴다)
 - 접속: 원본 `ReadOnlyConnection`처럼 비트 DLL(`BITDataBaseCommon`)의 접속 정보를 쓰고, `ConnectTimeout=10`, 서버 이름은 `CheckPrivateServer`(내 PC·사설 IP만). 읽기는 정해 둔 매개변수 SELECT만, 끝내지 않는 트랜잭션 안에서(원본 그대로)
 - 처음 등록(`bit.register`): 비트 로그인 창(원본 `BITUserLogIn` `bitDisplayDialog`) → DB 안 의원 하나와 그 의원의 오늘 기관기호(아래 '어느 의원인지 찾기', TASK-43) → **PC 확인 창** "이 병원으로 등록할까요? 기관기호 1234****(못 찾으면 `기관기호 못 찾음`) · 비트 병원 범위·설치 위치·DB" → [확인]이면 등록 파일(DPAPI)에 저장(기관기호(빈 글자 가능)·범위·설치 위치·서버·DB 이름·프로필 ID)
 - 다시 등록: 이미 등록돼 있어도 같은 길로 다시 등록할 수 있다(설치 화면의 [다시 등록], `E-BIT-HOSPITAL-MISMATCH`일 때). 확인 창에 전 등록 값과 새 값을 함께 보인다. 기관기호가 같으면 프로필 ID를 그대로 두어 작업 저장을 이어 읽고, 다르면 새 ID라 전 병원의 작업 파일은 읽지 않는다(9-3, AC-005.5)

@@ -457,3 +457,13 @@
 - Tests: helper/tests/input-wiring.dotnet.test.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts
 - TDD: required
 - 판 번호가 박힌 시험(도우미 판 0.13.0)을 0.13.1로 고친다. `lib/revenue/sync.ts`의 `FULL_HELPER`('0.13.0 이상') 같은 '이 판부터' 값은 그대로다. 태그 `helper-v0.13.1`·릴리스는 ssk-clinic-pc-files 나), 웹 배포는 판이 나온 뒤 사용자가 말할 때만
+
+## TASK-45: 비트 설치 위치 상관없이 찾기 + 도우미 0.13.2 (도우미)
+- Step: 어느 Phase에도 속하지 않는 고침 (사용자 2026-11-23 '근데 비트 경로가 이상한 곳에 있으면' → 답(지금은 C:\DrBIT50만, ERP 도우미는 오늘 풀었음) → 'ㅇㅇ')
+- AC: AC-005.17, AC-005.16
+- REQ: REQ-005
+- Files: helper/src/Precheck.Core/Bit/BitInstallRules.cs, helper/tests/Precheck.Core.Tests/Bit/BitInstallRules.test.cs, helper/tests/Precheck.Core.Tests/Bit/Fakes.test.cs, helper/tests/bit-connect.dotnet.test.ts, helper/Directory.Build.props, src/lib/bridge/versions.ts, helper/tests/input-wiring.dotnet.test.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts, helper/tests/Precheck.Core.Tests/Calendar/CalendarTargets.test.cs, helper/tests/Precheck.Core.Tests/Revenue/RevenueCommands.test.cs, helper/tests/Precheck.Core.Tests/Stats/StatsExtra.test.cs, helper/tests/Precheck.Core.Tests/Stats/StatsReport.test.cs, helper/tests/Precheck.Core.Tests/Sunap/SunapTargets.test.cs
+- Tests: helper/tests/bit-connect.dotnet.test.ts, helper/tests/input-wiring.dotnet.test.ts, src/lib/bridge/handshake.test.ts, src/lib/bridge/client.test.ts
+- TDD: required
+- `BitInstallRules.MatchesEnvironment`의 마지막 조건(`C:\DrBIT50`)을 빼고 환경 파일 자리 하나를 더한다. `FindRoot`·필요한 파일 셋·후보 모으기(`InstallationLocator`)는 그대로다(ERP 시험이 `FindRoot` 몸통을 글자로 견준다). 옛 시험 'C:\DrBIT50이 아니면 거절'은 새 뜻(고름)으로 고친다(지우지 않음). 판 0.13.2 태그·릴리스는 ssk-clinic-pc-files 나).
+- 알아 둘 것: 아직 운영에 안 합친 갈래 feat-erp-bit-anywhere의 ERP 시험(AC-3801.1·AC-3801.4)은 '청구 도우미 규칙은 C:\DrBIT50만'을 본다. 그 갈래가 이 판 위로 합쳐지면 그 두 시험을 새 뜻으로 고쳐야 한다(ERP 코드는 그대로 돌아간다).
