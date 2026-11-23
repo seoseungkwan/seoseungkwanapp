@@ -477,6 +477,7 @@ function TabBody(p: BodyProps) {
           homeEswt={homeEswt}
           today={today}
           onStatus={(id, s) => void api.setStatus(id, s)}
+          onDelete={api.removeCandidate}
           onEditWeights={() => p.go('scan')}
         />
       </div>

@@ -13,6 +13,7 @@ import {
   addCandidate,
   addListing,
   addNote,
+  deleteCandidate,
   loadLocation,
   LocationStorageError,
   markCandidateEventsSeen,
@@ -659,5 +660,43 @@ describe('사진 주소 (AC-7913.4)', () => {
     const { result } = await ready()
     await expect(result.current.readPhoto('h/c/x.jpg')).resolves.toBeNull()
     expect(readPhoto).toHaveBeenCalledWith(CLIENT, 'h/c/x.jpg')
+  })
+})
+
+// 후보 지우기(AC-7914.3 · AC-7902.4, design.md 14절, TASK-93)
+describe('후보 지우기 (AC-7914.3 · AC-7902.4)', () => {
+  const OTHER = '77777777-7777-4777-8777-777777777777'
+  const photo = (id: string, candidateId: string): LocationPhoto => ({ id, candidateId, path: `h/${id}.jpg`, label: '', takenOn: null, createdAt: '2026-11-22T01:00:00.000Z' })
+  const twoCandidates = () =>
+    data({
+      candidates: [makeCandidate({ snapshot: validSnapshot() }), makeCandidate({ id: OTHER, name: '다른 후보' })],
+      notes: [note(), note({ id: '99999999-9999-4999-8999-999999999991', candidateId: OTHER })],
+      photos: [photo('99999999-9999-4999-8999-999999999992', CAND_ID), photo('99999999-9999-4999-8999-999999999993', OTHER)],
+    })
+
+  it('AC-7914.3: removeCandidate는 deleteCandidate 뒤 그 후보와 메모·사진을 빼고, 매물은 후보 칸만 비운다', async () => {
+    vi.mocked(loadLocation).mockResolvedValue(twoCandidates())
+    vi.mocked(deleteCandidate).mockResolvedValue(undefined)
+    const { result } = await ready()
+    await act(async () => result.current.removeCandidate(CAND_ID))
+    expect(deleteCandidate).toHaveBeenCalledWith(CLIENT, CAND_ID)
+    expect(result.current.candidates.map((c) => c.id)).toEqual([OTHER])
+    expect(result.current.notes.map((n) => n.candidateId)).toEqual([OTHER])
+    expect(result.current.photos.map((p) => p.candidateId)).toEqual([OTHER])
+    const mine = makeListing()
+    expect(result.current.listings.find((l) => l.id === mine.id)?.candidateId).toBeNull()
+    expect(result.current.listings.find((l) => l.id === OTHER_LISTING.id)?.candidateId).toBe(OTHER_LISTING.candidateId)
+    expect(result.current.saveError).toBe(false)
+  })
+
+  it('AC-7914.3: 지우기에 실패하면 던지지 않고 아무것도 빼지 않으며 저장 실패 알림', async () => {
+    vi.mocked(loadLocation).mockResolvedValue(twoCandidates())
+    vi.mocked(deleteCandidate).mockRejectedValue(new LocationStorageError('E-LOC-SAVE-FAILED'))
+    const { result } = await ready()
+    await act(async () => result.current.removeCandidate(CAND_ID))
+    expect(result.current.candidates).toHaveLength(2)
+    expect(result.current.notes).toHaveLength(2)
+    expect(result.current.photos).toHaveLength(2)
+    expect(result.current.saveError).toBe(true)
   })
 })

@@ -9,6 +9,7 @@
 // → 무게·과목 고르기가 바뀌면 다시 부르지 않고 바로 다시 센다. 경쟁 줄 이름은 `경쟁 의원` + 작은 글 고른 과목 짧은 이름(depts.ts rivalShortText).
 // 만 원 칸에서 온 금액(보증금·월세·권리금)은 manText, 평당 월세는 wonText(design.md 5절).
 // 진행 단계 바꾸기·내려놓기·다시 올리기는 모두 onStatus(후보 id, 새 상태) 하나로 넘긴다(다시 올리기 = 보는 중).
+// 후보 줄마다(내려놓은 후보 포함) [지우기] → 확인 창(DeleteCandidateDialog) → onDelete(후보 id)(AC-7914.3, TASK-93).
 // 견줄 후보 고르기(2~4곳)는 이 화면에서만 쓰는 고름이라 저장하지 않는다
 import { useMemo, useState, type ReactNode } from 'react'
 import { ds } from '@/components/ui/classes'
@@ -22,6 +23,7 @@ import { compareListings, perPyeongOf, vsAverage } from '@/lib/location/listings
 import { commaText, manText, wonText } from '@/lib/location/money'
 import { fillScoreRule, scoreItems, SCORE_GROUPS, type GroupScore, type ScoreRule } from '@/lib/location/score'
 import type { Candidate, CandidateStatus, DeptRule, Listing, ScoreFacts } from '@/types/location'
+import { DeleteCandidateDialog } from './DeleteCandidateDialog'
 import { COMPARE_TEXT as T, letterOf, MAX_PICK, MIN_PICK, STATUS_TEXT, STEPS } from './text'
 
 export type CandidateCompareProps = {
@@ -39,6 +41,8 @@ export type CandidateCompareProps = {
   today: string
   /** 진행 단계를 바꾸거나(watching·contacted·visited·reviewing) 내려놓거나(dropped) 다시 올릴 때(watching) */
   onStatus: (id: string, status: CandidateStatus) => void
+  /** 확인 창의 [지우기](AC-7914.3). 실패 알림은 부르는 쪽이 낸다(던지지 않음) */
+  onDelete: (id: string) => Promise<void>
   /** [무게 바꾸기](동네 훑기의 무게 판으로). 없으면 단추도 없다 */
   onEditWeights?: () => void
 }
@@ -49,6 +53,8 @@ const H2 = 'text-subtitle font-semibold text-ink'
 const ASIDE = 'text-small text-muted'
 const TEXT_BTN = `inline-flex cursor-pointer items-center whitespace-nowrap rounded-control font-medium text-accent hover:underline ${ds.focusRing}`
 const SMALL_BTN = `inline-flex h-8 cursor-pointer items-center justify-center whitespace-nowrap rounded-control border border-line-strong bg-surface px-3 text-small font-medium text-ink transition hover:bg-canvas ${ds.focusRing}`
+// [지우기]: 작은 단추에 붉은 글(앱 위험 색 text-negative)
+const SMALL_DANGER = `inline-flex h-8 cursor-pointer items-center justify-center whitespace-nowrap rounded-control border border-line-strong bg-surface px-3 text-small font-medium text-negative transition hover:bg-canvas ${ds.focusRing}`
 const LETTER = 'inline-grid size-5.5 shrink-0 place-items-center rounded-control bg-ink text-caption font-semibold text-surface'
 const PICK_BTN = `inline-flex h-10 cursor-pointer items-center gap-2 whitespace-nowrap rounded-control border border-line-strong bg-surface px-3 text-small text-ink-2 hover:bg-canvas aria-pressed:border-accent aria-pressed:bg-accent-soft aria-pressed:font-semibold aria-pressed:text-ink aria-pressed:ring-1 aria-pressed:ring-inset aria-pressed:ring-accent disabled:cursor-not-allowed disabled:opacity-40 ${ds.focusRing}`
 const TABLE = 'w-full border-collapse text-small'
@@ -119,8 +125,9 @@ type CompareRow = {
 
 type Scored = { row: CompareRow; letter: string; groups: GroupScore[]; total: number | null; max: Map<string, number> }
 
-export function CandidateCompare({ candidates, listings, rule, deptRule, homeEswt, today, onStatus, onEditWeights }: CandidateCompareProps) {
+export function CandidateCompare({ candidates, listings, rule, deptRule, homeEswt, today, onStatus, onDelete, onEditWeights }: CandidateCompareProps) {
   const [chosen, setChosen] = useState<readonly string[] | null>(null)
+  const [asking, setAsking] = useState<Candidate | null>(null)
   const filled = useMemo(() => fillScoreRule(rule), [rule])
   const rents = useMemo(() => compareListings(listings), [listings])
   const noDept = deptRule.rival.length === 0
@@ -194,7 +201,7 @@ export function CandidateCompare({ candidates, listings, rule, deptRule, homeEsw
             <span className={ASIDE}>{T.progressAside}</span>
           </div>
           {live.map((c) => (
-            <Progress key={c.id} candidate={c} letter={letters.get(c.id) ?? ''} onStatus={onStatus} />
+            <Progress key={c.id} candidate={c} letter={letters.get(c.id) ?? ''} onStatus={onStatus} onAskDelete={setAsking} />
           ))}
           {dropped.length > 0 && (
             <details>
@@ -211,14 +218,22 @@ export function CandidateCompare({ candidates, listings, rule, deptRule, homeEsw
                     )}
                   </span>
                   <span className="text-small">{T.droppedTag}</span>
-                  <button type="button" className={SMALL_BTN} onClick={() => onStatus(c.id, 'watching')}>
-                    {T.restore}
-                  </button>
+                  <div className="flex gap-2">
+                    <button type="button" className={SMALL_BTN} onClick={() => onStatus(c.id, 'watching')}>
+                      {T.restore}
+                    </button>
+                    <button type="button" className={SMALL_DANGER} onClick={() => setAsking(c)}>
+                      {T.delete}
+                    </button>
+                  </div>
                 </div>
               ))}
             </details>
           )}
         </section>
+      )}
+      {asking !== null && (
+        <DeleteCandidateDialog name={asking.name} onConfirm={() => onDelete(asking.id)} onCancel={() => setAsking(null)} onDone={() => setAsking(null)} />
       )}
     </div>
   )
@@ -456,7 +471,17 @@ function NoListing() {
   return <span className="font-medium text-muted">{T.noListing}</span>
 }
 
-function Progress({ candidate: c, letter, onStatus }: { candidate: Candidate; letter: string; onStatus: CandidateCompareProps['onStatus'] }) {
+function Progress({
+  candidate: c,
+  letter,
+  onStatus,
+  onAskDelete,
+}: {
+  candidate: Candidate
+  letter: string
+  onStatus: CandidateCompareProps['onStatus']
+  onAskDelete: (c: Candidate) => void
+}) {
   const cur = STEPS.indexOf(c.status)
   const saved = dayText(c.createdAt)
   const when = [c.addressNote.trim(), saved ? T.saved(saved) : ''].filter((t) => t !== '').join(' · ')
@@ -485,9 +510,14 @@ function Progress({ candidate: c, letter, onStatus }: { candidate: Candidate; le
           </button>
         ))}
       </div>
-      <button type="button" className={SMALL_BTN} onClick={() => onStatus(c.id, 'dropped')}>
-        {T.drop}
-      </button>
+      <div className="flex gap-2">
+        <button type="button" className={SMALL_BTN} onClick={() => onStatus(c.id, 'dropped')}>
+          {T.drop}
+        </button>
+        <button type="button" className={SMALL_DANGER} onClick={() => onAskDelete(c)}>
+          {T.delete}
+        </button>
+      </div>
     </div>
   )
 }

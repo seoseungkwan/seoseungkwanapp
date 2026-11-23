@@ -1,3 +1,4 @@
+import { particle } from '@/lib/contacts/korean'
 import type { CandidateStatus } from '@/types/location'
 
 // 후보 견주기 화면 글(시안 ?s=compare 글 그대로. requirements '화면 글 기본값'의 '고른 과목을 따르는 글' 표: 후보 견주기 = 줄 이름 `경쟁 의원` + 작은 글 고른 과목 짧은 이름).
@@ -66,6 +67,11 @@ export const COMPARE_TEXT = {
   dropped: (n: number) => `내려놓은 후보 ${n}곳`,
   droppedTag: '내려놓음',
   restore: '다시 올리기',
+  // 후보 지우기(AC-7914.3, TASK-93) — 줄 단추·확인 창
+  delete: '지우기',
+  deleteTitle: (name: string) => `'${name}'${particle(name, '을/를')} 지울까요?`,
+  deleteBody: '메모·사진·알림도 함께 지워지고 되돌릴 수 없어요.',
+  deleteCancel: '그만두기',
 } as const
 
 /** 후보 글자: 받은 차례대로 A·B·C … Z, 그 뒤는 27·28 … */

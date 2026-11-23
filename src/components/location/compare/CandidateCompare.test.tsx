@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ds } from '@/components/ui/classes'
 import { DEFAULT_DEPT_RULE } from '@/lib/location/depts'
@@ -163,6 +163,7 @@ const factsOf = (c: Candidate, rule: DeptRule = firstDepts(), listings: readonly
 function setup(over: Partial<CandidateCompareProps> = {}) {
   const onStatus = vi.fn<(id: string, status: CandidateStatus) => void>()
   const onEditWeights = vi.fn<() => void>()
+  const onDelete = vi.fn<(id: string) => Promise<void>>(async () => {})
   const props: CandidateCompareProps = {
     candidates: CANDS,
     listings: LISTINGS,
@@ -172,10 +173,11 @@ function setup(over: Partial<CandidateCompareProps> = {}) {
     today: TODAY,
     onStatus,
     onEditWeights,
+    onDelete,
     ...over,
   }
   const view = render(<CandidateCompare {...props} />)
-  return { onStatus, onEditWeights, props, ...view }
+  return { onStatus, onEditWeights, onDelete, props, ...view }
 }
 
 const table = () => screen.getByRole('table')
@@ -611,5 +613,64 @@ describe('AC-7914.1: 시험 준비', () => {
     const r = scoreItems(factsOf(C), freshRule(), 'candidate')
     expect(r.total).toBe(99)
     expect(r.groups.find((g) => g.id === 'cost')!.score).toBeNull()
+  })
+})
+
+// 후보 지우기(AC-7914.3, design.md 14절, TASK-93 — 2026-11-23 사용자 '모든 후보 줄에')
+describe('AC-7914.3: 후보 지우기', () => {
+  const dialog = () => screen.getByRole('dialog')
+  it('AC-7914.3: 진행 상태 줄 셋과 내려놓은 후보 줄 하나에 [지우기]가 있다', () => {
+    setup()
+    expect(screen.getAllByRole('button', { name: '지우기' })).toHaveLength(4)
+    const box = screen.getByText('내려놓은 후보 1곳').closest('details') as HTMLDetailsElement
+    expect(within(box).getAllByRole('button', { name: '지우기', hidden: true })).toHaveLength(1)
+  })
+
+  it('AC-7914.3: [지우기]를 누르면 확인 창(제목·본문·[그만두기]·[지우기], 초점 [그만두기])이 뜨고, [그만두기]면 부르지 않고 닫힌다', () => {
+    const { onDelete } = setup()
+    fireEvent.click(screen.getAllByRole('button', { name: '지우기' })[1])
+    const box = screen.getByRole('dialog', { name: "'나래상가 2층'을 지울까요?" })
+    expect(box.getAttribute('aria-modal')).toBe('true')
+    expect(within(box).getByText('메모·사진·알림도 함께 지워지고 되돌릴 수 없어요.')).toBeTruthy()
+    const buttons = within(box).getAllByRole('button')
+    expect(buttons.map((b) => b.textContent)).toEqual(['그만두기', '지우기'])
+    expect(document.activeElement).toBe(buttons[0])
+    fireEvent.click(buttons[0])
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(onDelete).not.toHaveBeenCalled()
+  })
+
+  it('AC-7914.3: 받침이 없으면 를(예시 빌라), Esc면 부르지 않고 닫힌다', () => {
+    const { onDelete } = setup({ candidates: [cand('id-e', '예시 빌라'), A] })
+    fireEvent.click(screen.getAllByRole('button', { name: '지우기' })[0])
+    expect(screen.getByRole('dialog', { name: "'예시 빌라'를 지울까요?" })).toBeTruthy()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(onDelete).not.toHaveBeenCalled()
+  })
+
+  it('AC-7914.3: 창의 [지우기]는 onDelete(id) 한 번 — 끝날 때까지 바쁨이고, 끝나면 창이 닫힌다', async () => {
+    let finish = () => {}
+    const onDelete = vi.fn<(id: string) => Promise<void>>(() => new Promise<void>((r) => (finish = r)))
+    setup({ onDelete })
+    fireEvent.click(screen.getAllByRole('button', { name: '지우기' })[2])
+    const yes = within(dialog()).getAllByRole('button')[1]
+    fireEvent.click(yes)
+    expect(onDelete).toHaveBeenCalledWith('id-c')
+    expect(yes.getAttribute('aria-busy')).toBe('true')
+    fireEvent.click(yes)
+    expect(onDelete).toHaveBeenCalledTimes(1)
+    finish()
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
+  it('AC-7914.3: 내려놓은 후보 줄의 [지우기]도 같은 창을 거쳐 onDelete(그 id)', async () => {
+    const { onDelete } = setup()
+    const box = screen.getByText('내려놓은 후보 1곳').closest('details') as HTMLDetailsElement
+    fireEvent.click(within(box).getByRole('button', { name: '지우기', hidden: true }))
+    const dlg = screen.getByRole('dialog', { name: "'예시상가 2층'을 지울까요?" })
+    fireEvent.click(within(dlg).getAllByRole('button')[1])
+    expect(onDelete).toHaveBeenCalledWith('id-d')
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
 })

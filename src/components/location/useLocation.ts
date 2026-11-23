@@ -23,6 +23,7 @@ import {
   addListing,
   addNote as addNoteRow,
   addPhoto as addPhotoRow,
+  deleteCandidate as deleteCandidateRow,
   deleteNote as deleteNoteRow,
   deletePhoto as deletePhotoRow,
   loadLocation,
@@ -563,6 +564,26 @@ export function useLocation() {
     },
     [client, patch],
   )
+  /** 후보 지우기(AC-7914.3 · AC-7902.4): 되면 그 후보와 메모·사진·알림을 빼고 매물은 후보 칸만 비운다. 실패하면 그대로 + 저장 실패 알림(던지지 않음) */
+  const removeCandidate = useCallback(
+    async (id: string): Promise<void> => {
+      try {
+        await deleteCandidateRow(client, id)
+      } catch {
+        setSaveError(true)
+        return
+      }
+      patch((d) => ({
+        ...d,
+        candidates: d.candidates.filter((c) => c.id !== id),
+        notes: d.notes.filter((n) => n.candidateId !== id),
+        photos: d.photos.filter((p) => p.candidateId !== id),
+        events: d.events.filter((e) => e.candidateId !== id),
+        listings: d.listings.map((l) => (l.candidateId === id ? { ...l, candidateId: null } : l)),
+      }))
+    },
+    [client, patch],
+  )
   const readPhoto = useCallback((path: string) => readPhotoFile(client, path), [client])
 
   // ── 동네 훑기(AC-7907.1): 동 경계를 읽고 collectScan 결과를 그대로(저장하지 않음) ──
@@ -621,6 +642,7 @@ export function useLocation() {
     findAddress,
     spotAddress,
     setStatus,
+    removeCandidate,
     saveCandidate,
     saveListing,
     addBroker,
