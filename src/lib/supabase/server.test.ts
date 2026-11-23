@@ -6,7 +6,7 @@ import { supabaseServer } from './server'
 
 // next/headers의 cookies()가 돌려주는 쿠키 저장소 흉내 (server-only는 vitest.config.ts가 빈 모듈로 바꾼다)
 const { createServerClient, cookies, store } = vi.hoisted(() => {
-  const store = { getAll: vi.fn(), set: vi.fn() }
+  const store = { get: vi.fn(), getAll: vi.fn(), set: vi.fn() }
   return { createServerClient: vi.fn(() => ({ auth: {} })), cookies: vi.fn(async () => store), store }
 })
 vi.mock('next/headers', () => ({ cookies }))
@@ -28,6 +28,7 @@ beforeEach(() => {
   vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key')
   createServerClient.mockClear()
   cookies.mockClear()
+  store.get.mockReset()
   store.getAll.mockReset()
   store.set.mockReset()
 })
@@ -82,5 +83,48 @@ describe('supabaseServer()', () => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', '')
     await expect(supabaseServer()).rejects.toThrow(/NEXT_PUBLIC_SUPABASE_URL/)
     expect(createServerClient).not.toHaveBeenCalled()
+  })
+})
+
+// 요청 쿠키에 보기 열쇠가 있으면 같은 머리를 붙인다(거르는 fetch는 없음) (admin-view AC-8004.4, design.md '보기 열쇠 · 브라우저 쓰기 막기')
+describe('AC-8004.4 supabaseServer() — 보기 쿠키', () => {
+  const KEY = '0f8fad5b-d9cb-469f-a165-70867728950e'
+  type Options = { cookies: CookieMethodsServer; global?: { headers?: Record<string, string>; fetch?: unknown } }
+
+  async function options(): Promise<Options> {
+    await supabaseServer()
+    const calls = createServerClient.mock.calls as unknown as [string, string, Options][]
+    return calls[0][2]
+  }
+
+  function viewCookie(value: string | undefined) {
+    store.get.mockImplementation((name: string) => (name === 'ssk_view' && value !== undefined ? { name, value } : undefined))
+  }
+
+  it('AC-8004.4: 쿠키 ssk_view가 uuid 모양이면 global.headers에 x-ssk-view(소문자)를 붙이고 fetch는 바꾸지 않는다', async () => {
+    viewCookie(KEY.toUpperCase())
+    const made = await options()
+    expect(made.global).toEqual({ headers: { 'x-ssk-view': KEY } })
+    expect(store.get).toHaveBeenCalledWith('ssk_view')
+  })
+
+  it('AC-8004.4: 머리를 붙여도 쿠키 처리(getAll·setAll)는 그대로다', async () => {
+    viewCookie(KEY)
+    store.getAll.mockReturnValue([{ name: COOKIE, value: 'old' }])
+    const made = await options()
+    expect(await made.cookies.getAll()).toEqual([{ name: COOKIE, value: 'old' }])
+    await made.cookies.setAll!(NEW_COOKIE, NO_STORE)
+    expect(store.set).toHaveBeenCalledWith(COOKIE, 'new', { path: '/', sameSite: 'lax' })
+  })
+
+  it.each([
+    ['쿠키 없음', undefined],
+    ['값 비었음', ''],
+    ['uuid 모양 아님', 'not-a-uuid'],
+    ['뒤에 더 붙음', `${KEY}; Path=/`],
+  ])('AC-8004.4: %s이면 지금과 같다(쿠키 처리만, global 없음)', async (_, value) => {
+    viewCookie(value)
+    const made = await options()
+    expect(Object.keys(made)).toEqual(['cookies'])
   })
 })
