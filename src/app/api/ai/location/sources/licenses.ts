@@ -198,6 +198,8 @@ export const clinicLicense: Adapter<'clinic-license', LicenseValue> = {
   kind: 'clinic-license',
   src: 'clinic-license',
   key: 'data',
+  // 쪽마다 8초 그대로. 30쪽 가운데 하나만 늦어도 통째로 실패하므로 시간 넘은 쪽은 한 번 더(design.md 3절, TASK-90)
+  retryTimeout: true,
   requests,
   parse,
 }

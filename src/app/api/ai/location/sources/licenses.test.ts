@@ -290,3 +290,10 @@ describe('clinic-license 쪽 한도 — AC-7904.3', () => {
     expect(value([pageOf(LICENSE_PAGE_ROWS - 1)], OPEN).capped).toBe(false)
   })
 })
+
+describe('AC-7903.3 3년 개폐업 시간 한도(TASK-90)', () => {
+  it('AC-7903.3: 쪽마다 8초(timeoutMs 없음)이고, 시간 넘은 쪽은 한 번 더 부른다', () => {
+    expect(clinicLicense.timeoutMs).toBeUndefined()
+    expect(clinicLicense.retryTimeout).toBe(true)
+  })
+})
