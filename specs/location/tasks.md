@@ -486,3 +486,9 @@
 - Files: src/app/api/ai/location/sources/clinicHours.ts, src/app/api/ai/location/sources/clinicHours.test.ts
 - Tests: src/app/api/ai/location/sources/clinicHours.test.ts
 - TDD: required — `clinicHours.requests`의 `Q1`은 시군구 이름의 빈칸을 뺀다: `성남시 수정구` → `성남시수정구`(국립중앙의료원은 빈칸이 있으면 0곳, 붙이면 251곳 — 진짜 답 2026-11-23). 빈칸 없는 이름(`종로구`)은 그대로(design 5절)
+
+## TASK-93: 후보 지우기 단추
+- REQ: REQ-7914, REQ-7902 · AC-7914.3, AC-7902.4
+- Files: src/components/location/compare/text.ts, src/components/location/compare/CandidateCompare.tsx, src/components/location/compare/CandidateCompare.test.tsx, src/components/location/compare/DeleteCandidateDialog.tsx, src/components/location/useLocation.ts, src/components/location/useLocation.test.ts, src/components/location/LocationScreen.tsx, docs/mockups/location/notes.md
+- Tests: src/components/location/compare/CandidateCompare.test.tsx, src/components/location/useLocation.test.ts
+- TDD: required — (1) 진행 상태 줄·내려놓은 후보 줄마다 [지우기] → 확인 창(제목·본문·[그만두기]·[지우기], 초점 [그만두기], Esc) → onDelete(id), [그만두기]·Esc는 부르지 않음. (2) `removeCandidate`: 되면 후보·메모·사진·알림 빼고 매물 candidateId null, 실패하면 그대로 + saveError. (3) `LocationScreen`이 `onDelete={api.removeCandidate}`(design 14절)
