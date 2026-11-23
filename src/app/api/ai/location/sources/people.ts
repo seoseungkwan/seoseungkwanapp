@@ -161,6 +161,9 @@ export const popAgeAdapter: Adapter<'pop-age', DongBands[]> = {
   kind: 'pop-age',
   src: 'pop-age',
   key: 'data',
+  // 진짜 답이 보통 5초·가끔 10~14초(배포 뒤 2026-11-23) → 20초까지 기다리고, 넘으면 한 번 더(design.md 3절, TASK-88)
+  timeoutMs: 20_000,
+  retryTimeout: true,
   requests: (q) => requestsFor(POP_AGE_PATH, 'admmCd', q),
   parse: parsePopAge,
 }

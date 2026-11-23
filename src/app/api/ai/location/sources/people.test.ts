@@ -221,3 +221,12 @@ describe('AC-7904.2 빈 답 · 활용신청 안 됨 · 모양 틀림', () => {
     expect(popAgeAdapter.parse([twice], popAge([HANEUL]), TODAY)).toEqual({ ok: false, code: 'failed' })
   })
 })
+
+describe('AC-7903.3 pop-age 시간 한도(TASK-88)', () => {
+  it('AC-7903.3: 인구는 하위 부르기 한도 20초이고 시간 넘은 부르기를 한 번 더 부른다. 세대(household)는 그대로(8초·다시 안 부름)', () => {
+    expect(popAgeAdapter.timeoutMs).toBe(20_000)
+    expect(popAgeAdapter.retryTimeout).toBe(true)
+    expect(householdAdapter.timeoutMs).toBeUndefined()
+    expect(householdAdapter.retryTimeout).toBeUndefined()
+  })
+})

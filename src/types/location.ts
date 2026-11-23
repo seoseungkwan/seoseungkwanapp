@@ -149,12 +149,14 @@ export type Parsed<V = unknown> = { ok: true; value: V; asOf: string } | { ok: f
 
 // 종류 하나를 읽는 곳(app/api/ai/location/sources/<묶음>.ts, 순수). requests는 정해 둔 쪽 수까지 요청을 만들고,
 // parse는 그 차례대로 받은 답 글자를 읽는다. 열쇠는 받지 않는다(fetchSource가 넣는다).
-// timeoutMs = 바깥 부르기 하나의 시간 한도(ms, 최대 60,000) — 없으면 fetchSource 기본 8초(비급여 nonpay만 60,000)
+// timeoutMs = 바깥 부르기 하나의 시간 한도(ms, 최대 60,000) — 없으면 fetchSource 기본 8초(비급여 nonpay 60,000 · 인구 pop-age 20,000 · 체력단련장 gym 15,000).
+// retryTimeout = 참이면 시간 한도를 넘은 하위 부르기만 같은 요청으로 한 번 더 부른다(인구·체력단련장, design.md 3절 — 다른 실패는 다시 안 부름)
 export type Adapter<K extends QueryKind = QueryKind, V = unknown> = {
   kind: K
   src: SourceId
   key: KeyKind
   timeoutMs?: number
+  retryTimeout?: boolean
   requests(q: QueryOf<K>): SiteRequest[]
   parse(texts: string[], q: QueryOf<K>, today: string): Parsed<V>
 }

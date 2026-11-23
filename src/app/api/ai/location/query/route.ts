@@ -9,7 +9,8 @@ import { REGISTRY } from '../registry'
 // 관리자 확인 → 몸통 검사 → 종류의 읽는 곳 → 열쇠(서버 환경 변수) → 요청을 동시에 2개씩 정해 둔 host로 → 답 읽기 → { ok, value, src, asOf }.
 // Claude는 부르지 않고, DB에 쓰지 않고, 아무것도 담아 두지 않는다(카카오 답 포함). 400·401·403·500은 몸통 없음, 나머지는 200 + 몸통.
 // 로그는 console.error('[api/ai/location]', 오류 번호, 종류) 한 줄만 — 좌표·주소·답 글자·열쇠는 남기지 않는다.
-// 하위 부르기마다 시간 한도는 읽는 곳의 timeoutMs(비급여 60초), 없으면 8초. 실행 한도 120초 = 비급여 한 번 60초 + 의원 목록 과목 열아홉을
+// 하위 부르기마다 시간 한도는 읽는 곳의 timeoutMs(비급여 60초·인구 20초·체력단련장 15초), 없으면 8초. 읽는 곳의 retryTimeout이 참이면
+// 시간 한도를 넘은 하위 부르기만 한 번 더 부른다(design.md 3절, TASK-88). 실행 한도 120초 = 비급여 한 번 60초 + 의원 목록 과목 열아홉을
 // 둘씩 부를 시간(Vercel 무료판 최대 300초 안, 다른 AI 경로와 같은 값, design.md 3절).
 // 이 파일은 Next가 아는 이름(POST·runtime·maxDuration)만 export한다
 export const runtime = 'nodejs'
@@ -28,9 +29,15 @@ function failed(code: Fail, kind: QueryKind): QueryReply {
 }
 
 // 요청을 동시에 RUNNING개씩 부르고 답 글자를 요청 차례로 모은다. 하나라도 못 받으면 남은 것은 새로 부르지 않는다.
+// retry가 참이면 시간 한도를 넘은(timeout) 하위 부르기만 같은 요청으로 한 번 더 부른다 — 두 번째도 넘거나 다른 실패면 그대로 실패.
 // 공공 자료 답이 '미등록 열쇠'(200 + 결과 코드 20·30, 또는 401·403 + 미등록 몸통 → fetchSource가 not-applied)면 not-applied —
 // 다른 하위 부르기가 먼저 실패했어도 실패보다 앞선다
-async function fetchAll(requests: readonly SiteRequest[], key: SourceKey, timeoutMs: number | undefined): Promise<string[] | Fail> {
+async function fetchAll(
+  requests: readonly SiteRequest[],
+  key: SourceKey,
+  timeoutMs: number | undefined,
+  retry: boolean,
+): Promise<string[] | Fail> {
   const texts: string[] = new Array<string>(requests.length)
   let next = 0
   let stop: Fail | null = null
@@ -38,7 +45,8 @@ async function fetchAll(requests: readonly SiteRequest[], key: SourceKey, timeou
     while (stop === null && next < requests.length) {
       const i = next
       next += 1
-      const got = await fetchSource(requests[i], key, timeoutMs)
+      let got = await fetchSource(requests[i], key, timeoutMs)
+      if (retry && !got.ok && got.fail === 'timeout') got = await fetchSource(requests[i], key, timeoutMs)
       if (!got.ok && got.fail === 'not-applied') {
         stop = 'not-applied'
         return
@@ -72,7 +80,7 @@ async function answer(q: Query, registry: Registry): Promise<QueryReply> {
   }
   if (!Array.isArray(requests) || requests.length > MAX_REQUESTS) return failed('failed', q.kind)
 
-  const texts = await fetchAll(requests, { kind: adapter.key, value }, adapter.timeoutMs)
+  const texts = await fetchAll(requests, { kind: adapter.key, value }, adapter.timeoutMs, adapter.retryTimeout === true)
   if (!Array.isArray(texts)) return failed(texts, q.kind)
   try {
     const parsed = adapter.parse(texts, q, todayInKorea())

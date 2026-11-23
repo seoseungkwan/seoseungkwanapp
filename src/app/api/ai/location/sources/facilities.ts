@@ -385,6 +385,9 @@ export const gymAdapter: Adapter<'gym', PlaceList<GymPlace>> = {
   kind: 'gym',
   src: 'gym',
   key: 'data',
+  // 진짜 답이 보통 1초 안·가끔 14~15초(배포 뒤 2026-11-23) → 15초까지 기다리고, 넘으면 한 번 더(design.md 3절, TASK-88)
+  timeoutMs: 15_000,
+  retryTimeout: true,
   requests: (q) =>
     pageRequests('gym', {
       'cond[ROAD_NM_ADDR::LIKE]': [sidoOf(q), q.sggName].filter((w) => w !== '').join(' '),

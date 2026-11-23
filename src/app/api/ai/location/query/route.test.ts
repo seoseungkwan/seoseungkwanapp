@@ -617,3 +617,81 @@ describe('AC-7903.4 서버 파일 규칙(소스 글자)', () => {
     }
   })
 })
+
+// 인구·체력단련장(retryTimeout)은 시간 한도를 넘은 하위 부르기만 한 번 더 부른다(design.md 3절, TASK-88)
+describe('AC-7903.3 시간 넘은 부르기 한 번 더(TASK-88)', () => {
+  const run = async (adapter: Adapter, steps: (pending: Pending[]) => Promise<void>) => {
+    vi.useRealTimers()
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'], now: new Date('2026-11-21T16:00:00Z') })
+    const pending = gate()
+    setRegistry(adapter)
+    let res: Response | undefined
+    void POST(post(POP_Q)).then((r) => {
+      res = r
+    })
+    await settle()
+    await steps(pending)
+    await settle()
+    return { pending, res: () => res }
+  }
+  const slowPop = (retry: boolean) => {
+    const adapter = popAge(1)
+    adapter.timeoutMs = 20_000
+    if (retry) adapter.retryTimeout = true
+    return adapter
+  }
+  const expire = async (ms: number) => {
+    await vi.advanceTimersByTimeAsync(ms)
+    await settle()
+  }
+
+  it('AC-7903.3: 첫 부르기가 20초를 넘으면 같은 요청을 한 번 더 부르고, 그 답이 오면 그것을 쓴다', async () => {
+    const { pending, res } = await run(slowPop(true), async (p) => {
+      expect(p).toHaveLength(1)
+      await expire(20_000)
+      expect(p[0].signal.aborted).toBe(true)
+      expect(p).toHaveLength(2)
+      expect(p[1].url).toBe(p[0].url)
+      p[1].answer(new Response('{"n":2}'))
+    })
+    expect(pending).toHaveLength(2)
+    const got = res()
+    expect(got).toBeDefined()
+    if (got) expect(await bodyOf(got)).toMatchObject({ ok: true, value: ['{"n":2}'] })
+    expect(errorSpy).not.toHaveBeenCalled()
+  })
+
+  it('AC-7903.3: 두 번째도 넘으면 failed이고 세 번째는 부르지 않는다', async () => {
+    const { pending, res } = await run(slowPop(true), async () => {
+      await expire(20_000)
+      await expire(20_000)
+    })
+    expect(pending).toHaveLength(2)
+    const got = res()
+    expect(got).toBeDefined()
+    if (got) expect(await bodyOf(got)).toEqual({ ok: false, code: 'failed' })
+    expect(errorSpy.mock.calls).toEqual([[LOG, 'E-LOC-SOURCE', 'pop-age']])
+  })
+
+  it('AC-7903.3: retryTimeout이 없는 종류는 시간이 넘어도 다시 부르지 않는다', async () => {
+    const { pending, res } = await run(slowPop(false), async () => {
+      await expire(20_000)
+    })
+    expect(pending).toHaveLength(1)
+    const got = res()
+    if (got) expect(await bodyOf(got)).toEqual({ ok: false, code: 'failed' })
+    expect(got).toBeDefined()
+  })
+
+  it('AC-7903.3: 시간 넘음이 아닌 실패(HTTP 500·연결 끊김)는 retryTimeout이어도 다시 부르지 않는다', async () => {
+    for (const fail of [(p: Pending) => p.answer(new Response('x', { status: 500 })), (p: Pending) => p.fail()]) {
+      const { pending, res } = await run(slowPop(true), async (p) => {
+        fail(p[0])
+      })
+      expect(pending).toHaveLength(1)
+      const got = res()
+      expect(got).toBeDefined()
+      if (got) expect(await bodyOf(got)).toEqual({ ok: false, code: 'failed' })
+    }
+  })
+})

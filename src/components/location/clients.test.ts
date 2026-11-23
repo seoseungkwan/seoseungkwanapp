@@ -43,6 +43,8 @@ afterEach(() => {
 // ── 바깥 자료 ────────────────────────────────────────────────
 
 const POP: Query = { kind: 'pop-age', dongs: ['9999051500'], ym: '2025-10' }
+// 기본 한도(10초)를 쓰는 종류 — 인구는 TASK-88부터 45초
+const HOUSEHOLD: Query = { kind: 'household', dongs: ['9999051500'], ym: '2025-10' }
 const OK_REPLY = { ok: true, value: [{ code10: '9999051500', bands: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] }], src: 'pop-age', asOf: '2025-10-31' }
 
 describe('queryLocation — POST /api/ai/location/query', () => {
@@ -117,7 +119,7 @@ describe('queryLocation — POST /api/ai/location/query', () => {
     vi.useFakeTimers()
     hang()
     let done: unknown = 'waiting'
-    void queryLocation(POP).then((r) => (done = r))
+    void queryLocation(HOUSEHOLD).then((r) => (done = r))
     await vi.advanceTimersByTimeAsync(9_999)
     expect(done).toBe('waiting')
     await vi.advanceTimersByTimeAsync(1)
@@ -135,7 +137,7 @@ describe('queryLocation — POST /api/ai/location/query', () => {
     ['hosp-list 한의원', 60_000, HOSP_KOREAN],
     ['nonpay(서버 한도 60초보다 길게)', 70_000, NONPAY],
     ['hosp-detail(기본)', 10_000, HOSP_DETAIL],
-    ['pop-age(기본)', 10_000, POP],
+    ['household(기본)', 10_000, HOUSEHOLD],
   ] as const)('AC-7922.2: 한도는 종류마다 — %s는 %i ms가 지나야 끊고 failed', async (_name, limitMs, q) => {
     vi.useFakeTimers()
     hang()
@@ -359,5 +361,28 @@ describe('정적 파일 읽기 — 같은 origin /location/…', () => {
     fetchMock.mockReset()
     reply({ ...RAIL_FILE, stations: [...RAIL_FILE.stations, { name: '자차', lng: 127, lat: 37.5 }] })
     expect(await readRail()).toEqual(RAIL_FILE)
+  })
+})
+
+// 인구(한 번 20초 × 두 번)·체력단련장(5쪽을 둘씩 = 3번 × 15초 × 두 번 = 최대 90초)은 서버가 시간 넘은 부르기를 한 번 더 부르므로
+// 브라우저가 그보다 조금 길게 기다린다(design.md 3절, TASK-88)
+describe('AC-7903.3 인구·체력단련장 브라우저 한도(TASK-88)', () => {
+  const GYM_Q: Query = { kind: 'gym', sggName: '가람구', sidoName: '가상도' }
+  it.each([
+    ['인구(pop-age)', POP, 45_000],
+    ['체력단련장(gym)', GYM_Q, 95_000],
+  ] as const)('AC-7903.3: %s는 10초에 끊지 않고 그보다 긴 한도(인구 45초·체력단련장 95초)가 지나야 끊고 failed', async (_name, q, limitMs) => {
+    vi.useFakeTimers()
+    hang()
+    let done: unknown = 'waiting'
+    void queryLocation(q).then((r) => (done = r))
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(done).toBe('waiting')
+    await vi.advanceTimersByTimeAsync(limitMs - 10_001)
+    expect(done).toBe('waiting')
+    expect(lastCall().init.signal.aborted).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(done).toEqual(FAILED)
+    expect(lastCall().init.signal.aborted).toBe(true)
   })
 })

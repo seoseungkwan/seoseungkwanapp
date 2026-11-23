@@ -417,3 +417,10 @@ describe('AC-7904.3 여러 쪽 자료는 정해 둔 쪽 수까지만 받고 넘�
     })
   }
 })
+
+describe('AC-7903.3 체력단련장 시간 한도(TASK-88)', () => {
+  it('AC-7903.3: 체력단련장은 하위 부르기 한도 15초이고 시간 넘은 부르기를 한 번 더 부른다', () => {
+    expect(gymAdapter.timeoutMs).toBe(15_000)
+    expect(gymAdapter.retryTimeout).toBe(true)
+  })
+})
