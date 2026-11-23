@@ -311,10 +311,13 @@ export function useLocation() {
   )
 
   // ── 다시 받기 · 범위 바꾸기(AC-7908.3) ──
+  // 같은 후보를 받는 중이면 다시 부르지 않는다(겹쳐 돌지 않게 — AC-7917.4, TASK-95)
+  const refreshingIds = useRef(new Set<string>())
   const refresh = useCallback(
     async (id: string, radiusM?: RadiusM): Promise<void> => {
       const c = latest.current?.candidates.find((x) => x.id === id)
-      if (!c) return
+      if (!c || refreshingIds.current.has(id)) return
+      refreshingIds.current.add(id)
       const show = (p: Progress) => setRefreshing((r) => ({ ...r, [id]: p }))
       show(START)
       try {
@@ -326,6 +329,7 @@ export function useLocation() {
       } catch {
         setSaveError(true)
       } finally {
+        refreshingIds.current.delete(id)
         setRefreshing((r) => {
           const { [id]: _done, ...rest } = r
           void _done

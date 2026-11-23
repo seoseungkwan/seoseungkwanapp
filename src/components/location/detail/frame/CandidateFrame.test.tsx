@@ -5,6 +5,7 @@ import { DEFAULT_DEPT_RULE } from '@/lib/location/depts'
 import { scoreFactsOf } from '@/lib/location/facts'
 import { DEFAULT_SCORE_RULE, scoreItems, type ScoreRule } from '@/lib/location/score'
 import type { Candidate, DeptRule, Listing } from '@/types/location'
+import { WhyLine } from '@/components/location/common/WhyLine'
 import { CandidateFrame, RADIUS_DELAY_MS, SECTIONS, type CandidateFrameProps, type SectionId } from './CandidateFrame'
 import { CAND_ID, OTHER_ID, OTHER_LISTING, RIVALS, TODAY, makeCandidate, makeListing, makeRival, makeSnapshot, ok } from './frame.test.data'
 
@@ -470,5 +471,18 @@ describe('AC-7908.4: 카카오 자료는 열 때마다 새로', () => {
     expect(onRefresh.mock.calls).toEqual([[CAND_ID]])
     expect(onRadius.mock.calls).toEqual([[CAND_ID, 700]])
     expect(JSON.stringify([onRefresh.mock.calls, onRadius.mock.calls])).not.toContain('가람로')
+  })
+})
+
+// 다시 받는 중(AC-7917.4, TASK-95): 틀이 받은 진행(progress)을 칸들에 문맥으로 내려 준다
+describe('AC-7917.4: 받는 중이면 칸마다 다시 받는 중', () => {
+  it('AC-7917.4: progress가 있으면 칸 안 못 받은 글이 `다시 받는 중이에요 · 자료 12/40`, 없으면 [다시 받기]', () => {
+    const own = { ...props().sections, people: <WhyLine why="failed" src="pop-age" onRetry={vi.fn()} /> }
+    const { rerender } = render(<CandidateFrame {...props({ sections: own, progress: { done: 12, total: 40 } })} />)
+    expect(screen.getByText('다시 받는 중이에요 · 자료 12/40')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '다시 받기' })).toBeNull()
+    rerender(<CandidateFrame {...props({ sections: own, progress: null })} />)
+    expect(screen.getByRole('button', { name: '다시 받기' })).toBeTruthy()
+    expect(screen.queryByText(/다시 받는 중이에요/)).toBeNull()
   })
 })

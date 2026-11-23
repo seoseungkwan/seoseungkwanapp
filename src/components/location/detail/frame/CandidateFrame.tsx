@@ -21,6 +21,8 @@ import { candidateListing, flagInputOf, rivalCount, scoreFactsOf, shownValue, so
 import { pickFlags } from '@/lib/location/flags'
 import { manText } from '@/lib/location/money'
 import { fillScoreRule, scoreItems, type ScoreRule } from '@/lib/location/score'
+import { RefreshBusy } from '@/components/location/common/RefreshBusy'
+import { refreshingText } from '@/components/location/common/text'
 import type { Candidate, DeptRule, Listing, RadiusM, SggAvg, SourceId } from '@/types/location'
 import { FlagList } from './FlagList'
 import { FrameHead, type FrameTab } from './FrameHead'
@@ -143,6 +145,8 @@ export function CandidateFrame(props: CandidateFrameProps) {
   const day = koreanDay(c.snapshot ? (c.snapshotAt ?? c.snapshot.at) : null)
   const frozen = day === null ? T.noSnapshot : T.frozen(day, day !== koreanDay(c.createdAt))
   const busy = progress != null
+  // 받는 중이면 칸마다 `다시 받는 중이에요 · 자료 n/m`(문맥 RefreshBusy, AC-7917.4, TASK-95)
+  const busyText = busy ? refreshingText(progress.done, progress.total) : null
   const address = (props.kakaoAddress ?? '').trim() || c.addressNote.trim()
 
   const shown = SECTIONS.filter((s) => sections[s.id] != null && sections[s.id] !== false)
@@ -217,7 +221,7 @@ export function CandidateFrame(props: CandidateFrameProps) {
           </section>
           {shown.map((s) => (
             <div key={s.id} ref={spot(s.id)} tabIndex={-1} className={look.section}>
-              {sections[s.id]}
+              <RefreshBusy.Provider value={busyText}>{sections[s.id]}</RefreshBusy.Provider>
             </div>
           ))}
         </div>

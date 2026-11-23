@@ -1,4 +1,6 @@
+import { useContext } from 'react'
 import { ds } from '@/components/ui/classes'
+import { RefreshBusy } from '@/components/location/common/RefreshBusy'
 import { SourceLine } from '@/components/location/common/SourceLine'
 import { WhyLine } from '@/components/location/common/WhyLine'
 import { RETRY_LABEL } from '@/components/location/common/text'
@@ -46,6 +48,8 @@ export function PriceSection({
   howOpen,
   onHow,
 }: PriceSectionProps) {
+  // 다시 받는 중이면 못 받은 줄에 그 글만(AC-7917.4, TASK-95)
+  const busy = useContext(RefreshBusy)
   const shown = shownOf(rivals)
   const rows = shown ? priceRows(shown.v, radiusM, deptRule) : []
   const eswt = pricesOf(rows, (d) => d.eswt)
@@ -107,8 +111,8 @@ export function PriceSection({
           )}
           {failed.length > 0 && (
             <div data-testid="price-failed" className={`mt-1 text-small ${MUTED}`}>
-              <p className="inline">{`${failed.join(' · ')}: ${FAILED}`}</p>
-              {onRetry && (
+              <p className="inline">{onRetry && busy !== null ? busy : `${failed.join(' · ')}: ${FAILED}`}</p>
+              {onRetry && busy === null && (
                 <button type="button" className={RETRY} onClick={onRetry}>
                   {RETRY_LABEL}
                 </button>

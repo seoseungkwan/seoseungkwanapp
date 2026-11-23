@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Got, Rival, SnapshotValue } from '@/types/location'
 import { HoursSection } from './HoursSection'
 import { OthersSection } from './OthersSection'
+import { RefreshBusy } from '@/components/location/common/RefreshBusy'
 import { PriceSection } from './PriceSection'
 import { RivalsSection } from './RivalsSection'
 import {
@@ -699,5 +700,19 @@ describe('AC-7909.3: 견본 확인', () => {
     expect(Object.keys(r).sort()).toEqual(['address', 'at', 'depts', 'detail', 'distM', 'doctors', 'name', 'openedYear', 'sameBuilding'])
     const failed: Got<Rival[]> = { ok: false, why: 'failed', src: 'hosp-list' }
     expect(failed.ok).toBe(false)
+  })
+})
+
+// 다시 받는 중(AC-7917.4, TASK-95): 경쟁 의원 진료비의 못 받은 줄도 같은 글
+describe('AC-7917.4: 진료비 못 받은 줄 — 다시 받는 중', () => {
+  it('AC-7917.4: 받는 중이면 `{의원}: 지금 받지 못했어요.` [다시 받기] 대신 `다시 받는 중이에요 · 자료 12/40`', () => {
+    render(
+      <RefreshBusy.Provider value="다시 받는 중이에요 · 자료 12/40">
+        <PriceSection radiusM={1000} rivals={okRivals} deptRule={RULE} homeEswt={null} {...HOW} onRetry={vi.fn()} />
+      </RefreshBusy.Provider>,
+    )
+    const failed = screen.getByTestId('price-failed')
+    expect(text(failed)).toBe('다시 받는 중이에요 · 자료 12/40')
+    expect(within(failed).queryByRole('button')).toBeNull()
   })
 })

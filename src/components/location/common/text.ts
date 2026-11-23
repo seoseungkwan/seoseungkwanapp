@@ -63,3 +63,5 @@ export function cappedText(n: number): string {
 }
 
 export const RETRY_LABEL = '다시 받기'
+/** 다시 받는 중 칸 글(AC-7917.4, TASK-95) */
+export const refreshingText = (done: number, total: number) => `다시 받는 중이에요 · 자료 ${done}/${total}`

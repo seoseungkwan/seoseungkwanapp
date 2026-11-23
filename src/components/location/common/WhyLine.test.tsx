@@ -2,6 +2,8 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Why } from '@/types/location'
+import { RefreshBusy } from './RefreshBusy'
+import { refreshingText } from './text'
 import { WhyLine } from './WhyLine'
 
 afterEach(cleanup)
@@ -59,5 +61,47 @@ describe('AC-7917.2: 자료 없음 글 WhyLine', () => {
   it('AC-7917.2: SOURCES에 없는 출처 id면 아무것도 그리지 않는다', () => {
     const { container } = render(<WhyLine why="none" src="no-such-source" />)
     expect(container.innerHTML).toBe('')
+  })
+})
+
+// 다시 받는 중(AC-7917.4, design.md 15절, TASK-95 — 사용자 '칸마다 다시 받는 중')
+describe('AC-7917.4: 다시 받는 중이면 못 받은 칸에 그 글', () => {
+  it('AC-7917.4: 글은 `다시 받는 중이에요 · 자료 {받은 수}/{모두}`', () => {
+    expect(refreshingText(12, 40)).toBe('다시 받는 중이에요 · 자료 12/40')
+  })
+
+  it('AC-7917.4: 받는 중이면 failed + [다시 받기] 자리에 그 글만(단추 없음), 옛 값 줄은 그대로', () => {
+    render(
+      <RefreshBusy.Provider value={refreshingText(12, 40)}>
+        <WhyLine why="failed" src="hosp-list" prevAsOf="2026-10-31" onRetry={vi.fn()} />
+      </RefreshBusy.Provider>,
+    )
+    expect(screen.getByText('다시 받는 중이에요 · 자료 12/40')).toBeTruthy()
+    expect(screen.queryByText('지금 받지 못했어요.')).toBeNull()
+    expect(screen.queryByRole('button', { name: '다시 받기' })).toBeNull()
+    expect(screen.getByText(/지난 값/)).toBeTruthy()
+  })
+
+  it('AC-7917.4: 카카오 값 칸·단추 없는 칸·다른 까닭은 받는 중이어도 그대로', () => {
+    render(
+      <RefreshBusy.Provider value={refreshingText(1, 2)}>
+        <WhyLine why="failed" src="kakao-local" onRetry={vi.fn()} />
+        <WhyLine why="failed" src="gym" />
+        <WhyLine why="not-applied" src="nonpay" onRetry={vi.fn()} />
+      </RefreshBusy.Provider>,
+    )
+    expect(screen.queryByText('다시 받는 중이에요 · 자료 1/2')).toBeNull()
+    expect(screen.getAllByText('지금 받지 못했어요.')).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: '다시 받기' })).toHaveLength(1)
+  })
+
+  it('AC-7917.4: 받는 중이 아니면(null) 지금처럼 글과 [다시 받기]', () => {
+    render(
+      <RefreshBusy.Provider value={null}>
+        <WhyLine why="failed" src="hosp-list" onRetry={vi.fn()} />
+      </RefreshBusy.Provider>,
+    )
+    expect(screen.getByText('지금 받지 못했어요.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '다시 받기' })).toBeTruthy()
   })
 })

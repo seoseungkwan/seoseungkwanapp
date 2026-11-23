@@ -700,3 +700,27 @@ describe('후보 지우기 (AC-7914.3 · AC-7902.4)', () => {
     expect(result.current.saveError).toBe(true)
   })
 })
+
+// 같은 후보를 받는 중이면 다시 부르지 않는다(AC-7917.4, TASK-95 — 겹쳐 돌지 않게)
+describe('다시 받기 겹치지 않기 (AC-7917.4)', () => {
+  it('AC-7917.4: 받는 중에 refresh를 또 부르면 모으기를 다시 부르지 않고, 끝난 뒤에는 다시 부를 수 있다', async () => {
+    vi.mocked(updateCandidate).mockImplementation(async (_c, id, ch) => makeCandidate({ id, ...ch }))
+    let finish: (s: Snapshot) => void = () => {}
+    vi.mocked(collect).mockImplementationOnce(() => new Promise<Snapshot>((r) => (finish = r)))
+    const { result } = await ready()
+    let first: Promise<void> = Promise.resolve()
+    act(() => {
+      first = result.current.refresh(CAND_ID)
+    })
+    await waitFor(() => expect(result.current.refreshing[CAND_ID]).toBeTruthy())
+    await act(async () => result.current.refresh(CAND_ID))
+    expect(collect).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      finish(validSnapshot())
+      await first
+    })
+    expect(result.current.refreshing).toEqual({})
+    await act(async () => result.current.refresh(CAND_ID))
+    expect(collect).toHaveBeenCalledTimes(2)
+  })
+})
