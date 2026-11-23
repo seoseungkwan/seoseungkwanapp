@@ -157,6 +157,8 @@ export type Adapter<K extends QueryKind = QueryKind, V = unknown> = {
   key: KeyKind
   timeoutMs?: number
   retryTimeout?: boolean
+  /** 있으면 요청 1을 먼저 받아 그 답으로 몇 쪽까지 받을지 정한다(1~요청 수로 자름 — 3년 개폐업, design.md 3절, TASK-91) */
+  pagesNeeded?(first: string, q: QueryOf<K>): number
   requests(q: QueryOf<K>): SiteRequest[]
   parse(texts: string[], q: QueryOf<K>, today: string): Parsed<V>
 }

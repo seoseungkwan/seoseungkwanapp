@@ -24,6 +24,8 @@ const SLOW_QUERY_MS: Readonly<Partial<Record<QueryKind, number>>> = {
   'clinic-license': 125_000,
   'pop-age': 45_000,
   gym: 95_000,
+  // 사람 흐름 한 묶음 = 10쪽을 둘씩 5번, 쪽마다 보통 2초 → 10초 한도에 끊겼음(TASK-91)
+  'flow-volume': 60_000,
 }
 
 const REPLY_CODES: readonly ReplyCode[] = ['no-key', 'not-applied', 'failed']

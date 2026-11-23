@@ -386,3 +386,18 @@ describe('AC-7903.3 인구·체력단련장 브라우저 한도(TASK-88)', () =>
     expect(lastCall().init.signal.aborted).toBe(true)
   })
 })
+
+describe('AC-7903.3 사람 흐름 브라우저 한도(TASK-91)', () => {
+  it('AC-7903.3: 사람 흐름(flow-volume) 한 묶음은 10초에 끊지 않고 60초가 지나야 끊고 failed', async () => {
+    vi.useFakeTimers()
+    hang()
+    let done: unknown = 'waiting'
+    void queryLocation({ kind: 'flow-volume', sido: '99', sgg: '99110', ym: '2026-09' } as Query).then((r) => (done = r))
+    await vi.advanceTimersByTimeAsync(59_999)
+    expect(done).toBe('waiting')
+    expect(lastCall().init.signal.aborted).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(done).toEqual(FAILED)
+    expect(lastCall().init.signal.aborted).toBe(true)
+  })
+})

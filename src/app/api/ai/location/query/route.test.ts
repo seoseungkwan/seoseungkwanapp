@@ -695,3 +695,47 @@ describe('AC-7903.3 시간 넘은 부르기 한 번 더(TASK-88)', () => {
     }
   })
 })
+
+// 1쪽을 먼저 받아 그 답으로 몇 쪽까지 받을지 정한다(3년 개폐업, design.md 3절, TASK-91)
+describe('AC-7904.2 필요한 쪽만(pagesNeeded, TASK-91)', () => {
+  it('AC-7904.2: pagesNeeded가 있으면 1쪽 답으로 정한 쪽까지만 부르고 그 답들로 읽는다', async () => {
+    const { fn } = site((url) => new Response(`{"page":"${new URL(url).searchParams.get('pageNo')}"}`))
+    const adapter = popAge(5)
+    adapter.pagesNeeded = vi.fn(() => 2)
+    setRegistry(adapter)
+    const res = await POST(post(POP_Q))
+    expect(fn).toHaveBeenCalledTimes(2)
+    expect(adapter.pagesNeeded).toHaveBeenCalledWith('{"page":"1"}', expect.objectContaining({ kind: 'pop-age' }))
+    expect(adapter.parse).toHaveBeenCalledWith(['{"page":"1"}', '{"page":"2"}'], expect.anything(), expect.any(String))
+    expect(await bodyOf(res)).toMatchObject({ ok: true, value: ['{"page":"1"}', '{"page":"2"}'] })
+  })
+  it('AC-7904.2: 정한 쪽 수는 1~요청 수로 자르고, 던지거나 숫자가 아니면 요청 수만큼 부른다', async () => {
+    for (const [answer, calls] of [
+      [() => 0, 1],
+      [() => 1, 1],
+      [() => 99, 5],
+      [() => Number.NaN, 5],
+      [() => {
+        throw new Error('x')
+      }, 5],
+    ] as const) {
+      const { fn } = site(() => new Response('{"n":1}'))
+      const adapter = popAge(5)
+      adapter.pagesNeeded = vi.fn(answer)
+      setRegistry(adapter)
+      await POST(post(POP_Q))
+      expect(fn, String(calls)).toHaveBeenCalledTimes(calls)
+      vi.unstubAllGlobals()
+    }
+  })
+  it('AC-7904.2: 1쪽을 못 받으면 나머지를 부르지 않고 failed', async () => {
+    const { fn } = site(() => new Response('x', { status: 500 }))
+    const adapter = popAge(5)
+    adapter.pagesNeeded = vi.fn(() => 5)
+    setRegistry(adapter)
+    const res = await POST(post(POP_Q))
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(adapter.pagesNeeded).not.toHaveBeenCalled()
+    expect(await bodyOf(res)).toEqual({ ok: false, code: 'failed' })
+  })
+})

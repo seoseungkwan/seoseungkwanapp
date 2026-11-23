@@ -232,3 +232,10 @@ describe('AC-7904.2 빈 답 · 활용신청 안 됨 · 모양 틀림', () => {
     expect(flowBus.parse(pages(fixture('bus-too-many.json'), B), BUS_Q, TODAY)).toEqual({ ok: false, code: 'failed' })
   })
 })
+
+describe('AC-7903.3 사람 흐름 시간 한도(TASK-91)', () => {
+  it('AC-7903.3: 이용량은 쪽마다 15초이고 시간 넘은 쪽은 한 번 더 부른다', () => {
+    expect(flowVolume.timeoutMs).toBe(15_000)
+    expect(flowVolume.retryTimeout).toBe(true)
+  })
+})

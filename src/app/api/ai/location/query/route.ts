@@ -66,6 +66,17 @@ async function fetchAll(
   return stop ?? texts
 }
 
+// 받을 쪽 수: 읽는 곳의 pagesNeeded(1쪽 답)를 1~요청 수로 자른다. 던지거나 정수가 아니면 요청 수
+function pagesOf(adapter: Adapter, first: string, q: Query, max: number): number {
+  let n: number
+  try {
+    n = adapter.pagesNeeded!(first, q as never)
+  } catch {
+    return max
+  }
+  return Number.isInteger(n) ? Math.min(Math.max(n, 1), max) : max
+}
+
 async function answer(q: Query, registry: Registry): Promise<QueryReply> {
   const adapter = registry[q.kind] as Adapter | undefined
   if (adapter === undefined || adapter.kind !== q.kind) return failed('failed', q.kind)
@@ -80,7 +91,22 @@ async function answer(q: Query, registry: Registry): Promise<QueryReply> {
   }
   if (!Array.isArray(requests) || requests.length > MAX_REQUESTS) return failed('failed', q.kind)
 
-  const texts = await fetchAll(requests, { kind: adapter.key, value }, adapter.timeoutMs, adapter.retryTimeout === true)
+  const key: SourceKey = { kind: adapter.key, value }
+  const retry = adapter.retryTimeout === true
+  let texts: string[] | Fail
+  if (adapter.pagesNeeded !== undefined && requests.length > 1) {
+    // 1쪽을 먼저 받아 몇 쪽까지 받을지 정하고 나머지만 더 부른다(design.md 3절, TASK-91)
+    const first = await fetchAll(requests.slice(0, 1), key, adapter.timeoutMs, retry)
+    if (!Array.isArray(first)) return failed(first, q.kind)
+    texts = first
+    const more = pagesOf(adapter, first[0], q, requests.length)
+    if (more > 1) {
+      const rest = await fetchAll(requests.slice(1, more), key, adapter.timeoutMs, retry)
+      texts = Array.isArray(rest) ? [...first, ...rest] : rest
+    }
+  } else {
+    texts = await fetchAll(requests, key, adapter.timeoutMs, retry)
+  }
   if (!Array.isArray(texts)) return failed(texts, q.kind)
   try {
     const parsed = adapter.parse(texts, q, todayInKorea())

@@ -166,8 +166,18 @@ function itemOf(row: Row, q: Q): LicenseItem | null {
   return { name, dept: textOf(get('dept')), type: textOf(get('type')), openedOn, closedOn, address: road !== '' ? road : textOf(get('lot')), point }
 }
 
+// 받을 쪽 수: 1쪽의 전체 수 ÷ 100 올림(1~기간 쪽 수). 전체 수가 없으면 1쪽이 꽉 찼을 때만 기간 쪽 수. 읽지 못하면 1(parse가 failed) — TASK-91
+function pagesNeeded(first: string, q: Q): number {
+  const max = pageCount(q)
+  const page = readPage(first)
+  if (page === null) return 1
+  if (page.total === null) return page.rows.length >= LICENSE_PAGE_ROWS ? max : 1
+  return Math.min(max, Math.max(1, Math.ceil(page.total / LICENSE_PAGE_ROWS)))
+}
+
+// 받은 쪽은 1~기간 쪽 수(필요한 쪽만 받는다, TASK-91)
 function parse(texts: string[], q: Q, today: string): Parsed<LicenseValue> {
-  if (texts.length !== pageCount(q)) return { ok: false, code: 'failed' }
+  if (texts.length < 1 || texts.length > pageCount(q)) return { ok: false, code: 'failed' }
   if (texts.some(isNotRegistered)) return { ok: false, code: 'not-applied' }
   const rows: LicenseItem[] = []
   const seen = new Set<string>()
@@ -198,8 +208,10 @@ export const clinicLicense: Adapter<'clinic-license', LicenseValue> = {
   kind: 'clinic-license',
   src: 'clinic-license',
   key: 'data',
-  // 쪽마다 8초 그대로. 30쪽 가운데 하나만 늦어도 통째로 실패하므로 시간 넘은 쪽은 한 번 더(design.md 3절, TASK-90)
+  // 쪽마다 1초 안~40초 넘게 들쭉날쭉(2026-11-23) → 15초까지 기다리고 넘은 쪽은 한 번 더(TASK-90), 1쪽의 전체 수로 필요한 쪽만(TASK-91)
+  timeoutMs: 15_000,
   retryTimeout: true,
+  pagesNeeded,
   requests,
   parse,
 }

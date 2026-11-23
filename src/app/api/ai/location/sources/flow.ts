@@ -189,6 +189,9 @@ function mergeById(rows: readonly FlowVolumeRow[]): FlowVolumeRow[] {
  */
 export const flowVolume: Adapter<'flow-volume', FlowVolume> = {
   kind: 'flow-volume',
+  // 쪽마다 보통 1.5~2초·한 쪽 1,000줄(수정구 한 달 31,555줄, 2026-11-23) → 15초까지 기다리고 넘은 쪽은 한 번 더(design.md 3절, TASK-91)
+  timeoutMs: 15_000,
+  retryTimeout: true,
   src: 'flow-volume',
   key: 'data',
   requests: (q) =>

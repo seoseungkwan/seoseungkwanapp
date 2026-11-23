@@ -267,9 +267,11 @@ describe('clinic-license 빈 답·활용신청 안 됨·모양 틀림 — AC-790
     }
   })
 
-  it('AC-7904.2: 받은 쪽 수가 요청 쪽 수와 다르면 failed다', () => {
+  it('AC-7904.2: 받은 쪽이 없거나 요청 쪽 수보다 많으면 failed다(필요한 쪽만 받으므로 적은 것은 된다, TASK-91)', () => {
     expect(clinicLicense.parse([], OPEN, TODAY)).toEqual({ ok: false, code: 'failed' })
     expect(clinicLicense.parse([fixture('open.json'), fixture('open.json')], OPEN, TODAY)).toEqual({ ok: false, code: 'failed' })
+    const many = clinicLicense.requests(THREE_YEARS).map(() => pageOf(1))
+    expect(clinicLicense.parse([...many, pageOf(1)], THREE_YEARS, TODAY)).toEqual({ ok: false, code: 'failed' })
   })
 })
 
@@ -292,8 +294,39 @@ describe('clinic-license 쪽 한도 — AC-7904.3', () => {
 })
 
 describe('AC-7903.3 3년 개폐업 시간 한도(TASK-90)', () => {
-  it('AC-7903.3: 쪽마다 8초(timeoutMs 없음)이고, 시간 넘은 쪽은 한 번 더 부른다', () => {
-    expect(clinicLicense.timeoutMs).toBeUndefined()
+  it('AC-7903.3: 시간 넘은 쪽은 한 번 더 부른다(쪽 한도는 TASK-91에서 15초)', () => {
+    expect(clinicLicense.retryTimeout).toBe(true)
+  })
+})
+
+// 수정구 3년 개업 63줄이면 30쪽 대신 1쪽만(1쪽의 전체 수로 정함, design.md 3절, TASK-91)
+const pageWithTotal = (rowCount: number, total: number | null) => {
+  const page = JSON.parse(pageOf(rowCount)) as { response: { body: Record<string, unknown> } }
+  if (total !== null) page.response.body.totalCount = total
+  return JSON.stringify(page)
+}
+describe('AC-7904.2 3년 개폐업은 필요한 쪽만(TASK-91)', () => {
+  it('AC-7904.2: 1쪽의 전체 수 ÷ 100 올림만큼 받는다(1~기간 쪽 수)', () => {
+    const need = clinicLicense.pagesNeeded!
+    expect(need(pageWithTotal(63, 63), THREE_YEARS)).toBe(1)
+    expect(need(pageWithTotal(100, 222), THREE_YEARS)).toBe(3)
+    expect(need(pageWithTotal(0, 0), THREE_YEARS)).toBe(1)
+    expect(need(pageWithTotal(100, 9_999), THREE_YEARS)).toBe(clinicLicense.requests(THREE_YEARS).length)
+    expect(need(pageWithTotal(100, 222), OPEN)).toBe(1) // 한 달은 1쪽뿐
+  })
+  it('AC-7904.2: 전체 수가 없으면 1쪽이 꽉 찼을 때 기간 쪽 수, 아니면 1쪽 · 읽지 못하면 1쪽(parse가 failed)', () => {
+    const need = clinicLicense.pagesNeeded!
+    expect(need(pageWithTotal(100, null), THREE_YEARS)).toBe(clinicLicense.requests(THREE_YEARS).length)
+    expect(need(pageWithTotal(40, null), THREE_YEARS)).toBe(1)
+    expect(need('<html>', THREE_YEARS)).toBe(1)
+  })
+  it('AC-7904.2: 3년 기간이어도 받은 1쪽만으로 읽고, 전체 수만큼 받았으면 capped가 아니다', () => {
+    const got = clinicLicense.parse([pageWithTotal(1, 1)], THREE_YEARS, TODAY)
+    expect(got.ok).toBe(true)
+    if (got.ok) expect(got.value.capped).toBe(false)
+  })
+  it('AC-7903.3: 쪽마다 15초, 시간 넘은 쪽은 한 번 더', () => {
+    expect(clinicLicense.timeoutMs).toBe(15_000)
     expect(clinicLicense.retryTimeout).toBe(true)
   })
 })
