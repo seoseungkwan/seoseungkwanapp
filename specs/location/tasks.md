@@ -509,4 +509,4 @@
 - REQ: REQ-7903 · AC-7903.3
 - Files: src/lib/location/collect.ts, src/lib/location/collect.test.ts
 - Tests: src/lib/location/collect.test.ts
-- TDD: required — 모으기 한 번 안에서 세 번 다 실패한 심평원 부르기가 2개면(`HIRA_DOWN_AFTER`) 남은 심평원 부르기·다시 묻기는 deps.ask를 부르지 않고 failed. 의원 한 곳만 늘 실패하면 그대로(다른 의원 값은 받음). 다른 칸은 그대로 받는다(design 5절)
+- TDD: required — 모으기 한 번 안에서 심평원 부르기가 사이에 된 것 없이 4번(`HIRA_DOWN_AFTER`), 서로 다른 부르기 3개(`HIRA_DOWN_SPREAD`) 이상에서 실패하면 남은 심평원 부르기·다시 묻기는 deps.ask를 부르지 않고 failed(되면 셈 0부터). 의원 한 곳만 늘 실패하면 그대로(그곳은 세 번, 다른 의원 값은 받음). 다른 칸은 그대로 받는다(design 5절)

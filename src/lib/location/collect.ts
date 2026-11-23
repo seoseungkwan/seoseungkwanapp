@@ -53,6 +53,9 @@ import { SNAPSHOT_KEYS, placeAddr } from './snapshot'
 export const COLLECT_LIMIT = 4
 /** 심평원 셋은 failed면 모두 이만큼까지 묻는다(design.md 5절, TASK-94 — 사용자 '그냥 시간 상관없이 보이게') */
 export const HIRA_TRIES = 3
+/** 심평원 막힘(design.md 5절, TASK-96): 사이에 된 것 없이 이만큼 실패하고, 그 실패가 서로 다른 부르기 HIRA_DOWN_SPREAD곳 이상이면 남은 심평원 부르기는 바로 failed */
+export const HIRA_DOWN_AFTER = 4
+export const HIRA_DOWN_SPREAD = 3
 const HIRA_KINDS: ReadonlySet<QueryKind> = new Set<QueryKind>(['hosp-list', 'hosp-detail', 'nonpay'])
 /** 의원 목록은 의원 과목을 이만큼씩 나눠 부른다(서버가 둘씩 부르므로 한 번에 한 차례 — 50초 × 두 번이 경로 한도 안, TASK-94) */
 export const CLINIC_CHUNK = 2
@@ -357,19 +360,45 @@ function base(deps: CollectDeps) {
     return p
   }
 
+  // 심평원 막힘(TASK-96): 잇단 실패 수와 실패한 부르기들. 하나라도 되면 0부터. 막히면 남은 심평원 부르기·다시 묻기를 하지 않는다
+  let hiraFails = 0
+  const hiraFailed = new Set<string>()
+  let hiraStopped = false
+  const hiraDown = () => hiraStopped
+  const hiraNote = (key: string, good: boolean) => {
+    if (good) {
+      hiraFails = 0
+      hiraFailed.clear()
+      return
+    }
+    hiraFails += 1
+    hiraFailed.add(key)
+    if (hiraFails >= HIRA_DOWN_AFTER && hiraFailed.size >= HIRA_DOWN_SPREAD) hiraStopped = true
+  }
+
   /** 바깥 자료 하나. 같은 몸통은 한 번만 부른다. 틀린 답 모양·던짐은 failed */
   const ask = <T>(q: Query, read: (v: unknown) => T | Bad): Promise<Res<T>> =>
     once(`q ${JSON.stringify(q)}`, async (): Promise<Res<T>> => {
       // 심평원 셋은 failed(던짐 포함)면 두 번 더 — no-key·not-applied·되었지만 모양이 틀린 답은 다시 묻지 않는다(TASK-94)
-      const tries = HIRA_KINDS.has(q.kind) ? HIRA_TRIES : 1
+      const hira = HIRA_KINDS.has(q.kind)
+      const tries = hira ? HIRA_TRIES : 1
+      const key = JSON.stringify(q)
+      const settled = (r: QueryReply | null) => isObj(r) && (r.ok || r.code !== 'failed')
       let reply: QueryReply | null = null
       for (let i = 0; i < tries; i++) {
-        try {
-          reply = await limit(() => deps.ask(q))
-        } catch {
-          reply = null
-        }
-        if (isObj(reply) && (reply.ok || reply.code !== 'failed')) break
+        // 막혔으면 차례가 와도 부르지 않는다(기다리던 것·다시 묻기 모두). 실패는 자리를 내주기 전에 센다
+        reply = await limit(async (): Promise<QueryReply | null> => {
+          if (hira && hiraDown()) return null
+          let got: QueryReply | null
+          try {
+            got = await deps.ask(q)
+          } catch {
+            got = null
+          }
+          if (hira) hiraNote(key, settled(got))
+          return got
+        })
+        if (settled(reply) || (hira && hiraDown())) break
       }
       if (reply === null || !isObj(reply)) return no('failed')
       if (!reply.ok) return no(REPLY_CODES.includes(reply.code) ? reply.code : 'failed')

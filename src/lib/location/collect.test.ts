@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { DeptId, DeptRule, Point, Query, QueryKind, QueryOf, QueryReply, Rival, Snapshot } from '@/types/location'
-import { COLLECT_LIMIT, ESWT_ITEM, RIVAL_MAX, collect, collectScan, industryParks, type CollectDeps, type CollectProgress } from './collect'
+import { COLLECT_LIMIT, ESWT_ITEM, HIRA_DOWN_AFTER, HIRA_DOWN_SPREAD, HIRA_TRIES, RIVAL_MAX, collect, collectScan, industryParks, type CollectDeps, type CollectProgress } from './collect'
 import { EARTH_R, distM, type LatLng } from './coords'
 import { DEPTS } from './depts'
 import type { BusFile, RailFile, TransitIndex } from './flow'
@@ -1354,7 +1354,9 @@ describe('AC-7903.3 심평원은 실패하면 두 번 더(TASK-94)', () => {
   it('AC-7903.3: 상세가 두 번 실패하고 세 번째에 되면 그 값을 붙인다', async () => {
     let n = 0
     const { deps, askedOf } = world({
-      handlers: { 'hosp-detail': (q) => (q.ykiho === 'Y1' ? (++n < 3 ? FAIL : ok({ mri: true, ct: false, therapists: 3 })) : FAIL) },
+      handlers: {
+        'hosp-detail': (q) => (q.ykiho === 'Y1' ? (++n < 3 ? FAIL : ok({ mri: true, ct: false, therapists: 3 })) : ok({ mri: false, ct: false, therapists: null })),
+      },
     })
     const s = await collect(AT, R, deps)
     expect(askedOf('hosp-detail').filter((q) => q.ykiho === 'Y1')).toHaveLength(3)
@@ -1362,15 +1364,18 @@ describe('AC-7903.3 심평원은 실패하면 두 번 더(TASK-94)', () => {
     expect(y1?.detail).toMatchObject({ therapists: 3, mri: true, ct: false })
   })
 
-  it('AC-7903.3: 세 번 다 실패하면 세 번만 묻고 그만둔다(심평원 셋 모두)', async () => {
-    const { deps, askedOf } = world({ handlers: { 'hosp-detail': () => FAIL, nonpay: () => FAIL } })
-    await collect(AT, R, deps)
-    for (const kind of ['hosp-detail', 'nonpay'] as const) {
-      const per = new Map<string, number>()
-      for (const q of askedOf(kind)) per.set(q.ykiho, (per.get(q.ykiho) ?? 0) + 1)
-      expect([...per.values()].length, kind).toBeGreaterThan(0)
-      for (const [ykiho, times] of per) expect(times, `${kind} ${ykiho}`).toBe(3)
-    }
+  it('AC-7903.3: 한 곳(상세·비급여 둘)만 늘 실패하면 그곳은 세 번씩 묻고 그만두고, 막힘으로 보지 않아 다른 곳 값은 받는다', async () => {
+    const { deps, askedOf } = world({
+      handlers: {
+        'hosp-detail': (q) => (q.ykiho === 'Y2' ? FAIL : ok({ mri: q.ykiho === 'Y1', ct: false, therapists: 3 })),
+        nonpay: (q) => (q.ykiho === 'Y2' ? FAIL : ok({ rows: [], manual: null })),
+      },
+    })
+    const s = await collect(AT, R, deps)
+    expect(askedOf('hosp-detail').filter((q) => q.ykiho === 'Y2')).toHaveLength(3)
+    expect(askedOf('nonpay').filter((q) => q.ykiho === 'Y2')).toHaveLength(3)
+    expect(rivalsOf(s).find((x) => x.name === '가람정형외과의원')?.detail).toMatchObject({ therapists: 3, mri: true })
+    expect(rivalsOf(s).find((x) => x.name === '별빛신경외과의원')?.detail).toMatchObject({ therapists: 3 })
   })
 
   it('AC-7903.3: 의원 목록이 던지면(실패) 세 번까지 묻는다', async () => {
@@ -1397,5 +1402,43 @@ describe('AC-7903.3 심평원은 실패하면 두 번 더(TASK-94)', () => {
       expect(keys.length, kind).toBeGreaterThan(0)
       expect(new Set(keys).size, kind).toBe(keys.length)
     }
+  })
+})
+
+// 심평원 막힘 보기(design.md 5절, TASK-96 — 2026-11-23 23/24에서 30분 넘게 멈춤)
+describe('AC-7903.3 심평원이 막히면 빨리 포기(TASK-96)', () => {
+  it('AC-7903.3: 사이에 된 것 없이 4번(서로 다른 3곳 이상) 실패하면 남은 심평원 부르기는 부르지 않는다 — 다른 칸은 그대로 받는다', async () => {
+    expect([HIRA_DOWN_AFTER, HIRA_DOWN_SPREAD]).toEqual([4, 3])
+    const { deps, askedOf } = world({ handlers: { 'hosp-list': () => FAIL } })
+    const s = await collect(AT, R, deps)
+    const lists = askedOf('hosp-list')
+    const distinct = new Set(lists.map((q) => JSON.stringify(q))).size
+    expect(distinct).toBeGreaterThan(2)
+    // 동시에 4개씩 — 첫 차례가 실패하면 막힘, 그사이 시작한 몇 개 말고 남은 것·다시 묻기는 부르지 않는다
+    expect(lists.length).toBeLessThanOrEqual(COLLECT_LIMIT + HIRA_DOWN_AFTER - 1)
+    expect(lists.length).toBeLessThan(distinct * HIRA_TRIES)
+    expect(s.rivals.ok).toBe(false)
+    for (const key of SNAPSHOT_KEYS) if (key !== 'rivals') expect(s[key].ok, key).toBe(true)
+  })
+
+  it('AC-7903.3: 상세·비급여가 모두 실패해도 막힌 뒤로는 부르지 않는다(의원마다 세 번씩 부르지 않음)', async () => {
+    const { deps, askedOf } = world({ handlers: { 'hosp-detail': () => FAIL, nonpay: () => FAIL } })
+    const s = await collect(AT, R, deps)
+    const asked = [...askedOf('hosp-detail'), ...askedOf('nonpay')]
+    const distinct = new Set(asked.map((q) => JSON.stringify(q))).size
+    expect(asked.length).toBeLessThan(distinct * HIRA_TRIES)
+    // 목록은 받았으므로 경쟁 의원 칸은 있고 상세만 비어 있다
+    expect(s.rivals.ok).toBe(true)
+  })
+
+  it('AC-7903.3: 막힘은 그 모으기 한 번만 — 다음 모으기는 처음부터 다시 부른다', async () => {
+    let down = true
+    const { deps, askedOf } = world({ handlers: { 'hosp-list': () => (down ? FAIL : ok({ items: [], capped: false })) } })
+    await collect(AT, R, deps)
+    const before = askedOf('hosp-list').length
+    down = false
+    const s = await collect(AT, R, deps)
+    expect(askedOf('hosp-list').length).toBeGreaterThan(before)
+    expect(s.rivals.ok).toBe(true)
   })
 })
