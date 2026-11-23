@@ -367,6 +367,8 @@ export function SetupScreen({
                 <dt className="text-muted">요양기관기호</dt>
                 {hospital.status === 'ok' && institution ? (
                   <Plain>{`${maskInstitution(institution)} · ${clinicName}`}</Plain>
+                ) : hospital.status === 'ok' && state === 'ready' ? (
+                  <Plain>{`번호 없음 · ${clinicName}`}</Plain>
                 ) : isRealProblem(hospital) ? (
                   <Bad>등록한 번호와 달라요</Bad>
                 ) : (

@@ -67,7 +67,6 @@ public static class MemoRowsRead
         if (from > to || (to - from).Days + 1 > MaximumDays) throw new ProtocolException(ErrorCodes.BadMessage);
 
         using var hospital = HospitalGate.Open(services);
-        HospitalCheck.VerifyPeriod(hospital.Db, hospital.Registration, from, to);
         var memos = Read(hospital.Db, hospital.Registration.Scope, from, to);
 
         return ClaimMonthPayload.Write(writer =>

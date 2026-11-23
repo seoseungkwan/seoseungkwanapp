@@ -68,8 +68,12 @@ describe('REQ-005 비트 연결·기관기호 (C# Precheck.Core.Tests.Bit · Reg
     expectAc('AC-005.7')
   })
 
-  it('AC-005.13 처음 등록은 계정과 상관없이 DB 안 의원 하나로(빈 값 뺌), 막는 것은 E-BIT-REG-NONE·MANY·CODE·PLACE뿐, 매번 확인·통계 확인도 같은 기준', () => {
+  it('AC-005.13 처음 등록은 계정과 상관없이 DB 안 의원 하나로(빈 값 뺌), 기관기호는 못 찾아도 빈 값으로, 막는 것은 E-BIT-REG-NONE·MANY·PLACE뿐, 매번 확인·통계 확인도 같은 기준', () => {
     expectAc('AC-005.13')
+  })
+
+  it('AC-005.15 bit.check는 빈 기관기호를 주지 않고, 확인 창은 기관기호 못 찾음', () => {
+    expectAc('AC-005.15')
   })
 })
 

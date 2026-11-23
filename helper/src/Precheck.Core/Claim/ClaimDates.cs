@@ -59,7 +59,6 @@ public static class ClaimDates
 
         using var hospital = HospitalGate.Open(services);
         var registration = hospital.Registration;
-        HospitalCheck.VerifyPeriod(hospital.Db, registration, from, to);
         var args = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["@from"] = ClaimText.Stamp(from),

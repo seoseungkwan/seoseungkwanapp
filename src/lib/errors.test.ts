@@ -38,7 +38,6 @@ const ALL_CODES = [
   'E-BIT-HOSPITAL-MISMATCH',
   'E-BIT-REG-NONE',
   'E-BIT-REG-MANY',
-  'E-BIT-REG-CODE',
   'E-BIT-REG-PLACE',
   'E-STORE-FAILED',
   'E-STORE-BROKEN',
@@ -333,7 +332,6 @@ const BIT_CODES = [
   'E-STORE-BROKEN',
   'E-BIT-REG-NONE',
   'E-BIT-REG-MANY',
-  'E-BIT-REG-CODE',
   'E-BIT-REG-PLACE',
 ] as const satisfies readonly ErrorCode[]
 
@@ -341,11 +339,7 @@ const BIT_CODES = [
 const REG_TEXT = {
   'E-BIT-REG-NONE': {
     what: '이 비트에서 의원 정보를 찾지 못했어요',
-    fix: '비트에 의원 정보가 들어 있는지 비트 업체에 물어봐 주세요. 고친 뒤 [처음 등록]을 다시 눌러 주세요.',
-  },
-  'E-BIT-REG-CODE': {
-    what: '비트에서 오늘 쓰는 요양기관번호를 하나로 찾지 못했어요',
-    fix: '비트의 의원 정보에 오늘 쓰는 요양기관번호가 하나만 들어 있는지 비트 업체에 물어봐 주세요. 고친 뒤 [처음 등록]을 다시 눌러 주세요.',
+    fix: '비트에 의원 정보가 들어 있는지 비트 업체에 물어봐 주세요. 고친 뒤 등록을 다시 해 주세요.',
   },
   'E-BIT-REG-MANY': {
     what: '이 비트에 의원이 둘 이상 들어 있어요',
@@ -353,7 +347,7 @@ const REG_TEXT = {
   },
   'E-BIT-REG-PLACE': {
     what: '비트 설치 위치나 자료 연결 정보를 알아보지 못했어요',
-    fix: '비트를 켜서 로그인되는지 확인한 뒤 [처음 등록]을 다시 눌러 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
+    fix: '비트를 켜서 로그인되는지 확인한 뒤 등록을 다시 해 주세요. 계속되면 오류 번호와 함께 문의해 주세요.',
   },
 } as const satisfies Partial<Record<ErrorCode, { what: string; fix: string }>>
 
@@ -363,11 +357,14 @@ describe('AC-005.14 처음 등록이 막힌 곳 글(TASK-43)', () => {
     expect(isErrorCode(code)).toBe(true)
   })
 
-  it('AC-005.14: 네 번호 모두 [다시 등록]을 가리키지 않는다', () => {
+  it('AC-005.14: 세 번호 모두 [다시 등록]·[처음 등록] 단추 이름을 가리키지 않는다, 요양기관번호로 막던 E-BIT-REG-CODE는 없다', () => {
     for (const code of Object.keys(REG_TEXT) as (keyof typeof REG_TEXT)[]) {
       const { what, fix } = errorInfo(code)
       expect(`${what} ${fix}`).not.toContain('[다시 등록]')
+      expect(`${what} ${fix}`).not.toContain('[처음 등록]')
     }
+    expect(Object.keys(REG_TEXT)).toHaveLength(3)
+    expect(isErrorCode('E-BIT-REG-CODE')).toBe(false)
   })
 })
 

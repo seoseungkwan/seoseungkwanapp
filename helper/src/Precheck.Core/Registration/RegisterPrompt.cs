@@ -39,10 +39,11 @@ public static class RegisterPrompt
         return text.ToString();
     }
 
-    /// <summary>기관기호 앞 4자리만 보이고 나머지는 *로(12345678 → 1234****).</summary>
+    /// <summary>기관기호 앞 4자리만 보이고 나머지는 *로(12345678 → 1234****). 못 찾은 등록(빈 글자)은 '못 찾음'(AC-005.15).</summary>
     public static string MaskInstitution(string code)
     {
         var value = code ?? "";
+        if (value.Length == 0) return "못 찾음";
         return value.Length <= 4 ? new string('*', 4) : value.Substring(0, 4) + new string('*', value.Length - 4);
     }
 

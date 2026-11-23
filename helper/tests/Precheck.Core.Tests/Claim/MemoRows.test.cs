@@ -69,7 +69,7 @@ public class MemoRowsTests
         Assert.Equal("2026-10-31", rows[1].GetProperty("d").GetString());
     }
 
-    [Fact(DisplayName = "AC-016.1 SQL은 원본 RowsSql과 공백만 다르고, 등록 병원 확인 → 기간 기관기호 → 메모 SQL 하나(@from·끝 다음 날 0시 @to·@hospital, 120초), 로그인 창·통계 화면 없음, 끝나면 세션을 닫아 되돌린다")]
+    [Fact(DisplayName = "AC-016.1 SQL은 원본 RowsSql과 공백만 다르고, 등록 병원 확인 → 메모 SQL 하나(@from·끝 다음 날 0시 @to·@hospital, 120초, 기간 기관기호 확인 없음 AC-005.15), 로그인 창·통계 화면 없음, 끝나면 세션을 닫아 되돌린다")]
     public void ReadsOriginalSqlOnly()
     {
         Assert.Equal(ReadOnlyGuardTests.Squash(ReadOnlyGuardTests.ReadOriginal("memo-rows.sql")), ReadOnlyGuardTests.Squash(Sql.MemoRowsSql));
@@ -78,11 +78,8 @@ public class MemoRowsTests
         using var rig = Rig(Row("가짜 메모"));
         Dispatch.Run(rig.Rig.Services, "claim.memos", "2026-09-01", To);
 
-        Assert.Equal(new[] { Sql.ScopesSql, Sql.InstitutionSql, Sql.PeriodIdentitySql, Sql.MemoRowsSql }, rig.Db.Sqls);
-        var identity = rig.Db.Calls[2];
-        Assert.Equal("20260901", identity.Args["@firstDay"]);
-        Assert.Equal("20261031", identity.Args["@lastDay"]);
-        var memos = rig.Db.Calls[3];
+        Assert.Equal(new[] { Sql.ScopesSql, Sql.InstitutionSql, Sql.MemoRowsSql }, rig.Db.Sqls);
+        var memos = rig.Db.Calls[2];
         Assert.Equal("202609010000", memos.Args["@from"]);
         Assert.Equal("202611010000", memos.Args["@to"]);
         Assert.Equal(Synthetic.Scope, memos.Args["@hospital"]);
@@ -190,7 +187,18 @@ public class MemoRowsTests
         Assert.Equal("앞�뒤", RowsOf(lone)[0].GetProperty("m").GetString());
     }
 
-    [Fact(DisplayName = "AC-016.1 등록 없음·다른 병원·기간 기관기호 다름·읽기 실패·시간 초과면 end 없이 그 번호 error 하나만, 세션은 닫는다")]
+    [Fact(DisplayName = "AC-005.15 claim.memos는 기간 기관기호를 확인하지 않는다(그 기간에 다른 번호 줄이 있어도 읽는다)")]
+    public void NoPeriodCheck()
+    {
+        using var rig = Rig(Row("가짜 메모"));
+        rig.Db.Answer(Sql.PeriodIdentitySql, _ => new[] { new object?[] { 1L, 2L } });
+        var replies = Dispatch.Run(rig.Rig.Services, "claim.memos", From, To);
+        Assert.DoesNotContain(replies, reply => reply.GetProperty("type").GetString() == "error");
+        Assert.Contains(Sql.MemoRowsSql, rig.Db.Sqls);
+        Assert.DoesNotContain(Sql.PeriodIdentitySql, rig.Db.Sqls);
+    }
+
+    [Fact(DisplayName = "AC-016.1 등록 없음·다른 병원·읽기 실패·시간 초과면 end 없이 그 번호 error 하나만, 세션은 닫는다")]
     public void FailuresAreErrorsOnly()
     {
         using (var rig = new ClaimRig(registered: false))
@@ -201,13 +209,6 @@ public class MemoRowsTests
         using (var rig = Rig(Row("가짜 메모")))
         {
             rig.Db.Answer(Sql.InstitutionSql, Synthetic.OtherInstitution);
-            Assert.Equal("E-BIT-HOSPITAL-MISMATCH", Dispatch.OnlyError(Dispatch.Run(rig.Rig.Services, "claim.memos", From, To)));
-            Assert.DoesNotContain(Sql.MemoRowsSql, rig.Db.Sqls);
-            Assert.Equal(1, rig.Db.Disposed);
-        }
-        using (var rig = Rig(Row("가짜 메모")))
-        {
-            rig.Db.Answer(Sql.PeriodIdentitySql, _ => new[] { new object?[] { 1L, 2L } });
             Assert.Equal("E-BIT-HOSPITAL-MISMATCH", Dispatch.OnlyError(Dispatch.Run(rig.Rig.Services, "claim.memos", From, To)));
             Assert.DoesNotContain(Sql.MemoRowsSql, rig.Db.Sqls);
             Assert.Equal(1, rig.Db.Disposed);

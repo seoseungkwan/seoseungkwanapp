@@ -74,6 +74,17 @@ public class RegistrationFileTests
     private static byte[] Wrap(string json) =>
         Encoding.ASCII.GetBytes(RegistrationFile.Header).Concat(Protector.Protect(Encoding.UTF8.GetBytes(json))).ToArray();
 
+    [Fact(DisplayName = "AC-005.13 기관기호가 빈 등록은 맞는 값이라 쓰고 그대로 읽는다")]
+    public void EmptyInstitutionRoundTrips()
+    {
+        var registration = Synthetic.Registration(institution: "");
+        Assert.True(registration.IsValid);
+        var read = RegistrationFile.Read(RegistrationFile.Write(registration, Protector), Protector);
+        Assert.NotNull(read);
+        Assert.Equal("", read!.InstitutionCode);
+        Assert.Equal(Synthetic.Scope, read.Scope);
+    }
+
     [Fact(DisplayName = "AC-005.5 틀린 등록 값(기관기호 8자리 아님·빈 칸·프로필 ID 모양)은 쓰지 않는다")]
     public void RefusesToWriteInvalid()
     {

@@ -174,23 +174,35 @@ public class RegisterFlowTests
         }
     }
 
-    [Fact(DisplayName = "AC-005.13 그날 기관기호가 없거나 8자리가 아니거나 둘이면 E-BIT-REG-CODE")]
-    public void InstitutionStops()
+    [Fact(DisplayName = "AC-005.13 그날 8자리 기관기호가 없거나 서로 다른 값이 둘이면 빈 기관기호로 등록한다(막지 않음, 확인 창은 '기관기호 못 찾음')")]
+    public void InstitutionMissingStillRegisters()
     {
-        using (var rig = new Rig())
+        foreach (var rows in new[] { new string?[] { "1234567" }, new string?[0], new string?[] { Synthetic.Institution, Synthetic.OtherInstitution } })
         {
-            rig.Session.Answer(Sql.InstitutionSql, "1234567");
-            StopsWith(rig, "E-BIT-REG-CODE");
+            using var rig = new Rig();
+            rig.Session.Answer(Sql.InstitutionSql, rows);
+            SavesWith(rig, Synthetic.Scope, "");
+            Assert.Contains("기관기호 못 찾음", rig.Confirm.Shown.Single().Text);
         }
-        using (var rig = new Rig())
+    }
+
+    [Fact(DisplayName = "AC-005.13 다시 등록: 기관기호가 같아도 범위가 다르면 새 프로필 ID, 기관기호가 둘 다 비었고 범위가 같으면 프로필 ID를 그대로 둔다")]
+    public void ReRegisterNeedsSameScope()
+    {
+        var previous = Synthetic.Registration(scope: "OLDSCOPE");
+        using (var rig = new Rig().Registered(previous))
+        {
+            Assert.True(Registered(Handle(rig)));
+            Assert.Equal(rig.IssuedIds.Single(), rig.Store.Load()!.ProfileId);
+            Assert.NotEqual(previous.ProfileId, rig.Store.Load()!.ProfileId);
+        }
+        var noCode = Synthetic.Registration(institution: "");
+        using (var rig = new Rig().Registered(noCode))
         {
             rig.Session.Answer(Sql.InstitutionSql);
-            StopsWith(rig, "E-BIT-REG-CODE");
-        }
-        using (var rig = new Rig())
-        {
-            rig.Session.Answer(Sql.InstitutionSql, Synthetic.Institution, Synthetic.OtherInstitution);
-            StopsWith(rig, "E-BIT-REG-CODE");
+            Assert.True(Registered(Handle(rig)));
+            Assert.Equal(noCode.ProfileId, rig.Store.Load()!.ProfileId);
+            Assert.Empty(rig.IssuedIds);
         }
     }
 

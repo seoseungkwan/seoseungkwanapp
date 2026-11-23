@@ -186,6 +186,19 @@ public class HospitalCheckTests
         Assert.All(new[] { foreignScope, otherNumber, expired }.SelectMany(s => s.Sqls), sql => Assert.Contains(sql, Sql.All));
     }
 
+    [Fact(DisplayName = "AC-005.13 등록 기관기호가 비었으면 매번 확인은 번호를 보지 않는다(범위·설치 위치는 그대로 본다)")]
+    public void VerifyCurrentWithoutInstitution()
+    {
+        var registration = Synthetic.Registration(institution: "");
+        var session = FakeDb.Hospital(new FakeSession(), institution: Synthetic.OtherInstitution);
+        HospitalCheck.VerifyCurrent(session, registration, Synthetic.Today);
+        Assert.Equal(new[] { Sql.ScopesSql }, session.Sqls);
+
+        var foreign = FakeDb.Hospital(new FakeSession());
+        foreign.Answer(Sql.ScopesSql, Synthetic.Scope, "FOREIGN");
+        Assert.Equal(Mismatch, Assert.Throws<BitException>(() => HospitalCheck.VerifyCurrent(foreign, registration, Synthetic.Today)).Code);
+    }
+
     [Fact(DisplayName = "AC-005.13 매번 확인도 처음 등록과 같은 기준: 빈 범위 줄·8자리 아닌 기관기호 줄은 빼고 본다")]
     public void VerifyCurrentIgnoresNoise()
     {

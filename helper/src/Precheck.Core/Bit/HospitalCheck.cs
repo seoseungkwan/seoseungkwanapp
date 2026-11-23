@@ -113,34 +113,13 @@ public static class HospitalCheck
         }
         var scopes = ReadScopes(session);
         if (scopes.Count != 1 || scopes[0] != registration.Scope) throw Mismatch();
+        if (registration.InstitutionCode.Length == 0) return; // 못 찾은 등록은 번호를 보지 않는다(AC-005.13)
         var codes = ReadCodes(session, registration.Scope, today);
         if (codes.Count != 1 || codes[0] != registration.InstitutionCode) throw Mismatch();
     }
 
-    /// <summary>
-    /// 원본 TreatmentUsage.IdentitySql 확인(RxHistory·ClaimMemoHistory·RxDiagnosisTrend가 자료 전에 돌림): 조회 기간(first~last)에
-    /// 등록 범위의 기관기호가 등록한 것인 줄이 하나 이상이고 다른 기관기호 줄이 없어야 한다. 아니면 E-BIT-HOSPITAL-MISMATCH.
-    /// </summary>
-    public static void VerifyPeriod(IBitDb db, HospitalRegistration registration, DateTime first, DateTime last)
-    {
-        if (registration == null) throw new BitException(BitErrors.NotRegistered);
-        var rows = ReadOnlyGuard.Query(db, Sql.PeriodIdentitySql, Args(
-            ("@scope", registration.Scope), ("@institution", registration.InstitutionCode), ("@firstDay", Day(first)), ("@lastDay", Day(last))), Sql.MetaTimeout);
-        var row = rows.FirstOrDefault();
-        if (row == null || row.Count < 2 || Count(row[0]) < 1 || Count(row[1]) != 0) throw Mismatch();
-    }
-
-    private static long Count(object? value)
-    {
-        try
-        {
-            return value == null ? -1 : Convert.ToInt64(value, CultureInfo.InvariantCulture);
-        }
-        catch (Exception e) when (e is FormatException || e is InvalidCastException || e is OverflowException)
-        {
-            return -1;
-        }
-    }
+    // 원본 TreatmentUsage.IdentitySql(기간 기관기호 확인, Sql.PeriodIdentitySql)은 TASK-43부터 부르지 않는다(AC-005.15):
+    // 자료는 그 PC 비트에서 바로 읽고, 같은 의원인지는 매번 확인(VerifyCurrent)이 본다.
 
     /// <summary>yyyyMMdd 글자(원본 작업일 모양).</summary>
     public static string Day(DateTime day) => day.ToString("yyyyMMdd", CultureInfo.InvariantCulture);

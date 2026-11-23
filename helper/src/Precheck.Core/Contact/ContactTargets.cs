@@ -41,7 +41,6 @@ public static class ContactTargets
         var registration = hospital.Registration;
         var db = hospital.Db;
         var install = db.Target.InstallPath;
-        HospitalCheck.VerifyPeriod(db, registration, from, to);
 
         var screens = services.Screens ?? throw new BitException(BitErrors.ExportFailed);
         var menu = StatsMenu.Parse(screens.ReadMenu(install));

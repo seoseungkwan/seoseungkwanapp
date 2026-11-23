@@ -24,7 +24,6 @@ public static class BitErrors
     public const string RegisterMany = "E-BIT-REG-MANY";
 
     /// <summary>처음 등록: 그 범위의 오늘 8자리 기관기호가 없거나 서로 다른 값이 둘 이상이다(AC-005.13).</summary>
-    public const string RegisterCode = "E-BIT-REG-CODE";
 
     /// <summary>처음 등록: 저장할 설치 위치·서버·DB 이름 값이 등록 모양에 맞지 않는다(AC-005.13).</summary>
     public const string RegisterPlace = "E-BIT-REG-PLACE";

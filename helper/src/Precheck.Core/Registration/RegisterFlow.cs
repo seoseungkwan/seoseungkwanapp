@@ -35,11 +35,11 @@ public static class RegisterFlow
             if (scopes.Count > 1) throw new BitException(BitErrors.RegisterMany);
             var scope = scopes[0];
             var codes = HospitalCheck.ReadCodes(session, scope, services.Today().Date);
-            if (codes.Count != 1) throw new BitException(BitErrors.RegisterCode);
-            var code = codes[0];
+            var code = codes.Count == 1 ? codes[0] : ""; // 못 찾으면 빈 기관기호로 등록한다(AC-005.13, 사람이 확인 창에서 본다)
 
             previous = LoadPrevious(services.Store);
-            var sameHospital = previous != null && string.Equals(previous.InstitutionCode, code, StringComparison.Ordinal);
+            var sameHospital = previous != null && string.Equals(previous.InstitutionCode, code, StringComparison.Ordinal)
+                && string.Equals(previous.Scope, scope, StringComparison.Ordinal);
             var target = session.Target;
             // 병원 이름은 저장하지 않는다(AC-005.9): 원본 비트 읽기(HospitalSecurity)에 병원 이름 SQL이 없고, 화면은 사이트 값을 쓴다
             candidate = new HospitalRegistration(
